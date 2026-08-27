@@ -1,11 +1,11 @@
 ---
 title: 二段検索の段 — グラフ近傍展開と再ランク（既定オフ・opt-in）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-04, FR-17, FR-14, UC-10, ADR-0035, ADR-0034, ADR-0018, IADR-0242, IADR-0259]
 author: claude
 created: 2026-08-23
-updated: 2026-08-27
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0035_graphrag-retrieval-strategy.md
   - planning:projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md
@@ -190,3 +190,8 @@ Proximity(d) ∈ [0,1] = 起点からの経路の**辺の型の重みの積の�
 3. `scripts/check-bff-downstreams.js` の CALLERS に RetrievalService が入っていない（新たに service → service の呼び出し元になった）。`scripts/` は territory 外
 4. `w_graph = 0.35` / `SeedCount = 5` は**実測値ではない**。A/B（既定オフの構成が可能にしたもの）で測って決め直す
 5. 実 Qdrant / 実 GraphService を要する結線検証は Docker 不在のため実行できず、CI に委ねる
+
+［2026-08-28 追記 / #970］残件 1〜3 は後半戦
+`.ai-context/specs/20260828_issue-970_two-stage-completion.md` が解消した（辺型重みのカタログ公開と
+実重み再ランク・呼び出し元 2 箇所の `Authorization` 伝播・CALLERS 追加）。残るのは 4・5 のみ
+（IADR-0263 残件 4・5 と同一）。

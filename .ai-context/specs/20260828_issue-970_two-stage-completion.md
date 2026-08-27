@@ -1,7 +1,7 @@
 ---
 title: 二段検索の完成 — 辺型重みの公開・実重み再ランク・Authorization 伝播の残件解消
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-04, FR-05, FR-17, FR-14, UC-10, ADR-0035, ADR-0034, ADR-0018, IADR-0263, IADR-0259, IADR-0242]
 author: claude
 created: 2026-08-28
@@ -123,16 +123,16 @@ plan_refs:
   compose の `retrieval-service.depends_on` に `graph-service` は無いが、段は既定オフ・
   アダプタは不達を空縮退するため起動順の強制は要らない（S6 は触らない）。
 
-## 受け入れ基準
+## 受け入れ基準（2026-08-28 実測で充足）
 
-- [ ] `/graph/edge-types/catalog` が型ごとの `weight` を返す（seed 値 `supersedes`=1.0 / `related`=0.3 が API から読める）
-- [ ] カタログは引き続き `usageCount` を返さない（既存テストが緑のまま）
-- [ ] 再ランクで辺の型の重み差が順位に効く（重い型経由の文書が軽い型経由より上位）—— 実 API 応答形（FakeGraphHandler）経由で測る
-- [ ] 辞書に無い型・カタログ不達は既定重み 0.5 へ縮退し、警告が出る（静かに無差別にしない）
-- [ ] BFF `/bff/search` が受信 `Authorization` をそのまま RetrievalService へ伝播する／無ければ付けない
-- [ ] `RagOrchestrator` が受信 `Authorization` をそのまま RetrievalService へ伝播する／無ければ付けない
-- [ ] `node scripts/check-bff-downstreams.js` が RetrievalService → GraphService を含めて緑
-- [ ] 既存 14 Fact（`GraphExpansionTwoStageSearchTests`）が緑のまま（段の既定オフ・Score 不混入等の既決事項を壊さない）
+- [x] `/graph/edge-types/catalog` が型ごとの `weight` を返す（seed 値 `supersedes`=1.0 / `related`=0.3 が API から読める。W-01 実測）
+- [x] カタログは引き続き `usageCount` を返さない（既存 `Catalog_never_exposes_usage_counts` が緑のまま）
+- [x] 再ランクで辺の型の重み差が順位に効く（R-01 実測。変異 M-1 で赤を確認）
+- [x] 辞書に無い型・カタログ不達は既定重み 0.5 へ縮退し、警告が出る（R-02 / R-03 実測）
+- [x] BFF `/bff/search` が受信 `Authorization` をそのまま RetrievalService へ伝播する／無ければ付けない（B-01 / B-02 実測）
+- [x] `RagOrchestrator` が受信 `Authorization` をそのまま RetrievalService へ伝播する／無ければ付けない（A-01 / A-02 実測）
+- [x] `node scripts/check-bff-downstreams.js` が RetrievalService → GraphService を含めて緑（呼び出し元 5 件・ドリフト 0・自己試験 12 件 OK）
+- [x] 既存 14 Fact（`GraphExpansionTwoStageSearchTests`）が緑のまま（段の既定オフ・Score 不混入等の既決事項を壊さない）
 
 ## テスト方針
 
@@ -140,7 +140,7 @@ plan_refs:
 | --- | --- | --- |
 | W-01 | カタログ応答が seed の重み（supersedes 1.0 / related 0.3）を運ぶ。**リテラルで測る**（定数との突合はトートロジー） | GraphService.Api.Tests |
 | W-02 | カタログ応答の重み差が装置の検出力を持つ（supersedes > related） | 同上（W-01 に含める） |
-| R-01 | 重い型（1.0）経由の近傍が軽い型（0.3）経由より上位に並ぶ（エンドポイント経由・FakeGraphHandler がカタログも応答） | RetrievalService.Api.Tests |
+| R-01 | 辞書の実重み（1.0 / 0.3）が辺に載り、`GraphProximity` の近接度で重い型経由が上回る（アダプタ実体＋FakeGraphHandler がカタログも応答。合成→順位の経路は既存 T-12 が固定済み） | RetrievalService.Api.Tests |
 | R-02 | 辞書に無い型の辺は既定重み 0.5 で扱う | 同上 |
 | R-03 | カタログ不達（非 2xx / 例外）でも検索は成立し、全辺 0.5 で縮退する | 同上 |
 | A-01 | `RagOrchestrator`: 受信 `Authorization` が RetrievalService への要求へそのまま載る（陽性対照） | AiAnalysisService.Api.Tests |
@@ -153,21 +153,38 @@ plan_refs:
 
 ### 変異試験（最低 2 種・実測して本節へ記録する）
 
-| 変異 | 落ちるべき | 実測結果 |
+| 変異 | 落ちるべき | 実測結果（2026-08-28） |
 | --- | --- | --- |
-| M-1 アダプタの重み解決を固定値 0.5 へ戻す | R-01 | （実測後に記入） |
-| M-2 `RagOrchestrator` の Authorization 伝播を外す | A-01 | （実測後に記入） |
-| M-3 `/bff/search` の Authorization 伝播を外す | B-01 | （実測後に記入） |
+| M-1 アダプタの重み解決を固定値 0.5 へ戻す | R-01 | ✅ 赤 1 件のみ: `辞書の実重みが辺に載り再ランクに効く`（109/110 緑） |
+| M-2 `RagOrchestrator` の Authorization 伝播を外す | A-01 | ✅ 赤 1 件のみ: `AskAsync_ForwardsTheIncomingAuthorizationToRetrieval`（81/82 緑） |
+| M-3 `/bff/search` の Authorization 伝播を外す | B-01 | ✅ 赤 1 件のみ: `PostSearch_ForwardsTheCallersAuthorizationToRetrieval`（362/364 緑・1 skip 既存） |
+
+いずれも変異を戻して全緑を再確認した。
 
 ## 計画書との差異
 
 - 差異なし。ADR-0035 決定 2「型ごとに重みを持たせ、再ランクで使う」が本作業で実際に効き始める
   （IADR-0263 決定 6 の「テストは緑・本番は無差別」状態の解消）。
 
-## 検証（コミット前・実測を記録）
+## 検証（コミット前・2026-08-28 実測）
 
-（実施後に記入: build / format / 対象 3 テストプロジェクト件数 / check-contract-schema /
-check-bff-downstreams / check-commit-messages / check-event-topology）
+| 検証 | 結果 |
+| --- | --- |
+| `dotnet build` knowledge slnx | 0 errors（warnings 2 は既存の Testcontainers CS0618。本変更と無関係） |
+| `dotnet build` platform slnx（契約変更のため） | 0 warnings / 0 errors（AST submodule を init して実施） |
+| `dotnet format --verify-no-changes`（knowledge / platform 両 slnx） | 差分なし |
+| RetrievalService.Api.Tests | **110 件 全緑**（新規 R-01〜R-03 含む） |
+| GraphService.Api.Tests | **183 件 全緑**（新規 W-01 系 2 件含む） |
+| AiAnalysisService.Api.Tests | **82 件 全緑**（新規 A-01 / A-02 / 文脈なし 3 件含む） |
+| Platform.Bff.Tests | **363 緑 / 1 skip（既存）**（新規 B-01 / B-02 含む） |
+| `check-contract-schema.js` | **exit 1（想定どおり）**: 差分 1 件のみ・**非破壊**（`EdgeTypeCatalogItemDto.Weight` のメンバー追加）。破壊的 0。baseline は本 worktree では更新しない（§残件 1） |
+| `check-bff-downstreams.js`（＋ `--self-test`） | 緑（呼び出し元 5 件・ドリフト 0 / 自己試験 12 件 OK） |
+| `check-commit-messages.js --range befe3cd..HEAD` | 全コミット適合 |
+| `check-event-topology.js` | exit 0（イベント面は触っていない） |
+
+`GraphExpansion:Enabled` の既定は **false のまま**（ADR-0035 決定 2。本作業は既定を変えない）。
+有効化条件は「構成 `GraphExpansion:Enabled=true`」であり、有効化すれば BFF 経路・RAG 経路とも
+`Authorization` が届く（本作業で充足）。重みは辞書の実値で効く。
 
 ## 未決事項・残件
 

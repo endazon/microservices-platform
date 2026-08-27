@@ -14,7 +14,7 @@ related_ids:
   - IADR-0259
 author: claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-28
 plan_refs:
   - "ADR-0035（GraphRAG の検索戦略・二段検索・既定オフ）"
   - "ADR-0034（グラフ探索の ABAC 強制・hops の裁定値）"
@@ -113,6 +113,14 @@ Proximity(d)    = 起点からの経路上の**辺の型の重みの積の最大
 - 「テストは緑・本番は無差別」という形を**承知のうえで**置いている（IADR-0014 が記録した型）。
   **承知していることを記録に残すのが本決定の目的である。**
 
+> **［2026-08-28 追記 / #970］暫定は解消した。** GraphService が `/graph/edge-types/catalog` の
+> `EdgeTypeCatalogItemDto` 末尾へ既定値付きで `Weight` を公開し（IADR-0122 決定 2 の非破壊形）、
+> アダプタは近傍探索と同じ資格情報で辞書を要求ごとに 1 回引いて実重みを解決する。
+> 0.5 は**フォールバック**（辞書不達・辞書に無い型。いずれも警告つき）へ縮んだ。
+> 公開先をカタログ（認証のみ）にしたのは、RetrievalService が一般利用者の JWT（方式 A）で
+> 引ける唯一の口だからである —— 重みは語彙レベルの設定値であり、`UsageCount` と違って
+> ABAC で絞るべき集計値ではない。詳細は `.ai-context/specs/20260828_issue-970_two-stage-completion.md`。
+
 ## 検討した選択肢
 
 | # | 論点 | 採らなかった案 | 理由 |
@@ -133,3 +141,7 @@ Proximity(d)    = 起点からの経路上の**辺の型の重みの積の最大
    （新たに service → service の呼び出し元になった）。
 4. 実 GraphService / 実 Qdrant を要する結線検証は Docker 不在のため実行できず、CI に委ねる。
 5. `w_graph` / 起点件数は A/B（既定オフの構成が可能にしたもの）で測って決め直す。
+
+> **［2026-08-28 追記 / #970］残件 1〜3 は解消した**（決定 6 の追記と
+> `.ai-context/specs/20260828_issue-970_two-stage-completion.md` を参照。伝播の写像元は BFF の
+> 既存作法、CALLERS は Program.cs の登録を確立形へ揃えて追加）。**残るのは 4・5 だけ**である。
