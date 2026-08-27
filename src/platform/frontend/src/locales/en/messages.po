@@ -206,6 +206,18 @@ msgstr "supersedes: thick solid line with arrow (old to new)"
 msgid "Wiki"
 msgstr "Wiki"
 
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiAccessPage.tsx
+msgid "Wiki の接続先が未設定です。管理者に連絡してください。"
+msgstr "The wiki URL is not configured. Please contact your administrator."
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiAccessPage.tsx
+msgid "Wiki を開く"
+msgstr "Open the wiki"
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiAccessPage.tsx
+msgid "Wiki 閲覧"
+msgstr "Browse the wiki"
+
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "Wikiで閲覧"
 msgstr "View in Wiki"
@@ -440,6 +452,10 @@ msgstr "Rename tag: {tagName}"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "タグを改名しました。{republished} 件の文書へ反映しています。"
 msgstr "The tag has been renamed. It is being applied to {republished} document(s)."
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
+msgid "タグを選択"
+msgstr "Select a tag"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "タグ名（必須）"
@@ -1719,6 +1735,10 @@ msgstr "Confirm"
 msgid "確認時刻"
 msgstr "Checked at"
 
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiAccessPage.tsx
+msgid "社内 Wiki（Wiki.js）を開きます。ログイン中のアカウント（Keycloak SSO）でそのまま閲覧でき、 アクセス範囲はゲートウェイ（ABAC）で制御されます。"
+msgstr "Opens the internal wiki (Wiki.js). You can browse it with the account you are signed in with (Keycloak SSO), and the range you can reach is controlled by the gateway (ABAC)."
+
 #: platform/frontend/src/lib/auth/LoginPage.tsx
 msgid "社内ナレッジ検索・AI 回答プラットフォーム"
 msgstr "Internal knowledge search and AI answering platform"
@@ -1916,6 +1936,10 @@ msgstr "Closest to the root first"
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "起点が未指定です"
 msgstr "No root specified"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
+msgid "辞書に候補がありません"
+msgstr "No tags in the dictionary"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "辺の型:"
