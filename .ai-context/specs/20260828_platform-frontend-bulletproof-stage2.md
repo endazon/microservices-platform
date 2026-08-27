@@ -84,7 +84,7 @@ MISS locales / MISS stores / MISS testing / MISS types / MISS utils
 | `.ai-context/{adr,specs,superpowers}` の凍結記録 | 70 | **除外**（凍結。IADR-0262 のみ日付つき追記） |
 | `CHANGELOG.md` | 1 | **除外**（生成物。手で書き足さない） |
 | 残り | 46 | 下記 3 分類 |
-| ── 機械が読む設定・CI・検査器 | 15 | **全件追随**（走査 7 の 1 件を足して計 16） |
+| ── 機械が読む設定・CI・検査器 | 15 | **全件追随**（走査 3b の 1 件を足して計 16） |
 | ── live な文書のうち**完全パス／実配置のツリー図** | 12 | **全件追随** |
 | ── live な文書のうち**公開面の名前**として書いているもの | 19 | **除外**（理由は下記） |
 | `src/ai-stock-trading` | — | **除外**（別リポジトリの submodule。IADR-0120） |
@@ -111,7 +111,7 @@ sc07-conversions/api/useConversionJobs.ts, sc11-config/routes/access.test.tsx}`�
 `src/eslint.config.js` / `src/lingui.config.ts` / `src/orval.config.ts` は**注釈が公開面の名前**で
 書かれている（除外）一方、**同じファイルのグロブ・パスは機械が読むので追随する**（分類 A 側に数えた）。
 
-### 走査 7 — 別の形: 末尾スラッシュの無い `foundation`（規則 2「あり得る形をすべて列挙してから引く」）
+### 走査 3b — 別の形: 末尾スラッシュの無い `foundation`（規則 2「あり得る形をすべて列挙してから引く」）
 
 走査 3 のパターンは `foundation/` を要求するため、**`'./src/foundation'` のように末尾で終わる形を
 構造的に取りこぼす**。`git grep -l -I "foundation"` は 264 ファイル。走査 3 との差 147 ファイルのうち、
@@ -157,9 +157,22 @@ src/platform/frontend/README.md:24                        構成図の記載
 
 - 単体テストの基準値は**走査ではなく実走で取り直した**: 適合前 `pnpm -w run test -- --run` =
   **91 ファイル / 1080 テスト 全緑**。
-- 本仕様書自身が走査 2・3・7 の検索語を含む。**走査は本ファイルを書く前に実行している**ので、
-  走査 3 の 117 件・走査 7 の 264 件に本ファイルは入っていない。**コミット後はそれぞれ
+- 本仕様書自身が走査 2・3・3b の検索語を含む。**走査は本ファイルを書く前に実行している**ので、
+  走査 3 の 117 件・走査 3b の 264 件に本ファイルは入っていない。**コミット後はそれぞれ
   118 件 / 265 件になる**（117 + 自己参照 1 = 118、264 + 1 = 265）。値は本コミットで固定する。
+
+### 走査の破れ（作業中に赤で見つけた取りこぼし 2 件・黙って直さない）
+
+**走査 1〜6 は 2 件を取りこぼしており、いずれも検査器が赤で教えた。** 記録に残す
+（規則 6「除外したものとその理由を書く」の裏返しで、**引き漏らしも書く**）。
+
+| # | 取りこぼし | なぜ落ちたか | どう直したか |
+| --- | --- | --- | --- |
+| 1 | `foundation/notifications/notificationContract.test.ts` が `readFileSync` で **`src/platform/frontend/src/foundation/api/generated/bff.schemas.ts` の完全パス**を読んでいた | 走査 3 が `':!src/platform/frontend/src/foundation'` で**移動する当のディレクトリを除外していた**。「動かす側」の中から「動かす側」を指す参照は、この除外で構造的に落ちる（規則 3 の親戚） | パスを `lib/api/generated/` へ。移動後に同ディレクトリを**改めて全走査**して残りが無いことを確認した |
+| 2 | 凍結記録 `.ai-context/specs/20260725_issue-353_…md` の **frontmatter 値と本文リンク**が `foundation/auth/` を指しており `check-doc-links.js` が落ちた | 走査 3 が `.ai-context/` を一律「凍結だから除外」としていた。**凍結でもリンクは機械が実在検査する** | **リンク先だけ**を `lib/auth/` へ追随させ、日付つき追記で記録した。**当時の実測・判断の文は変えていない**（同ファイルが #439 で既に採っていた作法をそのまま踏襲） |
+
+**教訓**: 「凍結だから触らない」と「機械が実在を検査する」は別の軸である。
+`.ai-context/` を母集合から外すときは、**リンク／frontmatter のパス値だけは別に引く**。
 
 ## 設計
 
@@ -175,15 +188,27 @@ IADR-0262 決定 1 の表は 8 区分しか持たない（計画の 2026-08-22 �
   `stores/` `hooks/` へ散らさない —— knowledge 側の `components/` も `echartsLoader.ts` 等の
   非コンポーネントを同居させており（第 1 段の実績）、`@foundation/ai-chat` という 1 つの公開面を割らない。
 
-### 決定 B — Lingui カタログは `app/i18n/locales/` に留め、トップレベル `locales/` は枠だけ置く
+### 決定 B — Lingui カタログはユニット直下の `locales/` へ出す（i18n の実装は `app/i18n`）
 
-IADR-0262 決定 1 は `@foundation/i18n` → `src/app/i18n` と定める。カタログ
-（`locales/<locale>/messages.{po,ts}`）は **i18n モジュールの内部データ**であり、`@foundation/i18n/locales/...`
-の形で外から import されている実績は **0 件**（走査 2）。よってディレクトリごと運ぶ。
+IADR-0262 決定 1 は **`@foundation/i18n` → `src/app/i18n`** と定める。これは**エイリアスの向き先**の
+指定であり、カタログ（`locales/<locale>/messages.{po,ts}`）の置き場は同表の射程外である。
+実測でも `@foundation/i18n/locales/...` の形で外から import されている実績は **0 件**（走査 2）で、
+カタログは `app/i18n/index.ts` が相対 import するだけである。**つまりカタログをどこへ置いても
+決定 1 の対応表は満たされる。**
 
-計画ツリーの `locales/` は**中身の無い区分として枠（`.gitkeep`）を残す**（IADR-0262 決定 3）。
-knowledge 側も同じ形（`locales/.gitkeep` が空）であり、雛形 README も
-**「`app/` と `locales/` は、ユニットでは通常空のままになる」**と書いている。**枠を消さない。**
+置き場は計画ツリーに従い**ユニット直下の `locales/`** とする。ツリーは
+`locales/      # ja / en（Lingui）` と**中身まで名指し**しており、2026-08-22 の裁定は
+**「必須とするのはツリー全体への適合である。名前だけを揃える対応は採らない」**と定めている。
+`app/i18n/locales/` に留めると、platform でも `locales/` が空になり、
+**ツリーが列挙する区分のうち 1 つが誰にも満たされない**状態が残る。
+
+雛形 README（IADR-0262 と同じ作業で書かれたもの）も **「`app/` と `locales/` は、ユニットでは
+通常空のままになる（アプリホストである `platform/frontend` が持つ）」**と明記しており、
+**アプリホストが `locales/` を持つ**ことを前提にしている。決定 B はこの記述と一致する。
+
+結果として `app/i18n/index.ts` の import だけが `./locales/...` → `../../locales/...` になる。
+**エイリアスへ寄せない**（`@foundation/<区分>` は公開面の名前であり、`locales/` は公開面ではない）。
+その理由は同ファイルの import の直前に書いた。
 
 ### 決定 C — `App.tsx` は `app/` へ、`test/setup.ts` は `testing/` へ
 
@@ -201,7 +226,8 @@ knowledge 側も同じ形（`locales/.gitkeep` が空）であり、雛形 READM
 | 旧 | 新 | 根拠 |
 | --- | --- | --- |
 | `src/foundation/config/` | `src/app/config/` | 決定 1 |
-| `src/foundation/i18n/`（`locales/` を含む） | `src/app/i18n/` | 決定 1 ＋ 決定 B |
+| `src/foundation/i18n/` | `src/app/i18n/` | 決定 1 |
+| `src/foundation/i18n/locales/` | `src/locales/` | 決定 B |
 | `src/foundation/routing/` | `src/app/routing/` | 決定 1 |
 | `src/foundation/api/`（`generated/` を含む） | `src/lib/api/` | 決定 1 |
 | `src/foundation/auth/` | `src/lib/auth/` | 決定 1 |
@@ -212,7 +238,8 @@ knowledge 側も同じ形（`locales/.gitkeep` が空）であり、雛形 READM
 | `src/test/setup.ts` | `src/testing/setup.ts` | 決定 C |
 | `src/App.tsx` | `src/app/App.tsx` | 決定 C |
 
-新設する空区分（`.gitkeep`）: `assets/` `hooks/` `locales/` `stores/` `types/` `utils/`。
+新設する空区分（`.gitkeep`）: `assets/` `hooks/` `stores/` `types/` `utils/`。
+`locales/` は決定 B により**実体を持つ**ので `.gitkeep` を置かない。
 
 ### エイリアスの向き先（名前は変えない）
 
@@ -224,14 +251,14 @@ knowledge 側も同じ形（`locales/.gitkeep` が空）であり、雛形 READM
 
 | ファイル | 固定している実パス | 本作業での更新 |
 | --- | --- | --- |
-| `.github/workflows/pr-size.yml` | `EXCLUDES` の生成物 2 本 | `.../src/lib/api/generated/**` / `.../src/app/i18n/locales/**` |
+| `.github/workflows/pr-size.yml` | `EXCLUDES` の生成物 2 本 | `.../src/lib/api/generated/**` / `.../src/locales/**` |
 | `.github/workflows/frontend.yml` | codegen / i18n の再生成差分検査の対象 | 同上（`platform/frontend/` 相対） |
 | `scripts/scripts.repo.test.js` | 上記 2 本の**実在検査**と `foundation/i18n/index.ts` の直読み | 3 箇所を新パスへ |
 
 ## 追随する設定・ワークフロー・検査器（機械が読むもの・全 16 件）
 
 1. `src/platform/frontend/tsconfig.app.json` — `paths`
-2. `src/platform/frontend/vite.config.ts` — `resolve.alias`（走査 7 で発見）
+2. `src/platform/frontend/vite.config.ts` — `resolve.alias`（走査 3b で発見）
 3. `src/vitest.config.ts` — `resolve.alias` / `setupFiles` / `coverage.exclude`
 4. `src/knowledge/frontend/tsconfig.json` — `paths`
 5. `templates/unit-template/frontend/tsconfig.json` — `paths`（配置前後の 2 候補とも）

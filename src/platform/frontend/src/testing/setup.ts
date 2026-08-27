@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { activate } from '../foundation/i18n';
+import { activate } from '@foundation/i18n';
 
 // NFR, ADR-0031 / IADR-0134: 遅延ルートが持ち込む `findBy*` の待ち時間の延長
 // （`asyncUtilTimeout`）は**ここに置かない**。本ファイルは `src/vitest.config.ts` の

@@ -31,9 +31,77 @@
     // 旧契約へ戻ると赤くなる（雛形が現行スタックから静かにずれるのを止める唯一の担保）。
     // 複製したら 2 つ目の候補は消してよい。
     "paths": {
-      "@foundation/*": [
-        "../../platform/frontend/src/foundation/*",
-        "../../../src/platform/frontend/src/foundation/*"
+      "@foundation/config/*": [
+        "../../platform/frontend/src/app/config/*",
+        "../../../src/platform/frontend/src/app/config/*"
+      ],
+      "@foundation/config": [
+        "../../platform/frontend/src/app/config",
+        "../../../src/platform/frontend/src/app/config"
+      ],
+      "@foundation/i18n/*": [
+        "../../platform/frontend/src/app/i18n/*",
+        "../../../src/platform/frontend/src/app/i18n/*"
+      ],
+      "@foundation/i18n": [
+        "../../platform/frontend/src/app/i18n",
+        "../../../src/platform/frontend/src/app/i18n"
+      ],
+      "@foundation/routing/*": [
+        "../../platform/frontend/src/app/routing/*",
+        "../../../src/platform/frontend/src/app/routing/*"
+      ],
+      "@foundation/routing": [
+        "../../platform/frontend/src/app/routing",
+        "../../../src/platform/frontend/src/app/routing"
+      ],
+      "@foundation/api/*": [
+        "../../platform/frontend/src/lib/api/*",
+        "../../../src/platform/frontend/src/lib/api/*"
+      ],
+      "@foundation/api": [
+        "../../platform/frontend/src/lib/api",
+        "../../../src/platform/frontend/src/lib/api"
+      ],
+      "@foundation/auth/*": [
+        "../../platform/frontend/src/lib/auth/*",
+        "../../../src/platform/frontend/src/lib/auth/*"
+      ],
+      "@foundation/auth": [
+        "../../platform/frontend/src/lib/auth",
+        "../../../src/platform/frontend/src/lib/auth"
+      ],
+      "@foundation/ui/*": [
+        "../../platform/frontend/src/components/ui/*",
+        "../../../src/platform/frontend/src/components/ui/*"
+      ],
+      "@foundation/ui": [
+        "../../platform/frontend/src/components/ui",
+        "../../../src/platform/frontend/src/components/ui"
+      ],
+      "@foundation/notifications/*": [
+        "../../platform/frontend/src/components/notifications/*",
+        "../../../src/platform/frontend/src/components/notifications/*"
+      ],
+      "@foundation/notifications": [
+        "../../platform/frontend/src/components/notifications",
+        "../../../src/platform/frontend/src/components/notifications"
+      ],
+      "@foundation/ai-chat/*": [
+        "../../platform/frontend/src/components/ai-chat/*",
+        "../../../src/platform/frontend/src/components/ai-chat/*"
+      ],
+      "@foundation/ai-chat": [
+        "../../platform/frontend/src/components/ai-chat",
+        "../../../src/platform/frontend/src/components/ai-chat"
+      ],
+      "@foundation/testing/*": [
+        "../../platform/frontend/src/testing/*",
+        "../../../src/platform/frontend/src/testing/*"
+      ],
+      "@foundation/testing": [
+        "../../platform/frontend/src/testing",
+        "../../../src/platform/frontend/src/testing"
       ],
       "@sample-unit/*": ["src/*"]
     }

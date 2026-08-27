@@ -55,7 +55,7 @@ issues: [#451, #600]
 ## テスト対象・範囲
 
 - **対象**: BFF 契約（`docs/api/openapi.yaml` の `/bff/notifications*` と `NotificationDto` ほか）、
-  アプリ内通知の受け皿（`src/platform/frontend/src/foundation/notifications/`）、
+  アプリ内通知の受け皿（`src/platform/frontend/src/components/notifications/`）、
   表示文言の組み立て（ja / en）、
   **送出側**（`src/platform/backend/Services/NotificationService/`。宛先の限定・既読化・メール outbox・
   送信レート制御・保持期間）。

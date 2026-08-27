@@ -147,7 +147,8 @@ issues: [#195, #206, #217, #218, #219, #519]
 原典は「フロントエンド SPA 基盤（React + TS + Vite・foundation/features 分離・BFF 境界・OIDC〔PKCE〕）」の実装 ADR である。要点:
 
 1. `src/knowledge/frontend/src/features/<scXX-name>/` に画面 feature を追加する。基盤は
-   `src/platform/frontend/src/foundation/`（config/auth/api/routing/ui）であり、feature から基盤へは
+   `src/platform/frontend/src/`（`app/config` `app/routing` `app/i18n` / `lib/api` `lib/auth` /
+   `components/ui` `components/notifications` `components/ai-chat` / `testing`）であり、feature から基盤へは
    import エイリアス `@foundation` を用いる。feature どうしの直接依存は避け、共有は foundation へ昇格させる。
 2. feature は `FeatureModule`（`routes`）を公開し、合成点 `src/platform/frontend/src/features/index.ts`
    へ 1 行登録する。

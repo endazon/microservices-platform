@@ -126,8 +126,8 @@ issues: [#503, #504, #510, #535, #640, #989]
 
 ## foundation（Vitest）
 
-対象: `src/platform/frontend/src/foundation/api/apiClient.ts` / `ApiError.ts`
-テスト: `src/platform/frontend/src/foundation/api/apiClient.test.ts`
+対象: `src/platform/frontend/src/lib/api/apiClient.ts` / `ApiError.ts`
+テスト: `src/platform/frontend/src/lib/api/apiClient.test.ts`
 
 | # | 観点 | 検証内容 | ケース |
 | --- | --- | --- | --- |

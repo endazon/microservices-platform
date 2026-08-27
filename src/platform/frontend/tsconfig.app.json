@@ -19,8 +19,33 @@
     "noUncheckedSideEffectImports": true,
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"],
     "baseUrl": ".",
+    // ADR-0031（13_frontend-stack §ディレクトリ構成）/ IADR-0262 決定 1（第 2 段）:
+    // `@foundation` は**ディレクトリ名ではなく platform 基盤の公開面の名前**である。
+    // 計画のツリーへ適合させるため実体は app/ lib/ components/ testing/ へ分かれたが、
+    // **エイリアス名は変えない**（変えると submodule の ai-stock-trading と
+    // templates/unit-template の契約が同時に割れる）。よってワイルドカード 1 本ではなく
+    // **区分ごとに 9 本**を張る。同じ 9 本を platform/frontend/vite.config.ts と
+    // src/vitest.config.ts の resolve.alias にも置く（3 箇所とも要る。片方だけだと
+    // 「型検査は通るがビルド／テストだけ壊れる」形になる）。
     "paths": {
-      "@foundation/*": ["src/foundation/*"],
+      "@foundation/config/*": ["src/app/config/*"],
+      "@foundation/config": ["src/app/config"],
+      "@foundation/i18n/*": ["src/app/i18n/*"],
+      "@foundation/i18n": ["src/app/i18n"],
+      "@foundation/routing/*": ["src/app/routing/*"],
+      "@foundation/routing": ["src/app/routing"],
+      "@foundation/api/*": ["src/lib/api/*"],
+      "@foundation/api": ["src/lib/api"],
+      "@foundation/auth/*": ["src/lib/auth/*"],
+      "@foundation/auth": ["src/lib/auth"],
+      "@foundation/ui/*": ["src/components/ui/*"],
+      "@foundation/ui": ["src/components/ui"],
+      "@foundation/notifications/*": ["src/components/notifications/*"],
+      "@foundation/notifications": ["src/components/notifications"],
+      "@foundation/ai-chat/*": ["src/components/ai-chat/*"],
+      "@foundation/ai-chat": ["src/components/ai-chat"],
+      "@foundation/testing/*": ["src/testing/*"],
+      "@foundation/testing": ["src/testing"],
       "@features/*": ["src/features/*"],
       "@knowledge/*": ["../../knowledge/frontend/src/*"],
       "@ai-stock-trading/*": ["../../ai-stock-trading/frontend/src/*"]

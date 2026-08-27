@@ -61,8 +61,13 @@
 > **［2026-08-23 更新 / #785］`src/knowledge/frontend` は本雛形と同じ構成へ揃った。** 従前ここは
 > 「knowledge の各 feature はまだ内部を割っておらず 1 階層にファイルが並ぶ」と書いていたが、
 > 13 feature すべてを `api/ components/ hooks/ routes/ stores/ types/` へ割り、ユニット直下の
-> 区分も枠を置いた（IADR-0262）。**`src/platform/frontend` の `foundation/` 分解は第 2 段として
-> 未了である**ため、参照するなら knowledge 側を見ること。
+> 区分も枠を置いた（IADR-0262）。
+>
+> **［2026-08-28 更新 / #785］第 2 段（`src/platform/frontend` の `foundation/` 分解）も完了した。**
+> `foundation/` は計画のツリーに従って `app/`（config / i18n / routing）・`lib/`（api / auth）・
+> `components/`（ui / notifications / ai-chat）・`testing/` へ分かれ、直下は 11 区分 ＋ `main.tsx` に
+> なった（IADR-0262 決定 5 の第 2 段）。**`@foundation/<区分>` というエイリアス名は変えていない** ——
+> 可変ユニット（本雛形を含む）が書く import は 1 行も変わらない。**参照先はどちらのユニットでもよい。**
 >
 > 計画 13_frontend-stack（`status: fixed`）が **Feature 単位を上記 6 区分へ割る**と定め、
 > 「計画書は絶対的な正である。実装を計画へ合わせる」（2026-07-30 裁定・2026-08-22 再確定）が

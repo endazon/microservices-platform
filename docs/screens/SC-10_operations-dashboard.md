@@ -311,7 +311,7 @@ flowchart LR
 - BFF: `src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/DashboardBffEndpoints.cs`
 - フロント: `src/knowledge/frontend/src/features/sc10-operations/`
   （`index.tsx` / `OperationsDashboardPage.tsx` / `useDashboardSummary.ts` / `opsTools.ts`）
-- 実行時 config: `src/platform/frontend/src/foundation/config/runtimeConfig.ts`（`OpsLinks`）
+- 実行時 config: `src/platform/frontend/src/app/config/runtimeConfig.ts`（`OpsLinks`）
 - テスト観点は [tests/SC-10_operations-dashboard.md](../tests/SC-10_operations-dashboard.md)。
 
 ## 未決事項

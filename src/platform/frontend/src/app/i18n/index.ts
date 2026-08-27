@@ -1,6 +1,9 @@
 import { i18n } from '@lingui/core';
-import { messages as ja } from './locales/ja/messages';
-import { messages as en } from './locales/en/messages';
+// ADR-0031（13_frontend-stack §ディレクトリ構成）/ IADR-0262 第 2 段: カタログは計画のツリーが
+// ユニット直下に置く区分（`locales/  # ja / en（Lingui）`）に在る。i18n の実装（本モジュール）は
+// `app/` 側であり、両者は別の区分なので相対で辿る（`@foundation/i18n` の公開面には出さない）。
+import { messages as ja } from '../../locales/ja/messages';
+import { messages as en } from '../../locales/en/messages';
 
 // ADR-0031（i18n = Lingui〔ja / en〕）/ IADR-0125 決定 3・7。
 //

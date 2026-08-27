@@ -42,7 +42,7 @@ const MUST_BE_EAGER = [
 describe('initial chunk contents (NFR / IADR-0134)', () => {
   it.each(MUST_BE_EAGER)('loads %s eagerly (%s)', async (id) => {
     // アプリの合成ルート＝実アプリが初期チャンクへ載せる範囲そのもの。
-    const mod = await import('../../App');
+    const mod = await import('../App');
     // 「見えるはずのもの」を先に確かめる（読み込みに失敗していれば以下は空振りする）。
     expect(typeof mod.App).toBe('function');
 

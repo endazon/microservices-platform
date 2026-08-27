@@ -34,18 +34,18 @@ function deterministicPoFormatter(options?: Parameters<typeof formatter>[0]): Ca
 // （13_frontend-stack）が `app/ # providers / router / i18n / config` と `locales/ # ja / en（Lingui）` を
 // アプリ側に置いているのと同じ配置である。
 export default defineConfig({
-  // 既存文言は日本語である。未対応ロケールは ja へ倒す（foundation/i18n の detectLocale）。
+  // 既存文言は日本語である。未対応ロケールは ja へ倒す（@foundation/i18n の detectLocale）。
   sourceLocale: 'ja',
   locales: ['ja', 'en'],
   catalogs: [
     {
-      path: '<rootDir>/platform/frontend/src/foundation/i18n/locales/{locale}/messages',
+      path: '<rootDir>/platform/frontend/src/locales/{locale}/messages',
       include: ['<rootDir>/platform/frontend/src', '<rootDir>/knowledge/frontend/src'],
       exclude: [
         '**/node_modules/**',
         '**/*.{test,spec}.{ts,tsx}',
         // orval 生成物（自動生成物に文言は無い。走査対象へ入れると extract が無駄に重くなる）。
-        '**/foundation/api/generated/**',
+        '**/lib/api/generated/**',
       ],
     },
   ],

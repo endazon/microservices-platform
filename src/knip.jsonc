@@ -47,7 +47,7 @@
       //
       // public/config.js は index.html が `<script src="/config.js">` で読む**実行時 config** であり、
       // どこからも import されないのが正しい（ビルドを環境非依存に保つための設計。issue #126）。
-      "entry": ["src/foundation/api/generated/**/*.ts", "public/config.js"],
+      "entry": ["src/lib/api/generated/**/*.ts", "public/config.js"],
     },
   },
 }

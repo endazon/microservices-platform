@@ -114,19 +114,19 @@ msgstr "ABAC settings"
 msgid "AI が提案したリンク候補・タグ候補を棚卸しするための一覧です。 承認・却下はこの画面では行いません。各行の「文書詳細で確認」から文書詳細へ移動し、 両端の文書の内容を見たうえで判断してください。まとめて承認する操作は提供していません。 閲覧権限のない文書に関する提案は、件数を含め表示されません。"
 msgstr "A working list of the link and tag candidates suggested by AI. Approval and rejection are not performed on this screen. Open the document detail from each row and decide after reading both documents. There is no way to approve suggestions in bulk. Suggestions about documents you may not view are never shown, not even as a count."
 
-#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "AI チャット"
 msgstr "AI chat"
 
-#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "AI チャットパネル"
 msgstr "AI chat panel"
 
-#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "AI チャットを閉じる"
 msgstr "Close AI chat"
 
-#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "AI チャットを開く"
 msgstr "Open AI chat"
 
@@ -182,7 +182,7 @@ msgstr "derived-from: dashed line with arrow"
 msgid "embeds: 点線・矢印"
 msgstr "embeds: dotted line with arrow"
 
-#: platform/frontend/src/foundation/auth/LoginPage.tsx
+#: platform/frontend/src/lib/auth/LoginPage.tsx
 msgid "Keycloak でサインイン"
 msgstr "Sign in with Keycloak"
 
@@ -214,7 +214,7 @@ msgstr "View in Wiki"
 msgid "アーカイブ"
 msgstr "Archive"
 
-#: platform/frontend/src/foundation/ui/Layout.tsx
+#: platform/frontend/src/components/ui/Layout.tsx
 msgid "アカウント設定（{name}）"
 msgstr "Account settings ({name})"
 
@@ -260,18 +260,18 @@ msgstr "There are no event bindings."
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
-#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
-#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
-#: platform/frontend/src/foundation/ui/ErrorBoundary.tsx
-#: platform/frontend/src/foundation/ui/notifications.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/notifications/NotificationBell.tsx
+#: platform/frontend/src/components/ui/ErrorBoundary.tsx
+#: platform/frontend/src/components/ui/notifications.tsx
 msgid "エラー"
 msgstr "Error"
 
-#: platform/frontend/src/foundation/ui/NotFound.tsx
+#: platform/frontend/src/components/ui/NotFound.tsx
 msgid "お探しのページは存在しないか、アクセスできません。"
 msgstr "The page does not exist, or you do not have access to it."
 
-#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+#: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "お知らせ"
 msgstr "Notice"
 
@@ -342,15 +342,15 @@ msgstr "This suggestion was rejected once, but a document has since been updated
 msgid "この文書には表示できる関係がありません。"
 msgstr "This document has no relations to display."
 
-#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "この画面について質問する"
 msgstr "Ask about this screen"
 
-#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "この画面の会話履歴はまだありません。"
 msgstr "No conversation history for this screen yet."
 
-#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "この画面の履歴を消去"
 msgstr "Clear this screen's history"
 
@@ -366,7 +366,7 @@ msgstr "Commit {commit}"
 msgid "サービスメッシュ"
 msgstr "Service mesh"
 
-#: platform/frontend/src/foundation/ui/Layout.tsx
+#: platform/frontend/src/components/ui/Layout.tsx
 msgid "サインアウト"
 msgstr "Sign out"
 
@@ -670,7 +670,7 @@ msgstr "Model: {model}"
 msgid "モデル: 未使用（AI へ送信なし）"
 msgstr "Model: none (nothing was sent to the AI)"
 
-#: platform/frontend/src/foundation/ui/Layout.tsx
+#: platform/frontend/src/components/ui/Layout.tsx
 msgid "ユーザー"
 msgstr "User"
 
@@ -700,11 +700,11 @@ msgstr "Showing the top {0} items (of {1} or more in total). The counting explor
 msgid "並べ替え"
 msgstr "Sort"
 
-#: platform/frontend/src/foundation/ui/Layout.tsx
+#: platform/frontend/src/components/ui/Layout.tsx
 msgid "主要ナビゲーション"
 msgstr "Main navigation"
 
-#: platform/frontend/src/foundation/ui/ErrorBoundary.tsx
+#: platform/frontend/src/components/ui/ErrorBoundary.tsx
 msgid "予期しないエラーが発生しました。時間をおいて再度お試しください。"
 msgstr "An unexpected error occurred. Please wait a moment and try again."
 
@@ -732,7 +732,7 @@ msgstr "Count"
 msgid "任意"
 msgstr "Optional"
 
-#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "会話履歴"
 msgstr "Conversation history"
 
@@ -771,19 +771,19 @@ msgstr "Save"
 msgid "保存前に構文・矛盾を検証します。矛盾があれば保存できません。保存すると認可判定へ即時反映されます。"
 msgstr "Syntax and contradictions are validated before saving. A contradicting policy cannot be saved. Once saved, it takes effect on authorization decisions immediately."
 
-#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+#: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "保存容量が上限の {threshold}% に達しました"
 msgstr "Storage usage has reached {threshold}% of your limit"
 
-#: platform/frontend/src/foundation/routing/nav.ts
+#: platform/frontend/src/app/routing/nav.ts
 msgid "個人"
 msgstr "Personal"
 
-#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+#: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "個人資料 {count} 件が {deadline} に完全削除されます（7 日前の通知）"
 msgstr "{count} personal note(s) will be permanently deleted on {deadline} (7-day notice)"
 
-#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+#: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "個人資料 {count} 件を完全削除しました"
 msgstr "{count} personal note(s) have been permanently deleted"
 
@@ -816,7 +816,7 @@ msgstr "{inputTokens} input / {outputTokens} output tokens"
 msgid "入力してください。"
 msgstr "This field is required."
 
-#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "全消去"
 msgstr "Clear all"
 
@@ -910,7 +910,7 @@ msgid "利用状況（日次）の推移グラフ"
 msgstr "Daily usage trend chart"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
-#: platform/frontend/src/foundation/routing/nav.ts
+#: platform/frontend/src/app/routing/nav.ts
 msgid "利用者"
 msgstr "General"
 
@@ -921,7 +921,7 @@ msgstr "General"
 msgid "削除"
 msgstr "Delete"
 
-#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+#: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "削除済みの個人資料が {count} 件あります。最短で {deadline} に完全削除されます"
 msgstr "{count} deleted personal note(s). The earliest permanent deletion is {deadline}"
 
@@ -950,7 +950,7 @@ msgstr "Cancel"
 msgid "古い段の残留"
 msgstr "Stale stage left running"
 
-#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+#: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "同期トークン {count} 件が {deadline} に期限切れになります（7 日前の通知）"
 msgstr "{count} sync token(s) will expire on {deadline} (7-day notice)"
 
@@ -978,12 +978,12 @@ msgstr "Name"
 msgid "名前（必須）"
 msgstr "Name (required)"
 
-#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "回答を生成できませんでした。時間をおいて再度お試しください。"
 msgstr "The answer could not be generated. Please try again later."
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
-#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "回答を生成中…"
 msgstr "Generating the answer…"
 
@@ -1180,11 +1180,11 @@ msgid "必須属性にする"
 msgstr "Make this attribute required"
 
 #: knowledge/frontend/src/features/sc11-config/types/driftView.ts
-#: platform/frontend/src/foundation/ui/notifications.tsx
+#: platform/frontend/src/components/ui/notifications.tsx
 msgid "情報"
 msgstr "Info"
 
-#: platform/frontend/src/foundation/ui/notifications.tsx
+#: platform/frontend/src/components/ui/notifications.tsx
 msgid "成功"
 msgstr "Success"
 
@@ -1351,7 +1351,7 @@ msgstr "Document detail"
 msgid "文書詳細で確認"
 msgstr "Open document detail"
 
-#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+#: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "新しいお知らせが {count} 件あります"
 msgstr "You have {count} new notice(s)"
 
@@ -1390,15 +1390,15 @@ msgstr "Default attributes updated."
 msgid "既定属性を編集: {sourceName}"
 msgstr "Edit default attributes: {sourceName}"
 
-#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+#: platform/frontend/src/components/notifications/NotificationBell.tsx
 msgid "既読"
 msgstr "Read"
 
-#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+#: platform/frontend/src/components/notifications/NotificationBell.tsx
 msgid "既読にする"
 msgstr "Mark as read"
 
-#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+#: platform/frontend/src/components/notifications/NotificationBell.tsx
 msgid "既読にできませんでした"
 msgstr "Could not mark as read"
 
@@ -1629,8 +1629,8 @@ msgstr "Compare"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
-#: platform/frontend/src/foundation/notifications/notificationMessages.ts
-#: platform/frontend/src/foundation/ui/notifications.tsx
+#: platform/frontend/src/components/notifications/notificationMessages.ts
+#: platform/frontend/src/components/ui/notifications.tsx
 msgid "注意"
 msgstr "Warning"
 
@@ -1719,7 +1719,7 @@ msgstr "Confirm"
 msgid "確認時刻"
 msgstr "Checked at"
 
-#: platform/frontend/src/foundation/auth/LoginPage.tsx
+#: platform/frontend/src/lib/auth/LoginPage.tsx
 msgid "社内ナレッジ検索・AI 回答プラットフォーム"
 msgstr "Internal knowledge search and AI answering platform"
 
@@ -1739,7 +1739,7 @@ msgid "種類"
 msgstr "Kind"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
-#: platform/frontend/src/foundation/routing/nav.ts
+#: platform/frontend/src/app/routing/nav.ts
 msgid "管理"
 msgstr "Administration"
 
@@ -1814,7 +1814,7 @@ msgstr "Discard corrections and re-convert"
 msgid "補正対象の図の元画像"
 msgstr "Original image of the diagram being corrected"
 
-#: platform/frontend/src/foundation/ui/NotFound.tsx
+#: platform/frontend/src/components/ui/NotFound.tsx
 msgid "見つかりませんでした"
 msgstr "Not found"
 
@@ -1880,8 +1880,8 @@ msgstr "Loading error"
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
-#: platform/frontend/src/foundation/auth/RequireAuth.tsx
-#: platform/frontend/src/foundation/auth/RequireRole.tsx
+#: platform/frontend/src/lib/auth/RequireAuth.tsx
+#: platform/frontend/src/lib/auth/RequireRole.tsx
 msgid "読み込み中…"
 msgstr "Loading…"
 
@@ -1893,7 +1893,7 @@ msgstr "Loading…"
 msgid "警告"
 msgstr "Warning"
 
-#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "質問"
 msgstr "Question"
 
@@ -1931,27 +1931,27 @@ msgid "追加する"
 msgstr "Add"
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
-#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "送信"
 msgstr "Send"
 
-#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+#: platform/frontend/src/components/notifications/NotificationBell.tsx
 msgid "通知（未読 {unreadCount} 件）"
 msgstr "Notifications ({unreadCount} unread)"
 
-#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+#: platform/frontend/src/components/notifications/NotificationBell.tsx
 msgid "通知はありません"
 msgstr "No notifications"
 
-#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+#: platform/frontend/src/components/notifications/NotificationBell.tsx
 msgid "通知を取得できませんでした"
 msgstr "Could not load notifications"
 
-#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+#: platform/frontend/src/components/notifications/NotificationBell.tsx
 msgid "通知一覧"
 msgstr "Notification list"
 
-#: platform/frontend/src/foundation/routing/nav.ts
+#: platform/frontend/src/app/routing/nav.ts
 msgid "運用"
 msgstr "Operations"
 
@@ -2012,13 +2012,13 @@ msgstr "Selected document"
 msgid "部門"
 msgstr "Department"
 
-#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+#: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "重要"
 msgstr "Important"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
-#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "閉じる"
 msgstr "Close"
 

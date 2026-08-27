@@ -18,10 +18,14 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
   package.json                   # ルートスクリプト（dev/build/typecheck/lint/test/test:e2e）
   vitest.config.ts               # 単体テスト＋カバレッジ（全ユニット横断・しきい値ゲート）
   platform/frontend/             # 基盤ユニット（アプリホスト）
-    src/
-      foundation/                # 安定・横断（config/auth/api/routing/ui。platform/backend に対応）
+    src/                         # 計画 13_frontend-stack §ディレクトリ構成 のツリーに適合
+      app/                       # providers / router / i18n / config（App.tsx もここ）
+      components/                # 共通コンポーネント（ui / notifications / ai-chat）
+      lib/                       # api（orval 生成物と HTTP 出口）/ auth
+      testing/                   # 横断 setup と画面テスト用ハーネス
       features/index.ts          # ユニット合成点（可変ユニットの features を束ねる）
-      main.tsx / App.tsx         # エントリ
+      assets/ hooks/ locales/ stores/ types/ utils/   # 枠のみ（.gitkeep。消さない）
+      main.tsx                   # エントリ
     index.html / vite.config.ts / e2e/ / public/
     nginx.default.conf.template / config.js.template   # 配信・実行時 config
   knowledge/frontend/            # 可変機能ユニット（ナレッジ画面群）
@@ -29,8 +33,13 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
   <unit>/frontend/               # 追加の可変機能ユニット（git submodule でリンク）
 ```
 
-- **エイリアス**: `@foundation` → `platform/frontend/src/foundation`、`@knowledge` → `knowledge/frontend/src`、
-  `@features` → `platform/frontend/src/features`（合成点）。
+- **エイリアス**: `@foundation/<区分>` は **platform 基盤の公開面の名前**であり、ディレクトリ名ではない。
+  向き先は `config` / `i18n` / `routing` → `src/app/*`、`api` / `auth` → `src/lib/*`、
+  `ui` / `notifications` / `ai-chat` → `src/components/*`、`testing` → `src/testing`。
+  ほかに `@knowledge` → `knowledge/frontend/src`、`@features` → `platform/frontend/src/features`（合成点）。
+  **エイリアス名は変えない**（submodule の可変ユニットと `templates/unit-template` の契約が割れるため）。
+  定義は `platform/frontend/tsconfig.app.json` / `platform/frontend/vite.config.ts` / `src/vitest.config.ts`
+  の 3 箇所にあり、**3 つとも同じ向き先を持たせる**。
 - **BFF 境界**: バックエンドへは必ず `/bff/*` 経由（`foundation/api` の `apiFetch`）。
   接続先はビルドに焼き込まず実行時 config（`platform/frontend/public/config.js`）で注入する。
 

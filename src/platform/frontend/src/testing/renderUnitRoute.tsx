@@ -91,7 +91,7 @@ export async function renderUnitRoute(
   // 既定の 1000 ms はカバレッジ計測を有効にすると足りないことがある（実測: `sc05-documents` /
   // `sc09-admin-abac` が落ちた。`pnpm run test` では再現せず `pnpm run test:coverage` でのみ再現）。
   //
-  // **延長はこの入口を使ったテストに閉じる**——横断 setup（`platform/frontend/src/test/setup.ts`）に
+  // **延長はこの入口を使ったテストに閉じる**——横断 setup（`platform/frontend/src/testing/setup.ts`）に
   // 置くとガードと無関係なテスト（AST・`@platform/ui`・純関数）まで巻き込み、
   // 「1 秒で落ちるべき退行が 5 秒待って落ちる」経路を作る。閉じ込めは冒頭の `afterEach` が担う
   // （`configure()` はグローバル設定なので、戻さないとファイル内の他のテストまで巻き込む）。

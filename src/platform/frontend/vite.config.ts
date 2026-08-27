@@ -79,7 +79,22 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@foundation': fileURLToPath(new URL('./src/foundation', import.meta.url)),
+      // ADR-0031（§ディレクトリ構成）/ IADR-0262 決定 1（第 2 段）: `@foundation` は
+      // **ディレクトリ名ではなく platform 基盤の公開面の名前**である。実体は計画のツリーに従って
+      // app/ lib/ components/ testing/ へ分かれているので、区分ごとに向き先を張る。
+      // **エイリアス名は変えない**（AST submodule と unit-template の契約が割れるため）。
+      // 同じ 9 本を tsconfig.app.json の paths と src/vitest.config.ts にも置く。
+      '@foundation/config': fileURLToPath(new URL('./src/app/config', import.meta.url)),
+      '@foundation/i18n': fileURLToPath(new URL('./src/app/i18n', import.meta.url)),
+      '@foundation/routing': fileURLToPath(new URL('./src/app/routing', import.meta.url)),
+      '@foundation/api': fileURLToPath(new URL('./src/lib/api', import.meta.url)),
+      '@foundation/auth': fileURLToPath(new URL('./src/lib/auth', import.meta.url)),
+      '@foundation/ui': fileURLToPath(new URL('./src/components/ui', import.meta.url)),
+      '@foundation/notifications': fileURLToPath(
+        new URL('./src/components/notifications', import.meta.url),
+      ),
+      '@foundation/ai-chat': fileURLToPath(new URL('./src/components/ai-chat', import.meta.url)),
+      '@foundation/testing': fileURLToPath(new URL('./src/testing', import.meta.url)),
       '@features': fileURLToPath(new URL('./src/features', import.meta.url)),
       '@knowledge': fileURLToPath(new URL('../../knowledge/frontend/src', import.meta.url)),
       // Issue #283, FR-14, IADR-0056/0070: AST（ai-stock-trading）ユニットの features をソース参照で合成する。

@@ -23,7 +23,7 @@ const REPO_ROOT = resolve(process.cwd(), '..');
 
 const OPENAPI = readFileSync(resolve(REPO_ROOT, 'docs/api/openapi.yaml'), 'utf8');
 const GENERATED = readFileSync(
-  resolve(REPO_ROOT, 'src/platform/frontend/src/foundation/api/generated/bff.schemas.ts'),
+  resolve(REPO_ROOT, 'src/platform/frontend/src/lib/api/generated/bff.schemas.ts'),
   'utf8',
 );
 
