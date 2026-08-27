@@ -3,7 +3,7 @@ title: FR-22 利用者本人への通知 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-08-16
-updated: 2026-08-23
+updated: 2026-08-28
 author: Claude
 ---
 <!-- trace:
@@ -164,6 +164,7 @@ flowchart TD
 
 > **★ 受け入れ基準はすべて満たしたが、機能としては完成していない。**
 > **通知を作る契機（①②③）が結線されていない**ため、現状では**通知が 1 件も発生しない**。
+> （2026-08-28 追記: 受け口 POST /internal/notifications は実装済み。残るのは発火の結線である。）
 > 「基準を満たした」と「機能が働いている」を読み分けられる形で書いている。
 
 ## 関連仕様

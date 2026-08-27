@@ -167,6 +167,7 @@
       "EmailIndependenceTests",
       "EmailSendRateTests",
       "NotificationContractTests",
+      "NotificationIngressTests",
       "NotificationOwnerScopingTests",
       "NotificationRetentionTests"
     ],

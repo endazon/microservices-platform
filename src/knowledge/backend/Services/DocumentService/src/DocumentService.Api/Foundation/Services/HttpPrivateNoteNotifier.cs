@@ -5,8 +5,9 @@ namespace DocumentService.Api.Foundation.Services;
 
 // FR-22, IADR-0215, IADR-0267, [[IADR-0270]] 決定 6: NotificationService への送出アダプタ。
 //
-// 🔴 **受け口（NotificationService の POST /internal/notifications）は未実装である**（platform 側・
-// 統括へ依頼済み）。受け口が入るまで送出は失敗し続けるが、**失敗はエラーログへ記録して
+// ［2026-08-28 訂正 / #451］受け口（NotificationService の POST /internal/notifications）は実装済み
+// である（NotificationIngressEndpoints）。以下の「失敗しても本処理を止めない」設計は、受け口の有無に
+// かかわらず配備漏れ・一時障害に対する恒常の姿勢として維持する。送出の失敗はエラーログへ記録して
 // 握り潰さない。ただし本体操作（同期・削除・保存）の成否には影響させない** —— 通知は
 // 本体操作の従属物ではない（IADR-0215 決定 3 が定めた「従属させない」の発火側の対）。
 //
