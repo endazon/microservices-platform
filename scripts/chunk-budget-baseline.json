@@ -109,7 +109,7 @@
     "",
     "smallLazyChunks は 6 のまま（1 kB 未満の遅延チャンクは増減していない）。"
   ],
-  "initialTotalBytes": 586001,
+  "initialTotalBytes": 586637,
   "$comment_initialTotalBytes_20260823_sc18": [
     "［2026-08-23 / #917］575,856 → 582,839（+6.98 kB）へ引き上げた。実測値である（pnpm run build →",
     "node scripts/check-chunk-budget.js --update）。増加は SC-18 ナレッジグラフビューのルート登録",
