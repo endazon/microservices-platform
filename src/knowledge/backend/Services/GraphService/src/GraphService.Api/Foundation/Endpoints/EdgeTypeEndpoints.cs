@@ -168,7 +168,8 @@ public static class EdgeTypeEndpoints
         GraphDbContext db, CancellationToken ct)
         => await db.EdgeTypes.AsNoTracking()
             .OrderBy(t => t.Name)
-            .Select(t => new EdgeTypeCatalogItemDto(t.Id, t.Name, t.Layer, t.IsSymmetric))
+            // FR-04, ADR-0035 決定 2 (#970): `Weight` は二段検索の再ランクが引く（#947a が入れた値の公開面）。
+            .Select(t => new EdgeTypeCatalogItemDto(t.Id, t.Name, t.Layer, t.IsSymmetric, t.Weight))
             .ToListAsync(ct);
 
     private static async Task<List<EdgeTypeDto>> LoadWithUsageAsync(GraphDbContext db, CancellationToken ct)

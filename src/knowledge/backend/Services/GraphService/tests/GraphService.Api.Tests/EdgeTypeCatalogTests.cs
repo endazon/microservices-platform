@@ -101,6 +101,44 @@ public class EdgeTypeCatalogTests : IClassFixture<TestWebApplicationFactory>
             "管理者向け一覧が件数を返していないなら、カタログ側の否定形テストは検出力を持たない");
     }
 
+    // FR-04, FR-17, ADR-0035 決定 2 (#970) W-01: カタログが**辺の型の重み**を運ぶ。
+    // 二段検索の再ランク（RetrievalService）が唯一この口から重みを引く —— ここに載らない限り
+    // 「型ごとの重み付け」（ADR-0035 決定 2）は本番で効かない（IADR-0263 決定 6 の解消点）。
+    //
+    // 🔴 **リテラルで測る**（seed の定数と突き合わせるとトートロジーになる。#947a のテストと同じ作法）。
+    [Fact]
+    public async Task Catalog_carries_the_edge_type_weights()
+    {
+        var items = (await WithRoles("viewer").GetFromJsonAsync<List<EdgeTypeCatalogItemDto>>(
+            "/graph/edge-types/catalog", TestContext.Current.CancellationToken))!;
+
+        // ADR-0035 決定 2 が名指しした 2 つを固定する。
+        items.Single(i => i.Name == "supersedes").Weight.Should().Be(1.0, "最新版へ強く誘導する");
+        items.Single(i => i.Name == "related").Weight.Should().Be(0.3, "弱く扱う");
+
+        // W-02 装置の検出力: 差が付いていること。全部同じ値なら重みを公開した意味が無い。
+        items.Single(i => i.Name == "supersedes").Weight
+            .Should().BeGreaterThan(items.Single(i => i.Name == "related").Weight);
+    }
+
+    // W-01 系: API で追加した型（重み指定の口が無い）はカタログでも既定重み 0.5 で読める。
+    // RetrievalService 側のフォールバック値（辞書に無い型 = 0.5）と同じ値であること。
+    [Fact]
+    public async Task Catalog_reports_the_default_weight_for_a_newly_created_type()
+    {
+        var name = $"cat-{Guid.NewGuid():N}";
+        await _factory.SeedAsync(db =>
+        {
+            db.EdgeTypes.Add(EdgeType.Create(name, EdgeTypeLayer.Core, false));
+            return Task.CompletedTask;
+        });
+
+        var items = (await WithRoles("viewer").GetFromJsonAsync<List<EdgeTypeCatalogItemDto>>(
+            "/graph/edge-types/catalog", TestContext.Current.CancellationToken))!;
+
+        items.Single(i => i.Name == name).Weight.Should().Be(0.5, "新規追加の既定は中庸（0.5）である");
+    }
+
     // C-03: 未認証は 401。
     [Fact]
     public async Task Catalog_requires_authentication()

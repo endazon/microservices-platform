@@ -15,7 +15,8 @@ public static class EdgeTypeSeed
 
     // (name, layer, isSymmetric, weight)
     //
-    // FR-04, ADR-0035 決定 2 (#947a): **重みは二段検索の再ランクが使う**（#970。現時点では未使用）。
+    // FR-04, ADR-0035 決定 2 (#947a): **重みは二段検索の再ランクが使う**（#970 で配線済み。
+    // `/graph/edge-types/catalog` が公開し、RetrievalService が引く）。
     // ADR が名指しで決めているのは 2 つだけである ——「`supersedes` は最新版へ**強く**誘導し、
     // `related` は**弱く**扱う」。**残りは実装側の判断**であり、根拠を仕様書へ書いた。
     //

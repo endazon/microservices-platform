@@ -39,7 +39,16 @@ public record EdgeTypeCatalogItemDto(
     Guid Id,
     string Name,
     string Layer,
-    bool IsSymmetric);
+    bool IsSymmetric,
+    // FR-04, FR-17, ADR-0035 決定 2 (#970): 二段検索の再ランクが使う**辺の型ごとの重み**。
+    // RetrievalService が利用者の資格情報（方式 A の伝播）で引ける口はカタログだけなので、
+    // ここに載せる。重みは型ごとの語彙レベルの設定値であり、`UsageCount` と違って
+    // ABAC で絞るべき集計値ではない（権限外文書の存在を漏らす経路にならない）。
+    //
+    // 🔴 **既定値つきで足す**（既定値の無いメンバー追加は契約上の破壊的変更。IADR-0122 決定 2）。
+    // 既定 0.5 は GraphService の `EdgeType.DefaultWeight` と同値だが、契約プロジェクトは
+    // サービス実装を参照できないためリテラルで持つ。
+    double Weight = 0.5);
 
 // FR-17, SC-09: 辞書へ型を追加する。
 // **識別子は辞書が採番する**（呼び出し側から与えない。改名で変わらない値を外から決めさせない）。
