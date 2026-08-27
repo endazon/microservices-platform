@@ -340,10 +340,13 @@ ok('既定: keycloak-theme-platform は realm ConfigMap と同型の dry-run|app
   const createIdx = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create configmap keycloak-theme-platform '));
   assert.ok(createIdx >= 0, 'keycloak-theme-platform の create 行が見つからない');
   assert.ok(DEFAULT.lines[createIdx].includes('--dry-run=client -o yaml'), 'dry-run=client -o yaml が無い');
-  assert.strictEqual(
-    DEFAULT.lines[createIdx + 1],
-    'kubectl apply -f -',
-    `create の直後に apply -f - が続かない（パイプ先が採取されていない）: ${DEFAULT.lines[createIdx + 1]}`,
+  // パイプ `create … | apply -f -` は両側の stub が並行に起動するため、採取順は
+  // create→apply / apply→create のどちらにもなり得る（CI で反転を実測。#438）。
+  // 「対で採取されている」ことだけを固定し、順序に依存しない。
+  const neighbors = [DEFAULT.lines[createIdx + 1], DEFAULT.lines[createIdx - 1]];
+  assert.ok(
+    neighbors.includes('kubectl apply -f -'),
+    `create の前後いずれにも apply -f - が無い（パイプ先が採取されていない）: 次=${DEFAULT.lines[createIdx + 1]} / 前=${DEFAULT.lines[createIdx - 1]}`,
   );
 });
 
