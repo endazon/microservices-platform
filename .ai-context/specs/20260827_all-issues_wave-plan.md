@@ -5,7 +5,7 @@ status: in-progress
 related_ids: [NFR, IADR-0116, IADR-0139, IADR-0141, IADR-0179, IADR-0230, IADR-0279]
 author: claude
 created: 2026-08-27
-updated: 2026-08-27
+updated: 2026-08-28
 plan_refs:
   - planning:docs/ai-implementation-workflow-guide.md
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
@@ -53,6 +53,10 @@ W-B（1 コミット = 1 論理変更・件名に起点 ID）・W-C（対応表�
 
 **混ぜない理由**: 移送は差分が「移動」に見えて実質は全面書き換えに見えるため、
 **機能変更と同じ波に置くとレビューで両者を分離できない**。
+
+**決定の記録の所在**: 本節は裁定の結論だけを持つ。採否の根拠（他案との比較・配置写像・
+IADR-0027 / IADR-0218 との関係）は**波 1 で起票する実装 ADR に譲る**（統括と個別決定の主従）。
+planning への環流は planning#490。
 
 ## 2. 環境の実測（2026-08-27・着手前ベースライン）
 
@@ -178,6 +182,10 @@ W-B（1 コミット = 1 論理変更・件名に起点 ID）・W-C（対応表�
 
 **対応しない 20 件**（env-blocked 11 ＋ AST 3 ＋ 利用者作業 1 ＋ 裁定待ち 5）。
 **残り 52 件が波 0〜5 の対象である。**
+
+**数えた時点（規則 8）**: 母数 72 は **2026-08-27・波 0 のクローズ実施前**の open 総数の実測である。
+52 のうち 18 件は波 0 の帳簿正常化（実装済みの手動クローズ）で消化済みのため、
+**波 1 以降の残対象は 34 件**（クローズ後の open 総数は 54 = 34 ＋ 対応しない 20）。
 
 ## 8. 検証
 
