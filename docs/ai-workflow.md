@@ -1,7 +1,7 @@
 <!-- trace:
 adrs: [ADR-0048]
 iadrs: [IADR-0067, IADR-0180, IADR-0240]
-issues: [#268, #783, planning#286]
+issues: [#268, #719, #783, #1019, planning#286]
 -->
 
 # AI 駆動の実装ワークフロー（Runbook）
@@ -85,7 +85,8 @@ bash scripts/apply-profile.sh copilot
 ### 3. レビューとゲート
 
 - PR を開くと AI 自動レビュー（`claude-code-review.yml`）が走る。
-- CI（`ci.yml`）・イメージビルド（`images.yml`）・PR タイトル（`pr-title.yml`）・セキュリティ（`security.yml` / `codeql.yml`）が green であることを必須にする。
+- CI（`ci.yml`）・イメージビルド（`images.yml`）・PR タイトル（`pr-title.yml`）・セキュリティ（`security.yml`）が green であることを必須にする
+  （**`codeql.yml` は `paths:` を持つため必須にしない** —— 後述の必須チェック表を参照）。
   `pr-title.yml` はスカッシュ後件名の唯一の予防線であり（中間コミットは force push 禁止で事後修正できない）、
   全 PR で起動するため必須チェックに指定してよい（後述「必須チェックに指定する際の注意」）。
 - 人間は PR テンプレートの「レビュアー向け（AI実装の確認観点）」で最終確認する。
