@@ -13,9 +13,14 @@ namespace AiAnalysisService.Api.Foundation.Services;
 // RetrievalService へ伝播するために持つ（方式 A。IADR-0263 残件 2 の解消）。既定 null は
 // 既存テストの直接構築（`new RagOrchestrator(factory)`）を壊さないため —— DI 経由では
 // `AddHttpContextAccessor()`（Program.cs）が解決する。
+// FR-19, FR-21 受け入れ基準 ⑨, [[IADR-0283]] 決定 3 (#447):
+// 🔴 **検索結果の集合と LLM へ渡す文脈の集合は別物である。** 検索は `SearchAsync` の 1 か所でしか
+// 行われず、そこが `RagContextSelection` を返すため、**経路を足した人が生の検索結果を受け取れない**。
+// 計画が名指しした「⑨＝検索結果をそのまま LLM へ渡す構造では分離できない」を、規律ではなく型で防ぐ。
 public class RagOrchestrator(
     IHttpClientFactory httpFactory,
-    IHttpContextAccessor? httpContextAccessor = null) : IRagOrchestrator
+    IHttpContextAccessor? httpContextAccessor = null,
+    ILogger<RagOrchestrator>? logger = null) : IRagOrchestrator
 {
     // FR-04: 質問回答で文脈に取り込む既定チャンク数。
     private const int DefaultAskTopK = 5;
@@ -112,12 +117,16 @@ public class RagOrchestrator(
         }
 
         // 検索 → 出典（本文より先に送出）。
-        var results = await SearchAsync(question, scope, DefaultAskTopK, ct);
-        var citations = CitationMapper.ToCitations(results);
+        // FR-21 ⑨: 🔴 **出典も文脈も `ContextChunks` から作る。** 出典は「回答の根拠」であり、
+        // AI の入力から外したチャンクをそこへ載せると、**使っていない資料を使ったかのように見せる**。
+        var selection = await SearchAsync(question, scope, DefaultAskTopK, ct);
+        var citations = CitationMapper.ToCitations(selection.ContextChunks);
         yield return new AskCitationsEvent(citations);
 
         // FR-11: 文脈の最高機密区分と用途をゲートウェイへ渡し、越境判定を委ねる（送信可否はゲートウェイ側）。
-        var confidentiality = HighestConfidentiality(results);
+        // FR-21 ⑨: **除外後の集合で測る** —— LLM へ渡さないチャンクの機密区分で送信先を決めると、
+        // **送っていない資料のせいで回答が縮退する**。
+        var confidentiality = HighestConfidentiality(selection.ContextChunks);
         var contextText = CitationMapper.BuildContext(citations);
         var prompt = BuildAskPrompt(question, contextText);
 
@@ -174,7 +183,13 @@ public class RagOrchestrator(
     // このヘッダを GraphService まで運んでホップごと ABAC を効かせる —— 伝播しないと、
     // 段を有効化しても RAG 経路の展開は常に 0 件だった（IADR-0263 残件 2）。
     // **無ければ付けない**（縮退の判断とその警告は RetrievalService 側が一元で持つ。二重に持たない）。
-    private async Task<IReadOnlyList<SearchResultDto>> SearchAsync(
+    // FR-19, FR-21 ⑨, [[IADR-0283]] 決定 3: 🔴 **戻り値は `RagContextSelection` である。**
+    //   検索が返した集合（`SearchResults`）と、LLM へ渡してよい集合（`ContextChunks`）を
+    //   **型で分ける**。呼び出し側は `ContextChunks` しか文脈へ流せない。
+    //   判定の中身は `AiInputExposure.IsAllowed`（`Knowledge.Contracts` の単一情報源）。
+    //   `RagContextPolicy.Select` は述語を**必須引数**で受けるため、渡し忘れは黙って全件許可へ
+    //   倒れずコンパイルで止まる。
+    private async Task<RagContextSelection> SearchAsync(
         string query, AccessScope scope, int topK, CancellationToken ct)
     {
         var retrievalClient = httpFactory.CreateClient("RetrievalService");
@@ -188,12 +203,32 @@ public class RagOrchestrator(
             var searchResult = searchResp.IsSuccessStatusCode
                 ? await searchResp.Content.ReadFromJsonAsync<SearchResponse>(ct)
                 : new SearchResponse([], 0, 0);
-            return searchResult?.Results ?? [];
+            return SelectContext(searchResult?.Results ?? []);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
-            return [];
+            return SelectContext([]);
         }
+    }
+
+    // FR-19, FR-21 ⑨: 検索結果から RAG 文脈を導く唯一の点。
+    //
+    // **除外は静かに行わない。** 「検索には出たのに回答に使われなかった」は応答からは区別できず、
+    // ログだけが手掛かりである（`WarnEmbeddingUnavailable` と同じ考え方）。
+    // **除外した資料のタイトル・本文は記録しない** —— 記録するのはチャンク ID と件数だけである
+    // （ADR-0037 決定 9・11-① の「誰が・いつ・何件」と同じ向き）。
+    private RagContextSelection SelectContext(IReadOnlyList<SearchResultDto> results)
+    {
+        var selection = RagContextPolicy.Select(results, AiInputExposure.IsAllowed);
+        if (selection.ExcludedFromContextChunkIds.Count > 0)
+        {
+            logger?.LogInformation(
+                "RAG context: {Excluded} of {Total} chunk(s) excluded from the LLM context "
+                + "(ai_input exposure); chunkIds={ChunkIds}",
+                selection.ExcludedFromContextChunkIds.Count, results.Count,
+                selection.ExcludedFromContextChunkIds);
+        }
+        return selection;
     }
 
     // IADR-0037: LlmGateway /complete/stream の SSE を消費し、CompletionStreamEvent を逐次返す。
@@ -314,13 +349,15 @@ public class RagOrchestrator(
         Func<string, string> buildPrompt, string purpose, CancellationToken ct)
     {
         // FR-03: 実効スコープでハイブリッド検索（ストリーミング版と同じ SearchAsync に集約。失敗時は空へ縮退）。
-        var results = await SearchAsync(query, scope, topK, ct);
+        // FR-21 ⑨: 戻りは `RagContextSelection`。**以降は `ContextChunks` しか使わない。**
+        var selection = await SearchAsync(query, scope, topK, ct);
 
         // FR-04: 検索結果を番号付き出典へ写像（回答本文の [1][2] と一致させる）
-        var citations = CitationMapper.ToCitations(results);
+        var citations = CitationMapper.ToCitations(selection.ContextChunks);
 
         // FR-11: 文脈に含む文書の最も高い機密区分を求める。ゲートウェイはこれで送信先ティアを判定する。
-        var confidentiality = HighestConfidentiality(results);
+        // FR-21 ⑨: **除外後の集合で測る**（AskStreamAsync と同じ規則）。
+        var confidentiality = HighestConfidentiality(selection.ContextChunks);
 
         // FR-04: 関連チャンクを文脈にして LLM ゲートウェイで本文生成
         var context = CitationMapper.BuildContext(citations);
