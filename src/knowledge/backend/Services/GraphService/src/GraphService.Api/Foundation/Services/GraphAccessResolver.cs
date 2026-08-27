@@ -47,8 +47,13 @@ public class GraphAccessResolver(IHttpClientFactory httpFactory) : IGraphAccessR
     // JWT クレームから ABAC 判定に用いる利用者属性を取り出す（WikiAccessResolver と同一）。
     //
     // 🔴 **読むのは clearance と department の 2 つだけである。** これはプラットフォーム全体の
-    // 現状であり、本サービスが絞っているのではない。owner に基づく判定（ADR-0036）は
-    // AccessScopeResponse に 3 分岐 OR の表現構造が無いため機能しない（#516）。
+    // 現状であり、本サービスが絞っているのではない。
+    //
+    // ［2026-08-28 追記 / #989 段 3］**「3 分岐 OR の表現構造が無い」は解消した。**
+    // AccessScopeResponse は Branches を持ち（IADR-0253 決定 1）、AbacNodeFilter が分岐間 OR で
+    // 評価する。**残っている制約は実データの側だけである** —— owner が 0% 充足であり（#516）、
+    // owner ベースのポリシーも未配備なので、分岐が来ても現時点では見え方が変わらない。
+    // **属性が付き owner ポリシーが入った時点で、追加改修なしに効く。**
     private static Dictionary<string, string> ExtractUserAttributes(HttpContext ctx)
     {
         var attrs = new Dictionary<string, string>();
