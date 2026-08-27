@@ -193,8 +193,11 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
 
     // FR-05, UC-04, #752 段 1: アイテムが更新者を運んできたら、**予約値より優先**して載る。
     //
-    // 🔴 現時点でこれを満たすコネクタは無い（4 実装のうち 3 本は構造上取れず、1 本は識別子の
-    // 名前空間が未裁定）。**経路が生きていることだけ**をスタブで固定する。
+    // 🔴 現時点でこれを満たすコネクタは無い。4 実装のうち `filesystem` / `wiki` / `saas` の 3 本は
+    // 構造上取れず、`db` の 1 本は載せられるが**載せてはならない** —— 解決順（① Keycloak 検索 →
+    // ② 写像表 → 予約値。裁定 2026-08-16）が**実装されていない**ため、生の値がそのまま `owner` に
+    // なるからである（#752。詳細は `DataSourceSyncService.PerItemAttributes` の注記）。
+    // **経路が生きていることだけ**をスタブで固定する。
     [Fact]
     public async Task Sync_WhenItemCarriesUpdater_OwnerBeatsReservedValue()
     {
