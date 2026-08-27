@@ -190,6 +190,7 @@ plan_refs:
 
 1. `contract-schema-baseline.json` の更新（`EdgeTypeCatalogItemDto` への非破壊追加ぶん）は本 worktree では行わない
    （統括のレビュー統制。検査は exit 1 を報告する）。
+  - ［2026-08-28 追記 / #1021］解消済み — 統括が 9cec160 で baseline を反映し、`check-contract-schema.js` は baseline 一致（OK）へ戻った（差分は memberAdded 1 件のみ・破壊的 0）。
 2. `GraphExpansion:Enabled` は引き続き**既定 false**（本作業は既定を変えない。ADR-0035 決定 2）。
    有効化条件: 構成 `GraphExpansion:Enabled=true` ＋ 呼び出し元からの `Authorization` 伝播（本作業で充足）。
 3. `w_graph` / `SeedCount` の実測是正（A/B）は従前どおり別途（IADR-0263 残件 5）。
