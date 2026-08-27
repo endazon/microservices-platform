@@ -347,6 +347,90 @@ public class GraphExpansionTwoStageSearchTests
         GraphProximity.From([seed], neighborhood.Edges, 2).Should().NotContainKey(suggested);
     }
 
+    // ── R-01〜R-03: 辺の型の実重み（#970 完成。IADR-0263 決定 6 の解消） ──
+
+    private GraphServiceNeighborExpander ExpanderOver(FakeGraphHandler graph) => new(
+        new SingleClientFactory(graph, GraphExpansionFactory.GraphBaseAddress),
+        AccessorWith(FakeGraphHandler.AllowedToken),
+        NullLogger<GraphServiceNeighborExpander>.Instance);
+
+    // FR-04, FR-17, ADR-0035 決定 2: R-01 辞書（`/graph/edge-types/catalog`）の**実重み**が辺に載り、
+    // 重い型（1.0）経由が軽い型（0.3）経由より近接度で上回る（固定値 0.5 へ戻す変異で赤になる）。
+    [Fact]
+    public async Task 辞書の実重みが辺に載り再ランクに効く()
+    {
+        var seed = Guid.NewGuid();
+        var strongDoc = Guid.NewGuid();
+        var weakDoc = Guid.NewGuid();
+        var strongType = Guid.NewGuid();
+        var weakType = Guid.NewGuid();
+        var graph = new FakeGraphHandler
+        {
+            StrongTypeId = strongType,
+            WeakTypeId = weakType,
+            Body = $$"""
+            {"nodes":[],"edges":[
+              {"id":"{{Guid.NewGuid()}}","sourceDocumentId":"{{seed}}","targetDocumentId":"{{strongDoc}}",
+               "edgeTypeId":"{{strongType}}","provenance":"User"},
+              {"id":"{{Guid.NewGuid()}}","sourceDocumentId":"{{seed}}","targetDocumentId":"{{weakDoc}}",
+               "edgeTypeId":"{{weakType}}","provenance":"User"}],
+             "truncated":false,"totalNodes":0,"totalEdges":2,"totalIsLowerBound":false}
+            """,
+        };
+
+        var neighborhood = await ExpanderOver(graph)
+            .ExpandAsync([seed], 2, TestContext.Current.CancellationToken);
+
+        neighborhood.Edges.Should().ContainSingle(e => e.TargetDocumentId == strongDoc)
+            .Which.Weight.Should().Be(1.0, "supersedes は辞書の実重みで運ばれる");
+        neighborhood.Edges.Should().ContainSingle(e => e.TargetDocumentId == weakDoc)
+            .Which.Weight.Should().Be(0.3, "related は辞書の実重みで運ばれる");
+
+        // 重み差がそのまま再ランクの近接度の差になる（合成経路は T-12 が固定済み）。
+        var proximity = GraphProximity.From([seed], neighborhood.Edges, 2);
+        proximity[strongDoc].Should().BeGreaterThan(proximity[weakDoc],
+            "型ごとの重み付け（ADR-0035 決定 2）が実際に効いている");
+    }
+
+    // R-02: 辞書に無い型の辺はフォールバック値（0.5）で扱う（例外にも 0 にもしない）。
+    [Fact]
+    public async Task 辞書に無い型の辺はフォールバック重みで扱う()
+    {
+        var seed = Guid.NewGuid();
+        var neighbor = Guid.NewGuid();
+        var graph = new FakeGraphHandler
+        {
+            Body = $$"""
+            {"nodes":[],"edges":[
+              {"id":"{{Guid.NewGuid()}}","sourceDocumentId":"{{seed}}","targetDocumentId":"{{neighbor}}",
+               "edgeTypeId":"{{Guid.NewGuid()}}","provenance":"User"}],
+             "truncated":false,"totalNodes":0,"totalEdges":1,"totalIsLowerBound":false}
+            """,
+        };
+
+        var neighborhood = await ExpanderOver(graph)
+            .ExpandAsync([seed], 2, TestContext.Current.CancellationToken);
+
+        neighborhood.Edges.Should().ContainSingle()
+            .Which.Weight.Should().Be(GraphServiceNeighborExpander.FallbackEdgeWeight,
+                "辞書と探索の間で型が消えても検索は落とさず、中庸の重みで続ける");
+    }
+
+    // R-03: 辞書が引けない（非 2xx）でも検索は成立し、全辺フォールバック重みで縮退する。
+    [Fact]
+    public async Task 辞書が引けなくても全辺フォールバック重みで検索は成立する()
+    {
+        var graph = new FakeGraphHandler { CatalogStatusCode = HttpStatusCode.InternalServerError };
+
+        var neighborhood = await ExpanderOver(graph)
+            .ExpandAsync([graph.SeedDocumentId], 2, TestContext.Current.CancellationToken);
+
+        // 既定 Body の辺は強い型（1.0）だが、辞書が引けないので 0.5 へ縮退する。
+        neighborhood.Edges.Should().ContainSingle()
+            .Which.Weight.Should().Be(GraphServiceNeighborExpander.FallbackEdgeWeight,
+                "辞書の不調は無差別（中庸）への縮退であって、検索の失敗ではない");
+    }
+
     // ── 補助 ───────────────────────────────────────────────────────
 
     private static async Task SeedAsync(GraphExpansionFactory factory, FakeGraphHandler graph)
@@ -452,6 +536,7 @@ internal sealed class FakeGraphExpander(IReadOnlyList<GraphNeighborEdge> edges) 
 
 // GraphService の代役。**`Authorization` を見て応答を変える** —— 権限伝播が効いているかを、
 // 「後段が効いているから効く」ではなく RetrievalService の側から測るための装置である。
+// 辺の型辞書（`/graph/edge-types/catalog`）も演じる（#970: 再ランクの実重みの供給元）。
 internal sealed class FakeGraphHandler : HttpMessageHandler
 {
     public const string AllowedToken = "Bearer allowed";
@@ -459,8 +544,16 @@ internal sealed class FakeGraphHandler : HttpMessageHandler
     public Guid SeedDocumentId { get; } = Guid.NewGuid();
     public Guid NeighborDocumentId { get; } = Guid.NewGuid();
 
-    // 既定の応答: 起点 → 近傍の辺が 1 本。
+    // 辞書に載る 2 つの型（強 1.0 / 弱 0.3。ADR-0035 決定 2 の名指しの写し）。
+    public Guid StrongTypeId { get; init; } = Guid.NewGuid();
+    public Guid WeakTypeId { get; init; } = Guid.NewGuid();
+
+    // 既定の応答: 起点 → 近傍の辺が 1 本（強い型）。
     public string? Body { get; init; }
+
+    // 辞書の応答（既定: 強・弱の 2 型）。非 2xx を返す縮退の検証用に差し替え可能。
+    public string? CatalogBody { get; init; }
+    public HttpStatusCode CatalogStatusCode { get; init; } = HttpStatusCode.OK;
 
     public List<(string? Authorization, string Path)> Requests { get; } = [];
 
@@ -476,12 +569,27 @@ internal sealed class FakeGraphHandler : HttpMessageHandler
         if (authorization != AllowedToken)
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
 
+        if (request.RequestUri!.AbsolutePath == "/graph/edge-types/catalog")
+        {
+            if (CatalogStatusCode != HttpStatusCode.OK)
+                return Task.FromResult(new HttpResponseMessage(CatalogStatusCode));
+
+            var catalog = CatalogBody ?? $$"""
+            [{"id":"{{StrongTypeId}}","name":"supersedes","layer":"core","isSymmetric":false,"weight":1.0},
+             {"id":"{{WeakTypeId}}","name":"related","layer":"core","isSymmetric":true,"weight":0.3}]
+            """;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(catalog, Encoding.UTF8, "application/json"),
+            });
+        }
+
         var body = Body ?? $$"""
         {"nodes":[{"documentId":"{{SeedDocumentId}}","title":"起点"},
                   {"documentId":"{{NeighborDocumentId}}","title":"近傍"}],
          "edges":[{"id":"{{Guid.NewGuid()}}","sourceDocumentId":"{{SeedDocumentId}}",
                    "targetDocumentId":"{{NeighborDocumentId}}",
-                   "edgeTypeId":"{{Guid.NewGuid()}}","provenance":"User"}],
+                   "edgeTypeId":"{{StrongTypeId}}","provenance":"User"}],
          "truncated":false,"totalNodes":2,"totalEdges":1,"totalIsLowerBound":false}
         """;
 

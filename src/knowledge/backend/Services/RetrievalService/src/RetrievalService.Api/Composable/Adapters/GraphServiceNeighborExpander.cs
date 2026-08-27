@@ -1,3 +1,4 @@
+using Knowledge.Contracts.Dtos;
 using RetrievalService.Api.Foundation.Ports;
 using System.Net;
 using System.Net.Http.Json;
@@ -19,18 +20,13 @@ public sealed class GraphServiceNeighborExpander(
 {
     public const string ClientName = "GraphService";
 
-    // 🔴 **辺の型の重みは GraphService のどの口からも取れない**（実測。2026-08-23）。
-    // #947a が `edge_types.Weight` を入れたが、近傍探索の応答（`GraphEdgeDto`）にも
-    // 型カタログ（`EdgeTypeCatalogItemDto`）にも重みの項目が無い。**公開は GraphService 側の
-    // 変更**であり、本 issue（#970）の作業範囲外である。
+    // FR-04, ADR-0035 決定 2 (#970): 辺の型の重みは**辞書（`/graph/edge-types/catalog`）の実値**を
+    // 使う（`edge_types.Weight` の公開面。#947a が値を、#970 が公開と消費を入れた）。
     //
-    // **したがって、公開されるまでは全辺を既定重み（0.5 = `EdgeType.DefaultWeight`）で扱う。**
-    // 再ランク側（`GraphProximity` / `GraphRerank`）は重みを一級の入力として実装してあるので、
-    // 公開されればここが変わるだけで効き始める。
-    //
-    // 🔴 **黙って無差別にしない。** 重みが取れないあいだは要求ごとに警告を出す ——
-    // 「型ごとの重み付けが効いている」と読める状態を作らないためである。
-    internal const double UnavailableEdgeWeight = 0.5;
+    // 🔴 **フォールバックは中庸（0.5 = GraphService の `EdgeType.DefaultWeight` と同値）。**
+    // 使うのは 2 つの縮退だけである —— ①辞書が引けない（不達・非 2xx）②辺の型が辞書に無い
+    // （探索と辞書取得の間に型が消された等）。**いずれも警告を出し、静かに無差別へ落ちない。**
+    internal const double FallbackEdgeWeight = 0.5;
 
     public async Task<GraphNeighborhood> ExpandAsync(
         IReadOnlyList<Guid> seedDocumentIds, int hops, CancellationToken ct = default)
@@ -55,22 +51,62 @@ public sealed class GraphServiceNeighborExpander(
         var client = httpFactory.CreateClient(ClientName);
         client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", authorization);
 
+        // 辺の型の重み。**1 要求につき 1 回**、近傍探索と同じ資格情報で引く（キャッシュは持たない ——
+        // 既存のカタログ消費者（BFF プロキシ）も都度取得であり、測らずに最適化しない）。
+        var weights = await FetchWeightsAsync(client, ct);
+
         var views = await Task.WhenAll(seedDocumentIds.Select(id => FetchAsync(client, id, hops, ct)));
 
         // 辺は識別子で重複排除する（起点が複数あると同じ辺を複数回持ち帰る）。
         var edges = new Dictionary<Guid, GraphNeighborEdge>();
+        var unknownTypes = new HashSet<Guid>();
         foreach (var edge in views.SelectMany(v => v))
-            edges.TryAdd(edge.Id, new GraphNeighborEdge(
-                edge.SourceDocumentId, edge.TargetDocumentId, UnavailableEdgeWeight));
+        {
+            var weight = FallbackEdgeWeight;
+            if (weights is not null && !weights.TryGetValue(edge.EdgeTypeId, out weight))
+            {
+                unknownTypes.Add(edge.EdgeTypeId);
+                weight = FallbackEdgeWeight;
+            }
 
-        if (edges.Count > 0)
+            edges.TryAdd(edge.Id, new GraphNeighborEdge(
+                edge.SourceDocumentId, edge.TargetDocumentId, weight));
+        }
+
+        if (unknownTypes.Count > 0)
             logger.LogWarning(
-                "Graph re-ranking is running without edge-type weights: GraphService exposes no "
-                + "weight on its graph or edge-type endpoints, so all {Count} edges are treated as "
-                + "{Weight}. Type-based weighting (ADR-0035) is inert until the weight is published",
-                edges.Count, UnavailableEdgeWeight);
+                "Graph re-ranking met {Count} edge type(s) missing from the edge-type catalog; "
+                + "their edges fall back to weight {Weight}", unknownTypes.Count, FallbackEdgeWeight);
 
         return new GraphNeighborhood([.. edges.Values]);
+    }
+
+    // 辞書（型識別子 → 重み）を取る。**失敗は検索そのものを落とさない** —— 全辺フォールバック
+    // 重みの縮退（null）へ倒し、警告を出す（型ごとの重み付けが効いていないことを運用から読める形）。
+    private async Task<IReadOnlyDictionary<Guid, double>?> FetchWeightsAsync(
+        HttpClient client, CancellationToken ct)
+    {
+        try
+        {
+            var resp = await client.GetAsync("/graph/edge-types/catalog", ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                logger.LogWarning(
+                    "Edge-type catalog request failed with {Status}; re-ranking falls back to "
+                    + "weight {Weight} for every edge", resp.StatusCode, FallbackEdgeWeight);
+                return null;
+            }
+
+            var items = await resp.Content.ReadFromJsonAsync<List<EdgeTypeCatalogItemDto>>(ct);
+            return (items ?? []).ToDictionary(i => i.Id, i => i.Weight);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex,
+                "Edge-type catalog is unreachable; re-ranking falls back to weight {Weight} for "
+                + "every edge", FallbackEdgeWeight);
+            return null;
+        }
     }
 
     // 1 起点ぶんの近傍を取る。**失敗は検索そのものを落とさない**（段は補助であり、
@@ -111,5 +147,8 @@ public sealed class GraphServiceNeighborExpander(
     // GraphService の応答のうち**本段が使う項目だけ**を写す（ノード・総数・打ち切りは使わない）。
     private sealed record GraphViewPayload(List<GraphEdgePayload>? Edges);
 
-    private sealed record GraphEdgePayload(Guid Id, Guid SourceDocumentId, Guid TargetDocumentId);
+    // `EdgeTypeId` は辞書（型識別子 → 重み）の突合キーである。重みを辺へ複写しないのは
+    // GraphService 側と同じ理由（真実源は `edge_types`。改名・編集に自動追随させる）。
+    private sealed record GraphEdgePayload(
+        Guid Id, Guid SourceDocumentId, Guid TargetDocumentId, Guid EdgeTypeId);
 }
