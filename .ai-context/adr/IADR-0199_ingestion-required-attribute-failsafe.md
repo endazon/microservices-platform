@@ -9,7 +9,7 @@ related_ids:
   - IADR-0019
 author: claude
 created: 2026-08-15
-updated: 2026-08-16
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/06_technical/09_datasource-connectors.md
   - planning:projects/microservices-platform/06_technical/07_abac-attribute-model.md
@@ -94,6 +94,8 @@ public sealed record SourceItem(string Path, DateTimeOffset ModifiedAt, long Siz
 
 加えて **SC-06 の登録フォームは `confidentiality` だけを送る**（`DataSourceForm.tsx:64`。
 `department` の入力欄も更新経路も無い）。**画面から登録した全データソースが `unassigned` になる。**
+［2026-08-28 追記 / #1021］この段落のうち「入力欄が無い」は #767/#771 で、「更新経路が無い」は
+既定属性の編集フォーム実装で、いずれも解消済みである。
 
 追跡は **#754**。
 
@@ -106,7 +108,9 @@ public sealed record SourceItem(string Path, DateTimeOffset ModifiedAt, long Siz
 **したがって「画面から登録した全データソースが `unassigned` になる」は、管理者が値を入れた場合には
 もう当てはまらない。** ただし**残る 2 つは未消化である** —— ①**フォルダ → 部門コードの写像規則**
 （planning#372 の裁定待ち。**実装側で推定規則を決めない**）と ②**更新経路**（SC-06 に編集フォームが無い）。
-**#754 はこの 2 つを引き受けたまま open である。** 予約値の件数を環流債務として読む決定 3 も変わらない。
+**#754 はこの 2 つを引き受けたまま open である。**
+［2026-08-28 追記 / #1021］②更新経路は解消した（SC-06 に既定属性の編集フォームを実装）。
+残るのは①の写像規則（値域裁定待ち）のみである。 予約値の件数を環流債務として読む決定 3 も変わらない。
 
 ### なぜ「常に」と書かないか
 

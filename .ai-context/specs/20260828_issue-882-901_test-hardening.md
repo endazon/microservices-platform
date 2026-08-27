@@ -47,6 +47,9 @@ issue: "#882, #901"
   （Testcontainers 系の統合テストは対象外）。
 - `git rev-parse --is-shallow-repository` → `false`（履歴を出典に引ける。本仕様書は git log を
   出典に使っていない）。
+  - ［2026-08-28 追記 / #1021］この実測記録は誤りである。波 1 監査が本体・worktree の全所で
+    `true` を実測した（`.git/shallow` 実在。shallow は object store の性質のため worktree でも
+    `false` にならない）。本仕様書が git log を出典に使っていない点は変わらず、結論に影響しない。
 
 ---
 

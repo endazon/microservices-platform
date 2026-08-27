@@ -17,6 +17,12 @@
     "懸念そのものは実在しない —— 本リポジトリのビルドは 1 つ（platform/frontend が knowledge の",
     "features を合成する）で、SC-10 が EChart を使うため vendor-echarts は必ず出力される。"
   ],
+  "$comment_initialTotalBytes_2026-08-28_sc06-attributes-form": [
+    "［2026-08-28 / #1021］586,001 → 586,637（+0.64 kB）へ引き上げた。増分は SC-06 既定属性の",
+    "編集フォーム追加に伴う i18n カタログ 6 文言（ja/en。カタログは初期ロードに載る）である。",
+    "実測: フォーム追加後のビルドで check-chunk-budget --require が +0.64 kB 超過を報告し、",
+    "--update で床を更新した（コンポーネント本体は遅延チャンク側で初期ロードに入らない）。"
+  ],
   "$comment_initialTotalBytes": [
     "［2026-08-15 / #578］586,557 → 622,064（+35.51 kB）へ引き上げた。増加は本 PR の変更ではなく、",
     "develop へ入った AST submodule の 3 回の bump（91d52c2 → 7f69fb5。frontend が 42 ファイル・+6,313 行）である。",

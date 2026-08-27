@@ -117,7 +117,7 @@ planning への環流は planning#490。
 | **S10** | `scripts/test-spec-coverage-baseline.json` | **`--update` は PR の最終コミットで 1 回** |
 | **S11** | platform routing 3 ファイル ＋ knowledge `features/index.ts` | 直列（合成点） |
 | **S12** | `scripts/check-bff-downstreams.js` の `CALLERS` | 直列 |
-| **S13** | knip / i18n / eslint-suppressions | 直列 |
+| **S13** | knip / i18n / eslint-suppressions / chunk-budget-baseline（初期ロード床） | 直列 |
 | **S14** | 各サービスの `Program.cs` | サービス単位で直列（領域表の T-* と対応） |
 
 ## 5. 波の構成

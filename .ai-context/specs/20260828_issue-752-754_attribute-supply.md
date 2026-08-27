@@ -123,6 +123,8 @@ private static Dictionary<string, string>? PerItemAttributes(SourceItem item)
 
 ## 設計
 
+［2026-08-28 追記 / #1021］波 1 監査の指摘: 上表に `IDataSourceConnector.cs` の行が無いが、同ファイルの陳腐化注記も実際には是正済みである（走査語「未裁定」が異形「裁定が要る」を取りこぼした＝規則 2 の破れ。コード側に残存は無いことを再走査で確認済み）。
+
 ### 実装するもの: SC-06 既定属性の更新経路
 
 計画 SC-06 は「**登録・更新フォーム**はデータソースの既定属性 3 つ（`confidentiality` /
