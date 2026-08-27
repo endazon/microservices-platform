@@ -16,6 +16,18 @@
  *          エンドポイント（<unit>/backend/Bff/）なら許可（例外3・IADR-0063）、
  *        - それ以外（特に platform → 可変ユニット）は違反。
  *   2) Foundation → Composable: Foundation/ 配下 .cs に `using <ns>.Composable(.|;)` が現れたら違反。
+ *   3) 8 要素プロジェクトのレイヤ依存方向（NFR, IADR-0280 決定 3）:
+ *      ①同一サービス内の 8 要素プロジェクト（<Svc>.{Api|Worker|Application|Domain|Infrastructure|
+ *        Contracts|SharedKernel}）間の ProjectReference は宣言方向
+ *        （Domain ← Application ← Infrastructure ← Api/Worker。Contracts / SharedKernel は
+ *        参照される側にしか立てない葉）に限る。
+ *      ②`*.Domain` プロジェクト配下の .cs に `using Microsoft.EntityFrameworkCore` /
+ *        `using MassTransit` / `using Wolverine` / `using Refit`（下位名前空間・static・エイリアス
+ *        束縛を含む）が現れたら違反（「Domain 層は SharedKernel を除き外部ライブラリへ依存しない」
+ *        —— csproj の PackageReference ゼロは check-backend-libraries.js 規則 2 が見るが、
+ *        推移参照で届く型の using はそちらでは止まらないため、ソース面をここで塞ぐ）。
+ *      submodule ユニット（scripts/lib/excluded-units.js）は規則 3 の対象外（他プロジェクトの
+ *      コードを自リポジトリの規約で検査しない）。
  *
  * フロントの合成点制約（合成点以外の @knowledge / @features import 禁止）は ESLint
  * （src/eslint.config.js の no-restricted-imports）で検査する（lint ジョブ）。本スクリプト対象外。
@@ -26,10 +38,23 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { excludedUnits, makeIsExcludedPath } = require('./lib/excluded-units.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const SRC_DIR = 'src';
 const SKIP_DIRS = new Set(['node_modules', 'bin', 'obj', '.git', 'dist', 'coverage']);
+
+// 規則 3 の対象外（submodule ユニット。単一情報源は .gitmodules）。
+// **遅延評価にする**: excluded-units.js は .gitmodules を読めないと fail-closed で throw する。
+// 走査対象が 1 件も無いときは 0 件走査の門（main の fail-closed）が先に語るべきなので、
+// 実際に規則 3 の判定が要るまで .gitmodules を読まない。
+let _isExcludedPath = null;
+function isExcludedPath(relPath) {
+  if (_isExcludedPath === null) {
+    _isExcludedPath = makeIsExcludedPath(excludedUnits({ root: REPO_ROOT }));
+  }
+  return _isExcludedPath(relPath);
+}
 
 // --- 純粋ロジック（scripts.test.js から単体テストする） -------------------------
 
@@ -113,6 +138,79 @@ function scanFoundationComposable(relPath, content) {
   return violations;
 }
 
+// --- 規則 3: 8 要素プロジェクトのレイヤ依存方向（NFR, IADR-0280 決定 3） -------
+
+// 8 要素の要素名。単一情報源は IADR-0280 決定 3（Tests は 1 プロジェクトで参照制約の対象外）。
+const EIGHT_ELEMENTS = 'Api|Worker|Application|Domain|Infrastructure|Contracts|SharedKernel';
+
+// レイヤの序数。大きい側から小さい側への参照のみ許す。Contracts / SharedKernel は序列に
+// 入らない葉（参照される側にしか立てない）。
+const EIGHT_ELEMENT_RANK = { Domain: 0, Application: 1, Infrastructure: 2, Api: 3, Worker: 3 };
+
+// リポジトリ相対パス（posix）の csproj が 8 要素プロジェクトなら { service, element } を返す。
+// 形は src/<unit>/backend/Services/<Svc>/src/<Svc>.<要素>/<Svc>.<要素>.csproj に限る
+// （Shared/ 配下の Platform.Shared.Contracts 等・tests/ 側・BFF は対象外）。
+function parseEightElementProject(relPath) {
+  const re = new RegExp(
+    `^src/[^/]+/backend/Services/([^/]+)/src/\\1\\.(${EIGHT_ELEMENTS})/\\1\\.\\2\\.csproj$`,
+  );
+  const m = toPosix(relPath).match(re);
+  return m ? { service: m[1], element: m[2] } : null;
+}
+
+// 同一サービス内の 8 要素プロジェクト間 ProjectReference を分類する。{ ok, reason }。
+// どちらかが 8 要素でない・サービスが異なる参照は本規則の対象外（規則 1 の領分）。
+function classifyLayerReference(fromCsproj, toCsproj) {
+  const from = parseEightElementProject(fromCsproj);
+  const to = parseEightElementProject(toCsproj);
+  if (!from || !to) return { ok: true, reason: 'not-eight-element' };
+  if (from.service !== to.service) return { ok: true, reason: 'cross-service' };
+  if (from.element === 'Contracts' || from.element === 'SharedKernel') {
+    return {
+      ok: false,
+      reason: `${from.element} は葉であり、同一サービスの他要素を参照できない（IADR-0280 決定 3）`,
+    };
+  }
+  if (to.element === 'Contracts' || to.element === 'SharedKernel') {
+    return { ok: true, reason: 'leaf-reference' };
+  }
+  if (EIGHT_ELEMENT_RANK[from.element] > EIGHT_ELEMENT_RANK[to.element]) {
+    return { ok: true, reason: 'downward' };
+  }
+  return {
+    ok: false,
+    reason:
+      `レイヤ依存方向の違反: ${from.element} → ${to.element} は宣言方向` +
+      '（Domain ← Application ← Infrastructure ← Api/Worker）に反する（IADR-0280 決定 3）',
+  };
+}
+
+// Domain プロジェクトの .cs に混入してはならない外部フレームワークの名前空間
+// （「Domain 層は SharedKernel を除き外部ライブラリへ依存しない」）。
+const DOMAIN_FORBIDDEN_USINGS = ['Microsoft.EntityFrameworkCore', 'MassTransit', 'Wolverine', 'Refit'];
+
+// リポジトリ相対パス（posix）が *.Domain プロジェクト配下の .cs か。
+function isDomainProjectPath(relPath) {
+  return /(^|\/)[^/]+\.Domain\//.test(toPosix(relPath));
+}
+
+// *.Domain 配下 .cs の禁止 using を検出する。違反 using 行の配列を返す。
+// scanFoundationComposable と同じく global 前置・static 修飾・エイリアス束縛のいずれの形も見る。
+function scanDomainForbiddenUsings(relPath, content) {
+  if (!isDomainProjectPath(relPath)) return [];
+  const violations = [];
+  const re =
+    /^\s*(?:global\s+)?using\s+(?:static\s+)?(?:[A-Za-z_]\w*\s*=\s*)?([A-Za-z_][\w.]*)\s*;/gm;
+  let m;
+  while ((m = re.exec(content))) {
+    const ns = m[1];
+    if (DOMAIN_FORBIDDEN_USINGS.some((b) => ns === b || ns.startsWith(`${b}.`))) {
+      violations.push(m[0].trim());
+    }
+  }
+  return violations;
+}
+
 // --- ファイル走査 -------------------------------------------------------------
 
 function walk(dir, pred, out) {
@@ -160,18 +258,31 @@ function checkTree() {
     for (const to of projectReferencesOf(abs)) {
       const r = classifyProjectReference(from, to);
       if (!r.ok) violations.push({ kind: 'project-reference', from, to, reason: r.reason });
+      // 3-①) 8 要素プロジェクト間のレイヤ依存方向（submodule ユニットは対象外）。
+      if (isExcludedPath(from)) continue;
+      const layer = classifyLayerReference(from, to);
+      if (!layer.ok) violations.push({ kind: 'layer-direction', from, to, reason: layer.reason });
     }
   }
-  // 2) Foundation → Composable の using 検査。
+  // 2) Foundation → Composable / 3-②) Domain の禁止 using の検査。
   const csFiles = walk(path.join(REPO_ROOT, SRC_DIR), (n) => n.endsWith('.cs'), []);
   scanned.csFiles = csFiles.length;
   for (const abs of csFiles) {
     const rel = repoRel(abs);
-    if (!/(^|\/)Foundation\//.test(rel)) continue;
+    const isFoundation = /(^|\/)Foundation\//.test(rel);
+    const isDomain = !isExcludedPath(rel) && isDomainProjectPath(rel);
+    if (!isFoundation && !isDomain) continue;
     let content = '';
     try { content = fs.readFileSync(abs, 'utf8'); } catch (e) { continue; }
-    for (const line of scanFoundationComposable(rel, content)) {
-      violations.push({ kind: 'foundation-composable', from: rel, to: '(Composable)', reason: line });
+    if (isFoundation) {
+      for (const line of scanFoundationComposable(rel, content)) {
+        violations.push({ kind: 'foundation-composable', from: rel, to: '(Composable)', reason: line });
+      }
+    }
+    if (isDomain) {
+      for (const line of scanDomainForbiddenUsings(rel, content)) {
+        violations.push({ kind: 'domain-forbidden-using', from: rel, to: '(外部フレームワーク)', reason: line });
+      }
     }
   }
   // #664: 走査件数を併せて返す。**配列へプロパティを生やさない**（戻り値の型が読みづらくなる）。
@@ -247,6 +358,72 @@ function selfTest() {
       'using Step = DocumentService.Api.Composable.Steps.SomeStep;\n').length === 1,
   });
 
+  // 規則 3-①: 8 要素プロジェクト間のレイヤ依存方向（IADR-0280 決定 3）。
+  const P = (svc, elem) =>
+    `src/knowledge/backend/Services/${svc}/src/${svc}.${elem}/${svc}.${elem}.csproj`;
+  cases.push({
+    name: 'parseEightElementProject は 8 要素の csproj を解析する',
+    pass:
+      JSON.stringify(parseEightElementProject(P('FeedbackService', 'Domain'))) ===
+        JSON.stringify({ service: 'FeedbackService', element: 'Domain' }) &&
+      parseEightElementProject(
+        'src/platform/backend/Shared/Platform.Shared.Contracts/Platform.Shared.Contracts.csproj') === null &&
+      parseEightElementProject(
+        'src/knowledge/backend/Services/FeedbackService/tests/FeedbackService.Api.Tests/FeedbackService.Api.Tests.csproj') === null,
+  });
+  expectOk('Application → Domain は許可（下向き）', classifyLayerReference(
+    P('FeedbackService', 'Application'), P('FeedbackService', 'Domain')));
+  expectOk('Infrastructure → Application は許可', classifyLayerReference(
+    P('FeedbackService', 'Infrastructure'), P('FeedbackService', 'Application')));
+  expectOk('Api → Infrastructure / Worker → Domain は許可', classifyLayerReference(
+    P('ConversionService', 'Worker'), P('ConversionService', 'Domain')));
+  expectOk('Api → Contracts は許可（葉への参照）', classifyLayerReference(
+    P('FeedbackService', 'Api'), P('FeedbackService', 'Contracts')));
+  expectViolation('Domain → Application は違反（上向き）', classifyLayerReference(
+    P('FeedbackService', 'Domain'), P('FeedbackService', 'Application')));
+  expectViolation('Application → Infrastructure は違反（上向き）', classifyLayerReference(
+    P('FeedbackService', 'Application'), P('FeedbackService', 'Infrastructure')));
+  expectViolation('Infrastructure → Api は違反（上向き）', classifyLayerReference(
+    P('FeedbackService', 'Infrastructure'), P('FeedbackService', 'Api')));
+  expectViolation('Contracts → Domain は違反（葉からの参照）', classifyLayerReference(
+    P('FeedbackService', 'Contracts'), P('FeedbackService', 'Domain')));
+  expectViolation('SharedKernel → Domain は違反（葉からの参照）', classifyLayerReference(
+    P('FeedbackService', 'SharedKernel'), P('FeedbackService', 'Domain')));
+  expectOk('サービスが異なる 8 要素間は本規則の対象外（規則 1 の領分）', classifyLayerReference(
+    P('FeedbackService', 'Api'), P('DocumentService', 'Domain')));
+  expectOk('Domain → Platform.Shared.Kernel は本規則の対象外（8 要素でない）', classifyLayerReference(
+    P('FeedbackService', 'Domain'),
+    'src/platform/backend/Shared/Platform.Shared.Kernel/Platform.Shared.Kernel.csproj'));
+
+  // 規則 3-②: Domain プロジェクト配下 .cs の禁止 using。
+  const DOMAIN_CS = 'src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Domain/AnswerFeedback.cs';
+  cases.push({
+    name: 'Domain 配下の using Microsoft.EntityFrameworkCore を検出',
+    pass: scanDomainForbiddenUsings(DOMAIN_CS, 'using Microsoft.EntityFrameworkCore;\n').length === 1,
+  });
+  cases.push({
+    name: 'Domain 配下の下位名前空間・static・エイリアス束縛も検出',
+    pass:
+      scanDomainForbiddenUsings(DOMAIN_CS, 'using Wolverine.Attributes;\n').length === 1 &&
+      scanDomainForbiddenUsings(DOMAIN_CS, 'using static Microsoft.EntityFrameworkCore.EF;\n').length === 1 &&
+      scanDomainForbiddenUsings(DOMAIN_CS, 'using Db = Microsoft.EntityFrameworkCore.DbContext;\n').length === 1 &&
+      scanDomainForbiddenUsings(DOMAIN_CS, 'global using MassTransit;\n').length === 1 &&
+      scanDomainForbiddenUsings(DOMAIN_CS, 'using Refit;\n').length === 1,
+  });
+  cases.push({
+    name: 'Domain 配下でも許可された using は無視（前方一致の取り違えも無い）',
+    pass:
+      scanDomainForbiddenUsings(DOMAIN_CS, 'using Platform.Shared.Kernel;\n').length === 0 &&
+      scanDomainForbiddenUsings(DOMAIN_CS, 'using Microsoft.Extensions.Logging;\n').length === 0 &&
+      scanDomainForbiddenUsings(DOMAIN_CS, 'using WolverineFoo.Bar;\n').length === 0,
+  });
+  cases.push({
+    name: 'Domain 外の .cs は対象外',
+    pass: scanDomainForbiddenUsings(
+      'src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Api/Program.cs',
+      'using Microsoft.EntityFrameworkCore;\n').length === 0,
+  });
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -285,11 +462,15 @@ function main() {
   for (const v of violations) {
     if (v.kind === 'project-reference') {
       console.error(`\n  [ProjectReference] ${v.from}\n    → ${v.to}\n    ${v.reason}`);
+    } else if (v.kind === 'layer-direction') {
+      console.error(`\n  [レイヤ依存方向] ${v.from}\n    → ${v.to}\n    ${v.reason}`);
+    } else if (v.kind === 'domain-forbidden-using') {
+      console.error(`\n  [Domain の禁止 using] ${v.from}\n    ${v.reason}`);
     } else {
       console.error(`\n  [Foundation→Composable] ${v.from}\n    ${v.reason}`);
     }
   }
-  console.error('\n依存規則は src/README.md「依存規則」/ IADR-0027 / IADR-0056 を参照してください。');
+  console.error('\n依存規則は src/README.md「依存規則」/ IADR-0027 / IADR-0056 / IADR-0280 を参照してください。');
   process.exit(1);
 }
 
@@ -303,6 +484,10 @@ module.exports = {
   isUnitBffEndpoints,
   classifyProjectReference,
   scanFoundationComposable,
+  parseEightElementProject,
+  classifyLayerReference,
+  isDomainProjectPath,
+  scanDomainForbiddenUsings,
   projectReferencesOf,
   checkTree,
 };

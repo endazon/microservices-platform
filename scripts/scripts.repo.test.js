@@ -524,6 +524,9 @@ module.exports = ({ ok, assert }) => {
     isUnitBffEndpoints,
     classifyProjectReference,
     scanFoundationComposable,
+    parseEightElementProject,
+    classifyLayerReference,
+    scanDomainForbiddenUsings,
   } = require('./check-unit-dependencies.js');
 
   const KNOWLEDGE_DOC =
@@ -609,6 +612,85 @@ module.exports = ({ ok, assert }) => {
     assert.strictEqual(
       scanFoundationComposable('src/.../Foundation/X.cs', 'using static DocumentService.Api.Composable.Helpers;\n').length,
       1,
+    );
+  });
+
+  // --- 規則 3: 8 要素プロジェクトのレイヤ依存方向（NFR, IADR-0280 決定 3） ------
+
+  const EEP = (svc, elem) =>
+    `src/knowledge/backend/Services/${svc}/src/${svc}.${elem}/${svc}.${elem}.csproj`;
+
+  ok('parseEightElementProject は 8 要素の csproj だけを解析する', () => {
+    assert.deepStrictEqual(parseEightElementProject(EEP('FeedbackService', 'Domain')), {
+      service: 'FeedbackService',
+      element: 'Domain',
+    });
+    // Shared 配下（Platform.Shared.Contracts）は「Contracts」で終わっても 8 要素ではない。
+    assert.strictEqual(parseEightElementProject(SHARED_CONTRACTS), null);
+    // tests/ 側・BFF は対象外。
+    assert.strictEqual(
+      parseEightElementProject(
+        'src/knowledge/backend/Services/FeedbackService/tests/FeedbackService.Api.Tests/FeedbackService.Api.Tests.csproj',
+      ),
+      null,
+    );
+    assert.strictEqual(parseEightElementProject(KNOWLEDGE_BFF), null);
+  });
+
+  ok('規則 3-①: 宣言方向（Domain ← Application ← Infrastructure ← Api/Worker）は許可', () => {
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Application'), EEP('FeedbackService', 'Domain')).ok, true);
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Infrastructure'), EEP('FeedbackService', 'Application')).ok, true);
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Api'), EEP('FeedbackService', 'Infrastructure')).ok, true);
+    assert.strictEqual(classifyLayerReference(EEP('ConversionService', 'Worker'), EEP('ConversionService', 'Domain')).ok, true);
+    // 葉（Contracts / SharedKernel）への参照は許可。
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Api'), EEP('FeedbackService', 'Contracts')).ok, true);
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Domain'), EEP('FeedbackService', 'SharedKernel')).ok, true);
+  });
+
+  ok('規則 3-①: 上向き・葉からの参照は違反', () => {
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Domain'), EEP('FeedbackService', 'Application')).ok, false);
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Application'), EEP('FeedbackService', 'Infrastructure')).ok, false);
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Infrastructure'), EEP('FeedbackService', 'Api')).ok, false);
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Contracts'), EEP('FeedbackService', 'Domain')).ok, false);
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'SharedKernel'), EEP('FeedbackService', 'Domain')).ok, false);
+  });
+
+  ok('規則 3-①: サービス横断・8 要素以外は対象外（規則 1 の領分）', () => {
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Api'), EEP('DocumentService', 'Domain')).ok, true);
+    assert.strictEqual(
+      classifyLayerReference(
+        EEP('FeedbackService', 'Domain'),
+        'src/platform/backend/Shared/Platform.Shared.Kernel/Platform.Shared.Kernel.csproj',
+      ).ok,
+      true,
+    );
+  });
+
+  ok('規則 3-②: Domain 配下 .cs の禁止 using を検出（下位名前空間・static・エイリアス含む）', () => {
+    const domainCs = 'src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Domain/X.cs';
+    for (const line of [
+      'using Microsoft.EntityFrameworkCore;\n',
+      'using Microsoft.EntityFrameworkCore.Metadata;\n',
+      'using static Microsoft.EntityFrameworkCore.EF;\n',
+      'using Db = Microsoft.EntityFrameworkCore.DbContext;\n',
+      'global using MassTransit;\n',
+      'using Wolverine.Attributes;\n',
+      'using Refit;\n',
+    ]) {
+      assert.strictEqual(scanDomainForbiddenUsings(domainCs, line).length, 1, line);
+    }
+  });
+
+  ok('規則 3-②: 許可された using・Domain 外・前方一致の取り違えは検出しない', () => {
+    const domainCs = 'src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Domain/X.cs';
+    assert.strictEqual(scanDomainForbiddenUsings(domainCs, 'using Platform.Shared.Kernel;\n').length, 0);
+    assert.strictEqual(scanDomainForbiddenUsings(domainCs, 'using WolverineFoo.Bar;\n').length, 0);
+    assert.strictEqual(
+      scanDomainForbiddenUsings(
+        'src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Api/Program.cs',
+        'using Microsoft.EntityFrameworkCore;\n',
+      ).length,
+      0,
     );
   });
 
