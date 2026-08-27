@@ -1,11 +1,11 @@
 ---
 title: フロントエンドのディレクトリ構成を Bulletproof React（計画 §ディレクトリ構成）へ適合させる — 第 1 段: knowledge の feature 内部分割
 type: spec
-status: draft
+status: done
 related_ids: [NFR, ADR-0031, ADR-0019, IADR-0056, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0262]
 author: claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-27
 plan_refs:
   - planning:projects/microservices-platform/06_technical/13_frontend-stack.md
   - planning:projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md

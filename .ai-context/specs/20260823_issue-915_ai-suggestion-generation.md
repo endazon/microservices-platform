@@ -1,11 +1,11 @@
 ---
 title: AI 提案の生成 — スコープ内候補限定の LLM 境界（候補列挙の段で絞る）
 type: spec
-status: draft
+status: done
 related_ids: [FR-18, UC-10, SC-03, SC-21, ADR-0033, ADR-0034, ADR-0051, IADR-0242, IADR-0266]
 author: claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0051_ai-suggestion-abac-boundary.md
   - planning:projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md

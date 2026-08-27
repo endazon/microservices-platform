@@ -1,11 +1,11 @@
 ---
 title: 二段検索の段 — グラフ近傍展開と再ランク（既定オフ・opt-in）
 type: spec
-status: draft
+status: in-progress
 related_ids: [FR-04, FR-17, FR-14, UC-10, ADR-0035, ADR-0034, ADR-0018, IADR-0242, IADR-0259]
 author: claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0035_graphrag-retrieval-strategy.md
   - planning:projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md

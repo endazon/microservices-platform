@@ -1,11 +1,11 @@
 ---
 title: FR-21 文書本文の直接受け入れ経路（受け入れ基準 ①〜⑧ と ⑨ の分離構造）
 type: spec
-status: draft
+status: in-progress
 related_ids: [FR-01, FR-02, FR-12, FR-19, FR-21, UC-03, UC-04, UC-11, ADR-0014, ADR-0015, ADR-0036, ADR-0050, ADR-0054, IADR-0119, IADR-0142, IADR-0264]
 author: Claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-27
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
   - planning:projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md
