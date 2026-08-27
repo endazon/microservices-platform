@@ -292,6 +292,7 @@ msgid "キーワード検索のみ →"
 msgstr "キーワード検索のみ →"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "キャンセル"
@@ -755,6 +756,7 @@ msgstr "例: smb://fs01/share/規程集"
 msgid "例: 経費精算"
 msgstr "例: 経費精算"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "例: 開発"
 msgstr "例: 開発"
@@ -1353,17 +1355,40 @@ msgstr "文書詳細で確認"
 msgid "新しいお知らせが {count} 件あります"
 msgstr "新しいお知らせが {count} 件あります"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "既定のライフサイクル状態"
 msgstr "既定のライフサイクル状態"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "既定の機密区分"
 msgstr "既定の機密区分"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "既定の部門"
 msgstr "既定の部門"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
+msgid "既定属性"
+msgstr "既定属性"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
+msgid "既定属性の編集"
+msgstr "既定属性の編集"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
+msgid "既定属性は、これ以降に取り込まれる文書に適用されます。取り込み済みの文書は変わりません。"
+msgstr "既定属性は、これ以降に取り込まれる文書に適用されます。取り込み済みの文書は変わりません。"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
+msgid "既定属性を更新しました。"
+msgstr "既定属性を更新しました。"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
+msgid "既定属性を編集: {sourceName}"
+msgstr "既定属性を編集: {sourceName}"
 
 #: platform/frontend/src/foundation/notifications/NotificationBell.tsx
 msgid "既読"
@@ -1380,6 +1405,10 @@ msgstr "既読にできませんでした"
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "日付"
 msgstr "日付"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
+msgid "更新する"
+msgstr "更新する"
 
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "更新日:"
@@ -1406,6 +1435,7 @@ msgstr "有効化"
 msgid "期間内の利用はありません。"
 msgstr "期間内の利用はありません。"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "未入力のときは予約値 {UNRESOLVED_DEPARTMENT} が入ります。"
 msgstr "未入力のときは予約値 {UNRESOLVED_DEPARTMENT} が入ります。"
@@ -1414,10 +1444,12 @@ msgstr "未入力のときは予約値 {UNRESOLVED_DEPARTMENT} が入ります�
 msgid "未同期"
 msgstr "未同期"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "未指定"
 msgstr "未指定"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。"
 msgstr "未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。"
