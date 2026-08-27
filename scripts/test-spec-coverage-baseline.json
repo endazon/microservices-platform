@@ -152,6 +152,7 @@
       "DocumentSyncConsumerTests"
     ],
     "docs/tests/FR-19_private-notes-lifecycle.md": [
+      "BffPrivateNoteEndpointTests",
       "DocScopeValidationTests",
       "PrivateNoteLifecycleTests",
       "PrivateNoteQuotaTests"
@@ -210,6 +211,13 @@
     "docs/tests/SC-10_operations-dashboard.md": [
       "DashboardBffEndpointTests",
       "DashboardEndpointTests"
+    ],
+    "docs/tests/SC-19_private-notes-screen.md": [
+      "BffPrivateNoteEndpointTests"
+    ],
+    "docs/tests/SC-20_obsidian-settings-screen.md": [
+      "BffPrivateNoteEndpointTests",
+      "SyncDeviceTokenTests"
     ],
     "docs/tests/SC-21_ai-suggestion-list.md": [
       "AiSuggestionEndpointsTests",

@@ -3,6 +3,10 @@ using DocumentService.Api.Foundation.Persistence;
 using DocumentService.Api.Foundation.Ports;
 using DocumentService.Api.Foundation.Services;
 using DocumentService.Application.Foundation.Ports;
+// FR-19, #451-a: 応答・要求の形は `Knowledge.Contracts/Dtos/PrivateNoteDto.cs` が持つ。
+// **BFF（別ユニット）が同じ形を配るため、定義を 2 つ持たない**（タグ辞書と同じ切り分け。
+// サービス内に写しを置くと契約検査が片方しか見ず、静かに割れる）。
+using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
@@ -100,13 +104,10 @@ public static class PrivateNoteEndpoints
 
             note.SoftDelete(DateTimeOffset.UtcNow);
             await db.SaveChangesAsync(ct);
-            return Results.Ok(new
-            {
-                deletedAt = note.DeletedAt,
-                purgeAt = note.PurgeAt,
-                // 決定 19・20: 論理削除しても容量は空かない（利用者へ伝える事実の機械可読な形）。
-                capacityFreed = false,
-            });
+            // 決定 19・20: 論理削除しても容量は空かない（利用者へ伝える事実の機械可読な形）。
+            // **契約型で返す**（#451-a）—— 匿名型だと BFF・画面・openapi のどれとも突き合わない。
+            return Results.Ok(new PrivateNoteDeletedResponse(note.DeletedAt, note.PurgeAt,
+                CapacityFreed: false));
         });
 
         // FR-19: 復元（90 日以内。purge 済みは行が無く 404 になる＝復元不可）。
@@ -277,32 +278,11 @@ public static class PrivateNoteEndpoints
     });
 }
 
-public record CreatePrivateNoteRequest(string Title, string? VaultPath = null);
+// FR-19, #451-a: 一覧・作成・完全削除・露出トグルの形は `Knowledge.Contracts.Dtos` にある
+// （`PrivateNoteDto` / `PrivateNoteUsageDto` / `PrivateNoteListResponse` /
+// `CreatePrivateNoteRequest` / `PurgePrivateNotes{Request,Response}` / `UpdateExposureRequest` /
+// `PrivateNoteDeletedResponse`）。**BFF が同じ形を画面へ配るため、定義はそちら 1 つだけである。**
 
-public record PurgePrivateNotesRequest(List<Guid> Ids);
-
-public record PurgePrivateNotesResponse(int PurgedCount, long FreedBytes);
-
-public record UpdateExposureRequest(bool IncludeInSearch, bool IncludeInGraph, bool IncludeInAi);
-
+// 上限変更（管理者）だけはここに残る —— **BFF に口を持たない**（計画に載せる画面が無い）ため、
+// 契約として共有する相手が居ない。
 public record SetQuotaRequest(long LimitBytes);
-
-public record PrivateNoteUsageDto(long UsedBytes, long LimitBytes, int Percent);
-
-public record PrivateNoteDto(
-    Guid Id,
-    string Title,
-    string VaultPath,
-    int Version,
-    long Bytes,
-    string? ContentHash,
-    bool IncludeInSearch,
-    bool IncludeInGraph,
-    bool IncludeInAi,
-    bool Deleted,
-    DateTimeOffset? DeletedAt,
-    DateTimeOffset? PurgeAt,
-    DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
-
-public record PrivateNoteListResponse(PrivateNoteUsageDto Usage, List<PrivateNoteDto> Notes);

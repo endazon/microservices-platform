@@ -2224,6 +2224,273 @@ paths:
                 items: { $ref: "#/components/schemas/AiSuggestion" }
         "400": { description: state / kind が値域外（そのまま透過する） }
 
+  # ── SC-19 / SC-20, FR-19/FR-20, UC-11: 個人資料（private-note）と Obsidian 連携設定（#451）─────
+  # 後段は DocumentService の `/private-notes*` 群。**リソース名は計画が確定させた `private-notes`**
+  # （ADR-0054 決定 4）。
+  #
+  # 認可（全 11 口に共通）:
+  #   - **認証のみ・ロール不問**。計画 05_screens は SC-19 / SC-20 を「全利用者が利用でき、表示範囲は
+  #     本人が所有する個人資料に限る」と定め、**管理者が他利用者の個人資料・同期設定を扱う導線を
+  #     明示的に禁じている**。したがってロールでは絞らない。
+  #   - **本人性の判定は後段が持つ**。後段は主体を JWT からしか採らず、台帳の所有者で絞り、
+  #     **他者の資料・端末は 404 で存在ごと秘匿する**（403 にすると他人の ID の実在が漏れる）。
+  #     BFF はこの判定を複製せず、利用者の資格情報を後段へ転送する。
+  #   - **書き込みだけ** ABAC の `write` スコープで前段を絞る（ADR-0036 D-07・#1010）。
+  #     write 許可ポリシーが無い主体は 403。**読み取りには前段を置かない**（返すのは呼び出し者自身の
+  #     資料だけで秘匿する相手が居らず、文書属性フィルタは台帳の投影に適用できない）。
+  #   - **端末・トークンの口にも前段を置かない**。個別失効は SC-20 が「端末紛失時の唯一の防御線」と
+  #     定めており、文書 ABAC の整備状況に依存させない。
+  #
+  # **後段の本文は詰め替えず透過する** —— 507（容量上限）の本文が SC-19 の固定文言の根拠であり、
+  # 409（`vault_path_conflict` / `not_deleted`）も同様である。
+  #
+  # 載せていない後段の口: `/private-notes/quotas/{ownerId}`（管理者の上限変更。**載せる画面が計画に無い**）と
+  # `/private-notes/sync/*`（Obsidian プラグイン向け。**資格情報が別系統の同期トークン**であり SPA は呼ばない）。
+  /bff/private-notes:
+    get:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, UC-11, SC-19: 個人資料の一覧＋容量（本人のもののみ）"
+      description: |
+        削除済みも同じ一覧に載る（SC-19 の「削除済み」タブは同じ応答を絞って描く）。
+        容量の内訳「うち削除済み」は**画面が削除済み行の `bytes` を合算して出す** ——
+        後段が持つのは台帳の行だけであり、内訳という項目を持たない（数え方を 2 つにしない）。
+        **他人の資料は 1 件も現れない**（件数も示さない。SC-19「描いてはいけないもの」）。
+      operationId: bff-private-note-list
+      responses:
+        "200":
+          description: 本人の個人資料と容量
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateNoteListResponse" }
+        "401": { description: 未認証 }
+    post:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, UC-11, SC-19: 個人資料を作成する（タイトルのみ・本文は受け取らない）"
+      description: |
+        本文編集は Obsidian 経路のみである（ADR-0046 D-02。本画面はリッチエディタを描かない）。
+        既定は**非公開（共有 0 件）・機密区分 `restricted`・露出 3 トグル OFF** で作られる。
+        **容量 100% では新規作成だけが 507 で拒まれる**（既存資料の更新は通る。ADR-0037 決定 17）。
+      operationId: bff-private-note-create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePrivateNoteRequest" }
+      responses:
+        "201":
+          description: 作成された個人資料
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateNoteDto" }
+        "400": { description: タイトル未指定（RFC7807 ValidationProblem） }
+        "401": { description: 未認証 }
+        "403": { description: write 許可ポリシーが無い（deny-by-default） }
+        "409": { description: 同じ Vault パスの資料が既にある（`vault_path_conflict`） }
+        "507":
+          description: |
+            保存容量の上限に達している（**新規作成のみ拒否**）。本文には使用量・上限・
+            容量を空ける手段（完全削除・上限引き上げの依頼）が入る。**BFF は詰め替えない。**
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+
+  /bff/private-notes/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, UC-11, SC-19: 個人資料を論理削除する（90 日は復元可）"
+      description: |
+        **容量は空かない。** 応答の `capacityFreed=false` が、SC-19 の確認ダイアログの固定文言
+        「削除しても容量は空きません（90 日間保管されます）」の根拠である。
+        他人の資料・不在はいずれも 404（存在秘匿）。
+      operationId: bff-private-note-soft-delete
+      responses:
+        "200":
+          description: 論理削除の結果（完全削除の期限つき）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateNoteDeletedResponse" }
+        "401": { description: 未認証 }
+        "403": { description: write 許可ポリシーが無い }
+        "404": { description: 不在または他人の資料（区別しない） }
+
+  /bff/private-notes/{id}/restore:
+    post:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, UC-11, SC-19: 論理削除された個人資料を復元する（90 日以内）"
+      description: |
+        90 日を過ぎた資料は台帳ごと消えており **404**（＝復元不可）。削除されていない資料は 409。
+      operationId: bff-private-note-restore
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: 復元された個人資料
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateNoteDto" }
+        "401": { description: 未認証 }
+        "403": { description: write 許可ポリシーが無い }
+        "404": { description: 不在・他人の資料・完全削除済み（区別しない） }
+        "409": { description: 削除されていない（`not_deleted`） }
+
+  /bff/private-notes/{id}/exposure:
+    put:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, FR-20, SC-20: 露出 3 トグル（横断検索 / グラフ / AI 入力）を設定する"
+      description: |
+        3 つは**独立に設定でき、既定はいずれも OFF** である。
+        🔴 現時点の後段は**保存するだけ**であり、ON にしても検索・グラフ・AI へは流れない
+        （消費側を安全に絞る基盤が未了のため deny 側に倒してある）。
+      operationId: bff-private-note-exposure
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateExposureRequest" }
+      responses:
+        "200":
+          description: 更新後の個人資料
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateNoteDto" }
+        "401": { description: 未認証 }
+        "403": { description: write 許可ポリシーが無い }
+        "404": { description: 不在または他人の資料（区別しない） }
+
+  /bff/private-notes/purge:
+    post:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, UC-11, SC-19: 個人資料を完全削除する（即時・復元不可。単票／一括共用）"
+      description: |
+        **単票も一括も同じ口**である（`ids` の要素数の差でしかない。SC-19 は「1 件ずつでは
+        実用に耐えない」として複数選択の一括を必須にしている）。対象は**削除済みのみ**。
+        応答の `freedBytes` が、確認ダイアログで示した「解放される容量」の確定値である。
+        `ids` に他人の資料・不在の ID が 1 つでも混じれば **404**（部分適用しない）。
+      operationId: bff-private-note-purge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PurgePrivateNotesRequest" }
+      responses:
+        "200":
+          description: 完全削除の結果（件数と解放された容量）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PurgePrivateNotesResponse" }
+        "400": { description: ids が空（RFC7807 ValidationProblem） }
+        "401": { description: 未認証 }
+        "403": { description: write 許可ポリシーが無い }
+        "404": { description: 不在または他人の資料が混じっている（区別しない） }
+        "409": { description: 削除済みでない資料が混じっている（`not_deleted`） }
+
+  /bff/private-notes/devices:
+    get:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-20, UC-11, SC-20: 同期端末の一覧（本人のもののみ）"
+      description: |
+        **トークンは平文もハッシュも載らない。** 画面は `expiresAt` と `active` から
+        「有効（残り日数）／期限切れ間近（残り 7 日以内）／期限切れ／失効」を描き分ける。
+      operationId: bff-sync-device-list
+      responses:
+        "200":
+          description: 本人の同期端末
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SyncDeviceDto" }
+        "401": { description: 未認証 }
+    post:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-20, UC-11, SC-20: 同期端末を登録しトークンを発行する（有効期限 30 日）"
+      description: |
+        🔴 **平文トークンはこの応答で一度だけ返る。再表示はできない**（再発行のみ）。
+        **管理者承認を挟まない**（私物端末を認めるため本人管理とする）。
+        **自動更新（リフレッシュ）の口は存在しない** —— 更新は手動再発行だけである
+        （有効期限は、失効操作を忘れた場合の最終的な歯止めであるため）。
+      operationId: bff-sync-device-issue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSyncDeviceRequest" }
+      responses:
+        "201":
+          description: 発行された同期トークン（平文はこの応答のみ）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncTokenIssuedResponse" }
+        "400": { description: 端末名が空（RFC7807 ValidationProblem） }
+        "401": { description: 未認証 }
+
+  /bff/private-notes/devices/{id}:
+    delete:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-20, SC-20: 同期端末を個別に失効させる（端末紛失時の唯一の防御線）"
+      description: |
+        **書き込みだが ABAC の前段を置かない。** 失効を文書 ABAC ポリシーの有無に依存させると、
+        ポリシー未整備の環境で紛失端末を失効できなくなる（安全側は「失効は通す」である）。
+        他人の端末・不在はいずれも 404。
+      operationId: bff-sync-device-revoke
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: 失効した }
+        "401": { description: 未認証 }
+        "404": { description: 不在または他人の端末（区別しない） }
+
+  /bff/private-notes/devices/{id}/reissue:
+    post:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-20, SC-20: 同期トークンを手動で再発行する（旧トークンは即時無効）"
+      description: |
+        期限切れ・失効済みの端末に対しても本人操作として再発行できる（**回復経路はこれだけである**）。
+        再発行後のトークンは新規発行と同じ扱い（一度だけ表示・再表示不可・有効期限 30 日）である。
+        ⚠️ 旧トークンは**プラグインの設定に残ったまま**であり、入れ直しが要る。
+      operationId: bff-sync-device-reissue
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: 再発行された同期トークン（平文はこの応答のみ）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncTokenIssuedResponse" }
+        "401": { description: 未認証 }
+        "404": { description: 不在または他人の端末（区別しない） }
+
+  /bff/private-notes/devices/revoke-all:
+    post:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-20, SC-20: 全端末の同期トークンを一括失効させる"
+      description: |
+        どの端末を失ったか特定できない場面のための操作である。**復元できない**旨を明示した
+        確認ダイアログを画面側で伴わせる（SC-20）。
+      operationId: bff-sync-device-revoke-all
+      responses:
+        "200":
+          description: 失効した端末数
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RevokeAllSyncDevicesResponse" }
+        "401": { description: 未認証 }
+
 components:
   schemas:
     SearchRequest:
@@ -3690,3 +3957,170 @@ components:
         retryable:
           type: boolean
           description: "true は一時障害（呼び出し側は再試行）。false は恒久理由（呼び出し側はスキップ）"
+
+    # ── FR-19 / FR-20, SC-19 / SC-20, UC-11（#451）: 個人資料と同期端末 ────────────────
+    # C# 側の正本は `Knowledge.Contracts/Dtos/PrivateNoteDto.cs`。
+    # プロパティ集合の一致は `scripts/check-openapi-dto-drift.js` が保つ。
+    PrivateNoteDto:
+      type: object
+      description: |
+        FR-19, SC-19: 個人資料 1 件（台帳の投影）。**本文は含まない** ——
+        本文編集は Obsidian 経路のみである（ADR-0046）。
+        `bytes` は**最新版のバイト数**であり、版履歴は容量に算入しない（ADR-0037 決定 16）。
+        `deleted` が真のとき `purgeAt` が完全削除の期限であり、SC-19 の「残り日数」と
+        警告色（残り 7 日以内）の根拠になる。
+        🔴 **所有者を運ぶ項目を持たない。** 誰の資料かは主体（JWT）で決まり、要求側が指定できない。
+      required:
+        [
+          id,
+          title,
+          vaultPath,
+          version,
+          bytes,
+          includeInSearch,
+          includeInGraph,
+          includeInAi,
+          deleted,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        vaultPath: { type: string, description: "Obsidian Vault 内の相対パス（例 設計メモ.md）" }
+        version: { type: integer, format: int32, description: "版番号。1 編集 = 1 版で進む" }
+        bytes: { type: integer, format: int64, description: "最新版のバイト数（版履歴は算入しない）" }
+        contentHash: { type: string, nullable: true, description: "本文指紋。未同期の資料では null" }
+        includeInSearch: { type: boolean, description: "横断検索に含める（既定 false）" }
+        includeInGraph: { type: boolean, description: "ナレッジグラフに表示する（既定 false）" }
+        includeInAi: { type: boolean, description: "AI の入力に含める（既定 false）" }
+        deleted: { type: boolean, description: "論理削除済み（90 日は復元可）" }
+        deletedAt: { type: string, format: date-time, nullable: true }
+        purgeAt: { type: string, format: date-time, nullable: true, description: "完全削除の期限" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    PrivateNoteUsageDto:
+      type: object
+      description: |
+        FR-19, SC-19, ADR-0037 決定 16・17: 保存容量の使用状況。
+        **算入するのは最新版と論理削除済み（90 日保管中）**であり、版履歴は算入しない。
+        `percent` は 80 / 95 / 100 の段階警告の判定に画面が使う。
+      required: [usedBytes, limitBytes, percent]
+      properties:
+        usedBytes: { type: integer, format: int64 }
+        limitBytes: { type: integer, format: int64, description: "既定 1 GB。管理者が最大 1 TB まで引き上げ可" }
+        percent: { type: integer, format: int32 }
+
+    PrivateNoteListResponse:
+      type: object
+      description: >-
+        FR-19, SC-19: 一覧（削除済みを含む）と容量表示を 1 応答で返す。
+        「うち削除済み」の内訳は画面が削除済み行の bytes を合算して出す（数え方を 2 つ持たない）。
+      required: [usage, notes]
+      properties:
+        usage: { $ref: "#/components/schemas/PrivateNoteUsageDto" }
+        notes:
+          type: array
+          items: { $ref: "#/components/schemas/PrivateNoteDto" }
+
+    CreatePrivateNoteRequest:
+      type: object
+      description: >-
+        FR-19, SC-19: 個人資料の新規作成。**タイトルのみで本文を受け取らない**
+        （本画面にリッチエディタを描かない。ADR-0046 D-02）。
+      required: [title]
+      properties:
+        title: { type: string }
+        vaultPath:
+          type: string
+          nullable: true
+          description: "Obsidian Vault 内の相対パス。省略時は `<タイトル>.md` を後段が採る"
+
+    PurgePrivateNotesRequest:
+      type: object
+      description: >-
+        FR-19, SC-19, ADR-0037 決定 20: 完全削除（即時・復元不可）。
+        **単票も一括も同じ口**である（要素数の差でしかない）。
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items: { type: string, format: uuid }
+
+    PurgePrivateNotesResponse:
+      type: object
+      description: >-
+        FR-19, SC-19: 完全削除の結果。`freedBytes` は確認ダイアログで示した
+        「解放される容量」の確定値である。
+      required: [purgedCount, freedBytes]
+      properties:
+        purgedCount: { type: integer, format: int32 }
+        freedBytes: { type: integer, format: int64 }
+
+    PrivateNoteDeletedResponse:
+      type: object
+      description: |
+        FR-19, SC-19, ADR-0037 決定 19・20: 論理削除の結果。
+        🔴 `capacityFreed` は**常に false** である —— 「削除しても容量は空きません
+        （90 日間保管されます）」という SC-19 の固定文言の根拠を、散文ではなく機械可読な形で渡す。
+      required: [capacityFreed]
+      properties:
+        deletedAt: { type: string, format: date-time, nullable: true }
+        purgeAt: { type: string, format: date-time, nullable: true, description: "完全削除の期限" }
+        capacityFreed: { type: boolean }
+
+    UpdateExposureRequest:
+      type: object
+      description: >-
+        FR-19, FR-20, SC-20: 露出 3 トグル（横断検索 / ナレッジグラフ / AI 入力）。
+        **既定はいずれも OFF・3 つは独立**である。
+      required: [includeInSearch, includeInGraph, includeInAi]
+      properties:
+        includeInSearch: { type: boolean }
+        includeInGraph: { type: boolean }
+        includeInAi: { type: boolean }
+
+    SyncDeviceDto:
+      type: object
+      description: |
+        FR-20, SC-20: 同期端末 1 件。**トークンは平文もハッシュも載らない。**
+        `active` は「未失効かつ期限内」であり、`expiresAt` との差から画面が
+        「有効（残り日数）／期限切れ間近（残り 7 日以内）／期限切れ／失効」を描き分ける。
+      required: [id, deviceName, issuedAt, expiresAt, revoked, active]
+      properties:
+        id: { type: string, format: uuid }
+        deviceName: { type: string }
+        issuedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, description: "発行から 30 日" }
+        revoked: { type: boolean }
+        lastSyncAt: { type: string, format: date-time, nullable: true, description: "未同期なら null" }
+        active: { type: boolean }
+
+    CreateSyncDeviceRequest:
+      type: object
+      description: "FR-20, SC-20, ADR-0037 決定 11: 端末登録（同期トークンの発行）。管理者承認を挟まない。"
+      required: [deviceName]
+      properties:
+        deviceName: { type: string }
+
+    SyncTokenIssuedResponse:
+      type: object
+      description: |
+        FR-20, SC-20, ADR-0037 決定 12・15: 発行・再発行の応答。
+        🔴 **`token`（平文）が現れるのはこの型だけである。** 保存されるのはハッシュのみで、
+        一覧にも他のどの応答にも平文は載らない（発行直後に一度だけ表示・再表示不可）。
+        **自動更新（リフレッシュ）の口は存在しない** —— 更新は手動再発行だけである。
+      required: [deviceId, deviceName, token, expiresAt]
+      properties:
+        deviceId: { type: string, format: uuid }
+        deviceName: { type: string }
+        token: { type: string, description: "平文の同期トークン。この応答でしか返らない" }
+        expiresAt: { type: string, format: date-time, description: "発行から 30 日" }
+
+    RevokeAllSyncDevicesResponse:
+      type: object
+      description: "FR-20, SC-20, ADR-0037 決定 13: 全端末の一括失効の結果（端末紛失時の防御）。"
+      required: [revokedCount]
+      properties:
+        revokedCount: { type: integer, format: int32 }

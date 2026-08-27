@@ -4,6 +4,8 @@ using System.Net.Http.Json;
 using AwesomeAssertions;
 using DocumentService.Api.Foundation.Endpoints;
 using DocumentService.Api.Foundation.Ports;
+// #451-a: 個人資料の応答 DTO は Knowledge.Contracts へ集約した（BFF と定義を 1 つにするため）。
+using Knowledge.Contracts.Dtos;
 
 namespace DocumentService.Api.Tests;
 

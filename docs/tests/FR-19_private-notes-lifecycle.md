@@ -3,14 +3,14 @@ title: FR-19 個人資料のライフサイクル・容量・版保持 テスト
 type: test-spec
 status: completed
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-28
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-22, UC-11, SC-19]
 adrs: [ADR-0037, ADR-0054]
 iadrs: [IADR-0270]
-specs: [20260823_issue-451_private-note-obsidian-sync-core]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff]
 issues: [#451]
 -->
 
@@ -19,7 +19,9 @@ issues: [#451]
 ## テスト対象・範囲
 
 文書サービスの個人資料端点・容量規則・版保持・定期処理（自動物理削除・通知検知）。
-**対象外**: 画面・BFF・通知サービス側の受け皿・露出トグル ON の消費側（いずれも未実装の残件）。
+**対象外**: 画面・BFF・通知サービス側の受け皿・露出トグル ON の消費側。
+**［2026-08-28 追記］このうち BFF は実装され、認可は `Platform.Bff.Tests` の
+`BffPrivateNoteEndpointTests` が固定している**（本書の対象は文書サービス側のままである）。
 
 実体: `DocumentService.Api.Tests` の `PrivateNoteQuotaTests` / `PrivateNoteLifecycleTests` /
 `DocScopeValidationTests`（結合テスト。InMemory ＋ 記録用スタブ）。

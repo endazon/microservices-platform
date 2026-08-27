@@ -7,6 +7,8 @@ using DocumentService.Api.Foundation.Endpoints;
 using DocumentService.Api.Foundation.Persistence;
 using DocumentService.Api.Foundation.Ports;
 using DocumentService.Api.Foundation.Services;
+// #451-a: 個人資料・同期端末の応答 DTO は Knowledge.Contracts へ集約した（BFF と定義を 1 つにするため）。
+using Knowledge.Contracts.Dtos;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DocumentService.Api.Tests;

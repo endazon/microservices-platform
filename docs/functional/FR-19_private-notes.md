@@ -10,7 +10,7 @@ author: Claude
 ids: [FR-19, FR-20, FR-21, FR-22, UC-11, SC-19, SC-20]
 adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0056, ADR-0058]
 iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff]
 issues: [#451, #516, #600, #986, planning#472, planning#475]
 -->
 
@@ -18,7 +18,8 @@ issues: [#451, #516, #600, #986, planning#472, planning#475]
 
 > **`status: in-progress` の理由と、いま残っているもの**。バックエンド中核（台帳・容量・版保持・
 > 論理削除／復元／完全削除・露出トグルの保存・通知の発火検知）は入っている。
-> **入っていないのは** ①画面（個人資料管理・連携設定）と BFF 端点
+> **入っていないのは** ①画面（個人資料管理・連携設定）——
+> **BFF 端点は 2026-08-28 に実装済みで、残るのはフロントエンドである**——
 > ③露出トグル ON の消費側配線（認可スコープ選言の全サービス移行後） ④退職時規則・
 > （②通知サービス側の受け口は 2026-08-28 に実装済み — 発火の結線が残る）
 > アカウント無効化時のトークン失効（認可・人事連携側）である。線引きは同名の作業仕様書と

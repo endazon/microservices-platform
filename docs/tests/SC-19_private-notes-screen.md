@@ -3,14 +3,14 @@ title: SC-19 個人資料管理画面 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-28
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, UC-11, SC-19]
 adrs: [ADR-0037, ADR-0046]
 iadrs: [IADR-0270]
-specs: [20260823_issue-451_private-note-obsidian-sync-core]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff]
 issues: [#451]
 -->
 
@@ -18,10 +18,14 @@ issues: [#451]
 
 ## テスト対象・範囲
 
-> **`status: in-progress` の理由**: 画面そのもの（フロントエンド・BFF）は未実装であり、
-> 現段階のテストは**画面が呼ぶバックエンド API の挙動**（一覧・作成・削除・復元・完全削除・
+> **`status: in-progress` の理由**: 画面そのもの（フロントエンド）は未実装であり、
+> 現段階のテストは**画面が呼ぶ API の挙動**（一覧・作成・削除・復元・完全削除・
 > 容量表示・露出設定）を固定している。画面実装の issue が UI テスト（表示文言・確認ダイアログ・
 > 一括選択）を本書へ追記する。
+>
+> **［2026-08-28 追記］BFF 端点は実装済みである**（認可の試験は
+> `Platform.Bff.Tests` の `BffPrivateNoteEndpointTests`。無認証 401・他人の資料は 404・
+> 書き込みの write スコープ 403 と、それぞれの陽性対照を固定している）。
 
 - 本文編集の導線が存在しないこと（編集は Obsidian 経路のみ）は画面実装時の検証項目である。
 - バックエンド API の写像は [FR-19_private-notes-lifecycle](FR-19_private-notes-lifecycle.md) が正。

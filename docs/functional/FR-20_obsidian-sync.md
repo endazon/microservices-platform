@@ -10,7 +10,7 @@ author: Claude
 ids: [FR-19, FR-20, FR-22, UC-11, SC-20]
 adrs: [ADR-0037, ADR-0046, ADR-0054]
 iadrs: [IADR-0270]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff]
 issues: [#451, #600]
 -->
 
@@ -18,7 +18,8 @@ issues: [#451, #600]
 
 > **`status: in-progress` の理由と、いま残っているもの**。サーバ側の同期プロトコル・
 > 同期トークン（端末・発行・失効）・監査・期限予告の検知は入っている。
-> **入っていないのは** ①Obsidian プラグイン本体（自作・社内配布）②連携設定画面と BFF 端点である
+> **入っていないのは** ①Obsidian プラグイン本体（自作・社内配布）②連携設定画面である
+> （**BFF 端点は 2026-08-28 に実装済み**。残るのはフロントエンドである）
 > （③通知サービス側の受け口は 2026-08-28 に実装済み — 発火の結線が残る）。
 
 ## 概要

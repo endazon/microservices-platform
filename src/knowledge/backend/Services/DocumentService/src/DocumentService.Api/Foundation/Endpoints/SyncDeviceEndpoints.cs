@@ -1,6 +1,9 @@
 using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Persistence;
 using DocumentService.Api.Foundation.Services;
+// FR-20, #451-a: 端末・トークンの形は `Knowledge.Contracts/Dtos/PrivateNoteDto.cs` が持つ
+// （BFF が同じ形を SC-20 の画面へ配るため、定義を 2 つ持たない）。
+using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 
@@ -105,7 +108,8 @@ public static class SyncDeviceEndpoints
             await db.SaveChangesAsync(ct);
             audit.Record("private-note.sync-token.revoke-all", owner, "granted",
                 $"count={devices.Count}");
-            return Results.Ok(new { revokedCount = devices.Count });
+            // #451-a: 契約型で返す（匿名型だと BFF・画面・openapi のどれとも突き合わない）。
+            return Results.Ok(new RevokeAllSyncDevicesResponse(devices.Count));
         });
 
         return app;
@@ -123,11 +127,6 @@ public static class SyncDeviceEndpoints
         d.IsActive(now));
 }
 
-public record CreateSyncDeviceRequest(string DeviceName);
-
-// トークンの平文（Token）は本応答で 1 回だけ返る。保存されるのはハッシュのみ。
-public record SyncTokenIssuedResponse(Guid DeviceId, string DeviceName, string Token,
-    DateTimeOffset ExpiresAt);
-
-public record SyncDeviceDto(Guid Id, string DeviceName, DateTimeOffset IssuedAt,
-    DateTimeOffset ExpiresAt, bool Revoked, DateTimeOffset? LastSyncAt, bool Active);
+// FR-20, #451-a: `CreateSyncDeviceRequest` / `SyncTokenIssuedResponse`（平文トークンは本応答で
+// 1 回だけ返る。保存されるのはハッシュのみ）/ `SyncDeviceDto` / `RevokeAllSyncDevicesResponse` は
+// `Knowledge.Contracts.Dtos` にある。**BFF が同じ形を配るため、定義はそちら 1 つだけである。**
