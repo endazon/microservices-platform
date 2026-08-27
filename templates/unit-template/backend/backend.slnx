@@ -4,19 +4,12 @@
        この glob は templates/ に当たらないため、本雛形そのものは ci.yml の template-backend-build
        ジョブが配置後の位置へ複製して build / test する（#830。テンプレート位置のままではビルド
        できない —— platform Shared への相対参照が配置後を前提にしているため）。
-       プロジェクト構成は ADR-0030 の標準（Api / Application / Domain / Infrastructure / Contracts ＋ Tests）。
-       詳細は docs/tech/tech-requirements.md「バックエンドアプリケーション層標準」を参照。 -->
-  <Folder Name="/Services/SampleService/" />
-  <Folder Name="/Services/SampleService/src/">
-    <Project Path="Services/SampleService/src/SampleService.Api/SampleService.Api.csproj" />
-    <Project Path="Services/SampleService/src/SampleService.Application/SampleService.Application.csproj" />
-    <Project Path="Services/SampleService/src/SampleService.Domain/SampleService.Domain.csproj" />
-    <Project Path="Services/SampleService/src/SampleService.Infrastructure/SampleService.Infrastructure.csproj" />
-    <Project Path="Services/SampleService/src/SampleService.Contracts/SampleService.Contracts.csproj" />
-  </Folder>
-  <!-- テストは 1 プロジェクト。Unit / Integration はフォルダで分ける
-       （計画 12_backend-application-stack §規範性・粒度・置き場 / planning#180）。 -->
-  <Folder Name="/Services/SampleService/tests/">
-    <Project Path="Services/SampleService/tests/SampleService.Tests/SampleService.Tests.csproj" />
+       プロジェクト構成は**サービス = 単一プロジェクト＋ Features / Domain / Infrastructure / Common の
+       フォルダ標準**（IADR-0282。オーナー裁定 2026-08-28。従前の 8 要素プロジェクト分割
+       （Api / Application / Domain / Infrastructure / Contracts）は撤回された）。
+       詳細は Services/SampleService/README.md を参照。 -->
+  <Folder Name="/Services/SampleService/">
+    <Project Path="Services/SampleService/SampleService.csproj" />
+    <Project Path="Services/SampleService/Tests/SampleService.Tests.csproj" />
   </Folder>
 </Solution>
