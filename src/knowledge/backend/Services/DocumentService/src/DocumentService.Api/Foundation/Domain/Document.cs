@@ -1,3 +1,5 @@
+using Knowledge.Contracts.Dtos;
+
 namespace DocumentService.Api.Foundation.Domain;
 
 // FR-06, ADR-0002: 正規化文書エンティティ（DB per Service）
@@ -156,6 +158,22 @@ public class Document
     // 版・時刻は呼び出し側の Update/Snapshot が進める（ここでは動かさない）。
     public void RecordContentFingerprint(string? contentFingerprint)
         => ContentFingerprint = contentFingerprint;
+
+    // FR-19, FR-21 受け入れ基準 ⑨, [[IADR-0283]] 決定 4:
+    // 個人資料の露出トグル「AI の入力に含める」を ABAC 文書属性へ写す。
+    //
+    // 🔴 **版・時刻を動かさない**（`Touch()` / `Snapshot()` を呼ばない）。**露出トグルは本文の編集
+    // ではない** —— FR-19 は「編集の回数だけ版を保持」と定めており、トグルで版が増えると
+    // （a）版履歴が編集以外で膨らみ、（b）Obsidian 同期の `baseVersion` が動いてプラグインが
+    // 409 を受ける。`RecordContentFingerprint` と同じ「版を進めない設定点」である。
+    //
+    // **辞書は差し替える**（その場で書き換えない）—— jsonb 変換器の値比較器はスナップショットとの
+    // 比較で変更を検出するが、参照ごと差し替えるほうが意図が読める。
+    public void SetAiInputExposure(bool includeInAi)
+        => Attributes = new Dictionary<string, string>(Attributes)
+        {
+            [AiInputExposure.AttributeKey] = AiInputExposure.FromToggle(includeInAi),
+        };
 
     // FR-06, UC-03, SC-05: 公開する。アーカイブ済み（非公開化済み）からの再公開は状態遷移の意図に反する
     // ため認めない（UI だけでなくドメイン不変条件としても強制する。レビュー #171 指摘対応）。

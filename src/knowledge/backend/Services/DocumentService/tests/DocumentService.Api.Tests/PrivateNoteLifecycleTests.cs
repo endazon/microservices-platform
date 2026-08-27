@@ -92,6 +92,103 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
         doc.Attributes.Should().Contain("confidentiality", "restricted");
     }
 
+    // FR-21 受け入れ基準 ⑩ / FR-19: **新規に登録した個人資料は 3 トグルがすべて OFF** であり、
+    // FR-19 側はさらに**公開範囲＝非公開（共有 0 件）・機密区分＝`restricted`** を要求する。
+    //
+    // 計画は「⑩＝既定値を持たせ忘れる」を**素直に作ると満たされない性質**として名指ししている。
+    // よって **3 つのトグルを個別に**測り、公開範囲と機密区分も同じテストで固定する
+    // （どれか 1 つだけ既定を落とす変異が通り抜けないようにする）。
+    [Fact]
+    public async Task 新規の個人資料は3トグルOFFかつ非公開かつrestrictedで作られる()
+    {
+        var (user, session, _) = await OwnerAsync();
+        var resp = await session.PostAsJsonAsync("/private-notes/", new { title = "既定値の資料" });
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+        var note = (await resp.Content.ReadFromJsonAsync<PrivateNoteDto>())!;
+
+        // ⑩: 3 トグルすべて OFF（1 つずつ測る）。
+        note.IncludeInSearch.Should().BeFalse("横断検索に含める は既定 OFF");
+        note.IncludeInGraph.Should().BeFalse("ナレッジグラフに表示 は既定 OFF");
+        note.IncludeInAi.Should().BeFalse("AI の入力に含める は既定 OFF");
+
+        // FR-19: 公開範囲＝非公開（共有 0 件）。
+        var shares = await session.GetFromJsonAsync<List<DocumentShareDto>>(
+            $"/documents/{note.Id}/shares");
+        shares.Should().BeEmpty("新規の個人資料は所有者のみ（共有 0 件）");
+
+        // FR-19: 機密区分＝restricted。⑨ の判定が読む `ai_input` も **excluded で明示**される
+        // （[[IADR-0283]] 決定 4。不在に頼らない多層防御）。
+        var doc = await factory.CreateClient().GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>(
+            $"/documents/{note.Id}");
+        doc!.Attributes.Should().Contain(
+            ConfidentialityLevels.AttributeKey, ConfidentialityLevels.Restricted);
+        doc.Attributes.Should().Contain(AiInputExposure.AttributeKey, AiInputExposure.Excluded);
+
+        // FR-21 ⑨: 属性から導かれる判定も **AI 入力に含めない** である（既定の意味の確認）。
+        AiInputExposure.IsAllowed(doc.Attributes).Should().BeFalse();
+    }
+
+    // FR-21 受け入れ基準 ⑨ / [[IADR-0283]] 決定 4:
+    // 露出トグル「AI の入力に含める」が ABAC 文書属性 `ai_input` へ写る（**陽性対照つき**）。
+    // 台帳だけが変わって属性が取り残されると、RAG 経路は古い判定のまま動く。
+    [Fact]
+    public async Task AI入力トグルの変更が文書属性へ写る()
+    {
+        var (_, session, _) = await OwnerAsync();
+        var note = (await (await session.PostAsJsonAsync("/private-notes/",
+            new { title = "露出トグルの資料" })).Content.ReadFromJsonAsync<PrivateNoteDto>())!;
+
+        // 陽性対照: ON にすると included へ写り、判定も許可へ変わる。
+        var on = await session.PutAsJsonAsync($"/private-notes/{note.Id}/exposure",
+            new { includeInSearch = true, includeInGraph = false, includeInAi = true });
+        on.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await on.Content.ReadFromJsonAsync<PrivateNoteDto>())!.IncludeInAi.Should().BeTrue();
+
+        var afterOn = await AttributesOfAsync(note.Id);
+        afterOn.Should().Contain(AiInputExposure.AttributeKey, AiInputExposure.Included);
+        AiInputExposure.IsAllowed(afterOn).Should().BeTrue();
+
+        // 否定形: OFF へ戻すと excluded へ写り、判定も拒否へ戻る（片道にならない）。
+        var off = await session.PutAsJsonAsync($"/private-notes/{note.Id}/exposure",
+            new { includeInSearch = true, includeInGraph = false, includeInAi = false });
+        off.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var afterOff = await AttributesOfAsync(note.Id);
+        afterOff.Should().Contain(AiInputExposure.AttributeKey, AiInputExposure.Excluded);
+        AiInputExposure.IsAllowed(afterOff).Should().BeFalse();
+
+        // 🔴 他の既定属性を巻き込んで消していない（辞書の差し替えで落とさないこと）。
+        afterOff.Should().Contain("doc_scope", "private-note");
+        afterOff.Should().Contain(
+            ConfidentialityLevels.AttributeKey, ConfidentialityLevels.Restricted);
+    }
+
+    // FR-19, [[IADR-0283]] 決定 4: 🔴 **露出トグルの変更で版が進まない。**
+    // FR-19 は「編集の回数だけ版を保持」と定めており、トグルは本文の編集ではない。
+    // 版が進むと Obsidian 同期の `baseVersion` が動き、プラグインが 409 を受ける。
+    [Fact]
+    public async Task 露出トグルの変更では版が進まない()
+    {
+        var (_, session, plugin) = await OwnerAsync();
+        var noteId = await PushNoteAsync(plugin, "version-stable.md", "本文");
+        var before = (await factory.CreateClient()
+            .GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>($"/documents/{noteId}"))!.Version;
+
+        await session.PutAsJsonAsync($"/private-notes/{noteId}/exposure",
+            new { includeInSearch = true, includeInGraph = true, includeInAi = true });
+        await session.PutAsJsonAsync($"/private-notes/{noteId}/exposure",
+            new { includeInSearch = false, includeInGraph = false, includeInAi = false });
+
+        var after = (await factory.CreateClient()
+            .GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>($"/documents/{noteId}"))!.Version;
+        after.Should().Be(before, "露出トグルは本文の編集ではない（FR-19 の版の意味）");
+    }
+
+    private async Task<Dictionary<string, string>> AttributesOfAsync(Guid documentId)
+        => (await factory.CreateClient()
+            .GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>($"/documents/{documentId}"))!
+            .Attributes;
+
     // FR-19（否定形＋陽性対照）: 他者の資料は SC-19 の操作からも到達できない（存在秘匿の 404）。
     [Fact]
     public async Task 他者の資料はSC19の削除復元完全削除から到達できない()

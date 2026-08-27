@@ -233,8 +233,13 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
         restore.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
-    // FR-19 受け入れ基準, ADR-0037 フォローアップ 8, ADR-0054: 同期経由の新規作成の既定値。
+    // FR-19 受け入れ基準 / FR-21 受け入れ基準 ⑩, ADR-0037 フォローアップ 8, ADR-0054:
+    // 同期経由の新規作成の既定値。
     // doc_scope=private-note・owner=本人・機密区分 restricted・3 トグル OFF・共有 0 件。
+    //
+    // 🔴 **作成経路は 2 本ある**（SC-19 の `POST /private-notes/` と本経路）。⑩ は登録経路の基準で
+    // あるから、**両方を測る** —— 既定値は 1 か所（`PrivateNoteDefaults`）で持っているが、
+    // 片方だけ測ると将来どちらかが分岐したときに静かに割れる。
     [Fact]
     public async Task 同期経由の新規作成はフェイルセーフ既定で作られる()
     {
@@ -251,6 +256,9 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
         doc.Attributes.Should().Contain("owner", user);
         doc.Attributes.Should().Contain("confidentiality", "restricted",
             "プラグイン流入は画面バリデーションを経由しないため、サーバ側の既定で最も厳しい区分を適用する");
+        // FR-21 ⑨ / [[IADR-0283]] 決定 4: AI 入力の既定 OFF は**属性としても明示**される。
+        doc.Attributes.Should().Contain(AiInputExposure.AttributeKey, AiInputExposure.Excluded);
+        AiInputExposure.IsAllowed(doc.Attributes).Should().BeFalse();
 
         var list = await SessionAs(user).GetFromJsonAsync<PrivateNoteListResponse>(
             "/private-notes/");

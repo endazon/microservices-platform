@@ -169,7 +169,14 @@ public static class PrivateNoteEndpoints
         });
 
         // FR-19, SC-20: 露出 3 トグル（横断検索／グラフ／AI 入力）。既定 OFF・独立に設定できる。
-        // 🔴 ON の消費側配線は IADR-0253 段 3 の完了待ちであり、本段では保存のみ（[[IADR-0270]] 決定 5）。
+        //
+        // 🔴 **本経路は依然として `DocumentUpdated` を発行しない**（[[IADR-0270]] 決定 5 を維持）。
+        // 「横断検索に含める」ON で索引へ流す**生産側**の配線は同決定のフォローアップ 2 に残る。
+        //
+        // **［#447］「AI の入力に含める」だけは ABAC 文書属性 `ai_input` へ写す**
+        // （FR-21 受け入れ基準 ⑨ / [[IADR-0283]] 決定 4）—— 消費側（RAG 経路）が読む値であり、
+        // 台帳と属性が食い違わないよう**同じトランザクションで**更新する。属性を先に正しくしておく
+        // ことは漏れる向きではない（索引に載っていない文書の属性が正しいだけである）。
         g.MapPut("/{id:guid}/exposure", async (Guid id, UpdateExposureRequest req,
             HttpContext http, DocumentDbContext db, CancellationToken ct) =>
         {
@@ -179,8 +186,10 @@ public static class PrivateNoteEndpoints
 
             note.SetExposure(req.IncludeInSearch, req.IncludeInGraph, req.IncludeInAi,
                 DateTimeOffset.UtcNow);
-            await db.SaveChangesAsync(ct);
             var doc = await db.Documents.FindAsync([id], ct);
+            // **版は進めない**（[[IADR-0283]] 決定 4）——露出トグルは本文の編集ではない。
+            doc?.SetAiInputExposure(req.IncludeInAi);
+            await db.SaveChangesAsync(ct);
             return Results.Ok(ToDto(note, doc));
         });
 
@@ -222,13 +231,24 @@ public static class PrivateNoteEndpoints
         return app;
     }
 
-    // FR-19 受け入れ基準: 新規作成時の既定値。doc_scope=private-note（ADR-0054）・owner=本人
-    // （ADR-0036 D-05）・機密区分 restricted（07_abac-attribute-model のフェイルセーフ既定）。
+    // FR-19 受け入れ基準 / FR-21 受け入れ基準 ⑩: 新規作成時の既定値。
+    // doc_scope=private-note（ADR-0054）・owner=本人（ADR-0036 D-05）・
+    // 機密区分 restricted（07_abac-attribute-model のフェイルセーフ既定）。
+    //
+    // **［#447］`ai_input=excluded` を明示する**（[[IADR-0283]] 決定 4）——
+    // ⑩「新規に登録した個人資料は 3 トグルがすべて OFF」を、**値の不在ではなく明示された OFF**
+    // として持つ。不在に頼ると、`AiInputExposure` の fail-closed 分岐が失われたときに
+    // 静かに全件許可へ倒れる（多層防御。IADR-0044 と同じ向き）。
+    //
+    // **「横断検索に含める」「ナレッジグラフに表示」は属性へ写さない** ——
+    // 前者は「索引に載せない」ことで構造的に守られており（[[IADR-0270]] 決定 5）、
+    // 後者は ⑨ の判定対象ではない。使われない属性を先に置かない。
     internal static Dictionary<string, string> PrivateNoteDefaults(string owner) => new()
     {
         [DocumentAttributes.DocScopeKey] = DocumentAttributes.DocScopePrivateNote,
         [DocumentBodyIntake.OwnerKey] = owner,
         [DocumentAttributes.ConfidentialityKey] = "restricted",
+        [AiInputExposure.AttributeKey] = AiInputExposure.Excluded,
     };
 
     internal static string? SubjectOf(HttpContext http)
