@@ -52,6 +52,8 @@ builder.Services.AddScoped<IEmailAddressResolver, UnresolvedEmailAddressResolver
 
 builder.Services.AddScoped<NotificationStore>();
 builder.Services.AddScoped<NotificationPublisher>();
+// FR-22, IADR-0270 決定 6: 発火側（DocumentService）からの受け口。検知は向こう・実体はこちら。
+builder.Services.AddScoped<NotificationIngress>();
 builder.Services.AddScoped<EmailOutboxDispatcher>();
 builder.Services.AddScoped<NotificationRetention>();
 builder.Services.AddHostedService<NotificationMaintenanceHostedService>();
@@ -75,6 +77,8 @@ app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapNotificationEndpoints();
+// FR-22: メッシュ内部限定の受け口（認証は課さない。OpenAPI には載せない）。
+app.MapNotificationIngressEndpoints();
 
 app.Run();
 
