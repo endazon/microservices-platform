@@ -243,6 +243,33 @@ describe('DocumentDetailPage (SC-03)', () => {
     expect(screen.queryByRole('button', { name: '却下' })).not.toBeInTheDocument();
   });
 
+  // 計画 05_screens が「**本画面はバックリンク欄を持たない**」「バックリンク欄・ローカルグラフは
+  // Wiki.js 側のみに置く。本画面には併置しない」と確定している（2026-08-02 の利用者裁定）。
+  // **「無いこと」を固定するテストである** —— 併置は恒久の禁止ではなく、Wiki.js 側の実現性が
+  // 確認できた時点で改めて判断する取り決めなので、**足すときにこのテストが落ちて気づける**形にしておく。
+  //
+  // **既存の「無いこと」テストはこれを見ていなかった** —— あちらが見るのは AI 提案欄と
+  // 知識グラフ導線だけで、**バックリンク欄の不在は誰も固定していなかった**（#449 で実測）。
+  //
+  // **ここに起点 ID を書かないのは意図的である**（上の保留テストと同じ理由。
+  // check-test-traceability.js が未着手機能の ID を「実装が先行している」と誤報する）。
+  it('does not render a backlink panel or a local graph (they belong to the wiki screen only)', async () => {
+    // 導線の並びを全部描かせた状態で見る（wikiBaseUrl 未設定だと行ごと消えて検出できない）。
+    mocks.wikiBaseUrl = 'https://wiki.example.co.jp';
+    respond();
+    await renderPage();
+    await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
+
+    expect(screen.queryByText(/バックリンク/)).not.toBeInTheDocument();
+    // 計画が定める 2 欄の見出し（「このページを参照している文書」「このページが参照している文書」）。
+    expect(screen.queryByText(/参照している文書/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ローカルグラフ/)).not.toBeInTheDocument();
+    // 見出しとして足された場合も捕まえる（本文中の語だけを見ていると見出しを取りこぼす）。
+    expect(
+      screen.queryByRole('heading', { name: /バックリンク|被参照|参照元/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it('renders in English when the en locale is active', async () => {
     respond();
     activate('en');
