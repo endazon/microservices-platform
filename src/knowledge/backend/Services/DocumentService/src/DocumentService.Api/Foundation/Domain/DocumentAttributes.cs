@@ -1,3 +1,5 @@
+using Knowledge.Contracts.Dtos;
+
 namespace DocumentService.Api.Foundation.Domain;
 
 // FR-05, FR-06, UC-03, SC-05, IADR-0047: 文書属性の必須検証（最終防衛線）。
@@ -22,9 +24,13 @@ public static class DocumentAttributes
 
     // FR-19, ADR-0054 決定 1・2: 文書スコープの属性キーと 2 値。綴りは計画が確定させたもの
     // （ハイフン込み）をそのまま用いる（実装で言い換えない）。
-    public const string DocScopeKey = "doc_scope";
-    public const string DocScopePrivateNote = "private-note";
-    public const string DocScopeOrganization = "organization";
+    //
+    // **［2026-08-28 / #447］literal は `Knowledge.Contracts` の `DocumentScopes` が持つ**
+    // （[[IADR-0283]] 決定 1）。AI 入力の判定（`AiInputExposure`）が同じ語彙を要るため、
+    // ユニット内で 2 か所に literal を置かない。**値は 1 バイトも変えていない。**
+    public const string DocScopeKey = DocumentScopes.Key;
+    public const string DocScopePrivateNote = DocumentScopes.PrivateNote;
+    public const string DocScopeOrganization = DocumentScopes.Organization;
 
     public static readonly IReadOnlySet<string> AllowedDocScope =
         new HashSet<string>(StringComparer.Ordinal)
