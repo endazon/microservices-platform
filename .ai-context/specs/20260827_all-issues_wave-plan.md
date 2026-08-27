@@ -58,6 +58,22 @@ W-B（1 コミット = 1 論理変更・件名に起点 ID）・W-C（対応表�
 IADR-0027 / IADR-0218 との関係）は**波 1 で起票する実装 ADR に譲る**（統括と個別決定の主従）。
 planning への環流は planning#490。
 
+［2026-08-28 追記 / #1021］**オーナー裁定により案 C′ は撤回された。** 新標準は
+**単一プロジェクト＋ Features / Domain / Infrastructure / Common のフォルダ規範**
+（正本は [IADR-0282](../adr/IADR-0282_single-project-vsa-structure.md)。IADR-0280 は Superseded）。
+ヒアリングで確定した 3 点: ①器は例示どおり完全リネーム（`<Name>.Api.csproj` → `<Name>.csproj`・
+`src/` 中間層廃止・Tests はサービス直下）②波 1E の層プロジェクト 58 個は撤去し実コードを統合
+③Result / DDD 基底型は Platform.Shared.Kernel 存続。これに伴い:
+
+- **「新規は新様式」は取り消し** —— 移送波の一括変換まで新規コードも現行配置で書く
+  （IADR-0282 決定 4。二重構造の防止）。
+- **波 4.5 の内容を再定義**: 旧「8 要素への層移送」→ **リネーム＋層プロジェクト撤去＋
+  実コード統合＋ Features スライス化＋検査規則（check-unit-dependencies 規則 3）の
+  名前空間走査化＋ Dockerfile / compose / helm / 検査器の追随**。
+- 雛形（templates/unit-template/backend）は本追記と同日に新標準へ書き換え済み
+  （CI の template-backend-build と同じ複製ビルドで 3 テスト緑を実測）。
+- planning へは 8 要素標準（12_backend-application-stack・fixed）の改定依頼を追加環流する。
+
 ## 2. 環境の実測（2026-08-27・着手前ベースライン）
 
 | 対象 | 実測 | 帰結 |
