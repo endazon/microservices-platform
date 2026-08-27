@@ -47,6 +47,11 @@ public sealed class NotificationDeliveryMetrics
             description: "日次送信上限に触れた事象の件数。0 でない値は上限の見直しが要ることの信号である。");
     }
 
+    // kind の値域は開放されている（IADR-0215 決定 2。受け口 /internal/notifications は値域検証を
+    // 置かない）ため、このタグは**受け口の呼び出し元が基数を増やせる**。既知集合へ丸めず受容する ——
+    // 受け口はゲートウェイ非公開の内部経路で、長さ 100 字上限・制御文字除去済みであり、丸めると
+    // 新種別の追加のたびに本クラスの追随が要る（値域を開いた同決定の理由がここにも当たる）。
+    // 波 2 クロス監査の指摘 🔵B の記録（`.ai-context/specs/20260828_wave2-audit-followup.md`）。
     public void RecordInApp(string kind)
         => _inApp.Add(1, new TagList { { KindTag, kind } });
 
