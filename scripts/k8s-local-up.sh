@@ -496,6 +496,20 @@ if [ "${ABACSEED:-}" = "1" ]; then
     || echo "    WARN: ABAC 初期投入に失敗（best-effort）。node scripts/seed-abac-policies.js で再実行できる" >&2
 fi
 
+# IADR-0284 (#992): 検索検証用の文書を投入する。**本文を持つ文書**でないと索引に一度も入らない
+# （IngestionService の DocumentUpdatedConsumer は MarkdownUri が null の文書を早期 return で捨てる）。
+# 文書が 1 件も無いスタックでは「検索が壊れている」と「該当が無い」が区別できず、#992 が塞ぎたい穴が残る。
+# 既定（env 未設定）は投入せず挙動不変＝バイト等価で、本番 values には一切影響しない
+# （投入先は経路B の稼働中サービスであり、chart ではない）。ABACSEED とまったく同じ形である。
+#
+# 🔴 **文書を作る（副作用）。使い捨てのスタック専用**であり、残しておきたいクラスタに対して立てないこと。
+# best-effort: 投入の失敗で up 全体を止めない（クラスタ自体は使えるため。再実行は冪等）。
+if [ "${SEARCHSEED:-}" = "1" ]; then
+  echo "==> [opt-in] 検索検証用文書の初期投入（本文つき / IADR-0284）"
+  node "$ROOT/scripts/seed-search-documents.js" \
+    || echo "    WARN: 検索用文書の投入に失敗（best-effort）。node scripts/seed-search-documents.js で再実行できる" >&2
+fi
+
 echo ""
 echo "done. 状態確認:"
 echo "  kubectl get pods -A"

@@ -55,6 +55,7 @@ const OPTIN_TOKENS = [
   'external-secrets', //               ESO (helm install / ns, IADR-0096)
   'deploy/local/vault/eso/', //        ESO (bootstrap/externalsecret, IADR-0096。配下のみが apply される)
   'seed-abac-policies.js', //          ABACSEED (ABAC 初期投入, IADR-0133)
+  'seed-search-documents.js', //       SEARCHSEED (検索検証用文書の初期投入, IADR-0284)
   'cert-manager', //                   LOCALEDGE (エッジ TLS 終端, IADR-0206)
   'deploy/local/edge/tls', //          LOCALEDGE (TLS overlay, IADR-0206)
   'certificate/edge-tls', //           LOCALEDGE (証明書 Ready 待ち, IADR-0206)
@@ -168,6 +169,7 @@ function runUp(extraEnv) {
     'LOCALEDGE',
     'ESO',
     'ABACSEED',
+    'SEARCHSEED',
     'HEADLAMP_OIDC_ISSUER_URL',
     'HEADLAMP_OIDC_CLIENT_ID',
     'K3S_IMAGE', // #783: k3s イメージの pin。実行環境に漏れていると既定のバイト等価が崩れる
@@ -253,6 +255,7 @@ const GATES_ALL = {
   LOCALEDGE: '1',
   ESO: '1',
   ABACSEED: '1',
+  SEARCHSEED: '1',
   HEADLAMP: '1',
 };
 const { PERSIST: _p, ESO: _e, ...GATES_NO_REPLACEMENT } = GATES_ALL;
@@ -575,6 +578,32 @@ ok('ABACSEED=1: seed-abac-policies.js を実行する', () => {
   assert.ok(anyLineHas(res.lines, 'seed-abac-policies.js'), '投入スクリプトが実行されない');
   // 投入はクラスタ内の稼働サービスに対して行う＝chart/manifest を書き換えないことを固定する。
   assert.ok(!anyLineHas(res.lines, 'deploy/local/abac-seed'), 'シードを kubectl apply してはいけない');
+});
+
+// SEARCHSEED=1: 検索検証用の**本文つき**文書を投入する（IADR-0284 / #992）。
+// 本文が無いと MarkdownUri が立たず、IngestionService の早期 return で索引に一度も入らない
+// ——「検索が壊れている」と「該当が無い」が CI で区別できないまま残る。
+ok('SEARCHSEED=1: seed-search-documents.js を実行する', () => {
+  const res = runUp({ SEARCHSEED: '1' });
+  assert.strictEqual(res.status, 0, 'SEARCHSEED=1 で異常終了した');
+  assert.ok(anyLineHas(res.lines, 'seed-search-documents.js'), '投入スクリプトが実行されない');
+  // ABAC 投入と同じく、シードは chart/manifest ではなく稼働サービスへ入れる。
+  assert.ok(!anyLineHas(res.lines, 'deploy/local/search-seed'), 'シードを kubectl apply してはいけない');
+});
+
+ok('SEARCHSEED=1: ABAC 投入とは独立に効く（片方だけ立てても他方は走らない）', () => {
+  // 🔴 2 つの opt-in を 1 つのフラグへ畳まないことを固定する。畳むと「ABAC は要るが文書は要らない」
+  //    使い方ができなくなり、文書を作る副作用が ABACSEED へ紛れ込む。
+  assert.ok(!anyLineHas(runUp({ ABACSEED: '1' }).lines, 'seed-search-documents.js'),
+    'ABACSEED=1 だけで文書 seed が走っている（副作用が紛れ込んでいる）');
+  assert.ok(!anyLineHas(runUp({ SEARCHSEED: '1' }).lines, 'seed-abac-policies.js'),
+    'SEARCHSEED=1 だけで ABAC 投入が走っている');
+});
+
+ok('SEARCHSEED=1: 投入が失敗しても up 全体は止めない（best-effort）', () => {
+  const src = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-up.sh'), 'utf8');
+  const block = src.slice(src.indexOf('SEARCHSEED'));
+  assert.ok(/\|\|\s*echo\s+"?\s*WARN/.test(block), 'SEARCHSEED の投入失敗が best-effort になっていない');
 });
 
 ok('ABACSEED=1: 投入が失敗しても up 全体は止めない（best-effort）', () => {
