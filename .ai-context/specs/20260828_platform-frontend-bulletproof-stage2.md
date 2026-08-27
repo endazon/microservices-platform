@@ -1,7 +1,7 @@
 ---
 title: フロントエンドのディレクトリ構成を Bulletproof React（計画 §ディレクトリ構成）へ適合させる — 第 2 段: platform の foundation/ 分解
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR, ADR-0031, ADR-0019, IADR-0056, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0181, IADR-0211, IADR-0262]
 author: claude
 created: 2026-08-28
@@ -296,18 +296,43 @@ grep コマンドの完全パス） / `docs/api/BFF_bff-surface.md`（1 行。�
 
 走査 4 が見つけた `renderUnitRoute.tsx` の注釈（`platform/frontend/src/test/setup.ts`）も同時に直す。
 
-## 受け入れ基準
+## 受け入れ基準（実測・全項目達成）
 
-- [ ] `platform/frontend/src/` 直下がツリーの 11 区分 ＋ `main.tsx` だけになる（`foundation/` `test/` `App.tsx` が消える）
-- [ ] `@foundation/<区分>` の import 文が **1 行も変わらない**（knowledge・AST・雛形を含む）
-- [ ] `pnpm run typecheck` / `pnpm run lint`（error 0・warn を増やさない）/ `pnpm run format:check` が通る
-- [ ] `pnpm -w run test -- --run` が **91 ファイル / 1080 テスト全緑**（適合前と同数。アサーションは変えない）
-- [ ] `pnpm run build` 成功、`node scripts/check-chunk-budget.js --require` 緑（床は動かさない）
-- [ ] `node scripts/check-static-egress.js --require src/platform/frontend/dist` 緑
-- [ ] `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` 緑
-- [ ] `node scripts/check-i18n-catalogs.js` 緑・`pnpm run i18n` の再生成差分が無い
-- [ ] `node scripts/check-commit-messages.js --range e43e0a9..HEAD` 緑
+- [x] `platform/frontend/src/` 直下がツリーの 11 区分 ＋ `main.tsx` だけになった。実測:
+      `app assets components features hooks lib locales main.tsx stores testing types utils`
+      （`foundation/` `test/` `App.tsx` は消えた）
+- [x] `@foundation/<区分>` の import 文が **1 行も変わっていない**（knowledge・AST・雛形を含む。
+      差分に `@foundation` の import 行は 1 行も無い）
+- [x] `pnpm run typecheck` — 5 プロジェクトすべて Done
+- [x] `pnpm run lint` — **error 0 / warning 9**（適合前と同数・同内容。すべて既存の
+      `react-refresh/only-export-components`）。`pnpm run lint:templates` も緑
+- [x] `pnpm run format:check` / `pnpm run format:templates` — All matched files use Prettier code style
+- [x] `pnpm -w run test -- --run` — **91 ファイル / 1080 テスト全緑**（適合前と同数。
+      アサーションは 1 つも変えていない。変えたのは移動に伴う import パス 2 箇所のみ）
+- [x] `pnpm run build` 成功（11.46s → 9.26s。成果物は同一構成）
+- [x] `node scripts/check-chunk-budget.js --require` — 初期ロード合計 **586.64 kB（床 586.64 kB）**、
+      最大チャンク 586.04 kB（上限 600.00 kB）、必須チャンク 5 本。**床は動かしていない**
+      （移動はモジュールの中身を変えないので、チャンクの内訳も変わらない）
+- [x] `node scripts/check-static-egress.js --require src/platform/frontend/dist` — 32 ファイル、違反 0
+- [x] `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` — **615 件全緑**
+- [x] `node scripts/check-i18n-catalogs.js` — 2 ロケール、未翻訳・fuzzy・obsolete なし。
+      `pnpm run i18n` の再生成差分は `#:` 参照行のみ（各 104 行。**訳文は 0 行**）
+- [x] `pnpm run codegen` の再生成差分 **0 件**（出力先だけが動いた）
+- [x] 併せて緑を確認: `check-knip.js --require`（床どおり 38 件）/ `check-trace-blocks.js`（150 件）/
+      `check-doc-links.js`（914 件）/ `check-cross-repo-refs.js`（2386 件）/
+      `check-plan-id-qualification.js`（1984 件）/ `check-doc-type-vocabulary.js`（885 件）/
+      `check-reading-budget.js`（3 集合とも 51,200 バイト内）
+- [x] `node scripts/check-commit-messages.js --range e43e0a9..HEAD` 緑
 
 ## 計画書との差異
 
 無し。本作業は計画 §ディレクトリ構成 のツリーへ実装を合わせるものであり、計画側に不足は見つかっていない。
+
+## 親への申し送り
+
+- **退行防止の検査器は置かない。** `src/` 直下がツリーの 11 区分に閉じていることを機械で見る検査は、
+  IADR-0262 §結果 が「同型の事故が 2 回起きたら」の条件を満たさないとして見送っている。
+  第 2 段でも事故は起きていない（**1 回目も無い**）ので条件は変わらない。
+- **決定 A は IADR-0262 決定 1 の対応表へ第 9 行（`@foundation/ai-chat` → `components/ai-chat`）を
+  足したものである**（既存 8 行は動かしていない）。**決定 B は対応表を変えていない** ——
+  `@foundation/i18n` の向き先は表のまま `src/app/i18n` である。どちらも同 ADR へ日付つきで追記した。

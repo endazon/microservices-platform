@@ -13,7 +13,7 @@ related_ids:
   - IADR-0125
 author: claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/06_technical/13_frontend-stack.md
   - planning:projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md
@@ -130,6 +130,34 @@ knowledge ユニットでは、直下の `app/ assets/ components/ hooks/ lib/ l
 
 第 1 段（knowledge の feature 分割）は決定 1 により **platform の分解を待たずに実施でき、
 第 2 段でやり直しにならない** —— knowledge 側の `@foundation/...` import は 1 行も変わらないためである。
+
+**［2026-08-28 追記 / #785］第 2 段（platform の `foundation/` 分解）を完了した。** 作業仕様書は
+`.ai-context/specs/20260828_platform-frontend-bulletproof-stage2.md`。実測:
+
+- `platform/frontend/src/` 直下が計画のツリーの 11 区分 ＋ `main.tsx` になった
+  （`foundation/` `test/` `App.tsx` は消えた）。上表の 3 ファイルは同じ PR で更新し、
+  `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` は 615 件全緑。
+- 決定 1 の対応表の 8 行は**そのまま適用できた**。加えて 2 点を決めた。
+  - **決定 1 の対応表へ第 9 行を足す: `@foundation/ai-chat` → `platform/frontend/src/components/ai-chat`**
+    （計画の対応項目は `components/`）。本 ADR 起草時の表は 8 区分だったが、これは計画
+    §ディレクトリ構成 の 2026-08-22 実測を写したためであり、その後 #788 で第 9 区分
+    `ai-chat` が加わっていた。**既存 8 行は 1 行も動かしていない。**`src/eslint.config.js` が既に「共通シェルに載る文言なので
+    `foundation/ui` と同じ規則の下に置く」として `ui` と同じ files 配列へ入れており、
+    唯一の利用者も共通シェル（`Layout.tsx`）である。
+  - **Lingui カタログはユニット直下の `locales/` へ出した（対応表は変えていない）。** 決定 1 は
+    `@foundation/i18n` → `src/app/i18n` を定めるが、これはエイリアスの向き先であって
+    カタログの置き場ではない（`@foundation/i18n/locales/...` の外部 import は実測 0 件）。
+    計画ツリーは `locales/  # ja / en（Lingui）` と中身まで名指ししており、
+    雛形 README も「`locales/` はアプリホストである `platform/frontend` が持つ」と書いている。
+    `app/i18n/locales/` に留めると platform でも `locales/` が空になり、
+    **ツリーの区分が 1 つ誰にも満たされない**状態が残る。
+- 決定 3（中身の無い区分も `.gitkeep` で枠を残す）は `assets/ hooks/ stores/ types/ utils/` に適用した。
+  `locales/` は上のとおり実体を持つので `.gitkeep` は置いていない。
+- **§結果 の「悪い影響 / トレードオフ」のうち「第 2 段が完了するまで platform と knowledge で
+  レイアウトが揃わない」は解消した。** エイリアスと実配置の対応を 3 箇所
+  （`tsconfig.app.json` / `vite.config.ts` / `vitest.config.ts`）で読むことは変わらない。
+- **フォローアップの退行防止検査器は引き続き置かない。** 「同型の事故が 2 回起きたら」の条件は
+  第 2 段でも満たされていない（1 回目も起きていない）。
 
 ## 結果
 
