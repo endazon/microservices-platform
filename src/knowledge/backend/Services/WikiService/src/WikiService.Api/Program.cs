@@ -4,6 +4,9 @@ using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
+using Wolverine;
+using Wolverine.RabbitMQ;
+using Knowledge.Contracts.Events;
 using WikiService.Api.Composable.Steps;
 using WikiService.Api.Foundation.Endpoints;
 using WikiService.Api.Foundation.Persistence;
@@ -20,11 +23,15 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);
 builder.Services.AddPlatformHealthChecks()
+    // ADR-0027 / E3a: Wolverine 購読側（wiki-delete 段）のブローカ疎通を readiness へ載せる（W4）。
+    // Wolverine 側は自動登録しないので明示的に足す（無いとブローカ不達でも /health/ready が 200）。
+    .AddPlatformWolverineBroker()
     .AddNpgSql(
         builder.Configuration.GetConnectionString("DefaultConnection")
             ?? "Host=postgres;Port=5432;Database=wiki_svc;Username=kp;Password=kp",
         tags: ["ready"]);
-// #269: ブローカ疎通の readiness は MassTransit 組み込みの "masstransit-bus"（tag "ready"）で満たす。
+// #269: MassTransit 側（wiki-sync 段が残る間）のブローカ疎通は MassTransit 組み込みの
+// "masstransit-bus"（tag "ready"）で満たす。
 // 外部 AspNetCore.HealthChecks.Rabbitmq は RabbitMQ.Client 7 と非互換（TypeLoadException 'IModel'）のため使用しない。
 builder.Services.AddOpenApi();
 
@@ -63,19 +70,24 @@ builder.AddPlatformPipelineConfig();
 var pipeline = builder.Configuration.GetPlatformPipeline();
 
 // FR-15, ADR-0018: 自己申告（イントロスペクション）— この段（wiki-sync / wiki-delete）の実効値を申告する。
+// wiki-delete は Wolverine 段（E3a）なので AddWolverineStep で申告する（IADR-0239 と同じ方針:
+// IPipelineStep<TIn> から入力型を導出し、導出できなければ起動失敗）。
 builder.Services.AddPlatformIntrospection("wiki-service", pipeline, i => i
     .AddStep<DocumentSyncConsumer>()
-    .AddStep<DocumentDeletedConsumer>());
+    .AddWolverineStep<DocumentDeletedConsumer>());
 
+var rabbitConnection = builder.Configuration["RabbitMq:ConnectionString"]
+    ?? "amqp://guest:guest@rabbitmq:5672";
+
+// 🔴 ADR-0027 / E3a: **wiki-delete 段（DocumentDeleted 購読）は Wolverine へ移した。**
+// wiki-sync 段（DocumentUpdated 購読）は辺 E3b の射程であり、辺は原子的に動かす（IADR-0234 決定 3）
+// ため本段では MassTransit のまま。移行期間中 **両スタックを同居させる**（E1 の ConversionService と同じ形）。
 builder.Services.AddMassTransit(x =>
 {
     x.AddPlatformPipelineStep<DocumentSyncConsumer>(pipeline);
-    // Issue #88: 文書削除の伝播（Wiki.js 実体撤去・メタデータ削除）。
-    x.AddPlatformPipelineStep<DocumentDeletedConsumer>(pipeline);
     x.UsingRabbitMq((ctx, cfg) =>
     {
-        cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]
-            ?? "amqp://guest:guest@rabbitmq:5672");
+        cfg.Host(rabbitConnection);
 
         // ADR-0003（Superseded by ADR-0027・注記は #580）: DocumentUpdated 購読による Wiki 同期（DocumentSyncConsumer）の一時的失敗を再試行し、
         // 継続失敗はデッドレターへ退避して回復性を確保する（共通設定）。
@@ -83,6 +95,24 @@ builder.Services.AddMassTransit(x =>
 
         cfg.ConfigureEndpoints(ctx);
     });
+});
+
+// Issue #88 / E3a: 文書削除の伝播（Wiki.js 実体撤去・メタデータ削除）— Wolverine 購読。
+builder.Host.UseWolverine(opts =>
+{
+    opts.ServiceName = "wiki-service";
+
+    // 宣言との突合は共通ヘルパが行う（未宣言・consumer 不一致・input 不一致は起動失敗）。
+    // 戻り値の段宣言を受けるのは、queue 上書きを黙って無視しないためである（IADR-0239 決定 4）。
+    var step = opts.AddPlatformWolverineStep<DocumentDeletedConsumer>(pipeline);
+
+    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision();
+
+    // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う。
+    opts.ListenToPlatformQueue("wiki-service", step?.Queue ?? nameof(DocumentDeleted));
+
+    // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
+    opts.UsePlatformMessagingDefaults();
 });
 
 var app = builder.Build();

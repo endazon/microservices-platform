@@ -1,6 +1,7 @@
 using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Persistence;
 using DocumentService.Api.Foundation.Services;
+using DocumentService.Application.Foundation.Ports;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
@@ -336,15 +337,17 @@ public static class DocumentEndpoints
         });
 
         // FR-06, UC-03, SC-05（#629）: 削除は**管理者限定**（計画の列挙「文書の削除」）。
+        // ADR-0027 / E3a: 削除イベントの発行は Wolverine（IDocumentDeletedPublisher 経由）。
+        // DocumentUpdated の発行（IPublishEndpoint）は辺 E3b の射程であり、ここでは動かさない。
         write.MapDelete("/{id:guid}", async (Guid id, DocumentDbContext db,
-            IPublishEndpoint bus) =>
+            IDocumentDeletedPublisher deletedBus, CancellationToken ct) =>
         {
-            var doc = await db.Documents.FindAsync(id);
+            var doc = await db.Documents.FindAsync([id], ct);
             if (doc is null) return Results.NotFound();
             db.Documents.Remove(doc);
-            await db.SaveChangesAsync();
-            // Issue #88: 削除を下流（Wiki.js 同期）へ伝播し、外部システムの実体を撤去する。
-            await bus.Publish(new DocumentDeleted(id, DateTimeOffset.UtcNow));
+            await db.SaveChangesAsync(ct);
+            // Issue #88: 削除を下流（Wiki.js 同期・索引・グラフ）へ伝播し、外部システムの実体を撤去する。
+            await deletedBus.PublishDeletedAsync(id, DateTimeOffset.UtcNow, ct);
             return Results.NoContent();
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 

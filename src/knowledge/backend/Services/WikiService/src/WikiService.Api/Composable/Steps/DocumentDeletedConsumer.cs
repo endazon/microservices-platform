@@ -1,12 +1,9 @@
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Knowledge.Contracts.Events;
-using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using WikiService.Api.Foundation.Domain;
 using WikiService.Api.Foundation.Persistence;
 using WikiService.Api.Foundation.Ports;
-using WikiService.Api.Foundation.Services;
-using WikiService.Api.Composable.Adapters;
 
 namespace WikiService.Api.Composable.Steps;
 
@@ -17,27 +14,30 @@ namespace WikiService.Api.Composable.Steps;
 //   1. Wiki.js の pages.delete による実体撤去（正準パス doc/<DocumentId>。未存在は成功扱い）。
 //   2. wiki_svc 同期メタデータ行の削除（ゲートウェイの一覧・個別から不可視 = 404 存在秘匿を維持）。
 // メタデータ未同期の ID でも Wiki.js 側の撤去は試みる（正準パスは DocumentId から導出可能）。
-// 失敗は例外を送出し、MassTransit のリトライ／デッドレター（UsePlatformRetry）へ委ねる。
+// 失敗は例外を送出し、Wolverine のリトライ／デッドレター（UsePlatformMessagingDefaults）へ委ねる。
+//
+// 🔴 ADR-0027 / E3a: **購読は Wolverine へ移した**（IPipelineStep<DocumentDeleted>・IADR-0239）。
+// 同サービスの DocumentSyncConsumer（DocumentUpdated）は辺 E3b の射程であり、辺は原子的に動かす
+// （IADR-0234 決定 3）ため本 PR の段では MassTransit のままである。
 public class DocumentDeletedConsumer(
     WikiDbContext db,
     IWikiJsClient wikiJs,
-    ILogger<DocumentDeletedConsumer> logger) : IConsumer<DocumentDeleted>, IPipelineStep
+    ILogger<DocumentDeletedConsumer> logger) : IPipelineStep<DocumentDeleted>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
     public static string StepName => "wiki-delete";
 
-    public async Task Consume(ConsumeContext<DocumentDeleted> ctx)
+    // ADR-0027 / E3a: Wolverine のハンドラ。
+    public async Task Handle(DocumentDeleted ev, CancellationToken ct)
     {
-        var ev = ctx.Message;
-
-        await wikiJs.DeletePageAsync(WikiPage.PathFor(ev.DocumentId), ctx.CancellationToken);
+        await wikiJs.DeletePageAsync(WikiPage.PathFor(ev.DocumentId), ct);
 
         var page = await db.Pages
-            .FirstOrDefaultAsync(p => p.DocumentId == ev.DocumentId, ctx.CancellationToken);
+            .FirstOrDefaultAsync(p => p.DocumentId == ev.DocumentId, ct);
         if (page is not null)
         {
             db.Pages.Remove(page);
-            await db.SaveChangesAsync(ctx.CancellationToken);
+            await db.SaveChangesAsync(ct);
         }
 
         logger.LogInformation("Deleted document {DocumentId} from Wiki.js", ev.DocumentId);

@@ -4,12 +4,12 @@
     "DocumentDeleted": {
       "publishers": {
         "knowledge/DocumentService": [
-          "masstransit"
+          "wolverine"
         ]
       },
       "subscribers": {
         "knowledge/WikiService": [
-          "masstransit"
+          "wolverine"
         ]
       }
     },

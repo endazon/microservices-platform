@@ -58,9 +58,9 @@ public class DocumentLifecycleEventTests(TestWebApplicationFactory factory)
         var resp = await Client().DeleteAsync($"/documents/{doc.Id}");
 
         resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
-        var harness = factory.Services.GetRequiredService<ITestHarness>();
-        (await harness.Published.Any<DocumentDeleted>(m => m.Context.Message.DocumentId == doc.Id))
-            .Should().BeTrue();
+        // E3a: DocumentDeleted の発行は Wolverine（RecordingMessageBus で観測する）。
+        var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
+        bus.PublishedOf<DocumentDeleted>().Should().Contain(e => e.DocumentId == doc.Id);
     }
 
     // 存在しない文書の削除は 404 のままイベントを発行しない。
@@ -71,8 +71,8 @@ public class DocumentLifecycleEventTests(TestWebApplicationFactory factory)
         var resp = await Client().DeleteAsync($"/documents/{missingId}");
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        var harness = factory.Services.GetRequiredService<ITestHarness>();
-        (await harness.Published.Any<DocumentDeleted>(m => m.Context.Message.DocumentId == missingId))
-            .Should().BeFalse();
+        // E3a: DocumentDeleted の発行は Wolverine（RecordingMessageBus で観測する）。
+        var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
+        bus.PublishedOf<DocumentDeleted>().Should().NotContain(e => e.DocumentId == missingId);
     }
 }

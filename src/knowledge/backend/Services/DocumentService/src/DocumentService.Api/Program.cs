@@ -1,12 +1,16 @@
 using DocumentService.Api.Foundation.Observability;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
+using DocumentService.Api.Composable.Adapters;
 using DocumentService.Api.Foundation.Endpoints;
 using DocumentService.Api.Foundation.Persistence;
+using DocumentService.Application.Foundation.Ports;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
+using Wolverine;
+using Wolverine.RabbitMQ;
 
 const string ServiceName = "microservices-platform.document-service";
 
@@ -23,11 +27,15 @@ builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddMeter(IngestTagMetrics.MeterName));
 builder.Services.AddPlatformAuth(builder.Configuration);
 builder.Services.AddPlatformHealthChecks()
+    // ADR-0027 / E3a: Wolverine 発行側のブローカ疎通を readiness へ載せる（W4）。
+    // Wolverine 側は自動登録しないので明示的に足す（無いとブローカ不達でも /health/ready が 200）。
+    .AddPlatformWolverineBroker()
     .AddNpgSql(
         builder.Configuration.GetConnectionString("DefaultConnection")
             ?? "Host=postgres;Port=5432;Database=document_svc;Username=kp;Password=kp",
         tags: ["ready"]);
-// #269: ブローカ疎通の readiness は MassTransit 組み込みの "masstransit-bus"（tag "ready"）で満たす。
+// #269: MassTransit 側（DocumentNormalized 購読・DocumentUpdated 発行が残る間）のブローカ疎通は
+// MassTransit 組み込みの "masstransit-bus"（tag "ready"）で満たす。
 // 外部 AspNetCore.HealthChecks.Rabbitmq は RabbitMQ.Client 7 と非互換（TypeLoadException 'IModel'）のため使用しない。
 builder.Services.AddOpenApi();
 
@@ -68,14 +76,16 @@ var pipeline = builder.Configuration.GetPlatformPipeline();
 builder.Services.AddPlatformIntrospection("document-service", pipeline,
     i => i.AddStep<DocumentService.Api.Composable.Steps.DocumentNormalizedConsumer>());
 
+var rabbitConnection = builder.Configuration["RabbitMq:ConnectionString"]
+    ?? "amqp://guest:guest@rabbitmq:5672";
+
 builder.Services.AddMassTransit(x =>
 {
     // FR-01, UC-04: 正規化文書をカタログへ登録する Consumer
     x.AddPlatformPipelineStep<DocumentService.Api.Composable.Steps.DocumentNormalizedConsumer>(pipeline);
     x.UsingRabbitMq((ctx, cfg) =>
     {
-        cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]
-            ?? "amqp://guest:guest@rabbitmq:5672");
+        cfg.Host(rabbitConnection);
 
         // ADR-0003（Superseded by ADR-0027・注記は #580）: 正規化文書のカタログ登録（DocumentNormalizedConsumer）の一時的失敗を再試行し、
         // 継続失敗はデッドレターへ退避して回復性を確保する（共通設定）。
@@ -83,6 +93,25 @@ builder.Services.AddMassTransit(x =>
 
         cfg.ConfigureEndpoints(ctx);
     });
+});
+
+// 🔴 ADR-0027 / E3a: **DocumentDeleted の発行は Wolverine へ移した。**
+// DocumentNormalized の購読（辺 E2）と DocumentUpdated の発行（辺 E3b）は MassTransit のまま ——
+// 辺は原子的に動かす（IADR-0234 決定 3）ため、本サービスは移行期間中 **両スタックを同居させる**
+// （E1 の ConversionService と同じ形。向きは逆で MT 購読 ＋ Wolverine 発行）。
+builder.Services.AddScoped<IDocumentDeletedPublisher, WolverineDocumentDeletedPublisher>();
+builder.Host.UseWolverine(opts =>
+{
+    opts.ServiceName = "document-service";
+
+    // 段をホストしないので探索は要らない。規約探索を切って明示配線に寄せる
+    // （E1 の DataSourceService＝発行のみ、と同じ形）。
+    opts.Discovery.DisableConventionalDiscovery();
+
+    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision();
+
+    // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
+    opts.UsePlatformMessagingDefaults();
 });
 
 var app = builder.Build();

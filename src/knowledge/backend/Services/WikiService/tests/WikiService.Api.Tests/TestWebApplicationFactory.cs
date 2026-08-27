@@ -1,5 +1,6 @@
 using Platform.Shared.Contracts.Dtos;
 using MassTransit;
+using Wolverine;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -50,6 +51,12 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
 
             services.RemoveAll<IBusControl>();
             services.AddMassTransitTestHarness();
+
+            // ADR-0027 / E3a: wiki-delete 段の購読は Wolverine へ移った。
+            // 🔴 **これが無いとテストが約 135 秒ハングする** —— Program.cs が UseWolverine +
+            // UseRabbitMq を呼ぶため、テストホストの起動が実ブローカへの接続を試みる
+            // （E1 の DataSourceService.Api.Tests と同じ作法）。
+            services.DisableAllExternalWolverineTransports();
         });
     }
 

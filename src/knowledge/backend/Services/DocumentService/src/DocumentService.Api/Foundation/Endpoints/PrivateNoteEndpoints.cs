@@ -2,8 +2,7 @@ using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Persistence;
 using DocumentService.Api.Foundation.Ports;
 using DocumentService.Api.Foundation.Services;
-using Knowledge.Contracts.Events;
-using MassTransit;
+using DocumentService.Application.Foundation.Ports;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
@@ -129,7 +128,7 @@ public static class PrivateNoteEndpoints
         // FR-19, ADR-0037 決定 20: 完全削除（即時・復元不可）。単票も一括も本端点（ids の要素数の差）。
         // 対象は**削除済みのみ**（SC-19 の削除済み一覧からの操作）。解放される容量を応答で返す。
         g.MapPost("/purge", async (PurgePrivateNotesRequest req, HttpContext http,
-            DocumentDbContext db, IPrivateNoteNotifier notifier, IPublishEndpoint bus,
+            DocumentDbContext db, IPrivateNoteNotifier notifier, IDocumentDeletedPublisher deletedBus,
             IAuditLogger audit, CancellationToken ct) =>
         {
             if (SubjectOf(http) is not { } owner) return Results.Unauthorized();
@@ -161,8 +160,9 @@ public static class PrivateNoteEndpoints
 
             // ADR-0037 決定 9・11-①: 監査は「誰が・いつ・何件」。タイトルは記録しない。
             audit.Record("private-note.purge", owner, "granted", $"count={notes.Count}");
+            // ADR-0027 / E3a: DocumentDeleted の発行は Wolverine（IDocumentDeletedPublisher 経由）。
             foreach (var id in ids)
-                await bus.Publish(new DocumentDeleted(id, now), ct);
+                await deletedBus.PublishDeletedAsync(id, now, ct);
 
             return Results.Ok(new PurgePrivateNotesResponse(notes.Count, freedBytes));
         });

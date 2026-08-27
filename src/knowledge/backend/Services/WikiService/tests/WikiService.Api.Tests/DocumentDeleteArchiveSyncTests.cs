@@ -29,11 +29,10 @@ public class DocumentDeleteArchiveSyncTests
             .AddSingleton<RecordingWikiJsClient>()
             .AddSingleton<IWikiJsClient>(sp => sp.GetRequiredService<RecordingWikiJsClient>())
             .AddSingleton<IWikiContentReader, StubContentReader>()
-            .AddMassTransitTestHarness(cfg =>
-            {
-                cfg.AddConsumer<DocumentSyncConsumer>();
-                cfg.AddConsumer<DocumentDeletedConsumer>();
-            })
+            // E3a: DocumentDeletedConsumer は Wolverine 段になった。ハーネスに載るのは
+            // MassTransit 側（wiki-sync。辺 E3b の射程）だけで、削除側は Handle を直接呼ぶ
+            // （測るのは削除の写像であって配送ではない。登録経路は PipelineRecomposeTests が持つ）。
+            .AddMassTransitTestHarness(cfg => cfg.AddConsumer<DocumentSyncConsumer>())
             .BuildServiceProvider(true);
 
     private static DocumentUpdated Updated(string title, string status)
@@ -132,6 +131,19 @@ public class DocumentDeleteArchiveSyncTests
         finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
+    // E3a: Wolverine 段の Handle を直接呼ぶ（配送ではなく削除の写像を測る）。
+    private static async Task HandleDeletedAsync(ServiceProvider provider)
+    {
+        using var scope = provider.CreateScope();
+        var consumer = new DocumentDeletedConsumer(
+            scope.ServiceProvider.GetRequiredService<WikiDbContext>(),
+            scope.ServiceProvider.GetRequiredService<RecordingWikiJsClient>(),
+            scope.ServiceProvider.GetRequiredService<
+                Microsoft.Extensions.Logging.ILogger<DocumentDeletedConsumer>>());
+        await consumer.Handle(new DocumentDeleted(DocId, DateTimeOffset.UtcNow),
+            TestContext.Current.CancellationToken);
+    }
+
     // 削除: DocumentDeleted の受信で Wiki.js の実体を撤去し、メタデータ行も削除する。
     [Fact]
     public async Task DeletedConsumer_RemovesWikiJsPageAndMetadata()
@@ -144,7 +156,7 @@ public class DocumentDeleteArchiveSyncTests
             await harness.Bus.Publish(Updated("削除予定", "published"), TestContext.Current.CancellationToken);
             await WaitForAsync(provider, p => p is not null);
 
-            await harness.Bus.Publish(new DocumentDeleted(DocId, DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
+            await HandleDeletedAsync(provider);
             await WaitForAsync(provider, p => p is null);
 
             // 実体撤去（社内文書の外部システム残存防止）。
@@ -159,19 +171,15 @@ public class DocumentDeleteArchiveSyncTests
     public async Task DeletedConsumer_IsIdempotent_WhenPageUnknown()
     {
         await using var provider = BuildHarness($"wiki-del-{Guid.NewGuid()}");
-        var harness = provider.GetRequiredService<ITestHarness>();
-        await harness.Start();
-        try
-        {
-            await harness.Bus.Publish(new DocumentDeleted(DocId, DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
-            var wiki = provider.GetRequiredService<RecordingWikiJsClient>();
-            await WaitForWikiJsAsync(() => wiki.Deleted.Count > 0);
 
-            wiki.Deleted.Should().Contain($"doc/{DocId}");
-            // 例外が出ていればハーネスの Consumed にフォールトが残る。正常消費のみであること。
-            (await harness.Consumed.Any<DocumentDeleted>(TestContext.Current.CancellationToken)).Should().BeTrue();
-        }
-        finally { await harness.Stop(TestContext.Current.CancellationToken); }
+        // 例外が出れば本テスト自体が失敗する（未同期 ID でも正常完了すること＝冪等）。
+        await HandleDeletedAsync(provider);
+
+        var wiki = provider.GetRequiredService<RecordingWikiJsClient>();
+        wiki.Deleted.Should().Contain($"doc/{DocId}");
+        using var scope = provider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WikiDbContext>();
+        db.Pages.Any(p => p.DocumentId == DocId).Should().BeFalse();
     }
 }
 

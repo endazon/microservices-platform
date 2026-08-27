@@ -1,5 +1,6 @@
 using DocumentService.Api.Foundation.Persistence;
 using MassTransit;
+using Wolverine;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -66,6 +67,16 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // MassTransit をテストハーネスへ差し替え
             services.RemoveAll<IBusControl>();
             services.AddMassTransitTestHarness();
+
+            // ADR-0027 / E3a: DocumentDeleted の発行は Wolverine へ移った。
+            // 実ブローカへ繋がずに「何を発行したか」だけを観測するため、IMessageBus を差し替える。
+            // 🔴 **これが無いとテストが約 135 秒ハングする** —— Program.cs が UseWolverine +
+            // UseRabbitMq を呼ぶため、テストホストの起動が実ブローカへの接続を試みる
+            // （E1 の DataSourceService.Api.Tests と同じ作法）。
+            services.DisableAllExternalWolverineTransports();
+            services.RemoveAll<Wolverine.IMessageBus>();
+            services.AddSingleton<RecordingMessageBus>();
+            services.AddSingleton<Wolverine.IMessageBus>(sp => sp.GetRequiredService<RecordingMessageBus>());
         });
     }
 

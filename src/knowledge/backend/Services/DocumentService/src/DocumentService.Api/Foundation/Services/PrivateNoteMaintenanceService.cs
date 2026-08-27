@@ -1,8 +1,7 @@
 using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Persistence;
 using DocumentService.Api.Foundation.Ports;
-using Knowledge.Contracts.Events;
-using MassTransit;
+using DocumentService.Application.Foundation.Ports;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 
@@ -23,7 +22,7 @@ namespace DocumentService.Api.Foundation.Services;
 public sealed class PrivateNoteMaintenanceService(
     DocumentDbContext db,
     IPrivateNoteNotifier notifier,
-    IPublishEndpoint bus,
+    IDocumentDeletedPublisher deletedBus,
     IAuditLogger audit,
     ILogger<PrivateNoteMaintenanceService> logger)
 {
@@ -64,8 +63,9 @@ public sealed class PrivateNoteMaintenanceService(
         }
         await db.SaveChangesAsync(ct);
 
+        // ADR-0027 / E3a: DocumentDeleted の発行は Wolverine（IDocumentDeletedPublisher 経由）。
         foreach (var id in ids)
-            await bus.Publish(new DocumentDeleted(id, now), ct);
+            await deletedBus.PublishDeletedAsync(id, now, ct);
         logger.LogInformation("個人資料の自動物理削除を実行した（{Count} 件）", due.Count);
     }
 
