@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 削除を検索索引とグラフへ伝播させる（#1016 の索引・グラフ分）
 type: spec
-status: draft
+status: done
 related_ids:
   - FR-06
   - FR-17
@@ -93,6 +93,14 @@ ADR-0057 が要求へ格上げした削除伝播が無音で止まる。受容�
 - 変異 D1: RetrievalService の Handle から `DeleteByDocumentAsync` 呼び出しを外す →
   否定形テスト「削除された文書のチャンクは検索に出ない」が赤になること。
 - 変異 D2: GraphService の Handle から辺の削除を外す → 否定形テスト（辺）が赤になること。
+
+［2026-08-28 追記 / #1021］**実測（波 2 監査の指摘 R1 の回収）。両方とも予告どおり落ちた:**
+
+- D1 実測: `DeleteByDocumentAsync` 呼び出しを `Task.CompletedTask` へ置換 →
+  `DocumentDeletedConsumerTests` **Failed 1 / Passed 1**（`削除された文書のチャンクは検索に出ない_他文書は残る` が赤）。
+- D2 実測: `db.Edges.RemoveRange(edges)` を除去 →
+  `DocumentDeletedConsumerTests` **Failed 1 / Passed 1**（`削除された文書のノードと辺とAI提案が消える_無関係は残る` が赤）。
+- いずれも変異を戻して緑へ復帰することを確認済み。
 
 ## 計画書との差異
 

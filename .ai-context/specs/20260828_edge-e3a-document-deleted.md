@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 辺 DocumentDeleted を Wolverine へ移す（E3a・段 c）
 type: spec
-status: draft
+status: done
 related_ids:
   - FR-06
   - FR-13
@@ -146,6 +146,23 @@ related_adrs:
 
 - 変異 W1: `AddPlatformWolverineStep<DocumentDeletedConsumer>` の登録を外す →
   `PipelineRecomposeTests.有効な削除段は登録経路を通って処理される_Wolverine側` が落ちること。
+
+［2026-08-28 追記 / #1021］**実測（波 2 監査の指摘 R1 の回収）。予告した名前のテストは実在せず、
+予告した変異は落ちなかった。事実をそのまま記録する:**
+
+- 上で名指しした `…_Wolverine側` というテストは**実装確定後に存在しない**（予定名のまま書いた誤り）。
+  実在するのは `PipelineRecomposeTests` の 3 件（有効な同期段は登録経路を通って処理される／
+  構成のみで同期段を外し削除段だけを有効化できる／無効化した削除段は登録されず購読されない）。
+- **実測 1**: WikiService `Program.cs` の削除段登録
+  （`AddPlatformWolverineStep<DocumentDeletedConsumer>`）を null 代入へ置換して knowledge ユニットの
+  **全テストを実行 → 1,037 件すべて緑（落ちない）**。ユニットテストは自前ホストで登録経路を通す
+  ため、**本番 Program.cs の結線の欠落はユニットでは検出されない**。
+- **何が守っているか**: ①共通ヘルパの規則 2〜7（宣言 ↔ 実装のずれ・未宣言登録は**起動失敗**。
+  向きは「登録したのに宣言と合わない」側）②`PipelineRecomposeTests` の対（有効 → 処理される／
+  無効 → 購読されない）が**ヘルパの登録・除外の両向き**を固定する。
+  ③「宣言したのに登録しない」向き（本変異の形）は**ユニットの射程外**で、実配線の検証は
+  統合スタック（`integration.yml`。本仕様書の「実ブローカ検証は CI / 実環境に委ねる」と同じ残件）
+  に委ねる。検査器の新設は行わない（同型の事故は本件が 1 回目。記録に留める）。
 
 ## 計画書との差異
 

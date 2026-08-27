@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 辺 DocumentUpdated（fan-out）を Wolverine へ移す（E3b・段 c）
 type: spec
-status: draft
+status: done
 related_ids:
   - FR-02
   - FR-06
@@ -100,6 +100,20 @@ related_adrs:
     配線のまま。⚠️ **本環境では実行できない**（Docker 無し）—— **マージ後に `integration.yml` の
     実行を必ず確認すること**（E1 の教訓。PR の CI は `Category!=Integration` で走らない）。
   - `WikiSyncTests` の発行スモークは `IMessageBus.PublishAsync` へ（消費確認は従来どおり範囲外）。
+
+## 受け入れ基準（段 c）
+
+［2026-08-28 追記 / #1021］波 2 監査の指摘 R2 の回収 —— 本仕様書だけ本節を欠いていた。
+既に S4・テスト節へ記録済みの実測を、E3a と同形のチェックボックスへ写す（新規の主張は無い）。
+
+- [x] 発行（DocumentService）・購読（Ingestion / Wiki）の全メンバが同一コミットで Wolverine へ移っている
+      （S4: `--update` 前の検査出力が前進 3 件のみ＝辺の全メンバ同時反転を実測）
+- [x] 各 consumer が `IPipelineStep<DocumentUpdated>` を実装し、`AddPlatformWolverineStep` 経由で登録される
+- [x] fan-out の保存: 購読キューがサービス名前置で分かれ、競合購読にならない（テスト節の専用発行ホストで固定）
+- [x] `check-event-topology.js` 緑（baseline の DocumentUpdated 3 値が wolverine）
+- [x] `check-backend-libraries.js` 緑（MassTransit 新規混入なし）
+- [x] 単体テスト緑: WikiService 59 / IngestionService.Worker 28 / DocumentService 184
+- [ ] 実ブローカ試験: **本環境では実行不可**（Docker なし）。**マージ後に `integration.yml` を確認すること**
 
 ## 段 a・b の runbook（デプロイ担当。コード PR に含めない）
 
