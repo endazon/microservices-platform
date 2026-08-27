@@ -1,7 +1,8 @@
-namespace FeedbackService.Api.Foundation.Domain;
+namespace FeedbackService.Domain;
 
 // FR-08, UC-01: AI 回答へのフィードバック（👍/👎・コメント）エンティティ。
 // 同一 (AnswerId, UserId) は 1 行に upsert する（二重計上しない。IADR-0010）。
+// IADR-0280 決定 2: 8 要素配置への移送（旧 FeedbackService.Api/Foundation/Domain/。振る舞いは変えない）。
 public class AnswerFeedback
 {
     // FR-08: コメントの最大長（バリデーション・カラム長と一致させる）。

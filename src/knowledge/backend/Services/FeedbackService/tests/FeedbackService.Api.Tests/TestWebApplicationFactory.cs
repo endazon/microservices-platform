@@ -1,4 +1,4 @@
-using FeedbackService.Api.Foundation.Persistence;
+using FeedbackService.Infrastructure.Foundation.Persistence;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;

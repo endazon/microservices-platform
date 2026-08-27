@@ -1,19 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- NFR / IADR-0280 決定 2〜4: 8 要素配置のパイロット。EF Core / Npgsql / Design は
+       FeedbackService.Infrastructure（DbContext・Migrations の移送先）が持ち、
+       本プロジェクトへは ProjectReference 経由で推移する。 -->
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
-    <!-- #34: Relational を直接ピンし MSB3277 (Npgsql 10.0.4 vs Design 10.0.9) を解消 -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
+    <!-- EF Core Tools（dotnet ef）は **startup project 側**に Design を要求する
+         （PrivateAssets=all のため Infrastructure から推移しない。実測）。
+         migrations add の出力先は -\-project で Infrastructure を指す（IADR-0280 決定 4）。 -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
+    <ProjectReference Include="..\FeedbackService.Infrastructure\FeedbackService.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\..\Shared\Knowledge.Contracts\Knowledge.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
-  </ItemGroup>
-  <!-- NFR / IADR-0280 決定 3: 合成ルートは Infrastructure（推移的に Application / Domain）を参照する。 -->
-  <ItemGroup>
-    <ProjectReference Include="..\FeedbackService.Infrastructure\FeedbackService.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

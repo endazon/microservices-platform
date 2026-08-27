@@ -1,5 +1,5 @@
 using FeedbackService.Api.Foundation.Endpoints;
-using FeedbackService.Api.Foundation.Persistence;
+using FeedbackService.Infrastructure.Foundation.Persistence;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
