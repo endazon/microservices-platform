@@ -21,6 +21,7 @@ import { DocumentForm } from './DocumentForm';
 import type { DocumentFormValues } from './DocumentForm';
 import { useAdminDocuments, useDocumentActions } from '../api/useDocumentAdmin';
 import type { DocumentCommand } from '../api/useDocumentAdmin';
+import { useTagOptions } from '../api/useTagOptions';
 // SC-05, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 
@@ -66,6 +67,8 @@ export function DocumentManagementPage() {
   const [editing, setEditing] = useState<DocumentDto | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const documents = useAdminDocuments();
+  // SC-05（#449）: タグの選択肢は辞書（`/bff/tags`）から引く。自由入力は許さない。
+  const tagOptions = useTagOptions();
   const actions = useDocumentActions();
   const { create, update, publish, archive, remove } = actions;
   // IADR-0135 決定 6: 状態遷移は生成フックが 3 本に分かれる。画面の語彙（DocumentCommand）から
@@ -249,6 +252,7 @@ export function DocumentManagementPage() {
             key={editing?.id ?? 'new'}
             editing={editing}
             submitting={create.isPending || update.isPending}
+            tagOptions={tagOptions.names}
             onSubmit={save}
             onCancel={() => setEditing(null)}
           />
