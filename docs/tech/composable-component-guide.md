@@ -3,7 +3,7 @@ title: 可変部品（Composable コンポーネント）共通実装ガイド �
 type: tech
 status: completed
 created: 2026-07-09
-updated: 2026-08-21
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:

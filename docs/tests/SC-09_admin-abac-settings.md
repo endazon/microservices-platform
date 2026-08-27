@@ -3,7 +3,7 @@ title: SC-09 管理者設定（ABAC） テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-23
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
