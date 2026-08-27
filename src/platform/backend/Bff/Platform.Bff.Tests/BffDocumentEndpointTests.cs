@@ -174,4 +174,54 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
+
+    // ---- FR-06, UC-03, SC-03（#449）: 特定版の取得 ----
+    //
+    // 計画 FR-06 の射程は「版の作成・一覧・**取得**」まで（［2026-08-23 明確化］・環流 planning#473）。
+    // サービス側には端点が在ったが **BFF が露出しておらず、利用者経路から到達できなかった**。
+
+    [Fact]
+    public async Task GetVersion_WhenAuthorized_ReturnsSnapshot()
+    {
+        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/versions/2");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<DocumentVersionDto>();
+        body!.Version.Should().Be(2);
+        body.DocumentId.Should().Be(BffTestFactory.StubDocumentId);
+    }
+
+    // 🔴 存在秘匿: スコープ外は 404。**後段を引く前に落ちる**ことが要点である ——
+    // 判定せずに後段を引くと、閲覧できない文書の版メタデータが漏れる。
+    [Fact]
+    public async Task GetVersion_WhenScopeNotGranted_Returns404()
+    {
+        _factory.SearchScopeGranted = false;
+        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/versions/2");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // 当該版が無い場合も 404（後段の 404 を透過する）。
+    [Fact]
+    public async Task GetVersion_WhenVersionMissing_Returns404()
+    {
+        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/versions/99");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // 一覧（/versions）と取得（/versions/{n}）が**別の口として振り分く**ことを固定する。
+    // ルート順によっては取得が一覧に食われる（あるいは詳細に落ちる）ため、形の違いで見る。
+    [Fact]
+    public async Task GetVersion_IsRoutedSeparatelyFromTheVersionList()
+    {
+        var single = await _factory.CreateClient()
+            .GetFromJsonAsync<DocumentVersionDto>($"{DetailPath}/versions/3");
+        var list = await _factory.CreateClient()
+            .GetFromJsonAsync<List<DocumentVersionDto>>($"{DetailPath}/versions");
+
+        single!.Version.Should().Be(3);
+        list!.Should().HaveCount(2);
+    }
 }

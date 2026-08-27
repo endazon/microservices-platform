@@ -74,6 +74,36 @@ public static class DocumentBffEndpoints
             return Results.Ok(versions ?? []);
         }).WithName("BffDocumentVersions").Produces<List<DocumentVersionDto>>();
 
+        // FR-06, UC-03, SC-03（#449）: **特定版の取得**。スコープ外・不在・版不在はいずれも 404。
+        //
+        // **計画 FR-06 の射程は「版の作成・一覧・取得」まで**であり（［2026-08-23 明確化］・
+        // 環流 planning#473）、**版の復元（過去版へ戻す操作）は含まれない**。この口は取得だけを担う。
+        //
+        // 🔴 **応答は本文を含まない。** `DocumentVersionDto` が持つのはタイトル・状態・`markdownUri`・
+        // 属性・タグ・変更メモ・作成日時の**メタデータのスナップショット**である。本文の実体は
+        // 版ごとに保持されておらず（オブジェクトキーが文書 ID から固定で決まり、再投入は同じキーを
+        // 上書きする）、`markdownUri` は**現行版の本文**を指す。過去版の本文は読めない。
+        //
+        // 一覧（`/versions`）と同じ形で先に ABAC を判定する —— 判定を通さずに後段を引くと、
+        // **閲覧できない文書の版メタデータが漏れる**。
+        g.MapGet("/{id:guid}/versions/{version:int}", async (
+            Guid id, int version, IHttpClientFactory httpFactory, HttpContext http,
+            CancellationToken ct) =>
+        {
+            var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, httpFactory, http, ct);
+            if (doc is null)
+                return Results.NotFound();
+
+            var client = httpFactory.CreateClient("DocumentService");
+            var resp = await client.GetAsync($"/documents/{id}/versions/{version}", ct);
+            // 後段の 404（その版が無い）はそのまま 404 で返す（存在秘匿の意味論と衝突しない）。
+            if (!resp.IsSuccessStatusCode)
+                return Results.NotFound();
+
+            var snapshot = await resp.Content.ReadFromJsonAsync<DocumentVersionDto>(ct);
+            return snapshot is null ? Results.NotFound() : Results.Ok(snapshot);
+        }).WithName("BffDocumentVersion").Produces<DocumentVersionDto>();
+
         // 本文（正規化 Markdown）: ABAC 判定後にオブジェクトストレージから読み取る。#1010: read。
         g.MapGet("/{id:guid}/content", async (
             Guid id, IHttpClientFactory httpFactory, IObjectStorageClient storage,

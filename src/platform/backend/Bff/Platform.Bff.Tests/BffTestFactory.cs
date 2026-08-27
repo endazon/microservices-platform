@@ -598,6 +598,20 @@ public class BffTestFactory : WebApplicationFactory<Program>
             if (path.EndsWith("/versions", StringComparison.Ordinal))
                 return Ok(owner.StubVersions);
 
+            // FR-06 (SC-03, #449): GET /documents/{id}/versions/{version}（特定版の取得）。
+            // 当該版が無ければ後段は 404 を返す —— BFF がそれを 404 として透過することを検証する。
+            var versionsMarker = path.IndexOf("/versions/", StringComparison.Ordinal);
+            if (versionsMarker >= 0)
+            {
+                var requested = path[(versionsMarker + "/versions/".Length)..];
+                var snapshot = int.TryParse(requested, out var number)
+                    ? owner.StubVersions.Find(v => v.Version == number)
+                    : null;
+                return snapshot is null
+                    ? Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound))
+                    : Ok(snapshot);
+            }
+
             if (path == "/documents")
             {
                 // FR-06 (SC-05): 新規作成。検証エラーは DocumentWriteStatusCode で再現し透過を確認する。
