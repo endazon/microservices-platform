@@ -464,11 +464,11 @@ internal sealed class StagedVectorStore : IVectorStore
     public HashSet<Guid> VectorSideDocuments { get; } = [];
 
     public int WithinDocumentsCalls { get; private set; }
-    public IReadOnlyList<AttributeFilter>? LastWithinDocumentsFilters { get; private set; }
+    public ScopeFilter? LastWithinDocumentsFilters { get; private set; }
     public List<SearchResultDto> LastWithinDocumentsResults { get; private set; } = [];
 
     public async Task<List<SearchResultDto>> SearchAsync(
-        float[] queryVector, int topK, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        float[] queryVector, int topK, ScopeFilter? filters, CancellationToken ct = default)
     {
         var hits = await _inner.SearchAsync(queryVector, topK, filters, ct);
         return VectorSideDocuments.Count == 0
@@ -477,12 +477,12 @@ internal sealed class StagedVectorStore : IVectorStore
     }
 
     public Task<List<SearchResultDto>> KeywordSearchAsync(
-        string query, int topK, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        string query, int topK, ScopeFilter? filters, CancellationToken ct = default)
         => _inner.KeywordSearchAsync(query, topK, filters, ct);
 
     public async Task<List<SearchResultDto>> SearchWithinDocumentsAsync(
         float[] queryVector, int topK, IReadOnlyCollection<Guid> documentIds,
-        IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        ScopeFilter? filters, CancellationToken ct = default)
     {
         WithinDocumentsCalls++;
         LastWithinDocumentsFilters = filters;
@@ -492,7 +492,7 @@ internal sealed class StagedVectorStore : IVectorStore
     }
 
     public Task<List<string>> ListAttributeValuesAsync(
-        string payloadKey, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        string payloadKey, ScopeFilter? filters, CancellationToken ct = default)
         => _inner.ListAttributeValuesAsync(payloadKey, filters, ct);
 
     public Task UpsertAsync(ChunkPayload chunk, CancellationToken ct = default) => _inner.UpsertAsync(chunk, ct);

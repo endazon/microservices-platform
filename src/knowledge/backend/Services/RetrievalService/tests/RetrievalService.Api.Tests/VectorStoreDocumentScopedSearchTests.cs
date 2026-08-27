@@ -62,14 +62,14 @@ public class VectorStoreDocumentScopedSearchTests
 
         var denied = await store.SearchWithinDocumentsAsync(
             [1f, 0f], 10, [DocA],
-            [new AttributeFilter("department", ["finance"])], TestContext.Current.CancellationToken);
+            new ScopeFilter([new AttributeFilter("department", ["finance"])]), TestContext.Current.CancellationToken);
 
         denied.Should().BeEmpty("文書 ID 集合に入っていても ABAC が拒否する属性なら返らない");
 
         // 陽性対照: ABAC が許可する属性なら、同じ文書 ID 集合で返る。
         var allowed = await store.SearchWithinDocumentsAsync(
             [1f, 0f], 10, [DocA],
-            [new AttributeFilter("department", ["legal"])], TestContext.Current.CancellationToken);
+            new ScopeFilter([new AttributeFilter("department", ["legal"])]), TestContext.Current.CancellationToken);
 
         allowed.Should().ContainSingle().Which.DocumentId.Should().Be(DocA);
     }
@@ -125,7 +125,7 @@ public class VectorStoreDocumentScopedSearchTests
     public void BuildDocumentScopedFilter_AndsDocumentIdsWithAbacConditions()
     {
         var filter = QdrantVectorStore.BuildDocumentScopedFilter(
-            [DocA, DocB], [new AttributeFilter("department", ["legal"])]);
+            [DocA, DocB], new ScopeFilter([new AttributeFilter("department", ["legal"])]));
 
         filter.Must.Should().HaveCount(2, "文書 ID の条件と ABAC 条件が AND で並ぶ");
 

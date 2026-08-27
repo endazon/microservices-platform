@@ -2045,6 +2045,12 @@
       "Platform.Shared.Contracts.Dtos.AccessScope": {
         "kind": "record",
         "members": {
+          "Branches": {
+            "source": "positional",
+            "type": "List<AccessScopeBranch>?",
+            "required": false,
+            "position": 2
+          },
           "Filters": {
             "source": "positional",
             "type": "List<AttributeFilter>",

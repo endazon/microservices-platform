@@ -75,7 +75,7 @@ submodule。`BffScopeResolver` への参照が無いことは同走査で確認�
 | --- | --- | --- |
 | 1 | `Platform.Shared.Infrastructure/Foundation/Authz/BffScopeResolver.cs` | **改定**（戻り値を Branches を運べる `BffAccessScope` へ・`Matches` に分岐評価） |
 | 2 | `Knowledge.Bff.Endpoints/DocumentBffEndpoints.cs`（`IsManageable`） | **改定**（引数型の追随のみ。判定は `Matches` に委譲済み） |
-| 3 | `Knowledge.Bff.Endpoints/SearchBffEndpoints.cs`（`SearchRequest` / `AttributeValuesRequest` への埋め込み 2 箇所） | **改定**（後段へは契約型 `AccessScope` へ写して渡す。**Branches は落ちる** —— 後段 RetrievalService の段 3 は #448 の射程であり、契約 `AccessScope` は Branches を持たない。未移行側が従来の連言で判定する形は段 1・2 の後方互換の扱いと同一） |
+| 3 | `Knowledge.Bff.Endpoints/SearchBffEndpoints.cs`（`SearchRequest` / `AttributeValuesRequest` への埋め込み 2 箇所） | **改定**（後段へは契約型 `AccessScope` へ写して渡す。**Branches は落ちる** —— 後段 RetrievalService の段 3 は #448 の射程であり、契約 `AccessScope` は Branches を持たない。未移行側が従来の連言で判定する形は段 1・2 の後方互換の扱いと同一）<br>🔴 **［2026-08-28 追記 / #989 段 3］この留保は解除した**（§8） |
 | 4 | `Platform.Bff.Tests`（`BffScopeResolverTests` / `BffSearchEndpointTests:82` / `BffDocumentWriteEndpointTests` / `BffTestFactory`） | **追補・追随**（否定形＋陽性対照、スタブの action 別応答） |
 | 5 | `Knowledge.Contracts/Dtos/SearchDto.cs` / `AttributeValueDto.cs`（契約の `AccessScope?` メンバ） | **無改修**（契約変更は本作業の宣言領域外。#3 の写しで従来どおりの値が入る） |
 | 6 | `Platform.Shared.Contracts/Dtos/AccessScopeDto.cs`（`AccessScope` 定義） | **無改修**（宣言領域外。検索契約が参照し続ける） |
@@ -174,6 +174,7 @@ BFF スコープ解決の純ロジック・端点テストは従前どおり `Pl
 2. **検索経路の分岐対応**: `SearchRequest.Scope` / `AttributeValuesRequest.Scope`（契約
    `AccessScope`）は Branches を運べないため、後段（RetrievalService）は従来評価のまま
    （#448 の射程）。BFF 内で `Matches` を使う文書系だけが本作業で分岐対応になる。
+   🔴 **［2026-08-28 追記 / #989 段 3］解消した**（§8）。
 3. **write ポリシー未配備環境では、対応後に文書の作成・更新系が全件拒否される**
    （deny-by-default の正しい帰結。`IADR-0272` §結果と同じ運用上の注意）。
 
@@ -205,3 +206,25 @@ BFF スコープ解決の純ロジック・端点テストは従前どおり `Pl
   Knowledge.IntegrationTests の 3 件（`AbacScopeTests` 系）は in-process で走り緑。
 - AST submodule（`src/ai-stock-trading`）は Platform.Bff のビルドに必要なため
   `git submodule update --init` で pin どおり `9b9c6763` を取得した（変更していない）。
+
+## 8. ［2026-08-28 追記 / #989 段 3］`ToContractScope()` の反転
+
+**本書 §2-c #3 と §6-2 が記録した「後段へは Branches を落とす」という留保を解除した。**
+
+| 項目 | 波 1（本書の当初） | 段 3（#989 消費側 3 サービス） |
+| --- | --- | --- |
+| 契約 `AccessScope` | `Branches` を持たない | **`List<AccessScopeBranch>? Branches = null` を末尾へ追加**（既定値付き＝非破壊。`AccessScopeResponse.Branches` と同型。`IADR-0122` 決定 2） |
+| `BffScopeResolver.ToContractScope()` | `new(Filters, GrantsAccess)`（Branches を落とす） | **`new(Filters, GrantsAccess, Branches)`（運ぶ）** |
+| 後段 RetrievalService | 従来評価（連言） | **分岐間 OR で評価** |
+
+**留保の理由が消えたため反転した。** 本書が Branches を落としたのは「**後段が未移行だから**」で
+あり（§2-c #3 の理由欄）、**段 3 がまさにその消費側移行である**。落としたままにすると
+「BFF は分岐で判定するが後段は従来評価」という食い違いが残り、**検索経路だけが混成
+（`IADR-0253` 決定 2 の反例）を許す**。
+
+- 反転は `docs/api/openapi.yaml` に影響しない —— **`AccessScope` はスキーマとして存在しない**
+  （`AccessScopeRequest` / `AccessScopeResponse` のみ = `/authz/scope` 端点用）。実測で確認した。
+- `scripts/contract-schema-baseline.json` は `--update` した（差分は `AccessScope.Branches` の追加のみ・
+  **非破壊判定**）。
+- 段 3 の作業仕様書: [`20260828_issue-989-stage3_consumers.md`](20260828_issue-989-stage3_consumers.md)。
+

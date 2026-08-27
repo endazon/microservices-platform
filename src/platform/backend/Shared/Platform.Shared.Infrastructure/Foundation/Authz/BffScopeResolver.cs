@@ -20,8 +20,8 @@ public static class BffScopeResolver
     // 読み取りは BffScopeAction.Read、作成・更新・削除は BffScopeAction.Write を渡す。
     //
     // FR-19, ADR-0036, IADR-0253 決定 1（段 3・BFF の分岐対応 / #989）: 応答の Branches
-    // （名前つき分岐）をそのまま運ぶ。契約型 AccessScope は Branches を持たないため、
-    // BFF 内の判定には BffAccessScope を用い、未移行の後段へ渡すときだけ ToContractScope() で写す。
+    // （名前つき分岐）をそのまま運ぶ。BFF 内の判定には BffAccessScope を用い、
+    // 後段へ渡すときは ToContractScope() で契約型へ写す（**Branches も運ばれる**。段 3 完了）。
     public static async Task<BffAccessScope?> ResolveAsync(
         IHttpClientFactory httpFactory, HttpContext http, string action, CancellationToken ct)
     {
@@ -104,20 +104,24 @@ public static class BffScopeResolver
 }
 
 // FR-05, FR-19, IADR-0253 決定 1・2（段 3 / #989）: BFF 内の判定に用いる解決済みスコープ。
-// 契約型 AccessScope（Filters ＋ GrantsAccess）は検索契約（SearchRequest 等）に埋め込まれて
-// 後段へ渡るため形を変えられない。Branches を BFF まで運ぶための資料型をここに置く。
+// BFF は認可応答の全体（Filters ＋ Granted ＋ Branches）を扱うため、契約型より広い資料型を持つ。
 //
 // Filters は従来の算出値（キー単位 union の連言）そのまま —— 値も意味も変えない（IADR-0253 決定 2）。
-// 後段（RetrievalService 等・未移行）へは ToContractScope() で写して渡す。**Branches はそこで
-// 落ちる**＝未移行の後段は従来どおり Filters で評価する（段 1・2 と同じ後方互換の扱い。
-// 後段の分岐対応は IADR-0253 段 3 の残り〔RetrievalService / AiAnalysisService〕の射程）。
+//
+// ［2026-08-28 追記 / #989 段 3］**ToContractScope() は Branches を運ぶようになった。**
+// 波 1（#1010 / #989 BFF 分）では契約型 AccessScope が Branches を持たなかったため、後段
+// （RetrievalService）へ渡す時点で落としていた。その留保は「**消費側が未移行だから**」を理由に
+// した意図的な先送りであり、段 3 で Retrieval / AiAnalysis / Graph の移行が完了したことに伴い、
+// 契約 AccessScope へ Branches を足して（末尾・既定値付き＝非破壊）運ぶ形へ反転した。
+// **落としたままにすると「BFF は分岐で判定するが後段は従来評価」という食い違いが残り、
+// 検索経路だけが混成を許す**（IADR-0253 決定 2 の反例）。
 public sealed record BffAccessScope(
     List<AttributeFilter> Filters,
     bool GrantsAccess,
     List<AccessScopeBranch>? Branches = null)
 {
-    // 未移行の後段へ渡す契約型への写し（Branches は運ばれない）。
-    public AccessScope ToContractScope() => new(Filters, GrantsAccess);
+    // 後段へ渡す契約型への写し。**Branches も運ぶ**（段 3 完了。上の追記を参照）。
+    public AccessScope ToContractScope() => new(Filters, GrantsAccess, Branches);
 }
 
 // FR-05, FR-21, ADR-0036 D-07, IADR-0253 決定 5, IADR-0272 決定 4 (#1010):

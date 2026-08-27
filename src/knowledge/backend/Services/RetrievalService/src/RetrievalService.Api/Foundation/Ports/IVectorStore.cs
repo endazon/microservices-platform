@@ -7,11 +7,11 @@ namespace RetrievalService.Api.Foundation.Ports;
 public interface IVectorStore
 {
     // FR-03: 意味検索（密ベクトル類似度）
-    // FR-05: filters は ABAC 多値 allow-list（key ∈ values の AND 結合）。
+    // FR-05, FR-19: filters は ABAC 制約（連言 ＋ 分岐の選言。ScopeFilter を参照）。
     Task<List<SearchResultDto>> SearchAsync(
         float[] queryVector,
         int topK,
-        IReadOnlyList<AttributeFilter>? filters,
+        ScopeFilter? filters,
         CancellationToken ct = default);
 
     // FR-04, FR-17, ADR-0035, #969: 文書 ID 集合に絞った意味検索（二段検索の後段）。
@@ -29,15 +29,15 @@ public interface IVectorStore
         float[] queryVector,
         int topK,
         IReadOnlyCollection<Guid> documentIds,
-        IReadOnlyList<AttributeFilter>? filters,
+        ScopeFilter? filters,
         CancellationToken ct = default);
 
     // FR-03: 全文検索（キーワード／語句一致）。ハイブリッド検索の全文側を担う。
-    // FR-05: filters は ABAC 多値 allow-list（key ∈ values の AND 結合）。
+    // FR-05, FR-19: filters は ABAC 制約（連言 ＋ 分岐の選言。ScopeFilter を参照）。
     Task<List<SearchResultDto>> KeywordSearchAsync(
         string query,
         int topK,
-        IReadOnlyList<AttributeFilter>? filters,
+        ScopeFilter? filters,
         CancellationToken ct = default);
 
     // FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会（計画 ADR-0043）。
@@ -47,7 +47,7 @@ public interface IVectorStore
     // 候補に無い値」が生まれる。IADR-0151 決定 1）。
     Task<List<string>> ListAttributeValuesAsync(
         string payloadKey,
-        IReadOnlyList<AttributeFilter>? filters,
+        ScopeFilter? filters,
         CancellationToken ct = default);
 
     Task UpsertAsync(ChunkPayload chunk, CancellationToken ct = default);

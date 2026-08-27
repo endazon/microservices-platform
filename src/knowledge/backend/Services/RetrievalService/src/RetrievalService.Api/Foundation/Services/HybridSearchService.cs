@@ -144,10 +144,27 @@ public class HybridSearchService(
             .ToList();
     }
 
-    // FR-05: 単値 AttributeFilters（FR-03 後方互換）と ABAC 多値 Scope を 1 本の allow-list へ統合。
-    // 同一キーが両方に現れた場合は値集合を結合（OR）する。
-    private static List<AttributeFilter>? BuildFilters(SearchRequest request)
+    // FR-05: 単値 AttributeFilters（FR-03 後方互換）と ABAC 多値 Scope を検索の制約へ写す。
+    //
+    // FR-19, ADR-0036, IADR-0253 決定 1（段 3 / #989）: スコープが**名前つき分岐**を運んでいれば
+    // **分岐間 OR・分岐内 AND** で評価する。1 分岐 = マッチした 1 ポリシーの文書条件であり、
+    // 計画の read 規則「静的属性ベース ∨ 所有者ベース ∨ 共有先ベース」の選言を写す。
+    //
+    // 🔴 **分岐をキー単位 union へ畳まない**（IADR-0253 決定 2 の反例）——
+    // A={confidentiality:internal, department:hr} と B={confidentiality:public, department:sales}
+    // を union すると、**どちらのポリシー単独も許可しない混成 (internal, sales) を許す**。
+    //
+    // 利用者指定の AttributeFilters は**分岐の選言全体と AND** で重ねる（絞り込みは narrowing であり
+    // 権限を広げない）。**分岐が無いときは従来の算出（キー単位の結合）をそのまま使う**——
+    // 未移行の発行者から来た応答の互換のためであり、値も意味も変えない。
+    private static ScopeFilter BuildFilters(SearchRequest request)
     {
+        if (request.Scope is { Branches.Count: > 0 } scoped)
+            return new ScopeFilter(
+                BuildUserFilters(request.AttributeFilters),
+                [.. scoped.Branches.Select(b => (IReadOnlyList<AttributeFilter>)b.Filters)]);
+
+        // 後方互換: 分岐が無ければ従来どおり 1 本の連言へ統合する（同一キーは値集合を結合）。
         var byKey = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
         if (request.AttributeFilters is { Count: > 0 })
@@ -159,9 +176,9 @@ public class HybridSearchService(
                 Add(f.Key, f.AllowedValues);
 
         if (byKey.Count == 0)
-            return null;
+            return ScopeFilter.Empty;
 
-        return byKey.Select(kv => new AttributeFilter(kv.Key, kv.Value)).ToList();
+        return new ScopeFilter([.. byKey.Select(kv => new AttributeFilter(kv.Key, kv.Value))]);
 
         void Add(string key, IEnumerable<string> values)
         {
@@ -172,6 +189,13 @@ public class HybridSearchService(
                     list.Add(v);
         }
     }
+
+    // FR-03: 利用者が指定した単値フィルタ（後方互換）。分岐経路では選言全体と AND で重ねる。
+    private static List<AttributeFilter> BuildUserFilters(
+        IReadOnlyDictionary<string, string>? attributeFilters) =>
+        attributeFilters is { Count: > 0 }
+            ? [.. attributeFilters.Select(kv => new AttributeFilter(kv.Key, [kv.Value]))]
+            : [];
 
     // FR-03: Reciprocal Rank Fusion。両リストに現れる文書ほど上位になる。
     internal static List<SearchResultDto> ReciprocalRankFusion(
@@ -210,7 +234,9 @@ internal sealed record HybridSearchOutcome(
     // 段③（文書 ID 制約つき検索）が同じベクトルで採点するために要る。埋め込みを 2 度呼ばない。
     float[] QueryVector,
     // 段③の ABAC フィルタ。**文書 ID の制約は ABAC を置き換えない**（AND。IADR-0259 決定 3）。
-    IReadOnlyList<AttributeFilter>? Filters,
+    // FR-19 / #989 段 3: 分岐（選言）も運ぶ —— 段③ が段① と**同じ制約**で絞るためである
+    // （連言だけ渡すと段③ だけがキー単位 union で判定し、混成を許してしまう）。
+    ScopeFilter? Filters,
     string Sort,
     int TopK,
     int CandidateK)

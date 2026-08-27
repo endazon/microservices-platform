@@ -37,7 +37,7 @@ public class TagFilteringTests
             Chunk("営業の文書", Dept("sales"), ["営業"]));
 
         var results = await store.SearchAsync([0.1f], 10,
-            [new AttributeFilter(AttributeValueKeys.Tags, ["経理"])], TestContext.Current.CancellationToken);
+            new ScopeFilter([new AttributeFilter(AttributeValueKeys.Tags, ["経理"])]), TestContext.Current.CancellationToken);
 
         results.Should().ContainSingle().Which.DocumentTitle.Should().Be("経理の文書");
     }
@@ -49,7 +49,7 @@ public class TagFilteringTests
         var store = StoreWith(Chunk("複数タグ", Dept("finance"), ["経理", "規程", "年次"]));
 
         var results = await store.SearchAsync([0.1f], 10,
-            [new AttributeFilter(AttributeValueKeys.Tags, ["規程"])], TestContext.Current.CancellationToken);
+            new ScopeFilter([new AttributeFilter(AttributeValueKeys.Tags, ["規程"])]), TestContext.Current.CancellationToken);
 
         results.Should().ContainSingle("配列の 2 番目の要素でも一致する");
     }
@@ -64,7 +64,7 @@ public class TagFilteringTests
             Chunk("無関係", Dept("hr"), ["採用"]));
 
         var results = await store.SearchAsync([0.1f], 10,
-            [new AttributeFilter(AttributeValueKeys.Tags, ["経理", "営業"])], TestContext.Current.CancellationToken);
+            new ScopeFilter([new AttributeFilter(AttributeValueKeys.Tags, ["経理", "営業"])]), TestContext.Current.CancellationToken);
 
         results.Should().HaveCount(2);
     }
@@ -78,7 +78,7 @@ public class TagFilteringTests
             Chunk("営業", Dept("sales"), ["営業"]));
 
         var results = await store.SearchAsync([0.1f], 10,
-            [new AttributeFilter("department", ["finance"])], TestContext.Current.CancellationToken);
+            new ScopeFilter([new AttributeFilter("department", ["finance"])]), TestContext.Current.CancellationToken);
 
         results.Should().ContainSingle().Which.DocumentTitle.Should().Be("経理");
     }
@@ -93,10 +93,10 @@ public class TagFilteringTests
             Chunk("属性だけ", Dept("finance"), ["営業"]));
 
         var results = await store.SearchAsync([0.1f], 10,
-        [
+        new ScopeFilter([
             new AttributeFilter(AttributeValueKeys.Tags, ["経理"]),
             new AttributeFilter("department", ["finance"]),
-        ], TestContext.Current.CancellationToken);
+        ]), TestContext.Current.CancellationToken);
 
         results.Should().ContainSingle().Which.DocumentTitle.Should().Be("両方満たす");
     }
@@ -109,7 +109,7 @@ public class TagFilteringTests
         var store = StoreWith(Chunk("タグ無し", Dept("finance"), []));
 
         var results = await store.SearchAsync([0.1f], 10,
-            [new AttributeFilter(AttributeValueKeys.Tags, ["経理"])], TestContext.Current.CancellationToken);
+            new ScopeFilter([new AttributeFilter(AttributeValueKeys.Tags, ["経理"])]), TestContext.Current.CancellationToken);
 
         results.Should().BeEmpty();
     }
@@ -123,7 +123,7 @@ public class TagFilteringTests
             Chunk("営業の文書", Dept("sales"), ["営業"]));
 
         var results = await store.KeywordSearchAsync("文書", 10,
-            [new AttributeFilter(AttributeValueKeys.Tags, ["経理"])], TestContext.Current.CancellationToken);
+            new ScopeFilter([new AttributeFilter(AttributeValueKeys.Tags, ["経理"])]), TestContext.Current.CancellationToken);
 
         results.Should().OnlyContain(r => r.DocumentTitle == "経理の文書");
     }
@@ -137,10 +137,10 @@ public class TagFilteringTests
     public void QdrantConditions_MapTagsToListField_AndAttributesToNestedPath()
     {
         var conditions = QdrantVectorStore.BuildAttributeConditions(
-        [
+        new ScopeFilter([
             new AttributeFilter(AttributeValueKeys.Tags, ["経理"]),
             new AttributeFilter("department", ["finance"]),
-        ]);
+        ]));
 
         conditions.Select(c => c.Field.Key).Should().Equal("tags", "attributes.department");
     }
@@ -154,7 +154,7 @@ public class TagFilteringTests
     [InlineData("TAGS")]
     public void QdrantConditions_TagKeyIsCaseInsensitive(string key)
     {
-        var conditions = QdrantVectorStore.BuildAttributeConditions([new AttributeFilter(key, ["経理"])]);
+        var conditions = QdrantVectorStore.BuildAttributeConditions(new ScopeFilter([new AttributeFilter(key, ["経理"])]));
 
         conditions.Should().ContainSingle().Which.Field.Key.Should().Be("tags");
     }
@@ -163,7 +163,7 @@ public class TagFilteringTests
     public void QdrantConditions_AttributeKeyCaseIsPreserved()
     {
         var conditions = QdrantVectorStore.BuildAttributeConditions(
-            [new AttributeFilter("Department", ["finance"])]);
+            new ScopeFilter([new AttributeFilter("Department", ["finance"])]));
 
         conditions.Should().ContainSingle().Which.Field.Key.Should().Be("attributes.Department",
             "属性キーは投入時の綴りのままペイロードのキーになる（畳むと黙って空集合になる）");
@@ -173,7 +173,7 @@ public class TagFilteringTests
     [Fact]
     public void QdrantConditions_EmptyAllowedValuesProduceNoCondition()
     {
-        QdrantVectorStore.BuildAttributeConditions([new AttributeFilter(AttributeValueKeys.Tags, [])])
+        QdrantVectorStore.BuildAttributeConditions(new ScopeFilter([new AttributeFilter(AttributeValueKeys.Tags, [])]))
             .Should().BeEmpty();
     }
 }

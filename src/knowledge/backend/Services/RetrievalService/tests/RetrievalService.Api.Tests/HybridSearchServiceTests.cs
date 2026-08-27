@@ -19,7 +19,7 @@ internal sealed class RecordingVectorStore : IVectorStore
     public List<SearchResultDto> KeywordResults { get; init; } = [];
 
     public Task<List<SearchResultDto>> SearchAsync(
-        float[] queryVector, int topK, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        float[] queryVector, int topK, ScopeFilter? filters, CancellationToken ct = default)
     {
         VectorCalls++;
         LastVectorTopK = topK;
@@ -27,7 +27,7 @@ internal sealed class RecordingVectorStore : IVectorStore
     }
 
     public Task<List<SearchResultDto>> KeywordSearchAsync(
-        string query, int topK, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        string query, int topK, ScopeFilter? filters, CancellationToken ct = default)
     {
         KeywordCalls++;
         LastKeywordTopK = topK;
@@ -38,11 +38,11 @@ internal sealed class RecordingVectorStore : IVectorStore
     // 観測する目的であり、この口は呼ばれない（呼ばれたら空を返す）。
     public Task<List<SearchResultDto>> SearchWithinDocumentsAsync(
         float[] queryVector, int topK, IReadOnlyCollection<Guid> documentIds,
-        IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        ScopeFilter? filters, CancellationToken ct = default)
         => Task.FromResult(new List<SearchResultDto>());
 
     public Task<List<string>> ListAttributeValuesAsync(
-        string payloadKey, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        string payloadKey, ScopeFilter? filters, CancellationToken ct = default)
         => Task.FromResult<List<string>>([]);
 
     public Task UpsertAsync(ChunkPayload chunk, CancellationToken ct = default) => Task.CompletedTask;
@@ -514,7 +514,7 @@ internal sealed class EvaluationCorpusStore(IReadOnlyList<EvaluationCorpusStore.
     // `RecordingVectorStore` / `InMemoryVectorStore.SearchAsync` は `queryVector` を見ないため、
     // 順位の回帰は原理的に観測できない（[[IADR-0014]] と同型の死角）。
     public Task<List<SearchResultDto>> SearchAsync(
-        float[] queryVector, int topK, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        float[] queryVector, int topK, ScopeFilter? filters, CancellationToken ct = default)
         => Task.FromResult(docs
             .Select(d => (Doc: d, Score: Cosine(queryVector, d.Vector)))
             .OrderByDescending(x => x.Score)
@@ -524,7 +524,7 @@ internal sealed class EvaluationCorpusStore(IReadOnlyList<EvaluationCorpusStore.
 
     // 全文検索の代理。語句の一致数で採点する（一致 0 件は返さない＝実際の全文検索と同じ）。
     public Task<List<SearchResultDto>> KeywordSearchAsync(
-        string query, int topK, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        string query, int topK, ScopeFilter? filters, CancellationToken ct = default)
     {
         var terms = query.Split([' ', '　'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return Task.FromResult(docs
@@ -555,11 +555,11 @@ internal sealed class EvaluationCorpusStore(IReadOnlyList<EvaluationCorpusStore.
 
     public Task<List<SearchResultDto>> SearchWithinDocumentsAsync(
         float[] queryVector, int topK, IReadOnlyCollection<Guid> documentIds,
-        IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        ScopeFilter? filters, CancellationToken ct = default)
         => Task.FromResult(new List<SearchResultDto>());
 
     public Task<List<string>> ListAttributeValuesAsync(
-        string payloadKey, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        string payloadKey, ScopeFilter? filters, CancellationToken ct = default)
         => Task.FromResult<List<string>>([]);
 
     public Task UpsertAsync(ChunkPayload chunk, CancellationToken ct = default) => Task.CompletedTask;

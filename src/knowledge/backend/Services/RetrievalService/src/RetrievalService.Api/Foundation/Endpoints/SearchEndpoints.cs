@@ -1,4 +1,5 @@
 using Knowledge.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 using RetrievalService.Api.Foundation.Ports;
 using System.Diagnostics;
 
@@ -36,8 +37,17 @@ public static class SearchEndpoints
             if (req.Scope is not { GrantsAccess: true } scope || string.IsNullOrWhiteSpace(req.Key))
                 return Results.Ok(new AttributeValuesResponse([]));
 
+            // FR-19, IADR-0253 決定 1（段 3 / #989）: 分岐があれば選言で絞る。
+            // **検索と同じ制約を渡す**（別経路で絞ると「検索には出るが候補に無い値」が生まれる。
+            // IADR-0151 決定 1）。
             var values = await store.ListAttributeValuesAsync(
-                AttributeValueKeys.ToPayloadKey(req.Key), scope.Filters, ct);
+                AttributeValueKeys.ToPayloadKey(req.Key),
+                new ScopeFilter(
+                    scope.Filters,
+                    scope.Branches is { Count: > 0 }
+                        ? [.. scope.Branches.Select(b => (IReadOnlyList<AttributeFilter>)b.Filters)]
+                        : null),
+                ct);
 
             return Results.Ok(new AttributeValuesResponse(values));
         }).WithName("AttributeValues").Produces<AttributeValuesResponse>();

@@ -94,6 +94,67 @@ public class HybridSearchEndpointTests
         ids.Should().NotContain(conf.ChunkId, "許可値集合に無い機密文書は現れない");
     }
 
+    // ── FR-19, IADR-0253 決定 1（段 3 / #989）: 端点経由でも分岐（Branches）が効く ──
+    //
+    // 契約 AccessScope が Branches を運ぶようになり、BFF → RetrievalService の実経路で
+    // 分岐間 OR が適用される。**BuildFilters の配線まで含めて**固定する。
+    [Fact]
+    public async Task PostSearch_EvaluatesBranchesAsDisjunction()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        var hr = Chunk("規程 人事",
+            new() { ["confidentiality"] = "internal", ["department"] = "hr" });
+        var sales = Chunk("規程 営業",
+            new() { ["confidentiality"] = "public", ["department"] = "sales" });
+        await SeedAsync(factory, hr, sales);
+
+        // AllowedFilters（従来の連言）は空＝全件許可の形だが、分岐が絞る。
+        var scope = new AccessScope([], GrantsAccess: true, Branches:
+        [
+            new AccessScopeBranch("A: 人事の内部資料",
+                [new AttributeFilter("confidentiality", ["internal"]),
+                 new AttributeFilter("department", ["hr"])]),
+            new AccessScopeBranch("B: 営業の公開資料",
+                [new AttributeFilter("confidentiality", ["public"]),
+                 new AttributeFilter("department", ["sales"])])
+        ]);
+
+        var resp = await factory.CreateClient().PostAsJsonAsync("/search",
+            new SearchRequest("規程", TopK: 10, Scope: scope), TestContext.Current.CancellationToken);
+
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
+        body!.Results.Select(r => r.ChunkId).Should().BeEquivalentTo([hr.ChunkId, sales.ChunkId],
+            "両方の分岐がそれぞれ可視化される（分岐間 OR）");
+    }
+
+    // 🔴 負例: 混成（どのポリシー単独も許可しない組合せ）は端点経由でも返らない。
+    [Fact]
+    public async Task PostSearch_DeniesCrossPolicyMixture_EvenThoughKeywiseUnionWouldAllow()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        var mixture = Chunk("規程 混成",
+            new() { ["confidentiality"] = "internal", ["department"] = "sales" });
+        await SeedAsync(factory, mixture);
+
+        var scope = new AccessScope([], GrantsAccess: true, Branches:
+        [
+            new AccessScopeBranch("A: 人事の内部資料",
+                [new AttributeFilter("confidentiality", ["internal"]),
+                 new AttributeFilter("department", ["hr"])]),
+            new AccessScopeBranch("B: 営業の公開資料",
+                [new AttributeFilter("confidentiality", ["public"]),
+                 new AttributeFilter("department", ["sales"])])
+        ]);
+
+        var resp = await factory.CreateClient().PostAsJsonAsync("/search",
+            new SearchRequest("規程", TopK: 10, Scope: scope), TestContext.Current.CancellationToken);
+
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
+        body!.Results.Should().BeEmpty(
+            "(internal, sales) はどちらのポリシー単独でも許可されない。"
+            + "キー単位 union へ畳むとここが通ってしまう（IADR-0253 決定 2 の反例）");
+    }
+
     // FR-05: スコープ属性キーを持たない文書は除外される（deny-by-default の徹底）
     [Fact]
     public async Task PostSearch_DocumentMissingScopedAttribute_IsExcluded()

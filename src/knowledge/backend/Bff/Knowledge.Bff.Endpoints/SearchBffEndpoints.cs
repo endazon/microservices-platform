@@ -66,7 +66,8 @@ public static class SearchBffEndpoints
                 var searchResp = await retrievalClient.PostAsJsonAsync("/search",
                     // FR-03, SC-02（#531 / #532）: 検索モードと並び順は**利用者の指定をそのまま後段へ渡す**。
                     // 縮退（未知値 → 既定）は RetrievalService が一箇所で行う（BFF で二重に正規化しない）。
-                    // #989 段 3: 後段は未移行のため契約型（Branches なし）へ写して渡す（従来評価のまま）。
+                    // #989 段 3: 契約型へ写して渡す。**Branches も運ばれる**（段 3 完了）——
+                    // 後段 RetrievalService が分岐間 OR で評価する。
                     new SearchRequest(req.Query, topK, req.AttributeFilters, scope.ToContractScope(),
                         req.Mode, req.SortBy), ct);
                 if (!searchResp.IsSuccessStatusCode)
@@ -123,7 +124,8 @@ public static class SearchBffEndpoints
             try
             {
                 // **クライアントが送ってきた Scope は使わない**（解決済みで置き換える）。
-                // #989 段 3: 後段は未移行のため契約型（Branches なし）へ写して渡す（従来評価のまま）。
+                // #989 段 3: 契約型へ写して渡す。**Branches も運ばれる**（段 3 完了）——
+                // 後段の値集合照会も分岐間 OR で絞られる（候補と検索の一致。IADR-0151 決定 1）。
                 var resp = await retrievalClient.PostAsJsonAsync("/search/attribute-values",
                     new AttributeValuesRequest(req.Key, scope.ToContractScope()), ct);
                 if (!resp.IsSuccessStatusCode)

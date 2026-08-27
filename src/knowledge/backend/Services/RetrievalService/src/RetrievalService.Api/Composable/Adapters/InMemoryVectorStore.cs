@@ -10,7 +10,7 @@ public class InMemoryVectorStore : IVectorStore
     private readonly List<ChunkPayload> _store = [];
 
     public Task<List<SearchResultDto>> SearchAsync(float[] queryVector, int topK,
-        IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        ScopeFilter? filters, CancellationToken ct = default)
     {
         var results = _store
             .Where(c => MatchesFilters(c, filters))
@@ -34,7 +34,7 @@ public class InMemoryVectorStore : IVectorStore
     // 空ベクトル・零ベクトル・次元不一致はスコア 0 とする（#995 の縮退で空ベクトルが渡り得るため、
     // 例外にしない）。
     public Task<List<SearchResultDto>> SearchWithinDocumentsAsync(float[] queryVector, int topK,
-        IReadOnlyCollection<Guid> documentIds, IReadOnlyList<AttributeFilter>? filters,
+        IReadOnlyCollection<Guid> documentIds, ScopeFilter? filters,
         CancellationToken ct = default)
     {
         if (documentIds.Count == 0)
@@ -74,7 +74,7 @@ public class InMemoryVectorStore : IVectorStore
 
     // FR-03: 全文検索（語句オーバーラップによる簡易キーワード一致。テスト/ローカル用）
     public Task<List<SearchResultDto>> KeywordSearchAsync(string query, int topK,
-        IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        ScopeFilter? filters, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query))
             return Task.FromResult(new List<SearchResultDto>());
@@ -98,7 +98,7 @@ public class InMemoryVectorStore : IVectorStore
     // **Qdrant 実装と同じ意味論**にする——同じ ABAC フィルタで絞った集合から、値集合だけを返す
     // （件数は返さない。ADR-0043 決定 2 / [[IADR-0151]] 決定 2）。
     public Task<List<string>> ListAttributeValuesAsync(
-        string payloadKey, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        string payloadKey, ScopeFilter? filters, CancellationToken ct = default)
     {
         var reachable = _store.Where(c => MatchesFilters(c, filters));
 
@@ -128,7 +128,31 @@ public class InMemoryVectorStore : IVectorStore
     // ここで独自に `f.Key == "tags"` と書くと、片方だけ直したとき静かに割れる。
     //
     // **タグはリストなので「いずれかが一致」で真になる**（属性は単一値の完全一致）。
-    private static bool MatchesFilters(ChunkPayload c, IReadOnlyList<AttributeFilter>? filters)
+    //
+    // FR-19, ADR-0036, IADR-0253 決定 1（段 3 / #989）: 分岐があれば**分岐内 AND・分岐間 OR**で
+    // 評価し、連言（利用者指定の絞り込み）とは AND で重ねる。**Qdrant 側の写像と同じ意味論**である
+    // （BuildAttributeConditions / BuildBranchDisjunction。ずれると「テストは緑・本番は別物」になる。
+    // IADR-0014 が実際に踏んだ型）。
+    //
+    // 🔴 **キー単位 union へ畳まない**（IADR-0253 決定 2 の反例）。
+    private static bool MatchesFilters(ChunkPayload c, ScopeFilter? filters)
+    {
+        if (filters is null || filters.IsUnconstrained)
+            return true;
+
+        if (!MatchesAll(c, filters.Conjunction))
+            return false;
+
+        if (!filters.HasBranches)
+            return true;
+
+        // 文書条件を持たない分岐は「そのポリシーの範囲で全件許可」＝選言は制約にならない
+        // （Qdrant 側が選言そのものを省くのと同じ扱い）。
+        return filters.Branches!.Any(b => b.Count == 0 || MatchesAll(c, b));
+    }
+
+    // FR-05: フィルタ間 AND、値集合内 OR。属性キーを持たない文書は不一致（安全側）。
+    private static bool MatchesAll(ChunkPayload c, IReadOnlyList<AttributeFilter>? filters)
     {
         if (filters is not { Count: > 0 })
             return true;

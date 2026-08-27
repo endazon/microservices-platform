@@ -66,6 +66,25 @@ public record AttributeFilter(string Key, List<string> AllowedValues);
 //   GrantsAccess=false → 閲覧可能文書なし（検索は何も返さない＝deny-by-default）。
 //   Filters の各要素は「文書の属性 key の値が AllowedValues に含まれること」を要求し、
 //   フィルタ間は AND、値集合内は OR で評価する。
+//
+// FR-19, ADR-0036, IADR-0253 決定 1（段 3・消費側の分岐対応 / #989）: Branches は read の選言を運ぶ。
+//   評価規則は AccessScopeResponse と同一である:
+//     GrantsAccess == false                  → 不可視
+//     Branches が 1 件以上                   → **いずれかの分岐のフィルタをすべて満たす文書が可視**
+//                                              （分岐内 AND・分岐間 OR）
+//     Branches が空/null                     → **従来どおり Filters（連言）で評価**（後方互換）
+//
+// 🔴 **キー単位 union へ畳んではならない**（IADR-0253 決定 2 の反例）。A={confidentiality:internal,
+//   department:hr} と B={confidentiality:public, department:sales} を union すると
+//   **どちらのポリシー単独も許可しない混成 (internal, sales) を許してしまう**（情報が漏れる向き）。
+//
+// **Branches は末尾に置き、既定値 null を付けてある**（既定値付き末尾追加＝非破壊。IADR-0122 決定 2）。
+//   AccessScopeResponse.Branches と同型の追加であり、旧発行者の値は従来どおり Filters で評価される。
+//
+//   ［2026-08-28 追記 / #989］**従前は本型が Branches を持たず、BffScopeResolver.ToContractScope()
+//   が意図的に落としていた**（波 1）。その留保は「消費側が未移行だから」を理由にした先送りであり、
+//   段 3 で Retrieval / AiAnalysis / Graph の移行が完了したため本フィールドを足して運ぶ形へ反転した。
 public record AccessScope(
     List<AttributeFilter> Filters,
-    bool GrantsAccess);
+    bool GrantsAccess,
+    List<AccessScopeBranch>? Branches = null);

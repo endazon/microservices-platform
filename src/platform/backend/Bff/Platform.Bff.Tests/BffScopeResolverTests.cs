@@ -190,6 +190,47 @@ public class BffScopeResolverTests
             new Dictionary<string, string> { ["confidentiality"] = "internal" }, scope).Should().BeFalse();
     }
 
+    // ── FR-19, IADR-0253 決定 1（段 3 / #989）: ToContractScope は Branches を後段へ運ぶ ──
+    //
+    // 🔴 **波 1 ではここで Branches を落としていた**（後段 RetrievalService が未移行だったため）。
+    // 段 3 で消費側の移行が完了したので反転した。**落とす実装へ戻すと後段だけが従来の連言で
+    // 判定し、検索経路だけが混成（IADR-0253 決定 2 の反例）を許す。** その退行をここで止める。
+    [Fact]
+    public void ToContractScope_CarriesBranchesToDownstream()
+    {
+        var branches = new List<AccessScopeBranch>
+        {
+            new("A: 人事の内部資料",
+                [new AttributeFilter("confidentiality", ["internal"]),
+                 new AttributeFilter("department", ["hr"])]),
+            new("B: 営業の公開資料",
+                [new AttributeFilter("confidentiality", ["public"]),
+                 new AttributeFilter("department", ["sales"])])
+        };
+        var scope = new BffAccessScope(
+            [new AttributeFilter("confidentiality", ["internal", "public"])],
+            GrantsAccess: true,
+            Branches: branches);
+
+        var contract = scope.ToContractScope();
+
+        contract.Branches.Should().BeEquivalentTo(branches,
+            "後段が分岐で判定できなければ段 3 は成立しない");
+        contract.Filters.Should().BeEquivalentTo(scope.Filters,
+            "従来の連言（AllowedFilters 由来）は据え置き（IADR-0253 決定 2）");
+        contract.GrantsAccess.Should().BeTrue();
+    }
+
+    // 陰性対照: 分岐が無い応答では null のまま運ばれる（後方互換。「常に何か入れる」実装を落とす）。
+    [Fact]
+    public void ToContractScope_WithoutBranches_CarriesNull()
+    {
+        var scope = new BffAccessScope(
+            [new AttributeFilter("confidentiality", ["internal"])], GrantsAccess: true);
+
+        scope.ToContractScope().Branches.Should().BeNull();
+    }
+
     // FR-05, FR-06, IADR-0272 決定 4 (#1010): **ResolveAsync の action に既定値を置かない**ことを
     // リフレクションで固定する。既定値つきの引数は「書かなければ read」を意味し、書き忘れが
     // 認可の緩みとして現れる（#993 / #1010 の欠陥そのもの）。GraphService の

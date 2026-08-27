@@ -26,7 +26,7 @@ public class QdrantVectorStore(
 
     public async Task<List<SearchResultDto>> SearchAsync(
         float[] queryVector, int topK,
-        IReadOnlyList<AttributeFilter>? filters,
+        ScopeFilter? filters,
         CancellationToken ct = default)
     {
         var filter = BuildAttributeFilter(filters);
@@ -47,7 +47,7 @@ public class QdrantVectorStore(
     public async Task<List<SearchResultDto>> SearchWithinDocumentsAsync(
         float[] queryVector, int topK,
         IReadOnlyCollection<Guid> documentIds,
-        IReadOnlyList<AttributeFilter>? filters,
+        ScopeFilter? filters,
         CancellationToken ct = default)
     {
         if (documentIds.Count == 0)
@@ -64,7 +64,7 @@ public class QdrantVectorStore(
     // **`internal` にしてあるのは `BuildAttributeConditions` と同じ理由**で、
     // 実機 Qdrant なしで固定できる唯一の面だからである（テストが直接呼ぶ）。
     internal static Filter BuildDocumentScopedFilter(
-        IReadOnlyCollection<Guid> documentIds, IReadOnlyList<AttributeFilter>? filters)
+        IReadOnlyCollection<Guid> documentIds, ScopeFilter? filters)
     {
         var conditions = new List<Condition>
         {
@@ -91,7 +91,7 @@ public class QdrantVectorStore(
     // FR-03: 全文検索（Qdrant のペイロード `text` への full-text Match）
     public async Task<List<SearchResultDto>> KeywordSearchAsync(
         string query, int topK,
-        IReadOnlyList<AttributeFilter>? filters,
+        ScopeFilter? filters,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -134,7 +134,7 @@ public class QdrantVectorStore(
     // **件数がサービスの外へ出ないことがこの実装の要点である。**
     public async Task<List<string>> ListAttributeValuesAsync(
         string payloadKey,
-        IReadOnlyList<AttributeFilter>? filters,
+        ScopeFilter? filters,
         CancellationToken ct = default)
     {
         var facets = await client.FacetAsync(_collection, payloadKey,
@@ -154,7 +154,7 @@ public class QdrantVectorStore(
         return [.. values];
     }
 
-    private static Filter? BuildAttributeFilter(IReadOnlyList<AttributeFilter>? filters)
+    private static Filter? BuildAttributeFilter(ScopeFilter? filters)
     {
         // FR-05: ABAC 多値 allow-list を Qdrant のペイロードフィルタに変換
         var conditions = BuildAttributeConditions(filters);
@@ -177,7 +177,29 @@ public class QdrantVectorStore(
     // （Qdrant の配列ペイロードに対する既定の意味論。属性の単一値と同じ書き方で通る）。
     // **`internal` にしてある**——キーの写像は「候補に出る値」と「絞れる値」を一致させる要であり、
     // 実機 Qdrant なしで固定できる唯一の面である（#539 のテストが直接呼ぶ）。
-    internal static List<Condition> BuildAttributeConditions(IReadOnlyList<AttributeFilter>? filters)
+    //
+    // FR-19, ADR-0036, IADR-0253 決定 1（段 3 / #989）: スコープが**名前つき分岐**を運ぶときは、
+    // 分岐ごとの連言を `Must` にまとめ、**それらを `Should`（OR）で束ねた入れ子フィルタ**を
+    // 1 つの条件として返す。呼び出し側は従来どおり全条件を `Must` へ並べるだけでよい
+    // （＝利用者指定の絞り込みと自動的に AND になる）。
+    //
+    // 🔴 **キー単位 union へ畳まない**（IADR-0253 決定 2 の反例）。
+    internal static List<Condition> BuildAttributeConditions(ScopeFilter? filters)
+    {
+        if (filters is null)
+            return [];
+
+        var conditions = BuildKeyConditions(filters.Conjunction);
+
+        var disjunction = BuildBranchDisjunction(filters.Branches);
+        if (disjunction is not null)
+            conditions.Add(disjunction);
+
+        return conditions;
+    }
+
+    // FR-05: 「key ∈ AllowedValues」の連言（キー間は呼び出し側の Must で AND になる）。
+    private static List<Condition> BuildKeyConditions(IReadOnlyList<AttributeFilter>? filters)
     {
         if (filters is not { Count: > 0 })
             return [];
@@ -193,6 +215,36 @@ public class QdrantVectorStore(
                 }
             })
             .ToList();
+    }
+
+    // FR-19, IADR-0253 決定 1: 分岐の選言を 1 つの入れ子条件へ写す（分岐内 AND・分岐間 OR）。
+    //
+    // 🔴 **条件が 1 つも立たない分岐があれば選言そのものを省く。** 文書条件を持たない分岐は
+    // 「**そのポリシーの範囲で全件許可**」を意味し、選言の中に「常に真」の枝があるのと同じである。
+    // Qdrant は空の `Must` を持つ入れ子を表現できないため、**選言を省いて ABAC 由来の制約なしにする**
+    // ——利用者指定の絞り込みだけが残る。緩む向きだが、それが空分岐の意味そのものである。
+    private static Condition? BuildBranchDisjunction(
+        IReadOnlyList<IReadOnlyList<AttributeFilter>>? branches)
+    {
+        if (branches is not { Count: > 0 })
+            return null;
+
+        var branchFilters = new List<Filter>();
+        foreach (var branch in branches)
+        {
+            var conditions = BuildKeyConditions(branch);
+            if (conditions.Count == 0)
+                return null;   // 全件許可の分岐がある = 選言は制約にならない
+            branchFilters.Add(new Filter { Must = { conditions } });
+        }
+
+        return new Condition
+        {
+            Filter = new Filter
+            {
+                Should = { branchFilters.Select(f => new Condition { Filter = f }) }
+            }
+        };
     }
 
     private static SearchResultDto MapPayload(
