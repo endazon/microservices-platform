@@ -4,6 +4,7 @@ import {
   useBffDataSourceCreate,
   useBffDataSourceDelete,
   useBffDataSourceList,
+  useBffDataSourcePatch,
   useBffDataSourceSync,
 } from '@foundation/api/generated/data-sources/data-sources';
 import { okArray } from '@foundation/api/orvalSelect';
@@ -25,16 +26,19 @@ export function useDataSources() {
   });
 }
 
-/** 登録・手動同期・無効化の 3 操作をまとめて公開する（成功後は一覧を無効化する）。 */
+/** 登録・既定属性の更新・手動同期・無効化の 4 操作をまとめて公開する（成功後は一覧を無効化する）。 */
 export function useDataSourceActions() {
   const queryClient = useQueryClient();
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: dataSourcesKey });
   const onSuccess = { mutation: { onSuccess: invalidate } };
 
   const create = useBffDataSourceCreate<unknown>(onSuccess);
+  // FR-05, UC-04, SC-06（#754）: 既定属性の部分更新。**PATCH である**——PUT は `config` の明示を
+  // 要求し、応答のマスク済みの値を書き戻すと秘密を破壊する（IADR-0053 / IADR-0148 決定 6）。
+  const patch = useBffDataSourcePatch<unknown>(onSuccess);
   // UC-04 代替フロー: 手動同期を実行する。後段は 202 Accepted を返す（取得はポーリングジョブが行う）。
   const sync = useBffDataSourceSync<unknown>(onSuccess);
   const disable = useBffDataSourceDelete<unknown>(onSuccess);
 
-  return { create, sync, disable };
+  return { create, patch, sync, disable };
 }
