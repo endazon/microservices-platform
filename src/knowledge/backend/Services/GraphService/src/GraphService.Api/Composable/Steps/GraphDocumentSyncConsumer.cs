@@ -1,5 +1,7 @@
 using GraphService.Api.Foundation.Domain;
 using GraphService.Api.Foundation.Persistence;
+using GraphService.Api.Foundation.Services;
+using GraphService.Application.Foundation.Ports;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
@@ -29,10 +31,21 @@ namespace GraphService.Api.Composable.Steps;
 // - 指紋 null（発行側が指紋化できなかった＝不明）では解除を試みない（誤発火させない側に倒す）。
 // - 判定の実体は AiSuggestion.TryReinstate（却下時に控えた両端の指紋と現在の指紋の比較）。
 //
+// ## リンク抽出と辺の差分更新（ADR-0033 決定 3・4・6・8 / #912）
+//
+// 同じ指紋の変化を契機に、正規化 Markdown 本文からリンクを抽出し、**当該文書を起点とする自動抽出
+// の辺だけ**を差分更新する（実体は LinkEdgeSynchronizer。規則の正本は IADR-0281）。
+// - **契機は却下解除と同じ「指紋の変化」である**（ADR-0050 決定 3）。属性・タグだけの更新で本文を
+//   取りに行くと、storage への読み取りが更新のたびに走り、辺は 1 本も変わらない。
+// - **本文が取れないときは辺を一切触らない**（IGraphContentReader が null を返す）。プレースホルダー
+//   本文で抽出すると「全リンクが消えた」と解釈され、既存の自動抽出の辺が全消しになる。
+//
 // 失敗時: 例外を送出し、Wolverine のリトライ／デッドレター（UsePlatformMessagingDefaults）へ委ねる。
 public class GraphDocumentSyncConsumer(
     GraphDbContext db,
     TimeProvider clock,
+    IGraphContentReader content,
+    LinkEdgeSynchronizer links,
     ILogger<GraphDocumentSyncConsumer> logger) : IPipelineStep<DocumentUpdated>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
@@ -67,16 +80,33 @@ public class GraphDocumentSyncConsumer(
         // ADR-0033 決定 10: 本文が変更された時点で却下を解除し、再提案を許す。
         // 変更の判定は指紋の変化**のみ**（ADR-0050 決定 2）。
         var reinstated = 0;
+        var linkSync = default(LinkEdgeSynchronizer.SyncResult);
         if (ev.ContentFingerprint is not null
             && !string.Equals(previousHash, ev.ContentFingerprint, StringComparison.Ordinal))
         {
             reinstated = await ReinstateRejectedAsync(ev.DocumentId, ev.ContentFingerprint, ct);
+
+            // ADR-0033 決定 6 / #912: 本文が変わったときだけ辺を作り直す（ADR-0050 決定 3）。
+            var body = await content.ReadAsync(ev.MarkdownUri, ct);
+            if (body is null)
+            {
+                // 🔴 **辺を触らずに抜ける。** 縮退本文で抽出すると当該文書起点の辺が全消しになる。
+                logger.LogWarning(
+                    "Skipped link extraction for {DocumentId}: body unavailable ({Uri})",
+                    ev.DocumentId, ev.MarkdownUri ?? "(null)");
+            }
+            else
+            {
+                linkSync = await links.SyncAsync(ev.DocumentId, body, ct);
+            }
         }
 
         await db.SaveChangesAsync(ct);
         logger.LogInformation(
-            "Synced graph document {DocumentId} (attributes={AttributeCount} reinstated={Reinstated})",
-            ev.DocumentId, ev.Attributes.Count, reinstated);
+            "Synced graph document {DocumentId} (attributes={AttributeCount} reinstated={Reinstated} "
+            + "links={Links} edgesAdded={Added} edgesRemoved={Removed})",
+            ev.DocumentId, ev.Attributes.Count, reinstated,
+            linkSync.Extracted, linkSync.Added, linkSync.Removed);
     }
 
     // 当該文書を端点とする却下済み提案について、**現在の**両端指紋で解除判定を行う。

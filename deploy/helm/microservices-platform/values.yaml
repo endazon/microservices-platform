@@ -366,6 +366,9 @@ services:
     # RabbitMQ 接続はコード既定（amqp://guest:guest@rabbitmq:5672）が in-cluster DNS で解決される。
     pipelineSteps: true
     port: 8080
+    # FR-17, ADR-0033 決定 8 / #912: リンク抽出のため storage:// 本文を MinIO から実取得する
+    # （読み取り側。バケット作成は書き込み側の ConversionService が担う）。
+    objectStorage: true
     # FR-17, FR-05, IADR-0089 (#342) / #958: ABAC スコープ解決先。appsettings 既定は :5005（ローカル用）で、
     # ここで上書きしないと不達 → GraphAccessResolver が Granted=false へ縮退し、**グラフが常に空になる**。
     # 状態コードにも出ないため live で気付けない（#958 に同型 2 件の記録）。

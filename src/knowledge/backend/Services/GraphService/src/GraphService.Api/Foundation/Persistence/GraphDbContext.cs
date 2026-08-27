@@ -121,6 +121,13 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
             e.Property(x => x.SourceAnchor).HasMaxLength(200).IsRequired().HasDefaultValue(string.Empty);
             e.Property(x => x.TargetAnchor).HasMaxLength(200).IsRequired().HasDefaultValue(string.Empty);
 
+            // ADR-0033 決定 6, IADR-0281 (#912): 自動抽出の起点文書。
+            // **NULL 可でよい**（一意制約 ux_edges に参加しないため、NULL 同士が相異なる扱いでも
+            // 重複防止は壊れない）。利用者付与・AI 承認済みの辺では NULL である。
+            e.Property(x => x.ExtractedFrom);
+            // 差分更新の母集合（provenance=auto かつ起点が当該文書）を引く索引。
+            e.HasIndex(x => x.ExtractedFrom).HasDatabaseName("ix_edges_extracted_from");
+
             // ADR-0033 決定 9: **参照が 1 件でもある型は削除できない**（削除ガードの最後の防壁）。
             // サービス層は事前カウントで 409 ＋使用件数を返し、RESTRICT 例外を素の 500 で漏らさない（#910）。
             e.HasOne<EdgeType>()

@@ -521,7 +521,9 @@ services:
     environment:
       # ADR-0027 / #1016: DocumentDeleted 購読（graph-delete 段）のため RabbitMQ 接続が要る
       # （無いと Wolverine ホストが起動時に BrokerInitializationException）。
-      <<: [*common-env, *db-env, *rabbit-env]
+      # FR-17, ADR-0033 決定 8 / #912: リンク抽出のため storage:// 本文を MinIO から実取得する
+      # （読み取り側）。無いと縮退クライアントが解決できず、抽出は毎回スキップされる。
+      <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=graph_svc;Username=kp;Password=kp
       # 🔴 IADR-0089 (#342) / #958: ABAC スコープ解決先。appsettings 既定は :5005（ローカル用）で、
       # ここで上書きしないと不達 → GraphAccessResolver が Granted=false へ縮退し、

@@ -1,10 +1,14 @@
 using GraphService.Api.Composable.Adapters;
 using GraphService.Api.Composable.Steps;
 using GraphService.Api.Foundation.Endpoints;
+using GraphService.Api.Foundation.Observability;
 using GraphService.Api.Foundation.Persistence;
 using GraphService.Api.Foundation.Ports;
 using GraphService.Api.Foundation.Services;
+using GraphService.Application.Foundation.Ports;
+using GraphService.Infrastructure.Composable.Adapters;
 using Knowledge.Contracts.Events;
+using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
@@ -19,6 +23,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
+
+// FR-17, SC-10, ADR-0033 決定 3 / #912: 未定義の辺の型が related へ丸められた件数（0 が正常）。
+builder.Services.AddMetrics();
+builder.Services.AddSingleton<EdgeTypeFallbackMetrics>();
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics.AddMeter(EdgeTypeFallbackMetrics.MeterName));
 builder.Services.AddPlatformAuth(builder.Configuration);
 builder.Services.AddPlatformHealthChecks()
     // ADR-0027 / #1016: Wolverine 購読側（graph-delete 段）のブローカ疎通を readiness へ載せる（W4）。
@@ -60,6 +70,16 @@ builder.Services.AddHttpClient<ISuggestionLlmClient, LlmGatewaySuggestionClient>
 // **既定は空を返すアダプタである**（fail-closed 側。IADR-0266 論点 C）。
 builder.Services.AddScoped<ISimilarityCandidateSource, UnconfiguredSimilarityCandidateSource>();
 builder.Services.AddScoped<AiSuggestionGenerator>();
+
+// FR-17, FR-06, ADR-0015, ADR-0033 決定 3・6・8 (#912): リンク抽出と辺の差分更新。
+//
+// **バケットの作成（Bootstrap）はここでは行わない** —— 書き込み側の起動時保証は ConversionService が
+// 担っており、本サービスは読み取り側である（DocumentService / WikiService と同じ形）。
+// 未設定の dev/test では縮退クライアントが登録され、StorageContentReader は null を返して
+// 抽出をスキップする（辺は触らない）。
+builder.Services.AddPlatformObjectStorage(builder.Configuration);
+builder.Services.AddHttpClient<IGraphContentReader, StorageContentReader>();
+builder.Services.AddScoped<LinkEdgeSynchronizer>();
 
 // FR-14, ADR-0018 / #1016: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
 builder.AddPlatformPipelineConfig();

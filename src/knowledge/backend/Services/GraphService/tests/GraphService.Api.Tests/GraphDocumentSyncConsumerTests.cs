@@ -1,8 +1,11 @@
+using System.Diagnostics.Metrics;
 using AwesomeAssertions;
 using GraphService.Api.Composable.Steps;
 using GraphService.Api.Foundation.Domain;
+using GraphService.Api.Foundation.Observability;
 using GraphService.Api.Foundation.Persistence;
 using GraphService.Api.Foundation.Services;
+using GraphService.Application.Foundation.Ports;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -24,8 +27,40 @@ public class GraphDocumentSyncConsumerTests
         new DbContextOptionsBuilder<GraphDbContext>()
             .UseInMemoryDatabase($"sync_{Guid.NewGuid():N}").Options);
 
+    // #912: リンク抽出の依存を足した。**本テストの射程は属性同期と却下解除である** ——
+    // 本文は取得できない（null）ものとし、抽出は毎回スキップされる。抽出そのものの試験は
+    // LinkEdgeSyncTests が受け持つ。
     private static GraphDocumentSyncConsumer Consumer(GraphDbContext db)
-        => new(db, new FixedClock(T0.AddDays(10)), NullLogger<GraphDocumentSyncConsumer>.Instance);
+        => new(db, new FixedClock(T0.AddDays(10)), new NoBodyReader(),
+            new LinkEdgeSynchronizer(db, new EdgeTypeFallbackMetrics(new DummyMeterFactory()),
+                NullLogger<LinkEdgeSynchronizer>.Instance),
+            NullLogger<GraphDocumentSyncConsumer>.Instance);
+
+    // 本文が取れない（ストレージ未配備）。**辺を一切触らない**側の縮退。
+    private sealed class NoBodyReader : IGraphContentReader
+    {
+        public Task<string?> ReadAsync(string? markdownUri, CancellationToken ct = default)
+            => Task.FromResult<string?>(null);
+    }
+
+    private sealed class DummyMeterFactory : IMeterFactory
+    {
+        private readonly List<Meter> _meters = [];
+
+        public Meter Create(MeterOptions options)
+        {
+            var meter = new Meter($"{options.Name}.test-{Guid.NewGuid():N}", options.Version,
+                options.Tags, scope: this);
+            _meters.Add(meter);
+            return meter;
+        }
+
+        public void Dispose()
+        {
+            foreach (var m in _meters) m.Dispose();
+            _meters.Clear();
+        }
+    }
 
     // 解除時刻を固定するテスト用の時計（TimeProvider の最小実装）。
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider

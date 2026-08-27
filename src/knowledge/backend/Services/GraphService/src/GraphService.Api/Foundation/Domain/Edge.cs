@@ -39,6 +39,17 @@ public class Edge
     public string SourceAnchor { get; private set; } = string.Empty;
     public string TargetAnchor { get; private set; } = string.Empty;
 
+    // FR-17, ADR-0033 決定 6, IADR-0281 (#912): **自動抽出の起点となった文書**。
+    // provenance = auto の辺にのみ入り、利用者付与・AI 承認済みの辺では null である。
+    //
+    // 🔴 **Source 列では代用できない。** 対称型（related）は書き込み時に (min, max) へ正規化される
+    // ため（IADR-0242 決定 9）、Source は「小さい方の文書 ID」であって抽出の起点ではない。決定 6 の
+    // 「**当該文書を起点とする**自動抽出の辺を作り直す」を Source で実装すると、**他文書の本文から
+    // 抽出した related 辺まで巻き込んで消す**。
+    //
+    // **正規化で入れ替えない**（Edge.Create 参照）—— 起点は端点の並びとは独立である。
+    public Guid? ExtractedFrom { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; private set; } = DateTimeOffset.UtcNow;
 
@@ -54,7 +65,8 @@ public class Edge
         bool isSymmetric,
         string provenance,
         string? sourceAnchor = null,
-        string? targetAnchor = null)
+        string? targetAnchor = null,
+        Guid? extractedFrom = null)
     {
         // null は「文書単位」＝空文字へ正規化する（上の予約欄の注記を参照）。
         var src = sourceAnchor ?? string.Empty;
@@ -75,6 +87,9 @@ public class Edge
             Provenance = provenance,
             SourceAnchor = srcAnchor,
             TargetAnchor = tgtAnchor,
+            // 🔴 上の (source, target) の入れ替えに**追随させない**。抽出の起点は端点の並びと独立で
+            // あり、入れ替えると対称型で起点が相手文書に化ける（差分の母集合が壊れる）。
+            ExtractedFrom = extractedFrom,
         };
     }
 
