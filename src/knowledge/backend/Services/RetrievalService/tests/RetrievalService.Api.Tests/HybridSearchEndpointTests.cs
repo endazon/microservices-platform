@@ -300,6 +300,47 @@ public class HybridSearchEndpointTests
         values.Values.Should().Equal(["社内"], "候補は検索に現れる集合と一致する");
     }
 
+    // **[[IADR-0253]] 決定 2 / [[IADR-0151]] 決定 1（FR-19, #989 段 3・波 2 監査の是正）**:
+    // 分岐があるとき、旧算出値 Filters（キー単位 union）を連言に残さない。union は分岐の和の
+    // 上位集合ではなく、分岐単独で到達できる文書（下の internal 資料は department を持たない）が
+    // 余分な AND で落ち、「検索には出るが候補に無い値」が生まれる。**端点の連言構築を通して**固定する
+    // （ストア直呼びの ScopeBranchFilteringTests はこの差を捕まえない）。
+    [Fact]
+    public async Task AttributeValues_WithBranches_DoesNotAndTheLegacyUnionFilters()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        await SeedAsync(factory,
+            Chunk("社内 資料", new() { ["confidentiality"] = "internal" }, ["枝Aの資料"]),
+            Chunk("営業 公開",
+                new() { ["confidentiality"] = "public", ["department"] = "sales" }, ["枝Bの資料"]));
+
+        // 認可の前段が旧形式で算出するキー単位 union
+        // （confidentiality ∈ {internal, public} AND department ∈ {sales}）と、
+        // 正しい選言（A: internal ／ B: public AND sales）を**両方**運ぶスコープ。
+        var scope = new AccessScope(
+            [
+                new AttributeFilter("confidentiality", ["internal", "public"]),
+                new AttributeFilter("department", ["sales"]),
+            ],
+            GrantsAccess: true,
+            Branches:
+            [
+                new AccessScopeBranch("attribute",
+                    [new AttributeFilter("confidentiality", ["internal"])]),
+                new AccessScopeBranch("shared",
+                    [
+                        new AttributeFilter("confidentiality", ["public"]),
+                        new AttributeFilter("department", ["sales"]),
+                    ]),
+            ]);
+
+        var body = await ListValuesAsync(factory, AttributeValueKeys.Tags, scope);
+
+        body.Values.Should().Contain("枝Aの資料",
+            "分岐 A（internal）単独で到達できる文書の値が、union の department 制約で落ちてはならない");
+        body.Values.Should().Contain("枝Bの資料");
+    }
+
     // **[[IADR-0151]] 決定 5**: スコープ未解決・不許可は**空配列**（404 にも 403 にもしない）。
     // 候補が無いことと権限が無いことを利用者へ区別させない。
     [Theory]
