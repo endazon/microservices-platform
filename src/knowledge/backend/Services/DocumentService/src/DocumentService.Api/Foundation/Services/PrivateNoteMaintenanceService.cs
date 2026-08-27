@@ -19,6 +19,16 @@ namespace DocumentService.Api.Foundation.Services;
 //
 // `now` を引数に取るのはテストのためである（30 日・90 日・7 日・週次の時刻依存を実時間に
 // 依存せず検証する）。
+//
+// ★［2026-08-28 追加 / #600］**発火記録は送出より先に確定させる**（IADR-0215 決定 5-a）。
+// 従前はいずれの通知も「送出 → 記録 → SaveChanges」の順で、**送出後・保存前にプロセスが落ちると
+// 次周期で同じ通知をもう一度送った**。受け口の重複抑止はペイロード 6 項目の完全一致でしか畳まず、
+// `occurredAt` が変わる再検知は畳まれない（時間窓で丸めると発火記録と二重に効いて通知が消えるため、
+// 受け側では意図的に丸めていない）。**重複を止められるのは発火側だけである。**
+// 受容するトレードオフ: **記録が残ったのに送出に失敗した通知は再送されない**（FR-22 の受け入れ基準は
+// 「各 1 回」であり、多いほうが要求違反である。少ないほうは計器 notification.dispatch.total で
+// `unreachable` として観測できる）。
+// ①-c（事後通知）だけは発火記録を持たない —— **行そのものが消えるため構造的に 1 回**である。
 public sealed class PrivateNoteMaintenanceService(
     DocumentDbContext db,
     IPrivateNoteNotifier notifier,
@@ -102,6 +112,7 @@ public sealed class PrivateNoteMaintenanceService(
 
     // FR-22 ①-b, ADR-0037 決定 6-②: 完全削除の 7 日前に別建ての通知を出す（件数と期限のみ）。
     // 発火記録（PurgeImminentNotifiedAt）で 1 回だけ送る。
+    // ★ 発火記録を送出より先に確定させる（IADR-0215 決定 5-a。§RunAsync の注記）。
     private async Task NotifyPurgeImminentAsync(DateTimeOffset now, CancellationToken ct)
     {
         var horizon = now.AddDays(7);
@@ -112,41 +123,53 @@ public sealed class PrivateNoteMaintenanceService(
             .ToListAsync(ct);
         if (imminent.Count == 0) return;
 
-        foreach (var byOwner in imminent.GroupBy(n => n.OwnerId))
-        {
-            await notifier.NotifyAsync(byOwner.Key,
-                PrivateNoteNotificationKinds.PrivateNotePurgeImminent, now,
-                count: byOwner.Count(), deadline: byOwner.Min(n => n.PurgeAt), ct: ct);
-            foreach (var note in byOwner) note.MarkPurgeImminentNotified(now);
-        }
+        var batches = imminent.GroupBy(n => n.OwnerId)
+            .Select(g => (Owner: g.Key, Count: g.Count(), Deadline: g.Min(n => n.PurgeAt)))
+            .ToList();
+        foreach (var note in imminent) note.MarkPurgeImminentNotified(now);
         await db.SaveChangesAsync(ct);
+
+        foreach (var (owner, count, deadline) in batches)
+        {
+            await notifier.NotifyAsync(owner,
+                PrivateNoteNotificationKinds.PrivateNotePurgeImminent, now,
+                count: count, deadline: deadline, ct: ct);
+        }
     }
 
     // FR-22 ①-a, ADR-0037 決定 6-①: 週次通知。論理削除済みの件数と最短の完全削除期限のみを運ぶ。
     // 週次の判定は所有者ごとの前回送出時刻（7 日以上経過で送る）で行う —— 曜日固定にしないのは、
     // プロセスの再起動・停止で曜日を取りこぼしても翌実行で追いつくようにするためである。
+    // ★ 発火記録を送出より先に確定させる（IADR-0215 決定 5-a。§RunAsync の注記）。
     private async Task NotifyWeeklyDigestAsync(DateTimeOffset now, CancellationToken ct)
     {
         var deleted = await db.PrivateNotes.Where(n => n.DeletedAt != null).ToListAsync(ct);
         if (deleted.Count == 0) return;
 
+        var batches = new List<(string Owner, int Count, DateTimeOffset? Deadline)>();
         foreach (var byOwner in deleted.GroupBy(n => n.OwnerId))
         {
             var quota = await PrivateNoteUsage.GetOrCreateQuotaAsync(db, byOwner.Key, now, ct);
             if (quota.WeeklyDigestSentAt is { } last && now - last < TimeSpan.FromDays(7))
                 continue;
 
-            await notifier.NotifyAsync(byOwner.Key,
-                PrivateNoteNotificationKinds.PrivateNotePurgeWeekly, now,
-                count: byOwner.Count(), deadline: byOwner.Min(n => n.PurgeAt), ct: ct);
             quota.MarkWeeklyDigestSent(now);
+            batches.Add((byOwner.Key, byOwner.Count(), byOwner.Min(n => n.PurgeAt)));
         }
         await db.SaveChangesAsync(ct);
+
+        foreach (var (owner, count, deadline) in batches)
+        {
+            await notifier.NotifyAsync(owner,
+                PrivateNoteNotificationKinds.PrivateNotePurgeWeekly, now,
+                count: count, deadline: deadline, ct: ct);
+        }
     }
 
     // FR-22 ③, ADR-0037 決定 18: 同期トークンの期限 7 日前通知（件数と期限のみ）。
     // 発火記録（ExpiryNotifiedAt）で 1 回だけ送る。**期限切れ当日の追加通知は設けない**
     // （7 日の窓を過ぎたトークンはもう通知しない —— 当日通知を作らない決定の実装形である）。
+    // ★ 発火記録を送出より先に確定させる（IADR-0215 決定 5-a。§RunAsync の注記）。
     private async Task NotifyTokenExpiryAsync(DateTimeOffset now, CancellationToken ct)
     {
         var horizon = now.AddDays(SyncDevice.ExpiryNoticeDays);
@@ -156,14 +179,18 @@ public sealed class PrivateNoteMaintenanceService(
             .ToListAsync(ct);
         if (expiring.Count == 0) return;
 
-        foreach (var byOwner in expiring.GroupBy(d => d.OwnerId))
-        {
-            await notifier.NotifyAsync(byOwner.Key,
-                PrivateNoteNotificationKinds.SyncTokenExpiry, now,
-                count: byOwner.Count(), deadline: byOwner.Min(d => d.ExpiresAt), ct: ct);
-            foreach (var device in byOwner) device.MarkExpiryNotified(now);
-        }
+        var batches = expiring.GroupBy(d => d.OwnerId)
+            .Select(g => (Owner: g.Key, Count: g.Count(), Deadline: g.Min(d => d.ExpiresAt)))
+            .ToList();
+        foreach (var device in expiring) device.MarkExpiryNotified(now);
         await db.SaveChangesAsync(ct);
+
+        foreach (var (owner, count, deadline) in batches)
+        {
+            await notifier.NotifyAsync(owner,
+                PrivateNoteNotificationKinds.SyncTokenExpiry, now,
+                count: count, deadline: deadline, ct: ct);
+        }
     }
 }
 

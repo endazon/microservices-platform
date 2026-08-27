@@ -46,14 +46,28 @@ public static class PrivateNoteUsage
     }
 
     // FR-22 ②: 使用量を再計算し、80% / 95% の跨ぎがあれば各 1 回通知を発火する。
-    // 呼び出し側の SaveChanges の中で quota 行の発火記録も永続化される。
+    //
+    // ★［2026-08-28 変更 / #600］**発火記録（Warned80 / Warned95）を送出より先に確定させる**
+    // （IADR-0215 決定 5-a）。従前は呼び出し側の SaveChanges に委ねていたため、
+    // **送出後・保存前にプロセスが落ちると次の再計算で同じ警告をもう一度送った**。
+    // 受け口の重複抑止はペイロード 6 項目の完全一致でしか畳まず、`occurredAt` が変わる再検知は
+    // 畳まれないため、**重複を止められるのは発火側だけ**である。
+    // 受容するトレードオフ: **記録が残ったのに送出に失敗した警告は再送されない**
+    // （閾値を下回れば再武装されるので、②は自然に回復する）。
+    //
+    // 🔴 **本メソッドは自ら SaveChanges する。** 3 つの呼び出し点（同期 push の新規／更新・
+    // 完全削除の端点・自動 purge）はいずれも本体の業務処理を先に確定させてから呼ぶため、
+    // ここでの確定が業務処理のトランザクションを分断することは無い。
     public static async Task RecordUsageAndWarnAsync(DocumentDbContext db,
         IPrivateNoteNotifier notifier, string ownerId, DateTimeOffset now,
         CancellationToken ct = default)
     {
         var used = await UsedBytesAsync(db, ownerId, ct);
         var quota = await GetOrCreateQuotaAsync(db, ownerId, now, ct);
-        foreach (var threshold in quota.RecordUsage(used, now))
+        var crossed = quota.RecordUsage(used, now);
+        await db.SaveChangesAsync(ct);
+
+        foreach (var threshold in crossed)
         {
             await notifier.NotifyAsync(ownerId, PrivateNoteNotificationKinds.StorageQuotaWarning,
                 now, thresholdPercent: threshold, ct: ct);
