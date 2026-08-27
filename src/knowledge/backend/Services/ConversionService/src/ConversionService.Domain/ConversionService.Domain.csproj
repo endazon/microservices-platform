@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- NFR / IADR-0280 決定 2・3: 8 要素標準の実体化（段 1）。エンティティ・値オブジェクト
+       （計画 12_backend-application-stack「Domain 層は SharedKernel を除き外部ライブラリへ
+       依存しない」）。PackageReference は 0 件・ProjectReference は Platform.Shared.Kernel のみ
+       （scripts/check-backend-libraries.js 規則 2 / check-unit-dependencies.js 規則 3 が強制）。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\Platform.Shared.Kernel\Platform.Shared.Kernel.csproj" />
+  </ItemGroup>
+</Project>

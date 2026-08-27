@@ -10,4 +10,8 @@
     <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
     <InternalsVisibleTo Include="IngestionService.Worker.Tests" />
   </ItemGroup>
+  <!-- NFR / IADR-0280 決定 3: 合成ルートは Infrastructure（推移的に Application / Domain）を参照する。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\IngestionService.Infrastructure\IngestionService.Infrastructure.csproj" />
+  </ItemGroup>
 </Project>

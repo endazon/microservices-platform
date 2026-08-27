@@ -6,4 +6,8 @@
     <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
   </ItemGroup>
+  <!-- NFR / IADR-0280 決定 3: 合成ルートは Infrastructure（推移的に Application / Domain）を参照する。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\AiAnalysisService.Infrastructure\AiAnalysisService.Infrastructure.csproj" />
+  </ItemGroup>
 </Project>

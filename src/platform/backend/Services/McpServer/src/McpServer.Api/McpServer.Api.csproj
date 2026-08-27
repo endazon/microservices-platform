@@ -20,4 +20,8 @@
          Mcp:PublicationConfigPath で指す。 -->
     <Content Update="Configuration\mcp-publication.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- NFR / IADR-0280 決定 3: 合成ルートは Infrastructure（推移的に Application / Domain）を参照する。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\McpServer.Infrastructure\McpServer.Infrastructure.csproj" />
+  </ItemGroup>
 </Project>

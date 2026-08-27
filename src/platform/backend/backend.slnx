@@ -7,6 +7,10 @@
   <Folder Name="/Services/AuthorizationService/" />
   <Folder Name="/Services/AuthorizationService/src/">
     <Project Path="Services/AuthorizationService/src/AuthorizationService.Api/AuthorizationService.Api.csproj" />
+    <Project Path="Services/AuthorizationService/src/AuthorizationService.Application/AuthorizationService.Application.csproj" />
+    <Project Path="Services/AuthorizationService/src/AuthorizationService.Contracts/AuthorizationService.Contracts.csproj" />
+    <Project Path="Services/AuthorizationService/src/AuthorizationService.Domain/AuthorizationService.Domain.csproj" />
+    <Project Path="Services/AuthorizationService/src/AuthorizationService.Infrastructure/AuthorizationService.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/Services/AuthorizationService/tests/">
     <Project Path="Services/AuthorizationService/tests/AuthorizationService.Api.Tests/AuthorizationService.Api.Tests.csproj" />
@@ -14,6 +18,10 @@
   <Folder Name="/Services/NotificationService/" />
   <Folder Name="/Services/NotificationService/src/">
     <Project Path="Services/NotificationService/src/NotificationService.Api/NotificationService.Api.csproj" />
+    <Project Path="Services/NotificationService/src/NotificationService.Application/NotificationService.Application.csproj" />
+    <Project Path="Services/NotificationService/src/NotificationService.Contracts/NotificationService.Contracts.csproj" />
+    <Project Path="Services/NotificationService/src/NotificationService.Domain/NotificationService.Domain.csproj" />
+    <Project Path="Services/NotificationService/src/NotificationService.Infrastructure/NotificationService.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/Services/NotificationService/tests/">
     <Project Path="Services/NotificationService/tests/NotificationService.Api.Tests/NotificationService.Api.Tests.csproj" />
@@ -21,6 +29,10 @@
   <Folder Name="/Services/McpServer/" />
   <Folder Name="/Services/McpServer/src/">
     <Project Path="Services/McpServer/src/McpServer.Api/McpServer.Api.csproj" />
+    <Project Path="Services/McpServer/src/McpServer.Application/McpServer.Application.csproj" />
+    <Project Path="Services/McpServer/src/McpServer.Contracts/McpServer.Contracts.csproj" />
+    <Project Path="Services/McpServer/src/McpServer.Domain/McpServer.Domain.csproj" />
+    <Project Path="Services/McpServer/src/McpServer.Infrastructure/McpServer.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/Services/McpServer/tests/">
     <Project Path="Services/McpServer/tests/McpServer.Api.Tests/McpServer.Api.Tests.csproj" />
@@ -28,6 +40,10 @@
   <Folder Name="/Services/LlmGateway/" />
   <Folder Name="/Services/LlmGateway/src/">
     <Project Path="Services/LlmGateway/src/LlmGateway.Api/LlmGateway.Api.csproj" />
+    <Project Path="Services/LlmGateway/src/LlmGateway.Application/LlmGateway.Application.csproj" />
+    <Project Path="Services/LlmGateway/src/LlmGateway.Contracts/LlmGateway.Contracts.csproj" />
+    <Project Path="Services/LlmGateway/src/LlmGateway.Domain/LlmGateway.Domain.csproj" />
+    <Project Path="Services/LlmGateway/src/LlmGateway.Infrastructure/LlmGateway.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/Services/LlmGateway/tests/">
     <Project Path="Services/LlmGateway/tests/LlmGateway.Api.Tests/LlmGateway.Api.Tests.csproj" />

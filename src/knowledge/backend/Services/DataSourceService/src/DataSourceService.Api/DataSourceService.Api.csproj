@@ -23,4 +23,8 @@
     <!-- IADR-0083 (#305): 単一書き手化ゲート TryRunCycleAsync 等の internal をテストへ公開する。 -->
     <InternalsVisibleTo Include="DataSourceService.Api.Tests" />
   </ItemGroup>
+  <!-- NFR / IADR-0280 決定 3: 合成ルートは Infrastructure（推移的に Application / Domain）を参照する。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\DataSourceService.Infrastructure\DataSourceService.Infrastructure.csproj" />
+  </ItemGroup>
 </Project>

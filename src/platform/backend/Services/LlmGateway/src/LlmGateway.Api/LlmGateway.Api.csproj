@@ -8,4 +8,8 @@
          公開 API にしない。写像表そのものをテストで固定するため、テストアセンブリにのみ内部を可視化する。 -->
     <InternalsVisibleTo Include="LlmGateway.Api.Tests" />
   </ItemGroup>
+  <!-- NFR / IADR-0280 決定 3: 合成ルートは Infrastructure（推移的に Application / Domain）を参照する。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\LlmGateway.Infrastructure\LlmGateway.Infrastructure.csproj" />
+  </ItemGroup>
 </Project>

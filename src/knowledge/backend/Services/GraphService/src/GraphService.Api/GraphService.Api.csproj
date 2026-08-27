@@ -16,4 +16,8 @@
          その「回避経路が無いこと」をアーキテクチャテストが検査するため、テストへ公開する。 -->
     <InternalsVisibleTo Include="GraphService.Api.Tests" />
   </ItemGroup>
+  <!-- NFR / IADR-0280 決定 3: 合成ルートは Infrastructure（推移的に Application / Domain）を参照する。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\GraphService.Infrastructure\GraphService.Infrastructure.csproj" />
+  </ItemGroup>
 </Project>
