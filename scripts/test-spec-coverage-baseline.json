@@ -134,8 +134,11 @@
       "EdgeTypeDbGuardTests",
       "EdgeTypeDictionaryTests",
       "EdgeTypeEndpointsTests",
+      "EdgeTypeResolverTests",
       "GraphAccessResolverTests",
       "GraphTypeGateArchitectureTests",
+      "LinkEdgeSyncTests",
+      "ObsidianLinkParserTests",
       "UserAuthoredEdgeTests"
     ],
     "docs/tests/FR-18_ai-suggestions.md": [
