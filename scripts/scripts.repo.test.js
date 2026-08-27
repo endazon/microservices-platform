@@ -2295,16 +2295,16 @@ module.exports = ({ ok, assert }) => {
   // 退行防止: Lingui のカタログ検査が見ているロケール集合が、i18n の実装が対応すると
   // 宣言しているロケール集合と一致していること。片方だけ増えると「宣言はしたが訳が無い」
   // あるいは「訳はあるが読み込まれない」状態が静かに生まれる。
-  ok('lingui.config.ts の locales と foundation/i18n の SUPPORTED_LOCALES が一致する', () => {
+  ok('lingui.config.ts の locales と app/i18n の SUPPORTED_LOCALES が一致する', () => {
     const { parseLinguiConfig } = require('./check-i18n-catalogs.js');
     const root = path.resolve(__dirname, '..');
     const cfg = parseLinguiConfig(fs.readFileSync(path.join(root, 'src/lingui.config.ts'), 'utf8'));
     const i18nSrc = fs.readFileSync(
-      path.join(root, 'src/platform/frontend/src/foundation/i18n/index.ts'),
+      path.join(root, 'src/platform/frontend/src/app/i18n/index.ts'),
       'utf8',
     );
     const m = /SUPPORTED_LOCALES\s*=\s*\[([^\]]*)\]/.exec(i18nSrc);
-    assert.ok(m, 'foundation/i18n から SUPPORTED_LOCALES を読み取れない');
+    assert.ok(m, 'app/i18n から SUPPORTED_LOCALES を読み取れない');
     const supported = m[1]
       .split(',')
       .map((x) => x.trim().replace(/^['"]|['"]$/g, ''))
@@ -5158,8 +5158,8 @@ ${r.stderr}`);
     ok('#703: PR サイズ検査の除外が本リポの生成物の実パスを指している', () => {
       const t = fs.readFileSync(path.join(REPO, PRSIZE), 'utf8');
       const required = [
-        'src/platform/frontend/src/foundation/api/generated/**',
-        'src/platform/frontend/src/foundation/i18n/locales/**',
+        'src/platform/frontend/src/lib/api/generated/**',
+        'src/platform/frontend/src/locales/**',
         'docs/**',
         '.ai-context/**',
       ];
@@ -5806,8 +5806,8 @@ ${r.stderr}`);
       assert.ok(!value.includes('#'), `EXCLUDES にコメントが混入している（pathspec が壊れる）:\n${value}`);
       // 本リポの実パス（IADR-0181 の固有デルタ）が残っていること
       for (const p of [
-        'src/platform/frontend/src/foundation/api/generated/**',
-        'src/platform/frontend/src/foundation/i18n/locales/**',
+        'src/platform/frontend/src/lib/api/generated/**',
+        'src/platform/frontend/src/locales/**',
       ]) {
         assert.ok(value.includes(p), `固有デルタの実パス「${p}」が EXCLUDES から消えた（IADR-0181 決定 1）`);
       }
