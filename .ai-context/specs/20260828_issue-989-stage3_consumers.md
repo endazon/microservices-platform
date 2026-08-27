@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — #989 段 3 の残り消費側 3 サービス（RetrievalService / AiAnalysisService / GraphService）
 type: spec
-status: draft
+status: done
 related_ids: [FR-03, FR-04, FR-05, FR-17, FR-19, UC-01, UC-02, UC-10, ADR-0004, ADR-0034, ADR-0036, ADR-0043, ADR-0046, IADR-0014, IADR-0151, IADR-0242, IADR-0253, IADR-0259, IADR-0272]
 author: claude
 created: 2026-08-28
@@ -211,28 +211,100 @@ Branches が空/null かつ AllowedFilters 空 → true（条件無しの許可�
 
 ## 5. 受け入れ基準
 
-- [ ] （契約）`AccessScope.Branches` が末尾・既定値付きで追加され、`check-contract-schema.js` が
+- [x] （契約）`AccessScope.Branches` が末尾・既定値付きで追加され、`check-contract-schema.js` が
       **非破壊**と判定し、baseline 差分が `AccessScope.Branches` の追加のみである
-- [ ] （Retrieval）分岐 OR の正例（A のみ満たす文書と B のみ満たす文書が**両方**返る）と
+- [x] （Retrieval）分岐 OR の正例（A のみ満たす文書と B のみ満たす文書が**両方**返る）と
       **混成の負例**（`(internal, sales)` が返らない）が対で固定されている
-- [ ] （Retrieval）各分岐単独の**陽性対照**がある（「常に空」の実装を落とす）
-- [ ] （Retrieval）`Branches` が空/null なら従来どおり（後方互換）
-- [ ] （Retrieval）`/attribute-values` にも同じ規則が効く（候補と検索の一致。`IADR-0151` 決定 1）
-- [ ] （AiAnalysis）分岐ごとの交差が固定され、**全分岐 drop のときだけ全体 deny** になる
-- [ ] （AiAnalysis）混成の負例がある／キー単位 union へ畳んでいない
-- [ ] （Graph）分岐 OR の正例・混成の負例・後方互換・属性欠落 deny が固定されている
-- [ ] （Graph）tripwire `AbacUnenforcedAxisTests` を**消さずに**検出対象を更新し、
+- [x] （Retrieval）各分岐単独の**陽性対照**がある（「常に空」の実装を落とす）
+- [x] （Retrieval）`Branches` が空/null なら従来どおり（後方互換）
+- [x] （Retrieval）`/attribute-values` にも同じ規則が効く（候補と検索の一致。`IADR-0151` 決定 1）
+- [x] （AiAnalysis）分岐ごとの交差が固定され、**全分岐 drop のときだけ全体 deny** になる
+- [x] （AiAnalysis）混成の負例がある／キー単位 union へ畳んでいない
+- [x] （Graph）分岐 OR の正例・混成の負例・後方互換・属性欠落 deny が固定されている
+- [x] （Graph）tripwire `AbacUnenforcedAxisTests` を**消さずに**検出対象を更新し、
       **owner で見え方が変わる**ことの陽性対照が新設されている
-- [ ] 変異試験を各サービス最低 1 種で実測し、**予想と実測の対比**を記録している
-- [ ] `dotnet build`（platform / knowledge 両 slnx）緑・`dotnet format --verify-no-changes` 緑
-- [ ] 3 サービスのテスト全緑（件数を記録。**skip は「通った」と数えない**）
-- [ ] `check-commit-messages.js --range e43e0a9..HEAD` / `check-backend-libraries.js` /
+- [x] 変異試験を各サービス最低 1 種で実測し、**予想と実測の対比**を記録している
+- [x] `dotnet build`（platform / knowledge 両 slnx）緑・`dotnet format --verify-no-changes` 緑
+- [x] 3 サービスのテスト全緑（件数を記録。**skip は「通った」と数えない**）
+- [x] `check-commit-messages.js --range e43e0a9..HEAD` / `check-backend-libraries.js` /
       `check-unit-dependencies.js` 緑
-- [ ] `docs/api/openapi.yaml`・orval 生成物に差分が無い（`git status` で確認）
+- [x] `docs/api/openapi.yaml`・orval 生成物に差分が無い（`git status` で確認）
 
-## 6. 実測記録
+## 6. 実測記録（2026-08-28）
 
-（実装後に埋める）
+### 6-1. 変異試験（いずれも変異が当たったことを `git diff` で確認してから実行し、復元後に全緑を再確認）
+
+| # | サービス | 変異 | 予想 | **実測** |
+| --- | --- | --- | --- | --- |
+| ① | Retrieval | `InMemoryVectorStore.MatchesFilters` の分岐評価を**キー単位 union へ潰す** | 混成負例が赤 | **4 件が赤**（126 中）: `Search_DeniesCrossPolicyMixture_BranchesAreNotKeywiseUnion` / `KeywordSearch_AppliesTheSameBranchRules` / `ListAttributeValues_AppliesTheSameBranchRules` / `PostSearch_DeniesCrossPolicyMixture_...`。**予想より広い**（混成データを使う 4 経路すべてが検出した） |
+| ② | Retrieval | `BuildFilters` の分岐分岐を消し**従来評価へ戻す** | 分岐 OR 正例＋混成負例が赤 | 🔴 **1 件だけが赤**: `PostSearch_DeniesCrossPolicyMixture_EvenThoughKeywiseUnionWouldAllow`。**予想が外れた**（§6-2） |
+| ③ | AiAnalysis | 分岐ごとの交差を消し**キー単位 union（従来経路）へ潰す** | 混成負例が赤 | **6 件が赤**（89 中）: 新設した分岐試験 6 件すべて |
+| ④ | AiAnalysis | 生き残った分岐の**名前を添字で引く**（実際に書いてしまった欠陥） | 名前の対応試験が赤 | ✅ **ちょうど 1 件**: `Branches_RangeMatchingOnlyOneBranch_KeepsThatBranchWithItsOwnName`。**予想が当たった** |
+| ⑤ | Graph | `AbacNodeFilter` の分岐評価を**キー単位 union へ潰す** | 混成負例＋tripwire が赤 | **3 件が赤**（205 中）: `Matches_DeniesCrossPolicyMixture_...` / `AuthorizedNode_Authorize_AppliesBranches` / tripwire の `Branches_are_not_folded_into_a_keywise_union` |
+| ⑥ | Graph | 分岐を無視して**従来評価へ戻す** | 分岐試験群が赤 | **7 件が赤**: ⑤ の 3 件 ＋ `Matches_NodeMissingBranchAttribute_IsNotVisible` / `Matches_DoesNotInterpretPlaceholders_InsideBranches` / `Matches_WithSingleBranch_OnlyThatPolicyGrants` / **tripwire の陽性対照 `Owner_attribute_IS_enforced_when_scope_carries_an_owner_branch`** |
+
+### 6-2. 🔴 変異 ② が明かしたこと —— 純ロジック試験は配線を測っていない
+
+**変異 ②（`BuildFilters` が分岐を渡さない）を捕まえたのは端点試験 1 件だけだった。**
+
+- ストア直呼びの試験（`ScopeBranchFilteringTests` の大半）は `BuildFilters` を**通らない**ため、
+  配線が切れても緑のままである。
+- **分岐 OR の正例（`PostSearch_EvaluatesBranchesAsDisjunction`）も緑のままだった** ——
+  分岐を無視すると `AllowedFilters` が空＝全件許可になり、**期待していた 2 件がそのまま返る**からである。
+  **正例は「配線が切れた」ことを検出できない。検出したのは負例だけである。**
+
+**教訓**: 消費側の段では「純ロジックの試験」と「配線の試験」を分けて数える。
+純ロジックだけを厚くしても、**スコープを渡し忘れた実装は素通りする**。
+段 2 の仕様書 §7 が「間接的な指標が全部使えない」と書いたのと同型の注意である。
+
+### 6-3. tripwire `AbacUnenforcedAxisTests` の扱い
+
+| テスト | 分岐対応後 | 扱い |
+| --- | --- | --- |
+| `Owner_attribute_is_NOT_yet_enforced_...` | **緑のまま**（分岐なし応答 → 後方互換で従来評価） | **残した**。理由の文言を「分岐を持たない応答では働かない」へ改め、赤くなる条件を「後方互換が壊れたとき」に付け替えた |
+| `Dynamic_binding_placeholders_are_NOT_interpreted` | **緑のまま**（述語は素の比較のみ） | **残した**（今も正しい不変条件）。分岐形の変種を `AbacNodeFilterTests` へ 1 件追加 |
+| （新設）`Owner_attribute_IS_enforced_when_scope_carries_an_owner_branch` | — | **陽性対照。** 分岐を運ぶ応答なら owner で見え方が変わることの証拠。変異 ⑥ が検出 |
+| （新設）`Branches_are_not_folded_into_a_keywise_union` | — | **陰性対照。** 変異 ⑤・⑥ の両方が検出 |
+
+**本文コメントの理由 2 は日付つき追記で「解消」と記録し、残る未強制の理由が 1（実データの
+`owner` が 0% 充足・owner ポリシー未配備）だけであることを明示した。**
+tripwire 自身の指示「**赤くなったら消すのではなく、強制されるようになったことを確かめる形へ
+書き換えること**」に従った形である（赤くはならなかったが、理由の 1 つが消えたので書き換えた）。
+
+### 6-4. テスト・検証の実行結果
+
+| 実行 | 結果 |
+| --- | --- |
+| `dotnet build src/knowledge/backend/backend.slnx` | **EXIT=0**（警告 2 件は既存の `MinioBuilder` CS0618） |
+| `dotnet build src/platform/backend/backend.slnx` | **EXIT=0**（警告 0） |
+| `dotnet format <両 slnx> --verify-no-changes` | いずれも **EXIT=0** |
+| `RetrievalService.Api.Tests` | **126 passed / 0 skipped**（着手時 111 → 分岐試験 13 ＋ 端点試験 2 を追加） |
+| `AiAnalysisService.Api.Tests` | **89 passed / 0 skipped**（分岐試験 7 を追加） |
+| `GraphService.Api.Tests` | **205 passed / 0 skipped**（分岐試験 10 ＋ tripwire 陽性/陰性対照 2 を追加） |
+| `WikiService.Api.Tests`（写像元・退行確認） | **59 passed / 0 skipped** |
+| `Platform.Bff.Tests`（契約・`ToContractScope`） | **365 passed / 1 skipped**（skip は既存のベンチマーク系） |
+| `AuthorizationService.Api.Tests`（発行側の据え置き確認） | **95 passed / 0 skipped** |
+| `check-commit-messages.js --range e43e0a9..HEAD` | OK（4 件すべて規約適合） |
+| `check-backend-libraries.js` | OK（新規混入 0。既知残件 9 は baseline 済み） |
+| `check-unit-dependencies.js` | OK（csproj 196 / .cs 1841 を走査し違反なし） |
+| `check-contract-schema.js` | 更新前: **非破壊 1 件**（`AccessScope.Branches` の追加）→ `--update` 後 OK |
+| `check-xunit1051-ratchet.js` | OK |
+| `git diff e43e0a9..HEAD -- docs/api/openapi.yaml src/*/frontend src/packages` | **空**（禁止領域に差分なし） |
+
+**Docker が無いため Testcontainers 系の統合テストは実行できない。上表に skip を「通った」と
+数えた箇所は無い**（Platform.Bff の 1 skip は既存分であり本作業の対象外）。
+
+### 6-5. 契約 baseline の差分（全文）
+
+```
+"Platform.Shared.Contracts.Dtos.AccessScope": {
+   "members": {
++    "Branches": { "source": "positional", "type": "List<AccessScopeBranch>?",
++                  "required": false, "position": 2 },
+     "Filters":  ...
+```
+
+**追加は 1 メンバーのみ・`required:false`・末尾（position 2）＝非破壊判定**である。
 
 ## 7. 射程外・統括へ返すもの
 
