@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — バックエンド 8 要素標準の実体化（土台＋パイロット FeedbackService）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - NFR
   - FR-08
@@ -119,21 +119,66 @@ Migrations 2 件 / TestWebApplicationFactory.cs。すべて移送対象または
 5. `feat(NFR,IADR-0280)`: `check-unit-dependencies.js` 規則 3 ＋ 自己試験。
 6. `docs(NFR)`: 本仕様書を実測で確定（status: done）。
 
-## 受け入れ基準（コミット 6 で実測を記入して確定する）
+## 受け入れ基準（実測で確定済み）
 
-- [ ] `dotnet build src/platform/backend/backend.slnx` / `src/knowledge/backend/backend.slnx` が緑
-      （ビルド時間の前後を記録）。
-- [ ] `dotnet test`（FeedbackService.Api.Tests / Platform.Shared.Kernel.Tests）が緑（件数を記録）。
-- [ ] `dotnet format <slnx> --verify-no-changes` が両ユニットで緑。
-- [ ] `node scripts/check-unit-dependencies.js` 緑（規則 3 が 56 の新 csproj を実対象化）。
-- [ ] `node scripts/check-backend-libraries.js` 緑（規則 2 が `*.Domain.csproj` 14 件を実対象化）。
-- [ ] `node scripts/check-adr-numbering.js` 緑（IADR-0280 の採番・索引）。
-- [ ] `node scripts/check-commit-messages.js --range <波0HEAD>..HEAD` 緑。
-- [ ] `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` 緑（規則 3 の自己試験を含む）。
-- [ ] FeedbackService の移送が振る舞いを変えていない（既存テストが無修正のアサーションで緑。
-      変わるのは名前空間の追随のみ）。
-- [ ] 残り 13 サービスの移送が後続波の射程として明記されている（本仕様書 §射程外・IADR-0280 決定 1）。
+- [x] `dotnet build src/platform/backend/backend.slnx` / `src/knowledge/backend/backend.slnx` が緑
+      （ビルド時間は下の実測）。
+- [x] `dotnet test`: Platform.Shared.Kernel.Tests **42 件**（基底型の追加分 16 件を含む）/
+      FeedbackService.Api.Tests **21 件**、いずれも Failed 0。
+- [x] `dotnet format <slnx> --verify-no-changes` が両ユニットで緑。
+- [x] `node scripts/check-unit-dependencies.js` 緑（csproj 196 件 / .cs 1821 件を走査。
+      規則 3 の自己試験 16 件を含む 29 件 OK。実ツリーでの変異 2 種
+      〔Domain → Application の ProjectReference・Domain への
+      `using Microsoft.EntityFrameworkCore;` 混入〕が赤になることを実測し、復元済み）。
+- [x] `node scripts/check-backend-libraries.js` 緑（規則 2 が `*.Domain.csproj` 14 件を実対象化。
+      既知残件 11 件は baseline 済みのまま）。
+- [x] `node scripts/check-adr-numbering.js` 緑（IADR-0280。重複・欠番なし・索引と双方向一致）。
+- [x] `node scripts/check-commit-messages.js --range d451ada..HEAD` 緑（検査対象 5 件 / 除外 0 件）。
+- [x] `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` 緑（**615 件**）。
+- [x] FeedbackService の移送が振る舞いを変えていない —— 既存テスト 21 件はアサーション無修正
+      （変更は `using` の追随 1 行のみ）で緑。`dotnet ef migrations has-pending-model-changes` が
+      「No changes have been made to the model since the last migration.」（差分ゼロ）。
+- [x] 残り 13 サービスの移送は後続波の射程（本仕様書 §射程外・IADR-0280 決定 1）。
 
-## 実測の記録（コミット 6 で確定）
+## 実測の記録
 
-（作業完了時に記入する）
+### ビルド時間（`dotnet build <slnx> -t:Rebuild`。同一マシン・restore 済み）
+
+| slnx | 前（波 0 HEAD） | 後（本作業後。2 回測定） |
+| --- | --- | --- |
+| platform | 8.3 秒 | 7.1 秒 / 8.9 秒 |
+| knowledge | 22.8 秒 | 14.5 秒 / 15.8 秒 |
+
+**56 プロジェクト（中身は csproj のみ）の追加による有意な増加は観測されなかった**
+（測定間のばらつきが差分を上回る。「前」の knowledge 22.8 秒は直前の初回 restore の
+キャッシュ暖機を含んでいた可能性がある。空プロジェクトのコンパイルは軽い）。
+
+### 検査コマンドの結果一覧（最終時点）
+
+| コマンド | 結果 |
+| --- | --- |
+| `dotnet build`（両 slnx） | 緑（0 Error） |
+| `dotnet test` Kernel.Tests / FeedbackService.Api.Tests | 42 / 21 件 すべて Passed |
+| `dotnet format --verify-no-changes`（両 slnx） | 緑 |
+| `node scripts/check-unit-dependencies.js`（--self-test 含む） | 緑（自己試験 29 件） |
+| `node scripts/check-backend-libraries.js` | 緑 |
+| `node scripts/check-adr-numbering.js` | 緑 |
+| `node scripts/check-commit-messages.js --range d451ada..HEAD` | 緑（5 件） |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 緑（615 件） |
+| `node scripts/check-test-spec-coverage.js` | 緑（新規テストクラス 3 件は warn = 記載義務なしの区分。baseline 変更なし） |
+| `node scripts/check-trace-blocks.js` / `check-doc-links.js` / `check-doc-updated.js` / `check-cross-repo-refs.js` / `check-plan-id-qualification.js` / `check-reading-budget.js` | 緑 |
+| `dotnet ef migrations has-pending-model-changes`（FeedbackService） | 差分ゼロ |
+
+### 実行できなかった検証と理由
+
+- **実 DB / 実ブローカでの統合試験**: 本環境に Docker が無く Testcontainers 系は実行不可。
+  本作業はコードの物理配置の移送であり、単体・エンドポイントテスト（InMemory）と
+  EF モデル差分ゼロの実測で「振る舞いを変えない」を担保した。
+- **CI と同一の全ジョブ実行**: ローカルでは上表の同一コマンドを個別に実行した。
+
+### 作業中の実測による決定の訂正
+
+- IADR-0280 決定 4 の初稿は `Microsoft.EntityFrameworkCore.Design` を Infrastructure 側へ移すと
+  書いていたが、**EF Core Tools は startup project（Api）側の Design 参照を要求する**
+  （`PrivateAssets="all"` は推移しないため。エラーメッセージで実測）。決定 4 を
+  「Design は Api / Worker に残す」へ訂正済み（本 PR 内の起草中訂正であり、凍結後の追記ではない）。

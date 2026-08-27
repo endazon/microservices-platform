@@ -130,7 +130,10 @@ related_specs:
 置けば `MigrationsAssembly` の明示指定は不要になる（起動プロジェクト = Api、対象プロジェクト =
 Infrastructure という `dotnet ef` の標準形）。IADR-0027 の例外「`Migrations/` は直下に残す」は、
 DbContext が Api にあった当時の帰結であり、**DbContext の移動に随伴して Migrations も移る**。
-`Microsoft.EntityFrameworkCore.Design`（PrivateAssets）も Infrastructure 側へ移す。
+`Microsoft.EntityFrameworkCore.Design`（PrivateAssets）は **startup project 側（Api / Worker）に残す**
+—— EF Core Tools は Design を startup project に要求し、`PrivateAssets="all"` のため
+Infrastructure からは推移しない（パイロットで実測。Infrastructure 側へ置いた形は
+`dotnet ef` が「doesn't reference Microsoft.EntityFrameworkCore.Design」で拒む）。
 
 - 既存 Migration の `.Designer.cs` / `ModelSnapshot.cs` が持つ CLR 型名文字列
   （例: `"FeedbackService.Api.Foundation.Domain.AnswerFeedback"`）は新名前空間へ**機械的に追随させる**。
