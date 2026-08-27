@@ -1838,6 +1838,12 @@
             "required": true,
             "position": 4
           },
+          "ContentFingerprint": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 7
+          },
           "DocumentId": {
             "source": "positional",
             "type": "Guid",

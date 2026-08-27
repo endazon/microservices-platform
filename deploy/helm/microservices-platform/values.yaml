@@ -475,6 +475,9 @@ services:
         value: "http://datasource-service:8080"
       - name: Introspection__Services__feedback-service
         value: "http://feedback-service:8080"
+      # FR-15/FR-17: グラフ同期・削除伝播の段を担う graph-service を収集先へ追加（宣言実効性テストが検出）。
+      - name: Introspection__Services__graph-service
+        value: "http://graph-service:8080"
       - name: Introspection__Services__llm-gateway
         value: "http://llmgateway-service:8080"
       # FR-04/FR-08/FR-10, UC-01: BFF の下流集約先（Refit クライアント・readiness の UriHealthCheck）。
