@@ -1,6 +1,5 @@
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Knowledge.Contracts.Events;
-using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using WikiService.Api.Foundation.Domain;
 using WikiService.Api.Foundation.Persistence;
@@ -19,13 +18,16 @@ namespace WikiService.Api.Composable.Steps;
 //      「同期メタデータ」であり、認可の単一真実源（IADR-0021: 認可属性は Wiki.js に持ち込まない）。
 //
 // 冪等性: DocumentId 由来の安定パス（WikiPage.WikiPath）で upsert するため、再配信に対して冪等。
-// 失敗時: Wiki.js push・本文取得の失敗は例外を送出し、MassTransit のリトライ／デッドレター
-//   （UsePlatformRetry）へ委ねる。
+// 失敗時: Wiki.js push・本文取得の失敗は例外を送出し、Wolverine のリトライ／デッドレター
+//   （UsePlatformMessagingDefaults）へ委ねる。
+//
+// 🔴 ADR-0027 / E3b: **購読は Wolverine へ移した**（IPipelineStep<DocumentUpdated>・IADR-0239）。
+// wiki-delete 段（E3a）と併せて、本サービスから MassTransit は撤去済みである。
 public class DocumentSyncConsumer(
     WikiDbContext db,
     IWikiJsClient wikiJs,
     IWikiContentReader contentReader,
-    ILogger<DocumentSyncConsumer> logger) : IConsumer<DocumentUpdated>, IPipelineStep
+    ILogger<DocumentSyncConsumer> logger) : IPipelineStep<DocumentUpdated>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
     public static string StepName => "wiki-sync";
@@ -47,23 +49,22 @@ public class DocumentSyncConsumer(
         => attributes.TryGetValue(DocScopeKey, out var scope)
             && string.Equals(scope, PrivateNoteScope, StringComparison.OrdinalIgnoreCase);
 
-    public async Task Consume(ConsumeContext<DocumentUpdated> ctx)
+    // ADR-0027 / E3b: Wolverine のハンドラ。
+    public async Task Handle(DocumentUpdated ev, CancellationToken ct)
     {
-        var ev = ctx.Message;
-
         // Issue #88: アーカイブ（非公開化）の伝播。Wiki.js ページを unpublish + private にし、
         // メタデータを Archived にする（ゲートウェイの一覧・個別から不可視）。メタデータ未同期でも
         // Wiki.js 側の非公開化は正準パス（DocumentId 由来）で試みる（冪等・deny-closed）。
         if (ev.Status == "archived")
         {
-            await wikiJs.ArchivePageAsync(WikiPage.PathFor(ev.DocumentId), ctx.CancellationToken);
+            await wikiJs.ArchivePageAsync(WikiPage.PathFor(ev.DocumentId), ct);
 
             var archivedPage = await db.Pages
-                .FirstOrDefaultAsync(p => p.DocumentId == ev.DocumentId, ctx.CancellationToken);
+                .FirstOrDefaultAsync(p => p.DocumentId == ev.DocumentId, ct);
             if (archivedPage is not null)
             {
                 archivedPage.Archive();
-                await db.SaveChangesAsync(ctx.CancellationToken);
+                await db.SaveChangesAsync(ct);
             }
             logger.LogInformation("Archived document {DocumentId} on Wiki.js", ev.DocumentId);
             return;
@@ -93,7 +94,7 @@ public class DocumentSyncConsumer(
 
         // 1) ABAC 同期メタデータの upsert（ゲートウェイのフィルタ用・単一真実源）。
         var existing = await db.Pages
-            .FirstOrDefaultAsync(p => p.DocumentId == ev.DocumentId, ctx.CancellationToken);
+            .FirstOrDefaultAsync(p => p.DocumentId == ev.DocumentId, ct);
 
         var page = existing;
         if (page is null)
@@ -114,12 +115,12 @@ public class DocumentSyncConsumer(
         //    以外（欠落含む）は Wiki.js 上でも非公開にする（deny-closed）。ABAC の代替ではない。
         var isPublic = ev.Attributes.TryGetValue("confidentiality", out var confidentiality)
             && string.Equals(confidentiality, "public", StringComparison.OrdinalIgnoreCase);
-        var markdown = await contentReader.ReadAsync(ev.MarkdownUri, ev.Title, ctx.CancellationToken);
+        var markdown = await contentReader.ReadAsync(ev.MarkdownUri, ev.Title, ct);
         await wikiJs.UpsertPageAsync(
             new WikiJsPage(page.WikiPath, ev.Title, markdown, ev.Tags, IsPrivate: !isPublic),
-            ctx.CancellationToken);
+            ct);
 
-        await db.SaveChangesAsync(ctx.CancellationToken);
+        await db.SaveChangesAsync(ct);
         logger.LogInformation("Synced document {DocumentId} to Wiki.js at {Path}", ev.DocumentId, page.WikiPath);
     }
 }

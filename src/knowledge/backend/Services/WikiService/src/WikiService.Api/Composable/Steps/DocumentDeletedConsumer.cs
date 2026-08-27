@@ -17,8 +17,7 @@ namespace WikiService.Api.Composable.Steps;
 // 失敗は例外を送出し、Wolverine のリトライ／デッドレター（UsePlatformMessagingDefaults）へ委ねる。
 //
 // 🔴 ADR-0027 / E3a: **購読は Wolverine へ移した**（IPipelineStep<DocumentDeleted>・IADR-0239）。
-// 同サービスの DocumentSyncConsumer（DocumentUpdated）は辺 E3b の射程であり、辺は原子的に動かす
-// （IADR-0234 決定 3）ため本 PR の段では MassTransit のままである。
+// E3b で DocumentSyncConsumer（DocumentUpdated）も Wolverine へ移り、本サービスに MassTransit は残っていない。
 public class DocumentDeletedConsumer(
     WikiDbContext db,
     IWikiJsClient wikiJs,

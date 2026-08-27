@@ -2,8 +2,6 @@ using AwesomeAssertions;
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
-using MassTransit;
-using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -19,9 +17,8 @@ namespace WikiService.Api.Tests;
 // 同一サービス内の 2 段（wiki-sync / wiki-delete）を宣言的構成のみで選択的に有効化し、
 // 無効化した段の購読が生成されない（イベントが処理されない）ことを検証する。
 //
-// 🔴 ADR-0027 / E3a: wiki-delete 段は Wolverine へ移した（wiki-sync は E3b まで MassTransit）。
-// 2 段が別トランスポートに載るため、組み替えの検証もトランスポートごとに行う。
-// Wolverine 側は**実際にホストを起こして登録経路（AddPlatformWolverineStep）を通す**
+// 🔴 ADR-0027 / E3a・E3b: 両段とも Wolverine 段になった。
+// **実際にホストを起こして登録経路（AddPlatformWolverineStep）を通す**
 // （E1 の PipelineStepRegistrationTests と同じ器。直接呼びだけでは登録経路の破れを測れない —— 変異 R の実測）。
 public class PipelineRecomposeTests
 {
@@ -50,11 +47,12 @@ public class PipelineRecomposeTests
         ],
     };
 
-    // Wolverine 側の器（wiki-delete 段）。外部トランスポートは落とし、InvokeAsync で駆動する。
+    // Wolverine の器。外部トランスポートは落とし、InvokeAsync で駆動する。
     private static IHost BuildWolverineHost(PipelineOptions pipeline, string dbName)
         => new HostBuilder()
             .UseWolverine(opts =>
             {
+                opts.AddPlatformWolverineStep<DocumentSyncConsumer>(pipeline);
                 opts.AddPlatformWolverineStep<DocumentDeletedConsumer>(pipeline);
 
                 // 🔴 規約探索を意図的に「効いている」状態にする（器を甘くしない。E1 実測:
@@ -72,59 +70,47 @@ public class PipelineRecomposeTests
                 .DisableAllExternalWolverineTransports())
             .Build();
 
-    [Fact]
-    public async Task 構成のみで同期段を外せる_MassTransit側()
-    {
-        var pipeline = Pipeline(syncEnabled: false, deleteEnabled: true);
-
-        await using var provider = new ServiceCollection()
-            .AddLogging()
-            .AddDbContext<WikiDbContext>(o => o.UseInMemoryDatabase(nameof(PipelineRecomposeTests)))
-            .AddSingleton<IWikiJsClient, NoopWikiJsClient>()
-            .AddSingleton<IWikiContentReader, NoopContentReader>()
-            .AddMassTransitTestHarness(cfg => cfg.AddPlatformPipelineStep<DocumentSyncConsumer>(pipeline))
-            .BuildServiceProvider(true);
-
-        // wiki-sync は登録されない
-        using (var scope = provider.CreateScope())
-        {
-            scope.ServiceProvider.GetService<DocumentSyncConsumer>().Should().BeNull();
-        }
-
-        var harness = provider.GetRequiredService<ITestHarness>();
-        await harness.Start();
-
-        // DocumentUpdated は購読されない（同期段は構成で無効）
-        await harness.Bus.Publish(new DocumentUpdated(
-            Guid.NewGuid(), "組み替えテスト", "published", "s3://b/doc.md",
-            new Dictionary<string, string> { ["confidentiality"] = "internal" },
-            ["ops"], DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
-        (await harness.Consumed.Any<DocumentUpdated>(TestContext.Current.CancellationToken)).Should().BeFalse();
-
-        await harness.Stop(TestContext.Current.CancellationToken);
-    }
+    private static DocumentUpdated Updated(Guid docId) => new(
+        docId, "組み替えテスト", "published", "s3://b/doc.md",
+        new Dictionary<string, string> { ["confidentiality"] = "internal" },
+        ["ops"], DateTimeOffset.UtcNow);
 
     [Fact]
-    public async Task 有効な削除段は登録経路を通って処理される_Wolverine側()
+    public async Task 構成のみで同期段を外し削除段だけを有効化できる()
     {
         var dbName = Guid.NewGuid().ToString();
         using var host = BuildWolverineHost(Pipeline(syncEnabled: false, deleteEnabled: true), dbName);
         await host.StartAsync(TestContext.Current.CancellationToken);
+        var bus = host.Services.GetRequiredService<IMessageBus>();
 
+        // wiki-delete は処理される（削除段は有効のまま）。
         var docId = Guid.NewGuid();
         await SeedPageAsync(host, docId);
+        await bus.InvokeAsync(new DocumentDeleted(docId, DateTimeOffset.UtcNow),
+            TestContext.Current.CancellationToken);
+        PageExists(host, docId).Should().BeFalse("削除段が処理したメタデータ行は消える");
 
-        await host.Services.GetRequiredService<IMessageBus>()
-            .InvokeAsync(new DocumentDeleted(docId, DateTimeOffset.UtcNow),
-                TestContext.Current.CancellationToken);
-
-        using var scope = host.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<WikiDbContext>();
-        db.Pages.Any(p => p.DocumentId == docId).Should().BeFalse("削除段が処理したメタデータ行は消える");
+        // DocumentUpdated は購読されない（同期段は構成で無効。ハンドラが無いのでプロセス内呼び出しは失敗する）。
+        var act = () => bus.InvokeAsync(Updated(Guid.NewGuid()), TestContext.Current.CancellationToken);
+        await act.Should().ThrowAsync<Exception>();
     }
 
     [Fact]
-    public async Task 無効化した削除段は登録されず購読されない_Wolverine側()
+    public async Task 有効な同期段は登録経路を通って処理される()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var host = BuildWolverineHost(Pipeline(syncEnabled: true, deleteEnabled: true), dbName);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+
+        var docId = Guid.NewGuid();
+        await host.Services.GetRequiredService<IMessageBus>()
+            .InvokeAsync(Updated(docId), TestContext.Current.CancellationToken);
+
+        PageExists(host, docId).Should().BeTrue("同期段が処理したメタデータ行が作られる");
+    }
+
+    [Fact]
+    public async Task 無効化した削除段は登録されず購読されない()
     {
         // 規則8: enabled: false → 登録しない（構成のみで段を外せる＝FR-14）。
         // 規約探索を効かせた状態で、それでも購読が生えないことを見る。
@@ -147,6 +133,13 @@ public class PipelineRecomposeTests
             docId, "recompose", "s3://b/doc.md",
             new Dictionary<string, string> { ["confidentiality"] = "internal" }, ["ops"]));
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    private static bool PageExists(IHost host, Guid docId)
+    {
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WikiDbContext>();
+        return db.Pages.Any(p => p.DocumentId == docId);
     }
 }
 

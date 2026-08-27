@@ -60,10 +60,10 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
         doc.MarkdownUri.Should().NotBeNull();
         doc.Status.Should().Be("normalized");
 
-        var harness = factory.Services.GetRequiredService<ITestHarness>();
-        (await harness.Published.Any<DocumentUpdated>(m =>
-            m.Context.Message.DocumentId == doc.Id
-            && m.Context.Message.MarkdownUri != null)).Should().BeTrue();
+        // E3b: DocumentUpdated の発行は Wolverine（RecordingMessageBus で観測する）。
+        var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
+        bus.PublishedOf<DocumentUpdated>().Should()
+            .Contain(e => e.DocumentId == doc.Id && e.MarkdownUri != null);
     }
 
     // FR-21 ②: 登録した本文が RAG 検索の結果として返る。

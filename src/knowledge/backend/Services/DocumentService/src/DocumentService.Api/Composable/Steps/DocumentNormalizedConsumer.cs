@@ -1,5 +1,6 @@
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using DocumentService.Api.Foundation.Domain;
+using DocumentService.Application.Foundation.Ports;
 using DocumentService.Api.Foundation.Observability;
 using DocumentService.Api.Foundation.Persistence;
 using DocumentService.Api.Foundation.Services;
@@ -15,7 +16,7 @@ namespace DocumentService.Api.Composable.Steps;
 // 取り込み（IngestionService）・Wiki 同期（WikiService）へ連鎖させる（IADR-0001）。
 public class DocumentNormalizedConsumer(
     DocumentDbContext db,
-    IPublishEndpoint bus,
+    IDocumentUpdatedPublisher bus,
     IngestTagMetrics metrics,
     ILogger<DocumentNormalizedConsumer> logger) : IConsumer<DocumentNormalized>, IPipelineStep
 {
@@ -57,10 +58,12 @@ public class DocumentNormalizedConsumer(
         // FR-01: カタログ登録を後続フロー（取り込み・Wiki 同期）へ通知する。
         // **［#635］イベントは表示名を運ぶ**（正本は識別子。[[IADR-0153]] 決定 2）——
         // 射影（Qdrant / Wiki.js）は人が読む面であり、下流は変わらない。
+        // ADR-0027 / E3b: 発行は Wolverine（IDocumentUpdatedPublisher 経由）。本段の**購読**
+        // （DocumentNormalized・MassTransit）は辺 E2 の射程であり、本 PR では動かさない。
         var names = await TagResolver.NamesAsync(db, ct);
-        await bus.Publish(new DocumentUpdated(
+        await bus.PublishUpdatedAsync(
             doc.Id, doc.Title, doc.Status, doc.MarkdownUri,
-            doc.Attributes, TagResolver.ToNames(doc.Tags, names), doc.UpdatedAt), ct);
+            doc.Attributes, TagResolver.ToNames(doc.Tags, names), doc.UpdatedAt, ct);
     }
 
     // SC-05, SC-09, SC-10, #637: 辞書に在るタグだけを返し、**無いものは件数として記録して捨てる**。

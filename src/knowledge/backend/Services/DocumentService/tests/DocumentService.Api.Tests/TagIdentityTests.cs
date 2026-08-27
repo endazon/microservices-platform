@@ -111,10 +111,11 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
 
         // **射影（Qdrant / Wiki.js）は表示名を焼き込んだ複写なので、作り直す必要がある。**
         // 正本の追随（上の 2 行）だけでは検索結果と Wiki.js は古い名前のままになる（[[IADR-0153]] 決定 3）。
-        var harness = factory.Services.GetRequiredService<ITestHarness>();
-        (await harness.Published.Any<DocumentUpdated>(m =>
-            m.Context.Message.DocumentId == doc.Id && m.Context.Message.Tags.Contains(after)))
-            .Should().BeTrue("新しい名前を載せた DocumentUpdated が再発行される");
+        // E3b: DocumentUpdated の発行は Wolverine（RecordingMessageBus で観測する）。
+        var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
+        bus.PublishedOf<DocumentUpdated>().Should()
+            .Contain(e => e.DocumentId == doc.Id && e.Tags.Contains(after),
+                "新しい名前を載せた DocumentUpdated が再発行される");
     }
 
     // **改名したタグを使っていない文書は再発行しない。**
@@ -135,11 +136,12 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
         (await resp.Content.ReadFromJsonAsync<RenameTagResponse>())!
             .RepublishedDocuments.Should().Be(1);
 
-        var harness = factory.Services.GetRequiredService<ITestHarness>();
-        var published = harness.Published.Select<DocumentUpdated>().ToList();
-        published.Count(m => m.Context.Message.DocumentId == unrelated.Id)
+        // E3b: DocumentUpdated の発行は Wolverine（RecordingMessageBus で観測する）。
+        var published = factory.Services.GetRequiredService<RecordingMessageBus>()
+            .PublishedOf<DocumentUpdated>();
+        published.Count(e => e.DocumentId == unrelated.Id)
             .Should().Be(1, "作成時の 1 通だけで、改名による再発行は無い");
-        published.Count(m => m.Context.Message.DocumentId == related.Id)
+        published.Count(e => e.DocumentId == related.Id)
             .Should().Be(2, "作成時 ＋ 改名の再発行");
     }
 

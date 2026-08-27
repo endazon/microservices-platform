@@ -95,11 +95,14 @@ builder.Services.AddMassTransit(x =>
     });
 });
 
-// 🔴 ADR-0027 / E3a: **DocumentDeleted の発行は Wolverine へ移した。**
-// DocumentNormalized の購読（辺 E2）と DocumentUpdated の発行（辺 E3b）は MassTransit のまま ——
+// 🔴 ADR-0027 / E3a・E3b: **DocumentDeleted / DocumentUpdated の発行は Wolverine へ移した。**
+// MassTransit に残るのは DocumentNormalized の購読（辺 E2）だけ ——
 // 辺は原子的に動かす（IADR-0234 決定 3）ため、本サービスは移行期間中 **両スタックを同居させる**
 // （E1 の ConversionService と同じ形。向きは逆で MT 購読 ＋ Wolverine 発行）。
 builder.Services.AddScoped<IDocumentDeletedPublisher, WolverineDocumentDeletedPublisher>();
+// ADR-0027 / E3b: DocumentUpdated の発行も Wolverine へ（IDocumentUpdatedPublisher）。
+// MassTransit に残るのは DocumentNormalized の購読（辺 E2）だけになった。
+builder.Services.AddScoped<IDocumentUpdatedPublisher, WolverineDocumentUpdatedPublisher>();
 builder.Host.UseWolverine(opts =>
 {
     opts.ServiceName = "document-service";

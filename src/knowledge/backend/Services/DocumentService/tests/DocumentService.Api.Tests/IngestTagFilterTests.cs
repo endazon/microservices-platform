@@ -31,7 +31,7 @@ public sealed class IngestTagFilterTests
         var metrics = new IngestTagMetrics(factory);
         var probe = new MetricsProbe(factory.CreatedMeterName!);
         var consumer = new DocumentNormalizedConsumer(
-            db, new NoopPublishEndpoint(), metrics,
+            db, new NoopUpdatedPublisher(), metrics,
             NullLogger<DocumentNormalizedConsumer>.Instance);
         return (consumer, probe);
     }
@@ -157,18 +157,12 @@ public sealed class IngestTagFilterTests
     }
 
     // 本テストは絞り込みだけを見る。発行はここでの検証対象ではない。
-    private sealed class NoopPublishEndpoint : MassTransit.IPublishEndpoint
+    // E3b: DocumentUpdated の発行口（ポート）。ここでは何も観測しない。
+    private sealed class NoopUpdatedPublisher : DocumentService.Application.Foundation.Ports.IDocumentUpdatedPublisher
     {
-        public Task Publish<T>(T message, CancellationToken ct = default) where T : class => Task.CompletedTask;
-        public Task Publish<T>(T message, MassTransit.IPipe<MassTransit.PublishContext<T>> pipe, CancellationToken ct = default) where T : class => Task.CompletedTask;
-        public Task Publish<T>(T message, MassTransit.IPipe<MassTransit.PublishContext> pipe, CancellationToken ct = default) where T : class => Task.CompletedTask;
-        public Task Publish(object message, CancellationToken ct = default) => Task.CompletedTask;
-        public Task Publish(object message, MassTransit.IPipe<MassTransit.PublishContext> pipe, CancellationToken ct = default) => Task.CompletedTask;
-        public Task Publish(object message, Type messageType, CancellationToken ct = default) => Task.CompletedTask;
-        public Task Publish(object message, Type messageType, MassTransit.IPipe<MassTransit.PublishContext> pipe, CancellationToken ct = default) => Task.CompletedTask;
-        public Task Publish<T>(object values, CancellationToken ct = default) where T : class => Task.CompletedTask;
-        public Task Publish<T>(object values, MassTransit.IPipe<MassTransit.PublishContext<T>> pipe, CancellationToken ct = default) where T : class => Task.CompletedTask;
-        public Task Publish<T>(object values, MassTransit.IPipe<MassTransit.PublishContext> pipe, CancellationToken ct = default) where T : class => Task.CompletedTask;
-        public MassTransit.ConnectHandle ConnectPublishObserver(MassTransit.IPublishObserver observer) => throw new NotSupportedException();
+        public Task PublishUpdatedAsync(Guid documentId, string title, string status, string? markdownUri,
+            Dictionary<string, string> attributes, List<string> tags, DateTimeOffset updatedAt,
+            CancellationToken ct = default) => Task.CompletedTask;
     }
 }
+

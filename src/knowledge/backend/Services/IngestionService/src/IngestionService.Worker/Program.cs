@@ -1,13 +1,17 @@
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
+using IngestionService.Application.Foundation.Ports;
 using IngestionService.Worker.Composable.Steps;
+using Knowledge.Contracts.Events;
 using IngestionService.Worker.Foundation.Ports;
 using IngestionService.Worker.Foundation.Domain;
 using IngestionService.Worker.Composable.Adapters;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Qdrant.Client;
+using Wolverine;
+using Wolverine.RabbitMQ;
 
 const string ServiceName = "microservices-platform.ingestion-service";
 
@@ -52,23 +56,44 @@ var pipeline = builder.Configuration.GetPlatformPipeline();
 
 // FR-15, ADR-0018, IADR-0029: 自己申告（イントロスペクション）— この段（ingest）の実効値を申告する。
 // これによりドリフト検出でワーカー段が Verifiable となり、適用漏れ（MissingApply）を検出できる。
+// ingest は Wolverine 段（E3b）なので AddWolverineStep で申告する。
 builder.Services.AddPlatformIntrospection("ingestion-service", pipeline,
-    i => i.AddStep<DocumentUpdatedConsumer>());
+    i => i.AddWolverineStep<DocumentUpdatedConsumer>());
 
+var rabbitConnection = builder.Configuration["RabbitMq:ConnectionString"]
+    ?? "amqp://guest:guest@rabbitmq:5672";
+
+// 🔴 ADR-0027 / E3b: **ingest 段（DocumentUpdated 購読）は Wolverine へ移した。**
+// MassTransit に残るのは IngestionCompleted の**発行だけ**（その辺は本 PR の射程外。
+// 辺は原子的に動かす —— IADR-0234 決定 3）。移行期間中 **両スタックを同居させる**
+// （E1 の ConversionService と同じ形: Wolverine 購読 ＋ MassTransit 発行）。
+builder.Services.AddScoped<IIngestionCompletedPublisher,
+    IngestionService.Worker.Composable.Adapters.MassTransitIngestionCompletedPublisher>();
 builder.Services.AddMassTransit(x =>
-{
-    x.AddPlatformPipelineStep<DocumentUpdatedConsumer>(pipeline);
     x.UsingRabbitMq((ctx, cfg) =>
     {
-        cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]
-            ?? "amqp://guest:guest@rabbitmq:5672");
-
-        // ADR-0003（Superseded by ADR-0027・注記は #580）: 取り込み（チャンク化・埋め込み・ベクトル登録）の一時的失敗を再試行し、
-        // 継続失敗はデッドレターへ退避して回復性を確保する（共通設定）。
+        cfg.Host(rabbitConnection);
         cfg.UsePlatformRetry();
-
         cfg.ConfigureEndpoints(ctx);
-    });
+    }));
+
+// 購読側（DocumentUpdated）は Wolverine。
+builder.Host.UseWolverine(opts =>
+{
+    opts.ServiceName = "ingestion-service";
+
+    // 宣言との突合は共通ヘルパが行う（未宣言・consumer 不一致・input 不一致は起動失敗）。
+    // 戻り値の段宣言を受けるのは、queue 上書きを黙って無視しないためである（IADR-0239 決定 4）。
+    var step = opts.AddPlatformWolverineStep<DocumentUpdatedConsumer>(pipeline);
+
+    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision();
+
+    // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う
+    // （fan-out の保存: wiki-service / graph-service と別キューになりサービス名前置で分かれる）。
+    opts.ListenToPlatformQueue("ingestion-service", step?.Queue ?? nameof(DocumentUpdated));
+
+    // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
+    opts.UsePlatformMessagingDefaults();
 });
 
 var app = builder.Build();

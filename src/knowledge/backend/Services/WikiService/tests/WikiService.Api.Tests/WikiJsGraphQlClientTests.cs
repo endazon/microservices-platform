@@ -57,7 +57,7 @@ public class WikiJsGraphQlClientTests
         content.Should().BeNull();
     }
 
-    // 6003 以外の GraphQL エラーは従来どおり例外（→ MassTransit リトライ）。
+    // 6003 以外の GraphQL エラーは従来どおり例外（→ ブローカのリトライ）。
     [Fact]
     public async Task UpsertPageAsync_Throws_OnOtherGraphQlErrors()
     {

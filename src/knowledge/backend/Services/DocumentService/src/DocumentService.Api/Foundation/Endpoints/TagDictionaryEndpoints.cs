@@ -2,8 +2,8 @@ using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Persistence;
 using DocumentService.Api.Foundation.Services;
 using Knowledge.Contracts.Dtos;
+using DocumentService.Application.Foundation.Ports;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
-using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocumentService.Api.Foundation.Endpoints;
@@ -82,7 +82,7 @@ public static class TagDictionaryEndpoints
         // `DocumentUpdated` を再発行して作り直す（同 決定 3）。**再発行は既存の経路をそのまま使う**ので、
         // 下流のサービスは変更しない。
         write.MapPut("/{id:guid}", async (Guid id, RenameTagRequest req, DocumentDbContext db,
-            IPublishEndpoint bus, CancellationToken ct) =>
+            IDocumentUpdatedPublisher bus, CancellationToken ct) =>
         {
             var name = Tag.Normalize(req.Name ?? string.Empty);
             if (string.IsNullOrEmpty(name))
@@ -133,7 +133,7 @@ public static class TagDictionaryEndpoints
                 ? []
                 : await db.Documents.Where(d => affectedIds.Contains(d.Id)).ToListAsync(ct);
             foreach (var doc in affected)
-                await bus.Publish(DocumentEndpoints.ToEvent(doc, names), ct);
+                await DocumentEndpoints.PublishUpdatedAsync(bus, doc, names, ct);
 
             // **再発行件数 ＝ 使用件数である**（どちらも「現行版でこのタグを持つ文書の数」。
             // `LoadWithUsageAsync` と同じ母集合を使っており、2 通りの数え方を持たない）。

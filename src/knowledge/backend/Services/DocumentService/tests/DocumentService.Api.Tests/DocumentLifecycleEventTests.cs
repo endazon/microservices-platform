@@ -36,10 +36,10 @@ public class DocumentLifecycleEventTests(TestWebApplicationFactory factory)
         archived!.Status.Should().Be("archived");
         archived.Version.Should().Be(doc.Version + 1);
 
-        var harness = factory.Services.GetRequiredService<ITestHarness>();
-        (await harness.Published.Any<DocumentUpdated>(m =>
-            m.Context.Message.DocumentId == doc.Id && m.Context.Message.Status == "archived"))
-            .Should().BeTrue();
+        // E3b: DocumentUpdated の発行は Wolverine（RecordingMessageBus で観測する）。
+        var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
+        bus.PublishedOf<DocumentUpdated>().Should()
+            .Contain(e => e.DocumentId == doc.Id && e.Status == "archived");
     }
 
     [Fact]

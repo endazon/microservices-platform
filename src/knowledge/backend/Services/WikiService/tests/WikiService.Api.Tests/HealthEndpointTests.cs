@@ -17,7 +17,8 @@ public class HealthEndpointTests(TestWebApplicationFactory factory)
     }
 
     // #269: readiness は RabbitMQ.Client 7 と非互換の外部 health check（AspNetCore.HealthChecks.Rabbitmq、
-    // TypeLoadException 'IModel'）を使わない。ブローカ疎通は MassTransit 組み込みの bus health check で満たす。
+    // TypeLoadException 'IModel'）を使わない。ブローカ疎通は W4 の AddPlatformWolverineBroker() が満たす
+    // （E3a・E3b で MassTransit を撤去した）。
     [Fact]
     public void Readiness_DoesNotRegisterIncompatibleRabbitMqHealthCheck()
     {

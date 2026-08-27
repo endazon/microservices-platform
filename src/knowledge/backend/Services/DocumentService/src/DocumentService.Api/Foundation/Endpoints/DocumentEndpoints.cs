@@ -3,10 +3,8 @@ using DocumentService.Api.Foundation.Persistence;
 using DocumentService.Api.Foundation.Services;
 using DocumentService.Application.Foundation.Ports;
 using Knowledge.Contracts.Dtos;
-using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
-using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocumentService.Api.Foundation.Endpoints;
@@ -68,7 +66,7 @@ public static class DocumentEndpoints
         // `AdminOnly` であり、DocumentService はメッシュ内部でイングレス非公開である。
         // **裁定が出たらここを追随させる。**
         write.MapPost("/", async (CreateDocumentRequest req, DocumentDbContext db,
-            IObjectStorageClient storage, IPublishEndpoint bus, CancellationToken ct) =>
+            IObjectStorageClient storage, IDocumentUpdatedPublisher bus, CancellationToken ct) =>
         {
             // FR-06, UC-03: タイトルは必須
             if (string.IsNullOrWhiteSpace(req.Title))
@@ -128,13 +126,13 @@ public static class DocumentEndpoints
             db.Documents.Add(doc);
             await db.SaveChangesAsync();
             var createNames = await TagResolver.NamesAsync(db);
-            await bus.Publish(ToEvent(doc, createNames));
+            await PublishUpdatedAsync(bus, doc, createNames, ct);
             return Results.Created($"/documents/{doc.Id}", ToDto(doc, createNames));
         });
 
         // FR-06, UC-03, SC-05（#629）: 編集は**管理者限定**（計画の列挙「文書の編集」）。
         write.MapPut("/{id:guid}", async (Guid id, UpdateDocumentRequest req,
-            DocumentDbContext db, IPublishEndpoint bus) =>
+            DocumentDbContext db, IDocumentUpdatedPublisher bus, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(req.Title))
                 return Results.ValidationProblem(new Dictionary<string, string[]>
@@ -172,7 +170,7 @@ public static class DocumentEndpoints
             doc.Update(req.Title, req.Attributes ?? [], updateTagIds, req.ChangeNote);
             await db.SaveChangesAsync();
             var updateNames = await TagResolver.NamesAsync(db);
-            await bus.Publish(ToEvent(doc, updateNames));
+            await PublishUpdatedAsync(bus, doc, updateNames, ct);
             return Results.Ok(ToDto(doc, updateNames));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
@@ -180,7 +178,7 @@ public static class DocumentEndpoints
         // FR-06, UC-03, SC-05（#629）: メタデータ更新も**管理者限定**（計画の列挙「更新」「文書の編集」）。
         // **BFF にこの口は無い**（実測。射程は「狭める」なので、ここで足さない）。
         write.MapPatch("/{id:guid}/metadata", async (Guid id, UpdateMetadataRequest req,
-            DocumentDbContext db, IPublishEndpoint bus) =>
+            DocumentDbContext db, IDocumentUpdatedPublisher bus, CancellationToken ct) =>
         {
             // FR-05, UC-03, SC-05, IADR-0047: メタデータ更新も属性を全置換するため機密区分を必須検証する。
             if (ConfidentialityProblemOrNull(req.Attributes) is { } metaError)
@@ -211,7 +209,7 @@ public static class DocumentEndpoints
             doc.UpdateMetadata(req.Attributes ?? [], metaTagIds, req.ChangeNote);
             await db.SaveChangesAsync();
             var metaNames = await TagResolver.NamesAsync(db);
-            await bus.Publish(ToEvent(doc, metaNames));
+            await PublishUpdatedAsync(bus, doc, metaNames, ct);
             return Results.Ok(ToDto(doc, metaNames));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
@@ -226,7 +224,7 @@ public static class DocumentEndpoints
         // **計画が名指しした例外は手動同期ただ 1 つ**なので、名指しの無い操作の既定は一般則
         // （破壊的操作は管理者限定）に従う。判断の全文は作業仕様書 §判断 1。
         write.MapPost("/{id:guid}/publish", async (Guid id, DocumentDbContext db,
-            IPublishEndpoint bus) =>
+            IDocumentUpdatedPublisher bus, CancellationToken ct) =>
         {
             var doc = await db.Documents.FindAsync(id);
             if (doc is null) return Results.NotFound();
@@ -240,7 +238,7 @@ public static class DocumentEndpoints
             doc.Publish();
             await db.SaveChangesAsync();
             var names = await TagResolver.NamesAsync(db);
-            await bus.Publish(ToEvent(doc, names));
+            await PublishUpdatedAsync(bus, doc, names, ct);
             return Results.Ok(ToDto(doc, names));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
@@ -250,14 +248,14 @@ public static class DocumentEndpoints
         // （作業仕様書 §判断 1）。**アーカイブは (a) すら満たさない** —— 下流の Wiki.js 同期が
         // ページを非公開化するため、**可視性を落とす**。「既存データを壊さない」とは言い切れない。
         write.MapPost("/{id:guid}/archive", async (Guid id, DocumentDbContext db,
-            IPublishEndpoint bus) =>
+            IDocumentUpdatedPublisher bus, CancellationToken ct) =>
         {
             var doc = await db.Documents.FindAsync(id);
             if (doc is null) return Results.NotFound();
             doc.Archive();
             await db.SaveChangesAsync();
             var names = await TagResolver.NamesAsync(db);
-            await bus.Publish(ToEvent(doc, names));
+            await PublishUpdatedAsync(bus, doc, names, ct);
             return Results.Ok(ToDto(doc, names));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
@@ -271,7 +269,7 @@ public static class DocumentEndpoints
         var bodyIntake = app.MapGroup("/documents").WithTags("Documents").RequireAuthorization();
 
         bodyIntake.MapPut("/{id:guid}/body", async (Guid id, UpdateDocumentBodyRequest req,
-            DocumentDbContext db, IObjectStorageClient storage, IPublishEndpoint bus,
+            DocumentDbContext db, IObjectStorageClient storage, IDocumentUpdatedPublisher bus,
             HttpContext http, CancellationToken ct) =>
         {
             if (req.Body is null)
@@ -308,7 +306,7 @@ public static class DocumentEndpoints
             // FR-21 受け入れ基準 ①②: DocumentUpdated が取り込み（parse→chunk→embed→index）を起動し、
             // 索引反映を経て RAG 検索の結果として返るようになる。
             var bodyNames = await TagResolver.NamesAsync(db);
-            await bus.Publish(ToEvent(doc, bodyNames), ct);
+            await PublishUpdatedAsync(bus, doc, bodyNames, ct);
             return Results.Ok(ToDto(doc, bodyNames));
         }).WithName("DocumentBodyPut");
 
@@ -338,7 +336,6 @@ public static class DocumentEndpoints
 
         // FR-06, UC-03, SC-05（#629）: 削除は**管理者限定**（計画の列挙「文書の削除」）。
         // ADR-0027 / E3a: 削除イベントの発行は Wolverine（IDocumentDeletedPublisher 経由）。
-        // DocumentUpdated の発行（IPublishEndpoint）は辺 E3b の射程であり、ここでは動かさない。
         write.MapDelete("/{id:guid}", async (Guid id, DocumentDbContext db,
             IDocumentDeletedPublisher deletedBus, CancellationToken ct) =>
         {
@@ -424,15 +421,17 @@ public static class DocumentEndpoints
         CreatedAt = v.CreatedAt,
     };
 
-    // FR-06, UC-03: DocumentUpdated イベント生成
+    // FR-06, UC-03 / ADR-0027（E3b）: DocumentUpdated の発行（Wolverine。IDocumentUpdatedPublisher 経由）。
     // **イベントも表示名を運ぶ。** 射影（Qdrant / Wiki.js）は人が読む面であり、
     // 検索の hot path に辞書引きを増やさない（[[IADR-0153]] 決定 1・2）。
     //
     // **［#635］`internal` にしてある。** 改名の再発行（`TagDictionaryEndpoints`）が同じ形を要るためで、
     // **識別子 → 表示名の変換点を 2 つに割らない**ことがここでの目的である（同 決定 2）。
-    internal static DocumentUpdated ToEvent(Document d, IReadOnlyDictionary<Guid, string> names) => new(
-        d.Id, d.Title, d.Status, d.MarkdownUri,
-        d.Attributes, TagResolver.ToNames(d.Tags, names), d.UpdatedAt);
+    // （旧 `ToEvent` の後継。イベントの構築はアダプタ側にある —— 可視発行を 1 点に保つため。）
+    internal static Task PublishUpdatedAsync(IDocumentUpdatedPublisher bus, Document d,
+        IReadOnlyDictionary<Guid, string> names, CancellationToken ct = default) =>
+        bus.PublishUpdatedAsync(d.Id, d.Title, d.Status, d.MarkdownUri,
+            d.Attributes, TagResolver.ToNames(d.Tags, names), d.UpdatedAt, ct);
 
     // FR-21 受け入れ基準 ⑥: 本文が上限を超えたときの応答。**413 であって 400 ではない**
     // （計画が status を名指ししている）。本文へ上限を書き、切り詰めた成功と取り違えられないようにする。

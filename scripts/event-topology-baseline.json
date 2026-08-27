@@ -34,15 +34,15 @@
     "DocumentUpdated": {
       "publishers": {
         "knowledge/DocumentService": [
-          "masstransit"
+          "wolverine"
         ]
       },
       "subscribers": {
         "knowledge/IngestionService": [
-          "masstransit"
+          "wolverine"
         ],
         "knowledge/WikiService": [
-          "masstransit"
+          "wolverine"
         ]
       }
     },

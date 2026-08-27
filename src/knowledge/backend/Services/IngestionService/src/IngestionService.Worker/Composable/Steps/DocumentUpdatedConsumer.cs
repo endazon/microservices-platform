@@ -1,31 +1,33 @@
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
+using IngestionService.Application.Foundation.Ports;
 using IngestionService.Worker.Foundation.Ports;
 using IngestionService.Worker.Foundation.Domain;
-using IngestionService.Worker.Composable.Adapters;
 using Knowledge.Contracts.Events;
-using MassTransit;
 using Microsoft.Extensions.Logging;
 
 namespace IngestionService.Worker.Composable.Steps;
 
 // FR-02, UC-04: DocumentUpdated を受信し、parse→chunk→embed→index のパイプラインで
 // 文書をチャンク化し Qdrant（検索インデックス）へ登録する
+//
+// 🔴 ADR-0027 / E3b: **購読は Wolverine へ移した**（IPipelineStep<DocumentUpdated>・IADR-0239）。
+// 発行（IngestionCompleted）は MassTransit のまま —— その辺は本 PR の射程外であり、
+// 辺は原子的に動かす（IADR-0234 決定 3）。発行は IIngestionCompletedPublisher（ポート）越しで、
+// 1 ファイル 1 トランスポートを保つ。
 public class DocumentUpdatedConsumer(
     IDocumentContentReader reader,
     IChunkingService chunker,
     IEmbeddingService embed,
     IIngestionVectorStore store,
-    IPublishEndpoint bus,
-    ILogger<DocumentUpdatedConsumer> logger) : IConsumer<DocumentUpdated>, IPipelineStep
+    IIngestionCompletedPublisher bus,
+    ILogger<DocumentUpdatedConsumer> logger) : IPipelineStep<DocumentUpdated>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
     public static string StepName => "ingest";
 
-    public async Task Consume(ConsumeContext<DocumentUpdated> context)
+    // ADR-0027 / E3b: Wolverine のハンドラ。
+    public async Task Handle(DocumentUpdated ev, CancellationToken ct)
     {
-        var ev = context.Message;
-        var ct = context.CancellationToken;
-
         // FR-02 例外フロー E1: 本文の所在が無ければ取り込みをスキップ
         if (ev.MarkdownUri is null)
         {
@@ -61,7 +63,8 @@ public class DocumentUpdatedConsumer(
 
             // FR-02（Issue #98 レビュー対応）: 一時的な障害（送信先の不調・タイムアウト等）は fail-closed
             // （意図的拒否）と区別する。一時障害（Retryable=true）は恒久スキップにせず例外を送出し、
-            // MassTransit のリトライ/DLQ に委ねる（一括再索引中に外部が一時不調でもチャンクを取りこぼさない）。
+            // ブローカのリトライ/DLQ（Wolverine の UsePlatformMessagingDefaults）に委ねる
+            // （一括再索引中に外部が一時不調でもチャンクを取りこぼさない）。
             if (!embedding.Embedded && embedding.Retryable)
             {
                 logger.LogWarning(
@@ -94,14 +97,14 @@ public class DocumentUpdatedConsumer(
                 ev.DocumentId, skipped, confidentiality ?? "(unset)");
         }
 
-        // FR-02: 取り込み完了イベント発行 → 検索反映へ連鎖
-        await bus.Publish(new IngestionCompleted(ev.DocumentId, chunkCount, DateTimeOffset.UtcNow), ct);
+        // FR-02: 取り込み完了イベント発行 → 検索反映へ連鎖（発行は MassTransit のまま。ポート越し）
+        await bus.PublishCompletedAsync(ev.DocumentId, chunkCount, DateTimeOffset.UtcNow, ct);
 
         logger.LogInformation("Ingestion complete for {Id}: {Count} chunks", ev.DocumentId, chunkCount);
     }
 }
 
-// FR-02（Issue #98）: 埋め込みの一時的な障害を表す。送出すると MassTransit の受信リトライ／(枯渇後)DLQ に
+// FR-02（Issue #98）: 埋め込みの一時的な障害を表す。送出するとブローカの受信リトライ／(枯渇後)DLQ に
 // 回り、外部（Voyage 等）の一時不調でチャンクを恒久的に取りこぼすのを防ぐ。fail-closed（意図的拒否）とは区別する。
 public sealed class EmbeddingTransientException(Guid documentId, int chunkIndex)
     : Exception($"Transient embedding failure for document {documentId} chunk {chunkIndex}");

@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
-    <PackageReference Include="MassTransit.RabbitMQ" />
-    <!-- ADR-0027 §決定 必須設定 1 / E3a: 本プロジェクトは Wolverine ホストを起こす（wiki-delete 段）。
+    <!-- ADR-0027 §決定 必須設定 1 / E3a・E3b: 本プロジェクトは Wolverine ホストを起こす（wiki-delete / wiki-sync 段）。
          WolverineFx 本体は Platform.Shared.Infrastructure 経由で届くが、RuntimeCompilation は
          **ホストを起こす各プロジェクトが足す**（Directory.Packages.props の定め）。
          🔴 これが無いと既定の TypeLoadMode.Dynamic で **ホストが起動しない**（E1 実測）。 -->

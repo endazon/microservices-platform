@@ -13,7 +13,7 @@ namespace WikiService.Api.Composable.Adapters;
 //   スキーマ整合・エラー時再送・レイテンシは稼働 Wiki.js での PoC 実測が必要。本実装は 2.x の
 //   documented スキーマ（pages.singleByPath / pages.create / pages.update）に忠実に構成し、
 //   スキーマ確定は PoC フォローで調整する。呼び出し側（DocumentSyncConsumer）は例外を送出させ、
-//   MassTransit のリトライ/デッドレター（UsePlatformRetry）へ委ねる。
+//   ブローカのリトライ/デッドレター（Wolverine の UsePlatformMessagingDefaults）へ委ねる。
 public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> logger) : IWikiJsClient
 {
     private const string Locale = "ja";
@@ -125,7 +125,7 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
 
     // 実測（Wiki.js 2.5.314）: 未存在の singleByPath は data=null に加えて GraphQL errors
     // （PageNotFound 6003）を返す。これを例外にすると新規ページの create に到達できないため、
-    // 6003 は「未存在（null）」として扱う。その他のエラーは例外（→ MassTransit リトライ）。
+    // 6003 は「未存在（null）」として扱う。その他のエラーは例外（→ ブローカのリトライ）。
     private async Task<JsonElement?> QuerySingleByPathAsync(string query, string path, CancellationToken ct)
     {
         var envelope = await PostEnvelopeAsync(query, new { path, locale = Locale }, ct);
@@ -209,7 +209,7 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
         EnsureSucceeded(data.GetProperty("pages").GetProperty("update"), "update", path);
     }
 
-    // GraphQL POST を実行し data を返す。transport 失敗・GraphQL errors は例外（→ MassTransit リトライ）。
+    // GraphQL POST を実行し data を返す。transport 失敗・GraphQL errors は例外（→ ブローカのリトライ）。
     private async Task<JsonElement> PostAsync(string query, object variables, CancellationToken ct)
         => GetDataOrThrow(await PostEnvelopeAsync(query, variables, ct));
 
@@ -246,5 +246,5 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
     private static string NormalizePath(string path) => path.TrimStart('/');
 }
 
-// Wiki.js 同期の失敗（transport/GraphQL/業務エラー）。MassTransit のリトライ・デッドレターへ委ねる。
+// Wiki.js 同期の失敗（transport/GraphQL/業務エラー）。ブローカ（Wolverine）のリトライ・デッドレターへ委ねる。
 public class WikiJsSyncException(string message) : Exception(message);
