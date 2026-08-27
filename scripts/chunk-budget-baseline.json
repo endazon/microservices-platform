@@ -1,5 +1,5 @@
 {
-  "$comment": "check-chunk-budget.js の床（NFR / ADR-0031 / IADR-0134 / issue #556）。 requiredChunks は vite.config.ts の manualChunks が返す名前と一致していること（self-test が突き合わせる）。 **規則の欠落を捕まえるのは requiredChunks の実在判定だけである** —— 500 kB 判定も初期ロードの ratchet も、規則を外した実測では発火しなかった（詳細は check-chunk-budget.js 冒頭の実測表）。 initialTotalBytes / smallLazyChunks は実測値。意図的に増やすときは node scripts/check-chunk-budget.js --update で更新し、差分を PR に載せること。 maxChunkBytes は Vite の chunkSizeWarningLimit 既定（500 kB・1000 進）に合わせている。 **kB 換算はこのファイル全体で 1000 進に統一する**（1024 進と混ぜると差分の検算が合わなくなる。実際に 1 件混入していた）。",
+  "$comment": "check-chunk-budget.js の床（NFR / ADR-0031 / IADR-0134 / issue #556）。 requiredChunks は vite.config.ts の manualChunks が返す名前と一致していること（self-test が突き合わせる）。 **規則の欠落を捕まえるのは requiredChunks の実在判定だけである** —— 500 kB 判定も初期ロードの ratchet も、規則を外した実測では発火しなかった（詳細は check-chunk-budget.js 冒頭の実測表）。 initialTotalBytes / smallLazyChunks は実測値。意図的に増やすときは node scripts/check-chunk-budget.js --update で更新し、差分を PR に載せること。 maxChunkBytes は Vite の chunkSizeWarningLimit 既定（500 kB・1000 進）に合わせている。 **kB 換算はこのファイル全体で 1000 進に統一する**（1024 進と混ぜると差分の検算が合わなくなる。実際に 1 件混入していた）。 ／ 2026-08-28: #449 SC-04 導線の i18n 文言追加で 586.64→587.49 kB（+0.85）。",
   "requiredChunks": [
     "ui",
     "vendor-react",
@@ -115,7 +115,7 @@
     "",
     "smallLazyChunks は 6 のまま（1 kB 未満の遅延チャンクは増減していない）。"
   ],
-  "initialTotalBytes": 586637,
+  "initialTotalBytes": 587488,
   "$comment_initialTotalBytes_20260823_sc18": [
     "［2026-08-23 / #917］575,856 → 582,839（+6.98 kB）へ引き上げた。実測値である（pnpm run build →",
     "node scripts/check-chunk-budget.js --update）。増加は SC-18 ナレッジグラフビューのルート登録",
