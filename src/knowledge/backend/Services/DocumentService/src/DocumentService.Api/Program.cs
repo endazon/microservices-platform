@@ -23,8 +23,13 @@ builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 // FR-01, SC-05, SC-09, SC-10, #637: 取り込み経路で辞書に無いタグが現れた件数（0 が正常）。
 builder.Services.AddMetrics();
 builder.Services.AddSingleton<IngestTagMetrics>();
+// FR-22, NFR-19, IADR-0215 決定 5-b (#600): 通知の送出結果（sent / rejected / unreachable）。
+// **Meter 名は IngestTagMetrics と同じサービス名**なので収集対象は増えない。
+builder.Services.AddSingleton<PrivateNoteNotificationMetrics>();
 builder.Services.AddOpenTelemetry()
-    .WithMetrics(metrics => metrics.AddMeter(IngestTagMetrics.MeterName));
+    .WithMetrics(metrics => metrics
+        .AddMeter(IngestTagMetrics.MeterName)
+        .AddMeter(PrivateNoteNotificationMetrics.MeterName));
 builder.Services.AddPlatformAuth(builder.Configuration);
 builder.Services.AddPlatformHealthChecks()
     // ADR-0027 / E3a: Wolverine 発行側のブローカ疎通を readiness へ載せる（W4）。
@@ -52,15 +57,21 @@ builder.Services.AddPlatformObjectStorage(builder.Configuration);
 
 // FR-19, FR-20, FR-22, [[IADR-0270]]: 個人資料（private-note）と Obsidian 同期の中核。
 // - 監査ログ（同期・完全削除の「誰が・いつ・何件」。ADR-0037 決定 9）
-// - 通知の発火側（検知は本サービス・実体は NotificationService。受け口が入るまで送出失敗は
-//   エラーログに記録される）
+// - 通知の発火側（検知は本サービス・実体は NotificationService。**送出は fail-open** であり、
+//   届かなかったことはエラーログと計器（notification.dispatch.total）に残る。IADR-0215 決定 5-b）
 // - 定期処理（90 日 purge・版刈り取り・通知検知）
 builder.Services.AddSingleton<Platform.Shared.Infrastructure.Foundation.Audit.IAuditLogger,
     Platform.Shared.Infrastructure.Foundation.Audit.AuditLogger>();
 builder.Services.AddHttpClient(
     DocumentService.Api.Foundation.Services.HttpPrivateNoteNotifier.ClientName,
-    c => c.BaseAddress = new Uri(builder.Configuration["Services:NotificationService"]
-        ?? "http://notification-service:8080"));
+    c =>
+    {
+        c.BaseAddress = new Uri(builder.Configuration["Services:NotificationService"]
+            ?? "http://notification-service:8080");
+        // 🔴 既定の 100 秒のままにしない —— 受け口が応答しないとき、同期 push や完全削除の
+        // 要求がその間止まる（fail-open は「落ちない」だけでなく「待たせない」ことも要る）。
+        c.Timeout = DocumentService.Api.Foundation.Services.HttpPrivateNoteNotifier.SendTimeout;
+    });
 builder.Services.AddScoped<DocumentService.Api.Foundation.Ports.IPrivateNoteNotifier,
     DocumentService.Api.Foundation.Services.HttpPrivateNoteNotifier>();
 builder.Services.AddScoped<DocumentService.Api.Foundation.Services.PrivateNoteMaintenanceService>();
