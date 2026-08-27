@@ -1,8 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <!-- ADR-0030 選定基準 3（層の依存規律）: Domain 層は共有カーネルを除き外部ライブラリへ依存しない。
-       PackageReference をここへ追加してはならない。ProjectReference は共有カーネル
-       （Platform.Shared.Kernel）だけが許される。scripts/check-backend-libraries.js が機械検査する。
-       ［2026-08-15 追記 / #500］従前ここには「.NET 標準のみ」と書いていたが、計画 ADR-0041 が
-       選定基準 3 を部分改定した。共有カーネルは Result 型の実装 1 つ（現行 CSharpFunctionalExtensions）を
-       内部実装として持てる。Domain から見ると、それが唯一の推移的な外部依存である。 -->
-</Project>

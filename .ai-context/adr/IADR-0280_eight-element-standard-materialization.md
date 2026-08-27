@@ -1,7 +1,7 @@
 ---
 title: IADR-0280 計画 8 要素標準を実プロジェクトとして実体化する（配置写像と段階計画）
 type: impl-adr
-status: Accepted
+status: Superseded
 related_ids:
   - NFR
   - ADR-0002
@@ -72,6 +72,11 @@ related_specs:
 `Foundation/Domain/` の .cs からも見える）。`scripts/check-backend-libraries.js` の規則 2
 （`*.Domain.csproj` は PackageReference を持てない）も対象 0 件で空振りしていた。
 **オーナーが 2026-08-27 に 8 要素の実体化（ソースの実プロジェクトへの物理配置）を裁定した**（planning#490 に環流済み）。
+
+［2026-08-28 追記 / #1021］**オーナー裁定により本 ADR は Superseded となった
+（Superseded by [IADR-0282](IADR-0282_single-project-vsa-structure.md)）。**
+サービスは単一プロジェクト＋ Features / Domain / Infrastructure / Common のフォルダ規範へ改める。
+決定 6（DDD 基底型は `Platform.Shared.Kernel`）のみ存続。以下の決定は歴史的記録として凍結する。
 
 ## 決定
 
@@ -210,4 +215,4 @@ Infrastructure からは推移しない（パイロットで実測。Infrastruct
   [IADR-0218](IADR-0218_gitkeep-standard-components-scope.md) /
   [IADR-0219](IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) の
   「枠のみ設置」を**部分改定**する。旧 ID は残し、各 IADR へ日付つき追記ブロックと Amended by を置いた）
-- Superseded by: なし
+- Superseded by: [IADR-0282](IADR-0282_single-project-vsa-structure.md)（決定 6 を除く全決定）
