@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 FR-22 通知の受け口 POST /internal/notifications を実装する（#451-b）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-22
   - FR-19
@@ -73,8 +73,12 @@ related_specs:
 - **#5 の 103 件はほぼ全件が Kubernetes の Ingress リソース**（別語義）である。**本作業の受け口を
   指しているのは #1 の 3 件だけ**であり、#5 から新たに拾うものは無かった。**走査で当たったが本文を
   読んで除外した**（規則 6）。
-- **#4 の 33 件は本仕様書を書く前の数である**（規則 8）。本書自身が「受け口」を含むため、
-  コミット後の同じ走査は **34 件**を返す。**34 − 自己参照 1 = 33。**
+- **#4 の 33 件・#1 の 3 件は、本作業が 1 行も書く前の数である**（規則 8。走査対象に自分の成果物が
+  入るため、書く行為が母集合を動かす）。**本作業の完了後に同じ走査を引き直すと
+  「受け口」は 39 件・`/internal/notifications` は 7 件を返す。**
+  内訳は **33 ＋ 本作業が追加した 6 ファイル**（本書・受け口の DTO / 受理判断 / 端点 / テスト・
+  `Program.cs` の登録コメント）＝ **39**、および **3 ＋ 本作業の 4 ファイル**（本書・DTO・端点・
+  テスト）＝ **7** である。**数はコミットで固定した。**
 
 ### 追随が要る 4 件と、その扱い
 
@@ -262,7 +266,36 @@ related_specs:
 - `check-unit-dependencies.js`: ProjectReference を足さないため影響なし。
 - `gen-knowledge-graph --check`: 本書が参照する `.ai-context/` の文書はすべて実在を確認済み。
 
+## 検証の実測（コミット前・すべて実走）
+
+作業ツリー `/home/user/wt-3c`・`dotnet 10`（`export PATH="/root/.dotnet:$PATH"`）。Docker 無し。
+
+| 検証 | コマンド | 結果 |
+| --- | --- | --- |
+| ビルド | `dotnet build src/platform/backend/backend.slnx` | **成功・警告 0・エラー 0** |
+| 整形 | `dotnet format src/platform/backend/backend.slnx --verify-no-changes` | **差分なし** |
+| テスト | `dotnet test .../NotificationService.Api.Tests.csproj` | **53 件全緑**（本作業前 35 件 ＋ 本作業 18 件＝ Fact 9・Theory 9 ケース） |
+| ユニット依存 | `node scripts/check-unit-dependencies.js` | OK（csproj 196 / .cs 1843 を走査・違反 0） |
+| ライブラリ ratchet | `node scripts/check-backend-libraries.js` | OK（新規混入 0・既知残件 9 は baseline 済み） |
+| コミット件名 | `node scripts/check-commit-messages.js --range e43e0a9..HEAD` | OK |
+
+### 変異試験（3 種・いずれも実際に落として戻した）
+
+| # | 変異 | 落ちたテスト | 検出 |
+| ---: | --- | --- | :---: |
+| 1 | 重複判定から `ThresholdPercent` の比較を外す | `同一時刻同一種別でも閾値が違えば別の通知として残る` | **1 件** ✔ |
+| 2 | 重複判定を丸ごと外す（常に新規作成） | `同一ペイロードの再送は畳まれて通知は1件のままである` | **1 件** ✔ |
+| 3 | `subject` の必須・空白検査を外す | `不正なペイロードは400を返す`（subject 欠落・空白）／`不正なペイロードは通知を1件も作らない` | **3 件** ✔ |
+
+**変異 1 が本作業で最も重要な検出である。** 3 項目（`subject` / `kind` / `occurredAt`）で畳む素朴な
+実装は**変異 2・3 のテストをすべて通過してしまい**、容量警告 95% だけが静かに消える。
+**この向きの誤りを捕まえるテストを 1 本だけ持っている**（同一時刻・同一種別・閾値違い）。
+
 ## 残件（本作業の後に残るもの）
+
+**本書は `status: done` だが、issue は閉じない。** 受け口は入り、**送信側（#451 中核）から
+受け側（本作業）までの経路は繋がった**が、**#600 の結線（BFF 端点・デプロイ）と SMTP の実体は
+残っている**。**利用者の目に通知が届く状態にはまだ無い。**
 
 1. **BFF 端点 `/bff/notifications*`**（#600）—— これが入るまで**画面には出ない**。
 2. **SMTP の実体と宛先解決**（#600 ＋ 実環境）—— outbox は積まれるが `failed` で終わる。
