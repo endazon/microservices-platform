@@ -110,7 +110,9 @@ public static class ObsidianSyncEndpoints
                     req.Edits[0].Content!, DocumentBodyIntake.ContentType, ct);
                 var doc = Document.CreateWithBody(id, req.Title.Trim(), firstUri,
                     originalUri: null, contentType: DocumentBodyIntake.ContentType,
-                    attributes: PrivateNoteEndpoints.PrivateNoteDefaults(owner), tags: []);
+                    attributes: PrivateNoteEndpoints.PrivateNoteDefaults(owner), tags: [],
+                    // ADR-0050 (#911): 本文指紋（ContentHash と同じ計算）。
+                    contentFingerprint: DocumentBodyIntake.Fingerprint(req.Edits[0].Content!));
                 db.Documents.Add(doc);
                 await ApplyEditsAsync(doc, req, storage, skipFirst: true, ct);
 
@@ -250,13 +252,16 @@ public static class ObsidianSyncEndpoints
         {
             await storage.PutTextAsync(DocumentBodyIntake.StorageKey(doc.Id), edit.Content!,
                 DocumentBodyIntake.ContentType, ct);
+            // ADR-0050 (#911): 版適用のたびに本文指紋を進める（最新版の指紋が正）。
+            doc.RecordContentFingerprint(DocumentBodyIntake.Fingerprint(edit.Content!));
             doc.Update(req.Title.Trim(), doc.Attributes, doc.Tags.ToList(),
                 edit.ChangeNote ?? "sync-edit");
         }
     }
 
+    // ADR-0050 (#911): 計算の実体は DocumentBodyIntake.Fingerprint（1 か所に集める）。
     private static string ContentHashOf(string content)
-        => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
+        => DocumentBodyIntake.Fingerprint(content);
 }
 
 public record SyncEditRequest(string? Content, DateTimeOffset? EditedAt = null,

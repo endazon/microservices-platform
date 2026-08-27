@@ -121,7 +121,9 @@ public static class DocumentEndpoints
                     DocumentBodyIntake.StorageKey(newId), req.Body,
                     DocumentBodyIntake.ContentType, ct);
                 doc = Document.CreateWithBody(newId, req.Title, bodyUri,
-                    req.OriginalUri, req.ContentType, req.Attributes, createTagIds);
+                    req.OriginalUri, req.ContentType, req.Attributes, createTagIds,
+                    // ADR-0050 (#911): 本文指紋。イベントが運び、却下解除・再取り込み判定に使う。
+                    DocumentBodyIntake.Fingerprint(req.Body));
             }
             db.Documents.Add(doc);
             await db.SaveChangesAsync();
@@ -300,7 +302,8 @@ public static class DocumentEndpoints
             var bodyUri = await storage.PutTextAsync(
                 DocumentBodyIntake.StorageKey(doc.Id), req.Body,
                 DocumentBodyIntake.ContentType, ct);
-            doc.SetMarkdownUri(bodyUri);
+            // ADR-0050 (#911): 本文指紋。イベントが運び、却下解除・再取り込み判定に使う。
+            doc.SetMarkdownUri(bodyUri, DocumentBodyIntake.Fingerprint(req.Body));
             await db.SaveChangesAsync(ct);
 
             // FR-21 受け入れ基準 ①②: DocumentUpdated が取り込み（parse→chunk→embed→index）を起動し、
@@ -431,7 +434,8 @@ public static class DocumentEndpoints
     internal static Task PublishUpdatedAsync(IDocumentUpdatedPublisher bus, Document d,
         IReadOnlyDictionary<Guid, string> names, CancellationToken ct = default) =>
         bus.PublishUpdatedAsync(d.Id, d.Title, d.Status, d.MarkdownUri,
-            d.Attributes, TagResolver.ToNames(d.Tags, names), d.UpdatedAt, ct);
+            d.Attributes, TagResolver.ToNames(d.Tags, names), d.UpdatedAt,
+            d.ContentFingerprint, ct);
 
     // FR-21 受け入れ基準 ⑥: 本文が上限を超えたときの応答。**413 であって 400 ではない**
     // （計画が status を名指ししている）。本文へ上限を書き、切り詰めた成功と取り違えられないようにする。

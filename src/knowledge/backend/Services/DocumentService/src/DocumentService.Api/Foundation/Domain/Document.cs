@@ -13,6 +13,10 @@ public class Document
     public string? ContentType { get; private set; }
     public int Version { get; private set; } = 1;
     public Dictionary<string, string> Attributes { get; private set; } = [];
+    // FR-18, ADR-0050 決定 1 (#911): 本文指紋（正規化 Markdown の SHA-256 小文字 hex）。
+    // **本文が変われば変わり、変わらなければ変わらない**ことだけが契約（DocumentUpdated が運ぶ）。
+    // 本文を持たない／指紋化できなかった文書は null（発行側の縮退。下流は「不明」として扱う）。
+    public string? ContentFingerprint { get; private set; }
     // FR-06, FR-09, SC-09, #635: **タグの識別子**を持つ。**表示名を複写しない**
     // （計画確定「辺は型の識別子を参照して保持し、表示名を複写しない」。[[IADR-0153]] 決定 1）。
     // 複写すると**改名時に古い名前のまま取り残される**。表示名への解決は `DocumentEndpoints` が行う。
@@ -44,7 +48,8 @@ public class Document
     // FR-01, UC-04: 正規化文書（DocumentNormalized）からカタログ文書を生成する。
     // パイプライン全体で ID を一貫させるため、変換側が採番した DocumentId を指定する（IADR-0001）。
     public static Document CreateNormalized(Guid id, string title, string markdownUri,
-        Dictionary<string, string>? attributes = null, List<Guid>? tags = null)
+        Dictionary<string, string>? attributes = null, List<Guid>? tags = null,
+        string? contentFingerprint = null)
     {
         var doc = new Document
         {
@@ -54,6 +59,7 @@ public class Document
             Status = DocumentStatus.Normalized,
             Attributes = attributes ?? [],
             Tags = tags ?? [],
+            ContentFingerprint = contentFingerprint,
         };
         doc.Snapshot("normalized");
         return doc;
@@ -72,7 +78,8 @@ public class Document
     // 起動条件**であり、①（取り込み・分割・埋め込みが起動する）はここで成立する。
     public static Document CreateWithBody(Guid id, string title, string markdownUri,
         string? originalUri, string? contentType,
-        Dictionary<string, string>? attributes = null, List<Guid>? tags = null)
+        Dictionary<string, string>? attributes = null, List<Guid>? tags = null,
+        string? contentFingerprint = null)
     {
         var doc = new Document
         {
@@ -84,6 +91,7 @@ public class Document
             Status = DocumentStatus.Normalized,
             Attributes = attributes ?? [],
             Tags = tags ?? [],
+            ContentFingerprint = contentFingerprint,
         };
         doc.Snapshot("created-with-body");
         return doc;
@@ -122,23 +130,32 @@ public class Document
     // **画面からの更新（`Update` / `UpdateMetadata`）は従来どおりタグを更新する。**
     // そちらは利用者が意図した更新であり、止めるとタグを外せなくなる。
     public void ApplyNormalized(string title, string markdownUri,
-        Dictionary<string, string> attributes)
+        Dictionary<string, string> attributes, string? contentFingerprint = null)
     {
         Title = title;
         MarkdownUri = markdownUri;
         Status = DocumentStatus.Normalized;
         Attributes = attributes;
+        // ADR-0050 (#911): 再正規化は本文の変更であり、指紋を進める。null は「指紋化できなかった」
+        // （ストレージ縮退等）で、下流は「不明」として扱う（解除判定を発火させない側に倒す）。
+        ContentFingerprint = contentFingerprint;
         Touch();
         Snapshot("re-normalized");
     }
 
-    public void SetMarkdownUri(string uri)
+    public void SetMarkdownUri(string uri, string? contentFingerprint = null)
     {
         MarkdownUri = uri;
         Status = DocumentStatus.Normalized;
+        ContentFingerprint = contentFingerprint;
         Touch();
         Snapshot("markdown-set");
     }
+
+    // FR-19, FR-20, ADR-0050 (#911): 本文を書いた経路（Obsidian 同期の版適用等）が指紋を記録する。
+    // 版・時刻は呼び出し側の Update/Snapshot が進める（ここでは動かさない）。
+    public void RecordContentFingerprint(string? contentFingerprint)
+        => ContentFingerprint = contentFingerprint;
 
     // FR-06, UC-03, SC-05: 公開する。アーカイブ済み（非公開化済み）からの再公開は状態遷移の意図に反する
     // ため認めない（UI だけでなくドメイン不変条件としても強制する。レビュー #171 指摘対応）。

@@ -34,6 +34,8 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
             e.Property(d => d.MarkdownUri).HasMaxLength(2048);
             e.Property(d => d.OriginalUri).HasMaxLength(2048);
             e.Property(d => d.ContentType).HasMaxLength(200);
+            // ADR-0050 決定 1 (#911): 本文指紋（SHA-256 hex = 64 文字。余裕を持たせて 128）。
+            e.Property(d => d.ContentFingerprint).HasMaxLength(128);
             e.Property(d => d.Attributes)
                 .HasConversion(DictionaryConverter())
                 .HasColumnType("jsonb")

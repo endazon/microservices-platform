@@ -66,30 +66,37 @@ builder.AddPlatformPipelineConfig();
 var pipeline = builder.Configuration.GetPlatformPipeline();
 
 // 🔴 ADR-0027, ADR-0057 / #1016: DocumentDeleted を購読し、グラフ（ノード・辺・AI 提案）から
-// 当該文書の痕跡を掃除する。本サービス初のメッセージング導入であり、最初から Wolverine である
-// （MassTransit は選べない —— backend-library-baseline 非掲載のため新規参照は即 fail。ADR-0030）。
+// 当該文書の痕跡を掃除する。ADR-0033 決定 2 / #911: DocumentUpdated を購読し、ABAC 属性を
+// デノーマライズ保持する（graph-sync 段）。本サービス初のメッセージング導入であり、
+// 最初から Wolverine である（MassTransit は選べない —— backend-library-baseline 非掲載のため
+// 新規参照は即 fail。ADR-0030）。
 builder.Host.UseWolverine(opts =>
 {
     opts.ServiceName = "graph-service";
 
     // 宣言との突合は共通ヘルパが行う（未宣言・consumer 不一致・input 不一致は起動失敗）。
     // 戻り値の段宣言を受けるのは、queue 上書きを黙って無視しないためである（IADR-0239 決定 4）。
-    var step = opts.AddPlatformWolverineStep<DocumentDeletedConsumer>(pipeline);
+    var deleteStep = opts.AddPlatformWolverineStep<DocumentDeletedConsumer>(pipeline);
+    var syncStep = opts.AddPlatformWolverineStep<GraphDocumentSyncConsumer>(pipeline);
 
     opts.UseRabbitMq(new Uri(builder.Configuration["RabbitMq:ConnectionString"]
         ?? "amqp://guest:guest@rabbitmq:5672")).AutoProvision();
 
     // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う
-    // （fan-out の保存: wiki-service / retrieval-service と別キューになりサービス名前置で分かれる）。
-    opts.ListenToPlatformQueue("graph-service", step?.Queue ?? nameof(DocumentDeleted));
+    // （fan-out の保存: 他購読サービスと別キューになりサービス名前置で分かれる）。
+    // ハンドラへの振り分けはメッセージ型で決まる（キュー 2 本 → 同一ホスト内で型別ディスパッチ）。
+    opts.ListenToPlatformQueue("graph-service", deleteStep?.Queue ?? nameof(DocumentDeleted));
+    opts.ListenToPlatformQueue("graph-service", syncStep?.Queue ?? nameof(DocumentUpdated));
 
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();
 });
 
-// FR-15, ADR-0018: 自己申告（イントロスペクション）— graph-delete 段（#1016）を申告する。
-builder.Services.AddPlatformIntrospection("graph-service", pipeline,
-    i => i.AddWolverineStep<DocumentDeletedConsumer>());
+// FR-15, ADR-0018: 自己申告（イントロスペクション）— graph-delete 段（#1016）と
+// graph-sync 段（#911）を申告する。
+builder.Services.AddPlatformIntrospection("graph-service", pipeline, i => i
+    .AddWolverineStep<DocumentDeletedConsumer>()
+    .AddWolverineStep<GraphDocumentSyncConsumer>());
 
 var app = builder.Build();
 

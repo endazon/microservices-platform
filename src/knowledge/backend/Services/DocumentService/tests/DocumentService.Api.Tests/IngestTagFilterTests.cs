@@ -31,8 +31,8 @@ public sealed class IngestTagFilterTests
         var metrics = new IngestTagMetrics(factory);
         var probe = new MetricsProbe(factory.CreatedMeterName!);
         var consumer = new DocumentNormalizedConsumer(
-            db, new NoopUpdatedPublisher(), metrics,
-            NullLogger<DocumentNormalizedConsumer>.Instance);
+            db, new NoopUpdatedPublisher(), new UnresolvableStorage(),
+            metrics, NullLogger<DocumentNormalizedConsumer>.Instance);
         return (consumer, probe);
     }
 
@@ -157,12 +157,28 @@ public sealed class IngestTagFilterTests
     }
 
     // 本テストは絞り込みだけを見る。発行はここでの検証対象ではない。
+    // #911: 指紋計算はストレージ未解決（CanResolve=false）の縮退で null になる経路を通す。
+    private sealed class UnresolvableStorage : Platform.Shared.Infrastructure.Foundation.Ports.Storage.IObjectStorageClient
+    {
+        public Task<string> PutTextAsync(string key, string text, string contentType, CancellationToken ct = default)
+            => Task.FromResult($"storage://test/{key}");
+        public Task<string> PutBytesAsync(string key, byte[] bytes, string contentType, CancellationToken ct = default)
+            => Task.FromResult($"storage://test/{key}");
+        public bool CanResolve(string? uri) => false;
+        public Task<string> GetTextAsync(string uri, CancellationToken ct = default)
+            => throw new NotSupportedException();
+        public Task<byte[]> GetBytesAsync(string uri, CancellationToken ct = default)
+            => throw new NotSupportedException();
+        public string CreatePresignedGetUrl(string uri, TimeSpan? expiry = null)
+            => throw new NotSupportedException();
+    }
+
     // E3b: DocumentUpdated の発行口（ポート）。ここでは何も観測しない。
     private sealed class NoopUpdatedPublisher : DocumentService.Application.Foundation.Ports.IDocumentUpdatedPublisher
     {
         public Task PublishUpdatedAsync(Guid documentId, string title, string status, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags, DateTimeOffset updatedAt,
-            CancellationToken ct = default) => Task.CompletedTask;
+            string? contentFingerprint = null, CancellationToken ct = default) => Task.CompletedTask;
     }
 }
 

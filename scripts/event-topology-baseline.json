@@ -38,6 +38,9 @@
         ]
       },
       "subscribers": {
+        "knowledge/GraphService": [
+          "wolverine"
+        ],
         "knowledge/IngestionService": [
           "wolverine"
         ],

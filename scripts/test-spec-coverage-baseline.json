@@ -142,7 +142,7 @@
       "AiSuggestionEndpointsTests",
       "AiSuggestionGenerationTests",
       "AiSuggestionStateMachineTests",
-      "AiSuggestionWiringTests",
+      "GraphDocumentSyncConsumerTests",
       "SuggestionPromptGateTests"
     ],
     "docs/tests/FR-19_private-note-wikijs-exclusion.md": [

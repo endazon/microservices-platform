@@ -69,6 +69,14 @@
       "input": "DocumentDeleted",
       "outputs": [],
       "enabled": true
+    },
+    {
+      "name": "graph-sync",
+      "service": "graph-service",
+      "consumer": "GraphService.Api.Composable.Steps.GraphDocumentSyncConsumer",
+      "input": "DocumentUpdated",
+      "outputs": [],
+      "enabled": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
+using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using DocumentService.Api.Foundation.Domain;
 using DocumentService.Application.Foundation.Ports;
 using DocumentService.Api.Foundation.Observability;
@@ -17,6 +18,7 @@ namespace DocumentService.Api.Composable.Steps;
 public class DocumentNormalizedConsumer(
     DocumentDbContext db,
     IDocumentUpdatedPublisher bus,
+    IObjectStorageClient storage,
     IngestTagMetrics metrics,
     ILogger<DocumentNormalizedConsumer> logger) : IConsumer<DocumentNormalized>, IPipelineStep
 {
@@ -35,11 +37,19 @@ public class DocumentNormalizedConsumer(
         // **件数を観測して検出する**（[[IADR-0153]] 決定 5 / SC-10。**0 が正常**）。
         var tags = await KnownTagsAsync(ev.Tags, ct);
 
+        // ADR-0050 決定 1 (#911): 本文指紋。正規化本文をストレージから読んで計算する
+        // （DocumentNormalized は本文を運ばず、URI は文書 ID 固定で内容に依存しないため、
+        // 発行側で読む以外に「本文が変われば変わる」値を得る手段が無い）。
+        // ストレージ縮退（CanResolve=false）では null = 不明（解除判定を発火させない側に倒す）。
+        string? fingerprint = null;
+        if (storage.CanResolve(ev.MarkdownUri))
+            fingerprint = DocumentBodyIntake.Fingerprint(await storage.GetTextAsync(ev.MarkdownUri, ct));
+
         var doc = await db.Documents.FindAsync(new object?[] { ev.DocumentId }, ct);
         if (doc is null)
         {
             doc = Document.CreateNormalized(ev.DocumentId, ev.Title, ev.MarkdownUri,
-                ev.Attributes, tags);
+                ev.Attributes, tags, fingerprint);
             db.Documents.Add(doc);
             logger.LogInformation("Cataloged normalized document {Id} title={Title}",
                 ev.DocumentId, ev.Title);
@@ -48,7 +58,7 @@ public class DocumentNormalizedConsumer(
         {
             // **タグ欄は上書きしない**（SC-05「再正規化はタグ欄を上書きしない」）——
             // 上書きすると管理者が付けたタグが再同期のたびに消える。
-            doc.ApplyNormalized(ev.Title, ev.MarkdownUri, ev.Attributes);
+            doc.ApplyNormalized(ev.Title, ev.MarkdownUri, ev.Attributes, fingerprint);
             logger.LogInformation("Updated cataloged document {Id} from re-normalization",
                 ev.DocumentId);
         }
@@ -63,7 +73,8 @@ public class DocumentNormalizedConsumer(
         var names = await TagResolver.NamesAsync(db, ct);
         await bus.PublishUpdatedAsync(
             doc.Id, doc.Title, doc.Status, doc.MarkdownUri,
-            doc.Attributes, TagResolver.ToNames(doc.Tags, names), doc.UpdatedAt, ct);
+            doc.Attributes, TagResolver.ToNames(doc.Tags, names), doc.UpdatedAt,
+            doc.ContentFingerprint, ct);
     }
 
     // SC-05, SC-09, SC-10, #637: 辞書に在るタグだけを返し、**無いものは件数として記録して捨てる**。

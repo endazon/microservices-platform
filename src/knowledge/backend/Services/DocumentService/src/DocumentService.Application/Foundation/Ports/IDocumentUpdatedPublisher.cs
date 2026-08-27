@@ -14,6 +14,7 @@ public interface IDocumentUpdatedPublisher
 {
     // ⚠️ Wolverine の `IMessageBus.PublishAsync` は CancellationToken を取らない（E1 仕様書
     // 「受け入れた挙動差」）。ct は契約として受けるが、現行実装では伝播されない。
+    // contentFingerprint: ADR-0050 決定 1 (#911)。本文の内容のみに依存する不透明な値（null = 不明）。
     Task PublishUpdatedAsync(
         Guid documentId,
         string title,
@@ -22,5 +23,6 @@ public interface IDocumentUpdatedPublisher
         Dictionary<string, string> attributes,
         List<string> tags,
         DateTimeOffset updatedAt,
+        string? contentFingerprint = null,
         CancellationToken ct = default);
 }

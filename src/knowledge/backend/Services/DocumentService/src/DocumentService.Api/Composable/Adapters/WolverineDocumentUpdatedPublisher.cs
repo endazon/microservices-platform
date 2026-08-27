@@ -18,10 +18,12 @@ public sealed class WolverineDocumentUpdatedPublisher(IMessageBus bus) : IDocume
         Dictionary<string, string> attributes,
         List<string> tags,
         DateTimeOffset updatedAt,
+        string? contentFingerprint = null,
         CancellationToken ct = default) =>
         // 🔴 イベントの構築をここに置くのは、`findPublishers` が `Publish(new <Event>(` にしか
         // 一致しないためである（E3b の発行が表から見える唯一の点）。
         // ⚠️ Wolverine の PublishAsync は CancellationToken を取らない（E1 で受容済みの API 差）。
         await bus.PublishAsync(new DocumentUpdated(
-            documentId, title, status, markdownUri, attributes, tags, updatedAt));
+            documentId, title, status, markdownUri, attributes, tags, updatedAt,
+            contentFingerprint));
 }

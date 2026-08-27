@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 
 namespace DocumentService.Api.Foundation.Domain;
@@ -38,6 +39,12 @@ public static class DocumentBodyIntake
     //
     // `owner` を持たない文書（取り込み経路の既定は `system`）は**誰も本文を書けない**
     // （deny-by-default）。その種の文書の編集は SC-05 の管理者経路が担う。
+    // FR-18, ADR-0050 決定 1 (#911): 本文指紋。UTF-8 バイト列の SHA-256 小文字 hex（64 文字）。
+    // Obsidian 同期の ContentHash と同じ計算である（1 か所に集め、表現の分裂を防ぐ）。
+    // 契約が要求する性質は「本文が変われば変わり、変わらなければ変わらない」のみ。
+    public static string Fingerprint(string body)
+        => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(body)));
+
     public static bool CanWrite(IReadOnlyDictionary<string, string>? attributes, string? subject)
     {
         if (string.IsNullOrWhiteSpace(subject)) return false;
