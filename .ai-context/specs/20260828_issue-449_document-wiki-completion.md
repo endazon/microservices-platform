@@ -236,8 +236,10 @@ W4（SC-04 を誰が描くか）が未決なので、**文言の載せ替えだ�
 | `node scripts/check-i18n-catalogs.js` | OK（ja / en とも未翻訳・fuzzy・obsolete 0 件） |
 | `node scripts/check-trace-blocks.js` | OK（150 件） |
 | `node scripts/check-doc-links.js` | 🔴 **破損 1 件。ただし本作業の対象外・既存である** ——
-`IADR-0281` 本文の `[docs/note.md](docs/note.md)` は **Obsidian のリンク記法を説明するための literal な例**
-であって実在するファイルを指していない。同 IADR は本作業で触っていない（`git diff` で 0 行） |
+`IADR-0281` 本文にある **Obsidian のリンク記法を説明するための literal な例**（`docs/` 配下の架空の
+ノートを指す Markdown リンク）であって、実在するファイルを指していない。同 IADR は本作業で触っていない
+（`git diff 3c82642..HEAD` に現れない）。**ここで当の記法をそのまま書き写すと検査が 2 件に増える**ので、
+書式は再現せず説明にとどめる |
 
 **フロント全体テストの 1 回目で `ai-stock-trading` の 1 件が落ちたが、フレークである。**
 当該テスト（`RiskSettingsPage.monitorParameters.test.tsx`）は **AST submodule のもので本作業は 1 行も触っていない**。
