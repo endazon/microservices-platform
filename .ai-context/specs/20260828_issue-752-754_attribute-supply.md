@@ -7,10 +7,10 @@ author: Claude（実装）
 created: 2026-08-28
 updated: 2026-08-28
 plan_refs:
-  - projects/microservices-platform/06_technical/09_datasource-connectors.md
-  - projects/microservices-platform/05_screens/01_screens.md（SC-06）
-  - projects/microservices-platform/10_feedback/20260815_ingestion-owner-department-resolution.md
-  - projects/microservices-platform/10_feedback/20260821_ingestion-owner-resolution-rule.md
+  - planning:projects/microservices-platform/06_technical/09_datasource-connectors.md
+  - planning:projects/microservices-platform/05_screens/01_screens.md
+  - planning:projects/microservices-platform/10_feedback/20260815_ingestion-owner-department-resolution.md
+  - planning:projects/microservices-platform/10_feedback/20260821_ingestion-owner-resolution-rule.md
 ---
 
 # 仕様書: 取り込み経路の `owner` / `department` 供給源
