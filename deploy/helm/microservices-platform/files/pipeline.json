@@ -53,6 +53,22 @@
       "input": "DocumentDeleted",
       "outputs": [],
       "enabled": true
+    },
+    {
+      "name": "retrieval-delete",
+      "service": "retrieval-service",
+      "consumer": "RetrievalService.Api.Composable.Steps.DocumentDeletedConsumer",
+      "input": "DocumentDeleted",
+      "outputs": [],
+      "enabled": true
+    },
+    {
+      "name": "graph-delete",
+      "service": "graph-service",
+      "consumer": "GraphService.Api.Composable.Steps.DocumentDeletedConsumer",
+      "input": "DocumentDeleted",
+      "outputs": [],
+      "enabled": true
     }
   ]
 }

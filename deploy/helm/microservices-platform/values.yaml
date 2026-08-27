@@ -246,6 +246,9 @@ services:
     replicas: 1
     image: microservices-platform/retrieval-service
     tag: latest
+    # FR-14, IADR-0028 / #1016: パイプライン段（retrieval-delete 段）をホストする — pipeline-config をマウントする。
+    # RabbitMQ 接続はコード既定（amqp://guest:guest@rabbitmq:5672）が in-cluster DNS で解決される。
+    pipelineSteps: true
     port: 8080
     # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先。
     # 🔴 **k8s の Service 名は `llmgateway-service` である**（chart のキー `llmgateway` ＋ `-service`）。
@@ -359,6 +362,9 @@ services:
     replicas: 1
     image: microservices-platform/graph-service
     tag: latest
+    # FR-14, IADR-0028 / #1016: パイプライン段（graph-delete 段）をホストする — pipeline-config をマウントする。
+    # RabbitMQ 接続はコード既定（amqp://guest:guest@rabbitmq:5672）が in-cluster DNS で解決される。
+    pipelineSteps: true
     port: 8080
     # FR-17, FR-05, IADR-0089 (#342) / #958: ABAC スコープ解決先。appsettings 既定は :5005（ローカル用）で、
     # ここで上書きしないと不達 → GraphAccessResolver が Granted=false へ縮退し、**グラフが常に空になる**。

@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Qdrant.Client;
 using RetrievalService.Api.Foundation.Ports;
+using Wolverine;
 
 namespace RetrievalService.Api.Tests;
 
@@ -36,6 +37,12 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // 埋め込みサービスをスタブへ差し替え
             services.RemoveAll<IEmbeddingService>();
             services.AddSingleton<IEmbeddingService, StubEmbeddingService>();
+
+            // ADR-0027 / #1016: retrieval-delete 段の購読は Wolverine。
+            // 🔴 **これが無いとテストが約 135 秒ハングする** —— Program.cs が UseWolverine +
+            // UseRabbitMq を呼ぶため、テストホストの起動が実ブローカへの接続を試みる
+            // （E1 の DataSourceService.Api.Tests と同じ作法）。
+            services.DisableAllExternalWolverineTransports();
         });
     }
 }

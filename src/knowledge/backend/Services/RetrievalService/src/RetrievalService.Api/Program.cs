@@ -1,7 +1,11 @@
+using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Qdrant.Client;
+using RetrievalService.Api.Composable.Steps;
+using Wolverine;
+using Wolverine.RabbitMQ;
 using RetrievalService.Api.Foundation.Ports;
 using RetrievalService.Api.Foundation.Endpoints;
 using RetrievalService.Api.Composable.Adapters;
@@ -18,6 +22,9 @@ builder.Services.AddPlatformAuth(builder.Configuration);
 var qdrantHealthUri = new Uri(
     $"http://{builder.Configuration["Qdrant:Host"] ?? "qdrant"}:6333/healthz");
 builder.Services.AddPlatformHealthChecks()
+    // ADR-0027 / #1016: Wolverine 購読側（retrieval-delete 段）のブローカ疎通を readiness へ載せる（W4）。
+    // Wolverine 側は自動登録しないので明示的に足す（無いとブローカ不達でも /health/ready が 200）。
+    .AddPlatformWolverineBroker()
     .AddUrlGroup(qdrantHealthUri, "qdrant", tags: ["ready"]);
 builder.Services.AddOpenApi();
 
@@ -71,14 +78,41 @@ else
     builder.Services.AddScoped<IHybridSearchService>(sp => sp.GetRequiredService<HybridSearchService>());
 }
 
-// FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段はホストしないが、
+// FR-14, ADR-0018 / #1016: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
+builder.AddPlatformPipelineConfig();
+var pipeline = builder.Configuration.GetPlatformPipeline();
+
+// 🔴 ADR-0027, ADR-0057 / #1016: DocumentDeleted を購読し、検索索引から当該文書のチャンクを削除する。
+// 本サービス初のメッセージング導入であり、最初から Wolverine である（MassTransit は選べない ——
+// backend-library-baseline 非掲載のため新規参照は即 fail。ADR-0030）。
+builder.Host.UseWolverine(opts =>
+{
+    opts.ServiceName = "retrieval-service";
+
+    // 宣言との突合は共通ヘルパが行う（未宣言・consumer 不一致・input 不一致は起動失敗）。
+    // 戻り値の段宣言を受けるのは、queue 上書きを黙って無視しないためである（IADR-0239 決定 4）。
+    var step = opts.AddPlatformWolverineStep<DocumentDeletedConsumer>(pipeline);
+
+    opts.UseRabbitMq(new Uri(builder.Configuration["RabbitMq:ConnectionString"]
+        ?? "amqp://guest:guest@rabbitmq:5672")).AutoProvision();
+
+    // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う
+    // （fan-out の保存: wiki-service / graph-service と別キューになりサービス名前置で分かれる）。
+    opts.ListenToPlatformQueue("retrieval-service", step?.Queue ?? nameof(DocumentDeleted));
+
+    // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
+    opts.UsePlatformMessagingDefaults();
+});
+
+// FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。retrieval-delete 段（#1016）と、
 // 選択中の合成可能ポート（ベクトルDB・埋め込み）を申告する。メッシュ内部限定で公開する。
 // FR-04, FR-17 (#970): 二段検索の段は**有効なときだけ**ポートとして申告する。
 // **段が入っているかどうかを外から読めること**が A/B 比較の前提である
 // （応答は同じ形なので、結果だけを見ても段の有無は判らない）。
-builder.Services.AddPlatformIntrospection("retrieval-service", new PipelineOptions(),
+builder.Services.AddPlatformIntrospection("retrieval-service", pipeline,
     i =>
     {
+        i.AddWolverineStep<DocumentDeletedConsumer>();
         i.AddPort("vector-store", nameof(QdrantVectorStore), $"qdrant:{qdrantPort}")
          .AddPort("embedding", nameof(LlmGatewayEmbeddingService), "llm-gateway");
 

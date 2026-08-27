@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <!-- ADR-0027 §決定 必須設定 1 / #1016: 本プロジェクトは Wolverine ホストを起こす（retrieval-delete 段）。
+         WolverineFx 本体は Platform.Shared.Infrastructure 経由で届くが、RuntimeCompilation は
+         **ホストを起こす各プロジェクトが足す**（Directory.Packages.props の定め）。
+         🔴 これが無いと既定の TypeLoadMode.Dynamic で **ホストが起動しない**（E1 実測）。 -->
+    <PackageReference Include="WolverineFx.RuntimeCompilation" />
     <PackageReference Include="Qdrant.Client" />
     <PackageReference Include="AspNetCore.HealthChecks.Uris" />
     <ProjectReference Include="..\..\..\..\Shared\Knowledge.Contracts\Knowledge.Contracts.csproj" />

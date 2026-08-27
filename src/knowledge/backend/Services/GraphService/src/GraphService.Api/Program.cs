@@ -1,12 +1,16 @@
 using GraphService.Api.Composable.Adapters;
+using GraphService.Api.Composable.Steps;
 using GraphService.Api.Foundation.Endpoints;
 using GraphService.Api.Foundation.Persistence;
 using GraphService.Api.Foundation.Ports;
 using GraphService.Api.Foundation.Services;
+using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Microsoft.EntityFrameworkCore;
+using Wolverine;
+using Wolverine.RabbitMQ;
 
 const string ServiceName = "microservices-platform.graph-service";
 
@@ -17,6 +21,11 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);
 builder.Services.AddPlatformHealthChecks()
+    // ADR-0027 / #1016: Wolverine 購読側（graph-delete 段）のブローカ疎通を readiness へ載せる（W4）。
+    // Wolverine 側は自動登録しないので明示的に足す（無いとブローカ不達でも /health/ready が 200）。
+    // ⚠️ これにより本サービスの readiness はブローカへ依存する（#911 論点 1 の選択肢 3 =
+    // 現状受容。判断の記録は作業仕様書 20260828_issue-1016_delete-propagation.md §readiness）。
+    .AddPlatformWolverineBroker()
     .AddNpgSql(
         builder.Configuration.GetConnectionString("DefaultConnection")
             ?? "Host=postgres;Port=5432;Database=graph_svc;Username=kp;Password=kp",
@@ -52,8 +61,35 @@ builder.Services.AddHttpClient<ISuggestionLlmClient, LlmGatewaySuggestionClient>
 builder.Services.AddScoped<ISimilarityCandidateSource, UnconfiguredSimilarityCandidateSource>();
 builder.Services.AddScoped<AiSuggestionGenerator>();
 
-// FR-15, ADR-0018: 自己申告（イントロスペクション）。段・合成可能ポートはまだホストしない。
-builder.Services.AddPlatformIntrospection("graph-service", new PipelineOptions());
+// FR-14, ADR-0018 / #1016: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
+builder.AddPlatformPipelineConfig();
+var pipeline = builder.Configuration.GetPlatformPipeline();
+
+// 🔴 ADR-0027, ADR-0057 / #1016: DocumentDeleted を購読し、グラフ（ノード・辺・AI 提案）から
+// 当該文書の痕跡を掃除する。本サービス初のメッセージング導入であり、最初から Wolverine である
+// （MassTransit は選べない —— backend-library-baseline 非掲載のため新規参照は即 fail。ADR-0030）。
+builder.Host.UseWolverine(opts =>
+{
+    opts.ServiceName = "graph-service";
+
+    // 宣言との突合は共通ヘルパが行う（未宣言・consumer 不一致・input 不一致は起動失敗）。
+    // 戻り値の段宣言を受けるのは、queue 上書きを黙って無視しないためである（IADR-0239 決定 4）。
+    var step = opts.AddPlatformWolverineStep<DocumentDeletedConsumer>(pipeline);
+
+    opts.UseRabbitMq(new Uri(builder.Configuration["RabbitMq:ConnectionString"]
+        ?? "amqp://guest:guest@rabbitmq:5672")).AutoProvision();
+
+    // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う
+    // （fan-out の保存: wiki-service / retrieval-service と別キューになりサービス名前置で分かれる）。
+    opts.ListenToPlatformQueue("graph-service", step?.Queue ?? nameof(DocumentDeleted));
+
+    // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
+    opts.UsePlatformMessagingDefaults();
+});
+
+// FR-15, ADR-0018: 自己申告（イントロスペクション）— graph-delete 段（#1016）を申告する。
+builder.Services.AddPlatformIntrospection("graph-service", pipeline,
+    i => i.AddWolverineStep<DocumentDeletedConsumer>());
 
 var app = builder.Build();
 

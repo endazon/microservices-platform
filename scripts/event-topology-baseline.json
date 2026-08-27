@@ -8,6 +8,12 @@
         ]
       },
       "subscribers": {
+        "knowledge/GraphService": [
+          "wolverine"
+        ],
+        "knowledge/RetrievalService": [
+          "wolverine"
+        ],
         "knowledge/WikiService": [
           "wolverine"
         ]
