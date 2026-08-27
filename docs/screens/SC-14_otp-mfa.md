@@ -3,14 +3,14 @@ title: ワンタイムコード（OTP／多要素認証） 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-08-15
-updated: 2026-08-23
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
 ids: [SC-01, SC-13, SC-14, SC-15, SC-16, UC-05]
 adrs: [ADR-0026]
 iadrs: [IADR-0197, IADR-0261]
-specs: [20260823_issue-438_keycloak-theme-and-smtp]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-438_keycloak-theme-k8s-local]
 issues: [#438]
 -->
 
@@ -138,9 +138,10 @@ flowchart LR
 ## 未決事項
 
 - **★ `requiredActions` を書くと Keycloak の既定は一切登録されない。** 本作業の初版は 7 件しか列挙せず、**この provider を落としていた**（PR #746 の ADR 監査が検出）。現在は既定 13 件を全列挙し、`check-realm-constraints.js` が宣言漏れを検出する。
-- **k8s ローカル環境（`deploy/local/`）ではテーマがまだ自動配線されていない。** ConfigMap
-  （`keycloak-theme-platform`）の生成が `scripts/k8s-local-up.sh` に未組み込みのため、当面は
-  `deploy/local/README.md`「手動でステップ実行する場合」の手順を実行する必要がある（follow-up）。
+- **k8s ローカル環境（`deploy/local/`）のテーマは自動配線済みである（2026-08-28）。** ConfigMap
+  （`keycloak-theme-platform`）の生成は `scripts/k8s-local-up.sh` の `[3/7]` に組み込まれ、
+  `scripts/k8s-local-up.test.js` が生成コマンドと `deploy/local/infra/keycloak.yaml` の
+  `items` キーの一致を固定している。実クラスタでの見た目確認のみ環境待ちで残る。
 
 <!-- trace-table:
 row1: SC-13
