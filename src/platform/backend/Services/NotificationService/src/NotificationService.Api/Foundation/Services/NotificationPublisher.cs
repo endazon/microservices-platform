@@ -48,7 +48,8 @@ public sealed class NotificationPublisher(
             db.Entry(outbox).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
             metrics.RecordEmailOutcome(kind, EmailOutboxStatus.Failed);
             logger.LogError(ex,
-                "メール送信要求の outbox 投入に失敗しました。アプリ内通知は届いています。kind={Kind}", kind);
+                "メール送信要求の outbox 投入に失敗しました。アプリ内通知は届いています。kind={Kind}",
+                Observability.LogSanitizer.Sanitize(kind));
         }
 
         return notification;

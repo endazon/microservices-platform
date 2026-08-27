@@ -58,7 +58,8 @@ public sealed class NotificationIngress(
         {
             // **黙って捨てない。** 畳んだ事実が観測できないと「届いていない」と区別できない。
             logger.LogInformation(
-                "同一ペイロードの通知が既に存在するため再送を畳みました。kind={Kind}", kind);
+                "同一ペイロードの通知が既に存在するため再送を畳みました。kind={Kind}",
+                Observability.LogSanitizer.Sanitize(kind));
             return NotificationIngressOutcome.Duplicated(duplicate.Id);
         }
 

@@ -115,7 +115,8 @@ public sealed class EmailOutboxDispatcher(
             {
                 // トランスポートの例外も**結末として残す**。ここで throw すると、後続の
                 // outbox エントリが処理されないまま静かに滞留する。
-                logger.LogError(ex, "メール送信に失敗しました。kind={Kind}", entry.Kind);
+                logger.LogError(ex, "メール送信に失敗しました。kind={Kind}",
+                    Observability.LogSanitizer.Sanitize(entry.Kind));
                 result = EmailSendResult.Failure(ex.GetType().Name);
             }
 
