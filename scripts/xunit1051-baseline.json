@@ -133,7 +133,7 @@
       "remaining": 0,
       "migrated": true
     },
-    "templates/unit-template/backend/Services/SampleService/tests/SampleService.Tests/SampleService.Tests.csproj": {
+    "templates/unit-template/backend/Services/SampleService/Tests/SampleService.Tests.csproj": {
       "project": "SampleService.Tests",
       "remaining": 0,
       "migrated": true
