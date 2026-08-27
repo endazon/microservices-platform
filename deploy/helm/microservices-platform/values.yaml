@@ -165,6 +165,15 @@ services:
     tag: latest
     # FR-14, IADR-0028: パイプライン段（catalog 段）をホストする — pipeline-config をマウントする。
     pipelineSteps: true
+    # FR-21, ADR-0014/ADR-0015, IADR-0264, IADR-0284 決定 5 (#992): 本文の直接受け入れ経路が
+    # 正規化 Markdown を格納する先（MinIO）。**これが無いと本文が永続化されない** ——
+    # `AddPlatformObjectStorage` は未設定時に `NullObjectStorageClient` へ縮退し、
+    # 決定的な `storage://` URI を返すだけで実体を書かない。`MarkdownUri` は立つので
+    # 取り込みの早期 return は通過するが、IngestionService が本文を読めない
+    # （`GetTextAsync` が不在オブジェクトで失敗する）。**「入口は通ったのに索引されない」**という
+    # 最も分かりにくい壊れ方になるため、実装（Program.cs）に合わせてここで配線する。
+    # バケットの作成は ConversionService の bootstrap が担う（同じバケットを 2 か所から作らない）。
+    objectStorage: true
     port: 8080
     resources:
       requests: { cpu: 100m, memory: 128Mi }
