@@ -55,8 +55,14 @@ if (graphExpansion.Enabled)
     // ADR-0034: 権限伝播は `Authorization` ヘッダ（方式 A）。呼び出し元の JWT を下流へ運ぶため、
     // 要求文脈へ触れる必要がある。
     builder.Services.AddHttpContextAccessor();
-    builder.Services.AddHttpClient(GraphServiceNeighborExpander.ClientName, c =>
-        c.BaseAddress = new Uri(graphServiceUrl));
+    // 🔴 **名前リテラル＋インライン既定値の確立形で書く**（Platform.Bff / AiAnalysisService と同形）。
+    // `scripts/check-bff-downstreams.js` の parseProgramDefaults がこの形から既定 URL を導出して
+    // デプロイ manifest と突合する（#970 で RetrievalService も CALLERS 入り）。名前は
+    // `GraphServiceNeighborExpander.ClientName`（"GraphService"）と一致させること。
+    // 既定は :8080（メッシュ内の実 Service ポート。後発サービスの規約 —— Platform.Bff の同名 client 参照）。
+    builder.Services.AddHttpClient("GraphService", c =>
+        c.BaseAddress = new Uri(builder.Configuration["Services:GraphService"]
+            ?? "http://graph-service:8080"));
     builder.Services.AddScoped<IGraphNeighborExpander, GraphServiceNeighborExpander>();
     builder.Services.AddScoped<IHybridSearchService, GraphExpandingSearchService>();
 }

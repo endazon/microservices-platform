@@ -67,6 +67,15 @@ const CALLERS = [
     compose: 'wiki-service',
     helm: 'wiki',
   },
+  // #970: 二段検索の段（グラフ近傍展開）で RetrievalService → GraphService の
+  // service → service 呼び出し元になった。コード既定 :8080（後発サービスの規約）のため
+  // manifest の上書きは不要だが、CALLERS に無いとドリフトを誰も見ない（#958 と同じ死角）。
+  {
+    label: 'RetrievalService',
+    program: 'src/knowledge/backend/Services/RetrievalService/src/RetrievalService.Api/Program.cs',
+    compose: 'retrieval-service',
+    helm: 'retrieval',
+  },
 ];
 const VALUES_PATH = 'deploy/helm/microservices-platform/values.yaml';
 const COMPOSE_PATH = 'deploy/docker-compose.yml';
