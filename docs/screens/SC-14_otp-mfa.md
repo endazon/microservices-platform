@@ -120,7 +120,7 @@ flowchart LR
 
 | 計画側の要素 | 実装 | 満たしていない条件 / 理由 | 計画側の該当箇所 |
 | --- | --- | --- | --- |
-| TOTP による MFA を必須とする | **する** | realm ポリシー（`otpPolicyType` / `CONFIGURE_TOTP` の `defaultAction`）＋テーマ（`loginTheme=platform`）が揃った。k8s ローカル環境は残件（§未決事項） | 計画側の画面設計 §ワンタイムコード（OTP） |
+| TOTP による MFA を必須とする | **する** | realm ポリシー（`otpPolicyType` / `CONFIGURE_TOTP` の `defaultAction`）＋テーマ（`loginTheme=platform`）が揃った。k8s ローカル環境も自動配線済み・実クラスタでの見た目確認のみ残件（§未決事項） | 計画側の画面設計 §ワンタイムコード（OTP） |
 | 6 桁・前後 1 ステップ許容 | **する** | — | 同上 |
 | 6 桁コード入力・デバイス選択・戻る導線 | **する** | Keycloak 既定テーマが 3 要素とも提供し、`platform` テーマでブランド適用済み | 同上 |
 | 初回セットアップ（QR・手動キー・デバイス名・確認コード） | **する** | `CONFIGURE_TOTP` を `defaultAction` にしたため既定テーマで誘導が働き、テーマでブランド適用済み | 同上 |
