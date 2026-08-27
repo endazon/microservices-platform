@@ -27,10 +27,11 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
     {
         var client = _factory.CreateClient();
 
-        var res = await client.GetAsync("/internal/introspection");
+        var res = await client.GetAsync("/internal/introspection", TestContext.Current.CancellationToken);
         res.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var report = await res.Content.ReadFromJsonAsync<ServiceIntrospectionDto>();
+        var report = await res.Content.ReadFromJsonAsync<ServiceIntrospectionDto>(
+            TestContext.Current.CancellationToken);
         report.Should().NotBeNull();
         report!.Service.Should().Be("conversion-service");
         report.Steps.Should().ContainSingle(s => s.Name == "convert")

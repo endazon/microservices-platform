@@ -9,6 +9,7 @@ namespace ConversionService.Worker.Tests;
 
 // FR-12, UC-06, SC-07, IADR-0042/IADR-0043: 変換ジョブ読み取りモデル（EF・Postgres 永続化）の状態遷移・
 // 絞り込み・人手補正（再変換）を検証する。ここでは EF Core InMemory provider で EfConversionJobStore を検証する。
+// NFR, IADR-0238: xUnit1051 移行。TestContext.Current.CancellationToken をすべての呼び出しへ通す。
 public class ConversionJobStoreTests
 {
     private static EfConversionJobStore NewStore() =>
@@ -25,9 +26,9 @@ public class ConversionJobStoreTests
     {
         var store = NewStore();
         var id = Guid.NewGuid();
-        await store.StartAsync(Raw(id));
+        await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
 
-        var job = await store.GetAsync(id);
+        var job = await store.GetAsync(id, TestContext.Current.CancellationToken);
         job.Should().NotBeNull();
         job!.Status.Should().Be(ConversionJobStatus.Processing);
         job.Attempts.Should().Be(1);
@@ -38,11 +39,11 @@ public class ConversionJobStoreTests
     {
         var store = NewStore();
         var id = Guid.NewGuid();
-        await store.StartAsync(Raw(id));
+        await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
         var docId = Guid.NewGuid();
-        await store.SucceedAsync(id, docId, "storage://bucket/a.md");
+        await store.SucceedAsync(id, docId, "storage://bucket/a.md", ct: TestContext.Current.CancellationToken);
 
-        var job = (await store.GetAsync(id))!;
+        var job = (await store.GetAsync(id, TestContext.Current.CancellationToken))!;
         job.Status.Should().Be(ConversionJobStatus.Succeeded);
         job.DocumentId.Should().Be(docId);
         job.MarkdownUri.Should().Be("storage://bucket/a.md");
@@ -54,10 +55,10 @@ public class ConversionJobStoreTests
     {
         var store = NewStore();
         var id = Guid.NewGuid();
-        await store.StartAsync(Raw(id));
-        await store.FailAsync(id, "pandoc がタイムアウトしました。");
+        await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
+        await store.FailAsync(id, "pandoc がタイムアウトしました。", ct: TestContext.Current.CancellationToken);
 
-        var job = (await store.GetAsync(id))!;
+        var job = (await store.GetAsync(id, TestContext.Current.CancellationToken))!;
         job.Status.Should().Be(ConversionJobStatus.Failed);
         job.Error.Should().Be("pandoc がタイムアウトしました。");
     }
@@ -68,14 +69,16 @@ public class ConversionJobStoreTests
         var store = NewStore();
         var ok = Guid.NewGuid();
         var bad = Guid.NewGuid();
-        await store.StartAsync(Raw(ok));
-        await store.SucceedAsync(ok, Guid.NewGuid(), "storage://ok.md");
-        await store.StartAsync(Raw(bad));
-        await store.FailAsync(bad, "失敗");
+        await store.StartAsync(Raw(ok), TestContext.Current.CancellationToken);
+        await store.SucceedAsync(ok, Guid.NewGuid(), "storage://ok.md", ct: TestContext.Current.CancellationToken);
+        await store.StartAsync(Raw(bad), TestContext.Current.CancellationToken);
+        await store.FailAsync(bad, "失敗", ct: TestContext.Current.CancellationToken);
 
-        (await store.ListAsync(null)).Should().HaveCount(2);
-        (await store.ListAsync(ConversionJobStatus.Failed)).Should().ContainSingle(j => j.Id == bad);
-        (await store.ListAsync(ConversionJobStatus.Succeeded)).Should().ContainSingle(j => j.Id == ok);
+        (await store.ListAsync(null, TestContext.Current.CancellationToken)).Should().HaveCount(2);
+        (await store.ListAsync(ConversionJobStatus.Failed, TestContext.Current.CancellationToken))
+            .Should().ContainSingle(j => j.Id == bad);
+        (await store.ListAsync(ConversionJobStatus.Succeeded, TestContext.Current.CancellationToken))
+            .Should().ContainSingle(j => j.Id == ok);
     }
 
     [Fact]
@@ -83,24 +86,26 @@ public class ConversionJobStoreTests
     {
         var store = NewStore();
         var id = Guid.NewGuid();
-        await store.StartAsync(Raw(id));
-        await store.FailAsync(id, "失敗");
+        await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
+        await store.FailAsync(id, "失敗", ct: TestContext.Current.CancellationToken);
 
-        var ev = await store.PrepareRetryAsync(id);
+        var ev = await store.PrepareRetryAsync(id, ct: TestContext.Current.CancellationToken);
 
         ev.Should().NotBeNull();
         ev!.FetchId.Should().Be(id);
         // 再変換用に原本イベントが再構成される（属性・タグを含む）。
         ev.Attributes.Should().ContainKey("confidentiality");
         ev.Tags.Should().Contain("hr");
-        (await store.GetAsync(id))!.Status.Should().Be(ConversionJobStatus.Queued);
+        (await store.GetAsync(id, TestContext.Current.CancellationToken))!.Status.Should()
+            .Be(ConversionJobStatus.Queued);
     }
 
     [Fact]
     public async Task PrepareRetry_returns_null_for_unknown_job()
     {
         var store = NewStore();
-        (await store.PrepareRetryAsync(Guid.NewGuid())).Should().BeNull();
+        (await store.PrepareRetryAsync(Guid.NewGuid(), ct: TestContext.Current.CancellationToken))
+            .Should().BeNull();
     }
 
     [Fact]
@@ -109,11 +114,12 @@ public class ConversionJobStoreTests
         // UC-06: 人手補正は失敗ジョブのみ。成功済みジョブは再変換せず状態も変えない。
         var store = NewStore();
         var id = Guid.NewGuid();
-        await store.StartAsync(Raw(id));
-        await store.SucceedAsync(id, Guid.NewGuid(), "storage://ok.md");
+        await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
+        await store.SucceedAsync(id, Guid.NewGuid(), "storage://ok.md", ct: TestContext.Current.CancellationToken);
 
-        (await store.PrepareRetryAsync(id)).Should().BeNull();
-        (await store.GetAsync(id))!.Status.Should().Be(ConversionJobStatus.Succeeded);
+        (await store.PrepareRetryAsync(id, ct: TestContext.Current.CancellationToken)).Should().BeNull();
+        (await store.GetAsync(id, TestContext.Current.CancellationToken))!.Status.Should()
+            .Be(ConversionJobStatus.Succeeded);
     }
 
     [Fact]
@@ -121,10 +127,10 @@ public class ConversionJobStoreTests
     {
         var store = NewStore();
         var id = Guid.NewGuid();
-        await store.StartAsync(Raw(id));
-        await store.StartAsync(Raw(id));
+        await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
+        await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
 
-        (await store.GetAsync(id))!.Attempts.Should().Be(2);
+        (await store.GetAsync(id, TestContext.Current.CancellationToken))!.Attempts.Should().Be(2);
     }
 
     // ── FR-12, SC-07（05_screens:324・裁定 Q13）: デッドレター標識と試行上限 ────────────────
@@ -135,9 +141,9 @@ public class ConversionJobStoreTests
         // AC-1/AC-2: 試行上限は全ジョブに載る。AC-4: 標識は既定で立たない。
         var store = NewStore();
         var id = Guid.NewGuid();
-        await store.StartAsync(Raw(id));
+        await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
 
-        var job = (await store.GetAsync(id))!;
+        var job = (await store.GetAsync(id, TestContext.Current.CancellationToken))!;
         job.MaxAttempts.Should().Be(ConversionJobRetryPolicy.MaxAttempts);
         job.DeadLettered.Should().BeFalse();
     }
@@ -149,10 +155,10 @@ public class ConversionJobStoreTests
         // 内訳が区別できないと、運用者は「再実行すれば直るもの」と「直らないもの」を見分けられない。
         var store = NewStore();
         var id = Guid.NewGuid();
-        await store.StartAsync(Raw(id));
-        await store.FailAsync(id, "一時的な失敗", deadLettered: false);
+        await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
+        await store.FailAsync(id, "一時的な失敗", deadLettered: false, ct: TestContext.Current.CancellationToken);
 
-        var job = (await store.GetAsync(id))!;
+        var job = (await store.GetAsync(id, TestContext.Current.CancellationToken))!;
         job.Status.Should().Be(ConversionJobStatus.Failed);
         job.DeadLettered.Should().BeFalse();
     }
@@ -164,10 +170,10 @@ public class ConversionJobStoreTests
         // AC-3: それでも状態値は failed のままである（4 値モデルを壊さない）。
         var store = NewStore();
         var id = Guid.NewGuid();
-        await store.StartAsync(Raw(id));
-        await store.FailAsync(id, "本文変換 恒久失敗", deadLettered: true);
+        await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
+        await store.FailAsync(id, "本文変換 恒久失敗", deadLettered: true, ct: TestContext.Current.CancellationToken);
 
-        var job = (await store.GetAsync(id))!;
+        var job = (await store.GetAsync(id, TestContext.Current.CancellationToken))!;
         job.Status.Should().Be(ConversionJobStatus.Failed);
         job.DeadLettered.Should().BeTrue();
     }
@@ -178,11 +184,11 @@ public class ConversionJobStoreTests
         // AC-8: 再受信で処理が始まったら標識は落ちる（processing なのにデッドレター、を出さない）。
         var store = NewStore();
         var id = Guid.NewGuid();
-        await store.StartAsync(Raw(id));
-        await store.FailAsync(id, "恒久失敗", deadLettered: true);
-        await store.StartAsync(Raw(id));
+        await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
+        await store.FailAsync(id, "恒久失敗", deadLettered: true, ct: TestContext.Current.CancellationToken);
+        await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
 
-        var job = (await store.GetAsync(id))!;
+        var job = (await store.GetAsync(id, TestContext.Current.CancellationToken))!;
         job.Status.Should().Be(ConversionJobStatus.Processing);
         job.DeadLettered.Should().BeFalse();
     }
@@ -196,13 +202,14 @@ public class ConversionJobStoreTests
         var store = NewStore();
         var id = Guid.NewGuid();
         for (var i = 0; i < ConversionJobRetryPolicy.MaxAttempts + 1; i++)
-            await store.StartAsync(Raw(id));
-        await store.FailAsync(id, "恒久失敗", deadLettered: true);
+            await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
+        await store.FailAsync(id, "恒久失敗", deadLettered: true, ct: TestContext.Current.CancellationToken);
 
-        (await store.GetAsync(id))!.Attempts.Should().BeGreaterThan(ConversionJobRetryPolicy.MaxAttempts);
-        (await store.PrepareRetryAsync(id)).Should().NotBeNull();
+        (await store.GetAsync(id, TestContext.Current.CancellationToken))!.Attempts.Should()
+            .BeGreaterThan(ConversionJobRetryPolicy.MaxAttempts);
+        (await store.PrepareRetryAsync(id, ct: TestContext.Current.CancellationToken)).Should().NotBeNull();
 
-        var job = (await store.GetAsync(id))!;
+        var job = (await store.GetAsync(id, TestContext.Current.CancellationToken))!;
         job.Status.Should().Be(ConversionJobStatus.Queued);
         job.DeadLettered.Should().BeFalse();
     }

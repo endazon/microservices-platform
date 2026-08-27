@@ -27,7 +27,7 @@ public class PandocConversionServiceTests
         Assert.SkipWhen(PandocAvailable(), "pandoc 導入済み環境では本分岐（未導入時のデグレード）を検証できない。");
 
         var result = await NewService().ConvertAsync(
-            "storage://bucket/raw/design.docx", "application/msword");
+            "storage://bucket/raw/design.docx", "application/msword", TestContext.Current.CancellationToken);
 
         result.Markdown.Should().Contain("design");
         result.Figures.Should().BeEmpty();
@@ -40,7 +40,7 @@ public class PandocConversionServiceTests
         Assert.SkipUnless(PandocAvailable(), "pandoc 導入済み環境でのみ意味を持つケース。");
 
         var result = await NewService().ConvertAsync(
-            "storage://bucket/raw/missing.md", "text/markdown");
+            "storage://bucket/raw/missing.md", "text/markdown", TestContext.Current.CancellationToken);
 
         // pandoc は使えるが原本がローカルに無い → プレースホルダへデグレード（図0件）。
         result.Figures.Should().BeEmpty();
@@ -54,10 +54,11 @@ public class PandocConversionServiceTests
         Assert.SkipUnless(PandocAvailable(), "pandoc 未導入環境では実行できない。");
 
         var path = Path.Combine(Path.GetTempPath(), $"conv-src-{Guid.NewGuid():N}.md");
-        await File.WriteAllTextAsync(path, "# タイトル\n\n本文テスト。\n");
+        await File.WriteAllTextAsync(path, "# タイトル\n\n本文テスト。\n", TestContext.Current.CancellationToken);
         try
         {
-            var result = await NewService().ConvertAsync(new Uri(path).AbsoluteUri, "text/markdown");
+            var result = await NewService().ConvertAsync(new Uri(path).AbsoluteUri, "text/markdown",
+                TestContext.Current.CancellationToken);
 
             result.Markdown.Should().Contain("タイトル");
             result.Figures.Should().BeEmpty(); // 画像を含まない原本のため図0件。

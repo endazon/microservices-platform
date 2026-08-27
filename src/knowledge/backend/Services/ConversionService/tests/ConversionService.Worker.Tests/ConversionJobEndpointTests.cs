@@ -49,10 +49,12 @@ public class ConversionJobEndpointTests
             await store.FailAsync(bad, "変換失敗");
         });
 
-        var all = await client.GetFromJsonAsync<List<ConversionJobDto>>("/jobs");
+        var all = await client.GetFromJsonAsync<List<ConversionJobDto>>("/jobs",
+            TestContext.Current.CancellationToken);
         all!.Should().HaveCount(2);
 
-        var failed = await client.GetFromJsonAsync<List<ConversionJobDto>>("/jobs?status=failed");
+        var failed = await client.GetFromJsonAsync<List<ConversionJobDto>>("/jobs?status=failed",
+            TestContext.Current.CancellationToken);
         failed!.Should().ContainSingle(j => j.Id == bad).Which.Error.Should().Be("変換失敗");
     }
 
@@ -64,8 +66,10 @@ public class ConversionJobEndpointTests
         var id = Guid.NewGuid();
         await SeedAsync(factory, store => store.StartAsync(Raw(id)));
 
-        (await client.GetAsync($"/jobs/{id}")).StatusCode.Should().Be(HttpStatusCode.OK);
-        (await client.GetAsync($"/jobs/{Guid.NewGuid()}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await client.GetAsync($"/jobs/{id}", TestContext.Current.CancellationToken))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.GetAsync($"/jobs/{Guid.NewGuid()}", TestContext.Current.CancellationToken))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -80,7 +84,8 @@ public class ConversionJobEndpointTests
             await store.FailAsync(id, "失敗");
         });
 
-        var resp = await client.PostAsync($"/jobs/{id}/retry", content: null);
+        var resp = await client.PostAsync($"/jobs/{id}/retry", content: null,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         // HTTP 契約（失敗ジョブは受理＝202）のみを検証する。queued への遷移は、再発行イベントが
         // テストハーネスのコンシューマに即時消費されて processing 等へ進み得るため、ここで status を
@@ -111,11 +116,13 @@ public class ConversionJobEndpointTests
             await store.SucceedAsync(id, Guid.NewGuid(), "storage://ok.md");
         });
 
-        var resp = await client.PostAsync($"/jobs/{id}/retry", content: null);
+        var resp = await client.PostAsync($"/jobs/{id}/retry", content: null,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
 
-        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}");
+        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}",
+            TestContext.Current.CancellationToken);
         job!.Status.Should().Be(ConversionJobStatus.Succeeded); // 状態は変わらない
     }
 
@@ -132,13 +139,15 @@ public class ConversionJobEndpointTests
         // StartAsync は processing（試行 1）にする。以降イベントを発行しないため processing のまま。
         await SeedAsync(factory, store => store.StartAsync(Raw(id)));
 
-        var resp = await client.PostAsync($"/jobs/{id}/retry", content: null);
+        var resp = await client.PostAsync($"/jobs/{id}/retry", content: null,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         body.GetProperty("error").GetString().Should().Be("not_retryable");
 
-        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}");
+        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}",
+            TestContext.Current.CancellationToken);
         job!.Status.Should().Be(ConversionJobStatus.Processing); // 状態は変わらない
     }
 
@@ -162,7 +171,8 @@ public class ConversionJobEndpointTests
             await store.FailAsync(id, "本文変換 恒久失敗", deadLettered: true);
         });
 
-        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}");
+        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}",
+            TestContext.Current.CancellationToken);
         job!.Status.Should().Be(ConversionJobStatus.Failed); // 4 値モデルは変わらない
         job.DeadLettered.Should().BeTrue();
         job.MaxAttempts.Should().Be(ConversionJobRetryPolicy.MaxAttempts);
@@ -174,7 +184,8 @@ public class ConversionJobEndpointTests
         using var factory = new Factory();
         var client = factory.CreateClient();
 
-        var resp = await client.PostAsync($"/jobs/{Guid.NewGuid()}/retry", content: null);
+        var resp = await client.PostAsync($"/jobs/{Guid.NewGuid()}/retry", content: null,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

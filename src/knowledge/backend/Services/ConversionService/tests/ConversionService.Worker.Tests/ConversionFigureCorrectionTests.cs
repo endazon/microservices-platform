@@ -44,9 +44,11 @@ public class ConversionFigureCorrectionTests
         var documentId = Guid.NewGuid();
         var body = $"# 障害対応手順書\n\n```mermaid\nflowchart TD; A-->B;\n```\n\n"
             + FigureMarkdown.ImageEmbed("fig-1", ImageUri) + "\n";
-        var markdownUri = await objects.SaveMarkdownAsync($"{documentId:N}/document.md", body);
-        await store.StartAsync(Raw(id));
-        await store.SucceedAsync(id, documentId, markdownUri, TwoFigures());
+        var markdownUri = await objects.SaveMarkdownAsync($"{documentId:N}/document.md", body,
+            TestContext.Current.CancellationToken);
+        await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
+        await store.SucceedAsync(id, documentId, markdownUri, TwoFigures(),
+            TestContext.Current.CancellationToken);
         return id;
     }
 
@@ -57,7 +59,8 @@ public class ConversionFigureCorrectionTests
         var client = factory.CreateClient();
         var id = await SeedSucceededAsync(factory);
 
-        var figures = await client.GetFromJsonAsync<List<ConversionFigureDto>>($"/jobs/{id}/figures");
+        var figures = await client.GetFromJsonAsync<List<ConversionFigureDto>>($"/jobs/{id}/figures",
+            TestContext.Current.CancellationToken);
 
         figures!.Should().HaveCount(2);
         figures.Should().ContainSingle(f => f.FigureId == "fig-0").Which.Coded.Should().BeTrue();
@@ -75,7 +78,8 @@ public class ConversionFigureCorrectionTests
         var client = factory.CreateClient();
         var id = await SeedSucceededAsync(factory);
 
-        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}");
+        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}",
+            TestContext.Current.CancellationToken);
 
         // SC-07 hi-fi:420「✕ 図コード化失敗（画像保持へ縮退済み）」は状態の 5 値目ではなく、
         // この内訳から導出する（ジョブ自体は succeeded のまま）。IADR-0127。
@@ -93,22 +97,24 @@ public class ConversionFigureCorrectionTests
         var id = await SeedSucceededAsync(factory);
 
         var resp = await client.PostAsJsonAsync($"/jobs/{id}/figures/fig-1/correction",
-            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"));
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = await resp.Content.ReadFromJsonAsync<FigureCorrectionResultDto>();
+        var result = await resp.Content.ReadFromJsonAsync<FigureCorrectionResultDto>(
+            TestContext.Current.CancellationToken);
         result!.CorrectedFigures.Should().Be(1);
 
         using var scope = factory.Services.CreateScope();
         var objects = (FakeObjectStore)scope.ServiceProvider.GetRequiredService<IObjectStore>();
-        var body = await objects.TryGetMarkdownAsync(result.MarkdownUri);
+        var body = await objects.TryGetMarkdownAsync(result.MarkdownUri, TestContext.Current.CancellationToken);
         // 画像参照が消えてコードブロックになっていること（IADR-0154 決定 3）。
         body.Should().NotContain(FigureMarkdown.ImageEmbed("fig-1", ImageUri));
         body.Should().Contain("flowchart LR; X-->Y;");
         // 自動コード化済みの図は触っていないこと。
         body.Should().Contain("flowchart TD; A-->B;");
 
-        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}");
+        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}",
+            TestContext.Current.CancellationToken);
         job!.HasCorrection.Should().BeTrue();
     }
 
@@ -120,11 +126,13 @@ public class ConversionFigureCorrectionTests
         var id = await SeedSucceededAsync(factory);
 
         await client.PostAsJsonAsync($"/jobs/{id}/figures/fig-1/correction",
-            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"));
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"), TestContext.Current.CancellationToken);
 
         var harness = factory.Services.GetRequiredService<MassTransit.Testing.ITestHarness>();
-        (await harness.Published.Any<DocumentNormalized>()).Should().BeTrue();
-        var ev = harness.Published.Select<DocumentNormalized>().First().Context.Message;
+        (await harness.Published.Any<DocumentNormalized>(TestContext.Current.CancellationToken))
+            .Should().BeTrue();
+        var ev = harness.Published.Select<DocumentNormalized>(TestContext.Current.CancellationToken)
+            .First().Context.Message;
         // **属性を空で再発行してはならない** —— 取り込み側は属性から機密区分を読むため、
         // 落とすと文書の可視範囲が変わる（IADR-0154 決定 3）。
         ev.Attributes.Should().ContainKey("confidentiality").WhoseValue.Should().Be("internal");
@@ -140,10 +148,11 @@ public class ConversionFigureCorrectionTests
 
         // Phase 1 の対象は縮退した図に限る（05_screens:330）。
         var resp = await client.PostAsJsonAsync($"/jobs/{id}/figures/fig-0/correction",
-            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"));
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        (await resp.Content.ReadAsStringAsync()).Should().Contain("figure_not_correctable");
+        (await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().Contain("figure_not_correctable");
     }
 
     [Fact]
@@ -154,7 +163,7 @@ public class ConversionFigureCorrectionTests
         var id = await SeedSucceededAsync(factory);
 
         var resp = await client.PostAsJsonAsync($"/jobs/{id}/figures/fig-404/correction",
-            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"));
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -167,28 +176,31 @@ public class ConversionFigureCorrectionTests
         var id = await SeedSucceededAsync(factory);
 
         await client.PostAsJsonAsync($"/jobs/{id}/figures/fig-1/correction",
-            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"));
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"), TestContext.Current.CancellationToken);
 
         // 再変換は失敗ジョブに限るので、まず失敗させる（補正は残る）。
         using (var scope = factory.Services.CreateScope())
         {
             var store = scope.ServiceProvider.GetRequiredService<IConversionJobStore>();
-            await store.FailAsync(id, "後続の変換で失敗");
+            await store.FailAsync(id, "後続の変換で失敗", ct: TestContext.Current.CancellationToken);
         }
 
         // IADR-0154 決定 4: 確認なしでは補正を破棄しない。**本文に件数が載ること**まで見る
         // ——BFF が状態コードだけを返していると画面で件数を出せない（#640 と同型）。
-        var blocked = await client.PostAsync($"/jobs/{id}/retry", content: null);
+        var blocked = await client.PostAsync($"/jobs/{id}/retry", content: null,
+            cancellationToken: TestContext.Current.CancellationToken);
         blocked.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        var body = await blocked.Content.ReadAsStringAsync();
+        var body = await blocked.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().Contain("corrections_would_be_lost");
         body.Should().Contain("\"correctedFigures\":1");
 
         // 明示確認つきなら通り、補正は消える。
-        var confirmed = await client.PostAsync($"/jobs/{id}/retry?discardCorrections=true", content: null);
+        var confirmed = await client.PostAsync($"/jobs/{id}/retry?discardCorrections=true", content: null,
+            cancellationToken: TestContext.Current.CancellationToken);
         confirmed.StatusCode.Should().Be(HttpStatusCode.Accepted);
 
-        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}");
+        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}",
+            TestContext.Current.CancellationToken);
         job!.HasCorrection.Should().BeFalse();
     }
 
@@ -201,12 +213,13 @@ public class ConversionFigureCorrectionTests
         using (var scope = factory.Services.CreateScope())
         {
             var store = scope.ServiceProvider.GetRequiredService<IConversionJobStore>();
-            await store.StartAsync(Raw(id));
-            await store.FailAsync(id, "変換失敗");
+            await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
+            await store.FailAsync(id, "変換失敗", ct: TestContext.Current.CancellationToken);
         }
 
         // 補正が無いジョブの再変換は従前どおり素通りすること（ゲートを広げすぎていない）。
-        var resp = await client.PostAsync($"/jobs/{id}/retry", content: null);
+        var resp = await client.PostAsync($"/jobs/{id}/retry", content: null,
+            cancellationToken: TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
     }
 
@@ -221,17 +234,20 @@ public class ConversionFigureCorrectionTests
         {
             var store = scope.ServiceProvider.GetRequiredService<IConversionJobStore>();
             // 本文を保存せずに成功として記録する（参照だけがある状態）。
-            await store.StartAsync(Raw(id));
-            await store.SucceedAsync(id, Guid.NewGuid(), "storage://normalized/missing.md", TwoFigures());
+            await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
+            await store.SucceedAsync(id, Guid.NewGuid(), "storage://normalized/missing.md", TwoFigures(),
+                TestContext.Current.CancellationToken);
         }
 
         var resp = await client.PostAsJsonAsync($"/jobs/{id}/figures/fig-1/correction",
-            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"));
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        (await resp.Content.ReadAsStringAsync()).Should().Contain("body_unavailable");
+        (await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().Contain("body_unavailable");
 
-        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}");
+        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}",
+            TestContext.Current.CancellationToken);
         job!.HasCorrection.Should().BeFalse();
     }
 
@@ -247,10 +263,12 @@ public class ConversionFigureCorrectionTests
         // 失敗させるのもストア直叩きを使わない——変換の失敗は公開 API では起こせないので、
         // ここでは「失敗済みのジョブに図が残っている」状態を作れるかを見る。
         // 公開 API で作れないなら、この Fact 自体が到達不能性の証拠になる。
-        var beforeCorrection = await client.PostAsync($"/jobs/{id}/retry", content: null);
+        var beforeCorrection = await client.PostAsync($"/jobs/{id}/retry", content: null,
+            cancellationToken: TestContext.Current.CancellationToken);
         // succeeded なので not_retryable で弾かれる（＝補正ゲートまで届かない）。
         beforeCorrection.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        (await beforeCorrection.Content.ReadAsStringAsync()).Should().Contain("not_retryable");
+        (await beforeCorrection.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().Contain("not_retryable");
     }
 
     // CodeQL（Log entries created from user input）: 利用者由来の値をログへ出す前に無害化すること。
@@ -265,7 +283,7 @@ public class ConversionFigureCorrectionTests
         // 改行を含む図 ID は当然どの図にも一致しないので 404。**落ちたり注入されたりしないこと**を見る。
         var injected = Uri.EscapeDataString("fig-1\n2026-01-01 INFO 偽のログ行");
         var resp = await client.PostAsJsonAsync($"/jobs/{id}/figures/{injected}/correction",
-            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"));
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -282,16 +300,17 @@ public class ConversionFigureCorrectionTests
 
         var breakout = "flowchart LR; X-->Y;\n" + "``" + "`\n\n<script>alert(1)</script>";
         var resp = await client.PostAsJsonAsync($"/jobs/{id}/figures/fig-1/correction",
-            new FigureCorrectionRequest("mermaid", breakout));
+            new FigureCorrectionRequest("mermaid", breakout), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
         // 本文にも補正にも入っていないこと。
-        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}");
+        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}",
+            TestContext.Current.CancellationToken);
         job!.HasCorrection.Should().BeFalse();
         using var scope = factory.Services.CreateScope();
         var objects = (FakeObjectStore)scope.ServiceProvider.GetRequiredService<IObjectStore>();
-        var body = await objects.TryGetMarkdownAsync(job.MarkdownUri!);
+        var body = await objects.TryGetMarkdownAsync(job.MarkdownUri!, TestContext.Current.CancellationToken);
         body.Should().NotContain("<script>");
     }
 
@@ -305,18 +324,20 @@ public class ConversionFigureCorrectionTests
         var id = await SeedSucceededAsync(factory);
 
         await client.PostAsJsonAsync($"/jobs/{id}/figures/fig-1/correction",
-            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"));
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"), TestContext.Current.CancellationToken);
 
         using (var scope = factory.Services.CreateScope())
         {
             var store = scope.ServiceProvider.GetRequiredService<IConversionJobStore>();
-            await store.FailAsync(id, "成功後の再変換で失敗");
+            await store.FailAsync(id, "成功後の再変換で失敗", ct: TestContext.Current.CancellationToken);
         }
 
         // 失敗しても図と補正が残っていること（＝ゲートが守るべき状態が実在する）。
-        var figures = await client.GetFromJsonAsync<List<ConversionFigureDto>>($"/jobs/{id}/figures");
+        var figures = await client.GetFromJsonAsync<List<ConversionFigureDto>>($"/jobs/{id}/figures",
+            TestContext.Current.CancellationToken);
         figures!.Should().Contain(f => f.Corrected);
-        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}");
+        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}",
+            TestContext.Current.CancellationToken);
         job!.Status.Should().Be(ConversionJobStatus.Failed);
         job.HasCorrection.Should().BeTrue();
     }

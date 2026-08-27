@@ -43,8 +43,10 @@ public class MassTransitDocumentNormalizedPublisherTests
                 tags: ["knowledge-mgmt"],
                 ct: TestContext.Current.CancellationToken);
 
-            (await harness.Published.Any<DocumentNormalized>()).Should().BeTrue();
-            var ev = harness.Published.Select<DocumentNormalized>().First().Context.Message;
+            (await harness.Published.Any<DocumentNormalized>(TestContext.Current.CancellationToken))
+                .Should().BeTrue();
+            var ev = harness.Published.Select<DocumentNormalized>(TestContext.Current.CancellationToken)
+                .First().Context.Message;
 
             // 🔴 同じ型（Guid どうし・string どうし・コレクションどうし）の取り違えは
             // 「どれか 1 つ」を見るだけでは捕まらないので、**全フィールドを見る**。
@@ -59,7 +61,7 @@ public class MassTransitDocumentNormalizedPublisherTests
         }
         finally
         {
-            await harness.Stop();
+            await harness.Stop(TestContext.Current.CancellationToken);
         }
     }
 }

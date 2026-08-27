@@ -33,7 +33,7 @@ public class LlmGatewayDiagramCoderTests
         var coder = Coder(new CompletionApiResponse(
             Text: "```mermaid\ngraph TD; A-->B\n```", Model: "m", InputTokens: 1, OutputTokens: 1));
 
-        var result = await coder.CodeAsync(Figure(), "internal");
+        var result = await coder.CodeAsync(Figure(), "internal", TestContext.Current.CancellationToken);
 
         result.Coded.Should().BeTrue();
         result.Language.Should().Be("mermaid");
@@ -48,7 +48,7 @@ public class LlmGatewayDiagramCoderTests
             Text: "送信できません", Model: "", InputTokens: 0, OutputTokens: 0,
             Sent: false, Endpoint: null, RoutingReason: "restricted-blocked"));
 
-        var result = await coder.CodeAsync(Figure(), "restricted");
+        var result = await coder.CodeAsync(Figure(), "restricted", TestContext.Current.CancellationToken);
 
         result.Coded.Should().BeFalse();
         result.Reason.Should().Contain("egress-denied");
@@ -65,7 +65,7 @@ public class LlmGatewayDiagramCoderTests
             Sent: true, Endpoint: "claude-managed", RoutingReason: "ok",
             StopReason: CompletionStopReasons.Refusal));
 
-        var result = await coder.CodeAsync(Figure(), "internal");
+        var result = await coder.CodeAsync(Figure(), "internal", TestContext.Current.CancellationToken);
 
         result.Coded.Should().BeFalse();          // 画像保持（fail-safe は不変）
         result.Reason.Should().Be("llm-refused");
@@ -79,7 +79,7 @@ public class LlmGatewayDiagramCoderTests
         var coder = Coder(new CompletionApiResponse(
             Text: "不可", Model: "m", InputTokens: 1, OutputTokens: 1));
 
-        var result = await coder.CodeAsync(Figure(), "internal");
+        var result = await coder.CodeAsync(Figure(), "internal", TestContext.Current.CancellationToken);
 
         result.Coded.Should().BeFalse();
         result.Reason.Should().Be("not-codeable");
@@ -95,7 +95,7 @@ public class LlmGatewayDiagramCoderTests
         var http = new HttpClient(capture) { BaseAddress = new Uri("http://llm-gateway:5007") };
         var coder = new LlmGatewayDiagramCoder(http, NullLogger<LlmGatewayDiagramCoder>.Instance);
 
-        await coder.CodeAsync(Figure(), "internal");
+        await coder.CodeAsync(Figure(), "internal", TestContext.Current.CancellationToken);
 
         capture.Request.Should().NotBeNull();
         capture.Request!.Purpose.Should().Be("diagram-coding");
@@ -112,7 +112,7 @@ public class LlmGatewayDiagramCoderTests
         };
         var coder = new LlmGatewayDiagramCoder(http, NullLogger<LlmGatewayDiagramCoder>.Instance);
 
-        var result = await coder.CodeAsync(Figure(), "internal");
+        var result = await coder.CodeAsync(Figure(), "internal", TestContext.Current.CancellationToken);
 
         result.Coded.Should().BeFalse();
         result.Reason.Should().Be("llm-call-failed");

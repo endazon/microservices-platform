@@ -58,11 +58,13 @@ public class ObjectStorageTests
         var options = new ObjectStorageOptions { Bucket = "knowledge-normalized" };
         var client = new NullObjectStorageClient(options, NullLogger<NullObjectStorageClient>.Instance);
 
-        var uri = await client.PutTextAsync("doc/document.md", "# body", "text/markdown");
+        var uri = await client.PutTextAsync("doc/document.md", "# body", "text/markdown",
+            TestContext.Current.CancellationToken);
 
         uri.Should().Be("storage://knowledge-normalized/doc/document.md");
         client.CanResolve(uri).Should().BeFalse();
-        await Assert.ThrowsAsync<NotSupportedException>(() => client.GetTextAsync(uri));
+        await Assert.ThrowsAsync<NotSupportedException>(
+            () => client.GetTextAsync(uri, TestContext.Current.CancellationToken));
     }
 
     // 書き込み側ポート: StorageObjectStore は共有クライアントへ委譲し、本文は text/markdown で保存する。
@@ -72,8 +74,10 @@ public class ObjectStorageTests
         var client = new RecordingClient();
         var store = new StorageObjectStore(client);
 
-        var mdUri = await store.SaveMarkdownAsync("doc/document.md", "# body");
-        var assetUri = await store.SaveAssetAsync("doc/assets/fig-1.png", [1, 2, 3], "image/png");
+        var mdUri = await store.SaveMarkdownAsync("doc/document.md", "# body",
+            TestContext.Current.CancellationToken);
+        var assetUri = await store.SaveAssetAsync("doc/assets/fig-1.png", [1, 2, 3], "image/png",
+            TestContext.Current.CancellationToken);
 
         mdUri.Should().Be("storage://normalized/doc/document.md");
         assetUri.Should().Be("storage://normalized/doc/assets/fig-1.png");

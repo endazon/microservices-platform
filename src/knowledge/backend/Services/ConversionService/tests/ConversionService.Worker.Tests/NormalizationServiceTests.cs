@@ -37,7 +37,7 @@ public class NormalizationServiceTests
             store,
             NullLogger<NormalizationService>.Instance);
 
-        var result = await svc.NormalizeAsync(Raw());
+        var result = await svc.NormalizeAsync(Raw(), TestContext.Current.CancellationToken);
 
         result.DiagramsCoded.Should().Be(1);
         result.DiagramsRetained.Should().Be(0);
@@ -57,7 +57,7 @@ public class NormalizationServiceTests
             store,
             NullLogger<NormalizationService>.Instance);
 
-        var result = await svc.NormalizeAsync(Raw());
+        var result = await svc.NormalizeAsync(Raw(), TestContext.Current.CancellationToken);
 
         result.DiagramsCoded.Should().Be(0);
         result.DiagramsRetained.Should().Be(1);
@@ -77,7 +77,7 @@ public class NormalizationServiceTests
             store,
             NullLogger<NormalizationService>.Instance);
 
-        var result = await svc.NormalizeAsync(Raw("restricted"));
+        var result = await svc.NormalizeAsync(Raw("restricted"), TestContext.Current.CancellationToken);
 
         result.DiagramsRetained.Should().Be(1);
         result.AssetUris.Should().HaveCount(1);
@@ -93,8 +93,8 @@ public class NormalizationServiceTests
             new RecordingObjectStore(),
             NullLogger<NormalizationService>.Instance);
 
-        var r1 = await svc.NormalizeAsync(Raw());
-        var r2 = await svc.NormalizeAsync(Raw());
+        var r1 = await svc.NormalizeAsync(Raw(), TestContext.Current.CancellationToken);
+        var r2 = await svc.NormalizeAsync(Raw(), TestContext.Current.CancellationToken);
 
         r1.DocumentId.Should().Be(r2.DocumentId);
         r1.DocumentId.Should().Be(
