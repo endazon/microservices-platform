@@ -969,6 +969,12 @@
             "type": "string",
             "required": true,
             "position": 1
+          },
+          "Weight": {
+            "source": "positional",
+            "type": "double",
+            "required": false,
+            "position": 4
           }
         }
       },
