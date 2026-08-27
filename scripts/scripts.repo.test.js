@@ -1146,7 +1146,9 @@ module.exports = ({ ok, assert }) => {
     assert.strictEqual(r.status, 1, `無主があるのに fail しない:\n${out}`);
     assert.match(out, /担当 issue が無い計画 ID/);
     // 無主として名指しされるのは 3 issue が引き受けていない ID だけである。
-    assert.match(out, /SC-20/);
+    // （従前は SC-20 を見ていたが、#451-a が docs/tests/SC-20 を新設し無主でなくなった。
+    //   固定に使う ID はテスト仕様書を持たない画面へ追随させる）
+    assert.match(out, /SC-12/);
     // ★ 同じ 1 回の実行で、**過去 3 件が無主に混じらない**ことも確かめる（回帰と変異の同時固定）。
     const unowned = (out.match(/\[担当 issue が無い計画 ID\] ([^\n]*)/) || [])[1] || '';
     for (const id of ['SC-14', 'SC-15', 'UC-09', 'UC-10']) {
