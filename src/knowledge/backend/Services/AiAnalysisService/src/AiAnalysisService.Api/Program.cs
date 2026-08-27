@@ -33,6 +33,8 @@ builder.Services.AddHttpClient("LlmGateway", c =>
         ?? "http://llm-gateway:5007"));
 
 // FR-04: RAG オーケストレーター
+// FR-05, ADR-0034 (#970): 受信 Authorization を RetrievalService へ伝播するため要求文脈へ触る。
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IRagOrchestrator, RagOrchestrator>();
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。RAG オーケストレータは

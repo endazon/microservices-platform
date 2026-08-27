@@ -65,6 +65,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public List<AccessScopeBranch>? ScopeBranches { get; set; }
     // FR-03, SC-02, #532: BFF が後段へ渡した並び順（縮退させずそのまま運ぶことを固定するため）。
     public string? LastSearchSortBy { get; private set; }
+    // FR-05, FR-17, ADR-0034 (#970): /bff/search が後段（RetrievalService）へ伝播した Authorization。
+    // 二段検索の段はこのヘッダを GraphService まで運んでホップごと ABAC を効かせる（方式 A）。
+    // **テスト間で共有される**（IClassFixture）ため、観測する側が呼ぶ前に null へ戻すこと。
+    public string? LastSearchForwardedAuthorization { get; set; }
     // FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会。後段が返す候補と、BFF が渡した本文。
     public List<string> StubAttributeValues { get; set; } = ["社内", "規程"];
     // **テスト間で共有される**（IClassFixture）ため、観測する側が呼ぶ前に null へ戻すこと。
@@ -815,6 +819,11 @@ public class BffTestFactory : WebApplicationFactory<Program>
                         ? sort.GetString()
                         : null;
             }
+
+            // FR-05, ADR-0034 (#970): BFF が伝播した Authorization を記録する（方式 A の観測点）。
+            owner.LastSearchForwardedAuthorization = request.Headers.TryGetValues("Authorization", out var auth)
+                ? string.Join(' ', auth)
+                : null;
 
             return new HttpResponseMessage(HttpStatusCode.OK)
             {

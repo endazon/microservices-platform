@@ -52,6 +52,40 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
         factory.LastSearchSortBy.Should().Be(sortBy, "BFF は縮退させずそのまま運ぶ");
     }
 
+    // FR-05, FR-17, ADR-0034, ADR-0035 (#970): 🔴 利用者の Authorization を**そのまま**後段へ伝播する
+    // （方式 A）。二段検索の段はこのヘッダを RetrievalService → GraphService と運んでホップごと
+    // ABAC を効かせる —— 伝播しないと、段を有効化しても展開は常に 0 件だった（IADR-0263 残件 2）。
+    [Fact]
+    public async Task PostSearch_ForwardsTheCallersAuthorizationToRetrieval()
+    {
+        factory.SearchScopeGranted = true;
+        factory.LastSearchForwardedAuthorization = null;
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer user-jwt");
+
+        var resp = await client.PostAsJsonAsync("/bff/search", new { query = "経費", topK = 5 },
+            TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        factory.LastSearchForwardedAuthorization.Should().Be("Bearer user-jwt",
+            "本文で scope を渡す方式 B ではなく、ヘッダをそのまま伝播する（方式 A）");
+    }
+
+    // 同（否定形）: 受信リクエストにヘッダが無ければ付けない（BFF がトークンを捏造しない。
+    // 縮退の判断とその警告は RetrievalService 側が一元で持つ）。
+    [Fact]
+    public async Task PostSearch_DoesNotInventAnAuthorizationHeader()
+    {
+        factory.SearchScopeGranted = true;
+        factory.LastSearchForwardedAuthorization = "sentinel";
+
+        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/search",
+            new { query = "経費", topK = 5 }, TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        factory.LastSearchForwardedAuthorization.Should().BeNull("無いヘッダは無いまま運ぶ");
+    }
+
     [Fact]
     public async Task PostSearch_WhenNotGranted_ReturnsEmpty_DenyByDefault()
     {

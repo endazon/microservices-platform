@@ -8,7 +8,14 @@ namespace AiAnalysisService.Api.Foundation.Services;
 
 // FR-04, FR-07, UC-01, UC-02: RAG 回答生成オーケストレーター
 // フロー: ABAC スコープ解決 → （FR-07: データ範囲と交差）→ ハイブリッド検索 → LLM 回答生成
-public class RagOrchestrator(IHttpClientFactory httpFactory) : IRagOrchestrator
+//
+// FR-05, ADR-0034, ADR-0035 (#970): `httpContextAccessor` は受信リクエストの `Authorization` を
+// RetrievalService へ伝播するために持つ（方式 A。IADR-0263 残件 2 の解消）。既定 null は
+// 既存テストの直接構築（`new RagOrchestrator(factory)`）を壊さないため —— DI 経由では
+// `AddHttpContextAccessor()`（Program.cs）が解決する。
+public class RagOrchestrator(
+    IHttpClientFactory httpFactory,
+    IHttpContextAccessor? httpContextAccessor = null) : IRagOrchestrator
 {
     // FR-04: 質問回答で文脈に取り込む既定チャンク数。
     private const int DefaultAskTopK = 5;
@@ -161,10 +168,19 @@ public class RagOrchestrator(IHttpClientFactory httpFactory) : IRagOrchestrator
     }
 
     // FR-03: 実効スコープでハイブリッド検索を実行し、結果チャンクを返す（失敗時は空）。
+    //
+    // FR-05, FR-17, ADR-0034, ADR-0035 (#970): 🔴 **受信リクエストの `Authorization` を
+    // RetrievalService へそのまま伝播する（方式 A）。** 二段検索の段（グラフ近傍展開）は
+    // このヘッダを GraphService まで運んでホップごと ABAC を効かせる —— 伝播しないと、
+    // 段を有効化しても RAG 経路の展開は常に 0 件だった（IADR-0263 残件 2）。
+    // **無ければ付けない**（縮退の判断とその警告は RetrievalService 側が一元で持つ。二重に持たない）。
     private async Task<IReadOnlyList<SearchResultDto>> SearchAsync(
         string query, AccessScope scope, int topK, CancellationToken ct)
     {
         var retrievalClient = httpFactory.CreateClient("RetrievalService");
+        var auth = httpContextAccessor?.HttpContext?.Request.Headers.Authorization.ToString();
+        if (!string.IsNullOrEmpty(auth))
+            retrievalClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
         try
         {
             var searchResp = await retrievalClient.PostAsJsonAsync("/search",

@@ -50,6 +50,15 @@ public static class SearchBffEndpoints
 
             // FR-03: 解決済みスコープでハイブリッド検索を実行する（クライアント指定 Scope は使わない）。
             var retrievalClient = httpFactory.CreateClient("RetrievalService");
+
+            // FR-05, FR-17, ADR-0034, ADR-0035 (#970): 🔴 **利用者の `Authorization` をそのまま
+            // 後段へ伝播する（方式 A）。** 二段検索の段（グラフ近傍展開）はこのヘッダを
+            // RetrievalService → GraphService と運んでホップごと ABAC を効かせる —— 伝播しないと
+            // 段を有効化しても展開は常に 0 件だった（IADR-0263 残件 2）。**無ければ付けない**
+            // （縮退の判断とその警告は RetrievalService 側が一元で持つ）。
+            var auth = http.Request.Headers.Authorization.ToString();
+            if (!string.IsNullOrEmpty(auth))
+                retrievalClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
             try
             {
                 // #531: 検索モードは利用者の指定をそのまま透過する（Scope と違い信頼性の問題が無い——
