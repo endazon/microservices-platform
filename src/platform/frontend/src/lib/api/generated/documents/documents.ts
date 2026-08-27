@@ -779,6 +779,117 @@ export function useBffDocumentVersions<TData = Awaited<ReturnType<typeof bffDocu
 
 
 
+export type bffDocumentVersionResponse200 = {
+  data: DocumentVersionDto
+  status: 200
+}
+
+export type bffDocumentVersionResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffDocumentVersionResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffDocumentVersionResponseSuccess = (bffDocumentVersionResponse200) & {
+  headers: Headers;
+};
+export type bffDocumentVersionResponseError = (bffDocumentVersionResponse401 | bffDocumentVersionResponse404) & {
+  headers: Headers;
+};
+
+export type bffDocumentVersionResponse = (bffDocumentVersionResponseSuccess | bffDocumentVersionResponseError)
+
+export const getBffDocumentVersionUrl = (id: string,
+    version: number,) => {
+
+
+
+
+  return `/bff/documents/${id}/versions/${version}`
+}
+
+/**
+ * FR-06 の射程は「版の作成・一覧・**取得**」までであり、**版の復元（過去版へ戻す操作）は含まない**
+ * （計画 ［2026-08-23 明確化］・環流 planning#473）。
+ *
+ * **応答は本文を含まない。** 返るのはタイトル・状態・`markdownUri`・属性・タグ・変更メモ・
+ * 作成日時の**メタデータのスナップショット**である。本文の実体は版ごとに保持されておらず、
+ * `markdownUri` は**現行版の本文**を指す。
+ * @summary FR-06, UC-03, SC-03: 特定版の取得（#449）
+ */
+export const bffDocumentVersion = async (id: string,
+    version: number, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentVersionResponse> => {
+
+  return bffFetch<bffDocumentVersionResponse>(getBffDocumentVersionUrl(id,version),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffDocumentVersionQueryKey = (id: string,
+    version: number,) => {
+    return [
+    `/bff/documents/${id}/versions/${version}`
+    ] as const;
+    }
+
+
+export const getBffDocumentVersionQueryOptions = <TData = Awaited<ReturnType<typeof bffDocumentVersion>>, TError = void>(id: string,
+    version: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentVersion>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffDocumentVersionQueryKey(id,version);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffDocumentVersion>>> = ({ signal }) => bffDocumentVersion(id,version, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined && version !== null && version !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffDocumentVersion>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffDocumentVersionQueryResult = NonNullable<Awaited<ReturnType<typeof bffDocumentVersion>>>
+export type BffDocumentVersionQueryError = void
+
+
+/**
+ * @summary FR-06, UC-03, SC-03: 特定版の取得（#449）
+ */
+
+export function useBffDocumentVersion<TData = Awaited<ReturnType<typeof bffDocumentVersion>>, TError = void>(
+ id: string,
+    version: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentVersion>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffDocumentVersionQueryOptions(id,version,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 export type bffDocumentPublishResponse200 = {
   data: DocumentDto
   status: 200

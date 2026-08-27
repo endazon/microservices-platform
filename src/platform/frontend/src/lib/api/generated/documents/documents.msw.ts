@@ -30,10 +30,11 @@ import {
   getBffDocumentListResponseMock,
   getBffDocumentPublishResponseMock,
   getBffDocumentUpdateResponseMock,
+  getBffDocumentVersionResponseMock,
   getBffDocumentVersionsResponseMock
 } from './documents.faker';
 
-export { getBffDocumentListResponseMock, getBffDocumentCreateResponseMock, getBffDocumentDetailResponseMock, getBffDocumentUpdateResponseMock, getBffDocumentContentResponseMock, getBffDocumentVersionsResponseMock, getBffDocumentPublishResponseMock, getBffDocumentArchiveResponseMock } from './documents.faker';
+export { getBffDocumentListResponseMock, getBffDocumentCreateResponseMock, getBffDocumentDetailResponseMock, getBffDocumentUpdateResponseMock, getBffDocumentContentResponseMock, getBffDocumentVersionsResponseMock, getBffDocumentVersionResponseMock, getBffDocumentPublishResponseMock, getBffDocumentArchiveResponseMock } from './documents.faker';
 
 
 export const getBffDocumentListMockHandler = (overrideResponse?: DocumentDto[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<DocumentDto[]> | DocumentDto[]), options?: RequestHandlerOptions) => {
@@ -118,6 +119,18 @@ export const getBffDocumentVersionsMockHandler = (overrideResponse?: DocumentVer
   }, options)
 }
 
+export const getBffDocumentVersionMockHandler = (overrideResponse?: DocumentVersionDto | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<DocumentVersionDto> | DocumentVersionDto), options?: RequestHandlerOptions) => {
+  return http.get('*/bff/documents/:id/versions/:version', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffDocumentVersionResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
+
 export const getBffDocumentPublishMockHandler = (overrideResponse?: DocumentDto | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<DocumentDto> | DocumentDto), options?: RequestHandlerOptions) => {
   return http.post('*/bff/documents/:id/publish', async (info: Parameters<Parameters<typeof http.post>[1]>[0]) => {
 
@@ -149,6 +162,7 @@ export const getDocumentsMock = () => [
   getBffDocumentDeleteMockHandler(),
   getBffDocumentContentMockHandler(),
   getBffDocumentVersionsMockHandler(),
+  getBffDocumentVersionMockHandler(),
   getBffDocumentPublishMockHandler(),
   getBffDocumentArchiveMockHandler()
 ]

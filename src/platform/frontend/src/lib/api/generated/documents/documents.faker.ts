@@ -41,6 +41,10 @@ export const getBffDocumentVersionsResponseMock = (): DocumentVersionDto[] => (A
         [faker.string.alphanumeric(5)]: faker.string.alpha({length: {min: 10, max: 20}})
       }, tags: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}}))), changeNote: faker.helpers.arrayElement([faker.string.alpha({length: {min: 10, max: 20}}), null]), createdAt: faker.date.past().toISOString().slice(0, 19) + 'Z'})))
 
+export const getBffDocumentVersionResponseMock = (overrideResponse: Partial<Extract<DocumentVersionDto, object>> = {}): DocumentVersionDto => ({documentId: faker.string.uuid(), version: faker.number.int(), title: faker.string.alpha({length: {min: 10, max: 20}}), status: faker.string.alpha({length: {min: 10, max: 20}}), markdownUri: faker.helpers.arrayElement([faker.string.alpha({length: {min: 10, max: 20}}), null]), attributes: {
+        [faker.string.alphanumeric(5)]: faker.string.alpha({length: {min: 10, max: 20}})
+      }, tags: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}}))), changeNote: faker.helpers.arrayElement([faker.string.alpha({length: {min: 10, max: 20}}), null]), createdAt: faker.date.past().toISOString().slice(0, 19) + 'Z', ...overrideResponse})
+
 export const getBffDocumentPublishResponseMock = (overrideResponse: Partial<Extract<DocumentDto, object>> = {}): DocumentDto => ({id: faker.string.uuid(), title: faker.string.alpha({length: {min: 10, max: 20}}), status: faker.string.alpha({length: {min: 10, max: 20}}), markdownUri: faker.helpers.arrayElement([faker.string.alpha({length: {min: 10, max: 20}}), null]), version: faker.number.int(), attributes: {
         [faker.string.alphanumeric(5)]: faker.string.alpha({length: {min: 10, max: 20}})
       }, tags: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}}))), createdAt: faker.date.past().toISOString().slice(0, 19) + 'Z', updatedAt: faker.date.past().toISOString().slice(0, 19) + 'Z', ...overrideResponse})

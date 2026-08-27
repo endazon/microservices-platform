@@ -1325,6 +1325,151 @@ export interface EmbedApiResponse {
   retryable: boolean;
 }
 
+/**
+ * FR-19, SC-19: 個人資料 1 件（台帳の投影）。**本文は含まない** ——
+ * 本文編集は Obsidian 経路のみである（ADR-0046）。
+ * `bytes` は**最新版のバイト数**であり、版履歴は容量に算入しない（ADR-0037 決定 16）。
+ * `deleted` が真のとき `purgeAt` が完全削除の期限であり、SC-19 の「残り日数」と
+ * 警告色（残り 7 日以内）の根拠になる。
+ * 🔴 **所有者を運ぶ項目を持たない。** 誰の資料かは主体（JWT）で決まり、要求側が指定できない。
+ */
+export interface PrivateNoteDto {
+  id: string;
+  title: string;
+  /** Obsidian Vault 内の相対パス（例 設計メモ.md） */
+  vaultPath: string;
+  /** 版番号。1 編集 = 1 版で進む */
+  version: number;
+  /** 最新版のバイト数（版履歴は算入しない） */
+  bytes: number;
+  /** 本文指紋。未同期の資料では null */
+  contentHash?: string | null;
+  /** 横断検索に含める（既定 false） */
+  includeInSearch: boolean;
+  /** ナレッジグラフに表示する（既定 false） */
+  includeInGraph: boolean;
+  /** AI の入力に含める（既定 false） */
+  includeInAi: boolean;
+  /** 論理削除済み（90 日は復元可） */
+  deleted: boolean;
+  deletedAt?: string | null;
+  /** 完全削除の期限 */
+  purgeAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * FR-19, SC-19, ADR-0037 決定 16・17: 保存容量の使用状況。
+ * **算入するのは最新版と論理削除済み（90 日保管中）**であり、版履歴は算入しない。
+ * `percent` は 80 / 95 / 100 の段階警告の判定に画面が使う。
+ */
+export interface PrivateNoteUsageDto {
+  usedBytes: number;
+  /** 既定 1 GB。管理者が最大 1 TB まで引き上げ可 */
+  limitBytes: number;
+  percent: number;
+}
+
+/**
+ * FR-19, SC-19: 一覧（削除済みを含む）と容量表示を 1 応答で返す。 「うち削除済み」の内訳は画面が削除済み行の bytes を合算して出す（数え方を 2 つ持たない）。
+ */
+export interface PrivateNoteListResponse {
+  usage: PrivateNoteUsageDto;
+  notes: PrivateNoteDto[];
+}
+
+/**
+ * FR-19, SC-19: 個人資料の新規作成。**タイトルのみで本文を受け取らない** （本画面にリッチエディタを描かない。ADR-0046 D-02）。
+ */
+export interface CreatePrivateNoteRequest {
+  title: string;
+  /** Obsidian Vault 内の相対パス。省略時は `<タイトル>.md` を後段が採る */
+  vaultPath?: string | null;
+}
+
+/**
+ * FR-19, SC-19, ADR-0037 決定 20: 完全削除（即時・復元不可）。 **単票も一括も同じ口**である（要素数の差でしかない）。
+ */
+export interface PurgePrivateNotesRequest {
+  ids: string[];
+}
+
+/**
+ * FR-19, SC-19: 完全削除の結果。`freedBytes` は確認ダイアログで示した 「解放される容量」の確定値である。
+ */
+export interface PurgePrivateNotesResponse {
+  purgedCount: number;
+  freedBytes: number;
+}
+
+/**
+ * FR-19, SC-19, ADR-0037 決定 19・20: 論理削除の結果。
+ * 🔴 `capacityFreed` は**常に false** である —— 「削除しても容量は空きません
+ * （90 日間保管されます）」という SC-19 の固定文言の根拠を、散文ではなく機械可読な形で渡す。
+ */
+export interface PrivateNoteDeletedResponse {
+  deletedAt?: string | null;
+  /** 完全削除の期限 */
+  purgeAt?: string | null;
+  capacityFreed: boolean;
+}
+
+/**
+ * FR-19, FR-20, SC-20: 露出 3 トグル（横断検索 / ナレッジグラフ / AI 入力）。 **既定はいずれも OFF・3 つは独立**である。
+ */
+export interface UpdateExposureRequest {
+  includeInSearch: boolean;
+  includeInGraph: boolean;
+  includeInAi: boolean;
+}
+
+/**
+ * FR-20, SC-20: 同期端末 1 件。**トークンは平文もハッシュも載らない。**
+ * `active` は「未失効かつ期限内」であり、`expiresAt` との差から画面が
+ * 「有効（残り日数）／期限切れ間近（残り 7 日以内）／期限切れ／失効」を描き分ける。
+ */
+export interface SyncDeviceDto {
+  id: string;
+  deviceName: string;
+  issuedAt: string;
+  /** 発行から 30 日 */
+  expiresAt: string;
+  revoked: boolean;
+  /** 未同期なら null */
+  lastSyncAt?: string | null;
+  active: boolean;
+}
+
+/**
+ * FR-20, SC-20, ADR-0037 決定 11: 端末登録（同期トークンの発行）。管理者承認を挟まない。
+ */
+export interface CreateSyncDeviceRequest {
+  deviceName: string;
+}
+
+/**
+ * FR-20, SC-20, ADR-0037 決定 12・15: 発行・再発行の応答。
+ * 🔴 **`token`（平文）が現れるのはこの型だけである。** 保存されるのはハッシュのみで、
+ * 一覧にも他のどの応答にも平文は載らない（発行直後に一度だけ表示・再表示不可）。
+ * **自動更新（リフレッシュ）の口は存在しない** —— 更新は手動再発行だけである。
+ */
+export interface SyncTokenIssuedResponse {
+  deviceId: string;
+  deviceName: string;
+  /** 平文の同期トークン。この応答でしか返らない */
+  token: string;
+  /** 発行から 30 日 */
+  expiresAt: string;
+}
+
+/**
+ * FR-20, SC-20, ADR-0037 決定 13: 全端末の一括失効の結果（端末紛失時の防御）。
+ */
+export interface RevokeAllSyncDevicesResponse {
+  revokedCount: number;
+}
+
 export type BffAuthLoginParams = {
 /**
  * ログイン後の戻り先。**自サイト内のパスに限る**（オープンリダイレクト防止）
