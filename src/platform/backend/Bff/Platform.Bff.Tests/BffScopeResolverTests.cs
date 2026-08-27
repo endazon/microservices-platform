@@ -74,6 +74,22 @@ public class BffScopeResolverTests
         BffScopeResolver.Matches(docAttrs, scope).Should().BeFalse();
     }
 
+    // FR-05, FR-06, IADR-0272 決定 4 (#1010): **ResolveAsync の action に既定値を置かない**ことを
+    // リフレクションで固定する。既定値つきの引数は「書かなければ read」を意味し、書き忘れが
+    // 認可の緩みとして現れる（#993 / #1010 の欠陥そのもの）。GraphService の
+    // GraphTypeGateArchitectureTests と同型の構造テスト。
+    [Fact]
+    public void ResolveAsync_ActionParameter_HasNoDefaultValue()
+    {
+        var method = typeof(BffScopeResolver).GetMethod(nameof(BffScopeResolver.ResolveAsync));
+
+        method.Should().NotBeNull();
+        var actionParam = method!.GetParameters().SingleOrDefault(p => p.Name == "action");
+        actionParam.Should().NotBeNull("action 引数が無ければ #1010 の是正が外れている");
+        actionParam!.HasDefaultValue.Should().BeFalse(
+            "既定値が復活すると『書き忘れ＝read で解決』が再発する（IADR-0272 決定 4）");
+    }
+
     // FR-05: JWT の clearance/department クレームを利用者属性へ写す。
     [Fact]
     public void ExtractUserAttributes_ReadsClearanceAndDepartmentClaims()

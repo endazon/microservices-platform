@@ -53,6 +53,14 @@ public class BffTestFactory : WebApplicationFactory<Program>
 
     // FR-03/FR-05 BFF テスト（SC-01 横断検索）: ABAC スコープ解決の許可可否と検索結果をスタブ制御する。
     public bool SearchScopeGranted { get; set; } = true;
+    // FR-05, FR-06 (#1010): write スコープの許可可否と文書条件（read とは独立に制御する）。
+    // 既定は「許可・条件なし」—— 既存テスト（作成 201 等）の挙動を変えないため。
+    // 「read しか持たない主体」は WriteScopeGranted=false で再現する。
+    public bool WriteScopeGranted { get; set; } = true;
+    public List<AttributeFilter> WriteScopeFilters { get; set; } = [];
+    // #1010: /authz/scope へ発行された action の列（読み取り経路 read / 書き込み経路 write の観測点）。
+    // **テスト間で共有される**（IClassFixture）ため、観測する側が呼ぶ前に Clear() すること。
+    public List<string> ScopeActionsRequested { get; } = [];
     // FR-03, SC-02, #532: BFF が後段へ渡した並び順（縮退させずそのまま運ぶことを固定するため）。
     public string? LastSearchSortBy { get; private set; }
     // FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会。後段が返す候補と、BFF が渡した本文。
@@ -454,6 +462,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-09 (SC-09): 管理 API（/authz/policies・/authz/attributes）もパスで振り分けてスタブ化する。
     private sealed class AuthzStubHandler(BffTestFactory owner) : HttpMessageHandler
     {
+        // 実サービス（AuthzEndpoints + AbacValidation）が受理する action の値域の写し（#1010）。
+        private static readonly string[] ValidActions = ["read", "analyze", "manage", "write"];
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -496,8 +507,30 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 return Json(HttpStatusCode.OK, owner.StubAttributes[0]); // GET/PUT by id
             }
 
-            // 既定（/authz/scope）: SC-01/SC-03 のスコープ解決。
-            var scope = new AccessScopeResponse("tester", owner.ScopeFilters, owner.SearchScopeGranted);
+            // 既定（/authz/scope）: SC-01/SC-03/SC-05 のスコープ解決。
+            //
+            // #1010: **実サービスと同じく action 別に応答する。** 要求本文の action を捕捉し
+            // （ScopeActionsRequested。観測点）、値域外は 400 を返す（AuthzEndpoints は
+            // PolicyAction.IsValid で検証して 400。呼び出し側は null＝deny へ縮退する）。
+            // write は WriteScopeGranted / WriteScopeFilters、それ以外（read 等）は従来の
+            // SearchScopeGranted / ScopeFilters で制御する —— read と write を独立に差し替え
+            // られないと「read しか持たない主体が write 経路で拒まれる」ことを測れない。
+            var body = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+            var action = "read";
+            if (!string.IsNullOrEmpty(body))
+            {
+                using var doc = JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("action", out var a)
+                    && a.ValueKind == JsonValueKind.String)
+                    action = a.GetString() ?? "read";
+            }
+            owner.ScopeActionsRequested.Add(action);
+            if (!ValidActions.Contains(action))
+                return Json(HttpStatusCode.BadRequest, new { errors = new[] { $"未知のアクション: {action}" } });
+
+            var scope = action == "write"
+                ? new AccessScopeResponse("tester", owner.WriteScopeFilters, owner.WriteScopeGranted)
+                : new AccessScopeResponse("tester", owner.ScopeFilters, owner.SearchScopeGranted);
             return Json(HttpStatusCode.OK, scope);
         }
 

@@ -12,8 +12,14 @@ public static class BffScopeResolver
 {
     // 利用者の許可スコープを解決する。許可（Granted=true）のときのみ AccessScope を返し、
     // それ以外（未マッチ・認可サービス不調）は null を返す。
+    //
+    // FR-05, FR-06, ADR-0036 D-07, IADR-0272 決定 4 (#1010): **action は既定値の無い必須引数である。**
+    // #1010 は「/authz/scope が read を返すこと」を暗黙の前提にした呼び出しが BFF の書き込み経路へ
+    // 効いていた欠陥（#993 の platform 共通版）。既定値を残すと、新しい経路を足した人が書き忘れる
+    // ことで認可が緩む。既定値を外せばアクションの選択がコンパイラに強制される。
+    // 読み取りは BffScopeAction.Read、作成・更新・削除は BffScopeAction.Write を渡す。
     public static async Task<AccessScope?> ResolveAsync(
-        IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
+        IHttpClientFactory httpFactory, HttpContext http, string action, CancellationToken ct)
     {
         var userId = http.User.Identity?.Name ?? "anonymous";
         var userAttrs = ExtractUserAttributes(http);
@@ -22,7 +28,7 @@ public static class BffScopeResolver
         try
         {
             var scopeResp = await authzClient.PostAsJsonAsync("/authz/scope",
-                new AccessScopeRequest(userId, userAttrs), ct);
+                new AccessScopeRequest(userId, userAttrs, action), ct);
             var resolved = scopeResp.IsSuccessStatusCode
                 ? await scopeResp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct)
                 : null;
@@ -66,4 +72,23 @@ public static class BffScopeResolver
         }
         return true;
     }
+}
+
+// FR-05, FR-21, ADR-0036 D-07, IADR-0253 決定 5, IADR-0272 決定 4 (#1010):
+// BFF が解決するアクションの語彙。
+//
+// **値域の正本は AuthorizationService の `PolicyAction`**（read / analyze / manage / write）だが、
+// 共有基盤（Platform.Shared.Infrastructure）からサービスプロジェクトは参照できず、契約 DTO
+// （Platform.Shared.Contracts）は値域を持たない（既定値のリテラル "read" だけを持つ）。
+// したがってここに写しを置く（GraphService の GraphAccessAction と同じ形・同じ理由）。
+//
+// **綴りがずれても緩む向きには壊れない** —— /authz/scope は値域外を 400 で返し、
+// BffScopeResolver は非 2xx を null（deny-by-default）へ縮退させる。
+public static class BffScopeAction
+{
+    // 閲覧・検索・属性値照会（存在秘匿つきの読み取り経路）。
+    public const string Read = "read";
+
+    // 作成・更新・削除（ADR-0036 D-07: doc.owner ∈ { ${current_user} }）。
+    public const string Write = "write";
 }
