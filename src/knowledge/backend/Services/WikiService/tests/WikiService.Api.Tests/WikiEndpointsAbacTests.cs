@@ -223,6 +223,108 @@ public class WikiEndpointsAbacTests(TestWebApplicationFactory factory)
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    // ---- FR-13, FR-19, ADR-0046, #449 退行防止: 読み取り経路の `doc_scope=private-note` 否定形 ----
+    //
+    // **同期側（DocumentSyncConsumer）とは別の層である。** ADR-0046 により個人資料は
+    // そもそも Wiki.js へ同期されないので、`WikiPage` に `doc_scope=private-note` の行は
+    // 本来生じない。**それでも読み取り経路で止まることを固定する**のは、#449 の退行防止節が
+    // 「個人資料が Wiki 経路で漏れないこと」を名指しで要求しているためであり、
+    // **同期側の除外が破れたときに読み取り側が二重で止める**（多層防御・[[IADR-0044]] と同じ形）。
+    //
+    // **判定軸が既存の否定形と違う。** 上の #989 系は `owner` 軸、SeedAsync 系は
+    // `confidentiality` 軸であり、**`doc_scope` を軸にした読み取り経路の否定形はここが初出**である。
+    private async Task<(Guid PrivateNoteDoc, Guid OrgDoc)> SeedDocScopePagesAsync()
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WikiDbContext>();
+        db.Pages.RemoveRange(db.Pages);
+        await db.SaveChangesAsync();
+
+        // 個人資料は `doc_scope=private-note` かつ既定で `confidentiality=restricted` を持つ
+        // （計画 05_screens §SC-03「private-note は機密区分の値ではない」・ADR-0036）。
+        var note = WikiPage.CreateFromDocument(Guid.NewGuid(), "個人メモ", "s3://b/note.md",
+            new() { ["doc_scope"] = "private-note", ["confidentiality"] = "restricted" }, []);
+        var org = WikiPage.CreateFromDocument(Guid.NewGuid(), "組織規程", "s3://b/org.md",
+            new() { ["doc_scope"] = "organization", ["confidentiality"] = "internal" }, []);
+        db.Pages.AddRange(note, org);
+        await db.SaveChangesAsync();
+        return (note.DocumentId, org.DocumentId);
+    }
+
+    // 組織文書だけを許すスコープ（`doc_scope` を軸に判定させる）。
+    private static AccessScopeResponse OrganizationOnlyScope() =>
+        new("u", [new AttributeFilter("doc_scope", ["organization"])], Granted: true);
+
+    // 否定形: `doc_scope=private-note` のページは一覧に現れない。
+    [Fact]
+    public async Task GetPages_ExcludesPrivateNote_ByDocScope()
+    {
+        var (noteDoc, _) = await SeedDocScopePagesAsync();
+        factory.Scope = OrganizationOnlyScope();
+
+        var pages = await factory.CreateClient().GetFromJsonAsync<List<PageSummary>>(
+            "/wiki/pages", TestContext.Current.CancellationToken);
+
+        pages!.Select(p => p.DocumentId).Should().NotContain(noteDoc,
+            "ADR-0046: 個人資料は Wiki 経路に現れない");
+    }
+
+    // 🔴 陽性対照（本命）: 同じスコープで組織文書は見える。
+    //
+    // **これが無いと「常に空を返す実装」「doc_scope を一切見ない実装」が上の否定形を通す。**
+    // 同期側テスト（DocumentSyncConsumerTests）が採っている作法と同じ。
+    [Fact]
+    public async Task GetPages_StillShowsOrganizationDocument_UnderSameScope()
+    {
+        var (_, orgDoc) = await SeedDocScopePagesAsync();
+        factory.Scope = OrganizationOnlyScope();
+
+        var pages = await factory.CreateClient().GetFromJsonAsync<List<PageSummary>>(
+            "/wiki/pages", TestContext.Current.CancellationToken);
+
+        pages!.Select(p => p.DocumentId).Should().ContainSingle()
+            .Which.Should().Be(orgDoc, "判定軸が効いていることの証明（否定形だけでは示せない）");
+    }
+
+    // 否定形（個別）: `doc_scope=private-note` のページは本文も 404（存在秘匿・IADR-0009）。
+    [Fact]
+    public async Task GetPageByDoc_Returns404_ForPrivateNote_ByDocScope()
+    {
+        var (noteDoc, _) = await SeedDocScopePagesAsync();
+        factory.Scope = OrganizationOnlyScope();
+
+        var response = await factory.CreateClient().GetAsync(
+            $"/wiki/pages/by-doc/{noteDoc}", TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // 否定形（slug）: slug を直接引いても 404。**by-doc だけ塞いで slug が空いている**退行を止める。
+    [Fact]
+    public async Task GetPageBySlug_Returns404_ForPrivateNote_ByDocScope()
+    {
+        await SeedDocScopePagesAsync();
+        factory.Scope = OrganizationOnlyScope();
+
+        var response = await factory.CreateClient().GetAsync(
+            $"/wiki/pages/{ResolveSlug("個人メモ")}", TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // 🔴 陽性対照（個別・上の 2 本と対）: 同じスコープで組織文書は 200 で読める。
+    [Fact]
+    public async Task GetPageByDoc_Returns200_ForOrganizationDocument_ByDocScope()
+    {
+        var (_, orgDoc) = await SeedDocScopePagesAsync();
+        factory.Scope = OrganizationOnlyScope();
+
+        var response = await factory.CreateClient().GetAsync(
+            $"/wiki/pages/by-doc/{orgDoc}", TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
     private async Task ArchiveAsync(Guid documentId)
     {
         using var scope = factory.Services.CreateScope();
