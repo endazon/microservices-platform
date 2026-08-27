@@ -3,15 +3,15 @@ title: 引継資料 — issue 消化フェーズ運用の現在地と、繰り�
 type: how-to
 status: active
 created: 2026-08-08
-updated: 2026-08-23
+updated: 2026-08-28
 author: Claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, FR-09, FR-12, FR-19, FR-20, FR-21, SC-05, SC-07, SC-09]
 adrs: [ADR-0056, ADR-0057, ADR-0058]
-iadrs: [IADR-0061, IADR-0277, IADR-0278, IADR-0115, IADR-0116, IADR-0120, IADR-0139, IADR-0140, IADR-0141, IADR-0144, IADR-0145, IADR-0146, IADR-0147, IADR-0180, IADR-0204]
-specs: [20260808_session-handoff, 20260815_issue-454_open-issue-stocktake-and-waves, 20260823_planning-adr-0056-0058-followup]
-issues: [#454, #555, #556, #562, #572, #612, #614, #617, #618, #701, #743, #752, #779, #780, #781, #782, #783, #791, #836, planning#380, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#479]
+iadrs: [IADR-0061, IADR-0277, IADR-0278, IADR-0115, IADR-0116, IADR-0120, IADR-0139, IADR-0140, IADR-0141, IADR-0144, IADR-0145, IADR-0146, IADR-0147, IADR-0180, IADR-0204, IADR-0279]
+specs: [20260808_session-handoff, 20260815_issue-454_open-issue-stocktake-and-waves, 20260823_planning-adr-0056-0058-followup, 20260827_all-issues_wave-plan]
+issues: [#454, #555, #556, #562, #572, #612, #614, #617, #618, #701, #743, #752, #779, #780, #781, #782, #783, #791, #836, #1018, #1021, planning#380, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#479]
 -->
 
 # 引継資料 — issue 消化フェーズ運用の現在地
@@ -186,6 +186,23 @@ issues: [#454, #555, #556, #562, #572, #612, #614, #617, #618, #701, #743, #752,
 
 > **環流は「何がどう書かれているか」だけでなく「何が評価されていないか」まで書く。**
 > 前者だけだと、計画側は「確かめたうえでそう選んだ」と読む。
+
+### ［2026-08-28］全 open issue（72 件）一括対応（進行中・波方式）
+
+**利用者の依頼で open issue 全件を波方式で消化中である。** 束ねは、**波単位の積み上げ PR を
+第 3 の限定例外として認める実装 ADR を新設し、利用者裁定を根拠として記録したうえで**行っている
+—— 2026-08-23 節の 🔴（記録された逸脱）は**この形で条文化して解消した**。条文の正はその実装 ADR、
+判定・波割り・除外理由の正は統括の作業仕様書（層 a 相当・`.ai-context/specs/` の 2026-08-27 付）、
+**生きた状態は GitHub（積み上げ PR と各 issue）が正**である。ここへ転記しない。
+
+この運用で新たに実測した、引き継ぐ人が踏みやすい 3 点:
+
+- **バックエンドの実走は「SDK が無い」ではなく「PATH に無い」ことがある。** §4.5 のとおり
+  諦める前に実測する（本環境では導入済み SDK を PATH へ通すだけで build / test / format が全部動いた）。
+- **`scripts.repo.test.js` は companion であり、単体起動では 1 件も検査せず fail する。**
+  §4 の表のとおり `scripts.test.js` 経由（`REQUIRE_REPO_TESTS=1`）で走らせる。
+- **コンテナ再起動でサブエージェントの worktree が消えることがある。** 成果はブランチに
+  コミットさせておけば cherry-pick で回収できる（実測 2 回）。**未コミットの成果は消える。**
 
 もう 1 つ、**この波で 2 度目に踏んだ罠**（型 1 の派生）:
 
