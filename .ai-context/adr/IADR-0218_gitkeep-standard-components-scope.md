@@ -11,10 +11,11 @@ related_ids:
   - IADR-0116
   - IADR-0117
   - IADR-0219
+  - IADR-0280
   - NFR
 author: implementation-agent
 created: 2026-08-17
-updated: 2026-08-17
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/06_technical/12_backend-application-stack.md (§規範性・粒度・置き場。2026-08-04 確定・fixed)
   - planning:projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (ライブラリ標準・選定基準 1〜4)
@@ -356,9 +357,22 @@ plan_refs:
 >   [IADR-0117](./IADR-0117_platform-shared-kernel-placement.md) フォローアップ 2 も同時に決着している（**未達ではなく、提案が却下されての決着**）。
 > - **フォローアップ 3**（`src/ai-stock-trading` への追随）は有効なまま。件数だけが増える。
 
+> **［2026-08-28 追記 / IADR-0280］「枠のみ設置（`.gitkeep`）」という適用形そのものが改まった。**
+> オーナー裁定（2026-08-27。planning#490 に環流済み）により、8 要素標準は
+> **実プロジェクトとして実体化する**ことになった
+> （[IADR-0280](./IADR-0280_eight-element-standard-materialization.md)）。
+> `Application` / `Domain` / `Infrastructure` / `Contracts` の `.gitkeep` は実体の `.csproj` に
+> 置き換わり、**`.gitkeep` の枠が残るのは `SharedKernel` だけ**である（同 決定 5。
+> 枠が無かった McpServer / NotificationService へも `SharedKernel` の枠を新設した）。
+> 本 IADR の決定 3-3（フォルダ名 `<Name>.<要素>`）はそのまま `.csproj` の名前として生き、
+> 決定 4（機械検査は置かない）の「事故の型」は、実体化後は
+> `check-unit-dependencies.js` 規則 3（レイヤ依存方向）が別の面から覆う。
+
 ## 関連
 
 - Supersedes: なし
 - Superseded by: なし（**[IADR-0219](./IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) が
   §決定 1・2・3 を部分改定した。** 決定 4（機械検査は置かない）は無傷であり、決定 2 の結論
   （`Api/.gitkeep` を置かない）と決定 3-2〜3-5・3-7 も引き続き有効なため `Accepted` を維持する）
+- Amended by: [IADR-0280](./IADR-0280_eight-element-standard-materialization.md)（2026-08-28。
+  適用形を「`.gitkeep` の枠」から「実プロジェクトの実体化」へ改める。`SharedKernel` の枠のみ存続）

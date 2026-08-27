@@ -6,9 +6,10 @@ related_ids:
   - FR-14
   - FR-15
   - ADR-0018
+  - IADR-0280
 author: claude
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md
   - planning:projects/microservices-platform/06_technical/10_composability-design.md
@@ -44,6 +45,19 @@ ADR-0018 はシステムを固定（土台: 同期 API 経路・ABAC・メッセ
 3. 可変部分を別アセンブリ（`<Service>.Composable.csproj` 等）へ物理分離する
    - 分離は最も強いが、プロジェクト数が倍増し過剰分割（計画方針と不整合）。プラグイン化の設計は
      宣言的構成（後続 issue）で決めるべきで、現時点でのアセンブリ分割は先取りが過ぎる。
+
+> **［2026-08-28 追記 / IADR-0280］選択肢 3 の却下は改まった。**
+> オーナー裁定（2026-08-27。planning#490 に環流済み）により、計画 8 要素標準
+> （`12_backend-application-stack`・fixed）を**実プロジェクトとして実体化する**ことが決まった
+> （[IADR-0280](IADR-0280_eight-element-standard-materialization.md)）。選択肢 3 を退けた理由
+> 「プロジェクト数が倍増し過剰分割（計画方針と不整合）」は、**計画の側が 8 要素の物理構成を
+> 標準と定めている**以上、計画方針との整合を逆に欠いていた（Domain 層の外部依存ゼロは
+> 同一アセンブリ内のフォルダ分けでは機械的に担保できない）。
+> **改まるのはアセンブリ分割の可否だけである。** 本 IADR の Foundation / Composable の区分・
+> 名前空間はフォルダ階層に一致・Foundation → Composable 参照禁止・合成は `Program.cs` のみ、
+> はいずれも存続し、区分は各層プロジェクト内の第 1 階層フォルダとして温存される
+> （配置写像は IADR-0280 決定 2 を正とする。`Migrations/` の例外は DbContext の
+> Infrastructure 移動に随伴して同プロジェクトの `Migrations/` へ移る —— 同 決定 4）。
 
 ## 決定
 
@@ -110,3 +124,6 @@ ADR-0018 はシステムを固定（土台: 同期 API 経路・ABAC・メッセ
 - Superseded by: [IADR-0056](IADR-0056_repo-unit-structure-platform-knowledge.md)（「サブモジュールとして追加する場合」の節のみ。
   サブモジュール境界はサービス単位 → ユニット単位（`src/<unit>`）へ変更。Foundation/Composable 規約・
   サービスユニット内レイアウトは本 ADR のまま存続）
+- Amended by: [IADR-0280](IADR-0280_eight-element-standard-materialization.md)（2026-08-28。
+  選択肢 3「別アセンブリ分離」の却下を改め、8 要素標準を実プロジェクトとして実体化する。
+  Foundation/Composable 区分と参照禁止は層内フォルダとして存続）

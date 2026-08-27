@@ -10,10 +10,11 @@ related_ids:
   - IADR-0117
   - IADR-0196
   - IADR-0218
+  - IADR-0280
   - NFR
 author: implementation-agent
 created: 2026-08-17
-updated: 2026-08-17
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/06_technical/12_backend-application-stack.md (§SharedKernel の粒度・Worker の追加。2026-08-17 確定・fixed。pin 767a9d48)
   - planning:projects/microservices-platform/07_adr/ADR-0041_result-type-external-library.md (Result 型の封じ込め。配置には言及しない)
@@ -254,6 +255,14 @@ Tests          # Unit / Integration
   3. **`Platform.Shared.Kernel` の実体は依然として未作成である**（`IADR-0117` フォローアップ 1）。
      本 IADR は置き場を増やすだけで、実体作成の時期は変えない。
 
+> **［2026-08-28 追記 / IADR-0280］決定 3 の適用形（`.gitkeep` の枠）は改まった。**
+> オーナー裁定（2026-08-27。planning#490 に環流済み）により 8 要素は**実プロジェクトとして
+> 実体化**され（[IADR-0280](./IADR-0280_eight-element-standard-materialization.md)）、
+> `Application` / `Domain` / `Infrastructure` / `Contracts` の `.gitkeep` は `.csproj` に置き換わった。
+> **`.gitkeep` の枠が残るのは `SharedKernel` のみ**（12 → 14 件。枠が無かった
+> McpServer / NotificationService への新設を含む —— 同 決定 5）。
+> **決定 1（粒度・併存・置き分け）と決定 2（8 要素・`Api`/`Worker` 排他）は無傷である。**
+
 ## 関連
 
 - Supersedes: なし（**部分改定が 2 件**。
@@ -263,3 +272,5 @@ Tests          # Unit / Integration
   [`IADR-0218`](./IADR-0218_gitkeep-standard-components-scope.md) は決定 1・2・3 を改め、
   決定 4（機械検査は置かない）は無傷であるため `Accepted` を維持する）
 - Superseded by: なし
+- Amended by: [IADR-0280](./IADR-0280_eight-element-standard-materialization.md)（2026-08-28。
+  決定 3 の適用形を「`.gitkeep` の枠」から「実プロジェクトの実体化」へ改める。決定 1・2 は無傷）
