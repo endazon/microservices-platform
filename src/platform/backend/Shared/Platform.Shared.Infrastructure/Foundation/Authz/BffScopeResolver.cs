@@ -10,7 +10,7 @@ namespace Platform.Shared.Infrastructure.Foundation.Authz;
 // 場合は null（＝閲覧可能なし）へ縮退する。呼び出し側は null を「空応答」または「404 秘匿」へ写す。
 public static class BffScopeResolver
 {
-    // 利用者の許可スコープを解決する。許可（Granted=true）のときのみ AccessScope を返し、
+    // 利用者の許可スコープを解決する。許可（Granted=true）のときのみ BffAccessScope を返し、
     // それ以外（未マッチ・認可サービス不調）は null を返す。
     //
     // FR-05, FR-06, ADR-0036 D-07, IADR-0272 決定 4 (#1010): **action は既定値の無い必須引数である。**
@@ -18,7 +18,11 @@ public static class BffScopeResolver
     // 効いていた欠陥（#993 の platform 共通版）。既定値を残すと、新しい経路を足した人が書き忘れる
     // ことで認可が緩む。既定値を外せばアクションの選択がコンパイラに強制される。
     // 読み取りは BffScopeAction.Read、作成・更新・削除は BffScopeAction.Write を渡す。
-    public static async Task<AccessScope?> ResolveAsync(
+    //
+    // FR-19, ADR-0036, IADR-0253 決定 1（段 3・BFF の分岐対応 / #989）: 応答の Branches
+    // （名前つき分岐）をそのまま運ぶ。契約型 AccessScope は Branches を持たないため、
+    // BFF 内の判定には BffAccessScope を用い、未移行の後段へ渡すときだけ ToContractScope() で写す。
+    public static async Task<BffAccessScope?> ResolveAsync(
         IHttpClientFactory httpFactory, HttpContext http, string action, CancellationToken ct)
     {
         var userId = http.User.Identity?.Name ?? "anonymous";
@@ -37,7 +41,7 @@ public static class BffScopeResolver
             if (resolved is not { Granted: true })
                 return null;
 
-            return new AccessScope(resolved.AllowedFilters, resolved.Granted);
+            return new BffAccessScope(resolved.AllowedFilters, resolved.Granted, resolved.Branches);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
@@ -59,11 +63,36 @@ public static class BffScopeResolver
 
     // FR-05: 単一文書の属性がスコープに合致するか判定する（AbacEvaluator と同一意味論）。
     // フィルタ間は AND、値集合内は OR。Filters が空かつ GrantsAccess=true は「条件なしで全件許可」。
-    public static bool Matches(IReadOnlyDictionary<string, string> attributes, AccessScope scope)
+    //
+    // FR-19, ADR-0036, ADR-0046 D-06 部品 3, IADR-0253 決定 1（段 3・BFF の分岐対応 / #989）:
+    //   Branches が 1 件以上あれば **いずれかの分岐のフィルタをすべて満たす文書が一致**
+    //   （分岐内 AND・分岐間 OR）。1 分岐 = マッチした 1 ポリシーの文書条件であり、計画の read 規則
+    //   「静的属性ベース ∨ 所有者ベース ∨ 共有先ベース」の選言を写す（WikiService の
+    //   AbacPageFilter と同一意味論）。分岐のフィルタが空 =（そのポリシーの範囲で）全件許可。
+    //   Branches が空/null なら従来どおり Filters で評価する（後方互換。未移行の応答）。
+    //   ${current_user} は認可サービスが分岐の中で束縛済みであり、ここでは解釈しない
+    //   （IADR-0253 決定 3 —— 述語が解釈すると認可の判断が 2 箇所へ散る）。
+    //
+    // 🔴 **分岐をキー単位 union で 1 本に潰す形へ戻してはならない**（IADR-0253 決定 2 の
+    //   2026-08-23 追記）。union は「どのポリシー単独も許可しない値の混成」を許す
+    //   （A=internal×hr と B=public×sales から internal×sales が通る）—— 漏れる向きの乖離である。
+    public static bool Matches(IReadOnlyDictionary<string, string> attributes, BffAccessScope scope)
     {
         if (!scope.GrantsAccess)
             return false;
-        foreach (var filter in scope.Filters)
+
+        // #989 段 3: 分岐があれば選言で評価する（分岐間 OR・分岐内 AND）。
+        if (scope.Branches is { Count: > 0 })
+            return scope.Branches.Any(b => MatchesAll(attributes, b.Filters));
+
+        return MatchesAll(attributes, scope.Filters);
+    }
+
+    // フィルタ間 AND、値集合内 OR。属性キーを持たない文書は不一致（欠落は安全側に倒す）。
+    private static bool MatchesAll(
+        IReadOnlyDictionary<string, string> attributes, List<AttributeFilter> filters)
+    {
+        foreach (var filter in filters)
         {
             if (!attributes.TryGetValue(filter.Key, out var value))
                 return false;
@@ -72,6 +101,23 @@ public static class BffScopeResolver
         }
         return true;
     }
+}
+
+// FR-05, FR-19, IADR-0253 決定 1・2（段 3 / #989）: BFF 内の判定に用いる解決済みスコープ。
+// 契約型 AccessScope（Filters ＋ GrantsAccess）は検索契約（SearchRequest 等）に埋め込まれて
+// 後段へ渡るため形を変えられない。Branches を BFF まで運ぶための資料型をここに置く。
+//
+// Filters は従来の算出値（キー単位 union の連言）そのまま —— 値も意味も変えない（IADR-0253 決定 2）。
+// 後段（RetrievalService 等・未移行）へは ToContractScope() で写して渡す。**Branches はそこで
+// 落ちる**＝未移行の後段は従来どおり Filters で評価する（段 1・2 と同じ後方互換の扱い。
+// 後段の分岐対応は IADR-0253 段 3 の残り〔RetrievalService / AiAnalysisService〕の射程）。
+public sealed record BffAccessScope(
+    List<AttributeFilter> Filters,
+    bool GrantsAccess,
+    List<AccessScopeBranch>? Branches = null)
+{
+    // 未移行の後段へ渡す契約型への写し（Branches は運ばれない）。
+    public AccessScope ToContractScope() => new(Filters, GrantsAccess);
 }
 
 // FR-05, FR-21, ADR-0036 D-07, IADR-0253 決定 5, IADR-0272 決定 4 (#1010):

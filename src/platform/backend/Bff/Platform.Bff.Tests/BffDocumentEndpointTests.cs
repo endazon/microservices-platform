@@ -19,7 +19,42 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
         // 既定状態へ戻す（テスト間の状態リーク防止）。
         _factory.SearchScopeGranted = true;
         _factory.ScopeFilters = [];
+        _factory.ScopeBranches = null;
         _factory.DocumentStatusCode = HttpStatusCode.OK;
+    }
+
+    // ── #989 段 3（FR-19, IADR-0253 決定 1）: BFF の実 HTTP 経路でも分岐（Branches）が効く ──
+    //
+    // 応答の AllowedFilters（従来の連言）は secret のみ＝対象文書（internal）を許可しないが、
+    // 分岐「組織文書」（confidentiality ∈ {internal}）が許可する → 200。
+    // **分岐を無視して従来評価へ戻す退行はこのテストが落とす**（従来評価なら 404 になる）。
+    [Fact]
+    public async Task GetDetail_WhenBranchAllowsButLegacyFiltersDeny_ReturnsDocument()
+    {
+        _factory.ScopeFilters = [new AttributeFilter("confidentiality", ["secret"])];
+        _factory.ScopeBranches =
+        [
+            new AccessScopeBranch("個人資料", [new AttributeFilter("owner", ["tester"])]),
+            new AccessScopeBranch("組織文書", [new AttributeFilter("confidentiality", ["internal"])]),
+        ];
+
+        var resp = await _factory.CreateClient().GetAsync(DetailPath);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // 陰性対照: 分岐がどれも合致しなければ、AllowedFilters（空＝全件許可の形）でも 404。
+    // **分岐がある応答では分岐が正であり、従来値へフォールバックしない**ことを固定する。
+    [Fact]
+    public async Task GetDetail_WhenNoBranchMatches_Returns404_EvenIfLegacyFiltersWouldAllow()
+    {
+        _factory.ScopeFilters = []; // 従来評価なら「条件なしで全件許可」
+        _factory.ScopeBranches =
+            [new AccessScopeBranch("個人資料", [new AttributeFilter("owner", ["tester"])])];
+
+        var resp = await _factory.CreateClient().GetAsync(DetailPath);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     private static string DetailPath => $"/bff/documents/{BffTestFactory.StubDocumentId}";

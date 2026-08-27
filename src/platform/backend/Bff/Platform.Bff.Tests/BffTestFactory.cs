@@ -61,6 +61,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // #1010: /authz/scope へ発行された action の列（読み取り経路 read / 書き込み経路 write の観測点）。
     // **テスト間で共有される**（IClassFixture）ため、観測する側が呼ぶ前に Clear() すること。
     public List<string> ScopeActionsRequested { get; } = [];
+    // FR-19, IADR-0253 段 3 (#989): read スコープ応答に載せる名前つき分岐（既定 null＝旧形式の応答）。
+    public List<AccessScopeBranch>? ScopeBranches { get; set; }
     // FR-03, SC-02, #532: BFF が後段へ渡した並び順（縮退させずそのまま運ぶことを固定するため）。
     public string? LastSearchSortBy { get; private set; }
     // FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会。後段が返す候補と、BFF が渡した本文。
@@ -530,7 +532,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
 
             var scope = action == "write"
                 ? new AccessScopeResponse("tester", owner.WriteScopeFilters, owner.WriteScopeGranted)
-                : new AccessScopeResponse("tester", owner.ScopeFilters, owner.SearchScopeGranted);
+                : new AccessScopeResponse("tester", owner.ScopeFilters, owner.SearchScopeGranted,
+                    owner.ScopeBranches);
             return Json(HttpStatusCode.OK, scope);
         }
 

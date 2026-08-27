@@ -223,7 +223,7 @@ public static class DocumentBffEndpoints
     // 持ち、SC-05 は組織文書の管理画面である。所有者判定をここへ持ち込むと、判定軸が 2 本になり
     // 片方が壊れても気付けない。**判定は集合帰属で書く**（「organization でない」ではない ——
     // 属性を持たない既存文書が全部 個人資料 に化ける。ADR-0054 決定 5）。
-    private static bool IsManageable(DocumentDto doc, AccessScope scope)
+    private static bool IsManageable(DocumentDto doc, BffAccessScope scope)
         => BffScopeResolver.Matches(doc.Attributes, scope) && !IsPrivateNote(doc);
 
     // `DocumentAttributes`（DocumentService）はユニット外から参照できないため、判定を持つ
