@@ -10,7 +10,7 @@ author: Claude
 ids: [FR-19, FR-20, FR-22, SC-10, UC-11]
 adrs: [ADR-0037, ADR-0045, ADR-0046]
 iadrs: [IADR-0009, IADR-0056, IADR-0119, IADR-0121, IADR-0125, IADR-0132, IADR-0142, IADR-0215, IADR-0267]
-specs: [20260816_issue-600_fr22-in-app-notifications, 20260823_issue-600_notification-service-backend]
+specs: [20260816_issue-600_fr22-in-app-notifications, 20260823_issue-600_notification-service-backend, 20260828_issue-451b_notification-ingress]
 issues: [#451, #600]
 -->
 

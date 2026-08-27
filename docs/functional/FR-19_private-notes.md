@@ -10,7 +10,7 @@ author: Claude
 ids: [FR-19, FR-20, FR-21, FR-22, UC-11, SC-19, SC-20]
 adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0056, ADR-0058]
 iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278]
-specs: [20260823_issue-451_private-note-obsidian-sync-core]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress]
 issues: [#451, #516, #600, #986, planning#472, planning#475]
 -->
 
