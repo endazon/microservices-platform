@@ -101,6 +101,19 @@ fi
 kubectl create configmap keycloak-realms -n "$INFRA_NS" "${realm_args[@]}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
+# IADR-0261 (#438): realm.json の loginTheme/accountTheme=platform を解決するテーマ実体
+# （deploy/keycloak/themes/platform/）を ConfigMap 化する。deploy/local/infra/keycloak.yaml 側は
+# `optional: true` の fail-safe 参照のため、この ConfigMap が無くても Pod は起動するが、その場合
+# ログイン画面が「テーマが見つからない」500 になる（従来は deploy/local/README.md「手動でステップ
+# 実行する場合」の手動コマンドが必須だった。本行で自動配線し、手動手順の必要を無くす）。
+# キー名・items の対応は keycloak.yaml のマウント定義と一致させる（単一情報源はテーマ実ファイル）。
+kubectl create configmap keycloak-theme-platform -n "$INFRA_NS" \
+  --from-file=login-theme-properties=deploy/keycloak/themes/platform/login/theme.properties \
+  --from-file=login-css=deploy/keycloak/themes/platform/login/resources/css/platform.css \
+  --from-file=account-theme-properties=deploy/keycloak/themes/platform/account/theme.properties \
+  --from-file=account-css=deploy/keycloak/themes/platform/account/resources/css/platform.css \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 echo "==> [4/7] apply in-cluster infra"
 # IADR-0082 (#324) / IADR-0210 (#787): PERSIST=1 で永続化オーバーレイ（Keycloak/Postgres/Qdrant を
 # local-path PVC 化）を選ぶ。

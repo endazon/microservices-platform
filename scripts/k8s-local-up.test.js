@@ -316,6 +316,57 @@ ok('既定: llm-provider-credentials が手動 apply される（ESO 未設定�
   );
 });
 
+// --- keycloak-theme-platform ConfigMap の自動配線（IADR-0261 / #438 残作業） -----
+// 従来は deploy/local/README.md「手動でステップ実行する場合」の手動コマンドが必須だった
+// （keycloak-theme-platform ConfigMap が無いと deploy/local/infra/keycloak.yaml の optional 参照が
+// 解決できず、loginTheme/accountTheme=platform を Keycloak が見つけられない＝ログイン画面が 500）。
+// [3/7] の realm ConfigMap（keycloak-realms）と同じ --from-file + --dry-run=client|apply の
+// 冪等パターンで、opt-in ではなく既定実行として自動生成する。
+
+ok('既定: keycloak-theme-platform ConfigMap が [3/7] で自動生成される（キー名が keycloak.yaml の items と対応）', () => {
+  const line = DEFAULT.lines.find((l) => l.startsWith('kubectl create configmap keycloak-theme-platform '));
+  assert.ok(line, 'keycloak-theme-platform の configmap create が発行されない');
+  for (const kv of [
+    'login-theme-properties=deploy/keycloak/themes/platform/login/theme.properties',
+    'login-css=deploy/keycloak/themes/platform/login/resources/css/platform.css',
+    'account-theme-properties=deploy/keycloak/themes/platform/account/theme.properties',
+    'account-css=deploy/keycloak/themes/platform/account/resources/css/platform.css',
+  ]) {
+    assert.ok(line.includes(`--from-file=${kv}`), `--from-file=${kv} が無い: ${line}`);
+  }
+});
+
+ok('既定: keycloak-theme-platform は realm ConfigMap と同型の dry-run|apply 冪等パターンで適用される', () => {
+  const createIdx = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create configmap keycloak-theme-platform '));
+  assert.ok(createIdx >= 0, 'keycloak-theme-platform の create 行が見つからない');
+  assert.ok(DEFAULT.lines[createIdx].includes('--dry-run=client -o yaml'), 'dry-run=client -o yaml が無い');
+  assert.strictEqual(
+    DEFAULT.lines[createIdx + 1],
+    'kubectl apply -f -',
+    `create の直後に apply -f - が続かない（パイプ先が採取されていない）: ${DEFAULT.lines[createIdx + 1]}`,
+  );
+});
+
+ok('既定: keycloak-theme-platform ConfigMap は keycloak-realms の直後・infra kustomize 適用より前に作られる', () => {
+  const realmIdx = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create configmap keycloak-realms '));
+  const themeIdx = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create configmap keycloak-theme-platform '));
+  const infraApplyIdx = DEFAULT.lines.findIndex((l) => l === 'kubectl apply -k deploy/local/infra');
+  assert.ok(realmIdx >= 0 && themeIdx >= 0 && infraApplyIdx >= 0, '3 行のいずれかが見つからない');
+  assert.ok(realmIdx < themeIdx, 'keycloak-realms より前に keycloak-theme-platform が作られている');
+  assert.ok(
+    themeIdx < infraApplyIdx,
+    'ConfigMap 作成が Deployment 適用（apply -k）より後になっている（初回起動でテーマが解決されない）',
+  );
+});
+
+ok('deploy/local/infra/keycloak.yaml: theme ConfigMap の items キーが k8s-local-up.sh の生成キーと一致する', () => {
+  const infraKc = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra/keycloak.yaml'), 'utf8');
+  for (const key of ['login-theme-properties', 'login-css', 'account-theme-properties', 'account-css']) {
+    assert.ok(infraKc.includes(`key: ${key}`), `keycloak.yaml の items に key: ${key} が無い`);
+  }
+  assert.ok(infraKc.includes('name: keycloak-theme-platform'), 'keycloak.yaml が参照する ConfigMap 名が keycloak-theme-platform でない');
+});
+
 // --- apiserver OIDC フラグ不付与の回帰固定（IADR-0105 / #399） -----------------
 // k8s 1.30+ は --oidc-* を jwt[0] へ変換し issuer.url に https を強制するため、経路B の http issuer
 // （KC_HOSTNAME_URL=http://keycloak:8080）でフラグを付けると apiserver が起動できずクラスタが停止する。
