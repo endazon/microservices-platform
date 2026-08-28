@@ -3,7 +3,7 @@ title: 文書・版履歴（Document / DocumentVersion） データ仕様書
 type: data-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-21
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
@@ -11,7 +11,7 @@ ids: [FR-06, FR-09, FR-12, SC-05, SC-09, UC-04]
 adrs: [ADR-0002, ADR-0014]
 iadrs: [IADR-0001, IADR-0152, IADR-0153]
 specs: []
-issues: [#634, #635, #637]
+issues: [#634, #635, #637, #1011, planning#473]
 -->
 
 # データ仕様書: 文書・版履歴（Document / DocumentVersion）
@@ -36,7 +36,9 @@ Document はカタログ化された正規化文書の集約ルートである�
 **表示名への解決は `DocumentEndpoints`（`TagResolver`）が行い、DTO・イベントは従来どおり表示名を運ぶ**（同判断。下流サービスと画面の契約は変わらない）。
 本文実体は保持せず、`MarkdownUri` / `OriginalUri` によりオブジェクトストレージを参照する。
 
-DocumentVersion は Document 集約配下の**確定版スナップショット**で、作成・各更新のたびに現在状態を追記する append-only コレクションである（`Snapshot()`）。任意時点のタイトル・状態・本文 URI・メタデータを「DocumentId ＋版番号」で再構成できる。
+DocumentVersion は Document 集約配下の**確定版スナップショット**で、作成・各更新のたびに現在状態を追記する append-only コレクションである（`Snapshot()`）。「DocumentId ＋版番号」で再構成できるのは**メタデータ（タイトル・状態・属性・タグ・変更メモ）だけ**である。
+
+**［2026-08-28 追記 / #1011］版ごとの本文は保持しない。** 本文のオブジェクトキーは文書 ID だけで決まり（`documents/{id}/body.md`）、再投入は同じキーを上書きする。参照 URI（`storage://<bucket>/<key>`）は versionId を持たず、読み取り経路も versionId を受けないため、**「その版の本文」を指せる値が存在しない**。これは欠陥ではなく計画と整合する —— バージョン管理の射程は版の作成・一覧・取得までで、版の復元は含まない（利用者裁定 2026-08-23）。**API の版応答は本文の参照を返さない**（`DocumentVersionDto` から削除済み）。
 
 ## エンティティ定義
 
@@ -76,7 +78,7 @@ DocumentVersion は Document 集約配下の**確定版スナップショット*
 | Version | int (integer) | ○ | `(DocumentId, Version)` で一意 | スナップショット時点の版番号 |
 | Title | string (varchar(500)) | ○ | 最大長 500 | 版のタイトル |
 | Status | string (varchar(50)) | ○ | 最大長 50 | 版の状態 |
-| MarkdownUri | string? (varchar(2048)) | - | 最大長 2048 | 版時点の本文 URI |
+| MarkdownUri | string? (varchar(2048)) | - | 最大長 2048 | スナップショット時点で**文書が指していた**本文 URI。キーが文書 ID で固定のため**現行版の本文と同じ値になる**。**API 応答には出さない**（#1011。版ごとの本文は保持しない） |
 | Attributes | Dictionary&lt;string,string&gt; (jsonb) | ○ | NULL 不可。防御的コピーで保持 | 版時点の ABAC 属性 |
 | Tags | List&lt;Guid&gt; (jsonb) | ○ | NULL 不可。要素は `Tags.Id` を指す | 版時点のタグの**識別子** |
 | ChangeNote | string? (varchar(500)) | - | 最大長 500 | 変更理由（例: `created`, `normalized`, `published`, `updated`, `metadata-updated`, `re-normalized`） |

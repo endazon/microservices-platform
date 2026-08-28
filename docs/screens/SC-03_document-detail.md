@@ -3,7 +3,7 @@ title: 文書詳細／プレビュー 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-23
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
@@ -11,7 +11,7 @@ ids: [FR-05, FR-06, FR-12, FR-17, FR-18, FR-19, FR-20, FR-21, SC-01, SC-02, SC-0
 adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0035]
 iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0121, IADR-0124, IADR-0126]
 specs: [20260804_issue-502_sc01-03-search-flow]
-issues: [#12, #452, #490, #502, #519, #541, #553, #586, planning#197, planning#237, planning#244]
+issues: [#12, #452, #490, #502, #519, #541, #553, #586, #1011, planning#197, planning#237, planning#244, planning#473]
 -->
 
 # 画面仕様書: 文書詳細／プレビュー
@@ -143,7 +143,9 @@ hi-fi モックの左レールにも「文書詳細」がある。しかし**本
 
 - `DocumentDto = { id, title, status, markdownUri?, version, attributes{}, tags[], createdAt, updatedAt }`
 - `DocumentContentDto = { id, title, markdown, sourceUri? }`（ABAC 判定後にオブジェクトストレージから取得。未配備時はプレースホルダ本文）
-- `DocumentVersionDto = { documentId, version, title, status, markdownUri?, attributes{}, tags[], changeNote?, createdAt }`
+- `DocumentVersionDto = { documentId, version, title, status, attributes{}, tags[], changeNote?, createdAt }`
+  - **本文の参照は持たない**（#1011）。版ごとの本文は保持されておらず、「その版の本文」を指せる値が存在しないため、
+    版履歴から本文へ導線を張らない。本文は現行版の `…/content` だけが返す。
 - キャッシュキーは**生成キー**（`['/bff/documents/{id}']` / `[…'/content']` / `[…'/versions']`）。
   「キーは BFF のパスに対応する」という画面のサーバー状態の持ち方の決定 4 の性質はそのまま保たれる。
 - **版履歴は詳細の成功後にだけ取りに行く**（`enabled`）。詳細が 404（秘匿）のときに版履歴だけ叩くのは無駄な往復であり、
