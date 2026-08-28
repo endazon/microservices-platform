@@ -10,8 +10,8 @@ author: Claude
 ids: [FR-05, FR-06, FR-09, FR-12, FR-19, FR-20, FR-21, SC-05, SC-07, SC-09, SC-19, SC-20]
 adrs: [ADR-0056, ADR-0057, ADR-0058]
 iadrs: [IADR-0061, IADR-0277, IADR-0278, IADR-0115, IADR-0116, IADR-0120, IADR-0139, IADR-0140, IADR-0141, IADR-0144, IADR-0145, IADR-0146, IADR-0147, IADR-0180, IADR-0204, IADR-0238, IADR-0279, IADR-0280, IADR-0282, IADR-0286, IADR-0287]
-specs: [20260808_session-handoff, 20260815_issue-454_open-issue-stocktake-and-waves, 20260823_planning-adr-0056-0058-followup, 20260827_all-issues_wave-plan, 20260828_wave2-audit-followup, 20260828_wave3-audit-followup, 20260828_wave4-sweep, 20260828_wave45-vsa-migration]
-issues: [#454, #555, #556, #562, #572, #612, #614, #617, #618, #701, #743, #752, #779, #780, #781, #782, #783, #791, #836, #1018, #1021, #1023, planning#380, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#479]
+specs: [20260808_session-handoff, 20260815_issue-454_open-issue-stocktake-and-waves, 20260823_planning-adr-0056-0058-followup, 20260827_all-issues_wave-plan, 20260828_wave2-audit-followup, 20260828_wave3-audit-followup, 20260828_wave4-sweep, 20260828_wave45-vsa-migration, 20260828_issue-1025_notification-service-deployment]
+issues: [#454, #555, #556, #562, #572, #612, #614, #617, #618, #701, #743, #752, #779, #780, #781, #782, #783, #791, #836, #901, #941, #953, #1011, #1018, #1021, #1023, #1025, #1034, planning#380, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#479]
 -->
 
 # 引継資料 — issue 消化フェーズ運用の現在地
@@ -270,6 +270,11 @@ issues: [#454, #555, #556, #562, #572, #612, #614, #617, #618, #701, #743, #752,
 - **`check-chunk-budget` が `develop` 単独で 1 バイト超過していた**（実測 602250 / 床 602249）。
   表示が `602.25 kB > 602.25 kB（+0.00 kB）` で**同じ値どうしの比較に見える**ため、
   **バイト単位で測るまで自分の PR の失敗と区別できなかった**。base で再現するかを先に確かめること。
+- **集約ゲートの「失敗」は 2 回とも中断だった。** `image-build` / `build-and-test` のような集約ジョブは
+  `BUILD_RESULT` が `cancelled`（後続 push で前の run が打ち切られた）でも「失敗したサービスがある」と表示する。
+  **集約ゲートが赤いときは、まずジョブログの `BUILD_RESULT` を見る** —— `cancelled` なら中断であって壊れていない。
+  必須チェックとしては中断を pass にしない方が正しいので、検査器側は直していない。
+  **短い間隔で push を重ねないこと**（原因はこちら側にある）。
 - **束ねの根拠を PR 本文に書いていなかった。** 波単位の積み上げ PR を認める限定例外は
   **4 条件（W-A〜W-D）**を課しており、そのうち **W-C（issue ↔ コミットの対応表と「閉じない理由」）**が欠けていた。
   AI レビューは例外の存在自体を見落として「規約違反」と判定したが、**その過程で W-C の未充足を正しく炙り出した。**

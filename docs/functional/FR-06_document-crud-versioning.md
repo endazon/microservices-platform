@@ -9,8 +9,8 @@ author: claude
 <!-- trace:
 ids: [FR-06, UC-03]
 adrs: []
-iadrs: []
-specs: []
+iadrs: [IADR-0290]
+specs: [20260828_issue-1011_version-body-contract]
 issues: [#201, #1011, planning#473]
 -->
 
