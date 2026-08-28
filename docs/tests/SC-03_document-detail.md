@@ -3,15 +3,15 @@ title: SC-03 文書詳細／プレビュー テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-21
+updated: 2026-08-29
 author: claude
 ---
 <!-- trace:
-ids: [FR-05, FR-06, FR-12, FR-17, FR-18, SC-03, SC-04, SC-05, SC-06, SC-18, UC-01, UC-02, UC-07]
-adrs: [ADR-0031]
-iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0126]
-specs: [20260804_issue-502_sc01-03-search-flow]
-issues: []
+ids: [FR-05, FR-06, FR-12, FR-17, FR-18, SC-03, SC-04, SC-05, SC-06, SC-18, SC-21, UC-01, UC-02, UC-07, UC-10]
+adrs: [ADR-0031, ADR-0033, ADR-0034]
+iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0126, IADR-0272, IADR-0276, IADR-0300]
+specs: [20260804_issue-502_sc01-03-search-flow, 20260829_issue-450_ai-suggestion-approval]
+issues: [#450]
 -->
 
 # テスト仕様書: 文書詳細／プレビュー
@@ -35,10 +35,16 @@ issues: []
 | **AI 分析 例外**（対象が権限外の場合は対象から除外する。**権限の有無は利用者に開示しない**） | 404 を「見つかりません」と中立に表示し、**5xx とは別**の表示にする | `shows a neutral not-found message on 404 (existence hidden)` |
 | **Wiki 閲覧 基本 1**（利用者が Wiki で文書を開く） | 「Wikiで閲覧」から Wiki 閲覧画面へ | `links to SC-04 only when a wiki base url is configured` |
 | **Wiki 閲覧 例外**（権限外の文書は一覧・本文のいずれにも表示しない） | 本画面は 404 で何も出さない（**AI 分析の例外と同一の中立表示**） | `shows a neutral not-found message on 404 (existence hidden)` ＋ `never requests the version history when the document is hidden`（秘匿された文書へは追加の要求も出さない） |
-| **関係探索・AI 提案の着手保留（実装判断）** | **AI 提案の承認欄とナレッジグラフビューへの導線を描かない** | `does not render the AI suggestion panel or the knowledge-graph link (deferred features)` |
+| **関係探索の着手保留（実装判断）** | **ナレッジグラフビューへの導線を描かない** | `does not render the knowledge-graph link (SC-18 belongs to another screen)` |
+| **AI 提案の棚卸し 代替フロー**（承認が確定するのは文書詳細経由のみ） | 当該文書に関わる承認待ちの提案を本文の下に描き、1 件ずつ承認・却下する | `renders a link suggestion with its edge type, rationale and both actions` ＋ `posts approve and reject to the endpoint of that single suggestion` |
+| **AI 提案の棚卸し 制約**（一括承認を提供しない） | 一括のボタンも複数選択も置かない | `never offers a bulk approve or reject action`（**陽性対照つき** —— 単票のボタンが在ることを先に測る） |
 
-> **最後の行は「無いこと」を固定するテストである。** 保留対象を後から不用意に足すと落ちるため、
-> 「保留の解除は、着手保留を定めた実装 ADR の決定 6 の手順を踏む」という制約がテストとしても効く。
+> **「無いこと」を固定するテストが 2 本ある**（グラフ導線の不在・一括承認の不在）。
+> 対象を後から不用意に足すと落ちるため、「保留の解除は、着手保留を定めた実装 ADR の決定 6 の手順を
+> 踏む」という制約と、「一括承認はどの層にも作らない」という禁止が、テストとしても効く。
+>
+> **［2026-08-29］従前ここには「AI 提案の承認欄**と**ナレッジグラフビューへの導線を描かない」を
+> 1 行で書いていた。承認欄が着地したので分割した。**
 
 ## フロント（Vitest + Testing Library）: `DocumentDetailPage.test.tsx`
 
@@ -53,8 +59,16 @@ issues: []
 | 7 | 本文取得失敗 | 詳細は表示、本文領域のみ「本文は利用できません。」へ縮退 | — |
 | 8 | 版履歴の取得抑止 | 詳細が 404 のとき、**版履歴を要求しない** | 画面のサーバー状態の持ち方（実装判断） |
 | 9 | 版履歴の失敗 | 版履歴パネルを出さず、本体表示は継続 | — |
-| 10 | **保留対象の不在** | 「AI 提案」「知識グラフ」の語が画面に無い | **着手保留の実装判断** |
+| 10 | **保留対象の不在** | 「知識グラフ」の語とグラフ導線が画面に無い（**AI 提案は 2026-08-29 に着地したので対象外**） | **着手保留の実装判断** |
 | 11 | ロケール `en` | 見出しが英語で描画される | —|
+| 12 | **提案 0 件** | 欄自体を描かない（見出しも承認・却下のボタンも無い） | 計画側の文書詳細画面 §AI 提案の承認欄 |
+| 13 | リンク提案 | 相手の文書名・**辞書で解決した辺の型名**・根拠を描き、承認・却下の両方が押せる | 同上 |
+| 14 | **タグ提案** | 描くが**承認は押せない**（理由を画面に出す）。**却下は押せる** | 同上 ＋ 実装 ADR（差異の記録） |
+| 15 | **他文書の提案** | 当該文書を端点に持たない提案を描かない | 同上（絞りは画面側にある） |
+| 16 | 承認・却下の宛先 | **その提案 1 件の口**へ送る（`/graph/suggestions/{id}/approve` ／ `/reject`） | AI 提案の 3 状態遷移 |
+| 17 | **一括操作の不在** | 「すべて」「一括」「まとめて」のボタンも複数選択も無い | **一括承認を提供しない**（要求側の禁止） |
+| 18 | 一覧への導線 | 承認欄から AI 提案一覧へのリンクが在る | 計画側の文書詳細画面 §AI 提案の承認欄 |
+| 19 | 提案の取得失敗 | **空の欄へ縮退しない**（「取得できませんでした」を出し、本体表示は継続） | 一覧画面と同じ判断 |
 
 ### 純関数（`attributes.ts` ／ `attributes.test.ts`）
 

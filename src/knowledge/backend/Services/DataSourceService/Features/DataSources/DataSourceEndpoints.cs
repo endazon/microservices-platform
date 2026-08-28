@@ -42,6 +42,10 @@ public static class DataSourceEndpoints
         // [[IADR-0128]] 決定 1 が #501 で確立した形）。
         g.MapPost("/", async (CreateDataSourceRequest req, DataSourceDbContext db, SyncSchedule schedule) =>
         {
+            // IADR-0295 決定 3: 資格情報つきの connectionUri は受け付けない（登録時が第 1 の関門）。
+            if (ConnectionUriPolicy.Validate(req.ConnectionUri, existing: null) is { } uriError)
+                return Results.BadRequest(new { error = uriError });
+
             // FR-01, FR-05: 既定 ABAC 属性（機密区分）を伴ってデータソースを登録する。
             var ds = DataSource.Create(req.Name, req.SourceType, req.ConnectionUri,
                 req.Config, req.DefaultAttributes);
@@ -106,6 +110,11 @@ public static class DataSourceEndpoints
             var ds = await db.DataSources.FindAsync(id);
             if (ds is null) return Results.NotFound();
 
+            // IADR-0295 決定 3: **既存値を渡す。** 応答のマスク済みの値をそのまま書き戻した形は
+            // 受理し（`Update` が実値を保つ）、編集して送り返した形は弾く。
+            if (ConnectionUriPolicy.Validate(req.ConnectionUri, ds.ConnectionUri) is { } uriError)
+                return Results.BadRequest(new { error = uriError });
+
             ds.Update(req.Name, req.SourceType, req.ConnectionUri, req.Config, req.DefaultAttributes);
             await db.SaveChangesAsync();
             return Results.Ok(ToResponse(ds, schedule.NextRunAt));
@@ -119,6 +128,11 @@ public static class DataSourceEndpoints
         {
             var ds = await db.DataSources.FindAsync(id);
             if (ds is null) return Results.NotFound();
+
+            // IADR-0295 決定 3: PATCH は「読んで一部だけ直して送り返す」経路そのものである。
+            // null（＝現状維持）は検証を素通しする（`Validate` が空を受理する）。
+            if (ConnectionUriPolicy.Validate(req.ConnectionUri, ds.ConnectionUri) is { } uriError)
+                return Results.BadRequest(new { error = uriError });
 
             ds.Patch(req.Name, req.SourceType, req.ConnectionUri, req.Config, req.DefaultAttributes);
             await db.SaveChangesAsync();
@@ -138,15 +152,21 @@ public static class DataSourceEndpoints
         return app;
     }
 
-    // IADR-0053, claude-review #222: API 応答用の投影。エンティティをそのまま返すと Config 内の
-    // 秘密（apiToken 等）が平文露出するため、秘密キーの値をマスクして返す（Vault 移行までの暫定）。
+    // IADR-0053 / IADR-0295, claude-review #222: API 応答用の投影。エンティティをそのまま返すと
+    // Config 内の秘密（apiToken 等）と ConnectionUri 内の資格情報が平文露出するため、
+    // **どちらもマスクして返す**（Vault 移行までの暫定）。
     // SC-06: nextSyncAt はエンティティに持たない導出値（共通間隔の次回実行時刻）であり、呼び出し側が渡す。
     private static object ToResponse(DataSource ds, DateTimeOffset? nextSyncAt) => new
     {
         ds.Id,
         ds.Name,
         ds.SourceType,
-        ds.ConnectionUri,
+        // IADR-0295 決定 3: `ConnectionUri` も伏せる。**`SecretConfigMask` は `Config` にしか
+        // 掛からず、ここは素通しだった。** `SecretMask` の URI 規則が `scheme://user:pass@host` を
+        // 明示的に想定して伏せている以上、**そこへ資格情報が入り得ることをコード自身が認めている。**
+        // `DatabaseConnector` は本値を ADO.NET 接続文字列の土台に使うので `Host=..;Password=..`
+        // 形式も入り得る（キー=値 規則が捕まえる）。
+        ConnectionUri = SecretMask.RedactText(ds.ConnectionUri),
         ds.Status,
         ds.LastSyncedAt,
         Config = RedactSecrets(ds.Config),

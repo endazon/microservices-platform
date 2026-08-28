@@ -10,10 +10,18 @@ namespace AuthorizationService.Tests;
 // ホスト構築時に足すコールバックは既に読まれた後に適用される（実測: 注入しても起動が落ちた）。
 //
 // DbContext はテスト器が InMemory へ差し替えるので、**資格情報を持たない到達不能な値**で足りる。
+//
+// SC-17, IADR-0301 決定 3 (#452): 身元プロバイダの宣言（`IdentityAdmin:Provider`）も**同じ理由で
+// ここに置く**。既定を持たない設計なので、宣言が無ければトップレベル文で落ちる。
+// **`ConfigureAppConfiguration` では間に合わない**（上の注記と同型。実測で 41 件が赤くなった）。
 internal static class TestDatabaseConfiguration
 {
     [ModuleInitializer]
-    internal static void SetConnectionString() =>
+    internal static void SetConnectionString()
+    {
         Environment.SetEnvironmentVariable(
             "ConnectionStrings__DefaultConnection", "Host=localhost;Database=authz_test");
+        // テストは実 IdP を持たない。**偽物であることを明示的に宣言する**（既定では選ばれない）。
+        Environment.SetEnvironmentVariable("IdentityAdmin__Provider", "in-memory");
+    }
 }

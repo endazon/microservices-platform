@@ -47,6 +47,10 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
     private HttpClient _ingestionClient = null!;
     private HttpClient _wikiClient = null!;
 
+    // #1038 切り分け ①②: 購読が始まるまでに掛かった時間。テスト本体が出力と失敗メッセージへ載せる。
+    private TimeSpan _ingestionReady;
+    private TimeSpan _wikiReady;
+
     public async ValueTask InitializeAsync()
     {
         if (!postgres.IsAvailable || !rabbit.IsAvailable) return;
@@ -100,6 +104,12 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
         var exchange = $"e3b-fanout-{Guid.NewGuid():N}";
         var ingestionQueue = WolverineExtensions.PlatformQueueName("ingestion-service", nameof(DocumentUpdated));
         var wikiQueue = WolverineExtensions.PlatformQueueName("wiki-service", nameof(DocumentUpdated));
+
+        // #1038: **購読が Accepting になるまで待ってから発行へ進む。**
+        // ここを待たないと、テスト本体の 30 秒が「購読開始待ち ＋ 実処理」の両方を覆ってしまい、
+        // 負荷が高い日に**実装が正しいのに落ちる**（かつ、どちらが遅いのか分からない）。
+        _ingestionReady = await ListenerReadiness.WaitUntilAcceptingAsync(_ingestion.Services, ingestionQueue);
+        _wikiReady = await ListenerReadiness.WaitUntilAcceptingAsync(_wiki.Services, wikiQueue);
         _publisher = await Host.CreateDefaultBuilder()
             .UseWolverine(opts =>
             {
@@ -153,25 +163,47 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
             UpdatedAt: DateTimeOffset.UtcNow);
 
         // 発行は 1 回だけ（専用発行ホスト。両購読キューへ束縛済みの exchange へ出す）。
+        // #1038 切り分け ③: ここから先が**実処理**である。①② は InitializeAsync で済ませてある。
+        var since = System.Diagnostics.Stopwatch.StartNew();
         await _publisher!.Services.GetRequiredService<IMessageBus>().PublishAsync(evt);
 
         // ── 購読者 1: IngestionService（終端副作用 = ベクトルストアへの upsert）
         //
         // 🔴 Qdrant / LLM ゲートウェイをコンテナで立てていないため、ここだけ記録フェイクである。
         // 本物の永続化を見ていないという意味で妥協であり、そう明記しておく。
-        var ingested = await _probe.IngestionUpserts.WaitAsync(docId, TimeSpan.FromSeconds(30));
+        var ingested = await _probe.IngestionUpserts.WaitAsync(docId, ProcessingBudget);
+        var ingestedAt = since.Elapsed;
         ingested.Should().BeTrue(
             "IngestionService が DocumentUpdated を受信し取り込みを実行すること"
-            + "（受信しなかった場合、手順 3 の競合コンシューマ化を疑う）");
+            + "（受信しなかった場合、手順 3 の競合コンシューマ化を疑う）"
+            + Measured());
 
         // ── 購読者 2: WikiService（終端副作用 = wiki_svc への行 upsert）
         //
         // こちらは Testcontainers Postgres への**本物の永続化**を見る。
-        var synced = await WaitForWikiPageAsync(docId, TimeSpan.FromSeconds(30));
+        var synced = await WaitForWikiPageAsync(docId, ProcessingBudget);
+        var syncedAt = since.Elapsed;
         synced.Should().BeTrue(
             "WikiService が DocumentUpdated を受信し Wiki 同期メタデータを永続化すること"
-            + "（受信しなかった場合、手順 3 の競合コンシューマ化を疑う）");
+            + "（受信しなかった場合、手順 3 の競合コンシューマ化を疑う）"
+            + Measured());
+
+        // #1038 受け入れ基準①: **フル実行時の実到達時間を記録する。** 緑でも残す ——
+        // 「30 秒に対して実際が何秒か」は落ちてからでは測れない。
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"[#1038] 購読開始 ingestion={_ingestionReady.TotalSeconds:F1}s wiki={_wikiReady.TotalSeconds:F1}s"
+            + $" / 実処理 ingestion={ingestedAt.TotalSeconds:F1}s wiki={syncedAt.TotalSeconds:F1}s"
+            + $" （実処理の予算 {ProcessingBudget.TotalSeconds:F0}s）");
     }
+
+    // 🔴 **実処理だけの予算である。** 購読開始（①②）は InitializeAsync が別枠で待つ。
+    // #1038 は「測らずに待ち時間を延ばす」ことを禁じているので、**この 30 秒は据え置く。**
+    private static readonly TimeSpan ProcessingBudget = TimeSpan.FromSeconds(30);
+
+    // 失敗時に「どの段が遅かったか」を assert のメッセージへ載せる。
+    private string Measured() =>
+        $"。実測: 購読開始 ingestion={_ingestionReady.TotalSeconds:F1}s / wiki={_wikiReady.TotalSeconds:F1}s"
+        + $"（購読は始まっていたので、これは実処理側の遅さか受信そのものの欠落である）";
 
     private async Task<bool> WaitForWikiPageAsync(Guid documentId, TimeSpan timeout)
     {

@@ -26,6 +26,21 @@ namespace Knowledge.Bff.Endpoints;
 // ⚠️ **ヘッダを伝播し忘れると「全部 404」で静かに壊れる。** GraphService は利用者を
 // anonymous として解決し Granted=false へ縮退するためである。動くように見える壊れ方では
 // ないが「グラフには何も無い」と読めるので、陽性対照つきのテストで固定する（#916a 仕様書）。
+//
+// ── FR-18, SC-03 (#450): AI 提案の**承認・却下**を開けた（[[IADR-0300]]）
+//
+// 🔴 **前段の write ゲート（`PrivateNoteBffEndpoints.ForwardIfWritableAsync` 相当）は置かない。**
+// あちらが置くのは**後段（DocumentService）が write スコープを見ないから**であり、
+// GraphService は自分で解決する（`IsSourceWritableAsync`。#993 / [[IADR-0272]] 決定 2・3）。
+// BFF に置ける門は `BffScopeResolver` の `Granted` だけ（**提案 ID から起点文書を引けないので
+// 文書条件は当てられない**）で、後段の門が既にそれを包含する。足すと得るものが無いまま
+//   (1) 拒否が **403** になり、後段が 404 へ倒している存在秘匿と応答が割れる（ADR-0034 決定 2）
+//   (2) ABAC の判断点が 2 つになり、片方が腐っても気付けない（`DocumentBffEndpoints` が
+//       所有者判定を持ち込まないと決めたのと同じ理由）
+//   (3) 承認 1 回ごとに `/authz/scope` の往復が 1 つ増える
+// の 3 つだけが増える。`DashboardBffEndpoints` の多層防御（[[IADR-0044]]）と割れて見えるが、
+// **あちらが両側に置いたのは静的な「ロール」であって、要求ごとに解決する ABAC ではない。**
+// ⚠️ **後段が write スコープを見ない口を本群へ足すときは、この判断が反転する**（そのときは足すこと）。
 public static class GraphBffEndpoints
 {
     public static IEndpointRouteBuilder MapGraphBffEndpoints(this IEndpointRouteBuilder app)
@@ -68,18 +83,18 @@ public static class GraphBffEndpoints
             .Produces<List<EdgeTypeCatalogItemDto>>()
             .Produces(StatusCodes.Status403Forbidden);
 
-        // FR-18, UC-10, SC-21 (#918): **AI 提案の一覧**（読み取りのみ）。
+        // FR-18, UC-10, SC-21 (#918): **AI 提案の一覧**（読み取り）。
         //
-        // 🔴 **開けるのは読み取り口だけである。** 承認（`{id}/approve`）・却下（`{id}/reject`）・
-        // 生成（`generate/{documentId}`）は **BFF へ公開しない。**
-        //   - SC-21 は「本画面では実行しない」と明記された**書き込みを一切しない画面**である
-        //     （05_screens §SC-21 入力/バリデーション 第 3 行）。承認の主導線は SC-03 であり、
-        //     その承認欄は別 issue（#452）の射程である。
-        //   - 消費者の無い書き込み口を先に開けると、**IADR-0272 の write 認可の境界が
-        //     測られないまま公開面へ出る。** 「後段で効いているから BFF 経由でも効く」は
-        //     測った証拠にならない（#952 → #962 の教訓）。境界のテストは承認欄と同じ PR に置く。
+        // 🔴 **［2026-08-29 追記 / #450］承認・却下は下に開けた。生成だけが閉じたままである。**
+        // 従前ここには「開けるのは読み取り口だけである」と書いてあった —— 予告どおり
+        // **承認欄（SC-03）と同じ変更単位で** 2 本を開けたので、その記述は失効した（[[IADR-0300]] 決定 1）。
+        //   - 生成（`generate/{documentId}`）は**引き続き開けない**。計画（05_screens）は SC-03 にも
+        //     SC-21 にも生成の導線を置いておらず、**消費者の無い書き込み口を先に公開面へ出さない**
+        //     という理由がそのまま残る（#952 → #962 の教訓）。加えて後段自身が
+        //     「正しいアクションは `analyze` である可能性が高く裁定待ち」と注記している。
         //   - 🔴 **一括承認の口はどの層にも作らない**（FR-18・SC-21「描いてはいけないもの」）。
-        //     不在は `BffGraphSuggestionTests` がルート表の走査で固定する。
+        //     不在は `BffGraphSuggestionTests` がルート表の走査で固定する。**単票の承認・却下が
+        //     在ることは、その走査の陽性対照になっている。**
         //
         // 🔴 **後段のパスは末尾スラッシュつきの `/graph/suggestions/` である**（群 `/graph/suggestions`
         // の直下に `MapGet("/")` で生えている）。スラッシュを落とすと 404 になり、
@@ -94,6 +109,38 @@ public static class GraphBffEndpoints
             .WithName("BffGraphSuggestions")
             .Produces<List<AiSuggestionDto>>()
             .Produces(StatusCodes.Status400BadRequest);
+
+        // FR-18, UC-10, SC-03, ADR-0033 決定 7 (#450): **承認。1 件ずつ。**
+        //
+        // 🔴 **後段の状態コードをそのまま返す。** 承認は「権限外・不存在・write 権限なし」を
+        // すべて 404 に倒しており（ADR-0034 決定 2 / [[IADR-0272]] 決定 3）、ここで 403 や 200 へ
+        // 変換すると**存在秘匿が BFF 層で破れる**。409（`invalid_transition`）・
+        // 400（`unknown_edge_type`）も**本文ごと**透過する —— 画面は理由で文言を出し分ける。
+        //
+        // 🔴 **後段パスは `/graph/suggestions/{id}/approve`**（群 `/graph/suggestions` の直下）。
+        // 一覧と違い**末尾スラッシュは付かない**（`MapPost("/{id:guid}/approve")` である）。
+        g.MapPost("/suggestions/{id:guid}/approve", (Guid id, IHttpClientFactory httpFactory,
+                HttpContext http, CancellationToken ct)
+            => ForwardAsync(HttpMethod.Post, $"/graph/suggestions/{id}/approve", httpFactory, http, ct))
+            .WithName("BffGraphSuggestionApprove")
+            .Produces<AiSuggestionDto>()
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
+
+        // FR-18, UC-10, SC-03, ADR-0033 決定 7・10 (#450): **却下。1 件ずつ。**
+        //
+        // 🔴 **本文を送らない。** 後段の `RejectAiSuggestionRequest`（両端の本文指紋）は任意であり、
+        // **SPA は指紋を持てない** —— `AiSuggestionDto` は指紋を公開面へ出さないと決めてある
+        // （[[IADR-0276]] 決定 2。出すと文書を読めない利用者に本文の変化を判定させる副次経路になる）。
+        // 帰結は [[IADR-0300]] 決定 3 に実測つきで書いた（**解除の発火条件は変わらない**）。
+        g.MapPost("/suggestions/{id:guid}/reject", (Guid id, IHttpClientFactory httpFactory,
+                HttpContext http, CancellationToken ct)
+            => ForwardAsync(HttpMethod.Post, $"/graph/suggestions/{id}/reject", httpFactory, http, ct))
+            .WithName("BffGraphSuggestionReject")
+            .Produces<AiSuggestionDto>()
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict);
 
         return app;
     }
@@ -121,6 +168,51 @@ public static class GraphBffEndpoints
         if (!string.IsNullOrWhiteSpace(by)) parts.Add($"by={Uri.EscapeDataString(by)}");
         if (!string.IsNullOrWhiteSpace(types)) parts.Add($"types={Uri.EscapeDataString(types)}");
         return parts.Count == 0 ? "" : "?" + string.Join("&", parts);
+    }
+
+    // FR-18, SC-03 (#450): 書き込み（POST）を GraphService へ中継する。
+    //
+    // **`ProxyAsync<T>` を使い回せない** —— あちらは `client.GetAsync` を直に呼ぶ GET 専用であり、
+    // かつ本文を型付きで読み直して `Results.Ok` へ詰め替える（＝**後段の本文が失われる**）。
+    // 承認・却下は 409 / 400 の**本文**（`{ error, state }`）が画面の文言の根拠なので、
+    // `PrivateNoteBffEndpoints.ForwardAsync` / `RelayAsync` と同じく**本文ごと透過する**。
+    //
+    // 🔴 資格情報の伝播は読み取りと同じ方式 A である（冒頭の注釈）。落とすと後段は利用者を
+    // anonymous として解決し、**承認が静かに全件 404 になる**（陽性対照つきのテストで固定する）。
+    private static async Task<IResult> ForwardAsync(
+        HttpMethod method, string path,
+        IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
+    {
+        var client = httpFactory.CreateClient("GraphService");
+        var auth = http.Request.Headers.Authorization.ToString();
+        if (!string.IsNullOrEmpty(auth))
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
+
+        using var req = new HttpRequestMessage(method, path);
+        try
+        {
+            var resp = await client.SendAsync(req, ct);
+            return await RelayAsync(resp, ct);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            // 後段へ到達できない。**成功へ縮退しない** —— 承認できていないのに承認済みと
+            // 見えるのが最悪である（辺が生まれたと誤認したまま棚卸しが進む）。
+            return Results.StatusCode(StatusCodes.Status502BadGateway);
+        }
+    }
+
+    // 後段の応答（status・content-type・本文）をそのまま返す。
+    //
+    // 🔴 **409（`invalid_transition`）・400（`unknown_edge_type`）・404（存在秘匿）を保つために必須**
+    // である。詰め替えると画面は「もう承認済み」と「辺の型が消えている」を区別できない。
+    private static async Task<IResult> RelayAsync(HttpResponseMessage resp, CancellationToken ct)
+    {
+        if (resp.StatusCode == System.Net.HttpStatusCode.NoContent)
+            return Results.NoContent();
+        var content = await resp.Content.ReadAsStringAsync(ct);
+        var contentType = resp.Content.Headers.ContentType?.ToString() ?? "application/json";
+        return Results.Content(content, contentType, statusCode: (int)resp.StatusCode);
     }
 
     // GraphService へ中継する。

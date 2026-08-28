@@ -68,6 +68,20 @@ builder.Services.AddHttpClient("GraphService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:GraphService"]
         ?? "http://graph-service:8080"));
 
+// FR-16, UC-09, SC-12, ADR-0024, #452: MCP クライアント登録管理（McpServer の /mcp-clients*）。
+// **利用者の JWT を伝播して呼ぶ** —— 後段も AdminOnly を強制する二重ゲートである。
+//
+// 既定は :8080（メッシュ内の実 Service ポート）。IADR-0089 の「コード既定＝ローカル開発ポート、
+// manifest が :8080 へ上書き」は先発サービスの経緯であり、**後発はコード既定を 8080 にする**
+// （GraphService と同じ扱い）。上書き漏れで不達になる面（#342 の 21 秒タイムアウト）を最初から作らない。
+//
+// 🔴 **ホスト名は `mcp-service` である**（chart のキーは `mcp`）。helm の deployment.yaml /
+// service.yaml が `{{ $name }}-service` を組むため、キーを `mcp-server` にすると
+// Service 名は `mcp-server-service` になる。compose のサービス名も `mcp-service` へ揃えてある。
+builder.Services.AddHttpClient("McpServer", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:McpServer"]
+        ?? "http://mcp-service:8080"));
+
 // FR-06, UC-03/UC-07, SC-03: 文書閲覧の集約用。ABAC スコープ解決（AuthorizationService）→ 文書取得。
 builder.Services.AddHttpClient("DocumentService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DocumentService"]

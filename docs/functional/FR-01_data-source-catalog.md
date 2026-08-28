@@ -3,15 +3,15 @@ title: データソース登録・同期・カタログ化 機能仕様書
 type: functional-spec
 status: completed
 created: 2026-06-27
-updated: 2026-08-21
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-05, SC-06, UC-04]
 adrs: [ADR-0002, ADR-0003, ADR-0014, ADR-0027]
-iadrs: [IADR-0001, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148]
+iadrs: [IADR-0001, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0295]
 specs: [20260627_FR-01_data-source-catalog-pipeline]
-issues: [#195, #217, #218, #219, #537, #546, #580, planning#200]
+issues: [#195, #217, #218, #219, #458, #537, #546, #580, planning#200]
 -->
 
 # 機能仕様書: データソース登録・同期・カタログ化
@@ -93,7 +93,8 @@ flowchart TB
   実 API/コンテナ統合テストは follow-up。
 - 実 filesystem 同期の対象ファイル共有（SMB/NFS）マウント手順（PVC）と、増分 watermark のスキャン開始時刻厳密化。
 - 接続失敗状態・最終エラーの DB 永続化（データソース管理画面での可視化）。
-- Vault 連携（接続情報の集中管理）。現状は `Config` からの取得（DB 平文保存・API 応答はマスク）に留める。Vault / External Secrets 移行は **#310** で一元追跡する。
+- Vault 連携（接続情報の集中管理）。現状は `Config` / `ConnectionUri` からの取得（DB 平文保存・**露出経路はマスク**）に留める。
+  Vault / External Secrets 移行の一元追跡は **#458** である（従前ここは #310 と書いていたが、**#310 は 2026-08-02 に `duplicate` で close** され、#447 が取り込み、横断は #458 が持つ）。
 - 実オブジェクトストレージ（製品未確定）クライアントの接続。pandoc 実変換（`PandocConversionService`）・
   Markdown 本文取得（`StorageDocumentContentReader`）は実装済みだが、実ストレージ未接続時（`file://` 以外）はプレースホルダへデグレードする。
 - 同期ジョブの進捗・状態管理。

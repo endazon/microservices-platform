@@ -33,6 +33,7 @@ public sealed class PrivateNoteMaintenanceService(
     IPrivateNoteNotifier notifier,
     IDocumentDeletedPublisher deletedBus,
     IAuditLogger audit,
+    DocumentService.Features.Documents.DocumentObjectPurger purger,
     ILogger<PrivateNoteMaintenanceService> logger)
 {
     public async Task RunAsync(DateTimeOffset now, CancellationToken ct = default)
@@ -46,14 +47,25 @@ public sealed class PrivateNoteMaintenanceService(
 
     // ADR-0037 決定 5: 論理削除から 90 日（PurgeAt）を経過した資料を自動的に物理削除する（復元不可）。
     // 決定 6-③: 実行後に事後通知（件数のみ）。決定 9・11-①: 監査は「誰が・いつ・何件」。
+    //
+    // ★ ADR-0057 決定 1 / [[IADR-0296]]: **オブジェクトストレージの本文も消す。**
+    // 🔴 **対話操作と違い、ここは文書ごとに隔離する**（同 IADR 決定 3）——
+    // 1 件の実体削除の失敗で周期全体を止めると、**無関係な資料の期限超過が積み上がる**。
+    // 消せなかった文書は**行を残す**ので `PurgeAt <= now` を満たしたままであり、次周期で再入する。
+    // 「行だけ消してオブジェクトを残す」ことだけは絶対にしない（参照が失われ回復不能になる）。
     private async Task PurgeExpiredAsync(DateTimeOffset now, CancellationToken ct)
     {
-        var due = await db.PrivateNotes
+        var candidates = await db.PrivateNotes
             .Where(n => n.DeletedAt != null && n.PurgeAt != null && n.PurgeAt <= now)
             .ToListAsync(ct);
-        if (due.Count == 0) return;
+        if (candidates.Count == 0) return;
 
-        var ids = due.Select(n => n.DocumentId).ToList();
+        // オブジェクトを先に消し、**消せたものだけ**を今周期の削除対象にする。
+        var ids = await purger.PurgeIsolatedAsync(
+            candidates.Select(n => n.DocumentId).ToList(), ct);
+        if (ids.Count == 0) return;
+
+        var due = candidates.Where(n => ids.Contains(n.DocumentId)).ToList();
         var docs = await db.Documents.Where(d => ids.Contains(d.Id)).ToListAsync(ct);
         db.Documents.RemoveRange(docs);
         db.PrivateNotes.RemoveRange(due);

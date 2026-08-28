@@ -49,6 +49,10 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
     private HttpClient _ingestionClient = null!;
     private HttpClient _wikiClient = null!;
 
+    // #1038 切り分け ①②: 購読が始まるまでに掛かった時間。テスト本体が出力と失敗メッセージへ載せる。
+    private TimeSpan _ingestionReady;
+    private TimeSpan _wikiReady;
+
     public async ValueTask InitializeAsync()
     {
         if (!postgres.IsAvailable || !rabbit.IsAvailable) return;
@@ -105,6 +109,14 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
         var exchange = $"u0e-override-{Guid.NewGuid():N}";
         var ingestionQueue = WolverineExtensions.PlatformQueueName("ingestion-service", SharedQueue);
         var wikiQueue = WolverineExtensions.PlatformQueueName("wiki-service", SharedQueue);
+
+        // #1038: **購読が Accepting になるまで待ってから発行へ進む。**
+        // 🔴 本テストでは待ち合わせが**自己検証も兼ねる** —— 宣言 queue が効いていなければ
+        // 購読者はここで待っているキュー（前置つきの宣言値）を聴かないので、
+        // 「発行しても誰も受け取らない」ではなく**「そもそも購読していない」段階で落ちる**。
+        // 失敗の意味が 1 段はっきりする。
+        _ingestionReady = await ListenerReadiness.WaitUntilAcceptingAsync(_ingestion.Services, ingestionQueue);
+        _wikiReady = await ListenerReadiness.WaitUntilAcceptingAsync(_wiki.Services, wikiQueue);
         _publisher = await Host.CreateDefaultBuilder()
             .UseWolverine(opts =>
             {
@@ -163,19 +175,39 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
             Tags: ["u0e"],
             UpdatedAt: DateTimeOffset.UtcNow);
 
+        // #1038 切り分け ③: ここから先が**実処理**である。①② は InitializeAsync で済ませてある。
+        var since = System.Diagnostics.Stopwatch.StartNew();
         await _publisher!.Services.GetRequiredService<IMessageBus>().PublishAsync(evt);
 
         // 両方が受信する（前置により競合コンシューマにならない）。
-        var ingested = await _probe.IngestionUpserts.WaitAsync(docId, TimeSpan.FromSeconds(30));
+        var ingested = await _probe.IngestionUpserts.WaitAsync(docId, ProcessingBudget);
+        var ingestedAt = since.Elapsed;
         ingested.Should().BeTrue(
             "IngestionService が宣言 queue（前置つき）で受信すること。受信しないなら"
-            + " 宣言が読み込まれていないか、前置（ListenToPlatformQueue）が退行している");
+            + " 宣言が読み込まれていないか、前置（ListenToPlatformQueue）が退行している"
+            + Measured());
 
-        var synced = await WaitForWikiPageAsync(docId, TimeSpan.FromSeconds(30));
+        var synced = await WaitForWikiPageAsync(docId, ProcessingBudget);
+        var syncedAt = since.Elapsed;
         synced.Should().BeTrue(
             "WikiService も同じ宣言 queue 名から**別の前置つきキュー**で受信すること"
-            + "（同一宣言値でも fan-out が保たれる＝手順 3 の実効）");
+            + "（同一宣言値でも fan-out が保たれる＝手順 3 の実効）"
+            + Measured());
+
+        // #1038 受け入れ基準①: **フル実行時の実到達時間を記録する。** 緑でも残す。
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"[#1038] 購読開始 ingestion={_ingestionReady.TotalSeconds:F1}s wiki={_wikiReady.TotalSeconds:F1}s"
+            + $" / 実処理 ingestion={ingestedAt.TotalSeconds:F1}s wiki={syncedAt.TotalSeconds:F1}s"
+            + $" （実処理の予算 {ProcessingBudget.TotalSeconds:F0}s）");
     }
+
+    // 🔴 **実処理だけの予算である。** 購読開始（①②）は InitializeAsync が別枠で待つ。
+    // #1038 は「測らずに待ち時間を延ばす」ことを禁じているので、**この 30 秒は据え置く。**
+    private static readonly TimeSpan ProcessingBudget = TimeSpan.FromSeconds(30);
+
+    private string Measured() =>
+        $"。実測: 購読開始 ingestion={_ingestionReady.TotalSeconds:F1}s / wiki={_wikiReady.TotalSeconds:F1}s"
+        + "（購読は始まっていたので、これは実処理側の遅さか受信そのものの欠落である）";
 
     // 本番 pipeline.json から**実行時に派生**させ、ingest と wiki-sync に同一の queue を入れる。
     //

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
@@ -65,18 +66,69 @@ const VERSIONS = [
 /** 「本文なし（204）で返す」ことを指す標識（`null` の JSON 本文と区別するため Symbol を使う）。 */
 const NO_BODY = Symbol('204 No Content');
 
-/** BFF の 3 エンドポイントへ応答を割り当てる（既定はすべて成功）。 */
+// SC-03, FR-18 (#450): AI 提案の承認欄が使う 2 本（提案の一覧・辺の型カタログ）。
+// 生成フックは `/bff` 接頭辞を落として `apiRequest` を呼ぶ（`orvalMutator`）。
+const EDGE_TYPE_ID = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+const OTHER_DOC_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+const LINK_SUGGESTION = {
+  id: '11111111-1111-1111-1111-111111111111',
+  kind: 'link',
+  sourceDocumentId: DOC_ID,
+  targetDocumentId: OTHER_DOC_ID,
+  edgeTypeId: EDGE_TYPE_ID,
+  tagValue: null,
+  rationale: '両文書が同じ規程を引いている',
+  state: 'pending',
+  rejectedCount: 0,
+  reinstatedReason: null,
+  sourceDocumentTitle: '経費精算規程 v3.2',
+  targetDocumentTitle: '旅費規程',
+};
+const TAG_SUGGESTION = {
+  ...LINK_SUGGESTION,
+  id: '22222222-2222-2222-2222-222222222222',
+  kind: 'tag',
+  targetDocumentId: null,
+  edgeTypeId: null,
+  tagValue: '経理',
+  rationale: '本文が精算手続きを定めている',
+  targetDocumentTitle: null,
+};
+const EDGE_TYPES = [{ id: EDGE_TYPE_ID, name: '関連する', layer: 'core', isSymmetric: true }];
+
+/** BFF の各エンドポイントへ応答を割り当てる（既定はすべて成功・提案は 0 件）。 */
 function respond({
   detail = DETAIL as unknown,
   content = CONTENT as unknown,
   versions = VERSIONS as unknown,
-}: { detail?: unknown; content?: unknown; versions?: unknown } = {}) {
+  suggestions = [] as unknown,
+  edgeTypes = EDGE_TYPES as unknown,
+}: {
+  detail?: unknown;
+  content?: unknown;
+  versions?: unknown;
+  suggestions?: unknown;
+  edgeTypes?: unknown;
+} = {}) {
   const reply = (value: unknown) => {
     if (value instanceof Error) return Promise.reject(value);
     if (value === NO_BODY) return Promise.resolve(noContent());
     return Promise.resolve(jsonResponse(value));
   };
   mocks.apiRequest.mockImplementation((path: string) => {
+    // 🔴 提案の口を**最初に**見る。承認・却下は `/graph/suggestions/{id}/approve` であり、
+    // 一覧の判定を後ろに置くと `endsWith('/content')` 等と取り違えはしないが、
+    // 「承認したのに一覧の応答が返る」形になって観測が壊れる。
+    if (path.includes('/graph/suggestions')) {
+      if (path.endsWith('/approve') || path.endsWith('/reject')) {
+        return reply({
+          ...LINK_SUGGESTION,
+          state: path.endsWith('/approve') ? 'approved' : 'rejected',
+        });
+      }
+      return reply(suggestions);
+    }
+    if (path.includes('/graph/edge-types')) return reply(edgeTypes);
     if (path.endsWith('/content')) return reply(content);
     if (path.endsWith('/versions')) return reply(versions);
     return reply(detail);
@@ -220,15 +272,19 @@ describe('DocumentDetailPage (SC-03)', () => {
     await waitFor(() => expect(screen.queryByText('バージョン')).not.toBeInTheDocument());
   });
 
-  // IADR-0119 決定 1 が着手を保留した機能（保留の根拠と対象の起点 ID は、本画面のプロダクトコード
-  // DocumentDetailPage.tsx の冒頭コメントに記載してある）。
+  // SC-18, FR-17: **知識グラフビューへの導線は依然として実装しない**（IADR-0119 の保留のうち
+  // FR-17 の画面側。着手は SC-18 の実装と同じ段）。
   // **「無いこと」を固定するテストである**——保留対象を後から不用意に足すとこのテストが落ちる。
   //
-  // **ここに起点 ID を書かないのは意図的である。** check-test-traceability.js は「テスト直前の
-  // コメントの起点 ID」を写像として拾う仕様であり、**着手していない機能の ID を書くと
-  // 「実装が先行している」と誤って報告される**（実測: 一度書いたところ、allowlist で黙らせる形になった）。
-  // 保留の追跡は IADR-0119 とプロダクトコード側のコメントが担う。
-  it('does not render the AI suggestion panel or the knowledge-graph link (deferred features)', async () => {
+  // 🔴 **［2026-08-29 / #450］本テストは分割した。** 従前は「AI 提案パネル」と「知識グラフ導線」の
+  // 5 語を 1 本で否定しており、**承認欄（FR-18）を足すと落ちる**形だった。承認欄は着地したので
+  // その否定を落とし、**グラフ導線の否定だけを残す**。
+  //
+  // 🔴 **起点 ID を書かなかった理由も失効した。** 従前ここには「着手していない機能の ID を書くと
+  // check-test-traceability.js が『実装が先行している』と誤報する」と書いてあった。
+  // **本テストが否定するのは FR-17 の画面側だけになり、その FR-17 は SC-18 の画面として着手済みである**
+  // （本リポジトリに sc18-graph の feature が在る）。誤報の前提が無いので、起点 ID を書く。
+  it('does not render the knowledge-graph link (SC-18 belongs to another screen)', async () => {
     // **導線の並びを全部描かせた状態で見る。** wikiBaseUrl 未設定だと「Wikiで閲覧」を含む行ごと
     // 描画されず、そこへ保留対象の導線を足しても検出できない（実測: 変異試験 M3 が素通りした）。
     mocks.wikiBaseUrl = 'https://wiki.example.co.jp';
@@ -236,11 +292,140 @@ describe('DocumentDetailPage (SC-03)', () => {
     await renderPage();
     await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
 
-    expect(screen.queryByText(/AI 提案/)).not.toBeInTheDocument();
     expect(screen.queryByText(/知識グラフ/)).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /グラフ/ })).not.toBeInTheDocument();
+  });
+
+  // SC-03, FR-18, ADR-0033 決定 7: **AI 提案の承認欄**（#450）。
+  //
+  // 05_screens §SC-03 は「提案が 0 件のときは欄自体を表示しない」と定める。
+  // **見出しだけが残ると、承認すべきものがあるかのように読める。**
+  //
+  // 🔴 **取得が終わったことを待ってから否定する。** 待たずに `queryBy*` で否定すると、
+  // **読み込み中に欄を出さないだけの実装でも緑になる**（実測: 変異試験 M7〔0 件でも欄を描く〕が
+  // 素通りした）。`queryClient.isFetching()` が 0 になるまで待つのが、この画面で使える唯一の
+  // 決定的な合図である（欄が出ないので「現れるのを待つ」ことができない）。
+  it('does not render the suggestion panel when there is nothing pending', async () => {
+    mocks.wikiBaseUrl = 'https://wiki.example.co.jp';
+    respond({ suggestions: [] });
+    const { queryClient } = await renderPage();
+    await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+    expect(screen.queryByRole('heading', { name: 'AI 提案' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '承認' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '却下' })).not.toBeInTheDocument();
+  });
+
+  // SC-03, FR-18: 種類・相手の文書・**辺の型**・提案の根拠を示す（05_screens §SC-03 の逐語）。
+  // 辺の型名は**辞書で解決する**（ADR-0033 決定 9。DTO は `edgeTypeId` しか持たない）。
+  it('renders a link suggestion with its edge type, rationale and both actions', async () => {
+    respond({ suggestions: [LINK_SUGGESTION] });
+    await renderPage();
+
+    expect(await screen.findByRole('heading', { name: 'AI 提案' })).toBeInTheDocument();
+    expect(screen.getByText(/旅費規程/)).toBeInTheDocument();
+    // 型名は辞書（/bff/graph/edge-types）から解決した表示名である（GUID を出さない）。
+    expect(screen.getByText(/関連する/)).toBeInTheDocument();
+    expect(screen.getByText('両文書が同じ規程を引いている')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '承認' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '却下' })).toBeEnabled();
+  });
+
+  // SC-03, FR-18, IADR-0300 決定 4: **タグ提案の承認は実行できない。**
+  // 後段はタグ提案を承認しても状態を変えるだけで文書のタグは増えない（反映経路が未実装）。
+  // **却下は完全に効く**ので押せるままにする。押せない理由は画面に必ず出す。
+  it('shows a tag suggestion but disables approval (the tag is never applied)', async () => {
+    respond({ suggestions: [TAG_SUGGESTION] });
+    await renderPage();
+
+    expect(await screen.findByRole('heading', { name: 'AI 提案' })).toBeInTheDocument();
+    expect(screen.getByText(/「経理」を付与/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '承認' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '却下' })).toBeEnabled();
+    expect(screen.getByText(/反映経路が未実装/)).toBeInTheDocument();
+  });
+
+  // SC-03: 本欄が描くのは**当該文書を両端のいずれかとする提案**だけである（05_screens §SC-03）。
+  // 🔴 後段は文書での絞り込みを持たないため、絞りは画面側にある。**外すと他文書の提案が混ざる。**
+  it('only renders suggestions that touch this document', async () => {
+    const unrelated = {
+      ...LINK_SUGGESTION,
+      id: '33333333-3333-3333-3333-333333333333',
+      sourceDocumentId: OTHER_DOC_ID,
+      targetDocumentId: '44444444-4444-4444-4444-444444444444',
+      sourceDocumentTitle: '就業規則',
+      targetDocumentTitle: '育児介護休業規程',
+      rationale: '無関係な提案（本画面に出てはならない）',
+    };
+    respond({ suggestions: [LINK_SUGGESTION, unrelated] });
+    await renderPage();
+
+    await screen.findByRole('heading', { name: 'AI 提案' });
+    expect(screen.getByText('両文書が同じ規程を引いている')).toBeInTheDocument();
+    expect(screen.queryByText('無関係な提案（本画面に出てはならない）')).not.toBeInTheDocument();
+  });
+
+  // SC-03, ADR-0033 決定 7: 承認・却下は **1 件ずつ、その提案の口へ** 送る。
+  // 🔴 **パスまで見る。** 状態だけ見ていると、承認が別の提案へ飛んでも緑のままである。
+  it('posts approve and reject to the endpoint of that single suggestion', async () => {
+    respond({ suggestions: [LINK_SUGGESTION] });
+    await renderPage();
+    await screen.findByRole('heading', { name: 'AI 提案' });
+
+    await userEvent.click(screen.getByRole('button', { name: '承認' }));
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(
+          (call) => String(call[0]) === `/graph/suggestions/${LINK_SUGGESTION.id}/approve`,
+        ),
+      ).toBe(true),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: '却下' }));
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(
+          (call) => String(call[0]) === `/graph/suggestions/${LINK_SUGGESTION.id}/reject`,
+        ),
+      ).toBe(true),
+    );
+  });
+
+  // 🔴 FR-18・05_screens §SC-21「描いてはいけないもの」: **一括承認・一括却下を置かない。**
+  // 承認は両端の文書の内容を見て 1 件ずつ行うものであり、まとめる口は画面にも API にも作らない。
+  //
+  // **陽性対照つき**——単票のボタンが在ることを先に測る（無ければ否定形は自明に成り立つ）。
+  it('never offers a bulk approve or reject action', async () => {
+    respond({ suggestions: [LINK_SUGGESTION, TAG_SUGGESTION] });
+    await renderPage();
+    await screen.findByRole('heading', { name: 'AI 提案' });
+
+    expect(screen.getAllByRole('button', { name: '却下' })).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: /すべて|一括|まとめて/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  // 05_screens §SC-03: 本欄から SC-21（AI 提案一覧）への導線を置く。
+  it('links to the suggestion listing from the panel', async () => {
+    respond({ suggestions: [LINK_SUGGESTION] });
+    await renderPage();
+    await screen.findByRole('heading', { name: 'AI 提案' });
+
+    expect(screen.getByRole('link', { name: 'AI 提案の一覧を見る' })).toHaveAttribute(
+      'href',
+      expect.stringContaining('/ai-suggestions'),
+    );
+  });
+
+  // 🔴 **「提案が無い」へ縮退しない。** 引けないことと 0 件は利用者にとって別の意味である
+  // （SC-21 の一覧と同じ判断）。本体の表示は妨げない。
+  it('does not degrade a failed suggestion fetch into an empty panel', async () => {
+    respond({ suggestions: ApiError.fromStatus(500) });
+    await renderPage();
+
+    expect(await screen.findByRole('heading', { name: '経費精算規程 v3.2' })).toBeInTheDocument();
+    expect(await screen.findByText(/AI 提案を取得できませんでした/)).toBeInTheDocument();
   });
 
   // 計画 05_screens が「**本画面はバックリンク欄を持たない**」「バックリンク欄・ローカルグラフは

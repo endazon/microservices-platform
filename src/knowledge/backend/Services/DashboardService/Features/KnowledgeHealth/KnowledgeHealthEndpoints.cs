@@ -24,6 +24,11 @@ namespace DashboardService.Features.KnowledgeHealth;
 // ここで用意するのは集計と統制であり、表示ではない。
 public static class KnowledgeHealthEndpoints
 {
+    // 🔴 送信側 GraphService.Infrastructure.ExternalServices.HttpKnowledgeHealthReporter.ObservationsPath と同値。
+    // **サービスを跨ぐため定数を共有できない**（サービス間は直接参照しない）。
+    // `/internal/notifications` と同じく、**文字列の一致は両側のテストで固定している**。
+    public const string ObservationsPath = "/internal/knowledge-health/observations";
+
     public static IEndpointRouteBuilder MapKnowledgeHealthEndpoints(this IEndpointRouteBuilder app)
     {
         var g = app.MapGroup("/dashboard/knowledge-health").WithTags("KnowledgeHealth");
@@ -67,9 +72,21 @@ public static class KnowledgeHealthEndpoints
         // DashboardService から直接は数えられない**。集計主体を DashboardService に置く判断は
         // IADR-0011（業務指標は DashboardService・技術/費用は可観測性スタック）に従う。
         //
-        // 認可は**認証済み**とする（`POST /dashboard/events` と同じ）。書き込むのはサービスであり、
-        // 管理系ロールを要求すると計測経路がロール設計に縛られる。**閲覧側の統制は上の GET が持つ。**
-        g.MapPost("/observations", async (
+        // ★［2026-08-29 移設 / #443］**`/dashboard/...` から `/internal/...` へ移し、認証を外した**
+        // （[[IADR-0299]] 決定 4。利用者裁定）。従前は `RequireAuthorization()`（認証済み）だったが、
+        // **生産者は利用者 JWT を持たない定期処理**であり、`client_credentials` の実装は
+        // リポジトリ本体に 1 行も無い。`/internal/notifications`（NotificationIngressEndpoints）が
+        // 同じ制約に対して採った形をそのまま倣う —— 内部 API は OpenAPI にも載せない。
+        //
+        // **統制**（定めたもの）: 第一防御は mesh の STRICT mTLS、多層防御としてネットワーク分離
+        // （内部サービスは host 非公開・Service は既定 ClusterIP・NetworkPolicy 既定拒否）。
+        // 🔴 **統制が働いていること（測れているもの）は別である。** 機械検査が実際に押さえているのは
+        // 「compose が host 公開しない」「Helm の Service に type: が現れない」の 2 点だけであり
+        // （NetworkIsolationTests）、**mTLS が実際に遮断していることは測れていない**。
+        // 残余リスク（同一ネットワーク内からは無認証で観測値を差し替えられる）は [[IADR-0299]] に
+        // 受容として記録した。作れるのは**指標名と不透明な鍵の集合だけ**であり、
+        // **受け口は書き込み専用で既存の観測値を読み出さない**（読み出しは上の GET のみ・ロール限定）。
+        app.MapPost(ObservationsPath, async (
             KnowledgeHealthReportRequest req, DashboardDbContext db, CancellationToken ct) =>
         {
             if (!KnowledgeHealthIndicators.IsValid(req.Indicator))
@@ -96,7 +113,8 @@ public static class KnowledgeHealthEndpoints
 
             // **受け付けた件数だけを返す**（個人資料を含み得る生の値であり、ここは集計面ではない）。
             return Results.Accepted(value: new { indicator, accepted = observations.Count });
-        }).WithName("ReportKnowledgeHealth").RequireAuthorization()
+        }).WithName("ReportKnowledgeHealth")
+          .ExcludeFromDescription()
           .Produces(StatusCodes.Status202Accepted);
 
         return app;

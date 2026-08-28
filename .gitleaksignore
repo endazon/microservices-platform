@@ -1,0 +1,17 @@
+# gitleaks の誤検知を無効化する fingerprint の一覧（NFR / #438）。
+#
+# 運用は `.github/workflows/security.yml` の gitleaks ジョブのコメントが正本である ——
+# **単発・履歴上の誤検知（例示鍵・ダミー ID 等）は fingerprint をここへ追記する**
+# （履歴は書き換えない＝force-push しない方針）。同型の誤検知が繰り返し出る場合は
+# fingerprint では止まらないため `.gitleaks.toml` の allowlist を使う。
+#
+# 書式: <commit-sha>:<path>:<rule-id>:<line>
+
+# RFC 6238 §Appendix B の TOTP テストベクタの共有鍵を base32 で直書きしていた
+# （`GEZD…` の 32 文字）。**gitleaks の判定は正しい** —— 32 文字の英数字は、
+# 公開テストベクタと本物の鍵とで形の見分けが付かない。
+#
+# 🔴 **後続のコミットで直書きをやめ、ASCII の共有鍵から組み立てる形にした**ので、
+# 現行のツリーにこの値は無い。ここに残すのは**履歴の 1 コミットぶん**だけである
+# （force-push しないため履歴からは消えない）。
+a154bc7e337e168417d81ca9380bafbc78780202:scripts/scripts.test.js:generic-api-key:1366

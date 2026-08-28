@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-05, SC-06, UC-04]
 adrs: [ADR-0002, ADR-0003, ADR-0009, ADR-0013, ADR-0027, ADR-0036]
-iadrs: [IADR-0019, IADR-0136, IADR-0148, IADR-0199]
+iadrs: [IADR-0019, IADR-0136, IADR-0148, IADR-0199, IADR-0295]
 specs: []
-issues: [#516, #537, #538, #580, #752, #754, #767, #796, planning#344, planning#361, planning#372]
+issues: [#458, #516, #537, #538, #580, #752, #754, #767, #796, planning#344, planning#361, planning#372]
 -->
 
 # データ仕様書: データソース・取り込みチャンク（DataSource / Vector Chunk）
@@ -42,13 +42,13 @@ IngestionService はリレーショナル DB を持たない Worker で、`Docum
 | Id | Guid (uuid) | ○ | 主キー。既定 `Guid.NewGuid()` | データソースの一意識別子 |
 | Name | string (varchar(200)) | ○ | 最大長 200 | 表示名 |
 | SourceType | string (varchar(50)) | ○ | 最大長 50。値例: `filesystem` / `wiki` / `saas` / `db` | ソース種別 |
-| ConnectionUri | string (varchar(2048)) | ○ | 最大長 2048 | 接続先 URI |
+| ConnectionUri | string (varchar(2048)) | ○ | 最大長 2048。**資格情報を含む値は書き込み時に 400 で拒否**（`ConnectionUriPolicy`） | 接続先 URI。**応答では資格情報つき URI・接続文字列の秘密を伏せる**（既存行の保護） |
 | Status | string (varchar(50)) | ○ | 最大長 50。既定 `active`。値: `active` / `disabled` | 稼働状態 |
 | LastSyncedAt | DateTimeOffset? (timestamptz) | - | NULL 可（未同期）。`RecordSync()` で更新 | 最終同期時刻 |
 | ConsecutiveFailureCount | int | ○ | 既定 `0`。`RecordSyncFailure()` で増え、完全成功の `ClearSyncFailures()` で `0` へ戻る | 連続同期失敗回数（データソース管理画面 / 裁定 Q14 / #537。健全性はエンティティへ永続化する実装判断） |
 | LastSyncError | string? (varchar(500)) | - | NULL 可。**保存時点でマスク済み**（`SyncErrorRedactor`。接続文字列・資格情報つき URI・HTTP 認証スキームを伏せ、500 字で丸める） | 直近の同期エラー |
 | LastSyncErrorAt | DateTimeOffset? (timestamptz) | - | NULL 可 | 直近の同期エラーの発生時刻 |
-| Config | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可 | 接続・同期設定（コネクタ固有） |
+| Config | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可 | 接続・同期設定（コネクタ固有）。**秘密とみなすキーの値は応答で伏せる**（集合の単一情報源は `SecretMask.KeyMarkers`）。**保存は平文である** |
 | DefaultAttributes | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可。**必須属性のフェイルセーフを必ず通す**（下表。`Create` / `Update` / `Patch` / `GetEffectiveAttributes` の 4 経路で同一。データソースが原本へ既定 ABAC 属性を付与する方針と、その必須属性フェイルセーフの拡張による） | このデータソース由来の原本へ既定で付与する ABAC 文書属性 |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 登録時刻 |
 

@@ -81,9 +81,18 @@ public sealed class DataSourceSyncService(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             AlertOnFailure(source, "discover", ex);
+            // FR-01, UC-04, SC-06, IADR-0295 決定 2: **応答も `SyncErrorRedactor` を通す。**
+            // 従前ここは `ex.Message` を素で載せており、同じ例外が `AlertOnFailure` 経由では
+            // マスクして保存されるのに**応答だけが素通し**だった。`DatabaseConnector` は
+            // `builder["Password"]` で接続文字列を合成して `OpenAsync` するため、
+            // **Npgsql の接続失敗例外にパスワードが載る経路が実在する。**
+            //
+            // **文字列を組み立ててから通す。** そうすれば保存される `LastSyncError` と応答が
+            // 同じ規則（マスク ＋ 500 文字上限）で揃う。
+            //
             // discover 失敗は「成功して 0 件」と区別する（DiscoverSucceeded=false）→ watermark を進めない。
             return new SyncResult(0, 0, ConnectorAvailable: true, DiscoverSucceeded: false,
-                Message: "discover failed: " + ex.Message);
+                Message: SyncErrorRedactor.Redact("discover failed: " + ex.Message));
         }
 
         var fetched = 0;
@@ -140,7 +149,14 @@ public sealed class DataSourceSyncService(
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 failed++;
-                logger.LogWarning(ex, "原本の取得/発行に失敗: {Path}（source {Id}）", item.Path, source.Id);
+                // IADR-0295 決定 4: **例外オブジェクトをそのまま渡さない。** `ex` を第 1 引数に渡すと
+                // `ILogger` は `Exception.ToString()`（メッセージ ＋ 内部例外のメッセージ ＋ スタック）を
+                // ログレコードへ載せる。共通ログ基盤にスクラビングは無いため（`Foundation/` を
+                // `redact|scrub|sanitiz|mask` で走査して 0 件）、載せたものはそのまま外へ出る。
+                // 型名は資格情報を運ばず切り分けの主要な手掛かりなので残す。
+                logger.LogWarning(
+                    "原本の取得/発行に失敗: {Path}（source {Id}）: {ErrorType}: {Error}",
+                    item.Path, source.Id, ex.GetType().FullName, SyncErrorRedactor.Redact(ex.Message));
             }
         }
 
@@ -163,8 +179,12 @@ public sealed class DataSourceSyncService(
     {
         var count = source.RecordSyncFailure(
             SyncErrorRedactor.Redact(ex?.Message ?? phase), DateTimeOffset.UtcNow);
+        // IADR-0295 決定 4: 上と同じ理由で例外オブジェクトを渡さない。**ここは discover 失敗の
+        // 経路であり、パスワードを運ぶ実例が確認されている側である。**
         if (ex is not null)
-            logger.LogWarning(ex, "同期失敗（{Phase}）source {Id} 連続{Count}回", phase, source.Id, count);
+            logger.LogWarning(
+                "同期失敗（{Phase}）source {Id} 連続{Count}回: {ErrorType}: {Error}",
+                phase, source.Id, count, ex.GetType().FullName, SyncErrorRedactor.Redact(ex.Message));
 
         if (count >= AlertThreshold)
             logger.LogError(

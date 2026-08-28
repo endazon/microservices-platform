@@ -340,6 +340,16 @@ services:
     image: microservices-platform/authorization-service
     tag: latest
     port: 8080
+    # SC-17, IADR-0301 決定 3 (#452): 利用者アカウント管理の反映先。**既定は無く、宣言が必須**
+    # （未設定なら Pod が起動時に落ちる）。
+    # 🔴 **暫定である。** 実 IdP へ反映するには `realm-management` の view-users / manage-users /
+    #    view-realm を持つ機密クライアントが realm に要るが、まだ登録されていない。配備されたら
+    #    `keycloak` へ切り替え、IdentityAdmin__Keycloak__{BaseUrl,Realm,ClientId,ClientSecret} を
+    #    注入する（ClientSecret は Secret 由来。既定値を持たせない —— global.db / global.messaging と同型）。
+    #    それまで SC-17 の変更は Pod のプロセス内にしか残らない（起動時に警告ログが 1 行出る）。
+    extraEnv:
+      - name: IdentityAdmin__Provider
+        value: "in-memory"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
@@ -460,6 +470,26 @@ services:
     # 同じ理由で scaling.services にも入れない（conversion / ingestion / graph と同じ扱い）。
     replicas: 1
     image: microservices-platform/notification-service
+    tag: latest
+    port: 8080
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
+  # FR-16, UC-09, SC-12, ADR-0021/ADR-0024 (#452): MCP サーバー。外部 AI エージェント向けの
+  # エッジ集約（/mcp）と、管理 REST（/mcp-clients*。SC-12 の後段）を持つ。
+  # 🔴 **chart のキーは `mcp` である**（deployment.yaml / service.yaml が {{ $name }}-service を
+  # 組むため Service 名は mcp-service になり、BFF のコード既定 `http://mcp-service:8080` と
+  # 文字列一致する）。キーを `mcp-server` にすると Service 名は mcp-server-service になり不達になる。
+  # キーを変えるなら services.bff.extraEnv へ Services__McpServer の上書きが要る
+  # （check-bff-downstreams.js が実効ポートを、この一致は人が守る）。
+  mcp:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    # DB 実体は deploy/local/infra/postgres.yaml の init が作る（compose 側は create-multiple-dbs.sh）。
+    database: mcp_svc
+    enabled: true
+    replicas: 1
+    image: microservices-platform/mcp-service
     tag: latest
     port: 8080
     resources:

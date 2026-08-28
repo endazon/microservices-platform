@@ -30,6 +30,21 @@ public sealed class NullObjectStorageClient(
         return Task.FromResult(uri);
     }
 
+    // FR-06, FR-19, ADR-0057 決定 1, IADR-0296: **`Put*` と同じ作法（警告して成功）にする。**
+    //
+    // 🔴 **例外にしてはならない。** ストレージ未構成の dev/test 環境では本文がそもそも永続化されて
+    // おらず（`Put*` は URI を返すだけ）、**消すべき実体が存在しない**。ここで
+    // `NotSupportedException` を投げると、個人資料の完全削除（FR-19）と文書削除（FR-06）が
+    // 未構成環境で 500 になる —— **消えていないのではなく、最初から書かれていない**のだから、
+    // 削除としては成功で正しい。`Get*` が例外なのは「無い本文を返せない」からであって、向きが逆である。
+    public Task DeleteAsync(string uri, CancellationToken ct = default)
+    {
+        logger.LogWarning(
+            "Object storage not configured; treating delete of {Uri} as a no-op (nothing was persisted)",
+            uri);
+        return Task.CompletedTask;
+    }
+
     public Task<string> GetTextAsync(string uri, CancellationToken ct = default) =>
         throw new NotSupportedException(
             "Object storage is not configured; cannot fetch " + uri);

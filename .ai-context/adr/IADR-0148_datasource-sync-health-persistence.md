@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-01, FR-02, UC-04, SC-06, ADR-0043, IADR-0051, IADR-0053, IADR-0083, IADR-0122, IADR-0127, IADR-0136, IADR-0139]
 author: Claude
 created: 2026-08-08
-updated: 2026-08-08
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/03_usecases/01_usecases.md
@@ -151,6 +151,19 @@ related_specs:
 同じ知識を使う）。**2 箇所に持つと、マーカーを足したときに片方が黙って古くなる** ——
 本リポジトリが繰り返し踏んでいる型である。従前は `DataSourceEndpoints` が自前のマーカー配列を
 持っていたので、そこから移した。
+
+> **［2026-08-28 追記 / #458］単一情報源は `SecretConfigMask` から `SecretMask` へ移した。**
+> **決定そのものは変えていない**（「秘密キーの定義を 1 箇所に持つ」は維持）。**移した先が変わった。**
+>
+> 🔴 **上の段落が警告している事故が、実際に起きていた。** `SecretConfigMask` の 4 語
+> （token / password / secret / credential）と `SyncErrorRedactor` の 7 種は**別の集合であり続けており**、
+> `Config` のキーが `apiKey` / `pwd` / `privateKey` だと**応答でマスクされなかった**
+> （計画が SaaS の認証として名指しする「APIキー」がこれに当たる）。
+>
+> **`SecretConfigMask` に持たせたままでは直せなかった** —— `SyncErrorRedactor` 側が必要とするのは
+> キー名の配列ではなく**正規表現の選択肢**だからである。両者が読める形（`SecretMask.KeyMarkers`）へ
+> 抜き出した。`SecretConfigMask` は**辞書への適用だけ**を持ち、何が秘密かは持たない。
+> 詳細は [IADR-0295](./IADR-0295_connector-credential-exposure-paths.md) 決定 1。
 
 > **マスク値（`***`）が「送られてきた」ときに、拒否ではなく「既存値を保つ」を選んだ理由**: 拒否すると、読んで書き戻すという
 > 正常な使い方が**常に**失敗し、利用者はマスク済みキーを手で除く運用を強いられる。

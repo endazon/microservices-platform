@@ -1,0 +1,11 @@
+{
+  "description": "Markdown 原本（図なし）。本文が素通しであることと、決定的 DocumentId・本文キーを固定する。",
+  "sourceId": "11111111-1111-1111-1111-111111111111",
+  "sourceType": "filesystem",
+  "originalPath": "/docs/handbook/expense-policy.md",
+  "storageUri": "storage://bucket/raw/expense-policy.md",
+  "contentType": "text/markdown",
+  "attributes": { "confidentiality": "internal" },
+  "tags": ["knowledge-mgmt"],
+  "figures": []
+}

@@ -258,7 +258,9 @@ public class DataSource
     {
         Name = name;
         SourceType = sourceType;
-        ConnectionUri = connectionUri;
+        // IADR-0295 決定 3: `ConnectionUri` も応答でマスクされるようになった。**同じ守りが要る** ——
+        // マスク済みの値を書き戻したら既存の実値を保つ（IADR-0148 決定 6 を ConnectionUri へ広げた形）。
+        ConnectionUri = ConnectionUriPolicy.Preserve(connectionUri, ConnectionUri);
         // IADR-0148 決定 6: 応答のマスク値（***）を書き戻しても本物の秘密を壊さない。
         Config = SecretConfigMask.PreserveMasked(config ?? [], Config);
         DefaultAttributes = WithRequiredAttributeFailsafe(defaultAttributes);
@@ -273,7 +275,8 @@ public class DataSource
     {
         if (name is not null) Name = name;
         if (sourceType is not null) SourceType = sourceType;
-        if (connectionUri is not null) ConnectionUri = connectionUri;
+        // IADR-0295 決定 3: 同上。PATCH は「読んで一部だけ直して送り返す」経路そのものである。
+        if (connectionUri is not null) ConnectionUri = ConnectionUriPolicy.Preserve(connectionUri, ConnectionUri);
         // IADR-0148 決定 6: 同上。PATCH は「読んで一部だけ直して送り返す」経路そのものなので、
         // ここが無いと最も普通の使い方が資格情報を破壊する。
         if (config is not null) Config = SecretConfigMask.PreserveMasked(config, Config);

@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-05, SC-06, UC-04]
 adrs: [ADR-0002, ADR-0003, ADR-0014, ADR-0027]
-iadrs: [IADR-0001, IADR-0019, IADR-0044, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0199]
+iadrs: [IADR-0001, IADR-0019, IADR-0044, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0199, IADR-0295]
 specs: []
-issues: [#195, #217, #218, #219, #516, #534, #537, #580, #627, planning#344, planning#361]
+issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, planning#344, planning#361]
 -->
 
 # テスト仕様書: データソース登録・同期・カタログ化
@@ -88,6 +88,13 @@ issues: [#195, #217, #218, #219, #516, #534, #537, #580, #627, planning#344, pla
 | T-43 | 補完を一度も通っていない旧行（EF の materialize を反射で再現） | `GetEffectiveAttributes` | **必須属性 4 種**が補完される | **最終防衛線**。公開 API 経由では旧状態を作れないため反射で作る | 自動（単体） |
 | T-44 | 既定属性が空 | `DataSource.Create` | `lifecycle` が **`active`** になる | 終端の既定（計画側の裁定・案 C ＋ 終端 active。必須属性フェイルセーフの拡張・決定 4）。**従前は「付かない」ことを固定する否定形だったが、裁定が下りたので反転させた** | 自動（単体） |
 | T-45 | `lifecycle` を明示（`draft`） | `DataSource.Create` | 明示値が保持される | ソース単位で下書き扱いにできる（終端は指定が無いときだけ効く） | 自動（単体） |
+| T-46 | `config` のキーが `apiKey` / `api_key` / `api-key` / `pwd` / `privateKey` / `authorization` | `GET /datasources/{id}` | いずれもマスクされる。**秘密キーの集合は 1 箇所**（従前は 2 箇所にあり食い違っていた） | マーカー集合の統合（#458）。計画が名指しする「APIキー」が捕まらなかった | 自動（エンドポイント） |
+| T-47 | `config` のキーが `spaceKey` / `listPath` / `rootPath` / `contentType` / `cursorParam` | `GET /datasources/{id}` | **マスクされない** | 過剰マスクもまた欠陥である（原因の切り分けを潰す）。`key` 単独をマーカーにしない根拠 | 自動（エンドポイント） |
+| T-48 | 新たに秘密扱いになったキー（`apiKey`）へ `***` を書き戻す | `PATCH /datasources/{id}` | 保存された実値が壊れない | 読みと書きが同じマーカー集合を使うことの確認（マーカーを広げると往復も広がる） | 自動（エンドポイント） |
+| T-49 | `connectionUri` が資格情報つき URI／接続文字列の秘密を含む既存行 | `GET` / 一覧 | **伏せられる**（接続先は残し値だけを伏せる） | 接続 URI の露出封鎖（#458）。従前はマスクが `config` にしか掛かっていなかった | 自動（エンドポイント） |
+| T-50 | 資格情報つき `connectionUri` での登録・更新 | `POST` / `PUT` | **400**（`config` へ移すよう案内する） | 書き込み側の封鎖。実測で壊れる既存データは無い | 自動（エンドポイント） |
+| T-51 | マスク済み `connectionUri` をそのまま書き戻す／**編集して**書き戻す | `PUT /datasources/{id}` | 前者は 200 で実値が保たれ、後者は **400**（黙って保存して資格情報を失わせない） | 往復の保護。編集した形はどのマスク規則にも掛からないため明示的に弾く | 自動（エンドポイント） |
+| T-52 | discover / fetch が資格情報つきの例外を投げる | `POST /datasources/{id}/sync` ／ `SyncAsync` | 応答・ログのいずれにも平文が出ない。**例外オブジェクトをロガーへ渡さない**（型名は残す） | 応答とログの封鎖（#458）。共通ログ基盤にスクラビングは無い | 自動（エンドポイント・単体） |
 
 ## テストデータ
 
@@ -112,6 +119,7 @@ issues: [#195, #217, #218, #219, #516, #534, #537, #580, #627, planning#344, pla
 - 業務DB コネクタテスト: `.../DataSourceService.Api.Tests/DatabaseConnectorTests.cs`（T-19〜T-25・ハンドロール ADO.NET フェイク）
 - 同期健全性: `.../DataSourceService.Api.Tests/DataSourceSyncServiceTests.cs`（T-26〜T-28）、`.../SyncErrorRedactorTests.cs`（T-29）
 - 更新 API: `.../DataSourceService.Api.Tests/DataSourceUpdateEndpointTests.cs`（T-30〜T-35）、`.../DataSourceAuthorizationTests.cs`（T-36）
+- 資格情報の露出封鎖: `src/knowledge/backend/Services/DataSourceService/Tests/DataSourceCredentialExposureTests.cs`（T-46〜T-52。**すべて秘密を実際に通す陽性対照**であり、マスクを外す変異で落ちることを実測している）
 - BFF の中継: `src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs`（健全性の透過・`PUT` / `PATCH` の転送・運用者の 403）
 - 実装 ADR（追加）: `../../.ai-context/adr/IADR-0051_datasource-connector-port-and-filesystem.md`
 

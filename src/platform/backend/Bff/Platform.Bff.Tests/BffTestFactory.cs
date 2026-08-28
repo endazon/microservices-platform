@@ -98,6 +98,39 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // 観測する側が呼ぶ前に既定へ戻すこと。
     public List<AiSuggestionDto> StubAiSuggestions { get; set; } = [];
 
+    // FR-18, SC-03, #450: AI 提案の**承認・却下**（書き込み）。
+    //
+    // 🔴 **読み取りとは別の knob にする。** 一覧の状態コードを流用すると、承認の 409 を測るために
+    // 一覧まで 409 にすることになり、**「承認だけが失敗する」形を再現できない**。
+    // 🔴 **本文も差し替えられる。** 409（`invalid_transition`）・400（`unknown_edge_type`）の本文が
+    // 画面の文言の根拠であり、**BFF が本文を捨てていないこと**を測るために要る。
+    public HttpStatusCode GraphWriteStubStatusCode { get; set; } = HttpStatusCode.OK;
+    public string? GraphWriteStubBody { get; set; }
+    // 後段不達を再現する（BFF の catch → 502 縮退の検証用）。
+    public bool GraphWriteStubThrows { get; set; }
+    // 承認・却下の成功応答（**単票**である。一覧と違って配列ではない）。
+    public AiSuggestionDto? StubSuggestionWriteResult { get; set; }
+    // BFF が後段へ渡したメソッド。**テスト間で共有される**（IClassFixture）ため、観測する側が
+    // 呼ぶ前に null へ戻すこと。
+    public string? LastGraphMethod { get; private set; }
+    // 🔴 BFF が後段へ渡した本文。**却下は本文を送らない**（指紋を公開面へ出さないため）ことの観測点。
+    public string? LastGraphBody { get; private set; }
+
+    // FR-16, UC-09, SC-12, #452: McpServer（/mcp-clients*）のスタブ。**テスト間で共有される**
+    // （IClassFixture）ため、観測する側が呼ぶ前に既定へ戻すこと。
+    //
+    // 🔴 **後段の状態コードをそのまま返せることを測るための可変値である。**
+    // BFF は透過中継であり、400（属性割当の拒否）・404（不在）・409 を作り替えてはならない。
+    public HttpStatusCode McpStubStatusCode { get; set; } = HttpStatusCode.OK;
+    public bool McpStubThrows { get; set; }
+    public string? LastMcpPath { get; private set; }
+    public string? LastMcpMethod { get; private set; }
+    public string? LastMcpBody { get; private set; }
+
+    // 🔴 **資格情報が後段へ届いているかの観測点**（陽性対照）。伝播を落とすと後段は自分で
+    // 401 を返す型なので、ここを測らないと「全部 401 でも緑」になる。
+    public string? LastMcpForwardedAuthorization { get; private set; }
+
     public bool TagDictionaryFetched { get; set; }
     public HttpStatusCode TagDictionaryStatusCode { get; set; } = HttpStatusCode.OK;
 
@@ -232,6 +265,33 @@ public class BffTestFactory : WebApplicationFactory<Program>
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
     ];
 
+    // FR-05, FR-09, UC-05, SC-17, #452: 利用者アカウント管理（/authz/users*）のスタブ。
+    // **後段は AuthorizationService と同じ named client** なので、AuthzStubHandler がパスで振り分ける。
+    // 不達（502 への縮退）は AuthzManagementThrows を共用する。
+    public HttpStatusCode UserAdminStatusCode { get; set; } = HttpStatusCode.OK;
+    public string? LastUserAdminPath { get; private set; }
+    public string? LastUserAdminMethod { get; private set; }
+    public string? LastUserAdminBody { get; private set; }
+    // 🔴 **資格情報の伝播の観測点。** 後段も AdminOnly を強制する二重ゲートなので、
+    // 伝播が切れると実サービスでは全部 401 になる。
+    public string? LastUserAdminForwardedAuthorization { get; private set; }
+    public List<PlatformUserDto> StubUsers { get; set; } =
+    [
+        new("u-tanaka", "tanaka.taro", "田中 太郎", true, ["platform-operator"],
+            new Dictionary<string, string> { ["department"] = "finance", ["clearance"] = "internal" }),
+        new("u-takahashi", "takahashi.jiro", "高橋 次郎", false, ["platform-operator"],
+            new Dictionary<string, string> { ["department"] = "hr", ["clearance"] = "public" }),
+    ];
+    public List<string> StubAssignableRoles { get; set; } = ["platform-admin", "platform-operator"];
+
+    internal void RecordUserAdmin(string? path, string method, string? body, string? authorization)
+    {
+        LastUserAdminPath = path;
+        LastUserAdminMethod = method;
+        LastUserAdminBody = body;
+        LastUserAdminForwardedAuthorization = authorization;
+    }
+
     // FR-01/FR-02 BFF テスト（SC-06 データソース管理）: DataSourceService の応答をスタブ制御する。
     public static readonly Guid StubDataSourceId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
     public HttpStatusCode DataSourceStatusCode { get; set; } = HttpStatusCode.OK;
@@ -316,6 +376,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ["Services:RiskManagementService"] = "http://localhost:5012",
                 // Issue #288 (AST/SC-02 watchlist): AST MarketMonitorService の集約先（テスト用）。
                 ["Services:MarketMonitorService"] = "http://localhost:5013",
+                // FR-16, UC-09, SC-12 (#452): McpServer の集約先（テスト用）。実デプロイの Service 名
+                // （mcp-service）とメッシュポート（:8080）を明示注入し、named client の BaseAddress が
+                // Services 設定駆動であることを固定する（BffDownstreamResolutionTests 参照）。
+                ["Services:McpServer"] = "http://mcp-service:8080",
                 // FR-15: 構成情報 API テスト。定期ドリフト検出は無効化し、構成バージョンを固定する。
                 ["Drift:Enabled"] = "false",
                 ["Config:GitCommit"] = "abc1234",
@@ -359,6 +423,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // Issue #288 (AST/SC-02 watchlist): MarketMonitorService(/monitor/*) をスタブ化する。
             services.AddHttpClient("MarketMonitorService")
                 .ConfigurePrimaryHttpMessageHandler(() => new MonitorStubHandler(this));
+
+            // FR-16, UC-09, SC-12 (#452): McpServer(/mcp-clients*) をスタブ化する。
+            services.AddHttpClient("McpServer")
+                .ConfigurePrimaryHttpMessageHandler(() => new McpStubHandler(this));
 
             // FR-10: /bff/dashboard/summary は管理系ロール（admin ＋ operator。#544）を要求する。テストでは Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
@@ -506,6 +574,24 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 throw new HttpRequestException("authorization-service unreachable");
 
             // FR-09 (SC-09): 管理系は AuthzManagementStatusCode で状態を差し替えられる（400/409/404 透過検証）。
+            // FR-05, FR-09, UC-05, SC-17 (#452): 利用者アカウント管理。**観測してから応答する** ——
+            // 伝播（Authorization）と後段パス・本文の陽性対照に使う。
+            if (path.StartsWith("/authz/users", StringComparison.Ordinal))
+            {
+                var userBody = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+                owner.RecordUserAdmin(path, method.Method, userBody,
+                    request.Headers.TryGetValues("Authorization", out var userAuth)
+                        ? string.Join(",", userAuth) : null);
+
+                if (owner.UserAdminStatusCode != HttpStatusCode.OK)
+                    return Json(owner.UserAdminStatusCode, new { errors = new[] { "invalid" } });
+                if (path == "/authz/users/assignable-roles")
+                    return Json(HttpStatusCode.OK, owner.StubAssignableRoles);
+                if (path == "/authz/users")
+                    return Json(HttpStatusCode.OK, owner.StubUsers);
+                return Json(HttpStatusCode.OK, owner.StubUsers[0]); // PUT attributes/roles・POST disable/enable
+            }
+
             if (path.StartsWith("/authz/policies", StringComparison.Ordinal))
             {
                 if (owner.AuthzManagementStatusCode != HttpStatusCode.OK)
@@ -915,13 +1001,36 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-17, UC-10, #916a: GraphService のスタブ。
     private sealed class GraphStubHandler(BffTestFactory owner) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
             owner.LastGraphPath = request.RequestUri?.PathAndQuery;
+            owner.LastGraphMethod = request.Method.Method;
+            owner.LastGraphBody = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
             var auth = request.Headers.Authorization?.ToString()
                 ?? (request.Headers.TryGetValues("Authorization", out var v) ? string.Join(",", v) : null);
             owner.LastGraphForwardedAuthorization = auth;
+
+            // FR-18, SC-03, #450: 承認・却下（書き込み）。**読み取りとは別の knob で応答を決める。**
+            var isWrite = owner.LastGraphPath is { } p
+                && (p.EndsWith("/approve", StringComparison.Ordinal)
+                    || p.EndsWith("/reject", StringComparison.Ordinal));
+            if (isWrite)
+            {
+                if (owner.GraphWriteStubThrows) throw new HttpRequestException("graph unreachable");
+                // 🔴 群の `RequireAuthorization()` が先に弾くので、資格情報が無ければ 401 である。
+                if (string.IsNullOrEmpty(auth))
+                    return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+                var write = new HttpResponseMessage(owner.GraphWriteStubStatusCode);
+                if (owner.GraphWriteStubBody is { } body)
+                    write.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+                else if (owner.GraphWriteStubStatusCode == HttpStatusCode.OK
+                         && owner.StubSuggestionWriteResult is { } dto)
+                    write.Content = JsonContent.Create(dto);
+                return write;
+            }
 
             var isCatalog = owner.LastGraphPath?.Contains("edge-types", StringComparison.Ordinal) == true;
             // FR-18, SC-21, #918: 提案の一覧。**カタログと同じく `RequireAuthorization()` が
@@ -934,22 +1043,22 @@ public class BffTestFactory : WebApplicationFactory<Program>
             //   カタログ / 提案: `RequireAuthorization()` が弾く → **401**（隠すものが無いので秘匿しない）
             // ここを一律にすると、片方の伝播が切れても気付けないテストになる。
             if (string.IsNullOrEmpty(auth))
-                return Task.FromResult(new HttpResponseMessage(
+                return new HttpResponseMessage(
                     isCatalog || isSuggestions
                         ? HttpStatusCode.Unauthorized
-                        : HttpStatusCode.NotFound));
+                        : HttpStatusCode.NotFound);
 
             if (owner.GraphStubStatusCode != HttpStatusCode.OK)
-                return Task.FromResult(new HttpResponseMessage(owner.GraphStubStatusCode));
+                return new HttpResponseMessage(owner.GraphStubStatusCode);
 
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = isSuggestions
                     ? JsonContent.Create(owner.StubAiSuggestions)
                     : isCatalog
                         ? JsonContent.Create(owner.StubEdgeTypeCatalog)
                         : JsonContent.Create(owner.StubGraphView)
-            });
+            };
         }
     }
 
@@ -1152,4 +1261,64 @@ public class BffTestFactory : WebApplicationFactory<Program>
             };
         }
     }
+
+    // FR-16, UC-09, SC-12 (#452): McpServer(/mcp-clients*) のスタブ。BFF の pass-through
+    // （ステータス・本文・Content-Type 透過、資格情報の伝播、書き込み本文の転送、502 縮退）を
+    // 検証するための最小スタブである。
+    //
+    // 🔴 **資格情報が届かないときは 401 を返す。** 後段（McpServer）の管理 API は
+    // `RequireAuthorization(AdminOnly)` の群であり、無資格の要求はそこで弾かれる。
+    // ここを一律 200 にすると、BFF が Authorization を伝播し忘れても緑のままになる。
+    private sealed class McpStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            owner.LastMcpPath = request.RequestUri?.PathAndQuery;
+            owner.LastMcpMethod = request.Method.Method;
+            owner.LastMcpBody = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+            owner.LastMcpForwardedAuthorization = request.Headers.TryGetValues("Authorization", out var auth)
+                ? string.Join(' ', auth)
+                : null;
+
+            if (owner.McpStubThrows) throw new HttpRequestException("mcp-service unreachable");
+
+            if (string.IsNullOrEmpty(owner.LastMcpForwardedAuthorization))
+                return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+
+            if (owner.McpStubStatusCode != HttpStatusCode.OK)
+                return new HttpResponseMessage(owner.McpStubStatusCode)
+                {
+                    // 後段は RFC7807 の本文を返す。**本文まで透過することを測る**ため空にしない。
+                    Content = new StringContent(
+                        "{\"errors\":{\"request\":[\"stub-detail\"]}}",
+                        System.Text.Encoding.UTF8, "application/problem+json"),
+                };
+
+            // 公開ツール一覧（GET /mcp-clients/tools）と登録クライアント一覧（GET /mcp-clients）は形が違う。
+            // 型は BFF で結合しないため素の JSON で返す。
+            if (owner.LastMcpPath?.EndsWith("/mcp-clients/tools", StringComparison.Ordinal) == true)
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "{\"version\":3,\"tools\":[{\"name\":\"retrieval.search_documents\",\"service\":\"retrieval-service\","
+                        + "\"description\":\"横断検索\",\"requiredScope\":\"document:read\",\"egressClass\":\"metadata-only\"}],"
+                        + "\"drifts\":[{\"kind\":\"UndeclaredTool\",\"target\":\"graph.traverse\",\"detail\":\"申告に無い\"}]}",
+                        System.Text.Encoding.UTF8, "application/json"),
+                };
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "[{\"id\":\"11111111-1111-1111-1111-111111111111\",\"clientId\":\"nightly-digest-bot\","
+                    + "\"displayName\":\"夜間ダイジェスト\",\"kind\":\"service-account\",\"enabled\":true,"
+                    + "\"attributes\":{\"confidentiality\":\"internal\"},\"egressTier\":\"self-hosted\","
+                    + "\"registeredAt\":\"2026-08-28T00:00:00Z\",\"updatedAt\":\"2026-08-28T00:00:00Z\"}]",
+                    System.Text.Encoding.UTF8, "application/json"),
+            };
+        }
+    }
+
 }

@@ -20,6 +20,10 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     -- notification-service が Host=postgres;Database=notification_svc へ接続し、起動時に
     -- MigrateAsync を走らせるため作成する（未作成だとクラッシュループ）。
     CREATE DATABASE notification_svc;
+    -- FR-16, UC-09, SC-12, ADR-0024 (#452): MCP クライアント登録簿の McpServer 専用 DB。compose の
+    -- mcp-service が Host=postgres;Database=mcp_svc へ接続し、起動時に MigrateAsync を走らせるため
+    -- 作成する（未作成だとクラッシュループする）。k8s 側 deploy/local/infra/postgres.yaml と対で追随させる。
+    CREATE DATABASE mcp_svc;
     -- Issue #283, IADR-0070: AST 設定画面の ConfigurationService 専用 DB。compose の configuration-service が
     -- Host=postgres;Database=configuration_svc へ接続するため作成する（未作成だと DB 不在でクラッシュループ）。
     CREATE DATABASE configuration_svc;
@@ -51,6 +55,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     ALTER DATABASE dashboard_svc OWNER TO kp;
     ALTER DATABASE graph_svc OWNER TO kp;
     ALTER DATABASE notification_svc OWNER TO kp;
+    ALTER DATABASE mcp_svc OWNER TO kp;
     ALTER DATABASE configuration_svc OWNER TO kp;
     ALTER DATABASE risk_management_svc OWNER TO kp;
     ALTER DATABASE market_monitor_svc OWNER TO kp;

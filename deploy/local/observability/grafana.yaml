@@ -312,7 +312,7 @@ data:
       "title": "Platform Overview",
       "uid": "microservices-platform-overview",
       "schemaVersion": 38,
-      "version": 1,
+      "version": 2,
       "refresh": "30s",
       "tags": ["microservices-platform"],
       "panels": [
@@ -358,6 +358,30 @@ data:
             "datasource": "Prometheus",
             "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_duration_milliseconds_bucket{service_name='microservices-platform.aianalysis-service', http_route='/analysis/ask'}[5m])))",
             "legendFormat": "p99 /analysis/ask"
+          }]
+        },
+        {
+          "id": 5,
+          "title": "未定義の辺の型のフォールバック / Undefined edge-type fallbacks (MUST be 0)",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+          "description": "**ナレッジ健全性の指標（#443）。0 が正常である。** リンク抽出で辞書に無い辺の型が現れ `related` へ丸められた件数（ADR-0033 決定 3）。0 でない間は**型定義が不足している**。`explicit` = フロントマターの明示指定、`contextual` = 構文の文脈既定。**型名はここに出ない** —— 書き手が自由に書けるキー名で基数が無界なため、型名はログ（graph-service）へ回している。\n\n**この指標は SC-10 の画面に出していない。** 出さない根拠が「Grafana で観測できれば成立する」であり、**このパネルがその根拠の実体である**（#443 まで描くパネルが存在せず、根拠が成立していなかった）。",
+          "targets": [{
+            "datasource": "Prometheus",
+            "expr": "sum by (graph_fallback_layer) (increase(graph_edge_type_fallback_total[$__range]))",
+            "legendFormat": "{{graph_fallback_layer}}"
+          }]
+        },
+        {
+          "id": 6,
+          "title": "取り込み経路で辞書に無いタグ / Ingest unknown tags (MUST be 0)",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+          "description": "**ナレッジ健全性の指標（#443）。0 が正常である —— しかも他の指標と読み方が違う。** 他は「発生してよい事象の量」だが、**取り込み経路はタグを生成しないと計画が確定している**（利用者裁定 2026-08-09）。よって 0 でない値は「量が多い」ではなく**規定違反の検出**である。`ingest_source` は現れた経路。\n\n**この指標も SC-10 の画面に出していない。**「Grafana で観測できれば成立する」が根拠であり、**このパネルがその実体である**。",
+          "targets": [{
+            "datasource": "Prometheus",
+            "expr": "sum by (ingest_source) (increase(ingest_unknown_tag_total[$__range]))",
+            "legendFormat": "{{ingest_source}}"
           }]
         }
       ]

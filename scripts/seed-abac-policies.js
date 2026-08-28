@@ -32,9 +32,8 @@
  * 主な環境変数:
  *   ABAC_SEED_DIR（既定 deploy/local/abac-seed）/ ABAC_SEED_NS（既定 microservices-platform）
  *   ABAC_SEED_INFRA_NS（既定 platform-infra）/ ABAC_SEED_REALM（既定 platform）
- *   ABAC_SEED_CLIENT_ID（既定 bff）/ ABAC_SEED_USER（既定 admin）
- *   ABAC_SEED_PASSWORD（既定は realm ファイルから引く。値をここへ写さない。#972）
- *   ABAC_SEED_CLIENT_SECRET（既定は realm ファイルから引く。confidential のときだけ送る。#984）
+ *   ABAC_SEED_CLIENT_ID（既定 abac-seeder。client_credentials のサービスクライアント。#438）
+ *   ABAC_SEED_CLIENT_SECRET（既定は realm ファイルから引く。値をここへ写さない。#984）
  *   ABAC_SEED_REALM_FILE（既定 deploy/keycloak/microservices-platform-realm.json）
  *
  * 終了コード: 0=投入済み（no-op を含む） / 1=失敗 / 2=前提未整備（k8s へ到達できない等）
@@ -49,8 +48,7 @@ const SEED_DIR = env('ABAC_SEED_DIR', path.join(__dirname, '..', 'deploy', 'loca
 const NS = env('ABAC_SEED_NS', 'microservices-platform');
 const INFRA_NS = env('ABAC_SEED_INFRA_NS', 'platform-infra');
 const REALM = env('ABAC_SEED_REALM', 'platform');
-const CLIENT_ID = env('ABAC_SEED_CLIENT_ID', 'bff');
-const USER = env('ABAC_SEED_USER', 'admin');
+const CLIENT_ID = env('ABAC_SEED_CLIENT_ID', 'abac-seeder');
 
 const log = (s) => process.stdout.write(`${s}\n`);
 const warn = (s) => process.stderr.write(`${s}\n`);
@@ -77,14 +75,6 @@ function readRealm() {
     return null;
   }
 }
-function passwordFromRealm(username) {
-  const realm = readRealm();
-  if (!realm) return null;
-  const user = (realm.users || []).find((u) => u.username === username);
-  const cred = ((user || {}).credentials || []).find((c) => c.type === 'password');
-  return (cred && cred.value) || null;
-}
-
 // 🔴 confidential クライアントは client_secret を要求する（#984）。
 //
 // 経緯: `#439`（BFF セッション / Token Handler）が `bff` を **publicClient=false** へ変えた。
@@ -111,31 +101,39 @@ function isConfidentialInRealm(clientId) {
 }
 
 // トークン要求の本体を組み立てる。**純粋関数にして試験できるようにする**（決定 2）。
-// confidential なら client_secret を載せ、public なら載せない。
-function buildTokenForm({ clientId, username, password, confidential, clientSecret }) {
+//
+// 🔴 **client_credentials である。人のパスワードグラントは使わない**（#438 / IADR-0294）。
+//
+// 経緯: realm の変更に投入器が追随できなかったのは、これで **3 回目**である ——
+// ①`#933` のパスワード一斉変更（値の写し取り）／②`#439` の confidential 化（client 種別という構造）／
+// ③ **`#438` の MFA 必須化**。③ は前 2 つと違い「値を直す」では済まない ——
+// `CONFIGURE_TOTP` が未消化の利用者に対して Keycloak は password grant を
+// `invalid_grant: Account is not fully set up` で拒む。**人の資格情報を借りている限り、
+// 認証を強くするたびに投入器が壊れる。**
+//
+// したがって主体を人から機械へ移す。投入器はサービスアカウント（`abac-seeder`）として名乗り、
+// **MFA の対象そのものから外れる**（機械に第二要素は無い）。副次的に、realm の全 client で
+// `directAccessGrantsEnabled: false` を保てるようになった（`check-realm-constraints.js` の検査 5 が固定する）。
+function buildTokenForm({ clientId, clientSecret }) {
   const form = new URLSearchParams({
-    grant_type: 'password',
+    grant_type: 'client_credentials',
     client_id: clientId,
-    username,
-    password,
-    scope: 'openid',
   });
-  if (confidential && clientSecret) form.set('client_secret', clientSecret);
+  if (clientSecret) form.set('client_secret', clientSecret);
   return form;
 }
-const PASSWORD = (() => {
-  if (process.env.ABAC_SEED_PASSWORD) return process.env.ABAC_SEED_PASSWORD;
-  const fromRealm = passwordFromRealm(USER);
+// client_secret は realm ファイル（単一情報源）から引く。値をここへ写さない（#984）。
+const CLIENT_SECRET = (() => {
+  if (process.env.ABAC_SEED_CLIENT_SECRET) return process.env.ABAC_SEED_CLIENT_SECRET;
+  const fromRealm = clientSecretFromRealm(CLIENT_ID);
   if (fromRealm) return fromRealm;
   // 黙って既定値へ落ちない。落ちた事実を出す（無音の失敗がこの不具合の本体だった）。
   warn(
-    `[seed-abac-policies] realm ファイルから ${USER} のパスワードを読めませんでした（${REALM_FILE}）。` +
-      ' ABAC_SEED_PASSWORD を指定してください。',
+    `[seed-abac-policies] realm ファイルから client ${CLIENT_ID} の secret を読めませんでした（${REALM_FILE}）。` +
+      ' ABAC_SEED_CLIENT_SECRET を指定してください。',
   );
   return '';
 })();
-// client_secret も同じ作法で引く（値をここへ写さない。#984）。
-const CLIENT_SECRET = process.env.ABAC_SEED_CLIENT_SECRET || clientSecretFromRealm(CLIENT_ID) || '';
 
 // --- 一時 port-forward（自分で張り、終了時に必ず片付ける） -------------------------
 const forwards = [];
@@ -202,13 +200,7 @@ async function fetchToken(kcUrl) {
         ' client_secret を解決できませんでした。ABAC_SEED_CLIENT_SECRET を指定してください。',
     );
   }
-  const form = buildTokenForm({
-    clientId: CLIENT_ID,
-    username: USER,
-    password: PASSWORD,
-    confidential,
-    clientSecret,
-  });
+  const form = buildTokenForm({ clientId: CLIENT_ID, clientSecret });
   const res = await fetch(`${kcUrl}/realms/${REALM}/protocol/openid-connect/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -217,7 +209,8 @@ async function fetchToken(kcUrl) {
   if (!res.ok) {
     const kind = confidential === null ? '（realm から種別を判定できず）' : confidential ? '（confidential）' : '（public）';
     throw new Error(
-      `Keycloak のトークン取得に失敗しました（${res.status}）。ユーザー ${USER} と client ${CLIENT_ID}${kind} を確認してください。`,
+      `Keycloak のトークン取得に失敗しました（${res.status}）。client ${CLIENT_ID}${kind} の`
+        + ' serviceAccountsEnabled と secret、および service-account への platform-admin 付与を確認してください。',
     );
   }
   return (await res.json()).access_token;
@@ -286,7 +279,7 @@ async function main(argv) {
   log(`接続先: authz=${authzUrl} / keycloak=${kcUrl}`);
 
   const token = await fetchToken(kcUrl);
-  log(`管理トークンを取得しました（user=${USER}）`);
+  log(`管理トークンを取得しました（client_credentials・client=${CLIENT_ID}）`);
 
   // ---- 属性辞書（ポリシーの検証に使われるため先に入れる） ----
   const existingAttrs = await getJson(`${authzUrl}/authz/attributes`, token);
@@ -317,7 +310,6 @@ async function main(argv) {
 module.exports = {
   selectMissingAttributes,
   selectMissingPolicies,
-  passwordFromRealm,
   clientSecretFromRealm,
   isConfidentialInRealm,
   buildTokenForm,

@@ -28,6 +28,10 @@ data:
       -- 起動時に MigrateAsync が走るため、未作成だと Pod がクラッシュループする。
       -- compose 側の deploy/create-multiple-dbs.sh と対で追随させる（片方だけだと片方の環境が壊れる）。
       CREATE DATABASE notification_svc;
+      -- FR-16, UC-09, SC-12, ADR-0024 (#452): MCP クライアント登録簿の McpServer 専用 DB。
+      -- 起動時に MigrateAsync が走るため、未作成だと Pod がクラッシュループする。
+      -- compose 側の deploy/create-multiple-dbs.sh と対で追随させる。
+      CREATE DATABASE mcp_svc;
       CREATE DATABASE wikijs;
       CREATE USER kp WITH PASSWORD 'kp';
       ALTER DATABASE document_svc OWNER TO kp;
@@ -41,6 +45,7 @@ data:
       ALTER DATABASE dashboard_svc OWNER TO kp;
       ALTER DATABASE graph_svc OWNER TO kp;
       ALTER DATABASE notification_svc OWNER TO kp;
+      ALTER DATABASE mcp_svc OWNER TO kp;
       ALTER DATABASE wikijs OWNER TO kp;
 
       -- AST（ai-stock-trading）専有 DB。owner=ai（AST compose 既定 POSTGRES_USER と一致）。

@@ -28,6 +28,10 @@ namespace DocumentService.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AssetUris")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
                     b.Property<string>("Attributes")
                         .IsRequired()
                         .HasColumnType("jsonb");

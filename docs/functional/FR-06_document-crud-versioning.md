@@ -8,9 +8,9 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-06, UC-03]
-adrs: []
-iadrs: [IADR-0290]
-specs: [20260828_issue-1011_version-body-contract]
+adrs: [ADR-0057]
+iadrs: [IADR-0290, IADR-0296]
+specs: [20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage]
 issues: [#201, #1011, planning#473]
 -->
 
@@ -109,5 +109,8 @@ stateDiagram-v2
 ## 未決事項
 
 - 版間の差分（diff）表示・特定版へのロールバック（復元）API は範囲外（後続タスク）。
-- 本文（Markdown 本体）のオブジェクトストレージ実保存は未実装（現状 URI 参照のみ）。
+- 本文（Markdown 本体）は**オブジェクトストレージへ実保存され、DB は参照 URI だけを持つ**。
+  削除は**その実体（過去の版が指していた本文と図表資産を含む）まで及ぶ**。
+  🔴 ただし**資産の台帳は遡及付与しない**ため、台帳へ資産欄を足す以前に取り込まれた文書の
+  図表資産は実体が残る。**「全部消える」とは読まないこと。**
 - 楽観的並行制御は API 層の `expectedVersion` 照合のみで、DB 行ロックは導入しない。

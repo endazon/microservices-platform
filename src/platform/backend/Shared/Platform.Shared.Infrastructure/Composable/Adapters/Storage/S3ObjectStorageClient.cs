@@ -70,6 +70,70 @@ public sealed class S3ObjectStorageClient(
         return buffer.ToArray();
     }
 
+    // FR-06, FR-19, ADR-0057 決定 1, IADR-0296: オブジェクトを**全バージョン**削除する。
+    //
+    // 🔴 **素の DeleteObject では足りない。** バケットのバージョニングは既定で有効
+    // （`ObjectStorageOptions.EnableVersioning` / `EnsureBucketAsync`）であり、versionId を伴わない
+    // 削除は **delete marker を 1 つ積むだけ**で過去の全版がそのまま残る。ADR-0057 は
+    // 「残っていない」ことを受け入れ基準にしているので、版を列挙して 1 つずつ消す。
+    //
+    // **delete marker も版として消す。** .NET SDK は delete marker を別リストにせず
+    // `ListVersionsResponse.Versions` へ混ぜて返す（`S3ObjectVersion.IsDeleteMarker` で区別する。
+    // 同応答に `DeleteMarkers` プロパティは存在しない —— SDK 4.0.100.2 で実測）。
+    // marker を残すとオブジェクトは「削除済みの版」として残り続ける。
+    //
+    // **`Prefix` は前方一致なので `Key` の厳密一致で絞る**（`body.md` の削除で `body.md.bak` を巻き込まない）。
+    // **`IsTruncated` の間は marker で辿る**（1 応答は既定 1000 件までしか返らない）。
+    public async Task DeleteAsync(string uri, CancellationToken ct = default)
+    {
+        var (bucket, key) = Resolve(uri);
+
+        var removed = 0;
+        string? keyMarker = null;
+        string? versionIdMarker = null;
+        do
+        {
+            var listed = await s3.ListVersionsAsync(new ListVersionsRequest
+            {
+                BucketName = bucket,
+                Prefix = key,
+                KeyMarker = keyMarker,
+                VersionIdMarker = versionIdMarker
+            }, ct);
+
+            foreach (var version in listed.Versions ?? [])
+            {
+                // Prefix は前方一致。当該キーそのものの版だけを消す。
+                if (!string.Equals(version.Key, key, StringComparison.Ordinal)) continue;
+                await s3.DeleteObjectAsync(new DeleteObjectRequest
+                {
+                    BucketName = bucket,
+                    Key = key,
+                    VersionId = version.VersionId
+                }, ct);
+                removed++;
+            }
+
+            if (listed.IsTruncated == true)
+            {
+                keyMarker = listed.NextKeyMarker;
+                versionIdMarker = listed.NextVersionIdMarker;
+            }
+            else
+            {
+                keyMarker = null;
+                versionIdMarker = null;
+            }
+        }
+        while (keyMarker is not null || versionIdMarker is not null);
+
+        // バージョニングが無効なバケット・列挙に現れない未バージョン化オブジェクトの取りこぼしを塞ぐ。
+        // versionId 無しの削除は冪等（実在しなくても 204）なので、余分に撃っても害が無い。
+        await s3.DeleteObjectAsync(new DeleteObjectRequest { BucketName = bucket, Key = key }, ct);
+
+        logger.LogInformation("Deleted object {Uri} ({Versions} versions removed)", uri, removed);
+    }
+
     // storage:// スキームなら（実クライアント構成済みのため）解決可能。
     public bool CanResolve(string? uri) => StorageUri.IsStorageUri(uri);
 

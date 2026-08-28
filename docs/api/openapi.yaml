@@ -49,8 +49,12 @@ tags:
     description: "FR-15, SC-11, ADR-0018, IADR-0029/IADR-0030: 構成情報 API（読み取り専用）。実効構成とドリフトを管理者・運用者（ConfigViewer ポリシー）へ返す"
   - name: Auth
     description: "NFR, SC-16, ADR-0032, IADR-0251: BFF セッション（Token Handler）。トークンはブラウザへ出さず BFF 側の Redis セッションにのみ保持する"
+  - name: McpClients
+    description: "FR-16, UC-09, SC-12, ADR-0024: MCP クライアント登録管理（管理者限定）。登録・無効化・無人アカウントの ABAC 属性割当と、実効ツール一覧（許可リストの参照）。**公開ツールの変更口は置かない** —— 公開範囲は Git 経由の構成変更で行う（GitOps）"
   - name: Notifications
     description: "FR-22, UC-11, ADR-0037, ADR-0045, IADR-0215: 利用者本人へのアプリ内通知。**本文は件数と期限のみ**で、資料のタイトル・本文を含めない（スキーマに自由文の項目を置かない）"
+  - name: UserAdmin
+    description: "FR-05, FR-09, UC-05, SC-17, ADR-0026: 利用者アカウント管理（管理者限定）。ロール割当・ABAC 属性割当・無効化（全セッション失効）。**新規作成の口は置かない** —— アカウントは人事システム連携で自動プロビジョニングされる"
 
 paths:
   # ── BFF ──────────────────────────────────────────
@@ -889,6 +893,166 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
         "502": { description: AuthorizationService へ到達できない }
+
+  # ── SC-12, FR-16, UC-09, ADR-0024: MCP クライアント登録管理 BFF ─
+  # 管理者限定（05_screens §共通シェル「SC-09・SC-12・SC-17 = システム管理者」。運用者も不可）。
+  # BFF は McpServer の /mcp-clients* へ**透過中継**する。後段の 400（属性割当の拒否）・404（不在）・
+  # 409（重複）はそのまま返る。後段不達は 502。
+  /bff/admin/mcp-clients:
+    get:
+      x-roles: [platform-admin]
+      tags: [McpClients]
+      summary: "FR-16, UC-09, SC-12: 登録 MCP クライアント一覧（BFF 集約）"
+      operationId: bff-mcp-list-clients
+      responses:
+        "200":
+          description: 登録クライアント一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/McpClientView"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "502": { description: McpServer へ到達できない }
+    post:
+      x-roles: [platform-admin]
+      tags: [McpClients]
+      summary: "FR-16, UC-09, SC-12: MCP クライアント登録（有人 / 無人）"
+      description: |
+        種別は `interactive`（有人・Authorization Code + PKCE）と `service-account`
+        （無人・Client Credentials）の 2 値である。
+
+        **無人アカウントへ個人資料を読ませる属性割当は拒否される**（400 ValidationProblem）。
+        登録経路と属性差し替え経路の**両方**が同じ検証を通る。
+        既に登録済みのクライアント ID も 400 で拒否される。
+      operationId: bff-mcp-register-client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterMcpClientRequest"
+      responses:
+        "201":
+          description: 登録成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpClientView"
+        "400":
+          description: 検証エラー（RFC7807 ValidationProblem。種別・越境ティアの値域、禁止された属性割当、重複）
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblemDetails"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "502": { description: McpServer へ到達できない }
+
+  # 実効ツール一覧。literal な `/tools` と、下の `{clientId}` を含む経路は**セグメント数が違う**ので
+  # 衝突しない（`/tools` は 1 段、`{clientId}/disable` 等は 2 段）。
+  /bff/admin/mcp-clients/tools:
+    get:
+      x-roles: [platform-admin]
+      tags: [McpClients]
+      summary: "FR-16, SC-12, ADR-0024: 公開ツール一覧（実効構成）と構成ドリフト"
+      description: |
+        許可リスト（宣言的公開構成）と各サービスの自己申告の**積**が実効ツールである。
+        申告と構成の食い違いは `drifts` に出る。
+
+        **本経路に書き込みは無い。** 公開範囲の変更は Git 経由の公開構成変更で行う
+        （許可リスト方式・GitOps）。画面もこの経路の結果を参照するだけである。
+      operationId: bff-mcp-list-tools
+      responses:
+        "200":
+          description: 実効ツール一覧と構成ドリフト
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EffectiveToolsView"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "502": { description: McpServer へ到達できない }
+
+  /bff/admin/mcp-clients/{clientId}/disable:
+    parameters:
+      - { name: clientId, in: path, required: true, schema: { type: string } }
+    post:
+      x-roles: [platform-admin]
+      tags: [McpClients]
+      summary: "FR-16, UC-09, SC-12: MCP クライアントの無効化（次の呼び出しから即座に効く）"
+      description: |
+        無効化は**次の呼び出しから即座に**効く（後段は毎回登録簿を引き、キャッシュを挟まない）。
+        存在しないクライアントは **404** であり、BFF はこれを透過する。
+      operationId: bff-mcp-disable-client
+      responses:
+        "200":
+          description: 無効化後の状態
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpClientView"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "404": { description: 見つからない }
+        "502": { description: McpServer へ到達できない }
+
+  /bff/admin/mcp-clients/{clientId}/enable:
+    parameters:
+      - { name: clientId, in: path, required: true, schema: { type: string } }
+    post:
+      x-roles: [platform-admin]
+      tags: [McpClients]
+      summary: "FR-16, UC-09, SC-12: MCP クライアントの再有効化"
+      operationId: bff-mcp-enable-client
+      responses:
+        "200":
+          description: 再有効化後の状態
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpClientView"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "404": { description: 見つからない }
+        "502": { description: McpServer へ到達できない }
+
+  /bff/admin/mcp-clients/{clientId}/attributes:
+    parameters:
+      - { name: clientId, in: path, required: true, schema: { type: string } }
+    put:
+      x-roles: [platform-admin]
+      tags: [McpClients]
+      summary: "FR-16, UC-09, SC-12: 無人アカウントの ABAC 属性割当の差し替え"
+      description: |
+        差し替えである（部分更新ではない）。**無人アカウントへ個人資料を読ませる属性割当は
+        400 で拒否される** —— 登録経路と同じ検証を通る。
+      operationId: bff-mcp-replace-client-attributes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceMcpClientAttributesRequest"
+      responses:
+        "200":
+          description: 差し替え後の状態
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpClientView"
+        "400":
+          description: 禁止された属性割当（RFC7807 ValidationProblem）
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblemDetails"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "404": { description: 見つからない }
+        "502": { description: McpServer へ到達できない }
 
   # ── SC-03/SC-05, FR-06, UC-01/UC-03/UC-07: 文書 BFF ─
   # IADR-0041 / IADR-0009: 読み取りはロールで塞がず、ABAC スコープ解決の結果でのみ絞る。
@@ -2207,8 +2371,11 @@ paths:
       description: |
         FR-18, UC-10, SC-21, ADR-0033 決定 7・10: AI が提案したリンク候補・タグ候補を一覧で返す。
 
-        🔴 **読み取りだけである。承認・却下の口は BFF に無い。**
-        承認の主導線は SC-03（文書詳細）であり、SC-21 は棚卸し用の**従**である。
+        🔴 **この口は読み取りである。**［2026-08-29 追記］承認・却下は
+        `/bff/graph/suggestions/{id}/approve` / `/reject` として別に開いた（SC-03 の承認欄が呼ぶ）。
+        従前ここには「承認・却下の口は BFF に無い」と書いてあったが、その記述は失効している。
+        承認の主導線は SC-03（文書詳細）であり、SC-21 は棚卸し用の**従**で、
+        **SC-21 の画面からは書き込みを一切行わない**（画面の位置づけは変わっていない）。
         **一括承認の手段は画面・API のいずれにも設けない**（FR-18。一覧の 1 行に収まる情報では
         承認を判断できず、タイトルだけを見て機械的に承認する運用に落ちるためである）。
 
@@ -2225,6 +2392,90 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/AiSuggestion" }
         "400": { description: state / kind が値域外（そのまま透過する） }
+
+  # ── FR-18, UC-10, SC-03: AI 提案の承認・却下（#450）───────────────────────────────
+  # **承認の実行はここだけである**（SC-21 は棚卸しの従であり、書き込みを一切しない）。
+  #
+  # 認可（2 口に共通）:
+  #   - **認証のみ・ロール不問**（`x-roles: []`）。計画は承認欄を SC-03 に置き、ロールで絞っていない。
+  #   - 判定は後段（GraphService）が 4 段で行う —— Read スコープ → 提案の存在 → **両端の文書が
+  #     可視**（`AuthorizedNode.Authorize`）→ **Write スコープ ＋ 起点文書が書き込み可**。
+  #     **BFF は前段の門を置かない**（後段が要求ごとに ABAC を解決する型であり、BFF に置ける門は
+  #     その真部分集合にしかならない。判断点を 2 つにすると片方が腐っても気付けない）。
+  #   - 🔴 **拒否はすべて 404 に倒る。** 「権限が無い」と「存在しない」を区別しない
+  #     （ADR-0034 決定 2）。**BFF は状態コードも本文も作り替えない** —— 403 や 200 へ変換すると
+  #     存在秘匿が BFF 層で破れる。
+  #
+  # 🔴 **一括承認の口はどの層にも設けない**（FR-18・SC-21「描いてはいけないもの」）。承認は 1 件ずつ
+  # であり、両端の文書の内容を見て判断する。**不在は BFF のルート表の走査で機械的に固定している。**
+  #
+  # **生成（`/graph/suggestions/generate/{documentId}`）は公開しない** —— 計画に生成を起動する
+  # 導線が無く、消費者の無い書き込み口を公開面へ出さないためである。
+  /bff/graph/suggestions/{id}/approve:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      x-roles: []
+      tags: [Graph]
+      summary: "FR-18, UC-10, SC-03: AI 提案を承認する（1 件ずつ）"
+      description: |
+        FR-18, SC-03, ADR-0033 決定 7: 提案を承認する。**`pending` からのみ遷移できる。**
+
+        **リンク提案の承認は辺を作る**（`EdgeProvenance.AiApproved`。ADR-0033 決定 7
+        「承認済みの提案だけが辺になる」）。既に同じ辺があるときは二重に作らない。
+
+        ⚠️ **タグ提案の承認は状態を `approved` にするだけで、文書のタグは増えない。**
+        タグの反映経路は未実装である（提案の側にだけ状態が残る）。
+        **したがって SC-03 の承認欄はタグ提案の承認を実行できないものとして描く**（却下は実行できる）。
+        本注記は事実の開示であり、契約としての遷移規則は種別で変わらない。
+
+        応答は遷移後の提案（一覧と同じ `AiSuggestion`）である。
+      operationId: bff-graph-suggestion-approve
+      responses:
+        "200":
+          description: 承認後の提案
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiSuggestion" }
+        "400":
+          description: >-
+            `unknown_edge_type`。提案が指す辺の型が辞書に無い（削除・改番された）。
+            **本文ごと透過する** —— 画面は「もう承認済み」と区別して文言を出す
+        "404": { description: "権限外・不存在・書き込み権限なし（**区別しない**）" }
+        "409":
+          description: >-
+            `invalid_transition`。`pending` 以外からの承認である（既に承認済み／却下済み）。
+            本文に現在の `state` が入る
+  /bff/graph/suggestions/{id}/reject:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      x-roles: []
+      tags: [Graph]
+      summary: "FR-18, UC-10, SC-03: AI 提案を却下する（1 件ずつ）"
+      description: |
+        FR-18, SC-03, ADR-0033 決定 7・10: 提案を却下する。**`pending` からのみ遷移できる。**
+
+        **却下も書き込みである** —— 提案は端点が見える利用者に共有される行であり、却下すると
+        他の利用者の `pending` 一覧からも消える。読み取り権限しか持たない主体は 404 になる。
+
+        **却下は再提示の抑止に用いる**（ADR-0033 決定 10）。却下回数は累積し、
+        **両端いずれかの文書の本文が変更された時点で自動的に解除される**（文書更新イベントの購読）。
+        解除の判定は本文指紋であり、**属性・タグだけの更新では解除されない**（ADR-0050）。
+
+        🔴 **要求本文を持たない。** 後段は却下時点の本文指紋を任意で受けるが、
+        **指紋は公開面に出さない内部状態**であり（応答スキーマにも無い）、SPA も BFF も持たない。
+      operationId: bff-graph-suggestion-reject
+      responses:
+        "200":
+          description: 却下後の提案
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiSuggestion" }
+        "404": { description: "権限外・不存在・書き込み権限なし（**区別しない**）" }
+        "409":
+          description: >-
+            `invalid_transition`。`pending` 以外からの却下である。本文に現在の `state` が入る
 
   # ── SC-19 / SC-20, FR-19/FR-20, UC-11: 個人資料（private-note）と Obsidian 連携設定（#451）─────
   # 後段は DocumentService の `/private-notes*` 群。**リソース名は計画が確定させた `private-notes`**
@@ -2492,6 +2743,179 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/RevokeAllSyncDevicesResponse" }
         "401": { description: 未認証 }
+
+  # ── SC-17, FR-05, FR-09, UC-05, ADR-0026: 利用者アカウント管理 BFF ─
+  # 管理者限定（05_screens §共通シェル「SC-09・SC-12・SC-17 = システム管理者」。運用者も不可）。
+  # BFF は AuthorizationService の /authz/users* へ**透過中継**する。後段の 400（検証エラー）・
+  # 404（不在）はそのまま返る。後段不達は 502。
+  # 🔴 **`POST /bff/admin/users`（新規作成）は宣言しない** —— 計画 §SC-17 アクションが
+  # 「本画面から新規作成はしない」と定めており、アカウントは人事システム連携で自動作成される。
+  /bff/admin/users:
+    get:
+      x-roles: [platform-admin]
+      tags: [UserAdmin]
+      summary: "FR-05, FR-09, UC-05, SC-17: 利用者一覧（部門・ロール・ABAC 属性・状態）"
+      description: |
+        部門は ABAC 属性 `department` そのものであり、独立した項目を持たない
+        （複写すると属性を更新したのに列が追随しない形が作れる）。
+      operationId: bff-user-admin-list-users
+      responses:
+        "200":
+          description: 利用者一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlatformUserDto"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "502": { description: AuthorizationService へ到達できない }
+
+  # 割当可能ロールの値域。literal な `/assignable-roles` は 1 段、下の `{userId}` を含む経路は
+  # 2 段なので衝突しない（`/bff/admin/mcp-clients/tools` と同じ形）。
+  /bff/admin/users/assignable-roles:
+    get:
+      x-roles: [platform-admin]
+      tags: [UserAdmin]
+      summary: "FR-09, SC-17: 割当可能なロールの一覧（入力規則「定義済みロールのみ」の値域）"
+      description: |
+        **画面はこの一覧から選択肢を作る。** 値集合を画面へ焼き込むと、認可基盤にロールを
+        足しても選べず、消えたロールを選べてしまう。
+      operationId: bff-user-admin-list-assignable-roles
+      responses:
+        "200":
+          description: 割当可能なロール名の一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string }
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "502": { description: AuthorizationService へ到達できない }
+
+  /bff/admin/users/{userId}/attributes:
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string } }
+    put:
+      x-roles: [platform-admin]
+      tags: [UserAdmin]
+      summary: "FR-05, FR-09, SC-17: 利用者の ABAC 属性の割当（差し替え）"
+      description: |
+        差し替えである（部分更新ではない）。送らなかったキーは消える。
+
+        **部門と機密区分上限は必須、タグは任意**である。値は属性辞書（利用者スコープ）に
+        定義済みのものだけを受け付け、**辞書に無いキーも拒否する** —— 受け付けて無視すると
+        「割り当てたのに認可が変わらない」が黙って作れるためである。
+      operationId: bff-user-admin-replace-user-attributes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceUserAttributesRequest"
+      responses:
+        "200":
+          description: 差し替え後の利用者
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformUserDto"
+        "400":
+          description: 検証エラー（RFC7807 ValidationProblem。必須欠落・辞書外の値／キー）
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblemDetails"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "404": { description: 見つからない }
+        "502": { description: AuthorizationService へ到達できない }
+
+  /bff/admin/users/{userId}/roles:
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string } }
+    put:
+      x-roles: [platform-admin]
+      tags: [UserAdmin]
+      summary: "FR-09, SC-17: 利用者のロール割当（差し替え・併任可）"
+      description: |
+        差し替えである。送った集合が、その利用者のロールの全体になる。
+
+        **必須である**（空集合は 400）。権限を剥がしたいときは無効化を使う ——
+        「ロールが 0 件の有効なアカウント」と「無効化されたアカウント」は別の状態である。
+        定義済みでないロールも 400 で拒否する。
+      operationId: bff-user-admin-replace-user-roles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceUserRolesRequest"
+      responses:
+        "200":
+          description: 差し替え後の利用者
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformUserDto"
+        "400":
+          description: 検証エラー（RFC7807 ValidationProblem。空集合・定義外ロール・重複）
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblemDetails"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "404": { description: 見つからない }
+        "502": { description: AuthorizationService へ到達できない }
+
+  /bff/admin/users/{userId}/disable:
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string } }
+    post:
+      x-roles: [platform-admin]
+      tags: [UserAdmin]
+      summary: "FR-09, SC-17: アカウントの無効化（全セッション失効を伴う）"
+      description: |
+        **無効化と全セッション失効は 1 つの操作である。** 無効化だけでは既存のセッションが
+        生き残るため、口を分けない。失効は認可サーバーのバックチャネルログアウトを起こし、
+        BFF 側のセッションが subject 単位で削除される。
+      operationId: bff-user-admin-disable-user
+      responses:
+        "200":
+          description: 無効化後の利用者
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformUserDto"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "404": { description: 見つからない }
+        "502": { description: AuthorizationService へ到達できない }
+
+  /bff/admin/users/{userId}/enable:
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string } }
+    post:
+      x-roles: [platform-admin]
+      tags: [UserAdmin]
+      summary: "FR-09, SC-17: アカウントの再有効化"
+      description: |
+        **セッションは復活しない。** 本人が改めてログインする。
+      operationId: bff-user-admin-enable-user
+      responses:
+        "200":
+          description: 再有効化後の利用者
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformUserDto"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "404": { description: 見つからない }
+        "502": { description: AuthorizationService へ到達できない }
 
 components:
   schemas:
@@ -4086,6 +4510,93 @@ components:
         includeInGraph: { type: boolean }
         includeInAi: { type: boolean }
 
+    # ── SC-12, FR-16, UC-09, ADR-0024: MCP クライアント登録管理 ──
+    McpClientView:
+      type: object
+      description: |
+        FR-16, UC-09, SC-12: 登録済み MCP クライアント 1 件。
+        `kind` は `interactive`（有人）/ `service-account`（無人）の 2 値である。
+        `attributes` は**無人アカウントにだけ意味がある** —— 有人は利用者本人の属性で解決される。
+        `egressTier` はクライアント側 LLM のデータ保護水準であり、**未申告は最も低い水準へ倒れる**。
+      required: [id, clientId, displayName, kind, enabled, attributes, egressTier, registeredAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        clientId: { type: string, description: "認可サーバーのクライアント ID（トークンの azp / client_id）" }
+        displayName: { type: string }
+        kind: { type: string, enum: [interactive, service-account] }
+        enabled: { type: boolean, description: "false は次の呼び出しから即座に接続拒否" }
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+          description: "無人アカウントへ明示的に割り当てる ABAC 属性（機密区分上限・アクセス可能タグ等）"
+        egressTier: { type: string, enum: [self-hosted, protected-external, standard-external] }
+        registeredAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    RegisterMcpClientRequest:
+      type: object
+      description: |
+        FR-16, UC-09, SC-12: クライアント登録。`attributes` は**無人時に必須**であり、
+        個人資料を読ませる割当は後段が 400 で拒否する。`egressTier` の未指定は
+        最も低い保護水準（`standard-external`）として扱われる。
+      required: [clientId, displayName, kind]
+      properties:
+        clientId: { type: string }
+        displayName: { type: string }
+        kind: { type: string, enum: [interactive, service-account] }
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+          nullable: true
+        egressTier:
+          type: string
+          enum: [self-hosted, protected-external, standard-external]
+          nullable: true
+
+    ReplaceMcpClientAttributesRequest:
+      type: object
+      description: "FR-16, UC-09, SC-12: 無人アカウントの ABAC 属性割当の**差し替え**（部分更新ではない）。"
+      required: [attributes]
+      properties:
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+
+    PublishedToolView:
+      type: object
+      description: "FR-16, SC-12, ADR-0024 §5: 実効ツール 1 件（許可リスト ∩ 自己申告）。"
+      required: [name, service, description, requiredScope, egressClass]
+      properties:
+        name: { type: string, description: "公開名" }
+        service: { type: string, description: "供給元サービス" }
+        description: { type: string }
+        requiredScope: { type: string }
+        egressClass: { type: string }
+
+    ToolDriftView:
+      type: object
+      description: "FR-16, SC-12, ADR-0024 §5: 許可リストと自己申告の食い違い 1 件。"
+      required: [kind, target, detail]
+      properties:
+        kind: { type: string }
+        target: { type: string }
+        detail: { type: string }
+
+    EffectiveToolsView:
+      type: object
+      description: |
+        FR-16, SC-12, ADR-0024 §5: 実効ツール一覧と構成ドリフト。
+        **書き込みの口は無い** —— 公開範囲の変更は Git 経由の公開構成変更で行う（GitOps）。
+      required: [version, tools, drifts]
+      properties:
+        version: { type: integer, description: "収集した公開構成の版" }
+        tools:
+          type: array
+          items: { $ref: "#/components/schemas/PublishedToolView" }
+        drifts:
+          type: array
+          items: { $ref: "#/components/schemas/ToolDriftView" }
+
     SyncDeviceDto:
       type: object
       description: |
@@ -4129,3 +4640,47 @@ components:
       required: [revokedCount]
       properties:
         revokedCount: { type: integer, format: int32 }
+
+    # ── SC-17, FR-05, FR-09, UC-05, ADR-0026: 利用者アカウント管理 ─
+    PlatformUserDto:
+      type: object
+      description: |
+        SC-17 主要素 1: 利用者一覧の 1 行（部門・ロール・ABAC 属性・状態）。
+        **部門は `attributes.department` である** —— 独立した項目として複写しない。
+      required: [id, username, displayName, enabled, roles, attributes]
+      properties:
+        id: { type: string, description: "認可サーバーにおける利用者 ID" }
+        username: { type: string }
+        displayName: { type: string }
+        enabled: { type: boolean, description: "false は無効（全セッション失効済み）" }
+        roles:
+          type: array
+          items: { type: string }
+          description: "割り当て済みのロール（併任可）"
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+          description: "ABAC 属性（部門・機密区分上限・タグ）。1 キー 1 値"
+
+    ReplaceUserAttributesRequest:
+      type: object
+      description: |
+        SC-17: ABAC 属性の割当（**差し替え**。部分更新ではない）。
+        部門と機密区分上限は必須、タグは任意。値・キーとも属性辞書（利用者スコープ）に
+        定義済みのものだけを受け付ける。
+      required: [attributes]
+      properties:
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+
+    ReplaceUserRolesRequest:
+      type: object
+      description: |
+        SC-17: ロール割当（**差し替え**。併任可）。空集合は 400 ——
+        権限を剥がすのではなく無効化を使う。
+      required: [roles]
+      properties:
+        roles:
+          type: array
+          items: { type: string }

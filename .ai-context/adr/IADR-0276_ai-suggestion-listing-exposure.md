@@ -5,7 +5,7 @@ status: Proposed
 related_ids: [FR-05, FR-17, FR-18, UC-10, SC-03, SC-09, SC-21, ADR-0033, ADR-0034, ADR-0043, ADR-0050, IADR-0122, IADR-0124, IADR-0131, IADR-0135, IADR-0242, IADR-0266, IADR-0271, IADR-0272]
 author: claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-29
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
@@ -76,6 +76,16 @@ SPA からは提案を 1 件も見られない。SC-21（AI 提案一覧）を�
 ### 決定 1: BFF へ出すのは提案の**読み取り口 1 本だけ**とする
 
 `GET /bff/graph/suggestions?state=&kind=` を足し、**承認・却下・生成の口は開けない。**
+
+> **［2026-08-29 追記 / #450］本決定が予告した「承認欄と同じ変更単位」が来た。**
+> **承認・却下の 2 口は開いた**（`POST /bff/graph/suggestions/{id}/approve` / `/reject`）。
+> 後継は [IADR-0300](./IADR-0300_ai-suggestion-approval-bff.md) であり、
+> **本決定を覆すものではなく、下の予告どおり実行するものである。**
+> **生成（`generate/{documentId}`）は引き続き開けない**——計画に生成を起動する導線が無く、
+> 本決定の理由（消費者の無い書き込み口を先に公開面へ出さない）がそのまま残る。
+> あわせて「不在はルート表走査（メソッドが GET だけであること）で機械的に固定する」も
+> **主張を組み替えた**（一括承認のパターンに一致するルートが無いこと。IADR-0300 決定 5）——
+> 承認・却下が開いた以上、「GET だけ」は事実に反するためである。**禁止そのものは残っている。**
 
 - SC-21 は「本画面では実行しない」と明記された**書き込みを一切しない画面**である。
 - 承認の主導線は SC-03 であり、その承認欄は #452 の射程である。

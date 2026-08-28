@@ -30,6 +30,26 @@
   "rememberMe": true,
   "ssoSessionIdleTimeoutRememberMe": 2592000,
   "ssoSessionMaxLifespanRememberMe": 2592000,
+  "eventsEnabled": true,
+  "eventsExpiration": 2592000,
+  "eventsListeners": ["jboss-logging"],
+  "enabledEventTypes": [
+    "LOGIN", "LOGIN_ERROR", "LOGOUT", "LOGOUT_ERROR",
+    "CODE_TO_TOKEN", "CODE_TO_TOKEN_ERROR",
+    "REFRESH_TOKEN", "REFRESH_TOKEN_ERROR",
+    "CLIENT_LOGIN", "CLIENT_LOGIN_ERROR",
+    "UPDATE_PASSWORD", "UPDATE_PASSWORD_ERROR",
+    "UPDATE_TOTP", "UPDATE_TOTP_ERROR",
+    "REMOVE_TOTP", "REMOVE_TOTP_ERROR",
+    "RESET_PASSWORD", "RESET_PASSWORD_ERROR",
+    "SEND_RESET_PASSWORD", "SEND_RESET_PASSWORD_ERROR",
+    "REMOVE_CREDENTIAL", "REMOVE_CREDENTIAL_ERROR",
+    "PERMISSION_TOKEN", "IMPERSONATE", "IMPERSONATE_ERROR",
+    "DELETE_ACCOUNT", "DELETE_ACCOUNT_ERROR",
+    "REVOKE_GRANT", "REVOKE_GRANT_ERROR"
+  ],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": true,
   "requiredActions": [
     { "alias": "CONFIGURE_TOTP", "name": "Configure OTP", "providerId": "CONFIGURE_TOTP", "enabled": true, "defaultAction": true, "priority": 10, "config": {} },
     { "alias": "TERMS_AND_CONDITIONS", "name": "Terms and Conditions", "providerId": "TERMS_AND_CONDITIONS", "enabled": false, "defaultAction": false, "priority": 20, "config": {} },
@@ -40,7 +60,7 @@
     { "alias": "webauthn-register", "name": "Webauthn Register", "providerId": "webauthn-register", "enabled": false, "defaultAction": false, "priority": 70, "config": {} },
     { "alias": "webauthn-register-passwordless", "name": "Webauthn Register Passwordless", "providerId": "webauthn-register-passwordless", "enabled": false, "defaultAction": false, "priority": 80, "config": {} },
     { "alias": "VERIFY_PROFILE", "name": "Verify Profile", "providerId": "VERIFY_PROFILE", "enabled": true, "defaultAction": false, "priority": 90, "config": {} },
-    { "alias": "delete_credential", "name": "Delete Credential", "providerId": "delete_credential", "enabled": true, "defaultAction": false, "priority": 100, "config": {} },
+    { "alias": "delete_credential", "name": "Delete Credential", "providerId": "delete_credential", "enabled": false, "defaultAction": false, "priority": 100, "config": {} },
     { "alias": "idp_link", "name": "Linking Identity Provider", "providerId": "idp_link", "enabled": true, "defaultAction": false, "priority": 110, "config": {} },
     { "alias": "CONFIGURE_RECOVERY_AUTHN_CODES", "name": "Recovery Authentication Codes", "providerId": "CONFIGURE_RECOVERY_AUTHN_CODES", "enabled": true, "defaultAction": false, "priority": 120, "config": {} },
     { "alias": "update_user_locale", "name": "Update User Locale", "providerId": "update_user_locale", "enabled": true, "defaultAction": false, "priority": 1000, "config": {} }
@@ -262,7 +282,7 @@
       "publicClient": false,
       "secret": "bff-dev-secret-change-me",
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": true,
+      "directAccessGrantsEnabled": false,
       "redirectUris": [
         "https://localhost/bff/auth/callback",
         "http://localhost:3100/bff/auth/callback",
@@ -314,6 +334,21 @@
         "roles",
         "abac-attributes"
       ]
+    },
+    {
+      "clientId": "abac-seeder",
+      "name": "ABAC dev seeder (client_credentials)",
+      "description": "IADR-0294/#438: ABAC 初期投入器（scripts/seed-abac-policies.js・ABACSEED=1）の機密クライアント。MFA 必須化で人の password grant は成立しないため、機械の主体として client_credentials で発行する。service-account に platform-admin（投入先が AdminOnly のため）。本番シークレットは config から供給する。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "abac-seeder-dev-secret-change-me",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": ["roles", "abac-attributes"]
     },
     {
       "clientId": "ai-stock-trading-kb-writer",
@@ -556,6 +591,7 @@
       "clientRoles": {
         "minio": ["consoleAdmin"]
       },
+      "requiredActions": ["CONFIGURE_TOTP"],
       "credentials": [
         {
           "type": "password",
@@ -573,6 +609,7 @@
       "emailVerified": true,
       "attributes": { "clearance": ["internal"], "department": ["engineering"] },
       "groups": ["/clearance/internal", "/department/engineering"],
+      "requiredActions": ["CONFIGURE_TOTP"],
       "credentials": [{ "type": "password", "value": "Poc-Passwd2026", "temporary": false }]
     },
     {
@@ -583,6 +620,7 @@
       "enabled": true,
       "emailVerified": true,
       "realmRoles": ["platform-operator"],
+      "requiredActions": ["CONFIGURE_TOTP"],
       "credentials": [{ "type": "password", "value": "PocOperator-2026", "temporary": false }]
     },
     {
@@ -595,7 +633,15 @@
       "attributes": { "clearance": ["restricted"], "department": ["engineering"] },
       "groups": ["/clearance/restricted", "/department/engineering"],
       "realmRoles": ["platform-admin", "platform-operator", "wiki-editor", "trading-owner"],
+      "requiredActions": ["CONFIGURE_TOTP"],
       "credentials": [{ "type": "password", "value": "Developer-2026", "temporary": false }]
+    },
+    {
+      "username": "service-account-abac-seeder",
+      "enabled": true,
+      "serviceAccountClientId": "abac-seeder",
+      "attributes": { "clearance": ["restricted"], "department": ["engineering"] },
+      "realmRoles": ["platform-admin"]
     },
     {
       "username": "service-account-ai-stock-trading-kb-writer",

@@ -47,8 +47,11 @@ public class DocumentNormalizedConsumer(
         var doc = await db.Documents.FindAsync(new object?[] { ev.DocumentId }, ct);
         if (doc is null)
         {
+            // ADR-0057 決定 1, [[IADR-0296]]: **`ev.AssetUris` を台帳へ写す。**
+            // 従前はイベントが運んでいるのに渡しておらず、図表資産は台帳から辿れず
+            // **削除が届かなかった**（受け入れ基準①が構造的に満たせない状態だった）。
             doc = Document.CreateNormalized(ev.DocumentId, ev.Title, ev.MarkdownUri,
-                ev.Attributes, tags, fingerprint);
+                ev.Attributes, tags, fingerprint, ev.AssetUris);
             db.Documents.Add(doc);
             logger.LogInformation("Cataloged normalized document {Id} title={Title}",
                 ev.DocumentId, ev.Title);
@@ -57,7 +60,8 @@ public class DocumentNormalizedConsumer(
         {
             // **タグ欄は上書きしない**（SC-05「再正規化はタグ欄を上書きしない」）——
             // 上書きすると管理者が付けたタグが再同期のたびに消える。
-            doc.ApplyNormalized(ev.Title, ev.MarkdownUri, ev.Attributes, fingerprint);
+            // [[IADR-0296]]: 資産 URI も再正規化の結果で差し替える（属性と同じ扱い）。
+            doc.ApplyNormalized(ev.Title, ev.MarkdownUri, ev.Attributes, fingerprint, ev.AssetUris);
             logger.LogInformation("Updated cataloged document {Id} from re-normalization",
                 ev.DocumentId);
         }

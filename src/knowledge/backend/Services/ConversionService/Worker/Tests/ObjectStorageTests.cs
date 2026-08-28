@@ -104,6 +104,9 @@ public class ObjectStorageTests
             return Task.FromResult($"storage://normalized/{key}");
         }
 
+        // IADR-0296: ポートに削除が加わったため追随する（本テストは保存側のみを見る）。
+        public Task DeleteAsync(string uri, CancellationToken ct = default) => Task.CompletedTask;
+
         public Task<string> GetTextAsync(string uri, CancellationToken ct = default) => Task.FromResult(string.Empty);
         public Task<byte[]> GetBytesAsync(string uri, CancellationToken ct = default) => Task.FromResult(Array.Empty<byte>());
         public bool CanResolve(string? uri) => StorageUri.IsStorageUri(uri);

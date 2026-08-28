@@ -19,6 +19,19 @@ public interface IObjectStorageClient
     // storage:// URI からバイナリを取得する。
     Task<byte[]> GetBytesAsync(string uri, CancellationToken ct = default);
 
+    // FR-06, FR-19, ADR-0057 決定 1, IADR-0296: storage:// URI が指すオブジェクトを削除する。
+    //
+    // 🔴 **全バージョンを消す契約である。** バケットのバージョニングは既定で有効
+    // （`ObjectStorageOptions.EnableVersioning` が既定 true。起動時に `VersionStatus.Enabled` を掛ける）
+    // であり、**素の DeleteObject は delete marker を書くだけで過去の全版が残る**。
+    // ADR-0057 の受け入れ基準は「当該文書の本文・資産が**残っていない**」ことなので、
+    // 「最新版が引けなくなる」では満たせない。
+    //
+    // **冪等である** —— 実在しないキーの削除は成功として扱う（再試行を安全にするため）。
+    // 失敗は例外で伝える。呼び出し側は**台帳（DB 行）を消す前に**本メソッドを完了させること
+    // （順序の根拠は IADR-0296 決定 3。台帳を先に消すと、実体だけが不可視のまま残る）。
+    Task DeleteAsync(string uri, CancellationToken ct = default);
+
     // 与えられた URI をこのクライアントで解決（取得）できるか。
     // storage:// スキームかつ実クライアントが構成済みのとき true。
     bool CanResolve(string? uri);

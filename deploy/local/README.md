@@ -191,6 +191,14 @@ realm import（`deploy/keycloak/microservices-platform-realm.json`）に含ま�
 
 > ロール別の挙動差分（権限分離）を確認したい場合は `developer` ではなく `poc-*` を使うこと。
 >
+> **🔴 ［2026-08-28 変更 / #438］初回ログインで TOTP の登録画面が挟まる。** ADR-0026 は
+> 「TOTP による MFA を必須」と確定しており、realm import で作られるこの 3 名にも
+> `CONFIGURE_TOTP` を必須アクションとして持たせた。**認証アプリで QR を読むか、
+> 画面に出ているシークレットを控えること。** 2 回目以降は毎回 6 桁の入力を求められる。
+> 自動検証（`scripts/verify-oidc-edge-flow.sh`）はこの段を自分で通す（`scripts/lib/totp.js`）。
+> **パスワードグラント（直接付与）は realm の全 client で無効である** ——
+> 開けると MFA を迂回できる口になるため（`scripts/check-realm-constraints.js` の検査 5 が固定する）。
+>
 > **［2026-08-22 変更 / #780 第2段］パスワードを realm の `passwordPolicy`
 > （`length(12)` ＋ 3-of-4 文字種）に適合する値へ変更した。** 旧パスワード（`developer` /
 > `poc-password` / `poc-operator-password`）は realm 自身のポリシーに違反しており、

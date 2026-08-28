@@ -116,18 +116,6 @@ module.exports = ({ ok, assert }) => {
     // ABACSEED は best-effort（WARN で通す）なので**壊れていることが見えなかった**。
     // ポリシー 0 件 → ABAC は deny へ倒れ、画面は空になるが、それは deny-by-default と区別が付かない。
 
-    ok('seed: 管理者のパスワードを realm ファイル（単一情報源）から引ける', () => {
-      const pw = seed.passwordFromRealm('admin');
-      assert.ok(
-        typeof pw === 'string' && pw.length > 0,
-        `realm から admin のパスワードを引けない（${seed.REALM_FILE}）。realm の構造が変わった可能性がある`
-      );
-    });
-
-    ok('seed: 実在しない利用者では null を返す（黙って既定値へ落ちない）', () => {
-      assert.strictEqual(seed.passwordFromRealm('no-such-user-in-realm'), null);
-    });
-
     ok('★ seed: realm のパスワード値がスクリプトへ直書きされていない（#933 型の drift の再発防止）', () => {
       const src = fsSeed.readFileSync(pathSeed.join(__dirname, 'seed-abac-policies.js'), 'utf8');
       const realm = JSON.parse(fsSeed.readFileSync(seed.REALM_FILE, 'utf8'));
@@ -153,45 +141,59 @@ module.exports = ({ ok, assert }) => {
     // 🔴 realm の変更に追随しなかったのは今日 2 回目で、1 回目は**値**の写し取り、
     // 2 回目は**クライアントの種別という構造**の変化である。値を直すだけでは次も落ちる。
 
-    ok('★ seed: realm が confidential と言う client には client_secret を載せる（#439 型の再発防止）', () => {
+    // --- 主体を人から機械へ移した（#438 / IADR-0294）--------------------------------
+    //
+    // 実際に起きたこと: realm の変更に投入器が追随できなかったのは **3 回目**である。
+    // ①`#933` の値の一斉変更 ②`#439` の client 種別の変化 ③`#438` の MFA 必須化。
+    // ③ は「値を直す」では済まない —— `CONFIGURE_TOTP` が未消化の利用者に対し、Keycloak は
+    // password grant を `invalid_grant: Account is not fully set up` で拒む。
+    // **人の資格情報を借りている限り、認証を強くするたびに投入器が壊れる。**
+    // したがって投入器はサービスアカウントとして名乗り、MFA の対象そのものから外れる。
+
+    ok('★ seed: 投入器はサービスアカウント（client_credentials）として名乗る（#438 型の再発防止）', () => {
       const realm = JSON.parse(fsSeed.readFileSync(seed.REALM_FILE, 'utf8'));
       const client = (realm.clients || []).find((c) => c.clientId === seed.CLIENT_ID);
       assert.ok(client, `realm に client ${seed.CLIENT_ID} が無い（投入器の既定と realm が食い違っている）`);
 
-      // 🔴 password grant を使う以上、直接付与が有効でなければ設計から見直しが要る。
       assert.strictEqual(
+        client.serviceAccountsEnabled,
+        true,
+        `client ${seed.CLIENT_ID} の serviceAccountsEnabled が true でない。client_credentials が使えない`
+      );
+      // 🔴 人のログイン経路は開けない。開くと MFA を迂回できる口になる（検査 5 も同じことを見る）。
+      assert.notStrictEqual(
         client.directAccessGrantsEnabled,
         true,
-        `client ${seed.CLIENT_ID} の directAccessGrantsEnabled が false。password grant が使えない`
+        `client ${seed.CLIENT_ID} に直接付与が開いている。MFA を迂回できる口になる`
       );
+
+      // service-account 利用者が実在し、投入先（AdminOnly）を通れるロールを持つこと。
+      const sa = (realm.users || []).find((u) => u.serviceAccountClientId === seed.CLIENT_ID);
+      assert.ok(sa, `service-account 利用者が realm に無い（client ${seed.CLIENT_ID}）`);
+      assert.ok(
+        (sa.realmRoles || []).includes('platform-admin'),
+        '投入先 /authz/attributes・/authz/policies は AdminOnly。platform-admin が要る'
+      );
+      // 🔴 サービスアカウントに必須アクションを付けるとトークン取得が壊れる。
+      assert.deepStrictEqual(sa.requiredActions || [], [], 'サービスアカウントに requiredActions を付けない');
 
       const confidential = seed.isConfidentialInRealm(seed.CLIENT_ID);
       assert.strictEqual(confidential, client.publicClient === false);
 
       const secret = seed.clientSecretFromRealm(seed.CLIENT_ID);
-      if (confidential) {
-        assert.ok(secret, `confidential なのに realm から client_secret を引けない（${seed.CLIENT_ID}）`);
-        const form = seed.buildTokenForm({
-          clientId: seed.CLIENT_ID,
-          username: 'admin',
-          password: 'x',
-          confidential,
-          clientSecret: secret,
-        });
-        assert.strictEqual(form.get('client_secret'), secret, 'confidential なのに client_secret が載っていない');
-      }
+      assert.ok(secret, `confidential なのに realm から client_secret を引けない（${seed.CLIENT_ID}）`);
+      const form = seed.buildTokenForm({ clientId: seed.CLIENT_ID, clientSecret: secret });
+      assert.strictEqual(form.get('grant_type'), 'client_credentials', 'password grant へ戻っている');
+      assert.strictEqual(form.get('client_secret'), secret, 'confidential なのに client_secret が載っていない');
+      // 人の資格情報を送らない（送ると realm 側の変更に再び引きずられる）。
+      assert.strictEqual(form.get('username'), null);
+      assert.strictEqual(form.get('password'), null);
     });
 
-    ok('seed: public な client には client_secret を載せない', () => {
-      const form = seed.buildTokenForm({
-        clientId: 'platform-spa',
-        username: 'admin',
-        password: 'x',
-        confidential: false,
-        clientSecret: 'should-not-be-sent',
-      });
+    ok('seed: secret を解決できないときは client_secret を載せない', () => {
+      const form = seed.buildTokenForm({ clientId: 'platform-spa', clientSecret: '' });
       assert.strictEqual(form.get('client_secret'), null);
-      // 種別を判定できないとき（realm に無い client）も載せない。
+      // 種別を判定できないとき（realm に無い client）は null（＝分からない）を返す。
       assert.strictEqual(seed.isConfidentialInRealm('no-such-client'), null);
     });
 
@@ -1364,9 +1366,11 @@ module.exports = ({ ok, assert }) => {
     assert.strictEqual(r.status, 1, `無主があるのに fail しない:\n${out}`);
     assert.match(out, /担当 issue が無い計画 ID/);
     // 無主として名指しされるのは 3 issue が引き受けていない ID だけである。
-    // （従前は SC-20 を見ていたが、#451-a が docs/tests/SC-20 を新設し無主でなくなった。
-    //   固定に使う ID はテスト仕様書を持たない画面へ追随させる）
-    assert.match(out, /SC-12/);
+    // （従前は SC-20 → SC-12 と見てきたが、#451-a が docs/tests/SC-20 を、#452 が docs/tests/SC-12 を
+    //   新設して順に無主でなくなった。**固定に使う ID はテスト仕様書を持たない ID へ追随させる。**
+    //   いま残っているのは UC-01〜UC-07 である —— SC-17 は本 fixture の #438 が「SC-13〜17」で
+    //   引き受けているため無主にならない）
+    assert.match(out, /UC-01/);
     // ★ 同じ 1 回の実行で、**過去 3 件が無主に混じらない**ことも確かめる（回帰と変異の同時固定）。
     const unowned = (out.match(/\[担当 issue が無い計画 ID\] ([^\n]*)/) || [])[1] || '';
     for (const id of ['SC-14', 'SC-15', 'UC-09', 'UC-10']) {

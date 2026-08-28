@@ -1,6 +1,8 @@
 using DocumentService.Domain;
 using DocumentService.Infrastructure.Persistence;
 using DocumentService.Domain.Ports;
+// ADR-0057 決定 1 / [[IADR-0296]]: 完全削除は本文の実体まで及ぶ（台帳から逆引きする器）。
+using DocumentService.Features.Documents;
 // FR-19, #451-a: 応答・要求の形は `Knowledge.Contracts/Dtos/PrivateNoteDto.cs` が持つ。
 // **BFF（別ユニット）が同じ形を配るため、定義を 2 つ持たない**（タグ辞書と同じ切り分け。
 // サービス内に写しを置くと契約検査が片方しか見ず、静かに割れる）。
@@ -126,9 +128,14 @@ public static class PrivateNoteEndpoints
 
         // FR-19, ADR-0037 決定 20: 完全削除（即時・復元不可）。単票も一括も本端点（ids の要素数の差）。
         // 対象は**削除済みのみ**（SC-19 の削除済み一覧からの操作）。解放される容量を応答で返す。
+        //
+        // ADR-0057 決定 1 / [[IADR-0296]]: **本文の実体も消す。** SC-19 は「いかなる方法でも
+        // 復元できません」と言い切る画面であり、**実体が残ったまま成功を返してはならない**。
+        // 台帳（本文 URI ＋ 全版スナップショット URI ＋ 資産 URI）を**行を消す前に**逆引きし、
+        // オブジェクトを先に消す。失敗すれば例外が出て `SaveChangesAsync` へ到達せず行が残る。
         g.MapPost("/purge", async (PurgePrivateNotesRequest req, HttpContext http,
             DocumentDbContext db, IPrivateNoteNotifier notifier, IDocumentDeletedPublisher deletedBus,
-            IAuditLogger audit, CancellationToken ct) =>
+            IAuditLogger audit, DocumentObjectPurger purger, CancellationToken ct) =>
         {
             if (SubjectOf(http) is not { } owner) return Results.Unauthorized();
             if (req.Ids is not { Count: > 0 })
@@ -149,6 +156,9 @@ public static class PrivateNoteEndpoints
             var now = DateTimeOffset.UtcNow;
             var freedBytes = notes.Sum(n => n.LatestBytes);
             var docs = await db.Documents.Where(d => ids.Contains(d.Id)).ToListAsync(ct);
+            // 🔴 **オブジェクトが先、DB 行が後**（[[IADR-0296]] 決定 3）。逆にすると、削除に失敗した
+            // 実体を指す値がどこにも残らず、**不可視のまま残留する**。
+            await purger.PurgeAsync(ids, ct);
             db.Documents.RemoveRange(docs);           // 版・共有・台帳はカスケード削除
             db.PrivateNotes.RemoveRange(notes);       // InMemory はカスケードしないため明示にも消す
             await db.SaveChangesAsync(ct);

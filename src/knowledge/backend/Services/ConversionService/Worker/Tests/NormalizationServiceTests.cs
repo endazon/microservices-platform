@@ -101,6 +101,48 @@ public class NormalizationServiceTests
             DeterministicGuid.ForDocument(Raw().SourceId, "/docs/design.docx"));
     }
 
+    // --- ゴールデンファイル（T-14〜T-18 / #447 退行防止 / IADR-0298） ---------------------
+    //
+    // 上の 4 件は部分一致（`Should().Contain(...)`）であり、**出力の形が変わっても緑のまま通る**。
+    // 形には人手補正（`FigureMarkdown.TryReplaceImageWithCode` の文字列一致）と削除伝播
+    // （`DocumentObjectPurger` が逆引きする資産キー）が依存しているため、**全体をスナップショットで
+    // 固定する**。器・固定範囲・更新手順は `Golden/NormalizationGolden.cs` を参照。
+    //
+    // 🔴 **pandoc は実走していない。** 入力は変換器出力を模した Markdown であり、
+    // docx / PDF / HTML の原本は 1 バイトも読んでいない（IADR-0298 決定 2 / N-1・N-2）。
+
+    public static TheoryData<string> GoldenCases()
+    {
+        var data = new TheoryData<string>();
+        foreach (var name in NormalizationGolden.CaseNames()) data.Add(name);
+        return data;
+    }
+
+    // FR-12, UC-06: 代表的文書形式の正規化結果が golden と一致する（本文全文・資産キー・
+    // 決定的 DocumentId・件数・図の記録・機密区分の受け渡し）。
+    [Theory]
+    [MemberData(nameof(GoldenCases))]
+    public async Task Normalization_matches_golden(string caseName)
+    {
+        NormalizationGolden.Verify(caseName, await NormalizationGolden.RenderAsync(caseName));
+    }
+
+    // 器そのものの fail-closed（IADR-0298 決定 5）。走査が空振りしたまま緑にならないこと、
+    // case を消したのに golden が残る（孤児）状態を検出することを固定する。
+    // **これが無いと、`Cases/` を丸ごと消しても Theory が 0 件になるだけで気付けない。**
+    [Fact]
+    public void Golden_case_set_is_closed()
+    {
+        var cases = NormalizationGolden.CaseNames();
+        var goldens = NormalizationGolden.GoldenNames();
+
+        cases.Should().NotBeEmpty("case が 0 件なら走査が空振りしている");
+        cases.Should().Contain(["markdown-plain", "html-article", "office-docx-report", "pdf-report"],
+            "代表 4 形式は #447 の退行防止項目が名指ししている");
+        goldens.Should().BeEquivalentTo(cases,
+            "golden と case は 1 対 1 である（孤児 golden は case の削除漏れ）");
+    }
+
     private sealed class FakeBodyConverter(BodyConversionResult result) : IBodyConverter
     {
         public Task<BodyConversionResult> ConvertAsync(string storageUri, string contentType,

@@ -254,7 +254,11 @@ services:
     expose:
       - "8080"
     environment:
-      <<: [*common-env, *db-env, *rabbit-env]
+      # FR-06, FR-19, FR-21, ADR-0014/ADR-0057, IADR-0296: 本文の格納・取得と、完全削除時の
+      # 実体削除に MinIO 接続が要る（helm は services.document.objectStorage: true を持っており、
+      # compose 側だけが欠落していた）。未設定なら縮退クライアントが「警告して成功」へ倒すため、
+      # 欠落は 500 にならず**静かに実体を残す**——だから配備側で塞ぐ。
+      <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=document_svc;Username=kp;Password=kp
     depends_on:
       postgres:
@@ -373,6 +377,15 @@ services:
     environment:
       <<: [*common-env, *db-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=authz_svc;Username=kp;Password=kp
+      # SC-17, IADR-0298 決定 3 (#452): 利用者アカウント管理の反映先。**既定は無く、宣言が必須**
+      # （未設定なら起動時に落ちる）。
+      # 🔴 **暫定である。** 実 IdP へ反映するには `realm-management` の view-users / manage-users /
+      #    view-realm を持つ機密クライアントが realm に要るが、まだ登録されていない。
+      #    配備されたら `keycloak` へ切り替え、IdentityAdmin__Keycloak__{BaseUrl,Realm,ClientId,
+      #    ClientSecret} を注入する（既定値は持たない。未注入なら起動時に落ちる）。
+      #    それまでの間、SC-17 の変更は **authorization-service のプロセス内にしか残らない**
+      #    （起動時に警告ログが 1 行出る）。解消は #452 の残件として記録してある。
+      IdentityAdmin__Provider: in-memory
     depends_on:
       postgres:
         condition: service_healthy
@@ -739,6 +752,33 @@ services:
     depends_on:
       bff:
         condition: service_started
+
+  # FR-16, UC-09, SC-12, ADR-0021/ADR-0024 (#452): MCP サーバー。外部 AI エージェント向けの
+  # エッジ集約（/mcp）と、管理 REST（/mcp-clients*。SC-12 の後段）を持つ。
+  #
+  # 🔴 **サービス名は `mcp-service` である**（`mcp-server` ではない）。helm の deployment.yaml /
+  # service.yaml が `{{ $name }}-service` を組むため、chart のキー `mcp` から Service 名
+  # `mcp-service` が決まる。BFF のコード既定（http://mcp-service:8080）と一致させる。
+  # IADR-0017: 内部 API のため host 公開しない（管理面は BFF 経由、MCP 面は Ingress 経由で到達）。
+  mcp-service:
+    build:
+      context: ..
+      dockerfile: src/platform/backend/Services/McpServer/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      <<: [*common-env, *db-env]
+      # ADR-0002 / #1012: 専用 DB。deploy/create-multiple-dbs.sh が `mcp_svc` を作る。
+      # 起動時に MigrateAsync が走るため、DB が無いとクラッシュループする（graph_svc の先例と同型）。
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=mcp_svc;Username=kp;Password=kp
+      # FR-16, ADR-0024 §5: 自己申告の収集先。appsettings の既定（:8080）と同値だが、
+      # **収集先が構成で決まることを manifest 側でも見えるようにする**（既定へ黙って寄りかからない）。
+      Mcp__Services__document-service: http://document-service:8080
+      Mcp__Services__retrieval-service: http://retrieval-service:8080
+      Mcp__Services__graph-service: http://graph-service:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres-data:

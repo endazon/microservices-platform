@@ -3,15 +3,15 @@ title: セキュリティ仕様書
 type: security-spec
 status: in-progress
 created: 2026-07-02
-updated: 2026-08-21
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, NFR-11, SC-05, SC-11, UC-07]
-adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016]
-iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0206, IADR-0216, IADR-0220]
+adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0026, ADR-0045]
+iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295]
 specs: []
-issues: [#55, #100, #198, #199, #201, #211, #212, #222, #271, #310, #628, #629, AST#18, AST#24, planning#383]
+issues: [#55, #100, #198, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, AST#18, AST#24, planning#383]
 -->
 
 # セキュリティ仕様書
@@ -142,7 +142,15 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 
 `deploy/keycloak/microservices-platform-realm.json` の realm import には、開発・E2E 検証用の dev ユーザーが
 平文パスワードで含まれる（`poc-user`／`poc-operator`／`developer`、および OIDC クライアントシークレット
-`wiki-js-dev-secret-change-me` / `ai-stock-trading-kb-writer-dev-secret-change-me` / `headlamp-dev-secret-change-me`）。これらは **dev 環境限定**の便宜であり、以下を守る。
+`wiki-js-dev-secret-change-me` / `ai-stock-trading-kb-writer-dev-secret-change-me` / `headlamp-dev-secret-change-me` /
+`abac-seeder-dev-secret-change-me`）。これらは **dev 環境限定**の便宜であり、以下を守る。
+
+> **🔴 ［2026-08-28 / #438］パスワードだけではログインできない。** 計画が確定した「TOTP による多要素認証を必須」を
+> realm で実効化したため、この 3 名は初回ログインで `CONFIGURE_TOTP` を求められ、以後は毎回 6 桁を要求される。
+> 併せて **realm の全 client で直接付与（password grant）を無効にした** —— 開けたままだと
+> パスワードだけでトークンが出て、MFA を迂回できるからである。
+> その結果 dev の投入器（`seed-abac-policies.js` / `seed-search-documents.js`）は**人の資格情報を借りるのをやめ**、
+> サービスアカウント `abac-seeder` の client_credentials で名乗るようになった。
 
 - **用途**: ローカル compose / dev の初回起動から、ABAC 属性ユーザー（`poc-user`）と運用者ロール検証
   （`poc-operator`、`platform-operator` ロール保持。運用者ロールの `ConfigViewer` を再現）を、
@@ -182,16 +190,26 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 導入までの**暫定状態**であり、現状の緩和策と残余リスク・移行条件を以下に明記する。
 
 - **暫定状態（As-Is）**:
-  - **保存**: `Config` は平文（DB per Service に閉じるが、暗号化は未適用）。
-  - **緩和（実装済み）**: API 応答は秘密キーの値を**マスク**して返す（`DataSourceEndpoints.cs:23,79` の `ToResponse`。
-    Wiki コネクタの実装判断 / claude-review #222）。admin/operator であっても API 応答で平文の資格情報を露出させない。
+  - **保存**: `Config` と `ConnectionUri` は平文（DB per Service に閉じるが、暗号化は未適用）。
+  - **緩和（実装済み）**: **平文が外へ出る経路をすべてマスク経由にしている**（#458）。
+    秘密とみなすキーの集合は 1 箇所に持ち（`SecretMask.KeyMarkers`）、応答の投影
+    （`DataSourceEndpoints` の `ToResponse`）・同期エラーの保存・手動同期 API の応答・
+    例外ログがそこを共有する。**行番号では引かない**——実体は移動するが節とメンバ名は残る。
+    - 応答の `config` は秘密キーの値を伏せる（Wiki コネクタの実装判断 / claude-review #222）。
+    - 応答の `connectionUri` は資格情報つき URI・接続文字列の秘密を伏せる。
+      **書き込み時は資格情報つきの `connectionUri` を 400 で拒否する**（`ConnectionUriPolicy`）。
+    - 例外は**オブジェクトのまま**ログへ渡さない（`Exception.ToString()` が内部例外のメッセージごと
+      ログレコードへ入るため。共通ログ基盤にスクラビングは無い）。
+    - admin/operator であっても API 応答で平文の資格情報を露出させない。
 - **残余リスク**: DB 直接アクセス・バックアップ流出・DB 侵害時に平文資格情報が露出し得る。鍵ローテーション・
-  アクセス監査も未整備。API 応答マスクは「アプリ層の露出」を塞ぐのみで、保存時の平文そのものは残る。
+  アクセス監査も未整備。**マスクは「アプリ層の露出」を塞ぐのみで、保存時の平文そのものは残る。**
 - **移行条件（To-Be）**: 実環境のシークレット設計（k8s Secret → External Secrets Operator / Vault）確定後、
   `Config` を平文値から**秘密ストア参照キー**へ移行する。保存時暗号化（データ保護表）の有効化と、鍵ローテーション・
   監査運用（`docs/operations/`）を併せて整備する。
-- **一元追跡**: Vault 移行は、各コネクタの実装 ADR に分散していたフォローアップ（データソース登録・同期の未決事項）を
-  **#310 に集約**して追跡する。実環境構築前の着手を推奨（go-live はブロックしない `priority:should`）。
+- **一元追跡**: 従前ここは **#310 に集約**すると書いていたが、**#310 は 2026-08-02 に `duplicate` で
+  close された**（取り込んだのは #447、横断は **#458**）。**現在の追跡先は #458 である**
+  （`blocked`。Vault 集中管理は実クラスタを要するため go-live 条件に載る）。
+  実環境構築前の着手を推奨（go-live はブロックしない `priority:should`）。
 
 ## 監査ログ
 
@@ -238,7 +256,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 - 稼働 Wiki.js での GraphQL PoC（スキーマ整合・`isPrivate` ページのサービスアカウント本文取得可否・
   ネットワーク分離の CI/E2E 検証）。GraphQL push 同期の実装 ADR のフォロー。
 - 保存時暗号化（PostgreSQL/MinIO/Qdrant）のインフラ層有効化・鍵管理（データ保護表参照。運用整備・#198 連動）。
-- コネクタ資格情報の Vault / External Secrets 移行（現状は DB 平文保存＋API 応答マスクの暫定。上記「§データソースのコネクタ資格情報」参照）。**一元追跡: #310**。
+- コネクタ資格情報の Vault / External Secrets 移行（現状は DB 平文保存＋露出経路のマスクの暫定。上記「§データソースのコネクタ資格情報」参照）。**一元追跡: #458**（旧 #310 は 2026-08-02 に `duplicate` で close）。
 - 監査ログの保管期間・改ざん防止・エクスポートの運用設定（可観測性基盤側。#198 連動）。NFR「監査ログ保持」の具体化。
 - 検索クエリ側の機密区分ルーティング。現状クエリ埋め込みは既定外部
   （Voyage/1024）へ固定。高機密（ruri/768）コレクションの横断検索をハイブリッド検索側で実装する際に、クエリ文の

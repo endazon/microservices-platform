@@ -3051,6 +3051,47 @@
           }
         }
       },
+      "Platform.Shared.Contracts.Dtos.PlatformUserDto": {
+        "kind": "record",
+        "members": {
+          "Attributes": {
+            "source": "positional",
+            "type": "Dictionary<string,string>",
+            "required": true,
+            "position": 5
+          },
+          "DisplayName": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "Enabled": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 3
+          },
+          "Id": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Roles": {
+            "source": "positional",
+            "type": "List<string>",
+            "required": true,
+            "position": 4
+          },
+          "Username": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
       "Platform.Shared.Contracts.Dtos.PortSelectionDto": {
         "kind": "record",
         "members": {
@@ -3071,6 +3112,28 @@
             "type": "string?",
             "required": true,
             "position": 2
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.ReplaceUserAttributesRequest": {
+        "kind": "record",
+        "members": {
+          "Attributes": {
+            "source": "positional",
+            "type": "Dictionary<string,string>",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.ReplaceUserRolesRequest": {
+        "kind": "record",
+        "members": {
+          "Roles": {
+            "source": "positional",
+            "type": "List<string>",
+            "required": true,
+            "position": 0
           }
         }
       },
