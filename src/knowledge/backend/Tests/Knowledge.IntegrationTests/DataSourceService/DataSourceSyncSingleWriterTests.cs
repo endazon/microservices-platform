@@ -3,7 +3,7 @@ using Knowledge.IntegrationTests.Fixtures;
 using Microsoft.Extensions.Logging.Abstractions;
 using Testcontainers.PostgreSql;
 // 名前空間 Knowledge.IntegrationTests.DataSourceService の末尾セグメントと衝突するため global:: で明示する。
-using global::DataSourceService.Api.Foundation.Services;
+using global::DataSourceService.Infrastructure.Persistence;
 
 namespace Knowledge.IntegrationTests.DataSourceService;
 

@@ -19,7 +19,7 @@ public sealed class DataSourceTests(PostgresFixture postgres, RabbitMqFixture ra
         _factory = new DataSourceServiceFactory(postgres, rabbit);
         _client = _factory.CreateClient();
         await using var scope = _factory.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<global::DataSourceService.Api.Foundation.Persistence.DataSourceDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<global::DataSourceService.Infrastructure.Persistence.DataSourceDbContext>();
         await db.Database.EnsureCreatedAsync();
     }
 

@@ -1,5 +1,5 @@
 using DocumentService.Api.Foundation.Persistence;
-using DataSourceService.Api.Foundation.Persistence;
+using DataSourceService.Infrastructure.Persistence;
 using AuthorizationService.Api.Foundation.Persistence;
 using WikiService.Api.Foundation.Persistence;
 using MassTransit;
@@ -227,7 +227,7 @@ public sealed class DocumentServiceFactory : IntegrationTestFactoryBase<
 }
 
 public sealed class DataSourceServiceFactory : IntegrationTestFactoryBase<
-    global::DataSourceService.Api.DataSourceServiceTestMarker, DataSourceDbContext>
+    global::DataSourceService.DataSourceServiceTestMarker, DataSourceDbContext>
 {
     public DataSourceServiceFactory(PostgresFixture pg, RabbitMqFixture rabbit) : base(pg, rabbit) { }
 }

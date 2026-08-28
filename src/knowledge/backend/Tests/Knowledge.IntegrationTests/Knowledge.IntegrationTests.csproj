@@ -44,7 +44,7 @@
   <ItemGroup>
     <!-- 各サービスにテスト用マーカークラスを追加したためエイリアス不要 -->
     <ProjectReference Include="..\..\Services\DocumentService\src\DocumentService.Api\DocumentService.Api.csproj" />
-    <ProjectReference Include="..\..\Services\DataSourceService\src\DataSourceService.Api\DataSourceService.Api.csproj" />
+    <ProjectReference Include="..\..\Services\DataSourceService\DataSourceService.csproj" />
     <ProjectReference Include="..\..\..\..\platform\backend\Services\AuthorizationService\src\AuthorizationService.Api\AuthorizationService.Api.csproj" />
     <ProjectReference Include="..\..\Services\WikiService\src\WikiService.Api\WikiService.Api.csproj" />
     <!-- #455 Phase 0 U0b: Worker も統合テストへ載せる（DocumentUpdated の 2 購読者を同時に立てるため） -->
