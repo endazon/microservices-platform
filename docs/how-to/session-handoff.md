@@ -11,7 +11,7 @@ ids: [FR-05, FR-06, FR-09, FR-12, FR-19, FR-20, FR-21, SC-05, SC-07, SC-09, SC-1
 adrs: [ADR-0056, ADR-0057, ADR-0058]
 iadrs: [IADR-0061, IADR-0277, IADR-0278, IADR-0115, IADR-0116, IADR-0120, IADR-0139, IADR-0140, IADR-0141, IADR-0144, IADR-0145, IADR-0146, IADR-0147, IADR-0180, IADR-0204, IADR-0238, IADR-0279, IADR-0280, IADR-0282, IADR-0286, IADR-0287, IADR-0291, IADR-0292, IADR-0293]
 specs: [20260808_session-handoff, 20260815_issue-454_open-issue-stocktake-and-waves, 20260823_planning-adr-0056-0058-followup, 20260827_all-issues_wave-plan, 20260828_wave2-audit-followup, 20260828_wave3-audit-followup, 20260828_wave4-sweep, 20260828_wave45-vsa-migration, 20260828_issue-1025_notification-service-deployment, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-1040_integration-config-timing-checker]
-issues: [#454, #555, #556, #562, #572, #612, #614, #617, #618, #701, #743, #752, #779, #780, #781, #782, #783, #791, #836, #901, #941, #953, #1011, #1018, #1020, #1021, #1022, #1023, #1025, #1032, #1033, #1034, #1036, #1037, #1038, #1040, #1041, #443, planning#380, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#479]
+issues: [#443, #454, #555, #556, #562, #572, #612, #614, #617, #618, #701, #743, #752, #779, #780, #781, #782, #783, #791, #836, #901, #941, #953, #1011, #1018, #1020, #1021, #1022, #1023, #1025, #1032, #1033, #1034, #1036, #1037, #1038, #1040, #1041, planning#380, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#479]
 -->
 
 # 引継資料 — issue 消化フェーズ運用の現在地
