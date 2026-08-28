@@ -29,7 +29,7 @@ namespace Knowledge.IntegrationTests.GraphService;
 // 🔴 **防壁は HTTP ではなく `GraphDbContext` を直接叩いて確かめる。** アプリ層のガードを外す変異を
 // 入れて確かめると「変異を入れた版」しか試験できず、出荷される版の防壁は未発火のまま残る。
 //
-// 🔴 **実ブローカも要る**（ADR-0027, IADR-0291 決定 1・2 / #941）。GraphService は
+// 🔴 **実ブローカも要る**（ADR-0027, IADR-0289 決定 1・2 / #941）。GraphService は
 // `builder.Host.UseWolverine(...)` で **ホスト構築時に** ブローカへ接続する
 // （graph-delete 段 = #1016 / graph-sync 段 = #911）。**防壁を測る前にホストが起きなければ、
 // この 6 件は 1 件も何も測らない。**

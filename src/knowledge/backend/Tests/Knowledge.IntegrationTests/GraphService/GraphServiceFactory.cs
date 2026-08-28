@@ -13,7 +13,7 @@ namespace Knowledge.IntegrationTests.GraphService;
 // マイグレーション出力そのものになる**。`EnsureCreated` はモデルから直接スキーマを作るため、
 // 「マイグレーションが `ON DELETE RESTRICT` を正しく出力しているか」を測れなくなる（#941）。
 //
-// 🔴 **ブローカは省略できない引数である**（ADR-0027, IADR-0291 決定 2 / #941）。
+// 🔴 **ブローカは省略できない引数である**（ADR-0027, IADR-0289 決定 2 / #941）。
 // GraphService は `builder.Host.UseWolverine(...)` で **ホスト構築時に**
 // `RabbitMq:ConnectionString` を読み、`UseRabbitMq(...).AutoProvision()` で接続する
 // （graph-delete 段 = #1016 / graph-sync 段 = #911）。渡さないと Program.cs の既定値
@@ -24,7 +24,7 @@ namespace Knowledge.IntegrationTests.GraphService;
 // 🔴 **既定値も null 許容も置かない。** 本ファイルの初版は
 // 「GraphService はメッセージングを一切構成しない（実測）」という注記つきで `base(pg, null)` と
 // 書いており、**その注記は 5 日後に偽になった**（#1016 / #911）。注記は腐るが型は腐らない ——
-// 引数を必須にして、同じ退行をコンパイルエラーとして止める（IADR-0291 決定 2）。
+// 引数を必須にして、同じ退行をコンパイルエラーとして止める（IADR-0289 決定 2）。
 public sealed class GraphServiceFactory : IntegrationTestFactoryBase<
     global::GraphService.GraphServiceTestMarker,
     global::GraphService.Infrastructure.Persistence.GraphDbContext>

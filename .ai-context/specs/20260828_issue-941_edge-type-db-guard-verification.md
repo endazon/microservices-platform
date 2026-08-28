@@ -9,7 +9,7 @@ related_ids:
   - ADR-0027
   - IADR-0242
   - IADR-0260
-  - IADR-0291
+  - IADR-0289
 author: claude
 created: 2026-08-28
 updated: 2026-08-28
@@ -182,7 +182,7 @@ the Broker rabbitmq in time` になる」。**
 - **対象外**: `.ai-context/specs/20260823_...`（先行巡の記録）の本文書き換え。
   日付つき追記で前方参照だけを足す（`traceability.repo.md` の凍結の射程 ①）。
 
-## 設計（→ IADR-0291）
+## 設計（→ IADR-0289）
 
 1. **`GraphServiceFactory` は `RabbitMqFixture` を必須の引数として受け取る。**
    既定値も null 許容も置かない —— **ブローカ無しでは構築できない形**にして、同じ退行を

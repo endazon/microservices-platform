@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-17, UC-10, SC-09, SC-10]
 adrs: [ADR-0002, ADR-0004, ADR-0033, ADR-0034, ADR-0036, ADR-0050]
-iadrs: [IADR-0027, IADR-0119, IADR-0152, IADR-0153, IADR-0231, IADR-0232, IADR-0242, IADR-0260, IADR-0280, IADR-0282, IADR-0281, IADR-0291]
+iadrs: [IADR-0027, IADR-0119, IADR-0152, IADR-0153, IADR-0231, IADR-0232, IADR-0242, IADR-0260, IADR-0280, IADR-0282, IADR-0281, IADR-0289]
 specs: [20260822_issue-908_graphservice-foundation, 20260823_issue-941_edge-type-db-guards, 20260828_issue-912_obsidian-link-extraction, 20260828_issue-941_edge-type-db-guard-verification]
 issues: [#450, #516, #908, #909, #910, #911, #912, #913, #941]
 -->
