@@ -78,7 +78,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
 
       # 🔴 門そのものが壊れていないことを、**高価な起動の前に**確かめる。
       # 検査器が壊れていれば以降は何を測っても意味がないので、ここで落とす。

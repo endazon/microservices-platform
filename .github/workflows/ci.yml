@@ -396,7 +396,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - uses: azure/setup-kubectl@v4
       # NFR, IADR-0240, Issue #783（#442 子 5）: kubeconform を導入する（chart / overlay の
       # スキーマ突合に要る）。latest には追従しない —— 版を pin し、公式リリースの CHECKSUMS と
