@@ -609,7 +609,7 @@ jobs:
           echo "✓ 全ユニットの restore / build / 単体テストが成立した（統合テストは integration.yml が回す）。"
       - uses: actions/checkout@v7
       - name: Download coverage reports from all units
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: coverage-*
           merge-multiple: true
