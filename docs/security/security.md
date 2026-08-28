@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, NFR-11, SC-05, SC-11, UC-07]
-adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016]
-iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0206, IADR-0216, IADR-0220]
+adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0026, ADR-0045]
+iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294]
 specs: []
-issues: [#55, #100, #198, #199, #201, #211, #212, #222, #271, #310, #628, #629, AST#18, AST#24, planning#383]
+issues: [#55, #100, #198, #199, #201, #211, #212, #222, #271, #310, #438, #628, #629, AST#18, AST#24, planning#383]
 -->
 
 # セキュリティ仕様書
@@ -142,7 +142,15 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 
 `deploy/keycloak/microservices-platform-realm.json` の realm import には、開発・E2E 検証用の dev ユーザーが
 平文パスワードで含まれる（`poc-user`／`poc-operator`／`developer`、および OIDC クライアントシークレット
-`wiki-js-dev-secret-change-me` / `ai-stock-trading-kb-writer-dev-secret-change-me` / `headlamp-dev-secret-change-me`）。これらは **dev 環境限定**の便宜であり、以下を守る。
+`wiki-js-dev-secret-change-me` / `ai-stock-trading-kb-writer-dev-secret-change-me` / `headlamp-dev-secret-change-me` /
+`abac-seeder-dev-secret-change-me`）。これらは **dev 環境限定**の便宜であり、以下を守る。
+
+> **🔴 ［2026-08-28 / #438］パスワードだけではログインできない。** 計画が確定した「TOTP による多要素認証を必須」を
+> realm で実効化したため、この 3 名は初回ログインで `CONFIGURE_TOTP` を求められ、以後は毎回 6 桁を要求される。
+> 併せて **realm の全 client で直接付与（password grant）を無効にした** —— 開けたままだと
+> パスワードだけでトークンが出て、MFA を迂回できるからである。
+> その結果 dev の投入器（`seed-abac-policies.js` / `seed-search-documents.js`）は**人の資格情報を借りるのをやめ**、
+> サービスアカウント `abac-seeder` の client_credentials で名乗るようになった。
 
 - **用途**: ローカル compose / dev の初回起動から、ABAC 属性ユーザー（`poc-user`）と運用者ロール検証
   （`poc-operator`、`platform-operator` ロール保持。運用者ロールの `ConfigViewer` を再現）を、

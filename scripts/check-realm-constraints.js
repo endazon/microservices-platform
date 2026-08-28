@@ -39,6 +39,19 @@
  * したがって「テーマを実装した」ことは realm.json の 1 行では担保されず、実体との突合が要る。
  * 併せて parent の宣言（テンプレート非複製の方針）と、言語切替に要る i18n 設定も静的に確かめる。
  *
+ * 検査5: MFA が実効的に強制されているか、監査イベントが記録されるか（#438・IADR-0294）。
+ * 背景: IADR-0197 が検査 3 を置いた時点で、同 IADR 自身が 2 つの未達を明記して #438 へ送っていた。
+ *   ①`CONFIGURE_TOTP` の `defaultAction: true` は**新規に作られる利用者にしか付かない**。realm import で
+ *     作られる利用者は `users[].requiredActions` が未設定のままで、既定 browser フローの OTP サブフローは
+ *     Conditional（`Condition - user configured`）であるため、**OTP を一度も登録しない者はパスワードだけで
+ *     ログインできる**。「MFA を必須にした」と realm に書いてあることと、実際に効いていることは別である。
+ *   ②`eventsEnabled` / `adminEventsEnabled` / `eventsListeners` がいずれも未設定で、**ログイン失敗も
+ *     管理操作も 1 件も残らない**。ADR-0026「SC-17 の操作を監査ログに記録する」と ADR-0045 決定 9-b の
+ *     「申請者・承認者・実行者を残す」が成立しない。
+ * さらに本検査の母集合走査で 3 つ目が出た —— **`directAccessGrantsEnabled` は browser フローを丸ごと
+ * 迂回する**。利用者名・パスワード・client secret があれば OTP を一切問われずにトークンが出る。
+ * いずれも realm JSON だけで静的に判定できるため、import 前に止める。
+ *
  * 使い方:
  *   node scripts/check-realm-constraints.js            # deploy/keycloak/*-realm.json を検査。違反で exit 1。
  *   node scripts/check-realm-constraints.js <path...>  # 明示したファイルのみ検査。
@@ -144,6 +157,42 @@ const AUTH_POLICY_REQUIRED_ACTION_ALIASES = [
   'delete_account', 'webauthn-register', 'webauthn-register-passwordless', 'VERIFY_PROFILE',
   'delete_credential', 'idp_link', 'CONFIGURE_RECOVERY_AUTHN_CODES', 'update_user_locale',
 ];
+
+/*
+ * 検査5 の期待値（#438 / IADR-0294）。
+ *
+ * 🔴 **サービスアカウントには `CONFIGURE_TOTP` を付けてはならない。** サービスアカウントは対話ログインを
+ * 行わないため、必須アクションが残っているとトークン取得が `Account is not fully set up` で失敗する。
+ * 判定は `serviceAccountClientId` の有無で行う（`service-account-` という名前の慣習に依存しない
+ * —— 名前は人が付けるもので、機械が保証する事実ではない）。
+ */
+const MFA_REQUIRED_ACTION = 'CONFIGURE_TOTP';
+
+// 監査イベントの期待。`eventsExpiration` は値そのものを固定しない（保持期間は運用の選択であり、
+// ADR-0026 が数値を確定していない）。**「記録される」ことだけを不変条件にする。**
+const AUDIT_EVENT_SCALARS = {
+  eventsEnabled: true,
+  adminEventsEnabled: true,
+  adminEventsDetailsEnabled: true,
+};
+
+// 少なくともこれだけは記録されていること。ADR-0026（SC-17 の操作記録）と
+// ADR-0045 決定 9-b（申請者・承認者・実行者）が要求する事象を最小集合として置く。
+// 網羅ではない —— 足りない事象が見つかったらここへ足す。
+const AUDIT_REQUIRED_EVENT_TYPES = [
+  'LOGIN', 'LOGIN_ERROR', 'LOGOUT',
+  'UPDATE_PASSWORD', 'UPDATE_TOTP', 'REMOVE_TOTP',
+  'RESET_PASSWORD', 'REMOVE_CREDENTIAL',
+];
+
+// イベントを実際に外へ出すリスナ。空配列だと `eventsEnabled: true` でも DB に溜まるだけになる。
+const AUDIT_REQUIRED_LISTENERS = ['jboss-logging'];
+
+/*
+ * 登録した OTP を利用者自身が削除できると、強制登録を通った後で MFA 無しの状態へ戻れる。
+ * ADR-0026 は再発行を SC-16／管理者側に置いているため、自己都合の削除口は閉じる。
+ */
+const MFA_DISABLED_REQUIRED_ACTIONS = ['delete_credential'];
 
 // --- 純粋ロジック（scripts.test.js から単体テストする） -------------------------
 
@@ -306,6 +355,106 @@ function checkRealmPolicyText(text, opts) {
   return collectPolicyDeviations(JSON.parse(text), opts);
 }
 
+// 利用者がサービスアカウントかどうか。`serviceAccountClientId` を持つ利用者は Keycloak が
+// client のために自動生成したものであり、対話ログインしない。
+function isServiceAccountUser(user) {
+  return typeof (user && user.serviceAccountClientId) === 'string' && user.serviceAccountClientId !== '';
+}
+
+// realm から「MFA が実効的に強制されていない／監査イベントが残らない」箇所を { path, detail } で列挙する。
+// 純粋関数。対象 realm（既定 `platform`）以外は検査しない —— 別プロジェクトの realm は ADR-0026 の射程外。
+function collectMfaAuditGaps(realm, { realmName = AUTH_POLICY_REALM } = {}) {
+  const gaps = [];
+  if (!realm || realm.realm !== realmName) return gaps;
+
+  // --- (1) 対話ログインする利用者は全員 CONFIGURE_TOTP を要求されること ---
+  for (const user of realm.users || []) {
+    const name = (user && user.username) || '«無名»';
+    const actions = (user && user.requiredActions) || [];
+    const hasTotp = actions.includes(MFA_REQUIRED_ACTION);
+    if (isServiceAccountUser(user)) {
+      // 陰性側: サービスアカウントに付いていたら、それはそれで壊れる。
+      if (hasTotp) {
+        gaps.push({
+          path: `realm.users[${name}].requiredActions`,
+          detail: `サービスアカウント（serviceAccountClientId=${user.serviceAccountClientId}）に ${MFA_REQUIRED_ACTION} が付いています。`
+            + ' 対話ログインしないため、トークン取得が Account is not fully set up で失敗します。',
+        });
+      }
+      continue;
+    }
+    if (user && user.enabled === false) continue; // 無効な利用者はログインできないので対象外
+    if (!hasTotp) {
+      gaps.push({
+        path: `realm.users[${name}].requiredActions`,
+        detail: `${MFA_REQUIRED_ACTION} が含まれていません。requiredActions プロバイダ側の defaultAction は`
+          + ' **新規に作られる利用者にしか付かない**ため、realm import で作られるこの利用者は'
+          + ' OTP 未登録のままログインできます（既定 browser フローの OTP は Conditional）。',
+      });
+    }
+  }
+
+  // --- (2) browser フローを迂回する direct access grant が無いこと ---
+  for (const client of realm.clients || []) {
+    if (client && client.directAccessGrantsEnabled === true) {
+      gaps.push({
+        path: `realm.clients[${(client && client.clientId) || '«無名»'}].directAccessGrantsEnabled`,
+        detail: 'true です。パスワードグラントは browser フローを通らないため、OTP を一切問われずに'
+          + 'トークンが出ます（MFA のバイパス口）。',
+      });
+    }
+  }
+
+  // --- (3) 登録済み OTP を利用者自身が消せないこと ---
+  const declared = new Map((realm.requiredActions || []).map((a) => [a && a.alias, a]));
+  for (const alias of MFA_DISABLED_REQUIRED_ACTIONS) {
+    const entry = declared.get(alias);
+    if (entry && entry.enabled !== false) {
+      gaps.push({
+        path: `realm.requiredActions[${alias}].enabled`,
+        detail: 'true です。利用者が自分の資格情報を削除できると、強制登録を通った後に MFA 無しの状態へ'
+          + '戻れます（再発行は ADR-0026 が SC-16／管理者側に置いています）。',
+      });
+    }
+  }
+
+  // --- (4) 監査イベントが記録されること ---
+  for (const key of Object.keys(AUDIT_EVENT_SCALARS)) {
+    if (realm[key] !== AUDIT_EVENT_SCALARS[key]) {
+      gaps.push({
+        path: `realm.${key}`,
+        detail: `期待 ${JSON.stringify(AUDIT_EVENT_SCALARS[key])} / 実際 ${realm[key] === undefined ? '«未設定»' : JSON.stringify(realm[key])}。`
+          + ' Keycloak の既定は「記録しない」であり、書かなければ 1 件も残りません。',
+      });
+    }
+  }
+  const listeners = realm.eventsListeners || [];
+  for (const l of AUDIT_REQUIRED_LISTENERS) {
+    if (!listeners.includes(l)) {
+      gaps.push({
+        path: 'realm.eventsListeners',
+        detail: `${l} が含まれていません。リスナが無いとイベントは外へ出ず、監査の実体になりません。`,
+      });
+    }
+  }
+  const types = realm.enabledEventTypes || [];
+  for (const t of AUDIT_REQUIRED_EVENT_TYPES) {
+    if (!types.includes(t)) {
+      gaps.push({
+        path: 'realm.enabledEventTypes',
+        detail: `${t} が含まれていません（ADR-0026 の SC-17 操作記録・ADR-0045 決定 9-b が要求する事象）。`,
+      });
+    }
+  }
+
+  return gaps;
+}
+
+// realm JSON テキストから MFA / 監査イベントの齟齬を返す（パース失敗は throw）。
+function checkRealmMfaAuditText(text, opts) {
+  return collectMfaAuditGaps(JSON.parse(text), opts);
+}
+
 // realm が宣言するテーマ（loginTheme / accountTheme）と、ディスク上の実体との齟齬を列挙する。
 // I/O は reader（{ exists, read }）として注入し、この関数自体は純粋に保つ（自己試験できるようにする）。
 // 返り値は [{ path, detail }]。path は realm JSON 内のフィールドか、解決したテーマのパス。
@@ -386,6 +535,7 @@ function checkFiles(relPaths) {
       missing: checkRealmUrlsText(text),
       deviations: checkRealmPolicyText(text),
       themeGaps: checkRealmThemeText(text, diskReader()),
+      mfaGaps: checkRealmMfaAuditText(text),
     });
   }
   return results;
@@ -670,6 +820,101 @@ function selfTest() {
     })(),
   });
 
+  // --- 検査5（MFA の実効的な強制・監査イベント。#438 / IADR-0294）------------------
+  //
+  // 🔴 **正例だけでは検出力を測れない。** ここは「不変条件を 1 つずつ壊した変異が、
+  // それぞれ 1 件だけ検出されること」を測る（陽性対照）。併せて、壊していない不変条件が
+  // 巻き添えで落ちないこと（1 件だけ、という数え）も同時に見ている。
+  const mfaOk = {
+    realm: AUTH_POLICY_REALM,
+    users: [
+      { username: 'human', enabled: true, requiredActions: [MFA_REQUIRED_ACTION] },
+      { username: 'service-account-x', enabled: true, serviceAccountClientId: 'x' },
+    ],
+    clients: [{ clientId: 'bff', directAccessGrantsEnabled: false }],
+    requiredActions: [{ alias: 'delete_credential', enabled: false }],
+    eventsEnabled: true,
+    adminEventsEnabled: true,
+    adminEventsDetailsEnabled: true,
+    eventsListeners: [...AUDIT_REQUIRED_LISTENERS],
+    enabledEventTypes: [...AUDIT_REQUIRED_EVENT_TYPES],
+  };
+  const mutate = (fn) => { const c = JSON.parse(JSON.stringify(mfaOk)); fn(c); return c; };
+
+  cases.push({
+    name: 'MFA: 不変条件をすべて満たす realm は 0 件（正例）',
+    pass: collectMfaAuditGaps(mfaOk).length === 0,
+  });
+  cases.push({
+    name: 'MFA: 陽性対照 — サービスアカウントは CONFIGURE_TOTP が無くても落とさない',
+    // これが落ちると「サービスアカウントにも TOTP を付けろ」と読めてしまい、
+    // 直した結果としてトークン取得が壊れる。除外が効いていることを名指しで測る。
+    pass: collectMfaAuditGaps(mutate((c) => { c.users = [c.users[1]]; })).length === 0,
+  });
+  cases.push({
+    name: 'MFA: 変異 1 — 対話利用者から CONFIGURE_TOTP を外すと 1 件',
+    pass: collectMfaAuditGaps(mutate((c) => { c.users[0].requiredActions = []; })).length === 1,
+  });
+  cases.push({
+    name: 'MFA: 変異 2 — requiredActions キーごと消しても 1 件（未設定と空配列を同じに扱う）',
+    pass: collectMfaAuditGaps(mutate((c) => { delete c.users[0].requiredActions; })).length === 1,
+  });
+  cases.push({
+    name: 'MFA: 変異 3 — サービスアカウントに CONFIGURE_TOTP が付いたら 1 件',
+    pass: collectMfaAuditGaps(mutate((c) => { c.users[1].requiredActions = [MFA_REQUIRED_ACTION]; })).length === 1,
+  });
+  cases.push({
+    name: 'MFA: 変異 4 — direct access grant を開けると 1 件',
+    pass: collectMfaAuditGaps(mutate((c) => { c.clients[0].directAccessGrantsEnabled = true; })).length === 1,
+  });
+  cases.push({
+    name: 'MFA: 変異 5 — delete_credential を有効へ戻すと 1 件',
+    pass: collectMfaAuditGaps(mutate((c) => { c.requiredActions[0].enabled = true; })).length === 1,
+  });
+  cases.push({
+    name: 'MFA: 変異 6 — eventsEnabled を落とすと 1 件（未設定でも同じ）',
+    pass: collectMfaAuditGaps(mutate((c) => { delete c.eventsEnabled; })).length === 1
+      && collectMfaAuditGaps(mutate((c) => { c.eventsEnabled = false; })).length === 1,
+  });
+  cases.push({
+    name: 'MFA: 変異 7 — adminEvents 系を落とすと 2 件',
+    pass: collectMfaAuditGaps(mutate((c) => {
+      delete c.adminEventsEnabled; delete c.adminEventsDetailsEnabled;
+    })).length === 2,
+  });
+  cases.push({
+    name: 'MFA: 変異 8 — eventsListeners を空にすると 1 件（eventsEnabled だけでは外へ出ない）',
+    pass: collectMfaAuditGaps(mutate((c) => { c.eventsListeners = []; })).length === 1,
+  });
+  cases.push({
+    name: 'MFA: 変異 9 — 必須イベント種を 1 つ落とすと 1 件',
+    pass: collectMfaAuditGaps(mutate((c) => { c.enabledEventTypes = c.enabledEventTypes.slice(1); })).length === 1,
+  });
+  cases.push({
+    name: 'MFA: 無効化された利用者は対象外（ログインできないため）',
+    pass: collectMfaAuditGaps(mutate((c) => { c.users[0].enabled = false; c.users[0].requiredActions = []; })).length === 0,
+  });
+  cases.push({
+    name: 'MFA: 別プロジェクトの realm（realm 名が違う）は検査しない',
+    pass: collectMfaAuditGaps(mutate((c) => { c.realm = 'other'; c.users[0].requiredActions = []; })).length === 0,
+  });
+  cases.push({
+    name: 'MFA: JSON パース→検査（checkRealmMfaAuditText）が通る',
+    pass: checkRealmMfaAuditText(JSON.stringify(mutate((c) => { c.users[0].requiredActions = []; }))).length === 1,
+  });
+  cases.push({
+    name: 'MFA: 実データの realm が不変条件を満たす（実データ・ラチェット）',
+    pass: (() => {
+      const realmPath = path.join(REPO_ROOT, REALM_DIR, 'microservices-platform-realm.json');
+      if (!fs.existsSync(realmPath)) return true; // realm が無い配布物では skip
+      const realm = JSON.parse(fs.readFileSync(realmPath, 'utf8'));
+      // 0 件走査の門: 対話利用者が 1 人も居ない realm を「違反なし」と読まない。
+      const humans = (realm.users || []).filter((u) => !isServiceAccountUser(u));
+      if (humans.length === 0) return false;
+      return collectMfaAuditGaps(realm).length === 0;
+    })(),
+  });
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -698,8 +943,9 @@ function main() {
   const totalMissing = results.reduce((n, r) => n + r.missing.length, 0);
   const totalDeviations = results.reduce((n, r) => n + r.deviations.length, 0);
   const totalThemeGaps = results.reduce((n, r) => n + r.themeGaps.length, 0);
-  if (total === 0 && totalMissing === 0 && totalDeviations === 0 && totalThemeGaps === 0) {
-    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬はありません。`);
+  const totalMfaGaps = results.reduce((n, r) => n + r.mfaGaps.length, 0);
+  if (total === 0 && totalMissing === 0 && totalDeviations === 0 && totalThemeGaps === 0 && totalMfaGaps === 0) {
+    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落はありません。`);
     process.exit(0);
   }
 
@@ -744,6 +990,18 @@ function main() {
       + '\nテーマ実装の方針は IADR-0261 決定 1、要件の正は planning の ADR-0026 です。');
   }
 
+  if (totalMfaGaps > 0) {
+    console.error(`[check-realm-constraints] MFA の強制・監査イベントに関する欠落 ${totalMfaGaps} 件を検出しました:`);
+    for (const r of results) {
+      for (const g of r.mfaGaps) {
+        console.error(`\n  ${r.file}\n    ${g.path}: ${g.detail}`);
+      }
+    }
+    console.error('\nいずれも realm import は成功し、ログインも画面も動くため E2E では気付けません。'
+      + '\n「MFA を必須と定めた」ことと「MFA が働いている」ことは別であり、本検査は後者を見ています。'
+      + '\n要件の正は planning の ADR-0026・ADR-0045 決定 9-b、実装側の記録は IADR-0294（#438）です。');
+  }
+
   process.exit(1);
 }
 
@@ -760,6 +1018,9 @@ module.exports = {
   checkRealmPolicyText,
   collectThemeGaps,
   checkRealmThemeText,
+  isServiceAccountUser,
+  collectMfaAuditGaps,
+  checkRealmMfaAuditText,
   satisfiesPasswordClasses,
   MAX_LEN,
   REQUIRED_CLIENT_URLS,
@@ -770,4 +1031,9 @@ module.exports = {
   AUTH_POLICY_REQUIRED_ACTION_ALIASES,
   THEME_ROOT,
   THEME_FIELDS,
+  MFA_REQUIRED_ACTION,
+  AUDIT_EVENT_SCALARS,
+  AUDIT_REQUIRED_EVENT_TYPES,
+  AUDIT_REQUIRED_LISTENERS,
+  MFA_DISABLED_REQUIRED_ACTIONS,
 };

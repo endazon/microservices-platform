@@ -19,7 +19,7 @@
  *   - 投入は **DocumentService の API 経由**（`POST /documents` の `Body`＝FR-21 の本文直接受け入れ
  *     経路。[[IADR-0264]]）。**直 DB 書き込みも、新しい欄の追加もしない。**
  *   - **冪等**。同じタイトルの文書が既にあれば作らない。
- *   - 認証は Keycloak の直接付与（client `bff`・管理者ユーザー）。**資格情報の解決は
+ *   - 認証は Keycloak の client_credentials（client `abac-seeder`。#438）。**資格情報の解決は
  *     `seed-abac-policies.js` の関数を再利用する** —— realm ファイルから引く作法（#933 / #984 の
  *     再発防止）を 2 か所へ写すと、次の realm 変更でまた片方だけ取り残される。
  *
@@ -41,7 +41,7 @@
  * 主な環境変数:
  *   SEARCH_SEED_FILE（既定 deploy/local/search-seed/documents.json）
  *   SEARCH_SEED_NS（既定 microservices-platform）/ SEARCH_SEED_INFRA_NS（既定 platform-infra）
- *   SEARCH_SEED_REALM / SEARCH_SEED_CLIENT_ID / SEARCH_SEED_USER / SEARCH_SEED_PASSWORD /
+ *   SEARCH_SEED_REALM / SEARCH_SEED_CLIENT_ID / SEARCH_SEED_CLIENT_SECRET /
  *   SEARCH_SEED_CLIENT_SECRET（既定は ABAC 投入器と同じく realm ファイルから引く。値をここへ写さない）
  *
  * 終了コード: 0=投入済み（no-op を含む） / 1=失敗 / 2=前提未整備（k8s へ到達できない等）
@@ -64,24 +64,24 @@ const NS = env('SEARCH_SEED_NS', 'microservices-platform');
 const INFRA_NS = env('SEARCH_SEED_INFRA_NS', 'platform-infra');
 const REALM = env('SEARCH_SEED_REALM', 'platform');
 const CLIENT_ID = env('SEARCH_SEED_CLIENT_ID', abacSeed.CLIENT_ID);
-const USER = env('SEARCH_SEED_USER', 'admin');
 
 const log = (s) => process.stdout.write(`${s}\n`);
 const warn = (s) => process.stderr.write(`${s}\n`);
 
-const PASSWORD = (() => {
-  if (process.env.SEARCH_SEED_PASSWORD) return process.env.SEARCH_SEED_PASSWORD;
-  const fromRealm = abacSeed.passwordFromRealm(USER);
+// 🔴 client_credentials で名乗る（#438 / IADR-0294）。人のパスワードグラントは使わない ——
+// MFA を必須にすると `CONFIGURE_TOTP` 未消化の利用者は password grant を拒まれる。
+// 投入器は機械であり、機械に第二要素は無い。
+const CLIENT_SECRET = (() => {
+  if (process.env.SEARCH_SEED_CLIENT_SECRET) return process.env.SEARCH_SEED_CLIENT_SECRET;
+  const fromRealm = abacSeed.clientSecretFromRealm(CLIENT_ID);
   if (fromRealm) return fromRealm;
   // 黙って既定値へ落ちない。落ちた事実を出す（無音の失敗が #933 の本体だった）。
   warn(
-    `[seed-search-documents] realm ファイルから ${USER} のパスワードを読めませんでした` +
-      `（${abacSeed.REALM_FILE}）。SEARCH_SEED_PASSWORD を指定してください。`,
+    `[seed-search-documents] realm ファイルから client ${CLIENT_ID} の secret を読めませんでした` +
+      `（${abacSeed.REALM_FILE}）。SEARCH_SEED_CLIENT_SECRET を指定してください。`,
   );
   return '';
 })();
-const CLIENT_SECRET =
-  process.env.SEARCH_SEED_CLIENT_SECRET || abacSeed.clientSecretFromRealm(CLIENT_ID) || '';
 
 // --- 純粋関数（実機なしで試験できるように切り出す。IADR-0284 決定 2） ---------------
 
@@ -207,13 +207,7 @@ async function fetchToken(kcUrl) {
         ' client_secret を解決できませんでした。SEARCH_SEED_CLIENT_SECRET を指定してください。',
     );
   }
-  const form = abacSeed.buildTokenForm({
-    clientId: CLIENT_ID,
-    username: USER,
-    password: PASSWORD,
-    confidential,
-    clientSecret: CLIENT_SECRET,
-  });
+  const form = abacSeed.buildTokenForm({ clientId: CLIENT_ID, clientSecret: CLIENT_SECRET });
   const res = await fetch(`${kcUrl}/realms/${REALM}/protocol/openid-connect/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -222,7 +216,8 @@ async function fetchToken(kcUrl) {
   if (!res.ok) {
     const kind = confidential === null ? '（realm から種別を判定できず）' : confidential ? '（confidential）' : '（public）';
     throw new Error(
-      `Keycloak のトークン取得に失敗しました（${res.status}）。ユーザー ${USER} と client ${CLIENT_ID}${kind} を確認してください。`,
+      `Keycloak のトークン取得に失敗しました（${res.status}）。client ${CLIENT_ID}${kind} の`
+        + ' serviceAccountsEnabled と secret、および service-account へのロール付与を確認してください。',
     );
   }
   return (await res.json()).access_token;
@@ -293,7 +288,7 @@ async function main(argv) {
   log(`接続先: document=${documentUrl} / keycloak=${kcUrl}`);
 
   const token = await fetchToken(kcUrl);
-  log(`管理トークンを取得しました（user=${USER}）`);
+  log(`管理トークンを取得しました（client_credentials・client=${CLIENT_ID}）`);
 
   const existing = await getJson(`${documentUrl}/documents`, token);
   const missing = selectMissingDocuments(documents, existing);

@@ -367,3 +367,4 @@
 | [IADR-0291](./IADR-0291_rabbitmq-credentials-secret-derived.md) | **ブローカの資格情報は Secret 由来にし、未注入は起動失敗にする**。dev 既定の値は変えない —— AST chart が `guest:guest` を自前で持ち submodule は不変だからである。注入は `global.db` と同型。手動 apply と ESO の 2 経路を同じ PR で塞ぐ。#1022 | Accepted |
 | [IADR-0292](./IADR-0292_service-mcp-tool-self-declaration.md) | **MCP ツールの自己申告は「候補 → 選別」の 1 経路に閉じ、個人資料を対象に含む候補を申告しない**。公開対象は初期公開範囲どおり Document / Retrieval / Graph の 3 件（Wiki は除く）。申告 DTO の共有契約への昇格と実行口は追随 issue へ。#1020 | Accepted |
 | [IADR-0293](./IADR-0293_integration-config-timing-checker.md) | **ビルダ構築時に読まれる構成キーの検査は「未注入だと壊れる読み方」に限り、器ごとに突き合わせる**。全器の `UseSetting` を 1 つの集合にすると変異が 3 件とも生存した。#1040 | Accepted |
+| [IADR-0294](./IADR-0294_mfa-enforcement-and-audit-events.md) | **MFA は「必須アクション＋直接付与の閉鎖」で実効化し、認証フローは宣言しない**。`defaultAction` は import 利用者へ遡及せず既定 OTP は Conditional なので、未登録者はパスワードだけで通っていた。全 client の直接付与も閉じ（唯一の迂回口）、dev 投入器は人の資格情報を捨ててサービスアカウントへ移す。監査イベントも有効化。#438 | Accepted |

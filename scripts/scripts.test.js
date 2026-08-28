@@ -1355,6 +1355,52 @@ function loadCompanionTests(dir, { ok: okFn, assert: assertObj }) {
   });
 }
 
+// --- lib/totp: MFA を掛けたログイン導線を検証器の側から通せるようにする（#438 / IADR-0294） ---
+//
+// 🔴 **自前実装を無検証で信じない。** RFC 6238 §Appendix B の SHA-1 テストベクタと突き合わせる。
+// ここが狂うと `verify-oidc-edge-flow.sh` は「OTP が合わない」で落ち、原因が
+// 「MFA の設定」なのか「検証器の計算」なのか切り分けられなくなる。
+{
+  const { totp, base32Decode } = require('./lib/totp.js');
+  // RFC 6238 の共有鍵 "12345678901234567890"（ASCII 20 バイト）を base32 で書いたもの。
+  const RFC_SECRET = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
+
+  ok('totp: RFC 6238 の SHA-1 テストベクタ 5 件と一致する', () => {
+    const vectors = [
+      [59, '94287082'],
+      [1111111109, '07081804'],
+      [1111111111, '14050471'],
+      [1234567890, '89005924'],
+      [2000000000, '69279037'],
+    ];
+    for (const [t, expected] of vectors) {
+      assert.strictEqual(totp(RFC_SECRET, { t, digits: 8 }), expected, `T=${t}`);
+    }
+  });
+
+  ok('totp: realm の otpPolicy 既定（6 桁 / 30 秒 / SHA1）では 8 桁の下 6 桁になる', () => {
+    assert.strictEqual(totp(RFC_SECRET, { t: 59 }), '287082');
+  });
+
+  ok('totp: 同じ 30 秒窓では同じ値、窓をまたぐと変わる', () => {
+    // 窓は floor(t / 30)。1111111110 と 1111111111 は同じ窓（37037037）に入る。
+    // 🔴 1111111109 は 1 つ前の窓（37037036）である —— RFC のベクタでも値が違う
+    //    （07081804 と 14050471）。「2 秒差だから同じ窓」ではない。
+    assert.strictEqual(totp(RFC_SECRET, { t: 1111111110 }), totp(RFC_SECRET, { t: 1111111111 }));
+    assert.notStrictEqual(totp(RFC_SECRET, { t: 1111111109 }), totp(RFC_SECRET, { t: 1111111110 }));
+  });
+
+  ok('totp: Keycloak の画面表記（4 文字ごとの空白）をそのまま渡しても通る', () => {
+    const spaced = RFC_SECRET.replace(/(.{4})/g, '$1 ').trim();
+    assert.strictEqual(totp(spaced, { t: 59, digits: 8 }), '94287082');
+    assert.deepStrictEqual(base32Decode(spaced), base32Decode(RFC_SECRET));
+  });
+
+  ok('totp: base32 復号が RFC 4648 の値になる', () => {
+    assert.strictEqual(base32Decode(RFC_SECRET).toString('ascii'), '12345678901234567890');
+  });
+}
+
 // **テストを足すときは、必ずこの行より前に書くこと。**
 // 後ろへ足すと `ok()` は走るが `passed` の集計に載らず、**報告件数が実行件数より少なくなる**
 // （実測: 4 件を後ろへ足して「124 件」と報告し、実際は 128 件走っていた。planning#318 のレビューが
