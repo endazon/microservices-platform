@@ -185,6 +185,28 @@ jobs:
           done
           echo "::endgroup::"
 
+          # 🔴 **readiness の後に落ちる門では、上のループは 1 行も出さない。**
+          # `[ "$ready" = "True" ] && continue` は Ready な pod を飛ばすが、seed（ABAC / 検索）と
+          # verify-oidc-edge-flow.sh は **readiness を通過した後**に走る。つまり「全 pod が Ready
+          # なのにジョブが落ちた」ときこそ原因が要るのに、そこだけ診断が空になる。
+          #
+          # 実測（run 33164481822 / develop `caa6039`）: seed の `POST /documents` が 500 で落ちたが、
+          # document-service は `1/1 Running` / RESTARTS 0 だったため上のループが全 pod を skip し、
+          # `not-ready container logs` グループは**空のまま**だった。どの依存が投げたのかを
+          # 名指しできず、原因の特定に develop への再着地が要る形になっていた（#1033）。
+          #
+          # したがってアプリ名前空間のログは **readiness と無関係に**採る。`--previous` は
+          # 再起動した pod の 1 つ前の実行を拾う（Ready に戻った後では現行ログに痕跡が無い）。
+          echo "::group::app container logs (readiness と無関係に採る)"
+          for ns in microservices-platform platform-infra; do
+            for name in $(kubectl -n "$ns" get pods -o jsonpath='{.items[*].metadata.name}'); do
+              echo "=== $ns/$name"
+              kubectl -n "$ns" logs "$name" --all-containers --tail=100
+              kubectl -n "$ns" logs "$name" --all-containers --previous --tail=40 2>/dev/null
+            done
+          done
+          echo "::endgroup::"
+
       - name: Tear down
         if: always()
         run: k3d cluster delete "${CLUSTER}" || true
