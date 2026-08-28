@@ -25,7 +25,7 @@ public class NotificationIngressTests : IDisposable
 
     private static readonly DateTimeOffset Occurred = new(2026, 8, 28, 9, 0, 0, TimeSpan.Zero);
 
-    // 🔴 送信側 DocumentService.Api.Foundation.Services.HttpPrivateNoteNotifier.IngressPath の値。
+    // 🔴 送信側 DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier.IngressPath の値。
     // platform → knowledge の参照は禁止のため定数を共有できない。**リテラルで書き、一致を固定する。**
     private const string SenderIngressPath = "/internal/notifications";
 

@@ -1,4 +1,4 @@
-using DocumentService.Api.Foundation.Persistence;
+using DocumentService.Infrastructure.Persistence;
 using AwesomeAssertions;
 using Knowledge.IntegrationTests.Fixtures;
 using Microsoft.EntityFrameworkCore;
@@ -13,7 +13,7 @@ namespace Knowledge.IntegrationTests.DocumentService;
 // **本リポジトリで最初のデータ移行つきマイグレーションである**
 // （着手時の実測: `grep "Sql(" Migrations/*.cs` は 0 件）。
 //
-// **単体テストでは 1 行も走らない。** `DocumentService.Api.Tests` は EF InMemory を使っており、
+// **単体テストでは 1 行も走らない。** `DocumentService.Tests` は EF InMemory を使っており、
 // **InMemory プロバイダはマイグレーションの SQL を実行しない**。したがって
 // 「既存の `["経理","規程"]` が識別子の配列へ書き換わる」ことは**実 DB でしか確かめられない**
 // （#634 の一意インデックスが InMemory で強制されないのと同じ型の限界である）。

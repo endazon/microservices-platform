@@ -19,7 +19,7 @@ namespace NotificationService.Features.Notifications;
 // （docs/api/openapi.yaml に /internal/* は 1 本も無い）。
 public static class NotificationIngressEndpoints
 {
-    // 🔴 送信側 DocumentService.Api.Foundation.Services.HttpPrivateNoteNotifier.IngressPath と同値。
+    // 🔴 送信側 DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier.IngressPath と同値。
     public const string IngressPath = "/internal/notifications";
 
     public static IEndpointRouteBuilder MapNotificationIngressEndpoints(this IEndpointRouteBuilder app)
