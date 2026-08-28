@@ -1,0 +1,19 @@
+{
+  "description": "HTML 原本（図 1 件・コード化不能で画像保持）。画像埋め込みの綴りと資産キー（.png）を固定する。",
+  "sourceId": "22222222-2222-2222-2222-222222222222",
+  "sourceType": "wiki",
+  "originalPath": "/wiki/onboarding/index.html",
+  "storageUri": "storage://bucket/raw/onboarding.html",
+  "contentType": "text/html",
+  "attributes": { "confidentiality": "internal" },
+  "tags": ["knowledge-mgmt", "onboarding"],
+  "figures": [
+    {
+      "figureId": "fig-1",
+      "imageContentType": "image/png",
+      "caption": "onboarding-flow",
+      "coded": false,
+      "reason": "not-codeable"
+    }
+  ]
+}

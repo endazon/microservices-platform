@@ -1,0 +1,28 @@
+{
+  "description": "Office(docx) 原本（図 2 件・コード化 1 件＋画像保持 1 件）。混在時の順序・空行と .jpg への写像を固定する。",
+  "sourceId": "33333333-3333-3333-3333-333333333333",
+  "sourceType": "filesystem",
+  "originalPath": "/docs/design/system-architecture.docx",
+  "storageUri": "storage://bucket/raw/system-architecture.docx",
+  "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "attributes": { "confidentiality": "internal", "owner": "arch-team" },
+  "tags": ["knowledge-mgmt", "architecture"],
+  "figures": [
+    {
+      "figureId": "fig-1",
+      "imageContentType": "image/png",
+      "caption": "sequence-normalization",
+      "coded": true,
+      "language": "mermaid",
+      "code": "sequenceDiagram\n    participant DS as DataSourceService\n    participant CS as ConversionService\n    DS->>CS: RawDocumentFetched\n    CS-->>DS: DocumentNormalized"
+    },
+    {
+      "figureId": "fig-2",
+      "imageContentType": "image/jpeg",
+      "caption": "screen-mockup",
+      "imageBase64": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEB",
+      "coded": false,
+      "reason": "not-codeable"
+    }
+  ]
+}
