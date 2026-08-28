@@ -180,7 +180,8 @@ jobs:
       # NFR, #1012: 既定資格情報のラチェット。イメージへ焼かれる構成（appsettings.json）と合成ルート
       # （Program.cs）に、資格情報つきの接続文字列・amqp URL を書けなくする。
       # 🔴 **既定値があると、構成の注入漏れが「起動失敗」ではなく「既定の資格情報で接続成功」へ倒れ、
-      #    誤った DB へ書き込んだまま健全に見える。** 既知の残件（RabbitMQ 13 箇所）は baseline で凍結し、
+      #    誤った DB へ書き込んだまま健全に見える。** ［2026-08-28 / #1022］**baseline は 0 件になった**
+      #    （RabbitMQ の残件 13 箇所を撤去し、helm と compose が注入する形へ移した）。
       #    増やせないが減らすのは自由（前方一方向）。fs だけで走査するため追加取得は要らない。
       - name: Self-test default credentials checker
         if: ${{ !cancelled() }}
