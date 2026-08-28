@@ -1417,6 +1417,85 @@ function loadCompanionTests(dir, { ok: okFn, assert: assertObj }) {
   });
 }
 
+// --- lib/keycloak-login-form: MFA の段で「何を送るか」を固定する（#438 / #1033） ---
+//
+// 🔴 **動機は「書いた分岐が一度も実行されないまま壊れていた」ことである。**
+// `verify-oidc-edge-flow.sh` の MFA 分岐は資格情報 POST の**応答本文**を grep していたが、
+// その応答は 302 で本文が空である。実 Keycloak でしか通らない経路なので、
+// develop の integration-stack が落ちるまで誰も気付けなかった。
+// **画面の解析だけは実 Keycloak 無しで固定できる。** 固定値は Keycloak 24 の base テーマ
+// （`login-config-totp.ftl` / `login-otp.ftl`）の要素をそのまま写したものである。
+{
+  const { parseLoginForm } = require('./lib/keycloak-login-form.js');
+
+  // login-config-totp.ftl（初回登録）。`cancel-aia` の submit が**同じフォームに居る**。
+  const CONFIG_TOTP_HTML = [
+    '<html><body>',
+    '<span id="kc-totp-secret-key">GEZD GNBV GY3T QOJQ</span>',
+    '<form action="https://keycloak.localhost/realms/platform/login-actions/required-action',
+    '?execution=CONFIGURE_TOTP&amp;client_id=platform-spa&amp;tab_id=o9bEw7hzSzM" method="post">',
+    '  <input type="text" id="totp" name="totp" autocomplete="off" />',
+    '  <input type="hidden" id="totpSecret" name="totpSecret" value="rawsecretvalue" />',
+    '  <input type="hidden" id="mode" name="mode" value="qr"/>',
+    '  <input type="text" id="userLabel" name="userLabel" value="" />',
+    '  <input type="submit" id="saveTOTPBtn" value="Submit" />',
+    '  <button type="submit" id="cancelTOTPBtn" name="cancel-aia" value="true">Cancel</button>',
+    '</form></body></html>',
+  ].join('\n');
+
+  // login-otp.ftl（2 回目以降）。シークレットは画面に出ない。
+  const LOGIN_OTP_HTML = [
+    '<html><body>',
+    '<form id="kc-otp-login-form" action="https://keycloak.localhost/realms/platform/login-actions/authenticate',
+    '?session_code=abc&amp;execution=xyz" method="post">',
+    '  <input id="otp" name="otp" autocomplete="off" type="text" />',
+    '  <input class="btn" name="login" id="kc-login" type="submit" value="Sign In"/>',
+    '</form></body></html>',
+  ].join('\n');
+
+  ok('keycloak-login-form: 初回登録の画面から action・totp・表示 base32・生の totpSecret を取る', () => {
+    const f = parseLoginForm(CONFIG_TOTP_HTML);
+    assert.strictEqual(f.totpField, 'totp');
+    assert.strictEqual(f.totpSecretEncoded, 'GEZD GNBV GY3T QOJQ');
+    assert.strictEqual(f.fields.totpSecret, 'rawsecretvalue');
+    assert.strictEqual(f.fields.mode, 'qr');
+    // 🔴 action の `&amp;` を実体参照のまま POST すると、Keycloak が execution を解決できない。
+    assert.ok(f.action.includes('execution=CONFIGURE_TOTP&client_id=platform-spa'));
+    assert.ok(!f.action.includes('&amp;'));
+  });
+
+  ok('keycloak-login-form: 表示用 base32 と生の totpSecret は別物として返る', () => {
+    // 片方だけを送る実装だと登録が「コードが不正」で落ちる。**2 つ在ることを型で見せる。**
+    const f = parseLoginForm(CONFIG_TOTP_HTML);
+    assert.notStrictEqual(f.totpSecretEncoded, f.fields.totpSecret);
+    assert.ok(f.totpSecretEncoded.length > 0 && f.fields.totpSecret.length > 0);
+  });
+
+  ok('keycloak-login-form: submit / button は送り返す対象に含めない', () => {
+    // `cancel-aia=true` を送ると**登録が取り消される**。成功と応答で見分けが付かない。
+    const f = parseLoginForm(CONFIG_TOTP_HTML);
+    assert.ok(!('cancel-aia' in f.fields), 'cancel-aia が混ざっている');
+    assert.ok(!('saveTOTPBtn' in f.fields), 'submit ボタンが混ざっている');
+    assert.ok(!('login' in parseLoginForm(LOGIN_OTP_HTML).fields));
+  });
+
+  ok('keycloak-login-form: 2 回目以降の画面は otp だけを持ち、シークレットは出ない', () => {
+    const f = parseLoginForm(LOGIN_OTP_HTML);
+    assert.strictEqual(f.totpField, 'otp');
+    assert.strictEqual(f.totpSecretEncoded, '');
+    assert.strictEqual(f.fields.totpSecret, undefined);
+    assert.ok(f.action.includes('session_code=abc&execution=xyz'));
+  });
+
+  ok('keycloak-login-form: 302 の空本文からは何も取れない（＝ Location を追う必要の根拠）', () => {
+    // これが従前の実装が見ていたものである。**空なので MFA の分岐へ入らない。**
+    const f = parseLoginForm('');
+    assert.strictEqual(f.totpField, '');
+    assert.strictEqual(f.action, '');
+    assert.deepStrictEqual(f.fields, {});
+  });
+}
+
 // **テストを足すときは、必ずこの行より前に書くこと。**
 // 後ろへ足すと `ok()` は走るが `passed` の集計に載らず、**報告件数が実行件数より少なくなる**
 // （実測: 4 件を後ろへ足して「124 件」と報告し、実際は 128 件走っていた。planning#318 のレビューが

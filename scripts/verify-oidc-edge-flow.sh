@@ -221,33 +221,66 @@ acquire_token() {
   location=$(grep -i '^location:' "$hdr" | tail -1 | tr -d '\r' | sed 's/^[Ll]ocation: //')
   code=$(printf '%s' "$location" | sed -n 's/.*[?&]code=\([^&]*\).*/\1/p')
 
+  # ---- 必須アクション / 追加認証の画面を追う ----------------------------------------
+  #
+  # 🔴 **資格情報 POST の応答は 302 であり、本文は空である。** 次の画面（TOTP の登録・入力）は
+  # `Location` の先にある。従前ここは本文をそのまま grep していたため、**MFA の分岐へ
+  # 一度も入っていなかった**。実測（develop の integration-stack run 33200749231）:
+  #   Location=…/login-actions/required-action?execution=CONFIGURE_TOTP&client_id=platform-spa
+  # のまま「認可コードを取得できない」で落ちていた。**書いた分岐が死んでいることは、
+  # 実行されるまで分からない。**
+  if [ -z "$code" ] && printf '%s' "$location" | grep -q '/login-actions/'; then
+    local ra_hdr ra_loc
+    ra_hdr=$(mktemp)
+    curl -s $CURL_K -c "$jar" -b "$jar" -m 15 -o "$body" -D "$ra_hdr" "$location" >/dev/null
+    ra_loc=$(grep -i '^location:' "$ra_hdr" | tail -1 | tr -d '\r' | sed 's/^[Ll]ocation: //')
+    rm -f "$ra_hdr"
+    # 画面ではなくさらに redirect（＝要求が既に満たされている）なら、そちらを見る。
+    if [ -n "$ra_loc" ]; then
+      location="$ra_loc"
+      code=$(printf '%s' "$location" | sed -n 's/.*[?&]code=\([^&]*\).*/\1/p')
+    fi
+  fi
+
   # ---- MFA（TOTP）の段 -------------------------------------------------------------
   #
   # 🔴 #438 / IADR-0294 で TOTP を必須にしたため、ここで OTP の画面が挟まる。
   # **「検証できないから MFA を外す」へ倒れないよう、検証器の側が第二要素を出す。**
   # 計算は `scripts/lib/totp.js`（RFC 6238。テストベクタ 5 件を scripts.test.js が固定）。
+  # 画面の解析は `scripts/lib/keycloak-login-form.js`（固定 HTML に対する検査つき）。
   #
   # 挟まる画面は 2 種類ある。
-  #   (a) 初回登録（login-config-totp）… シークレットが画面に出る。使い捨てスタックはこちら。
+  #   (a) 初回登録（login-config-totp）… 表示用 base32 が画面に出る。使い捨てスタックはこちら。
+  #       🔴 **hidden の `totpSecret`（生の値）も一緒に送らなければ登録できない** ——
+  #          表示用（base32・空白つき）とは別物である。送り忘れると「コードが不正」になる。
   #   (b) 2 回目以降（login-otp）… シークレットは出ない。OIDC_TOTP_SECRET で与える必要がある。
-  if [ -z "$code" ] && grep -q 'kc-totp-secret-key\|name="totp"\|name="otp"' "$body" 2>/dev/null; then
-    local otp_action otp_secret otp_code otp_field
-    otp_action=$(grep -o 'action="[^"]*"' "$body" | head -1 | sed 's/action="//; s/"$//; s/&amp;/\&/g')
-    # (a) 初回登録: 画面に出ているシークレットを読む（4 文字ごとの空白は totp.js が落とす）。
-    otp_secret=$(sed -n 's/.*id="kc-totp-secret-key"[^>]*>\([^<]*\)<.*/\1/p' "$body" | head -1)
-    [ -z "$otp_secret" ] && otp_secret="${OIDC_TOTP_SECRET:-}"
-    if [ -z "$otp_secret" ]; then
-      ACQUIRE_ERR="OTP の段に入ったがシークレットを解決できない（$user）。初回登録の画面ではないなら OIDC_TOTP_SECRET を与えること。"
-      rm -f "$jar" "$hdr" "$body"; return 1
+  if [ -z "$code" ]; then
+    local otp_json otp_action otp_field otp_secret otp_raw otp_mode otp_code
+    otp_json=$(node "$SCRIPT_DIR/lib/keycloak-login-form.js" "$body" 2>/dev/null || printf '{}')
+    otp_field=$(printf '%s' "$otp_json" | json_field totpField)
+    if [ -n "$otp_field" ]; then
+      otp_action=$(printf '%s' "$otp_json" | json_field action)
+      otp_secret=$(printf '%s' "$otp_json" | json_field totpSecretEncoded)
+      otp_raw=$(printf '%s' "$otp_json" | json_field totpSecret)
+      otp_mode=$(printf '%s' "$otp_json" | json_field mode)
+      [ -z "$otp_secret" ] && otp_secret="${OIDC_TOTP_SECRET:-}"
+      if [ -z "$otp_secret" ]; then
+        ACQUIRE_ERR="OTP の段に入ったがシークレットを解決できない（$user）。初回登録の画面ではないなら OIDC_TOTP_SECRET を与えること。"
+        rm -f "$jar" "$hdr" "$body"; return 1
+      fi
+      otp_code=$(node "$SCRIPT_DIR/lib/totp.js" "$otp_secret")
+      [ "$verbose" = "1" ] && pass "OTP の段を検出（field=$otp_field）。第二要素を計算して送る"
+      local -a otp_form
+      otp_form=(--data-urlencode "$otp_field=$otp_code")
+      # 初回登録の画面だけが持つ隠しフィールド。**在るときだけ送る**（login-otp には無い）。
+      [ -n "$otp_raw" ] && otp_form+=(--data-urlencode "totpSecret=$otp_raw")
+      [ -n "$otp_mode" ] && otp_form+=(--data-urlencode "mode=$otp_mode")
+      [ "$otp_field" = "totp" ] && otp_form+=(--data-urlencode "userLabel=verify-oidc-edge-flow")
+      location=$(curl -s $CURL_K -c "$jar" -b "$jar" -m 15 -o /dev/null -D - -X POST "$otp_action" \
+        "${otp_form[@]}" \
+        | grep -i '^location:' | tail -1 | tr -d '\r' | sed 's/^[Ll]ocation: //')
+      code=$(printf '%s' "$location" | sed -n 's/.*[?&]code=\([^&]*\).*/\1/p')
     fi
-    otp_code=$(node "$SCRIPT_DIR/lib/totp.js" "$otp_secret")
-    # 初回登録は `totp`、2 回目以降は `otp` という名前のフィールドである。
-    if grep -q 'name="totp"' "$body"; then otp_field=totp; else otp_field=otp; fi
-    [ "$verbose" = "1" ] && pass "OTP の段を検出（field=$otp_field）。第二要素を計算して送る"
-    location=$(curl -s $CURL_K -c "$jar" -b "$jar" -m 15 -o /dev/null -D - -X POST "$otp_action" \
-      --data-urlencode "$otp_field=$otp_code" --data-urlencode "userLabel=verify-oidc-edge-flow" \
-      | grep -i '^location:' | tail -1 | tr -d '\r' | sed 's/^[Ll]ocation: //')
-    code=$(printf '%s' "$location" | sed -n 's/.*[?&]code=\([^&]*\).*/\1/p')
   fi
 
   rm -f "$jar" "$hdr" "$body"
