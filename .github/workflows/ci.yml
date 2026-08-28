@@ -165,6 +165,18 @@ jobs:
       - name: Check trace follow-through (#975・warn)
         if: ${{ !cancelled() }}
         run: node scripts/check-trace-followthrough.js
+      # NFR / #1013 / IADR-0124: ルートマニフェスト（router.test.ts の PLANNED_ROUTES）の網羅と、
+      # 「E2E がルートの実在を固定できる」という誤った主張の再混入を検査する。
+      # 🔴 **Vitest では代替できない。** 表に**載せ忘れた**画面は、表を回すテストからは見えない
+      #    （実測: SC-18 / SC-19 / SC-20 の 3 件が抜けていた）。SC 番号の取り違えも、パスさえ木に
+      #    あれば Vitest は緑のままである。fs だけで走査するため checkout の追加取得は要らない。
+      - name: Self-test route manifest checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-route-manifest.js --self-test
+      - name: Check route manifest (#1013)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-route-manifest.js
+
       - name: Self-test knowledge graph generator
         if: ${{ !cancelled() }}
         run: node scripts/gen-knowledge-graph.js --self-test

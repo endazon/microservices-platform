@@ -5523,7 +5523,11 @@ ${r.stderr}`);
         // ★ #975 で `check-trace-followthrough.js`（記録と文書の追随。record-rule）を新設した
         //    ため 41 → 42（ラチェットが設計どおり発火した）。**warn であってゲートではない**
         //    （IADR-0254 決定 2）が、母集合としては検査器である。
-        assert.strictEqual(scripts.length, 42, `検査器の母集合が 42 本から変わった（${scripts.length} 件）`);
+        // ★ #1013 で `check-route-manifest.js`（ルートマニフェストの網羅と、E2E の誤った主張の
+        //    再混入。**列挙は載せ忘れを自分では検出できない**）を新設したため 42 → 43
+        //    （ラチェットが設計どおり発火した）。git を一切呼ばず fs のみで走査するため、
+        //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
+        assert.strictEqual(scripts.length, 43, `検査器の母集合が 43 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -7967,6 +7971,178 @@ ${r.stderr}`);
       const s1 = VERIFY.slice(VERIFY.indexOf('S1) 正の対照'), VERIFY.indexOf('S2) 負の対照'));
       assert.ok(s1.includes('markdownUri'), 'S1 が markdownUri を見ていない');
       assert.match(s1, /fail "seed 文書は在るが markdownUri を持たない/);
+    });
+  }
+
+  // --- #1013: ルートマニフェストの静的検査 ---------------------------------------
+  //
+  // 起点は 2 つの欠陥である。①E2E スモーク 5 本が「この 1 本でルートの実在も固定できる」と
+  // 書いていた（#918 の変異試験で**落ちたテスト 0 件**）。②`PLANNED_ROUTES` に SC-18 / 19 / 20 が
+  // 入っていなかった。🔴 **列挙は載っている行しか検査できず、載せ忘れは誰にも見えない。**
+  {
+    const { spawnSync } = require('child_process');
+    const path = require('path');
+    const fs = require('fs');
+    const SCRIPTS = __dirname;
+    const REPO = path.join(SCRIPTS, '..');
+    const rm = require('./check-route-manifest.js');
+
+    const runRm = (args = []) => {
+      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-route-manifest.js'), ...args], {
+        encoding: 'utf8',
+        cwd: REPO,
+      });
+      return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+    };
+
+    ok('check-route-manifest --self-test が通る', () => {
+      const { code, out } = runRm(['--self-test']);
+      assert.strictEqual(code, 0, out);
+    });
+
+    // 件数だけを見ると変異ケースを消しても通る。**ケース名で確かめる。**
+    ok('check-route-manifest: self-test が主要な変異ケースと陰性対照を実際に走らせている', () => {
+      const { out } = runRm(['--self-test']);
+      for (const name of [
+        '画面を足して表へ書き忘れると落ちる',
+        '表の SC 番号を取り違えると落ちる',
+        '除外を理由なしで宣言すると落ちる',
+        '表と除外の両方に載せると落ちる',
+        '誤った主張を検出する（e2e の実文面）',
+        '観点の見出しを検出する',
+        '陰性対照: 否定形（固定できない）を落とさない',
+        '陰性対照: 別担当への委譲',
+        '陰性対照: インラインコードに入れた誤例は対象外',
+        '閉じないフェンスは違反として上げる',
+      ]) {
+        assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
+      }
+    });
+
+    ok('check-route-manifest が実データで違反 0 件', () => {
+      const { code, out } = runRm();
+      assert.strictEqual(code, 0, out);
+    });
+
+    // IADR-0130 の下限。**件数リテラルは書かない**（画面が増えれば動く）。
+    ok('0 件走査の門: 実データで画面 1 件以上・走査対象 1 件以上を数えている（下限）', () => {
+      const { code, out } = runRm();
+      assert.strictEqual(code, 0, out);
+      const m = out.match(/画面 (\d+) 件とマニフェスト (\d+) 行（除外 (\d+) 件）が対応し、(\d+) 件/);
+      assert.ok(m, `OK メッセージから件数を読めない:\n${out}`);
+      assert.ok(Number(m[1]) > 0, `画面が 0 件だった:\n${out}`);
+      assert.ok(Number(m[2]) > 0, `マニフェストが 0 行だった:\n${out}`);
+      assert.ok(Number(m[4]) > 0, `判定 2 の走査対象が 0 件だった:\n${out}`);
+    });
+
+    // ★ 変異試験は**実データにも当てる**。フィクスチャだけだと「実ファイルの形が想定と違う」型の
+    //   空振り（#665 の実測）を捕まえられない。
+    ok('★ 実データ: マニフェストから 1 行落とすと検出する（順方向・変異試験）', () => {
+      const manifest = fs.readFileSync(path.join(REPO, rm.MANIFEST_REL), 'utf8');
+      const screens = rm.collectScreens(rm.collectFeatureFiles(REPO));
+      assert.ok(screens.length > 0, '画面 feature を 1 件も拾えていない（形が想定と違う）');
+      assert.deepStrictEqual(rm.findManifestViolations(screens, rm.parseManifest(manifest)), []);
+
+      // 実ファイルの PLANNED_ROUTES から 1 行だけ落とす。
+      const row = /\n(\s*\['(SC-\d{2})', '[^']*'\],)/.exec(manifest);
+      assert.ok(row, '実データの PLANNED_ROUTES から 1 行を取り出せない（形が想定と違う）');
+      const mutated = manifest.replace(`\n${row[1]}`, '');
+      const v = rm.findManifestViolations(screens, rm.parseManifest(mutated));
+      assert.ok(
+        v.some((x) => x.kind === 'missing-from-manifest' && x.sc === row[2]),
+        `実データの変異（${row[2]} の行を落とす）を検出できなかった:\n${JSON.stringify(v)}`,
+      );
+    });
+
+    ok('★ 実データ: マニフェストの SC 番号を取り違えると検出する（逆方向・変異試験）', () => {
+      // **Vitest はパスさえ木にあれば緑のまま**である型。ここでしか捕まらない。
+      const manifest = fs.readFileSync(path.join(REPO, rm.MANIFEST_REL), 'utf8');
+      const screens = rm.collectScreens(rm.collectFeatureFiles(REPO));
+      const mutated = manifest.replace(/\['SC-\d{2}', ('[^']*')\],/, "['SC-99', $1],");
+      assert.notStrictEqual(mutated, manifest, '実データへ番号の変異を当てられない');
+      const v = rm.findManifestViolations(screens, rm.parseManifest(mutated));
+      assert.ok(
+        v.some((x) => x.kind === 'unknown-in-manifest' && x.sc === 'SC-99'),
+        `番号の取り違えを検出できなかった:\n${JSON.stringify(v)}`,
+      );
+    });
+
+    ok('★ 実データ: e2e へ誤った主張を書き戻すと検出する（判定 2・変異試験）', () => {
+      const f = path.join(REPO, 'src/platform/frontend/e2e/sc05-documents.smoke.spec.ts');
+      const text = fs.readFileSync(f, 'utf8');
+      assert.deepStrictEqual(rm.findClaimViolations(text), [], '実データが既に誤った主張を持っている');
+      const mutated = `${text}\n// （この 1 本で「ルートが実在すること」も同時に固定できる）。\n`;
+      const v = rm.findClaimViolations(mutated);
+      assert.strictEqual(v.length, 1, JSON.stringify(v));
+      assert.strictEqual(v[0].id, 'route-existence-also-fixed');
+    });
+
+    // 陰性対照は**実データで**取る。ここが落ちると、正しく書いた文書が赤くなり検査器ごと外される。
+    ok('★ 実データ: 正しく書かれた試験仕様（否定形・委譲）を落とさない（陰性対照）', () => {
+      const f = path.join(REPO, 'docs/tests/SC-21_ai-suggestion-list.md');
+      const text = fs.readFileSync(f, 'utf8');
+      assert.ok(text.includes('ルートの実在'), '陰性対照の文書が前提の語を持たない（前提が崩れている）');
+      assert.deepStrictEqual(
+        rm.findClaimViolations(text, { markdown: true }),
+        [],
+        '「ルートの実在は固定しない」「ルートの実在は T-30 が固定する」を誤検出している',
+      );
+    });
+
+    // 門は 2 つある（0 件解析 / 0 件走査）。1 つの変異で両方を確かめたつもりにならない。
+    ok('門 A: マニフェストを読めなければ fail する（変異試験）', () => {
+      const os = require('os');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'route-manifest-'));
+      try {
+        // ★ **写した側のスクリプトを叩く。** 検査器は `__dirname/..` を REPO にするため、
+        //   cwd を変えるだけでは実リポジトリを読んでしまい変異が当たらない。
+        fs.cpSync(SCRIPTS, path.join(dir, 'scripts'), { recursive: true });
+        const r = spawnSync(process.execPath, [path.join(dir, 'scripts', 'check-route-manifest.js')], {
+          encoding: 'utf8',
+          cwd: dir,
+        });
+        const out = `${r.stdout || ''}${r.stderr || ''}`;
+        assert.strictEqual(r.status, 1, `マニフェストが無いのに緑を返した:\n${out}`);
+        assert.match(out, /マニフェストを読めません/, `読めないことを述べていない:\n${out}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    ok('門 B: 画面 feature が 1 件も無ければ fail する（0 件走査・変異試験）', () => {
+      const os = require('os');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'route-manifest-b-'));
+      try {
+        // 門 A は通す（マニフェストは置く）。**門 A と同じ変異で確かめると門 B が消えても気づけない。**
+        fs.cpSync(SCRIPTS, path.join(dir, 'scripts'), { recursive: true });
+        const manifestDir = path.join(dir, path.dirname(rm.MANIFEST_REL));
+        fs.mkdirSync(manifestDir, { recursive: true });
+        fs.copyFileSync(path.join(REPO, rm.MANIFEST_REL), path.join(dir, rm.MANIFEST_REL));
+        fs.copyFileSync(path.join(REPO, '.gitmodules'), path.join(dir, '.gitmodules'));
+        const r = spawnSync(process.execPath, [path.join(dir, 'scripts', 'check-route-manifest.js')], {
+          encoding: 'utf8',
+          cwd: dir,
+        });
+        const out = `${r.stdout || ''}${r.stderr || ''}`;
+        assert.strictEqual(r.status, 1, `画面 feature が無いのに緑を返した。門 B が消えている:\n${out}`);
+        assert.match(out, /0 件検査/, `0 件検査であることを述べていない:\n${out}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    // 検査器を足したら CI で走らせる（走らない検査器は無い検査器と同じ）。
+    ok('#1013: ci.yml の static-checks が check-route-manifest を実行している', () => {
+      const ci = fs.readFileSync(path.join(REPO, '.github/workflows/ci.yml'), 'utf8');
+      assert.ok(
+        ci.includes('node scripts/check-route-manifest.js'),
+        'ci.yml から check-route-manifest の実行が消えている',
+      );
+    });
+
+    ok('#1013: scripts/README.md が check-route-manifest を載せている', () => {
+      const readme = fs.readFileSync(path.join(SCRIPTS, 'README.md'), 'utf8');
+      assert.ok(readme.includes('check-route-manifest.js'), 'scripts/README.md に行が無い');
     });
   }
 
