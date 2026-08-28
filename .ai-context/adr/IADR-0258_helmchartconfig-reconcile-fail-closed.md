@@ -13,7 +13,7 @@ related_ids:
   - IADR-0255
 author: claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-28
 ---
 
 # IADR-0258 HelmChartConfig は「置けたこと」ではなく「効いたこと」を待つ
@@ -109,6 +109,28 @@ kubectl -n kube-system wait --for=jsonpath='{.spec.ports[?(@.name=="admin")].por
 ポートが無いとき `checkCondition()` は「未成立」を返して待ち続ける（**タイムアウトで非 0** ＝ fail-closed）。
 3 版で判定部の意味論は同一である。**残る未検証は「実クラスタで実際に通ること」だけ**である。
 検証の詳細は作業仕様書に残した。
+
+**［2026-08-28 追記 / #953］変異試験をハーネスへ実装した（第 2 次）。**
+「実クラスタでの実走は未実施」は**変わらない**。変わったのは**何が未検証なのかの範囲**である。
+
+それまで **門は在るのに、門が守っている宣言は無検査だった** —— `scripts/k8s-local-up.test.js` の
+#953 試験が変異させていたのは **stub の env フラグ**（`STUB_TRAEFIK_ADMIN_MISSING`）であって
+`deploy/local/edge/traefik-entrypoint.yaml` ではなく、`expose` を bool 形へ戻しても・`admin` の
+port をずらしても・`ports.admin` を消しても、テストは緑のまま素通りした。#953 が塞ごうとした
+「宣言はバージョン依存で、壊れても誰も気付かない」の**後半がテスト側に残っていた**。
+
+そこで kubectl stub に **helm-controller の模型**（`HELM_CONTROLLER_MODEL`）を置き、反映の
+待ち合わせの成否だけを**宣言と chart のメジャー版から決める**ようにした。これで
+「壊すと落ちる／壊す前は落ちない」を**宣言そのものを変異させて**両方向とも実測できる。
+#953 が実際に踏んだ組（現行の map 形宣言 ＋ chart 25）の再現と、その陰性対照
+（bool 形 ＋ chart 25 は通る＝「変異なら落ちる」だけの飾りではない）も対で置いた。
+
+**模型が版に依存することは決定 3 と矛盾しない。** 決定 3 が禁じたのは**門**を版依存の識別子で
+書くことであり、門は今も Service の port という Kubernetes コア API しか見ない。版に依存するのは
+**試験だけ**である —— **版依存の事故を再現するには版を持つほかない**。代償（模型が実物からずれ得る）は
+`traefik-entrypoint.yaml` 冒頭の実測表が古くなることと**同じ 1 つの事実**であり、更新点は増えない
+（表と模型は相互に注記で結んだ）。作業仕様書は
+`.ai-context/specs/20260828_issue-953_helmchartconfig-fail-closed.md`。
 
 ## 射程（`ExternalSecret` は含めない）
 
