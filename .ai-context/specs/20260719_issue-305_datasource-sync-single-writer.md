@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — データソース定期同期の単一書き手化（本番マルチレプリカでの冗長 fetch 排除）
 type: spec
-status: draft
+status: done
 related_ids:
   - FR-01
   - UC-04
@@ -11,7 +11,7 @@ related_ids:
   - IADR-0083
 author: claude
 created: 2026-07-19
-updated: 2026-07-19
+updated: 2026-08-28
 issue: 305
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md (FR-01 データソース同期 / NFR 15分以内反映)
