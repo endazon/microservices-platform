@@ -4,16 +4,9 @@
     <Project Path="Services/AiAnalysisService/AiAnalysisService.csproj" />
     <Project Path="Services/AiAnalysisService/Tests/AiAnalysisService.Tests.csproj" />
   </Folder>
-  <Folder Name="/Services/ConversionService/" />
-  <Folder Name="/Services/ConversionService/src/">
-    <Project Path="Services/ConversionService/src/ConversionService.Worker/ConversionService.Worker.csproj" />
-    <Project Path="Services/ConversionService/src/ConversionService.Application/ConversionService.Application.csproj" />
-    <Project Path="Services/ConversionService/src/ConversionService.Contracts/ConversionService.Contracts.csproj" />
-    <Project Path="Services/ConversionService/src/ConversionService.Domain/ConversionService.Domain.csproj" />
-    <Project Path="Services/ConversionService/src/ConversionService.Infrastructure/ConversionService.Infrastructure.csproj" />
-  </Folder>
-  <Folder Name="/Services/ConversionService/tests/">
-    <Project Path="Services/ConversionService/tests/ConversionService.Worker.Tests/ConversionService.Worker.Tests.csproj" />
+  <Folder Name="/Services/ConversionService/">
+    <Project Path="Services/ConversionService/Worker/ConversionService.Worker.csproj" />
+    <Project Path="Services/ConversionService/Worker/Tests/ConversionService.Worker.Tests.csproj" />
   </Folder>
   <Folder Name="/Services/DashboardService/">
     <Project Path="Services/DashboardService/DashboardService.csproj" />
@@ -23,64 +16,29 @@
     <Project Path="Services/DataSourceService/DataSourceService.csproj" />
     <Project Path="Services/DataSourceService/Tests/DataSourceService.Tests.csproj" />
   </Folder>
-  <Folder Name="/Services/DocumentService/" />
-  <Folder Name="/Services/DocumentService/src/">
-    <Project Path="Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj" />
-    <Project Path="Services/DocumentService/src/DocumentService.Application/DocumentService.Application.csproj" />
-    <Project Path="Services/DocumentService/src/DocumentService.Contracts/DocumentService.Contracts.csproj" />
-    <Project Path="Services/DocumentService/src/DocumentService.Domain/DocumentService.Domain.csproj" />
-    <Project Path="Services/DocumentService/src/DocumentService.Infrastructure/DocumentService.Infrastructure.csproj" />
-  </Folder>
-  <Folder Name="/Services/DocumentService/tests/">
-    <Project Path="Services/DocumentService/tests/DocumentService.Api.Tests/DocumentService.Api.Tests.csproj" />
+  <Folder Name="/Services/DocumentService/">
+    <Project Path="Services/DocumentService/DocumentService.csproj" />
+    <Project Path="Services/DocumentService/Tests/DocumentService.Tests.csproj" />
   </Folder>
   <Folder Name="/Services/FeedbackService/">
     <Project Path="Services/FeedbackService/FeedbackService.csproj" />
     <Project Path="Services/FeedbackService/Tests/FeedbackService.Tests.csproj" />
   </Folder>
-  <Folder Name="/Services/GraphService/" />
-  <Folder Name="/Services/GraphService/src/">
-    <Project Path="Services/GraphService/src/GraphService.Api/GraphService.Api.csproj" />
-    <Project Path="Services/GraphService/src/GraphService.Application/GraphService.Application.csproj" />
-    <Project Path="Services/GraphService/src/GraphService.Contracts/GraphService.Contracts.csproj" />
-    <Project Path="Services/GraphService/src/GraphService.Domain/GraphService.Domain.csproj" />
-    <Project Path="Services/GraphService/src/GraphService.Infrastructure/GraphService.Infrastructure.csproj" />
+  <Folder Name="/Services/GraphService/">
+    <Project Path="Services/GraphService/GraphService.csproj" />
+    <Project Path="Services/GraphService/Tests/GraphService.Tests.csproj" />
   </Folder>
-  <Folder Name="/Services/GraphService/tests/">
-    <Project Path="Services/GraphService/tests/GraphService.Api.Tests/GraphService.Api.Tests.csproj" />
+  <Folder Name="/Services/IngestionService/">
+    <Project Path="Services/IngestionService/Worker/IngestionService.Worker.csproj" />
+    <Project Path="Services/IngestionService/Worker/Tests/IngestionService.Worker.Tests.csproj" />
   </Folder>
-  <Folder Name="/Services/IngestionService/" />
-  <Folder Name="/Services/IngestionService/src/">
-    <Project Path="Services/IngestionService/src/IngestionService.Worker/IngestionService.Worker.csproj" />
-    <Project Path="Services/IngestionService/src/IngestionService.Application/IngestionService.Application.csproj" />
-    <Project Path="Services/IngestionService/src/IngestionService.Contracts/IngestionService.Contracts.csproj" />
-    <Project Path="Services/IngestionService/src/IngestionService.Domain/IngestionService.Domain.csproj" />
-    <Project Path="Services/IngestionService/src/IngestionService.Infrastructure/IngestionService.Infrastructure.csproj" />
+  <Folder Name="/Services/RetrievalService/">
+    <Project Path="Services/RetrievalService/RetrievalService.csproj" />
+    <Project Path="Services/RetrievalService/Tests/RetrievalService.Tests.csproj" />
   </Folder>
-  <Folder Name="/Services/IngestionService/tests/">
-    <Project Path="Services/IngestionService/tests/IngestionService.Worker.Tests/IngestionService.Worker.Tests.csproj" />
-  </Folder>
-  <Folder Name="/Services/RetrievalService/" />
-  <Folder Name="/Services/RetrievalService/src/">
-    <Project Path="Services/RetrievalService/src/RetrievalService.Api/RetrievalService.Api.csproj" />
-    <Project Path="Services/RetrievalService/src/RetrievalService.Application/RetrievalService.Application.csproj" />
-    <Project Path="Services/RetrievalService/src/RetrievalService.Contracts/RetrievalService.Contracts.csproj" />
-    <Project Path="Services/RetrievalService/src/RetrievalService.Domain/RetrievalService.Domain.csproj" />
-    <Project Path="Services/RetrievalService/src/RetrievalService.Infrastructure/RetrievalService.Infrastructure.csproj" />
-  </Folder>
-  <Folder Name="/Services/RetrievalService/tests/">
-    <Project Path="Services/RetrievalService/tests/RetrievalService.Api.Tests/RetrievalService.Api.Tests.csproj" />
-  </Folder>
-  <Folder Name="/Services/WikiService/" />
-  <Folder Name="/Services/WikiService/src/">
-    <Project Path="Services/WikiService/src/WikiService.Api/WikiService.Api.csproj" />
-    <Project Path="Services/WikiService/src/WikiService.Application/WikiService.Application.csproj" />
-    <Project Path="Services/WikiService/src/WikiService.Contracts/WikiService.Contracts.csproj" />
-    <Project Path="Services/WikiService/src/WikiService.Domain/WikiService.Domain.csproj" />
-    <Project Path="Services/WikiService/src/WikiService.Infrastructure/WikiService.Infrastructure.csproj" />
-  </Folder>
-  <Folder Name="/Services/WikiService/tests/">
-    <Project Path="Services/WikiService/tests/WikiService.Api.Tests/WikiService.Api.Tests.csproj" />
+  <Folder Name="/Services/WikiService/">
+    <Project Path="Services/WikiService/WikiService.csproj" />
+    <Project Path="Services/WikiService/Tests/WikiService.Tests.csproj" />
   </Folder>
   <Folder Name="/Shared/">
     <Project Path="Shared/Knowledge.Contracts/Knowledge.Contracts.csproj" />

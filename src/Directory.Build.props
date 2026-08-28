@@ -70,7 +70,7 @@
   -->
   <PropertyGroup>
     <!-- 移行済みプロジェクト。前後と各項目の区切りは ';'（Contains の部分一致を防ぐため）。 -->
-    <XUnit1051Migrated>;LlmGateway.Api.Tests;NotificationService.Api.Tests;McpServer.Api.Tests;DataSourceService.Tests;AuthorizationService.Api.Tests;WikiService.Api.Tests;RetrievalService.Api.Tests;IngestionService.Worker.Tests;FeedbackService.Tests;AiAnalysisService.Tests;DashboardService.Tests;GraphService.Api.Tests;Knowledge.Contracts.Tests;Knowledge.IntegrationTests;Platform.Shared.Kernel.Tests;SampleService.Tests;ConversionService.Worker.Tests;Platform.Shared.Infrastructure.Tests;DocumentService.Api.Tests;Platform.Bff.Tests;</XUnit1051Migrated>
+    <XUnit1051Migrated>;LlmGateway.Tests;NotificationService.Tests;McpServer.Tests;DataSourceService.Tests;AuthorizationService.Tests;WikiService.Tests;RetrievalService.Tests;IngestionService.Worker.Tests;FeedbackService.Tests;AiAnalysisService.Tests;DashboardService.Tests;GraphService.Tests;Knowledge.Contracts.Tests;Knowledge.IntegrationTests;Platform.Shared.Kernel.Tests;SampleService.Tests;ConversionService.Worker.Tests;Platform.Shared.Infrastructure.Tests;DocumentService.Tests;Platform.Bff.Tests;</XUnit1051Migrated>
   </PropertyGroup>
 
   <!-- 未移行のテストプロジェクト（AST・雛形を含む）: 従来どおり抑止する。 -->

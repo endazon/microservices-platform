@@ -240,7 +240,7 @@ services:
   document-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/DocumentService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
     expose:
       - "8080"
@@ -273,7 +273,7 @@ services:
   conversion-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/ConversionService/src/ConversionService.Worker/Dockerfile
+      dockerfile: src/knowledge/backend/Services/ConversionService/Worker/Dockerfile
     # FR-15, IADR-0029, IADR-0017: 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
     # host へは公開せずメッシュ内部限定（ingress 非公開）。
     expose:
@@ -294,7 +294,7 @@ services:
   ingestion-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/IngestionService/src/IngestionService.Worker/Dockerfile
+      dockerfile: src/knowledge/backend/Services/IngestionService/Worker/Dockerfile
     # FR-15, IADR-0029, IADR-0017: 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
     # host へは公開せずメッシュ内部限定（ingress 非公開）。
     expose:
@@ -318,7 +318,7 @@ services:
   retrieval-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/RetrievalService/src/RetrievalService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/RetrievalService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（/search の ABAC は #55 で別管理）
     expose:
       - "8080"
@@ -357,7 +357,7 @@ services:
   authorization-service:
     build:
       context: ..
-      dockerfile: src/platform/backend/Services/AuthorizationService/src/AuthorizationService.Api/Dockerfile
+      dockerfile: src/platform/backend/Services/AuthorizationService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（/authz/scope 等はサービス間呼び出し専用）
     expose:
       - "8080"
@@ -377,7 +377,7 @@ services:
   wiki-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/WikiService/src/WikiService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/WikiService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
     expose:
       - "8080"
@@ -436,7 +436,7 @@ services:
   llm-gateway:
     build:
       context: ..
-      dockerfile: src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Dockerfile
+      dockerfile: src/platform/backend/Services/LlmGateway/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（/complete・/embed はサービス間呼び出し専用）
     expose:
       - "8080"
@@ -514,7 +514,7 @@ services:
   graph-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/GraphService/src/GraphService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/GraphService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）
     expose:
       - "8080"

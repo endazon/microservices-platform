@@ -48,7 +48,7 @@
       "remaining": 0,
       "migrated": true
     },
-    "src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests/ConversionService.Worker.Tests.csproj": {
+    "src/knowledge/backend/Services/ConversionService/Worker/Tests/ConversionService.Worker.Tests.csproj": {
       "project": "ConversionService.Worker.Tests",
       "remaining": 0,
       "migrated": true
@@ -63,8 +63,8 @@
       "remaining": 0,
       "migrated": true
     },
-    "src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests/DocumentService.Api.Tests.csproj": {
-      "project": "DocumentService.Api.Tests",
+    "src/knowledge/backend/Services/DocumentService/Tests/DocumentService.Tests.csproj": {
+      "project": "DocumentService.Tests",
       "remaining": 0,
       "migrated": true
     },
@@ -73,23 +73,23 @@
       "remaining": 0,
       "migrated": true
     },
-    "src/knowledge/backend/Services/GraphService/tests/GraphService.Api.Tests/GraphService.Api.Tests.csproj": {
-      "project": "GraphService.Api.Tests",
+    "src/knowledge/backend/Services/GraphService/Tests/GraphService.Tests.csproj": {
+      "project": "GraphService.Tests",
       "remaining": 0,
       "migrated": true
     },
-    "src/knowledge/backend/Services/IngestionService/tests/IngestionService.Worker.Tests/IngestionService.Worker.Tests.csproj": {
+    "src/knowledge/backend/Services/IngestionService/Worker/Tests/IngestionService.Worker.Tests.csproj": {
       "project": "IngestionService.Worker.Tests",
       "remaining": 0,
       "migrated": true
     },
-    "src/knowledge/backend/Services/RetrievalService/tests/RetrievalService.Api.Tests/RetrievalService.Api.Tests.csproj": {
-      "project": "RetrievalService.Api.Tests",
+    "src/knowledge/backend/Services/RetrievalService/Tests/RetrievalService.Tests.csproj": {
+      "project": "RetrievalService.Tests",
       "remaining": 0,
       "migrated": true
     },
-    "src/knowledge/backend/Services/WikiService/tests/WikiService.Api.Tests/WikiService.Api.Tests.csproj": {
-      "project": "WikiService.Api.Tests",
+    "src/knowledge/backend/Services/WikiService/Tests/WikiService.Tests.csproj": {
+      "project": "WikiService.Tests",
       "remaining": 0,
       "migrated": true
     },
@@ -109,23 +109,23 @@
       "remaining": 0,
       "migrated": true
     },
-    "src/platform/backend/Services/AuthorizationService/tests/AuthorizationService.Api.Tests/AuthorizationService.Api.Tests.csproj": {
-      "project": "AuthorizationService.Api.Tests",
+    "src/platform/backend/Services/AuthorizationService/Tests/AuthorizationService.Tests.csproj": {
+      "project": "AuthorizationService.Tests",
       "remaining": 0,
       "migrated": true
     },
-    "src/platform/backend/Services/LlmGateway/tests/LlmGateway.Api.Tests/LlmGateway.Api.Tests.csproj": {
-      "project": "LlmGateway.Api.Tests",
+    "src/platform/backend/Services/LlmGateway/Tests/LlmGateway.Tests.csproj": {
+      "project": "LlmGateway.Tests",
       "remaining": 0,
       "migrated": true
     },
-    "src/platform/backend/Services/NotificationService/tests/NotificationService.Api.Tests/NotificationService.Api.Tests.csproj": {
-      "project": "NotificationService.Api.Tests",
+    "src/platform/backend/Services/NotificationService/Tests/NotificationService.Tests.csproj": {
+      "project": "NotificationService.Tests",
       "remaining": 0,
       "migrated": true
     },
-    "src/platform/backend/Services/McpServer/tests/McpServer.Api.Tests/McpServer.Api.Tests.csproj": {
-      "project": "McpServer.Api.Tests",
+    "src/platform/backend/Services/McpServer/Tests/McpServer.Tests.csproj": {
+      "project": "McpServer.Tests",
       "remaining": 0,
       "migrated": true
     },

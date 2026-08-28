@@ -44,14 +44,14 @@
   <ItemGroup>
     <!-- 各サービスにテスト用マーカークラスを追加したためエイリアス不要 -->
     <ProjectReference Include="..\..\Services\DocumentService\DocumentService.csproj" />
-    <ProjectReference Include="..\..\Services\DataSourceService\src\DataSourceService.Api\DataSourceService.Api.csproj" />
-    <ProjectReference Include="..\..\..\..\platform\backend\Services\AuthorizationService\src\AuthorizationService.Api\AuthorizationService.Api.csproj" />
-    <ProjectReference Include="..\..\Services\WikiService\src\WikiService.Api\WikiService.Api.csproj" />
+    <ProjectReference Include="..\..\Services\DataSourceService\DataSourceService.csproj" />
+    <ProjectReference Include="..\..\..\..\platform\backend\Services\AuthorizationService\AuthorizationService.csproj" />
+    <ProjectReference Include="..\..\Services\WikiService\WikiService.csproj" />
     <!-- #455 Phase 0 U0b: Worker も統合テストへ載せる（DocumentUpdated の 2 購読者を同時に立てるため） -->
-    <ProjectReference Include="..\..\Services\IngestionService\src\IngestionService.Worker\IngestionService.Worker.csproj" />
-    <ProjectReference Include="..\..\Services\ConversionService\src\ConversionService.Worker\ConversionService.Worker.csproj" />
+    <ProjectReference Include="..\..\Services\IngestionService\Worker\IngestionService.Worker.csproj" />
+    <ProjectReference Include="..\..\Services\ConversionService\Worker\ConversionService.Worker.csproj" />
     <ProjectReference Include="..\..\Services\RetrievalService\RetrievalService.csproj" />
-    <ProjectReference Include="..\..\Services\AiAnalysisService\src\AiAnalysisService.Api\AiAnalysisService.Api.csproj" />
+    <ProjectReference Include="..\..\Services\AiAnalysisService\AiAnalysisService.csproj" />
     <!-- FR-17, SC-09, ADR-0033 決定 9 / #941: 辺の型辞書の **DB 層の防壁**（ON DELETE RESTRICT /
          ux_edge_types_name / ux_edges）は実 PostgreSQL でしか発火しない。GraphService.Tests は
          EF InMemory であり、InMemory は一意索引も外部キーも強制しないため原理的に測れない。

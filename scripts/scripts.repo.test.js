@@ -689,7 +689,7 @@ module.exports = ({ ok, assert }) => {
     assert.strictEqual(scanDomainForbiddenUsings(domainCs, 'using WolverineFoo.Bar;\n').length, 0);
     assert.strictEqual(
       scanDomainForbiddenUsings(
-        'src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Api/Program.cs',
+        'src/knowledge/backend/Services/FeedbackService/Program.cs',
         'using Microsoft.EntityFrameworkCore;\n',
       ).length,
       0,
@@ -3583,8 +3583,8 @@ ${r.stderr}`);
       // 新しい計測点を別ファイルへ足したときに「実装に無い」と誤判定するか、逆に
       // 名前の突合が効かないまま素通りする（#443 で後者を踏んだ）。
       const implFiles = [
-        'src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Foundation/Observability/LlmCompletionMetrics.cs',
-        'src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Foundation/Observability/LlmUsageMetrics.cs',
+        'src/platform/backend/Services/LlmGateway/Common/Observability/LlmCompletionMetrics.cs',
+        'src/platform/backend/Services/LlmGateway/Common/Observability/LlmUsageMetrics.cs',
         'src/platform/backend/Shared/Platform.Shared.Contracts/Dtos/CompletionDto.cs',
       ];
       const impl = implFiles.map((f) => fsG.readFileSync(pathG.join(root, f), 'utf8')).join('\n');

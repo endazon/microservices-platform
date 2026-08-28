@@ -1,7 +1,7 @@
 using DocumentService.Infrastructure.Persistence;
-using DataSourceService.Api.Foundation.Persistence;
-using AuthorizationService.Api.Foundation.Persistence;
-using WikiService.Api.Foundation.Persistence;
+using DataSourceService.Infrastructure.Persistence;
+using AuthorizationService.Infrastructure.Persistence;
+using WikiService.Infrastructure.Persistence;
 using MassTransit;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -227,13 +227,13 @@ public sealed class DocumentServiceFactory : IntegrationTestFactoryBase<
 }
 
 public sealed class DataSourceServiceFactory : IntegrationTestFactoryBase<
-    global::DataSourceService.Api.DataSourceServiceTestMarker, DataSourceDbContext>
+    global::DataSourceService.DataSourceServiceTestMarker, DataSourceDbContext>
 {
     public DataSourceServiceFactory(PostgresFixture pg, RabbitMqFixture rabbit) : base(pg, rabbit) { }
 }
 
 public sealed class AuthorizationServiceFactory : IntegrationTestFactoryBase<
-    global::AuthorizationService.Api.AuthorizationServiceTestMarker, AuthorizationDbContext>
+    global::AuthorizationService.AuthorizationServiceTestMarker, AuthorizationDbContext>
 {
     public AuthorizationServiceFactory(PostgresFixture pg) : base(pg, null) { }
 
@@ -242,7 +242,7 @@ public sealed class AuthorizationServiceFactory : IntegrationTestFactoryBase<
 }
 
 public sealed class WikiServiceFactory : IntegrationTestFactoryBase<
-    global::WikiService.Api.WikiServiceTestMarker, WikiDbContext>
+    global::WikiService.WikiServiceTestMarker, WikiDbContext>
 {
     public WikiServiceFactory(PostgresFixture pg, RabbitMqFixture rabbit) : base(pg, rabbit) { }
 }
@@ -270,7 +270,7 @@ public sealed class IngestionServiceFactory : IntegrationTestFactoryBase<
 // 🔴 **未使用**（上の注記を参照）。
 public sealed class ConversionServiceFactory : IntegrationTestFactoryBase<
     global::ConversionService.Worker.ConversionServiceTestMarker,
-    global::ConversionService.Worker.Foundation.Persistence.ConversionJobDbContext>
+    global::ConversionService.Worker.Infrastructure.Persistence.ConversionJobDbContext>
 {
     public ConversionServiceFactory(PostgresFixture pg, RabbitMqFixture rabbit) : base(pg, rabbit) { }
 }

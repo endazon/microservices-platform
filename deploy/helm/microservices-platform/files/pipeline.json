@@ -17,7 +17,7 @@
     {
       "name": "convert",
       "service": "conversion-service",
-      "consumer": "ConversionService.Worker.Composable.Steps.RawDocumentFetchedConsumer",
+      "consumer": "ConversionService.Worker.Features.ConversionJobs.RawDocumentFetchedConsumer",
       "input": "RawDocumentFetched",
       "outputs": ["DocumentNormalized"],
       "enabled": true
@@ -25,7 +25,7 @@
     {
       "name": "catalog",
       "service": "document-service",
-      "consumer": "DocumentService.Api.Composable.Steps.DocumentNormalizedConsumer",
+      "consumer": "DocumentService.Features.Documents.DocumentNormalizedConsumer",
       "input": "DocumentNormalized",
       "outputs": ["DocumentUpdated"],
       "enabled": true
@@ -33,7 +33,7 @@
     {
       "name": "ingest",
       "service": "ingestion-service",
-      "consumer": "IngestionService.Worker.Composable.Steps.DocumentUpdatedConsumer",
+      "consumer": "IngestionService.Worker.Features.Ingestion.DocumentUpdatedConsumer",
       "input": "DocumentUpdated",
       "outputs": ["IngestionCompleted"],
       "enabled": true
@@ -41,7 +41,7 @@
     {
       "name": "wiki-sync",
       "service": "wiki-service",
-      "consumer": "WikiService.Api.Composable.Steps.DocumentSyncConsumer",
+      "consumer": "WikiService.Features.Wiki.DocumentSyncConsumer",
       "input": "DocumentUpdated",
       "outputs": [],
       "enabled": true
@@ -49,7 +49,7 @@
     {
       "name": "wiki-delete",
       "service": "wiki-service",
-      "consumer": "WikiService.Api.Composable.Steps.DocumentDeletedConsumer",
+      "consumer": "WikiService.Features.Wiki.DocumentDeletedConsumer",
       "input": "DocumentDeleted",
       "outputs": [],
       "enabled": true
@@ -57,7 +57,7 @@
     {
       "name": "retrieval-delete",
       "service": "retrieval-service",
-      "consumer": "RetrievalService.Api.Composable.Steps.DocumentDeletedConsumer",
+      "consumer": "RetrievalService.Features.Search.DocumentDeletedConsumer",
       "input": "DocumentDeleted",
       "outputs": [],
       "enabled": true
@@ -65,7 +65,7 @@
     {
       "name": "graph-delete",
       "service": "graph-service",
-      "consumer": "GraphService.Api.Composable.Steps.DocumentDeletedConsumer",
+      "consumer": "GraphService.Features.GraphDocuments.DocumentDeletedConsumer",
       "input": "DocumentDeleted",
       "outputs": [],
       "enabled": true
@@ -73,7 +73,7 @@
     {
       "name": "graph-sync",
       "service": "graph-service",
-      "consumer": "GraphService.Api.Composable.Steps.GraphDocumentSyncConsumer",
+      "consumer": "GraphService.Features.GraphDocuments.GraphDocumentSyncConsumer",
       "input": "DocumentUpdated",
       "outputs": [],
       "enabled": true

@@ -57,13 +57,13 @@ const CALLERS = [
   },
   {
     label: 'GraphService',
-    program: 'src/knowledge/backend/Services/GraphService/src/GraphService.Api/Program.cs',
+    program: 'src/knowledge/backend/Services/GraphService/Program.cs',
     compose: 'graph-service',
     helm: 'graph',
   },
   {
     label: 'WikiService',
-    program: 'src/knowledge/backend/Services/WikiService/src/WikiService.Api/Program.cs',
+    program: 'src/knowledge/backend/Services/WikiService/Program.cs',
     compose: 'wiki-service',
     helm: 'wiki',
   },
@@ -72,7 +72,7 @@ const CALLERS = [
   // manifest の上書きは不要だが、CALLERS に無いとドリフトを誰も見ない（#958 と同じ死角）。
   {
     label: 'RetrievalService',
-    program: 'src/knowledge/backend/Services/RetrievalService/src/RetrievalService.Api/Program.cs',
+    program: 'src/knowledge/backend/Services/RetrievalService/Program.cs',
     compose: 'retrieval-service',
     helm: 'retrieval',
   },
