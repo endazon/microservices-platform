@@ -277,10 +277,39 @@ public sealed class DataSourceServiceFactory : IntegrationTestFactoryBase<
 public sealed class AuthorizationServiceFactory : IntegrationTestFactoryBase<
     global::AuthorizationService.AuthorizationServiceTestMarker, AuthorizationDbContext>
 {
+    /// <summary>身元プロバイダの宣言キー（SC-17, IADR-0301 決定 3）。</summary>
+    public const string IdentityAdminProviderKey = "IdentityAdmin:Provider";
+
+    /// <summary>統合テストが選ぶ身元プロバイダ。**実 IdP へは反映されない偽物**である。</summary>
+    public const string IdentityAdminProviderValue = "in-memory";
+
     public AuthorizationServiceFactory(PostgresFixture pg) : base(pg, null) { }
 
     // FR-09, ADR-0004: 管理系エンドポイント（/authz/policies 等）は AdminOnly を要求する。
     // 認証スキームの差し替え（platform-admin）は基底クラスが全サービス共通で行う。
+
+    // FR-05, FR-09, SC-17, IADR-0301 決定 3 (#1044): **身元プロバイダの宣言を器が与える。**
+    //
+    // `Program.cs` は `AddIdentityAdminClient(builder.Configuration)` を**トップレベル文で**
+    // 評価し、`IdentityAdmin:Provider` が無ければその場で落ちる（既定を持たない設計）。
+    // 器が与えていなかったため、`develop` の Integration で AbacScopeTests 3 件が
+    // `InvalidOperationException: IdentityAdmin:Provider が未設定である` で落ちた。
+    //
+    // 🔴 **`UseSetting` である。`ConfigureAppConfiguration` では間に合わない** ——
+    // 基底クラスが `Pipeline:ConfigPath`（#455 U0d）・`RabbitMq:ConnectionString`（#1022）・
+    // `ConnectionStrings:DefaultConnection`（#1032）で 3 度記録している罠と同型で、
+    // **本件が 4 度目**である。読まれる時点で決まる。
+    //
+    // 値が `in-memory` なのは、統合テストが実 IdP を持たないからである。**偽物であることを
+    // 明示的に宣言する**（既定では選ばれない。単体テスト側の `TestDatabaseConfiguration` と同じ判断）。
+    //
+    // 🔴 **基底へ置かない。** 本キーは AuthorizationService 固有であり、基底が持つのは
+    // 全サービスに効く 3 キーだけに保つ（基底へ足すと「全サービス共通の配線」に見える）。
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.UseSetting(IdentityAdminProviderKey, IdentityAdminProviderValue);
+    }
 }
 
 public sealed class WikiServiceFactory : IntegrationTestFactoryBase<
