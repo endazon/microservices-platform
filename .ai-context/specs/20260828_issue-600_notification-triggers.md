@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 FR-22 通知の発火の結線（3 契機の送出を fail-open と冪等で固める。#600 トラック 3E）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-22
   - FR-19
@@ -76,7 +76,7 @@ related_specs:
 | 文書 | いま誤りになる記述 | 本作業での扱い |
 | --- | --- | --- |
 | `docs/functional/FR-22_user-notifications.md` | 「①②③ の発火の結線（が入っていない）」「**通知が 1 件も発生しない**」 | **本作業で是正する** |
-| `docs/tests/FR-22_user-notifications.md` | 「残っているのは発火の結線だけ」「発火そのもののテストは無い。結線する issue が書く」 | **本作業で是正し、T-24〜T-27 を足す** |
+| `docs/tests/FR-22_user-notifications.md` | 「残っているのは発火の結線だけ」「発火そのもののテストは無い。結線する issue が書く」 | **本作業で是正し、T-24〜T-28 を足す** |
 | `docs/data/notification.md` | 「**発火の結線（通知を作る側）は入っていない。**」 | **本作業で是正する**（FR-22 のデータ仕様書であり、宣言領域外の指定に無い） |
 | `src/knowledge/.../DocumentService.Api/Program.cs` | 「受け口が入るまで送出失敗はエラーログに記録される」 | **本作業で是正する**（同ファイルを送出結線のために触るため） |
 | `docs/functional/FR-19_private-notes.md`（2 箇所）／`docs/functional/FR-20_obsidian-sync.md`（1 箇所） | 「受け口は実装済み・**発火の結線が残る**」 | 🔴 **宣言領域外（3F / 3G）。触らず統括へ報告する** |
@@ -96,10 +96,18 @@ related_specs:
 
 ### 走査が自分の成果物を含むことの開示（規則 8）
 
-**上表の数はいずれも本作業が 1 行も書く前の数である。** 本作業の完了後に同じ走査を引き直すと
-`発火の結線` は **13 ＋ 本作業が追加した 2 ファイル（本書・IADR-0215 の追記ブロックは既存
-ファイルのため増えない）＝ 15**、`通知が 1 件も発生しない` は **2 − 1（FR-22 機能仕様書から削る）
-＋ 1（本書が誤りとして引用する）＝ 2** を返す。**数はコミットで固定する。**
+**上表の数はいずれも本作業が 1 行も書く前の数である。** 本作業の完了後に**同じ走査を実際に
+引き直した**（規則 7。予測を書いて終わりにしない）。
+
+| 検索語 | 着手前 | 完了後 | 内訳 |
+| --- | ---: | ---: | --- |
+| `発火の結線` | 13 | **15** | 13 ＋ 本書 ＋ 新設テスト `PrivateNoteNotificationDispatchTests.cs`。**FR-22 の機能／テスト仕様書は語を残したまま意味を反転させた**ため減らない。IADR-0215 は既に語を含むファイルなので追記で増えない |
+| `通知が 1 件も発生しない` | 2 | **2** | 2 − 1（FR-22 機能仕様書から削った）＋ 1（本書が誤りとして引用する） |
+| `受け口が入るまで` | 2 | **2** | 2 − 1（`Program.cs` を是正した）＋ 1（本書が誤りとして引用する） |
+
+🔴 **着手時の予測は「13 ＋ 本書 ＝ 15」で、数は当たったが内訳を外していた**（新設テストが語を
+含むことを数えず、代わりに IADR-0215 を数えていた）。**規則 7 のとおり走査し直したので気付いた。**
+**数はコミットで固定した。**
 
 ## 目的・背景（いま実際に何が欠けているか）
 
@@ -275,11 +283,13 @@ related_specs:
 **変異試験**（実際に壊して落ちることを実測する。§検証の実測 に結果を書く）:
 
 1. `catch` の条件を元の 2 型（`HttpRequestException or TaskCanceledException`）へ戻す
-   → 任意例外の fail-open テストが落ちる
+   → 任意例外の fail-open テストと業務経路のテストが落ちる
 2. 名前付きクライアントのタイムアウト設定を外す → タイムアウト配線のテストが落ちる
 3. `NotifyPurgeImminentAsync` の順序を元（送出 → 記録 → 保存）へ戻す → ①-b の順序テストが落ちる
 4. `RecordUsageAndWarnAsync` のヘルパ内 `SaveChanges` を外す → ②の順序テストが落ちる
 5. 計器の記録を外す → 計器テストが落ちる
+6. ①-a（週次）と③（トークン期限）の順序を元へ戻す → 順序テストが落ちる
+   （3 と別に測るのは、**1 つの `[Fact]` が 3 契機を覆っている**ことを両方向で確かめるためである）
 
 ## 計画書との差異
 
@@ -303,9 +313,56 @@ related_specs:
   `docs/` の 3 文書は trace ブロックの `specs:` へ本書を足し、`updated:` を前進させる。
 - **`check-image-mapping.js` / `check-deploy-manifests.js`**: `deploy/` を触らないため影響なし。
 
-## 検証の実測（コミット前・すべて実走）
+## 検証の実測（すべて実走）
 
-> **本節は実装後に追記する**（`docs(FR-22)` の最終コミット）。
+作業ツリー `/home/user/wt-3e-new`・`dotnet 10.0.400`（`export PATH="/root/.dotnet:$PATH"`）。Docker 無し。
+`git rev-parse --is-shallow-repository` = `true` を確認済みのため、**`git log` / `git blame` を
+出典に引いていない**。
+
+| 検証 | コマンド | 結果 |
+| --- | --- | --- |
+| ビルド（knowledge） | `dotnet build src/knowledge/backend/backend.slnx` | **成功・エラー 0**（既存の CS0618 警告 2 件のみ） |
+| ビルド（platform） | `dotnet build src/platform/backend/backend.slnx` | **成功・エラー 0** |
+| テスト（knowledge） | `dotnet test src/knowledge/backend/backend.slnx` | **全 12 アセンブリ緑**。`DocumentService.Api.Tests` は **202 件**（本作業前 187 ＋ 本作業 15＝ Fact 6・Theory 9 ケース） |
+| テスト（platform） | `dotnet test src/platform/backend/backend.slnx` | **全 7 アセンブリ緑**（`NotificationService.Api.Tests` 53 件を含む） |
+| 整形（両方） | `dotnet format <slnx> --verify-no-changes` | **差分なし**（knowledge / platform とも exit 0） |
+| コミット件名 | `node scripts/check-commit-messages.js --range 8253134..HEAD` | **6 件すべて適合** |
+| trace ブロック | `node scripts/check-trace-blocks.js` | OK（Markdown 151 件・違反 0） |
+| テスト仕様書の床 | `node scripts/check-test-spec-coverage.js` | OK（対 163 件が床と一致。**新クラス 1 件ぶん `--update` で前進**） |
+| ユニット依存 | `node scripts/check-unit-dependencies.js` | OK（csproj 196 / .cs 1863・違反 0） |
+| ライブラリ ratchet | `node scripts/check-backend-libraries.js` | OK（新規混入 0・既知残件 9 は baseline 済み） |
+| xUnit1051 ratchet | `node scripts/check-xunit1051-ratchet.js` | OK（baseline は動かしていない） |
+| 文書リンク／状態／種別 | `check-doc-links` / `check-doc-updated` / `check-doc-status-vocabulary` / `check-doc-type-vocabulary` | いずれも OK |
+| ID 修飾・他リポ参照 | `check-plan-id-qualification` / `check-cross-repo-refs` | OK（2014 件 / 2423 件・違反 0） |
+| 参照グラフ | `node scripts/gen-knowledge-graph.js --check` | OK（in-repo エッジ 4100 件・違反 0） |
+| 契約 / OpenAPI | `check-contract-schema` / `check-openapi-dto-drift` | OK（**本作業は 1 バイトも触っていない**ことの確認） |
+| 配備マニフェスト | `node scripts/check-image-mapping.js` | OK（`deploy/` を触っていないためドリフト 0） |
+| 必読規約の予算 | `node scripts/check-reading-budget.js` | OK（3 集合とも 51,200 バイト内） |
+| ADR 採番 | `node scripts/check-adr-numbering.js` | OK（重複・欠番なし・索引と双方向一致） |
+| テストの写像 | `node scripts/check-test-traceability.js` | OK（未写像 3 件はすべて allowlist 済み） |
+
+- `check-landed-subjects.js` は **shallow clone のため skip**（「検査されていない」状態である）。
+- `check-trace-followthrough.js` は**報告のみ**（CI を赤くしない）。本 PR の変更で 21 文書を挙げたが、
+  **本作業が実際に書き換えたのは 3 文書**であり、残りは同じ範囲を触った他の変更の巻き込みである。
+
+### 変異試験（6 種・いずれも実際に落として戻した）
+
+| # | 変異 | 落ちたテスト | 検出 |
+| ---: | --- | --- | ---: |
+| 1 | `catch` の条件を元の 2 型（`HttpRequestException or TaskCanceledException`）へ戻す | `受け口が落ちていても送出は例外を投げない(invalid-op)` / `(not-supported)` / **`受け口へ到達できなくても同期pushと完全削除は成功する`** | **3 件** ✔ |
+| 2 | 名前付きクライアントの `Timeout` 設定を `Program.cs` から外す | `送出クライアントのタイムアウトは既定の100秒ではない` | **1 件** ✔ |
+| 3 | ①-b（完全削除 7 日前）の順序を元（送出 → 記録 → 保存）へ戻す | `削除通知とトークン期限予告の発火記録は送出より先に確定している` | **1 件** ✔ |
+| 4 | `RecordUsageAndWarnAsync` のヘルパ内 `SaveChanges` を外す | `容量警告の発火記録は送出より先に確定している` | **1 件** ✔ |
+| 5 | 送出の計器の記録 3 か所を外す | `送出の結末が計器に載る`（sent / rejected / unreachable の 3 ケース） | **3 件** ✔ |
+| 6 | ①-a（週次）と③（トークン期限）の順序を元へ戻す | `削除通知とトークン期限予告の発火記録は送出より先に確定している` | **1 件** ✔ |
+
+**変異 1 が本作業で最も重要な検出である。** 従前の実装（型を 2 つ列挙する `catch`）は
+**変異 2〜6 のテストをすべて通過する**が、**受け口が `InvalidOperationException` を投げる状況
+（BaseAddress 不整合・配備漏れ）で同期 push が 500 になる**。この向きの誤りを捕まえるのは
+`invalid-op` / `not-supported` の 2 ケースと、**実アダプタを差した業務経路のテスト**である。
+
+**変異 3 と 6 を分けて実測したのは、順序のテストが 3 契機すべてを覆っていることを示すため**である
+（1 つの `[Fact]` が 3 契機を見ているので、片方だけ壊しても落ちる —— それを両方向で確かめた）。
 
 ## 残件（本作業の後に残るもの）
 
