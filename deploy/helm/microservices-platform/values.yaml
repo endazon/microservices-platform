@@ -413,6 +413,32 @@ services:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
 
+  # FR-22, ADR-0045, IADR-0215, IADR-0288 (#1025): 利用者本人への通知の送出主体。
+  # 🔴 **chart のキーは `notification` である**（deployment.yaml / service.yaml が {{ $name }}-service を
+  # 組むため Service 名は notification-service になり、送出側 DocumentService のコード既定
+  # `http://notification-service:8080` と文字列一致する）。キーを変えると
+  # services.document.extraEnv へ Services__NotificationService の上書きが要る ——
+  # **送出は fail-open のため、上書きを落としても 502 にすらならず静かに落ちる**（IADR-0288 決定 1）。
+  # ⚠️ AST chart も同名 `notification` を持つ。到達経路は namespace で分離済みで
+  #    （MSP ns に notification-service の ExternalName alias は無い）、
+  #    check-unit-service-ownership.js の NAME_COLLISION_EXEMPT で通す（IADR-0288 決定 2）。
+  notification:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    # DB 実体は deploy/local/infra/postgres.yaml の init が作る（compose 側は create-multiple-dbs.sh）。
+    database: notification_svc
+    enabled: true
+    # 🔴 **1 から増やさない。** NotificationMaintenanceHostedService が保持期限切れの削除と
+    # メール outbox の送出を 5 分周期で回す。レプリカを増やすと同じ outbox を複数レプリカが同時に
+    # 処理し、送信上限（ADR-0045 決定 3。テナント全体で 1 つの資源）の数え方が割れる。
+    # 同じ理由で scaling.services にも入れない（conversion / ingestion / graph と同じ扱い）。
+    replicas: 1
+    image: microservices-platform/notification-service
+    tag: latest
+    port: 8080
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
   # FR-08: 回答へのフィードバック（👍/👎・コメント）収集サービス
   feedback:
     # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
@@ -519,6 +545,13 @@ services:
         value: "http://graph-service:8080"
       - name: Introspection__Services__llm-gateway
         value: "http://llmgateway-service:8080"
+      # FR-22, IADR-0288 決定 5 (#1025): NotificationService は段を持たないが
+      # AddPlatformIntrospection("notification-service", …) で**到達可能性を申告する**。
+      # 申告する側が居るのに収集側に無いと、その申告は永久に読まれない。
+      # 下記の Services__*（下流集約先・readiness の UriHealthCheck）へは足さない ——
+      # BFF は通知の下流を持たない（/bff/notifications* は未実装）。
+      - name: Introspection__Services__notification-service
+        value: "http://notification-service:8080"
       # FR-04/FR-08/FR-10, UC-01: BFF の下流集約先（Refit クライアント・readiness の UriHealthCheck）。
       # appsettings 既定はローカル用ポート（5001-5009）のため、k8s Service の実 DNS（:8080）へ上書きする。
       - name: Services__RetrievalService
