@@ -68,10 +68,31 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
         //
         // 🔴 **これは「統合テストの config 上書きは効く」を一般化できない実例が 2 件目である。**
         // 1 件目は Pipeline:ConfigPath（下記）。**読まれる時点で決まる。**
+        //
+        // ［2026-08-28 / #1032］🔴 **そして 3 件目が ConnectionStrings:DefaultConnection である**
+        // （下の `UseSetting`）。#1012 が `Program.cs` を
+        // `GetConnectionString("DefaultConnection") ?? throw` にしたとき、この器は同キーを
+        // **`ConfigureAppConfiguration` の overrides でしか与えておらず**、`develop` の
+        // `integration.yml` で **28 件が `InvalidOperationException` で落ちた**（Total 70 /
+        // Passed 41 / Failed 28 / Skipped 1。`DocumentService/Program.cs:41` が発生源）。
+        // **本ファイルのこのコメントが警告していた罠を、警告した本人が踏んだ形である。**
+        // 対処は器の与え方であって `?? throw` を弱めることではない —— 弱めれば
+        // 「未注入が既定の資格情報で接続成功へ倒れる」#1012 の欠陥がそのまま戻る。
         if (_rabbit?.ConnectionString is { Length: > 0 } rabbitConnection)
         {
             builder.UseSetting("RabbitMq:ConnectionString", rabbitConnection);
         }
+
+        // ［2026-08-28 / #1032］**接続文字列はビルダ構築時に見えていなければならない。**
+        // `Program.cs` は `builder.Configuration.GetConnectionString("DefaultConnection")` を
+        // **トップレベル文で即座に**読む（#1012 の fail-fast）。`ConfigureAppConfiguration` で
+        // 足した値が見えるのは**その後**であり、読み取りに間に合わない。
+        // `UseSetting` はホスト構成へ書くので `CreateBuilder` が構成を組む時点から見える。
+        // **下の overrides にも同じキーを残してある** —— `RabbitMq:ConnectionString` と同じ扱いで、
+        // 両方の読み取り時点を満たすためである（消しても現状は動くが、遅い時点で読む配線が
+        // 足されたときに静かに割れるのを避ける）。**在時点で効いているのはこちらである。**
+        builder.UseSetting(
+            "ConnectionStrings:DefaultConnection", _postgres.ConnectionString ?? "Host=localhost");
 
         builder.UseSetting("Pipeline:ConfigPath", RepoFile.Find(
             Path.Combine("deploy", "helm", "microservices-platform", "files", "pipeline.json"),
