@@ -52,18 +52,18 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
         var plugin = PluginWith(token);
 
         var push = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            PushBody("メモ", "notes/memo.md", "# こんにちは"));
+            PushBody("メモ", "notes/memo.md", "# こんにちは"), TestContext.Current.CancellationToken);
         push.StatusCode.Should().Be(HttpStatusCode.Created);
-        var created = await push.Content.ReadFromJsonAsync<PushNoteResponse>();
+        var created = await push.Content.ReadFromJsonAsync<PushNoteResponse>(TestContext.Current.CancellationToken);
 
         var manifest = await plugin.GetFromJsonAsync<List<SyncManifestEntry>>(
-            "/private-notes/sync/manifest");
+            "/private-notes/sync/manifest", TestContext.Current.CancellationToken);
         manifest.Should().ContainSingle(e => e.NoteId == created!.NoteId);
         manifest![0].VaultPath.Should().Be("notes/memo.md");
         manifest[0].Deleted.Should().BeFalse();
 
         var pull = await plugin.GetFromJsonAsync<PullNoteResponse>(
-            $"/private-notes/sync/notes/{created!.NoteId}");
+            $"/private-notes/sync/notes/{created!.NoteId}", TestContext.Current.CancellationToken);
         pull!.Content.Should().Be("# こんにちは", "本文は切り詰めず往復する");
     }
 
@@ -76,20 +76,20 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
 
         // 無し
         var anonymous = factory.CreateClient();
-        (await anonymous.GetAsync("/private-notes/sync/manifest")).StatusCode
+        (await anonymous.GetAsync("/private-notes/sync/manifest", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.Unauthorized);
 
         // 出鱈目
-        (await PluginWith("deadbeef").GetAsync("/private-notes/sync/manifest")).StatusCode
+        (await PluginWith("deadbeef").GetAsync("/private-notes/sync/manifest", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.Unauthorized);
 
         // 失効（個別失効の後は使えない）
         var issued = await session.PostAsJsonAsync("/private-notes/devices",
-            new { deviceName = "phone" });
-        var device = await issued.Content.ReadFromJsonAsync<SyncTokenIssuedResponse>();
-        (await session.DeleteAsync($"/private-notes/devices/{device!.DeviceId}")).StatusCode
+            new { deviceName = "phone" }, TestContext.Current.CancellationToken);
+        var device = await issued.Content.ReadFromJsonAsync<SyncTokenIssuedResponse>(TestContext.Current.CancellationToken);
+        (await session.DeleteAsync($"/private-notes/devices/{device!.DeviceId}", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.NoContent);
-        (await PluginWith(device.Token).GetAsync("/private-notes/sync/manifest")).StatusCode
+        (await PluginWith(device.Token).GetAsync("/private-notes/sync/manifest", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.Unauthorized);
     }
 
@@ -105,12 +105,12 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
         // bob の個人資料（bob 自身の同期経路で作成 = 陽性対照の下ごしらえ）
         var bobToken = await IssueTokenAsync(bob, "bob-pc");
         var bobPush = await PluginWith(bobToken).PostAsJsonAsync("/private-notes/sync/notes",
-            PushBody("bobの秘密", "secret.md", "bob only"));
-        var bobNote = await bobPush.Content.ReadFromJsonAsync<PushNoteResponse>();
+            PushBody("bobの秘密", "secret.md", "bob only"), TestContext.Current.CancellationToken);
+        var bobNote = await bobPush.Content.ReadFromJsonAsync<PushNoteResponse>(TestContext.Current.CancellationToken);
 
         // bob が alice へ共有する（閲覧の共有であって同期の対象化ではない）
         var share = await SessionAs(bob).PostAsJsonAsync(
-            $"/documents/{bobNote!.NoteId}/shares", new { subjectType = "user", subjectId = alice });
+            $"/documents/{bobNote!.NoteId}/shares", new { subjectType = "user", subjectId = alice }, TestContext.Current.CancellationToken);
         share.StatusCode.Should().Be(HttpStatusCode.Created);
 
         // 組織文書（管理者経路・doc_scope 無し）
@@ -119,27 +119,27 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
             title = "組織文書",
             attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" },
             tags = new List<string>(),
-        });
-        var orgDoc = await orgResp.Content.ReadFromJsonAsync<DocumentDto>();
+        }, TestContext.Current.CancellationToken);
+        var orgDoc = await orgResp.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken);
 
         var aliceToken = await IssueTokenAsync(alice, "alice-pc");
         var alicePlugin = PluginWith(aliceToken);
 
         // 否定形: マニフェストに他者の資料・組織文書が現れない
         var manifest = await alicePlugin.GetFromJsonAsync<List<SyncManifestEntry>>(
-            "/private-notes/sync/manifest");
+            "/private-notes/sync/manifest", TestContext.Current.CancellationToken);
         manifest.Should().BeEmpty("alice の同期スコープには何も無い");
 
         // 否定形: ID を直に指しても 404（存在秘匿。共有済みでも同期経路からは読めない）
-        (await alicePlugin.GetAsync($"/private-notes/sync/notes/{bobNote.NoteId}")).StatusCode
+        (await alicePlugin.GetAsync($"/private-notes/sync/notes/{bobNote.NoteId}", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.NotFound);
-        (await alicePlugin.GetAsync($"/private-notes/sync/notes/{orgDoc!.Id}")).StatusCode
+        (await alicePlugin.GetAsync($"/private-notes/sync/notes/{orgDoc!.Id}", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.NotFound);
         (await alicePlugin.PostAsJsonAsync($"/private-notes/sync/notes/{bobNote.NoteId}/delete",
-            new { })).StatusCode.Should().Be(HttpStatusCode.NotFound);
+            new { }, TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.NotFound);
 
         // 陽性対照: bob 自身は自分の資料へ到達できる（「常に 404」の実装でないことの証拠）
-        (await PluginWith(bobToken).GetAsync($"/private-notes/sync/notes/{bobNote.NoteId}"))
+        (await PluginWith(bobToken).GetAsync($"/private-notes/sync/notes/{bobNote.NoteId}", TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -152,18 +152,18 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
 
         var edits = Enumerable.Range(1, 10).Select(i => $"版 {i}").ToArray();
         var push = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            PushBody("十版", "ten.md", edits));
+            PushBody("十版", "ten.md", edits), TestContext.Current.CancellationToken);
         push.StatusCode.Should().Be(HttpStatusCode.Created);
-        var created = await push.Content.ReadFromJsonAsync<PushNoteResponse>();
+        var created = await push.Content.ReadFromJsonAsync<PushNoteResponse>(TestContext.Current.CancellationToken);
         created!.Version.Should().Be(10, "1 編集 = 1 版（同期 1 回へ丸めない）");
 
         var versions = await factory.CreateClient().GetFromJsonAsync<List<DocumentVersionDto>>(
-            $"/documents/{created.NoteId}/versions");
+            $"/documents/{created.NoteId}/versions", TestContext.Current.CancellationToken);
         versions.Should().HaveCount(10);
 
         // 最終状態は最後の編集の本文である
         var pull = await plugin.GetFromJsonAsync<PullNoteResponse>(
-            $"/private-notes/sync/notes/{created.NoteId}");
+            $"/private-notes/sync/notes/{created.NoteId}", TestContext.Current.CancellationToken);
         pull!.Content.Should().Be("版 10");
     }
 
@@ -175,8 +175,8 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
         var plugin = PluginWith(token);
 
         var push = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            PushBody("競合", "conflict.md", "初版"));
-        var note = await push.Content.ReadFromJsonAsync<PushNoteResponse>();
+            PushBody("競合", "conflict.md", "初版"), TestContext.Current.CancellationToken);
+        var note = await push.Content.ReadFromJsonAsync<PushNoteResponse>(TestContext.Current.CancellationToken);
 
         // 端末 A が v1 → v2 へ更新
         var updateA = await plugin.PostAsJsonAsync("/private-notes/sync/notes", new
@@ -186,7 +186,7 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
             title = "競合",
             baseVersion = note.Version,
             edits = new[] { new { content = "端末Aの編集" } },
-        });
+        }, TestContext.Current.CancellationToken);
         updateA.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // 端末 B が古い版（v1）を土台に push → 自動解決せず 409
@@ -197,12 +197,12 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
             title = "競合",
             baseVersion = note.Version,
             edits = new[] { new { content = "端末Bの編集" } },
-        });
+        }, TestContext.Current.CancellationToken);
         updateB.StatusCode.Should().Be(HttpStatusCode.Conflict);
 
         // 陽性対照: サーバ本文は端末 A のまま（後勝ちで上書きされていない）
         var pull = await plugin.GetFromJsonAsync<PullNoteResponse>(
-            $"/private-notes/sync/notes/{note.NoteId}");
+            $"/private-notes/sync/notes/{note.NoteId}", TestContext.Current.CancellationToken);
         pull!.Content.Should().Be("端末Aの編集");
     }
 
@@ -215,21 +215,21 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
         var plugin = PluginWith(token);
 
         var push = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            PushBody("消すメモ", "del.md", "内容"));
-        var note = await push.Content.ReadFromJsonAsync<PushNoteResponse>();
+            PushBody("消すメモ", "del.md", "内容"), TestContext.Current.CancellationToken);
+        var note = await push.Content.ReadFromJsonAsync<PushNoteResponse>(TestContext.Current.CancellationToken);
 
         var del = await plugin.PostAsJsonAsync(
-            $"/private-notes/sync/notes/{note!.NoteId}/delete", new { });
+            $"/private-notes/sync/notes/{note!.NoteId}/delete", new { }, TestContext.Current.CancellationToken);
         del.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // マニフェストには deleted=true で残る（KB が正。プラグインが削除を検知できる）
         var manifest = await plugin.GetFromJsonAsync<List<SyncManifestEntry>>(
-            "/private-notes/sync/manifest");
+            "/private-notes/sync/manifest", TestContext.Current.CancellationToken);
         manifest.Should().ContainSingle(e => e.NoteId == note.NoteId && e.Deleted);
 
         // SC-19 から復元できる（物理削除ではない）
         var restore = await SessionAs(user).PostAsync(
-            $"/private-notes/{note.NoteId}/restore", null);
+            $"/private-notes/{note.NoteId}/restore", null, TestContext.Current.CancellationToken);
         restore.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -247,11 +247,11 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
         var token = await IssueTokenAsync(user);
 
         var push = await PluginWith(token).PostAsJsonAsync("/private-notes/sync/notes",
-            PushBody("既定値", "default.md", "本文"));
-        var note = await push.Content.ReadFromJsonAsync<PushNoteResponse>();
+            PushBody("既定値", "default.md", "本文"), TestContext.Current.CancellationToken);
+        var note = await push.Content.ReadFromJsonAsync<PushNoteResponse>(TestContext.Current.CancellationToken);
 
         var doc = await factory.CreateClient().GetFromJsonAsync<DocumentDto>(
-            $"/documents/{note!.NoteId}");
+            $"/documents/{note!.NoteId}", TestContext.Current.CancellationToken);
         doc!.Attributes.Should().Contain("doc_scope", "private-note");
         doc.Attributes.Should().Contain("owner", user);
         doc.Attributes.Should().Contain("confidentiality", "restricted",
@@ -261,14 +261,14 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
         AiInputExposure.IsAllowed(doc.Attributes).Should().BeFalse();
 
         var list = await SessionAs(user).GetFromJsonAsync<PrivateNoteListResponse>(
-            "/private-notes/");
+            "/private-notes/", TestContext.Current.CancellationToken);
         var dto = list!.Notes.Single(n => n.Id == note.NoteId);
         dto.IncludeInSearch.Should().BeFalse("既定は OFF");
         dto.IncludeInGraph.Should().BeFalse("既定は OFF");
         dto.IncludeInAi.Should().BeFalse("既定は OFF");
 
         var shares = await SessionAs(user).GetFromJsonAsync<List<DocumentShareDto>>(
-            $"/documents/{note.NoteId}/shares");
+            $"/documents/{note.NoteId}/shares", TestContext.Current.CancellationToken);
         shares.Should().BeEmpty("公開範囲の既定は非公開（所有者のみ）");
     }
 
@@ -281,12 +281,12 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
 
         var tooLarge = new string('あ', 350_000); // UTF-8 で約 1.05 MB
         var push = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            PushBody("大きい", "big.md", tooLarge));
+            PushBody("大きい", "big.md", tooLarge), TestContext.Current.CancellationToken);
         push.StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
 
         // 陽性対照: 1 MB 以下は通る
         var ok = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            PushBody("普通", "ok.md", new string('a', 1000)));
+            PushBody("普通", "ok.md", new string('a', 1000)), TestContext.Current.CancellationToken);
         ok.StatusCode.Should().Be(HttpStatusCode.Created);
     }
 
@@ -301,10 +301,10 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
 
         const string secretTitle = "監査に漏れてはならない題名";
         var push = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            PushBody(secretTitle, "audit.md", "秘密の本文"));
+            PushBody(secretTitle, "audit.md", "秘密の本文"), TestContext.Current.CancellationToken);
         push.StatusCode.Should().Be(HttpStatusCode.Created);
-        var note = await push.Content.ReadFromJsonAsync<PushNoteResponse>();
-        (await plugin.GetAsync($"/private-notes/sync/notes/{note!.NoteId}")).StatusCode
+        var note = await push.Content.ReadFromJsonAsync<PushNoteResponse>(TestContext.Current.CancellationToken);
+        (await plugin.GetAsync($"/private-notes/sync/notes/{note!.NoteId}", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.OK);
 
         var pushEntries = factory.Audit.OfAction("private-note.sync.push")

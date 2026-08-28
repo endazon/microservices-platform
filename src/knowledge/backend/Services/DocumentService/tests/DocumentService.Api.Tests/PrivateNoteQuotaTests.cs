@@ -69,15 +69,15 @@ public class PrivateNoteQuotaTests(TestWebApplicationFactory factory)
     {
         var (_, session, plugin) = await OwnerAsync(limitBytes: 100_000);
         var push = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            Push("履歴", "hist.md", new string('a', 400)));
-        var note = await push.Content.ReadFromJsonAsync<PushNoteResponse>();
+            Push("履歴", "hist.md", new string('a', 400)), TestContext.Current.CancellationToken);
+        var note = await push.Content.ReadFromJsonAsync<PushNoteResponse>(TestContext.Current.CancellationToken);
 
         for (var i = 0; i < 5; i++)
         {
             var current = await plugin.GetFromJsonAsync<PullNoteResponse>(
-                $"/private-notes/sync/notes/{note!.NoteId}");
+                $"/private-notes/sync/notes/{note!.NoteId}", TestContext.Current.CancellationToken);
             var update = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-                Update(note.NoteId, "hist.md", current!.Version, new string('b', 400)));
+                Update(note.NoteId, "hist.md", current!.Version, new string('b', 400)), TestContext.Current.CancellationToken);
             update.StatusCode.Should().Be(HttpStatusCode.OK);
         }
 
@@ -92,22 +92,22 @@ public class PrivateNoteQuotaTests(TestWebApplicationFactory factory)
     {
         var (_, session, plugin) = await OwnerAsync(limitBytes: 100_000);
         var push = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            Push("削除", "del.md", new string('x', 500)));
-        var note = await push.Content.ReadFromJsonAsync<PushNoteResponse>();
+            Push("削除", "del.md", new string('x', 500)), TestContext.Current.CancellationToken);
+        var note = await push.Content.ReadFromJsonAsync<PushNoteResponse>(TestContext.Current.CancellationToken);
 
         (await UsageOf(session)).UsedBytes.Should().Be(500);
 
         // 論理削除 —— 使用量は減らない（算入され続ける）
-        var del = await session.DeleteAsync($"/private-notes/{note!.NoteId}");
+        var del = await session.DeleteAsync($"/private-notes/{note!.NoteId}", TestContext.Current.CancellationToken);
         del.StatusCode.Should().Be(HttpStatusCode.OK);
         (await UsageOf(session)).UsedBytes.Should().Be(500,
             "論理削除済み（90 日の保管中）も容量に算入する");
 
         // 完全削除 —— 解放される容量が応答に載り、使用量が減る
         var purge = await session.PostAsJsonAsync("/private-notes/purge",
-            new { ids = new[] { note.NoteId } });
+            new { ids = new[] { note.NoteId } }, TestContext.Current.CancellationToken);
         purge.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = await purge.Content.ReadFromJsonAsync<PurgePrivateNotesResponse>();
+        var result = await purge.Content.ReadFromJsonAsync<PurgePrivateNotesResponse>(TestContext.Current.CancellationToken);
         result!.FreedBytes.Should().Be(500, "解放される容量を実行時に示す（決定 20）");
         (await UsageOf(session)).UsedBytes.Should().Be(0);
     }
@@ -121,35 +121,35 @@ public class PrivateNoteQuotaTests(TestWebApplicationFactory factory)
 
         // ちょうど上限まで使う（上限ちょうどの新規作成は跨がないため許される）
         var fill = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            Push("満杯", "full.md", new string('f', 1000)));
+            Push("満杯", "full.md", new string('f', 1000)), TestContext.Current.CancellationToken);
         fill.StatusCode.Should().Be(HttpStatusCode.Created);
-        var note = await fill.Content.ReadFromJsonAsync<PushNoteResponse>();
+        var note = await fill.Content.ReadFromJsonAsync<PushNoteResponse>(TestContext.Current.CancellationToken);
 
         // 新規作成（同期経由）→ 拒否
         var create = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            Push("あふれ", "over.md", "x"));
+            Push("あふれ", "over.md", "x"), TestContext.Current.CancellationToken);
         create.StatusCode.Should().Be(HttpStatusCode.InsufficientStorage);
 
         // 新規作成（SC-19 経由・本文なし 0 バイト）→ これも拒否（100% に達している）
         var createUi = await session.PostAsJsonAsync("/private-notes/",
-            new { title = "空メモ" });
+            new { title = "空メモ" }, TestContext.Current.CancellationToken);
         createUi.StatusCode.Should().Be(HttpStatusCode.InsufficientStorage);
 
         // 既存資料の更新 → **成功する**（書きかけを失わせない。上限を超えて増えてよい）
         var update = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            Update(note!.NoteId, "full.md", note.Version, new string('g', 1200)));
+            Update(note!.NoteId, "full.md", note.Version, new string('g', 1200)), TestContext.Current.CancellationToken);
         update.StatusCode.Should().Be(HttpStatusCode.OK,
             "100% でも既存資料の更新（保存）は成功する");
         (await UsageOf(session)).UsedBytes.Should().Be(1200);
 
         // 完全削除で 100% を下回ると新規作成が再び成功する
-        (await session.DeleteAsync($"/private-notes/{note.NoteId}")).StatusCode
+        (await session.DeleteAsync($"/private-notes/{note.NoteId}", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.OK);
         (await session.PostAsJsonAsync("/private-notes/purge",
-            new { ids = new[] { note.NoteId } })).StatusCode.Should().Be(HttpStatusCode.OK);
+            new { ids = new[] { note.NoteId } }, TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
 
         var retry = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            Push("復帰", "again.md", "y"));
+            Push("復帰", "again.md", "y"), TestContext.Current.CancellationToken);
         retry.StatusCode.Should().Be(HttpStatusCode.Created,
             "管理者へ依頼せず利用者が自力で復帰できる");
     }
@@ -161,17 +161,17 @@ public class PrivateNoteQuotaTests(TestWebApplicationFactory factory)
         var (_, _, plugin) = await OwnerAsync(limitBytes: 1_000);
 
         var half = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            Push("半分", "half.md", new string('h', 500)));
+            Push("半分", "half.md", new string('h', 500)), TestContext.Current.CancellationToken);
         half.StatusCode.Should().Be(HttpStatusCode.Created);
 
         // 500 + 600 > 1000 → 拒否
         var over = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            Push("超過", "over.md", new string('o', 600)));
+            Push("超過", "over.md", new string('o', 600)), TestContext.Current.CancellationToken);
         over.StatusCode.Should().Be(HttpStatusCode.InsufficientStorage);
 
         // 500 + 500 = 1000（跨がない）→ 許可（陽性対照）
         var exact = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            Push("丁度", "exact.md", new string('e', 500)));
+            Push("丁度", "exact.md", new string('e', 500)), TestContext.Current.CancellationToken);
         exact.StatusCode.Should().Be(HttpStatusCode.Created);
     }
 
@@ -187,48 +187,48 @@ public class PrivateNoteQuotaTests(TestWebApplicationFactory factory)
 
         // 70% — 警告なし
         var push = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            Push("警告", "warn.md", new string('a', 700)));
-        var note = await push.Content.ReadFromJsonAsync<PushNoteResponse>();
+            Push("警告", "warn.md", new string('a', 700)), TestContext.Current.CancellationToken);
+        var note = await push.Content.ReadFromJsonAsync<PushNoteResponse>(TestContext.Current.CancellationToken);
         Warnings().Should().BeEmpty("80% 未満では警告しない");
 
         // 85% — 80% の警告が 1 回
         var current = await plugin.GetFromJsonAsync<PullNoteResponse>(
-            $"/private-notes/sync/notes/{note!.NoteId}");
+            $"/private-notes/sync/notes/{note!.NoteId}", TestContext.Current.CancellationToken);
         await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            Update(note.NoteId, "warn.md", current!.Version, new string('b', 850)));
+            Update(note.NoteId, "warn.md", current!.Version, new string('b', 850)), TestContext.Current.CancellationToken);
         Warnings().Should().ContainSingle().Which.ThresholdPercent.Should().Be(80);
 
         // 87% — 既に警告済みの閾値では再警告しない
         current = await plugin.GetFromJsonAsync<PullNoteResponse>(
-            $"/private-notes/sync/notes/{note.NoteId}");
+            $"/private-notes/sync/notes/{note.NoteId}", TestContext.Current.CancellationToken);
         await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            Update(note.NoteId, "warn.md", current!.Version, new string('c', 870)));
+            Update(note.NoteId, "warn.md", current!.Version, new string('c', 870)), TestContext.Current.CancellationToken);
         Warnings().Should().HaveCount(1, "同一閾値の再通知はしない");
 
         // 96% — 95% の警告が 1 回
         current = await plugin.GetFromJsonAsync<PullNoteResponse>(
-            $"/private-notes/sync/notes/{note.NoteId}");
+            $"/private-notes/sync/notes/{note.NoteId}", TestContext.Current.CancellationToken);
         await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            Update(note.NoteId, "warn.md", current!.Version, new string('d', 960)));
+            Update(note.NoteId, "warn.md", current!.Version, new string('d', 960)), TestContext.Current.CancellationToken);
         Warnings().Should().HaveCount(2);
         Warnings()[1].ThresholdPercent.Should().Be(95);
 
         // 97% — 95% 以上に留まる間は再警告しない（変異試験で検出漏れが実測された跨ぎの対照）
         current = await plugin.GetFromJsonAsync<PullNoteResponse>(
-            $"/private-notes/sync/notes/{note.NoteId}");
+            $"/private-notes/sync/notes/{note.NoteId}", TestContext.Current.CancellationToken);
         await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            Update(note.NoteId, "warn.md", current!.Version, new string('g', 970)));
+            Update(note.NoteId, "warn.md", current!.Version, new string('g', 970)), TestContext.Current.CancellationToken);
         Warnings().Should().HaveCount(2, "95% の警告も跨ぎで 1 回だけ");
 
         // 縮小して閾値を下回る（30%）→ 再武装 → 再度 85% で 80% 警告がもう 1 回
         current = await plugin.GetFromJsonAsync<PullNoteResponse>(
-            $"/private-notes/sync/notes/{note.NoteId}");
+            $"/private-notes/sync/notes/{note.NoteId}", TestContext.Current.CancellationToken);
         await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            Update(note.NoteId, "warn.md", current!.Version, new string('e', 300)));
+            Update(note.NoteId, "warn.md", current!.Version, new string('e', 300)), TestContext.Current.CancellationToken);
         current = await plugin.GetFromJsonAsync<PullNoteResponse>(
-            $"/private-notes/sync/notes/{note.NoteId}");
+            $"/private-notes/sync/notes/{note.NoteId}", TestContext.Current.CancellationToken);
         await plugin.PostAsJsonAsync("/private-notes/sync/notes",
-            Update(note.NoteId, "warn.md", current!.Version, new string('f', 850)));
+            Update(note.NoteId, "warn.md", current!.Version, new string('f', 850)), TestContext.Current.CancellationToken);
         Warnings().Should().HaveCount(3, "閾値を下回った後の再跨ぎでは改めて警告する");
         Warnings()[2].ThresholdPercent.Should().Be(80);
 
@@ -244,22 +244,22 @@ public class PrivateNoteQuotaTests(TestWebApplicationFactory factory)
         var admin = SessionAs("admin");
 
         var ok = await admin.PutAsJsonAsync($"/private-notes/quotas/{user}",
-            new { limitBytes = 1024L * 1024 * 1024 * 1024 });
+            new { limitBytes = 1024L * 1024 * 1024 * 1024 }, TestContext.Current.CancellationToken);
         ok.StatusCode.Should().Be(HttpStatusCode.OK, "1 TB ちょうどは許容される");
 
         var tooBig = await admin.PutAsJsonAsync($"/private-notes/quotas/{user}",
-            new { limitBytes = 1024L * 1024 * 1024 * 1024 + 1 });
+            new { limitBytes = 1024L * 1024 * 1024 * 1024 + 1 }, TestContext.Current.CancellationToken);
         tooBig.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
         var zero = await admin.PutAsJsonAsync($"/private-notes/quotas/{user}",
-            new { limitBytes = 0 });
+            new { limitBytes = 0 }, TestContext.Current.CancellationToken);
         zero.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
         // 非管理者は変更できない（統制の向き）
         var viewer = factory.CreateClient();
         viewer.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "viewer");
         var denied = await viewer.PutAsJsonAsync($"/private-notes/quotas/{user}",
-            new { limitBytes = 1000 });
+            new { limitBytes = 1000 }, TestContext.Current.CancellationToken);
         denied.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
@@ -269,7 +269,7 @@ public class PrivateNoteQuotaTests(TestWebApplicationFactory factory)
     {
         var user = $"default-{Guid.NewGuid():N}"[..24];
         var usage = await SessionAs(user)
-            .GetFromJsonAsync<PrivateNoteListResponse>("/private-notes/");
+            .GetFromJsonAsync<PrivateNoteListResponse>("/private-notes/", TestContext.Current.CancellationToken);
         usage!.Usage.LimitBytes.Should().Be(1L * 1024 * 1024 * 1024);
         usage.Usage.UsedBytes.Should().Be(0);
     }

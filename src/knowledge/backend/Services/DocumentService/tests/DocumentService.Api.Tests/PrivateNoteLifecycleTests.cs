@@ -77,16 +77,16 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
     public async Task SC19からの作成は本文なしで既定値つきで作られる()
     {
         var (user, session, _) = await OwnerAsync();
-        var resp = await session.PostAsJsonAsync("/private-notes/", new { title = "空メモ" });
+        var resp = await session.PostAsJsonAsync("/private-notes/", new { title = "空メモ" }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        var note = await resp.Content.ReadFromJsonAsync<PrivateNoteDto>();
+        var note = await resp.Content.ReadFromJsonAsync<PrivateNoteDto>(TestContext.Current.CancellationToken);
         note!.Bytes.Should().Be(0);
         note.Deleted.Should().BeFalse();
         note.IncludeInSearch.Should().BeFalse();
 
         // Document 側の既定値（doc_scope / owner / restricted）
         var doc = await factory.CreateClient().GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>(
-            $"/documents/{note.Id}");
+            $"/documents/{note.Id}", TestContext.Current.CancellationToken);
         doc!.Attributes.Should().Contain("doc_scope", "private-note");
         doc.Attributes.Should().Contain("owner", user);
         doc.Attributes.Should().Contain("confidentiality", "restricted");
@@ -102,9 +102,9 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
     public async Task 新規の個人資料は3トグルOFFかつ非公開かつrestrictedで作られる()
     {
         var (user, session, _) = await OwnerAsync();
-        var resp = await session.PostAsJsonAsync("/private-notes/", new { title = "既定値の資料" });
+        var resp = await session.PostAsJsonAsync("/private-notes/", new { title = "既定値の資料" }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        var note = (await resp.Content.ReadFromJsonAsync<PrivateNoteDto>())!;
+        var note = (await resp.Content.ReadFromJsonAsync<PrivateNoteDto>(TestContext.Current.CancellationToken))!;
 
         // ⑩: 3 トグルすべて OFF（1 つずつ測る）。
         note.IncludeInSearch.Should().BeFalse("横断検索に含める は既定 OFF");
@@ -113,13 +113,13 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
 
         // FR-19: 公開範囲＝非公開（共有 0 件）。
         var shares = await session.GetFromJsonAsync<List<DocumentShareDto>>(
-            $"/documents/{note.Id}/shares");
+            $"/documents/{note.Id}/shares", TestContext.Current.CancellationToken);
         shares.Should().BeEmpty("新規の個人資料は所有者のみ（共有 0 件）");
 
         // FR-19: 機密区分＝restricted。⑨ の判定が読む `ai_input` も **excluded で明示**される
         // （[[IADR-0283]] 決定 4。不在に頼らない多層防御）。
         var doc = await factory.CreateClient().GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>(
-            $"/documents/{note.Id}");
+            $"/documents/{note.Id}", TestContext.Current.CancellationToken);
         doc!.Attributes.Should().Contain(
             ConfidentialityLevels.AttributeKey, ConfidentialityLevels.Restricted);
         doc.Attributes.Should().Contain(AiInputExposure.AttributeKey, AiInputExposure.Excluded);
@@ -136,13 +136,13 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
     {
         var (_, session, _) = await OwnerAsync();
         var note = (await (await session.PostAsJsonAsync("/private-notes/",
-            new { title = "露出トグルの資料" })).Content.ReadFromJsonAsync<PrivateNoteDto>())!;
+            new { title = "露出トグルの資料" }, TestContext.Current.CancellationToken)).Content.ReadFromJsonAsync<PrivateNoteDto>(TestContext.Current.CancellationToken))!;
 
         // 陽性対照: ON にすると included へ写り、判定も許可へ変わる。
         var on = await session.PutAsJsonAsync($"/private-notes/{note.Id}/exposure",
-            new { includeInSearch = true, includeInGraph = false, includeInAi = true });
+            new { includeInSearch = true, includeInGraph = false, includeInAi = true }, TestContext.Current.CancellationToken);
         on.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await on.Content.ReadFromJsonAsync<PrivateNoteDto>())!.IncludeInAi.Should().BeTrue();
+        (await on.Content.ReadFromJsonAsync<PrivateNoteDto>(TestContext.Current.CancellationToken))!.IncludeInAi.Should().BeTrue();
 
         var afterOn = await AttributesOfAsync(note.Id);
         afterOn.Should().Contain(AiInputExposure.AttributeKey, AiInputExposure.Included);
@@ -150,7 +150,7 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
 
         // 否定形: OFF へ戻すと excluded へ写り、判定も拒否へ戻る（片道にならない）。
         var off = await session.PutAsJsonAsync($"/private-notes/{note.Id}/exposure",
-            new { includeInSearch = true, includeInGraph = false, includeInAi = false });
+            new { includeInSearch = true, includeInGraph = false, includeInAi = false }, TestContext.Current.CancellationToken);
         off.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var afterOff = await AttributesOfAsync(note.Id);
@@ -172,15 +172,15 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
         var (_, session, plugin) = await OwnerAsync();
         var noteId = await PushNoteAsync(plugin, "version-stable.md", "本文");
         var before = (await factory.CreateClient()
-            .GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>($"/documents/{noteId}"))!.Version;
+            .GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>($"/documents/{noteId}", TestContext.Current.CancellationToken))!.Version;
 
         await session.PutAsJsonAsync($"/private-notes/{noteId}/exposure",
-            new { includeInSearch = true, includeInGraph = true, includeInAi = true });
+            new { includeInSearch = true, includeInGraph = true, includeInAi = true }, TestContext.Current.CancellationToken);
         await session.PutAsJsonAsync($"/private-notes/{noteId}/exposure",
-            new { includeInSearch = false, includeInGraph = false, includeInAi = false });
+            new { includeInSearch = false, includeInGraph = false, includeInAi = false }, TestContext.Current.CancellationToken);
 
         var after = (await factory.CreateClient()
-            .GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>($"/documents/{noteId}"))!.Version;
+            .GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>($"/documents/{noteId}", TestContext.Current.CancellationToken))!.Version;
         after.Should().Be(before, "露出トグルは本文の編集ではない（FR-19 の版の意味）");
     }
 
@@ -197,18 +197,18 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
         var noteId = await PushNoteAsync(victimPlugin, "victim.md", "secret");
         var mallory = SessionAs($"mallory-{Guid.NewGuid():N}"[..20]);
 
-        (await mallory.DeleteAsync($"/private-notes/{noteId}")).StatusCode
+        (await mallory.DeleteAsync($"/private-notes/{noteId}", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.NotFound);
-        (await mallory.PostAsync($"/private-notes/{noteId}/restore", null)).StatusCode
+        (await mallory.PostAsync($"/private-notes/{noteId}/restore", null, TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.NotFound);
-        (await mallory.PostAsJsonAsync("/private-notes/purge", new { ids = new[] { noteId } }))
+        (await mallory.PostAsJsonAsync("/private-notes/purge", new { ids = new[] { noteId } }, TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await mallory.PutAsJsonAsync($"/private-notes/{noteId}/exposure",
-            new { includeInSearch = true, includeInGraph = true, includeInAi = true }))
+            new { includeInSearch = true, includeInGraph = true, includeInAi = true }, TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
 
         // 陽性対照: 所有者は削除できる
-        (await victimSession.DeleteAsync($"/private-notes/{noteId}")).StatusCode
+        (await victimSession.DeleteAsync($"/private-notes/{noteId}", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.OK);
     }
 
@@ -220,20 +220,20 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
         var noteId = await PushNoteAsync(plugin, "restore.md", "内容");
 
         // アクティブなまま purge → 409（論理削除を飛ばした完全削除はさせない）
-        (await session.PostAsJsonAsync("/private-notes/purge", new { ids = new[] { noteId } }))
+        (await session.PostAsJsonAsync("/private-notes/purge", new { ids = new[] { noteId } }, TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Conflict);
 
-        (await session.DeleteAsync($"/private-notes/{noteId}")).StatusCode
+        (await session.DeleteAsync($"/private-notes/{noteId}", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.OK);
-        (await session.PostAsync($"/private-notes/{noteId}/restore", null)).StatusCode
+        (await session.PostAsync($"/private-notes/{noteId}/restore", null, TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.OK);
 
         // 復元後は削除状態が消えている
-        var list = await session.GetFromJsonAsync<PrivateNoteListResponse>("/private-notes/");
+        var list = await session.GetFromJsonAsync<PrivateNoteListResponse>("/private-notes/", TestContext.Current.CancellationToken);
         list!.Notes.Single(n => n.Id == noteId).Deleted.Should().BeFalse();
 
         // 復元済みへの restore は 409（冪等ではなく状態エラーとして知らせる）
-        (await session.PostAsync($"/private-notes/{noteId}/restore", null)).StatusCode
+        (await session.PostAsync($"/private-notes/{noteId}/restore", null, TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.Conflict);
     }
 
@@ -252,13 +252,13 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
 
         await RunMaintenanceAsync(now);
 
-        var list = await session.GetFromJsonAsync<PrivateNoteListResponse>("/private-notes/");
+        var list = await session.GetFromJsonAsync<PrivateNoteListResponse>("/private-notes/", TestContext.Current.CancellationToken);
         list!.Notes.Should().NotContain(n => n.Id == oldNote, "90 日経過で物理削除される");
         list.Notes.Should().Contain(n => n.Id == freshNote && n.Deleted,
             "90 日未満は保管が続く（陽性対照）");
 
         // 文書実体も消えている（復元不可）
-        (await factory.CreateClient().GetAsync($"/documents/{oldNote}")).StatusCode
+        (await factory.CreateClient().GetAsync($"/documents/{oldNote}", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.NotFound);
 
         // FR-22 ①-c: 事後通知は件数のみ
@@ -334,9 +334,9 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
             vaultPath = "sixty.md",
             title = "六十版",
             edits = Enumerable.Range(1, 60).Select(i => new { content = $"v{i}" }).ToList(),
-        });
+        }, TestContext.Current.CancellationToken);
         push.StatusCode.Should().Be(HttpStatusCode.Created);
-        var noteId = (await push.Content.ReadFromJsonAsync<PushNoteResponse>())!.NoteId;
+        var noteId = (await push.Content.ReadFromJsonAsync<PushNoteResponse>(TestContext.Current.CancellationToken))!.NoteId;
 
         // ケース 1: 全 60 版が 90 日以内 → 50 版を超えても 1 版も消えない（日数条件の陽性対照）
         await RunMaintenanceAsync(now);
@@ -350,10 +350,10 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
             var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
             var versions = await db.DocumentVersions
                 .Where(v => v.DocumentId == noteId)
-                .OrderBy(v => v.Version).Take(20).ToListAsync();
+                .OrderBy(v => v.Version).Take(20).ToListAsync(TestContext.Current.CancellationToken);
             foreach (var v in versions)
                 db.Entry(v).Property(x => x.CreatedAt).CurrentValue = now.AddDays(-91);
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         await RunMaintenanceAsync(now);
@@ -362,7 +362,7 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
         {
             var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
             var remaining = await db.DocumentVersions.Where(v => v.DocumentId == noteId)
-                .Select(v => v.Version).OrderBy(v => v).ToListAsync();
+                .Select(v => v.Version).OrderBy(v => v).ToListAsync(TestContext.Current.CancellationToken);
             remaining.First().Should().Be(11, "古い順に消える（版 1〜10 が落ち、11〜20 は直近 50 版以内なので残る）");
             remaining.Last().Should().Be(60);
         }
@@ -382,13 +382,13 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
         var (user, session, plugin) = await OwnerAsync();
         var n1 = await PushNoteAsync(plugin, "b1.md", new string('a', 100));
         var n2 = await PushNoteAsync(plugin, "b2.md", new string('b', 200));
-        (await session.DeleteAsync($"/private-notes/{n1}")).StatusCode.Should().Be(HttpStatusCode.OK);
-        (await session.DeleteAsync($"/private-notes/{n2}")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await session.DeleteAsync($"/private-notes/{n1}", TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await session.DeleteAsync($"/private-notes/{n2}", TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
 
         var purge = await session.PostAsJsonAsync("/private-notes/purge",
-            new { ids = new[] { n1, n2 } });
+            new { ids = new[] { n1, n2 } }, TestContext.Current.CancellationToken);
         purge.StatusCode.Should().Be(HttpStatusCode.OK);
-        var result = await purge.Content.ReadFromJsonAsync<PurgePrivateNotesResponse>();
+        var result = await purge.Content.ReadFromJsonAsync<PurgePrivateNotesResponse>(TestContext.Current.CancellationToken);
         result!.PurgedCount.Should().Be(2);
         result.FreedBytes.Should().Be(300);
 

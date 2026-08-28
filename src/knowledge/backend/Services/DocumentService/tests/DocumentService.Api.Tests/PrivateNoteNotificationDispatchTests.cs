@@ -43,7 +43,8 @@ public class PrivateNoteNotificationDispatchTests
         var (notifier, _) = BuildNotifier(handler);
 
         await notifier.NotifyAsync("owner-a", PrivateNoteNotificationKinds.PrivateNotePurgeImminent,
-            DateTimeOffset.UtcNow, count: 3, deadline: DateTimeOffset.UtcNow.AddDays(7));
+            DateTimeOffset.UtcNow, count: 3, deadline: DateTimeOffset.UtcNow.AddDays(7),
+            ct: TestContext.Current.CancellationToken);
 
         handler.LastPath.Should().Be(HttpPrivateNoteNotifier.IngressPath,
             "★ 受け口 NotificationIngressEndpoints と 1 バイトでも違えば通知は届かない");
@@ -132,7 +133,7 @@ public class PrivateNoteNotificationDispatchTests
         var (notifier, probe) = BuildNotifier(handler);
 
         await notifier.NotifyAsync("owner-a", PrivateNoteNotificationKinds.PrivateNotePurgeWeekly,
-            DateTimeOffset.UtcNow, count: 2);
+            DateTimeOffset.UtcNow, count: 2, ct: TestContext.Current.CancellationToken);
 
         probe.Measurements.Should().ContainSingle();
         var m = probe.Measurements[0];
@@ -174,14 +175,14 @@ public class PrivateNoteNotificationDispatchTests
         var session = factory.CreateClient();
         session.DefaultRequestHeaders.Add(TestAuthHandler.UserHeader, user);
 
-        var issued = await session.PostAsJsonAsync("/private-notes/devices", new { deviceName = "pc" });
-        var token = (await issued.Content.ReadFromJsonAsync<SyncTokenIssuedResponse>())!.Token;
+        var issued = await session.PostAsJsonAsync("/private-notes/devices", new { deviceName = "pc" }, TestContext.Current.CancellationToken);
+        var token = (await issued.Content.ReadFromJsonAsync<SyncTokenIssuedResponse>(TestContext.Current.CancellationToken))!.Token;
         var plugin = factory.CreateClient();
         plugin.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         var admin = factory.CreateClient();
         admin.DefaultRequestHeaders.Add(TestAuthHandler.UserHeader, "admin");
-        await admin.PutAsJsonAsync($"/private-notes/quotas/{user}", new { limitBytes = 1_000L });
+        await admin.PutAsJsonAsync($"/private-notes/quotas/{user}", new { limitBytes = 1_000L }, TestContext.Current.CancellationToken);
 
         // 850 バイト = 85% → 容量警告が発火する（＝送出が必ず起きる経路）
         var push = await plugin.PostAsJsonAsync("/private-notes/sync/notes", new
@@ -189,14 +190,14 @@ public class PrivateNoteNotificationDispatchTests
             vaultPath = "unreachable.md",
             title = "到達不能",
             edits = new[] { new { content = new string('a', 850) } },
-        });
+        }, TestContext.Current.CancellationToken);
         push.StatusCode.Should().Be(HttpStatusCode.Created,
             "★ 受け口が落ちていても資料は保存される（通知は本体操作の従属物ではない）");
 
-        var note = (await push.Content.ReadFromJsonAsync<PushNoteResponse>())!.NoteId;
-        (await session.DeleteAsync($"/private-notes/{note}")).StatusCode
+        var note = (await push.Content.ReadFromJsonAsync<PushNoteResponse>(TestContext.Current.CancellationToken))!.NoteId;
+        (await session.DeleteAsync($"/private-notes/{note}", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.OK);
-        var purge = await session.PostAsJsonAsync("/private-notes/purge", new { ids = new[] { note } });
+        var purge = await session.PostAsJsonAsync("/private-notes/purge", new { ids = new[] { note } }, TestContext.Current.CancellationToken);
         purge.StatusCode.Should().Be(HttpStatusCode.OK, "完全削除も同じく止まらない");
 
         // 定期処理も落ちない（HostedService が周期ごとに落ちると通知が永久に出なくなる）。
@@ -231,13 +232,13 @@ public class PrivateNoteNotificationDispatchTests
             // ③: 残り 5 日のトークン
             db.SyncDevices.Add(SyncDevice.Create(user, "expiring", SyncTokens.Generate().Hash,
                 now.AddDays(-25)));
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         using (var scope = factory.Services.CreateScope())
         {
             await scope.ServiceProvider.GetRequiredService<PrivateNoteMaintenanceService>()
-                .RunAsync(now);
+                .RunAsync(now, TestContext.Current.CancellationToken);
         }
 
         var sent = factory.Probe.Notifications.Where(n => n.Subject == user).ToList();
@@ -262,20 +263,20 @@ public class PrivateNoteNotificationDispatchTests
         var user = $"quota-order-{Guid.NewGuid():N}"[..24];
         var session = factory.CreateClient();
         session.DefaultRequestHeaders.Add(TestAuthHandler.UserHeader, user);
-        var issued = await session.PostAsJsonAsync("/private-notes/devices", new { deviceName = "pc" });
-        var token = (await issued.Content.ReadFromJsonAsync<SyncTokenIssuedResponse>())!.Token;
+        var issued = await session.PostAsJsonAsync("/private-notes/devices", new { deviceName = "pc" }, TestContext.Current.CancellationToken);
+        var token = (await issued.Content.ReadFromJsonAsync<SyncTokenIssuedResponse>(TestContext.Current.CancellationToken))!.Token;
         var plugin = factory.CreateClient();
         plugin.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         var admin = factory.CreateClient();
         admin.DefaultRequestHeaders.Add(TestAuthHandler.UserHeader, "admin");
-        await admin.PutAsJsonAsync($"/private-notes/quotas/{user}", new { limitBytes = 1_000L });
+        await admin.PutAsJsonAsync($"/private-notes/quotas/{user}", new { limitBytes = 1_000L }, TestContext.Current.CancellationToken);
 
         var push = await plugin.PostAsJsonAsync("/private-notes/sync/notes", new
         {
             vaultPath = "warn.md",
             title = "警告",
             edits = new[] { new { content = new string('a', 850) } },
-        });
+        }, TestContext.Current.CancellationToken);
         push.StatusCode.Should().Be(HttpStatusCode.Created);
 
         var warnings = factory.Probe.Notifications

@@ -57,7 +57,7 @@ public class TagDictionaryTests(TestWebApplicationFactory factory)
     [InlineData("platform-operator")]
     public async Task List_AdminOrOperator_IsAllowed(string role)
     {
-        (await ClientAs(role).GetAsync("/tags")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ClientAs(role).GetAsync("/tags", TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     // 受け入れ基準 1（裏）: 一般利用者は辞書を引けない。
@@ -66,7 +66,7 @@ public class TagDictionaryTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task List_GeneralUser_IsForbidden()
     {
-        (await ClientAs("viewer").GetAsync("/tags")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await ClientAs("viewer").GetAsync("/tags", TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     // 受け入れ基準 3: 追加はシステム管理者のみ（SC-09 のアクセス制御）。
@@ -76,7 +76,7 @@ public class TagDictionaryTests(TestWebApplicationFactory factory)
     [InlineData("viewer")]
     public async Task Create_NonAdmin_IsForbidden(string role)
     {
-        var resp = await ClientAs(role).PostAsJsonAsync("/tags", new CreateTagRequest(UniqueName("x")));
+        var resp = await ClientAs(role).PostAsJsonAsync("/tags", new CreateTagRequest(UniqueName("x")), TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
@@ -101,7 +101,7 @@ public class TagDictionaryTests(TestWebApplicationFactory factory)
         await AddTagAsync(name);
 
         var resp = await ClientAs("platform-admin")
-            .PostAsJsonAsync("/tags", new CreateTagRequest($"  {name}  "));
+            .PostAsJsonAsync("/tags", new CreateTagRequest($"  {name}  "), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
@@ -111,7 +111,7 @@ public class TagDictionaryTests(TestWebApplicationFactory factory)
     [InlineData("   ")]
     public async Task Create_BlankName_IsRejected(string name)
     {
-        var resp = await ClientAs("platform-admin").PostAsJsonAsync("/tags", new CreateTagRequest(name));
+        var resp = await ClientAs("platform-admin").PostAsJsonAsync("/tags", new CreateTagRequest(name), TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 

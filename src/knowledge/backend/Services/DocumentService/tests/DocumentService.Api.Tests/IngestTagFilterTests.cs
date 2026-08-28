@@ -43,7 +43,7 @@ public sealed class IngestTagFilterTests
         using var db = NewDb();
         var (consumer, probe) = Build(db);
 
-        var kept = await consumer.KnownTagsAsync([], default);
+        var kept = await consumer.KnownTagsAsync([], TestContext.Current.CancellationToken);
 
         kept.Should().BeEmpty();
         probe.Total.Should().Be(0, "規定どおりなら件数は 0 のまま");
@@ -56,10 +56,10 @@ public sealed class IngestTagFilterTests
         using var db = NewDb();
         var tag = Tag.Create("経理");
         db.Tags.Add(tag);
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         var (consumer, probe) = Build(db);
 
-        var kept = await consumer.KnownTagsAsync(["経理"], default);
+        var kept = await consumer.KnownTagsAsync(["経理"], TestContext.Current.CancellationToken);
 
         // #635: 通ったタグは**識別子**で返る（正本は表示名を持たない。[[IADR-0153]] 決定 1）。
         kept.Should().Equal([tag.Id]);
@@ -73,7 +73,7 @@ public sealed class IngestTagFilterTests
         using var db = NewDb();
         var (consumer, probe) = Build(db);
 
-        var kept = await consumer.KnownTagsAsync(["決算資料"], default);
+        var kept = await consumer.KnownTagsAsync(["決算資料"], TestContext.Current.CancellationToken);
 
         kept.Should().BeEmpty("辞書整合は経路を問わない不変条件である");
         probe.Total.Should().Be(1, "0 でない値が規定違反の検出になる");
@@ -86,10 +86,10 @@ public sealed class IngestTagFilterTests
         using var db = NewDb();
         var tag = Tag.Create("規程");
         db.Tags.Add(tag);
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         var (consumer, probe) = Build(db);
 
-        var kept = await consumer.KnownTagsAsync(["規程", "未登録A", "未登録B"], default);
+        var kept = await consumer.KnownTagsAsync(["規程", "未登録A", "未登録B"], TestContext.Current.CancellationToken);
 
         kept.Should().Equal([tag.Id]);
         probe.Total.Should().Be(2);
@@ -103,7 +103,7 @@ public sealed class IngestTagFilterTests
         using var db = NewDb();
         var (consumer, probe) = Build(db);
 
-        var kept = await consumer.KnownTagsAsync(["未登録", "未登録", "未登録"], default);
+        var kept = await consumer.KnownTagsAsync(["未登録", "未登録", "未登録"], TestContext.Current.CancellationToken);
 
         kept.Should().BeEmpty();
         probe.Total.Should().Be(1, "出現回数ではなく種類を数える");

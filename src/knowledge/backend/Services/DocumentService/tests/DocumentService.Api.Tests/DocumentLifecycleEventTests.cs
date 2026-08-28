@@ -29,10 +29,10 @@ public class DocumentLifecycleEventTests(TestWebApplicationFactory factory)
     {
         var doc = await CreateAsync("アーカイブ対象");
 
-        var resp = await Client().PostAsync($"/documents/{doc.Id}/archive", null);
+        var resp = await Client().PostAsync($"/documents/{doc.Id}/archive", null, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var archived = await resp.Content.ReadFromJsonAsync<DocumentDto>();
+        var archived = await resp.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken);
         archived!.Status.Should().Be("archived");
         archived.Version.Should().Be(doc.Version + 1);
 
@@ -45,7 +45,7 @@ public class DocumentLifecycleEventTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task Archive_Returns404_WhenDocumentMissing()
     {
-        var resp = await Client().PostAsync($"/documents/{Guid.NewGuid()}/archive", null);
+        var resp = await Client().PostAsync($"/documents/{Guid.NewGuid()}/archive", null, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -55,7 +55,7 @@ public class DocumentLifecycleEventTests(TestWebApplicationFactory factory)
     {
         var doc = await CreateAsync("削除対象");
 
-        var resp = await Client().DeleteAsync($"/documents/{doc.Id}");
+        var resp = await Client().DeleteAsync($"/documents/{doc.Id}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
         // E3a: DocumentDeleted の発行は Wolverine（RecordingMessageBus で観測する）。
@@ -68,7 +68,7 @@ public class DocumentLifecycleEventTests(TestWebApplicationFactory factory)
     public async Task Delete_DoesNotPublish_WhenDocumentMissing()
     {
         var missingId = Guid.NewGuid();
-        var resp = await Client().DeleteAsync($"/documents/{missingId}");
+        var resp = await Client().DeleteAsync($"/documents/{missingId}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
         // E3a: DocumentDeleted の発行は Wolverine（RecordingMessageBus で観測する）。

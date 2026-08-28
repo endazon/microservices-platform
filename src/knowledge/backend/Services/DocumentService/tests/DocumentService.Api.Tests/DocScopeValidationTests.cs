@@ -27,7 +27,7 @@ public class DocScopeValidationTests(TestWebApplicationFactory factory)
     public async Task 未知のdoc_scope値は400で拒否される()
     {
         var resp = await factory.CreateClient().PostAsJsonAsync("/documents",
-            DocBody(new() { ["confidentiality"] = "internal", ["doc_scope"] = "personal" }));
+            DocBody(new() { ["confidentiality"] = "internal", ["doc_scope"] = "personal" }), TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -42,7 +42,7 @@ public class DocScopeValidationTests(TestWebApplicationFactory factory)
                 ["confidentiality"] = "restricted",
                 ["doc_scope"] = "private-note",
                 ["owner"] = "someone",
-            }));
+            }), TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -51,7 +51,7 @@ public class DocScopeValidationTests(TestWebApplicationFactory factory)
     public async Task organizationの文書は一般経路で作成できる()
     {
         var resp = await factory.CreateClient().PostAsJsonAsync("/documents",
-            DocBody(new() { ["confidentiality"] = "internal", ["doc_scope"] = "organization" }));
+            DocBody(new() { ["confidentiality"] = "internal", ["doc_scope"] = "organization" }), TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
 
@@ -62,16 +62,16 @@ public class DocScopeValidationTests(TestWebApplicationFactory factory)
     {
         var client = factory.CreateClient();
         var create = await client.PostAsJsonAsync("/documents",
-            DocBody(new() { ["confidentiality"] = "internal" }));
+            DocBody(new() { ["confidentiality"] = "internal" }), TestContext.Current.CancellationToken);
         create.StatusCode.Should().Be(HttpStatusCode.Created);
-        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>();
+        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken);
 
         var update = await client.PutAsJsonAsync($"/documents/{doc!.Id}", new
         {
             title = "更新後",
             attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" },
             tags = new List<string>(),
-        });
+        }, TestContext.Current.CancellationToken);
         update.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -81,8 +81,8 @@ public class DocScopeValidationTests(TestWebApplicationFactory factory)
     {
         var client = factory.CreateClient();
         var create = await client.PostAsJsonAsync("/documents",
-            DocBody(new() { ["confidentiality"] = "internal" }));
-        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>();
+            DocBody(new() { ["confidentiality"] = "internal" }), TestContext.Current.CancellationToken);
+        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken);
 
         var badPut = await client.PutAsJsonAsync($"/documents/{doc!.Id}", new
         {
@@ -93,7 +93,7 @@ public class DocScopeValidationTests(TestWebApplicationFactory factory)
                 ["doc_scope"] = "team",
             },
             tags = new List<string>(),
-        });
+        }, TestContext.Current.CancellationToken);
         badPut.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
         var badPatch = await client.PatchAsJsonAsync($"/documents/{doc.Id}/metadata", new
@@ -104,7 +104,7 @@ public class DocScopeValidationTests(TestWebApplicationFactory factory)
                 ["doc_scope"] = "PRIVATE",
             },
             tags = new List<string>(),
-        });
+        }, TestContext.Current.CancellationToken);
         badPatch.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 

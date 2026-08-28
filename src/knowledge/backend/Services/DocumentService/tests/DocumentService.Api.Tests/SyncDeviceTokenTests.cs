@@ -42,18 +42,18 @@ public class SyncDeviceTokenTests(TestWebApplicationFactory factory)
         var before = DateTimeOffset.UtcNow;
 
         var resp = await session.PostAsJsonAsync("/private-notes/devices",
-            new { deviceName = "MacBook" });
+            new { deviceName = "MacBook" }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        var issued = await resp.Content.ReadFromJsonAsync<SyncTokenIssuedResponse>();
+        var issued = await resp.Content.ReadFromJsonAsync<SyncTokenIssuedResponse>(TestContext.Current.CancellationToken);
         issued!.Token.Should().NotBeNullOrWhiteSpace();
         issued.ExpiresAt.Should().BeCloseTo(before.AddDays(SyncDevice.TokenLifetimeDays),
             TimeSpan.FromMinutes(5), "有効期限は 30 日");
 
-        var listJson = await session.GetStringAsync("/private-notes/devices/");
+        var listJson = await session.GetStringAsync("/private-notes/devices/", TestContext.Current.CancellationToken);
         listJson.Should().NotContain(issued.Token, "平文トークンは発行応答で 1 回だけ返る");
 
         var devices = await session.GetFromJsonAsync<List<SyncDeviceDto>>(
-            "/private-notes/devices/");
+            "/private-notes/devices/", TestContext.Current.CancellationToken);
         devices.Should().ContainSingle(d => d.Id == issued.DeviceId && d.Active);
     }
 
@@ -74,12 +74,12 @@ public class SyncDeviceTokenTests(TestWebApplicationFactory factory)
             // 現在発行 → 有効（陽性対照）
             db.SyncDevices.Add(SyncDevice.Create(user, "new-pc", validHash,
                 DateTimeOffset.UtcNow));
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        (await PluginWith(expiredToken).GetAsync("/private-notes/sync/manifest")).StatusCode
+        (await PluginWith(expiredToken).GetAsync("/private-notes/sync/manifest", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.Unauthorized, "30 日の期限は失効操作を忘れた場合の最終的な歯止め");
-        (await PluginWith(validToken).GetAsync("/private-notes/sync/manifest")).StatusCode
+        (await PluginWith(validToken).GetAsync("/private-notes/sync/manifest", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.OK);
     }
 
@@ -90,16 +90,16 @@ public class SyncDeviceTokenTests(TestWebApplicationFactory factory)
         var user = $"rei-{Guid.NewGuid():N}"[..20];
         var session = SessionAs(user);
         var issued = await (await session.PostAsJsonAsync("/private-notes/devices",
-            new { deviceName = "pc" })).Content.ReadFromJsonAsync<SyncTokenIssuedResponse>();
+            new { deviceName = "pc" }, TestContext.Current.CancellationToken)).Content.ReadFromJsonAsync<SyncTokenIssuedResponse>(TestContext.Current.CancellationToken);
 
         var reissued = await (await session.PostAsync(
-            $"/private-notes/devices/{issued!.DeviceId}/reissue", null))
-            .Content.ReadFromJsonAsync<SyncTokenIssuedResponse>();
+            $"/private-notes/devices/{issued!.DeviceId}/reissue", null, TestContext.Current.CancellationToken))
+            .Content.ReadFromJsonAsync<SyncTokenIssuedResponse>(TestContext.Current.CancellationToken);
         reissued!.Token.Should().NotBe(issued.Token);
 
-        (await PluginWith(issued.Token).GetAsync("/private-notes/sync/manifest")).StatusCode
+        (await PluginWith(issued.Token).GetAsync("/private-notes/sync/manifest", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.Unauthorized, "旧トークンは再発行で無効になる");
-        (await PluginWith(reissued.Token).GetAsync("/private-notes/sync/manifest")).StatusCode
+        (await PluginWith(reissued.Token).GetAsync("/private-notes/sync/manifest", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.OK);
     }
 
@@ -110,20 +110,20 @@ public class SyncDeviceTokenTests(TestWebApplicationFactory factory)
         var user = $"all-{Guid.NewGuid():N}"[..20];
         var session = SessionAs(user);
         var t1 = await (await session.PostAsJsonAsync("/private-notes/devices",
-            new { deviceName = "pc-1" })).Content.ReadFromJsonAsync<SyncTokenIssuedResponse>();
+            new { deviceName = "pc-1" }, TestContext.Current.CancellationToken)).Content.ReadFromJsonAsync<SyncTokenIssuedResponse>(TestContext.Current.CancellationToken);
         var t2 = await (await session.PostAsJsonAsync("/private-notes/devices",
-            new { deviceName = "pc-2" })).Content.ReadFromJsonAsync<SyncTokenIssuedResponse>();
+            new { deviceName = "pc-2" }, TestContext.Current.CancellationToken)).Content.ReadFromJsonAsync<SyncTokenIssuedResponse>(TestContext.Current.CancellationToken);
 
         // 陽性対照: 失効前は両方使える
-        (await PluginWith(t1!.Token).GetAsync("/private-notes/sync/manifest")).StatusCode
+        (await PluginWith(t1!.Token).GetAsync("/private-notes/sync/manifest", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.OK);
 
-        var revoke = await session.PostAsync("/private-notes/devices/revoke-all", null);
+        var revoke = await session.PostAsync("/private-notes/devices/revoke-all", null, TestContext.Current.CancellationToken);
         revoke.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        (await PluginWith(t1.Token).GetAsync("/private-notes/sync/manifest")).StatusCode
+        (await PluginWith(t1.Token).GetAsync("/private-notes/sync/manifest", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.Unauthorized);
-        (await PluginWith(t2!.Token).GetAsync("/private-notes/sync/manifest")).StatusCode
+        (await PluginWith(t2!.Token).GetAsync("/private-notes/sync/manifest", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.Unauthorized);
     }
 
@@ -135,17 +135,18 @@ public class SyncDeviceTokenTests(TestWebApplicationFactory factory)
         var mallory = SessionAs($"mallory-{suffix}");
         var victim = SessionAs($"victim-{suffix}");
         var issued = await (await victim.PostAsJsonAsync("/private-notes/devices",
-            new { deviceName = "victim-pc" })).Content.ReadFromJsonAsync<SyncTokenIssuedResponse>();
+            new { deviceName = "victim-pc" }, TestContext.Current.CancellationToken)).Content.ReadFromJsonAsync<SyncTokenIssuedResponse>(TestContext.Current.CancellationToken);
 
-        (await mallory.GetFromJsonAsync<List<SyncDeviceDto>>("/private-notes/devices/"))
+        (await mallory.GetFromJsonAsync<List<SyncDeviceDto>>(
+            "/private-notes/devices/", TestContext.Current.CancellationToken))
             .Should().BeEmpty();
-        (await mallory.DeleteAsync($"/private-notes/devices/{issued!.DeviceId}")).StatusCode
+        (await mallory.DeleteAsync($"/private-notes/devices/{issued!.DeviceId}", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.NotFound);
-        (await mallory.PostAsync($"/private-notes/devices/{issued.DeviceId}/reissue", null))
+        (await mallory.PostAsync($"/private-notes/devices/{issued.DeviceId}/reissue", null, TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
 
         // 陽性対照: 本人は失効できる
-        (await victim.DeleteAsync($"/private-notes/devices/{issued.DeviceId}")).StatusCode
+        (await victim.DeleteAsync($"/private-notes/devices/{issued.DeviceId}", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.NoContent);
     }
 
@@ -169,7 +170,7 @@ public class SyncDeviceTokenTests(TestWebApplicationFactory factory)
             // 31 日前に発行 → 既に期限切れ（**当日・事後の追加通知は設けない**）
             db.SyncDevices.Add(SyncDevice.Create(user, "expired", SyncTokens.Generate().Hash,
                 now.AddDays(-31)));
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         await RunMaintenanceAsync(now);

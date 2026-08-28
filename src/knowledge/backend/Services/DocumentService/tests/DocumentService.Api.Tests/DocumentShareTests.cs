@@ -51,10 +51,11 @@ public class DocumentShareTests(TestWebApplicationFactory factory)
         var owner = ClientAs("alice");
 
         var grant = await owner.PostAsJsonAsync($"/documents/{docId}/shares",
-            new { subjectType = "user", subjectId = "bob" });
+            new { subjectType = "user", subjectId = "bob" }, TestContext.Current.CancellationToken);
         grant.StatusCode.Should().Be(HttpStatusCode.Created);
 
-        var shares = await owner.GetFromJsonAsync<List<ShareDto>>($"/documents/{docId}/shares");
+        var shares = await owner.GetFromJsonAsync<List<ShareDto>>(
+            $"/documents/{docId}/shares", TestContext.Current.CancellationToken);
         shares.Should().ContainSingle();
         shares![0].SubjectType.Should().Be("user");
         shares[0].SubjectId.Should().Be("bob");
@@ -68,7 +69,7 @@ public class DocumentShareTests(TestWebApplicationFactory factory)
         var docId = await CreateOwnedAsync("alice");
 
         var grant = await ClientAs("alice").PostAsJsonAsync($"/documents/{docId}/shares",
-            new { subjectType = "group", subjectId = "sales-dept" });
+            new { subjectType = "group", subjectId = "sales-dept" }, TestContext.Current.CancellationToken);
 
         grant.StatusCode.Should().Be(HttpStatusCode.Created);
     }
@@ -85,7 +86,7 @@ public class DocumentShareTests(TestWebApplicationFactory factory)
         var docId = await CreateOwnedAsync("alice");
 
         var grant = await ClientAs("mallory").PostAsJsonAsync($"/documents/{docId}/shares",
-            new { subjectType = "user", subjectId = "mallory-friend" });
+            new { subjectType = "user", subjectId = "mallory-friend" }, TestContext.Current.CancellationToken);
 
         grant.StatusCode.Should().Be(HttpStatusCode.NotFound,
             "他人の文書を共有できるなら、共有経路が所有者裁量制御の抜け道になる");
@@ -98,11 +99,11 @@ public class DocumentShareTests(TestWebApplicationFactory factory)
     {
         var docId = await CreateOwnedAsync("alice");
         (await ClientAs("alice").PostAsJsonAsync($"/documents/{docId}/shares",
-            new { subjectType = "user", subjectId = "bob" }))
+            new { subjectType = "user", subjectId = "bob" }, TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Created);
 
         var reshare = await ClientAs("bob").PostAsJsonAsync($"/documents/{docId}/shares",
-            new { subjectType = "user", subjectId = "carol" });
+            new { subjectType = "user", subjectId = "carol" }, TestContext.Current.CancellationToken);
 
         reshare.StatusCode.Should().Be(HttpStatusCode.NotFound,
             "再共有を許すと所有者の制御が及ばない範囲へ文書が広がる（計画は再共有不可と定めている）");
@@ -115,13 +116,14 @@ public class DocumentShareTests(TestWebApplicationFactory factory)
         var docId = await CreateOwnedAsync("alice");
         var owner = ClientAs("alice");
         (await owner.PostAsJsonAsync($"/documents/{docId}/shares",
-            new { subjectType = "user", subjectId = "bob" }))
+            new { subjectType = "user", subjectId = "bob" }, TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Created);
 
-        var revoke = await owner.DeleteAsync($"/documents/{docId}/shares/user/bob");
+        var revoke = await owner.DeleteAsync($"/documents/{docId}/shares/user/bob", TestContext.Current.CancellationToken);
 
         revoke.StatusCode.Should().Be(HttpStatusCode.NoContent);
-        (await owner.GetFromJsonAsync<List<ShareDto>>($"/documents/{docId}/shares"))
+        (await owner.GetFromJsonAsync<List<ShareDto>>(
+            $"/documents/{docId}/shares", TestContext.Current.CancellationToken))
             .Should().BeEmpty("取り消し後に共有が残ると、剥奪したはずの到達権が記録として残る");
     }
 
@@ -133,10 +135,10 @@ public class DocumentShareTests(TestWebApplicationFactory factory)
         var owner = ClientAs("alice");
         foreach (var subject in new[] { "bob", "carol" })
             (await owner.PostAsJsonAsync($"/documents/{docId}/shares",
-                new { subjectType = "user", subjectId = subject }))
+                new { subjectType = "user", subjectId = subject }, TestContext.Current.CancellationToken))
                 .StatusCode.Should().Be(HttpStatusCode.Created);
 
-        var revoke = await ClientAs("bob").DeleteAsync($"/documents/{docId}/shares/user/carol");
+        var revoke = await ClientAs("bob").DeleteAsync($"/documents/{docId}/shares/user/carol", TestContext.Current.CancellationToken);
 
         revoke.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -148,11 +150,11 @@ public class DocumentShareTests(TestWebApplicationFactory factory)
         var docId = await CreateOwnedAsync("alice");
         var owner = ClientAs("alice");
         (await owner.PostAsJsonAsync($"/documents/{docId}/shares",
-            new { subjectType = "user", subjectId = "bob" }))
+            new { subjectType = "user", subjectId = "bob" }, TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Created);
 
         var duplicate = await owner.PostAsJsonAsync($"/documents/{docId}/shares",
-            new { subjectType = "user", subjectId = "bob" });
+            new { subjectType = "user", subjectId = "bob" }, TestContext.Current.CancellationToken);
 
         duplicate.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
@@ -164,7 +166,7 @@ public class DocumentShareTests(TestWebApplicationFactory factory)
         var docId = await CreateOwnedAsync("alice");
 
         var grant = await ClientAs("alice").PostAsJsonAsync($"/documents/{docId}/shares",
-            new { subjectType = "everyone", subjectId = "all" });
+            new { subjectType = "everyone", subjectId = "all" }, TestContext.Current.CancellationToken);
 
         grant.StatusCode.Should().Be(HttpStatusCode.BadRequest,
             "種別の語彙が緩むと『全員』のような主体が紛れ、共有が公開に化ける");
@@ -180,11 +182,11 @@ public class DocumentShareTests(TestWebApplicationFactory factory)
             title = "owner なし",
             attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" },
             tags = new List<string>(),
-        });
-        var docId = (await resp.Content.ReadFromJsonAsync<DocumentDto>())!.Id;
+        }, TestContext.Current.CancellationToken);
+        var docId = (await resp.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken))!.Id;
 
         var grant = await ClientAs("alice").PostAsJsonAsync($"/documents/{docId}/shares",
-            new { subjectType = "user", subjectId = "bob" });
+            new { subjectType = "user", subjectId = "bob" }, TestContext.Current.CancellationToken);
 
         grant.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -199,7 +201,7 @@ public class DocumentShareTests(TestWebApplicationFactory factory)
     {
         var grant = await ClientAs("alice").PostAsJsonAsync(
             $"/documents/{Guid.NewGuid()}/shares",
-            new { subjectType = "user", subjectId = "bob" });
+            new { subjectType = "user", subjectId = "bob" }, TestContext.Current.CancellationToken);
 
         grant.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

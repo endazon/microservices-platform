@@ -51,9 +51,9 @@ public class ContentFingerprintTests(TestWebApplicationFactory factory)
                 ["owner"] = "fp-owner",
             },
             tags = new List<string>(),
-        });
+        }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        var doc = (await resp.Content.ReadFromJsonAsync<DocumentDto>())!;
+        var doc = (await resp.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken))!;
 
         var published = factory.Services.GetRequiredService<RecordingMessageBus>()
             .PublishedOf<DocumentUpdated>();
@@ -77,11 +77,11 @@ public class ContentFingerprintTests(TestWebApplicationFactory factory)
                 ["owner"] = "fp-owner",
             },
             tags = new List<string>(),
-        });
-        var doc = (await create.Content.ReadFromJsonAsync<DocumentDto>())!;
+        }, TestContext.Current.CancellationToken);
+        var doc = (await create.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken))!;
 
         // 本文の再投入（所有者）→ 指紋が body2 のものへ進む。
-        var put = await Client().PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = body2 });
+        var put = await Client().PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = body2 }, TestContext.Current.CancellationToken);
         put.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // メタデータのみ更新 → 直近の本文の指紋を**そのまま**運ぶ（本文は変わっていない）。
@@ -93,7 +93,7 @@ public class ContentFingerprintTests(TestWebApplicationFactory factory)
                 ["owner"] = "fp-owner",
             },
             tags = new List<string>(),
-        });
+        }, TestContext.Current.CancellationToken);
         patch.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var mine = factory.Services.GetRequiredService<RecordingMessageBus>()

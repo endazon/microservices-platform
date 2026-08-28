@@ -82,8 +82,8 @@ public class DocumentExistenceConcealmentTests(TestWebApplicationFactory factory
         using var toExisting = Request(method, template.Replace("{id}", existing.ToString()));
         using var toAbsent = Request(method, template.Replace("{id}", absent.ToString()));
 
-        var onExisting = await mallory.SendAsync(toExisting);
-        var onAbsent = await mallory.SendAsync(toAbsent);
+        var onExisting = await mallory.SendAsync(toExisting, TestContext.Current.CancellationToken);
+        var onAbsent = await mallory.SendAsync(toAbsent, TestContext.Current.CancellationToken);
 
         onExisting.StatusCode.Should().Be(HttpStatusCode.NotFound);
         // 🔴 **これが主張の本体である。** 片方が 403 なら、応答の差で実在が判る。
@@ -99,17 +99,17 @@ public class DocumentExistenceConcealmentTests(TestWebApplicationFactory factory
         var docId = await CreateOwnedAsync("alice");
         var alice = ClientAs("alice");
 
-        (await alice.GetAsync($"/documents/{docId}/shares"))
+        (await alice.GetAsync($"/documents/{docId}/shares", TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
         (await alice.PostAsJsonAsync($"/documents/{docId}/shares",
-            new { subjectType = "user", subjectId = "bob" }))
+            new { subjectType = "user", subjectId = "bob" }, TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Created);
 
-        (await alice.DeleteAsync($"/documents/{docId}/shares/user/bob"))
+        (await alice.DeleteAsync($"/documents/{docId}/shares/user/bob", TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-        (await alice.PutAsJsonAsync($"/documents/{docId}/body", new { body = "alice の本文" }))
+        (await alice.PutAsJsonAsync($"/documents/{docId}/body", new { body = "alice の本文" }, TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -121,7 +121,7 @@ public class DocumentExistenceConcealmentTests(TestWebApplicationFactory factory
     {
         var docId = await CreateOwnedAsync("alice");
 
-        var resp = await ClientAs("mallory").GetAsync($"/documents/{docId}");
+        var resp = await ClientAs("mallory").GetAsync($"/documents/{docId}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK,
             "本 PR が変えたのは書き込み拒否の応答コードだけである");

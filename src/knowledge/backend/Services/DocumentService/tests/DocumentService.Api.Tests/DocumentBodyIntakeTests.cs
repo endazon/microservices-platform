@@ -53,10 +53,10 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
     public async Task 本文つきで登録すると本文の参照が付き取り込みを起動するイベントが出る()
     {
         var resp = await ClientAs().PostAsJsonAsync("/documents",
-            CreatePayload("本文つき登録", body: "# 見出し\n\n本文である。"));
+            CreatePayload("本文つき登録", body: "# 見出し\n\n本文である。"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        var doc = (await resp.Content.ReadFromJsonAsync<DocumentDto>())!;
+        var doc = (await resp.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken))!;
         doc.MarkdownUri.Should().NotBeNull();
         doc.Status.Should().Be("normalized");
 
@@ -74,11 +74,11 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
     {
         const string body = "# RAG 検索の対象\n\n検索で当たるべき本文である。";
         var resp = await ClientAs().PostAsJsonAsync("/documents",
-            CreatePayload("検索対象", body: body));
-        var doc = (await resp.Content.ReadFromJsonAsync<DocumentDto>())!;
+            CreatePayload("検索対象", body: body), TestContext.Current.CancellationToken);
+        var doc = (await resp.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken))!;
 
         factory.Storage.CanResolve(doc.MarkdownUri).Should().BeTrue();
-        (await factory.Storage.GetTextAsync(doc.MarkdownUri!)).Should().Be(body);
+        (await factory.Storage.GetTextAsync(doc.MarkdownUri!, TestContext.Current.CancellationToken)).Should().Be(body);
     }
 
     // FR-21 ③: 本文と OriginalUri は排他ではなく**併存**できる。
@@ -86,10 +86,10 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
     public async Task 本文と元文書の所在は併存できる()
     {
         var resp = await ClientAs().PostAsJsonAsync("/documents",
-            CreatePayload("併存", body: "本文", originalUri: "https://example.invalid/original.docx"));
+            CreatePayload("併存", body: "本文", originalUri: "https://example.invalid/original.docx"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        var doc = (await resp.Content.ReadFromJsonAsync<DocumentDto>())!;
+        var doc = (await resp.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken))!;
         doc.MarkdownUri.Should().NotBeNull();
 
         // `DocumentDto` は `OriginalUri` を外へ出さないため、**併存**は永続化された実体で見る。
@@ -97,7 +97,7 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider
             .GetRequiredService<DocumentService.Api.Foundation.Persistence.DocumentDbContext>();
-        var stored = await db.Documents.FindAsync(doc.Id);
+        var stored = await db.Documents.FindAsync([doc.Id], TestContext.Current.CancellationToken);
         stored!.MarkdownUri.Should().Be(doc.MarkdownUri);
         stored.OriginalUri.Should().Be("https://example.invalid/original.docx");
     }
@@ -108,8 +108,8 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
     {
         const string body = "本文の実体はストレージ側にある。";
         var resp = await ClientAs().PostAsJsonAsync("/documents",
-            CreatePayload("参照のみ", body: body));
-        var doc = (await resp.Content.ReadFromJsonAsync<DocumentDto>())!;
+            CreatePayload("参照のみ", body: body), TestContext.Current.CancellationToken);
+        var doc = (await resp.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken))!;
 
         // DB（＝API が返す文書）が持つのは storage:// の参照だけで、本文そのものではない。
         doc.MarkdownUri.Should().StartWith("storage://");
@@ -124,12 +124,12 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
         var doc = await CreateOwnedAsync("自分の資料", owner: "alice");
 
         var resp = await ClientAs(user: "alice", roles: "viewer")
-            .PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = "自分で書いた本文である。" });
+            .PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = "自分で書いた本文である。" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var updated = (await resp.Content.ReadFromJsonAsync<DocumentDto>())!;
+        var updated = (await resp.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken))!;
         updated.MarkdownUri.Should().NotBeNull();
-        (await factory.Storage.GetTextAsync(updated.MarkdownUri!))
+        (await factory.Storage.GetTextAsync(updated.MarkdownUri!, TestContext.Current.CancellationToken))
             .Should().Be("自分で書いた本文である。");
     }
 
@@ -141,7 +141,7 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
         var tooLarge = new string('あ', DocumentBodyIntake.MaxBytes); // UTF-8 で 3 MB
 
         var resp = await ClientAs().PostAsJsonAsync("/documents",
-            CreatePayload("上限超過", body: tooLarge));
+            CreatePayload("上限超過", body: tooLarge), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
         // 切り詰めて成功を返していないこと＝**格納を 1 度も呼んでいないこと**で見る。
@@ -156,7 +156,7 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
         var tooLarge = new string('x', DocumentBodyIntake.MaxBytes + 1); // ASCII で 1 MB + 1 バイト
 
         var resp = await ClientAs(user: "alice")
-            .PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = tooLarge });
+            .PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = tooLarge }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
     }
@@ -168,11 +168,11 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
         var atLimit = new string('x', DocumentBodyIntake.MaxBytes); // ASCII で ちょうど 1 MB
 
         var resp = await ClientAs().PostAsJsonAsync("/documents",
-            CreatePayload("上限ちょうど", body: atLimit));
+            CreatePayload("上限ちょうど", body: atLimit), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        var doc = (await resp.Content.ReadFromJsonAsync<DocumentDto>())!;
-        var stored = await factory.Storage.GetTextAsync(doc.MarkdownUri!);
+        var doc = (await resp.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken))!;
+        var stored = await factory.Storage.GetTextAsync(doc.MarkdownUri!, TestContext.Current.CancellationToken);
         stored.Length.Should().Be(atLimit.Length);
         Encoding.UTF8.GetByteCount(stored).Should().Be(DocumentBodyIntake.MaxBytes);
         stored.Should().Be(atLimit);
@@ -187,18 +187,18 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
 
         // 先に所有者が書く（判定がキャッシュされるならこの時点で載る）。
         var owned = await ClientAs(user: "alice")
-            .PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = "alice の本文" });
+            .PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = "alice の本文" }, TestContext.Current.CancellationToken);
         owned.StatusCode.Should().Be(HttpStatusCode.OK);
-        var bodyUri = (await owned.Content.ReadFromJsonAsync<DocumentDto>())!.MarkdownUri!;
+        var bodyUri = (await owned.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken))!.MarkdownUri!;
 
         // **同じ文書 ID へ別の主体で書く。** 主体がキャッシュキーに入っていなければここが通ってしまう。
         var denied = await ClientAs(user: "bob")
-            .PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = "bob が上書きした本文" });
+            .PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = "bob が上書きした本文" }, TestContext.Current.CancellationToken);
 
         // ADR-0056 決定 1・[[IADR-0277]]: 拒否は 404（存在秘匿）。403 にしない。
         denied.StatusCode.Should().Be(HttpStatusCode.NotFound);
         // 拒否が「書き込みの後で拒否を返した」ではないこと ——本文は alice のままである。
-        (await factory.Storage.GetTextAsync(bodyUri)).Should().Be("alice の本文");
+        (await factory.Storage.GetTextAsync(bodyUri, TestContext.Current.CancellationToken)).Should().Be("alice の本文");
     }
 
     // FR-21 ⑧（陽性対照）: 拒否が「誰も書けない」ではないこと —— bob は自分の文書には書ける。
@@ -208,7 +208,7 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
         var doc = await CreateOwnedAsync("bob の資料", owner: "bob");
 
         var resp = await ClientAs(user: "bob")
-            .PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = "bob の本文" });
+            .PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = "bob の本文" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -218,11 +218,11 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task 所有者属性を持たない文書には本文を投入できない()
     {
-        var resp0 = await ClientAs().PostAsJsonAsync("/documents", CreatePayload("所有者なし"));
-        var doc = (await resp0.Content.ReadFromJsonAsync<DocumentDto>())!;
+        var resp0 = await ClientAs().PostAsJsonAsync("/documents", CreatePayload("所有者なし"), TestContext.Current.CancellationToken);
+        var doc = (await resp0.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken))!;
 
         var resp = await ClientAs(user: "alice")
-            .PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = "誰かの本文" });
+            .PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = "誰かの本文" }, TestContext.Current.CancellationToken);
 
         // ADR-0056 決定 1: 拒否は 404。
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -235,7 +235,7 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
     public async Task 不在の文書への本文投入は404()
     {
         var resp = await ClientAs(user: "alice")
-            .PutAsJsonAsync($"/documents/{Guid.NewGuid()}/body", new { body = "本文" });
+            .PutAsJsonAsync($"/documents/{Guid.NewGuid()}/body", new { body = "本文" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -244,10 +244,10 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task 本文を伴わない登録は従来どおり本文の参照を持たない()
     {
-        var resp = await ClientAs().PostAsJsonAsync("/documents", CreatePayload("本文なし"));
+        var resp = await ClientAs().PostAsJsonAsync("/documents", CreatePayload("本文なし"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        var doc = (await resp.Content.ReadFromJsonAsync<DocumentDto>())!;
+        var doc = (await resp.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken))!;
         doc.MarkdownUri.Should().BeNull();
         doc.Status.Should().Be("draft");
     }

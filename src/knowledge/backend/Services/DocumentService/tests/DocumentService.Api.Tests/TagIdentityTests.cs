@@ -54,7 +54,7 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
     public async Task Create_WithUnknownTag_Returns400()
     {
         var resp = await Client().PostAsJsonAsync("/documents",
-            new { title = "未知タグ", attributes = Conf(), tags = new[] { UniqueName("未登録") } });
+            new { title = "未知タグ", attributes = Conf(), tags = new[] { UniqueName("未登録") } }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -65,7 +65,7 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
         var doc = await AddDocumentAsync("既存文書");
 
         var resp = await Client().PatchAsJsonAsync($"/documents/{doc.Id}/metadata",
-            new { attributes = Conf(), tags = new[] { UniqueName("未登録") } });
+            new { attributes = Conf(), tags = new[] { UniqueName("未登録") } }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -81,7 +81,7 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
         var doc = await AddDocumentAsync("往復文書", name);
 
         doc.Tags.Should().Equal([name]);
-        var fetched = await Client().GetFromJsonAsync<DocumentDto>($"/documents/{doc.Id}");
+        var fetched = await Client().GetFromJsonAsync<DocumentDto>($"/documents/{doc.Id}", TestContext.Current.CancellationToken);
         fetched!.Tags.Should().Equal([name], "取得しても表示名で返る");
     }
 
@@ -98,14 +98,14 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
         var doc = await AddDocumentAsync("追随する文書", before);
         doc.Version.Should().Be(1);
 
-        var resp = await Client().PutAsJsonAsync($"/tags/{tag.Id}", new RenameTagRequest(after));
+        var resp = await Client().PutAsJsonAsync($"/tags/{tag.Id}", new RenameTagRequest(after), TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var renamed = await resp.Content.ReadFromJsonAsync<RenameTagResponse>();
+        var renamed = await resp.Content.ReadFromJsonAsync<RenameTagResponse>(TestContext.Current.CancellationToken);
         renamed!.Tag.Id.Should().Be(tag.Id, "識別子は改名で変わらない");
         renamed.Tag.Name.Should().Be(after);
         renamed.RepublishedDocuments.Should().Be(1, "射影を作り直すため該当文書だけ再発行する");
 
-        var fetched = await Client().GetFromJsonAsync<DocumentDto>($"/documents/{doc.Id}");
+        var fetched = await Client().GetFromJsonAsync<DocumentDto>($"/documents/{doc.Id}", TestContext.Current.CancellationToken);
         fetched!.Tags.Should().Equal([after], "既存文書が新しい名前へ追随する");
         fetched.Version.Should().Be(1, "改名で版は増えない");
 
@@ -131,9 +131,9 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
         var unrelated = await AddDocumentAsync("関係なし", unused);
 
         var resp = await Client().PutAsJsonAsync($"/tags/{usedTag.Id}",
-            new RenameTagRequest(UniqueName("使用新")));
+            new RenameTagRequest(UniqueName("使用新")), TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await resp.Content.ReadFromJsonAsync<RenameTagResponse>())!
+        (await resp.Content.ReadFromJsonAsync<RenameTagResponse>(TestContext.Current.CancellationToken))!
             .RepublishedDocuments.Should().Be(1);
 
         // E3b: DocumentUpdated の発行は Wolverine（RecordingMessageBus で観測する）。
@@ -157,14 +157,14 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
 
         // 版 2 を作る（タグは付けたまま）。
         (await Client().PatchAsJsonAsync($"/documents/{doc.Id}/metadata",
-            new { attributes = Conf(), tags = new[] { before }, changeNote = "見直し" }))
+            new { attributes = Conf(), tags = new[] { before }, changeNote = "見直し" }, TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
-        (await Client().PutAsJsonAsync($"/tags/{tag.Id}", new RenameTagRequest(after)))
+        (await Client().PutAsJsonAsync($"/tags/{tag.Id}", new RenameTagRequest(after), TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
         var versions = await Client()
-            .GetFromJsonAsync<List<DocumentVersionDto>>($"/documents/{doc.Id}/versions");
+            .GetFromJsonAsync<List<DocumentVersionDto>>($"/documents/{doc.Id}/versions", TestContext.Current.CancellationToken);
         versions!.Should().HaveCount(2);
         versions.Should().OnlyContain(v => v.Tags.Contains(after),
             "過去版も現在の表示名で出る（改名は表示上の変更である）");
@@ -178,7 +178,7 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
         var bName = UniqueName("B");
         await AddTagAsync(bName);
 
-        var resp = await Client().PutAsJsonAsync($"/tags/{a.Id}", new RenameTagRequest(bName));
+        var resp = await Client().PutAsJsonAsync($"/tags/{a.Id}", new RenameTagRequest(bName), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
@@ -190,7 +190,7 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
         var name = UniqueName("同名");
         var tag = await AddTagAsync(name);
 
-        var resp = await Client().PutAsJsonAsync($"/tags/{tag.Id}", new RenameTagRequest($"  {name}  "));
+        var resp = await Client().PutAsJsonAsync($"/tags/{tag.Id}", new RenameTagRequest($"  {name}  "), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -204,7 +204,7 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
         var tag = await AddTagAsync(UniqueName("権限"));
 
         var resp = await ClientAs(role).PutAsJsonAsync($"/tags/{tag.Id}",
-            new RenameTagRequest(UniqueName("権限新")));
+            new RenameTagRequest(UniqueName("権限新")), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -216,7 +216,7 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
     {
         var tag = await AddTagAsync(UniqueName("削除権限"));
 
-        (await ClientAs(role).DeleteAsync($"/tags/{tag.Id}"))
+        (await ClientAs(role).DeleteAsync($"/tags/{tag.Id}", TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
@@ -226,10 +226,10 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
     {
         var tag = await AddTagAsync(UniqueName("未使用削除"));
 
-        (await Client().DeleteAsync($"/tags/{tag.Id}"))
+        (await Client().DeleteAsync($"/tags/{tag.Id}", TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-        var body = await Client().GetFromJsonAsync<TagDictionaryResponse>("/tags");
+        var body = await Client().GetFromJsonAsync<TagDictionaryResponse>("/tags", TestContext.Current.CancellationToken);
         body!.Tags.Should().NotContain(t => t.Id == tag.Id);
     }
 
@@ -243,10 +243,11 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
         await AddDocumentAsync("使用文書1", name);
         await AddDocumentAsync("使用文書2", name);
 
-        var resp = await Client().DeleteAsync($"/tags/{tag.Id}");
+        var resp = await Client().DeleteAsync($"/tags/{tag.Id}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        var body = await resp.Content.ReadFromJsonAsync<Dictionary<string, System.Text.Json.JsonElement>>();
+        var body = await resp.Content.ReadFromJsonAsync<Dictionary<string, System.Text.Json.JsonElement>>(
+            TestContext.Current.CancellationToken);
         body!["usageCount"].GetInt32().Should().Be(2);
     }
 
@@ -261,10 +262,10 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
 
         // 版 2 でタグを外す。版履歴には版 1 のタグが残る。
         (await Client().PatchAsJsonAsync($"/documents/{doc.Id}/metadata",
-            new { attributes = Conf(), tags = Array.Empty<string>(), changeNote = "タグを外した" }))
+            new { attributes = Conf(), tags = Array.Empty<string>(), changeNote = "タグを外した" }, TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
-        (await Client().DeleteAsync($"/tags/{tag.Id}"))
+        (await Client().DeleteAsync($"/tags/{tag.Id}", TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.NoContent,
                 "版履歴を数えると、一度でも使われたタグを永久に削除できなくなる");
     }
@@ -273,7 +274,7 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
     public async Task Rename_UnknownId_Returns404()
     {
         var resp = await Client().PutAsJsonAsync($"/tags/{Guid.NewGuid()}",
-            new RenameTagRequest(UniqueName("存在しない")));
+            new RenameTagRequest(UniqueName("存在しない")), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -281,7 +282,7 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task Delete_UnknownId_Returns404()
     {
-        (await Client().DeleteAsync($"/tags/{Guid.NewGuid()}"))
+        (await Client().DeleteAsync($"/tags/{Guid.NewGuid()}", TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 }

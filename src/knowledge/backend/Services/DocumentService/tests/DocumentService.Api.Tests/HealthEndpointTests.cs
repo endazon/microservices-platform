@@ -15,7 +15,7 @@ public class HealthEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task GetHealthLive_Returns200()
     {
-        var response = await factory.CreateClient().GetAsync("/health/live");
+        var response = await factory.CreateClient().GetAsync("/health/live", TestContext.Current.CancellationToken);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -33,9 +33,9 @@ public class HealthEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task GetDocuments_Returns200()
     {
-        var response = await factory.CreateClient().GetAsync("/documents");
+        var response = await factory.CreateClient().GetAsync("/documents", TestContext.Current.CancellationToken);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var docs = await response.Content.ReadFromJsonAsync<List<DocumentDto>>();
+        var docs = await response.Content.ReadFromJsonAsync<List<DocumentDto>>(TestContext.Current.CancellationToken);
         docs.Should().NotBeNull();
     }
 
@@ -44,7 +44,7 @@ public class HealthEndpointTests(TestWebApplicationFactory factory)
     public async Task PostDocument_Returns201()
     {
         var req = new { Title = "テスト文書", OriginalUri = (string?)null, ContentType = (string?)null, Attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" }, Tags = new List<string>() };
-        var response = await factory.CreateClient().PostAsJsonAsync("/documents", req);
+        var response = await factory.CreateClient().PostAsJsonAsync("/documents", req, TestContext.Current.CancellationToken);
         response.StatusCode.Should().Be(HttpStatusCode.Created);
     }
 }

@@ -20,19 +20,20 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
     {
         var client = Client();
         var create = await client.PostAsJsonAsync("/documents",
-            new { title = "v1", attributes = Conf(), tags = new List<string>() });
-        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>();
+            new { title = "v1", attributes = Conf(), tags = new List<string>() }, TestContext.Current.CancellationToken);
+        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken);
         doc!.Version.Should().Be(1);
 
         var update = await client.PutAsJsonAsync($"/documents/{doc.Id}",
-            new { title = "v2", attributes = Conf(), tags = new List<string>() });
+            new { title = "v2", attributes = Conf(), tags = new List<string>() }, TestContext.Current.CancellationToken);
         update.StatusCode.Should().Be(HttpStatusCode.OK);
-        var updated = await update.Content.ReadFromJsonAsync<DocumentDto>();
+        var updated = await update.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken);
         updated!.Version.Should().Be(2);
 
-        var versionsResp = await client.GetAsync($"/documents/{doc.Id}/versions");
+        var versionsResp = await client.GetAsync($"/documents/{doc.Id}/versions", TestContext.Current.CancellationToken);
         versionsResp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var versions = await versionsResp.Content.ReadFromJsonAsync<List<DocumentVersionDto>>();
+        var versions = await versionsResp.Content.ReadFromJsonAsync<List<DocumentVersionDto>>(
+            TestContext.Current.CancellationToken);
         versions!.Count.Should().Be(2);
         // 新しい順
         versions[0].Version.Should().Be(2);
@@ -44,18 +45,18 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
     {
         var client = Client();
         var create = await client.PostAsJsonAsync("/documents",
-            new { title = "original", attributes = Conf(), tags = new List<string>() });
-        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>();
+            new { title = "original", attributes = Conf(), tags = new List<string>() }, TestContext.Current.CancellationToken);
+        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken);
 
         await client.PutAsJsonAsync($"/documents/{doc!.Id}",
-            new { title = "changed", attributes = Conf(), tags = new List<string>() });
+            new { title = "changed", attributes = Conf(), tags = new List<string>() }, TestContext.Current.CancellationToken);
 
-        var v1Resp = await client.GetAsync($"/documents/{doc.Id}/versions/1");
+        var v1Resp = await client.GetAsync($"/documents/{doc.Id}/versions/1", TestContext.Current.CancellationToken);
         v1Resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var v1 = await v1Resp.Content.ReadFromJsonAsync<DocumentVersionDto>();
+        var v1 = await v1Resp.Content.ReadFromJsonAsync<DocumentVersionDto>(TestContext.Current.CancellationToken);
         v1!.Title.Should().Be("original");
 
-        var missing = await client.GetAsync($"/documents/{doc.Id}/versions/99");
+        var missing = await client.GetAsync($"/documents/{doc.Id}/versions/99", TestContext.Current.CancellationToken);
         missing.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -64,19 +65,19 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
     {
         var client = Client();
         var create = await client.PostAsJsonAsync("/documents",
-            new { title = "keep-title", attributes = Conf(), tags = new List<string>() });
-        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>();
+            new { title = "keep-title", attributes = Conf(), tags = new List<string>() }, TestContext.Current.CancellationToken);
+        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken);
 
         // SC-05, #635: **タグは辞書に在る名前しか付けられない**（手入力は自動登録しない。
         // [[IADR-0153]] 決定 5）。辞書へ先に登録する。
         var tagName = $"q3-{Guid.NewGuid():N}";
-        (await client.PostAsJsonAsync("/tags", new CreateTagRequest(tagName)))
+        (await client.PostAsJsonAsync("/tags", new CreateTagRequest(tagName), TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Created);
 
         var patch = await client.PatchAsJsonAsync($"/documents/{doc!.Id}/metadata",
-            new { attributes = new Dictionary<string, string> { ["confidentiality"] = "internal", ["dept"] = "sales" }, tags = new[] { tagName } });
+            new { attributes = new Dictionary<string, string> { ["confidentiality"] = "internal", ["dept"] = "sales" }, tags = new[] { tagName } }, TestContext.Current.CancellationToken);
         patch.StatusCode.Should().Be(HttpStatusCode.OK);
-        var patched = await patch.Content.ReadFromJsonAsync<DocumentDto>();
+        var patched = await patch.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken);
         patched!.Title.Should().Be("keep-title");
         patched.Attributes.Should().ContainKey("dept");
         // **応答は表示名で返る**（正本は識別子。[[IADR-0153]] 決定 2。契約は変わっていない）。
@@ -89,12 +90,12 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
     {
         var client = Client();
         var create = await client.PostAsJsonAsync("/documents",
-            new { title = "doc", attributes = Conf(), tags = new List<string>() });
-        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>();
+            new { title = "doc", attributes = Conf(), tags = new List<string>() }, TestContext.Current.CancellationToken);
+        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken);
 
         // 現在版は 1。期待版 5 は不一致 → 409
         var conflict = await client.PutAsJsonAsync($"/documents/{doc!.Id}",
-            new { title = "x", attributes = Conf(), tags = new List<string>(), expectedVersion = 5 });
+            new { title = "x", attributes = Conf(), tags = new List<string>(), expectedVersion = 5 }, TestContext.Current.CancellationToken);
         conflict.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
@@ -103,12 +104,12 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
     {
         var client = Client();
         var create = await client.PostAsJsonAsync("/documents",
-            new { title = "to-publish", attributes = Conf(), tags = new List<string>() });
-        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>();
+            new { title = "to-publish", attributes = Conf(), tags = new List<string>() }, TestContext.Current.CancellationToken);
+        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken);
 
-        var publish = await client.PostAsync($"/documents/{doc!.Id}/publish", null);
+        var publish = await client.PostAsync($"/documents/{doc!.Id}/publish", null, TestContext.Current.CancellationToken);
         publish.StatusCode.Should().Be(HttpStatusCode.OK);
-        var published = await publish.Content.ReadFromJsonAsync<DocumentDto>();
+        var published = await publish.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken);
         published!.Status.Should().Be(DocumentStatus.Published);
     }
 
@@ -118,12 +119,12 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
     {
         var client = Client();
         var create = await client.PostAsJsonAsync("/documents",
-            new { title = "to-archive", attributes = Conf(), tags = new List<string>() });
-        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>();
+            new { title = "to-archive", attributes = Conf(), tags = new List<string>() }, TestContext.Current.CancellationToken);
+        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken);
 
-        (await client.PostAsync($"/documents/{doc!.Id}/archive", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.PostAsync($"/documents/{doc!.Id}/archive", null, TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var republish = await client.PostAsync($"/documents/{doc.Id}/publish", null);
+        var republish = await client.PostAsync($"/documents/{doc.Id}/publish", null, TestContext.Current.CancellationToken);
         republish.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
@@ -132,7 +133,7 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
     {
         var client = Client();
         var resp = await client.PostAsJsonAsync("/documents",
-            new { title = "", tags = new List<string>() });
+            new { title = "", tags = new List<string>() }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 }

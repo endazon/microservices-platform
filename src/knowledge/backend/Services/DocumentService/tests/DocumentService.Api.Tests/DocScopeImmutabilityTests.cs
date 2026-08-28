@@ -133,7 +133,7 @@ public class DocScopeImmutabilityTests(TestWebApplicationFactory factory)
         });
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var updated = (await resp.Content.ReadFromJsonAsync<DocumentDto>())!;
+        var updated = (await resp.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken))!;
         updated.Attributes["confidentiality"].Should().Be("confidential",
             "拒否が「何も更新できない」に化けていないこと");
         updated.Attributes["doc_scope"].Should().Be("organization");

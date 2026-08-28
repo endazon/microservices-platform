@@ -30,7 +30,7 @@ public class DocumentAuthorizationTests(TestWebApplicationFactory factory)
     public async Task Create_NonPrivilegedRole_Returns403()
     {
         var client = ClientAs("viewer");
-        var resp = await client.PostAsJsonAsync("/documents", new { title = "t" });
+        var resp = await client.PostAsJsonAsync("/documents", new { title = "t" }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
@@ -51,7 +51,7 @@ public class DocumentAuthorizationTests(TestWebApplicationFactory factory)
         {
             Content = JsonContent.Create(new { title = "t" })
         };
-        var resp = await client.SendAsync(req);
+        var resp = await client.SendAsync(req, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
@@ -60,7 +60,7 @@ public class DocumentAuthorizationTests(TestWebApplicationFactory factory)
     {
         // 読み取りはロール不要（一般利用者の閲覧）。非権限ロールでも 200。
         var client = ClientAs("viewer");
-        (await client.GetAsync("/documents")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.GetAsync("/documents", TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     // ── #629: 運用者は 6 口すべてで 403（受け入れ基準 1）────────────────────────
@@ -87,7 +87,7 @@ public class DocumentAuthorizationTests(TestWebApplicationFactory factory)
         {
             Content = JsonContent.Create(new { title = "t" })
         };
-        var resp = await client.SendAsync(req);
+        var resp = await client.SendAsync(req, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
@@ -101,7 +101,7 @@ public class DocumentAuthorizationTests(TestWebApplicationFactory factory)
     public async Task Read_OperatorRole_IsStillAllowed(string template)
     {
         var client = ClientAs("platform-operator");
-        var resp = await client.GetAsync(template.Replace("{id}", Guid.NewGuid().ToString()));
+        var resp = await client.GetAsync(template.Replace("{id}", Guid.NewGuid().ToString()), TestContext.Current.CancellationToken);
 
         // 不在の id は 404 になる。**塞がれていないこと**が主張なので、403 でなければよい。
         resp.StatusCode.Should().NotBe(HttpStatusCode.Forbidden);
@@ -113,7 +113,7 @@ public class DocumentAuthorizationTests(TestWebApplicationFactory factory)
     {
         var client = ClientAs("platform-admin");
         var resp = await client.PostAsJsonAsync("/documents",
-            new { title = "admin-doc", attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" } });
+            new { title = "admin-doc", attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" } }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
 
@@ -132,7 +132,7 @@ public class DocumentAuthorizationTests(TestWebApplicationFactory factory)
     {
         var client = ClientAs("platform-operator");
         var resp = await client.PostAsJsonAsync("/documents",
-            new { title = "kb-writer-doc", attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" } });
+            new { title = "kb-writer-doc", attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" } }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created,
             "AST の KB 書き込みが operator ロールで本口を直接叩いている（IADR-0075）。裁定まで据え置く");

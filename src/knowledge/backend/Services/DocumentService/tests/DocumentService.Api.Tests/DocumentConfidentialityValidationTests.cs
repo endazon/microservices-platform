@@ -19,7 +19,7 @@ public class DocumentConfidentialityValidationTests(TestWebApplicationFactory fa
     [Fact]
     public async Task Create_WithoutAttributes_Returns400()
     {
-        var resp = await Client().PostAsJsonAsync("/documents", new { title = "no-attrs" });
+        var resp = await Client().PostAsJsonAsync("/documents", new { title = "no-attrs" }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -28,7 +28,7 @@ public class DocumentConfidentialityValidationTests(TestWebApplicationFactory fa
     public async Task Create_MissingConfidentiality_Returns400()
     {
         var resp = await Client().PostAsJsonAsync("/documents",
-            new { title = "dept-only", attributes = new Dictionary<string, string> { ["dept"] = "sales" } });
+            new { title = "dept-only", attributes = new Dictionary<string, string> { ["dept"] = "sales" } }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -40,7 +40,7 @@ public class DocumentConfidentialityValidationTests(TestWebApplicationFactory fa
     public async Task Create_UnknownConfidentiality_Returns400(string value)
     {
         var resp = await Client().PostAsJsonAsync("/documents",
-            new { title = "bad-conf", attributes = new Dictionary<string, string> { ["confidentiality"] = value } });
+            new { title = "bad-conf", attributes = new Dictionary<string, string> { ["confidentiality"] = value } }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -53,9 +53,9 @@ public class DocumentConfidentialityValidationTests(TestWebApplicationFactory fa
     public async Task Create_ValidConfidentiality_Returns201(string value)
     {
         var resp = await Client().PostAsJsonAsync("/documents",
-            new { title = "ok", attributes = new Dictionary<string, string> { ["confidentiality"] = value } });
+            new { title = "ok", attributes = new Dictionary<string, string> { ["confidentiality"] = value } }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        var doc = await resp.Content.ReadFromJsonAsync<DocumentDto>();
+        var doc = await resp.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken);
         doc!.Attributes[DocumentAttributes.ConfidentialityKey].Should().Be(value);
     }
 
@@ -65,7 +65,7 @@ public class DocumentConfidentialityValidationTests(TestWebApplicationFactory fa
     {
         var id = await CreateValidAsync();
         var resp = await Client().PutAsJsonAsync($"/documents/{id}",
-            new { title = "updated", attributes = new Dictionary<string, string> { ["dept"] = "sales" } });
+            new { title = "updated", attributes = new Dictionary<string, string> { ["dept"] = "sales" } }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -74,7 +74,7 @@ public class DocumentConfidentialityValidationTests(TestWebApplicationFactory fa
     {
         var id = await CreateValidAsync();
         var resp = await Client().PutAsJsonAsync($"/documents/{id}",
-            new { title = "updated", attributes = new Dictionary<string, string> { ["confidentiality"] = "confidential" } });
+            new { title = "updated", attributes = new Dictionary<string, string> { ["confidentiality"] = "confidential" } }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -84,7 +84,7 @@ public class DocumentConfidentialityValidationTests(TestWebApplicationFactory fa
     {
         var id = await CreateValidAsync();
         var resp = await Client().PatchAsJsonAsync($"/documents/{id}/metadata",
-            new { attributes = new Dictionary<string, string> { ["dept"] = "sales" }, tags = Array.Empty<string>() });
+            new { attributes = new Dictionary<string, string> { ["dept"] = "sales" }, tags = Array.Empty<string>() }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -93,7 +93,7 @@ public class DocumentConfidentialityValidationTests(TestWebApplicationFactory fa
     {
         var id = await CreateValidAsync();
         var resp = await Client().PatchAsJsonAsync($"/documents/{id}/metadata",
-            new { attributes = new Dictionary<string, string> { ["confidentiality"] = "restricted" }, tags = Array.Empty<string>() });
+            new { attributes = new Dictionary<string, string> { ["confidentiality"] = "restricted" }, tags = Array.Empty<string>() }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 

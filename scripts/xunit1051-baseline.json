@@ -58,8 +58,8 @@
     },
     "src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests/DocumentService.Api.Tests.csproj": {
       "project": "DocumentService.Api.Tests",
-      "remaining": 94,
-      "migrated": false
+      "remaining": 0,
+      "migrated": true
     },
     "src/knowledge/backend/Services/FeedbackService/tests/FeedbackService.Api.Tests/FeedbackService.Api.Tests.csproj": {
       "project": "FeedbackService.Api.Tests",
