@@ -36,6 +36,10 @@ vexec "vault kv put secret/msp/minio-credentials accessKey='${MINIO_ACCESS_KEY:-
 # NFR, ADR-0002 (#1012): サービス DB のパスワード。appsettings.json から接続文字列を撤去したため、
 # これが無いと ESO=1 では DB を持つ全サービスが起動できない。dev 既定は init スクリプトが作る `kp`。
 vexec "vault kv put secret/msp/postgres-app password='${APP_DB_PASSWORD:-kp}'"
+# NFR, ADR-0027 (#1022): ブローカのパスワード（app 側）。appsettings.json から接続文字列を撤去したため、
+# これが無いと ESO=1 では RabbitMQ を使う 7 サービスが起動できない。★値は step 3 の基盤 secret
+# `rabbitmq` と**同値**にすること（同じ env RABBITMQ_PASSWORD から作る。ズレると認証破壊）。
+vexec "vault kv put secret/msp/rabbitmq-app password='${RABBITMQ_PASSWORD:-guest}'"
 vexec "vault kv put secret/msp/wikijs-db password='${WIKIJS_DB_PASSWORD:-kp}'"
 vexec "vault kv put secret/msp/wikijs-sync apiKey='${WIKIJS_SYNC_APIKEY:-}'"
 # IADR-0098 (#310) PR-3: OIDC client secret 群（minio/grafana/vault/headlamp）。既定は各 <tool>-dev-secret-change-me
@@ -48,7 +52,7 @@ vexec "vault kv put secret/msp/headlamp-oidc client-secret='${HEADLAMP_OIDC_CLIE
 # **完全一致**させること（env 由来 or 同じ既定 postgres/guest/admin）。DB/broker/keycloak は既存パスワードで初期化済みのため、
 # 値がズレると認証破壊。ExternalSecret は creationPolicy: Merge で同一値を上書きするのみ（値不変＝無害）。
 vexec "vault kv put secret/msp/postgres password='${PG_PASSWORD:-postgres}'"
-vexec "vault kv put secret/msp/rabbitmq password='${RABBITMQ_PASSWORD:-guest}'"
+vexec "vault kv put secret/msp/rabbitmq username='${RABBITMQ_USER:-guest}' password='${RABBITMQ_PASSWORD:-guest}'"
 vexec "vault kv put secret/msp/keycloak-admin password='${KEYCLOAK_ADMIN_PASSWORD:-admin}'"
 # #438, ADR-0045 決定 2-b/6: SMTP リレー（go-live では Google Workspace への STARTTLS リレー）の資格情報。
 # **実環境の値は未供給のため既定は空文字**（他 secret と同じ fail-safe。空のままでは Keycloak の smtpServer は

@@ -1,5 +1,9 @@
 # IADR-0066 / ADR-0003(MassTransit/RabbitMQ。Superseded by ADR-0027・注記は #580): 共有 RabbitMQ（dev）。
-# MSP/AST サービスは appsettings 既定でホスト `rabbitmq`（guest/guest）へ接続する。
+#
+# NFR, #1022: ブローカ自身の資格情報は **Secret `rabbitmq`（key=username / password）由来**である。
+# dev 既定は `k8s-local-up.sh` が env（RABBITMQ_USER / RABBITMQ_PASSWORD）から作る。
+# MSP サービスは **helm が注入する `RabbitMq__ConnectionString`** で接続する（コード既定は撤去済み。
+# 未注入は起動失敗）。AST サービスは AST chart が自前の値を注入する（submodule 所有）。
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,7 +23,10 @@ spec:
           image: rabbitmq:3.13-management-alpine
           env:
             - name: RABBITMQ_DEFAULT_USER
-              value: guest
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq
+                  key: username
             - name: RABBITMQ_DEFAULT_PASS
               valueFrom:
                 secretKeyRef:
