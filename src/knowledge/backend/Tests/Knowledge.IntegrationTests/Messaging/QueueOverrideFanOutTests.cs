@@ -9,8 +9,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using IngestionService.Worker.Domain.Ports;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
-using WikiService.Api.Foundation.Persistence;
-using WikiService.Api.Foundation.Ports;
+using WikiService.Infrastructure.Persistence;
+using WikiService.Domain.Ports;
 using Wolverine;
 using Wolverine.RabbitMQ;
 
@@ -45,7 +45,7 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
     private IngestionServiceFactory _ingestionRoot = null!;
     private WikiServiceFactory _wikiRoot = null!;
     private WebApplicationFactory<global::IngestionService.Worker.IngestionServiceTestMarker> _ingestion = null!;
-    private WebApplicationFactory<global::WikiService.Api.WikiServiceTestMarker> _wiki = null!;
+    private WebApplicationFactory<global::WikiService.WikiServiceTestMarker> _wiki = null!;
     private HttpClient _ingestionClient = null!;
     private HttpClient _wikiClient = null!;
 

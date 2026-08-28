@@ -69,7 +69,7 @@ public sealed class PipelineDeclarationLoadedTests(PostgresFixture postgres, Rab
 
         wikiSync.Should().NotBeNull("本サービスの段が宣言に存在すること");
         wikiSync!.Consumer.Should().Be(
-            "WikiService.Api.Composable.Steps.DocumentSyncConsumer",
+            "WikiService.Features.Wiki.DocumentSyncConsumer",
             "宣言の consumer 完全名が実装と一致すること（不一致なら起動時に落ちる）");
         wikiSync.Input.Should().Be("DocumentUpdated",
             "宣言の input が IPipelineStep<TIn> の TIn と一致すること（不一致なら起動時に落ちる）");
