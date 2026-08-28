@@ -360,3 +360,4 @@
 | [IADR-0284](./IADR-0284_search-observability-seed.md) | **検索の観測は既存の本文直接受け入れ経路（FR-21 の `Body`）を seed に使う** —— 新しい欄も BFF 契約も足さない。判定は「入口（`markdownUri` を持つ）」と「命中（実際にヒットする）」の 2 段の opt-in に分け、越境判定は 1 バイトも触らない。#992 | Proposed |
 | [IADR-0285](./IADR-0285_private-notes-bff-authz-asymmetry.md) | **個人資料 BFF の認可前段は資料の書き込みだけに置く**（読み取りと端末・トークン系はゲート外）。読み取りは下流の OwnerId 絞りと 404 秘匿が担い、失効は文書 ABAC の整備状況に従属させない（SC-20 の防御線）。write ゲートは作成の封じ込め境界ではない。#1021 | Accepted |
 | [IADR-0286](./IADR-0286_default-credentials-fail-fast.md) | **既定資格情報はイメージへ焼かず、未注入は起動失敗にする**。撤去対象は本番 `appsettings.json`（Development は残す）。配備側の注入が先、テストは環境変数で注入する。再混入は前方一方向のラチェットで止める。#1012 | Accepted |
+| [IADR-0287](./IADR-0287_spec-status-checker-measured-and-rejected.md) | **作業仕様書の status 据え置きに機械検査を置かない**。3 案を PR 範囲 144 コミットへ当てて実測し全て棄却（案 B は 33% 誤検知かつ取りこぼし）。実体は 46 件の系統的滞留であり issue へ回す。frontmatter の状態欄は凍結の対象外 | Accepted |

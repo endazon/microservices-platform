@@ -278,11 +278,27 @@ export default defineConfig({
       //   テストを付けた」ことと、**カバレッジの低かった oidc-client-ts 依存コード
       //   （authConfig / CallbackPage）が実装ごと消えた**ことによる。
       //   **`coverage.exclude` は増やしていない**（除外で稼いだ引き上げではない）。
+      // ［2026-08-28 / #453］波 4 の掃き寄せでのラチェット。
+      //   実測（測定条件は上と同じ。ブランチ `claude/implementation-repo-all-issues-6pzgm1` /
+      //         `pnpm run test:coverage`。MSP 所有分は lcov.info を `ai-stock-trading` の有無で分けて集計した）:
+      //     全ユニット横断  lines/statements 98.19%（10110/10296）/ branches 92.22%（2300/2494）/
+      //                     functions 93.74%（674/719）
+      //     MSP 所有分のみ  lines 98.25%（7526/7660）/ branches 93.33%（1680/1800）/
+      //                     functions 94.07%（508/540）
+      //   同じ導出規則（MSP 所有分の実測から 5pt 下・切り捨て）を適用すると
+      //     lines/statements 98.25 − 5 = 93.25 → 93（据え置き）
+      //     branches         93.33 − 5 = 88.33 → **88（87 から引き上げ）**
+      //     functions        94.07 − 5 = 89.07 → 89（据え置き）
+      //   🔴 **横断の実測（92.22 等）から 5pt を引かない。** 導出規則の母数は MSP 所有分である
+      //   （AST 分は別プロジェクトの被覆であり、本リポジトリの努力で動かせない）。横断の実測へ
+      //   直接寄せる（例: branches 92）と、AST 側のテスト増減だけで本リポジトリの CI が赤くなる。
+      //   引き上げ分は波 1〜3 で足したテスト（認可の分岐評価・削除伝播・個人資料 BFF・
+      //   SC-19/SC-20 画面・検索観測）による。**`coverage.exclude` は増やしていない。**
       thresholds: {
         lines: 93,
         statements: 93,
         functions: 89,
-        branches: 87,
+        branches: 88,
       },
     },
   },
