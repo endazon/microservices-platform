@@ -5527,7 +5527,11 @@ ${r.stderr}`);
         //    再混入。**列挙は載せ忘れを自分では検出できない**）を新設したため 42 → 43
         //    （ラチェットが設計どおり発火した）。git を一切呼ばず fs のみで走査するため、
         //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 43, `検査器の母集合が 43 本から変わった（${scripts.length} 件）`);
+        // ★ #1012 で `check-default-credentials.js`（イメージへ焼かれる構成と合成ルートの
+        //    既定資格情報。**既定値があると注入漏れが「起動失敗」ではなく「既定の資格情報で接続成功」
+        //    へ倒れる**）を新設したため 43 → 44（ラチェットが設計どおり発火した）。既知の残件は
+        //    baseline で凍結する前方一方向のラチェットである。fs のみで走査する。
+        assert.strictEqual(scripts.length, 44, `検査器の母集合が 44 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],

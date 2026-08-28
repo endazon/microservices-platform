@@ -177,6 +177,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-route-manifest.js
 
+      # NFR, #1012: 既定資格情報のラチェット。イメージへ焼かれる構成（appsettings.json）と合成ルート
+      # （Program.cs）に、資格情報つきの接続文字列・amqp URL を書けなくする。
+      # 🔴 **既定値があると、構成の注入漏れが「起動失敗」ではなく「既定の資格情報で接続成功」へ倒れ、
+      #    誤った DB へ書き込んだまま健全に見える。** 既知の残件（RabbitMQ 13 箇所）は baseline で凍結し、
+      #    増やせないが減らすのは自由（前方一方向）。fs だけで走査するため追加取得は要らない。
+      - name: Self-test default credentials checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-default-credentials.js --self-test
+      - name: Check default credentials (#1012)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-default-credentials.js
+
       - name: Self-test knowledge graph generator
         if: ${{ !cancelled() }}
         run: node scripts/gen-knowledge-graph.js --self-test
