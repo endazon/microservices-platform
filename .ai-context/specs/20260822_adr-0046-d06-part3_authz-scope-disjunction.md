@@ -1,11 +1,11 @@
 ---
 title: 作業仕様書 — 認可スコープ契約の選言（OR）表現（ADR-0046 D-06 部品 3）の改定方針を決める
 type: spec
-status: draft
+status: done
 related_ids: [FR-05, FR-19, FR-20, UC-11, ADR-0004, ADR-0034, ADR-0036, ADR-0046, ADR-0054]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/06_technical/07_abac-attribute-model.md
   - planning:projects/microservices-platform/07_adr/ADR-0046_private-note-not-synced-to-wikijs.md

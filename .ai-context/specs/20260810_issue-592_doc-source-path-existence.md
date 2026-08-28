@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 必須仕様書が指す存在しないコードパスを是正し、同型を機械検査する（#592）
 type: spec
-status: draft
+status: done
 related_ids:
   - NFR
   - IADR-0027
@@ -9,7 +9,7 @@ related_ids:
   - IADR-0130
 author: claude
 created: 2026-08-10
-updated: 2026-08-10
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
 ---

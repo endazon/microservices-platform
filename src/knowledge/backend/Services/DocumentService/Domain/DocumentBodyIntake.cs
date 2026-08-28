@@ -25,8 +25,20 @@ public static class DocumentBodyIntake
     // 実サイズの 3 分の 1 で通り、上限が 3 MB へ化ける。
     public static bool ExceedsLimit(string body) => Encoding.UTF8.GetByteCount(body) > MaxBytes;
 
-    // FR-21 受け入れ基準 ④: オブジェクトキー。文書 ID で決まるため再投入は同じキーを上書きする
-    // （バケットのバージョニングが履歴を持つ。ADR-0014）。
+    // FR-21 受け入れ基準 ④: オブジェクトキー。**文書 ID だけで決まる**ため、再投入は同じキーを
+    // 上書きする —— キーに版番号は入らない。
+    //
+    // 🔴 **版ごとの本文は保持しない**（#1011 / [[IADR-0290]]）。ここは以前「バケットのバージョニングが
+    // 履歴を持つ（ADR-0014）」と書いていたが、**その前提は文書の版履歴に対しては成立していない**:
+    //   - `deploy/` にバケットのバージョニング設定は無い（起動時ブートストラップが
+    //     `ObjectStorageOptions.EnableVersioning`（既定 true）で有効化を試みるだけである）。
+    //   - **有効であっても引けない。** 参照 URI（`storage://<bucket>/<key>`）は versionId を持たず、
+    //     読み取り経路（`IObjectStorageClient.GetTextAsync`）も versionId を受けない。
+    //     すなわち「その版の本文」を指す値がどこにも存在しない。
+    //
+    // これは欠陥ではなく計画と整合する状態である —— **FR-06 の「バージョン管理」の射程は
+    // 版の作成・一覧・取得までで、版の復元は含まない**（計画 FR-06［2026-08-23 明確化］・
+    // 環流 planning#473）。**版応答も本文の参照を返さない**（`DocumentVersionDto`）。
     public static string StorageKey(Guid documentId) => $"documents/{documentId:D}/body.md";
 
     // FR-21, ADR-0036 D-02/D-07: 本文の書き込み可否を **ABAC の動的束縛** `doc.owner ∈ { ${current_user} }`

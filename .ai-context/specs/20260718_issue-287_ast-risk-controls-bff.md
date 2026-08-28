@@ -1,7 +1,7 @@
 ---
 title: AST SC-02/SC-03 の /bff/risk-controls/* プロキシ登録と submodule 再pin（Issue #287 / AST#106 T2 の残り配線）
 type: spec
-status: draft
+status: done
 related_ids:
   - FR-14
   - IADR-0056
@@ -12,7 +12,7 @@ related_ids:
   - IADR-0071
 author: claude
 created: 2026-07-18
-updated: 2026-07-18
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md (コンポーザブル)
   - planning:projects/microservices-platform/06_technical/10_composability-design.md (合成点)

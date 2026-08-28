@@ -1,11 +1,11 @@
 ---
 title: scopeFilter.ts の改名 — 大小非区別 FS で .tsx が 2 本まるごとコンパイル対象から落ちる
 type: spec
-status: draft
+status: done
 related_ids: [FR-04, FR-05, SC-01, SC-08, UC-01, UC-02, ADR-0031, IADR-0121, IADR-0125, IADR-0211]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/06_technical/13_frontend-stack.md
 ---

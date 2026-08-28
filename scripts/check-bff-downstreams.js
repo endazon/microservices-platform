@@ -76,6 +76,16 @@ const CALLERS = [
     compose: 'retrieval-service',
     helm: 'retrieval',
   },
+
+  // #1025: 個人資料の通知の送出で DocumentService → NotificationService の呼び出し元になった。
+  // 送出は **fail-open**（不達でも利用者側の操作は成功する）ため、宛先がずれても赤くならない ——
+  // CALLERS に無いとドリフトを誰も見ない死角のままになる（#958 / #970 と同型）。
+  {
+    label: 'DocumentService',
+    program: 'src/knowledge/backend/Services/DocumentService/Program.cs',
+    compose: 'document-service',
+    helm: 'document',
+  },
 ];
 const VALUES_PATH = 'deploy/helm/microservices-platform/values.yaml';
 const COMPOSE_PATH = 'deploy/docker-compose.yml';
@@ -84,14 +94,51 @@ const EXPECTED_PORT = 8080; // メッシュ内の全 downstream Service の実�
 // --- 純粋ロジック（自己試験する） --------------------------------------------
 
 // Program.cs から named HttpClient の { name -> defaultUrl } を抽出する。
-// 形: builder.Services.AddHttpClient("<Name>", c => ... ?? "http://host:port");
-// 名前無しの AddHttpClient()（既定ファクトリ登録）は対象外（"name", を要求）。
-function parseProgramDefaults(csText) {
+// 形 1: builder.Services.AddHttpClient("<Name>", c => ... ?? "http://host:port");
+// 形 2: builder.Services.AddHttpClient(<Type>.ClientName, c => ... ?? "http://host:port");
+//   #1025: DocumentService は名前を定数（`HttpPrivateNoteNotifier.ClientName`）で渡す。
+//   リテラルしか読まないと**登録が在るのに 0 件**になり、「パーサの破綻」として落ちる。
+//   定数参照は文字列の重複を避ける良い書き方なので、パーサ側を広げる。
+//   値は `constants`（呼び出し元のソースから集めた { 修飾名 -> 値 }）で解決する。
+// 名前無しの AddHttpClient()（既定ファクトリ登録）は対象外。
+function parseProgramDefaults(csText, constants = new Map()) {
   const map = new Map();
-  const re = /AddHttpClient\(\s*"([^"]+)"\s*,\s*c\s*=>[\s\S]*?\?\?\s*"([^"]+)"/g;
+  const re = /AddHttpClient\(\s*(?:"([^"]+)"|([A-Za-z_][\w.]*))\s*,\s*c\s*=>[\s\S]*?\?\?\s*"([^"]+)"/g;
   let m;
   while ((m = re.exec(String(csText)))) {
-    map.set(m[1], m[2]);
+    const [, literal, identifier, url] = m;
+    if (literal !== undefined) {
+      map.set(literal, url);
+      continue;
+    }
+    // `A.B.ClientName` は末尾 2 要素（型.定数）で引く。解決できない参照は**黙って捨てない**
+    // —— 名前が判らなければ `Services__<Name>` の上書きと突き合わせられないため、
+    // 未解決マーカーを入れて呼び出し側で違反にする。
+    const short = identifier.split('.').slice(-2).join('.');
+    const resolved = constants.get(identifier) ?? constants.get(short);
+    map.set(resolved ?? `${UNRESOLVED_PREFIX}${identifier}`, url);
+  }
+  return map;
+}
+
+// 未解決の定数参照であることを示す前置き（`computeViolations` が違反として扱う）。
+const UNRESOLVED_PREFIX = '\u0000unresolved:';
+
+// `public const string ClientName = "…";` を { "<型>.<定数>" -> 値 } として集める。
+function parseClientNameConstants(sources) {
+  const map = new Map();
+  for (const { text } of sources) {
+    const typeRe = /\b(?:class|record|struct)\s+([A-Za-z_]\w*)/g;
+    const constRe = /\bconst\s+string\s+([A-Za-z_]\w*)\s*=\s*"([^"]*)"/g;
+    // 型宣言の位置を控え、各定数の直前にある型名へ紐づける（1 ファイル複数型に耐える）。
+    const types = [];
+    let t;
+    while ((t = typeRe.exec(text))) types.push({ index: t.index, name: t[1] });
+    let c;
+    while ((c = constRe.exec(text))) {
+      const owner = [...types].reverse().find((x) => x.index < c.index);
+      if (owner) map.set(`${owner.name}.${c[1]}`, c[2]);
+    }
   }
   return map;
 }
@@ -169,6 +216,19 @@ function computeViolations({ defaults, overridesByEnv, expectedPort = EXPECTED_P
   const violations = [];
   for (const [env, overrides] of Object.entries(overridesByEnv)) {
     for (const [name, defUrl] of defaults) {
+      // #1025: 定数参照の名前を解決できなかった登録は**通さない**。名前が判らないと
+      // `Services__<Name>` の上書きと突き合わせられず、上書きの誤りを見逃すため。
+      if (name.startsWith(UNRESOLVED_PREFIX)) {
+        violations.push({
+          env,
+          name,
+          detail:
+            `[${env}] AddHttpClient の名前 '${name.slice(UNRESOLVED_PREFIX.length)}' を定数から解決できませんでした。` +
+            ' 同じサービス配下に `const string <名前> = "…";` が在るか確認してください' +
+            '（解決できないと上書きの突合ができないため通しません）。',
+        });
+        continue;
+      }
       const effective = overrides.has(name) ? overrides.get(name) : defUrl;
       const port = portOf(effective);
       if (port !== expectedPort) {
@@ -196,6 +256,29 @@ function readRepoFile(relPath) {
   return fs.readFileSync(path.join(REPO_ROOT, relPath), 'utf8');
 }
 
+// 呼び出し元 Program.cs と同じサービス配下の .cs を集める（`const string ClientName` の解決用）。
+// 見つからなければ空配列 —— リテラル形の呼び出し元は定数を要らないので、これで縮退してよい。
+function readSiblingSources(programRelPath) {
+  const serviceDir = path.join(REPO_ROOT, path.dirname(programRelPath));
+  const out = [];
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name === 'obj' || e.name === 'bin') continue;
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (e.name.endsWith('.cs')) out.push({ text: fs.readFileSync(full, 'utf8') });
+    }
+  };
+  walk(serviceDir);
+  return out;
+}
+
 function checkTree() {
   const valuesText = readRepoFile(VALUES_PATH);
   const composeText = readRepoFile(COMPOSE_PATH);
@@ -203,7 +286,8 @@ function checkTree() {
   let totalDownstreams = 0;
 
   for (const caller of CALLERS) {
-    const defaults = parseProgramDefaults(readRepoFile(caller.program));
+    const constants = parseClientNameConstants(readSiblingSources(caller.program));
+    const defaults = parseProgramDefaults(readRepoFile(caller.program), constants);
     if (defaults.size === 0) {
       violations.push({
         env: '-', name: '-',
@@ -256,6 +340,34 @@ function selfTest() {
   const defs = parseProgramDefaults(csFixture);
   expect('program: 名前付き 3 件を抽出（無名は除外）', defs.size === 3, [...defs.keys()]);
   expect('program: DataSource の既定 URL を抽出', defs.get('DataSourceService') === 'http://datasource-service:5002', defs.get('DataSourceService'));
+
+  // #1025: 名前を定数で渡す形（`<型>.ClientName`）も読む。リテラルしか読まないと
+  // 登録が在るのに 0 件になり「パーサの破綻」で落ちる。
+  const constFixture = [
+    'builder.Services.AddHttpClient(',
+    '    DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier.ClientName,',
+    '    c =>',
+    '    {',
+    '        c.BaseAddress = new Uri(builder.Configuration["Services:NotificationService"]',
+    '            ?? "http://notification-service:8080");',
+    '    });',
+  ].join('\n');
+  const constSources = [{ text: 'public sealed class HttpPrivateNoteNotifier { public const string ClientName = "NotificationService"; }' }];
+  const constants = parseClientNameConstants(constSources);
+  expect('constants: 型.定数 -> 値 を集める', constants.get('HttpPrivateNoteNotifier.ClientName') === 'NotificationService', constants.get('HttpPrivateNoteNotifier.ClientName'));
+  const constDefs = parseProgramDefaults(constFixture, constants);
+  expect('program: 定数参照の名前を解決して抽出', constDefs.get('NotificationService') === 'http://notification-service:8080', [...constDefs.entries()]);
+
+  // 解決できない参照は**黙って捨てず**、未解決マーカーとして残して違反にする
+  // （名前が判らないと Services__<Name> の上書きと突き合わせられないため）。
+  const unresolvedDefs = parseProgramDefaults(constFixture, new Map());
+  const unresolvedKey = [...unresolvedDefs.keys()][0];
+  expect('program: 解決できない定数参照は未解決マーカーになる', unresolvedKey.startsWith(UNRESOLVED_PREFIX), unresolvedKey);
+  const unresolvedViolations = computeViolations({
+    defaults: unresolvedDefs,
+    overridesByEnv: { 'テスト / helm': new Map() },
+  });
+  expect('computeViolations: 未解決マーカーは違反になる（通さない）', unresolvedViolations.length === 1, unresolvedViolations.length);
 
   // extractServiceBlock + parseHelmServicesEnv: bff の extraEnv から Services__ を抽出。
   const valuesFixture = [

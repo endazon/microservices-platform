@@ -1,11 +1,11 @@
 ---
 title: 利用者作成の辺 API — 作成時の到達可能性検証
 type: spec
-status: draft
+status: done
 related_ids: [FR-17, ADR-0033, ADR-0034, IADR-0242]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md
   - planning:projects/microservices-platform/07_adr/ADR-0033_knowledge-graph-data-model-and-store.md

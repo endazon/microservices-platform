@@ -1,11 +1,11 @@
 ---
 title: 辺の型辞書を BFF から公開する — 権限の非対称を解く
 type: spec
-status: draft
+status: done
 related_ids: [FR-17, SC-18, SC-09, SC-10, ADR-0033, ADR-0039, IADR-0242]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0033_knowledge-graph-data-model-and-store.md
   - planning:projects/microservices-platform/07_adr/ADR-0039_sc18-graph-rendering-library.md

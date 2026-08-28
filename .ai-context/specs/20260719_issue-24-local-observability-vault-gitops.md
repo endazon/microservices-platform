@@ -1,7 +1,7 @@
 ---
 title: ローカル（経路B）可観測性スタック・Vault・GitOps の opt-in オーバーレイ（AST#24 の MSP 分）
 type: spec
-status: draft
+status: done
 related_ids:
   - ADR-0006
   - NFR
@@ -9,7 +9,7 @@ related_ids:
   - IADR-0077
 author: endazon (with Claude Code)
 created: 2026-07-19
-updated: 2026-07-19
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0006_observability-otel-prom-loki.md
   - planning:projects/microservices-platform/02_requirements/01_requirements.md

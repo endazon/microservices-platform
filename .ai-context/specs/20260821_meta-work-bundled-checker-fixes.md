@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 検査器まわりのメタ作業 3 件を 1 PR に束ねる（#877 / #842 / #826 の残骸）
 type: spec
-status: draft
+status: in-progress
 related_ids:
   - NFR
   - IADR-0115
@@ -15,7 +15,7 @@ related_ids:
   - IADR-0230
 author: claude
 created: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-28
 plan_refs:
   - planning:docs/ai-implementation-workflow-guide.md
   - planning:projects/microservices-platform/07_adr/ADR-0048_impl-docs-restructure.md

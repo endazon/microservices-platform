@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — AccessScopeResponse の granted を契約へ載せ、deny-by-default と全件許可を区別可能にする（#525）
 type: spec
-status: draft
+status: done
 related_ids:
   - FR-05
   - NFR-09
@@ -16,7 +16,7 @@ related_ids:
   - IADR-0159
 author: claude
 created: 2026-08-10
-updated: 2026-08-10
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/06_technical/07_abac-attribute-model.md
   - planning:projects/microservices-platform/02_requirements/01_requirements.md

@@ -511,14 +511,16 @@ export interface DocumentContentDto {
 export type DocumentVersionDtoAttributes = {[key: string]: string};
 
 /**
- * FR-06, UC-03: 文書の版スナップショット
+ * FR-06, UC-03: 文書の版スナップショット（**メタデータのみ**）。
+ * **本文の参照（`markdownUri`）は持たない**（#1011）。本文のオブジェクトキーは文書 ID だけで
+ * 決まり再投入が上書きするうえ、参照 URI は versionId を持たないため、
+ * 「その版の本文」を指せる値が存在しない。現行版の本文は `DocumentContentDto` で取る。
  */
 export interface DocumentVersionDto {
   documentId: string;
   version: number;
   title: string;
   status: string;
-  markdownUri?: string | null;
   attributes: DocumentVersionDtoAttributes;
   tags: string[];
   changeNote?: string | null;

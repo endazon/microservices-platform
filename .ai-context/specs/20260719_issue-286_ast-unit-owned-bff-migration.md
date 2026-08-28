@@ -1,7 +1,7 @@
 ---
 title: AST 向け BFF pass-through（assumptions/risk-controls/monitor）を例外3 の unit-owned Bff プロジェクトへ移行（Issue #286）
 type: spec
-status: draft
+status: done
 related_ids:
   - FR-14
   - IADR-0056
@@ -12,7 +12,7 @@ related_ids:
   - IADR-0072
 author: claude
 created: 2026-07-19
-updated: 2026-07-19
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md (コンポーザブル)
   - planning:projects/microservices-platform/06_technical/10_composability-design.md (合成点)

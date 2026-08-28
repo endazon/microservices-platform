@@ -21,6 +21,12 @@
 #   2. **検知**: `k8s-local-up.sh` が LOCALEDGE=1 のとき、この HelmChartConfig の**反映**（traefik svc の
 #      `admin=50000`）を待ち、来なければ**非 0 で落とす**（#953 / IADR-0258）。`kubectl apply` は
 #      reconcile の失敗を知らないため、これが無いと **admin が立たないまま up が EXIT=0 で返る**。
+#   3. **回帰の固定**: 上の表は `scripts/k8s-local-up.test.js` の helm-controller 模型
+#      （`HELM_CONTROLLER_MODEL`）へ写してあり、**stub テストが毎回照合する**（#953 第 2 次）。
+#      下記 `ports.admin` の `port` を 50000 からずらす・`expose` を bool 形へ戻す・ブロックごと
+#      消す、のいずれをやっても、同テストの前提「traefik の宣言（実物）は現行 chart で反映が
+#      成立する」が落ちる。**門（2.）が守っている宣言そのものを、機械が見張っている。**
+#      🔴 **上の表を直すときは模型も直すこと。** 版の対応を持つ場所はこの 2 つだけである。
 # k3s を上げ下げして下記が通らなくなったら、chart の版に合わせて `expose: true`（bool）へ切替えること。
 #
 # IADR-0220 (#841): admin(50000) を TLS 終端にし、web(80) は websecure(443) へ恒久リダイレクトする。

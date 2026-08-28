@@ -35,6 +35,18 @@ const AST_VALUES = 'src/ai-stock-trading/deploy/helm/ai-stock-trading/values.yam
 // submodule 未取得時のフォールバック（AST chart values の services 直下キー）。
 // AST 側にサービスが増えたら追随する。実 chart が読める環境では実値が優先されるため、
 // ここが古くても検査は劣化しない（drift は警告として報告する）。
+// **MSP が正当に所有し、AST の同名サービスとは「別物」であるサービス名**（#1025 / IADR-0288 決定 2）。
+// IADR-0107 §運用注意が用意した逃げ道である ——「回避が必要になった場合は、本節を更新したうえで
+// 検査に除外リストを設ける」。**AST 所有一覧から名前を落とすのではない**（あちらは実際に所有している。
+// 落とすと本物の重複デプロイが素通りする）。ここは「同名だが別サービス」を宣言する場所である。
+//
+// 🔴 **足すときは 4 点を確かめてから足す**（IADR-0288 決定 2 の根拠と同じ）:
+//   1. `deploy/local/aliases/*-externalnames.yaml` に同名の ExternalName alias が無い（到達先が曖昧でない）
+//   2. 共有 broker のキュー・共有 DB を奪い合わない
+//   3. 名前が衝突したままでよい理由が IADR に書いてある
+//   4. IADR-0107 §運用注意 を同時に更新する（条文と実装を割らない）
+const NAME_COLLISION_EXEMPT = ['notification'];
+
 const AST_OWNED_FALLBACK = [
   'audit',
   'backtest',
@@ -131,8 +143,18 @@ function effectiveEnabled(baseText, overrideText) {
 }
 
 // 重複デプロイ（AST 所有サービスが MSP 側で有効）を昇順で返す。
-function findDuplicateOwnership(mspEnabled, astOwned) {
-  return [...astOwned].filter((s) => mspEnabled.has(s)).sort();
+// `exempt`（既定 NAME_COLLISION_EXEMPT）に載る名前は「同名だが別サービス」として除外する
+// （#1025 / IADR-0288 決定 2）。除外が実際に効いたかは findNameCollisions が別に返す。
+function findDuplicateOwnership(mspEnabled, astOwned, exempt = NAME_COLLISION_EXEMPT) {
+  const exemptSet = new Set(exempt);
+  return [...astOwned].filter((s) => mspEnabled.has(s) && !exemptSet.has(s)).sort();
+}
+
+// 除外によって見逃した「同名」を昇順で返す。**除外が静かに効くのを防ぐための可視化**であり、
+// 違反ではない（checkTree はこれを notice として出すだけで exit コードに影響させない）。
+function findNameCollisions(mspEnabled, astOwned, exempt = NAME_COLLISION_EXEMPT) {
+  const exemptSet = new Set(exempt);
+  return [...astOwned].filter((s) => mspEnabled.has(s) && exemptSet.has(s)).sort();
 }
 
 // --- 実ファイル突合 -----------------------------------------------------------
@@ -193,6 +215,11 @@ function selfTest() {
     ['重複を検出する（#407 の回帰）', () => JSON.stringify(findDuplicateOwnership(effectiveEnabled(MSP, 'services:\n  risk-management:\n    enabled: true\n  market-monitor:\n    enabled: true\n'), parseServiceKeys(AST))) === JSON.stringify(['market-monitor', 'risk-management'])],
     ['fail-safe 既定なら違反ゼロ', () => findDuplicateOwnership(effectiveEnabled(MSP, ''), parseServiceKeys(AST)).length === 0],
     ['MSP 固有サービスは違反にならない', () => findDuplicateOwnership(new Set(['document', 'wiki', 'bff']), AST_OWNED_FALLBACK).length === 0],
+    // #1025 / IADR-0288 決定 2: 「同名だが別サービス」の除外。
+    ['除外した同名は違反にならない', () => findDuplicateOwnership(new Set(['notification']), ['notification'], ['notification']).length === 0],
+    ['除外に無い同名は従来どおり違反', () => findDuplicateOwnership(new Set(['report']), ['report'], ['notification']).length === 1],
+    ['除外が効いた同名は findNameCollisions が返す（静かに消さない）', () => JSON.stringify(findNameCollisions(new Set(['notification', 'document']), ['notification', 'audit'], ['notification'])) === JSON.stringify(['notification'])],
+    ['同名でなければ findNameCollisions は空（除外リストに在るだけでは出ない）', () => findNameCollisions(new Set(['document']), ['notification'], ['notification']).length === 0],
   ];
 
   let failed = 0;
@@ -217,6 +244,22 @@ function main() {
     const drift = owned.services.filter((s) => !AST_OWNED_FALLBACK.includes(s));
     if (drift.length > 0) {
       console.warn(`[check-unit-service-ownership] 注意: AST_OWNED_FALLBACK が古くなっています（未収載: ${drift.join(', ')}）。submodule 未取得時の検査精度を保つため追随してください。`);
+    }
+  }
+  // #1025 / IADR-0288 決定 2: 除外が実際に効いた同名は notice で必ず見せる
+  // （「除外リストに書いたから静かに消えた」を作らない）。exit コードには影響させない。
+  {
+    const base = readIfExists(MSP_VALUES);
+    const local = readIfExists(MSP_VALUES_LOCAL);
+    const collisions = base === null
+      ? []
+      : findNameCollisions(effectiveEnabled(base, local === null ? '' : local), owned.services);
+    if (collisions.length > 0) {
+      console.warn(
+        `[check-unit-service-ownership] 注意: MSP と AST が同名のサービスを持っています（除外中: ${collisions.join(', ')}）。` +
+          ' 「同名だが別サービス」として NAME_COLLISION_EXEMPT で通しています（IADR-0288 決定 2）。' +
+          ' ExternalName alias を足すときは到達先が曖昧にならないか確認してください。'
+      );
     }
   }
   const violations = checkTree();
@@ -244,7 +287,9 @@ module.exports = {
   parseEnabledFlags,
   effectiveEnabled,
   findDuplicateOwnership,
+  findNameCollisions,
   astOwnedServices,
   checkTree,
   AST_OWNED_FALLBACK,
+  NAME_COLLISION_EXEMPT,
 };

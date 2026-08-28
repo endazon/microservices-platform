@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — /bff/feedback と /feedback の端点認可を計画（FR-08 確定 2026-08-07）へ揃える（#521）
 type: spec
-status: draft
+status: done
 related_ids:
   - FR-08
   - UC-01
@@ -15,7 +15,7 @@ related_ids:
   - IADR-0128
 author: claude
 created: 2026-08-10
-updated: 2026-08-10
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
   - planning:projects/microservices-platform/05_screens/01_screens.md

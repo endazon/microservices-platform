@@ -24,6 +24,10 @@ data:
       CREATE DATABASE dashboard_svc;
       -- FR-17, UC-10 (#908/#957): 知識グラフ GraphService 専用 DB。
       CREATE DATABASE graph_svc;
+      -- FR-22, ADR-0045, IADR-0288 (#1025): 利用者通知の NotificationService 専用 DB。
+      -- 起動時に MigrateAsync が走るため、未作成だと Pod がクラッシュループする。
+      -- compose 側の deploy/create-multiple-dbs.sh と対で追随させる（片方だけだと片方の環境が壊れる）。
+      CREATE DATABASE notification_svc;
       CREATE DATABASE wikijs;
       CREATE USER kp WITH PASSWORD 'kp';
       ALTER DATABASE document_svc OWNER TO kp;
@@ -36,6 +40,7 @@ data:
       ALTER DATABASE feedback_svc OWNER TO kp;
       ALTER DATABASE dashboard_svc OWNER TO kp;
       ALTER DATABASE graph_svc OWNER TO kp;
+      ALTER DATABASE notification_svc OWNER TO kp;
       ALTER DATABASE wikijs OWNER TO kp;
 
       -- AST（ai-stock-trading）専有 DB。owner=ai（AST compose 既定 POSTGRES_USER と一致）。

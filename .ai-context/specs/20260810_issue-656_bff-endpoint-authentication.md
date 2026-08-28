@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 無認証で到達できる BFF 9 端点を塞ぎ、検査器が無認証を見分けられるようにする（#656）
 type: spec
-status: draft
+status: done
 related_ids:
   - FR-03
   - FR-04
@@ -25,7 +25,7 @@ related_ids:
   - IADR-0158
 author: claude
 created: 2026-08-10
-updated: 2026-08-10
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
   - planning:projects/microservices-platform/05_screens/01_screens.md

@@ -9,8 +9,8 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-17, UC-10, SC-09, SC-10]
 adrs: [ADR-0002, ADR-0004, ADR-0033, ADR-0034, ADR-0036, ADR-0050]
-iadrs: [IADR-0027, IADR-0119, IADR-0152, IADR-0153, IADR-0231, IADR-0232, IADR-0242, IADR-0260, IADR-0280, IADR-0282, IADR-0281]
-specs: [20260822_issue-908_graphservice-foundation, 20260823_issue-941_edge-type-db-guards, 20260828_issue-912_obsidian-link-extraction]
+iadrs: [IADR-0027, IADR-0119, IADR-0152, IADR-0153, IADR-0231, IADR-0232, IADR-0242, IADR-0260, IADR-0280, IADR-0282, IADR-0281, IADR-0289]
+specs: [20260822_issue-908_graphservice-foundation, 20260823_issue-941_edge-type-db-guards, 20260828_issue-912_obsidian-link-extraction, 20260828_issue-941_edge-type-db-guard-verification]
 issues: [#450, #516, #908, #909, #910, #911, #912, #913, #941]
 -->
 
@@ -120,7 +120,7 @@ issues: [#450, #516, #908, #909, #910, #911, #912, #913, #941]
 - `EdgeTypeDictionaryTests`（T-20〜T-28）
 - `EdgeTypeEndpointsTests`（T-31〜T-38。**アプリ層のガードのみ**）
 - `UserAuthoredEdgeTests`（T-41〜T-46。**ここで効いているのはアプリ層の事前検査だけ**。同じ重複を DB 層で拒む `ux_edges` は次の `EdgeTypeDbGuardTests` が受け持つ）
-- `EdgeTypeDbGuardTests`（T-39 / T-40 / T-47 / T-48。**実 PostgreSQL を起動する結合テスト**）
+- `EdgeTypeDbGuardTests`（T-39 / T-40 / T-47 / T-48。**実 PostgreSQL と実メッセージブローカを起動する結合テスト**）
   - **単体テストでは原理的に測れない層である。** 単体側は EF の InMemory プロバイダを使っており、
     **InMemory は一意索引も外部キーも強制しない**。変異試験 G-1 の実測（アプリ層のカウントを外すと
     500 ではなく **204 で黙って消えた**）が、この層が一度も効いていなかったことを示していた
@@ -131,6 +131,11 @@ issues: [#450, #516, #908, #909, #910, #911, #912, #913, #941]
     —— 例外は出るのにデータベースには届かず、**防壁を確かめたつもりで何も確かめていない**状態になる
     （初版がこの形で落ちたのを実測した）。**本番の削除経路も辺を追跡しない**（使用件数はスカラの件数
     集計で数える）ので、この形が実態とも一致する
+  - 🔴 **ブローカが要るのは、対象サービスが起動時にブローカへ接続するからである**（購読を持つ）。
+    器がブローカを渡さないと、**防壁を測る前にホストの起動が失敗し、同クラスの全件が同時に落ちる** ——
+    落ちた層を取り違えると、器の欠落を防壁の破損と読んでしまう。**まずホストが起動したかを見る**
+  - 🔴 **器の欠落はコンテナの無い環境では skip としてしか現れない**（skip は緑である）。
+    対象サービスの起動時依存が増えたら器を追随させること。追随漏れは型で止めてある
   - 🔴 **実行されるのは統合ワークフロー（`integration.yml`。develop への push ＋ 日次 ＋ 手動）だけである。**
     PR の CI は実コンテナを要するテストを除外するため、**PR の段階では走らない**。
     加えて Docker daemon が無い環境では skip される —— **「緑だった」は「実行された」の証拠にならない。**

@@ -1,7 +1,7 @@
 ---
 title: MSP+AST 連結 ローカル k8s(k3d) dev 環境の構築（Issue #266）
 type: spec
-status: draft
+status: done
 related_ids:
   - ADR-0007
   - ADR-0008
@@ -9,7 +9,7 @@ related_ids:
   - IADR-0066
 author: claude
 created: 2026-07-13
-updated: 2026-07-15
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0008_runtime-kubernetes-k3s.md (実行基盤 k3s)
   - planning:projects/microservices-platform/07_adr/ADR-0007_cicd-gitops-argocd.md (GitOps/Helm)

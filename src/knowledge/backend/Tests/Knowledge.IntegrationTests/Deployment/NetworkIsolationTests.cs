@@ -35,6 +35,10 @@ public sealed class NetworkIsolationTests
         // その代償統制がネットワーク分離であるにもかかわらず本列挙から漏れており、host 公開の回帰を
         // 誰も止められなかった。BFF の retry を管理者限定へ絞っても、後段へ直接到達できれば同じ穴が残る。
         "conversion-service",
+        // FR-22, ADR-0045, Issue #1025: 個人資料の通知の受け口（POST /internal/notifications）の後段。
+        // 配備と同時にここへ足す —— 受け口は認証済み内部呼び出しだけを想定しており、host 公開されると
+        // 誰でも利用者宛の通知を投函できる。送出側は fail-open なので、穴が開いても不達としては現れない。
+        "notification-service",
         // FR-12, SC-07, Issue #501: **`ingestion-service` は意図的に「未対応」であって「公開してよい」ではない**。
         // 同じく compose では expose のみだが本列挙に無く、host 公開の回帰を止められない（同型の穴）。
         // 今回入れなかったのは、HTTP サーフェスが MapPlatformIntrospection() 1 件のみで副作用のある操作を

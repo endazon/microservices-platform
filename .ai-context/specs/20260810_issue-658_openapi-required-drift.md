@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — openapi.yaml の required と C# 非 null 性の乖離 10 件を是正する（#658）
 type: spec
-status: draft
+status: done
 related_ids:
   - NFR
   - IADR-0132
@@ -9,7 +9,7 @@ related_ids:
   - IADR-0122
 author: claude
 created: 2026-08-10
-updated: 2026-08-10
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/06_technical/13_frontend-stack.md
 ---

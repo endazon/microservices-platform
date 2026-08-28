@@ -1,11 +1,11 @@
 ---
 title: GraphService をデプロイ経路へ載せる — Dockerfile はあるのに焼かれていない
 type: spec
-status: draft
+status: done
 related_ids: [FR-17, UC-10, ADR-0034, IADR-0089, IADR-0067]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/ (FR-17 知識グラフ)
 ---

@@ -1,7 +1,7 @@
 ---
 title: AST フロント/設定画面を MSP SPA へ組み込む（Issue #283 / AST#106 T2 の MSP 側実装）
 type: spec
-status: draft
+status: done
 related_ids:
   - FR-14
   - IADR-0056
@@ -11,7 +11,7 @@ related_ids:
   - IADR-0070
 author: claude
 created: 2026-07-18
-updated: 2026-08-08
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md (コンポーザブル)
   - planning:projects/microservices-platform/06_technical/10_composability-design.md (合成点)

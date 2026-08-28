@@ -1,11 +1,11 @@
 ---
 title: グラフ多ホップ探索 — prune-before-expand・表示上限・ホップ超過の拒否
 type: spec
-status: draft
+status: done
 related_ids: [FR-17, UC-10, ADR-0033, ADR-0034, IADR-0242]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md
   - planning:projects/microservices-platform/07_adr/ADR-0033_knowledge-graph-data-model-and-store.md

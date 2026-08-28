@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — SC-07 に人手補正の 2 ペイン編集・「補正あり」標識・再変換の確認を実装する（#651）
 type: spec
-status: draft
+status: done
 related_ids:
   - FR-12
   - UC-06
@@ -13,7 +13,7 @@ related_ids:
   - IADR-0157
 author: claude
 created: 2026-08-10
-updated: 2026-08-10
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/03_usecases/01_usecases.md

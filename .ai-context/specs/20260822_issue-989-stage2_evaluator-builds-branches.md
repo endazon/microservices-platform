@@ -1,11 +1,11 @@
 ---
 title: 作業仕様書 — 段 2: 評価器が名前つき分岐を組み立て、${current_user} を束縛する
 type: spec
-status: draft
+status: done
 related_ids: [FR-05, FR-19, FR-21, UC-11, ADR-0004, ADR-0036, ADR-0046]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/06_technical/07_abac-attribute-model.md
   - planning:projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md

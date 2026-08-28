@@ -243,7 +243,11 @@ public static class ObsidianSyncEndpoints
     }
 
     // ADR-0037 決定 8: edits を時系列順に 1 編集 = 1 版として適用する。本文は正準キー
-    // （documents/{id}/body.md）へ都度格納する（バケットのバージョニングが履歴を持つ。ADR-0014）。
+    // （documents/{id}/body.md）へ都度格納する。**キーは文書 ID で固定なので、後の編集が前の編集を
+    // 上書きする —— 版ごとの本文は残らない**（#1011 / [[IADR-0290]]。バケットのバージョニングは
+    // 参照 URI に versionId を持たないため、有効でも過去の本文は引けない）。
+    // 版の復元は FR-06 の射程外であり（計画 FR-06［2026-08-23 明確化］・環流 planning#473）、
+    // ここで残すべき本文は**最新の 1 つ**である。
     private static async Task ApplyEditsAsync(Document doc, PushNoteRequest req,
         IObjectStorageClient storage, bool skipFirst, CancellationToken ct)
     {

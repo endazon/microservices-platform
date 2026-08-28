@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-06, SC-05, UC-03]
 adrs: []
-iadrs: []
-specs: []
-issues: [#199]
+iadrs: [IADR-0290]
+specs: [20260828_issue-1011_version-body-contract]
+issues: [#199, #1011, planning#473]
 -->
 
 # テスト仕様書: 文書CRUD・バージョン管理
@@ -34,6 +34,7 @@ issues: [#199]
 - 正常系: 作成・取得・一覧・更新、版履歴の増加と新しい順、特定版スナップショットの保持、公開状態遷移、メタデータのみ更新。
 - 境界/異常系: タイトル空白（400）、存在しない版（404）、古い期待版による並行制御（409）。
 - 不変性: 過去版スナップショットが後続更新で書き換わらない（append-only・防御的コピー）。
+- 契約: **版応答は「その版の本文」を約束しない**（本文の参照を返さない）。版ごとの本文は保持されない（#1011）。
 - 連携（冪等性）: `DocumentNormalized` 受信でカタログ登録され、同一 `DocumentId` 再配信でも重複しない。
 
 ## テストケース一覧
@@ -63,11 +64,13 @@ issues: [#199]
 | T-21 | 起動済み API（admin） | `POST /documents` に正準値 `public`/`internal`/`confidential`/`restricted` | 201・属性が保存される | 機密区分受理 | 自動（エンドポイント） |
 | T-22 | 作成済み文書 | `PUT`／`PATCH metadata` に `confidentiality` 欠落 | 400／正準値なら 200 | 更新経路も必須検証 | 自動（エンドポイント） |
 | T-23 | — | `DocumentAttributes.ValidateConfidentiality`（null／欠落／未知／正準値） | 欠落・未知は NG、正準値は OK | 検証ヘルパー単体 | 自動（単体） |
+| T-24 | 本文つきで作成（版1）→ `PUT /{id}/body` で本文差し替え（版2） | `GET /versions/1` と `GET /versions` の**生 JSON** を見る。対照として `GET /{id}` も見る | 版応答に `markdownUri` が**現れない**（大小文字を問わず）・版行自体は返る（`version` を含む）・文書詳細には現れる | 版応答は版ごとの本文を約束しない | 自動（エンドポイント） |
+| T-25 | 同上 | 本文の格納先と参照 URI を見る | 参照 URI は `documents/{id}/body.md` で版に依らず同一・そこから返るのは**版 2 の本文だけ**・版 1 の本文はどこからも引けない | 版ごとの本文の非保持（機序） | 自動（エンドポイント） |
 
 対応テスト実装:
 
 - 単体（ドメイン）: `src/knowledge/backend/Services/DocumentService/Tests/DocumentVersioningTests.cs`（T-01〜T-05）、`DocumentAttributesTests.cs`（T-23）
-- 単体（エンドポイント, InMemory）: `.../DocumentEndpointVersioningTests.cs`（T-06〜T-11）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）
+- 単体（エンドポイント, InMemory）: `.../DocumentEndpointVersioningTests.cs`（T-06〜T-11・T-24〜T-25）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）
 - 統合（実 PostgreSQL）: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/DocumentService/DocumentCrudTests.cs`（T-12〜T-14）、`DocumentVersioningTests.cs`（T-15〜T-16）
 - 統合（実 PostgreSQL / RabbitMQ）: `.../DocumentNormalizedSyncTests.cs`（T-17〜T-18）
 
@@ -87,5 +90,6 @@ issues: [#199]
 
 ## 未決事項
 
-- 版ロールバック（復元）・版間 diff の受け入れ基準は機能追加後に本書へ追記する。
+- **［2026-08-28 更新 / #1011］版ロールバック（復元）は決着済み** —— バージョン管理の射程は版の作成・一覧・取得までとし、
+  復元は含めないと確定した（利用者裁定 2026-08-23）。必要になったときは新しい要求として起こす。版間 diff も同様に未要求である。
 - 楽観的並行制御の高並行下での競合（実 DB での同時 `PUT`）は現状ユニット/単一シナリオのみで、負荷試験は別タスク。

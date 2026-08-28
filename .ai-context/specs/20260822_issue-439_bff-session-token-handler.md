@@ -5,7 +5,7 @@ status: draft
 related_ids: [NFR, SC-16, ADR-0026, ADR-0031, ADR-0032, IADR-0033, IADR-0121]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md
   - planning:projects/microservices-platform/06_technical/13_frontend-stack.md
@@ -481,3 +481,23 @@ BFF の資格情報転送の欠落が緑を通った実例がある。**認証�
   Write ツールを使う。書いたら読み返して assert する**
 - **IADR の採番は 2 回衝突した**（0249 → 0250 → 0251）。**マージ直前に develop の最大＋1 を取り直し、
   改番は develop をマージする前に行う** —— マージ後だと相手の同番号ファイルまで巻き込む
+
+## ［2026-08-28 追記 / #1023］status を `draft` のまま据え置いた（点検済みの記録）
+
+**#1023 の母集合 46 件の点検で本書を確認し、`draft` を据え置いた。** 点検漏れではなく判断の結果である。
+
+| 確認したこと | 実測（2026-08-28） |
+| --- | --- |
+| issue #439 の state | **open**（`state_reason` なし） |
+| 3b の完了条件（本書 §3b「`platform` ＋ `knowledge` から宣言と import の両方が消えている」） | **満たしている** —— `oidc-client-ts` の宣言 0 件・import 0 件 |
+| 後続の作業仕様書 | `20260823_issue-439_bff-session-completion.md`（`status: done`） |
+| 論拠の実装 ADR | [IADR-0273](../adr/IADR-0273_bff-session-completion.md)（`Accepted`） |
+
+**それでも `draft` を動かさない理由は、本書自身が §受け入れ基準の射程 で「3b の完了」と
+「移行（★不採用）の完了判定」を分けており、後者が AST からの撤去を含むためである。**
+AST は submodule であり本リポジトリから是正できない。#439 はその追随と go-live 判定を
+抱えたまま open であり、**本書の見出しが指す「第 3 段」全体はまだ閉じていない。**
+
+🔴 **これは「done へ倒せる」という申し送りではない。** #1023 が繰り返し警告するとおり、
+open の issue に紐づく仕様書を機械的に `done` にすると、滞留が「done と書かれた嘘」へ悪化する。
+**状態を進めるのは #439 が閉じるとき**であり、そのとき本書と後続仕様書の双方を見直すこと。

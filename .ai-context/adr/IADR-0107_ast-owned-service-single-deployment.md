@@ -11,7 +11,7 @@ related_ids:
   - IADR-0056
 author: claude
 created: 2026-07-27
-updated: 2026-07-27
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/ (FR-14 可変ユニットの組み込み・宣言的構成)
 ---
@@ -157,3 +157,20 @@ MSP namespace の `report-service` と AST namespace の `report-service` は、
 誤検出ではなく**設計上の警告**として扱うのが正しい。将来 MSP に同名サービスを追加する場合は、
 Service 名の変更か、AST 側と到達経路を明示的に分ける設計判断を伴うべきであり、本検査が CI を止めることは
 その判断を強制する意図と一致する。回避が必要になった場合は、本節を更新したうえで検査に除外リストを設ける。
+
+> ［2026-08-28 追記 / #1025］**予見していた衝突が実際に起きたので、除外リストを設けた。**
+> MSP が FR-22（利用者本人への通知）の `NotificationService` を配備するにあたり chart キーを
+> `notification` としたため、本節が名指ししていた `notification` で衝突した。
+> **一致するのは 3 件（`configuration` / `risk-management` / `market-monitor`）のみ、という上の記述は
+> 本追記の時点で古い —— 4 件目 `notification` が加わった。**
+>
+> 採ったのは本節の 2 つ目の逃げ道（到達経路を明示的に分けたうえで除外）である。Service 名の変更
+> （1 つ目）は棄却した —— 送出側（DocumentService の `HttpPrivateNoteNotifier`）が **fail-open** であり、
+> 名前をずらして上書き env で繋ぐ形は「上書きが落ちても 502 にすらならない」経路を新設するためである。
+> 到達経路の分離は次の 3 点で確認した: ①`deploy/local/aliases/microservices-platform-externalnames.yaml` に
+> `notification-service` の alias が無い ②MSP の NotificationService は RabbitMQ を使わない
+> （#407 の実害だったキュー競合が起きない）③DB は `notification_svc` で AST 専有 DB 一覧に含まれない。
+>
+> 実装は `scripts/check-unit-service-ownership.js` の `NAME_COLLISION_EXEMPT`。
+> **除外が効いた同名は毎回 notice で出す**（`findNameCollisions`）—— 静かに消えない形にした。
+> 判断の全文は [IADR-0288](./IADR-0288_notification-service-deployment-and-name-collision.md) 決定 2。

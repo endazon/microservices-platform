@@ -1,14 +1,14 @@
 ---
 title: SC-10 運用ダッシュボード実装（Issue #136）
 type: spec
-status: draft
+status: done
 related_ids:
   - SC-10
   - UC-05
   - FR-10
 author: claude
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/06_technical/05_observability-ops.md

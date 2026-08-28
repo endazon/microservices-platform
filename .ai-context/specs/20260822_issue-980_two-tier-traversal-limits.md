@@ -1,11 +1,11 @@
 ---
 title: 探索を二段の上限にし、総数と間引き基準を返す — 緩和が要求した新しい実装
 type: spec
-status: draft
+status: done
 related_ids: [FR-17, UC-10, SC-18, ADR-0034, ADR-0035, ADR-0049, IADR-0242]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0049_graph-count-beyond-display-limit.md
 ---
