@@ -3,6 +3,7 @@ using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using DocumentService.Infrastructure.Messaging;
 using DocumentService.Features.Documents;
+using DocumentService.Features.McpTools;
 using DocumentService.Features.ObsidianSync;
 using DocumentService.Features.PrivateNotes;
 using DocumentService.Features.SyncDevices;
@@ -169,6 +170,8 @@ app.MapPrivateNoteEndpoints();
 app.MapSyncDeviceEndpoints();
 // FR-20, ADR-0037: Obsidian プラグイン向け同期プロトコル（同期トークン認証）。
 app.MapObsidianSyncEndpoints();
+// FR-16, ADR-0024 §2: MCP ツール定義の自己申告（メッシュ内部限定。#1020）。
+app.MapMcpToolEndpoints();
 
 app.Run();
 

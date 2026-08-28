@@ -3,6 +3,7 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Qdrant.Client;
+using RetrievalService.Features.McpTools;
 using RetrievalService.Features.Search;
 using Wolverine;
 using Wolverine.RabbitMQ;
@@ -134,6 +135,8 @@ app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapSearchEndpoints();
+// FR-16, ADR-0024 §2: MCP ツール定義の自己申告（メッシュ内部限定。#1020）。
+app.MapMcpToolEndpoints();
 
 app.Run();
 
