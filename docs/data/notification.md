@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, SC-10, UC-11]
 adrs: [ADR-0002, ADR-0004, ADR-0037, ADR-0045]
-iadrs: [IADR-0009, IADR-0215, IADR-0267, IADR-0270]
-specs: [20260823_issue-600_notification-service-backend, 20260828_issue-600_notification-triggers]
-issues: [#451, #600]
+iadrs: [IADR-0009, IADR-0215, IADR-0267, IADR-0270, IADR-0288]
+specs: [20260823_issue-600_notification-service-backend, 20260828_issue-600_notification-triggers, 20260828_issue-1025_notification-service-deployment]
+issues: [#451, #600, #1025]
 -->
 
 # データ仕様書: 通知（Notification / EmailOutboxEntry）
@@ -19,9 +19,10 @@ issues: [#451, #600]
 > NotificationService が所有する 2 つのエンティティを扱う。
 > **アプリ内通知の実体**（`Notification`）と、**メール送出の記録**（`EmailOutboxEntry`）である。
 
-> **`status: in-progress` の理由**: **通知サービスがまだ配備されていない。**
-> **発火の結線（通知を作る側）は 2026-08-28 に入った** —— 検知・送出・受理の経路は繋がっており、
-> 配備が入るまで送出は受け口へ到達しない（届かなかったことは発火側の計器に残る）。
+> **`status: in-progress` の理由**: **配備の定義は入ったが、稼働と実到達を確かめていない。**
+> **発火の結線（通知を作る側）と配備の定義は 2026-08-28 に入った** —— 検知・送出・受理の経路が繋がり、
+> ローカル実行環境・本番像・イメージ供給と、下記の専用データベース（`notification_svc`）の作成も揃った。
+> **実クラスタでの Pod 稼働と通知の実到達は未実測である**（届かなかったことは発火側の計器に残る）。
 > 本書が定めるのは**通知が作られたあとの永続化・既読・送出・保持**である。線引きの正本は
 > 送出側の実装 ADR であり、追跡は関連 issue で行う。
 
@@ -135,6 +136,9 @@ erDiagram
 ## 永続化方針
 
 - **PostgreSQL**。サービス専用のデータベース（`notification_svc`）を持つ（DB per Service）。
+  **実体はローカル実行環境と経路B の初期化スクリプト 2 本の両方が作る**（2026-08-28。所有者は
+  他のサービス用データベースと同じ）。起動時にスキーマを最新へ更新するため、
+  **データベースが無いと起動に失敗する**（未作成のまま配備すると起動を繰り返す）。
 - **`Notification` と `EmailOutboxEntry` は別のトランザクションで書く。**
   1 つ目が成功した時点で通知は届いており、2 つ目の失敗は 1 つ目に伝播しない。
 - 実際の送信は永続化とは別の処理が後から行う。**永続化と送信は時間的にも分離している。**

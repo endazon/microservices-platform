@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — NotificationService を配備先へ載せる（#1025）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-22
   - ADR-0045
@@ -49,7 +49,8 @@ issue #1025。**`NotificationService` は実装もテストも揃っているの
 | 2 | ビルド供給 | `grep -rn -i "notification" scripts/` | **`k8s-local-images.sh` に 0 件**。ヒットは baseline JSON 4 件と `check-unit-service-ownership.js:45` の `'notification'` のみ |
 | 3 | DB 名 | `grep -rn "notification_svc" .`（`.git`/`bin`/`obj` 除く） | **3 件**: `appsettings.Development.json` / 先行仕様書の残件記述 / `docs/data/notification.md`。**init スクリプト 2 本のどちらにも無い** |
 | 4 | 宛先文字列 | `git grep -n "notification-service"` | **追跡下 30 行**。うち配備物は **0 行**。宛先を決める行は `DocumentService/Program.cs:79`（コード既定）と `Program.cs:60`（自己申告名）の 2 本 |
-| 5 | 文書の主張 | `grep -rn "配備\|デプロイ" docs/functional/FR-22_*.md docs/data/notification.md` | **6 行**が「まだ配備されていない」と書いている（本作業で追随が要る＝規則 10） |
+| 5 | 文書の主張 | `grep -rn "配備\|デプロイ" docs/functional/FR-22_*.md docs/data/notification.md` | **6 行 / 2 文書**が「まだ配備されていない」と書いている（本作業で追随が要る＝規則 10） |
+| 5' | 同上・**軸を広げた再走査** | 上に `docs/api/BFF_notifications.md docs/tests/FR-22_user-notifications.md` を足す | 🔴 **11 行 / 3 文書**。**軸 5 は `docs/tests/` を対象に含めておらず 5 行を取りこぼしていた**（規則 5「軸を 1 本で終わらせない」が実際に効いた事例。追随はこの 11 行に対して行った） |
 
 ### 軸 2 が出した衝突（🔴 着手前に判明した設計上の障害）
 
@@ -156,16 +157,16 @@ BFF は通知の下流を持たない（`/bff/notifications*` は未実装）。
 
 ## 受け入れ基準
 
-- [ ] `deploy/docker-compose.yml` に `notification-service` があり、**既存アプリサービスの書き方と同型**
+- [x] `deploy/docker-compose.yml` に `notification-service` があり、**既存アプリサービスの書き方と同型**
       （`build.context: ..` / `expose` のみ・host 公開なし / `<<: [*common-env, *db-env]` / `depends_on: postgres(service_healthy)`）
-- [ ] `deploy/helm/microservices-platform/values.yaml` の `services.notification` が `database: notification_svc` を持ち、
+- [x] `deploy/helm/microservices-platform/values.yaml` の `services.notification` が `database: notification_svc` を持ち、
       `global.db` の仕組み（`DB_PASSWORD` → `$(DB_PASSWORD)` 補間）に乗る
-- [ ] `scripts/k8s-local-images.sh` の `MAPPING` に入り、`node scripts/check-image-mapping.js` が緑
-- [ ] DB `notification_svc` が init スクリプト **2 本とも**に在り、所有者が `kp`
-- [ ] `ESO=1` 経路の資格情報供給に欠けが無いことを**走査で**確かめた（設計 3）
-- [ ] 送出側の設定キー・既定値と、compose / helm が与える宛先が**文字列レベルで一致**することを実測で示した
-- [ ] `node scripts/scripts.test.js` が緑（名前衝突の除外を入れた `check-unit-service-ownership.js` を含む）
-- [ ] 「まだ配備されていない」と書いている文書 6 行を追随させた（規則 10）
+- [x] `scripts/k8s-local-images.sh` の `MAPPING` に入り、`node scripts/check-image-mapping.js` が緑
+- [x] DB `notification_svc` が init スクリプト **2 本とも**に在り、所有者が `kp`
+- [x] `ESO=1` 経路の資格情報供給に欠けが無いことを**走査で**確かめた（設計 3）
+- [x] 送出側の設定キー・既定値と、compose / helm が与える宛先が**文字列レベルで一致**することを実測で示した
+- [x] `node scripts/scripts.test.js` が緑（名前衝突の除外を入れた `check-unit-service-ownership.js` を含む）
+- [x] 「まだ配備されていない」と書いている文書 **11 行 / 3 文書**を追随させた（規則 10・軸 5'）
 
 ## テスト方針
 
@@ -192,3 +193,69 @@ BFF は通知の下流を持たない（`/bff/notifications*` は未実装）。
    **`notification_svc` は含まれない**。submodule を取得できる環境で確認する（IADR-0288 §未決）。
 2. **SMTP の実体と宛先解決**は未配線のまま。`externalsecret-keycloak-smtp.yaml` が「★未配線」で待っている。
 3. **BFF 端点 `/bff/notifications*`** が入るまで、配備しても**画面には出ない**（#600）。
+
+## 検証（実走・2026-08-28）
+
+**実走したコマンドと生の出力を PR と報告へ貼る。** 加工していない。
+
+| コマンド | 結果 |
+| --- | --- |
+| `node scripts/check-image-mapping.js` | OK（ドリフト 0） |
+| `node scripts/check-unit-service-ownership.js` | OK ＋ **除外中 `notification` の notice**（設計どおり） |
+| `node scripts/check-unit-service-ownership.js --self-test` | 自己試験 16 件 OK（除外の 4 件を新設） |
+| `node scripts/check-bff-downstreams.js` | OK（呼び出し元 5 件・ドリフト 0） |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | **645 tests passed** |
+| `node scripts/check-adr-numbering.js` | OK（重複・欠番なし・索引と双方向一致） |
+| `node scripts/check-doc-links.js` | OK（941 件） |
+| `node scripts/check-trace-blocks.js` | OK（153 件） |
+| `node scripts/check-doc-updated.js` / `check-doc-status-vocabulary.js` / `check-doc-type-vocabulary.js` | すべて OK |
+| `bash -n deploy/create-multiple-dbs.sh` / `bash -n scripts/k8s-local-images.sh` | OK |
+| `python3 -c "yaml.safe_load(...)"`（compose / values.yaml / postgres.yaml） | すべて解析成功。anchor のマージ結果も確認 |
+| `dotnet build .../NotificationService.Tests.csproj` | Build succeeded（0 Warning / 0 Error） |
+| `dotnet test .../NotificationService.Tests.csproj` | **Passed! Failed: 0, Passed: 53** |
+
+### 🔴 実走できなかったもの（できないことを、できないと書く）
+
+| 検証 | 状態 | 理由 |
+| --- | --- | --- |
+| `helm lint` / `helm template` / `kubeconform`（`check-deploy-manifests.js`） | **未実走** | `helm` / `kubectl` / `kubeconform` が本環境に無い（`command -v` で確認）。**同検査は fail-closed のためこの環境では走らせられない** |
+| `docker compose config` / 実ビルド | **未実走** | `docker` CLI はあるが **daemon へ到達できない**（`docker info` が失敗） |
+| **Pod が Ready になること・通知が実際に届くこと** | **未実測** | k8s クラスタが無い。**代わりに静的な文字列一致（下記）と機械検査の突合のみを行った** |
+| `dotnet build src/platform/backend/backend.slnx` | **失敗（本作業と無関係）** | `Platform.Bff` が AST submodule（未取得）の `AiStockTrading.Bff.Endpoints` を参照するため `CS0246`。**C# は 1 行も触っていない**（差分は `deploy/` `scripts/` `docs/` `.ai-context/` のみ） |
+
+### 送出側と受け口の文字列一致（実測。設定キー名まで突き合わせた）
+
+| 面 | 実測値 | 出典 |
+| --- | --- | --- |
+| 設定キー | `Services:NotificationService` | `DocumentService/Program.cs:78` |
+| コード既定 | `http://notification-service:8080` | `DocumentService/Program.cs:79` |
+| HttpClient 名 | `NotificationService` | `HttpPrivateNoteNotifier.cs:34` |
+| 送信パス | `/internal/notifications` | `HttpPrivateNoteNotifier.cs:35` |
+| 受け口パス | `/internal/notifications` | `NotificationIngressEndpoints.cs:23` |
+| compose のサービス名 / expose | `notification-service` / `["8080"]` | `deploy/docker-compose.yml` |
+| helm の Service 名 / port | `notification-service`（キー `notification` ＋ `{{ $name }}-service`）/ `8080` | `values.yaml` ＋ `templates/service.yaml` |
+| compose の `Services__NotificationService` | **未設定（＝コード既定を使う）** | 意図どおり（設計 1） |
+
+→ **宛先の 3 面（コード既定・compose・helm）が `notification-service:8080` の 1 文字列で一致し、
+パスも送受で一致している。** 上書き env は 1 つも作っていない。
+
+### helm テンプレートの手展開（helm 未導入のため実レンダリングではない）
+
+```
+Host=postgres;Port=5432;Database=notification_svc;Username=kp;Password=$(DB_PASSWORD)
+DB_PASSWORD <- secretKeyRef postgres-app / password
+HPA/PDB 対象: False → replicas 1 が描かれる
+worker フラグ: False → /health/live, /health/ready のプローブが付く
+```
+
+## 宣言領域の逸脱（統括へ報告）
+
+宣言では許可されていなかったが、**受け入れ基準を満たすために触った 2 ファイル**がある。
+いずれも「触ってはならない」列挙（`scripts/k8s-local-up.sh` / `scripts/k8s-local-up.test.js` /
+`src/knowledge/**` / `src/platform/backend/Shared/**` / `src/*/frontend/**` / `src/package.json`）には
+含まれない。**追加は加算のみで、既存行を書き換えていない。**
+
+| ファイル | 触った理由 |
+| --- | --- |
+| `deploy/create-multiple-dbs.sh` | **compose 側の DB init はここにしか無い。** 足さないと compose の notification-service が DB 不在でクラッシュループする（「配備したのに動かない」を作る）。**先行仕様書 `20260828_issue-600_notification-triggers.md` §配備 が必要物として名指ししている** |
+| `scripts/check-unit-service-ownership.js` | **これを直さないと CI が必ず落ちる**（実測済み）。IADR-0107 §運用注意が定めた対処そのもの。除外リストの新設と自己試験 4 件の追加のみ |
