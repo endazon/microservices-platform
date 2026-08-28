@@ -4,14 +4,14 @@ type: api-spec
 status: draft
 author: claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-28
 ---
 <!-- trace:
 ids: [FR-15, FR-16, UC-08, UC-09, SC-12]
 adrs: [ADR-0004, ADR-0018, ADR-0021, ADR-0024, ADR-0034, ADR-0054]
-iadrs: [IADR-0269]
-specs: [20260823_issue-445_mcp-server-integration]
-issues: [#445]
+iadrs: [IADR-0269, IADR-0292]
+specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools]
+issues: [#445, #1020]
 -->
 
 # 通信仕様書: MCP サーバー
@@ -70,14 +70,14 @@ issues: [#445]
 
 ```json
 {
-  "service": "retrieval",
+  "service": "retrieval-service",
   "tools": [
     {
       "name": "retrieval.search_documents",
       "description": "エージェント向けの説明文（いつ・何のために呼ぶか）",
       "input_schema": "{\"type\":\"object\"}",
-      "endpoint": "http://retrieval-service/internal/mcp/search",
-      "required_scope": "read",
+      "endpoint": "http://retrieval-service:8080/internal/mcp/search_documents",
+      "required_scope": "retrieval:search",
       "egress_class": "internal"
     }
   ]
@@ -85,12 +85,32 @@ issues: [#445]
 ```
 
 - `egress_class` は必須である。欠けた申告は**公開しない**。
+- `service` は自己申告（`/internal/introspection`）と同じサービス名を使う。公開構成の `service` は
+  この値と突き合わせるため、綴りが割れると申告が見つからず構成ドリフトになる。
 - 収集は起動時と定期（既定 5 分間隔）に行う。到達できないサービスは「申告なし」として扱い、
   公開構成が要求していれば構成ドリフトとして報告する。**推測で公開しない。**
+- 端点は認可を要求しない。`/internal/introspection` と同じ防御（ネットワーク分離・相互 TLS）に置き、
+  OpenAPI の記述からも外す。**画面向け集約の契約ではないため、その定義ファイルには現れない。**
+
+### 供給元と申告するツール
+
+| サービス | 申告するツール |
+| --- | --- |
+| `document-service` | `document.get_document` / `document.list_documents` |
+| `retrieval-service` | `retrieval.search_documents` |
+| `graph-service` | `graph.get_backlinks` / `graph.get_links` / `graph.traverse` |
+
+**個人資料を対象に含むツールは申告しない。** 候補としては持ち、申告を組み立てる 1 経路で落とす ——
+「思い付かなかったから無い」と「規則で落としている」を読み分けられるようにするためである。
+要約系（クラスタ要約）と AI 分析系も申告しない。
 
 ## ツール実行口の応答エンベロープ（各サービスが実装する側）
 
 申告した `endpoint` は次の形で応答する。**文書単位の統制を成立させるための規約**である。
+
+> 🔴 **本規約の実体はまだどのサービスにも無い。** 実行時の権限伝播の方式（呼び出し元の資格情報を
+> 運ぶか、内部専用の別経路にするか）が未決であり、本文で渡された主体情報を信じる形で実装すると
+> そこへ到達できる誰もが任意の主体を名乗れる。方式が決まるまで実装しない。
 
 ```json
 {

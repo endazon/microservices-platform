@@ -57,6 +57,10 @@
          EF InMemory であり、InMemory は一意索引も外部キーも強制しないため原理的に測れない。
          Program 型の衝突（CS0433）は GraphServiceTestMarker で避ける（IADR-0027 の作法）。 -->
     <ProjectReference Include="..\..\Services\GraphService\GraphService.csproj" />
+    <!-- FR-16, ADR-0024 §2 / #1020: 収集側（HttpToolDeclarationSource → ToolCatalog）を**実物で**
+         回すため。ユニット外参照だが、check-unit-dependencies.js 規則 1 の統合テスト例外
+         （Tests プロジェクト → platform サービス）に当たる。 -->
+    <ProjectReference Include="..\..\..\..\platform\backend\Services\McpServer\McpServer.csproj" />
     <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>

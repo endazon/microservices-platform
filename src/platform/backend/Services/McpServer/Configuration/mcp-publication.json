@@ -1,4 +1,11 @@
 {
-  "version": "2026-08-23",
-  "tools": []
+  "version": "2026-08-28",
+  "tools": [
+    { "name": "retrieval.search_documents", "service": "retrieval-service" },
+    { "name": "document.get_document", "service": "document-service" },
+    { "name": "document.list_documents", "service": "document-service" },
+    { "name": "graph.get_backlinks", "service": "graph-service" },
+    { "name": "graph.get_links", "service": "graph-service" },
+    { "name": "graph.traverse", "service": "graph-service" }
+  ]
 }

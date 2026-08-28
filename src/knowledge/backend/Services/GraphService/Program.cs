@@ -3,6 +3,7 @@ using GraphService.Features.GraphDocuments;
 using GraphService.Features.AiSuggestions;
 using GraphService.Features.EdgeTypes;
 using GraphService.Features.Graph;
+using GraphService.Features.McpTools;
 using GraphService.Common.Observability;
 using GraphService.Infrastructure.Persistence;
 using GraphService.Domain.Ports;
@@ -155,6 +156,8 @@ app.MapEdgeTypeEndpoints();
 // FR-18, SC-21, SC-03, ADR-0033 決定 7・10: AI 提案の 3 状態遷移（#914）。
 // **一括承認の口は無い**（FR-18 / SC-21「描いてはいけないもの」）。
 app.MapAiSuggestionEndpoints();
+// FR-16, ADR-0024 §2: MCP ツール定義の自己申告（メッシュ内部限定。#1020）。
+app.MapMcpToolEndpoints();
 
 app.Run();
 
