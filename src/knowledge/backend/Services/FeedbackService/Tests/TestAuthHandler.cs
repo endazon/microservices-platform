@@ -11,7 +11,7 @@ namespace FeedbackService.Tests;
 //   - ヘッダ無し          → platform-admin（一覧 AdminOnly が通る）
 //   - "X-Test-Roles: viewer" → 非管理ロール（一覧 AdminOnly が 403 になる確認用）
 //   - "X-Test-Anonymous: 1"   → **認証しない**（無認証が 401 になる確認用。#521 で追加）
-// ※ AuthorizationService.Api.Tests.TestAuthHandler と同一方針。
+// ※ AuthorizationService.Tests.TestAuthHandler と同一方針。
 public class TestAuthHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,

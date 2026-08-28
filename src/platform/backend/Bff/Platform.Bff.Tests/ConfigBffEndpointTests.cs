@@ -15,7 +15,7 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
         var wiki = new ServiceIntrospectionDto(
             "wiki-service",
             [new StepIntrospectionDto("wiki-sync",
-                "WikiService.Api.Composable.Steps.DocumentSyncConsumer",
+                "WikiService.Features.Wiki.DocumentSyncConsumer",
                 "DocumentUpdated", [], true)],
             [new PortSelectionDto("wiki-sync", "WikiJsGraphQlClient", "http://wiki-js:3000")],
             []);

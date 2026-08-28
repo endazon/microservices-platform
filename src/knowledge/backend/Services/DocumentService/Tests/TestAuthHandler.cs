@@ -11,7 +11,7 @@ namespace DocumentService.Tests;
 //   - ヘッダ無し                 → platform-admin（書き込みの admin/operator 要求が通る）
 //   - "X-Test-Roles: platform-operator" → 運用者（同上）
 //   - "X-Test-Roles: viewer"     → 非権限ロール（書き込みが 403 になる確認用。読み取りは可）
-// ※ DashboardService.Api.Tests.TestAuthHandler と同一方針。
+// ※ DashboardService.Tests.TestAuthHandler と同一方針。
 public class TestAuthHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,

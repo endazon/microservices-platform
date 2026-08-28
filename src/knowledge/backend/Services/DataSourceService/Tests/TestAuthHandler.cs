@@ -11,7 +11,7 @@ namespace DataSourceService.Tests;
 //   - ヘッダ無し                 → platform-admin（/datasources の admin/operator 要求が通る）
 //   - "X-Test-Roles: platform-operator" → 運用者（同上）
 //   - "X-Test-Roles: viewer"     → 非権限ロール（403 になる確認用）
-// ※ DashboardService.Api.Tests.TestAuthHandler と同一方針。
+// ※ DashboardService.Tests.TestAuthHandler と同一方針。
 public class TestAuthHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,

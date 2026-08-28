@@ -9,7 +9,7 @@ namespace GraphService.Tests;
 // FR-17: テスト用認証ハンドラ。JWT/Keycloak に依存せず ClaimsPrincipal を注入する。
 //   - ヘッダ無し            → 認証済み（test-user）
 //   - "X-Test-Anonymous: 1" → **認証しない**（RequireAuthorization が 401 を返すことの確認用）
-// ※ FeedbackService.Api.Tests.TestAuthHandler と同一方針。
+// ※ FeedbackService.Tests.TestAuthHandler と同一方針。
 public class TestAuthHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,
@@ -20,7 +20,7 @@ public class TestAuthHandler(
 
     // FR-17, SC-09: 辺の型辞書は書きが管理者・読みが運用者/管理者に限られる（#910）。
     // 既定は platform-admin を与え、ヘッダで落として 403 を試験できるようにする
-    // （FeedbackService.Api.Tests.TestAuthHandler と同一方針）。
+    // （FeedbackService.Tests.TestAuthHandler と同一方針）。
     public const string RolesHeader = "X-Test-Roles";
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()

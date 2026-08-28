@@ -5,7 +5,7 @@ namespace ConversionService.Worker.Tests;
 
 // ADR-0027（#441 E1）: 発行されたメッセージを記録するだけの `IMessageBus` テストダブル。
 //
-// 🔴 **`DataSourceService.Api.Tests` の同名クラスと意図的な重複である。**
+// 🔴 **`DataSourceService.Tests` の同名クラスと意図的な重複である。**
 // サービスごとのテストプロジェクトは自己完結しており（相互の ProjectReference を持たない）、
 // 共有テストヘルパのプロジェクトは存在しない。**それを新設するのは E1 の射程を超える構造変更**
 // なので、ここでは重複を受け入れる。3 つ目が要るときに共通化を検討すること。

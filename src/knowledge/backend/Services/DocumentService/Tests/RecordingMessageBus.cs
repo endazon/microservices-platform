@@ -3,7 +3,7 @@ using Wolverine;
 
 namespace DocumentService.Tests;
 
-// ADR-0027（E3a。写しの元は #441 E1 の DataSourceService.Api.Tests）: 発行されたメッセージを
+// ADR-0027（E3a。写しの元は #441 E1 の DataSourceService.Tests）: 発行されたメッセージを
 // 記録するだけの `IMessageBus` テストダブル。**3 つ目の複製である**（DataSource / Conversion に続く。
 // 各テストプロジェクトは自己完結で共有ヘルパを持たないため、共通化は見送り複製を受容する ——
 // 判断の記録は作業仕様書 20260828_edge-e3a-document-deleted.md §テスト）。

@@ -57,7 +57,7 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
                 // ADR-0027 / E3b: ingest 段の購読は Wolverine へ移った。
                 // 🔴 **これが無いとテストが約 135 秒ハングする** —— Program.cs が UseWolverine +
                 // UseRabbitMq を呼ぶため、テストホストの起動が実ブローカへの接続を試みる
-                // （E1 の DataSourceService.Api.Tests と同じ作法）。
+                // （E1 の DataSourceService.Tests と同じ作法）。
                 services.DisableAllExternalWolverineTransports();
 
                 // 起動時の Qdrant 接続（コレクション作成）を避けるためブートストラップを外す

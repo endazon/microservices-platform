@@ -10,7 +10,7 @@ namespace DashboardService.Tests;
 // 既定では管理者ロール（platform-admin）を付与し、ヘッダ "X-Test-Roles" で上書きできる。
 //   - ヘッダ無し             → platform-admin（集計の管理系ロール要求が通る）
 //   - "X-Test-Roles: viewer" → 管理系以外のロール（集計が 403 になる確認用）
-// ※ FeedbackService.Api.Tests.TestAuthHandler と同一方針。
+// ※ FeedbackService.Tests.TestAuthHandler と同一方針。
 public class TestAuthHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,

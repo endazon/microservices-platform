@@ -50,7 +50,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // ADR-0027 / E3a・E3b: 両段の購読は Wolverine へ移った（MassTransit は撤去済み）。
             // 🔴 **これが無いとテストが約 135 秒ハングする** —— Program.cs が UseWolverine +
             // UseRabbitMq を呼ぶため、テストホストの起動が実ブローカへの接続を試みる
-            // （E1 の DataSourceService.Api.Tests と同じ作法）。
+            // （E1 の DataSourceService.Tests と同じ作法）。
             services.DisableAllExternalWolverineTransports();
         });
     }

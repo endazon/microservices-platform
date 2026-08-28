@@ -14,7 +14,7 @@ namespace RetrievalService.Tests;
 // > **検索結果に現れるが RAG 回答のコンテキストには含まれない**
 //
 // 本テストが測るのは**前半**（検索結果に現れること）である。後半（RAG の文脈に入らないこと）は
-// `AiAnalysisService.Api.Tests` の `RagContextAiInputExclusionTests` が測る。
+// `AiAnalysisService.Tests` の `RagContextAiInputExclusionTests` が測る。
 //
 // 🔴 **本テストの役割は「検索側を絞らせないこと」である。** ⑨ は 2 つの経路にまたがる基準であり、
 // 分離を検索側で実装すると**前半が静かに壊れる**（「検索にも出ない」になり、基準が半分だけ満たされる）。
