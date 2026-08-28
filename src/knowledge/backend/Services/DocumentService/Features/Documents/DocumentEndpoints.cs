@@ -410,13 +410,18 @@ public static class DocumentEndpoints
     };
 
     // **過去版も現在の表示名で出る**——改名は表示上の変更である（[[IADR-0153]] 決定 4）。
+    //
+    // 🔴 **本文の参照は載せない**（#1011 / [[IADR-0290]]）。`DocumentVersion.MarkdownUri` は
+    // スナップショット時点の**文書の**本文 URI であり、オブジェクトキーが文書 ID で固定のため
+    // **常に現行版の本文を指す**。載せると 200 の応答に「その版の本文らしい URI」が入り、
+    // 呼び出し側が過去版の本文だと読み違えても区別できない。契約（`DocumentVersionDto`）から
+    // 落としてあるので、ここで写す先も無い。**戻さないこと。**
     private static DocumentVersionDto ToVersionDto(DocumentVersion v, IReadOnlyDictionary<Guid, string> names) => new()
     {
         DocumentId = v.DocumentId,
         Version = v.Version,
         Title = v.Title,
         Status = v.Status,
-        MarkdownUri = v.MarkdownUri,
         Attributes = v.Attributes,
         Tags = TagResolver.ToNames(v.Tags, names),
         ChangeNote = v.ChangeNote,

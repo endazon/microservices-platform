@@ -1069,9 +1069,11 @@ paths:
         FR-06 の射程は「版の作成・一覧・**取得**」までであり、**版の復元（過去版へ戻す操作）は含まない**
         （計画 ［2026-08-23 明確化］・環流 planning#473）。
 
-        **応答は本文を含まない。** 返るのはタイトル・状態・`markdownUri`・属性・タグ・変更メモ・
-        作成日時の**メタデータのスナップショット**である。本文の実体は版ごとに保持されておらず、
-        `markdownUri` は**現行版の本文**を指す。
+        **応答は本文を含まない。本文の参照（`markdownUri`）も含まない。** 返るのはタイトル・状態・
+        属性・タグ・変更メモ・作成日時の**メタデータのスナップショット**だけである。
+        本文の実体は版ごとに保持されておらず（オブジェクトキーは文書 ID から固定で決まり、
+        再投入は同じキーを上書きする。参照 URI は versionId を持たない）、
+        **「その版の本文」を指せる値が存在しない**。現行版の本文は `GET /bff/documents/{id}/content` で取る。
       operationId: bff-document-version
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -3089,14 +3091,17 @@ components:
 
     DocumentVersionDto:
       type: object
-      description: "FR-06, UC-03: 文書の版スナップショット"
+      description: |
+        FR-06, UC-03: 文書の版スナップショット（**メタデータのみ**）。
+        **本文の参照（`markdownUri`）は持たない**（#1011）。本文のオブジェクトキーは文書 ID だけで
+        決まり再投入が上書きするうえ、参照 URI は versionId を持たないため、
+        「その版の本文」を指せる値が存在しない。現行版の本文は `DocumentContentDto` で取る。
       required: [documentId, version, title, status, attributes, tags, createdAt]
       properties:
         documentId: { type: string, format: uuid }
         version: { type: integer }
         title: { type: string }
         status: { type: string }
-        markdownUri: { type: string, nullable: true }
         attributes:
           type: object
           additionalProperties: { type: string }

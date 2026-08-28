@@ -6,7 +6,15 @@
     "破壊的変更は scripts/contract-breaking-allowlist.json へ承認エントリを書いてから --update する。",
     "承認の記録は $acceptedBreakingChanges へ追記され、以後も残る（削除しない）。"
   ],
-  "$acceptedBreakingChanges": [],
+  "$acceptedBreakingChanges": [
+    {
+      "key": "memberRemoved:Knowledge.Contracts.Dtos.DocumentVersionDto.MarkdownUri",
+      "reason": "版応答が「その版の本文」を約束しない形へ契約を揃える（#1011）。版スナップショットの MarkdownUri には現行版の本文 URI がそのまま入っており、呼び出し側が過去版の本文だと読み違えても応答から区別できなかった。本文のオブジェクトキーは文書 ID だけで決まり再投入が上書きするうえ、参照 URI は versionId を持たないため「その版の本文」を指せる値は存在しない。版の復元は FR-06 の射程外（計画 FR-06［2026-08-23 明確化］・環流 planning#473）で、本文を版ごとに保持する是正も求められていないため、契約の側を事実へ揃えた。安全性: openapi 上 required でなく nullable であり、この値を読む呼び出し側はリポジトリ内に 0 件（SPA の VersionTable・useDocumentQueries・BFF・バックエンド／フロントの全テストを走査して確認）。値を null で返す非破壊案は「この版の本文の URI」という名前だけを契約に残し、読み違えを温存するため採らない。",
+      "approvedBy": "claude (実装エージェント)",
+      "issue": "#1011",
+      "date": "2026-08-28"
+    }
+  ],
   "projects": {
     "src/knowledge/backend/Shared/Knowledge.Contracts": {
       "Knowledge.Contracts.Dtos.AiAnswerDto": {
@@ -982,11 +990,6 @@
           "DocumentId": {
             "source": "property",
             "type": "Guid",
-            "required": false
-          },
-          "MarkdownUri": {
-            "source": "property",
-            "type": "string?",
             "required": false
           },
           "Status": {
