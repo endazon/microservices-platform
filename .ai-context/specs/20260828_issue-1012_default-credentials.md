@@ -103,6 +103,49 @@ compose・k8s の双方で実際に作る**開発用の実資格情報**であ�
 
 いずれも変異を戻して緑への復帰を確認した（`git status` 空）。
 
+## 🔴 事後に見つけた欠陥: ESO=1 で `postgres-app` の供給元が無かった（レビュー指摘・是正済み）
+
+**着地後の AI レビューが 2 回続けて 🔴 で指摘し、実測で裏が取れたので是正した。**
+
+`k8s-local-up.sh` は `postgres-app` の手動 apply を `minio-credentials` / `wikijs-db` / `wikijs-sync` と
+**同じ `if [ "${ESO:-}" != "1" ]` ブロック**へ入れた。このブロックの意味は
+「**ESO=1 のときは Vault→ExternalSecret 供給へ委譲するので手動 apply をスキップする**」であり、
+3 兄弟にはいずれも対応する `deploy/local/vault/eso/externalsecret-*.yaml` が実在する。
+**`postgres-app` にはそれが無かった。**
+
+したがって `ESO=1` では **供給元が 1 つも無くなる**。helm の `deployment.yaml` は
+`global.db.existingSecret`（＝ `postgres-app`）を **非 optional** な `secretKeyRef` で参照するため、
+DB を持つ 8 サービス（document / datasource / conversion / authorization / wiki / dashboard / graph /
+feedback）が `CreateContainerConfigError` で起動しない。
+
+**なぜ自分で気づけなかったか。** 本仕様書の「対象と除外」は
+「**配備側の注入が先、コードの撤去は後**」（IADR-0286 決定 3）という順序だけを守り、
+**注入経路が 2 本ある**こと（既定の手動 apply と ESO 経由）を数えていなかった。
+`ESO != 1` ブロックへ足す判断は 3 兄弟の**見た目に合わせた**もので、
+そのブロックが何を意味するか（＝もう 1 本の供給を約束すること）を読んでいない。
+**母集合の規則 2「あり得る形をすべて列挙してから引く」を、供給経路に対して適用しなかった事故である。**
+
+### 是正（4 点）
+
+| # | 変更 |
+| --- | --- |
+| 1 | `deploy/local/vault/eso/externalsecret-postgres-app.yaml` 新設（MSP ns・`msp/postgres-app` → `password`・`creationPolicy: Owner`） |
+| 2 | `bootstrap.sh` へ `secret/msp/postgres-app` の seed 追加（dev 既定 `kp`。手動 apply と同値） |
+| 3 | `k8s-local-up.sh` の ESO=1 分岐へ apply を追加。供給一覧の echo と確認コマンドにも `postgres-app` を足し、**導出値「MSP ns は常時 5 本」を 6 本へ計算し直した**（母集合の規則 7） |
+| 4 | `k8s-local-up.test.js` へ対の 2 本（ESO=1 で ExternalSecret を apply し手動 apply はしない／既定では手動 apply する） |
+
+**変異試験（実測）**: ESO=1 側の apply 行を落とすと
+`externalsecret-postgres-app.yaml が apply されない…` で fail、手動 apply をブロックの外へ出すと
+`ESO=1 なのに postgres-app を手動 apply している（二重所有）` で fail。**両方向とも試験が捕まえる。**
+テストは 97 → **99** 件。
+
+### 一般化しなかった判断
+
+「`ESO != 1` ブロック内の `apply_secret` は、対応する `externalsecret-<name>.yaml` の実在と apply を伴う」
+という**横断の機械検査は置いていない**。この対応漏れは**今回が 1 回目**であり、
+`CLAUDE.md`「検査器・規約の追加は**同型の事故が 2 回起きたら**を条件とする（1 回目は記録に留める）」に従う。
+**2 回目が起きたら一般化すること**を `k8s-local-up.test.js` の当該コメントへ書いた（記録の所在を 1 箇所にする）。
+
 ## 申し送り
 
 - 🔴 **RabbitMQ の `amqp://guest:guest@`（13 箇所）は残件**である。baseline に凍結して**増やせない**が、

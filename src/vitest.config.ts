@@ -278,7 +278,8 @@ export default defineConfig({
       //   テストを付けた」ことと、**カバレッジの低かった oidc-client-ts 依存コード
       //   （authConfig / CallbackPage）が実装ごと消えた**ことによる。
       //   **`coverage.exclude` は増やしていない**（除外で稼いだ引き上げではない）。
-      // ［2026-08-28 / #453］波 4 の掃き寄せでのラチェット。
+      // ［2026-08-28 / #453］波 4 の掃き寄せでのラチェット（#453 = カバレッジ床の起票 issue。
+      //   src/coverage-floor.json も同じ番号を引く。近隣の項が引く #539 等と同じく「原因」を示す番号である）。
       //   実測（測定条件は上と同じ。ブランチ `claude/implementation-repo-all-issues-6pzgm1` /
       //         `pnpm run test:coverage`。MSP 所有分は lcov.info を `ai-stock-trading` の有無で分けて集計した）:
       //     全ユニット横断  lines/statements 98.19%（10110/10296）/ branches 92.22%（2300/2494）/

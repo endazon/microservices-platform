@@ -252,6 +252,9 @@ if [ "${ESO:-}" = "1" ]; then
   # PR-3: OIDC client secret 群）。
   kubectl apply -f deploy/local/vault/eso/externalsecret-llm.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-minio.yaml
+  # NFR, ADR-0002 (#1012): サービス DB のパスワード。手動 apply は上の `ESO != 1` ブロックで
+  # スキップされるので、**これが唯一の供給元**である（欠けると DB を持つ全サービスが起動しない）。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-postgres-app.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-db.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-sync.yaml
   # IADR-0098 (#310) PR-3: OIDC client secret 群。minio-oidc は MSP ns、grafana/vault/headlamp-oidc は platform-infra ns。
@@ -275,14 +278,14 @@ if [ "${ESO:-}" = "1" ]; then
   kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-admin.yaml
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 5 本。infra ns は基盤 3 本＋vault-oidc 常時＋有効ゲートの grafana/headlamp-oidc。
+  # 誤解させない）。MSP ns は常時 6 本。infra ns は基盤 3 本＋vault-oidc 常時＋有効ゲートの grafana/headlamp-oidc。
   infra_es="postgres rabbitmq keycloak-admin vault-oidc"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
-  echo "    ESO: llm/minio-credentials/wikijs-db/wikijs-sync/minio-oidc（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
+  echo "    ESO: llm/minio-credentials/postgres-app/wikijs-db/wikijs-sync/minio-oidc（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
   echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc および有効ゲートの grafana/headlamp-oidc を"
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
-  echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials wikijs-db wikijs-sync minio-oidc"
+  echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials postgres-app wikijs-db wikijs-sync minio-oidc"
   echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret $infra_es"
 
   # IADR-0103 (#354): env の `secretKeyRef` は **Pod 起動時に一度だけ解決され、その後の Secret 更新は

@@ -720,6 +720,39 @@ ok('既定 (PR-2): minio-credentials/wikijs-db/wikijs-sync を手動 apply す�
   }
 });
 
+// NFR, ADR-0002 (#1012): postgres-app（サービス DB のパスワード）も PR-2 の 3 兄弟と同じ扱いにする。
+//
+// 🔴 **この 2 本が守るのは「手動 apply を止めたなら、代わりの供給元を必ず置く」という対である。**
+// #1012 は appsettings.json から接続文字列を撤去し、helm の deployment.yaml が postgres-app を
+// **非 optional** で参照するようにした。そのうえで手動 apply を `ESO != 1` ブロックへ入れたため、
+// **対応する ExternalSecret を置き忘れると ESO=1 で供給元が 1 つも無くなり**、DB を持つ 8 サービス
+// （document / datasource / conversion / authorization / wiki / dashboard / graph / feedback）が
+// `CreateContainerConfigError` で起動しなくなる。実際にその状態で一度コミットされ、レビューが検出した。
+//
+// **この「手動 apply とExternalSecret の対応」を横断で見る機械検査は無い**（secret ごとの本テストだけが見る）。
+// 同型がもう一度起きたら、`ESO != 1` ブロック内の apply_secret を走査して
+// `externalsecret-<name>.yaml` の実在と apply を突合する検査へ一般化すること
+// （CLAUDE.md「検査器の追加は同型の事故が 2 回起きたら」。1 回目の記録がこのコメントである）。
+ok('ESO=1 (#1012): postgres-app の ExternalSecret を apply・手動 apply はスキップ', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  assert.ok(
+    anyLineHas(res.lines, 'deploy/local/vault/eso/externalsecret-postgres-app.yaml'),
+    'externalsecret-postgres-app.yaml が apply されない（ESO=1 で postgres-app の供給元が無くなる）',
+  );
+  assert.ok(
+    !anyLineHas(res.lines, 'create secret generic postgres-app'),
+    'ESO=1 なのに postgres-app を手動 apply している（二重所有）',
+  );
+});
+
+// 回帰: 既定（ESO 未設定）は postgres-app を手動 apply する。
+ok('既定 (#1012): postgres-app を手動 apply する（ESO 未設定）', () => {
+  assert.ok(
+    anyLineHas(DEFAULT.lines, 'create secret generic postgres-app'),
+    'postgres-app の手動 apply が無い（ESO 未設定では唯一の供給元）',
+  );
+});
+
 // IADR-0098 (#310) PR-3: ESO=1 で OIDC client secret 群（minio/grafana/vault/headlamp-oidc）も ExternalSecret 供給し、
 // 各機能ゲート内の手動 apply はスキップする（二重所有回避）。ゲートを全て有効化して skip を確認する。
 ok('ESO=1 (PR-3): OIDC 4 ExternalSecret apply・4 OIDC secret の手動 apply はスキップ', () => {

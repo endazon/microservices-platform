@@ -50,6 +50,18 @@ per-service `database` を足し、**パスワードは Secret から `DB_PASSWO
 接続文字列は k8s の `$(VAR)` 補間で組む**（env の値へ平文パスワードを描画しない）。
 ⚠️ `$(VAR)` は**同一 container 内で先に定義した env しか参照できない** —— 順序を崩さないこと。
 
+> ［2026-08-28 追記 / #1012］🔴 **「配備側」は 1 本ではなく 2 本ある。** 決定 3 は helm への注入だけを
+> 数えており、**ローカル k8s の secret 供給に既定（手動 apply）と ESO（Vault→ExternalSecret）の
+> 2 経路がある**ことを落としていた。`postgres-app` を `k8s-local-up.sh` の `ESO != 1` ブロックへ
+> 置いた時点で「ESO=1 では別経路が供給する」と約束したことになるが、その
+> `externalsecret-postgres-app.yaml` を作っていなかったため、**ESO=1 では供給元が 1 つも無く**
+> DB を持つ 8 サービスが起動しない状態でコミットされた（着地後のレビューが 2 回続けて検出）。
+>
+> **決定 3 を次のように読むこと: 「配備側の注入が先」の“配備側”は、その環境で secret を供給し得る
+> 経路すべてである。** 手当ては `.ai-context/specs/20260828_issue-1012_default-credentials.md`
+> の「事後に見つけた欠陥」節に記録した（ExternalSecret 新設・seed・apply・対の試験 2 本＋変異試験）。
+> 決定 1〜5 そのものは変えていない。
+
 ### 決定 4 — テストは「実配備と同じ経路」で注入する
 
 `WebApplicationFactory.ConfigureAppConfiguration` では**間に合わない**（実測）。トップレベル文の
