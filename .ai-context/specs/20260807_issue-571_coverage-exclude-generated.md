@@ -1,11 +1,11 @@
 ---
 title: 作業仕様書 EF 生成コードをカバレッジ集計から除外し、床を置き直す（#571）
 type: spec
-status: draft
+status: done
 related_ids: [NFR, IADR-0118, IADR-0123, IADR-0138]
 author: Claude
 created: 2026-08-07
-updated: 2026-08-07
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
 ---

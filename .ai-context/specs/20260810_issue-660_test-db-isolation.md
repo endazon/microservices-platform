@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — テストの InMemory DB を固定名からクラス単位の一意名へ変え、並列競合を止める（#660）
 type: spec
-status: draft
+status: done
 related_ids:
   - NFR
   - IADR-0130
@@ -9,7 +9,7 @@ related_ids:
   - IADR-0160
 author: claude
 created: 2026-08-10
-updated: 2026-08-10
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
 ---

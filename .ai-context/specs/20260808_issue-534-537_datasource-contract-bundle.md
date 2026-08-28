@@ -1,7 +1,7 @@
 ---
 title: データソース契約の束 — 更新 API（#534）と同期健全性（#537）
 type: spec
-status: draft
+status: done
 related_ids:
   - FR-01
   - FR-02
@@ -18,7 +18,7 @@ related_ids:
   - IADR-0148
 author: Claude
 created: 2026-08-08
-updated: 2026-08-08
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/03_usecases/01_usecases.md

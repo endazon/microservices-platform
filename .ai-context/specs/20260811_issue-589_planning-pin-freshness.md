@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 計画側の裁定が反映されたことを検知する経路を作る（#589）
 type: spec
-status: draft
+status: done
 related_ids:
   - NFR
   - IADR-0119
@@ -9,7 +9,7 @@ related_ids:
   - IADR-0170
 author: claude
 created: 2026-08-11
-updated: 2026-08-11
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/README.md
 ---
