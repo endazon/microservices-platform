@@ -18,8 +18,8 @@ issues: [#438]
 
 > **realm 設定に加え、Keycloak テーマ（ブランド適用の CSS）を実装した。** テーマ実体は
 > `deploy/keycloak/themes/platform/login/`（`parent=keycloak` を継承し、テンプレートは複製せず
-> CSS のみ追加する方式）。**docker-compose 環境では有効。k8s ローカル環境（`deploy/local/`）は
-> ConfigMap の手動作成が必要**（残件は本書 §未決事項）。
+> CSS のみ追加する方式）。**docker-compose 環境・k8s ローカル環境（`deploy/local/`）とも
+> 配線済みである**（k8s ローカルの ConfigMap 生成は 2026-08-28 に自動化した。残件は本書 §未決事項）。
 
 ## 起点となる計画書（トレーサビリティ）
 
