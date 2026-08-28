@@ -98,6 +98,21 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // 観測する側が呼ぶ前に既定へ戻すこと。
     public List<AiSuggestionDto> StubAiSuggestions { get; set; } = [];
 
+    // FR-16, UC-09, SC-12, #452: McpServer（/mcp-clients*）のスタブ。**テスト間で共有される**
+    // （IClassFixture）ため、観測する側が呼ぶ前に既定へ戻すこと。
+    //
+    // 🔴 **後段の状態コードをそのまま返せることを測るための可変値である。**
+    // BFF は透過中継であり、400（属性割当の拒否）・404（不在）・409 を作り替えてはならない。
+    public HttpStatusCode McpStubStatusCode { get; set; } = HttpStatusCode.OK;
+    public bool McpStubThrows { get; set; }
+    public string? LastMcpPath { get; private set; }
+    public string? LastMcpMethod { get; private set; }
+    public string? LastMcpBody { get; private set; }
+
+    // 🔴 **資格情報が後段へ届いているかの観測点**（陽性対照）。伝播を落とすと後段は自分で
+    // 401 を返す型なので、ここを測らないと「全部 401 でも緑」になる。
+    public string? LastMcpForwardedAuthorization { get; private set; }
+
     public bool TagDictionaryFetched { get; set; }
     public HttpStatusCode TagDictionaryStatusCode { get; set; } = HttpStatusCode.OK;
 
@@ -316,6 +331,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ["Services:RiskManagementService"] = "http://localhost:5012",
                 // Issue #288 (AST/SC-02 watchlist): AST MarketMonitorService の集約先（テスト用）。
                 ["Services:MarketMonitorService"] = "http://localhost:5013",
+                // FR-16, UC-09, SC-12 (#452): McpServer の集約先（テスト用）。実デプロイの Service 名
+                // （mcp-service）とメッシュポート（:8080）を明示注入し、named client の BaseAddress が
+                // Services 設定駆動であることを固定する（BffDownstreamResolutionTests 参照）。
+                ["Services:McpServer"] = "http://mcp-service:8080",
                 // FR-15: 構成情報 API テスト。定期ドリフト検出は無効化し、構成バージョンを固定する。
                 ["Drift:Enabled"] = "false",
                 ["Config:GitCommit"] = "abc1234",
@@ -359,6 +378,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // Issue #288 (AST/SC-02 watchlist): MarketMonitorService(/monitor/*) をスタブ化する。
             services.AddHttpClient("MarketMonitorService")
                 .ConfigurePrimaryHttpMessageHandler(() => new MonitorStubHandler(this));
+
+            // FR-16, UC-09, SC-12 (#452): McpServer(/mcp-clients*) をスタブ化する。
+            services.AddHttpClient("McpServer")
+                .ConfigurePrimaryHttpMessageHandler(() => new McpStubHandler(this));
 
             // FR-10: /bff/dashboard/summary は管理系ロール（admin ＋ operator。#544）を要求する。テストでは Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
@@ -1152,4 +1175,64 @@ public class BffTestFactory : WebApplicationFactory<Program>
             };
         }
     }
+
+    // FR-16, UC-09, SC-12 (#452): McpServer(/mcp-clients*) のスタブ。BFF の pass-through
+    // （ステータス・本文・Content-Type 透過、資格情報の伝播、書き込み本文の転送、502 縮退）を
+    // 検証するための最小スタブである。
+    //
+    // 🔴 **資格情報が届かないときは 401 を返す。** 後段（McpServer）の管理 API は
+    // `RequireAuthorization(AdminOnly)` の群であり、無資格の要求はそこで弾かれる。
+    // ここを一律 200 にすると、BFF が Authorization を伝播し忘れても緑のままになる。
+    private sealed class McpStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            owner.LastMcpPath = request.RequestUri?.PathAndQuery;
+            owner.LastMcpMethod = request.Method.Method;
+            owner.LastMcpBody = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+            owner.LastMcpForwardedAuthorization = request.Headers.TryGetValues("Authorization", out var auth)
+                ? string.Join(' ', auth)
+                : null;
+
+            if (owner.McpStubThrows) throw new HttpRequestException("mcp-service unreachable");
+
+            if (string.IsNullOrEmpty(owner.LastMcpForwardedAuthorization))
+                return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+
+            if (owner.McpStubStatusCode != HttpStatusCode.OK)
+                return new HttpResponseMessage(owner.McpStubStatusCode)
+                {
+                    // 後段は RFC7807 の本文を返す。**本文まで透過することを測る**ため空にしない。
+                    Content = new StringContent(
+                        "{\"errors\":{\"request\":[\"stub-detail\"]}}",
+                        System.Text.Encoding.UTF8, "application/problem+json"),
+                };
+
+            // 公開ツール一覧（GET /mcp-clients/tools）と登録クライアント一覧（GET /mcp-clients）は形が違う。
+            // 型は BFF で結合しないため素の JSON で返す。
+            if (owner.LastMcpPath?.EndsWith("/mcp-clients/tools", StringComparison.Ordinal) == true)
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "{\"version\":3,\"tools\":[{\"name\":\"retrieval.search_documents\",\"service\":\"retrieval-service\","
+                        + "\"description\":\"横断検索\",\"requiredScope\":\"document:read\",\"egressClass\":\"metadata-only\"}],"
+                        + "\"drifts\":[{\"kind\":\"UndeclaredTool\",\"target\":\"graph.traverse\",\"detail\":\"申告に無い\"}]}",
+                        System.Text.Encoding.UTF8, "application/json"),
+                };
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "[{\"id\":\"11111111-1111-1111-1111-111111111111\",\"clientId\":\"nightly-digest-bot\","
+                    + "\"displayName\":\"夜間ダイジェスト\",\"kind\":\"service-account\",\"enabled\":true,"
+                    + "\"attributes\":{\"confidentiality\":\"internal\"},\"egressTier\":\"self-hosted\","
+                    + "\"registeredAt\":\"2026-08-28T00:00:00Z\",\"updatedAt\":\"2026-08-28T00:00:00Z\"}]",
+                    System.Text.Encoding.UTF8, "application/json"),
+            };
+        }
+    }
+
 }

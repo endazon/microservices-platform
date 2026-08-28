@@ -11,6 +11,7 @@ import { createSc08AnalysisRoute, sc08AnalysisNav } from './sc08-analysis';
 import { createSc09AdminAbacRoute, sc09AdminAbacNav } from './sc09-admin-abac';
 import { createSc10OperationsRoute, sc10OperationsNav } from './sc10-operations';
 import { createSc11ConfigRoute, sc11ConfigNav } from './sc11-config';
+import { createSc12McpClientsRoute, sc12McpClientsNav } from './sc12-mcp-clients';
 import { createSc18GraphRoute, sc18GraphNav } from './sc18-graph';
 import { createSc19PrivateNotesRoute, sc19PrivateNotesNav } from './sc19-private-notes';
 import { createSc20ObsidianSettingsRoute, sc20ObsidianSettingsNav } from './sc20-obsidian-settings';
@@ -35,6 +36,7 @@ export const createKnowledgeRoutes = (shell: ShellRoute) =>
     createSc09AdminAbacRoute(shell), // SC-09 管理者設定（ABAC）（#135 → 新スタックで再実装 #504）
     createSc10OperationsRoute(shell), // SC-10 運用ダッシュボード（#136 → 新スタックで再実装 #504）
     createSc11ConfigRoute(shell), // SC-11 構成ビューア（#137/#138/#140 → 新スタックで再実装 #504）
+    createSc12McpClientsRoute(shell), // SC-12 MCP クライアント登録管理（#452。公開ツールは参照のみ）
     createSc18GraphRoute(shell), // SC-18 ナレッジグラフビュー（#917）
     createSc19PrivateNotesRoute(shell), // SC-19 個人資料管理（#451。本文編集は持たない）
     createSc20ObsidianSettingsRoute(shell), // SC-20 Obsidian 連携設定（#451）
@@ -63,4 +65,5 @@ export const knowledgeNavItems: readonly PlanNavItem[] = [
   sc09AdminAbacNav,
   sc10OperationsNav,
   sc11ConfigNav,
+  sc12McpClientsNav,
 ];

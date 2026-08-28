@@ -49,6 +49,8 @@ tags:
     description: "FR-15, SC-11, ADR-0018, IADR-0029/IADR-0030: 構成情報 API（読み取り専用）。実効構成とドリフトを管理者・運用者（ConfigViewer ポリシー）へ返す"
   - name: Auth
     description: "NFR, SC-16, ADR-0032, IADR-0251: BFF セッション（Token Handler）。トークンはブラウザへ出さず BFF 側の Redis セッションにのみ保持する"
+  - name: McpClients
+    description: "FR-16, UC-09, SC-12, ADR-0024: MCP クライアント登録管理（管理者限定）。登録・無効化・無人アカウントの ABAC 属性割当と、実効ツール一覧（許可リストの参照）。**公開ツールの変更口は置かない** —— 公開範囲は Git 経由の構成変更で行う（GitOps）"
   - name: Notifications
     description: "FR-22, UC-11, ADR-0037, ADR-0045, IADR-0215: 利用者本人へのアプリ内通知。**本文は件数と期限のみ**で、資料のタイトル・本文を含めない（スキーマに自由文の項目を置かない）"
 
@@ -889,6 +891,166 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
         "502": { description: AuthorizationService へ到達できない }
+
+  # ── SC-12, FR-16, UC-09, ADR-0024: MCP クライアント登録管理 BFF ─
+  # 管理者限定（05_screens §共通シェル「SC-09・SC-12・SC-17 = システム管理者」。運用者も不可）。
+  # BFF は McpServer の /mcp-clients* へ**透過中継**する。後段の 400（属性割当の拒否）・404（不在）・
+  # 409（重複）はそのまま返る。後段不達は 502。
+  /bff/admin/mcp-clients:
+    get:
+      x-roles: [platform-admin]
+      tags: [McpClients]
+      summary: "FR-16, UC-09, SC-12: 登録 MCP クライアント一覧（BFF 集約）"
+      operationId: bff-mcp-list-clients
+      responses:
+        "200":
+          description: 登録クライアント一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/McpClientView"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "502": { description: McpServer へ到達できない }
+    post:
+      x-roles: [platform-admin]
+      tags: [McpClients]
+      summary: "FR-16, UC-09, SC-12: MCP クライアント登録（有人 / 無人）"
+      description: |
+        種別は `interactive`（有人・Authorization Code + PKCE）と `service-account`
+        （無人・Client Credentials）の 2 値である。
+
+        **無人アカウントへ個人資料を読ませる属性割当は拒否される**（400 ValidationProblem）。
+        登録経路と属性差し替え経路の**両方**が同じ検証を通る。
+        既に登録済みのクライアント ID も 400 で拒否される。
+      operationId: bff-mcp-register-client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterMcpClientRequest"
+      responses:
+        "201":
+          description: 登録成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpClientView"
+        "400":
+          description: 検証エラー（RFC7807 ValidationProblem。種別・越境ティアの値域、禁止された属性割当、重複）
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblemDetails"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "502": { description: McpServer へ到達できない }
+
+  # 実効ツール一覧。literal な `/tools` と、下の `{clientId}` を含む経路は**セグメント数が違う**ので
+  # 衝突しない（`/tools` は 1 段、`{clientId}/disable` 等は 2 段）。
+  /bff/admin/mcp-clients/tools:
+    get:
+      x-roles: [platform-admin]
+      tags: [McpClients]
+      summary: "FR-16, SC-12, ADR-0024: 公開ツール一覧（実効構成）と構成ドリフト"
+      description: |
+        許可リスト（宣言的公開構成）と各サービスの自己申告の**積**が実効ツールである。
+        申告と構成の食い違いは `drifts` に出る。
+
+        **本経路に書き込みは無い。** 公開範囲の変更は Git 経由の公開構成変更で行う
+        （許可リスト方式・GitOps）。画面もこの経路の結果を参照するだけである。
+      operationId: bff-mcp-list-tools
+      responses:
+        "200":
+          description: 実効ツール一覧と構成ドリフト
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EffectiveToolsView"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "502": { description: McpServer へ到達できない }
+
+  /bff/admin/mcp-clients/{clientId}/disable:
+    parameters:
+      - { name: clientId, in: path, required: true, schema: { type: string } }
+    post:
+      x-roles: [platform-admin]
+      tags: [McpClients]
+      summary: "FR-16, UC-09, SC-12: MCP クライアントの無効化（次の呼び出しから即座に効く）"
+      description: |
+        無効化は**次の呼び出しから即座に**効く（後段は毎回登録簿を引き、キャッシュを挟まない）。
+        存在しないクライアントは **404** であり、BFF はこれを透過する。
+      operationId: bff-mcp-disable-client
+      responses:
+        "200":
+          description: 無効化後の状態
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpClientView"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "404": { description: 見つからない }
+        "502": { description: McpServer へ到達できない }
+
+  /bff/admin/mcp-clients/{clientId}/enable:
+    parameters:
+      - { name: clientId, in: path, required: true, schema: { type: string } }
+    post:
+      x-roles: [platform-admin]
+      tags: [McpClients]
+      summary: "FR-16, UC-09, SC-12: MCP クライアントの再有効化"
+      operationId: bff-mcp-enable-client
+      responses:
+        "200":
+          description: 再有効化後の状態
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpClientView"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "404": { description: 見つからない }
+        "502": { description: McpServer へ到達できない }
+
+  /bff/admin/mcp-clients/{clientId}/attributes:
+    parameters:
+      - { name: clientId, in: path, required: true, schema: { type: string } }
+    put:
+      x-roles: [platform-admin]
+      tags: [McpClients]
+      summary: "FR-16, UC-09, SC-12: 無人アカウントの ABAC 属性割当の差し替え"
+      description: |
+        差し替えである（部分更新ではない）。**無人アカウントへ個人資料を読ませる属性割当は
+        400 で拒否される** —— 登録経路と同じ検証を通る。
+      operationId: bff-mcp-replace-client-attributes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceMcpClientAttributesRequest"
+      responses:
+        "200":
+          description: 差し替え後の状態
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpClientView"
+        "400":
+          description: 禁止された属性割当（RFC7807 ValidationProblem）
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblemDetails"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "404": { description: 見つからない }
+        "502": { description: McpServer へ到達できない }
 
   # ── SC-03/SC-05, FR-06, UC-01/UC-03/UC-07: 文書 BFF ─
   # IADR-0041 / IADR-0009: 読み取りはロールで塞がず、ABAC スコープ解決の結果でのみ絞る。
@@ -4085,6 +4247,93 @@ components:
         includeInSearch: { type: boolean }
         includeInGraph: { type: boolean }
         includeInAi: { type: boolean }
+
+    # ── SC-12, FR-16, UC-09, ADR-0024: MCP クライアント登録管理 ──
+    McpClientView:
+      type: object
+      description: |
+        FR-16, UC-09, SC-12: 登録済み MCP クライアント 1 件。
+        `kind` は `interactive`（有人）/ `service-account`（無人）の 2 値である。
+        `attributes` は**無人アカウントにだけ意味がある** —— 有人は利用者本人の属性で解決される。
+        `egressTier` はクライアント側 LLM のデータ保護水準であり、**未申告は最も低い水準へ倒れる**。
+      required: [id, clientId, displayName, kind, enabled, attributes, egressTier, registeredAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        clientId: { type: string, description: "認可サーバーのクライアント ID（トークンの azp / client_id）" }
+        displayName: { type: string }
+        kind: { type: string, enum: [interactive, service-account] }
+        enabled: { type: boolean, description: "false は次の呼び出しから即座に接続拒否" }
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+          description: "無人アカウントへ明示的に割り当てる ABAC 属性（機密区分上限・アクセス可能タグ等）"
+        egressTier: { type: string, enum: [self-hosted, protected-external, standard-external] }
+        registeredAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    RegisterMcpClientRequest:
+      type: object
+      description: |
+        FR-16, UC-09, SC-12: クライアント登録。`attributes` は**無人時に必須**であり、
+        個人資料を読ませる割当は後段が 400 で拒否する。`egressTier` の未指定は
+        最も低い保護水準（`standard-external`）として扱われる。
+      required: [clientId, displayName, kind]
+      properties:
+        clientId: { type: string }
+        displayName: { type: string }
+        kind: { type: string, enum: [interactive, service-account] }
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+          nullable: true
+        egressTier:
+          type: string
+          enum: [self-hosted, protected-external, standard-external]
+          nullable: true
+
+    ReplaceMcpClientAttributesRequest:
+      type: object
+      description: "FR-16, UC-09, SC-12: 無人アカウントの ABAC 属性割当の**差し替え**（部分更新ではない）。"
+      required: [attributes]
+      properties:
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+
+    PublishedToolView:
+      type: object
+      description: "FR-16, SC-12, ADR-0024 §5: 実効ツール 1 件（許可リスト ∩ 自己申告）。"
+      required: [name, service, description, requiredScope, egressClass]
+      properties:
+        name: { type: string, description: "公開名" }
+        service: { type: string, description: "供給元サービス" }
+        description: { type: string }
+        requiredScope: { type: string }
+        egressClass: { type: string }
+
+    ToolDriftView:
+      type: object
+      description: "FR-16, SC-12, ADR-0024 §5: 許可リストと自己申告の食い違い 1 件。"
+      required: [kind, target, detail]
+      properties:
+        kind: { type: string }
+        target: { type: string }
+        detail: { type: string }
+
+    EffectiveToolsView:
+      type: object
+      description: |
+        FR-16, SC-12, ADR-0024 §5: 実効ツール一覧と構成ドリフト。
+        **書き込みの口は無い** —— 公開範囲の変更は Git 経由の公開構成変更で行う（GitOps）。
+      required: [version, tools, drifts]
+      properties:
+        version: { type: integer, description: "収集した公開構成の版" }
+        tools:
+          type: array
+          items: { $ref: "#/components/schemas/PublishedToolView" }
+        drifts:
+          type: array
+          items: { $ref: "#/components/schemas/ToolDriftView" }
 
     SyncDeviceDto:
       type: object

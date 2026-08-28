@@ -115,7 +115,25 @@
     "",
     "smallLazyChunks は 6 のまま（1 kB 未満の遅延チャンクは増減していない）。"
   ],
-  "initialTotalBytes": 602250,
+  "$comment_initialTotalBytes_20260829_sc12": [
+    "［2026-08-29 / #452］602,250 → 606,800（+4.55 kB）へ引き上げた。実測値である（pnpm run build →",
+    "node scripts/check-chunk-budget.js --update）。増加は SC-12 MCP クライアント登録管理のルート登録",
+    "（features/index.ts の合成点・左ナビ項目・ロールガード）と、Lingui カタログ 37 メッセージ × 2",
+    "ロケール分である。**カタログは foundation/i18n が静的 import するため必ず初期ロードへ入る**",
+    "（SC-18 の +6.98 kB・SC-21 の +3.16 kB と同じ経路）。",
+    "",
+    "画面本体（McpClientManagementPage 11.16 kB）と表の土台（DataTable 39.07 kB）はルート単位の",
+    "遅延チャンクであり、初期ロードには入っていない。**管理者しか開かない画面のコードを、",
+    "全利用者の初期ロードへ載せていない。**",
+    "",
+    "⚠️ **残余は小さい。** 最大チャンクは vendor-echarts 586.04 kB で上限 600,000 との差は 13.96 kB、",
+    "初期ロードの床は本 PR で 606.80 kB になった。**次に画面を足すときは、カタログの文言数が",
+    "そのまま初期ロードに効く**ことを見込んで、増分が数 kB を超えるなら分割（ロケール別の遅延読み込み）を",
+    "検討すること。本 PR では分割していない —— 分割は i18n の読み込み経路を変える作業であり、",
+    "1 画面の追加と同じ PR に混ぜる変更ではない（1 issue = 1 PR）。",
+    "smallLazyChunks は 6 のまま（1 kB 未満の遅延チャンクは増減していない）。"
+  ],
+  "initialTotalBytes": 606802,
   "$comment_initialTotalBytes_20260823_sc18": [
     "［2026-08-23 / #917］575,856 → 582,839（+6.98 kB）へ引き上げた。実測値である（pnpm run build →",
     "node scripts/check-chunk-budget.js --update）。増加は SC-18 ナレッジグラフビューのルート登録",

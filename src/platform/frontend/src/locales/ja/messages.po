@@ -129,6 +129,10 @@ msgstr "90 日待てば自動的に完全削除されます。急がなければ
 msgid "ABAC 設定の区画"
 msgstr "ABAC 設定の区画"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "ABAC属性（無人のみ）"
+msgstr "ABAC属性（無人のみ）"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/routes/sc09AdminAbacRoute.tsx
 msgid "ABAC設定"
 msgstr "ABAC設定"
@@ -193,9 +197,17 @@ msgstr "AI回答（ストリーミング）"
 msgid "AI提案"
 msgstr "AI提案"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/types/mcpClientVocabulary.ts
+msgid "Authorization Code + PKCE"
+msgstr "Authorization Code + PKCE"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "cites: 実線・矢印"
 msgstr "cites: 実線・矢印"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/types/mcpClientVocabulary.ts
+msgid "Client Credentials"
+msgstr "Client Credentials"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "consumer"
@@ -212,6 +224,18 @@ msgstr "embeds: 点線・矢印"
 #: platform/frontend/src/lib/auth/LoginPage.tsx
 msgid "Keycloak でサインイン"
 msgstr "Keycloak でサインイン"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "MCP クライアント登録管理"
+msgstr "MCP クライアント登録管理"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "MCP サーバーへ接続できるクライアント（外部 AI エージェント）を登録・無効化し、 無人アカウントへ ABAC 属性を割り当てます。公開ツールの構成はこの画面からは変更できません。"
+msgstr "MCP サーバーへ接続できるクライアント（外部 AI エージェント）を登録・無効化し、 無人アカウントへ ABAC 属性を割り当てます。公開ツールの構成はこの画面からは変更できません。"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/routes/sc12McpClientsRoute.tsx
+msgid "MCP管理"
+msgstr "MCP管理"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "Mermaid {coded}図"
@@ -318,6 +342,7 @@ msgstr "イベント接続はありません。"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
@@ -359,6 +384,30 @@ msgstr "キーワード検索のみ →"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "キャンセル"
 msgstr "キャンセル"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "クライアント"
+msgstr "クライアント"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "クライアント ID"
+msgstr "クライアント ID"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "クライアント ID は必須です。"
+msgstr "クライアント ID は必須です。"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "クライアントを登録できませんでした。"
+msgstr "クライアントを登録できませんでした。"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "クライアント登録"
+msgstr "クライアント登録"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "クライアント種別"
+msgstr "クライアント種別"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "グラフを読み込めませんでした。時間をおいて再試行してください。"
@@ -802,6 +851,10 @@ msgstr "リンク"
 msgid "リンク先が表示されない場合、リンク切れなのか、閲覧権限がないのかは区別できません。これは、閲覧権限のない文書の存在を知られないようにするための仕様です。"
 msgstr "リンク先が表示されない場合、リンク切れなのか、閲覧権限がないのかは区別できません。これは、閲覧権限のない文書の存在を知られないようにするための仕様です。"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "ログ基盤で呼び出し監査ログを見る ↗"
+msgstr "ログ基盤で呼び出し監査ログを見る ↗"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "一覧"
 msgstr "一覧"
@@ -820,6 +873,7 @@ msgid "上位 {0} 件を表示（全 {1} 件以上）。総数の探索も上限
 msgstr "上位 {0} 件を表示（全 {1} 件以上）。総数の探索も上限に達した ため、「更新日が新しい順」「次数が大きい順」は厳密な上位 {2} 件ではありません。 探索深さを浅くするか、辺の型を絞ってください。"
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "並べ替え"
 msgstr "並べ替え"
@@ -993,6 +1047,10 @@ msgstr "個人資料を完全に削除しました。"
 msgid "候補を読み込み中…"
 msgstr "候補を読み込み中…"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "値"
+msgstr "値"
+
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "備考"
 msgstr "備考"
@@ -1013,6 +1071,10 @@ msgstr "入力 {inputTokens} ・出力 {outputTokens} トークン"
 msgid "入力してください。"
 msgstr "入力してください。"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "入力を確認してください"
+msgstr "入力を確認してください"
+
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "全消去"
 msgstr "全消去"
@@ -1020,6 +1082,18 @@ msgstr "全消去"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "公開"
 msgstr "公開"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "公開ツールはこの画面からは変更できません。公開範囲は許可リスト方式で管理しており、 変更は Git 上の公開構成を更新して反映します。"
+msgstr "公開ツールはこの画面からは変更できません。公開範囲は許可リスト方式で管理しており、 変更は Git 上の公開構成を更新して反映します。"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "公開ツール一覧（実効構成の参照）"
+msgstr "公開ツール一覧（実効構成の参照）"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "公開ツール一覧を取得できませんでした。"
+msgstr "公開ツール一覧を取得できませんでした。"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "円 = 組織文書"
@@ -1040,6 +1114,10 @@ msgstr "再変換は管理者のみ実行できます"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "再変換を受け付けました。"
 msgstr "再変換を受け付けました。"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "再有効化"
+msgstr "再有効化"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "再発行したときの注意"
@@ -1127,6 +1205,10 @@ msgstr "利用状況（日次）の推移グラフ"
 #: platform/frontend/src/app/routing/nav.ts
 msgid "利用者"
 msgstr "利用者"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "利用者の属性で解決"
+msgstr "利用者の属性で解決"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
@@ -1237,6 +1319,10 @@ msgstr "名前"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "名前（必須）"
 msgstr "名前（必須）"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "呼び出し監査ログ"
+msgstr "呼び出し監査ログ"
 
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "回答を生成できませんでした。時間をおいて再度お試しください。"
@@ -1393,6 +1479,10 @@ msgstr "対象範囲"
 msgid "対象範囲フィルタ"
 msgstr "対象範囲フィルタ"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "属性"
+msgstr "属性"
+
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "属性・タグ"
 msgstr "属性・タグ"
@@ -1406,6 +1496,7 @@ msgid "属性を削除: {attributeKey}"
 msgstr "属性を削除: {attributeKey}"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "属性を追加"
 msgstr "属性を追加"
 
@@ -1554,6 +1645,7 @@ msgstr "提案の一覧を取得できませんでした。時間をおいて再
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "操作"
@@ -1742,8 +1834,13 @@ msgstr "更新日が新しい順"
 msgid "更新日時"
 msgstr "更新日時"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/types/mcpClientVocabulary.ts
+msgid "有人"
+msgstr "有人"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "有効"
 msgstr "有効"
 
@@ -1907,6 +2004,10 @@ msgstr "検証結果"
 msgid "業務DB"
 msgstr "業務DB"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "構成のずれ"
+msgstr "構成のずれ"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "構成の変更は Git 経由（GitOps）に限ります。本画面から構成は変更できません。閲覧は監査ログに記録されます。"
 msgstr "構成の変更は Git 経由（GitOps）に限ります。本画面から構成は変更できません。閲覧は監査ログに記録されます。"
@@ -2008,14 +2109,31 @@ msgstr "満足率"
 msgid "点線の輪郭 = 孤立文書（表示中の辺なし）"
 msgstr "点線の輪郭 = 孤立文書（表示中の辺なし）"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/types/mcpClientVocabulary.ts
+msgid "無人"
+msgstr "無人"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "無人（サービスアカウント）には ABAC 属性の割当が必須です。"
+msgstr "無人（サービスアカウント）には ABAC 属性の割当が必須です。"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "無人（サービスアカウント）には ABAC 属性の割当が必須です。選べるのは定義済みの属性と その許可値だけです。"
+msgstr "無人（サービスアカウント）には ABAC 属性の割当が必須です。選べるのは定義済みの属性と その許可値だけです。"
+
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "無効"
 msgstr "無効"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "無効（即時接続拒否）"
+msgstr "無効（即時接続拒否）"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "無効化"
 msgstr "無効化"
 
@@ -2027,6 +2145,7 @@ msgstr "版"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "状態"
@@ -2052,6 +2171,26 @@ msgstr "発行しました"
 msgid "発行者"
 msgstr "発行者"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "登録"
+msgstr "登録"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "登録クライアント"
+msgstr "登録クライアント"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "登録クライアントを取得できませんでした。"
+msgstr "登録クライアントを取得できませんでした。"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "登録された MCP クライアントの一覧"
+msgstr "登録された MCP クライアントの一覧"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "登録されたクライアントはありません。"
+msgstr "登録されたクライアントはありません。"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "登録されているすべての端末のトークンを無効にします。この操作は元に戻せません。すべての端末で同期が停止し、再開するには端末ごとにトークンを再発行して入れ直す必要があります。"
 msgstr "登録されているすべての端末のトークンを無効にします。この操作は元に戻せません。すべての端末で同期が停止し、再開するには端末ごとにトークンを再発行して入れ直す必要があります。"
@@ -2063,6 +2202,10 @@ msgstr "登録する"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "登録済みデータソースの一覧"
 msgstr "登録済みデータソースの一覧"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "監査ログの参照先が未設定です。ツールの呼び出しはすべてログ基盤へ記録されています。"
+msgstr "監査ログの参照先が未設定です。ツールの呼び出しはすべてログ基盤へ記録されています。"
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "直近 {d} 日"
@@ -2096,6 +2239,7 @@ msgstr "社内ナレッジ検索・AI 回答プラットフォーム"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "種別"
 msgstr "種別"
@@ -2185,6 +2329,14 @@ msgstr "表示中のノードをタイトルで絞り込む"
 msgid "表示中の辺はありません（孤立文書）。"
 msgstr "表示中の辺はありません（孤立文書）。"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "表示名"
+msgstr "表示名"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "表示名は必須です。"
+msgstr "表示名は必須です。"
+
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 msgid "補正あり"
@@ -2254,6 +2406,10 @@ msgstr "該当する文書が見つかりませんでした。"
 msgid "詳細ツール"
 msgstr "詳細ツール"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "認証"
+msgstr "認証"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "説明"
 msgstr "説明"
@@ -2277,6 +2433,7 @@ msgstr "読み込みエラー"
 msgid "読み込み中…"
 msgstr "読み込み中…"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "読み込み中です。"
 msgstr "読み込み中です。"
@@ -2425,6 +2582,7 @@ msgid "選択した資料を復元する"
 msgstr "選択した資料を復元する"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "選択してください"
 msgstr "選択してください"
 

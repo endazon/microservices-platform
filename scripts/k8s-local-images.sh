@@ -42,6 +42,10 @@ MAPPING=(
   # compose / values / MAPPING のいずれにも無く、イメージが焼かれず配備にも出ていなかった
   # （graph-service の #908/#957 と同型の欠落）。
   "microservices-platform/notification-service|src/platform/backend/Services/NotificationService/Dockerfile"
+  # FR-16, UC-09, SC-12, ADR-0024 (#452): MCP サーバー。実装・テストは #445 で着地していたが
+  # Dockerfile も compose / values / MAPPING も無く、イメージが焼かれず配備にも出ていなかった
+  # （notification-service の #1025 と同型の欠落）。
+  "microservices-platform/mcp-service|src/platform/backend/Services/McpServer/Dockerfile"
   "microservices-platform/wiki-service|src/knowledge/backend/Services/WikiService/Dockerfile"
   "microservices-platform/llm-gateway|src/platform/backend/Services/LlmGateway/Dockerfile"
   "microservices-platform/feedback-service|src/knowledge/backend/Services/FeedbackService/Dockerfile"

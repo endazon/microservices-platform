@@ -744,6 +744,33 @@ services:
       bff:
         condition: service_started
 
+  # FR-16, UC-09, SC-12, ADR-0021/ADR-0024 (#452): MCP サーバー。外部 AI エージェント向けの
+  # エッジ集約（/mcp）と、管理 REST（/mcp-clients*。SC-12 の後段）を持つ。
+  #
+  # 🔴 **サービス名は `mcp-service` である**（`mcp-server` ではない）。helm の deployment.yaml /
+  # service.yaml が `{{ $name }}-service` を組むため、chart のキー `mcp` から Service 名
+  # `mcp-service` が決まる。BFF のコード既定（http://mcp-service:8080）と一致させる。
+  # IADR-0017: 内部 API のため host 公開しない（管理面は BFF 経由、MCP 面は Ingress 経由で到達）。
+  mcp-service:
+    build:
+      context: ..
+      dockerfile: src/platform/backend/Services/McpServer/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      <<: [*common-env, *db-env]
+      # ADR-0002 / #1012: 専用 DB。deploy/create-multiple-dbs.sh が `mcp_svc` を作る。
+      # 起動時に MigrateAsync が走るため、DB が無いとクラッシュループする（graph_svc の先例と同型）。
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=mcp_svc;Username=kp;Password=kp
+      # FR-16, ADR-0024 §5: 自己申告の収集先。appsettings の既定（:8080）と同値だが、
+      # **収集先が構成で決まることを manifest 側でも見えるようにする**（既定へ黙って寄りかからない）。
+      Mcp__Services__document-service: http://document-service:8080
+      Mcp__Services__retrieval-service: http://retrieval-service:8080
+      Mcp__Services__graph-service: http://graph-service:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres-data:
   rabbitmq-data:

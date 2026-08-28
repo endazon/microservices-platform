@@ -48,6 +48,8 @@ public class BffEndpointCompositionTests
             app.MapAssumptionsBffEndpoints();
             app.MapRiskControlsBffEndpoints();
             app.MapMonitorBffEndpoints();
+            // #452, FR-16, UC-09, SC-12: MCP クライアント登録管理（後段は McpServer）。
+            app.MapMcpClientBffEndpoints();
             // NFR, SC-16, ADR-0032 / IADR-0251 / #439 第 3 段(3a): BFF セッションの入口。
             app.MapAuthBffEndpoints();
         });
@@ -59,13 +61,15 @@ public class BffEndpointCompositionTests
     [Fact]
     public void Composition_registry_holds_all_endpoint_modules()
     {
-        // 全 16 モジュール。ナレッジ 10 ドメイン（Search/Document/Analysis/Feedback/Dashboard/Conversion/DataSource/TagDictionary/Graph/PrivateNote）は
+        // 全 17 モジュール。ナレッジ 10 ドメイン（Search/Document/Analysis/Feedback/Dashboard/Conversion/DataSource/TagDictionary/Graph/PrivateNote）は
         // knowledge の Knowledge.Bff.Endpoints へ移設済み・例外3 で合成点参照。platform 固有 2（Config/Authz）は
-        // platform 同居。AST の Assumptions（#283・AST/SC-01）／RiskControls（#287・AST/SC-02/AST/SC-03）／Monitor（#288・AST/SC-02 watchlist）は
+        // platform 同居（#452 の McpClient を含めて 3 つ）。AST の Assumptions（#283・AST/SC-01）／RiskControls（#287・AST/SC-02/AST/SC-03）／Monitor（#288・AST/SC-02 watchlist）は
         // #286（IADR-0073）で AiStockTrading.Bff.Endpoints（AST submodule の unit-owned Bff）へ移設済み・例外3 で合成点参照。
         // NFR, SC-16, ADR-0032 / IADR-0251 / #439 第 3 段(3a): BFF セッションの入口（Auth）を追加した。
         // #451, FR-19, FR-20, SC-19, SC-20: 個人資料・Obsidian 連携設定（PrivateNote）を追加した。
-        BffEndpointComposition.Modules.Should().HaveCount(16);
+        // #452, FR-16, UC-09, SC-12: MCP クライアント登録管理（McpClient）を追加した（platform 同居。
+        // 後段の McpServer が platform ユニットのサービスであるため）。
+        BffEndpointComposition.Modules.Should().HaveCount(17);
     }
 
     // 内容一致の検証（claude-review 指摘対応）: 合成点経由でビルドした実アプリ（全 DI 込み）の実体化ルートが、
@@ -74,7 +78,7 @@ public class BffEndpointCompositionTests
     [Fact]
     public void Composition_maps_exactly_the_expected_bff_route_groups()
     {
-        // 期待する 16 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
+        // 期待する 17 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
         string[] expectedGroups =
         [
             // #451, FR-19, FR-20, SC-19, SC-20: 個人資料と同期端末（後段は DocumentService の
@@ -82,6 +86,9 @@ public class BffEndpointCompositionTests
             "/bff/private-notes",
             "/bff/admin/authz",
             "/bff/admin/config",
+            // #452, FR-16, UC-09, SC-12: MCP クライアント登録管理（AdminOnly の透過中継）。
+            // **`/bff/admin/mcp-clients/tools` もこの接頭辞に含まれる**（公開ツール一覧は読み取りだけ）。
+            "/bff/admin/mcp-clients",
             "/bff/analysis",
             "/bff/assumptions",
             // NFR, SC-16, ADR-0032 / IADR-0251 / #439 第 3 段(3a): BFF セッションの入口。

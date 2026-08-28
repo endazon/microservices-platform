@@ -466,6 +466,26 @@ services:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
 
+  # FR-16, UC-09, SC-12, ADR-0021/ADR-0024 (#452): MCP サーバー。外部 AI エージェント向けの
+  # エッジ集約（/mcp）と、管理 REST（/mcp-clients*。SC-12 の後段）を持つ。
+  # 🔴 **chart のキーは `mcp` である**（deployment.yaml / service.yaml が {{ $name }}-service を
+  # 組むため Service 名は mcp-service になり、BFF のコード既定 `http://mcp-service:8080` と
+  # 文字列一致する）。キーを `mcp-server` にすると Service 名は mcp-server-service になり不達になる。
+  # キーを変えるなら services.bff.extraEnv へ Services__McpServer の上書きが要る
+  # （check-bff-downstreams.js が実効ポートを、この一致は人が守る）。
+  mcp:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    # DB 実体は deploy/local/infra/postgres.yaml の init が作る（compose 側は create-multiple-dbs.sh）。
+    database: mcp_svc
+    enabled: true
+    replicas: 1
+    image: microservices-platform/mcp-service
+    tag: latest
+    port: 8080
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
   # FR-08: 回答へのフィードバック（👍/👎・コメント）収集サービス
   feedback:
     # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。

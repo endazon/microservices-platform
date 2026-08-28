@@ -221,6 +221,11 @@
       "DashboardBffEndpointTests",
       "DashboardEndpointTests"
     ],
+    "docs/tests/SC-12_mcp-client-management.md": [
+      "BffEndpointCompositionTests",
+      "BffMcpClientEndpointTests",
+      "McpClientEndpointTests"
+    ],
     "docs/tests/SC-19_private-notes-screen.md": [
       "BffPrivateNoteEndpointTests"
     ],

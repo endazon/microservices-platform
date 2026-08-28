@@ -129,6 +129,10 @@ msgstr "After 90 days it is permanently deleted automatically. Unless you are in
 msgid "ABAC 設定の区画"
 msgstr "ABAC settings sections"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "ABAC属性（無人のみ）"
+msgstr "ABAC attributes (unattended only)"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/routes/sc09AdminAbacRoute.tsx
 msgid "ABAC設定"
 msgstr "ABAC settings"
@@ -193,9 +197,17 @@ msgstr "AI answer (streaming)"
 msgid "AI提案"
 msgstr "AI suggestions"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/types/mcpClientVocabulary.ts
+msgid "Authorization Code + PKCE"
+msgstr "Authorization Code + PKCE"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "cites: 実線・矢印"
 msgstr "cites: solid line with arrow"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/types/mcpClientVocabulary.ts
+msgid "Client Credentials"
+msgstr "Client Credentials"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "consumer"
@@ -212,6 +224,18 @@ msgstr "embeds: dotted line with arrow"
 #: platform/frontend/src/lib/auth/LoginPage.tsx
 msgid "Keycloak でサインイン"
 msgstr "Sign in with Keycloak"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "MCP クライアント登録管理"
+msgstr "MCP client registration"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "MCP サーバーへ接続できるクライアント（外部 AI エージェント）を登録・無効化し、 無人アカウントへ ABAC 属性を割り当てます。公開ツールの構成はこの画面からは変更できません。"
+msgstr "Register and disable the clients (external AI agents) that may connect to the MCP server, and assign ABAC attributes to unattended accounts. The published tool configuration cannot be changed from this screen."
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/routes/sc12McpClientsRoute.tsx
+msgid "MCP管理"
+msgstr "MCP"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "Mermaid {coded}図"
@@ -318,6 +342,7 @@ msgstr "There are no event bindings."
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
@@ -359,6 +384,30 @@ msgstr "Keyword search only →"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "キャンセル"
 msgstr "Cancel"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "クライアント"
+msgstr "Client"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "クライアント ID"
+msgstr "Client ID"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "クライアント ID は必須です。"
+msgstr "Client ID is required."
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "クライアントを登録できませんでした。"
+msgstr "Could not register the client."
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "クライアント登録"
+msgstr "Register a client"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "クライアント種別"
+msgstr "Client type"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "グラフを読み込めませんでした。時間をおいて再試行してください。"
@@ -802,6 +851,10 @@ msgstr "Link"
 msgid "リンク先が表示されない場合、リンク切れなのか、閲覧権限がないのかは区別できません。これは、閲覧権限のない文書の存在を知られないようにするための仕様です。"
 msgstr "When a link target is not shown, you cannot tell whether the link is broken or whether you lack permission to view it. This is by design, so that the existence of documents you cannot view is not revealed."
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "ログ基盤で呼び出し監査ログを見る ↗"
+msgstr "Open the invocation audit log in the logging stack ↗"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "一覧"
 msgstr "List"
@@ -820,6 +873,7 @@ msgid "上位 {0} 件を表示（全 {1} 件以上）。総数の探索も上限
 msgstr "Showing the top {0} items (of {1} or more in total). The counting exploration also hit its limit, so \"recently updated\" and \"highest degree\" are not the exact top {2}. Reduce the exploration depth or narrow the edge types."
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "並べ替え"
 msgstr "Sort"
@@ -993,6 +1047,10 @@ msgstr "The private notes have been permanently deleted."
 msgid "候補を読み込み中…"
 msgstr "Loading options…"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "値"
+msgstr "Value"
+
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "備考"
 msgstr "Notes"
@@ -1013,6 +1071,10 @@ msgstr "{inputTokens} input / {outputTokens} output tokens"
 msgid "入力してください。"
 msgstr "This field is required."
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "入力を確認してください"
+msgstr "Check the input"
+
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "全消去"
 msgstr "Clear all"
@@ -1020,6 +1082,18 @@ msgstr "Clear all"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "公開"
 msgstr "Publish"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "公開ツールはこの画面からは変更できません。公開範囲は許可リスト方式で管理しており、 変更は Git 上の公開構成を更新して反映します。"
+msgstr "Published tools cannot be changed from this screen. The published scope is managed as an allow list, and changes are applied by updating the publication configuration in Git."
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "公開ツール一覧（実効構成の参照）"
+msgstr "Published tools (effective configuration, read-only)"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "公開ツール一覧を取得できませんでした。"
+msgstr "Could not load the published tools."
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "円 = 組織文書"
@@ -1040,6 +1114,10 @@ msgstr "Only administrators can reconvert"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "再変換を受け付けました。"
 msgstr "The reconversion has been accepted."
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "再有効化"
+msgstr "Re-enable"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "再発行したときの注意"
@@ -1127,6 +1205,10 @@ msgstr "Daily usage trend chart"
 #: platform/frontend/src/app/routing/nav.ts
 msgid "利用者"
 msgstr "General"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "利用者の属性で解決"
+msgstr "Resolved from the user's attributes"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
@@ -1237,6 +1319,10 @@ msgstr "Name"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "名前（必須）"
 msgstr "Name (required)"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "呼び出し監査ログ"
+msgstr "Invocation audit log"
 
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "回答を生成できませんでした。時間をおいて再度お試しください。"
@@ -1393,6 +1479,10 @@ msgstr "Scope"
 msgid "対象範囲フィルタ"
 msgstr "Scope filter"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "属性"
+msgstr "Attribute"
+
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "属性・タグ"
 msgstr "Attributes and tags"
@@ -1406,6 +1496,7 @@ msgid "属性を削除: {attributeKey}"
 msgstr "Delete attribute: {attributeKey}"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "属性を追加"
 msgstr "Add an attribute"
 
@@ -1554,6 +1645,7 @@ msgstr "The list of suggestions could not be retrieved. Please try again later."
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "操作"
@@ -1742,8 +1834,13 @@ msgstr "Recently updated first"
 msgid "更新日時"
 msgstr "Updated"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/types/mcpClientVocabulary.ts
+msgid "有人"
+msgstr "Attended"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "有効"
 msgstr "Enabled"
 
@@ -1907,6 +2004,10 @@ msgstr "Validation result"
 msgid "業務DB"
 msgstr "Business database"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "構成のずれ"
+msgstr "Configuration drift"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "構成の変更は Git 経由（GitOps）に限ります。本画面から構成は変更できません。閲覧は監査ログに記録されます。"
 msgstr "Configuration changes are made through Git (GitOps) only. This screen cannot change the configuration. Viewing it is recorded in the audit log."
@@ -2008,14 +2109,31 @@ msgstr "Satisfaction"
 msgid "点線の輪郭 = 孤立文書（表示中の辺なし）"
 msgstr "Dotted outline = isolated document (no displayed edges)"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/types/mcpClientVocabulary.ts
+msgid "無人"
+msgstr "Unattended"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "無人（サービスアカウント）には ABAC 属性の割当が必須です。"
+msgstr "An unattended (service account) client requires an ABAC attribute assignment."
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "無人（サービスアカウント）には ABAC 属性の割当が必須です。選べるのは定義済みの属性と その許可値だけです。"
+msgstr "An unattended (service account) client requires an ABAC attribute assignment. Only defined attributes and their allowed values can be selected."
+
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "無効"
 msgstr "Disabled"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "無効（即時接続拒否）"
+msgstr "Disabled (connections rejected immediately)"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "無効化"
 msgstr "Disable"
 
@@ -2027,6 +2145,7 @@ msgstr "Version"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "状態"
@@ -2052,6 +2171,26 @@ msgstr "Issued"
 msgid "発行者"
 msgstr "Publishers"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "登録"
+msgstr "Register"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "登録クライアント"
+msgstr "Registered clients"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "登録クライアントを取得できませんでした。"
+msgstr "Could not load the registered clients."
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "登録された MCP クライアントの一覧"
+msgstr "List of registered MCP clients"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "登録されたクライアントはありません。"
+msgstr "No clients are registered."
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "登録されているすべての端末のトークンを無効にします。この操作は元に戻せません。すべての端末で同期が停止し、再開するには端末ごとにトークンを再発行して入れ直す必要があります。"
 msgstr "This invalidates the tokens of every registered device. The action cannot be undone. Syncing stops on all devices, and to resume you must reissue a token for each device and paste it in again."
@@ -2063,6 +2202,10 @@ msgstr "Register"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "登録済みデータソースの一覧"
 msgstr "List of registered data sources"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "監査ログの参照先が未設定です。ツールの呼び出しはすべてログ基盤へ記録されています。"
+msgstr "The audit log destination is not configured. Every tool invocation is recorded in the logging stack."
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "直近 {d} 日"
@@ -2096,6 +2239,7 @@ msgstr "Internal knowledge search and AI answering platform"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "種別"
 msgstr "Type"
@@ -2185,6 +2329,14 @@ msgstr "Filter displayed nodes by title"
 msgid "表示中の辺はありません（孤立文書）。"
 msgstr "No displayed edges (isolated document)."
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "表示名"
+msgstr "Display name"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "表示名は必須です。"
+msgstr "Display name is required."
+
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 msgid "補正あり"
@@ -2254,6 +2406,10 @@ msgstr "No matching document was found."
 msgid "詳細ツール"
 msgstr "Detailed tools"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "認証"
+msgstr "Authentication"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "説明"
 msgstr "Detail"
@@ -2277,6 +2433,7 @@ msgstr "Loading error"
 msgid "読み込み中…"
 msgstr "Loading…"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "読み込み中です。"
 msgstr "Loading…"
@@ -2425,6 +2582,7 @@ msgid "選択した資料を復元する"
 msgstr "Restore selected"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "選択してください"
 msgstr "Select…"
 

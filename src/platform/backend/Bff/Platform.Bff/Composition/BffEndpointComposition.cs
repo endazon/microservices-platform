@@ -56,6 +56,10 @@ public static class BffEndpointComposition
         // 後段は knowledge ユニットなので Knowledge.Bff.Endpoints に置く（タグ辞書と同じ切り分け）。
         // **本人性は後段の台帳が判定する**ので、BFF は認証必須＋資格情報の転送を担う。
         new DelegateBffEndpointModule(a => a.MapPrivateNoteBffEndpoints()),
+        // Issue #452, FR-16, UC-09, SC-12, ADR-0024: MCP クライアント登録管理（McpServer の
+        // /mcp-clients* へ pass-through）。後段は platform ユニットなので platform 同居とする。
+        // **管理者限定**（05_screens §共通シェル「SC-09・SC-12・SC-17 = システム管理者」）。
+        new DelegateBffEndpointModule(a => a.MapMcpClientBffEndpoints()),
         // Issue #283/#286, AST/FR-17, AST/UC-06, IADR-0070/0073: AST 設定画面（全体前提条件）の BFF 集約
         // （ConfigurationService へ pass-through）。AiStockTrading.Bff.Endpoints（AST unit-owned Bff・例外3）を参照。
         new DelegateBffEndpointModule(a => a.MapAssumptionsBffEndpoints()),

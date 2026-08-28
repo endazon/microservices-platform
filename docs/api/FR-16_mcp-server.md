@@ -4,14 +4,14 @@ type: api-spec
 status: draft
 author: claude
 created: 2026-08-23
-updated: 2026-08-28
+updated: 2026-08-29
 ---
 <!-- trace:
 ids: [FR-15, FR-16, UC-08, UC-09, SC-12]
 adrs: [ADR-0004, ADR-0018, ADR-0021, ADR-0024, ADR-0034, ADR-0054]
-iadrs: [IADR-0269, IADR-0292]
-specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools]
-issues: [#445, #1020]
+iadrs: [IADR-0269, IADR-0292, IADR-0297]
+specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management]
+issues: [#445, #452, #1020]
 -->
 
 # 通信仕様書: MCP サーバー
@@ -27,7 +27,7 @@ issues: [#445, #1020]
 | 面 | 相手 | 用途 |
 | --- | --- | --- |
 | MCP（`/mcp`） | 外部 AI エージェント | ツール一覧・ツール実行 |
-| 管理 REST（`/mcp-clients`） | 管理者（画面・運用） | クライアント登録・無効化・属性割当・公開ツール一覧 |
+| 管理 REST（`/mcp-clients`） | **境界層（`/bff/admin/mcp-clients`）経由の管理画面**・運用 | クライアント登録・無効化・属性割当・公開ツール一覧 |
 | メッシュ内部（各サービスの `/internal/mcp-tools`） | 各マイクロサービス | ツール定義の自己申告（本サービスは**呼ぶ側**） |
 
 ## エンドポイント一覧
@@ -41,6 +41,25 @@ issues: [#445, #1020]
 | POST | `/mcp-clients/{clientId}/enable` | 再有効化（管理者限定） |
 | PUT | `/mcp-clients/{clientId}/attributes` | 属性割当の差し替え（管理者限定） |
 | GET | `/mcp-clients/tools` | 実効ツール一覧と構成ドリフト（管理者限定） |
+
+## 管理面への到達経路
+
+**SPA からは境界層（`/bff/admin/mcp-clients*`）経由でのみ到達する。** 境界層は
+`/bff/admin` の接頭辞を剥がして本サービスへ透過中継し、**状態コード・本文・Content-Type を
+作り替えない**（400 の拒否理由・404 の不在・409 の重複がそのまま画面へ届く）。到達できないときだけ
+502 へ縮退する。認可は境界層と本サービスの二重で強制する（利用者の資格情報を伝播する）。
+
+| 境界層 | 本サービス |
+| --- | --- |
+| `GET /bff/admin/mcp-clients` | `GET /mcp-clients` |
+| `POST /bff/admin/mcp-clients` | `POST /mcp-clients` |
+| `GET /bff/admin/mcp-clients/tools` | `GET /mcp-clients/tools` |
+| `POST /bff/admin/mcp-clients/{clientId}/disable` | `POST /mcp-clients/{clientId}/disable` |
+| `POST /bff/admin/mcp-clients/{clientId}/enable` | `POST /mcp-clients/{clientId}/enable` |
+| `PUT /bff/admin/mcp-clients/{clientId}/attributes` | `PUT /mcp-clients/{clientId}/attributes` |
+
+**メッシュ内の Service 名は `mcp-service` である**（配備の chart キーは `mcp`。テンプレートが
+`-service` を付す）。境界層のコード既定もこの名前に揃えてあり、配備 manifest 側の上書きは持たない。
 | GET | `/internal/introspection` | 自己申告（メッシュ内部限定） |
 | GET | `/health/live`・`/health/ready` | ヘルスチェック |
 

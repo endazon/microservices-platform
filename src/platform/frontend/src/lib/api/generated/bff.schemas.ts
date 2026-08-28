@@ -1426,6 +1426,123 @@ export interface UpdateExposureRequest {
   includeInAi: boolean;
 }
 
+export type McpClientViewKind = typeof McpClientViewKind[keyof typeof McpClientViewKind];
+
+
+export const McpClientViewKind = {
+  interactive: 'interactive',
+  'service-account': 'service-account',
+} as const;
+
+/**
+ * 無人アカウントへ明示的に割り当てる ABAC 属性（機密区分上限・アクセス可能タグ等）
+ */
+export type McpClientViewAttributes = {[key: string]: string};
+
+export type McpClientViewEgressTier = typeof McpClientViewEgressTier[keyof typeof McpClientViewEgressTier];
+
+
+export const McpClientViewEgressTier = {
+  'self-hosted': 'self-hosted',
+  'protected-external': 'protected-external',
+  'standard-external': 'standard-external',
+} as const;
+
+/**
+ * FR-16, UC-09, SC-12: 登録済み MCP クライアント 1 件。
+ * `kind` は `interactive`（有人）/ `service-account`（無人）の 2 値である。
+ * `attributes` は**無人アカウントにだけ意味がある** —— 有人は利用者本人の属性で解決される。
+ * `egressTier` はクライアント側 LLM のデータ保護水準であり、**未申告は最も低い水準へ倒れる**。
+ */
+export interface McpClientView {
+  id: string;
+  /** 認可サーバーのクライアント ID（トークンの azp / client_id） */
+  clientId: string;
+  displayName: string;
+  kind: McpClientViewKind;
+  /** false は次の呼び出しから即座に接続拒否 */
+  enabled: boolean;
+  /** 無人アカウントへ明示的に割り当てる ABAC 属性（機密区分上限・アクセス可能タグ等） */
+  attributes: McpClientViewAttributes;
+  egressTier: McpClientViewEgressTier;
+  registeredAt: string;
+  updatedAt: string;
+}
+
+export type RegisterMcpClientRequestKind = typeof RegisterMcpClientRequestKind[keyof typeof RegisterMcpClientRequestKind];
+
+
+export const RegisterMcpClientRequestKind = {
+  interactive: 'interactive',
+  'service-account': 'service-account',
+} as const;
+
+export type RegisterMcpClientRequestAttributes = {[key: string]: string} | null;
+
+export type RegisterMcpClientRequestEgressTier = typeof RegisterMcpClientRequestEgressTier[keyof typeof RegisterMcpClientRequestEgressTier] | null;
+
+
+export const RegisterMcpClientRequestEgressTier = {
+  'self-hosted': 'self-hosted',
+  'protected-external': 'protected-external',
+  'standard-external': 'standard-external',
+} as const;
+
+/**
+ * FR-16, UC-09, SC-12: クライアント登録。`attributes` は**無人時に必須**であり、
+ * 個人資料を読ませる割当は後段が 400 で拒否する。`egressTier` の未指定は
+ * 最も低い保護水準（`standard-external`）として扱われる。
+ */
+export interface RegisterMcpClientRequest {
+  clientId: string;
+  displayName: string;
+  kind: RegisterMcpClientRequestKind;
+  attributes?: RegisterMcpClientRequestAttributes;
+  egressTier?: RegisterMcpClientRequestEgressTier;
+}
+
+export type ReplaceMcpClientAttributesRequestAttributes = {[key: string]: string};
+
+/**
+ * FR-16, UC-09, SC-12: 無人アカウントの ABAC 属性割当の**差し替え**（部分更新ではない）。
+ */
+export interface ReplaceMcpClientAttributesRequest {
+  attributes: ReplaceMcpClientAttributesRequestAttributes;
+}
+
+/**
+ * FR-16, SC-12, ADR-0024 §5: 実効ツール 1 件（許可リスト ∩ 自己申告）。
+ */
+export interface PublishedToolView {
+  /** 公開名 */
+  name: string;
+  /** 供給元サービス */
+  service: string;
+  description: string;
+  requiredScope: string;
+  egressClass: string;
+}
+
+/**
+ * FR-16, SC-12, ADR-0024 §5: 許可リストと自己申告の食い違い 1 件。
+ */
+export interface ToolDriftView {
+  kind: string;
+  target: string;
+  detail: string;
+}
+
+/**
+ * FR-16, SC-12, ADR-0024 §5: 実効ツール一覧と構成ドリフト。
+ * **書き込みの口は無い** —— 公開範囲の変更は Git 経由の公開構成変更で行う（GitOps）。
+ */
+export interface EffectiveToolsView {
+  /** 収集した公開構成の版 */
+  version: number;
+  tools: PublishedToolView[];
+  drifts: ToolDriftView[];
+}
+
 /**
  * FR-20, SC-20: 同期端末 1 件。**トークンは平文もハッシュも載らない。**
  * `active` は「未失効かつ期限内」であり、`expiresAt` との差から画面が
