@@ -1,10 +1,10 @@
 using FeedbackService.Domain;
-using FeedbackService.Infrastructure.Foundation.Persistence;
+using FeedbackService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Microsoft.EntityFrameworkCore;
 
-namespace FeedbackService.Api.Foundation.Endpoints;
+namespace FeedbackService.Features.Feedback;
 
 // FR-08, UC-01: 回答へのフィードバック（👍/👎・コメント）収集エンドポイント
 public static class FeedbackEndpoints

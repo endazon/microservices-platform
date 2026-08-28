@@ -55,16 +55,9 @@
   <Folder Name="/Services/DocumentService/tests/">
     <Project Path="Services/DocumentService/tests/DocumentService.Api.Tests/DocumentService.Api.Tests.csproj" />
   </Folder>
-  <Folder Name="/Services/FeedbackService/" />
-  <Folder Name="/Services/FeedbackService/src/">
-    <Project Path="Services/FeedbackService/src/FeedbackService.Api/FeedbackService.Api.csproj" />
-    <Project Path="Services/FeedbackService/src/FeedbackService.Application/FeedbackService.Application.csproj" />
-    <Project Path="Services/FeedbackService/src/FeedbackService.Contracts/FeedbackService.Contracts.csproj" />
-    <Project Path="Services/FeedbackService/src/FeedbackService.Domain/FeedbackService.Domain.csproj" />
-    <Project Path="Services/FeedbackService/src/FeedbackService.Infrastructure/FeedbackService.Infrastructure.csproj" />
-  </Folder>
-  <Folder Name="/Services/FeedbackService/tests/">
-    <Project Path="Services/FeedbackService/tests/FeedbackService.Api.Tests/FeedbackService.Api.Tests.csproj" />
+  <Folder Name="/Services/FeedbackService/">
+    <Project Path="Services/FeedbackService/FeedbackService.csproj" />
+    <Project Path="Services/FeedbackService/Tests/FeedbackService.Tests.csproj" />
   </Folder>
   <Folder Name="/Services/GraphService/" />
   <Folder Name="/Services/GraphService/src/">

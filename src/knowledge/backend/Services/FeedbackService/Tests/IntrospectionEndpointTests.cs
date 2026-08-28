@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 using AwesomeAssertions;
 using Platform.Shared.Contracts.Dtos;
 
-namespace FeedbackService.Api.Tests;
+namespace FeedbackService.Tests;
 
 // FR-15, IADR-0029 (#143): 自己申告エンドポイントが到達でき、サービス名を申告することを検証する
 // （段・合成可能ポートは持たない存在申告のみのサービス）。

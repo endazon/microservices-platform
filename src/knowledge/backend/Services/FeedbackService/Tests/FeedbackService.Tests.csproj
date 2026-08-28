@@ -15,9 +15,9 @@
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
-    <ProjectReference Include="..\..\src\FeedbackService.Api\FeedbackService.Api.csproj" />
+    <ProjectReference Include="..\FeedbackService.csproj" />
     <!-- IntrospectionEndpointTests が ServiceIntrospectionDto を直接参照するため明示参照する
          （Api の Contracts 参照は #229 で Knowledge.Contracts へ差し替え済み。暗黙の推移参照を避ける） -->
-    <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\..\..\platform\backend\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
   </ItemGroup>
 </Project>

@@ -1,4 +1,4 @@
-using FeedbackService.Infrastructure.Foundation.Persistence;
+using FeedbackService.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace FeedbackService.Api.Tests;
+namespace FeedbackService.Tests;
 
 public class TestWebApplicationFactory : WebApplicationFactory<Program>
 {

@@ -1,6 +1,6 @@
 using AwesomeAssertions;
 
-namespace FeedbackService.Api.Tests;
+namespace FeedbackService.Tests;
 
 // FR-08: サービスが独立して稼働する（受け入れ基準④の一部）。
 public class HealthEndpointTests(TestWebApplicationFactory factory)

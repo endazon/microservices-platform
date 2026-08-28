@@ -483,7 +483,7 @@ services:
   feedback-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/FeedbackService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）
     expose:
       - "8080"

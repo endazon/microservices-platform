@@ -68,8 +68,8 @@
       "remaining": 0,
       "migrated": true
     },
-    "src/knowledge/backend/Services/FeedbackService/tests/FeedbackService.Api.Tests/FeedbackService.Api.Tests.csproj": {
-      "project": "FeedbackService.Api.Tests",
+    "src/knowledge/backend/Services/FeedbackService/Tests/FeedbackService.Tests.csproj": {
+      "project": "FeedbackService.Tests",
       "remaining": 0,
       "migrated": true
     },

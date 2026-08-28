@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- NFR / IADR-0282 決定 1・3: 単一プロジェクト＋VSA/DDD フォルダ構成。
+       層プロジェクト（.Domain / .Application / .Infrastructure / .Contracts）は撤去し、
+       Domain/ ・ Features/ ・ Infrastructure/ のフォルダで境界を表す（参照方向は
+       check-unit-dependencies.js の名前空間規則が守る）。
+       Result / Error・DDD 基底型は Platform.Shared.Kernel を使う（IADR-0280 決定 6 存続）。 -->
+  <ItemGroup>
+    <!-- Tests/ は独立プロジェクトなので、本プロジェクトのコンパイル対象から外す
+         （入れ子のままだと二重コンパイルで CS0246 が出る。雛形で実測済み）。 -->
+    <Compile Remove="Tests/**" />
+    <Content Remove="Tests/**" />
+    <None Remove="Tests/**" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <!-- EF Core Tools（dotnet ef）は startup project 側に Design を要求する。
+         単一プロジェクトになったので、migrations の出力先を別プロジェクトへ向ける指定は要らない。 -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <ProjectReference Include="..\..\Shared\Knowledge.Contracts\Knowledge.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

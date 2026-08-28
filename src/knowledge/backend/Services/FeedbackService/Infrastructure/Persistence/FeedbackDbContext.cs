@@ -1,7 +1,7 @@
 using FeedbackService.Domain;
 using Microsoft.EntityFrameworkCore;
 
-namespace FeedbackService.Infrastructure.Foundation.Persistence;
+namespace FeedbackService.Infrastructure.Persistence;
 
 // ADR-0002: FeedbackService 専用 DbContext（DB-per-service）
 public class FeedbackDbContext(DbContextOptions<FeedbackDbContext> options) : DbContext(options)

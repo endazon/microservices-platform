@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace FeedbackService.Api.Tests;
+namespace FeedbackService.Tests;
 
 // FR-08: テスト用認証ハンドラ。JWT/Keycloak に依存せず ClaimsPrincipal を注入する。
 // 既定では管理者ロール（platform-admin）を付与し、ヘッダ "X-Test-Roles" で上書きできる。

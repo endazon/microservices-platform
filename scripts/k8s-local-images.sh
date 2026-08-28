@@ -40,7 +40,7 @@ MAPPING=(
   "microservices-platform/authorization-service|src/platform/backend/Services/AuthorizationService/src/AuthorizationService.Api/Dockerfile"
   "microservices-platform/wiki-service|src/knowledge/backend/Services/WikiService/src/WikiService.Api/Dockerfile"
   "microservices-platform/llm-gateway|src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Dockerfile"
-  "microservices-platform/feedback-service|src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Api/Dockerfile"
+  "microservices-platform/feedback-service|src/knowledge/backend/Services/FeedbackService/Dockerfile"
   "microservices-platform/dashboard-service|src/knowledge/backend/Services/DashboardService/src/DashboardService.Api/Dockerfile"
   # FR-17, UC-10 (#908/#957): 知識グラフ。Dockerfile は #929 で入ったが compose / MAPPING への登録が
   # 漏れており、イメージが焼かれずデプロイにも出ていなかった。

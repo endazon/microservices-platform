@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 
-namespace FeedbackService.Api.Tests;
+namespace FeedbackService.Tests;
 
 // NFR, #1012: 本番の appsettings.json から接続文字列（既定資格情報）を撤去し、Program.cs は
 // 未設定なら起動時に落ちるようにした。テストも**実配備と同じ経路（環境変数）**で注入する。

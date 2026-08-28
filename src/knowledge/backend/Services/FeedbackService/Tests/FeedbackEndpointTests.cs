@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 
-namespace FeedbackService.Api.Tests;
+namespace FeedbackService.Tests;
 
 // FR-08, UC-01: 回答へのフィードバック（👍/👎・コメント）収集のエンドポイントテスト。
 // 各テストは固有の AnswerId を用いて共有 InMemory DB 上で独立させる。
