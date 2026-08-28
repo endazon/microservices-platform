@@ -2369,8 +2369,11 @@ paths:
       description: |
         FR-18, UC-10, SC-21, ADR-0033 決定 7・10: AI が提案したリンク候補・タグ候補を一覧で返す。
 
-        🔴 **読み取りだけである。承認・却下の口は BFF に無い。**
-        承認の主導線は SC-03（文書詳細）であり、SC-21 は棚卸し用の**従**である。
+        🔴 **この口は読み取りである。**［2026-08-29 追記］承認・却下は
+        `/bff/graph/suggestions/{id}/approve` / `/reject` として別に開いた（SC-03 の承認欄が呼ぶ）。
+        従前ここには「承認・却下の口は BFF に無い」と書いてあったが、その記述は失効している。
+        承認の主導線は SC-03（文書詳細）であり、SC-21 は棚卸し用の**従**で、
+        **SC-21 の画面からは書き込みを一切行わない**（画面の位置づけは変わっていない）。
         **一括承認の手段は画面・API のいずれにも設けない**（FR-18。一覧の 1 行に収まる情報では
         承認を判断できず、タイトルだけを見て機械的に承認する運用に落ちるためである）。
 
@@ -2387,6 +2390,90 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/AiSuggestion" }
         "400": { description: state / kind が値域外（そのまま透過する） }
+
+  # ── FR-18, UC-10, SC-03: AI 提案の承認・却下（#450）───────────────────────────────
+  # **承認の実行はここだけである**（SC-21 は棚卸しの従であり、書き込みを一切しない）。
+  #
+  # 認可（2 口に共通）:
+  #   - **認証のみ・ロール不問**（`x-roles: []`）。計画は承認欄を SC-03 に置き、ロールで絞っていない。
+  #   - 判定は後段（GraphService）が 4 段で行う —— Read スコープ → 提案の存在 → **両端の文書が
+  #     可視**（`AuthorizedNode.Authorize`）→ **Write スコープ ＋ 起点文書が書き込み可**。
+  #     **BFF は前段の門を置かない**（後段が要求ごとに ABAC を解決する型であり、BFF に置ける門は
+  #     その真部分集合にしかならない。判断点を 2 つにすると片方が腐っても気付けない）。
+  #   - 🔴 **拒否はすべて 404 に倒る。** 「権限が無い」と「存在しない」を区別しない
+  #     （ADR-0034 決定 2）。**BFF は状態コードも本文も作り替えない** —— 403 や 200 へ変換すると
+  #     存在秘匿が BFF 層で破れる。
+  #
+  # 🔴 **一括承認の口はどの層にも設けない**（FR-18・SC-21「描いてはいけないもの」）。承認は 1 件ずつ
+  # であり、両端の文書の内容を見て判断する。**不在は BFF のルート表の走査で機械的に固定している。**
+  #
+  # **生成（`/graph/suggestions/generate/{documentId}`）は公開しない** —— 計画に生成を起動する
+  # 導線が無く、消費者の無い書き込み口を公開面へ出さないためである。
+  /bff/graph/suggestions/{id}/approve:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      x-roles: []
+      tags: [Graph]
+      summary: "FR-18, UC-10, SC-03: AI 提案を承認する（1 件ずつ）"
+      description: |
+        FR-18, SC-03, ADR-0033 決定 7: 提案を承認する。**`pending` からのみ遷移できる。**
+
+        **リンク提案の承認は辺を作る**（`EdgeProvenance.AiApproved`。ADR-0033 決定 7
+        「承認済みの提案だけが辺になる」）。既に同じ辺があるときは二重に作らない。
+
+        ⚠️ **タグ提案の承認は状態を `approved` にするだけで、文書のタグは増えない。**
+        タグの反映経路は未実装である（提案の側にだけ状態が残る）。
+        **したがって SC-03 の承認欄はタグ提案の承認を実行できないものとして描く**（却下は実行できる）。
+        本注記は事実の開示であり、契約としての遷移規則は種別で変わらない。
+
+        応答は遷移後の提案（一覧と同じ `AiSuggestion`）である。
+      operationId: bff-graph-suggestion-approve
+      responses:
+        "200":
+          description: 承認後の提案
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiSuggestion" }
+        "400":
+          description: >-
+            `unknown_edge_type`。提案が指す辺の型が辞書に無い（削除・改番された）。
+            **本文ごと透過する** —— 画面は「もう承認済み」と区別して文言を出す
+        "404": { description: "権限外・不存在・書き込み権限なし（**区別しない**）" }
+        "409":
+          description: >-
+            `invalid_transition`。`pending` 以外からの承認である（既に承認済み／却下済み）。
+            本文に現在の `state` が入る
+  /bff/graph/suggestions/{id}/reject:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      x-roles: []
+      tags: [Graph]
+      summary: "FR-18, UC-10, SC-03: AI 提案を却下する（1 件ずつ）"
+      description: |
+        FR-18, SC-03, ADR-0033 決定 7・10: 提案を却下する。**`pending` からのみ遷移できる。**
+
+        **却下も書き込みである** —— 提案は端点が見える利用者に共有される行であり、却下すると
+        他の利用者の `pending` 一覧からも消える。読み取り権限しか持たない主体は 404 になる。
+
+        **却下は再提示の抑止に用いる**（ADR-0033 決定 10）。却下回数は累積し、
+        **両端いずれかの文書の本文が変更された時点で自動的に解除される**（文書更新イベントの購読）。
+        解除の判定は本文指紋であり、**属性・タグだけの更新では解除されない**（ADR-0050）。
+
+        🔴 **要求本文を持たない。** 後段は却下時点の本文指紋を任意で受けるが、
+        **指紋は公開面に出さない内部状態**であり（応答スキーマにも無い）、SPA も BFF も持たない。
+      operationId: bff-graph-suggestion-reject
+      responses:
+        "200":
+          description: 却下後の提案
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiSuggestion" }
+        "404": { description: "権限外・不存在・書き込み権限なし（**区別しない**）" }
+        "409":
+          description: >-
+            `invalid_transition`。`pending` 以外からの却下である。本文に現在の `state` が入る
 
   # ── SC-19 / SC-20, FR-19/FR-20, UC-11: 個人資料（private-note）と Obsidian 連携設定（#451）─────
   # 後段は DocumentService の `/private-notes*` 群。**リソース名は計画が確定させた `private-notes`**

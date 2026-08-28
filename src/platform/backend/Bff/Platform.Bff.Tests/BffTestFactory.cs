@@ -98,6 +98,24 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // 観測する側が呼ぶ前に既定へ戻すこと。
     public List<AiSuggestionDto> StubAiSuggestions { get; set; } = [];
 
+    // FR-18, SC-03, #450: AI 提案の**承認・却下**（書き込み）。
+    //
+    // 🔴 **読み取りとは別の knob にする。** 一覧の状態コードを流用すると、承認の 409 を測るために
+    // 一覧まで 409 にすることになり、**「承認だけが失敗する」形を再現できない**。
+    // 🔴 **本文も差し替えられる。** 409（`invalid_transition`）・400（`unknown_edge_type`）の本文が
+    // 画面の文言の根拠であり、**BFF が本文を捨てていないこと**を測るために要る。
+    public HttpStatusCode GraphWriteStubStatusCode { get; set; } = HttpStatusCode.OK;
+    public string? GraphWriteStubBody { get; set; }
+    // 後段不達を再現する（BFF の catch → 502 縮退の検証用）。
+    public bool GraphWriteStubThrows { get; set; }
+    // 承認・却下の成功応答（**単票**である。一覧と違って配列ではない）。
+    public AiSuggestionDto? StubSuggestionWriteResult { get; set; }
+    // BFF が後段へ渡したメソッド。**テスト間で共有される**（IClassFixture）ため、観測する側が
+    // 呼ぶ前に null へ戻すこと。
+    public string? LastGraphMethod { get; private set; }
+    // 🔴 BFF が後段へ渡した本文。**却下は本文を送らない**（指紋を公開面へ出さないため）ことの観測点。
+    public string? LastGraphBody { get; private set; }
+
     // FR-16, UC-09, SC-12, #452: McpServer（/mcp-clients*）のスタブ。**テスト間で共有される**
     // （IClassFixture）ため、観測する側が呼ぶ前に既定へ戻すこと。
     //
@@ -938,13 +956,36 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-17, UC-10, #916a: GraphService のスタブ。
     private sealed class GraphStubHandler(BffTestFactory owner) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
             owner.LastGraphPath = request.RequestUri?.PathAndQuery;
+            owner.LastGraphMethod = request.Method.Method;
+            owner.LastGraphBody = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
             var auth = request.Headers.Authorization?.ToString()
                 ?? (request.Headers.TryGetValues("Authorization", out var v) ? string.Join(",", v) : null);
             owner.LastGraphForwardedAuthorization = auth;
+
+            // FR-18, SC-03, #450: 承認・却下（書き込み）。**読み取りとは別の knob で応答を決める。**
+            var isWrite = owner.LastGraphPath is { } p
+                && (p.EndsWith("/approve", StringComparison.Ordinal)
+                    || p.EndsWith("/reject", StringComparison.Ordinal));
+            if (isWrite)
+            {
+                if (owner.GraphWriteStubThrows) throw new HttpRequestException("graph unreachable");
+                // 🔴 群の `RequireAuthorization()` が先に弾くので、資格情報が無ければ 401 である。
+                if (string.IsNullOrEmpty(auth))
+                    return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+                var write = new HttpResponseMessage(owner.GraphWriteStubStatusCode);
+                if (owner.GraphWriteStubBody is { } body)
+                    write.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+                else if (owner.GraphWriteStubStatusCode == HttpStatusCode.OK
+                         && owner.StubSuggestionWriteResult is { } dto)
+                    write.Content = JsonContent.Create(dto);
+                return write;
+            }
 
             var isCatalog = owner.LastGraphPath?.Contains("edge-types", StringComparison.Ordinal) == true;
             // FR-18, SC-21, #918: 提案の一覧。**カタログと同じく `RequireAuthorization()` が
@@ -957,22 +998,22 @@ public class BffTestFactory : WebApplicationFactory<Program>
             //   カタログ / 提案: `RequireAuthorization()` が弾く → **401**（隠すものが無いので秘匿しない）
             // ここを一律にすると、片方の伝播が切れても気付けないテストになる。
             if (string.IsNullOrEmpty(auth))
-                return Task.FromResult(new HttpResponseMessage(
+                return new HttpResponseMessage(
                     isCatalog || isSuggestions
                         ? HttpStatusCode.Unauthorized
-                        : HttpStatusCode.NotFound));
+                        : HttpStatusCode.NotFound);
 
             if (owner.GraphStubStatusCode != HttpStatusCode.OK)
-                return Task.FromResult(new HttpResponseMessage(owner.GraphStubStatusCode));
+                return new HttpResponseMessage(owner.GraphStubStatusCode);
 
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = isSuggestions
                     ? JsonContent.Create(owner.StubAiSuggestions)
                     : isCatalog
                         ? JsonContent.Create(owner.StubEdgeTypeCatalog)
                         : JsonContent.Create(owner.StubGraphView)
-            });
+            };
         }
     }
 

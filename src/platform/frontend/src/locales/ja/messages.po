@@ -75,6 +75,10 @@ msgstr "{h}（既定）"
 msgid "{max} 文字以内で入力してください。"
 msgstr "{max} 文字以内で入力してください。"
 
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "{sourceTitle} → {targetTitle}（{edgeTypeName}）"
+msgstr "{sourceTitle} → {targetTitle}（{edgeTypeName}）"
+
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "{totalHits} 件（権限内のみ表示）"
 msgstr "{totalHits} 件（権限内のみ表示）"
@@ -88,6 +92,10 @@ msgstr "「{0}」のトークンを無効にします。この端末からの同
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "「{0}」を削除します。削除しても容量は空きません（90 日間保管されます）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
 msgstr "「{0}」を削除します。削除しても容量は空きません（90 日間保管されます）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
+
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "「{tagValue}」を付与"
+msgstr "「{tagValue}」を付与"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "← チャットに戻る"
@@ -124,14 +132,6 @@ msgstr "👤 個人資料（自分のみ）"
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "90 日待てば自動的に完全削除されます。急がなければ、この操作は必要ありません。"
 msgstr "90 日待てば自動的に完全削除されます。急がなければ、この操作は必要ありません。"
-
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
-msgid "ABAC 属性の変更"
-msgstr "ABAC 属性の変更"
-
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
-msgid "ABAC 属性を変更できませんでした。"
-msgstr "ABAC 属性を変更できませんでした。"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AdminAbacSettingsPage.tsx
 msgid "ABAC 設定の区画"
@@ -177,9 +177,21 @@ msgstr "AI 回答"
 msgid "AI 回答を生成できませんでした。キーワード検索の結果をご確認ください。"
 msgstr "AI 回答を生成できませんでした。キーワード検索の結果をご確認ください。"
 
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "AI 提案"
+msgstr "AI 提案"
+
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "AI 提案の一覧"
 msgstr "AI 提案の一覧"
+
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "AI 提案の一覧を見る"
+msgstr "AI 提案の一覧を見る"
+
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "AI 提案を取得できませんでした。提案の有無は判断できません。"
+msgstr "AI 提案を取得できませんでした。提案の有無は判断できません。"
 
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "AI 提案一覧"
@@ -339,6 +351,7 @@ msgstr "イベント接続はありません。"
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
@@ -457,6 +470,7 @@ msgstr "このトークンを表示できるのは今回だけです。閉じる
 msgid "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
 msgstr "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
 
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "この提案は一度却下されましたが、文書が更新されたため再度提示しています。"
 msgstr "この提案は一度却下されましたが、文書が更新されたため再度提示しています。"
@@ -468,6 +482,10 @@ msgstr "この操作は元に戻せません。削除後はいかなる方法で
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "この文書には表示できる関係がありません。"
 msgstr "この文書には表示できる関係がありません。"
+
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "この文書に対するリンク候補・タグ候補です。両端の文書の内容を確かめたうえで、 1 件ずつ承認または却下してください。"
+msgstr "この文書に対するリンク候補・タグ候補です。両端の文書の内容を確かめたうえで、 1 件ずつ承認または却下してください。"
 
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "この画面について質問する"
@@ -557,6 +575,7 @@ msgid "タイトルで絞り込む"
 msgstr "タイトルで絞り込む"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
@@ -600,6 +619,14 @@ msgstr "タグを選択"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "タグ名（必須）"
 msgstr "タグ名（必須）"
+
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "タグ提案の反映経路が未実装のため、承認は実行できません。"
+msgstr "タグ提案の反映経路が未実装のため、承認は実行できません。"
+
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "タグ提案の反映経路が未実装のため、承認は実行できません。却下は実行できます。"
+msgstr "タグ提案の反映経路が未実装のため、承認は実行できません。却下は実行できます。"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AdminAbacSettingsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
@@ -851,6 +878,7 @@ msgstr "ユーザー"
 msgid "ラベル"
 msgstr "ラベル"
 
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "リンク"
 msgstr "リンク"
@@ -954,13 +982,8 @@ msgstr "例: 開発"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "保存"
 msgstr "保存"
-
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
-msgid "保存すると属性はここに並んでいる内容で置き換わります。残したい属性は消さないでください。"
-msgstr "保存すると属性はここに並んでいる内容で置き換わります。残したい属性は消さないでください。"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "保存前に構文・矛盾を検証します。矛盾があれば保存できません。保存すると認可判定へ即時反映されます。"
@@ -1227,7 +1250,6 @@ msgstr "利用者の属性で解決"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "削除"
 msgstr "削除"
 
@@ -1264,6 +1286,10 @@ msgstr "削除済みの個人資料はありません。"
 msgid "削除済みの個人資料を確認する"
 msgstr "削除済みの個人資料を確認する"
 
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "却下"
+msgstr "却下"
+
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "却下（再提示を抑止中）"
 msgstr "却下（再提示を抑止中）"
@@ -1289,10 +1315,6 @@ msgstr "取り扱い"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "取り消す"
 msgstr "取り消す"
-
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
-msgid "取消"
-msgstr "取消"
 
 #: knowledge/frontend/src/features/sc11-config/types/driftView.ts
 msgid "古い段の残留"
@@ -1375,6 +1397,7 @@ msgstr "図を補正して再登録しました。"
 msgid "図を読み込み中…"
 msgstr "図を読み込み中…"
 
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "型不明"
 msgstr "型不明"
@@ -1513,10 +1536,6 @@ msgstr "属性は登録されていません。"
 msgid "属性を削除: {attributeKey}"
 msgstr "属性を削除: {attributeKey}"
 
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
-msgid "属性を変更"
-msgstr "属性を変更"
-
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "属性を追加"
@@ -1597,6 +1616,10 @@ msgstr "成功"
 msgid "手動同期"
 msgstr "手動同期"
 
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "承認"
+msgstr "承認"
+
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "承認待ち"
 msgstr "承認待ち"
@@ -1672,6 +1695,10 @@ msgstr "提案の一覧を取得できませんでした。時間をおいて再
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "操作"
 msgstr "操作"
+
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "操作できませんでした。すでに他の利用者が承認・却下した可能性があります。 画面を再読み込みして確認してください。"
+msgstr "操作できませんでした。すでに他の利用者が承認・却下した可能性があります。 画面を再読み込みして確認してください。"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx

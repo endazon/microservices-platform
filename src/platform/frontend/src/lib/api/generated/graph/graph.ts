@@ -9,11 +9,15 @@
  * OpenAPI spec version: 0.1.0
  */
 import {
+  useMutation,
   useQuery
 } from '@tanstack/react-query';
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult
 } from '@tanstack/react-query';
@@ -406,8 +410,11 @@ export const getBffGraphSuggestionsUrl = (params?: BffGraphSuggestionsParams,) =
 /**
  * FR-18, UC-10, SC-21, ADR-0033 決定 7・10: AI が提案したリンク候補・タグ候補を一覧で返す。
  *
- * 🔴 **読み取りだけである。承認・却下の口は BFF に無い。**
- * 承認の主導線は SC-03（文書詳細）であり、SC-21 は棚卸し用の**従**である。
+ * 🔴 **この口は読み取りである。**［2026-08-29 追記］承認・却下は
+ * `/bff/graph/suggestions/{id}/approve` / `/reject` として別に開いた（SC-03 の承認欄が呼ぶ）。
+ * 従前ここには「承認・却下の口は BFF に無い」と書いてあったが、その記述は失効している。
+ * 承認の主導線は SC-03（文書詳細）であり、SC-21 は棚卸し用の**従**で、
+ * **SC-21 の画面からは書き込みを一切行わない**（画面の位置づけは変わっていない）。
  * **一括承認の手段は画面・API のいずれにも設けない**（FR-18。一覧の 1 行に収まる情報では
  * 承認を判断できず、タイトルだけを見て機械的に承認する運用に落ちるためである）。
  *
@@ -481,3 +488,218 @@ export function useBffGraphSuggestions<TData = Awaited<ReturnType<typeof bffGrap
 
 
 
+export type bffGraphSuggestionApproveResponse200 = {
+  data: AiSuggestion
+  status: 200
+}
+
+export type bffGraphSuggestionApproveResponse400 = {
+  data: void
+  status: 400
+}
+
+export type bffGraphSuggestionApproveResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffGraphSuggestionApproveResponse409 = {
+  data: void
+  status: 409
+}
+
+export type bffGraphSuggestionApproveResponseSuccess = (bffGraphSuggestionApproveResponse200) & {
+  headers: Headers;
+};
+export type bffGraphSuggestionApproveResponseError = (bffGraphSuggestionApproveResponse400 | bffGraphSuggestionApproveResponse404 | bffGraphSuggestionApproveResponse409) & {
+  headers: Headers;
+};
+
+export type bffGraphSuggestionApproveResponse = (bffGraphSuggestionApproveResponseSuccess | bffGraphSuggestionApproveResponseError)
+
+export const getBffGraphSuggestionApproveUrl = (id: string,) => {
+
+
+
+
+  return `/bff/graph/suggestions/${id}/approve`
+}
+
+/**
+ * FR-18, SC-03, ADR-0033 決定 7: 提案を承認する。**`pending` からのみ遷移できる。**
+ *
+ * **リンク提案の承認は辺を作る**（`EdgeProvenance.AiApproved`。ADR-0033 決定 7
+ * 「承認済みの提案だけが辺になる」）。既に同じ辺があるときは二重に作らない。
+ *
+ * ⚠️ **タグ提案の承認は状態を `approved` にするだけで、文書のタグは増えない。**
+ * タグの反映経路は未実装である（提案の側にだけ状態が残る）。
+ * **したがって SC-03 の承認欄はタグ提案の承認を実行できないものとして描く**（却下は実行できる）。
+ * 本注記は事実の開示であり、契約としての遷移規則は種別で変わらない。
+ *
+ * 応答は遷移後の提案（一覧と同じ `AiSuggestion`）である。
+ * @summary FR-18, UC-10, SC-03: AI 提案を承認する（1 件ずつ）
+ */
+export const bffGraphSuggestionApprove = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffGraphSuggestionApproveResponse> => {
+
+  return bffFetch<bffGraphSuggestionApproveResponse>(getBffGraphSuggestionApproveUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffGraphSuggestionApproveMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffGraphSuggestionApprove>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffGraphSuggestionApprove>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['bffGraphSuggestionApprove'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffGraphSuggestionApprove>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  bffGraphSuggestionApprove(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffGraphSuggestionApproveMutationResult = NonNullable<Awaited<ReturnType<typeof bffGraphSuggestionApprove>>>
+
+    export type BffGraphSuggestionApproveMutationError = void
+
+    /**
+ * @summary FR-18, UC-10, SC-03: AI 提案を承認する（1 件ずつ）
+ */
+export const useBffGraphSuggestionApprove = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffGraphSuggestionApprove>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffGraphSuggestionApprove>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getBffGraphSuggestionApproveMutationOptions(options));
+    }
+    export type bffGraphSuggestionRejectResponse200 = {
+  data: AiSuggestion
+  status: 200
+}
+
+export type bffGraphSuggestionRejectResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffGraphSuggestionRejectResponse409 = {
+  data: void
+  status: 409
+}
+
+export type bffGraphSuggestionRejectResponseSuccess = (bffGraphSuggestionRejectResponse200) & {
+  headers: Headers;
+};
+export type bffGraphSuggestionRejectResponseError = (bffGraphSuggestionRejectResponse404 | bffGraphSuggestionRejectResponse409) & {
+  headers: Headers;
+};
+
+export type bffGraphSuggestionRejectResponse = (bffGraphSuggestionRejectResponseSuccess | bffGraphSuggestionRejectResponseError)
+
+export const getBffGraphSuggestionRejectUrl = (id: string,) => {
+
+
+
+
+  return `/bff/graph/suggestions/${id}/reject`
+}
+
+/**
+ * FR-18, SC-03, ADR-0033 決定 7・10: 提案を却下する。**`pending` からのみ遷移できる。**
+ *
+ * **却下も書き込みである** —— 提案は端点が見える利用者に共有される行であり、却下すると
+ * 他の利用者の `pending` 一覧からも消える。読み取り権限しか持たない主体は 404 になる。
+ *
+ * **却下は再提示の抑止に用いる**（ADR-0033 決定 10）。却下回数は累積し、
+ * **両端いずれかの文書の本文が変更された時点で自動的に解除される**（文書更新イベントの購読）。
+ * 解除の判定は本文指紋であり、**属性・タグだけの更新では解除されない**（ADR-0050）。
+ *
+ * 🔴 **要求本文を持たない。** 後段は却下時点の本文指紋を任意で受けるが、
+ * **指紋は公開面に出さない内部状態**であり（応答スキーマにも無い）、SPA も BFF も持たない。
+ * @summary FR-18, UC-10, SC-03: AI 提案を却下する（1 件ずつ）
+ */
+export const bffGraphSuggestionReject = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffGraphSuggestionRejectResponse> => {
+
+  return bffFetch<bffGraphSuggestionRejectResponse>(getBffGraphSuggestionRejectUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffGraphSuggestionRejectMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffGraphSuggestionReject>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffGraphSuggestionReject>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['bffGraphSuggestionReject'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffGraphSuggestionReject>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  bffGraphSuggestionReject(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffGraphSuggestionRejectMutationResult = NonNullable<Awaited<ReturnType<typeof bffGraphSuggestionReject>>>
+
+    export type BffGraphSuggestionRejectMutationError = void
+
+    /**
+ * @summary FR-18, UC-10, SC-03: AI 提案を却下する（1 件ずつ）
+ */
+export const useBffGraphSuggestionReject = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffGraphSuggestionReject>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffGraphSuggestionReject>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getBffGraphSuggestionRejectMutationOptions(options));
+    }

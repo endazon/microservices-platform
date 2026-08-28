@@ -22,6 +22,8 @@ import { appConfig } from '@foundation/config/runtimeConfig';
 import { formatDateTime } from '@foundation/ui/formatDateTime';
 import { attributeLabel, orderedAttributes } from '../types/attributes';
 import { isNotFound, useDocumentQueries } from '../api/useDocumentQueries';
+// SC-03, FR-18 (#450): AI 提案の承認欄。**承認の主導線は本画面である**（SC-21 は棚卸しの従）。
+import { AiSuggestionPanel } from './AiSuggestionPanel';
 // SC-03, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type {
   DocumentContentDto,
@@ -33,18 +35,22 @@ import type {
 // 正規化文書（Markdown）本文と属性・タグ・版履歴を表示し、出典元・Wiki（SC-04）への導線を提供する。
 // ABAC はサーバ側で適用され、権限外・不在はいずれも 404（存在秘匿・IADR-0009）→ UI は中立に表示する。
 //
-// 実装しない要素（画面仕様書 docs/screens/SC-03_document-detail.md §hi-fi モックアップとの対応 #7〜#9）:
-//   **AI 提案の承認欄（FR-18）と SC-18 ナレッジグラフへの導線（FR-17）は実装しない。**
+// 実装しない要素（画面仕様書 docs/screens/SC-03_document-detail.md §hi-fi モックアップとの対応 #7・#9）:
+//   **SC-18 ナレッジグラフビューへの導線（FR-17）は実装しない。**
 //   IADR-0119 決定 1 が「保留の対象は当該 FR を実現するプロダクトコードと、**その受け入れを担う画面**」と
 //   定めており、決定 2 の着手条件（前提 ADR の Accepted 化）は planning d980a01 時点で未充足だった
 //   （ADR-0033 / 0034 / 0035 はいずれも当時 Proposed）。**繰り延べであって放棄ではない**——
-//   保留が解けた時点で SC-18 / SC-21 の実装と同じ段で本画面へ足す（IADR-0119 決定 6 の手順に従う）。
+//   保留が解けた時点で SC-18 の実装と同じ段で本画面へ足す（IADR-0119 決定 6 の手順に従う）。
 //
 //   **［2026-08-07 / #586］上の予告の発火条件が成立した。** ADR-0033 / 0034 / 0035 は planning 3e58b97
 //   （PR planning#244・裁定依頼 planning#237）で Accepted へ移り、IADR-0119 の保留は FR-17 / FR-18 について解除された。
-//   したがって **AI 提案の承認欄（FR-18）と SC-18 への導線（FR-17）を本画面へ足す段が来ている**。
-//   **引き受けるのは #452（SC-18 / SC-21 と同じ段）であり、#586 の射程外である**
-//   （#586 は pin 更新と事実の追随に限り、UI は変更していない）。
+//   #586 は pin 更新と事実の追随に限り、UI は変更していない。
+//
+//   🔴 **［2026-08-29 / #450］AI 提案の承認欄（FR-18）は実装した。**（[[IADR-0300]]）
+//   従前ここには「AI 提案の承認欄と SC-18 への導線は実装しない」と 2 つを 1 文で書いていたが、
+//   **片方だけが着地したのでその形は誤りになる。** 承認欄は `AiSuggestionPanel` が担う。
+//   **知識グラフビューへの導線は依然として実装しない**（SC-18 の画面と同じ段で足す）——
+//   不在は `DocumentDetailPage.test.tsx` が引き続き固定している。
 
 export function DocumentDetailPage() {
   const { t } = useLingui();
@@ -97,6 +103,8 @@ export function DocumentDetailPage() {
           isError={content.isError}
           content={content.data}
         />
+        {/* 05_screens §SC-03:「本文の下部に表示し、その場で承認／却下できる」。0 件なら欄ごと出ない。 */}
+        <AiSuggestionPanel documentId={doc.id} />
         <SourceLinks doc={doc} content={content.data} />
       </div>
 

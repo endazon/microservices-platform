@@ -75,6 +75,10 @@ msgstr "{h} (default)"
 msgid "{max} 文字以内で入力してください。"
 msgstr "Enter no more than {max} characters."
 
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "{sourceTitle} → {targetTitle}（{edgeTypeName}）"
+msgstr "{sourceTitle} → {targetTitle} ({edgeTypeName})"
+
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "{totalHits} 件（権限内のみ表示）"
 msgstr "{totalHits} result(s) (only documents you may access)"
@@ -88,6 +92,10 @@ msgstr "This revokes the token for \"{0}\". Syncing from this device stops immed
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "「{0}」を削除します。削除しても容量は空きません（90 日間保管されます）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
 msgstr "This deletes \"{0}\". Deleting does not free up storage (the note is kept for 90 days). To free up storage right away, run \"Delete permanently\" from the deleted list."
+
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "「{tagValue}」を付与"
+msgstr "Add the tag “{tagValue}”"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "← チャットに戻る"
@@ -124,14 +132,6 @@ msgstr "👤 Private note (only you)"
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "90 日待てば自動的に完全削除されます。急がなければ、この操作は必要ありません。"
 msgstr "After 90 days it is permanently deleted automatically. Unless you are in a hurry, this action is unnecessary."
-
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
-msgid "ABAC 属性の変更"
-msgstr "Change ABAC attributes"
-
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
-msgid "ABAC 属性を変更できませんでした。"
-msgstr "Could not change the ABAC attributes."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AdminAbacSettingsPage.tsx
 msgid "ABAC 設定の区画"
@@ -177,9 +177,21 @@ msgstr "AI answer"
 msgid "AI 回答を生成できませんでした。キーワード検索の結果をご確認ください。"
 msgstr "The AI answer could not be generated. Please review the keyword search results."
 
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "AI 提案"
+msgstr "AI suggestions"
+
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "AI 提案の一覧"
 msgstr "List of AI suggestions"
+
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "AI 提案の一覧を見る"
+msgstr "View the AI suggestion list"
+
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "AI 提案を取得できませんでした。提案の有無は判断できません。"
+msgstr "Could not load AI suggestions. Whether any exist cannot be determined."
 
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "AI 提案一覧"
@@ -339,6 +351,7 @@ msgstr "There are no event bindings."
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
@@ -457,6 +470,7 @@ msgstr "This token is shown only once. Once you leave this page it cannot be sho
 msgid "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
 msgstr "This attribute is in use and cannot be deleted. Review the policies that reference it first."
 
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "この提案は一度却下されましたが、文書が更新されたため再度提示しています。"
 msgstr "This suggestion was rejected once, but a document has since been updated, so it is being offered again."
@@ -468,6 +482,10 @@ msgstr "This action cannot be undone. After deletion the note cannot be restored
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "この文書には表示できる関係がありません。"
 msgstr "This document has no relations to display."
+
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "この文書に対するリンク候補・タグ候補です。両端の文書の内容を確かめたうえで、 1 件ずつ承認または却下してください。"
+msgstr "Link and tag candidates for this document. Review the contents of both documents, then approve or reject them one at a time."
 
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "この画面について質問する"
@@ -557,6 +575,7 @@ msgid "タイトルで絞り込む"
 msgstr "Filter by title"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
@@ -600,6 +619,14 @@ msgstr "Select a tag"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "タグ名（必須）"
 msgstr "Tag name (required)"
+
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "タグ提案の反映経路が未実装のため、承認は実行できません。"
+msgstr "Tag suggestions cannot be approved: the path that applies the tag is not implemented yet."
+
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "タグ提案の反映経路が未実装のため、承認は実行できません。却下は実行できます。"
+msgstr "Tag suggestions cannot be approved because the path that applies the tag is not implemented yet. They can still be rejected."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AdminAbacSettingsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
@@ -851,6 +878,7 @@ msgstr "User"
 msgid "ラベル"
 msgstr "Label"
 
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "リンク"
 msgstr "Link"
@@ -954,13 +982,8 @@ msgstr "e.g. engineering"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "保存"
 msgstr "Save"
-
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
-msgid "保存すると属性はここに並んでいる内容で置き換わります。残したい属性は消さないでください。"
-msgstr "Saving replaces the attributes with exactly what is listed here. Do not remove attributes you want to keep."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "保存前に構文・矛盾を検証します。矛盾があれば保存できません。保存すると認可判定へ即時反映されます。"
@@ -1227,7 +1250,6 @@ msgstr "Resolved from the user's attributes"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "削除"
 msgstr "Delete"
 
@@ -1264,6 +1286,10 @@ msgstr "There are no deleted private notes."
 msgid "削除済みの個人資料を確認する"
 msgstr "Review deleted private notes"
 
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "却下"
+msgstr "Reject"
+
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "却下（再提示を抑止中）"
 msgstr "Rejected (suppressed from re-offering)"
@@ -1288,10 +1314,6 @@ msgstr "Handling"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "取り消す"
-msgstr "Cancel"
-
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
-msgid "取消"
 msgstr "Cancel"
 
 #: knowledge/frontend/src/features/sc11-config/types/driftView.ts
@@ -1375,6 +1397,7 @@ msgstr "The diagram was corrected and re-registered."
 msgid "図を読み込み中…"
 msgstr "Loading diagrams…"
 
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "型不明"
 msgstr "Unknown type"
@@ -1513,10 +1536,6 @@ msgstr "No attributes have been registered."
 msgid "属性を削除: {attributeKey}"
 msgstr "Delete attribute: {attributeKey}"
 
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
-msgid "属性を変更"
-msgstr "Change attributes"
-
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "属性を追加"
@@ -1597,6 +1616,10 @@ msgstr "Success"
 msgid "手動同期"
 msgstr "Sync now"
 
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "承認"
+msgstr "Approve"
+
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "承認待ち"
 msgstr "Pending"
@@ -1672,6 +1695,10 @@ msgstr "The list of suggestions could not be retrieved. Please try again later."
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "操作"
 msgstr "Actions"
+
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "操作できませんでした。すでに他の利用者が承認・却下した可能性があります。 画面を再読み込みして確認してください。"
+msgstr "The action failed. Another user may have already approved or rejected it. Reload the page to check."
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
