@@ -3,7 +3,7 @@ title: SC-10 運用ダッシュボード テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-23
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
@@ -134,7 +134,7 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 
 | # | 観点 | 検証内容 |
 | --- | --- | --- |
-| E1 | ルートの実在 ＋ 認証ガード | 未認証で `/admin/ops` を開くと `/login` へ誘導される |
+| E1 | 認証ガード（**未認証の導線だけ**） | 未認証で `/admin/ops` を開くと `/login` へ誘導される。🔴 **ルートの実在は測っていない**（未知のパスの受け皿が認証ガード配下に居るため区別できない）。**ルートの実在はルート木の組み立てを走査する単体テストが固定する** |
 
 ## テストデータ
 
