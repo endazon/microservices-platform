@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 既定資格情報の排除と構成注入漏れの fail-fast 化（#1012）
 type: spec
-status: draft
+status: done
 related_ids:
   - NFR
   - ADR-0002
@@ -72,4 +72,41 @@ compose・k8s の双方で実際に作る**開発用の実資格情報**であ�
 - [ ] 検査器が「`Program.cs` / `appsettings.json` の接続文字列リテラル」の再混入を止める（**直してから置く**）
 - [ ] 変異試験: 注入を外すと実際に起動が落ちる／既定値を戻すと検査器が捕まえる
 
-## 変異試験（実測は締めのコミットまでに本節へ追記）
+## 実施の記録（実測）
+
+| 実行 | 結果 |
+| --- | --- |
+| `dotnet build`（両 slnx） | 0 Error |
+| `dotnet test src/knowledge/backend/backend.slnx` | **全 12 プロジェクト緑**（AiAnalysis 95 / Dashboard 26 / DataSource 136 / Conversion 74+2skip / Feedback 21 / Ingestion 28 / Document 205 / Graph 250 / Contracts 27 / Retrieval 131 / Integration 30+40skip / Wiki 64） |
+| `dotnet test src/platform/backend/backend.slnx` | **全 7 プロジェクト緑**（McpServer 66 / Authz 95 / LlmGateway 202 / Shared.Infrastructure 125 / Shared.Kernel 42 / Bff 404+1skip / Notification 53） |
+| `dotnet format --verify-no-changes`（両 slnx） | 差分なし |
+| `node scripts/check-default-credentials.js` | OK（走査 30 件・新規 0・既知 13 件は baseline） |
+| `node scripts/k8s-local-up.test.js` | 97 件緑 |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | **638 件緑**（検査器ラチェット 43 → 44 を追随） |
+
+### 🔴 テスト器への注入は環境変数で行う（実測で判明した罠）
+
+`WebApplicationFactory.ConfigureAppConfiguration` では**間に合わない**。トップレベル文の
+`builder.Configuration.GetConnectionString(...)` は `builder.Build()` より前に評価されるため、
+ホスト構築時に足すコールバックは**既に読まれた後**に適用される（注入したのに起動が落ちた）。
+`[ModuleInitializer]` で環境変数へ入れる形（`TestDatabaseConfiguration.cs`・10 プロジェクト）へ改めた。
+**実配備と同じ経路で注入する**ことになり、器としても正しい。DbContext は InMemory へ差し替わるため
+**資格情報を持たない値**（`Host=localhost;Database=<svc>_test`）で足りる。
+
+## 変異試験（実測）
+
+| 変異 | 実測 |
+| --- | --- |
+| **M1**: テストの注入キーを `ConnectionStrings__MUTATED` へ変える（＝未注入を再現） | **GraphService.Api.Tests が全件 `InvalidOperationException: ConnectionStrings:DefaultConnection が未設定である` で落ちた** —— 未注入が「起動失敗」へ倒れることを実測 |
+| **M2**: `appsettings.json` へ既定資格情報を戻す | **`check-default-credentials` が `[added] … [connection-string-credentials]` で exit 1** —— 再混入を捕まえることを実測 |
+| **陰性対照**: 資格情報を持たない値（`Host=postgres;Database=graph_svc`） | 検査器は落とさない（self-test 6 件に固定。**「秘密を書かせない」検査であって「設定を書かせない」検査ではない**） |
+
+いずれも変異を戻して緑への復帰を確認した（`git status` 空）。
+
+## 申し送り
+
+- 🔴 **RabbitMQ の `amqp://guest:guest@`（13 箇所）は残件**である。baseline に凍結して**増やせない**が、
+  撤去には**ブローカ側の資格情報変更を伴う配備作業**が要るため本 issue の射程から外した。**別 issue を起票する。**
+- helm の注入は `$(DB_PASSWORD)` 補間を使う（env の値に平文パスワードを描画しない）。
+  **k8s の `$(VAR)` は同一 container 内で先に定義した env しか参照できない** —— 順序を崩さないこと。
+- 本環境では helm のレンダリング検証ができない（helm / kubectl 不在）。**CI の `check-deploy-manifests` に委ねる。**
