@@ -191,7 +191,6 @@ msgid "AI 回答を生成できませんでした。キーワード検索の結�
 msgstr "AI 回答を生成できませんでした。キーワード検索の結果をご確認ください。"
 
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
-#: knowledge/frontend/src/features/sc21-ai-suggestions/routes/sc21AiSuggestionsRoute.ts
 msgid "AI 提案"
 msgstr "AI 提案"
 

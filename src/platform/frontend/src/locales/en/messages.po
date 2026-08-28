@@ -191,7 +191,6 @@ msgid "AI 回答を生成できませんでした。キーワード検索の結�
 msgstr "The AI answer could not be generated. Please review the keyword search results."
 
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
-#: knowledge/frontend/src/features/sc21-ai-suggestions/routes/sc21AiSuggestionsRoute.ts
 msgid "AI 提案"
 msgstr "AI suggestions"
 
