@@ -256,14 +256,64 @@ export して単体試験できる形にする。
 
 ## 6. 実測（変異試験）
 
-**本節は実装後に実測値で埋める。** 着手前の時点で数字を書くと、
-**手順どおり追試しても再現しない数**が残る（規約 8 が名指す事故）。予定する母集合は次のとおり。
+［2026-08-28 追記 / #992］実装後に実測した。着手前は本節を空にしてあった ——
+先に数字を書くと**手順どおり追試しても再現しない数**が残るためである（規約 8）。
 
-- 基準（変異なし）: 既定 / `ABAC_POSITIVE=1` / `SEARCH_SEEDED=1` /
-  `ABAC_POSITIVE=1 SEARCH_SEEDED=1` / `ABAC_POSITIVE=1 SEARCH_HITS=1` の 5 モードで
-  **門（`STEPS == TOTAL`）が誤発火しない**ことを確認する
-- 変異: ①seed が一覧に現れない ②`markdownUri` が null ③検索が 0 件 ④検索が別文書のみ
-  ⑤属性なし利用者に seed が見える ⑥段を丸ごと削除 ⑦`TOTAL` の加算を 1 つ落とす
+スタブは `EDGE_URL`（18801）と `KC_URL`（18802）を 1 プロセスで受ける Node の HTTP サーバで、
+`scratchpad` に置き**コミットしない**。スクリプトは JWT の署名を検証せず payload を base64
+デコードするだけなので、偽の JWT で利用者を打ち分けられる（`preferred_username` で
+`developer` と `poc-operator` を分岐させた）。
+
+### 6.1 基準（変異なし）—— 🔴 門が誤発火しないこと
+
+| モード | EXIT | 出力 |
+| --- | ---: | --- |
+| 既定 | **0** | `結果: PASS 16 / FAIL 0（段 11/11）` |
+| `ABAC_POSITIVE=1` | **0** | `結果: PASS 22 / FAIL 0（段 17/17）` |
+| `SEARCH_SEEDED=1` | **0** | `結果: PASS 18 / FAIL 0（段 13/13）` |
+| `ABAC_POSITIVE=1 SEARCH_SEEDED=1` | **0** | `結果: PASS 24 / FAIL 0（段 19/19）` |
+| `ABAC_POSITIVE=1 SEARCH_HITS=1` | **0** | `結果: PASS 25 / FAIL 0（段 20/20）` |
+
+**既定と `ABAC_POSITIVE=1` の値は #466 の実測と一致している**（PASS 16 / 段 11、PASS 22 / 段 17）——
+既存の段に手を入れていないことの傍証である。
+`SEARCH_HITS=1` は `SEARCH_SEEDED=1` を含意するので段が 19 → 20 へ 1 本だけ増える（設計どおり）。
+
+### 6.2 変異と結果（すべて `ABAC_POSITIVE=1 SEARCH_HITS=1` で実施）
+
+| # | 変異 | 着弾確認 | EXIT | 検出した判定 |
+| --- | --- | --- | ---: | --- |
+| M1 | seed 文書が一覧に**現れない** | スタブ側 | **1** | S1「seed 文書（…）が一覧に無い」 |
+| M2 | seed は在るが **`markdownUri` が null**（§1.4 の欠陥そのもの） | スタブ側 | **1** | S1「seed 文書は在るが markdownUri を持たない（取り込みの早期 return で捨てられる）」 |
+| M3 | 検索が **0 件**を 200 で返す（索引が空・埋め込み不能の形） | スタブ側 | **1** | S3「seed 文書（…）がヒットしない（0 件）。索引に入っていない疑い」 |
+| M4 | 検索が**別の文書**を 1 件返す（非空だが seed を含まない） | スタブ側 | **1** | S3「ヒット 1 件だが seed 文書（…）を含まない」 |
+| M5 | 属性を持たない利用者の検索が **seed を返す**（ABAC 全開放） | スタブ側 | **1** | S2「200・1 件（属性が無いのに検索できている＝全開放）」 |
+| M6 | 段 S1 を**丸ごと削除**（32 行削除 / 0 行追加） | 実装直後の版との `diff` で削除のみを確認 | **1** | 門「実行した段が 19 本で、宣言（TOTAL=20）と一致しません」 |
+| M7 | `TOTAL` の加算を 1 つ落とす（`SEARCH_SEEDED` の +2 → +1） | `diff` が 2 行（1 行の置換）であることを確認 | **1** | 門「実行した段が 20 本で、宣言（TOTAL=19）と一致しません」 |
+
+M1〜M5 はいずれも `PASS 24 / FAIL 1` で、**FAIL は狙った 1 件だけ**である
+（他の判定を巻き込んでいない＝検出が特定の段に効いている）。
+各変異のあと復旧し、`diff` が 0 に戻ることを確認した（M6・M7 はスクリプト本体の変異なので
+バックアップとの `diff -q` が `same` を返すことまで確認した）。
+
+🔴 **M3 が本 issue の中心である。** #991 の判定（200 ＋ 形）では M3 は素通りしていた ——
+`{"results":[],"totalHits":0,"elapsedMs":1}` は契約どおりの形だからである。
+
+### 6.3 単体試験・機械検査（実測）
+
+| 実行 | 結果 |
+| --- | --- |
+| `node scripts/k8s-local-up.test.js` | `✓ 97 tests passed` |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | `✓ 625 tests passed`（#992 の新規 10 件を含む） |
+| `bash -n scripts/verify-oidc-edge-flow.sh` | 構文 OK |
+| `node scripts/check-action-versions.js` | `✓ Actions のバージョンに退行なし` |
+
+**`scripts.test.js` は IADR 採番の欠番（0282 / 0283 が並列トラックの予約）で停止するため、
+一時的な placeholder を置いて全件を走らせ、確認後に削除した**（placeholder はコミットしていない）。
+この欠番は本 PR 単独の問題ではなく、3 本が develop へ着地した時点で解消する。
+
+`node scripts/check-deploy-manifests.js` は **helm / kubectl / kubeconform がこの環境に無く
+SKIP ではなく失敗**する（設計どおり。`DEPLOY_MANIFESTS_ALLOW_MISSING_TOOLS=1` は立てていない）。
+**chart の実レンダリング検証は CI に委ねる。**
 
 ## 7. 申し送り（本作業で閉じないもの）
 
