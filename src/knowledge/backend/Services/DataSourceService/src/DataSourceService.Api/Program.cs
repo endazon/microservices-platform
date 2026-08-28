@@ -19,13 +19,20 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);
+// NFR, #1012: 接続先は構成から受け取る。**既定の資格情報を埋め込まない。**
+// 埋め込むと、構成の注入漏れが「起動失敗」ではなく「既定の資格情報で接続成功」へ倒れ、
+// 誤った DB へ書き込んだまま健全に見える。ここで落ちれば配備の誤りはその場で判る。
+var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException(
+        "ConnectionStrings:DefaultConnection が未設定である（環境変数 "
+        + "ConnectionStrings__DefaultConnection で注入する）。");
+
 builder.Services.AddPlatformHealthChecks()
     // ADR-0027 / #441 E1 / W4: MassTransit を外すと "masstransit-bus" の readiness も消える。
     // Wolverine 側は自動登録しないので明示的に足す（無いとブローカ不達でも /health/ready が 200）。
     .AddPlatformWolverineBroker()
     .AddNpgSql(
-        builder.Configuration.GetConnectionString("DefaultConnection")
-            ?? "Host=postgres;Port=5432;Database=datasource_svc;Username=kp;Password=kp",
+        connStr,
         tags: ["ready"]);
 // #269 / #441 E1: ブローカ疎通の readiness。**MassTransit 撤去に伴い "masstransit-bus" は消えた**ため、
 // W4 の AddPlatformWolverineBroker() が肩代わりする（上の health checks へ配線済み）。
@@ -33,8 +40,6 @@ builder.Services.AddPlatformHealthChecks()
 builder.Services.AddOpenApi();
 
 // FR-01: DataSource DbContext
-var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? "Host=postgres;Port=5432;Database=datasource_svc;Username=kp;Password=kp";
 builder.Services.AddDbContext<DataSourceDbContext>(opt => opt.UseNpgsql(connStr));
 
 // ADR-0027 / #441 E1: メッセージング基盤は Wolverine。**本サービスは発行のみで購読を持たない。**

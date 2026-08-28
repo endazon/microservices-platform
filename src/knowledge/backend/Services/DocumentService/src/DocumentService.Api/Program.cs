@@ -31,13 +31,20 @@ builder.Services.AddOpenTelemetry()
         .AddMeter(IngestTagMetrics.MeterName)
         .AddMeter(PrivateNoteNotificationMetrics.MeterName));
 builder.Services.AddPlatformAuth(builder.Configuration);
+// NFR, #1012: 接続先は構成から受け取る。**既定の資格情報を埋め込まない。**
+// 埋め込むと、構成の注入漏れが「起動失敗」ではなく「既定の資格情報で接続成功」へ倒れ、
+// 誤った DB へ書き込んだまま健全に見える。ここで落ちれば配備の誤りはその場で判る。
+var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException(
+        "ConnectionStrings:DefaultConnection が未設定である（環境変数 "
+        + "ConnectionStrings__DefaultConnection で注入する）。");
+
 builder.Services.AddPlatformHealthChecks()
     // ADR-0027 / E3a: Wolverine 発行側のブローカ疎通を readiness へ載せる（W4）。
     // Wolverine 側は自動登録しないので明示的に足す（無いとブローカ不達でも /health/ready が 200）。
     .AddPlatformWolverineBroker()
     .AddNpgSql(
-        builder.Configuration.GetConnectionString("DefaultConnection")
-            ?? "Host=postgres;Port=5432;Database=document_svc;Username=kp;Password=kp",
+        connStr,
         tags: ["ready"]);
 // #269: MassTransit 側（DocumentNormalized 購読・DocumentUpdated 発行が残る間）のブローカ疎通は
 // MassTransit 組み込みの "masstransit-bus"（tag "ready"）で満たす。
@@ -45,8 +52,6 @@ builder.Services.AddPlatformHealthChecks()
 builder.Services.AddOpenApi();
 
 // FR-06: Document DbContext (ADR-0002 Database per Service)
-var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? "Host=postgres;Port=5432;Database=document_svc;Username=kp;Password=kp";
 builder.Services.AddDbContext<DocumentDbContext>(opt => opt.UseNpgsql(connStr));
 
 // FR-21, ADR-0014/ADR-0015: 文書本文の直接受け入れ経路が本文を格納する先（MinIO）。

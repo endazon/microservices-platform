@@ -30,6 +30,14 @@ builder.Services.AddSingleton<EdgeTypeFallbackMetrics>();
 builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddMeter(EdgeTypeFallbackMetrics.MeterName));
 builder.Services.AddPlatformAuth(builder.Configuration);
+// NFR, #1012: 接続先は構成から受け取る。**既定の資格情報を埋め込まない。**
+// 埋め込むと、構成の注入漏れが「起動失敗」ではなく「既定の資格情報で接続成功」へ倒れ、
+// 誤った DB へ書き込んだまま健全に見える。ここで落ちれば配備の誤りはその場で判る。
+var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException(
+        "ConnectionStrings:DefaultConnection が未設定である（環境変数 "
+        + "ConnectionStrings__DefaultConnection で注入する）。");
+
 builder.Services.AddPlatformHealthChecks()
     // ADR-0027 / #1016: Wolverine 購読側（graph-delete 段）のブローカ疎通を readiness へ載せる（W4）。
     // Wolverine 側は自動登録しないので明示的に足す（無いとブローカ不達でも /health/ready が 200）。
@@ -37,14 +45,11 @@ builder.Services.AddPlatformHealthChecks()
     // 現状受容。判断の記録は作業仕様書 20260828_issue-1016_delete-propagation.md §readiness）。
     .AddPlatformWolverineBroker()
     .AddNpgSql(
-        builder.Configuration.GetConnectionString("DefaultConnection")
-            ?? "Host=postgres;Port=5432;Database=graph_svc;Username=kp;Password=kp",
+        connStr,
         tags: ["ready"]);
 builder.Services.AddOpenApi();
 
 // FR-17, ADR-0002, ADR-0033 決定 1: GraphService 専用 DbContext（DB-per-service）
-var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? "Host=postgres;Port=5432;Database=graph_svc;Username=kp;Password=kp";
 builder.Services.AddDbContext<GraphDbContext>(opt => opt.UseNpgsql(connStr));
 
 // FR-17, FR-05, ADR-0004, ADR-0034: ABAC 許可スコープの解決先。

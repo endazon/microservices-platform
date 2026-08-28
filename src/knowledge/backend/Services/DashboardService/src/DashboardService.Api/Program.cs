@@ -14,16 +14,21 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);
+// NFR, #1012: 接続先は構成から受け取る。**既定の資格情報を埋め込まない。**
+// 埋め込むと、構成の注入漏れが「起動失敗」ではなく「既定の資格情報で接続成功」へ倒れ、
+// 誤った DB へ書き込んだまま健全に見える。ここで落ちれば配備の誤りはその場で判る。
+var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException(
+        "ConnectionStrings:DefaultConnection が未設定である（環境変数 "
+        + "ConnectionStrings__DefaultConnection で注入する）。");
+
 builder.Services.AddPlatformHealthChecks()
     .AddNpgSql(
-        builder.Configuration.GetConnectionString("DefaultConnection")
-            ?? "Host=postgres;Port=5432;Database=dashboard_svc;Username=kp;Password=kp",
+        connStr,
         tags: ["ready"]);
 builder.Services.AddOpenApi();
 
 // FR-10: Dashboard DbContext（DB-per-service, ADR-0002）
-var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? "Host=postgres;Port=5432;Database=dashboard_svc;Username=kp;Password=kp";
 builder.Services.AddDbContext<DashboardDbContext>(opt => opt.UseNpgsql(connStr));
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段・合成可能ポートは

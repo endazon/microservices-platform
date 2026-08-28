@@ -21,13 +21,20 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);
+// NFR, #1012: 接続先は構成から受け取る。**既定の資格情報を埋め込まない。**
+// 埋め込むと、構成の注入漏れが「起動失敗」ではなく「既定の資格情報で接続成功」へ倒れ、
+// 誤った DB へ書き込んだまま健全に見える。ここで落ちれば配備の誤りはその場で判る。
+var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException(
+        "ConnectionStrings:DefaultConnection が未設定である（環境変数 "
+        + "ConnectionStrings__DefaultConnection で注入する）。");
+
 builder.Services.AddPlatformHealthChecks()
     // ADR-0027 / E3a: Wolverine 購読側（wiki-delete 段）のブローカ疎通を readiness へ載せる（W4）。
     // Wolverine 側は自動登録しないので明示的に足す（無いとブローカ不達でも /health/ready が 200）。
     .AddPlatformWolverineBroker()
     .AddNpgSql(
-        builder.Configuration.GetConnectionString("DefaultConnection")
-            ?? "Host=postgres;Port=5432;Database=wiki_svc;Username=kp;Password=kp",
+        connStr,
         tags: ["ready"]);
 // #269: ブローカ疎通の readiness は上の AddPlatformWolverineBroker()（W4）が満たす
 // （E3b で MassTransit を撤去した）。外部 AspNetCore.HealthChecks.Rabbitmq は
@@ -35,8 +42,6 @@ builder.Services.AddPlatformHealthChecks()
 builder.Services.AddOpenApi();
 
 // FR-13: Wiki DbContext
-var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? "Host=postgres;Port=5432;Database=wiki_svc;Username=kp;Password=kp";
 builder.Services.AddDbContext<WikiDbContext>(opt => opt.UseNpgsql(connStr));
 
 // FR-13, FR-05, ADR-0011: 閲覧の ABAC 判定は本システム（AuthorizationService）が担う。

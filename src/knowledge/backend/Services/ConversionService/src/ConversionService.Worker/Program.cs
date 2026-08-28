@@ -29,7 +29,9 @@ builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 // FR-12, UC-06, SC-07, IADR-0043: 変換ジョブ読み取りモデルの Postgres+EF 永続化。
 // ADR-0002: ConversionService 専用 DB（conversion_svc）。起動時に MigrateAsync でスキーマ最新化。
 var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? "Host=postgres;Port=5432;Database=conversion_svc;Username=kp;Password=kp";
+    ?? throw new InvalidOperationException(
+            "ConnectionStrings:DefaultConnection が未設定である（環境変数 "
+            + "ConnectionStrings__DefaultConnection で注入する）。");
 builder.Services.AddDbContext<ConversionJobDbContext>(opt => opt.UseNpgsql(connStr));
 
 // DB 到達性の readiness ヘルスチェック（DataSourceService 準拠）。
