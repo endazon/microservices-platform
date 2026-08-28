@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 辺 RawDocumentFetched を Wolverine へ移す（E1・設計）
 type: spec
-status: draft
+status: done
 related_ids:
   - NFR
   - FR-01
@@ -11,7 +11,7 @@ related_ids:
   - ADR-0027
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - "ADR-0027（メッセージング基盤 = Wolverine）"
 related_adrs:

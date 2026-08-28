@@ -1,11 +1,11 @@
 ---
 title: BFF が /feedback/stats へ資格情報を渡していない — 401 はロール不足ではなく後段の challenge の中継
 type: spec
-status: draft
+status: done
 related_ids: [FR-08, FR-10, SC-10, UC-05, NFR-09, ADR-0004, IADR-0044, IADR-0158]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md (FR-08 統計は運用者・管理者)
   - planning:projects/microservices-platform/05_screens/ (SC-10 運用ダッシュボード)

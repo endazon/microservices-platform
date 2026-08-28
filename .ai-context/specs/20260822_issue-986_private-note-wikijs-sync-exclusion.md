@@ -1,11 +1,11 @@
 ---
 title: 作業仕様書 — 個人資料を Wiki.js の同期対象から外す（ADR-0046 D-01）
 type: spec
-status: draft
+status: done
 related_ids: [FR-19, FR-13, UC-07, UC-11, ADR-0011, ADR-0036, ADR-0046, ADR-0054]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0046_private-note-not-synced-to-wikijs.md
   - planning:projects/microservices-platform/07_adr/ADR-0054_doc-scope-attribute-for-private-note.md

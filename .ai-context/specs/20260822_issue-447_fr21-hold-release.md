@@ -1,11 +1,11 @@
 ---
 title: FR-21 の着手保留を解除する — pin 固定の判定表が 8 日間失効に気付かなかった
 type: spec
-status: draft
+status: done
 related_ids: [FR-01, FR-02, FR-12, FR-19, FR-20, FR-21, IADR-0119, IADR-0142]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
 ---
