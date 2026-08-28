@@ -190,6 +190,19 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-default-credentials.js
 
+      # NFR, #1040: 「ビルダ構築時に読まれる構成キーを、統合テストの器が UseSetting で与えているか」。
+      # 🔴 **同じ罠を 3 回踏んだ**（Pipeline:ConfigPath / RabbitMq:ConnectionString /
+      #    ConnectionStrings:DefaultConnection）。器のコメントが 2 度警告し、2 回目を直した本人が
+      #    3 回目を踏んだので、散文ではなく機械で止める。
+      # 🔴 **PR で走ることに価値がある** —— integration.yml は develop への push と日次でしか
+      #    起動しない（IADR-0232 決定 1）ため、この型の欠陥を PR で捕まえる手段が他に無い。
+      - name: Self-test integration config timing checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-integration-config-timing.js --self-test
+      - name: Check integration config timing (#1040)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-integration-config-timing.js
+
       - name: Self-test knowledge graph generator
         if: ${{ !cancelled() }}
         run: node scripts/gen-knowledge-graph.js --self-test

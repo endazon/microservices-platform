@@ -5749,7 +5749,11 @@ ${r.stderr}`);
         //    既定資格情報。**既定値があると注入漏れが「起動失敗」ではなく「既定の資格情報で接続成功」
         //    へ倒れる**）を新設したため 43 → 44（ラチェットが設計どおり発火した）。既知の残件は
         //    baseline で凍結する前方一方向のラチェットである。fs のみで走査する。
-        assert.strictEqual(scripts.length, 44, `検査器の母集合が 44 本から変わった（${scripts.length} 件）`);
+        // ★ #1040 で `check-integration-config-timing.js`（ビルダ構築時に読まれる構成キーを
+        //    統合テストの器が `UseSetting` で与えているか。**同型の事故 3 回目**）を新設したため
+        //    44 → 45（ラチェットが設計どおり発火した）。git を一切呼ばず fs のみで走査するため、
+        //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        assert.strictEqual(scripts.length, 45, `検査器の母集合が 45 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -8216,6 +8220,99 @@ ${r.stderr}`);
       });
       return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
     };
+
+    // ── #1040: ビルダ構築時に読まれる構成キーを器が UseSetting で与えているか ──────
+    //
+    // 🔴 **この検査器は「緑になった」だけでは意味が無い。** 初版はテスト木全体の UseSetting を
+    // 1 つの集合に集めており、実データでは緑だったが**基底から 3 件を外す変異がすべて生存した**
+    // （同じキーを別の器も与えていたため）。だからここでは自己試験の通過だけでなく、
+    // **器ごとに数えていること**を変異で確かめる。
+    {
+      const CT = 'check-integration-config-timing.js';
+      const runCt = (args = []) => {
+        const r = spawnSync(process.execPath, [path.join(SCRIPTS, CT), ...args], {
+          encoding: 'utf8',
+          cwd: REPO,
+        });
+        return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+      };
+
+      ok('#1040: check-integration-config-timing --self-test が通る', () => {
+        const { code, out } = runCt(['--self-test']);
+        assert.strictEqual(code, 0, out);
+      });
+
+      // 件数だけ見ると変異ケースを消しても通る。**ケース名で確かめる。**
+      ok('#1040: self-test が主要な変異ケースと陰性対照を実際に走らせている', () => {
+        const { out } = runCt(['--self-test']);
+        for (const name of [
+          'A-1: GetConnectionString + ?? throw を拾う',
+          'A-2: Configuration[..] + ?? throw を拾う',
+          'B: 無言で縮退する読み手を拾う',
+          '既定値つきの読みは拾わない',
+          'ConfigureAppConfiguration のキーは「与えている」と数えない',
+          'コメント行の記述は拾わない',
+        ]) {
+          assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
+        }
+      });
+
+      ok('#1040: 実データで違反 0 件', () => {
+        const { code, out } = runCt();
+        assert.strictEqual(code, 0, out);
+      });
+
+      // 0 件走査の門。**「器 × サービスの組」を 1 件以上数えていること**を下限で見る
+      // （件数リテラルは書かない —— サービスが増えれば動く）。
+      ok('#1040: 0 件走査の門 — 器 × サービスの組を 1 件以上数えている', () => {
+        const { out } = runCt();
+        const m = /組 (\d+) 件/.exec(out);
+        assert.ok(m, `走査件数を報告していない:\n${out}`);
+        assert.ok(Number(m[1]) > 0, `器に覆われた組が 0 件のまま緑になっている:\n${out}`);
+      });
+
+      ok('#1040: ci.yml の static-checks が self-test と本走査の両方を実行している', () => {
+        const wf = fs.readFileSync(path.join(REPO, '.github/workflows/ci.yml'), 'utf8').replace(/\r\n/g, '\n');
+        assert.ok(wf.includes(`node scripts/${CT} --self-test`), 'self-test を呼んでいない');
+        assert.ok(
+          new RegExp(`node scripts/${CT.replace('.', '\\.')}\\s*\\n`).test(wf),
+          '本走査を呼んでいない（--self-test だけでは実データを見ていない）',
+        );
+      });
+
+      ok('#1040: scripts/README.md が検査器を載せている', () => {
+        const readme = fs.readFileSync(path.join(REPO, 'scripts/README.md'), 'utf8');
+        assert.ok(readme.includes(`\`${CT}\``), 'README の一覧に載っていない');
+      });
+
+      // 🔴 検出力の実測。基底フィクスチャから UseSetting を 1 件外すと落ちること。
+      // **ここが通らないなら、実データの緑には何の意味も無い。**
+      ok('#1040: 基底フィクスチャから UseSetting を外すと落ちる（検出力の実測）', () => {
+        const factory = path.join(
+          REPO,
+          'src/knowledge/backend/Tests/Knowledge.IntegrationTests/Fixtures/IntegrationTestFactory.cs',
+        );
+        const original = fs.readFileSync(factory, 'utf8');
+        try {
+          for (const key of [
+            'ConnectionStrings:DefaultConnection',
+            'RabbitMq:ConnectionString',
+            'Pipeline:ConfigPath',
+          ]) {
+            const mutated = original
+              .replace(`UseSetting(\n            "${key}"`, `UseSetting_X(\n            "${key}"`)
+              .replace(`UseSetting("${key}"`, `UseSetting_X("${key}"`);
+            assert.notStrictEqual(mutated, original, `変異が適用できていない（${key}）`);
+            fs.writeFileSync(factory, mutated);
+            const { code, out } = runCt();
+            assert.notStrictEqual(code, 0, `${key} を外しても緑のままである（検出力が無い）:\n${out}`);
+            assert.ok(out.includes(key), `落ちたが ${key} を名指ししていない:\n${out}`);
+          }
+        } finally {
+          fs.writeFileSync(factory, original);
+        }
+      });
+    }
 
     ok('check-route-manifest --self-test が通る', () => {
       const { code, out } = runRm(['--self-test']);

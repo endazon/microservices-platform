@@ -366,3 +366,4 @@
 | [IADR-0290](./IADR-0290_version-response-drops-body-reference.md) | **版応答から本文の参照（`markdownUri`）を落とす** —— キーは文書 ID で固定・上書きされ参照 URI は versionId を持たないため「その版の本文」を指せる値が存在せず、過去版だと読み違えても応答から区別できなかった。版の復元は射程外（planning#473）で本文の版別保持も求められていないため、契約の側を事実へ揃える。DB 列は残す。#1011 | Accepted |
 | [IADR-0291](./IADR-0291_rabbitmq-credentials-secret-derived.md) | **ブローカの資格情報は Secret 由来にし、未注入は起動失敗にする**。dev 既定の値は変えない —— AST chart が `guest:guest` を自前で持ち submodule は不変だからである。注入は `global.db` と同型。手動 apply と ESO の 2 経路を同じ PR で塞ぐ。#1022 | Accepted |
 | [IADR-0292](./IADR-0292_service-mcp-tool-self-declaration.md) | **MCP ツールの自己申告は「候補 → 選別」の 1 経路に閉じ、個人資料を対象に含む候補を申告しない**。公開対象は初期公開範囲どおり Document / Retrieval / Graph の 3 件（Wiki は除く）。申告 DTO の共有契約への昇格と実行口は追随 issue へ。#1020 | Accepted |
+| [IADR-0293](./IADR-0293_integration-config-timing-checker.md) | **ビルダ構築時に読まれる構成キーの検査は「未注入だと壊れる読み方」に限り、器ごとに突き合わせる**。全器の `UseSetting` を 1 つの集合にすると変異が 3 件とも生存した。#1040 | Accepted |
