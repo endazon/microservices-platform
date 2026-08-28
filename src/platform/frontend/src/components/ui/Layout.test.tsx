@@ -115,8 +115,11 @@ describe('Layout navigation groups (05_screens §共通シェル)', () => {
     await renderLayout(['user']);
     await within(nav()).findByRole('link', { name: '検索・質問' });
     expect(within(nav()).queryByRole('heading', { name: '管理' })).not.toBeInTheDocument();
-    // 「個人」グループの画面（個人資料・Obsidian 連携）は未実装のため、どのロールでも見出しは出ない。
-    expect(within(nav()).queryByRole('heading', { name: '個人' })).not.toBeInTheDocument();
+    // 「個人」グループ（個人資料・Obsidian 連携）は**ロール限定が無い**ので、
+    // 権限の無い利用者にも出る。空グループを描かない規則の陽性対照としてここに置く
+    // （従前は両画面が未実装で、この見出しはどのロールでも出なかった）。
+    expect(within(nav()).getByRole('heading', { name: '個人' })).toBeInTheDocument();
+    expect(within(nav()).getByRole('link', { name: '個人資料' })).toBeInTheDocument();
   });
 
   // 05_screens §共通シェル ［2026-08-04 確定］:
@@ -149,7 +152,7 @@ describe('Layout navigation groups (05_screens §共通シェル)', () => {
       .getAllByRole('heading')
       .map((h) => h.textContent);
     // 計画の 4 グループ（表示されるもの）→ ユニットの機能名、の順。
-    expect(headings).toEqual(['利用者', '管理', '運用', '株式自動売買']);
+    expect(headings).toEqual(['利用者', '個人', '管理', '運用', '株式自動売買']);
   });
 });
 
