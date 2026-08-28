@@ -1,7 +1,7 @@
 import { msg } from '@lingui/core/macro';
 import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { PlanNavItem } from '@foundation/routing/featureRegistry';
+import type { FeatureBreadcrumb, PlanNavItem } from '@foundation/routing/featureRegistry';
 
 // SC-19, UC-11, FR-19: 個人資料管理（05_screens: ルート /my/notes・削除済みタブは /my/notes?tab=trash）。
 //
@@ -59,4 +59,12 @@ export const sc19PrivateNotesNav: PlanNavItem = {
   label: msg`個人資料`,
   to: '/my/notes',
   group: 'personal',
+};
+
+// 05_screens §共通シェル / #446: パンくず `ホーム / 個人 / 個人資料`（crumb 実測）。
+// 「個人」グループは本人の資料だけを扱い、組織の文書を扱う「利用者」グループとは対象範囲が違う。
+export const sc19PrivateNotesBreadcrumb: FeatureBreadcrumb = {
+  routePath: '/my/notes',
+  group: 'personal',
+  label: msg`個人資料`,
 };

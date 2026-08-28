@@ -3,7 +3,14 @@ import type { AnyRoute } from '@tanstack/react-router';
 import { rootRoute, loginRoute, shellRoute, homeRedirectRoute, catchAllRoute } from './shell';
 import { createLegacyRoutes } from './featureRegistry';
 import { registerNavItems, registerUnitNavGroups } from './nav';
-import { createUnitRoutes, planNavItems, legacyUnitFeatures, unitNavGroups } from '@features/index';
+import { registerBreadcrumbs } from './breadcrumbs';
+import {
+  createUnitRoutes,
+  planNavItems,
+  planBreadcrumbs,
+  legacyUnitFeatures,
+  unitNavGroups,
+} from '@features/index';
 
 // ADR-0031 / IADR-0124: ルート木の組み立て。
 //
@@ -37,6 +44,12 @@ registerNavItems(planNavItems);
 // 05_screens §共通シェル ［2026-08-04 確定］: 本計画に属さないユニットは**機能名**のグループへ束ねる
 // （総称の「その他」は使わない）。並びは計画の 4 グループの後（nav.ts の navGroups）。
 registerUnitNavGroups(unitNavGroups);
+// 05_screens §共通シェル「パンくず・権限バッジ」（#446）: パンくずは**ナビとは別の登録面**である
+// （SC-03 はナビ項目を持たないがパンくずは持つ）。登録するのはここ 1 か所だけ。
+// 🔴 **旧契約ユニット（AST）はパンくずを持たない** —— `FeatureModule` に宣言面が無く、
+// 本リポジトリからは変更できない（IADR-0120）。総称のフォールバックは作らない
+// （左ナビの「その他」を作らないのと同じ理由。何の画面か分からない段を出すほうが害である）。
+registerBreadcrumbs(planBreadcrumbs);
 
 export const routeTree = rootRoute.addChildren([loginRoute, shellWithUnits]);
 

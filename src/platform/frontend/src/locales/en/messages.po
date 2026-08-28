@@ -154,6 +154,7 @@ msgid "ABAC属性（無人のみ）"
 msgstr "ABAC attributes (unattended only)"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/routes/sc09AdminAbacRoute.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/routes/sc12McpClientsRoute.tsx
 msgid "ABAC設定"
 msgstr "ABAC settings"
 
@@ -190,6 +191,7 @@ msgid "AI 回答を生成できませんでした。キーワード検索の結�
 msgstr "The AI answer could not be generated. Please review the keyword search results."
 
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+#: knowledge/frontend/src/features/sc21-ai-suggestions/routes/sc21AiSuggestionsRoute.ts
 msgid "AI 提案"
 msgstr "AI suggestions"
 
@@ -266,6 +268,10 @@ msgid "MCP サーバーへ接続できるクライアント（外部 AI エー�
 msgstr "Register and disable the clients (external AI agents) that may connect to the MCP server, and assign ABAC attributes to unattended accounts. The published tool configuration cannot be changed from this screen."
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/routes/sc12McpClientsRoute.tsx
+msgid "MCPクライアント"
+msgstr "MCP clients"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/routes/sc12McpClientsRoute.tsx
 msgid "MCP管理"
 msgstr "MCP"
 
@@ -282,6 +288,7 @@ msgid "Obsidian 内のパス（任意）"
 msgstr "Path inside Obsidian (optional)"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/routes/sc20ObsidianSettingsRoute.ts
 msgid "Obsidian 連携設定"
 msgstr "Obsidian integration settings"
 
@@ -664,6 +671,7 @@ msgid "タスク種別"
 msgstr "Task type"
 
 #: knowledge/frontend/src/features/sc10-operations/routes/sc10OperationsRoute.tsx
+#: knowledge/frontend/src/features/sc11-config/routes/sc11ConfigRoute.tsx
 msgid "ダッシュボード"
 msgstr "Dashboard"
 
@@ -695,6 +703,11 @@ msgstr "The data source has been registered."
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "データソース登録"
 msgstr "Data source registration"
+
+#: knowledge/frontend/src/features/sc06-datasources/routes/sc06DataSourcesRoute.tsx
+#: knowledge/frontend/src/features/sc07-conversions/routes/sc07ConversionsRoute.tsx
+msgid "データソース管理"
+msgstr "Data source management"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "トークンを発行する"
@@ -779,6 +792,10 @@ msgstr "The version history could not be loaded."
 msgid "パイプライン段"
 msgstr "Pipeline stages"
 
+#: platform/frontend/src/app/routing/breadcrumbs.ts
+msgid "パンくず"
+msgstr "Breadcrumb"
+
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
 msgid "ファイルサーバー"
 msgstr "File server"
@@ -814,6 +831,10 @@ msgstr "Selected port implementations"
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "ポート実装の選択の一覧"
 msgstr "List of selected port implementations"
+
+#: platform/frontend/src/app/routing/breadcrumbs.ts
+msgid "ホーム"
+msgstr "Home"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "ポリシー"
@@ -2069,6 +2090,11 @@ msgid "検索"
 msgstr "Search"
 
 #: knowledge/frontend/src/features/sc01-search/routes/sc01SearchRoute.ts
+#: knowledge/frontend/src/features/sc02-results/routes/sc02ResultsRoute.tsx
+msgid "検索・チャット質問"
+msgstr "Search and chat"
+
+#: knowledge/frontend/src/features/sc01-search/routes/sc01SearchRoute.ts
 msgid "検索・質問"
 msgstr "Search / ask"
 
@@ -2101,6 +2127,8 @@ msgid "検索条件で追加"
 msgstr "Add by search condition"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+#: knowledge/frontend/src/features/sc02-results/routes/sc02ResultsRoute.tsx
+#: knowledge/frontend/src/features/sc03-document/routes/sc03DocumentRoute.ts
 msgid "検索結果"
 msgstr "Search results"
 

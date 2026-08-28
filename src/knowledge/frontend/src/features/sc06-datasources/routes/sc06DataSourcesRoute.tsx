@@ -1,7 +1,7 @@
 import { msg } from '@lingui/core/macro';
 import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { PlanNavItem } from '@foundation/routing/featureRegistry';
+import type { FeatureBreadcrumb, PlanNavItem } from '@foundation/routing/featureRegistry';
 import { RequireRole } from '@foundation/auth/RequireRole';
 import { PlatformRole } from '@foundation/auth/roles';
 
@@ -42,5 +42,13 @@ export const sc06DataSourcesNav: PlanNavItem = {
   label: msg`データソース`,
   to: '/admin/sources',
   group: 'admin',
+  requiresAnyRole: [PlatformRole.Admin, PlatformRole.Operator],
+};
+
+// 05_screens §共通シェル / #446: パンくず `ホーム / 管理 / データソース管理`（crumb 実測）。
+export const sc06DataSourcesBreadcrumb: FeatureBreadcrumb = {
+  routePath: '/admin/sources',
+  group: 'admin',
+  label: msg`データソース管理`,
   requiresAnyRole: [PlatformRole.Admin, PlatformRole.Operator],
 };

@@ -1,7 +1,7 @@
 import { msg } from '@lingui/core/macro';
 import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { PlanNavItem } from '@foundation/routing/featureRegistry';
+import type { FeatureBreadcrumb, PlanNavItem } from '@foundation/routing/featureRegistry';
 
 // SC-02, UC-01, FR-03/FR-05: 検索結果一覧（05_screens: ルート /search?q=）。認証済みユーザー向け。
 // ABAC はサーバ側（/bff/search の deny-by-default）で適用され、権限外文書は結果に現れない。
@@ -33,4 +33,15 @@ export const sc02ResultsNav: PlanNavItem = {
   label: msg`結果一覧`,
   to: '/search',
   group: 'user',
+};
+
+// 05_screens §共通シェル / #446: パンくず `ホーム / 検索・チャット質問 / 検索結果`（crumb 実測）。
+// 親画面の段（SC-01）を持つ。**モックはこの段だけリンクにしていない**が、他の親画面段
+// （SC-03 / SC-07 / SC-11 / SC-12）は `<a>` であり、SC-01 は到達可能な実在画面なのでリンクにする
+// （モック内部の不整合。計画へ環流する）。
+export const sc02ResultsBreadcrumb: FeatureBreadcrumb = {
+  routePath: '/search',
+  group: 'user',
+  parents: [{ label: msg`検索・チャット質問`, to: '/ask' }],
+  label: msg`検索結果`,
 };

@@ -1,7 +1,7 @@
 import { msg } from '@lingui/core/macro';
 import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { PlanNavItem } from '@foundation/routing/featureRegistry';
+import type { FeatureBreadcrumb, PlanNavItem } from '@foundation/routing/featureRegistry';
 import { RequireRole } from '@foundation/auth/RequireRole';
 import { PlatformRole } from '@foundation/auth/roles';
 
@@ -51,5 +51,15 @@ export const sc07ConversionsNav: PlanNavItem = {
   label: msg`変換ジョブ`,
   to: '/admin/conversions',
   group: 'admin',
+  requiresAnyRole: [PlatformRole.Admin, PlatformRole.Operator],
+};
+
+// 05_screens §共通シェル / #446: パンくず `ホーム / 管理 / データソース管理 / 変換ジョブ`（crumb 実測）。
+// 親画面（SC-06）の段を持つ 4 段構成であり、モックでもその段はリンクである。
+export const sc07ConversionsBreadcrumb: FeatureBreadcrumb = {
+  routePath: '/admin/conversions',
+  group: 'admin',
+  parents: [{ label: msg`データソース管理`, to: '/admin/sources' }],
+  label: msg`変換ジョブ`,
   requiresAnyRole: [PlatformRole.Admin, PlatformRole.Operator],
 };

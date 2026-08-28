@@ -1,7 +1,7 @@
 import { msg } from '@lingui/core/macro';
 import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { PlanNavItem } from '@foundation/routing/featureRegistry';
+import type { FeatureBreadcrumb, PlanNavItem } from '@foundation/routing/featureRegistry';
 
 // SC-21, UC-10, FR-18/FR-05: AI 提案一覧（05_screens: ルート /ai-suggestions・既定 ?state=pending）。
 //
@@ -66,4 +66,12 @@ export const sc21AiSuggestionsNav: PlanNavItem = {
   label: msg`AI提案`,
   to: '/ai-suggestions',
   group: 'user',
+};
+
+// 05_screens §共通シェル / #446: パンくず `ホーム / AI 提案`（crumb 実測。**モックは中黒に空白を持つ**。
+// 左ナビは「AI提案」で空白が無い——モック側の表記ゆれであり、パンくずは実測どおりにする）。
+export const sc21AiSuggestionsBreadcrumb: FeatureBreadcrumb = {
+  routePath: '/ai-suggestions',
+  group: 'user',
+  label: msg`AI 提案`,
 };

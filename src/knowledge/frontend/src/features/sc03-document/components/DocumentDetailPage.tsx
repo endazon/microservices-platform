@@ -17,6 +17,8 @@ import {
   Tag,
 } from '@platform/ui';
 import { appConfig } from '@foundation/config/runtimeConfig';
+// SC-03 / #446: 共通シェルのパンくずの**動的な葉**（文書タイトル）を渡す。
+import { useBreadcrumbLeaf } from '@foundation/routing/breadcrumbLeaf';
 // ADR-0031 §採用技術一覧（日付 = dayjs）/ #788: 同じ整形を自前で持っていたが、
 // **同じ整形規則を 2 か所に置かない**ため foundation の 1 本へ寄せた。
 import { formatDateTime } from '@foundation/ui/formatDateTime';
@@ -57,6 +59,11 @@ export function DocumentDetailPage() {
   // SC-03, IADR-0124 決定 3: パスパラメータはルート ID のリテラルを渡す形だけが厳密に型付く。
   const { id } = useParams({ from: '/_shell/docs/$id' });
   const { detail, content, versions } = useDocumentQueries(id);
+  // 05_screens §共通シェル / #446: パンくずの葉は文書タイトルである（モックの crumb
+  // `ホーム / 検索結果 / 経費精算規程 v3.2`）。**フックは早期 return より前で呼ぶ。**
+  // 取得前・取得失敗時は `undefined`＝葉を描かない（未確定の文字列をパンくずへ出さない。
+  // 「読み込み中」を段に出すと、パンくずが現在地ではなく状態の表示になる）。
+  useBreadcrumbLeaf(detail.data?.title);
 
   if (detail.isPending) {
     return (

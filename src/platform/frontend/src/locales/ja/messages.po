@@ -154,6 +154,7 @@ msgid "ABAC属性（無人のみ）"
 msgstr "ABAC属性（無人のみ）"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/routes/sc09AdminAbacRoute.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/routes/sc12McpClientsRoute.tsx
 msgid "ABAC設定"
 msgstr "ABAC設定"
 
@@ -190,6 +191,7 @@ msgid "AI 回答を生成できませんでした。キーワード検索の結�
 msgstr "AI 回答を生成できませんでした。キーワード検索の結果をご確認ください。"
 
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+#: knowledge/frontend/src/features/sc21-ai-suggestions/routes/sc21AiSuggestionsRoute.ts
 msgid "AI 提案"
 msgstr "AI 提案"
 
@@ -266,6 +268,10 @@ msgid "MCP サーバーへ接続できるクライアント（外部 AI エー�
 msgstr "MCP サーバーへ接続できるクライアント（外部 AI エージェント）を登録・無効化し、 無人アカウントへ ABAC 属性を割り当てます。公開ツールの構成はこの画面からは変更できません。"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/routes/sc12McpClientsRoute.tsx
+msgid "MCPクライアント"
+msgstr "MCPクライアント"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/routes/sc12McpClientsRoute.tsx
 msgid "MCP管理"
 msgstr "MCP管理"
 
@@ -282,6 +288,7 @@ msgid "Obsidian 内のパス（任意）"
 msgstr "Obsidian 内のパス（任意）"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/routes/sc20ObsidianSettingsRoute.ts
 msgid "Obsidian 連携設定"
 msgstr "Obsidian 連携設定"
 
@@ -664,6 +671,7 @@ msgid "タスク種別"
 msgstr "タスク種別"
 
 #: knowledge/frontend/src/features/sc10-operations/routes/sc10OperationsRoute.tsx
+#: knowledge/frontend/src/features/sc11-config/routes/sc11ConfigRoute.tsx
 msgid "ダッシュボード"
 msgstr "ダッシュボード"
 
@@ -695,6 +703,11 @@ msgstr "データソースを登録しました。"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "データソース登録"
 msgstr "データソース登録"
+
+#: knowledge/frontend/src/features/sc06-datasources/routes/sc06DataSourcesRoute.tsx
+#: knowledge/frontend/src/features/sc07-conversions/routes/sc07ConversionsRoute.tsx
+msgid "データソース管理"
+msgstr "データソース管理"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "トークンを発行する"
@@ -779,6 +792,10 @@ msgstr "バージョン履歴を取得できませんでした。"
 msgid "パイプライン段"
 msgstr "パイプライン段"
 
+#: platform/frontend/src/app/routing/breadcrumbs.ts
+msgid "パンくず"
+msgstr "パンくず"
+
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
 msgid "ファイルサーバー"
 msgstr "ファイルサーバー"
@@ -814,6 +831,10 @@ msgstr "ポート実装の選択"
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "ポート実装の選択の一覧"
 msgstr "ポート実装の選択の一覧"
+
+#: platform/frontend/src/app/routing/breadcrumbs.ts
+msgid "ホーム"
+msgstr "ホーム"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "ポリシー"
@@ -2069,6 +2090,11 @@ msgid "検索"
 msgstr "検索"
 
 #: knowledge/frontend/src/features/sc01-search/routes/sc01SearchRoute.ts
+#: knowledge/frontend/src/features/sc02-results/routes/sc02ResultsRoute.tsx
+msgid "検索・チャット質問"
+msgstr "検索・チャット質問"
+
+#: knowledge/frontend/src/features/sc01-search/routes/sc01SearchRoute.ts
 msgid "検索・質問"
 msgstr "検索・質問"
 
@@ -2101,6 +2127,8 @@ msgid "検索条件で追加"
 msgstr "検索条件で追加"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+#: knowledge/frontend/src/features/sc02-results/routes/sc02ResultsRoute.tsx
+#: knowledge/frontend/src/features/sc03-document/routes/sc03DocumentRoute.ts
 msgid "検索結果"
 msgstr "検索結果"
 

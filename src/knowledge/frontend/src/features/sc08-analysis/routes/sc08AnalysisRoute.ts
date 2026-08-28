@@ -1,7 +1,7 @@
 import { msg } from '@lingui/core/macro';
 import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { PlanNavItem } from '@foundation/routing/featureRegistry';
+import type { FeatureBreadcrumb, PlanNavItem } from '@foundation/routing/featureRegistry';
 
 // SC-08, UC-02, FR-07/FR-11/FR-05: AI分析ダッシュボード（05_screens: ルート /analyze）。
 // **ロール限定は無い**（05_screens §共通シェル「利用者グループ（SC-01〜04・SC-08…）は
@@ -28,4 +28,11 @@ export const sc08AnalysisNav: PlanNavItem = {
   label: msg`AI分析`,
   to: '/analyze',
   group: 'user',
+};
+
+// 05_screens §共通シェル / #446: パンくず `ホーム / AI分析`（crumb 実測）。グループ段を持たない。
+export const sc08AnalysisBreadcrumb: FeatureBreadcrumb = {
+  routePath: '/analyze',
+  group: 'user',
+  label: msg`AI分析`,
 };

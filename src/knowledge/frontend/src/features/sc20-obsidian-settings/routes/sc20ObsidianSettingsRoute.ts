@@ -1,7 +1,7 @@
 import { msg } from '@lingui/core/macro';
 import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { PlanNavItem } from '@foundation/routing/featureRegistry';
+import type { FeatureBreadcrumb, PlanNavItem } from '@foundation/routing/featureRegistry';
 
 // SC-20, UC-11, FR-20: Obsidian 連携設定（05_screens: ルート /my/obsidian）。
 //
@@ -34,4 +34,11 @@ export const sc20ObsidianSettingsNav: PlanNavItem = {
   label: msg`Obsidian連携`,
   to: '/my/obsidian',
   group: 'personal',
+};
+
+// 05_screens §共通シェル / #446: パンくず `ホーム / 個人 / Obsidian 連携設定`（crumb 実測）。
+export const sc20ObsidianSettingsBreadcrumb: FeatureBreadcrumb = {
+  routePath: '/my/obsidian',
+  group: 'personal',
+  label: msg`Obsidian 連携設定`,
 };

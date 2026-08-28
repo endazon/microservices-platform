@@ -1,12 +1,15 @@
+import { useState } from 'react';
 import { i18n } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
-import { Link, Outlet } from '@tanstack/react-router';
+import { Link, Outlet, useRouterState } from '@tanstack/react-router';
 import { CircleUserRound } from 'lucide-react';
-import { Button } from '@platform/ui';
+import { Button, Tag } from '@platform/ui';
 import { useAuth } from '@foundation/auth/useAuth';
 import { useRoles, hasAnyRole } from '@foundation/auth/roles';
 import { navGroups } from '@foundation/routing/nav';
 import type { NavItemView } from '@foundation/routing/nav';
+import { breadcrumbTrail, breadcrumbNavLabel } from '@foundation/routing/breadcrumbs';
+import { BreadcrumbLeafContext } from '@foundation/routing/breadcrumbLeaf';
 import { appConfig } from '@foundation/config/runtimeConfig';
 import { NotificationBell } from '@foundation/notifications/NotificationBell';
 import { AiChatPanel } from '@foundation/ai-chat/AiChatPanel';
@@ -17,7 +20,12 @@ import { Notifications } from './notifications';
 // ADR-0031 / IADR-0121 決定 4: 見た目は Tailwind v4 のトークン（@platform/ui）で表す。
 //
 // 本シェルが持つのは 05_screens §共通シェル のうち #490 の範囲——ブランド表示名・左ナビ（4 グループ）・
-// ユーザーアイコン（→ SC-16）・通知——である。パンくず・権限バッジは #452。
+// ユーザーアイコン（→ SC-16）・通知——に加え、**パンくず・画面グループのバッジ（#446）**である。
+// 🔴 **パンくず・権限バッジの帰属は #446 である。** ここには長く「#452」と書いてあったが誤りで、
+// #452 は画面個別（SC-12 / SC-17）の作業であり、共通シェルの部品は #446 が持つ。
+// 計画の「画面グループのバッジ」はパンくずの中のグループ段として描く——モックアップに
+// 独立したバッジ要素は無い（`<div class="badges">` は SC 番号・進捗・仕様書リンクを持つ
+// **モックアップのメタ情報**であり、crumb を持たない SC-13〜16 にも付いている）。
 // **右レール AI チャットパネルは移行第 4 段（#788 / IADR-0121 決定 5）で入った**——
 // シェル側の追加は `<AiChatPanel />` の 1 要素だけであり、開閉・履歴・SSE はすべて
 // `foundation/ai-chat/` が持つ（シェルへ状態を持ち上げると、通知と同じ器がもう 1 つ増える）。
@@ -40,9 +48,61 @@ function NavLink({ item }: { item: NavItemView }) {
   );
 }
 
+/**
+ * パンくず（05_screens §共通シェル「パンくず・権限バッジ」。#446）。
+ *
+ * 段の組み立ては純関数 `breadcrumbTrail()` が持ち、ここは描画だけを行う
+ * （Layout を描かずに段構成を検査できるようにするため）。
+ *
+ * 🔴 **色だけで意味を持たせない**（本リポの規約 / INDEX 決定 21）。グループのバッジは
+ * 「管理」「運用」「個人」という**テキスト**を持ち、色を落としても意味が読める。
+ * 🔴 **空のときは `<nav>` ごと描かない** —— 空の器が残ると「まだ読み込み中」に見える。
+ */
+function Breadcrumb({ leaf }: { leaf: string | undefined }) {
+  const roles = useRoles();
+  // いま居るルートの完全パス（`/docs/$id` のようにパラメータ表記のまま）。宣言の主キーである。
+  //
+  // `select` の戻り値型（`TSelected`）は **`Register` 宣言が見えている文脈でしか推論されない**。
+  // 雛形（`templates/unit-template/frontend`）の型検査は `router.tsx` を含まないため、
+  // そこでは素の `RouterState` に落ちて赤くなる（実測）。**推論に頼らず**、
+  // 選択関数の戻り値を明示し、結果も同じ型で受ける。
+  const routePath: string | undefined = useRouterState({
+    select: (s): string | undefined => s.matches.at(-1)?.fullPath as string | undefined,
+  });
+  const trail = breadcrumbTrail({ routePath, leaf, roles });
+  if (trail.length === 0) return null;
+
+  return (
+    <nav aria-label={breadcrumbNavLabel()} className="mb-3">
+      <ol className="flex flex-wrap items-center gap-1.5 text-xs text-[--color-fg-muted]">
+        {trail.map((seg, index) => (
+          <li key={`${seg.kind}:${seg.label}`} className="flex items-center gap-1.5">
+            {/* 区切りは装飾であり読み上げない（段の区切りは <ol>/<li> の構造が担う）。 */}
+            {index > 0 && <span aria-hidden>/</span>}
+            {seg.kind === 'group' ? (
+              <Tag tone="accent">{seg.label}</Tag>
+            ) : seg.kind === 'current' ? (
+              <span aria-current="page" className="font-medium text-[--color-fg]">
+                {seg.label}
+              </span>
+            ) : (
+              <Link to={seg.to as '/ask'} className="hover:underline">
+                {seg.label}
+              </Link>
+            )}
+          </li>
+        ))}
+      </ol>
+    </nav>
+  );
+}
+
 export function Layout() {
   const { user, logout } = useAuth();
   const roles = useRoles();
+  // パンくずの動的な葉（SC-03 の文書タイトル）。画面側が `useBreadcrumbLeaf` で与える。
+  // setter は useState が返す安定した参照なので、context の値として渡しても再描画を誘発しない。
+  const [breadcrumbLeaf, setBreadcrumbLeaf] = useState<string | undefined>(undefined);
   // 表示名は BFF セッションの身元（/bff/auth/me の name = preferred_username）から。
   const name = user?.name || i18n._(msg`ユーザー`);
 
@@ -107,7 +167,11 @@ export function Layout() {
           ))}
         </nav>
         <main className="grow p-4">
-          <Outlet />
+          {/* 05_screens §共通シェル: パンくずと画面グループのバッジは本文の上に置く（#446）。 */}
+          <Breadcrumb leaf={breadcrumbLeaf} />
+          <BreadcrumbLeafContext.Provider value={setBreadcrumbLeaf}>
+            <Outlet />
+          </BreadcrumbLeafContext.Provider>
         </main>
       </div>
       <Notifications />

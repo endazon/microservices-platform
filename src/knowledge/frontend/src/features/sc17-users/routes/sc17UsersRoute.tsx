@@ -1,7 +1,7 @@
 import { msg } from '@lingui/core/macro';
 import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { PlanNavItem } from '@foundation/routing/featureRegistry';
+import type { FeatureBreadcrumb, PlanNavItem } from '@foundation/routing/featureRegistry';
 import { RequireRole } from '@foundation/auth/RequireRole';
 import { PlatformRole } from '@foundation/auth/roles';
 
@@ -46,5 +46,13 @@ export const sc17UsersNav: PlanNavItem = {
   label: msg`ユーザー管理`,
   to: '/admin/users',
   group: 'admin',
+  requiresAnyRole: [PlatformRole.Admin],
+};
+
+// 05_screens §共通シェル / #446: パンくず `ホーム / 管理 / ユーザー管理`（crumb 実測）。
+export const sc17UsersBreadcrumb: FeatureBreadcrumb = {
+  routePath: '/admin/users',
+  group: 'admin',
+  label: msg`ユーザー管理`,
   requiresAnyRole: [PlatformRole.Admin],
 };

@@ -1,7 +1,7 @@
 import { msg } from '@lingui/core/macro';
 import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { PlanNavItem } from '@foundation/routing/featureRegistry';
+import type { FeatureBreadcrumb, PlanNavItem } from '@foundation/routing/featureRegistry';
 
 // SC-01, UC-01, FR-03/FR-04: 検索／チャット質問画面（本システムの主入口。05_screens: ルート /ask）。
 // 認証済みユーザー向け（ロール限定なし）。ABAC は後段（BFF/検索/AI）が narrowing・deny-by-default で適用。
@@ -33,4 +33,13 @@ export const sc01SearchNav: PlanNavItem = {
   label: msg`検索・質問`,
   to: '/ask',
   group: 'user',
+};
+
+// 05_screens §共通シェル / #446: パンくず `ホーム / 検索・チャット質問`（hi-fi・wireframe の crumb 実測）。
+// **グループ段を持たない**（利用者グループ。モックの crumb は `ホーム / <画面名>` の 2 段）。
+// crumb の表示名はナビの表示名（「検索・質問」）と一致しない——モックがそう描いている。
+export const sc01SearchBreadcrumb: FeatureBreadcrumb = {
+  routePath: '/ask',
+  group: 'user',
+  label: msg`検索・チャット質問`,
 };
