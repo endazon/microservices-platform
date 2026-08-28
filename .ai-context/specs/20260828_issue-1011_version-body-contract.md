@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 版応答が「版ごとの本文」を約束しない形へ契約を揃える（#1011）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-06
   - FR-19
@@ -164,13 +164,13 @@ planning#473 の裁定（2026-08-23）が
 
 ## 5. 受け入れ基準
 
-- [ ] 版応答（サービス／BFF とも）に `markdownUri` が**含まれない**
-- [ ] 版の作成・一覧・取得は従来どおり動く（版行を消していない）
-- [ ] 復元端点を足していない
-- [ ] `DocumentBodyIntake.cs` のコメントが「バージョニングが履歴を持つ」を前提にしていない
-- [ ] 同型の記述（§3.1 の 10 件）が是正されている
-- [ ] 版応答が版ごとの本文を約束しないことをテストが固定し、**変異試験で落ちる**
-- [ ] 契約 baseline に許容の記録が残っている
+- [x] 版応答（サービス／BFF とも）に `markdownUri` が**含まれない**
+- [x] 版の作成・一覧・取得は従来どおり動く（版行を消していない）
+- [x] 復元端点を足していない
+- [x] `DocumentBodyIntake.cs` のコメントが「バージョニングが履歴を持つ」を前提にしていない
+- [x] 同型の記述（§3.1 の 10 件）が是正されている
+- [x] 版応答が版ごとの本文を約束しないことをテストが固定し、**変異試験で落ちる**（§6 の実測）
+- [x] 契約 baseline に許容の記録が残っている
 
 ## 6. テスト方針と変異試験
 
@@ -187,7 +187,16 @@ planning#473 の裁定（2026-08-23）が
 **変異試験**（両方向の生出力を報告に貼る）:
 
 - M1: `ToVersionDto` に `MarkdownUri = v.MarkdownUri` を戻す（＋DTO のプロパティを戻す）→ 1 が落ちること
-- M2: 変異を戻す → 緑に戻ること
+- M2: キーを書き込みごとに一意化する（＝版ごとの本文が残る形）→ 2 が落ちること
+- M0: 変異を戻す → 緑に戻ること
+
+### 実測（2026-08-28）
+
+| 変異 | 結果 |
+| --- | --- |
+| M1 | `版応答は本文の参照を含まない` が **FAIL**。`Did not expect singleJson to contain the equivalent of "markdownUri" but found "{"documentId":…,"version":1,…,"markdownUri":"storage://knowledge-normalized/documents/…/body.md",…}"` —— **版 1 の応答が、版 2 の本文を保持している固定キーを指していた**（欠陥そのものが再現した）。1 Failed / 8 Passed |
+| M2 | `版ごとの本文は保持されない` が **FAIL**（`Expected doc.MarkdownUri to end with the same string, but they differ before index 111`）。1 Failed / 8 Passed |
+| M0 | いずれも戻して **9 Passed / 0 Failed** |
 
 ## 7. 計画書との差異
 
