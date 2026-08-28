@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-14]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041]
-iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280]
+iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282]
 specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260828_arch-foundation_eight-element-materialization]
 issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
 -->
@@ -106,21 +106,22 @@ flowchart TB
 
 ### プロジェクト構成（サービス単位）
 
-**標準構成は 8 要素である**（計画 12_backend-application-stack（計画リポ）
-§`SharedKernel` の粒度・`Worker` の追加。2026-08-17 に `Worker` を加えて 7 → 8 とした。
-実装側の追随は、`SharedKernel` の粒度と `Worker` の追加を定めた実装 ADR の決定 2 である）。
+**標準構成は、単一プロジェクト＋層フォルダである**（オーナー裁定 2026-08-28。
+単一プロジェクト標準を定めた実装 ADR が正本。従前の 8 要素プロジェクト分割
+（計画 12_backend-application-stack（計画リポ）§プロジェクト構成）の実体化は
+**同裁定で撤回**され、計画側条文の改定を環流中である —— 8 つの**関心**はフォルダと
+ユニット共有プロジェクトで維持する）。
 
 ```text
 src/<unit>/backend/Services/<Name>Service/
- ├── src/
- │    ├── <Name>.Api             # エンドポイント定義・DI 構成・ProblemDetails 変換
- │    ├── <Name>.Worker          # 常駐処理を主とするサービスの実行入口（Api と排他）
- │    ├── <Name>.Application     # ユースケース（Wolverine ハンドラ）・検証・マッピング
- │    ├── <Name>.Domain          # エンティティ・値オブジェクト（外部依存なし）
- │    ├── <Name>.Infrastructure  # EF Core・Redis・オブジェクトストレージ等の実装
- │    ├── <Name>.Contracts       # 公開契約（proto・イベント・DTO）
- │    └── <Name>.SharedKernel    # Result / Error・共通基底（過度な共通化は避ける）
- └── tests/<Name>.Tests/{Unit, Integration}
+ ├── <Name>Service.csproj        # 単一プロジェクト（層をプロジェクト分割しない）
+ ├── Program.cs                  # 合成ルート（束ねるだけ。判断を書かない）
+ ├── Features/<集約>/<操作>/     # Vertical Slice（Endpoint / Command|Query / Handler）
+ ├── Domain/                     # エンティティ・値オブジェクト（外部依存なし。＋ Errors/）
+ ├── Infrastructure/             # Persistence（EF Core・Migrations）・Messaging 等のアダプタ
+ ├── Common/                     # サービス固有の横断関心（Exceptions/・Behaviors/）
+ ├── Worker/<Name>.Worker.csproj # 常駐処理を主とするサービスの実行入口（Api と排他・別デプロイ実体）
+ └── Tests/<Name>.Tests.csproj   # テストは 1 プロジェクト（フォルダは実装の鏡写し: Features/・Domain/）
 ```
 
 **`Api` と `Worker` は同一サービス内で排他である。** いずれか一方のみを持ち、**持たない側は空フォルダを作らない**
@@ -128,27 +129,27 @@ src/<unit>/backend/Services/<Name>Service/
 `Api` 9 サービス / `Worker` 2 サービス（`ConversionService` / `IngestionService`）である。
 **`Worker` が HTTP 面を持つことは `Worker` であることと矛盾しない** —— 区別の軸はホストの主目的である。
 
-**`SharedKernel` を除く要素は、実プロジェクト（`.csproj`）として実体化済みである**
-（オーナー裁定 2026-08-27。8 要素実体化を定めた実装 ADR が、従前の
-「実体が無い要素は空フォルダ ＋ `.gitkeep` を置く」（#838 で適用）という形を改めた。
-配置写像 —— どの層に何を置くか —— と参照方向
-`Domain ← Application ← Infrastructure ← Api/Worker` は同実装 ADR を正とする。
-パイロットの FeedbackService 以外の 13 サービスは、実コードの移送が後続波で行われるまで
-実行入口プロジェクトの `Foundation/` 配下に実コードが残る）。
+**参照方向（`Domain` は `Features` / `Infrastructure` / `Common` の振る舞いを知らない）は
+フォルダ＝名前空間で守り、機械検査は移送波で名前空間走査へ書き換える**（それまでは
+現行の csproj 参照検査が残る）。**移送完了までは現行配置
+（`src/<Name>.<Api|Worker>/Foundation/ ・ Composable/` に実コード・8 要素の空プロジェクト群）が
+実態であり、新規コードも現行配置で書く** —— 「統制を定めた」と「統制が働いている」を
+読み分けるための併記である。撤去・リネーム・スライス化は移送波が一括で行う。
 
-**`Tests` は 1 プロジェクトである。Unit / Integration はプロジェクトを分けず、フォルダで分ける**
-（計画 12_backend-application-stack（計画リポ）
+**`Tests` は 1 プロジェクトである**（計画 12_backend-application-stack（計画リポ）
 §規範性・粒度・置き場。利用者裁定 2026-08-04）。プロジェクトを分けるとビルド時間と
-参照管理のコストが増えるためである。`.csproj` の実名はサービスのホスト種別に合わせてよい
+参照管理のコストが増えるためである。フォルダは Unit / Integration の種別区分ではなく
+**実装のスライスを鏡写しにする**（`Tests/Features/`・`Tests/Domain/`。2026-08-28 裁定。
+種別区分の計画側条文は改定を環流中）。`.csproj` の実名はホスト種別に合わせてよい
 （実装の現況は `<Name>.Api.Tests` / `<Name>.Worker.Tests`）。
 
-**共有カーネルはサービス単位とユニット単位が併存する**（同実装 ADR の決定 1。
-計画 §`SharedKernel` の粒度。利用者裁定 2026-08-17）。**置き分けは次のとおりである。**
+**共有カーネルはユニット単位に一本化する**（2026-08-28 裁定。サービス単位の
+`SharedKernel` 要素と `.gitkeep` の枠は撤回）。
 
 | 置き場 | 何を置くか |
 | --- | --- |
-| **サービス単位** `Services/<Name>Service/src/<Name>.SharedKernel/` | **自サービスに閉じた共通基底**。上の構成図の 1 要素。8 要素のうちこの要素だけは実体化せず `.gitkeep` の枠を維持する（自サービス閉じの共通基底が現状 0 件のため。最初に必要とするサービスが実体化する） |
-| **ユニット単位** `src/platform/backend/Shared/Platform.Shared.Kernel/` | **サービス境界をまたいで同一性が要る型** —— **契約に載る `Result` / `Error`**。BFF がサービスの結果を集約し、`Platform.Shared.Contracts` のイベント契約が失敗を表現するため、単一の型でなければならない |
+| **ユニット単位** `src/platform/backend/Shared/Platform.Shared.Kernel/` | **サービス境界をまたいで同一性が要る型** —— **契約に載る `Result` / `Error`・DDD 基底型**。BFF がサービスの結果を集約し、`Platform.Shared.Contracts` のイベント契約が失敗を表現するため、単一の型でなければならない。サービス個別の `Common/Result.cs` は置かない |
+| **サービス単位** `Services/<Name>Service/Common/` | **自サービスに閉じた横断関心**（`Exceptions/`・`Behaviors/`）。共通「基底」の複製は置かない |
 
 本リポジトリはユニット第一構成（実装 ADR と、計画側のユニット第一リポジトリ構成の決定）を採り、ユニット外から参照できるのは
 `src/platform/backend/Shared/` のプロジェクトのみである（[`src/README.md`](../../src/README.md) の依存規則）。

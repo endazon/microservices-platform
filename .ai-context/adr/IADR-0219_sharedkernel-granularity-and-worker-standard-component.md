@@ -262,6 +262,10 @@ Tests          # Unit / Integration
 > **`.gitkeep` の枠が残るのは `SharedKernel` のみ**（12 → 14 件。枠が無かった
 > McpServer / NotificationService への新設を含む —— 同 決定 5）。
 > **決定 1（粒度・併存・置き分け）と決定 2（8 要素・`Api`/`Worker` 排他）は無傷である。**
+>
+> ［2026-08-28 再追記 / #1021］**上記の適用形（8 要素の実体化）自体も同日のオーナー裁定で
+> さらに改まった** —— 単一プロジェクト＋フォルダ規範へ
+> （[IADR-0282](IADR-0282_single-project-vsa-structure.md)。IADR-0280 は Superseded）。
 
 ## 関連
 

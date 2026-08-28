@@ -45,6 +45,8 @@ src/
 区分の背景は [固定/可変区分表](../docs/tech/composability-classification.md) と
 [IADR-0027](../.ai-context/adr/IADR-0027_composability-folder-structure.md) を参照。
 
+下図は**現行実態（移送波までの経過措置）**である。目標の標準構成は次節を見よ。
+
 ```
 <unit>/backend/Services/<ServiceName>/
   src/<ServiceName>.<Api|Worker>/     ← 実行入口・合成ルート（Api と Worker は排他）
@@ -73,33 +75,33 @@ src/
   温存する**（`Domain` / `Contracts` は全体が固定のため区分フォルダを持たない）。
 - 存在しない区分のフォルダは作らない（空フォルダを置かない）。**これは
   プロジェクトの内側**（`Foundation/` / `Composable/` / `Adapters/` / `Connectors/` 等）**に掛かる規則であり、
-  次に述べるサービス直下の 8 要素には掛からない。階層が違う。**
-- **移行中の注意**: 上の配置はオーナー裁定 2026-08-27 による実体化後の標準である
-  （配置写像・段階計画は [IADR-0280](../.ai-context/adr/IADR-0280_eight-element-standard-materialization.md)）。
-  パイロット（FeedbackService）以外の 13 サービスは、実コードがまだ
-  `<ServiceName>.<Api|Worker>/Foundation/{Domain,Persistence,…}` に残る（段 2 で移送する）。
-  **新規コードは最初から新配置で書く**（同 IADR 決定 1-3）。
+  次に述べるサービス直下の標準構成には掛からない。階層が違う。**
+- **移行中の注意（2026-08-28 改定）**: 8 要素の実体化（IADR-0280）は**同日のオーナー裁定で撤回された**。
+  新標準は**単一プロジェクト＋ Features / Domain / Infrastructure / Common のフォルダ規範**
+  （[IADR-0282](../.ai-context/adr/IADR-0282_single-project-vsa-structure.md)）である。
+  **移送波の一括変換までは現行配置（`<ServiceName>.<Api|Worker>/Foundation/ ・ Composable/`）が
+  実態であり、新規コードも現行配置で書く**（IADR-0282 決定 4。「新規は新配置で書く」は取り消し）。
 
-### サービス直下の標準構成 8 要素
+### サービス直下の標準構成（単一プロジェクト＋フォルダ規範。2026-08-28 裁定）
 
-計画 project-planning の `projects/microservices-platform/06_technical/12_backend-application-stack.md`
-§規範性・粒度・置き場 は、サービス直下に **8 要素**（`Api` / `Worker` / `Application` / `Domain` /
-`Infrastructure` / `Contracts` / `SharedKernel` / `Tests`）を全リポジトリ共通の標準構成と定める。
-オーナー裁定（2026-08-27。planning#490）により、本リポジトリでは
-**`SharedKernel` を除く要素を実プロジェクト（`.csproj`）として実体化した**
-（[IADR-0280](../.ai-context/adr/IADR-0280_eight-element-standard-materialization.md)。
-従前の「実体が無い要素は `.gitkeep` の枠だけを置く」という適用形を同 IADR が改めた）。
+オーナー裁定 2026-08-28（[IADR-0282](../.ai-context/adr/IADR-0282_single-project-vsa-structure.md)）
+により、サービスは**単一プロジェクト**（`Services/<Name>/<Name>.csproj`）とし、層は
+**Features/<集約>/<操作>/（Endpoint / Command|Query / Handler）・Domain/・Infrastructure/・
+Common/・Tests/ のフォルダ**で分ける。8 要素の実プロジェクト分割（IADR-0280。Superseded）と
+`.gitkeep` の枠は撤回された。計画側の 8 要素条文（`12_backend-application-stack.md`）は
+改定を環流中である（planning#490 のコメント）。
 
-- **`Api` と `Worker` は排他**であり、**持たない側は空フォルダを作らない**
-  （実行入口は 1 サービスに 1 つで、「空の実行入口」という状態が存在しない。[IADR-0219](../.ai-context/adr/IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 2）。
-- **参照方向は Domain ← Application ← Infrastructure ← Api/Worker**（`Contracts` /
-  `SharedKernel` は他要素を参照しない葉）。`scripts/check-unit-dependencies.js` 規則 3 と
-  `scripts/check-backend-libraries.js` 規則 2（`*.Domain.csproj` は PackageReference ゼロ）が機械強制する。
-- **`SharedKernel` の粒度はサービス単位**である。**境界をまたいで同一性が要る型**（契約に載る
-  `Result` / `Error`・DDD 基底型）は**ユニット単位**の `Platform.Shared.Kernel` へ置く。**両者は併存する**（同 決定 1）。
-  サービス単位の `SharedKernel` だけは実体化せず `.gitkeep` の枠を維持する —— 自サービス閉じの
-  共通基底が現状 0 件であり、空の `.csproj` はビルド対象を無用に増やすためである
-  （最初に必要とするサービスが実体化する。IADR-0280 決定 5）。
+- **`Api` と `Worker` は排他**であり、Worker は別デプロイ実体として
+  `Services/<Name>/Worker/<Name>.Worker.csproj` を残す（IADR-0282 決定 1。
+  [IADR-0219](../.ai-context/adr/IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 2 の排他は不変）。
+- **参照方向（Domain は Features / Infrastructure / Common.Behaviors を知らない）はフォルダ＝
+  名前空間で守る**。機械検査（`scripts/check-unit-dependencies.js` 規則 3）の名前空間走査化は
+  移送波で行い、それまでは現行の csproj 参照検査が残る（IADR-0282 決定 2）。
+- **`Result` / `Error`・DDD 基底型はユニット単位の `Platform.Shared.Kernel`**（IADR-0229 不変。
+  サービス個別の `Common/Result.cs` は置かない）。サービス間契約はユニットの Shared
+  （`<Unit>.Contracts`）のまま。サービス個別の `Contracts` / `SharedKernel` プロジェクトは置かない。
+- **移送完了までの実態**は前掲「移行中の注意」のとおり（現行の `<Name>.Api` プロジェクト＋
+  `Foundation/` / `Composable/` 区分が残る。撤去・リネーム・スライス化は移送波が一括で行う）。
 
 ## 依存規則
 
