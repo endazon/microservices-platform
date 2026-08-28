@@ -15,7 +15,7 @@ namespace AiAnalysisService.Tests;
 // > **検索結果に現れるが RAG 回答のコンテキストには含まれない**
 //
 // 本テストが測るのは**後半**（RAG 回答のコンテキストに含まれないこと）である。
-// 前半（検索結果には現れること）は検索側 `RetrievalService.Api.Tests` の
+// 前半（検索結果には現れること）は検索側 `RetrievalService.Tests` の
 // `PrivateNoteSearchExposureTests` が測る —— **⑨ は 2 つの経路にまたがる基準であり、
 // 片側だけを測ると「どちらでも落とす」実装が通り抜ける。**
 //
