@@ -256,7 +256,7 @@ services:
   datasource-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/DataSourceService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
     expose:
       - "8080"
@@ -340,7 +340,7 @@ services:
   aianalysis-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/AiAnalysisService/src/AiAnalysisService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/AiAnalysisService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
     expose:
       - "8080"
@@ -498,7 +498,7 @@ services:
   dashboard-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/DashboardService/src/DashboardService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/DashboardService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）
     expose:
       - "8080"

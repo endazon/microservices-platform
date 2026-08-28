@@ -43,8 +43,8 @@
   ],
   "remainingMeasuredAt": "2026-08-28 — 未移行 0。#882 の段階採用は完了し、全 20 プロジェクトが migrated:true になった。以後 remaining は全行 0 であり、その 0 は WarningsAsErrors が常時強制する（手で維持する informational な値はもう無い）。ただし 0 の意味はアナライザの盲点のぶん弱い（IADR-0238 の 2026-08-23 追記）。",
   "projects": {
-    "src/knowledge/backend/Services/AiAnalysisService/tests/AiAnalysisService.Api.Tests/AiAnalysisService.Api.Tests.csproj": {
-      "project": "AiAnalysisService.Api.Tests",
+    "src/knowledge/backend/Services/AiAnalysisService/Tests/AiAnalysisService.Tests.csproj": {
+      "project": "AiAnalysisService.Tests",
       "remaining": 0,
       "migrated": true
     },
@@ -53,13 +53,13 @@
       "remaining": 0,
       "migrated": true
     },
-    "src/knowledge/backend/Services/DashboardService/tests/DashboardService.Api.Tests/DashboardService.Api.Tests.csproj": {
-      "project": "DashboardService.Api.Tests",
+    "src/knowledge/backend/Services/DashboardService/Tests/DashboardService.Tests.csproj": {
+      "project": "DashboardService.Tests",
       "remaining": 0,
       "migrated": true
     },
-    "src/knowledge/backend/Services/DataSourceService/tests/DataSourceService.Api.Tests/DataSourceService.Api.Tests.csproj": {
-      "project": "DataSourceService.Api.Tests",
+    "src/knowledge/backend/Services/DataSourceService/Tests/DataSourceService.Tests.csproj": {
+      "project": "DataSourceService.Tests",
       "remaining": 0,
       "migrated": true
     },

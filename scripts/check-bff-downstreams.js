@@ -51,7 +51,7 @@ const CALLERS = [
   },
   {
     label: 'AiAnalysisService',
-    program: 'src/knowledge/backend/Services/AiAnalysisService/src/AiAnalysisService.Api/Program.cs',
+    program: 'src/knowledge/backend/Services/AiAnalysisService/Program.cs',
     compose: 'aianalysis-service',
     helm: 'aianalysis',
   },

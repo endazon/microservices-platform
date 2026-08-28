@@ -3,7 +3,7 @@ title: データソース登録・同期・カタログ化 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-04
-updated: 2026-08-21
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
@@ -105,7 +105,7 @@ issues: [#195, #217, #218, #219, #516, #534, #537, #580, #627, planning#344, pla
 - 作業仕様書: `../../.ai-context/specs/20260627_FR-01_data-source-catalog-pipeline.md`
 - データ仕様書: `../data/data-source.md`
 - 実装 ADR: `../../.ai-context/adr/IADR-0001_document-service-owns-catalog.md`
-- テストコード: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/DataSourceService/DataSourceTests.cs`, `src/knowledge/backend/Services/DataSourceService/tests/DataSourceService.Api.Tests/HealthEndpointTests.cs`
+- テストコード: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/DataSourceService/DataSourceTests.cs`, `src/knowledge/backend/Services/DataSourceService/Tests/HealthEndpointTests.cs`
 - コネクタ/同期テスト: `.../DataSourceService.Api.Tests/FileSystemConnectorTests.cs`（T-05〜T-08）、`.../DataSourceSyncEndpointTests.cs`（T-09〜T-10）、`.../DataSourceSyncServiceTests.cs`（watermark 非前進）
 - Wiki コネクタテスト: `.../DataSourceService.Api.Tests/WikiConnectorTests.cs`（T-11〜T-14・fake HttpMessageHandler）
 - SaaS コネクタテスト: `.../DataSourceService.Api.Tests/SaaSConnectorTests.cs`（T-15〜T-18・fake HttpMessageHandler）

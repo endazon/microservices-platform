@@ -2684,7 +2684,7 @@ module.exports = ({ ok, assert }) => {
       path.join(
         __dirname,
         '..',
-        'src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/Foundation/Domain/DataSource.cs'
+        'src/knowledge/backend/Services/DataSourceService/Domain/DataSource.cs'
       ),
       'utf8'
     );

@@ -1417,7 +1417,7 @@ function selfTest() {
   // 判定に使うパスの形は develop `1d7edce` の実レポートから採った（全数 1061 件を分類し、
   // obj/ 配下 14 件が全て *.generated.cs / *.g.cs、手書きの巻き込み 0 件であることを確認した）。
   t('generatedKindOf: OpenApiXmlCommentSupport.generated.cs（実レポートの形）',
-    generatedKindOf('knowledge/backend/Services/AiAnalysisService/src/AiAnalysisService.Api/obj/Release/net10.0/Microsoft.AspNetCore.OpenApi.SourceGenerators/Microsoft.AspNetCore.OpenApi.SourceGenerators.XmlCommentGenerator/OpenApiXmlCommentSupport.generated.cs') === 'sourcegen');
+    generatedKindOf('knowledge/backend/Services/AiAnalysisService/obj/Release/net10.0/Microsoft.AspNetCore.OpenApi.SourceGenerators/Microsoft.AspNetCore.OpenApi.SourceGenerators.XmlCommentGenerator/OpenApiXmlCommentSupport.generated.cs') === 'sourcegen');
   t('generatedKindOf: RegexGenerator.g.cs（実レポートの形）',
     generatedKindOf('platform/backend/Bff/Platform.Bff/obj/Release/net10.0/System.Text.RegularExpressions.Generator/System.Text.RegularExpressions.Generator.RegexGenerator/RegexGenerator.g.cs') === 'sourcegen');
   t('generatedKindOf: <sources> が …/src/platform/backend/ のレポートの形（先頭が Services/…）',

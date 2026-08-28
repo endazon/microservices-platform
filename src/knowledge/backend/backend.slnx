@@ -1,15 +1,8 @@
 <Solution>
   <Folder Name="/Services/" />
-  <Folder Name="/Services/AiAnalysisService/" />
-  <Folder Name="/Services/AiAnalysisService/src/">
-    <Project Path="Services/AiAnalysisService/src/AiAnalysisService.Api/AiAnalysisService.Api.csproj" />
-    <Project Path="Services/AiAnalysisService/src/AiAnalysisService.Application/AiAnalysisService.Application.csproj" />
-    <Project Path="Services/AiAnalysisService/src/AiAnalysisService.Contracts/AiAnalysisService.Contracts.csproj" />
-    <Project Path="Services/AiAnalysisService/src/AiAnalysisService.Domain/AiAnalysisService.Domain.csproj" />
-    <Project Path="Services/AiAnalysisService/src/AiAnalysisService.Infrastructure/AiAnalysisService.Infrastructure.csproj" />
-  </Folder>
-  <Folder Name="/Services/AiAnalysisService/tests/">
-    <Project Path="Services/AiAnalysisService/tests/AiAnalysisService.Api.Tests/AiAnalysisService.Api.Tests.csproj" />
+  <Folder Name="/Services/AiAnalysisService/">
+    <Project Path="Services/AiAnalysisService/AiAnalysisService.csproj" />
+    <Project Path="Services/AiAnalysisService/Tests/AiAnalysisService.Tests.csproj" />
   </Folder>
   <Folder Name="/Services/ConversionService/" />
   <Folder Name="/Services/ConversionService/src/">
@@ -22,27 +15,13 @@
   <Folder Name="/Services/ConversionService/tests/">
     <Project Path="Services/ConversionService/tests/ConversionService.Worker.Tests/ConversionService.Worker.Tests.csproj" />
   </Folder>
-  <Folder Name="/Services/DashboardService/" />
-  <Folder Name="/Services/DashboardService/src/">
-    <Project Path="Services/DashboardService/src/DashboardService.Api/DashboardService.Api.csproj" />
-    <Project Path="Services/DashboardService/src/DashboardService.Application/DashboardService.Application.csproj" />
-    <Project Path="Services/DashboardService/src/DashboardService.Contracts/DashboardService.Contracts.csproj" />
-    <Project Path="Services/DashboardService/src/DashboardService.Domain/DashboardService.Domain.csproj" />
-    <Project Path="Services/DashboardService/src/DashboardService.Infrastructure/DashboardService.Infrastructure.csproj" />
+  <Folder Name="/Services/DashboardService/">
+    <Project Path="Services/DashboardService/DashboardService.csproj" />
+    <Project Path="Services/DashboardService/Tests/DashboardService.Tests.csproj" />
   </Folder>
-  <Folder Name="/Services/DashboardService/tests/">
-    <Project Path="Services/DashboardService/tests/DashboardService.Api.Tests/DashboardService.Api.Tests.csproj" />
-  </Folder>
-  <Folder Name="/Services/DataSourceService/" />
-  <Folder Name="/Services/DataSourceService/src/">
-    <Project Path="Services/DataSourceService/src/DataSourceService.Api/DataSourceService.Api.csproj" />
-    <Project Path="Services/DataSourceService/src/DataSourceService.Application/DataSourceService.Application.csproj" />
-    <Project Path="Services/DataSourceService/src/DataSourceService.Contracts/DataSourceService.Contracts.csproj" />
-    <Project Path="Services/DataSourceService/src/DataSourceService.Domain/DataSourceService.Domain.csproj" />
-    <Project Path="Services/DataSourceService/src/DataSourceService.Infrastructure/DataSourceService.Infrastructure.csproj" />
-  </Folder>
-  <Folder Name="/Services/DataSourceService/tests/">
-    <Project Path="Services/DataSourceService/tests/DataSourceService.Api.Tests/DataSourceService.Api.Tests.csproj" />
+  <Folder Name="/Services/DataSourceService/">
+    <Project Path="Services/DataSourceService/DataSourceService.csproj" />
+    <Project Path="Services/DataSourceService/Tests/DataSourceService.Tests.csproj" />
   </Folder>
   <Folder Name="/Services/DocumentService/" />
   <Folder Name="/Services/DocumentService/src/">

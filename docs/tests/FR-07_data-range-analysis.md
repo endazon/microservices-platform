@@ -3,7 +3,7 @@ title: 指定データ範囲AI分析 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-23
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
@@ -78,7 +78,7 @@ issues: [#448]
 - 作業仕様書: `../../.ai-context/specs/20260627_FR-07_data-range-analysis.md`
 - 実装 ADR: `../../.ai-context/adr/IADR-0005_data-range-intersect-abac-narrowing-only.md`, `../../.ai-context/adr/IADR-0004_abac-multivalue-allowlist-deny-by-default.md`
 - 関連テスト仕様: `./FR-04_ai-answer-citations.md`（出典付与）、`./FR-05_abac-access-control.md`（ABAC）
-- テストコード: `src/knowledge/backend/Services/AiAnalysisService/tests/AiAnalysisService.Api.Tests/DataRangeScopeResolverTests.cs`, `AnalysisPromptBuilderTests.cs`, `AnalysisEndpointTests.cs`, `RagOrchestratorScopeTests.cs`, `src/knowledge/backend/Tests/Knowledge.IntegrationTests/AiAnalysisService/RagOrchestratorTests.cs`
+- テストコード: `src/knowledge/backend/Services/AiAnalysisService/Tests/DataRangeScopeResolverTests.cs`, `AnalysisPromptBuilderTests.cs`, `AnalysisEndpointTests.cs`, `RagOrchestratorScopeTests.cs`, `src/knowledge/backend/Tests/Knowledge.IntegrationTests/AiAnalysisService/RagOrchestratorTests.cs`
 
 ## 未決事項
 
