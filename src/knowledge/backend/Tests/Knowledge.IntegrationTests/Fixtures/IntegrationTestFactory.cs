@@ -194,8 +194,18 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
             // Issue #33: Bus 起動レース対策。既定では MassTransitHostedService が Bus を
             // バックグラウンド起動するため、CreateClient() 直後の Publish が Consumer の
             // キューバインド完了前に走り、メッセージが破棄され得る。WaitUntilStarted=true で
-            // レシーブエンドポイントのバインド完了までホスト起動を待機させ、購読確立後に
-            // Publish されることを保証する。
+            // レシーブエンドポイントのバインド完了までホスト起動を待機させる。
+            //
+            // 🔴 ［2026-08-29 追記 / #1038］**この設定は Wolverine の購読には効かない。**
+            // 従前ここは「購読確立後に Publish されることを保証する」と書いていたが、
+            // ADR-0027 の Wolverine 移行で**その保証は失効している**（走査で実測）:
+            //   - `WikiService` は MassTransit を**参照していない**（csproj に無い）。本設定は完全な no-op である
+            //   - `IngestionService.Worker` は `AddMassTransit` を残すが**コンシューマを 1 つも登録していない**
+            //     （`UsingRabbitMq` ＋ `ConfigureEndpoints` のみ）。待つべきレシーブエンドポイントが無い
+            //   - 両サービスの `DocumentUpdated` 購読は `AddWolverineStep` 側にある
+            // **「起動レースは塞いだ」と読める記述が、実際には塞いでいない状態で残っていた。**
+            // Wolverine 側の購読確立は `Messaging/ListenerReadiness` で待つ（テストごとに明示する）。
+            // 本設定は MassTransit を実際に使う経路（ConversionService の発行側等）のために残す。
             services.AddOptions<MassTransitHostOptions>().Configure(o =>
             {
                 o.WaitUntilStarted = true;
