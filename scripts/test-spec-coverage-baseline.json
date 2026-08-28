@@ -180,7 +180,8 @@
       "NotificationContractTests",
       "NotificationIngressTests",
       "NotificationOwnerScopingTests",
-      "NotificationRetentionTests"
+      "NotificationRetentionTests",
+      "PrivateNoteNotificationDispatchTests"
     ],
     "docs/tests/NFR-09_bff-edge-authentication.md": [
       "BffEndpointAuthenticationTests"
