@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — RabbitMQ の既定資格情報を撤去し未注入を起動失敗にする（#1022）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - NFR
   - ADR-0002
@@ -180,11 +180,73 @@ retrieval / wiki / graph）。
 - fail-fast そのものは**常設テストにしない** —— 環境変数はプロセス全体で共有され、xUnit のクラス並列
   実行下で一時的に消す試験は他クラスを巻き添えにする。#1012 と同じく**変異試験で実測**して記録する。
 
+## 実施の記録（実測）
+
+| 実行 | 結果 |
+| --- | --- |
+| `dotnet build`（両 slnx） | 0 Error |
+| `dotnet test src/knowledge/backend/backend.slnx` | **全 12 プロジェクト緑**（AiAnalysis 95 / Dashboard 26 / DataSource 136 / Conversion 74+2skip / Feedback 21 / Ingestion 28 / Graph 250 / Document 207 / Retrieval 131 / Contracts 27 / Integration 30+40skip / Wiki 64） |
+| `dotnet test src/platform/backend/backend.slnx` | **全 7 プロジェクト緑**（McpServer 66 / Authz 95 / LlmGateway 202 / Shared.Infrastructure 170 / Shared.Kernel 42 / Bff 404+1skip / Notification 53） |
+| `dotnet format --verify-no-changes`（両 slnx） | 差分なし（exit 0） |
+| `node scripts/check-default-credentials.js` | **OK・既知の残件 0 件**（走査 30 件）。`--self-test` 6 件緑 |
+| `node scripts/k8s-local-up.test.js` | **107 件緑**（104 → 107。#1022 で 3 本追加） |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | **645 件緑** |
+| `check-trace-blocks` / `check-doc-links` / `check-adr-numbering` / `check-doc-updated` | いずれも OK |
+
+## 変異試験（実測）
+
+| 変異 | 実測 |
+| --- | --- |
+| **M1**: `GraphService/Tests/TestRabbitMqConfiguration.cs` の注入キーを `RabbitMq__MUTATED` へ（＝未注入の再現） | **250 件中 95 件が `InvalidOperationException: RabbitMq:ConnectionString が未設定である` で失敗**。戻すと 250 件緑 —— 未注入が「起動失敗」へ倒れることと、注入すれば起動することの両方向を実測 |
+| **M2**: `GraphService/Program.cs` へ既定値 `amqp://guest:guest@rabbitmq:5672` を戻す | **`check-default-credentials` が `[added] … [amqp-credentials]` で exit 1**。戻すと OK |
+| **M3**: `k8s-local-up.sh` から `externalsecret-rabbitmq-app.yaml` の apply を落とす | `externalsecret-rabbitmq-app.yaml が apply されない…` で fail |
+| **M4**: `rabbitmq-app` の手動 apply を `ESO != 1` ブロックの外へ出す | `ESO=1 なのに rabbitmq-app を手動 apply している（二重所有）` で fail |
+| **M5**: 基盤 secret `rabbitmq` から `username=` を落とす | `rabbitmq Secret に username が無い` で fail |
+| **陰性対照** | 上記いずれも変異を戻して緑への復帰を確認した |
+
+## 🔴 併走で見つかった同型の欠陥（#1032・別コミット）
+
+本作業中に `develop` の `integration.yml` が 28 件失敗していることが判明した（Total 70 /
+Passed 41 / Failed 28 / Skipped 1）。**#1012 が本仕様書の「訂正 3」とまったく同じ罠を踏んでいた** ——
+`ConnectionStrings:DefaultConnection` を `ConfigureAppConfiguration` の overrides でしか与えておらず、
+`Program.cs` のトップレベル読み取りに間に合っていなかった。`UseSetting` でも与えるよう是正した
+（起点が違うのでコミットは分けた）。
+
+**本環境は Docker が無く統合テストは skip されるため、この是正を統合テストの実走では確かめられない。**
+代わりに**機構そのもの**を Docker 不要の `DocumentService.Tests`（同じ `Program.cs` を
+`WebApplicationFactory` で起こす）で実測した:
+
+| 実験 | 与え方 | 実測 |
+| --- | --- | --- |
+| E1 | 何も与えない | `InvalidOperationException: ConnectionStrings:DefaultConnection が未設定である` で失敗 |
+| E2 | `ConfigureAppConfiguration` のみ | **同じく失敗**（＝間に合わない） |
+| E3 | `UseSetting` のみ | **4 件緑**（＝間に合う） |
+
+E2 と E3 の差が、この是正が効く理由そのものである。いずれも実験後に復帰させた。
+
 ## 計画書との差異
 
 - 差異: なし（NFR のセキュリティ・保守性。計画 ADR-0003/ADR-0027 の配線そのものは変えない）
+
+## 申し送り
+
+- 🔴 **dev 既定 `guest`/`guest` を実際に別の値へ変えるには AST 側の対応が要る**（訂正 1）。
+  本リポジトリからは `RABBITMQ_USER` / `RABBITMQ_PASSWORD` と `global.messaging.user` で
+  上書きできる形まで用意した。**AST chart の `global.rabbitmqConnectionString` を併せて
+  上書きしないとローカル k8s の AST が認証エラーになる。**
+- `rabbitmq-app` は ESO の `eso_wait` と供給後の `rollout restart` の対象に入れていない ——
+  `postgres-app`（#1012）も入っておらず**両者に共通する既存の穴**である（IADR-0103）。
+  片方だけ直すと非対称になるので 2 つまとめて別 issue で扱うこと。
+- **領域宣言の外なので触っていない追随**: `scripts/README.md` の
+  `check-default-credentials.js` 行と `.github/workflows/ci.yml` の同趣旨のコメントが、
+  まだ「既知の残件（RabbitMQ 13 箇所。…別 issue）」と書いている。**0 件へ追随させること。**
+- **「読まれる時点で決まる」罠は本件で 3 件目**（Pipeline:ConfigPath / RabbitMq:ConnectionString /
+  ConnectionStrings:DefaultConnection）。同型が 2 回を超えたので機械検査の一般化は条件を満たすが、
+  検査器の新設は本作業の領域宣言の外（`scripts/**` は指定の 4 ファイルのみ）である。**別途起票すること。**
 
 ## 未決事項
 
 - 実クラスタでの helm レンダリング検証は本環境では不可（helm / kubectl 不在）。CI の
   `check-deploy-manifests` に委ねる。
+- 統合テストの実走も本環境では不可（Docker 不在）。上の E1〜E3 は機構の実測であって
+  統合テストの実走ではない。**CI の `integration.yml` で確かめること。**
