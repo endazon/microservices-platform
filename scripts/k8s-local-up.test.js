@@ -21,6 +21,10 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
+// #953: `kind: HelmChartConfig` の宣言。**ハーネスの入力でもある**（下の helm-controller 模型が読む）。
+// REPO_ROOT 相対の形も持つ —— stub は cwd=REPO_ROOT で走るため、既定値は相対で渡す。
+const TRAEFIK_MANIFEST_REL = 'deploy/local/edge/traefik-entrypoint.yaml';
+const TRAEFIK_MANIFEST = path.join(REPO_ROOT, TRAEFIK_MANIFEST_REL);
 const UP_SCRIPT = path.join('scripts', 'k8s-local-up.sh'); // REPO_ROOT 相対（cwd=REPO_ROOT で実行）
 const CLUSTER = 'testcluster'; // 決定的なクラスタ名（既定 msp-ast-dev に依存しない）
 
@@ -107,6 +111,60 @@ const K3D_STUB = [
   '',
 ].join('\n');
 
+// #953 / [IADR-0258]: **helm-controller の模型**。`kubectl apply` は「オブジェクトを置けたか」しか
+// 見ず、反映は helm-controller が非同期に行う —— そこで落ちても呼び出し側へは伝わらない。
+// ハーネスの kubectl stub が反映の待ち合わせまで無条件に `exit 0` を返すと、**helm-controller が必ず
+// 成功する世界**を仮定することになり、#953 が起きた世界を再現できない。そこで反映の成否だけは
+// **宣言（traefik-entrypoint.yaml）と chart の版から決める**。
+//
+// 判定は #953 の実測（GitHub ホストランナー run 32554867883）そのものである:
+//
+//   | chart    | 受け付ける `expose`          |
+//   | -------- | ---------------------------- |
+//   | 25 以下   | **bool**（`expose: true`）    |  ← k3s v1.30.4 同梱の 25.0.3
+//   | 26 以上   | **map**（`expose: {default:}`）|  ← 現行宣言が通っている版
+//
+// 加えて `admin` の `port` が 50000 でなければ、版に関わらず門（`=50000` の待ち）は成立しない。
+//
+// 🔴 **模型が版に依存することは、[IADR-0258] 決定 3（門を版依存の識別子で書かない）と矛盾しない。**
+// 門（本番経路）は Service の port という Kubernetes コア API しか見ない。版に依存するのは**試験だけ**で、
+// **版依存の事故を再現するには版を持つほかない**。代償は模型が実物からずれ得ることだが、それは
+// traefik-entrypoint.yaml 冒頭の実測表が古くなることと**同じ 1 つの事実**であり、更新点は増えない。
+const HELM_CONTROLLER_MODEL = [
+  '# helm-controller ＋ traefik chart の values スキーマの模型（#953）。',
+  '# 入力: 宣言 1 本（引数）と chart のメジャー版（-v major）。反映が成立すれば 0、しなければ 1。',
+  'BEGIN { inadmin = 0; port = ""; form = "none"; pending = 0 }',
+  '{',
+  '  line = $0',
+  '  sub(/#.*$/, "", line)                      # 行コメントは値ではない',
+  '  if (line !~ /[^ ]/) next                   # 空行は構造を持たない',
+  '  match(line, /^ */); ind = RLENGTH',
+  '  if (inadmin && ind <= aind) inadmin = 0    # 兄弟キーまで戻ったら admin ブロックは終わり',
+  '  if (line ~ /^ *admin: *$/) { inadmin = 1; aind = ind; next }',
+  '  if (!inadmin) next',
+  '  if (pending) {                             # 直前が裸の `expose:` ＝ map 形の入口',
+  '    pending = 0',
+  '    if (line ~ /^ *default: *(true|false) *$/ && ind > eind) { form = "map"; next }',
+  '    form = "unknown"',
+  '  }',
+  '  if (line ~ /^ *port: *[0-9]+ *$/) { p = line; sub(/^ *port: */, "", p); sub(/ *$/, "", p); port = p; next }',
+  '  if (line ~ /^ *expose: *$/) { pending = 1; eind = ind; next }',
+  '  if (line ~ /^ *expose: *(true|false) *$/) { form = "bool"; next }',
+  '}',
+  'END {',
+  '  if (port != "50000") {',
+  '    printf "helm-controller(model): admin port=%s (門が待つのは 50000)\\n", (port == "" ? "<未宣言>" : port)',
+  '    exit 1',
+  '  }',
+  '  if (major >= 26 && form == "map")  exit 0',
+  '  if (major <= 25 && form == "bool") exit 0',
+  '  printf "helm-controller(model): UPGRADE FAILED: error calling eq: incompatible types for comparison"',
+  '  printf " (chart %s は %s 形を受け付けない)\\n", major, form',
+  '  exit 1',
+  '}',
+  '',
+].join('\n');
+
 const PLAIN_STUB = (name) =>
   ['#!/usr/bin/env bash', `echo "${name} $*" >> "$STUB_LOG"`, 'exit 0', ''].join('\n');
 
@@ -120,6 +178,13 @@ const PLAIN_STUB = (name) =>
 // STUB_TRAEFIK_ADMIN_MISSING=1 で `kubectl wait --for=jsonpath=... svc/traefik` を非0（＝反映が来ない）に
 // 返させ、HelmChartConfig の reconcile が落ちたときの fail-closed（IADR-0258 / #953）を検証できるように
 // する。**診断の `get svc traefik` 等は 0 のままにする**——落ちるのは待ち合わせであって get ではない。
+//
+// 🔴 その 1 フラグ**では足りない**（#953 第 2 次）。フラグを立てるのはテスト側であって宣言側ではないため、
+// `traefik-entrypoint.yaml` を壊しても何も起きない ——「門は在るが、門が守る宣言は無検査」だった。
+// そこで反映の待ち合わせだけは、**宣言と chart の版から成否を決める**（HELM_CONTROLLER_MODEL）。
+//   STUB_TRAEFIK_MANIFEST     … 読ませる宣言（既定 = リポジトリの実物）。変異はここへ一時ファイルを渡す。
+//   STUB_TRAEFIK_CHART_MAJOR  … chart のメジャー版（既定 26 = 現行宣言が通る版）。
+// STUB_TRAEFIK_ADMIN_MISSING は模型より**手前**で効く（「理由を問わず反映が来ない」の直接表現）。
 const KUBECTL_STUB = [
   '#!/usr/bin/env bash',
   'echo "kubectl $*" >> "$STUB_LOG"',
@@ -127,6 +192,10 @@ const KUBECTL_STUB = [
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
   'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
   'if [ "${STUB_TRAEFIK_ADMIN_MISSING:-}" = "1" ]; then case "$*" in *--for=jsonpath*svc/traefik*) exit 1;; esac; fi',
+  // #953: 反映の待ち合わせ **だけ** は記録して 0 を返さない。宣言を helm-controller の模型に通す。
+  'case "$*" in *--for=jsonpath*svc/traefik*) exec awk -v major="${STUB_TRAEFIK_CHART_MAJOR:-26}" -f "$STUB_HELM_MODEL" "${STUB_TRAEFIK_MANIFEST:-' +
+    TRAEFIK_MANIFEST_REL +
+    '}" ;; esac',
   'exit 0',
   '',
 ].join('\n');
@@ -154,6 +223,10 @@ function runUp(extraEnv) {
   // smoke test が実際に投入スクリプトを走らせて（到達しない port-forward を待って）遅くなる。
   // k8s-local-up.sh が node を使うのはこの 1 か所だけなので、記録スタブで足りる。
   for (const n of ['helm', 'docker', 'node']) write(n, PLAIN_STUB(n));
+  // helm-controller の模型（awk）。PATH には置かない —— これはコマンドの差し替えではなく、
+  // kubectl stub が反映の成否を決めるために読む**データ**である。
+  const modelFile = path.join(workdir, 'helm-controller-model.awk');
+  fs.writeFileSync(modelFile, HELM_CONTROLLER_MODEL);
 
   const origPath = process.env.PATH || process.env.Path || '';
   // 実行環境に opt-in ゲート/override が漏れていても既定＝全 OFF を再現できるよう、
@@ -180,6 +253,7 @@ function runUp(extraEnv) {
     ...base,
     PATH: binDir + path.delimiter + origPath, // stub を優先しつつ coreutils/bash は温存
     STUB_LOG: logFile,
+    STUB_HELM_MODEL: modelFile, // #953: kubectl stub が反映の成否を決めるのに使う
     K8S_LOCAL_RUNTIME: 'k3d', // runtime 自動判定を回避し cluster create 経路を決定的に通す
     ...extraEnv,
   };
@@ -219,6 +293,24 @@ function ok(name, fn) {
 const DEFAULT = runUp({});
 ok('前提: 既定実行は exit 0（stub 下で副作用なく完走）', () => {
   assert.strictEqual(DEFAULT.status, 0, `k8s-local-up.sh が非0終了: ${DEFAULT.stderr}`);
+});
+
+// 前提（#953 第 2 次）: **リポジトリの実物の宣言が、既定の chart 版で反映が成立すること。**
+// これが「壊す前は落ちない」側の対照であり、宣言と門を結ぶ結び目である —— 誰かが
+// traefik-entrypoint.yaml の `expose` を bool 形へ戻したら、ここが落ちる。
+//
+// 🔴 **前提として、他のどの試験よりも先に置く。** 実物が壊れると LOCALEDGE=1 の run はすべて
+// 門で止まり、下の「トークンの単独検出力」（[IADR-0213]）のような**無関係な試験が先に赤くなる**
+// ——「seed-abac-policies.js が dead token」と言われても原因は読めない。落ちる位置は原因の位置に近く。
+ok('前提: traefik の宣言（実物）は現行 chart で反映が成立する（#953 の門の対照）', () => {
+  const healthy = runUp({ LOCALEDGE: '1' });
+  assert.strictEqual(
+    healthy.status,
+    0,
+    `${TRAEFIK_MANIFEST_REL} の宣言では反映が成立しない（#953 の門が落ちる）。` +
+      ` ports.admin の port / expose の型を確認すること:\n${healthy.stdout}\n${healthy.stderr}`,
+  );
+  assert.ok(anyLineHas(healthy.lines, 'cert-manager'), '反映は成立したのに後続段へ進んでいない');
 });
 
 // 既定（全 OFF）の cluster create 引数は現行とバイト等価（#331 の bash シミュレーションを CI 常設化）。
@@ -537,6 +629,87 @@ ok('#953: 対照 —— 反映が来れば LOCALEDGE=1 は従来どおり完走�
   const healthy = runUp({ LOCALEDGE: '1' });
   assert.strictEqual(healthy.status, 0, `反映が来ているのに up が落ちた: ${healthy.stderr}`);
   assert.ok(anyLineHas(healthy.lines, 'cert-manager'), '正常系なのに後続段へ進んでいない（門を置く位置が誤っている）');
+});
+
+// --- #953 第 2 次: **宣言そのもの**を変異させる（門と宣言を結ぶ） ---------------
+//
+// 上の 2 本が変異させているのは stub の env フラグであって、`traefik-entrypoint.yaml` ではない。
+// つまり base では **`expose` を bool 形へ戻しても・admin の port を書き換えても・ports.admin を
+// 消しても、テストは緑のまま**だった —— 門は在るが、門が守っている宣言は無検査だった。
+// #953 が塞ごうとした「宣言はバージョン依存で、壊れても誰も気付かない」の後半がテスト側に残っていた。
+//
+// ここから下は kubectl stub の helm-controller 模型（HELM_CONTROLLER_MODEL）を通す。
+// **リポジトリの実物を読む対照**と、**一時ファイルへ壊した変異**を対で置く。
+
+/**
+ * `traefik-entrypoint.yaml` を変異させた一時マニフェストを作り、そのパスを返す。
+ * **リポジトリの実物は書き換えない**（テストが作業ツリーを汚さない）。
+ * @param {(src: string) => string} mutate 変異関数
+ * @returns {string} 変異後マニフェストの絶対パス
+ */
+function mutatedTraefikManifest(mutate) {
+  const src = fs.readFileSync(TRAEFIK_MANIFEST, 'utf8');
+  const out = mutate(src);
+  // 変異が空振りしていたら「壊したのに落ちない」ではなく「壊せていない」である。区別する。
+  assert.notStrictEqual(out, src, '変異が実物と同一（宣言の書式が変わって置換が空振りしている）');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'k8s-up-mutate-'));
+  const p = path.join(dir, 'traefik-entrypoint.yaml');
+  fs.writeFileSync(p, out);
+  return p;
+}
+
+// 変異 1: map 形 → bool 形（chart 25 の書式へ差し戻す ＝ #953 の型不一致の裏返し）。
+const TO_BOOL_EXPOSE = (src) => src.replace('        expose:\n          default: true\n', '        expose: true\n');
+// 変異 2: admin の port を門が待つ 50000 からずらす。
+const TO_PORT_DRIFT = (src) => src.replace('port: 50000', 'port: 50001').replace('exposedPort: 50000', 'exposedPort: 50001');
+// 変異 3: ports.admin ブロックごと落とす（entrypoint の宣言を失う）。
+const TO_NO_ADMIN = (src) => src.replace(/ {6}admin:\n(?: {8}.*\n| {10}.*\n)+/, '');
+
+// 「壊す前は落ちない」側（実物の宣言 ＝ 既定の STUB_TRAEFIK_MANIFEST）は、**ファイル冒頭の前提**
+// 「traefik の宣言（実物）は現行 chart で反映が成立する」が持つ。原因の位置に近いところで落とすため、
+// 対照だけを先頭へ置いている。ここには変異側を並べる。
+
+ok('#953 第2次: 変異 —— expose を chart が受け付けない bool 形へ壊すと up は非 0 で終わる', () => {
+  const broken = runUp({
+    LOCALEDGE: '1',
+    STUB_TRAEFIK_MANIFEST: mutatedTraefikManifest(TO_BOOL_EXPOSE),
+  });
+  assert.notStrictEqual(broken.status, 0, '宣言を壊したのに up が成功で返った（#953 の欠陥そのもの）');
+  // 落ちたのが門であって別の理由でないこと（待ち合わせが実際に発行されている）。
+  assert.ok(
+    broken.lines.some((l) => l.includes(' wait ') && l.includes('--for=jsonpath') && l.includes('svc/traefik')),
+    '反映の待ち合わせが発行されていない（別の理由で落ちている）',
+  );
+  // 落ちる位置が原因の位置に近いこと。
+  assert.ok(!anyLineHas(broken.lines, 'cert-manager'), '反映に失敗したのに後続の cert-manager 段まで進んでいる');
+});
+
+ok('#953 第2次: 実測の再現 —— 実物の宣言（map 形）＋ chart 25 は反映に失敗し up が落ちる', () => {
+  // これが #953 で実際に踏んだ組である（k3s v1.30.4 同梱の traefik chart 25.0.3）。
+  // **宣言は正しいのに版が古い**という向きも、同じ門が捕まえることを固定する。
+  const broken = runUp({ LOCALEDGE: '1', STUB_TRAEFIK_CHART_MAJOR: '25' });
+  assert.notStrictEqual(broken.status, 0, 'chart 25 で map 形の宣言が通ってしまった（実測と食い違う）');
+  assert.ok(!anyLineHas(broken.lines, 'cert-manager'), '反映に失敗したのに後続段まで進んでいる');
+});
+
+ok('#953 第2次: 陰性対照 —— bool 形 ＋ chart 25 は通る（「変異なら落ちる」模型ではない）', () => {
+  // 🔴 これが無いと、模型が「実物以外は全部落とす」だけの飾りでも上の変異試験が緑になる。
+  // bool 形は **chart 25 では正しい書式**であり、落ちる理由は書式ではなく**版との不一致**である。
+  const okRun = runUp({
+    LOCALEDGE: '1',
+    STUB_TRAEFIK_MANIFEST: mutatedTraefikManifest(TO_BOOL_EXPOSE),
+    STUB_TRAEFIK_CHART_MAJOR: '25',
+  });
+  assert.strictEqual(okRun.status, 0, `chart 25 で bool 形が落ちた（模型が版を見ていない）: ${okRun.stdout}`);
+});
+
+ok('#953 第2次: admin の port ずれ・ports.admin の消失も捕まえる', () => {
+  // 門は `admin=50000` を待つ。宣言側だけ 50001 へ動かすと、実クラスタでは永遠に成立しない
+  // ——「門が待つ値」と「宣言が作る値」が別々に編集できてしまうことを、ここで結ぶ。
+  const drift = runUp({ LOCALEDGE: '1', STUB_TRAEFIK_MANIFEST: mutatedTraefikManifest(TO_PORT_DRIFT) });
+  assert.notStrictEqual(drift.status, 0, 'admin の port を 50001 へずらしたのに up が成功で返った');
+  const gone = runUp({ LOCALEDGE: '1', STUB_TRAEFIK_MANIFEST: mutatedTraefikManifest(TO_NO_ADMIN) });
+  assert.notStrictEqual(gone.status, 0, 'ports.admin を丸ごと消したのに up が成功で返った');
 });
 
 // --- K3S_IMAGE による k3s の pin（NFR / #783・#442 子 5） -----------------------
@@ -1366,7 +1539,7 @@ ok('#779: Certificate の dnsNames が Ingress の spec.tls.hosts を覆う', ()
 // 反転前の 2 件は「admin:50000 の Ingress に spec.tls を足さない」「http→https の恒久リダイレクトを足さない」で、
 // **平文であることを固定していた**。
 
-const TRAEFIK_YAML = fs.readFileSync(path.join(EDGE_DIR, 'traefik-entrypoint.yaml'), 'utf8');
+const TRAEFIK_YAML = fs.readFileSync(TRAEFIK_MANIFEST, 'utf8');
 const ADMIN_ING_FILES = ['admin-ingress-infra.yaml', 'admin-ingress-minio.yaml', 'admin-ingress-wiki.yaml', 'argocd-ingress.yaml'];
 
 ok('#841: admin:50000 は TLS 終端で、そこに載る Ingress は spec.tls(edge-tls) を持つ', () => {
