@@ -1,7 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <!-- NFR / IADR-0280 決定 2・3: 8 要素標準の実体化（段 1）。ユースケース調整・Wolverine ハンドラ・
-       Ports の受け皿（中身は段 2 の移送で入る）。参照方向は Domain のみ。 -->
-  <ItemGroup>
-    <ProjectReference Include="..\LlmGateway.Domain\LlmGateway.Domain.csproj" />
-  </ItemGroup>
-</Project>
