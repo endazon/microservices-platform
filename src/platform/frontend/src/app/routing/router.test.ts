@@ -11,7 +11,17 @@ import { NotFound } from '@foundation/ui/NotFound';
 //   — `<Link to>` の静的検査はデータ駆動のナビには効かないため、その穴を実行時に塞ぐ
 // - 決定 2: 旧契約ブリッジ（AST）のルートも木に載ること
 
-/** 05_screens §共通シェル「ルートパス（wireframe の URL バー準拠）」のうち、本 SPA が持つもの。 */
+/**
+ * 05_screens §共通シェル「ルートパス（wireframe の URL バー準拠）」のうち、本 SPA が持つもの。
+ *
+ * 🔴 **この表は「載っている行」しか検査できない。載せ忘れた画面は誰にも見えない**（#1013 の実測:
+ * SC-18 / SC-19 / SC-20 の 3 件が抜けていた）。**足し忘れの検出は
+ * `scripts/check-route-manifest.js` が持つ** —— 画面 feature のディレクトリ名（`sc<NN>-*`）と
+ * この表を双方向に突き合わせ、片側にしか無い SC 番号を落とす。
+ *
+ * 🔴 **SC 番号はテスト名のラベルではない。** パスさえ木にあれば Vitest は緑になるため、
+ * 番号を取り違えてもここでは捕まらない（同じ検査器の逆方向が捕まえる）。
+ */
 const PLANNED_ROUTES: ReadonlyArray<readonly [string, string]> = [
   ['SC-01', '/ask'],
   ['SC-02', '/search'],
@@ -23,8 +33,27 @@ const PLANNED_ROUTES: ReadonlyArray<readonly [string, string]> = [
   ['SC-09', '/admin/abac'],
   ['SC-10', '/admin/ops'],
   ['SC-11', '/admin/config-viewer'],
+  // #917 / #1013: 起点・探索深さはクエリで持つ（例 `/graph?root=D-20481&hops=2`）が、木に載るのはパスだけ。
+  ['SC-18', '/graph'],
+  // #451 / #1013: 削除済みタブは `/my/notes?tab=trash`。同上でパスだけが木に載る。
+  ['SC-19', '/my/notes'],
+  ['SC-20', '/my/obsidian'],
   // #918: SC-21 は既定の検索パラメータ（?state=pending）を持つが、木に載るのはパスだけである。
   ['SC-21', '/ai-suggestions'],
+];
+
+/**
+ * SPA にルートを持つが、**計画のルートパス表には載らない**画面（#1013）。
+ *
+ * 上の表に無いことは、これまで「足し忘れ」と区別できなかった。**除外を宣言にすることで、
+ * 沈黙が主張に変わる** —— `scripts/check-route-manifest.js` は、画面 feature が
+ * `PLANNED_ROUTES` にも本表にも無ければ落とす。理由の文字列は必須である。
+ */
+const SCREENS_NOT_IN_THE_ROUTE_TABLE: ReadonlyArray<readonly [string, string]> = [
+  [
+    'SC-04',
+    '実体は別ホストの Wiki.js（wiki.example.co.jp）であり、計画のルートパス表は SC-04 に SPA ルートを与えていない。SPA 側の /wiki が持つのは遷移導線だけである',
+  ],
 ];
 
 const fullPaths = () => Object.keys(router.routesByPath);
@@ -32,6 +61,18 @@ const fullPaths = () => Object.keys(router.routesByPath);
 describe('route tree (05_screens §共通シェル のルートパス)', () => {
   it.each(PLANNED_ROUTES)('mounts %s at %s', (_sc, path) => {
     expect(fullPaths()).toContain(path);
+  });
+
+  // #1013: 除外の宣言が「表にも書いたうえで除外もする」形に腐ると、除外の意味（＝計画の表に
+  // 載らないことの表明）が失われる。**2 つの集合は交わらない。**
+  it('keeps the exemptions disjoint from the manifest (a screen is in one list or the other)', () => {
+    const planned = new Set(PLANNED_ROUTES.map(([sc]) => sc));
+    const both = SCREENS_NOT_IN_THE_ROUTE_TABLE.filter(([sc]) => planned.has(sc)).map(([sc]) => sc);
+    expect(both).toEqual([]);
+    // 除外は理由とともにしか宣言できない（黙って外す道を残さない）。
+    for (const [, reason] of SCREENS_NOT_IN_THE_ROUTE_TABLE) {
+      expect(reason.length).toBeGreaterThan(0);
+    }
   });
 
   it('mounts the login route and no SPA-side callback (BFF receives the OIDC callback)', () => {
