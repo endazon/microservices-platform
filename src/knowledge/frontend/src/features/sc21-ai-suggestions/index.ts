@@ -3,4 +3,5 @@
 export {
   createSc21AiSuggestionsRoute,
   sc21AiSuggestionsNav,
+  sc21AiSuggestionsBreadcrumb,
 } from './routes/sc21AiSuggestionsRoute';

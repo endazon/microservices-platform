@@ -1,7 +1,7 @@
 import { msg } from '@lingui/core/macro';
 import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { PlanNavItem } from '@foundation/routing/featureRegistry';
+import type { FeatureBreadcrumb, PlanNavItem } from '@foundation/routing/featureRegistry';
 
 // SC-18, UC-10, FR-17/FR-05: ナレッジグラフビュー（05_screens: ルート /graph。
 // 起点・探索深さはクエリで持つ。例: /graph?root=<uuid>&hops=2）。読み取り専用。
@@ -65,4 +65,14 @@ export const sc18GraphNav: PlanNavItem = {
   label: msg`ナレッジグラフ`,
   to: '/graph',
   group: 'user',
+};
+
+// 05_screens §共通シェル / #446: パンくず `ホーム / ナレッジグラフ`。
+// 🔴 **モックの crumb は「知識グラフ」だが、計画の画面名・左ナビは「ナレッジグラフ(ビュー)」**である。
+// 計画は「同じものに 2 つの名前があると食い違う」ことを名指しで避けている（§用語）ので、
+// シェルの中で 1 つの名前に揃える。表記ゆれは計画へ環流する。
+export const sc18GraphBreadcrumb: FeatureBreadcrumb = {
+  routePath: '/graph',
+  group: 'user',
+  label: msg`ナレッジグラフ`,
 };

@@ -201,6 +201,93 @@ describe('Layout common shell (brand / SC-16)', () => {
   });
 });
 
+// 05_screens §共通シェル「パンくず・権限バッジ: 上部にパンくずと画面グループのバッジ
+// （管理／システム管理／運用）を表示する」（#446）。
+//
+// 段の組み立ては純関数（breadcrumbs.test.ts）が固定しているので、ここが見るのは
+// **描画の契約**——ランドマーク・リンクの有無・aria-current・バッジのテキスト——である。
+function crumb() {
+  return screen.getByRole('navigation', { name: 'パンくず' });
+}
+
+describe('Layout breadcrumb (05_screens §共通シェル)', () => {
+  it('renders ホーム / <画面名> for a 利用者 screen (SC-04: no group segment)', async () => {
+    await renderLayout([], '/wiki');
+    const list = within(crumb()).getByRole('list');
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['ホーム', '/Wiki']);
+  });
+
+  it('links ホーム to the entry route and leaves the current segment unlinked', async () => {
+    await renderLayout([], '/wiki');
+    expect(within(crumb()).getByRole('link', { name: 'ホーム' })).toHaveAttribute('href', '/ask');
+    // 現在地はリンクではない（`/wiki` を指す <a> がパンくずの中に無いこと）。
+    expect(within(crumb()).queryByRole('link', { name: 'Wiki' })).not.toBeInTheDocument();
+  });
+
+  it('marks the current segment with aria-current="page"', async () => {
+    await renderLayout(['platform-admin'], '/admin/documents');
+    const current = within(crumb()).getByText('文書管理');
+    expect(current).toHaveAttribute('aria-current', 'page');
+    // 現在地は 1 つだけである（グループ段やホームに付けない）。
+    expect(crumb().querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+  });
+
+  // 🔴 計画「画面グループのバッジ（管理／システム管理／運用）」。モックアップに独立した
+  // バッジ要素は無く、crumb のグループ段がそれである。**2 つ目のバッジを作らない。**
+  // 🔴 状態を色だけで表さない（本リポの規約）——バッジは「管理」というテキストを持つ。
+  it('renders the screen group as a badge segment carrying its own text', async () => {
+    await renderLayout(['platform-admin'], '/admin/documents');
+    const list = within(crumb()).getByRole('list');
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['ホーム', '/管理', '/文書管理']);
+    // グループ段はリンクではない（遷移先を持たない分類の名前である）。
+    expect(within(crumb()).queryByRole('link', { name: '管理' })).not.toBeInTheDocument();
+  });
+
+  it('renders the 運用 group and the parent screen for SC-11', async () => {
+    await renderLayout(['platform-operator'], '/admin/config-viewer');
+    const list = within(crumb()).getByRole('list');
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['ホーム', '/運用', '/ダッシュボード', '/構成ビューア']);
+    // 親画面の段はリンクである（モックの SC-11 crumb と同じ）。
+    expect(within(crumb()).getByRole('link', { name: 'ダッシュボード' })).toHaveAttribute(
+      'href',
+      '/admin/ops',
+    );
+  });
+
+  it('renders no group segment for the 利用者 group screens', async () => {
+    await renderLayout([], '/ask');
+    expect(within(crumb()).queryByText('利用者')).not.toBeInTheDocument();
+    expect(within(within(crumb()).getByRole('list')).getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  // 🔴 存在秘匿（IADR-0009）: パンくずは「そのパスが実在し、どのグループの何の画面か」を
+  // 名指しする。権限外では 1 段も描かない——未知パスと区別が付かないこと。
+  it('renders no breadcrumb at all for a role-gated screen the user cannot see', async () => {
+    await renderLayout(['user'], '/admin/config-viewer');
+    await screen.findByRole('heading', { name: '見つかりませんでした' });
+    expect(screen.queryByRole('navigation', { name: 'パンくず' })).not.toBeInTheDocument();
+    expect(screen.queryByText('構成ビューア')).not.toBeInTheDocument();
+  });
+
+  it('renders no breadcrumb for an unknown path', async () => {
+    await renderLayout(['user'], '/no-such-screen');
+    await screen.findByRole('heading', { name: '見つかりませんでした' });
+    expect(screen.queryByRole('navigation', { name: 'パンくず' })).not.toBeInTheDocument();
+  });
+});
+
 // IADR-0009 / IADR-0124 決定 8: 存在秘匿。「不在（未知パス）」と「権限による秘匿（RequireRole）」で
 // 描画が割れると、シェルが出るかどうかで資源の存在を推測できてしまう。同じ画面になることを固定する。
 describe('existence hiding: unknown path and forbidden path render alike (IADR-0009)', () => {

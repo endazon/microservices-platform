@@ -14,6 +14,10 @@ import { jsonResponse, noContent } from '@foundation/testing/bffResponse';
 const mocks = vi.hoisted(() => ({
   apiRequest: vi.fn(),
   wikiBaseUrl: undefined as string | undefined,
+  // 05_screens §共通シェル / #446: パンくずの**動的な葉**。本画面はこれで文書タイトルを
+  // 共通シェルへ渡す。ハーネス（renderUnitRoute）はシェルを描かないので、
+  // 渡している値そのものを見る（描画は platform 側 Layout.test.tsx が見る）。
+  useBreadcrumbLeaf: vi.fn(),
 }));
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
@@ -21,6 +25,9 @@ vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
 }));
 vi.mock('@foundation/config/runtimeConfig', () => ({
   appConfig: () => ({ wikiBaseUrl: mocks.wikiBaseUrl }),
+}));
+vi.mock('@foundation/routing/breadcrumbLeaf', () => ({
+  useBreadcrumbLeaf: mocks.useBreadcrumbLeaf,
 }));
 
 import { createSc03DocumentRoute } from '../routes/sc03DocumentRoute';
@@ -144,6 +151,7 @@ async function renderPage() {
 beforeEach(() => {
   mocks.apiRequest.mockReset();
   mocks.wikiBaseUrl = undefined;
+  mocks.useBreadcrumbLeaf.mockClear();
 });
 
 afterEach(() => {
@@ -462,5 +470,40 @@ describe('DocumentDetailPage (SC-03)', () => {
 
     expect(await screen.findByText('Normalized document (Markdown) preview')).toBeInTheDocument();
     expect(screen.getByText('Confidentiality:')).toBeInTheDocument();
+  });
+});
+
+// 05_screens §共通シェル「パンくず・権限バッジ」（#446）: 本画面のパンくずは
+// `ホーム / 検索結果 / <文書タイトル>` であり、**最後の段は実行時にしか決まらない**。
+// 宣言（`sc03DocumentBreadcrumb`）は自分の段を持たず、ここが葉を供給する。
+describe('SC-03 breadcrumb leaf (#446)', () => {
+  const leaves = () => mocks.useBreadcrumbLeaf.mock.calls.map(([leaf]) => leaf);
+
+  it('publishes the document title as the breadcrumb leaf', async () => {
+    respond();
+    await renderPage();
+    await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
+    expect(leaves()).toContain('経費精算規程 v3.2');
+  });
+
+  // 🔴 取得前・取得失敗時は葉を出さない（未確定の文字列をパンくずへ描かない）。
+  it('publishes nothing but undefined when the document cannot be fetched', async () => {
+    respond({ detail: ApiError.fromStatus(404), content: ApiError.fromStatus(404) });
+    await renderPage();
+    await screen.findByText('文書が見つかりませんでした。');
+    expect(leaves().every((leaf) => leaf === undefined)).toBe(true);
+  });
+
+  // 🔴 フックは**早期 return より前**で呼ばれること。読み込み中の分岐は `return` するので、
+  // 呼び出しを後ろへ動かすと「読み込みが終わるまでパンくずが更新されない」ではなく
+  // React のフック規則違反になる。ここでは「読み込み中でも呼ばれ、葉は undefined」を見る。
+  it('calls the hook while the document is still loading (before the early return)', async () => {
+    // どの口も解決しない＝ずっと pending。
+    mocks.apiRequest.mockImplementation(() => new Promise(() => {}));
+    await renderPage();
+
+    expect(await screen.findByText('読み込み中…')).toBeInTheDocument();
+    expect(mocks.useBreadcrumbLeaf).toHaveBeenCalled();
+    expect(leaves().every((leaf) => leaf === undefined)).toBe(true);
   });
 });

@@ -2,4 +2,8 @@
 // Bulletproof React（計画 13_frontend-stack §基本方針）では、**feature の外から触ってよいのは
 // このファイルが再輸出したものだけ**である。`api/` `components/` `hooks/` `routes/` `types/` へ
 // feature の外から直接 import しない。
-export { createSc09AdminAbacRoute, sc09AdminAbacNav } from './routes/sc09AdminAbacRoute';
+export {
+  createSc09AdminAbacRoute,
+  sc09AdminAbacNav,
+  sc09AdminAbacBreadcrumb,
+} from './routes/sc09AdminAbacRoute';

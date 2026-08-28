@@ -1,7 +1,7 @@
 import { msg } from '@lingui/core/macro';
 import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { PlanNavItem } from '@foundation/routing/featureRegistry';
+import type { FeatureBreadcrumb, PlanNavItem } from '@foundation/routing/featureRegistry';
 import { RequireRole } from '@foundation/auth/RequireRole';
 import { PlatformRole } from '@foundation/auth/roles';
 
@@ -46,5 +46,14 @@ export const sc12McpClientsNav: PlanNavItem = {
   label: msg`MCP管理`,
   to: '/admin/mcp-clients',
   group: 'admin',
+  requiresAnyRole: [PlatformRole.Admin],
+};
+
+// 05_screens §共通シェル / #446: パンくず `ホーム / 管理 / ABAC設定 / MCPクライアント`（crumb 実測）。
+export const sc12McpClientsBreadcrumb: FeatureBreadcrumb = {
+  routePath: '/admin/mcp-clients',
+  group: 'admin',
+  parents: [{ label: msg`ABAC設定`, to: '/admin/abac' }],
+  label: msg`MCPクライアント`,
   requiresAnyRole: [PlatformRole.Admin],
 };

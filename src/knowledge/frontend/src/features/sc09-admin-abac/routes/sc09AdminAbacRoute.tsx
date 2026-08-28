@@ -1,7 +1,7 @@
 import { msg } from '@lingui/core/macro';
 import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { PlanNavItem } from '@foundation/routing/featureRegistry';
+import type { FeatureBreadcrumb, PlanNavItem } from '@foundation/routing/featureRegistry';
 import { RequireRole } from '@foundation/auth/RequireRole';
 import { PlatformRole } from '@foundation/auth/roles';
 
@@ -47,5 +47,15 @@ export const sc09AdminAbacNav: PlanNavItem = {
   label: msg`ABAC設定`,
   to: '/admin/abac',
   group: 'admin',
+  requiresAnyRole: [PlatformRole.Admin],
+};
+
+// 05_screens §共通シェル / #446: パンくず `ホーム / 管理 / ABAC設定`（crumb 実測）。
+// 🔴 システム管理者限定の画面だが、**モックのグループ段は「管理」**である
+// （計画本文の「管理／システム管理／運用」に対し、モックと左ナビは 4 グループ）。
+export const sc09AdminAbacBreadcrumb: FeatureBreadcrumb = {
+  routePath: '/admin/abac',
+  group: 'admin',
+  label: msg`ABAC設定`,
   requiresAnyRole: [PlatformRole.Admin],
 };

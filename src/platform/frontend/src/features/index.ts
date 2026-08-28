@@ -1,10 +1,19 @@
 import { msg } from '@lingui/core/macro';
 import type { ShellRoute } from '@foundation/routing/shell';
 import { legacyNavItems } from '@foundation/routing/featureRegistry';
-import type { FeatureModule, PlanNavItem, UnitNavGroup } from '@foundation/routing/featureRegistry';
+import type {
+  FeatureBreadcrumb,
+  FeatureModule,
+  PlanNavItem,
+  UnitNavGroup,
+} from '@foundation/routing/featureRegistry';
 // FR-14, IADR-0056: ユニット合成点 — 可変機能ユニットの画面をここで束ねる。
 // ユニット追加時は src/<unit>/（frontend/ を含む）を submodule 配置し、ここへ 1 行ずつ追加する。
-import { createKnowledgeRoutes, knowledgeNavItems } from '@knowledge/features';
+import {
+  createKnowledgeRoutes,
+  knowledgeNavItems,
+  knowledgeBreadcrumbs,
+} from '@knowledge/features';
 // Issue #283, FR-14, IADR-0056/0070: AST（ai-stock-trading）ユニットの features を合成する（AST/SC-01 設定画面ほか）。
 // AST は本リポジトリから変更できない別プロジェクト（IADR-0120）であり、旧契約のまま束ねる（IADR-0124 決定 2）。
 import { features as aiStockTradingFeatures } from '@ai-stock-trading/features';
@@ -24,6 +33,16 @@ export const createUnitRoutes = (shell: ShellRoute) => [...createKnowledgeRoutes
  * （総称フォールバックを廃止したため、宣言漏れは「静かに消える」を意味する）。
  */
 export const planNavItems: readonly PlanNavItem[] = [...knowledgeNavItems];
+
+/**
+ * ユニットが公開するパンくず宣言（05_screens §共通シェル「パンくず・権限バッジ」。#446）。
+ *
+ * **ナビ項目とは別の集合である**（SC-03 は左ナビに置かないがパンくずは持つ）。
+ * 🔴 **旧契約ユニット（AST）はここに現れない** —— `FeatureModule` にパンくずの宣言面が無く、
+ * 本リポジトリからは変更できない（IADR-0120）。結果として AST の 3 画面はパンくずを持たない。
+ * **合成点が代わりに書いてやらない** —— 画面の名前と親子関係はユニットしか知らない。
+ */
+export const planBreadcrumbs: readonly FeatureBreadcrumb[] = [...knowledgeBreadcrumbs];
 
 /**
  * 旧契約（宣言的ルート）のまま束ねるユニット（IADR-0124 決定 2）。

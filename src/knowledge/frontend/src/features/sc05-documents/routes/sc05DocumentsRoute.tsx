@@ -1,7 +1,7 @@
 import { msg } from '@lingui/core/macro';
 import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { PlanNavItem } from '@foundation/routing/featureRegistry';
+import type { FeatureBreadcrumb, PlanNavItem } from '@foundation/routing/featureRegistry';
 import { RequireRole } from '@foundation/auth/RequireRole';
 import { PlatformRole } from '@foundation/auth/roles';
 
@@ -41,5 +41,15 @@ export const sc05DocumentsNav: PlanNavItem = {
   label: msg`文書管理`,
   to: '/admin/documents',
   group: 'admin',
+  requiresAnyRole: [PlatformRole.Admin, PlatformRole.Operator],
+};
+
+// 05_screens §共通シェル / #446: パンくず `ホーム / 管理 / 文書管理`（crumb 実測）。
+// `requiresAnyRole` は**上のナビ項目およびルートの `RequireRole anyOf` と同じ値**にする
+// （権限外でパンくずを描くと、NotFound の外側から画面の存在が読める。IADR-0009）。
+export const sc05DocumentsBreadcrumb: FeatureBreadcrumb = {
+  routePath: '/admin/documents',
+  group: 'admin',
+  label: msg`文書管理`,
   requiresAnyRole: [PlatformRole.Admin, PlatformRole.Operator],
 };

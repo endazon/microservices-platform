@@ -3,4 +3,5 @@
 export {
   createSc20ObsidianSettingsRoute,
   sc20ObsidianSettingsNav,
+  sc20ObsidianSettingsBreadcrumb,
 } from './routes/sc20ObsidianSettingsRoute';
