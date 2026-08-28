@@ -316,6 +316,77 @@ describe('McpClientManagementPage (SC-12)', () => {
     );
   });
 
+  // 🔴 FR-16, UC-09, SC-12「無人アカウントの ABAC 属性割当」: **登録後の差し替え。**
+  //
+  // このテストが在る理由は、**後段に端点があり生成フックもあるのに画面から呼ばれていなかった**
+  // からである（AI レビューが検出）。属性は登録時にしか置けず、機密区分を打ち間違えたら
+  // クライアントを作り直すしかなかった。**「実装がある」と「使える」が別だという本画面の主題を、
+  // 本画面自身が 1 経路で破っていた。**
+  //
+  // `check-knip` は分割代入のプロパティ単位まで見ないので、この型の死経路は機械検査を素通りする。
+  // **経路が生きていることは、要求が実際に飛ぶことでしか測れない。**
+  it('replaces the ABAC attributes of an already-registered unattended client', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: '登録された MCP クライアントの一覧' });
+
+    // 有人（dev-agent）には出さない。割り当てる対象が無いからである。
+    expect(screen.getAllByRole('button', { name: '属性を変更' })).toHaveLength(2);
+
+    await user.click(screen.getAllByRole('button', { name: '属性を変更' })[0]);
+    expect(screen.getByTestId('attribute-edit-target')).toHaveTextContent('nightly-digest-bot');
+    // 現在値が読み込まれていること。空から始めると「触らなかった属性が消える」。
+    expect(screen.getByTestId('attribute-edit-entries')).toHaveTextContent(
+      'confidentiality: internal',
+    );
+
+    // 登録フォーム側にも同じ文言のラベルがあるので、差し替え区画に閉じて引く。
+    const editor = within(screen.getByTestId('attribute-edit'));
+    await user.selectOptions(editor.getByLabelText('属性'), 'confidentiality');
+    await user.selectOptions(editor.getByLabelText('値'), 'public');
+    await user.click(editor.getByRole('button', { name: '属性を追加' }));
+    await user.click(editor.getByRole('button', { name: '保存' }));
+
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(([path, init]) => {
+          const request = init as RequestInit;
+          return (
+            String(path).endsWith('/mcp-clients/nightly-digest-bot/attributes') &&
+            request?.method === 'PUT' &&
+            String(request?.body).includes('public')
+          );
+        }),
+      ).toBe(true),
+    );
+  });
+
+  // 陽性対照の対。**空の属性で保存させない** —— 無人アカウントの判定軸が消えるためであり、
+  // 登録時に禁じているのと同じ理由である。
+  it('refuses to save an empty attribute set for an unattended client', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: '登録された MCP クライアントの一覧' });
+
+    await user.click(screen.getAllByRole('button', { name: '属性を変更' })[0]);
+    const editor = within(screen.getByTestId('attribute-edit'));
+    await user.click(editor.getByRole('button', { name: '削除' }));
+
+    expect(screen.getByTestId('attribute-edit-empty')).toBeInTheDocument();
+    expect(editor.getByRole('button', { name: '保存' })).toBeDisabled();
+
+    await user.click(editor.getByRole('button', { name: '保存' }));
+    // 🔴 `/attributes` だけで引かない —— 属性辞書の取得（`/authz/attributes`）に当たってしまい、
+    // **常に true になって検出力を失う**（初版はこれで落ちた）。差し替えの経路だけを見る。
+    expect(
+      mocks.apiRequest.mock.calls.some(([path]) =>
+        /\/mcp-clients\/[^/]+\/attributes$/.test(String(path)),
+      ),
+    ).toBe(false);
+  });
+
   // IADR-0124 決定 5: ナビはデータであり `<Link to>` の静的検査が効かない。
   it('publishes a nav item in the admin group that resolves to the route', async () => {
     expect(sc12McpClientsNav.group).toBe('admin');

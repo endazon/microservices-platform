@@ -80,6 +80,15 @@ export function McpClientManagementPage() {
   const [attributeValue, setAttributeValue] = useState('');
   const [entries, setEntries] = useState<AttributeEntry[]>([]);
   const [issues, setIssues] = useState<RegistrationIssue[]>([]);
+  // FR-16, UC-09, SC-12「無人アカウントの ABAC 属性割当」: **登録後の差し替え**の対象。
+  // 🔴 後段には差し替えの端点が在るのに、画面から呼ぶ経路が無かった —— 登録時にしか
+  // 属性を置けず、機密区分を打ち間違えたら**クライアントを消して作り直す**しかなかった。
+  // 「後段 API はあるが画面から呼ばれない＝使えない」は本画面が閉じにきた欠陥そのものであり、
+  // それを 1 経路で再演していた（AI レビューが検出）。
+  const [editingClientId, setEditingClientId] = useState<string | null>(null);
+  const [editEntries, setEditEntries] = useState<AttributeEntry[]>([]);
+  const [editKey, setEditKey] = useState('');
+  const [editValue, setEditValue] = useState('');
 
   const definitions = useMemo(() => assignableAttributes(dictionary.data ?? []), [dictionary.data]);
   const selectedDefinition = definitions.find((d) => d.key === attributeKey);
@@ -155,27 +164,53 @@ export function McpClientManagementPage() {
         id: 'operation',
         header: t`操作`,
         enableSorting: false,
-        cell: ({ row }) =>
-          row.original.enabled ? (
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => actions.disable.mutate({ clientId: row.original.clientId })}
-            >
-              <Trans>無効化</Trans>
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              onClick={() => actions.enable.mutate({ clientId: row.original.clientId })}
-            >
-              <Trans>再有効化</Trans>
-            </Button>
-          ),
+        cell: ({ row }) => (
+          <div className="flex flex-wrap gap-2">
+            {row.original.enabled ? (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => actions.disable.mutate({ clientId: row.original.clientId })}
+              >
+                <Trans>無効化</Trans>
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={() => actions.enable.mutate({ clientId: row.original.clientId })}
+              >
+                <Trans>再有効化</Trans>
+              </Button>
+            )}
+            {/* 有人には出さない。属性は利用者本人のもので解決され、割り当てる対象が無い。 */}
+            {requiresAttributes(row.original.kind) && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  startEditingAttributes(row.original.clientId, row.original.attributes)
+                }
+              >
+                <Trans>属性を変更</Trans>
+              </Button>
+            )}
+          </div>
+        ),
       },
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- startEditingAttributes は
+    // setState だけを呼ぶ安定した関数である（依存に入れると列定義が毎描画で作り直される）。
     [t, actions.disable, actions.enable],
   );
+
+  // 一覧の行から差し替えを始める。**現在の値を初期値として読み込む** ——
+  // 空から始めると「変更しなかった属性が消える」（差し替えは置換であって追加ではない）。
+  const startEditingAttributes = (target: string, current: Record<string, string>) => {
+    setEditingClientId(target);
+    setEditEntries(Object.entries(current).map(([key, value]) => ({ key, value })));
+    setEditKey('');
+    setEditValue('');
+  };
 
   const addEntry = () => {
     if (!attributeKey || !attributeValue) return;
@@ -276,6 +311,139 @@ export function McpClientManagementPage() {
           />
         )}
       </div>
+
+      {/* FR-16, UC-09, SC-12: 登録後の ABAC 属性の差し替え。**置換であって追加ではない** ——
+          後段の端点が属性の集合ごと入れ替えるので、画面も現在値を読み込んでから編集させる。 */}
+      {editingClientId !== null && (
+        <div data-testid="attribute-edit">
+          <h2 className="mb-2 text-sm font-medium text-[--color-fg-muted]">
+            <Trans>ABAC 属性の変更</Trans>
+          </h2>
+          <p className="text-xs text-[--color-fg-muted]" data-testid="attribute-edit-target">
+            {editingClientId}
+          </p>
+          <p className="mt-1 text-xs text-[--color-fg-muted]">
+            <Trans>
+              保存すると属性はここに並んでいる内容で置き換わります。残したい属性は消さないでください。
+            </Trans>
+          </p>
+          <div className="mt-2 flex flex-wrap items-end gap-4">
+            <div>
+              <Label htmlFor="mcp-edit-attribute-key">
+                <Trans>属性</Trans>
+              </Label>
+              <Select
+                id="mcp-edit-attribute-key"
+                selectSize="sm"
+                value={editKey}
+                onChange={(e) => {
+                  setEditKey(e.target.value);
+                  setEditValue('');
+                }}
+              >
+                <option value="">{t`選択してください`}</option>
+                {definitions.map((definition) => (
+                  <option key={definition.id} value={definition.key}>
+                    {definition.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="mcp-edit-attribute-value">
+                <Trans>値</Trans>
+              </Label>
+              <Select
+                id="mcp-edit-attribute-value"
+                selectSize="sm"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+              >
+                <option value="">{t`選択してください`}</option>
+                {(definitions.find((d) => d.key === editKey)?.allowedValues ?? []).map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => {
+                if (!editKey || !editValue) return;
+                setEditEntries((prev) => [
+                  ...prev.filter((e) => e.key !== editKey),
+                  { key: editKey, value: editValue },
+                ]);
+                setEditValue('');
+              }}
+            >
+              <Trans>属性を追加</Trans>
+            </Button>
+          </div>
+          <ul className="mt-2 text-xs" data-testid="attribute-edit-entries">
+            {editEntries.map((entry) => (
+              <li key={entry.key} className="flex items-center gap-2">
+                <span>{`${entry.key}: ${entry.value}`}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditEntries((prev) => prev.filter((e) => e.key !== entry.key))}
+                >
+                  <Trans>削除</Trans>
+                </Button>
+              </li>
+            ))}
+          </ul>
+          {/* 🔴 空で保存させない。無人アカウントに属性が 1 つも無い状態は、登録時に
+              禁じているのと同じ理由（判定軸が消える）で作らせてはならない。 */}
+          {editEntries.length === 0 && (
+            <Alert
+              tone="warning"
+              role="alert"
+              label={t`入力を確認してください`}
+              className="mt-3"
+              data-testid="attribute-edit-empty"
+            >
+              {issueLabels['attributes-required']}
+            </Alert>
+          )}
+          {actions.replaceAttributes.isError && (
+            <Alert
+              tone="danger"
+              role="alert"
+              label={t`エラー`}
+              className="mt-3"
+              data-testid="attribute-edit-error"
+            >
+              {toMessages(
+                actions.replaceAttributes.error,
+                t`ABAC 属性を変更できませんでした。`,
+              ).join(' / ')}
+            </Alert>
+          )}
+          <div className="mt-3 flex gap-2">
+            <Button
+              size="sm"
+              disabled={editEntries.length === 0}
+              onClick={() =>
+                actions.replaceAttributes.mutate(
+                  {
+                    clientId: editingClientId,
+                    data: { attributes: buildAttributes(editEntries) },
+                  },
+                  { onSuccess: () => setEditingClientId(null) },
+                )
+              }
+            >
+              <Trans>保存</Trans>
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setEditingClientId(null)}>
+              <Trans>取消</Trans>
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div>
         <h2 className="mb-2 text-sm font-medium text-[--color-fg-muted]">

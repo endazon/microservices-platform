@@ -125,6 +125,14 @@ msgstr "👤 Private note (only you)"
 msgid "90 日待てば自動的に完全削除されます。急がなければ、この操作は必要ありません。"
 msgstr "After 90 days it is permanently deleted automatically. Unless you are in a hurry, this action is unnecessary."
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "ABAC 属性の変更"
+msgstr "Change ABAC attributes"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "ABAC 属性を変更できませんでした。"
+msgstr "Could not change the ABAC attributes."
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AdminAbacSettingsPage.tsx
 msgid "ABAC 設定の区画"
 msgstr "ABAC settings sections"
@@ -946,8 +954,13 @@ msgstr "e.g. engineering"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "保存"
 msgstr "Save"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "保存すると属性はここに並んでいる内容で置き換わります。残したい属性は消さないでください。"
+msgstr "Saving replaces the attributes with exactly what is listed here. Do not remove attributes you want to keep."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "保存前に構文・矛盾を検証します。矛盾があれば保存できません。保存すると認可判定へ即時反映されます。"
@@ -1214,6 +1227,7 @@ msgstr "Resolved from the user's attributes"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "削除"
 msgstr "Delete"
 
@@ -1274,6 +1288,10 @@ msgstr "Handling"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "取り消す"
+msgstr "Cancel"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "取消"
 msgstr "Cancel"
 
 #: knowledge/frontend/src/features/sc11-config/types/driftView.ts
@@ -1494,6 +1512,10 @@ msgstr "No attributes have been registered."
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "属性を削除: {attributeKey}"
 msgstr "Delete attribute: {attributeKey}"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "属性を変更"
+msgstr "Change attributes"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
