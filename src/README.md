@@ -76,11 +76,12 @@ src/
 - 存在しない区分のフォルダは作らない（空フォルダを置かない）。**これは
   プロジェクトの内側**（`Foundation/` / `Composable/` / `Adapters/` / `Connectors/` 等）**に掛かる規則であり、
   次に述べるサービス直下の標準構成には掛からない。階層が違う。**
-- **移行中の注意（2026-08-28 改定）**: 8 要素の実体化（IADR-0280）は**同日のオーナー裁定で撤回された**。
+- **移送は完了した（2026-08-28）。** 8 要素の実体化（IADR-0280）は同日のオーナー裁定で撤回され、
   新標準は**単一プロジェクト＋ Features / Domain / Infrastructure / Common のフォルダ規範**
   （[IADR-0282](../.ai-context/adr/IADR-0282_single-project-vsa-structure.md)）である。
-  **移送波の一括変換までは現行配置（`<ServiceName>.<Api|Worker>/Foundation/ ・ Composable/`）が
-  実態であり、新規コードも現行配置で書く**（IADR-0282 決定 4。「新規は新配置で書く」は取り消し）。
+  **14 サービス全件が新配置へ移送済み**で、`Services/<Name>/src/<Name>.Api/` は 1 つも残っていない
+  （層プロジェクト 58 個と `.gitkeep` の枠も撤去済み）。**新規コードは新配置で書く。**
+  移送の記録と踏んだ罠は `.ai-context/specs/20260828_wave45-vsa-migration.md`。
 
 ### サービス直下の標準構成（単一プロジェクト＋フォルダ規範。2026-08-28 裁定）
 
@@ -95,13 +96,15 @@ Common/・Tests/ のフォルダ**で分ける。8 要素の実プロジェク�
   `Services/<Name>/Worker/<Name>.Worker.csproj` を残す（IADR-0282 決定 1。
   [IADR-0219](../.ai-context/adr/IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 2 の排他は不変）。
 - **参照方向（Domain は Features / Infrastructure / Common.Behaviors を知らない）はフォルダ＝
-  名前空間で守る**。機械検査（`scripts/check-unit-dependencies.js` 規則 3）の名前空間走査化は
-  移送波で行い、それまでは現行の csproj 参照検査が残る（IADR-0282 決定 2）。
+  名前空間で守る**。機械検査（`scripts/check-unit-dependencies.js` 規則 3-③）は**名前空間走査版が
+  稼働している**（IADR-0282 決定 2）。旧判定（8 要素プロジェクト参照の層方向）は対象 0 件になったが、
+  経過措置としてコード上に残っている。
 - **`Result` / `Error`・DDD 基底型はユニット単位の `Platform.Shared.Kernel`**（IADR-0229 不変。
   サービス個別の `Common/Result.cs` は置かない）。サービス間契約はユニットの Shared
   （`<Unit>.Contracts`）のまま。サービス個別の `Contracts` / `SharedKernel` プロジェクトは置かない。
-- **移送完了までの実態**は前掲「移行中の注意」のとおり（現行の `<Name>.Api` プロジェクト＋
-  `Foundation/` / `Composable/` 区分が残る。撤去・リネーム・スライス化は移送波が一括で行う）。
+- **操作単位のスライス分割（`Features/<集約>/<操作>/` の 3 分割）はまだ行っていない。**
+  移送波は器の移送までで、端点は集約フォルダ直下に 1 枚のまま置かれている（IADR-0282 決定 4）。
+  太いエンドポイントのハンドラ化・値オブジェクト化・ドメインイベント導入も別作業である。
 
 ## 依存規則
 
