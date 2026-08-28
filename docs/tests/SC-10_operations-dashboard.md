@@ -3,15 +3,15 @@ title: SC-10 運用ダッシュボード テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-28
+updated: 2026-08-29
 author: claude
 ---
 <!-- trace:
 ids: [FR-10, SC-05, SC-06, SC-07, SC-09, SC-10, SC-11, UC-05]
 adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0035]
-iadrs: [IADR-0009, IADR-0011, IADR-0035, IADR-0119, IADR-0121, IADR-0129]
-specs: [20260805_issue-504_sc09-11-admin-ops-screens]
-issues: [#452, #490, #503, #504, #510, #544, #586, planning#237, planning#244]
+iadrs: [IADR-0009, IADR-0011, IADR-0035, IADR-0119, IADR-0121, IADR-0129, IADR-0265, IADR-0299]
+specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260829_issue-443_knowledge-health-producer]
+issues: [#443, #452, #490, #503, #504, #510, #544, #586, planning#237, planning#244]
 -->
 
 # テスト仕様書: 運用ダッシュボード
@@ -48,7 +48,7 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | KPI カード（**LLM コスト**） | **実装しない**（契約の不在）。同上 |
 | 外部ツールリンク（Grafana / Kiali / Jaeger・Tempo） | `renders only the observability tools that runtime config injects` ／ 純関数 P1〜P4 |
 | 構成ビューアへの導線 | `always offers the link to SC-11 for anyone who can open this screen`（構成ビューアへのリンク）／ 導線テスト A |
-| **ナレッジ健全性**（4 KPI ＋ 辺の型の使用件数 ＋ フォールバック警告 ＋ 注記） | **実装しない**（関係探索・AI 提案の着手保留による）。`does not render the knowledge-health section` |
+| **ナレッジ健全性**（4 KPI ＋ 辺の型の使用件数 ＋ フォールバック警告 ＋ 注記） | **実装しない**。理由は 2 本ある——①関係探索・AI 提案の着手保留 ②**［2026-08-29 / #443］7 指標中 6 指標に観測値の生産者が無く、0 件が「問題なし」と読める**（未計測を健全と表示することになる）。`does not render the knowledge-health section` |
 | アクセス制御（計画は運用者・管理者） | **管理者 ＋ 運用者**（**#544** で計画と一致）。`grants access to platform-admin` / `grants access to platform-operator` / `hides existence (NotFound) for a plain user` |
 
 ## 機能要求 → テストの写像

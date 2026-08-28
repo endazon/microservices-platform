@@ -1,5 +1,6 @@
 using GraphService.Infrastructure.ExternalServices;
 using GraphService.Features.GraphDocuments;
+using GraphService.Features.KnowledgeHealth;
 using GraphService.Features.AiSuggestions;
 using GraphService.Features.EdgeTypes;
 using GraphService.Features.Graph;
@@ -86,6 +87,38 @@ builder.Services.AddScoped<AiSuggestionGenerator>();
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
 builder.Services.AddHttpClient<IGraphContentReader, StorageContentReader>();
 builder.Services.AddScoped<LinkEdgeSynchronizer>();
+
+// FR-10, FR-17, FR-19, UC-05, SC-10, ADR-0002, ADR-0006, IADR-0265, [[IADR-0299]] (#443):
+// ナレッジ健全性の観測値の**生産者**。受け口（DashboardService）は #443 で実装済みだが、
+// **本番コードから送っている経路が 1 本も無かった**（呼んでいたのはテストだけ）。ここで塞ぐ。
+//
+// 接続先は `Services:DashboardService`。既定 `http://dashboard-service:8080` は compose・helm の
+// いずれでも Service 名・ポートと一致するため**上書きは要らない**（DocumentService →
+// notification-service と同じ形）。🔴 chart のキー `dashboard` を変えると Service 名が動き、
+// **fail-open のため 502 にすらならず静かに報告が止まる**。
+builder.Services.AddHttpClient(HttpKnowledgeHealthReporter.ClientName, c =>
+{
+    c.BaseAddress = new Uri(builder.Configuration["Services:DashboardService"]
+        ?? "http://dashboard-service:8080");
+    // 🔴 既定の 100 秒のままにしない —— 受け口が応答しないと定期処理がその間止まる。
+    c.Timeout = HttpKnowledgeHealthReporter.SendTimeout;
+});
+builder.Services.AddScoped<IKnowledgeHealthReporter, HttpKnowledgeHealthReporter>();
+builder.Services.AddScoped<KnowledgeHealthCollector>();
+// 🔴 [[IADR-0299]] 決定 3: 単一書き手化。受け口は**全量スナップショット置換**であり、2 レプリカが
+// 同時に走ると片方の DELETE が他方の INSERT 済み行を消して**恒久的に過少な件数**が残る。
+// steady state は replicas: 1 だが、ローリング更新の maxSurge で新旧 2 pod が同時に生きる。
+// IsRelational はプロバイダ判定のみで DB 接続しないため、起動時にスコープを張って安全に評価できる。
+builder.Services.AddSingleton<IKnowledgeHealthLeaseCoordinator>(sp =>
+{
+    using var scope = sp.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<GraphDbContext>();
+    if (!db.Database.IsRelational())
+        return new NoOpKnowledgeHealthLeaseCoordinator();
+    return new PostgresKnowledgeHealthLeaseCoordinator(
+        connStr, sp.GetRequiredService<ILogger<PostgresKnowledgeHealthLeaseCoordinator>>());
+});
+builder.Services.AddHostedService<KnowledgeHealthHostedService>();
 
 // FR-14, ADR-0018 / #1016: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
 builder.AddPlatformPipelineConfig();

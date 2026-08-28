@@ -1,8 +1,14 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using AwesomeAssertions;
 using DashboardService.Features.KnowledgeHealth;
 using DashboardService.Domain;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Metadata;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DashboardService.Tests;
 
@@ -12,6 +18,11 @@ namespace DashboardService.Tests;
 // 3 つのうち 1 つでも欠けると存在秘匿が崩れるため、**それぞれを独立にテストで固定する**。
 public class KnowledgeHealthEndpointTests
 {
+    // 🔴 送信側 GraphService.Infrastructure.ExternalServices.HttpKnowledgeHealthReporter.ObservationsPath の値。
+    // **サービスを跨ぐため定数を共有できない**。**リテラルで持ち、一致を下のテストで固定する**
+    // （`/internal/notifications` の送信側・受け口と同じ作法）。
+    private const string ProducerObservationsPath = "/internal/knowledge-health/observations";
+
     private static KnowledgeHealthReportRequest Report(
         string indicator, params KnowledgeHealthObservationRequest[] observations)
         => new(indicator, observations);
@@ -23,7 +34,7 @@ public class KnowledgeHealthEndpointTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync("/dashboard/knowledge-health/observations",
+        await client.PostAsJsonAsync(ProducerObservationsPath,
             Report(KnowledgeHealthIndicators.OrphanDocuments,
                 new KnowledgeHealthObservationRequest("doc-1", "organization"),
                 new KnowledgeHealthObservationRequest("doc-2", "organization")),
@@ -45,7 +56,7 @@ public class KnowledgeHealthEndpointTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync("/dashboard/knowledge-health/observations",
+        await client.PostAsJsonAsync(ProducerObservationsPath,
             Report(KnowledgeHealthIndicators.OrphanDocuments,
                 new KnowledgeHealthObservationRequest("doc-org", "organization"),
                 new KnowledgeHealthObservationRequest("doc-private", KnowledgeDocScopes.PrivateNote),
@@ -68,7 +79,7 @@ public class KnowledgeHealthEndpointTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync("/dashboard/knowledge-health/observations",
+        await client.PostAsJsonAsync(ProducerObservationsPath,
             Report(KnowledgeHealthIndicators.UnresolvedLinks,
                 new KnowledgeHealthObservationRequest("edge-1"),
                 new KnowledgeHealthObservationRequest("edge-2", null)),
@@ -104,7 +115,7 @@ public class KnowledgeHealthEndpointTests
     {
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
-        await client.PostAsJsonAsync("/dashboard/knowledge-health/observations",
+        await client.PostAsJsonAsync(ProducerObservationsPath,
             Report(KnowledgeHealthIndicators.OrphanDocuments,
                 new KnowledgeHealthObservationRequest("doc-1", "organization")),
             TestContext.Current.CancellationToken);
@@ -127,7 +138,7 @@ public class KnowledgeHealthEndpointTests
     {
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
-        await client.PostAsJsonAsync("/dashboard/knowledge-health/observations",
+        await client.PostAsJsonAsync(ProducerObservationsPath,
             Report(KnowledgeHealthIndicators.StaleDocuments,
                 new KnowledgeHealthObservationRequest("経費規程-2024", "organization")),
             TestContext.Current.CancellationToken);
@@ -161,12 +172,12 @@ public class KnowledgeHealthEndpointTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync("/dashboard/knowledge-health/observations",
+        await client.PostAsJsonAsync(ProducerObservationsPath,
             Report(KnowledgeHealthIndicators.OrphanDocuments,
                 new KnowledgeHealthObservationRequest("doc-1"),
                 new KnowledgeHealthObservationRequest("doc-2")),
             TestContext.Current.CancellationToken);
-        await client.PostAsJsonAsync("/dashboard/knowledge-health/observations",
+        await client.PostAsJsonAsync(ProducerObservationsPath,
             Report(KnowledgeHealthIndicators.OrphanDocuments,
                 new KnowledgeHealthObservationRequest("doc-1")),
             TestContext.Current.CancellationToken);
@@ -186,10 +197,104 @@ public class KnowledgeHealthEndpointTests
         using var factory = new TestWebApplicationFactory();
 
         var resp = await factory.CreateClient().PostAsJsonAsync(
-            "/dashboard/knowledge-health/observations",
+            ProducerObservationsPath,
             Report("orphan-docs", new KnowledgeHealthObservationRequest("doc-1")),
             TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
+
+    // ── 受け口の移設（#443 / [[IADR-0299]] 決定 4） ───────────────────────────
+
+    // FR-10, FR-17 (T-29): 🔴 **パスの複製が食い違っていないことを固定する。**
+    // サービス間の直接参照が張れないため、この一致を守る機械はこのテストと送信側のテストだけである。
+    [Fact]
+    public async Task 受け口のパスは生産者側の宣言と同じ値である()
+    {
+        KnowledgeHealthEndpoints.ObservationsPath.Should().Be(ProducerObservationsPath,
+            "★ 送信側 HttpKnowledgeHealthReporter.ObservationsPath と 1 バイトでも違えば観測値は届かない"
+            + "（送出は fail-open のため、不一致は 404 のログにしか現れない）");
+
+        var resp = await new TestWebApplicationFactory().CreateClient().PostAsJsonAsync(
+            ProducerObservationsPath,
+            Report(KnowledgeHealthIndicators.OrphanDocuments,
+                new KnowledgeHealthObservationRequest("doc-1", "organization")),
+            TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Accepted, "宣言したパスで到達できること");
+    }
+
+    // FR-10, FR-17 (T-30): 🔴 **受け口は認可を要求せず、OpenAPI にも載らない。**
+    // 生産者は**利用者 JWT を持たない定期処理**であり、client_credentials の実装は本体に 1 行も無い。
+    // `/internal/notifications` と同じ形を採った（[[IADR-0299]] 決定 4。利用者裁定）。
+    //
+    // **統制は mTLS ＋ ネットワーク分離であって、認可ではない。** ここで固定するのは
+    // 「認可メタデータが付いていないこと」＝**移設が巻き戻っていないこと**である
+    // （テスト器の認証ハンドラは常に認証を成功させるため、無認証の到達性は状態コードでは測れない）。
+    [Fact]
+    public void 観測値の受け口は認可を要求せずOpenAPIにも載せない()
+    {
+        using var factory = new TestWebApplicationFactory();
+        using var _ = factory.CreateClient();
+
+        var endpoint = FindByName(factory, "ReportKnowledgeHealth");
+
+        endpoint.RoutePattern.RawText.Should().Be(ProducerObservationsPath,
+            "移設先のパスが `/internal/...` のままであること");
+        endpoint.Metadata.GetMetadata<IAuthorizeData>().Should().BeNull(
+            "生産者は利用者 JWT を持たない定期処理である（認可を課すと観測値が永久に届かない）");
+        endpoint.Metadata.GetMetadata<IExcludeFromDescriptionMetadata>()
+            .Should().NotBeNull("内部 API は OpenAPI に載せない（/internal/* は 1 本も無い）");
+    }
+
+    // FR-10, SC-10 (T-31): 🔴 **閲覧側のロール限定は移設で緩んでいない。**
+    // 全体集計を許す条件は「件数のみ・ロール限定・個人資料除外」の同時成立であり、
+    // 受け口を無認証にしたこととは独立である。**両方を同じ PR で動かしたので、両方を固定する。**
+    [Fact]
+    public void 閲覧側はロール限定のままである()
+    {
+        using var factory = new TestWebApplicationFactory();
+        using var _ = factory.CreateClient();
+
+        var endpoint = FindByName(factory, "KnowledgeHealth");
+
+        endpoint.Metadata.GetMetadata<IAuthorizeData>().Should().NotBeNull(
+            "閲覧側のロール制限が唯一の統制点である（計画 §ナレッジ健全性の指標 規則 2）");
+    }
+
+    // FR-10, FR-17, FR-19 (T-32): 🔴 **生産者が実際に送る JSON がそのまま束縛できる。**
+    // 型で書いた Report(...) は**両側が同じ DTO を使う前提**を暗黙に置いており、
+    // 送信側が匿名オブジェクトを組み立てている以上、**綴りと大小の一致は型では守られない**
+    // （`docScope` を `docscope` と書いても C# は何も言わない）。生の JSON で固定する。
+    [Fact]
+    public async Task 生産者が組み立てる生のJSONで束縛できる()
+    {
+        using var factory = new TestWebApplicationFactory();
+        var client = factory.CreateClient();
+
+        // HttpKnowledgeHealthReporter が PostAsJsonAsync へ渡す匿名オブジェクトと同じ形。
+        const string body = """
+            {"indicator":"orphan-documents","observations":[
+              {"subjectKey":"11111111-1111-1111-1111-111111111111","docScope":null},
+              {"subjectKey":"22222222-2222-2222-2222-222222222222","docScope":"private-note"}]}
+            """;
+
+        var resp = await client.PostAsync(ProducerObservationsPath,
+            new StringContent(body, Encoding.UTF8, "application/json"),
+            TestContext.Current.CancellationToken);
+        resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
+
+        var health = await client.GetFromJsonAsync<KnowledgeHealthDto>(
+            "/dashboard/knowledge-health", TestContext.Current.CancellationToken);
+
+        health!.Indicators.Single(i => i.Indicator == KnowledgeHealthIndicators.OrphanDocuments)
+            .Count.Should().Be(1, "個人資料は受け手が落とす（生の JSON でも綴りが噛み合っている）");
+    }
+
+    // 実 Program.cs の配線から**名前**で終端を引く（ルートパターンの生文字列は
+    // MapGroup の合成のされ方に依存し、パスの検査そのものは別の assert で行う）。
+    private static RouteEndpoint FindByName(TestWebApplicationFactory factory, string name)
+        => factory.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .OfType<RouteEndpoint>()
+            .Single(e => e.Metadata.GetMetadata<IEndpointNameMetadata>()?.EndpointName == name);
 }
