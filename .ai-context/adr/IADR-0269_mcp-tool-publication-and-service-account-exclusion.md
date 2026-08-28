@@ -5,7 +5,7 @@ status: Proposed
 related_ids: [FR-16, UC-08, UC-09, SC-12, ADR-0024, ADR-0034, ADR-0036, ADR-0046, ADR-0054]
 author: claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0024_mcp-server-integration.md
   - planning:projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md
@@ -115,6 +115,13 @@ plan_refs:
 - フォローアップ:
   - `notifications/tools/list_changed` の配信を実装する。
   - `RetrievalService` / `DocumentService` / `GraphService` に `GET /internal/mcp-tools` と共通エンベロープの実行口を実装する（それぞれの再実装 issue の射程）。
+    - ［2026-08-28 追記 / #1020］**申告端点は 3 サービスとも実装した**（実効カタログは空でなくなった）。
+      **共通エンベロープの実行口は実装していない** —— 権限伝播の方式が未決であり、本文で渡された
+      `ToolInvocationScope` を信じる形（方式 B）は「そこへ到達できる誰もが任意の scope を主張できる」
+      口になる。方式の裁定は別 issue へ切り出した（IADR-0292 決定 5）。
+      **これに伴い決定 6 の昇格条件（最初の生成側の実装）は満たされたが、昇格は追随 issue へ回している**
+      （`*.Contracts` への型追加は `scripts/contract-schema-baseline.json` の更新を伴い、#1020 の
+      領域宣言の外だった。IADR-0292 決定 4）。**決定 6 そのものは変えていない。**
   - Istio Ingress の `/mcp` ルーティングとレート制限初期値（`deploy/` 配下）。
 
 ## 関連

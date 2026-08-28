@@ -8,11 +8,18 @@ namespace McpServer.Domain;
 // （name / description / input_schema / endpoint / required_scope / egress_class）をそのまま持つ。
 // 詳細形は計画が実装リポジトリへ明示的に委任している（ADR-0024 §結果）。
 //
-// 🔴 **本 DTO を Platform.Shared.Contracts へ置いていない**のは、現時点で**プロセス内の生成側が
-// 1 つも存在しない**ためである（`/internal/mcp-tools` はどのサービスにも未実装。実測 0 件）。
+// 🔴 **本 DTO を Platform.Shared.Contracts へ置いていない**のは、起草時点で**プロセス内の生成側が
+// 1 つも存在しなかった**ためである（`/internal/mcp-tools` はどのサービスにも未実装。実測 0 件）。
 // MCP サーバーは HTTP で受け取って解釈する側だけであり、共有契約にすると「利用者が 1 人しか
 // いない契約」を全ユニットへ配ることになる。**最初の生成側が実装された時点で昇格させる**
-// （判断と条件は IADR-0269）。
+// （判断と条件は IADR-0269 決定 6）。
+//
+// ［2026-08-28 追記 / #1020］🔴 **生成側は実装された** —— DocumentService / RetrievalService /
+// GraphService の 3 サービスが `GET /internal/mcp-tools` を実装し、実効カタログは空でなくなった。
+// **昇格の条件は満たされたが、昇格そのものは追随 issue へ回している**（`*.Contracts` への型追加は
+// `scripts/contract-schema-baseline.json` の更新を伴い、#1020 の領域宣言の外だった。IADR-0292 決定 4）。
+// **昇格までは本ファイルがワイヤ形式の正本である** —— 3 サービスが持つのは写しであり、
+// ここを変えるときは 3 箇所を同時に追随させること。
 public sealed record McpToolDeclaration(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("description")] string Description,
