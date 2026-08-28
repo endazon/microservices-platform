@@ -60,6 +60,11 @@ public static class BffEndpointComposition
         // /mcp-clients* へ pass-through）。後段は platform ユニットなので platform 同居とする。
         // **管理者限定**（05_screens §共通シェル「SC-09・SC-12・SC-17 = システム管理者」）。
         new DelegateBffEndpointModule(a => a.MapMcpClientBffEndpoints()),
+        // Issue #452, FR-05, FR-09, UC-05, SC-17, ADR-0026, IADR-0301: 利用者アカウント管理
+        // （AuthorizationService の /authz/users* へ pass-through）。後段は platform ユニットなので
+        // platform 同居とする。**管理者限定**（05_screens §共通シェル「SC-09・SC-12・SC-17 =
+        // システム管理者」）。**新規作成の口は持たない**（計画が本画面からの作成を禁じている）。
+        new DelegateBffEndpointModule(a => a.MapUserAdminBffEndpoints()),
         // Issue #283/#286, AST/FR-17, AST/UC-06, IADR-0070/0073: AST 設定画面（全体前提条件）の BFF 集約
         // （ConfigurationService へ pass-through）。AiStockTrading.Bff.Endpoints（AST unit-owned Bff・例外3）を参照。
         new DelegateBffEndpointModule(a => a.MapAssumptionsBffEndpoints()),

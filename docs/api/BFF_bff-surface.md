@@ -7,9 +7,9 @@ updated: 2026-08-29
 author: Claude
 ---
 <!-- trace:
-ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-15, FR-16, FR-22, SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-12, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-09, UC-11]
-adrs: [ADR-0024, ADR-0031, ADR-0032, ADR-0037, ADR-0043]
-iadrs: [IADR-0009, IADR-0010, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0297]
+ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-15, FR-16, FR-22, SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-12, SC-17, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-09, UC-11]
+adrs: [ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0037, ADR-0043]
+iadrs: [IADR-0009, IADR-0010, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0297, IADR-0301]
 specs: [20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at]
 issues: [#439, #452, #506, #519, #520, #521, #538, #544, #586, #629, #634, #640, planning#200, planning#236, planning#244, planning#299]
 -->
@@ -166,6 +166,12 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | POST | `/bff/admin/mcp-clients/{clientId}/disable` | **admin のみ** | —| `useBffMcpDisableClient`（後段の 404 を**そのまま**返す） |
 | POST | `/bff/admin/mcp-clients/{clientId}/enable` | **admin のみ** | —| `useBffMcpEnableClient` |
 | PUT | `/bff/admin/mcp-clients/{clientId}/attributes` | **admin のみ** | —| `useBffMcpReplaceClientAttributes` |
+| GET | `/bff/admin/users` | **admin のみ** | —| `useBffUserAdminListUsers`（**作成の口は無い**。アカウントは人事システム連携で自動的に作られる） |
+| GET | `/bff/admin/users/assignable-roles` | **admin のみ** | —| `useBffUserAdminListAssignableRoles`（入力規則「定義済みロールのみ」の値域。画面へ焼き込まない） |
+| PUT | `/bff/admin/users/{userId}/attributes` | **admin のみ** | —| `useBffUserAdminReplaceUserAttributes`（差し替え。後段の 400〔必須欠落・辞書外の値／キー〕を透過する） |
+| PUT | `/bff/admin/users/{userId}/roles` | **admin のみ** | —| `useBffUserAdminReplaceUserRoles`（差し替え。空集合は 400 —— 権限剥奪は無効化で行う） |
+| POST | `/bff/admin/users/{userId}/disable` | **admin のみ** | —| `useBffUserAdminDisableUser`（**無効化と全セッション失効は 1 つの操作である**。後段の 404 を**そのまま**返す） |
+| POST | `/bff/admin/users/{userId}/enable` | **admin のみ** | —| `useBffUserAdminEnableUser`（セッションは復活しない） |
 | GET | `/bff/admin/config` | **ConfigViewer**（非権限は 404） | —| `useBffConfigEffective` |
 | GET | `/bff/admin/config/drift` | 同上 | —| `useBffConfigDrift` |
 | GET | `/bff/admin/config/history` | 同上 | —| `useBffConfigHistory` |

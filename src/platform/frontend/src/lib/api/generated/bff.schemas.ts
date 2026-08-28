@@ -1589,6 +1589,47 @@ export interface RevokeAllSyncDevicesResponse {
   revokedCount: number;
 }
 
+/**
+ * ABAC 属性（部門・機密区分上限・タグ）。1 キー 1 値
+ */
+export type PlatformUserDtoAttributes = {[key: string]: string};
+
+/**
+ * SC-17 主要素 1: 利用者一覧の 1 行（部門・ロール・ABAC 属性・状態）。
+ * **部門は `attributes.department` である** —— 独立した項目として複写しない。
+ */
+export interface PlatformUserDto {
+  /** 認可サーバーにおける利用者 ID */
+  id: string;
+  username: string;
+  displayName: string;
+  /** false は無効（全セッション失効済み） */
+  enabled: boolean;
+  /** 割り当て済みのロール（併任可） */
+  roles: string[];
+  /** ABAC 属性（部門・機密区分上限・タグ）。1 キー 1 値 */
+  attributes: PlatformUserDtoAttributes;
+}
+
+export type ReplaceUserAttributesRequestAttributes = {[key: string]: string};
+
+/**
+ * SC-17: ABAC 属性の割当（**差し替え**。部分更新ではない）。
+ * 部門と機密区分上限は必須、タグは任意。値・キーとも属性辞書（利用者スコープ）に
+ * 定義済みのものだけを受け付ける。
+ */
+export interface ReplaceUserAttributesRequest {
+  attributes: ReplaceUserAttributesRequestAttributes;
+}
+
+/**
+ * SC-17: ロール割当（**差し替え**。併任可）。空集合は 400 ——
+ * 権限を剥がすのではなく無効化を使う。
+ */
+export interface ReplaceUserRolesRequest {
+  roles: string[];
+}
+
 export type BffAuthLoginParams = {
 /**
  * ログイン後の戻り先。**自サイト内のパスに限る**（オープンリダイレクト防止）

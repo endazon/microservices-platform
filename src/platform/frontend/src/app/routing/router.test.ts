@@ -35,6 +35,8 @@ const PLANNED_ROUTES: ReadonlyArray<readonly [string, string]> = [
   ['SC-11', '/admin/config-viewer'],
   // #452: SC-12 は管理者限定（RequireRole）だが、木に載るかどうかはロールと独立である。
   ['SC-12', '/admin/mcp-clients'],
+  // #452: SC-17 も管理者限定（RequireRole）だが、木に載るかどうかはロールと独立である。
+  ['SC-17', '/admin/users'],
   // #917 / #1013: 起点・探索深さはクエリで持つ（例 `/graph?root=D-20481&hops=2`）が、木に載るのはパスだけ。
   ['SC-18', '/graph'],
   // #451 / #1013: 削除済みタブは `/my/notes?tab=trash`。同上でパスだけが木に載る。

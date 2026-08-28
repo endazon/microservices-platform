@@ -352,6 +352,8 @@ export default tseslint.config(
       'knowledge/frontend/src/features/sc11-config/**/*.{ts,tsx}',
       // #452 で SC-12 を新規実装したため適用範囲へ加えた（画面を作るたびに files を伸ばす運用）。
       'knowledge/frontend/src/features/sc12-mcp-clients/**/*.{ts,tsx}',
+      // #452 で SC-17 を新規実装したため適用範囲へ加えた（画面を作るたびに files を伸ばす運用）。
+      'knowledge/frontend/src/features/sc17-users/**/*.{ts,tsx}',
     ],
     ignores: ['**/*.{test,spec}.{ts,tsx}', '**/locales/**'],
     plugins: { lingui },

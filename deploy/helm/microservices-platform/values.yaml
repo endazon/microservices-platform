@@ -340,6 +340,16 @@ services:
     image: microservices-platform/authorization-service
     tag: latest
     port: 8080
+    # SC-17, IADR-0301 決定 3 (#452): 利用者アカウント管理の反映先。**既定は無く、宣言が必須**
+    # （未設定なら Pod が起動時に落ちる）。
+    # 🔴 **暫定である。** 実 IdP へ反映するには `realm-management` の view-users / manage-users /
+    #    view-realm を持つ機密クライアントが realm に要るが、まだ登録されていない。配備されたら
+    #    `keycloak` へ切り替え、IdentityAdmin__Keycloak__{BaseUrl,Realm,ClientId,ClientSecret} を
+    #    注入する（ClientSecret は Secret 由来。既定値を持たせない —— global.db / global.messaging と同型）。
+    #    それまで SC-17 の変更は Pod のプロセス内にしか残らない（起動時に警告ログが 1 行出る）。
+    extraEnv:
+      - name: IdentityAdmin__Provider
+        value: "in-memory"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }

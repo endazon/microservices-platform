@@ -1,4 +1,6 @@
 using AuthorizationService.Features.Authz;
+using AuthorizationService.Features.Users;
+using AuthorizationService.Infrastructure.ExternalServices;
 using AuthorizationService.Infrastructure.Persistence;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
@@ -30,6 +32,14 @@ builder.Services.AddOpenApi();
 // FR-05: ABAC DbContext
 builder.Services.AddDbContext<AuthorizationDbContext>(opt => opt.UseNpgsql(connStr));
 
+// FR-05, FR-09, SC-17, IADR-0301: 利用者アカウント管理の反映先（身元プロバイダ）。
+// **`IdentityAdmin:Provider` に既定は無い** —— 未設定ならここで落ちる。既定を in-memory にすると
+// 注入漏れが「反映したつもりで消える」へ倒れ、既定を keycloak にすると資格情報未整備の配備が
+// 起動できなくなる。どちらの既定も誤りなので、宣言そのものを配備側へ出す。
+// keycloak を選んだときの資格情報も既定を持たない（#1012 / IADR-0286 と同型）。
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddIdentityAdminClient(builder.Configuration);
+
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段・合成可能ポートは
 // ホストしないが、到達可能性とトポロジ（段なし）を実効構成へ与えるため存在申告する。
 builder.Services.AddPlatformIntrospection("authorization-service", new PipelineOptions());
@@ -50,6 +60,8 @@ app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapAuthzEndpoints();
+// FR-05, FR-09, UC-05, SC-17: 利用者アカウント管理（AdminOnly）。
+app.MapUserAdminEndpoints();
 
 app.Run();
 

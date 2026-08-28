@@ -265,6 +265,33 @@ public class BffTestFactory : WebApplicationFactory<Program>
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
     ];
 
+    // FR-05, FR-09, UC-05, SC-17, #452: 利用者アカウント管理（/authz/users*）のスタブ。
+    // **後段は AuthorizationService と同じ named client** なので、AuthzStubHandler がパスで振り分ける。
+    // 不達（502 への縮退）は AuthzManagementThrows を共用する。
+    public HttpStatusCode UserAdminStatusCode { get; set; } = HttpStatusCode.OK;
+    public string? LastUserAdminPath { get; private set; }
+    public string? LastUserAdminMethod { get; private set; }
+    public string? LastUserAdminBody { get; private set; }
+    // 🔴 **資格情報の伝播の観測点。** 後段も AdminOnly を強制する二重ゲートなので、
+    // 伝播が切れると実サービスでは全部 401 になる。
+    public string? LastUserAdminForwardedAuthorization { get; private set; }
+    public List<PlatformUserDto> StubUsers { get; set; } =
+    [
+        new("u-tanaka", "tanaka.taro", "田中 太郎", true, ["platform-operator"],
+            new Dictionary<string, string> { ["department"] = "finance", ["clearance"] = "internal" }),
+        new("u-takahashi", "takahashi.jiro", "高橋 次郎", false, ["platform-operator"],
+            new Dictionary<string, string> { ["department"] = "hr", ["clearance"] = "public" }),
+    ];
+    public List<string> StubAssignableRoles { get; set; } = ["platform-admin", "platform-operator"];
+
+    internal void RecordUserAdmin(string? path, string method, string? body, string? authorization)
+    {
+        LastUserAdminPath = path;
+        LastUserAdminMethod = method;
+        LastUserAdminBody = body;
+        LastUserAdminForwardedAuthorization = authorization;
+    }
+
     // FR-01/FR-02 BFF テスト（SC-06 データソース管理）: DataSourceService の応答をスタブ制御する。
     public static readonly Guid StubDataSourceId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
     public HttpStatusCode DataSourceStatusCode { get; set; } = HttpStatusCode.OK;
@@ -547,6 +574,24 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 throw new HttpRequestException("authorization-service unreachable");
 
             // FR-09 (SC-09): 管理系は AuthzManagementStatusCode で状態を差し替えられる（400/409/404 透過検証）。
+            // FR-05, FR-09, UC-05, SC-17 (#452): 利用者アカウント管理。**観測してから応答する** ——
+            // 伝播（Authorization）と後段パス・本文の陽性対照に使う。
+            if (path.StartsWith("/authz/users", StringComparison.Ordinal))
+            {
+                var userBody = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+                owner.RecordUserAdmin(path, method.Method, userBody,
+                    request.Headers.TryGetValues("Authorization", out var userAuth)
+                        ? string.Join(",", userAuth) : null);
+
+                if (owner.UserAdminStatusCode != HttpStatusCode.OK)
+                    return Json(owner.UserAdminStatusCode, new { errors = new[] { "invalid" } });
+                if (path == "/authz/users/assignable-roles")
+                    return Json(HttpStatusCode.OK, owner.StubAssignableRoles);
+                if (path == "/authz/users")
+                    return Json(HttpStatusCode.OK, owner.StubUsers);
+                return Json(HttpStatusCode.OK, owner.StubUsers[0]); // PUT attributes/roles・POST disable/enable
+            }
+
             if (path.StartsWith("/authz/policies", StringComparison.Ordinal))
             {
                 if (owner.AuthzManagementStatusCode != HttpStatusCode.OK)
