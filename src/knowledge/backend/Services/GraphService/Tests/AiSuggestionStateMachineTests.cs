@@ -5,9 +5,14 @@ namespace GraphService.Tests;
 
 // FR-18, ADR-0033 決定 7・10: AI 提案の 3 状態遷移（#914）。
 //
-// **却下解除のロジックはここで固定する。** 発火（本文の変更を受け取ること）は #911 が担い、
-// 本 issue では配線しない —— その未配線は `AiSuggestionWiringTests` が機械で固定している。
-// **「ロジックが正しいこと」と「実際に動くこと」は別であり、ここで測れるのは前者だけである。**
+// **却下解除のロジックはここで固定する。** 発火（本文の変更を受け取ること）は #911 が配線し、
+// `GraphDocumentSyncConsumer` が指紋の変化を見て `TryReinstate` を呼ぶ。
+// **「ロジックが正しいこと」と「実際に動くこと」は別であり、ここで測れるのは前者だけである**
+// （後者は `GraphDocumentSyncConsumer` 側のテストが測る）。
+//
+// 🔴 **［2026-08-28 追記 / #438］「その未配線は `AiSuggestionWiringTests` が機械で固定している」
+// と書いてあったが、そのテストは一度も存在しなかった**（クラス定義が全域で 0 件）。
+// 配線が済んだ今は前提そのものも古い。**機械が守っていると書くときは、その機械を指させること。**
 public class AiSuggestionStateMachineTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 8, 22, 0, 0, 0, TimeSpan.Zero);
