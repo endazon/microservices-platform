@@ -16,10 +16,15 @@ namespace Knowledge.IntegrationTests.GraphService;
 // 🔴 **ブローカは省略できない引数である**（ADR-0027, IADR-0289 決定 2 / #941）。
 // GraphService は `builder.Host.UseWolverine(...)` で **ホスト構築時に**
 // `RabbitMq:ConnectionString` を読み、`UseRabbitMq(...).AutoProvision()` で接続する
-// （graph-delete 段 = #1016 / graph-sync 段 = #911）。渡さないと Program.cs の既定値
-// `amqp://guest:guest@rabbitmq:5672` へ繋ぎに行き、**防壁へ到達する前にホスト起動が失敗する**
-// （`BrokerInitializationException`。ADR-0027 / #441 E1 の実測が
-// `Fixtures/IntegrationTestFactory.cs` に記録されている）。
+// （graph-delete 段 = #1016 / graph-sync 段 = #911）。渡さないと**防壁へ到達する前に
+// ホスト起動が失敗する**。
+//
+// ［2026-08-28 / #1022］**失敗の仕方は変わった。** 従前は Program.cs の既定値
+// `amqp://guest:guest@rabbitmq:5672` へ繋ぎに行って `BrokerInitializationException`
+// （＝接続失敗）になっていたが、既定値を撤去したので今は
+// `InvalidOperationException: RabbitMq:ConnectionString が未設定である`（＝構成未注入）で落ちる。
+// **必須にしておく理由は変わらない** —— 変わったのは診断の読みやすさだけである
+// （ADR-0027 / #441 E1 の実測は `Fixtures/IntegrationTestFactory.cs` に記録されている）。
 //
 // 🔴 **既定値も null 許容も置かない。** 本ファイルの初版は
 // 「GraphService はメッセージングを一切構成しない（実測）」という注記つきで `base(pg, null)` と
