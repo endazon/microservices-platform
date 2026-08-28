@@ -1,6 +1,6 @@
 using DocumentService.Api.Foundation.Persistence;
 using DataSourceService.Infrastructure.Persistence;
-using AuthorizationService.Api.Foundation.Persistence;
+using AuthorizationService.Infrastructure.Persistence;
 using WikiService.Api.Foundation.Persistence;
 using MassTransit;
 using Microsoft.AspNetCore.Hosting;
@@ -233,7 +233,7 @@ public sealed class DataSourceServiceFactory : IntegrationTestFactoryBase<
 }
 
 public sealed class AuthorizationServiceFactory : IntegrationTestFactoryBase<
-    global::AuthorizationService.Api.AuthorizationServiceTestMarker, AuthorizationDbContext>
+    global::AuthorizationService.AuthorizationServiceTestMarker, AuthorizationDbContext>
 {
     public AuthorizationServiceFactory(PostgresFixture pg) : base(pg, null) { }
 
