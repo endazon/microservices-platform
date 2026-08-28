@@ -4,6 +4,7 @@
 
 ### 新機能
 
+- **FR-06,FR-17,FR-22,NFR**: オープン issue を一括で対応する 第 3 弾 — 波 5-1 (#1034) (c1d0f7aa)
 - **FR-17,UC-10,ADR-0049**: 探索を二段の上限にし、総数と間引き基準を返す (#1007) (2c3bf956)
 - **NFR,SC-16,ADR-0032,IADR-0251**: BFF の既定を振り分けスキームにし Cookie と Bearer の両方を受理する — 第 3 段 3b ① (#1002) (c34f2f28)
 - **UC-06,ADR-0027**: 辺 RawDocumentFetched を Wolverine へ原子的に移す（E1 段 c） (#998) (d9c21f6b)
@@ -302,6 +303,7 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#873) (b1da69e4)
 - **NFR**: 雛形のナビ試験の説明を実際の射程へ直す（#801 の受け入れ基準 4 の観測を兼ねる） (#1024) (bb5d2938)
 - **NFR,ADR-0032,IADR-0251**: 引き継ぎへ 3b ① の着地を反映する (#1005) (99bc8e50)
 - **FR-21,FR-19**: #447 の ⑨⑩ の位置づけを訂正する — 「再掲」と「導出」は違う (#985) (5c3e9911)
@@ -468,6 +470,7 @@
 
 ### ビルド
 
+- **deps**: bump azure/setup-kubectl from 4 to 5 (#1029) (d54202f3)
 - **deps**: bump actions/download-artifact from 7 to 8 (#1028) (536f94d8)
 - **deps**: bump src/ai-stock-trading from `9b9c676` to `0844b58` (#1026) (aa2269e5)
 - **deps**: bump actions/github-script from 8 to 9 (#1027) (2648c9c9)
