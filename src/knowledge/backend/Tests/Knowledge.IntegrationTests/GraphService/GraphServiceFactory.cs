@@ -17,8 +17,8 @@ namespace Knowledge.IntegrationTests.GraphService;
 // マイグレーション出力そのものになる**。`EnsureCreated` はモデルから直接スキーマを作るため、
 // 「マイグレーションが `ON DELETE RESTRICT` を正しく出力しているか」を測れなくなる（#941）。
 public sealed class GraphServiceFactory : IntegrationTestFactoryBase<
-    global::GraphService.Api.GraphServiceTestMarker,
-    global::GraphService.Api.Foundation.Persistence.GraphDbContext>
+    global::GraphService.GraphServiceTestMarker,
+    global::GraphService.Infrastructure.Persistence.GraphDbContext>
 {
     public GraphServiceFactory(PostgresFixture pg) : base(pg, null) { }
 }

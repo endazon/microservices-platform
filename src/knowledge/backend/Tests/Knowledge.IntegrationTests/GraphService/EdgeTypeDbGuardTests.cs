@@ -1,6 +1,6 @@
 using AwesomeAssertions;
-using GraphService.Api.Foundation.Domain;
-using GraphService.Api.Foundation.Persistence;
+using GraphService.Domain;
+using GraphService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
 using Knowledge.IntegrationTests.Fixtures;
 using Microsoft.EntityFrameworkCore;
@@ -17,7 +17,7 @@ namespace Knowledge.IntegrationTests.GraphService;
 // `ux_edge_types_name` / `ux_edges`）は 2026-08-22 の InitialCreate から宣言されているが、
 // **一度も発火したことがない**。#910 の変異試験 G-1 で、アプリ層の事前カウントを外すと
 // 「RESTRICT に弾かれて 500」ではなく **204 NoContent で参照中の型が黙って消えた**。
-// 単体テスト（`GraphService.Api.Tests`）は EF InMemory を使っており、
+// 単体テスト（`GraphService.Tests`）は EF InMemory を使っており、
 // **InMemory プロバイダは一意索引も外部キーも強制しない**ためである（実測: 同プロジェクトの
 // `UseNpgsql` は 0 件）。したがってこの層は**実 PostgreSQL でしか測れない**。
 //
