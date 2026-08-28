@@ -9,7 +9,7 @@ related_ids:
   - IADR-0053
 author: claude
 created: 2026-07-10
-updated: 2026-07-10
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/06_technical/09_datasource-connectors.md (fixed・優先3 SaaS)
 ---
@@ -79,6 +79,17 @@ SaaS は製品ごとに API が異なり単一標準が無い。計画は「レ�
 - HTTP コネクタ共通処理（認証ヘッダ・BaseUrl・Config 解決）の Wiki/SaaS 間での共通化（重複整理）。
 - Polly 等による宣言的リトライ/サーキットブレーカへの置換。
 - 実 SaaS API に対する統合テスト（実 API/コンテナ前提）／Vault 連携（`apiToken` の集中管理。**一元追跡: #310** — `docs/security/security.md` §データソースのコネクタ資格情報）。
+
+> **［2026-08-28 追記 / #458］上の「一元追跡: #310」は失効している。追跡先は #458 である。**
+>
+> **#310 は 2026-08-02 に `duplicate` で close された**（取り込んだのは #447、横断は **#458**）。
+> **旧番号は消さない** —— 当時この追跡先を選んだことは史実であり、消すと「なぜ変わったのか」を
+> 後から追えない。**新旧を並べて置く。**
+>
+> 本文が「Vault 移行までの暫定」と呼んでいた状態のうち、**平文が外へ出る経路は #458 で塞いだ**
+> （応答・ログの 4 経路。マーカー集合の統合を含む。[IADR-0295](./IADR-0295_connector-credential-exposure-paths.md)）。
+> **保存の平文そのものは残っている** —— それが #458（`blocked`。実クラスタが要る）の射程である。
+
 
 ## 関連
 

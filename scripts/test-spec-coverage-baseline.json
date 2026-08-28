@@ -4,6 +4,7 @@
     "docs/tests/FR-01_data-source-catalog.md": [
       "BffDataSourceEndpointTests",
       "DataSourceAuthorizationTests",
+      "DataSourceCredentialExposureTests",
       "DataSourceSyncEndpointTests",
       "DataSourceSyncServiceTests",
       "DataSourceTests",

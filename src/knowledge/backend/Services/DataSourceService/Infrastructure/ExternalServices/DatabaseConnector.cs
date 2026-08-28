@@ -16,6 +16,9 @@ namespace DataSourceService.Infrastructure.ExternalServices;
 //   Discover: SELECT id, updated FROM ( {query} ) AS src を実行し updated>since をインメモリで増分。
 //   Fetch:    SELECT content FROM ( {query} ) AS src WHERE id = @id（パラメータ化）→ 本文バイト＋content-type。
 //   認証/権限: 接続情報は ConnectionUri（パスワードを含めない）＋Config["password"]（GET 応答でマスク）。
+//     IADR-0295 決定 3: **「パスワードを含めない」は強制されるようになった** —— 従前この契約を
+//     守らせる検証はどこにも無く、ConnectionUri は応答へ素で出ていた。現在は資格情報つきの
+//     ConnectionUri を書き込み時に 400 で拒否し（ConnectionUriPolicy）、既存行は応答で伏せる。
 //   失敗: DB エラーは例外送出 → オーケストレータ（IADR-0051 決定3a）が watermark 非前進・継続失敗アラートに載せる。
 //   縮退: ConnectionUri／query 未設定は空列挙。
 public sealed class DatabaseConnector(IDbConnectionFactory connectionFactory, ILogger<DatabaseConnector> logger)
