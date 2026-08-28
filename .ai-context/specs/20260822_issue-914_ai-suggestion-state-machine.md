@@ -1,11 +1,11 @@
 ---
 title: AI 提案の永続と 3 状態遷移 — 却下解除のロジックを書き、発火の欠落を機械で追跡する
 type: spec
-status: draft
+status: done
 related_ids: [FR-18, SC-21, SC-03, ADR-0033, ADR-0034, IADR-0242]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0033_knowledge-graph-data-model-and-store.md
 ---

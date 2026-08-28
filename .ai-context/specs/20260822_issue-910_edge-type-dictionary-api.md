@@ -1,11 +1,11 @@
 ---
 title: 辺の型辞書 API — 改名追随・参照ありの削除拒否・型別使用件数
 type: spec
-status: draft
+status: done
 related_ids: [FR-17, SC-09, SC-10, ADR-0033, IADR-0242]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0033_knowledge-graph-data-model-and-store.md
 ---

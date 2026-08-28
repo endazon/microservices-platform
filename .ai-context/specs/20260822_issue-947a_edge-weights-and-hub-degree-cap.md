@@ -1,11 +1,11 @@
 ---
 title: 辺の型の重みとハブ文書の次数上限 — 計画が実装へ委ねた値を、測れないまま暫定で置く
 type: spec
-status: draft
+status: done
 related_ids: [FR-04, FR-17, UC-10, ADR-0033, ADR-0034, ADR-0035, IADR-0242]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0035_graphrag-retrieval-strategy.md
 ---
