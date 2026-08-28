@@ -10,7 +10,7 @@ author: Claude
 ids: [SC-01, SC-12, SC-13, SC-14, SC-15, SC-16, SC-17, SC-21]
 adrs: [ADR-0031, ADR-0032]
 iadrs: [IADR-0124]
-specs: [20260804_issue-490_spa-router-shell]
+specs: [20260804_issue-490_spa-router-shell, 20260828_issue-439_sc16-account-settings]
 issues: [#439]
 -->
 
@@ -46,6 +46,7 @@ issues: [#439]
 | 1 | 共通シェルにユーザーアイコンが出る | アクセシブル名「アカウント設定（<ユーザー名>）」のリンクが 1 つある | `Layout.test.tsx` |
 | 2 | 遷移先が Keycloak アカウントコンソールである | `href` が `.../account` で終わる | `Layout.test.tsx` |
 | 3 | 遷移先をビルドへ焼き込まない | 実行時 config の `oidc.authority` から組み立てる（末尾スラッシュの有無を吸収する） | `Layout.test.tsx`（`accountConsoleUrl` の純関数テスト） |
+| 4 | 描画された href が実行時 config の値そのものから導かれる | 注入した authority を差し替えると href も追随する | `Layout.test.tsx` |
 
 ## 前提・注記
 
@@ -53,5 +54,9 @@ issues: [#439]
   SPA のルータでは扱わない。したがって導線は `<Link>`（内部遷移）ではなく `<a href>`（外部遷移）である。
 - 接続先（`oidc.authority`）は実行時 config（`public/config.js`）で注入する。環境ごとに異なるため
   テストでは URL の**組み立て規則**のみを固定し、具体的なホスト名は固定しない。
+- 🔴 **ケース 4 はケース 2・3 の穴を塞ぐために足した（2026-08-28）。** ケース 2（href の末尾が
+  `/account`）とケース 3（純関数の振る舞い）は、**シェルが組み立て関数を経由せず URL を直書きしても
+  両方とも緑のまま**である（変異試験で実測。直書きの変異が生き残った）。ケース 4 は注入値を
+  差し替えて href の追随を見るため、この逃げ道で落ちる。
 - 第 3 段（#439 / SPA 認証の BFF セッション方式〔計画リポ〕）で
   BFF セッション方式へ移ると、authority の取得経路が変わり得る。そのとき本書のケース 3 を見直す。

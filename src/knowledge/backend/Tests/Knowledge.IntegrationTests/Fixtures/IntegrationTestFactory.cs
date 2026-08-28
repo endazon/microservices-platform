@@ -60,7 +60,11 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
         // **遅延して**読むため、下の ConfigureAppConfiguration の上書きで間に合っていた。
         // Wolverine のオプション構成は `builder.Build()` の時点で走るので**間に合わず**、
         // 既定の amqp://guest:guest@rabbitmq:5672 へ繋ぎに行って
-        // `BrokerInitializationException: Unable to initialize the Broker rabbitmq in time` になる。
+        // `BrokerInitializationException: Unable to initialize the Broker rabbitmq in time` になった。
+        // 🔴 **［2026-08-28 / #1022］その既定値は撤去した** —— 今は
+        // `InvalidOperationException: RabbitMq:ConnectionString が未設定である` で落ちる。
+        // **「接続失敗」と「構成未注入」が型で読み分けられる**ようになったが、
+        // `UseSetting` が要る理由（読まれる時点）は 1 バイトも変わっていない。
         //
         // **`UseSetting` はホスト構成へ書くので、CreateBuilder が構成を組む時点から見える** ——
         // Pipeline:ConfigPath と同じ理由である。ConfigureAppConfiguration 側の上書きは
@@ -68,10 +72,42 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
         //
         // 🔴 **これは「統合テストの config 上書きは効く」を一般化できない実例が 2 件目である。**
         // 1 件目は Pipeline:ConfigPath（下記）。**読まれる時点で決まる。**
-        if (_rabbit?.ConnectionString is { Length: > 0 } rabbitConnection)
+        //
+        // ［2026-08-28 / #1032］🔴 **そして 3 件目が ConnectionStrings:DefaultConnection である**
+        // （下の `UseSetting`）。#1012 が `Program.cs` を
+        // `GetConnectionString("DefaultConnection") ?? throw` にしたとき、この器は同キーを
+        // **`ConfigureAppConfiguration` の overrides でしか与えておらず**、`develop` の
+        // `integration.yml` で **28 件が `InvalidOperationException` で落ちた**（Total 70 /
+        // Passed 41 / Failed 28 / Skipped 1。`DocumentService/Program.cs:41` が発生源）。
+        // **本ファイルのこのコメントが警告していた罠を、警告した本人が踏んだ形である。**
+        // 対処は器の与え方であって `?? throw` を弱めることではない —— 弱めれば
+        // 「未注入が既定の資格情報で接続成功へ倒れる」#1012 の欠陥がそのまま戻る。
+        if (_rabbit is not null)
         {
-            builder.UseSetting("RabbitMq:ConnectionString", rabbitConnection);
+            // ［2026-08-28 / #1022］🔴 **fail-closed をここへ引き上げた。**
+            // #1022 で `RabbitMq:ConnectionString` も `?? throw` になったため、
+            // 下の overrides に置いていた guard では**間に合わない**（Program.cs の
+            // トップレベル文が先に読む）。フィクスチャを渡された以上、繋ぎ先はそのコンテナで
+            // なければならない —— 無ければここで、**「構成未注入」ではなく「フィクスチャの失敗」
+            // として**止める。この 2 つを読み分けられることが #1022 の要件である。
+            builder.UseSetting("RabbitMq:ConnectionString", _rabbit.ConnectionString
+                ?? throw new InvalidOperationException(
+                    "RabbitMqFixture の接続文字列が null である（コンテナの起動に失敗した可能性が高い）。"
+                    + " 本番配線は RabbitMq:ConnectionString を読み、未設定なら起動時に落ちる（#1022）。"
+                    + " ここで止めないと『構成の注入漏れ』と区別が付かない失敗になる。"
+                    + " dockerd と Testcontainers を確認すること。"));
         }
+
+        // ［2026-08-28 / #1032］**接続文字列はビルダ構築時に見えていなければならない。**
+        // `Program.cs` は `builder.Configuration.GetConnectionString("DefaultConnection")` を
+        // **トップレベル文で即座に**読む（#1012 の fail-fast）。`ConfigureAppConfiguration` で
+        // 足した値が見えるのは**その後**であり、読み取りに間に合わない。
+        // `UseSetting` はホスト構成へ書くので `CreateBuilder` が構成を組む時点から見える。
+        // **下の overrides にも同じキーを残してある** —— `RabbitMq:ConnectionString` と同じ扱いで、
+        // 両方の読み取り時点を満たすためである（消しても現状は動くが、遅い時点で読む配線が
+        // 足されたときに静かに割れるのを避ける）。**在時点で効いているのはこちらである。**
+        builder.UseSetting(
+            "ConnectionStrings:DefaultConnection", _postgres.ConnectionString ?? "Host=localhost");
 
         builder.UseSetting("Pipeline:ConfigPath", RepoFile.Find(
             Path.Combine("deploy", "helm", "microservices-platform", "files", "pipeline.json"),
@@ -90,11 +126,10 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
             //
             // RabbitMqFixture はコンテナ起動失敗を catch して IsAvailable=false にするだけなので、
             // ConnectionString は null のまま残る。本番配線を使うようにした結果、上書きを省くと
-            // Program.cs の既定値 amqp://guest:guest@rabbitmq:5672（compose 前提のホスト名）へ
-            // **静かにフォールバック**し、原因不明の DNS / 接続タイムアウトとして現れる。
-            // 従前は cfg.Host(null) が即座に例外で落ちていたので、失敗の分かりやすさが退行していた。
-            //
-            // フィクスチャを渡された以上、繋ぎ先はそのコンテナでなければならない。無ければ止める。
+            // Program.cs の既定値へ**静かにフォールバック**し、原因不明の DNS / 接続タイムアウトとして
+            // 現れた。🔴 **［2026-08-28 / #1022］その既定値はもう無い**（`?? throw` へ置き換えた）ので、
+            // 上書きを省くと今度は「構成未注入」として落ちる。**どちらにせよフィクスチャを渡された以上、
+            // 繋ぎ先はそのコンテナでなければならない** —— guard は上の UseSetting 側にある。
             // ［2026-08-21 / #455 Phase 0 U0d］**段宣言（pipeline.json）を本番と同じ経路で通す。**
             //
             // 従前ここは Pipeline:ConfigPath を設定しておらず、AddPlatformPipelineStep は
@@ -120,14 +155,11 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
             // 🔴 **本番が読む正本を指す。テストへ複製しない。** 複製すると本番の宣言を変えても
             // テストの複製は古いままになり、「宣言と実装の一致」を検査するはずのテストが
             // **古い宣言との一致**を検査するようになる（検査しているつもりで何も守らない）。
-            if (_rabbit is not null)
+            // ［2026-08-28 / #1022］guard は上の UseSetting へ引き上げた（読み取りに間に合わないため）。
+            // ここは遅い時点で読む配線のために同じ値を重ねるだけである。
+            if (_rabbit?.ConnectionString is { Length: > 0 } rabbitConnection)
             {
-                overrides["RabbitMq:ConnectionString"] = _rabbit.ConnectionString
-                    ?? throw new InvalidOperationException(
-                        "RabbitMqFixture の接続文字列が null である（コンテナの起動に失敗した可能性が高い）。"
-                        + " 本番配線は RabbitMq:ConnectionString を読むため、ここで止めないと"
-                        + " 既定の amqp://guest:guest@rabbitmq:5672 へ繋ぎに行き、"
-                        + " 原因の分からない接続タイムアウトになる。dockerd と Testcontainers を確認すること。");
+                overrides["RabbitMq:ConnectionString"] = rabbitConnection;
             }
             cfg.AddInMemoryCollection(overrides);
         });

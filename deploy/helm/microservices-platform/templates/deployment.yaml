@@ -107,6 +107,21 @@ spec:
             - name: ConnectionStrings__DefaultConnection
               value: "Host={{ $.Values.global.db.host }};Port={{ $.Values.global.db.port }};Database={{ $svc.database }};Username={{ $.Values.global.db.user }};Password=$(DB_PASSWORD)"
           {{- end }}
+          {{- if $svc.messaging }}
+            # NFR, ADR-0027, #1022: ブローカ接続。**資格情報をイメージへ焼かない** —— appsettings.json は
+            # RabbitMq:ConnectionString を持たず（#1022 で撤去）、ここで注入しなければサービスは起動時に
+            # 落ちる（注入漏れが「既定の資格情報で接続成功」へ倒れない）。
+            # パスワードは Secret から RABBITMQ_PASSWORD として入れ、接続文字列は k8s の $(VAR) 補間で
+            # 組む（env の値に平文パスワードを描画しない。同一 container 内で先に定義した env のみ
+            # 参照できるので順序を崩さないこと）。#1012 の global.db ブロックと同型である。
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.global.messaging.existingSecret }}
+                  key: {{ $.Values.global.messaging.passwordKey }}
+            - name: RabbitMq__ConnectionString
+              value: "amqp://{{ $.Values.global.messaging.user }}:$(RABBITMQ_PASSWORD)@{{ $.Values.global.messaging.host }}:{{ $.Values.global.messaging.port }}"
+          {{- end }}
           {{- range $svc.extraEnv }}
             - name: {{ .name }}
               {{- if .value }}

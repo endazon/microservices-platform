@@ -15,8 +15,14 @@ x-common-env: &common-env
 x-db-env: &db-env
   ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Username=kp;Password=kp
 
+# NFR, #1022: ブローカ接続。**資格情報をイメージへ焼かない。** 各サービスの `appsettings.json` は
+# `RabbitMq:ConnectionString` を持たず（#1022 で撤去）、未注入なら起動時に落ちる。
+# 資格情報は .env（RABBITMQ_USER / RABBITMQ_PASSWORD）で上書きする（コミットしない。dev 既定のみ）。
+# ⚠️ dev 既定を変えるときは下の `rabbitmq` サービスと**同じ変数**で動くので値はズレないが、
+#    AST 側（src/ai-stock-trading の chart / appsettings）は自前の guest:guest を持つため
+#    ローカル k8s では別途上書きが要る（#1022 §申し送り）。
 x-rabbit-env: &rabbit-env
-  RabbitMq__ConnectionString: amqp://guest:guest@rabbitmq:5672
+  RabbitMq__ConnectionString: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672
 
 # FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: 本文・資産の S3 互換オブジェクトストレージ（MinIO）接続。
 # 資格情報は .env（MINIO_ROOT_USER / MINIO_ROOT_PASSWORD）で上書きする（コミットしない。dev 既定のみ）。
@@ -50,8 +56,11 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      # NFR, #1022: ブローカ自身の資格情報も dev 既定のリテラルに固定しない（.env で上書き可）。
+      # ⚠️ 既に初期化済みの `rabbitmq-data` ボリュームがあると、この 2 つは無視される
+      #    （RabbitMQ は初回起動時にだけ既定利用者を作る）。値を変えたら volume を作り直すこと。
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
     ports:
       - "5672:5672"
       - "15672:15672"

@@ -6,7 +6,8 @@
 #
 # 前提ツール: docker / k3d / kubectl / helm（scripts/README や docs/operations 参照）。
 # 機密の上書きは環境変数で: PG_PASSWORD / RABBITMQ_PASSWORD / KEYCLOAK_ADMIN_PASSWORD /
-#   MINIO_ACCESS_KEY / MINIO_SECRET_KEY / WIKIJS_DB_PASSWORD / WIKIJS_SYNC_APIKEY / ANTHROPIC_API_KEY
+#   MINIO_ACCESS_KEY / MINIO_SECRET_KEY / WIKIJS_DB_PASSWORD / WIKIJS_SYNC_APIKEY / ANTHROPIC_API_KEY /
+#   RABBITMQ_USER（#1022。helm の global.messaging.user と揃えること）
 set -euo pipefail
 
 CLUSTER="${1:-msp-ast-dev}"
@@ -87,7 +88,11 @@ kubectl create namespace "$INFRA_NS" --dry-run=client -o yaml | kubectl apply -f
 # 異なり **ESO=1 でも手動 apply をスキップしない**。ESO はこの後の ESO ブロックで `creationPolicy: Merge` の
 # ExternalSecret を適用し、既存 Secret に **同一値を上書きするだけ**（所有・再作成しない）で本番同等の供給経路を配線する。
 apply_secret "$INFRA_NS" postgres        "password=${PG_PASSWORD:-postgres}"
-apply_secret "$INFRA_NS" rabbitmq        "password=${RABBITMQ_PASSWORD:-guest}"
+# NFR, #1022: ブローカ自身の資格情報（利用者名・パスワード）を Secret 由来にする。
+# deploy/local/infra/rabbitmq.yaml が RABBITMQ_DEFAULT_USER/PASS を**非 optional** に参照する。
+# ⚠️ RABBITMQ_USER を変えるときは helm の global.messaging.user も併せて上書きすること
+#    （app 側の接続文字列は chart が組む）。AST chart は自前の guest:guest を持つ（#1022 §申し送り）。
+apply_secret "$INFRA_NS" rabbitmq        "username=${RABBITMQ_USER:-guest}" "password=${RABBITMQ_PASSWORD:-guest}"
 apply_secret "$INFRA_NS" keycloak-admin  "password=${KEYCLOAK_ADMIN_PASSWORD:-admin}"
 
 # Keycloak realm import 用 ConfigMap（実 realm ファイル＝単一情報源）。
@@ -155,6 +160,11 @@ if [ "${ESO:-}" != "1" ]; then
   # これが無いと各サービスは起動時に落ちる（注入漏れが既定資格情報で成功へ倒れない）。
   # dev 既定は init スクリプトが作る `kp`（deploy/local/infra/postgres.yaml）。env で上書きする。
   apply_secret "$MSP_NS" postgres-app "password=${APP_DB_PASSWORD:-kp}"
+  # NFR, ADR-0027, #1022: ブローカのパスワード（app 側）。**appsettings.json から接続文字列を撤去した**ため、
+  # これが無いと RabbitMQ を使う 7 サービスは起動時に落ちる（helm の deployment.yaml が
+  # global.messaging.existingSecret を **非 optional** な secretKeyRef で参照する）。
+  # dev 既定は step 3 のブローカ側と同値（env RABBITMQ_PASSWORD で両方を上書きする）。
+  apply_secret "$MSP_NS" rabbitmq-app "password=${RABBITMQ_PASSWORD:-guest}"
   apply_secret "$MSP_NS" wikijs-db "password=${WIKIJS_DB_PASSWORD:-kp}"
   apply_secret "$MSP_NS" wikijs-sync "apiKey=${WIKIJS_SYNC_APIKEY:-}"
 fi
@@ -255,6 +265,9 @@ if [ "${ESO:-}" = "1" ]; then
   # NFR, ADR-0002 (#1012): サービス DB のパスワード。手動 apply は上の `ESO != 1` ブロックで
   # スキップされるので、**これが唯一の供給元**である（欠けると DB を持つ全サービスが起動しない）。
   kubectl apply -f deploy/local/vault/eso/externalsecret-postgres-app.yaml
+  # NFR, ADR-0027 (#1022): ブローカのパスワード（app 側）。手動 apply は上の `ESO != 1` ブロックで
+  # スキップされるので、**これが唯一の供給元**である（欠けると RabbitMQ を使う 7 サービスが起動しない）。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq-app.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-db.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-sync.yaml
   # IADR-0098 (#310) PR-3: OIDC client secret 群。minio-oidc は MSP ns、grafana/vault/headlamp-oidc は platform-infra ns。
@@ -278,14 +291,14 @@ if [ "${ESO:-}" = "1" ]; then
   kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-admin.yaml
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 6 本。infra ns は基盤 3 本＋vault-oidc 常時＋有効ゲートの grafana/headlamp-oidc。
+  # 誤解させない）。MSP ns は常時 7 本（#1022 で rabbitmq-app を追加し 6 → 7 へ数え直した）。infra ns は基盤 3 本＋vault-oidc 常時＋有効ゲートの grafana/headlamp-oidc。
   infra_es="postgres rabbitmq keycloak-admin vault-oidc"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
-  echo "    ESO: llm/minio-credentials/postgres-app/wikijs-db/wikijs-sync/minio-oidc（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
+  echo "    ESO: llm/minio-credentials/postgres-app/rabbitmq-app/wikijs-db/wikijs-sync/minio-oidc（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
   echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc および有効ゲートの grafana/headlamp-oidc を"
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
-  echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials postgres-app wikijs-db wikijs-sync minio-oidc"
+  echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc"
   echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret $infra_es"
 
   # IADR-0103 (#354): env の `secretKeyRef` は **Pod 起動時に一度だけ解決され、その後の Secret 更新は

@@ -95,6 +95,15 @@ var pipeline = builder.Configuration.GetPlatformPipeline();
 // デノーマライズ保持する（graph-sync 段）。本サービス初のメッセージング導入であり、
 // 最初から Wolverine である（MassTransit は選べない —— backend-library-baseline 非掲載のため
 // 新規参照は即 fail。ADR-0030）。
+// NFR, ADR-0027, #1022: ブローカ接続。**既定資格情報をイメージへ焼かない** —— appsettings.json からも
+// 撤去したため、構成が注入されていなければここで落ちる（注入漏れが「既定の資格情報で接続成功」へ
+// 倒れない。#1012 / IADR-0286 の DB と同型。IADR-0291）。**1 サービス 1 解決点にする。**
+var rabbitConnection = builder.Configuration["RabbitMq:ConnectionString"]
+    ?? throw new InvalidOperationException(
+        "RabbitMq:ConnectionString が未設定である。環境変数 RabbitMq__ConnectionString で注入すること"
+        + "（k8s は helm の global.messaging、compose は x-rabbit-env が注入する）。"
+        + " 既定値は持たない —— 未注入をブローカへの接続失敗として現れさせないためである。");
+
 builder.Host.UseWolverine(opts =>
 {
     opts.ServiceName = "graph-service";
@@ -104,8 +113,7 @@ builder.Host.UseWolverine(opts =>
     var deleteStep = opts.AddPlatformWolverineStep<DocumentDeletedConsumer>(pipeline);
     var syncStep = opts.AddPlatformWolverineStep<GraphDocumentSyncConsumer>(pipeline);
 
-    opts.UseRabbitMq(new Uri(builder.Configuration["RabbitMq:ConnectionString"]
-        ?? "amqp://guest:guest@rabbitmq:5672")).AutoProvision();
+    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision();
 
     // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う
     // （fan-out の保存: 他購読サービスと別キューになりサービス名前置で分かれる）。

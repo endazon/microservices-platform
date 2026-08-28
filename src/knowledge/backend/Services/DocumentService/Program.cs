@@ -96,8 +96,14 @@ var pipeline = builder.Configuration.GetPlatformPipeline();
 builder.Services.AddPlatformIntrospection("document-service", pipeline,
     i => i.AddStep<DocumentService.Features.Documents.DocumentNormalizedConsumer>());
 
+// NFR, ADR-0027, #1022: ブローカ接続。**既定資格情報をイメージへ焼かない** —— appsettings.json からも
+// 撤去したため、構成が注入されていなければここで落ちる（注入漏れが「既定の資格情報で接続成功」へ
+// 倒れない。#1012 / IADR-0286 の DB と同型。IADR-0291）。**1 サービス 1 解決点にする。**
 var rabbitConnection = builder.Configuration["RabbitMq:ConnectionString"]
-    ?? "amqp://guest:guest@rabbitmq:5672";
+    ?? throw new InvalidOperationException(
+        "RabbitMq:ConnectionString が未設定である。環境変数 RabbitMq__ConnectionString で注入すること"
+        + "（k8s は helm の global.messaging、compose は x-rabbit-env が注入する）。"
+        + " 既定値は持たない —— 未注入をブローカへの接続失敗として現れさせないためである。");
 
 builder.Services.AddMassTransit(x =>
 {

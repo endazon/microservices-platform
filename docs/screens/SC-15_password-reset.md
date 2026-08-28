@@ -3,14 +3,14 @@ title: パスワードリセット 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-08-15
-updated: 2026-08-23
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
 ids: [SC-10, SC-13, SC-14, SC-15, UC-05]
 adrs: [ADR-0026, ADR-0045]
 iadrs: [IADR-0197, IADR-0261]
-specs: [20260823_issue-438_keycloak-theme-and-smtp]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings]
 issues: [#438]
 -->
 
@@ -169,8 +169,10 @@ Keycloak 管理コンソールでの一時パスワード発行と `UPDATE_PASSW
 - **`smtpServer` の実値投入時期**。実環境の値が供給されてから（手順は整備済み）。
 - **全セッション失効の実現方式**（Keycloak の標準挙動で足りるか、作り込みが要るか）。実環境での確認が要る。
 - **管理者による本人確認済みリセット（メール配信の計画 ADR の決定）の運用手順書**（上長承認・口頭伝達・監査ログ）は未作成。
-- **k8s ローカル環境でのテーマ自動配線**（デプロイ用スクリプトに未組み込み。
-  [ワンタイムコード（OTP）](./SC-14_otp-mfa.md) の画面仕様書と同じ残件）。
+- **k8s ローカル環境のテーマは自動配線済みである（2026-08-28）。** ConfigMap
+  （`keycloak-theme-platform`）の生成は `scripts/k8s-local-up.sh` の `[3/7]` に組み込まれた
+  （[ワンタイムコード（OTP）](./SC-14_otp-mfa.md) の画面仕様書と同じ）。
+  **実クラスタでの見た目確認のみ環境待ちで残る。**
 
 <!-- trace-table:
 row1: SC-13

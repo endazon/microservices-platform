@@ -352,7 +352,6 @@ public class ConversionFigureCorrectionTests
             builder.ConfigureAppConfiguration((_, cfg) =>
                 cfg.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["RabbitMq:ConnectionString"] = "amqp://localhost",
                     ["Otlp:Endpoint"] = "http://localhost:4317"
                 }));
             builder.ConfigureServices(services =>

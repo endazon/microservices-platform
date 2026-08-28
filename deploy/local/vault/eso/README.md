@@ -21,12 +21,13 @@ end-to-end 疎通**する。認証は **kubernetes auth**（静的 root トー�
 | `externalsecret-minio.yaml` | ExternalSecret（`secret/msp/minio-credentials` → `minio-credentials` accessKey/secretKey・PR-2/IADR-0097） |
 | `externalsecret-wikijs-db.yaml` | ExternalSecret（`secret/msp/wikijs-db` → `wikijs-db` password・PR-2/IADR-0097） |
 | `externalsecret-wikijs-sync.yaml` | ExternalSecret（`secret/msp/wikijs-sync` → `wikijs-sync` apiKey・PR-2/IADR-0097） |
+| `externalsecret-rabbitmq-app.yaml` | ExternalSecret（`secret/msp/rabbitmq-app` → `rabbitmq-app` password・**MSP ns**・**Owner**・#1022。**手動 apply をスキップするので唯一の供給元**） |
 | `externalsecret-minio-oidc.yaml` | ExternalSecret（`secret/msp/minio-oidc` → `minio-oidc` client-secret・**MSP ns**・PR-3/IADR-0098） |
 | `externalsecret-grafana-oidc.yaml` | ExternalSecret（`secret/msp/grafana-oidc` → `grafana-oidc` client-secret・**platform-infra ns**・PR-3/IADR-0098） |
 | `externalsecret-vault-oidc.yaml` | ExternalSecret（`secret/msp/vault-oidc` → `vault-oidc` client-secret・**platform-infra ns**・PR-3/IADR-0098） |
 | `externalsecret-headlamp-oidc.yaml` | ExternalSecret（`secret/msp/headlamp-oidc` → `headlamp-oidc` client-secret・**platform-infra ns**・PR-3/IADR-0098） |
 | `externalsecret-postgres.yaml` | ExternalSecret（`secret/msp/postgres` → `postgres` password・**platform-infra ns**・**creationPolicy: Merge**・PR-4/IADR-0099） |
-| `externalsecret-rabbitmq.yaml` | ExternalSecret（`secret/msp/rabbitmq` → `rabbitmq` password・**platform-infra ns**・**Merge**・PR-4/IADR-0099） |
+| `externalsecret-rabbitmq.yaml` | ExternalSecret（`secret/msp/rabbitmq` → `rabbitmq` **username/password**・**platform-infra ns**・**Merge**・PR-4/IADR-0099。username は #1022 で追加） |
 | `externalsecret-keycloak-admin.yaml` | ExternalSecret（`secret/msp/keycloak-admin` → `keycloak-admin` password・**platform-infra ns**・**Merge**・PR-4/IADR-0099） |
 | `externalsecret-keycloak-smtp.yaml` | ExternalSecret（`secret/msp/keycloak-smtp` → `keycloak-smtp` host/port/starttls/from/user/password・**platform-infra ns**・#438・ADR-0045 決定 2-b/6。★**未配線**、下記参照） |
 
@@ -82,7 +83,7 @@ kubectl -n platform-infra get externalsecret,secret postgres rabbitmq keycloak-a
   infra rollout（ブロッキング）で **非 optional** に消費されるため、Vault/ESO がまだ無いこの時点で手動作成が必須
   （bootstrap）。よって **`ESO=1` でも手動 apply をスキップしない**。ExternalSecret は **`creationPolicy: Merge`** で
   既存 Secret に **同一値を上書きするだけ**（所有・再作成しない）。seed 値は step 3 の手動 apply と**完全一致**
-  （`PG_PASSWORD`/`RABBITMQ_PASSWORD`/`KEYCLOAK_ADMIN_PASSWORD` の env 由来 or 既定 `postgres`/`guest`/`admin`）の
+  （`PG_PASSWORD`/`RABBITMQ_USER`＋`RABBITMQ_PASSWORD`/`KEYCLOAK_ADMIN_PASSWORD` の env 由来 or 既定 `postgres`/`guest`＋`guest`/`admin`）の
   ため、値不変＝**Pod 再起動や PVC 初期化済み DB のパスワード不整合を起こさない**。本番同等の Vault→ESO 供給経路を
   配線しつつローカル bootstrap を壊さない設計。
 - role/policy 未作成・未 seed のうちは ESO は同期しない（fail-safe＝secret は供給されず外部 LLM 不使用）。

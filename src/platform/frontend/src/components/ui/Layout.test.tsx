@@ -9,6 +9,7 @@ import type { AuthState } from '@foundation/auth/AuthContext';
 // 実アプリのルータを使う（合成点のナビ登録もこの import の副作用で行われる）。
 import { router } from '@foundation/routing/router';
 import { accountConsoleUrl } from './Layout';
+import { resetAppConfigCache } from '@foundation/config/runtimeConfig';
 
 // Issue #136 / IADR-0035: ナビはユニットの登録から導出し、権限外の項目は描画しない（存在秘匿）。
 // 05_screens §共通シェル / IADR-0124 決定 6・7: ブランド表示名・4 グループ・ユーザーアイコン（→ SC-16）。
@@ -176,6 +177,27 @@ describe('Layout common shell (brand / SC-16)', () => {
     expect(accountConsoleUrl('https://auth.example/realms/platform/')).toBe(
       'https://auth.example/realms/platform/account',
     );
+  });
+
+  // 🔴 SC-16 / CLAUDE.md「接続先はビルドに焼き込まず実行時 config で注入する」:
+  // 上の 2 件だけでは**シェルが `accountConsoleUrl` を経由せず URL を直書きしても落ちない**
+  // （href の末尾 `/account` と純関数の振る舞いは、直書きでも両方満たされる。変異試験で実測）。
+  // 描画された href を**実行時 config の値そのもの**に結び付けて、その逃げ道を塞ぐ。
+  it('derives the rendered SC-16 href from the injected runtime authority (no build-time baking)', async () => {
+    const saved = window.__APP_CONFIG__;
+    window.__APP_CONFIG__ = {
+      ...saved,
+      oidc: { authority: 'https://idp.test.invalid/realms/mutant', clientId: 'platform-spa' },
+    };
+    resetAppConfigCache();
+    try {
+      await renderLayout([]);
+      const link = await screen.findByRole('link', { name: /アカウント設定/ });
+      expect(link).toHaveAttribute('href', 'https://idp.test.invalid/realms/mutant/account');
+    } finally {
+      window.__APP_CONFIG__ = saved;
+      resetAppConfigCache();
+    }
   });
 });
 

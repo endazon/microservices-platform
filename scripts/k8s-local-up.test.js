@@ -926,6 +926,53 @@ ok('既定 (#1012): postgres-app を手動 apply する（ESO 未設定）', () 
   );
 });
 
+// NFR, ADR-0027 (#1022): rabbitmq-app（ブローカのパスワード・app 側）も postgres-app と同じ対にする。
+//
+// 🔴 **これは #1012 が事後に踏んだ欠陥の再発防止である**（IADR-0286 の 2026-08-28 追記）。
+// #1022 は appsettings.json から RabbitMq:ConnectionString を撤去し、helm の deployment.yaml が
+// rabbitmq-app を **非 optional** で参照するようにした。手動 apply を `ESO != 1` ブロックへ入れた以上、
+// **対応する ExternalSecret を必ず置く** —— 置き忘れると ESO=1 で供給元が 1 つも無くなり、
+// RabbitMQ を使う 7 サービス（document / datasource / conversion / ingestion / retrieval / wiki / graph）が
+// `CreateContainerConfigError` で起動しない。
+//
+// **横断の機械検査は依然として無い**（上の #1012 のコメントが 1 回目の記録）。同型が**もう一度**起きたら、
+// `ESO != 1` ブロック内の apply_secret を走査して `externalsecret-<name>.yaml` の実在と apply を突合する
+// 検査へ一般化すること。本件は「先例に倣って対を置いた」ケースであって、事故の 2 回目ではない。
+ok('ESO=1 (#1022): rabbitmq-app の ExternalSecret を apply・手動 apply はスキップ', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  assert.ok(
+    anyLineHas(res.lines, 'deploy/local/vault/eso/externalsecret-rabbitmq-app.yaml'),
+    'externalsecret-rabbitmq-app.yaml が apply されない（ESO=1 で rabbitmq-app の供給元が無くなる）',
+  );
+  assert.ok(
+    !anyLineHas(res.lines, 'create secret generic rabbitmq-app'),
+    'ESO=1 なのに rabbitmq-app を手動 apply している（二重所有）',
+  );
+});
+
+// 回帰: 既定（ESO 未設定）は rabbitmq-app を手動 apply する。
+ok('既定 (#1022): rabbitmq-app を手動 apply する（ESO 未設定）', () => {
+  assert.ok(
+    anyLineHas(DEFAULT.lines, 'create secret generic rabbitmq-app'),
+    'rabbitmq-app の手動 apply が無い（ESO 未設定では唯一の供給元）',
+  );
+});
+
+// NFR (#1022): ブローカ自身の資格情報は **利用者名も** Secret 由来である。
+// deploy/local/infra/rabbitmq.yaml は RABBITMQ_DEFAULT_USER を `secretKeyRef: rabbitmq/username` で
+// **非 optional** に参照するので、username を作らないとブローカ Pod が起動しない。
+// 基盤 secret は bootstrap 必須のため **ESO=1 でも手動 apply をスキップしない**（PR-4/IADR-0099）。
+ok('#1022: 基盤 secret rabbitmq は username と password の両方を作る（ESO=1 でもスキップしない）', () => {
+  for (const lines of [DEFAULT.lines, runUp({ VAULT: '1', ESO: '1' }).lines]) {
+    const line = lines.find((l) => l.includes('create secret generic rabbitmq ')
+      || /create secret generic rabbitmq$/.test(l.trim())
+      || /create secret generic rabbitmq\s/.test(l));
+    assert.ok(line, 'rabbitmq の手動 apply が無い（infra rollout がブロックされる）');
+    assert.ok(line.includes('--from-literal=username='), 'rabbitmq Secret に username が無い');
+    assert.ok(line.includes('--from-literal=password='), 'rabbitmq Secret に password が無い');
+  }
+});
+
 // IADR-0098 (#310) PR-3: ESO=1 で OIDC client secret 群（minio/grafana/vault/headlamp-oidc）も ExternalSecret 供給し、
 // 各機能ゲート内の手動 apply はスキップする（二重所有回避）。ゲートを全て有効化して skip を確認する。
 ok('ESO=1 (PR-3): OIDC 4 ExternalSecret apply・4 OIDC secret の手動 apply はスキップ', () => {

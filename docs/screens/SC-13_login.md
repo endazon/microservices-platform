@@ -3,14 +3,14 @@ title: ログイン（Keycloak 統合認証） 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
 ids: [SC-01, SC-13, SC-14, SC-15, SC-16, UC-05]
 adrs: [ADR-0026]
 iadrs: [IADR-0197, IADR-0261]
-specs: [20260823_issue-438_keycloak-theme-and-smtp]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings]
 issues: [#438]
 -->
 
@@ -128,8 +128,10 @@ flowchart LR
 ## 未決事項
 
 - **ログイン画面単独のテスト仕様書は本作業では新設していない**（残件）。
-- **k8s ローカル環境でのテーマ自動配線**（デプロイ用スクリプトに未組み込み。
-  [ワンタイムコード（OTP）](./SC-14_otp-mfa.md) の画面仕様書と同じ残件）。
+- **k8s ローカル環境のテーマは自動配線済みである（2026-08-28）。** ConfigMap
+  （`keycloak-theme-platform`）の生成は `scripts/k8s-local-up.sh` の `[3/7]` に組み込まれた
+  （[ワンタイムコード（OTP）](./SC-14_otp-mfa.md) の画面仕様書と同じ）。
+  **実クラスタでの見た目確認のみ環境待ちで残る。**
 
 <!-- trace-table:
 row1: SC-14

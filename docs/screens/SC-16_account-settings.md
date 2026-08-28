@@ -3,14 +3,14 @@ title: アカウント設定（Keycloak アカウントコンソール） 画面
 type: screen-spec
 status: completed
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
 ids: [SC-01, SC-13, SC-14, SC-15, SC-16, SC-17, UC-05]
 adrs: [ADR-0026]
 iadrs: [IADR-0197, IADR-0261]
-specs: [20260823_issue-438_keycloak-theme-and-smtp]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings]
 issues: [#438]
 -->
 
@@ -113,9 +113,15 @@ issues: [#438]
 
 ## 未決事項
 
-- **アカウント設定単独のテスト仕様書は本作業では新設していない**（導線側のテスト仕様書は既存）。
-- **k8s ローカル環境でのテーマ自動配線**（デプロイ用スクリプトに未組み込み。
-  [ワンタイムコード（OTP）](./SC-14_otp-mfa.md) の画面仕様書と同じ残件）。
+- **アカウント設定単独のテスト仕様書は作らないと判定した（2026-08-28）。** 本リポジトリが持つ
+  実体は「テーマ」と「導線」の 2 つだけで、どちらも既にテスト仕様書を持つ —— テーマの宣言と
+  実体の突合は [ログイン](../tests/SC-13_login.md) のテスト仕様書（`accountTheme` を検査対象に含む）、
+  導線は [アカウント設定への導線](../tests/SC-16_account-settings-entry.md)。3 冊目を作ると
+  同じ内容が 2 箇所に分かれ、片方が腐る。
+- **k8s ローカル環境のテーマは自動配線済みである（2026-08-28）。** ConfigMap
+  （`keycloak-theme-platform`）の生成は `scripts/k8s-local-up.sh` の `[3/7]` に組み込まれた
+  （[ワンタイムコード（OTP）](./SC-14_otp-mfa.md) の画面仕様書と同じ）。
+  **実クラスタでの見た目確認のみ環境待ちで残る。**
 
 <!-- trace-table:
 row1: SC-13

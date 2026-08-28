@@ -162,7 +162,8 @@ PERSIST=1 OBSERVABILITY=1 bash scripts/k8s-local-up.sh
 | 環境変数 | 生成 Secret / キー | 既定 | 用途 |
 | --- | --- | --- | --- |
 | `PG_PASSWORD` | `platform-infra/postgres.password` | `postgres` | Postgres 管理 |
-| `RABBITMQ_PASSWORD` | `platform-infra/rabbitmq.password` | `guest` | RabbitMQ |
+| `RABBITMQ_USER` | `platform-infra/rabbitmq.username` | `guest` | RabbitMQ 利用者名（#1022。**helm の `global.messaging.user` と揃えること**） |
+| `RABBITMQ_PASSWORD` | `platform-infra/rabbitmq.password` ＋ `microservices-platform/rabbitmq-app.password` | `guest` | RabbitMQ（#1022 でアプリ側 Secret を追加。ブローカと同値） |
 | `KEYCLOAK_ADMIN_PASSWORD` | `platform-infra/keycloak-admin.password` | `admin` | Keycloak 管理 |
 | `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` | `microservices-platform/minio-credentials` | `minioadmin` | MinIO（chart 参照） |
 | `WIKIJS_DB_PASSWORD` | `microservices-platform/wikijs-db.password` | `kp` | Wiki.js DB |
@@ -468,7 +469,7 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
 # 事前に infra secrets・realm ConfigMap・テーマ ConfigMap を作成（k8s-local-up.sh の [3/7] が自動化する部分）
 kubectl create namespace platform-infra
 kubectl create secret generic postgres -n platform-infra --from-literal=password=postgres
-kubectl create secret generic rabbitmq -n platform-infra --from-literal=password=guest
+kubectl create secret generic rabbitmq -n platform-infra --from-literal=username=guest --from-literal=password=guest
 kubectl create secret generic keycloak-admin -n platform-infra --from-literal=password=admin
 kubectl create configmap keycloak-realms -n platform-infra \
   --from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json

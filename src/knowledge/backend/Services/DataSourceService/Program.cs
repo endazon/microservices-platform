@@ -43,6 +43,15 @@ builder.Services.AddOpenApi();
 builder.Services.AddDbContext<DataSourceDbContext>(opt => opt.UseNpgsql(connStr));
 
 // ADR-0027 / #441 E1: メッセージング基盤は Wolverine。**本サービスは発行のみで購読を持たない。**
+// NFR, ADR-0027, #1022: ブローカ接続。**既定資格情報をイメージへ焼かない** —— appsettings.json からも
+// 撤去したため、構成が注入されていなければここで落ちる（注入漏れが「既定の資格情報で接続成功」へ
+// 倒れない。#1012 / IADR-0286 の DB と同型。IADR-0291）。**1 サービス 1 解決点にする。**
+var rabbitConnection = builder.Configuration["RabbitMq:ConnectionString"]
+    ?? throw new InvalidOperationException(
+        "RabbitMq:ConnectionString が未設定である。環境変数 RabbitMq__ConnectionString で注入すること"
+        + "（k8s は helm の global.messaging、compose は x-rabbit-env が注入する）。"
+        + " 既定値は持たない —— 未注入をブローカへの接続失敗として現れさせないためである。");
+
 builder.Host.UseWolverine(opts =>
 {
     opts.ServiceName = "datasource-service";
@@ -50,8 +59,7 @@ builder.Host.UseWolverine(opts =>
     // 段をホストしないので探索は要らない。規約探索を切って明示配線に寄せる。
     opts.Discovery.DisableConventionalDiscovery();
 
-    opts.UseRabbitMq(new Uri(builder.Configuration["RabbitMq:ConnectionString"]
-        ?? "amqp://guest:guest@rabbitmq:5672")).AutoProvision();
+    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision();
 
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();
