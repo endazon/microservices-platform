@@ -21,7 +21,8 @@ import type { SyncDeviceDto } from '@foundation/api/generated/bff.schemas';
 // 「失効操作を忘れた場合の最終的な歯止め」であり、自動更新はその統制を実質的に無効化する。
 // 更新は**手動再発行だけ**である。
 
-export const syncDevicesKey = getBffSyncDeviceListQueryKey();
+// **export しない**（未使用 export の床を押し上げないため。SC-19 と同じ）。
+const syncDevicesKey = getBffSyncDeviceListQueryKey();
 
 /** 端末一覧（本人のもののみ）。 */
 export function useSyncDevices() {

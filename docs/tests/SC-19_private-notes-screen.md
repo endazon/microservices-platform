@@ -31,8 +31,9 @@ issues: [#451]
 
 ## 実体
 
-| 層 | テストの所在 | 主に固定していること |
+| 層 | テストクラス／ファイル | 主に固定していること |
 | --- | --- | --- |
+| BFF（認可） | `BffPrivateNoteEndpointTests` | 無認証は 401 ／ 他人の資料は 404（403 にしない）／ 書き込みの write スコープ 403 と、それぞれの陽性対照 |
 | 画面 | `sc19-private-notes/components/PrivateNotesPage.test.tsx` | 固定文言・容量の段階・確認ダイアログ・一括操作・露出トグル・否定形 |
 | 純関数 | `sc19-private-notes/types/quota.test.ts` | 段階警告の境界（両側）・内訳の合算・残り日数の切り上げ |
 | 共有部品 | `components/ConfirmDialog.test.tsx` | 押すまで実行されないこと・初期フォーカス・Escape |

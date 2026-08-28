@@ -26,7 +26,8 @@ const PrivateNotesPage = lazyRouteComponent(
  * 🔴 **タブは絞りであって別の問い合わせではない。** 後段は削除済みも同じ一覧に載せて返すので、
  * `active` / `trash` は同じ応答の描き分けにすぎない（容量の内訳と件数バッジも同じ応答から数える）。
  */
-export const TAB_OPTIONS = ['active', 'trash'] as const;
+// **export しない**（値を外から使う画面が無い。型 `TabOption` だけを公開する）。
+const TAB_OPTIONS = ['active', 'trash'] as const;
 export type TabOption = (typeof TAB_OPTIONS)[number];
 
 export interface PrivateNotesSearch {

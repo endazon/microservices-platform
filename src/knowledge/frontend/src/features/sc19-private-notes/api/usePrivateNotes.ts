@@ -24,7 +24,9 @@ import type { PrivateNoteListResponse } from '@foundation/api/generated/bff.sche
 // IADR-0127 決定 5: 更新系の成功後は `invalidateQueries` だけを行う（手書きの再取得を持たない）。
 // 無効化の対象は**一覧 1 本**でよい —— 容量も削除済みも同じ応答に載っているためである。
 
-export const privateNotesKey = getBffPrivateNoteListQueryKey();
+// **export しない** —— feature の外から使う口を作ると未使用 export の床（check-knip）を押し上げる
+// （SC-21 の `suggestionParams` と同じ理由）。
+const privateNotesKey = getBffPrivateNoteListQueryKey();
 
 /**
  * 一覧＋容量（本人のもののみ）。
