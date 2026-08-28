@@ -38,6 +38,10 @@ MAPPING=(
   "microservices-platform/retrieval-service|src/knowledge/backend/Services/RetrievalService/Dockerfile"
   "microservices-platform/aianalysis-service|src/knowledge/backend/Services/AiAnalysisService/Dockerfile"
   "microservices-platform/authorization-service|src/platform/backend/Services/AuthorizationService/Dockerfile"
+  # FR-22, ADR-0045, IADR-0288 (#1025): 利用者通知。実装・テスト（53 件）と Dockerfile は揃っていたが
+  # compose / values / MAPPING のいずれにも無く、イメージが焼かれず配備にも出ていなかった
+  # （graph-service の #908/#957 と同型の欠落）。
+  "microservices-platform/notification-service|src/platform/backend/Services/NotificationService/Dockerfile"
   "microservices-platform/wiki-service|src/knowledge/backend/Services/WikiService/Dockerfile"
   "microservices-platform/llm-gateway|src/platform/backend/Services/LlmGateway/Dockerfile"
   "microservices-platform/feedback-service|src/knowledge/backend/Services/FeedbackService/Dockerfile"
