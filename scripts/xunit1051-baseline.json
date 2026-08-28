@@ -124,9 +124,9 @@
     },
     "src/platform/backend/Shared/Platform.Shared.Infrastructure.Tests/Platform.Shared.Infrastructure.Tests.csproj": {
       "project": "Platform.Shared.Infrastructure.Tests",
-      "remaining": 4,
-      "migrated": false,
-      "deferReason": "U5 / Wolverine 移行チェーン（#455 系）が本プロジェクトへテストを追加中のため据え置く。当初は 0 件だったが、実際に追加されて 4 件になった（#961 で実測。先に WarningsAsErrors を入れていれば並行 PR が自分の追加分で落ちていた）。移行チェーンの着地後に単独 PR で剥がす。"
+      "remaining": 0,
+      "migrated": true,
+      "note": "#882: 据え置き理由（Wolverine 移行チェーンがテストを追加中）は波 2 で同チェーンが着地して解消したため剥がした。実測 4 件を TestContext.Current.CancellationToken へ移行。"
     },
     "src/platform/backend/Shared/Platform.Shared.Kernel.Tests/Platform.Shared.Kernel.Tests.csproj": {
       "project": "Platform.Shared.Kernel.Tests",

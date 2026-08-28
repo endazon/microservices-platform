@@ -69,7 +69,7 @@ public class CommonServiceExtensionsTests
     {
         await using var app = await StartAsync();
 
-        var res = await app.GetTestClient().GetAsync("/open");
+        var res = await app.GetTestClient().GetAsync("/open", TestContext.Current.CancellationToken);
 
         res.StatusCode.Should().Be(HttpStatusCode.OK);
         res.Headers.TryGetValues(Header, out var values).Should().BeTrue(
@@ -86,7 +86,7 @@ public class CommonServiceExtensionsTests
         var client = app.GetTestClient();
         var req = new HttpRequestMessage(HttpMethod.Get, "/open");
         req.Headers.Add(Header, "given-correlation-id");
-        var res = await client.SendAsync(req);
+        var res = await client.SendAsync(req, TestContext.Current.CancellationToken);
 
         res.Headers.GetValues(Header).Single().Should().Be("given-correlation-id");
     }
@@ -98,7 +98,7 @@ public class CommonServiceExtensionsTests
     {
         await using var app = await StartAsync();
 
-        var res = await app.GetTestClient().GetAsync("/secure");
+        var res = await app.GetTestClient().GetAsync("/secure", TestContext.Current.CancellationToken);
 
         res.StatusCode.Should().Be(
             HttpStatusCode.OK,
@@ -112,6 +112,6 @@ public class CommonServiceExtensionsTests
     {
         await using var app = await StartAsync();
 
-        (await app.GetTestClient().GetAsync("/open")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await app.GetTestClient().GetAsync("/open", TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 }
