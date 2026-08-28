@@ -16,10 +16,13 @@
  *   - ビルド生成物（bin / obj 配下）。
  *   - テストプロジェクト: 資格情報を持たないダミーを使う（`Host=localhost;Database=x_test`）。
  *
- * **ラチェット**: 既知の残件（RabbitMQ の `amqp://guest:guest@` 13 箇所）は
- * `scripts/default-credentials-baseline.json` に凍結してある。**増やせないが、減らすのは自由**
- * （baseline に在るのに実在しない行は「直った」と見なし、baseline の更新を促して落とす＝前方一方向）。
- * RabbitMQ を射程から外した理由は作業仕様書 `20260828_issue-1012_default-credentials.md` §対象と除外。
+ * **ラチェット**: 既知の残件は `scripts/default-credentials-baseline.json` に凍結する。
+ * **増やせないが、減らすのは自由**（baseline に在るのに実在しない行は「直った」と見なし、
+ * baseline の更新を促して落とす＝前方一方向）。
+ * **[2026-08-28 / #1022] baseline は 0 件になった。** 残っていた RabbitMQ の `amqp://guest:guest@`
+ * 13 箇所（`Program.cs` 7 ＋ `appsettings.json` 6）を撤去し、helm（`global.messaging`）と compose が
+ * 接続文字列を注入する形へ移した（IADR-0291）。**0 件は「検査が空回りしている」ではない** ——
+ * 走査対象 0 件は上の fail-closed が落とすので、`known: []` は「新規の混入が無い」を意味する。
  *
  * 使い方: `node scripts/check-default-credentials.js [--self-test] [--update]`
  * 外部依存ゼロ（Node 標準モジュールのみ）。違反があれば終了コード 1。
