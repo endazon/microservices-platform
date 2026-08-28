@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 ルートマニフェストの静的検査と「ルートの実在を固定できる」という誤記の是正（#1013）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - NFR
   - SC-03
@@ -208,8 +208,95 @@ self-test に陽性・陰性の両方を置く。
 - ルート木: 既存 `router.test.ts` に **`PLANNED_ROUTES` と除外集合が交わらない**ことの検査を足す
   （除外宣言が「マニフェストにも書いたうえで除外もする」形に腐るのを止める）。
 
-## 変異試験（実施後に記録する）
+## 変異試験（2026-08-28 に実施。いずれも元へ戻し、`git status` で残渣 0 を確認した）
+
+### 新設した静的検査（「壊すと落ちる」ことの実測）
+
+| # | 当てた変異 | 期待 | 実測 |
+| --- | --- | --- | --- |
+| M1 | `PLANNED_ROUTES` から `['SC-19', '/my/notes'],` の 1 行を削る | 順方向で落ちる | **exit 1 / 違反 1 件** `[missing-from-manifest] …/sc19-private-notes/ が /my/notes を宣言しているのに、PLANNED_ROUTES にも SCREENS_NOT_IN_THE_ROUTE_TABLE にも無い` |
+| M2 | `['SC-18', '/graph']` を `['SC-17', '/graph']` へ取り違える | 逆方向で落ちる | **exit 1 / 違反 2 件** `[missing-from-manifest] SC-18` ＋ `[unknown-in-manifest] SC-17`（**Vitest はこの変異で緑のままである** —— パスは木にあるため） |
+| M3 | `sc05-documents.smoke.spec.ts` へ是正前の 3 行を書き戻す | 判定 2 で落ちる | **exit 1** `sc05-documents.smoke.spec.ts:9 [route-existence-also-fixed] ルートが実在すること」も同時に固定できる` |
+| M4 | `docs/tests/SC-10` の E1 見出しを「ルートの実在 ＋ 認証ガード」へ戻す | 判定 2 で落ちる | **exit 1** `SC-10_operations-dashboard.md:137 [route-existence-label]` |
+| M5 | 除外の理由を `'—'` にする ／ SC-04 を両方の表へ載せる | 落ちる | `--self-test` の `empty-reason` / `in-both-lists` で実測（フィクスチャ） |
+| M6 | マニフェストを置かない一時リポで実行（門 A） | 0 件解析で緑を返さない | **exit 1**「マニフェストを読めません」 |
+| M7 | マニフェストだけ置き画面 feature を置かない一時リポ（門 B） | 0 件走査で緑を返さない | **exit 1**「0 件検査」 |
+
+**M1・M2・M3 と門 A・門 B は `scripts.repo.test.js` から実データへも当てている**（フィクスチャだけだと
+「実ファイルの形が想定と違う」型の空振りを捕まえられない）。
+
+### 陰性対照（**落としてはならないもの**が落ちないこと）
+
+| 対象 | 実測 |
+| --- | --- |
+| `docs/tests/SC-21_ai-suggestion-list.md`（実データ。「ルートの実在は固定しない」「ルートの実在は T-30 が固定する」を含む） | **違反 0 件**（`scripts.repo.test.js` が固定。前提として当該語を含むことも確認している） |
+| `src/platform/frontend/e2e/sc21-ai-suggestions.smoke.spec.ts`（「ルートの実在は固定できない」「…が Vitest 側で固定している」） | **違反 0 件** |
+| インラインコード／コードフェンスに入れた誤例 | **違反 0 件**（既存の逃げ道と同じ） |
+| 閉じないコードフェンス | **違反 1 件**（盲目化を黙認しない） |
+
+### 陽性対照 —— **ルートの実在を実際に固定しているのは誰か**
+
+| # | 当てた変異 | 静的検査 | `router.test.ts`（Vitest） |
+| --- | --- | --- | --- |
+| M8 | SC-19 のパスを `/my/notes-renamed` へ改名 | **緑（設計どおり。パス値は突き合わせない）** | **2 件が落ちる** —— `mounts SC-19 at /my/notes` / `nav item sc19-private-notes points at an existing route (/my/notes)` |
+| M9 | 合成点 `features/index.ts` から `createSc19PrivateNotesRoute(shell)` を外す | 緑（同上） | **同じ 2 件が落ちる** |
+
+🔴 **#1013 が問うた「改名しても消しても緑」は、Vitest 側では成り立たない。**
+成り立たなかったのは E2E 側である。**2 つの層が別のものを測っていることを、この対照が示す。**
 
 ## 計画との差異（見送りと理由・再開条件）
 
-## 実施の記録
+1. **Playwright での再実測**（ルートを改名しても E2E が緑のままであることの再現）。
+   **見送る。** #918 が既に実測し **#1013 本文が一次情報として持つ**。加えて機序は Vitest 側の既存 2 件
+   （`mounts the catch-all under the authenticated shell` ＋ `matches the catch-all for an unknown path`）が
+   固定しており、**未知パス → catch-all → 認証ガード配下**という連鎖はテスト済みである。
+   再実測にはプレビューのビルドとローカル専用 config の一時設置が要る（本環境では
+   `playwright install` がブラウザを取得できない）。**再開条件**: 受け皿の親を変える改定が出たとき。
+2. **マニフェストのパス値の突き合わせ。** 見送る（理由は §設計 判定 1）。**再開条件**: 計画のルートパス表を
+   機械可読な形で参照できるようになったとき（現在 planning は本リポジトリの依存に入れられない）。
+3. **SC-19 / SC-20 の E2E スモークの新設。** #1013 の射程外（既存の主張の是正であり本数の追加ではない）。
+4. **凍結記録の本文書き換え。** 経過追記に留めた（`IADR-0166` 決定 2 の 2026-08-17 追記）。
+5. **言い換えへの追随（意味の検査）。** 機械では「その主張が真か」を見られない。捕まえるのは
+   コピー由来の再混入だけである。**限界をスクリプト冒頭・`scripts/README.md` の両方に書いた。**
+6. **SC-12（`/admin/mcp-clients`）・SC-17（`/admin/users`）**。計画のルートパス表にはあるが**未実装**であり、
+   feature が無いため判定 1 の対象外である。**実装した瞬間に順方向が落ちる**ので、表への追加漏れは
+   本検査器が捕まえる（今回の SC-18 / 19 / 20 と同じ経路）。
+
+## 実施の記録（2026-08-28）
+
+| コミット | 内容 |
+| --- | --- |
+| `docs(NFR)` | 本仕様書（母集合・除外理由） |
+| `test(SC-18,SC-19,SC-20)` | `PLANNED_ROUTES` へ 3 画面を追加、`SCREENS_NOT_IN_THE_ROUTE_TABLE`（SC-04 と理由）を新設、2 集合の非交差をテストで固定 |
+| `docs(SC-03,…,SC-11)` | live な誤記 8 件（e2e 5 ＋ 試験仕様 3）の書き直し |
+| `test(NFR)` | `scripts/check-route-manifest.js` の新設、`scripts.repo.test.js` への配線、`scripts/README.md` の行、`ci.yml` の `static-checks` へ 2 ステップ |
+| `docs(NFR)` | 凍結記録 3 件への経過追記 |
+
+### 検証（実測）
+
+| 検査 | 結果 |
+| --- | --- |
+| `node scripts/check-route-manifest.js` | OK（画面 15 件 / マニフェスト 14 行 / 除外 1 件 / 走査 66 件） |
+| `node scripts/check-route-manifest.js --self-test` | 20 件すべて通過 |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | **638 件通過**（検査器の母集合ラチェットが 42 → 43 で設計どおり発火したため追随） |
+| `node scripts/check-commit-messages.js --range c4a26f2..HEAD` | 5 件すべて適合 |
+| `check-trace-blocks` / `check-doc-links` / `check-doc-updated` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-nul-bytes` / `check-reading-budget` / `check-action-versions` / `check-ai-workflow-config` | すべて OK |
+| `pnpm run typecheck` | 5 プロジェクトすべて Done |
+| `pnpm run lint` | **0 error**（既存の warning 9 件は本作業の対象外ファイル） |
+| `pnpm run format:check` | All matched files use Prettier code style |
+| `pnpm exec vitest run`（全量） | **96 ファイル / 1176 件すべて通過** |
+
+### CI への配線で確かめたこと
+
+`.github/workflows/ci.yml` の既存ジョブ `static-checks` へ 2 ステップ（`--self-test` と本走）を足しただけであり、
+**ジョブ名・`on:` の起動条件・`paths:` フィルタ・必須チェック名はいずれも変えていない**。
+fs だけで走査するため checkout の `fetch-depth` や submodule 取得も要らない。
+**ステップが消えても気づけるよう**、`scripts.repo.test.js` が `ci.yml` と `scripts/README.md` の
+両方に本検査器の名前が在ることを固定している。
+
+## 未決事項（報告書へ）
+
+- 判定 2 は**リテラルの文面検査**である。**言い換えた誤記は捕まらない。** 同型が再発したら
+  （「同型の事故が 2 回起きたら」の規則に従い）検査の軸そのものを見直す。
+- `PLANNED_ROUTES` の**パス値**は依然として人が計画から書き写す。写し間違いは
+  `router.test.ts` が「木に無い」として落とすが、**計画の表が変わった場合の追随は人が行う。**
