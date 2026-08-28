@@ -1,7 +1,7 @@
 ---
 title: SC-01 検索／チャット質問画面（Issue #127）
 type: spec
-status: draft
+status: done
 related_ids:
   - SC-01
   - UC-01
@@ -11,7 +11,7 @@ related_ids:
   - FR-11
 author: claude
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/03_usecases/01_usecases.md

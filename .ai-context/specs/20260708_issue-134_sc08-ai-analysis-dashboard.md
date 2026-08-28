@@ -1,14 +1,14 @@
 ---
 title: SC-08 AI分析ダッシュボード実装（Issue #134）
 type: spec
-status: draft
+status: done
 related_ids:
   - SC-08
   - UC-02
   - FR-07
 author: claude
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/03_usecases/01_usecases.md

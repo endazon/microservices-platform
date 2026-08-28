@@ -1,14 +1,14 @@
 ---
 title: SC-11 実効構成のグラフ表示（Issue #137）
 type: spec
-status: draft
+status: done
 related_ids:
   - SC-11
   - FR-15
   - ADR-0018
 author: claude
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/06_technical/10_composability-design.md

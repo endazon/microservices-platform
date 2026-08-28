@@ -1,13 +1,13 @@
 ---
 title: SC-11 アクセス制御（存在秘匿）の画面適用とテスト展開（Issue #140）
 type: spec
-status: draft
+status: done
 related_ids:
   - SC-11
   - FR-15
 author: claude
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
 ---

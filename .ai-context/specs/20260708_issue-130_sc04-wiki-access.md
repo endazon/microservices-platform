@@ -1,14 +1,14 @@
 ---
 title: SC-04 Wiki 閲覧導線（Issue #130）
 type: spec
-status: draft
+status: done
 related_ids:
   - SC-04
   - UC-07
   - FR-13
 author: claude
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/03_usecases/01_usecases.md
