@@ -49,7 +49,7 @@
     <ProjectReference Include="..\..\Services\WikiService\src\WikiService.Api\WikiService.Api.csproj" />
     <!-- #455 Phase 0 U0b: Worker も統合テストへ載せる（DocumentUpdated の 2 購読者を同時に立てるため） -->
     <ProjectReference Include="..\..\Services\IngestionService\src\IngestionService.Worker\IngestionService.Worker.csproj" />
-    <ProjectReference Include="..\..\Services\ConversionService\src\ConversionService.Worker\ConversionService.Worker.csproj" />
+    <ProjectReference Include="..\..\Services\ConversionService\Worker\ConversionService.Worker.csproj" />
     <ProjectReference Include="..\..\Services\RetrievalService\src\RetrievalService.Api\RetrievalService.Api.csproj" />
     <ProjectReference Include="..\..\Services\AiAnalysisService\AiAnalysisService.csproj" />
     <!-- FR-17, SC-09, ADR-0033 決定 9 / #941: 辺の型辞書の **DB 層の防壁**（ON DELETE RESTRICT /

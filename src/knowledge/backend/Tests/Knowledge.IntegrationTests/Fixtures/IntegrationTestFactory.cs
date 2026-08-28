@@ -270,7 +270,7 @@ public sealed class IngestionServiceFactory : IntegrationTestFactoryBase<
 // 🔴 **未使用**（上の注記を参照）。
 public sealed class ConversionServiceFactory : IntegrationTestFactoryBase<
     global::ConversionService.Worker.ConversionServiceTestMarker,
-    global::ConversionService.Worker.Foundation.Persistence.ConversionJobDbContext>
+    global::ConversionService.Worker.Infrastructure.Persistence.ConversionJobDbContext>
 {
     public ConversionServiceFactory(PostgresFixture pg, RabbitMqFixture rabbit) : base(pg, rabbit) { }
 }

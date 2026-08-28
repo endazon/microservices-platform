@@ -1,10 +1,8 @@
 using System.Collections.Concurrent;
-using ConversionService.Worker.Composable.Steps;
-using ConversionService.Worker.Foundation.Domain;
-using ConversionService.Worker.Foundation.Jobs;
-using ConversionService.Worker.Foundation.Persistence;
-using ConversionService.Worker.Foundation.Ports;
-using ConversionService.Worker.Foundation.Services;
+using ConversionService.Worker.Features.ConversionJobs;
+using ConversionService.Worker.Domain;
+using ConversionService.Worker.Infrastructure.Persistence;
+using ConversionService.Worker.Domain.Ports;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
