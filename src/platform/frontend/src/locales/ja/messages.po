@@ -1369,8 +1369,8 @@ msgstr "対象"
 
 #. placeholder {0}: purgeTargets.length
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "対象: {0} 件 ／ 解放される容量: {freed} GB"
-msgstr "対象: {0} 件 ／ 解放される容量: {freed} GB"
+msgid "対象: {0} 件 ／ 解放される容量: {freed}"
+msgstr "対象: {0} 件 ／ 解放される容量: {freed}"
 
 #. placeholder {0}: rows.length
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx

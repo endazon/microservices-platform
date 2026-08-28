@@ -395,7 +395,8 @@ describe('SC-19 個人資料管理: 削除済みタブ', () => {
       within(dialog).getByText(/削除の反映には時間がかかる場合があります/),
     ).toBeInTheDocument();
     expect(within(dialog).getByText(/90\s*日待てば自動的に完全削除されます/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/解放される容量: 0\.12 GB/)).toBeInTheDocument();
+    // ADR-0037 決定 20（波 3 監査の是正）: 単位は自動選択され GB 未満は MB で出る。
+    expect(within(dialog).getByText(/解放される容量: 122\.88 MB/)).toBeInTheDocument();
   });
 
   it('一括選択で復元と完全削除の両方ができる', async () => {
@@ -410,11 +411,11 @@ describe('SC-19 個人資料管理: 削除済みタブ', () => {
     await user.click(screen.getByLabelText('古い議事録 を選択'));
     await user.click(screen.getByLabelText('下書き を選択'));
 
-    // 一括完全削除: 選択の合計容量が確認に出る（0.12 + 0.08 = 0.20 GB）。
+    // 一括完全削除: 選択の合計容量が確認に出る（0.12 + 0.08 GB = 204.80 MB。単位は自動選択）。
     await user.click(screen.getByRole('button', { name: '選択した資料を完全に削除する' }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText(/対象: 2 件/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/解放される容量: 0\.20 GB/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/解放される容量: 204\.80 MB/)).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole('button', { name: '完全に削除する' }));
     await waitFor(() => expect(writes()).toHaveLength(1));

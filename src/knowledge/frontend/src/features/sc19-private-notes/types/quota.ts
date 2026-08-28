@@ -29,6 +29,23 @@ export function toGb(bytes: number): string {
 }
 
 /**
+ * 単位つきのバイト表記（B / KB / MB / GB を自動選択・小数 2 桁）。
+ *
+ * ADR-0037 決定 20 の目的は「どの資料を消せば新規作成を再開できるかを利用者が判断できる」こと。
+ * 個人資料は Markdown 本文で現実には KB 級のため、GB 固定だと解放容量が常に 0.00 GB になり
+ * 目的を満たさない（波 3 監査の指摘）。**確認ダイアログはこちらを使う。**
+ * 使用量／上限（GB スケールが適正）は従来どおり `toGb`。
+ */
+export function formatBytes(bytes: number): string {
+  const KB = 1024;
+  const MB = 1024 ** 2;
+  if (bytes >= BYTES_PER_GB) return `${(bytes / BYTES_PER_GB).toFixed(2)} GB`;
+  if (bytes >= MB) return `${(bytes / MB).toFixed(2)} MB`;
+  if (bytes >= KB) return `${(bytes / KB).toFixed(2)} KB`;
+  return `${bytes} B`;
+}
+
+/**
  * 「うち削除済み」の内訳（05_screens §SC-19 主要素 15）。
  *
  * 🔴 **画面が削除済み行の `bytes` を合算して出す**（契約 `PrivateNoteListResponse` の注記）。

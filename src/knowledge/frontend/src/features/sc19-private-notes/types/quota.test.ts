@@ -7,6 +7,7 @@ import {
   isPurgeImminent,
   quotaLevel,
   toGb,
+  formatBytes,
   usagePercent,
 } from './quota';
 
@@ -131,5 +132,14 @@ describe('GB 表記', () => {
     expect(toGb(0)).toBe('0.00');
     expect(toGb(GB)).toBe('1.00');
     expect(toGb(GB * 0.804)).toBe('0.80');
+  });
+
+  // ADR-0037 決定 20（波 3 監査の是正）: KB 級の実サイズが 0.00 GB に潰れない。
+  it('formatBytes は単位を自動選択する（B / KB / MB / GB）', () => {
+    expect(formatBytes(0)).toBe('0 B');
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(3276)).toBe('3.20 KB');
+    expect(formatBytes(1024 * 1024 * 1.5)).toBe('1.50 MB');
+    expect(formatBytes(GB)).toBe('1.00 GB');
   });
 });

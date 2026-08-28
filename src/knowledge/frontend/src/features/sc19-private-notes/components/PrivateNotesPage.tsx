@@ -29,7 +29,7 @@ import {
   freedBytesOf,
   isPurgeImminent,
   quotaLevel,
-  toGb,
+  formatBytes,
   usagePercent,
 } from '../types/quota';
 import type { PrivateNotesSearch, TabOption } from '../routes/sc19PrivateNotesRoute';
@@ -167,7 +167,8 @@ export function PrivateNotesPage() {
   }
 
   const purgeTargets = confirming?.kind === 'purge' ? confirming.ids : [];
-  const freed = toGb(freedBytesOf(all, purgeTargets));
+  // ADR-0037 決定 20: 解放容量は判断材料 —— KB 級の実サイズが 0.00 GB に潰れないよう単位を自動選択する。
+  const freed = formatBytes(freedBytesOf(all, purgeTargets));
 
   return (
     <section className="flex flex-col gap-4">
@@ -514,7 +515,7 @@ export function PrivateNotesPage() {
           </p>
           <p>
             <Trans>
-              対象: {purgeTargets.length} 件 ／ 解放される容量: {freed} GB
+              対象: {purgeTargets.length} 件 ／ 解放される容量: {freed}
             </Trans>
           </p>
         </ConfirmDialog>
