@@ -49,6 +49,26 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.AiInputExposure": {
+        "kind": "class",
+        "members": {
+          "AttributeKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"ai_input\""
+          },
+          "Excluded": {
+            "source": "const",
+            "type": "string",
+            "value": "\"excluded\""
+          },
+          "Included": {
+            "source": "const",
+            "type": "string",
+            "value": "\"included\""
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.AiSuggestionDto": {
         "kind": "record",
         "members": {
@@ -918,6 +938,26 @@
             "source": "property",
             "type": "int",
             "required": false
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.DocumentScopes": {
+        "kind": "class",
+        "members": {
+          "Key": {
+            "source": "const",
+            "type": "string",
+            "value": "\"doc_scope\""
+          },
+          "Organization": {
+            "source": "const",
+            "type": "string",
+            "value": "\"organization\""
+          },
+          "PrivateNote": {
+            "source": "const",
+            "type": "string",
+            "value": "\"private-note\""
           }
         }
       },
