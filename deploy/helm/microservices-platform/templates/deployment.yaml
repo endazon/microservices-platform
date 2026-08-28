@@ -93,6 +93,20 @@ spec:
             - name: DataSourceSync__IntervalSeconds
               value: {{ $svc.dataSourceSync.intervalSeconds | default 300 | quote }}
           {{- end }}
+          {{- if $svc.database }}
+            # NFR, ADR-0002, #1012: DB 接続。**資格情報をイメージへ焼かない** —— appsettings.json は
+            # 接続文字列を持たず（#1012 で撤去）、ここで注入しなければサービスは起動時に落ちる
+            # （注入漏れが「既定の資格情報で接続成功」へ倒れない）。
+            # パスワードは Secret から DB_PASSWORD として入れ、接続文字列は k8s の $(VAR) 補間で組む
+            # （env の値に平文パスワードを描画しない。同一 container 内で先に定義した env のみ参照できる）。
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.global.db.existingSecret }}
+                  key: {{ $.Values.global.db.passwordKey }}
+            - name: ConnectionStrings__DefaultConnection
+              value: "Host={{ $.Values.global.db.host }};Port={{ $.Values.global.db.port }};Database={{ $svc.database }};Username={{ $.Values.global.db.user }};Password=$(DB_PASSWORD)"
+          {{- end }}
           {{- range $svc.extraEnv }}
             - name: {{ .name }}
               {{- if .value }}

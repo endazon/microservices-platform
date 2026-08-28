@@ -56,7 +56,7 @@ compose・k8s の双方で実際に作る**開発用の実資格情報**であ�
 | ✅ 対象 | 同サービスの **`Program.cs` の `??` 既定 → fail-fast**（#1009 の先例と同形） | 撤去後に「未設定で起動成功」へ倒れないため |
 | ✅ 対象 | **helm の注入**（`global.db` ＋ per-service `database` ＋ Secret 参照） | 軸 4 のとおり k8s は appsettings に依存していた。**順序は「配備側で注入 → コードから既定値を外す」**（issue の指示） |
 | ✅ 対象 | `k8s-local-up.sh` の app namespace Secret 作成（dev 既定 `kp`・env 上書き可） | helm の Secret 参照先を用意する |
-| ✅ 対象 | compose の `aianalysis-service` へ `Database=aianalysis_svc` の明示 | 共通 anchor は `Database=` を持たず、撤去後は既定 DB（`kp`）へ繋がる**別の静かな誤り**になる |
+| ⛔ 除外（着手後の実測で覆った） | compose の `aianalysis-service` の DB 配線 | **AiAnalysisService は `GetConnectionString` を一度も呼ばない**（走査で確認）。compose でも `*db-env` を継いでおらず、`appsettings.json` の `DefaultConnection` は**誰も読まない死んだ設定**である。撤去のみで足り、compose の変更は要らない |
 | ✅ 対象 | テスト器（`WebApplicationFactory` 系）への構成注入 | Program.cs を起動するため。**明らかにダミーと分かる値**を使う |
 | ⛔ 除外 | `appsettings.Development.json`（`Host=localhost;…`） | **イメージの本番既定ではない**（`dotnet run` のローカル利便）。撤去すると開発者の手元が壊れ、得るものが無い |
 | ⛔ 除外 | RabbitMQ の `amqp://guest:guest@rabbitmq:5672`（7 箇所） | **同型の欠陥だが射程外**。helm values が「コード既定が in-cluster DNS で解決される」と明記しており、撤去には**ブローカ側の資格情報変更を伴う配備作業**が要る。**別 issue として起票する**（本仕様書 §申し送り） |

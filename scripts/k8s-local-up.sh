@@ -151,6 +151,10 @@ fi
 if [ "${ESO:-}" != "1" ]; then
   apply_secret "$MSP_NS" minio-credentials \
     "accessKey=${MINIO_ACCESS_KEY:-minioadmin}" "secretKey=${MINIO_SECRET_KEY:-minioadmin}"
+  # NFR, ADR-0002, #1012: サービス DB のパスワード。**appsettings.json から接続文字列を撤去した**ため、
+  # これが無いと各サービスは起動時に落ちる（注入漏れが既定資格情報で成功へ倒れない）。
+  # dev 既定は init スクリプトが作る `kp`（deploy/local/infra/postgres.yaml）。env で上書きする。
+  apply_secret "$MSP_NS" postgres-app "password=${APP_DB_PASSWORD:-kp}"
   apply_secret "$MSP_NS" wikijs-db "password=${WIKIJS_DB_PASSWORD:-kp}"
   apply_secret "$MSP_NS" wikijs-sync "apiKey=${WIKIJS_SYNC_APIKEY:-}"
 fi

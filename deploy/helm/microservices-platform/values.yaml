@@ -21,6 +21,17 @@ global:
     # されるため、in-cluster issuer（手順A token）と併存する。
     metadataAddress: ""
     validIssuers: ""
+  # NFR, ADR-0002, #1012: サービス DB（DB per Service）の接続。**資格情報をイメージへ焼かない。**
+  # 各サービスの `appsettings.json` は接続文字列を持たず（#1012 で撤去）、未注入なら起動時に落ちる。
+  # パスワードは Secret（existingSecret）から `$(DB_PASSWORD)` で補間する（値を chart に書かない）。
+  db:
+    host: postgres
+    port: 5432
+    user: kp
+    # DB パスワードを保持する Secret（key=password）。scripts/k8s-local-up.sh が dev 既定で作成する。
+    existingSecret: postgres-app
+    passwordKey: password
+
   # FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: S3 互換オブジェクトストレージ（MinIO）接続。
   # 資格情報は Secret（existingSecret）経由で注入する（コミットしない。docs/security）。
   objectStorage:
@@ -159,6 +170,8 @@ scaling:
 
 services:
   document:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    database: document_svc
     enabled: true
     replicas: 1
     image: microservices-platform/document-service
@@ -180,6 +193,8 @@ services:
       limits: { cpu: 500m, memory: 512Mi }
 
   datasource:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    database: datasource_svc
     enabled: true
     replicas: 1
     image: microservices-platform/datasource-service
@@ -201,6 +216,8 @@ services:
       limits: { cpu: 500m, memory: 512Mi }
 
   conversion:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    database: conversion_svc
     enabled: true
     replicas: 1
     image: microservices-platform/conversion-service
@@ -292,6 +309,8 @@ services:
       limits: { cpu: 1000m, memory: 1Gi }
 
   authorization:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    database: authz_svc
     enabled: true
     replicas: 1
     image: microservices-platform/authorization-service
@@ -304,6 +323,8 @@ services:
   # FR-13, UC-07, ADR-0011, IADR-0020: WikiService は「同期・統合・ABAC ゲートウェイ」責務。
   # 閲覧・編集の実体は Wiki.js（下記 wikijs ブロック）へ委譲。ABAC は本サービスが前段で強制する。
   wiki:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    database: wiki_svc
     enabled: true
     replicas: 1
     image: microservices-platform/wiki-service
@@ -354,6 +375,8 @@ services:
 
   # FR-10, UC-05, IADR-0011: 利用状況・検索傾向・回答品質ダッシュボード集計サービス
   dashboard:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    database: dashboard_svc
     enabled: true
     replicas: 1
     image: microservices-platform/dashboard-service
@@ -367,6 +390,8 @@ services:
   # 🔴 chart のキーは `graph` である（Service 名は deployment.yaml が {{ $name }}-service を組むため
   # graph-service になり、BFF の Services__GraphService（http://graph-service:8080）と一致する）。
   graph:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    database: graph_svc
     enabled: true
     replicas: 1
     image: microservices-platform/graph-service
@@ -390,6 +415,8 @@ services:
 
   # FR-08: 回答へのフィードバック（👍/👎・コメント）収集サービス
   feedback:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    database: feedback_svc
     enabled: true
     replicas: 1
     image: microservices-platform/feedback-service
