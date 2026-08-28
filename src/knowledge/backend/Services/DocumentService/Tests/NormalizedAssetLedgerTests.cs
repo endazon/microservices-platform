@@ -95,30 +95,51 @@ public sealed class NormalizedAssetLedgerTests
     }
 
     // 再正規化: 資産の集合は差し替わる（属性と同じ扱い。タグとは違う）。
+    //
+    // 🔴 **1 つのハーネスへ 2 通流さない。** 当初はそう書いて、単体では緑・knowledge 全件では
+    // 赤になった。原因は待ち合わせの API ではなく**器の性質**である ——
+    // `Consumed.Any(filter)` も `Consumed.SelectAsync` も、ハーネスの**非活動タイムアウト**が
+    // 切れると「まだ来ていない」を「来ない」として打ち切る（実測: 2 通目が届かないまま
+    // 列挙が 1 件で終了した）。全テスト同時実行で機械が混むと 1 通目と 2 通目の間の空きが
+    // その窓を超え、**実装が正しいのに落ちる**。#1038 と同じ型である。
+    //
+    // **タイムアウトを延ばして逃げない。** 1 通目は「再正規化前の状態を作る」だけの前提であり、
+    // バスを通す必要が無い。**前提は台帳へ直接置き、バスへ流すのは検査対象の 2 通目だけにする。**
+    // ハーネスに空きが生じないので、負荷に依存する窓そのものが消える。
     [Fact]
     public async Task 再正規化は資産URIを差し替える()
     {
         var id = Guid.NewGuid();
         var first = $"storage://knowledge-normalized/{id:N}/assets/fig-1.png";
         var second = $"storage://knowledge-normalized/{id:N}/assets/fig-2.png";
-        await using var provider = BuildProvider($"assets-{Guid.NewGuid():N}");
+        var dbName = $"assets-{Guid.NewGuid():N}";
+        await using var provider = BuildProvider(dbName);
+
+        // 前提: 資産 fig-1 を持つ正規化済み文書が既に在る（1 通目の消費と同じ状態）。
+        using (var seed = provider.CreateScope())
+        {
+            var seedDb = seed.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            var before = Event(id, "図のある文書", first);
+            seedDb.Documents.Add(Domain.Document.CreateNormalized(
+                before.DocumentId, before.Title, before.MarkdownUri, before.Attributes,
+                assetUris: [.. before.AssetUris]));
+            await seedDb.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
         var harness = provider.GetRequiredService<ITestHarness>();
         await harness.Start();
-
-        await harness.Bus.Publish(Event(id, "図のある文書", first), TestContext.Current.CancellationToken);
+        await harness.Bus.Publish(Event(id, "図のある文書（再変換）", second), TestContext.Current.CancellationToken);
         (await harness.Consumed.Any<DocumentNormalized>(TestContext.Current.CancellationToken))
             .Should().BeTrue();
-        await harness.Bus.Publish(Event(id, "図のある文書（再変換）", second), TestContext.Current.CancellationToken);
-        // 2 通目だけを待つ（件数で待つと 1 通目で満たされてしまう）。
-        (await harness.Consumed.Any<DocumentNormalized>(
-            x => x.Context.Message.Title == "図のある文書（再変換）", TestContext.Current.CancellationToken))
-            .Should().BeTrue();
+        (await harness.Published.Any<Fault<DocumentNormalized>>(TestContext.Current.CancellationToken))
+            .Should().BeFalse("consumer が落ちていれば台帳の検査は無意味になる");
 
         using var scope = provider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
         var doc = await db.Documents.FindAsync([id], TestContext.Current.CancellationToken);
         doc.Should().NotBeNull();
-        doc!.AssetUris.Should().Equal([second]);
+        doc!.AssetUris.Should().Equal([second],
+            "再正規化は資産の集合を差し替える（追加ではない）");
     }
 
     // 資産を持たない文書（大多数）は空配列である —— 既存文書と同じ形になることを固定する。
