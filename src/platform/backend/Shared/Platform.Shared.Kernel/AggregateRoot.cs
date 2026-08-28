@@ -5,7 +5,7 @@ namespace Platform.Shared.Kernel;
 /// </summary>
 /// <typeparam name="TId">識別子の型。</typeparam>
 /// <remarks>
-/// NFR / IADR-0280 決定 6 / 計画 ADR-0030: 状態変化の事実は <see cref="Raise"/> で蓄積し、
+/// NFR / IADR-0280 決定 6（本決定は存続。ADR 本体は Superseded by IADR-0282） / 計画 ADR-0030: 状態変化の事実は <see cref="Raise"/> で蓄積し、
 /// 発行（Wolverine への引き渡し）は Infrastructure / Application 側が
 /// <see cref="DomainEvents"/> を読み出して行う。読み出し後は <see cref="ClearDomainEvents"/> で
 /// 空にする（二重発行を防ぐ）。発行の仕組み自体は本基底に持たせない —— Domain 層は

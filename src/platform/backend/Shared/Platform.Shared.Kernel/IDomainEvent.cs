@@ -5,7 +5,7 @@ namespace Platform.Shared.Kernel;
 /// 表すために発生させる。
 /// </summary>
 /// <remarks>
-/// NFR / IADR-0280 決定 6: 全サービスの Domain が共有する基底であるため、Domain の唯一の
+/// NFR / IADR-0280 決定 6（本決定は存続。ADR 本体は Superseded by IADR-0282）: 全サービスの Domain が共有する基底であるため、Domain の唯一の
 /// 許容参照先である本プロジェクトに置く（計画 12_backend-application-stack の構成図
 /// 「SharedKernel = Result / Error・共通基底」）。
 ///

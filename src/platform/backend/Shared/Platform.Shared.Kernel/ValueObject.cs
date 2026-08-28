@@ -4,7 +4,7 @@ namespace Platform.Shared.Kernel;
 /// 構成要素の値で等価性を判定する値オブジェクトの基底。
 /// </summary>
 /// <remarks>
-/// NFR / IADR-0280 決定 6 / 計画 ADR-0030: 値オブジェクトは識別子を持たず、
+/// NFR / IADR-0280 決定 6（本決定は存続。ADR 本体は Superseded by IADR-0282） / 計画 ADR-0030: 値オブジェクトは識別子を持たず、
 /// <see cref="GetEqualityComponents"/> が返す構成要素の**並びと値**がすべて等しいときに等しい。
 /// 派生型は不変（イミュータブル）に設計すること。単純な値の組は C# の <c>record</c> でも
 /// 表せる —— 本基底を使うのは、正規化や検証を伴う値に共通の等価性の器が要る場合である

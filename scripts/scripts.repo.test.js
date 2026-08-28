@@ -615,7 +615,7 @@ module.exports = ({ ok, assert }) => {
     );
   });
 
-  // --- 規則 3: 8 要素プロジェクトのレイヤ依存方向（NFR, IADR-0280 決定 3） ------
+  // --- 規則 3: 8 要素プロジェクトのレイヤ依存方向（NFR, IADR-0280 決定 3〔Superseded by IADR-0282・経過措置〕） ------
 
   const EEP = (svc, elem) =>
     `src/knowledge/backend/Services/${svc}/src/${svc}.${elem}/${svc}.${elem}.csproj`;

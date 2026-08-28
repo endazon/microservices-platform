@@ -6,7 +6,7 @@ namespace GraphService.Domain;
 //
 // **DB もイベントも見ない。** 入力は本文の文字列だけで、出力は「何と書いてあったか」の列である
 // （型解決は EdgeTypeResolver、文書 ID への解決は Api 側の LinkEdgeSynchronizer が行う）。
-// IADR-0280 決定 2・3 により Domain へ置く —— 外部ライブラリを参照せず、単体で試験できる。
+// IADR-0280 決定 2・3（Superseded by IADR-0282。移送波で単一プロジェクトの Domain/ へ移る）により Domain へ置く —— 外部ライブラリを参照せず、単体で試験できる。
 //
 // **本システムの正規化 Markdown は pandoc の変換物であり、Obsidian 記法が含まれる保証はない**
 // （ADR-0033 決定 8 の具体化）。標準 Markdown リンクの解決が実務上の主戦場であり、

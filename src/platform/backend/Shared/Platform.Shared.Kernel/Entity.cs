@@ -5,7 +5,7 @@ namespace Platform.Shared.Kernel;
 /// </summary>
 /// <typeparam name="TId">識別子の型（<see cref="Guid"/>・強い型付き ID 等）。</typeparam>
 /// <remarks>
-/// NFR / IADR-0280 決定 6 / 計画 ADR-0030: エンティティの同一性は属性ではなく識別子で決まる。
+/// NFR / IADR-0280 決定 6（本決定は存続。ADR 本体は Superseded by IADR-0282） / 計画 ADR-0030: エンティティの同一性は属性ではなく識別子で決まる。
 /// 等価性は**同じ具象型かつ同じ識別子**で判定し、<c>default</c> の識別子（未採番）は
 /// 参照が同じ場合を除き**等しいと判定しない** —— 「初期化していない」と「同じ」が同じ値に
 /// なると、未採番どうしの衝突が黙って同一視される（<see cref="Result"/> が <c>default</c> を

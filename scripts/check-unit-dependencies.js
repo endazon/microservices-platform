@@ -16,7 +16,7 @@
  *          エンドポイント（<unit>/backend/Bff/）なら許可（例外3・IADR-0063）、
  *        - それ以外（特に platform → 可変ユニット）は違反。
  *   2) Foundation → Composable: Foundation/ 配下 .cs に `using <ns>.Composable(.|;)` が現れたら違反。
- *   3) 8 要素プロジェクトのレイヤ依存方向（NFR, IADR-0280 決定 3）:
+ *   3) 8 要素プロジェクトのレイヤ依存方向（NFR, IADR-0280 決定 3〔Superseded by IADR-0282・経過措置〕）:
  *      ①同一サービス内の 8 要素プロジェクト（<Svc>.{Api|Worker|Application|Domain|Infrastructure|
  *        Contracts|SharedKernel}）間の ProjectReference は宣言方向
  *        （Domain ← Application ← Infrastructure ← Api/Worker。Contracts / SharedKernel は
@@ -138,9 +138,11 @@ function scanFoundationComposable(relPath, content) {
   return violations;
 }
 
-// --- 規則 3: 8 要素プロジェクトのレイヤ依存方向（NFR, IADR-0280 決定 3） -------
+// --- 規則 3: 8 要素プロジェクトのレイヤ依存方向（NFR, IADR-0280 決定 3〔Superseded by IADR-0282・経過措置〕） -------
 
-// 8 要素の要素名。単一情報源は IADR-0280 決定 3（Tests は 1 プロジェクトで参照制約の対象外）。
+// 8 要素の要素名。単一情報源は IADR-0280 決定 3（Superseded by IADR-0282。#1021）。
+// 🔴 IADR-0282 は単一プロジェクト標準を採り、本規則 3 は**移送波で名前空間走査版へ書き換える**。
+//    それまで層プロジェクトが実在する間の経過措置として本検査を残す（Tests は 1 プロジェクトで参照制約の対象外）。
 const EIGHT_ELEMENTS = 'Api|Worker|Application|Domain|Infrastructure|Contracts|SharedKernel';
 
 // レイヤの序数。大きい側から小さい側への参照のみ許す。Contracts / SharedKernel は序列に
@@ -168,7 +170,7 @@ function classifyLayerReference(fromCsproj, toCsproj) {
   if (from.element === 'Contracts' || from.element === 'SharedKernel') {
     return {
       ok: false,
-      reason: `${from.element} は葉であり、同一サービスの他要素を参照できない（IADR-0280 決定 3）`,
+      reason: `${from.element} は葉であり、同一サービスの他要素を参照できない（IADR-0280 決定 3〔Superseded by IADR-0282〕）`,
     };
   }
   if (to.element === 'Contracts' || to.element === 'SharedKernel') {
@@ -181,7 +183,7 @@ function classifyLayerReference(fromCsproj, toCsproj) {
     ok: false,
     reason:
       `レイヤ依存方向の違反: ${from.element} → ${to.element} は宣言方向` +
-      '（Domain ← Application ← Infrastructure ← Api/Worker）に反する（IADR-0280 決定 3）',
+      '（Domain ← Application ← Infrastructure ← Api/Worker）に反する（IADR-0280 決定 3〔Superseded by IADR-0282〕）',
   };
 }
 
@@ -358,7 +360,7 @@ function selfTest() {
       'using Step = DocumentService.Api.Composable.Steps.SomeStep;\n').length === 1,
   });
 
-  // 規則 3-①: 8 要素プロジェクト間のレイヤ依存方向（IADR-0280 決定 3）。
+  // 規則 3-①: 8 要素プロジェクト間のレイヤ依存方向（IADR-0280 決定 3〔Superseded by IADR-0282・経過措置〕）。
   const P = (svc, elem) =>
     `src/knowledge/backend/Services/${svc}/src/${svc}.${elem}/${svc}.${elem}.csproj`;
   cases.push({
@@ -470,7 +472,7 @@ function main() {
       console.error(`\n  [Foundation→Composable] ${v.from}\n    ${v.reason}`);
     }
   }
-  console.error('\n依存規則は src/README.md「依存規則」/ IADR-0027 / IADR-0056 / IADR-0280 を参照してください。');
+  console.error('\n依存規則は src/README.md「依存規則」/ IADR-0027 / IADR-0056 / IADR-0280（Superseded by IADR-0282）を参照してください。');
   process.exit(1);
 }
 
