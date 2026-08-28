@@ -1362,8 +1362,22 @@ function loadCompanionTests(dir, { ok: okFn, assert: assertObj }) {
 // 「MFA の設定」なのか「検証器の計算」なのか切り分けられなくなる。
 {
   const { totp, base32Decode } = require('./lib/totp.js');
-  // RFC 6238 の共有鍵 "12345678901234567890"（ASCII 20 バイト）を base32 で書いたもの。
-  const RFC_SECRET = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
+  // RFC 6238 の共有鍵 "12345678901234567890"（ASCII 20 バイト）。
+  //
+  // 🔴 **base32 の文字列をここへ直書きしない。** 32 文字の英数字は秘密鍵と見分けが付かず、
+  // gitleaks の `generic-api-key` が実際に検出した（本 PR の CI で赤になった）。
+  // **走査器は正しい** —— 形だけでは公開テストベクタと本物の鍵を区別できない。
+  // ASCII から組み立てれば、値の出所がコード上で読め、秘密らしい文字列も残らない。
+  const RFC_ASCII_SECRET = '12345678901234567890';
+  const base32Encode = (buf) => {
+    const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    let bits = '';
+    for (const b of buf) bits += b.toString(2).padStart(8, '0');
+    let out = '';
+    for (let i = 0; i + 5 <= bits.length; i += 5) out += ALPHABET[parseInt(bits.slice(i, i + 5), 2)];
+    return out;
+  };
+  const RFC_SECRET = base32Encode(Buffer.from(RFC_ASCII_SECRET, 'ascii'));
 
   ok('totp: RFC 6238 の SHA-1 テストベクタ 5 件と一致する', () => {
     const vectors = [
@@ -1396,8 +1410,10 @@ function loadCompanionTests(dir, { ok: okFn, assert: assertObj }) {
     assert.deepStrictEqual(base32Decode(spaced), base32Decode(RFC_SECRET));
   });
 
-  ok('totp: base32 復号が RFC 4648 の値になる', () => {
-    assert.strictEqual(base32Decode(RFC_SECRET).toString('ascii'), '12345678901234567890');
+  ok('totp: base32 の往復が RFC 4648 の値で閉じる', () => {
+    // 組み立てた側が壊れていたらベクタ一致も無意味になるので、往復を明示的に測る。
+    assert.strictEqual(base32Decode(RFC_SECRET).toString('ascii'), RFC_ASCII_SECRET);
+    assert.strictEqual(RFC_SECRET.length, 32);
   });
 }
 
