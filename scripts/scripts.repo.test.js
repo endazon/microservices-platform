@@ -5474,6 +5474,9 @@ ${r.stderr}`);
           'gen-knowledge-graph.js',
           'measure-abac-combinations.js',
           'seed-abac-policies.js',
+          // #992 / IADR-0284: 検索検証用文書の初期投入器。`seed-abac-policies.js` と同じ
+          // **投入器**であり検査器ではない（副作用を持ち、判定を返さない）。母集合に数えない。
+          'seed-search-documents.js',
         ];
         const scripts = all.filter((f) => !NOT_CHECKERS.includes(f));
         // 母集合の件数を固定する。**新しい検査器が増えたら、まずここが落ちて宣言を促す。**
@@ -7853,6 +7856,106 @@ ${r.stderr}`);
     ok('実データ: xUnit1051 の抑止は src/Directory.Build.props の 1 箇所に限る', () => {
       const r = runXu([]);
       assert.doesNotMatch(String(r.stderr), /stray-suppression/, `抑止が混入している:\n${r.stderr}`);
+    });
+  }
+
+  // --- #992: 検索の観測（seed 経路と 2 段判定・IADR-0284） -----------------------
+  //
+  // 実クラスタ無しで固定できるのは (a) 投入器の純粋関数 (b) シード実データ
+  // (c) verify-oidc-edge-flow.sh の結線（TOTAL の加算式・段の存在・0 件の扱い）である。
+  // **実走は CI に委ねる**（統合スタックはこの環境で起こせない）。
+  {
+    const fsSS = require('fs');
+    const pathSS = require('path');
+    const seeder = require('./seed-search-documents.js');
+
+    ok('#992: 作成要求は body を必ず載せ、tags を載せない', () => {
+      const req = seeder.buildCreateRequest({
+        title: 't', body: '本文', attributes: { confidentiality: 'public' },
+      });
+      // body が欠けると MarkdownUri が立たず、取り込みの早期 return で捨てられる（存在理由が消える）。
+      assert.strictEqual(req.body, '本文');
+      // 辞書に無いタグは DocumentService が 400 で拒む（SC-05 / #635）。ABAC と無関係の失敗を作らない。
+      assert.ok(!('tags' in req), `tags を載せてはいけない: ${JSON.stringify(req)}`);
+      assert.strictEqual(req.contentType, 'text/markdown; charset=utf-8');
+    });
+
+    ok('#992: 既存と同じタイトルは投入しない（冪等）', () => {
+      const seed = [{ title: 'A' }, { title: 'B' }];
+      assert.deepStrictEqual(
+        seeder.selectMissingDocuments(seed, [{ title: 'A' }]).map((d) => d.title), ['B']);
+      assert.deepStrictEqual(seeder.selectMissingDocuments(seed, []).map((d) => d.title), ['A', 'B']);
+      // PascalCase の応答（後段の JSON 方針が変わっても突合が壊れない）。
+      assert.deepStrictEqual(
+        seeder.selectMissingDocuments(seed, [{ Title: 'B' }]).map((d) => d.title), ['A']);
+    });
+
+    ok('#992: 合言葉が無ければ落とす（空文字で検索して緑にしない）', () => {
+      assert.throws(() => seeder.seedProbeTerm({}), /probeTerm/);
+      assert.throws(() => seeder.seedProbeTerm({ probeTerm: '   ' }), /probeTerm/);
+      assert.strictEqual(seeder.seedProbeTerm({ probeTerm: ' x ' }), 'x');
+    });
+
+    ok('#992: 合言葉を含まない seed は投入前に落ちる（変異試験）', () => {
+      const good = { probeTerm: 'zzz', documents: [{ title: 'a zzz', body: 'b zzz' }] };
+      assert.deepStrictEqual(seeder.documentsMissingProbeTerm(good), []);
+      // 本文だけ欠けた場合も検出する（タイトル一致だけで通すと全文側に当たらない）。
+      const bodyless = { probeTerm: 'zzz', documents: [{ title: 'a zzz', body: 'b' }] };
+      assert.deepStrictEqual(seeder.documentsMissingProbeTerm(bodyless), ['a zzz']);
+    });
+
+    ok('#992: 実データ（deploy/local/search-seed/documents.json）が規約を満たす', () => {
+      const seed = JSON.parse(fsSS.readFileSync(seeder.SEED_FILE, 'utf8'));
+      assert.ok((seed.documents || []).length > 0, 'seed 文書が 0 件（走査が壊れている）');
+      assert.deepStrictEqual(seeder.documentsMissingProbeTerm(seed), []);
+      for (const d of seed.documents) {
+        // 正の対照と負の対照が同じ 1 件で成立する条件（abac-seed は confidentiality だけを見る）。
+        assert.strictEqual((d.attributes || {}).confidentiality, 'public', `${d.title}: confidentiality`);
+        assert.ok(!('tags' in d), `${d.title}: tags を宣言してはいけない`);
+        assert.ok(String(d.body || '').length > 0, `${d.title}: 本文が空`);
+      }
+    });
+
+    // --- verify-oidc-edge-flow.sh の結線 ---------------------------------------
+    const VERIFY = fsSS.readFileSync(
+      pathSS.join(__dirname, 'verify-oidc-edge-flow.sh'), 'utf8');
+
+    ok('#992: TOTAL は加算式である（モードの組み合わせで門が誤発火しない）', () => {
+      // 固定値（TOTAL=17 / TOTAL=11 の二択）へ戻すと、SEARCH_* を足した瞬間に門が誤発火する。
+      assert.match(VERIFY, /^TOTAL=11$/m, 'TOTAL の基底が 11 でない');
+      for (const [flag, addend] of [['ABAC_POSITIVE', 6], ['SEARCH_SEEDED', 2], ['SEARCH_HITS', 1]]) {
+        const re = new RegExp(`\\$${''}{?${flag}}?" = "1" \\]; then TOTAL=\\$\\(\\(TOTAL \\+ ${addend}\\)\\)`);
+        assert.match(VERIFY, re, `${flag} の加算（+${addend}）が無い`);
+      }
+    });
+
+    ok('#992: SEARCH_HITS は SEARCH_SEEDED を含意する', () => {
+      // 前提を確かめずに結論だけ測ると、落ちたとき seed の不備と検索の故障が区別できない。
+      assert.match(VERIFY, /if \[ "\$SEARCH_HITS" = "1" \]; then SEARCH_SEEDED=1; fi/);
+    });
+
+    ok('#992: 検索の判定が「0 件」を FAIL 側に置いている', () => {
+      // 🔴 「空であること」を PASS の根拠にしない（#972 / IADR-0252 と同じ型）。
+      const hit = VERIFY.slice(VERIFY.indexOf('S3) 🔴 本題'));
+      assert.ok(hit.length > 0, 'S3 の段が見つからない');
+      const zero = hit.slice(hit.indexOf('"${hit_state%%:*}" = "0"'));
+      assert.match(zero.slice(0, 400), /fail "seed 文書/, '0 件が FAIL になっていない');
+      // 非空でも seed 自身を含まなければ落とす（decoy を通さない）。
+      assert.match(hit, /fail "ヒット .* seed 文書.*を含まない"/);
+    });
+
+    ok('#992: 合言葉は seed の宣言から採り、スクリプトへ値を写していない', () => {
+      const seed = JSON.parse(fsSS.readFileSync(seeder.SEED_FILE, 'utf8'));
+      assert.ok(!VERIFY.includes(seed.probeTerm),
+        '合言葉が verify-oidc-edge-flow.sh へ写されている（seed を替えたとき片方だけ取り残される）');
+      assert.match(VERIFY, /seed-search-documents\.js" --print-probe-term/);
+    });
+
+    ok('#992: seed の入口条件（markdownUri）まで見ている', () => {
+      // 「作成できた」だけでは何も言えない —— MarkdownUri が null なら取り込みは早期 return で捨てる。
+      const s1 = VERIFY.slice(VERIFY.indexOf('S1) 正の対照'), VERIFY.indexOf('S2) 負の対照'));
+      assert.ok(s1.includes('markdownUri'), 'S1 が markdownUri を見ていない');
+      assert.match(s1, /fail "seed 文書は在るが markdownUri を持たない/);
     });
   }
 

@@ -43,8 +43,20 @@
 #   なぜ書き込みが要るか: ABAC が deny へ縮退すると一覧は「200 ＋ 空リスト」を返す
 #   （`BffScopeResolver` が null → `Results.Ok(new List<DocumentDto>())`）。これは
 #   「文書が 1 件も無い」とまったく同じ応答であり、**状態コードでは区別できない**。
-#   新規スタックには文書が 1 件も無い（初期投入経路が無い）ため、
+#   スタックを `SEARCHSEED=1` 無しで起こすと文書が 1 件も無いため、
 #   **非空を観測するには作るしかない。** 作らずに済ませると「空で緑」を追認することになる。
+#
+#   🔴 検索の判定は 2 つの opt-in に分かれる（#992 / IADR-0284 決定 3）。**どちらも
+#      `SEARCHSEED=1` で起こしたスタック**（`scripts/seed-search-documents.js` が本文つき文書を
+#      投入済み）を前提にする。分けてあるのは**達成条件が違う**からである。
+#
+#     - `SEARCH_SEEDED=1`: seed 文書が**一覧に見え `markdownUri` を持つ**こと（＝取り込みの
+#       早期 return を通過する形になっていること）と、**属性を持たない利用者には検索で見えない**
+#       ことを測る。**今日の統合スタックで緑にできる。** 読み取りのみ（文書は作らない）。
+#     - `SEARCH_HITS=1`: さらに **seed 文書が実際に検索でヒットする**ことを測る
+#       （`SEARCH_SEEDED=1` を含意する）。**埋め込みの供給が要る** —— 取り込みは
+#       `Embedded=false` のチャンクを索引しない（fail-closed）ため、鍵の無いスタックでは
+#       索引に 1 点も入らず、全文側にも当たるものが無い。#992 案 2 の裁定待ちである。
 
 set -uo pipefail
 
@@ -69,7 +81,23 @@ ABAC_POSITIVE="${ABAC_POSITIVE:-}"
 DENY_USER="${ABAC_DENY_USER:-poc-operator}"
 DENY_PASSWORD="${ABAC_DENY_PASSWORD:-PocOperator-2026}"
 
-if [ "$ABAC_POSITIVE" = "1" ]; then TOTAL=17; else TOTAL=11; fi
+# #992 / IADR-0284 決定 3: 検索の判定（冒頭の副作用の節を参照）。既定オフ。
+# **SEARCH_HITS は SEARCH_SEEDED を含意する** —— 前提（seed が索引の入口条件を満たしているか）を
+# 確かめずに結論（当たるか）だけを測ると、落ちたときに seed の不備と検索の故障が区別できない。
+SEARCH_SEEDED="${SEARCH_SEEDED:-}"
+SEARCH_HITS="${SEARCH_HITS:-}"
+if [ "$SEARCH_HITS" = "1" ]; then SEARCH_SEEDED=1; fi
+
+# 検索の合言葉。seed の宣言（deploy/local/search-seed/documents.json）が単一情報源であり、
+# **ここへ値を写さない**（写すと seed を替えたときに片方だけ取り残される）。
+SEARCH_PROBE_TERM="${SEARCH_PROBE_TERM:-}"
+
+# 🔴 TOTAL は「本来走るべき段数」の単一情報源である。**モードの組み合わせで変わるので加算式で持つ**。
+#    固定値を並べると、組み合わせを 1 つ足すたびに門（末尾の STEPS 突合）が誤発火する。
+TOTAL=11
+if [ "$ABAC_POSITIVE" = "1" ]; then TOTAL=$((TOTAL + 6)); fi
+if [ "$SEARCH_SEEDED" = "1" ]; then TOTAL=$((TOTAL + 2)); fi
+if [ "$SEARCH_HITS" = "1" ]; then TOTAL=$((TOTAL + 1)); fi
 
 PASS=0
 FAIL=0
@@ -88,6 +116,9 @@ step() {
   case "$1" in [0-9]*/*) STEPS=$((STEPS + 1));; esac
   printf '\n[%s] %s\n' "$1" "$2"
 }
+# 段番号を STEPS から採る（#992）。**既存の固定ラベルは 1 バイトも変えない** ——
+# モードの組み合わせで後続の段番号が変わるため、後から足す段だけ動的に採る。
+next_step() { step "$((STEPS + 1))/$TOTAL" "$1"; }
 
 for cmd in curl openssl node; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -156,6 +187,9 @@ fi
 # 戻り値: 0=取得できた / 1=取得できなかった（ACQUIRE_ERR に理由）
 ACQUIRED_TOKEN=""
 ACQUIRE_ERR=""
+# 負の対照のトークン。ABAC の段（12）と検索の段（#992）の両方が使うため、**両ブロックの外**で宣言する
+# （`set -u` の下で未宣言を参照すると、判定へ到達する前にスクリプトごと落ちる）。
+DENY_ACCESS=""
 acquire_token() {
   local user="$1" password="$2" verbose="$3"
   local jar challenge auth_url login_html form_action location code token_json
@@ -281,17 +315,20 @@ fi
 #    🔴 **(d) は #995 以前は 500 だった。** 空ベクトルをそのままベクトルDB へ渡していたためである
 #    （本段が実際にそれを捕まえた）。**200 に戻ったことは「検索が効く」ことを意味しない。**
 #
-#    そのうえで、**このスタックでは索引そのものが空である**:
-#      BFF 経由で作った文書は `MarkdownUri` を持たない（CreateDocumentRequest に項目が無い）。
-#      DocumentService は `ToEvent` で `d.MarkdownUri`（=null）を載せて DocumentUpdated を出し、
-#      IngestionService の DocumentUpdatedConsumer は先頭で
-#      `if (ev.MarkdownUri is null) { ...; return; }` と早期 return する。
-#      **parse→chunk→embed→index に一度も入らない。**
-#      加えて values-local.yaml の `Llm__ApiKey` は未設定＝空（外部 LLM を呼ばない fail-safe）で、
-#      k8s-local-up.sh が投入するのは ABAC ポリシーだけである（文書の初期投入経路が無い）。
+#    そのうえで、**素のスタックでは索引そのものが空である**（#992 / IADR-0284 で実測を更新した）:
+#      - BFF の `DocumentCreateRequest` は本文（`Body`）を運ばない。**BFF 経由で作った文書は
+#        `MarkdownUri` を持たない。**（DocumentService 側の `CreateDocumentRequest` は
+#        FR-21 / IADR-0264 で `Body` を持つ。**落ちるのは BFF の転送段である。**）
+#      - IngestionService の DocumentUpdatedConsumer は先頭で
+#        `if (ev.MarkdownUri is null) { ...; return; }` と早期 return し、
+#        **parse→chunk→embed→index に一度も入らない。**
+#      - `SEARCHSEED=1` で起こせば本文つき文書が入る（scripts/seed-search-documents.js）。
+#        **それでも索引には入らない** —— `Embedding__Voyage__ApiKey` がどこにも配線されておらず、
+#        取り込みは `Embedded=false` のチャンクを**索引しない**（fail-closed）ためである。
 #
-#    よって**観測できることだけ**を門にする —— 認証が要ること、応答が契約どおりの形であること。
-#    「空であること」は PASS の根拠にしていない。索引可能な文書を用意する経路は別 issue。
+#    よって本段では**観測できることだけ**を門にする —— 認証が要ること、応答が契約どおりの形であること。
+#    「空であること」は PASS の根拠にしていない。**seed 文書が実際にヒットすることの判定は
+#    `SEARCH_HITS=1` の段にある**（冒頭の副作用の節）。
 
 step "10/$TOTAL" "無トークンで検索を叩く（401 になること）"
 code=$(curl -s $CURL_K -m 15 -o /dev/null -w '%{http_code}' -X POST   -H 'Content-Type: application/json' -d '{"query":"smoke","topK":5}' "$EDGE_URL/bff/search")
@@ -317,7 +354,7 @@ elif [ "$shape" = "bad" ]; then
   info "$(head -c 200 "$body_file")"
 else
   pass "POST /bff/search（認証あり）→ 200・契約どおりの形（results ${shape#ok:} 件）"
-  info "🔴 件数は判定に使っていない。このスタックは索引が空である（上のコメント参照）。"
+  info "🔴 本段は件数を判定に使っていない。件数の判定は SEARCH_HITS=1 の段が行う（#992）。"
 fi
 rm -f "$body_file"
 
@@ -473,6 +510,123 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
       fail "GET /bff/documents/$PROBE_DOC_ID（$DENY_USER）→ 応答なし（タイムアウト）"
     else
       pass "GET /bff/documents/$PROBE_DOC_ID（$DENY_USER）→ $code（詳細も deny されている）"
+    fi
+    rm -f "$body_file"
+  fi
+fi
+
+# ---- S1〜S3) SC-01 / FR-03: 検索が実際に効くことの観測（#992 / IADR-0284） -----------
+#
+# 🔴 段 10〜11 は「認証が要ること」と「応答の形」までしか見ない。**索引が空でも緑になる。**
+#    ここは `SEARCHSEED=1` で投入された seed 文書を使い、次の 2 つを分けて測る。
+#      S1・S2（SEARCH_SEEDED=1）: seed が**取り込みの入口条件を満たしている**か／
+#                                 属性を持たない利用者に**見えない**か
+#      S3   （SEARCH_HITS=1）  : seed が**実際にヒットする**か
+#    分ける理由（達成条件が違う）は冒頭の副作用の節に書いた。
+if [ "$SEARCH_SEEDED" = "1" ]; then
+
+  # 合言葉は seed の宣言（deploy/local/search-seed/documents.json）が単一情報源である。
+  # **ここへ値を写さない** —— 写すと seed を差し替えたときに片方だけ取り残され、
+  # 「検索の故障」と「合言葉の書き間違い」が区別できなくなる。
+  if [ -z "$SEARCH_PROBE_TERM" ]; then
+    SEARCH_PROBE_TERM=$(node "$(dirname "$0")/seed-search-documents.js" --print-probe-term 2>/dev/null | tail -1)
+  fi
+
+  # ---- S1) 正の対照: seed 文書が見え、本文の参照を持つ --------------------------------
+  # 🔴 **`markdownUri` まで見る。** これが null なら IngestionService の
+  #    `DocumentUpdatedConsumer` が先頭の早期 return で捨てるので、
+  #    **文書は在るのに索引には一度も入らない**。「作成できた」だけでは何も言えない。
+  next_step "seed 文書が一覧に見え、本文の参照（markdownUri）を持つこと"
+  if [ -z "$SEARCH_PROBE_TERM" ]; then
+    fail "検索の合言葉を解決できない（scripts/seed-search-documents.js --print-probe-term）。SEARCH_PROBE_TERM で明示してください"
+  else
+    body_file=$(mktemp)
+    code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' \
+      -H "Authorization: Bearer $ACCESS" "$EDGE_URL/bff/documents")
+    # 'missing'（一覧に無い）/ 'no-uri'（在るが markdownUri が空）/ 'ok'（在って参照を持つ）/ 'bad'（配列でない）
+    seed_state=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const a=JSON.parse(s);if(!Array.isArray(a))return console.log('bad');const t=process.argv[1];const d=a.find(x=>String(x.title??x.Title??'').includes(t));if(!d)return console.log('missing');const u=d.markdownUri??d.MarkdownUri??null;console.log(u?'ok':'no-uri')}catch{console.log('bad')}})" "$SEARCH_PROBE_TERM" < "$body_file")
+    if [ "$code" = "000" ]; then
+      fail "GET /bff/documents（seed 確認）→ 応答なし（タイムアウト）。上流の宛先が不達の疑い"
+    elif [ "$code" != "200" ]; then
+      fail "GET /bff/documents（seed 確認）→ $code（200 を期待）"
+      info "$(head -c 200 "$body_file")"
+    elif [ "$seed_state" = "bad" ]; then
+      fail "GET /bff/documents（seed 確認）→ 200 だが配列ではない"
+      info "$(head -c 200 "$body_file")"
+    elif [ "$seed_state" = "missing" ]; then
+      fail "seed 文書（$SEARCH_PROBE_TERM）が一覧に無い。SEARCHSEED=1 で起こしたか、投入が失敗していないか確認してください"
+    elif [ "$seed_state" = "no-uri" ]; then
+      fail "seed 文書は在るが markdownUri を持たない（取り込みの早期 return で捨てられる）"
+      info "🔴 DocumentService のオブジェクトストレージ配線（services.document.objectStorage）を疑うこと。"
+    else
+      pass "seed 文書が一覧に在り markdownUri を持つ（取り込みの入口条件を満たしている）"
+    fi
+    rm -f "$body_file"
+  fi
+
+  # ---- S2) 負の対照: 属性を持たない利用者は seed を検索できない ------------------------
+  # 🔴 これが無いと「全開放でも緑」になる。S1・S3 の正の対照と**対**で意味を持つ判定である。
+  #    $DENY_USER は platform-operator を持つので RBAC は通る。落ちるのは ABAC だけである。
+  next_step "属性を持たない利用者（$DENY_USER）の検索が 0 件であること（全開放を検出する）"
+  if [ -z "$DENY_ACCESS" ] && ! acquire_token "$DENY_USER" "$DENY_PASSWORD" 0; then
+    fail "$DENY_USER のトークンを取得できない: $ACQUIRE_ERR"
+  else
+    [ -z "$DENY_ACCESS" ] && DENY_ACCESS="$ACQUIRED_TOKEN"
+    body_file=$(mktemp)
+    code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST \
+      -H "Authorization: Bearer $DENY_ACCESS" -H 'Content-Type: application/json' \
+      -d "$(printf '{"query":"%s","topK":5}' "$SEARCH_PROBE_TERM")" "$EDGE_URL/bff/search")
+    deny_hits=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);const r=o.results??o.Results;console.log(Array.isArray(r)?r.length:-1)}catch{console.log(-1)}})" < "$body_file")
+    if [ "$code" = "403" ]; then
+      pass "POST /bff/search（$DENY_USER）→ 403（RBAC で落ちている。ABAC の対照にはならない点に注意）"
+    elif [ "$code" != "200" ]; then
+      fail "POST /bff/search（$DENY_USER）→ $code（200 か 403 を期待）"
+    elif [ "$deny_hits" = "0" ]; then
+      pass "POST /bff/search（$DENY_USER）→ 200・0 件（deny-by-default が効いている）"
+    else
+      fail "POST /bff/search（$DENY_USER）→ 200・$deny_hits 件（属性が無いのに検索できている＝全開放）"
+      info "$(head -c 200 "$body_file")"
+    fi
+    rm -f "$body_file"
+  fi
+fi
+
+# ---- S3) 🔴 本題: seed 文書が実際にヒットする（SEARCH_HITS=1） -----------------------
+#
+# **ここだけが「検索が効いている」ことを言える判定である。** 段 11 は形しか見ておらず、
+# 「検索が全く動いていない」と「該当が無い」を区別できない（[[IADR-0255]]）。
+#
+# 🔴 **0 件は FAIL である。** 「空であること」を PASS の根拠にしない。
+#    落ちたときに何を疑うかを出力に書く —— 取り込みは埋め込みが得られないチャンクを
+#    索引しない（fail-closed）ので、鍵の無いスタックでは**必ず** 0 件になる。
+if [ "$SEARCH_HITS" = "1" ]; then
+  next_step "seed 文書の合言葉で検索してヒットすること（0 件を PASS にしない）"
+  if [ -z "$SEARCH_PROBE_TERM" ]; then
+    fail "検索の合言葉を解決できないため判定できない（段 S1 を参照）"
+  else
+    body_file=$(mktemp)
+    code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST \
+      -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
+      -d "$(printf '{"query":"%s","topK":10}' "$SEARCH_PROBE_TERM")" "$EDGE_URL/bff/search")
+    # 'bad' か "<件数>:<seed を含むか 0|1>"。**件数だけでなく seed 自身の有無まで見る** ——
+    # 別の文書が当たっても「検索が効いている」証拠にはならない（段 14 が踏んだのと同じ型）。
+    hit_state=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);const r=o.results??o.Results;if(!Array.isArray(r))return console.log('bad');const t=process.argv[1];const seen=r.some(x=>String(x.documentTitle??x.DocumentTitle??'').includes(t)||String(x.text??x.Text??'').includes(t));console.log(r.length+':'+(seen?1:0))}catch{console.log('bad')}})" "$SEARCH_PROBE_TERM" < "$body_file")
+    if [ "$code" = "000" ]; then
+      fail "POST /bff/search（seed 検索）→ 応答なし（タイムアウト）。上流の宛先が不達の疑い"
+    elif [ "$code" != "200" ]; then
+      fail "POST /bff/search（seed 検索）→ $code（200 を期待）"
+      info "$(head -c 200 "$body_file")"
+    elif [ "$hit_state" = "bad" ]; then
+      fail "POST /bff/search（seed 検索）→ 200 だが SearchResponse の形ではない"
+      info "$(head -c 200 "$body_file")"
+    elif [ "${hit_state%%:*}" = "0" ]; then
+      fail "seed 文書（$SEARCH_PROBE_TERM）がヒットしない（0 件）。索引に入っていない疑い"
+      info "🔴 疑う順: ①取り込みが埋め込みを得られず索引をスキップした（Embedding__Voyage__ApiKey 未配線・fail-closed）"
+      info "         ②本文が永続化されず parse 段で失敗した ③ABAC が deny へ縮退した（段 S2 と併せて読む）"
+    elif [ "${hit_state##*:}" = "0" ]; then
+      fail "ヒット ${hit_state%%:*} 件だが seed 文書（$SEARCH_PROBE_TERM）を含まない"
+    else
+      pass "seed 文書がヒットした（${hit_state%%:*} 件・合言葉 $SEARCH_PROBE_TERM を含む）"
     fi
     rm -f "$body_file"
   fi
