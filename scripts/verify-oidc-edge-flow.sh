@@ -531,6 +531,11 @@ if [ "$SEARCH_SEEDED" = "1" ]; then
   if [ -z "$SEARCH_PROBE_TERM" ]; then
     SEARCH_PROBE_TERM=$(node "$(dirname "$0")/seed-search-documents.js" --print-probe-term 2>/dev/null | tail -1)
   fi
+  # 🔴 **空白だけの合言葉を空として扱う。** `[ -z ]` は空白 1 文字を「非空」と見るため、
+  #    そのまま進むと `{"query":" "}` が BFF の `IsNullOrWhiteSpace` で弾かれて必ず
+  #    「200 ＋ 空」になり、**負の対照（S2）が無条件に PASS する**（実測で踏んだ）。
+  SEARCH_PROBE_TERM="${SEARCH_PROBE_TERM#"${SEARCH_PROBE_TERM%%[![:space:]]*}"}"
+  SEARCH_PROBE_TERM="${SEARCH_PROBE_TERM%"${SEARCH_PROBE_TERM##*[![:space:]]}"}"
 
   # ---- S1) 正の対照: seed 文書が見え、本文の参照を持つ --------------------------------
   # 🔴 **`markdownUri` まで見る。** これが null なら IngestionService の
@@ -568,7 +573,11 @@ if [ "$SEARCH_SEEDED" = "1" ]; then
   # 🔴 これが無いと「全開放でも緑」になる。S1・S3 の正の対照と**対**で意味を持つ判定である。
   #    $DENY_USER は platform-operator を持つので RBAC は通る。落ちるのは ABAC だけである。
   next_step "属性を持たない利用者（$DENY_USER）の検索が 0 件であること（全開放を検出する）"
-  if [ -z "$DENY_ACCESS" ] && ! acquire_token "$DENY_USER" "$DENY_PASSWORD" 0; then
+  # 🔴 合言葉が空のまま進めない。空クエリは BFF が無条件に「200 ＋ 空」で返す（SearchBffEndpoints の
+  #    先頭 `IsNullOrWhiteSpace(req.Query)`）ため、**この段が必ず PASS する fail-open** になる。
+  if [ -z "$SEARCH_PROBE_TERM" ]; then
+    fail "検索の合言葉を解決できないため判定できない（段 S1 を参照）"
+  elif [ -z "$DENY_ACCESS" ] && ! acquire_token "$DENY_USER" "$DENY_PASSWORD" 0; then
     fail "$DENY_USER のトークンを取得できない: $ACQUIRE_ERR"
   else
     [ -z "$DENY_ACCESS" ] && DENY_ACCESS="$ACQUIRED_TOKEN"

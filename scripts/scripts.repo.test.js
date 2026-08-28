@@ -7951,6 +7951,17 @@ ${r.stderr}`);
       assert.match(VERIFY, /seed-search-documents\.js" --print-probe-term/);
     });
 
+    ok('#992: 空白だけの合言葉を空として扱う（負の対照の fail-open を塞ぐ）', () => {
+      // 🔴 `[ -z ]` は空白 1 文字を「非空」と見る。そのまま進むと `{"query":" "}` が
+      //    BFF の IsNullOrWhiteSpace で弾かれ「200 ＋ 空」になり、**S2 が無条件に PASS する**
+      //    （実装中に実測で踏んだ）。前後の空白を落としてから判定へ渡すこと。
+      assert.match(VERIFY, /SEARCH_PROBE_TERM#"\$\{SEARCH_PROBE_TERM%%\[!\[:space:\]\]\*\}"/);
+      assert.match(VERIFY, /SEARCH_PROBE_TERM%"\$\{SEARCH_PROBE_TERM##\*\[!\[:space:\]\]\}"/);
+      // 3 つの段すべてが合言葉の不在で fail-closed になる（S2 だけ素通りしない）。
+      const guards = VERIFY.match(/検索の合言葉を解決できない/g) || [];
+      assert.ok(guards.length >= 3, `合言葉の門が ${guards.length} 箇所しかない（S1・S2・S3 の 3 箇所が要る）`);
+    });
+
     ok('#992: seed の入口条件（markdownUri）まで見ている', () => {
       // 「作成できた」だけでは何も言えない —— MarkdownUri が null なら取り込みは早期 return で捨てる。
       const s1 = VERIFY.slice(VERIFY.indexOf('S1) 正の対照'), VERIFY.indexOf('S2) 負の対照'));

@@ -289,6 +289,7 @@ export して単体試験できる形にする。
 | M5 | 属性を持たない利用者の検索が **seed を返す**（ABAC 全開放） | スタブ側 | **1** | S2「200・1 件（属性が無いのに検索できている＝全開放）」 |
 | M6 | 段 S1 を**丸ごと削除**（32 行削除 / 0 行追加） | 実装直後の版との `diff` で削除のみを確認 | **1** | 門「実行した段が 19 本で、宣言（TOTAL=20）と一致しません」 |
 | M7 | `TOTAL` の加算を 1 つ落とす（`SEARCH_SEEDED` の +2 → +1） | `diff` が 2 行（1 行の置換）であることを確認 | **1** | 門「実行した段が 20 本で、宣言（TOTAL=19）と一致しません」 |
+| M8 | 合言葉が**空白だけ**になる（`SEARCH_PROBE_TERM="   "`） | 環境変数 | **1**（修正後）／**0 が混じる**（修正前） | S1・S2・S3 の 3 段すべてが「合言葉を解決できない」で FAIL |
 
 M1〜M5 はいずれも `PASS 24 / FAIL 1` で、**FAIL は狙った 1 件だけ**である
 （他の判定を巻き込んでいない＝検出が特定の段に効いている）。
@@ -298,12 +299,25 @@ M1〜M5 はいずれも `PASS 24 / FAIL 1` で、**FAIL は狙った 1 件だけ
 🔴 **M3 が本 issue の中心である。** #991 の判定（200 ＋ 形）では M3 は素通りしていた ——
 `{"results":[],"totalHits":0,"elapsedMs":1}` は契約どおりの形だからである。
 
+### 🔴 M8 は自分で作り込んだ fail-open を実測で見つけたものである（記録として残す）
+
+当初、合言葉の不在は `[ -z "$SEARCH_PROBE_TERM" ]` だけで見ていた。**`[ -z ]` は空白 1 文字を
+「非空」と判定する。** 空白だけの合言葉で進むと `{"query":" "}` を投げることになり、
+BFF の `SearchBffEndpoints` は先頭の `IsNullOrWhiteSpace(req.Query)` で
+**無条件に「200 ＋ 空」を返す**（`SearchResponse([], 0, 0)`）。
+その結果 **S2（負の対照＝ 0 件であること）が無条件に PASS** していた。
+
+「0 件であること」を根拠にする判定は、**クエリが届いていないだけでも成立してしまう。**
+#972 が潰した「200 ＋ 空リストを PASS にしない」と同じ型を、負の対照の側で作りかけていた。
+前後の空白を落としてから判定へ渡す形に直し、S1・S2・S3 の**3 段すべてが fail-closed** になった。
+構造は `scripts/scripts.repo.test.js` の「空白だけの合言葉を空として扱う」が固定している。
+
 ### 6.3 単体試験・機械検査（実測）
 
 | 実行 | 結果 |
 | --- | --- |
 | `node scripts/k8s-local-up.test.js` | `✓ 97 tests passed` |
-| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | `✓ 625 tests passed`（#992 の新規 10 件を含む） |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | `✓ 626 tests passed`（#992 の新規 11 件を含む） |
 | `bash -n scripts/verify-oidc-edge-flow.sh` | 構文 OK |
 | `node scripts/check-action-versions.js` | `✓ Actions のバージョンに退行なし` |
 
