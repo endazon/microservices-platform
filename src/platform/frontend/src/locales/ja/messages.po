@@ -54,6 +54,11 @@ msgstr "{0} → {1}（{typeName}）"
 msgid "{0} に「{1}」を付与"
 msgstr "{0} に「{1}」を付与"
 
+#. placeholder {0}: note.title
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "{0} を選択"
+msgstr "{0} を選択"
+
 #: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
 msgid "{count} 件で絞り込み中"
 msgstr "{count} 件で絞り込み中"
@@ -73,6 +78,16 @@ msgstr "{max} 文字以内で入力してください。"
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "{totalHits} 件（権限内のみ表示）"
 msgstr "{totalHits} 件（権限内のみ表示）"
+
+#. placeholder {0}: confirming.device.deviceName
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "「{0}」のトークンを無効にします。この端末からの同期はすぐに停止します。再び同期するには、トークンを再発行してプラグインへ入れ直してください。"
+msgstr "「{0}」のトークンを無効にします。この端末からの同期はすぐに停止します。再び同期するには、トークンを再発行してプラグインへ入れ直してください。"
+
+#. placeholder {0}: confirming.note.title
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "「{0}」を削除します。削除しても容量は空きません（90 日間保管されます）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
+msgstr "「{0}」を削除します。削除しても容量は空きません（90 日間保管されます）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "← チャットに戻る"
@@ -102,6 +117,14 @@ msgstr "⚠ ドリフト（明細へ）"
 msgid "👍 {up} / 👎 {down}"
 msgstr "👍 {up} / 👎 {down}"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "👤 個人資料（自分のみ）"
+msgstr "👤 個人資料（自分のみ）"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "90 日待てば自動的に完全削除されます。急がなければ、この操作は必要ありません。"
+msgstr "90 日待てば自動的に完全削除されます。急がなければ、この操作は必要ありません。"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AdminAbacSettingsPage.tsx
 msgid "ABAC 設定の区画"
 msgstr "ABAC 設定の区画"
@@ -129,6 +152,10 @@ msgstr "AI チャットを閉じる"
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "AI チャットを開く"
 msgstr "AI チャットを開く"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "AI の入力に含める"
+msgstr "AI の入力に含める"
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "AI 回答"
@@ -189,6 +216,26 @@ msgstr "Keycloak でサインイン"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "Mermaid {coded}図"
 msgstr "Mermaid {coded}図"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "Obsidian 側で削除した資料は、サーバ上では削除済みとして 90 日間保管され、その間は復元できます。90 日を過ぎると自動的に完全削除され、復元できなくなります。削除済み資料がある場合は週に一度お知らせし、完全削除の 7 日前にも改めてお知らせします。"
+msgstr "Obsidian 側で削除した資料は、サーバ上では削除済みとして 90 日間保管され、その間は復元できます。90 日を過ぎると自動的に完全削除され、復元できなくなります。削除済み資料がある場合は週に一度お知らせし、完全削除の 7 日前にも改めてお知らせします。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "Obsidian 内のパス（任意）"
+msgstr "Obsidian 内のパス（任意）"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "Obsidian 連携設定"
+msgstr "Obsidian 連携設定"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "Obsidian 連携設定へ"
+msgstr "Obsidian 連携設定へ"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/routes/sc20ObsidianSettingsRoute.ts
+msgid "Obsidian連携"
+msgstr "Obsidian連携"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "related: 実線・細（向きなし）"
@@ -271,6 +318,8 @@ msgstr "イベント接続はありません。"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 #: platform/frontend/src/components/notifications/NotificationBell.tsx
@@ -283,6 +332,7 @@ msgstr "エラー"
 msgid "お探しのページは存在しないか、アクセスできません。"
 msgstr "お探しのページは存在しないか、アクセスできません。"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "お知らせ"
 msgstr "お知らせ"
@@ -342,6 +392,10 @@ msgstr "このジョブは再変換できません（実行中、または失敗
 msgid "このタグは {inUseCount} 件の文書で使われているため削除できません。"
 msgstr "このタグは {inUseCount} 件の文書で使われているため削除できません。"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "このトークンを表示できるのは今回だけです。閉じると再表示できません（再発行のみ可能です）。"
+msgstr "このトークンを表示できるのは今回だけです。閉じると再表示できません（再発行のみ可能です）。"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
 msgstr "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
@@ -349,6 +403,10 @@ msgstr "この属性は使用中のため削除できません。参照してい
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "この提案は一度却下されましたが、文書が更新されたため再度提示しています。"
 msgstr "この提案は一度却下されましたが、文書が更新されたため再度提示しています。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "この操作は元に戻せません。削除後はいかなる方法でも復元できません。（削除の反映には時間がかかる場合があります。）"
+msgstr "この操作は元に戻せません。削除後はいかなる方法でも復元できません。（削除の反映には時間がかかる場合があります。）"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "この文書には表示できる関係がありません。"
@@ -365,6 +423,14 @@ msgstr "この画面の会話履歴はまだありません。"
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "この画面の履歴を消去"
 msgstr "この画面の履歴を消去"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "この端末を失効しますか？"
+msgstr "この端末を失効しますか？"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "この端末を失効する"
+msgstr "この端末を失効する"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "コミット"
@@ -399,6 +465,18 @@ msgstr "すべて"
 msgid "すべてが対象"
 msgstr "すべてが対象"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "すべての端末を失効しますか？"
+msgstr "すべての端末を失効しますか？"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "すべての端末を失効する"
+msgstr "すべての端末を失効する"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "すべて失効する"
+msgstr "すべて失効する"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "ソース"
 msgstr "ソース"
@@ -413,8 +491,13 @@ msgstr "その他の型（implements / refines / depends-on / part-of）は細�
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "タイトル"
 msgstr "タイトル"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "タイトルで絞り込む"
+msgstr "タイトルで絞り込む"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
@@ -515,6 +598,10 @@ msgstr "データソースを登録しました。"
 msgid "データソース登録"
 msgstr "データソース登録"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "トークンを発行する"
+msgstr "トークンを発行する"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "ドリフト"
 msgstr "ドリフト"
@@ -561,6 +648,10 @@ msgstr "ナレッジグラフ"
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "ナレッジグラフ（ノード {0} 件・辺 {1} 本）。詳細は凡例と選択パネルを参照"
 msgstr "ナレッジグラフ（ノード {0} 件・辺 {1} 本）。詳細は凡例と選択パネルを参照"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "ナレッジグラフに表示する"
+msgstr "ナレッジグラフに表示する"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "ナレッジグラフは起点となる文書から関係をたどります。検索結果や文書詳細から 「ナレッジグラフで表示」を選ぶか、URL の root パラメータで起点を指定してください。"
@@ -674,6 +765,10 @@ msgstr "ポリシー定義"
 msgid "ポリシー登録"
 msgstr "ポリシー登録"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "まもなく完全削除（残り {days} 日）"
+msgstr "まもなく完全削除（残り {days} 日）"
+
 #: knowledge/frontend/src/features/sc10-operations/types/opsTools.ts
 msgid "メトリクス・コスト"
 msgstr "メトリクス・コスト"
@@ -686,6 +781,11 @@ msgstr "モデル: {model}"
 msgid "モデル: 未使用（AI へ送信なし）"
 msgstr "モデル: 未使用（AI へ送信なし）"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "やめる"
+msgstr "やめる"
+
 #: platform/frontend/src/components/ui/Layout.tsx
 msgid "ユーザー"
 msgstr "ユーザー"
@@ -697,6 +797,14 @@ msgstr "ラベル"
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "リンク"
 msgstr "リンク"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "リンク先が表示されない場合、リンク切れなのか、閲覧権限がないのかは区別できません。これは、閲覧権限のない文書の存在を知られないようにするための仕様です。"
+msgstr "リンク先が表示されない場合、リンク切れなのか、閲覧権限がないのかは区別できません。これは、閲覧権限のない文書の存在を知られないようにするための仕様です。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "一覧"
+msgstr "一覧"
 
 #. placeholder {0}: nodes.length
 #. placeholder {1}: view.totalNodes
@@ -756,6 +864,10 @@ msgstr "会話履歴"
 msgid "作成"
 msgstr "作成"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "作成する"
+msgstr "作成する"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "使用件数"
 msgstr "使用件数"
@@ -787,13 +899,42 @@ msgstr "保存"
 msgid "保存前に構文・矛盾を検証します。矛盾があれば保存できません。保存すると認可判定へ即時反映されます。"
 msgstr "保存前に構文・矛盾を検証します。矛盾があれば保存できません。保存すると認可判定へ即時反映されます。"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "保存容量"
+msgstr "保存容量"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "保存容量: {used} / {limit} GB（うち削除済み {deleted} GB）"
+msgstr "保存容量: {used} / {limit} GB（うち削除済み {deleted} GB）"
+
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "保存容量が上限の {threshold}% に達しました"
 msgstr "保存容量が上限の {threshold}% に達しました"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "保存容量の上限"
+msgstr "保存容量の上限"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "保存容量の上限に達しました。新しい資料は作成できませんが、編集中の資料は保存できます。 容量を空けるには、削除済み一覧から「完全に削除（即時）」を実行してください（通常の削除では容量は空きません）。 管理者へ上限の引き上げを依頼することもできます。"
+msgstr "保存容量の上限に達しました。新しい資料は作成できませんが、編集中の資料は保存できます。 容量を空けるには、削除済み一覧から「完全に削除（即時）」を実行してください（通常の削除では容量は空きません）。 管理者へ上限の引き上げを依頼することもできます。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "保存容量の使用量が 80% を超えました。不要な資料を整理しておくことをおすすめします。"
+msgstr "保存容量の使用量が 80% を超えました。不要な資料を整理しておくことをおすすめします。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "保存容量の使用量が 95% を超えました。上限に達すると新しい資料を作成できなくなります。"
+msgstr "保存容量の使用量が 95% を超えました。上限に達すると新しい資料を作成できなくなります。"
+
 #: platform/frontend/src/app/routing/nav.ts
 msgid "個人"
 msgstr "個人"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/routes/sc19PrivateNotesRoute.ts
+msgid "個人資料"
+msgstr "個人資料"
 
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "個人資料 {count} 件が {deadline} に完全削除されます（7 日前の通知）"
@@ -807,6 +948,46 @@ msgstr "個人資料 {count} 件を完全削除しました"
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "個人資料（自分のみ）"
 msgstr "個人資料（自分のみ）"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料がまだありません。上の入力欄から作成してください。"
+msgstr "個人資料がまだありません。上の入力欄から作成してください。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料の一覧"
+msgstr "個人資料の一覧"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "個人資料の一覧へ"
+msgstr "個人資料の一覧へ"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料の一覧を取得できませんでした。時間をおいて再度お試しください。"
+msgstr "個人資料の一覧を取得できませんでした。時間をおいて再度お試しください。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料の新規作成"
+msgstr "個人資料の新規作成"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。"
+msgstr "個人資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料を作成しました。"
+msgstr "個人資料を作成しました。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料を削除しました。"
+msgstr "個人資料を削除しました。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料を削除しますか？"
+msgstr "個人資料を削除しますか？"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料を完全に削除しました。"
+msgstr "個人資料を完全に削除しました。"
 
 #: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
 msgid "候補を読み込み中…"
@@ -860,9 +1041,21 @@ msgstr "再変換は管理者のみ実行できます"
 msgid "再変換を受け付けました。"
 msgstr "再変換を受け付けました。"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "再発行したときの注意"
+msgstr "再発行したときの注意"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "再発行する"
+msgstr "再発行する"
+
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
 msgid "再試行中（{failures}/{limit}）"
 msgstr "再試行中（{failures}/{limit}）"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "最終同期"
+msgstr "最終同期"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "凡例（アイコンと形で区別・色は補助）"
@@ -909,6 +1102,11 @@ msgstr "分析実行"
 msgid "分析対象（権限内に限定）"
 msgstr "分析対象（権限内に限定）"
 
+#. placeholder {0}: live.length
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "利用中（{0}）"
+msgstr "利用中（{0}）"
+
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "利用状況・検索傾向・回答品質（SLO・コストは Grafana で参照）"
 msgstr "利用状況・検索傾向・回答品質（SLO・コストは Grafana で参照）"
@@ -937,9 +1135,38 @@ msgstr "利用者"
 msgid "削除"
 msgstr "削除"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "削除する"
+msgstr "削除する"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "削除の扱い"
+msgstr "削除の扱い"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "削除日時"
+msgstr "削除日時"
+
+#. placeholder {0}: trashed.length
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "削除済み（{0}）"
+msgstr "削除済み（{0}）"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "削除済みの個人資料"
+msgstr "削除済みの個人資料"
+
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "削除済みの個人資料が {count} 件あります。最短で {deadline} に完全削除されます"
 msgstr "削除済みの個人資料が {count} 件あります。最短で {deadline} に完全削除されます"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "削除済みの個人資料はありません。"
+msgstr "削除済みの個人資料はありません。"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "削除済みの個人資料を確認する"
+msgstr "削除済みの個人資料を確認する"
 
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "却下（再提示を抑止中）"
@@ -958,6 +1185,11 @@ msgstr "参照のみ"
 msgid "参照元は特定できませんでした。"
 msgstr "参照元は特定できませんでした。"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "取り扱い"
+msgstr "取り扱い"
+
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "取り消す"
 msgstr "取り消す"
@@ -966,9 +1198,21 @@ msgstr "取り消す"
 msgid "古い段の残留"
 msgstr "古い段の残留"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "同期した資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。同期対象フォルダに入れた私的なメモも、ナレッジベースに入った時点で同じ扱いになります。"
+msgstr "同期した資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。同期対象フォルダに入れた私的なメモも、ナレッジベースに入った時点で同じ扱いになります。"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "同期できるのは、あなたが作成した個人資料のみです。他の利用者の資料および組織文書は同期されません。公開範囲を変更しても同期は継続します。"
+msgstr "同期できるのは、あなたが作成した個人資料のみです。他の利用者の資料および組織文書は同期されません。公開範囲を変更しても同期は継続します。"
+
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "同期トークン {count} 件が {deadline} に期限切れになります（7 日前の通知）"
 msgstr "同期トークン {count} 件が {deadline} に期限切れになります（7 日前の通知）"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "同期の範囲"
+msgstr "同期の範囲"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "同期をトリガしました。"
@@ -1072,6 +1316,14 @@ msgstr "外部ツールの導線は未設定です。"
 msgid "太い輪郭・大きい表示 = 起点"
 msgstr "太い輪郭・大きい表示 = 起点"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "失効する"
+msgstr "失効する"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "失効済み"
+msgstr "失効済み"
+
 #: knowledge/frontend/src/features/sc07-conversions/types/jobStatus.ts
 msgid "失敗"
 msgstr "失敗"
@@ -1087,8 +1339,17 @@ msgstr "孤立文書（表示中の辺なし）"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "完了"
 msgstr "完了"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "完全に削除する"
+msgstr "完全に削除する"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "完全削除まで"
+msgstr "完全削除まで"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "実効構成"
@@ -1105,6 +1366,16 @@ msgstr "宣言に無い購読"
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "対象"
 msgstr "対象"
+
+#. placeholder {0}: purgeTargets.length
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "対象: {0} 件 ／ 解放される容量: {freed} GB"
+msgstr "対象: {0} 件 ／ 解放される容量: {freed} GB"
+
+#. placeholder {0}: rows.length
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "対象: {0} 台"
+msgstr "対象: {0} 台"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "対象アクション"
@@ -1183,7 +1454,12 @@ msgstr "役に立った"
 msgid "待機中"
 msgstr "待機中"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "復元する"
+msgstr "復元する"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "必須"
 msgstr "必須"
 
@@ -1228,6 +1504,10 @@ msgstr "指定された起点の文書は表示できません。文書が存在
 msgid "探索深さ（hops）"
 msgstr "探索深さ（hops）"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "接続している端末はまだありません。上の入力欄から追加してください。"
+msgstr "接続している端末はまだありません。上の入力欄から追加してください。"
+
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "接続している辺:"
 msgstr "接続している辺:"
@@ -1248,6 +1528,18 @@ msgstr "接続先 URI"
 msgid "接続情報（認証情報）は Vault 管理です。接続の継続失敗はアラートで通知されます。"
 msgstr "接続情報（認証情報）は Vault 管理です。接続の継続失敗はアラートで通知されます。"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "接続端末"
+msgstr "接続端末"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "接続端末の一覧"
+msgstr "接続端末の一覧"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "接続端末の一覧を取得できませんでした。時間をおいて再度お試しください。"
+msgstr "接続端末の一覧を取得できませんでした。時間をおいて再度お試しください。"
+
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "提案"
 msgstr "提案"
@@ -1262,8 +1554,15 @@ msgstr "提案の一覧を取得できませんでした。時間をおいて再
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "操作"
 msgstr "操作"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "操作に失敗しました。時間をおいて再度お試しください。"
+msgstr "操作に失敗しました。時間をおいて再度お試しください。"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "操作を受け付けられませんでした。"
@@ -1371,6 +1670,10 @@ msgstr "文書詳細で確認"
 msgid "新しいお知らせが {count} 件あります"
 msgstr "新しいお知らせが {count} 件あります"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "新しい個人資料を作成する"
+msgstr "新しい個人資料を作成する"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "既定のライフサイクル状態"
@@ -1435,6 +1738,7 @@ msgid "更新日が新しい順"
 msgstr "更新日が新しい順"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "更新日時"
 msgstr "更新日時"
 
@@ -1443,13 +1747,33 @@ msgstr "更新日時"
 msgid "有効"
 msgstr "有効"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "有効（残り {daysLeft} 日）"
+msgstr "有効（残り {daysLeft} 日）"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "有効化"
 msgstr "有効化"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "有効期限"
+msgstr "有効期限"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "有効期限が切れたトークンは、サーバ側で無効になりますが、Obsidian プラグインの設定には残ったままです。再発行したトークンを、プラグインの設定へ入れ直してください。"
+msgstr "有効期限が切れたトークンは、サーバ側で無効になりますが、Obsidian プラグインの設定には残ったままです。再発行したトークンを、プラグインの設定へ入れ直してください。"
+
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "期間内の利用はありません。"
 msgstr "期間内の利用はありません。"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "期限切れ（同期は停止しています）"
+msgstr "期限切れ（同期は停止しています）"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "期限切れ間近（残り {daysLeft} 日）"
+msgstr "期限切れ間近（残り {daysLeft} 日）"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
@@ -1473,6 +1797,10 @@ msgstr "未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。"
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "本文"
 msgstr "本文"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "本文はこの画面では編集できません。本文を書くには Obsidian 連携を設定してください。"
+msgstr "本文はこの画面では編集できません。本文を書くには Obsidian 連携を設定してください。"
 
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "本文は利用できません。"
@@ -1607,9 +1935,17 @@ msgstr "構成情報を取得できませんでした。"
 msgid "権限のある文書がありません"
 msgstr "権限のある文書がありません"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "横断検索・ナレッジグラフ・AI の入力に含めるかどうかは、資料ごとに個人資料の一覧から設定します。既定はいずれもオフです。"
+msgstr "横断検索・ナレッジグラフ・AI の入力に含めるかどうかは、資料ごとに個人資料の一覧から設定します。既定はいずれもオフです。"
+
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "横断検索と根拠付きAI回答（ストリーミング・出典表示）"
 msgstr "横断検索と根拠付きAI回答（ストリーミング・出典表示）"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "横断検索に含める"
+msgstr "横断検索に含める"
 
 #: knowledge/frontend/src/features/sc03-document/types/attributes.ts
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
@@ -1631,6 +1967,10 @@ msgstr "次数が大きい順"
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "正規化文書（Markdown）プレビュー"
 msgstr "正規化文書（Markdown）プレビュー"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "残り {days} 日"
+msgstr "残り {days} 日"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "段は登録されていません。"
@@ -1687,6 +2027,7 @@ msgstr "版"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "状態"
 msgstr "状態"
@@ -1703,9 +2044,17 @@ msgstr "状態で絞り込み"
 msgid "画像を読み込み中…"
 msgstr "画像を読み込み中…"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "発行しました"
+msgstr "発行しました"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "発行者"
 msgstr "発行者"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "登録されているすべての端末のトークンを無効にします。この操作は元に戻せません。すべての端末で同期が停止し、再開するには端末ごとにトークンを再発行して入れ直す必要があります。"
+msgstr "登録されているすべての端末のトークンを無効にします。この操作は元に戻せません。すべての端末で同期が停止し、再開するには端末ごとにトークンを再発行して入れ直す必要があります。"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "登録する"
@@ -1747,6 +2096,7 @@ msgstr "社内ナレッジ検索・AI 回答プラットフォーム"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "種別"
 msgstr "種別"
 
@@ -1757,6 +2107,28 @@ msgstr "種別:"
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "種類"
 msgstr "種類"
+
+#. placeholder {0}: issued.deviceName
+#. placeholder {1}: formatDateTime(issued.expiresAt)
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "端末: {0} ／ 有効期限: {1}"
+msgstr "端末: {0} ／ 有効期限: {1}"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "端末を接続する"
+msgstr "端末を接続する"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "端末名"
+msgstr "端末名"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "端末名（任意）"
+msgstr "端末名（任意）"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "端末名を入力してトークンを発行し、Obsidian プラグインの設定へ貼り付けてください。トークンの有効期限は 30 日です。期限が切れたら、この画面から手動で再発行して入れ直してください（自動更新は行いません）。"
+msgstr "端末名を入力してトークンを発行し、Obsidian プラグインの設定へ貼り付けてください。トークンの有効期限は 30 日です。期限が切れたら、この画面から手動で再発行して入れ直してください（自動更新は行いません）。"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 #: platform/frontend/src/app/routing/nav.ts
@@ -1910,6 +2282,7 @@ msgid "読み込み中です。"
 msgstr "読み込み中です。"
 
 #: knowledge/frontend/src/features/sc11-config/types/driftView.ts
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
 msgid "警告"
 msgstr "警告"
 
@@ -1999,6 +2372,14 @@ msgstr "運用ツール"
 msgid "運用面は専用ツールで提供します: Grafana（メトリクス・コスト）・Kiali（サービスメッシュ）・Jaeger / Tempo（分散トレース）。本画面はこれらへの入口です。"
 msgstr "運用面は専用ツールで提供します: Grafana（メトリクス・コスト）・Kiali（サービスメッシュ）・Jaeger / Tempo（分散トレース）。本画面はこれらへの入口です。"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "過去の版（版履歴）は保存容量に含まれません。"
+msgstr "過去の版（版履歴）は保存容量に含まれません。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "過去の版（版履歴）は容量に含まれませんが、削除済みの資料は 90 日間は容量に含まれます。"
+msgstr "過去の版（版履歴）は容量に含まれませんが、削除済みの資料は 90 日間は容量に含まれます。"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "適用 {appliedAt}"
 msgstr "適用 {appliedAt}"
@@ -2022,6 +2403,26 @@ msgstr "適用者"
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "適用者 {appliedBy}"
 msgstr "適用者 {appliedBy}"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "選択"
+msgstr "選択"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "選択した個人資料を完全に削除しますか？"
+msgstr "選択した個人資料を完全に削除しますか？"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "選択した個人資料を復元しました。"
+msgstr "選択した個人資料を復元しました。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "選択した資料を完全に削除する"
+msgstr "選択した資料を完全に削除する"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "選択した資料を復元する"
+msgstr "選択した資料を復元する"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "選択してください"
@@ -2065,3 +2466,7 @@ msgstr "閲覧"
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "集計期間"
 msgstr "集計期間"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "露出"
+msgstr "露出"

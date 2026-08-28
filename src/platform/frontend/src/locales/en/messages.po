@@ -54,6 +54,11 @@ msgstr "{0} → {1} ({typeName})"
 msgid "{0} に「{1}」を付与"
 msgstr "Add tag \"{1}\" to {0}"
 
+#. placeholder {0}: note.title
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "{0} を選択"
+msgstr "Select {0}"
+
 #: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
 msgid "{count} 件で絞り込み中"
 msgstr "Narrowed by {count}"
@@ -73,6 +78,16 @@ msgstr "Enter no more than {max} characters."
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "{totalHits} 件（権限内のみ表示）"
 msgstr "{totalHits} result(s) (only documents you may access)"
+
+#. placeholder {0}: confirming.device.deviceName
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "「{0}」のトークンを無効にします。この端末からの同期はすぐに停止します。再び同期するには、トークンを再発行してプラグインへ入れ直してください。"
+msgstr "This revokes the token for \"{0}\". Syncing from this device stops immediately. To sync again, reissue a token and paste it into the plugin settings."
+
+#. placeholder {0}: confirming.note.title
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "「{0}」を削除します。削除しても容量は空きません（90 日間保管されます）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
+msgstr "This deletes \"{0}\". Deleting does not free up storage (the note is kept for 90 days). To free up storage right away, run \"Delete permanently\" from the deleted list."
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "← チャットに戻る"
@@ -102,6 +117,14 @@ msgstr "⚠ Drift (see details)"
 msgid "👍 {up} / 👎 {down}"
 msgstr "👍 {up} / 👎 {down}"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "👤 個人資料（自分のみ）"
+msgstr "👤 Private note (only you)"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "90 日待てば自動的に完全削除されます。急がなければ、この操作は必要ありません。"
+msgstr "After 90 days it is permanently deleted automatically. Unless you are in a hurry, this action is unnecessary."
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AdminAbacSettingsPage.tsx
 msgid "ABAC 設定の区画"
 msgstr "ABAC settings sections"
@@ -129,6 +152,10 @@ msgstr "Close AI chat"
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "AI チャットを開く"
 msgstr "Open AI chat"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "AI の入力に含める"
+msgstr "Include in AI input"
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "AI 回答"
@@ -189,6 +216,26 @@ msgstr "Sign in with Keycloak"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "Mermaid {coded}図"
 msgstr "Mermaid, {coded} diagram(s)"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "Obsidian 側で削除した資料は、サーバ上では削除済みとして 90 日間保管され、その間は復元できます。90 日を過ぎると自動的に完全削除され、復元できなくなります。削除済み資料がある場合は週に一度お知らせし、完全削除の 7 日前にも改めてお知らせします。"
+msgstr "Notes you delete in Obsidian are kept on the server as deleted for 90 days and can be restored during that period. After 90 days they are permanently deleted automatically and can no longer be restored. We notify you weekly while deleted notes exist, and again 7 days before permanent deletion."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "Obsidian 内のパス（任意）"
+msgstr "Path inside Obsidian (optional)"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "Obsidian 連携設定"
+msgstr "Obsidian integration settings"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "Obsidian 連携設定へ"
+msgstr "Go to Obsidian integration settings"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/routes/sc20ObsidianSettingsRoute.ts
+msgid "Obsidian連携"
+msgstr "Obsidian"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "related: 実線・細（向きなし）"
@@ -271,6 +318,8 @@ msgstr "There are no event bindings."
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 #: platform/frontend/src/components/notifications/NotificationBell.tsx
@@ -283,6 +332,7 @@ msgstr "Error"
 msgid "お探しのページは存在しないか、アクセスできません。"
 msgstr "The page does not exist, or you do not have access to it."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "お知らせ"
 msgstr "Notice"
@@ -342,6 +392,10 @@ msgstr "This job cannot be reconverted (it is running, or is not in the failed s
 msgid "このタグは {inUseCount} 件の文書で使われているため削除できません。"
 msgstr "This tag is used by {inUseCount} document(s) and cannot be deleted."
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "このトークンを表示できるのは今回だけです。閉じると再表示できません（再発行のみ可能です）。"
+msgstr "This token is shown only once. Once you leave this page it cannot be shown again (you can only reissue it)."
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
 msgstr "This attribute is in use and cannot be deleted. Review the policies that reference it first."
@@ -349,6 +403,10 @@ msgstr "This attribute is in use and cannot be deleted. Review the policies that
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "この提案は一度却下されましたが、文書が更新されたため再度提示しています。"
 msgstr "This suggestion was rejected once, but a document has since been updated, so it is being offered again."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "この操作は元に戻せません。削除後はいかなる方法でも復元できません。（削除の反映には時間がかかる場合があります。）"
+msgstr "This action cannot be undone. After deletion the note cannot be restored by any means. (Deletion may take some time to propagate.)"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "この文書には表示できる関係がありません。"
@@ -365,6 +423,14 @@ msgstr "No conversation history for this screen yet."
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "この画面の履歴を消去"
 msgstr "Clear this screen's history"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "この端末を失効しますか？"
+msgstr "Revoke this device?"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "この端末を失効する"
+msgstr "Revoke this device"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "コミット"
@@ -399,6 +465,18 @@ msgstr "All"
 msgid "すべてが対象"
 msgstr "All in scope"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "すべての端末を失効しますか？"
+msgstr "Revoke all devices?"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "すべての端末を失効する"
+msgstr "Revoke all devices"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "すべて失効する"
+msgstr "Revoke all"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "ソース"
 msgstr "Source"
@@ -413,8 +491,13 @@ msgstr "Other types (implements / refines / depends-on / part-of) are drawn as t
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "タイトル"
 msgstr "Title"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "タイトルで絞り込む"
+msgstr "Filter by title"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
@@ -515,6 +598,10 @@ msgstr "The data source has been registered."
 msgid "データソース登録"
 msgstr "Data source registration"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "トークンを発行する"
+msgstr "Issue a token"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "ドリフト"
 msgstr "Drift"
@@ -561,6 +648,10 @@ msgstr "Knowledge graph"
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "ナレッジグラフ（ノード {0} 件・辺 {1} 本）。詳細は凡例と選択パネルを参照"
 msgstr "Knowledge graph ({0} nodes, {1} edges). See the legend and the selection panel for details"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "ナレッジグラフに表示する"
+msgstr "Show in the knowledge graph"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "ナレッジグラフは起点となる文書から関係をたどります。検索結果や文書詳細から 「ナレッジグラフで表示」を選ぶか、URL の root パラメータで起点を指定してください。"
@@ -674,6 +765,10 @@ msgstr "Policies"
 msgid "ポリシー登録"
 msgstr "Policy registration"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "まもなく完全削除（残り {days} 日）"
+msgstr "Permanent deletion soon ({days} days left)"
+
 #: knowledge/frontend/src/features/sc10-operations/types/opsTools.ts
 msgid "メトリクス・コスト"
 msgstr "Metrics and cost"
@@ -686,6 +781,11 @@ msgstr "Model: {model}"
 msgid "モデル: 未使用（AI へ送信なし）"
 msgstr "Model: none (nothing was sent to the AI)"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "やめる"
+msgstr "Cancel"
+
 #: platform/frontend/src/components/ui/Layout.tsx
 msgid "ユーザー"
 msgstr "User"
@@ -697,6 +797,14 @@ msgstr "Label"
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "リンク"
 msgstr "Link"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "リンク先が表示されない場合、リンク切れなのか、閲覧権限がないのかは区別できません。これは、閲覧権限のない文書の存在を知られないようにするための仕様です。"
+msgstr "When a link target is not shown, you cannot tell whether the link is broken or whether you lack permission to view it. This is by design, so that the existence of documents you cannot view is not revealed."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "一覧"
+msgstr "List"
 
 #. placeholder {0}: nodes.length
 #. placeholder {1}: view.totalNodes
@@ -756,6 +864,10 @@ msgstr "Conversation history"
 msgid "作成"
 msgstr "Created"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "作成する"
+msgstr "Create"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "使用件数"
 msgstr "Usage count"
@@ -787,13 +899,42 @@ msgstr "Save"
 msgid "保存前に構文・矛盾を検証します。矛盾があれば保存できません。保存すると認可判定へ即時反映されます。"
 msgstr "Syntax and contradictions are validated before saving. A contradicting policy cannot be saved. Once saved, it takes effect on authorization decisions immediately."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "保存容量"
+msgstr "Storage"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "保存容量: {used} / {limit} GB（うち削除済み {deleted} GB）"
+msgstr "Storage: {used} / {limit} GB (deleted: {deleted} GB)"
+
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "保存容量が上限の {threshold}% に達しました"
 msgstr "Storage usage has reached {threshold}% of your limit"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "保存容量の上限"
+msgstr "Storage limit"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "保存容量の上限に達しました。新しい資料は作成できませんが、編集中の資料は保存できます。 容量を空けるには、削除済み一覧から「完全に削除（即時）」を実行してください（通常の削除では容量は空きません）。 管理者へ上限の引き上げを依頼することもできます。"
+msgstr "You have reached the storage limit. You cannot create new notes, but you can still save the notes you are editing. To free up storage, run \"Delete permanently (immediate)\" from the deleted list (ordinary deletion does not free up storage). You can also ask an administrator to raise the limit."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "保存容量の使用量が 80% を超えました。不要な資料を整理しておくことをおすすめします。"
+msgstr "Storage usage has passed 80%. We recommend cleaning up notes you no longer need."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "保存容量の使用量が 95% を超えました。上限に達すると新しい資料を作成できなくなります。"
+msgstr "Storage usage has passed 95%. Once the limit is reached you can no longer create new notes."
+
 #: platform/frontend/src/app/routing/nav.ts
 msgid "個人"
 msgstr "Personal"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/routes/sc19PrivateNotesRoute.ts
+msgid "個人資料"
+msgstr "Private notes"
 
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "個人資料 {count} 件が {deadline} に完全削除されます（7 日前の通知）"
@@ -807,6 +948,46 @@ msgstr "{count} personal note(s) have been permanently deleted"
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "個人資料（自分のみ）"
 msgstr "Private note (only you)"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料がまだありません。上の入力欄から作成してください。"
+msgstr "You do not have any private notes yet. Create one using the form above."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料の一覧"
+msgstr "List of private notes"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "個人資料の一覧へ"
+msgstr "Go to the private note list"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料の一覧を取得できませんでした。時間をおいて再度お試しください。"
+msgstr "Could not load the list of private notes. Please try again later."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料の新規作成"
+msgstr "Create a private note"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。"
+msgstr "Private notes are treated as work-related material. When you leave the company, administrators may view them for 30 days from your last day."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料を作成しました。"
+msgstr "The private note has been created."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料を削除しました。"
+msgstr "The private note has been deleted."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料を削除しますか？"
+msgstr "Delete this private note?"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料を完全に削除しました。"
+msgstr "The private notes have been permanently deleted."
 
 #: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
 msgid "候補を読み込み中…"
@@ -860,9 +1041,21 @@ msgstr "Only administrators can reconvert"
 msgid "再変換を受け付けました。"
 msgstr "The reconversion has been accepted."
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "再発行したときの注意"
+msgstr "Before you reissue"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "再発行する"
+msgstr "Reissue"
+
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
 msgid "再試行中（{failures}/{limit}）"
 msgstr "Retrying ({failures}/{limit})"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "最終同期"
+msgstr "Last sync"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "凡例（アイコンと形で区別・色は補助）"
@@ -909,6 +1102,11 @@ msgstr "Run analysis"
 msgid "分析対象（権限内に限定）"
 msgstr "Analysis scope (limited to what you may access)"
 
+#. placeholder {0}: live.length
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "利用中（{0}）"
+msgstr "In use ({0})"
+
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "利用状況・検索傾向・回答品質（SLO・コストは Grafana で参照）"
 msgstr "Usage, search trends and answer quality (see Grafana for SLO and cost)"
@@ -937,9 +1135,38 @@ msgstr "General"
 msgid "削除"
 msgstr "Delete"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "削除する"
+msgstr "Delete"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "削除の扱い"
+msgstr "How deletion works"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "削除日時"
+msgstr "Deleted at"
+
+#. placeholder {0}: trashed.length
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "削除済み（{0}）"
+msgstr "Deleted ({0})"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "削除済みの個人資料"
+msgstr "Deleted private notes"
+
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "削除済みの個人資料が {count} 件あります。最短で {deadline} に完全削除されます"
 msgstr "{count} deleted personal note(s). The earliest permanent deletion is {deadline}"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "削除済みの個人資料はありません。"
+msgstr "There are no deleted private notes."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "削除済みの個人資料を確認する"
+msgstr "Review deleted private notes"
 
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "却下（再提示を抑止中）"
@@ -958,6 +1185,11 @@ msgstr "Read-only"
 msgid "参照元は特定できませんでした。"
 msgstr "The referencing policies could not be identified."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "取り扱い"
+msgstr "Handling"
+
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "取り消す"
 msgstr "Cancel"
@@ -966,9 +1198,21 @@ msgstr "Cancel"
 msgid "古い段の残留"
 msgstr "Stale stage left running"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "同期した資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。同期対象フォルダに入れた私的なメモも、ナレッジベースに入った時点で同じ扱いになります。"
+msgstr "Synced notes are treated as work-related material. When you leave the company, administrators may view them for 30 days from your last day. Personal notes you put into a synced folder are treated the same way once they enter the knowledge base."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "同期できるのは、あなたが作成した個人資料のみです。他の利用者の資料および組織文書は同期されません。公開範囲を変更しても同期は継続します。"
+msgstr "Only the private notes you created are synced. Other users' notes and organizational documents are not synced. Syncing continues even if you change the sharing scope."
+
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "同期トークン {count} 件が {deadline} に期限切れになります（7 日前の通知）"
 msgstr "{count} sync token(s) will expire on {deadline} (7-day notice)"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "同期の範囲"
+msgstr "What is synced"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "同期をトリガしました。"
@@ -1072,6 +1316,14 @@ msgstr "No external tool links are configured."
 msgid "太い輪郭・大きい表示 = 起点"
 msgstr "Thick outline, larger size = root"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "失効する"
+msgstr "Revoke"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "失効済み"
+msgstr "Revoked"
+
 #: knowledge/frontend/src/features/sc07-conversions/types/jobStatus.ts
 msgid "失敗"
 msgstr "Failed"
@@ -1087,8 +1339,17 @@ msgstr "Isolated document (no displayed edges)"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "完了"
 msgstr "Done"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "完全に削除する"
+msgstr "Delete permanently"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "完全削除まで"
+msgstr "Until permanent deletion"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "実効構成"
@@ -1105,6 +1366,16 @@ msgstr "Undeclared subscription"
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "対象"
 msgstr "Target"
+
+#. placeholder {0}: purgeTargets.length
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "対象: {0} 件 ／ 解放される容量: {freed} GB"
+msgstr "Selected: {0} note(s) / Storage freed: {freed} GB"
+
+#. placeholder {0}: rows.length
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "対象: {0} 台"
+msgstr "Selected: {0} device(s)"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "対象アクション"
@@ -1183,7 +1454,12 @@ msgstr "Helpful"
 msgid "待機中"
 msgstr "Queued"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "復元する"
+msgstr "Restore"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "必須"
 msgstr "Required"
 
@@ -1228,6 +1504,10 @@ msgstr "The requested root document cannot be displayed. Whether it does not exi
 msgid "探索深さ（hops）"
 msgstr "Exploration depth (hops)"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "接続している端末はまだありません。上の入力欄から追加してください。"
+msgstr "No devices are connected yet. Add one using the form above."
+
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "接続している辺:"
 msgstr "Connected edges:"
@@ -1248,6 +1528,18 @@ msgstr "Connection URI"
 msgid "接続情報（認証情報）は Vault 管理です。接続の継続失敗はアラートで通知されます。"
 msgstr "Connection credentials are managed in Vault. Repeated connection failures raise an alert."
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "接続端末"
+msgstr "Connected devices"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "接続端末の一覧"
+msgstr "List of connected devices"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "接続端末の一覧を取得できませんでした。時間をおいて再度お試しください。"
+msgstr "Could not load the list of connected devices. Please try again later."
+
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "提案"
 msgstr "Suggestion"
@@ -1262,8 +1554,15 @@ msgstr "The list of suggestions could not be retrieved. Please try again later."
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "操作"
 msgstr "Actions"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "操作に失敗しました。時間をおいて再度お試しください。"
+msgstr "The operation failed. Please try again later."
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "操作を受け付けられませんでした。"
@@ -1371,6 +1670,10 @@ msgstr "Open document detail"
 msgid "新しいお知らせが {count} 件あります"
 msgstr "You have {count} new notice(s)"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "新しい個人資料を作成する"
+msgstr "Create a new private note"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "既定のライフサイクル状態"
@@ -1435,6 +1738,7 @@ msgid "更新日が新しい順"
 msgstr "Recently updated first"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "更新日時"
 msgstr "Updated"
 
@@ -1443,13 +1747,33 @@ msgstr "Updated"
 msgid "有効"
 msgstr "Enabled"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "有効（残り {daysLeft} 日）"
+msgstr "Valid ({daysLeft} days left)"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "有効化"
 msgstr "Enable"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "有効期限"
+msgstr "Expires"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "有効期限が切れたトークンは、サーバ側で無効になりますが、Obsidian プラグインの設定には残ったままです。再発行したトークンを、プラグインの設定へ入れ直してください。"
+msgstr "An expired token is invalidated on the server, but it stays in your Obsidian plugin settings. Paste the reissued token into the plugin settings."
+
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "期間内の利用はありません。"
 msgstr "There is no usage in this period."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "期限切れ（同期は停止しています）"
+msgstr "Expired (syncing has stopped)"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "期限切れ間近（残り {daysLeft} 日）"
+msgstr "Expiring soon ({daysLeft} days left)"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
@@ -1473,6 +1797,10 @@ msgstr "The default value {DEFAULT_LIFECYCLE} is used when left unspecified."
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "本文"
 msgstr "Body"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "本文はこの画面では編集できません。本文を書くには Obsidian 連携を設定してください。"
+msgstr "You cannot edit note bodies on this screen. To write a body, set up the Obsidian integration."
 
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "本文は利用できません。"
@@ -1607,9 +1935,17 @@ msgstr "The configuration information could not be loaded."
 msgid "権限のある文書がありません"
 msgstr "No documents you can view"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "横断検索・ナレッジグラフ・AI の入力に含めるかどうかは、資料ごとに個人資料の一覧から設定します。既定はいずれもオフです。"
+msgstr "Whether a note is included in cross-search, the knowledge graph, or AI input is set per note from the private note list. All three are off by default."
+
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "横断検索と根拠付きAI回答（ストリーミング・出典表示）"
 msgstr "Cross-source search and grounded AI answers (streaming, with sources)"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "横断検索に含める"
+msgstr "Include in cross-search"
 
 #: knowledge/frontend/src/features/sc03-document/types/attributes.ts
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
@@ -1631,6 +1967,10 @@ msgstr "Highest degree first"
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "正規化文書（Markdown）プレビュー"
 msgstr "Normalized document (Markdown) preview"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "残り {days} 日"
+msgstr "{days} days left"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "段は登録されていません。"
@@ -1687,6 +2027,7 @@ msgstr "Version"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "状態"
 msgstr "Status"
@@ -1703,9 +2044,17 @@ msgstr "Filter by status"
 msgid "画像を読み込み中…"
 msgstr "Loading image…"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "発行しました"
+msgstr "Issued"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "発行者"
 msgstr "Publishers"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "登録されているすべての端末のトークンを無効にします。この操作は元に戻せません。すべての端末で同期が停止し、再開するには端末ごとにトークンを再発行して入れ直す必要があります。"
+msgstr "This invalidates the tokens of every registered device. The action cannot be undone. Syncing stops on all devices, and to resume you must reissue a token for each device and paste it in again."
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "登録する"
@@ -1747,6 +2096,7 @@ msgstr "Internal knowledge search and AI answering platform"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "種別"
 msgstr "Type"
 
@@ -1757,6 +2107,28 @@ msgstr "Kind:"
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "種類"
 msgstr "Kind"
+
+#. placeholder {0}: issued.deviceName
+#. placeholder {1}: formatDateTime(issued.expiresAt)
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "端末: {0} ／ 有効期限: {1}"
+msgstr "Device: {0} / Expires: {1}"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "端末を接続する"
+msgstr "Connect a device"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "端末名"
+msgstr "Device name"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "端末名（任意）"
+msgstr "Device name (optional)"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "端末名を入力してトークンを発行し、Obsidian プラグインの設定へ貼り付けてください。トークンの有効期限は 30 日です。期限が切れたら、この画面から手動で再発行して入れ直してください（自動更新は行いません）。"
+msgstr "Enter a device name, issue a token, and paste it into your Obsidian plugin settings. Tokens are valid for 30 days. When a token expires, reissue it manually from this screen and paste it in again (tokens are never refreshed automatically)."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 #: platform/frontend/src/app/routing/nav.ts
@@ -1910,6 +2282,7 @@ msgid "読み込み中です。"
 msgstr "Loading…"
 
 #: knowledge/frontend/src/features/sc11-config/types/driftView.ts
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
 msgid "警告"
 msgstr "Warning"
 
@@ -1999,6 +2372,14 @@ msgstr "Operations tools"
 msgid "運用面は専用ツールで提供します: Grafana（メトリクス・コスト）・Kiali（サービスメッシュ）・Jaeger / Tempo（分散トレース）。本画面はこれらへの入口です。"
 msgstr "Operations are covered by dedicated tools: Grafana (metrics and cost), Kiali (service mesh) and Jaeger / Tempo (distributed tracing). This screen is the entry point to them."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "過去の版（版履歴）は保存容量に含まれません。"
+msgstr "Past versions (version history) do not count toward storage."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "過去の版（版履歴）は容量に含まれませんが、削除済みの資料は 90 日間は容量に含まれます。"
+msgstr "Past versions (version history) do not count toward storage, but deleted notes count toward it for 90 days."
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "適用 {appliedAt}"
 msgstr "Applied {appliedAt}"
@@ -2022,6 +2403,26 @@ msgstr "Applied by"
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "適用者 {appliedBy}"
 msgstr "Applied by {appliedBy}"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "選択"
+msgstr "Select"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "選択した個人資料を完全に削除しますか？"
+msgstr "Permanently delete the selected private notes?"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "選択した個人資料を復元しました。"
+msgstr "The selected private notes have been restored."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "選択した資料を完全に削除する"
+msgstr "Delete selected permanently"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "選択した資料を復元する"
+msgstr "Restore selected"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "選択してください"
@@ -2065,3 +2466,7 @@ msgstr "Read"
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "集計期間"
 msgstr "Period"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "露出"
+msgstr "Exposure"
