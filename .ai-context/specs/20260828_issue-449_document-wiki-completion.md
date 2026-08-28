@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — #449（FR-06 / FR-13 文書管理・Wiki 閲覧）の残作業を実測で確定し、実環境不要分を実装する
 type: spec
-status: draft
+status: done
 related_ids:
   - FR-06
   - FR-09
