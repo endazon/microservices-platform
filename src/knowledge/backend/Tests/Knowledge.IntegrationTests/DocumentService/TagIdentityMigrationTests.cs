@@ -99,6 +99,26 @@ public sealed class TagIdentityMigrationTests(PostgresFixture postgres)
             await migrator.MigrateAsync(TargetMigration, TestContext.Current.CancellationToken);
         }
 
+        // ── 残りのマイグレーションも適用してから読む ──────────────────
+        // 🔴 **下の検証は「現行の」EF モデルで読む。** そのモデルは対象マイグレーション以降に
+        // 増えた列（`Documents.ContentFingerprint` 等）を知っているため、DB を対象マイグレーション
+        // に留めたまま `db.Documents` を読むと
+        //   `Npgsql.PostgresException : 42703: column d.ContentFingerprint does not exist`
+        // で落ちる。**移行の欠陥ではなく、この試験の構造的な脆さである**（#1037。develop の
+        // `integration.yml` で実測）。**Documents に列が 1 つ増えるたびに落ちる形**なので、ここで断つ。
+        //
+        // 本番の DB が EF に読まれるのは**必ず最新まで適用された状態**である。その状態を再現する。
+        // 対象マイグレーション以降の 3 本（AddDocumentShares / AddPrivateNotes /
+        // AddContentFingerprint）は `Documents."Tags"` にも `DocumentVersions."Tags"` にも触れず、
+        // `ContentFingerprint` は nullable なので既存行にも入る。**したがって下の表明が見ている
+        // ものは変わらない。** 将来 `Tags` を触る移行が入れば本試験は意図どおり落ちる ——
+        // そのときは表明のほうを見直すこと（黙って最新へ追随させない）。
+        await using (var db = NewContext(cs))
+        {
+            await db.GetService<IMigrator>()
+                .MigrateAsync(cancellationToken: TestContext.Current.CancellationToken);
+        }
+
         // ── 検証: EF が `List<Guid>` として読めること（＝形式が正しいこと）──
         await using (var db = NewContext(cs))
         {
