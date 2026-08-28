@@ -527,6 +527,8 @@ module.exports = ({ ok, assert }) => {
     parseEightElementProject,
     classifyLayerReference,
     scanDomainForbiddenUsings,
+    parseVsaLayerPath,
+    scanVsaLayerUsings,
   } = require('./check-unit-dependencies.js');
 
   const KNOWLEDGE_DOC =
@@ -692,6 +694,222 @@ module.exports = ({ ok, assert }) => {
       ).length,
       0,
     );
+  });
+
+  // --- 規則 3-③（新判定）: 単一プロジェクト＋VSA 層の名前空間方向（NFR, IADR-0282 決定 2） ------
+  //
+  // 旧判定①②（8 要素プロジェクト）は層プロジェクトの撤去で自然に 0 件走査になるため門を置かず、
+  // 0 件走査の門は新判定側に置く——設計判断は check-unit-dependencies.js 冒頭コメント。
+  // ここで固定するのは (a) 純関数の正例・違反例、(b) 移送済み FeedbackService の実データ走査
+  // （実測）、(c) 実データへの変異試験、(d) main() までの配線と新判定側の 0 件走査の門
+  // （フィクスチャの子プロセス実測）。(c)(d) は**検査器を壊すと落ちる側**の門である。
+
+  ok('規則 3-③: 層フォルダ分類の正例と対象外（純関数）', () => {
+    const FS_SVC = 'src/knowledge/backend/Services/FeedbackService';
+    assert.deepStrictEqual(parseVsaLayerPath(`${FS_SVC}/Domain/AnswerFeedback.cs`), {
+      service: 'FeedbackService',
+      layer: 'Domain',
+    });
+    assert.deepStrictEqual(parseVsaLayerPath(`${FS_SVC}/Features/Feedback/FeedbackEndpoints.cs`), {
+      service: 'FeedbackService',
+      layer: 'Features',
+    });
+    assert.deepStrictEqual(
+      parseVsaLayerPath(`${FS_SVC}/Infrastructure/Persistence/Migrations/X.cs`),
+      { service: 'FeedbackService', layer: 'Infrastructure' },
+    );
+    // Tests/・旧樹形（src/<Svc>.Domain/）・<Svc> 直下の合成ルートは対象外。
+    assert.strictEqual(parseVsaLayerPath(`${FS_SVC}/Tests/FeedbackEndpointTests.cs`), null);
+    assert.strictEqual(parseVsaLayerPath(`${FS_SVC}/src/FeedbackService.Domain/AnswerFeedback.cs`), null);
+    assert.strictEqual(parseVsaLayerPath(`${FS_SVC}/Program.cs`), null);
+  });
+
+  ok('規則 3-③: Domain / Infrastructure の禁止 using と許可 using（純関数）', () => {
+    const D = 'src/knowledge/backend/Services/FeedbackService/Domain/X.cs';
+    const I = 'src/knowledge/backend/Services/FeedbackService/Infrastructure/Persistence/X.cs';
+    const F = 'src/knowledge/backend/Services/FeedbackService/Features/Feedback/X.cs';
+    for (const line of [
+      'using FeedbackService.Features.Feedback;\n',
+      'using FeedbackService.Infrastructure.Persistence;\n',
+      'using FeedbackService.Common.Behaviors;\n',
+      'using static FeedbackService.Features.Feedback.FeedbackEndpoints;\n',
+      'using Db = FeedbackService.Infrastructure.Persistence.FeedbackDbContext;\n',
+      'global using FeedbackService.Infrastructure;\n',
+    ]) {
+      assert.strictEqual(scanVsaLayerUsings(D, line).length, 1, `Domain で検出すべき: ${line}`);
+    }
+    assert.strictEqual(scanVsaLayerUsings(I, 'using FeedbackService.Features.Feedback;\n').length, 1);
+    // 許可方向。
+    assert.strictEqual(scanVsaLayerUsings(I, 'using FeedbackService.Domain;\n').length, 0);
+    assert.strictEqual(
+      scanVsaLayerUsings(
+        F,
+        'using FeedbackService.Domain;\nusing FeedbackService.Infrastructure.Persistence;\nusing FeedbackService.Common.Behaviors;\n',
+      ).length,
+      0,
+    );
+    assert.strictEqual(scanVsaLayerUsings(D, 'using FeedbackService.Common.Exceptions;\n').length, 0);
+    // 対象外（他サービス・Shared・外部ライブラリ）と前方一致の取り違え。
+    assert.strictEqual(scanVsaLayerUsings(D, 'using DocumentService.Features.Search;\n').length, 0);
+    assert.strictEqual(scanVsaLayerUsings(D, 'using Platform.Shared.Kernel;\n').length, 0);
+    assert.strictEqual(scanVsaLayerUsings(D, 'using Microsoft.EntityFrameworkCore;\n').length, 0);
+    assert.strictEqual(scanVsaLayerUsings(D, 'using FeedbackService.FeaturesX.Y;\n').length, 0);
+  });
+
+  // (b) 実測: 移送済み FeedbackService を新判定が現に走査できること。パス文字列の写しではなく、
+  //     実在する .cs をディスクから引いて分類・走査する（パス規約のずれはここで落ちる）。
+  ok('規則 3-③: 移送済み FeedbackService の実ファイルを層に分類し、違反 0 件（実測）', () => {
+    const repoRoot = path.join(__dirname, '..');
+    const svcDir = path.join(repoRoot, 'src/knowledge/backend/Services/FeedbackService');
+    const collect = (dir, out = []) => {
+      for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, ent.name);
+        if (ent.isDirectory()) collect(p, out);
+        else if (ent.isFile() && ent.name.endsWith('.cs')) out.push(p);
+      }
+      return out;
+    };
+    const rels = collect(svcDir).map((p) => path.relative(repoRoot, p).replace(/\\/g, '/'));
+    const classified = rels.filter((r) => parseVsaLayerPath(r) !== null);
+    assert.ok(
+      classified.length > 0,
+      'FeedbackService から VSA 層の .cs を 1 件も分類できない（走査が壊れている）',
+    );
+    // 移送済みの 3 層（Domain / Features / Infrastructure）が現に載っていること。
+    const layers = new Set(classified.map((r) => parseVsaLayerPath(r).layer));
+    for (const l of ['Domain', 'Features', 'Infrastructure']) {
+      assert.ok(layers.has(l), `実データに ${l} 層が分類されていない: ${JSON.stringify([...layers])}`);
+    }
+    // Tests/ 配下は存在し、かつ分類されないこと。
+    assert.ok(rels.some((r) => /\/Tests\//.test(r)), 'FeedbackService/Tests/ の .cs が見つからない');
+    assert.ok(classified.every((r) => !/\/Tests\//.test(r)), 'Tests/ 配下が新判定の対象に入っている');
+    // 実データは違反 0 件。
+    for (const r of classified) {
+      const content = fs.readFileSync(path.join(repoRoot, r), 'utf8');
+      assert.deepStrictEqual(scanVsaLayerUsings(r, content), [], `実データが違反を持っている: ${r}`);
+    }
+  });
+
+  // (c) 変異試験: 実データへ違反 using を 1 行足すと検出する。検出関数を空振りにする変更
+  //     （層分類・名前空間照合・using 正規表現のいずれの破壊でも）が入れば、ここが落ちる。
+  ok('規則 3-③: 実データへ違反 using を足すと検出する（変異試験）', () => {
+    const repoRoot = path.join(__dirname, '..');
+    const infraRel =
+      'src/knowledge/backend/Services/FeedbackService/Infrastructure/Persistence/FeedbackDbContext.cs';
+    const domainRel = 'src/knowledge/backend/Services/FeedbackService/Domain/AnswerFeedback.cs';
+    const infra = fs.readFileSync(path.join(repoRoot, infraRel), 'utf8');
+    const domain = fs.readFileSync(path.join(repoRoot, domainRel), 'utf8');
+    // 変異前は 0 件（前提の確認。ここが非 0 なら実データ側の事故）。
+    assert.deepStrictEqual(scanVsaLayerUsings(infraRel, infra), []);
+    assert.deepStrictEqual(scanVsaLayerUsings(domainRel, domain), []);
+    // Infrastructure → Features。
+    const v1 = scanVsaLayerUsings(infraRel, `using FeedbackService.Features.Feedback;\n${infra}`);
+    assert.strictEqual(v1.length, 1, '変異（Infrastructure → Features の using）を検出できていない');
+    assert.strictEqual(v1[0].target, 'Features');
+    // Domain → Infrastructure。
+    const v2 = scanVsaLayerUsings(domainRel, `using FeedbackService.Infrastructure.Persistence;\n${domain}`);
+    assert.strictEqual(v2.length, 1, '変異（Domain → Infrastructure の using）を検出できていない');
+    assert.strictEqual(v2[0].target, 'Infrastructure');
+  });
+
+  // (d) main() までの配線と 0 件走査の門（新判定側）を、フィクスチャの子プロセスで実測する。
+  //     純関数が正しくても checkTree / main() が呼ばなければ意味が無い（配線の変異で落ちる側）。
+  {
+    const { spawnSync } = require('child_process');
+
+    // scripts/ と最小の src/ を持つ一時リポジトリを作る。.gitmodules は空で置く
+    // （excluded-units.js は .gitmodules を読めないと fail-closed で throw する）。
+    const makeVsaFixtureRepo = (files) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vsa-layer-'));
+      fs.cpSync(__dirname, path.join(dir, 'scripts'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '.gitmodules'), '');
+      for (const [rel, content] of Object.entries(files)) {
+        const abs = path.join(dir, rel);
+        fs.mkdirSync(path.dirname(abs), { recursive: true });
+        fs.writeFileSync(abs, content);
+      }
+      return dir;
+    };
+    const runVsaChecker = (dir) => {
+      const r = spawnSync(
+        process.execPath,
+        [path.join(dir, 'scripts', 'check-unit-dependencies.js')],
+        { encoding: 'utf8', cwd: dir },
+      );
+      return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+    };
+    const VSA_CSPROJ = '<Project Sdk="Microsoft.NET.Sdk"></Project>\n';
+
+    ok('規則 3-③: 0 件走査の門 —— 旧樹形しか無いと fail する（変異試験）', () => {
+      // 旧樹形（層プロジェクト）だけがある状態。csproj / .cs は拾えるが VSA 層分類は 0 件。
+      // 門を新判定側から消す変異は、ここが緑になることで捕まる。
+      const dir = makeVsaFixtureRepo({
+        'src/knowledge/backend/Services/LegacyService/src/LegacyService.Api/LegacyService.Api.csproj':
+          VSA_CSPROJ,
+        'src/knowledge/backend/Services/LegacyService/src/LegacyService.Api/Program.cs':
+          'namespace LegacyService.Api;\n',
+      });
+      try {
+        const { code, out } = runVsaChecker(dir);
+        assert.strictEqual(code, 1, `VSA 層分類 0 件で緑を返した。新判定側の門が消えている:\n${out}`);
+        assert.match(out, /規則 3-③/, `どの門で落ちたかを述べていない:\n${out}`);
+        assert.match(out, /0 件検査/, `0 件検査であることを述べていない:\n${out}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    ok('規則 3-③: 新樹形の違反 using を main() 経由で検出する（配線の変異試験）', () => {
+      const base = 'src/knowledge/backend/Services/NewService';
+      const clean = {
+        [`${base}/NewService.csproj`]: VSA_CSPROJ,
+        [`${base}/Domain/Entity.cs`]: 'namespace NewService.Domain;\n\npublic class Entity;\n',
+        [`${base}/Features/Things/Endpoint.cs`]:
+          'using NewService.Domain;\n\nnamespace NewService.Features.Things;\n',
+      };
+      // 正例: 違反なしの新樹形は緑で、OK メッセージが VSA 層分類の件数を語る（門の下限の実測）。
+      const dirOk = makeVsaFixtureRepo(clean);
+      try {
+        const { code, out } = runVsaChecker(dirOk);
+        assert.strictEqual(code, 0, `違反なしの新樹形で落ちた:\n${out}`);
+        const m = out.match(/VSA 層分類 (\d+) 件/);
+        assert.ok(m, `OK メッセージから VSA 層分類の件数を読めない:\n${out}`);
+        assert.strictEqual(Number(m[1]), 2, `VSA 層分類の件数が想定（2 件）と違う:\n${out}`);
+      } finally {
+        fs.rmSync(dirOk, { recursive: true, force: true });
+      }
+      // 変異: Domain → Features の using を 1 行足すと、main() が違反として報告し赤になる。
+      // checkTree から scanVsaLayerUsings への配線を外す変異は、ここが緑になることで捕まる。
+      const dirBad = makeVsaFixtureRepo({
+        ...clean,
+        [`${base}/Domain/Entity.cs`]:
+          'using NewService.Features.Things;\n\nnamespace NewService.Domain;\n\npublic class Entity;\n',
+      });
+      try {
+        const { code, out } = runVsaChecker(dirBad);
+        assert.strictEqual(code, 1, `Domain → Features の using を検出できていない:\n${out}`);
+        assert.match(out, /VSA 層方向/, `違反の種別（VSA 層方向）を報告していない:\n${out}`);
+        assert.match(out, /Domain\/Entity\.cs/, `違反ファイルを名指ししていない:\n${out}`);
+      } finally {
+        fs.rmSync(dirBad, { recursive: true, force: true });
+      }
+    });
+  }
+
+  // 実データ全体でも、OK メッセージが新判定の走査件数（VSA 層分類）を 1 件以上語ること
+  // （FeedbackService 移送済み以降の下限。#664 / IADR-0130 の作法で件数リテラルは書かない）。
+  ok('規則 3-③: 実データ走査の OK メッセージに VSA 層分類 1 件以上が出る（下限）', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(
+      process.execPath,
+      [path.join(__dirname, 'check-unit-dependencies.js')],
+      { encoding: 'utf8', cwd: path.join(__dirname, '..') },
+    );
+    const out = `${r.stdout || ''}${r.stderr || ''}`;
+    assert.strictEqual(r.status, 0, `実データで落ちた:\n${out}`);
+    const m = out.match(/VSA 層分類 (\d+) 件/);
+    assert.ok(m, `OK メッセージから VSA 層分類の件数を読めない:\n${out}`);
+    assert.ok(Number(m[1]) > 0, `VSA 層分類が 0 件だった（新判定が何も見ていない）:\n${out}`);
   });
 
   // --- check-image-mapping: MAPPING ↔ compose build ドリフト検査（Issue #275 / IADR-0068） ---
