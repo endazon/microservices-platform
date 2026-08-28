@@ -10,7 +10,7 @@ author: Claude
 ids: [SC-01, SC-12, SC-13, SC-14, SC-15, SC-16, SC-17, SC-21]
 adrs: [ADR-0031, ADR-0032]
 iadrs: [IADR-0124]
-specs: [20260804_issue-490_spa-router-shell]
+specs: [20260804_issue-490_spa-router-shell, 20260828_issue-439_sc16-account-settings]
 issues: [#439]
 -->
 

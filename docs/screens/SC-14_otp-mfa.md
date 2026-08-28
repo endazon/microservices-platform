@@ -10,7 +10,7 @@ author: claude
 ids: [SC-01, SC-13, SC-14, SC-15, SC-16, UC-05]
 adrs: [ADR-0026]
 iadrs: [IADR-0197, IADR-0261]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-438_keycloak-theme-k8s-local]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-438_keycloak-theme-k8s-local, 20260828_issue-439_sc16-account-settings]
 issues: [#438]
 -->
 
