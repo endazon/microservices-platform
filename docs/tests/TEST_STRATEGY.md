@@ -3,7 +3,7 @@ title: テスト戦略（退行防止テスト基盤）
 type: test-spec
 status: in-progress
 created: 2026-08-03
-updated: 2026-08-22
+updated: 2026-08-28
 author: Claude
 ---
 <!-- trace:
@@ -89,7 +89,7 @@ it('0 件のとき空状態を表示する', () => { ... })
 したがって **baseline 済みのプロジェクト内で結合が深まっても「新規混入 0 件」の緑のまま**になる。
 
 実例: `bc7bc8e`が
-`src/knowledge/backend/Services/ConversionService/src/ConversionService.Worker/Composable/Steps/RawDocumentFetchedConsumer.cs:81`
+`src/knowledge/backend/Services/ConversionService/Worker/Features/ConversionJobs/RawDocumentFetchedConsumer.cs:81`
 へ `context.GetRetryAttempt() + 1 >= MassTransitExtensions.MaxAttempts` を追加し、production の判定
 ロジックが MassTransit の再試行セマンティクスに依存するようになったが、`using MassTransit;` は既存・
 `PackageReference` は baseline 済みのため ratchet は動かない（変換ジョブのデッドレターは導出せず記録し、試行上限は再試行設定を単一情報源にする実装 ADR
@@ -298,8 +298,10 @@ submodule populate 済み）である——**line 34.14%（9314/27280） / branc
 `PackageReference` を**和集合**で持つ。実装の現況は `<Name>.Api.Tests` / `<Name>.Worker.Tests` であり、
 `.csproj` の実名はホスト種別に合わせてよい。**ユニット横断の統合テスト**
 （`src/knowledge/backend/Tests/Knowledge.IntegrationTests`）はサービス単位の `Tests` とは別の層であり、
-この規則の対象外である。雛形は `templates/unit-template/backend/Services/SampleService/tests/SampleService.Tests`
-がこの形を示す。
+この規則の対象外である。雛形は `templates/unit-template/backend/Services/SampleService/Tests`
+がこの形を示す（2026-08-28 の構成裁定で、テストのフォルダは Unit / Integration の種別区分ではなく
+**実装のスライスを鏡写しにする形**（`Tests/Features/`・`Tests/Domain/`）へ改まった。
+実サービスへの適用は移送の波で行い、それまで既存テストの `Unit/` / `Integration/` 区分は現状のまま）。
 
 ### xUnit は v3 で書く
 

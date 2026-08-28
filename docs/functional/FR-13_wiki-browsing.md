@@ -3,7 +3,7 @@ title: Wiki 文書閲覧（Wiki.js 委譲・WikiService ABAC ゲートウェイ�
 type: functional-spec
 status: draft
 created: 2026-07-03
-updated: 2026-08-21
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
@@ -55,7 +55,7 @@ issues: [#66]
 
 ## エンドポイント
 
-`src/knowledge/backend/Services/WikiService/src/WikiService.Api/Foundation/Endpoints/WikiEndpoints.cs`
+`src/knowledge/backend/Services/WikiService/Features/Wiki/WikiEndpoints.cs`
 
 | メソッド | パス | 説明 | 権限外の挙動 |
 | --- | --- | --- | --- |

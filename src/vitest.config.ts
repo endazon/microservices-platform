@@ -10,7 +10,7 @@ export default defineConfig({
   // マクロ（@lingui/react/macro の <Trans> 等）を babel で展開する。
   // **同じ設定を platform/frontend/vite.config.ts にも置く**——片方だけに入れると
   // 「テストは通るのにビルドが壊れる（あるいはその逆）」という静かな破綻になる。
-  // その一致は platform/frontend/src/foundation/i18n/i18n.test.tsx が固定する。
+  // その一致は platform/frontend/src/app/i18n/i18n.test.tsx が固定する。
   plugins: [react({ babel: { plugins: ['@lingui/babel-plugin-lingui-macro'] } })],
   resolve: {
     // IADR-0121 決定 2（pnpm workspace）: pnpm は node_modules を isolated に置くため、ユニットごとに
@@ -18,7 +18,35 @@ export default defineConfig({
     // 横断テストは 1 プロセスで全ユニットのコンポーネントを描画するので、React を明示的に重複排除する。
     dedupe: ['react', 'react-dom'],
     alias: {
-      '@foundation': fileURLToPath(new URL('./platform/frontend/src/foundation', import.meta.url)),
+      // ADR-0031（§ディレクトリ構成）/ IADR-0262 決定 1（第 2 段）: `@foundation` は
+      // **ディレクトリ名ではなく platform 基盤の公開面の名前**である。実体は計画のツリーに従って
+      // app/ lib/ components/ testing/ へ分かれているので、区分ごとに向き先を張る。
+      // 同じ 9 本を platform/frontend/tsconfig.app.json と platform/frontend/vite.config.ts にも置く。
+      '@foundation/config': fileURLToPath(
+        new URL('./platform/frontend/src/app/config', import.meta.url),
+      ),
+      '@foundation/i18n': fileURLToPath(
+        new URL('./platform/frontend/src/app/i18n', import.meta.url),
+      ),
+      '@foundation/routing': fileURLToPath(
+        new URL('./platform/frontend/src/app/routing', import.meta.url),
+      ),
+      '@foundation/api': fileURLToPath(new URL('./platform/frontend/src/lib/api', import.meta.url)),
+      '@foundation/auth': fileURLToPath(
+        new URL('./platform/frontend/src/lib/auth', import.meta.url),
+      ),
+      '@foundation/ui': fileURLToPath(
+        new URL('./platform/frontend/src/components/ui', import.meta.url),
+      ),
+      '@foundation/notifications': fileURLToPath(
+        new URL('./platform/frontend/src/components/notifications', import.meta.url),
+      ),
+      '@foundation/ai-chat': fileURLToPath(
+        new URL('./platform/frontend/src/components/ai-chat', import.meta.url),
+      ),
+      '@foundation/testing': fileURLToPath(
+        new URL('./platform/frontend/src/testing', import.meta.url),
+      ),
       '@features': fileURLToPath(new URL('./platform/frontend/src/features', import.meta.url)),
       '@knowledge': fileURLToPath(new URL('./knowledge/frontend/src', import.meta.url)),
       // Issue #283, FR-14, IADR-0056/0070: AST（ai-stock-trading）ユニットの feature テストも横断収集する。
@@ -35,7 +63,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: ['./platform/frontend/src/test/setup.ts'],
+    setupFiles: ['./platform/frontend/src/testing/setup.ts'],
     include: [
       'platform/frontend/src/**/*.{test,spec}.{ts,tsx}',
       'knowledge/frontend/src/**/*.{test,spec}.{ts,tsx}',
@@ -64,13 +92,13 @@ export default defineConfig({
       ],
       exclude: [
         '**/*.{test,spec}.{ts,tsx}',
-        'platform/frontend/src/test/**',
-        // ADR-0031 / IADR-0124: 可変ユニットの画面テスト用ハーネス（テスト専用の足場）。
-        // `src/test/**` と同じ理由で母数から外す——足場を数えると「テストを足すほど床が上がる」
-        // 見かけの改善が起き、成果物の被覆率が読めなくなる。
-        'platform/frontend/src/foundation/testing/**',
+        // ADR-0031 / IADR-0124 / IADR-0262 決定 1: 横断 setup と、可変ユニットの画面テスト用
+        // ハーネス（テスト専用の足場）。IADR-0262 の第 2 段で `src/test/` と
+        // `src/foundation/testing/` が計画のツリーの `testing/` へ 1 本化されたため、除外も 1 本になった。
+        // 足場を数えると「テストを足すほど床が上がる」見かけの改善が起き、成果物の被覆率が読めなくなる。
+        'platform/frontend/src/testing/**',
         // ADR-0031 / IADR-0125 決定 5: Storybook のカタログ（stories と設定）。
-        // `src/test/**`・`foundation/testing/**` と同じ理由で母数から外す——カタログは
+        // `testing/**` と同じ理由で母数から外す——カタログは
         // **部品の見本であって成果物ではない**。母数へ入れると「stories を足すほど床が下がり、
         // 消すほど上がる」という、被覆率とは無関係な動き方をする。
         // **この除外は床の水準を実際に動かす**（除外あり／なしの実測は下の注記を参照）。
@@ -81,7 +109,7 @@ export default defineConfig({
         '**/vite-env.d.ts',
         // IADR-0121 決定 3: orval の生成物は計測対象外（自動生成物の品質は生成器の責務であり、
         // 母数へ入れると床が「生成量」で動いて意味を失う）。
-        'platform/frontend/src/foundation/api/generated/**',
+        'platform/frontend/src/lib/api/generated/**',
       ],
       // 回帰防止のラチェット。床を割る変更を CI で止める（レビュー #168 指摘対応・IADR-0034）。
       //
@@ -133,7 +161,7 @@ export default defineConfig({
       //   上げた分は「ルータ移行で新設した配線（ルート木・共通シェル・通知・存在秘匿）と、
       //   オープンリダイレクト対策（IADR-0124 決定 9）にテストを付けた」ことによる。
       //
-      //   下の exclude に足した `foundation/testing/**`（テスト用ハーネス）が床を甘くしていないことを
+      //   下の exclude に足した `foundation/testing/**`（テスト用ハーネス。現 `testing/**`）が床を甘くしていないことを
       //   実測で確認した——除外**しない**場合の MSP 所有分は
       //   lines 91.84% / branches 82.19% / functions 84.02% であり、同じ導出規則から出る床は
       //   **3 指標とも同値（86 / 77 / 79）**。すなわちこの除外は床の水準を動かしていない。
@@ -147,7 +175,7 @@ export default defineConfig({
       //   lines/statements 86 → 87 / functions 79 → 81 へ引き上げる（branches は 77 のまま
       //   ＝ 82.93 − 5 = 77.93 の切り捨て）。
       //
-      //   **上に足した `**\/*.stories.*` の除外は床の水準を動かす**（`foundation/testing/**` を
+      //   **上に足した `**\/*.stories.*` の除外は床の水準を動かす**（`foundation/testing/**`（現 `testing/**`）を
       //   足したときと違い、ここは「動かしていない」と言えない）。除外**しない**場合の
       //   MSP 所有分は lines 87.96% / branches 82.95% / functions 86.13% であり、同じ導出規則から
       //   出る床は **lines 82 / branches 77 / functions 81**。すなわち lines だけが 87 → 82 と
@@ -250,11 +278,28 @@ export default defineConfig({
       //   テストを付けた」ことと、**カバレッジの低かった oidc-client-ts 依存コード
       //   （authConfig / CallbackPage）が実装ごと消えた**ことによる。
       //   **`coverage.exclude` は増やしていない**（除外で稼いだ引き上げではない）。
+      // ［2026-08-28 / #453］波 4 の掃き寄せでのラチェット（#453 = カバレッジ床の起票 issue。
+      //   src/coverage-floor.json も同じ番号を引く。近隣の項が引く #539 等と同じく「原因」を示す番号である）。
+      //   実測（測定条件は上と同じ。ブランチ `claude/implementation-repo-all-issues-6pzgm1` /
+      //         `pnpm run test:coverage`。MSP 所有分は lcov.info を `ai-stock-trading` の有無で分けて集計した）:
+      //     全ユニット横断  lines/statements 98.19%（10110/10296）/ branches 92.22%（2300/2494）/
+      //                     functions 93.74%（674/719）
+      //     MSP 所有分のみ  lines 98.25%（7526/7660）/ branches 93.33%（1680/1800）/
+      //                     functions 94.07%（508/540）
+      //   同じ導出規則（MSP 所有分の実測から 5pt 下・切り捨て）を適用すると
+      //     lines/statements 98.25 − 5 = 93.25 → 93（据え置き）
+      //     branches         93.33 − 5 = 88.33 → **88（87 から引き上げ）**
+      //     functions        94.07 − 5 = 89.07 → 89（据え置き）
+      //   🔴 **横断の実測（92.22 等）から 5pt を引かない。** 導出規則の母数は MSP 所有分である
+      //   （AST 分は別プロジェクトの被覆であり、本リポジトリの努力で動かせない）。横断の実測へ
+      //   直接寄せる（例: branches 92）と、AST 側のテスト増減だけで本リポジトリの CI が赤くなる。
+      //   引き上げ分は波 1〜3 で足したテスト（認可の分岐評価・削除伝播・個人資料 BFF・
+      //   SC-19/SC-20 画面・検索観測）による。**`coverage.exclude` は増やしていない。**
       thresholds: {
         lines: 93,
         statements: 93,
         functions: 89,
-        branches: 87,
+        branches: 88,
       },
     },
   },

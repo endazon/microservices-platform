@@ -16,17 +16,16 @@
     backend.slnx                            ← ユニットの集約ソリューション
     Directory.Build.props.sample            ← 単独ビルド用フォールバック（配置時は使わない。IADR-0064）
     Directory.Packages.props.sample         ← 単独ビルド用 CPM フォールバック（同上）
-    Services/SampleService/                  ← ADR-0030 の標準プロジェクト構成
-      src/SampleService.Api/                 ← エンドポイント・DI 構成・ProblemDetails 変換
-        SampleService.Api.csproj            ← platform Shared を相対参照（配置後に解決）
-        Program.cs                          ← 合成ルート（Minimal API + ヘルスチェック）
-      src/SampleService.Application/         ← ユースケース（Wolverine ハンドラ）・検証・マッピング
-      src/SampleService.Domain/              ← エンティティ・値オブジェクト（**外部依存ゼロ**）
-      src/SampleService.Infrastructure/      ← EF Core・Redis 等の実装
-      src/SampleService.Contracts/           ← 公開契約（proto・イベント・DTO）
-      tests/SampleService.Tests/             ← **テストは 1 プロジェクト**。中を 2 フォルダへ割る
-        Unit/                                ←   xUnit v3 + AwesomeAssertions + NSubstitute
-        Integration/                         ←   Testcontainers + Respawn + Mvc.Testing
+    Services/SampleService/                  ← 単一プロジェクト標準（IADR-0282。2026-08-28 裁定）
+      SampleService.csproj                  ← platform Shared を相対参照（配置後に解決）。層は分割しない
+      Program.cs                            ← 合成ルート（Minimal API + ヘルスチェック。束ねるだけ）
+      Features/<集約>/<操作>/                ← Vertical Slice（Endpoint / Command|Query / Handler）
+      Domain/                                ← エンティティ・値オブジェクト（**外部依存ゼロ**）
+      Infrastructure/                        ← Persistence（EF Core）・Messaging 等のアダプタ
+      Common/                                ← サービス固有の横断関心（Result は Platform.Shared.Kernel）
+      Tests/SampleService.Tests.csproj       ← **テストは 1 プロジェクト**。フォルダは実装の鏡写し
+        Features/                            ←   xUnit v3 + AwesomeAssertions + NSubstitute
+        Domain/                              ←   （統合テストも対象スライスのフォルダへ。Testcontainers + Respawn + Mvc.Testing）
   frontend/
     package.json                            ← name: @<unit>/frontend（pnpm workspace で自動認識）
     tsconfig.json                           ← paths で @foundation を解決（無いと typecheck が動かない）
@@ -61,8 +60,13 @@
 > **［2026-08-23 更新 / #785］`src/knowledge/frontend` は本雛形と同じ構成へ揃った。** 従前ここは
 > 「knowledge の各 feature はまだ内部を割っておらず 1 階層にファイルが並ぶ」と書いていたが、
 > 13 feature すべてを `api/ components/ hooks/ routes/ stores/ types/` へ割り、ユニット直下の
-> 区分も枠を置いた（IADR-0262）。**`src/platform/frontend` の `foundation/` 分解は第 2 段として
-> 未了である**ため、参照するなら knowledge 側を見ること。
+> 区分も枠を置いた（IADR-0262）。
+>
+> **［2026-08-28 更新 / #785］第 2 段（`src/platform/frontend` の `foundation/` 分解）も完了した。**
+> `foundation/` は計画のツリーに従って `app/`（config / i18n / routing）・`lib/`（api / auth）・
+> `components/`（ui / notifications / ai-chat）・`testing/` へ分かれ、直下は 11 区分 ＋ `main.tsx` に
+> なった（IADR-0262 決定 5 の第 2 段）。**`@foundation/<区分>` というエイリアス名は変えていない** ——
+> 可変ユニット（本雛形を含む）が書く import は 1 行も変わらない。**参照先はどちらのユニットでもよい。**
 >
 > 計画 13_frontend-stack（`status: fixed`）が **Feature 単位を上記 6 区分へ割る**と定め、
 > 「計画書は絶対的な正である。実装を計画へ合わせる」（2026-07-30 裁定・2026-08-22 再確定）が
@@ -73,13 +77,14 @@
   [`docs/tech/tech-requirements.md`](../../docs/tech/tech-requirements.md)「バックエンドアプリケーション層標準」。
   不採用ライブラリ（MediatR / AutoMapper / MassTransit / FluentAssertions / Serilog 等）の混入は
   `scripts/check-backend-libraries.js` が CI で止める。
-- **サービスのテストは 1 プロジェクトにする。Unit / Integration はプロジェクトを分けず、
-  `Unit/` / `Integration/` のフォルダで分ける。**（計画 project-planning の
+- **サービスのテストは 1 プロジェクトにする**（計画 project-planning の
   `projects/microservices-platform/06_technical/12_backend-application-stack.md`
   §規範性・粒度・置き場。利用者裁定 2026-08-04 / planning#180）。プロジェクトを分けるとビルド時間と
-  参照管理のコストが増えるためである。1 プロジェクトに畳むので、`SampleService.Tests.csproj` は
-  単体側（NSubstitute 等）と統合側（`Mvc.Testing` / Testcontainers / Respawn）の**和集合**を参照し、
-  `Application` と `Api` の両方を `ProjectReference` する。**テスト種別ごとに `.csproj` を割らないこと**
+  参照管理のコストが増えるためである。フォルダは **`Unit/` / `Integration/` の種別区分ではなく、
+  実装のスライスを鏡写しにする**（`Tests/Features/`・`Tests/Domain/`。IADR-0282 決定 1。
+  種別区分の計画側条文は改定を環流中 —— planning#490 のコメント参照）。1 プロジェクトに畳むので、
+  `SampleService.Tests.csproj` は単体側（NSubstitute 等）と統合側（`Mvc.Testing` / Testcontainers /
+  Respawn）の**和集合**を参照する。**テスト種別ごとに `.csproj` を割らないこと**
   —— 実サービス（`src/**` の `<Name>.Api.Tests`）も全て 1 プロジェクトである。
 - **テストは xUnit v3 で書く**（ADR-0030 の標準どおり。**［2026-08-21 更新］** 従前ここは
   「v2 で書く」だった。16 プロジェクトの一斉切替が完了したため v3 が現行である）。

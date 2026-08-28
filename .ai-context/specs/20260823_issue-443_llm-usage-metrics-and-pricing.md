@@ -5,7 +5,7 @@ status: in-progress
 related_ids: [FR-10, NFR, UC-05, SC-10, ADR-0006, ADR-0044, IADR-0110, IADR-0212, IADR-0011, IADR-0164, IADR-0265]
 author: Claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-27
 plan_refs:
   - planning:projects/microservices-platform/06_technical/05_observability-ops.md
   - planning:projects/microservices-platform/07_adr/ADR-0044_llm-usage-metrics-and-pricing-table.md
@@ -257,3 +257,19 @@ k8s（`deploy/local/observability/grafana.yaml`）の両方**を同時に直す
 
 - 月次予算のしきい値（計画側で実測待ち）。本作業では**アラートを配線しない**。
 - 陳腐化文書数のしきい値（計画側で未確定）。指標の**枠**だけを用意し、判定は生産者側に委ねる。
+
+---
+
+## ［2026-08-27 追記 / #1018］受け入れ基準チェックリストと実装の実態が乖離している
+
+**§受け入れ基準のチェックボックスは 10 件すべて未チェックのままだが、実装はコードとして
+着地済みである。** チェックが埋まらないまま残っているのは、**§未決事項が挙げるしきい値
+（月次予算・陳腐化文書数）が計画側で未確定**であり、それに依存する項目を実測で埋められないためである。
+
+- **本文のチェックボックスは書き換えない。** 凍結記録の本文プロズを後から書き換えない運用に従う
+  （`.claude/rules/traceability.repo.md` §凍結の射程。`.ai-context/specs/` に許されるのは
+  本ブロックのような `［YYYY-MM-DD 追記 / #NNN］` 書式の経過追記だけである）。
+- **`status: in-progress` は据え置く。** 「実装は着地したが、しきい値未確定分が残る」という実態と
+  一致するのはこの値であり、`done` へ進めると**未確定分が残っていることが読めなくなる。**
+- しきい値が確定したら、その時点の作業の仕様書で受け入れ基準を引き直す。**本書のチェックボックスを
+  後から埋めることはしない。**

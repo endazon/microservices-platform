@@ -134,22 +134,27 @@
       "EdgeTypeDbGuardTests",
       "EdgeTypeDictionaryTests",
       "EdgeTypeEndpointsTests",
+      "EdgeTypeResolverTests",
       "GraphAccessResolverTests",
       "GraphTypeGateArchitectureTests",
+      "LinkEdgeSyncTests",
+      "ObsidianLinkParserTests",
       "UserAuthoredEdgeTests"
     ],
     "docs/tests/FR-18_ai-suggestions.md": [
       "AiSuggestionEndpointsTests",
       "AiSuggestionGenerationTests",
       "AiSuggestionStateMachineTests",
-      "AiSuggestionWiringTests",
+      "GraphDocumentSyncConsumerTests",
       "SuggestionPromptGateTests"
     ],
     "docs/tests/FR-19_private-note-wikijs-exclusion.md": [
       "DocumentSyncConsumerTests"
     ],
     "docs/tests/FR-19_private-notes-lifecycle.md": [
+      "BffPrivateNoteEndpointTests",
       "DocScopeValidationTests",
+      "ObsidianSyncProtocolTests",
       "PrivateNoteLifecycleTests",
       "PrivateNoteQuotaTests"
     ],
@@ -161,14 +166,22 @@
       "SyncDeviceTokenTests"
     ],
     "docs/tests/FR-21_direct-body-intake.md": [
-      "DocumentBodyIntakeTests"
+      "AiInputExposureTests",
+      "DocumentBodyIntakeTests",
+      "ObsidianSyncProtocolTests",
+      "PrivateNoteLifecycleTests",
+      "PrivateNoteSearchExposureTests",
+      "RagContextAiInputExclusionTests",
+      "RagContextPolicyTests"
     ],
     "docs/tests/FR-22_user-notifications.md": [
       "EmailIndependenceTests",
       "EmailSendRateTests",
       "NotificationContractTests",
+      "NotificationIngressTests",
       "NotificationOwnerScopingTests",
-      "NotificationRetentionTests"
+      "NotificationRetentionTests",
+      "PrivateNoteNotificationDispatchTests"
     ],
     "docs/tests/NFR-09_bff-edge-authentication.md": [
       "BffEndpointAuthenticationTests"
@@ -206,6 +219,13 @@
     "docs/tests/SC-10_operations-dashboard.md": [
       "DashboardBffEndpointTests",
       "DashboardEndpointTests"
+    ],
+    "docs/tests/SC-19_private-notes-screen.md": [
+      "BffPrivateNoteEndpointTests"
+    ],
+    "docs/tests/SC-20_obsidian-settings-screen.md": [
+      "BffPrivateNoteEndpointTests",
+      "SyncDeviceTokenTests"
     ],
     "docs/tests/SC-21_ai-suggestion-list.md": [
       "AiSuggestionEndpointsTests",

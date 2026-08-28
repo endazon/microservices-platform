@@ -24,20 +24,20 @@ public class BffAuthzEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task ListPolicies_AsAdmin_ReturnsPolicies()
     {
-        var resp = await _factory.CreateClient().GetAsync("/bff/admin/authz/policies");
+        var resp = await _factory.CreateClient().GetAsync("/bff/admin/authz/policies", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<List<AbacPolicyDto>>();
+        var body = await resp.Content.ReadFromJsonAsync<List<AbacPolicyDto>>(TestContext.Current.CancellationToken);
         body!.Should().ContainSingle(p => p.Name == "社員は社内文書を閲覧可");
     }
 
     [Fact]
     public async Task ListAttributes_AsAdmin_ReturnsAttributes()
     {
-        var resp = await _factory.CreateClient().GetAsync("/bff/admin/authz/attributes");
+        var resp = await _factory.CreateClient().GetAsync("/bff/admin/authz/attributes", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<List<AttributeDefinitionDto>>();
+        var body = await resp.Content.ReadFromJsonAsync<List<AttributeDefinitionDto>>(TestContext.Current.CancellationToken);
         body!.Should().ContainSingle(a => a.Key == "confidentiality");
     }
 
@@ -46,7 +46,7 @@ public class BffAuthzEndpointTests : IClassFixture<BffTestFactory>
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
-        var resp = await client.GetAsync("/bff/admin/authz/policies");
+        var resp = await client.GetAsync("/bff/admin/authz/policies", TestContext.Current.CancellationToken);
 
         // SC-09 は platform-admin のみ（operator も不可）。
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
@@ -57,7 +57,7 @@ public class BffAuthzEndpointTests : IClassFixture<BffTestFactory>
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
-        var resp = await client.GetAsync("/bff/admin/authz/policies");
+        var resp = await client.GetAsync("/bff/admin/authz/policies", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -66,7 +66,7 @@ public class BffAuthzEndpointTests : IClassFixture<BffTestFactory>
     public async Task CreatePolicy_AsAdmin_Returns201()
     {
         var resp = await _factory.CreateClient().PostAsync("/bff/admin/authz/policies",
-            Json("""{"name":"p","action":"read","userConditions":{},"documentConditions":{}}"""));
+            Json("""{"name":"p","action":"read","userConditions":{},"documentConditions":{}}"""), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
@@ -77,7 +77,7 @@ public class BffAuthzEndpointTests : IClassFixture<BffTestFactory>
         // 後段（AuthorizationService）の保存前検証エラーを透過する（検証結果を画面が表示できる）。
         _factory.AuthzManagementStatusCode = HttpStatusCode.BadRequest;
         var resp = await _factory.CreateClient().PostAsync("/bff/admin/authz/policies",
-            Json("""{"name":"","action":"nope","userConditions":{},"documentConditions":{}}"""));
+            Json("""{"name":"","action":"nope","userConditions":{},"documentConditions":{}}"""), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -90,7 +90,7 @@ public class BffAuthzEndpointTests : IClassFixture<BffTestFactory>
     public async Task ValidatePolicy_AsAdmin_Returns200()
     {
         var resp = await _factory.CreateClient().PostAsync("/bff/admin/authz/policies/validate",
-            Json("""{"name":"検証","action":"read","userConditions":{},"documentConditions":{}}"""));
+            Json("""{"name":"検証","action":"read","userConditions":{},"documentConditions":{}}"""), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -103,7 +103,7 @@ public class BffAuthzEndpointTests : IClassFixture<BffTestFactory>
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
 
         var resp = await client.PostAsync("/bff/admin/authz/policies/validate",
-            Json("""{"name":"検証","action":"read","userConditions":{},"documentConditions":{}}"""));
+            Json("""{"name":"検証","action":"read","userConditions":{},"documentConditions":{}}"""), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -112,7 +112,7 @@ public class BffAuthzEndpointTests : IClassFixture<BffTestFactory>
     public async Task CreateAttribute_AsAdmin_Returns201()
     {
         var resp = await _factory.CreateClient().PostAsync("/bff/admin/authz/attributes",
-            Json("""{"key":"department","label":"部門","allowedValues":["hr","sales"],"required":false,"scope":"document"}"""));
+            Json("""{"key":"department","label":"部門","allowedValues":["hr","sales"],"required":false,"scope":"document"}"""), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
@@ -123,7 +123,7 @@ public class BffAuthzEndpointTests : IClassFixture<BffTestFactory>
         // 参照中の属性削除は 409（IADR-0006）。透過する。
         _factory.AuthzManagementStatusCode = HttpStatusCode.Conflict;
         var resp = await _factory.CreateClient()
-            .DeleteAsync($"/bff/admin/authz/attributes/{BffTestFactory.StubAttributeId}");
+            .DeleteAsync($"/bff/admin/authz/attributes/{BffTestFactory.StubAttributeId}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
@@ -133,7 +133,7 @@ public class BffAuthzEndpointTests : IClassFixture<BffTestFactory>
     {
         // 後段（AuthorizationService）不達は 502 へ縮退する（例外フローの明示検証・レビュー #170 指摘対応）。
         _factory.AuthzManagementThrows = true;
-        var resp = await _factory.CreateClient().GetAsync("/bff/admin/authz/policies");
+        var resp = await _factory.CreateClient().GetAsync("/bff/admin/authz/policies", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadGateway);
     }
@@ -143,7 +143,7 @@ public class BffAuthzEndpointTests : IClassFixture<BffTestFactory>
     {
         var resp = await _factory.CreateClient().PatchAsync(
             $"/bff/admin/authz/policies/{BffTestFactory.StubPolicyId}/active",
-            Json("""{"isActive":false}"""));
+            Json("""{"isActive":false}"""), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }

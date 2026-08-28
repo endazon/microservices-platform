@@ -27,7 +27,7 @@ public class DashboardBffEndpointTests(BffTestFactory factory)
     [Fact]
     public async Task GetSummary_AsOperator_IsAllowed()
     {
-        var resp = await ClientAs("platform-operator").GetAsync("/bff/dashboard/summary");
+        var resp = await ClientAs("platform-operator").GetAsync("/bff/dashboard/summary", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK,
             "計画 §SC-10 は閲覧を運用者・管理者ロール限定と定めている");
@@ -38,7 +38,7 @@ public class DashboardBffEndpointTests(BffTestFactory factory)
     public async Task GetSummary_AggregatesUsageAndQuality()
     {
         var summary = await factory.CreateClient()
-            .GetFromJsonAsync<DashboardSummaryDto>("/bff/dashboard/summary");
+            .GetFromJsonAsync<DashboardSummaryDto>("/bff/dashboard/summary", TestContext.Current.CancellationToken);
 
         summary.Should().NotBeNull();
         // DashboardService スタブ由来（利用状況・検索傾向）
@@ -58,7 +58,7 @@ public class DashboardBffEndpointTests(BffTestFactory factory)
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", "dash-token");
 
-        await client.GetAsync("/bff/dashboard/summary");
+        await client.GetAsync("/bff/dashboard/summary", TestContext.Current.CancellationToken);
 
         factory.LastDashboardForwardedAuthorization.Should().Be("Bearer dash-token");
     }
@@ -77,7 +77,7 @@ public class DashboardBffEndpointTests(BffTestFactory factory)
         var req = new HttpRequestMessage(HttpMethod.Get, "/bff/dashboard/summary");
         req.Headers.Add(TestAuthHandler.RolesHeader, "viewer");
 
-        var resp = await factory.CreateClient().SendAsync(req);
+        var resp = await factory.CreateClient().SendAsync(req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -89,7 +89,7 @@ public class DashboardBffEndpointTests(BffTestFactory factory)
         try
         {
             factory.DashboardStubStatusCode = HttpStatusCode.InternalServerError;
-            var resp = await factory.CreateClient().GetAsync("/bff/dashboard/summary");
+            var resp = await factory.CreateClient().GetAsync("/bff/dashboard/summary", TestContext.Current.CancellationToken);
             resp.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
         }
         finally
@@ -105,7 +105,7 @@ public class DashboardBffEndpointTests(BffTestFactory factory)
         try
         {
             factory.FeedbackStatsStubStatusCode = HttpStatusCode.ServiceUnavailable;
-            var resp = await factory.CreateClient().GetAsync("/bff/dashboard/summary");
+            var resp = await factory.CreateClient().GetAsync("/bff/dashboard/summary", TestContext.Current.CancellationToken);
             resp.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
         }
         finally
@@ -121,7 +121,7 @@ public class DashboardBffEndpointTests(BffTestFactory factory)
         try
         {
             factory.DashboardReturnsNullBody = true;
-            var resp = await factory.CreateClient().GetAsync("/bff/dashboard/summary");
+            var resp = await factory.CreateClient().GetAsync("/bff/dashboard/summary", TestContext.Current.CancellationToken);
             resp.StatusCode.Should().Be(HttpStatusCode.BadGateway);
         }
         finally
@@ -145,7 +145,7 @@ public class DashboardBffEndpointTests(BffTestFactory factory)
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", "feedback-token");
 
-        await client.GetAsync("/bff/dashboard/summary");
+        await client.GetAsync("/bff/dashboard/summary", TestContext.Current.CancellationToken);
 
         factory.LastFeedbackForwardedAuthorization.Should().Be("Bearer feedback-token");
     }
@@ -165,7 +165,7 @@ public class DashboardBffEndpointTests(BffTestFactory factory)
             client.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", "feedback-token");
 
-            var resp = await client.GetAsync("/bff/dashboard/summary");
+            var resp = await client.GetAsync("/bff/dashboard/summary", TestContext.Current.CancellationToken);
 
             resp.StatusCode.Should().Be(HttpStatusCode.OK);
         }

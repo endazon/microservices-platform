@@ -4,12 +4,18 @@
     "DocumentDeleted": {
       "publishers": {
         "knowledge/DocumentService": [
-          "masstransit"
+          "wolverine"
         ]
       },
       "subscribers": {
+        "knowledge/GraphService": [
+          "wolverine"
+        ],
+        "knowledge/RetrievalService": [
+          "wolverine"
+        ],
         "knowledge/WikiService": [
-          "masstransit"
+          "wolverine"
         ]
       }
     },
@@ -28,15 +34,18 @@
     "DocumentUpdated": {
       "publishers": {
         "knowledge/DocumentService": [
-          "masstransit"
+          "wolverine"
         ]
       },
       "subscribers": {
+        "knowledge/GraphService": [
+          "wolverine"
+        ],
         "knowledge/IngestionService": [
-          "masstransit"
+          "wolverine"
         ],
         "knowledge/WikiService": [
-          "masstransit"
+          "wolverine"
         ]
       }
     },

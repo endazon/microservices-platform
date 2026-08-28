@@ -1,11 +1,11 @@
 ---
 title: 作業仕様書 — MCP サーバー統合の再実装（宣言的公開構成・動的ツール連携・サービスアカウント実行時の個人資料一律除外）
 type: spec
-status: draft
+status: done
 related_ids: [FR-16, UC-08, UC-09, SC-12, ADR-0024, ADR-0034, ADR-0036, ADR-0054, ADR-0004, ADR-0018, ADR-0021, ADR-0030]
 author: claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0024_mcp-server-integration.md
   - planning:projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md

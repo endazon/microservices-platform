@@ -3,7 +3,7 @@ title: 変換ジョブ 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-21
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
@@ -177,7 +177,7 @@ issues: [#501, #502, #503, #506, #519, #533, #543, #553, #651, planning#198]
 
 実測の出所: `src/knowledge/backend/Shared/Knowledge.Contracts/Dtos/ConversionJobDto.cs` ／
 `src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/ConversionBffEndpoints.cs` ／
-`src/knowledge/backend/Services/ConversionService/src/ConversionService.Worker/Foundation/Endpoints/ConversionJobEndpoints.cs`（対象コミット `de55761`）。
+`src/knowledge/backend/Services/ConversionService/Worker/Features/ConversionJobs/ConversionJobEndpoints.cs`（対象コミット `de55761`）。
 
 **「動かない UI を置く」形は採らない**（#502 が確立した規則）。保存先の無い 2 ペイン編集を置くと、
 管理者は補正したつもりで何も反映されない——正規化変換の代替フロー「変換結果を管理者が補正して再登録する」を

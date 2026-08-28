@@ -1,5 +1,5 @@
 {
-  "$comment": "check-chunk-budget.js の床（NFR / ADR-0031 / IADR-0134 / issue #556）。 requiredChunks は vite.config.ts の manualChunks が返す名前と一致していること（self-test が突き合わせる）。 **規則の欠落を捕まえるのは requiredChunks の実在判定だけである** —— 500 kB 判定も初期ロードの ratchet も、規則を外した実測では発火しなかった（詳細は check-chunk-budget.js 冒頭の実測表）。 initialTotalBytes / smallLazyChunks は実測値。意図的に増やすときは node scripts/check-chunk-budget.js --update で更新し、差分を PR に載せること。 maxChunkBytes は Vite の chunkSizeWarningLimit 既定（500 kB・1000 進）に合わせている。 **kB 換算はこのファイル全体で 1000 進に統一する**（1024 進と混ぜると差分の検算が合わなくなる。実際に 1 件混入していた）。",
+  "$comment": "check-chunk-budget.js の床（NFR / ADR-0031 / IADR-0134 / issue #556）。 requiredChunks は vite.config.ts の manualChunks が返す名前と一致していること（self-test が突き合わせる）。 **規則の欠落を捕まえるのは requiredChunks の実在判定だけである** —— 500 kB 判定も初期ロードの ratchet も、規則を外した実測では発火しなかった（詳細は check-chunk-budget.js 冒頭の実測表）。 initialTotalBytes / smallLazyChunks は実測値。意図的に増やすときは node scripts/check-chunk-budget.js --update で更新し、差分を PR に載せること。 maxChunkBytes は Vite の chunkSizeWarningLimit 既定（500 kB・1000 進）に合わせている。 **kB 換算はこのファイル全体で 1000 進に統一する**（1024 進と混ぜると差分の検算が合わなくなる。実際に 1 件混入していた）。 ／ 2026-08-28: #449 SC-04 導線の i18n 文言追加で 586.64→587.49 kB（+0.85）。 ／ 2026-08-28: #451-c SC-19/SC-20 の 2 画面（i18n カタログ 95 キー×2 とナビ・確認ダイアログ）で 587.49→602.25 kB（+14.76）。",
   "requiredChunks": [
     "ui",
     "vendor-react",
@@ -16,6 +16,12 @@
     "遅延か否かを区別しない。区別しているのは initialTotalBytes（初期ロードの合計）のほうである。",
     "懸念そのものは実在しない —— 本リポジトリのビルドは 1 つ（platform/frontend が knowledge の",
     "features を合成する）で、SC-10 が EChart を使うため vendor-echarts は必ず出力される。"
+  ],
+  "$comment_initialTotalBytes_2026-08-28_sc06-attributes-form": [
+    "［2026-08-28 / #1021］586,001 → 586,637（+0.64 kB）へ引き上げた。増分は SC-06 既定属性の",
+    "編集フォーム追加に伴う i18n カタログ 6 文言（ja/en。カタログは初期ロードに載る）である。",
+    "実測: フォーム追加後のビルドで check-chunk-budget --require が +0.64 kB 超過を報告し、",
+    "--update で床を更新した（コンポーネント本体は遅延チャンク側で初期ロードに入らない）。"
   ],
   "$comment_initialTotalBytes": [
     "［2026-08-15 / #578］586,557 → 622,064（+35.51 kB）へ引き上げた。増加は本 PR の変更ではなく、",
@@ -109,7 +115,7 @@
     "",
     "smallLazyChunks は 6 のまま（1 kB 未満の遅延チャンクは増減していない）。"
   ],
-  "initialTotalBytes": 586001,
+  "initialTotalBytes": 602249,
   "$comment_initialTotalBytes_20260823_sc18": [
     "［2026-08-23 / #917］575,856 → 582,839（+6.98 kB）へ引き上げた。実測値である（pnpm run build →",
     "node scripts/check-chunk-budget.js --update）。増加は SC-18 ナレッジグラフビューのルート登録",

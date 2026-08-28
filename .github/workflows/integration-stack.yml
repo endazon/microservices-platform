@@ -99,10 +99,15 @@ jobs:
       # 既定オフの設計は変えない —— deny-by-default はセキュリティ上の既定値であり、
       # 「dev だから」で緩めない。**この使い捨てスタックでだけ opt-in する**（#972）。
       # 🔴 投入しなければ ABAC は必ず deny へ倒れ、正常系は原理的に観測できない。
-      - name: Bring up the integration stack (LOCALEDGE=1, ABACSEED=1)
+      #
+      # SEARCHSEED=1 は #992 / IADR-0284 の初期投入経路（本文つき文書＝MarkdownUri が立つ文書）。
+      # 🔴 **本文が無い文書をいくら作っても索引には入らない** —— IngestionService の
+      # DocumentUpdatedConsumer は MarkdownUri が null の文書を先頭の早期 return で捨てる。
+      # ABACSEED と同じく**この使い捨てスタックでだけ opt-in する**（文書を作る＝副作用）。
+      - name: Bring up the integration stack (LOCALEDGE=1, ABACSEED=1, SEARCHSEED=1)
         run: |
           set -euo pipefail
-          LOCALEDGE=1 ABACSEED=1 K8S_LOCAL_RUNTIME=k3d bash scripts/k8s-local-up.sh "${CLUSTER}"
+          LOCALEDGE=1 ABACSEED=1 SEARCHSEED=1 K8S_LOCAL_RUNTIME=k3d bash scripts/k8s-local-up.sh "${CLUSTER}"
 
       # 🔴 up が EXIT=0 で戻ってもアプリ pod は起きていない。ここで待つ。
       # **待つだけで、判定はしない。** 待てたことを成功の根拠にしない —— このステップは検査ではなく、
@@ -129,6 +134,13 @@ jobs:
       - name: ABAC ポリシーの投入を確定させる（冪等・失敗を握り潰さない）
         run: node scripts/seed-abac-policies.js
 
+      # 🔴 ABAC 投入とまったく同じ理由（up の中の投入は best-effort）。#992 / IADR-0284。
+      # 投入器は冪等なので readiness の後に**明示的に再実行して終了コードを見る**。
+      # ここが緑なら、次の門で seed 文書が見えないのは投入漏れではない。
+      # 投入器は作成した文書が markdownUri を持たないときも失敗する（取り込みの入口条件）。
+      - name: 検索検証用文書の投入を確定させる（冪等・失敗を握り潰さない）
+        run: node scripts/seed-search-documents.js
+
       # 🔴 ここが 2 つめの門である（#972）。readiness は「起きている」までしか言わない。
       # 認証後に **結果が出る**ことは別の判定が要る。
       #
@@ -139,8 +151,20 @@ jobs:
       #
       # ABAC_POSITIVE=1 は **文書を 1 件作る**。このクラスタは次のステップで破棄されるので
       # 副作用は残らない（`Tear down` は if: always()）。
-      - name: 🔴 Gate — ABAC の正常系が観測できる（#972）
-        run: ABAC_POSITIVE=1 bash scripts/verify-oidc-edge-flow.sh
+      #
+      # SEARCH_SEEDED=1（#992 / IADR-0284 決定 3・6）は seed 文書について次を測る。
+      #   - 一覧に見え、**markdownUri を持つ**（＝取り込みの早期 return を通過する形になっている）
+      #   - 属性を持たない利用者の検索では **0 件**（全開放の検出）
+      # 段 11 は応答の「形」までしか見ないので、索引の入口条件が壊れても緑だった（[[IADR-0255]]）。
+      #
+      # 🔴 **`SEARCH_HITS=1`（seed が実際にヒットすること）はまだ載せていない。**
+      # 取り込みは埋め込みを得られないチャンクを索引しない（fail-closed）。このスタックには
+      # 埋め込みの鍵が配線されていないため、**今日載せれば毎晩必ず落ちる** ——
+      # `report-failure` が issue を起こし続け、本当の退行がその中に埋もれる。
+      # 判定そのものは実装済みで、#992 案 2（埋め込みの供給）の裁定が出たらここへ足すだけである。
+      # **越境判定（機密区分 × ティア）を緩めて緑にすることはしない。**
+      - name: 🔴 Gate — ABAC の正常系と検索 seed の入口条件が観測できる（#972 / #992）
+        run: ABAC_POSITIVE=1 SEARCH_SEEDED=1 bash scripts/verify-oidc-edge-flow.sh
 
       # 失敗したときに原因を名指しできる情報を残す（#466 のスコープ「失敗時に原因が特定できる出力」）。
       - name: Dump cluster state (診断用・失敗時のみ)

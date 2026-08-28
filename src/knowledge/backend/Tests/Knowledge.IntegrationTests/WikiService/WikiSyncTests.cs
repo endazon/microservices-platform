@@ -1,13 +1,13 @@
 using AwesomeAssertions;
 using Knowledge.IntegrationTests.Fixtures;
 using Knowledge.Contracts.Events;
-using MassTransit;
 using System.Net;
+using Wolverine;
 using System.Net.Http.Json;
 
 namespace Knowledge.IntegrationTests.WikiService;
 
-// FR-13, ADR-0003（Superseded by ADR-0027・注記は #580）: Wiki ページ CRUD + DocumentUpdated 同期 統合テスト
+// FR-13, ADR-0027（E3b で Wolverine 化）: Wiki ページ CRUD + DocumentUpdated 発行 統合テスト
 [Trait("Category", "Integration")]
 public sealed class WikiSyncTests(PostgresFixture postgres, RabbitMqFixture rabbit)
     : IClassFixture<PostgresFixture>, IClassFixture<RabbitMqFixture>, IAsyncLifetime
@@ -21,7 +21,7 @@ public sealed class WikiSyncTests(PostgresFixture postgres, RabbitMqFixture rabb
         _factory = new WikiServiceFactory(postgres, rabbit);
         _client = _factory.CreateClient();
         await using var scope = _factory.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<global::WikiService.Api.Foundation.Persistence.WikiDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<global::WikiService.Infrastructure.Persistence.WikiDbContext>();
         await db.Database.EnsureCreatedAsync();
     }
 
@@ -61,9 +61,12 @@ public sealed class WikiSyncTests(PostgresFixture postgres, RabbitMqFixture rabb
             Tags: ["test"],
             UpdatedAt: DateTimeOffset.UtcNow);
 
+        // E3b: 発行は Wolverine（IMessageBus）。本ホストは DocumentUpdated への明示ルーティングを
+        // 持たないため、これは「発行の形が例外なく通る」ことのスモークである
+        // （実配送・fan-out は DocumentUpdatedFanOutTests が専用発行ホストで固定する）。
         await using var scope = _factory.Services.CreateAsyncScope();
-        var bus = scope.ServiceProvider.GetRequiredService<IBus>();
-        await bus.Publish(evt, TestContext.Current.CancellationToken);
+        var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
+        await bus.PublishAsync(evt);
 
         // メッセージ送信後 2 秒待機（非同期消費の確認は E2E テストの範囲）
         await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);

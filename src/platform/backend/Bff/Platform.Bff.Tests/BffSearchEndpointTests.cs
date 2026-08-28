@@ -14,10 +14,10 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
     public async Task PostSearch_WhenGranted_ReturnsAggregatedResults()
     {
         factory.SearchScopeGranted = true;
-        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/search", new { query = "経費", topK = 5 });
+        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/search", new { query = "経費", topK = 5 }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
         body!.Results.Should().ContainSingle(r => r.DocumentTitle == "経費規程 2025");
     }
 
@@ -28,10 +28,10 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
     public async Task PostSearch_PassesThroughUpdatedAt()
     {
         factory.SearchScopeGranted = true;
-        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/search", new { query = "経費", topK = 5 });
+        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/search", new { query = "経費", topK = 5 }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
         body!.Results.Should().OnlyContain(r => r.UpdatedAt == BffTestFactory.StubSearchUpdatedAt,
             "後段が返す更新日時をそのまま運ぶ（BFF で時刻を作らない）");
     }
@@ -46,20 +46,54 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
     {
         factory.SearchScopeGranted = true;
         var resp = await factory.CreateClient()
-            .PostAsJsonAsync("/bff/search", new { query = "経費", topK = 5, sortBy });
+            .PostAsJsonAsync("/bff/search", new { query = "経費", topK = 5, sortBy }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         factory.LastSearchSortBy.Should().Be(sortBy, "BFF は縮退させずそのまま運ぶ");
+    }
+
+    // FR-05, FR-17, ADR-0034, ADR-0035 (#970): 🔴 利用者の Authorization を**そのまま**後段へ伝播する
+    // （方式 A）。二段検索の段はこのヘッダを RetrievalService → GraphService と運んでホップごと
+    // ABAC を効かせる —— 伝播しないと、段を有効化しても展開は常に 0 件だった（IADR-0263 残件 2）。
+    [Fact]
+    public async Task PostSearch_ForwardsTheCallersAuthorizationToRetrieval()
+    {
+        factory.SearchScopeGranted = true;
+        factory.LastSearchForwardedAuthorization = null;
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer user-jwt");
+
+        var resp = await client.PostAsJsonAsync("/bff/search", new { query = "経費", topK = 5 },
+            TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        factory.LastSearchForwardedAuthorization.Should().Be("Bearer user-jwt",
+            "本文で scope を渡す方式 B ではなく、ヘッダをそのまま伝播する（方式 A）");
+    }
+
+    // 同（否定形）: 受信リクエストにヘッダが無ければ付けない（BFF がトークンを捏造しない。
+    // 縮退の判断とその警告は RetrievalService 側が一元で持つ）。
+    [Fact]
+    public async Task PostSearch_DoesNotInventAnAuthorizationHeader()
+    {
+        factory.SearchScopeGranted = true;
+        factory.LastSearchForwardedAuthorization = "sentinel";
+
+        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/search",
+            new { query = "経費", topK = 5 }, TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        factory.LastSearchForwardedAuthorization.Should().BeNull("無いヘッダは無いまま運ぶ");
     }
 
     [Fact]
     public async Task PostSearch_WhenNotGranted_ReturnsEmpty_DenyByDefault()
     {
         factory.SearchScopeGranted = false;
-        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/search", new { query = "経費", topK = 5 });
+        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/search", new { query = "経費", topK = 5 }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
         body!.Results.Should().BeEmpty();          // 権限外は空（存在秘匿）
         body.TotalHits.Should().Be(0);
     }
@@ -67,10 +101,10 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
     [Fact]
     public async Task PostSearch_EmptyQuery_ReturnsEmptyWithoutResolving()
     {
-        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/search", new { query = "  " });
+        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/search", new { query = "  " }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
         body!.Results.Should().BeEmpty();
     }
 
@@ -81,10 +115,10 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
         factory.SearchScopeGranted = false;
         var forgedScope = new AccessScope([], GrantsAccess: true);
         var resp = await factory.CreateClient()
-            .PostAsJsonAsync("/bff/search", new { query = "経費", topK = 5, scope = forgedScope });
+            .PostAsJsonAsync("/bff/search", new { query = "経費", topK = 5, scope = forgedScope }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
         body!.Results.Should().BeEmpty();          // クライアント Scope は無視される
     }
 
@@ -96,10 +130,10 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
     {
         factory.SearchScopeGranted = true;
         var resp = await factory.CreateClient()
-            .PostAsJsonAsync("/bff/attribute-values", new { key = "tags" });
+            .PostAsJsonAsync("/bff/attribute-values", new { key = "tags" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(TestContext.Current.CancellationToken);
         body!.Values.Should().Equal(["社内", "規程"]);
     }
 
@@ -111,10 +145,10 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
     {
         factory.SearchScopeGranted = false;
         var resp = await factory.CreateClient()
-            .PostAsJsonAsync("/bff/attribute-values", new { key = "tags" });
+            .PostAsJsonAsync("/bff/attribute-values", new { key = "tags" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK, "403 / 404 で権限の有無を教えない");
-        var body = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(TestContext.Current.CancellationToken);
         body!.Values.Should().BeEmpty();
     }
 
@@ -130,10 +164,10 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
         {
             key = "tags",
             scope = new { filters = Array.Empty<object>(), grantsAccess = true },
-        });
+        }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(TestContext.Current.CancellationToken);
         body!.Values.Should().BeEmpty("サーバ側の解決が不許可なら、クライアント指定は無視される");
         factory.LastAttributeValuesBody.Should().BeNull("不許可なら後段を呼ばない");
     }
@@ -146,10 +180,10 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
     {
         factory.LastAttributeValuesBody = null;
         factory.SearchScopeGranted = true;
-        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/attribute-values", new { key });
+        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/attribute-values", new { key }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>())!.Values.Should().BeEmpty();
+        (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(TestContext.Current.CancellationToken))!.Values.Should().BeEmpty();
         factory.LastAttributeValuesBody.Should().BeNull();
     }
 
@@ -165,10 +199,10 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, role);
 
-        var resp = await client.PostAsJsonAsync("/bff/attribute-values", new { key = "tags" });
+        var resp = await client.PostAsJsonAsync("/bff/attribute-values", new { key = "tags" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>())!;
+        var body = (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(TestContext.Current.CancellationToken))!;
         body.Dictionary.Should().NotBeNull();
         body.Dictionary!.Tags.Should().NotBeEmpty();
         factory.TagDictionaryFetched.Should().BeTrue();
@@ -185,10 +219,10 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "viewer");
 
-        var resp = await client.PostAsJsonAsync("/bff/attribute-values", new { key = "tags" });
+        var resp = await client.PostAsJsonAsync("/bff/attribute-values", new { key = "tags" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>())!;
+        var body = (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(TestContext.Current.CancellationToken))!;
         body.Dictionary.Should().BeNull("一般利用者の応答形は #540 から変わらない");
         body.Values.Should().NotBeNull();
         factory.TagDictionaryFetched.Should().BeFalse();
@@ -204,9 +238,9 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-admin");
 
-        var resp = await client.PostAsJsonAsync("/bff/attribute-values", new { key = "department" });
+        var resp = await client.PostAsJsonAsync("/bff/attribute-values", new { key = "department" }, TestContext.Current.CancellationToken);
 
-        (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>())!.Dictionary.Should().BeNull();
+        (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(TestContext.Current.CancellationToken))!.Dictionary.Should().BeNull();
         factory.TagDictionaryFetched.Should().BeFalse();
     }
 
@@ -224,7 +258,7 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
         try
         {
             var resp = await factory.CreateClient()
-                .PostAsJsonAsync("/bff/attribute-values", new { key = "tags" });
+                .PostAsJsonAsync("/bff/attribute-values", new { key = "tags" }, TestContext.Current.CancellationToken);
 
             resp.StatusCode.Should().Be(status, "後段の非 2xx は透過する（空配列へ畳まない）");
         }

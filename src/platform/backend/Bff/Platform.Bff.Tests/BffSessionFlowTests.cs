@@ -237,10 +237,10 @@ public class BffSessionFlowTests
         var cookie = await host.SignInAsync("alice", sid: "sess-1", roles: "platform-admin");
 
         var resp = await host.Client.SendAsync(
-            host.Request(HttpMethod.Get, "/bff/auth/me", cookie));
+            host.Request(HttpMethod.Get, "/bff/auth/me", cookie), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadAsStringAsync();
+        var body = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().Contain("\"alice\"");
         body.Should().Contain("platform-admin");
         body.Should().Contain("/bff/auth/logout?sid=sess-1");
@@ -255,9 +255,9 @@ public class BffSessionFlowTests
         var cookie = await host.SignInAsync("alice", roles: "platform-admin");
 
         var resp = await host.Client.SendAsync(
-            host.Request(HttpMethod.Get, "/bff/auth/me", cookie));
+            host.Request(HttpMethod.Get, "/bff/auth/me", cookie), TestContext.Current.CancellationToken);
 
-        var body = await resp.Content.ReadAsStringAsync();
+        var body = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().NotContain("AT-1").And.NotContain("RT-1");
         var allHeaders = resp.Headers.Concat(resp.Content.Headers)
             .SelectMany(h => h.Value).ToList();
@@ -270,7 +270,7 @@ public class BffSessionFlowTests
     {
         await using var host = await SessionTestHost.StartAsync();
 
-        var resp = await host.Client.GetAsync("/bff/auth/me");
+        var resp = await host.Client.GetAsync("/bff/auth/me", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -282,13 +282,13 @@ public class BffSessionFlowTests
     {
         await using var host = await SessionTestHost.StartAsync();
         var cookie = await host.SignInAsync("alice", roles: "platform-admin");
-        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie)))
+        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie), TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.OK, "失効前は通る（陽性対照）");
 
         var removed = await host.Store.RemoveAllForSubjectAsync("alice");
         removed.Should().BeGreaterThan(0);
 
-        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie)))
+        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie), TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
@@ -302,10 +302,10 @@ public class BffSessionFlowTests
         var cookie = await host.SignInAsync("alice");
 
         var resp = await host.Client.SendAsync(
-            host.Request(HttpMethod.Get, "/test/echo-auth", cookie));
+            host.Request(HttpMethod.Get, "/test/echo-auth", cookie), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await resp.Content.ReadAsStringAsync()).Should().Be("Bearer AT-1");
+        (await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Be("Bearer AT-1");
     }
 
     // ★ 陰性: セッションが無ければヘッダは立たない（「常に付ける実装」を落とす対照）。
@@ -314,9 +314,9 @@ public class BffSessionFlowTests
     {
         await using var host = await SessionTestHost.StartAsync();
 
-        var resp = await host.Client.GetAsync("/test/echo-auth-anon");
+        var resp = await host.Client.GetAsync("/test/echo-auth-anon", TestContext.Current.CancellationToken);
 
-        (await resp.Content.ReadAsStringAsync()).Should().BeEmpty();
+        (await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().BeEmpty();
     }
 
     // ★ 陰性: 既に Bearer を運ぶ呼び出し（サービス間）は上書きしない。
@@ -328,9 +328,9 @@ public class BffSessionFlowTests
 
         var req = host.Request(HttpMethod.Get, "/test/echo-auth-anon", cookie);
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "caller-token");
-        var resp = await host.Client.SendAsync(req);
+        var resp = await host.Client.SendAsync(req, TestContext.Current.CancellationToken);
 
-        (await resp.Content.ReadAsStringAsync()).Should().Be("Bearer caller-token");
+        (await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Be("Bearer caller-token");
     }
 
     // ── T-1 の第 2 経路 ＋ refresh（IADR-0273 決定 3）
@@ -351,10 +351,10 @@ public class BffSessionFlowTests
                 .ToString("o", CultureInfo.InvariantCulture));
 
         var resp = await host.Client.SendAsync(
-            host.Request(HttpMethod.Get, "/test/echo-auth", cookie));
+            host.Request(HttpMethod.Get, "/test/echo-auth", cookie), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await resp.Content.ReadAsStringAsync()).Should().Be("Bearer AT-2");
+        (await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Be("Bearer AT-2");
     }
 
     // 🔴 陰性（第 2 の即時失効経路）: 認可サーバが refresh を拒む（＝無効化・失効・期限切れ）と、
@@ -368,9 +368,9 @@ public class BffSessionFlowTests
             "alice", expiresAt: DateTimeOffset.UtcNow.AddMinutes(-1)
                 .ToString("o", CultureInfo.InvariantCulture));
 
-        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/test/echo-auth", cookie)))
+        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/test/echo-auth", cookie), TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie)))
+        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie), TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Unauthorized, "チケットはストアから消えている");
     }
 
@@ -385,11 +385,11 @@ public class BffSessionFlowTests
         var cookie = await host.SignInAsync("alice", sid: "sess-9");
 
         var resp = await host.Client.SendAsync(host.Request(
-            HttpMethod.Get, "/bff/auth/logout?sid=sess-9", cookie));
+            HttpMethod.Get, "/bff/auth/logout?sid=sess-9", cookie), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Found);
         resp.Headers.Location!.ToString().Should().StartWith(SessionTestHost.EndSessionEndpoint);
-        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie)))
+        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie), TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
@@ -403,9 +403,9 @@ public class BffSessionFlowTests
         await using var host = await SessionTestHost.StartAsync();
         var cookie = await host.SignInAsync("alice", sid: "sess-9");
 
-        (await host.Client.SendAsync(host.Request(HttpMethod.Get, path, cookie)))
+        (await host.Client.SendAsync(host.Request(HttpMethod.Get, path, cookie), TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie)))
+        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie), TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.OK, "拒否はログアウトさせない");
     }
 
@@ -415,7 +415,7 @@ public class BffSessionFlowTests
     {
         await using var host = await SessionTestHost.StartAsync();
 
-        (await host.Client.GetAsync("/bff/auth/logout?sid=anything"))
+        (await host.Client.GetAsync("/bff/auth/logout?sid=anything", TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 }

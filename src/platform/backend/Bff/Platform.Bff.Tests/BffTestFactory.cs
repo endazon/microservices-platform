@@ -53,8 +53,22 @@ public class BffTestFactory : WebApplicationFactory<Program>
 
     // FR-03/FR-05 BFF テスト（SC-01 横断検索）: ABAC スコープ解決の許可可否と検索結果をスタブ制御する。
     public bool SearchScopeGranted { get; set; } = true;
+    // FR-05, FR-06 (#1010): write スコープの許可可否と文書条件（read とは独立に制御する）。
+    // 既定は「許可・条件なし」—— 既存テスト（作成 201 等）の挙動を変えないため。
+    // 「read しか持たない主体」は WriteScopeGranted=false で再現する。
+    public bool WriteScopeGranted { get; set; } = true;
+    public List<AttributeFilter> WriteScopeFilters { get; set; } = [];
+    // #1010: /authz/scope へ発行された action の列（読み取り経路 read / 書き込み経路 write の観測点）。
+    // **テスト間で共有される**（IClassFixture）ため、観測する側が呼ぶ前に Clear() すること。
+    public List<string> ScopeActionsRequested { get; } = [];
+    // FR-19, IADR-0253 段 3 (#989): read スコープ応答に載せる名前つき分岐（既定 null＝旧形式の応答）。
+    public List<AccessScopeBranch>? ScopeBranches { get; set; }
     // FR-03, SC-02, #532: BFF が後段へ渡した並び順（縮退させずそのまま運ぶことを固定するため）。
     public string? LastSearchSortBy { get; private set; }
+    // FR-05, FR-17, ADR-0034 (#970): /bff/search が後段（RetrievalService）へ伝播した Authorization。
+    // 二段検索の段はこのヘッダを GraphService まで運んでホップごと ABAC を効かせる（方式 A）。
+    // **テスト間で共有される**（IClassFixture）ため、観測する側が呼ぶ前に null へ戻すこと。
+    public string? LastSearchForwardedAuthorization { get; set; }
     // FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会。後段が返す候補と、BFF が渡した本文。
     public List<string> StubAttributeValues { get; set; } = ["社内", "規程"];
     // **テスト間で共有される**（IClassFixture）ため、観測する側が呼ぶ前に null へ戻すこと。
@@ -148,6 +162,29 @@ public class BffTestFactory : WebApplicationFactory<Program>
         new() { DocumentId = StubDocumentId, Version = 3, Title = "経費規程 2025", Status = "published", ChangeNote = "第3条改定", CreatedAt = DateTimeOffset.UtcNow },
         new() { DocumentId = StubDocumentId, Version = 2, Title = "経費規程 2025", Status = "published", CreatedAt = DateTimeOffset.UtcNow.AddDays(-30) },
     ];
+
+    // ── FR-19, FR-20, UC-11, SC-19, SC-20, #451: 個人資料（private-note）と同期端末 ──────
+    //
+    // 🔴 **このスタブは実体（DocumentService）と同じく「主体をトークンから採り、台帳の所有者で絞る」**。
+    // スタブが常に成功を返す作りだと「**BFF が資格情報を渡し忘れた**」が緑を通る（#948 の再発）。
+    // 主体は転送された `Authorization: Bearer <subject>` の値そのものとする（テスト用の単純化）。
+    // 転送が無ければ **401**（実体は `RequireAuthorization` ＋ `SubjectOf` で同じ結果になる）。
+    public const string NoteOwner = "alice";
+    public const string OtherNoteOwner = "bob";
+    public static readonly Guid StubPrivateNoteId = Guid.Parse("19191919-1919-1919-1919-191919191919");
+    // **他人（bob）の資料・端末。到達できないこと（404）を測るための対照物である。**
+    public static readonly Guid OtherOwnerNoteId = Guid.Parse("20202020-2020-2020-2020-202020202020");
+    public static readonly Guid StubSyncDeviceId = Guid.Parse("d0d0d0d0-d0d0-d0d0-d0d0-d0d0d0d0d0d0");
+    public static readonly Guid OtherOwnerDeviceId = Guid.Parse("d1d1d1d1-d1d1-d1d1-d1d1-d1d1d1d1d1d1");
+    // 発行応答にだけ現れる平文トークン（一覧に載らないことを測る）。
+    public const string StubSyncTokenPlaintext = "sync-token-plaintext-once";
+    // BFF が後段へ渡した Authorization の観測点。**テスト間で共有される**（IClassFixture）ため、
+    // 観測する側が呼ぶ前に null へ戻すこと。
+    public string? LastPrivateNoteForwardedAuthorization { get; set; }
+    // ADR-0037 決定 17: 容量 100% の再現。**新規作成だけ**が 507 で拒まれ、本文には SC-19 の
+    // 固定文言の根拠（使用量・上限・容量を空ける手段）が入る。BFF が詰め替えないことを測る。
+    public bool PrivateNoteQuotaExceeded { get; set; }
+    public const string QuotaProblemMarker = "論理削除では容量は空きません";
 
     // FR-12 BFF テスト（SC-07 変換ジョブ）: ConversionService の応答をスタブ制御する。
     public static readonly Guid StubJobId = Guid.Parse("12121212-1212-1212-1212-121212121212");
@@ -454,6 +491,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-09 (SC-09): 管理 API（/authz/policies・/authz/attributes）もパスで振り分けてスタブ化する。
     private sealed class AuthzStubHandler(BffTestFactory owner) : HttpMessageHandler
     {
+        // 実サービス（AuthzEndpoints + AbacValidation）が受理する action の値域の写し（#1010）。
+        private static readonly string[] ValidActions = ["read", "analyze", "manage", "write"];
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -496,8 +536,31 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 return Json(HttpStatusCode.OK, owner.StubAttributes[0]); // GET/PUT by id
             }
 
-            // 既定（/authz/scope）: SC-01/SC-03 のスコープ解決。
-            var scope = new AccessScopeResponse("tester", owner.ScopeFilters, owner.SearchScopeGranted);
+            // 既定（/authz/scope）: SC-01/SC-03/SC-05 のスコープ解決。
+            //
+            // #1010: **実サービスと同じく action 別に応答する。** 要求本文の action を捕捉し
+            // （ScopeActionsRequested。観測点）、値域外は 400 を返す（AuthzEndpoints は
+            // PolicyAction.IsValid で検証して 400。呼び出し側は null＝deny へ縮退する）。
+            // write は WriteScopeGranted / WriteScopeFilters、それ以外（read 等）は従来の
+            // SearchScopeGranted / ScopeFilters で制御する —— read と write を独立に差し替え
+            // られないと「read しか持たない主体が write 経路で拒まれる」ことを測れない。
+            var body = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+            var action = "read";
+            if (!string.IsNullOrEmpty(body))
+            {
+                using var doc = JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("action", out var a)
+                    && a.ValueKind == JsonValueKind.String)
+                    action = a.GetString() ?? "read";
+            }
+            owner.ScopeActionsRequested.Add(action);
+            if (!ValidActions.Contains(action))
+                return Json(HttpStatusCode.BadRequest, new { errors = new[] { $"未知のアクション: {action}" } });
+
+            var scope = action == "write"
+                ? new AccessScopeResponse("tester", owner.WriteScopeFilters, owner.WriteScopeGranted)
+                : new AccessScopeResponse("tester", owner.ScopeFilters, owner.SearchScopeGranted,
+                    owner.ScopeBranches);
             return Json(HttpStatusCode.OK, scope);
         }
 
@@ -514,6 +577,12 @@ public class BffTestFactory : WebApplicationFactory<Program>
         {
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
             var method = request.Method;
+
+            // FR-19, FR-20, SC-19, SC-20, #451: 個人資料・同期端末。
+            // **他の分岐より先に置く** —— 末尾の総称分岐（GET なら StubDocument を返す）に
+            // 吸われると、所有者スコープも 401 も測れなくなる。
+            if (path.StartsWith("/private-notes", StringComparison.Ordinal))
+                return PrivateNotes(owner, request, path, method, cancellationToken);
 
             // FR-09, SC-05, SC-09, #634: タグ辞書（IADR-0152）。
             // BFF は管理者・運用者のときだけここを呼ぶ。**呼ばれたこと自体を観測する**
@@ -558,6 +627,20 @@ public class BffTestFactory : WebApplicationFactory<Program>
             if (path.EndsWith("/versions", StringComparison.Ordinal))
                 return Ok(owner.StubVersions);
 
+            // FR-06 (SC-03, #449): GET /documents/{id}/versions/{version}（特定版の取得）。
+            // 当該版が無ければ後段は 404 を返す —— BFF がそれを 404 として透過することを検証する。
+            var versionsMarker = path.IndexOf("/versions/", StringComparison.Ordinal);
+            if (versionsMarker >= 0)
+            {
+                var requested = path[(versionsMarker + "/versions/".Length)..];
+                var snapshot = int.TryParse(requested, out var number)
+                    ? owner.StubVersions.Find(v => v.Version == number)
+                    : null;
+                return snapshot is null
+                    ? Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound))
+                    : Ok(snapshot);
+            }
+
             if (path == "/documents")
             {
                 // FR-06 (SC-05): 新規作成。検証エラーは DocumentWriteStatusCode で再現し透過を確認する。
@@ -583,6 +666,127 @@ public class BffTestFactory : WebApplicationFactory<Program>
             if (method == HttpMethod.Delete)
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
             return Ok(owner.StubDocument);
+        }
+
+        // FR-19, FR-20, UC-11, SC-19, SC-20, #451: 個人資料・同期端末の後段を、**実体と同じ判定の形**で
+        // 再現する。実体（`PrivateNoteEndpoints` / `SyncDeviceEndpoints`）の要点は 3 つである。
+        //   ① 主体は**トークンからしか採らない**（クエリ・本文に主体の口が無い）
+        //   ② 所有者スコープは台帳（`OwnerId`）で判定する
+        //   ③ 他者の資料・端末は **404**（403 にすると他人の ID の実在が漏れる）
+        // ここで ① を再現しないと「BFF が資格情報を渡し忘れた」欠陥が緑を通る（#948 と同型）。
+        private static Task<HttpResponseMessage> PrivateNotes(
+            BffTestFactory owner, HttpRequestMessage request, string path, HttpMethod method,
+            CancellationToken ct)
+        {
+            var auth = request.Headers.Authorization?.ToString();
+            owner.LastPrivateNoteForwardedAuthorization = auth;
+
+            // ① 主体はトークンから。転送が無ければ 401（実体は RequireAuthorization が同じ結果を出す）。
+            var subject = auth is not null
+                && auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                    ? auth["Bearer ".Length..].Trim()
+                    : null;
+            if (string.IsNullOrEmpty(subject))
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized));
+
+            // ② 台帳: 誰が何を持つか。alice の資料・端末と bob のそれを 1 件ずつ置く。
+            static string? OwnerOf(Guid id) =>
+                id == StubPrivateNoteId || id == StubSyncDeviceId ? NoteOwner
+                : id == OtherOwnerNoteId || id == OtherOwnerDeviceId ? OtherNoteOwner
+                : null;
+            bool Owns(Guid id) => OwnerOf(id) == subject;
+
+            var now = DateTimeOffset.UtcNow;
+            PrivateNoteDto Note(Guid id, string title, bool deleted = false) => new(
+                id, title, $"{title}.md", 3, 1024, "sha256:stub", false, false, false, deleted,
+                deleted ? now : null, deleted ? now.AddDays(90) : null, now, now);
+            SyncDeviceDto Device(Guid id, string name) =>
+                new(id, name, now.AddDays(-3), now.AddDays(27), false, now.AddHours(-1), true);
+            var issued = new SyncTokenIssuedResponse(
+                StubSyncDeviceId, "Obsidian（自宅 PC）", StubSyncTokenPlaintext, now.AddDays(30));
+
+            var rest = path["/private-notes".Length..].Trim('/');
+            var segments = rest.Length == 0 ? [] : rest.Split('/');
+
+            // ── /private-notes（一覧・作成）────────────────────────────
+            if (segments.Length == 0)
+            {
+                if (method == HttpMethod.Post)
+                {
+                    // ADR-0037 決定 17: 100% では**新規作成だけ**が 507。本文は詰め替えず届くこと。
+                    if (owner.PrivateNoteQuotaExceeded)
+                        return Task.FromResult(new HttpResponseMessage(
+                            HttpStatusCode.InsufficientStorage)
+                        {
+                            Content = new StringContent(
+                                "{\"title\":\"保存容量の上限に達しています。\",\"status\":507,"
+                                + "\"detail\":\"削除済み資料の完全削除で容量を空けてください（"
+                                + QuotaProblemMarker + "）。\"}",
+                                System.Text.Encoding.UTF8, "application/problem+json"),
+                        });
+                    return Json(HttpStatusCode.Created, Note(StubPrivateNoteId, "新しい資料"));
+                }
+
+                // 一覧は**呼び出し者の資料だけ**を返す（②）。他人の資料は 1 件も混ざらない。
+                List<PrivateNoteDto> owned =
+                    subject == NoteOwner ? [Note(StubPrivateNoteId, "設計メモ")]
+                    : subject == OtherNoteOwner ? [Note(OtherOwnerNoteId, "他人のメモ")]
+                    : [];
+                return Ok(new PrivateNoteListResponse(
+                    new PrivateNoteUsageDto(1024, 1_073_741_824, 0), owned));
+            }
+
+            // ── /private-notes/purge（完全削除。単票も一括も同じ口）─────────────
+            if (segments[0] == "purge")
+            {
+                var body = request.Content?.ReadAsStringAsync(ct).GetAwaiter().GetResult();
+                var ids = new List<Guid>();
+                if (!string.IsNullOrEmpty(body))
+                {
+                    using var doc = JsonDocument.Parse(body);
+                    if (doc.RootElement.TryGetProperty("ids", out var arr))
+                        ids.AddRange(arr.EnumerateArray()
+                            .Select(e => Guid.TryParse(e.GetString(), out var g) ? g : Guid.Empty));
+                }
+                if (ids.Count == 0 || ids.Any(id => !Owns(id)))
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+                return Ok(new PurgePrivateNotesResponse(ids.Count, 1024L * ids.Count));
+            }
+
+            // ── /private-notes/devices/*（端末・トークン）──────────────────
+            if (segments[0] == "devices")
+            {
+                if (segments.Length == 1)
+                {
+                    if (method == HttpMethod.Post)
+                        return Json(HttpStatusCode.Created, issued);
+                    List<SyncDeviceDto> mine =
+                        subject == NoteOwner ? [Device(StubSyncDeviceId, "Obsidian（自宅 PC）")]
+                        : subject == OtherNoteOwner ? [Device(OtherOwnerDeviceId, "他人の端末")]
+                        : [];
+                    return Ok(mine);
+                }
+                if (segments[1] == "revoke-all")
+                    return Ok(new RevokeAllSyncDevicesResponse(1));
+                if (!Guid.TryParse(segments[1], out var deviceId) || !Owns(deviceId))
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+                if (segments.Length == 3 && segments[2] == "reissue")
+                    return Ok(issued);
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+            }
+
+            // ── /private-notes/{id}（論理削除・復元・露出）────────────────────
+            // ③ 他人の資料は**不在と同じ 404**。403 を返すと他人の資料 ID の実在が漏れる。
+            if (!Guid.TryParse(segments[0], out var noteId) || !Owns(noteId))
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            if (segments.Length == 1 && method == HttpMethod.Delete)
+                // 決定 19・20: 論理削除しても容量は空かない（`capacityFreed=false`）。
+                return Ok(new PrivateNoteDeletedResponse(now, now.AddDays(90), false));
+            if (segments.Length == 2 && segments[1] == "restore")
+                return Ok(Note(noteId, "設計メモ"));
+            if (segments.Length == 2 && segments[1] == "exposure")
+                return Ok(Note(noteId, "設計メモ"));
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
         }
 
         private static Task<HttpResponseMessage> Ok<T>(T body) => Json(HttpStatusCode.OK, body);
@@ -779,6 +983,11 @@ public class BffTestFactory : WebApplicationFactory<Program>
                         ? sort.GetString()
                         : null;
             }
+
+            // FR-05, ADR-0034 (#970): BFF が伝播した Authorization を記録する（方式 A の観測点）。
+            owner.LastSearchForwardedAuthorization = request.Headers.TryGetValues("Authorization", out var auth)
+                ? string.Join(' ', auth)
+                : null;
 
             return new HttpResponseMessage(HttpStatusCode.OK)
             {

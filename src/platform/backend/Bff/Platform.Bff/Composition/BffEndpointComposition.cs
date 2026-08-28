@@ -51,6 +51,11 @@ public static class BffEndpointComposition
         // Issue #916a, FR-17, UC-10, ADR-0034: グラフ読み取りの公開（GraphService へ pass-through）。
         // **Authorization を伝播する方式**を採る（後段が自分で ABAC を解決する型のため）。
         new DelegateBffEndpointModule(a => a.MapGraphBffEndpoints()),
+        // Issue #451, FR-19, FR-20, UC-11, SC-19, SC-20, ADR-0036/0037/0054: 個人資料と
+        // Obsidian 連携設定（DocumentService の /private-notes* へ pass-through）。
+        // 後段は knowledge ユニットなので Knowledge.Bff.Endpoints に置く（タグ辞書と同じ切り分け）。
+        // **本人性は後段の台帳が判定する**ので、BFF は認証必須＋資格情報の転送を担う。
+        new DelegateBffEndpointModule(a => a.MapPrivateNoteBffEndpoints()),
         // Issue #283/#286, AST/FR-17, AST/UC-06, IADR-0070/0073: AST 設定画面（全体前提条件）の BFF 集約
         // （ConfigurationService へ pass-through）。AiStockTrading.Bff.Endpoints（AST unit-owned Bff・例外3）を参照。
         new DelegateBffEndpointModule(a => a.MapAssumptionsBffEndpoints()),

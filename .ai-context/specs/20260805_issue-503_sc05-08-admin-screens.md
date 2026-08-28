@@ -5,7 +5,7 @@ status: done
 related_ids: [SC-05, SC-06, SC-07, SC-08, UC-03, UC-04, UC-05, UC-06, UC-02, FR-01, FR-02, FR-06, FR-07, FR-09, FR-11, FR-12, ADR-0031, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0127, IADR-0128]
 author: Claude
 created: 2026-08-05
-updated: 2026-08-05
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/03_usecases/01_usecases.md
@@ -342,6 +342,15 @@ issue #503 §受け入れ基準 を検証可能な形へ展開する。
 | コンポーネント | SC-05 / 06 / 07 / 08 | 表示条件・**権限別の出し分け**・エラー状態・存在秘匿の中立表示・i18n（ja / en） |
 | 導線 | SC-06 → SC-07 → SC-03 | 管理者の運用フロー（1 本のルータへ 3 ルートを載せる） |
 | E2E | Playwright | 未認証で各ルートが `/login` へ誘導されること（ルートの実在も同時に固定される） |
+
+> ### ［2026-08-28 追記 / #1013］**この「ルートの実在も固定できる」は誤りだった**
+>
+> **当時の記述は残す**（史実であり、書き換えない）。**その後どうなったかだけを足す。**
+> 未知パスの受け皿（`catchAllRoute`）は `RequireAuth` 配下の `shellRoute` の子であるため、
+> **ルートが存在しなくても未認証なら `/login` へ行く**。#918 が改名の変異を当て、
+> **落ちたテストは 0 件**だった。E2E が測っているのは未認証の導線だけである。
+> ルートの実在は `router.test.ts`（計画のルート表とナビ項目の解決）が Vitest 側で固定する。
+> **本書には同旨の記述が 2 箇所ある**（§テスト方針の表と §導線）。**いずれも誤りである。**
 
 - **権限別の出し分け**: SC-05 / 06 / 07 は `RequireRole`（admin または operator）配下であり、
   **ロールを持たない利用者には `NotFound` が出る**（存在秘匿）。SC-07 の再変換ボタンは

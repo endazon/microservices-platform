@@ -240,7 +240,7 @@ services:
   document-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/DocumentService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
     expose:
       - "8080"
@@ -256,7 +256,7 @@ services:
   datasource-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/DataSourceService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
     expose:
       - "8080"
@@ -273,7 +273,7 @@ services:
   conversion-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/ConversionService/src/ConversionService.Worker/Dockerfile
+      dockerfile: src/knowledge/backend/Services/ConversionService/Worker/Dockerfile
     # FR-15, IADR-0029, IADR-0017: 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
     # host へは公開せずメッシュ内部限定（ingress 非公開）。
     expose:
@@ -294,7 +294,7 @@ services:
   ingestion-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/IngestionService/src/IngestionService.Worker/Dockerfile
+      dockerfile: src/knowledge/backend/Services/IngestionService/Worker/Dockerfile
     # FR-15, IADR-0029, IADR-0017: 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
     # host へは公開せずメッシュ内部限定（ingress 非公開）。
     expose:
@@ -318,17 +318,21 @@ services:
   retrieval-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/RetrievalService/src/RetrievalService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/RetrievalService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（/search の ABAC は #55 で別管理）
     expose:
       - "8080"
     environment:
-      <<: *common-env
+      # ADR-0027 / #1016: DocumentDeleted 購読（retrieval-delete 段）のため RabbitMQ 接続が要る
+      # （無いと Wolverine ホストが起動時に BrokerInitializationException）。
+      <<: [*common-env, *rabbit-env]
       Qdrant__Host: qdrant
       Qdrant__Port: 6334
       Services__LlmGateway: http://llm-gateway:8080
     depends_on:
       qdrant:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
       llm-gateway:
         condition: service_started
@@ -336,7 +340,7 @@ services:
   aianalysis-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/AiAnalysisService/src/AiAnalysisService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/AiAnalysisService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
     expose:
       - "8080"
@@ -353,7 +357,7 @@ services:
   authorization-service:
     build:
       context: ..
-      dockerfile: src/platform/backend/Services/AuthorizationService/src/AuthorizationService.Api/Dockerfile
+      dockerfile: src/platform/backend/Services/AuthorizationService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（/authz/scope 等はサービス間呼び出し専用）
     expose:
       - "8080"
@@ -373,7 +377,7 @@ services:
   wiki-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/WikiService/src/WikiService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/WikiService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
     expose:
       - "8080"
@@ -432,7 +436,7 @@ services:
   llm-gateway:
     build:
       context: ..
-      dockerfile: src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Dockerfile
+      dockerfile: src/platform/backend/Services/LlmGateway/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（/complete・/embed はサービス間呼び出し専用）
     expose:
       - "8080"
@@ -479,7 +483,7 @@ services:
   feedback-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/FeedbackService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）
     expose:
       - "8080"
@@ -494,7 +498,7 @@ services:
   dashboard-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/DashboardService/src/DashboardService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/DashboardService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）
     expose:
       - "8080"
@@ -510,12 +514,16 @@ services:
   graph-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/GraphService/src/GraphService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/GraphService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）
     expose:
       - "8080"
     environment:
-      <<: [*common-env, *db-env]
+      # ADR-0027 / #1016: DocumentDeleted 購読（graph-delete 段）のため RabbitMQ 接続が要る
+      # （無いと Wolverine ホストが起動時に BrokerInitializationException）。
+      # FR-17, ADR-0033 決定 8 / #912: リンク抽出のため storage:// 本文を MinIO から実取得する
+      # （読み取り側）。無いと縮退クライアントが解決できず、抽出は毎回スキップされる。
+      <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=graph_svc;Username=kp;Password=kp
       # 🔴 IADR-0089 (#342) / #958: ABAC スコープ解決先。appsettings 既定は :5005（ローカル用）で、
       # ここで上書きしないと不達 → GraphAccessResolver が Granted=false へ縮退し、
@@ -523,6 +531,8 @@ services:
       Services__AuthorizationService: http://authorization-service:8080
     depends_on:
       postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   # Issue #283, AST/FR-17, AST/UC-06, IADR-0070: AST 設定画面（全体前提条件）の BFF 先＝ConfigurationService。
@@ -649,6 +659,9 @@ services:
       Introspection__Services__dashboard-service: http://dashboard-service:8080
       Introspection__Services__datasource-service: http://datasource-service:8080
       Introspection__Services__feedback-service: http://feedback-service:8080
+      # FR-15/FR-17: DocumentUpdated/DocumentDeleted の段（グラフ同期・削除伝播）を graph-service が
+      # 担うようになったため収集先へ追加。無いと当該段が永久に突合されない（宣言実効性テストが検出）。
+      Introspection__Services__graph-service: http://graph-service:8080
       Introspection__Services__llm-gateway: http://llm-gateway:8080
     # FR-15, #146: 正の pipeline.json をそのまま読み取り専用でマウントする（複製しない・単一の真実源）。
     # ローダは生の pipeline.json を "Pipeline" セクションへ包んで読む（PipelineExtensions）。

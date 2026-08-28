@@ -37,9 +37,9 @@ public sealed class PipelineDeclarationLoadedTests(PostgresFixture postgres, Rab
         if (_factory is not null) await _factory.DisposeAsync();
     }
 
-    // 正本 pipeline.json の段は 5 件（convert / catalog / ingest / wiki-sync / wiki-delete）。
-    // 件数を直接固定するのではなく、**宣言が読み込まれていること**と
-    // **本サービスが使う段が宣言に居ること**の両方を見る。
+    // 正本 pipeline.json の段（convert / catalog / ingest / wiki-sync / wiki-delete に加え、
+    // #1016 で retrieval-delete / graph-delete）。件数を直接固定するのではなく、
+    // **宣言が読み込まれていること**と**本サービスが使う段が宣言に居ること**の両方を見る。
     [Fact]
     public void PipelineDeclaration_IsActuallyLoaded()
     {
@@ -54,12 +54,12 @@ public sealed class PipelineDeclarationLoadedTests(PostgresFixture postgres, Rab
 
         pipeline.Steps.Select(s => s.Name).Should().Contain(
             ["convert", "catalog", "ingest", "wiki-sync", "wiki-delete"],
-            "正本 pipeline.json の 5 段がそのまま載ること（テストへ複製していないことの裏返し）");
+            "正本 pipeline.json の段がそのまま載ること（テストへ複製していないことの裏返し）");
     }
 
-    // 規則 3・4 が実際に効いていることの裏取り。宣言の consumer / input は実装と一致していなければ
-    // 起動時に InvalidOperationException になる。ここまで起動できている＝一致している、という含意を
-    // テスト名で明示しておく（変異試験でこの含意が正しいことを実測する）。
+    // 規則 3・4（Wolverine 経路では AddPlatformWolverineStep の規則 3・7）が実際に効いていることの
+    // 裏取り。宣言の consumer / input は実装と一致していなければ起動時に InvalidOperationException になる。
+    // ここまで起動できている＝一致している、という含意をテスト名で明示しておく。
     [Fact]
     public void DeclaredConsumerAndInput_MatchImplementation_OtherwiseHostWouldNotStart()
     {
@@ -69,9 +69,9 @@ public sealed class PipelineDeclarationLoadedTests(PostgresFixture postgres, Rab
 
         wikiSync.Should().NotBeNull("本サービスの段が宣言に存在すること");
         wikiSync!.Consumer.Should().Be(
-            "WikiService.Api.Composable.Steps.DocumentSyncConsumer",
+            "WikiService.Features.Wiki.DocumentSyncConsumer",
             "宣言の consumer 完全名が実装と一致すること（不一致なら起動時に落ちる）");
         wikiSync.Input.Should().Be("DocumentUpdated",
-            "宣言の input が IConsumer<TIn> の TIn と一致すること（不一致なら起動時に落ちる）");
+            "宣言の input が IPipelineStep<TIn> の TIn と一致すること（不一致なら起動時に落ちる）");
     }
 }

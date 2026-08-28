@@ -27,20 +27,20 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task GetList_AsAdmin_ReturnsJobs()
     {
-        var resp = await _factory.CreateClient().GetAsync("/bff/conversion/jobs");
+        var resp = await _factory.CreateClient().GetAsync("/bff/conversion/jobs", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<List<ConversionJobDto>>();
+        var body = await resp.Content.ReadFromJsonAsync<List<ConversionJobDto>>(TestContext.Current.CancellationToken);
         body!.Should().HaveCount(2);
     }
 
     [Fact]
     public async Task GetList_FiltersByStatus()
     {
-        var resp = await _factory.CreateClient().GetAsync("/bff/conversion/jobs?status=failed");
+        var resp = await _factory.CreateClient().GetAsync("/bff/conversion/jobs?status=failed", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<List<ConversionJobDto>>();
+        var body = await resp.Content.ReadFromJsonAsync<List<ConversionJobDto>>(TestContext.Current.CancellationToken);
         body!.Should().ContainSingle(j => j.Status == ConversionJobStatus.Failed);
     }
 
@@ -49,7 +49,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
-        var resp = await client.GetAsync("/bff/conversion/jobs");
+        var resp = await client.GetAsync("/bff/conversion/jobs", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -59,7 +59,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "viewer");
-        var resp = await client.GetAsync("/bff/conversion/jobs");
+        var resp = await client.GetAsync("/bff/conversion/jobs", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -69,7 +69,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
-        var resp = await client.GetAsync("/bff/conversion/jobs");
+        var resp = await client.GetAsync("/bff/conversion/jobs", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -81,7 +81,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
-        var resp = await client.GetAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}");
+        var resp = await client.GetAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -93,7 +93,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
-        var resp = await client.GetAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}");
+        var resp = await client.GetAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -102,7 +102,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     public async Task GetById_WhenMissing_Returns404()
     {
         _factory.ConversionStatusCode = HttpStatusCode.NotFound;
-        var resp = await _factory.CreateClient().GetAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}");
+        var resp = await _factory.CreateClient().GetAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -112,7 +112,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     {
         // 運用画面では後段障害を空一覧へ縮退させない（「ジョブ無し」と障害を区別・レビュー #172 指摘対応）。
         _factory.ConversionStatusCode = HttpStatusCode.ServiceUnavailable;
-        var resp = await _factory.CreateClient().GetAsync("/bff/conversion/jobs");
+        var resp = await _factory.CreateClient().GetAsync("/bff/conversion/jobs", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
     }
@@ -122,7 +122,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     {
         // 後段不達（HttpRequestException）は 502 へ縮退する（catch 分岐の直接検証・レビュー #172 指摘対応）。
         _factory.ConversionThrows = true;
-        var resp = await _factory.CreateClient().GetAsync("/bff/conversion/jobs");
+        var resp = await _factory.CreateClient().GetAsync("/bff/conversion/jobs", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadGateway);
     }
@@ -131,7 +131,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     public async Task Retry_AsAdmin_Returns202()
     {
         var resp = await _factory.CreateClient()
-            .PostAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/retry", content: null);
+            .PostAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/retry", content: null, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
     }
@@ -146,7 +146,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
         var resp = await client
-            .PostAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/retry", content: null);
+            .PostAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/retry", content: null, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -158,7 +158,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
         var resp = await client
-            .PostAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/retry", content: null);
+            .PostAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/retry", content: null, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -168,7 +168,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     {
         _factory.ConversionStatusCode = HttpStatusCode.NotFound;
         var resp = await _factory.CreateClient()
-            .PostAsync($"/bff/conversion/jobs/{Guid.NewGuid()}/retry", content: null);
+            .PostAsync($"/bff/conversion/jobs/{Guid.NewGuid()}/retry", content: null, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -181,7 +181,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     {
         _factory.ConversionStatusCode = HttpStatusCode.Conflict;
         var resp = await _factory.CreateClient()
-            .PostAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/retry", content: null);
+            .PostAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/retry", content: null, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
@@ -193,10 +193,10 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     public async Task Figures_AsAdmin_IsAllowed()
     {
         var resp = await _factory.CreateClient()
-            .GetAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/figures");
+            .GetAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/figures", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var figures = await resp.Content.ReadFromJsonAsync<List<ConversionFigureDto>>();
+        var figures = await resp.Content.ReadFromJsonAsync<List<ConversionFigureDto>>(TestContext.Current.CancellationToken);
         figures!.Should().HaveCount(2);
         figures.Should().ContainSingle(f => !f.Coded).Which.ImageUri.Should().NotBeNull();
     }
@@ -210,7 +210,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
-        var resp = await client.GetAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/{suffix}");
+        var resp = await client.GetAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/{suffix}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -220,7 +220,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     {
         var resp = await _factory.CreateClient().PostAsJsonAsync(
             $"/bff/conversion/jobs/{BffTestFactory.StubJobId}/figures/fig-1/correction",
-            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"));
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -232,7 +232,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
         var resp = await client.PostAsJsonAsync(
             $"/bff/conversion/jobs/{BffTestFactory.StubJobId}/figures/fig-1/correction",
-            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"));
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -249,10 +249,10 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
             """{"error":"corrections_would_be_lost","status":"failed","correctedFigures":2}""";
 
         var resp = await _factory.CreateClient()
-            .PostAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/retry", content: null);
+            .PostAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/retry", content: null, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        var body = await resp.Content.ReadAsStringAsync();
+        var body = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().Contain("corrections_would_be_lost");
         body.Should().Contain("\"correctedFigures\":2");
     }
@@ -263,7 +263,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     {
         await _factory.CreateClient()
             .PostAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/retry?discardCorrections=true",
-                content: null);
+                content: null, TestContext.Current.CancellationToken);
 
         _factory.LastConversionPath.Should().Contain("discardCorrections=true");
     }

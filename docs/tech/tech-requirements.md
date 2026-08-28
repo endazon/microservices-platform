@@ -3,14 +3,14 @@ title: 技術要件書
 type: tech-requirements
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-23
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
 ids: [FR-14]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041]
-iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233, IADR-0234, IADR-0238]
-specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper, 20260822_issue-441_wolverine-retry-dlq-defaults]
+iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282]
+specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260828_arch-foundation_eight-element-materialization]
 issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
 -->
 
@@ -49,7 +49,7 @@ issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, plann
 | ルーティング（フロントエンド） | **TanStack Router** | 1.170 | 同計画 ADR。移行第 2 段（#490。ルート木の実装 ADR）で `react-router-dom` から差し替え済み（platform / knowledge から依存ごと撤去。ESLint で再混入を禁止）。ユニット合成は型付きルート factory のタプル、AST（submodule）だけ旧契約の実行時ブリッジが残る |
 | API 契約（フロントエンド） | orval（OpenAPI → 型・TanStack Query フック・MSW モック） | 8 | 同計画 ADR。**手書きクライアント禁止**（ESLint で機械強制）。入力は `docs/api/openapi.yaml` の `/bff/` 配下のみ。生成物はコミットし CI で再生成差分を検査（SPA 新スタック移行の決定 3） |
 | CSS / UI（フロントエンド） | Tailwind CSS v4 + shadcn/ui 派生プリミティブ + lucide-react | 4 | 共有 UI パッケージ `@platform/ui`（`src/packages/ui`。SPA 新スタック移行の決定 4 と、共有 UI プリミティブの実装 ADR の決定 1）。収録は Button / StatusBadge / Input / Textarea / Select / Label / Table 一式 / Card / Alert / Tabs。**ドメイン・通信・ルーティング・認証・表示文言は入れない**。公開面は `src/index.ts` 1 ファイル（深い参照は ESLint で禁止）。**外部 CDN・Web フォント・analytics を使わない**（08_data-egress-policy。`scripts/check-static-egress.js` がビルド成果物を走査して機械検査する）。色だけで意味を持たせない（INDEX 決定 21） |
-| i18n（フロントエンド） | **Lingui**（ja / en） | 6 | 同計画 ADR（コンパイル時抽出）。カタログは `platform/frontend/src/foundation/i18n/locales/<locale>/messages.{po,ts}` にコミットし、`pnpm run i18n` の再生成差分と `scripts/check-i18n-catalogs.js`（全ロケールの `msgstr` 非空）と `lingui compile --strict` の 3 段で未翻訳を止める（共有 UI プリミティブの実装 ADR の決定 3・4）。**切替 UI は持たない**（計画の §共通シェル に要素が無い）。適用は platform の foundation のみで、画面文言は #452 |
+| i18n（フロントエンド） | **Lingui**（ja / en） | 6 | 同計画 ADR（コンパイル時抽出）。カタログは `platform/frontend/src/locales/<locale>/messages.{po,ts}` にコミットし、`pnpm run i18n` の再生成差分と `scripts/check-i18n-catalogs.js`（全ロケールの `msgstr` 非空）と `lingui compile --strict` の 3 段で未翻訳を止める（共有 UI プリミティブの実装 ADR の決定 3・4）。**切替 UI は持たない**（計画の §共通シェル に要素が無い）。適用は platform の foundation のみで、画面文言は #452 |
 | コンポーネントカタログ | **Storybook** | 10 | 同計画 ADR。`src/packages/ui/.storybook/`。対象は `@platform/ui` のプリミティブのみ。テレメトリ／クラッシュレポートは無効化し、外部 egress はビルド成果物の走査で検査する（同実装 ADR の決定 5） |
 | 認証（利用者） | Keycloak（OIDC / Authorization Code + PKCE） | — | 認可＝ABAC の計画 ADR。**BFF セッション方式（Token Handler）へ移行済み**（#439）——OIDC は BFF がコンフィデンシャルクライアント `bff` として実施し、SPA はトークンを扱わない（`oidc-client-ts` は撤去済み）。設計は `docs/authz/bff-session-design.md`。public client `platform-spa` は可変ユニット（別リポジトリ）の追随完了まで realm に残る |
 | データストア（業務） | PostgreSQL | — | DB per Service。jsonb 属性は EF Core の ValueComparer で content 比較 |
@@ -106,45 +106,54 @@ flowchart TB
 
 ### プロジェクト構成（サービス単位）
 
-**標準構成は 8 要素である**（計画 12_backend-application-stack（計画リポ）
-§`SharedKernel` の粒度・`Worker` の追加。2026-08-17 に `Worker` を加えて 7 → 8 とした。
-実装側の追随は、`SharedKernel` の粒度と `Worker` の追加を定めた実装 ADR の決定 2 である）。
+**標準構成は、単一プロジェクト＋層フォルダである**（オーナー裁定 2026-08-28。
+単一プロジェクト標準を定めた実装 ADR が正本。従前の 8 要素プロジェクト分割
+（計画 12_backend-application-stack（計画リポ）§プロジェクト構成）の実体化は
+**同裁定で撤回**され、計画側条文の改定を環流中である —— 8 つの**関心**はフォルダと
+ユニット共有プロジェクトで維持する）。
 
 ```text
 src/<unit>/backend/Services/<Name>Service/
- ├── src/
- │    ├── <Name>.Api             # エンドポイント定義・DI 構成・ProblemDetails 変換
- │    ├── <Name>.Worker          # 常駐処理を主とするサービスの実行入口（Api と排他）
- │    ├── <Name>.Application     # ユースケース（Wolverine ハンドラ）・検証・マッピング
- │    ├── <Name>.Domain          # エンティティ・値オブジェクト（外部依存なし）
- │    ├── <Name>.Infrastructure  # EF Core・Redis・オブジェクトストレージ等の実装
- │    ├── <Name>.Contracts       # 公開契約（proto・イベント・DTO）
- │    └── <Name>.SharedKernel    # Result / Error・共通基底（過度な共通化は避ける）
- └── tests/<Name>.Tests/{Unit, Integration}
+ ├── <Name>Service.csproj        # 単一プロジェクト（層をプロジェクト分割しない）
+ ├── Program.cs                  # 合成ルート（束ねるだけ。判断を書かない）
+ ├── Features/<集約>/<操作>/     # Vertical Slice（Endpoint / Command|Query / Handler）
+ ├── Domain/                     # エンティティ・値オブジェクト（外部依存なし。＋ Errors/）
+ ├── Infrastructure/             # Persistence（EF Core・Migrations）・Messaging 等のアダプタ
+ ├── Common/                     # サービス固有の横断関心（Exceptions/・Behaviors/）
+ ├── Worker/<Name>.Worker.csproj # 常駐処理を主とするサービスの実行入口（Api と排他・別デプロイ実体）
+ └── Tests/<Name>.Tests.csproj   # テストは 1 プロジェクト（フォルダは実装の鏡写し: Features/・Domain/）
 ```
 
 **`Api` と `Worker` は同一サービス内で排他である。** いずれか一方のみを持ち、**持たない側は空フォルダを作らない**
 （実行入口は 1 サービスに 1 つであり、「空の実行入口」という状態が存在しないため）。実装の現況は
-`Api` 9 サービス / `Worker` 2 サービス（`ConversionService` / `IngestionService`）である。
+**`Api` 12 サービス / `Worker` 2 サービス**（`ConversionService` / `IngestionService`）である
+（2026-08-28 の移送完了時点で数え直した。knowledge 10 ＋ platform 4 ＝ 14 サービス）。
 **`Worker` が HTTP 面を持つことは `Worker` であることと矛盾しない** —— 区別の軸はホストの主目的である。
 
-**実体が無い要素は、空フォルダ ＋ `.gitkeep` を置く**（`.csproj` は作らない。計画 §規範性・粒度・置き場）。
-**適用済みである**（#838。**55 件 ＋ 雛形 1 件**。件数の内訳の正は
-同実装 ADR の決定 3）。
+**参照方向（`Domain` は `Features` / `Infrastructure` / `Common` の振る舞いを知らない）は
+フォルダ＝名前空間で守り、機械検査は名前空間走査版が稼働している。**
 
-**`Tests` は 1 プロジェクトである。Unit / Integration はプロジェクトを分けず、フォルダで分ける**
-（計画 12_backend-application-stack（計画リポ）
+🔴 **［2026-08-28 追記］移送は完了した。** 従前ここは「移送完了までは現行配置
+（`src/<Name>.<Api|Worker>/Foundation/ ・ Composable/`）が実態であり、新規コードも現行配置で書く」と
+書いていたが、**14 サービス全件が新配置へ移送済み**であり `Services/<Name>/src/` は 1 つも残っていない。
+**新規コードは新配置（サービス直下の単一プロジェクト＋ `Features/` `Domain/` `Infrastructure/` `Common/` `Tests/`）で書く。**
+なお**操作単位のスライス分割（`Features/<集約>/<操作>/` の 3 分割）はまだ行っていない** ——
+器の移送までが移送波の射程であり、端点は集約フォルダ直下に 1 枚のまま置かれている。
+
+**`Tests` は 1 プロジェクトである**（計画 12_backend-application-stack（計画リポ）
 §規範性・粒度・置き場。利用者裁定 2026-08-04）。プロジェクトを分けるとビルド時間と
-参照管理のコストが増えるためである。`.csproj` の実名はサービスのホスト種別に合わせてよい
+参照管理のコストが増えるためである。フォルダは Unit / Integration の種別区分ではなく
+**実装のスライスを鏡写しにする**（`Tests/Features/`・`Tests/Domain/`。2026-08-28 裁定。
+種別区分の計画側条文は改定を環流中）。`.csproj` の実名はホスト種別に合わせてよい
 （実装の現況は `<Name>.Api.Tests` / `<Name>.Worker.Tests`）。
 
-**共有カーネルはサービス単位とユニット単位が併存する**（同実装 ADR の決定 1。
-計画 §`SharedKernel` の粒度。利用者裁定 2026-08-17）。**置き分けは次のとおりである。**
+**共有カーネルはユニット単位に一本化する**（2026-08-28 裁定。サービス単位の
+`SharedKernel` 要素と `.gitkeep` の枠は撤回）。
 
 | 置き場 | 何を置くか |
 | --- | --- |
-| **サービス単位** `Services/<Name>Service/src/<Name>.SharedKernel/` | **自サービスに閉じた共通基底**。上の構成図の 1 要素であり、実体が無ければ `.gitkeep` を置く対象に含まれる |
-| **ユニット単位** `src/platform/backend/Shared/Platform.Shared.Kernel/` | **サービス境界をまたいで同一性が要る型** —— **契約に載る `Result` / `Error`**。BFF がサービスの結果を集約し、`Platform.Shared.Contracts` のイベント契約が失敗を表現するため、単一の型でなければならない |
+| **ユニット単位** `src/platform/backend/Shared/Platform.Shared.Kernel/` | **サービス境界をまたいで同一性が要る型** —— **契約に載る `Result` / `Error`・DDD 基底型**。BFF がサービスの結果を集約し、`Platform.Shared.Contracts` のイベント契約が失敗を表現するため、単一の型でなければならない。サービス個別の `Common/Result.cs` は置かない |
+| **サービス単位** `Services/<Name>Service/Common/` | **自サービスに閉じた横断関心**（`Exceptions/`・`Behaviors/`）。共通「基底」の複製は置かない |
 
 本リポジトリはユニット第一構成（実装 ADR と、計画側のユニット第一リポジトリ構成の決定）を採り、ユニット外から参照できるのは
 `src/platform/backend/Shared/` のプロジェクトのみである（[`src/README.md`](../../src/README.md) の依存規則）。
@@ -285,9 +294,15 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
   MSBuild は 1 件の警告をビルド中の行と末尾のサマリの 2 箇所へ出すため、ログ行を素朴に数えると
   実数の 2 倍になる。**実数は 943 件**（16 プロジェクト中 13 プロジェクトに分布）。数え直しは
   `dotnet build <slnx> -t:Rebuild -p:NoWarn= -m:1`（`-m:1` を落とすとノード接頭辞が付いて一意化に失敗する）。
-  **抑止は恒久ではなく、段階採用の完了時に外す。** 段階採用は**許可リスト**（移行済みだけを列挙し、
-  挙がったものは `NoWarn` を失って `WarningsAsErrors` に入る）で行う ——
-  `TreatWarningsAsErrors` は `false` なので、**`NoWarn` を外すだけでは再発しても CI は緑のままである**。
+  段階採用は**許可リスト**（移行済みだけを列挙し、挙がったものは `NoWarn` を失って
+  `WarningsAsErrors` に入る）で行う —— `TreatWarningsAsErrors` は `false` なので、
+  **`NoWarn` を外すだけでは再発しても CI は緑のままである**。
+  🔴 **［2026-08-28 追記］段階採用は完了した**（本リポジトリのテストプロジェクト 20 本すべてが
+  許可リストに載る）。**従前ここは「抑止は恒久ではなく、完了時に外す」と書いていたが、これは誤りで、
+  器は完了後も残す。** 外すと移行済みが `WarningsAsErrors` を失って再発が warning へ落ち、
+  同時に別プロジェクトの submodule（`src/ai-stock-trading`）が `NoWarn` を失って警告ノイズが復活する
+  （本 props は import-chain で submodule へ届き、そのテストプロジェクトは全 38 本が `Tests` で終わる）。
+  許可リストの意味だけが「未移行の受け皿」から**強制の対象一覧**へ変わる。
   残件の単一情報源は [`scripts/xunit1051-baseline.json`](../../scripts/xunit1051-baseline.json)、
   一致の検査は `scripts/check-xunit1051-ratchet.js` が行う。
 

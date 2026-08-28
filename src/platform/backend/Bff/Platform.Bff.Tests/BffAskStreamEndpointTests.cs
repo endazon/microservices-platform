@@ -18,12 +18,12 @@ public class BffAskStreamEndpointTests(BffTestFactory factory) : IClassFixture<B
         };
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "token-abc");
 
-        var resp = await client.SendAsync(req, HttpCompletionOption.ResponseContentRead);
+        var resp = await client.SendAsync(req, HttpCompletionOption.ResponseContentRead, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         resp.Content.Headers.ContentType!.MediaType.Should().Be("text/event-stream");
 
-        var body = await resp.Content.ReadAsStringAsync();
+        var body = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().Contain("event: citations");
         body.Should().Contain("event: token");
         body.Should().Contain("event: done");

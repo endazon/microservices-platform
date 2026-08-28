@@ -5,6 +5,7 @@ import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 import { jsonResponse, noContent } from '@foundation/testing/bffResponse';
+import type { BffResponseStub } from '@foundation/testing/bffResponse';
 
 // SC-05, UC-03, FR-06/FR-09: 文書管理画面の再実装（#503）＋ 生成フックへの載せ替え（#519）。
 //
@@ -43,6 +44,29 @@ const ARCHIVED_DOC = {
   attributes: { confidentiality: 'confidential' },
   tags: [],
 };
+
+// FR-09, SC-05（#449）: タグ辞書（`GET /bff/tags` → `apiRequest('/tags')`）の応答。
+// 使用件数は SC-09 の関心であり、本画面は名前しか使わない。
+const TAG_DICTIONARY = {
+  tags: [
+    { id: '11111111-1111-1111-1111-111111111111', name: '経理', usageCount: 3 },
+    { id: '22222222-2222-2222-2222-222222222222', name: '規程', usageCount: 5 },
+    { id: '33333333-3333-3333-3333-333333333333', name: '人事', usageCount: 1 },
+  ],
+};
+
+/**
+ * `/tags` には辞書を、その他のパスには `rest` の応答を返す。
+ *
+ * **辞書を返さないと選択肢が空になり、タグを触るテストが「候補なし」で止まる。**
+ * 辞書に触れないテストは従来どおり `mockResolvedValue` のままでよい
+ * （辞書が空でも他の検証には影響しない）。
+ */
+function withTagDictionary(rest: (path: string, init?: RequestInit) => BffResponseStub) {
+  mocks.apiRequest.mockImplementation(async (path: string, init?: RequestInit) =>
+    path.startsWith('/tags') ? jsonResponse(TAG_DICTIONARY) : rest(path, init),
+  );
+}
 
 async function renderPage(roles: readonly string[] = ['platform-admin']) {
   return renderUnitRoute((shell) => [createSc05DocumentsRoute(shell)], {
@@ -83,13 +107,14 @@ describe('DocumentManagementPage (SC-05)', () => {
 
   // UC-03 基本フロー 1: 管理者が文書を登録し、属性・タグを設定する。
   it('creates a document with the required confidentiality attribute and tags', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([]));
+    withTagDictionary(() => jsonResponse([]));
     const user = userEvent.setup();
     await renderPage();
 
     await user.type(screen.getByLabelText(/タイトル/), '新しい規程');
     await user.selectOptions(screen.getByLabelText(/機密区分（ABAC属性）/), 'confidential');
-    await user.type(screen.getByLabelText('タグ'), '経理');
+    // #449: タグは辞書からの選択である（自由入力ではない）。
+    await user.selectOptions(await screen.findByLabelText('タグ'), '経理');
     await user.click(screen.getByRole('button', { name: '追加' }));
     await user.click(screen.getByRole('button', { name: '保存' }));
 
@@ -111,6 +136,86 @@ describe('DocumentManagementPage (SC-05)', () => {
     expect(await screen.findByText('文書を登録しました。')).toBeInTheDocument();
   });
 
+  // ---- FR-06, FR-09, UC-03, SC-05（#449）: タグは既定タグ辞書に整合する ----
+  //
+  // 計画 05_screens §SC-05 の入力表（確定・2026-08-05。質問票 第12回 Q18）:
+  // タグは「**既定タグ辞書に整合**（**辞書は管理系ロールが引ける照会口から取得する**）」。
+  // 従前は自由テキスト入力で、辞書に無い値をいくらでも付けられた。
+
+  it('offers tags from the dictionary instead of free text', async () => {
+    withTagDictionary(() => jsonResponse([]));
+    await renderPage();
+
+    const tagField = await screen.findByLabelText('タグ');
+    // 🔴 **入力欄ではなく選択欄である**（`combobox` = <select>）。
+    // 自由入力へ戻す退行はここで落ちる。
+    expect(tagField.tagName).toBe('SELECT');
+    expect(
+      within(tagField)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['タグを選択', '経理', '規程', '人事']);
+
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/tags',
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  // 既に付いているタグは選択肢から消える（同じタグを 2 度付けられない）。
+  it('removes already-attached tags from the choices', async () => {
+    withTagDictionary(() => jsonResponse([DRAFT_DOC]));
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '編集' }));
+    const tagField = await screen.findByLabelText('タグ');
+
+    // DRAFT_DOC は「経理」「規程」を持つので、残る候補は「人事」だけ。
+    expect(
+      within(tagField)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['タグを選択', '人事']);
+  });
+
+  // 🔴 辞書が取れないとき、**自由入力へフォールバックしない**。
+  // フォールバックすると裁定（辞書に整合）の意味が消えるため、追加を止めるほうを選ぶ。
+  it('disables adding when the dictionary is unavailable (no free-text fallback)', async () => {
+    // `/tags` を含め全パスが 500。辞書は取得できない。
+    mocks.apiRequest.mockRejectedValue(
+      new ApiError('server', 'サーバでエラーが発生しました。', 500),
+    );
+    await renderPage();
+
+    const tagField = await screen.findByLabelText('タグ');
+    expect(tagField).toBeDisabled();
+    expect(tagField.tagName).toBe('SELECT');
+    expect(screen.getByRole('button', { name: '追加' })).toBeDisabled();
+    expect(screen.getByText('辞書に候補がありません')).toBeInTheDocument();
+  });
+
+  // 辞書に無い既存タグ（辞書の改定前に付いたもの）は**表示され、削除できる**。
+  // 画面が既存のタグを黙って落とすと、保存時に消えて破壊的になる。
+  it('keeps existing tags that are no longer in the dictionary', async () => {
+    const legacy = { ...DRAFT_DOC, tags: ['廃止された分類'] };
+    withTagDictionary(() => jsonResponse([legacy]));
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '編集' }));
+
+    const form = within(screen.getByRole('form', { name: '文書編集' }));
+    expect(form.getByText('廃止された分類')).toBeInTheDocument();
+    expect(form.getByRole('button', { name: 'タグ 廃止された分類 を削除' })).toBeInTheDocument();
+    // 選択肢には出ない（辞書に無いので新たには付けられない）。
+    expect(
+      within(await screen.findByLabelText('タグ')).queryByRole('option', {
+        name: '廃止された分類',
+      }),
+    ).not.toBeInTheDocument();
+  });
+
   // UC-03 例外フロー: 必須属性が未設定の場合は保存を拒否する（タイトルが空では保存できない）。
   it('refuses to save until the required title is filled (UC-03 exception flow)', async () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse([]));
@@ -121,7 +226,12 @@ describe('DocumentManagementPage (SC-05)', () => {
     // 空白だけの入力も必須未設定として扱う。
     await user.type(screen.getByLabelText(/タイトル/), '   ');
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
-    expect(mocks.apiRequest).toHaveBeenCalledTimes(1); // 一覧の取得のみ
+    // **書き込みが 1 度も起きていないこと**を見る。
+    // **［#449］呼び出し回数では数えない** —— タグ辞書（`/tags`）の取得が増えて 2 回になった。
+    // 「読み取りが何本走るか」はこのテストの関心ではなく、**増えるたびに数を直す形は脆い**。
+    expect(
+      mocks.apiRequest.mock.calls.filter(([, init]) => (init as RequestInit).method !== 'GET'),
+    ).toHaveLength(0);
 
     expect(
       screen.getByText('必須属性が未設定の場合は保存を拒否します（UC-03 例外フロー）。'),

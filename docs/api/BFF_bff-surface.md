@@ -3,7 +3,7 @@ title: BFF 境界（/bff/*）通信仕様書
 type: api-spec
 status: in-progress
 created: 2026-08-05
-updated: 2026-08-21
+updated: 2026-08-28
 author: Claude
 ---
 <!-- trace:
@@ -262,7 +262,7 @@ OpenAPI で閉じた `enum` にすると、**後段が値を増やした瞬間�
 - **`/bff/` 外のスキーマにも `required` を入れる。** 生成の前処理 `src/orval-bff-only.cjs` が
   入力から落とすのは **`paths` だけ**で、**`components.schemas` は素通りする**
   ——`/bff/` から到達しないスキーマも含め、**`components.schemas` の宣言がそのまま `bff.schemas.ts` へ出力される**
-  （数え方: `grep -c '^export interface ' src/platform/frontend/src/foundation/api/generated/bff.schemas.ts`。
+  （数え方: `grep -c '^export interface ' src/platform/frontend/src/lib/api/generated/bff.schemas.ts`。
   **件数はここに書かない**——契約が増えれば動く。**［2026-08-10 / #558］従前ここには「53 個すべて」と
   書いてあり、実測すると 69 で古くなっていた**。数を書くと次に読む人が古い数を信じる）。
   **「`/bff/` 外は生成されないから書かなくてよい」は誤りである**——#520 の着手時にこの誤った想定を置き、

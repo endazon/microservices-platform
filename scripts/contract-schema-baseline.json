@@ -49,6 +49,26 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.AiInputExposure": {
+        "kind": "class",
+        "members": {
+          "AttributeKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"ai_input\""
+          },
+          "Excluded": {
+            "source": "const",
+            "type": "string",
+            "value": "\"excluded\""
+          },
+          "Included": {
+            "source": "const",
+            "type": "string",
+            "value": "\"included\""
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.AiSuggestionDto": {
         "kind": "record",
         "members": {
@@ -640,6 +660,34 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.CreatePrivateNoteRequest": {
+        "kind": "record",
+        "members": {
+          "Title": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "VaultPath": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.CreateSyncDeviceRequest": {
+        "kind": "record",
+        "members": {
+          "DeviceName": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.CreateTagRequest": {
         "kind": "record",
         "members": {
@@ -893,6 +941,26 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.DocumentScopes": {
+        "kind": "class",
+        "members": {
+          "Key": {
+            "source": "const",
+            "type": "string",
+            "value": "\"doc_scope\""
+          },
+          "Organization": {
+            "source": "const",
+            "type": "string",
+            "value": "\"organization\""
+          },
+          "PrivateNote": {
+            "source": "const",
+            "type": "string",
+            "value": "\"private-note\""
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.DocumentVersionDto": {
         "kind": "class",
         "members": {
@@ -969,6 +1037,12 @@
             "type": "string",
             "required": true,
             "position": 1
+          },
+          "Weight": {
+            "source": "positional",
+            "type": "double",
+            "required": false,
+            "position": 4
           }
         }
       },
@@ -1371,6 +1445,186 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.PrivateNoteDeletedResponse": {
+        "kind": "record",
+        "members": {
+          "CapacityFreed": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 2
+          },
+          "DeletedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": true,
+            "position": 0
+          },
+          "PurgeAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.PrivateNoteDto": {
+        "kind": "record",
+        "members": {
+          "Bytes": {
+            "source": "positional",
+            "type": "long",
+            "required": true,
+            "position": 4
+          },
+          "ContentHash": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 5
+          },
+          "CreatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 12
+          },
+          "Deleted": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 9
+          },
+          "DeletedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": true,
+            "position": 10
+          },
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "IncludeInAi": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 8
+          },
+          "IncludeInGraph": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 7
+          },
+          "IncludeInSearch": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 6
+          },
+          "PurgeAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": true,
+            "position": 11
+          },
+          "Title": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "UpdatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 13
+          },
+          "VaultPath": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "Version": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 3
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.PrivateNoteListResponse": {
+        "kind": "record",
+        "members": {
+          "Notes": {
+            "source": "positional",
+            "type": "List<PrivateNoteDto>",
+            "required": true,
+            "position": 1
+          },
+          "Usage": {
+            "source": "positional",
+            "type": "PrivateNoteUsageDto",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.PrivateNoteUsageDto": {
+        "kind": "record",
+        "members": {
+          "LimitBytes": {
+            "source": "positional",
+            "type": "long",
+            "required": true,
+            "position": 1
+          },
+          "Percent": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 2
+          },
+          "UsedBytes": {
+            "source": "positional",
+            "type": "long",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.PurgePrivateNotesRequest": {
+        "kind": "record",
+        "members": {
+          "Ids": {
+            "source": "positional",
+            "type": "List<Guid>",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.PurgePrivateNotesResponse": {
+        "kind": "record",
+        "members": {
+          "FreedBytes": {
+            "source": "positional",
+            "type": "long",
+            "required": true,
+            "position": 1
+          },
+          "PurgedCount": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.RagContextPolicy": {
         "kind": "class",
         "members": {}
@@ -1449,6 +1703,17 @@
           "Tag": {
             "source": "positional",
             "type": "TagDto",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.RevokeAllSyncDevicesResponse": {
+        "kind": "record",
+        "members": {
+          "RevokedCount": {
+            "source": "positional",
+            "type": "int",
             "required": true,
             "position": 0
           }
@@ -1629,6 +1894,82 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.SyncDeviceDto": {
+        "kind": "record",
+        "members": {
+          "Active": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 6
+          },
+          "DeviceName": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "ExpiresAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 3
+          },
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "IssuedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 2
+          },
+          "LastSyncAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": true,
+            "position": 5
+          },
+          "Revoked": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 4
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.SyncTokenIssuedResponse": {
+        "kind": "record",
+        "members": {
+          "DeviceId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "DeviceName": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "ExpiresAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 3
+          },
+          "Token": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.TagDictionaryResponse": {
         "kind": "record",
         "members": {
@@ -1695,6 +2036,29 @@
             "type": "string",
             "required": true,
             "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.UpdateExposureRequest": {
+        "kind": "record",
+        "members": {
+          "IncludeInAi": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 2
+          },
+          "IncludeInGraph": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 1
+          },
+          "IncludeInSearch": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 0
           }
         }
       },
@@ -1831,6 +2195,12 @@
             "type": "Dictionary<string,string>",
             "required": true,
             "position": 4
+          },
+          "ContentFingerprint": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 7
           },
           "DocumentId": {
             "source": "positional",
@@ -2033,6 +2403,12 @@
       "Platform.Shared.Contracts.Dtos.AccessScope": {
         "kind": "record",
         "members": {
+          "Branches": {
+            "source": "positional",
+            "type": "List<AccessScopeBranch>?",
+            "required": false,
+            "position": 2
+          },
           "Filters": {
             "source": "positional",
             "type": "List<AttributeFilter>",

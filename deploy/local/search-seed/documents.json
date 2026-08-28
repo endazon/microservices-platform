@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "FR-02, FR-03, FR-21, UC-01, SC-01 / Issue #992（案 1）: 経路B（dev）へ「索引可能な文書」を初期投入するデータ。",
+    "投入は scripts/seed-search-documents.js が DocumentService の POST /documents 経由で行う（直 DB 書き込みはしない）。",
+    "",
+    "🔴 使い捨てスタック専用である。SEARCHSEED=1 は文書を作る（副作用）。残しておきたいクラスタに対して立てないこと。",
+    "",
+    "属性の選び方（IADR-0284 決定 2）:",
+    "  confidentiality=public …… deploy/local/abac-seed/policies.json は confidentiality だけを文書条件に持つ。",
+    "    public にすると clearance を持つ全利用者に見え、属性を 1 つも持たない利用者（poc-operator）には",
+    "    見えない。正の対照と負の対照が同じ 1 件で成立する。",
+    "  department=engineering …… 利用者側の department と揃える。スコープのフィルタに department が",
+    "    含まれる構成でも不可視にならないようにするため。",
+    "タグは付けない …… DocumentService は辞書に無いタグを 400 で拒む（SC-05 / #635）。独自のタグを付けると",
+    "  ABAC とは無関係の 400 で投入が落ちる（verify-oidc-edge-flow.sh の探針が実測で踏んだ形）。",
+    "",
+    "probeTerm は検索の合言葉である。**本文とタイトルの両方に現れる、他の文書と衝突しない語**にすること。",
+    "  衝突する語にすると『検索が壊れていても他の文書が当たって緑になる』（判定が意味を失う）。"
+  ],
+  "probeTerm": "msp-searchseed-tanpopo",
+  "documents": [
+    {
+      "title": "msp-searchseed-tanpopo 検索導線の検証用文書",
+      "contentType": "text/markdown; charset=utf-8",
+      "attributes": {
+        "confidentiality": "public",
+        "department": "engineering"
+      },
+      "body": "# msp-searchseed-tanpopo 検索導線の検証用文書\n\nこの文書は統合スタック（使い捨て）で **横断検索が実際に効くこと** を観測するために投入される。\n\n合言葉は `msp-searchseed-tanpopo` である。この語で検索してこの文書が返らなければ、\n取り込み（parse→chunk→embed→index）か検索のどこかが壊れている。\n\n## なぜ本文が要るのか\n\nIngestionService の `DocumentUpdatedConsumer` は `MarkdownUri` が null の文書を早期 return で捨てる。\n本文を持たない文書をいくら作っても、索引には一度も入らない。\n\n## 索引されるまでの経路\n\n1. DocumentService が本文をオブジェクトストレージへ格納し `MarkdownUri` を立てる（FR-21）\n2. `DocumentUpdated` が発行される\n3. IngestionService が本文を読み、チャンクに分け、埋め込みを得て Qdrant へ登録する\n4. RetrievalService がハイブリッド検索（ベクトル ＋ 全文）で引く\n5. BFF が ABAC スコープを解決して結果を絞る\n"
+    }
+  ]
+}

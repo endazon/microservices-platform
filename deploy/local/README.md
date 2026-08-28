@@ -454,11 +454,6 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
 
 ## 既知の制約
 
-- **Keycloak テーマ（`loginTheme`/`accountTheme`=`platform`）は `scripts/k8s-local-up.sh` 経由では自動投入されない**
-  （#438・follow-up 未着手）。`bash scripts/k8s-local-up.sh` で普通に起動しただけでは、上の「手動でステップ実行する場合」の
-  `keycloak-theme-platform` ConfigMap 作成コマンドを別途実行し、`kubectl -n platform-infra rollout restart deploy/keycloak`
-  するまでログイン画面が「テーマが見つからない」エラーになる。docker-compose（`deploy/docker-compose.yml`）側は
-  テーマをホストマウントするため対象外（起動するだけで有効）。
 - **観測 UI は非同梱**: otel-collector は dev では `debug` エクスポータのみ（Prometheus/Tempo/Loki/Grafana は
   立てない）。UI が要るなら compose（`deploy/docker-compose.yml`）を併用する。
 - **永続化は opt-in**: 既定の infra は emptyDir（Pod 再起動で再 init。dev 用途の割り切り）。`PERSIST=1` で
@@ -470,7 +465,7 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
 ## 手動でステップ実行する場合
 
 ```bash
-# 事前に infra secrets と realm ConfigMap を作成（k8s-local-up.sh が自動化する部分）
+# 事前に infra secrets・realm ConfigMap・テーマ ConfigMap を作成（k8s-local-up.sh の [3/7] が自動化する部分）
 kubectl create namespace platform-infra
 kubectl create secret generic postgres -n platform-infra --from-literal=password=postgres
 kubectl create secret generic rabbitmq -n platform-infra --from-literal=password=guest
@@ -478,10 +473,10 @@ kubectl create secret generic keycloak-admin -n platform-infra --from-literal=pa
 kubectl create configmap keycloak-realms -n platform-infra \
   --from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json
 
-# #438: realm.json の loginTheme/accountTheme=platform を解決するテーマ実体。
-# ★ scripts/k8s-local-up.sh はまだこの ConfigMap を自動生成しない（follow-up・未着手）。
+# #438: realm.json の loginTheme/accountTheme=platform を解決するテーマ実体
+# （k8s-local-up.sh 経由なら自動生成される。ここは手動でステップ実行する場合の再現用）。
 # 作成しないまま Pod を起動しても keycloak.yaml 側は optional: true のため落ちないが、
-# その場合ログイン画面が「テーマが見つからない」で 500 になる。作成後は Pod の再作成が要る。
+# その場合ログイン画面が「テーマが見つからない」で 500 になる。
 kubectl create configmap keycloak-theme-platform -n platform-infra \
   --from-file=login-theme-properties=deploy/keycloak/themes/platform/login/theme.properties \
   --from-file=login-css=deploy/keycloak/themes/platform/login/resources/css/platform.css \

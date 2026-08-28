@@ -21,7 +21,7 @@ public sealed class DocumentNormalizedSyncTests(PostgresFixture postgres, Rabbit
         _factory = new DocumentServiceFactory(postgres, rabbit);
         _client = _factory.CreateClient();
         await using var scope = _factory.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<global::DocumentService.Api.Foundation.Persistence.DocumentDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<global::DocumentService.Infrastructure.Persistence.DocumentDbContext>();
         await db.Database.EnsureCreatedAsync();
     }
 

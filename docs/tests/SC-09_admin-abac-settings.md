@@ -3,7 +3,7 @@ title: SC-09 管理者設定（ABAC） テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-23
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
@@ -126,8 +126,8 @@ issues: [#503, #504, #510, #535, #640, #989]
 
 ## foundation（Vitest）
 
-対象: `src/platform/frontend/src/foundation/api/apiClient.ts` / `ApiError.ts`
-テスト: `src/platform/frontend/src/foundation/api/apiClient.test.ts`
+対象: `src/platform/frontend/src/lib/api/apiClient.ts` / `ApiError.ts`
+テスト: `src/platform/frontend/src/lib/api/apiClient.test.ts`
 
 | # | 観点 | 検証内容 | ケース |
 | --- | --- | --- | --- |
@@ -138,7 +138,7 @@ issues: [#503, #504, #510, #535, #640, #989]
 
 | # | 観点 | 検証内容 |
 | --- | --- | --- |
-| E1 | ルートの実在 ＋ 認証ガード | 未認証で `/admin/abac` を開くと `/login` へ誘導される（ルート未登録なら `NotFound` が出て `/login` へ行かないため、この 1 本でルートの実在も固定できる） |
+| E1 | 認証ガード（**未認証の導線だけ**） | 未認証で `/admin/abac` を開くと `/login` へ誘導される。🔴 **ルートの実在は測っていない** —— 未知のパスの受け皿は認証ガード配下に居るため、ルートを消しても未認証なら同じく `/login` へ行く。**ルートの実在はルート木の組み立てを走査する単体テストが固定する** |
 
 ## ロール・存在秘匿の担保
 

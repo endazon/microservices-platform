@@ -7,7 +7,7 @@ namespace Knowledge.Contracts.Dtos;
 // 直列化させない**ために存在する。ゲートは GraphService の出口を守るものであり、
 // BFF はその**既に封をされた JSON** を受け取って中継するだけなので、ここは素の記録型でよい。
 //
-// 契約をここへ置く理由: BFF は可変ユニットのサービス実装（`GraphService.Api`）を参照できない
+// 契約をここへ置く理由: BFF は可変ユニットのサービス実装（`GraphService`）を参照できない
 // （`CLAUDE.md` の依存規則。ユニット外参照は `platform/backend/Shared/` のみ）。
 
 // FR-17: グラフのノード（文書単位）。

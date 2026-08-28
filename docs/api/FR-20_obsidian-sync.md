@@ -3,28 +3,33 @@ title: FR-20 個人資料・Obsidian 同期 API 通信仕様書
 type: api-spec
 status: completed
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-28
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-19, SC-20]
 adrs: [ADR-0037, ADR-0054]
 iadrs: [IADR-0270]
-specs: [20260823_issue-451_private-note-obsidian-sync-core]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff]
 issues: [#451]
 -->
 
 # 通信仕様書: 個人資料・Obsidian 同期 API
 
 文書サービスが提供する REST API。リソース名は `private-notes`（計画が確定させた綴り）。
-3 群に分かれ、認証がそれぞれ違う。BFF 端点（`/bff/private-notes*`）は未実装の残件である。
+3 群に分かれ、認証がそれぞれ違う。
 
-| 群 | パス | 認証 | 利用者 |
-| --- | --- | --- | --- |
-| ライフサイクル | `/private-notes*` | JWT（認証必須・ロール不要） | 画面（個人資料管理） |
-| 端末・トークン | `/private-notes/devices*` | JWT（認証必須・ロール不要） | 画面（連携設定） |
-| 同期プロトコル | `/private-notes/sync*` | **Bearer 同期トークン**（JWT 不要） | Obsidian プラグイン |
-| 上限管理 | `/private-notes/quotas/{ownerId}` | JWT ＋ 管理者ロール | 管理画面 |
+**［2026-08-28 追記］BFF 端点（`/bff/private-notes*`）は実装済みである**（従前の「未実装の残件」は
+本追記で置き換わる）。画面が呼ぶのは BFF であり、本書の口を直接は呼ばない。**同期プロトコル群と
+上限管理は BFF に載せていない**（前者は資格情報が別系統でプラグインが呼ぶ、後者は載せる画面が無い）。
+契約の正は API 定義（`docs/api/openapi.yaml` の `/bff/private-notes*`）である。
+
+| 群 | パス | 認証 | 利用者 | BFF |
+| --- | --- | --- | --- | --- |
+| ライフサイクル | `/private-notes*` | JWT（認証必須・ロール不要） | 画面（個人資料管理） | あり |
+| 端末・トークン | `/private-notes/devices*` | JWT（認証必須・ロール不要） | 画面（連携設定） | あり |
+| 同期プロトコル | `/private-notes/sync*` | **Bearer 同期トークン**（JWT 不要） | Obsidian プラグイン | **なし** |
+| 上限管理 | `/private-notes/quotas/{ownerId}` | JWT ＋ 管理者ロール | 管理画面 | **なし** |
 
 ## エンドポイント一覧
 

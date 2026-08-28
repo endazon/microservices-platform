@@ -122,7 +122,7 @@ public sealed class BffDocumentWriteRoundtripBenchmark(ITestOutputHelper output)
         // 更新（PUT）= 現行の 2 往復書き込み経路。
         factory.ResetCounters();
         var put = await client.PutAsJsonAsync(DetailPath,
-            new { title = "改訂", attributes = new { confidentiality = "internal" }, tags = Array.Empty<string>(), expectedVersion = 3 });
+            new { title = "改訂", attributes = new { confidentiality = "internal" }, tags = Array.Empty<string>(), expectedVersion = 3 }, TestContext.Current.CancellationToken);
         put.StatusCode.Should().Be(HttpStatusCode.OK);
         factory.AuthzCalls.Should().Be(1, "スコープ解決は 1 回");
         factory.DocGetCalls.Should().Be(1, "スコープ確認のプリフライト GET が 1 回");
@@ -131,7 +131,7 @@ public sealed class BffDocumentWriteRoundtripBenchmark(ITestOutputHelper output)
         // 新規作成（POST）= プリフライト GET を持たない単一往復書き込み（最適化後の往復数の代理）。
         factory.ResetCounters();
         var post = await client.PostAsJsonAsync("/bff/documents",
-            new { title = "新規", attributes = new { confidentiality = "internal" }, tags = new[] { "hr" } });
+            new { title = "新規", attributes = new { confidentiality = "internal" }, tags = new[] { "hr" } }, TestContext.Current.CancellationToken);
         post.StatusCode.Should().Be(HttpStatusCode.Created);
         factory.AuthzCalls.Should().Be(1);
         factory.DocGetCalls.Should().Be(0, "作成はプリフライト GET を行わない");

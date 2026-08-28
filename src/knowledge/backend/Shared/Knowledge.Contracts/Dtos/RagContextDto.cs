@@ -14,6 +14,10 @@ namespace Knowledge.Contracts.Dtos;
 // どのチャンクを AI の入力から外すかの**判定条件はここで決めない** —— 判定の主語である
 // 3 トグル（横断検索／ナレッジグラフ／AI 入力）は FR-19 が定めるものであり、属性キーの値域も
 // そちら側が持つ。ここで仮のキーを決め打つと、FR-19 の実装と語彙が二重になる。
+//
+// **［2026-08-28 追記 / #447］判定条件は `AiInputExposure`（同ディレクトリ）が持つ**
+// （[[IADR-0283]] 決定 1・2）。属性キーは `ai_input`、値は `included` / `excluded` である。
+// **本型の構造は変えていない** —— 述語を必須引数で受ける形のまま、その中身が決まっただけである。
 public sealed record RagContextSelection(
     // 利用者へ返す検索結果（絞り込まない）。
     IReadOnlyList<SearchResultDto> SearchResults,

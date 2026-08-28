@@ -97,7 +97,7 @@ public class DefaultSchemeRoutingTests
         var client = host.GetTestClient();
         client.DefaultRequestHeaders.Add("Cookie", "session=abc");
 
-        (await client.GetAsync("/bff/thing")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.GetAsync("/bff/thing", TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     // ★ 2: Bearer 呼び出しも通る（統合スタックの外形確認を失わない）。
@@ -108,7 +108,7 @@ public class DefaultSchemeRoutingTests
         var client = host.GetTestClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "t");
 
-        (await client.GetAsync("/bff/thing")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.GetAsync("/bff/thing", TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     // 🔴 ★ 3（**陰性対照**）: **どちらも無ければ 401。**
@@ -118,7 +118,7 @@ public class DefaultSchemeRoutingTests
     {
         using var host = await HostWithSmartDefault();
 
-        (await host.GetTestClient().GetAsync("/bff/thing"))
+        (await host.GetTestClient().GetAsync("/bff/thing", TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
@@ -137,7 +137,7 @@ public class DefaultSchemeRoutingTests
         else
             client.DefaultRequestHeaders.Add("Cookie", "session=abc");
 
-        (await client.GetAsync("/bff/roled")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.GetAsync("/bff/roled", TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     // ★ 陰性対照（条件 4 の裏）: 資格情報が無ければ、ロール端点も 401 である。
@@ -146,7 +146,7 @@ public class DefaultSchemeRoutingTests
     {
         using var host = await HostWithSmartDefault();
 
-        (await host.GetTestClient().GetAsync("/bff/roled"))
+        (await host.GetTestClient().GetAsync("/bff/roled", TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
@@ -184,7 +184,7 @@ public class DefaultSchemeRoutingTests
         var client = host.GetTestClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "t");
 
-        var resp = await client.GetAsync("/bff/thing");
+        var resp = await client.GetAsync("/bff/thing", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -201,7 +201,7 @@ public class DefaultSchemeRoutingTests
         var client = host.GetTestClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "t");
 
-        var resp = await client.GetAsync("/bff/thing");
+        var resp = await client.GetAsync("/bff/thing", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -214,7 +214,7 @@ public class DefaultSchemeRoutingTests
         var client = host.GetTestClient();
         client.DefaultRequestHeaders.Add("Cookie", "session=abc");
 
-        var resp = await client.GetAsync("/bff/thing");
+        var resp = await client.GetAsync("/bff/thing", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }

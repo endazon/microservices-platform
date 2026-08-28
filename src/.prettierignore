@@ -34,9 +34,9 @@ ai-stock-trading/
 # --- 生成物（コミットするが手で整形しない） ----------------------------------
 # ADR-0031 / IADR-0121 決定 3: orval 生成物はコミットし、CI が**再生成差分**を検査する。
 # 整形すると生成器の出力と食い違い、`Codegen is up to date` が必ず落ちる（実測: 28 ファイルが該当）。
-platform/frontend/src/foundation/api/generated/
+platform/frontend/src/lib/api/generated/
 # IADR-0125 決定 4: Lingui のカタログも同じ理由（`i18n catalogs are up to date` と衝突。実測: 2 ファイル）。
-platform/frontend/src/foundation/i18n/locales/
+platform/frontend/src/locales/
 
 # --- Plop の雛形（ADR-0031 / IADR-0275・issue #493） --------------------------
 # `plop-templates/**/*.hbs` は **TS / TSX に Handlebars の差し込みを混ぜたもの**である。

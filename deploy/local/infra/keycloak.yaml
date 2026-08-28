@@ -5,10 +5,10 @@
 # IADR-0261 (#438): realm.json に loginTheme/accountTheme=platform を投入済み。テーマの実体
 # （deploy/keycloak/themes/platform/）は下記 ConfigMap `keycloak-theme-platform` としてマウントする。
 # ★ この ConfigMap は kustomize の外（root 外ファイル参照はセキュリティ上不可。上記 realm と同型の制約）
-# かつ `scripts/` の変更を伴わない現状では自動生成されない。**当面は手動作成が必須**（コマンドは
-# ../README.md「手動でステップ実行する場合」参照）。`optional: true` のため、未作成でも Pod は起動する
+# のため、`scripts/k8s-local-up.sh` の [3/7] ブロック（realm ConfigMap 直後）が生成する
+# （#438 残作業。realm ConfigMap と同型の `--from-file` + `--dry-run=client | kubectl apply` で冪等）。
+# `optional: true` のため、未作成（スクリプトを経ない手動 kubectl apply -k 等）でも Pod は起動する
 # （fail-safe）が、その場合 loginTheme=platform を解決できずログイン画面が 500 になる。
-# `bash scripts/k8s-local-up.sh` への自動化の組み込みは本 issue の射程外（scripts/ 配下は別担当の領域）。
 #
 # NFR-09 / ADR-0023 / IADR-0076 決定3・IADR-0227・IADR-0243（#780 第2段）: 発行者(issuer)はエッジ host
 # `https://keycloak.localhost` に固定する（KC_HOSTNAME_URL がその単一情報源）。
@@ -86,7 +86,7 @@ spec:
         - name: theme-platform
           configMap:
             name: keycloak-theme-platform
-            optional: true # #438: 未作成でも Pod は起動する（fail-safe）。手動作成手順は ../README.md 参照
+            optional: true # #438: k8s-local-up.sh が [3/7] で自動生成する。fail-safe のため未作成でも Pod は起動する
             items:
               - key: login-theme-properties
                 path: login/theme.properties

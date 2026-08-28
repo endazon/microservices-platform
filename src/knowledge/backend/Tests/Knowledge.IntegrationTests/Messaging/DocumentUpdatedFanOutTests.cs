@@ -1,13 +1,16 @@
 using AwesomeAssertions;
 using Knowledge.Contracts.Events;
 using Knowledge.IntegrationTests.Fixtures;
-using MassTransit;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using IngestionService.Worker.Foundation.Ports;
-using WikiService.Api.Foundation.Persistence;
-using WikiService.Api.Foundation.Ports;
+using Microsoft.Extensions.Hosting;
+using IngestionService.Worker.Domain.Ports;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
+using WikiService.Infrastructure.Persistence;
+using WikiService.Domain.Ports;
+using Wolverine;
+using Wolverine.RabbitMQ;
 
 namespace Knowledge.IntegrationTests.Messaging;
 
@@ -23,6 +26,11 @@ namespace Knowledge.IntegrationTests.Messaging;
 //
 // 本テストは **2 つの購読者ホストを同時に立て**、1 回だけ発行し、**両方が仕事をしたこと**を
 // 終端の副作用で確かめる。手順 3 の退行を機械で捕まえられる唯一の場所である。
+//
+// 🔴 ADR-0027 / E3b: 両購読者は Wolverine（本番の Program 配線そのまま）。発行は E1 の
+// RawDocumentFetchedEdge と同じ形の**専用発行ホスト**が行う —— 実行ごとに一意な exchange を宣言し、
+// 本番の命名（WolverineExtensions.PlatformQueueName）から導いた **2 つの購読キューへ束縛**して
+// 1 回だけ発行する。購読側を先に起こす（束縛の無い exchange への publish は黙って落ちる）。
 [Trait("Category", "Integration")]
 public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitMqFixture rabbit)
     : IClassFixture<PostgresFixture>, IClassFixture<RabbitMqFixture>, IAsyncLifetime
@@ -33,8 +41,9 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
 
     private IngestionServiceFactory _ingestionRoot = null!;
     private WikiServiceFactory _wikiRoot = null!;
+    private IHost? _publisher;
     private WebApplicationFactory<global::IngestionService.Worker.IngestionServiceTestMarker> _ingestion = null!;
-    private WebApplicationFactory<global::WikiService.Api.WikiServiceTestMarker> _wiki = null!;
+    private WebApplicationFactory<global::WikiService.WikiServiceTestMarker> _wiki = null!;
     private HttpClient _ingestionClient = null!;
     private HttpClient _wikiClient = null!;
 
@@ -49,8 +58,8 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
         // 共有の IntegrationTestFactory.cs を編集すると他のテストへ波及するため触らない。
         //
         // 🔴 差し替えるのは**外向きのポート（Qdrant / LLM ゲートウェイ / Wiki.js）だけ**である。
-        // メッセージングの配線（AddMassTransit / AddPlatformPipelineStep / UsePlatformRetry /
-        // ConfigureEndpoints）は 1 行も差し替えない —— 本テストが試験したいのは**トポロジ**であり、
+        // メッセージングの配線（UseWolverine / AddPlatformWolverineStep / ListenToPlatformQueue /
+        // UsePlatformMessagingDefaults）は 1 行も差し替えない —— 本テストが試験したいのは**トポロジ**であり、
         // 取り込み・同期の業務ロジックはユニットテストが担う。
         _ingestion = _ingestionRoot.WithWebHostBuilder(b => b.ConfigureServices(services =>
         {
@@ -74,19 +83,48 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
         }));
 
         // #887 設計判断 4: WebApplicationFactory はホストを遅延起動する。**publish の前に両ホストを
-        // 明示的に起こす。** ここを省くと片方がまだキューをバインドしておらず、手順 3 が正しくても
-        // テストが落ちる（偽陽性）。バインド完了までの待機は基底が設定する
-        // MassTransitHostOptions.WaitUntilStarted=true が担う（issue #33）。
+        // 明示的に起こす。** ここを省くと片方がまだキュー（AutoProvision）を作っておらず、
+        // 発行ホストの束縛が空振りする。
         _ingestionClient = _ingestion.CreateClient();
         _wikiClient = _wiki.CreateClient();
 
-        await using var scope = _wiki.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<WikiDbContext>();
-        await db.Database.EnsureCreatedAsync();
+        await using (var scope = _wiki.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WikiDbContext>();
+            await db.Database.EnsureCreatedAsync();
+        }
+
+        // E3b: 発行ホスト（E1 の RawDocumentFetchedEdge と同じ作法）。購読側の後に起こす。
+        // exchange は実行ごとに一意（固定名だと前回の束縛が残り、誤配線が「前回の状態に助けられて」
+        // 緑になる —— W3 変異 M4 の実測）。キュー名は必ず手順 3 の適用点（共通ヘルパ）から導く。
+        var exchange = $"e3b-fanout-{Guid.NewGuid():N}";
+        var ingestionQueue = WolverineExtensions.PlatformQueueName("ingestion-service", nameof(DocumentUpdated));
+        var wikiQueue = WolverineExtensions.PlatformQueueName("wiki-service", nameof(DocumentUpdated));
+        _publisher = await Host.CreateDefaultBuilder()
+            .UseWolverine(opts =>
+            {
+                opts.ServiceName = "document-service-under-test";
+                opts.Discovery.DisableConventionalDiscovery();
+                opts.UseRabbitMq(new Uri(rabbit.ConnectionString!))
+                    .AutoProvision()
+                    .DeclareExchange(exchange, ex =>
+                    {
+                        ex.BindQueue(ingestionQueue);
+                        ex.BindQueue(wikiQueue);
+                    });
+                opts.PublishMessage<DocumentUpdated>().ToRabbitExchange(exchange);
+                opts.UsePlatformMessagingDefaults();
+            })
+            .StartAsync();
     }
 
     public async ValueTask DisposeAsync()
     {
+        if (_publisher is not null)
+        {
+            await _publisher.StopAsync(TimeSpan.FromSeconds(10));
+            _publisher.Dispose();
+        }
         _ingestionClient?.Dispose();
         _wikiClient?.Dispose();
         if (_ingestion is not null) await _ingestion.DisposeAsync();
@@ -114,12 +152,8 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
             Tags: ["fanout"],
             UpdatedAt: DateTimeOffset.UtcNow);
 
-        // 発行は 1 回だけ。どちらのホストのバスから出しても exchange は同じ
-        // （Knowledge.Contracts.Events:DocumentUpdated）なので、発行側の選択は結果に影響しない。
-        await using (var scope = _wiki.Services.CreateAsyncScope())
-        {
-            await scope.ServiceProvider.GetRequiredService<IBus>().Publish(evt, TestContext.Current.CancellationToken);
-        }
+        // 発行は 1 回だけ（専用発行ホスト。両購読キューへ束縛済みの exchange へ出す）。
+        await _publisher!.Services.GetRequiredService<IMessageBus>().PublishAsync(evt);
 
         // ── 購読者 1: IngestionService（終端副作用 = ベクトルストアへの upsert）
         //

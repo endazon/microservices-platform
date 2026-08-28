@@ -3,7 +3,7 @@ title: SC-10 運用ダッシュボード テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-23
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
@@ -30,7 +30,7 @@ issues: [#452, #490, #503, #504, #510, #544, #586, planning#237, planning#244]
 E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 
 対象（API）: `src/platform/backend/Bff/Platform.Bff.Tests/DashboardBffEndpointTests.cs` ／
-`src/knowledge/backend/Services/DashboardService/tests/DashboardService.Api.Tests/DashboardEndpointTests.cs`
+`src/knowledge/backend/Services/DashboardService/Tests/DashboardEndpointTests.cs`
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -128,13 +128,13 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | 5 | 本文欠落 | — | 後段が本文を返さなければ 502 | `GetSummary_WhenDashboardBodyNull_Returns502` |
 
 集計そのもの（期間の丸め・日次集計・上位語）は `DashboardService` 側で検証する
-（`src/knowledge/backend/Services/DashboardService/tests/DashboardService.Api.Tests/DashboardEndpointTests.cs`）。
+（`src/knowledge/backend/Services/DashboardService/Tests/DashboardEndpointTests.cs`）。
 
 ## E2E（Playwright）
 
 | # | 観点 | 検証内容 |
 | --- | --- | --- |
-| E1 | ルートの実在 ＋ 認証ガード | 未認証で `/admin/ops` を開くと `/login` へ誘導される |
+| E1 | 認証ガード（**未認証の導線だけ**） | 未認証で `/admin/ops` を開くと `/login` へ誘導される。🔴 **ルートの実在は測っていない**（未知のパスの受け皿が認証ガード配下に居るため区別できない）。**ルートの実在はルート木の組み立てを走査する単体テストが固定する** |
 
 ## テストデータ
 

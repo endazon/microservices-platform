@@ -39,7 +39,8 @@ public static class DocumentBffEndpoints
         g.MapGet("/", async (
             IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
         {
-            var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, ct);
+            // #1010: 一覧は読み取り経路 → read を明示する。
+            var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, BffScopeAction.Read, ct);
             if (scope is null)
                 return Results.Ok(new List<DocumentDto>());
 
@@ -51,19 +52,19 @@ public static class DocumentBffEndpoints
                 PlatformAuthPolicies.AdminRole,
                 PlatformAuthPolicies.OperatorRole));
 
-        // 詳細: スコープ外・不在ともに 404（存在秘匿）。
+        // 詳細: スコープ外・不在ともに 404（存在秘匿）。#1010: 読み取り経路 → read。
         g.MapGet("/{id:guid}", async (
             Guid id, IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
         {
-            var doc = await FetchAuthorizedAsync(id, httpFactory, http, ct);
+            var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, httpFactory, http, ct);
             return doc is null ? Results.NotFound() : Results.Ok(doc);
         }).WithName("BffDocumentDetail").Produces<DocumentDto>();
 
-        // 版履歴: スコープ外・不在は 404。
+        // 版履歴: スコープ外・不在は 404。#1010: 読み取り経路 → read。
         g.MapGet("/{id:guid}/versions", async (
             Guid id, IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
         {
-            var doc = await FetchAuthorizedAsync(id, httpFactory, http, ct);
+            var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, httpFactory, http, ct);
             if (doc is null)
                 return Results.NotFound();
 
@@ -73,12 +74,42 @@ public static class DocumentBffEndpoints
             return Results.Ok(versions ?? []);
         }).WithName("BffDocumentVersions").Produces<List<DocumentVersionDto>>();
 
-        // 本文（正規化 Markdown）: ABAC 判定後にオブジェクトストレージから読み取る。
+        // FR-06, UC-03, SC-03（#449）: **特定版の取得**。スコープ外・不在・版不在はいずれも 404。
+        //
+        // **計画 FR-06 の射程は「版の作成・一覧・取得」まで**であり（［2026-08-23 明確化］・
+        // 環流 planning#473）、**版の復元（過去版へ戻す操作）は含まれない**。この口は取得だけを担う。
+        //
+        // 🔴 **応答は本文を含まない。** `DocumentVersionDto` が持つのはタイトル・状態・`markdownUri`・
+        // 属性・タグ・変更メモ・作成日時の**メタデータのスナップショット**である。本文の実体は
+        // 版ごとに保持されておらず（オブジェクトキーが文書 ID から固定で決まり、再投入は同じキーを
+        // 上書きする）、`markdownUri` は**現行版の本文**を指す。過去版の本文は読めない。
+        //
+        // 一覧（`/versions`）と同じ形で先に ABAC を判定する —— 判定を通さずに後段を引くと、
+        // **閲覧できない文書の版メタデータが漏れる**。
+        g.MapGet("/{id:guid}/versions/{version:int}", async (
+            Guid id, int version, IHttpClientFactory httpFactory, HttpContext http,
+            CancellationToken ct) =>
+        {
+            var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, httpFactory, http, ct);
+            if (doc is null)
+                return Results.NotFound();
+
+            var client = httpFactory.CreateClient("DocumentService");
+            var resp = await client.GetAsync($"/documents/{id}/versions/{version}", ct);
+            // 後段の 404（その版が無い）はそのまま 404 で返す（存在秘匿の意味論と衝突しない）。
+            if (!resp.IsSuccessStatusCode)
+                return Results.NotFound();
+
+            var snapshot = await resp.Content.ReadFromJsonAsync<DocumentVersionDto>(ct);
+            return snapshot is null ? Results.NotFound() : Results.Ok(snapshot);
+        }).WithName("BffDocumentVersion").Produces<DocumentVersionDto>();
+
+        // 本文（正規化 Markdown）: ABAC 判定後にオブジェクトストレージから読み取る。#1010: read。
         g.MapGet("/{id:guid}/content", async (
             Guid id, IHttpClientFactory httpFactory, IObjectStorageClient storage,
             HttpContext http, CancellationToken ct) =>
         {
-            var doc = await FetchAuthorizedAsync(id, httpFactory, http, ct);
+            var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, httpFactory, http, ct);
             if (doc is null)
                 return Results.NotFound();
 
@@ -102,12 +133,18 @@ public static class DocumentBffEndpoints
                 PlatformAuthPolicies.OperatorRole));
 
         // 新規作成: スコープ解決済み（権限あり）の管理者が作成する。検証（タイトル必須=400）は透過する。
+        //
+        // FR-05, FR-06, ADR-0036 D-07 (#1010): **作成は write スコープで判定する。** 従前は
+        // action 省略＝read で解決しており、read ポリシーしか持たない主体が文書を作成できた
+        // （#993 と同型 —— 多層防御〔IADR-0044〕の ABAC 層が誤った action で評価されていた）。
+        // write ポリシーが 1 件も無い環境では作成は全件 403 になる（deny-by-default の正しい帰結。
+        // 配備時に write ポリシーの登録が前提になる）。
         write.MapPost("/", async (DocumentCreateRequest req, IHttpClientFactory httpFactory,
             HttpContext http, CancellationToken ct) =>
         {
-            var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, ct);
+            var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, BffScopeAction.Write, ct);
             if (scope is null)
-                return Results.Forbid(); // 許可ポリシー無し＝作成不可（deny-by-default）
+                return Results.Forbid(); // write 許可ポリシー無し＝作成不可（deny-by-default）
 
             var client = Forwarding(httpFactory, http);
             var resp = await client.PostAsJsonAsync("/documents", req, ct);
@@ -154,13 +191,19 @@ public static class DocumentBffEndpoints
     // として削除してはならない。IADR-0044 が後段に課したのはロール認可のみで、文書単位の ABAC スコープ
     // 照合はこの BFF が唯一の実施点（IADR-0041）。削除するとスコープ外の admin/operator が閲覧不可の文書を
     // 変更でき、存在秘匿（IADR-0009）も破れる。往復削減は実測で正当化された上で IADR-0045 の代替案に従う。
+    // FR-05, ADR-0036 D-07 (#1010): **書き込みプリフライトは write スコープで判定する。**
+    // 従前は read スコープ（「閲覧できるか」）で「変更してよいか」を判定しており、read ポリシー
+    // しか持たない主体が変更できた（#993 と同型）。write スコープの文書条件をそのまま適用し、
+    // 条件外・不在はいずれも 404 で秘匿する（既存のステータス形は変えない）。計画の write 規則
+    // （doc.owner ∈ { ${current_user} }）を満たす主体は read の所有者ベース分岐も満たすため、
+    // 「閲覧できない文書を書き換えられる」逆転は計画上生じない。
     private static async Task<IResult> ForwardIfInScope(
         Guid id, HttpMethod method, string path, object? body,
         IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
     {
-        var doc = await FetchAuthorizedAsync(id, httpFactory, http, ct);
+        var doc = await FetchAuthorizedAsync(id, BffScopeAction.Write, httpFactory, http, ct);
         if (doc is null)
-            return Results.NotFound(); // 閲覧できない文書は変更もできない（存在秘匿）
+            return Results.NotFound(); // write スコープ外の文書は変更できない（存在秘匿）
 
         var client = Forwarding(httpFactory, http);
         using var req = new HttpRequestMessage(method, path);
@@ -210,7 +253,7 @@ public static class DocumentBffEndpoints
     // 持ち、SC-05 は組織文書の管理画面である。所有者判定をここへ持ち込むと、判定軸が 2 本になり
     // 片方が壊れても気付けない。**判定は集合帰属で書く**（「organization でない」ではない ——
     // 属性を持たない既存文書が全部 個人資料 に化ける。ADR-0054 決定 5）。
-    private static bool IsManageable(DocumentDto doc, AccessScope scope)
+    private static bool IsManageable(DocumentDto doc, BffAccessScope scope)
         => BffScopeResolver.Matches(doc.Attributes, scope) && !IsPrivateNote(doc);
 
     // `DocumentAttributes`（DocumentService）はユニット外から参照できないため、判定を持つ
@@ -219,10 +262,12 @@ public static class DocumentBffEndpoints
         => doc.Attributes.TryGetValue("doc_scope", out var scope)
             && string.Equals(scope, "private-note", StringComparison.OrdinalIgnoreCase);
 
+    // #1010: action は呼び出し元の経路の意味で選ぶ —— 読み取り GET（詳細・版履歴・本文）は
+    // BffScopeAction.Read、書き込みプリフライト（ForwardIfInScope）は BffScopeAction.Write。
     private static async Task<DocumentDto?> FetchAuthorizedAsync(
-        Guid id, IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
+        Guid id, string action, IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
     {
-        var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, ct);
+        var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, action, ct);
         if (scope is null)
             return null;
 

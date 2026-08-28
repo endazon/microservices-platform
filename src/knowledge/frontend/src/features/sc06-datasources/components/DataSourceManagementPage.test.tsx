@@ -467,8 +467,9 @@ describe('DataSourceManagementPage (SC-06)', () => {
 
   // **実装しない要素**（画面仕様書 §hi-fi モックアップとの対応 #6・#7・#9）。
   // まず「見えるはずの条件」——一覧が描画され、手動同期の操作が出ている状態——を確かめてから、
-  // 契約に無い列・操作が無いことを見る。
-  it('does not render the next-sync column, the retry state, or a settings action', async () => {
+  // 契約に無い列・操作が無いことを見る。**接続先・認証情報の「設定」編集は依然として未実装**である
+  // （#534 の射程のまま。#754 で足したのは既定属性の編集だけであり、別のボタンである）。
+  it('does not render the next-sync column, the retry state, or a connection settings action', async () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse([ACTIVE_SOURCE, DISABLED_SOURCE]));
     await renderPage();
 
@@ -512,5 +513,124 @@ describe('DataSourceManagementPage (SC-06)', () => {
     await renderPage();
 
     expect(await screen.findByText('データソースは登録されていません。')).toBeInTheDocument();
+  });
+
+  // FR-05, UC-04, SC-06（#754）: 既定属性の**更新**経路。
+  //
+  // 計画 §SC-06「既定属性の入力欄」（確定・2026-08-16）は「**登録・更新フォーム**は既定属性 3 つを
+  // 持つ」と定める。登録側（#767 / #796）だけでは、**登録済みソースの部門を後から設定できない** ——
+  // 供給源②（データソースの既定属性）が登録時の 1 回しか開かず、既存ソースは `unassigned` のまま残る。
+  describe('default attribute editing (#754)', () => {
+    // 予約値は「解決できなかったことの記録」であり部門名ではない（abac/department.ts）。
+    // 保存済みの `unassigned` を入力欄へ出すと、管理者が実在の部門名と読んで**明示指定として
+    // 送り返す**。すると「解決できなかった」と「管理者がそう指定した」の区別が消える。
+    const RESERVED_SOURCE = {
+      ...ACTIVE_SOURCE,
+      defaultAttributes: {
+        confidentiality: 'internal',
+        department: 'unassigned',
+        lifecycle: 'active',
+        owner: 'system',
+      },
+    };
+
+    function patchedBody() {
+      const call = mocks.apiRequest.mock.calls.find(
+        ([, init]) => (init as RequestInit).method === 'PATCH',
+      )!;
+      return JSON.parse(String((call[1] as RequestInit).body));
+    }
+
+    it('prefills the stored attributes and patches the full intent', async () => {
+      mocks.apiRequest.mockResolvedValue(jsonResponse([RESERVED_SOURCE]));
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(await screen.findByRole('button', { name: '既定属性' }));
+
+      // 予約値は**空欄**として見せる（実在の部門名と読ませない）。
+      expect(screen.getByLabelText(/既定の部門/)).toHaveValue('');
+      // `active` は予約値ではなく「そう決めた既定値」なので、保存値をそのまま出す。
+      expect(screen.getByLabelText(/既定のライフサイクル状態/)).toHaveValue('active');
+      expect(screen.getByLabelText(/既定の機密区分/)).toHaveValue('internal');
+
+      await user.type(screen.getByLabelText(/既定の部門/), '開発');
+      await user.click(screen.getByRole('button', { name: '更新する' }));
+
+      await waitFor(() =>
+        expect(mocks.apiRequest).toHaveBeenCalledWith(
+          `/datasources/${ACTIVE_SOURCE.id}`,
+          expect.objectContaining({ method: 'PATCH' }),
+        ),
+      );
+      expect(patchedBody().defaultAttributes).toMatchObject({
+        confidentiality: 'internal',
+        department: '開発',
+        lifecycle: 'active',
+      });
+      expect(await screen.findByText('既定属性を更新しました。')).toBeInTheDocument();
+    });
+
+    // 予約値を**明示指定として送り返さない**。空欄のまま更新したら、キーごと落ちる。
+    it('never sends the reserved department value back', async () => {
+      mocks.apiRequest.mockResolvedValue(jsonResponse([RESERVED_SOURCE]));
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(await screen.findByRole('button', { name: '既定属性' }));
+      await user.click(screen.getByRole('button', { name: '更新する' }));
+
+      await waitFor(() => expect(patchedBody()).toBeDefined());
+      expect(Object.keys(patchedBody().defaultAttributes)).not.toContain('department');
+    });
+
+    // 🔴 PATCH の `defaultAttributes` は**全置換**である（バックエンド `DataSource.Patch`）。
+    // 自分が管理しない属性（API から明示指定された `owner` 等）を土台に残さないと、
+    // 画面から部門を直すたびに**所有者が消えて予約値へ落ちる**。ADR-0036 の裁量制御が壊れる。
+    it('preserves attributes it does not manage (full-replacement semantics)', async () => {
+      mocks.apiRequest.mockResolvedValue(
+        jsonResponse([
+          {
+            ...ACTIVE_SOURCE,
+            defaultAttributes: { confidentiality: 'internal', owner: 'alice@example.com' },
+          },
+        ]),
+      );
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(await screen.findByRole('button', { name: '既定属性' }));
+      await user.type(screen.getByLabelText(/既定の部門/), '経理');
+      await user.click(screen.getByRole('button', { name: '更新する' }));
+
+      await waitFor(() => expect(patchedBody()).toBeDefined());
+      expect(patchedBody().defaultAttributes.owner).toBe('alice@example.com');
+    });
+
+    // 🔴 PUT ではなく PATCH を使う理由そのもの。GET 応答の `config` は秘密がマスク済み（`***`）で
+    // あり、それを書き戻すと**認証情報を破壊する**（IADR-0053 / IADR-0148 決定 6）。
+    // `config` を送らないことを名指しで固定する。
+    it('does not send config back (avoids writing masked secrets)', async () => {
+      mocks.apiRequest.mockResolvedValue(
+        jsonResponse([{ ...ACTIVE_SOURCE, config: { apiToken: '***' } }]),
+      );
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(await screen.findByRole('button', { name: '既定属性' }));
+      await user.click(screen.getByRole('button', { name: '更新する' }));
+
+      await waitFor(() => expect(patchedBody()).toBeDefined());
+      expect(Object.keys(patchedBody())).not.toContain('config');
+    });
+
+    // 計画 §SC-06「登録・更新・無効化は管理者限定」。押しても 403 になるボタンを置かない（#502）。
+    it('hides the edit action from non-admins', async () => {
+      mocks.apiRequest.mockResolvedValue(jsonResponse([ACTIVE_SOURCE]));
+      await renderPage(['platform-operator']);
+
+      expect(await screen.findByText('規程集')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '既定属性' })).not.toBeInTheDocument();
+    });
   });
 });

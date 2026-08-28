@@ -1,4 +1,4 @@
-using AiAnalysisService.Api.Foundation.Services;
+using AiAnalysisService.Domain.Ports;
 using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Microsoft.AspNetCore.Hosting;
@@ -59,7 +59,7 @@ public sealed class RagOrchestratorTests : IClassFixture<RagIntegrationFactory>
 }
 
 // スタブ RagOrchestrator を使う WebApplicationFactory
-public sealed class RagIntegrationFactory : WebApplicationFactory<global::AiAnalysisService.Api.AiAnalysisServiceTestMarker>
+public sealed class RagIntegrationFactory : WebApplicationFactory<global::AiAnalysisService.AiAnalysisServiceTestMarker>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

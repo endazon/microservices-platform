@@ -33,7 +33,7 @@ public class ConfigVersionHistoryTests
             ],
         });
 
-        var history = await svc.GetVersionHistoryAsync();
+        var history = await svc.GetVersionHistoryAsync(TestContext.Current.CancellationToken);
 
         history.Should().HaveCount(2);
         history[0].GitCommit.Should().Be("new1111"); // 新しい順（降順）に整列
@@ -53,7 +53,7 @@ public class ConfigVersionHistoryTests
             AppliedBy = "argocd",
         });
 
-        var history = await svc.GetVersionHistoryAsync();
+        var history = await svc.GetVersionHistoryAsync(TestContext.Current.CancellationToken);
 
         history.Should().ContainSingle();
         history[0].GitCommit.Should().Be("cur9999");
@@ -67,7 +67,7 @@ public class ConfigVersionHistoryTests
     {
         var svc = Build(new ConfigVersionOptions());
 
-        var history = await svc.GetVersionHistoryAsync();
+        var history = await svc.GetVersionHistoryAsync(TestContext.Current.CancellationToken);
 
         history.Should().BeEmpty();
     }

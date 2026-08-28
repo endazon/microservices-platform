@@ -17,7 +17,7 @@ related_specs:
   - "../../deploy/local/edge/README.md"
   # ［2026-08-23 追記 / #439］authConfig.ts は BFF セッション移行（IADR-0273）で削除された。
   # リンク先の実パスだけを後継（同ディレクトリ）へ追随させた —— 本文の記述と当時の実測は変えていない。
-  - "../../src/platform/frontend/src/foundation/auth/AuthProvider.tsx"
+  - "../../src/platform/frontend/src/lib/auth/AuthProvider.tsx"
 ---
 
 # 仕様書: 経路B エッジ集約後 URL の redirect URI 欠落修正（headlamp / spa-web）
@@ -37,7 +37,7 @@ related_specs:
 - **`headlamp`**: `redirectUris` が port-forward 用 `http://localhost:4466/*` のみ。集約後 URL
   `http://headlamp.localhost:50000/*` が未登録。
 - **`spa-web`**: `redirectUris` が `http://localhost:3100/*` / `http://localhost:8081/*` のみ。フロントのエッジ origin
-  `http://localhost`（80番）が未登録。SPA は `redirect_uri = <origin>/callback`（[authConfig.ts](../../src/platform/frontend/src/foundation/auth/)（［2026-08-23 追記 / #439］同ファイルは BFF セッション移行で削除。**リンク先だけをディレクトリへ追随させた**——当時の実測は変えていない）、
+  `http://localhost`（80番）が未登録。SPA は `redirect_uri = <origin>/callback`（[authConfig.ts](../../src/platform/frontend/src/lib/auth/)（［2026-08-23 追記 / #439］同ファイルは BFF セッション移行で削除。**リンク先だけをディレクトリへ追随させた**——当時の実測は変えていない。［2026-08-28 追記 / #785］IADR-0262 第 2 段の分解で `foundation/auth/` が `lib/auth/` へ移ったため、**同じ作法でリンク先だけを追随させた**）、
   callback パスは `/callback`）、ログアウトは `post_logout_redirect_uri = <origin>` を送るため、
   `redirectUris` と `attributes.post.logout.redirect.uris` の双方にエッジ URL が要る。
 

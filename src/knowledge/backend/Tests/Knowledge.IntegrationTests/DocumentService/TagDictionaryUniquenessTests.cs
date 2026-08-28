@@ -7,7 +7,7 @@ namespace Knowledge.IntegrationTests.DocumentService;
 
 // FR-09, SC-09, #634: タグ辞書の名前一意性（実 PostgreSQL）。
 //
-// **単体テストでは踏めない経路である。** `DocumentService.Api.Tests` は EF InMemory を使っており、
+// **単体テストでは踏めない経路である。** `DocumentService.Tests` は EF InMemory を使っており、
 // **InMemory プロバイダは一意インデックスを強制しない**（実測）。したがって
 // 「事前検証をすり抜けた同時登録が DB の一意制約で弾かれる」経路は**実 DB でしか確かめられない**。
 //
@@ -26,7 +26,7 @@ public sealed class TagDictionaryUniquenessTests(PostgresFixture postgres, Rabbi
         _factory = new DocumentServiceFactory(postgres, rabbit);
         _client = _factory.CreateClient();
         await using var scope = _factory.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<global::DocumentService.Api.Foundation.Persistence.DocumentDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<global::DocumentService.Infrastructure.Persistence.DocumentDbContext>();
         await db.Database.EnsureCreatedAsync();
     }
 

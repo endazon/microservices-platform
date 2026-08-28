@@ -14,10 +14,10 @@ public class AnalysisBffEndpointTests(BffTestFactory factory)
     public async Task PostAsk_ReturnsAggregatedAnswerWithCitations()
     {
         var response = await factory.CreateClient()
-            .PostAsJsonAsync("/bff/analysis/ask", new { question = "経費精算の締め日は？" });
+            .PostAsJsonAsync("/bff/analysis/ask", new { question = "経費精算の締め日は？" }, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var answer = await response.Content.ReadFromJsonAsync<AiAnswerDto>();
+        var answer = await response.Content.ReadFromJsonAsync<AiAnswerDto>(TestContext.Current.CancellationToken);
 
         answer.Should().NotBeNull();
         answer!.Citations.Should().NotBeEmpty();
@@ -31,7 +31,7 @@ public class AnalysisBffEndpointTests(BffTestFactory factory)
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", "test-token");
 
-        await client.PostAsJsonAsync("/bff/analysis/ask", new { question = "権限内のみ" });
+        await client.PostAsJsonAsync("/bff/analysis/ask", new { question = "権限内のみ" }, TestContext.Current.CancellationToken);
 
         // FR-05: 権限の無い文書を除外するため利用者の資格情報が後段へ引き継がれること
         factory.LastForwardedAuthorization.Should().Be("Bearer test-token");
@@ -47,10 +47,10 @@ public class AnalysisBffEndpointTests(BffTestFactory factory)
                 instruction = "規程を比較して",
                 taskType = "Compare",
                 range = new { attributeFilters = new { department = new[] { "sales" } } }
-            });
+            }, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var answer = await response.Content.ReadFromJsonAsync<AiAnswerDto>();
+        var answer = await response.Content.ReadFromJsonAsync<AiAnswerDto>(TestContext.Current.CancellationToken);
 
         answer.Should().NotBeNull();
         answer!.Citations.Should().NotBeEmpty();
@@ -65,7 +65,7 @@ public class AnalysisBffEndpointTests(BffTestFactory factory)
             new AuthenticationHeaderValue("Bearer", "analyze-token");
 
         await client.PostAsJsonAsync("/bff/analysis/analyze",
-            new { instruction = "範囲内のみ抽出", taskType = "Extract" });
+            new { instruction = "範囲内のみ抽出", taskType = "Extract" }, TestContext.Current.CancellationToken);
 
         factory.LastForwardedAuthorization.Should().Be("Bearer analyze-token");
     }
@@ -79,7 +79,7 @@ public class AnalysisBffEndpointTests(BffTestFactory factory)
         using var badRequestFactory = new BffTestFactory { StubStatusCode = HttpStatusCode.BadRequest };
 
         var response = await badRequestFactory.CreateClient()
-            .PostAsJsonAsync("/bff/analysis/analyze", new { instruction = "" });
+            .PostAsJsonAsync("/bff/analysis/analyze", new { instruction = "" }, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

@@ -65,7 +65,8 @@ jobs:
           # ── 本リポジトリの固有デルタ（IADR-0115 決定 2 の種別 2・3。IADR-0181 決定 1）──
           # キット既定の `**/orval/**` は本リポジトリでは **1 ファイルも当たらない**（直近 60 PR で実測）。
           # 上のキット注記が「当たらないことが多い」と述べている当のケースであり、実パスへ直した。
-          # orval の出力先は src/orval.config.ts が指すとおり foundation/api/generated/ である。
+          # orval の出力先は src/orval.config.ts が指すとおり lib/api/generated/ である（IADR-0262 第 2 段で
+          # foundation/api/generated/ から移動した）。
           # Lingui のカタログは messages.po だけでなく messages.ts も持つため、ディレクトリで除く
           # （`**/*.po` はキット既定のまま残す）。CHANGELOG.md は生成物である。
           # 実パスへ直した効果は直近 60 PR で 18 件・計 2,080 行（単一 PR 最大 534 行。dc52156）。
@@ -77,8 +78,8 @@ jobs:
             :(exclude)**/pnpm-lock.yaml
             :(exclude)**/*.generated.*
             :(exclude)**/Migrations/**
-            :(exclude)src/platform/frontend/src/foundation/api/generated/**
-            :(exclude)src/platform/frontend/src/foundation/i18n/locales/**
+            :(exclude)src/platform/frontend/src/lib/api/generated/**
+            :(exclude)src/platform/frontend/src/locales/**
             :(exclude)**/*.po
             :(exclude)CHANGELOG.md
         run: |

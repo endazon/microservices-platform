@@ -1,11 +1,11 @@
 ---
 title: 作業仕様書 — 認可スコープの選言 実装 5 段のうち本セッション担当分（段 5 前提の IADR 改定・段 5・段 3 WikiService・段 4 DocumentShare）
 type: spec
-status: draft
+status: done
 related_ids: [FR-05, FR-19, FR-20, FR-21, UC-11, ADR-0004, ADR-0034, ADR-0036, ADR-0046, ADR-0054, IADR-0253]
 author: claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-27
 plan_refs:
   - planning:projects/microservices-platform/06_technical/07_abac-attribute-model.md
   - planning:projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md

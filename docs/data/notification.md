@@ -3,14 +3,14 @@ title: 通知（Notification / EmailOutboxEntry） データ仕様書
 type: data-spec
 status: in-progress
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-28
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, SC-10, UC-11]
 adrs: [ADR-0002, ADR-0004, ADR-0037, ADR-0045]
-iadrs: [IADR-0009, IADR-0215, IADR-0267]
-specs: [20260823_issue-600_notification-service-backend]
+iadrs: [IADR-0009, IADR-0215, IADR-0267, IADR-0270]
+specs: [20260823_issue-600_notification-service-backend, 20260828_issue-600_notification-triggers]
 issues: [#451, #600]
 -->
 
@@ -19,7 +19,9 @@ issues: [#451, #600]
 > NotificationService が所有する 2 つのエンティティを扱う。
 > **アプリ内通知の実体**（`Notification`）と、**メール送出の記録**（`EmailOutboxEntry`）である。
 
-> **`status: in-progress` の理由**: **発火の結線（通知を作る側）は入っていない。**
+> **`status: in-progress` の理由**: **通知サービスがまだ配備されていない。**
+> **発火の結線（通知を作る側）は 2026-08-28 に入った** —— 検知・送出・受理の経路は繋がっており、
+> 配備が入るまで送出は受け口へ到達しない（届かなかったことは発火側の計器に残る）。
 > 本書が定めるのは**通知が作られたあとの永続化・既読・送出・保持**である。線引きの正本は
 > 送出側の実装 ADR であり、追跡は関連 issue で行う。
 

@@ -43,12 +43,22 @@ public static class SearchBffEndpoints
 
             // FR-05: 利用者の ABAC 許可スコープをサーバ側で解決する（deny-by-default。クライアント指定
             // Scope は信頼しない）。許可ポリシーが無い／認可サービス不調は空応答へ縮退する（存在秘匿）。
-            var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, ct);
+            // #1010: 検索は読み取り経路 → read を明示する。
+            var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, BffScopeAction.Read, ct);
             if (scope is null)
                 return Results.Ok(new SearchResponse([], 0, 0));
 
             // FR-03: 解決済みスコープでハイブリッド検索を実行する（クライアント指定 Scope は使わない）。
             var retrievalClient = httpFactory.CreateClient("RetrievalService");
+
+            // FR-05, FR-17, ADR-0034, ADR-0035 (#970): 🔴 **利用者の `Authorization` をそのまま
+            // 後段へ伝播する（方式 A）。** 二段検索の段（グラフ近傍展開）はこのヘッダを
+            // RetrievalService → GraphService と運んでホップごと ABAC を効かせる —— 伝播しないと
+            // 段を有効化しても展開は常に 0 件だった（IADR-0263 残件 2）。**無ければ付けない**
+            // （縮退の判断とその警告は RetrievalService 側が一元で持つ）。
+            var auth = http.Request.Headers.Authorization.ToString();
+            if (!string.IsNullOrEmpty(auth))
+                retrievalClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
             try
             {
                 // #531: 検索モードは利用者の指定をそのまま透過する（Scope と違い信頼性の問題が無い——
@@ -56,7 +66,10 @@ public static class SearchBffEndpoints
                 var searchResp = await retrievalClient.PostAsJsonAsync("/search",
                     // FR-03, SC-02（#531 / #532）: 検索モードと並び順は**利用者の指定をそのまま後段へ渡す**。
                     // 縮退（未知値 → 既定）は RetrievalService が一箇所で行う（BFF で二重に正規化しない）。
-                    new SearchRequest(req.Query, topK, req.AttributeFilters, scope, req.Mode, req.SortBy), ct);
+                    // #989 段 3: 契約型へ写して渡す。**Branches も運ばれる**（段 3 完了）——
+                    // 後段 RetrievalService が分岐間 OR で評価する。
+                    new SearchRequest(req.Query, topK, req.AttributeFilters, scope.ToContractScope(),
+                        req.Mode, req.SortBy), ct);
                 if (!searchResp.IsSuccessStatusCode)
                     return Results.StatusCode((int)searchResp.StatusCode);
 
@@ -102,7 +115,8 @@ public static class SearchBffEndpoints
                 dictionary = dict;
             }
 
-            var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, ct);
+            // #1010: 属性値の照会は読み取り経路 → read を明示する。
+            var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, BffScopeAction.Read, ct);
             if (scope is null)
                 return Results.Ok(new AttributeValuesResponse([], dictionary));
 
@@ -110,8 +124,10 @@ public static class SearchBffEndpoints
             try
             {
                 // **クライアントが送ってきた Scope は使わない**（解決済みで置き換える）。
+                // #989 段 3: 契約型へ写して渡す。**Branches も運ばれる**（段 3 完了）——
+                // 後段の値集合照会も分岐間 OR で絞られる（候補と検索の一致。IADR-0151 決定 1）。
                 var resp = await retrievalClient.PostAsJsonAsync("/search/attribute-values",
-                    new AttributeValuesRequest(req.Key, scope), ct);
+                    new AttributeValuesRequest(req.Key, scope.ToContractScope()), ct);
                 if (!resp.IsSuccessStatusCode)
                     return Results.StatusCode((int)resp.StatusCode);
 

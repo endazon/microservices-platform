@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — enabled:false が規約探索を含めて段を止めることの追試（共通ヘルパ直接試験）
 type: spec
-status: draft
+status: done
 related_ids:
   - FR-14
   - NFR
@@ -9,7 +9,7 @@ related_ids:
   - ADR-0027
 author: claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-27
 plan_refs:
   - "ADR-0027（メッセージング基盤 = Wolverine）"
 related_adrs:

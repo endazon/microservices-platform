@@ -5,7 +5,7 @@ status: done
 related_ids: [SC-09, SC-10, SC-11, UC-05, FR-05, FR-09, FR-10, FR-15, ADR-0031, IADR-0009, IADR-0046, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0129]
 author: Claude
 created: 2026-08-05
-updated: 2026-08-05
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/03_usecases/01_usecases.md
@@ -389,6 +389,15 @@ issue #504 §受け入れ基準 を検証可能な形へ展開する。
 | アクセス | `sc11-config/access.test.tsx`（**既存を引き継ぐ**） ＋ SC-09 / SC-10 の同型 | 許可ロール・**NotFound の markup 一致**・API 未呼出・ナビの限定 |
 | 導線 | SC-10 → SC-11 | 運用者の導線（1 本のルータへ 2 ルートを載せる） |
 | E2E | Playwright | 未認証で各ルートが `/login` へ誘導されること（ルートの実在も同時に固定される） |
+
+> ### ［2026-08-28 追記 / #1013］**この「ルートの実在も固定できる」は誤りだった**
+>
+> **当時の記述は残す**（史実であり、書き換えない）。**その後どうなったかだけを足す。**
+> 未知パスの受け皿（`catchAllRoute`）は `RequireAuth` 配下の `shellRoute` の子であるため、
+> **ルートが存在しなくても未認証なら `/login` へ行く**。#918 が改名の変異を当て、
+> **落ちたテストは 0 件**だった。E2E が測っているのは未認証の導線だけである。
+> ルートの実在は `router.test.ts`（計画のルート表とナビ項目の解決）が Vitest 側で固定する。
+> **本書には同旨の記述が 2 箇所ある**（§テスト方針の表と §導線）。**いずれも誤りである。**
 
 ## 検証（実測）
 

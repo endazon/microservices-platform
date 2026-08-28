@@ -3,14 +3,14 @@ title: FR-19 個人資料（private-note） 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-28
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-21, FR-22, UC-11, SC-19, SC-20]
 adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0056, ADR-0058]
 iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278]
-specs: [20260823_issue-451_private-note-obsidian-sync-core]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens]
 issues: [#451, #516, #600, #986, planning#472, planning#475]
 -->
 
@@ -18,8 +18,12 @@ issues: [#451, #516, #600, #986, planning#472, planning#475]
 
 > **`status: in-progress` の理由と、いま残っているもの**。バックエンド中核（台帳・容量・版保持・
 > 論理削除／復元／完全削除・露出トグルの保存・通知の発火検知）は入っている。
-> **入っていないのは** ①画面（個人資料管理・連携設定）と BFF 端点 ②通知サービス側の受け口
-> ③露出トグル ON の消費側配線（認可スコープ選言の全サービス移行後） ④退職時規則・
+> **①画面（個人資料管理・連携設定）も 2026-08-28 に実装した**（BFF 端点は同日実装済み）——
+> **ただし公開範囲〔共有先〕の表示・変更、同期状態の列、緊急アクセス、同期対象フォルダの設定・
+> 競合解決・同期履歴は、呼ぶ口が公開 API に無いため画面に無い。** 差分は画面仕様書の対応表が正本である。
+> **入っていないのは** ③露出トグルの生産側配線（個人資料を索引へ流す発行の解禁。AI 入力トグルの
+> 消費側は 2026-08-28 に実装済み・グラフ表示トグルの消費側は未着手） ④退職時規則・
+> （②通知は受け口・発火の結線とも 2026-08-28 に実装済み — 通知サービスの配備が残る）
 > アカウント無効化時のトークン失効（認可・人事連携側）である。線引きは同名の作業仕様書と
 > 実装 ADR（trace 参照）にある。
 
@@ -65,7 +69,7 @@ issues: [#451, #516, #600, #986, planning#472, planning#475]
 - 論理削除から 90 日で自動物理削除（復元不可）。
 - 通知は 3 段構え（週次／完全削除 7 日前／事後）＋容量警告（80/95）＋トークン期限予告。
   いずれも**件数・閾値・期限のみ**を運ぶ（タイトル・本文のフィールドが型として存在しない）。
-  検知はデータの在る本サービス、実体は通知サービス（受け口は未実装・手渡し済み）。
+  検知と送出はデータの在る本サービス、実体は通知サービス（受け口・発火の結線とも実装済み。送出は fail-open・発火記録先行の各 1 回。通知サービスの配備が残る）。
 
 ### 露出の既定（deny 側）
 
@@ -99,6 +103,8 @@ stateDiagram-v2
 ## 関連
 
 - テスト仕様書: [FR-19_private-notes-lifecycle](../tests/FR-19_private-notes-lifecycle.md)
+- 画面仕様書: [個人資料管理](../screens/SC-19_private-notes.md) /
+  [Obsidian 連携設定](../screens/SC-20_obsidian-settings.md)（**画面に無い要素の一覧はそちらが正本**）
 - データ仕様書: [private-note](../data/private-note.md)
 - 通信仕様書: [FR-20_obsidian-sync](../api/FR-20_obsidian-sync.md)
 - 機能仕様書: [FR-22_user-notifications](FR-22_user-notifications.md)

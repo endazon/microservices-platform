@@ -11,7 +11,7 @@ export default defineConfig({
       override: { transformer: './orval-bff-only.cjs' },
     },
     output: {
-      target: './platform/frontend/src/foundation/api/generated/bff.ts',
+      target: './platform/frontend/src/lib/api/generated/bff.ts',
       // tags-split: タグごとにファイルを分け、画面（feature）から必要なものだけを import できるようにする。
       mode: 'tags-split',
       client: 'react-query',
@@ -21,9 +21,9 @@ export default defineConfig({
       prettier: true,
       clean: true,
       override: {
-        // HTTP の出口を foundation/api へ集約する（実行時 config と 401 導線を効かせる）。
+        // HTTP の出口を @foundation/api へ集約する（実行時 config と 401 導線を効かせる）。
         mutator: {
-          path: './platform/frontend/src/foundation/api/orvalMutator.ts',
+          path: './platform/frontend/src/lib/api/orvalMutator.ts',
           name: 'bffFetch',
         },
       },

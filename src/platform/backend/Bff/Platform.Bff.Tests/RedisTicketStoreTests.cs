@@ -129,6 +129,6 @@ public class RedisTicketStoreTests
         await store.RemoveAllForSubjectAsync("user-1");
 
         (await store.RetrieveAsync(key)).Should().BeNull();
-        (await cache.GetAsync("bff:ticket:" + key)).Should().BeNull();
+        (await cache.GetAsync("bff:ticket:" + key, TestContext.Current.CancellationToken)).Should().BeNull();
     }
 }

@@ -31,20 +31,20 @@ echo "==> runtime: $RUNTIME"
 # 4 フィールドは AST のような「単一パラメータ化 Dockerfile＋ユニットルート context」を載せるためのもの。
 # compose の build.context/dockerfile/args と #275 ドリフト検査（check-image-mapping.js）が突合する。
 MAPPING=(
-  "microservices-platform/document-service|src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/Dockerfile"
-  "microservices-platform/datasource-service|src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/Dockerfile"
-  "microservices-platform/conversion-service|src/knowledge/backend/Services/ConversionService/src/ConversionService.Worker/Dockerfile"
-  "microservices-platform/ingestion-service|src/knowledge/backend/Services/IngestionService/src/IngestionService.Worker/Dockerfile"
-  "microservices-platform/retrieval-service|src/knowledge/backend/Services/RetrievalService/src/RetrievalService.Api/Dockerfile"
-  "microservices-platform/aianalysis-service|src/knowledge/backend/Services/AiAnalysisService/src/AiAnalysisService.Api/Dockerfile"
-  "microservices-platform/authorization-service|src/platform/backend/Services/AuthorizationService/src/AuthorizationService.Api/Dockerfile"
-  "microservices-platform/wiki-service|src/knowledge/backend/Services/WikiService/src/WikiService.Api/Dockerfile"
-  "microservices-platform/llm-gateway|src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Dockerfile"
-  "microservices-platform/feedback-service|src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Api/Dockerfile"
-  "microservices-platform/dashboard-service|src/knowledge/backend/Services/DashboardService/src/DashboardService.Api/Dockerfile"
+  "microservices-platform/document-service|src/knowledge/backend/Services/DocumentService/Dockerfile"
+  "microservices-platform/datasource-service|src/knowledge/backend/Services/DataSourceService/Dockerfile"
+  "microservices-platform/conversion-service|src/knowledge/backend/Services/ConversionService/Worker/Dockerfile"
+  "microservices-platform/ingestion-service|src/knowledge/backend/Services/IngestionService/Worker/Dockerfile"
+  "microservices-platform/retrieval-service|src/knowledge/backend/Services/RetrievalService/Dockerfile"
+  "microservices-platform/aianalysis-service|src/knowledge/backend/Services/AiAnalysisService/Dockerfile"
+  "microservices-platform/authorization-service|src/platform/backend/Services/AuthorizationService/Dockerfile"
+  "microservices-platform/wiki-service|src/knowledge/backend/Services/WikiService/Dockerfile"
+  "microservices-platform/llm-gateway|src/platform/backend/Services/LlmGateway/Dockerfile"
+  "microservices-platform/feedback-service|src/knowledge/backend/Services/FeedbackService/Dockerfile"
+  "microservices-platform/dashboard-service|src/knowledge/backend/Services/DashboardService/Dockerfile"
   # FR-17, UC-10 (#908/#957): 知識グラフ。Dockerfile は #929 で入ったが compose / MAPPING への登録が
   # 漏れており、イメージが焼かれずデプロイにも出ていなかった。
-  "microservices-platform/graph-service|src/knowledge/backend/Services/GraphService/src/GraphService.Api/Dockerfile"
+  "microservices-platform/graph-service|src/knowledge/backend/Services/GraphService/Dockerfile"
   "microservices-platform/bff|src/platform/backend/Bff/Platform.Bff/Dockerfile"
   # 以下 3 件の SERVICE_PROJECT / SERVICE_DLL は deploy/docker-compose.yml の build args と同値でなければ
   # ならない（check-image-mapping.js の args-mismatch 検査。IADR-0068 / IADR-0070）。片側だけ動かさない。

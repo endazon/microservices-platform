@@ -150,10 +150,10 @@ export default tseslint.config(
       'ai-stock-trading/frontend/test',
       // ADR-0031 / IADR-0121 決定 3: orval の生成物は lint 対象外（品質は生成器の責務）。
       // 乖離は `pnpm run codegen` の再実行差分（CI の codegen ステップ）で検出する。
-      'platform/frontend/src/foundation/api/generated',
+      'platform/frontend/src/lib/api/generated',
       // ADR-0031 / IADR-0125 決定 3: lingui compile の生成物（カタログ）。同じ理由で対象外にする。
       // 乖離は `pnpm run i18n` の再実行差分と check-i18n-catalogs.js が検出する。
-      '**/foundation/i18n/locales',
+      'platform/frontend/src/locales',
       // ADR-0031 / IADR-0125 決定 5: Storybook の静的ビルド（生成物。gitignore 済みだが
       // ローカルにビルドが残っていると lint が数万行を走査して落ちる）。
       '**/storybook-static',
@@ -280,7 +280,7 @@ export default tseslint.config(
   {
     files: ['**/*.{ts,tsx}'],
     ignores: [
-      'platform/frontend/src/foundation/api/**',
+      'platform/frontend/src/lib/api/**',
       '**/*.{test,spec}.{ts,tsx}',
       '**/*.config.{ts,js}',
       'ai-stock-trading/frontend/e2e/**',
@@ -329,13 +329,13 @@ export default tseslint.config(
   // 画面を作り直すたびにこの files を伸ばす——「i18n 化したのに検査されない」状態を残さないためである。
   {
     files: [
-      'platform/frontend/src/foundation/i18n/**/*.{ts,tsx}',
-      'platform/frontend/src/foundation/ui/**/*.{ts,tsx}',
+      'platform/frontend/src/app/i18n/**/*.{ts,tsx}',
+      'platform/frontend/src/components/ui/**/*.{ts,tsx}',
       // #788（移行第 4 段）: 右レール AI チャットパネル。共通シェルに載る文言なので、
-      // foundation/ui と同じ規則の下に置く。
-      'platform/frontend/src/foundation/ai-chat/**/*.{ts,tsx}',
-      'platform/frontend/src/foundation/auth/**/*.{ts,tsx}',
-      'platform/frontend/src/foundation/routing/nav.ts',
+      // components/ui（旧 foundation/ui）と同じ規則の下に置く。
+      'platform/frontend/src/components/ai-chat/**/*.{ts,tsx}',
+      'platform/frontend/src/lib/auth/**/*.{ts,tsx}',
+      'platform/frontend/src/app/routing/nav.ts',
       'knowledge/frontend/src/features/sc01-search/**/*.{ts,tsx}',
       'knowledge/frontend/src/features/sc02-results/**/*.{ts,tsx}',
       'knowledge/frontend/src/features/sc03-document/**/*.{ts,tsx}',

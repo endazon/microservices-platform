@@ -23,7 +23,7 @@
  * `components` には一切触れていない（**この前処理に名前付き関数は無い**——`grep` で探すときは
  * `module.exports` を見ること）。
  * つまり **BFF が使わないスキーマも `bff.schemas.ts` へ出力される**（宣言数と生成数は一致する）。
- *   $ grep -c '^export interface ' platform/frontend/src/foundation/api/generated/bff.schemas.ts
+ *   $ grep -c '^export interface ' platform/frontend/src/lib/api/generated/bff.schemas.ts
  * **ここに件数を書かない。** 契約が増えれば動くためで、実際 #558 が引用した #520 時点の件数は
  * 起票から本コメント追記までの間に古くなっていた。**数えたいときは上のコマンドで数える。**
  *

@@ -524,6 +524,11 @@ module.exports = ({ ok, assert }) => {
     isUnitBffEndpoints,
     classifyProjectReference,
     scanFoundationComposable,
+    parseEightElementProject,
+    classifyLayerReference,
+    scanDomainForbiddenUsings,
+    parseVsaLayerPath,
+    scanVsaLayerUsings,
   } = require('./check-unit-dependencies.js');
 
   const KNOWLEDGE_DOC =
@@ -610,6 +615,301 @@ module.exports = ({ ok, assert }) => {
       scanFoundationComposable('src/.../Foundation/X.cs', 'using static DocumentService.Api.Composable.Helpers;\n').length,
       1,
     );
+  });
+
+  // --- 規則 3: 8 要素プロジェクトのレイヤ依存方向（NFR, IADR-0280 決定 3〔Superseded by IADR-0282・経過措置〕） ------
+
+  const EEP = (svc, elem) =>
+    `src/knowledge/backend/Services/${svc}/src/${svc}.${elem}/${svc}.${elem}.csproj`;
+
+  ok('parseEightElementProject は 8 要素の csproj だけを解析する', () => {
+    assert.deepStrictEqual(parseEightElementProject(EEP('FeedbackService', 'Domain')), {
+      service: 'FeedbackService',
+      element: 'Domain',
+    });
+    // Shared 配下（Platform.Shared.Contracts）は「Contracts」で終わっても 8 要素ではない。
+    assert.strictEqual(parseEightElementProject(SHARED_CONTRACTS), null);
+    // tests/ 側・BFF は対象外。
+    assert.strictEqual(
+      parseEightElementProject(
+        'src/knowledge/backend/Services/FeedbackService/tests/FeedbackService.Api.Tests/FeedbackService.Api.Tests.csproj',
+      ),
+      null,
+    );
+    assert.strictEqual(parseEightElementProject(KNOWLEDGE_BFF), null);
+  });
+
+  ok('規則 3-①: 宣言方向（Domain ← Application ← Infrastructure ← Api/Worker）は許可', () => {
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Application'), EEP('FeedbackService', 'Domain')).ok, true);
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Infrastructure'), EEP('FeedbackService', 'Application')).ok, true);
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Api'), EEP('FeedbackService', 'Infrastructure')).ok, true);
+    assert.strictEqual(classifyLayerReference(EEP('ConversionService', 'Worker'), EEP('ConversionService', 'Domain')).ok, true);
+    // 葉（Contracts / SharedKernel）への参照は許可。
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Api'), EEP('FeedbackService', 'Contracts')).ok, true);
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Domain'), EEP('FeedbackService', 'SharedKernel')).ok, true);
+  });
+
+  ok('規則 3-①: 上向き・葉からの参照は違反', () => {
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Domain'), EEP('FeedbackService', 'Application')).ok, false);
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Application'), EEP('FeedbackService', 'Infrastructure')).ok, false);
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Infrastructure'), EEP('FeedbackService', 'Api')).ok, false);
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Contracts'), EEP('FeedbackService', 'Domain')).ok, false);
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'SharedKernel'), EEP('FeedbackService', 'Domain')).ok, false);
+  });
+
+  ok('規則 3-①: サービス横断・8 要素以外は対象外（規則 1 の領分）', () => {
+    assert.strictEqual(classifyLayerReference(EEP('FeedbackService', 'Api'), EEP('DocumentService', 'Domain')).ok, true);
+    assert.strictEqual(
+      classifyLayerReference(
+        EEP('FeedbackService', 'Domain'),
+        'src/platform/backend/Shared/Platform.Shared.Kernel/Platform.Shared.Kernel.csproj',
+      ).ok,
+      true,
+    );
+  });
+
+  ok('規則 3-②: Domain 配下 .cs の禁止 using を検出（下位名前空間・static・エイリアス含む）', () => {
+    const domainCs = 'src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Domain/X.cs';
+    for (const line of [
+      'using Microsoft.EntityFrameworkCore;\n',
+      'using Microsoft.EntityFrameworkCore.Metadata;\n',
+      'using static Microsoft.EntityFrameworkCore.EF;\n',
+      'using Db = Microsoft.EntityFrameworkCore.DbContext;\n',
+      'global using MassTransit;\n',
+      'using Wolverine.Attributes;\n',
+      'using Refit;\n',
+    ]) {
+      assert.strictEqual(scanDomainForbiddenUsings(domainCs, line).length, 1, line);
+    }
+  });
+
+  ok('規則 3-②: 許可された using・Domain 外・前方一致の取り違えは検出しない', () => {
+    const domainCs = 'src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Domain/X.cs';
+    assert.strictEqual(scanDomainForbiddenUsings(domainCs, 'using Platform.Shared.Kernel;\n').length, 0);
+    assert.strictEqual(scanDomainForbiddenUsings(domainCs, 'using WolverineFoo.Bar;\n').length, 0);
+    assert.strictEqual(
+      scanDomainForbiddenUsings(
+        'src/knowledge/backend/Services/FeedbackService/Program.cs',
+        'using Microsoft.EntityFrameworkCore;\n',
+      ).length,
+      0,
+    );
+  });
+
+  // --- 規則 3-③（新判定）: 単一プロジェクト＋VSA 層の名前空間方向（NFR, IADR-0282 決定 2） ------
+  //
+  // 旧判定①②（8 要素プロジェクト）は層プロジェクトの撤去で自然に 0 件走査になるため門を置かず、
+  // 0 件走査の門は新判定側に置く——設計判断は check-unit-dependencies.js 冒頭コメント。
+  // ここで固定するのは (a) 純関数の正例・違反例、(b) 移送済み FeedbackService の実データ走査
+  // （実測）、(c) 実データへの変異試験、(d) main() までの配線と新判定側の 0 件走査の門
+  // （フィクスチャの子プロセス実測）。(c)(d) は**検査器を壊すと落ちる側**の門である。
+
+  ok('規則 3-③: 層フォルダ分類の正例と対象外（純関数）', () => {
+    const FS_SVC = 'src/knowledge/backend/Services/FeedbackService';
+    assert.deepStrictEqual(parseVsaLayerPath(`${FS_SVC}/Domain/AnswerFeedback.cs`), {
+      service: 'FeedbackService',
+      layer: 'Domain',
+    });
+    assert.deepStrictEqual(parseVsaLayerPath(`${FS_SVC}/Features/Feedback/FeedbackEndpoints.cs`), {
+      service: 'FeedbackService',
+      layer: 'Features',
+    });
+    assert.deepStrictEqual(
+      parseVsaLayerPath(`${FS_SVC}/Infrastructure/Persistence/Migrations/X.cs`),
+      { service: 'FeedbackService', layer: 'Infrastructure' },
+    );
+    // Tests/・旧樹形（src/<Svc>.Domain/）・<Svc> 直下の合成ルートは対象外。
+    assert.strictEqual(parseVsaLayerPath(`${FS_SVC}/Tests/FeedbackEndpointTests.cs`), null);
+    assert.strictEqual(parseVsaLayerPath(`${FS_SVC}/src/FeedbackService.Domain/AnswerFeedback.cs`), null);
+    assert.strictEqual(parseVsaLayerPath(`${FS_SVC}/Program.cs`), null);
+  });
+
+  ok('規則 3-③: Domain / Infrastructure の禁止 using と許可 using（純関数）', () => {
+    const D = 'src/knowledge/backend/Services/FeedbackService/Domain/X.cs';
+    const I = 'src/knowledge/backend/Services/FeedbackService/Infrastructure/Persistence/X.cs';
+    const F = 'src/knowledge/backend/Services/FeedbackService/Features/Feedback/X.cs';
+    for (const line of [
+      'using FeedbackService.Features.Feedback;\n',
+      'using FeedbackService.Infrastructure.Persistence;\n',
+      'using FeedbackService.Common.Behaviors;\n',
+      'using static FeedbackService.Features.Feedback.FeedbackEndpoints;\n',
+      'using Db = FeedbackService.Infrastructure.Persistence.FeedbackDbContext;\n',
+      'global using FeedbackService.Infrastructure;\n',
+    ]) {
+      assert.strictEqual(scanVsaLayerUsings(D, line).length, 1, `Domain で検出すべき: ${line}`);
+    }
+    assert.strictEqual(scanVsaLayerUsings(I, 'using FeedbackService.Features.Feedback;\n').length, 1);
+    // 許可方向。
+    assert.strictEqual(scanVsaLayerUsings(I, 'using FeedbackService.Domain;\n').length, 0);
+    assert.strictEqual(
+      scanVsaLayerUsings(
+        F,
+        'using FeedbackService.Domain;\nusing FeedbackService.Infrastructure.Persistence;\nusing FeedbackService.Common.Behaviors;\n',
+      ).length,
+      0,
+    );
+    assert.strictEqual(scanVsaLayerUsings(D, 'using FeedbackService.Common.Exceptions;\n').length, 0);
+    // 対象外（他サービス・Shared・外部ライブラリ）と前方一致の取り違え。
+    assert.strictEqual(scanVsaLayerUsings(D, 'using DocumentService.Features.Search;\n').length, 0);
+    assert.strictEqual(scanVsaLayerUsings(D, 'using Platform.Shared.Kernel;\n').length, 0);
+    assert.strictEqual(scanVsaLayerUsings(D, 'using Microsoft.EntityFrameworkCore;\n').length, 0);
+    assert.strictEqual(scanVsaLayerUsings(D, 'using FeedbackService.FeaturesX.Y;\n').length, 0);
+  });
+
+  // (b) 実測: 移送済み FeedbackService を新判定が現に走査できること。パス文字列の写しではなく、
+  //     実在する .cs をディスクから引いて分類・走査する（パス規約のずれはここで落ちる）。
+  ok('規則 3-③: 移送済み FeedbackService の実ファイルを層に分類し、違反 0 件（実測）', () => {
+    const repoRoot = path.join(__dirname, '..');
+    const svcDir = path.join(repoRoot, 'src/knowledge/backend/Services/FeedbackService');
+    const collect = (dir, out = []) => {
+      for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, ent.name);
+        if (ent.isDirectory()) collect(p, out);
+        else if (ent.isFile() && ent.name.endsWith('.cs')) out.push(p);
+      }
+      return out;
+    };
+    const rels = collect(svcDir).map((p) => path.relative(repoRoot, p).replace(/\\/g, '/'));
+    const classified = rels.filter((r) => parseVsaLayerPath(r) !== null);
+    assert.ok(
+      classified.length > 0,
+      'FeedbackService から VSA 層の .cs を 1 件も分類できない（走査が壊れている）',
+    );
+    // 移送済みの 3 層（Domain / Features / Infrastructure）が現に載っていること。
+    const layers = new Set(classified.map((r) => parseVsaLayerPath(r).layer));
+    for (const l of ['Domain', 'Features', 'Infrastructure']) {
+      assert.ok(layers.has(l), `実データに ${l} 層が分類されていない: ${JSON.stringify([...layers])}`);
+    }
+    // Tests/ 配下は存在し、かつ分類されないこと。
+    assert.ok(rels.some((r) => /\/Tests\//.test(r)), 'FeedbackService/Tests/ の .cs が見つからない');
+    assert.ok(classified.every((r) => !/\/Tests\//.test(r)), 'Tests/ 配下が新判定の対象に入っている');
+    // 実データは違反 0 件。
+    for (const r of classified) {
+      const content = fs.readFileSync(path.join(repoRoot, r), 'utf8');
+      assert.deepStrictEqual(scanVsaLayerUsings(r, content), [], `実データが違反を持っている: ${r}`);
+    }
+  });
+
+  // (c) 変異試験: 実データへ違反 using を 1 行足すと検出する。検出関数を空振りにする変更
+  //     （層分類・名前空間照合・using 正規表現のいずれの破壊でも）が入れば、ここが落ちる。
+  ok('規則 3-③: 実データへ違反 using を足すと検出する（変異試験）', () => {
+    const repoRoot = path.join(__dirname, '..');
+    const infraRel =
+      'src/knowledge/backend/Services/FeedbackService/Infrastructure/Persistence/FeedbackDbContext.cs';
+    const domainRel = 'src/knowledge/backend/Services/FeedbackService/Domain/AnswerFeedback.cs';
+    const infra = fs.readFileSync(path.join(repoRoot, infraRel), 'utf8');
+    const domain = fs.readFileSync(path.join(repoRoot, domainRel), 'utf8');
+    // 変異前は 0 件（前提の確認。ここが非 0 なら実データ側の事故）。
+    assert.deepStrictEqual(scanVsaLayerUsings(infraRel, infra), []);
+    assert.deepStrictEqual(scanVsaLayerUsings(domainRel, domain), []);
+    // Infrastructure → Features。
+    const v1 = scanVsaLayerUsings(infraRel, `using FeedbackService.Features.Feedback;\n${infra}`);
+    assert.strictEqual(v1.length, 1, '変異（Infrastructure → Features の using）を検出できていない');
+    assert.strictEqual(v1[0].target, 'Features');
+    // Domain → Infrastructure。
+    const v2 = scanVsaLayerUsings(domainRel, `using FeedbackService.Infrastructure.Persistence;\n${domain}`);
+    assert.strictEqual(v2.length, 1, '変異（Domain → Infrastructure の using）を検出できていない');
+    assert.strictEqual(v2[0].target, 'Infrastructure');
+  });
+
+  // (d) main() までの配線と 0 件走査の門（新判定側）を、フィクスチャの子プロセスで実測する。
+  //     純関数が正しくても checkTree / main() が呼ばなければ意味が無い（配線の変異で落ちる側）。
+  {
+    const { spawnSync } = require('child_process');
+
+    // scripts/ と最小の src/ を持つ一時リポジトリを作る。.gitmodules は空で置く
+    // （excluded-units.js は .gitmodules を読めないと fail-closed で throw する）。
+    const makeVsaFixtureRepo = (files) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vsa-layer-'));
+      fs.cpSync(__dirname, path.join(dir, 'scripts'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '.gitmodules'), '');
+      for (const [rel, content] of Object.entries(files)) {
+        const abs = path.join(dir, rel);
+        fs.mkdirSync(path.dirname(abs), { recursive: true });
+        fs.writeFileSync(abs, content);
+      }
+      return dir;
+    };
+    const runVsaChecker = (dir) => {
+      const r = spawnSync(
+        process.execPath,
+        [path.join(dir, 'scripts', 'check-unit-dependencies.js')],
+        { encoding: 'utf8', cwd: dir },
+      );
+      return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+    };
+    const VSA_CSPROJ = '<Project Sdk="Microsoft.NET.Sdk"></Project>\n';
+
+    ok('規則 3-③: 0 件走査の門 —— 旧樹形しか無いと fail する（変異試験）', () => {
+      // 旧樹形（層プロジェクト）だけがある状態。csproj / .cs は拾えるが VSA 層分類は 0 件。
+      // 門を新判定側から消す変異は、ここが緑になることで捕まる。
+      const dir = makeVsaFixtureRepo({
+        'src/knowledge/backend/Services/LegacyService/src/LegacyService.Api/LegacyService.Api.csproj':
+          VSA_CSPROJ,
+        'src/knowledge/backend/Services/LegacyService/src/LegacyService.Api/Program.cs':
+          'namespace LegacyService.Api;\n',
+      });
+      try {
+        const { code, out } = runVsaChecker(dir);
+        assert.strictEqual(code, 1, `VSA 層分類 0 件で緑を返した。新判定側の門が消えている:\n${out}`);
+        assert.match(out, /規則 3-③/, `どの門で落ちたかを述べていない:\n${out}`);
+        assert.match(out, /0 件検査/, `0 件検査であることを述べていない:\n${out}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    ok('規則 3-③: 新樹形の違反 using を main() 経由で検出する（配線の変異試験）', () => {
+      const base = 'src/knowledge/backend/Services/NewService';
+      const clean = {
+        [`${base}/NewService.csproj`]: VSA_CSPROJ,
+        [`${base}/Domain/Entity.cs`]: 'namespace NewService.Domain;\n\npublic class Entity;\n',
+        [`${base}/Features/Things/Endpoint.cs`]:
+          'using NewService.Domain;\n\nnamespace NewService.Features.Things;\n',
+      };
+      // 正例: 違反なしの新樹形は緑で、OK メッセージが VSA 層分類の件数を語る（門の下限の実測）。
+      const dirOk = makeVsaFixtureRepo(clean);
+      try {
+        const { code, out } = runVsaChecker(dirOk);
+        assert.strictEqual(code, 0, `違反なしの新樹形で落ちた:\n${out}`);
+        const m = out.match(/VSA 層分類 (\d+) 件/);
+        assert.ok(m, `OK メッセージから VSA 層分類の件数を読めない:\n${out}`);
+        assert.strictEqual(Number(m[1]), 2, `VSA 層分類の件数が想定（2 件）と違う:\n${out}`);
+      } finally {
+        fs.rmSync(dirOk, { recursive: true, force: true });
+      }
+      // 変異: Domain → Features の using を 1 行足すと、main() が違反として報告し赤になる。
+      // checkTree から scanVsaLayerUsings への配線を外す変異は、ここが緑になることで捕まる。
+      const dirBad = makeVsaFixtureRepo({
+        ...clean,
+        [`${base}/Domain/Entity.cs`]:
+          'using NewService.Features.Things;\n\nnamespace NewService.Domain;\n\npublic class Entity;\n',
+      });
+      try {
+        const { code, out } = runVsaChecker(dirBad);
+        assert.strictEqual(code, 1, `Domain → Features の using を検出できていない:\n${out}`);
+        assert.match(out, /VSA 層方向/, `違反の種別（VSA 層方向）を報告していない:\n${out}`);
+        assert.match(out, /Domain\/Entity\.cs/, `違反ファイルを名指ししていない:\n${out}`);
+      } finally {
+        fs.rmSync(dirBad, { recursive: true, force: true });
+      }
+    });
+  }
+
+  // 実データ全体でも、OK メッセージが新判定の走査件数（VSA 層分類）を 1 件以上語ること
+  // （FeedbackService 移送済み以降の下限。#664 / IADR-0130 の作法で件数リテラルは書かない）。
+  ok('規則 3-③: 実データ走査の OK メッセージに VSA 層分類 1 件以上が出る（下限）', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(
+      process.execPath,
+      [path.join(__dirname, 'check-unit-dependencies.js')],
+      { encoding: 'utf8', cwd: path.join(__dirname, '..') },
+    );
+    const out = `${r.stdout || ''}${r.stderr || ''}`;
+    assert.strictEqual(r.status, 0, `実データで落ちた:\n${out}`);
+    const m = out.match(/VSA 層分類 (\d+) 件/);
+    assert.ok(m, `OK メッセージから VSA 層分類の件数を読めない:\n${out}`);
+    assert.ok(Number(m[1]) > 0, `VSA 層分類が 0 件だった（新判定が何も見ていない）:\n${out}`);
   });
 
   // --- check-image-mapping: MAPPING ↔ compose build ドリフト検査（Issue #275 / IADR-0068） ---
@@ -1064,7 +1364,9 @@ module.exports = ({ ok, assert }) => {
     assert.strictEqual(r.status, 1, `無主があるのに fail しない:\n${out}`);
     assert.match(out, /担当 issue が無い計画 ID/);
     // 無主として名指しされるのは 3 issue が引き受けていない ID だけである。
-    assert.match(out, /SC-20/);
+    // （従前は SC-20 を見ていたが、#451-a が docs/tests/SC-20 を新設し無主でなくなった。
+    //   固定に使う ID はテスト仕様書を持たない画面へ追随させる）
+    assert.match(out, /SC-12/);
     // ★ 同じ 1 回の実行で、**過去 3 件が無主に混じらない**ことも確かめる（回帰と変異の同時固定）。
     const unowned = (out.match(/\[担当 issue が無い計画 ID\] ([^\n]*)/) || [])[1] || '';
     for (const id of ['SC-14', 'SC-15', 'UC-09', 'UC-10']) {
@@ -2213,16 +2515,16 @@ module.exports = ({ ok, assert }) => {
   // 退行防止: Lingui のカタログ検査が見ているロケール集合が、i18n の実装が対応すると
   // 宣言しているロケール集合と一致していること。片方だけ増えると「宣言はしたが訳が無い」
   // あるいは「訳はあるが読み込まれない」状態が静かに生まれる。
-  ok('lingui.config.ts の locales と foundation/i18n の SUPPORTED_LOCALES が一致する', () => {
+  ok('lingui.config.ts の locales と app/i18n の SUPPORTED_LOCALES が一致する', () => {
     const { parseLinguiConfig } = require('./check-i18n-catalogs.js');
     const root = path.resolve(__dirname, '..');
     const cfg = parseLinguiConfig(fs.readFileSync(path.join(root, 'src/lingui.config.ts'), 'utf8'));
     const i18nSrc = fs.readFileSync(
-      path.join(root, 'src/platform/frontend/src/foundation/i18n/index.ts'),
+      path.join(root, 'src/platform/frontend/src/app/i18n/index.ts'),
       'utf8',
     );
     const m = /SUPPORTED_LOCALES\s*=\s*\[([^\]]*)\]/.exec(i18nSrc);
-    assert.ok(m, 'foundation/i18n から SUPPORTED_LOCALES を読み取れない');
+    assert.ok(m, 'app/i18n から SUPPORTED_LOCALES を読み取れない');
     const supported = m[1]
       .split(',')
       .map((x) => x.trim().replace(/^['"]|['"]$/g, ''))
@@ -2382,7 +2684,7 @@ module.exports = ({ ok, assert }) => {
       path.join(
         __dirname,
         '..',
-        'src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/Foundation/Domain/DataSource.cs'
+        'src/knowledge/backend/Services/DataSourceService/Domain/DataSource.cs'
       ),
       'utf8'
     );
@@ -3281,8 +3583,8 @@ ${r.stderr}`);
       // 新しい計測点を別ファイルへ足したときに「実装に無い」と誤判定するか、逆に
       // 名前の突合が効かないまま素通りする（#443 で後者を踏んだ）。
       const implFiles = [
-        'src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Foundation/Observability/LlmCompletionMetrics.cs',
-        'src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Foundation/Observability/LlmUsageMetrics.cs',
+        'src/platform/backend/Services/LlmGateway/Common/Observability/LlmCompletionMetrics.cs',
+        'src/platform/backend/Services/LlmGateway/Common/Observability/LlmUsageMetrics.cs',
         'src/platform/backend/Shared/Platform.Shared.Contracts/Dtos/CompletionDto.cs',
       ];
       const impl = implFiles.map((f) => fsG.readFileSync(pathG.join(root, f), 'utf8')).join('\n');
@@ -5076,8 +5378,8 @@ ${r.stderr}`);
     ok('#703: PR サイズ検査の除外が本リポの生成物の実パスを指している', () => {
       const t = fs.readFileSync(path.join(REPO, PRSIZE), 'utf8');
       const required = [
-        'src/platform/frontend/src/foundation/api/generated/**',
-        'src/platform/frontend/src/foundation/i18n/locales/**',
+        'src/platform/frontend/src/lib/api/generated/**',
+        'src/platform/frontend/src/locales/**',
         'docs/**',
         '.ai-context/**',
       ];
@@ -5390,6 +5692,9 @@ ${r.stderr}`);
           'gen-knowledge-graph.js',
           'measure-abac-combinations.js',
           'seed-abac-policies.js',
+          // #992 / IADR-0284: 検索検証用文書の初期投入器。`seed-abac-policies.js` と同じ
+          // **投入器**であり検査器ではない（副作用を持ち、判定を返さない）。母集合に数えない。
+          'seed-search-documents.js',
         ];
         const scripts = all.filter((f) => !NOT_CHECKERS.includes(f));
         // 母集合の件数を固定する。**新しい検査器が増えたら、まずここが落ちて宣言を促す。**
@@ -5436,7 +5741,15 @@ ${r.stderr}`);
         // ★ #975 で `check-trace-followthrough.js`（記録と文書の追随。record-rule）を新設した
         //    ため 41 → 42（ラチェットが設計どおり発火した）。**warn であってゲートではない**
         //    （IADR-0254 決定 2）が、母集合としては検査器である。
-        assert.strictEqual(scripts.length, 42, `検査器の母集合が 42 本から変わった（${scripts.length} 件）`);
+        // ★ #1013 で `check-route-manifest.js`（ルートマニフェストの網羅と、E2E の誤った主張の
+        //    再混入。**列挙は載せ忘れを自分では検出できない**）を新設したため 42 → 43
+        //    （ラチェットが設計どおり発火した）。git を一切呼ばず fs のみで走査するため、
+        //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
+        // ★ #1012 で `check-default-credentials.js`（イメージへ焼かれる構成と合成ルートの
+        //    既定資格情報。**既定値があると注入漏れが「起動失敗」ではなく「既定の資格情報で接続成功」
+        //    へ倒れる**）を新設したため 43 → 44（ラチェットが設計どおり発火した）。既知の残件は
+        //    baseline で凍結する前方一方向のラチェットである。fs のみで走査する。
+        assert.strictEqual(scripts.length, 44, `検査器の母集合が 44 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -5724,8 +6037,8 @@ ${r.stderr}`);
       assert.ok(!value.includes('#'), `EXCLUDES にコメントが混入している（pathspec が壊れる）:\n${value}`);
       // 本リポの実パス（IADR-0181 の固有デルタ）が残っていること
       for (const p of [
-        'src/platform/frontend/src/foundation/api/generated/**',
-        'src/platform/frontend/src/foundation/i18n/locales/**',
+        'src/platform/frontend/src/lib/api/generated/**',
+        'src/platform/frontend/src/locales/**',
       ]) {
         assert.ok(value.includes(p), `固有デルタの実パス「${p}」が EXCLUDES から消えた（IADR-0181 決定 1）`);
       }
@@ -7769,6 +8082,289 @@ ${r.stderr}`);
     ok('実データ: xUnit1051 の抑止は src/Directory.Build.props の 1 箇所に限る', () => {
       const r = runXu([]);
       assert.doesNotMatch(String(r.stderr), /stray-suppression/, `抑止が混入している:\n${r.stderr}`);
+    });
+  }
+
+  // --- #992: 検索の観測（seed 経路と 2 段判定・IADR-0284） -----------------------
+  //
+  // 実クラスタ無しで固定できるのは (a) 投入器の純粋関数 (b) シード実データ
+  // (c) verify-oidc-edge-flow.sh の結線（TOTAL の加算式・段の存在・0 件の扱い）である。
+  // **実走は CI に委ねる**（統合スタックはこの環境で起こせない）。
+  {
+    const fsSS = require('fs');
+    const pathSS = require('path');
+    const seeder = require('./seed-search-documents.js');
+
+    ok('#992: 作成要求は body を必ず載せ、tags を載せない', () => {
+      const req = seeder.buildCreateRequest({
+        title: 't', body: '本文', attributes: { confidentiality: 'public' },
+      });
+      // body が欠けると MarkdownUri が立たず、取り込みの早期 return で捨てられる（存在理由が消える）。
+      assert.strictEqual(req.body, '本文');
+      // 辞書に無いタグは DocumentService が 400 で拒む（SC-05 / #635）。ABAC と無関係の失敗を作らない。
+      assert.ok(!('tags' in req), `tags を載せてはいけない: ${JSON.stringify(req)}`);
+      assert.strictEqual(req.contentType, 'text/markdown; charset=utf-8');
+    });
+
+    ok('#992: 既存と同じタイトルは投入しない（冪等）', () => {
+      const seed = [{ title: 'A' }, { title: 'B' }];
+      assert.deepStrictEqual(
+        seeder.selectMissingDocuments(seed, [{ title: 'A' }]).map((d) => d.title), ['B']);
+      assert.deepStrictEqual(seeder.selectMissingDocuments(seed, []).map((d) => d.title), ['A', 'B']);
+      // PascalCase の応答（後段の JSON 方針が変わっても突合が壊れない）。
+      assert.deepStrictEqual(
+        seeder.selectMissingDocuments(seed, [{ Title: 'B' }]).map((d) => d.title), ['A']);
+    });
+
+    ok('#992: 合言葉が無ければ落とす（空文字で検索して緑にしない）', () => {
+      assert.throws(() => seeder.seedProbeTerm({}), /probeTerm/);
+      assert.throws(() => seeder.seedProbeTerm({ probeTerm: '   ' }), /probeTerm/);
+      assert.strictEqual(seeder.seedProbeTerm({ probeTerm: ' x ' }), 'x');
+    });
+
+    ok('#992: 合言葉を含まない seed は投入前に落ちる（変異試験）', () => {
+      const good = { probeTerm: 'zzz', documents: [{ title: 'a zzz', body: 'b zzz' }] };
+      assert.deepStrictEqual(seeder.documentsMissingProbeTerm(good), []);
+      // 本文だけ欠けた場合も検出する（タイトル一致だけで通すと全文側に当たらない）。
+      const bodyless = { probeTerm: 'zzz', documents: [{ title: 'a zzz', body: 'b' }] };
+      assert.deepStrictEqual(seeder.documentsMissingProbeTerm(bodyless), ['a zzz']);
+    });
+
+    ok('#992: 実データ（deploy/local/search-seed/documents.json）が規約を満たす', () => {
+      const seed = JSON.parse(fsSS.readFileSync(seeder.SEED_FILE, 'utf8'));
+      assert.ok((seed.documents || []).length > 0, 'seed 文書が 0 件（走査が壊れている）');
+      assert.deepStrictEqual(seeder.documentsMissingProbeTerm(seed), []);
+      for (const d of seed.documents) {
+        // 正の対照と負の対照が同じ 1 件で成立する条件（abac-seed は confidentiality だけを見る）。
+        assert.strictEqual((d.attributes || {}).confidentiality, 'public', `${d.title}: confidentiality`);
+        assert.ok(!('tags' in d), `${d.title}: tags を宣言してはいけない`);
+        assert.ok(String(d.body || '').length > 0, `${d.title}: 本文が空`);
+      }
+    });
+
+    // --- verify-oidc-edge-flow.sh の結線 ---------------------------------------
+    const VERIFY = fsSS.readFileSync(
+      pathSS.join(__dirname, 'verify-oidc-edge-flow.sh'), 'utf8');
+
+    ok('#992: TOTAL は加算式である（モードの組み合わせで門が誤発火しない）', () => {
+      // 固定値（TOTAL=17 / TOTAL=11 の二択）へ戻すと、SEARCH_* を足した瞬間に門が誤発火する。
+      assert.match(VERIFY, /^TOTAL=11$/m, 'TOTAL の基底が 11 でない');
+      for (const [flag, addend] of [['ABAC_POSITIVE', 6], ['SEARCH_SEEDED', 2], ['SEARCH_HITS', 1]]) {
+        const re = new RegExp(`\\$${''}{?${flag}}?" = "1" \\]; then TOTAL=\\$\\(\\(TOTAL \\+ ${addend}\\)\\)`);
+        assert.match(VERIFY, re, `${flag} の加算（+${addend}）が無い`);
+      }
+    });
+
+    ok('#992: SEARCH_HITS は SEARCH_SEEDED を含意する', () => {
+      // 前提を確かめずに結論だけ測ると、落ちたとき seed の不備と検索の故障が区別できない。
+      assert.match(VERIFY, /if \[ "\$SEARCH_HITS" = "1" \]; then SEARCH_SEEDED=1; fi/);
+    });
+
+    ok('#992: 検索の判定が「0 件」を FAIL 側に置いている', () => {
+      // 🔴 「空であること」を PASS の根拠にしない（#972 / IADR-0252 と同じ型）。
+      const hit = VERIFY.slice(VERIFY.indexOf('S3) 🔴 本題'));
+      assert.ok(hit.length > 0, 'S3 の段が見つからない');
+      const zero = hit.slice(hit.indexOf('"${hit_state%%:*}" = "0"'));
+      assert.match(zero.slice(0, 400), /fail "seed 文書/, '0 件が FAIL になっていない');
+      // 非空でも seed 自身を含まなければ落とす（decoy を通さない）。
+      assert.match(hit, /fail "ヒット .* seed 文書.*を含まない"/);
+    });
+
+    ok('#992: 合言葉は seed の宣言から採り、スクリプトへ値を写していない', () => {
+      const seed = JSON.parse(fsSS.readFileSync(seeder.SEED_FILE, 'utf8'));
+      assert.ok(!VERIFY.includes(seed.probeTerm),
+        '合言葉が verify-oidc-edge-flow.sh へ写されている（seed を替えたとき片方だけ取り残される）');
+      assert.match(VERIFY, /seed-search-documents\.js" --print-probe-term/);
+    });
+
+    ok('#992: 空白だけの合言葉を空として扱う（負の対照の fail-open を塞ぐ）', () => {
+      // 🔴 `[ -z ]` は空白 1 文字を「非空」と見る。そのまま進むと `{"query":" "}` が
+      //    BFF の IsNullOrWhiteSpace で弾かれ「200 ＋ 空」になり、**S2 が無条件に PASS する**
+      //    （実装中に実測で踏んだ）。前後の空白を落としてから判定へ渡すこと。
+      assert.match(VERIFY, /SEARCH_PROBE_TERM#"\$\{SEARCH_PROBE_TERM%%\[!\[:space:\]\]\*\}"/);
+      assert.match(VERIFY, /SEARCH_PROBE_TERM%"\$\{SEARCH_PROBE_TERM##\*\[!\[:space:\]\]\}"/);
+      // 3 つの段すべてが合言葉の不在で fail-closed になる（S2 だけ素通りしない）。
+      const guards = VERIFY.match(/検索の合言葉を解決できない/g) || [];
+      assert.ok(guards.length >= 3, `合言葉の門が ${guards.length} 箇所しかない（S1・S2・S3 の 3 箇所が要る）`);
+    });
+
+    ok('#992: seed の入口条件（markdownUri）まで見ている', () => {
+      // 「作成できた」だけでは何も言えない —— MarkdownUri が null なら取り込みは早期 return で捨てる。
+      const s1 = VERIFY.slice(VERIFY.indexOf('S1) 正の対照'), VERIFY.indexOf('S2) 負の対照'));
+      assert.ok(s1.includes('markdownUri'), 'S1 が markdownUri を見ていない');
+      assert.match(s1, /fail "seed 文書は在るが markdownUri を持たない/);
+    });
+  }
+
+  // --- #1013: ルートマニフェストの静的検査 ---------------------------------------
+  //
+  // 起点は 2 つの欠陥である。①E2E スモーク 5 本が「この 1 本でルートの実在も固定できる」と
+  // 書いていた（#918 の変異試験で**落ちたテスト 0 件**）。②`PLANNED_ROUTES` に SC-18 / 19 / 20 が
+  // 入っていなかった。🔴 **列挙は載っている行しか検査できず、載せ忘れは誰にも見えない。**
+  {
+    const { spawnSync } = require('child_process');
+    const path = require('path');
+    const fs = require('fs');
+    const SCRIPTS = __dirname;
+    const REPO = path.join(SCRIPTS, '..');
+    const rm = require('./check-route-manifest.js');
+
+    const runRm = (args = []) => {
+      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-route-manifest.js'), ...args], {
+        encoding: 'utf8',
+        cwd: REPO,
+      });
+      return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+    };
+
+    ok('check-route-manifest --self-test が通る', () => {
+      const { code, out } = runRm(['--self-test']);
+      assert.strictEqual(code, 0, out);
+    });
+
+    // 件数だけを見ると変異ケースを消しても通る。**ケース名で確かめる。**
+    ok('check-route-manifest: self-test が主要な変異ケースと陰性対照を実際に走らせている', () => {
+      const { out } = runRm(['--self-test']);
+      for (const name of [
+        '画面を足して表へ書き忘れると落ちる',
+        '表の SC 番号を取り違えると落ちる',
+        '除外を理由なしで宣言すると落ちる',
+        '表と除外の両方に載せると落ちる',
+        '誤った主張を検出する（e2e の実文面）',
+        '観点の見出しを検出する',
+        '陰性対照: 否定形（固定できない）を落とさない',
+        '陰性対照: 別担当への委譲',
+        '陰性対照: インラインコードに入れた誤例は対象外',
+        '閉じないフェンスは違反として上げる',
+      ]) {
+        assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
+      }
+    });
+
+    ok('check-route-manifest が実データで違反 0 件', () => {
+      const { code, out } = runRm();
+      assert.strictEqual(code, 0, out);
+    });
+
+    // IADR-0130 の下限。**件数リテラルは書かない**（画面が増えれば動く）。
+    ok('0 件走査の門: 実データで画面 1 件以上・走査対象 1 件以上を数えている（下限）', () => {
+      const { code, out } = runRm();
+      assert.strictEqual(code, 0, out);
+      const m = out.match(/画面 (\d+) 件とマニフェスト (\d+) 行（除外 (\d+) 件）が対応し、(\d+) 件/);
+      assert.ok(m, `OK メッセージから件数を読めない:\n${out}`);
+      assert.ok(Number(m[1]) > 0, `画面が 0 件だった:\n${out}`);
+      assert.ok(Number(m[2]) > 0, `マニフェストが 0 行だった:\n${out}`);
+      assert.ok(Number(m[4]) > 0, `判定 2 の走査対象が 0 件だった:\n${out}`);
+    });
+
+    // ★ 変異試験は**実データにも当てる**。フィクスチャだけだと「実ファイルの形が想定と違う」型の
+    //   空振り（#665 の実測）を捕まえられない。
+    ok('★ 実データ: マニフェストから 1 行落とすと検出する（順方向・変異試験）', () => {
+      const manifest = fs.readFileSync(path.join(REPO, rm.MANIFEST_REL), 'utf8');
+      const screens = rm.collectScreens(rm.collectFeatureFiles(REPO));
+      assert.ok(screens.length > 0, '画面 feature を 1 件も拾えていない（形が想定と違う）');
+      assert.deepStrictEqual(rm.findManifestViolations(screens, rm.parseManifest(manifest)), []);
+
+      // 実ファイルの PLANNED_ROUTES から 1 行だけ落とす。
+      const row = /\n(\s*\['(SC-\d{2})', '[^']*'\],)/.exec(manifest);
+      assert.ok(row, '実データの PLANNED_ROUTES から 1 行を取り出せない（形が想定と違う）');
+      const mutated = manifest.replace(`\n${row[1]}`, '');
+      const v = rm.findManifestViolations(screens, rm.parseManifest(mutated));
+      assert.ok(
+        v.some((x) => x.kind === 'missing-from-manifest' && x.sc === row[2]),
+        `実データの変異（${row[2]} の行を落とす）を検出できなかった:\n${JSON.stringify(v)}`,
+      );
+    });
+
+    ok('★ 実データ: マニフェストの SC 番号を取り違えると検出する（逆方向・変異試験）', () => {
+      // **Vitest はパスさえ木にあれば緑のまま**である型。ここでしか捕まらない。
+      const manifest = fs.readFileSync(path.join(REPO, rm.MANIFEST_REL), 'utf8');
+      const screens = rm.collectScreens(rm.collectFeatureFiles(REPO));
+      const mutated = manifest.replace(/\['SC-\d{2}', ('[^']*')\],/, "['SC-99', $1],");
+      assert.notStrictEqual(mutated, manifest, '実データへ番号の変異を当てられない');
+      const v = rm.findManifestViolations(screens, rm.parseManifest(mutated));
+      assert.ok(
+        v.some((x) => x.kind === 'unknown-in-manifest' && x.sc === 'SC-99'),
+        `番号の取り違えを検出できなかった:\n${JSON.stringify(v)}`,
+      );
+    });
+
+    ok('★ 実データ: e2e へ誤った主張を書き戻すと検出する（判定 2・変異試験）', () => {
+      const f = path.join(REPO, 'src/platform/frontend/e2e/sc05-documents.smoke.spec.ts');
+      const text = fs.readFileSync(f, 'utf8');
+      assert.deepStrictEqual(rm.findClaimViolations(text), [], '実データが既に誤った主張を持っている');
+      const mutated = `${text}\n// （この 1 本で「ルートが実在すること」も同時に固定できる）。\n`;
+      const v = rm.findClaimViolations(mutated);
+      assert.strictEqual(v.length, 1, JSON.stringify(v));
+      assert.strictEqual(v[0].id, 'route-existence-also-fixed');
+    });
+
+    // 陰性対照は**実データで**取る。ここが落ちると、正しく書いた文書が赤くなり検査器ごと外される。
+    ok('★ 実データ: 正しく書かれた試験仕様（否定形・委譲）を落とさない（陰性対照）', () => {
+      const f = path.join(REPO, 'docs/tests/SC-21_ai-suggestion-list.md');
+      const text = fs.readFileSync(f, 'utf8');
+      assert.ok(text.includes('ルートの実在'), '陰性対照の文書が前提の語を持たない（前提が崩れている）');
+      assert.deepStrictEqual(
+        rm.findClaimViolations(text, { markdown: true }),
+        [],
+        '「ルートの実在は固定しない」「ルートの実在は T-30 が固定する」を誤検出している',
+      );
+    });
+
+    // 門は 2 つある（0 件解析 / 0 件走査）。1 つの変異で両方を確かめたつもりにならない。
+    ok('門 A: マニフェストを読めなければ fail する（変異試験）', () => {
+      const os = require('os');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'route-manifest-'));
+      try {
+        // ★ **写した側のスクリプトを叩く。** 検査器は `__dirname/..` を REPO にするため、
+        //   cwd を変えるだけでは実リポジトリを読んでしまい変異が当たらない。
+        fs.cpSync(SCRIPTS, path.join(dir, 'scripts'), { recursive: true });
+        const r = spawnSync(process.execPath, [path.join(dir, 'scripts', 'check-route-manifest.js')], {
+          encoding: 'utf8',
+          cwd: dir,
+        });
+        const out = `${r.stdout || ''}${r.stderr || ''}`;
+        assert.strictEqual(r.status, 1, `マニフェストが無いのに緑を返した:\n${out}`);
+        assert.match(out, /マニフェストを読めません/, `読めないことを述べていない:\n${out}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    ok('門 B: 画面 feature が 1 件も無ければ fail する（0 件走査・変異試験）', () => {
+      const os = require('os');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'route-manifest-b-'));
+      try {
+        // 門 A は通す（マニフェストは置く）。**門 A と同じ変異で確かめると門 B が消えても気づけない。**
+        fs.cpSync(SCRIPTS, path.join(dir, 'scripts'), { recursive: true });
+        const manifestDir = path.join(dir, path.dirname(rm.MANIFEST_REL));
+        fs.mkdirSync(manifestDir, { recursive: true });
+        fs.copyFileSync(path.join(REPO, rm.MANIFEST_REL), path.join(dir, rm.MANIFEST_REL));
+        fs.copyFileSync(path.join(REPO, '.gitmodules'), path.join(dir, '.gitmodules'));
+        const r = spawnSync(process.execPath, [path.join(dir, 'scripts', 'check-route-manifest.js')], {
+          encoding: 'utf8',
+          cwd: dir,
+        });
+        const out = `${r.stdout || ''}${r.stderr || ''}`;
+        assert.strictEqual(r.status, 1, `画面 feature が無いのに緑を返した。門 B が消えている:\n${out}`);
+        assert.match(out, /0 件検査/, `0 件検査であることを述べていない:\n${out}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    // 検査器を足したら CI で走らせる（走らない検査器は無い検査器と同じ）。
+    ok('#1013: ci.yml の static-checks が check-route-manifest を実行している', () => {
+      const ci = fs.readFileSync(path.join(REPO, '.github/workflows/ci.yml'), 'utf8');
+      assert.ok(
+        ci.includes('node scripts/check-route-manifest.js'),
+        'ci.yml から check-route-manifest の実行が消えている',
+      );
+    });
+
+    ok('#1013: scripts/README.md が check-route-manifest を載せている', () => {
+      const readme = fs.readFileSync(path.join(SCRIPTS, 'README.md'), 'utf8');
+      assert.ok(readme.includes('check-route-manifest.js'), 'scripts/README.md に行が無い');
     });
   }
 

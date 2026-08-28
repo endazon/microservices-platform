@@ -22,20 +22,20 @@ public class BffMonitorEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task GetWatchlist_WhenAuthenticated_Returns200WithPassThroughBody()
     {
-        var resp = await _factory.CreateClient().GetAsync("/bff/monitor/watchlist");
+        var resp = await _factory.CreateClient().GetAsync("/bff/monitor/watchlist", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadAsStringAsync();
+        var body = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().Contain("7203");
     }
 
     [Fact]
     public async Task GetWatchlistHistory_WhenAuthenticated_Returns200()
     {
-        var resp = await _factory.CreateClient().GetAsync("/bff/monitor/watchlist/history");
+        var resp = await _factory.CreateClient().GetAsync("/bff/monitor/watchlist/history", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadAsStringAsync();
+        var body = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().Contain("監視追加");
     }
 
@@ -47,7 +47,7 @@ public class BffMonitorEndpointTests : IClassFixture<BffTestFactory>
             "{\"symbol\":\"9984\",\"market\":\"TSE\",\"reason\":\"監視追加\"}",
             Encoding.UTF8, "application/json");
 
-        var resp = await client.PostAsync("/bff/monitor/watchlist", payload);
+        var resp = await client.PostAsync("/bff/monitor/watchlist", payload, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         // 後段へ本文がそのまま転送される（銘柄・理由を含む）。
@@ -66,7 +66,7 @@ public class BffMonitorEndpointTests : IClassFixture<BffTestFactory>
             Encoding.UTF8, "application/json");
         var req = new HttpRequestMessage(HttpMethod.Delete, "/bff/monitor/watchlist") { Content = payload };
 
-        var resp = await client.SendAsync(req);
+        var resp = await client.SendAsync(req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         _factory.LastMonitorDeleteBody.Should().NotBeNull();
@@ -80,7 +80,7 @@ public class BffMonitorEndpointTests : IClassFixture<BffTestFactory>
         // 非 owner の変更は後段（OwnerOnly）が 403。BFF はそのまま透過する（BFF 側でロール制限しない）。
         _factory.MonitorStatusCode = HttpStatusCode.Forbidden;
         var resp = await _factory.CreateClient()
-            .PostAsync("/bff/monitor/watchlist", new StringContent("{}", Encoding.UTF8, "application/json"));
+            .PostAsync("/bff/monitor/watchlist", new StringContent("{}", Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -91,7 +91,7 @@ public class BffMonitorEndpointTests : IClassFixture<BffTestFactory>
         // 重複追加・空・未定義 market は後段 400（AST#191）。破壊的な自動再試行はしない（そのまま透過）。
         _factory.MonitorStatusCode = HttpStatusCode.BadRequest;
         var resp = await _factory.CreateClient()
-            .PostAsync("/bff/monitor/watchlist", new StringContent("{}", Encoding.UTF8, "application/json"));
+            .PostAsync("/bff/monitor/watchlist", new StringContent("{}", Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -101,7 +101,7 @@ public class BffMonitorEndpointTests : IClassFixture<BffTestFactory>
     {
         _factory.MonitorStatusCode = HttpStatusCode.Conflict;
         var resp = await _factory.CreateClient()
-            .PostAsync("/bff/monitor/watchlist", new StringContent("{}", Encoding.UTF8, "application/json"));
+            .PostAsync("/bff/monitor/watchlist", new StringContent("{}", Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
@@ -112,7 +112,7 @@ public class BffMonitorEndpointTests : IClassFixture<BffTestFactory>
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
 
-        var resp = await client.GetAsync("/bff/monitor/watchlist");
+        var resp = await client.GetAsync("/bff/monitor/watchlist", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -121,7 +121,7 @@ public class BffMonitorEndpointTests : IClassFixture<BffTestFactory>
     public async Task GetWatchlist_WhenBackendUnreachable_Returns502()
     {
         _factory.MonitorThrows = true;
-        var resp = await _factory.CreateClient().GetAsync("/bff/monitor/watchlist");
+        var resp = await _factory.CreateClient().GetAsync("/bff/monitor/watchlist", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadGateway);
     }
@@ -132,7 +132,7 @@ public class BffMonitorEndpointTests : IClassFixture<BffTestFactory>
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add("Authorization", "Bearer test-token-monitor");
 
-        await client.GetAsync("/bff/monitor/watchlist");
+        await client.GetAsync("/bff/monitor/watchlist", TestContext.Current.CancellationToken);
 
         _factory.LastMonitorForwardedAuthorization.Should().Be("Bearer test-token-monitor");
     }

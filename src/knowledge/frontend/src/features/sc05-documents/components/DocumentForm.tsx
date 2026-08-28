@@ -21,6 +21,11 @@ import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 //
 // UC-03 例外フロー「必須属性が未設定の場合は保存を拒否する」を、必須項目が埋まるまで
 // 保存ボタンを無効にする形で満たす（サーバも 400 で拒否する。多層防御）。
+//
+// **［#449］タグは辞書からの選択にした。** 従前は自由テキスト入力で、計画 05_screens §SC-05 の
+// 「既定タグ辞書に整合（辞書は管理系ロールが引ける照会口から取得する）」（確定・2026-08-05）に
+// 反していた。辞書は呼び出し側（DocumentManagementPage）が `useTagOptions` で引いて渡す
+// ——データ取得は画面が持ち、本部品は入力に徹する（既存の分担に合わせる）。
 
 const MAX_TITLE = 200;
 const MAX_CHANGE_NOTE = 200;
@@ -35,12 +40,15 @@ export interface DocumentFormValues {
 export function DocumentForm({
   editing,
   submitting,
+  tagOptions,
   onSubmit,
   onCancel,
 }: {
   /** 編集対象。`null` なら新規登録。 */
   editing: DocumentDto | null;
   submitting: boolean;
+  /** タグ辞書の値集合（`/bff/tags`）。取得できていなければ空。 */
+  tagOptions: string[];
   onSubmit: (values: DocumentFormValues) => void;
   onCancel: () => void;
 }) {
@@ -59,11 +67,22 @@ export function DocumentForm({
   // （`editing.version` のようなプロパティ参照はカタログの ID を壊す）。
   const version = editing?.version;
 
+  // 既に付いているタグは選択肢から除く（重複は意味を持たず、削除操作も曖昧になる）。
+  //
+  // 🔴 **辞書に無い既存タグ（辞書の改定前に付いたもの）は選択肢に出ないが、
+  // 下の一覧には出て削除もできる。** 選べなくするのは**追加**だけである——
+  // 画面が既存のタグを黙って落とすと破壊的になる（保存時に消える）。
+  const selectable = tagOptions.filter((name) => !tags.includes(name));
+  const canAddTag = tagDraft.length > 0 && !tags.includes(tagDraft);
+
+  // 🔴 **「辞書の値だけ」は選択欄の形が保証する** —— `tagDraft` へ入るのは `selectable`
+  // （⊆ `tagOptions`）か空文字だけで、空文字は `canAddTag` が弾く。
+  // **ここで `tagOptions.includes(tagDraft)` を再確認しない** —— UI から到達し得ない分岐であり、
+  // `CLAUDE.md` の禁止事項「起こり得ないケースへの防御的実装」に当たる
+  // （実測: 変異試験 M5 で同分岐を外しても 24 件すべて素通りした＝テストで守れない死んだ枝である）。
   function addTag() {
-    const value = tagDraft.trim();
-    // 空・重複は足さない（重複したタグは意味を持たず、削除操作も曖昧になる）。
-    if (!value || tags.includes(value)) return;
-    setTags([...tags, value]);
+    if (!canAddTag) return;
+    setTags([...tags, tagDraft]);
     setTagDraft('');
   }
 
@@ -144,13 +163,23 @@ export function DocumentForm({
               </span>
             )}
             <span className="flex gap-2">
-              <Input
+              {/* 05_screens §SC-05: タグは**既定タグ辞書に整合**する。値は辞書から選ぶ。 */}
+              <Select
                 id="doc-tag"
                 value={tagDraft}
-                maxLength={100}
                 onChange={(e) => setTagDraft(e.target.value)}
-              />
-              <Button type="button" onClick={addTag} disabled={tagDraft.trim().length === 0}>
+                disabled={selectable.length === 0}
+              >
+                <option value="">
+                  {selectable.length === 0 ? t`辞書に候補がありません` : t`タグを選択`}
+                </option>
+                {selectable.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </Select>
+              <Button type="button" onClick={addTag} disabled={!canAddTag}>
                 <Trans>追加</Trans>
               </Button>
             </span>

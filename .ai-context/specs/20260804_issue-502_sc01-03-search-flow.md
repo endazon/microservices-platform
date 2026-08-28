@@ -5,7 +5,7 @@ status: done
 related_ids: [SC-01, SC-02, SC-03, UC-01, UC-02, FR-03, FR-04, FR-05, FR-08, FR-12, ADR-0031, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0126]
 author: Claude
 created: 2026-08-04
-updated: 2026-08-05
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/03_usecases/01_usecases.md
@@ -339,6 +339,15 @@ TypeScript 5.9.3 ／ Vite 6.4.3 ／ Lingui 6.6.0 ／
 **E2E では認証済みの導線を実走できない**（トークンは `InMemoryWebStorage` に保持され外部から注入できない。
 `foundation/auth/authConfig.ts`）。E2E は各ルートが**存在し認証ガードが先に効く**ことを見る
 （ルート未登録なら `NotFound` が出て `/login` へ行かないため、この 1 本でルートの実在も固定できる）。
+
+> ### ［2026-08-28 追記 / #1013］**この「ルートの実在も固定できる」は誤りだった**
+>
+> **当時の記述は残す**（史実であり、書き換えない）。**その後どうなったかだけを足す。**
+> 未知パスの受け皿（`catchAllRoute`）は `RequireAuth` 配下の `shellRoute` の子であるため、
+> **ルートが存在しなくても未認証なら `/login` へ行く**。#918 が改名の変異を当て、
+> **落ちたテストは 0 件**だった。E2E が測っているのは未認証の導線だけである。
+> ルートの実在は `router.test.ts`（計画のルート表とナビ項目の解決）が Vitest 側で固定する。
+> #1013 で live な e2e コメント 5 本と試験仕様 3 件を是正し、静的検査（`scripts/check-route-manifest.js`）を置いた。
 
 **この環境では `playwright install` がブラウザを取得できない**ため、インストール済みの
 `/opt/pw-browsers/chromium-1194` を `launchOptions.executablePath` で指すローカル専用 config を

@@ -177,7 +177,7 @@ jobs:
       - name: Codegen is up to date (orval)
         run: |
           pnpm run codegen
-          git diff --exit-code -- platform/frontend/src/foundation/api/generated
+          git diff --exit-code -- platform/frontend/src/lib/api/generated
       # ADR-0031 / IADR-0125 決定 4: Lingui のカタログもコミットしている。検出は 3 段で、
       # 互いを置換しない（同決定の実測表）。ここは 1 段目——ソースに msg を足してカタログを
       # 更新し忘れた場合を止める。extract は未訳を msgstr "" として書き出す正常動作のため、
@@ -185,7 +185,7 @@ jobs:
       - name: i18n catalogs are up to date (lingui)
         run: |
           pnpm run i18n
-          git diff --exit-code -- platform/frontend/src/foundation/i18n/locales
+          git diff --exit-code -- platform/frontend/src/locales
       # 2 段目——カタログは最新だが msgstr が空（＝未翻訳）のキーを止める。sourceLocale も見る
       # （lingui compile --strict は sourceLocale を見ないため、これが無いと ja の未訳が素通りする）。
       - name: i18n catalogs have no untranslated keys

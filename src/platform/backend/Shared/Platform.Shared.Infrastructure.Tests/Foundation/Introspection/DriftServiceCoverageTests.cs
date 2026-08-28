@@ -29,7 +29,7 @@ public class DriftServiceCoverageTests
             {
                 Name = StepName,
                 Service = Service,
-                Consumer = "ConversionService.Worker.Composable.Steps.RawDocumentFetchedConsumer",
+                Consumer = "ConversionService.Worker.Features.ConversionJobs.RawDocumentFetchedConsumer",
                 Input = "RawDocumentFetched",
                 Outputs = ["DocumentNormalized"],
                 Enabled = enabled,
@@ -96,7 +96,7 @@ public class DriftServiceCoverageTests
                 [
                     new StepIntrospectionDto(
                         StepName,
-                        "ConversionService.Worker.Composable.Steps.RawDocumentFetchedConsumer",
+                        "ConversionService.Worker.Features.ConversionJobs.RawDocumentFetchedConsumer",
                         "RawDocumentFetched",
                         ["DocumentNormalized"],
                         true),

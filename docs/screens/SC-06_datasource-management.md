@@ -3,7 +3,7 @@ title: データソース管理 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-21
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
@@ -134,7 +134,7 @@ issues: [#490, #502, #506, #519, #534, #537, #538, #628, #754, #767, #796, plann
 | (c) 行操作「設定」 | hi-fi 422-423 | 従前は `/bff/datasources` に**更新（`PUT` / `PATCH`）が無かった**。**［2026-08-08 / #534］契約は追加済み**（全置換 `PUT` / 部分更新 `PATCH`・**管理者限定**） | ~~データソース更新 API~~ → **契約は揃った**。残るのは**編集フォームの画面実装**だけである（#534 は契約の追加に閉じる。同型の契約追加を束ねる決定の条件 F） |
 
 実測の出所: `src/knowledge/backend/Shared/Knowledge.Contracts/Dtos/DataSourceDto.cs` ／
-`src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/Foundation/Domain/DataSource.cs` ／
+`src/knowledge/backend/Services/DataSourceService/Domain/DataSource.cs` ／
 `.../Foundation/Services/DataSourceSyncHostedService.cs` ／
 `src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/DataSourceBffEndpoints.cs`（対象コミット `de55761`）。
 

@@ -101,6 +101,19 @@ fi
 kubectl create configmap keycloak-realms -n "$INFRA_NS" "${realm_args[@]}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
+# IADR-0261 (#438): realm.json の loginTheme/accountTheme=platform を解決するテーマ実体
+# （deploy/keycloak/themes/platform/）を ConfigMap 化する。deploy/local/infra/keycloak.yaml 側は
+# `optional: true` の fail-safe 参照のため、この ConfigMap が無くても Pod は起動するが、その場合
+# ログイン画面が「テーマが見つからない」500 になる（従来は deploy/local/README.md「手動でステップ
+# 実行する場合」の手動コマンドが必須だった。本行で自動配線し、手動手順の必要を無くす）。
+# キー名・items の対応は keycloak.yaml のマウント定義と一致させる（単一情報源はテーマ実ファイル）。
+kubectl create configmap keycloak-theme-platform -n "$INFRA_NS" \
+  --from-file=login-theme-properties=deploy/keycloak/themes/platform/login/theme.properties \
+  --from-file=login-css=deploy/keycloak/themes/platform/login/resources/css/platform.css \
+  --from-file=account-theme-properties=deploy/keycloak/themes/platform/account/theme.properties \
+  --from-file=account-css=deploy/keycloak/themes/platform/account/resources/css/platform.css \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 echo "==> [4/7] apply in-cluster infra"
 # IADR-0082 (#324) / IADR-0210 (#787): PERSIST=1 で永続化オーバーレイ（Keycloak/Postgres/Qdrant を
 # local-path PVC 化）を選ぶ。
@@ -138,6 +151,10 @@ fi
 if [ "${ESO:-}" != "1" ]; then
   apply_secret "$MSP_NS" minio-credentials \
     "accessKey=${MINIO_ACCESS_KEY:-minioadmin}" "secretKey=${MINIO_SECRET_KEY:-minioadmin}"
+  # NFR, ADR-0002, #1012: サービス DB のパスワード。**appsettings.json から接続文字列を撤去した**ため、
+  # これが無いと各サービスは起動時に落ちる（注入漏れが既定資格情報で成功へ倒れない）。
+  # dev 既定は init スクリプトが作る `kp`（deploy/local/infra/postgres.yaml）。env で上書きする。
+  apply_secret "$MSP_NS" postgres-app "password=${APP_DB_PASSWORD:-kp}"
   apply_secret "$MSP_NS" wikijs-db "password=${WIKIJS_DB_PASSWORD:-kp}"
   apply_secret "$MSP_NS" wikijs-sync "apiKey=${WIKIJS_SYNC_APIKEY:-}"
 fi
@@ -235,6 +252,9 @@ if [ "${ESO:-}" = "1" ]; then
   # PR-3: OIDC client secret 群）。
   kubectl apply -f deploy/local/vault/eso/externalsecret-llm.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-minio.yaml
+  # NFR, ADR-0002 (#1012): サービス DB のパスワード。手動 apply は上の `ESO != 1` ブロックで
+  # スキップされるので、**これが唯一の供給元**である（欠けると DB を持つ全サービスが起動しない）。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-postgres-app.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-db.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-sync.yaml
   # IADR-0098 (#310) PR-3: OIDC client secret 群。minio-oidc は MSP ns、grafana/vault/headlamp-oidc は platform-infra ns。
@@ -258,14 +278,14 @@ if [ "${ESO:-}" = "1" ]; then
   kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-admin.yaml
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 5 本。infra ns は基盤 3 本＋vault-oidc 常時＋有効ゲートの grafana/headlamp-oidc。
+  # 誤解させない）。MSP ns は常時 6 本。infra ns は基盤 3 本＋vault-oidc 常時＋有効ゲートの grafana/headlamp-oidc。
   infra_es="postgres rabbitmq keycloak-admin vault-oidc"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
-  echo "    ESO: llm/minio-credentials/wikijs-db/wikijs-sync/minio-oidc（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
+  echo "    ESO: llm/minio-credentials/postgres-app/wikijs-db/wikijs-sync/minio-oidc（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
   echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc および有効ゲートの grafana/headlamp-oidc を"
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
-  echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials wikijs-db wikijs-sync minio-oidc"
+  echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials postgres-app wikijs-db wikijs-sync minio-oidc"
   echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret $infra_es"
 
   # IADR-0103 (#354): env の `secretKeyRef` は **Pod 起動時に一度だけ解決され、その後の Secret 更新は
@@ -481,6 +501,20 @@ if [ "${ABACSEED:-}" = "1" ]; then
   echo "==> [opt-in] ABAC 初期投入（属性辞書・ポリシー / IADR-0133）"
   node "$ROOT/scripts/seed-abac-policies.js" \
     || echo "    WARN: ABAC 初期投入に失敗（best-effort）。node scripts/seed-abac-policies.js で再実行できる" >&2
+fi
+
+# IADR-0284 (#992): 検索検証用の文書を投入する。**本文を持つ文書**でないと索引に一度も入らない
+# （IngestionService の DocumentUpdatedConsumer は MarkdownUri が null の文書を早期 return で捨てる）。
+# 文書が 1 件も無いスタックでは「検索が壊れている」と「該当が無い」が区別できず、#992 が塞ぎたい穴が残る。
+# 既定（env 未設定）は投入せず挙動不変＝バイト等価で、本番 values には一切影響しない
+# （投入先は経路B の稼働中サービスであり、chart ではない）。ABACSEED とまったく同じ形である。
+#
+# 🔴 **文書を作る（副作用）。使い捨てのスタック専用**であり、残しておきたいクラスタに対して立てないこと。
+# best-effort: 投入の失敗で up 全体を止めない（クラスタ自体は使えるため。再実行は冪等）。
+if [ "${SEARCHSEED:-}" = "1" ]; then
+  echo "==> [opt-in] 検索検証用文書の初期投入（本文つき / IADR-0284）"
+  node "$ROOT/scripts/seed-search-documents.js" \
+    || echo "    WARN: 検索用文書の投入に失敗（best-effort）。node scripts/seed-search-documents.js で再実行できる" >&2
 fi
 
 echo ""

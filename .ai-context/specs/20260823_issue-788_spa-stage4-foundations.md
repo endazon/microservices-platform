@@ -5,7 +5,7 @@ status: done
 related_ids: [NFR, ADR-0031, ADR-0032, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0129, IADR-0131, IADR-0134, IADR-0135, IADR-0146, IADR-0262, IADR-0271]
 author: claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-27
 plan_refs:
   - planning:projects/microservices-platform/06_technical/13_frontend-stack.md
   - planning:projects/microservices-platform/05_screens/01_screens.md
@@ -292,3 +292,16 @@ test:      3 files / 6 tests  （router.test.ts / Layout.test.tsx / initialChunk
 - 雛形（`templates/unit-template/frontend/src/features/sample/stores/`）への Zustand の反映は
   **本作業の編集範囲外**であり、残件として引き継ぐ。
 - SC-02 / SC-06 / SC-07 / SC-09 / SC-11 の表の TanStack Table 化は後続の追随作業とする。
+
+---
+
+## ［2026-08-27 追記 / #1018］受け入れ基準は実装・検証済みだが、チェックボックスが未更新のまま着地した
+
+**§受け入れ基準のチェックボックスは未チェックのままだが、受け入れ基準そのものは実装・検証を終えて
+着地している。** チェックの更新が漏れただけであり、**実態は 本文の §設計・§テスト方針・§検証の切り分け（この環境の制約） を正とする。**
+
+- **チェックボックス自体は書き換えない。** 凍結記録の本文プロズを後から書き換えない運用に従う
+  （`.claude/rules/traceability.repo.md` §凍結の射程。`.ai-context/specs/` に許されるのは
+  本ブロックのような `［YYYY-MM-DD 追記 / #NNN］` 書式の経過追記だけである）。
+  **後から埋めると、着手時の記録と事後の評価が同じ字面に混ざって区別できなくなる。**
+- **`status: done` は実態と一致しており、変更しない。**

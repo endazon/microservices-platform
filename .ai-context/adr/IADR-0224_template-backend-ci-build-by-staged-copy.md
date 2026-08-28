@@ -55,6 +55,11 @@ related_specs:
 - 共通 props は `.sample` 付きで配布される（配置時に `src/Directory.Build.props` /
   `.Packages.props` を継承させ、ユニット側に常設 props を置かないため。[IADR-0060](./IADR-0060_submodule-unit-operations.md) 決定 4）。
 
+> ［2026-08-28 追記 / #1021］雛形は単一プロジェクト標準
+> （[IADR-0282](./IADR-0282_single-project-vsa-structure.md)）へ書き換わり、上の例示は
+> `SampleService.csproj` の相対参照（`..\` × 4）に変わった。**複製ビルドの機構
+> （本 ADR の決定）は不変**で、CI ジョブも同一のまま新構成で緑を実測済みである。
+
 ## 検討した選択肢
 
 | 案 | 評価 |

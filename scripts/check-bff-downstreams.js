@@ -51,21 +51,30 @@ const CALLERS = [
   },
   {
     label: 'AiAnalysisService',
-    program: 'src/knowledge/backend/Services/AiAnalysisService/src/AiAnalysisService.Api/Program.cs',
+    program: 'src/knowledge/backend/Services/AiAnalysisService/Program.cs',
     compose: 'aianalysis-service',
     helm: 'aianalysis',
   },
   {
     label: 'GraphService',
-    program: 'src/knowledge/backend/Services/GraphService/src/GraphService.Api/Program.cs',
+    program: 'src/knowledge/backend/Services/GraphService/Program.cs',
     compose: 'graph-service',
     helm: 'graph',
   },
   {
     label: 'WikiService',
-    program: 'src/knowledge/backend/Services/WikiService/src/WikiService.Api/Program.cs',
+    program: 'src/knowledge/backend/Services/WikiService/Program.cs',
     compose: 'wiki-service',
     helm: 'wiki',
+  },
+  // #970: 二段検索の段（グラフ近傍展開）で RetrievalService → GraphService の
+  // service → service 呼び出し元になった。コード既定 :8080（後発サービスの規約）のため
+  // manifest の上書きは不要だが、CALLERS に無いとドリフトを誰も見ない（#958 と同じ死角）。
+  {
+    label: 'RetrievalService',
+    program: 'src/knowledge/backend/Services/RetrievalService/Program.cs',
+    compose: 'retrieval-service',
+    helm: 'retrieval',
   },
 ];
 const VALUES_PATH = 'deploy/helm/microservices-platform/values.yaml';

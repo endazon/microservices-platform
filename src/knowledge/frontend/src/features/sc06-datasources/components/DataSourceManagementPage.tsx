@@ -18,6 +18,7 @@ import { i18n } from '@foundation/i18n';
 import { PlatformRole, useHasAnyRole } from '@foundation/auth/roles';
 import { toMessages } from '@foundation/ui/apiErrors';
 import { DataSourceForm } from './DataSourceForm';
+import { DataSourceAttributesForm } from './DataSourceAttributesForm';
 import { formatDateTime, sourceTypeLabel, syncStateView } from '../types/syncState';
 import { useDataSourceActions, useDataSources } from '../api/useDataSources';
 // SC-06, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
@@ -32,17 +33,21 @@ import type { DataSourceDto } from '@foundation/api/generated/bff.schemas';
 //   - **「次回同期」列**: 契約（`nextSyncAt`）は #538 で揃ったが、**列の表示は未実装**である
 //     （全ソース同値の共通間隔。IADR-0136）。
 //   - **行操作「設定」**: **［2026-08-08 / #534］契約側の更新 API（PUT / PATCH）は揃った。**
-//     ただし**編集フォームの画面実装は本 issue の射程外**であり、まだボタンを置いていない
-//     （#534 は契約の追加に閉じる。IADR-0139 条件 F）。
+//     **［2026-08-28 追記 / #754］既定属性（`confidentiality` / `department` / `lifecycle`）の
+//     編集フォームを置いた**（計画 §SC-06「登録・**更新**フォームは既定属性 3 つを持つ」）。
+//     接続先・認証情報の編集は依然として未実装であり、#534 の射程のまま残る。
 //   もとの記録は feedback/20260805_sc05-07-admin-contract-gaps.md（planning#198 で裁定済み）。
 
 export function DataSourceManagementPage() {
   const { t } = useLingui();
   const [formOpen, setFormOpen] = useState(false);
+  // FR-05, UC-04, SC-06（#754）: 既定属性を編集中のソース ID（null なら閉じている）。
+  // **行ごとにフォームを持たず、画面に 1 つだけ開く** —— 登録フォームと同じ扱いである。
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const sources = useDataSources();
   const actions = useDataSourceActions();
-  const { create, sync, disable } = actions;
+  const { create, patch, sync, disable } = actions;
 
   // FR-01, UC-04, SC-06（#628）: 計画 §SC-06「**登録・更新・無効化は管理者限定**」（裁定 Q19）。
   // **手動同期は含まない** —— planning#299（2026-08-09）が「実行系だが破壊的ではない」として
@@ -52,6 +57,9 @@ export function DataSourceManagementPage() {
   const canWrite = useHasAnyRole(PlatformRole.Admin);
 
   const items = sources.data ?? [];
+  // 一覧から引く（ID だけを持つ）。一覧が再取得されれば編集フォームの初期値も最新に追随し、
+  // 削除・無効化で行が消えたときはフォームも自然に閉じる。
+  const editingSource = items.find((source) => source.id === editingId) ?? null;
   // IADR-0127 決定 7: 画面は**直近の操作の結果だけ**を出す。列挙は `useDataSourceActions()` の
   // 戻り値から導く——手書きの配列にすると、4 本目のミューテーションを足したときに同じ穴が空く。
   const mutations = Object.values(actions);
@@ -107,6 +115,26 @@ export function DataSourceManagementPage() {
                 onSuccess: () => {
                   setFormOpen(false);
                   setNotice(t`データソースを登録しました。`);
+                },
+              },
+            );
+          }}
+        />
+      )}
+
+      {editingSource && (
+        <DataSourceAttributesForm
+          source={editingSource}
+          submitting={patch.isPending}
+          onCancel={() => setEditingId(null)}
+          onSubmit={(input) => {
+            beginOperation();
+            patch.mutate(
+              { id: editingSource.id, data: input },
+              {
+                onSuccess: () => {
+                  setEditingId(null);
+                  setNotice(t`既定属性を更新しました。`);
                 },
               },
             );
@@ -172,6 +200,10 @@ export function DataSourceManagementPage() {
                   source={source}
                   canWrite={canWrite}
                   busy={sync.isPending || disable.isPending}
+                  onEditAttributes={() => {
+                    beginOperation();
+                    setEditingId(source.id);
+                  }}
                   onSync={() => {
                     beginOperation();
                     sync.mutate(
@@ -217,12 +249,14 @@ function SourceRow({
   source,
   canWrite,
   busy,
+  onEditAttributes,
   onSync,
   onDisable,
 }: {
   source: DataSourceDto;
   canWrite: boolean;
   busy: boolean;
+  onEditAttributes: () => void;
   onSync: () => void;
   onDisable: () => void;
 }) {
@@ -269,6 +303,15 @@ function SourceRow({
           <Button type="button" size="sm" disabled={busy} onClick={onSync}>
             <Trans>手動同期</Trans>
           </Button>
+          {/* FR-05, UC-04, SC-06（#754）: 既定属性の編集は**更新**にあたるため管理者限定である
+              （計画 §SC-06「登録・更新・無効化は管理者限定」）。**無効なソースでも開く** ——
+              無効化は論理削除であり、再有効化に備えた属性の整備は無効中にも起こる
+              （バックエンドの更新系が `disabled` を弾かないのと同じ理由）。 */}
+          {canWrite && (
+            <Button type="button" size="sm" disabled={busy} onClick={onEditAttributes}>
+              <Trans>既定属性</Trans>
+            </Button>
+          )}
           {/* 無効化は管理者限定（#628）。既に無効なソースへ再度無効化を送らない。
            **理由の文言は画面の先頭に 1 つだけ置く**——行ごとに繰り返すと一覧が読めなくなる。 */}
           {canWrite && source.status !== 'disabled' && (

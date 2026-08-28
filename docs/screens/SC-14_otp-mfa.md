@@ -3,14 +3,14 @@ title: ワンタイムコード（OTP／多要素認証） 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-08-15
-updated: 2026-08-23
+updated: 2026-08-28
 author: claude
 ---
 <!-- trace:
 ids: [SC-01, SC-13, SC-14, SC-15, SC-16, UC-05]
 adrs: [ADR-0026]
 iadrs: [IADR-0197, IADR-0261]
-specs: [20260823_issue-438_keycloak-theme-and-smtp]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-438_keycloak-theme-k8s-local]
 issues: [#438]
 -->
 
@@ -120,7 +120,7 @@ flowchart LR
 
 | 計画側の要素 | 実装 | 満たしていない条件 / 理由 | 計画側の該当箇所 |
 | --- | --- | --- | --- |
-| TOTP による MFA を必須とする | **する** | realm ポリシー（`otpPolicyType` / `CONFIGURE_TOTP` の `defaultAction`）＋テーマ（`loginTheme=platform`）が揃った。k8s ローカル環境は残件（§未決事項） | 計画側の画面設計 §ワンタイムコード（OTP） |
+| TOTP による MFA を必須とする | **する** | realm ポリシー（`otpPolicyType` / `CONFIGURE_TOTP` の `defaultAction`）＋テーマ（`loginTheme=platform`）が揃った。k8s ローカル環境も自動配線済み・実クラスタでの見た目確認のみ残件（§未決事項） | 計画側の画面設計 §ワンタイムコード（OTP） |
 | 6 桁・前後 1 ステップ許容 | **する** | — | 同上 |
 | 6 桁コード入力・デバイス選択・戻る導線 | **する** | Keycloak 既定テーマが 3 要素とも提供し、`platform` テーマでブランド適用済み | 同上 |
 | 初回セットアップ（QR・手動キー・デバイス名・確認コード） | **する** | `CONFIGURE_TOTP` を `defaultAction` にしたため既定テーマで誘導が働き、テーマでブランド適用済み | 同上 |
@@ -138,9 +138,10 @@ flowchart LR
 ## 未決事項
 
 - **★ `requiredActions` を書くと Keycloak の既定は一切登録されない。** 本作業の初版は 7 件しか列挙せず、**この provider を落としていた**（PR #746 の ADR 監査が検出）。現在は既定 13 件を全列挙し、`check-realm-constraints.js` が宣言漏れを検出する。
-- **k8s ローカル環境（`deploy/local/`）ではテーマがまだ自動配線されていない。** ConfigMap
-  （`keycloak-theme-platform`）の生成が `scripts/k8s-local-up.sh` に未組み込みのため、当面は
-  `deploy/local/README.md`「手動でステップ実行する場合」の手順を実行する必要がある（follow-up）。
+- **k8s ローカル環境（`deploy/local/`）のテーマは自動配線済みである（2026-08-28）。** ConfigMap
+  （`keycloak-theme-platform`）の生成は `scripts/k8s-local-up.sh` の `[3/7]` に組み込まれ、
+  `scripts/k8s-local-up.test.js` が生成コマンドと `deploy/local/infra/keycloak.yaml` の
+  `items` キーの一致を固定している。実クラスタでの見た目確認のみ環境待ちで残る。
 
 <!-- trace-table:
 row1: SC-13

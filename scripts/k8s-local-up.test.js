@@ -55,6 +55,7 @@ const OPTIN_TOKENS = [
   'external-secrets', //               ESO (helm install / ns, IADR-0096)
   'deploy/local/vault/eso/', //        ESO (bootstrap/externalsecret, IADR-0096。配下のみが apply される)
   'seed-abac-policies.js', //          ABACSEED (ABAC 初期投入, IADR-0133)
+  'seed-search-documents.js', //       SEARCHSEED (検索検証用文書の初期投入, IADR-0284)
   'cert-manager', //                   LOCALEDGE (エッジ TLS 終端, IADR-0206)
   'deploy/local/edge/tls', //          LOCALEDGE (TLS overlay, IADR-0206)
   'certificate/edge-tls', //           LOCALEDGE (証明書 Ready 待ち, IADR-0206)
@@ -168,6 +169,7 @@ function runUp(extraEnv) {
     'LOCALEDGE',
     'ESO',
     'ABACSEED',
+    'SEARCHSEED',
     'HEADLAMP_OIDC_ISSUER_URL',
     'HEADLAMP_OIDC_CLIENT_ID',
     'K3S_IMAGE', // #783: k3s イメージの pin。実行環境に漏れていると既定のバイト等価が崩れる
@@ -253,6 +255,7 @@ const GATES_ALL = {
   LOCALEDGE: '1',
   ESO: '1',
   ABACSEED: '1',
+  SEARCHSEED: '1',
   HEADLAMP: '1',
 };
 const { PERSIST: _p, ESO: _e, ...GATES_NO_REPLACEMENT } = GATES_ALL;
@@ -314,6 +317,60 @@ ok('既定: llm-provider-credentials が手動 apply される（ESO 未設定�
     anyLineHas(DEFAULT.lines, 'create secret generic llm-provider-credentials'),
     'llm-provider-credentials の手動 apply_secret が無い',
   );
+});
+
+// --- keycloak-theme-platform ConfigMap の自動配線（IADR-0261 / #438 残作業） -----
+// 従来は deploy/local/README.md「手動でステップ実行する場合」の手動コマンドが必須だった
+// （keycloak-theme-platform ConfigMap が無いと deploy/local/infra/keycloak.yaml の optional 参照が
+// 解決できず、loginTheme/accountTheme=platform を Keycloak が見つけられない＝ログイン画面が 500）。
+// [3/7] の realm ConfigMap（keycloak-realms）と同じ --from-file + --dry-run=client|apply の
+// 冪等パターンで、opt-in ではなく既定実行として自動生成する。
+
+ok('既定: keycloak-theme-platform ConfigMap が [3/7] で自動生成される（キー名が keycloak.yaml の items と対応）', () => {
+  const line = DEFAULT.lines.find((l) => l.startsWith('kubectl create configmap keycloak-theme-platform '));
+  assert.ok(line, 'keycloak-theme-platform の configmap create が発行されない');
+  for (const kv of [
+    'login-theme-properties=deploy/keycloak/themes/platform/login/theme.properties',
+    'login-css=deploy/keycloak/themes/platform/login/resources/css/platform.css',
+    'account-theme-properties=deploy/keycloak/themes/platform/account/theme.properties',
+    'account-css=deploy/keycloak/themes/platform/account/resources/css/platform.css',
+  ]) {
+    assert.ok(line.includes(`--from-file=${kv}`), `--from-file=${kv} が無い: ${line}`);
+  }
+});
+
+ok('既定: keycloak-theme-platform は realm ConfigMap と同型の dry-run|apply 冪等パターンで適用される', () => {
+  const createIdx = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create configmap keycloak-theme-platform '));
+  assert.ok(createIdx >= 0, 'keycloak-theme-platform の create 行が見つからない');
+  assert.ok(DEFAULT.lines[createIdx].includes('--dry-run=client -o yaml'), 'dry-run=client -o yaml が無い');
+  // パイプ `create … | apply -f -` は両側の stub が並行に起動するため、採取順は
+  // create→apply / apply→create のどちらにもなり得る（CI で反転を実測。#438）。
+  // 「対で採取されている」ことだけを固定し、順序に依存しない。
+  const neighbors = [DEFAULT.lines[createIdx + 1], DEFAULT.lines[createIdx - 1]];
+  assert.ok(
+    neighbors.includes('kubectl apply -f -'),
+    `create の前後いずれにも apply -f - が無い（パイプ先が採取されていない）: 次=${DEFAULT.lines[createIdx + 1]} / 前=${DEFAULT.lines[createIdx - 1]}`,
+  );
+});
+
+ok('既定: keycloak-theme-platform ConfigMap は keycloak-realms の直後・infra kustomize 適用より前に作られる', () => {
+  const realmIdx = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create configmap keycloak-realms '));
+  const themeIdx = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create configmap keycloak-theme-platform '));
+  const infraApplyIdx = DEFAULT.lines.findIndex((l) => l === 'kubectl apply -k deploy/local/infra');
+  assert.ok(realmIdx >= 0 && themeIdx >= 0 && infraApplyIdx >= 0, '3 行のいずれかが見つからない');
+  assert.ok(realmIdx < themeIdx, 'keycloak-realms より前に keycloak-theme-platform が作られている');
+  assert.ok(
+    themeIdx < infraApplyIdx,
+    'ConfigMap 作成が Deployment 適用（apply -k）より後になっている（初回起動でテーマが解決されない）',
+  );
+});
+
+ok('deploy/local/infra/keycloak.yaml: theme ConfigMap の items キーが k8s-local-up.sh の生成キーと一致する', () => {
+  const infraKc = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra/keycloak.yaml'), 'utf8');
+  for (const key of ['login-theme-properties', 'login-css', 'account-theme-properties', 'account-css']) {
+    assert.ok(infraKc.includes(`key: ${key}`), `keycloak.yaml の items に key: ${key} が無い`);
+  }
+  assert.ok(infraKc.includes('name: keycloak-theme-platform'), 'keycloak.yaml が参照する ConfigMap 名が keycloak-theme-platform でない');
 });
 
 // --- apiserver OIDC フラグ不付与の回帰固定（IADR-0105 / #399） -----------------
@@ -523,6 +580,32 @@ ok('ABACSEED=1: seed-abac-policies.js を実行する', () => {
   assert.ok(!anyLineHas(res.lines, 'deploy/local/abac-seed'), 'シードを kubectl apply してはいけない');
 });
 
+// SEARCHSEED=1: 検索検証用の**本文つき**文書を投入する（IADR-0284 / #992）。
+// 本文が無いと MarkdownUri が立たず、IngestionService の早期 return で索引に一度も入らない
+// ——「検索が壊れている」と「該当が無い」が CI で区別できないまま残る。
+ok('SEARCHSEED=1: seed-search-documents.js を実行する', () => {
+  const res = runUp({ SEARCHSEED: '1' });
+  assert.strictEqual(res.status, 0, 'SEARCHSEED=1 で異常終了した');
+  assert.ok(anyLineHas(res.lines, 'seed-search-documents.js'), '投入スクリプトが実行されない');
+  // ABAC 投入と同じく、シードは chart/manifest ではなく稼働サービスへ入れる。
+  assert.ok(!anyLineHas(res.lines, 'deploy/local/search-seed'), 'シードを kubectl apply してはいけない');
+});
+
+ok('SEARCHSEED=1: ABAC 投入とは独立に効く（片方だけ立てても他方は走らない）', () => {
+  // 🔴 2 つの opt-in を 1 つのフラグへ畳まないことを固定する。畳むと「ABAC は要るが文書は要らない」
+  //    使い方ができなくなり、文書を作る副作用が ABACSEED へ紛れ込む。
+  assert.ok(!anyLineHas(runUp({ ABACSEED: '1' }).lines, 'seed-search-documents.js'),
+    'ABACSEED=1 だけで文書 seed が走っている（副作用が紛れ込んでいる）');
+  assert.ok(!anyLineHas(runUp({ SEARCHSEED: '1' }).lines, 'seed-abac-policies.js'),
+    'SEARCHSEED=1 だけで ABAC 投入が走っている');
+});
+
+ok('SEARCHSEED=1: 投入が失敗しても up 全体は止めない（best-effort）', () => {
+  const src = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-up.sh'), 'utf8');
+  const block = src.slice(src.indexOf('SEARCHSEED'));
+  assert.ok(/\|\|\s*echo\s+"?\s*WARN/.test(block), 'SEARCHSEED の投入失敗が best-effort になっていない');
+});
+
 ok('ABACSEED=1: 投入が失敗しても up 全体は止めない（best-effort）', () => {
   // node スタブを非0 に差し替える代わりに、存在しないシードディレクトリを指して実失敗させる…のではなく、
   // ここでは「|| で握る」構造そのものを固定する（スタブは常に exit 0 のため、構造を静的に確認する）。
@@ -635,6 +718,39 @@ ok('既定 (PR-2): minio-credentials/wikijs-db/wikijs-sync を手動 apply す�
   for (const name of ['minio-credentials', 'wikijs-db', 'wikijs-sync']) {
     assert.ok(anyLineHas(DEFAULT.lines, `create secret generic ${name}`), `${name} の手動 apply が無い`);
   }
+});
+
+// NFR, ADR-0002 (#1012): postgres-app（サービス DB のパスワード）も PR-2 の 3 兄弟と同じ扱いにする。
+//
+// 🔴 **この 2 本が守るのは「手動 apply を止めたなら、代わりの供給元を必ず置く」という対である。**
+// #1012 は appsettings.json から接続文字列を撤去し、helm の deployment.yaml が postgres-app を
+// **非 optional** で参照するようにした。そのうえで手動 apply を `ESO != 1` ブロックへ入れたため、
+// **対応する ExternalSecret を置き忘れると ESO=1 で供給元が 1 つも無くなり**、DB を持つ 8 サービス
+// （document / datasource / conversion / authorization / wiki / dashboard / graph / feedback）が
+// `CreateContainerConfigError` で起動しなくなる。実際にその状態で一度コミットされ、レビューが検出した。
+//
+// **この「手動 apply とExternalSecret の対応」を横断で見る機械検査は無い**（secret ごとの本テストだけが見る）。
+// 同型がもう一度起きたら、`ESO != 1` ブロック内の apply_secret を走査して
+// `externalsecret-<name>.yaml` の実在と apply を突合する検査へ一般化すること
+// （CLAUDE.md「検査器の追加は同型の事故が 2 回起きたら」。1 回目の記録がこのコメントである）。
+ok('ESO=1 (#1012): postgres-app の ExternalSecret を apply・手動 apply はスキップ', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  assert.ok(
+    anyLineHas(res.lines, 'deploy/local/vault/eso/externalsecret-postgres-app.yaml'),
+    'externalsecret-postgres-app.yaml が apply されない（ESO=1 で postgres-app の供給元が無くなる）',
+  );
+  assert.ok(
+    !anyLineHas(res.lines, 'create secret generic postgres-app'),
+    'ESO=1 なのに postgres-app を手動 apply している（二重所有）',
+  );
+});
+
+// 回帰: 既定（ESO 未設定）は postgres-app を手動 apply する。
+ok('既定 (#1012): postgres-app を手動 apply する（ESO 未設定）', () => {
+  assert.ok(
+    anyLineHas(DEFAULT.lines, 'create secret generic postgres-app'),
+    'postgres-app の手動 apply が無い（ESO 未設定では唯一の供給元）',
+  );
 });
 
 // IADR-0098 (#310) PR-3: ESO=1 で OIDC client secret 群（minio/grafana/vault/headlamp-oidc）も ExternalSecret 供給し、

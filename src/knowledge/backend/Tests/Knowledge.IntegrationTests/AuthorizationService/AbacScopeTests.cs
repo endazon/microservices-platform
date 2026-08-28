@@ -20,7 +20,7 @@ public sealed class AbacScopeTests(PostgresFixture postgres)
         _factory = new AuthorizationServiceFactory(postgres);
         _client = _factory.CreateClient();
         await using var scope = _factory.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<global::AuthorizationService.Api.Foundation.Persistence.AuthorizationDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<global::AuthorizationService.Infrastructure.Persistence.AuthorizationDbContext>();
         await db.Database.EnsureCreatedAsync();
     }
 

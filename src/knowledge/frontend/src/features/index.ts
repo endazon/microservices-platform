@@ -12,6 +12,8 @@ import { createSc09AdminAbacRoute, sc09AdminAbacNav } from './sc09-admin-abac';
 import { createSc10OperationsRoute, sc10OperationsNav } from './sc10-operations';
 import { createSc11ConfigRoute, sc11ConfigNav } from './sc11-config';
 import { createSc18GraphRoute, sc18GraphNav } from './sc18-graph';
+import { createSc19PrivateNotesRoute, sc19PrivateNotesNav } from './sc19-private-notes';
+import { createSc20ObsidianSettingsRoute, sc20ObsidianSettingsNav } from './sc20-obsidian-settings';
 import { createSc21AiSuggestionsRoute, sc21AiSuggestionsNav } from './sc21-ai-suggestions';
 
 // ADR-0031 / IADR-0124 決定 1: 本ユニットの画面を 1 本のタプルにして公開する。
@@ -34,6 +36,8 @@ export const createKnowledgeRoutes = (shell: ShellRoute) =>
     createSc10OperationsRoute(shell), // SC-10 運用ダッシュボード（#136 → 新スタックで再実装 #504）
     createSc11ConfigRoute(shell), // SC-11 構成ビューア（#137/#138/#140 → 新スタックで再実装 #504）
     createSc18GraphRoute(shell), // SC-18 ナレッジグラフビュー（#917）
+    createSc19PrivateNotesRoute(shell), // SC-19 個人資料管理（#451。本文編集は持たない）
+    createSc20ObsidianSettingsRoute(shell), // SC-20 Obsidian 連携設定（#451）
     createSc21AiSuggestionsRoute(shell), // SC-21 AI 提案一覧（#918。承認は SC-03 経由）
   ] as const;
 
@@ -49,6 +53,10 @@ export const knowledgeNavItems: readonly PlanNavItem[] = [
   sc08AnalysisNav,
   sc18GraphNav,
   sc21AiSuggestionsNav,
+  // 05_screens §共通シェル: 「個人」グループ（本人の資料だけを扱い、組織の文書を扱う
+  // 「利用者」グループとは対象範囲が異なる）。この 2 件が同グループの最初の住人である。
+  sc19PrivateNotesNav,
+  sc20ObsidianSettingsNav,
   sc05DocumentsNav,
   sc06DataSourcesNav,
   sc07ConversionsNav,

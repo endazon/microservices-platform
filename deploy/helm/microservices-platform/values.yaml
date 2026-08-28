@@ -21,6 +21,17 @@ global:
     # されるため、in-cluster issuer（手順A token）と併存する。
     metadataAddress: ""
     validIssuers: ""
+  # NFR, ADR-0002, #1012: サービス DB（DB per Service）の接続。**資格情報をイメージへ焼かない。**
+  # 各サービスの `appsettings.json` は接続文字列を持たず（#1012 で撤去）、未注入なら起動時に落ちる。
+  # パスワードは Secret（existingSecret）から `$(DB_PASSWORD)` で補間する（値を chart に書かない）。
+  db:
+    host: postgres
+    port: 5432
+    user: kp
+    # DB パスワードを保持する Secret（key=password）。scripts/k8s-local-up.sh が dev 既定で作成する。
+    existingSecret: postgres-app
+    passwordKey: password
+
   # FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: S3 互換オブジェクトストレージ（MinIO）接続。
   # 資格情報は Secret（existingSecret）経由で注入する（コミットしない。docs/security）。
   objectStorage:
@@ -159,18 +170,31 @@ scaling:
 
 services:
   document:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    database: document_svc
     enabled: true
     replicas: 1
     image: microservices-platform/document-service
     tag: latest
     # FR-14, IADR-0028: パイプライン段（catalog 段）をホストする — pipeline-config をマウントする。
     pipelineSteps: true
+    # FR-21, ADR-0014/ADR-0015, IADR-0264, IADR-0284 決定 5 (#992): 本文の直接受け入れ経路が
+    # 正規化 Markdown を格納する先（MinIO）。**これが無いと本文が永続化されない** ——
+    # `AddPlatformObjectStorage` は未設定時に `NullObjectStorageClient` へ縮退し、
+    # 決定的な `storage://` URI を返すだけで実体を書かない。`MarkdownUri` は立つので
+    # 取り込みの早期 return は通過するが、IngestionService が本文を読めない
+    # （`GetTextAsync` が不在オブジェクトで失敗する）。**「入口は通ったのに索引されない」**という
+    # 最も分かりにくい壊れ方になるため、実装（Program.cs）に合わせてここで配線する。
+    # バケットの作成は ConversionService の bootstrap が担う（同じバケットを 2 か所から作らない）。
+    objectStorage: true
     port: 8080
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
 
   datasource:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    database: datasource_svc
     enabled: true
     replicas: 1
     image: microservices-platform/datasource-service
@@ -192,6 +216,8 @@ services:
       limits: { cpu: 500m, memory: 512Mi }
 
   conversion:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    database: conversion_svc
     enabled: true
     replicas: 1
     image: microservices-platform/conversion-service
@@ -246,6 +272,9 @@ services:
     replicas: 1
     image: microservices-platform/retrieval-service
     tag: latest
+    # FR-14, IADR-0028 / #1016: パイプライン段（retrieval-delete 段）をホストする — pipeline-config をマウントする。
+    # RabbitMQ 接続はコード既定（amqp://guest:guest@rabbitmq:5672）が in-cluster DNS で解決される。
+    pipelineSteps: true
     port: 8080
     # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先。
     # 🔴 **k8s の Service 名は `llmgateway-service` である**（chart のキー `llmgateway` ＋ `-service`）。
@@ -280,6 +309,8 @@ services:
       limits: { cpu: 1000m, memory: 1Gi }
 
   authorization:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    database: authz_svc
     enabled: true
     replicas: 1
     image: microservices-platform/authorization-service
@@ -292,6 +323,8 @@ services:
   # FR-13, UC-07, ADR-0011, IADR-0020: WikiService は「同期・統合・ABAC ゲートウェイ」責務。
   # 閲覧・編集の実体は Wiki.js（下記 wikijs ブロック）へ委譲。ABAC は本サービスが前段で強制する。
   wiki:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    database: wiki_svc
     enabled: true
     replicas: 1
     image: microservices-platform/wiki-service
@@ -342,6 +375,8 @@ services:
 
   # FR-10, UC-05, IADR-0011: 利用状況・検索傾向・回答品質ダッシュボード集計サービス
   dashboard:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    database: dashboard_svc
     enabled: true
     replicas: 1
     image: microservices-platform/dashboard-service
@@ -355,11 +390,19 @@ services:
   # 🔴 chart のキーは `graph` である（Service 名は deployment.yaml が {{ $name }}-service を組むため
   # graph-service になり、BFF の Services__GraphService（http://graph-service:8080）と一致する）。
   graph:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    database: graph_svc
     enabled: true
     replicas: 1
     image: microservices-platform/graph-service
     tag: latest
+    # FR-14, IADR-0028 / #1016: パイプライン段（graph-delete 段）をホストする — pipeline-config をマウントする。
+    # RabbitMQ 接続はコード既定（amqp://guest:guest@rabbitmq:5672）が in-cluster DNS で解決される。
+    pipelineSteps: true
     port: 8080
+    # FR-17, ADR-0033 決定 8 / #912: リンク抽出のため storage:// 本文を MinIO から実取得する
+    # （読み取り側。バケット作成は書き込み側の ConversionService が担う）。
+    objectStorage: true
     # FR-17, FR-05, IADR-0089 (#342) / #958: ABAC スコープ解決先。appsettings 既定は :5005（ローカル用）で、
     # ここで上書きしないと不達 → GraphAccessResolver が Granted=false へ縮退し、**グラフが常に空になる**。
     # 状態コードにも出ないため live で気付けない（#958 に同型 2 件の記録）。
@@ -372,6 +415,8 @@ services:
 
   # FR-08: 回答へのフィードバック（👍/👎・コメント）収集サービス
   feedback:
+    # NFR, #1012: サービス DB 名。設定した分だけ ConnectionStrings__DefaultConnection が描画される。
+    database: feedback_svc
     enabled: true
     replicas: 1
     image: microservices-platform/feedback-service
@@ -469,6 +514,9 @@ services:
         value: "http://datasource-service:8080"
       - name: Introspection__Services__feedback-service
         value: "http://feedback-service:8080"
+      # FR-15/FR-17: グラフ同期・削除伝播の段を担う graph-service を収集先へ追加（宣言実効性テストが検出）。
+      - name: Introspection__Services__graph-service
+        value: "http://graph-service:8080"
       - name: Introspection__Services__llm-gateway
         value: "http://llmgateway-service:8080"
       # FR-04/FR-08/FR-10, UC-01: BFF の下流集約先（Refit クライアント・readiness の UriHealthCheck）。
