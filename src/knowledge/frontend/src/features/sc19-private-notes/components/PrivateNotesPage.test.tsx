@@ -390,7 +390,8 @@ describe('SC-19 個人資料管理: 削除済みタブ', () => {
     expect(
       within(dialog).getByText(/この操作は元に戻せません。削除後はいかなる方法でも復元できません/),
     ).toBeInTheDocument();
-    // ADR-0057 決定 4 の暫定手段（実体削除が未配備であることを伏せない）。
+    // ADR-0057 決定 4 の但し書き。IADR-0296 で本文の実体削除は配備されたが、
+    // 索引・グラフへの伝播は非同期のままなので文言は据え置く（根拠だけが変わった）。
     expect(
       within(dialog).getByText(/削除の反映には時間がかかる場合があります/),
     ).toBeInTheDocument();

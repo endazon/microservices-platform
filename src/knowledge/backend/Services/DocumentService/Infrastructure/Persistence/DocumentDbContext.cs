@@ -44,6 +44,14 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
                 .HasConversion(ListConverter())
                 .HasColumnType("jsonb")
                 .Metadata.SetValueComparer(ListComparer());
+            // FR-12, ADR-0057 決定 1, [[IADR-0296]]: 図表資産の参照 URI。**`Tags` と同じ jsonb の作法**で
+            // 持つ（列を増やさず、要素数が可変の参照集合を 1 列で扱う既存の型に揃える）。
+            // 🔴 **`List<string>` 用の変換器を使うこと。** `HasConversion` は非ジェネリック多重定義を
+            // 持ち、`List<Guid>` 用（`ListConverter`）を渡してもコンパイルが通る（本ファイル §Tags の実測）。
+            e.Property(d => d.AssetUris)
+                .HasConversion(StringListConverter())
+                .HasColumnType("jsonb")
+                .Metadata.SetValueComparer(StringListComparer());
 
             // FR-06: 版履歴は集約配下の append-only コレクション。文書削除時に連動削除する。
             e.HasMany(d => d.Versions)
@@ -151,6 +159,17 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
     private static ValueConverter<List<Guid>, string> ListConverter() => new(
         v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
         v => System.Text.Json.JsonSerializer.Deserialize<List<Guid>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new());
+
+    // FR-12, ADR-0057 決定 1, [[IADR-0296]]: 資産 URI（`List<string>`）用。**タグ（`List<Guid>`）と
+    // 別に持つ** —— 型を合わせること自体が守りである（上の §Tags の注記と同じ理由）。
+    private static ValueConverter<List<string>, string> StringListConverter() => new(
+        v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+        v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new());
+
+    private static ValueComparer<List<string>> StringListComparer() => new(
+        (a, b) => a!.SequenceEqual(b!),
+        v => v.Aggregate(0, (h, e) => HashCode.Combine(h, e.GetHashCode())),
+        v => v.ToList());
 
     private static ValueComparer<List<Guid>> ListComparer() => new(
         (a, b) => a!.SequenceEqual(b!),

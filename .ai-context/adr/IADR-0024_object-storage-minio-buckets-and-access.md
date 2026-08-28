@@ -9,7 +9,7 @@ related_ids:
   - UC-06
 author: claude
 created: 2026-07-07
-updated: 2026-07-07
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0015_object-storage-minio.md
   - planning:projects/microservices-platform/07_adr/ADR-0014_object-storage.md
@@ -69,6 +69,10 @@ ADR-0015（計画リポ） が
   に置き、書き込み側（ConversionService）と読み取り側（IngestionService/WikiService）で共有する。
   - `IObjectStorageClient`：`PutTextAsync` / `PutBytesAsync` / `GetTextAsync` / `GetBytesAsync` /
     `CanResolve` / `CreatePresignedGetUrl`。
+    <!-- ［2026-08-28 追記 / #451］本列挙は当時のものである。計画 `ADR-0057` 決定 1 を受けて
+    `DeleteAsync`（**全バージョン削除**）が加わった —— バージョニングが既定 ON のため、
+    versionId を伴わない削除は delete marker を積むだけで過去版が残るからである。
+    **本文は書き換えない。ポート面の現行の正は IADR-0296 である。** -->
   - `S3ObjectStorageClient`：`AWSSDK.S3` 実装。起動時に `EnsureBucketAsync`（バケット作成＋バージョニング有効化）。
   - `NullObjectStorageClient`：`ObjectStorage:Endpoint` 未設定の dev/test 向け縮退。保存は決定的 URI を返し、
     `CanResolve=false` で読み取り側をプレースホルダーへ縮退させる（従来挙動を保持）。

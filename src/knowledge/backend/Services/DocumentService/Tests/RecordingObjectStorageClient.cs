@@ -32,6 +32,32 @@ public sealed class RecordingObjectStorageClient : IObjectStorageClient
         CancellationToken ct = default) =>
         Task.FromResult(StorageUri.Build(Bucket, key));
 
+    // FR-06, FR-19, ADR-0057 決定 1, IADR-0296: **何が消されたかを記録する。**
+    // 削除の伝播は「呼ばれたか」ではなく「台帳から逆引きした URI が全部揃っているか」で見るため、
+    // 呼び出し回数ではなく **URI の集合**を残す（重複呼び出しも観測できるようリストで持つ）。
+    public List<string> Deleted { get; } = [];
+
+    // 失敗注入。**fail-closed（オブジェクトが消せないなら DB 行を消さない）を測るための唯一の口**である。
+    // 実クライアントの障害を器で再現する手段が他に無い（Docker 非依存で試験するため）。
+    public Func<string, bool>? FailDeleteWhen { get; set; }
+
+    public Task DeleteAsync(string uri, CancellationToken ct = default)
+    {
+        if (FailDeleteWhen?.Invoke(uri) == true)
+            throw new InvalidOperationException($"注入した削除失敗: {uri}");
+
+        lock (Deleted) Deleted.Add(uri);
+        Texts.TryRemove(uri, out _);
+        return Task.CompletedTask;
+    }
+
+    // 記録の掃除（テスト間で器を共有する IClassFixture のため）。
+    public void ResetDeletions()
+    {
+        lock (Deleted) Deleted.Clear();
+        FailDeleteWhen = null;
+    }
+
     public Task<string> GetTextAsync(string uri, CancellationToken ct = default) =>
         Task.FromResult(Texts.TryGetValue(uri, out var text)
             ? text

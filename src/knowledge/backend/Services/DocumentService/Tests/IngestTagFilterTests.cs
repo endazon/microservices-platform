@@ -164,6 +164,8 @@ public sealed class IngestTagFilterTests
             => Task.FromResult($"storage://test/{key}");
         public Task<string> PutBytesAsync(string key, byte[] bytes, string contentType, CancellationToken ct = default)
             => Task.FromResult($"storage://test/{key}");
+        // IADR-0296: ポートに削除が加わったため追随する（本テストは絞り込みのみを見る）。
+        public Task DeleteAsync(string uri, CancellationToken ct = default) => Task.CompletedTask;
         public bool CanResolve(string? uri) => false;
         public Task<string> GetTextAsync(string uri, CancellationToken ct = default)
             => throw new NotSupportedException();

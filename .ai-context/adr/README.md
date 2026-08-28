@@ -369,3 +369,4 @@
 | [IADR-0293](./IADR-0293_integration-config-timing-checker.md) | **ビルダ構築時に読まれる構成キーの検査は「未注入だと壊れる読み方」に限り、器ごとに突き合わせる**。全器の `UseSetting` を 1 つの集合にすると変異が 3 件とも生存した。#1040 | Accepted |
 | [IADR-0294](./IADR-0294_mfa-enforcement-and-audit-events.md) | **MFA は「必須アクション＋直接付与の閉鎖」で実効化し、認証フローは宣言しない**。`defaultAction` は import 利用者へ遡及せず既定 OTP は Conditional なので、未登録者はパスワードだけで通っていた。全 client の直接付与も閉じ（唯一の迂回口）、dev 投入器は人の資格情報を捨ててサービスアカウントへ移す。監査イベントも有効化。#438 | Accepted |
 | [IADR-0295](./IADR-0295_connector-credential-exposure-paths.md) | **コネクタ資格情報は「保存を暗号化する」のではなく「出る経路を塞ぐ」**。応答・ログの 4 経路を封鎖し、秘密キーのマーカーを 1 本へ統合する（`apiKey` が素通しだった）。`ConnectionUri` は伏せ、書き込みでは弾く。#458 | Accepted |
+| [IADR-0296](./IADR-0296_deletion-propagation-to-object-storage.md) | **削除はオブジェクトストレージの実体まで及ぶ**。バージョニング既定 ON のため素の DeleteObject は delete marker を積むだけ —— 版を列挙して全版消す。台帳（本文 URI ＋全版スナップショット＋新設の資産 URI）から逆引きし、**オブジェクトを先に、DB 行を後に**消す（逆だと実体だけが不可視に残る）。既存文書の資産は遡及付与しない。#451 | Accepted |

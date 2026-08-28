@@ -8,9 +8,9 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-09, FR-12, SC-05, SC-09, UC-04]
-adrs: [ADR-0002, ADR-0014]
-iadrs: [IADR-0001, IADR-0152, IADR-0153, IADR-0290]
-specs: [20260828_issue-1011_version-body-contract]
+adrs: [ADR-0002, ADR-0014, ADR-0057]
+iadrs: [IADR-0001, IADR-0152, IADR-0153, IADR-0290, IADR-0296]
+specs: [20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage]
 issues: [#634, #635, #637, #1011, planning#473]
 -->
 
@@ -55,6 +55,7 @@ DocumentVersion は Document 集約配下の**確定版スナップショット*
 | Version | int (integer) | ○ | 既定 1。更新（`Touch()`）ごとに +1 | 現在の版番号 |
 | Attributes | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可（空 JSON を保存） | ABAC 属性（例: `confidentiality`, `department`） |
 | Tags | List&lt;Guid&gt; (jsonb) | ○ | 既定 空リスト。NULL 不可。要素は `Tags.Id` を指す（**FK は張らない**。後述） | 分類タグの**識別子**（#635。表示名を複写しない） |
+| AssetUris | List&lt;string&gt; (jsonb) | ○ | 既定 空リスト。NULL 不可（空 JSON `[]` を保存） | 図表資産の参照 URI。**変換経路が生んだ資産の在り処であり、完全削除で実体を消すための台帳**である。🔴 **遡及付与しない**——本欄の追加以前に取り込まれた文書は空のままで、その資産は実体が残る |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 作成時刻 |
 | UpdatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow`。更新ごとに更新 | 最終更新時刻 |
 
@@ -99,6 +100,7 @@ erDiagram
         int Version
         jsonb Attributes
         jsonb Tags
+        jsonb AssetUris
         timestamptz CreatedAt
         timestamptz UpdatedAt
     }
@@ -150,10 +152,16 @@ jsonb 配列の要素に FK は張れない（PostgreSQL の制約が要素単�
 - **版番号の一意性**: `(DocumentId, Version)` 一意制約により、集約内で版番号が単調増加・重複なしを DB でも担保。
 - **正規化の冪等性**: 同一文書の `DocumentNormalized` 再配信時は `ApplyNormalized()` で内容を反映し、`re-normalized` の版を追記。
 - **状態遷移**: `draft` →（正規化）→ `normalized` →（`Publish`）→ `published`。
-- **NULL 非許容の JSON**: `Attributes` / `Tags` はカラム上 NOT NULL。未設定時は空 JSON（`{}` / `[]`）を保存。
+- **NULL 非許容の JSON**: `Attributes` / `Tags` / `AssetUris` はカラム上 NOT NULL。未設定時は空 JSON（`{}` / `[]`）を保存。
 - **［#635］タグは辞書に在る識別子しか入らない**: 画面・API からの入力は表示名で受け、`TagResolver.ToIdsAsync` が辞書を引いて識別子へ解決する。
   **辞書に無い名前は 400 で拒否する**（文書管理画面「既定タグ辞書に整合」。**黙って落とさない**——落とすと「保存できたのにタグが付いていない」という説明のつかない結果になる）。
   **取り込み経路はタグを生成しない**（同実装判断・#637）。
+
+- **完全削除は実体まで及ぶ**: 文書行を消す**前に**、台帳（`Document.MarkdownUri` ＋ 全
+  `DocumentVersion.MarkdownUri` ＋ `Document.AssetUris`）から逆引きしたオブジェクトを
+  **全バージョン**削除する。🔴 **順序は入れ替えない**——台帳を先に消すと実体を指す値が失われ、
+  残留を誰も観測できなくなる。実体を消せなければ行は残る（利用者には失敗が返る）。
+  **`OriginalUri` は対象外**である（API 要求からしか入らず、実体が別サービス所有の原本であり得る）。
 
 ## 永続化方針
 

@@ -23,6 +23,17 @@ public class Document
     // （計画確定「辺は型の識別子を参照して保持し、表示名を複写しない」。[[IADR-0153]] 決定 1）。
     // 複写すると**改名時に古い名前のまま取り残される**。表示名への解決は `DocumentEndpoints` が行う。
     public List<Guid> Tags { get; private set; } = [];
+    // FR-06, FR-12, FR-19, ADR-0057 決定 1, IADR-0296: **図表資産の参照 URI**（`storage://…`）。
+    //
+    // 変換経路（`DocumentNormalized.AssetUris`）が運ぶ資産を台帳へ写す。**従前は運ばれてはいたが
+    // 捨てられており**（`DocumentNormalizedConsumer` が渡していなかった）、資産は台帳から辿れず
+    // **削除が届かなかった**。ADR-0057 の受け入れ基準①（本文・資産が残っていない）は、
+    // 資産の在り処を台帳が知っていないと構造的に満たせない。
+    //
+    // 🔴 **既存文書には入らない（遡及付与しない）。** 本欄の追加以前に取り込まれた文書の資産は
+    // 台帳から辿れないままである（`doc_scope` を遡及付与しない ADR-0054 §結果と同型の受容）。
+    // **「全部消える」と読まないこと。**
+    public List<string> AssetUris { get; private set; } = [];
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; private set; } = DateTimeOffset.UtcNow;
 
@@ -51,7 +62,7 @@ public class Document
     // パイプライン全体で ID を一貫させるため、変換側が採番した DocumentId を指定する（IADR-0001）。
     public static Document CreateNormalized(Guid id, string title, string markdownUri,
         Dictionary<string, string>? attributes = null, List<Guid>? tags = null,
-        string? contentFingerprint = null)
+        string? contentFingerprint = null, List<string>? assetUris = null)
     {
         var doc = new Document
         {
@@ -62,6 +73,7 @@ public class Document
             Attributes = attributes ?? [],
             Tags = tags ?? [],
             ContentFingerprint = contentFingerprint,
+            AssetUris = assetUris ?? [],
         };
         doc.Snapshot("normalized");
         return doc;
@@ -131,13 +143,20 @@ public class Document
     //
     // **画面からの更新（`Update` / `UpdateMetadata`）は従来どおりタグを更新する。**
     // そちらは利用者が意図した更新であり、止めるとタグを外せなくなる。
+    //
+    // **［IADR-0296］資産 URI は属性と同じ扱いで上書きする** —— 資産を生むのは変換経路だけであり、
+    // 再正規化の結果が正本である。**辞書ごと差し替える**（`SetAiInputExposure` と同じ理由）。
+    // 🔴 上書きで参照から落ちた旧資産は**台帳から消えて実体が残る**（IADR-0296 フォローアップ 1）。
+    // ADR-0057 は削除操作の伝播範囲の裁定であり、再変換時の孤児掃除はその射程に無い。
     public void ApplyNormalized(string title, string markdownUri,
-        Dictionary<string, string> attributes, string? contentFingerprint = null)
+        Dictionary<string, string> attributes, string? contentFingerprint = null,
+        List<string>? assetUris = null)
     {
         Title = title;
         MarkdownUri = markdownUri;
         Status = DocumentStatus.Normalized;
         Attributes = attributes;
+        if (assetUris is not null) AssetUris = assetUris;
         // ADR-0050 (#911): 再正規化は本文の変更であり、指紋を進める。null は「指紋化できなかった」
         // （ストレージ縮退等）で、下流は「不明」として扱う（解除判定を発火させない側に倒す）。
         ContentFingerprint = contentFingerprint;

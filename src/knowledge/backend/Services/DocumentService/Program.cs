@@ -84,6 +84,9 @@ builder.Services.AddHttpClient(
     });
 builder.Services.AddScoped<DocumentService.Domain.Ports.IPrivateNoteNotifier,
     DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier>();
+// FR-06, FR-19, ADR-0057 決定 1, IADR-0296: 削除の伝播先①（オブジェクトストレージの本文・資産）。
+// 台帳から逆引きして消すため DbContext と同じ scoped にする。
+builder.Services.AddScoped<DocumentService.Features.Documents.DocumentObjectPurger>();
 builder.Services.AddScoped<DocumentService.Features.PrivateNotes.PrivateNoteMaintenanceService>();
 builder.Services.AddHostedService<
     DocumentService.Features.PrivateNotes.PrivateNoteMaintenanceHostedService>();

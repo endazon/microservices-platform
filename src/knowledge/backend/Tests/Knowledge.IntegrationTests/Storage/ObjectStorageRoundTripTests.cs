@@ -2,6 +2,7 @@ using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using System.Text;
 using Amazon.Runtime;
 using Amazon.S3;
+using Amazon.S3.Model;
 using AwesomeAssertions;
 using Knowledge.IntegrationTests.Fixtures;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
@@ -68,6 +69,44 @@ public sealed class ObjectStorageRoundTripTests
 
             (await client.GetTextAsync(mdUri, TestContext.Current.CancellationToken)).Should().Be("# 本文\nhello");
             (await client.GetBytesAsync(assetUri, TestContext.Current.CancellationToken)).Should().Equal(assetBytes);
+        }
+        finally
+        {
+            await minio.DisposeAsync();
+        }
+    }
+
+    // FR-06, FR-19, ADR-0057 決定 1, IADR-0296: **削除は全バージョンへ及ぶ。**
+    // 🔴 バージョニング有効のバケットで素の DeleteObject を撃つと delete marker が積まれるだけで、
+    // `ListVersions` には過去版が残る。ここでは **3 回上書きしてから削除し、版が 1 つも残らない**
+    // ことを実 MinIO で確かめる（単体側は SDK 呼び出しの形しか見られない）。
+    [Fact]
+    public async Task Delete_removes_every_version()
+    {
+        DockerRequired.SkipUnlessAvailable();
+        var minio = new MinioBuilder().WithImage("minio/minio:RELEASE.2025-04-08T15-41-24Z")
+            .WithUsername(AccessKey).WithPassword(SecretKey).Build();
+        await minio.StartAsync(TestContext.Current.CancellationToken);
+        try
+        {
+            var (s3, options) = await ConnectAsync(minio);
+            var client = new S3ObjectStorageClient(s3, options, NullLogger<S3ObjectStorageClient>.Instance);
+
+            const string key = "doc-3/document.md";
+            await client.PutTextAsync(key, "v1", "text/markdown", TestContext.Current.CancellationToken);
+            await client.PutTextAsync(key, "v2", "text/markdown", TestContext.Current.CancellationToken);
+            var uri = await client.PutTextAsync(key, "v3", "text/markdown", TestContext.Current.CancellationToken);
+
+            var before = await s3.ListVersionsAsync(new ListVersionsRequest
+            { BucketName = options.Bucket, Prefix = key }, TestContext.Current.CancellationToken);
+            before.Versions.Should().HaveCountGreaterThan(1, "前提: バージョニングで履歴が積まれている");
+
+            await client.DeleteAsync(uri, TestContext.Current.CancellationToken);
+
+            var after = await s3.ListVersionsAsync(new ListVersionsRequest
+            { BucketName = options.Bucket, Prefix = key }, TestContext.Current.CancellationToken);
+            (after.Versions ?? []).Where(v => v.Key == key).Should().BeEmpty(
+                "delete marker を含め版が 1 つでも残れば ADR-0057 受け入れ基準①を満たさない");
         }
         finally
         {

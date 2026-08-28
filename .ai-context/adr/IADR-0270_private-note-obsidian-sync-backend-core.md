@@ -5,7 +5,7 @@ status: Proposed
 related_ids: [FR-19, FR-20, FR-22, UC-11, SC-19, SC-20, ADR-0036, ADR-0037, ADR-0046, ADR-0054]
 author: claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0037_obsidian-sync-method.md
   - planning:projects/microservices-platform/07_adr/ADR-0046_private-note-not-synced-to-wikijs.md
@@ -167,6 +167,16 @@ issue: "#451"
      担当領域外。planning 環流と併走）
   4. BFF 端点・SC-19/SC-20 画面・Obsidian プラグイン本体（別 issue）
   5. 100% 判定の跨ぎ拒否（決定 4）を planning へ確認する（要求文の字義と §結果 の含意の突き合わせ）
+
+［2026-08-28 追記 / #451］**上のトレードオフ「完全削除後も MinIO 上の本文オブジェクトは残る」と
+フォローアップ 3（ストレージ実体の削除手段）は解消した。** 計画 `ADR-0057` 決定 1 の裁定を受け、
+`IObjectStorageClient` へ全バージョン削除（`DeleteAsync`）を足し、削除の入口 3 経路
+（`/documents` DELETE・`/private-notes/purge`・90 日自動物理削除）を台帳からの逆引きで結線した。
+**本文とその過去版が指していた本文は実体ごと消える。** 現行の正は
+[IADR-0296](./IADR-0296_deletion-propagation-to-object-storage.md) であり、**本 ADR の本文は
+当時の記録として書き換えない**（[IADR-0117](./IADR-0117_platform-shared-kernel-placement.md)
+フォローアップ 3 と同じ扱い）。個人資料は変換経路を通らないため図表資産を持たず、
+IADR-0296 決定 4 の限界（既存文書の資産を遡及付与しない）は本 ADR の射程には掛からない。
 
 ## 関連
 
