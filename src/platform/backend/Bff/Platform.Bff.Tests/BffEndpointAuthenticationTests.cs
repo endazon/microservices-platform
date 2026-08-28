@@ -46,7 +46,7 @@ public class BffEndpointAuthenticationTests(BffTestFactory factory)
     [InlineData("/bff/analysis/ask/stream")]
     public async Task PostEndpoints_WhenAnonymous_Return401(string path)
     {
-        var resp = await Anonymous().PostAsJsonAsync(path, new { query = "q", key = "tags", question = "q" });
+        var resp = await Anonymous().PostAsJsonAsync(path, new { query = "q", key = "tags", question = "q" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "NFR-09 の暫定運用はエッジで認証を担保する");
     }
@@ -60,7 +60,7 @@ public class BffEndpointAuthenticationTests(BffTestFactory factory)
     [InlineData("/bff/documents/11111111-1111-1111-1111-111111111111/versions")]
     public async Task DocumentReadEndpoints_WhenAnonymous_Return401(string path)
     {
-        var resp = await Anonymous().GetAsync(path);
+        var resp = await Anonymous().GetAsync(path, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -72,7 +72,7 @@ public class BffEndpointAuthenticationTests(BffTestFactory factory)
     [Fact]
     public async Task Search_AsNonPrivilegedRole_IsAllowed()
     {
-        var resp = await WithRoles("viewer").PostAsJsonAsync("/bff/search", new SearchRequest("q"));
+        var resp = await WithRoles("viewer").PostAsJsonAsync("/bff/search", new SearchRequest("q"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -81,7 +81,7 @@ public class BffEndpointAuthenticationTests(BffTestFactory factory)
     public async Task AttributeValues_AsNonPrivilegedRole_IsAllowed()
     {
         var resp = await WithRoles("viewer")
-            .PostAsJsonAsync("/bff/attribute-values", new AttributeValuesRequest(AttributeValueKeys.Tags));
+            .PostAsJsonAsync("/bff/attribute-values", new AttributeValuesRequest(AttributeValueKeys.Tags), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -90,7 +90,7 @@ public class BffEndpointAuthenticationTests(BffTestFactory factory)
     public async Task AnalysisAsk_AsNonPrivilegedRole_IsAllowed()
     {
         var resp = await WithRoles("viewer")
-            .PostAsJsonAsync("/bff/analysis/ask", new AnalysisRequest("問い"));
+            .PostAsJsonAsync("/bff/analysis/ask", new AnalysisRequest("問い"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -109,7 +109,7 @@ public class BffEndpointAuthenticationTests(BffTestFactory factory)
     public async Task DocumentReadEndpoints_AsNonPrivilegedRole_AreAllowed(string suffix)
     {
         var resp = await WithRoles("viewer")
-            .GetAsync($"/bff/documents/11111111-1111-1111-1111-111111111111{suffix}");
+            .GetAsync($"/bff/documents/11111111-1111-1111-1111-111111111111{suffix}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK, "SC-03 は一般利用者が出典から遷移する");
     }
@@ -121,7 +121,7 @@ public class BffEndpointAuthenticationTests(BffTestFactory factory)
     [Fact]
     public async Task DocumentList_AsNonPrivilegedRole_IsForbidden()
     {
-        var resp = await WithRoles("viewer").GetAsync("/bff/documents");
+        var resp = await WithRoles("viewer").GetAsync("/bff/documents", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -131,7 +131,7 @@ public class BffEndpointAuthenticationTests(BffTestFactory factory)
     [Fact]
     public async Task DocumentList_AsOperator_IsAllowed()
     {
-        var resp = await WithRoles("platform-operator").GetAsync("/bff/documents");
+        var resp = await WithRoles("platform-operator").GetAsync("/bff/documents", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -139,7 +139,7 @@ public class BffEndpointAuthenticationTests(BffTestFactory factory)
     [Fact]
     public async Task DocumentList_AsAdmin_IsAllowed()
     {
-        var resp = await WithRoles("platform-admin").GetAsync("/bff/documents");
+        var resp = await WithRoles("platform-admin").GetAsync("/bff/documents", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }

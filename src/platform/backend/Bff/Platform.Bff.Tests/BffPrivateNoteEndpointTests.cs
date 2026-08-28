@@ -72,7 +72,7 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
         {
             Content = JsonContent.Create(new { title = "x", deviceName = "x", ids = Array.Empty<Guid>() }),
         };
-        var resp = await client.SendAsync(req);
+        var resp = await client.SendAsync(req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -83,7 +83,7 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
     {
         _factory.LastPrivateNoteForwardedAuthorization = null;
 
-        var resp = await As(BffTestFactory.NoteOwner).GetAsync("/bff/private-notes");
+        var resp = await As(BffTestFactory.NoteOwner).GetAsync("/bff/private-notes", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         _factory.LastPrivateNoteForwardedAuthorization.Should()
@@ -96,7 +96,7 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
     public async Task The_owner_sees_their_own_note_and_quota()
     {
         var body = await As(BffTestFactory.NoteOwner)
-            .GetFromJsonAsync<PrivateNoteListResponse>("/bff/private-notes");
+            .GetFromJsonAsync<PrivateNoteListResponse>("/bff/private-notes", TestContext.Current.CancellationToken);
 
         body!.Notes.Select(n => n.Id).Should().Contain(BffTestFactory.StubPrivateNoteId);
         body.Usage.LimitBytes.Should().BeGreaterThan(0, "SC-19 は使用量と上限の両方を示す");
@@ -107,7 +107,7 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
     public async Task The_list_never_contains_another_users_note()
     {
         var body = await As(BffTestFactory.NoteOwner)
-            .GetFromJsonAsync<PrivateNoteListResponse>("/bff/private-notes");
+            .GetFromJsonAsync<PrivateNoteListResponse>("/bff/private-notes", TestContext.Current.CancellationToken);
 
         body!.Notes.Select(n => n.Id).Should().NotContain(BffTestFactory.OtherOwnerNoteId);
     }
@@ -125,7 +125,7 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
         {
             Content = JsonContent.Create(new UpdateExposureRequest(true, true, true)),
         };
-        var resp = await As(BffTestFactory.NoteOwner).SendAsync(req);
+        var resp = await As(BffTestFactory.NoteOwner).SendAsync(req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -143,7 +143,7 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
         {
             Content = JsonContent.Create(new UpdateExposureRequest(true, true, true)),
         };
-        var resp = await As(BffTestFactory.NoteOwner).SendAsync(req);
+        var resp = await As(BffTestFactory.NoteOwner).SendAsync(req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -154,7 +154,7 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
     {
         var resp = await As(BffTestFactory.NoteOwner).PostAsJsonAsync("/bff/private-notes/purge",
             new PurgePrivateNotesRequest(
-                [BffTestFactory.StubPrivateNoteId, BffTestFactory.OtherOwnerNoteId]));
+                [BffTestFactory.StubPrivateNoteId, BffTestFactory.OtherOwnerNoteId]), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -164,10 +164,10 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
     public async Task Purging_the_owners_own_notes_returns_the_freed_capacity()
     {
         var resp = await As(BffTestFactory.NoteOwner).PostAsJsonAsync("/bff/private-notes/purge",
-            new PurgePrivateNotesRequest([BffTestFactory.StubPrivateNoteId]));
+            new PurgePrivateNotesRequest([BffTestFactory.StubPrivateNoteId]), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<PurgePrivateNotesResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<PurgePrivateNotesResponse>(TestContext.Current.CancellationToken);
         body!.PurgedCount.Should().Be(1);
         body.FreedBytes.Should().BeGreaterThan(0);
     }
@@ -178,9 +178,9 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
     public async Task Soft_delete_tells_the_screen_that_capacity_is_not_freed()
     {
         var resp = await As(BffTestFactory.NoteOwner)
-            .DeleteAsync(NotePath(BffTestFactory.StubPrivateNoteId));
+            .DeleteAsync(NotePath(BffTestFactory.StubPrivateNoteId), TestContext.Current.CancellationToken);
 
-        var body = await resp.Content.ReadFromJsonAsync<PrivateNoteDeletedResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<PrivateNoteDeletedResponse>(TestContext.Current.CancellationToken);
         body!.CapacityFreed.Should().BeFalse();
         body.PurgeAt.Should().NotBeNull("SC-19 は完全削除までの残り日数を表示する");
     }
@@ -206,7 +206,7 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
             {
                 Content = JsonContent.Create(new { title = "x", ids = new[] { BffTestFactory.StubPrivateNoteId } }),
             };
-            var resp = await As(BffTestFactory.NoteOwner).SendAsync(req);
+            var resp = await As(BffTestFactory.NoteOwner).SendAsync(req, TestContext.Current.CancellationToken);
 
             resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         }
@@ -226,7 +226,7 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
         _factory.WriteScopeGranted = false;
         try
         {
-            var resp = await As(BffTestFactory.NoteOwner).GetAsync("/bff/private-notes");
+            var resp = await As(BffTestFactory.NoteOwner).GetAsync("/bff/private-notes", TestContext.Current.CancellationToken);
 
             resp.StatusCode.Should().Be(HttpStatusCode.OK,
                 "返すのは呼び出し者自身の資料だけであり、秘匿する相手が居ない");
@@ -248,7 +248,7 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
         try
         {
             var resp = await As(BffTestFactory.NoteOwner)
-                .DeleteAsync($"/bff/private-notes/devices/{BffTestFactory.StubSyncDeviceId}");
+                .DeleteAsync($"/bff/private-notes/devices/{BffTestFactory.StubSyncDeviceId}", TestContext.Current.CancellationToken);
 
             resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
         }
@@ -266,7 +266,7 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
         _factory.ScopeActionsRequested.Clear();
 
         var resp = await As(BffTestFactory.NoteOwner).PostAsJsonAsync("/bff/private-notes",
-            new CreatePrivateNoteRequest("新しい資料"));
+            new CreatePrivateNoteRequest("新しい資料"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
         _factory.ScopeActionsRequested.Should().Equal("write");
@@ -279,13 +279,13 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
     public async Task The_plaintext_token_appears_only_in_the_issue_response()
     {
         var issued = await (await As(BffTestFactory.NoteOwner).PostAsJsonAsync(
-            "/bff/private-notes/devices", new CreateSyncDeviceRequest("Obsidian（自宅 PC）")))
-            .Content.ReadFromJsonAsync<SyncTokenIssuedResponse>();
+            "/bff/private-notes/devices", new CreateSyncDeviceRequest("Obsidian（自宅 PC）"), TestContext.Current.CancellationToken))
+            .Content.ReadFromJsonAsync<SyncTokenIssuedResponse>(TestContext.Current.CancellationToken);
 
         issued!.Token.Should().Be(BffTestFactory.StubSyncTokenPlaintext);
 
         var listBody = await As(BffTestFactory.NoteOwner)
-            .GetStringAsync("/bff/private-notes/devices");
+            .GetStringAsync("/bff/private-notes/devices", TestContext.Current.CancellationToken);
 
         listBody.Should().NotContain(BffTestFactory.StubSyncTokenPlaintext,
             "一覧にはトークンの平文もハッシュも載らない（SC-20）");
@@ -296,15 +296,15 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
     public async Task Another_users_device_is_not_reachable()
     {
         var devices = await As(BffTestFactory.NoteOwner)
-            .GetFromJsonAsync<List<SyncDeviceDto>>("/bff/private-notes/devices");
+            .GetFromJsonAsync<List<SyncDeviceDto>>("/bff/private-notes/devices", TestContext.Current.CancellationToken);
         devices!.Select(d => d.Id).Should().NotContain(BffTestFactory.OtherOwnerDeviceId);
 
         var revoke = await As(BffTestFactory.NoteOwner)
-            .DeleteAsync($"/bff/private-notes/devices/{BffTestFactory.OtherOwnerDeviceId}");
+            .DeleteAsync($"/bff/private-notes/devices/{BffTestFactory.OtherOwnerDeviceId}", TestContext.Current.CancellationToken);
         revoke.StatusCode.Should().Be(HttpStatusCode.NotFound);
 
         var reissue = await As(BffTestFactory.NoteOwner).PostAsync(
-            $"/bff/private-notes/devices/{BffTestFactory.OtherOwnerDeviceId}/reissue", null);
+            $"/bff/private-notes/devices/{BffTestFactory.OtherOwnerDeviceId}/reissue", null, TestContext.Current.CancellationToken);
         reissue.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -313,15 +313,15 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
     public async Task The_owners_own_device_is_listed_and_can_be_reissued()
     {
         var devices = await As(BffTestFactory.NoteOwner)
-            .GetFromJsonAsync<List<SyncDeviceDto>>("/bff/private-notes/devices");
+            .GetFromJsonAsync<List<SyncDeviceDto>>("/bff/private-notes/devices", TestContext.Current.CancellationToken);
         devices!.Select(d => d.Id).Should().Contain(BffTestFactory.StubSyncDeviceId);
 
         var reissue = await As(BffTestFactory.NoteOwner).PostAsync(
-            $"/bff/private-notes/devices/{BffTestFactory.StubSyncDeviceId}/reissue", null);
+            $"/bff/private-notes/devices/{BffTestFactory.StubSyncDeviceId}/reissue", null, TestContext.Current.CancellationToken);
         reissue.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var revokeAll = await As(BffTestFactory.NoteOwner)
-            .PostAsync("/bff/private-notes/devices/revoke-all", null);
+            .PostAsync("/bff/private-notes/devices/revoke-all", null, TestContext.Current.CancellationToken);
         revokeAll.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -336,10 +336,10 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
         try
         {
             var resp = await As(BffTestFactory.NoteOwner).PostAsJsonAsync("/bff/private-notes",
-                new CreatePrivateNoteRequest("上限到達後の新規作成"));
+                new CreatePrivateNoteRequest("上限到達後の新規作成"), TestContext.Current.CancellationToken);
 
             resp.StatusCode.Should().Be(HttpStatusCode.InsufficientStorage);
-            (await resp.Content.ReadAsStringAsync())
+            (await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
                 .Should().Contain(BffTestFactory.QuotaProblemMarker);
         }
         finally

@@ -22,10 +22,10 @@ public class BffAssumptionsEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task Get_WhenAuthenticated_Returns200WithPassThroughBody()
     {
-        var resp = await _factory.CreateClient().GetAsync("/bff/assumptions");
+        var resp = await _factory.CreateClient().GetAsync("/bff/assumptions", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var json = await resp.Content.ReadFromJsonAsync<AssumptionsEnvelope>();
+        var json = await resp.Content.ReadFromJsonAsync<AssumptionsEnvelope>(TestContext.Current.CancellationToken);
         json!.Version.Should().Be(1);
         json.Assumptions!.CapitalGainsTaxRate.Should().Be(0.20315);
     }
@@ -33,10 +33,10 @@ public class BffAssumptionsEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task GetHistory_WhenAuthenticated_Returns200()
     {
-        var resp = await _factory.CreateClient().GetAsync("/bff/assumptions/history");
+        var resp = await _factory.CreateClient().GetAsync("/bff/assumptions/history", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadAsStringAsync();
+        var body = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().Contain("初期値");
     }
 
@@ -48,7 +48,7 @@ public class BffAssumptionsEndpointTests : IClassFixture<BffTestFactory>
             "{\"assumptions\":{\"capitalGainsTaxRate\":0.30},\"expectedVersion\":1,\"reason\":\"税率見直し\"}",
             Encoding.UTF8, "application/json");
 
-        var resp = await client.PutAsync("/bff/assumptions", payload);
+        var resp = await client.PutAsync("/bff/assumptions", payload, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         // 後段へ本文がそのまま転送される（理由・期待バージョンを含む）。
@@ -62,7 +62,7 @@ public class BffAssumptionsEndpointTests : IClassFixture<BffTestFactory>
         // 非 owner の変更は後段（OwnerOnly）が 403。BFF はそのまま透過する（BFF 側でロール制限しない）。
         _factory.AssumptionsStatusCode = HttpStatusCode.Forbidden;
         var resp = await _factory.CreateClient()
-            .PutAsync("/bff/assumptions", new StringContent("{}", Encoding.UTF8, "application/json"));
+            .PutAsync("/bff/assumptions", new StringContent("{}", Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -72,7 +72,7 @@ public class BffAssumptionsEndpointTests : IClassFixture<BffTestFactory>
     {
         _factory.AssumptionsStatusCode = HttpStatusCode.BadRequest;
         var resp = await _factory.CreateClient()
-            .PutAsync("/bff/assumptions", new StringContent("{}", Encoding.UTF8, "application/json"));
+            .PutAsync("/bff/assumptions", new StringContent("{}", Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -83,7 +83,7 @@ public class BffAssumptionsEndpointTests : IClassFixture<BffTestFactory>
         // 楽観排他の競合（ExpectedVersion 不一致）は後段が 409。破壊的な自動再試行はしない（そのまま透過）。
         _factory.AssumptionsStatusCode = HttpStatusCode.Conflict;
         var resp = await _factory.CreateClient()
-            .PutAsync("/bff/assumptions", new StringContent("{}", Encoding.UTF8, "application/json"));
+            .PutAsync("/bff/assumptions", new StringContent("{}", Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
@@ -94,7 +94,7 @@ public class BffAssumptionsEndpointTests : IClassFixture<BffTestFactory>
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
 
-        var resp = await client.GetAsync("/bff/assumptions");
+        var resp = await client.GetAsync("/bff/assumptions", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -103,7 +103,7 @@ public class BffAssumptionsEndpointTests : IClassFixture<BffTestFactory>
     public async Task Get_WhenBackendUnreachable_Returns502()
     {
         _factory.AssumptionsThrows = true;
-        var resp = await _factory.CreateClient().GetAsync("/bff/assumptions");
+        var resp = await _factory.CreateClient().GetAsync("/bff/assumptions", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadGateway);
     }
@@ -114,7 +114,7 @@ public class BffAssumptionsEndpointTests : IClassFixture<BffTestFactory>
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add("Authorization", "Bearer test-token-abc");
 
-        await client.GetAsync("/bff/assumptions");
+        await client.GetAsync("/bff/assumptions", TestContext.Current.CancellationToken);
 
         _factory.LastAssumptionsForwardedAuthorization.Should().Be("Bearer test-token-abc");
     }

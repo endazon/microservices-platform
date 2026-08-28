@@ -40,10 +40,10 @@ public class BffTagDictionaryEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task List_AsAdmin_ReturnsDictionaryWithUsageCounts()
     {
-        var resp = await _factory.CreateClient().GetAsync("/bff/tags");
+        var resp = await _factory.CreateClient().GetAsync("/bff/tags", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<TagDictionaryResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<TagDictionaryResponse>(TestContext.Current.CancellationToken);
         body!.Tags.Should().NotBeEmpty();
         body.Tags[0].UsageCount.Should().BeGreaterThanOrEqualTo(0);
     }
@@ -51,7 +51,7 @@ public class BffTagDictionaryEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task Create_AsAdmin_Returns201()
     {
-        var resp = await _factory.CreateClient().PostAsJsonAsync("/bff/tags", new { name = "新規タグ" });
+        var resp = await _factory.CreateClient().PostAsJsonAsync("/bff/tags", new { name = "新規タグ" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
@@ -64,10 +64,10 @@ public class BffTagDictionaryEndpointTests : IClassFixture<BffTestFactory>
     {
         _factory.StubRenameRepublished = 7;
 
-        var resp = await _factory.CreateClient().PutAsJsonAsync(DetailPath, new { name = "改名後" });
+        var resp = await _factory.CreateClient().PutAsJsonAsync(DetailPath, new { name = "改名後" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<RenameTagResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<RenameTagResponse>(TestContext.Current.CancellationToken);
         body!.RepublishedDocuments.Should().Be(7, "改名が下流へ何件波及したかを画面が示せる必要がある");
     }
 
@@ -76,7 +76,7 @@ public class BffTagDictionaryEndpointTests : IClassFixture<BffTestFactory>
     {
         _factory.StubDeleteUsageCount = 0;
 
-        var resp = await _factory.CreateClient().DeleteAsync(DetailPath);
+        var resp = await _factory.CreateClient().DeleteAsync(DetailPath, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
@@ -93,10 +93,10 @@ public class BffTagDictionaryEndpointTests : IClassFixture<BffTestFactory>
     {
         _factory.StubDeleteUsageCount = 3;
 
-        var resp = await _factory.CreateClient().DeleteAsync(DetailPath);
+        var resp = await _factory.CreateClient().DeleteAsync(DetailPath, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        var json = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()).RootElement;
+        var json = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).RootElement;
         json.GetProperty("usageCount").GetInt32().Should().Be(3);
         json.GetProperty("error").GetString().Should().Be("tag_in_use");
     }
@@ -111,8 +111,8 @@ public class BffTagDictionaryEndpointTests : IClassFixture<BffTestFactory>
         var client = _factory.CreateClient();
 
         var resp = method == "POST"
-            ? await client.PostAsJsonAsync("/bff/tags", new { name = "経理" })
-            : await client.PutAsJsonAsync(DetailPath, new { name = "経理" });
+            ? await client.PostAsJsonAsync("/bff/tags", new { name = "経理" }, TestContext.Current.CancellationToken)
+            : await client.PutAsJsonAsync(DetailPath, new { name = "経理" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
@@ -132,9 +132,9 @@ public class BffTagDictionaryEndpointTests : IClassFixture<BffTestFactory>
 
         var resp = method switch
         {
-            "POST" => await client.PostAsJsonAsync("/bff/tags", new { name = "x" }),
-            "PUT" => await client.PutAsJsonAsync(DetailPath, new { name = "x" }),
-            _ => await client.DeleteAsync(DetailPath),
+            "POST" => await client.PostAsJsonAsync("/bff/tags", new { name = "x" }, TestContext.Current.CancellationToken),
+            "PUT" => await client.PutAsJsonAsync(DetailPath, new { name = "x" }, TestContext.Current.CancellationToken),
+            _ => await client.DeleteAsync(DetailPath, TestContext.Current.CancellationToken),
         };
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden,
@@ -146,7 +146,7 @@ public class BffTagDictionaryEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task List_AsOperator_IsStillAllowed()
     {
-        var resp = await ClientAs("platform-operator").GetAsync("/bff/tags");
+        var resp = await ClientAs("platform-operator").GetAsync("/bff/tags", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -156,7 +156,7 @@ public class BffTagDictionaryEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task List_AsViewer_IsForbidden()
     {
-        var resp = await ClientAs("viewer").GetAsync("/bff/tags");
+        var resp = await ClientAs("viewer").GetAsync("/bff/tags", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }

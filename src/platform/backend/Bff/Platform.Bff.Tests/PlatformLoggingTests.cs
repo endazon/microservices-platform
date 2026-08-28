@@ -177,8 +177,8 @@ public class PlatformLoggingTests
         await using var app = builder.Build();
 
         // 起動が例外で落ちないこと。
-        await app.StartAsync();
+        await app.StartAsync(TestContext.Current.CancellationToken);
         app.Logger.LogInformation("OTLP 先が不在でも出せるログ {Marker}", "unreachable-otlp");
-        await app.StopAsync();
+        await app.StopAsync(TestContext.Current.CancellationToken);
     }
 }

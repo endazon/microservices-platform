@@ -62,15 +62,15 @@ public class BackchannelLogoutTests
         await using var host = await SessionTestHost.StartAsync();
         var cookie1 = await host.SignInAsync("alice", sid: "sess-1");
         var cookie2 = await host.SignInAsync("alice", sid: "sess-2");
-        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie1)))
+        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie1), TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.OK, "失効前は通る（陽性対照）");
 
         var resp = await PostLogoutTokenAsync(host, LogoutToken(sub: "alice"));
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie1)))
+        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie1), TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Unauthorized, "全セッションが即時失効する");
-        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie2)))
+        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie2), TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Unauthorized, "**全**セッション＝2 本目も消える");
     }
 
@@ -85,7 +85,7 @@ public class BackchannelLogoutTests
         (await PostLogoutTokenAsync(host, LogoutToken(sub: "alice")))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
-        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", bobCookie)))
+        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", bobCookie), TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -113,7 +113,7 @@ public class BackchannelLogoutTests
         var resp = await PostLogoutTokenAsync(host, token);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest, "case: {0}", reason);
-        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie)))
+        (await host.Client.SendAsync(host.Request(HttpMethod.Get, "/bff/auth/me", cookie), TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.OK, "不正な token でセッションが消えてはならない（{0}）", reason);
     }
 

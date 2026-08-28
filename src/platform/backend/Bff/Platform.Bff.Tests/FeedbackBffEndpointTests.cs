@@ -16,10 +16,10 @@ public class FeedbackBffEndpointTests(BffTestFactory factory)
     {
         var response = await factory.CreateClient()
             .PostAsJsonAsync("/bff/feedback",
-                new FeedbackRequest(Guid.NewGuid(), "up", Comment: "助かった"));
+                new FeedbackRequest(Guid.NewGuid(), "up", Comment: "助かった"), TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
-        var dto = await response.Content.ReadFromJsonAsync<FeedbackDto>();
+        var dto = await response.Content.ReadFromJsonAsync<FeedbackDto>(TestContext.Current.CancellationToken);
         dto!.Rating.Should().Be("up");
     }
 
@@ -32,7 +32,7 @@ public class FeedbackBffEndpointTests(BffTestFactory factory)
             new AuthenticationHeaderValue("Bearer", "fb-token");
 
         await client.PostAsJsonAsync("/bff/feedback",
-            new FeedbackRequest(Guid.NewGuid(), "down"));
+            new FeedbackRequest(Guid.NewGuid(), "down"), TestContext.Current.CancellationToken);
 
         factory.LastFeedbackForwardedAuthorization.Should().Be("Bearer fb-token");
     }
@@ -42,7 +42,7 @@ public class FeedbackBffEndpointTests(BffTestFactory factory)
     public async Task GetStats_ReturnsAggregatedStats()
     {
         var stats = await factory.CreateClient()
-            .GetFromJsonAsync<FeedbackStatsDto>("/bff/feedback/stats");
+            .GetFromJsonAsync<FeedbackStatsDto>("/bff/feedback/stats", TestContext.Current.CancellationToken);
 
         stats.Should().NotBeNull();
         stats!.Total.Should().Be(stats.Up + stats.Down);
@@ -62,7 +62,7 @@ public class FeedbackBffEndpointTests(BffTestFactory factory)
         client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
 
         var resp = await client.PostAsJsonAsync("/bff/feedback",
-            new FeedbackRequest(Guid.NewGuid(), "up"));
+            new FeedbackRequest(Guid.NewGuid(), "up"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -76,7 +76,7 @@ public class FeedbackBffEndpointTests(BffTestFactory factory)
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "viewer");
 
         var resp = await client.PostAsJsonAsync("/bff/feedback",
-            new FeedbackRequest(Guid.NewGuid(), "up"));
+            new FeedbackRequest(Guid.NewGuid(), "up"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
@@ -88,7 +88,7 @@ public class FeedbackBffEndpointTests(BffTestFactory factory)
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
 
-        var resp = await client.GetAsync("/bff/feedback/stats");
+        var resp = await client.GetAsync("/bff/feedback/stats", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -100,7 +100,7 @@ public class FeedbackBffEndpointTests(BffTestFactory factory)
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "viewer");
 
-        var resp = await client.GetAsync("/bff/feedback/stats");
+        var resp = await client.GetAsync("/bff/feedback/stats", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -113,7 +113,7 @@ public class FeedbackBffEndpointTests(BffTestFactory factory)
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
 
-        var resp = await client.GetAsync("/bff/feedback/stats");
+        var resp = await client.GetAsync("/bff/feedback/stats", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -131,7 +131,7 @@ public class FeedbackBffEndpointTests(BffTestFactory factory)
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", "stats-token");
 
-        await client.GetAsync("/bff/feedback/stats");
+        await client.GetAsync("/bff/feedback/stats", TestContext.Current.CancellationToken);
 
         factory.LastFeedbackForwardedAuthorization.Should().Be("Bearer stats-token");
     }

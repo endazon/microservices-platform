@@ -28,10 +28,10 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
     {
         factory.StubEffective = SampleEffective();
 
-        var resp = await factory.CreateClient().GetAsync("/bff/admin/config");
+        var resp = await factory.CreateClient().GetAsync("/bff/admin/config", TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var config = await resp.Content.ReadFromJsonAsync<EffectiveConfigDto>();
+        var config = await resp.Content.ReadFromJsonAsync<EffectiveConfigDto>(TestContext.Current.CancellationToken);
         config.Should().NotBeNull();
         config!.Version.GitCommit.Should().Be("abc1234");
         config.Version.AppliedBy.Should().Be("argocd");
@@ -49,7 +49,7 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
         req.Headers.Add(TestAuthHandler.RolesHeader, Platform.Shared.Infrastructure
             .Foundation.Extensions.PlatformAuthPolicies.OperatorRole);
 
-        var resp = await factory.CreateClient().SendAsync(req);
+        var resp = await factory.CreateClient().SendAsync(req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -63,7 +63,7 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
         var req = new HttpRequestMessage(HttpMethod.Get, "/bff/admin/config");
         req.Headers.Add(TestAuthHandler.RolesHeader, "platform-viewer");
 
-        var resp = await factory.CreateClient().SendAsync(req);
+        var resp = await factory.CreateClient().SendAsync(req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
         factory.RecordedAudits.Should().Contain(a =>
@@ -80,7 +80,7 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
         var req = new HttpRequestMessage(HttpMethod.Get, "/bff/admin/config");
         req.Headers.Add(TestAuthHandler.AnonymousHeader, "true");
 
-        var resp = await factory.CreateClient().SendAsync(req);
+        var resp = await factory.CreateClient().SendAsync(req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
         factory.RecordedAudits.Should().Contain(a =>
@@ -94,7 +94,7 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
         var req = new HttpRequestMessage(HttpMethod.Get, "/bff/admin/config/drift");
         req.Headers.Add(TestAuthHandler.AnonymousHeader, "true");
 
-        var resp = await factory.CreateClient().SendAsync(req);
+        var resp = await factory.CreateClient().SendAsync(req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -107,10 +107,10 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
         factory.StubEffective = SampleEffective();
         factory.RecordedAudits.Clear();
 
-        var resp = await factory.CreateClient().GetAsync("/bff/admin/config/history");
+        var resp = await factory.CreateClient().GetAsync("/bff/admin/config/history", TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var history = await resp.Content.ReadFromJsonAsync<List<ConfigVersionEntryDto>>();
+        var history = await resp.Content.ReadFromJsonAsync<List<ConfigVersionEntryDto>>(TestContext.Current.CancellationToken);
         history.Should().NotBeNull();
         history!.Should().ContainSingle();
         history[0].GitCommit.Should().Be("abc1234");
@@ -128,7 +128,7 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
         var req = new HttpRequestMessage(HttpMethod.Get, "/bff/admin/config/history");
         req.Headers.Add(TestAuthHandler.AnonymousHeader, "true");
 
-        var resp = await factory.CreateClient().SendAsync(req);
+        var resp = await factory.CreateClient().SendAsync(req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
         factory.RecordedAudits.Should().Contain(a =>
@@ -142,7 +142,7 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
         factory.StubEffective = SampleEffective();
         factory.RecordedAudits.Clear();
 
-        await factory.CreateClient().GetAsync("/bff/admin/config");
+        await factory.CreateClient().GetAsync("/bff/admin/config", TestContext.Current.CancellationToken);
 
         factory.RecordedAudits.Should().Contain(a =>
             a.Action == "config.read" && a.Outcome == "granted");
@@ -156,7 +156,7 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
         factory.StubEffective = SampleEffective();
 
         var drift = await factory.CreateClient()
-            .GetFromJsonAsync<DriftReportDto>("/bff/admin/config/drift");
+            .GetFromJsonAsync<DriftReportDto>("/bff/admin/config/drift", TestContext.Current.CancellationToken);
 
         drift.Should().NotBeNull();
         drift!.HasDrift.Should().BeTrue();
@@ -170,10 +170,10 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
     {
         factory.StubEffective = SampleEffective();
 
-        var resp = await factory.CreateClient().PostAsync("/internal/config/drift-run", content: null);
+        var resp = await factory.CreateClient().PostAsync("/internal/config/drift-run", content: null, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
-        (await resp.Content.ReadAsStringAsync()).Should().BeEmpty();
+        (await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().BeEmpty();
     }
 
     // FR-15 (#145): 受け入れ基準「不一致があれば適用直後にアラートが発火する」。
@@ -184,7 +184,7 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
         factory.AlertedReports.Clear();
         factory.StubEffective = SampleEffective(); // 宣言に無い購読 → HasDrift
 
-        var resp = await factory.CreateClient().PostAsync("/internal/config/drift-run", content: null);
+        var resp = await factory.CreateClient().PostAsync("/internal/config/drift-run", content: null, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
         factory.AlertedReports.Should().ContainSingle()

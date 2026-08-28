@@ -75,7 +75,7 @@ public class BffPrivateNoteExclusionTests : IClassFixture<BffTestFactory>
         _factory.StubDocumentList = [PrivateNote(), OrganizationDocument()];
 
         var body = await _factory.CreateClient()
-            .GetFromJsonAsync<List<DocumentDto>>("/bff/documents");
+            .GetFromJsonAsync<List<DocumentDto>>("/bff/documents", TestContext.Current.CancellationToken);
 
         body!.Select(d => d.Id).Should().NotContain(PrivateNoteId);
     }
@@ -88,7 +88,7 @@ public class BffPrivateNoteExclusionTests : IClassFixture<BffTestFactory>
         _factory.StubDocumentList = [PrivateNote(), OrganizationDocument()];
 
         var body = await _factory.CreateClient()
-            .GetFromJsonAsync<List<DocumentDto>>("/bff/documents");
+            .GetFromJsonAsync<List<DocumentDto>>("/bff/documents", TestContext.Current.CancellationToken);
 
         body!.Select(d => d.Id).Should().Contain(BffTestFactory.StubDocumentId);
     }
@@ -103,7 +103,7 @@ public class BffPrivateNoteExclusionTests : IClassFixture<BffTestFactory>
         _factory.StubDocument = PrivateNote();
 
         var resp = await _factory.CreateClient()
-            .GetAsync($"/bff/documents/{PrivateNoteId}{suffix}");
+            .GetAsync($"/bff/documents/{PrivateNoteId}{suffix}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -119,7 +119,7 @@ public class BffPrivateNoteExclusionTests : IClassFixture<BffTestFactory>
         _factory.StubDocument = OrganizationDocument();
 
         var resp = await _factory.CreateClient()
-            .GetAsync($"/bff/documents/{BffTestFactory.StubDocumentId}{suffix}");
+            .GetAsync($"/bff/documents/{BffTestFactory.StubDocumentId}{suffix}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -135,7 +135,7 @@ public class BffPrivateNoteExclusionTests : IClassFixture<BffTestFactory>
         _factory.StubDocument = legacy;
 
         var resp = await _factory.CreateClient()
-            .GetAsync($"/bff/documents/{BffTestFactory.StubDocumentId}");
+            .GetAsync($"/bff/documents/{BffTestFactory.StubDocumentId}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }

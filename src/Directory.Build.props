@@ -56,11 +56,21 @@
     「NoWarn も WarningsAsErrors も付かない」プロジェクトを生み、**警告は出るが CI は緑**になる。
     同じ検査器が許可リストと実在プロジェクトを突合してこれを止める。
 
-    🔴 この抑止は恒久ではなく、#882 の完了時に本コメントと下の 3 つの PropertyGroup ごと削除する。
+    ［2026-08-28 追記 / #882］🔴 **移行は完了した（本リポジトリのテストプロジェクト 20 本すべてが
+    許可リストに載っている）。当初ここには「完了時に本コメントと下の 3 つの PropertyGroup ごと
+    削除する」と書いていたが、それは誤りなので取り消す。** 削除すると 2 つのことが同時に起きる:
+      (1) 移行済みプロジェクトが WarningsAsErrors を失う。TreatWarningsAsErrors は false のままなので、
+          xUnit1051 の再発は **warning に落ちて CI は緑**になる（決定 1 が退けた状態そのものへ戻る）。
+      (2) AST（src/ai-stock-trading）が NoWarn を失う。import-chain で本ファイルが届き、AST の
+          テストプロジェクトは 38 本すべてが 'Tests' で終わるため、IADR-0231 が退けた警告ノイズが復活する。
+    **つまり「完了」で不要になるのは NoWarn の側だけに見えて、実際はどちらの PropertyGroup も
+    役目が残っている。** 許可リストはここから先「未移行の受け皿」ではなく **強制の対象一覧**として働く
+    （新規テストプロジェクトは baseline に登録しないと ratchet が落ち、登録には migrated:true が要る）。
+    根拠は IADR-0238 の 2026-08-28 追記。
   -->
   <PropertyGroup>
     <!-- 移行済みプロジェクト。前後と各項目の区切りは ';'（Contains の部分一致を防ぐため）。 -->
-    <XUnit1051Migrated>;LlmGateway.Api.Tests;NotificationService.Api.Tests;McpServer.Api.Tests;DataSourceService.Api.Tests;AuthorizationService.Api.Tests;WikiService.Api.Tests;RetrievalService.Api.Tests;IngestionService.Worker.Tests;FeedbackService.Api.Tests;AiAnalysisService.Api.Tests;DashboardService.Api.Tests;GraphService.Api.Tests;Knowledge.Contracts.Tests;Knowledge.IntegrationTests;Platform.Shared.Kernel.Tests;SampleService.Tests;ConversionService.Worker.Tests;Platform.Shared.Infrastructure.Tests;DocumentService.Api.Tests;</XUnit1051Migrated>
+    <XUnit1051Migrated>;LlmGateway.Api.Tests;NotificationService.Api.Tests;McpServer.Api.Tests;DataSourceService.Api.Tests;AuthorizationService.Api.Tests;WikiService.Api.Tests;RetrievalService.Api.Tests;IngestionService.Worker.Tests;FeedbackService.Api.Tests;AiAnalysisService.Api.Tests;DashboardService.Api.Tests;GraphService.Api.Tests;Knowledge.Contracts.Tests;Knowledge.IntegrationTests;Platform.Shared.Kernel.Tests;SampleService.Tests;ConversionService.Worker.Tests;Platform.Shared.Infrastructure.Tests;DocumentService.Api.Tests;Platform.Bff.Tests;</XUnit1051Migrated>
   </PropertyGroup>
 
   <!-- 未移行のテストプロジェクト（AST・雛形を含む）: 従来どおり抑止する。 -->

@@ -4,6 +4,13 @@
     "1 PR = 1 プロジェクト。移行したら migrated:true にし、src/Directory.Build.props の",
     "XUnit1051Migrated へ同じ名前を足す。両者の一致は check-xunit1051-ratchet.js が強制する。",
     "",
+    "🔴 段階採用は 2026-08-28 に完了した（全 20 プロジェクトが migrated:true）。**器は残す** ——",
+    "  消すと移行済みが WarningsAsErrors を失って再発が warning へ落ち、同時に AST が NoWarn を",
+    "  失って警告ノイズが復活する。正本は IADR-0238 の 2026-08-28 追記。",
+    "  新規テストプロジェクトは baseline に無いので added で落ち、登録には remaining:0 ＋",
+    "  migrated:true が要る（＝最初から綺麗に書くことを強制する）。以下の remaining 論は",
+    "  未移行行が在った時期の記録であり、参照は「新規を足すとき」に限られる。",
+    "",
     "🔴 remaining が何を意味するか（#968 で明確化。安易に信用しないこと）:",
     "  1. informational であり、何もゲートしない。検査器は remaining を検証しない（意図的。後述）",
     "  2. アナライザの報告ベースなので実数より小さい。[Fact]/[Theory] を持つメソッドの本体しか",
@@ -34,7 +41,7 @@
     "  - src/ai-stock-trading/** … 別プロジェクトの submodule（check-backend-libraries.js と同じ扱い）",
     "  - src/.template-buildcheck-* … CI が雛形を複製する一時ディレクトリ（追跡下に無い）"
   ],
-  "remainingMeasuredAt": "f6b458f3 (2026-08-22) — 未移行 6 プロジェクトを -p:NoWarn= の full rebuild で実測。migrated:true の 0 は WarningsAsErrors が常時強制するため対象外。",
+  "remainingMeasuredAt": "2026-08-28 — 未移行 0。#882 の段階採用は完了し、全 20 プロジェクトが migrated:true になった。以後 remaining は全行 0 であり、その 0 は WarningsAsErrors が常時強制する（手で維持する informational な値はもう無い）。ただし 0 の意味はアナライザの盲点のぶん弱い（IADR-0238 の 2026-08-23 追記）。",
   "projects": {
     "src/knowledge/backend/Services/AiAnalysisService/tests/AiAnalysisService.Api.Tests/AiAnalysisService.Api.Tests.csproj": {
       "project": "AiAnalysisService.Api.Tests",
@@ -99,8 +106,8 @@
     },
     "src/platform/backend/Bff/Platform.Bff.Tests/Platform.Bff.Tests.csproj": {
       "project": "Platform.Bff.Tests",
-      "remaining": 232,
-      "migrated": false
+      "remaining": 0,
+      "migrated": true
     },
     "src/platform/backend/Services/AuthorizationService/tests/AuthorizationService.Api.Tests/AuthorizationService.Api.Tests.csproj": {
       "project": "AuthorizationService.Api.Tests",

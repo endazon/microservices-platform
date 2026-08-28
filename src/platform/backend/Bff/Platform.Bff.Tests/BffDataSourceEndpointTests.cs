@@ -22,10 +22,10 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task GetList_AsAdmin_ReturnsDataSources()
     {
-        var resp = await _factory.CreateClient().GetAsync("/bff/datasources");
+        var resp = await _factory.CreateClient().GetAsync("/bff/datasources", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<List<DataSourceDto>>();
+        var body = await resp.Content.ReadFromJsonAsync<List<DataSourceDto>>(TestContext.Current.CancellationToken);
         body!.Should().HaveCount(2);
         body[0].Name.Should().Be("社内共有フォルダ");
     }
@@ -36,10 +36,10 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task GetList_PassesThroughNextSyncAt()
     {
-        var resp = await _factory.CreateClient().GetAsync("/bff/datasources");
+        var resp = await _factory.CreateClient().GetAsync("/bff/datasources", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<List<DataSourceDto>>();
+        var body = await resp.Content.ReadFromJsonAsync<List<DataSourceDto>>(TestContext.Current.CancellationToken);
         body!.Should().OnlyContain(d => d.NextSyncAt == BffTestFactory.StubNextSyncAt,
             "後段が返す次回同期を欠落させず、ソースごとに変えもしない");
     }
@@ -50,10 +50,10 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task GetList_PassesThroughSyncHealth()
     {
-        var resp = await _factory.CreateClient().GetAsync("/bff/datasources");
+        var resp = await _factory.CreateClient().GetAsync("/bff/datasources", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<List<DataSourceDto>>();
+        var body = await resp.Content.ReadFromJsonAsync<List<DataSourceDto>>(TestContext.Current.CancellationToken);
         body!.Should().OnlyContain(d => d.RetryLimit == BffTestFactory.StubRetryLimit,
             "しきい値の分母は後段が返す値をそのまま運ぶ（BFF で定数を持たない）");
         var failing = body.Single(d => d.ConsecutiveFailureCount >= d.RetryLimit);
@@ -68,10 +68,10 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
     {
         var resp = await _factory.CreateClient().PutAsJsonAsync(
             $"/bff/datasources/{BffTestFactory.StubDataSourceId}",
-            new UpdateDataSourceRequest("後", "wiki", "https://wiki.example.test"));
+            new UpdateDataSourceRequest("後", "wiki", "https://wiki.example.test"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await resp.Content.ReadFromJsonAsync<DataSourceDto>()).Should().NotBeNull();
+        (await resp.Content.ReadFromJsonAsync<DataSourceDto>(TestContext.Current.CancellationToken)).Should().NotBeNull();
         _factory.LastDataSourceUpdateMethod.Should().Be(HttpMethod.Put);
     }
 
@@ -82,7 +82,7 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
     {
         var resp = await _factory.CreateClient().PatchAsJsonAsync(
             $"/bff/datasources/{BffTestFactory.StubDataSourceId}",
-            new PatchDataSourceRequest(ConnectionUri: "smb://relocated/share"));
+            new PatchDataSourceRequest(ConnectionUri: "smb://relocated/share"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         _factory.LastDataSourceUpdateMethod.Should().Be(HttpMethod.Patch);
@@ -104,7 +104,7 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
             Content = JsonContent.Create(new UpdateDataSourceRequest("x", "filesystem", "smb://x")),
         };
 
-        (await client.SendAsync(req)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await client.SendAsync(req, TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     // FR-01, SC-06（#628）: **登録・無効化も管理者限定**である（計画 §SC-06・裁定 Q19）。
@@ -116,7 +116,7 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
         var resp = await client.PostAsJsonAsync("/bff/datasources",
-            new CreateDataSourceRequest("新ソース", "filesystem", "smb://x/y"));
+            new CreateDataSourceRequest("新ソース", "filesystem", "smb://x/y"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -126,7 +126,7 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
-        var resp = await client.DeleteAsync($"/bff/datasources/{BffTestFactory.StubDataSourceId}");
+        var resp = await client.DeleteAsync($"/bff/datasources/{BffTestFactory.StubDataSourceId}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -140,7 +140,7 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
         var resp = await client.PostAsync(
-            $"/bff/datasources/{BffTestFactory.StubDataSourceId}/sync", content: null);
+            $"/bff/datasources/{BffTestFactory.StubDataSourceId}/sync", content: null, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
     }
@@ -150,7 +150,7 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
-        var resp = await client.GetAsync("/bff/datasources");
+        var resp = await client.GetAsync("/bff/datasources", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -161,7 +161,7 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
-        var resp = await client.GetAsync($"/bff/datasources/{BffTestFactory.StubDataSourceId}");
+        var resp = await client.GetAsync($"/bff/datasources/{BffTestFactory.StubDataSourceId}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -171,7 +171,7 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "viewer");
-        var resp = await client.GetAsync("/bff/datasources");
+        var resp = await client.GetAsync("/bff/datasources", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -181,7 +181,7 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
-        var resp = await client.GetAsync("/bff/datasources");
+        var resp = await client.GetAsync("/bff/datasources", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -190,7 +190,7 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
     public async Task GetById_WhenMissing_Returns404()
     {
         _factory.DataSourceStatusCode = HttpStatusCode.NotFound;
-        var resp = await _factory.CreateClient().GetAsync($"/bff/datasources/{BffTestFactory.StubDataSourceId}");
+        var resp = await _factory.CreateClient().GetAsync($"/bff/datasources/{BffTestFactory.StubDataSourceId}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -200,7 +200,7 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
     {
         // 管理画面では後段障害を空一覧へ縮退させない（「未登録」との誤認・重複登録を防ぐ・レビュー #169 指摘対応）。
         _factory.DataSourceStatusCode = HttpStatusCode.ServiceUnavailable;
-        var resp = await _factory.CreateClient().GetAsync("/bff/datasources");
+        var resp = await _factory.CreateClient().GetAsync("/bff/datasources", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
     }
@@ -209,10 +209,10 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
     public async Task Create_AsAdmin_Returns201()
     {
         var resp = await _factory.CreateClient().PostAsJsonAsync("/bff/datasources",
-            new CreateDataSourceRequest("新ソース", "filesystem", "smb://x/y"));
+            new CreateDataSourceRequest("新ソース", "filesystem", "smb://x/y"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        var body = await resp.Content.ReadFromJsonAsync<DataSourceDto>();
+        var body = await resp.Content.ReadFromJsonAsync<DataSourceDto>(TestContext.Current.CancellationToken);
         body!.Name.Should().Be("社内共有フォルダ"); // スタブは固定応答を返す
     }
 
@@ -220,7 +220,7 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
     public async Task Sync_AsAdmin_Returns202()
     {
         var resp = await _factory.CreateClient()
-            .PostAsync($"/bff/datasources/{BffTestFactory.StubDataSourceId}/sync", content: null);
+            .PostAsync($"/bff/datasources/{BffTestFactory.StubDataSourceId}/sync", content: null, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
     }
@@ -229,7 +229,7 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
     public async Task Delete_AsAdmin_Returns204()
     {
         var resp = await _factory.CreateClient()
-            .DeleteAsync($"/bff/datasources/{BffTestFactory.StubDataSourceId}");
+            .DeleteAsync($"/bff/datasources/{BffTestFactory.StubDataSourceId}", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }

@@ -290,9 +290,15 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
   MSBuild は 1 件の警告をビルド中の行と末尾のサマリの 2 箇所へ出すため、ログ行を素朴に数えると
   実数の 2 倍になる。**実数は 943 件**（16 プロジェクト中 13 プロジェクトに分布）。数え直しは
   `dotnet build <slnx> -t:Rebuild -p:NoWarn= -m:1`（`-m:1` を落とすとノード接頭辞が付いて一意化に失敗する）。
-  **抑止は恒久ではなく、段階採用の完了時に外す。** 段階採用は**許可リスト**（移行済みだけを列挙し、
-  挙がったものは `NoWarn` を失って `WarningsAsErrors` に入る）で行う ——
-  `TreatWarningsAsErrors` は `false` なので、**`NoWarn` を外すだけでは再発しても CI は緑のままである**。
+  段階採用は**許可リスト**（移行済みだけを列挙し、挙がったものは `NoWarn` を失って
+  `WarningsAsErrors` に入る）で行う —— `TreatWarningsAsErrors` は `false` なので、
+  **`NoWarn` を外すだけでは再発しても CI は緑のままである**。
+  🔴 **［2026-08-28 追記］段階採用は完了した**（本リポジトリのテストプロジェクト 20 本すべてが
+  許可リストに載る）。**従前ここは「抑止は恒久ではなく、完了時に外す」と書いていたが、これは誤りで、
+  器は完了後も残す。** 外すと移行済みが `WarningsAsErrors` を失って再発が warning へ落ち、
+  同時に別プロジェクトの submodule（`src/ai-stock-trading`）が `NoWarn` を失って警告ノイズが復活する
+  （本 props は import-chain で submodule へ届き、そのテストプロジェクトは全 38 本が `Tests` で終わる）。
+  許可リストの意味だけが「未移行の受け皿」から**強制の対象一覧**へ変わる。
   残件の単一情報源は [`scripts/xunit1051-baseline.json`](../../scripts/xunit1051-baseline.json)、
   一致の検査は `scripts/check-xunit1051-ratchet.js` が行う。
 

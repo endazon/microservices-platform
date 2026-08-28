@@ -38,7 +38,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
             new AccessScopeBranch("組織文書", [new AttributeFilter("confidentiality", ["internal"])]),
         ];
 
-        var resp = await _factory.CreateClient().GetAsync(DetailPath);
+        var resp = await _factory.CreateClient().GetAsync(DetailPath, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -52,7 +52,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
         _factory.ScopeBranches =
             [new AccessScopeBranch("個人資料", [new AttributeFilter("owner", ["tester"])])];
 
-        var resp = await _factory.CreateClient().GetAsync(DetailPath);
+        var resp = await _factory.CreateClient().GetAsync(DetailPath, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -62,10 +62,10 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task GetDetail_WhenAuthorizedAndAttributesInScope_ReturnsDocument()
     {
-        var resp = await _factory.CreateClient().GetAsync(DetailPath);
+        var resp = await _factory.CreateClient().GetAsync(DetailPath, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<DocumentDto>();
+        var body = await resp.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken);
         body!.Title.Should().Be("経費規程 2025");
         body.Version.Should().Be(3);
     }
@@ -74,7 +74,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
     public async Task GetDetail_WhenScopeNotGranted_Returns404_DenyByDefault()
     {
         _factory.SearchScopeGranted = false;
-        var resp = await _factory.CreateClient().GetAsync(DetailPath);
+        var resp = await _factory.CreateClient().GetAsync(DetailPath, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound); // 権限外は存在秘匿
     }
@@ -85,7 +85,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
     {
         // 許可は confidentiality=secret のみ。文書は internal → 不一致。
         _factory.ScopeFilters = [new AttributeFilter("confidentiality", ["secret"])];
-        var resp = await _factory.CreateClient().GetAsync(DetailPath);
+        var resp = await _factory.CreateClient().GetAsync(DetailPath, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -95,7 +95,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
     public async Task GetDetail_WhenDocumentNotFound_Returns404()
     {
         _factory.DocumentStatusCode = HttpStatusCode.NotFound;
-        var resp = await _factory.CreateClient().GetAsync(DetailPath);
+        var resp = await _factory.CreateClient().GetAsync(DetailPath, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -105,7 +105,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
     public async Task GetDetail_WhenDocumentServiceFails_Returns404()
     {
         _factory.DocumentStatusCode = HttpStatusCode.InternalServerError;
-        var resp = await _factory.CreateClient().GetAsync(DetailPath);
+        var resp = await _factory.CreateClient().GetAsync(DetailPath, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -115,10 +115,10 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
     {
         // internal のみ許可 → secret 文書は列挙されない（権限内のみ）。
         _factory.ScopeFilters = [new AttributeFilter("confidentiality", ["internal"])];
-        var resp = await _factory.CreateClient().GetAsync("/bff/documents");
+        var resp = await _factory.CreateClient().GetAsync("/bff/documents", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<List<DocumentDto>>();
+        var body = await resp.Content.ReadFromJsonAsync<List<DocumentDto>>(TestContext.Current.CancellationToken);
         body.Should().ContainSingle(d => d.Title == "経費規程 2025");
         body.Should().NotContain(d => d.Title == "取締役会議事録");
     }
@@ -127,20 +127,20 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
     public async Task GetList_WhenScopeNotGranted_ReturnsEmpty()
     {
         _factory.SearchScopeGranted = false;
-        var resp = await _factory.CreateClient().GetAsync("/bff/documents");
+        var resp = await _factory.CreateClient().GetAsync("/bff/documents", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<List<DocumentDto>>();
+        var body = await resp.Content.ReadFromJsonAsync<List<DocumentDto>>(TestContext.Current.CancellationToken);
         body!.Should().BeEmpty();
     }
 
     [Fact]
     public async Task GetContent_WhenAuthorized_ReturnsMarkdownAndSourceUri()
     {
-        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/content");
+        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/content", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<DocumentContentDto>();
+        var body = await resp.Content.ReadFromJsonAsync<DocumentContentDto>(TestContext.Current.CancellationToken);
         // ストレージ未配備（Null クライアント）のため本文はプレースホルダへ縮退し、タイトルを含む。
         body!.Markdown.Should().Contain("経費規程 2025");
         body.SourceUri.Should().Be("storage://bucket/expense.md");
@@ -150,7 +150,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
     public async Task GetContent_WhenScopeNotGranted_Returns404()
     {
         _factory.SearchScopeGranted = false;
-        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/content");
+        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/content", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -158,10 +158,10 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task GetVersions_WhenAuthorized_ReturnsHistory()
     {
-        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/versions");
+        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/versions", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<List<DocumentVersionDto>>();
+        var body = await resp.Content.ReadFromJsonAsync<List<DocumentVersionDto>>(TestContext.Current.CancellationToken);
         body!.Should().HaveCount(2);
         body[0].Version.Should().Be(3);
     }
@@ -170,7 +170,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
     public async Task GetVersions_WhenScopeNotGranted_Returns404()
     {
         _factory.SearchScopeGranted = false;
-        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/versions");
+        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/versions", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -183,10 +183,10 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task GetVersion_WhenAuthorized_ReturnsSnapshot()
     {
-        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/versions/2");
+        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/versions/2", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<DocumentVersionDto>();
+        var body = await resp.Content.ReadFromJsonAsync<DocumentVersionDto>(TestContext.Current.CancellationToken);
         body!.Version.Should().Be(2);
         body.DocumentId.Should().Be(BffTestFactory.StubDocumentId);
     }
@@ -197,7 +197,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
     public async Task GetVersion_WhenScopeNotGranted_Returns404()
     {
         _factory.SearchScopeGranted = false;
-        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/versions/2");
+        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/versions/2", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -206,7 +206,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task GetVersion_WhenVersionMissing_Returns404()
     {
-        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/versions/99");
+        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/versions/99", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -217,9 +217,9 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
     public async Task GetVersion_IsRoutedSeparatelyFromTheVersionList()
     {
         var single = await _factory.CreateClient()
-            .GetFromJsonAsync<DocumentVersionDto>($"{DetailPath}/versions/3");
+            .GetFromJsonAsync<DocumentVersionDto>($"{DetailPath}/versions/3", TestContext.Current.CancellationToken);
         var list = await _factory.CreateClient()
-            .GetFromJsonAsync<List<DocumentVersionDto>>($"{DetailPath}/versions");
+            .GetFromJsonAsync<List<DocumentVersionDto>>($"{DetailPath}/versions", TestContext.Current.CancellationToken);
 
         single!.Version.Should().Be(3);
         list!.Should().HaveCount(2);

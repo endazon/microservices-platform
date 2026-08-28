@@ -55,7 +55,7 @@ public class ConfigVersionHistoryBindingTests
             ["Config:History:1:AppliedBy"] = "gitops",
         });
 
-        var history = await svc.GetVersionHistoryAsync();
+        var history = await svc.GetVersionHistoryAsync(TestContext.Current.CancellationToken);
 
         history.Should().HaveCount(2, "注入した 2 エントリが縮退せず実値で surfacing される");
         history[0].GitCommit.Should().Be("aaa1111"); // AppliedAt 降順（新しい順）
@@ -75,7 +75,7 @@ public class ConfigVersionHistoryBindingTests
             ["Config:AppliedBy"] = "argocd",
         });
 
-        var history = await svc.GetVersionHistoryAsync();
+        var history = await svc.GetVersionHistoryAsync(TestContext.Current.CancellationToken);
 
         history.Should().ContainSingle();
         history[0].GitCommit.Should().Be("cur9999");

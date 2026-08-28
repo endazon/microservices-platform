@@ -36,7 +36,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
     public async Task Create_AsAdmin_Returns201()
     {
         var resp = await _factory.CreateClient().PostAsJsonAsync("/bff/documents",
-            new { title = "新規文書", attributes = new { confidentiality = "internal" }, tags = new[] { "hr" } });
+            new { title = "新規文書", attributes = new { confidentiality = "internal" }, tags = new[] { "hr" } }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
@@ -46,7 +46,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "viewer");
-        var resp = await client.PostAsJsonAsync("/bff/documents", new { title = "x" });
+        var resp = await client.PostAsJsonAsync("/bff/documents", new { title = "x" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -72,7 +72,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
         {
             Content = JsonContent.Create(new { title = "x" })
         };
-        var resp = await client.SendAsync(req);
+        var resp = await client.SendAsync(req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -89,7 +89,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
 
-        var resp = await client.GetAsync(template.Replace("{id}", BffTestFactory.StubDocumentId.ToString()));
+        var resp = await client.GetAsync(template.Replace("{id}", BffTestFactory.StubDocumentId.ToString()), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().NotBe(HttpStatusCode.Forbidden);
     }
@@ -99,7 +99,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
-        var resp = await client.PostAsJsonAsync("/bff/documents", new { title = "x" });
+        var resp = await client.PostAsJsonAsync("/bff/documents", new { title = "x" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -109,7 +109,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
     {
         // #1010: 作成は write スコープで判定する（read の可否は効かない）。
         _factory.WriteScopeGranted = false;
-        var resp = await _factory.CreateClient().PostAsJsonAsync("/bff/documents", new { title = "x" });
+        var resp = await _factory.CreateClient().PostAsJsonAsync("/bff/documents", new { title = "x" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -126,7 +126,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
         _factory.SearchScopeGranted = true;   // read は許可されている
         _factory.WriteScopeGranted = false;   // write ポリシーは 1 件も無い
         var resp = await _factory.CreateClient().PostAsJsonAsync("/bff/documents",
-            new { title = "read しか持たない主体の作成" });
+            new { title = "read しか持たない主体の作成" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -138,7 +138,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
     {
         _factory.ScopeActionsRequested.Clear();
         var resp = await _factory.CreateClient().PostAsJsonAsync("/bff/documents",
-            new { title = "write を持つ主体の作成", attributes = new { confidentiality = "internal" } });
+            new { title = "write を持つ主体の作成", attributes = new { confidentiality = "internal" } }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
         _factory.ScopeActionsRequested.Should().Equal("write");
@@ -149,7 +149,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
     public async Task Detail_ResolvesReadAction()
     {
         _factory.ScopeActionsRequested.Clear();
-        var resp = await _factory.CreateClient().GetAsync(DetailPath);
+        var resp = await _factory.CreateClient().GetAsync(DetailPath, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         _factory.ScopeActionsRequested.Should().Equal("read");
@@ -172,7 +172,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
         {
             Content = JsonContent.Create(new { title = "x" })
         };
-        var resp = await _factory.CreateClient().SendAsync(req);
+        var resp = await _factory.CreateClient().SendAsync(req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -181,7 +181,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
     public async Task Create_WhenTitleMissing_Passes400Through()
     {
         _factory.DocumentWriteStatusCode = HttpStatusCode.BadRequest;
-        var resp = await _factory.CreateClient().PostAsJsonAsync("/bff/documents", new { title = "" });
+        var resp = await _factory.CreateClient().PostAsJsonAsync("/bff/documents", new { title = "" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -190,7 +190,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
     public async Task Update_AsAdminInScope_Returns200()
     {
         var resp = await _factory.CreateClient().PutAsJsonAsync(DetailPath,
-            new { title = "改訂", attributes = new { confidentiality = "internal" }, tags = Array.Empty<string>(), expectedVersion = 3 });
+            new { title = "改訂", attributes = new { confidentiality = "internal" }, tags = Array.Empty<string>(), expectedVersion = 3 }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -201,7 +201,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
         // write 許可は secret のみ。対象文書は internal → write スコープ外 → 変更不可（存在秘匿）。
         // #1010: 「Granted だけを見ない」の固定 —— write スコープの文書条件まで適用される。
         _factory.WriteScopeFilters = [new AttributeFilter("confidentiality", ["secret"])];
-        var resp = await _factory.CreateClient().PutAsJsonAsync(DetailPath, new { title = "改訂" });
+        var resp = await _factory.CreateClient().PutAsJsonAsync(DetailPath, new { title = "改訂" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -211,7 +211,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
     {
         _factory.DocumentWriteStatusCode = HttpStatusCode.Conflict;
         var resp = await _factory.CreateClient().PutAsJsonAsync(DetailPath,
-            new { title = "改訂", expectedVersion = 1 });
+            new { title = "改訂", expectedVersion = 1 }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
@@ -219,7 +219,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task Publish_AsAdminInScope_Returns200()
     {
-        var resp = await _factory.CreateClient().PostAsync($"{DetailPath}/publish", content: null);
+        var resp = await _factory.CreateClient().PostAsync($"{DetailPath}/publish", content: null, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -227,7 +227,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task Delete_AsAdminInScope_Returns204()
     {
-        var resp = await _factory.CreateClient().DeleteAsync(DetailPath);
+        var resp = await _factory.CreateClient().DeleteAsync(DetailPath, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
@@ -237,7 +237,7 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
     {
         // #1010: 削除も write スコープの文書条件で判定する。
         _factory.WriteScopeFilters = [new AttributeFilter("confidentiality", ["secret"])];
-        var resp = await _factory.CreateClient().DeleteAsync(DetailPath);
+        var resp = await _factory.CreateClient().DeleteAsync(DetailPath, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

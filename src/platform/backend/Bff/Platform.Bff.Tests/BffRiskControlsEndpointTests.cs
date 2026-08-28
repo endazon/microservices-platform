@@ -23,40 +23,40 @@ public class BffRiskControlsEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task GetSettings_WhenAuthenticated_Returns200WithPassThroughBody()
     {
-        var resp = await _factory.CreateClient().GetAsync("/bff/risk-controls/settings");
+        var resp = await _factory.CreateClient().GetAsync("/bff/risk-controls/settings", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var json = await resp.Content.ReadFromJsonAsync<SettingsEnvelope>();
+        var json = await resp.Content.ReadFromJsonAsync<SettingsEnvelope>(TestContext.Current.CancellationToken);
         json!.Limits!.MaxOpenPositions.Should().Be(5);
     }
 
     [Fact]
     public async Task GetSettingsHistory_WhenAuthenticated_Returns200()
     {
-        var resp = await _factory.CreateClient().GetAsync("/bff/risk-controls/settings/history");
+        var resp = await _factory.CreateClient().GetAsync("/bff/risk-controls/settings/history", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadAsStringAsync();
+        var body = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().Contain("上限見直し");
     }
 
     [Fact]
     public async Task GetStatus_WhenAuthenticated_Returns200()
     {
-        var resp = await _factory.CreateClient().GetAsync("/bff/risk-controls/status");
+        var resp = await _factory.CreateClient().GetAsync("/bff/risk-controls/status", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadAsStringAsync();
+        var body = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().Contain("killSwitchEngaged");
     }
 
     [Fact]
     public async Task GetStageGate_WhenAuthenticated_Returns200()
     {
-        var resp = await _factory.CreateClient().GetAsync("/bff/risk-controls/stage-gate");
+        var resp = await _factory.CreateClient().GetAsync("/bff/risk-controls/stage-gate", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadAsStringAsync();
+        var body = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().Contain("currentStage");
     }
 
@@ -68,7 +68,7 @@ public class BffRiskControlsEndpointTests : IClassFixture<BffTestFactory>
             "{\"limits\":{\"maxOpenPositions\":3},\"reason\":\"上限引き下げ\"}",
             Encoding.UTF8, "application/json");
 
-        var resp = await client.PutAsync("/bff/risk-controls/settings/limits", payload);
+        var resp = await client.PutAsync("/bff/risk-controls/settings/limits", payload, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         // 後段へ本文がそのまま転送される（理由・上限を含む）。
@@ -84,7 +84,7 @@ public class BffRiskControlsEndpointTests : IClassFixture<BffTestFactory>
             "{\"preventSameDayReentry\":true,\"reason\":\"ガード強化\"}",
             Encoding.UTF8, "application/json");
 
-        var resp = await client.PutAsync("/bff/risk-controls/settings/guard", payload);
+        var resp = await client.PutAsync("/bff/risk-controls/settings/guard", payload, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         _factory.LastRiskControlsPutBody.Should().Contain("ガード強化");
@@ -96,7 +96,7 @@ public class BffRiskControlsEndpointTests : IClassFixture<BffTestFactory>
         // 非 owner の変更は後段（OwnerOnly）が 403。BFF はそのまま透過する（BFF 側でロール制限しない）。
         _factory.RiskControlsStatusCode = HttpStatusCode.Forbidden;
         var resp = await _factory.CreateClient()
-            .PutAsync("/bff/risk-controls/settings/limits", new StringContent("{}", Encoding.UTF8, "application/json"));
+            .PutAsync("/bff/risk-controls/settings/limits", new StringContent("{}", Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -106,7 +106,7 @@ public class BffRiskControlsEndpointTests : IClassFixture<BffTestFactory>
     {
         _factory.RiskControlsStatusCode = HttpStatusCode.BadRequest;
         var resp = await _factory.CreateClient()
-            .PutAsync("/bff/risk-controls/settings/limits", new StringContent("{}", Encoding.UTF8, "application/json"));
+            .PutAsync("/bff/risk-controls/settings/limits", new StringContent("{}", Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -117,7 +117,7 @@ public class BffRiskControlsEndpointTests : IClassFixture<BffTestFactory>
         // 楽観排他の競合（設定の同時更新）は後段が 409。破壊的な自動再試行はしない（そのまま透過）。
         _factory.RiskControlsStatusCode = HttpStatusCode.Conflict;
         var resp = await _factory.CreateClient()
-            .PutAsync("/bff/risk-controls/settings/limits", new StringContent("{}", Encoding.UTF8, "application/json"));
+            .PutAsync("/bff/risk-controls/settings/limits", new StringContent("{}", Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
@@ -128,7 +128,7 @@ public class BffRiskControlsEndpointTests : IClassFixture<BffTestFactory>
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
 
-        var resp = await client.GetAsync("/bff/risk-controls/settings");
+        var resp = await client.GetAsync("/bff/risk-controls/settings", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -137,7 +137,7 @@ public class BffRiskControlsEndpointTests : IClassFixture<BffTestFactory>
     public async Task GetStatus_WhenBackendUnreachable_Returns502()
     {
         _factory.RiskControlsThrows = true;
-        var resp = await _factory.CreateClient().GetAsync("/bff/risk-controls/status");
+        var resp = await _factory.CreateClient().GetAsync("/bff/risk-controls/status", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadGateway);
     }
@@ -148,7 +148,7 @@ public class BffRiskControlsEndpointTests : IClassFixture<BffTestFactory>
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add("Authorization", "Bearer test-token-risk");
 
-        await client.GetAsync("/bff/risk-controls/settings");
+        await client.GetAsync("/bff/risk-controls/settings", TestContext.Current.CancellationToken);
 
         _factory.LastRiskControlsForwardedAuthorization.Should().Be("Bearer test-token-risk");
     }

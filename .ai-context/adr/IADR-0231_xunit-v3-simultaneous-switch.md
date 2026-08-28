@@ -8,7 +8,7 @@ related_ids:
   - IADR-0238
 author: claude
 created: 2026-08-21
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (テスト = xUnit v3)
 ---
@@ -95,6 +95,15 @@ v3 のアナライザは「`CancellationToken` を受ける呼び出しには `T
 
 `TreatWarningsAsErrors` は `false` であり、この抑止はビルドの成否を変えない。
 🔴 **この抑止は恒久ではない。** 採用は **#882** で ratchet により段階的に行い、完了時に `NoWarn` を削除する。
+
+> ［2026-08-28 追記 / #882］🔴 **段階採用は完了したが、`NoWarn` は削除しない。** 直前の文の
+> 「完了時に `NoWarn` を削除する」は、**本リポジトリのテストプロジェクトについては既に実現している**
+> （20 本すべてが許可リストに載り、`NoWarn` を失って `WarningsAsErrors` に入っている）。
+> 一方、**`src/Directory.Build.props` から `NoWarn` の PropertyGroup そのものを消すことはしない** ——
+> 本ファイルは import-chain で AST（`src/ai-stock-trading`）へ届き、AST のテストプロジェクトは
+> 38 本すべてが `Tests` で終わるため、消すと決定 4 が退けた警告ノイズが AST で復活する。
+> **「移行済みから抑止を外す」と「抑止の器を消す」は別のことである。** 前者は完了、後者は行わない。
+> 判断の正本は [[IADR-0238]] の 2026-08-28 追記。
 
 なお **`xUnit3003`**（`FactAttribute` 派生は呼び出し元のソース位置を受け取るべき）は 1 ファイル
 （`DockerFactAttribute`）だけなので**抑止せず直した**。抑止と是正の線は件数と改修範囲で引いている。
