@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
-using IngestionService.Worker.Foundation.Ports;
+using IngestionService.Worker.Domain.Ports;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using WikiService.Api.Foundation.Persistence;
 using WikiService.Api.Foundation.Ports;

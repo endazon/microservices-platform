@@ -48,7 +48,7 @@
     <ProjectReference Include="..\..\..\..\platform\backend\Services\AuthorizationService\AuthorizationService.csproj" />
     <ProjectReference Include="..\..\Services\WikiService\src\WikiService.Api\WikiService.Api.csproj" />
     <!-- #455 Phase 0 U0b: Worker も統合テストへ載せる（DocumentUpdated の 2 購読者を同時に立てるため） -->
-    <ProjectReference Include="..\..\Services\IngestionService\src\IngestionService.Worker\IngestionService.Worker.csproj" />
+    <ProjectReference Include="..\..\Services\IngestionService\Worker\IngestionService.Worker.csproj" />
     <ProjectReference Include="..\..\Services\ConversionService\Worker\ConversionService.Worker.csproj" />
     <ProjectReference Include="..\..\Services\RetrievalService\src\RetrievalService.Api\RetrievalService.Api.csproj" />
     <ProjectReference Include="..\..\Services\AiAnalysisService\AiAnalysisService.csproj" />
