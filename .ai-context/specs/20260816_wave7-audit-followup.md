@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 波 7 末クロス監査の是正（Knip ゲートの起動条件を機械で閉じる ＋ 追随漏れ・記述誤りの是正）
 type: spec
-status: draft
+status: done
 related_ids:
   - NFR
   - ADR-0031
@@ -18,7 +18,7 @@ related_ids:
   - IADR-0214
 author: claude
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-08-28
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md (NFR 表の射程注記: メタ作業は本表の対象外)
   - planning:projects/microservices-platform/06_technical/13_frontend-stack.md (採用技術一覧: Dead Code 検出 = Knip)

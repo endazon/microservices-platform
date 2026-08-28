@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — PR の CI 所要時間を実測起点で縮め、落とした精度を後段で担保する
 type: spec
-status: draft
+status: done
 related_ids:
   - NFR
   - IADR-0056
@@ -14,7 +14,7 @@ related_ids:
   - IADR-0232
 author: claude
 created: 2026-08-21
-updated: 2026-08-22
+updated: 2026-08-28
 plan_refs:
   - planning:docs/ai-implementation-workflow-guide.md
   - planning:projects/microservices-platform/07_adr/ADR-0048_impl-docs-restructure.md
