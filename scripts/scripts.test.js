@@ -1415,6 +1415,39 @@ function loadCompanionTests(dir, { ok: okFn, assert: assertObj }) {
     assert.strictEqual(base32Decode(RFC_SECRET).toString('ascii'), RFC_ASCII_SECRET);
     assert.strictEqual(RFC_SECRET.length, 32);
   });
+
+  // #1052: 表示用 base32 が取れないとき、hidden の生シークレットから導出できることを固定する。
+  ok('totp: base32Encode が生シークレットから RFC ベクタの base32 を再現する', () => {
+    const { base32Encode } = require('./lib/totp.js');
+    assert.strictEqual(base32Encode(RFC_ASCII_SECRET), RFC_SECRET);
+    // 導出した鍵で計算した OTP が、表示から取った鍵の OTP と一致する（＝代用が成立する）。
+    assert.strictEqual(totp(base32Encode(RFC_ASCII_SECRET), { t: 59, digits: 8 }), '94287082');
+  });
+
+  ok('totp: base32Encode → base32Decode が任意のバイト列で閉じる', () => {
+    const { base32Encode } = require('./lib/totp.js');
+    // 5 バイト境界をまたぐ長さをすべて踏む（パディング無しの端数処理が壊れやすい）。
+    for (let n = 1; n <= 16; n++) {
+      const raw = Buffer.from(Array.from({ length: n }, (_, i) => (i * 37 + 11) % 256));
+      assert.deepStrictEqual(base32Decode(base32Encode(raw)), raw, `length=${n}`);
+    }
+  });
+
+  // 🔴 **シェルが実際に叩く形で試す。** ライブラリだけ試して満足すると、呼び出し側の
+  // 落とし穴（`node -e` の require が相対パスをモジュール名として解決する）を見逃す —— 実際に踏んだ。
+  ok('totp: --encode の CLI がシェルから呼ぶ形で base32 を返す', () => {
+    const out = execFileSync(process.execPath,
+      [require('path').join(__dirname, 'lib', 'totp.js'), '--encode', '1234567890'],
+      { encoding: 'utf8' });
+    assert.strictEqual(out, 'GEZDGNBVGY3TQOJQ');
+  });
+
+  ok('totp: base32Encode が Keycloak の初回登録画面の表示値と一致する', () => {
+    const { base32Encode } = require('./lib/totp.js');
+    // 本テストのフィクスチャが持つ表示値は、ASCII "1234567890" の base32 そのものである
+    // （#1052 で実測）。**生と表示の対応関係**がこの一致で固定される。
+    assert.strictEqual(base32Encode('1234567890'), 'GEZDGNBVGY3TQOJQ');
+  });
 }
 
 // --- lib/keycloak-login-form: MFA の段で「何を送るか」を固定する（#438 / #1033） ---

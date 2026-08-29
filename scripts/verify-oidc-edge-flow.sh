@@ -263,9 +263,23 @@ acquire_token() {
       otp_secret=$(printf '%s' "$otp_json" | json_field totpSecretEncoded)
       otp_raw=$(printf '%s' "$otp_json" | json_field totpSecret)
       otp_mode=$(printf '%s' "$otp_json" | json_field mode)
+      # 🔴 **表示用 base32 が取れなくても、生シークレットがあれば計算できる**（#1052）。
+      # `<span id="kc-totp-secret-key">` は人に見せる描画であって契約ではなく、Keycloak の
+      # バージョン差・テーマ差で変わる（IADR-0294 が「HTML 構造に依存するようになった」と
+      # 記録していたリスクが、実際に段 4 で顕在化した）。hidden の `totpSecret` のほうは
+      # **登録を成立させるため送り返す必要がある値**＝契約側で、表示はその bytes の base32 である。
+      # **表示が空なら生から導出する。**
+      if [ -z "$otp_secret" ] && [ -n "$otp_raw" ]; then
+        otp_secret=$(node "$SCRIPT_DIR/lib/totp.js" --encode "$otp_raw" 2>/dev/null || printf '')
+        [ "$verbose" = "1" ] && [ -n "$otp_secret" ] \
+          && pass "表示用 base32 が無いので hidden の生シークレットから導出した"
+      fi
       [ -z "$otp_secret" ] && otp_secret="${OIDC_TOTP_SECRET:-}"
       if [ -z "$otp_secret" ]; then
-        ACQUIRE_ERR="OTP の段に入ったがシークレットを解決できない（$user）。初回登録の画面ではないなら OIDC_TOTP_SECRET を与えること。"
+        # 🔴 **判別に要る 2 値を必ず載せる。** field=totp なら初回登録画面（(a)）、field=otp なら
+        # 2 回目以降（(b)）であり、これだけで次の実走が原因を確定させる。**生 HTML は出さない**
+        # （session ID・資格情報を CI ログへ載せてしまう）。
+        ACQUIRE_ERR="OTP の段に入ったがシークレットを解決できない（$user・field=$otp_field・生シークレット=$([ -n "$otp_raw" ] && printf 'あり' || printf 'なし')）。field=totp なら初回登録画面の抽出が外れている。field=otp なら 2 回目以降なので OIDC_TOTP_SECRET を与えること。"
         rm -f "$jar" "$hdr" "$body"; return 1
       fi
       otp_code=$(node "$SCRIPT_DIR/lib/totp.js" "$otp_secret")
