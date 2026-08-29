@@ -26,16 +26,17 @@ public class DocumentShareTests(TestWebApplicationFactory factory)
         return client;
     }
 
-    // 所有者つきの文書を作る（作成は管理者経路。owner は属性である）。
+    // 🔴 **その利用者として作成する**（ADR-0060 決定 3 / #1057）。作成経路は要求由来の `owner` を
+    // 捨てて主体から入れ直すため、`attributes.owner` で他人を所有者にはできない
+    // （同 ADR 論点② 案 B の却下そのもの）。所有者は「誰が作ったか」で決まる。
     private async Task<Guid> CreateOwnedAsync(string owner)
     {
-        var resp = await ClientAs().PostAsJsonAsync("/documents", new
+        var resp = await ClientAs(user: owner).PostAsJsonAsync("/documents", new
         {
             title = $"共有対象 {Guid.NewGuid():N}",
             attributes = new Dictionary<string, string>
             {
                 ["confidentiality"] = "restricted",
-                ["owner"] = owner,
             },
             tags = new List<string>(),
         });

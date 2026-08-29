@@ -9,7 +9,18 @@
     "階段は最下段（clearance=public）から用意する——最下段を欠くと clearance=public の利用者は",
     "どのポリシーにもマッチせず、public 文書すら読めない（deny-by-default）。",
     "序数比較は導入しない（計画 07_abac-attribute-model の「評価は集合帰属のまま」）ため、",
-    "各段の許可集合を明示的に列挙する。dev の初期値であり、実運用は SC-09 から編集する。"
+    "各段の許可集合を明示的に列挙する。dev の初期値であり、実運用は SC-09 から編集する。",
+    "",
+    "write（ADR-0060 決定 1・2 / 環流 planning#498 の裁定・2026-08-29）:",
+    "ADR-0036 D-07 の判定条件は doc.owner ∈ { ${current_user} } の 1 つだけで、ロールの追加はしない。",
+    "したがって write ポリシーに userConditions を置かない。",
+    "🔴 clearance や department で絞ってはならない —— 絞ると clearance=public の利用者が自分で",
+    "作った文書すら書き換えられず、dev の既定が計画より狭い統制を作る。経路B は本番構成の予行でも",
+    "あるため（IADR-0133 決定 4）、予行で計画と違う形を置けば本番でその形が再現される。",
+    "read 側が clearance の階段を持つのとの非対称は意図的である —— read の規則は属性ベースの",
+    "3 分岐 OR を含むが、write の規則は所有者ベースの 1 分岐しか持たない。規則が違うから形も違う。",
+    "owner は attributes.json へ登録しない。検証器は未定義キーを許容し（AbacValidation の",
+    "ValidateConditions）、利用者名は列挙できないため辞書に入れる意味が無い。"
   ],
   "policies": [
     {
@@ -41,6 +52,11 @@
       "action": "analyze",
       "userConditions": { "clearance": ["confidential", "restricted"] },
       "documentConditions": { "confidentiality": ["public", "internal", "confidential"] }
+    },
+    {
+      "name": "dev: 所有者は自分の文書を書ける",
+      "action": "write",
+      "documentConditions": { "owner": ["${current_user}"] }
     }
   ]
 }

@@ -57,6 +57,29 @@ public static class DocumentBodyIntake
     public static string Fingerprint(string body)
         => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(body)));
 
+    // FR-05, FR-21, ADR-0036 D-01/D-07, ADR-0060 決定 3（環流 planning#498 の裁定・2026-08-29）:
+    // **人が投入する経路の `owner` は、作成操作を行った利用者本人である。**
+    //
+    // 🔴 **クライアントが送ってきた `owner` は必ず捨てる。** ADR-0060 は論点② 案 B
+    // （作成画面で所有者を選ばせる）を「**自分以外を所有者にした文書を作れてしまう**」ため却下した。
+    // 受け取った値を尊重すると、その却下が API 経由で無効になる。**所有権は要求ではなく主体から決まる。**
+    //
+    // 🔴 **主体が取れないときは `owner` を載せない**（機械クライアント等）。ADR-0060 決定 3 は
+    // **「人が居る経路」**の既定であり、`system` のような予約値へ倒す経路は設けない。
+    // 空文字を入れると「所有者が空の文書」ができ、`CanWrite` の空白判定を汚す。
+    public static Dictionary<string, string> WithOwner(
+        IReadOnlyDictionary<string, string>? attributes, string? subject)
+    {
+        var result = attributes is null
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string>(attributes);
+
+        // 主体の有無にかかわらず、まず要求由来の owner を落とす。
+        result.Remove(OwnerKey);
+        if (!string.IsNullOrWhiteSpace(subject)) result[OwnerKey] = subject;
+        return result;
+    }
+
     public static bool CanWrite(IReadOnlyDictionary<string, string>? attributes, string? subject)
     {
         if (string.IsNullOrWhiteSpace(subject)) return false;
