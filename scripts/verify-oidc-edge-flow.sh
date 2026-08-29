@@ -488,7 +488,7 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
       PROBE_DOC_ID=$(json_field id < "$body_file")
       ;;
     403)
-      fail "POST /bff/documents → 403（ABAC が deny へ倒れている。ポリシーが投入されていない疑い）"
+      fail "POST /bff/documents → 403（ABAC が deny へ倒れている。write ポリシーが 0 件の疑い（read だけ投入されていても作成は通らない））"
       info "$(head -c 200 "$body_file")"
       ;;
     000)

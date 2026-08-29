@@ -65,7 +65,8 @@ public static class DocumentEndpoints
         // `AdminOnly` であり、DocumentService はメッシュ内部でイングレス非公開である。
         // **裁定が出たらここを追随させる。**
         write.MapPost("/", async (CreateDocumentRequest req, DocumentDbContext db,
-            IObjectStorageClient storage, IDocumentUpdatedPublisher bus, CancellationToken ct) =>
+            IObjectStorageClient storage, IDocumentUpdatedPublisher bus, HttpContext http,
+            CancellationToken ct) =>
         {
             // FR-06, UC-03: タイトルは必須
             if (string.IsNullOrWhiteSpace(req.Title))
@@ -107,11 +108,17 @@ public static class DocumentEndpoints
             // FR-21 受け入れ基準 ①③④: 本文が付いていればオブジェクトストレージへ格納し、
             // DB へは参照（storage:// URI）だけを持たせる。`OriginalUri` は別列なので**併存する**。
             // ID を先に採るのは、オブジェクトキーが文書 ID から決まるためである。
+            // FR-05, FR-21, ADR-0036 D-07, ADR-0060 決定 3 (#1057): **所有者は作成した利用者本人。**
+            // 要求由来の `owner` は捨てて主体から入れ直す（`WithOwner` が両方を担う）。
+            // 個人資料の作成（`PrivateNoteDefaults`）とコネクタ同期（`DataSourceSyncService`）は
+            // 既に `owner` を載せており、**残っていたのはこの一般作成経路だけ**である。
+            var createAttributes = DocumentBodyIntake.WithOwner(req.Attributes, http.User.Identity?.Name);
+
             Document doc;
             if (string.IsNullOrEmpty(req.Body))
             {
                 doc = Document.Create(req.Title, req.OriginalUri, req.ContentType,
-                    req.Attributes, createTagIds);
+                    createAttributes, createTagIds);
             }
             else
             {
@@ -120,7 +127,7 @@ public static class DocumentEndpoints
                     DocumentBodyIntake.StorageKey(newId), req.Body,
                     DocumentBodyIntake.ContentType, ct);
                 doc = Document.CreateWithBody(newId, req.Title, bodyUri,
-                    req.OriginalUri, req.ContentType, req.Attributes, createTagIds,
+                    req.OriginalUri, req.ContentType, createAttributes, createTagIds,
                     // ADR-0050 (#911): 本文指紋。イベントが運び、却下解除・再取り込み判定に使う。
                     DocumentBodyIntake.Fingerprint(req.Body));
             }

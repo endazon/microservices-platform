@@ -21,27 +21,35 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
 {
     private const string Confidentiality = "internal";
 
-    private HttpClient ClientAs(string? user = null, string? roles = null)
+    private HttpClient ClientAs(string? user = null, string? roles = null, bool noName = false)
     {
         var client = factory.CreateClient();
         if (user is not null) client.DefaultRequestHeaders.Add(TestAuthHandler.UserHeader, user);
         if (roles is not null) client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, roles);
+        // 認証は通るが名前を持たない主体（機械クライアント相当）。owner レスの文書を作るために要る。
+        if (noName) client.DefaultRequestHeaders.Add(TestAuthHandler.NoNameHeader, "1");
         return client;
     }
 
+    // ADR-0060 決定 3 (#1057): **`owner` を要求へ載せない。** 載せても作成経路が捨てるため、
+    // 引数に残すと「指定できる」という誤解を生む。所有者は `ClientAs(user: …)` の主体で決まる。
     private static object CreatePayload(string title, string? body = null,
-        string? originalUri = null, string? owner = null)
+        string? originalUri = null)
     {
         var attributes = new Dictionary<string, string> { ["confidentiality"] = Confidentiality };
-        if (owner is not null) attributes["owner"] = owner;
         return new { title, body, originalUri, attributes, tags = new List<string>() };
     }
 
     // 所有者つきの文書を作る（本文は付けない）。本文投入（PUT）の対象として使う。
+    //
+    // 🔴 **その利用者として作成する**（ADR-0060 決定 3 / #1057）。従前は認証主体を持たない
+    // クライアントから `attributes.owner` を送って所有者を指定していたが、**それは同 ADR が
+    // 論点② 案 B として却下した「自分以外を所有者にした文書を作る」形そのもの**である。
+    // 作成経路が要求由来の `owner` を捨てるようになったため、**主体の側で所有者を決める。**
     private async Task<DocumentDto> CreateOwnedAsync(string title, string owner)
     {
-        var resp = await ClientAs().PostAsJsonAsync("/documents",
-            CreatePayload(title, owner: owner));
+        var resp = await ClientAs(user: owner).PostAsJsonAsync("/documents",
+            CreatePayload(title));
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
         return (await resp.Content.ReadFromJsonAsync<DocumentDto>())!;
     }
@@ -215,11 +223,20 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
 
     // FR-21 ⑤, ADR-0036 §未決 6: `owner` を持たない文書（取り込み経路の既定は `system`）は
     // 所有者ベースでは書き込めない。編集は SC-05 の管理者経路が担う。
+    //
+    // 🔴 **`noName` が要る**（ADR-0060 決定 3 / #1057）。作成経路が主体から `owner` を入れるように
+    // なったため、`ClientAs()`（＝ `DefaultUser` で認証される）で作ると **`owner` が必ず載り、
+    // 本テストは「別の利用者だから拒否」を見るだけの重複**になる。**通るのに何も試していない状態**であり、
+    // AI レビューが検出した。**名前を持たない主体で作って、本当に owner レスの文書を用意する。**
     [Fact]
     public async Task 所有者属性を持たない文書には本文を投入できない()
     {
-        var resp0 = await ClientAs().PostAsJsonAsync("/documents", CreatePayload("所有者なし"), TestContext.Current.CancellationToken);
+        var resp0 = await ClientAs(noName: true).PostAsJsonAsync("/documents", CreatePayload("所有者なし"), TestContext.Current.CancellationToken);
         var doc = (await resp0.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken))!;
+
+        // 🔴 前提を先に固定する —— owner が載っていたら、この後の 404 は別の理由になる。
+        doc.Attributes.Should().NotContainKey(DocumentBodyIntake.OwnerKey,
+            "名前を持たない主体で作った文書には owner が載らない（ADR-0060 決定 3）");
 
         var resp = await ClientAs(user: "alice")
             .PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = "誰かの本文" }, TestContext.Current.CancellationToken);
@@ -317,5 +334,73 @@ public class DocumentBodyIntakeAuthorizationTests
         var id = Guid.Parse("11111111-2222-3333-4444-555555555555");
         DocumentBodyIntake.StorageKey(id)
             .Should().Be("documents/11111111-2222-3333-4444-555555555555/body.md");
+    }
+
+    // --- ADR-0060 決定 3 (#1057): 人が作る経路の owner は作成した利用者本人 ---
+
+    [Fact]
+    public void 作成時にownerへ主体が載る()
+    {
+        var attrs = DocumentBodyIntake.WithOwner(
+            new Dictionary<string, string> { ["confidentiality"] = "public" }, "alice");
+
+        attrs[DocumentBodyIntake.OwnerKey].Should().Be("alice");
+        attrs["confidentiality"].Should().Be("public", "他の属性は素通りする");
+    }
+
+    // 🔴 ADR-0060 は論点② 案 B（作成画面で所有者を選ばせる）を「自分以外を所有者にした文書を
+    // 作れてしまう」ため却下した。**要求の owner を尊重すると、その却下が API 経由で無効になる。**
+    [Fact]
+    public void 要求が送ってきたownerは捨てて主体で上書きする()
+    {
+        var attrs = DocumentBodyIntake.WithOwner(
+            new Dictionary<string, string> { [DocumentBodyIntake.OwnerKey] = "victim" }, "attacker");
+
+        attrs[DocumentBodyIntake.OwnerKey].Should().Be("attacker",
+            "所有権は要求ではなく主体から決まる（他人を所有者にした文書を作らせない）");
+    }
+
+    // 主体が無いのに要求の owner が残ると、機械クライアントが任意の所有者を騙れる。
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void 主体が取れなければownerを載せない(string? subject)
+    {
+        var attrs = DocumentBodyIntake.WithOwner(
+            new Dictionary<string, string> { [DocumentBodyIntake.OwnerKey] = "victim" }, subject);
+
+        attrs.Should().NotContainKey(DocumentBodyIntake.OwnerKey,
+            "ADR-0060 決定 3 は人が居る経路の既定であり、予約値へ倒す経路を設けない");
+    }
+
+    // 呼び出し側が渡した辞書を書き換えない（要求 DTO を共有したまま別経路へ渡せる）。
+    [Fact]
+    public void 元の属性辞書を書き換えない()
+    {
+        var original = new Dictionary<string, string> { ["confidentiality"] = "public" };
+
+        DocumentBodyIntake.WithOwner(original, "alice");
+
+        original.Should().NotContainKey(DocumentBodyIntake.OwnerKey);
+    }
+
+    // 属性が無い要求でも owner だけの辞書ができる（null 渡しで落ちない）。
+    [Fact]
+    public void 属性が無くてもownerだけの辞書になる()
+    {
+        var attrs = DocumentBodyIntake.WithOwner(null, "alice");
+
+        attrs.Should().ContainSingle().Which.Key.Should().Be(DocumentBodyIntake.OwnerKey);
+    }
+
+    // 作成できた文書は、その主体が書けること（CanWrite と往復で閉じる）。
+    [Fact]
+    public void 作成した本人はその文書を書ける()
+    {
+        var attrs = DocumentBodyIntake.WithOwner(null, "alice");
+
+        DocumentBodyIntake.CanWrite(attrs, "alice").Should().BeTrue();
+        DocumentBodyIntake.CanWrite(attrs, "bob").Should().BeFalse("他人は書けない");
     }
 }
