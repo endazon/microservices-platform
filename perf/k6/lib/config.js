@@ -19,6 +19,11 @@ export const BASE_URL = __ENV.BASE_URL || 'http://localhost:5000';
 
 // トークン取得: TOKEN があればそれを、無ければ Keycloak パスワードグラントで取得する。
 // セットアップ関数（setup()）で一度だけ呼び、VU へ配布する運用を想定。
+//
+// 🔴 **パスワードグラントの経路は MFA 必須化（#438 / IADR-0294）で実質使えない。**
+// realm の対話利用者（poc-user 等）は `CONFIGURE_TOTP` を必須アクションとして持つため、
+// direct access grant が `Account is not fully set up` で拒まれる。**TOKEN を与えて使うこと。**
+// 経路自体は残す —— MFA を課さない計測専用クライアントを別途用意する選択肢を閉じないためである。
 export function obtainToken() {
   if (__ENV.TOKEN) return __ENV.TOKEN;
 
@@ -39,7 +44,17 @@ export function obtainToken() {
   );
 
   if (res.status !== 200) {
-    fail(`Keycloak トークン取得に失敗 (status ${res.status})。direct access grants の有効化と資格情報を確認してください。`);
+    // 🔴 MFA を必須にしたため（#438 / IADR-0294）、**パスワードグラントは realm の
+    // 対話利用者では通らない**。`CONFIGURE_TOTP` が必須アクションとして残っている利用者は
+    // `invalid_grant: Account is not fully set up` になる。ここを「direct access grants の
+    // 設定漏れ」とだけ案内すると、原因を取り違えたまま realm 設定を触ることになる。
+    // **計測時は TOKEN に取得済みのアクセストークンを与えるのが正である**
+    // （`scripts/verify-oidc-edge-flow.sh` が通す認可コード導線などで取る）。
+    fail(
+      `Keycloak トークン取得に失敗 (status ${res.status})。` +
+        'MFA 必須化により realm の対話利用者はパスワードグラントで取得できない（#438）。' +
+        'TOKEN に取得済みのアクセストークンを与えるか、MFA を課さない計測専用クライアントを用意すること。',
+    );
   }
   return res.json('access_token');
 }
