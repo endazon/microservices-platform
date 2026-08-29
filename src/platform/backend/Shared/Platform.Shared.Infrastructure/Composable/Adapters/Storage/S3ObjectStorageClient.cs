@@ -15,17 +15,20 @@ public sealed class S3ObjectStorageClient(
     ObjectStorageOptions options,
     ILogger<S3ObjectStorageClient> logger) : IObjectStorageClient
 {
+    /// <summary>バケットが存在しないときに S3 が返すエラーコード（#1033 の自己修復の起点）。</summary>
+    internal const string NoSuchBucketErrorCode = "NoSuchBucket";
+
     public async Task<string> PutTextAsync(string key, string text, string contentType,
         CancellationToken ct = default)
     {
         var normalizedKey = key.TrimStart('/');
-        await s3.PutObjectAsync(new PutObjectRequest
+        await PutWithBucketSelfHealAsync(() => s3.PutObjectAsync(new PutObjectRequest
         {
             BucketName = options.Bucket,
             Key = normalizedKey,
             ContentBody = text,
             ContentType = contentType
-        }, ct);
+        }, ct), ct);
 
         var uri = StorageUri.Build(options.Bucket, normalizedKey);
         logger.LogInformation("Stored text object at {Uri} ({Length} chars)", uri, text.Length);
@@ -37,12 +40,16 @@ public sealed class S3ObjectStorageClient(
     {
         var normalizedKey = key.TrimStart('/');
         using var stream = new MemoryStream(bytes, writable: false);
-        await s3.PutObjectAsync(new PutObjectRequest
+        await PutWithBucketSelfHealAsync(() =>
         {
-            BucketName = options.Bucket,
-            Key = normalizedKey,
-            InputStream = stream,
-            ContentType = contentType
+            stream.Position = 0;
+            return s3.PutObjectAsync(new PutObjectRequest
+            {
+                BucketName = options.Bucket,
+                Key = normalizedKey,
+                InputStream = stream,
+                ContentType = contentType
+            }, ct);
         }, ct);
 
         var uri = StorageUri.Build(options.Bucket, normalizedKey);
@@ -154,22 +161,61 @@ public sealed class S3ObjectStorageClient(
     public async Task EnsureBucketAsync(CancellationToken ct = default)
     {
         var exists = await AmazonS3Util.DoesS3BucketExistV2Async(s3, options.Bucket);
-        if (!exists)
-        {
-            await s3.PutBucketAsync(new PutBucketRequest { BucketName = options.Bucket }, ct);
-            logger.LogInformation("Created object storage bucket {Bucket}", options.Bucket);
-        }
+        if (!exists) await CreateBucketWithVersioningAsync(ct);
+        else if (options.EnableVersioning) await PutVersioningAsync(ct);
+    }
 
-        if (options.EnableVersioning)
+    // FR-06, FR-12, ADR-0014/ADR-0015, IADR-0303 (#1033): 書き込みの自己修復。
+    //
+    // 🔴 **バケットを作るのは ConversionService の起動時 bootstrap だけ**であり、その bootstrap は
+    // fail-open である（MinIO の起動待ちで例外が出ても警告を出して起動を続ける）。**競合に負けると
+    // バケットは作られないまま**になり、以後の書き込みが `NoSuchBucket` で落ち続ける。
+    // 実測（develop `3939e72` の integration-stack run 33230268422）: seed の `POST /documents` が
+    // `The specified bucket does not exist` で 500 になった。**同じコードで前回の run は緑**であり、
+    // 起動順序に依存する競合であることが 2 run の対比で確定している。
+    //
+    // 🔴 **bootstrap のコメントが約束していた「保存時に再試行される（MassTransit リトライ）」は、
+    // この経路では成立していなかった** —— `POST /documents` は同期 HTTP であってメッセージではない。
+    // **約束を実装の側で本当にする。**
+    //
+    // ここに置くのは、書き込み元が 4 サービス 6 箇所に散っているためである（うち 2 サービスは
+    // バケットを作らない）。**クライアントに 1 箇所置けば全経路が守られ、起動順序にも依存しない。**
+    //
+    // 🔴 **`EnsureBucketAsync` は呼ばない。** 同メソッドの存在確認は静的な
+    // `AmazonS3Util.DoesS3BucketExistV2Async` であり差し替えられない（＝検査が書けない）。
+    // **存在しないことは例外が既に教えている**ので、作成だけを行って 1 度だけ再試行する。
+    private async Task PutWithBucketSelfHealAsync(Func<Task> put, CancellationToken ct)
+    {
+        try
         {
-            // ADR-0014, IADR-0008: 冪等な再変換でも履歴を残すためバージョニングを有効化する。
-            await s3.PutBucketVersioningAsync(new PutBucketVersioningRequest
-            {
-                BucketName = options.Bucket,
-                VersioningConfig = new S3BucketVersioningConfig { Status = VersionStatus.Enabled }
-            }, ct);
+            await put();
+        }
+        // 🔴 **`NoSuchBucket` だけを捕まえる。** 権限不足・接続不能まで飲み込むと、
+        // 「バケットを作れば直る」わけではない失敗を握り潰して原因を隠すことになる。
+        catch (AmazonS3Exception ex) when (ex.ErrorCode == NoSuchBucketErrorCode)
+        {
+            logger.LogWarning(
+                "Object storage bucket {Bucket} did not exist on write; creating it and retrying once."
+                + " 起動時 bootstrap が MinIO の起動待ちに負けた可能性が高い（#1033）。", options.Bucket);
+            await CreateBucketWithVersioningAsync(ct);
+            await put();
         }
     }
+
+    private async Task CreateBucketWithVersioningAsync(CancellationToken ct)
+    {
+        await s3.PutBucketAsync(new PutBucketRequest { BucketName = options.Bucket }, ct);
+        logger.LogInformation("Created object storage bucket {Bucket}", options.Bucket);
+        if (options.EnableVersioning) await PutVersioningAsync(ct);
+    }
+
+    // ADR-0014, IADR-0008: 冪等な再変換でも履歴を残すためバージョニングを有効化する。
+    private Task PutVersioningAsync(CancellationToken ct) =>
+        s3.PutBucketVersioningAsync(new PutBucketVersioningRequest
+        {
+            BucketName = options.Bucket,
+            VersioningConfig = new S3BucketVersioningConfig { Status = VersionStatus.Enabled }
+        }, ct);
 
     private (string Bucket, string Key) Resolve(string uri)
     {
