@@ -70,7 +70,7 @@ Keycloak の対応関係（`TotpBean`）:
 | 走査語 | 件数 | 内訳 |
 | --- | --- | --- |
 | `kc-totp-secret-key` | 6 | **機能 2**（`keycloak-login-form.js:12` コメント / `:70` 抽出） ＋ 記録 3 ＋ テスト 1 |
-| `totpSecretEncoded` | 10 | **機能 5**（`keycloak-login-form.js` の 4 ＋ `verify-oidc-edge-flow.sh:263`） ＋ テスト 5 |
+| `totpSecretEncoded` | 9 | **機能 5**（`keycloak-login-form.js` の 4 ＋ `verify-oidc-edge-flow.sh:263`） ＋ テスト 4 |
 
 **除外したものと理由**:
 
@@ -108,6 +108,26 @@ node -e '...require(process.argv[1]).base32Encode(process.argv[2])' "$SCRIPT_DIR
 → 二重に是正した: **(a)** `-e` をやめ、既存の呼び出しと同じ「スクリプトを直接実行する」形
 （`--encode` サブコマンド）へ揃える。**(b)** **シェルが実際に叩く形**（`execFileSync` で CLI を起動）
 の検査を `scripts.test.js` へ足す。**ライブラリだけ試して満足しない。**
+
+### 7-2 数え間違い —— **規則 7 を、母集合を記録する当の PR で破った**
+
+初版は `totpSecretEncoded` を **10 件（機能 5 ＋ テスト 5）**と書いた。**正しくは 9 件（機能 5 ＋ テスト 4）**である。
+レビューの指摘で気付き、`git show origin/develop:<path> | grep -c` で**数え直して**確定させた。
+
+| ファイル（PR 適用前） | 実測 |
+| --- | --- |
+| `scripts/lib/keycloak-login-form.js` | 4 |
+| `scripts/verify-oidc-edge-flow.sh` | 1 |
+| `scripts/scripts.test.js` | **4**（初版は 5 と書いた） |
+| **合計** | **9** |
+
+🔴 **原因は「走査の出力を目で数えた」ことである。** 規則 7 は
+**「走査の出力を加工して読まない・数値を直したら全走査し直す」**と定めており、
+`grep -c` で機械的に合計すれば起きなかった。**母集合の記録を主旨に掲げた PR 自身が、
+母集合の数え方の規則を破った**という点で、#1049 の索引（「変異 4 種」と書いて本文は 6 種）と同型である。
+
+**是正のときも同じ轍を踏まないよう、`kc-totp-secret-key` 側（6 件）も目視で追認せず
+`grep -c` で数え直した**（機能 2 ＋ 記録 3 ＋ テスト 1 ＝ 6。初版の記載と一致）。
 
 ## 8. 🔴 実測できないこと
 
