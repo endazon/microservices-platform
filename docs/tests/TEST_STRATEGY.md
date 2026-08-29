@@ -3,7 +3,7 @@ title: テスト戦略（退行防止テスト基盤）
 type: test-spec
 status: in-progress
 created: 2026-08-03
-updated: 2026-08-28
+updated: 2026-08-29
 author: Claude
 ---
 <!-- trace:

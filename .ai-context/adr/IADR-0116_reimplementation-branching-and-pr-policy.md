@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR, ADR-0030, ADR-0031, ADR-0032, IADR-0034, IADR-0115, IADR-0118, IADR-0119, IADR-0121, IADR-0142, IADR-0139, IADR-0141, IADR-0230, IADR-0279]
 author: Claude
 created: 2026-08-02
-updated: 2026-08-27
+updated: 2026-08-29
 plan_refs:
   - planning:projects/microservices-platform/INDEX.md
 ---
