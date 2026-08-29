@@ -4,7 +4,7 @@
 
 ## 起点 ID の種別（固有）
 
-- 裸の ID は **MSP** を指す。レンジは `FR-01..22` / `UC-01..11` / `SC-01..21` / `ADR-0001..0058`（**欠番なし**。引き直しの記録は別紙 [`plan-id-range-history-annex.md`](../../docs/how-to/plan-id-range-history-annex.md)。**世代数は書かない**——別紙が増えるたびに腐る導出値である）。
+- 裸の ID は **MSP** を指す。レンジは `FR-01..22` / `UC-01..11` / `SC-01..21` / `ADR-0001..0064`（**欠番なし**。引き直しの記録は別紙 [`plan-id-range-history-annex.md`](../../docs/how-to/plan-id-range-history-annex.md)。**世代数は書かない**——別紙が増えるたびに腐る導出値である）。
 - **`Proposed` でも ID としては実在する**（[[IADR-0119]] 決定 2）。
 - **着手条件は FR 単位で読む。** 範囲の正は計画 `ADR-0037` の「着手可否の注記」であり**ここへ転記しない**（[[IADR-0142]]）。
 - **計画 ADR の実在性は本節の宣言レンジで検査する**（`check-commit-messages.js`・`check-trace-blocks.js` とも本節が一次情報。ファイル有無の突合は submodule 撤去により不可。CI が守れていなかった経緯は別紙 §3）。
