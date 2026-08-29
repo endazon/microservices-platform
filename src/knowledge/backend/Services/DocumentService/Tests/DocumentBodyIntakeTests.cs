@@ -21,11 +21,13 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
 {
     private const string Confidentiality = "internal";
 
-    private HttpClient ClientAs(string? user = null, string? roles = null)
+    private HttpClient ClientAs(string? user = null, string? roles = null, bool noName = false)
     {
         var client = factory.CreateClient();
         if (user is not null) client.DefaultRequestHeaders.Add(TestAuthHandler.UserHeader, user);
         if (roles is not null) client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, roles);
+        // 認証は通るが名前を持たない主体（機械クライアント相当）。owner レスの文書を作るために要る。
+        if (noName) client.DefaultRequestHeaders.Add(TestAuthHandler.NoNameHeader, "1");
         return client;
     }
 
@@ -221,11 +223,20 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
 
     // FR-21 ⑤, ADR-0036 §未決 6: `owner` を持たない文書（取り込み経路の既定は `system`）は
     // 所有者ベースでは書き込めない。編集は SC-05 の管理者経路が担う。
+    //
+    // 🔴 **`noName` が要る**（ADR-0060 決定 3 / #1057）。作成経路が主体から `owner` を入れるように
+    // なったため、`ClientAs()`（＝ `DefaultUser` で認証される）で作ると **`owner` が必ず載り、
+    // 本テストは「別の利用者だから拒否」を見るだけの重複**になる。**通るのに何も試していない状態**であり、
+    // AI レビューが検出した。**名前を持たない主体で作って、本当に owner レスの文書を用意する。**
     [Fact]
     public async Task 所有者属性を持たない文書には本文を投入できない()
     {
-        var resp0 = await ClientAs().PostAsJsonAsync("/documents", CreatePayload("所有者なし"), TestContext.Current.CancellationToken);
+        var resp0 = await ClientAs(noName: true).PostAsJsonAsync("/documents", CreatePayload("所有者なし"), TestContext.Current.CancellationToken);
         var doc = (await resp0.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken))!;
+
+        // 🔴 前提を先に固定する —— owner が載っていたら、この後の 404 は別の理由になる。
+        doc.Attributes.Should().NotContainKey(DocumentBodyIntake.OwnerKey,
+            "名前を持たない主体で作った文書には owner が載らない（ADR-0060 決定 3）");
 
         var resp = await ClientAs(user: "alice")
             .PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = "誰かの本文" }, TestContext.Current.CancellationToken);
