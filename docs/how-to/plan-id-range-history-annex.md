@@ -3,15 +3,15 @@ title: 別紙 — 計画 ID レンジの追随記録と、計画 ADR の状態�
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-08-23
+updated: 2026-08-29
 author: claude
 ---
 <!-- trace:
-ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-06, SC-18, SC-19, SC-20]
-adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058]
+ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-06, SC-17, SC-18, SC-19, SC-20]
+adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228]
 specs: []
-issues: [#449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475]
+issues: [#449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -37,7 +37,7 @@ issues: [#449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, plan
 | `ADR-0061` | Accepted | 露出トグルが 1 つでも ON の個人資料は索引へ載せ、用途の別は索引を分けずに属性で表す |
 | `ADR-0062` | Accepted | 無人アカウントの ABAC 属性は登録者が持つ集合の部分集合とし、判定は後段で行う |
 | `ADR-0063` | Accepted | タグ提案の承認は文書のタグへ反映するところまでを要求とし、認可はその文書のタグを編集できるかで判定する |
-| `ADR-0064` | Accepted | SC-17 のバックエンドは認可サービスに置き、ID 管理を自作しない線を「持たない 3 つ」で引く |
+| `ADR-0064` | Accepted | `SC-17` のバックエンドは認可サービスに置き、ID 管理を自作しない線を「持たない 3 つ」で引く |
 
 #### 🔴 前世代が書いた作法を、次の世代が踏まなかった
 
@@ -45,7 +45,7 @@ issues: [#449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, plan
 
 > 裁定を受け取ったら**まずレンジを引き直す**、を作法にすれば、前 2 世代のどちらの契機も要らなくなる。
 
-**本世代はその条件をすべて満たしていた** —— 自分が起票した環流（planning#498）の裁定が
+**本世代はその条件をすべて満たしていた** —— 自分が起票した環流（`planning#498`）の裁定が
 そのまま `ADR-0060` になり、**レンジが動くことを構造的に予測できる立場にいた**。
 にもかかわらず**裁定を読んで実装へ直行し、レンジを引き直さなかった。**
 捕まえたのは作法ではなく **AI レビューの指摘**である。
