@@ -117,8 +117,19 @@ jobs:
       - name: Wait for pods to become Ready (待つだけ。判定はしない)
         run: |
           set -euo pipefail
+          # 🔴 **Job の Pod を待ちの対象へ入れない**（#1055）。完了した Job の Pod は
+          # `Ready=False`（reason PodCompleted）で固定され、**二度と Ready にならない**ため、
+          # `--all` だと `--for=condition=Ready` が原理的に成立しない Pod を待つことになる。
+          # 実測（run 33234971195）: `config-drift-postsync` の Pod で期限を使い切り、
+          # **全アプリ Pod が 1/1 Running なのに** 16 件がタイムアウトして落ちた。
+          # 同 Job の ttlSecondsAfterFinished は 300 秒で待ちは 600 秒なので、
+          # **待ち開始時に Pod が残っているかどうかの競合**になっていた（＝間欠的に落ちる）。
+          #
+          # ラベルは新旧どちらも外す。**フェイルセーフである** —— どの Pod にもラベルが無い環境では
+          # 「存在しない」が全 Pod に真となり、**現状と同じ対象集合**になる。
           for ns in platform-infra microservices-platform; do
-            kubectl -n "$ns" wait --for=condition=Ready pods --all --timeout=600s
+            kubectl -n "$ns" wait --for=condition=Ready pods \
+              -l '!job-name,!batch.kubernetes.io/job-name' --timeout=600s
           done
 
       # 🔴 ここが門である。G1（readiness）/ G2（0 件で緑にしない）/ G3（ツール不在は失敗）/
