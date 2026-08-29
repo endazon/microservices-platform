@@ -270,7 +270,12 @@ acquire_token() {
       # **登録を成立させるため送り返す必要がある値**＝契約側で、表示はその bytes の base32 である。
       # **表示が空なら生から導出する。**
       if [ -z "$otp_secret" ] && [ -n "$otp_raw" ]; then
-        otp_secret=$(node "$SCRIPT_DIR/lib/totp.js" --encode "$otp_raw" 2>/dev/null || printf '')
+        # 🔴 **stderr を捨てない。** `|| printf ''` は「失敗しても致命傷にしない」ためのもので、
+        # そこは残す（次の OIDC_TOTP_SECRET へ落ちて、最終的に下の診断メッセージへ至る）。
+        # だが `2>/dev/null` まで付けると**失敗した理由まで消える** —— 本 PR で踏んだ事故そのもの
+        # （`node -e` の require が MODULE_NOT_FOUND になったのに、黙って空文字になった）である。
+        # **黙って空になるのは許すが、なぜ空になったかは CI ログへ残す。**
+        otp_secret=$(node "$SCRIPT_DIR/lib/totp.js" --encode "$otp_raw" || printf '')
         [ "$verbose" = "1" ] && [ -n "$otp_secret" ] \
           && pass "表示用 base32 が無いので hidden の生シークレットから導出した"
       fi
