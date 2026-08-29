@@ -1,7 +1,7 @@
 ---
 title: trace ブロックの `issues:` / `specs:` は網羅索引ではなく取捨した集合である（#1047 の前提の訂正）
 type: spec
-status: fixed
+status: done
 related_ids: [NFR, ADR-0048, IADR-0166]
 author: Claude
 created: 2026-08-29
