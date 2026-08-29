@@ -6,7 +6,8 @@ related_ids:
   - FR-06
   - FR-12
   - FR-21
-  - NFR
+  - NFR-05
+  - NFR-21
   - ADR-0014
   - ADR-0015
 author: implementation-agent
@@ -135,3 +136,13 @@ DocumentService/Program.cs:64:          // …ConversionService が担ってお�
 - `src/platform/backend/Shared/Platform.Shared.Infrastructure.Tests/Composable/Adapters/Storage/`（新規テスト）
 - `.ai-context/adr/IADR-0303_*.md`（新規）
 - `docs/how-to/session-handoff.md`（型 3 の新しい実例）
+
+## ［2026-08-29 追記 / #1033］AI レビューの指摘 2 件に対応した
+
+1. **並行作成のレース**（🟡）—— 指摘どおり**実在する欠陥**だった。自己修復はリクエストごとに
+   走るため、未作成の窓へ同時到達した書き込みが並行して作成を撃ち、**負けた側は
+   `BucketAlreadyOwnedByYou` で失敗**する（SDK に専用例外型が実在することを実測）。
+   レビューは「以前より悪化はしない」としたが、**競合の窓はまさに本件が起きる場面**であり、
+   いちばん必要なときに失敗する。既存エラーを吸収する形へ直し、変異 M5 / M6 を足した。
+2. **無採番 `NFR`**（🟡）—— 計画の非機能要件表を実際に見て **NFR-05（可用性）**・
+   **NFR-21（障害検出〜復旧）** へ採番し直した。当たる番号があった。

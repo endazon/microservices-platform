@@ -18,6 +18,12 @@ public sealed class S3ObjectStorageClient(
     /// <summary>バケットが存在しないときに S3 が返すエラーコード（#1033 の自己修復の起点）。</summary>
     internal const string NoSuchBucketErrorCode = "NoSuchBucket";
 
+    /// <summary>作成しようとしたバケットが既にある（自分が所有）ときのエラーコード。</summary>
+    internal const string BucketAlreadyOwnedByYouErrorCode = "BucketAlreadyOwnedByYou";
+
+    /// <summary>作成しようとしたバケットが既にある（名前が取られている）ときのエラーコード。</summary>
+    internal const string BucketAlreadyExistsErrorCode = "BucketAlreadyExists";
+
     public async Task<string> PutTextAsync(string key, string text, string contentType,
         CancellationToken ct = default)
     {
@@ -204,10 +210,31 @@ public sealed class S3ObjectStorageClient(
 
     private async Task CreateBucketWithVersioningAsync(CancellationToken ct)
     {
-        await s3.PutBucketAsync(new PutBucketRequest { BucketName = options.Bucket }, ct);
-        logger.LogInformation("Created object storage bucket {Bucket}", options.Bucket);
+        try
+        {
+            await s3.PutBucketAsync(new PutBucketRequest { BucketName = options.Bucket }, ct);
+            logger.LogInformation("Created object storage bucket {Bucket}", options.Bucket);
+        }
+        // 🔴 **自己修復はリクエストごとに走る。** 起動時 bootstrap と違って単一ではないため、
+        // バケット未作成の窓へ同時に到達した書き込みが**並行して作成を撃つ**。
+        // S3 / MinIO は重複作成を成功にせず `BucketAlreadyOwnedByYou` / `BucketAlreadyExists` を返す
+        // （SDK は専用の例外型を持つ。いずれも `AmazonS3Exception` 派生でエラーコードを載せる）。
+        //
+        // **負けた側にとっても目的は達成されている** —— バケットは在る。ここで投げると
+        // 「直っているのに、その書き込みだけが失敗する」ことになり、競合の窓が広いほど
+        // 失敗が増える。**作成の意味は「在る状態にする」であって「自分が作る」ではない。**
+        catch (AmazonS3Exception ex) when (IsAlreadyPresent(ex))
+        {
+            logger.LogInformation(
+                "Object storage bucket {Bucket} was created concurrently ({ErrorCode}); continuing.",
+                options.Bucket, ex.ErrorCode);
+        }
+
         if (options.EnableVersioning) await PutVersioningAsync(ct);
     }
+
+    private static bool IsAlreadyPresent(AmazonS3Exception ex) =>
+        ex.ErrorCode is BucketAlreadyOwnedByYouErrorCode or BucketAlreadyExistsErrorCode;
 
     // ADR-0014, IADR-0008: 冪等な再変換でも履歴を残すためバージョニングを有効化する。
     private Task PutVersioningAsync(CancellationToken ct) =>

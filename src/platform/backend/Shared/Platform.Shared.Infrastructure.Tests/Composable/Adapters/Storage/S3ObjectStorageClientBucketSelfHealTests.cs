@@ -23,7 +23,10 @@ public class S3ObjectStorageClientBucketSelfHealTests
 {
     private const string Bucket = "test-bucket";
 
-    private sealed class FakeS3(int failuresBeforeSuccess, string errorCode = "NoSuchBucket")
+    private sealed class FakeS3(
+        int failuresBeforeSuccess,
+        string errorCode = "NoSuchBucket",
+        string? createBucketErrorCode = null)
         : AmazonS3Client(new BasicAWSCredentials("dummy", "dummy"),
             new AmazonS3Config { ServiceURL = "http://127.0.0.1:1", ForcePathStyle = true })
     {
@@ -46,6 +49,8 @@ public class S3ObjectStorageClientBucketSelfHealTests
             PutBucketRequest request, CancellationToken cancellationToken = default)
         {
             BucketCreations.Add(request);
+            if (createBucketErrorCode is not null)
+                throw new AmazonS3Exception("already there") { ErrorCode = createBucketErrorCode };
             return Task.FromResult(new PutBucketResponse());
         }
 
@@ -111,6 +116,25 @@ public class S3ObjectStorageClientBucketSelfHealTests
         (await act.Should().ThrowAsync<AmazonS3Exception>()).Which.ErrorCode.Should().Be("AccessDenied");
         s3.BucketCreations.Should().BeEmpty("作成を試みてはならない");
         s3.PutObjectCalls.Should().Be(1, "再試行してはならない");
+    }
+
+    [Theory]
+    [InlineData("BucketAlreadyOwnedByYou")]
+    [InlineData("BucketAlreadyExists")]
+    public async Task 並行作成で負けても書き込みは成功する(string createError)
+    {
+        // 🔴 **自己修復はリクエストごとに走る**ため、バケット未作成の窓へ同時に到達した書き込みが
+        // 並行して作成を撃つ。S3 / MinIO は重複作成を成功にせず「既にある」を返す。
+        // **負けた側にとっても目的は達成されている**（バケットは在る）。ここで投げると
+        // 「直っているのにその書き込みだけ失敗する」ことになる。
+        var s3 = new FakeS3(failuresBeforeSuccess: 1, createBucketErrorCode: createError);
+
+        var uri = await Sut(s3).PutTextAsync(
+            "documents/a/body.md", "本文", "text/markdown", TestContext.Current.CancellationToken);
+
+        uri.Should().Be(StorageUri.Build(Bucket, "documents/a/body.md"));
+        s3.PutObjectCalls.Should().Be(2, "作成に負けても再試行まで進む");
+        s3.VersioningCalls.Should().ContainSingle("既にあっても版の設定は行う");
     }
 
     [Fact]
