@@ -35,6 +35,29 @@ function base32Decode(text) {
 }
 
 /**
+ * RFC 4648 の base32 へ符号化する（パディング無し）。
+ *
+ * 🔴 **これは「表示用の base32 を画面から取れなかったとき」の代替経路である**（#1052）。
+ * Keycloak の初回登録画面は 2 つの値を持つ:
+ *   - hidden `totpSecret` … **生のシークレット文字列**。登録を成立させるため POST に必須
+ *   - `<span id="kc-totp-secret-key">` … **その bytes の base32**（人が読む表示）
+ * 後者は描画であってバージョン差・テーマ差で変わる。**前者から後者を導ければ表示に依存せずに済む。**
+ * @param {Buffer|string} input 生のシークレット（文字列は UTF-8 として読む）
+ * @returns {string} A-Z2-7 のみの base32
+ */
+function base32Encode(input) {
+  const buf = Buffer.isBuffer(input) ? input : Buffer.from(String(input == null ? '' : input), 'utf8');
+  const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const b of buf) bits += b.toString(2).padStart(8, '0');
+  let out = '';
+  for (let i = 0; i < bits.length; i += 5) {
+    out += ALPHABET[parseInt(bits.slice(i, i + 5).padEnd(5, '0'), 2)];
+  }
+  return out;
+}
+
+/**
  * TOTP を 1 つ計算する。
  * 既定値は realm の otpPolicy（HmacSHA1 / 6 桁 / 30 秒。ADR-0026 の確定値）に合わせてある。
  * @param {string} secretBase32 Keycloak が表示する base32 のシークレット
@@ -55,13 +78,26 @@ function totp(secretBase32, opts = {}) {
   return String(binary % 10 ** digits).padStart(digits, '0');
 }
 
-module.exports = { totp, base32Decode };
+module.exports = { totp, base32Decode, base32Encode };
 
 if (require.main === module) {
-  const [secret, at] = process.argv.slice(2);
-  if (!secret) {
-    process.stderr.write('使い方: node scripts/lib/totp.js <base32-secret> [unix-seconds]\n');
-    process.exit(2);
+  const argv = process.argv.slice(2);
+  // #1052: `--encode <生シークレット>` は base32 だけを出す。
+  // 🔴 **`node -e` + `require()` で呼ばない。** `-e` の require は相対パスを**モジュール名**として
+  // 解決するため `scripts/lib/totp.js` が MODULE_NOT_FOUND になる（実測して踏んだ）。
+  // 既存の呼び出しと同じ「スクリプトを直接実行する」形に揃えれば、この落とし穴が消える。
+  if (argv[0] === '--encode') {
+    if (!argv[1]) {
+      process.stderr.write('使い方: node scripts/lib/totp.js --encode <生シークレット>\n');
+      process.exit(2);
+    }
+    process.stdout.write(base32Encode(argv[1]));
+  } else {
+    const [secret, at] = argv;
+    if (!secret) {
+      process.stderr.write('使い方: node scripts/lib/totp.js <base32-secret> [unix-seconds]\n');
+      process.exit(2);
+    }
+    process.stdout.write(totp(secret, at ? { t: Number(at) } : {}));
   }
-  process.stdout.write(totp(secret, at ? { t: Number(at) } : {}));
 }
