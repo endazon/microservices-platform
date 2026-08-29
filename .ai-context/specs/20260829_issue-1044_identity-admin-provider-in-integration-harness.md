@@ -142,11 +142,20 @@ $ git grep -n "IdentityAdmin" -- . ':!src/ai-stock-trading'
 `AbacScopeTests` は Postgres が無いと `InitializeAsync` が早期 return するため、
 本環境では**この退行を再現できない**。再現できる層まで下げる:
 
-- **`AuthorizationHostConfigurationTests`（新規・`Category=EndpointRouting` 相当の in-process）** —
-  `AuthorizationServiceFactory` が組み立てるホスト構成に `IdentityAdmin:Provider` が
-  含まれることを、**ホストを起こさずに**検査する。ホストを起こすと Program の
-  `MigrateAsync` が実 DB を要求するため、**構成の面だけを見る**。
-- 変異: `UseSetting` の行を消すと落ちること（M1）、値を `keycloak` に変えると落ちること（M2）。
+- **`AuthorizationHostBootTests`（新規・`Category=EndpointRouting`。Docker 非依存）** —
+  `AuthorizationServiceFactory` が起こすホストが**実際に構築でき**、`IIdentityAdminClient` が
+  `InMemoryIdentityAdminClient` へ解決されることを検査する。
+- 変異: `UseSetting` の行を消す（M1）、値を `keycloak` に変える（M2）、
+  `UseSetting` を `ConfigureAppConfiguration` に変える（M3）。
+
+> 🔴 **［2026-08-29 追記 / #1044］起草時の設計から 2 点変えた。** 当初ここは
+> 「**ホストを起こさずに**構成の面だけを見る」「クラス名は `AuthorizationHostConfigurationTests`」と
+> 書いていた。**ホストを起こさない案は採れなかった** —— `WebApplicationFactory` は構成だけを
+> 取り出す口を持たず、`ConfigureWebHost` は `protected` なので外から呼べない。
+> 代わりに **DbContext を InMemory へ差し替えて起動時 `MigrateAsync` を迂回**すれば
+> （`IsRelational()` が false になる）、**実 DB もブローカも無しでホスト構築だけを通せる**ことが分かった。
+> こちらのほうが検出力が高い —— 構成の有無ではなく**起動が通るかどうか**を直接測る。
+> 変異も M3 を足して 3 種にした（下の実測表が正である）。
 
 **PR CI（`Category!=Integration`）で走る**ので、次に同じ鍵が抜けたら**マージ前に**赤くなる。
 Integration の実走緑は `develop` への push 後にしか得られない —— **その結果が出るまで #1044 は閉じない。**
@@ -186,4 +195,4 @@ $ dotnet format src/knowledge/backend/backend.slnx --verify-no-changes   → 差
 ## 5. 触るファイル
 
 - `src/knowledge/backend/Tests/Knowledge.IntegrationTests/Fixtures/IntegrationTestFactory.cs`（`AuthorizationServiceFactory`）
-- `src/knowledge/backend/Tests/Knowledge.IntegrationTests/AuthorizationService/AuthorizationHostConfigurationTests.cs`（新規）
+- `src/knowledge/backend/Tests/Knowledge.IntegrationTests/AuthorizationService/AuthorizationHostBootTests.cs`（新規）
