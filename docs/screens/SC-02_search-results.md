@@ -3,7 +3,7 @@ title: 検索結果一覧 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-29
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
