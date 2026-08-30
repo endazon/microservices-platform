@@ -1,6 +1,9 @@
 // Issue #126: BFF 境界のエラー種別。IADR-0009（存在秘匿）と整合し、画面は「拒否」と「不在」を
 // 区別しない。404 は NotFound として扱い、存在の有無を推測させない。
 
+import { i18n } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
+
 export type ApiErrorKind =
   | 'unauthorized' // 401: 未認証/期限切れ → 再ログイン
   | 'validation' // 400: 入力/検証エラー（SC-09 ABAC ポリシー矛盾など。details にメッセージ）
@@ -42,16 +45,35 @@ export class ApiError extends Error {
     this.body = body;
   }
 
-  /** HTTP ステータスから種別を導出する（IADR-0009: 404 は不在/秘匿を区別しない）。 */
+  /**
+   * HTTP ステータスから種別を導出する（IADR-0009: 404 は不在/秘匿を区別しない）。
+   *
+   * ［2026-08-30 / #1078］**文言を翻訳カタログへ載せた。** ここで組み立てた `message` は
+   * `components/ui/apiErrors.ts` の `toMessages()` を通って**画面に表示される**ため、
+   * 日本語の直書きは en ロケールでそのまま日本語が出ることを意味していた。
+   *
+   * React の外なので `<Trans>` ではなく `i18n._(msg\`…\`)` を使う
+   * （`components/notifications/notificationMessages.ts` と同じ作法）。
+   * **ja の表示は変わらない** —— msgid は原文そのもの（`sourceLocale: 'ja'`）であり、
+   * i18n が未活性でも msgid へフォールバックする。
+   */
   static fromStatus(status: number, details: string[] = [], body: unknown = undefined): ApiError {
-    if (status === 401) return new ApiError('unauthorized', '認証が必要です。', status);
+    if (status === 401) return new ApiError('unauthorized', i18n._(msg`認証が必要です。`), status);
     if (status === 400)
-      return new ApiError('validation', '入力内容に誤りがあります。', status, details, body);
-    if (status === 403) return new ApiError('forbidden', '権限がありません。', status);
-    if (status === 404) return new ApiError('notFound', '見つかりませんでした。', status);
+      return new ApiError(
+        'validation',
+        i18n._(msg`入力内容に誤りがあります。`),
+        status,
+        details,
+        body,
+      );
+    if (status === 403) return new ApiError('forbidden', i18n._(msg`権限がありません。`), status);
+    if (status === 404)
+      return new ApiError('notFound', i18n._(msg`見つかりませんでした。`), status);
     if (status === 409)
-      return new ApiError('conflict', '競合が発生しました。', status, details, body);
-    if (status >= 500) return new ApiError('server', 'サーバでエラーが発生しました。', status);
-    return new ApiError('unknown', `要求が失敗しました（${status}）。`, status);
+      return new ApiError('conflict', i18n._(msg`競合が発生しました。`), status, details, body);
+    if (status >= 500)
+      return new ApiError('server', i18n._(msg`サーバでエラーが発生しました。`), status);
+    return new ApiError('unknown', i18n._(msg`要求が失敗しました（${status}）。`), status);
   }
 }

@@ -62,6 +62,13 @@ export function ObsidianSettingsPage() {
   const failed = mutations.find((m) => m.isError);
   const pending = mutations.some((m) => m.isPending);
 
+  // ［2026-08-30 / #1078］翻訳文へ差し込む値は**単純な変数**として渡す
+  // （`lingui/no-expression-in-message`。プロパティ参照だとカタログのプレースホルダ名が揺れる）。
+  const issuedDeviceName = issued?.deviceName ?? '';
+  const issuedExpiresAt = formatDateTime(issued?.expiresAt);
+  const revokeTargetName = confirming?.kind === 'revoke' ? confirming.device.deviceName : '';
+  const deviceCount = rows.length;
+
   /** 新しい操作の前に、前回の失敗と**発行済みトークンの表示**を捨てる。 */
   function beginOperation() {
     clearIssuedToken();
@@ -196,7 +203,7 @@ export function ObsidianSettingsPage() {
                 </code>
                 <span>
                   <Trans>
-                    端末: {issued.deviceName} ／ 有効期限: {formatDateTime(issued.expiresAt)}
+                    端末: {issuedDeviceName} ／ 有効期限: {issuedExpiresAt}
                   </Trans>
                 </span>
               </span>
@@ -339,7 +346,7 @@ export function ObsidianSettingsPage() {
         >
           <p>
             <Trans>
-              「{confirming.device.deviceName}
+              「{revokeTargetName}
               」のトークンを無効にします。この端末からの同期はすぐに停止します。再び同期するには、トークンを再発行してプラグインへ入れ直してください。
             </Trans>
           </p>
@@ -362,7 +369,7 @@ export function ObsidianSettingsPage() {
             </Trans>
           </p>
           <p>
-            <Trans>対象: {rows.length} 台</Trans>
+            <Trans>対象: {deviceCount} 台</Trans>
           </p>
         </ConfirmDialog>
       )}

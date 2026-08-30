@@ -43,6 +43,14 @@ export function GraphViewPage() {
   const { nodeQuery, setNodeQuery, matches, focusedId, selectedId, setSelectedId } =
     useGraphNodeSearch(nodes);
 
+  // ［2026-08-30 / #1078］翻訳文へ差し込む値は**単純な変数**として渡す。
+  // `{nodes.length}` のようなプロパティ参照を `<Trans>` へ直接書くと、lingui が
+  // プレースホルダ名を機械的に付け直すため（`{0}` 等）、**カタログの msgid が
+  // 実装の書き方に依存して揺れる**（`lingui/no-expression-in-message`）。
+  const shownCount = nodes.length;
+  const totalCount = view?.totalNodes ?? 0;
+  const edgeCount = edges.length;
+
   // 権限外・不在は同じ 404 で秘匿される（ADR-0034 決定 2）。どちらかは区別できない。
   const deniedOrMissing =
     neighbors.error instanceof ApiError && neighbors.error.kind === 'notFound';
@@ -191,13 +199,13 @@ export function GraphViewPage() {
         <Alert tone="warning" label={t`表示上限`} data-testid="truncation-banner">
           {view.totalIsLowerBound ? (
             <Trans>
-              上位 {nodes.length} 件を表示（全 {view.totalNodes} 件以上）。総数の探索も上限に達した
-              ため、「更新日が新しい順」「次数が大きい順」は厳密な上位 {nodes.length}{' '}
+              上位 {shownCount} 件を表示（全 {totalCount} 件以上）。総数の探索も上限に達した
+              ため、「更新日が新しい順」「次数が大きい順」は厳密な上位 {shownCount}{' '}
               件ではありません。 探索深さを浅くするか、辺の型を絞ってください。
             </Trans>
           ) : (
             <Trans>
-              上位 {nodes.length} 件を表示（全 {view.totalNodes} 件）。すべては表示していません。
+              上位 {shownCount} 件を表示（全 {totalCount} 件）。すべては表示していません。
               探索深さを浅くするか、辺の型を絞ってください。
             </Trans>
           )}
@@ -246,7 +254,7 @@ export function GraphViewPage() {
           <div className="min-w-0 flex-[3] space-y-2">
             <GraphCanvas
               option={option}
-              ariaLabel={t`ナレッジグラフ（ノード ${nodes.length} 件・辺 ${edges.length} 本）。詳細は凡例と選択パネルを参照`}
+              ariaLabel={t`ナレッジグラフ（ノード ${shownCount} 件・辺 ${edgeCount} 本）。詳細は凡例と選択パネルを参照`}
               onNodeClick={setSelectedId}
             />
             <GraphLegend />

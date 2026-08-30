@@ -385,3 +385,4 @@
 | [IADR-0309](./IADR-0309_feature-internal-split-substance-over-scaffolding.md) | feature 内部 6 分割の適合は実体で示し、`.gitkeep` の空枠で満たさない | Accepted |
 | [IADR-0310](./IADR-0310_apiserver-oidc-edge-host-resolution.md) | apiserver の OIDC は issuer host を /etc/hosts で解決させる | Accepted |
 | [IADR-0311](./IADR-0311_layer-zone-enforcement-and-alias-resolution.md) | **層ゾーンの機械強制にエイリアス解決を与える**（ADR-0067）。🔴 分類を直しゾーンを置いても `@foundation/*` は素通りしていた（26 ファイル・59 文）。`testing` の被参照禁止は glob ではなく**本番コード限定のブロック**で表す。 | Accepted |
+| [IADR-0312](./IADR-0312_lingui-scope-structural-not-allowlist.md) | **lingui の適用範囲は許可リストではなくユニット全体で表し、カタログ抽出範囲と一致させる**（#1078 / ADR-0066 §理由）。🔴 19 ファイルの i18n 済みコードが無検査で、取りこぼしは 4 つの独立した PR で起きていた。**検査器は足さず許可リストごと消す。** | Accepted |
