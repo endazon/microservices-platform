@@ -14,9 +14,23 @@
 #   argocd namespace は ARGOCD=1 の別 opt-in でのみ作られるため、そこだけ kustomization に含めず
 #   k8s-local-up.sh が「ns 存在時のみ」apply する（argocd-ingress.yaml と同じ fail-safe）。
 #
-# dnsNames に *.localhost を含めるのは、#780 で Keycloak が keycloak.localhost として
-# エッジに出るときに証明書を作り直さずに済ませるため（= dnsNames を安定させる ADR-0023 の要件）。
-# なお *.localhost は 1 段のサブドメインしか覆わない（a.b.localhost は対象外）。現行ホストは全て 1 段。
+# 🔴 [2026-08-30 / #781] **`*.localhost` だけでは足りない。** 標準的な TLS クライアントは
+#   「ワイルドカードの右に 1 ラベルしか無い」証明書を拒否する（`*.com` を防ぐための制限で、
+#   `*.localhost` も同じ形に当たる）。実測:
+#
+#     curl --cacert <root CA> https://localhost/          -> HTTP 200      （明示 SAN）
+#     curl --cacert <root CA> https://keycloak.localhost/ -> curl: (60)    （ワイルドカード）
+#       SSL: no alternative certificate subject name matches target hostname 'keycloak.localhost'
+#
+#   これまで露見しなかったのは、**エッジを叩く経路が例外なく検証を切っていた**ためである
+#   （`verify-oidc-edge-flow.sh` は `-k`、ブラウザは手動例外）。**検証する利用者が現れて初めて壊れる。**
+#   apiserver の OIDC 検証（#781）はまさにその利用者であり、`oidc-ca-file` を渡しても
+#   ホスト名照合で落ちる。
+#
+#   したがって**エッジ host を明示的に列挙する**。`*.localhost` は、これを受け付ける
+#   クライアント向けの保険として残す（消す理由が無い）。
+#   ADR-0023 の「dnsNames を安定させる」要件は、**列挙を安定させる**ことで満たす ——
+#   新しいエッジ host を足すときは、Ingress とこの一覧の両方を触る。
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -28,8 +42,21 @@ metadata:
 spec:
   secretName: edge-tls
   commonName: localhost
+  # 明示列挙の母集合は `deploy/local/` の Ingress が使う host を走査して引いた
+  # （2026-08-30 実測で 8 件。稼働クラスタの Ingress とも一致）。末尾の `*.localhost` は
+  # これを受け付けるクライアント向けの保険であり、単体では効かない（冒頭の注記）。
+  # ⚠ このリストの中にコメント行を入れないこと —— `scripts/k8s-local-up.test.js` の
+  #   `listValues()` は `- ` で始まらない行で走査を打ち切るため、以降の host が読まれなくなる。
   dnsNames:
     - localhost
+    - argocd.localhost
+    - grafana.localhost
+    - headlamp.localhost
+    - keycloak.localhost
+    - minio.localhost
+    - qdrant.localhost
+    - vault.localhost
+    - wiki.localhost
     - "*.localhost"
   duration: 8760h # 1 年
   renewBefore: 720h # 30 日
@@ -56,8 +83,21 @@ metadata:
 spec:
   secretName: edge-tls
   commonName: localhost
+  # 明示列挙の母集合は `deploy/local/` の Ingress が使う host を走査して引いた
+  # （2026-08-30 実測で 8 件。稼働クラスタの Ingress とも一致）。末尾の `*.localhost` は
+  # これを受け付けるクライアント向けの保険であり、単体では効かない（冒頭の注記）。
+  # ⚠ このリストの中にコメント行を入れないこと —— `scripts/k8s-local-up.test.js` の
+  #   `listValues()` は `- ` で始まらない行で走査を打ち切るため、以降の host が読まれなくなる。
   dnsNames:
     - localhost
+    - argocd.localhost
+    - grafana.localhost
+    - headlamp.localhost
+    - keycloak.localhost
+    - minio.localhost
+    - qdrant.localhost
+    - vault.localhost
+    - wiki.localhost
     - "*.localhost"
   duration: 8760h # 1 年
   renewBefore: 720h # 30 日

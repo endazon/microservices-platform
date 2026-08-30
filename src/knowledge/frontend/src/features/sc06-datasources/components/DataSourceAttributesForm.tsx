@@ -19,7 +19,7 @@ import {
   LIFECYCLE_KEY,
   LIFECYCLE_VALUES,
   UNRESOLVED_DEPARTMENT,
-} from '../../abac';
+} from '../../../lib/abac';
 import type { DataSourceDto, PatchDataSourceRequest } from '@foundation/api/generated/bff.schemas';
 
 // FR-05, UC-04, SC-06（#754）: 登録済みデータソースの**既定属性の更新フォーム**。

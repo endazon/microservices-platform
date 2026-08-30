@@ -3,15 +3,15 @@ title: SC-01 検索／チャット質問画面 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-23
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-08, FR-11, SC-01, SC-02, SC-03, SC-04, SC-08, UC-01]
-adrs: [ADR-0031]
-iadrs: [IADR-0009, IADR-0037, IADR-0126]
-specs: [20260804_issue-502_sc01-03-search-flow]
-issues: [#502, #539]
+adrs: [ADR-0031, ADR-0066]
+iadrs: [IADR-0009, IADR-0037, IADR-0126, IADR-0308]
+specs: [20260804_issue-502_sc01-03-search-flow, 20260830_issue-1065_feature-import-isolation]
+issues: [#502, #539, #1065]
 -->
 
 # テスト仕様書: 検索／チャット質問画面
@@ -94,7 +94,7 @@ issues: [#502, #539]
 
 ## 対象範囲フィルタ（#539 / 裁定 Q1・Q3・Q9）
 
-**実装は `features/scope-filter/types/scopeSelection.test.ts`（7 件）と `features/scope-filter/components/ScopeFilter.test.tsx`（8 件）。
+**実装は `lib/scope-filter/scopeSelection.test.ts`（7 件）と `lib/scope-filter/ScopeFilter.test.tsx`（8 件）。
 AI 分析ダッシュボードと共有する部品なので、テストも 1 か所に置く。**
 
 | # | 確かめること | 実装 |

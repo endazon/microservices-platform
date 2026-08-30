@@ -3,15 +3,15 @@ title: SC-06 データソース管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-28
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-05, SC-05, SC-06, SC-07, UC-04]
-adrs: [ADR-0031]
-iadrs: [IADR-0009, IADR-0035, IADR-0039, IADR-0044, IADR-0051, IADR-0127, IADR-0128, IADR-0136, IADR-0148, IADR-0199]
-specs: [20260805_issue-503_sc05-08-admin-screens, 20260806_issue-538_next-sync-at]
-issues: [#501, #537, #538, #628, #767, #796, planning#200, planning#299, planning#361]
+adrs: [ADR-0031, ADR-0066]
+iadrs: [IADR-0009, IADR-0035, IADR-0039, IADR-0044, IADR-0051, IADR-0127, IADR-0128, IADR-0136, IADR-0148, IADR-0199, IADR-0308]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260806_issue-538_next-sync-at, 20260830_issue-1065_feature-import-isolation]
+issues: [#501, #537, #538, #628, #767, #796, #1065, planning#200, planning#299, planning#361]
 -->
 
 # テスト仕様書: データソース管理
@@ -100,9 +100,9 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 | P5 | 日時整形 | 空は `—`、解釈できない値はそのまま出す |
 
 **機密区分の値集合**（登録フォームの「既定の機密区分」）は文書管理画面と共有する語彙であり、
-`features/abac/types/confidentiality.test.ts` が固定する（[文書管理画面のテスト仕様書 §純関数](./SC-05_document-management.md)）。
+`lib/abac/confidentiality.test.ts` が固定する（[文書管理画面のテスト仕様書 §純関数](./SC-05_document-management.md)）。
 
-### 語彙（`features/abac/types/department.test.ts`。［2026-08-15 / #767］）
+### 語彙（`lib/abac/department.test.ts`。［2026-08-15 / #767］）
 
 | # | 観点 | 検証内容 |
 | --- | --- | --- |
@@ -113,7 +113,7 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 後段はフェイルセーフで `unassigned` を入れるため、**画面上は何も起きずに管理者の入力だけが消える**。
 画面テスト経由の間接被覆では文字列そのものを固定できないため、`confidentiality` と同じく直接固定する。
 
-### 語彙（`features/abac/types/lifecycle.test.ts`。［2026-08-16 / #796］）
+### 語彙（`lib/abac/lifecycle.test.ts`。［2026-08-16 / #796］）
 
 | # | 観点 | 検証内容 |
 | --- | --- | --- |
@@ -202,7 +202,7 @@ BFF が後段障害を空一覧へ丸めてしまえば画面には何も届か�
   **［2026-08-16 / #796］数え直した** —— 従前の「7 ＋ 15」は #503 当時の値で、その後の追加（#537 / #538 / #767 /
   本 issue）に追随していなかった。**導出値は走査ではなく計算し直す**という規約に従い、`vitest run` の
   実測値へ置き換えた）
-- `pnpm run test -- knowledge/frontend/src/features/abac`（語彙 **9**。機密区分 3 ＋ 部門 2 ＋ **ライフサイクル 4**）
+- `pnpm run test -- knowledge/frontend/src/lib/abac`（語彙 **9**。機密区分 3 ＋ 部門 2 ＋ **ライフサイクル 4**）
 - `pnpm run test -- knowledge/frontend/src/features/adminFlow.test.tsx`（導線）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
 - `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDataSourceEndpointTests`

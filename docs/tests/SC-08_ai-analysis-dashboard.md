@@ -3,15 +3,15 @@ title: SC-08 AI分析ダッシュボード テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-21
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-07, FR-11, SC-01, SC-03, SC-08, UC-02, UC-05]
-adrs: [ADR-0031]
-iadrs: [IADR-0005, IADR-0009, IADR-0111, IADR-0127, IADR-0131, IADR-0135]
-specs: [20260805_issue-503_sc05-08-admin-screens]
-issues: [#503, #519, #539]
+adrs: [ADR-0031, ADR-0066]
+iadrs: [IADR-0005, IADR-0009, IADR-0111, IADR-0127, IADR-0131, IADR-0135, IADR-0308]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation]
+issues: [#503, #519, #539, #1065]
 -->
 
 # テスト仕様書: AI分析ダッシュボード
@@ -80,7 +80,7 @@ E2E は `src/platform/frontend/e2e/sc08-analysis.smoke.spec.ts`
 
 ## 分析対象のチップ（#539 / 裁定 Q3）
 
-**チップの部品と軸の定義は検索・チャット画面と共有する**（`features/scope-filter`）。
+**チップの部品と軸の定義は検索・チャット画面と共有する**（`lib/scope-filter`）。
 共有そのものが裁定の要求である——「同じ『範囲を絞る』操作が画面ごとに違う挙動になると、
 利用者は操作を覚え直すことになる」。**部品のテストは `../tests/SC-01_search-chat.md` の T-30〜T-43 を参照。**
 
