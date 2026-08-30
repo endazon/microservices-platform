@@ -5,6 +5,7 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NotificationService.Features.Notifications;
+using NotificationService.Features.Notifications.Accept;
 using NotificationService.Domain;
 using NotificationService.Infrastructure.Persistence;
 

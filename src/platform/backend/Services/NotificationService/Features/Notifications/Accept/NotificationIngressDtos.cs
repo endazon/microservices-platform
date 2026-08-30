@@ -1,4 +1,4 @@
-namespace NotificationService.Features.Notifications;
+namespace NotificationService.Features.Notifications.Accept;
 
 // FR-22, IADR-0215 決定 2・3, IADR-0270 決定 6: 受け口（POST /internal/notifications）の要求本文。
 //

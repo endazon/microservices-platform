@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using NotificationService.Common.Observability;
 using NotificationService.Infrastructure.Persistence;
 
-namespace NotificationService.Features.Notifications;
+namespace NotificationService.Features.Notifications.Accept;
 
 // FR-22, ADR-0037 決定 6・17・18, IADR-0215 決定 3, IADR-0270 決定 6: 受け口の受理判断。
 //

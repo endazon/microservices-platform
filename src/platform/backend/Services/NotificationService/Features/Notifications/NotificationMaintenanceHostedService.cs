@@ -3,6 +3,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NotificationService.Common.Options;
+using NotificationService.Features.Notifications.DispatchEmails;
+using NotificationService.Features.Notifications.PurgeExpired;
 
 namespace NotificationService.Features.Notifications;
 

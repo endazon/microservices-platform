@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using System.Text.Json;
 using McpServer.Features.Tools;
+using McpServer.Features.Tools.CallTool;
+using McpServer.Features.Tools.ListTools;
 using McpServer.Features.McpClients;
 using McpServer.Infrastructure.Persistence;
 using McpServer.Domain;
@@ -47,7 +49,10 @@ builder.Services.AddSingleton<EgressPolicy>();
 builder.Services.AddScoped<IToolInvoker, HttpToolInvoker>();
 builder.Services.AddScoped<McpSubjectResolver>();
 builder.Services.AddScoped<ToolInvocationService>();
-builder.Services.AddScoped<McpToolHandlers>();
+// ADR-0065 決定 2: プロトコル面のハンドラは操作フォルダ（Features/Tools/{ListTools,CallTool}）へ
+// 分かれている。統制の単一経路（ToolInvocationService）はどちらも同じものを使う。
+builder.Services.AddScoped<McpListToolsHandler>();
+builder.Services.AddScoped<McpCallToolHandler>();
 
 // FR-15, ADR-0018: 自己申告（イントロスペクション）。段は持たないが、実効ツール一覧の供給元として
 // 到達可能性を申告する（ADR-0024 §5「実効ツール一覧は構成情報 API へ申告する」）。
@@ -58,10 +63,10 @@ builder.Services.AddPlatformIntrospection("mcp-server", new PipelineOptions());
 builder.Services.AddMcpServer()
     .WithHttpTransport()
     .WithListToolsHandler((ctx, ct) =>
-        ctx.Services!.GetRequiredService<McpToolHandlers>()
+        ctx.Services!.GetRequiredService<McpListToolsHandler>()
             .ListToolsAsync(ctx.User ?? new ClaimsPrincipal(), ct))
     .WithCallToolHandler((ctx, ct) =>
-        ctx.Services!.GetRequiredService<McpToolHandlers>().CallToolAsync(
+        ctx.Services!.GetRequiredService<McpCallToolHandler>().CallToolAsync(
             ctx.User ?? new ClaimsPrincipal(),
             ctx.Params?.Name,
             ctx.Params?.Arguments is { } args ? JsonSerializer.Serialize(args) : "{}",
