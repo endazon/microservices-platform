@@ -151,7 +151,8 @@ public class VectorStoreDocumentScopedSearchTests
         var store = new QdrantVectorStore(
             new QdrantClient("127.0.0.1", 65500),
             new ConfigurationBuilder().Build(),
-            NullLogger<QdrantVectorStore>.Instance);
+            NullLogger<QdrantVectorStore>.Instance,
+            TestMeterFactory.NewKeywordSearchMetrics());
 
         var results = await store.SearchWithinDocumentsAsync(
             [1f, 0f], 10, [], null, TestContext.Current.CancellationToken);

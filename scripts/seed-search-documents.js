@@ -37,6 +37,8 @@
  *        node scripts/seed-search-documents.js --dry-run
  *   4) 検索の合言葉だけを出す（判定スクリプトが読む）:
  *        node scripts/seed-search-documents.js --print-probe-term
+ *   5) 全文（キーワード）側でしか答えられないクエリを出す（#1116 の門が読む）:
+ *        node scripts/seed-search-documents.js --print-keyword-only-query
  *
  * 主な環境変数:
  *   SEARCH_SEED_FILE（既定 deploy/local/search-seed/documents.json）
@@ -128,6 +130,34 @@ function seedProbeTerm(seed) {
   if (typeof term !== 'string' || term.trim() === '')
     throw new Error('シードに probeTerm がありません（検索の合言葉が決まらない）。');
   return term.trim();
+}
+
+/**
+ * FR-03, #1116: **全文（キーワード）側でしか答えられないクエリ**を、合言葉から導く。
+ *
+ * 🔴 合言葉をそのまま引いても、**全文インデックスの有無を区別できない** —— Qdrant v1.18.1 は
+ * 索引が無いとき `Match { Text }` を**部分文字列の全走査**へ黙って落とすため、
+ * `msp-searchseed-tanpopo` は索引が在っても無くても当たる（実機で実測。[[IADR-0318]] 実測 4）。
+ * **`#1113` の門（SEARCH_HITS=1）が #1116 の欠陥を通してしまうのはこのためである。**
+ *
+ * **同じ語のまま順序だけ替える**と、索引の有無で結果が割れる。
+ *   - 索引なし（部分文字列） … `tanpopo searchseed msp` は原文に現れないので **0 件**
+ *   - 索引あり（トークン集合） … 3 つのトークンはすべて在るので **当たる**
+ *
+ * 🔴 **合言葉を 2 つに増やさない。** 別の語をここへ書くと、seed を差し替えたときに片方だけ
+ * 取り残される（`documents.json` が単一情報源であることを崩さない）。
+ *
+ * 区切りが無く 1 語に割れないときは **null を返す** —— 呼び出し側は判定を「導けない」と
+ * 明示して落とすこと。**合言葉そのものへ黙って落とさない**（落とすと索引が無くても PASS する）。
+ * @param {{probeTerm?:string}} seed
+ * @returns {string|null}
+ */
+function seedKeywordOnlyQuery(seed) {
+  const tokens = seedProbeTerm(seed)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((t) => t !== '');
+  if (tokens.length < 2) return null;
+  return [...tokens].reverse().join(' ');
 }
 
 /**
@@ -237,6 +267,17 @@ async function main(argv) {
     return 0;
   }
 
+  // FR-03, #1116: 全文側でしか答えられないクエリを読む口（同上・副作用なし）。
+  if (argv.includes('--print-keyword-only-query')) {
+    const q = seedKeywordOnlyQuery(seed);
+    if (q === null) {
+      warn('合言葉が 1 語しかないため、全文側でしか答えられないクエリを導けません。');
+      return 1;
+    }
+    log(q);
+    return 0;
+  }
+
   const documents = seed.documents || [];
   const probeTerm = seedProbeTerm(seed);
   log(`シード: 文書 ${documents.length} 件 / 合言葉 ${probeTerm}（${SEED_FILE}）`);
@@ -317,6 +358,7 @@ module.exports = {
   buildCreateRequest,
   selectMissingDocuments,
   seedProbeTerm,
+  seedKeywordOnlyQuery,
   documentsMissingProbeTerm,
   SEED_FILE,
 };
