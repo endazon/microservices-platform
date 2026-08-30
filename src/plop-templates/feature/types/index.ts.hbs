@@ -1,0 +1,35 @@
+// TODO(起点 ID): 計画書の `SC-xx` / `UC-xx` / `FR-xx` をここへ書く
+// （`.claude/rules/traceability.md`「残す箇所と書式」）。
+//
+// 計画 13_frontend-stack §ディレクトリ構成 の `types/`。**React にも router にも依存しない
+// 純粋な定義だけを置く**（画面を描かずに単体テストで固定できる、という性質がこの区分の値である）。
+//
+// **BFF の DTO をここへ手書きしない。** BFF 由来の型は orval の生成物
+// （`@foundation/api/generated/bff.schemas`）を import する
+// （ADR-0031 §基本方針「手書きクライアント禁止」）。ここへ置くのは、URL の検索パラメータと、
+// 画面の都合で組み立てる**表示用の型・語彙・純粋な写像**だけである。
+//
+// 🔴 **この区分を `.gitkeep` の空枠にしない**（計画 ADR-0065 決定 4）。枠だけの状態は
+// 機械にも目視にも「区分が揃っている」と見え、**適合の見え方**を作る。使わないなら
+// フォルダごと消し、なぜ不要かを PR で述べる。
+
+/** 一覧の絞り込み条件（URL の検索パラメータと 1 対 1 に対応させる）。 */
+export interface {{pascalCase name}}Filter {
+  /** 自由入力の検索語。空文字は「絞り込みなし」を意味する。 */
+  keyword: string;
+}
+
+/** 絞り込み条件の既定値（URL に何も無いときの姿）。 */
+export const EMPTY_{{constantCase name}}_FILTER: {{pascalCase name}}Filter = { keyword: '' };
+
+/**
+ * URL の検索パラメータを正規化する。
+ *
+ * URL は外部由来なので、**未知の値は既定へ倒す** —— 選択肢しか無い UI に「エラー状態」を
+ * 持ち込まない。値域の防壁はサーバ（400）に在り、ここは丸めるだけである。
+ */
+export function normalize{{pascalCase name}}Filter(
+  raw: Record<string, unknown>,
+): {{pascalCase name}}Filter {
+  return { keyword: typeof raw.keyword === 'string' ? raw.keyword : '' };
+}

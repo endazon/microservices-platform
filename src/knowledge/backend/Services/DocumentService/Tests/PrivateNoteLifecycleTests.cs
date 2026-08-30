@@ -12,6 +12,8 @@ using DocumentService.Features.PrivateNotes;
 using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using DocumentService.Features.ObsidianSync.Push;
+using DocumentService.Features.PrivateNotes.Maintenance;
 
 namespace DocumentService.Tests;
 

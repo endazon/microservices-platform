@@ -478,3 +478,27 @@ coverage/
 # .pytest_cache/
 # .coverage
 .claude/worktrees/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NFR, ADR-0065 決定 2 (#1062): 縦スライスの操作フォルダを、上の .NET ビルド成果物
+# パターンから救い出す（`Features/<集約>/<操作>/`）。
+#
+# 🔴 **`Publish` / `Release` / `Debug` / `Out` / `Log` / `Logs` / `Bin` / `Obj` /
+# `Packages` / `TestResults` / `Backup` / `Express` は、ユースケース名として自然で
+# ありながら上のパターンに一致する。** さらに Windows の git は既定で
+# `core.ignorecase=true` なので、**`Publish/` が `publish/`（Click-Once 出力）に
+# 飲み込まれる**。
+#
+# **#1062 の移送で実際に起きた**: `Features/Documents/Publish/Endpoint.cs` が
+# `git add -A` から静かに落ち、**ローカルのビルド・テスト・format はすべて緑のまま**
+# CI（Linux・大文字小文字を区別する）の Release ビルドで初めて CS0234 として現れた。
+# **落ちたことは差分にもコミットにも現れない**ので、気付ける場所が他に無い。
+#
+# ビルド成果物が `Features/` の下に出ることは無いため、この再包含は安全である。
+!**/backend/Services/*/Features/**/
+
+# ⚠ **ディレクトリの再包含で救えるのはディレクトリを塞ぐパターンだけである。**
+# **ファイルを直接塞ぐパターン**（`**/[Bb]in/*` / `**/[Pp]ackages/*`）と、
+# **より深い .gitignore**（`src/.gitignore` の `dist`）は上の 1 行では覆せない。
+# したがって操作フォルダに **`Bin` / `Packages` / `Dist` は使えない**（実測）。
+# 使う必要が出たら、その名前ぶんのファイル単位の再包含をここへ足すこと。

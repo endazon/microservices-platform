@@ -1,5 +1,5 @@
 using AwesomeAssertions;
-using GraphService.Features.GraphDocuments;
+using GraphService.Features.GraphDocuments.Delete;
 using GraphService.Domain;
 using GraphService.Infrastructure.Persistence;
 using Knowledge.Contracts.Events;

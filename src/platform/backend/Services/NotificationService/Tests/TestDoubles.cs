@@ -6,6 +6,8 @@ using NotificationService.Common.Observability;
 using NotificationService.Common.Options;
 using NotificationService.Infrastructure.Persistence;
 using NotificationService.Features.Notifications;
+using NotificationService.Features.Notifications.DispatchEmails;
+using NotificationService.Features.Notifications.PurgeExpired;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 
 namespace NotificationService.Tests;
