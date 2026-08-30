@@ -1,0 +1,48 @@
+# ADR-0023 / ADR-0047 / #782: istio-ingressgateway が TLS 終端に使う葉証明書。
+#
+# なぜ istio-system にもう 1 枚要るのか:
+#   Istio の Gateway は `credentialName` の Secret を **ingress gateway の Pod と同じ namespace**
+#   （= istio-system）から読む。Ingress の `spec.tls.secretName` が同 namespace の Secret しか
+#   参照できないのと同じ制約であり、IADR-0206 が microservices-platform / platform-infra /
+#   argocd の 3 枚に分けたのと同じ理由である。
+#
+# 🔴 名前・dnsNames・issuerRef は既存の 3 枚と**同一に保つ**。
+#   計画 ADR-0023 の設計要件（`secretName` と `dnsNames` を安定させる／CA 固有設定は
+#   ClusterIssuer に閉じ込める／切り替えは issuerRef の差し替えのみ）を崩さないためである。
+#   CA を Let's Encrypt / Vault PKI へ移すときに触るのは ClusterIssuer だけでよい。
+#
+# 🔴 `*.localhost` だけでは足りない（#781 の実測）。標準的な TLS クライアントは
+#   「ワイルドカードの右に 1 ラベルしか無い」証明書を拒否するため、エッジ host を明示列挙する。
+#   ⚠ このリストの中にコメント行を入れないこと —— `scripts/k8s-local-up.test.js` の
+#     `listValues()` は `- ` で始まらない行で走査を打ち切るため、以降の host が読まれなくなる。
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: edge-tls
+  namespace: istio-system
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    tier: local-edge
+spec:
+  secretName: edge-tls
+  commonName: localhost
+  dnsNames:
+    - localhost
+    - argocd.localhost
+    - grafana.localhost
+    - headlamp.localhost
+    - keycloak.localhost
+    - minio.localhost
+    - qdrant.localhost
+    - vault.localhost
+    - wiki.localhost
+    - "*.localhost"
+  duration: 8760h # 1 年
+  renewBefore: 720h # 30 日
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: local-edge-ca
+    kind: ClusterIssuer
+    group: cert-manager.io

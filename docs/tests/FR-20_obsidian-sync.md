@@ -3,7 +3,7 @@ title: FR-20 Obsidian 双方向同期 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-30
 author: Claude
 ---
 <!-- trace:
@@ -22,7 +22,7 @@ issues: [#451]
 監査・期限予告の検知。**対象外**: Obsidian プラグイン本体（未実装の残件）・実ブローカ／実ストレージ
 での結合（この環境では実行していない）。
 
-実体: `DocumentService.Api.Tests` の `ObsidianSyncProtocolTests` / `SyncDeviceTokenTests`。
+実体: `DocumentService.Tests` の `ObsidianSyncProtocolTests` / `SyncDeviceTokenTests`。
 
 ## テスト観点
 
@@ -53,7 +53,7 @@ issues: [#451]
 ## 実行
 
 ```bash
-dotnet test src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests
+dotnet test src/knowledge/backend/Services/DocumentService/Tests
 ```
 
 ## 関連

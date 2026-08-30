@@ -42,23 +42,6 @@ msgstr "（終端）"
 msgid "（表示 {shownCount} 件）"
 msgstr "（表示 {shownCount} 件）"
 
-#. placeholder {0}: s.sourceDocumentTitle
-#. placeholder {1}: s.targetDocumentTitle ?? ''
-#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
-msgid "{0} → {1}（{typeName}）"
-msgstr "{0} → {1}（{typeName}）"
-
-#. placeholder {0}: s.sourceDocumentTitle
-#. placeholder {1}: s.tagValue ?? ''
-#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
-msgid "{0} に「{1}」を付与"
-msgstr "{0} に「{1}」を付与"
-
-#. placeholder {0}: note.title
-#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "{0} を選択"
-msgstr "{0} を選択"
-
 #: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "{count} 件で絞り込み中"
 msgstr "{count} 件で絞り込み中"
@@ -79,19 +62,29 @@ msgstr "{max} 文字以内で入力してください。"
 msgid "{sourceTitle} → {targetTitle}（{edgeTypeName}）"
 msgstr "{sourceTitle} → {targetTitle}（{edgeTypeName}）"
 
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "{sourceTitle} → {targetTitle}（{typeName}）"
+msgstr "{sourceTitle} → {targetTitle}（{typeName}）"
+
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "{sourceTitle} に「{tagValue}」を付与"
+msgstr "{sourceTitle} に「{tagValue}」を付与"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "{title} を選択"
+msgstr "{title} を選択"
+
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "{totalHits} 件（権限内のみ表示）"
 msgstr "{totalHits} 件（権限内のみ表示）"
 
-#. placeholder {0}: confirming.device.deviceName
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
-msgid "「{0}」のトークンを無効にします。この端末からの同期はすぐに停止します。再び同期するには、トークンを再発行してプラグインへ入れ直してください。"
-msgstr "「{0}」のトークンを無効にします。この端末からの同期はすぐに停止します。再び同期するには、トークンを再発行してプラグインへ入れ直してください。"
+msgid "「{revokeTargetName}」のトークンを無効にします。この端末からの同期はすぐに停止します。再び同期するには、トークンを再発行してプラグインへ入れ直してください。"
+msgstr "「{revokeTargetName}」のトークンを無効にします。この端末からの同期はすぐに停止します。再び同期するには、トークンを再発行してプラグインへ入れ直してください。"
 
-#. placeholder {0}: confirming.note.title
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "「{0}」を削除します。削除しても容量は空きません（90 日間保管されます）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
-msgstr "「{0}」を削除します。削除しても容量は空きません（90 日間保管されます）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
+msgid "「{softDeleteTitle}」を削除します。削除しても容量は空きません（90 日間保管されます）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
+msgstr "「{softDeleteTitle}」を削除します。削除しても容量は空きません（90 日間保管されます）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
 
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "「{tagValue}」を付与"
@@ -534,6 +527,14 @@ msgstr "コミット"
 msgid "コミット {commit}"
 msgstr "コミット {commit}"
 
+#: platform/frontend/src/lib/api/ApiError.ts
+msgid "サーバでエラーが発生しました。"
+msgstr "サーバでエラーが発生しました。"
+
+#: platform/frontend/src/lib/api/apiClient.ts
+msgid "サーバへ到達できませんでした。"
+msgstr "サーバへ到達できませんでした。"
+
 #: knowledge/frontend/src/features/sc10-operations/types/opsTools.ts
 msgid "サービスメッシュ"
 msgstr "サービスメッシュ"
@@ -753,11 +754,9 @@ msgstr "なし"
 msgid "ナレッジグラフ"
 msgstr "ナレッジグラフ"
 
-#. placeholder {0}: nodes.length
-#. placeholder {1}: edges.length
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
-msgid "ナレッジグラフ（ノード {0} 件・辺 {1} 本）。詳細は凡例と選択パネルを参照"
-msgstr "ナレッジグラフ（ノード {0} 件・辺 {1} 本）。詳細は凡例と選択パネルを参照"
+msgid "ナレッジグラフ（ノード {shownCount} 件・辺 {edgeCount} 本）。詳細は凡例と選択パネルを参照"
+msgstr "ナレッジグラフ（ノード {shownCount} 件・辺 {edgeCount} 本）。詳細は凡例と選択パネルを参照"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "ナレッジグラフに表示する"
@@ -958,18 +957,13 @@ msgstr "ログ基盤で権限変更の監査ログを見る ↗"
 msgid "一覧"
 msgstr "一覧"
 
-#. placeholder {0}: nodes.length
-#. placeholder {1}: view.totalNodes
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
-msgid "上位 {0} 件を表示（全 {1} 件）。すべては表示していません。 探索深さを浅くするか、辺の型を絞ってください。"
-msgstr "上位 {0} 件を表示（全 {1} 件）。すべては表示していません。 探索深さを浅くするか、辺の型を絞ってください。"
+msgid "上位 {shownCount} 件を表示（全 {totalCount} 件）。すべては表示していません。 探索深さを浅くするか、辺の型を絞ってください。"
+msgstr "上位 {shownCount} 件を表示（全 {totalCount} 件）。すべては表示していません。 探索深さを浅くするか、辺の型を絞ってください。"
 
-#. placeholder {0}: nodes.length
-#. placeholder {1}: view.totalNodes
-#. placeholder {2}: nodes.length
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
-msgid "上位 {0} 件を表示（全 {1} 件以上）。総数の探索も上限に達した ため、「更新日が新しい順」「次数が大きい順」は厳密な上位 {2} 件ではありません。 探索深さを浅くするか、辺の型を絞ってください。"
-msgstr "上位 {0} 件を表示（全 {1} 件以上）。総数の探索も上限に達した ため、「更新日が新しい順」「次数が大きい順」は厳密な上位 {2} 件ではありません。 探索深さを浅くするか、辺の型を絞ってください。"
+msgid "上位 {shownCount} 件を表示（全 {totalCount} 件以上）。総数の探索も上限に達した ため、「更新日が新しい順」「次数が大きい順」は厳密な上位 {shownCount} 件ではありません。 探索深さを浅くするか、辺の型を絞ってください。"
+msgstr "上位 {shownCount} 件を表示（全 {totalCount} 件以上）。総数の探索も上限に達した ため、「更新日が新しい順」「次数が大きい順」は厳密な上位 {shownCount} 件ではありません。 探索深さを浅くするか、辺の型を絞ってください。"
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
@@ -1186,6 +1180,10 @@ msgstr "入力してください。"
 msgid "入力を確認してください"
 msgstr "入力を確認してください"
 
+#: platform/frontend/src/lib/api/ApiError.ts
+msgid "入力内容に誤りがあります。"
+msgstr "入力内容に誤りがあります。"
+
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "全消去"
 msgstr "全消去"
@@ -1292,10 +1290,9 @@ msgstr "分析実行"
 msgid "分析対象（権限内に限定）"
 msgstr "分析対象（権限内に限定）"
 
-#. placeholder {0}: live.length
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "利用中（{0}）"
-msgstr "利用中（{0}）"
+msgid "利用中（{liveCount}）"
+msgstr "利用中（{liveCount}）"
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "利用状況・検索傾向・回答品質（SLO・コストは Grafana で参照）"
@@ -1354,10 +1351,9 @@ msgstr "削除の扱い"
 msgid "削除日時"
 msgstr "削除日時"
 
-#. placeholder {0}: trashed.length
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "削除済み（{0}）"
-msgstr "削除済み（{0}）"
+msgid "削除済み（{trashedCount}）"
+msgstr "削除済み（{trashedCount}）"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "削除済みの個人資料"
@@ -1587,15 +1583,13 @@ msgstr "宣言に無い購読"
 msgid "対象"
 msgstr "対象"
 
-#. placeholder {0}: purgeTargets.length
-#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "対象: {0} 件 ／ 解放される容量: {freed}"
-msgstr "対象: {0} 件 ／ 解放される容量: {freed}"
-
-#. placeholder {0}: rows.length
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
-msgid "対象: {0} 台"
-msgstr "対象: {0} 台"
+msgid "対象: {deviceCount} 台"
+msgstr "対象: {deviceCount} 台"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "対象: {purgeTargetCount} 件 ／ 解放される容量: {freed}"
+msgstr "対象: {purgeTargetCount} 件 ／ 解放される容量: {freed}"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "対象アクション"
@@ -2191,6 +2185,10 @@ msgstr "構成情報は利用できません。"
 msgid "構成情報を取得できませんでした。"
 msgstr "構成情報を取得できませんでした。"
 
+#: platform/frontend/src/lib/api/ApiError.ts
+msgid "権限がありません。"
+msgstr "権限がありません。"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "権限のある文書がありません"
 msgstr "権限のある文書がありません"
@@ -2432,11 +2430,9 @@ msgstr "種別:"
 msgid "種類"
 msgstr "種類"
 
-#. placeholder {0}: issued.deviceName
-#. placeholder {1}: formatDateTime(issued.expiresAt)
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
-msgid "端末: {0} ／ 有効期限: {1}"
-msgstr "端末: {0} ／ 有効期限: {1}"
+msgid "端末: {issuedDeviceName} ／ 有効期限: {issuedExpiresAt}"
+msgstr "端末: {issuedDeviceName} ／ 有効期限: {issuedExpiresAt}"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "端末を接続する"
@@ -2453,6 +2449,10 @@ msgstr "端末名（任意）"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "端末名を入力してトークンを発行し、Obsidian プラグインの設定へ貼り付けてください。トークンの有効期限は 30 日です。期限が切れたら、この画面から手動で再発行して入れ直してください（自動更新は行いません）。"
 msgstr "端末名を入力してトークンを発行し、Obsidian プラグインの設定へ貼り付けてください。トークンの有効期限は 30 日です。期限が切れたら、この画面から手動で再発行して入れ直してください（自動更新は行いません）。"
+
+#: platform/frontend/src/lib/api/ApiError.ts
+msgid "競合が発生しました。"
+msgstr "競合が発生しました。"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 #: platform/frontend/src/app/routing/nav.ts
@@ -2539,9 +2539,17 @@ msgstr "補正を破棄して再変換"
 msgid "補正対象の図の元画像"
 msgstr "補正対象の図の元画像"
 
+#: platform/frontend/src/lib/api/ApiError.ts
+msgid "要求が失敗しました（{status}）。"
+msgstr "要求が失敗しました（{status}）。"
+
 #: platform/frontend/src/components/ui/NotFound.tsx
 msgid "見つかりませんでした"
 msgstr "見つかりませんでした"
+
+#: platform/frontend/src/lib/api/ApiError.ts
+msgid "見つかりませんでした。"
+msgstr "見つかりませんでした。"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "角丸四角（破線の輪郭）= 個人資料（自分のみ）"
@@ -2594,6 +2602,10 @@ msgstr "詳細ツール"
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "認証"
 msgstr "認証"
+
+#: platform/frontend/src/lib/api/ApiError.ts
+msgid "認証が必要です。"
+msgstr "認証が必要です。"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "説明"

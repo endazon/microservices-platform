@@ -3,7 +3,7 @@ title: コンポーザビリティ（宣言的パイプライン構成による�
 type: functional-spec
 status: draft
 created: 2026-07-08
-updated: 2026-08-23
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -32,9 +32,13 @@ issues: [#444]
 取り込み〜正規化〜索引〜Wiki 同期の処理パイプライン（段構成・イベント接続）を、コード改修なしに
 **宣言的構成定義（`deploy/helm/microservices-platform/files/pipeline.json`）** の変更だけで組み替え可能にする。
 
-- **固定部（Foundation）／可変部（Composable）の分離**: 各サービスは `Foundation/`
-  （認証・永続化・可観測性等の固定基盤）と `Composable/`（差し替え・組み替え対象の段・ポート実装）に
-  フォルダを分離する。Foundation → Composable の参照は禁止（一方向依存）。
+- **固定部（Foundation）／可変部（Composable）の分離**: 固定基盤（認証・永続化・可観測性等）と
+  可変部（差し替え・組み替え対象の段・ポート実装）をフォルダで分離し、
+  **固定 → 可変の参照を禁止する（一方向依存）**。区分を表すフォルダ名は置き場で異なる ——
+  **共有基盤プロジェクト**（`Shared/Platform.Shared.Infrastructure`・`Bff/Platform.Bff`）は
+  `Foundation/` / `Composable/` をそのまま用い、**サービス**（`Services/<Name>/`）では
+  固定が `Domain/`（ポートは `Domain/Ports/`）、可変が段 `Features/<集約>/<操作>/` と
+  外部アダプタ `Infrastructure/ExternalServices/` である（単一プロジェクト＋VSA/DDD 構成への移送による）。
 - **宣言的段構成**: パイプライン段（MassTransit コンシューマ）は `IPipelineStep` を実装し、
   `pipeline.json` の `steps[]` 宣言（name / service / consumer / input / outputs / enabled / queue）に
   従って登録される。
@@ -87,7 +91,8 @@ flowchart LR
 - [x] pipeline.json の変更のみで段の有効/無効・キュー名を組み替えられる（コード改修不要）
 - [x] 宣言と実装の不整合が起動時に fail-fast で検出される
 - [x] CI が宣言のスキーマ・接続性・循環を検証する
-- [x] Foundation → Composable の参照が存在しない
+- [x] 固定 → 可変の参照が存在しない（共有基盤では `Foundation/` 配下に `using *.Composable.*` が無いこと。
+      機械検査が走査している）
 
 ## 関連仕様
 

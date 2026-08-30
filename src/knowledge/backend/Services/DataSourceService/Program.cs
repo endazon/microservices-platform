@@ -11,6 +11,7 @@ using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Wolverine;
 using Wolverine.RabbitMQ;
 using Microsoft.EntityFrameworkCore;
+using Knowledge.Contracts.Events;
 
 const string ServiceName = "microservices-platform.datasource-service";
 
@@ -61,6 +62,11 @@ builder.Host.UseWolverine(opts =>
     opts.Discovery.DisableConventionalDiscovery();
 
     opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision();
+
+    // ADR-0027 手順 3（発行側）/ #992 / [[IADR-0314]]: **外向きの経路を宣言する。**
+    // これが無いと `No routes can be determined for Envelope ...` を info ログへ 1 行出して
+    // 黙って捨てられる（例外もヘルスチェックの赤も出ない。稼働 k3s で実測）。
+    opts.RoutePlatformEvent<RawDocumentFetched>();
 
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();

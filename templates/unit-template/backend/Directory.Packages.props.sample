@@ -25,18 +25,18 @@
        CPM では PackageReference に対応する PackageVersion が無いと NU1010 で復元が失敗するため、
        1 つでも欠けると単独ビルド経路が壊れる。プロジェクトが依存を増やしたらここへも追記すること。 -->
   <ItemGroup Condition="'$(ParentDirectoryPackagesProps)' == ''">
-    <!-- API 層（SampleService.Api） -->
+    <!-- API 相当（SampleService の Features/ 端点） -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
     <!-- NFR(セキュリティ): AspNetCore.OpenApi 10.0.9 が引き込む脆弱な推移依存 Microsoft.OpenApi 2.0.0
          (NU1903, GHSA-v5pm-xwqc-g5wc, High) をパッチ版へ推移ピンする（本体 IADR-0016 と同値）。 -->
     <PackageVersion Include="Microsoft.OpenApi" Version="2.7.5" />
     <PackageVersion Include="Scalar.AspNetCore" Version="2.16.17" />
     <PackageVersion Include="Asp.Versioning.Http" Version="10.0.1" />
-    <!-- Application 層（SampleService.Application / .Api のハンドラ登録） -->
+    <!-- Application 相当（SampleService の Features/ ハンドラ登録） -->
     <PackageVersion Include="WolverineFx" Version="6.24.4" />
     <PackageVersion Include="FluentValidation" Version="12.1.1" />
     <PackageVersion Include="Riok.Mapperly" Version="4.3.1" />
-    <!-- Infrastructure 層（SampleService.Infrastructure） -->
+    <!-- Infrastructure 相当（SampleService の Infrastructure/ 配下） -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.9" />
     <!-- Relational を直接ピン: Npgsql(→10.0.4) との推移依存衝突(MSB3277)を解消（本体 IADR-0003 と同値）。 -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.9" />

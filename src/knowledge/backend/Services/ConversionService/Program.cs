@@ -107,10 +107,21 @@ builder.Host.UseWolverine(opts =>
     // 戻り値の段宣言を受けるのは、queue 上書きを黙って無視しないためである（IADR-0239 決定 4）。
     var step = opts.AddPlatformWolverineStep<RawDocumentFetchedConsumer>(pipeline);
 
-    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision();
+    var conversionQueue = step?.Queue ?? nameof(RawDocumentFetched);
+
+    // 手順 3（購読側の束ね）/ #992: 自分のキューをイベント型名の fan-out exchange へ束ねる。
+    // **キュー名を分けるだけでは何も届かない** —— 束ねて初めて発行が届く。
+    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision()
+        .BindPlatformQueue<RawDocumentFetched>("conversion-service", conversionQueue);
+
+    // ADR-0027 手順 3（発行側）/ #992 / [[IADR-0314]]: **外向きの経路を宣言する。**
+    // これが無いと `No routes can be determined for Envelope ...` を info ログへ 1 行出して
+    // 黙って捨てられる（例外もヘルスチェックの赤も出ない。稼働 k3s で実測）。
+    // 再試行（/retry）が RawDocumentFetched を再発行するため、購読側でもあり発行側でもある。
+    opts.RoutePlatformEvent<RawDocumentFetched>();
 
     // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う。
-    opts.ListenToPlatformQueue("conversion-service", step?.Queue ?? nameof(RawDocumentFetched));
+    opts.ListenToPlatformQueue("conversion-service", conversionQueue);
 
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();

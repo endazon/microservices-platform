@@ -3,7 +3,7 @@ title: FR-19 個人資料のライフサイクル・容量・版保持 テスト
 type: test-spec
 status: completed
 created: 2026-08-23
-updated: 2026-08-28
+updated: 2026-08-30
 author: Claude
 ---
 <!-- trace:
@@ -27,7 +27,7 @@ issues: [#451, #447]
 検索側は検索サービスの、AI 回答側は AI 分析サービスのテストが持つ。
 **グラフ表示トグルの消費側は未着手のままである。**
 
-実体: `DocumentService.Api.Tests` の `PrivateNoteQuotaTests` / `PrivateNoteLifecycleTests` /
+実体: `DocumentService.Tests` の `PrivateNoteQuotaTests` / `PrivateNoteLifecycleTests` /
 `DocScopeValidationTests`（結合テスト。InMemory ＋ 記録用スタブ）。
 
 ## テスト観点
@@ -64,7 +64,7 @@ issues: [#451, #447]
 ## 実行
 
 ```bash
-dotnet test src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests
+dotnet test src/knowledge/backend/Services/DocumentService/Tests
 ```
 
 ## 関連

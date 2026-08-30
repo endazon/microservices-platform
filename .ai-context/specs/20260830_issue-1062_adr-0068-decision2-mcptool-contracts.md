@@ -174,7 +174,7 @@ Docker daemon が無い環境（containerd / nerdctl）で計測した。**Testc
 ### 🔴 `check-adr-numbering` の既知の赤（並行 PR の採番衝突）
 
 `node scripts/check-adr-numbering.js` は **`[missing-number] IADR-0311 が欠番`** を出して exit 1 になる。
-**`IADR-0311` は未マージの PR #1087 が押さえており、本 PR は先着尊重で `IADR-0312` を採ったため**である。
+**`IADR-0311` は未マージの PR #1087 が押さえており、本 PR は先着尊重で `IADR-0319` を採ったため**である。
 
 - **`IADR-0144` 決定 3 が「並行 PR の衝突は未然に防げない（着地後の不整合しか見えない）」と記録している既知の性質**であり、本 PR の内容に起因する赤ではない。
 - **解消条件**: #1087 が先にマージされ、本 PR を `develop` へ rebase すれば欠番が埋まって緑になる。

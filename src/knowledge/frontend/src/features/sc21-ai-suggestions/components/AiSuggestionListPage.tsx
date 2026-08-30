@@ -79,11 +79,17 @@ export function AiSuggestionListPage() {
   };
 
   const describe = (s: AiSuggestion): string => {
+    // ［2026-08-30 / #1078］翻訳文へ差し込む値は**単純な変数**として渡す
+    // （`lingui/no-expression-in-message`。プロパティ参照や式のままだと、lingui が
+    // プレースホルダ名を機械的に付け直すため**カタログの msgid が書き方に依存して揺れる**）。
+    const sourceTitle = s.sourceDocumentTitle;
     if (s.kind === 'tag') {
-      return t`${s.sourceDocumentTitle} に「${s.tagValue ?? ''}」を付与`;
+      const tagValue = s.tagValue ?? '';
+      return t`${sourceTitle} に「${tagValue}」を付与`;
     }
     const typeName = (s.edgeTypeId && edgeTypeNames.get(s.edgeTypeId)) || t`型不明`;
-    return t`${s.sourceDocumentTitle} → ${s.targetDocumentTitle ?? ''}（${typeName}）`;
+    const targetTitle = s.targetDocumentTitle ?? '';
+    return t`${sourceTitle} → ${targetTitle}（${typeName}）`;
   };
 
   const columns: DataTableColumns<AiSuggestion> = useMemo(

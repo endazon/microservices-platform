@@ -1,5 +1,5 @@
 ---
-title: IADR-0312 スライスの段は「内容の抽象度」ではなく「使う操作を数えた結果」で決める
+title: IADR-0319 スライスの段は「内容の抽象度」ではなく「使う操作を数えた結果」で決める
 type: impl-adr
 status: Accepted
 related_ids:
@@ -19,7 +19,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0065_backend-service-single-project-vsa.md (Accepted 2026-08-30)
 ---
 
-# IADR-0312: スライスの段は「内容の抽象度」ではなく「使う操作を数えた結果」で決める（#1062）
+# IADR-0319: スライスの段は「内容の抽象度」ではなく「使う操作を数えた結果」で決める（#1062）
 
 - 状態: Accepted
 - 日付: 2026-08-30

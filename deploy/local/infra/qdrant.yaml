@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: qdrant
-          image: qdrant/qdrant:v1.9.2
+          image: qdrant/qdrant:v1.18.1
           ports:
             - { containerPort: 6333, name: http }
             - { containerPort: 6334, name: grpc }
