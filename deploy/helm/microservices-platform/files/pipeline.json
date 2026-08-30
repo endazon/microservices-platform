@@ -25,7 +25,7 @@
     {
       "name": "catalog",
       "service": "document-service",
-      "consumer": "DocumentService.Features.Documents.DocumentNormalizedConsumer",
+      "consumer": "DocumentService.Features.Documents.Catalog.DocumentNormalizedConsumer",
       "input": "DocumentNormalized",
       "outputs": ["DocumentUpdated"],
       "enabled": true
@@ -65,7 +65,7 @@
     {
       "name": "graph-delete",
       "service": "graph-service",
-      "consumer": "GraphService.Features.GraphDocuments.DocumentDeletedConsumer",
+      "consumer": "GraphService.Features.GraphDocuments.Delete.DocumentDeletedConsumer",
       "input": "DocumentDeleted",
       "outputs": [],
       "enabled": true
@@ -73,7 +73,7 @@
     {
       "name": "graph-sync",
       "service": "graph-service",
-      "consumer": "GraphService.Features.GraphDocuments.GraphDocumentSyncConsumer",
+      "consumer": "GraphService.Features.GraphDocuments.Sync.GraphDocumentSyncConsumer",
       "input": "DocumentUpdated",
       "outputs": [],
       "enabled": true

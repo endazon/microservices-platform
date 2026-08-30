@@ -5,6 +5,9 @@ using AwesomeAssertions;
 using DocumentService.Features.Documents;
 using DocumentService.Features.ObsidianSync;
 using Knowledge.Contracts.Dtos;
+using DocumentService.Features.ObsidianSync.Manifest;
+using DocumentService.Features.ObsidianSync.Pull;
+using DocumentService.Features.ObsidianSync.Push;
 
 namespace DocumentService.Tests;
 

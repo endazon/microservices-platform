@@ -1,5 +1,6 @@
 using System.Diagnostics.Metrics;
 using DocumentService.Features.Documents;
+using DocumentService.Features.Documents.Catalog;
 using DocumentService.Domain;
 using DocumentService.Common.Observability;
 using DocumentService.Infrastructure.Persistence;

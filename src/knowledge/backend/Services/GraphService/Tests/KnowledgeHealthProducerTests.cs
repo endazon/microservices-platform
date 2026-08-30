@@ -3,7 +3,7 @@ using System.Text.Json;
 using AwesomeAssertions;
 using GraphService.Domain;
 using GraphService.Domain.Ports;
-using GraphService.Features.KnowledgeHealth;
+using GraphService.Features.KnowledgeHealth.Report;
 using GraphService.Infrastructure.ExternalServices;
 using GraphService.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;

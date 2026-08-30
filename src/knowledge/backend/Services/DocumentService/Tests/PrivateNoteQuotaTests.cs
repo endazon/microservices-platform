@@ -6,6 +6,8 @@ using DocumentService.Features.ObsidianSync;
 using DocumentService.Domain.Ports;
 // #451-a: 個人資料の応答 DTO は Knowledge.Contracts へ集約した（BFF と定義を 1 つにするため）。
 using Knowledge.Contracts.Dtos;
+using DocumentService.Features.ObsidianSync.Pull;
+using DocumentService.Features.ObsidianSync.Push;
 
 namespace DocumentService.Tests;
 

@@ -3,7 +3,7 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using LlmGateway.Features.Completions;
-using LlmGateway.Features.Embeddings;
+using LlmGateway.Features.Embeddings.Embed;
 using LlmGateway.Common.Observability;
 using LlmGateway.Domain.Pricing;
 using LlmGateway.Domain.Ports;

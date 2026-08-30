@@ -3,7 +3,7 @@ using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using DocumentService.Infrastructure.Messaging;
 using DocumentService.Features.Documents;
-using DocumentService.Features.McpTools;
+using DocumentService.Features.McpTools.Declare;
 using DocumentService.Features.ObsidianSync;
 using DocumentService.Features.PrivateNotes;
 using DocumentService.Features.SyncDevices;
@@ -87,9 +87,9 @@ builder.Services.AddScoped<DocumentService.Domain.Ports.IPrivateNoteNotifier,
 // FR-06, FR-19, ADR-0057 決定 1, IADR-0296: 削除の伝播先①（オブジェクトストレージの本文・資産）。
 // 台帳から逆引きして消すため DbContext と同じ scoped にする。
 builder.Services.AddScoped<DocumentService.Features.Documents.DocumentObjectPurger>();
-builder.Services.AddScoped<DocumentService.Features.PrivateNotes.PrivateNoteMaintenanceService>();
+builder.Services.AddScoped<DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceService>();
 builder.Services.AddHostedService<
-    DocumentService.Features.PrivateNotes.PrivateNoteMaintenanceHostedService>();
+    DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceHostedService>();
 
 // ADR-0003（Superseded by ADR-0027・注記は #580）: MassTransit + RabbitMQ
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
@@ -98,7 +98,7 @@ var pipeline = builder.Configuration.GetPlatformPipeline();
 
 // FR-15, ADR-0018: 自己申告（イントロスペクション）— この段（catalog）の実効値を申告する。
 builder.Services.AddPlatformIntrospection("document-service", pipeline,
-    i => i.AddStep<DocumentService.Features.Documents.DocumentNormalizedConsumer>());
+    i => i.AddStep<DocumentService.Features.Documents.Catalog.DocumentNormalizedConsumer>());
 
 // NFR, ADR-0027, #1022: ブローカ接続。**既定資格情報をイメージへ焼かない** —— appsettings.json からも
 // 撤去したため、構成が注入されていなければここで落ちる（注入漏れが「既定の資格情報で接続成功」へ
@@ -112,7 +112,7 @@ var rabbitConnection = builder.Configuration["RabbitMq:ConnectionString"]
 builder.Services.AddMassTransit(x =>
 {
     // FR-01, UC-04: 正規化文書をカタログへ登録する Consumer
-    x.AddPlatformPipelineStep<DocumentService.Features.Documents.DocumentNormalizedConsumer>(pipeline);
+    x.AddPlatformPipelineStep<DocumentService.Features.Documents.Catalog.DocumentNormalizedConsumer>(pipeline);
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(rabbitConnection);

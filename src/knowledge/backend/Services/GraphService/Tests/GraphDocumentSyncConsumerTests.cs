@@ -1,6 +1,7 @@
 using System.Diagnostics.Metrics;
 using AwesomeAssertions;
 using GraphService.Features.GraphDocuments;
+using GraphService.Features.GraphDocuments.Sync;
 using GraphService.Domain;
 using GraphService.Common.Observability;
 using GraphService.Infrastructure.Persistence;
