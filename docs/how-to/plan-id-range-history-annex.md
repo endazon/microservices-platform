@@ -3,15 +3,15 @@ title: 別紙 — 計画 ID レンジの追随記録と、計画 ADR の状態�
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-08-29
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-06, SC-17, SC-18, SC-19, SC-20]
-adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064]
+adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228]
 specs: []
-issues: [#449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498]
+issues: [#1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -23,6 +23,34 @@ issues: [#449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, plan
 >
 > **本別紙が持つのは「レンジをいつどう引き直したか」（pin 時代の記録を含む）「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れなかったか」の記録だけ**である（必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
+
+### ［2026-08-30・4 回目］ADR `0001..0064` → `0001..0066`（2 件。**初めて「参照するより先に」引いた**）
+
+**`ADR` だけが `0001..0064` → `0001..0066` へ増えた**（2 件）。**他の 4 種は不動**
+（`FR-01..22` 22 件 / `NFR-01..27` 27 件 / `UC-01..11` 11 件 / `SC-01..21` 21 件。
+隣接クローン `91fc07f` の `02_requirements` / `03_usecases` / `05_screens` を直接走査して確認）。
+
+| ADR | 状態 | 内容 |
+| --- | --- | --- |
+| `ADR-0065` | Accepted | サービスの標準構成を単一プロジェクト＋ Vertical Slice フォルダへ改める（8 要素プロジェクト標準の部分改定） |
+| `ADR-0066` | Accepted | フロントエンドの feature 間 import を禁じ、依存の向きを shared → features → app の一方向に定める |
+
+#### 契機が 4 世代で初めて「参照より前」になった
+
+| 世代 | 契機 | 参照との前後 |
+| --- | --- | --- |
+| 1 回目 | 新しい ADR を引こうとして検査器が落ちた | **踏んでから** |
+| 2 回目 | クロス監査が計画側の実ファイルと突き合わせた | 踏む前・他人が発見 |
+| 3 回目 | レビューが宣言レンジと参照 ID の食い違いを指摘した | 踏む前・他人が発見 |
+| **4 回目** | **計画側が ADR の起案と同時に「レンジ更新」を実装側 issue として起票した**（`#1060`。`ADR-0065` §結果 フォローアップ 1 が「**他のすべての前提**」と明記） | **参照より前・仕組みが発見** |
+
+**3 回目の記録が出した結論は「作法として書くだけでは守られない」だった。** 4 回目はその結論に対する答えになっている ——
+**守らせたのは実装側の作法ではなく、計画側が ADR の §結果 へフォローアップとして書き、それが issue になったこと**である。
+`ADR-0065` は 7 つのフォローアップの 1 番目にレンジ更新を置き、括弧で「他のすべての前提」と書いた。
+**引き直しを個人の注意ではなく後続作業の依存関係として表現した**ことが効いた。
+
+**ただしこれは計画側の書き方に依存している。** 次の ADR が §結果 にフォローアップを書かなければ、
+契機は 3 回目までの形（踏むか、他人が見つけるか）へ戻る。**仕組みとして残っているわけではない。**
 
 ### ［2026-08-29・3 回目］ADR `0001..0058` → `0001..0064`（6 件。**作法を書いた次の世代が、その作法を踏まなかった**）
 
