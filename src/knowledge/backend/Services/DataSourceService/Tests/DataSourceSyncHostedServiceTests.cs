@@ -2,6 +2,7 @@ using DataSourceService.Domain;
 using DataSourceService.Infrastructure.Persistence;
 using DataSourceService.Domain.Ports;
 using DataSourceService.Features.DataSources;
+using DataSourceService.Features.DataSources.Sync;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;

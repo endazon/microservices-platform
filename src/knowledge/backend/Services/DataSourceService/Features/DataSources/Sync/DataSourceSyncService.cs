@@ -5,7 +5,7 @@ using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using Wolverine;
 
-namespace DataSourceService.Features.DataSources;
+namespace DataSourceService.Features.DataSources.Sync;
 
 // FR-01, UC-04, IADR-0051: データソース同期のオーケストレーション。
 // コネクタ（Discover/Fetch）→オブジェクトストレージ格納→RawDocumentFetched 発行（Map）を束ね、

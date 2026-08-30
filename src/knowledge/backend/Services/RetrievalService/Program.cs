@@ -5,6 +5,8 @@ using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Qdrant.Client;
 using RetrievalService.Features.McpTools;
 using RetrievalService.Features.Search;
+using RetrievalService.Features.Search.Hybrid;
+using RetrievalService.Features.Search.RemoveDeleted;
 using Wolverine;
 using Wolverine.RabbitMQ;
 using RetrievalService.Domain.Ports;

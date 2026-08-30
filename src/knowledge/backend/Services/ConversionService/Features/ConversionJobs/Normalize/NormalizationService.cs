@@ -3,7 +3,7 @@ using ConversionService.Domain;
 using System.Text;
 using Knowledge.Contracts.Events;
 
-namespace ConversionService.Features.ConversionJobs;
+namespace ConversionService.Features.ConversionJobs.Normalize;
 
 // FR-12, UC-06, ADR-0012/0014: 原本を正規化形式（本文Markdown＋資産）へ変換するオーケストレータ。
 // 本文は pandoc で Markdown 化し、図は LLM で PlantUML/Mermaid 化する。コード化できない図は

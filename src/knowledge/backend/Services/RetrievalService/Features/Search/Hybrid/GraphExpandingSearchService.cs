@@ -2,7 +2,7 @@ using RetrievalService.Domain;
 using Knowledge.Contracts.Dtos;
 using RetrievalService.Domain.Ports;
 
-namespace RetrievalService.Features.Search;
+namespace RetrievalService.Features.Search.Hybrid;
 
 // FR-04, FR-14, FR-17, UC-10, ADR-0035 決定 1・2, ADR-0018 (#970): **二段検索の段。**
 //

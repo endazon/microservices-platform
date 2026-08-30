@@ -1,4 +1,5 @@
 using ConversionService.Domain;
+using ConversionService.Features.ConversionJobs.CorrectFigure;
 using ConversionService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
 using Wolverine;

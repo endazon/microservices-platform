@@ -1,6 +1,6 @@
 using Knowledge.Contracts.Dtos;
 
-namespace RetrievalService.Features.Search;
+namespace RetrievalService.Features.Search.Hybrid;
 
 // FR-04, FR-17, UC-10, ADR-0035 決定 1 (#970): 二段検索の段④ —— **再ランク（統合）。**
 //

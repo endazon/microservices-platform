@@ -1,4 +1,4 @@
-namespace DataSourceService.Features.DataSources;
+namespace DataSourceService.Features.DataSources.Sync;
 
 // FR-01, UC-04（基本フロー: 定期取得）, IADR-0051: 定期同期の設定。
 // 既定は無効（dev/test での意図せぬファイル走査を避ける）。本番は config で有効化する。

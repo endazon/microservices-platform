@@ -5,7 +5,7 @@ using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using MassTransit;
 
-namespace ConversionService.Features.ConversionJobs;
+namespace ConversionService.Features.ConversionJobs.CorrectFigure;
 
 // FR-12, UC-06, SC-07, IADR-0154: 人手補正 Phase 1（図のコード化のやり直し）。
 //

@@ -17,7 +17,7 @@
     {
       "name": "convert",
       "service": "conversion-service",
-      "consumer": "ConversionService.Features.ConversionJobs.RawDocumentFetchedConsumer",
+      "consumer": "ConversionService.Features.ConversionJobs.Normalize.RawDocumentFetchedConsumer",
       "input": "RawDocumentFetched",
       "outputs": ["DocumentNormalized"],
       "enabled": true
@@ -41,7 +41,7 @@
     {
       "name": "wiki-sync",
       "service": "wiki-service",
-      "consumer": "WikiService.Features.Wiki.DocumentSyncConsumer",
+      "consumer": "WikiService.Features.Wiki.SyncDocument.DocumentSyncConsumer",
       "input": "DocumentUpdated",
       "outputs": [],
       "enabled": true
@@ -49,7 +49,7 @@
     {
       "name": "wiki-delete",
       "service": "wiki-service",
-      "consumer": "WikiService.Features.Wiki.DocumentDeletedConsumer",
+      "consumer": "WikiService.Features.Wiki.RemoveDeleted.DocumentDeletedConsumer",
       "input": "DocumentDeleted",
       "outputs": [],
       "enabled": true
@@ -57,7 +57,7 @@
     {
       "name": "retrieval-delete",
       "service": "retrieval-service",
-      "consumer": "RetrievalService.Features.Search.DocumentDeletedConsumer",
+      "consumer": "RetrievalService.Features.Search.RemoveDeleted.DocumentDeletedConsumer",
       "input": "DocumentDeleted",
       "outputs": [],
       "enabled": true

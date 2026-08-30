@@ -2,7 +2,7 @@ using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
 using RetrievalService.Domain.Ports;
 
-namespace RetrievalService.Features.Search;
+namespace RetrievalService.Features.Search.Hybrid;
 
 // FR-03, UC-01: ベクトル検索と全文検索を Reciprocal Rank Fusion で統合するハイブリッド検索
 public class HybridSearchService(

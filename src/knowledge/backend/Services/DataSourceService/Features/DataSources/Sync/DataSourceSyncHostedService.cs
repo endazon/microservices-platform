@@ -1,10 +1,11 @@
 using DataSourceService.Domain.Ports;
 using DataSourceService.Domain;
+using DataSourceService.Features.DataSources;
 using DataSourceService.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
-namespace DataSourceService.Features.DataSources;
+namespace DataSourceService.Features.DataSources.Sync;
 
 // FR-01, UC-04（基本フロー: システムが定期的に原本を取得）, IADR-0051: 定期同期ワーカー。
 // 既定は無効（DataSourceSync:Enabled=false）。有効時は一定間隔で active データソースをコネクタ経由で同期する。

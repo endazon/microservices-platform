@@ -6,7 +6,7 @@ using Wolverine;
 using Microsoft.Extensions.Logging;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
-namespace ConversionService.Features.ConversionJobs;
+namespace ConversionService.Features.ConversionJobs.Normalize;
 
 // FR-12, UC-06: 原本取得イベントを受信し正規化変換を行う（pandoc で本文 Markdown 化、
 // 図は LLM で PlantUML/Mermaid 化、不可分は画像保持）。

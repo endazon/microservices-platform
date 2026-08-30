@@ -3,7 +3,7 @@ using Knowledge.Contracts.Dtos;
 using Microsoft.Extensions.Logging.Abstractions;
 using Platform.Shared.Contracts.Dtos;
 using RetrievalService.Domain.Ports;
-using RetrievalService.Features.Search;
+using RetrievalService.Features.Search.Hybrid;
 
 namespace RetrievalService.Tests;
 

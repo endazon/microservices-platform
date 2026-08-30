@@ -6,6 +6,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using WikiService.Features.Wiki;
+using WikiService.Features.Wiki.RemoveDeleted;
+using WikiService.Features.Wiki.SyncDocument;
 using WikiService.Domain;
 using WikiService.Infrastructure.Persistence;
 using WikiService.Domain.Ports;
@@ -30,7 +32,7 @@ public class PipelineRecomposeTests
             {
                 Name = "wiki-sync",
                 Service = "wiki-service",
-                Consumer = "WikiService.Features.Wiki.DocumentSyncConsumer",
+                Consumer = "WikiService.Features.Wiki.SyncDocument.DocumentSyncConsumer",
                 Input = "DocumentUpdated",
                 Outputs = [],
                 Enabled = syncEnabled,
@@ -39,7 +41,7 @@ public class PipelineRecomposeTests
             {
                 Name = "wiki-delete",
                 Service = "wiki-service",
-                Consumer = "WikiService.Features.Wiki.DocumentDeletedConsumer",
+                Consumer = "WikiService.Features.Wiki.RemoveDeleted.DocumentDeletedConsumer",
                 Input = "DocumentDeleted",
                 Outputs = [],
                 Enabled = deleteEnabled,

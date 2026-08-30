@@ -1,6 +1,7 @@
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
 using RetrievalService.Domain.Ports;
+using RetrievalService.Features.Search.Hybrid;
 using System.Diagnostics;
 
 namespace RetrievalService.Features.Search;

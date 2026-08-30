@@ -6,7 +6,7 @@ using WikiService.Infrastructure.Persistence;
 using WikiService.Domain.Ports;
 using WikiService.Infrastructure.ExternalServices;
 
-namespace WikiService.Features.Wiki;
+namespace WikiService.Features.Wiki.SyncDocument;
 
 // FR-13, UC-07, ADR-0011, IADR-0020, IADR-0021: 文書更新イベントを受信し Wiki.js へ同期する。
 //

@@ -2,7 +2,7 @@ using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using RetrievalService.Domain.Ports;
 
-namespace RetrievalService.Features.Search;
+namespace RetrievalService.Features.Search.RemoveDeleted;
 
 // FR-06, FR-19, UC-03, ADR-0057 決定 1 (#1016): 文書削除イベントを受信し、検索索引
 // （ベクトルストア）から当該文書のチャンク・埋め込みを削除する。

@@ -5,7 +5,7 @@ using WikiService.Domain;
 using WikiService.Infrastructure.Persistence;
 using WikiService.Domain.Ports;
 
-namespace WikiService.Features.Wiki;
+namespace WikiService.Features.Wiki.RemoveDeleted;
 
 // FR-13, UC-07, IADR-0021, Issue #88: 文書削除イベントを受信し Wiki.js の実体を撤去する。
 //

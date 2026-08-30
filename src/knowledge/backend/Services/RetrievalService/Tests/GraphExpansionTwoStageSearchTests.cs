@@ -10,7 +10,7 @@ using Platform.Shared.Contracts.Dtos;
 using RetrievalService.Infrastructure.ExternalServices;
 using RetrievalService.Domain.Ports;
 using RetrievalService.Domain;
-using RetrievalService.Features.Search;
+using RetrievalService.Features.Search.Hybrid;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
