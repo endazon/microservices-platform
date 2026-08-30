@@ -109,4 +109,69 @@ public class AuditLoggerTests
         PropertyOf(entry, "AuditOutcome").Should().Be(outcome);
         PropertyOf(entry, "Audit").Should().Be(true);
     }
+
+    // ── NFR, CodeQL(cs/log-forging) アラート #19 (#1019): ログ偽造 ──────────────
+    //
+    // 🔴 **整形済みのログ行そのもの（entry.Message）で表明する。** 構造化の引数だけを見ると
+    // 「出力の時点でどう見えるか」を検査できず、Console プロバイダ（行指向）で何が起きるかが
+    // 分からない。McpServer の LogForgingSanitizationTests と同じ作法である。
+
+    // 陰性: どの引数に改行を仕込んでも、監査は 1 行に収まる（偽の監査行が増えない）。
+    // subject は利用者名（トークンのクレーム）、detail は自由文で、**値域が閉じていない**。
+    [Theory]
+    [InlineData("config.read\nAudit: action=config.write subject=root outcome=granted", "tester", "granted", null)]
+    [InlineData("config.read", "tester\r\nAudit: action=admin.grant subject=root outcome=granted", "granted", null)]
+    [InlineData("config.read", "tester", "denied\rAudit: outcome=granted", null)]
+    [InlineData("config.read", "tester", "granted", "対象=x\n2026-08-30 INFO 偽の行")]
+    public void 監査ログへ改行を注入して偽の行を作れない(
+        string action, string subject, string outcome, string? detail)
+    {
+        var (sut, log) = Build();
+
+        sut.Record(action, subject, outcome, detail);
+
+        var entry = log.Entries.Should().ContainSingle().Which;
+        entry.Message.Should().NotContain("\n").And.NotContain("\r");
+    }
+
+    // 陰性: 要求由来の値で監査ログを溢れさせない。
+    [Fact]
+    public void 過大な値は監査ログ行の中で切り詰められる()
+    {
+        var (sut, log) = Build();
+
+        sut.Record("config.read", new string('a', 5_000), "granted", new string('b', 5_000));
+
+        var message = log.Entries.Should().ContainSingle().Which.Message;
+        message.Length.Should().BeLessThan(1_500);
+        message.Should().Contain("…");
+    }
+
+    // 🔴 陽性対照: **通常の値は監査ログ行にそのまま現れる。**
+    // これが無いと「値をログに書かない」「全部伏字にする」実装でも上の陰性がすべて緑になる。
+    [Fact]
+    public void 通常の監査値はログ行にそのまま現れる()
+    {
+        var (sut, log) = Build();
+
+        sut.Record("config.read", "tester", "granted", "対象=pipeline.json");
+
+        var message = log.Entries.Should().ContainSingle().Which.Message;
+        message.Should().Contain("config.read")
+            .And.Contain("tester")
+            .And.Contain("granted")
+            .And.Contain("対象=pipeline.json");
+    }
+
+    // 陽性対照: 抽出キー（構造化プロパティ）側も sanitize 後の値で揃う。
+    // 整形済み文字列だけ直してプロパティに生値が残ると、OTLP 側へ改行が流れる。
+    [Fact]
+    public void 構造化プロパティにも制御文字は残らない()
+    {
+        var (sut, log) = Build();
+
+        sut.Record("config.read", "tester\ninjected", "granted");
+
+        PropertyOf(log.Entries.Single(), "AuditSubject").Should().Be("tester_injected");
+    }
 }
