@@ -1,0 +1,73 @@
+# ADR-0021, #782: アプリ面（80/443）のルーティング。Traefik の
+# deploy/local/edge/platform-frontend-ingress.yaml と deploy/local/edge/keycloak-ingress.yaml を写したもの。
+#
+# 🔴 契約は 1 バイトも変えない。 経路が Traefik から Envoy へ替わっただけで、
+#   /bff は rewrite せず bff-service へ、残り全部は frontend-service へ、が本番チャートの
+#   templates/edge.yaml とも一致する（IADR-0076 / IADR-0078）。
+#
+# VirtualService は Gateway と同じ namespace（istio-system）に置く。行き先は FQDN なので
+# namespace を跨いでよい。**アプリ側 namespace に置かない**のは、argocd のように
+# opt-in でしか存在しない namespace があり、置き場所を条件分岐させたくないためである
+# （Traefik 経路では argocd-ingress.yaml だけ条件付き apply になっていた）。
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: msp-platform-frontend
+  namespace: istio-system
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    tier: local-edge
+spec:
+  # host を絞らない catch-all（Traefik 側の Ingress も host 無し＝任意 host にマッチ）。
+  # keycloak.localhost は下の VirtualService が **完全一致で先取りする**
+  # （Envoy の virtual host は exact domain がワイルドカードより先に照合される）。
+  hosts:
+    - "*"
+  gateways:
+    - istio-system/msp-edge
+  http:
+    # /bff, /bff/* → BFF（rewrite 無し。BFF は /bff プレフィックス前提）。先に評価する。
+    - match:
+        - uri: { exact: /bff }
+        - uri: { prefix: /bff/ }
+      route:
+        - destination:
+            host: bff-service.microservices-platform.svc.cluster.local
+            port:
+              number: 8080
+    # catch-all → SPA(frontend)。history fallback は frontend pod の nginx が担う。
+    - match:
+        - uri: { prefix: / }
+      route:
+        - destination:
+            host: frontend-service.microservices-platform.svc.cluster.local
+            port:
+              number: 8080
+---
+# IADR-0227 / #780: Keycloak は admin(50000) ではなく websecure(443) の keycloak.localhost へ出す。
+# 7 つの OIDC クライアントと SPA がブラウザ経由で叩くため、パスは絞らない（/login-actions/* や
+# /resources/* を落とすとログイン画面が壊れる）。
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: msp-keycloak-edge
+  namespace: istio-system
+  labels:
+    app.kubernetes.io/part-of: platform-edge
+    tier: local-edge
+spec:
+  hosts:
+    - keycloak.localhost
+  gateways:
+    - istio-system/msp-edge
+  http:
+    - match:
+        - uri: { prefix: / }
+      route:
+        - destination:
+            # platform-infra はメッシュ外（サイドカー無し）。PeerAuthentication も掛かっていないので
+            # Gateway からは平文で入る。STRICT は microservices-platform namespace だけの話である。
+            host: keycloak.platform-infra.svc.cluster.local
+            port:
+              number: 8080

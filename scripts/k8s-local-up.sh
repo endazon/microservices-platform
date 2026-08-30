@@ -629,6 +629,28 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
   echo "    ルート CA の取り出し: kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d"
   echo "    管理ツール(50000・https): https://grafana.localhost:50000 / headlamp.localhost / vault.localhost / qdrant.localhost"
   echo "    ホスト名解決・TLS・k3d 再作成手順は deploy/local/edge/README.md 参照。"
+
+  # ADR-0021, #782: エッジを Istio Ingress Gateway へ移す（ISTIO=1 と併用したときだけ）。
+  #
+  # 🔴 **STRICT mTLS の前提である。** kube-system の Traefik はメッシュの外にあり、そこから
+  #   mesh 内の 4 Service（frontend / bff / minio / wiki-js）へ平文で入っている。名前空間全体へ
+  #   STRICT を掛けると Envoy がその平文を拒否し、**入口だけが 502 になる**（#1072 実測）。
+  #   計画 ADR-0021 はこの境界問題を理由に「入口＝Istio Ingress Gateway・Traefik は無効化」と定めている。
+  #
+  # ここに置く理由: cert-manager と ClusterIssuer local-edge-ca（直上）が要る。
+  # ISTIO 未設定なら実行されない＝既定はバイト等価（従来どおり Traefik がエッジである）。
+  if [ "${ISTIO:-}" = "1" ]; then
+    echo "==> [opt-in] エッジを Istio Ingress Gateway へ移す (ADR-0021 / #782)"
+    ISTIO_MTLS_MODE="${ISTIO_MTLS_MODE:-}" bash "$ROOT/scripts/istio-edge-up.sh"
+    echo "    切り戻し（1 コマンド）: bash scripts/istio-edge-down.sh"
+  fi
+fi
+
+# 🔴 ISTIO=1 だけで LOCALEDGE=1 が無いと、エッジは port-forward のままである。
+#   その状態で ISTIO_MTLS_MODE=STRICT にすると mesh 内へ入る経路が無くなる（気付きにくい）。
+if [ "${ISTIO:-}" = "1" ] && [ "${LOCALEDGE:-}" != "1" ]; then
+  echo "WARN: ISTIO=1 ですが LOCALEDGE=1 がありません。エッジは Istio Ingress Gateway へ移りません。" >&2
+  echo "      STRICT へ上げる前に LOCALEDGE=1 を併用してください（ADR-0021 / #782）。" >&2
 fi
 
 # IADR-0133 (#517): ABAC の属性辞書とポリシーを dev 既定値で投入する。ポリシーが 0 件だと

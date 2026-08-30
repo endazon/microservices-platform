@@ -1,0 +1,22 @@
+# ADR-0021, #782: 経路B のエッジを Istio Ingress Gateway へ移す overlay（opt-in・ISTIO=1 かつ LOCALEDGE=1）。
+#
+# 既定（ISTIO 未設定）では一切適用されない。既定経路は従来どおり deploy/local/edge（Traefik）である。
+#
+# 適用順の前提（scripts/k8s-local-up.sh が守る）:
+#   1. Istio の CRD（gateways / virtualservices）が Established であること
+#   2. cert-manager の CRD と ClusterIssuer local-edge-ca が居ること
+#   3. **Traefik の Service が消えていること**（80/443/50000 の hostPort が空いていること）
+#   4. istio-ingressgateway が Ready であること
+#
+# tls/ を含めない理由は deploy/local/edge/kustomization.yaml と同じである ——
+# cert-manager.io/v1 の CRD に依存するため、CRD が入る前に渡すと overlay 全体が落ちる。
+#
+# traefik-service-off.yaml も含めない。**上の 3 の原因側**であり、本 overlay より先に当てて
+# 反映（Service の消滅）を待つ必要がある。同じ apply に混ぜると順序を表現できない。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gateway.yaml
+  - virtualservice-app.yaml
+  - virtualservice-admin.yaml
+  - coredns-edge-hosts.yaml

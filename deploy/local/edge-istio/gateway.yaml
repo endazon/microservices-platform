@@ -1,0 +1,75 @@
+# ADR-0021, #782: エッジの入口を Istio Ingress Gateway（Envoy）にする。
+#
+# 計画 ADR-0021 は入口＝Istio Ingress Gateway と定め、その理由として本件の障害を先に述べている:
+#   「入口に別系統のプロキシ（Traefik / NGINX Ingress 等）を置くと、入口から mesh 内サービスへ
+#    引き渡す一点で、**mTLS が STRICT のとき平文流入が Envoy に拒否される境界問題**が生じ…」
+# 経路B は Traefik のままだったため、実際に STRICT で 502 になった（#1072 / IADR-0307 実測）。
+#
+# Gateway を 2 本に分けるのは、**VirtualService をポートで振り分けるため**である。
+# VirtualService は `gateways:` でどの Gateway に載るかを選ぶが、ポートは（match.port を
+# 書かない限り）選べない。80/443 用と 50000 用を別の Gateway にすれば、catch-all（hosts: "*"）を
+# 443 だけに閉じ込められる。1 本にまとめると catch-all が admin(50000) も飲み込む。
+#
+# TLS 終端: credentialName は **istio-ingressgateway と同じ namespace（istio-system）の Secret**
+# を指す。`edge-tls` という名前は IADR-0206 / 計画 ADR-0023 の「secretName を安定させる」要件に
+# 従って Traefik 経路と同一にしてある（CA を差し替えても消費側は変わらない）。
+# 実体は deploy/local/edge-istio/tls/edge-certificate-istio.yaml が cert-manager に発行させる。
+---
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: msp-edge
+  namespace: istio-system
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    tier: local-edge
+spec:
+  # istio/gateway チャートは release 名 istio-ingressgateway のとき Pod へ `istio: ingressgateway` を貼る。
+  selector:
+    istio: ingressgateway
+  servers:
+    # NFR-11「平文 HTTP を残さない」。Traefik 経路の
+    # `--entryPoints.web.http.redirections.entryPoint.*`（IADR-0220）と同契約の 301 を返す。
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*"
+      tls:
+        httpsRedirect: true
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      hosts:
+        - "*"
+      tls:
+        mode: SIMPLE
+        credentialName: edge-tls
+---
+# 管理面（IADR-0091 決定 4 のホスト名ベース集約）。アプリ面（80/443）と分ける理由は同決定のとおり。
+# IADR-0220 で TLS 終端になっているので、ここも HTTPS で受ける。
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: msp-admin-edge
+  namespace: istio-system
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    tier: local-edge
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 50000
+        name: https-admin
+        protocol: HTTPS
+      hosts:
+        # 管理面は必ずホスト名で来る（素の localhost:50000 は受けない＝Traefik の
+        # ホスト名ベース Ingress と同じ形）。
+        - "*.localhost"
+      tls:
+        mode: SIMPLE
+        credentialName: edge-tls
