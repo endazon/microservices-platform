@@ -4,19 +4,31 @@ using Platform.Shared.Contracts.Dtos;
 using Grpc.Core;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
+using RetrievalService.Common.Observability;
 using RetrievalService.Domain.Ports;
 
 namespace RetrievalService.Infrastructure.ExternalServices;
 
 // ADR-0009: Qdrant 実装（ポート = IVectorStore）
 public class QdrantVectorStore(
-    QdrantClient client, IConfiguration config, ILogger<QdrantVectorStore> logger)
+    QdrantClient client, IConfiguration config, ILogger<QdrantVectorStore> logger,
+    KeywordSearchMetrics metrics)
     : IVectorStore
 {
     // FR-02 整合: 取り込み（IngestionService）と同一のコレクション名解決にする。
     // CollectionName を正とし、後方互換で Collection、既定 knowledge_chunks の順。
-    private readonly string _collection =
+    private readonly string _collection = ResolveCollectionName(config);
+
+    // FR-02, FR-03, #1116: コレクション名の解決を 1 か所に畳む。
+    // **検索と、全文インデックスの有無を見る readiness（`QdrantFullTextIndexHealthCheck`）が
+    // 必ず同じコレクションを指すため**である。別々に書くと「検索が見ているのとは別のコレクションの
+    // 索引を健全と報告する」という、本 issue と同型の静かな食い違いが生まれる。
+    internal static string ResolveCollectionName(IConfiguration config) =>
         config["Qdrant:CollectionName"] ?? config["Qdrant:Collection"] ?? "knowledge_chunks";
+
+    // FR-03, #1116: 全文検索が引くペイロードキー。取り込み側
+    // （`IngestionService.QdrantIngestionVectorStore.FullTextKey`）と同じ 1 つの値であること。
+    internal const string FullTextKey = "text";
 
     // FR-03, FR-04, FR-17, #969: 文書 ID のペイロードキー。書き込み（BuildPayload）・復元（MapPayload）・
     // 削除（DeleteByDocumentAsync）・**文書 ID 絞り込み（BuildDocumentScopedFilter）**が同じ 1 つの値を使う。
@@ -88,7 +100,16 @@ public class QdrantVectorStore(
         return new Filter { Must = { conditions } };
     }
 
-    // FR-03: 全文検索（Qdrant のペイロード `text` への full-text Match）
+    // FR-03: 全文検索（Qdrant のペイロード `text` への full-text Match）。
+    //
+    // 🔴 #1116: **この呼び出しは、全文ペイロードインデックスが在って初めて全文検索になる。**
+    // 索引が無いときの挙動は Qdrant の版で変わる ——
+    //   v1.9.2  : `RpcException`（下の catch が空リストへ縮退させる）
+    //   v1.18.1 : **例外を投げず、部分文字列の全走査へ黙って落ちる**（実機で実測。[[IADR-0316]]）
+    // 後者は「語でない断片が当たる」「語順に依存する」「全点走査になる」という別種の壊れ方であり、
+    // **例外を捕まえるだけでは検出できない**。索引の存在そのものは readiness
+    // （`QdrantFullTextIndexHealthCheck`）が見る。索引は取り込み側が起動時に張る
+    // （`QdrantIngestionVectorStore.EnsureCollectionsAsync`）。
     public async Task<List<SearchResultDto>> KeywordSearchAsync(
         string query, int topK,
         ScopeFilter? filters,
@@ -99,7 +120,10 @@ public class QdrantVectorStore(
 
         var conditions = new List<Condition>
         {
-            new() { Field = new FieldCondition { Key = "text", Match = new Match { Text = query } } }
+            new()
+            {
+                Field = new FieldCondition { Key = FullTextKey, Match = new Match { Text = query } }
+            }
         };
         // FR-05: ABAC 属性フィルタを全文検索にも適用（権限外文書を候補から除外）
         conditions.AddRange(BuildAttributeConditions(filters));
@@ -118,8 +142,17 @@ public class QdrantVectorStore(
         }
         catch (RpcException ex)
         {
-            // 全文インデックス未作成等の場合はベクトルのみへ degrade（検索全体は失敗させない）
-            logger.LogWarning(ex, "Keyword search unavailable; falling back to vector-only");
+            // 全文インデックス未作成等の場合はベクトルのみへ degrade（検索全体は失敗させない）。
+            //
+            // 🔴 #1116: **ログ 1 行で終わらせない。** 縮退は応答からは見えない（`SearchResponse` は
+            // 縮退の有無を持たず、持たせない —— 存在秘匿・[[IADR-0313]] 決定 1）ので、
+            // **応答の外側に数えられる痕跡を必ず残す**。#972 / #992 が「200 ＋ 空を緑にしない」を
+            // 検証側で塞いだのと同じ向きの手当てである。
+            metrics.RecordDegraded(KeywordSearchMetrics.BackendErrorReason);
+            logger.LogWarning(ex,
+                "Keyword search unavailable on collection {Collection}; falling back to vector-only. "
+                + "全文ペイロードインデックスの有無は /health/ready（qdrant-fulltext-index）で確かめること",
+                _collection);
             return [];
         }
     }
