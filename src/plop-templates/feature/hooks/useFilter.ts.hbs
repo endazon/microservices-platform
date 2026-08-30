@@ -1,0 +1,32 @@
+import { useState } from 'react';
+import { EMPTY_{{constantCase name}}_FILTER } from '../types';
+import type { {{pascalCase name}}Filter } from '../types';
+
+// TODO(起点 ID): 計画書の `SC-xx` / `UC-xx` / `FR-xx` をここへ書く
+// （`.claude/rules/traceability.md`「残す箇所と書式」）。
+//
+// 計画 13_frontend-stack §ディレクトリ構成 の `hooks/` —— feature 固有の**クライアント状態**。
+//
+// 🔴 **サーバー状態をここへ持ち込まない**（取得・キャッシュは `api/` の TanStack Query が持つ。
+// ADR-0031）。ここに在るのは「何を問い合わせるか」と「取得済みの結果のどこを見ているか」だけである。
+//
+// 🔴 **絞り込み条件は URL を単一情報源にする**（TanStack Router の `validateSearch` ＋
+// `useSearch({ from })`。IADR-0124 決定 3）—— 共有・再読込・戻る操作で状態が失われない。
+// 本雛形は最小構成として useState で示す。URL へ移す形は既存 feature を写す:
+//
+//   const search = useSearch({ from: '{{routePath}}' });
+//   const navigate = useNavigate({ from: '{{routePath}}' });
+//   const setParams = (patch: Partial<{{pascalCase name}}Filter>) =>
+//     void navigate({ search: (prev) => ({ ...prev, ...patch }) });
+//
+// 🔴 **この区分を `.gitkeep` の空枠にしない**（計画 ADR-0065 決定 4）。枠だけの状態は
+// 機械にも目視にも「区分が揃っている」と見え、**適合の見え方**を作る。
+
+export const use{{pascalCase name}}Filter = () => {
+  const [filter, setFilter] = useState<{{pascalCase name}}Filter>(EMPTY_{{constantCase name}}_FILTER);
+  return {
+    filter,
+    setKeyword: (keyword: string) => setFilter({ keyword }),
+    reset: () => setFilter(EMPTY_{{constantCase name}}_FILTER),
+  };
+};

@@ -21,9 +21,10 @@ import {
 } from '@platform/ui';
 import { formatDateTime } from '@foundation/ui/formatDateTime';
 import { toMessages } from '@foundation/ui/apiErrors';
-import type { SyncDeviceDto, SyncTokenIssuedResponse } from '@foundation/api/generated/bff.schemas';
+import type { SyncDeviceDto } from '@foundation/api/generated/bff.schemas';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { useSyncDeviceActions, useSyncDevices } from '../api/useSyncDevices';
+import { useIssuedToken } from '../hooks/useIssuedToken';
 import { deviceView } from '../types/deviceState';
 import type { DeviceState } from '../types/deviceState';
 
@@ -49,7 +50,8 @@ export function ObsidianSettingsPage() {
   const { issue, reissue, revoke, revokeAll } = actions;
 
   const [deviceName, setDeviceName] = useState('');
-  const [issued, setIssued] = useState<SyncTokenIssuedResponse | null>(null);
+  // 平文トークンの保持先は hooks/ のローカル状態ただ 1 つに閉じる（ストアにも URL にも載せない）。
+  const { issued, show: showIssuedToken, clear: clearIssuedToken } = useIssuedToken();
   const [confirming, setConfirming] = useState<Confirmation>(null);
 
   const rows = useMemo(() => devices.data ?? [], [devices.data]);
@@ -62,7 +64,7 @@ export function ObsidianSettingsPage() {
 
   /** 新しい操作の前に、前回の失敗と**発行済みトークンの表示**を捨てる。 */
   function beginOperation() {
-    setIssued(null);
+    clearIssuedToken();
     for (const mutation of mutations) mutation.reset();
   }
 
@@ -73,7 +75,7 @@ export function ObsidianSettingsPage() {
       {
         onSuccess: (response) => {
           setDeviceName('');
-          if (response.status === 201) setIssued(response.data);
+          if (response.status === 201) showIssuedToken(response.data);
         },
       },
     );
@@ -85,7 +87,7 @@ export function ObsidianSettingsPage() {
       { id: device.id },
       {
         onSuccess: (response) => {
-          if (response.status === 200) setIssued(response.data);
+          if (response.status === 200) showIssuedToken(response.data);
         },
       },
     );

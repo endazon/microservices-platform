@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Alert, Button, Input, Label, Select } from '@platform/ui';
 import { ApiError } from '@foundation/api/ApiError';
 import type { GraphNodeItem } from '@foundation/api/generated/bff.schemas';
 import { useEdgeTypeCatalog, useGraphNeighbors } from '../api/useGraphView';
+import { useGraphFilters } from '../hooks/useGraphFilters';
+import { useGraphNodeSearch } from '../hooks/useGraphNodeSearch';
 import { buildGraphOption } from '../types/graphOption';
 import { HOPS_OPTIONS, THINNING_OPTIONS } from '../routes/sc18GraphRoute';
 import type { GraphSearch, ThinningOption } from '../routes/sc18GraphRoute';
@@ -26,33 +27,27 @@ import { NodeSidePanel } from './NodeSidePanel';
 
 export function GraphViewPage() {
   const { t } = useLingui();
-  const search: GraphSearch = useSearch({ from: '/_shell/graph' });
-  const navigate = useNavigate({ from: '/graph' });
 
   const edgeTypes = useEdgeTypeCatalog();
-  const neighbors = useGraphNeighbors(search);
+  // 辺の型フィルタの選択肢は辞書が持つ（ADR-0033 決定 9。改名に追随させる）。
+  const catalog = edgeTypes.data ?? [];
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [nodeQuery, setNodeQuery] = useState('');
+  // 探索条件（URL が単一情報源）と、グラフ内検索・選択ノード（ローカル状態）は hooks/ が持つ。
+  const { search, setParams, activeTypes, lastActive, toggleType } = useGraphFilters(catalog);
+  const neighbors = useGraphNeighbors(search);
 
   const view = neighbors.data;
   const nodes = useMemo(() => view?.nodes ?? [], [view]);
   const edges = useMemo(() => view?.edges ?? [], [view]);
+
+  const { nodeQuery, setNodeQuery, matches, focusedId, selectedId, setSelectedId } =
+    useGraphNodeSearch(nodes);
 
   // 権限外・不在は同じ 404 で秘匿される（ADR-0034 決定 2）。どちらかは区別できない。
   const deniedOrMissing =
     neighbors.error instanceof ApiError && neighbors.error.kind === 'notFound';
   const hasGraph = !!view && nodes.length > 0 && edges.length > 0;
   const noRelations = !!view && edges.length === 0;
-
-  // グラフ内検索（SC-18 主要素 7）: 表示中のノードをタイトル部分一致で絞り、先頭一致へフォーカスする。
-  // 対象は**権限内で既に表示されているノードだけ**であり、新たな探索は行わない。
-  const matches = useMemo(() => {
-    const q = nodeQuery.trim().toLowerCase();
-    if (q === '') return [];
-    return nodes.filter((n) => n.title.toLowerCase().includes(q)).slice(0, 8);
-  }, [nodes, nodeQuery]);
-  const focusedId = matches[0]?.documentId;
 
   const option = useMemo(
     () =>
@@ -72,22 +67,6 @@ export function GraphViewPage() {
   );
 
   const selectedNode: GraphNodeItem | undefined = nodes.find((n) => n.documentId === selectedId);
-
-  const setParams = (patch: Partial<GraphSearch>) =>
-    navigate({ search: (prev: GraphSearch) => ({ ...prev, ...patch }) });
-
-  // 辺の型フィルタ（SC-18 主要素 4）: URL の types が単一情報源。省略＝全型 ON。
-  const catalog = edgeTypes.data ?? [];
-  const activeTypes = search.types ?? catalog.map((tp) => tp.id);
-  const toggleType = (typeId: string) => {
-    const next = activeTypes.includes(typeId)
-      ? activeTypes.filter((id) => id !== typeId)
-      : [...activeTypes, typeId];
-    // 全 ON は「絞りなし」として types を URL から外す（サーバの既定と一致させる）。
-    void setParams({ types: next.length === catalog.length ? undefined : next });
-  };
-  // 🔴 最後の 1 つは外せない（全 OFF は「何も描かない」であり、探索として意味を持たない）。
-  const lastActive = activeTypes.length === 1;
 
   return (
     <section className="space-y-3">
@@ -117,9 +96,7 @@ export function GraphViewPage() {
             id="graph-hops"
             selectSize="sm"
             value={search.hops}
-            onChange={(e) =>
-              void setParams({ hops: Number(e.target.value) as GraphSearch['hops'] })
-            }
+            onChange={(e) => setParams({ hops: Number(e.target.value) as GraphSearch['hops'] })}
           >
             {HOPS_OPTIONS.map((h) => (
               <option key={h} value={h}>
@@ -136,7 +113,7 @@ export function GraphViewPage() {
             id="graph-by"
             selectSize="sm"
             value={search.by}
-            onChange={(e) => void setParams({ by: e.target.value as ThinningOption })}
+            onChange={(e) => setParams({ by: e.target.value as ThinningOption })}
           >
             {THINNING_OPTIONS.map((b) => (
               <option key={b} value={b}>

@@ -228,7 +228,18 @@
     "  **本件は「カタログを割れば済む」問題ではない**ことが上の内訳で分かった —— 次に初期ロードを",
     "  数 kB 増やす作業が来たら、カタログの分割と併せて**共通シェルに載せる部品の量**も見ること。"
   ],
-  "initialTotalBytes": 616025,
+  "initialTotalBytes": 616202,
+  "$comment_initialTotalBytes_20260830_1066": [
+    "［2026-08-30 / #1066］616,025 → 616,202（+0.18 kB）へ引き上げた。実測値である（pnpm run build →",
+    "node scripts/check-chunk-budget.js --update）。増加は SC-21 の語彙を routes/ から",
+    "types/suggestionVocabulary.ts へ移したことによる —— **ルート定義は初期チャンクに載る**ので、",
+    "同じモジュールが公開する suggestionTone / edgeTypeNameMap（画面側だけが使う 2 関数）も一緒に",
+    "初期ロードへ入る。**バンドルの都合で types/ を 2 ファイルへ割ることはしない**（計画",
+    "13_frontend-stack §ディレクトリ構成 の区分は関心で切るものであり、チャンク境界で切ると",
+    "次の実装者がどちらへ書くか判断できなくなる）。0.18 kB は初期ロードの 0.03% である。",
+    "画面本体（AiSuggestionListPage）と 4 feature へ新設した hooks/ は遅延チャンク側であり、",
+    "初期ロードには入っていない。"
+  ],
   "$comment_initialTotalBytes_20260823_sc18": [
     "［2026-08-23 / #917］575,856 → 582,839（+6.98 kB）へ引き上げた。実測値である（pnpm run build →",
     "node scripts/check-chunk-budget.js --update）。増加は SC-18 ナレッジグラフビューのルート登録",

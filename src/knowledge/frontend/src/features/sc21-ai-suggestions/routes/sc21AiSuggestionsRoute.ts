@@ -2,6 +2,7 @@ import { msg } from '@lingui/core/macro';
 import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
 import type { FeatureBreadcrumb, PlanNavItem } from '@foundation/routing/featureRegistry';
+import { normalizeAiSuggestionSearch } from '../types/suggestionVocabulary';
 
 // SC-21, UC-10, FR-18/FR-05: AI 提案一覧（05_screens: ルート /ai-suggestions・既定 ?state=pending）。
 //
@@ -20,28 +21,6 @@ const AiSuggestionListPage = lazyRouteComponent(
   'AiSuggestionListPage',
 );
 
-/**
- * 状態フィルタの選択肢（05_screens §SC-21 入力/バリデーション）。
- *
- * 🔴 `all` は**状態の値ではなくフィルタの解除**である（後段の `AiSuggestionEndpoints.AnyState`）。
- */
-export const STATE_OPTIONS = ['pending', 'approved', 'rejected', 'all'] as const;
-export type StateOption = (typeof STATE_OPTIONS)[number];
-
-/**
- * 種類フィルタの選択肢（すべて／リンク／タグ）。
- *
- * 🔴 **リンク提案とタグ提案で画面を分けない**（05_screens §SC-21「描いてはいけないもの」）。
- * 分けると片方が忘れられるためである。`all` は「絞らない」を意味し、後段へは送らない。
- */
-export const KIND_OPTIONS = ['all', 'link', 'tag'] as const;
-export type KindOption = (typeof KIND_OPTIONS)[number];
-
-export interface AiSuggestionSearch {
-  state: StateOption;
-  kind: KindOption;
-}
-
 export const createSc21AiSuggestionsRoute = (shell: ShellRoute) =>
   createRoute({
     getParentRoute: () => shell,
@@ -49,14 +28,8 @@ export const createSc21AiSuggestionsRoute = (shell: ShellRoute) =>
     // SC-21, IADR-0124: **URL が絞り込みの単一情報源**である（SC-18 と同じ作法）。
     // クライアント状態ストアを持ち込まない —— 共有・再読込・戻るのいずれでも同じ一覧になる。
     //
-    // URL は外部由来なので正規化する。**未知の値は既定へ倒す** —— 選択肢しか無い UI に
-    // 「エラー状態」を持ち込まない（手打ちの `?state=maybe` で画面を壊さない）。
-    // 値域の防壁はサーバ（400）に在り、ここは丸めるだけである。
-    validateSearch: (raw: Record<string, unknown>): AiSuggestionSearch => ({
-      // 05_screens §SC-21: **既定は pending**（URL に無くても pending である）。
-      state: STATE_OPTIONS.find((s) => s === raw.state) ?? 'pending',
-      kind: KIND_OPTIONS.find((k) => k === raw.kind) ?? 'all',
-    }),
+    // 正規化そのものは `types/suggestionVocabulary.ts` の純関数が持つ（画面を描かずに固定できる）。
+    validateSearch: normalizeAiSuggestionSearch,
     component: AiSuggestionListPage,
   });
 
