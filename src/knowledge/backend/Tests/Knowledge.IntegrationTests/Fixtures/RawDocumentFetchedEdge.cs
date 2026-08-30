@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
-using ConversionService.Worker.Features.ConversionJobs;
-using ConversionService.Worker.Domain;
-using ConversionService.Worker.Infrastructure.Persistence;
-using ConversionService.Worker.Domain.Ports;
+using ConversionService.Features.ConversionJobs;
+using ConversionService.Domain;
+using ConversionService.Infrastructure.Persistence;
+using ConversionService.Domain.Ports;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;

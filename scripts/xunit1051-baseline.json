@@ -48,8 +48,8 @@
       "remaining": 0,
       "migrated": true
     },
-    "src/knowledge/backend/Services/ConversionService/Worker/Tests/ConversionService.Worker.Tests.csproj": {
-      "project": "ConversionService.Worker.Tests",
+    "src/knowledge/backend/Services/ConversionService/Tests/ConversionService.Tests.csproj": {
+      "project": "ConversionService.Tests",
       "remaining": 0,
       "migrated": true
     },
@@ -78,8 +78,8 @@
       "remaining": 0,
       "migrated": true
     },
-    "src/knowledge/backend/Services/IngestionService/Worker/Tests/IngestionService.Worker.Tests.csproj": {
-      "project": "IngestionService.Worker.Tests",
+    "src/knowledge/backend/Services/IngestionService/Tests/IngestionService.Tests.csproj": {
+      "project": "IngestionService.Tests",
       "remaining": 0,
       "migrated": true
     },

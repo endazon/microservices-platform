@@ -41,7 +41,7 @@ public class ConfigInspectionServiceTests
             {
                 Name = "convert",
                 Service = "conversion-service",
-                Consumer = "ConversionService.Worker.Features.ConversionJobs.RawDocumentFetchedConsumer",
+                Consumer = "ConversionService.Features.ConversionJobs.RawDocumentFetchedConsumer",
                 Input = "RawDocumentFetched",
                 Outputs = ["DocumentNormalized"],
             },

@@ -13,7 +13,7 @@ namespace Platform.Shared.Infrastructure.Tests.Composable.Adapters.Storage;
 // 共有側の既存テスト（PortSwapCompositionTests / ObjectStorageExtensionsTests）は
 // `BeOfType<NullObjectStorageClient>()` の**型検査だけ**で、メソッドを 1 つも呼んでいない。
 // リポジトリ全体をメソッド名で走査すると、実行しているのは
-// ConversionService.Worker.Tests/ObjectStorageTests.cs の PutTextAsync / CanResolve / GetTextAsync のみで、
+// ConversionService.Tests/ObjectStorageTests.cs の PutTextAsync / CanResolve / GetTextAsync のみで、
 // **DeleteAsync / PutBytesAsync / GetBytesAsync / CreatePresignedGetUrl は全ユニットで実行 0 件**だった。
 //
 // とりわけ DeleteAsync は IADR-0296 / ADR-0057 決定 1 が 🔴 で

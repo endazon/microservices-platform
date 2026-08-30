@@ -3,7 +3,7 @@ title: テスト戦略（退行防止テスト基盤）
 type: test-spec
 status: in-progress
 created: 2026-08-03
-updated: 2026-08-29
+updated: 2026-08-30
 author: Claude
 ---
 <!-- trace:
@@ -89,7 +89,7 @@ it('0 件のとき空状態を表示する', () => { ... })
 したがって **baseline 済みのプロジェクト内で結合が深まっても「新規混入 0 件」の緑のまま**になる。
 
 実例: `bc7bc8e`が
-`src/knowledge/backend/Services/ConversionService/Worker/Features/ConversionJobs/RawDocumentFetchedConsumer.cs:81`
+`src/knowledge/backend/Services/ConversionService/Features/ConversionJobs/RawDocumentFetchedConsumer.cs:81`
 へ `context.GetRetryAttempt() + 1 >= MassTransitExtensions.MaxAttempts` を追加し、production の判定
 ロジックが MassTransit の再試行セマンティクスに依存するようになったが、`using MassTransit;` は既存・
 `PackageReference` は baseline 済みのため ratchet は動かない（変換ジョブのデッドレターは導出せず記録し、試行上限は再試行設定を単一情報源にする実装 ADR

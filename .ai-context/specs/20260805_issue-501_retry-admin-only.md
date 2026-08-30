@@ -90,14 +90,14 @@ related_specs:
 
 ### 1. 下流の認可指定（実測）
 
-[`ConversionJobEndpoints.cs`](../../src/knowledge/backend/Services/ConversionService/Worker/Features/ConversionJobs/ConversionJobEndpoints.cs) 14 行:
+[`ConversionJobEndpoints.cs`](../../src/knowledge/backend/Services/ConversionService/Features/ConversionJobs/ConversionJobEndpoints.cs) 14 行:
 
 ```csharp
 var g = app.MapGroup("/jobs").WithTags("Conversion Jobs");
 ```
 
 `RequireAuthorization` は**一切付いていない**。さらに
-[`Program.cs`](../../src/knowledge/backend/Services/ConversionService/Worker/Program.cs) は
+[`Program.cs`](../../src/knowledge/backend/Services/ConversionService/Program.cs) は
 `AddPlatformAuth` / `UseAuthentication` / `UseAuthorization` を**呼んでいない**（認証基盤そのものが無い）。
 
 - したがって下流は「**operator には緩く admin には厳しい**」のではなく、**ロールの区別が存在しない**

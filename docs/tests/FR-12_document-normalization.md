@@ -3,7 +3,7 @@ title: テスト仕様書 — FR-12 原本の正規化変換
 type: test-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-08-29
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -18,7 +18,7 @@ issues: [#118, #379, #447, #506, #520, #525, #658]
 
 ## 対象
 
-`src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests`
+`src/knowledge/backend/Services/ConversionService/Tests`
 
 ## テストケース（受け入れ基準・フローの写像）
 

@@ -87,7 +87,7 @@
     "被覆の実態は 1 行も悪化していない —— 既存テストは 1 件も減っていない。分母だけがふくらんだ。",
     "【機構：レポート跨ぎの二重計上】本検査はレポートを跨いで重複排除しない。共有ライブラリ",
     "（Platform.Shared.Infrastructure / Platform.Shared.Contracts）の行は、それを参照する",
-    "テストプロジェクトの数だけ重複して分母に載る。実測で確認した —— ConversionService.Worker.Tests",
+    "テストプロジェクトの数だけ重複して分母に載る。実測で確認した —— ConversionService.Tests",
     "の単独レポートに Platform.Shared.Infrastructure のクラスが 51 件入っている。",
     "そこへ Platform.Shared.Infrastructure.Tests（#897 で新設）が「被覆 1.16% のもう 1 部」を足した",
     "（単独レポート実測: lines-covered 9 / lines-valid 772 / sources = .../platform/backend/Shared/）。",

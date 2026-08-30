@@ -16,7 +16,7 @@ namespace Knowledge.IntegrationTests.Fixtures;
 // TestContainers の Postgres/RabbitMQ を使いサービスを実際に起動する
 //
 // ［2026-08-21 / #455 Phase 0 U0b］**DbContext を要求しない基底**である。
-// Worker には DbContext を持たないものがある（IngestionService.Worker）ため、
+// Worker には DbContext を持たないものがある（IngestionService）ため、
 // 「DbContext を差し替える」責務を派生（IntegrationTestFactoryBase<TProgram, TDbContext>）へ
 // 分けた。DbContext を持つサービスはそちらを使う。既存の 5 ファクトリの宣言は変わらない。
 public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFactory<TProgram>
@@ -143,7 +143,7 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
             // クラス名や namespace を変えると、本番は起動時に落ちるのに、テストは緑のままだった。
             //
             // 🔴 **［2026-08-22 訂正 / #892］従前ここには「4 つの fail-fast を検査するテストが
-            // 1 件も無かった」と書いていた。誤りである。** 規則 2〜5 は ConversionService.Worker.Tests の
+            // 1 件も無かった」と書いていた。誤りである。** 規則 2〜5 は ConversionService.Tests の
             // PipelineStepRegistrationTests が**合成した宣言に対して**既に検査していた（2026-07-08 の
             // #111 で追加。本コメントを書いた時点で 6 週間前から存在した）。無かったのは
             // 「**出荷される pipeline.json に対する**検査」である。
@@ -200,7 +200,7 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
             // 従前ここは「購読確立後に Publish されることを保証する」と書いていたが、
             // ADR-0027 の Wolverine 移行で**その保証は失効している**（走査で実測）:
             //   - `WikiService` は MassTransit を**参照していない**（csproj に無い）。本設定は完全な no-op である
-            //   - `IngestionService.Worker` は `AddMassTransit` を残すが**コンシューマを 1 つも登録していない**
+            //   - `IngestionService` は `AddMassTransit` を残すが**コンシューマを 1 つも登録していない**
             //     （`UsingRabbitMq` ＋ `ConfigureEndpoints` のみ）。待つべきレシーブエンドポイントが無い
             //   - 両サービスの `DocumentUpdated` 購読は `AddWolverineStep` 側にある
             // **「起動レースは塞いだ」と読める記述が、実際には塞いでいない状態で残っていた。**
@@ -228,7 +228,7 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
 
     /// <summary>DbContext を Testcontainers の Postgres へ差し替える。既定は何もしない。</summary>
     /// <remarks>
-    /// DbContext を持たないサービス（IngestionService.Worker）でも同じ基底を使えるようにするため、
+    /// DbContext を持たないサービス（IngestionService）でも同じ基底を使えるようにするため、
     /// 差し替えは派生の責務にしている。持つサービスは
     /// <see cref="IntegrationTestFactoryBase{TProgram, TDbContext}"/> を使う。
     /// </remarks>
@@ -332,7 +332,7 @@ public sealed class WikiServiceFactory : IntegrationTestFactoryBase<
 //
 // 🔴 **DbContext を持たないので 1 引数版の基底を使う**（AddDbContext は 0 件。実測）。
 public sealed class IngestionServiceFactory : IntegrationTestFactoryBase<
-    global::IngestionService.Worker.IngestionServiceTestMarker>
+    global::IngestionService.IngestionServiceTestMarker>
 {
     public IngestionServiceFactory(PostgresFixture pg, RabbitMqFixture rabbit) : base(pg, rabbit) { }
 }
@@ -340,8 +340,8 @@ public sealed class IngestionServiceFactory : IntegrationTestFactoryBase<
 // ConversionService は ConversionJobDbContext を持つので 2 引数版を使う。
 // 🔴 **未使用**（上の注記を参照）。
 public sealed class ConversionServiceFactory : IntegrationTestFactoryBase<
-    global::ConversionService.Worker.ConversionServiceTestMarker,
-    global::ConversionService.Worker.Infrastructure.Persistence.ConversionJobDbContext>
+    global::ConversionService.ConversionServiceTestMarker,
+    global::ConversionService.Infrastructure.Persistence.ConversionJobDbContext>
 {
     public ConversionServiceFactory(PostgresFixture pg, RabbitMqFixture rabbit) : base(pg, rabbit) { }
 }

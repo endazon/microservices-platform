@@ -3,7 +3,7 @@ title: テスト仕様書 — FR-02 取り込み
 type: test-spec
 status: in-progress
 created: 2026-06-27
-updated: 2026-08-21
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -18,7 +18,7 @@ issues: [#536]
 
 ## 対象
 
-`src/knowledge/backend/Services/IngestionService/tests/IngestionService.Worker.Tests`
+`src/knowledge/backend/Services/IngestionService/Tests`
 
 ## テストケース（受け入れ基準・フローの写像）
 

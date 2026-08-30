@@ -9,10 +9,10 @@
     "baseline が空になったら Directory.Packages.props から不採用パッケージを削除する（#441 / C3）。"
   ],
   "projects": {
-    "src/knowledge/backend/Services/ConversionService/Worker/ConversionService.Worker.csproj": [
+    "src/knowledge/backend/Services/ConversionService/ConversionService.csproj": [
       "MassTransit"
     ],
-    "src/knowledge/backend/Services/ConversionService/Worker/Tests/ConversionService.Worker.Tests.csproj": [
+    "src/knowledge/backend/Services/ConversionService/Tests/ConversionService.Tests.csproj": [
       "MassTransit"
     ],
     "src/knowledge/backend/Services/DocumentService/DocumentService.csproj": [
@@ -21,10 +21,10 @@
     "src/knowledge/backend/Services/DocumentService/Tests/DocumentService.Tests.csproj": [
       "MassTransit"
     ],
-    "src/knowledge/backend/Services/IngestionService/Worker/IngestionService.Worker.csproj": [
+    "src/knowledge/backend/Services/IngestionService/IngestionService.csproj": [
       "MassTransit"
     ],
-    "src/knowledge/backend/Services/IngestionService/Worker/Tests/IngestionService.Worker.Tests.csproj": [
+    "src/knowledge/backend/Services/IngestionService/Tests/IngestionService.Tests.csproj": [
       "MassTransit"
     ],
     "src/knowledge/backend/Shared/Knowledge.Contracts.Tests/Knowledge.Contracts.Tests.csproj": [

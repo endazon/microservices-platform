@@ -3,7 +3,7 @@ title: 機能仕様書 — FR-12 原本の正規化変換（pandoc＋LLMコー�
 type: functional-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-08-21
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -24,7 +24,7 @@ issues: [#533, #543]
 
 ## 機能概要
 
-`ConversionService.Worker` が `RawDocumentFetched` イベントを購読し、取得済みの原本を
+`ConversionService` が `RawDocumentFetched` イベントを購読し、取得済みの原本を
 正規化形式（本文 Markdown＋資産）へ変換する。本文は **pandoc** で Markdown 化し、図は
 **LLM（LLMゲートウェイ `/complete` 経由）** で PlantUML/Mermaid にコード化する。コード化できない図は
 **画像として保持**し（変換パイプラインの決定。段階的に全面コード化）、本文・資産は **オブジェクトストレージ**へ
@@ -114,7 +114,7 @@ issues: [#533, #543]
 
 ## トレーサビリティ
 
-- コード: `ConversionService.Worker`（`RawDocumentFetchedConsumer`, `NormalizationService`,
+- コード: `ConversionService`（`RawDocumentFetchedConsumer`, `NormalizationService`,
   `PandocConversionService`, `LlmGatewayDiagramCoder`, `StorageObjectStore`, `DeterministicGuid`）。
   各所に `// FR-12, UC-06` 等を付す。
-- テスト: `ConversionService.Worker.Tests`（[テスト仕様書](../tests/FR-12_document-normalization.md)）。
+- テスト: `ConversionService.Tests`（[テスト仕様書](../tests/FR-12_document-normalization.md)）。
