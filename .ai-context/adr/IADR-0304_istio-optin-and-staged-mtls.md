@@ -116,6 +116,89 @@ ArgoCD は許可外の種別を同期しないため、**本番同期はその�
 これは事故ではなく、着手前の走査で見つけた潜在欠陥である（1 回目は記録に留める）。
 代わりに**引き直しの手順をファイル冒頭のコメントに書いた**（次に触る人が記憶で足さないように）。
 
+## 実クラスタで確かめたこと（2026-08-30・k3s `v1.35.4+k3s1`）
+
+着手時に「確かめるまで閉じない」とした 2 点は**両方とも成立した**。加えて、**成立しないことが 1 つ分かった。**
+
+### 1. Istio 1.30.4 は k3s v1.35.4 で動く（成立）
+
+```console
+$ kubectl -n istio-system get pods
+istiod-6f445ddcf7-sr8kx   1/1   Running   0   20s
+```
+
+4 つの CRD（`peerauthentications` / `destinationrules` / `gateways` / `virtualservices`）が
+いずれも `Established` になった。
+
+### 2. 15 Pod ぶんのサイドカーは 1 ノードに載る（成立）
+
+| | 注入前 | 注入後 | 差 |
+| --- | ---: | ---: | ---: |
+| CPU requests | 3480m (43%) | 3630m (45%) | **+150m** |
+| memory requests | 6740Mi (43%) | 7700Mi (49%) | **+960Mi** |
+
+**差は 15 × (10m / 64Mi) と厳密に一致する**（決定 6 で絞った値）。ノードは 8 CPU / 15.9Gi。
+
+### 3. 🔴 サイドカーは `containers` ではなく `initContainers` に入る（検証手順の落とし穴）
+
+Istio 1.30 は k8s のネイティブサイドカー（`restartPolicy: Always` の initContainer）を使う。
+
+```console
+$ ... sample initContainers: ['istio-init', 'istio-proxy']
+$ ... sample restartPolicy : [None, 'Always']
+```
+
+**`spec.containers` だけを見る確認手順は「注入 0 件」と誤答する。** 実際そう誤答し、
+**ノードの資源要求が 15 × 決定 6 の値ちょうど増えていた**ことと矛盾したので気付いた。
+`README.md` の確認コマンドは `initContainers` も見る形にした。
+
+### 4. 🔴 **STRICT は現在のエッジ構成と両立しない**（成立しない）
+
+**これが本作業で最も重要な発見である。**
+
+`kube-system` の Traefik には**サイドカーが無い**（`containers: ['traefik']`）。
+名前空間全体へ STRICT を掛けると、Traefik から `frontend-service` / `bff-service` への
+平文が拒否される。実測（各 3 回）:
+
+| `mtls.mode` | `http://localhost/` | `https://localhost/` |
+| --- | --- | --- |
+| PERMISSIVE | **200** | **200** |
+| **STRICT** | 🔴 **502** | 🔴 **502** |
+| PERMISSIVE（戻す） | **200** | **200** |
+
+**メッシュ内は STRICT でも健全だった** —— Deployment 28 件が available のまま、
+`bff-service` / `document-service` のアプリログはエラー 0 件。**壊れたのは入口だけ**である。
+
+**帰結**: `ADR-0021`（エッジ＝Istio Ingress Gateway ＋ Caddy）は、STRICT にとって
+**選択肢ではなく前提**である。経路B のエッジを Traefik にした `IADR-0091` は、
+**名前空間全体の STRICT とは両立しない。** #458（暫定運用の解消）は、
+mTLS を STRICT へ上げる前に**エッジをメッシュへ入れる**必要がある。
+（回避策として Traefik へサイドカーを注入する／`portLevelMtls` で入口ポートだけ
+PERMISSIVE に残す、も理屈上は採れるが、どちらも `ADR-0021` から遠ざかる。）
+
+### 5. `check-stack-ready.js` は上のエッジ断を捕まえない
+
+STRICT でエッジが 502 を返している間も、同スクリプトは
+**「エッジ・issuer・admin entrypoint も成立している」と OK を返した。**
+G4 が見ているのは `platform-infra` の `keycloak-edge` Ingress と Keycloak の discovery であり、
+**`microservices-platform` の SPA / BFF 経路は見ていない**（`platform-infra` に STRICT は掛かっていないので当然通る）。
+
+**検査器の欠陥ではない**（G4 の射程はそう書いてある）が、
+**出力の文言は「エッジ全般が成立している」と読める。** #992 / #466 が扱う
+「観測できることだけを門にしている」問題と同じ形なので、そちらへ申し送る。
+
+## 現在のクラスタの状態
+
+**Istio は導入したまま・`PERMISSIVE` で残してある**（利用者の承認範囲内）。全 28 Deployment が available。
+撤去する場合:
+
+```sh
+kubectl -n microservices-platform delete peerauthentication,destinationrule microservices-platform-mtls
+kubectl label namespace microservices-platform istio-injection-
+kubectl -n microservices-platform rollout restart deployment
+helm uninstall istiod -n istio-system && helm uninstall istio-base -n istio-system
+```
+
 ## 結果
 
 - **良い影響**: `ADR-0005` の宣言が初めて実際に動く経路を持つ。ArgoCD の本番同期が

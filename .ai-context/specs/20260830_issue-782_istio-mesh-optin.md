@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — Istio を opt-in で導入し、mTLS を段階移行にする（#782）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - NFR
   - ADR-0005
@@ -83,29 +83,73 @@ ArgoCD は許可外を同期しないので、**本番同期はそこで止ま�
 - [ ] 🔴 **sidecar 注入後に全 Pod が Ready・PERMISSIVE で疎通・STRICT へ移して疎通** —— **未実施**
 - [ ] 🔴 `PeerAuthentication` の PERMISSIVE 残存ゼロの確認 —— **未実施**
 
-## 🔴 未検証であることの明示
+## 実測（2026-08-30・稼働クラスタ `rancher-desktop` / k3s `v1.35.4+k3s1`）
 
-**実クラスタへの適用は行っていない。** `helm upgrade --install` がセッションの権限で拒否されたためである
-（読み取り側の `helm template` / `helm lint` / `helm list` は通る）。
+**着手時に「確かめるまで閉じない」とした 2 点は両方とも成立した。**
 
-したがって本作業で確かめられたのは**レンダリングと構文まで**である:
+1. **Istio 1.30.4 は k3s v1.35.4 で動く** —— `istiod 1/1 Running`・CRD 4 件が `Established`
+2. **15 Pod ぶんのサイドカーは載る** —— CPU requests 43% → 45%（+150m）、memory 43% → 49%（+960Mi）。
+   **差は 15 × (10m / 64Mi) と厳密に一致**する（決定 6 で絞った値）
+
+段階移行も実測した。
 
 ```console
-$ helm template ... -f values-local.yaml                          → mesh リソース 0 件（既定オフが効く）
-$ helm template ... --set mesh.enabled=true --set mesh.mtlsMode=PERMISSIVE
-    kind: PeerAuthentication / mode: PERMISSIVE
-    kind: DestinationRule    / mode: ISTIO_MUTUAL
-$ helm template ... --set namespace.create=true --set namespace.istioInjection=true
-    istio-injection: enabled                                      → 注入ラベルが出る
-$ helm template ... | kubeconform -strict   → Valid: 40, Invalid: 0（Istio CRD 2 件は schema 未取得で skip）
-$ helm lint                                 → 0 failed
-$ bash -n scripts/k8s-local-up.sh           → OK
-$ REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js → 664 passed
+$ kubectl label namespace microservices-platform istio-injection=enabled --overwrite
+$ helm template ... --set mesh.mtlsMode=PERMISSIVE -s templates/istio-mtls.yaml | kubectl apply -f -
+$ kubectl -n microservices-platform rollout restart deployment
+→ 15/15 が istio-proxy 注入済み・15/15 Running かつ全 container Ready
+→ node scripts/check-stack-ready.js  → OK: Deployment 28 件が available
+→ 再起動直後のログに 2 件の DbCommand エラー（06:34:5x）。直近 2 分では 4 サービスとも 0 件＝一過性
 ```
 
-**「入れれば動く」とは言えない。** 実際に確かめるべきことが 2 つ残っている:
+### 🔴 成立しなかったこと —— STRICT は現在のエッジ構成と両立しない
 
-1. **Istio 1.30.4 が k3s v1.35.4 で動くか。** k8s 1.35 は Istio 1.30 のサポート表より新しい可能性がある
-2. **27 Pod ぶんのサイドカーが 1 ノードに載るか。** 資源要求は絞ったが実測していない
+`kube-system` の Traefik には**サイドカーが無い**（`containers: ['traefik']`）。
 
-**この 2 つを確かめるまで #782 は閉じない。**
+| `mtls.mode` | `http://localhost/` | `https://localhost/` |
+| --- | --- | --- |
+| PERMISSIVE | **200** | **200** |
+| **STRICT** | 🔴 **502** | 🔴 **502** |
+| PERMISSIVE（戻す） | **200** | **200** |
+
+各 3 回。**メッシュ内は STRICT でも健全**（28 Deployment available・アプリログのエラー 0 件）で、
+**壊れたのは入口だけ**である。
+
+**帰結**: `ADR-0021`（エッジ＝Istio Ingress Gateway）は STRICT にとって**選択肢ではなく前提**である。
+経路B のエッジを Traefik にした `IADR-0091` は名前空間全体の STRICT と両立しない。
+**#458 は mTLS を上げる前にエッジをメッシュへ入れる必要がある。**
+
+### 副次的な発見 —— 読み取りの落とし穴 2 件
+
+1. **サイドカーは `containers` ではなく `initContainers` に入る**（Istio 1.30 のネイティブサイドカー）。
+   `spec.containers` だけ見る手順は「注入 0 件」と誤答する。**実際そう誤答し、
+   ノードの資源要求が決定 6 の値ちょうど増えていたことと矛盾したので気付いた。**
+2. **`check-stack-ready.js` は上のエッジ断を捕まえない。** STRICT で 502 の間も
+   「エッジ・issuer・admin entrypoint も成立している」と OK を返した。G4 の射程は
+   `platform-infra` の `keycloak-edge` と Keycloak discovery であり、SPA / BFF 経路を見ていない。
+   **検査器の欠陥ではないが、出力の文言は「エッジ全般」と読める。** #992 / #466 へ申し送る。
+
+### 作業中に自分が壊して直したもの
+
+`kubectl apply -k deploy/local/infra`（Alertmanager 作業で otel-collector のポートを直したとき）で
+**33 日前に作られたクラスタへ現在のマニフェストを当てた**ため、`rabbitmq` の Deployment が
+`couldn't find key username in Secret platform-infra/rabbitmq` で `CreateContainerConfigError`
+になっていた（旧 Secret は `password` しか持たない。現行の `k8s-local-up.sh` は
+`username=guest` も作る）。**稼働中の旧 Pod は 33 日間動き続けていたので影響は出ていなかった。**
+`username=guest`（稼働 Pod の実値と一致することを `rabbitmqctl list_users` で確認）を足して復旧した。
+
+**これは「稼働クラスタが古いスクリプトで作られており、現行マニフェストと乖離している」型である**
+—— otel-collector の 8888 欠落（#546）と同じ根である。
+
+## 受け入れ基準の到達点
+
+- [x] 実マニフェスト・opt-in ブロック・既定不変・ArgoCD の許可種別
+- [x] **sidecar 注入後に全 Pod が Ready**（15/15）
+- [x] **PERMISSIVE で疎通**（エッジ 200 / スタック 28 available / アプリログ 0 件）
+- [x] **STRICT へ移して疎通** —— 🔴 **移せない**ことを実測で確定した（エッジ 502）。**これも実測結果である**
+- [ ] `PeerAuthentication` の PERMISSIVE 残存ゼロ —— **#458 の射程。エッジをメッシュへ入れてからでないと成立しない**
+
+## クラスタの後始末
+
+**Istio は導入したまま・`PERMISSIVE` で残してある**（利用者の承認範囲内。全 28 Deployment available）。
+撤去手順は [IADR-0304](../adr/IADR-0304_istio-optin-and-staged-mtls.md) §現在のクラスタの状態 に置いた。

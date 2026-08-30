@@ -27,6 +27,16 @@ ISTIO=1 ./scripts/k8s-local-up.sh
 4. アプリチャートを `mesh.enabled=true` で適用する
 5. `rollout restart deployment` —— **サイドカーは既存 Pod へ後から入らない**
 
+🔴 **注入の確認は `initContainers` も見る。** Istio 1.30 は k8s のネイティブサイドカー
+（`restartPolicy: Always` の initContainer）を使うため、**`spec.containers` だけを見ると
+「注入 0 件」と誤答する**（2026-08-30 に実際に誤答した）。
+
+```sh
+kubectl -n microservices-platform get pods -o json |   jq -r '.items[] | .metadata.name + " " +
+         (([.spec.containers[].name] + [(.spec.initContainers//[])[].name])
+          | if index("istio-proxy") then "injected" else "NOT-INJECTED" end)'
+```
+
 **`istioctl` は要らない**（配布バイナリを増やさず、他の opt-in と同じ Helm 経路に揃える）。
 検証コマンド（§4）だけは `istioctl` があると便利だが、`kubectl` でも代替できる。
 
@@ -41,6 +51,23 @@ ISTIO=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh # STRICT へ移す
 （postgres / keycloak / rabbitmq / qdrant / redis / minio …）との通信と、注入前の Pod からの通信が
 **同時に**壊れ、どちらが原因か切り分けられなくなる。段取りは
 **注入 → 全 Pod Ready → PERMISSIVE で疎通確認 → STRICT** である。
+
+### 🔴 現時点で STRICT は成立しない（2026-08-30 実測）
+
+`kube-system` の **Traefik にサイドカーが無い**ため、名前空間全体へ STRICT を掛けると
+**エッジからの平文が拒否され、SPA / BFF が 502 になる**。
+
+| `mtls.mode` | `http://localhost/` | `https://localhost/` |
+| --- | --- | --- |
+| PERMISSIVE | 200 | 200 |
+| **STRICT** | 🔴 **502** | 🔴 **502** |
+
+**メッシュ内は STRICT でも健全である**（28 Deployment available・アプリログのエラー 0 件）。
+**壊れるのは入口だけ。**
+
+したがって **`ADR-0021`（エッジ＝Istio Ingress Gateway）は STRICT の前提**であり、
+経路B のエッジを Traefik にした構成（`IADR-0091`）とは両立しない。
+**エッジをメッシュへ入れるまで STRICT へ上げないこと。** 移行は #458 が引き受ける。
 
 ### 本番像
 
