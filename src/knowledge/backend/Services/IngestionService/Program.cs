@@ -92,11 +92,16 @@ builder.Host.UseWolverine(opts =>
     // 戻り値の段宣言を受けるのは、queue 上書きを黙って無視しないためである（IADR-0239 決定 4）。
     var step = opts.AddPlatformWolverineStep<DocumentUpdatedConsumer>(pipeline);
 
-    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision();
+    var ingestQueue = step?.Queue ?? nameof(DocumentUpdated);
+
+    // 手順 3（購読側の束ね）/ #992: 自分のキューをイベント型名の fan-out exchange へ束ねる。
+    // **キュー名を分けるだけでは何も届かない** —— 束ねて初めて発行が届く。
+    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision()
+        .BindPlatformQueue<DocumentUpdated>("ingestion-service", ingestQueue);
 
     // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う
     // （fan-out の保存: wiki-service / graph-service と別キューになりサービス名前置で分かれる）。
-    opts.ListenToPlatformQueue("ingestion-service", step?.Queue ?? nameof(DocumentUpdated));
+    opts.ListenToPlatformQueue("ingestion-service", ingestQueue);
 
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();

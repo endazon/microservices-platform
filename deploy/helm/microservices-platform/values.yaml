@@ -696,6 +696,29 @@ embedding:
     requests: { cpu: 500m, memory: 1Gi }
     limits: { cpu: 2000m, memory: 4Gi }
 
+  # FR-02, FR-03, ADR-0016, IADR-0284, IADR-0313 (#992 案 2): **決定的ローカル埋め込み**（ティアA）。
+  #
+  # 🔴 **使い捨ての検証スタック専用である。** 有効にすると、取り込みと検索クエリの埋め込みが
+  # LlmGateway のプロセス内計算（文字 3-gram のハッシング）へ切り替わる。表層の重なりしか見ないため
+  # **意味的な近さは無く、検索品質を評価する用途には使えない**。実モデルは ADR-0017 が定める。
+  #
+  # なぜ在るのか: 統合スタックには埋め込みの鍵が無く、取り込みは Embedded=false のチャンクを
+  # 索引しない（fail-closed）。索引に 1 点も入らないので `POST /bff/search` は
+  # 「検索が壊れている」ときと同じ `200 ＋ 空` を返し、**壊れていても緑になる**（#992）。
+  #
+  # 🔴 **越境判定（機密区分 × ティア）は 1 バイトも緩めていない。** 本経路は HTTP を行わず
+  # プロセス内で計算するため、ティアA（社外送信なし）の定義をそのまま満たす。
+  #
+  # 既定 enabled=false ＝ 非描画（本ブロックは現行 manifest とバイト等価）。
+  deterministicLocal:
+    enabled: false
+    # 🔴 値は LlmGateway の appsettings.json（Embedding:Routing:Endpoints の deterministic-local）と
+    # **一致していなければならない**。ここが取り込み側のコレクション作成・検索側の参照先を決めるため、
+    # ずれると「索引はされるが検索が別のコレクションを見る」＝ 0 件で静かに落ちる。
+    # 整合は scripts/k8s-local-up.test.js が静的に固定する。
+    collection: knowledge_chunks_deterministic_v1
+    dimensions: 1024
+
 # FR-13, UC-07, ADR-0011, IADR-0020: Wiki.js（閲覧・編集 UI の実体）。専用 DB `wikijs`（Postgres）。
 # 認証は Keycloak(OIDC)。ABAC は WikiService ゲートウェイが前段で強制するため、Wiki.js への直接到達は
 # 塞ぐ（Ingress は既定で無効。公開する場合も WikiService ゲートウェイ経由に限定する。IADR-0017/IADR-0020）。
