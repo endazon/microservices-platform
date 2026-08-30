@@ -14,7 +14,7 @@ public class PipelineConfigLoaderTests
     private const string RawPipeline = """
         { "version": 1, "steps": [
           { "name": "convert", "service": "conversion-service",
-            "consumer": "ConversionService.Features.ConversionJobs.RawDocumentFetchedConsumer",
+            "consumer": "ConversionService.Features.ConversionJobs.Normalize.RawDocumentFetchedConsumer",
             "input": "RawDocumentFetched", "outputs": ["DocumentNormalized"], "enabled": true } ] }
         """;
 
@@ -45,7 +45,7 @@ public class PipelineConfigLoaderTests
 
         pipeline.Steps.Should().ContainSingle(s => s.Name == "convert")
             .Which.Consumer.Should().Be(
-                "ConversionService.Features.ConversionJobs.RawDocumentFetchedConsumer");
+                "ConversionService.Features.ConversionJobs.Normalize.RawDocumentFetchedConsumer");
     }
 
     [Fact]

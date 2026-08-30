@@ -5,6 +5,8 @@ using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using ConversionService.Features.ConversionJobs;
+using ConversionService.Features.ConversionJobs.CorrectFigure;
+using ConversionService.Features.ConversionJobs.Normalize;
 using ConversionService.Domain.Ports;
 using ConversionService.Infrastructure.Persistence;
 using ConversionService.Infrastructure.Messaging;

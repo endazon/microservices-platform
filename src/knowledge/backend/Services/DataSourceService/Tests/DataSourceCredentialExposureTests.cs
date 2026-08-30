@@ -5,6 +5,7 @@ using AwesomeAssertions;
 using DataSourceService.Domain;
 using DataSourceService.Domain.Ports;
 using DataSourceService.Features.DataSources;
+using DataSourceService.Features.DataSources.Sync;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;

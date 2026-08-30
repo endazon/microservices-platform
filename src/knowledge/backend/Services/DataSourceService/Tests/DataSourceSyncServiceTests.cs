@@ -2,6 +2,7 @@ using DataSourceService.Infrastructure.ExternalServices;
 using DataSourceService.Domain;
 using DataSourceService.Domain.Ports;
 using DataSourceService.Features.DataSources;
+using DataSourceService.Features.DataSources.Sync;
 using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;

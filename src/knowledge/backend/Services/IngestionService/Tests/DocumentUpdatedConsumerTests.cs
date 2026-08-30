@@ -1,7 +1,7 @@
 using AwesomeAssertions;
 using IngestionService.Domain;
 using IngestionService.Domain.Ports;
-using IngestionService.Features.Ingestion;
+using IngestionService.Features.Ingestion.Ingest;
 using Knowledge.Contracts.Events;
 using Microsoft.Extensions.Logging.Abstractions;
 

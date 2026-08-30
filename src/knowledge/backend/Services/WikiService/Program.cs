@@ -7,6 +7,8 @@ using Wolverine;
 using Wolverine.RabbitMQ;
 using Knowledge.Contracts.Events;
 using WikiService.Features.Wiki;
+using WikiService.Features.Wiki.RemoveDeleted;
+using WikiService.Features.Wiki.SyncDocument;
 using WikiService.Infrastructure.Persistence;
 using WikiService.Domain.Ports;
 using WikiService.Infrastructure.ExternalServices;

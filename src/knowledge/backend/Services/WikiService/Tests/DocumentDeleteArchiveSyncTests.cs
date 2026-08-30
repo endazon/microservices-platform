@@ -5,6 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using WikiService.Features.Wiki;
+using WikiService.Features.Wiki.RemoveDeleted;
+using WikiService.Features.Wiki.SyncDocument;
 using WikiService.Domain;
 using WikiService.Infrastructure.Persistence;
 using WikiService.Domain.Ports;

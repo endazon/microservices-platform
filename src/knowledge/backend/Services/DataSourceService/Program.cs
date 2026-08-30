@@ -1,5 +1,6 @@
 using DataSourceService.Infrastructure.ExternalServices;
 using DataSourceService.Features.DataSources;
+using DataSourceService.Features.DataSources.Sync;
 using DataSourceService.Infrastructure.Persistence;
 using DataSourceService.Domain.Ports;
 using DataSourceService.Domain;
