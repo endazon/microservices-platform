@@ -8,7 +8,7 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-14]
-adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041]
+adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041, ADR-0065]
 iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282]
 specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260828_arch-foundation_eight-element-materialization]
 issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
@@ -126,7 +126,7 @@ src/<unit>/backend/Services/<Name>Service/
 **`Api` と `Worker` は同一サービス内で排他である。** いずれか一方のみを持ち、**持たない側は空フォルダを作らない**
 （実行入口は 1 サービスに 1 つであり、「空の実行入口」という状態が存在しないため）。
 **ただし排他なのは `Program.cs` の形であって、ディレクトリ階層でも `.csproj` 名でもない**
-（計画 ADR-0065 決定 6）—— **`Services/<Name>/Worker/` のような中間ディレクトリは置かず、
+（2026-08-30 の計画側改定）—— **`Services/<Name>/Worker/` のような中間ディレクトリは置かず、
 `.csproj` 名にも `.Worker` を付けない**（追跡下の `*Worker*.csproj` は 0 件である）。実装の現況は
 **`Api` 12 サービス / `Worker` 2 サービス**（`ConversionService` / `IngestionService`）である
 （2026-08-28 の移送完了時点で数え直した。knowledge 10 ＋ platform 4 ＝ 14 サービス）。
