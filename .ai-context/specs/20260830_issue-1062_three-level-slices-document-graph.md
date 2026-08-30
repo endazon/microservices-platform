@@ -107,12 +107,37 @@ issue: "#1062"
 操作フォルダへ複写せず集約直下のヘルパを明示参照する。`Results.NotFound()` を操作側へ
 直接書き戻さないこと。
 
-🔴 **副作用の申告**: CodeQL のアラート **#22 / #23**（open・high・
-`GraphEndpoints.cs:94`）は**パスに紐づいて採番されている**。ファイルが動けば旧番号は
-`fixed` になり、新パスで採番し直される —— これは IADR-0282 の VSA 移送で**実測済みの挙動**
-である（#16 / #17 → #22 / #23。`.ai-context/specs/20260830_issue-1019_codeql-open-alerts.md`
-§実測 2）。**当該 2 件は `dismissed` ではなく `open`** なので、握り潰した判断が失われることは
-無い。番号が振り直る事実だけを PR に書く。
+🔴 **副作用の申告（2026-08-30 訂正）**: CodeQL のアラート **#22 / #23**
+（high・`GraphEndpoints.cs:94`）は**パスに紐づいて採番されている**。ファイルが動けば
+旧番号は `fixed` になり、新パスで採番し直される —— これは IADR-0282 の VSA 移送で
+**実測済みの挙動**である（#16 / #17 → #22 / #23。
+`.ai-context/specs/20260830_issue-1019_codeql-open-alerts.md` §実測 2）。
+
+**［訂正］当初ここへ「#22 / #23 は `dismissed` ではなく `open` なので、握り潰した判断が
+失われることは無い」と書いたが、これは誤りである。** 出典にした #1019 の仕様書は
+2026-08-30 08:00 頃の実測であり、**その後 05:41 に repo 所有者（endazon）が
+`false positive` として dismiss していた**（`gh api .../code-scanning/alerts/23` で実測）。
+規則 10「是正のたびに『この変更で新たに誤りになる自分の記述』を引き直す」を、
+**出典側の状態変化に対しては効かせられていなかった**。
+
+**したがって dismiss は実際に失われる。** 移送後の実測:
+
+```console
+$ gh api ".../code-scanning/alerts?state=&ref=refs/heads/develop" --jq ...
+#23 dismissed cs/user-controlled-bypass .../Features/Graph/GraphEndpoints.cs:94
+#22 dismissed cs/user-controlled-bypass .../Features/Graph/GraphEndpoints.cs:94
+$ gh api ".../code-scanning/alerts?ref=refs/pull/1084/merge" --jq ...
+#26 open dismissed=null cs/user-controlled-bypass .../Features/Graph/Neighbors/Endpoint.cs:45
+#25 open dismissed=null cs/user-controlled-bypass .../Features/Graph/Neighbors/Endpoint.cs:45
+```
+
+**指摘の内容も行も同じで、変わったのはパスと採番だけである**（`GraphEndpoints.cs:94` の
+`hops` 検証 → `Neighbors/Endpoint.cs:45` の同じ行）。**#25 / #26 へ同じ理由で
+dismiss を打ち直す必要がある。** dismiss は repo 所有者が自分で行った操作であり、
+**本作業では代行しない**（人へ返す）。`CodeQL` は必須チェックではない
+（`develop` の必須は `build-and-test` / `lint` / `commit-messages` / `pr-title` /
+`image-build` / `static-checks-units` / `claude-review` / `scripts-tests` の 8 件。実測）ので
+マージは塞がない。
 
 ### 判断 5 — `Features/` の外へは 1 ファイルも出さない
 
