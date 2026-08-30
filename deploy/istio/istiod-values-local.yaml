@@ -1,0 +1,32 @@
+# ADR-0005, #782: 経路B（ローカル k3s）へ入れる istiod の values。
+#
+# ★ 本番像ではない。 dev の 1 ノードクラスタで既存 15 Deployment と同居させるための値である
+#   （本番の sizing・HPA・可用性は運用要件に合わせて別途決める）。
+#
+# ★★ ここで決めているのは「メッシュを入れても既存のワークロードを壊さない」ことだけである。
+#   mTLS の強制（PeerAuthentication / DestinationRule）は **アプリの Helm チャート側**が持つ
+#   （deploy/helm/microservices-platform/templates/istio-mtls.yaml）。二重に持たない。
+pilot:
+  # 1 ノードの dev。既存 27 Pod と同居するので istiod に大きな枠を与えない。
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  autoscaleEnabled: false
+  replicaCount: 1
+
+global:
+  proxy:
+    # サイドカーは Pod ごとに 1 つ増える。15 Deployment ぶんが同じノードに載るため、
+    # 既定（100m/128Mi requests）のままだと**要求だけでノードの割当を食い潰す**。
+    resources:
+      requests: { cpu: 10m, memory: 64Mi }
+      limits: { cpu: 200m, memory: 256Mi }
+
+meshConfig:
+  # 🔴 既定を PERMISSIVE のままにする。**STRICT はアプリチャートの PeerAuthentication で名前空間へ掛ける。**
+  #   メッシュ全体の既定を STRICT にすると、注入していない platform-infra（postgres / keycloak / rabbitmq …）
+  #   への到達が一斉に壊れる。段階移行（PERMISSIVE で全 Pod Ready → 疎通 → STRICT）が採れなくなる。
+  enableAutoMtls: true
+  defaultConfig:
+    # dev では待ち時間より復帰の速さを優先する。
+    holdApplicationUntilProxyStarts: true

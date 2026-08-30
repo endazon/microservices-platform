@@ -380,3 +380,4 @@
 | [IADR-0304](./IADR-0304_alertmanager-deployment-and-null-receiver.md) | Alertmanager を配備し、受信先は「どこへも送らない」を既定として明示する | Accepted |
 | [IADR-0305](./IADR-0305_fanout-test-serialization.md) | **fan-out の統合テスト 2 クラスは直列化する。予算は伸ばさず、失敗を決定的にする**。run ログ 5 本で実行窓を復元すると分布が二峰（緑 341ms〜3s / 赤は予算いっぱい）で、伸ばしても救われない。🔴 重なりが原因とは主張しない（交絡あり）。#1038 / #1059 | Accepted |
 | [IADR-0306](./IADR-0306_log-sanitization-placement.md) | **ログ偽造対策は「発生源で断つ」を第一とし、断てない口の sanitize を `Platform.Shared.Infrastructure` へ置く**（#1019）。`Normalize` は値域こそ閉じていたが利用者入力由来の実体を返しており、テイントは実在した。🔴 **`cs/user-controlled-bypass` は偽陽性でコードを変えない**（従うと存在秘匿が壊れる）。 | Accepted |
+| [IADR-0307](./IADR-0307_istio-optin-and-staged-mtls.md) | Istio は opt-in で入れ、mTLS は PERMISSIVE から段階的に STRICT へ移す | Accepted |
