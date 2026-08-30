@@ -135,6 +135,7 @@ node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in 
 | `static-checks-units` | `check-unit-dependencies.js --self-test` と本検査（#231 / IADR-0057）。**submodule 取得が要る組**（helm / kubectl も導入する） |
 | `static-checks`（再掲） | `check-realm-constraints.js --self-test` と本検査（#18 / #307 / #385） |
 | `static-checks`（再掲） | `check-bff-downstreams.js --self-test` と本検査（#342 / IADR-0089） |
+| `static-checks`（再掲） | `check-secret-injected-options.js --self-test` と本検査（#1107 / IADR-0316 決定 4。**コード側が「実値は k8s Secret から環境変数で注入する」と doc コメントで宣言した構成値**が、helm（`secretKeyRef` 由来）と compose（`${...}` 展開）の**両方**で注入されていることを突合する。列挙を持たず宣言から母集合を引き、**0 件走査は fail-closed**。値の正しさは見ない——realm とのズレは疎通の側で現れる） |
 | `static-checks-units`（再掲） | `check-unit-service-ownership.js --self-test` と本検査（#407 / IADR-0107）／`check-deploy-manifests.js`（chart / overlay のレンダリング） |
 | `static-checks`（再掲） | `check-cpm-versions.js --self-test` と本検査（#467。CPM のバージョン直書き禁止）／`check-backend-libraries.js`／`check-event-topology.js` |
 | `static-checks`（再掲） | `check-contract-schema.js --self-test` と本検査（#465 / IADR-0122。`Shared.Contracts` の後方互換） |
