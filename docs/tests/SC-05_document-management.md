@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-06, FR-09, SC-03, SC-05, SC-06, SC-07, UC-03]
 adrs: [ADR-0031, ADR-0066]
-iadrs: [IADR-0009, IADR-0019, IADR-0035, IADR-0041, IADR-0127, IADR-0307]
+iadrs: [IADR-0009, IADR-0019, IADR-0035, IADR-0041, IADR-0127, IADR-0308]
 specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation]
 issues: [#501, #1065]
 -->

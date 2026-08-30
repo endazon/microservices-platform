@@ -1,5 +1,5 @@
 ---
-title: IADR-0307 feature 境界の機械強制は eslint-plugin-import の no-restricted-paths で行い、zones は実ディレクトリから生成する
+title: IADR-0308 feature 境界の機械強制は eslint-plugin-import の no-restricted-paths で行い、zones は実ディレクトリから生成する
 type: impl-adr
 status: Accepted
 related_ids: [NFR, SC-01, SC-05, SC-06, SC-08, ADR-0031, ADR-0066, IADR-0056, IADR-0057, IADR-0120, IADR-0121, IADR-0125, IADR-0146, IADR-0262]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20260830_issue-1065_feature-import-isolation.md
 ---
 
-# IADR-0307: feature 境界の機械強制の実現手段
+# IADR-0308: feature 境界の機械強制の実現手段
 
 ## 文脈
 

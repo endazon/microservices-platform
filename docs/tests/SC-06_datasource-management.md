@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-05, SC-05, SC-06, SC-07, UC-04]
 adrs: [ADR-0031, ADR-0066]
-iadrs: [IADR-0009, IADR-0035, IADR-0039, IADR-0044, IADR-0051, IADR-0127, IADR-0128, IADR-0136, IADR-0148, IADR-0199, IADR-0307]
+iadrs: [IADR-0009, IADR-0035, IADR-0039, IADR-0044, IADR-0051, IADR-0127, IADR-0128, IADR-0136, IADR-0148, IADR-0199, IADR-0308]
 specs: [20260805_issue-503_sc05-08-admin-screens, 20260806_issue-538_next-sync-at, 20260830_issue-1065_feature-import-isolation]
 issues: [#501, #537, #538, #628, #767, #796, #1065, planning#200, planning#299, planning#361]
 -->

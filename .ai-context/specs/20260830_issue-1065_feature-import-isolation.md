@@ -17,7 +17,7 @@ related_ids:
   - IADR-0125
   - IADR-0146
   - IADR-0262
-  - IADR-0307
+  - IADR-0308
 author: claude
 created: 2026-08-30
 updated: 2026-08-30
@@ -153,7 +153,7 @@ distinct files: 7
 
 ### 決定 B — 検査器は `eslint-plugin-import` の `import/no-restricted-paths`
 
-理由・代替案・解決器の限界は [IADR-0307](../adr/IADR-0307_feature-import-isolation-eslint-zones.md) に置く。
+理由・代替案・解決器の限界は [IADR-0308](../adr/IADR-0308_feature-import-isolation-eslint-zones.md) に置く。
 本仕様書では**設定の形**だけを書く。
 
 - zones は **`features/` を実際に読んで生成する**（手書きの許可リストを作らない）。

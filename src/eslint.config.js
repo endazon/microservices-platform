@@ -101,7 +101,7 @@ export const NO_LEGACY_ROUTER_PATHS = ['react-router', 'react-router-dom'].map((
     'react-router は不採用（ADR-0031）。ルーティングは @tanstack/react-router を使う（IADR-0124）。',
 }));
 
-// ADR-0066 決定 1〜3 / IADR-0307 / issue #1065: **feature 境界**の機械強制。
+// ADR-0066 決定 1〜3 / IADR-0308 / issue #1065: **feature 境界**の機械強制。
 //
 // **既存の規則が守っているのはユニット境界であって feature 境界ではない**（ADR-0066 の実測）。
 // `@foundation` / `@features` / `@knowledge` の禁止はユニットをまたぐ参照を止めるが、
@@ -286,7 +286,7 @@ export default tseslint.config(
   {
     files: ['knowledge/frontend/src/**/*.{ts,tsx}'],
     plugins: { import: importPlugin },
-    // ADR-0066 決定 3 / IADR-0307: `import/no-restricted-paths` は**解決できた import しか見ない**。
+    // ADR-0066 決定 3 / IADR-0308: `import/no-restricted-paths` は**解決できた import しか見ない**。
     // 既定の node resolver は `.mjs/.js/.json/.node` しか試さないため、拡張子を足さないと
     // 本リポジトリの `.ts` / `.tsx` は 1 件も解決されず、規則は**静かに 0 件で通る**。
     settings: { 'import/resolver': { node: { extensions: ['.js', '.jsx', '.ts', '.tsx'] } } },
@@ -303,7 +303,7 @@ export default tseslint.config(
                 '可変機能ユニットは platform の合成点（@features）へ依存しない。基盤参照は @foundation のみ許可（src/README.md 依存規則 例外2）。',
             },
             {
-              // ADR-0066 決定 3 / IADR-0307 決定 3 / #1065: **自ユニット内の自己参照エイリアスを塞ぐ。**
+              // ADR-0066 決定 3 / IADR-0308 決定 3 / #1065: **自ユニット内の自己参照エイリアスを塞ぐ。**
               // 下の `import/no-restricted-paths` の解決器は `@knowledge/*` を解決できないため、
               // `@knowledge/features/<B>` と書けば feature 境界の規則を**素通りする**。
               // 実測（2026-08-30）: knowledge ユニット内からの `@knowledge` 利用は 0 件
