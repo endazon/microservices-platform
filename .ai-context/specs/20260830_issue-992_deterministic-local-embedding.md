@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 決定的ローカル埋め込みで「検索が実際に効くこと」を統合スタックの門にする（#992 / #466）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-02
   - FR-03
@@ -20,6 +20,8 @@ related_ids:
   - IADR-0256
   - IADR-0284
   - IADR-0313
+  - IADR-0314
+  - IADR-0315
 author: claude
 created: 2026-08-30
 updated: 2026-08-30
@@ -167,3 +169,69 @@ git grep -l -- "<語>" | grep -v "^src/ai-stock-trading"
 - **決定的ハッシュ埋め込みに意味的な近さは無い**（表層の 3-gram の重なりだけ）。
   **検索品質の評価には使えない。** nDCG の実測は従来どおり稼働環境（実モデル）依存である。
 - 稼働クラスタは develop より古い（realm 名・無認証読み取り）。**本作業で再構築して実測する。**
+
+
+## ［2026-08-30 追記 / #992］射程が広がった —— 途中で 2 つの欠陥を実測で掘り当てた
+
+**当初の射程（埋め込みの供給）だけでは受け入れ基準を満たせなかった。**
+稼働 k3s へ当てて初めて、`#992` 理由 2「そもそも索引に何も入らない」が
+**issue が書いた理由（`MarkdownUri`）とは別の理由でも真だった**ことが分かった。
+
+| # | 掘り当てた欠陥 | 記録 |
+| --- | --- | --- |
+| A | **Wolverine の発行経路が本番コードに一度も無く、イベントがどの配備でも 1 通も出ていなかった** | [IADR-0314](../adr/IADR-0314_wolverine-outbound-routing-and-queue-binding.md) |
+| B | **Qdrant サーバ（1.9.2）とクライアント（1.18.1）の版が食い違い、1024 次元を「次元 0」で拒否していた** | [IADR-0315](../adr/IADR-0315_qdrant-server-version-follows-client.md) |
+
+**どちらも「取り込みが一度も走っていなかった」ために露出していなかった。**
+A を直すと B が現れ、B を直して初めて索引に点が入った。
+**この順序でしか見つからない**（静的に読んでも、A の下流にある B は決して現れない）。
+
+射程を広げた判断の根拠: **どちらも受け入れ基準（既知の語で ≥1 件返る）の必要条件**であり、
+これを分けると「門は入ったが毎晩赤い」状態を作ることになる（[[IADR-0284]] 決定 6 が
+まさにそれを避けようとした形である）。
+
+## 実測（稼働 k3s / Rancher Desktop v1.35.4+k3s1）
+
+### 基準（変異なし）—— CI が実行するのと同じコマンド
+
+```
+$ ABAC_POSITIVE=1 SEARCH_HITS=1 bash scripts/verify-oidc-edge-flow.sh
+...
+[18/20] seed 文書が一覧に見え、本文の参照（markdownUri）を持つこと
+  PASS  seed 文書が一覧に在り markdownUri を持つ（取り込みの入口条件を満たしている）
+[19/20] 属性を持たない利用者（poc-operator）の検索が 0 件であること（全開放を検出する）
+  PASS  POST /bff/search（poc-operator）→ 200・0 件（deny-by-default が効いている）
+[20/20] seed 文書の合言葉で検索してヒットすること（0 件を PASS にしない）
+  PASS  seed 文書がヒットした（3 件・合言葉 msp-searchseed-tanpopo を含む）
+結果: PASS 27 / FAIL 0（段 20/20）
+```
+
+取り込みの証跡:
+
+```
+Ingestion complete for ce6e5f5f-a550-4499-a0cb-81596ae42f95: 3 chunks
+GET /collections/knowledge_chunks_deterministic_v1 -> points=3
+```
+
+**この 3 点は、本作業の前は 0 点だった**（同じ経路・同じ seed で）。
+
+### 変異試験
+
+| 変異 | 手段 | 結果 |
+| --- | --- | --- |
+| **M2** 検索が別のコレクションを見る | `retrieval-service` の `Qdrant__CollectionName` を voyage 側へ | ✅ **段 20 が FAIL**（`ヒットしない（0 件）`）。他の段は基準どおり |
+| **M-a** 発行側の経路宣言を外す | `RoutePlatformEvent<DocumentUpdated>()` を削除 | ✅ `check-event-topology.js` が検出 |
+| **M-b** 購読側の束ねを外す | `BindPlatformQueue<DocumentUpdated>(...)` を削除 | ✅ 同上 |
+| 対照 基準 | — | ✅ PASS 27 / FAIL 0 |
+
+**M3（BFF → RetrievalService 不達）は実施できなかった。** BFF の readiness が
+`UriHealthCheck` で後段の到達性を見ているため、**不達にすると pod が Ready にならず、
+門より前（`check-stack-ready.js`）で止まる**。これは弱点ではなく、多層で捕まえている形である。
+
+### 測れなかったもの（隠さない）
+
+| 測れなかったもの | 理由 |
+| --- | --- |
+| `Knowledge.IntegrationTests` の 41 件 | Testcontainers が Docker API を要し、containerd（Rancher Desktop）では **skip のまま緑**になる。判定は CI に委ねる |
+| `node scripts/check-deploy-manifests.js` | ツール検出が `command -v` をシェル越しに呼ぶため **Windows では常にツール不在**になる。代わりに `helm template … \| kubeconform -strict` を手で実行し **40 resources / Valid 40 / Invalid 0** を確認した |
+| 統合スタックの CI 実走（`integration-stack.yml`） | 本 PR がマージされ nightly が回るまで測れない |

@@ -205,7 +205,10 @@ function findSubscribers(content, events) {
 function buildTopology(repoRoot = REPO_ROOT) {
   const events = discoverEvents(repoRoot);
   const table = Object.fromEntries(events.map((e) => [e, { publishers: new Map(), subscribers: new Map() }]));
-  if (events.length === 0) return { events, topology: {} };
+  // #992 / [[IADR-0314]]: 経路の宣言（発行側 / 購読側の束ね）。Map<event, Set<owner>>。
+  const routes = new Map();
+  const binds = new Map();
+  if (events.length === 0) return { events, topology: {}, routes, binds };
 
   const files = walk(path.join(repoRoot, 'src'), '.cs')
     .map((f) => toPosix(path.relative(repoRoot, f)))
@@ -222,6 +225,8 @@ function buildTopology(repoRoot = REPO_ROOT) {
     const owner = ownerOf(rel);
     for (const [ev, ts] of findPublishers(content, events)) addOwner(table[ev].publishers, owner, ts);
     for (const [ev, ts] of findSubscribers(content, events)) addOwner(table[ev].subscribers, owner, ts);
+    for (const ev of findRoutedEvents(content, events)) addDeclared(routes, ev, owner);
+    for (const ev of findBoundEvents(content, events)) addDeclared(binds, ev, owner);
   }
 
   const topology = {};
@@ -231,7 +236,71 @@ function buildTopology(repoRoot = REPO_ROOT) {
       subscribers: freezeSide(table[ev].subscribers),
     };
   }
-  return { events, topology };
+  return { events, topology, routes, binds };
+}
+
+/**
+ * #992 / [[IADR-0314]]: Wolverine の **経路宣言**を拾う。
+ *
+ * 🔴 **これが無いと発行は 1 通もブローカへ出ない。** 発行側が経路を宣言せず、購読側が
+ * exchange へ束ねていなければ、Wolverine は宛先を決められず「宛先を決められない」旨の
+ * info ログを 1 行出して**捨てる**。例外もヘルスチェックの赤も出ない。
+ * **稼働クラスタで実測した**（取り込みが一度も起動していなかった）。
+ *
+ * 従前この検査器は「発行側と購読側が同じトランスポートを名乗るか」しか見ておらず、
+ * **両側とも wolverine と名乗りながら経路が 1 本も無い状態を緑にしていた。**
+ */
+function findRoutedEvents(content, events) {
+  return events.filter((ev) => new RegExp(String.raw`RoutePlatformEvent\s*<\s*${ev}\s*>`).test(content));
+}
+
+function findBoundEvents(content, events) {
+  return events.filter((ev) => new RegExp(String.raw`BindPlatformQueue\s*<\s*${ev}\s*>`).test(content));
+}
+
+/** Map<event, Set<owner>> へ 1 件足す。 */
+function addDeclared(map, ev, owner) {
+  if (!map.has(ev)) map.set(ev, new Set());
+  map.get(ev).add(owner);
+}
+
+/**
+ * #992 / [[IADR-0314]]: Wolverine の辺について、**経路が実際に宣言されているか**を見る。
+ *
+ * - 発行側（wolverine を名乗る owner が居る）→ どこかで `RoutePlatformEvent<Ev>` が要る
+ * - 購読側（wolverine を名乗る owner）→ その owner に `BindPlatformQueue<Ev>` が要る
+ *
+ * **MassTransit の辺は対象外**（経路の作り方が違う）。購読 0 件のイベントは発行側だけ見る。
+ */
+function routingGaps(topology, routes, binds) {
+  const out = [];
+  for (const [ev, t] of Object.entries(topology)) {
+    const wolverinePublishers = Object.entries(normalizeSide(t.publishers))
+      .filter(([, ts]) => normalizeTransports(ts).includes(WOLVERINE))
+      .map(([owner]) => owner);
+    if (wolverinePublishers.length > 0 && !(routes.get(ev) && routes.get(ev).size > 0)) {
+      out.push(
+        [
+          `「${ev}」は Wolverine で発行されるのに、**外向きの経路が 1 本も宣言されていない**`
+            + `（発行元: ${wolverinePublishers.join(', ')}）。`,
+          '      発行は「宛先を決められない」旨の info ログ 1 行で黙って捨てられる（例外は出ない）。',
+          `      発行側の UseWolverine で WolverineExtensions.RoutePlatformEvent<${ev}>() を呼ぶこと。`,
+        ].join('\n'),
+      );
+    }
+    for (const [owner, ts] of Object.entries(normalizeSide(t.subscribers))) {
+      if (!normalizeTransports(ts).includes(WOLVERINE)) continue;
+      if (binds.get(ev) && binds.get(ev).has(owner)) continue;
+      out.push(
+        [
+          `「${ev}」を Wolverine で購読する ${owner} が、**自分のキューを exchange へ束ねていない**。`,
+          '      キュー名を分けるだけでは 1 通も届かない（束ねて初めて fan-out が成立する）。',
+          `      UseRabbitMq(...).BindPlatformQueue<${ev}>("<service>", <queue>) を呼ぶこと。`,
+        ].join('\n'),
+      );
+    }
+  }
+  return out;
 }
 
 /** owner の Map<string, Set<transport>> へ 1 件足す。 */
@@ -705,7 +774,7 @@ function main() {
     return;
   }
 
-  const { events, topology } = buildTopology();
+  const { events, topology, routes, binds } = buildTopology();
 
   // 0 件走査で緑を返さない（#797 / IADR-0130）。
   if (events.length === 0) {
@@ -783,7 +852,11 @@ function main() {
     );
   }
 
-  const violations = [...diffAgainstBaseline(topology, baseline), ...transportMismatches(topology)];
+  const violations = [
+    ...diffAgainstBaseline(topology, baseline),
+    ...transportMismatches(topology),
+    ...routingGaps(topology, routes, binds),
+  ];
   if (violations.length > 0) {
     console.error(`[check-event-topology] ${violations.length} 件の違反:`);
     for (const v of violations) console.error(`\n  - ${v}`);

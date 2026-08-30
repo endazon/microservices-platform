@@ -278,7 +278,7 @@ public class WolverineExtensionsTests
             TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30));
     }
 
-    // --- ADR-0027 手順 3（発行側の経路）/ #992・[[IADR-0312]] ---------------------------
+    // --- ADR-0027 手順 3（発行側の経路）/ #992・[[IADR-0314]] ---------------------------
     //
     // 🔴 **ここが無いと Wolverine の発行は 1 通もブローカへ出ない。** 手順 4 でプロセス内経路を
     // 切ったうえで外向きの経路を誰も宣言しなければ、Wolverine は宛先を決められず

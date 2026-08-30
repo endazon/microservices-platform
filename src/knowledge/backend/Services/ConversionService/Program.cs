@@ -114,7 +114,7 @@ builder.Host.UseWolverine(opts =>
     opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision()
         .BindPlatformQueue<RawDocumentFetched>("conversion-service", conversionQueue);
 
-    // ADR-0027 手順 3（発行側）/ #992 / [[IADR-0312]]: **外向きの経路を宣言する。**
+    // ADR-0027 手順 3（発行側）/ #992 / [[IADR-0314]]: **外向きの経路を宣言する。**
     // これが無いと `No routes can be determined for Envelope ...` を info ログへ 1 行出して
     // 黙って捨てられる（例外もヘルスチェックの赤も出ない。稼働 k3s で実測）。
     // 再試行（/retry）が RawDocumentFetched を再発行するため、購読側でもあり発行側でもある。

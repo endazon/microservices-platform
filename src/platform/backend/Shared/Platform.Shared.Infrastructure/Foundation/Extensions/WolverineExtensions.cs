@@ -79,7 +79,7 @@ public static class WolverineExtensions
         return options.ListenToRabbitQueue(PlatformQueueName(serviceName, queueName));
     }
 
-    // ADR-0027 手順 3 の**発行側**。#992 / [[IADR-0312]]。
+    // ADR-0027 手順 3 の**発行側**。#992 / [[IADR-0314]]。
     //
     // 🔴 **これが無いと、Wolverine で発行したイベントはブローカへ 1 通も出て行かない。**
     // 手順 4 でプロセス内経路を切ったうえで外向きの経路を誰も宣言していなければ、Wolverine は
@@ -105,7 +105,7 @@ public static class WolverineExtensions
         return options;
     }
 
-    // ADR-0027 手順 3 の**購読側の束ね**。#992 / [[IADR-0312]]。
+    // ADR-0027 手順 3 の**購読側の束ね**。#992 / [[IADR-0314]]。
     //
     // 自分のキュー（サービス名前置つき）をイベント型名の fan-out exchange へ束ねる。
     // **束ねるのは購読側である** —— 発行側に購読者の一覧を持たせると、購読サービスが増減するたびに
