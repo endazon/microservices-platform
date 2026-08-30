@@ -2213,6 +2213,8 @@ ok('IADR-0313: 既定 values は enabled: false（本番像は現状維持）', 
   assert.ok(at !== -1, 'values.yaml に deterministicLocal が無い');
   assert.match(CHART_VALUES.slice(at, at + 200), /enabled:\s*false/,
     '既定が false でない（使い捨てスタック専用の opt-in が既定 ON になっている）');
+});
+
 // ---------------------------------------------------------------------------
 // #782 / ADR-0021: エッジを Istio Ingress Gateway へ移す overlay の静的検査。
 //
