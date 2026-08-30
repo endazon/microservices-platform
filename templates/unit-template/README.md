@@ -30,7 +30,8 @@
     package.json                            ← name: @<unit>/frontend（pnpm workspace で自動認識）
     tsconfig.json                           ← paths で @foundation を解決（無いと typecheck が動かない）
     src/                                     ← 計画 13_frontend-stack §ディレクトリ構成（Bulletproof React）
-      app/          .gitkeep                ← providers / router / i18n / config（通常は platform 側が持つ）
+      app/          .gitkeep                ← providers / router / アプリシェル（通常は platform 側が持つ）
+      config/       .gitkeep                ← 実行時 config（**shared 層**。app の兄弟。通常は platform 側が持つ）
       assets/       .gitkeep                ← 自己ホストのフォント・画像（外部 CDN は禁止）
       components/   .gitkeep                ← ユニット内の共通コンポーネント
       hooks/ lib/ stores/ testing/ types/ utils/   .gitkeep
@@ -63,10 +64,16 @@
 > 区分も枠を置いた（IADR-0262）。
 >
 > **［2026-08-28 更新 / #785］第 2 段（`src/platform/frontend` の `foundation/` 分解）も完了した。**
-> `foundation/` は計画のツリーに従って `app/`（config / i18n / routing）・`lib/`（api / auth）・
-> `components/`（ui / notifications / ai-chat）・`testing/` へ分かれ、直下は 11 区分 ＋ `main.tsx` に
-> なった（IADR-0262 決定 5 の第 2 段）。**`@foundation/<区分>` というエイリアス名は変えていない** ——
+> `foundation/` は計画のツリーに従って `app/`・`lib/`（api / auth）・
+> `components/`（ui / notifications / ai-chat）・`testing/` へ分かれた（IADR-0262 決定 5 の第 2 段）。
+> **`@foundation/<区分>` というエイリアス名は変えていない** ——
 > 可変ユニット（本雛形を含む）が書く import は 1 行も変わらない。**参照先はどちらのユニットでもよい。**
+>
+> **［2026-08-30 更新 / ADR-0067］層の分類を原典（Bulletproof React）へ戻した。**
+> `config` は `app/` の中ではなく **`src/config/`（shared 層）**、i18n の実行時部分は
+> **`src/lib/i18n/`（shared 層）** である。`app/` に残るのは router・providers・アプリシェルで、
+> `testing/` は**テスト専用の第 4 の層**として扱う（`shared` と `app` は参照してよいが `features` は不可。
+> 本番コードからは参照されない）。**エイリアス名は変えていない**——動いたのは向き先だけである。
 >
 > 計画 13_frontend-stack（`status: fixed`）が **Feature 単位を上記 6 区分へ割る**と定め、
 > 「計画書は絶対的な正である。実装を計画へ合わせる」（2026-07-30 裁定・2026-08-22 再確定）が

@@ -84,8 +84,8 @@ export default defineConfig({
       // app/ lib/ components/ testing/ へ分かれているので、区分ごとに向き先を張る。
       // **エイリアス名は変えない**（AST submodule と unit-template の契約が割れるため）。
       // 同じ 9 本を tsconfig.app.json の paths と src/vitest.config.ts にも置く。
-      '@foundation/config': fileURLToPath(new URL('./src/app/config', import.meta.url)),
-      '@foundation/i18n': fileURLToPath(new URL('./src/app/i18n', import.meta.url)),
+      '@foundation/config': fileURLToPath(new URL('./src/config', import.meta.url)),
+      '@foundation/i18n': fileURLToPath(new URL('./src/lib/i18n', import.meta.url)),
       '@foundation/routing': fileURLToPath(new URL('./src/app/routing', import.meta.url)),
       '@foundation/api': fileURLToPath(new URL('./src/lib/api', import.meta.url)),
       '@foundation/auth': fileURLToPath(new URL('./src/lib/auth', import.meta.url)),

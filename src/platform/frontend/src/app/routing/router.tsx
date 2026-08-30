@@ -38,7 +38,7 @@ function appendLegacyRoutes(routes: AnyRoute[]): void {
 }
 appendLegacyRoutes(createLegacyRoutes(shellRoute, legacyUnitFeatures));
 
-// IADR-0124 決定 1: 合成点を知るのはこのモジュールだけ。共通シェル（foundation/ui/Layout）は
+// IADR-0124 決定 1: 合成点を知るのはこのモジュールだけ。共通シェル（app/Layout）は
 // 登録済みのナビを読むだけで、可変ユニットを参照しない。
 registerNavItems(planNavItems);
 // 05_screens §共通シェル ［2026-08-04 確定］: 本計画に属さないユニットは**機能名**のグループへ束ねる

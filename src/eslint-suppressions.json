@@ -9,7 +9,7 @@
       "count": 1
     }
   },
-  "platform/frontend/src/app/i18n/i18n.test.tsx": {
+  "platform/frontend/src/lib/i18n/i18n.test.tsx": {
     "testing-library/no-manual-cleanup": {
       "count": 1
     }

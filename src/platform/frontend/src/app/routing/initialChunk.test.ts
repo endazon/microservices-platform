@@ -20,7 +20,7 @@ const trace =
     return await importOriginal();
   };
 
-vi.mock('@foundation/ui/Layout', (o) => trace('Layout', o as () => Promise<unknown>)());
+vi.mock('../Layout', (o) => trace('Layout', o as () => Promise<unknown>)());
 vi.mock('@foundation/ui/NotFound', (o) => trace('NotFound', o as () => Promise<unknown>)());
 vi.mock('@foundation/auth/RequireAuth', (o) => trace('RequireAuth', o as () => Promise<unknown>)());
 vi.mock('@foundation/auth/RequireRole', (o) => trace('RequireRole', o as () => Promise<unknown>)());

@@ -335,7 +335,7 @@ msgstr "View in Wiki"
 msgid "アーカイブ"
 msgstr "Archive"
 
-#: platform/frontend/src/components/ui/Layout.tsx
+#: platform/frontend/src/app/Layout.tsx
 msgid "アカウント設定（{name}）"
 msgstr "Account settings ({name})"
 
@@ -538,7 +538,7 @@ msgstr "Commit {commit}"
 msgid "サービスメッシュ"
 msgstr "Service mesh"
 
-#: platform/frontend/src/components/ui/Layout.tsx
+#: platform/frontend/src/app/Layout.tsx
 msgid "サインアウト"
 msgstr "Sign out"
 
@@ -905,7 +905,7 @@ msgid "やめる"
 msgstr "Cancel"
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
-#: platform/frontend/src/components/ui/Layout.tsx
+#: platform/frontend/src/app/Layout.tsx
 msgid "ユーザー"
 msgstr "User"
 
@@ -978,7 +978,7 @@ msgstr "Showing the top {0} items (of {1} or more in total). The counting explor
 msgid "並べ替え"
 msgstr "Sort"
 
-#: platform/frontend/src/components/ui/Layout.tsx
+#: platform/frontend/src/app/Layout.tsx
 msgid "主要ナビゲーション"
 msgstr "Main navigation"
 

@@ -3,7 +3,7 @@ title: 可変部品（Composable コンポーネント）共通実装ガイド �
 type: tech
 status: completed
 created: 2026-07-09
-updated: 2026-08-28
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -147,7 +147,7 @@ issues: [#195, #206, #217, #218, #219, #519]
 原典は「フロントエンド SPA 基盤（React + TS + Vite・foundation/features 分離・BFF 境界・OIDC〔PKCE〕）」の実装 ADR である。要点:
 
 1. `src/knowledge/frontend/src/features/<scXX-name>/` に画面 feature を追加する。基盤は
-   `src/platform/frontend/src/`（`app/config` `app/routing` `app/i18n` / `lib/api` `lib/auth` /
+   `src/platform/frontend/src/`（`config` / `app/routing` / `lib/api` `lib/auth` `lib/i18n` /
    `components/ui` `components/notifications` `components/ai-chat` / `testing`）であり、feature から基盤へは
    import エイリアス `@foundation` を用いる。feature どうしの直接依存は避け、共有は foundation へ昇格させる。
 2. feature は `FeatureModule`（`routes`）を公開し、合成点 `src/platform/frontend/src/features/index.ts`
