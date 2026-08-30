@@ -249,7 +249,11 @@ $ ... query=count({__name__=~"llm.+"})   → 空（0 件）
 判断が変わるため）。.NET のアセンブリ文字列は UTF-16 なので NUL を落としてから引いた。
 
 ```
-$ kubectl -n microservices-platform exec llmgateway-service-76fb5476cd-nd27h -- sh -c     'tr -d " " < /app/LlmGateway.Api.dll > /tmp/s.txt; for s in      llm.completion.total llm.tokens.total llm.cost.total LlmUsageMetrics LlmCompletionMetrics; do      printf "%s: " "$s"; grep -q "$s" /tmp/s.txt && echo PRESENT || echo ABSENT; done'
+$ POD=llmgateway-service-76fb5476cd-nd27h
+$ kubectl -n microservices-platform exec $POD -- sh -c 'tr -d "\000" < /app/LlmGateway.Api.dll > /tmp/s.txt
+    for s in llm.completion.total llm.tokens.total llm.cost.total LlmUsageMetrics LlmCompletionMetrics; do
+      printf "%s: " "$s"; grep -q "$s" /tmp/s.txt && echo PRESENT || echo ABSENT
+    done'
 llm.completion.total: PRESENT
 llm.tokens.total:     ABSENT
 llm.cost.total:       ABSENT
