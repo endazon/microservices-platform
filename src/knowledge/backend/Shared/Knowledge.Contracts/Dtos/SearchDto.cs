@@ -36,8 +36,21 @@ public static class SearchModes
         mode is not null && All.Contains(mode, StringComparer.OrdinalIgnoreCase);
 
     // 未知・未指定は既定（hybrid）へ縮退する。呼び出し側の分岐を 1 か所に閉じるための正規化。
+    //
+    // 🔴 CodeQL(cs/log-forging) アラート #24 (#1019): **許可リスト側の定数を返す。**
+    // 従前は `mode!.ToLowerInvariant()` を返していた —— 値は定数と一致するが、返る**実体は
+    // 利用者入力から作った新しい文字列**であり、テイントが下流（`HybridSearchService` の
+    // ログ）まで伝播していた。CodeQL は正しく追っていた。
+    //
+    // 発生源で断つのが正しい直し方である（sink 側の sanitize ではない）。同型の先例は
+    // `LlmRouter.ResolveModel`（「利用者由来の文字列ではなく設定側が保持する正規の文字列を
+    // 返す。テイント源を選択結果に持ち込まない」）。
+    //
+    // **観測可能な振る舞いは変わらない。** `IsValid` は OrdinalIgnoreCase の一致なので、
+    // 妥当な入力の `ToLowerInvariant()` は必ず当該定数と文字列等価である。変わるのは実体だけ。
     public static string Normalize(string? mode) =>
-        IsValid(mode) ? mode!.ToLowerInvariant() : Hybrid;
+        All.FirstOrDefault(m => string.Equals(m, mode, StringComparison.OrdinalIgnoreCase))
+        ?? Hybrid;
 }
 
 // FR-03, SC-02, #532: 並び順の値集合。**2 値に確定している**（利用者裁定 Q5 / planning#197）——
@@ -59,8 +72,12 @@ public static class SearchSorts
         sort is not null && All.Contains(sort, StringComparer.OrdinalIgnoreCase);
 
     // 未知・未指定は既定（relevance）へ縮退する。呼び出し側の分岐を 1 か所に閉じるための正規化。
+    //
+    // **`SearchModes.Normalize` と同一構造なので同じ形にする**（#1019）。現時点で `sort` は
+    // ログへ出ていないが、片方だけ直すと次に読む人が「なぜ片方だけ」を復元できない。
     public static string Normalize(string? sort) =>
-        IsValid(sort) ? sort!.ToLowerInvariant() : Relevance;
+        All.FirstOrDefault(s => string.Equals(s, sort, StringComparison.OrdinalIgnoreCase))
+        ?? Relevance;
 }
 
 public record SearchResponse(

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Platform.Shared.Infrastructure.Foundation.Logging;
 
 namespace Platform.Shared.Infrastructure.Foundation.Audit;
 
@@ -17,8 +18,21 @@ public sealed class AuditLogger(ILogger<AuditLogger> logger) : IAuditLogger
     {
         // Audit=true を構造化プロパティに付与し、可観測性基盤（ILogger→OTel Logging SDK→OTLP。IADR-0216）で
         // 監査として抽出可能にする。プロパティが LogRecord の属性になるのは ParseStateValues = true による。
+        //
+        // 🔴 CodeQL(cs/log-forging) アラート #19 (#1019): **4 引数すべてが呼び出し側由来**である。
+        // `subject` は利用者名（トークンのクレーム）、`detail` は自由文で、**値域が閉じていない**。
+        // 未加工で行指向のログへ落とすと、改行を仕込むだけで偽の監査行を注入できる
+        // （CWE-117）。**監査ログでこれが起きると、偽造行と本物の区別が付かなくなる。**
+        //
+        // `action` / `outcome` は現状すべて呼び出し側のリテラルだが、**同じ 1 行に載る以上
+        // 同じ扱いにする** —— 4 つのうち 2 つだけ通す形にすると、後から引数を足した人が
+        // 「どれを通すのか」を復元できない。
         logger.LogInformation(
             "Audit: action={AuditAction} subject={AuditSubject} outcome={AuditOutcome} detail={AuditDetail} {Audit}",
-            action, subject, outcome, detail ?? string.Empty, true);
+            LogSanitizer.Sanitize(action),
+            LogSanitizer.Sanitize(subject),
+            LogSanitizer.Sanitize(outcome),
+            LogSanitizer.Sanitize(detail),
+            true);
     }
 }
