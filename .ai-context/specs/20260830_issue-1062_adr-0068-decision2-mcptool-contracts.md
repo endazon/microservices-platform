@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — ADR-0068 決定 2 違反の是正（3 サービスの McpToolContracts.cs を Declare/ へ降ろす）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - NFR
   - FR-16
@@ -62,8 +62,8 @@ find src/knowledge/backend/Services -mindepth 4 -maxdepth 4 -path "*/Features/*"
 | 1 | `DataSourceService/Features/DataSources/SyncSchedule.cs` | `Create` / `GetById` / `List` / `Patch` / `Update` / `Sync` | **6** | 2 段目のまま正しい |
 | 2 | `DocumentService/Features/Documents/DocumentObjectPurger.cs` | `Documents/Delete` / `PrivateNotes/Purge` / `PrivateNotes/Maintenance` | **3** | 2 段目のまま正しい |
 | 3 | `DocumentService/Features/PrivateNotes/PrivateNoteUsage.cs`（`PrivateNoteUsage` / `SyncTokens`） | `PrivateNotes/{Create,GetQuota,List,Maintenance,Purge,SetQuota}` / `ObsidianSync/Push` / `SyncDevices/{Issue,Reissue}` ＋ 登録表 `ObsidianSyncEndpoints` | **9** | 2 段目のまま正しい |
-| 4 | `GraphService/Features/GraphDocuments/LinkEdgeSynchronizer.cs` | `GraphDocuments/Sync` のみ | **1** | 🔴 **決定 2 違反（本仕様書の引き直しで新規発見）**。本 PR の射程外 → 別 issue |
-| 5 | `GraphService/Features/AiSuggestions/AiSuggestionGenerator.cs` | `AiSuggestions/Generate` のみ | **1** | 射程外（先行仕様書が別 issue を予告済み） |
+| 4 | `GraphService/Features/GraphDocuments/LinkEdgeSynchronizer.cs` | `GraphDocuments/Sync` のみ | **1** | 🔴 **決定 2 違反（本仕様書の引き直しで新規発見）**。本 PR の射程外 → #1094 |
+| 5 | `GraphService/Features/AiSuggestions/AiSuggestionGenerator.cs` | `AiSuggestions/Generate` のみ | **1** | 射程外（先行仕様書が別 issue を予告済み） → #1093 |
 | 6〜8 | `{DocumentService,GraphService,RetrievalService}/Features/McpTools/McpToolContracts.cs` | 各サービスの `McpTools/Declare` のみ | **各 1** | 🔴 **決定 2 違反 → 本 PR で是正** |
 
 ### 軸 3 — 監査が挙げた 3 件目（`RetrievalService/Features/McpTools/` に操作フォルダが無い）は既に解消済み
@@ -103,8 +103,8 @@ grep -rn "Features\.McpTools" src/ | grep -v /obj/ | grep -v /bin/
 | 除外 | 理由 |
 | --- | --- |
 | `NotificationService/Features/Notifications/{IEmailAddressResolver,IEmailTransport,UnconfiguredSmtpEmailTransport}.cs` | 実測 1 操作だが、**`ADR-0068` が #1083 の着地形を「着地済みの 1 本は変更不要である」と明示裁定している**（§結果 フォローアップ 2）。裁定を実装側で覆さない |
-| `GraphService/Features/AiSuggestions/AiSuggestionGenerator.cs` | 1 操作だが、争点は「3 段目へ降ろすか」ではなく「`Features/` の外（`Domain/` ／ `Infrastructure/`）へ出すか」であり、**決定 2 だけでは決まらない別の判断**。先行仕様書が別 issue を予告済み → 本 PR で切り出して起票する |
-| `GraphService/Features/GraphDocuments/LinkEdgeSynchronizer.cs` | **本仕様書の引き直しで新たに見つかった決定 2 違反。** 依頼された射程（McpTools の 3 件）の外であり、`Program.cs` の DI 登録行を伴うため移送の粒度が変わる。**黙って除外せず issue を起票する** |
+| `GraphService/Features/AiSuggestions/AiSuggestionGenerator.cs` | 1 操作だが、争点は「3 段目へ降ろすか」ではなく「`Features/` の外（`Domain/` ／ `Infrastructure/`）へ出すか」であり、**決定 2 だけでは決まらない別の判断**。先行仕様書が別 issue を予告済み → **#1093 として起票した** |
+| `GraphService/Features/GraphDocuments/LinkEdgeSynchronizer.cs` | **本仕様書の引き直しで新たに見つかった決定 2 違反。** 依頼された射程（McpTools の 3 件）の外であり、`Program.cs` の DI 登録行を伴うため移送の粒度が変わる。**黙って除外せず #1094 として起票した** |
 | `src/ai-stock-trading`（submodule） | 別リポジトリ。`ADR-0068` §結果 フォローアップ 3 が別作業として分離している |
 | platform ユニット全般 | #1083 で着地済み。`ADR-0068` が「変更不要」と裁定 |
 
@@ -155,6 +155,31 @@ Docker daemon が無い環境（containerd / nerdctl）で計測した。**Testc
 | RetrievalService.Tests | 156 | 0 | 156 |
 | WikiService.Tests | 64 | 0 | 64 |
 | **合計** | **1210** | **43** | **1253** |
+
+## 検証結果（移送後）
+
+- `dotnet build src/knowledge/backend/backend.slnx` → **成功 / 0 エラー**。警告 3 件はすべて
+  `Knowledge.IntegrationTests/Storage/ObjectStorageRoundTripTests.cs` の `MinioBuilder` 廃止予定
+  （**本 PR が触っていないファイル。移送前から出ていた**）
+- `dotnet test src/knowledge/backend/backend.slnx` → **12 プロジェクトすべてで合格・スキップの数が
+  移送前と一致**（上の基準値表と同一。合計 1210 / 43 / 1253）
+- `dotnet format src/knowledge/backend/backend.slnx --verify-no-changes` → **exit 0**
+- `git status` に未追跡の取りこぼし無し。`git check-ignore -v` は 3 つの新パスいずれにも一致しない（exit 1）。
+  **`Declare` は `.gitignore` のどのパターンにも食われていない**（移送は `R`（rename）として追跡された）
+- 検査器: `check-commit-messages` / `check-trace-blocks`（158 件）/ `check-doc-links`（1012 件）/
+  `gen-knowledge-graph --check`（in-repo 4547 エッジ）/ `check-unit-dependencies`（csproj 39・.cs 918）/
+  `check-backend-libraries` / `check-test-traceability` / `validate-pipeline-config --self-test` /
+  `check-event-topology` → **すべて exit 0**
+
+### 🔴 `check-adr-numbering` の既知の赤（並行 PR の採番衝突）
+
+`node scripts/check-adr-numbering.js` は **`[missing-number] IADR-0311 が欠番`** を出して exit 1 になる。
+**`IADR-0311` は未マージの PR #1087 が押さえており、本 PR は先着尊重で `IADR-0312` を採ったため**である。
+
+- **`IADR-0144` 決定 3 が「並行 PR の衝突は未然に防げない（着地後の不整合しか見えない）」と記録している既知の性質**であり、本 PR の内容に起因する赤ではない。
+- **解消条件**: #1087 が先にマージされ、本 PR を `develop` へ rebase すれば欠番が埋まって緑になる。
+- **#1087 が取り下げられた場合**は、本 PR を `IADR-0311` へ改番する（ファイル名・本文の自称番号・索引・
+  コード内コメント 3 箇所・作業仕様書・**PR タイトル**を追随させる）。
 
 ## 射程外（本 PR で変更しない）
 
