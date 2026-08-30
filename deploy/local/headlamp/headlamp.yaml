@@ -34,11 +34,25 @@ spec:
           args:
             - "-in-cluster"
           # OIDC 設定（Keycloak）。flag 相当を HEADLAMP_CONFIG_* env で与える。
-          # issuer は in-cluster 正準名に固定（IADR-0066）。ブラウザからの到達性は IADR-0076 手順A で解く（README）。
+          #
+          # 🔴 [2026-08-30 / #388 #781] issuer を **https のエッジ host** へ移した。
+          #   従前は in-cluster 正準名 `http://keycloak:8080/realms/platform` に固定していたが、
+          #   **k8s 1.30+ は apiserver の OIDC 検証で issuer に https を強制する**ため、
+          #   apiserver と Headlamp が同じ issuer 文字列を見る必要がある
+          #   （Headlamp は id_token を apiserver へ Bearer で委譲する＝`iss` が一致しないと弾かれる）。
+          #
+          #   到達性: CoreDNS の `coredns-custom` が `*.localhost` を Traefik へ rewrite するので
+          #   Pod からも `keycloak.localhost` を引ける（実測 2026-08-30: → traefik.kube-system.svc）。
           env:
             - { name: HEADLAMP_CONFIG_OIDC_CLIENT_ID, value: "headlamp" }
-            - { name: HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL, value: "http://keycloak:8080/realms/platform" }
+            - { name: HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL, value: "https://keycloak.localhost/realms/platform" }
             - { name: HEADLAMP_CONFIG_OIDC_SCOPES, value: "openid,profile,email" }
+            # 🔴 エッジ証明書はローカル CA（cert-manager の `local-edge-ca`）が署名しており、
+            #   コンテナの既定ルートには入っていない。**入れないと discovery が TLS で落ちる。**
+            #   `edge-tls` Secret の `ca.crt` がその root CA である（実測で subject 一致）。
+            #   SSL_CERT_FILE はルート集合を**置き換える**が、Headlamp が TLS で叩く先は
+            #   このエッジだけである（apiserver へは InClusterConfig が SA の ca.crt を明示的に使う）。
+            - { name: SSL_CERT_FILE, value: "/etc/ssl/local-edge/ca.crt" }
             # client secret は manifest に平文で置かず Secret から注入（dev 既定は k8s-local-up.sh の HEADLAMP=1 が作成）。
             - name: HEADLAMP_CONFIG_OIDC_CLIENT_SECRET
               valueFrom:
@@ -47,9 +61,20 @@ spec:
                   key: client-secret
           ports:
             - { containerPort: 4466, name: http }
+          volumeMounts:
+            # #388: エッジ証明書を検証するためのローカル CA（上の SSL_CERT_FILE が指す先）。
+            - name: local-edge-ca
+              mountPath: /etc/ssl/local-edge
+              readOnly: true
           resources:
             requests: { cpu: 50m, memory: 128Mi }
             limits: { cpu: 500m, memory: 512Mi }
+      volumes:
+        - name: local-edge-ca
+          secret:
+            secretName: edge-tls
+            items:
+              - { key: ca.crt, path: ca.crt }
 ---
 apiVersion: v1
 kind: Service
