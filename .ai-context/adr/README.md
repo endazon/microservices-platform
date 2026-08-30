@@ -384,4 +384,5 @@
 | [IADR-0308](./IADR-0308_feature-import-isolation-eslint-zones.md) | **feature 境界の機械強制は `eslint-plugin-import` の `no-restricted-paths` で行い、zones は実ディレクトリから生成する**（#1065 / ADR-0066）。🔴 **規則は解決できた import しか見ない** —— 拡張子設定が無いと `.ts` が 1 件も解決されず静かに 0 件で通る。適用は knowledge のみ。 | Accepted |
 | [IADR-0309](./IADR-0309_feature-internal-split-substance-over-scaffolding.md) | feature 内部 6 分割の適合は実体で示し、`.gitkeep` の空枠で満たさない | Accepted |
 | [IADR-0310](./IADR-0310_apiserver-oidc-edge-host-resolution.md) | apiserver の OIDC は issuer host を /etc/hosts で解決させる | Accepted |
+| [IADR-0311](./IADR-0311_layer-zone-enforcement-and-alias-resolution.md) | **層ゾーンの機械強制にエイリアス解決を与える**（ADR-0067）。🔴 分類を直しゾーンを置いても `@foundation/*` は素通りしていた（26 ファイル・59 文）。`testing` の被参照禁止は glob ではなく**本番コード限定のブロック**で表す。 | Accepted |
 | [IADR-0312](./IADR-0312_slice-level-decided-by-operation-count.md) | **スライスの段は「内容の抽象度」ではなく「使う操作を数えた結果」で決める**（#1062 / ADR-0068 決定 2）。先行 2 本は `McpToolContracts.cs` を「申告の語彙だから操作をまたぐ」として 2 段目に残したが、実測では 3 サービスとも使う操作は `Declare` の 1 つだけだった。🔴 分母に `Program.cs` の DI 登録・`Tests/`・散文の言及を数えない（数えると基準が常に「2 以上」を返し何も判定しなくなる）。空の登録表は新設しない。 | Accepted |
