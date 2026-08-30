@@ -217,7 +217,7 @@ public sealed class KnowledgeHealthProducerTests
             TestContext.Current.CancellationToken);
 
         handler.LastPath.Should().Be(HttpKnowledgeHealthReporter.ObservationsPath,
-            "★ 受け口 KnowledgeHealthEndpoints.ObservationsPath と 1 バイトでも違えば観測値は届かない");
+            "★ 受け口 ReportKnowledgeHealthEndpoint.ObservationsPath と 1 バイトでも違えば観測値は届かない");
 
         using var body = JsonDocument.Parse(handler.LastBody!);
         body.RootElement.EnumerateObject().Select(p => p.Name)

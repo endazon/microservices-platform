@@ -2,7 +2,7 @@ using AwesomeAssertions;
 using Knowledge.Contracts.Events;
 using Microsoft.Extensions.Logging.Abstractions;
 using RetrievalService.Infrastructure.ExternalServices;
-using RetrievalService.Features.Search;
+using RetrievalService.Features.Search.RemoveDeleted;
 using RetrievalService.Domain.Ports;
 
 namespace RetrievalService.Tests;

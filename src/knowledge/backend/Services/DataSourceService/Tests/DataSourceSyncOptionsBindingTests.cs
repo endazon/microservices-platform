@@ -1,4 +1,5 @@
 using DataSourceService.Features.DataSources;
+using DataSourceService.Features.DataSources.Sync;
 using AwesomeAssertions;
 using Microsoft.Extensions.Configuration;
 

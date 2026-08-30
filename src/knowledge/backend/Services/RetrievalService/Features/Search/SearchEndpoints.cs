@@ -1,59 +1,22 @@
-using Knowledge.Contracts.Dtos;
-using Platform.Shared.Contracts.Dtos;
-using RetrievalService.Domain.Ports;
-using System.Diagnostics;
+using RetrievalService.Features.Search.AttributeValues;
+using RetrievalService.Features.Search.Hybrid;
 
 namespace RetrievalService.Features.Search;
 
-// FR-03, UC-01: ハイブリッド検索エンドポイント（ベクトル検索 + ABAC フィルタ）
+// FR-03, FR-04, UC-01: 検索集約の登録表（ADR-0068 決定 1）。
+//
+// `MapGroup` とタグ付けは集約の全操作が使うものであり、特定の 1 操作に属さない。
+// 各操作の処理は `Features/Search/<操作>/` に居る（ADR-0065 決定 2）。
+// **`Program.cs` から呼ぶメソッド名とシグネチャは変えない** —— ルート登録順・タグ付け・
+// フィルタ適用順が動かないことを、この形で担保する（ADR-0068 決定 1）。
 public static class SearchEndpoints
 {
     public static IEndpointRouteBuilder MapSearchEndpoints(this IEndpointRouteBuilder app)
     {
         var g = app.MapGroup("/search").WithTags("Search");
 
-        // FR-03, UC-01: ハイブリッド検索（ベクトル＋全文 を RRF で統合 + ABAC フィルタ）
-        g.MapPost("/", async (SearchRequest req, IHybridSearchService search, CancellationToken ct) =>
-        {
-            var sw = Stopwatch.StartNew();
-            var results = await search.SearchAsync(req, ct);
-            sw.Stop();
-            return Results.Ok(new SearchResponse(results, results.Count, sw.ElapsedMilliseconds));
-        }).WithName("Search").Produces<SearchResponse>();
-
-        // FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会（計画 ADR-0043・裁定 Q2）。
-        //
-        // **辞書を丸ごと返さない**（決定 1）——返すのは「**到達できる文書に実際に付与された値**」だけ。
-        // **件数を返さない**（決定 2）——`AttributeValuesResponse` は値の配列しか持たない。
-        // **検索と同じ ABAC フィルタを使う**（[[IADR-0151]] 決定 1）——別経路で数えると
-        // 「検索には出るが候補に無い値」が生まれる。
-        //
-        // **スコープが解決できない（deny-by-default）ときは空配列**（[[IADR-0151]] 決定 5）。
-        // 404 にも 403 にもしない——**候補が無いことと権限が無いことを区別させない**。
-        g.MapPost("/attribute-values", async (
-            AttributeValuesRequest req, IVectorStore store, CancellationToken ct) =>
-        {
-            // deny-by-default: BFF が解決できなかった（null）／許可なしのスコープでは何も返さない。
-            if (req.Scope is not { GrantsAccess: true } scope || string.IsNullOrWhiteSpace(req.Key))
-                return Results.Ok(new AttributeValuesResponse([]));
-
-            // FR-19, IADR-0253 決定 1（段 3 / #989）: 分岐があれば選言で絞る。
-            // **検索と同じ制約を渡す**（別経路で絞ると「検索には出るが候補に無い値」が生まれる。
-            // IADR-0151 決定 1）。分岐があるときは旧算出値 scope.Filters（キー単位 union）を
-            // **連言に残さない** —— union は分岐の和の上位集合ではない（IADR-0253 決定 2 の非包含）
-            // ため、余分に AND すると分岐単独で到達できる文書の値が候補から落ちる
-            // （HybridSearchService.BuildFilters と同形。波 2 監査の是正）。
-            var values = await store.ListAttributeValuesAsync(
-                AttributeValueKeys.ToPayloadKey(req.Key),
-                scope.Branches is { Count: > 0 }
-                    ? new ScopeFilter(
-                        [],
-                        [.. scope.Branches.Select(b => (IReadOnlyList<AttributeFilter>)b.Filters)])
-                    : new ScopeFilter(scope.Filters),
-                ct);
-
-            return Results.Ok(new AttributeValuesResponse(values));
-        }).WithName("AttributeValues").Produces<AttributeValuesResponse>();
+        SearchEndpoint.Map(g);
+        AttributeValuesEndpoint.Map(g);
 
         return app;
     }

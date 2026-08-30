@@ -1,5 +1,5 @@
 using ConversionService.Domain.Ports;
-using ConversionService.Features.ConversionJobs;
+using ConversionService.Features.ConversionJobs.Normalize;
 using ConversionService.Domain;
 using AwesomeAssertions;
 using Knowledge.Contracts.Events;

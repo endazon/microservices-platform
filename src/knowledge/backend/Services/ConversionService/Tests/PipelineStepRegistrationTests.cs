@@ -1,4 +1,4 @@
-using ConversionService.Features.ConversionJobs;
+using ConversionService.Features.ConversionJobs.Normalize;
 using ConversionService.Domain;
 using ConversionService.Infrastructure.Persistence;
 using ConversionService.Domain.Ports;
@@ -26,7 +26,7 @@ namespace ConversionService.Tests;
 public class PipelineStepRegistrationTests
 {
     private const string ConvertConsumer =
-        "ConversionService.Features.ConversionJobs.RawDocumentFetchedConsumer";
+        "ConversionService.Features.ConversionJobs.Normalize.RawDocumentFetchedConsumer";
 
     private static PipelineOptions Options(
         bool enabled = true,

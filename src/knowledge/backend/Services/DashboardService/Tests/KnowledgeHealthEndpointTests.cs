@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Text;
 using AwesomeAssertions;
 using DashboardService.Features.KnowledgeHealth;
+using DashboardService.Features.KnowledgeHealth.Report;
+using DashboardService.Features.KnowledgeHealth.View;
 using DashboardService.Domain;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -211,7 +213,7 @@ public class KnowledgeHealthEndpointTests
     [Fact]
     public async Task 受け口のパスは生産者側の宣言と同じ値である()
     {
-        KnowledgeHealthEndpoints.ObservationsPath.Should().Be(ProducerObservationsPath,
+        ReportKnowledgeHealthEndpoint.ObservationsPath.Should().Be(ProducerObservationsPath,
             "★ 送信側 HttpKnowledgeHealthReporter.ObservationsPath と 1 バイトでも違えば観測値は届かない"
             + "（送出は fail-open のため、不一致は 404 のログにしか現れない）");
 

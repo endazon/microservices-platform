@@ -1,11 +1,13 @@
-using Microsoft.EntityFrameworkCore;
 using WikiService.Domain;
-using WikiService.Infrastructure.Persistence;
 using WikiService.Domain.Ports;
+using WikiService.Features.Wiki.GetPageByDocument;
+using WikiService.Features.Wiki.GetPageBySlug;
+using WikiService.Features.Wiki.ListPages;
 
 namespace WikiService.Features.Wiki;
 
-// FR-13, UC-07, ADR-0011, IADR-0020, IADR-0009: Wiki.js 前段の ABAC 認可ゲートウェイ。
+// FR-13, UC-07, ADR-0011, IADR-0020, IADR-0009: Wiki.js 前段の ABAC 認可ゲートウェイの登録表
+// （ADR-0068 決定 1）。
 //
 // 閲覧・編集の実体は Wiki.js に委譲する（IADR-0020）。本エンドポイントは自前で本文を保持せず、
 // ABAC（本システムが単一真実源）を Wiki.js への「到達可否」として強制する認可プロキシである。
@@ -14,53 +16,27 @@ namespace WikiService.Features.Wiki;
 //     存在を秘匿する（IADR-0009 の意味論を継承）。
 // Wiki.js への直接到達はネットワーク分離（IADR-0017）で塞ぎ、認可はゲートウェイに集約する。
 // Wiki.js 側のページ/グループ権限は属性ベース細粒度判定の代替とはしない（ADR-0011）。
+//
+// ADR-0065 決定 2 / ADR-0068 決定 1: 各操作の処理は `Features/Wiki/<操作>/` に居る。
+// **ここに残すのは、操作をまたいで共有されるもの**だけである —— route group と、
+// 2 つの個別取得が共有するプロキシ判定・その応答形。
 public static class WikiEndpoints
 {
     public static IEndpointRouteBuilder MapWikiEndpoints(this IEndpointRouteBuilder app)
     {
         var g = app.MapGroup("/wiki").WithTags("Wiki");
 
-        // 一覧: 権限内のページのみ。Granted=false は空配列（deny-by-default）。
-        g.MapGet("/pages", async (WikiDbContext db, IWikiAccessResolver resolver,
-            HttpContext http, CancellationToken ct) =>
-        {
-            var scope = await resolver.ResolveAsync(http, ct);
-            if (!scope.Granted)
-                return Results.Ok(Array.Empty<WikiPageSummary>());
-
-            // 属性は jsonb のため取得後にメモリ内で ABAC 評価する（検索側と同方針）。
-            // Issue #88: アーカイブ済み（非公開化）ページは権限があっても一覧に出さない。
-            var pages = await db.Pages
-                .Where(p => p.Status == WikiPageStatus.Active)
-                .OrderBy(p => p.Title).ToListAsync(ct);
-            var visible = AbacPageFilter.Filter(pages, scope)
-                .Select(p => new WikiPageSummary(p.Id, p.DocumentId, p.Title, p.Slug, p.WikiPath, p.Status, p.SyncedAt))
-                .ToList();
-            return Results.Ok(visible);
-        });
-
-        // 個別（slug）: ABAC 通過時のみ Wiki.js 本文をプロキシ。権限外・不存在はいずれも 404（存在秘匿）。
-        g.MapGet("/pages/{slug}", async (string slug, WikiDbContext db, IWikiAccessResolver resolver,
-            IWikiJsClient wikiJs, HttpContext http, CancellationToken ct) =>
-        {
-            var page = await db.Pages.FirstOrDefaultAsync(p => p.Slug == slug, ct);
-            return await ProxyOrNotFoundAsync(page, resolver, wikiJs, http, ct);
-        });
-
-        // 個別（documentId）: ABAC 通過時のみ Wiki.js 本文をプロキシ。権限外・不存在は 404（存在秘匿）。
-        g.MapGet("/pages/by-doc/{documentId:guid}", async (Guid documentId, WikiDbContext db,
-            IWikiAccessResolver resolver, IWikiJsClient wikiJs, HttpContext http, CancellationToken ct) =>
-        {
-            var page = await db.Pages.FirstOrDefaultAsync(p => p.DocumentId == documentId, ct);
-            return await ProxyOrNotFoundAsync(page, resolver, wikiJs, http, ct);
-        });
+        ListWikiPagesEndpoint.Map(g);
+        GetWikiPageBySlugEndpoint.Map(g);
+        GetWikiPageByDocumentEndpoint.Map(g);
 
         return app;
     }
 
     // 認可ゲートウェイの共通判定: ABAC 通過時のみ Wiki.js 本文を取得して返す。
     // 不存在・権限外・Wiki.js 未反映はいずれも 404（存在秘匿・IADR-0009）。
-    private static async Task<IResult> ProxyOrNotFoundAsync(
+    // **2 つの個別取得（slug / documentId）が使う**ため 2 段目に残る（ADR-0068 決定 2）。
+    internal static async Task<IResult> ProxyOrNotFoundAsync(
         WikiPage? page, IWikiAccessResolver resolver, IWikiJsClient wikiJs,
         HttpContext http, CancellationToken ct)
     {
@@ -78,11 +54,8 @@ public static class WikiEndpoints
     }
 }
 
-// 一覧表示用の軽量サマリ（本文・属性は含めない）。WikiPath は Wiki.js 上の閲覧パス。
-public record WikiPageSummary(
-    Guid Id, Guid DocumentId, string Title, string Slug, string WikiPath, string Status, DateTimeOffset SyncedAt);
-
 // 個別取得のゲートウェイ応答（メタデータ ＋ Wiki.js からプロキシした本文）。
+// **2 つの個別取得が共有する**ため 2 段目に残る（ADR-0068 決定 2）。
 public record WikiPageView(
     Guid Id, Guid DocumentId, string Title, string Slug, string WikiPath, string Status,
     DateTimeOffset SyncedAt, string Content);

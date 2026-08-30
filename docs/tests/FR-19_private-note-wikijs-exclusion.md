@@ -3,7 +3,7 @@ title: FR-19 個人資料の Wiki.js 同期除外 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-22
-updated: 2026-08-28
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -99,7 +99,7 @@ push 0 件で落ちる**」形になり、**なぜ落ちたのかを言わない
 ## 対象コード
 
 - テスト: `src/knowledge/backend/Services/WikiService/Tests/DocumentSyncConsumerTests.cs`
-- 実装: `src/knowledge/backend/Services/WikiService/Features/Wiki/DocumentSyncConsumer.cs`
+- 実装: `src/knowledge/backend/Services/WikiService/Features/Wiki/SyncDocument/DocumentSyncConsumer.cs`
 
 ## 実行方法
 

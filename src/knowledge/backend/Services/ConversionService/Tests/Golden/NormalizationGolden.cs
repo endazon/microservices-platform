@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using ConversionService.Domain.Ports;
-using ConversionService.Features.ConversionJobs;
+using ConversionService.Features.ConversionJobs.Normalize;
 using Knowledge.Contracts.Events;
 using Microsoft.Extensions.Logging.Abstractions;
 
