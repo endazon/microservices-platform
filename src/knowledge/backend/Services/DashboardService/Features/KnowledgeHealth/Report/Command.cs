@@ -1,0 +1,20 @@
+namespace DashboardService.Features.KnowledgeHealth.Report;
+
+// FR-10, FR-17, FR-18, SC-10, ADR-0006 (#443): ナレッジ健全性指標の**入力**契約。
+//
+// **`Knowledge.Contracts`（サービス間契約）へは置かない。** 生産者は同ユニットの定期処理であり、
+// 契約プロジェクトへの昇格は BFF へ載せる段で行う（`KnowledgeHealth/View/Query.cs` と同じ理由）。
+//
+// **観測値の受け口だけが使う**ため、その操作のフォルダに置く（ADR-0068 決定 2）。
+
+// 観測値 1 件の報告。
+//   SubjectKey — 重複排除のための不透明な鍵（文書 ID・辺の型名など）。**応答には現れない。**
+//   DocScope   — 文書スコープ（`private-note` は集計から除外される）。持たない対象は null。
+public record KnowledgeHealthObservationRequest(string SubjectKey, string? DocScope = null);
+
+// 指標 1 つ分の観測値の**スナップショット置換**。
+// 差分ではなく全量で送る —— 「解消した観測値」を取り消す経路を別に持つと、
+// 取り消し漏れが件数を恒久的に膨らませる。
+public record KnowledgeHealthReportRequest(
+    string Indicator,
+    IReadOnlyList<KnowledgeHealthObservationRequest> Observations);

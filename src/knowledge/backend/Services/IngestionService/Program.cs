@@ -2,7 +2,7 @@ using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using IngestionService.Domain.Ports;
-using IngestionService.Features.Ingestion;
+using IngestionService.Features.Ingestion.Ingest;
 using Knowledge.Contracts.Events;
 using IngestionService.Domain;
 using IngestionService.Infrastructure.ExternalServices;

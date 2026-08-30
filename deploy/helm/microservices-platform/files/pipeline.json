@@ -33,7 +33,7 @@
     {
       "name": "ingest",
       "service": "ingestion-service",
-      "consumer": "IngestionService.Features.Ingestion.DocumentUpdatedConsumer",
+      "consumer": "IngestionService.Features.Ingestion.Ingest.DocumentUpdatedConsumer",
       "input": "DocumentUpdated",
       "outputs": ["IngestionCompleted"],
       "enabled": true

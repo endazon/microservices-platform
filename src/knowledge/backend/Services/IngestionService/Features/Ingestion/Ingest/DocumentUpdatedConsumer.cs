@@ -4,7 +4,7 @@ using IngestionService.Domain;
 using Knowledge.Contracts.Events;
 using Microsoft.Extensions.Logging;
 
-namespace IngestionService.Features.Ingestion;
+namespace IngestionService.Features.Ingestion.Ingest;
 
 // FR-02, UC-04: DocumentUpdated を受信し、parse→chunk→embed→index のパイプラインで
 // 文書をチャンク化し Qdrant（検索インデックス）へ登録する

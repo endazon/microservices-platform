@@ -25,7 +25,7 @@ public sealed class HttpKnowledgeHealthReporter(
 {
     public const string ClientName = "DashboardService";
 
-    // 🔴 受け口 DashboardService.Features.KnowledgeHealth.KnowledgeHealthEndpoints.ObservationsPath と同値。
+    // 🔴 受け口 DashboardService.Features.KnowledgeHealth.Report.ReportKnowledgeHealthEndpoint.ObservationsPath と同値。
     // **サービスを跨ぐため定数を共有できない**（サービス間は直接参照しない）。
     // `/internal/notifications` と同じく、**文字列の一致は両側のテストで固定している**。
     public const string ObservationsPath = "/internal/knowledge-health/observations";
