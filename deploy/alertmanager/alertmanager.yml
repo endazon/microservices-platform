@@ -1,0 +1,32 @@
+# ADR-0006, NFR-21, #546: Alertmanager の設定（compose と経路B で同内容）。
+#
+# ★ 本ファイルが決めるのは「Prometheus が発火させたアラートをどう束ね、どこへ渡すか」だけである。
+#   **アラートの式と閾値は deploy/prometheus/alerts.yml が持つ。** ここには書かない。
+#
+# ★★ 限界を先に書く（計画 05_observability-ops §LLM 費用の上限アラートと暫定の統制 と同じ書き分け）
+#
+#   **既定の受信先は届かない。** `default-null` は本文をどこへも送らない受信先である。
+#   dev で「配線したつもり」を作らないための fail-safe であり、**設定漏れではなく既定である**。
+#   実環境ではメール / チャットの受信先を足し、`route.receiver` をそちらへ向けること
+#   （手順は docs/operations/operations.md §アラートの受信先）。
+#
+#   したがって **現時点で自動的に届くのは Alertmanager の画面（/#/alerts）までである。**
+#   人が見に行くまでの時間は、見に行く間隔に等しい。
+route:
+  # 同じ原因の再通知で埋もれさせない。SLO アラートは分単位で判定するため待ちは短く取る。
+  group_by: ['alertname', 'service_name']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: default-null
+
+receivers:
+  # 送り先を持たない受信先。**「宛先が無い」ことを設定として明示する。**
+  # 空の receivers リストは Alertmanager が起動を拒否するため、null 受信先を 1 つ置く。
+  - name: default-null
+
+inhibit_rules:
+  # critical が出ている対象については warning を抑止する（同じ事象の二重通知を作らない）。
+  - source_matchers: [severity = "critical"]
+    target_matchers: [severity = "warning"]
+    equal: ['alertname', 'service_name']

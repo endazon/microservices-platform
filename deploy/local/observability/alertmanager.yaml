@@ -1,0 +1,77 @@
+# ADR-0006, NFR-21, #546: 経路B（k8s）の Alertmanager（opt-in・platform-infra）。
+# ⚠️ config は compose（deploy/alertmanager/alertmanager.yml）と同内容を inline する
+#    （kustomize の root 外参照制約に従う。prometheus.yaml / grafana.yaml と同じ方針＝二重管理を許容）。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: platform-infra
+data:
+  alertmanager.yml: |
+    route:
+      group_by: ['alertname', 'service_name']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: default-null
+    receivers:
+      - name: default-null
+    inhibit_rules:
+      - source_matchers: [severity = "critical"]
+        target_matchers: [severity = "warning"]
+        equal: ['alertname', 'service_name']
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: platform-infra
+  labels: { app: alertmanager }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: alertmanager }
+  template:
+    metadata:
+      labels: { app: alertmanager }
+    spec:
+      containers:
+        - name: alertmanager
+          image: prom/alertmanager:v0.27.0
+          args:
+            - "--config.file=/etc/alertmanager/alertmanager.yml"
+            - "--storage.path=/alertmanager"
+          ports:
+            - { containerPort: 9093, name: http }
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alertmanager
+              readOnly: true
+            - name: data
+              mountPath: /alertmanager
+          readinessProbe:
+            httpGet: { path: /-/ready, port: 9093 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 256Mi }
+      volumes:
+        - name: config
+          configMap:
+            name: alertmanager-config
+        # 通知の抑止状態（silences・notification log）。dev では永続化しない
+        # ——再起動で silence が消えるのは受け入れる（observability-persistence の射程外）。
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: platform-infra
+  labels: { app: alertmanager }
+spec:
+  selector: { app: alertmanager }
+  ports:
+    - { name: http, port: 9093, targetPort: 9093 }

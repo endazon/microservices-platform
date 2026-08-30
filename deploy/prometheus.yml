@@ -7,13 +7,13 @@ global:
 rule_files:
   - /etc/prometheus/alerts.yml
 
-# NFR (#198): 通知経路。Alertmanager 経由でメール/チャットへ通知する。
-# Alertmanager 本体（受信先・ルーティング・抑制）は運用環境ごとに配備・設定する（docs/operations/operations.md）。
-# 未配備でもルール評価は行われ、Prometheus UI / Grafana から発火状況を確認できる。
+# NFR (#198), #546: 通知経路。Alertmanager 本体は deploy/alertmanager/alertmanager.yml が設定を持つ。
+# ★ 到達先は在るが、**既定の受信先はどこへも送らない**（同ファイル冒頭の限界の記述）。
+#   実環境でメール / チャットの受信先を足すまで、自動で届くのは Alertmanager の画面までである。
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: []  # 例: ['alertmanager:9093']（配備後に設定）
+        - targets: ['alertmanager:9093']
 
 scrape_configs:
   - job_name: otel-collector
