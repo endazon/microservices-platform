@@ -3,7 +3,7 @@ title: テスト仕様書 — FR-11 用途別・機密度別 LLM ルーティン
 type: test-spec
 status: completed
 created: 2026-07-04
-updated: 2026-08-21
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -20,7 +20,7 @@ issues: [#1, #2, #3, #58, #376, #379, #381, #394, #395, #420, #421, #440, #850, 
 
 - `src/platform/backend/Services/LlmGateway/tests/LlmGateway.Api.Tests`
 - `src/knowledge/backend/Services/RetrievalService/tests/RetrievalService.Api.Tests`
-- `src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests`
+- `src/knowledge/backend/Services/ConversionService/Tests`
 
 ## テストケース（受け入れ基準・実運用不具合の写像）
 

@@ -5,8 +5,8 @@
     <Project Path="Services/AiAnalysisService/Tests/AiAnalysisService.Tests.csproj" />
   </Folder>
   <Folder Name="/Services/ConversionService/">
-    <Project Path="Services/ConversionService/Worker/ConversionService.Worker.csproj" />
-    <Project Path="Services/ConversionService/Worker/Tests/ConversionService.Worker.Tests.csproj" />
+    <Project Path="Services/ConversionService/ConversionService.csproj" />
+    <Project Path="Services/ConversionService/Tests/ConversionService.Tests.csproj" />
   </Folder>
   <Folder Name="/Services/DashboardService/">
     <Project Path="Services/DashboardService/DashboardService.csproj" />
@@ -29,8 +29,8 @@
     <Project Path="Services/GraphService/Tests/GraphService.Tests.csproj" />
   </Folder>
   <Folder Name="/Services/IngestionService/">
-    <Project Path="Services/IngestionService/Worker/IngestionService.Worker.csproj" />
-    <Project Path="Services/IngestionService/Worker/Tests/IngestionService.Worker.Tests.csproj" />
+    <Project Path="Services/IngestionService/IngestionService.csproj" />
+    <Project Path="Services/IngestionService/Tests/IngestionService.Tests.csproj" />
   </Folder>
   <Folder Name="/Services/RetrievalService/">
     <Project Path="Services/RetrievalService/RetrievalService.csproj" />

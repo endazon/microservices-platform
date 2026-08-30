@@ -92,9 +92,13 @@ Common/・Tests/ のフォルダ**で分ける。8 要素の実プロジェク�
 `.gitkeep` の枠は撤回された。計画側の 8 要素条文（`12_backend-application-stack.md`）は
 改定を環流中である（planning#490 のコメント）。
 
-- **`Api` と `Worker` は排他**であり、Worker は別デプロイ実体として
-  `Services/<Name>/Worker/<Name>.Worker.csproj` を残す（IADR-0282 決定 1。
-  [IADR-0219](../.ai-context/adr/IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 2 の排他は不変）。
+- **`Api` と `Worker` は排他**（実行入口は 1 サービスに 1 つ。
+  [IADR-0219](../.ai-context/adr/IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 2 は不変）
+  だが、**それは `Program.cs` の形の違いであってディレクトリ階層の違いではない**（計画 ADR-0065 決定 6）。
+  **`Services/<Name>/Worker/` のような中間ディレクトリは置かず、`.csproj` 名にも `.Worker` を付けない。**
+  IADR-0282 決定 1 が置いていた「Worker は `Services/<Name>/Worker/` に残す」例外は ADR-0065 決定 6 が
+  改めた（#1061 で ConversionService / IngestionService の 2 件を移送し、`.Worker` 接尾辞は 0 件になった）。
+  **HTTP 面を持つことは `Worker` であることと矛盾しない。**
 - **参照方向（Domain は Features / Infrastructure / Common.Behaviors を知らない）はフォルダ＝
   名前空間で守る**。機械検査（`scripts/check-unit-dependencies.js` 規則 3-③）は**名前空間走査版が
   稼働している**（IADR-0282 決定 2）。旧判定（8 要素プロジェクト参照の層方向）は対象 0 件になったが、

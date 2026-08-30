@@ -3,7 +3,7 @@ title: 機能仕様書 — FR-02 取り込み（パース・チャンク化・�
 type: functional-spec
 status: in-progress
 created: 2026-06-27
-updated: 2026-08-21
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -23,7 +23,7 @@ issues: [#532, #536, #580]
 
 ## 機能概要
 
-`IngestionService.Worker` が `DocumentUpdated` イベントを購読し、文書本文を検索可能なチャンクへ変換して Qdrant に登録する。これにより横断検索と AI 回答が文書を参照できるようになる。
+`IngestionService` が `DocumentUpdated` イベントを購読し、文書本文を検索可能なチャンクへ変換して Qdrant に登録する。これにより横断検索と AI 回答が文書を参照できるようになる。
 
 ## 入力 / 出力
 
@@ -80,5 +80,5 @@ issues: [#532, #536, #580]
 
 ## トレーサビリティ
 
-- コード: `IngestionService.Worker`（`DocumentUpdatedConsumer`, `MarkdownChunkingService`, `QdrantIngestionVectorStore`, `IDocumentContentReader`, `QdrantBootstrapHostedService`）。各所に `// FR-02, UC-04` を付す。
-- テスト: `IngestionService.Worker.Tests`。
+- コード: `IngestionService`（`DocumentUpdatedConsumer`, `MarkdownChunkingService`, `QdrantIngestionVectorStore`, `IDocumentContentReader`, `QdrantBootstrapHostedService`）。各所に `// FR-02, UC-04` を付す。
+- テスト: `IngestionService.Tests`。

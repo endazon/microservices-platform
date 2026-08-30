@@ -3,7 +3,7 @@ title: SC-07 変換ジョブ テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-21
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -31,7 +31,7 @@ issues: [#533, #543, #553, #651, #658, planning#198]
 E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 
 対象（API）: `src/platform/backend/Bff/Platform.Bff.Tests/BffConversionEndpointTests.cs` ／
-`src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests/` ／
+`src/knowledge/backend/Services/ConversionService/Tests/` ／
 `src/knowledge/backend/Tests/Knowledge.IntegrationTests/Deployment/NetworkIsolationTests.cs`
 
 ## 起点となる計画書（トレーサビリティ）
@@ -201,7 +201,7 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 - `pnpm run test -- knowledge/frontend/src/features/sc07-conversions`（純関数 **7** ＋ 画面 **15** ケース）
 - `pnpm run test -- knowledge/frontend/src/features/adminFlow.test.tsx`（導線）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
-- `dotnet test src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests`
+- `dotnet test src/knowledge/backend/Services/ConversionService/Tests`
 - `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffConversionEndpointTests`
 - `dotnet test src/knowledge/backend/Tests/Knowledge.IntegrationTests --filter NetworkIsolationTests`
 

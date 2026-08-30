@@ -3,7 +3,7 @@ title: 技術要件書
 type: tech-requirements
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-28
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -441,7 +441,7 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
    `input` の不一致・`enabled:false`）が**正本の宣言に対して**試験されるようになった。
 
    🔴 **［2026-08-21 訂正］この項は当初「4 つの fail-fast を検査するテストが 1 件も無かった」と
-   書いていた。誤りである。** 規則 2〜5 は `ConversionService.Worker.Tests/PipelineStepRegistrationTests`
+   書いていた。誤りである。** 規則 2〜5 は `ConversionService.Tests/PipelineStepRegistrationTests`
    が**単体テストとして既に検査していた**（未宣言→起動失敗 / `consumer` 不一致→起動失敗 /
    `input` 不一致→起動失敗 / `enabled:false`→購読を作らない）。**「テストが無い」ではなく
    「テストは合成した宣言に対してのみ在り、出荷される `pipeline.json` に対しては無かった」が正しい。**

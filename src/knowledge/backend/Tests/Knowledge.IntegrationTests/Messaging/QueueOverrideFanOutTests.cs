@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
-using IngestionService.Worker.Domain.Ports;
+using IngestionService.Domain.Ports;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using WikiService.Infrastructure.Persistence;
 using WikiService.Domain.Ports;
@@ -49,7 +49,7 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
 
     private IngestionServiceFactory _ingestionRoot = null!;
     private WikiServiceFactory _wikiRoot = null!;
-    private WebApplicationFactory<global::IngestionService.Worker.IngestionServiceTestMarker> _ingestion = null!;
+    private WebApplicationFactory<global::IngestionService.IngestionServiceTestMarker> _ingestion = null!;
     private WebApplicationFactory<global::WikiService.WikiServiceTestMarker> _wiki = null!;
     private HttpClient _ingestionClient = null!;
     private HttpClient _wikiClient = null!;

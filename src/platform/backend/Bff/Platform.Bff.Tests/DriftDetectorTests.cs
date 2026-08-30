@@ -84,7 +84,7 @@ public class DriftDetectorTests
                 new PipelineStepOptions
                 {
                     Name = "ingest", Service = "ingestion-service",
-                    Consumer = "IngestionService.Worker.Features.Ingestion.DocumentUpdatedConsumer",
+                    Consumer = "IngestionService.Features.Ingestion.DocumentUpdatedConsumer",
                     Input = "DocumentUpdated", Outputs = [], Enabled = true
                 }
             ]

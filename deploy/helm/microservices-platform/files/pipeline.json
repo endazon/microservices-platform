@@ -17,7 +17,7 @@
     {
       "name": "convert",
       "service": "conversion-service",
-      "consumer": "ConversionService.Worker.Features.ConversionJobs.RawDocumentFetchedConsumer",
+      "consumer": "ConversionService.Features.ConversionJobs.RawDocumentFetchedConsumer",
       "input": "RawDocumentFetched",
       "outputs": ["DocumentNormalized"],
       "enabled": true
@@ -33,7 +33,7 @@
     {
       "name": "ingest",
       "service": "ingestion-service",
-      "consumer": "IngestionService.Worker.Features.Ingestion.DocumentUpdatedConsumer",
+      "consumer": "IngestionService.Features.Ingestion.DocumentUpdatedConsumer",
       "input": "DocumentUpdated",
       "outputs": ["IngestionCompleted"],
       "enabled": true

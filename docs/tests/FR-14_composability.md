@@ -3,7 +3,7 @@ title: FR-14 コンポーザビリティ（宣言的パイプライン構成） 
 type: test-spec
 status: draft
 created: 2026-07-08
-updated: 2026-08-23
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -42,10 +42,10 @@ issues: [#444]
 
 | # | 観点 | ケース | 実装 |
 | --- | --- | --- | --- |
-| 1 | 既定互換 | 宣言なし（Steps 空）で段が既定登録される | `ConversionService.Worker.Tests/PipelineStepRegistrationTests` |
+| 1 | 既定互換 | 宣言なし（Steps 空）で段が既定登録される | `ConversionService.Tests/PipelineStepRegistrationTests` |
 | 2 | fail-fast | 宣言に段が無い/型名不一致で起動失敗 | 同上 |
 | 3 | 組み替え | enabled: false で購読が生成されない | `WikiService.Api.Tests/PipelineRecomposeTests` |
-| 3b | 組み替え | `queue` の**構成バインド**（宣言値が `PipelineStepOptions.Queue` へ載る） | `ConversionService.Worker.Tests/PipelineStepRegistrationTests`（`Pipeline:Steps:0:Queue`） |
+| 3b | 組み替え | `queue` の**構成バインド**（宣言値が `PipelineStepOptions.Queue` へ載る） | `ConversionService.Tests/PipelineStepRegistrationTests`（`Pipeline:Steps:0:Queue`） |
 | 3c | 組み替え | `queue` 上書きの**実挙動**（受信エンドポイント名が宣言値へ差し替わる）。2 購読者へ同一の queue を宣言すると競合コンシューマになり丁度 1 つが受信する | `Knowledge.IntegrationTests/Messaging/QueueOverrideFanOutTests`（実ブローカ） |
 | 4 | 宣言検証 | スキーマ・接続性・循環・型名形式（V1〜V6） | `scripts/validate-pipeline-config.js --self-test`（CI: `ci.yml`） |
 | 5 | 参照方向 | Foundation → Composable 参照なし | レビュー・grep による検査（Issue #118 監査で確認済み） |

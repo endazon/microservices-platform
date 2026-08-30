@@ -301,7 +301,7 @@ services:
   conversion-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/ConversionService/Worker/Dockerfile
+      dockerfile: src/knowledge/backend/Services/ConversionService/Dockerfile
     # FR-15, IADR-0029, IADR-0017: 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
     # host へは公開せずメッシュ内部限定（ingress 非公開）。
     expose:
@@ -322,7 +322,7 @@ services:
   ingestion-service:
     build:
       context: ..
-      dockerfile: src/knowledge/backend/Services/IngestionService/Worker/Dockerfile
+      dockerfile: src/knowledge/backend/Services/IngestionService/Dockerfile
     # FR-15, IADR-0029, IADR-0017: 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
     # host へは公開せずメッシュ内部限定（ingress 非公開）。
     expose:
