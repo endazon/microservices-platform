@@ -449,6 +449,61 @@ if [ "${HEADLAMP:-}" = "1" ]; then
   echo "    権限は閲覧専用（get/list/watch）。手順の詳細は deploy/local/README.md の「Headlamp」参照。"
 fi
 
+
+# NFR, #781 / IADR-0105 の再導入: apiserver の OIDC 検証。opt-in（既定オフ・fail-safe）。
+#
+# 🔴 **この経路は経路B（Rancher Desktop 内蔵 k3s）専用である。** k3d では apiserver の
+#   設定投入方法が違うため何もしない。
+#
+# 🔴 **`/etc/hosts` の追記が本体である。** k8s 1.30+ は issuer に https を強制するので
+#   issuer は `https://keycloak.localhost/...` になるが、**apiserver（Go）は
+#   `.localhost` を特別扱いしない。**
+#
+#     curl / musl  … `.localhost` を 127.0.0.1 へ解決する（RFC 6761 の特例）
+#     Go のリゾルバ … 特例を持たず /etc/resolv.conf を引く → NXDOMAIN
+#
+#   **`curl` で到達性を確認しても、apiserver では通らない**（2026-08-30 に実測。
+#   apiserver ログは `lookup keycloak.localhost: no such host` →
+#   `oidc: authenticator not initialized` を 10 秒ごとに繰り返していた）。
+#   **WSL は起動のたびに /etc/hosts を再生成するため、本スクリプトを再実行して復旧する。**
+if [ "${APISERVER_OIDC:-}" = "1" ]; then
+  if [ "$RUNTIME" != "rancher" ]; then
+    echo "==> [opt-in] apiserver OIDC: skip（RUNTIME=$RUNTIME。経路B 専用）"
+  elif ! command -v rdctl >/dev/null 2>&1; then
+    echo "==> [opt-in] apiserver OIDC: skip（rdctl が無い）" >&2
+  else
+    echo "==> [opt-in] apiserver OIDC (issuer を https エッジへ・#781)"
+    ISSUER_HOST="$(echo "${OIDC_ISSUER_URL:-https://keycloak.localhost/realms/platform}" | sed -E 's#^https?://##; s#/.*##')"
+
+    # 1. apiserver（Go）が issuer host を解決できるようにする。
+    rdctl shell sh -c "grep -q '[[:space:]]${ISSUER_HOST}\$' /etc/hosts || echo '127.0.0.1	${ISSUER_HOST}' >> /etc/hosts"
+    echo "    /etc/hosts: ${ISSUER_HOST} -> 127.0.0.1"
+
+    # 2. エッジ証明書を検証できる CA を置く（apiserver は oidc-ca-file で読む）。
+    #    cert-manager のローカル root CA をクラスタから直接取り出す。
+    rdctl shell sh -c "k3s kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > /etc/rancher/k3s/oidc-ca.crt"
+
+    # 3. drop-in 設定を置く。**既存の config.yaml.d は壊さない。**
+    rdctl shell sh -c "cat > /etc/rancher/k3s/config.yaml.d/oidc.yaml" <<EOF
+kube-apiserver-arg:
+  - "oidc-issuer-url=${OIDC_ISSUER_URL:-https://keycloak.localhost/realms/platform}"
+  - "oidc-client-id=${OIDC_CLIENT_ID:-headlamp}"
+  - "oidc-ca-file=/etc/rancher/k3s/oidc-ca.crt"
+  - "oidc-username-claim=preferred_username"
+  - "oidc-username-prefix=oidc:"
+  - "oidc-groups-claim=groups"
+  - "oidc-groups-prefix=oidc:"
+EOF
+
+    # 4. 切り戻しを先に置く。**apiserver の起動失敗はクラスタ停止を意味する**（#388 の前科）。
+    rdctl shell sh -c "printf '#!/bin/sh\nrm -f /etc/rancher/k3s/config.yaml.d/oidc.yaml\nrc-service k3s restart\n' > /root/rollback-oidc.sh && chmod +x /root/rollback-oidc.sh"
+
+    echo "    切り戻し: rdctl shell /root/rollback-oidc.sh"
+    echo "    🔴 反映には k3s の再起動が要る: rdctl shell rc-service k3s restart"
+    echo "       再起動後 180 秒たっても kubectl get nodes が返らなければ上の切り戻しを実行すること。"
+  fi
+fi
+
 # IADR-0091 (#356): ローカルエッジ集約（opt-in・既定オフ・fail-safe）。Traefik 追加 entrypoint admin:50000 ＋
 # platform フロント(80/443)/管理ツール(50000・ホスト名ベース)の Ingress を適用する。既定(env 未設定)では何も
 # 実行されず挙動不変。k3d は上の cluster create(LOCALEDGE=1)で 80/443/50000 を公開済みが前提。Rancher Desktop は
