@@ -62,6 +62,49 @@ spec:
             - name: Auth__ValidIssuers
               value: {{ $.Values.global.auth.validIssuers | quote }}
           {{- end }}
+          {{- if $svc.session }}
+            # NFR, SC-13, ADR-0026/ADR-0032, IADR-0251/IADR-0273, #1107: BFF セッション（Token Handler）の構成。
+            #
+            # 🔴 **これが無いと `BffSessionOptions.ClientSecret` が空のままになり、BFF は
+            # コンフィデンシャルクライアントとして認証できず、`GET /bff/auth/login` が 500 で落ちる**
+            # （PAR 端点が 401 を返す。PAR を切っても認可コード交換で同じ 401 になるので、逃げ道は無い）。
+            #
+            # Authority / MetadataAddress / ValidIssuers は上の `Auth__*` と**同じ global.auth から描く**。
+            # 片方だけがエッジ host へ動くと（#780）、サービス間検証とブラウザ経路が静かに食い違う。
+            # RequireHttpsMetadata / RedisConnectionString / CookieName / SessionLifetimeSeconds は
+            # **コード既定を使う**（既定が配備の実態および realm と一致することを実測済み。理由は
+            # .ai-context/adr/IADR-0316 と作業仕様書）。ここへ書くと 2 つ目の真実ができる。
+            # 🔴 **エッジが TLS を終端するので、転送ヘッダを解釈させないとログインが完了しない。**
+            # 実測（#1107）: これが無いと ASP.NET は受信リクエストの scheme（エッジ→BFF は平文 http）から
+            # `redirect_uri` を組み、`http://<edge>/bff/auth/callback` を認可サーバへ送る。realm に登録が
+            # あるのは **https** の方なので、Keycloak が `invalid_request: Invalid parameter: redirect_uri`
+            # （400）を返し、`GET /bff/auth/login` は 500 のままになる。
+            # **client secret を入れただけでは往復は通らない**（401 → 400 へ変わるだけである）。
+            # ASP.NET Core が用意している既定の口を使う（`X-Forwarded-Proto` / `-For` を解釈し、
+            # 既定の loopback 限定 KnownProxies を外す）。BFF だけに与える —— 絶対 URL を組んで
+            # ブラウザへ返すのは BFF だけで、他サービスへ広げると転送ヘッダの信頼範囲を無用に広げる。
+            - name: ASPNETCORE_FORWARDEDHEADERS_ENABLED
+              value: "true"
+            - name: BffSession__ClientId
+              value: {{ $svc.session.clientId | quote }}
+            # 🔴 実値はチャートに書かない。Secret（Vault→ExternalSecret→Secret）から環境変数で注入する。
+            # realm 側の置き場（`*-dev-secret-change-me`）と**同値でなければ PAR が 401 を返す**。
+            - name: BffSession__ClientSecret
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $svc.session.existingSecret }}
+                  key: {{ $svc.session.clientSecretKey }}
+            - name: BffSession__Authority
+              value: {{ $.Values.global.auth.authority | quote }}
+          {{- if $.Values.global.auth.metadataAddress }}
+            - name: BffSession__MetadataAddress
+              value: {{ $.Values.global.auth.metadataAddress | quote }}
+          {{- end }}
+          {{- if $.Values.global.auth.validIssuers }}
+            - name: BffSession__ValidIssuers
+              value: {{ $.Values.global.auth.validIssuers | quote }}
+          {{- end }}
+          {{- end }}
           {{- if $pipelineMount }}
             # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成（ConfigMap マウント）の読み込み先。
             - name: Pipeline__ConfigPath

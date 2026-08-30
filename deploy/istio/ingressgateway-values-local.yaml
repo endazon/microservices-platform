@@ -1,0 +1,56 @@
+# ADR-0021, #782: 経路B（ローカル k3s）へ入れる istio-ingressgateway の values。
+#
+# ★ 本番像ではない。 dev の 1 ノードクラスタで既存 18 Pod と同居させるための値である
+#   （本番の sizing・HPA・可用性・レート制限は運用要件に合わせて別途決める）。
+#
+# ★★ ここで決めているのは「入口を Envoy にする」ことだけである。ルーティングは
+#   Gateway / VirtualService（deploy/local/edge-istio/）が持ち、mTLS の強制は
+#   アプリチャートの PeerAuthentication が持つ。3 つを 1 箇所に混ぜない。
+#
+# 🔴 ポートは Traefik と衝突する。 k3s の ServiceLB（klipper）は LoadBalancer Service ごとに
+#   hostPort を握る DaemonSet を作るため、**80/443/50000 を 2 つの Service が同時に持てない**。
+#   Traefik 側は deploy/local/edge-istio/traefik-service-off.yaml が明け渡す。
+#   → 順序: Traefik の Service を落とす → 本 Gateway を立てる（k8s-local-up.sh がその順で当てる）。
+
+# Service。ports は **Traefik の 3 つの entrypoint と 1 対 1 に対応させる**。
+#   web(80) / websecure(443)          … platform フロント（SPA / BFF）と keycloak.localhost
+#   admin(50000)                      … 管理ツール 7 件（IADR-0091 決定 4 のホスト名ベース集約）
+# 50000 を落とすと minio / wiki（どちらも mesh 内）の OIDC redirect URI が全滅する
+# （IADR-0093 / IADR-0095 が :50000 付きで Keycloak へ登録済み）。**ポート番号は動かせない。**
+service:
+  type: LoadBalancer
+  ports:
+    # Istio の readiness/health。ここを消すと Pod が Ready にならない。
+    - name: status-port
+      port: 15021
+      protocol: TCP
+      targetPort: 15021
+    - name: http2
+      port: 80
+      protocol: TCP
+      # 🔴 targetPort は 8080 のまま。 Envoy は非 root（uid 1337）で走るため 1024 未満に bind できない。
+      #   Gateway リソースの port.number は **Service 側のポート**（80）を書けばよく、
+      #   pilot が Service の targetPort（8080）へ写してリスナを作る。
+      targetPort: 8080
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: 8443
+    - name: https-admin
+      port: 50000
+      protocol: TCP
+      # 1024 以上なのでそのまま bind できる。
+      targetPort: 50000
+
+# 1 ノードの dev。istiod（IADR-0307 決定 6 で 50m/128Mi へ絞ってある）と同居する。
+resources:
+  requests:
+    cpu: 10m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+autoscaling:
+  enabled: false
+replicaCount: 1

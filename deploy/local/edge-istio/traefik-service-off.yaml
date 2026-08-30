@@ -1,0 +1,32 @@
+# ADR-0021, #782: k3s 同梱 Traefik の LoadBalancer Service を落とし、80/443/50000 を明け渡す。
+#
+# 計画 ADR-0021 §決定 の逐語:
+#   「実行基盤 k3s（ADR-0008）が既定同梱する **Traefik は無効化する**。」
+#
+# なぜ「削除」ではなく「Service を落とす」か:
+#   - k3s の helm-controller が Traefik を所有しており、HelmChart を消すと再作成の挙動が
+#     ディストリビューション（k3d / Rancher Desktop）で違う。**戻せる形を選ぶ。**
+#   - `service.enabled: false` は Deployment を残したまま LoadBalancer Service だけを消す。
+#     ServiceLB（klipper）の DaemonSet が道連れで消え、**hostPort 80/443/50000 が空く**。
+#     これが istio-ingressgateway を立てるための必要条件である（2 つの LoadBalancer が
+#     同じ hostPort を握れない）。
+#   - 切り戻しは `deploy/local/edge/traefik-entrypoint.yaml` を apply し直すだけ
+#     （scripts/istio-edge-down.sh が行う）。
+#
+# 🔴 このファイルは `deploy/local/edge/traefik-entrypoint.yaml` と **同じオブジェクト**
+#   （kube-system/traefik の HelmChartConfig）を上書きする。片方を当てるともう片方は消える。
+#   admin(50000) の定義と TLS / リダイレクトの引数を**ここへ持ち越さない**のは意図的である ——
+#   Istio エッジでは entrypoint も TLS 終端も Gateway リソースが持つ（deploy/local/edge-istio/gateway.yaml）。
+#   二重に持つと「どちらが効いているか」が読めなくなる。
+#
+# ⚠️ helm-controller の reconcile は非同期である（IADR-0258）。`kubectl apply` の成功は
+#   反映を意味しない。**反映（Service の消滅）を待って落とす**のは k8s-local-up.sh 側の責務。
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    service:
+      enabled: false
