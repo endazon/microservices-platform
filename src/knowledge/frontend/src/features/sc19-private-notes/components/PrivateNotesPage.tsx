@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Link, useNavigate, useSearch } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import {
   Alert,
   Button,
@@ -23,6 +23,7 @@ import { toMessages } from '@foundation/ui/apiErrors';
 import type { PrivateNoteDto } from '@foundation/api/generated/bff.schemas';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { usePrivateNoteActions, usePrivateNotes } from '../api/usePrivateNotes';
+import { useNoteListView } from '../hooks/useNoteListView';
 import {
   daysUntilPurge,
   deletedBytes,
@@ -32,7 +33,7 @@ import {
   formatBytes,
   usagePercent,
 } from '../types/quota';
-import type { PrivateNotesSearch, TabOption } from '../routes/sc19PrivateNotesRoute';
+import type { TabOption } from '../routes/sc19PrivateNotesRoute';
 import { QuotaPanel } from './QuotaPanel';
 
 // SC-19, UC-11, FR-19/FR-21: 個人資料管理（05_screens: ルート /my/notes）。
@@ -55,8 +56,6 @@ type Confirmation =
 
 export function PrivateNotesPage() {
   const { t } = useLingui();
-  const search: PrivateNotesSearch = useSearch({ from: '/_shell/my/notes' });
-  const navigate = useNavigate({ from: '/my/notes' });
 
   const notes = usePrivateNotes();
   const actions = usePrivateNoteActions();
@@ -64,7 +63,6 @@ export function PrivateNotesPage() {
 
   const [title, setTitle] = useState('');
   const [vaultPath, setVaultPath] = useState('');
-  const [selected, setSelected] = useState<string[]>([]);
   const [confirming, setConfirming] = useState<Confirmation>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -73,21 +71,19 @@ export function PrivateNotesPage() {
   const level = quotaLevel(usagePercent(usage));
   const isFull = level === 'full';
 
-  const live = useMemo(() => all.filter((n) => !n.deleted), [all]);
-  const trashed = useMemo(() => all.filter((n) => n.deleted), [all]);
-
-  // 絞り込み（05_screens §SC-19 主要素 6）。**タイトルの部分一致だけ**を実装している ——
-  // タグ・公開範囲・同期状態は台帳（契約）に項目が無い（作業仕様書 §計画との差異）。
-  const query = search.q.trim().toLowerCase();
-  const rows = useMemo(() => {
-    const source = search.tab === 'trash' ? trashed : live;
-    if (query === '') return source;
-    return source.filter((n) => n.title.toLowerCase().includes(query));
-  }, [search.tab, live, trashed, query]);
-
-  // 「いま」は描画のたびに読み直さない —— 残り日数が描画のたびに揺れると、
-  // 検査でも実運用でも同じ行が違う値を出しうる。
-  const now = useMemo(() => new Date(), []);
+  // タブ・絞り込み語（URL が単一情報源）と選択状態、そこから導く表示行は hooks/ が持つ。
+  const {
+    search,
+    setParams,
+    switchTab,
+    live,
+    trashed,
+    rows,
+    now,
+    selected,
+    setSelected,
+    clearSelection,
+  } = useNoteListView(all);
 
   const mutations = Object.values(actions);
   const failed = mutations.find((m) => m.isError);
@@ -97,14 +93,6 @@ export function PrivateNotesPage() {
   function beginOperation() {
     setNotice(null);
     for (const mutation of mutations) mutation.reset();
-  }
-
-  const setParams = (patch: Partial<PrivateNotesSearch>) =>
-    void navigate({ search: (prev: PrivateNotesSearch) => ({ ...prev, ...patch }) });
-
-  function switchTab(tab: TabOption) {
-    setSelected([]);
-    setParams({ tab });
   }
 
   function submitCreate() {
@@ -138,7 +126,7 @@ export function PrivateNotesPage() {
   function runRestore(ids: string[]) {
     beginOperation();
     for (const id of ids) restore.mutate({ id });
-    setSelected([]);
+    clearSelection();
     setNotice(t`選択した個人資料を復元しました。`);
   }
 
@@ -150,7 +138,7 @@ export function PrivateNotesPage() {
       { data: { ids } },
       {
         onSuccess: () => {
-          setSelected([]);
+          clearSelection();
           setNotice(t`個人資料を完全に削除しました。`);
         },
       },
