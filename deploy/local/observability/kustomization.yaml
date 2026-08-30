@@ -9,6 +9,7 @@ kind: Kustomization
 
 resources:
   - prometheus.yaml
+  - alertmanager.yaml
   - loki.yaml
   - tempo.yaml
   - grafana.yaml

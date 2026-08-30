@@ -1,6 +1,6 @@
 namespace Knowledge.IntegrationTests.Messaging;
 
-// ADR-0027, IADR-0302, IADR-0304, #1038 / #1059:
+// ADR-0027, IADR-0302, IADR-0305, #1038 / #1059:
 // **fan-out の統合テスト 2 クラスを同時に走らせない**ためのコレクション定義。
 //
 // ■ なぜ要るのか（実測に基づく）

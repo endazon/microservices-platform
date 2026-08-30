@@ -1,5 +1,5 @@
 ---
-title: IADR-0304 fan-out の統合テスト 2 クラスは直列化する —— 予算は伸ばさず、失敗を決定的にする
+title: IADR-0305 fan-out の統合テスト 2 クラスは直列化する —— 予算は伸ばさず、失敗を決定的にする
 type: impl-adr
 status: Accepted
 related_ids:
@@ -20,7 +20,7 @@ plan_refs:
   - "ADR-0027 移行チェックリスト手順 3（リスニングキュー名にサービス名を前置する）"
 ---
 
-# IADR-0304: fan-out の統合テスト 2 クラスは直列化する
+# IADR-0305: fan-out の統合テスト 2 クラスは直列化する
 
 - 状態: Accepted
 - 日付: 2026-08-30

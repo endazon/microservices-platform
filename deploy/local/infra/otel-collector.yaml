@@ -25,6 +25,12 @@ data:
       debug:
         verbosity: normal
     service:
+      # #546: 自己テレメトリの待受を**明示する**（image 既定に頼らない —— collector は版によって
+      # 既定が localhost:8888 と :8888 の間で変わっており、既定任せだと版上げで静かに
+      # scrape 不能になる）。ここが Prometheus の唯一の scrape 対象である。
+      telemetry:
+        metrics:
+          address: 0.0.0.0:8888
       pipelines:
         traces:
           receivers: [otlp]
@@ -60,6 +66,11 @@ spec:
           ports:
             - { containerPort: 4317, name: otlp-grpc }
             - { containerPort: 4318, name: otlp-http }
+            # #546: collector 自身のテレメトリ（Prometheus の**唯一の scrape 対象**）。
+            # ここを開けないと up{job="otel-collector"} が恒常的に 0 になり、
+            # OtelCollectorDown が鳴り続ける。Alertmanager 配備前は誰も見ていなかったので
+            # 気付かれなかった（実測 2026-08-30）。
+            - { containerPort: 8888, name: self-metrics }
           volumeMounts:
             - name: config
               mountPath: /etc/otelcol-contrib
@@ -83,3 +94,6 @@ spec:
   ports:
     - { name: otlp-grpc, port: 4317, targetPort: 4317 }
     - { name: otlp-http, port: 4318, targetPort: 4318 }
+    # #546: Prometheus はこのポートを scrape する（deploy/prometheus.yml / 経路B の
+    # prometheus.yaml の job_name: otel-collector）。**Service に載せないと到達できない。**
+    - { name: self-metrics, port: 8888, targetPort: 8888 }

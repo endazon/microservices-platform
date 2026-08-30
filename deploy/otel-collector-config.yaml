@@ -27,6 +27,12 @@ exporters:
     verbosity: normal
 
 service:
+  # #546: 自己テレメトリの待受を**明示する**（image 既定に頼らない）。
+  # Prometheus の唯一の scrape 対象であり、既定任せだと版上げで静かに scrape 不能になる。
+  # 経路B（deploy/local/infra/otel-collector.yaml）にも同じ宣言を置く＝パリティを崩さない。
+  telemetry:
+    metrics:
+      address: 0.0.0.0:8888
   pipelines:
     traces:
       receivers: [otlp]

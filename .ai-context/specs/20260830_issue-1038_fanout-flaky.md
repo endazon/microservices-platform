@@ -68,8 +68,8 @@ plan_refs:
 | `Messaging/DocumentUpdatedFanOutTests.cs` / `QueueOverrideFanOutTests.cs` | **本作業で書き換える**（コレクション属性と診断） |
 | `Messaging/ListenerReadiness.cs` | **追記する**（診断の置き場） |
 | `Fixtures/IntegrationTestFactory.cs` | 変更不要（IADR-0302 の訂正済み記述。本変更で誤りにならない） |
-| `.ai-context/adr/IADR-0302_*.md` / `.ai-context/specs/20260829_issue-1038_*.md` | **凍結記録。本文は書き換えない。** 新しい決定は IADR-0304 として起こす |
-| `.ai-context/adr/README.md` | **1 行追記**（IADR-0304） |
+| `.ai-context/adr/IADR-0302_*.md` / `.ai-context/specs/20260829_issue-1038_*.md` | **凍結記録。本文は書き換えない。** 新しい決定は IADR-0305 として起こす |
+| `.ai-context/adr/README.md` | **1 行追記**（IADR-0305） |
 | `docs/how-to/session-handoff.md` | 引き継ぎメモ。本変更で既存記述が誤りになる箇所は無い（「再現しないことは直った証拠にならない」は今も真） |
 | `DocumentService/Tests/NormalizedAssetLedgerTests.cs` / `Platform.Bff.Tests/SessionTokenRefresherTests.cs` / `WolverineExtensionsTests.cs` | 「#1038 と同じ型」への言及のみ。予算値へ依存していないため変更不要 |
 
