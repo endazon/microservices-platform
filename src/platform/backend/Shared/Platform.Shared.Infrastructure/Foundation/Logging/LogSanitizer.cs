@@ -9,7 +9,7 @@ namespace Platform.Shared.Infrastructure.Foundation.Logging;
 //
 // **先例**: `LlmRouter.Sanitize`（FR-11）と `ToolInvocationService.SanitizeForLog`（ADR-0024）が
 // 同型の私有実装を持つ。3 つ目の複製を作らないため、ユニット外から参照できる
-// `Platform.Shared.Infrastructure` へ引き上げた（判断の記録は IADR-0304）。
+// `Platform.Shared.Infrastructure` へ引き上げた（判断の記録は IADR-0306）。
 //
 // **`Platform.Shared.Kernel` へは置かない** —— Kernel は Result / Error と DDD 基底型の共有
 // カーネルであり、`src/README.md` 依存規則により Domain からのみ参照される。ログ整形は
