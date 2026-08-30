@@ -3,15 +3,15 @@ title: テスト仕様書 — FR-12 原本の正規化変換
 type: test-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-08-30
+updated: 2026-08-31
 author: claude
 ---
 <!-- trace:
-ids: [FR-11, FR-12, UC-06]
-adrs: [ADR-0010, ADR-0012]
-iadrs: [IADR-0008, IADR-0104, IADR-0132, IADR-0162, IADR-0296, IADR-0298]
-specs: [20260703_FR-12_document-normalization-pipeline, 20260829_issue-447_fr12-golden-files]
-issues: [#118, #379, #447, #506, #520, #525, #658]
+ids: [FR-11, FR-12, UC-06, SC-07]
+adrs: [ADR-0010, ADR-0012, ADR-0014]
+iadrs: [IADR-0008, IADR-0104, IADR-0132, IADR-0162, IADR-0296, IADR-0298, IADR-0316]
+specs: [20260703_FR-12_document-normalization-pipeline, 20260829_issue-447_fr12-golden-files, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed]
+issues: [#118, #379, #447, #506, #520, #525, #658, #1097]
 -->
 
 # テスト仕様書: 原本の正規化変換
@@ -33,7 +33,12 @@ issues: [#118, #379, #447, #506, #520, #525, #658]
 | T-07 | コード抽出 | ```` ```mermaid ```` / ```` ```plantuml ```` のフェンスから言語とコードを抽出する | `Coded=true`、`Language`/`Code` 一致 | 正規化変換: 基本フロー |
 | T-08 | 決定的 Guid | 同一入力で同一 Guid、異なる入力で異なる Guid（RFC4122 v5 相当） | 期待どおり | 正規化変換: 冪等性 / `DeterministicGuidTests` |
 | T-09 | pandoc 変換 | pandoc 導入環境でローカル Markdown 原本を実変換し本文を返す | 本文に原本タイトルが出現、図0件 | 正規化変換: 本文変換 / `PandocConversionServiceTests` |
-| T-10 | pandoc デグレード | pandoc 未導入／原本がローカル解決不能ならプレースホルダ本文（図0件） | 本文にファイル名が出現、`Figures` 空 | 正規化変換: 例外 E1 |
+| T-10 | **縮退は既定で起きない**（fail-closed） | pandoc 未導入／原本を読み出せないとき、既定は例外である | `BodyConversionUnavailableException`。**プレースホルダ本文を返さない** | 正規化変換: 例外 E1 |
+| T-10b | 縮退（明示的に許可したとき） | `Conversion:AllowDegradedBodyConversion=true` のときだけプレースホルダ本文（図0件） | 本文にファイル名が出現、`Figures` 空 | 正規化変換: 例外 E1 |
+| T-19 | **原本の取り寄せ** | オブジェクトストレージ上の原本を取得して pandoc に食わせる | 本文に原本の中身が出現し、プレースホルダの綴りを含まない。取得が 1 回起きる | 正規化変換: 本文変換 |
+| T-20 | **PDF の明示的な拒否** | PDF は pandoc の入力形式にならない。既定形式（`markdown`）へ落とさない | `UnsupportedSourceFormatException`。MIME・拡張子のどちらから判っても拒否する | 正規化変換: 例外 E5 |
+| T-21 | 入力形式の写像 | MIME（不明なら拡張子）から pandoc 入力形式を決める | `docx` / `html` / `gfm` / `markdown` が期待どおり。PDF だけ例外 | 正規化変換: 本文変換 |
+| T-22 | **実行時イメージの退行防止** | 実行時段の `apt-get install` 行に pandoc が居ること | Dockerfile の runtime 段に導入行がある。消すと落ちる | 実行時イメージへの pandoc 導入 |
 | T-11 | 完了イベント | 変換後に `DocumentNormalized` が発行され後続へ連鎖する | Published = true、`MarkdownUri` 非空 | 正規化変換: 連鎖 / `RawDocumentFetchedConsumerTests` |
 | T-12 | **画像保持（モデル拒否）** | `stopReason="refusal"`（送信は成立したがモデルが拒否）は本文が空で返るためフェンスも無いが、T-02 の「コード化不能」と混同せず拒否として記録する。縮退先（画像保持）は不変 | `Coded=false`、`Reason="llm-refused"`（`not-codeable` でない） | LLM 送信先切替・正規化変換 / `LlmGatewayDiagramCoderTests.Retains_with_refusal_reason_when_model_refuses` |
 
@@ -51,7 +56,13 @@ issues: [#118, #379, #447, #506, #520, #525, #658]
 
 - 外部依存（pandoc / LLM Gateway / オブジェクトストレージ）はフェイク／インメモリ実装で差し替える
   （`FakeBodyConverter` / `FakeDiagramCoder` / `RecordingObjectStore`）。
-- `PandocConversionServiceTests` は pandoc の導入有無が環境依存のため、前提を満たさないケースはソフトスキップする。
+- `PandocConversionServiceTests` は pandoc の導入有無が環境依存のため、前提を満たさないケースは
+  **真の Skipped**（`Assert.Skip*`）にする。**ソフトスキップ（`if (cond) return;`）にしない** ——
+  走らなかったケースが Passed として報告され、実行実績が無いのに緑に見えるためである。
+  T-09 / T-19 は pandoc 未導入環境で skip され、T-10 / T-10b は pandoc 導入環境で skip される
+  （どちらの環境でも「両方が走った」ことにはならない。**skip 件数を実行結果に必ず出すこと**）。
+- T-22 は Dockerfile を読む静的なテストであり、**焼いたイメージに pandoc が実在するか**は見ない。
+  実在するかは配備側の readiness（`pandoc` チェック）が見る。この 2 段を混同しない。
 - **T-13 は C# のテストではなく検査器で持つ**（`scripts.repo.test.js` が CI から起動する）。
   契約と C# の一致は**個々の実行時挙動ではなく静的な突合**で確かめるのが確実であり、
   同型の事故はいずれも実行時テストでは捕まっていない。
@@ -73,5 +84,10 @@ issues: [#118, #379, #447, #506, #520, #525, #658]
 - **検出力は変異試験で実測してある**（変異 5 件がすべて KILL、無変異ベースラインは緑）。
   うち 3 件（空白の畳み方・機密区分の受け渡し・資産キーの GUID 書式）は
   **バックエンド全体でゴールデンだけが落とした**。
-- 実 pandoc 変換（docx 等の実原本・実図抽出）、実オブジェクトストレージ、Vision 画像入力に対する結合試験は
-  別タスク（ポート分離と縮退の実装 ADR の「スコープ外」を参照）で扱う。
+- Vision 画像入力に対する結合試験は別タスクで扱う。
+
+> **［2026-08-31 追記］実 pandoc 変換・実オブジェクトストレージは「別タスク」ではなくなった。**
+> 実行時イメージへ pandoc を導入したうえで、**稼働クラスタで docx / HTML / PDF の実原本を変換して
+> 実測した**（docx は実図抽出 1 件つき。PDF は明示的な拒否）。自動テストはこの経路を持たない
+> —— 実オブジェクトストレージと実 pandoc の両方を要し、いずれもコンテナ実行時依存だからである。
+> **T-19 は差し替えたストレージで「取り寄せてから変換する」形だけを固定する。**

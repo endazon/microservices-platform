@@ -14,6 +14,11 @@
     <None Remove="Tests/**" />
   </ItemGroup>
   <ItemGroup>
+    <!-- IADR-0316 (#1097): `PandocConversionService.PandocInputFormat` の写像（PDF を既定へ落とさない）を
+         単体テストから直接測る。他サービス（DataSource/Document/Graph/Ingestion/Retrieval）と同じ流儀。 -->
+    <InternalsVisibleTo Include="ConversionService.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="MassTransit.RabbitMQ" />
     <!-- ADR-0027 §決定 必須設定 1 / #441 E1: 本プロジェクトは Wolverine ホストを起こす。
          WolverineFx 本体は Platform.Shared.Infrastructure 経由で届くが、RuntimeCompilation は

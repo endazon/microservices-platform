@@ -8,6 +8,7 @@ using ConversionService.Features.ConversionJobs;
 using ConversionService.Features.ConversionJobs.CorrectFigure;
 using ConversionService.Features.ConversionJobs.Normalize;
 using ConversionService.Domain.Ports;
+using ConversionService.Infrastructure.Configuration;
 using ConversionService.Infrastructure.Persistence;
 using ConversionService.Infrastructure.Messaging;
 using ConversionService.Infrastructure.ExternalServices;
@@ -33,10 +34,23 @@ var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
             + "ConnectionStrings__DefaultConnection で注入する）。");
 builder.Services.AddDbContext<ConversionJobDbContext>(opt => opt.UseNpgsql(connStr));
 
+// FR-12, UC-06, ADR-0012, IADR-0316 (#1097): 本文変換の構成（縮退の可否）。**既定は fail-closed**。
+builder.Services.Configure<ConversionOptions>(
+    builder.Configuration.GetSection(ConversionOptions.SectionName));
+var allowDegradedConversion = builder.Configuration
+    .GetSection(ConversionOptions.SectionName).Get<ConversionOptions>()?.AllowDegradedBodyConversion
+    ?? false;
+
 // DB 到達性の readiness ヘルスチェック（DataSourceService 準拠）。
-builder.Services.AddPlatformHealthChecks()
+var health = builder.Services.AddPlatformHealthChecks()
     .AddPlatformWolverineBroker()
     .AddNpgSql(connStr, tags: ["ready"]);
+
+// FR-12, IADR-0316 決定 5 (#1097): 🔴 **pandoc が実行時イメージに在ることを readiness で確かめる。**
+// 従前 pandoc の欠落はどこにも現れなかった（変換は縮退して「成功」し、probe も緑だった）。
+// 縮退を許した開発機では登録しない —— そこでは縮退が正常な振る舞いである。
+if (!allowDegradedConversion)
+    health.AddCheck<PandocHealthCheck>("pandoc", tags: ["ready"]);
 
 // FR-12, ADR-0012: 本文変換（pandoc ラッパー）。
 builder.Services.AddSingleton<IBodyConverter, PandocConversionService>();
