@@ -9,7 +9,7 @@ related_ids:
   - IADR-0022
 author: claude
 created: 2026-07-24
-updated: 2026-08-10
+updated: 2026-08-30
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md (グローバル既定を Claude Opus 5 へ改定・Accepted)
   - planning:projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md (LLM ゲートウェイ設計・Accepted・本文凍結)
@@ -98,6 +98,23 @@ plan_refs:
   1. **出力トークンの実測と 4096 の再調整**。実測で思考が収まらない／過剰に余っている場合に見直す。
   2. **Opus 5 のレート制限枠の確認**。Opus 4.x 系とは別枠のため、既定層のトラフィック移行で
      429 が出ないことを確認する。
+
+     > **［2026-08-30 追記 / #380］項番 1・2 は測定を試みたが測れなかった。`max_tokens` は 4096 のまま据え置く。**
+     > 稼働中の k3s（Rancher Desktop）で Prometheus を実読したところ、**`llm_*` の系列が保持期間の全域で
+     > 1 つも存在しない**（`match[]={__name__=~"llm.*"}` が 0 系列。#380 が読む 8 本の PromQL は全て空ベクタ）。
+     > 原因は独立に 5 つある —— (a) `/complete` への実トラフィックが 0 件（ゲートウェイの 5 時間分の
+     > ログは health と introspection だけ）、(b) 稼働 collector の metrics パイプラインの exporter が
+     > `debug` のみで、受け取った 739,069 点が全て破棄されている、(c) Prometheus の scrape 対象は
+     > collector 自身の 1 件だけ、(d) 稼働 image（`Aug 16`）に `llm.completion.output_tokens`
+     > （[IADR-0212](./IADR-0212_llm-output-token-histogram.md)）が焼かれていない、(e) Prometheus に PVC が
+     > mount されておらず実データが 7.5 時間分しか無い。
+     > **数字が無いまま値を動かせば「実測前の出発値」を「実測を騙る別の出発値」に置き換えるだけ**なので、
+     > 3 箇所（`CompletionApiRequest` / `CompletionRequest` / `RagOrchestrator`）はいずれも無変更とした。
+     > 項番 2 については、仮にトラフィックが在っても**メトリクスからは 429 を判別できない** ——
+     > `Complete/Endpoint.cs` はフォールバックしない失敗（429 を含む）を `llm.result="upstream_error"` へ
+     > 潰しており、上流 HTTP ステータスの軸が `LlmCompletionMetrics` に無い。
+     > **本項は消化していない。両項とも未消化のまま残す**（測定の前提と足りないものは
+     > [作業仕様書](../specs/20260830_issue-380_opus5-max-tokens-measurement.md)）。
   3. **`stop_reason: "refusal"` のハンドリング検討**。Opus 5 はサイバー系の安全性分類器を持ち
      HTTP 200 + `refusal` を返し得る。現行は空応答へ縮退し例外にならないため即時の不具合には
      ならないが、監査ログ上「送信したが空応答」と区別できない。必要なら別 IADR で起票する。
