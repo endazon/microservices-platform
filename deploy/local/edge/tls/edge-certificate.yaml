@@ -42,10 +42,13 @@ metadata:
 spec:
   secretName: edge-tls
   commonName: localhost
+  # 明示列挙の母集合は `deploy/local/` の Ingress が使う host を走査して引いた
+  # （2026-08-30 実測で 8 件。稼働クラスタの Ingress とも一致）。末尾の `*.localhost` は
+  # これを受け付けるクライアント向けの保険であり、単体では効かない（冒頭の注記）。
+  # ⚠ このリストの中にコメント行を入れないこと —— `scripts/k8s-local-up.test.js` の
+  #   `listValues()` は `- ` で始まらない行で走査を打ち切るため、以降の host が読まれなくなる。
   dnsNames:
     - localhost
-    # 🔴 明示列挙（上のコメント参照）。母集合は `deploy/local/` の Ingress が使う host を
-    #   走査して引いた（2026-08-30 実測で 8 件。稼働クラスタの Ingress とも一致）。
     - argocd.localhost
     - grafana.localhost
     - headlamp.localhost
@@ -54,7 +57,6 @@ spec:
     - qdrant.localhost
     - vault.localhost
     - wiki.localhost
-    # 受け付けるクライアント向けの保険として残す（単体では効かない）。
     - "*.localhost"
   duration: 8760h # 1 年
   renewBefore: 720h # 30 日
@@ -81,10 +83,13 @@ metadata:
 spec:
   secretName: edge-tls
   commonName: localhost
+  # 明示列挙の母集合は `deploy/local/` の Ingress が使う host を走査して引いた
+  # （2026-08-30 実測で 8 件。稼働クラスタの Ingress とも一致）。末尾の `*.localhost` は
+  # これを受け付けるクライアント向けの保険であり、単体では効かない（冒頭の注記）。
+  # ⚠ このリストの中にコメント行を入れないこと —— `scripts/k8s-local-up.test.js` の
+  #   `listValues()` は `- ` で始まらない行で走査を打ち切るため、以降の host が読まれなくなる。
   dnsNames:
     - localhost
-    # 🔴 明示列挙（上のコメント参照）。母集合は `deploy/local/` の Ingress が使う host を
-    #   走査して引いた（2026-08-30 実測で 8 件。稼働クラスタの Ingress とも一致）。
     - argocd.localhost
     - grafana.localhost
     - headlamp.localhost
@@ -93,7 +98,6 @@ spec:
     - qdrant.localhost
     - vault.localhost
     - wiki.localhost
-    # 受け付けるクライアント向けの保険として残す（単体では効かない）。
     - "*.localhost"
   duration: 8760h # 1 年
   renewBefore: 720h # 30 日
