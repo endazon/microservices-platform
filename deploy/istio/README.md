@@ -80,7 +80,7 @@ bash scripts/istio-edge-down.sh   # 🔴 切り戻し（1 コマンド）。**�
 
 エッジ資材は [`../local/edge-istio/`](../local/edge-istio/)（Gateway 2 本 ＋ VirtualService 9 本 ＋
 `istio-system` の葉証明書 ＋ Traefik の Service を落とす `HelmChartConfig`）。
-判断と実測は [`IADR-0312`](../../.ai-context/adr/IADR-0312_istio-ingressgateway-edge-and-strict-mtls.md)。
+判断と実測は [`IADR-0317`](../../.ai-context/adr/IADR-0317_istio-ingressgateway-edge-and-strict-mtls.md)。
 
 🔴 **`ISTIO=1` を `LOCALEDGE=1` 無しで使うとエッジは移らない**（port-forward のまま）。
 その状態で STRICT へ上げると mesh へ入る経路が無くなる。スクリプトが警告を出す。

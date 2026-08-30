@@ -1,7 +1,7 @@
 # 経路B エッジの Istio Ingress Gateway 化（opt-in・`ISTIO=1` ＋ `LOCALEDGE=1`）
 
 > 起点: 計画 `ADR-0021`（エッジ＝Istio Ingress Gateway ＋ Caddy・`Accepted`）/ `ADR-0005`（メッシュ）/
-> 実装 [IADR-0312](../../../.ai-context/adr/IADR-0312_istio-ingressgateway-edge-and-strict-mtls.md) /
+> 実装 [IADR-0317](../../../.ai-context/adr/IADR-0317_istio-ingressgateway-edge-and-strict-mtls.md) /
 > 作業仕様書 [`.ai-context/specs/20260830_issue-782_istio-ingressgateway-strict-mtls.md`](../../../.ai-context/specs/20260830_issue-782_istio-ingressgateway-strict-mtls.md) / Issue #782
 
 ## なぜ要るのか

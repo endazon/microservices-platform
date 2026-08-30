@@ -9,7 +9,7 @@ related_ids:
   - ADR-0021
   - IADR-0026
   - IADR-0091
-  - IADR-0312
+  - IADR-0317
 author: claude
 created: 2026-08-30
 updated: 2026-08-30
@@ -156,7 +156,7 @@ $ ... sample restartPolicy : [None, 'Always']
 ### 4. 🔴 **STRICT は現在のエッジ構成と両立しない**（成立しない）
 
 > **［2026-08-30 追記 / #782］本節の「成立しない」は解けた。**
-> [IADR-0312](./IADR-0312_istio-ingressgateway-edge-and-strict-mtls.md) が本節の帰結どおり
+> [IADR-0317](./IADR-0317_istio-ingressgateway-edge-and-strict-mtls.md) が本節の帰結どおり
 > **エッジを Istio Ingress Gateway へ移し、STRICT で 12 エンドポイントすべてが基準線と一致した**
 > （同 ADR §実クラスタで確かめたこと）。**覆ったのは「現在のエッジ構成では」という前提のほうであり、
 > 本節の分析（Traefik がメッシュ外である・`ADR-0021` は選択肢ではなく前提である）は正しかった。**

@@ -15,7 +15,7 @@ related_ids:
   - IADR-0227
   - IADR-0258
   - IADR-0307
-  - IADR-0312
+  - IADR-0317
 author: claude
 created: 2026-08-30
 updated: 2026-08-30
@@ -109,7 +109,7 @@ $ grep -rln "kind: Ingress" --exclude-dir=.git --exclude-dir=node_modules --excl
 
 | 除外 | 理由 |
 | --- | --- |
-| `.ai-context/adr/*` `.ai-context/specs/*`（41 件） | **確定済みの凍結記録**。遡及書き換えしない（`traceability.repo.md`）。後継は本仕様書と `IADR-0312` が持つ |
+| `.ai-context/adr/*` `.ai-context/specs/*`（41 件） | **確定済みの凍結記録**。遡及書き換えしない（`traceability.repo.md`）。後継は本仕様書と `IADR-0317` が持つ |
 | `deploy/helm/.../wikijs.yaml` の Ingress | **本番チャート**（`wikijs.ingress.enabled` 既定 false）。経路B のエッジ overlay ではない |
 | `scripts/check-stack-ready.js` / `verify-oidc-edge-flow.sh` / `integration-stack.yml` / `values-local.yaml` / `headlamp.yaml` / `argocd-cmdparams-patch.yaml` | **既定経路（`ISTIO` 未設定）は 1 バイトも変えない**ため、Traefik を指す記述はそのまま正しい。Istio エッジは opt-in の**追加**であって置換ではない |
 | `deploy/argocd/appproject.yaml` の `Ingress` | 本番チャートがレンダリングし得る種別。許可の削除はしない（受け入れ基準 6 は「全部入っていること」であり、余分を消すことではない） |
@@ -148,7 +148,7 @@ Keycloak に登録済み**である（`IADR-0093` / `IADR-0095` / `IADR-0220`）
 **帰結: 3 ポートすべてを Istio Ingress Gateway が持ち、Traefik の Service を落とす。**
 これは `ADR-0021`「Traefik は無効化する」そのものである。
 
-## 決めること（詳細は [IADR-0312](../adr/IADR-0312_istio-ingressgateway-edge-and-strict-mtls.md)）
+## 決めること（詳細は [IADR-0317](../adr/IADR-0317_istio-ingressgateway-edge-and-strict-mtls.md)）
 
 1. `ISTIO=1` かつ `LOCALEDGE=1` のとき、エッジを `istio-ingressgateway` へ移す。**既定は不変**
 2. Traefik は `HelmChartConfig` で `service.enabled: false` にして**ポートを明け渡す**（削除しない＝戻せる）
@@ -202,7 +202,7 @@ PERMISSIVE → 200 / 401、STRICT → `Connection reset by peer`。**往復し�
 S0（当てる前の空撃ち）は Service が消えていないので通ってしまい、**この欠陥を出せなかった**。
 是正して再実行し EXIT=0 を確認した —— **空撃ちだけでは足りず、本当に 1 回戻す必要があった。**
 
-詳細は [IADR-0312](../adr/IADR-0312_istio-ingressgateway-edge-and-strict-mtls.md) §実クラスタで確かめたこと。
+詳細は [IADR-0317](../adr/IADR-0317_istio-ingressgateway-edge-and-strict-mtls.md) §実クラスタで確かめたこと。
 
 ## 測れなかったこと（隠さない）
 

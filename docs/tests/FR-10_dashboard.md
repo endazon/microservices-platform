@@ -3,7 +3,7 @@ title: テスト仕様書 — FR-10 利用状況・検索傾向・回答品質�
 type: test-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-08-29
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -18,7 +18,7 @@ issues: [#443]
 
 ## 対象・方針
 
-- `DashboardService.Api.Tests`：記録・バリデーション・集計・認可・ヘルス。集計はグローバルのため、各テストは
+- `DashboardService.Tests`：記録・バリデーション・集計・認可・ヘルス。集計はグローバルのため、各テストは
   専用の InMemory DB（`TestWebApplicationFactory` を per-test 生成）で独立させる。
 - `KnowledgePlatform.Bff.Tests`：BFF `/bff/dashboard/summary` の集約・資格情報伝播・認可。DashboardService と
   FeedbackService はスタブハンドラで差し替える。認可は `TestAuthHandler`（既定 `platform-admin`）で検証する。

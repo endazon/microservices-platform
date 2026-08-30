@@ -151,6 +151,14 @@ kubectl create namespace "$MSP_NS" --dry-run=client -o yaml | kubectl apply -f -
 if [ "${ESO:-}" != "1" ]; then
   apply_secret "$MSP_NS" minio-oidc "client-secret=${MINIO_OIDC_CLIENT_SECRET:-minio-dev-secret-change-me}"
 fi
+# NFR, SC-13, ADR-0026/ADR-0032, IADR-0251/IADR-0273/IADR-0316 (#1107): BFF セッション（Token Handler）の
+# client secret。helm の deployment.yaml が **非 optional** な secretKeyRef（services.bff.session.existingSecret）で
+# 参照するため、これが無いと bff-service Pod は起動できない（注入漏れが「空 secret で起動して login だけ 500」へ
+# 倒れない）。dev 既定は realm import の置き場と同値 —— **ズレると Keycloak の PAR 端点が 401 を返し、
+# `GET /bff/auth/login` が 500 になる**。ESO=1 のときは Vault→ExternalSecret 供給へ委譲する（二重所有回避）。
+if [ "${ESO:-}" != "1" ]; then
+  apply_secret "$MSP_NS" bff-oidc "client-secret=${BFF_OIDC_CLIENT_SECRET:-bff-dev-secret-change-me}"
+fi
 # IADR-0097 (#310) PR-2: minio-credentials/wikijs-db/wikijs-sync は ESO=1 のとき Vault→ExternalSecret 供給へ委譲し
 # 手動 apply をスキップする（二重所有回避）。既定（ESO 未設定）は従来どおり手動 apply（バイト等価）。
 if [ "${ESO:-}" != "1" ]; then
@@ -209,10 +217,27 @@ if [ "${ISTIO:-}" = "1" ]; then
   kubectl label namespace "$MSP_NS" istio-injection=enabled --overwrite
   echo "    mTLS モード: ${ISTIO_MTLS_MODE:-PERMISSIVE}（STRICT へ移すには ISTIO_MTLS_MODE=STRICT で再実行）"
 fi
+# FR-02, FR-03, #992 案 2, IADR-0313: 決定的ローカル埋め込み（ティアA・プロセス内計算）。opt-in。
+#
+# 🔴 **文書を索引可能にするための最後の 1 ピースである。** SEARCHSEED=1 が本文つき文書を投入しても、
+#   埋め込みが得られなければ取り込みは Embedded=false のチャンクを索引しない（fail-closed）。
+#   索引に 1 点も入らないので `POST /bff/search` は「検索が壊れている」ときと同じ `200 ＋ 空` を返し、
+#   **壊れていても緑になる**（#992 / IADR-0255）。
+#
+# 🔴 **越境判定（機密区分 × ティア）は緩めていない。** 本経路は HTTP を行わずプロセス内で計算するため、
+#   ティアA（社外送信なし）の定義をそのまま満たす。confidential/restricted が外部へ出ないことは不変。
+#
+# 🔴 **使い捨てのスタック専用である。** 検索品質は保証されない（表層の文字 3-gram のみ）。
+#   残しておきたいクラスタに対して立てないこと。既定（未設定）は --set を 1 バイトも足さない。
+LOCALEMBED_ARGS=""
+if [ "${LOCALEMBED:-}" = "1" ]; then
+  echo "==> [opt-in] deterministic local embedding (tier A, in-process; 使い捨てスタック専用・#992)"
+  LOCALEMBED_ARGS="--set embedding.deterministicLocal.enabled=true"
+fi
 echo "==> [6/7] helm upgrade --install (values-local)"
-# shellcheck disable=SC2086  # ISTIO_MESH_ARGS は空か複数フラグ。意図的に分割する。
+# shellcheck disable=SC2086  # ISTIO_MESH_ARGS / LOCALEMBED_ARGS は空か複数フラグ。意図的に分割する。
 helm upgrade --install msp deploy/helm/microservices-platform \
-  -n "$MSP_NS" -f deploy/local/values-local.yaml $ISTIO_MESH_ARGS
+  -n "$MSP_NS" -f deploy/local/values-local.yaml $ISTIO_MESH_ARGS $LOCALEMBED_ARGS
 
 # #782: サイドカーは**既存 Pod には後から入らない**。注入ラベルを付けたあとに作り直す。
 # helm upgrade だけでは Pod テンプレートが変わらないサービスが残るため、明示的に restart する。
@@ -320,6 +345,9 @@ if [ "${ESO:-}" = "1" ]; then
   #  - vault-oidc: VAULT 前提（ESO=1 は VAULT 併用ガード下＝ここでは常に真）で常時
   #  - grafana-oidc / headlamp-oidc: 各機能（OBSERVABILITY / HEADLAMP）が有効なときだけ供給
   kubectl apply -f deploy/local/vault/eso/externalsecret-minio-oidc.yaml
+  # #1107: BFF セッションの client secret。手動 apply は上の `ESO != 1` ブロックでスキップされるので、
+  # **これが唯一の供給元**である（欠けると bff-service Pod が起動しない）。常時供給。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-bff-oidc.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-vault-oidc.yaml
   if [ "${OBSERVABILITY:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-grafana-oidc.yaml
@@ -334,14 +362,14 @@ if [ "${ESO:-}" = "1" ]; then
   kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-admin.yaml
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 7 本（#1022 で rabbitmq-app を追加し 6 → 7 へ数え直した）。infra ns は基盤 3 本＋vault-oidc 常時＋有効ゲートの grafana/headlamp-oidc。
+  # 誤解させない）。MSP ns は常時 8 本（#1022 で rabbitmq-app、#1107 で bff-oidc を追加し 6 → 7 → 8 へ数え直した）。infra ns は基盤 3 本＋vault-oidc 常時＋有効ゲートの grafana/headlamp-oidc。
   infra_es="postgres rabbitmq keycloak-admin vault-oidc"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
   echo "    ESO: llm/minio-credentials/postgres-app/rabbitmq-app/wikijs-db/wikijs-sync/minio-oidc（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
   echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc および有効ゲートの grafana/headlamp-oidc を"
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
-  echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc"
+  echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc"
   echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret $infra_es"
 
   # IADR-0103 (#354): env の `secretKeyRef` は **Pod 起動時に一度だけ解決され、その後の Secret 更新は

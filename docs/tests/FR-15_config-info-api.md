@@ -3,7 +3,7 @@ title: FR-15 構成情報 API（実効構成・ドリフト検出） テスト�
 type: test-spec
 status: draft
 created: 2026-07-08
-updated: 2026-08-23
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -53,8 +53,8 @@ issues: [#444]
 | 2c | 基準の健全性 | 宣言のパス設定ありで段 0 件なら起動失敗（＋対照 2 件） | `Platform.Shared.Infrastructure.Tests/Foundation/Introspection/ConfigInspectionDeclarationGuardTests` |
 | 2d | 宣言の実効性 | 正の宣言の束縛・収集対象の網羅・無効化がイベント接続へ届く | `Platform.Shared.Infrastructure.Tests/Foundation/Pipeline/PipelineDeclarationEffectivenessTests` |
 | 2e | ポート差し替え | 構成でポート実装が入れ替わり、段登録・実効構成は不変 | `Platform.Shared.Infrastructure.Tests/Foundation/Pipeline/PortSwapCompositionTests` |
-| 3 | ポリシー | ConfigViewer の OR 判定・AdminOnly 非侵食 | `AuthorizationService.Api.Tests/ConfigViewerPolicyTests` |
-| 4 | ロール展開 | realm_access.roles → Role クレーム変換 | `AuthorizationService.Api.Tests/KeycloakRolesClaimsTransformationTests` |
+| 3 | ポリシー | ConfigViewer の OR 判定・AdminOnly 非侵食 | `AuthorizationService.Tests/ConfigViewerPolicyTests` |
+| 4 | ロール展開 | realm_access.roles → Role クレーム変換 | `AuthorizationService.Tests/KeycloakRolesClaimsTransformationTests` |
 | 5 | E2E（手動） | compose 実環境で operator=200 / 一般・無認証=404、実効構成の集約を確認 | Issue #118 監査で実測済み（poc-operator） |
 
 ## 合否判定

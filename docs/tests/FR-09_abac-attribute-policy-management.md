@@ -3,7 +3,7 @@ title: 文書属性・タグ／ABAC ポリシー管理 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-07-02
-updated: 2026-08-21
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -91,7 +91,7 @@ issues: [#634, #635]
 
 ## ポリシーの dry-run 検証（#535 / 裁定 Q23）
 
-**実装は `AuthorizationService.Api.Tests/PolicyDryRunValidationTests.cs`（5 件）と
+**実装は `AuthorizationService.Tests/PolicyDryRunValidationTests.cs`（5 件）と
 `Platform.Bff.Tests/BffAuthzEndpointTests.cs`（2 件）。**
 
 | # | 確かめること | 実装 |
@@ -132,7 +132,7 @@ issues: [#634, #635]
 
 ## タグの識別子保持・改名・削除
 
-**実装は `DocumentService.Api.Tests/TagIdentityTests.cs`。**
+**実装は `DocumentService.Tests/TagIdentityTests.cs`。**
 
 | # | 確かめること | 実装 |
 | --- | --- | --- |
@@ -154,7 +154,7 @@ issues: [#634, #635]
 
 **実装は `Knowledge.IntegrationTests/DocumentService/TagIdentityMigrationTests.cs`（`[DockerFact]`）。**
 
-**単体テストでは 1 行も走らない** —— `DocumentService.Api.Tests` は EF InMemory を使っており、
+**単体テストでは 1 行も走らない** —— `DocumentService.Tests` は EF InMemory を使っており、
 **InMemory プロバイダはマイグレーションの SQL を実行しない**
 （#634 の一意インデックスが InMemory で強制されないのと同じ型の限界である）。
 

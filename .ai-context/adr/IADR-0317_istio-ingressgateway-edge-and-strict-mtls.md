@@ -1,5 +1,5 @@
 ---
-title: IADR-0312 経路B のエッジを Istio Ingress Gateway へ移し、East-West mTLS を STRICT にする
+title: IADR-0317 経路B のエッジを Istio Ingress Gateway へ移し、East-West mTLS を STRICT にする
 type: impl-adr
 status: Accepted
 related_ids:
@@ -23,7 +23,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md
 ---
 
-# IADR-0312: エッジの Istio Ingress Gateway 化と STRICT mTLS（#782 残段）
+# IADR-0317: エッジの Istio Ingress Gateway 化と STRICT mTLS（#782 残段）
 
 - 状態: Accepted
 - 日付: 2026-08-30

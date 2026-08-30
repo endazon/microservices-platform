@@ -567,51 +567,26 @@ export default tseslint.config(
       ],
     },
   },
-  // ADR-0031 / IADR-0125 決定 6: 13_frontend-stack §採用技術一覧 の Linter 欄
-  // 「Storybook / Lingui のプラグインを併用」に従う。
+  // ADR-0031 / IADR-0125 決定 6 / IADR-0312 / issue #1078: 13_frontend-stack §採用技術一覧 の
+  // Linter 欄「Storybook / Lingui のプラグインを併用」に従う。
   //
-  // **Lingui 規則の適用先は i18n 化済みのファイルに限る。** 残る画面（SC-04〜11）は
-  // #452 の残り分割が作り直すため文言を触っておらず（IADR-0125 決定 6）、いま規則を及ぼすと
-  // 「その issue では直さないと決めた箇所」の error が数百件出る。
-  // **#502 で SC-01〜03 を再実装したため、その 3 feature を適用範囲へ加えた**
-  // （#496 §親への申し送り「`eslint-plugin-lingui` の適用範囲の拡大」の引き受け）。
-  // 画面を作り直すたびにこの files を伸ばす——「i18n 化したのに検査されない」状態を残さないためである。
+  // 🔴 **ここを許可リストにしない。** 従前この `files` は「i18n 化済みのファイル」を 19 行で列挙し、
+  // **画面を作るたびに人が伸ばす**運用だった（IADR-0125 決定 6 が SC-04〜11 の i18n 化を #452 へ
+  // 繰り延べた当時は、規則を及ぼすと数百件の error が出たため合理的だった）。
+  // **その繰り延べは消化済みであり、許可リストだけが残って穴になった。**
+  //
+  // 実測（2026-08-30 / #1078）: 列挙は **19 ファイルの i18n 済みコードを取りこぼしており**、
+  // 少なくとも **4 つの独立した PR**（#1009 / #1021 / #1045 / #1065）で伸ばし忘れが develop へ入っていた。
+  // ADR-0066 §理由 はこの運用を名指しで「許可リストの保守が人に戻り、伸ばし忘れが規則の穴になる」と
+  // 述べている。**穴は検知するのではなく消す** ——列挙を撤去し、範囲をユニット全体で表す。
+  // **画面・feature・共有ディレクトリを足しても、このファイルは触らなくてよい。**
+  //
+  // 範囲は `lingui.config.ts` の `catalogs[].include`（カタログ抽出範囲）と**同一**である。
+  // 従前は抽出のほうが広く lint だけが狭かった——その不一致が #1078 の実体だった。**両者をずらさない。**
   {
-    files: [
-      // ［2026-08-30 / ADR-0067 決定 2］**i18n の実行時部分が `app/i18n/` → `lib/i18n/` へ移った。**
-      'platform/frontend/src/lib/i18n/**/*.{ts,tsx}',
-      'platform/frontend/src/components/ui/**/*.{ts,tsx}',
-      // ［2026-08-30 / ADR-0067 決定 6］**共通シェル（`Layout`）が `components/ui/` → `app/` へ移った。**
-      // この行を足さないと、i18n 化済みのシェルが**静かに検査されなくなる**（上の
-      // `components/ui/**` はもう当たらない）。
-      'platform/frontend/src/app/Layout.tsx',
-      // #788（移行第 4 段）: 右レール AI チャットパネル。共通シェルに載る文言なので、
-      // components/ui（旧 foundation/ui）と同じ規則の下に置く。
-      'platform/frontend/src/components/ai-chat/**/*.{ts,tsx}',
-      'platform/frontend/src/lib/auth/**/*.{ts,tsx}',
-      'platform/frontend/src/app/routing/nav.ts',
-      'knowledge/frontend/src/features/sc01-search/**/*.{ts,tsx}',
-      'knowledge/frontend/src/features/sc02-results/**/*.{ts,tsx}',
-      'knowledge/frontend/src/features/sc03-document/**/*.{ts,tsx}',
-      // #503 で SC-05〜08 を再実装したため適用範囲へ加えた。`abac/` は SC-05 / SC-06 が共有する
-      // 語彙（機密区分の値集合）であり、同じ規則の下に置く。
-      // ［2026-08-30 / #1065］**置き場所が `features/abac/` → `lib/abac/` へ移った**
-      // （ADR-0066 決定 1: 2 画面が共有する語彙は feature ではない）。この行を追随させないと、
-      // i18n 化済みのファイルが**静かに検査されなくなる**。
-      'knowledge/frontend/src/lib/abac/**/*.{ts,tsx}',
-      'knowledge/frontend/src/features/sc05-documents/**/*.{ts,tsx}',
-      'knowledge/frontend/src/features/sc06-datasources/**/*.{ts,tsx}',
-      'knowledge/frontend/src/features/sc07-conversions/**/*.{ts,tsx}',
-      'knowledge/frontend/src/features/sc08-analysis/**/*.{ts,tsx}',
-      // #504 で SC-09〜11 を再実装したため適用範囲へ加えた（画面を作り直すたびに files を伸ばす運用）。
-      'knowledge/frontend/src/features/sc09-admin-abac/**/*.{ts,tsx}',
-      'knowledge/frontend/src/features/sc10-operations/**/*.{ts,tsx}',
-      'knowledge/frontend/src/features/sc11-config/**/*.{ts,tsx}',
-      // #452 で SC-12 を新規実装したため適用範囲へ加えた（画面を作るたびに files を伸ばす運用）。
-      'knowledge/frontend/src/features/sc12-mcp-clients/**/*.{ts,tsx}',
-      // #452 で SC-17 を新規実装したため適用範囲へ加えた（画面を作るたびに files を伸ばす運用）。
-      'knowledge/frontend/src/features/sc17-users/**/*.{ts,tsx}',
-    ],
+    files: ['platform/frontend/src/**/*.{ts,tsx}', 'knowledge/frontend/src/**/*.{ts,tsx}'],
+    // 生成物（orval / lingui compile）は全体の `ignores` が既に外している（本ファイル冒頭）。
+    // ここで外すのはテストだけである——テストコードの文字列は UI に出ない。
     ignores: ['**/*.{test,spec}.{ts,tsx}', '**/locales/**'],
     plugins: { lingui },
     rules: {
@@ -630,7 +605,13 @@ export default tseslint.config(
           // **残る限界**: 空白を含まない ASCII トークン（`Docs` 等）は素通りする。識別子・列挙値・
           // ルート ID・クラス名の断片と区別できないためで、これは意図的に残す
           // （厳しくすると誤検出が実用の域を超え、規則ごと無効化される方が高くつく）。
-          ignore: ['^[a-z0-9-]+$', '^[A-Za-z0-9_./:#$?&=@%+-]*$'],
+          //
+          // ［2026-08-30 / #1078］**HTML のタグと実体参照だけで出来た文字列は markup であって文言ではない。**
+          // 適用範囲をユニット全体へ広げた際、`escapeHtml` の置換先（`&amp;` `&lt;` …）と
+          // ECharts の tooltip formatter が組む断片（`<br/>` `</b><br/>`）が拾われた。
+          // **語を 1 つも含まない文字列**しか当たらないため、未国際化の文言を隠すことはない
+          // （`<b>Save</b>` のように語を含めば当たらず、従来どおり error になる）。
+          ignore: ['^[a-z0-9-]+$', '^[A-Za-z0-9_./:#$?&=@%+-]*$', '^(?:<[^>]*>|&[a-z]+;)+$'],
           ignoreNames: [
             {
               regex: { pattern: '^(className|id|role|to|from|href|src|type|name|key|scope|path)$' },

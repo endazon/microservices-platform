@@ -13,7 +13,7 @@
 > 計画 `ADR-0021` は「入口＝Istio Ingress Gateway・k3s 同梱 Traefik は無効化」と定めており、
 > 経路B ではそれを [`../edge-istio/`](../edge-istio/) が実装する（`ISTIO=1` かつ `LOCALEDGE=1` のときだけ有効）。
 > **`ISTIO` 未設定なら本オーバーレイの挙動は 1 バイトも変わらない。**
-> 判断と実測は [IADR-0312](../../../.ai-context/adr/IADR-0312_istio-ingressgateway-edge-and-strict-mtls.md)。
+> 判断と実測は [IADR-0317](../../../.ai-context/adr/IADR-0317_istio-ingressgateway-edge-and-strict-mtls.md)。
 
 ## 構成
 

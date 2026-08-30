@@ -60,8 +60,10 @@ src/
 > 移送の記録と踏んだ罠は [`20260828_wave45-vsa-migration.md`](../.ai-context/specs/20260828_wave45-vsa-migration.md)、
 > `Worker/` 中間層の撤去は [`20260830_issue-1061_remove-worker-layer.md`](../.ai-context/specs/20260830_issue-1061_remove-worker-layer.md)。
 >
-> 🔴 **`Foundation/` そのものが消えたわけではない。** ユニット共有プロジェクト
-> （`Shared/Platform.Shared.Infrastructure`）では**今も現役**である（2026-08-30 実測で 48 ファイル）。
+> 🔴 **`Foundation/` そのものが消えたわけではない。** ユニット共有プロジェクトでは**今も現役**である
+> —— 2026-08-30 実測で **60 ファイル**（`Shared/Platform.Shared.Infrastructure` 28 ／
+> `Shared/Platform.Shared.Infrastructure.Tests` 20 ／ `Bff/Platform.Bff` 12）。
+> **`Bff/Platform.Bff/Foundation/` を数え落とさないこと。**
 > 消えたのは**サービスの層プロジェクト内の第 1 階層フォルダとしての区分**であって、
 > 固定/可変の分類そのもの（[IADR-0027](../.ai-context/adr/IADR-0027_composability-folder-structure.md)・
 > [固定/可変区分表](../docs/tech/composability-classification.md)）ではない。
@@ -100,10 +102,16 @@ Common/・Tests/ のフォルダ**で分ける。8 要素の実プロジェク�
 
 ## 依存規則
 
-1. **`Foundation/` は `Composable/` に依存しない**。可変実装へのアクセスは必ず
-   `Foundation/Ports/` の抽象を介し、実装の選択・束ねは `Program.cs`（合成ルート）で行う。
-   （`Foundation/` 配下に `using *.Composable.*` が現れたら規約違反。）
-2. **`Composable/Steps/` の段どうしは直接参照しない**。段間の連携はイベント経由のみとする。
+1. **固定は可変に依存しない**。可変実装へのアクセスは必ずポート抽象を介し、実装の選択・束ねは
+   `Program.cs`（合成ルート）で行う。区分を表すフォルダ名は置き場で異なる:
+   - **共有基盤プロジェクト**（`platform/backend/Shared/Platform.Shared.Infrastructure` ・
+     `platform/backend/Bff/Platform.Bff`）では `Foundation/` / `Composable/` を用いる。
+     **`Foundation/` 配下に `using *.Composable.*` が現れたら規約違反**であり、
+     `scripts/check-unit-dependencies.js` が走査する。
+   - **サービス**（`Services/<Name>/`）では `Domain/` が固定側で、ポートは `Domain/Ports/` に置く。
+     可変側は段が `Features/<集約>/<操作>/`、外部アダプタが `Infrastructure/ExternalServices/` である。
+     `Domain/` は `Features/` / `Infrastructure/` / `Common.Behaviors` を using しない。
+2. **段どうしは直接参照しない**。段間の連携はイベント経由のみとする。
    イベント契約はそのユニットの契約プロジェクト `<unit>/backend/Shared/<Unit>.Contracts/Events/`
    に置く（knowledge ユニットは `knowledge/backend/Shared/Knowledge.Contracts/Events/`。
    platform 横断の共通契約は `platform/backend/Shared/Platform.Shared.Contracts/`。IADR-0059）。

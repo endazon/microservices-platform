@@ -132,7 +132,7 @@ services:
         condition: service_healthy
 
   qdrant:
-    image: qdrant/qdrant:v1.9.2
+    image: qdrant/qdrant:v1.18.1
     ports:
       - "6333:6333"
       - "6334:6334"
@@ -684,6 +684,18 @@ services:
     environment:
       <<: *common-env
       Redis__ConnectionString: redis:6379
+      # NFR, SC-13, ADR-0026/ADR-0032, IADR-0251/IADR-0273, #1107: BFF セッション（Token Handler）。
+      # 🔴 これが無いと `BffSessionOptions.ClientSecret` が空のままになり、BFF はコンフィデンシャル
+      # クライアントとして認証できず **`GET /bff/auth/login` が 500** で落ちる（PAR 端点が 401 を返す）。
+      # 値は realm の `bff` クライアントの secret と一致させること（realm import の dev 既定と同値）。
+      # 実値は .env の BFF_OIDC_CLIENT_SECRET で上書きする（コミットしない。他の dev 既定と同じ扱い）。
+      BffSession__ClientId: bff
+      BffSession__ClientSecret: ${BFF_OIDC_CLIENT_SECRET:-bff-dev-secret-change-me}
+      # metadata は in-cluster の http から引く（Auth__Authority と同じ発行元）。ブラウザ向けの
+      # 認可端点は Keycloak が KC_HOSTNAME_URL から描くため、ここを in-cluster にしても browser 到達は壊れない。
+      BffSession__MetadataAddress: http://keycloak:8080/realms/platform/.well-known/openid-configuration
+      # RequireHttpsMetadata / RedisConnectionString / CookieName / SessionLifetimeSeconds は
+      # コード既定のままにする（既定が compose の実態および realm と一致する。IADR-0316）。
       # FR-15, IADR-0029, #146: 宣言（正の pipeline.json）を BFF にマウントし、ドリフト検出の突合基準にする。
       # これが無いと BFF の宣言が空になり、実効の全購読が UndeclaredSubscription と誤判定される（#118 監査）。
       Pipeline__ConfigPath: /etc/microservices-platform/pipeline/pipeline.json

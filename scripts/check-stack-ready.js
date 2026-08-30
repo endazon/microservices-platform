@@ -37,7 +37,7 @@
  *   **走査して**得る（列挙を書かない）。
  * - **G5 admin entrypoint**: **どちらかのエッジ**の Service に `50000` の port が在ること
  *   （既定は `kube-system/traefik` の `admin=50000`。`ISTIO=1` では `istio-system/istio-ingressgateway`
- *   の `https-admin=50000`。#782 / [IADR-0312] で Traefik は Service ごと降りるため、
+ *   の `https-admin=50000`。#782 / [IADR-0317] で Traefik は Service ごと降りるため、
  *   **Traefik だけを見ると Istio エッジで必ず落ちる**）。
  *   🔴 **これは飾りではない。** k3s v1.30.4 が同梱する traefik chart 25.0.3 では
  *   `deploy/local/edge/traefik-entrypoint.yaml` の `expose: {default: true}`（map 形式・chart 26 以降）が
@@ -74,7 +74,7 @@ const TRAEFIK_SVC = 'traefik';
 const ADMIN_PORT_NAME = 'admin';
 const ADMIN_PORT = 50000;
 
-/** #782 / [IADR-0312]: `ISTIO=1` のとき 3 ポートを持つのは Traefik ではなくこちらである。 */
+/** #782 / [IADR-0317]: `ISTIO=1` のとき 3 ポートを持つのは Traefik ではなくこちらである。 */
 const ISTIO_GW_NS = 'istio-system';
 const ISTIO_GW_SVC = 'istio-ingressgateway';
 
@@ -205,7 +205,7 @@ function servesAdminPort(svc) {
 /**
  * G5: admin(50000) の entrypoint が**どちらかのエッジ**に在るか。
  *
- * 🔴 **エッジは 2 通りある**（#782 / [IADR-0312]）。既定は Traefik（`kube-system/traefik`）だが、
+ * 🔴 **エッジは 2 通りある**（#782 / [IADR-0317]）。既定は Traefik（`kube-system/traefik`）だが、
  * `ISTIO=1` かつ `LOCALEDGE=1` では **Traefik の Service を落として** `istio-ingressgateway` が
  * 3 ポートすべてを持つ（k3s の ServiceLB は同じ hostPort を 2 つの Service に持たせられない）。
  * **Traefik だけを見ると Istio エッジで必ず失敗する。**

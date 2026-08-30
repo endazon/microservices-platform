@@ -9,7 +9,7 @@ related_ids:
   - IADR-0077
   - IADR-0087
   - IADR-0206
-  - IADR-0312
+  - IADR-0317
 author: claude
 created: 2026-07-20
 updated: 2026-08-30
@@ -41,7 +41,7 @@ prod は Istio エッジだがローカルは Istio 未導入。k3s は Traefik 
 ### 1. ローカルエッジは k3s 内蔵 Traefik で構成する（Istio は持ち込まない）
 
 > **［2026-08-30 追記 / #782］本決定 1 は `ISTIO=1` の経路に限って
-> [IADR-0312](./IADR-0312_istio-ingressgateway-edge-and-strict-mtls.md) が Supersede した。**
+> [IADR-0317](./IADR-0317_istio-ingressgateway-edge-and-strict-mtls.md) が Supersede した。**
 > **既定（`ISTIO` 未設定）では本決定はそのまま有効である** —— エッジは従来どおり k3s 内蔵 Traefik で、
 > 挙動は 1 バイトも変わらない。
 >

@@ -33,7 +33,8 @@
 
 ## 新しい段（プラグイン）の追加
 
-1. 対象サービスの `Composable/Steps/` に `IConsumer<TIn>` ＋ `IPipelineStep` を実装する（コア改修不要）
+1. 対象サービスの `Features/<集約>/<操作>/` に `IConsumer<TIn>` ＋ `IPipelineStep` を実装する
+   （コア改修不要。`*Consumer.cs`。旧 `Composable/Steps/` は単一プロジェクト構成への移送で無くなった）
 2. `Program.cs` の合成ルートに `AddPlatformPipelineStep<T>(pipeline)` を 1 行追加する
 3. `pipeline.json` に段を宣言する（イベント型は `events` に列挙されていること）
 
