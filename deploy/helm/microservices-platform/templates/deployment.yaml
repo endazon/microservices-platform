@@ -145,7 +145,7 @@ spec:
             - name: Embedding__Routing__Endpoints__1__Enabled
               value: "true"
           {{- end }}
-          {{- /* FR-02, FR-03, ADR-0016, IADR-0284, IADR-0311 (#992 案 2): 決定的ローカル埋め込み。
+          {{- /* FR-02, FR-03, ADR-0016, IADR-0284, IADR-0313 (#992 案 2): 決定的ローカル埋め込み。
                  🔴 **使い捨ての検証スタック専用**（意味は values.yaml の embedding.deterministicLocal）。
                  埋め込みの鍵が無いスタックでも索引に点が入り「検索が実際に効くこと」を観測できる。
                  越境判定（機密区分 × ティア）は緩めていない —— 本経路は HTTP を行わない（ティアA）。
@@ -153,7 +153,7 @@ spec:
                  検索が静かに 0 件になる（「壊れている」と「該当が無い」がまた区別できなくなる）。 */}}
           {{- $det := $.Values.embedding.deterministicLocal | default dict }}
           {{- if and $det.enabled (has $name (list "llmgateway" "ingestion" "retrieval")) }}
-            # IADR-0311 (#992): 決定的ローカル埋め込み（ティアA・プロセス内計算）。使い捨てスタック専用。
+            # IADR-0313 (#992): 決定的ローカル埋め込み（ティアA・プロセス内計算）。使い捨てスタック専用。
           {{- if eq $name "llmgateway" }}
             # ⚠️ Endpoints__2 は LlmGateway の appsettings.json の Embedding:Routing:Endpoints 配列で
             # deterministic-local が index 2（voyage=0 / selfhosted=1）である前提。取り違えは起動時の

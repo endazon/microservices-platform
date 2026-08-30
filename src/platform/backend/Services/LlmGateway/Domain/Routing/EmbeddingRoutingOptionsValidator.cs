@@ -12,7 +12,7 @@ public sealed class EmbeddingRoutingOptionsValidator : IValidateOptions<Embeddin
 {
     // Tier ごとに置けるプロバイダキー（keyed DI）。ティアとプロバイダの取り違え（並び替え・誤設定）を検知する。
     //
-    // 🔴 #992 / [[IADR-0311]]: ティアA は **1 対多** である。ティアA の定義は「社外送信なし」であって
+    // 🔴 #992 / [[IADR-0313]]: ティアA は **1 対多** である。ティアA の定義は「社外送信なし」であって
     // 「特定の 1 実装」ではない。`deterministic-embedding` は HTTP を一切行わない（プロセス内計算）ので
     // 定義を満たす。**ティアB は依然 1 対 1** で、`voyage` 以外を置けない ——
     // 取り違えで本文が外部へ出る向きの誤りは、ここで止め続ける。

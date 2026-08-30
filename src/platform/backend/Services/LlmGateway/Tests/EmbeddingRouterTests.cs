@@ -85,7 +85,7 @@ public class EmbeddingRouterTests
         decision.Dimensions.Should().Be(1024);
     }
 
-    // FR-02, FR-03, #992 案 2, [[IADR-0311]]: 決定的ローカル埋め込み（ティアA・Priority=5）を足した構成。
+    // FR-02, FR-03, #992 案 2, [[IADR-0313]]: 決定的ローカル埋め込み（ティアA・Priority=5）を足した構成。
     // 🔴 **越境判定（EmbeddingEgress / Route）は 1 バイトも変えていない。** 変わるのは
     //   「ティアA に置ける実装が増えた」ことだけである。ここではその帰結を固定する。
     private static EmbeddingRouter BuildWithDeterministic()

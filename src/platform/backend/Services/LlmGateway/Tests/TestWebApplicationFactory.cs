@@ -37,7 +37,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.RemoveAll<IEmbeddingProvider>();
             services.AddKeyedSingleton<IEmbeddingProvider, StubEmbeddingProvider>("voyage");
             services.AddKeyedSingleton<IEmbeddingProvider, StubEmbeddingProvider>("selfhosted-embedding");
-            // #992, [[IADR-0311]]: 決定的ローカル埋め込みは**外部依存が無い**（プロセス内計算）ので
+            // #992, [[IADR-0313]]: 決定的ローカル埋め込みは**外部依存が無い**（プロセス内計算）ので
             // スタブへ差し替えない。差し替えると「本物が動くこと」をここでは一切確かめられなくなる。
             services.AddKeyedSingleton<IEmbeddingProvider, DeterministicEmbeddingProvider>("deterministic-embedding");
         });

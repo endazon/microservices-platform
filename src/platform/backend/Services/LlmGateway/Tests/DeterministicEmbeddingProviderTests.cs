@@ -4,7 +4,7 @@ using LlmGateway.Infrastructure.ExternalServices;
 
 namespace LlmGateway.Tests;
 
-// FR-02, FR-03, ADR-0016, #992 案 2, [[IADR-0311]]: 決定的ローカル埋め込み。
+// FR-02, FR-03, ADR-0016, #992 案 2, [[IADR-0313]]: 決定的ローカル埋め込み。
 //
 // 🔴 このプロバイダの存在理由は**統合スタックで「検索が実際に効くこと」を観測できるようにする**ことである。
 // したがって「同じ本文なら常に同じベクトル」「ルーターの決定と同じ次元」「Cosine 空間で扱える

@@ -77,7 +77,7 @@ public class EmbeddingRoutingOptionsValidatorTests
         Validate(bad, SelfHosted()).Succeeded.Should().BeFalse();
     }
 
-    // FR-02, #992, [[IADR-0311]]: 決定的ローカル埋め込み（ティアA・プロセス内計算・既定無効）。
+    // FR-02, #992, [[IADR-0313]]: 決定的ローカル埋め込み（ティアA・プロセス内計算・既定無効）。
     private static EmbeddingEndpointOptions Deterministic(bool enabled = false) => new()
     {
         Name = "deterministic-local",

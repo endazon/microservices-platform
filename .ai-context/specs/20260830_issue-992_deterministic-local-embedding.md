@@ -19,7 +19,7 @@ related_ids:
   - IADR-0255
   - IADR-0256
   - IADR-0284
-  - IADR-0311
+  - IADR-0313
 author: claude
 created: 2026-08-30
 updated: 2026-08-30
@@ -119,7 +119,7 @@ git grep -l -- "<語>" | grep -v "^src/ai-stock-trading"
 
 ## 決めたこと
 
-判断の記録は [IADR-0311](../adr/IADR-0311_deterministic-local-embedding-for-search-gate.md)。要点:
+判断の記録は [IADR-0313](../adr/IADR-0313_deterministic-local-embedding-for-search-gate.md)。要点:
 
 1. **穴 1（`200 ＋ 空` が 3 つの失敗と区別できない）は「検証の仕方」で塞ぐ。契約は変えない。**
    応答へ縮退の別を載せると存在秘匿（[[IADR-0009]]）が崩れ、`docs/api/openapi.yaml`（生成物）と

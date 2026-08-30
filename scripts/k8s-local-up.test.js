@@ -60,7 +60,7 @@ const OPTIN_TOKENS = [
   'deploy/local/vault/eso/', //        ESO (bootstrap/externalsecret, IADR-0096。配下のみが apply される)
   'seed-abac-policies.js', //          ABACSEED (ABAC 初期投入, IADR-0133)
   'seed-search-documents.js', //       SEARCHSEED (検索検証用文書の初期投入, IADR-0284)
-  'embedding.deterministicLocal.enabled', // LOCALEMBED (決定的ローカル埋め込み, IADR-0311)
+  'embedding.deterministicLocal.enabled', // LOCALEMBED (決定的ローカル埋め込み, IADR-0313)
   'cert-manager', //                   LOCALEDGE (エッジ TLS 終端, IADR-0206)
   'deploy/local/edge/tls', //          LOCALEDGE (TLS overlay, IADR-0206)
   'certificate/edge-tls', //           LOCALEDGE (証明書 Ready 待ち, IADR-0206)
@@ -2128,7 +2128,7 @@ ok('#780 第2段: metadataAddress と validIssuers が同じ realm パスを指�
 });
 
 
-// --- IADR-0311 (#992 案 2): 決定的ローカル埋め込み（LOCALEMBED=1） ------------------------
+// --- IADR-0313 (#992 案 2): 決定的ローカル埋め込み（LOCALEMBED=1） ------------------------
 //
 // 🔴 この配線が壊れると「検索の命中」を測る門（integration-stack.yml の SEARCH_HITS=1）が
 // **原理的に落ちる**。落ちたときに「検索が壊れた」と読まれると、本当の退行の捜索が余計に長くなる。
@@ -2167,7 +2167,7 @@ const LLM_APPSETTINGS = JSON.parse(
 const DET_ENDPOINT = LLM_APPSETTINGS.Embedding.Routing.Endpoints
   .find((e) => e.Provider === 'deterministic-embedding');
 
-ok('IADR-0311: 決定的エンドポイントは appsettings で既定無効・ティアA である', () => {
+ok('IADR-0313: 決定的エンドポイントは appsettings で既定無効・ティアA である', () => {
   assert.ok(DET_ENDPOINT, 'appsettings.json に deterministic-embedding のエンドポイントが無い');
   assert.strictEqual(DET_ENDPOINT.Enabled, false,
     '既定で有効になっている（本番へ紛れ込むと検索品質が無言で落ちる）');
@@ -2175,7 +2175,7 @@ ok('IADR-0311: 決定的エンドポイントは appsettings で既定無効・�
     'ティアA 以外に置かれている（社外送信なしという性質と食い違う）');
 });
 
-ok('IADR-0311: 配列 index が 2 である（チャートの Endpoints__2 上書きが指す先）', () => {
+ok('IADR-0313: 配列 index が 2 である（チャートの Endpoints__2 上書きが指す先）', () => {
   const idx = LLM_APPSETTINGS.Embedding.Routing.Endpoints.indexOf(DET_ENDPOINT);
   assert.strictEqual(idx, 2,
     `deterministic-local の index が ${idx}（チャートは Endpoints__2 を上書きする）。` +
@@ -2183,7 +2183,7 @@ ok('IADR-0311: 配列 index が 2 である（チャートの Endpoints__2 上�
   );
 });
 
-ok('IADR-0311: チャートのコレクション名・次元が appsettings と一致する', () => {
+ok('IADR-0313: チャートのコレクション名・次元が appsettings と一致する', () => {
   const collection = (/^\s{4}collection:\s*(\S+)\s*$/m.exec(CHART_VALUES) || [])[1];
   const dimensions = (/^\s{4}dimensions:\s*(\d+)\s*$/m.exec(CHART_VALUES) || [])[1];
   assert.strictEqual(collection, DET_ENDPOINT.Collection,
@@ -2192,7 +2192,7 @@ ok('IADR-0311: チャートのコレクション名・次元が appsettings と�
     'values.yaml の dimensions が appsettings と食い違う（次元不整合で索引が fail-closed する）');
 });
 
-ok('IADR-0311: 3 サービス（llmgateway / ingestion / retrieval）が揃って配線されている', () => {
+ok('IADR-0313: 3 サービス（llmgateway / ingestion / retrieval）が揃って配線されている', () => {
   // 1 つでも欠けると「索引はされるが検索は別のコレクションを見る」＝ 0 件で静かに落ちる。
   const block = CHART_DEPLOYMENT.slice(
     CHART_DEPLOYMENT.indexOf('$det := $.Values.embedding.deterministicLocal'));
@@ -2208,7 +2208,7 @@ ok('IADR-0311: 3 サービス（llmgateway / ingestion / retrieval）が揃っ�
   }
 });
 
-ok('IADR-0311: 既定 values は enabled: false（本番像は現状維持）', () => {
+ok('IADR-0313: 既定 values は enabled: false（本番像は現状維持）', () => {
   const at = CHART_VALUES.indexOf('deterministicLocal:');
   assert.ok(at !== -1, 'values.yaml に deterministicLocal が無い');
   assert.match(CHART_VALUES.slice(at, at + 200), /enabled:\s*false/,

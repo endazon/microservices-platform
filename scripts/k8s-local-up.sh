@@ -209,7 +209,7 @@ if [ "${ISTIO:-}" = "1" ]; then
   kubectl label namespace "$MSP_NS" istio-injection=enabled --overwrite
   echo "    mTLS モード: ${ISTIO_MTLS_MODE:-PERMISSIVE}（STRICT へ移すには ISTIO_MTLS_MODE=STRICT で再実行）"
 fi
-# FR-02, FR-03, #992 案 2, IADR-0311: 決定的ローカル埋め込み（ティアA・プロセス内計算）。opt-in。
+# FR-02, FR-03, #992 案 2, IADR-0313: 決定的ローカル埋め込み（ティアA・プロセス内計算）。opt-in。
 #
 # 🔴 **文書を索引可能にするための最後の 1 ピースである。** SEARCHSEED=1 が本文つき文書を投入しても、
 #   埋め込みが得られなければ取り込みは Embedded=false のチャンクを索引しない（fail-closed）。

@@ -4,7 +4,7 @@ using System.Text;
 
 namespace LlmGateway.Infrastructure.ExternalServices;
 
-// FR-02, FR-03, ADR-0016, ADR-0017, #992 案 2, [[IADR-0311]]:
+// FR-02, FR-03, ADR-0016, ADR-0017, #992 案 2, [[IADR-0313]]:
 // **決定的なローカル埋め込み**（ティアA＝社外送信なし。使い捨て統合スタック専用）。
 //
 // ■ なぜ在るのか
