@@ -28,10 +28,10 @@
     // src/vitest.config.ts の resolve.alias にも置く（3 箇所とも要る。片方だけだと
     // 「型検査は通るがビルド／テストだけ壊れる」形になる）。
     "paths": {
-      "@foundation/config/*": ["src/app/config/*"],
-      "@foundation/config": ["src/app/config"],
-      "@foundation/i18n/*": ["src/app/i18n/*"],
-      "@foundation/i18n": ["src/app/i18n"],
+      "@foundation/config/*": ["src/config/*"],
+      "@foundation/config": ["src/config"],
+      "@foundation/i18n/*": ["src/lib/i18n/*"],
+      "@foundation/i18n": ["src/lib/i18n"],
       "@foundation/routing/*": ["src/app/routing/*"],
       "@foundation/routing": ["src/app/routing"],
       "@foundation/api/*": ["src/lib/api/*"],

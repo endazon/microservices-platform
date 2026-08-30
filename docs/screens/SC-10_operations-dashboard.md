@@ -3,7 +3,7 @@ title: 運用ダッシュボード 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-29
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -103,7 +103,7 @@ SLO・利用状況・コストの運用 KPI を一覧し、**専用ツール（G
 | 14 | 「**構成ビューア →**」（445） | **する** | `/admin/config-viewer`への内部リンク。**権限で出し分けない**（管理画面 3 種の再実装・決定 4） |
 | 15 | 注記「運用面は専用ツールで提供: Grafana（メトリクス・コスト）・Kiali（メッシュ）・Jaeger/Tempo（トレース）…」（447） | **する** | `Alert`（`info`） |
 | 16 | **共通シェル**: 右レール「AIチャットパネル」（449-454） | **しない** | 移行**第 4 段**（SPA 新スタック移行の決定 1・5） |
-| 17 | **共通シェル**: パンくず（413。`ホーム / 運用 / ダッシュボード`）・ブランド／ロールバッジ／アバター（412）・左ナビ（414） | — | **対象外（本画面の作業ではない）。** パンくずと画面グループのバッジ（**#446 で実装した**。グループ段は「運用」）も他も `foundation/ui/Layout` が持つ |
+| 17 | **共通シェル**: パンくず（413。`ホーム / 運用 / ダッシュボード`）・ブランド／ロールバッジ／アバター（412）・左ナビ（414） | — | **対象外（本画面の作業ではない）。** パンくずと画面グループのバッジ（**#446 で実装した**。グループ段は「運用」）も他も `app/Layout` が持つ |
 
 **対応表の行数は 17 行**（数え方は**行数**であって要素名ではない）。内訳は
 **する 6 行**（#1・#11〜#15）／**一部する 2 行**（#2・#4）／
@@ -321,7 +321,7 @@ flowchart LR
 - BFF: `src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/DashboardBffEndpoints.cs`
 - フロント: `src/knowledge/frontend/src/features/sc10-operations/`
   （`index.tsx` / `OperationsDashboardPage.tsx` / `useDashboardSummary.ts` / `opsTools.ts`）
-- 実行時 config: `src/platform/frontend/src/app/config/runtimeConfig.ts`（`OpsLinks`）
+- 実行時 config: `src/platform/frontend/src/config/runtimeConfig.ts`（`OpsLinks`）
 - テスト観点は [tests/SC-10_operations-dashboard.md](../tests/SC-10_operations-dashboard.md)。
 
 ## 未決事項

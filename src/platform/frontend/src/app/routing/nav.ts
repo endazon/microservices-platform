@@ -36,7 +36,7 @@ export const PLAN_NAV_GROUP_MESSAGES: Record<NavGroup, MessageDescriptor> = {
 /**
  * 描画用に解決済みのナビ項目（#502）。
  *
- * `NavItem.label` は `string | MessageDescriptor` だが、共通シェル（`foundation/ui/Layout`）へは
+ * `NavItem.label` は `string | MessageDescriptor` だが、共通シェル（`app/Layout`）へは
  * **解決済みの文字列**だけを渡す。分岐を描画側へ持ち出すと、i18n の解決点が 2 か所になり、
  * 「片方だけ翻訳される」形の欠陥を作れてしまう。
  */
