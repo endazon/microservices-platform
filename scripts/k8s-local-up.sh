@@ -176,9 +176,52 @@ if [ "${ESO:-}" != "1" ]; then
     "anthropic-api-key=${ANTHROPIC_API_KEY:-}" "openai-api-key=${OPENAI_API_KEY:-}"
 fi
 
+# ADR-0005, #782: サービスメッシュ（Istio）。opt-in（既定オフ・fail-safe）。
+#
+# 🔴 **[6/7] より前に置く。** アプリチャートは PeerAuthentication / DestinationRule を
+#   レンダリングするので、CRD が無いまま helm upgrade すると apply がその時点で失敗する。
+#
+# 🔴 **既定は PERMISSIVE で入る。** STRICT へは ISTIO_MTLS_MODE=STRICT で明示的に移す。
+#   いきなり STRICT にすると、サイドカーの入っていない platform-infra（postgres / keycloak /
+#   rabbitmq / qdrant / redis …）との通信と、注入前の Pod からの通信が**同時に**壊れる。
+#   段取りは「注入 → 全 Pod Ready → PERMISSIVE で疎通確認 → STRICT」である。
+ISTIO_MESH_ARGS=""
+if [ "${ISTIO:-}" = "1" ]; then
+  echo "==> [opt-in] Istio service mesh (control plane)"
+  helm repo add istio https://istio-release.storage.googleapis.com/charts >/dev/null 2>&1 || true
+  helm repo update istio >/dev/null
+  # base = CRD とクラスタ共通のリソース。istiod = コントロールプレーン。
+  helm upgrade --install istio-base istio/base \
+    -n istio-system --create-namespace --version "${ISTIO_VERSION:-1.30.4}" --wait --timeout 5m
+  helm upgrade --install istiod istio/istiod \
+    -n istio-system --version "${ISTIO_VERSION:-1.30.4}" \
+    -f deploy/istio/istiod-values-local.yaml --wait --timeout 10m
+  # CRD が Established になるまで待つ（apply の競合を避ける。cert-manager と同じ作法）。
+  for crd in peerauthentications.security.istio.io destinationrules.networking.istio.io \
+             gateways.networking.istio.io virtualservices.networking.istio.io; do
+    kubectl wait --for=condition=Established "crd/$crd" --timeout=120s
+  done
+  # アプリチャート側のメッシュ宣言を有効化する（values-local.yaml は既定 false）。
+  ISTIO_MESH_ARGS="--set mesh.enabled=true --set mesh.mtlsMode=${ISTIO_MTLS_MODE:-PERMISSIVE} --set namespace.istioInjection=true"
+  # 🔴 経路B は values-local.yaml が namespace.create=false のため、**Helm は Namespace を作らない**
+  #   ＝ istioInjection=true にしても注入ラベルが誰にも適用されない。ここで明示的に貼る。
+  #   （本番像は namespace.create=true なのでチャートが貼る。同じ結果を 2 経路で担保する。）
+  kubectl label namespace "$MSP_NS" istio-injection=enabled --overwrite
+  echo "    mTLS モード: ${ISTIO_MTLS_MODE:-PERMISSIVE}（STRICT へ移すには ISTIO_MTLS_MODE=STRICT で再実行）"
+fi
 echo "==> [6/7] helm upgrade --install (values-local)"
+# shellcheck disable=SC2086  # ISTIO_MESH_ARGS は空か複数フラグ。意図的に分割する。
 helm upgrade --install msp deploy/helm/microservices-platform \
-  -n "$MSP_NS" -f deploy/local/values-local.yaml
+  -n "$MSP_NS" -f deploy/local/values-local.yaml $ISTIO_MESH_ARGS
+
+# #782: サイドカーは**既存 Pod には後から入らない**。注入ラベルを付けたあとに作り直す。
+# helm upgrade だけでは Pod テンプレートが変わらないサービスが残るため、明示的に restart する。
+if [ "${ISTIO:-}" = "1" ]; then
+  echo "==> [opt-in] Istio sidecar injection (rollout restart)"
+  kubectl -n "$MSP_NS" rollout restart deployment
+  kubectl -n "$MSP_NS" rollout status deployment --timeout=10m
+  echo "    注入の確認: kubectl -n $MSP_NS get pods -o custom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name"
+fi
 
 echo "==> [7/7] ExternalName aliases (素のサービス名 -> platform-infra FQDN)"
 kubectl apply -f deploy/local/aliases/microservices-platform-externalnames.yaml

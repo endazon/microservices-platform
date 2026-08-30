@@ -10,21 +10,44 @@ mTLS を強制する宣言（`PeerAuthentication` / `DestinationRule`）は Helm
 
 ## 1. Istio 本体の導入
 
-k3s クラスタへ Istio コントロールプレーンを導入する（istioctl または Helm）。
+### 経路B（ローカル k3s）— `ISTIO=1` の opt-in（#782 で配線した）
 
 ```sh
-# istioctl（demo/default プロファイル。本番は運用要件に合わせる）
-istioctl install --set profile=default -y
-
-# サイドカー自動注入は Namespace ラベルで行う（Helm namespace.yaml が付与）
-kubectl label namespace microservices-platform istio-injection=enabled --overwrite
+ISTIO=1 ./scripts/k8s-local-up.sh
 ```
 
-既存 Pod にはサイドカーが後から入らないため、ラベル付与後に再起動する:
+`scripts/k8s-local-up.sh` が次を **[6/7] の前に** 行う（CRD が無いまま helm upgrade すると apply が失敗するため）:
+
+1. `istio/base`（CRD）と `istio/istiod`（コントロールプレーン）を Helm で導入する
+   （版は `ISTIO_VERSION`。既定 `1.30.4`。values は [`istiod-values-local.yaml`](istiod-values-local.yaml)）
+2. 4 つの CRD が `Established` になるまで待つ
+3. `microservices-platform` へ `istio-injection=enabled` を貼る
+   —— 🔴 **経路B は `namespace.create=false` なので Helm は Namespace を作らない。**
+   チャートの `istioInjection` だけでは注入ラベルが誰にも適用されない
+4. アプリチャートを `mesh.enabled=true` で適用する
+5. `rollout restart deployment` —— **サイドカーは既存 Pod へ後から入らない**
+
+**`istioctl` は要らない**（配布バイナリを増やさず、他の opt-in と同じ Helm 経路に揃える）。
+検証コマンド（§4）だけは `istioctl` があると便利だが、`kubectl` でも代替できる。
+
+### 🔴 mTLS モードは既定 PERMISSIVE で入る
 
 ```sh
-kubectl rollout restart deployment -n microservices-platform
+ISTIO=1 ./scripts/k8s-local-up.sh                        # PERMISSIVE（既定）
+ISTIO=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh # STRICT へ移す
 ```
+
+**いきなり STRICT にしてはならない。** サイドカーの入っていない `platform-infra`
+（postgres / keycloak / rabbitmq / qdrant / redis / minio …）との通信と、注入前の Pod からの通信が
+**同時に**壊れ、どちらが原因か切り分けられなくなる。段取りは
+**注入 → 全 Pod Ready → PERMISSIVE で疎通確認 → STRICT** である。
+
+### 本番像
+
+`values.yaml` は `mesh.enabled: true` / `mtlsMode: STRICT` / `namespace.create: true` が既定であり、
+ArgoCD が同期する。**AppProject の `namespaceResourceWhitelist` に Istio の 4 種別
+（PeerAuthentication / DestinationRule / Gateway / VirtualService）が載っていること**を前提とする
+（#782 で 6 種別の欠落を是正した。[`../argocd/appproject.yaml`](../argocd/appproject.yaml)）。
 
 ## 2. STRICT mTLS の適用（Helm が宣言）
 

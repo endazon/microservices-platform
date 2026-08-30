@@ -23,19 +23,42 @@ spec:
   # 配備先 Namespace 内で許可するリソース種別を、本プラットフォームが実際に配備する
   # 種別に限定する（最小権限）。恒久フェーズで新種別を追加する場合はここへ明示追加する。
   namespaceResourceWhitelist:
-    # Helm チャートが実際にレンダリングする種別（deployment/service/ingress/minio/wikijs/
-    # networkpolicy/istio-mtls テンプレート由来）。
+    # 🔴 **この一覧は「チャートが実際にレンダリングする種別」と一致していなければならない。**
+    #   足りない種別があると ArgoCD の同期がその時点で拒否される（配備が止まる）。
+    #
+    # ★ 引き方（記憶で挙げない）: 本番像の values でレンダリングして種別を数える。
+    #     helm template msp deploy/helm/microservices-platform |     #       yq -r 'select(.kind) | (.apiVersion | split("/") | .[0]) + " " + .kind' | sort -u
+    #   Namespace だけは cluster スコープなので clusterResourceWhitelist 側に居る。
+    #
+    # ［2026-08-30 / #782］上の手順で引き直したところ **6 種別が欠けていた**
+    #   （ConfigMap / HorizontalPodAutoscaler / Job / Gateway / VirtualService / PodDisruptionBudget）。
+    #   いずれも本番 values でレンダリングされる。**Istio の Gateway / VirtualService が
+    #   欠けていたのは、edge.yaml が経路B では無効（edge.enabled: false）で、
+    #   誰も本番像で同期を試していなかったため**である。
     - group: "apps"
       kind: Deployment
     - group: ""
       kind: Service
+    - group: ""
+      kind: ConfigMap
     - group: ""
       kind: PersistentVolumeClaim
     - group: "networking.k8s.io"
       kind: Ingress
     - group: "networking.k8s.io"
       kind: NetworkPolicy
+    - group: "autoscaling"
+      kind: HorizontalPodAutoscaler
+    - group: "policy"
+      kind: PodDisruptionBudget
+    - group: "batch"
+      kind: Job
     - group: "security.istio.io"
       kind: PeerAuthentication
     - group: "networking.istio.io"
       kind: DestinationRule
+    # #782: エッジ（ADR-0021 の Istio Ingress Gateway）。edge.enabled=true の本番像でレンダリングされる。
+    - group: "networking.istio.io"
+      kind: Gateway
+    - group: "networking.istio.io"
+      kind: VirtualService
