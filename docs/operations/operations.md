@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-11, FR-13, FR-15, NFR-21, SC-02, UC-04, UC-07]
 adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0294]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0294, IADR-0304]
 specs: []
 issues: [#66, #88, #98, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #455, #532, #536, #546, #587, #665, #674, #863, #443, #438, planning#196]
 -->
@@ -610,9 +610,15 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   Alertmanager リソースは無い）。stg/prod（k3s）への Prometheus（Operator/rule 配備）・Alertmanager 通知の
   展開は follow-up（下記「未決事項」）。本節のアラート定義・閾値は環境非依存に流用できる。
 
-> **★ 通知先の現状（#546 / #665 / 計画 決定 40・42）**: 下表の**ルールは Prometheus が実際に評価している**が、
-> **push 通知は誰にも届いていない** —— `prometheus.yml` の `alertmanagers.targets` が**空**だからである
-> （compose・k8s の**2 か所とも**空。実測）。**「通知先」列は配備後の宛先であって、いま働いている経路ではない。**
+> **★ 通知先の現状（#546 / #665 / 計画 決定 40・42）**: 下表の**ルールは Prometheus が実際に評価しており、
+> 発火は Alertmanager まで届く**（2026-08-30 に配備。`alertmanagers.targets` は compose・k8s の 2 か所とも
+> `['alertmanager:9093']`）。**ただし Alertmanager から先へは、まだ誰にも届かない。**
+> 既定の受信先は `default-null`＝**どこへも送らない**である（設定漏れではなく既定。実装 ADR の決定 2）。
+> **「通知先」列はいま働いている経路ではない。**
+>
+> **したがって気づき方は「Alertmanager の画面（`/#/alerts`）または Grafana の Alerting 画面を見る」ことである。**
+> **非機能要件「障害検出 5 分以内」を満たしているのは評価の側だけ**であり、
+> **人が気づくまでの時間は見に行く間隔に等しい。** ここは配備前から変わっていない。
 >
 > 計画が定めた**暫定の通知先＝ Grafana の内蔵アラート**（決定 42）は、**#665 で provisioning を配線した**
 > （[`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)。
@@ -630,17 +636,23 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 >
 > **★ 暫定経路を閉じる条件（併存させない）**: **可観測性の計画 ADR は改めない**（アラートは Alertmanager を用いる）。
 > 次の 3 つが揃った時点で、**`deploy/grafana/provisioning/alerting/` を削除する**。
+> **［2026-08-30 更新 / #546］3 つのうち 1 と 3 は満たした。2 が残っているので、まだ削除しない。**
 >
-> 1. `prometheus.yml`（compose・k8s の**両方**）の `alertmanagers.targets` に到達可能な Alertmanager がある
-> 2. Alertmanager 側に受信先（メール/チャット）が設定され、**テスト通知が実際に届いた**
-> 3. 下表 5 ルールの発火が Alertmanager 経由で通知されることを**1 件以上、実際に確かめた**
+> | # | 条件 | 状態 |
+> | ---: | --- | --- |
+> | 1 | `prometheus.yml`（compose・k8s の**両方**）の `alertmanagers.targets` に到達可能な Alertmanager がある | ✅ **満たした**（`/api/v1/alertmanagers` が `activeAlertmanagers` を 1 件返す） |
+> | 2 | Alertmanager 側に受信先（メール/チャット）が設定され、**テスト通知が実際に届いた** | 🔴 **満たしていない。** 既定は `default-null`＝どこへも送らない。**実環境の宛先は利用者が決める事柄**であり、実装側で代替値を置けない |
+> | 3 | 下表 5 ルールの発火が Alertmanager 経由で通知されることを**1 件以上、実際に確かめた** | ✅ **満たした**（`OtelCollectorDown` の発火が Alertmanager の `/api/v2/alerts` に `active` として現れた。**合成ルールではなく下表の実ルールである**） |
+>
+> **条件 2 が満たされるまで併存させる。** 本来は避けたい状態だが、**暫定側（Grafana）にも宛先が無い**ため
+> **二重通知は構造的に起き得ない** —— 併存を禁じた理由（重複通知が「既知の誤報」の習慣を生む）は現時点では働かない。
 >
 > **併存させない理由**: 同じ 5 ルールが 2 系統で評価されると**同じ事象に対して 2 通の通知が出る**。
 > 重複は「片方は既知の誤報だ」という運用習慣を生み、**本物の通知を握り潰す方向に働く。**
 > 削除の際は `scripts/check-grafana-alerting.js` も併せて削除する（対象ファイルが消えると門 A で fail するため、
 > **残したままにはできない** ——「暫定を消し忘れる」ことが CI で表面化する）。
 
-| 監視対象 | 指標（メトリクス） | 閾値 | 通知先（**配備後**。現状は未配線） | 対応 NFR |
+| 監視対象 | 指標（メトリクス） | 閾値 | 通知先（Alertmanager までは到達。**その先は未配線**） | 対応 NFR |
 | --- | --- | --- | --- | --- |
 | 可観測性パイプライン | `up{job="otel-collector"}`（唯一の scrape 対象） | ==0 が 2 分 | Alertmanager（critical） | 検出 5 分以内 |
 | サービス応答断（近似） | `rate(http_server_duration_milliseconds_count)` の途絶（直近まで受信有） | 0 が 5 分 | Alertmanager（warning） | 可用性 99.9% |
