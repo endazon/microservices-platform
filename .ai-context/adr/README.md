@@ -385,4 +385,4 @@
 | [IADR-0309](./IADR-0309_feature-internal-split-substance-over-scaffolding.md) | feature 内部 6 分割の適合は実体で示し、`.gitkeep` の空枠で満たさない | Accepted |
 | [IADR-0310](./IADR-0310_apiserver-oidc-edge-host-resolution.md) | apiserver の OIDC は issuer host を /etc/hosts で解決させる | Accepted |
 | [IADR-0311](./IADR-0311_layer-zone-enforcement-and-alias-resolution.md) | **層ゾーンの機械強制にエイリアス解決を与える**（ADR-0067）。🔴 分類を直しゾーンを置いても `@foundation/*` は素通りしていた（26 ファイル・59 文）。`testing` の被参照禁止は glob ではなく**本番コード限定のブロック**で表す。 | Accepted |
-| [IADR-0312](./IADR-0312_collector-self-telemetry-parity-and-budget-alert-deferral.md) | **collector の自己テレメトリ宣言は単一情報源にできないので検査器で揃え、LLM 予算アラートは置かない**（#1090 / #546）。転送構成にだけ `telemetry.metrics.address` が無く、opt-in の apply で**唯一の scrape 対象**が落ちうる（**同型 2 回目**なので検査器を足す）。🔴 **予算アラートは計画が明示的に禁じている**（しきい値は実測後に確定）うえ、稼働イメージに費用の計器が無く、dev の保持 7d では月次スケールの規則を評価できない。**月次の手動確認は終了しない**（終了条件は「配備 **かつ** 配線」の連言）。 | Accepted |
+| [IADR-0312](./IADR-0312_collector-self-telemetry-parity-and-budget-alert-deferral.md) | **collector の自己テレメトリ宣言は単一情報源にできないので検査器で揃え、LLM 予算アラートは置かない**（#1090 / #546）。転送構成にだけ待受の宣言が無く、opt-in の apply で**唯一の scrape 対象**が落ちうる。予算アラートは計画が禁じ、稼働イメージに計器も無い。 | Accepted |
