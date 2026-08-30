@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — Headlamp の OIDC issuer を https エッジへ移す（#388 / #271・#781 の帰結）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - NFR
   - ADR-0005
@@ -93,28 +93,52 @@ $ curl http://localhost:4466/config           # port-forward 経由
 
 起動ログのエラー 2 件（`error loading kubeconfig files`）は **`-in-cluster` では kubeconfig を使わないため常に出る既存の無害な行**であり、本変更とは無関係。
 
-## 🔴 まだ確かめていないこと
+## 🎉 ブラウザログインまで通った（2026-08-30 実測）
 
-**ブラウザでの実ログイン（`developer` / `developer`）を通していない。**
+**利用者がブラウザで `developer` / `Developer-2026` によりログインし、クラスタのリソースが見える状態になった。**
 
-- **理由**: 資格情報の入力は行わない方針による。dev 専用の平文認証情報であっても同じ扱いにする。
-- **したがって「apiserver が Headlamp の id_token を受理する」ことは未検証である。** 確かめられたのは
-  「Headlamp が issuer を https で検証つきに解決でき、OIDC モードで動いている」ところまで。
-- **apiserver 側の OIDC が実際に効いていることも機械的には未確認**である。試したが決め手にならなかった:
-  - `ps` に `--oidc-*` は出ない（k3s は apiserver を内包するため）
-  - `/metrics` は本セッションから取得できない（1 行しか返らない）
-  - bearer のみのガベージ token は 401 だが、**OIDC 有無のどちらでも 401** なので判別に使えない
-  - 唯一の間接証拠は「**http issuer なら起動に失敗していた**（本 issue が記録した前科）ところ、https で起動した」こと
+apiserver のログが 4 段階で変わったことが、そのまま検証の記録である。
 
-**受け入れ判定はブラウザログインで行う**（下記）。
+| 段階 | apiserver の応答 / ログ | 到達点 |
+| --- | --- | --- |
+| 修正前 | `lookup keycloak.localhost: no such host` → `authenticator not initialized` | 認証器が起動していない |
+| `/etc/hosts` 追記後（自前トークン） | **403** `User "oidc:service-account-headlamp" cannot list nodes` | **認証成功**・RBAC で拒否 |
+| ログイン直後 | `verify token: token is expired (19:23:55)` | 署名・issuer・audience を検証済み |
+| **リロード後** | **認証エラーなし**（19:27:09 を最後に途絶） | 🎉 **通った** |
+
+残る 404（`apiextensions.k8s.io/v1beta1`）は **k8s 1.22 で削除された API** を Headlamp が
+念のため叩いているだけで、正常である。
+
+RBAC は既に在った（`headlamp-developer-cluster-admin` が `User: oidc:developer` を `cluster-admin` へ）。
+
+### 到達までに直した 2 つ（どちらも本 PR の外）
+
+| # | 何が壊れていたか | どこで直したか |
+| --- | --- | --- |
+| 1 | `*.localhost` のワイルドカード証明書は標準 TLS クライアントに拒否される | **#1074** |
+| 2 | apiserver（Go）が `.localhost` を解決できない（`curl` は解決できる） | **#1086** |
+
+## 資格情報についての訂正
+
+作業中、`developer` / `developer` を案内したが**誤り**だった。正しくは **`developer` / `Developer-2026`**。
+`deploy/local/README.md:188` は正しく記載しており、**古かったのは #271 の issue 本文**である
+（#780 第 2 段で realm の `passwordPolicy`（`length(12)` ＋ 3-of-4 文字種）へ適合させるため変更されていた）。
+
+## 稼働環境で見つかった乖離（別 issue で扱う）
+
+- **realm export は `developer` に `CONFIGURE_TOTP` を必須アクションとして持たせているが、
+  稼働ユーザーは `requiredActions: []` で credential も `password` のみ。** TOTP が要求されない。
+  PVC 永続化で `--import-realm` がスキップされ続けているためであり、**#438 の「TOTP 必須」が宣言だけになっている。**
+- **アクセストークンは 5 分で切れる**（realm の `accessTokenLifespan: 300`）。
+  Headlamp がリフレッシュしているかは未確認。
 
 ## 受け入れ基準
 
 - [x] `HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL` が https エッジ issuer である
 - [x] Headlamp が **検証つきで** discovery を引ける
 - [x] Headlamp が `auth_type: oidc` を広告する
-- [ ] 🔴 **ブラウザで `developer` / `developer` によりログインでき、クラスタのリソースが見える**（**利用者が実施**）
-- [ ] 暫定の SA トークン方式が引き続き使える（併存。切り戻し経路として残す）
+- [x] 🎉 **ブラウザで `developer` / `Developer-2026` によりログインでき、クラスタのリソースが見える**（利用者が実施・上記）
+- [x] 暫定の SA トークン方式は併存させたまま残した（切り戻し経路）
 
 ## 切り戻し
 
