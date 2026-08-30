@@ -12,10 +12,17 @@ import path from 'node:path';
 //
 // ■ 雛形が写しているもの
 //   生成される形は**この repo に実在する feature の形**である。写した実物は
-//   `knowledge/frontend/src/features/sc04-wiki`（最小の feature）と
 //   `../templates/unit-template/frontend/src/features/sample`（雛形の正解形）で、
 //   計画 §ディレクトリ構成 が定める Feature 単位の 6 区分（`api/ components/ hooks/ routes/ stores/ types/`）を
-//   すべて作る。**空の区分は `.gitkeep` で枠だけ残す**——消すと次の実装者に「この区分は不要」と伝わる。
+//   すべて作る。
+//
+//   🔴 **区分は `.gitkeep` の空枠で満たさない**（計画 ADR-0065 決定 4 が `.gitkeep` の枠置き規範を
+//   撤回した。理由は「枠だけの状態が、機械にも目視にも『区分が揃っている』と見え、**適合の見え方**を
+//   作った」ことである）。`api/` `hooks/` `types/` は**差し替え前提の実体**を生成し、実装者が中身を
+//   書き換える。**`stores/` だけは `.gitkeep` を置く**——クライアント状態ストア（Zustand）は
+//   URL を単一情報源にする画面では持たないのが既定であり（IADR-0124 決定 3）、実体を生成すると
+//   「置くべきもの」と読み違えられる。要らないと判断したらフォルダごと消し、理由を PR で述べる
+//   （issue #1066 で 4 feature に対して行った判断と同じ形である）。
 //
 // ■ 合成点（`features/index.ts`）へは**自動で追記しない**
 //   あちらはルートのタプル（`as const`）とナビ配列の 2 経路で、**タプルを壊すと型安全が丸ごと失われる**
@@ -114,12 +121,15 @@ export default function plopfile(plop) {
           'components/{{pascalCase name}}Page.test.tsx',
           'plop-templates/feature/components/Page.test.tsx.hbs',
         ),
-        // 計画 §ディレクトリ構成 の 6 区分の枠。中身が入るまで `.gitkeep` で残す
-        // （`sc04-wiki` / `sc08-analysis` と同じ形）。
-        add('api/.gitkeep', 'plop-templates/feature/gitkeep.hbs'),
-        add('hooks/.gitkeep', 'plop-templates/feature/gitkeep.hbs'),
+        // 計画 §ディレクトリ構成 の 6 区分。**実体で満たす**（上のコメント参照）。
+        add('types/index.ts', 'plop-templates/feature/types/index.ts.hbs'),
+        add(
+          'hooks/use{{pascalCase name}}Filter.ts',
+          'plop-templates/feature/hooks/useFilter.ts.hbs',
+        ),
+        add('api/use{{pascalCase name}}List.ts', 'plop-templates/feature/api/useList.ts.hbs'),
+        // `stores/` だけは枠のまま残す（Zustand を持つのは例外であり、既定は URL と `hooks/`）。
         add('stores/.gitkeep', 'plop-templates/feature/gitkeep.hbs'),
-        add('types/.gitkeep', 'plop-templates/feature/gitkeep.hbs'),
         // 合成点への配線は人が行う（上のコメント参照）。貼る行をそのまま出す。
         () => {
           const pascal = plop.renderString('{{pascalCase name}}', answers);
@@ -133,6 +143,10 @@ export default function plopfile(plop) {
             '',
             'そのあと: pnpm run i18n（カタログ再生成と翻訳）/ eslint.config.js の',
             'lingui 適用範囲（files）へ本 feature のパスを足す / pnpm run lint && pnpm run typecheck。',
+            '',
+            '生成した api/ hooks/ types/ は**差し替え前提の実体**である（.gitkeep の空枠は置かない。',
+            '計画 ADR-0065 決定 4）。中身を本物へ書き換えるか、要らない区分はフォルダごと消して',
+            '理由を PR 本文へ書くこと。**空のまま残さない。**',
           ]
             .filter((line) => line !== null)
             .join('\n');

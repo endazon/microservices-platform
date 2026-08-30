@@ -1,14 +1,20 @@
 import { useMemo } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Link, useNavigate, useSearch } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import { RotateCcw } from 'lucide-react';
 import { Alert, Label, Select, StatusBadge } from '@platform/ui';
 import type { AiSuggestion } from '@foundation/api/generated/bff.schemas';
 import { DataTable } from '../../../components/DataTable';
 import type { DataTableColumns } from '../../../components/DataTable';
 import { useAiSuggestions, useEdgeTypeCatalog } from '../api/useAiSuggestions';
-import { KIND_OPTIONS, STATE_OPTIONS } from '../routes/sc21AiSuggestionsRoute';
-import type { AiSuggestionSearch, KindOption, StateOption } from '../routes/sc21AiSuggestionsRoute';
+import { useSuggestionFilters } from '../hooks/useSuggestionFilters';
+import {
+  KIND_OPTIONS,
+  STATE_OPTIONS,
+  edgeTypeNameMap,
+  suggestionTone,
+} from '../types/suggestionVocabulary';
+import type { KindOption, StateOption } from '../types/suggestionVocabulary';
 
 // SC-21, UC-10, FR-18/FR-05: AI 提案一覧（05_screens: ルート /ai-suggestions）。
 //
@@ -46,8 +52,8 @@ function ReinstatedNotice() {
 
 export function AiSuggestionListPage() {
   const { t } = useLingui();
-  const search: AiSuggestionSearch = useSearch({ from: '/_shell/ai-suggestions' });
-  const navigate = useNavigate({ from: '/ai-suggestions' });
+  // 絞り込み条件（URL が単一情報源）の読み書きは hooks/ が持つ。
+  const { search, setParams } = useSuggestionFilters();
 
   const suggestions = useAiSuggestions(search);
   const edgeTypes = useEdgeTypeCatalog();
@@ -55,12 +61,8 @@ export function AiSuggestionListPage() {
   const rows = useMemo(() => suggestions.data ?? [], [suggestions.data]);
 
   // 型 ID → 表示名。辞書が引けないときは ID を出さず「型不明」に倒す
-  //（GUID を利用者へ見せても判断の役に立たない）。
-  const edgeTypeNames = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const type of edgeTypes.data ?? []) map.set(type.id, type.name);
-    return map;
-  }, [edgeTypes.data]);
+  //（GUID を利用者へ見せても判断の役に立たない）。写像そのものは types/ の純関数が持つ。
+  const edgeTypeNames = useMemo(() => edgeTypeNameMap(edgeTypes.data ?? []), [edgeTypes.data]);
 
   const stateLabels: Record<StateOption, string> = {
     pending: t`承認待ち`,
@@ -113,8 +115,7 @@ export function AiSuggestionListPage() {
         header: t`状態`,
         cell: ({ row }) => {
           const value = row.original.state;
-          const tone =
-            value === 'approved' ? 'success' : value === 'rejected' ? 'danger' : 'neutral';
+          const tone = suggestionTone(value);
           const label =
             value === 'approved'
               ? stateLabels.approved
@@ -147,9 +148,6 @@ export function AiSuggestionListPage() {
     [t, edgeTypeNames],
   );
 
-  const setParams = (patch: Partial<AiSuggestionSearch>) =>
-    navigate({ search: (prev: AiSuggestionSearch) => ({ ...prev, ...patch }) });
-
   return (
     <section className="space-y-3">
       <div>
@@ -176,7 +174,7 @@ export function AiSuggestionListPage() {
             id="suggestion-state"
             selectSize="sm"
             value={search.state}
-            onChange={(e) => void setParams({ state: e.target.value as StateOption })}
+            onChange={(e) => setParams({ state: e.target.value as StateOption })}
           >
             {STATE_OPTIONS.map((option) => (
               <option key={option} value={option}>
@@ -194,7 +192,7 @@ export function AiSuggestionListPage() {
             id="suggestion-kind"
             selectSize="sm"
             value={search.kind}
-            onChange={(e) => void setParams({ kind: e.target.value as KindOption })}
+            onChange={(e) => setParams({ kind: e.target.value as KindOption })}
           >
             {KIND_OPTIONS.map((option) => (
               <option key={option} value={option}>

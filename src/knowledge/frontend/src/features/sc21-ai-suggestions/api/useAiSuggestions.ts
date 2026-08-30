@@ -10,7 +10,7 @@ import type {
   BffGraphSuggestionsParams,
   EdgeTypeCatalogItem,
 } from '@foundation/api/generated/bff.schemas';
-import type { AiSuggestionSearch } from '../routes/sc21AiSuggestionsRoute';
+import type { AiSuggestionSearch } from '../types/suggestionVocabulary';
 
 // SC-21, UC-10, FR-18: AI 提案の読み取り（/bff/graph/suggestions）。
 // サーバー状態は TanStack Query（ADR-0031）。

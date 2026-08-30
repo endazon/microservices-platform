@@ -45,43 +45,31 @@ src/
 区分の背景は [固定/可変区分表](../docs/tech/composability-classification.md) と
 [IADR-0027](../.ai-context/adr/IADR-0027_composability-folder-structure.md) を参照。
 
-下図は**現行実態（移送波までの経過措置）**である。目標の標準構成は次節を見よ。
+**現行の標準は次節「サービス直下の標準構成」ただ 1 つである。**
 
-```
-<unit>/backend/Services/<ServiceName>/
-  src/<ServiceName>.<Api|Worker>/     ← 実行入口・合成ルート（Api と Worker は排他）
-    Program.cs                        ←   可変部分を構成で束ねる唯一の場所
-    appsettings*.json  TestMarker.cs
-    Foundation/Endpoints/             ←   同期 API（薄い端点。契約: docs/api/openapi.yaml）
-    Composable/Steps/                 ←   パイプライン段（イベント購読の受け口）
-  src/<ServiceName>.Application/      ← ユースケース調整・Wolverine ハンドラ
-    Foundation/Ports/                 ←   差し替え点の抽象（インタフェース・オプション型）
-    Foundation/Services/              ←   ドメインサービス（ABAC・正規化・検索編成等）
-  src/<ServiceName>.Domain/           ← エンティティ・値オブジェクト（プロジェクト全体が固定。
-                                        参照は Platform.Shared.Kernel のみ・外部パッケージ禁止）
-  src/<ServiceName>.Infrastructure/   ← 実装
-    Foundation/Persistence/           ←   DbContext（DB per Service, ADR-0002）
-    Composable/Adapters/              ←   ポート実装（外部コンポーネント接続）
-    Composable/Connectors/            ←   データソースコネクタ
-    Migrations/                       ←   EF Core ツール出力（DbContext と同一アセンブリ）
-  src/<ServiceName>.Contracts/        ← サービス単独公開の契約（proto・イベント・DTO）
-  src/<ServiceName>.SharedKernel/     ← 自サービス閉じの共通基底（現状は全サービス空枠 = .gitkeep）
-  tests/<ServiceName>.<Api|Worker>.Tests/   ← Tests は 1 プロジェクト（Unit / Integration はフォルダ）
-```
+> **［歴史的経緯］** 本節にはかつて「現行実態（移送波までの経過措置）」として、
+> `src/<ServiceName>.<Api|Worker>/` ・ `src/<ServiceName>.Application/` ・ `.Domain/` ・ `.Contracts/` ・
+> `.SharedKernel/` ・ `tests/<ServiceName>.<Api|Worker>.Tests/` からなる 8 要素の樹形図と、
+> それに付随する「名前空間はフォルダ階層に一致させる」「固定/可変の区分（`Foundation/` / `Composable/`）は
+> **層プロジェクト内**の第 1 階層フォルダとして温存する」の 2 項が置かれていた。
+>
+> **これらは [IADR-0282](../.ai-context/adr/IADR-0282_single-project-vsa-structure.md)（8 要素プロジェクトの撤回）
+> と計画 `ADR-0065` の時点で古くなっており、実在しない構造を「現行実態」と述べていた**ため撤去した。
+> 実測（2026-08-30）: `src/` / `tests/` の中間層・層プロジェクトの `.csproj`・`Services/` 配下の
+> `Foundation/` / `Composable/`・`.Api.Tests` / `.Worker.Tests` の `.csproj` は**いずれも 0 件**。
+> 移送の記録と踏んだ罠は [`20260828_wave45-vsa-migration.md`](../.ai-context/specs/20260828_wave45-vsa-migration.md)、
+> `Worker/` 中間層の撤去は [`20260830_issue-1061_remove-worker-layer.md`](../.ai-context/specs/20260830_issue-1061_remove-worker-layer.md)。
+>
+> 🔴 **`Foundation/` そのものが消えたわけではない。** ユニット共有プロジェクト
+> （`Shared/Platform.Shared.Infrastructure`）では**今も現役**である（2026-08-30 実測で 48 ファイル）。
+> 消えたのは**サービスの層プロジェクト内の第 1 階層フォルダとしての区分**であって、
+> 固定/可変の分類そのもの（[IADR-0027](../.ai-context/adr/IADR-0027_composability-folder-structure.md)・
+> [固定/可変区分表](../docs/tech/composability-classification.md)）ではない。
 
-- 名前空間はフォルダ階層に一致させる（例: `IngestionService.Worker.Composable.Steps`・
-  `FeedbackService.Infrastructure.Foundation.Persistence`）。
-- **固定/可変の区分（`Foundation/` / `Composable/`）は層プロジェクト内の第 1 階層フォルダとして
-  温存する**（`Domain` / `Contracts` は全体が固定のため区分フォルダを持たない）。
-- 存在しない区分のフォルダは作らない（空フォルダを置かない）。**これは
-  プロジェクトの内側**（`Foundation/` / `Composable/` / `Adapters/` / `Connectors/` 等）**に掛かる規則であり、
-  次に述べるサービス直下の標準構成には掛からない。階層が違う。**
-- **移送は完了した（2026-08-28）。** 8 要素の実体化（IADR-0280）は同日のオーナー裁定で撤回され、
-  新標準は**単一プロジェクト＋ Features / Domain / Infrastructure / Common のフォルダ規範**
-  （[IADR-0282](../.ai-context/adr/IADR-0282_single-project-vsa-structure.md)）である。
-  **14 サービス全件が新配置へ移送済み**で、`Services/<Name>/src/<Name>.Api/` は 1 つも残っていない
-  （層プロジェクト 58 個と `.gitkeep` の枠も撤去済み）。**新規コードは新配置で書く。**
-  移送の記録と踏んだ罠は `.ai-context/specs/20260828_wave45-vsa-migration.md`。
+- **空のフォルダを置かない。** 実体を持たない区分のフォルダは作らない。
+  この規則は**プロジェクトの内側の区分フォルダ**（`Shared/` 配下の `Foundation/` / `Adapters/` 等）に掛かる。
+  次節のサービス直下の標準構成（`Features/` / `Domain/` / `Infrastructure/` / `Common/` / `Tests/`）は
+  **いずれも実体を持つのが常態**であり、`.gitkeep` の枠置き規範は計画 `ADR-0065` 決定 4 が撤回した。
 
 ### サービス直下の標準構成（単一プロジェクト＋フォルダ規範。2026-08-28 裁定）
 

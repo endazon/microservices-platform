@@ -7,7 +7,7 @@ using NotificationService.Common.Options;
 using NotificationService.Infrastructure.Persistence;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 
-namespace NotificationService.Features.Notifications;
+namespace NotificationService.Features.Notifications.DispatchEmails;
 
 // FR-22, SC-10, ADR-0045 決定 3・8, IADR-0215 決定 4: outbox の送出とレート制御。
 //
