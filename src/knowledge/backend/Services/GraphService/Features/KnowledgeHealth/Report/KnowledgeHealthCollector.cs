@@ -3,7 +3,7 @@ using GraphService.Domain.Ports;
 using GraphService.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
-namespace GraphService.Features.KnowledgeHealth;
+namespace GraphService.Features.KnowledgeHealth.Report;
 
 // FR-10, FR-17, FR-19, UC-05, SC-10, ADR-0002, ADR-0006, ADR-0033, ADR-0054,
 // IADR-0265, [[IADR-0299]] (#443): ナレッジ健全性の観測値のうち、**本サービスが持つデータから

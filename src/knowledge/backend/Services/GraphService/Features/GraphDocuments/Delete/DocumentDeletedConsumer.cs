@@ -3,7 +3,7 @@ using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 
-namespace GraphService.Features.GraphDocuments;
+namespace GraphService.Features.GraphDocuments.Delete;
 
 // FR-17, FR-06, FR-19, UC-03, ADR-0057 (#1016): 文書削除イベントを受信し、グラフから
 // 当該文書の痕跡（ノード・両端いずれかが当該文書の辺・AI 提案）を掃除する。

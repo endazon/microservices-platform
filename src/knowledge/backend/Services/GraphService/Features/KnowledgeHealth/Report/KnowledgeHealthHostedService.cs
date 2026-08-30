@@ -1,6 +1,6 @@
 using GraphService.Domain.Ports;
 
-namespace GraphService.Features.KnowledgeHealth;
+namespace GraphService.Features.KnowledgeHealth.Report;
 
 // FR-10, FR-17, UC-05, SC-10, ADR-0006, [[IADR-0299]] 決定 3 (#443):
 // ナレッジ健全性の観測値を定期的に報告するワーカー。

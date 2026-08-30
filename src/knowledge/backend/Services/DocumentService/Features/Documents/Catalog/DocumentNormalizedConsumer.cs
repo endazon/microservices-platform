@@ -9,7 +9,7 @@ using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
-namespace DocumentService.Features.Documents;
+namespace DocumentService.Features.Documents.Catalog;
 
 // FR-01, UC-04: ConversionService が発行する DocumentNormalized を購読し、
 // 正規化文書をカタログ（正本）へ登録する。登録後 DocumentUpdated を発行して

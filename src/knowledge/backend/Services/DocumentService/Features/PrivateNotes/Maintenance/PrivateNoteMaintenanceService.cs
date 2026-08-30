@@ -4,7 +4,9 @@ using DocumentService.Domain.Ports;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 
-namespace DocumentService.Features.PrivateNotes;
+using DocumentService.Features.PrivateNotes;
+
+namespace DocumentService.Features.PrivateNotes.Maintenance;
 
 // FR-19, FR-20, FR-22, ADR-0037 決定 5・6・16・18, IADR-0215 決定 5, [[IADR-0270]] 決定 6:
 // 個人資料の定期処理。①90 日経過の自動物理削除（＋事後通知 ①-c）②版履歴の刈り取り

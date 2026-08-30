@@ -9,6 +9,7 @@ using DocumentService.Features.PrivateNotes;
 // #451-a: 個人資料・同期端末の応答 DTO は Knowledge.Contracts へ集約した（BFF と定義を 1 つにするため）。
 using Knowledge.Contracts.Dtos;
 using Microsoft.Extensions.DependencyInjection;
+using DocumentService.Features.PrivateNotes.Maintenance;
 
 namespace DocumentService.Tests;
 

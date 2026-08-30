@@ -1,10 +1,12 @@
 using GraphService.Infrastructure.ExternalServices;
 using GraphService.Features.GraphDocuments;
-using GraphService.Features.KnowledgeHealth;
+using GraphService.Features.GraphDocuments.Delete;
+using GraphService.Features.GraphDocuments.Sync;
+using GraphService.Features.KnowledgeHealth.Report;
 using GraphService.Features.AiSuggestions;
 using GraphService.Features.EdgeTypes;
 using GraphService.Features.Graph;
-using GraphService.Features.McpTools;
+using GraphService.Features.McpTools.Declare;
 using GraphService.Common.Observability;
 using GraphService.Infrastructure.Persistence;
 using GraphService.Domain.Ports;
