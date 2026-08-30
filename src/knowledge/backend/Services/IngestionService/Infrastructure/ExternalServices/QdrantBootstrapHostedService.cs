@@ -32,7 +32,7 @@ public class QdrantBootstrapHostedService(
             // コレクションが無ければ次の upsert が例外になるが、全文インデックスが無くても
             // 検索は 200 を返し続ける（Qdrant v1.18.1 は部分文字列の全走査へ黙って落ちる）。
             // ここが唯一の記録になるので **Error で残す**。運用の検出は検索側の readiness
-            // （RetrievalService の `qdrant-fulltext-index`）が受け持つ（[[IADR-0316]] 決定 3）。
+            // （RetrievalService の `qdrant-fulltext-index`）が受け持つ（[[IADR-0318]] 決定 3）。
             logger.LogError(ex,
                 "Failed to ensure Qdrant collection / full-text payload index at startup; "
                 + "keyword search will silently degrade until this succeeds");

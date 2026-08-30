@@ -1,5 +1,5 @@
 ---
-title: IADR-0316 Qdrant の全文ペイロードインデックスを起動時に無条件で張り、トークナイザは multilingual を採る（索引が無いときの「当たり」は全文検索ではない）
+title: IADR-0318 Qdrant の全文ペイロードインデックスを起動時に無条件で張り、トークナイザは multilingual を採る（索引が無いときの「当たり」は全文検索ではない）
 type: impl-adr
 status: Accepted
 related_ids: [FR-02, FR-03, FR-05, UC-01, SC-01, SC-02, NFR, NFR-06, NFR-08, ADR-0009, ADR-0016, IADR-0009, IADR-0014, IADR-0151, IADR-0252, IADR-0255, IADR-0256, IADR-0313, IADR-0315]
@@ -11,7 +11,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0009_vector-db-qdrant.md
 ---
 
-# IADR-0316: Qdrant 全文ペイロードインデックス
+# IADR-0318: Qdrant 全文ペイロードインデックス
 
 - 状態: Accepted
 - 日付: 2026-08-31

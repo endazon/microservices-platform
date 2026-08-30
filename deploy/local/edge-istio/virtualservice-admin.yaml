@@ -1,0 +1,124 @@
+# IADR-0091 決定 4 / #782: 管理面（admin entrypoint 50000）のルーティング。
+# Traefik の deploy/local/edge/admin-ingress-infra.yaml / admin-ingress-minio.yaml /
+# admin-ingress-wiki.yaml / argocd-ingress.yaml を写したもの。**host とポートは変えない** ——
+# 7 つの OIDC クライアントの redirect URI が `https://<host>.localhost:50000/...` で
+# Keycloak に登録済みである（IADR-0092..0095 / IADR-0220）。
+#
+# 🔴 このうち minio と wiki-js は microservices-platform namespace（メッシュ内）にある。
+#   **STRICT を成立させるために移送が必要なのはこの 2 件**であり、他の 5 件は
+#   メッシュ外だが「Traefik が 50000 を手放す」以上まとめて移す（片方だけ残せない）。
+#
+# 行き先が未作成でも VirtualService は無害（バックエンド不在時は 503）。各ツールは
+# OBSERVABILITY / VAULT / HEADLAMP / ARGOCD の各 opt-in で作られる。
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: msp-admin-grafana
+  namespace: istio-system
+  labels: { app: grafana, tier: local-edge }
+spec:
+  hosts: [grafana.localhost]
+  gateways: [istio-system/msp-admin-edge]
+  http:
+    - route:
+        - destination:
+            host: grafana.platform-infra.svc.cluster.local
+            port: { number: 3000 }
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: msp-admin-headlamp
+  namespace: istio-system
+  labels: { app: headlamp, tier: local-edge }
+spec:
+  hosts: [headlamp.localhost]
+  gateways: [istio-system/msp-admin-edge]
+  http:
+    - route:
+        - destination:
+            host: headlamp.platform-infra.svc.cluster.local
+            port: { number: 80 }
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: msp-admin-vault
+  namespace: istio-system
+  labels: { app: vault, tier: local-edge }
+spec:
+  hosts: [vault.localhost]
+  gateways: [istio-system/msp-admin-edge]
+  http:
+    - route:
+        - destination:
+            host: vault.platform-infra.svc.cluster.local
+            port: { number: 8200 }
+---
+# Qdrant は認証/OIDC 非対応（SSO 非適用）。素通し公開＝ネットワーク閉域前提の便宜。
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: msp-admin-qdrant
+  namespace: istio-system
+  labels: { app: qdrant, tier: local-edge }
+spec:
+  hosts: [qdrant.localhost]
+  gateways: [istio-system/msp-admin-edge]
+  http:
+    - route:
+        - destination:
+            host: qdrant.platform-infra.svc.cluster.local
+            port: { number: 6333 }
+---
+# ★ メッシュ内（microservices-platform）。STRICT の対象であり、ここを Envoy 経由にしないと
+#   PeerAuthentication を STRICT にした瞬間に落ちる。
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: msp-admin-minio
+  namespace: istio-system
+  labels: { app: minio, tier: local-edge }
+spec:
+  hosts: [minio.localhost]
+  gateways: [istio-system/msp-admin-edge]
+  http:
+    - route:
+        - destination:
+            host: minio.microservices-platform.svc.cluster.local
+            port: { number: 9001 }
+---
+# ★ メッシュ内（microservices-platform）。上と同じ理由。
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: msp-admin-wiki
+  namespace: istio-system
+  labels: { app: wiki-js, tier: local-edge }
+spec:
+  hosts: [wiki.localhost]
+  gateways: [istio-system/msp-admin-edge]
+  http:
+    - route:
+        - destination:
+            host: wiki-js.microservices-platform.svc.cluster.local
+            port: { number: 3000 }
+---
+# argocd namespace は ARGOCD=1 の別 opt-in でしか作られないが、VirtualService は
+# istio-system に置くので**条件付き apply が要らない**（Traefik 経路では argocd-ingress.yaml
+# だけスクリプト側で条件分岐していた）。ns 不在なら 503 になるだけである。
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: msp-admin-argocd
+  namespace: istio-system
+  labels: { app: argocd-server, tier: local-edge }
+spec:
+  hosts: [argocd.localhost]
+  gateways: [istio-system/msp-admin-edge]
+  http:
+    - route:
+        - destination:
+            host: argocd-server.argocd.svc.cluster.local
+            port: { number: 80 }

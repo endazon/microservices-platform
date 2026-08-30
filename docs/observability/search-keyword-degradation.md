@@ -9,7 +9,7 @@ updated: 2026-08-31
 <!-- trace:
 ids: [FR-03, FR-05, NFR, NFR-06, UC-01, SC-01, SC-02]
 adrs: [ADR-0009, ADR-0016]
-iadrs: [IADR-0009, IADR-0252, IADR-0255, IADR-0256, IADR-0313, IADR-0316]
+iadrs: [IADR-0009, IADR-0252, IADR-0255, IADR-0256, IADR-0313, IADR-0318]
 specs: [20260831_issue-1116_qdrant-fulltext-payload-index]
 issues: [#972, #992, #1116]
 -->

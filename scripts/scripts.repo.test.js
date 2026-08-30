@@ -5770,7 +5770,13 @@ ${r.stderr}`);
         //    統合テストの器が `UseSetting` で与えているか。**同型の事故 3 回目**）を新設したため
         //    44 → 45（ラチェットが設計どおり発火した）。git を一切呼ばず fs のみで走査するため、
         //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
-        assert.strictEqual(scripts.length, 45, `検査器の母集合が 45 本から変わった（${scripts.length} 件）`);
+        // ★ #1107 で `check-secret-injected-options.js`（コード側が「実値は k8s Secret から環境変数で
+        //    注入する」と doc コメントで宣言した構成値が、helm と compose の**両方**で実際に注入されて
+        //    いるか。**同型の事故 2 回目** —— 実装もテストも揃っていたのに `BffSession__*` が deploy に
+        //    1 行も無く、稼働クラスタの `/bff/auth/login` が 500 を返し続けた）を新設したため
+        //    45 → 46（ラチェットが設計どおり発火した）。git を一切呼ばず fs のみで走査するため、
+        //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        assert.strictEqual(scripts.length, 46, `検査器の母集合が 46 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],

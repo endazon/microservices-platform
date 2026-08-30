@@ -5,7 +5,7 @@ using RetrievalService.Common.Observability;
 
 namespace RetrievalService.Infrastructure.ExternalServices;
 
-// FR-03, UC-01, NFR-06, #1116, [[IADR-0316]] 決定 3:
+// FR-03, UC-01, NFR-06, #1116, [[IADR-0318]] 決定 3:
 // **検索が見ているコレクションに `text` の全文ペイロードインデックスが在るか**を readiness に載せる。
 //
 // 🔴 **本 issue の縮退は例外を伴わない。** Qdrant v1.18.1 は索引が無くても `Match { Text }` を

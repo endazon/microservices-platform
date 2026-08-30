@@ -25,7 +25,7 @@ public class QdrantIngestionVectorStore(
     // 🔴 `CollectionExistsAsync` で `continue` すると**既に在るコレクションにだけ索引が付かない**——
     // それが #1116 の欠陥そのものである（新規作成の経路しか無ければ、稼働中の配備は永久に索引を持たない）。
     // Qdrant の `CreatePayloadIndex` は冪等であり、パラメータが違えば張り替える（実機 v1.18.1 で実測。
-    // [[IADR-0316]] 決定 2）。したがって**起動のたびに無条件で 1 回呼ぶだけで、新規・既存・張り替えが収束する。**
+    // [[IADR-0318]] 決定 2）。したがって**起動のたびに無条件で 1 回呼ぶだけで、新規・既存・張り替えが収束する。**
     public async Task EnsureCollectionsAsync(CancellationToken ct = default)
     {
         foreach (var c in _collections)
@@ -42,7 +42,7 @@ public class QdrantIngestionVectorStore(
         }
     }
 
-    // FR-03, #1116, [[IADR-0316]] 決定 1: 全文インデックスのパラメータ。
+    // FR-03, #1116, [[IADR-0318]] 決定 1: 全文インデックスのパラメータ。
     //
     // **`multilingual` を採る。** 実機 v1.18.1（公式イメージ）で受理されることと、日本語の語中に当たること、
     // 語でない断片（`anpop`）に当たらないこと、語順に依存しないことを実測した。

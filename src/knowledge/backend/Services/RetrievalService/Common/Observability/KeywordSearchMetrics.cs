@@ -2,7 +2,7 @@ using System.Diagnostics.Metrics;
 
 namespace RetrievalService.Common.Observability;
 
-// FR-03, UC-01, SC-10, #1116, [[IADR-0316]] 決定 3: **ハイブリッド検索の全文（キーワード）側が
+// FR-03, UC-01, SC-10, #1116, [[IADR-0318]] 決定 3: **ハイブリッド検索の全文（キーワード）側が
 // 使えなかった回数**。
 //
 // 本 issue の欠陥は「壊れているのに 200 が返る」形そのものである。応答へ理由を載せることは

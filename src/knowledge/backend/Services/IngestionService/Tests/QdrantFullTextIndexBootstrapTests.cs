@@ -9,7 +9,7 @@ using Qdrant.Client.Grpc;
 
 namespace IngestionService.Tests;
 
-// FR-02, FR-03, UC-01, #1116, [[IADR-0316]] 決定 1・2:
+// FR-02, FR-03, UC-01, #1116, [[IADR-0318]] 決定 1・2:
 // **`text` の全文ペイロードインデックスが、新規コレクションにも既に在るコレクションにも張られること。**
 //
 // 🔴 これが本 issue の中心である。従前の `EnsureCollectionsAsync` は
@@ -68,7 +68,7 @@ public class QdrantFullTextIndexBootstrapTests
         invoker.CreatedFieldIndexes.Should().OnlyContain(x => x.FieldType == FieldType.Text);
     }
 
-    // FR-03, #1116, [[IADR-0316]] 決定 1: トークナイザの宣言値を固定する。
+    // FR-03, #1116, [[IADR-0318]] 決定 1: トークナイザの宣言値を固定する。
     //
     // **`multilingual` を実測で選んだ**（word / whitespace は日本語がほぼ全滅し、prefix は語頭しか
     // 当たらない。索引なしは「部分文字列の全走査」で、語でない断片に当たり語順にも依存する）。

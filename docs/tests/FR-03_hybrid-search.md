@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-03, SC-01, SC-02, UC-01]
 adrs: [ADR-0016]
-iadrs: [IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0256, IADR-0316]
+iadrs: [IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0256, IADR-0318]
 specs: [20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index]
 issues: [#448, #532, #536, #642, #995, #1116]
 -->

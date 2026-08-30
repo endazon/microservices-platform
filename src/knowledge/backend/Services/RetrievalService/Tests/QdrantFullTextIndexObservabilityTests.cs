@@ -11,7 +11,7 @@ using RetrievalService.Infrastructure.ExternalServices;
 
 namespace RetrievalService.Tests;
 
-// FR-03, UC-01, NFR-06, #1116, [[IADR-0316]] 決定 3:
+// FR-03, UC-01, NFR-06, #1116, [[IADR-0318]] 決定 3:
 // **キーワード検索が全文検索として機能していないことを、応答の外側から観測できること。**
 //
 // 🔴 本 issue の欠陥は「壊れているのに 200 が返る」形である。#972 / #992 が同型の穴
