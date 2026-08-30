@@ -14,7 +14,7 @@
     <None Remove="Tests/**" />
   </ItemGroup>
   <ItemGroup>
-    <!-- IADR-0317 (#1097): `PandocConversionService.PandocInputFormat` の写像（PDF を既定へ落とさない）を
+    <!-- IADR-0318 (#1097): `PandocConversionService.PandocInputFormat` の写像（PDF を既定へ落とさない）を
          単体テストから直接測る。他サービス（DataSource/Document/Graph/Ingestion/Retrieval）と同じ流儀。 -->
     <InternalsVisibleTo Include="ConversionService.Tests" />
   </ItemGroup>

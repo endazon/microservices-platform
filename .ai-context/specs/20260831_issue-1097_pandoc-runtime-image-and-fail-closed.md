@@ -15,7 +15,7 @@ related_ids:
   - IADR-0137
   - IADR-0154
   - IADR-0298
-  - IADR-0317
+  - IADR-0318
 author: claude
 created: 2026-08-31
 updated: 2026-08-31
@@ -122,13 +122,13 @@ issue 本文の反映先リストは使わず、着手時に自分で引いた�
 - `docs/functional/FR-12_document-normalization.md`（例外フロー E1・スコープ外）
 - `docs/tests/FR-12_document-normalization.md`（T-09/T-10・制約）
 - `docs/functional/FR-01_data-source-catalog.md`（実装状況表の「変換（pandoc）」行）
-- `.ai-context/adr/IADR-0317_*`（新規・実装 ADR）
+- `.ai-context/adr/IADR-0318_*`（新規・実装 ADR）
 
 ### 除外したもの（理由つき）
 
 | 対象 | 除外理由 |
 | --- | --- |
-| `.ai-context/adr/IADR-0002/0008/0042/0231/0281/0298` | **凍結記録**。本文プロズを後から書き換えない（`CLAUDE.md`「主従」）。差分は新規 IADR-0317 が持つ |
+| `.ai-context/adr/IADR-0002/0008/0042/0231/0281/0298` | **凍結記録**。本文プロズを後から書き換えない（`CLAUDE.md`「主従」）。差分は新規 IADR-0318 が持つ |
 | `.ai-context/specs/*`（10 件） | 同上（確定済み作業仕様書） |
 | `.ai-context/superpowers/*`（2 件） | 同上。経過追記も不可（`traceability.repo.md`） |
 | `CHANGELOG.md` | 自動生成（`CLAUDE.md`「補助成果物の自動生成」）。手で書き足さない |
@@ -141,7 +141,7 @@ issue 本文の反映先リストは使わず、着手時に自分で引いた�
 | `scripts/backend-library-baseline.json` | NuGet を 1 つも足さないため変更なし |
 | `src/knowledge/backend/Services/DataSourceService/**` | `.pdf` の列挙可否は FR-01 側の裁定であり、本 issue の射程外。計画へ環流する |
 
-## 決定（詳細は IADR-0317）
+## 決定（詳細は IADR-0318）
 
 1. **Dockerfile の runtime 段で `apt-get install --no-install-recommends pandoc`**。取得元は
    **ベースイメージ（Ubuntu 24.04 noble）に設定済みの APT ミラー**であり、外部 CDN・GitHub リリース・

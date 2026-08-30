@@ -60,7 +60,7 @@ public class RawDocumentFetchedConsumer(
         }
         catch (UnsupportedSourceFormatException ex)
         {
-            // FR-12, UC-06, SC-07, IADR-0317 決定 4 (#1097): 原本の形式が pandoc の入力形式にならない
+            // FR-12, UC-06, SC-07, IADR-0318 決定 4 (#1097): 原本の形式が pandoc の入力形式にならない
             // （代表は PDF）。**再試行しても結果は変わらない**ので、再送出せず恒久失敗として記録する。
             //
             // 🔴 デッドレターへは流さない —— 判る形で拒否したいのであって、原因不明の毒メッセージとして
