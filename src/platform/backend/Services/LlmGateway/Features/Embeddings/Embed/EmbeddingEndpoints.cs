@@ -2,7 +2,7 @@ using Platform.Shared.Contracts.Dtos;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Domain.Routing;
 
-namespace LlmGateway.Features.Embeddings;
+namespace LlmGateway.Features.Embeddings.Embed;
 
 // FR-02, FR-03, FR-05, ADR-0013, ADR-0016, ADR-0017: 埋め込み生成エンドポイント（/embed）。
 // 機密区分・用途に応じて送信先（ティア/エンドポイント/モデル/コレクション）を切り替える。

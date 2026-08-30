@@ -1,5 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using NotificationService.Features.Notifications;
+using NotificationService.Features.Notifications.Accept;
+using NotificationService.Features.Notifications.DispatchEmails;
+using NotificationService.Features.Notifications.PurgeExpired;
 using NotificationService.Common.Observability;
 using NotificationService.Common.Options;
 using NotificationService.Infrastructure.Persistence;

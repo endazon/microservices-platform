@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 using NotificationService.Common.Options;
 using NotificationService.Infrastructure.Persistence;
 
-namespace NotificationService.Features.Notifications;
+namespace NotificationService.Features.Notifications.PurgeExpired;
 
 // FR-22, IADR-0215 決定 2: 保持期間（既定 90 日）を過ぎたアプリ内通知を物理削除する。
 //

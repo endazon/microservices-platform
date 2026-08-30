@@ -1,5 +1,5 @@
 
-namespace NotificationService.Features.Notifications;
+namespace NotificationService.Features.Notifications.Accept;
 
 // FR-22, ADR-0004, IADR-0215 決定 5, IADR-0270 決定 6: 通知の受け口（メッシュ内部限定）。
 //
