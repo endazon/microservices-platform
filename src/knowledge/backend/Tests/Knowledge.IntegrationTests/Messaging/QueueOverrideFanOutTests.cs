@@ -31,6 +31,11 @@ namespace Knowledge.IntegrationTests.Messaging;
 // **宣言経路から競合コンシューマを作ること自体が構造的にできなくなった**。
 // 本テストはその 2 点 —— ①宣言 queue が実際にリスニングキュー名を変えること、
 // ②同一宣言値でも fan-out が保たれること（前置の実効）—— を実ブローカで固定する。
+//
+// 🔴 ［2026-08-30 / #1038 #1059］**DocumentUpdatedFanOutTests と同時に走らせない。**
+// 赤になった 2 run では両クラスの実行窓が重なり、緑の 3 run では 20〜51 秒離れていた。
+// 根拠と交絡の断りは FanOutTestCollection.cs にある（**待ち時間は伸ばしていない**）。
+[Collection(FanOutTestCollection.Name)]
 [Trait("Category", "Integration")]
 public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqFixture rabbit)
     : IClassFixture<PostgresFixture>, IClassFixture<RabbitMqFixture>, IAsyncLifetime
@@ -205,9 +210,13 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
     // #1038 は「測らずに待ち時間を延ばす」ことを禁じているので、**この 30 秒は据え置く。**
     private static readonly TimeSpan ProcessingBudget = TimeSpan.FromSeconds(30);
 
+    // ［2026-08-30 / #1038 #1059］**購読キュー名も併せて載せる** —— 本テストでは
+    // 「宣言 queue が効いて前置つきの別キュー 2 本になっているか」がそのまま読める。
     private string Measured() =>
         $"。実測: 購読開始 ingestion={_ingestionReady.TotalSeconds:F1}s / wiki={_wikiReady.TotalSeconds:F1}s"
-        + "（購読は始まっていたので、これは実処理側の遅さか受信そのものの欠落である）";
+        + "（購読は始まっていたので、これは実処理側の遅さか受信そのものの欠落である）"
+        + $"。購読キュー: ingestion=[{ListenerReadiness.DescribeListeners(_ingestion.Services)}]"
+        + $" / wiki=[{ListenerReadiness.DescribeListeners(_wiki.Services)}]";
 
     // 本番 pipeline.json から**実行時に派生**させ、ingest と wiki-sync に同一の queue を入れる。
     //
