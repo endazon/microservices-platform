@@ -242,6 +242,44 @@ $ find ... -mindepth 2 -maxdepth 2 -name '*.cs' | wc -l
 `REQUIRE_REPO_TESTS=1 scripts.test.js`（664 tests passed）／
 `validate-pipeline-config.js`（OK）はいずれも緑。
 
+## 🔴 踏んだ罠 —— `Features/Documents/Publish/` が `.gitignore` に飲み込まれた
+
+**症状**: ローカルの `dotnet build` / `dotnet test` / `dotnet format` はすべて緑。
+`git status` も clean。にもかかわらず **CI の `backend-build (knowledge)` が
+`DocumentEndpoints.cs(10,42): error CS0234: The type or namespace name 'Publish' does not
+exist` で落ちた**。
+
+**原因**: `.gitignore:214` の `publish/`（Click-Once の出力。VisualStudio.gitignore 由来）。
+Windows の git は既定で `core.ignorecase=true` なので **`Publish/` がこれに一致する**。
+`git add -A` は `Features/Documents/Publish/Endpoint.cs` を**静かに拾わなかった**。
+
+**なぜローカルで気付けないか**: ファイルは**作業ツリーには在る**ので、ビルドもテストも
+format も通る。落ちているのは「追跡下にあるか」だけであり、**差分にもコミットにも
+`git status` にも現れない**（`--ignored=matching` を明示しない限り）。CI は
+clone した内容をビルドするので、そこで初めて存在しないファイルとして現れる。
+
+**採った対処**: `.gitignore` の末尾へ、スライスの操作フォルダを再包含する 1 行を足した。
+
+```gitignore
+!**/backend/Services/*/Features/**/
+```
+
+**現実的な操作名を総当たりで当てた実測**（`git check-ignore -v`）:
+
+| 対処前に飲み込まれた名前 | 対処後 |
+| --- | --- |
+| `Publish` `Release` `Debug` `Out` `Log` `Logs` `Obj` `TestResults` `Backup` `Express` | **救出済み** |
+| `Bin`（`**/[Bb]in/*`）・`Packages`（`**/[Pp]ackages/*`） | **ファイルを直接塞ぐパターンなので、ディレクトリ再包含では救えない** |
+| `Dist`（`src/.gitignore:2`） | **より深い .gitignore が勝つので救えない** |
+
+残る 3 つは操作名として不自然なため、ファイル単位の再包含は足していない
+（必要になったときに足す旨を `.gitignore` のコメントへ書いた）。
+
+🔴 **#1062 は 12 以上のサービスを並列で移送している。同じ罠は他サービスでも踏み得る**
+（`Publish` は文書・記事・提案のどれにも自然な操作名である）。本 PR の `.gitignore` の
+1 行が先に着地すれば以後は起きない。**着地前に走っている PR は、コミット後に
+`git status --ignored=matching --untracked-files=all -- <Features のパス>` で確かめられたい。**
+
 ## 追随の候補（本 PR では扱わない）
 
 - `DocumentObjectPurger` / `PrivateNoteUsage`＋`SyncTokens` / `LinkEdgeSynchronizer` /
