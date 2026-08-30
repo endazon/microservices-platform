@@ -3,7 +3,7 @@ title: UC-11 自分の資料を作成・管理し公開範囲を自ら設定す�
 type: test-spec
 status: completed
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-30
 author: Claude
 ---
 <!-- trace:
@@ -32,5 +32,5 @@ issues: [#451]
 ## 実行
 
 ```bash
-dotnet test src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests
+dotnet test src/knowledge/backend/Services/DocumentService/Tests
 ```

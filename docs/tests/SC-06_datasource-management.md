@@ -162,10 +162,10 @@ BFF が後段障害を空一覧へ丸めてしまえば画面には何も届か�
 
 ## DataSourceService（xUnit・次回同期）
 
-対象: [`.../DataSourceService.Api/Foundation/Services/SyncSchedule.cs`](../../src/knowledge/backend/Services/DataSourceService/Features/DataSources/SyncSchedule.cs) ／
-[`.../Foundation/Services/DataSourceSyncHostedService.cs`](../../src/knowledge/backend/Services/DataSourceService/Features/DataSources/Sync/DataSourceSyncHostedService.cs) ／
-[`.../Foundation/Endpoints/DataSourceEndpoints.cs`](../../src/knowledge/backend/Services/DataSourceService/Features/DataSources/DataSourceEndpoints.cs)
-テスト: [`DataSourceService.Api.Tests/SyncScheduleTests.cs`](../../src/knowledge/backend/Services/DataSourceService/Tests/SyncScheduleTests.cs)
+対象: [`.../DataSourceService/Features/DataSources/SyncSchedule.cs`](../../src/knowledge/backend/Services/DataSourceService/Features/DataSources/SyncSchedule.cs) ／
+[`.../Features/DataSources/Sync/DataSourceSyncHostedService.cs`](../../src/knowledge/backend/Services/DataSourceService/Features/DataSources/Sync/DataSourceSyncHostedService.cs) ／
+[`.../Features/DataSources/DataSourceEndpoints.cs`](../../src/knowledge/backend/Services/DataSourceService/Features/DataSources/DataSourceEndpoints.cs)
+テスト: [`DataSourceService.Tests/SyncScheduleTests.cs`](../../src/knowledge/backend/Services/DataSourceService/Tests/SyncScheduleTests.cs)
 
 計画側の裁定 Q15 は「`NextSyncAt` は**共通間隔の次回実行時刻**として全ソース同じ値を返す」である。
 **時刻依存は `TimeProvider` を固定して決定的にする**（`DateTimeOffset.UtcNow` をテストから呼ばない）。

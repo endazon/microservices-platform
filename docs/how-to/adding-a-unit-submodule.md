@@ -25,8 +25,13 @@ issues: [#229, #230, #245, #785]
   backend/
     backend.slnx                ← ユニットの集約ソリューション（サービスを登録）
     Services/<Name>/
-      src/<Name>.Api/           ← Program.cs（合成ルート）・Foundation/・Composable/
-      tests/<Name>.Api.Tests/
+      <Name>.csproj             ← 単一プロジェクト（層をプロジェクト分割しない）
+      Program.cs                ← 合成ルート
+      Features/<集約>/<操作>/   ← 端点・段（Endpoint / Command|Query / Handler / *Consumer）
+      Domain/                   ← エンティティ・値オブジェクト・ポート（Domain/Ports/）
+      Infrastructure/           ← Persistence/ ・ Messaging/ ・ ExternalServices/（アダプタ）
+      Common/                   ← サービス固有の横断関心（Exceptions/・Behaviors/）
+      Tests/<Name>.Tests.csproj ← テストは 1 プロジェクト
     Shared/<Unit>.Contracts/    ← 任意: ユニット固有のイベント契約（段間連携イベント。契約階層化は #229/IADR-0059）
   frontend/
     package.json                ← name: @<unit>/frontend、pnpm workspace で自動認識。**依存を明示宣言する**
@@ -50,7 +55,8 @@ issues: [#229, #230, #245, #785]
     2 → 3 へ部分改定した。`Platform.Shared.Kernel` は計画側が定める共有カーネルであり、
     2026-08-21 に Result / Error を公開する実体を持った）。
   - platform → 可変ユニットの参照は禁止（一方向依存）。
-  - `Foundation/` は `Composable/` に依存しない。
+  - サービス内の参照方向は一方向にする（`Domain/` は `Features/` ・ `Infrastructure/` ・ `Common/` を
+    知らない）。共有基盤プロジェクトでは同じ規律を `Foundation/` → `Composable/` の禁止として表す。
 
 ## 2. submodule として配置する
 
@@ -64,11 +70,13 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
 
 ## 3. バックエンドを組み込む
 
-- サービス csproj から platform の共通契約・基盤を相対パスで参照する（サービス csproj から 6 階層上）:
+- サービス csproj から platform の共通契約・基盤を相対パスで参照する。**配置後のサービス csproj は
+  `src/<unit>/backend/Services/<Name>/<Name>.csproj` にあるので、`src/` までは 4 階層上**である
+  （層プロジェクトを廃し `src/` 中間層を置かなくなったため、従前の 6 階層から縮んだ）:
 
   ```xml
-  <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\KnowledgePlatform.Shared.Contracts\KnowledgePlatform.Shared.Contracts.csproj" />
-  <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\KnowledgePlatform.Shared.Infrastructure\KnowledgePlatform.Shared.Infrastructure.csproj" />
+  <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
+  <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
   ```
 
 - **サービス CI 発見は編集不要**（submodule 運用の実装 ADR）。`ci.yml` の `lint` / `build-and-test` は

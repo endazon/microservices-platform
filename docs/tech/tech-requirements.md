@@ -120,12 +120,14 @@ src/<unit>/backend/Services/<Name>Service/
  ├── Domain/                     # エンティティ・値オブジェクト（外部依存なし。＋ Errors/）
  ├── Infrastructure/             # Persistence（EF Core・Migrations）・Messaging 等のアダプタ
  ├── Common/                     # サービス固有の横断関心（Exceptions/・Behaviors/）
- ├── Worker/<Name>.Worker.csproj # 常駐処理を主とするサービスの実行入口（Api と排他・別デプロイ実体）
  └── Tests/<Name>.Tests.csproj   # テストは 1 プロジェクト（フォルダは実装の鏡写し: Features/・Domain/）
 ```
 
 **`Api` と `Worker` は同一サービス内で排他である。** いずれか一方のみを持ち、**持たない側は空フォルダを作らない**
-（実行入口は 1 サービスに 1 つであり、「空の実行入口」という状態が存在しないため）。実装の現況は
+（実行入口は 1 サービスに 1 つであり、「空の実行入口」という状態が存在しないため）。
+**ただし排他なのは `Program.cs` の形であって、ディレクトリ階層でも `.csproj` 名でもない**
+（計画 ADR-0065 決定 6）—— **`Services/<Name>/Worker/` のような中間ディレクトリは置かず、
+`.csproj` 名にも `.Worker` を付けない**（追跡下の `*Worker*.csproj` は 0 件である）。実装の現況は
 **`Api` 12 サービス / `Worker` 2 サービス**（`ConversionService` / `IngestionService`）である
 （2026-08-28 の移送完了時点で数え直した。knowledge 10 ＋ platform 4 ＝ 14 サービス）。
 **`Worker` が HTTP 面を持つことは `Worker` であることと矛盾しない** —— 区別の軸はホストの主目的である。
@@ -144,8 +146,9 @@ src/<unit>/backend/Services/<Name>Service/
 §規範性・粒度・置き場。利用者裁定 2026-08-04）。プロジェクトを分けるとビルド時間と
 参照管理のコストが増えるためである。フォルダは Unit / Integration の種別区分ではなく
 **実装のスライスを鏡写しにする**（`Tests/Features/`・`Tests/Domain/`。2026-08-28 裁定。
-種別区分の計画側条文は改定を環流中）。`.csproj` の実名はホスト種別に合わせてよい
-（実装の現況は `<Name>.Api.Tests` / `<Name>.Worker.Tests`）。
+種別区分の計画側条文は改定を環流中）。**`.csproj` の実名はホスト種別を含めず `<Name>.Tests` とする**
+（実装の現況は 14 サービス全件が `Services/<Name>/Tests/<Name>.Tests.csproj` であり、
+旧名 `<Name>.Api.Tests` / `<Name>.Worker.Tests` は 0 件である）。
 
 **共有カーネルはユニット単位に一本化する**（2026-08-28 裁定。サービス単位の
 `SharedKernel` 要素と `.gitkeep` の枠は撤回）。
@@ -175,8 +178,11 @@ src/<unit>/backend/Services/<Name>Service/
 バックエンド標準ライブラリの計画 ADR の選定基準 3 の「ゼロ」を「名指しの 1 つ」へ改定した）。
 同選定基準 3 を成立させるための置き場であり、
 `scripts/check-backend-libraries.js` が `*.Domain.csproj` の許容 `ProjectReference` を同プロジェクトのみ
-とし、あわせて**同プロジェクトの `PackageReference` を許可リストの 1 件に限る**形で機械強制する。**実体プロジェクトは未作成**で、最初にそれを必要とする
-サービス再実装 issue（#438〜#451）が作成する。
+とし、あわせて**同プロジェクトの `PackageReference` を許可リストの 1 件に限る**形で機械強制する。
+**実体プロジェクトは作成済みである**（`src/platform/backend/Shared/Platform.Shared.Kernel` ＋
+`Platform.Shared.Kernel.Tests`）。なお `*.Domain.csproj` 規則の対象は現在 0 件である ——
+層プロジェクト分割の撤回により `*.Domain.csproj` そのものが存在せず、Domain の外部依存ゼロは
+**フォルダ（名前空間）走査**の側が担保している。
 
 ### ライブラリ標準（要点）
 
@@ -317,7 +323,7 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
 | 可用性 | 99.9%（月間ダウンタイム約 43 分以内） | HPA + PodDisruptionBudget（#197・`scaling`）、readiness/liveness プローブ、RollingUpdate、GitOps ロールバック（Git revert） |
 | セキュリティ | 認証・認可・データ越境統制・監査ログ | Keycloak OIDC＋ ABAC fail-closed、Istio STRICT mTLS ＋ NetworkPolicy、deny-by-default／存在秘匿、LLM egress マトリクス（埋め込みの機密区分ルーティング）。詳細は `docs/security/security.md` |
 | 運用・保守 | 検出 5 分以内 / MTTR 30 分以内 | OTel 可観測性、ArgoCD GitOps、構成ドリフト検出、起動時 fail-fast。**監視アラート・バックアップ・Runbook は整備中** |
-| 拡張性 | 段の挿抜・購入部品の差し替え | 宣言的パイプライン構成（`pipeline.json`）＋ Foundation/Composable 構造。契約は `Shared.Contracts`。共通エンベロープ・契約テストは条件付き繰延（コンポーザビリティ標準の段階適用） |
+| 拡張性 | 段の挿抜・購入部品の差し替え | 宣言的パイプライン構成（`pipeline.json`）＋ 固定/可変分離（サービスは `Features/` ＝段・`Domain/Ports/` ＝ポート・`Infrastructure/ExternalServices/` ＝アダプタ、共有基盤は `Foundation/` / `Composable/`）。契約は `Shared.Contracts`。共通エンベロープ・契約テストは条件付き繰延（コンポーザビリティ標準の段階適用） |
 
 ## 開発・ビルド・テスト・デプロイ
 

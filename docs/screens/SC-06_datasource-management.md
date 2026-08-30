@@ -135,7 +135,7 @@ issues: [#446, #490, #502, #506, #519, #534, #537, #538, #628, #754, #767, #796,
 
 実測の出所: `src/knowledge/backend/Shared/Knowledge.Contracts/Dtos/DataSourceDto.cs` ／
 `src/knowledge/backend/Services/DataSourceService/Domain/DataSource.cs` ／
-`.../Foundation/Services/DataSourceSyncHostedService.cs` ／
+`.../Features/DataSources/Sync/DataSourceSyncHostedService.cs` ／
 `src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/DataSourceBffEndpoints.cs`（対象コミット `de55761`）。
 
 **「押しても結果が変わらないボタン」「常に空の列」を置かない**（#502 が確立した規則）。

@@ -289,19 +289,21 @@ submodule populate 済み）である——**line 34.14%（9314/27280） / branc
 | 契約 | `scripts/contract-schema-baseline.json`（スナップショット） | [`check-contract-schema.js`](../../scripts/check-contract-schema.js)（C# ソース構文解析。外部依存ゼロ Node） | `Shared.Contracts` のイベント/API スキーマの後方互換（[#465](https://github.com/endazon/microservices-platform/issues/465) / 契約スキーマの抽出方式（C# ソース構文解析）と後方互換ゲート） |
 | 性能（NFR） | [`NFR-01_performance-load-test.md`](NFR-01_performance-load-test.md) | — | 検索 p95 1.5s / RAG 初回 5s / 取り込み 1 万件・時（[#196](https://github.com/endazon/microservices-platform/issues/196)） |
 
-### サービスのテストは 1 プロジェクト（Unit / Integration はフォルダで分ける）
+### サービスのテストは 1 プロジェクト（フォルダは実装のスライスを鏡写しにする）
 
 計画 12_backend-application-stack（計画リポ）
 §規範性・粒度・置き場（利用者裁定 2026-08-04）が **`Tests` は 1 プロジェクト**と定めている。
 種別ごとに `.csproj` を割らない（ビルド時間と参照管理のコストが増えるため）。したがって 1 つの
 `.csproj` が単体側（NSubstitute）と統合側（`Mvc.Testing` / Testcontainers / Respawn）の
-`PackageReference` を**和集合**で持つ。実装の現況は `<Name>.Api.Tests` / `<Name>.Worker.Tests` であり、
-`.csproj` の実名はホスト種別に合わせてよい。**ユニット横断の統合テスト**
+`PackageReference` を**和集合**で持つ。実装の現況は **`Services/<Name>/Tests/<Name>.Tests.csproj`**
+（14 サービス全件。ホスト種別を接尾辞に持たせる旧名 `<Name>.Api.Tests` / `<Name>.Worker.Tests` は
+0 件である）。**ユニット横断の統合テスト**
 （`src/knowledge/backend/Tests/Knowledge.IntegrationTests`）はサービス単位の `Tests` とは別の層であり、
 この規則の対象外である。雛形は `templates/unit-template/backend/Services/SampleService/Tests`
 がこの形を示す（2026-08-28 の構成裁定で、テストのフォルダは Unit / Integration の種別区分ではなく
 **実装のスライスを鏡写しにする形**（`Tests/Features/`・`Tests/Domain/`）へ改まった。
-実サービスへの適用は移送の波で行い、それまで既存テストの `Unit/` / `Integration/` 区分は現状のまま）。
+実サービスの `Unit/` / `Integration/` 区分は移送の波で解消済みで、追跡下に 0 件である ——
+**現況の 14 サービスは `Tests/` 直下がフラット**であり、スライス鏡写しへの整理は未着手である）。
 
 ### xUnit は v3 で書く
 
