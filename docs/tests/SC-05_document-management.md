@@ -3,15 +3,15 @@ title: SC-05 文書管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-28
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-09, SC-03, SC-05, SC-06, SC-07, UC-03]
-adrs: [ADR-0031]
-iadrs: [IADR-0009, IADR-0019, IADR-0035, IADR-0041, IADR-0127]
-specs: [20260805_issue-503_sc05-08-admin-screens]
-issues: [#501]
+adrs: [ADR-0031, ADR-0066]
+iadrs: [IADR-0009, IADR-0019, IADR-0035, IADR-0041, IADR-0127, IADR-0308]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation]
+issues: [#501, #1065]
 -->
 
 # テスト仕様書: 文書管理
@@ -66,10 +66,10 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | 12 | **契約の不在**（実装しない要素） | 画面仕様書 §hi-fi 対応 #6 | 「変換」列が無い。**先に「機密区分」「版」の列が在ることを確かめてから**無いことを見る |
 | 13 | ロケール `en` | —| 見出し・保存ボタンが英語で描画される |
 
-## 純関数（`src/knowledge/frontend/src/features/abac/types/confidentiality.test.ts`）
+## 純関数（`src/knowledge/frontend/src/lib/abac/confidentiality.test.ts`）
 
 機密区分の値集合は **文書管理画面（文書の機密区分。必須）とデータソース管理画面（既定の機密区分）が共有する語彙**であり、
-`features/abac/types/confidentiality.ts` に 1 つだけ置く。値集合は **ABAC の一次情報**
+`lib/abac/confidentiality.ts` に 1 つだけ置く。値集合は **ABAC の一次情報**
 （計画 06_technical/07_abac-attribute-model の 4 値）に由来し、**増減は機密区分の取り違えに直結する**
 （減れば選べない区分が生まれ、増えれば後段が知らない区分で保存される）。
 画面テスト経由の間接被覆では「4 値であること」自体を固定できないため、直接固定する。
@@ -132,7 +132,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 
 ## 実行
 
-- `pnpm run test -- knowledge/frontend/src/features/abac`（純関数 **3** ケース。データソース管理画面と共有）
+- `pnpm run test -- knowledge/frontend/src/lib/abac`（純関数 **3** ケース。データソース管理画面と共有）
 - `pnpm run test -- knowledge/frontend/src/features/sc05-documents`（単体。**15 ケース**）
   ——**表の行末番号（13）ではなく実測のケース数**である（`4-b` / `8-b` を含めて 15 行 = 15 ケース）。
 - `pnpm run test -- knowledge/frontend/src/features/adminFlow.test.tsx`（導線）

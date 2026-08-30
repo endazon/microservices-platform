@@ -3,15 +3,15 @@ title: AI分析ダッシュボード 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-29
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-07, FR-11, SC-01, SC-03, SC-05, SC-08, UC-02, UC-05]
-adrs: []
-iadrs: [IADR-0005, IADR-0009, IADR-0111, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0127, IADR-0131, IADR-0135]
-specs: [20260805_issue-503_sc05-08-admin-screens]
-issues: [#446, #490, #503, #506, #519, #539, #540, #553, planning#197]
+adrs: [ADR-0066]
+iadrs: [IADR-0005, IADR-0009, IADR-0111, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0127, IADR-0131, IADR-0135, IADR-0308]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation]
+issues: [#446, #490, #503, #506, #519, #539, #540, #553, #1065, planning#197]
 -->
 
 # 画面仕様書: AI分析ダッシュボード
@@ -91,7 +91,7 @@ issues: [#446, #490, #503, #506, #519, #539, #540, #553, planning#197]
 > **［2026-08-09 追記 / #539］上表の不足は解消した。** 契約は #539 が `attributeFilters` を足し、
 > **権限内候補の口は #540**（`POST /bff/attribute-values`）が担う。
 > **「フォルダ」は不採用が確定した**（裁定 Q9）ので、軸はタグ・部門・プロジェクトの 3 つである。
-> チップは **検索／チャット質問画面と同じ部品**（`features/scope-filter`）を使う（裁定 Q3）。
+> チップは **検索／チャット質問画面と同じ部品**（`lib/scope-filter`）を使う（裁定 Q3）。
 > **以下は当時（実装前）の記録である。**
 
 **環流先は計画側の既存 issue とする**（新しい記録は作らない）。検索／チャット質問画面の対象範囲フィルタで挙げた

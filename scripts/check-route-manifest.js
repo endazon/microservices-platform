@@ -42,7 +42,10 @@
  *     **「書き換えてはならない記録の書き換え」を要求する**ことになる。是正は経過追記で行う。
  *   - **submodule のユニット**（`.gitmodules` から導出。`src/ai-stock-trading`）。別プロジェクトであり、
  *     旧契約（宣言的ルート）で木に載るため本マニフェストの射程外である（IADR-0124 決定 2）。
- *   - **画面でない feature ディレクトリ**（`scope-filter` 等。`sc<2 桁>-` に一致しないもの）。
+ *   - **画面でない feature ディレクトリ**（`sc<2 桁>-` に一致しないもの）。
+ *     ［2026-08-30 / #1065］**実在は 0 件になった** —— 従前の例だった `abac` / `scope-filter` は
+ *     ADR-0066 決定 1 により `knowledge/frontend/src/lib/` へ移り、`features/` 配下は全部が画面である。
+ *     **判定は残す**（画面でないものが再び現れ得るし、除外を消すと 0 件の根拠が消える）。
  *   - **SC 番号のレンジ**（`.claude/rules/traceability.repo.md` の `SC-01..21`）。実在性は
  *     コミット件名・trace ブロックの検査器が持つ。ここで二重に持たない。
  *
@@ -179,7 +182,7 @@ function collectScreens(files) {
     if (!m) continue;
     const dirName = m[1];
     const sc = SCREEN_DIR_RE.exec(dirName);
-    if (!sc) continue; // 画面でない feature（scope-filter 等）
+    if (!sc) continue; // 画面でない feature（`sc<2 桁>-` に一致しないディレクトリ）
     CREATE_ROUTE_PATH_RE.lastIndex = 0;
     const paths = [];
     let hit;
@@ -420,7 +423,7 @@ function selfTest() {
       feature('sc01-search', '/ask'),
       feature('sc18-graph', '/graph'),
       {
-        relPath: 'src/knowledge/frontend/src/features/scope-filter/index.ts',
+        relPath: 'src/knowledge/frontend/src/features/shared-widgets/index.ts',
         text: "export const x = 1;\n",
       },
     ]);

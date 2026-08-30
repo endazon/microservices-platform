@@ -59,7 +59,7 @@ msgstr "Add tag \"{1}\" to {0}"
 msgid "{0} を選択"
 msgstr "Select {0}"
 
-#: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
+#: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "{count} 件で絞り込み中"
 msgstr "Narrowed by {count}"
 
@@ -556,7 +556,7 @@ msgstr "Scope"
 msgid "すべて"
 msgstr "All"
 
-#: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
+#: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "すべてが対象"
 msgstr "All in scope"
 
@@ -600,7 +600,7 @@ msgstr "Filter by title"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
-#: knowledge/frontend/src/features/scope-filter/types/scopeSelection.ts
+#: knowledge/frontend/src/lib/scope-filter/scopeSelection.ts
 msgid "タグ"
 msgstr "Tags"
 
@@ -811,7 +811,7 @@ msgstr "Feedback sent."
 msgid "フィードバックを送信できませんでした。"
 msgstr "Could not send the feedback."
 
-#: knowledge/frontend/src/features/scope-filter/types/scopeSelection.ts
+#: knowledge/frontend/src/lib/scope-filter/scopeSelection.ts
 msgid "プロジェクト"
 msgstr "Project"
 
@@ -1153,7 +1153,7 @@ msgstr "Delete this private note?"
 msgid "個人資料を完全に削除しました。"
 msgstr "The private notes have been permanently deleted."
 
-#: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
+#: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "候補を読み込み中…"
 msgstr "Loading options…"
 
@@ -1605,11 +1605,11 @@ msgstr "Action"
 msgid "対象属性"
 msgstr "Attribute"
 
-#: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
+#: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "対象範囲"
 msgstr "Scope"
 
-#: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
+#: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "対象範囲フィルタ"
 msgstr "Scope filter"
 
@@ -2489,7 +2489,7 @@ msgstr "Result →"
 msgid "結果一覧"
 msgstr "Results"
 
-#: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
+#: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "絞り込める候補はありません。"
 msgstr "No options available to narrow by."
 
@@ -2779,7 +2779,7 @@ msgstr "Selected document"
 
 #: knowledge/frontend/src/features/sc03-document/types/attributes.ts
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
-#: knowledge/frontend/src/features/scope-filter/types/scopeSelection.ts
+#: knowledge/frontend/src/lib/scope-filter/scopeSelection.ts
 msgid "部門"
 msgstr "Department"
 

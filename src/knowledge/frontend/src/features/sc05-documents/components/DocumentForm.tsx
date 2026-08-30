@@ -12,7 +12,11 @@ import {
   Tag,
 } from '@platform/ui';
 import { Alert } from '@platform/ui';
-import { CONFIDENTIALITY_KEY, CONFIDENTIALITY_VALUES, DEFAULT_CONFIDENTIALITY } from '../../abac';
+import {
+  CONFIDENTIALITY_KEY,
+  CONFIDENTIALITY_VALUES,
+  DEFAULT_CONFIDENTIALITY,
+} from '../../../lib/abac';
 import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-05, UC-03, FR-06/FR-09: 文書の登録／編集フォーム（hi-fi の「編集フォーム」パネル）。

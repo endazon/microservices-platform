@@ -13,7 +13,7 @@ import type { MessageDescriptor } from '@lingui/core';
 //
 // **それでも本ファイルでは値を変換しない。** 写像を入れる先は引用（`CitationDto`）側の **#541** であり
 // （#553 がそう指示している）、ここで先に入れると**同じ写像が 2 か所に生まれる**。
-// 値集合の単一情報源は `features/abac/confidentiality.ts` である。
+// 値集合の単一情報源は `lib/abac/confidentiality.ts` である。
 
 /** 計画が画面ラベルを与えている属性キー。ここに無いキーはそのまま表示する。 */
 const ATTRIBUTE_LABELS: Record<string, MessageDescriptor> = {

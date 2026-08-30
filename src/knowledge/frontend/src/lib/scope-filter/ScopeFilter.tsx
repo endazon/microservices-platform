@@ -9,8 +9,8 @@ import {
   toggleScopeValue,
   type ScopeAxis,
   type ScopeSelection,
-} from '../types/scopeSelection';
-import { useScopeCandidates } from '../api/useScopeCandidates';
+} from './scopeSelection';
+import { useScopeCandidates } from './useScopeCandidates';
 
 // FR-04, FR-05, SC-01, SC-08, UC-01, UC-02, #539: 対象範囲フィルタ。
 //

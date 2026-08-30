@@ -16,7 +16,7 @@ import {
 import { ApiError } from '@foundation/api/ApiError';
 import { PlatformRole, useHasAnyRole } from '@foundation/auth/roles';
 import { toMessages } from '@foundation/ui/apiErrors';
-import { CONFIDENTIALITY_KEY } from '../../abac';
+import { CONFIDENTIALITY_KEY } from '../../../lib/abac';
 import { DocumentForm } from './DocumentForm';
 import type { DocumentFormValues } from './DocumentForm';
 import { useAdminDocuments, useDocumentActions } from '../api/useDocumentAdmin';

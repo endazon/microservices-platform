@@ -19,7 +19,7 @@ import {
   LIFECYCLE_KEY,
   LIFECYCLE_VALUES,
   UNRESOLVED_DEPARTMENT,
-} from '../../abac';
+} from '../../../lib/abac';
 import { i18n } from '@foundation/i18n';
 import { SOURCE_TYPES, sourceTypeLabel } from '../types/syncState';
 import type { CreateDataSourceRequest } from '@foundation/api/generated/bff.schemas';
