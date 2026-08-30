@@ -5458,7 +5458,7 @@ ${r.stderr}`);
       // ★ 単なる包含（`t.includes('`claude-review`')`）だと、表から行を消しても
       //   本文の別の言及（見出し「`claude-review` を必須にする場合の注意」など）が残るため
       //   素通りする —— 変異試験で実測した。**行そのものを見る。**
-      for (const name of ['build-and-test', 'lint', 'commit-messages', 'pr-title', 'image-build', 'claude-review']) {
+      for (const name of ['build-and-test', 'lint', 'commit-messages', 'pr-title', 'image-build', 'static-checks-units', 'scripts-tests', 'claude-review']) {
         assert.match(
           t,
           new RegExp(`^\\| \`${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\` \\|`, 'm'),

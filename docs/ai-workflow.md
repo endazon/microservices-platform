@@ -149,6 +149,7 @@ GitHub Actions が report する status check の context は**ジョブ側の�
 | `commit-messages` | `ci.yml` | 件名規約（スカッシュ前の中間コミット） |
 | `pr-title` | `pr-title.yml` | スカッシュ後件名の唯一の予防線 |
 | `image-build` | `images.yml` | サービスイメージのビルド検証（compose を単一情報源とする独立ワークフロー）の集約ジョブ |
+| `scripts-tests` | `ci.yml` | 🔴 **#936 で追加。** 検査器そのものの単体試験（`scripts.test.js` の 664 件）と、**`check-adr-numbering` / `check-doc-updated` / `check-landed-subjects` の実データ判定**がここで走る。`paths:` を持たず全 PR で起動し、matrix でもない。**これを必須にしないと、採番の欠番・`updated:` の据え置き・着地件名の規約違反が赤いまま着地できる**（#936 の作業中に前 2 者が実際に赤くなった） |
 | `static-checks-units` | `ci.yml` | submodule 取得が要る静的検査の集約ジョブ（unit 依存方向・chart / overlay のレンダリング＋スキーマ突合・unit サービス所有権）。`paths:` を持たず全 PR で起動し、matrix でもない |
 | ~~`CodeQL`~~ | `codeql.yml` | **必須にしない（#719 で除外へ変更）**。`pull_request` に `paths:` を持つため、コード変更の無い PR では check 自体が report されず、必須指定すると恒久 pending になる。集約 check 名 `CodeQL`（ジョブ名 `Analyze (csharp)` と別物）である点は従来どおり。網羅は push（develop/main）と週次 schedule の全量解析が担保する |
 | `claude-review` | `claude-code-review.yml` | **完了**を担保する（後述の注意を必ず読むこと） |
