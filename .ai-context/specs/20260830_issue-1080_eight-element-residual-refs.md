@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 8 要素プロジェクト時代の残存記述を現況へ直す（テストプロジェクト名・Foundation/Composable の一般化）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - NFR
   - ADR-0065
@@ -198,6 +198,27 @@ SampleService\.(Api|Application|Infrastructure)   （★ 追加。雛形の層�
    **書き直す以上は実在名で書く**（見た目の副作用として是正される）。
 2. 同ファイル —— 「本体リポと各ユニットは private な `planning` を submodule として持つ」。
    **`ADR-0048` 決定 2 / `IADR-0228` で planning submodule は撤去済み**であり、事実に反する。
-   本 issue の母集合（8 語）では拾えない別系統の古さのため、**本 PR では触らず起票する**。
-</content>
-</invoke>
+   本 issue の母集合（9 語）では拾えない別系統の古さのため、**本 PR では触らず #1092 として起票した**
+   （同ファイルには他に 3 箇所ある —— `submodules: recursive` を避ける理由・`.gitmodules` の件数・
+   Dependabot の記述。実測で `.gitmodules` のエントリは `src/ai-stock-trading` の 1 件のみ）。
+
+## 実施結果（2026-08-30）
+
+- 是正 27 ファイル。うち **A 15 / B 6 / C 3 / D 3**（上表のとおり）。
+- **追加で 2 箇所を直した**（着手時の走査では母集合に入らず、編集の副作用として矛盾が生じたため。規則 10）:
+  - `docs/tests/TEST_STRATEGY.md` の見出し「（Unit / Integration はフォルダで分ける）」と
+    末尾の「既存テストの `Unit/` / `Integration/` 区分は現状のまま」——
+    **追跡下に `Unit/` / `Integration/` フォルダは 0 件**であり、同じ段落で私が書いた
+    「実装の現況は `Services/<Name>/Tests/<Name>.Tests.csproj`」と矛盾していた。
+  - `src/README.md` の `Foundation/` 実測値 48 → **60**（`Bff/Platform.Bff` の 12 件を補った）。
+- **`check-trace-blocks.js` が 1 件で落ちた** —— `docs/tech/tech-requirements.md` の本文へ
+  `ADR-0065` を可視で書いてしまった。trace ブロックの `adrs:` へ移して緑にした
+  （`docs/` の書式規約はこの検査器が唯一の歯止めであり、書いた本人は気づけない）。
+- 検証: `check-trace-blocks` / `check-doc-links` / `check-doc-updated` /
+  `gen-knowledge-graph --check` / `check-adr-numbering` / `check-commit-messages` /
+  `check-doc-type-vocabulary` / `check-doc-status-vocabulary` / `check-reading-budget` すべて緑。
+  `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` = 664 tests passed。
+  `dotnet build src/knowledge/backend/backend.slnx` = 0 エラー（警告 3・既存の CS0618）。
+- **実測で確かめたこと**: 直した Runbook のコマンド
+  （`node -e "require('./src/platform/backend/Services/LlmGateway/appsettings.json')"`）を実際に走らせ、
+  `PurposeModels` が 8 用途返ることを確認した（直す前は `MODULE_NOT_FOUND` で落ちていた）。
