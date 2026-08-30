@@ -73,7 +73,7 @@ spec:
             # 片方だけがエッジ host へ動くと（#780）、サービス間検証とブラウザ経路が静かに食い違う。
             # RequireHttpsMetadata / RedisConnectionString / CookieName / SessionLifetimeSeconds は
             # **コード既定を使う**（既定が配備の実態および realm と一致することを実測済み。理由は
-            # .ai-context/adr/IADR-0313 と作業仕様書）。ここへ書くと 2 つ目の真実ができる。
+            # .ai-context/adr/IADR-0318 と作業仕様書）。ここへ書くと 2 つ目の真実ができる。
             # 🔴 **エッジが TLS を終端するので、転送ヘッダを解釈させないとログインが完了しない。**
             # 実測（#1107）: これが無いと ASP.NET は受信リクエストの scheme（エッジ→BFF は平文 http）から
             # `redirect_uri` を組み、`http://<edge>/bff/auth/callback` を認可サーバへ送る。realm に登録が
@@ -187,6 +187,40 @@ spec:
               value: "http://embedding-service:{{ $.Values.embedding.port }}"
             - name: Embedding__Routing__Endpoints__1__Enabled
               value: "true"
+          {{- end }}
+          {{- /* FR-02, FR-03, ADR-0016, IADR-0284, IADR-0313 (#992 案 2): 決定的ローカル埋め込み。
+                 🔴 **使い捨ての検証スタック専用**（意味は values.yaml の embedding.deterministicLocal）。
+                 埋め込みの鍵が無いスタックでも索引に点が入り「検索が実際に効くこと」を観測できる。
+                 越境判定（機密区分 × ティア）は緩めていない —— 本経路は HTTP を行わない（ティアA）。
+                 3 サービスは**必ず同時に**配線する。1 つでも欠けると索引先と検索先が食い違い、
+                 検索が静かに 0 件になる（「壊れている」と「該当が無い」がまた区別できなくなる）。 */}}
+          {{- $det := $.Values.embedding.deterministicLocal | default dict }}
+          {{- if and $det.enabled (has $name (list "llmgateway" "ingestion" "retrieval")) }}
+            # IADR-0313 (#992): 決定的ローカル埋め込み（ティアA・プロセス内計算）。使い捨てスタック専用。
+          {{- if eq $name "llmgateway" }}
+            # ⚠️ Endpoints__2 は LlmGateway の appsettings.json の Embedding:Routing:Endpoints 配列で
+            # deterministic-local が index 2（voyage=0 / selfhosted=1）である前提。取り違えは起動時の
+            # EmbeddingRoutingOptionsValidator が fail-fast 検知する（ティア↔プロバイダ整合）。
+            # 同エンドポイントは Priority=5（最優先）なので、有効化した時点で取り込み・クエリの両方が
+            # ここへ寄る。**片方だけ寄ると索引と問い合わせが別空間になり、静かに 0 件になる。**
+            - name: Embedding__Routing__Endpoints__2__Enabled
+              value: "true"
+          {{- end }}
+          {{- if eq $name "ingestion" }}
+            # 取り込みは起動時に Embedding:Collections の全コレクションを作る。ここに無いと
+            # コレクションが存在せず、Upsert も残存防止削除（DeleteByDocumentFromAllAsync）も届かない。
+            # index 2 は appsettings.json の 2 件（voyage=0 / ruri=1）の後ろへ足す位置である。
+            - name: Embedding__Collections__2__Name
+              value: {{ $det.collection | quote }}
+            - name: Embedding__Collections__2__VectorSize
+              value: {{ $det.dimensions | quote }}
+          {{- end }}
+          {{- if eq $name "retrieval" }}
+            # 検索は単一コレクションしか見ない（Qdrant:CollectionName）。取り込み先と揃えないと
+            # 「索引はされているのに検索は別のコレクションを見る」＝ 0 件で静かに落ちる。
+            - name: Qdrant__CollectionName
+              value: {{ $det.collection | quote }}
+          {{- end }}
           {{- end }}
           {{- if $svc.configVersion }}
             # FR-15, IADR-0029 (#144): 構成バージョン（GitOps 注入）。ArgoCD Application の

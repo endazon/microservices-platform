@@ -132,7 +132,7 @@ services:
         condition: service_healthy
 
   qdrant:
-    image: qdrant/qdrant:v1.9.2
+    image: qdrant/qdrant:v1.18.1
     ports:
       - "6333:6333"
       - "6334:6334"
@@ -695,7 +695,7 @@ services:
       # 認可端点は Keycloak が KC_HOSTNAME_URL から描くため、ここを in-cluster にしても browser 到達は壊れない。
       BffSession__MetadataAddress: http://keycloak:8080/realms/platform/.well-known/openid-configuration
       # RequireHttpsMetadata / RedisConnectionString / CookieName / SessionLifetimeSeconds は
-      # コード既定のままにする（既定が compose の実態および realm と一致する。IADR-0313）。
+      # コード既定のままにする（既定が compose の実態および realm と一致する。IADR-0318）。
       # FR-15, IADR-0029, #146: 宣言（正の pipeline.json）を BFF にマウントし、ドリフト検出の突合基準にする。
       # これが無いと BFF の宣言が空になり、実効の全購読が UndeclaredSubscription と誤判定される（#118 監査）。
       Pipeline__ConfigPath: /etc/microservices-platform/pipeline/pipeline.json

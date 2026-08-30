@@ -5,6 +5,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Wolverine;
 using Wolverine.ErrorHandling;
 using Wolverine.RabbitMQ;
+using Wolverine.RabbitMQ.Internal;
 using Wolverine.Runtime;
 using Wolverine.Transports;
 
@@ -77,6 +78,53 @@ public static class WolverineExtensions
         ArgumentNullException.ThrowIfNull(options);
         return options.ListenToRabbitQueue(PlatformQueueName(serviceName, queueName));
     }
+
+    // ADR-0027 手順 3 の**発行側**。#992 / [[IADR-0314]]。
+    //
+    // 🔴 **これが無いと、Wolverine で発行したイベントはブローカへ 1 通も出て行かない。**
+    // 手順 4 でプロセス内経路を切ったうえで外向きの経路を誰も宣言していなければ、Wolverine は
+    // 宛先を決められず **`No routes can be determined for Envelope ...` を info ログへ 1 行出して捨てる**。
+    // 例外は出ず、ヘルスチェックも緑のままである。
+    //
+    // 実測（2026-08-30・稼働 k3s）: `document-service` が `DocumentUpdated` を発行しても
+    // ingestion / wiki / graph のどのキューにも入らず、**取り込みが一度も起動していなかった**。
+    // 発行側の経路宣言は**本番コードに一度も存在したことがない**（`git log -S` で 0 件）。
+    // 統合テストは器の側でこの宣言を足していたため緑であり、[[IADR-0014]] の
+    // 「テストは緑・本番は壊れている」と同型であった。
+    //
+    // 🔴 **exchange 名にサービス名を前置しない**（上の注記と対）。前置すると購読側が束ねた
+    // exchange と食い違い、やはり「誰にも届かない」形になる。
+    //
+    // ⚠️ 名前を `Publish...` で始めない。`check-event-topology.js` の発行元検出は
+    // `Publish` に続く語 ＋ 型引数の形へ一致するため、**経路の宣言が「発行」として数えられてしまう**。
+    // 実際の発行元はイベントを構築して送る 1 箇所であり、ここは配線である。
+    public static WolverineOptions RoutePlatformEvent<TEvent>(this WolverineOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        options.PublishMessage<TEvent>().ToRabbitExchange(PlatformExchangeName<TEvent>());
+        return options;
+    }
+
+    // ADR-0027 手順 3 の**購読側の束ね**。#992 / [[IADR-0314]]。
+    //
+    // 自分のキュー（サービス名前置つき）をイベント型名の fan-out exchange へ束ねる。
+    // **束ねるのは購読側である** —— 発行側に購読者の一覧を持たせると、購読サービスが増減するたびに
+    // 発行側を直すことになり、pipeline.json の queue 上書き（[[IADR-0239]] 決定 4）にも追随できない。
+    //
+    // fan-out の保存は「キュー名が分かれていること」と「各キューが同じ exchange に束ねられていること」の
+    // **両方**で成り立つ。片方だけでは、分かれたキューに何も届かない。
+    public static RabbitMqTransportExpression BindPlatformQueue<TEvent>(
+        this RabbitMqTransportExpression rabbit, string serviceName, string queueName)
+    {
+        ArgumentNullException.ThrowIfNull(rabbit);
+        return rabbit.DeclareExchange(
+            PlatformExchangeName<TEvent>(),
+            ex => ex.BindQueue(PlatformQueueName(serviceName, queueName)));
+    }
+
+    // exchange 名の単一情報源。**メッセージ型名そのもの**であり、前置も接尾も付けない。
+    // 発行側と購読側が同じ値を導くことが要点であり、値そのものに意味は無い。
+    public static string PlatformExchangeName<TEvent>() => typeof(TEvent).Name;
 
     // 手順 4・5: 全サービス共通のメッセージング既定値。各サービスの UseWolverine 内で 1 回呼ぶ。
     public static WolverineOptions UsePlatformMessagingDefaults(this WolverineOptions options)

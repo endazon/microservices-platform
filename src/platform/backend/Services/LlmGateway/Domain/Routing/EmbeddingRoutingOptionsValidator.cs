@@ -10,11 +10,20 @@ namespace LlmGateway.Domain.Routing;
 // コンパイル時に検知できない。そこで起動時アサーション（ValidateOnStart）で不整合を fail-fast する。
 public sealed class EmbeddingRoutingOptionsValidator : IValidateOptions<EmbeddingRoutingOptions>
 {
-    // Tier ごとに期待するプロバイダキー（keyed DI）。ティアとプロバイダの取り違え（並び替え・誤設定）を検知する。
-    private static readonly Dictionary<ProtectionTier, string> ExpectedProviderByTier = new()
+    // Tier ごとに置けるプロバイダキー（keyed DI）。ティアとプロバイダの取り違え（並び替え・誤設定）を検知する。
+    //
+    // 🔴 #992 / [[IADR-0313]]: ティアA は **1 対多** である。ティアA の定義は「社外送信なし」であって
+    // 「特定の 1 実装」ではない。`deterministic-embedding` は HTTP を一切行わない（プロセス内計算）ので
+    // 定義を満たす。**ティアB は依然 1 対 1** で、`voyage` 以外を置けない ——
+    // 取り違えで本文が外部へ出る向きの誤りは、ここで止め続ける。
+    private static readonly Dictionary<ProtectionTier, string[]> ExpectedProvidersByTier = new()
     {
-        [ProtectionTier.A] = "selfhosted-embedding", // セルフホスト（社外送信なし）
-        [ProtectionTier.B] = "voyage",               // 保護契約済み外部
+        [ProtectionTier.A] =
+        [
+            "selfhosted-embedding",   // セルフホスト推論基盤（社外送信なし。ADR-0017）
+            "deterministic-embedding" // 決定的ローカル埋め込み（プロセス内計算。使い捨てスタック専用）
+        ],
+        [ProtectionTier.B] = ["voyage"], // 保護契約済み外部
     };
 
     public ValidateOptionsResult Validate(string? name, EmbeddingRoutingOptions options)
@@ -41,12 +50,13 @@ public sealed class EmbeddingRoutingOptionsValidator : IValidateOptions<Embeddin
             if (e.Dimensions <= 0) errors.Add($"Endpoint '{id}' の Dimensions は正の値が必要です（現在 {e.Dimensions}）。");
 
             // ティア↔プロバイダの取り違え（並び替え・誤設定）を検知する。
-            if (ExpectedProviderByTier.TryGetValue(e.Tier, out var expected)
+            if (ExpectedProvidersByTier.TryGetValue(e.Tier, out var expected)
                 && !string.IsNullOrWhiteSpace(e.Provider)
-                && !string.Equals(e.Provider, expected, StringComparison.Ordinal))
+                && !expected.Contains(e.Provider, StringComparer.Ordinal))
             {
                 errors.Add(
-                    $"Endpoint '{id}' はティア{e.Tier} だが Provider が '{e.Provider}'（期待 '{expected}'）です。" +
+                    $"Endpoint '{id}' はティア{e.Tier} だが Provider が '{e.Provider}'" +
+                    $"（期待 '{string.Join("' / '", expected)}'）です。" +
                     "エンドポイントの並び替え・インデックス依存の上書きで取り違えが起きていないか確認してください。");
             }
         }
