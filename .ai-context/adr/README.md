@@ -377,4 +377,6 @@
 | [IADR-0301](./IADR-0301_sc17-identity-admin-abstraction.md) | **SC-17 は AuthorizationService から IdP へ委譲し、利用者表も新規作成の口も持たない**。計画・#438・planning#490 で帰属が食い違い誰も作っていなかった。サービスクライアントは view-users / manage-users / view-realm の 3 つだけ。provider の宣言に既定を置かず未宣言は起動失敗。#452 | Accepted |
 | [IADR-0302](./IADR-0302_fanout-listener-readiness.md) | **fan-out の待ち合わせは購読開始と実処理へ分ける。待ち時間は伸ばさない**。一度塞いだ起動レースが Wolverine 移行で失効し、記述だけが残っていた。🔴 **仮説は実測で否定された**が決定は撤回しない —— ①②が原因でないと確定したこと自体が「切り分け」の達成である。#1038 | Accepted |
 | [IADR-0303](./IADR-0303_object-storage-bucket-self-heal.md) | **オブジェクトストレージのバケットを書き込み側で自己修復する**（#1033）。作成は fail-open な起動時 bootstrap 1 箇所のみで、readiness に負けると以後の書き込みが `NoSuchBucket` で 500 になり続ける。同例外だけを捕まえて作成し 1 度だけ再試行する。並行作成は「既にある」を吸収して冪等にする。変異 6 種すべて KILL。 | Accepted |
-| [IADR-0304](./IADR-0304_istio-optin-and-staged-mtls.md) | Istio は opt-in で入れ、mTLS は PERMISSIVE から段階的に STRICT へ移す | Accepted |
+| [IADR-0304](./IADR-0304_alertmanager-deployment-and-null-receiver.md) | Alertmanager を配備し、受信先は「どこへも送らない」を既定として明示する | Accepted |
+| [IADR-0305](./IADR-0305_fanout-test-serialization.md) | **fan-out の統合テスト 2 クラスは直列化する。予算は伸ばさず、失敗を決定的にする**。run ログ 5 本で実行窓を復元すると分布が二峰（緑 341ms〜3s / 赤は予算いっぱい）で、伸ばしても救われない。🔴 重なりが原因とは主張しない（交絡あり）。#1038 / #1059 | Accepted |
+| [IADR-0306](./IADR-0306_istio-optin-and-staged-mtls.md) | Istio は opt-in で入れ、mTLS は PERMISSIVE から段階的に STRICT へ移す | Accepted |

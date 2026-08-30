@@ -61,4 +61,41 @@ internal static class ListenerReadiness
         }
         return elapsed.Elapsed;
     }
+
+    // ［2026-08-30 / #1038 #1059］**予算切れの瞬間に、ホストが実際に購読しているキュー名を採る。**
+    //
+    // 🔴 これは #1038 の最新の観測が「次の一手」として名指ししたものである ——
+    // 現在の失敗メッセージは「実処理側の遅さか受信そのものの欠落である」までしか言えず、
+    // **次に落ちたときも同じ場所から仮説を建て直すことになる**（既に 5 ラウンド繰り返している）。
+    //
+    //   キュー名が 2 本に分かれている → 前置は効いている。原因は配送／処理側
+    //   キュー名が 1 本に潰れている   → **競合コンシューマ化**（本命仮説）
+    //
+    // **1 回の実走でこの 2 つが分かれる。**
+    //
+    // ⚠️ ここで例外を投げない。診断が assert の失敗理由を覆い隠すと、
+    // **本来の失敗（fan-out が届かない）が別の例外にすり替わる。** 採れなかったことは
+    // 「採れなかった」と書いて返す —— 黙って空にはしない（それは「購読ゼロ」と区別が付かない）。
+    internal static string DescribeListeners(IServiceProvider services)
+    {
+        try
+        {
+            var runtime = services.GetRequiredService<IWolverineRuntime>();
+            var listeners = runtime.Options.Transports
+                .Where(t => t.Protocol == "rabbitmq")
+                .SelectMany(t => t.Endpoints())
+                .Where(e => e.IsListener)
+                .Select(e => $"{e.Uri}={runtime.Tracker.StatusFor(e.Uri)}")
+                .OrderBy(x => x, StringComparer.Ordinal)
+                .ToArray();
+
+            return listeners.Length == 0
+                ? "購読キュー無し（rabbitmq のリスナーが 1 本も登録されていない）"
+                : string.Join(" , ", listeners);
+        }
+        catch (Exception ex)
+        {
+            return $"購読キューを列挙できなかった（{ex.GetType().Name}: {ex.Message}）";
+        }
+    }
 }

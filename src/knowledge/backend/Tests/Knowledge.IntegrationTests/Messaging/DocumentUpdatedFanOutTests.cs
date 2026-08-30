@@ -31,6 +31,11 @@ namespace Knowledge.IntegrationTests.Messaging;
 // RawDocumentFetchedEdge と同じ形の**専用発行ホスト**が行う —— 実行ごとに一意な exchange を宣言し、
 // 本番の命名（WolverineExtensions.PlatformQueueName）から導いた **2 つの購読キューへ束縛**して
 // 1 回だけ発行する。購読側を先に起こす（束縛の無い exchange への publish は黙って落ちる）。
+//
+// 🔴 ［2026-08-30 / #1038 #1059］**QueueOverrideFanOutTests と同時に走らせない。**
+// 赤になった 2 run では両クラスの実行窓が重なり、緑の 3 run では 20〜51 秒離れていた。
+// 根拠と交絡の断りは FanOutTestCollection.cs にある（**待ち時間は伸ばしていない**）。
+[Collection(FanOutTestCollection.Name)]
 [Trait("Category", "Integration")]
 public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitMqFixture rabbit)
     : IClassFixture<PostgresFixture>, IClassFixture<RabbitMqFixture>, IAsyncLifetime
@@ -201,9 +206,13 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
     private static readonly TimeSpan ProcessingBudget = TimeSpan.FromSeconds(30);
 
     // 失敗時に「どの段が遅かったか」を assert のメッセージへ載せる。
+    // ［2026-08-30 / #1038 #1059］**購読キュー名も併せて載せる** —— キューが 1 本に潰れていれば
+    // 競合コンシューマ化、2 本に分かれていれば配送／処理側であり、**1 回の実走で分かれる**。
     private string Measured() =>
         $"。実測: 購読開始 ingestion={_ingestionReady.TotalSeconds:F1}s / wiki={_wikiReady.TotalSeconds:F1}s"
-        + $"（購読は始まっていたので、これは実処理側の遅さか受信そのものの欠落である）";
+        + $"（購読は始まっていたので、これは実処理側の遅さか受信そのものの欠落である）"
+        + $"。購読キュー: ingestion=[{ListenerReadiness.DescribeListeners(_ingestion.Services)}]"
+        + $" / wiki=[{ListenerReadiness.DescribeListeners(_wiki.Services)}]";
 
     private async Task<bool> WaitForWikiPageAsync(Guid documentId, TimeSpan timeout)
     {
