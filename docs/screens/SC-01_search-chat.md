@@ -3,15 +3,15 @@ title: 検索／チャット質問画面 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-29
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-08, FR-17, FR-18, FR-19, FR-20, FR-21, SC-01, SC-02, SC-03, SC-04, SC-08, SC-18, SC-19, UC-01]
-adrs: [ADR-0031, ADR-0036, ADR-0037, ADR-0043]
-iadrs: [IADR-0009, IADR-0037, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0131, IADR-0142, IADR-0151]
-specs: [20260804_issue-502_sc01-03-search-flow, 20260806_issue-541_citation-confidentiality]
-issues: [#446, #490, #502, #519, #539, #540, #541, #586, #599, planning#197, planning#200, planning#237, planning#244]
+adrs: [ADR-0031, ADR-0036, ADR-0037, ADR-0043, ADR-0066]
+iadrs: [IADR-0009, IADR-0037, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0131, IADR-0142, IADR-0151, IADR-0307]
+specs: [20260804_issue-502_sc01-03-search-flow, 20260806_issue-541_citation-confidentiality, 20260830_issue-1065_feature-import-isolation]
+issues: [#446, #490, #502, #519, #539, #540, #541, #586, #599, #1065, planning#197, planning#200, planning#237, planning#244]
 -->
 
 # 画面仕様書: 検索／チャット質問画面

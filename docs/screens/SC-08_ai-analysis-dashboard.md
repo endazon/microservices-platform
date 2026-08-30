@@ -3,15 +3,15 @@ title: AI分析ダッシュボード 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-29
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-07, FR-11, SC-01, SC-03, SC-05, SC-08, UC-02, UC-05]
-adrs: []
-iadrs: [IADR-0005, IADR-0009, IADR-0111, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0127, IADR-0131, IADR-0135]
-specs: [20260805_issue-503_sc05-08-admin-screens]
-issues: [#446, #490, #503, #506, #519, #539, #540, #553, planning#197]
+adrs: [ADR-0066]
+iadrs: [IADR-0005, IADR-0009, IADR-0111, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0127, IADR-0131, IADR-0135, IADR-0307]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation]
+issues: [#446, #490, #503, #506, #519, #539, #540, #553, #1065, planning#197]
 -->
 
 # 画面仕様書: AI分析ダッシュボード

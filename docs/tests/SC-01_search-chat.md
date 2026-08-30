@@ -3,15 +3,15 @@ title: SC-01 検索／チャット質問画面 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-23
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-08, FR-11, SC-01, SC-02, SC-03, SC-04, SC-08, UC-01]
-adrs: [ADR-0031]
-iadrs: [IADR-0009, IADR-0037, IADR-0126]
-specs: [20260804_issue-502_sc01-03-search-flow]
-issues: [#502, #539]
+adrs: [ADR-0031, ADR-0066]
+iadrs: [IADR-0009, IADR-0037, IADR-0126, IADR-0307]
+specs: [20260804_issue-502_sc01-03-search-flow, 20260830_issue-1065_feature-import-isolation]
+issues: [#502, #539, #1065]
 -->
 
 # テスト仕様書: 検索／チャット質問画面
