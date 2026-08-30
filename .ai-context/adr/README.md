@@ -384,3 +384,4 @@
 | [IADR-0308](./IADR-0308_feature-import-isolation-eslint-zones.md) | **feature 境界の機械強制は `eslint-plugin-import` の `no-restricted-paths` で行い、zones は実ディレクトリから生成する**（#1065 / ADR-0066）。🔴 **規則は解決できた import しか見ない** —— 拡張子設定が無いと `.ts` が 1 件も解決されず静かに 0 件で通る。適用は knowledge のみ。 | Accepted |
 | [IADR-0309](./IADR-0309_feature-internal-split-substance-over-scaffolding.md) | feature 内部 6 分割の適合は実体で示し、`.gitkeep` の空枠で満たさない | Accepted |
 | [IADR-0310](./IADR-0310_apiserver-oidc-edge-host-resolution.md) | apiserver の OIDC は issuer host を /etc/hosts で解決させる | Accepted |
+| [IADR-0312](./IADR-0312_collector-self-telemetry-parity-and-budget-alert-deferral.md) | **collector の自己テレメトリ宣言は単一情報源にできないので検査器で揃え、LLM 予算アラートは置かない**（#1090 / #546）。転送構成にだけ `telemetry.metrics.address` が無く、opt-in の apply で**唯一の scrape 対象**が落ちうる（**同型 2 回目**なので検査器を足す）。🔴 **予算アラートは計画が明示的に禁じている**（しきい値は実測後に確定）うえ、稼働イメージに費用の計器が無く、dev の保持 7d では月次スケールの規則を評価できない。**月次の手動確認は終了しない**（終了条件は「配備 **かつ** 配線」の連言）。 | Accepted |
