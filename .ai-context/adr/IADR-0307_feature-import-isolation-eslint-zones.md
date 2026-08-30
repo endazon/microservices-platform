@@ -145,8 +145,11 @@ lib/__violation-probe.ts
 exit=0
 ```
 
-**9 warnings は本作業の前から在る**（`react-refresh/only-export-components` 8 件 ＋
-`sc12-mcp-clients` の未使用 eslint-disable 1 件。develop でも同数であることを stash して確認した）。
+**warnings は本作業の前から在るものだけである**（`react-refresh/only-export-components` ＋
+`sc12-mcp-clients` の未使用 eslint-disable。develop でも同数であることを stash して確認した）。
+**上の 2 回の実行は submodule 未取得の状態**で、その条件では 9 件。
+`src/ai-stock-trading` を取得すると同 submodule の `e2e/harness/main.tsx` の分が足されて **10 件**になる
+（本作業とは無関係であり、error は両条件とも 0 件）。**件数を引用するときは submodule の有無を併記すること。**
 
 ## 結果
 
