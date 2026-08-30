@@ -2,7 +2,7 @@
 title: ADR-0067 フロントエンド層分類の是正と import 方向規則の両ユニット配備
 type: spec
 status: done
-related_ids: [NFR, ADR-0067, ADR-0066, ADR-0031, IADR-0308, IADR-0262, IADR-0310]
+related_ids: [NFR, ADR-0067, ADR-0066, ADR-0031, IADR-0308, IADR-0262, IADR-0311]
 author: Claude (implementation agent)
 created: 2026-08-30
 updated: 2026-08-30
@@ -219,7 +219,7 @@ $ pnpm exec eslint platform/frontend/src/components/__zone_probe_rel.ts         
 解決できた import しか見ず、node リゾルバは tsconfig の `paths` を解決しないためである
 （IADR-0308 が拡張子で踏んだのと同じ「静かに 0 件」）。**platform の内部参照は 26 ファイル・59 文が
 `@foundation/*` で書かれている**ので、このままでは規則は platform でほぼ何も守らない。
-対処（tsconfig の `paths` を読む最小のリゾルバ）は [IADR-0310](../adr/IADR-0310_layer-zone-enforcement-and-alias-resolution.md) 決定 1。
+対処（tsconfig の `paths` を読む最小のリゾルバ）は [IADR-0311](../adr/IADR-0311_layer-zone-enforcement-and-alias-resolution.md) 決定 1。
 
 ### 注入 —— platform（5 方向。エイリアスを解決させたあと）
 
@@ -311,7 +311,7 @@ $ pnpm exec eslint platform/frontend/src/features/index.ts                    pl
 
 ## 実装 ADR
 
-判断が要った点は [IADR-0310](../adr/IADR-0310_layer-zone-enforcement-and-alias-resolution.md) に残した
+判断が要った点は [IADR-0311](../adr/IADR-0311_layer-zone-enforcement-and-alias-resolution.md) に残した
 （エイリアス リゾルバ／`testing` 逆方向の表し方／合成点の除外位置／`Layout` の置き場／`main.tsx` の扱い）。
 **番号は本ブランチ時点の最大値 `IADR-0309` ＋ 1 で採った。並行 PR があるためマージ時に引き直してよい。**
 

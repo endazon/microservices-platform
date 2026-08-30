@@ -1,5 +1,5 @@
 ---
-title: IADR-0310 層ゾーンの機械強制にエイリアス解決を与え、`testing` の被参照禁止を本番コード限定で表す
+title: IADR-0311 層ゾーンの機械強制にエイリアス解決を与え、`testing` の被参照禁止を本番コード限定で表す
 type: impl-adr
 status: Accepted
 related_ids:
@@ -17,7 +17,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0066_frontend-feature-isolation-and-import-direction.md
 ---
 
-# IADR-0310: 層ゾーンの機械強制にエイリアス解決を与え、`testing` の被参照禁止を本番コード限定で表す
+# IADR-0311: 層ゾーンの機械強制にエイリアス解決を与え、`testing` の被参照禁止を本番コード限定で表す
 
 > **番号は本ブランチ時点の最大値（`IADR-0309`）＋ 1 で採った。** 並行して開いている PR があるため、
 > 統括側がマージ時に採番を引き直してよい。
