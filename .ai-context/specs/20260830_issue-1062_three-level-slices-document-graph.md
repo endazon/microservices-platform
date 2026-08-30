@@ -134,10 +134,20 @@ $ gh api ".../code-scanning/alerts?ref=refs/pull/1084/merge" --jq ...
 **指摘の内容も行も同じで、変わったのはパスと採番だけである**（`GraphEndpoints.cs:94` の
 `hops` 検証 → `Neighbors/Endpoint.cs:45` の同じ行）。**#25 / #26 へ同じ理由で
 dismiss を打ち直す必要がある。** dismiss は repo 所有者が自分で行った操作であり、
-**本作業では代行しない**（人へ返す）。`CodeQL` は必須チェックではない
-（`develop` の必須は `build-and-test` / `lint` / `commit-messages` / `pr-title` /
-`image-build` / `static-checks-units` / `claude-review` / `scripts-tests` の 8 件。実測）ので
-マージは塞がない。
+**本作業では代行しない**（人へ返す）。
+
+🔴 **［再訂正］マージは塞がる。** classic の `required_status_checks.contexts`（8 件）に
+`CodeQL` は含まれないが、`develop` には**ルールセット 18168237** が別に掛かっており、
+その `code_scanning` ルールが **`security_alerts_threshold: high_or_higher`** を課している
+（`gh api .../rulesets/18168237` で実測）。#25 / #26 は high なので
+`mergeStateStatus: BLOCKED` である。**「必須チェックの一覧に無い＝塞がない」と読んだのが
+2 つ目の誤りだった** —— ルールセットは classic の contexts とは別の面から効く。
+
+🔴 **#1062 の他 PR への一般化**: **CodeQL の dismiss はパスに紐づき、ファイルを動かす移送は
+dismiss を必ず落とす。** #16/#17 → #22/#23 → #25/#26 で**実測 2 回目**であり、
+「同型の事故が 2 回起きたら検査器・規約を足す」の条件に当たる（`.claude/rules/traceability.repo.md`
+§是正・追随の母集合の取り方 の運用ガイド §）。ただし**検査器の新設は本 issue の射程外**なので、
+ここでは事実の記録と申し送りに留める。
 
 ### 判断 5 — `Features/` の外へは 1 ファイルも出さない
 
