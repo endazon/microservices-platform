@@ -9,7 +9,7 @@ related_ids:
   - ADR-0021
   - IADR-0026
   - IADR-0091
-  - IADR-0306
+  - IADR-0307
 author: claude
 created: 2026-08-30
 updated: 2026-08-30
@@ -34,7 +34,7 @@ STRICT への実移行は #458 が引き受ける。エッジを Traefik から 
 
 ## 決めたこと
 
-判断の記録は [IADR-0306](../adr/IADR-0306_istio-optin-and-staged-mtls.md)。要点だけ:
+判断の記録は [IADR-0307](../adr/IADR-0307_istio-optin-and-staged-mtls.md)。要点だけ:
 
 1. `ISTIO=1` の opt-in。**未設定なら `helm upgrade` の引数は 1 バイトも変わらない**
 2. `istioctl` ではなく Helm（`istio/base` ＋ `istio/istiod`）
@@ -152,4 +152,4 @@ $ kubectl -n microservices-platform rollout restart deployment
 ## クラスタの後始末
 
 **Istio は導入したまま・`PERMISSIVE` で残してある**（利用者の承認範囲内。全 28 Deployment available）。
-撤去手順は [IADR-0306](../adr/IADR-0306_istio-optin-and-staged-mtls.md) §現在のクラスタの状態 に置いた。
+撤去手順は [IADR-0307](../adr/IADR-0307_istio-optin-and-staged-mtls.md) §現在のクラスタの状態 に置いた。

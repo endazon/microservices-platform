@@ -1,5 +1,5 @@
 ---
-title: IADR-0306 Istio は opt-in で入れ、mTLS は PERMISSIVE から段階的に STRICT へ移す
+title: IADR-0307 Istio は opt-in で入れ、mTLS は PERMISSIVE から段階的に STRICT へ移す
 type: impl-adr
 status: Accepted
 related_ids:
@@ -17,7 +17,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md
 ---
 
-# IADR-0306: Istio の導入形と段階的 mTLS（#782）
+# IADR-0307: Istio の導入形と段階的 mTLS（#782）
 
 - 状態: Accepted
 - 日付: 2026-08-30
