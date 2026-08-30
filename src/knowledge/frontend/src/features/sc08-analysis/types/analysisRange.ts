@@ -2,7 +2,7 @@ import { msg } from '@lingui/core/macro';
 import type { MessageDescriptor } from '@lingui/core';
 import { AnalysisTaskRequestTaskType } from '@foundation/api/generated/bff.schemas';
 import type { AnalysisTaskRequest } from '@foundation/api/generated/bff.schemas';
-import { toAttributeFilters, type ScopeSelection } from '../../scope-filter';
+import { toAttributeFilters, type ScopeSelection } from '../../../lib/scope-filter';
 
 // SC-08, UC-02, FR-07: 分析要求の組み立て（純関数）。
 //
@@ -17,7 +17,7 @@ import { toAttributeFilters, type ScopeSelection } from '../../scope-filter';
 // **「フォルダ」は実装しない。これは保留ではなく確定である**（裁定 Q9）——
 // ABAC 属性体系に `folder` が存在せず、新設もしないと決まった。
 //
-// チップの部品と軸の定義は SC-01 と共有する（`features/scope-filter`）。
+// チップの部品と軸の定義は SC-01 と共有する（`lib/scope-filter`）。
 
 /** 指示の最大長。バックエンド `AnalysisPromptBuilder.MaxInstructionLength` と揃える（超過は 400）。 */
 export const MAX_INSTRUCTION_LENGTH = 2000;

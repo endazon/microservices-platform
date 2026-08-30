@@ -1,7 +1,7 @@
 import { useQueries } from '@tanstack/react-query';
 import { bffAttributeValues } from '@foundation/api/generated/search/search';
 import { okData } from '@foundation/api/orvalSelect';
-import { SCOPE_AXES, type ScopeAxis } from '../types/scopeSelection';
+import { SCOPE_AXES, type ScopeAxis } from './scopeSelection';
 
 // FR-04, FR-05, SC-01, SC-08, #539 / #540: 対象範囲の**候補**を引く。
 //

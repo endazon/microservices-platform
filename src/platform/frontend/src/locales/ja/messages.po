@@ -59,7 +59,7 @@ msgstr "{0} に「{1}」を付与"
 msgid "{0} を選択"
 msgstr "{0} を選択"
 
-#: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
+#: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "{count} 件で絞り込み中"
 msgstr "{count} 件で絞り込み中"
 
@@ -556,7 +556,7 @@ msgstr "スコープ"
 msgid "すべて"
 msgstr "すべて"
 
-#: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
+#: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "すべてが対象"
 msgstr "すべてが対象"
 
@@ -600,7 +600,7 @@ msgstr "タイトルで絞り込む"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
-#: knowledge/frontend/src/features/scope-filter/types/scopeSelection.ts
+#: knowledge/frontend/src/lib/scope-filter/scopeSelection.ts
 msgid "タグ"
 msgstr "タグ"
 
@@ -811,7 +811,7 @@ msgstr "フィードバックを送信しました。"
 msgid "フィードバックを送信できませんでした。"
 msgstr "フィードバックを送信できませんでした。"
 
-#: knowledge/frontend/src/features/scope-filter/types/scopeSelection.ts
+#: knowledge/frontend/src/lib/scope-filter/scopeSelection.ts
 msgid "プロジェクト"
 msgstr "プロジェクト"
 
@@ -1153,7 +1153,7 @@ msgstr "個人資料を削除しますか？"
 msgid "個人資料を完全に削除しました。"
 msgstr "個人資料を完全に削除しました。"
 
-#: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
+#: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "候補を読み込み中…"
 msgstr "候補を読み込み中…"
 
@@ -1605,11 +1605,11 @@ msgstr "対象アクション"
 msgid "対象属性"
 msgstr "対象属性"
 
-#: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
+#: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "対象範囲"
 msgstr "対象範囲"
 
-#: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
+#: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "対象範囲フィルタ"
 msgstr "対象範囲フィルタ"
 
@@ -2489,7 +2489,7 @@ msgstr "結果 →"
 msgid "結果一覧"
 msgstr "結果一覧"
 
-#: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
+#: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "絞り込める候補はありません。"
 msgstr "絞り込める候補はありません。"
 
@@ -2779,7 +2779,7 @@ msgstr "選択中の文書"
 
 #: knowledge/frontend/src/features/sc03-document/types/attributes.ts
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
-#: knowledge/frontend/src/features/scope-filter/types/scopeSelection.ts
+#: knowledge/frontend/src/lib/scope-filter/scopeSelection.ts
 msgid "部門"
 msgstr "部門"
 

@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { I18nProvider } from '@lingui/react';
 import { i18n } from '@foundation/i18n';
 import { ScopeFilter } from './ScopeFilter';
-import { EMPTY_SELECTION, type ScopeSelection } from '../types/scopeSelection';
+import { EMPTY_SELECTION, type ScopeSelection } from './scopeSelection';
 
 // 生成コードは mutator（`bffFetch`）→ `apiRequest` を通るのでモックは `apiRequest` に当てる。
 const mocks = vi.hoisted(() => ({ apiRequest: vi.fn() }));

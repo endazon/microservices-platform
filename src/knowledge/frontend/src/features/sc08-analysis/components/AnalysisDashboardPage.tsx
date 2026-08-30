@@ -34,8 +34,8 @@ import { ANALYSIS_FORM_ERRORS, analysisFormSchema } from '../types/analysisFormS
 import type { AnalysisFormError, AnalysisFormValues } from '../types/analysisFormSchema';
 import { useAnalysisTask } from '../api/useAnalysisTask';
 import { FormDevTools } from './FormDevTools';
-import { EMPTY_SELECTION, ScopeFilter } from '../../scope-filter';
-import type { ScopeSelection } from '../../scope-filter';
+import { EMPTY_SELECTION, ScopeFilter } from '../../../lib/scope-filter';
+import type { ScopeSelection } from '../../../lib/scope-filter';
 
 // SC-08, UC-02, FR-07/FR-11/FR-05: AI分析ダッシュボード（05_screens: ルート /analyze）。
 // 範囲を指定して分析（比較・抽出を含む）を依頼し、結果と出典を確認する。出典から SC-03 へ遷移する。
@@ -44,7 +44,7 @@ import type { ScopeSelection } from '../../scope-filter';
 // **［#539］分析対象のチップ（タグ・部門・プロジェクト）を実装した。**
 // 従前ここには「planning#197 の裁定を待つ」と書いてあったが、裁定（2026-08-05 Q1・Q3・Q9）が着地し、
 // 権限内候補の照会口も #540 で着地した。**「フォルダ」は保留ではなく不採用である**（Q9）。
-// チップは SC-01 と同じ部品（`features/scope-filter`）を使う——同じ操作が画面ごとに違うと、
+// チップは SC-01 と同じ部品（`lib/scope-filter`）を使う——同じ操作が画面ごとに違うと、
 // 利用者は操作を覚え直すことになる。
 
 /** 検証エラーの符号を表示文言へ写す。**符号ごとに 1 文だけ**を持つ（画面ごとに言い回しを割らない）。 */

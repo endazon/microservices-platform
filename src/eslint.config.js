@@ -1,5 +1,9 @@
+import { readdirSync } from 'node:fs';
+import path from 'node:path';
+
 import js from '@eslint/js';
 import globals from 'globals';
+import importPlugin from 'eslint-plugin-import';
 import lingui from 'eslint-plugin-lingui';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
@@ -96,6 +100,64 @@ export const NO_LEGACY_ROUTER_PATHS = ['react-router', 'react-router-dom'].map((
   message:
     'react-router は不採用（ADR-0031）。ルーティングは @tanstack/react-router を使う（IADR-0124）。',
 }));
+
+// ADR-0066 決定 1〜3 / IADR-0307 / issue #1065: **feature 境界**の機械強制。
+//
+// **既存の規則が守っているのはユニット境界であって feature 境界ではない**（ADR-0066 の実測）。
+// `@foundation` / `@features` / `@knowledge` の禁止はユニットをまたぐ参照を止めるが、
+// **同一ユニット内の feature どうしは素通りする**。実際 #1065 の時点で 7 ファイルが素通りしていた。
+//
+// 🔴 **zones を手書きの許可リストにしない。** `features/` を実際に読んで生成する。
+// ADR-0066 §理由 が「許可リストの保守が人に戻ると伸ばし忘れが規則の穴になる」と述べており、
+// 本ファイルには既にその形（lingui の `files` を画面のたびに伸ばす運用）が在る。同じ形を増やさない。
+// **画面を足しても、このファイルは触らなくてよい。**
+const CONFIG_DIR = import.meta.dirname;
+
+/** `<unitSrcRel>/features/` 直下のディレクトリ名（＝ feature 名）を実ファイルから読む。 */
+const featureNamesOf = (unitSrcRel) =>
+  readdirSync(path.join(CONFIG_DIR, unitSrcRel, 'features'), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+
+/**
+ * ADR-0066 決定 2 の「shared」層。`app` と `features` を参照してはならない側である。
+ * `assets` / `locales` / `testing` は含めない（決定 2 の表が挙げているのはこの 6 つ）。
+ */
+const SHARED_DIRS = ['components', 'hooks', 'lib', 'stores', 'types', 'utils'];
+
+/**
+ * 1 ユニットぶんの zones を作る（決定 1 = feature 間、決定 2 = 依存の向き）。
+ *
+ * **`basePath` を明示するのが要点である。** 既定は `process.cwd()` であり、
+ * `eslint` をどこから起こしたかで zone の解決先がずれる（`pnpm run lint` は `src/`、
+ * `lint:templates` はリポジトリルート）。設定ファイルの位置に固定する。
+ */
+const featureIsolationZones = (unitSrcRel) => [
+  // 決定 1: feature どうしを import しない（自分自身だけを except にする）。
+  ...featureNamesOf(unitSrcRel).map((name) => ({
+    target: `./${unitSrcRel}/features/${name}`,
+    from: `./${unitSrcRel}/features`,
+    except: [`./${name}`],
+    message:
+      'feature どうしを import しない（ADR-0066 決定 1）。2 つ以上の feature が要る語彙・部品・型は ' +
+      'lib/ か components/ へ出し、feature の組み合わせは app/ で行う。',
+  })),
+  // 決定 2: shared（components / hooks / lib / stores / types / utils）は features・app を参照しない。
+  {
+    target: SHARED_DIRS.map((dir) => `./${unitSrcRel}/${dir}`),
+    from: [`./${unitSrcRel}/features`, `./${unitSrcRel}/app`],
+    message:
+      '共有層（components / hooks / lib / stores / types / utils）から features・app を参照しない' +
+      '（ADR-0066 決定 2。依存の向きは shared → features → app の一方向）。',
+  },
+  // 決定 2: features は app を参照しない。
+  {
+    target: `./${unitSrcRel}/features`,
+    from: `./${unitSrcRel}/app`,
+    message: 'features から app を参照しない（ADR-0066 決定 2）。',
+  },
+];
 
 // ADR-0031 / IADR-0275: `eslint-plugin-testing-library` のうち**個別に理由があって off にする規則**。
 // `export` しているのは `eslint.templates.config.js`（雛形用の入口）が同じ値を使い回すためである
@@ -210,17 +272,24 @@ export default tseslint.config(
   },
   // 可変ユニット（@knowledge）は @foundation のみ参照可。platform の合成点（@features）は参照しない。
   //
-  // **`knowledge/frontend/src/` で中身を持つのは `features/` だけである**（実測 2026-08-23。#785 で
-  // 計画 13_frontend-stack §ディレクトリ構成 へ適合させ、`app/ assets/ components/ hooks/ lib/
-  // locales/ stores/ testing/ types/ utils/` を置いたが、いずれも `.gitkeep` だけの枠である）。
-  // したがって本ブロックの適用範囲がそのまま「画面」の範囲であり、#555 の `apiFetch` 禁止を
-  // ここへ足せば足りる。**枠へ実体が入ったらこの前提を引き直すこと。**
+  // ［2026-08-30 / #1065］**従前ここは「`knowledge/frontend/src/` で中身を持つのは `features/` だけ
+  // である」と書いていたが、その前提は既に崩れていた**（`components/` に 9 ファイル。実測 2026-08-30）。
+  // #1065 で `lib/` にも実体が入った（`abac` / `scope-filter`）。よって
+  // **本ブロックの適用範囲は「画面」ではなくユニット全体**であり、`apiFetch` 禁止（#555 / IADR-0146）は
+  // 共有層にも掛かる —— 共有層が BFF を直接叩く形も同じ理由で望ましくないので、これは意図どおりである。
+  //
   // **専用のブロックを新設しない** —— flat config は同一ルールを後勝ちで**置換**するため、
   // `features/**` を対象にした 2 本目の `no-restricted-imports` を置くと、
   // このブロックの `BANNED_IMPORT_PATTERNS` と `@features` 禁止が丸ごと無効化される
-  // （本ファイル冒頭が警告している型そのもの）。
+  // （本ファイル冒頭が警告している型そのもの）。**feature 境界の規則（`import/no-restricted-paths`）も
+  // 同じ理由でここへ同居させる**（別規則なので置換は起きないが、ユニットの import 規約を 1 箇所に集める）。
   {
     files: ['knowledge/frontend/src/**/*.{ts,tsx}'],
+    plugins: { import: importPlugin },
+    // ADR-0066 決定 3 / IADR-0307: `import/no-restricted-paths` は**解決できた import しか見ない**。
+    // 既定の node resolver は `.mjs/.js/.json/.node` しか試さないため、拡張子を足さないと
+    // 本リポジトリの `.ts` / `.tsx` は 1 件も解決されず、規則は**静かに 0 件で通る**。
+    settings: { 'import/resolver': { node: { extensions: ['.js', '.jsx', '.ts', '.tsx'] } } },
     rules: {
       'no-restricted-imports': [
         'error',
@@ -233,8 +302,23 @@ export default tseslint.config(
               message:
                 '可変機能ユニットは platform の合成点（@features）へ依存しない。基盤参照は @foundation のみ許可（src/README.md 依存規則 例外2）。',
             },
+            {
+              // ADR-0066 決定 3 / IADR-0307 決定 3 / #1065: **自ユニット内の自己参照エイリアスを塞ぐ。**
+              // 下の `import/no-restricted-paths` の解決器は `@knowledge/*` を解決できないため、
+              // `@knowledge/features/<B>` と書けば feature 境界の規則を**素通りする**。
+              // 実測（2026-08-30）: knowledge ユニット内からの `@knowledge` 利用は 0 件
+              // （唯一の利用は platform の合成点 `platform/frontend/src/features/index.ts`。別ブロックの管轄）。
+              group: ['@knowledge', '@knowledge/*'],
+              message:
+                '自ユニット内は相対パスで参照する（ADR-0066 決定 3）。@knowledge 経由だと feature 境界の ' +
+                'import/no-restricted-paths が解決できず素通りする。@knowledge は platform の合成点専用。',
+            },
           ],
         },
+      ],
+      'import/no-restricted-paths': [
+        'error',
+        { basePath: CONFIG_DIR, zones: featureIsolationZones('knowledge/frontend/src') },
       ],
     },
   },
@@ -341,7 +425,10 @@ export default tseslint.config(
       'knowledge/frontend/src/features/sc03-document/**/*.{ts,tsx}',
       // #503 で SC-05〜08 を再実装したため適用範囲へ加えた。`abac/` は SC-05 / SC-06 が共有する
       // 語彙（機密区分の値集合）であり、同じ規則の下に置く。
-      'knowledge/frontend/src/features/abac/**/*.{ts,tsx}',
+      // ［2026-08-30 / #1065］**置き場所が `features/abac/` → `lib/abac/` へ移った**
+      // （ADR-0066 決定 1: 2 画面が共有する語彙は feature ではない）。この行を追随させないと、
+      // i18n 化済みのファイルが**静かに検査されなくなる**。
+      'knowledge/frontend/src/lib/abac/**/*.{ts,tsx}',
       'knowledge/frontend/src/features/sc05-documents/**/*.{ts,tsx}',
       'knowledge/frontend/src/features/sc06-datasources/**/*.{ts,tsx}',
       'knowledge/frontend/src/features/sc07-conversions/**/*.{ts,tsx}',

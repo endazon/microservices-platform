@@ -80,7 +80,7 @@ E2E は `src/platform/frontend/e2e/sc08-analysis.smoke.spec.ts`
 
 ## 分析対象のチップ（#539 / 裁定 Q3）
 
-**チップの部品と軸の定義は検索・チャット画面と共有する**（`features/scope-filter`）。
+**チップの部品と軸の定義は検索・チャット画面と共有する**（`lib/scope-filter`）。
 共有そのものが裁定の要求である——「同じ『範囲を絞る』操作が画面ごとに違う挙動になると、
 利用者は操作を覚え直すことになる」。**部品のテストは `../tests/SC-01_search-chat.md` の T-30〜T-43 を参照。**
 
