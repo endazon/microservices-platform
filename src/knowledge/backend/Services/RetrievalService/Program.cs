@@ -3,7 +3,6 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Qdrant.Client;
-using RetrievalService.Features.McpTools;
 using RetrievalService.Features.McpTools.Declare;
 using RetrievalService.Features.Search;
 using RetrievalService.Features.Search.Hybrid;

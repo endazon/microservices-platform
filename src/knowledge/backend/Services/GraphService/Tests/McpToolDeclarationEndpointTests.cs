@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
 using AwesomeAssertions;
-using GraphService.Features.McpTools;
 using GraphService.Features.McpTools.Declare;
 using Knowledge.Contracts.Dtos;
 using Microsoft.Extensions.Configuration;
