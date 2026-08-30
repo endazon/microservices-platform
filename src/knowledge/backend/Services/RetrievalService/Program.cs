@@ -3,6 +3,8 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Qdrant.Client;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using RetrievalService.Common.Observability;
 using RetrievalService.Features.McpTools;
 using RetrievalService.Features.McpTools.Declare;
 using RetrievalService.Features.Search;
@@ -27,7 +29,14 @@ builder.Services.AddPlatformHealthChecks()
     // ADR-0027 / #1016: Wolverine 購読側（retrieval-delete 段）のブローカ疎通を readiness へ載せる（W4）。
     // Wolverine 側は自動登録しないので明示的に足す（無いとブローカ不達でも /health/ready が 200）。
     .AddPlatformWolverineBroker()
-    .AddUrlGroup(qdrantHealthUri, "qdrant", tags: ["ready"]);
+    .AddUrlGroup(qdrantHealthUri, "qdrant", tags: ["ready"])
+    // FR-03, NFR-06, #1116 / [[IADR-0318]] 決定 3: **全文ペイロードインデックスの有無**を readiness へ載せる。
+    // 🔴 Qdrant への疎通（上の "qdrant"）が緑でも、索引が無ければキーワード検索は
+    // 全文検索として機能しない。しかも**例外が出ないので応答からもログからも分からない**。
+    // ここが唯一の運用上の検出点である。**Degraded 止まり**（検索全体は落とさない。NFR-06）。
+    .AddCheck<QdrantFullTextIndexHealthCheck>(
+        QdrantFullTextIndexHealthCheck.Name,
+        failureStatus: HealthStatus.Degraded, tags: ["ready"]);
 builder.Services.AddOpenApi();
 
 // ADR-0009: Qdrant ベクトルDB クライアント
@@ -35,6 +44,10 @@ var qdrantHost = builder.Configuration["Qdrant:Host"] ?? "qdrant";
 var qdrantPort = int.Parse(builder.Configuration["Qdrant:Port"] ?? "6334");
 builder.Services.AddSingleton(new QdrantClient(qdrantHost, qdrantPort));
 builder.Services.AddSingleton<IVectorStore, QdrantVectorStore>();
+
+// FR-03, SC-10, #1116 / [[IADR-0318]] 決定 3: 全文（キーワード）側の縮退を数える（0 が正常）。
+// **応答へは載せない**（存在秘匿・[[IADR-0313]] 決定 1）。観測は応答の外側に置く。
+builder.Services.AddSingleton<KeywordSearchMetrics>();
 
 // ADR-0013: 埋め込みサービス（LLM ゲートウェイ経由）
 builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(c =>
