@@ -202,6 +202,21 @@ services:
     ports:
       - "9090:9090"
 
+  # NFR (#198), #546: Prometheus が発火させたアラートの束ねと転送。
+  # 受信先は deploy/alertmanager/alertmanager.yml が持つ（既定はどこへも送らない fail-safe）。
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    command:
+      [
+        "--config.file=/etc/alertmanager/alertmanager.yml",
+        "--storage.path=/alertmanager",
+      ]
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "9093:9093"
+
   loki:
     image: grafana/loki:3.0.0
     command: ["-config.file=/etc/loki/config.yaml"]
@@ -787,6 +802,8 @@ volumes:
   qdrant-data:
   minio-data:
   prometheus-data:
+  # #546: silence / notification log。経路B は emptyDir（再起動で silence は消える）。
+  alertmanager-data:
   grafana-data:
   # Issue #282, IADR-0079: 可観測性スタックの永続化（prometheus/grafana と対称化）。
   loki-data:

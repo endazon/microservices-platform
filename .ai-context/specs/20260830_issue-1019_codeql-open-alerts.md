@@ -107,7 +107,7 @@ $ gh api ".../alerts/24" --jq '{rule, msg}'   → {"rule":"cs/log-forging","msg"
 
 既存の sanitize 実装（`ToolInvocationService.SanitizeForLog` / `LlmRouter.Sanitize`）は
 **母集合に入れない** —— どちらも現にアラートが出ておらず（#3 / #4 は 2026-07-06 に fixed 済み）、
-移行は本 PR の受け入れ基準に含まれない。IADR-0304 に非目標として明記する。
+移行は本 PR の受け入れ基準に含まれない。IADR-0306 に非目標として明記する。
 
 ## 方針
 
@@ -119,7 +119,7 @@ $ gh api ".../alerts/24" --jq '{rule, msg}'   → {"rule":"cs/log-forging","msg"
 改行を通すと**偽の監査行を注入できる**（CWE-117）。
 
 **共有の sanitize を置く。** 置き場所は `Platform.Shared.Infrastructure/Foundation/Logging/`
-（`AuditLogger` と同じプロジェクト）。判断の記録は **IADR-0304**。
+（`AuditLogger` と同じプロジェクト）。判断の記録は **IADR-0306**。
 
 - `Platform.Shared.Kernel` **は選ばない** —— Kernel は Result / Error と DDD 基底型の共有カーネルで、
   `src/README.md` 依存規則により **Domain からのみ参照される**。Infrastructure → Kernel の辺を
@@ -195,7 +195,7 @@ CodeQL の言い分は "This condition guards a sensitive action, but a user-pro
 - `src/platform/backend/Shared/Platform.Shared.Infrastructure.Tests/Foundation/Audit/AuditLoggerTests.cs`
 - `src/knowledge/backend/Shared/Knowledge.Contracts/Dtos/SearchDto.cs`
 - `src/knowledge/backend/Services/RetrievalService/Tests/`（正規化のテイント遮断テスト）
-- `.ai-context/adr/IADR-0304_log-sanitization-placement.md`（新規）
+- `.ai-context/adr/IADR-0306_log-sanitization-placement.md`（新規）
 - 本仕様書
 
 🔴 **`src/knowledge/backend/Services/GraphService/Features/Graph/GraphEndpoints.cs` は変更しない。**
@@ -217,6 +217,6 @@ CodeQL の言い分は "This condition guards a sensitive action, but a user-pro
 - `GraphEndpoints.cs` の変更（上記のとおり。直すと脆弱性ができる）
 - `src/ai-stock-trading/` への変更（submodule。#11 / #12 は AST#1015）
 - `ToolInvocationService.SanitizeForLog` / `LlmRouter.Sanitize` の共有実装への移行
-  （現にアラートが出ておらず、本 PR の受け入れ基準に含まれない。IADR-0304 に非目標として記録）
+  （現にアラートが出ておらず、本 PR の受け入れ基準に含まれない。IADR-0306 に非目標として記録）
 - 全ログ経路の走査と一括是正（射程が違う）
 - #1019 の close（判断は起票者へ返す）
