@@ -31,8 +31,9 @@ function deterministicPoFormatter(options?: Parameters<typeof formatter>[0]): Ca
 // （IADR-0120）。
 //
 // カタログの実体は platform/frontend（アプリホスト）が持つ。計画の §ディレクトリ構成
-// （13_frontend-stack）が `app/ # providers / router / i18n / config` と `locales/ # ja / en（Lingui）` を
-// アプリ側に置いているのと同じ配置である。
+// （13_frontend-stack）が `locales/ # ja / en（Lingui）` をアプリ側に置いているのと同じ配置である。
+// ［2026-08-30 / ADR-0067 決定 2］**i18n の実行時部分は `app/` ではなく `lib/i18n/` に在る**
+// （設定済みの再利用可能ライブラリ＝原典の `lib`）。**カタログの置き場は動いていない。**
 export default defineConfig({
   // 既存文言は日本語である。未対応ロケールは ja へ倒す（@foundation/i18n の detectLocale）。
   sourceLocale: 'ja',

@@ -1,4 +1,4 @@
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import js from '@eslint/js';
@@ -12,6 +12,7 @@ import tanstackQuery from '@tanstack/eslint-plugin-query';
 import tanstackRouter from '@tanstack/eslint-plugin-router';
 import testingLibrary from 'eslint-plugin-testing-library';
 import tseslint from 'typescript-eslint';
+import ts from 'typescript';
 
 // ADR-0031 / IADR-0121 決定 8: 新スタックの禁止事項を機械強制する。専用の検査スクリプトを作らないのは、
 // 対象が import と識別子の静的検査＝ESLint の守備範囲そのものであり、検査器を増やすほど
@@ -113,6 +114,54 @@ export const NO_LEGACY_ROUTER_PATHS = ['react-router', 'react-router-dom'].map((
 // **画面を足しても、このファイルは触らなくてよい。**
 const CONFIG_DIR = import.meta.dirname;
 
+/**
+ * tsconfig の `paths` から「エイリアス名 → 実体の絶対パス」を組む。
+ *
+ * 🔴 **エイリアスの正本を増やさないための関数である。** 向き先は
+ * `platform/frontend/tsconfig.app.json` / `platform/frontend/vite.config.ts` / `src/vitest.config.ts`
+ * の 3 箇所に在る（README がそう定めている）。**ここへ 4 つ目の表を書かない** ——
+ * 書いた瞬間に「lint だけ古い向き先で緑」という壊れ方が生まれる。
+ *
+ * JSONC（`//` コメント入り）を読むために `typescript` の `readConfigFile` を使う。
+ * すでに devDependency であり、同じファイルを型検査でも読んでいる。
+ */
+const tsconfigAliases = (tsconfigRel) => {
+  const file = path.join(CONFIG_DIR, tsconfigRel);
+  const { config, error } = ts.readConfigFile(file, (p) => readFileSync(p, 'utf8'));
+  if (error) throw new Error(`tsconfig を読めない: ${tsconfigRel}`);
+  const options = config.compilerOptions ?? {};
+  const baseDir = path.resolve(path.dirname(file), options.baseUrl ?? '.');
+  const aliases = {};
+  for (const [pattern, targets] of Object.entries(options.paths ?? {})) {
+    // `@foundation/config` と `@foundation/config/*` は同じ向き先なので、末尾の `/*` を落として畳む。
+    aliases[pattern.replace(/\/\*$/, '')] = path.resolve(baseDir, targets[0].replace(/\/\*$/, ''));
+  }
+  return aliases;
+};
+
+/** 本リポジトリ最小の path エイリアス リゾルバ（`eslint-import-resolver-unit-alias.cjs` を参照）。 */
+const UNIT_ALIAS_RESOLVER = path.join(CONFIG_DIR, 'eslint-import-resolver-unit-alias.cjs');
+
+/**
+ * ADR-0066 決定 3 / IADR-0308: `import/no-restricted-paths` の解決器設定を 1 ユニットぶん作る。
+ *
+ * 🔴 **2 つとも要る。** `import/no-restricted-paths` は**解決できた import しか見ない**ので、
+ * 片方でも欠けると規則は**静かに 0 件で通る**。
+ *   1. node リゾルバの `extensions` —— 既定は `.mjs/.js/.json/.node` だけで、`.ts` / `.tsx` を
+ *      1 件も解決しない（IADR-0308 が踏んだ穴）。
+ *   2. **エイリアス リゾルバ** —— platform の内部参照は 26 ファイル・59 文が `@foundation/*` で
+ *      書かれており、これを解決できないと**規則は platform でほぼ何も守らない**（実測 2026-08-30）。
+ */
+const resolverSettingsFor = (tsconfigRel) => ({
+  'import/resolver': {
+    node: { extensions: ['.js', '.jsx', '.ts', '.tsx'] },
+    [UNIT_ALIAS_RESOLVER]: { aliases: tsconfigAliases(tsconfigRel) },
+  },
+});
+
+const PLATFORM_RESOLVER = resolverSettingsFor('platform/frontend/tsconfig.app.json');
+const KNOWLEDGE_RESOLVER = resolverSettingsFor('knowledge/frontend/tsconfig.json');
+
 /** `<unitSrcRel>/features/` 直下のディレクトリ名（＝ feature 名）を実ファイルから読む。 */
 const featureNamesOf = (unitSrcRel) =>
   readdirSync(path.join(CONFIG_DIR, unitSrcRel, 'features'), { withFileTypes: true })
@@ -121,20 +170,48 @@ const featureNamesOf = (unitSrcRel) =>
     .sort();
 
 /**
- * ADR-0066 決定 2 の「shared」層。`app` と `features` を参照してはならない側である。
- * `assets` / `locales` / `testing` は含めない（決定 2 の表が挙げているのはこの 6 つ）。
+ * ADR-0067 決定 5 の「shared」層。`app` と `features` を参照してはならない側である。
+ *
+ * ［2026-08-30 追記 / ADR-0067］**`config` / `assets` / `locales` を足した。**
+ * 従前ここは 6 つで、`assets` / `locales` / `testing` を「決定 2 の表が挙げていない」として
+ * 除いていた。ADR-0067 §決定 5 は**その欠落こそがゾーンを書き切れなくしていた**と裁定し、
+ * `src/` 直下を網羅する 4 層の表へ改めた。`config` が加わるのは決定 1（原典 Bulletproof React が
+ * `config` を `app` の兄弟に置いている）による。**`testing` はここに入れない** ——
+ * 第 4 の層であり、参照してよい先が shared より広い（下記）。
  */
-const SHARED_DIRS = ['components', 'hooks', 'lib', 'stores', 'types', 'utils'];
+const SHARED_DIRS = [
+  'components',
+  'hooks',
+  'lib',
+  'stores',
+  'types',
+  'utils',
+  'config',
+  'assets',
+  'locales',
+];
+
+/** ADR-0067 決定 5 の「本番コードの 3 層」。`testing` を除いた全体（＝`testing` の被参照禁止の target）。 */
+const PRODUCTION_DIRS = [...SHARED_DIRS, 'features', 'app'];
 
 /**
- * 1 ユニットぶんの zones を作る（決定 1 = feature 間、決定 2 = 依存の向き）。
+ * 1 ユニットぶんの zones を作る（ADR-0066 決定 1 = feature 間、ADR-0067 決定 5 = 4 層の向き）。
  *
  * **`basePath` を明示するのが要点である。** 既定は `process.cwd()` であり、
  * `eslint` をどこから起こしたかで zone の解決先がずれる（`pnpm run lint` は `src/`、
  * `lint:templates` はリポジトリルート）。設定ファイルの位置に固定する。
+ *
+ * 🔴 **`target` に glob を書かない。** `import/no-restricted-paths` は glob の `target` を
+ * minimatch で照合するが、minimatch はパス区切りに `/` を要求する。Windows の
+ * 絶対パス（`\`）とは一致しないため、**CI（Linux）でだけ効いてローカルでは静かに 0 件**という
+ * 形になる。「テストファイルだけ除く」は glob ではなく **ESLint の `files` / `ignores`** で表す
+ * （`productionOnly` 引数。呼び出し側を参照）。
+ *
+ * @param unitSrcRel ユニットの `src` へのリポジトリ相対パス
+ * @param productionOnly 本番コード限定のゾーン（`testing/` の被参照禁止）を含めるか
  */
-const featureIsolationZones = (unitSrcRel) => [
-  // 決定 1: feature どうしを import しない（自分自身だけを except にする）。
+const featureIsolationZones = (unitSrcRel, { productionOnly = false } = {}) => [
+  // ADR-0066 決定 1: feature どうしを import しない（自分自身だけを except にする）。
   ...featureNamesOf(unitSrcRel).map((name) => ({
     target: `./${unitSrcRel}/features/${name}`,
     from: `./${unitSrcRel}/features`,
@@ -143,20 +220,45 @@ const featureIsolationZones = (unitSrcRel) => [
       'feature どうしを import しない（ADR-0066 決定 1）。2 つ以上の feature が要る語彙・部品・型は ' +
       'lib/ か components/ へ出し、feature の組み合わせは app/ で行う。',
   })),
-  // 決定 2: shared（components / hooks / lib / stores / types / utils）は features・app を参照しない。
+  // ADR-0067 決定 5: shared は features・app を参照しない。
   {
     target: SHARED_DIRS.map((dir) => `./${unitSrcRel}/${dir}`),
     from: [`./${unitSrcRel}/features`, `./${unitSrcRel}/app`],
     message:
-      '共有層（components / hooks / lib / stores / types / utils）から features・app を参照しない' +
-      '（ADR-0066 決定 2。依存の向きは shared → features → app の一方向）。',
+      `共有層（${SHARED_DIRS.join(' / ')}）から features・app を参照しない` +
+      '（ADR-0067 決定 5。依存の向きは shared → features → app の一方向）。' +
+      '実行時 config は shared（config/）、設定済み i18n は shared（lib/i18n/）に在る。',
   },
-  // 決定 2: features は app を参照しない。
+  // ADR-0067 決定 5: features は app を参照しない。
+  // **合成点（platform の features/index.ts）は app 層である**（決定 4）。除外はゾーンではなく
+  // ブロックの `ignores` が担う（同じパスを 2 箇所へ書かない）。
   {
     target: `./${unitSrcRel}/features`,
     from: `./${unitSrcRel}/app`,
-    message: 'features から app を参照しない（ADR-0066 決定 2）。',
+    message: 'features から app を参照しない（ADR-0067 決定 5。合成点は app 層なので対象外）。',
   },
+  // ADR-0067 決定 5: testing（第 4 の層）は shared と app を参照してよいが、features は参照しない。
+  // **`app` を許すのが要点である** —— テストユーティリティは実アプリのプロバイダ木
+  // （ルータ・i18n）を組み立てるためにアプリケーション層を要る。禁じると「テストが実アプリと
+  // 違う木で走る」ことになる（ADR-0067 §決定 5 の理由）。
+  {
+    target: `./${unitSrcRel}/testing`,
+    from: `./${unitSrcRel}/features`,
+    message: 'テストユーティリティ（testing/）から features を参照しない（ADR-0067 決定 5）。',
+  },
+  // ADR-0067 決定 5: `testing/` は参照される側にならない（向きを一方向に保つ代償）。
+  // **本番コードにだけ掛ける。** テストがテストユーティリティを引くのは正しい。
+  ...(productionOnly
+    ? [
+        {
+          target: PRODUCTION_DIRS.map((dir) => `./${unitSrcRel}/${dir}`),
+          from: `./${unitSrcRel}/testing`,
+          message:
+            '本番コードからテストユーティリティ（testing/）を参照しない（ADR-0067 決定 5）。' +
+            'testing/ はテスト専用の第 4 層であり、参照される側にならない。',
+        },
+      ]
+    : []),
 ];
 
 // ADR-0031 / IADR-0275: `eslint-plugin-testing-library` のうち**個別に理由があって off にする規則**。
@@ -245,10 +347,30 @@ export default tseslint.config(
   // FR-14, IADR-0056 / IADR-0057, Issue #231 / #283: ユニット依存方向（フロント）の機械検査。
   // platform/frontend からの可変ユニット（@knowledge / @ai-stock-trading）参照は
   // 合成点（features/index.ts）1 箇所のみ許可する。
+  //
+  // ［2026-08-30 追記 / ADR-0067］**層の向きの規則（`import/no-restricted-paths`）を
+  // ここへ同居させた。** #1065（IADR-0308 決定 5）は「`@foundation` の実体が `app/` 配下にあるため
+  // platform へ配備できない」として knowledge にしか掛けなかったが、ADR-0067 は
+  // **それは衝突ではなく層の分類の誤りである**と裁定した（`config` は原典では `app` の兄弟）。
+  // 分類を直したので、**規則を 1 つも緩めずに platform へ配備できる。**
+  //
+  // 🔴 **`ignores` の合成点は決定 4 の実装でもある。** 合成点（`features/index.ts`）は
+  // 置き場所こそ `features/` 直下だが**層としては app** であり、`features → app` の禁止に
+  // 掛けてはならない（掛けると「feature を束ねる」という合成点の定義そのものが弾かれる）。
+  // **除外は 1 箇所に留める** —— ゾーン側にも同じパスを書くと片方が腐る。
   {
     files: ['platform/frontend/src/**/*.{ts,tsx}'],
     ignores: ['platform/frontend/src/features/index.ts'],
+    plugins: { import: importPlugin },
+    // ADR-0066 決定 3 / IADR-0308: `import/no-restricted-paths` は**解決できた import しか見ない**。
+    // 既定の node resolver は `.mjs/.js/.json/.node` しか試さないため、拡張子を足さないと
+    // 本リポジトリの `.ts` / `.tsx` は 1 件も解決されず、規則は**静かに 0 件で通る**。
+    settings: PLATFORM_RESOLVER,
     rules: {
+      'import/no-restricted-paths': [
+        'error',
+        { basePath: CONFIG_DIR, zones: featureIsolationZones('platform/frontend/src') },
+      ],
       'no-restricted-imports': [
         'error',
         {
@@ -286,10 +408,7 @@ export default tseslint.config(
   {
     files: ['knowledge/frontend/src/**/*.{ts,tsx}'],
     plugins: { import: importPlugin },
-    // ADR-0066 決定 3 / IADR-0308: `import/no-restricted-paths` は**解決できた import しか見ない**。
-    // 既定の node resolver は `.mjs/.js/.json/.node` しか試さないため、拡張子を足さないと
-    // 本リポジトリの `.ts` / `.tsx` は 1 件も解決されず、規則は**静かに 0 件で通る**。
-    settings: { 'import/resolver': { node: { extensions: ['.js', '.jsx', '.ts', '.tsx'] } } },
+    settings: KNOWLEDGE_RESOLVER,
     rules: {
       'no-restricted-imports': [
         'error',
@@ -319,6 +438,52 @@ export default tseslint.config(
       'import/no-restricted-paths': [
         'error',
         { basePath: CONFIG_DIR, zones: featureIsolationZones('knowledge/frontend/src') },
+      ],
+    },
+  },
+  // ADR-0067 決定 5（`testing/` は参照される側にならない）**だけ**を本番コードへ追加する。
+  //
+  // 🔴 **これは flat config の「同一ルールは後勝ちで置換」を意図して使っている唯一の箇所である。**
+  // 上の 2 ブロックが置いた `import/no-restricted-paths` を、**同じゾーン一式 ＋ 1 本**で置き換える
+  // （`featureIsolationZones(..., { productionOnly: true })`。ゾーンの本体は 1 つの関数が持つので
+  // 2 本になって片方が腐ることは無い）。**`no-restricted-imports` はここで宣言しない** ——
+  // 宣言すると上のブロックの禁止リストが丸ごと消える（本ファイル冒頭が警告している事故）。
+  //
+  // なぜ分けるのか: 決定 5 の文言は「**本番コードから**参照しない」である。テストが
+  // テストユーティリティを引くのは正しい（実測: `components/notifications/NotificationBell.test.tsx`）。
+  // 「テストファイルを除く」を `import/no-restricted-paths` の glob `target` で書くと、
+  // minimatch が `/` 区切りを要求するため **Windows では静かに 0 件**になる。ESLint の
+  // `files` / `ignores` は OS 差を吸収するので、**除外はこちらで表す**。
+  {
+    files: ['platform/frontend/src/**/*.{ts,tsx}'],
+    ignores: [
+      'platform/frontend/src/features/index.ts',
+      'platform/frontend/src/**/*.{test,spec}.{ts,tsx}',
+    ],
+    plugins: { import: importPlugin },
+    settings: PLATFORM_RESOLVER,
+    rules: {
+      'import/no-restricted-paths': [
+        'error',
+        {
+          basePath: CONFIG_DIR,
+          zones: featureIsolationZones('platform/frontend/src', { productionOnly: true }),
+        },
+      ],
+    },
+  },
+  {
+    files: ['knowledge/frontend/src/**/*.{ts,tsx}'],
+    ignores: ['knowledge/frontend/src/**/*.{test,spec}.{ts,tsx}'],
+    plugins: { import: importPlugin },
+    settings: KNOWLEDGE_RESOLVER,
+    rules: {
+      'import/no-restricted-paths': [
+        'error',
+        {
+          basePath: CONFIG_DIR,
+          zones: featureIsolationZones('knowledge/frontend/src', { productionOnly: true }),
+        },
       ],
     },
   },
@@ -413,8 +578,13 @@ export default tseslint.config(
   // 画面を作り直すたびにこの files を伸ばす——「i18n 化したのに検査されない」状態を残さないためである。
   {
     files: [
-      'platform/frontend/src/app/i18n/**/*.{ts,tsx}',
+      // ［2026-08-30 / ADR-0067 決定 2］**i18n の実行時部分が `app/i18n/` → `lib/i18n/` へ移った。**
+      'platform/frontend/src/lib/i18n/**/*.{ts,tsx}',
       'platform/frontend/src/components/ui/**/*.{ts,tsx}',
+      // ［2026-08-30 / ADR-0067 決定 6］**共通シェル（`Layout`）が `components/ui/` → `app/` へ移った。**
+      // この行を足さないと、i18n 化済みのシェルが**静かに検査されなくなる**（上の
+      // `components/ui/**` はもう当たらない）。
+      'platform/frontend/src/app/Layout.tsx',
       // #788（移行第 4 段）: 右レール AI チャットパネル。共通シェルに載る文言なので、
       // components/ui（旧 foundation/ui）と同じ規則の下に置く。
       'platform/frontend/src/components/ai-chat/**/*.{ts,tsx}',

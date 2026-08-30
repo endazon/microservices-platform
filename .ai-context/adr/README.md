@@ -383,3 +383,4 @@
 | [IADR-0307](./IADR-0307_istio-optin-and-staged-mtls.md) | Istio は opt-in で入れ、mTLS は PERMISSIVE から段階的に STRICT へ移す | Accepted |
 | [IADR-0308](./IADR-0308_feature-import-isolation-eslint-zones.md) | **feature 境界の機械強制は `eslint-plugin-import` の `no-restricted-paths` で行い、zones は実ディレクトリから生成する**（#1065 / ADR-0066）。🔴 **規則は解決できた import しか見ない** —— 拡張子設定が無いと `.ts` が 1 件も解決されず静かに 0 件で通る。適用は knowledge のみ。 | Accepted |
 | [IADR-0309](./IADR-0309_feature-internal-split-substance-over-scaffolding.md) | feature 内部 6 分割の適合は実体で示し、`.gitkeep` の空枠で満たさない | Accepted |
+| [IADR-0310](./IADR-0310_layer-zone-enforcement-and-alias-resolution.md) | **層ゾーンの機械強制にエイリアス解決を与える**（ADR-0067）。🔴 分類を直しゾーンを置いても `@foundation/*` は素通りしていた（26 ファイル・59 文）。`testing` の被参照禁止は glob ではなく**本番コード限定のブロック**で表す。 | Accepted |

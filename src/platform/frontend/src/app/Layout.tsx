@@ -13,7 +13,7 @@ import { BreadcrumbLeafContext } from '@foundation/routing/breadcrumbLeaf';
 import { appConfig } from '@foundation/config/runtimeConfig';
 import { NotificationBell } from '@foundation/notifications/NotificationBell';
 import { AiChatPanel } from '@foundation/ai-chat/AiChatPanel';
-import { Notifications } from './notifications';
+import { Notifications } from '@foundation/ui/notifications';
 
 // Issue #126 / 05_screens §共通シェル: 認証済み領域の共通シェル。features は Outlet に載る。
 // Issue #136 / IADR-0035: ナビはユニットの登録から導出し、権限外の項目は描画しない（存在秘匿）。

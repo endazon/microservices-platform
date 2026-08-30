@@ -10,7 +10,7 @@ export default defineConfig({
   // マクロ（@lingui/react/macro の <Trans> 等）を babel で展開する。
   // **同じ設定を platform/frontend/vite.config.ts にも置く**——片方だけに入れると
   // 「テストは通るのにビルドが壊れる（あるいはその逆）」という静かな破綻になる。
-  // その一致は platform/frontend/src/app/i18n/i18n.test.tsx が固定する。
+  // その一致は platform/frontend/src/lib/i18n/i18n.test.tsx が固定する。
   plugins: [react({ babel: { plugins: ['@lingui/babel-plugin-lingui-macro'] } })],
   resolve: {
     // IADR-0121 決定 2（pnpm workspace）: pnpm は node_modules を isolated に置くため、ユニットごとに
@@ -23,10 +23,10 @@ export default defineConfig({
       // app/ lib/ components/ testing/ へ分かれているので、区分ごとに向き先を張る。
       // 同じ 9 本を platform/frontend/tsconfig.app.json と platform/frontend/vite.config.ts にも置く。
       '@foundation/config': fileURLToPath(
-        new URL('./platform/frontend/src/app/config', import.meta.url),
+        new URL('./platform/frontend/src/config', import.meta.url),
       ),
       '@foundation/i18n': fileURLToPath(
-        new URL('./platform/frontend/src/app/i18n', import.meta.url),
+        new URL('./platform/frontend/src/lib/i18n', import.meta.url),
       ),
       '@foundation/routing': fileURLToPath(
         new URL('./platform/frontend/src/app/routing', import.meta.url),

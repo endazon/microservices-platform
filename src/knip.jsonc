@@ -35,7 +35,17 @@
       // knip は CLI の引数まで解釈しないため「誰も import しないファイル」に見える。
       // **ignore ではなく entry にする** —— ignore にすると、この入口から辿れる依存
       // （@lingui/format-po）が「未使用の依存」として湧く（実測: entry にした瞬間 5 → 4 件へ減った）。
-      "entry": ["lingui.config.ts", "eslint.templates.config.js"],
+      //
+      // ［2026-08-30 / ADR-0067 / IADR-0310］`eslint-import-resolver-unit-alias.cjs` も同じ性質である。
+      // `eslint.config.js` は `settings['import/resolver']` の**キーとして絶対パス文字列**で渡しており
+      // （eslint-plugin-import はリゾルバを名前で require する）、**import 文が 1 つも無い**。
+      // よって knip には「誰も import しないファイル」に見えるが、**lint の実行経路に確かに在る**
+      // （外すと `import/no-restricted-paths` がエイリアス越えの違反を静かに見逃す）。
+      "entry": [
+        "lingui.config.ts",
+        "eslint.templates.config.js",
+        "eslint-import-resolver-unit-alias.cjs",
+      ],
     },
     "platform/frontend": {
       // ADR-0031 / IADR-0121 決定 3: orval の生成物はコミットし、CI が再生成差分を検査する。

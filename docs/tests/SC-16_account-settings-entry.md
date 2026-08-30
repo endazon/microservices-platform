@@ -34,7 +34,7 @@ issues: [#439]
 
 | 対象 | 範囲 |
 | --- | --- |
-| 共通シェル（`platform/frontend/src/components/ui/Layout.tsx`）のユーザーアイコン | **本書の対象** |
+| 共通シェル（`platform/frontend/src/app/Layout.tsx`）のユーザーアイコン | **本書の対象** |
 | アカウント設定の URL 組み立て（`accountConsoleUrl`。実行時 config の `oidc.authority` から導出） | **本書の対象** |
 | アカウント設定の画面そのもの（プロフィール・パスワード・OTP・セッション管理） | 対象外（Keycloak テーマ） |
 | 認証フロー（ログイン・MFA・パスワードリセット） | 対象外（第 3 段 / #439・Keycloak テーマ） |

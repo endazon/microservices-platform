@@ -19,11 +19,12 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
   vitest.config.ts               # 単体テスト＋カバレッジ（全ユニット横断・しきい値ゲート）
   platform/frontend/             # 基盤ユニット（アプリホスト）
     src/                         # 計画 13_frontend-stack §ディレクトリ構成 のツリーに適合
-      app/                       # providers / router / i18n / config（App.tsx もここ）
+      app/                       # アプリケーション層: providers / router / App.tsx / Layout.tsx（共通シェル）
+      config/                    # 実行時 config（shared。原典が app の兄弟に置く区分）
       components/                # 共通コンポーネント（ui / notifications / ai-chat）
-      lib/                       # api（orval 生成物と HTTP 出口）/ auth
-      testing/                   # 横断 setup と画面テスト用ハーネス
-      features/index.ts          # ユニット合成点（可変ユニットの features を束ねる）
+      lib/                       # api（orval 生成物と HTTP 出口）/ auth / i18n（設定済み Lingui）
+      testing/                   # 横断 setup と画面テスト用ハーネス（テスト専用の第 4 層）
+      features/index.ts          # ユニット合成点（可変ユニットの features を束ねる。層としては app）
       assets/ hooks/ locales/ stores/ types/ utils/   # 枠のみ（.gitkeep。消さない）
       main.tsx                   # エントリ
     index.html / vite.config.ts / e2e/ / public/
@@ -34,12 +35,19 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
 ```
 
 - **エイリアス**: `@foundation/<区分>` は **platform 基盤の公開面の名前**であり、ディレクトリ名ではない。
-  向き先は `config` / `i18n` / `routing` → `src/app/*`、`api` / `auth` → `src/lib/*`、
+  向き先は `config` → `src/config`、`routing` → `src/app/routing`、`api` / `auth` / `i18n` → `src/lib/*`、
   `ui` / `notifications` / `ai-chat` → `src/components/*`、`testing` → `src/testing`。
   ほかに `@knowledge` → `knowledge/frontend/src`、`@features` → `platform/frontend/src/features`（合成点）。
   **エイリアス名は変えない**（submodule の可変ユニットと `templates/unit-template` の契約が割れるため）。
   定義は `platform/frontend/tsconfig.app.json` / `platform/frontend/vite.config.ts` / `src/vitest.config.ts`
   の 3 箇所にあり、**3 つとも同じ向き先を持たせる**。
+  **ESLint の依存方向の規則もこのエイリアスを解決する** —— `src/eslint-import-resolver-unit-alias.cjs` が
+  tsconfig の `paths` を読むので、向き先を足す・変えるときも ESLint 側に表を書き足す必要は無い。
+- **層と依存の向き**: `shared`（`components` / `hooks` / `lib` / `stores` / `types` / `utils` / `config` /
+  `assets` / `locales`）→ `features` → `app` の一方向。`testing/` はテスト専用の第 4 層で、
+  `shared` と `app` を参照してよいが `features` は参照せず、**本番コードから参照されない**。
+  **合成点（`features/index.ts`）は置き場所こそ `features/` 直下だが層としては `app`** である。
+  すべて `eslint.config.js` の `import/no-restricted-paths` が両ユニットへ機械強制する。
 - **BFF 境界**: バックエンドへは必ず `/bff/*` 経由（`foundation/api` の `apiFetch`）。
   接続先はビルドに焼き込まず実行時 config（`platform/frontend/public/config.js`）で注入する。
 

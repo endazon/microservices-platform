@@ -11,9 +11,10 @@ related_ids:
   - IADR-0121
   - IADR-0124
   - IADR-0125
+  - ADR-0067
 author: claude
 created: 2026-08-23
-updated: 2026-08-28
+updated: 2026-08-30
 plan_refs:
   - planning:projects/microservices-platform/06_technical/13_frontend-stack.md
   - planning:projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md
@@ -73,6 +74,21 @@ plan_refs:
 `components/`、`testing` が `testing/`」と対応を明示しており、それをそのまま写した。
 
 **帰結として `@foundation` は「ディレクトリ名」ではなく「platform 基盤の公開面の名前」になる。**
+
+> ［2026-08-30 追記 / ADR-0067 / #1086］🔴 **上表のうち 2 行の向き先が動いた。**
+> 計画 ADR-0067（Accepted 2026-08-30）が、計画のツリーの `app/` 注釈が原典（Bulletproof React）と
+> 違う分類をしていたと裁定し、`config` を `app` の兄弟へ、i18n の実行時部分を `lib/` へ戻した。
+>
+> | エイリアス | 向き先（2026-08-30 以降） | ADR-0067 |
+> | --- | --- | --- |
+> | `@foundation/config` | `platform/frontend/src/config` | 決定 1 |
+> | `@foundation/i18n` | `platform/frontend/src/lib/i18n` | 決定 2 |
+>
+> **決定 1 そのもの（エイリアス名と個数を変えない／`@foundation` は公開面の名前である）は覆っていない**
+> ——ADR-0067 §起案前の確認 が本 IADR 決定 1 を「前提として扱う。覆さない」と明記している。
+> 動いたのは**向き先だけ**であり、可変ユニットが書く import は 1 行も変わらない。
+> 加えて ADR-0067 決定 6 により**共通シェル `Layout` が `components/ui/` から `app/` へ移った**ので、
+> `@foundation/ui` から `Layout` は取れなくなった（実測: 参照は platform の `app/` 内 2 箇所のみ）。
 ユニット間の依存規則（ADR-0019 / IADR-0056 の「可変ユニットが参照してよいのは `@foundation` と
 `@platform/ui` の 2 つ」）はもともと**依存の向きの規則**であって配置の規則ではないため、
 この読み替えで規則の意味は変わらない。

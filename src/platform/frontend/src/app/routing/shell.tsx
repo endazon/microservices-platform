@@ -1,5 +1,5 @@
 import { createRootRoute, createRoute, Outlet, redirect } from '@tanstack/react-router';
-import { Layout } from '@foundation/ui/Layout';
+import { Layout } from '../Layout';
 import { NotFound } from '@foundation/ui/NotFound';
 import { RequireAuth } from '@foundation/auth/RequireAuth';
 import { LoginPage } from '@foundation/auth/LoginPage';

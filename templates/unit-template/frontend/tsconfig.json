@@ -32,20 +32,20 @@
     // 複製したら 2 つ目の候補は消してよい。
     "paths": {
       "@foundation/config/*": [
-        "../../platform/frontend/src/app/config/*",
-        "../../../src/platform/frontend/src/app/config/*"
+        "../../platform/frontend/src/config/*",
+        "../../../src/platform/frontend/src/config/*"
       ],
       "@foundation/config": [
-        "../../platform/frontend/src/app/config",
-        "../../../src/platform/frontend/src/app/config"
+        "../../platform/frontend/src/config",
+        "../../../src/platform/frontend/src/config"
       ],
       "@foundation/i18n/*": [
-        "../../platform/frontend/src/app/i18n/*",
-        "../../../src/platform/frontend/src/app/i18n/*"
+        "../../platform/frontend/src/lib/i18n/*",
+        "../../../src/platform/frontend/src/lib/i18n/*"
       ],
       "@foundation/i18n": [
-        "../../platform/frontend/src/app/i18n",
-        "../../../src/platform/frontend/src/app/i18n"
+        "../../platform/frontend/src/lib/i18n",
+        "../../../src/platform/frontend/src/lib/i18n"
       ],
       "@foundation/routing/*": [
         "../../platform/frontend/src/app/routing/*",
