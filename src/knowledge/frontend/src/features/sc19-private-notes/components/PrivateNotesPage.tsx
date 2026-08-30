@@ -158,6 +158,13 @@ export function PrivateNotesPage() {
   // ADR-0037 決定 20: 解放容量は判断材料 —— KB 級の実サイズが 0.00 GB に潰れないよう単位を自動選択する。
   const freed = formatBytes(freedBytesOf(all, purgeTargets));
 
+  // ［2026-08-30 / #1078］翻訳文へ差し込む値は**単純な変数**として渡す
+  // （`lingui/no-expression-in-message`。プロパティ参照だとカタログのプレースホルダ名が揺れる）。
+  const liveCount = live.length;
+  const trashedCount = trashed.length;
+  const purgeTargetCount = purgeTargets.length;
+  const softDeleteTitle = confirming?.kind === 'softDelete' ? confirming.note.title : '';
+
   return (
     <section className="flex flex-col gap-4">
       <h1 className="text-xl font-semibold">
@@ -246,11 +253,11 @@ export function PrivateNotesPage() {
         <Tabs value={search.tab} onValueChange={(value) => switchTab(value as TabOption)}>
           <TabsList>
             <TabsTrigger value="active">
-              <Trans>利用中（{live.length}）</Trans>
+              <Trans>利用中（{liveCount}）</Trans>
             </TabsTrigger>
             {/* 05_screens §SC-19 主要素 14: 削除済みの件数バッジ。 */}
             <TabsTrigger value="trash">
-              <Trans>削除済み（{trashed.length}）</Trans>
+              <Trans>削除済み（{trashedCount}）</Trans>
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -333,13 +340,15 @@ export function PrivateNotesPage() {
             {rows.map((note) => {
               const days = daysUntilPurge(note.purgeAt, now);
               const imminent = isPurgeImminent(days);
+              // ［2026-08-30 / #1078］翻訳文へは単純な変数で渡す（lingui/no-expression-in-message）。
+              const title = note.title;
               return (
                 <TableRow key={note.id}>
                   {search.tab === 'trash' && (
                     <TableCell>
                       <input
                         type="checkbox"
-                        aria-label={t`${note.title} を選択`}
+                        aria-label={t`${title} を選択`}
                         checked={selected.includes(note.id)}
                         onChange={(e) =>
                           setSelected((prev) =>
@@ -472,7 +481,7 @@ export function PrivateNotesPage() {
           {/* 05_screens §SC-19「削除の確認ダイアログ（論理削除）」の固定文言。 */}
           <p>
             <Trans>
-              「{confirming.note.title}
+              「{softDeleteTitle}
               」を削除します。削除しても容量は空きません（90
               日間保管されます）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。
             </Trans>
@@ -503,7 +512,7 @@ export function PrivateNotesPage() {
           </p>
           <p>
             <Trans>
-              対象: {purgeTargets.length} 件 ／ 解放される容量: {freed}
+              対象: {purgeTargetCount} 件 ／ 解放される容量: {freed}
             </Trans>
           </p>
         </ConfirmDialog>

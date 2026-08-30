@@ -41,6 +41,9 @@ export default defineConfig({
   catalogs: [
     {
       path: '<rootDir>/platform/frontend/src/locales/{locale}/messages',
+      // ［2026-08-30 / #1078］**この範囲は `eslint.config.js` の lingui ブロックの `files` と同一である。**
+      // 従前は抽出（ここ）のほうが広く、lint 側だけが許可リストで狭かったため、
+      // **抽出されるのに検査されない**ファイルが 19 件生まれていた。**片方だけを動かさない。**
       include: ['<rootDir>/platform/frontend/src', '<rootDir>/knowledge/frontend/src'],
       exclude: [
         '**/node_modules/**',
