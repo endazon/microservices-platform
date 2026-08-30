@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-06, SC-17, SC-18, SC-19, SC-20]
-adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066]
+adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228]
 specs: []
-issues: [#1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498]
+issues: [#1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -23,6 +23,31 @@ issues: [#1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#7
 >
 > **本別紙が持つのは「レンジをいつどう引き直したか」（pin 時代の記録を含む）「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れなかったか」の記録だけ**である（必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
+
+### ［2026-08-30・5 回目］ADR `0001..0066` → `0001..0068`（2 件。**自分が出した環流の裁定で増えた**）
+
+**`ADR` だけが `0001..0066` → `0001..0068` へ増えた**（2 件）。**他の 4 種は不動**。
+
+| ADR | 状態 | 内容 |
+| --- | --- | --- |
+| `ADR-0067` | Accepted | フロントエンドの層の分類と合成点の帰属（`ADR-0066` 決定 2 の部分改定） |
+| `ADR-0068` | Accepted | 3 段目へ下ろすのは操作の処理であり、登録表は 2 段目に残す（`ADR-0065` 決定 2 の補完） |
+
+#### 契機は 4 回目と同じだが、出所が逆になった
+
+4 回目は「計画側が ADR の §結果 へフォローアップとして書き、それが issue になった」ことで守られた。
+**5 回目は逆で、実装側が出した 2 本の環流の裁定として新 ADR が起案された。**
+
+🔴 **どちらの環流も、実装側の見立てが実測で一部否定されている。**
+
+| 環流の主張 | 裁定の実測 |
+| --- | --- |
+| 「`ADR-0066` 決定 2 と `@foundation` 設計が**衝突**している。違反 16 件はすべて `features → app`」 | **衝突ではなく分類の誤り。** `features → app` は **1 ファイル**で、本体は **`shared → app` の 9 ファイル**だった |
+| 「`ADR-0065` 決定 2 と『純粋な移送』が**両立しない**。字義どおりだと約 111 クラスへ分割が要る」 | **両立しないという前提が要らなかった。** 登録表を 2 段目に残せば `Program.cs` の登録は動かない |
+
+**環流を出すこと自体は正しかった**（どちらも実際に新 ADR を生んでいる）が、
+**「衝突」「両立しない」と断定した部分は、実装側が母集合を十分に引けていなかった。**
+**環流では「何が起きているか」を実測で述べ、「だから計画が矛盾している」の断定は避ける。**
 
 ### ［2026-08-30・4 回目］ADR `0001..0064` → `0001..0066`（2 件。**初めて「参照するより先に」引いた**）
 
