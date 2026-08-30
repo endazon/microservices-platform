@@ -277,4 +277,79 @@ public class WolverineExtensionsTests
         MassTransitRetryIntervals.Should().Equal(
             TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30));
     }
+
+    // --- ADR-0027 手順 3（発行側の経路）/ #992・[[IADR-0312]] ---------------------------
+    //
+    // 🔴 **ここが無いと Wolverine の発行は 1 通もブローカへ出ない。** 手順 4 でプロセス内経路を
+    // 切ったうえで外向きの経路を誰も宣言しなければ、Wolverine は宛先を決められず
+    // `No routes can be determined for Envelope ...` を info ログへ 1 行出して捨てる。
+    // 例外もヘルスチェックの赤も出ないため、**本番だけが静かに壊れる**（稼働 k3s で実測）。
+    private sealed record ProbeEvent(Guid Id);
+
+    private static string[] RabbitEndpointUrisOf(WolverineOptions options) =>
+        [.. options.Transports
+            .Single(t => t.Protocol == "rabbitmq")
+            .Endpoints()
+            .Select(e => e.Uri.ToString())];
+
+    [Fact]
+    public void 手順3発行側_適用前は外向きの経路が1つも無い()
+    {
+        // 変異が当たることの前提条件。既定で経路が生えるなら、この配線の試験は何も証明しない。
+        var options = new WolverineOptions();
+        options.UseRabbitMq();
+
+        RabbitEndpointUrisOf(options).Should().NotContain(u => u.Contains(nameof(ProbeEvent)));
+    }
+
+    [Fact]
+    public void 手順3発行側_共通ヘルパがイベント型名のexchangeへ経路を宣言する()
+    {
+        var options = new WolverineOptions();
+        options.UseRabbitMq();
+
+        options.RoutePlatformEvent<ProbeEvent>();
+
+        RabbitEndpointUrisOf(options).Should().Contain(u => u.Contains("exchange/" + nameof(ProbeEvent)));
+    }
+
+    [Fact]
+    public void 手順3_exchange名にサービス名を前置しない()
+    {
+        // 前置すると購読側が束ねた exchange と食い違い、やはり「誰にも届かない」形になる。
+        // キュー名（前置する）との非対称は意図的である。
+        WolverineExtensions.PlatformExchangeName<ProbeEvent>().Should().Be(nameof(ProbeEvent));
+        WolverineExtensions.PlatformExchangeName<ProbeEvent>().Should().NotContain("-service");
+    }
+
+    [Fact]
+    public void 手順3購読側_束ねる先が発行側のexchangeと一致する()
+    {
+        // 🔴 発行側と購読側が**同じ名前を導く**ことがこの配線の全てである。
+        // 片方だけ変えると、キューは在り exchange も在るのに 1 通も届かない。
+        var publisher = new WolverineOptions();
+        publisher.UseRabbitMq();
+        publisher.RoutePlatformEvent<ProbeEvent>();
+
+        var subscriber = new WolverineOptions();
+        subscriber.UseRabbitMq().BindPlatformQueue<ProbeEvent>("ingestion-service", nameof(ProbeEvent));
+
+        RabbitEndpointUrisOf(publisher).Should().Contain(u => u.Contains("exchange/" + nameof(ProbeEvent)));
+        RabbitEndpointUrisOf(subscriber).Should().Contain(u => u.Contains("exchange/" + nameof(ProbeEvent)));
+    }
+
+    [Fact]
+    public void 手順3購読側_束ねてもキュー名の前置は保たれる()
+    {
+        // fan-out の保存は「キュー名が分かれている」と「同じ exchange に束ねられている」の
+        // 両方で成り立つ。束ねる過程で前置が失われると competing consumer へ退行する。
+        var options = new WolverineOptions();
+        options.UseRabbitMq()
+            .BindPlatformQueue<ProbeEvent>("ingestion-service", nameof(ProbeEvent))
+            .BindPlatformQueue<ProbeEvent>("wiki-service", nameof(ProbeEvent));
+
+        var uris = RabbitEndpointUrisOf(options);
+        uris.Should().Contain(u => u.Contains("ingestion-service." + nameof(ProbeEvent)));
+        uris.Should().Contain(u => u.Contains("wiki-service." + nameof(ProbeEvent)));
+    }
 }
