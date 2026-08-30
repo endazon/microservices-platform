@@ -9,6 +9,7 @@ related_ids:
   - ADR-0021
   - IADR-0026
   - IADR-0091
+  - IADR-0312
 author: claude
 created: 2026-08-30
 updated: 2026-08-30
@@ -153,6 +154,14 @@ $ ... sample restartPolicy : [None, 'Always']
 `README.md` の確認コマンドは `initContainers` も見る形にした。
 
 ### 4. 🔴 **STRICT は現在のエッジ構成と両立しない**（成立しない）
+
+> **［2026-08-30 追記 / #782］本節の「成立しない」は解けた。**
+> [IADR-0312](./IADR-0312_istio-ingressgateway-edge-and-strict-mtls.md) が本節の帰結どおり
+> **エッジを Istio Ingress Gateway へ移し、STRICT で 12 エンドポイントすべてが基準線と一致した**
+> （同 ADR §実クラスタで確かめたこと）。**覆ったのは「現在のエッジ構成では」という前提のほうであり、
+> 本節の分析（Traefik がメッシュ外である・`ADR-0021` は選択肢ではなく前提である）は正しかった。**
+> 以下の 502 の表は**当時の Traefik エッジでの実測**として引き続き有効である。
+> 「#458 が引き受ける」とした移行は **#782 の中で完了した**（#458 に残るのは Vault と全 API の JWT である）。
 
 **これが本作業で最も重要な発見である。**
 

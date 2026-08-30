@@ -2124,4 +2124,96 @@ ok('#780 第2段: metadataAddress と validIssuers が同じ realm パスを指�
   );
 });
 
+// ---------------------------------------------------------------------------
+// #782 / ADR-0021: エッジを Istio Ingress Gateway へ移す overlay の静的検査。
+//
+// ここで固定するのは **STRICT が成立するための前提**だけである。実クラスタでの疎通は
+// .ai-context/adr/IADR-0312_*.md が実測で持つ（この検査は「壊すと落ちる」門であって証拠ではない）。
+// ---------------------------------------------------------------------------
+const EDGE_ISTIO_DIR = path.join(REPO_ROOT, 'deploy', 'local', 'edge-istio');
+const EDGE_ISTIO_KUST = fs.readFileSync(path.join(EDGE_ISTIO_DIR, 'kustomization.yaml'), 'utf8');
+const EDGE_ISTIO_GW = fs.readFileSync(path.join(EDGE_ISTIO_DIR, 'gateway.yaml'), 'utf8');
+const EDGE_ISTIO_VS_APP = fs.readFileSync(path.join(EDGE_ISTIO_DIR, 'virtualservice-app.yaml'), 'utf8');
+const EDGE_ISTIO_VS_ADMIN = fs.readFileSync(
+  path.join(EDGE_ISTIO_DIR, 'virtualservice-admin.yaml'),
+  'utf8',
+);
+const EDGE_ISTIO_CERT = fs.readFileSync(
+  path.join(EDGE_ISTIO_DIR, 'tls', 'edge-certificate-istio.yaml'),
+  'utf8',
+);
+const ISTIO_EDGE_UP = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'istio-edge-up.sh'), 'utf8');
+const ISTIO_EDGE_DOWN = fs.readFileSync(
+  path.join(REPO_ROOT, 'scripts', 'istio-edge-down.sh'),
+  'utf8',
+);
+
+ok('#782: istio-system の葉証明書の dnsNames が既存 Certificate と一致する（SNI がずれない）', () => {
+  const istioNames = listValues(EDGE_ISTIO_CERT, 'dnsNames');
+  const edgeNames = listValues(EDGE_CERT_YAML, 'dnsNames');
+  assert.ok(istioNames.length > 0, 'istio-system の Certificate に dnsNames が無い');
+  assert.deepStrictEqual(
+    istioNames,
+    edgeNames,
+    'istio-system の dnsNames が edge-certificate.yaml とずれている（Gateway の TLS が host 照合で落ちる）',
+  );
+  assert.ok(/namespace:\s*istio-system/.test(EDGE_ISTIO_CERT), 'Certificate が istio-system に無い');
+  assert.ok(
+    /secretName:\s*edge-tls/.test(EDGE_ISTIO_CERT),
+    'secretName が edge-tls でない（ADR-0023「名前の安定」/ Gateway の credentialName と一致しない）',
+  );
+});
+
+ok('#782: edge-istio kustomization は tls/ と traefik-service-off を含まない（順序を表現できないため）', () => {
+  assert.ok(!/^\s*-\s*tls\/?\s*$/m.test(EDGE_ISTIO_KUST), 'kustomization が tls/ を含んでいる');
+  assert.ok(
+    !/^\s*-\s*traefik-service-off/m.test(EDGE_ISTIO_KUST),
+    'kustomization が traefik-service-off.yaml を含んでいる（Traefik の明け渡しは Gateway より先でなければならない）',
+  );
+});
+
+ok('#782: Gateway は istio-system に居て edge-tls で終端し、80 は 443 へリダイレクトする', () => {
+  assert.ok(/namespace:\s*istio-system/.test(EDGE_ISTIO_GW), 'Gateway が istio-system に無い');
+  assert.ok(
+    /credentialName:\s*edge-tls/.test(EDGE_ISTIO_GW),
+    'credentialName が edge-tls でない（Gateway は同 namespace の Secret しか読めない）',
+  );
+  assert.ok(
+    /httpsRedirect:\s*true/.test(EDGE_ISTIO_GW),
+    'port 80 の httpsRedirect が無い（NFR-11「平文 HTTP を残さない」）',
+  );
+  assert.ok(/number:\s*50000/.test(EDGE_ISTIO_GW), 'admin(50000) の server が無い');
+});
+
+ok('#782: メッシュ内の 4 サービスがすべて Gateway 経由になっている（STRICT で落ちる側）', () => {
+  const routed = EDGE_ISTIO_VS_APP + EDGE_ISTIO_VS_ADMIN;
+  for (const svc of ['frontend-service', 'bff-service', 'minio', 'wiki-js']) {
+    assert.ok(
+      new RegExp(`host:\\s*${svc}\\.microservices-platform\\.svc\\.cluster\\.local`).test(routed),
+      `${svc} への VirtualService が無い（Traefik のままだと STRICT で 502 になる）`,
+    );
+  }
+});
+
+ok('#782: up は「Traefik を明け渡す → Gateway を立てる」の順で、down はその逆順である', () => {
+  const offAt = ISTIO_EDGE_UP.indexOf('kubectl apply -f deploy/local/edge-istio/traefik-service-off.yaml');
+  const gwAt = ISTIO_EDGE_UP.indexOf('istio/gateway');
+  assert.ok(offAt > 0 && gwAt > 0, 'istio-edge-up.sh に明け渡し/Gateway 導入が無い');
+  assert.ok(
+    offAt < gwAt,
+    'Gateway の導入が Traefik の明け渡しより先にある（hostPort が衝突してどちらの入口も立たない）',
+  );
+  const uninstallAt = ISTIO_EDGE_DOWN.indexOf('helm uninstall istio-ingressgateway');
+  const restoreAt = ISTIO_EDGE_DOWN.indexOf('kubectl apply -f deploy/local/edge/traefik-entrypoint.yaml');
+  assert.ok(uninstallAt > 0 && restoreAt > 0, 'istio-edge-down.sh に撤去/復旧が無い');
+  assert.ok(uninstallAt < restoreAt, '切り戻しで Traefik の復旧が Gateway の撤去より先にある（同上）');
+});
+
+ok('#782: 切り戻しは mTLS を先に緩める（入口だけ戻して 502 のままにしない）', () => {
+  const permissiveAt = ISTIO_EDGE_DOWN.indexOf('"PERMISSIVE"');
+  const restoreAt = ISTIO_EDGE_DOWN.indexOf('kubectl apply -k deploy/local/edge');
+  assert.ok(permissiveAt > 0 && restoreAt > 0, 'istio-edge-down.sh の段が読めない');
+  assert.ok(permissiveAt < restoreAt, 'PERMISSIVE へ戻すのが Traefik の復旧より後になっている');
+});
+
 process.stdout.write(`\n✓ ${passed} tests passed\n`);

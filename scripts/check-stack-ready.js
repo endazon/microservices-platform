@@ -35,7 +35,10 @@
  *   **デプロイ済みの `KC_HOSTNAME_URL` ＋ `/realms/<realm>` と文字列として完全一致**すること
  *   （[IADR-0243] の受け入れ基準を CI で固定する）。realm 名は `deploy/keycloak/*-realm.json` から
  *   **走査して**得る（列挙を書かない）。
- * - **G5 admin entrypoint**: `kube-system/traefik` の Service に `admin=50000` の port が在ること。
+ * - **G5 admin entrypoint**: **どちらかのエッジ**の Service に `50000` の port が在ること
+ *   （既定は `kube-system/traefik` の `admin=50000`。`ISTIO=1` では `istio-system/istio-ingressgateway`
+ *   の `https-admin=50000`。#782 / [IADR-0312] で Traefik は Service ごと降りるため、
+ *   **Traefik だけを見ると Istio エッジで必ず落ちる**）。
  *   🔴 **これは飾りではない。** k3s v1.30.4 が同梱する traefik chart 25.0.3 では
  *   `deploy/local/edge/traefik-entrypoint.yaml` の `expose: {default: true}`（map 形式・chart 26 以降）が
  *   型不一致で reconcile に失敗し、**`kubectl apply` は成功したまま反映だけが落ちる**（#953）。
@@ -70,6 +73,10 @@ const TRAEFIK_SVC = 'traefik';
 /** G5 が要求する entrypoint（[IADR-0091] / [IADR-0220]）。 */
 const ADMIN_PORT_NAME = 'admin';
 const ADMIN_PORT = 50000;
+
+/** #782 / [IADR-0312]: `ISTIO=1` のとき 3 ポートを持つのは Traefik ではなくこちらである。 */
+const ISTIO_GW_NS = 'istio-system';
+const ISTIO_GW_SVC = 'istio-ingressgateway';
 
 /** Keycloak の Deployment（issuer の単一情報源 `KC_HOSTNAME_URL` を持つ）。 */
 const KEYCLOAK_NS = 'platform-infra';
@@ -187,16 +194,39 @@ function evaluatePods(ns, items) {
   return failures;
 }
 
-/** G5: traefik Service に `admin=50000` が在るか。 */
-function evaluateAdminEntrypoint(svc) {
+/** admin(50000) を提供しているか（Service 1 つぶんの判定。純関数）。 */
+function servesAdminPort(svc) {
   const ports = (svc && svc.spec && svc.spec.ports) || [];
-  const found = ports.find((p) => p.name === ADMIN_PORT_NAME && p.port === ADMIN_PORT);
-  if (found) return [];
-  const shown = ports.map((p) => `${p.name}=${p.port}`).join(' / ') || '(port が 1 つも無い)';
+  // Traefik は name='admin'、istio-ingressgateway は name='https-admin' を使う。
+  // **名前ではなくポート番号で見る** —— 見たいのは「50000 が生えているか」であって命名規約ではない。
+  return ports.some((p) => p.port === ADMIN_PORT);
+}
+
+/**
+ * G5: admin(50000) の entrypoint が**どちらかのエッジ**に在るか。
+ *
+ * 🔴 **エッジは 2 通りある**（#782 / [IADR-0312]）。既定は Traefik（`kube-system/traefik`）だが、
+ * `ISTIO=1` かつ `LOCALEDGE=1` では **Traefik の Service を落として** `istio-ingressgateway` が
+ * 3 ポートすべてを持つ（k3s の ServiceLB は同じ hostPort を 2 つの Service に持たせられない）。
+ * **Traefik だけを見ると Istio エッジで必ず失敗する。**
+ *
+ * 逆に「どちらも無い」は依然として失敗である —— #953（HelmChartConfig の reconcile が
+ * 静かに落ちる）を捕まえる門の役割は変わらない。
+ */
+function evaluateAdminEntrypoint(traefikSvc, istioSvc) {
+  if (servesAdminPort(traefikSvc) || servesAdminPort(istioSvc)) return [];
+  const describe = (label, svc) => {
+    if (!svc) return `${label}=(Service が無い)`;
+    const ports = (svc.spec && svc.spec.ports) || [];
+    return `${label}=${ports.map((p) => `${p.name}:${p.port}`).join(',') || '(port 0 件)'}`;
+  };
   return [
-    `[G5] ${TRAEFIK_NS}/${TRAEFIK_SVC} に ${ADMIN_PORT_NAME}=${ADMIN_PORT} が無い（実際: ${shown}）。` +
+    `[G5] admin(${ADMIN_PORT}) の entrypoint がどちらのエッジにも無い` +
+      `（${describe(`${TRAEFIK_NS}/${TRAEFIK_SVC}`, traefikSvc)} / ` +
+      `${describe(`${ISTIO_GW_NS}/${ISTIO_GW_SVC}`, istioSvc)}）。` +
       ` **HelmChartConfig の reconcile が落ちても kubectl apply は成功する**（#953）。` +
-      ` k3s のバージョンが pin から外れると traefik chart のスキーマが変わり、静かにこの状態になる。`,
+      ` k3s のバージョンが pin から外れると traefik chart のスキーマが変わり、静かにこの状態になる。` +
+      ` Istio エッジ（#782）なら istio-ingressgateway が 50000 を持っているはずである。`,
   ];
 }
 
@@ -281,13 +311,16 @@ function check({ repoRoot = REPO_ROOT } = {}) {
     notices.push(`[check-stack-ready] ${ns}: Deployment ${d.ready}/${d.total} が available、Pod ${pods.value.items.length} 件を判定した。`);
   }
 
-  // G5
-  const svc = kubectlJson(['get', 'svc', TRAEFIK_SVC, '-n', TRAEFIK_NS, '-o', 'json']);
-  if (!svc.ok) {
-    failures.push(`[G5] ${TRAEFIK_NS}/${TRAEFIK_SVC} を取得できなかった: ${svc.error}`);
-  } else {
-    failures.push(...evaluateAdminEntrypoint(svc.value));
-  }
+  // G5 — エッジは 2 通り（既定 Traefik / #782 の Istio Ingress Gateway）。**どちらかに 50000 が在ればよい。**
+  // 「取得できなかった」ことを直ちに失敗にしない —— Istio エッジでは Traefik の Service は**在るほうが異常**である。
+  const traefikSvc = kubectlJson(['get', 'svc', TRAEFIK_SVC, '-n', TRAEFIK_NS, '-o', 'json']);
+  const istioSvc = kubectlJson(['get', 'svc', ISTIO_GW_SVC, '-n', ISTIO_GW_NS, '-o', 'json']);
+  failures.push(
+    ...evaluateAdminEntrypoint(
+      traefikSvc.ok ? traefikSvc.value : null,
+      istioSvc.ok ? istioSvc.value : null,
+    ),
+  );
 
   // G4
   const realms = discoverRealms(repoRoot);
@@ -382,14 +415,26 @@ function selfTest() {
     assert.deepStrictEqual(done, [], '完了 Job を失敗にしている');
   });
 
-  ok('G5: admin=50000 が無ければ失敗になり、#953 を指す', () => {
-    const f = evaluateAdminEntrypoint({ spec: { ports: [{ name: 'web', port: 80 }, { name: 'websecure', port: 443 }] } });
+  ok('G5: admin=50000 がどちらのエッジにも無ければ失敗になり、#953 を指す', () => {
+    const traefikNoAdmin = { spec: { ports: [{ name: 'web', port: 80 }, { name: 'websecure', port: 443 }] } };
+    const f = evaluateAdminEntrypoint(traefikNoAdmin, null);
     assert.strictEqual(f.length, 1);
     assert.ok(f[0].includes('#953'), '構造的な原因（#953）を指していない');
     assert.deepStrictEqual(
-      evaluateAdminEntrypoint({ spec: { ports: [{ name: 'admin', port: 50000 }] } }),
+      evaluateAdminEntrypoint({ spec: { ports: [{ name: 'admin', port: 50000 }] } }, null),
       [],
-      'admin=50000 が在るのに失敗している',
+      'Traefik に admin=50000 が在るのに失敗している',
+    );
+    // #782: Istio エッジでは Traefik の Service ごと消える。**それを失敗にしない。**
+    assert.deepStrictEqual(
+      evaluateAdminEntrypoint(null, { spec: { ports: [{ name: 'https-admin', port: 50000 }] } }),
+      [],
+      'istio-ingressgateway が 50000 を持つのに失敗している（Istio エッジで必ず落ちる）',
+    );
+    assert.strictEqual(
+      evaluateAdminEntrypoint(null, null).length,
+      1,
+      'どちらのエッジも無いのに通っている（#953 の門が死ぬ）',
     );
   });
 

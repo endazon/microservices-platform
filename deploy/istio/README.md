@@ -52,22 +52,38 @@ ISTIO=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh # STRICT へ移す
 **同時に**壊れ、どちらが原因か切り分けられなくなる。段取りは
 **注入 → 全 Pod Ready → PERMISSIVE で疎通確認 → STRICT** である。
 
-### 🔴 現時点で STRICT は成立しない（2026-08-30 実測）
+### 🔴 STRICT には **エッジがメッシュの中に居ること**が要る（#782 で解いた）
 
-`kube-system` の **Traefik にサイドカーが無い**ため、名前空間全体へ STRICT を掛けると
-**エッジからの平文が拒否され、SPA / BFF が 502 になる**。
+`kube-system` の **Traefik にはサイドカーが無い**。名前空間全体へ STRICT を掛けると
+**エッジからの平文が拒否され、SPA / BFF が 502 になる**（2026-08-30 実測）。
 
-| `mtls.mode` | `http://localhost/` | `https://localhost/` |
-| --- | --- | --- |
-| PERMISSIVE | 200 | 200 |
-| **STRICT** | 🔴 **502** | 🔴 **502** |
+| エッジ | `mtls.mode` | `http://localhost/` | `https://localhost/` |
+| --- | --- | --- | --- |
+| Traefik | PERMISSIVE | 301→200 | 200 |
+| Traefik | **STRICT** | 🔴 **502** | 🔴 **502** |
+| **Istio Ingress Gateway** | PERMISSIVE | 301→200 | 200 |
+| **Istio Ingress Gateway** | **STRICT** | ✅ **301→200** | ✅ **200** |
 
-**メッシュ内は STRICT でも健全である**（28 Deployment available・アプリログのエラー 0 件）。
-**壊れるのは入口だけ。**
+**メッシュ内は Traefik のままでも STRICT で健全だった**（Deployment available・アプリログのエラー 0 件）。
+**壊れていたのは入口だけ**であり、計画 `ADR-0021`（エッジ＝Istio Ingress Gateway）は
+**STRICT にとって選択肢ではなく前提**である。
 
-したがって **`ADR-0021`（エッジ＝Istio Ingress Gateway）は STRICT の前提**であり、
-経路B のエッジを Traefik にした構成（`IADR-0091`）とは両立しない。
-**エッジをメッシュへ入れるまで STRICT へ上げないこと。** 移行は #458 が引き受ける。
+したがって経路B では **`ISTIO=1` と `LOCALEDGE=1` を併用してエッジを Envoy へ移してから** STRICT へ上げる。
+
+```sh
+ISTIO=1 LOCALEDGE=1 ./scripts/k8s-local-up.sh                        # PERMISSIVE で立てる
+ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh # STRICT へ移す
+
+bash scripts/istio-edge-up.sh     # 既に立っているクラスタのエッジだけを移す
+bash scripts/istio-edge-down.sh   # 🔴 切り戻し（1 コマンド）。**触る前に読むこと**
+```
+
+エッジ資材は [`../local/edge-istio/`](../local/edge-istio/)（Gateway 2 本 ＋ VirtualService 9 本 ＋
+`istio-system` の葉証明書 ＋ Traefik の Service を落とす `HelmChartConfig`）。
+判断と実測は [`IADR-0312`](../../.ai-context/adr/IADR-0312_istio-ingressgateway-edge-and-strict-mtls.md)。
+
+🔴 **`ISTIO=1` を `LOCALEDGE=1` 無しで使うとエッジは移らない**（port-forward のまま）。
+その状態で STRICT へ上げると mesh へ入る経路が無くなる。スクリプトが警告を出す。
 
 ### 本番像
 
@@ -102,16 +118,47 @@ Kiali の Security バッジ（鍵アイコン）で、サービス間エッジ�
 
 ## 4. 検証（平文が存在しないこと）
 
+**`istioctl` は前提にしない**（配布バイナリを増やさない方針・§1）。同じことを `kubectl` で測る。
+
 ```sh
-# 各ワークロードの mTLS 状態（STRICT であること）
-istioctl authn tls-check <pod>.microservices-platform
+# (1) PeerAuthentication が STRICT で、port 例外（portLevelMtls）の穴が無いこと
+kubectl get peerauthentication -A -o json | jq -r '.items[] |
+  "\(.metadata.namespace)/\(.metadata.name) mode=\(.spec.mtls.mode) ports=\(.spec.portLevelMtls // {} | tostring)"'
 
-# サイドカーのリスナ設定に平文（PERMISSIVE/DISABLE）が無いこと
-istioctl proxy-config listener <pod> -n microservices-platform
+# (2) DestinationRule が ISTIO_MUTUAL であること（DISABLE が無いこと）
+kubectl get destinationrule -A -o json | jq -r '.items[] |
+  "\(.metadata.name) host=\(.spec.host) tls=\(.spec.trafficPolicy.tls.mode)"'
 
-# PeerAuthentication が STRICT で適用されていること
-kubectl get peerauthentication -n microservices-platform -o yaml
+# (3) サイドカーの inbound リスナに平文の受け口が無いこと（istioctl proxy-config listener の代替）
+POD=$(kubectl -n microservices-platform get pod -l app=bff-service -o jsonpath='{.items[0].metadata.name}')
+kubectl -n microservices-platform exec "$POD" -c istio-proxy -- pilot-agent request GET 'config_dump?resource=dynamic_listeners&mask=active_state.listener' |
+  jq -r '.configs[]? | select(.active_state.listener.name=="virtualInbound")
+         | .active_state.listener.filter_chains[]
+         | "\(.name // "-")  transport_socket=\(.transport_socket.name // "NONE")  match=\(.filter_chain_match|tostring)"'
 ```
 
-受け入れ基準「平文の内部通信が存在しない」は、`istioctl authn tls-check` が全エッジで
-`STRICT` を報告し、サイドカー未注入クライアントからの平文到達が拒否されることで確認する。
+🔴 **(3) は `transport_socket=NONE` の chain を 1 つ返すが、それは平文の受け口ではない。**
+`virtualInbound-blackhole`（`destination_port: 15006`）は **Envoy 自身の inbound ポートへ
+直接来た接続を捨てるための chain** である。見るべきは「アプリへ渡る chain が
+すべて `transport_protocol: tls` を要求しているか」であって、chain の総数ではない。
+**数だけ数えると「平文が 1 件残っている」と誤読する。**
+
+```sh
+# (4) 変異試験 — メッシュ外の Pod から平文で入って**拒否されること**（宣言だけを信用しない）
+kubectl -n platform-infra run mtls-probe --rm -i --restart=Never --image=curlimages/curl:8.11.1 --command -- curl -sS --max-time 10 http://frontend-service.microservices-platform.svc.cluster.local:8080/
+# STRICT   -> curl: (56) Recv failure: Connection reset by peer
+# PERMISSIVE -> HTTP 200
+```
+
+```sh
+# (5) エッジ疎通。🔴 -k を使わない（証明書が壊れていても気付けなくなる。#1074 の事故）
+kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > /tmp/root-ca.pem
+curl --cacert /tmp/root-ca.pem --ssl-revoke-best-effort https://localhost/ -o /dev/null -w '%{http_code}\n'
+```
+
+Windows の `curl`（schannel）は私有 CA で失効確認が `unknown` になり接続自体が落ちる。
+`--ssl-revoke-best-effort` を足す —— **失効確認だけ**が best-effort になり、
+チェーン検証とホスト名照合は有効なままである（`-k` とは別物）。
+
+受け入れ基準「平文の内部通信が存在しない」は、(1)〜(3) が穴の不在を示し、
+**(4) が実際に拒否されること**で確認する。**(4) の無い (1)〜(3) は宣言の朗読でしかない。**

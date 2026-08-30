@@ -7,6 +7,14 @@
 50000** に集約する **opt-in オーバーレイ**。ローカルは Istio 未導入（`values-local` は `edge.enabled=false`）のため、
 既に稼働している **k3s 内蔵 Traefik** をエッジに使う（prod の Istio `templates/edge.yaml` とは別実装）。
 
+> 🔴 **`ISTIO=1` を併用するときは、このオーバーレイの Traefik はエッジから降りる**（#782 / `ADR-0021`）。
+> `kube-system` の Traefik はメッシュの外にあり、mesh 内の 4 Service（frontend / bff / minio / wiki-js）へ
+> **平文で入っている**。`PeerAuthentication` を STRICT にするとその平文が拒否され、**入口だけが 502 になる**。
+> 計画 `ADR-0021` は「入口＝Istio Ingress Gateway・k3s 同梱 Traefik は無効化」と定めており、
+> 経路B ではそれを [`../edge-istio/`](../edge-istio/) が実装する（`ISTIO=1` かつ `LOCALEDGE=1` のときだけ有効）。
+> **`ISTIO` 未設定なら本オーバーレイの挙動は 1 バイトも変わらない。**
+> 判断と実測は [IADR-0312](../../../.ai-context/adr/IADR-0312_istio-ingressgateway-edge-and-strict-mtls.md)。
+
 ## 構成
 
 | ファイル | 役割 |
