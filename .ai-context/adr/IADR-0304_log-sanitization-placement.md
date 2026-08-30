@@ -1,5 +1,5 @@
 ---
-title: IADR-0306 ログ偽造対策は「発生源で断つ」を第一とし、断てない口の sanitize を Shared.Infrastructure へ置く
+title: IADR-0304 ログ偽造対策は「発生源で断つ」を第一とし、断てない口の sanitize を Shared.Infrastructure へ置く
 type: impl-adr
 status: Accepted
 related_ids: [NFR, FR-03, FR-11, FR-15, FR-17, UC-10, ADR-0004, ADR-0024, ADR-0034, IADR-0216, IADR-0229, IADR-0282]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20260830_issue-1019_codeql-open-alerts.md
 ---
 
-# IADR-0306: ログ偽造対策の置き場所と、発生源で断つことの優先
+# IADR-0304: ログ偽造対策の置き場所と、発生源で断つことの優先
 
 ## 文脈
 
