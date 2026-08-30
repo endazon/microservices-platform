@@ -104,10 +104,18 @@ jobs:
       # 🔴 **本文が無い文書をいくら作っても索引には入らない** —— IngestionService の
       # DocumentUpdatedConsumer は MarkdownUri が null の文書を先頭の早期 return で捨てる。
       # ABACSEED と同じく**この使い捨てスタックでだけ opt-in する**（文書を作る＝副作用）。
-      - name: Bring up the integration stack (LOCALEDGE=1, ABACSEED=1, SEARCHSEED=1)
+      #
+      # LOCALEMBED=1 は #992 案 2 / IADR-0311 の**決定的ローカル埋め込み**（ティアA・プロセス内計算）。
+      # 🔴 **これが無いと SEARCHSEED は無意味になる** —— 本文つき文書を投入しても、埋め込みが
+      # 得られなければ取り込みは Embedded=false のチャンクを索引しない（fail-closed）ため、
+      # 索引に 1 点も入らず検索は「壊れている」ときと同じ `200 ＋ 空` を返す。
+      # 🔴 **越境判定（機密区分 × ティア）は緩めていない。** 本経路は HTTP を行わない＝ティアA の
+      # 定義（社外送信なし）をそのまま満たす。confidential/restricted が外部へ出ないことは不変である。
+      - name: Bring up the integration stack (LOCALEDGE=1, ABACSEED=1, SEARCHSEED=1, LOCALEMBED=1)
         run: |
           set -euo pipefail
-          LOCALEDGE=1 ABACSEED=1 SEARCHSEED=1 K8S_LOCAL_RUNTIME=k3d bash scripts/k8s-local-up.sh "${CLUSTER}"
+          LOCALEDGE=1 ABACSEED=1 SEARCHSEED=1 LOCALEMBED=1 K8S_LOCAL_RUNTIME=k3d \
+            bash scripts/k8s-local-up.sh "${CLUSTER}"
 
       # 🔴 up が EXIT=0 で戻ってもアプリ pod は起きていない。ここで待つ。
       # **待つだけで、判定はしない。** 待てたことを成功の根拠にしない —— このステップは検査ではなく、
@@ -163,19 +171,27 @@ jobs:
       # ABAC_POSITIVE=1 は **文書を 1 件作る**。このクラスタは次のステップで破棄されるので
       # 副作用は残らない（`Tear down` は if: always()）。
       #
-      # SEARCH_SEEDED=1（#992 / IADR-0284 決定 3・6）は seed 文書について次を測る。
-      #   - 一覧に見え、**markdownUri を持つ**（＝取り込みの早期 return を通過する形になっている）
+      # SEARCH_HITS=1 は SEARCH_SEEDED=1 を**含意する**（#992 / IADR-0284 決定 3）ので、
+      # 次の 2 つも同時に測られる。前提を確かめずに結論だけ測ると、落ちたときに
+      # 「seed の不備」と「検索の故障」が区別できない。
+      #   - seed 文書が一覧に見え、**markdownUri を持つ**（＝取り込みの早期 return を通過する形）
       #   - 属性を持たない利用者の検索では **0 件**（全開放の検出）
       # 段 11 は応答の「形」までしか見ないので、索引の入口条件が壊れても緑だった（[[IADR-0255]]）。
       #
-      # 🔴 **`SEARCH_HITS=1`（seed が実際にヒットすること）はまだ載せていない。**
-      # 取り込みは埋め込みを得られないチャンクを索引しない（fail-closed）。このスタックには
-      # 埋め込みの鍵が配線されていないため、**今日載せれば毎晩必ず落ちる** ——
-      # `report-failure` が issue を起こし続け、本当の退行がその中に埋もれる。
-      # 判定そのものは実装済みで、#992 案 2（埋め込みの供給）の裁定が出たらここへ足すだけである。
-      # **越境判定（機密区分 × ティア）を緩めて緑にすることはしない。**
-      - name: 🔴 Gate — ABAC の正常系と検索 seed の入口条件が観測できる（#972 / #992）
-        run: ABAC_POSITIVE=1 SEARCH_SEEDED=1 bash scripts/verify-oidc-edge-flow.sh
+      # 🔴 **`SEARCH_HITS=1` を載せた**（#992 / IADR-0311）。上の LOCALEMBED=1 で埋め込みが
+      # 供給されるようになったため、**seed 文書が既知の語で実際にヒットすること**まで測れる。
+      # これが本 issue の主題である —— `200 ＋ 空` は
+      #   ① クエリが空 ② ABAC が deny へ縮退 ③ RetrievalService へ不達
+      # のすべてで返るので、**「検索が全く動いていない」と「該当が無い」がエッジからは同じ応答**になる
+      # （[[IADR-0255]]）。既知の文書を入れて既知の語で ≥1 件を要求すれば、どれが起きても 0 件になり門が落ちる。
+      #
+      # 🔴 **本門は「語の関連性」を測らない。** ベクトル検索は閾値を持たない kNN であり、
+      # 無関係な語でも最近傍は返る。測っているのは
+      # 「索引に入っている・ABAC を通る・埋め込みが供給される・後段へ到達できる」の 4 点である。
+      #
+      # ABAC_POSITIVE=1 / SEARCH_SEEDED=1 は **文書を作る**。このクラスタは次のステップで破棄される。
+      - name: 🔴 Gate — ABAC の正常系と検索の命中が観測できる（#972 / #992）
+        run: ABAC_POSITIVE=1 SEARCH_HITS=1 bash scripts/verify-oidc-edge-flow.sh
 
       # 失敗したときに原因を名指しできる情報を残す（#466 のスコープ「失敗時に原因が特定できる出力」）。
       - name: Dump cluster state (診断用・失敗時のみ)

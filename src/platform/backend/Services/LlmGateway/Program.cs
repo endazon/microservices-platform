@@ -88,15 +88,38 @@ builder.Services.AddSingleton<IValidateOptions<EmbeddingRoutingOptions>, Embeddi
 builder.Services.AddSingleton<IEmbeddingRouter, EmbeddingRouter>();
 builder.Services.AddKeyedSingleton<IEmbeddingProvider, VoyageEmbeddingProvider>("voyage");
 builder.Services.AddKeyedSingleton<IEmbeddingProvider, SelfHostedEmbeddingProvider>("selfhosted-embedding");
+// FR-02, FR-03, #992 案 2, [[IADR-0311]]: 決定的ローカル埋め込み（ティアA・プロセス内計算）。
+// **既定は appsettings.json で Enabled: false**。使い捨ての統合スタックだけが opt-in する。
+builder.Services.AddKeyedSingleton<IEmbeddingProvider, DeterministicEmbeddingProvider>("deterministic-embedding");
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段はホストしないが、
 // LLM 生成・埋め込みの合成可能ポート（機密区分ルーティングで複数プロバイダを束ねるルータ）を申告する。
 builder.Services.AddPlatformIntrospection("llm-gateway", new PipelineOptions(),
     i => i
         .AddPort("llm", nameof(LlmRouter), "claude/selfhosted/copilot")
-        .AddPort("embedding", nameof(EmbeddingRouter), "voyage/selfhosted"));
+        .AddPort("embedding", nameof(EmbeddingRouter), "voyage/selfhosted/deterministic"));
 
 var app = builder.Build();
+
+// FR-02, #992, [[IADR-0311]]: 🔴 **決定的ローカル埋め込みが有効なら、起動時に警告を出す。**
+// 索引されるベクトルに意味的な近さは無く、**検索品質は保証されない**。
+// 有効化は使い捨てのスタックに限る。設定の取り違え（インデックス依存の env 上書き）で
+// 本番へ紛れ込んだとき、**ログを見れば分かる**ようにしておく（無言で品質だけが落ちる事故を避ける）。
+{
+    var embeddingRouting = app.Services.GetRequiredService<IOptions<EmbeddingRoutingOptions>>().Value;
+    var deterministic = embeddingRouting.Endpoints
+        .FirstOrDefault(e => e.Enabled && e.Provider == "deterministic-embedding");
+    if (deterministic is not null)
+    {
+        app.Services.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("LlmGateway.Embed")
+            .LogWarning(
+                "🔴 決定的ローカル埋め込み '{Endpoint}'（{Model} / {Dimensions}次元 / {Collection}）が有効です。"
+                + "表層の文字 3-gram のみで意味的な近さを持たず、検索品質は保証されません。"
+                + "使い捨ての検証スタック専用です（#992 / IADR-0311）。",
+                deterministic.Name, deterministic.Model, deterministic.Dimensions, deterministic.Collection);
+    }
+}
 
 app.UsePlatformMiddleware();
 app.MapPlatformHealthChecks();

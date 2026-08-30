@@ -76,4 +76,40 @@ public class EmbeddingRoutingOptionsValidatorTests
         bad.Dimensions = 0;
         Validate(bad, SelfHosted()).Succeeded.Should().BeFalse();
     }
+
+    // FR-02, #992, [[IADR-0311]]: 決定的ローカル埋め込み（ティアA・プロセス内計算・既定無効）。
+    private static EmbeddingEndpointOptions Deterministic(bool enabled = false) => new()
+    {
+        Name = "deterministic-local",
+        Tier = ProtectionTier.A,
+        Provider = "deterministic-embedding",
+        Model = "deterministic-hash-v1",
+        Dimensions = 1024,
+        Collection = "knowledge_chunks_deterministic_v1",
+        Enabled = enabled,
+        Priority = 5
+    };
+
+    // ティアA は 1 対多である（社外送信なしを満たす実装は 1 つとは限らない）。
+    [Fact]
+    public void Validate_DeterministicProviderOnTierA_Succeeds()
+        => Validate(Voyage(), SelfHosted(), Deterministic()).Succeeded.Should().BeTrue();
+
+    // 🔴 **ティアB は 1 対 1 のまま**である。ティアA の緩和が「どのティアにも何でも置ける」へ
+    // 波及していないことを固定する —— 波及すると、本文が外部へ出る向きの取り違えを止められなくなる。
+    [Fact]
+    public void Validate_DeterministicProviderOnTierB_Fails()
+    {
+        var misplaced = Deterministic();
+        misplaced.Tier = ProtectionTier.B;
+        var result = Validate(Voyage(), SelfHosted(), misplaced);
+        result.Succeeded.Should().BeFalse();
+        result.FailureMessage.Should().Contain("voyage");
+    }
+
+    // ティアA の既定経路としても数えられる（Voyage 無効でも起動できる＝統合スタックの構成）。
+    [Fact]
+    public void Validate_OnlyDeterministicEnabled_Succeeds()
+        => Validate(Voyage(enabled: false), SelfHosted(), Deterministic(enabled: true))
+            .Succeeded.Should().BeTrue();
 }
