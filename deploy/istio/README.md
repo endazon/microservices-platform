@@ -10,21 +10,71 @@ mTLS を強制する宣言（`PeerAuthentication` / `DestinationRule`）は Helm
 
 ## 1. Istio 本体の導入
 
-k3s クラスタへ Istio コントロールプレーンを導入する（istioctl または Helm）。
+### 経路B（ローカル k3s）— `ISTIO=1` の opt-in（#782 で配線した）
 
 ```sh
-# istioctl（demo/default プロファイル。本番は運用要件に合わせる）
-istioctl install --set profile=default -y
-
-# サイドカー自動注入は Namespace ラベルで行う（Helm namespace.yaml が付与）
-kubectl label namespace microservices-platform istio-injection=enabled --overwrite
+ISTIO=1 ./scripts/k8s-local-up.sh
 ```
 
-既存 Pod にはサイドカーが後から入らないため、ラベル付与後に再起動する:
+`scripts/k8s-local-up.sh` が次を **[6/7] の前に** 行う（CRD が無いまま helm upgrade すると apply が失敗するため）:
+
+1. `istio/base`（CRD）と `istio/istiod`（コントロールプレーン）を Helm で導入する
+   （版は `ISTIO_VERSION`。既定 `1.30.4`。values は [`istiod-values-local.yaml`](istiod-values-local.yaml)）
+2. 4 つの CRD が `Established` になるまで待つ
+3. `microservices-platform` へ `istio-injection=enabled` を貼る
+   —— 🔴 **経路B は `namespace.create=false` なので Helm は Namespace を作らない。**
+   チャートの `istioInjection` だけでは注入ラベルが誰にも適用されない
+4. アプリチャートを `mesh.enabled=true` で適用する
+5. `rollout restart deployment` —— **サイドカーは既存 Pod へ後から入らない**
+
+🔴 **注入の確認は `initContainers` も見る。** Istio 1.30 は k8s のネイティブサイドカー
+（`restartPolicy: Always` の initContainer）を使うため、**`spec.containers` だけを見ると
+「注入 0 件」と誤答する**（2026-08-30 に実際に誤答した）。
 
 ```sh
-kubectl rollout restart deployment -n microservices-platform
+kubectl -n microservices-platform get pods -o json |   jq -r '.items[] | .metadata.name + " " +
+         (([.spec.containers[].name] + [(.spec.initContainers//[])[].name])
+          | if index("istio-proxy") then "injected" else "NOT-INJECTED" end)'
 ```
+
+**`istioctl` は要らない**（配布バイナリを増やさず、他の opt-in と同じ Helm 経路に揃える）。
+検証コマンド（§4）だけは `istioctl` があると便利だが、`kubectl` でも代替できる。
+
+### 🔴 mTLS モードは既定 PERMISSIVE で入る
+
+```sh
+ISTIO=1 ./scripts/k8s-local-up.sh                        # PERMISSIVE（既定）
+ISTIO=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh # STRICT へ移す
+```
+
+**いきなり STRICT にしてはならない。** サイドカーの入っていない `platform-infra`
+（postgres / keycloak / rabbitmq / qdrant / redis / minio …）との通信と、注入前の Pod からの通信が
+**同時に**壊れ、どちらが原因か切り分けられなくなる。段取りは
+**注入 → 全 Pod Ready → PERMISSIVE で疎通確認 → STRICT** である。
+
+### 🔴 現時点で STRICT は成立しない（2026-08-30 実測）
+
+`kube-system` の **Traefik にサイドカーが無い**ため、名前空間全体へ STRICT を掛けると
+**エッジからの平文が拒否され、SPA / BFF が 502 になる**。
+
+| `mtls.mode` | `http://localhost/` | `https://localhost/` |
+| --- | --- | --- |
+| PERMISSIVE | 200 | 200 |
+| **STRICT** | 🔴 **502** | 🔴 **502** |
+
+**メッシュ内は STRICT でも健全である**（28 Deployment available・アプリログのエラー 0 件）。
+**壊れるのは入口だけ。**
+
+したがって **`ADR-0021`（エッジ＝Istio Ingress Gateway）は STRICT の前提**であり、
+経路B のエッジを Traefik にした構成（`IADR-0091`）とは両立しない。
+**エッジをメッシュへ入れるまで STRICT へ上げないこと。** 移行は #458 が引き受ける。
+
+### 本番像
+
+`values.yaml` は `mesh.enabled: true` / `mtlsMode: STRICT` / `namespace.create: true` が既定であり、
+ArgoCD が同期する。**AppProject の `namespaceResourceWhitelist` に Istio の 4 種別
+（PeerAuthentication / DestinationRule / Gateway / VirtualService）が載っていること**を前提とする
+（#782 で 6 種別の欠落を是正した。[`../argocd/appproject.yaml`](../argocd/appproject.yaml)）。
 
 ## 2. STRICT mTLS の適用（Helm が宣言）
 

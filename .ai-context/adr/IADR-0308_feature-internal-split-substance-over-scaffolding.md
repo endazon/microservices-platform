@@ -1,5 +1,5 @@
 ---
-title: IADR-0307 feature 内部 6 分割の適合は実体で示し、`.gitkeep` の空枠で満たさない
+title: IADR-0308 feature 内部 6 分割の適合は実体で示し、`.gitkeep` の空枠で満たさない
 type: impl-adr
 status: Accepted
 related_ids: [SC-18, SC-19, SC-20, SC-21, ADR-0031, ADR-0065, ADR-0066, IADR-0124, IADR-0218, IADR-0262, IADR-0275]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20260830_issue-1066_feature-internal-split.md
 ---
 
-# IADR-0307: feature 内部 6 分割の適合は実体で示す
+# IADR-0308: feature 内部 6 分割の適合は実体で示す
 
 ## 文脈
 

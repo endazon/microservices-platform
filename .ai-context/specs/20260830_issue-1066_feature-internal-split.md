@@ -20,7 +20,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0066_frontend-feature-isolation-and-import-direction.md (Accepted 2026-08-30) §結果 フォローアップ 2
 related_specs: []
 related_adrs:
-  - IADR-0307
+  - IADR-0308
 issue: "#1066"
 ---
 
@@ -165,7 +165,7 @@ $ git ls-files 'src/knowledge/frontend/src/features/*/stores/*'  # → すべて
 🔴 **検査器は追加しない。** `CLAUDE.md` の「同型の事故が 2 回起きたら」に従い、今回は記録に留める
 （issue 本文も「今回は記録に留めてよい」と明記している）。
 
-**決定の記録は [`IADR-0307`](../adr/IADR-0307_feature-internal-split-substance-over-scaffolding.md) に置く**
+**決定の記録は [`IADR-0308`](../adr/IADR-0308_feature-internal-split-substance-over-scaffolding.md) に置く**
 （`stores/` を置かない判断・空枠を作らない方針・plop 雛形の改定は、PR 本文だけに残すと次の実装者が
 「6 分割が欠けている」と読んで空枠を作り直す）。**番号は本ブランチ上の最大 `IADR-0306` + 1 である**
 （同時進行の PR が次番号を押さえている場合は改番が要る）。
