@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [NFR, SC-13, SC-16]
 adrs: [ADR-0024, ADR-0026, ADR-0031, ADR-0032]
-iadrs: [IADR-0033, IADR-0121, IADR-0248, IADR-0251, IADR-0273, IADR-0318]
+iadrs: [IADR-0033, IADR-0121, IADR-0248, IADR-0251, IADR-0273, IADR-0316]
 specs: [20260822_issue-439_bff-session-token-handler, 20260823_issue-439_bff-session-completion, 20260830_issue-1107_bff-session-deploy-config]
 issues: [#439, #446, #780, #1088, #1107]
 -->

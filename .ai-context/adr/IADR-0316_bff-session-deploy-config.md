@@ -1,5 +1,5 @@
 ---
-title: IADR-0318 BFF セッションの構成を配備へ落とす — 注入するもの／既定へ委ねるもの、転送ヘッダ、注入漏れの検査
+title: IADR-0316 BFF セッションの構成を配備へ落とす — 注入するもの／既定へ委ねるもの、転送ヘッダ、注入漏れの検査
 type: impl-adr
 status: Accepted
 related_ids: [NFR, SC-13, ADR-0021, ADR-0026, ADR-0032, IADR-0098, IADR-0251, IADR-0273]
@@ -12,7 +12,7 @@ related_specs:
   - ../specs/20260830_issue-1107_bff-session-deploy-config.md
 ---
 
-# IADR-0318: BFF セッションの構成を配備へ落とす（#1107）
+# IADR-0316: BFF セッションの構成を配備へ落とす（#1107）
 
 > 実装リポジトリ内の意思決定記録。[IADR-0251](./IADR-0251_bff-session-token-handler.md)（3a の内部設計）と
 > [IADR-0273](./IADR-0273_bff-session-completion.md)（失効経路）が作った受け皿を、**稼働する配備へ載せる**

@@ -73,7 +73,7 @@ spec:
             # 片方だけがエッジ host へ動くと（#780）、サービス間検証とブラウザ経路が静かに食い違う。
             # RequireHttpsMetadata / RedisConnectionString / CookieName / SessionLifetimeSeconds は
             # **コード既定を使う**（既定が配備の実態および realm と一致することを実測済み。理由は
-            # .ai-context/adr/IADR-0318 と作業仕様書）。ここへ書くと 2 つ目の真実ができる。
+            # .ai-context/adr/IADR-0316 と作業仕様書）。ここへ書くと 2 つ目の真実ができる。
             # 🔴 **エッジが TLS を終端するので、転送ヘッダを解釈させないとログインが完了しない。**
             # 実測（#1107）: これが無いと ASP.NET は受信リクエストの scheme（エッジ→BFF は平文 http）から
             # `redirect_uri` を組み、`http://<edge>/bff/auth/callback` を認可サーバへ送る。realm に登録が

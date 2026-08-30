@@ -9,7 +9,7 @@ related_ids:
   - ADR-0032
   - IADR-0251
   - IADR-0273
-  - IADR-0318
+  - IADR-0316
 author: claude
 created: 2026-08-30
 updated: 2026-08-30
@@ -143,7 +143,7 @@ compose / helm / image-mapping のどれにも載っていない」）。**検�
 | `scripts/k8s-local-up.sh` | 非 ESO の `apply_secret` ／ ESO の `kubectl apply` |
 | `scripts/check-secret-injected-options.js` | 新規（再発検査） |
 | `scripts/README.md` / `.github/workflows/ci.yml` | 検査の登録 |
-| `.ai-context/adr/IADR-0318_*.md` | 決定の記録 |
+| `.ai-context/adr/IADR-0316_*.md` | 決定の記録 |
 | `docs/authz/bff-session-design.md` | 「構成の供給」節を足す（値は書かない。**所在だけ**） |
 
 ## 受け入れ基準（実測で満たす）

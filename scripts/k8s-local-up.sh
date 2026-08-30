@@ -151,7 +151,7 @@ kubectl create namespace "$MSP_NS" --dry-run=client -o yaml | kubectl apply -f -
 if [ "${ESO:-}" != "1" ]; then
   apply_secret "$MSP_NS" minio-oidc "client-secret=${MINIO_OIDC_CLIENT_SECRET:-minio-dev-secret-change-me}"
 fi
-# NFR, SC-13, ADR-0026/ADR-0032, IADR-0251/IADR-0273/IADR-0318 (#1107): BFF セッション（Token Handler）の
+# NFR, SC-13, ADR-0026/ADR-0032, IADR-0251/IADR-0273/IADR-0316 (#1107): BFF セッション（Token Handler）の
 # client secret。helm の deployment.yaml が **非 optional** な secretKeyRef（services.bff.session.existingSecret）で
 # 参照するため、これが無いと bff-service Pod は起動できない（注入漏れが「空 secret で起動して login だけ 500」へ
 # 倒れない）。dev 既定は realm import の置き場と同値 —— **ズレると Keycloak の PAR 端点が 401 を返し、

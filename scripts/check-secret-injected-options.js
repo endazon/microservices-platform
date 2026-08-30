@@ -3,7 +3,7 @@
 /*
  * check-secret-injected-options.js
  * **「実値は k8s Secret から環境変数で注入する」と自分で宣言した構成値が、配備で実際に注入されて
- * いること**を機械検査する（NFR / ADR-0032 ほか, IADR-0318 / Issue #1107）。
+ * いること**を機械検査する（NFR / ADR-0032 ほか, IADR-0316 / Issue #1107）。
  * 外部依存ゼロ（Node 標準モジュールのみ）。check-bff-downstreams.js / check-image-mapping.js と同型。
  *
  * ## 背景（同型の事故が 2 回）
@@ -280,7 +280,7 @@ function main() {
   }
   console.error(`[check-secret-injected-options] ${violations.length} 件の注入漏れを検出しました:`);
   for (const v of violations) console.error(`\n  [${v.where}] ${v.env}: ${v.detail}`);
-  console.error('\n設計の根拠は .ai-context/adr/IADR-0318_bff-session-deploy-config.md を参照。');
+  console.error('\n設計の根拠は .ai-context/adr/IADR-0316_bff-session-deploy-config.md を参照。');
   process.exit(1);
 }
 

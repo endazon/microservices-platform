@@ -413,7 +413,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-bff-downstreams.js
 
-      # NFR / ADR-0032, IADR-0318, Issue #1107 再発防止: コード側が「実値は k8s Secret から環境変数で
+      # NFR / ADR-0032, IADR-0316, Issue #1107 再発防止: コード側が「実値は k8s Secret から環境変数で
       # 注入する」と doc コメントで宣言した構成値が、helm（secretKeyRef 由来）と compose（${...} 展開）の
       # 両方で実際に注入されていることを突合する。BffSessionOptions.ClientSecret は実装もテストも
       # 揃っていたのに deploy/ に 1 行も無く、稼働クラスタで /bff/auth/login が 500 を返し続けた
