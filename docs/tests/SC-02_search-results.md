@@ -3,7 +3,7 @@ title: SC-02 検索結果一覧 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-21
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -58,7 +58,7 @@ issues: [#519]
 実際、`RetrievalService` の Qdrant 経路は `tags` をペイロードへ書かず、復元もしていなかったため、
 **画面テストが緑のまま本番のタグ列だけが常に空欄**であった（索引ペイロードの表現不一致と同型）。
 
-- **担保する場所**: `RetrievalService.Api.Tests.QdrantVectorStoreTests`
+- **担保する場所**: `RetrievalService.Tests.QdrantVectorStoreTests`
   （テスト仕様書 [FR-03_hybrid-search.md](./FR-03_hybrid-search.md) の T-30〜T-36）。
 - **本仕様書の側では何も足さない** —— 画面の責務は「渡ってきた `tags` を `Tag` で描く」ことであり、
   その責務はケース 1 が既に固定している。**同じことを 2 か所で主張すると、どちらが正か読めなくなる。**

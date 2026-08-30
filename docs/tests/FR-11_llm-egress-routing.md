@@ -18,8 +18,8 @@ issues: [#1, #2, #3, #58, #376, #379, #381, #394, #395, #420, #421, #440, #850, 
 
 ## 対象
 
-- `src/platform/backend/Services/LlmGateway/tests/LlmGateway.Api.Tests`
-- `src/knowledge/backend/Services/RetrievalService/tests/RetrievalService.Api.Tests`
+- `src/platform/backend/Services/LlmGateway/Tests`
+- `src/knowledge/backend/Services/RetrievalService/Tests`
 - `src/knowledge/backend/Services/ConversionService/Tests`
 
 ## テストケース（受け入れ基準・実運用不具合の写像）

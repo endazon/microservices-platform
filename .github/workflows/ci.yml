@@ -755,7 +755,7 @@ jobs:
   # #801（雛形 frontend）と違い「paths: へ 1 行足す」では直らない。雛形はテンプレート位置のままでは
   # ビルドできない（IADR-0060 決定 3 / 決定 4・IADR-0064。実測は
   # .ai-context/specs/20260818_issue-830_template-backend-ci-build.md）:
-  #   - SampleService.Api.csproj の platform Shared への相対参照（..\ × 6）は **配置後**の
+  #   - SampleService.csproj の platform Shared への相対参照（..\ × 4）は **配置後**の
   #     src/<unit>/backend/... を前提とする。templates/ 位置では templates/platform/... を探して
   #     見つからず、restore が MSB4181 で失敗する。
   #   - 共通 props は .sample 付きで配布される（配置時は src/Directory.Build.props / .Packages.props

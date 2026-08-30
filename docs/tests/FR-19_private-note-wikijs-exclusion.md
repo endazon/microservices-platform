@@ -55,7 +55,7 @@ issues: [#986, #451, #989]
 
 ## テストケース
 
-対象: `WikiService.Api.Tests.DocumentSyncConsumerTests`
+対象: `WikiService.Tests.DocumentSyncConsumerTests`
 
 🔴 **否定形には陽性対照を対で置く。** 「常に早期 return する実装」も「スコープ属性を一切見ない実装」も、
 否定形だけなら通す。
@@ -104,7 +104,7 @@ push 0 件で落ちる**」形になり、**なぜ落ちたのかを言わない
 ## 実行方法
 
 ```bash
-dotnet test src/knowledge/backend/Services/WikiService/tests/WikiService.Api.Tests
+dotnet test src/knowledge/backend/Services/WikiService/Tests
 ```
 
 稼働中の Wiki エンジンには依存しない（push と本文取得は記録スタブへ差し替える）。

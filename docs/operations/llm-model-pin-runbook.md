@@ -3,7 +3,7 @@ title: 運用 Runbook — ピン留め LLM モデルの版数移行と利用不�
 type: runbook
 status: fixed
 created: 2026-08-11
-updated: 2026-08-21
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -28,7 +28,7 @@ issues: [#382, #440, #587, AST#296, planning#50, planning#426]
 **単一情報源は次のファイルである。**
 
 ```
-src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/appsettings.json
+src/platform/backend/Services/LlmGateway/appsettings.json
   → Llm:Routing:PurposeModels          （用途 → モデル）
   → Llm:Routing:PurposeFallbackModels  （用途 → フォールバック順序。#863 で追加）
   → Llm:Routing:Endpoints[].Models     （エンドポイントが許可するモデル）
@@ -38,7 +38,7 @@ src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/appsettings.json
 **現在の割り当ては次のコマンドで列挙する。**
 
 ```console
-$ node -e "const d=require('./src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/appsettings.json');\
+$ node -e "const d=require('./src/platform/backend/Services/LlmGateway/appsettings.json');\
 for (const [k, v] of Object.entries(d.Llm.Routing.PurposeModels)) console.log(k.padEnd(16), v)"
 ```
 
@@ -46,7 +46,7 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeModels)) console.log(k.
 **実際に利用されるモデル**であり、提供終了の監視から漏らせない。次のコマンドで併せて列挙する。
 
 ```console
-$ node -e "const d=require('./src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/appsettings.json');\
+$ node -e "const d=require('./src/platform/backend/Services/LlmGateway/appsettings.json');\
 for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) console.log(k.padEnd(16), v.join(' -> '))"
 ```
 
