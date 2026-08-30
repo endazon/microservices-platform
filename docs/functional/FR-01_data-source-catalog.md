@@ -3,13 +3,13 @@ title: データソース登録・同期・カタログ化 機能仕様書
 type: functional-spec
 status: completed
 created: 2026-06-27
-updated: 2026-08-28
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-05, SC-06, UC-04]
 adrs: [ADR-0002, ADR-0003, ADR-0014, ADR-0027]
-iadrs: [IADR-0001, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0295]
+iadrs: [IADR-0001, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0295, IADR-0304]
 specs: [20260627_FR-01_data-source-catalog-pipeline]
 issues: [#195, #217, #218, #219, #458, #537, #546, #580, planning#200]
 -->
@@ -75,7 +75,7 @@ flowchart TB
 | データソース CRUD | ✅ 実装済 | DataSourceService |
 | 同期トリガ（`/sync`） | ✅ **実コネクタ経由（filesystem / wiki / saas / db）** | コネクタのポート分離と filesystem 実装（#195）／Wiki＝設定駆動の汎用 REST 契約（#217）／SaaS＝汎用契約＋カーソルページング＋429 バックオフ（#218）／業務DB＝参照専用 SQL による行→文書化（#219）。実データを列挙・取得しストレージ格納＋実メタ付き `RawDocumentFetched` を発行。 |
 | 定期同期（スケジューラ） | ✅ **HostedService（既定無効）** | `DataSourceSyncHostedService`（`DataSourceSync:Enabled`）。データソース同期の基本フロー。 |
-| 同期健全性（連続失敗回数・再試行上限・直近エラー） | ✅ **エンティティへ永続化し `DataSourceDto` で返す** | #537 / 裁定 Q14。**継続失敗のしきい値は再試行上限（5）に達した時点**。直近エラーは保存時点でマスクする。同期の例外フロー「継続失敗はアラートする」の表示側の土台である（健全性はエンティティへ永続化する、という実装判断）。発報は構造化ログ（`Alert=true`）で、Alertmanager への配線は未配備。 |
+| 同期健全性（連続失敗回数・再試行上限・直近エラー） | ✅ **エンティティへ永続化し `DataSourceDto` で返す** | #537 / 裁定 Q14。**継続失敗のしきい値は再試行上限（5）に達した時点**。直近エラーは保存時点でマスクする。同期の例外フロー「継続失敗はアラートする」の表示側の土台である（健全性はエンティティへ永続化する、という実装判断）。発報は構造化ログ（`Alert=true`）である。**［2026-08-30 更新 / #546］Alertmanager 自体は配備済みだが、この事象に対応する Prometheus のアラートルールが無い**ため、依然として自動では届かない（配線されていないのは通知基盤ではなくルールの側である）。 |
 | 更新（`PUT` 全置換 / `PATCH` 部分更新） | ✅ **管理者限定** | #534 / 裁定 Q16。従前は「削除→再登録」しかなく **ID と履歴が切れた**（認証情報のローテーションのたびに文書の出所の追跡が切れる）。**更新は `Id` / `CreatedAt` / `LastSyncedAt` / 健全性を変えない**。 |
 | 接続失敗の継続アラート | ✅ **インメモリ追跡** | 連続失敗閾値超過で構造化アラートログ（同期の例外フロー）。DB 永続化は follow-up。 |
 | 変換（pandoc） | ✅ **実装済（pandoc 実変換・`--extract-media` 図抽出）** | `PandocConversionService`。pandoc 未導入／原本がローカル解決不能（実オブジェクトストレージ未接続）の dev 環境ではプレースホルダ本文へグレースフルデグレード。 |
