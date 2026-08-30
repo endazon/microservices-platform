@@ -10,7 +10,7 @@ namespace ConversionService.Infrastructure.ExternalServices;
 // オブジェクトストレージから取得した原本を pandoc で本文 Markdown 化しつつ、
 // --extract-media で図（画像）を抽出する。
 //
-// 🔴 IADR-0316 (#1097): **縮退の既定は fail-closed である。**
+// 🔴 IADR-0317 (#1097): **縮退の既定は fail-closed である。**
 // 従前は pandoc 未導入・原本未解決のとき無条件にプレースホルダ本文（図0件）を返して「成功」しており、
 // 実行時イメージが pandoc を持たなかったため **配備した実物でずっと縮退していた**。
 // 縮退そのものは消していない（単体テストは pandoc の無い CI でも走る）が、
@@ -69,7 +69,7 @@ public class PandocConversionService(
         }
     }
 
-    // IADR-0316 決定 2: 変換器が動かせないときの分岐点。**既定は例外**である。
+    // IADR-0317 決定 2: 変換器が動かせないときの分岐点。**既定は例外**である。
     // dev（AllowDegradedBodyConversion=true）だけがプレースホルダ本文へ縮退する。
     private BodyConversionResult Degrade(string storageUri, string reason)
     {
@@ -151,7 +151,7 @@ public class PandocConversionService(
 
     // contentType（不明時は拡張子）から pandoc の入力形式を決める。
     //
-    // 🔴 IADR-0316 決定 4 (#1097): **pandoc が入力に取れない形式は既定へ落とさず拒否する。**
+    // 🔴 IADR-0317 決定 4 (#1097): **pandoc が入力に取れない形式は既定へ落とさず拒否する。**
     // PDF は `FileSystemConnector` が列挙対象に含めており（`.pdf` → `application/pdf`）、
     // 従前はどの case にも当たらず拡張子判定の既定 `markdown` へ落ちていた。
     // 実 pandoc を入れると `pandoc -f markdown foo.pdf` が非0終了し、原因の判らない失敗になる。
@@ -220,7 +220,7 @@ public class PandocConversionService(
 
     // 原本 URI をローカルの読み取り可能ファイルへ解決する。
     //
-    // 🔴 IADR-0316 決定 3 (#1097): **オブジェクトストレージの原本を取り寄せる。**
+    // 🔴 IADR-0317 決定 3 (#1097): **オブジェクトストレージの原本を取り寄せる。**
     // 従前は file スキームとローカルパスしか解決できず、`DataSourceSyncService` が発行する
     // storage:// の原本は常に解決不能だった —— つまり pandoc を入れても縮退したままだった。
     private async Task<ResolvedSource?> ResolveSourceAsync(string storageUri, string contentType,
@@ -276,7 +276,7 @@ public class PandocConversionService(
     private static async Task<bool> CheckPandocAsync(CancellationToken ct) =>
         await TryGetPandocVersionAsync(ct) is not null;
 
-    // IADR-0316 決定 5 (#1097): pandoc の版（`pandoc --version` の 1 行目）。取得できなければ null
+    // IADR-0317 決定 5 (#1097): pandoc の版（`pandoc --version` の 1 行目）。取得できなければ null
     // ＝**実行時イメージに pandoc が無い**。readiness ヘルスチェックが同じ口を使う。
     internal static async Task<string?> TryGetPandocVersionAsync(CancellationToken ct)
     {

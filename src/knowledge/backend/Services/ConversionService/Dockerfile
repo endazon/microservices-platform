@@ -9,7 +9,7 @@ RUN dotnet publish knowledge/backend/Services/ConversionService/ConversionServic
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 
-# FR-12, UC-06, ADR-0012, IADR-0316 (#1097): 🔴 **pandoc は本サービスの実行時依存である。**
+# FR-12, UC-06, ADR-0012, IADR-0317 (#1097): 🔴 **pandoc は本サービスの実行時依存である。**
 # `PandocConversionService` は `Process.Start("pandoc")` で外部プロセスとして起動する。
 # これが無いと本文変換は例外にならず **プレースホルダ本文（図0件）を返して「成功」する** ——
 # 変換ジョブ画面には成功として並び、「変換した」と「変換したふりをした」が区別できなくなる。

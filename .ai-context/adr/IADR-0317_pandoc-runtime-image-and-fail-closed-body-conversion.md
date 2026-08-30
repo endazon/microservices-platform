@@ -1,5 +1,5 @@
 ---
-title: IADR-0316 pandoc を実行時イメージへ入れ、本文変換の縮退を fail-closed にする
+title: IADR-0317 pandoc を実行時イメージへ入れ、本文変換の縮退を fail-closed にする
 type: impl-adr
 status: Accepted
 related_ids: [FR-01, FR-12, UC-06, SC-07, NFR, ADR-0012, ADR-0014, ADR-0027, ADR-0053, IADR-0008, IADR-0137, IADR-0154, IADR-0298]
@@ -8,7 +8,7 @@ created: 2026-08-31
 updated: 2026-08-31
 ---
 
-# IADR-0316: pandoc を実行時イメージへ入れ、本文変換の縮退を fail-closed にする
+# IADR-0317: pandoc を実行時イメージへ入れ、本文変換の縮退を fail-closed にする
 
 - 状態: Accepted
 - 日付: 2026-08-31

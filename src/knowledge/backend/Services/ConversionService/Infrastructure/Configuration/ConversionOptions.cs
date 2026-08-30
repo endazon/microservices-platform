@@ -1,6 +1,6 @@
 namespace ConversionService.Infrastructure.Configuration;
 
-// FR-12, UC-06, ADR-0012, IADR-0316 (#1097): 本文変換（pandoc）の構成。設定セクションは `Conversion`。
+// FR-12, UC-06, ADR-0012, IADR-0317 (#1097): 本文変換（pandoc）の構成。設定セクションは `Conversion`。
 public sealed class ConversionOptions
 {
     public const string SectionName = "Conversion";

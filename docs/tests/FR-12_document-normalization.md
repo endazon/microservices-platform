@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-11, FR-12, UC-06, SC-07]
 adrs: [ADR-0010, ADR-0012, ADR-0014]
-iadrs: [IADR-0008, IADR-0104, IADR-0132, IADR-0162, IADR-0296, IADR-0298, IADR-0316]
+iadrs: [IADR-0008, IADR-0104, IADR-0132, IADR-0162, IADR-0296, IADR-0298, IADR-0317]
 specs: [20260703_FR-12_document-normalization-pipeline, 20260829_issue-447_fr12-golden-files, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed]
 issues: [#118, #379, #447, #506, #520, #525, #658, #1097]
 -->

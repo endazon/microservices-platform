@@ -11,7 +11,7 @@ public interface IBodyConverter
 // FR-12: pandoc による本文変換の結果。Markdown 本文と、原本から抽出した図の一覧を返す。
 public record BodyConversionResult(string Markdown, IReadOnlyList<ExtractedFigure> Figures);
 
-// FR-12, UC-06, ADR-0012, IADR-0316 (#1097): 変換器そのものが動かせない（pandoc が実行時イメージに
+// FR-12, UC-06, ADR-0012, IADR-0317 (#1097): 変換器そのものが動かせない（pandoc が実行時イメージに
 // 無い／原本を読み出せない）。**環境の欠陥であって原本の欠陥ではない**ため、再試行 → デッドレターへ
 // 委ねる（ADR-0012「本文変換の恒久失敗は再試行し、継続失敗はデッドレターへ送る」）。
 //
@@ -19,7 +19,7 @@ public record BodyConversionResult(string Markdown, IReadOnlyList<ExtractedFigur
 // 縮退は ConversionOptions.AllowDegradedBodyConversion が true のときだけに限る。
 public sealed class BodyConversionUnavailableException(string message) : Exception(message);
 
-// FR-12, UC-06, ADR-0012, IADR-0316 (#1097): 原本の形式が pandoc の**入力形式にならない**。
+// FR-12, UC-06, ADR-0012, IADR-0317 (#1097): 原本の形式が pandoc の**入力形式にならない**。
 // 代表は PDF —— pandoc は PDF を出力にはできるが入力には取れない。
 //
 // 再試行しても結果は変わらないので、コンシューマは**再送出せず**恒久失敗として記録する
