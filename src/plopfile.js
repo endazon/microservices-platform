@@ -19,10 +19,14 @@ import path from 'node:path';
 //   🔴 **区分は `.gitkeep` の空枠で満たさない**（計画 ADR-0065 決定 4 が `.gitkeep` の枠置き規範を
 //   撤回した。理由は「枠だけの状態が、機械にも目視にも『区分が揃っている』と見え、**適合の見え方**を
 //   作った」ことである）。`api/` `hooks/` `types/` は**差し替え前提の実体**を生成し、実装者が中身を
-//   書き換える。**`stores/` だけは `.gitkeep` を置く**——クライアント状態ストア（Zustand）は
-//   URL を単一情報源にする画面では持たないのが既定であり（IADR-0124 決定 3）、実体を生成すると
-//   「置くべきもの」と読み違えられる。要らないと判断したらフォルダごと消し、理由を PR で述べる
-//   （issue #1066 で 4 feature に対して行った判断と同じ形である）。
+//   書き換える。
+//
+//   🔴 **`stores/` は生成しない**（issue #1100 / IADR-0317）。従前は `stores/.gitkeep` を置いていたが、
+//   それは **ADR-0065 決定 4 が撤回したその形を、雛形が作り続けている**ということであった。
+//   クライアント状態ストア（Zustand）は URL を単一情報源にする画面では持たないのが既定であり
+//   （IADR-0124 決定 3）、**実測でも feature の `stores/` に実体を持つものは 1 件も無い。**
+//   実体を生成すれば「置くべきもの」と読み違えられ、`.gitkeep` を置けば「区分が揃っている」という
+//   適合の見え方を作る。**どちらでもなく、要ると分かった時点で作る。**
 //
 // ■ 合成点（`features/index.ts`）へは**自動で追記しない**
 //   あちらはルートのタプル（`as const`）とナビ配列の 2 経路で、**タプルを壊すと型安全が丸ごと失われる**
@@ -128,8 +132,7 @@ export default function plopfile(plop) {
           'plop-templates/feature/hooks/useFilter.ts.hbs',
         ),
         add('api/use{{pascalCase name}}List.ts', 'plop-templates/feature/api/useList.ts.hbs'),
-        // `stores/` だけは枠のまま残す（Zustand を持つのは例外であり、既定は URL と `hooks/`）。
-        add('stores/.gitkeep', 'plop-templates/feature/gitkeep.hbs'),
+        // `stores/` は作らない（上のコメント参照）。**空枠も実体も生成しない。**
         // 合成点への配線は人が行う（上のコメント参照）。貼る行をそのまま出す。
         () => {
           const pascal = plop.renderString('{{pascalCase name}}', answers);
@@ -141,12 +144,17 @@ export default function plopfile(plop) {
             `  createXxxRoutes のタプルへ   create${pascal}Route(shell),`,
             answers.withNav ? `  navItems の配列へ           ${camel}Nav,` : null,
             '',
-            'そのあと: pnpm run i18n（カタログ再生成と翻訳）/ eslint.config.js の',
-            'lingui 適用範囲（files）へ本 feature のパスを足す / pnpm run lint && pnpm run typecheck。',
+            'そのあと: pnpm run i18n（カタログ再生成と翻訳）/ pnpm run lint && pnpm run typecheck。',
+            '（lingui の検査範囲は #1105 で両ユニット全体になった。eslint.config.js へ',
+            '  feature のパスを足す作業はもう無い。）',
             '',
             '生成した api/ hooks/ types/ は**差し替え前提の実体**である（.gitkeep の空枠は置かない。',
             '計画 ADR-0065 決定 4）。中身を本物へ書き換えるか、要らない区分はフォルダごと消して',
             '理由を PR 本文へ書くこと。**空のまま残さない。**',
+            '',
+            'stores/ は生成していない（IADR-0317）。クライアント状態の単一情報源は URL であり',
+            '（IADR-0124 決定 3）、ストアを持つのは例外である。複数ルート・複数コンポーネントを',
+            '跨いで生き残るクライアント状態が要ると分かった時点で stores/ を作り、理由を PR へ書く。',
           ]
             .filter((line) => line !== null)
             .join('\n');

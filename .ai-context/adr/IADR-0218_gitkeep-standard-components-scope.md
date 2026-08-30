@@ -1,10 +1,11 @@
 ---
 title: IADR-0218 標準構成 7 要素の .gitkeep は 4 要素 × 11 サービスへ適用し、Worker は Api の別形・SharedKernel は集約先が持つ
 type: impl-adr
-status: Accepted
+status: Superseded
 related_ids:
   - ADR-0019
   - ADR-0030
+  - ADR-0065
   - IADR-0027
   - IADR-0056
   - IADR-0060
@@ -12,10 +13,12 @@ related_ids:
   - IADR-0117
   - IADR-0219
   - IADR-0280
+  - IADR-0282
+  - IADR-0317
   - NFR
 author: implementation-agent
 created: 2026-08-17
-updated: 2026-08-28
+updated: 2026-08-31
 plan_refs:
   - planning:projects/microservices-platform/06_technical/12_backend-application-stack.md (§規範性・粒度・置き場。2026-08-04 確定・fixed)
   - planning:projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (ライブラリ標準・選定基準 1〜4)
@@ -28,9 +31,35 @@ plan_refs:
 > 計画リポジトリの ADR（`ADR-XXXX`）とは別系統（`IADR-XXXX`）とし、実装に閉じた決定を記録する。
 > 計画に影響する決定は計画側へ環流する（`/plan-feedback`）。
 
-- 状態: Accepted
+- 状態: Superseded（**［2026-08-31 追記 / #1100］**。起案時は `Accepted`）
 - 日付: 2026-08-17
 - 決定者: implementation-agent（計画 `12_backend-application-stack` §規範性・粒度・置き場 の下位決定として）
+
+> 🔴 **［2026-08-31 追記 / #1100］本 IADR は前提を失った。`Superseded` へ改める。**
+>
+> **本 IADR が依拠していた計画の条件節 —— `12_backend-application-stack` §規範性・粒度・置き場 の
+> 「実体が無いものは空フォルダ＋`.gitkeep` を置く」（planning#180 裁定） —— を、計画
+> `ADR-0065` 決定 4 が撤回した**（Accepted・2026-08-30）。撤回の理由は
+> **「`.gitkeep` が『適合の見え方』を作った」** ことである —— 枠だけの状態が機械にも目視にも
+> 「8 要素が揃っている」と見え、2026-08-22 の適合判定がその見え方をそのまま拾った。
+> **本 IADR は、その規範を「どの要素へ何件置くか」へ具体化したものであり、規範の撤回とともに
+> 適用対象そのものが消える。**
+>
+> **後継は 2 本である。ID を付け替えない —— 本 IADR は `IADR-0218` のままである。**
+>
+> - 実体面: **[IADR-0282](./IADR-0282_single-project-vsa-structure.md)** 決定 3 が
+>   `.gitkeep` の枠を**全廃**した（単一プロジェクト＋VSA/DDD フォルダ構成へ）。
+>   計画 `ADR-0065` は 2026-08-30 実測で「`.gitkeep` のみの層ディレクトリは **0 件**」としている。
+> - 規範面: **[IADR-0317](./IADR-0317_no-empty-scaffolding-frames.md)** が
+>   **`.gitkeep` による枠置きを本リポジトリの規範として廃し、雛形（`src/plopfile.js`）も
+>   空枠を生成しないようにした。**
+>
+> **決定 4（機械検査は置かない）だけは、判断そのものは今も有効である**（`IADR-0317` 決定 4 が
+> 同じ結論を引き継ぐ）。ただし**本 IADR の枠組み（7〜8 要素 × N サービスへ `.gitkeep` を置く）が
+> 消えているため、決定 4 単独を引かないこと。**
+>
+> 本追記は計画 `ADR-0065` §結果 フォローアップ 5「`IADR-0218` の改定または後継（決定 4 により
+> 前提を失う）」への応答である。
 
 ## 起点・関連
 
@@ -375,8 +404,14 @@ plan_refs:
 ## 関連
 
 - Supersedes: なし
-- Superseded by: なし（**[IADR-0219](./IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) が
-  §決定 1・2・3 を部分改定した。** 決定 4（機械検査は置かない）は無傷であり、決定 2 の結論
-  （`Api/.gitkeep` を置かない）と決定 3-2〜3-5・3-7 も引き続き有効なため `Accepted` を維持する）
+- Superseded by: **[IADR-0282](./IADR-0282_single-project-vsa-structure.md)**（実体面。決定 3 が
+  `.gitkeep` の枠を全廃した）／ **[IADR-0317](./IADR-0317_no-empty-scaffolding-frames.md)**（規範面。
+  `.gitkeep` の枠置きをリポジトリの規範として廃した）。上流は計画
+  `ADR-0065`（Superseded ではなく、planning#180 裁定の**部分改定**）決定 4。**［2026-08-31 / #1100］**
+  - ~~なし（**[IADR-0219](./IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) が
+    §決定 1・2・3 を部分改定した。** 決定 4（機械検査は置かない）は無傷であり、決定 2 の結論
+    （`Api/.gitkeep` を置かない）と決定 3-2〜3-5・3-7 も引き続き有効なため `Accepted` を維持する）~~
+    —— **2026-08-31 まではこう書いていた。IADR-0219 による部分改定という事実は変わらないが、
+    `Accepted` の維持はできなくなった。**
 - Amended by: [IADR-0280](./IADR-0280_eight-element-standard-materialization.md)（2026-08-28。
   適用形を「`.gitkeep` の枠」から「実プロジェクトの実体化」へ改める。`SharedKernel` の枠のみ存続）

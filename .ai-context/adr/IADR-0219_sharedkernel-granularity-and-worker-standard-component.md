@@ -1,20 +1,23 @@
 ---
 title: IADR-0219 SharedKernel の粒度はサービス単位（ユニット単位と併存）・Worker を標準構成へ加えて 8 要素とする
 type: impl-adr
-status: Accepted
+status: Superseded
 related_ids:
   - ADR-0019
   - ADR-0030
   - ADR-0041
+  - ADR-0065
   - IADR-0056
   - IADR-0117
   - IADR-0196
   - IADR-0218
   - IADR-0280
+  - IADR-0282
+  - IADR-0317
   - NFR
 author: implementation-agent
 created: 2026-08-17
-updated: 2026-08-28
+updated: 2026-08-31
 plan_refs:
   - planning:projects/microservices-platform/06_technical/12_backend-application-stack.md (§SharedKernel の粒度・Worker の追加。2026-08-17 確定・fixed。pin 767a9d48)
   - planning:projects/microservices-platform/07_adr/ADR-0041_result-type-external-library.md (Result 型の封じ込め。配置には言及しない)
@@ -28,9 +31,30 @@ plan_refs:
 > 計画リポジトリの ADR（`ADR-XXXX`）とは別系統（`IADR-XXXX`）とし、実装に閉じた決定を記録する。
 > 計画に影響する決定は計画側へ環流する（`/plan-feedback`）。
 
-- 状態: Accepted
+- 状態: Superseded（**［2026-08-31 追記 / #1100］**。起案時は `Accepted`）
 - 日付: 2026-08-17
 - 決定者: implementation-agent（利用者裁定 planning#390 の実装側への写像として）
+
+> 🔴 **［2026-08-31 追記 / #1100］本 IADR は 3 つの決定すべてが前提を失った。`Superseded` へ改める。**
+>
+> 本 IADR は [IADR-0218](./IADR-0218_gitkeep-standard-components-scope.md) の決定 1・2・3 を
+> 部分改定したものであり、同じ計画条文（`12_backend-application-stack` §規範性・粒度・置き場 と
+> §`SharedKernel` の粒度・`Worker` の追加）に依拠している。計画 `ADR-0065`（Accepted・2026-08-30）が
+> **その条文を 3 箇所とも改めた。**
+>
+> | 本 IADR の決定 | 何が変わったか |
+> | --- | --- |
+> | 決定 1（`SharedKernel` の粒度はサービス単位・per-service の枠を置く） | `ADR-0065` 決定 5 —— **サービス単位の `SharedKernel` は物理プロジェクトとしては存在しなくなった。** 自サービスに閉じた共通基底は `Common/` へ置く（ユニット単位側との置き分けは変わらない） |
+> | 決定 2（`Worker` を標準構成へ加えて 8 要素） | `ADR-0065` 決定 6 —— **`Worker` は `Program.cs` の形の違いであってディレクトリ階層の違いではない。** 中間ディレクトリも `.Worker` 接尾辞も置かない |
+> | 決定 3（`.gitkeep` は 55 件） | `ADR-0065` 決定 4 —— **`.gitkeep` の枠置き規範そのものが撤回された** |
+>
+> **後継は [IADR-0282](./IADR-0282_single-project-vsa-structure.md)（構成の実体）と
+> [IADR-0317](./IADR-0317_no-empty-scaffolding-frames.md)（枠置き規範の廃止）である。
+> ID は付け替えない —— 本 IADR は `IADR-0219` のままである。**
+>
+> **[IADR-0117](./IADR-0117_platform-shared-kernel-placement.md) は無傷である** ——
+> ユニット単位の `Platform.Shared.Kernel` は `ADR-0065` 決定 5 が明示的に据え置いた
+> （実装 `IADR-0229`）。
 
 ## 起点・関連
 
@@ -274,7 +298,10 @@ Tests          # Unit / Integration
   §結果 フォローアップ 2 のみを改め、決定 1〜4（`Platform.Shared.Kernel` の新設・許容 2 → 3・
   外部依存の限定・改定範囲の限定・実体は後続 issue が作る）は引き続き有効なため `Accepted` を維持する。
   [`IADR-0218`](./IADR-0218_gitkeep-standard-components-scope.md) は決定 1・2・3 を改め、
-  決定 4（機械検査は置かない）は無傷であるため `Accepted` を維持する）
-- Superseded by: なし
+  決定 4（機械検査は置かない）は無傷であるため ~~`Accepted` を維持する~~
+  **［2026-08-31 訂正 / #1100］`IADR-0218` も `Superseded` になった**）
+- Superseded by: **[IADR-0282](./IADR-0282_single-project-vsa-structure.md)**（構成の実体）／
+  **[IADR-0317](./IADR-0317_no-empty-scaffolding-frames.md)**（枠置き規範の廃止）。
+  上流は計画 `ADR-0065` 決定 4・5・6。**［2026-08-31 / #1100］**
 - Amended by: [IADR-0280](./IADR-0280_eight-element-standard-materialization.md)（2026-08-28。
   決定 3 の適用形を「`.gitkeep` の枠」から「実プロジェクトの実体化」へ改める。決定 1・2 は無傷）
