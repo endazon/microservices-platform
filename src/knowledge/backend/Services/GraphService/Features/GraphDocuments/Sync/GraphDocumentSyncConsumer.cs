@@ -5,7 +5,9 @@ using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 
-namespace GraphService.Features.GraphDocuments;
+using GraphService.Features.GraphDocuments;
+
+namespace GraphService.Features.GraphDocuments.Sync;
 
 // FR-17, FR-05, ADR-0033 決定 2 (#911): DocumentUpdated を購読し、ABAC 判定に要する文書属性を
 // `graph_documents` へデノーマライズ保持する（「属性変更イベントを受けて即座に更新」）。

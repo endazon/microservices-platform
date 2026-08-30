@@ -9,6 +9,7 @@ using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
+using DocumentService.Features.PrivateNotes.Maintenance;
 
 namespace DocumentService.Tests;
 

@@ -4,6 +4,7 @@ using AwesomeAssertions;
 using DocumentService.Domain;
 using DocumentService.Features.McpTools;
 using Microsoft.Extensions.Configuration;
+using DocumentService.Features.McpTools.Declare;
 
 namespace DocumentService.Tests;
 

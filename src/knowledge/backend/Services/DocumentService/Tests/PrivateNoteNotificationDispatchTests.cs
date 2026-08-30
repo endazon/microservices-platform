@@ -16,6 +16,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
+using DocumentService.Features.ObsidianSync.Push;
+using DocumentService.Features.PrivateNotes.Maintenance;
 
 namespace DocumentService.Tests;
 

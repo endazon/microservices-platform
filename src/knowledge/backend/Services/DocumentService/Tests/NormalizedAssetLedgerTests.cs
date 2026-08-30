@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
+using DocumentService.Features.Documents.Catalog;
 
 namespace DocumentService.Tests;
 
