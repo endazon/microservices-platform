@@ -110,8 +110,11 @@ KEYWORD_ABSENT_TERM="${KEYWORD_ABSENT_TERM:-msp-absent-zzzznotexistword}"
 TOTAL=11
 if [ "$ABAC_POSITIVE" = "1" ]; then TOTAL=$((TOTAL + 6)); fi
 if [ "$SEARCH_SEEDED" = "1" ]; then TOTAL=$((TOTAL + 2)); fi
-# FR-03 / #1116: S4（全文側の正の対照）と S5（同・陰性対照）。SEARCH_HITS に含める。
-if [ "$SEARCH_HITS" = "1" ]; then TOTAL=$((TOTAL + 3)); fi
+# 🔴 内訳を書くときは「足した段」ではなく「**そのブロックの段数全部**」である。
+#    （#1124: 既存の 1 本（合言葉のヒット）を数え落として「足した 3 本」を書き、実行 23 対宣言 22 で門が発火した。
+#     実測の仕方: `sed -n '/if \[ "$SEARCH_HITS"/,/^fi$/p' して next_step を数える。）
+# FR-03 / #992 + #1116: 合言葉のヒット 1 本 ＋ 全文側の正の対照 / 陰性対照 / readiness の 3 本。
+if [ "$SEARCH_HITS" = "1" ]; then TOTAL=$((TOTAL + 4)); fi
 
 PASS=0
 FAIL=0

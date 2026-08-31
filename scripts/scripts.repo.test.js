@@ -8281,13 +8281,41 @@ ${r.stderr}`);
     const VERIFY = fsSS.readFileSync(
       pathSS.join(__dirname, 'verify-oidc-edge-flow.sh'), 'utf8');
 
-    ok('#992: TOTAL は加算式である（モードの組み合わせで門が誤発火しない）', () => {
+    // 🔴 #1124: この検査は以前、加算値を**テスト側へ書き写して**照合していた。
+    //    写しなので、書き手が両方を同じ誤った値で揃えると**検出力がゼロになる** ——
+    //    実際 #1117 が既存の 1 段を数え落として +3 と書いたとき、このテストは緑のまま通し、
+    //    後段の integration-stack で「実行 23 対宣言 22」として初めて発覚した。
+    //    よって**加算値はスクリプトから導出する**（ブロック内の段を数える）。
+    const VERIFY_LINES = VERIFY.split('\n');
+    const stagesInBlock = (flag) => {
+      const s = VERIFY_LINES.findIndex((l) => l === 'if [ \"$' + flag + '\" = \"1\" ]; then');
+      assert.ok(s >= 0, `${flag} のブロックが見つからない`);
+      const e = VERIFY_LINES.indexOf('fi', s);
+      assert.ok(e > s, `${flag} のブロックの終端が見つからない`);
+      return VERIFY_LINES.slice(s + 1, e)
+        .filter((l) => /^\s*(next_step |step \")/.test(l)).length;
+    };
+    const declaredAddend = (flag) => {
+      const needle = '\"$' + flag + '\" = \"1\" ]; then TOTAL=$((TOTAL + ';
+      const line = VERIFY_LINES.find((l) => l.includes(needle));
+      assert.ok(line, `${flag} の加算式が無い`);
+      const m = /^(\d+)/.exec(line.slice(line.indexOf(needle) + needle.length));
+      assert.ok(m, `${flag} の加算値を読めない: ${line}`);
+      return Number(m[1]);
+    };
+
+    ok('#992 / #1124: TOTAL の加算値が各ブロックの実段数と一致する', () => {
       // 固定値（TOTAL=17 / TOTAL=11 の二択）へ戻すと、SEARCH_* を足した瞬間に門が誤発火する。
       assert.match(VERIFY, /^TOTAL=11$/m, 'TOTAL の基底が 11 でない');
-      // #1116: SEARCH_HITS は S3（ハイブリッド）＋ S4・S5（全文側の正負対照）＋ readiness の 3 段を足す。
-      for (const [flag, addend] of [['ABAC_POSITIVE', 6], ['SEARCH_SEEDED', 2], ['SEARCH_HITS', 3]]) {
-        const re = new RegExp(`\\$${''}{?${flag}}?" = "1" \\]; then TOTAL=\\$\\(\\(TOTAL \\+ ${addend}\\)\\)`);
-        assert.match(VERIFY, re, `${flag} の加算（+${addend}）が無い`);
+      for (const flag of ['ABAC_POSITIVE', 'SEARCH_SEEDED', 'SEARCH_HITS']) {
+        const expected = stagesInBlock(flag);
+        assert.ok(expected > 0, `${flag} のブロックに段が 1 つも無い（走査が空振りしている）`);
+        assert.strictEqual(
+          declaredAddend(flag),
+          expected,
+          `${flag} の加算がブロックの実段数（${expected}）と違う`
+            + `（「足した段」ではなく「そのブロックの段数全部」を書く。#1124）`,
+        );
       }
     });
 

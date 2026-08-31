@@ -410,6 +410,10 @@ export const getBffGraphSuggestionsUrl = (params?: BffGraphSuggestionsParams,) =
 /**
  * FR-18, UC-10, SC-21, ADR-0033 決定 7・10: AI が提案したリンク候補・タグ候補を一覧で返す。
  *
+ * ［2026-08-31 追記 / #1104］**`documentId` を足した。** SC-21（棚卸し）は送らず全件を引き、
+ * SC-03（文書詳細の承認欄）は当該文書で絞る。従前 SC-03 は権限内の全件を引いて
+ * ブラウザ側で間引いており、**転送量と後段の N+1 が無関係な提案の総量に律速されていた**。
+ *
  * 🔴 **この口は読み取りである。**［2026-08-29 追記］承認・却下は
  * `/bff/graph/suggestions/{id}/approve` / `/reject` として別に開いた（SC-03 の承認欄が呼ぶ）。
  * 従前ここには「承認・却下の口は BFF に無い」と書いてあったが、その記述は失効している。
@@ -421,7 +425,7 @@ export const getBffGraphSuggestionsUrl = (params?: BffGraphSuggestionsParams,) =
  * **権限のない文書に関する提案は、件数を含め一切現れない**（存在秘匿）。
  * 後段が引けないときは 502 であり、**空配列へ縮退しない** ——
  * 「提案が 1 件も無い」と「一覧が引けない」は利用者にとって別の意味である。
- * @summary FR-18, UC-10, SC-21: AI 提案の一覧（棚卸し用・読み取りのみ）
+ * @summary FR-18, UC-10, SC-21, SC-03: AI 提案の一覧（読み取りのみ）
  */
 export const bffGraphSuggestions = async (params?: BffGraphSuggestionsParams, options?: Parameters<typeof bffFetch>[1]): Promise<bffGraphSuggestionsResponse> => {
 
@@ -468,7 +472,7 @@ export type BffGraphSuggestionsQueryError = void
 
 
 /**
- * @summary FR-18, UC-10, SC-21: AI 提案の一覧（棚卸し用・読み取りのみ）
+ * @summary FR-18, UC-10, SC-21, SC-03: AI 提案の一覧（読み取りのみ）
  */
 
 export function useBffGraphSuggestions<TData = Awaited<ReturnType<typeof bffGraphSuggestions>>, TError = void>(
