@@ -3,7 +3,7 @@ title: 固定/可変 区分表（実装版）— コンポーザビリティ対�
 type: tech
 status: completed
 created: 2026-07-08
-updated: 2026-08-21
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -18,7 +18,10 @@ issues: [#102, #195, #217, #218, #219, #229]
 
 Issue #102の作業項目 1「棚卸し」の成果物である。
 実装済みの機能群（データソース登録から Wiki 閲覧まで）のコード依存を洗い出し、コンポーザブルアーキテクチャの決定が定める「固定（土台）/ 可変（組み替え可能）」区分へ分類する。
-コード上の配置規約（`Foundation/` / `Composable/`）は、固定/可変分離のフォルダ・名前空間規約を参照。
+コード上の配置規約は、固定/可変分離のフォルダ・名前空間規約を参照。
+**区分そのものは有効だが、`Foundation/` / `Composable/` というフォルダ名で表すのは
+共有基盤プロジェクト（`Shared/Platform.Shared.Infrastructure` と `Bff/Platform.Bff`）だけ**である
+（§4 の写像表を参照）。
 
 ## 1. 同期呼び出し関係（すべて固定）
 
@@ -78,7 +81,15 @@ Issue #102の作業項目 1「棚卸し」の成果物である。
 
 ## 4. サービス別区分（フォルダ配置）
 
-各プロジェクト内の配置は `Foundation/`（固定）/ `Composable/`（可変）。詳細規約は固定/可変分離のフォルダ・名前空間規約による。
+**固定/可変の区分は残るが、それを表すフォルダ名は置き場で異なる。** 詳細規約は固定/可変分離のフォルダ・名前空間規約による。
+
+| 置き場 | 固定（Foundation）の在り処 | 可変（Composable）の在り処 |
+| --- | --- | --- |
+| **共有基盤**（`Shared/Platform.Shared.Infrastructure`・`Bff/Platform.Bff`） | `Foundation/`（そのまま現役） | `Composable/Adapters/`（`Platform.Shared.Infrastructure` のみ） |
+| **サービス**（`Services/<Name>/`） | `Domain/`（`Domain/Ports/` にポート）・`Program.cs`（合成ルート） | 段は `Features/<集約>/<操作>/`、外部アダプタは `Infrastructure/ExternalServices/` |
+
+サービス側の `Foundation/` / `Composable/` フォルダは単一プロジェクト＋VSA/DDD 構成への移送で
+上表の右列へ吸収された（追跡下に 0 件）。**区分が消えたのではなく、区分を表す入れ物が変わった。**
 
 | サービス | 固定（Foundation） | 可変（Composable） |
 | --- | --- | --- |

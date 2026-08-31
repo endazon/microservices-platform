@@ -60,6 +60,7 @@ const OPTIN_TOKENS = [
   'deploy/local/vault/eso/', //        ESO (bootstrap/externalsecret, IADR-0096。配下のみが apply される)
   'seed-abac-policies.js', //          ABACSEED (ABAC 初期投入, IADR-0133)
   'seed-search-documents.js', //       SEARCHSEED (検索検証用文書の初期投入, IADR-0284)
+  'embedding.deterministicLocal.enabled', // LOCALEMBED (決定的ローカル埋め込み, IADR-0313)
   'cert-manager', //                   LOCALEDGE (エッジ TLS 終端, IADR-0206)
   'deploy/local/edge/tls', //          LOCALEDGE (TLS overlay, IADR-0206)
   'certificate/edge-tls', //           LOCALEDGE (証明書 Ready 待ち, IADR-0206)
@@ -243,6 +244,7 @@ function runUp(extraEnv) {
     'ESO',
     'ABACSEED',
     'SEARCHSEED',
+    'LOCALEMBED',
     'HEADLAMP_OIDC_ISSUER_URL',
     'HEADLAMP_OIDC_CLIENT_ID',
     'K3S_IMAGE', // #783: k3s イメージの pin。実行環境に漏れていると既定のバイト等価が崩れる
@@ -348,6 +350,7 @@ const GATES_ALL = {
   ESO: '1',
   ABACSEED: '1',
   SEARCHSEED: '1',
+  LOCALEMBED: '1',
   HEADLAMP: '1',
 };
 const { PERSIST: _p, ESO: _e, ...GATES_NO_REPLACEMENT } = GATES_ALL;
@@ -2122,6 +2125,186 @@ ok('#780 第2段: metadataAddress と validIssuers が同じ realm パスを指�
     issuerRealm.replace(/\/$/, ''),
     `metadataAddress（realm=${metaRealm}）と validIssuers（realm=${issuerRealm}）の realm が食い違っている`,
   );
+});
+
+
+// --- IADR-0313 (#992 案 2): 決定的ローカル埋め込み（LOCALEMBED=1） ------------------------
+//
+// 🔴 この配線が壊れると「検索の命中」を測る門（integration-stack.yml の SEARCH_HITS=1）が
+// **原理的に落ちる**。落ちたときに「検索が壊れた」と読まれると、本当の退行の捜索が余計に長くなる。
+// したがって「既定で現れない」「立てたら 1 つだけ現れる」「3 サービスが揃っている」
+// 「チャートと appsettings が一致している」を静的に固定する。
+
+const LOCALEMBED_SET = '--set embedding.deterministicLocal.enabled=true';
+const HELM_UPGRADE_RE = /helm upgrade --install msp deploy\/helm\/microservices-platform.*/;
+
+ok('LOCALEMBED 未設定: helm upgrade の引数に --set が 1 つも足されない', () => {
+  const line = DEFAULT.lines.find((l) => HELM_UPGRADE_RE.test(l));
+  assert.ok(line, 'helm upgrade --install msp の行が無い');
+  assert.ok(
+    !line.includes('--set'),
+    `既定なのに --set が付いている（バイト等価が崩れている）: ${line}`,
+  );
+});
+
+ok('LOCALEMBED=1: helm upgrade へ deterministicLocal の --set が 1 つだけ足される', () => {
+  const line = runUp({ LOCALEMBED: '1' }).lines.find((l) => HELM_UPGRADE_RE.test(l));
+  assert.ok(line, 'helm upgrade --install msp の行が無い');
+  assert.ok(line.includes(LOCALEMBED_SET), `--set が足されていない: ${line}`);
+  // 他の --set（ISTIO の mesh.*）まで一緒に付くと、opt-in の独立性が崩れている。
+  assert.strictEqual(
+    (line.match(/--set /g) || []).length,
+    1,
+    `LOCALEMBED=1 だけで --set が複数付いている: ${line}`,
+  );
+});
+
+const CHART_VALUES = readAt(REPO_ROOT, 'deploy', 'helm', 'microservices-platform', 'values.yaml');
+const CHART_DEPLOYMENT = readAt(
+  REPO_ROOT, 'deploy', 'helm', 'microservices-platform', 'templates', 'deployment.yaml');
+const LLM_APPSETTINGS = JSON.parse(
+  readAt(REPO_ROOT, 'src', 'platform', 'backend', 'Services', 'LlmGateway', 'appsettings.json'));
+const DET_ENDPOINT = LLM_APPSETTINGS.Embedding.Routing.Endpoints
+  .find((e) => e.Provider === 'deterministic-embedding');
+
+ok('IADR-0313: 決定的エンドポイントは appsettings で既定無効・ティアA である', () => {
+  assert.ok(DET_ENDPOINT, 'appsettings.json に deterministic-embedding のエンドポイントが無い');
+  assert.strictEqual(DET_ENDPOINT.Enabled, false,
+    '既定で有効になっている（本番へ紛れ込むと検索品質が無言で落ちる）');
+  assert.strictEqual(DET_ENDPOINT.Tier, 'A',
+    'ティアA 以外に置かれている（社外送信なしという性質と食い違う）');
+});
+
+ok('IADR-0313: 配列 index が 2 である（チャートの Endpoints__2 上書きが指す先）', () => {
+  const idx = LLM_APPSETTINGS.Embedding.Routing.Endpoints.indexOf(DET_ENDPOINT);
+  assert.strictEqual(idx, 2,
+    `deterministic-local の index が ${idx}（チャートは Endpoints__2 を上書きする）。` +
+      '並び替えたなら deployment.yaml の index も直すこと',
+  );
+});
+
+ok('IADR-0313: チャートのコレクション名・次元が appsettings と一致する', () => {
+  const collection = (/^\s{4}collection:\s*(\S+)\s*$/m.exec(CHART_VALUES) || [])[1];
+  const dimensions = (/^\s{4}dimensions:\s*(\d+)\s*$/m.exec(CHART_VALUES) || [])[1];
+  assert.strictEqual(collection, DET_ENDPOINT.Collection,
+    'values.yaml の collection が appsettings と食い違う（索引先と検索先が割れる）');
+  assert.strictEqual(Number(dimensions), DET_ENDPOINT.Dimensions,
+    'values.yaml の dimensions が appsettings と食い違う（次元不整合で索引が fail-closed する）');
+});
+
+ok('IADR-0313: 3 サービス（llmgateway / ingestion / retrieval）が揃って配線されている', () => {
+  // 1 つでも欠けると「索引はされるが検索は別のコレクションを見る」＝ 0 件で静かに落ちる。
+  const block = CHART_DEPLOYMENT.slice(
+    CHART_DEPLOYMENT.indexOf('$det := $.Values.embedding.deterministicLocal'));
+  assert.ok(block.length > 0, 'deterministicLocal のブロックが deployment.yaml に無い');
+  for (const [name, env] of [
+    ['llmgateway', 'Embedding__Routing__Endpoints__2__Enabled'],
+    ['ingestion', 'Embedding__Collections__2__Name'],
+    ['retrieval', 'Qdrant__CollectionName'],
+  ]) {
+    const at = block.indexOf(`eq $name "${name}"`);
+    assert.ok(at !== -1, `${name} の分岐が無い`);
+    assert.ok(block.slice(at, at + 900).includes(env), `${name} に ${env} が無い`);
+  }
+});
+
+ok('IADR-0313: 既定 values は enabled: false（本番像は現状維持）', () => {
+  const at = CHART_VALUES.indexOf('deterministicLocal:');
+  assert.ok(at !== -1, 'values.yaml に deterministicLocal が無い');
+  assert.match(CHART_VALUES.slice(at, at + 200), /enabled:\s*false/,
+    '既定が false でない（使い捨てスタック専用の opt-in が既定 ON になっている）');
+});
+
+// ---------------------------------------------------------------------------
+// #782 / ADR-0021: エッジを Istio Ingress Gateway へ移す overlay の静的検査。
+//
+// ここで固定するのは **STRICT が成立するための前提**だけである。実クラスタでの疎通は
+// .ai-context/adr/IADR-0317_*.md が実測で持つ（この検査は「壊すと落ちる」門であって証拠ではない）。
+// ---------------------------------------------------------------------------
+const EDGE_ISTIO_DIR = path.join(REPO_ROOT, 'deploy', 'local', 'edge-istio');
+const EDGE_ISTIO_KUST = fs.readFileSync(path.join(EDGE_ISTIO_DIR, 'kustomization.yaml'), 'utf8');
+const EDGE_ISTIO_GW = fs.readFileSync(path.join(EDGE_ISTIO_DIR, 'gateway.yaml'), 'utf8');
+const EDGE_ISTIO_VS_APP = fs.readFileSync(path.join(EDGE_ISTIO_DIR, 'virtualservice-app.yaml'), 'utf8');
+const EDGE_ISTIO_VS_ADMIN = fs.readFileSync(
+  path.join(EDGE_ISTIO_DIR, 'virtualservice-admin.yaml'),
+  'utf8',
+);
+const EDGE_ISTIO_CERT = fs.readFileSync(
+  path.join(EDGE_ISTIO_DIR, 'tls', 'edge-certificate-istio.yaml'),
+  'utf8',
+);
+const ISTIO_EDGE_UP = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'istio-edge-up.sh'), 'utf8');
+const ISTIO_EDGE_DOWN = fs.readFileSync(
+  path.join(REPO_ROOT, 'scripts', 'istio-edge-down.sh'),
+  'utf8',
+);
+
+ok('#782: istio-system の葉証明書の dnsNames が既存 Certificate と一致する（SNI がずれない）', () => {
+  const istioNames = listValues(EDGE_ISTIO_CERT, 'dnsNames');
+  const edgeNames = listValues(EDGE_CERT_YAML, 'dnsNames');
+  assert.ok(istioNames.length > 0, 'istio-system の Certificate に dnsNames が無い');
+  assert.deepStrictEqual(
+    istioNames,
+    edgeNames,
+    'istio-system の dnsNames が edge-certificate.yaml とずれている（Gateway の TLS が host 照合で落ちる）',
+  );
+  assert.ok(/namespace:\s*istio-system/.test(EDGE_ISTIO_CERT), 'Certificate が istio-system に無い');
+  assert.ok(
+    /secretName:\s*edge-tls/.test(EDGE_ISTIO_CERT),
+    'secretName が edge-tls でない（ADR-0023「名前の安定」/ Gateway の credentialName と一致しない）',
+  );
+});
+
+ok('#782: edge-istio kustomization は tls/ と traefik-service-off を含まない（順序を表現できないため）', () => {
+  assert.ok(!/^\s*-\s*tls\/?\s*$/m.test(EDGE_ISTIO_KUST), 'kustomization が tls/ を含んでいる');
+  assert.ok(
+    !/^\s*-\s*traefik-service-off/m.test(EDGE_ISTIO_KUST),
+    'kustomization が traefik-service-off.yaml を含んでいる（Traefik の明け渡しは Gateway より先でなければならない）',
+  );
+});
+
+ok('#782: Gateway は istio-system に居て edge-tls で終端し、80 は 443 へリダイレクトする', () => {
+  assert.ok(/namespace:\s*istio-system/.test(EDGE_ISTIO_GW), 'Gateway が istio-system に無い');
+  assert.ok(
+    /credentialName:\s*edge-tls/.test(EDGE_ISTIO_GW),
+    'credentialName が edge-tls でない（Gateway は同 namespace の Secret しか読めない）',
+  );
+  assert.ok(
+    /httpsRedirect:\s*true/.test(EDGE_ISTIO_GW),
+    'port 80 の httpsRedirect が無い（NFR-11「平文 HTTP を残さない」）',
+  );
+  assert.ok(/number:\s*50000/.test(EDGE_ISTIO_GW), 'admin(50000) の server が無い');
+});
+
+ok('#782: メッシュ内の 4 サービスがすべて Gateway 経由になっている（STRICT で落ちる側）', () => {
+  const routed = EDGE_ISTIO_VS_APP + EDGE_ISTIO_VS_ADMIN;
+  for (const svc of ['frontend-service', 'bff-service', 'minio', 'wiki-js']) {
+    assert.ok(
+      new RegExp(`host:\\s*${svc}\\.microservices-platform\\.svc\\.cluster\\.local`).test(routed),
+      `${svc} への VirtualService が無い（Traefik のままだと STRICT で 502 になる）`,
+    );
+  }
+});
+
+ok('#782: up は「Traefik を明け渡す → Gateway を立てる」の順で、down はその逆順である', () => {
+  const offAt = ISTIO_EDGE_UP.indexOf('kubectl apply -f deploy/local/edge-istio/traefik-service-off.yaml');
+  const gwAt = ISTIO_EDGE_UP.indexOf('istio/gateway');
+  assert.ok(offAt > 0 && gwAt > 0, 'istio-edge-up.sh に明け渡し/Gateway 導入が無い');
+  assert.ok(
+    offAt < gwAt,
+    'Gateway の導入が Traefik の明け渡しより先にある（hostPort が衝突してどちらの入口も立たない）',
+  );
+  const uninstallAt = ISTIO_EDGE_DOWN.indexOf('helm uninstall istio-ingressgateway');
+  const restoreAt = ISTIO_EDGE_DOWN.indexOf('kubectl apply -f deploy/local/edge/traefik-entrypoint.yaml');
+  assert.ok(uninstallAt > 0 && restoreAt > 0, 'istio-edge-down.sh に撤去/復旧が無い');
+  assert.ok(uninstallAt < restoreAt, '切り戻しで Traefik の復旧が Gateway の撤去より先にある（同上）');
+});
+
+ok('#782: 切り戻しは mTLS を先に緩める（入口だけ戻して 502 のままにしない）', () => {
+  const permissiveAt = ISTIO_EDGE_DOWN.indexOf('"PERMISSIVE"');
+  const restoreAt = ISTIO_EDGE_DOWN.indexOf('kubectl apply -k deploy/local/edge');
+  assert.ok(permissiveAt > 0 && restoreAt > 0, 'istio-edge-down.sh の段が読めない');
+  assert.ok(permissiveAt < restoreAt, 'PERMISSIVE へ戻すのが Traefik の復旧より後になっている');
 });
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);

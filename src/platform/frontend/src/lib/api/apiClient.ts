@@ -10,8 +10,14 @@
 // - エラー: HTTP ステータスを ApiError へ写像する（404 は存在秘匿と整合。IADR-0009）。
 // - 401: セッション失効中の操作は setUnauthorizedHandler で注入された再ログイン導線を起動する
 //   （features 個別実装に依存しない）。`on401: 'silent'` は認証状態の確認（/auth/me）専用。
+import { i18n } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
 import { appConfig } from '@foundation/config/runtimeConfig';
 import { ApiError } from './ApiError';
+
+// ［2026-08-30 / #1078］到達不能時の文言は画面へ出る（`apiErrors.ts` 経由）ため翻訳カタログへ載せる。
+// 2 箇所で同じ文を作るので定数にする（同じ msgid を 2 度書くと、片方だけ直る事故が起きる）。
+const networkErrorMessage = () => i18n._(msg`サーバへ到達できませんでした。`);
 
 type UnauthorizedHandler = () => void;
 
@@ -65,7 +71,7 @@ export async function apiRequest(
   } catch (err) {
     // 呼び出し側の意図的な中断（AbortController）はネットワーク障害へ丸めない。
     if (err instanceof DOMException && err.name === 'AbortError') throw err;
-    throw new ApiError('network', 'サーバへ到達できませんでした。', null);
+    throw new ApiError('network', networkErrorMessage(), null);
   }
 
   if (!res.ok) {
@@ -196,7 +202,7 @@ export async function apiStream(
     // 再スローする（連投質問などで前フェッチを中断した際、呼び出し側が意図的中断として無視できるように）。
     // それ以外の fetch 失敗のみネットワークエラーへ丸める。
     if (err instanceof DOMException && err.name === 'AbortError') throw err;
-    throw new ApiError('network', 'サーバへ到達できませんでした。', null);
+    throw new ApiError('network', networkErrorMessage(), null);
   }
 
   if (!res.ok || !res.body) {

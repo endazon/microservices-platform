@@ -3,7 +3,7 @@ title: AI 回答・出典提示 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-06-27
-updated: 2026-08-23
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -83,8 +83,8 @@ issues: [#403, #448, #540, #541]
 
 ## 対象範囲（属性フィルタ）と narrowing-only（#539 / 裁定 Q1・Q3・Q9）
 
-**実装は `AiAnalysisService.Api.Tests/AskAttributeFilterTests.cs`（9 件）と
-`RetrievalService.Api.Tests/TagFilteringTests.cs`（13 件）。**
+**実装は `AiAnalysisService.Tests/AskAttributeFilterTests.cs`（9 件）と
+`RetrievalService.Tests/TagFilteringTests.cs`（13 件）。**
 
 計画 L198・裁定 Q1:「`SearchRequest` は既に `AttributeFilters` を持つのに `AnalysisRequest` だけが
 持たない非対称を解消する。」**最重要の不変条件は「範囲指定は権限を一切広げない」ことである。**

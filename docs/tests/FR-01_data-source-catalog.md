@@ -3,7 +3,7 @@ title: データソース登録・同期・カタログ化 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-04
-updated: 2026-08-28
+updated: 2026-08-30
 author: claude
 ---
 <!-- trace:
@@ -113,12 +113,12 @@ issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, planning#34
 - データ仕様書: `../data/data-source.md`
 - 実装 ADR: `../../.ai-context/adr/IADR-0001_document-service-owns-catalog.md`
 - テストコード: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/DataSourceService/DataSourceTests.cs`, `src/knowledge/backend/Services/DataSourceService/Tests/HealthEndpointTests.cs`
-- コネクタ/同期テスト: `.../DataSourceService.Api.Tests/FileSystemConnectorTests.cs`（T-05〜T-08）、`.../DataSourceSyncEndpointTests.cs`（T-09〜T-10）、`.../DataSourceSyncServiceTests.cs`（watermark 非前進）
-- Wiki コネクタテスト: `.../DataSourceService.Api.Tests/WikiConnectorTests.cs`（T-11〜T-14・fake HttpMessageHandler）
-- SaaS コネクタテスト: `.../DataSourceService.Api.Tests/SaaSConnectorTests.cs`（T-15〜T-18・fake HttpMessageHandler）
-- 業務DB コネクタテスト: `.../DataSourceService.Api.Tests/DatabaseConnectorTests.cs`（T-19〜T-25・ハンドロール ADO.NET フェイク）
-- 同期健全性: `.../DataSourceService.Api.Tests/DataSourceSyncServiceTests.cs`（T-26〜T-28）、`.../SyncErrorRedactorTests.cs`（T-29）
-- 更新 API: `.../DataSourceService.Api.Tests/DataSourceUpdateEndpointTests.cs`（T-30〜T-35）、`.../DataSourceAuthorizationTests.cs`（T-36）
+- コネクタ/同期テスト: `.../DataSourceService.Tests/FileSystemConnectorTests.cs`（T-05〜T-08）、`.../DataSourceSyncEndpointTests.cs`（T-09〜T-10）、`.../DataSourceSyncServiceTests.cs`（watermark 非前進）
+- Wiki コネクタテスト: `.../DataSourceService.Tests/WikiConnectorTests.cs`（T-11〜T-14・fake HttpMessageHandler）
+- SaaS コネクタテスト: `.../DataSourceService.Tests/SaaSConnectorTests.cs`（T-15〜T-18・fake HttpMessageHandler）
+- 業務DB コネクタテスト: `.../DataSourceService.Tests/DatabaseConnectorTests.cs`（T-19〜T-25・ハンドロール ADO.NET フェイク）
+- 同期健全性: `.../DataSourceService.Tests/DataSourceSyncServiceTests.cs`（T-26〜T-28）、`.../SyncErrorRedactorTests.cs`（T-29）
+- 更新 API: `.../DataSourceService.Tests/DataSourceUpdateEndpointTests.cs`（T-30〜T-35）、`.../DataSourceAuthorizationTests.cs`（T-36）
 - 資格情報の露出封鎖: `src/knowledge/backend/Services/DataSourceService/Tests/DataSourceCredentialExposureTests.cs`（T-46〜T-52。**すべて秘密を実際に通す陽性対照**であり、マスクを外す変異で落ちることを実測している）
 - BFF の中継: `src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs`（健全性の透過・`PUT` / `PATCH` の転送・運用者の 403）
 - 実装 ADR（追加）: `../../.ai-context/adr/IADR-0051_datasource-connector-port-and-filesystem.md`

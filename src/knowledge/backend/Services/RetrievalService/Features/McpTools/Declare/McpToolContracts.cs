@@ -1,7 +1,10 @@
 using System.Text.Json.Serialization;
 using Knowledge.Contracts.Dtos;
 
-namespace RetrievalService.Features.McpTools;
+namespace RetrievalService.Features.McpTools.Declare;
+
+// ADR-0068 決定 2, [[IADR-0319]]: 本ファイルを使う操作は `McpTools/Declare` の 1 つだけなので 3 段目に置く。
+// **「申告の語彙だから操作をまたぐ」ではない** —— 判定は所属（どの操作が使うか）であって、内容の抽象度ではない。
 
 // FR-16, ADR-0024 §2, [[IADR-0292]]: `GET /internal/mcp-tools` が返す自己申告の形。
 //

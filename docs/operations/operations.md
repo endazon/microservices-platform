@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-11, FR-13, FR-15, NFR-21, SC-02, UC-04, UC-07]
 adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0294, IADR-0304, IADR-0312]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0312, IADR-0313]
 specs: []
-issues: [#66, #88, #98, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #455, #532, #536, #546, #587, #665, #674, #863, #443, #438, planning#196]
+issues: [#66, #88, #98, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #455, #532, #536, #546, #587, #665, #674, #863, #443, #438, #466, #992, planning#196]
 -->
 
 # 運用仕様書
@@ -462,6 +462,15 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 | --- | --- | --- | --- | --- |
 | public / internal | ティアB（Voyage・保護契約） | voyage-3.5 / 1024 | `knowledge_chunks_voyage_3_5` | 有効（要 API キー） |
 | confidential / restricted | ティアA（セルフホスト固定） | ruri-v3 / 768 | `knowledge_chunks_ruri_v3` | 無効＝**fail-closed** |
+| （検証スタック専用）全区分 | ティアA（決定的ローカル・プロセス内計算） | deterministic-hash-v1 / 1024 | `knowledge_chunks_deterministic_v1` | 無効＝**既定では存在しないのと同じ** |
+
+🔴 **3 行目は使い捨ての検証スタック専用である。** 表層の文字 3-gram をハッシュするだけで
+**意味的な近さを持たず、検索品質を評価する用途には使えない**。存在理由は、埋め込みの鍵が無い
+統合スタックで「検索が実際に効くこと」を観測できるようにすること（それが無いと、索引に 1 点も
+入らないまま `POST /bff/search` が「壊れている」ときと同じ `200 ＋ 空` を返し、**壊れていても緑になる**）。
+**HTTP を一切行わないため、ティアA（社外送信なし）の定義をそのまま満たす** ——
+機密区分 × ティアの越境判定は 1 バイトも緩めていない。
+有効にすると起動時に警告ログが出る（本番へ紛れ込んだことに気づけるようにするため）。
 
 - **Voyage AI（ティアB）のゼロ保持設定（必須・受け入れ基準）**: 本番データを流す前に、Voyage AI の
   組織設定で**学習利用のオプトアウト（ゼロ保持 / zero-day retention）を有効化**する。08_data-egress-policy
@@ -493,8 +502,8 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   - 有効化後、社内文書サンプルで検索精度（nDCG@10）を実測し、voyage-3.5 比で大幅劣化しないことを確認する
     （セルフホスト埋め込みの計画 ADR が求める事前 PoC の代替）。劣る場合は BGE-M3 へ切替（モデル別コレクション分離のため影響は局所）。
   - **⚠️ 配列インデックス依存の環境変数に注意（Issue #98）**: 上記 `Endpoints__0__Enabled`（Voyage）/
-    `Endpoints__1__Enabled`（セルフホスト）は `appsettings.json` の `Embedding:Routing:Endpoints` 配列の
-    並び順に依存する。エンドポイントの追加・並び替え時はインデックスを必ず見直すこと。取り違え
+    `Endpoints__1__Enabled`（セルフホスト）/ `Endpoints__2__Enabled`（決定的ローカル・検証スタック専用）は
+    `appsettings.json` の `Embedding:Routing:Endpoints` 配列の並び順に依存する。エンドポイントの追加・並び替え時はインデックスを必ず見直すこと。取り違え
     （例 Voyage を誤って無効化し、セルフホストも無効のまま＝全 public 取り込み・検索クエリが黙って
     fail-closed）は起動時バリデーション（`EmbeddingRoutingOptionsValidator` / `ValidateOnStart`）が
     fail-fast で検知し、LlmGateway は起動に失敗する（ログに不整合内容を出力）。ティア↔プロバイダの
@@ -512,8 +521,8 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
     設計どおり当該チャンクを**索引スキップ**し、`IngestionCompleted` は索引できた件数で発行する
     （警告ログに機密区分を記録）。再試行では解消しないため DLQ には回さない。
 - **再索引手順（次元 1536→1024・モデル別コレクション移行）**:
-  1. 取り込みサービスは起動時に不足コレクション（`knowledge_chunks_voyage_3_5` / `_ruri_v3`）を
-     実次元で自動作成する（`QdrantBootstrapHostedService`）。旧 `knowledge_chunks`（1536 次元）は使用しない。
+  1. 取り込みサービスは起動時に不足コレクション（`knowledge_chunks_voyage_3_5` / `_ruri_v3`。
+     検証スタックでは `_deterministic_v1` も）を実次元で自動作成する（`QdrantBootstrapHostedService`）。旧 `knowledge_chunks`（1536 次元）は使用しない。
   2. 全文書に対し `DocumentUpdated` を再発行する（原本→正規化→取り込みを再走）。取り込み冒頭で全モデル別
      コレクションから当該文書を削除してから再索引するため、決定的チャンク ID により冪等に再構築される。
   3. 旧コレクション `knowledge_chunks` は移行完了後に手動削除する（`DELETE /collections/knowledge_chunks`）。

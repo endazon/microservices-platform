@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Microsoft.Extensions.Configuration;
-using RetrievalService.Features.McpTools;
 using RetrievalService.Features.McpTools.Declare;
 
 namespace RetrievalService.Tests;

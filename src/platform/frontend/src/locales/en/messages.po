@@ -42,23 +42,6 @@ msgstr "(terminal)"
 msgid "（表示 {shownCount} 件）"
 msgstr "({shownCount} shown)"
 
-#. placeholder {0}: s.sourceDocumentTitle
-#. placeholder {1}: s.targetDocumentTitle ?? ''
-#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
-msgid "{0} → {1}（{typeName}）"
-msgstr "{0} → {1} ({typeName})"
-
-#. placeholder {0}: s.sourceDocumentTitle
-#. placeholder {1}: s.tagValue ?? ''
-#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
-msgid "{0} に「{1}」を付与"
-msgstr "Add tag \"{1}\" to {0}"
-
-#. placeholder {0}: note.title
-#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "{0} を選択"
-msgstr "Select {0}"
-
 #: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "{count} 件で絞り込み中"
 msgstr "Narrowed by {count}"
@@ -79,19 +62,29 @@ msgstr "Enter no more than {max} characters."
 msgid "{sourceTitle} → {targetTitle}（{edgeTypeName}）"
 msgstr "{sourceTitle} → {targetTitle} ({edgeTypeName})"
 
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "{sourceTitle} → {targetTitle}（{typeName}）"
+msgstr "{sourceTitle} → {targetTitle} ({typeName})"
+
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "{sourceTitle} に「{tagValue}」を付与"
+msgstr "Add tag \"{tagValue}\" to {sourceTitle}"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "{title} を選択"
+msgstr "Select {title}"
+
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "{totalHits} 件（権限内のみ表示）"
 msgstr "{totalHits} result(s) (only documents you may access)"
 
-#. placeholder {0}: confirming.device.deviceName
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
-msgid "「{0}」のトークンを無効にします。この端末からの同期はすぐに停止します。再び同期するには、トークンを再発行してプラグインへ入れ直してください。"
-msgstr "This revokes the token for \"{0}\". Syncing from this device stops immediately. To sync again, reissue a token and paste it into the plugin settings."
+msgid "「{revokeTargetName}」のトークンを無効にします。この端末からの同期はすぐに停止します。再び同期するには、トークンを再発行してプラグインへ入れ直してください。"
+msgstr "This revokes the token for \"{revokeTargetName}\". Syncing from this device stops immediately. To sync again, reissue a token and paste it into the plugin settings."
 
-#. placeholder {0}: confirming.note.title
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "「{0}」を削除します。削除しても容量は空きません（90 日間保管されます）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
-msgstr "This deletes \"{0}\". Deleting does not free up storage (the note is kept for 90 days). To free up storage right away, run \"Delete permanently\" from the deleted list."
+msgid "「{softDeleteTitle}」を削除します。削除しても容量は空きません（90 日間保管されます）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
+msgstr "This deletes \"{softDeleteTitle}\". Deleting does not free up storage (the note is kept for 90 days). To free up storage right away, run \"Delete permanently\" from the deleted list."
 
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "「{tagValue}」を付与"
@@ -534,6 +527,14 @@ msgstr "Commit"
 msgid "コミット {commit}"
 msgstr "Commit {commit}"
 
+#: platform/frontend/src/lib/api/ApiError.ts
+msgid "サーバでエラーが発生しました。"
+msgstr "A server error occurred."
+
+#: platform/frontend/src/lib/api/apiClient.ts
+msgid "サーバへ到達できませんでした。"
+msgstr "Could not reach the server."
+
 #: knowledge/frontend/src/features/sc10-operations/types/opsTools.ts
 msgid "サービスメッシュ"
 msgstr "Service mesh"
@@ -753,11 +754,9 @@ msgstr "No"
 msgid "ナレッジグラフ"
 msgstr "Knowledge graph"
 
-#. placeholder {0}: nodes.length
-#. placeholder {1}: edges.length
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
-msgid "ナレッジグラフ（ノード {0} 件・辺 {1} 本）。詳細は凡例と選択パネルを参照"
-msgstr "Knowledge graph ({0} nodes, {1} edges). See the legend and the selection panel for details"
+msgid "ナレッジグラフ（ノード {shownCount} 件・辺 {edgeCount} 本）。詳細は凡例と選択パネルを参照"
+msgstr "Knowledge graph ({shownCount} nodes, {edgeCount} edges). See the legend and the selection panel for details"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "ナレッジグラフに表示する"
@@ -958,18 +957,13 @@ msgstr "Open the permission-change audit log in the logging stack ↗"
 msgid "一覧"
 msgstr "List"
 
-#. placeholder {0}: nodes.length
-#. placeholder {1}: view.totalNodes
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
-msgid "上位 {0} 件を表示（全 {1} 件）。すべては表示していません。 探索深さを浅くするか、辺の型を絞ってください。"
-msgstr "Showing the top {0} items (of {1} in total). Not everything is displayed. Reduce the exploration depth or narrow the edge types."
+msgid "上位 {shownCount} 件を表示（全 {totalCount} 件）。すべては表示していません。 探索深さを浅くするか、辺の型を絞ってください。"
+msgstr "Showing the top {shownCount} items (of {totalCount} in total). Not everything is displayed. Reduce the exploration depth or narrow the edge types."
 
-#. placeholder {0}: nodes.length
-#. placeholder {1}: view.totalNodes
-#. placeholder {2}: nodes.length
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
-msgid "上位 {0} 件を表示（全 {1} 件以上）。総数の探索も上限に達した ため、「更新日が新しい順」「次数が大きい順」は厳密な上位 {2} 件ではありません。 探索深さを浅くするか、辺の型を絞ってください。"
-msgstr "Showing the top {0} items (of {1} or more in total). The counting exploration also hit its limit, so \"recently updated\" and \"highest degree\" are not the exact top {2}. Reduce the exploration depth or narrow the edge types."
+msgid "上位 {shownCount} 件を表示（全 {totalCount} 件以上）。総数の探索も上限に達した ため、「更新日が新しい順」「次数が大きい順」は厳密な上位 {shownCount} 件ではありません。 探索深さを浅くするか、辺の型を絞ってください。"
+msgstr "Showing the top {shownCount} items (of {totalCount} or more in total). The counting exploration also hit its limit, so \"recently updated\" and \"highest degree\" are not the exact top {shownCount}. Reduce the exploration depth or narrow the edge types."
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
@@ -1186,6 +1180,10 @@ msgstr "This field is required."
 msgid "入力を確認してください"
 msgstr "Check the input"
 
+#: platform/frontend/src/lib/api/ApiError.ts
+msgid "入力内容に誤りがあります。"
+msgstr "The input contains errors."
+
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "全消去"
 msgstr "Clear all"
@@ -1292,10 +1290,9 @@ msgstr "Run analysis"
 msgid "分析対象（権限内に限定）"
 msgstr "Analysis scope (limited to what you may access)"
 
-#. placeholder {0}: live.length
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "利用中（{0}）"
-msgstr "In use ({0})"
+msgid "利用中（{liveCount}）"
+msgstr "In use ({liveCount})"
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "利用状況・検索傾向・回答品質（SLO・コストは Grafana で参照）"
@@ -1354,10 +1351,9 @@ msgstr "How deletion works"
 msgid "削除日時"
 msgstr "Deleted at"
 
-#. placeholder {0}: trashed.length
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "削除済み（{0}）"
-msgstr "Deleted ({0})"
+msgid "削除済み（{trashedCount}）"
+msgstr "Deleted ({trashedCount})"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "削除済みの個人資料"
@@ -1587,15 +1583,13 @@ msgstr "Undeclared subscription"
 msgid "対象"
 msgstr "Target"
 
-#. placeholder {0}: purgeTargets.length
-#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "対象: {0} 件 ／ 解放される容量: {freed}"
-msgstr "Target: {0} item(s) / Space to be freed: {freed}"
-
-#. placeholder {0}: rows.length
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
-msgid "対象: {0} 台"
-msgstr "Selected: {0} device(s)"
+msgid "対象: {deviceCount} 台"
+msgstr "Selected: {deviceCount} device(s)"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "対象: {purgeTargetCount} 件 ／ 解放される容量: {freed}"
+msgstr "Target: {purgeTargetCount} item(s) / Space to be freed: {freed}"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "対象アクション"
@@ -2191,6 +2185,10 @@ msgstr "The configuration information is unavailable."
 msgid "構成情報を取得できませんでした。"
 msgstr "The configuration information could not be loaded."
 
+#: platform/frontend/src/lib/api/ApiError.ts
+msgid "権限がありません。"
+msgstr "You do not have permission."
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "権限のある文書がありません"
 msgstr "No documents you can view"
@@ -2432,11 +2430,9 @@ msgstr "Kind:"
 msgid "種類"
 msgstr "Kind"
 
-#. placeholder {0}: issued.deviceName
-#. placeholder {1}: formatDateTime(issued.expiresAt)
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
-msgid "端末: {0} ／ 有効期限: {1}"
-msgstr "Device: {0} / Expires: {1}"
+msgid "端末: {issuedDeviceName} ／ 有効期限: {issuedExpiresAt}"
+msgstr "Device: {issuedDeviceName} / Expires: {issuedExpiresAt}"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "端末を接続する"
@@ -2453,6 +2449,10 @@ msgstr "Device name (optional)"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "端末名を入力してトークンを発行し、Obsidian プラグインの設定へ貼り付けてください。トークンの有効期限は 30 日です。期限が切れたら、この画面から手動で再発行して入れ直してください（自動更新は行いません）。"
 msgstr "Enter a device name, issue a token, and paste it into your Obsidian plugin settings. Tokens are valid for 30 days. When a token expires, reissue it manually from this screen and paste it in again (tokens are never refreshed automatically)."
+
+#: platform/frontend/src/lib/api/ApiError.ts
+msgid "競合が発生しました。"
+msgstr "A conflict occurred."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 #: platform/frontend/src/app/routing/nav.ts
@@ -2539,9 +2539,17 @@ msgstr "Discard corrections and re-convert"
 msgid "補正対象の図の元画像"
 msgstr "Original image of the diagram being corrected"
 
+#: platform/frontend/src/lib/api/ApiError.ts
+msgid "要求が失敗しました（{status}）。"
+msgstr "The request failed ({status})."
+
 #: platform/frontend/src/components/ui/NotFound.tsx
 msgid "見つかりませんでした"
 msgstr "Not found"
+
+#: platform/frontend/src/lib/api/ApiError.ts
+msgid "見つかりませんでした。"
+msgstr "Not found."
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "角丸四角（破線の輪郭）= 個人資料（自分のみ）"
@@ -2594,6 +2602,10 @@ msgstr "Detailed tools"
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "認証"
 msgstr "Authentication"
+
+#: platform/frontend/src/lib/api/ApiError.ts
+msgid "認証が必要です。"
+msgstr "You need to sign in."
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "説明"

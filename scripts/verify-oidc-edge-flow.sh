@@ -96,12 +96,22 @@ if [ "$SEARCH_HITS" = "1" ]; then SEARCH_SEEDED=1; fi
 # **ここへ値を写さない**（写すと seed を替えたときに片方だけ取り残される）。
 SEARCH_PROBE_TERM="${SEARCH_PROBE_TERM:-}"
 
+# FR-03 / #1116: 全文（キーワード）側の対照で使う 2 つのクエリ。
+#   - KEYWORD_ONLY_QUERY: **合言葉から導く**（seed-search-documents.js --print-keyword-only-query）。
+#     語は同じまま順序だけ替えたもの。索引が無いと部分文字列として現れないため 0 件になる。
+#     🔴 **ここに値を書かない** —— 合言葉の単一情報源を崩さないため、導出は seed 側に置いてある。
+#   - KEYWORD_ABSENT_TERM: **陰性対照**。seed のどの文書にも現れない語であればよく、
+#     seed の内容に依存しないので**ここで宣言してよい**（合言葉とは性質が違う）。
+KEYWORD_ONLY_QUERY="${KEYWORD_ONLY_QUERY:-}"
+KEYWORD_ABSENT_TERM="${KEYWORD_ABSENT_TERM:-msp-absent-zzzznotexistword}"
+
 # 🔴 TOTAL は「本来走るべき段数」の単一情報源である。**モードの組み合わせで変わるので加算式で持つ**。
 #    固定値を並べると、組み合わせを 1 つ足すたびに門（末尾の STEPS 突合）が誤発火する。
 TOTAL=11
 if [ "$ABAC_POSITIVE" = "1" ]; then TOTAL=$((TOTAL + 6)); fi
 if [ "$SEARCH_SEEDED" = "1" ]; then TOTAL=$((TOTAL + 2)); fi
-if [ "$SEARCH_HITS" = "1" ]; then TOTAL=$((TOTAL + 1)); fi
+# FR-03 / #1116: S4（全文側の正の対照）と S5（同・陰性対照）。SEARCH_HITS に含める。
+if [ "$SEARCH_HITS" = "1" ]; then TOTAL=$((TOTAL + 3)); fi
 
 PASS=0
 FAIL=0
@@ -726,6 +736,90 @@ if [ "$SEARCH_HITS" = "1" ]; then
       pass "seed 文書がヒットした（${hit_state%%:*} 件・合言葉 $SEARCH_PROBE_TERM を含む）"
     fi
     rm -f "$body_file"
+  fi
+
+  # ---- S4・S5) 🔴 FR-03 / #1116: **全文（キーワード）側が実際に効いていること** ------------
+  #
+  # 🔴 **段 S3 はこの欠陥を通す。** 合言葉をそのまま引くと、全文インデックスが無くても当たる ——
+  #    Qdrant v1.18.1 は索引の無い `Match { Text }` を**部分文字列の全走査**へ黙って落とすためで、
+  #    しかもハイブリッドではベクトル側（閾値の無い kNN）がどんな語でも最近傍を返す
+  #    （[[IADR-0313]] §既知の限界）。**ベクトルでは当たらない語は原理的に作れない。**
+  #
+  #    そこで **① モードで系統を切り分け（`mode=keyword`）② 同じ語のまま順序を替える**。
+  #    順序を替えた合言葉は、索引が無ければ**部分文字列として現れない**ので 0 件になり、
+  #    索引が在れば**トークン集合として全て在る**ので当たる（実機で実測）。
+  #
+  # 🔴 **正の対照だけでは足りない。** 「全部当たる」実装（例: フィルタが効かない）でも緑になるので、
+  #    **コレクションに無い語で 0 件**であることを同じモードで対に置く（#972 / [[IADR-0252]]）。
+  next_step "全文検索だけ（mode=keyword）で、語順を替えた合言葉がヒットすること（索引の有無を分ける）"
+  KEYWORD_ONLY_QUERY="${KEYWORD_ONLY_QUERY:-}"
+  if [ -z "$KEYWORD_ONLY_QUERY" ]; then
+    KEYWORD_ONLY_QUERY=$(node "$(dirname "$0")/seed-search-documents.js" --print-keyword-only-query 2>/dev/null | tail -1)
+  fi
+  if [ -z "$KEYWORD_ONLY_QUERY" ]; then
+    fail "全文側でしか答えられないクエリを導けない（seed-search-documents.js --print-keyword-only-query）"
+    info "🔴 合言葉（probeTerm）が 1 語だと導けない。区切りを含む語にすること。"
+  else
+    body_file=$(mktemp)
+    code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST \
+      -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
+      -d "$(printf '{"query":"%s","topK":10,"mode":"keyword"}' "$KEYWORD_ONLY_QUERY")" \
+      "$EDGE_URL/bff/search")
+    kw_state=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);const r=o.results??o.Results;if(!Array.isArray(r))return console.log('bad');const t=process.argv[1];const seen=r.some(x=>String(x.documentTitle??x.DocumentTitle??'').includes(t)||String(x.text??x.Text??'').includes(t));console.log(r.length+':'+(seen?1:0))}catch{console.log('bad')}})" "$SEARCH_PROBE_TERM" < "$body_file")
+    if [ "$code" != "200" ]; then
+      fail "POST /bff/search（mode=keyword）→ $code（200 を期待）"
+      info "$(head -c 200 "$body_file")"
+    elif [ "$kw_state" = "bad" ]; then
+      fail "POST /bff/search（mode=keyword）→ 200 だが SearchResponse の形ではない"
+    elif [ "${kw_state%%:*}" = "0" ]; then
+      fail "全文検索（mode=keyword・クエリ「$KEYWORD_ONLY_QUERY」）がヒットしない（0 件）"
+      info '🔴 疑う順: ①Qdrant の text ペイロードに全文インデックスが無い（#1116。最有力）'
+      info "         ②取り込みが索引へ入っていない（段 S3 が緑ならこれではない）"
+      info "  確認: kubectl -n platform-infra port-forward svc/qdrant 6333:6333 ののち"
+      info "        curl -s http://127.0.0.1:6333/collections/<コレクション> | grep payload_schema"
+      info "        もしくは retrieval-service の /health/ready（qdrant-fulltext-index が Degraded になる）"
+    elif [ "${kw_state##*:}" = "0" ]; then
+      fail "全文検索で ${kw_state%%:*} 件返ったが seed 文書（$SEARCH_PROBE_TERM）を含まない"
+    else
+      pass "全文検索だけで seed 文書がヒットした（${kw_state%%:*} 件・クエリ「$KEYWORD_ONLY_QUERY」）"
+    fi
+    rm -f "$body_file"
+  fi
+
+  # 陰性対照。**索引に無い語で 0 件**であること（「常に全件返す」実装を検出する）。
+  next_step "全文検索だけ（mode=keyword）で、索引に無い語が 0 件であること（全件返しを検出する）"
+  body_file=$(mktemp)
+  code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST \
+    -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
+    -d "$(printf '{"query":"%s","topK":10,"mode":"keyword"}' "$KEYWORD_ABSENT_TERM")" \
+    "$EDGE_URL/bff/search")
+  absent_hits=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);const r=o.results??o.Results;console.log(Array.isArray(r)?r.length:-1)}catch{console.log(-1)}})" < "$body_file")
+  if [ "$code" != "200" ]; then
+    fail "POST /bff/search（mode=keyword・陰性対照）→ $code（200 を期待）"
+  elif [ "$absent_hits" = "0" ]; then
+    pass "索引に無い語（$KEYWORD_ABSENT_TERM）は 0 件（全件返しではない）"
+  else
+    fail "索引に無い語（$KEYWORD_ABSENT_TERM）で $absent_hits 件返った（全文側の絞り込みが効いていない）"
+    info "$(head -c 200 "$body_file")"
+  fi
+  rm -f "$body_file"
+
+  # 縮退の可観測化（#1116 受け入れ基準 3）。**索引が無いことは例外にならない**ので、
+  # 検索側の readiness に載せた `qdrant-fulltext-index` が唯一の運用上の検出点である。
+  next_step "retrieval-service の readiness が Degraded でないこと（全文インデックスの有無を見る）"
+  ready_state=$(kubectl -n "${MSP_NS:-microservices-platform}" get pods -l app=retrieval-service \
+    -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)
+  ready_body=$(kubectl -n "${MSP_NS:-microservices-platform}" exec deploy/retrieval-service \
+    -c retrieval-service -- sh -lc 'wget -qO- http://127.0.0.1:8080/health/ready 2>/dev/null || true' 2>/dev/null)
+  if [ -z "$ready_body" ]; then
+    info "readiness の本文を読めなかった（kubectl 不在・権限・イメージに wget 無し等）。判定は skip せず、"
+    info "段 S4 の結果で代替する —— S4 が緑なら索引は在る。"
+    pass "readiness 本文は取得できないが、全文側が実際にヒットしている（段 S4）ので索引は在る"
+  elif printf '%s' "$ready_body" | grep -qi 'Degraded'; then
+    fail "retrieval-service の /health/ready が Degraded（全文ペイロードインデックスが無い疑い。#1116）"
+    info "本文: $(printf '%s' "$ready_body" | head -c 200)"
+  else
+    pass "retrieval-service の /health/ready は Degraded ではない（Ready=$ready_state・本文 $(printf '%s' "$ready_body" | head -c 40)）"
   fi
 fi
 

@@ -149,13 +149,20 @@ builder.Host.UseWolverine(opts =>
     var deleteStep = opts.AddPlatformWolverineStep<DocumentDeletedConsumer>(pipeline);
     var syncStep = opts.AddPlatformWolverineStep<GraphDocumentSyncConsumer>(pipeline);
 
-    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision();
+    var graphDeleteQueue = deleteStep?.Queue ?? nameof(DocumentDeleted);
+    var graphSyncQueue = syncStep?.Queue ?? nameof(DocumentUpdated);
+
+    // 手順 3（購読側の束ね）/ #992: 各キューをイベント型名の fan-out exchange へ束ねる。
+    // **キュー名を分けるだけでは何も届かない** —— 束ねて初めて発行が届く。
+    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision()
+        .BindPlatformQueue<DocumentDeleted>("graph-service", graphDeleteQueue)
+        .BindPlatformQueue<DocumentUpdated>("graph-service", graphSyncQueue);
 
     // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う
     // （fan-out の保存: 他購読サービスと別キューになりサービス名前置で分かれる）。
     // ハンドラへの振り分けはメッセージ型で決まる（キュー 2 本 → 同一ホスト内で型別ディスパッチ）。
-    opts.ListenToPlatformQueue("graph-service", deleteStep?.Queue ?? nameof(DocumentDeleted));
-    opts.ListenToPlatformQueue("graph-service", syncStep?.Queue ?? nameof(DocumentUpdated));
+    opts.ListenToPlatformQueue("graph-service", graphDeleteQueue);
+    opts.ListenToPlatformQueue("graph-service", graphSyncQueue);
 
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();

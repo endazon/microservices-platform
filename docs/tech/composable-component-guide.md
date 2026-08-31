@@ -68,7 +68,10 @@ issues: [#195, #206, #217, #218, #219, #519]
 
 ### 2.1 パイプライン段（Step）— イベント購読→処理→発行
 
-配置: `<Service>/Composable/Steps/`。段はコア改修なしで追加できる。
+配置: `<Service>/Features/<集約>/<操作>/`（`*Consumer.cs`）。段はコア改修なしで追加できる。
+**`Composable/Steps/` は単一プロジェクト＋VSA/DDD 構成への移送で無くなった**（サービス側は 0 件。
+`Foundation/` / `Composable/` のフォルダ名が残るのは共有基盤プロジェクトだけである。
+[区分表 §4](./composability-classification.md) の写像表を参照）。
 
 1. `IConsumer<TIn>`（MassTransit）と `IPipelineStep`（`Shared.Infrastructure.Foundation.Pipeline`）を
    実装する。`static abstract string StepName` は `pipeline.json` の `steps[].name` と一致させる。
@@ -82,8 +85,8 @@ issues: [#195, #206, #217, #218, #219, #519]
 
 **制約**（違反は起動時 fail-fast または規約違反）:
 
-- 段が依存してよいのは `Shared.Contracts` のイベント型・自プロジェクトの `Foundation/Ports/`・
-  `Foundation/Domain/` のみ。**段どうしの直接参照は禁止**（連携はイベント経由のみ）。
+- 段が依存してよいのは `Shared.Contracts` のイベント型・自サービスの `Domain/Ports/`・
+  `Domain/` のみ。**段どうしの直接参照は禁止**（連携はイベント経由のみ）。
 - 段は**ステートレス**を原則とし、ジョブ状態は自サービスの専用 DB に閉じる
   （Database per Service。上流 `10_composability-design` §2 とサービス境界の決定による）。
 - 宣言と実装の不整合（段の宣言漏れ・`consumer` 型名不一致・`input` と `IConsumer<TIn>` の不一致）は
@@ -93,25 +96,26 @@ issues: [#195, #206, #217, #218, #219, #519]
 
 ### 2.2 ポートアダプタ（Adapter）— 外部コンポーネント接続
 
-配置: `<Service>/Composable/Adapters/`。
+配置: `<Service>/Infrastructure/ExternalServices/`（共有基盤へ置く場合は
+`Platform.Shared.Infrastructure/Composable/Adapters/`）。
 
-1. 接続点となる抽象が `<Service>/Foundation/Ports/`（または `Shared.Infrastructure` のポート）に
+1. 接続点となる抽象が `<Service>/Domain/Ports/`（または `Shared.Infrastructure` のポート）に
    あることを確認する。**無い場合はポート新設から**（ポートの新設は固定部への追加＝設計判断であり、
    実装 ADR（IADR）を起こす）。
-2. ポートを実装するアダプタを `Composable/Adapters/` に置く。外部 SDK（Qdrant・S3・GraphQL 等）への
+2. ポートを実装するアダプタを `Infrastructure/ExternalServices/` に置く。外部 SDK（Qdrant・S3・GraphQL 等）への
    依存は**アダプタ内に閉じる**（ポート迂回の直接依存は禁止。[区分表 §3](./composability-classification.md)）。
 3. 合成ルート（`Program.cs`）で DI 登録する。構成による実装選択（例: 接続文字列の有無で
-   Qdrant/InMemory を切替）を行う場合、その選択ヘルパは `Composable/` 側に置く
-   （`Foundation/Extensions/` に置くと依存方向規則違反）。
+   Qdrant/InMemory を切替）を行う場合、その選択ヘルパは `Infrastructure/` 側に置く
+   （`Domain/` に置くと依存方向規則違反。共有基盤では `Foundation/Extensions/` が同じ理由で不可）。
 
 既存アダプタ（`QdrantVectorStore`・`S3ObjectStorageClient`・`WikiJsGraphQlClient`・
 `PandocConversionService` 等）を実装例として参照すること（一覧は[区分表 §3](./composability-classification.md)）。
 
 ### 2.3 LLM・埋め込みプロバイダ — LlmGateway への追加
 
-配置: `LlmGateway` の `Composable/` 配下。
+配置: `LlmGateway/Infrastructure/ExternalServices/`。
 
-1. `ILlmProvider` / `IEmbeddingProvider`（LlmGateway のポート）を実装する。
+1. `ILlmProvider` / `IEmbeddingProvider`（`LlmGateway/Domain/Ports/`）を実装する。
 2. ルーティング表（構成駆動。設定駆動のエンドポイント定義・モデル追加・埋め込みの機密区分ルーティング）にプロバイダとモデル経路を追加する。
    エグレス統制（どの外部先へ出てよいか）は**固定**であり、統制の変更は新 ADR が必要。
 3. 呼び出し側サービスは変更しない（各サービスは `IEmbeddingService` / `IDiagramCoder` 等の
@@ -119,10 +123,10 @@ issues: [#195, #206, #217, #218, #219, #519]
 
 ### 2.4 データソースコネクタ（Connector）— 実装済み（プラグイン拡張点）
 
-配置: `DataSourceService` の `Composable/Adapters/`（ポートは `Foundation/Ports/IDataSourceConnector`）。計画は
+配置: `DataSourceService/Infrastructure/ExternalServices/`（ポートは `Domain/Ports/IDataSourceConnector`）。計画は
 `06_technical/09_datasource-connectors.md`。`/sync` は実コネクタ経由で原本を取得・格納し `RawDocumentFetched`
 を発行する。`filesystem`・`wiki`・`saas`・
-`db`の 4 コネクタが実装済みで、`DataSourceService.Api/Program.cs` に DI 登録される
+`db`の 4 コネクタが実装済みで、`DataSourceService/Program.cs` に DI 登録される
 （`ConnectorRegistry` が `SourceType` で解決。未登録の SourceType は縮退）。定期同期は `DataSourceSyncHostedService`
 （既定無効）。**新規コネクタは `IDataSourceConnector` を実装して DI 登録するだけ**でコア改修なく追加できる
 （feedback 20260709_fr01（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260709_fr01-connector-and-nfr-verification-status.md` へ移設） の当時状況から進捗）。
@@ -132,8 +136,9 @@ issues: [#195, #206, #217, #218, #219, #519]
 
 原典は [src/README.md](../../src/README.md)（ユニット規約: レイアウト・依存規則・サブモジュール手順）。要点:
 
-1. `src/knowledge/backend/Services/<Name>/`（`src/` + `tests/`）を規約レイアウトで作成し、各プロジェクト内を
-   `Foundation/` / `Composable/` に二分する（固定/可変分離の規約。空フォルダは作らない）。
+1. `src/knowledge/backend/Services/<Name>/` を**単一プロジェクト**（`<Name>.csproj`）＋
+   `Features/` `Domain/` `Infrastructure/` `Common/` `Tests/` のフォルダで作成する
+   （固定/可変分離はこのフォルダ割りが担う。空フォルダは作らない）。
 2. 所属ユニットの `src/knowledge/backend/backend.slnx` に csproj を登録する。ビルド設定・パッケージ版は
    `Directory.Build.props` / `Directory.Packages.props` の中央管理に従う（csproj に `Version=` を書かない）。
 3. ユニット外参照は `src/platform/backend/Shared/` のみ。サービス間連携は同期 API（openapi.yaml 管理）または
@@ -175,7 +180,8 @@ issues: [#195, #206, #217, #218, #219, #519]
 
 ## 3. 全部品共通のルール
 
-1. **依存方向**: `Foundation/` → `Composable/` の参照は禁止。可変実装へのアクセスは必ずポート
+1. **依存方向**: 固定 → 可変の参照は禁止（共有基盤では `Foundation/` → `Composable/`、
+   サービスでは `Domain/` → `Features/` ・ `Infrastructure/`）。可変実装へのアクセスは必ずポート
    （抽象）経由。束ねるのは `Program.cs`（合成ルート）のみ。
 2. **契約の不変**: イベント契約・同期 API 契約は後方互換の追加のみ。破壊的変更は新 ADR。
 3. **仕様書**: 着手前に作業仕様書（`.ai-context/specs/`）を作成する。対象があれば機能/通信/データ/テスト
@@ -190,8 +196,10 @@ issues: [#195, #206, #217, #218, #219, #519]
 ## 4. 受け入れチェックリスト（PR 前の自己点検）
 
 - [ ] 作業仕様書（`.ai-context/specs/`）があり、起点 ID・計画書リンクを備えている
-- [ ] 新規コードは `Composable/`（または `features/`）配下にあり、名前空間がフォルダと一致している
-- [ ] `Foundation/` 内に `using *.Composable.*` が現れていない
+- [ ] 新規コードは可変側（サービスは `Features/` / `Infrastructure/`、共有基盤は `Composable/`、
+      フロントは `features/`）配下にあり、名前空間がフォルダと一致している
+- [ ] `Domain/` が `Features/` / `Infrastructure/` を using していない
+      （共有基盤では `Foundation/` 内に `using *.Composable.*` が現れていない）
 - [ ] 外部 SDK への依存がアダプタ（ポート実装）内に閉じている
 - [ ] 段の場合: `IPipelineStep.StepName`・`pipeline.json` 宣言・合成ルート登録の三点が揃い、
       `validate-pipeline-config.js` が通る

@@ -413,6 +413,19 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-bff-downstreams.js
 
+      # NFR / ADR-0032, IADR-0316, Issue #1107 再発防止: コード側が「実値は k8s Secret から環境変数で
+      # 注入する」と doc コメントで宣言した構成値が、helm（secretKeyRef 由来）と compose（${...} 展開）の
+      # 両方で実際に注入されていることを突合する。BffSessionOptions.ClientSecret は実装もテストも
+      # 揃っていたのに deploy/ に 1 行も無く、稼働クラスタで /bff/auth/login が 500 を返し続けた
+      # （単体テストは構成を自分で与えて走るので、この欠落では絶対に落ちない）。
+      # in-repo ファイルのみ参照＝submodule 取得不要。外部依存ゼロ（Node のみ）。
+      - name: Self-test secret-injected options checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-secret-injected-options.js --self-test
+      - name: Check secret-injected options are wired in deploy
+        if: ${{ !cancelled() }}
+        run: node scripts/check-secret-injected-options.js
+
   # NFR / IADR-0232 決定 6: submodule（src/*）の取得が要る検査を 1 ジョブへ束ねる。
   # static-checks と分けてあるのは、submodule 取得と helm / kubectl の導入がここだけに要るためで、
   # 全部を 1 ジョブにすると取得の要らない検査までその時間を待つことになる。
@@ -767,7 +780,7 @@ jobs:
   # #801（雛形 frontend）と違い「paths: へ 1 行足す」では直らない。雛形はテンプレート位置のままでは
   # ビルドできない（IADR-0060 決定 3 / 決定 4・IADR-0064。実測は
   # .ai-context/specs/20260818_issue-830_template-backend-ci-build.md）:
-  #   - SampleService.Api.csproj の platform Shared への相対参照（..\ × 6）は **配置後**の
+  #   - SampleService.csproj の platform Shared への相対参照（..\ × 4）は **配置後**の
   #     src/<unit>/backend/... を前提とする。templates/ 位置では templates/platform/... を探して
   #     見つからず、restore が MSB4181 で失敗する。
   #   - 共通 props は .sample 付きで配布される（配置時は src/Directory.Build.props / .Packages.props

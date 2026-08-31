@@ -9,9 +9,10 @@ related_ids:
   - IADR-0077
   - IADR-0087
   - IADR-0206
+  - IADR-0317
 author: claude
 created: 2026-07-20
-updated: 2026-08-17
+updated: 2026-08-30
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ (ADR-0006 CI/CD・運用基盤)
 ---
@@ -38,6 +39,20 @@ prod は Istio エッジだがローカルは Istio 未導入。k3s は Traefik 
 ## 決定
 
 ### 1. ローカルエッジは k3s 内蔵 Traefik で構成する（Istio は持ち込まない）
+
+> **［2026-08-30 追記 / #782］本決定 1 は `ISTIO=1` の経路に限って
+> [IADR-0317](./IADR-0317_istio-ingressgateway-edge-and-strict-mtls.md) が Supersede した。**
+> **既定（`ISTIO` 未設定）では本決定はそのまま有効である** —— エッジは従来どおり k3s 内蔵 Traefik で、
+> 挙動は 1 バイトも変わらない。
+>
+> **覆った理由は「重量」ではなく「STRICT mTLS と両立しないこと」である。** `kube-system` の Traefik は
+> メッシュの外にあり、mesh 内の 4 Service（frontend / bff / minio / wiki-js）へ**平文で入っている**。
+> `PeerAuthentication` を STRICT にするとその平文が拒否され、**入口だけが 502 になる**（#1072 実測）。
+> 計画 `ADR-0021` は入口を mesh ネイティブな Envoy にすることでこの境界を構造的に無くすと定めており、
+> `ISTIO=1` かつ `LOCALEDGE=1` のときは `deploy/local/edge-istio/` がそれを実装する。
+> **決定 2〜6（opt-in ゲート・80/443・admin:50000 のホスト名ベース集約・issuer・fail-safe な適用順）は
+> 動いていない** —— 移送先が Traefik から Envoy に替わっても、host とポートは 1 つも変えていない
+> （`:50000` の OIDC redirect URI が 7 クライアントに登録済みで動かせないため）。
 
 `values-local` が `edge.enabled=false`（Istio 未導入）である流儀を維持し、ローカルのエッジは**既に稼働している
 k3s Traefik** を使う。エッジ資材は `deploy/local/edge/`（opt-in オーバーレイ）に置き、observability/vault と同じ

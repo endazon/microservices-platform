@@ -92,7 +92,7 @@
   種別区分の計画側条文は改定を環流中 —— planning#490 のコメント参照）。1 プロジェクトに畳むので、
   `SampleService.Tests.csproj` は単体側（NSubstitute 等）と統合側（`Mvc.Testing` / Testcontainers /
   Respawn）の**和集合**を参照する。**テスト種別ごとに `.csproj` を割らないこと**
-  —— 実サービス（`src/**` の `<Name>.Api.Tests`）も全て 1 プロジェクトである。
+  —— 実サービス（`src/**` の `Services/<Name>/Tests/<Name>.Tests.csproj`）も全て 1 プロジェクトである。
 - **テストは xUnit v3 で書く**（ADR-0030 の標準どおり。**［2026-08-21 更新］** 従前ここは
   「v2 で書く」だった。16 プロジェクトの一斉切替が完了したため v3 が現行である）。
   本体パッケージ ID は **`xunit.v3`** である（`xunit` は v2 系のまま更新されない別 ID）。
@@ -101,7 +101,7 @@
   作ってはならない**（非互換の runner と組み合わさる）。`scripts/check-backend-libraries.js` が
   本テンプレートを含めて**両方向**を検査し混入を止める。経緯は
   [`docs/tech/tech-requirements.md`](../../docs/tech/tech-requirements.md)「バックエンドアプリケーション層標準」を参照。
-- 実サービスの標準レイアウト（`Foundation/` / `Composable/` の区分）は
+- 実サービスの標準レイアウト（単一プロジェクト＋ `Features/` `Domain/` `Infrastructure/` `Common/` `Tests/`）は
   [`src/README.md`](../../src/README.md) の「サービスユニットの標準レイアウト」に従う。
 - ユニット固有のイベント契約は `backend/Shared/<Unit>.Contracts/Events/` に置く（段間連携イベント。
   契約階層化は #229 / IADR-0059）。
@@ -113,7 +113,8 @@
   部分改定。`Platform.Shared.Kernel` = ADR-0030 の共有カーネルで、
   [IADR-0229](../../.ai-context/adr/IADR-0229_shared-kernel-result-surface.md) が Result / Error を公開する実体を与えた）。
 - platform → 可変ユニットの参照は禁止（一方向依存）。
-- `Foundation/` は `Composable/` に依存しない。
+- サービス内の参照方向は `Domain/` → `Features/` ・ `Infrastructure/` ・ `Common/` を禁じる一方向
+  （共有基盤プロジェクトでは同じ規律を `Foundation/` → `Composable/` の禁止として表す）。
 - フロントが参照してよいのは **`@foundation`（platform の基盤）と `@platform/ui`（共有 UI パッケージ）の 2 つ**
   （[IADR-0121](../../.ai-context/adr/IADR-0121_spa-stack-migration-staging.md) 決定 4 が
   [`src/README.md`](../../src/README.md) 依存規則 例外 2 を 1 → 2 へ部分改定した。`@platform/ui` は

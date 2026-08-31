@@ -32,7 +32,7 @@ issues: [#501, #1065]
 E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 
 対象（API）: [`src/platform/backend/Bff/Platform.Bff.Tests/BffDocumentWriteEndpointTests.cs`](../../src/platform/backend/Bff/Platform.Bff.Tests/BffDocumentWriteEndpointTests.cs) ／
-[`src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests/`](../../src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests/)
+[`src/knowledge/backend/Services/DocumentService/Tests/`](../../src/knowledge/backend/Services/DocumentService/Tests/)
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -110,7 +110,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 
 ## バックエンド（DocumentService・状態遷移ガード・xUnit）
 
-対象: [`Foundation/Domain/Document.cs`](../../src/knowledge/backend/Services/DocumentService/Domain/Document.cs)（`Publish()` / `CanPublish`）と `POST /documents/{id}/publish`
+対象: [`Domain/Document.cs`](../../src/knowledge/backend/Services/DocumentService/Domain/Document.cs)（`Publish()` / `CanPublish`）と `POST /documents/{id}/publish`
 テスト: [`DocumentVersioningTests.cs`](../../src/knowledge/backend/Services/DocumentService/Tests/DocumentVersioningTests.cs)（ドメイン）／
 [`DocumentEndpointVersioningTests.cs`](../../src/knowledge/backend/Services/DocumentService/Tests/DocumentEndpointVersioningTests.cs)（API）
 
@@ -138,7 +138,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 - `pnpm run test -- knowledge/frontend/src/features/adminFlow.test.tsx`（導線）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
 - `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDocumentWriteEndpointTests`
-- `dotnet test src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests --filter Publish`
+- `dotnet test src/knowledge/backend/Services/DocumentService/Tests --filter Publish`
 
 <!-- trace-table:
 row1: SC-05, FR-06
