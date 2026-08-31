@@ -23,8 +23,13 @@ import type { SessionUser } from '../../src/lib/auth/AuthContext';
 //   両方を落とす —— どちらも「何も見ずに緑」になる経路である（`bundle-splitting.smoke.spec.ts`
 //   の ① と同じ理由）。
 
-/** `/bff` を除いたパスと、その要求の中身。 */
-export interface BffCall {
+/**
+ * `/bff` を除いたパスと、その要求の中身。
+ *
+ * **export しない** —— spec は `traffic.calls` から辿るだけで型名を書かない。名前で公開すると
+ * 未使用 export の床（`check-knip`）を押し上げる（feature の `*Key` と同じ理由）。
+ */
+interface BffCall {
   /** `GET /private-notes` の形。ハンドラの引き当てキーでもある。 */
   key: string;
   method: string;
@@ -63,8 +68,10 @@ function isReply(value: unknown): value is BffReply {
  * **`unknown` と union にしない。** `unknown` は union を丸ごと飲み込むため、関数を書いたときに
  * 引数へ文脈型が付かず `any` になる（`noImplicitAny` が拾えなくなる）。契約の応答は必ず
  * オブジェクトか配列なので `object` で足りる。
+ *
+ * **export しない**（`BffCall` と同じ理由）。
  */
-export type BffHandler = ((call: BffCall) => unknown) | object;
+type BffHandler = ((call: BffCall) => unknown) | object;
 
 export interface BffTraffic {
   /** 観測した `/bff/*` の呼び出し（順序つき）。 */
