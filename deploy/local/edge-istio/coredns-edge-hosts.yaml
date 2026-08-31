@@ -1,0 +1,37 @@
+# IADR-0227 / #782: エッジ host（`*.localhost`）の **pod 側**解決先を Istio Ingress Gateway へ移す。
+#
+# deploy/local/aliases/coredns-edge-hosts.yaml と**同じオブジェクト**（kube-system/coredns-custom）
+# を上書きする。違いは rewrite の宛先だけである:
+#     Traefik 経路   … traefik.kube-system.svc.cluster.local
+#     Istio エッジ   … istio-ingressgateway.istio-system.svc.cluster.local
+#
+# なぜ要るのか（元ファイルの論拠をそのまま引き継ぐ）:
+#   非 .NET の OIDC クライアント（Grafana / ArgoCD / Vault / MinIO / Headlamp / Wiki.js）は
+#   IADR-0086 の metadata / issuer 分離が使えず、**pod から issuer host を実際に引く**。
+#   CoreDNS が答えを持たないとノードのリゾルバへフォールスルーし、`*.localhost` は
+#   127.0.0.1（＝自分自身）へ解決されて 404 になる。**塞ぐために要る。**
+#
+# 🔴 Go のリゾルバは `.localhost` を RFC 6761 の特例で 127.0.0.1 にしない（IADR-0310）。
+#   curl は特例を持つのでホストからは黙って通るが、**クラスタ内から測るときは本 ConfigMap が
+#   効いているかどうかで結果が変わる**。
+#
+# 撤去: scripts/istio-edge-down.sh が deploy/local/aliases/coredns-edge-hosts.yaml を当て直す。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: platform-infra-alias
+data:
+  edge.server: |
+    localhost:53 {
+        errors
+        # エッジ host はすべて istio-ingressgateway（istio-system）へ向ける。
+        # ClusterIP はハードコードしない（再作成でアドレスが変わっても壊れないよう正準名の CNAME で返す）。
+        rewrite name regex (.*)\.localhost istio-ingressgateway.istio-system.svc.cluster.local
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+          pods insecure
+        }
+        cache 30
+    }

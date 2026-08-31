@@ -13,7 +13,7 @@ related_ids:
   - IADR-0218
   - IADR-0280
   - IADR-0282
-  - IADR-0317
+  - IADR-0320
   - NFR
 author: implementation-agent
 created: 2026-08-17
@@ -49,7 +49,7 @@ plan_refs:
 > | 決定 3（`.gitkeep` は 55 件） | `ADR-0065` 決定 4 —— **`.gitkeep` の枠置き規範そのものが撤回された** |
 >
 > **後継は [IADR-0282](./IADR-0282_single-project-vsa-structure.md)（構成の実体）と
-> [IADR-0317](./IADR-0317_no-empty-scaffolding-frames.md)（枠置き規範の廃止）である。
+> [IADR-0320](./IADR-0320_no-empty-scaffolding-frames.md)（枠置き規範の廃止）である。
 > ID は付け替えない —— 本 IADR は `IADR-0219` のままである。**
 >
 > **[IADR-0117](./IADR-0117_platform-shared-kernel-placement.md) は無傷である** ——
@@ -301,7 +301,7 @@ Tests          # Unit / Integration
   決定 4（機械検査は置かない）は無傷であるため ~~`Accepted` を維持する~~
   **［2026-08-31 訂正 / #1100］`IADR-0218` も `Superseded` になった**）
 - Superseded by: **[IADR-0282](./IADR-0282_single-project-vsa-structure.md)**（構成の実体）／
-  **[IADR-0317](./IADR-0317_no-empty-scaffolding-frames.md)**（枠置き規範の廃止）。
+  **[IADR-0320](./IADR-0320_no-empty-scaffolding-frames.md)**（枠置き規範の廃止）。
   上流は計画 `ADR-0065` 決定 4・5・6。**［2026-08-31 / #1100］**
 - Amended by: [IADR-0280](./IADR-0280_eight-element-standard-materialization.md)（2026-08-28。
   決定 3 の適用形を「`.gitkeep` の枠」から「実プロジェクトの実体化」へ改める。決定 1・2 は無傷）
