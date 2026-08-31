@@ -174,7 +174,7 @@ if [ "${ESO:-}" != "1" ]; then
   # dev 既定は step 3 のブローカ側と同値（env RABBITMQ_PASSWORD で両方を上書きする）。
   apply_secret "$MSP_NS" rabbitmq-app "password=${RABBITMQ_PASSWORD:-guest}"
   apply_secret "$MSP_NS" wikijs-db "password=${WIKIJS_DB_PASSWORD:-kp}"
-  # FR-13, IADR-0320 (#1108): 🔴 **発行済みの API キーを空で潰さない。**
+  # FR-13, IADR-0327 (#1108): 🔴 **発行済みの API キーを空で潰さない。**
   # Wiki.js のセットアップ後、`deploy/local/wikijs-setup/bootstrap.sh` がここへ実キーを書き戻す。
   # 素直に `apiKey=${WIKIJS_SYNC_APIKEY:-}` で apply すると、**up を再実行するたびに空へ戻り**、
   # 次に wiki-service の Pod が作り直された瞬間に同期が全件エラーキューへ落ちる（#1108 の再来）。
@@ -666,7 +666,7 @@ fi
 # （仕様どおりだが「壊れている」のと区別が付かない）。既定（env 未設定）は投入せず挙動不変＝バイト等価で、
 # 本番 values には一切影響しない（投入先は経路B の稼働中サービスであり、chart ではない）。
 # best-effort: 投入の失敗で up 全体を止めない（クラスタ自体は使えるため。再実行は冪等）。
-# FR-13, UC-07, SC-04, ADR-0011, IADR-0320 (#1108): Wiki.js の初期セットアップ・同期 API キー・
+# FR-13, UC-07, SC-04, ADR-0011, IADR-0327 (#1108): Wiki.js の初期セットアップ・同期 API キー・
 # 本文 locale を入れる。**opt-in ではない。**
 #
 # 🔴 **既定の経路が「Running なのに使えない Wiki.js」を残すことが #1108 そのものである。**
@@ -679,7 +679,7 @@ fi
 # 冪等（セットアップ済みなら finalize を飛ばし、有効なキーが在れば再発行しない）。
 # best-effort: 失敗しても up 全体は止めない。**fail-closed の門は `scripts/check-stack-ready.js` の
 # G7** に置いてある（そちらが setup モード・空 apiKey・locale 欠落を落とす）。
-echo "==> Wiki.js 初期セットアップ（冪等 / IADR-0320）"
+echo "==> Wiki.js 初期セットアップ（冪等 / IADR-0327）"
 bash "$ROOT/deploy/local/wikijs-setup/bootstrap.sh" \
   || echo "    WARN: Wiki.js の初期化に失敗（best-effort）。bash deploy/local/wikijs-setup/bootstrap.sh で再実行できる" >&2
 

@@ -1746,6 +1746,16 @@ state?: BffGraphSuggestionsState;
  * 未知の値は 400（`invalid_kind`）。
  */
 kind?: BffGraphSuggestionsKind;
+/**
+ * 文書フィルタ。**その文書を両端のいずれかに持つ提案だけ**を返す
+ * （タグ提案は対象文書 1 件を見る）。未指定は絞らない（＝権限内の全件）。
+ * 🔴 **絞りは可視性の判定より前段に入る。** 判定そのものは端点の文書属性で行われ、
+ * **この絞りは転送量を減らすだけで秘匿の実施点ではない**。
+ * 🔴 **権限外・不存在の文書 ID でも 404 にはならない** —— 200 と空配列を返す。
+ * 「その文書は無い」と「その文書の提案は 0 件」を区別させないためである。
+ * 形式不正（UUID でない）のときだけ 400。
+ */
+documentId?: string;
 };
 
 export type BffGraphSuggestionsState = typeof BffGraphSuggestionsState[keyof typeof BffGraphSuggestionsState];

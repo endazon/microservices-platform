@@ -15,7 +15,7 @@ related_ids:
   - IADR-0095
   - IADR-0097
   - IADR-0248
-  - IADR-0320
+  - IADR-0327
 author: claude
 created: 2026-08-31
 updated: 2026-08-31
@@ -75,7 +75,7 @@ close されており、実装は入っていない**（timeline に PR も comm
 - よって **2 つは互いを無意味にしない。別 PR とする。** 依存関係は「#1088 が入ると本 bootstrap の
   再実行頻度が下がる」だけである。
 
-## 5. 決定（IADR-0320 に残す）
+## 5. 決定（IADR-0327 に残す）
 
 1. **方式は #1108 の選択肢 1（セットアップ API を叩いて finalize する）** を採る。
    DB スナップショット（選択肢 2）は Wiki.js の版に固定され、`tag: "2.5"`（浮動 minor）と両立しない。
@@ -125,7 +125,7 @@ Deployment 自体が無い場合（`wikijs.enabled=false`）は notice で飛ば
 | `deploy/local/README.md` | env 表の `WIKIJS_SYNC_APIKEY`「既定 空」が**もう真ではない**（bootstrap が発行する） |
 | `deploy/local/wiki-oidc/README.md` | 「管理UI を開く」前提が setup 完了に依存する。bootstrap への導線を足す |
 | `docs/operations/operations.md` | `wikijs-sync` を手で作る手順が残っている |
-| `.ai-context/adr/IADR-0320_*.md` ＋ `.ai-context/adr/README.md` | 決定の記録 |
+| `.ai-context/adr/IADR-0327_*.md` ＋ `.ai-context/adr/README.md` | 決定の記録 |
 
 **除外した（理由）**:
 
@@ -175,7 +175,7 @@ WikiJsSyncException: Wiki.js pages.create failed for 'doc/…' (code=1):
 🔴 **Wiki.js は GraphQL 200 を返すため、失敗は WikiService のエラーキューにしか出ない。**
 
 対応: bootstrap の段 3 で `locales` へ行を冪等に入れる（値は実装から走査）。
-検知: `check-stack-ready.js` の G7(c) が `isInstalled` を見る。IADR-0320 決定 6。
+検知: `check-stack-ready.js` の G7(c) が `isInstalled` を見る。IADR-0327 決定 6。
 
 ## 11. ［2026-08-31 追記 / #1108］実測の結果
 

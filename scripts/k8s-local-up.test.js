@@ -782,7 +782,7 @@ ok('SEARCHSEED=1: 投入が失敗しても up 全体は止めない（best-effor
   assert.ok(/\|\|\s*echo\s+"?\s*WARN/.test(block), 'SEARCHSEED の投入失敗が best-effort になっていない');
 });
 
-// FR-13, IADR-0320 (#1108): Wiki.js の初期セットアップ。**opt-in ではない。**
+// FR-13, IADR-0327 (#1108): Wiki.js の初期セットアップ。**opt-in ではない。**
 // 稼働 dev クラスタで、Wiki.js が setup モードのまま `2/2 Running` で 8 日間放置され、
 // `DocumentUpdated` / `DocumentDeleted` が全件エラーキューへ落ちていた。既定の経路が
 // この状態を残すことが #1108 そのものなので、**既定で走ること自体が回帰対象**である。

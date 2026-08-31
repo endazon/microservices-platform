@@ -1,5 +1,5 @@
 ---
-title: IADR-0320 Wiki.js の初期化は「セットアップ API を冪等に叩く runtime bootstrap」で入れ、検知は check-stack-ready の門に置く
+title: IADR-0327 Wiki.js の初期化は「セットアップ API を冪等に叩く runtime bootstrap」で入れ、検知は check-stack-ready の門に置く
 type: impl-adr
 status: Accepted
 related_ids:
@@ -20,7 +20,7 @@ created: 2026-08-31
 updated: 2026-08-31
 ---
 
-# IADR-0320: Wiki.js の初期化を冪等な runtime bootstrap で入れる（#1108）
+# IADR-0327: Wiki.js の初期化を冪等な runtime bootstrap で入れる（#1108）
 
 - 状態: Accepted
 - 日付: 2026-08-31

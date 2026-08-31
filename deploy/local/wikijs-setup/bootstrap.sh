@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FR-13, UC-07, SC-04, ADR-0011, IADR-0020/IADR-0021, IADR-0320 (#1108):
+# FR-13, UC-07, SC-04, ADR-0011, IADR-0020/IADR-0021, IADR-0327 (#1108):
 # Wiki.js の **初期セットアップ**と **WikiService 用 API キー**を入れる冪等な runtime bootstrap。
 #
 #   bash deploy/local/wikijs-setup/bootstrap.sh

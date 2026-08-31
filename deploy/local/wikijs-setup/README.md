@@ -1,6 +1,6 @@
-# Wiki.js の初期セットアップ（FR-13 / UC-07 / SC-04 / ADR-0011・IADR-0320・#1108）
+# Wiki.js の初期セットアップ（FR-13 / UC-07 / SC-04 / ADR-0011・IADR-0327・#1108）
 
-> 起点: [IADR-0320](../../../.ai-context/adr/IADR-0320_wikijs-setup-bootstrap.md) /
+> 起点: [IADR-0327](../../../.ai-context/adr/IADR-0327_wikijs-setup-bootstrap.md) /
 > 作業仕様書 [`.ai-context/specs/20260831_issue-1108_wikijs-setup-bootstrap.md`](../../../.ai-context/specs/20260831_issue-1108_wikijs-setup-bootstrap.md)
 
 `bootstrap.sh` は **Wiki.js の初期セットアップ・同期用 API キー・本文 locale** を入れる冪等な
