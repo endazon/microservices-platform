@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — .gitkeep だけの空枠を撤去し、雛形が空枠を生まないようにする（#1100）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - NFR
   - SC-01
@@ -217,14 +217,14 @@ issue は `hooks/` 13 ＋ `stores/` 13 = **26 件**を挙げている。**実測
 
 ## 7. 受け入れ基準（#1100 から写像）
 
-- [ ] `git ls-files | grep -E '(^|/)\.gitkeep$'` の結果に、feature 内部の区分が 1 件も無い
-- [ ] 残った `.gitkeep` は群ごとに理由を持ち、走査結果を PR 本文に貼る
-- [ ] feature ごとの判断が PR 本文にある（まとめて 1 行で済ませない）
-- [ ] planning#445 の裁定との整合を PR 本文で述べる
-- [ ] 2 つの feature 雛形が生む構成が一致する
-- [ ] **雛形から実際に feature を生成し、`.gitkeep` が 1 件も出ないことを実測する**
-- [ ] `pnpm run lint` / `typecheck` / `test` / `build` / `format:check` が通る
-- [ ] `node scripts/check-route-manifest.js` ほか文書・トレーサビリティ検査が通る
+- [x] `git ls-files | grep -E '(^|/)\.gitkeep$'` の結果に、feature 内部の区分が 1 件も無い
+- [x] 残った `.gitkeep` は群ごとに理由を持ち、走査結果を PR 本文に貼る
+- [x] feature ごとの判断が PR 本文にある（まとめて 1 行で済ませない）
+- [x] planning#445 の裁定との整合を PR 本文で述べる
+- [x] 2 つの feature 雛形が生む構成が一致する
+- [x] **雛形から実際に feature を生成し、`.gitkeep` が 1 件も出ないことを実測する**
+- [x] `pnpm run lint` / `typecheck` / `test` / `build` / `format:check` が通る
+- [x] `node scripts/check-route-manifest.js` ほか文書・トレーサビリティ検査が通る
 
 ## 8. 検査器を足すか（#1100 判断事項 3）
 
@@ -235,3 +235,61 @@ issue は `hooks/` 13 ＋ `stores/` 13 = **26 件**を挙げている。**実測
 本件の再発経路は**雛形が空枠を生むこと**であり、§4 でその生成そのものを止めた。
 生成器を通さず手で作る経路は残るが、それは #1066 の残余リスクとして既に記録がある
 （IADR-0309 残余リスク）。**2 回目が起きたら検査を足す。**
+
+## 9. ［2026-08-31 追記 / #1100］実行結果
+
+### 採番の改番
+
+起案時は `IADR-0317` を採ったが、中断中に `develop` が `c45533bc` まで進み **`IADR-0317` /
+`IADR-0318` / `IADR-0319` が先に着地した**。`.claude/rules/traceability.md`「採番衝突時の改番手順」
+（**先着尊重。後発は次の空き番号へ改番し、欠番を作らない**）に従い **`IADR-0320`** へ改番した。
+参照は 6 箇所（新 IADR 本体・`IADR-0218`・`IADR-0219`・索引 3 行・`src/plopfile.js`・
+`useSampleFilter.ts`）。`node scripts/check-adr-numbering.js` が緑であることで取り残しが無いことを
+確かめた（1 回目は索引の後継リンク 2 行を取り残し、`check-doc-links.js` が捕まえた）。
+
+### 雛形の実測（受け入れ基準 3）
+
+`develop` 取り込み後の木で `plop feature knowledge/frontend sc99-scaffold-probe …` を実走させた。
+
+```console
+$ find .../sc99-scaffold-probe -mindepth 1 -maxdepth 1 | sort
+api  components  hooks  index.ts  routes  types      ← stores/ は無い
+$ find .../sc99-scaffold-probe -name '.gitkeep' | wc -l
+0
+$ find .../sc99-scaffold-probe -type f -empty | wc -l
+0
+```
+
+`templates/unit-template/frontend/src/features/sample` の直下も同じ 6 項目であり、**2 つの雛形が
+生む形は一致した**。確認後、生成物は削除した。
+
+### 最終走査（受け入れ基準 1・2）
+
+```console
+$ git ls-files | grep -E '(^|/)\.gitkeep$' | wc -l
+39                                    ← 着手時 70。31 件を撤去
+$ git ls-files | grep -E 'features/[^/]+/[^/]+/\.gitkeep$' | wc -l
+0                                     ← feature 内部の空枠は 0 件
+```
+
+残る 39 件の内訳: `docs/<種別>` 14 ／ `.ai-context/specs` 1（§2 群 E。**残す**）／
+ユニット直下 実装 13 ・ 雛形 11（§2 群 C・D。**#1122 へ分けた**）。
+
+### 通した検査
+
+`pnpm run lint`（error 0 / warning 10・既存）／ `typecheck` ／ `test` ／ `build` ／ `format:check`、
+`check-route-manifest` ／ `check-chunk-budget`（床 617.16 kB のまま。**0 バイトのファイルしか
+消していないので当然である**）／ `check-i18n-catalogs` ／ `check-adr-numbering` ／
+`check-commit-messages` ／ `check-trace-blocks` ／ `check-doc-links` ／ `check-doc-updated` ／
+`check-doc-type-vocabulary` ／ `check-doc-status-vocabulary` ／ `check-plan-id-qualification` ／
+`check-cross-repo-refs` ／ `gen-knowledge-graph --check` ／ `REQUIRE_REPO_TESTS=1 scripts.test.js`（668 件）。
+
+**`scripts.test.js` は 1 回目に `title-too-long`（`IADR-0320` の索引タイトル 365 字 > 上限 200）で
+落ちた。** baseline へ足さず要約を 165 字へ縮めて直した（ratchet の趣旨は「新規混入は fail」である）。
+
+### 落ちたテストと、それが本件由来でないことの実測
+
+| テスト | 判定 |
+| --- | --- |
+| `platform/frontend/src/lib/api/orvalMutator.test.ts`（1 件） | **環境差。** Node 24 で `Blob.arrayBuffer` が生えない。`git diff --name-only origin/develop HEAD -- src/platform src/packages` が **0 件**であり、**この試験と依存の全ファイルが `origin/develop` とバイト単位で同一**である。すなわちここで走らせているのは基点の内容そのものである。CI は Node 22 |
+| `sc10-operations` ほか 2 件（初回のみ） | **負荷由来の揺れ。** 全体実行の 1 回目だけ 5000ms でタイムアウトし、**単体実行では 577ms で通り**、全体実行の 2 回目も通った |
