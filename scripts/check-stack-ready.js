@@ -48,6 +48,18 @@
  *   合成応答で 127.0.0.1 に返すため、**クラスタ内の解決が壊れていても G4 は通る**。非 .NET の
  *   6 ツールは pod から issuer を引くので、G6 が無いと「6 ツールが壊れているのに緑」になる。
  *
+ * - **G7 Wiki.js が「使える」こと**（#1108）: `Running` と `使える` の乖離を落とす。
+ *   🔴 **Pod は `2/2 Running` で readinessProbe も通っていた。それでも Wiki 同期は 1 件も
+ *   成立していなかった**（稼働 dev クラスタで実測）。Wiki.js 2.x は初期セットアップが終わるまで
+ *   本体のルータ（`/graphql` を含む）を載せず、`server/setup.js` の catch-all が
+ *   **`/healthz` を含むすべての URL に 200 を返す**ためである。
+ *   検査は 3 段: **(a)** `/graphql` が 404 でない（setup モードでない）、**(b)** `wikijs-sync` の
+ *   `apiKey` が空でない、**(c)** **WikiService が push に使う locale が Wiki.js に入っている**
+ *   （setup が入れるのは `en` だけで、`ja` が無いと `pages.create` が外部キー違反で落ちる。
+ *   Wiki.js は GraphQL 200 を返すので、失敗は WikiService のエラーキューにしか残らない）。
+ *   locale の値は **WikiService の実装から走査して得る**（ここへ書き写さない）。
+ *   `wiki-js` の Deployment が無い構成（`wikijs.enabled=false`）は notice で飛ばす（G5 と同じ作法）。
+ *
  * ## 列挙を持たない
  *
  * namespace は `k8s-local-up.sh` と同じ 2 つ（`platform-infra` / `microservices-platform`）だが、
@@ -77,6 +89,18 @@ const ADMIN_PORT = 50000;
 /** #782 / [IADR-0317]: `ISTIO=1` のとき 3 ポートを持つのは Traefik ではなくこちらである。 */
 const ISTIO_GW_NS = 'istio-system';
 const ISTIO_GW_SVC = 'istio-ingressgateway';
+
+/** G7 (#1108): Wiki.js の Deployment / コンテナ / 同期用 Secret。 */
+const WIKIJS_NS = 'microservices-platform';
+const WIKIJS_DEPLOY = 'wiki-js';
+const WIKIJS_CONTAINER = 'wiki-js';
+const WIKIJS_SYNC_SECRET = 'wikijs-sync';
+const WIKIJS_SYNC_SECRET_KEY = 'apiKey';
+/** WikiService が push に使う locale の**単一情報源**（値はここへ書かず、走査して得る）。 */
+const WIKI_CLIENT_SRC = path.join(
+  'src', 'knowledge', 'backend', 'Services', 'WikiService',
+  'Infrastructure', 'ExternalServices', 'WikiJsGraphQlClient.cs',
+);
 
 /** Keycloak の Deployment（issuer の単一情報源 `KC_HOSTNAME_URL` を持つ）。 */
 const KEYCLOAK_NS = 'platform-infra';
@@ -124,7 +148,126 @@ function fetchDiscovery(url) {
   }
 }
 
+/**
+ * G7: wiki-js コンテナ内の loopback へ GraphQL を投げる。
+ *
+ * 🔴 **エッジからも port-forward からも測らない。** エッジは 2 通りあり（Traefik / Istio）、
+ * `PeerAuthentication` が STRICT のときメッシュ外からの平文は Envoy に落とされる（#1072 / #1109）。
+ * loopback ならその全部と無関係に「Wiki.js 自身が何を返すか」だけを測れる。
+ */
+function wikiJsGraphql(query, bearer) {
+  const args = ['-n', WIKIJS_NS, 'exec', '-i', `deploy/${WIKIJS_DEPLOY}`, '-c', WIKIJS_CONTAINER, '--',
+    'curl', '-sS', '--max-time', '30', '-w', '\\n%{http_code}',
+    '-X', 'POST', 'http://127.0.0.1:3000/graphql', '-H', 'Content-Type: application/json'];
+  if (bearer) args.push('-H', `Authorization: Bearer ${bearer}`);
+  args.push('--data-binary', '@-');
+  const r = spawnSync('kubectl', args, {
+    input: JSON.stringify({ query }), encoding: 'utf8', maxBuffer: 8 * 1024 * 1024,
+  });
+  const lines = String(r.stdout || '').split('\n');
+  const status = (lines.pop() || '').trim();
+  return { status, body: lines.join('\n'), stderr: String(r.stderr || '') };
+}
+
+/** G7: `wikijs-sync` の `apiKey` の**長さ**を得る（値は返さない・出力もしない）。 */
+function wikiJsApiKey() {
+  const r = spawnSync(
+    'kubectl',
+    ['-n', WIKIJS_NS, 'get', 'secret', WIKIJS_SYNC_SECRET, '-o', `jsonpath={.data.${WIKIJS_SYNC_SECRET_KEY}}`],
+    { encoding: 'utf8' },
+  );
+  if (r.status !== 0) return { ok: false, key: '', length: 0 };
+  const key = Buffer.from(String(r.stdout || '').trim(), 'base64').toString('utf8');
+  return { ok: true, key, length: key.length };
+}
+
 // ---------------------------------------------------------------- 判定（純粋関数）
+
+/**
+ * G7 の (c) が使う locale を **WikiService の実装から**読む。
+ * 見つからなければ `null`（呼び出し側は「測れなかった」として落とす。既定値へ落とさない ——
+ * 落とすと、実装が locale を変えたときに検査が静かに空回りする）。
+ */
+function wikiSyncLocale(repoRoot = REPO_ROOT) {
+  try {
+    const src = fs.readFileSync(path.join(repoRoot, WIKI_CLIENT_SRC), 'utf8');
+    const m = src.match(/private\s+const\s+string\s+Locale\s*=\s*"([^"]+)"/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * G7: 「Running なのに使えない」を落とす（#1108）。**純関数**（入力は採取済みの値だけ）。
+ *
+ * @param {{deployExists:boolean, graphqlStatus:string, apiKeyLength:number,
+ *          syncLocale:(string|null), localesBody:string}} input
+ */
+function evaluateWikiJs(input) {
+  const failures = [];
+  if (!input.deployExists) return failures; // wikijs.enabled=false の構成（呼び出し側が notice を出す）
+
+  // (a) setup モードか。Wiki.js 2.x は setup 完了まで /graphql を載せない。
+  if (input.graphqlStatus === '404') {
+    failures.push(
+      `[G7] wiki-js の /graphql が 404 を返す＝**初期セットアップが終わっていない**（#1108）。` +
+        ` この状態でも Pod は Running で /healthz は 200 を返す（setup.js の catch-all が全 URL に 200 を返すため）。` +
+        ` Wiki 同期は全件エラーキューへ落ちるが画面には何も出ない。` +
+        ` 復旧: bash deploy/local/wikijs-setup/bootstrap.sh`,
+    );
+    return failures; // 以降は測っても意味が無い（順序で結ばれている）
+  }
+  if (!/^2\d\d$/.test(input.graphqlStatus)) {
+    failures.push(
+      `[G7] wiki-js の /graphql の応答を読めなかった（status='${input.graphqlStatus}'）。` +
+        ` **沈黙を成功と読まない。**`,
+    );
+    return failures;
+  }
+
+  // (b) 同期の API キー。空だと GraphQL は認証できず、同期は成立しない。
+  if (!(input.apiKeyLength > 0)) {
+    failures.push(
+      `[G7] ${WIKIJS_NS}/${WIKIJS_SYNC_SECRET} の ${WIKIJS_SYNC_SECRET_KEY} が空である（#1108）。` +
+        ` fail-safe の空既定のままで、実値が供給されていない。` +
+        ` 復旧: bash deploy/local/wikijs-setup/bootstrap.sh`,
+    );
+  }
+
+  // (c) WikiService が push に使う locale が Wiki.js に入っているか。
+  if (input.syncLocale === null) {
+    failures.push(
+      `[G7] WikiService が使う locale を実装（${WIKI_CLIENT_SRC}）から読めなかった。` +
+        ` **既定値へ落とさない** —— 落とすと実装が変わったときに検査が空回りする。`,
+    );
+    return failures;
+  }
+  let locales;
+  try {
+    locales = JSON.parse(input.localesBody).data.localization.locales;
+  } catch {
+    locales = null;
+  }
+  if (!Array.isArray(locales) || locales.length === 0) {
+    failures.push(
+      `[G7] Wiki.js の locale 一覧を読めなかった（API キーが無効か、応答が想定と違う）。` +
+        `\n---\n${String(input.localesBody).slice(0, 300)}`,
+    );
+    return failures;
+  }
+  const hit = locales.find((l) => l && l.code === input.syncLocale);
+  if (!hit || hit.isInstalled !== true) {
+    failures.push(
+      `[G7] WikiService が push に使う locale '${input.syncLocale}' が Wiki.js に入っていない（#1108）。` +
+        ` 初期セットアップが入れるのは 'en' **だけ**であり、この状態では pages.create が` +
+        ` 外部キー制約 pages_localecode_foreign に違反して落ちる。` +
+        ` **Wiki.js は GraphQL 200 を返すので、失敗は WikiService のエラーキューにしか出ない。**` +
+        ` 復旧: bash deploy/local/wikijs-setup/bootstrap.sh`,
+    );
+  }
+  return failures;
+}
 
 /** `deploy/keycloak/*-realm.json` を走査して realm 名を得る。0 件は失敗（G2 と同型）。 */
 function discoverRealms(repoRoot = REPO_ROOT) {
@@ -371,6 +514,37 @@ function check({ repoRoot = REPO_ROOT } = {}) {
     }
   }
 
+  // G7 (#1108): Wiki.js が「使える」か。**Running と 使える の乖離**を落とす。
+  const wikiDeploy = kubectlJson(['get', 'deploy', WIKIJS_DEPLOY, '-n', WIKIJS_NS, '-o', 'json']);
+  if (!wikiDeploy.ok) {
+    notices.push(
+      `[check-stack-ready] ${WIKIJS_NS}/${WIKIJS_DEPLOY} が無いので G7 は飛ばす（wikijs.enabled=false の構成）。`,
+    );
+    failures.push(...evaluateWikiJs({ deployExists: false }));
+  } else {
+    const probe = wikiJsGraphql('{pages{list(orderBy:ID){id}}}');
+    const apiKey = wikiJsApiKey();
+    const syncLocale = wikiSyncLocale(repoRoot);
+    // locale 一覧は API キーが要る。キーが空なら問い合わせても意味が無いので空文字を渡す
+    // （(b) が既に失敗を出しているため、(c) は「読めなかった」を重ねて言うだけになる）。
+    const locales = apiKey.length > 0
+      ? wikiJsGraphql('{localization{locales{code isInstalled}}}', apiKey.key)
+      : { body: '' };
+    failures.push(
+      ...evaluateWikiJs({
+        deployExists: true,
+        graphqlStatus: probe.status,
+        apiKeyLength: apiKey.length,
+        syncLocale,
+        localesBody: locales.body,
+      }),
+    );
+    notices.push(
+      `[check-stack-ready] wiki-js: /graphql=${probe.status} / ${WIKIJS_SYNC_SECRET}.${WIKIJS_SYNC_SECRET_KEY} の長さ=${apiKey.length}` +
+        ` / 同期 locale=${syncLocale ?? '(読めなかった)'}。`,
+    );
+  }
+
   return { failures, notices, totalDeployments };
 }
 
@@ -491,6 +665,70 @@ function selfTest() {
     );
   });
 
+  // ---- G7 (#1108) ----
+  const wikiOk = {
+    deployExists: true,
+    graphqlStatus: '200',
+    apiKeyLength: 502,
+    syncLocale: 'ja',
+    localesBody: JSON.stringify({
+      data: { localization: { locales: [{ code: 'en', isInstalled: true }, { code: 'ja', isInstalled: true }] } },
+    }),
+  };
+
+  ok('G7: 健全なスタックは通る（陽性対照）', () => {
+    assert.deepStrictEqual(evaluateWikiJs(wikiOk), [], '健全なのに失敗している');
+  });
+
+  ok('G7: setup モード（/graphql が 404）は失敗になる —— Pod は Running のままである', () => {
+    const f = evaluateWikiJs({ ...wikiOk, graphqlStatus: '404' });
+    assert.strictEqual(f.length, 1, 'setup モードが失敗になっていない');
+    assert.ok(f[0].includes('#1108'), '構造的な原因（#1108）を指していない');
+    assert.ok(f[0].includes('bootstrap.sh'), '復旧手段を書いていない');
+  });
+
+  ok('G7: /graphql の応答を読めなければ失敗になる（沈黙を成功と読まない）', () => {
+    assert.strictEqual(evaluateWikiJs({ ...wikiOk, graphqlStatus: '' }).length, 1, '空応答を通している');
+    assert.strictEqual(evaluateWikiJs({ ...wikiOk, graphqlStatus: '000' }).length, 1, '非 2xx を通している');
+  });
+
+  ok('G7: apiKey が空なら失敗になる（fail-safe の空既定のまま配備されている）', () => {
+    const f = evaluateWikiJs({ ...wikiOk, apiKeyLength: 0 });
+    assert.ok(f.some((x) => x.includes('apiKey')), 'apiKey の空が失敗になっていない');
+  });
+
+  ok('G7: 同期 locale が Wiki.js に無ければ失敗になる（**setup を終えただけでは足りない**）', () => {
+    const body = JSON.stringify({
+      data: { localization: { locales: [{ code: 'en', isInstalled: true }, { code: 'ja', isInstalled: false }] } },
+    });
+    const f = evaluateWikiJs({ ...wikiOk, localesBody: body });
+    assert.strictEqual(f.length, 1, '未インストールの locale を通している');
+    assert.ok(f[0].includes('pages_localecode_foreign'), '落ち方（外部キー違反）を書いていない');
+    // 一覧に**現れない**場合も同じく失敗であること。
+    const missing = JSON.stringify({ data: { localization: { locales: [{ code: 'en', isInstalled: true }] } } });
+    assert.strictEqual(evaluateWikiJs({ ...wikiOk, localesBody: missing }).length, 1, '不在を通している');
+  });
+
+  ok('G7: locale を実装から読めなければ失敗になる（既定値へ落とさない）', () => {
+    assert.strictEqual(evaluateWikiJs({ ...wikiOk, syncLocale: null }).length, 1, '読めないのに通している');
+  });
+
+  ok('G7: locale 一覧が読めなければ失敗になる（0 件を緑にしない）', () => {
+    assert.strictEqual(evaluateWikiJs({ ...wikiOk, localesBody: '' }).length, 1, '空応答を通している');
+    const empty = JSON.stringify({ data: { localization: { locales: [] } } });
+    assert.strictEqual(evaluateWikiJs({ ...wikiOk, localesBody: empty }).length, 1, '0 件を通している');
+  });
+
+  ok('G7: wiki-js が無い構成（wikijs.enabled=false）は失敗にしない', () => {
+    assert.deepStrictEqual(evaluateWikiJs({ deployExists: false }), [], '不在を失敗にしている');
+  });
+
+  ok('G7: 同期 locale は WikiService の実装から走査して得る（値を書き写さない）', () => {
+    const locale = wikiSyncLocale();
+    assert.ok(typeof locale === 'string' && locale.length > 0,
+      `WikiService の実装から locale を読めていない（${WIKI_CLIENT_SRC}）`);
+  });
+
   console.log(`[check-stack-ready] self-test OK: ${n} 件`);
 }
 
@@ -516,7 +754,10 @@ function main() {
     for (const f of r.failures) console.error(`\n  - ${f}`);
     process.exit(1);
   }
-  console.log(`[check-stack-ready] OK: Deployment ${r.totalDeployments} 件が available で、エッジ・issuer・admin entrypoint も成立している。`);
+  console.log(
+    `[check-stack-ready] OK: Deployment ${r.totalDeployments} 件が available で、` +
+      'エッジ・issuer・admin entrypoint・Wiki.js の初期化も成立している。',
+  );
 }
 
 if (require.main === module) main();
@@ -529,5 +770,7 @@ module.exports = {
   evaluateAdminEntrypoint,
   evaluateIssuer,
   evaluatePodDnsOutput,
+  evaluateWikiJs,
+  wikiSyncLocale,
   NAMESPACES,
 };

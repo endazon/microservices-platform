@@ -35,6 +35,14 @@ namespace Knowledge.IntegrationTests.Messaging;
 // 🔴 ［2026-08-30 / #1038 #1059］**QueueOverrideFanOutTests と同時に走らせない。**
 // 赤になった 2 run では両クラスの実行窓が重なり、緑の 3 run では 20〜51 秒離れていた。
 // 根拠と交絡の断りは FanOutTestCollection.cs にある（**待ち時間は伸ばしていない**）。
+//
+// 🔴 ［2026-08-30 追記 / #1073］**直列化では直らなかった。真因はハンドラ探索アセンブリである。**
+// Wolverine の `ApplicationAssembly` は**プロセス全体で 1 つの静的値**で、最初に起動したホストが固定する。
+// 1 プロセスで IngestionService と WikiService のホストを同時に立てる本テストでは、
+// **後発のホストが相手のコンシューマを拾い、自分のコンシューマを拾わない**。
+// 受信すると依存未解決で `NotSupportedException` になり、Wolverine はログ 1 行を出して
+// **ack し捨てる**（例外も再配信も DLQ も残らない）。当チェーンに居る**正しいハンドラも道連れで走らない**。
+// 対処は共通ヘルパ（`AddPlatformWolverineStep`）での明示固定であり、**待ち時間は 1 秒も伸ばしていない**。
 [Collection(FanOutTestCollection.Name)]
 [Trait("Category", "Integration")]
 public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitMqFixture rabbit)
@@ -212,7 +220,11 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
         $"。実測: 購読開始 ingestion={_ingestionReady.TotalSeconds:F1}s / wiki={_wikiReady.TotalSeconds:F1}s"
         + $"（購読は始まっていたので、これは実処理側の遅さか受信そのものの欠落である）"
         + $"。購読キュー: ingestion=[{ListenerReadiness.DescribeListeners(_ingestion.Services)}]"
-        + $" / wiki=[{ListenerReadiness.DescribeListeners(_wiki.Services)}]";
+        + $" / wiki=[{ListenerReadiness.DescribeListeners(_wiki.Services)}]"
+        + $"。ハンドラ探索アセンブリ: ingestion={ListenerReadiness.DescribeHandlerDiscovery(_ingestion.Services)}"
+        + $" / wiki={ListenerReadiness.DescribeHandlerDiscovery(_wiki.Services)}"
+        + "（サービス名と食い違っていれば、そのホストは**相手のハンドラ**を拾っており、"
+        + "受信したメッセージを例外も残さず ack して捨てている。#1073）";
 
     private async Task<bool> WaitForWikiPageAsync(Guid documentId, TimeSpan timeout)
     {

@@ -167,7 +167,8 @@ PERSIST=1 OBSERVABILITY=1 bash scripts/k8s-local-up.sh
 | `KEYCLOAK_ADMIN_PASSWORD` | `platform-infra/keycloak-admin.password` | `admin` | Keycloak 管理 |
 | `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` | `microservices-platform/minio-credentials` | `minioadmin` | MinIO（chart 参照） |
 | `WIKIJS_DB_PASSWORD` | `microservices-platform/wikijs-db.password` | `kp` | Wiki.js DB |
-| `WIKIJS_SYNC_APIKEY` | `microservices-platform/wikijs-sync.apiKey` | 空 | WikiService→Wiki.js 同期 |
+| `WIKIJS_SYNC_APIKEY` | `microservices-platform/wikijs-sync.apiKey` | 空→**bootstrap が発行**（#1108） | WikiService→Wiki.js 同期。**明示指定が無ければ `deploy/local/wikijs-setup/bootstrap.sh` が Wiki.js に発行させて書き戻す**。up の再実行では既存値を保つ（空で潰さない） |
+| `WIKIJS_ADMIN_PASSWORD` | `microservices-platform/wikijs-admin.password` | **無し（乱数生成）** | Wiki.js の管理者（#1108 / [IADR-0327](../../.ai-context/adr/IADR-0327_wikijs-setup-bootstrap.md)）。**dev 既定文字列を置かない** —— エッジに露出する実ログイン口である |
 | `ANTHROPIC_API_KEY` | `microservices-platform/llm-provider-credentials` | 空=呼ばない | MSP LLM Gateway（values-local が `Llm__ApiKey` へ配線） |
 
 > `llm-provider-credentials` は values-local の `services.llmgateway.extraEnv` で LlmGateway の
@@ -285,6 +286,21 @@ frontend pod の nginx が `/bff/*` を in-cluster の `bff-service:8080` へ内
 > 本番像は `edge.enabled=true` で Istio VirtualService の catch-all（`/bff`・`/realms` の後）が SPA を
 > `frontend-service` へ流し、`allow-edge-ingress-to-frontend` NetworkPolicy が default-deny 下の到達を許可する。
 > 実ブラウザでの `/settings` 実表示・OIDC 実ログインは稼働 k3d 依存（本 issue の live 分・#284 手順）。
+
+### Wiki.js の初期セットアップ（#1108）
+
+`scripts/k8s-local-up.sh` は **既定で** [`wikijs-setup/bootstrap.sh`](wikijs-setup/README.md) を呼び、
+Wiki.js の初期セットアップ・同期 API キー・本文 locale を冪等に入れる（opt-in ではない）。
+
+🔴 **これが無いと Wiki.js は「`2/2 Running` なのに使えない」状態で残る。** Wiki.js 2.x は
+セットアップが済むまで `/graphql` を載せず、その間 `server/setup.js` の catch-all が
+**`/healthz` を含む全 URL に 200 を返す**ため、probe は通り Pod は Running のまま、
+**Wiki 同期だけが全件エラーキューへ落ちる（画面には何も出ない）**。
+
+セットアップ状態は共有 Postgres の `wikijs` DB に載る。`PERSIST=1` を付けずに立てたクラスタでは
+`emptyDir` なので、**postgres Pod を作り直すと消える** —— そのときは bootstrap を再実行する（冪等）。
+検知は `node scripts/check-stack-ready.js` の **G7**（fail-closed）。詳細は
+[wikijs-setup/README.md](wikijs-setup/README.md)。
 
 ### Wiki 閲覧の到達（SC-04・Issue #344）
 
