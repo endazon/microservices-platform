@@ -76,6 +76,29 @@ internal static class ListenerReadiness
     // ⚠️ ここで例外を投げない。診断が assert の失敗理由を覆い隠すと、
     // **本来の失敗（fan-out が届かない）が別の例外にすり替わる。** 採れなかったことは
     // 「採れなかった」と書いて返す —— 黙って空にはしない（それは「購読ゼロ」と区別が付かない）。
+    // ［2026-08-30 / #1073］**ホストがハンドラを探したアセンブリ名を失敗メッセージへ載せる。**
+    //
+    // 🔴 Wolverine の `ApplicationAssembly` は**プロセス全体で 1 つの静的値**であり、
+    // 明示しない限り**そのプロセスで最初に起動したホスト**のアセンブリに固定される
+    // （Wolverine 6.24.4 / GH-3521）。後発のホストは**相手のハンドラを拾い、自分のハンドラを拾わない**。
+    // そのとき受信は `NotSupportedException`（依存未解決）で落ち、Wolverine は
+    // **ack して捨てる** —— 例外も再配信もデッドレターも残らない。
+    // 症状は「キュー名は正しい・購読は Accepting・30 秒待って何も起きない」であり、
+    // **配送の欠落と見分けがつかない**。#1038 / #1059 / #1073 の 3 件・6 ラウンドは
+    // この 1 行が無かったために費やされた。**原因を名乗るのはキュー名ではなくこちらである。**
+    internal static string DescribeHandlerDiscovery(IServiceProvider services)
+    {
+        try
+        {
+            var runtime = services.GetRequiredService<IWolverineRuntime>();
+            return runtime.Options.ApplicationAssembly?.GetName().Name ?? "(未設定)";
+        }
+        catch (Exception ex)
+        {
+            return $"(採れなかった: {ex.GetType().Name})";
+        }
+    }
+
     internal static string DescribeListeners(IServiceProvider services)
     {
         try
