@@ -3,15 +3,15 @@ title: 機能仕様書 — FR-12 原本の正規化変換（pandoc＋LLMコー�
 type: functional-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-08-30
+updated: 2026-08-31
 author: claude
 ---
 <!-- trace:
-ids: [FR-02, FR-11, FR-12, SC-07, UC-06]
-adrs: [ADR-0010, ADR-0012, ADR-0014]
-iadrs: [IADR-0007, IADR-0008, IADR-0137, IADR-0154]
-specs: [20260703_FR-12_document-normalization-pipeline]
-issues: [#533, #543]
+ids: [FR-01, FR-02, FR-11, FR-12, SC-07, UC-06]
+adrs: [ADR-0010, ADR-0012, ADR-0014, ADR-0053]
+iadrs: [IADR-0007, IADR-0008, IADR-0137, IADR-0154, IADR-0298, IADR-0320]
+specs: [20260703_FR-12_document-normalization-pipeline, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed]
+issues: [#533, #543, #1097]
 -->
 
 # 機能仕様書: 原本の正規化変換
@@ -55,8 +55,10 @@ issues: [#533, #543]
 
 1. `RawDocumentFetched` を受信する。
 2. `Attributes["confidentiality"]`（機密区分）を取り出す（図コード化の送信制御に使う）。
-3. **本文変換**（`IBodyConverter` / `PandocConversionService`）: 原本を pandoc で GFM へ変換し、
+3. **本文変換**（`IBodyConverter` / `PandocConversionService`）: 原本をオブジェクトストレージから
+   取り寄せて（`file` スキーム・ローカルパスはそのまま）pandoc で GFM へ変換し、
    `--extract-media` で図（画像）を抽出する。本文 Markdown ＋ 抽出図一覧を得る。
+   pandoc は**実行時イメージへ導入済み**であり、その存在は readiness（`pandoc` チェック）が見る。
 4. 冪等 `DocumentId` を `SourceId`＋`OriginalPath` から決定的に導出する（`DeterministicGuid`）。
 5. 各図について（`IDiagramCoder` / `LlmGatewayDiagramCoder`）:
    1. LLMゲートウェイ `/complete` に `confidentiality` ＋ `purpose="diagram-coding"` を渡してコード化を依頼する。
@@ -71,10 +73,26 @@ issues: [#533, #543]
 
 ### 例外フロー
 
-- **E1（pandoc 未導入／原本がローカル解決不能）**: `PandocConversionService` がプレースホルダ本文
-  （図0件）へグレースフルデグレードする（dev 環境での動作保証。ポート分離と縮退の実装判断による）。
-- **E2（pandoc 恒久失敗）**: pandoc が非0終了した場合は例外を送出し、MassTransit の再試行→
+- **E1（pandoc 未導入／原本を読み出せない）**: 🔴 **既定は失敗する**（fail-closed）。
+  `PandocConversionService` が `BodyConversionUnavailableException` を送出し、E2 と同じく
+  再試行 → デッドレターへ委ねる。
+
+  > **［2026-08-31 追記］従前ここは無条件にプレースホルダ本文（図0件）を返して「成功」していた。**
+  > ところが実行時イメージが pandoc を持っておらず、**配備した実物がその縮退のまま成功を返し続けていた** ——
+  > 変換ジョブ画面には成功として並び、「変換した」と「変換したふりをした」が区別できなかった。
+  > 縮退そのものは残してある（単体テストは pandoc の無い CI・開発機で走る必要がある）が、
+  > **`Conversion:AllowDegradedBodyConversion=true` を明示した場合に限る**。既定は `false` であり、
+  > 配備（helm / compose）はこの値を注入しない。
+- **E2（pandoc 恒久失敗）**: pandoc が非0終了した場合は例外を送出し、メッセージ再試行→
   デッドレター（`<queue>_error`）へ委ねる。
+- **E5（pandoc が入力に取れない形式）**: PDF は pandoc の**入力形式にならない**
+  （出力にはできる）。既定形式へ落として pandoc に食わせず、
+  `UnsupportedSourceFormatException` として**明示的に拒否**する。
+  再試行しても結果が変わらないため、コンシューマは**再送出せず**恒久失敗として記録する
+  （`status = failed` ／ `deadLettered = true`。デッドレターキューへは流さない）。
+  変換ジョブ画面には理由つきの失敗として並び、`POST /retry` で再変換できる。
+  🔴 **PDF の本文をどう取るかは未決である**（ファイルサーバーコネクタは PDF を列挙するため、
+  「取り込めるが変換できない」状態が残る）。計画側の裁定を仰いでいる。
 - **E3（図コード化の LLM 一時障害・送信拒否・コード化不能）**: 例外を送出せず**画像保持へ縮退**する
   （パイプラインを完了させる）。この経路はメッセージ再試行を発火させない。計画書（draft）との差異は
   `feedback/20260703_conversion-retry-vs-image-fallback.md` で計画側へ環流する。
@@ -108,9 +126,15 @@ issues: [#533, #543]
 
 ## スコープ外（フォローアップ）
 
-- 実オブジェクトストレージ（MinIO/S3）クライアント（製品確定後）。現状は dev 決定的 URI。
 - LLMゲートウェイのマルチモーダル（Vision）画像入力。現状はキャプション/抽出テキストをプロンプト化。
-- 実ストレージからの原本フェッチ。現状の pandoc 入力は `file://`／ローカルパスのみ対応。
+- PDF の本文抽出。pandoc は PDF を入力に取れないため、現状は E5 として明示的に拒否する
+  （別経路を足すかどうかは計画側の裁定事項）。
+
+> **［2026-08-31 追記］「実ストレージからの原本フェッチ（pandoc 入力は `file` スキームと
+> ローカルパスのみ）」はスコープ外ではなくなった。** オブジェクトストレージの原本は
+> `IObjectStorageClient` で取り寄せて一時ファイルへ落とし、pandoc に食わせる。
+> 🔴 これが無いと、**pandoc を実行時イメージへ入れても原本が解決できず縮退したままになる**
+> （取り込み経路が発行する原本参照は常にオブジェクトストレージの参照である）。
 
 ## トレーサビリティ
 
