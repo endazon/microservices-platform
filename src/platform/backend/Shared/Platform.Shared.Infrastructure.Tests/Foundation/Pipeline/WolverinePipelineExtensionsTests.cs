@@ -192,7 +192,7 @@ public class WolverinePipelineExtensionsTests
         return (string[])field.GetValue(null)!;
     }
 
-    // 🔴 規則 0（#1073 / [[IADR-0324]]）: ハンドラ探索アセンブリの明示固定。
+    // 🔴 規則 0（#1073 / [[IADR-0326]]）: ハンドラ探索アセンブリの明示固定。
     //
     // Wolverine の `ApplicationAssembly` は**プロセス全体で 1 つの静的値**であり、最初に起動した
     // ホストが固定する。明示しないと、1 プロセスで 2 サービスのホストを立てる統合テストで

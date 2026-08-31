@@ -15,7 +15,7 @@ related_ids:
   - IADR-0302
   - IADR-0305
   - IADR-0314
-  - IADR-0324
+  - IADR-0326
 author: claude
 created: 2026-08-30
 updated: 2026-08-30
@@ -35,7 +35,7 @@ plan_refs:
 
 対処は共通ヘルパ `AddPlatformWolverineStep<TStep>` での明示固定（1 行）。
 **`ProcessingBudget`（30 秒）は 1 秒も触っていない。**
-判断と実測は [`IADR-0324`](../adr/IADR-0324_wolverine-application-assembly-pinning.md)。
+判断と実測は [`IADR-0326`](../adr/IADR-0326_wolverine-application-assembly-pinning.md)。
 
 ## 対象
 
@@ -50,7 +50,7 @@ plan_refs:
 
 **その実走（run `33309205241` / `beaeb9e4`）が同じ 2 件で落ちた**（`Total 77 / Passed 74 / Failed 2 / Skipped 1`）。
 つまり #1069 の主目的（「同時実行による混雑」を証拠つきで除外する）は達せられた ——
-**混雑は原因ではない。** 直列化そのものは残す（IADR-0324 §検討して採らなかった案）。
+**混雑は原因ではない。** 直列化そのものは残す（IADR-0326 §検討して採らなかった案）。
 
 ## 🔴 母集合の引き方（規則 9・10）と除外
 
@@ -79,7 +79,7 @@ grep -rn "PLATFORM_TEST_" ... → 当たり 1 行（RabbitMqFixture.cs のみ）
 🔴 **ブローカだけが外部化されていて DB は外部化されていなかった。**
 `PostgresFixture.IsAvailable` が false になるため、Docker の無い環境では
 **ブローカを外から与えても fan-out は 1 行も走らない**。これが「CI でしか再現できない」状態を作り、
-6 ラウンドの下地になった。→ 対称に `PLATFORM_TEST_POSTGRES` を足した（IADR-0324 決定 6）。
+6 ラウンドの下地になった。→ 対称に `PLATFORM_TEST_POSTGRES` を足した（IADR-0326 決定 6）。
 
 ### 走査 3 —— 「複数の Wolverine ホストを 1 プロセスで立てる」箇所（真因が効く範囲）
 
@@ -93,7 +93,7 @@ grep -rn "UseWolverine|AddPlatformWolverineStep" --include=*.cs src/ | grep -v a
 **除外したもの**: `DocumentService` / `DataSourceService` は発行専用で `AddPlatformWolverineStep` を
 呼ばない。探索アセンブリは他所のままになるが、**リスナーを持たないので消費が起きない**
 （実測: `local3.log` で両者は `Knowledge.IntegrationTests` を走査したが、キューを 1 本も購読していない）。
-**起きていない事象へ予防的に手を入れない**（#1038 が禁じた作法と同型）。申し送りは IADR-0324 §射程外。
+**起きていない事象へ予防的に手を入れない**（#1038 が禁じた作法と同型）。申し送りは IADR-0326 §射程外。
 
 ## 実測
 
