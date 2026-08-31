@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — ユニット直下の .gitkeep 枠 24 件の扱いを決め、実体のあるディレクトリの死んだ枠を撤去する（#1122）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - NFR
   - ADR-0031
@@ -200,7 +200,59 @@ live な記述で本作業が偽にし得るもの:
 
 ## 6. 受け入れ基準（#1122 から写像）
 
-- [ ] 24 件を 1 件ずつ確かめ、**実体があるか／区分ごと無いか／「残す理由」が文書化されている**
-- [ ] 2 つの README の `.gitkeep` 記述が実態と一致し、**撤回済みの根拠を引いていない**
-- [ ] `pnpm run lint` / `typecheck` / `test` / `build` / `format:check` が通る
-- [ ] `check-doc-links` / `gen-knowledge-graph --check` ほかが通る
+- [x] 24 件を 1 件ずつ確かめ、**実体があるか／区分ごと無いか／「残す理由」が文書化されている**
+- [x] 2 つの README の `.gitkeep` 記述が実態と一致し、**撤回済みの根拠を引いていない**
+- [x] `pnpm run lint` / `typecheck` / `test` / `build` / `format:check` が通る
+- [x] `check-doc-links` / `gen-knowledge-graph --check` ほかが通る
+
+## 7. ［2026-08-31 追記 / #1122］実行結果
+
+### 撤去した 11 件と、残した 28 件
+
+```console
+$ git ls-files | grep -cE '(^|/)\.gitkeep$'
+28                                   ← 着手時 39。11 件を撤去
+```
+
+残 28 件 = ユニット直下 24（群 α。裁定待ちで残す）＋ 実体 0 件の `docs/` 種別フォルダ 4（群 γ）。
+**撤去後もディレクトリはすべて存在することを実測した**（`ls -d docs/api docs/tests .ai-context/specs …`）。
+
+### 起票したもの
+
+- **#1131** —— 描画しない純粋関数（`components/ui/apiErrors.ts` / `formatDateTime.ts`）が
+  `components/` に居る件。移送は `@foundation/ui/*` の公開面を動かすため分けた。
+- **planning#510 へコメント** —— 新規 issue を立てず、同じ裁定へユニット直下の論点を足した。
+  あわせて #1125 の改番（`IADR-0320` → `IADR-0321`）を訂正した。
+
+### 通した検査
+
+`pnpm run lint`（error 0 / warning 10・既存）／ `typecheck` ／ `test` ／ `build` ／ `format:check`、
+`check-route-manifest` ／ `check-chunk-budget`（床 617.16 kB のまま）／ `check-i18n-catalogs` ／
+`check-adr-numbering` ／ `check-commit-messages` ／ `check-trace-blocks` ／ `check-doc-links` ／
+`check-doc-updated` ／ `check-doc-type-vocabulary` ／ `check-doc-status-vocabulary` ／
+`check-plan-id-qualification` ／ `check-cross-repo-refs` ／ `gen-knowledge-graph --check` ／
+`REQUIRE_REPO_TESTS=1 scripts.test.js`（668 件）。**すべて緑。**
+
+`check-adr-numbering` は索引行の追加時に 1 度だけ先に叩いており（`IADR-0322` の追加直後）、
+`check-doc-links` は `IADR-0262` / `IADR-0321` から新 IADR へのリンクを検証している
+—— **#1125 でリンクの取り残しに 1 度捕まっているため、コミット前に個別に叩いた。**
+
+### 落ちたテスト
+
+`platform/frontend/src/lib/api/orvalMutator.test.ts` の 1 件のみ（Node 24 の環境差）。
+
+```console
+$ git diff --name-only origin/develop HEAD -- src/
+src/platform/frontend/README.md
+```
+
+🔴 **`src/` 配下で `develop` と違うのは Markdown 1 件だけ**であり、当該試験と依存の
+全ソースが `origin/develop` とバイト単位で同一である。**基点の内容をそのまま走らせている。**
+CI は Node 22 で緑になる。
+
+### 測れなかったもの
+
+- **E2E（Playwright）と バックエンド（`dotnet build` / `dotnet test`）は走らせていない。**
+  本 PR の変更は 0 バイトのファイル 11 件の削除と Markdown だけであり、
+  **C# と E2E の入力に 1 バイトも触れていない**（上の `git diff` が全量である）。CI に委ねる。
+- **planning#510 の裁定そのもの。** 群 α の可否は本 PR では決まらない（決定 1 がそう決めた）。
