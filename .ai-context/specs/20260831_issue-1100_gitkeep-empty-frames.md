@@ -242,7 +242,7 @@ issue は `hooks/` 13 ＋ `stores/` 13 = **26 件**を挙げている。**実測
 
 起案時は `IADR-0317` を採ったが、中断中に `develop` が `c45533bc` まで進み **`IADR-0317` /
 `IADR-0318` / `IADR-0319` が先に着地した**。`.claude/rules/traceability.md`「採番衝突時の改番手順」
-（**先着尊重。後発は次の空き番号へ改番し、欠番を作らない**）に従い **`IADR-0320`** へ改番した。
+（**先着尊重。後発は次の空き番号へ改番し、欠番を作らない**）に従い **`IADR-0321`** へ改番した。
 参照は 6 箇所（新 IADR 本体・`IADR-0218`・`IADR-0219`・索引 3 行・`src/plopfile.js`・
 `useSampleFilter.ts`）。`node scripts/check-adr-numbering.js` が緑であることで取り残しが無いことを
 確かめた（1 回目は索引の後継リンク 2 行を取り残し、`check-doc-links.js` が捕まえた）。
@@ -284,7 +284,7 @@ $ git ls-files | grep -E 'features/[^/]+/[^/]+/\.gitkeep$' | wc -l
 `check-doc-type-vocabulary` ／ `check-doc-status-vocabulary` ／ `check-plan-id-qualification` ／
 `check-cross-repo-refs` ／ `gen-knowledge-graph --check` ／ `REQUIRE_REPO_TESTS=1 scripts.test.js`（668 件）。
 
-**`scripts.test.js` は 1 回目に `title-too-long`（`IADR-0320` の索引タイトル 365 字 > 上限 200）で
+**`scripts.test.js` は 1 回目に `title-too-long`（`IADR-0321` の索引タイトル 365 字 > 上限 200）で
 落ちた。** baseline へ足さず要約を 165 字へ縮めて直した（ratchet の趣旨は「新規混入は fail」である）。
 
 ### 落ちたテストと、それが本件由来でないことの実測

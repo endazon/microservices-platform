@@ -1,5 +1,5 @@
 ---
-title: IADR-0320 .gitkeep による枠置きを規範として廃し、雛形も空枠を生成しない
+title: IADR-0321 .gitkeep による枠置きを規範として廃し、雛形も空枠を生成しない
 type: impl-adr
 status: Accepted
 related_ids:
@@ -32,7 +32,7 @@ related_specs:
   - ../specs/20260831_issue-1100_gitkeep-empty-frames.md
 ---
 
-# IADR-0320: `.gitkeep` による枠置きを規範として廃し、雛形も空枠を生成しない
+# IADR-0321: `.gitkeep` による枠置きを規範として廃し、雛形も空枠を生成しない
 
 - 状態: Accepted
 - 日付: 2026-08-31

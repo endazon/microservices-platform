@@ -14,7 +14,7 @@ related_ids:
   - IADR-0219
   - IADR-0280
   - IADR-0282
-  - IADR-0320
+  - IADR-0321
   - NFR
 author: implementation-agent
 created: 2026-08-17
@@ -50,11 +50,11 @@ plan_refs:
 > - 実体面: **[IADR-0282](./IADR-0282_single-project-vsa-structure.md)** 決定 3 が
 >   `.gitkeep` の枠を**全廃**した（単一プロジェクト＋VSA/DDD フォルダ構成へ）。
 >   計画 `ADR-0065` は 2026-08-30 実測で「`.gitkeep` のみの層ディレクトリは **0 件**」としている。
-> - 規範面: **[IADR-0320](./IADR-0320_no-empty-scaffolding-frames.md)** が
+> - 規範面: **[IADR-0321](./IADR-0321_no-empty-scaffolding-frames.md)** が
 >   **`.gitkeep` による枠置きを本リポジトリの規範として廃し、雛形（`src/plopfile.js`）も
 >   空枠を生成しないようにした。**
 >
-> **決定 4（機械検査は置かない）だけは、判断そのものは今も有効である**（`IADR-0320` 決定 4 が
+> **決定 4（機械検査は置かない）だけは、判断そのものは今も有効である**（`IADR-0321` 決定 4 が
 > 同じ結論を引き継ぐ）。ただし**本 IADR の枠組み（7〜8 要素 × N サービスへ `.gitkeep` を置く）が
 > 消えているため、決定 4 単独を引かないこと。**
 >
@@ -405,7 +405,7 @@ plan_refs:
 
 - Supersedes: なし
 - Superseded by: **[IADR-0282](./IADR-0282_single-project-vsa-structure.md)**（実体面。決定 3 が
-  `.gitkeep` の枠を全廃した）／ **[IADR-0320](./IADR-0320_no-empty-scaffolding-frames.md)**（規範面。
+  `.gitkeep` の枠を全廃した）／ **[IADR-0321](./IADR-0321_no-empty-scaffolding-frames.md)**（規範面。
   `.gitkeep` の枠置きをリポジトリの規範として廃した）。上流は計画
   `ADR-0065`（Superseded ではなく、planning#180 裁定の**部分改定**）決定 4。**［2026-08-31 / #1100］**
   - ~~なし（**[IADR-0219](./IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) が
