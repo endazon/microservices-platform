@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — AI 提案一覧に documentId の絞り込みを足し、SC-03 のクライアント側間引きをやめる（#1104）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-18
   - UC-10
