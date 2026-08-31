@@ -1355,27 +1355,43 @@ module.exports = ({ ok, assert }) => {
 
   // ★ **変異試験**（#748 受け入れ基準 3）。正例だけの緑では、突合対象に入っていなくても
   //   「無主 0 件」が成立してしまう。**無主を仕込むと本当に fail するか**を spawn で実測する。
-  ok('担当 issue の突合: 無主を仕込むと exit 1（変異試験。NFR, #748）', () => {
+  //
+  //   ★ [2026-08-31 / #1106] **実状態の「仕様書を持たない ID」に相乗りする形をやめた。**
+  //   従前は「いま残っているのは UC-01〜UC-07」と実状態の残余へ固定し、残余が減るたびに
+  //   別の ID へ付け替えてきた（SC-20 → SC-12 → UC-01）。#1106 で計画レンジ 54 件の**全件が
+  //   テスト仕様書を持った**ため付け替え先が尽き、母集合（`missingSpec`）が空になって
+  //   **無主を仕込んでも exit 0**（＝変異試験が検出力ゼロのまま緑）になった。
+  //   合成した計画レンジ（`PLAN_ID_RULES`）で仕様書の無い ID を 1 件作り、実状態から切り離す。
+  ok('担当 issue の突合: 無主を仕込むと exit 1（変異試験。NFR, #748 / #1106）', () => {
     const { spawnSync } = require('child_process');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-id-owners-'));
     const file = path.join(dir, 'owners.json');
     fs.writeFileSync(file, JSON.stringify({ generatedAt: '2026-08-15T00:00:00Z', issues: OWNER_FIXTURE }));
+    // 合成レンジ: UC の上端だけを 1 つ広げる。UC-12 は docs/tests/ にも OWNER_FIXTURE にも無いので
+    // 「仕様書が無く、どの issue も引き受けていない」＝無主になる。他 3 種は実物と同じ値を置く。
+    const rules = path.join(dir, 'traceability.repo.md');
+    fs.writeFileSync(rules,
+      '# 合成した計画レンジ（変異試験専用）\n\n' +
+      '## 起点 ID の種別（固有）\n\n' +
+      '- レンジは `FR-01..22` / `UC-01..12` / `SC-01..21` / `ADR-0001..0068`。\n\n' +
+      '## 次の節（節スコープの終端）\n');
     const r = spawnSync(process.execPath, [path.join(__dirname, 'check-test-traceability.js')],
-      { encoding: 'utf8', env: { ...process.env, PLAN_ID_OWNERS: file } });
+      { encoding: 'utf8', env: { ...process.env, PLAN_ID_OWNERS: file, PLAN_ID_RULES: rules } });
     const out = `${r.stdout}\n${r.stderr}`;
     assert.strictEqual(r.status, 1, `無主があるのに fail しない:\n${out}`);
     assert.match(out, /担当 issue が無い計画 ID/);
-    // 無主として名指しされるのは 3 issue が引き受けていない ID だけである。
-    // （従前は SC-20 → SC-12 と見てきたが、#451-a が docs/tests/SC-20 を、#452 が docs/tests/SC-12 を
-    //   新設して順に無主でなくなった。**固定に使う ID はテスト仕様書を持たない ID へ追随させる。**
-    //   いま残っているのは UC-01〜UC-07 である —— SC-17 は本 fixture の #438 が「SC-13〜17」で
-    //   引き受けているため無主にならない）
-    assert.match(out, /UC-01/);
+    assert.match(out, /UC-12/);
     // ★ 同じ 1 回の実行で、**過去 3 件が無主に混じらない**ことも確かめる（回帰と変異の同時固定）。
     const unowned = (out.match(/\[担当 issue が無い計画 ID\] ([^\n]*)/) || [])[1] || '';
     for (const id of ['SC-14', 'SC-15', 'UC-09', 'UC-10']) {
       assert.ok(!unowned.split(' / ').includes(id), `${id} が無主として出ている: ${unowned}`);
     }
+    // ★ 陽性対照: 合成レンジを外せば（＝実状態のレンジなら）無主は 0 件で exit 0 に戻る。
+    //   これが無いと「常に fail する検査」でも上の assert は緑になる。
+    const control = spawnSync(process.execPath, [path.join(__dirname, 'check-test-traceability.js')],
+      { encoding: 'utf8', env: { ...process.env, PLAN_ID_OWNERS: file } });
+    assert.strictEqual(control.status, 0,
+      `実状態のレンジでは無主 0 件のはず:\n${control.stdout}\n${control.stderr}`);
     fs.rmSync(dir, { recursive: true });
   });
 
