@@ -9,10 +9,11 @@ related_ids:
   - IADR-0077
   - IADR-0087
   - IADR-0206
+  - IADR-0243
   - IADR-0317
 author: claude
 created: 2026-07-20
-updated: 2026-08-30
+updated: 2026-08-31
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ (ADR-0006 CI/CD・運用基盤)
 ---
@@ -104,6 +105,23 @@ Traefik `HelmChartConfig`（kube-system/traefik）で `admin:50000` entrypoint �
 
 ### 5. OIDC issuer は最小案（keycloak:8080 維持）・redirect は集約後 URL を追加
 
+> **［2026-08-31 追記 / #780］本決定 5 は [IADR-0243](./IADR-0243_keycloak-edge-issuer-migration.md) が Supersede した。**
+> **覆ったのは「issuer は `http://keycloak:8080`（手順A）を維持する」の 1 点だけである。**
+> 現行の issuer は **`https://keycloak.localhost/realms/platform`**（エッジ host）であり、
+> その単一情報源は `deploy/local/infra/keycloak.yaml` の `KC_HOSTNAME_URL` である。
+>
+> **覆った理由は「集約の設計」ではなく `NFR-11`（全経路の HTTPS 化。適用範囲は環境を問わない。
+> 裁定 planning#383 / 計画 `ADR-0047`）である。** 本決定 5 が最小案を採ったのは
+> 「[IADR-0086](./IADR-0086_oidc-issuer-metadata-split.md) の metadata / issuer 分離が要る。複雑化する」という
+> 理由だったが、その分離は 2026-07-20 に Accepted 済みで**使われていなかっただけ**であり、
+> [IADR-0243](./IADR-0243_keycloak-edge-issuer-migration.md) 決定 2 が実際に有効化して解いた。
+>
+> **決定 5 のうち「redirect は集約後 URL を追加する」の部分は動いていない**
+> —— 7 クライアントの `:50000` 付き redirect URI はそのまま有効であり、
+> [IADR-0317](./IADR-0317_istio-ingressgateway-edge-and-strict-mtls.md) 決定 3 が
+> 「動かせない」理由として引いているのもこの部分である。
+> **決定 4（admin:50000 のホスト名ベース集約）も不変である。**
+
 issuer は現行 `http://keycloak:8080`（手順A）を維持し、ツール UI のみ 50000 集約する。集約後 URL への
 redirectUris 追加（grafana/headlamp）と `GF_SERVER_ROOT_URL` 設定は **#355（grafana.yaml/realm.json）と競合するため
 本 PR-1 では行わず、#355 マージ後の PR-2 に回す**。追加は既存 port-forward 用 URL を残す形（後方互換）。これから足す
@@ -132,3 +150,11 @@ Qdrant は SSO 非対応のため素通し公開（ネットワーク閉域前�
 - **専用リバースプロキシを 50000 で新設**: bundled Traefik があるのに二重になるため非推奨（代替として README 言及可）。
 - **Istio をローカルにも導入**: values-local の Istio 非導入方針・重量に反するため却下。
 - **Keycloak も 50000 集約（issuer 変更）**: IADR-0086 の metadata/issuer 分離が要る。複雑化のため最小案を採用。
+  > **［2026-08-31 追記 / #780］この却下は [IADR-0243](./IADR-0243_keycloak-edge-issuer-migration.md) が覆した**
+  > （決定 5 と一体の判断だったため、同じ ADR が両方を Supersede する）。
+  > **ただし採った形は「50000 への集約」ではない** —— Keycloak は `admin`(50000) ではなく
+  > **80/443 のエッジ host `keycloak.localhost`** に出した（管理ツールではなく認証基盤であり、
+  > SPA・BFF と同じ入口に載るべきものだからである）。
+  > 「複雑化する」という却下理由そのものは誤っていなかった: 分離できないツール（ArgoCD / Vault）には
+  > ローカル CA を渡す配線が実際に増えた（#780 の実装）。**変わったのはその複雑さを払う理由の側**で、
+  > `NFR-11` が経路B にも及ぶと確定した（planning#383）ことにより、払わない選択肢が無くなった。
