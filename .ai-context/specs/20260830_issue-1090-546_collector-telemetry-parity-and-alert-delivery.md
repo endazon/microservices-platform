@@ -16,7 +16,7 @@ related_ids:
   - IADR-0312
 author: claude
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-08-31
 plan_refs:
   - planning:projects/microservices-platform/06_technical/05_observability-ops.md (§LLM 費用の上限アラートと暫定の統制・決定 39〜42／§リスク・未決事項)
 related_specs:
@@ -267,6 +267,37 @@ LlmCompletionMetrics: PRESENT
 **稼働イメージが古い**（`MassTransit.dll` を含む＝ Wolverine 移行前）。
 
 → **判断 3（置かない）を裏付けた。** いま予算アラートを置いても、評価対象を 1 本も持たない。
+
+#### ［2026-08-31 追記 / #1090］develop 取り込み後に再測した —— **この根拠は弱まった**
+
+イメージが再ビルドされ、**稼働イメージは計器を持つようになった**（置き場も
+`/app/LlmGateway.Api.dll` → `/app/LlmGateway.dll` へ変わっている）。
+
+```
+$ POD=llmgateway-service-796cf8f4dd-4m4vl
+$ kubectl -n microservices-platform exec $POD -c llmgateway-service -- sh -c 'set -e
+    tr -d "\000" < /app/LlmGateway.dll > /tmp/s.txt; wc -c < /tmp/s.txt; ...'
+101763                        ← 陽性対照（走査結果が空でないこと）
+llm.completion.total: PRESENT
+llm.tokens.total:     PRESENT
+llm.cost.total:       PRESENT
+LlmUsageMetrics:      PRESENT
+LlmGateway:           PRESENT  ← 陽性対照
+```
+
+🔴 **旧パスのまま測ると、`sh` の `cannot open ...` を見落として「全部 ABSENT」と読める。**
+**陰性の結論には陽性対照を対で置く。**
+
+**それでも `llm_*` の系列は 0 件のままである**（`count({__name__=~"llm.+"})` → 空。2026-08-31 実測）。
+**理由が「計器が無い」から「まだ 1 度も呼ばれていない」へ変わっただけ**で、
+**評価対象が無いことは変わらない。**
+
+**判断 3 は変えない。** 4 本の根拠のうち弱まったのは (2) だけで、
+**(1) 計画が明示的に禁じている**は単独で決定的である。
+
+あわせて (3) を再測した —— **PVC は「無い」のではなく「あるのに繋がっていない」**。
+`prometheus-data`（5Gi）は `Bound` だが、Deployment の `volumes` は ConfigMap 1 つだけである
+（`--storage.tsdb.retention.time=7d` も据え置き）。**存在の確認で満足すると見落とす。マウントを見る。**
 
 ### 実測 4 — 🔴 **SLO ルール 5 件のうち 4 件は、そもそも評価対象を持たない**（本作業の射程外・別 issue）
 

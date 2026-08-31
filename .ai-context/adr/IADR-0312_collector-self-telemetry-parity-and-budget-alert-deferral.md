@@ -16,7 +16,7 @@ related_ids:
   - IADR-0304
 author: claude
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-08-31
 plan_refs:
   - planning:projects/microservices-platform/06_technical/05_observability-ops.md
 ---
@@ -132,8 +132,40 @@ LlmUsageMetrics:      ABSENT
 **リポジトリのソースには実装済みである**（`LlmUsageMetrics.cs`。2026-08-23 / #443）。
 **稼働イメージが古い。** どちらにせよ、**いま置いたアラートは評価対象を 1 本も持たない。**
 
+> 🔴 **［2026-08-31 追記 / #1090］この脚は弱まった。再測して自分で否定しておく。**
+> develop を取り込む間にイメージが再ビルドされ、**稼働イメージは計器を持つようになった**
+> （アセンブリの置き場も `/app/LlmGateway.Api.dll` → `/app/LlmGateway.dll` へ変わっている）。
+>
+> ```
+> $ POD=llmgateway-service-796cf8f4dd-4m4vl
+> $ kubectl -n microservices-platform exec $POD -c llmgateway-service -- sh -c 'set -e
+>     tr -d "\000" < /app/LlmGateway.dll > /tmp/s.txt
+>     wc -c < /tmp/s.txt          # 101763 ← 陽性対照（走査が空でないこと）
+>     for s in llm.completion.total llm.tokens.total llm.cost.total LlmUsageMetrics LlmGateway; do ...'
+>       wc -c < /tmp/s.txt          # 101763 ← 陽性対照（走査が空でないこと）
+>       for s in llm.completion.total llm.tokens.total llm.cost.total LlmUsageMetrics LlmGateway; do ...'
+> llm.completion.total: PRESENT
+> llm.tokens.total:     PRESENT
+> llm.cost.total:       PRESENT
+> LlmUsageMetrics:      PRESENT
+> LlmGateway:           PRESENT   ← 陽性対照
+> ```
+>
+> **それでも `llm_*` の系列は 0 件のままである**（実測 2026-08-31）。理由が
+> 「**計器が無い**」から「**まだ 1 度も呼ばれていない**」へ変わっただけで、
+> **評価対象が無いことは変わらない。**
+>
+> 🔴 **初回の測定は危うく誤答するところだった。** 旧パスのまま測ると `sh` の
+> `cannot open /app/LlmGateway.Api.dll` を見落として**全部 ABSENT** と読める。
+> **陰性の結論には陽性対照を対で置く**（`wc -c` と `LlmGateway`）。
+>
+> **決定 3 は変えない。** 脚 (1)(3)(4) は無傷であり、とくに **(1) 計画が禁じている**は単独で決定的である。
+
 **(3) 経路B では月次スケールの規則が原理的に評価できない。** 保持は
 `--storage.tsdb.retention.time=7d` であり、**稼働クラスタは PVC を持たない**（Pod 再起動で消える）。
+🔴 **PVC が「無い」のではなく「あるのに繋がっていない」**（再測 2026-08-31）——
+`prometheus-data`（5Gi）は `Bound` だが、Deployment の `volumes` は ConfigMap 1 つだけである。
+**存在の確認で満足すると見落とす。マウントを見る。**
 `[30d]` の窓を持つ規則は dev で常に空になる。**「置いたが動かない」は「置いていない」より悪い**
 （置いてあることが統制の存在に読める）。
 
