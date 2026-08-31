@@ -11,10 +11,13 @@ related_ids:
   - IADR-0121
   - IADR-0124
   - IADR-0125
+  - IADR-0321
+  - IADR-0325
+  - ADR-0065
   - ADR-0067
 author: claude
 created: 2026-08-23
-updated: 2026-08-30
+updated: 2026-08-31
 plan_refs:
   - planning:projects/microservices-platform/06_technical/13_frontend-stack.md
   - planning:projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md
@@ -113,6 +116,25 @@ plan_refs:
 
 ## 決定 3: 中身の無い区分もフォルダと `.gitkeep` で枠を残す
 
+> 🔴 **［2026-08-31 追記 / #1122］本決定は 2 点で部分改定された。改定者は
+> [IADR-0325](./IADR-0325_unit-level-scaffolding-frames-await-arbitration.md) である。
+> ID は付け替えない —— 本 IADR は `IADR-0262` のままである。**
+>
+> 1. **射程から「各 feature 配下の `hooks/` `stores/`」が外れた。** 本決定はそれを枠の対象として
+>    名指ししていたが、**#1100 / PR #1125 が 13 feature の空枠 30 件を撤去した**
+>    （[IADR-0321](./IADR-0321_no-empty-scaffolding-frames.md)）。**本決定はユニット直下だけに残る。**
+>    ⚠️ **#1125 はこの追記を書き忘れていた** —— 本 IADR は同 PR の是正対象として引かれておらず、
+>    決定 3 は 1 日ぶん「消したものを残せ」と言い続けていた。
+> 2. 🔴 **根拠が差し替わった。** 本決定が引く「雛形 README（PR #777）が定めた作法」は、その
+>    大もとが計画 `12_backend-application-stack` §規範性・粒度・置き場 の
+>    「実体が無いものは空フォルダ＋`.gitkeep` を置く」であり、**計画 `ADR-0065` 決定 4 が撤回した。**
+>    **結論（ユニット直下は残す）は生き残るが、それを支えるのは planning#445 の裁定**
+>    （ツリー全体への適合が必須。ディレクトリ名を名指しで列挙している）**であって、
+>    バックエンドの同型規範ではない。**
+>
+> **撤去の可否そのものは未確定である**（planning#510 で裁定を求めている）。`IADR-0325` 参照。
+
+
 雛形 README（PR #777）が定めた作法をそのまま採る——「中身が無い区分も、フォルダと `.gitkeep` だけは
 置いてある。何も無いと**その構成要素が意図的に不在なのか単に作り忘れなのかが一見して分からない**」。
 
@@ -191,3 +213,4 @@ knowledge ユニットでは、直下の `app/ assets/ components/ hooks/ lib/ l
 
 - Supersedes: なし
 - Superseded by: なし
+- Amended by: [IADR-0325](./IADR-0325_unit-level-scaffolding-frames-await-arbitration.md)（2026-08-31 / #1122。**決定 3 の射程から feature 配下を外し、根拠を planning#445 へ差し替える**。決定 1・2・4・5 は無傷であり `Accepted` を維持する）
