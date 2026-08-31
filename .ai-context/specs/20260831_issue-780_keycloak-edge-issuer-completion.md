@@ -218,15 +218,17 @@ schannel 向けに `--ssl-revoke-best-effort`。**`-k` は 1 回も使ってい�
 
 `ツールの login → Keycloak の認可 → ツールの callback → セッション確立` を通した。
 
+最終の一括実測は **2026-08-31T12:25Z（realm 世代マーカ: `admin` の user id `e96ae04f…`）** である。
+
 | クライアント | 起点 | 認可 | callback | セッション | 利用者 |
 | --- | --- | --- | --- | --- | --- |
-| platform-spa（BFF） | `/bff/auth/login` 302 | 302 | `/bff/auth/callback` 302 | `__Host-msp-session` | admin |
-| grafana | `/login/generic_oauth` 302 | 302 | 302 → `/` | `grafana_session` | poc-user |
-| argocd | `/auth/login` 303 | 302 | `/auth/callback` 303 → `/` | `argocd.token` | admin |
-| headlamp | `/oidc?cluster=main` 302 | 302 | `/oidc-callback` 303 | `headlamp-auth-main.0` | admin |
+| platform-spa（BFF） | `/bff/auth/login` 302 | 302 | `/bff/auth/callback` 302 | `__Host-msp-session` | developer |
+| grafana | `/login/generic_oauth` 302 | 302 | 302 → `/` | `grafana_session` | developer |
+| argocd | `/auth/login` 303 | 302 | `/auth/callback` 303 → `/` | `argocd.token` | developer |
+| headlamp | `/oidc?cluster=main` 302 | 302 | `/oidc-callback` 303 | `headlamp-auth-main.0` | developer |
+| wiki-js | `/login/<key>` 302 | 302 | `/login/<key>/callback` 302 | `jwt` | developer |
 | minio | console の JSON | 302 | `/oauth_callback` → 交換 **204** | `token` | admin |
-| vault | `auth_url` 200 | 302 | `/v1/auth/oidc/oidc/callback` 200 | `client_token` 発行 | admin |
-| wiki-js | `/login/<key>` 302 | 302 | `/login/<key>/callback` 302 | `jwt` | admin |
+| vault | `auth_url` 200 | 302 | `/v1/auth/oidc/oidc/callback` 200 | `client_token`（policies=`["default"]`） | admin |
 
 🔴 **利用者を書かない実測は取り違える。** Grafana は `admin` だと
 `Failed to create user: user already exists`（組み込み local admin と名前が衝突。issuer とは無関係）で落ち、
@@ -274,13 +276,49 @@ TLS 終端は IADR-0220（#841）が入れ、#1109（IADR-0317）で Traefik →
 
 ### 6.5 測定を誤らせたもの（記録として残す）
 
-- 🔴 **稼働クラスタは他セッションと共有している。** 作業中に Keycloak の realm が再構築され、
-  `developer` の**利用者 ID が変わった**（`0e05f5e1…` → `9d41bbb9…`）。同時に `poc-user` に登録済みだった
-  TOTP と、`wikijs.authentication` の行が消えた。**同じコマンドを 2 回打って違う答えが返る。**
-  実測を貼るときは**いつ測ったか**を必ず添える。
+- 🔴 **稼働クラスタは他セッションと共有しており、作業中に `platform` realm が 3 回作り直された。**
+  `admin` の利用者 ID（＝token の `sub`）が **`928cb7ab…` → `ab64c9c8…` → `e96ae04f…`** と動き、
+  Keycloak の pod も `5bd5d6f5f` → `66bf579bd5` に入れ替わっている（`keycloak-data` PVC は 08-22 のまま）。
+  **同じコマンドを 2 回打って違う答えが返る。** これが次の 2 種類の偽陰性を生んだ:
+  1. **ツール側に残った古い `sub` との衝突。** Wiki.js が
+     `duplicate key value violates unique constraint "users_providerkey_email_unique"` で 500、
+     Grafana が `Failed to create user: user already exists` で `login_error`。
+     **どちらも「その利用者が、その realm 世代より前にそのツールへログインしていた」ときだけ起きる。**
+  2. **鍵のローテーションとキャッシュ。** BFF が
+     `IDX10503: Signature validation failed. The token's kid is: 'Siruaph2…' but did not match any keys`
+     で 500。realm 再作成で署名鍵が変わったのに、pod が掴んだ JWKS が古かった。
+     `rollout restart deploy/bff-service` で解消した。
+  **したがって上表には「いつ・どの realm 世代で・どの利用者で」測ったかを必ず書く。**
+  **どれも本作業の変更とは無関係である**（変更前の realm 世代でも、変更後の別世代でも、
+  ツール側の設定が正しければ同じ結果になることを世代をまたいで確認した）。
 - 🔴 **`check-deploy-manifests.js` の `hasTool` は `command -v` を使うため Windows では常に不在判定になる**
   と申し送られていたが、**本作業では `helm` / `kubectl` は正しく検出された**。落ちた原因は
   `kubeconform` が本当に入っていないことである。**申し送りを検証せずに引くと誤る。**
+
+### 6.6 ついでに直したもの — #1124（`develop` の integration-stack が赤い）
+
+`develop` の integration-stack は本作業の前から落ちていた:
+
+```
+FAIL  実行した段が 23 本で、宣言（TOTAL=22）と一致しない
+```
+
+**原因は #1117（`2aec5819`）である。** 同 PR は `SEARCH_HITS` のブロックへ `next_step` を
+**3 本足した**が、増分を `TOTAL + 1` → **`TOTAL + 3`** にした。**元から 1 本あったので `+4` が正しい。**
+
+```console
+$ git rev-parse --is-shallow-repository → false（履歴を出典に使える）
+$ git log --oneline -S'retrieval-service の readiness が Degraded でないこと' -- scripts/verify-oidc-edge-flow.sh
+2aec5819 fix(FR-03,SC-01): … (#1117)      ← 4 本目の next_step を足したコミット
+$ git show 2aec5819 -- scripts/verify-oidc-edge-flow.sh | grep 'TOTAL +'
+-if [ "$SEARCH_HITS" = "1" ]; then TOTAL=$((TOTAL + 1)); fi
++if [ "$SEARCH_HITS" = "1" ]; then TOTAL=$((TOTAL + 3)); fi
+$ git merge-base --is-ancestor 2aec5819 HEAD → 真（本作業の変更より前）
+```
+
+**本作業の変更は段を 1 本も増やしていない**（足したのは `pass` の行だけである）。
+`+4` へ直した。静的な数え合わせ: 番号つき `step` が 17 本（base 11 ＋ ABAC 6）、`next_step` が
+6 本（SEARCH_SEEDED 2 ＋ SEARCH_HITS 4）で計 **23**、`TOTAL` も **11+6+2+4 = 23** で一致する。
 
 ## 7. 残した follow-up
 

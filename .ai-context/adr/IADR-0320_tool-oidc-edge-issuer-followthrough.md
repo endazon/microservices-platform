@@ -173,6 +173,14 @@ redirect / origin と別フィールドなので、ここでも片方だけ足�
 | vault | `auth_url` 200 | 302 | `/v1/auth/oidc/oidc/callback` 200 | `client_token` 発行 |
 | wiki-js | `/login/<key>` 302 | 302 | `/login/<key>/callback` 302 | `jwt` |
 
+> 🔴 **測定中に `platform` realm が 3 回作り直された**（`admin` の `sub` が
+> `928cb7ab…` → `ab64c9c8…` → `e96ae04f…`。別セッションとクラスタを共有している）。
+> **realm 世代が変わると、その前にログイン済みだった利用者はツール側で必ず落ちる** ——
+> Wiki.js は `users_providerkey_email_unique` 違反、Grafana は `user already exists`、
+> BFF は JWKS の `kid` 不一致（`IDX10503`）である。**どれも本作業とは無関係の環境要因**だが、
+> **これを知らずに測ると「直っていない」と読む。** 上表は世代 `e96ae04f…`・2026-08-31T12:25Z の
+> 一括実測であり、その世代で初ログインになる利用者を選んである。
+>
 > **Grafana を `admin` で測ると落ちる。** `Failed to create user: user already exists` ——
 > Grafana 組み込みの break-glass local admin（[IADR-0090](./IADR-0090_grafana-keycloak-oidc-generic-oauth.md)）と
 > 名前が衝突するためで、**issuer とは無関係**である。`poc-user` では成立する。

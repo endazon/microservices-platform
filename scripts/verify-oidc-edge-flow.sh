@@ -169,7 +169,12 @@ TOTAL=11
 if [ "$ABAC_POSITIVE" = "1" ]; then TOTAL=$((TOTAL + 6)); fi
 if [ "$SEARCH_SEEDED" = "1" ]; then TOTAL=$((TOTAL + 2)); fi
 # FR-03 / #1116: S4（全文側の正の対照）と S5（同・陰性対照）。SEARCH_HITS に含める。
-if [ "$SEARCH_HITS" = "1" ]; then TOTAL=$((TOTAL + 3)); fi
+# 🔴 **増分は「そのゲートの中にある next_step の本数」である**（#1124）。
+#    #1117 がこのブロックへ 3 本足したとき、増分を `+1` → `+3` にした ——
+#    **元から 1 本あったので `+4` が正しい。** 結果 `develop` の integration-stack が
+#    「実行した段が 23 本で、宣言（TOTAL=22）と一致しない」で落ちていた。
+#    足した本数ではなく、**ブロックを数え直した本数**を書くこと。
+if [ "$SEARCH_HITS" = "1" ]; then TOTAL=$((TOTAL + 4)); fi
 
 PASS=0
 FAIL=0
