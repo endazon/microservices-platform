@@ -38,7 +38,7 @@
       locales/      .gitkeep                ← ja / en（Lingui。カタログの実体は platform 側）
       features/                              ← Feature 単位
         index.ts                            ←   ユニットの束ね（ルート factory ＋ ナビ項目の 2 本を公開）
-        sample/                              ←   **内部を api/components/hooks/routes/stores/types へ割る**
+        sample/                              ←   **内部を api/components/hooks/routes/types へ割る**（stores/ は下の注記）
           index.ts                          ←     feature の公開面（再輸出したものだけを外から使う）
           api/useSampleList.ts              ←     サーバー状態（TanStack Query / orval 生成フック）
           components/SamplePage.tsx         ←     画面・部品（@platform/ui のプリミティブを使う）
@@ -56,9 +56,20 @@
 > 既定は URL を単一情報源にすること（`IADR-0124` 決定 3）。**要ると分かった時点で作る。**
 > `plop` の feature 生成器（`src/plopfile.js`）も `stores/` を生成しない。
 >
-> **`src/` 直下（最上位）の `.gitkeep` は当面そのまま残している。** `app/` と `locales/` は
-> ユニットでは通常空になる（アプリホストである `platform/frontend` が持つ）という**別の事情**があり、
-> feature 内部と同じ理屈でそのまま消してよいとは限らない。**この 24 件の扱いは #1122 で判断する。**
+> 🔴 **［2026-08-31 追記 / #1122］`src/` 直下（最上位）の 11 区分は残す。ただし「揃っているから
+> 適合している」とは読まないこと。**
+> - **消す判断は実装側では下せない。** planning#445（`blocked-impl` の裁定）は
+>   `app/ assets/ components/ hooks/ lib/ stores/ types/ utils/ locales/` を**名指しで**
+>   「1 つも存在しない」と指摘し、**ツリー全体への適合を必須**とした。いま枠を消すと、
+>   その裁定が非適合とした状態へ戻る。**一方で同じ裁定は「名前だけを揃える対応は採らない」とも言う**
+>   —— 空の `assets/` はまさに名前だけを揃えた状態である。**planning#445 はどちらの側も支えない。**
+> - **したがって裁定を待つ。** 計画 `ADR-0065` 決定 4（`.gitkeep` 枠置きの撤回）を
+>   フロントエンドへ及ぼすかは **planning#510** で問うている。**答えが出たら本節ごと書き換える。**
+> - **雛形だけ先に動かさない。** 雛形と実装ユニットで形が割れると、次の複製者がどちらに従うか
+>   判断できなくなる（feature 側は #1100 でわざわざ揃えたばかりである）。
+> - `app/` と `locales/` は、ユニットでは通常空になる（アプリホストである `platform/frontend` が
+>   持つ）という**意図的な不在**である。**空である理由は区分ごとに違う** —— 実装ユニット側の
+>   区分ごとの理由は `src/platform/frontend/README.md` の注記が持つ。
 >
 > ⚠️ 従前ここには「計画 `12_backend-application-stack` §規範性・粒度・置き場 がバックエンドについて
 > 同じ作法を定めており、フロントにも同じ理由が当てはまる」と書いていた。**この根拠は `ADR-0065`

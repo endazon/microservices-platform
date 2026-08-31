@@ -25,7 +25,8 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
       lib/                       # api（orval 生成物と HTTP 出口）/ auth / i18n（設定済み Lingui）
       testing/                   # 横断 setup と画面テスト用ハーネス（テスト専用の第 4 層）
       features/index.ts          # ユニット合成点（可変ユニットの features を束ねる。層としては app）
-      assets/ hooks/ locales/ stores/ types/ utils/   # 枠のみ（.gitkeep。消さない）
+      locales/                   # ja / en の Lingui カタログ（実体あり。生成物はコミットする）
+      assets/ hooks/ stores/ types/ utils/   # 🔴 中身が無い（.gitkeep のみ）。下の注記を読むこと
       main.tsx                   # エントリ
     index.html / vite.config.ts / e2e/ / public/
     nginx.default.conf.template / config.js.template   # 配信・実行時 config
@@ -33,6 +34,23 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
     src/features/<screen>/       # home, sc01..sc11。FeatureModule を公開し features/index.ts へ登録
   <unit>/frontend/               # 追加の可変機能ユニット（git submodule でリンク）
 ```
+
+- 🔴 **空の区分（`.gitkeep` のみ）について** ——
+  `platform` は `assets/ hooks/ stores/ types/ utils/`、`knowledge` は
+  `app/ assets/ hooks/ locales/ stores/ testing/ types/ utils/` が空である。
+  **「枠があること」を適合の証拠として読まないこと。**
+  - **なぜ空か**（区分ごとに理由が違う）: `assets/` は外部 CDN と Web フォントを禁じた結果
+    フォントがシステムフォント・アイコンがパッケージになり**置くものが無い**。`hooks/` の横断フックは
+    **関心の隣に置いてある**（`lib/auth/useAuth.ts` 等）。`stores/` の Zustand は 1 本だけで、
+    その 4 つの参照元がすべて `components/ai-chat/` 配下にある。`types/` は表示型が**生成 DTO**である。
+    `utils/` の純粋関数は `components/ui/` に居る。`knowledge` の `app/` `locales/` `testing/` は
+    **アプリホスト（platform）が持つ**という意図的な不在である。
+  - **消してよいかは未確定である。** planning#445 は**これらのディレクトリ名を名指しで**
+    「ツリー全体への適合が必須」と裁定した一方、同じ裁定が「名前だけを揃える対応は採らない」とも言う。
+    計画 `ADR-0065` 決定 4 は `.gitkeep` の枠置き規範を撤回したが、その明文はバックエンド標準の
+    部分改定である。**裁定を planning#510 で求めている。答えが出るまで消さない。**
+  - **従前ここには「枠のみ（`.gitkeep`。消さない）」とだけ書いてあった。**
+    無条件の指示に読めるうえ、実体のある `locales/` まで枠の側に並べていた（誤り）。
 
 - **エイリアス**: `@foundation/<区分>` は **platform 基盤の公開面の名前**であり、ディレクトリ名ではない。
   向き先は `config` → `src/config`、`routing` → `src/app/routing`、`api` / `auth` / `i18n` → `src/lib/*`、
