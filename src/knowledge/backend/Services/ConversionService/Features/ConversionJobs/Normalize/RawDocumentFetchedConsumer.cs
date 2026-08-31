@@ -58,6 +58,22 @@ public class RawDocumentFetchedConsumer(
                 "Conversion complete for {FetchId}: doc={DocumentId} markdown={Uri} coded={Coded} retained={Retained}",
                 ev.FetchId, result.DocumentId, result.MarkdownUri, result.DiagramsCoded, result.DiagramsRetained);
         }
+        catch (UnsupportedSourceFormatException ex)
+        {
+            // FR-12, UC-06, SC-07, IADR-0320 決定 4 (#1097): 原本の形式が pandoc の入力形式にならない
+            // （代表は PDF）。**再試行しても結果は変わらない**ので、再送出せず恒久失敗として記録する。
+            //
+            // 🔴 デッドレターへは流さない —— 判る形で拒否したいのであって、原因不明の毒メッセージとして
+            // 溜めたいのではない。`DeadLettered = true` は「この失敗の後に自動再試行は起きない」の意であり
+            // （IADR-0137 / ADR-0053 決定 2）、それはこの経路でも真である。
+            // 変換ジョブ画面には理由つきの failed として並び、原本を直したら /retry で再変換できる。
+            await jobs.FailAsync(ev.FetchId, SummarizeError(ex.Message), deadLettered: true,
+                CancellationToken.None);
+
+            logger.LogWarning(
+                "Conversion rejected for {FetchId}: {Path} ({Type}) — {Reason}",
+                ev.FetchId, ev.OriginalPath, ev.ContentType, ex.Message);
+        }
         catch (Exception ex)
         {
             // SC-07: 失敗を記録してから再送出する。変換失敗（pandoc/保存の恒久失敗）は MassTransit の
