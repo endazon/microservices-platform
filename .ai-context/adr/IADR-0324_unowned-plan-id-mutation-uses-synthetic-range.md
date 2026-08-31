@@ -1,5 +1,5 @@
 ---
-title: IADR-0322 「無主の計画 ID」の変異試験は実状態の残余に相乗りせず、合成レンジで作る
+title: IADR-0324 「無主の計画 ID」の変異試験は実状態の残余に相乗りせず、合成レンジで作る
 type: impl-adr
 status: Accepted
 related_ids:
@@ -19,7 +19,7 @@ plan_refs:
   - planning:projects/microservices-platform/03_usecases/01_usecases.md
 ---
 
-# IADR-0322: 「無主の計画 ID」の変異試験は実状態の残余に相乗りせず、合成レンジで作る（#1106）
+# IADR-0324: 「無主の計画 ID」の変異試験は実状態の残余に相乗りせず、合成レンジで作る（#1106）
 
 - 状態: Accepted
 - 日付: 2026-08-31

@@ -4,12 +4,12 @@ type: observability-spec
 status: in-progress
 author: claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-08-30
 ---
 <!-- trace:
 ids: [FR-10, FR-11, NFR, UC-05, SC-10]
 adrs: [ADR-0006, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044]
-iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265]
+iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322]
 specs: [20260823_issue-443_llm-usage-metrics-and-pricing]
 issues: [#380, #443, #546]
 -->
@@ -121,6 +121,8 @@ k8s 経路は `deploy/local/observability/grafana.yaml` の ConfigMap に同内�
 - **出力トークンの分布**（`llm.completion.output_tokens`）。既定 `max_tokens` の妥当性を上限付近の
   バケットの厚みで読む**別の面**であり、[`llm-completion-metrics.md`](llm-completion-metrics.md) と
   稼働環境での実測の issue が扱う。**本書の累計カウンタとは役割が違い、二重実装ではない。**
-- **月次予算の上限アラート**。通知基盤が未配備であり、しきい値も計画側で未確定である。
+- **月次予算の上限アラート**。**［2026-08-30 更新 / #546］通知基盤（Alertmanager）は配備済みになった**が、
+  **しきい値が計画側で未確定である**ため置かない（実測を待って確定する。確定の前提は費用の実績が数か月分
+  そろうこと）。🔴 **実装側で数字を決めない** —— 決めるとそれが既成事実として計画へ逆流する。
 - **基盤と利用側プロジェクトの費用の合算**。合算するとどちらの予算を超過したのか判別できなくなるため、
   計画が明示的に禁じている。
