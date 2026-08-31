@@ -11,11 +11,17 @@ namespace GraphService.Features.AiSuggestions.List;
 // 🔴 **権限のない文書に関する提案は一覧にも件数にも現れない**（SC-21 アクセス制御）。
 // 判定は既存の `AbacNodeFilter` に委ねる —— 提案そのものは属性を持たないので、
 // **端点の文書の属性で判定する**。端点が引けない提案は出さない（deny-closed）。
+//
+// FR-18, SC-03 (#1104, [[IADR-0323]]): **文書での絞り込み（`documentId`）を持つ。**
+// SC-03（文書詳細）の承認欄は「当該文書を両端のいずれかとする提案」だけを描くため、
+// 従前は権限内の `pending` 全件を転送して画面側で間引いていた。**秘匿の欠陥ではなく規模の
+// 欠陥**（無制限の転送 ＋ 下のループの N+1 が全件に対して回る）であり、絞りを端点へ移した。
 internal static class ListAiSuggestionsEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
     {
-        g.MapGet("/", async (string? state, string? kind, IGraphAccessResolver accessResolver,
+        g.MapGet("/", async (string? state, string? kind, Guid? documentId,
+            IGraphAccessResolver accessResolver,
             GraphDbContext db, HttpContext http, CancellationToken ct) =>
         {
             if (state is not null && state != AiSuggestionEndpoints.AnyState
@@ -33,6 +39,18 @@ internal static class ListAiSuggestionsEndpoint
             var query = db.AiSuggestions.AsNoTracking();
             if (state != AiSuggestionEndpoints.AnyState) query = query.Where(s => s.State == wanted);
             if (kind is not null) query = query.Where(s => s.Kind == kind);
+
+            // FR-18, SC-03 (#1104): 🔴 **可視性解決の前段に置く。** 判定の後ろに置いたり、
+            // 判定を迂回してはならない —— 下のループ（端点の文書属性による ABAC）が唯一の
+            // 秘匿の実施点であり、ここは**転送量を減らすだけ**の絞りである。
+            //
+            // **タグ提案も拾える**（`TargetDocumentId` は null だが `SourceDocumentId` が対象文書）。
+            // 🔴 **不存在・権限外の文書 ID でも 404 に倒さない**（[[IADR-0323]] 決定 2）。
+            // 一致 0 件でも、可視性解決で全件落ちても、応答は同じ `200 + []` である ——
+            // **「その文書は無い」と「その文書の提案は 0 件」を区別させない**（ADR-0034 決定 2）。
+            if (documentId is { } target)
+                query = query.Where(s => s.SourceDocumentId == target || s.TargetDocumentId == target);
+
             var rows = await query.OrderBy(s => s.CreatedAt).ToListAsync(ct);
 
             var visible = new List<AiSuggestionDto>();
