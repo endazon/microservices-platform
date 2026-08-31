@@ -181,8 +181,10 @@ jobs:
           #
           # 【置換点】`git -C` は **`.gitmodules` にあるパスごと**に 5 サブコマンド
           # （log / show / diff / ls-tree / grep）を列挙する（planning#163。`grep` は #835 で
-          # 5 つ目として追加した）。submodule が 1 つなら `planning` の 5 エントリを書き換える
-          # だけでよいが、複数ある構成では**書き換えではなくパスごとの追加**が要る。
+          # 5 つ目として追加した）。キットは `planning` の 5 エントリを既定として配布するが、**本リポジトリは
+          # planning を submodule として持たない**（ADR-0048 決定 2）ので、その 5 エントリは `src/ai-stock-trading`
+          # 系へ置き換えてある。submodule が 1 つなら書き換えるだけでよいが、複数ある構成では
+          # **書き換えではなくパスごとの追加**が要る。
           # 入れ子の submodule も別パスとして列挙が要る
           # （ワークフローは `git submodule update --init --recursive` で入れ子まで populate する
           # ため、読める範囲と許可の範囲が食い違う。前方一致のため

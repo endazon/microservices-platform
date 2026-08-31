@@ -3,15 +3,15 @@ title: 運用 Runbook — ピン留め LLM モデルの版数移行と利用不�
 type: runbook
 status: fixed
 created: 2026-08-11
-updated: 2026-08-30
+updated: 2026-08-31
 author: claude
 ---
 <!-- trace:
 ids: [FR-11]
-adrs: [ADR-0038, AST:ADR-0011]
-iadrs: [IADR-0102, IADR-0112, IADR-0141, IADR-0225]
-specs: [20260811_issue-587_pin-migration-runbook]
-issues: [#382, #440, #587, AST#296, planning#50, planning#426]
+adrs: [ADR-0038, ADR-0048, AST:ADR-0011]
+iadrs: [IADR-0058, IADR-0102, IADR-0112, IADR-0141, IADR-0225, IADR-0228, IADR-0327]
+specs: [20260811_issue-587_pin-migration-runbook, 20260831_issue-1092_planning-submodule-residual-refs]
+issues: [#382, #440, #587, #1092, AST#296, planning#50, planning#426]
 -->
 
 # 運用 Runbook: ピン留め LLM モデルの版数移行と利用不能時の振る舞い
@@ -169,7 +169,8 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) 
 
 > **★ 「監視の仕組みを新設する」ことはしない。** 既に月次で人が見る手順があり、
 > **そこへ 1 項目足すほうが、誰も見ない新しい仕組みを作るより確実である**
-> （`doc-links-planning.yml` が記録する「**誰も見ない赤**が常態化する」の教訓）。
+> （**撤去済みの夜間リンク検査ワークフロー**が残した「**誰も見ない赤**が常態化する」の教訓。
+> 経緯は本書の trace ブロックが指す実装 ADR にある）。
 
 ### 限界（明示する）
 

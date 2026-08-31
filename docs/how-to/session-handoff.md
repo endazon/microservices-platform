@@ -3,15 +3,15 @@ title: 引継資料 — issue 消化フェーズ運用の現在地と、繰り�
 type: how-to
 status: active
 created: 2026-08-08
-updated: 2026-08-29
+updated: 2026-08-31
 author: Claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, FR-09, FR-18, FR-12, FR-19, FR-20, FR-21, SC-05, SC-07, SC-09, SC-14, SC-16, SC-19, SC-20]
-adrs: [ADR-0026, ADR-0045, ADR-0056, ADR-0057, ADR-0058]
-iadrs: [IADR-0061, IADR-0277, IADR-0278, IADR-0115, IADR-0116, IADR-0120, IADR-0139, IADR-0140, IADR-0141, IADR-0144, IADR-0145, IADR-0146, IADR-0147, IADR-0180, IADR-0204, IADR-0238, IADR-0279, IADR-0280, IADR-0282, IADR-0286, IADR-0287, IADR-0291, IADR-0292, IADR-0293, IADR-0294]
-specs: [20260808_session-handoff, 20260828_issue-438_mfa-enforcement-and-audit-events, 20260815_issue-454_open-issue-stocktake-and-waves, 20260823_planning-adr-0056-0058-followup, 20260827_all-issues_wave-plan, 20260828_wave2-audit-followup, 20260828_wave3-audit-followup, 20260828_wave4-sweep, 20260828_wave45-vsa-migration, 20260828_issue-1025_notification-service-deployment, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-1040_integration-config-timing-checker, 20260829_issue-1044_identity-admin-provider-in-integration-harness, 20260829_issue-1033_mfa-required-action-in-edge-flow]
-issues: [#438, #443, #454, #555, #556, #562, #572, #612, #614, #617, #618, #701, #743, #752, #779, #780, #781, #782, #783, #791, #836, #901, #941, #953, #1011, #1018, #1020, #1021, #1022, #1023, #1025, #1032, #1033, #1034, #1036, #1037, #1038, #1040, #1041, #1043, #1044, planning#380, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#479, planning#492]
+adrs: [ADR-0026, ADR-0045, ADR-0048, ADR-0056, ADR-0057, ADR-0058]
+iadrs: [IADR-0061, IADR-0277, IADR-0278, IADR-0115, IADR-0116, IADR-0120, IADR-0139, IADR-0140, IADR-0141, IADR-0144, IADR-0145, IADR-0146, IADR-0147, IADR-0180, IADR-0204, IADR-0238, IADR-0279, IADR-0280, IADR-0282, IADR-0286, IADR-0287, IADR-0291, IADR-0292, IADR-0293, IADR-0294, IADR-0228, IADR-0327]
+specs: [20260808_session-handoff, 20260828_issue-438_mfa-enforcement-and-audit-events, 20260815_issue-454_open-issue-stocktake-and-waves, 20260823_planning-adr-0056-0058-followup, 20260827_all-issues_wave-plan, 20260828_wave2-audit-followup, 20260828_wave3-audit-followup, 20260828_wave4-sweep, 20260828_wave45-vsa-migration, 20260828_issue-1025_notification-service-deployment, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-1040_integration-config-timing-checker, 20260829_issue-1044_identity-admin-provider-in-integration-harness, 20260829_issue-1033_mfa-required-action-in-edge-flow, 20260831_issue-1092_planning-submodule-residual-refs]
+issues: [#438, #443, #454, #555, #556, #562, #572, #612, #614, #617, #618, #701, #743, #752, #779, #780, #781, #782, #783, #791, #836, #901, #941, #953, #1011, #1018, #1020, #1021, #1022, #1023, #1025, #1032, #1033, #1034, #1036, #1037, #1038, #1040, #1041, #1043, #1044, #1092, planning#380, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#479, planning#492]
 -->
 
 # 引継資料 — issue 消化フェーズ運用の現在地
@@ -500,7 +500,8 @@ k3d スタックは PR では起こさない。**後段は「PR が緑でも入�
 
 - **`force push` / `reset --hard` / `rm -rf` を使わない**（hooks が実際にブロックする）。
   履歴は不変。誤記の是正は `scripts/changelog-overrides.json` の `remap`（**生成物のみ**）。
-- **`planning/` は pin 更新のみ**。計画書そのものを本リポから書き換えない。
+- **計画リポジトリを本リポから書き換えない**（そもそも submodule として持っていない。参照は読み取り専用の
+  隣接クローンか GitHub URL）。計画書への指摘は計画リポジトリの issue で環流する。
 - **`src/ai-stock-trading` を変更しない**（別プロジェクトの submodule）。
 - **作業仕様書（`.ai-context/specs/`）なしで実装へ着手しない。**
 - **モデル ID をコミット・PR・コード・文書へ書かない。**
@@ -554,7 +555,7 @@ k3d スタックは PR では起こさない。**後段は「PR が緑でも入�
 | --- | --- | --- | --- |
 | **`gh` CLI** | `gh auth status` | `✓ Logged in to github.com` | コマンドが無い／未認証 → MCP ツール（`mcp__github__*`）を使う |
 | **`.github/workflows/` の編集** | `gh` が在れば `gh auth status`（Token scopes の行）。**`gh` が無い環境では、捨てブランチでワークフローを 1 行変えて `git push` してみる**（下記） | scopes に **`workflow`** が在る ／ push が通る | 拒否される → 結線は人手へ渡す |
-| **submodule の populate** | `git submodule update --init src/ai-stock-trading planning` | `Submodule path ...: checked out` | 認証エラー → フロントの `build` / E2E と計画 ADR の実在性検査が不可 |
+| **submodule の populate** | `git submodule update --init src/ai-stock-trading` | `Submodule path ...: checked out` | 認証エラー → フロントの `build` / E2E が不可（**計画 ADR の実在性検査は影響を受けない**。宣言レンジで検査するため） |
 | **フロントの `build` / E2E** | 上の populate 後に `pnpm run build` ／ `pnpm run test:e2e` | ビルド成功 ／ **全件 passed（failed 0）** | `@ai-stock-trading/features` が `error TS2307`（＝populate に失敗している） |
 
 > **`gh` が無い環境での workflow スコープの測り方**（上表 2 行目）:
@@ -577,7 +578,7 @@ k3d スタックは PR では起こさない。**後段は「PR が緑でも入�
 > ここが動くかで**着手可否そのものが変わる**。だからこそ諦める前に測る。
 
 **環境に依らない制約は §3 に書いてある。** 本節と混同しないこと ——
-§3（履歴不変・`planning/` は pin のみ・`src/ai-stock-trading` を変更しない）は
+§3（履歴不変・計画リポジトリを書き換えない・`src/ai-stock-trading` を変更しない）は
 **どの環境でも破らない**。本節は**測れば変わりうる**。
 
 ### ★★ 一度「できない」と書いた判定は、棚卸しのたびに測り直す

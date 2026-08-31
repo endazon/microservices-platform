@@ -1,8 +1,9 @@
 <!-- trace:
 ids: [FR-14]
-adrs: [ADR-0030, ADR-0032]
-iadrs: [IADR-0027, IADR-0056, IADR-0057, IADR-0058, IADR-0059, IADR-0060, IADR-0064, IADR-0065, IADR-0117, IADR-0120, IADR-0121, IADR-0124, IADR-0125, IADR-0262]
-issues: [#229, #230, #245, #785]
+adrs: [ADR-0030, ADR-0032, ADR-0048]
+iadrs: [IADR-0027, IADR-0056, IADR-0057, IADR-0058, IADR-0059, IADR-0060, IADR-0064, IADR-0065, IADR-0117, IADR-0120, IADR-0121, IADR-0124, IADR-0125, IADR-0228, IADR-0262, IADR-0327]
+specs: [20260712_issue-260_dependabot-gitsubmodule, 20260831_issue-1092_planning-submodule-residual-refs]
+issues: [#229, #230, #245, #785, #1092]
 -->
 
 # 追加可変機能ユニットを submodule として組み込む手順
@@ -84,10 +85,14 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
   自動的に対象になる。
   - ただし submodule は既定の `actions/checkout` では取得されない。**追加ユニットを CI で取得する**には
     ビルド系ジョブ（`lint` / `build-and-test`）に、checkout 直後の取得ステップを足す。
-    - **注意（planning を巻き込まない）**: 本体リポと各ユニットは private な `planning`
-      （`endazon/project-planning`）を submodule として持つため、checkout の `submodules: recursive`/`true` は
-      使わない（planning まで取得しようとして `Repository not found` で失敗する。submodule 取得の実装判断による）。
-      代わりに **`src/*` のユニット submodule のみを非再帰で init** する。
+    - **注意（checkout の `submodules:` オプションは使わない）**: `submodules: recursive`/`true` には
+      **取得対象を選ぶ手段が無い**。代わりに **`src/*` のユニット submodule のみを非再帰で init** する。
+      理由は 2 つあり、いずれも現在の構成でそのまま効く（submodule 取得の実装判断による）。
+      - **`src/*` 限定**: ユニットの実体が要るのはビルド・テスト・機械検査のジョブだけである。
+        将来 `src/` の外へ submodule を足したとき、それらのジョブが不要な取得と権限要求を抱え込まない。
+      - **非再帰**: ユニットが内包する入れ子 submodule を辿らない。入れ子が private だと既定
+        `GITHUB_TOKEN` では read できず、**checkout ステップごと `Repository not found` で落ちる**
+        （ジョブ本体に入る前に失敗するため、原因が読み取りにくい）。
     - **public ユニット（トークン不要）**: 既定 `GITHUB_TOKEN` で read できる。
 
       ```yaml
@@ -99,8 +104,9 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
             | xargs -r -n1 git submodule update --init
       ```
 
-    - **private ユニット**: 上記の init に read 権限を持つ PAT を与える（定期リンク検査の実装 ADR の `doc-links-planning.yml`
-      と同型。`git -c http.https://github.com/.extraheader=...` またはトークン付き clone で取得する）。
+    - **private ユニット**: 上記の init に read 権限を持つ PAT を与える
+      （`git -c http.https://github.com/.extraheader=...` またはトークン付き clone で取得する）。
+      **現時点で private なユニットは無く、この経路を使うワークフローも無い**（PAT を使う定期ジョブは撤去済み）。
 
     未取得の間はユニットのディレクトリが空となり、自動発見の glob に現れず**ビルド対象外**になる
     （＝取りこぼしに注意。取得の有効化が組み込みの前提）。実例: `ai-stock-trading`（public）は
@@ -190,11 +196,11 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
   明示的に行う（`--remote` を使う場合のみ `branch` が効く）。
 - **Dependabot**: `gitsubmodule` エコシステムで submodule の pin 更新 PR を自動化する。本リポジトリは
   [`.github/dependabot.yml`](../../.github/dependabot.yml) で有効化済み（Issue #260）。
-  `directory: "/"` は root の `.gitmodules` に列挙された **全 submodule**（`planning` と `src/*` の
-  各ユニット）を対象にする。ユニットを追加しても `dependabot.yml` の追記は不要（`.gitmodules` への
-  submodule 追加だけで自動的に対象になる）。既定は週次スケジュール・**自動マージなし**（pin 更新は
-  必ず PR 経由・人手レビュー必須）。private submodule（`planning`）の更新には Dependabot が当該リポを
-  read できる権限が要る（詳細は `.ai-context/specs/20260712_issue-260_dependabot-gitsubmodule.md`）。
+  `directory: "/"` は root の `.gitmodules` に列挙された **全 submodule**を対象にする（現在は
+  `src/ai-stock-trading` の 1 件だけである）。ユニットを追加しても `dependabot.yml` の追記は不要
+  （`.gitmodules` への submodule 追加だけで自動的に対象になる）。既定は週次スケジュール・**自動マージなし**
+  （pin 更新は必ず PR 経由・人手レビュー必須）。**private な submodule を足す場合**は、Dependabot が
+  当該リポを read できる権限が要る（詳細は作業仕様書を参照。導線は本書の trace ブロックにある）。
 
 ## 7. 通し検証（サンプルユニット）
 
