@@ -174,7 +174,15 @@ if [ "${ESO:-}" != "1" ]; then
   # dev 既定は step 3 のブローカ側と同値（env RABBITMQ_PASSWORD で両方を上書きする）。
   apply_secret "$MSP_NS" rabbitmq-app "password=${RABBITMQ_PASSWORD:-guest}"
   apply_secret "$MSP_NS" wikijs-db "password=${WIKIJS_DB_PASSWORD:-kp}"
-  apply_secret "$MSP_NS" wikijs-sync "apiKey=${WIKIJS_SYNC_APIKEY:-}"
+  # FR-13, IADR-0327 (#1108): 🔴 **発行済みの API キーを空で潰さない。**
+  # Wiki.js のセットアップ後、`deploy/local/wikijs-setup/bootstrap.sh` がここへ実キーを書き戻す。
+  # 素直に `apiKey=${WIKIJS_SYNC_APIKEY:-}` で apply すると、**up を再実行するたびに空へ戻り**、
+  # 次に wiki-service の Pod が作り直された瞬間に同期が全件エラーキューへ落ちる（#1108 の再来）。
+  # しかも Pod が作り直されるまで表面化しないので、原因と結果が時間的に離れる。
+  # 明示指定（env）＞ 既存値 ＞ 空 の順で選ぶ（既定は従来どおり空＝fail-safe）。
+  wikijs_apikey_existing="$(kubectl -n "$MSP_NS" get secret wikijs-sync \
+    -o jsonpath='{.data.apiKey}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  apply_secret "$MSP_NS" wikijs-sync "apiKey=${WIKIJS_SYNC_APIKEY:-${wikijs_apikey_existing}}"
 fi
 # fail-safe: 空=外部 LLM を呼ばない（ADR-0010 ルーティングは明示設定時のみ有効）。
 # IADR-0096 (#310): ESO=1 のときは llm-provider-credentials を Vault→ExternalSecret 供給に委譲し、手動 apply は
@@ -658,6 +666,23 @@ fi
 # （仕様どおりだが「壊れている」のと区別が付かない）。既定（env 未設定）は投入せず挙動不変＝バイト等価で、
 # 本番 values には一切影響しない（投入先は経路B の稼働中サービスであり、chart ではない）。
 # best-effort: 投入の失敗で up 全体を止めない（クラスタ自体は使えるため。再実行は冪等）。
+# FR-13, UC-07, SC-04, ADR-0011, IADR-0327 (#1108): Wiki.js の初期セットアップ・同期 API キー・
+# 本文 locale を入れる。**opt-in ではない。**
+#
+# 🔴 **既定の経路が「Running なのに使えない Wiki.js」を残すことが #1108 そのものである。**
+# Wiki.js 2.x はセットアップが済むまで `/graphql` を載せず、その間 `server/setup.js` の catch-all が
+# `/healthz` を含む全 URL に 200 を返す ——**probe は通り、Pod は Running のまま、同期だけが
+# 全件エラーキューへ落ちる。画面にも SC-10 にも何も出ない。** opt-in にすると、この状態が
+# 既定のままになる（ABACSEED / SEARCHSEED とはここが違う。あちらは**文書を作る副作用**が
+# あるので既定オフだが、こちらは配備の初期化であって副作用ではない）。
+#
+# 冪等（セットアップ済みなら finalize を飛ばし、有効なキーが在れば再発行しない）。
+# best-effort: 失敗しても up 全体は止めない。**fail-closed の門は `scripts/check-stack-ready.js` の
+# G7** に置いてある（そちらが setup モード・空 apiKey・locale 欠落を落とす）。
+echo "==> Wiki.js 初期セットアップ（冪等 / IADR-0327）"
+bash "$ROOT/deploy/local/wikijs-setup/bootstrap.sh" \
+  || echo "    WARN: Wiki.js の初期化に失敗（best-effort）。bash deploy/local/wikijs-setup/bootstrap.sh で再実行できる" >&2
+
 if [ "${ABACSEED:-}" = "1" ]; then
   echo "==> [opt-in] ABAC 初期投入（属性辞書・ポリシー / IADR-0133）"
   node "$ROOT/scripts/seed-abac-policies.js" \
