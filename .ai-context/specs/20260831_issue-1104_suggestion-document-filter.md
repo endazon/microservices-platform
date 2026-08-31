@@ -13,7 +13,7 @@ related_ids:
   - IADR-0242
   - IADR-0276
   - IADR-0300
-  - IADR-0321
+  - IADR-0323
 author: claude
 created: 2026-08-31
 updated: 2026-08-31
@@ -103,7 +103,7 @@ SC-03 が渡す `doc.id`（文書詳細の文書 ID）と同じ名前空間で�
 
 | 反映する（10 件） | 反映しない（12 件）と理由 |
 | --- | --- |
-| `GraphService/Features/AiSuggestions/List/Endpoint.cs` | `IADR-0272` / `IADR-0276` / `IADR-0300` — **凍結記録**。本文プロズを後から書き換えない（`.ai-context/adr/`）。後継は本作業の IADR-0321 が持つ |
+| `GraphService/Features/AiSuggestions/List/Endpoint.cs` | `IADR-0272` / `IADR-0276` / `IADR-0300` — **凍結記録**。本文プロズを後から書き換えない（`.ai-context/adr/`）。後継は本作業の IADR-0323 が持つ |
 | `GraphService/Features/AiSuggestions/AiSuggestionEndpoints.cs`（**変更不要と確認**） | `.ai-context/specs/2026082*`・`20260829_issue-450` 4 件 — **確定済みの作業仕様書**。書き換えない |
 | `Knowledge.Bff.Endpoints/GraphBffEndpoints.cs` | `SuggestionPromptGateTests.cs`・`WriteActionAuthorizationTests.cs` — 生成・書き込み経路であり一覧の形に触れない |
 | `docs/api/openapi.yaml` | `sc21-ai-suggestions/api/useAiSuggestions.ts` — SC-21 は文書で絞らない。**`documentId` を送らない**（従来どおり全件）。変更しない |

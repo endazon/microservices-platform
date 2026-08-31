@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-06, FR-12, FR-17, FR-18, SC-03, SC-04, SC-05, SC-06, SC-18, SC-21, UC-01, UC-02, UC-07, UC-10]
 adrs: [ADR-0031, ADR-0033, ADR-0034]
-iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0126, IADR-0272, IADR-0276, IADR-0300, IADR-0321]
+iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0126, IADR-0272, IADR-0276, IADR-0300, IADR-0323]
 specs: [20260804_issue-502_sc01-03-search-flow, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter]
 issues: [#450, #1104]
 -->

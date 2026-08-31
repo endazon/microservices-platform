@@ -1,5 +1,5 @@
 ---
-title: IADR-0321 AI 提案一覧の文書での絞り込みはサーバ側に置き、可視性判定の前段に入れる（権限外の文書 ID は 404 ではなく空配列）
+title: IADR-0323 AI 提案一覧の文書での絞り込みはサーバ側に置き、可視性判定の前段に入れる（権限外の文書 ID は 404 ではなく空配列）
 type: impl-adr
 status: Accepted
 related_ids: [FR-18, UC-10, SC-03, SC-21, ADR-0033, ADR-0034, IADR-0009, IADR-0242, IADR-0272, IADR-0276, IADR-0300]
@@ -12,7 +12,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md
 ---
 
-# IADR-0321: AI 提案一覧の `documentId` 絞り込み
+# IADR-0323: AI 提案一覧の `documentId` 絞り込み
 
 - 状態: Accepted
 - 日付: 2026-08-31

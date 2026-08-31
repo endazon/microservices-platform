@@ -2,7 +2,7 @@
 title: IADR-0300 AI 提案の承認・却下は BFF を透過中継で開け、前段の write ゲートを置かず、SC-03 はタグ提案の承認だけを塞ぐ
 type: impl-adr
 status: Accepted
-related_ids: [FR-05, FR-17, FR-18, UC-10, SC-03, SC-21, ADR-0033, ADR-0034, ADR-0050, IADR-0009, IADR-0044, IADR-0124, IADR-0127, IADR-0131, IADR-0135, IADR-0262, IADR-0272, IADR-0276, IADR-0321]
+related_ids: [FR-05, FR-17, FR-18, UC-10, SC-03, SC-21, ADR-0033, ADR-0034, ADR-0050, IADR-0009, IADR-0044, IADR-0124, IADR-0127, IADR-0131, IADR-0135, IADR-0262, IADR-0272, IADR-0276, IADR-0323]
 author: claude
 created: 2026-08-29
 updated: 2026-08-31
@@ -159,7 +159,7 @@ SC-03 の承認欄を実装するにあたり、5 つの問いが立つ。
 
 > **［2026-08-31 追記 / #1104］本決定は撤回した。** 後段の一覧が `documentId` を受けるように
 > なり、SC-03 は client 側の間引きをやめてサーバへ委ねた
-> （[IADR-0321](./IADR-0321_ai-suggestion-document-filter.md)。**本決定 6 のみが Superseded であり、
+> （[IADR-0323](./IADR-0323_ai-suggestion-document-filter.md)。**本決定 6 のみが Superseded であり、
 > 決定 1〜5 は有効である**）。下の「当面」「追随 issue へ回す」という記述は、
 > フォローアップ 2 が実行されたことで失効している。
 > 🔴 **「秘匿の実施点ではない」という下の判断は変わっていない** —— 絞りをサーバへ移した後も、
@@ -195,7 +195,7 @@ SC-03 の承認欄を実装するにあたり、5 つの問いが立つ。
 - フォローアップ:
   1. **計画へ環流**（裁定依頼）: タグ提案の承認に反映先が無い。承認欄はどう振る舞うべきか
   2. ~~**追随 issue**: 一覧へ `documentId` の絞り込みを足す（GraphService ＋ BFF ＋ 契約）~~
-     **［2026-08-31 / #1104］完了**（[IADR-0321](./IADR-0321_ai-suggestion-document-filter.md)）
+     **［2026-08-31 / #1104］完了**（[IADR-0323](./IADR-0323_ai-suggestion-document-filter.md)）
   3. **追随 issue**: 却下時の指紋を後段が自分の複製から読む（要求本文に依存しない）
   4. **追随 issue**: `docs/api/BFF_bff-surface.md` のエンドポイント一覧が `/bff/graph/*`・
      `/bff/private-notes*` を群ごと落としている（本作業より前からの欠落）
@@ -203,4 +203,4 @@ SC-03 の承認欄を実装するにあたり、5 つの問いが立つ。
 ## 関連
 
 - Supersedes: なし（[IADR-0276](./IADR-0276_ai-suggestion-listing-exposure.md) 決定 1 の予告を**実行**するものであり、覆すものではない）
-- Superseded by: **決定 6 のみ** [IADR-0321](./IADR-0321_ai-suggestion-document-filter.md)（#1104）。他の決定は有効である
+- Superseded by: **決定 6 のみ** [IADR-0323](./IADR-0323_ai-suggestion-document-filter.md)（#1104）。他の決定は有効である
