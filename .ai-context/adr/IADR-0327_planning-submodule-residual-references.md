@@ -126,7 +126,7 @@ issue 修飾・隣接クローンのパス）としてリポジトリ全体で 9
   （`--require-planning` の引数解釈も `planningPopulated` の定義も無く、残っているのは退役を過去形で
   述べるコメント 1 行）。`CLAUDE.md`「planning 依存の検査器は退役させた。復活させない」と一致するため
   **追加の退役作業は不要**とし、コメントは根拠として残す。
-- **積み残し（別 issue へ切り出す）**: (a) パス形 `planning/docs/glossary.md`・`planning/projects/…`
+- **積み残し（#1141 へ切り出した）**: (a) パス形 `planning/docs/glossary.md`・`planning/projects/…`
   の残存（`docs/functional/` `docs/screens/` `src/**` `scripts/**` に 20 行超）。submodule であるとは
   述べていないが、`planning/` 前置は submodule マウント時代の名残である。(b) `claude-coding.yml` /
   `claude-code-review.yml` の `git -C src/ai-stock-trading/planning …` 許可 5 エントリ×2。AST の現 pin

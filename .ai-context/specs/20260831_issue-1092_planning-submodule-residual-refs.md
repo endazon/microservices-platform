@@ -1,7 +1,7 @@
 ---
 title: 撤去済み planning submodule を現況として述べている記述の是正（issue #1092）
 type: spec
-status: in-progress
+status: done
 created: 2026-08-31
 updated: 2026-08-31
 author: claude
@@ -93,9 +93,9 @@ related_ids:
 | `scripts/check-cross-repo-refs.js` 128 / `check-plan-id-qualification.js` 68 / `check-commit-messages.js` 256 / `scripts/README.md` 9 / `.github/workflows/ci.yml` 132 / `.github/dependabot.yml` 14 / `CLAUDE.md` / `AGENTS.md` / `AI_SETUP.md` | **既に正しい**（「依存しない」「撤去済み」と述べている） |
 | `scripts/check-cpm-versions.js` 447-448 | 「submodule を populate した環境での実測」＝**過去の測定条件の記載**。結論（MSP 計画コーパスに CPM の言及 0 件）は現況でも成立 |
 | `.claude/settings.json` 151 | 「submodule が複数ある構成では…」の一般記述。planning を名指ししていない |
-| `.github/workflows/claude-code-review.yml` 233 / `claude-coding.yml` 198-199（`git -C src/ai-stock-trading/planning …`） | **AST ユニットが内包していた入れ子 submodule**への許可であり、本リポの planning 依存ではない。現 pin `0844b584` には存在しないが、**AST 側の pin 事情であって ADR-0048 決定 2 の射程外**。加えて許可リストは「本ファイル / claude-coding / claude-code-review」の 3 系統同期と `check-ai-workflow-config.js` の非対称検査に縛られており、**同一 PR で触ると本 issue の是正と CI 権限の変更が混ざる**。別 issue へ切り出す |
+| `.github/workflows/claude-code-review.yml` 233 / `claude-coding.yml` 198-199（`git -C src/ai-stock-trading/planning …`） | **AST ユニットが内包していた入れ子 submodule**への許可であり、本リポの planning 依存ではない。現 pin `0844b584` には存在しないが、**AST 側の pin 事情であって ADR-0048 決定 2 の射程外**。加えて許可リストは「本ファイル / claude-coding / claude-code-review」の 3 系統同期と `check-ai-workflow-config.js` の非対称検査に縛られており、**同一 PR で触ると本 issue の是正と CI 権限の変更が混ざる**。**#1141 へ切り出した** |
 | `.github/workflows/ci.yml` 437-440 ほか「`IADR-0058` 型トークン」 | `IADR-0058` は `IADR-0228` の決定により **Superseded にしない**。パターン名としての引用は有効 |
-| パス形 `planning/docs/glossary.md`・`planning/projects/…`（`docs/functional/` `docs/screens/` `src/**` `scripts/**` 計 20 行超） | **submodule であるとは述べていない**が、`planning/` 前置は submodule マウント時代の名残である。**別系統の古さ**（表記規約の問題）であり、`src/` のコード注釈まで広く触れると並列作業と衝突する。**追随 issue を起票して切り出す** |
+| パス形 `planning/docs/glossary.md`・`planning/projects/…`（`docs/functional/` `docs/screens/` `src/**` `scripts/**` 計 20 行超） | **submodule であるとは述べていない**が、`planning/` 前置は submodule マウント時代の名残である。**別系統の古さ**（表記規約の問題）であり、`src/` のコード注釈まで広く触れると並列作業と衝突する。**#1141 へ切り出した** |
 
 ### 2.3 規則 10（この変更で新たに誤りになる自分の記述）の引き直し
 
