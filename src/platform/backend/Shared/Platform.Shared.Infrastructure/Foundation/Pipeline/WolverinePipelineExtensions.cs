@@ -53,6 +53,32 @@ public static class WolverinePipelineExtensions
 
         var stepName = TStep.StepName;
 
+        // 規則 0: 🔴 **ハンドラ探索の対象アセンブリを、段の実装アセンブリで明示的に固定する。**
+        //
+        // Wolverine の `ApplicationAssembly` は**プロセス全体で 1 つの静的値**
+        // （`WolverineOptions.RememberedApplicationAssembly`）であり、**そのプロセスで最初に起動した
+        // ホストが固定する**（Wolverine 6.24.4 / GH-3521。逆コンパイルで実測）。明示しない限り、
+        // 2 つ目以降のホストは**自分のアセンブリではなく最初のホストのアセンブリ**を走査する。
+        //
+        // 本番はサービス 1 つ = プロセス 1 つなので当たらない。**当たるのは統合テストである** ——
+        // 1 プロセスで IngestionService と WikiService のホストを同時に立てると、
+        // 後発のホストは相手のハンドラを拾い、自分のハンドラを拾わない。そして
+        // **その失敗は例外にも再配信にもデッドレターにもならない**:
+        //
+        //   1. 後発ホストの `DocumentUpdated` チェーンに**相手サービスのコンシューマ**が入る
+        //   2. 受信時にそのハンドラの依存が解決できず
+        //      `NotSupportedException: Handler type ... does not have a suitable, public constructor`
+        //   3. Wolverine は `fail: Exception detected` を 1 行出して**メッセージを ack し捨てる**
+        //   4. 同じチェーンに居る**正しいハンドラも道連れで走らない**
+        //
+        // 症状は「キュー名は正しい・購読は Accepting・30 秒待って 1 通も処理されない」であり、
+        // 配送の欠落と見分けがつかない。#1038 → #1059 → #1073 の 3 回、6 ラウンドを費やした
+        // （実測は `.ai-context/adr/IADR-0326_wolverine-application-assembly-pinning.md`）。
+        //
+        // 🔴 **`Discovery.IncludeAssembly` では直らない** —— あれは走査対象を**足す**ので、
+        // 相手のアセンブリが走査対象に残り続ける。置き換えるのは `ApplicationAssembly` だけである。
+        options.ApplicationAssembly = typeof(TStep).Assembly;
+
         // 規則 1: 宣言なし（Steps 空）→ 既定で登録（現行配線と等価。ローカル・テスト互換）。
         if (pipeline.Steps.Count == 0)
         {
