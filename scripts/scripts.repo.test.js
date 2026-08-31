@@ -8541,6 +8541,11 @@ ${r.stderr}`);
         '陰性対照: 別担当への委譲',
         '陰性対照: インラインコードに入れた誤例は対象外',
         '閉じないフェンスは違反として上げる',
+        // #1099（判定 3。画面ごとのブラウザ E2E）。
+        '画面を足して spec を書き忘れると落ちる',
+        '除外は理由つきでしか宣言できない',
+        '画面が消えたのに spec / 除外が残ると落ちる',
+        '陰性対照: 命名が違うファイルを spec と数えない',
       ]) {
         assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
       }
@@ -8560,6 +8565,36 @@ ${r.stderr}`);
       assert.ok(Number(m[1]) > 0, `画面が 0 件だった:\n${out}`);
       assert.ok(Number(m[2]) > 0, `マニフェストが 0 行だった:\n${out}`);
       assert.ok(Number(m[4]) > 0, `判定 2 の走査対象が 0 件だった:\n${out}`);
+      // #1099: 判定 3 も 0 件走査を緑にしない（件数リテラルは書かない）。
+      const e2e = out.match(/ブラウザ E2E は (\d+) 画面ぶん・除外 (\d+) 件/);
+      assert.ok(e2e, `OK メッセージから判定 3 の件数を読めない:\n${out}`);
+      assert.ok(Number(e2e[1]) > 0, `ブラウザ E2E を持つ画面が 0 件だった:\n${out}`);
+    });
+
+    // ★ 実データにも当てる（フィクスチャだけだと「実ファイルの形が想定と違う」型を捕まえられない）。
+    ok('★ 実データ: 画面の e2e spec を 1 本落とすと検出する（判定 3・変異試験。#1099）', () => {
+      const screens = rm.collectScreens(rm.collectFeatureFiles(REPO));
+      const names = rm.collectE2eFileNames(REPO);
+      assert.ok(names.length > 0, 'e2e ファイルを 1 件も拾えていない（形が想定と違う）');
+      assert.deepStrictEqual(rm.findE2eViolations(screens, rm.collectE2eScreens(names)), []);
+
+      // 実ファイル名の 1 本を落とす（ファイルは触らない）。
+      const victim = names.find((n) => /^sc\d{2}-.*\.smoke\.spec\.tsx?$/.test(n));
+      assert.ok(victim, '実データから sc<NN>-*.smoke.spec.ts を取り出せない（命名が想定と違う）');
+      const sc = `SC-${/^sc(\d{2})-/.exec(victim)[1]}`;
+      const v = rm.findE2eViolations(
+        screens,
+        rm.collectE2eScreens(names.filter((n) => n !== victim)),
+      );
+      assert.ok(
+        v.some((x) => x.kind === 'missing-e2e-smoke' && x.sc === sc),
+        `実データの変異（${victim} を落とす）を検出できなかった:\n${JSON.stringify(v)}`,
+      );
+    });
+
+    // 陰性対照。**除外表が空でないと「理由なしで外せる」に気づけない**ので、値も見る。
+    ok('判定 3 の除外表は空である（外すなら理由つきでしか宣言できない。#1099）', () => {
+      assert.deepStrictEqual(rm.SCREENS_WITHOUT_E2E_SMOKE, {});
     });
 
     // ★ 変異試験は**実データにも当てる**。フィクスチャだけだと「実ファイルの形が想定と違う」型の
