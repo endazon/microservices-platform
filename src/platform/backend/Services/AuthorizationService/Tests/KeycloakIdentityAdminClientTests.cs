@@ -6,12 +6,16 @@ using System.Text.Json;
 
 namespace AuthorizationService.Tests;
 
-// FR-05, FR-09, SC-17, IADR-0301 (#452): Keycloak Admin REST 実装の写像を固定する。
+// FR-05, FR-09, SC-17, IADR-0301 (#452), IADR-0321 (#1101): Keycloak Admin REST 実装の写像を固定する。
 //
-// 🔴 **これは疎通の検証ではない。** 本環境に実 Keycloak は無く、`realm-management` ロールを持つ
-// 機密クライアントも realm export に未登録である（#452 の残件）。ここで固定できるのは
-// 「要求の組み立て」と「応答の写し取り」だけであり、**緑であることは実 IdP へ反映できることを
-// 意味しない**。テスト仕様書 §区分 にもそう書いてある。
+// 🔴 **これは疎通の検証ではない。** ここで固定できるのは「要求の組み立て」と「応答の写し取り」
+// だけであり、**緑であることは実 IdP へ反映できることを意味しない**。テスト仕様書 §区分 も同じ。
+// 疎通は稼働クラスタで測る（#1101 で実測した。旧記述「realm export に未登録」は解消した）。
+//
+// 🔴 **下の 2 件は、実 Keycloak で測って初めて分かった罠を固定している** ——
+// ①`PUT /users/{id}` は部分更新ではない（送らない項目が消える）。②realm が unmanaged 属性の
+// 書き込みを許していないと 204 を返しながら黙って捨てる。**どちらもスタブでは自然には出ない**
+// ので、実測した挙動をスタブ側に再現して固定する。
 public class KeycloakIdentityAdminClientTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -125,6 +129,68 @@ public class KeycloakIdentityAdminClientTests
         (await Client(handler).RevokeSessionsAsync("u1", Ct)).Should().BeTrue();
 
         handler.Requests.Should().Contain(r => r.Method == "POST" && r.Path.EndsWith("/users/u1/logout"));
+    }
+
+    // 🔴 IADR-0321 (#1101): **`PUT /users/{id}` は部分更新ではない。**
+    // `{"enabled": false}` だけを送ると `firstName` / `lastName` / `email` が実 Keycloak で
+    // 実際に消えた（204 が返るので気付けない）。read-modify-write であることを固定する。
+    [Fact]
+    public async Task Updating_a_user_sends_the_whole_representation_not_a_patch()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users/u1", """
+                {"id":"u1","username":"tanaka.taro","firstName":"太郎","lastName":"田中",
+                 "email":"tanaka@example.test","enabled":true,
+                 "requiredActions":["CONFIGURE_TOTP"],
+                 "attributes":{"department":["hr"],"clearance":["internal"]},
+                 "access":{"manage":true},"disableableCredentialTypes":[],
+                 "userProfileMetadata":{"attributes":[]}}
+                """)
+            .Put("admin/realms/platform/users/u1", "")
+            .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
+
+        await Client(handler).SetEnabledAsync("u1", false, Ct);
+
+        var put = handler.Requests.Single(r => r.Method == "PUT");
+        using var body = JsonDocument.Parse(put.Body!);
+        var root = body.RootElement;
+        root.GetProperty("enabled").GetBoolean().Should().BeFalse("変更点は当然反映される");
+        // **消えてはならないもの**（部分更新だと全部消える）。
+        root.GetProperty("firstName").GetString().Should().Be("太郎");
+        root.GetProperty("lastName").GetString().Should().Be("田中");
+        root.GetProperty("email").GetString().Should().Be("tanaka@example.test");
+        root.GetProperty("requiredActions").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo(["CONFIGURE_TOTP"], "MFA の要求アクションも消してはならない");
+        root.GetProperty("attributes").GetProperty("clearance")
+            .EnumerateArray().Select(e => e.GetString()).Should().BeEquivalentTo(["internal"]);
+        // **送り返してはならないもの**（サーバ計算の読み取り専用フィールド）。
+        foreach (var computed in new[] { "access", "disableableCredentialTypes", "userProfileMetadata" })
+            root.TryGetProperty(computed, out _).Should().BeFalse(
+                "{0} はサーバが組み立てる派生値である", computed);
+    }
+
+    // 🔴 IADR-0321 (#1101): **黙って捨てられたら失敗にする。**
+    // realm の user profile が unmanaged 属性の書き込みを許していないと、Keycloak は 204 を返して
+    // ABAC 属性を捨てる。**200 を返して画面に「保存しました」と描かせない。**
+    [Fact]
+    public async Task Replacing_attributes_fails_loudly_when_keycloak_silently_drops_them()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            // 読み直しても **要求前の値のまま**（＝Keycloak が捨てた）。
+            .Get("admin/realms/platform/users/u1", """
+                {"id":"u1","username":"tanaka.taro","enabled":true,
+                 "attributes":{"department":["hr"],"clearance":["internal"]}}
+                """)
+            .Put("admin/realms/platform/users/u1", "")
+            .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
+
+        var act = async () => await Client(handler).ReplaceAttributesAsync(
+            "u1", new Dictionary<string, string> { ["department"] = "hr", ["clearance"] = "restricted" }, Ct);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>())
+            .Which.Message.Should().Contain("clearance").And.Contain("unmanagedAttributePolicy");
     }
 
     // 居ない利用者は null（端点が 404 へ写す）。**403 や 200 へ丸めない。**

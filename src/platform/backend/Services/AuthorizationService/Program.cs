@@ -37,8 +37,11 @@ builder.Services.AddDbContext<AuthorizationDbContext>(opt => opt.UseNpgsql(connS
 // 注入漏れが「反映したつもりで消える」へ倒れ、既定を keycloak にすると資格情報未整備の配備が
 // 起動できなくなる。どちらの既定も誤りなので、宣言そのものを配備側へ出す。
 // keycloak を選んだときの資格情報も既定を持たない（#1012 / IADR-0286 と同型）。
+//
+// 🔴 IADR-0321 (#1101): **`in-memory` は Development でしか選べない。** 実行環境を渡すのは
+// そのためである（Development 以外で偽物を宣言したらここで落ちる）。
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddIdentityAdminClient(builder.Configuration);
+builder.Services.AddIdentityAdminClient(builder.Configuration, builder.Environment);
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段・合成可能ポートは
 // ホストしないが、到達可能性とトポロジ（段なし）を実効構成へ与えるため存在申告する。

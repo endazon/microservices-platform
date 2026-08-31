@@ -49,6 +49,11 @@ vexec "vault kv put secret/msp/minio-oidc client-secret='${MINIO_OIDC_CLIENT_SEC
 # Keycloak と通信するための client secret。**空だと `GET /bff/auth/login` が 500 で落ちる**（PAR が 401）。
 # 既定は realm の置き場と同値（一致しないと PAR が同じ 401 を返す）。env で上書き可。
 vexec "vault kv put secret/msp/bff-oidc client-secret='${BFF_OIDC_CLIENT_SECRET:-bff-dev-secret-change-me}'"
+# FR-05, FR-09, SC-17, IADR-0301/IADR-0321 (#1101): AuthorizationService が Keycloak Admin REST へ
+# SC-17 の変更を反映するための client secret（realm の機密クライアント `identity-admin`）。
+# **空だと authorization-service Pod が起動しない**（helm は非 optional な secretKeyRef で読む）。
+# 既定は realm import の置き場と同値（ズレると client_credentials が 401 になり SC-17 が 500 になる）。
+vexec "vault kv put secret/msp/identity-admin-oidc client-secret='${IDENTITY_ADMIN_CLIENT_SECRET:-identity-admin-dev-secret-change-me}'"
 vexec "vault kv put secret/msp/grafana-oidc client-secret='${GRAFANA_OIDC_CLIENT_SECRET:-grafana-dev-secret-change-me}'"
 vexec "vault kv put secret/msp/vault-oidc client-secret='${VAULT_OIDC_CLIENT_SECRET:-vault-dev-secret-change-me}'"
 vexec "vault kv put secret/msp/headlamp-oidc client-secret='${HEADLAMP_OIDC_CLIENT_SECRET:-headlamp-dev-secret-change-me}'"
@@ -72,6 +77,7 @@ echo "done. ExternalSecret が Vault→k8s Secret を同期する（refresh 1h�
 echo "  PR-1: llm-provider-credentials / PR-2: minio-credentials, wikijs-db, wikijs-sync"
 echo "  PR-3: minio-oidc (MSP ns) / grafana-oidc, vault-oidc, headlamp-oidc (platform-infra ns)"
 echo "  #1107: bff-oidc (MSP ns。BFF セッションの client secret。空だと /bff/auth/login が 500)"
+echo "  #1101: identity-admin-oidc (MSP ns。SC-17 の Keycloak Admin REST 反映。空だと authorization-service が起動しない)"
 echo "  PR-4: postgres, rabbitmq, keycloak-admin (platform-infra ns・creationPolicy: Merge・手動 apply は保持)"
 echo "  #438: keycloak-smtp (platform-infra ns。既定は空＝実値未供給。docs/operations/keycloak-smtp-relay-setup-runbook.md 参照)"
 echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials minio-credentials wikijs-db wikijs-sync minio-oidc"

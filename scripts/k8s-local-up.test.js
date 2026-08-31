@@ -961,6 +961,43 @@ ok('既定 (#1022): rabbitmq-app を手動 apply する（ESO 未設定）', () 
   );
 });
 
+// FR-05, FR-09, SC-17, IADR-0301/IADR-0321 (#1101): identity-admin-oidc（SC-17 の変更を Keycloak
+// Admin REST へ反映する機密クライアントの secret）も postgres-app / rabbitmq-app と同じ対にする。
+//
+// 🔴 **#1101 は「配備が偽の身元プロバイダのまま動いていた」欠陥である。** 実プロバイダへ移した以上、
+// helm の deployment.yaml はこの Secret を **非 optional** な secretKeyRef で参照する ——
+// 手動 apply を `ESO != 1` ブロックへ入れたなら、**対応する ExternalSecret を必ず置く**。
+// 置き忘れると ESO=1 で供給元が 1 つも無くなり、authorization-service が
+// `CreateContainerConfigError` で起動しない（#1012 / #1022 と同型）。
+//
+// **横断の機械検査は依然として無い**（上の #1012 のコメントが 1 回目の記録）。本件は
+// 「先例に倣って対を置いた」ケースであって、事故の 2 回目ではない。
+ok('ESO=1 (#1101): identity-admin-oidc の ExternalSecret を apply・手動 apply はスキップ', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  assert.ok(
+    anyLineHas(res.lines, 'deploy/local/vault/eso/externalsecret-identity-admin-oidc.yaml'),
+    'externalsecret-identity-admin-oidc.yaml が apply されない（ESO=1 で供給元が無くなる）',
+  );
+  assert.ok(
+    !anyLineHas(res.lines, 'create secret generic identity-admin-oidc'),
+    'ESO=1 なのに identity-admin-oidc を手動 apply している（二重所有）',
+  );
+});
+
+// 回帰: 既定（ESO 未設定）は identity-admin-oidc を手動 apply する。
+// **陽性対照つき**: ExternalSecret を apply しないことも併せて見る（片方だけだと
+// 「常に apply する / 常にしない」実装と区別がつかない）。
+ok('既定 (#1101): identity-admin-oidc を手動 apply する（ESO 未設定）', () => {
+  assert.ok(
+    anyLineHas(DEFAULT.lines, 'create secret generic identity-admin-oidc'),
+    'identity-admin-oidc の手動 apply が無い（ESO 未設定では唯一の供給元）',
+  );
+  assert.ok(
+    !anyLineHas(DEFAULT.lines, 'externalsecret-identity-admin-oidc.yaml'),
+    'ESO 未設定なのに ExternalSecret を apply した',
+  );
+});
+
 // NFR (#1022): ブローカ自身の資格情報は **利用者名も** Secret 由来である。
 // deploy/local/infra/rabbitmq.yaml は RABBITMQ_DEFAULT_USER を `secretKeyRef: rabbitmq/username` で
 // **非 optional** に参照するので、username を作らないとブローカ Pod が起動しない。

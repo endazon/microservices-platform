@@ -159,6 +159,17 @@ fi
 if [ "${ESO:-}" != "1" ]; then
   apply_secret "$MSP_NS" bff-oidc "client-secret=${BFF_OIDC_CLIENT_SECRET:-bff-dev-secret-change-me}"
 fi
+# FR-05, FR-09, SC-17, ADR-0004/ADR-0026, IADR-0301/IADR-0321 (#1101): SC-17（利用者アカウント管理）の
+# 変更を Keycloak Admin REST へ反映する機密クライアント `identity-admin` の client secret。
+# helm の deployment.yaml が **非 optional** な secretKeyRef で参照するため、これが無いと
+# authorization-service Pod は起動できない —— 注入漏れが「偽の身元プロバイダで起動し、SC-17 の
+# 変更がプロセス内にしか残らない」という静かな縮退へ倒れないようにするためである（#1101）。
+# dev 既定は realm import の置き場と同値。ズレると client_credentials が 401 になり SC-17 が落ちる。
+# ESO=1 のときは Vault→ExternalSecret 供給へ委譲する（二重所有回避）。
+if [ "${ESO:-}" != "1" ]; then
+  apply_secret "$MSP_NS" identity-admin-oidc \
+    "client-secret=${IDENTITY_ADMIN_CLIENT_SECRET:-identity-admin-dev-secret-change-me}"
+fi
 # IADR-0097 (#310) PR-2: minio-credentials/wikijs-db/wikijs-sync は ESO=1 のとき Vault→ExternalSecret 供給へ委譲し
 # 手動 apply をスキップする（二重所有回避）。既定（ESO 未設定）は従来どおり手動 apply（バイト等価）。
 if [ "${ESO:-}" != "1" ]; then
@@ -348,6 +359,10 @@ if [ "${ESO:-}" = "1" ]; then
   # #1107: BFF セッションの client secret。手動 apply は上の `ESO != 1` ブロックでスキップされるので、
   # **これが唯一の供給元**である（欠けると bff-service Pod が起動しない）。常時供給。
   kubectl apply -f deploy/local/vault/eso/externalsecret-bff-oidc.yaml
+  # #1101: SC-17 の Keycloak Admin REST 反映に使う client secret。手動 apply は上の `ESO != 1`
+  # ブロックでスキップされるので、**これが唯一の供給元**である（欠けると authorization-service Pod が
+  # 起動しない）。常時供給。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-identity-admin-oidc.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-vault-oidc.yaml
   if [ "${OBSERVABILITY:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-grafana-oidc.yaml
@@ -362,14 +377,14 @@ if [ "${ESO:-}" = "1" ]; then
   kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-admin.yaml
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 8 本（#1022 で rabbitmq-app、#1107 で bff-oidc を追加し 6 → 7 → 8 へ数え直した）。infra ns は基盤 3 本＋vault-oidc 常時＋有効ゲートの grafana/headlamp-oidc。
+  # 誤解させない）。MSP ns は常時 9 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc を追加し 6 → 7 → 8 → 9 へ数え直した）。infra ns は基盤 3 本＋vault-oidc 常時＋有効ゲートの grafana/headlamp-oidc。
   infra_es="postgres rabbitmq keycloak-admin vault-oidc"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
   echo "    ESO: llm/minio-credentials/postgres-app/rabbitmq-app/wikijs-db/wikijs-sync/minio-oidc（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
   echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc および有効ゲートの grafana/headlamp-oidc を"
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
-  echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc"
+  echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc"
   echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret $infra_es"
 
   # IADR-0103 (#354): env の `secretKeyRef` は **Pod 起動時に一度だけ解決され、その後の Secret 更新は

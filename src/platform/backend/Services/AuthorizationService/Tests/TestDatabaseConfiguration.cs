@@ -23,5 +23,8 @@ internal static class TestDatabaseConfiguration
             "ConnectionStrings__DefaultConnection", "Host=localhost;Database=authz_test");
         // テストは実 IdP を持たない。**偽物であることを明示的に宣言する**（既定では選ばれない）。
         Environment.SetEnvironmentVariable("IdentityAdmin__Provider", "in-memory");
+        // IADR-0321 (#1101): 偽物を選べるのは**非配備ホスト**（Development / Testing / Integration）
+        // だけになった。単体テストのホストは `TestWebApplicationFactory` が `Testing` を宣言するので、
+        // ここへ環境の宣言は要らない（宣言すると器の宣言と二重になり、どちらが効くか読めなくなる）。
     }
 }

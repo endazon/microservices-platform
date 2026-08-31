@@ -340,16 +340,37 @@ services:
     image: microservices-platform/authorization-service
     tag: latest
     port: 8080
-    # SC-17, IADR-0301 決定 3 (#452): 利用者アカウント管理の反映先。**既定は無く、宣言が必須**
-    # （未設定なら Pod が起動時に落ちる）。
-    # 🔴 **暫定である。** 実 IdP へ反映するには `realm-management` の view-users / manage-users /
-    #    view-realm を持つ機密クライアントが realm に要るが、まだ登録されていない。配備されたら
-    #    `keycloak` へ切り替え、IdentityAdmin__Keycloak__{BaseUrl,Realm,ClientId,ClientSecret} を
-    #    注入する（ClientSecret は Secret 由来。既定値を持たせない —— global.db / global.messaging と同型）。
-    #    それまで SC-17 の変更は Pod のプロセス内にしか残らない（起動時に警告ログが 1 行出る）。
+    # SC-17, IADR-0301 決定 3 (#452) / IADR-0321 (#1101): 利用者アカウント管理の反映先。
+    # **既定は無く、宣言が必須**（未設定なら Pod が起動時に落ちる）。
+    #
+    # 🔴 **[#1101] 暫定は解消した。実 IdP（Keycloak Admin REST）へ反映する。**
+    #    `in-memory` だった間、SC-17 の無効化・ロール変更・属性変更は Pod のプロセス内にしか残らず、
+    #    画面は成功を返し続けた（**反映したつもりで消える**静かな縮退）。realm へ機密クライアント
+    #    `identity-admin`（`realm-management` の view-users / manage-users / view-realm のみ）を
+    #    登録し、ここを `keycloak` へ移した。
+    #    **`in-memory` は Development 以外では起動失敗になる**（IdentityAdminRegistration）ので、
+    #    ここを戻すと Pod が起動しない —— 静かな縮退へは二度と落ちない。
+    #
+    # 🔴 **ClientSecret は Secret 由来で、既定値を持たない**（global.db / global.messaging と同型）。
+    #    secretKeyRef は **非 optional** なので、Secret が無ければ Pod は起動しない
+    #    （供給は deploy/local/vault/eso/externalsecret-identity-admin-oidc.yaml、または
+    #    ESO 未使用時は scripts/k8s-local-up.sh の手動 apply）。
     extraEnv:
       - name: IdentityAdmin__Provider
-        value: "in-memory"
+        value: "keycloak"
+      # in-cluster の正準名（MSP ns の ExternalName エイリアス `keycloak` → platform-infra）。
+      # **issuer 用の Auth__Authority とは別物**である —— こちらは Admin REST の基底 URL であり、
+      # `/admin/realms/...` と `/realms/<realm>/protocol/openid-connect/token` を後置する。
+      - name: IdentityAdmin__Keycloak__BaseUrl
+        value: "http://keycloak:8080"
+      - name: IdentityAdmin__Keycloak__Realm
+        value: "platform"
+      - name: IdentityAdmin__Keycloak__ClientId
+        value: "identity-admin"
+      - name: IdentityAdmin__Keycloak__ClientSecret
+        secretKeyRef:
+          name: identity-admin-oidc
+          key: client-secret
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }

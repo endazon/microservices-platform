@@ -98,6 +98,20 @@
       ]
     }
   ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "name": "declarative-user-profile",
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{},\"up-username-not-idn-homograph\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"email\",\"displayName\":\"${email}\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false}],\"groups\":[{\"name\":\"user-metadata\",\"displayHeader\":\"User metadata\",\"displayDescription\":\"Attributes, which refer to user metadata\"}],\"unmanagedAttributePolicy\":\"ADMIN_EDIT\"}"
+          ]
+        }
+      }
+    ]
+  },
   "clientScopes": [
     {
       "name": "profile",
@@ -167,6 +181,29 @@
           "consentRequired": false,
           "config": {
             "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "name": "realm-management-roles",
+      "description": "SC-17・IADR-0321 (#1101): realm-management のクライアントロールを resource_access へ載せる。本 realm は clientScopes を明示するため組み込みが生成されず、roles スコープは realm ロールしか載せない。Admin API は resource_access で認可するので、無いと role-mappings を持つ service account でも 403 になる（実測）。",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "false", "display.on.consent.screen": "false" },
+      "protocolMappers": [
+        {
+          "name": "realm-management client roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "realm-management",
+            "claim.name": "resource_access.${client_id}.roles",
             "jsonType.label": "String",
             "multivalued": "true",
             "id.token.claim": "false",
@@ -349,6 +386,21 @@
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": ["roles", "abac-attributes"]
+    },
+    {
+      "clientId": "identity-admin",
+      "name": "SC-17 identity admin (Keycloak Admin REST, client_credentials)",
+      "description": "SC-17・IADR-0301 決定 2・IADR-0321 (#1101): AuthorizationService が利用者のロール/属性割当・無効化・セッション失効を Admin REST へ反映する機密クライアント。realm-management の view-users/manage-users/view-realm のみを持ち realm ロールは持たない。取り込み経路 (abac-seeder) とは別主体。secret は dev 専用。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "identity-admin-dev-secret-change-me",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": ["realm-management-roles"]
     },
     {
       "clientId": "ai-stock-trading-kb-writer",
@@ -642,6 +694,12 @@
       "serviceAccountClientId": "abac-seeder",
       "attributes": { "clearance": ["restricted"], "department": ["engineering"] },
       "realmRoles": ["platform-admin"]
+    },
+    {
+      "username": "service-account-identity-admin",
+      "enabled": true,
+      "serviceAccountClientId": "identity-admin",
+      "clientRoles": { "realm-management": ["view-users", "manage-users", "view-realm"] }
     },
     {
       "username": "service-account-ai-stock-trading-kb-writer",
