@@ -9,7 +9,7 @@ author: implementation-agent
 <!-- trace:
 ids: [FR-05, FR-09, SC-09, SC-17, UC-05]
 adrs: [ADR-0004, ADR-0026, ADR-0031, ADR-0032]
-iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0044, IADR-0124, IADR-0128, IADR-0129, IADR-0135, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0321]
+iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0044, IADR-0124, IADR-0128, IADR-0129, IADR-0135, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329]
 specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider]
 issues: [#452, #438, #1101]
 -->

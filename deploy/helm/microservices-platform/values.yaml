@@ -340,7 +340,7 @@ services:
     image: microservices-platform/authorization-service
     tag: latest
     port: 8080
-    # SC-17, IADR-0301 決定 3 (#452) / IADR-0321 (#1101): 利用者アカウント管理の反映先。
+    # SC-17, IADR-0301 決定 3 (#452) / IADR-0329 (#1101): 利用者アカウント管理の反映先。
     # **既定は無く、宣言が必須**（未設定なら Pod が起動時に落ちる）。
     #
     # 🔴 **[#1101] 暫定は解消した。実 IdP（Keycloak Admin REST）へ反映する。**

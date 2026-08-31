@@ -2,7 +2,7 @@
 title: 稼働クラスタの IdentityAdmin を実プロバイダ（Keycloak Admin REST）へ切り替える
 type: spec
 status: done
-related_ids: [FR-05, FR-09, UC-05, SC-17, NFR-09, ADR-0004, ADR-0026, ADR-0036, IADR-0301, IADR-0321]
+related_ids: [FR-05, FR-09, UC-05, SC-17, NFR-09, ADR-0004, ADR-0026, ADR-0036, IADR-0301, IADR-0329]
 author: implementation-agent
 created: 2026-08-31
 updated: 2026-08-31
@@ -22,7 +22,7 @@ plan_refs:
 - ユースケース（UC）: UC-05
 - 画面（SC）: SC-17 ユーザーアカウント管理
 - 関連 ADR: ADR-0004（Keycloak）/ ADR-0026（認証 UX とアカウント管理）/ ADR-0036（ABAC）
-- 実装 ADR: IADR-0301（SC-17 の抽象・権限範囲・provider 選択）/ 本作業で IADR-0321 を起票
+- 実装 ADR: IADR-0301（SC-17 の抽象・権限範囲・provider 選択）/ 本作業で IADR-0329 を起票
 - issue: #1101（親 #438・関連 #439 / #1088）
 
 ### 計画の受け入れ基準（逐語）
@@ -114,7 +114,7 @@ IdentityAdmin__Provider=in-memory
   4. **`in-memory` を非配備ホスト以外で選べなくする**（起動失敗。受け入れ基準 6 への回答）。
   5. 単体テスト（fail-closed の陽性・陰性対照つき）。
   6. 稼働クラスタでの実測（陽性対照と陰性対照を対で）。
-  7. 文書追随（画面仕様 SC-17 / テスト仕様 SC-17 / セキュリティ）と IADR-0321。
+  7. 文書追随（画面仕様 SC-17 / テスト仕様 SC-17 / セキュリティ）と IADR-0329。
 - **対象外（理由つき）**
   - **人事システム連携そのもの**（SC-17 は「連携の結果」を表示するだけ。方式未確定）。
   - **ロールの 4 分割**（ADR-0026 のフォローアップ。realm に 2 ロールしか無い）。
@@ -151,13 +151,13 @@ IdentityAdmin__Provider=in-memory
 | 13 | `docs/screens/SC-17_user-account-management.md` | 「配備の既定が偽の身元プロバイダ」の是正・未決事項 2 の解消 |
 | 14 | `docs/tests/SC-17_user-account-management.md` | fail-closed のケースを追加 |
 | 15 | `docs/security/security.md` | dev 平文シークレットの列挙へ新クライアントを追加 |
-| 16 | `.ai-context/adr/IADR-0321_*.md` | 新規（決定の記録） |
+| 16 | `.ai-context/adr/IADR-0329_*.md` | 新規（決定の記録） |
 
 **除外したもの（理由つき。黙って落とさない）**
 
 | 除外 | 理由 |
 | --- | --- |
-| `.ai-context/adr/IADR-0301_*.md` の本文（97 / 101 / 162 行） | **凍結記録の本文プロズは書き換えない**（`CLAUDE.md` の主従）。決定 3 の暫定が解けたことは IADR-0321 に書き、IADR-0301 には日付つき追記ブロックで**後継 ID を隣に置く**だけにする |
+| `.ai-context/adr/IADR-0301_*.md` の本文（97 / 101 / 162 行） | **凍結記録の本文プロズは書き換えない**（`CLAUDE.md` の主従）。決定 3 の暫定が解けたことは IADR-0329 に書き、IADR-0301 には日付つき追記ブロックで**後継 ID を隣に置く**だけにする |
 | `.ai-context/specs/20260829_issue-452_*.md`・`20260829_issue-1044_*.md`・`20260828_issue-438_*.md` | 確定済みの作業仕様書。当時の実測として正しい。追記は不要（本書が後継） |
 | `src/.../Features/Users/*/Endpoint.cs`（各 1 件） | `IdentityAdmin` の語は DI 越しの利用であり、暫定の記述を持たない |
 | `src/.../Tests/IdentityAdminContractTests.cs`（31 件） | 抽象の形（新規作成の口が無いこと）を固定する試験。provider 選択とは独立 |
@@ -268,7 +268,7 @@ Integration}`）。それ以外 —— 環境変数を与えない配備が必�
 ## 実測して分かった追加事項（着手後・稼働クラスタ）
 
 **スタブでは絶対に出ない罠が 3 つ出た。** いずれも「成功を返して静かに壊す」型である。
-決定と論拠は IADR-0321 決定 2〜4。
+決定と論拠は IADR-0329 決定 2〜4。
 
 | # | 症状（実測） | 直し方 |
 | --- | --- | --- |

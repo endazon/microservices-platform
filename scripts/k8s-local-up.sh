@@ -159,7 +159,7 @@ fi
 if [ "${ESO:-}" != "1" ]; then
   apply_secret "$MSP_NS" bff-oidc "client-secret=${BFF_OIDC_CLIENT_SECRET:-bff-dev-secret-change-me}"
 fi
-# FR-05, FR-09, SC-17, ADR-0004/ADR-0026, IADR-0301/IADR-0321 (#1101): SC-17（利用者アカウント管理）の
+# FR-05, FR-09, SC-17, ADR-0004/ADR-0026, IADR-0301/IADR-0329 (#1101): SC-17（利用者アカウント管理）の
 # 変更を Keycloak Admin REST へ反映する機密クライアント `identity-admin` の client secret。
 # helm の deployment.yaml が **非 optional** な secretKeyRef で参照するため、これが無いと
 # authorization-service Pod は起動できない —— 注入漏れが「偽の身元プロバイダで起動し、SC-17 の

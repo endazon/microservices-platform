@@ -192,7 +192,7 @@
     },
     {
       "name": "realm-management-roles",
-      "description": "SC-17・IADR-0321 (#1101): realm-management のクライアントロールを resource_access へ載せる。本 realm は clientScopes を明示するため組み込みが生成されず、roles スコープは realm ロールしか載せない。Admin API は resource_access で認可するので、無いと role-mappings を持つ service account でも 403 になる（実測）。",
+      "description": "SC-17・IADR-0329 (#1101): realm-management のクライアントロールを resource_access へ載せる。本 realm は clientScopes を明示するため組み込みが生成されず、roles スコープは realm ロールしか載せない。Admin API は resource_access で認可するので、無いと role-mappings を持つ service account でも 403 になる（実測）。",
       "protocol": "openid-connect",
       "attributes": { "include.in.token.scope": "false", "display.on.consent.screen": "false" },
       "protocolMappers": [
@@ -390,7 +390,7 @@
     {
       "clientId": "identity-admin",
       "name": "SC-17 identity admin (Keycloak Admin REST, client_credentials)",
-      "description": "SC-17・IADR-0301 決定 2・IADR-0321 (#1101): AuthorizationService が利用者のロール/属性割当・無効化・セッション失効を Admin REST へ反映する機密クライアント。realm-management の view-users/manage-users/view-realm のみを持ち realm ロールは持たない。取り込み経路 (abac-seeder) とは別主体。secret は dev 専用。",
+      "description": "SC-17・IADR-0301 決定 2・IADR-0329 (#1101): AuthorizationService が利用者のロール/属性割当・無効化・セッション失効を Admin REST へ反映する機密クライアント。realm-management の view-users/manage-users/view-realm のみを持ち realm ロールは持たない。取り込み経路 (abac-seeder) とは別主体。secret は dev 専用。",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,

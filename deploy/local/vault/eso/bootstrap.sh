@@ -49,7 +49,7 @@ vexec "vault kv put secret/msp/minio-oidc client-secret='${MINIO_OIDC_CLIENT_SEC
 # Keycloak と通信するための client secret。**空だと `GET /bff/auth/login` が 500 で落ちる**（PAR が 401）。
 # 既定は realm の置き場と同値（一致しないと PAR が同じ 401 を返す）。env で上書き可。
 vexec "vault kv put secret/msp/bff-oidc client-secret='${BFF_OIDC_CLIENT_SECRET:-bff-dev-secret-change-me}'"
-# FR-05, FR-09, SC-17, IADR-0301/IADR-0321 (#1101): AuthorizationService が Keycloak Admin REST へ
+# FR-05, FR-09, SC-17, IADR-0301/IADR-0329 (#1101): AuthorizationService が Keycloak Admin REST へ
 # SC-17 の変更を反映するための client secret（realm の機密クライアント `identity-admin`）。
 # **空だと authorization-service Pod が起動しない**（helm は非 optional な secretKeyRef で読む）。
 # 既定は realm import の置き場と同値（ズレると client_credentials が 401 になり SC-17 が 500 になる）。

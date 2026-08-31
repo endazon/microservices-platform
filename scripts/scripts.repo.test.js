@@ -1355,27 +1355,43 @@ module.exports = ({ ok, assert }) => {
 
   // ★ **変異試験**（#748 受け入れ基準 3）。正例だけの緑では、突合対象に入っていなくても
   //   「無主 0 件」が成立してしまう。**無主を仕込むと本当に fail するか**を spawn で実測する。
-  ok('担当 issue の突合: 無主を仕込むと exit 1（変異試験。NFR, #748）', () => {
+  //
+  //   ★ [2026-08-31 / #1106] **実状態の「仕様書を持たない ID」に相乗りする形をやめた。**
+  //   従前は「いま残っているのは UC-01〜UC-07」と実状態の残余へ固定し、残余が減るたびに
+  //   別の ID へ付け替えてきた（SC-20 → SC-12 → UC-01）。#1106 で計画レンジ 54 件の**全件が
+  //   テスト仕様書を持った**ため付け替え先が尽き、母集合（`missingSpec`）が空になって
+  //   **無主を仕込んでも exit 0**（＝変異試験が検出力ゼロのまま緑）になった。
+  //   合成した計画レンジ（`PLAN_ID_RULES`）で仕様書の無い ID を 1 件作り、実状態から切り離す。
+  ok('担当 issue の突合: 無主を仕込むと exit 1（変異試験。NFR, #748 / #1106）', () => {
     const { spawnSync } = require('child_process');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-id-owners-'));
     const file = path.join(dir, 'owners.json');
     fs.writeFileSync(file, JSON.stringify({ generatedAt: '2026-08-15T00:00:00Z', issues: OWNER_FIXTURE }));
+    // 合成レンジ: UC の上端だけを 1 つ広げる。UC-12 は docs/tests/ にも OWNER_FIXTURE にも無いので
+    // 「仕様書が無く、どの issue も引き受けていない」＝無主になる。他 3 種は実物と同じ値を置く。
+    const rules = path.join(dir, 'traceability.repo.md');
+    fs.writeFileSync(rules,
+      '# 合成した計画レンジ（変異試験専用）\n\n' +
+      '## 起点 ID の種別（固有）\n\n' +
+      '- レンジは `FR-01..22` / `UC-01..12` / `SC-01..21` / `ADR-0001..0068`。\n\n' +
+      '## 次の節（節スコープの終端）\n');
     const r = spawnSync(process.execPath, [path.join(__dirname, 'check-test-traceability.js')],
-      { encoding: 'utf8', env: { ...process.env, PLAN_ID_OWNERS: file } });
+      { encoding: 'utf8', env: { ...process.env, PLAN_ID_OWNERS: file, PLAN_ID_RULES: rules } });
     const out = `${r.stdout}\n${r.stderr}`;
     assert.strictEqual(r.status, 1, `無主があるのに fail しない:\n${out}`);
     assert.match(out, /担当 issue が無い計画 ID/);
-    // 無主として名指しされるのは 3 issue が引き受けていない ID だけである。
-    // （従前は SC-20 → SC-12 と見てきたが、#451-a が docs/tests/SC-20 を、#452 が docs/tests/SC-12 を
-    //   新設して順に無主でなくなった。**固定に使う ID はテスト仕様書を持たない ID へ追随させる。**
-    //   いま残っているのは UC-01〜UC-07 である —— SC-17 は本 fixture の #438 が「SC-13〜17」で
-    //   引き受けているため無主にならない）
-    assert.match(out, /UC-01/);
+    assert.match(out, /UC-12/);
     // ★ 同じ 1 回の実行で、**過去 3 件が無主に混じらない**ことも確かめる（回帰と変異の同時固定）。
     const unowned = (out.match(/\[担当 issue が無い計画 ID\] ([^\n]*)/) || [])[1] || '';
     for (const id of ['SC-14', 'SC-15', 'UC-09', 'UC-10']) {
       assert.ok(!unowned.split(' / ').includes(id), `${id} が無主として出ている: ${unowned}`);
     }
+    // ★ 陽性対照: 合成レンジを外せば（＝実状態のレンジなら）無主は 0 件で exit 0 に戻る。
+    //   これが無いと「常に fail する検査」でも上の assert は緑になる。
+    const control = spawnSync(process.execPath, [path.join(__dirname, 'check-test-traceability.js')],
+      { encoding: 'utf8', env: { ...process.env, PLAN_ID_OWNERS: file } });
+    assert.strictEqual(control.status, 0,
+      `実状態のレンジでは無主 0 件のはず:\n${control.stdout}\n${control.stderr}`);
     fs.rmSync(dir, { recursive: true });
   });
 
@@ -4550,6 +4566,94 @@ ${r.stderr}`);
     });
   }
 
+  // --- #1090: collector の自己テレメトリ宣言のパリティ ---------------------------
+  //
+  // 3 つの collector 設定は**排他的な別配備の全体設定**であり、単一情報源にできない
+  // （kustomize の patch は ConfigMap の `data` の**文字列の内側**へ届かず、root 外参照もできない）。
+  // だから**乖離を消すのではなく止める**。同型の事故は 2 回起きている
+  // （1 回目 = IADR-0304 §配備して初めて分かったこと ／ 2 回目 = #1090）。
+  {
+    const { spawnSync } = require('child_process');
+    const path = require('path');
+    const fs = require('fs');
+    const SCRIPTS = __dirname;
+    const REPO = path.join(SCRIPTS, '..');
+    const script = path.join(SCRIPTS, 'check-collector-self-telemetry.js');
+
+    const runTel = (args = [], cwd = REPO) => {
+      const r = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', cwd });
+      return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+    };
+
+    ok('check-collector-self-telemetry --self-test が通る', () => {
+      const { code, out } = runTel(['--self-test']);
+      assert.strictEqual(code, 0, out);
+    });
+
+    // ★ 件数だけを見ない。**個々の変異ケースが走っていること**を名指しで確かめる
+    //   （件数は変異ケースを消しても通りつづける。#657 で実際にやった誤り）。
+    ok('check-collector-self-telemetry: self-test が 4 種の変異ケースを実際に走らせている', () => {
+      const { out } = runTel(['--self-test']);
+      for (const name of [
+        '宣言が無いファイルを検出する',
+        '待受が食い違うことを検出する',
+        'scrape 対象と一致しないポートを検出する',
+        'loopback の待受を検出する',
+      ]) {
+        assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
+      }
+    });
+
+    ok('check-collector-self-telemetry が実データで違反 0 件', () => {
+      const { code, out } = runTel();
+      assert.strictEqual(code, 0, out);
+    });
+
+    // #664 / IADR-0130 の下限。**件数リテラルは書かない**（設定が増えれば動く）。
+    ok('0 件走査の門: 実データで collector 設定を 1 件以上拾う（下限）', () => {
+      const { out } = runTel();
+      const m = out.match(/collector 設定 (\d+) 件/);
+      assert.ok(m, `OK メッセージから走査件数を読めない:\n${out}`);
+      assert.ok(Number(m[1]) > 0, `走査件数が 0 だった:\n${out}`);
+    });
+
+    // ★ **実データに対する変異試験**（self-test の合成データだけで終わらせない）。
+    //   #1090 そのもの —— 転送構成から宣言を落としたときに、確かに落ちることを固定する。
+    ok('check-collector-self-telemetry: 実データの宣言を 1 つ消すと違反を出す（変異試験）', () => {
+      const tel = require('./check-collector-self-telemetry.js');
+      const { collectorFiles, promFiles } = tel.collect(REPO);
+      assert.ok(collectorFiles.length >= 2, '変異させる母集合が足りない');
+      const target = collectorFiles.find((f) => /observability/.test(f.path)) || collectorFiles[0];
+      const mutated = collectorFiles.map((f) =>
+        f === target
+          ? { ...f, text: f.text.replace(/^[ \t]*telemetry:[ \t]*\n(?:[ \t]*metrics:[ \t]*\n)?[ \t]*address:.*\n/m, '') }
+          : f,
+      );
+      const before = tel.findIssues(collectorFiles, promFiles).issues;
+      assert.deepStrictEqual(before, [], `実データが既に違反している:\n${before.join('\n')}`);
+      const after = tel.findIssues(mutated, promFiles).issues;
+      assert.ok(after.length > 0, `宣言を消しても違反が出なかった（検出力が無い）: ${target.path}`);
+    });
+
+    // 0 件走査の門（`deploy/` ごと無いリポジトリ）。「何も無い」を緑で返さない。
+    ok('0 件走査の門: collector 設定が 1 件も無いと fail する（変異試験）', () => {
+      const os = require('os');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'collector-telemetry-'));
+      fs.cpSync(SCRIPTS, path.join(dir, 'scripts'), { recursive: true });
+      try {
+        const r = spawnSync(process.execPath, [path.join(dir, 'scripts', 'check-collector-self-telemetry.js')], {
+          encoding: 'utf8',
+          cwd: dir,
+        });
+        const out = `${r.stdout || ''}${r.stderr || ''}`;
+        assert.strictEqual(r.status, 1, `collector 設定が無いのに緑を返した:\n${out}`);
+        assert.match(out, /0 件検査/, `0 件検査であることを述べていない:\n${out}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+
   // --- #667: 仕様書 status の値域 ------------------------------------------------
   //
   // 規約（docs/README.md 運用ルール 6）は最初から 5 値を定義していたが、**誰も追随していなかった**。
@@ -5776,7 +5880,11 @@ ${r.stderr}`);
         //    1 行も無く、稼働クラスタの `/bff/auth/login` が 500 を返し続けた）を新設したため
         //    45 → 46（ラチェットが設計どおり発火した）。git を一切呼ばず fs のみで走査するため、
         //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
-        assert.strictEqual(scripts.length, 46, `検査器の母集合が 46 本から変わった（${scripts.length} 件）`);
+        // ★ #1090 で `check-collector-self-telemetry.js`（collector 設定 3 件が同じ自己テレメトリの
+        //    待受を宣言し、Prometheus の scrape 対象ポートと一致すること。**同型の事故 2 回目**——
+        //    1 回目は IADR-0304 の記録に留めた）を新設したため 46 → 47（ラチェットが設計どおり発火した）。
+        //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        assert.strictEqual(scripts.length, 47, `検査器の母集合が 47 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -8173,13 +8281,41 @@ ${r.stderr}`);
     const VERIFY = fsSS.readFileSync(
       pathSS.join(__dirname, 'verify-oidc-edge-flow.sh'), 'utf8');
 
-    ok('#992: TOTAL は加算式である（モードの組み合わせで門が誤発火しない）', () => {
+    // 🔴 #1124: この検査は以前、加算値を**テスト側へ書き写して**照合していた。
+    //    写しなので、書き手が両方を同じ誤った値で揃えると**検出力がゼロになる** ——
+    //    実際 #1117 が既存の 1 段を数え落として +3 と書いたとき、このテストは緑のまま通し、
+    //    後段の integration-stack で「実行 23 対宣言 22」として初めて発覚した。
+    //    よって**加算値はスクリプトから導出する**（ブロック内の段を数える）。
+    const VERIFY_LINES = VERIFY.split('\n');
+    const stagesInBlock = (flag) => {
+      const s = VERIFY_LINES.findIndex((l) => l === 'if [ \"$' + flag + '\" = \"1\" ]; then');
+      assert.ok(s >= 0, `${flag} のブロックが見つからない`);
+      const e = VERIFY_LINES.indexOf('fi', s);
+      assert.ok(e > s, `${flag} のブロックの終端が見つからない`);
+      return VERIFY_LINES.slice(s + 1, e)
+        .filter((l) => /^\s*(next_step |step \")/.test(l)).length;
+    };
+    const declaredAddend = (flag) => {
+      const needle = '\"$' + flag + '\" = \"1\" ]; then TOTAL=$((TOTAL + ';
+      const line = VERIFY_LINES.find((l) => l.includes(needle));
+      assert.ok(line, `${flag} の加算式が無い`);
+      const m = /^(\d+)/.exec(line.slice(line.indexOf(needle) + needle.length));
+      assert.ok(m, `${flag} の加算値を読めない: ${line}`);
+      return Number(m[1]);
+    };
+
+    ok('#992 / #1124: TOTAL の加算値が各ブロックの実段数と一致する', () => {
       // 固定値（TOTAL=17 / TOTAL=11 の二択）へ戻すと、SEARCH_* を足した瞬間に門が誤発火する。
       assert.match(VERIFY, /^TOTAL=11$/m, 'TOTAL の基底が 11 でない');
-      // #1116: SEARCH_HITS は S3（ハイブリッド）＋ S4・S5（全文側の正負対照）＋ readiness の 3 段を足す。
-      for (const [flag, addend] of [['ABAC_POSITIVE', 6], ['SEARCH_SEEDED', 2], ['SEARCH_HITS', 3]]) {
-        const re = new RegExp(`\\$${''}{?${flag}}?" = "1" \\]; then TOTAL=\\$\\(\\(TOTAL \\+ ${addend}\\)\\)`);
-        assert.match(VERIFY, re, `${flag} の加算（+${addend}）が無い`);
+      for (const flag of ['ABAC_POSITIVE', 'SEARCH_SEEDED', 'SEARCH_HITS']) {
+        const expected = stagesInBlock(flag);
+        assert.ok(expected > 0, `${flag} のブロックに段が 1 つも無い（走査が空振りしている）`);
+        assert.strictEqual(
+          declaredAddend(flag),
+          expected,
+          `${flag} の加算がブロックの実段数（${expected}）と違う`
+            + `（「足した段」ではなく「そのブロックの段数全部」を書く。#1124）`,
+        );
       }
     });
 

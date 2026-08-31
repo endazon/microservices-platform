@@ -91,7 +91,7 @@ public class IdentityAdminContractTests
     }
 
     // 陽性対照: 資格情報が揃えば keycloak 実装が解決できる。**本番相当の環境で**解決することが要点で、
-    // 実配備（Production）はこの経路を通る（IADR-0321 (#1101)）。
+    // 実配備（Production）はこの経路を通る（IADR-0329 (#1101)）。
     [Fact]
     public void Registration_resolves_the_keycloak_client_when_every_credential_is_injected()
     {
@@ -129,7 +129,7 @@ public class IdentityAdminContractTests
         recorder.Warnings.Should().ContainSingle().Which.Should().Contain("反映されない");
     }
 
-    // FR-05, FR-09, SC-17, IADR-0321 (#1101): **偽の身元プロバイダは非配備ホストでしか選べない。**
+    // FR-05, FR-09, SC-17, IADR-0329 (#1101): **偽の身元プロバイダは非配備ホストでしか選べない。**
     //
     // 🔴 稼働 dev クラスタは `IdentityAdmin__Provider=in-memory` のまま動いており、SC-17 の
     // 無効化・ロール変更・属性変更は Keycloak へ 1 件も届いていなかった（画面は 200 を返し、

@@ -392,7 +392,7 @@ services:
     environment:
       <<: [*common-env, *db-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=authz_svc;Username=kp;Password=kp
-      # SC-17, IADR-0301 決定 3 (#452) / IADR-0321 (#1101): 利用者アカウント管理の反映先。
+      # SC-17, IADR-0301 決定 3 (#452) / IADR-0329 (#1101): 利用者アカウント管理の反映先。
       # **既定は無く、宣言が必須**（未設定なら起動時に落ちる）。
       # （旧コメントは決定記録の番号を `IADR-0298` と誤記していた。正は `IADR-0301` である。）
       #

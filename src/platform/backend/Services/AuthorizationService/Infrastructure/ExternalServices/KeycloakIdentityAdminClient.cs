@@ -8,7 +8,7 @@ using System.Text.Json.Serialization;
 
 namespace AuthorizationService.Infrastructure.ExternalServices;
 
-// FR-05, FR-09, UC-05, SC-17, ADR-0026, IADR-0301, IADR-0321: Keycloak Admin REST による身元管理。
+// FR-05, FR-09, UC-05, SC-17, ADR-0026, IADR-0301, IADR-0329: Keycloak Admin REST による身元管理。
 //
 // ■ 疎通の状態（#1101 で更新。旧記述「実 Keycloak との疎通は未検証」は解消した）
 //   稼働 k3s の Keycloak 24 に対して、一覧・属性差し替え・`enabled` 切替を**実測で通した**。

@@ -355,23 +355,43 @@ describe('DocumentDetailPage (SC-03)', () => {
   });
 
   // SC-03: 本欄が描くのは**当該文書を両端のいずれかとする提案**だけである（05_screens §SC-03）。
-  // 🔴 後段は文書での絞り込みを持たないため、絞りは画面側にある。**外すと他文書の提案が混ざる。**
-  it('only renders suggestions that touch this document', async () => {
-    const unrelated = {
+  // 🔴 **［2026-08-31 / #1104］絞りはサーバ側にある。** 従前ここは client 側の間引きを固定して
+  // いたが、後段が `documentId` を受けるようになり、その形は失効した。
+  // **観測するのは「要求に当該文書 ID が載ること」**であり、応答の間引きではない。
+  it('asks the server for this document only (no client-side filtering)', async () => {
+    respond({ suggestions: [LINK_SUGGESTION] });
+    await renderPage();
+
+    await screen.findByRole('heading', { name: 'AI 提案' });
+    const listingCall = mocks.apiRequest.mock.calls.find(
+      (call) =>
+        String(call[0]).includes('/graph/suggestions') && !String(call[0]).includes('/appro'),
+    );
+    expect(listingCall).toBeDefined();
+    expect(String(listingCall?.[0])).toContain(`documentId=${DOC_ID}`);
+    // 既定は pending（05_screens §SC-03「本欄に既定で表示するのは pending の提案である」）。
+    expect(String(listingCall?.[0])).toContain('state=pending');
+  });
+
+  // 🔴 **サーバが返したものはそのまま描く**（#1104）。client 側で間引くと、表示件数と取得件数が
+  // ずれて 0 件の意味が読めなくなる。**間引きが復活したらここが落ちる** ——
+  // 当該文書を端点に持たない行を意図的に返し、それが描かれることを固定する
+  // （利用者に見える形ではないが、「絞りはサーバの仕事である」ことの検出器である）。
+  it('renders what the server returned without re-filtering it', async () => {
+    const fromServer = {
       ...LINK_SUGGESTION,
       id: '33333333-3333-3333-3333-333333333333',
       sourceDocumentId: OTHER_DOC_ID,
       targetDocumentId: '44444444-4444-4444-4444-444444444444',
       sourceDocumentTitle: '就業規則',
       targetDocumentTitle: '育児介護休業規程',
-      rationale: '無関係な提案（本画面に出てはならない）',
+      rationale: 'サーバが返した行（画面は絞り直さない）',
     };
-    respond({ suggestions: [LINK_SUGGESTION, unrelated] });
+    respond({ suggestions: [fromServer] });
     await renderPage();
 
     await screen.findByRole('heading', { name: 'AI 提案' });
-    expect(screen.getByText('両文書が同じ規程を引いている')).toBeInTheDocument();
-    expect(screen.queryByText('無関係な提案（本画面に出てはならない）')).not.toBeInTheDocument();
+    expect(screen.getByText('サーバが返した行（画面は絞り直さない）')).toBeInTheDocument();
   });
 
   // SC-03, ADR-0033 決定 7: 承認・却下は **1 件ずつ、その提案の口へ** 送る。

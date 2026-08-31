@@ -38,7 +38,7 @@ builder.Services.AddDbContext<AuthorizationDbContext>(opt => opt.UseNpgsql(connS
 // 起動できなくなる。どちらの既定も誤りなので、宣言そのものを配備側へ出す。
 // keycloak を選んだときの資格情報も既定を持たない（#1012 / IADR-0286 と同型）。
 //
-// 🔴 IADR-0321 (#1101): **`in-memory` は Development でしか選べない。** 実行環境を渡すのは
+// 🔴 IADR-0329 (#1101): **`in-memory` は Development でしか選べない。** 実行環境を渡すのは
 // そのためである（Development 以外で偽物を宣言したらここで落ちる）。
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddIdentityAdminClient(builder.Configuration, builder.Environment);

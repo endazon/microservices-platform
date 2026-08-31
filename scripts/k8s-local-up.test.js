@@ -961,7 +961,7 @@ ok('既定 (#1022): rabbitmq-app を手動 apply する（ESO 未設定）', () 
   );
 });
 
-// FR-05, FR-09, SC-17, IADR-0301/IADR-0321 (#1101): identity-admin-oidc（SC-17 の変更を Keycloak
+// FR-05, FR-09, SC-17, IADR-0301/IADR-0329 (#1101): identity-admin-oidc（SC-17 の変更を Keycloak
 // Admin REST へ反映する機密クライアントの secret）も postgres-app / rabbitmq-app と同じ対にする。
 //
 // 🔴 **#1101 は「配備が偽の身元プロバイダのまま動いていた」欠陥である。** 実プロバイダへ移した以上、

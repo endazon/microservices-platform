@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace AuthorizationService.Tests;
 
-// FR-05, FR-09, SC-17, IADR-0301 (#452), IADR-0321 (#1101): Keycloak Admin REST 実装の写像を固定する。
+// FR-05, FR-09, SC-17, IADR-0301 (#452), IADR-0329 (#1101): Keycloak Admin REST 実装の写像を固定する。
 //
 // 🔴 **これは疎通の検証ではない。** ここで固定できるのは「要求の組み立て」と「応答の写し取り」
 // だけであり、**緑であることは実 IdP へ反映できることを意味しない**。テスト仕様書 §区分 も同じ。
@@ -131,7 +131,7 @@ public class KeycloakIdentityAdminClientTests
         handler.Requests.Should().Contain(r => r.Method == "POST" && r.Path.EndsWith("/users/u1/logout"));
     }
 
-    // 🔴 IADR-0321 (#1101): **`PUT /users/{id}` は部分更新ではない。**
+    // 🔴 IADR-0329 (#1101): **`PUT /users/{id}` は部分更新ではない。**
     // `{"enabled": false}` だけを送ると `firstName` / `lastName` / `email` が実 Keycloak で
     // 実際に消えた（204 が返るので気付けない）。read-modify-write であることを固定する。
     [Fact]
@@ -170,7 +170,7 @@ public class KeycloakIdentityAdminClientTests
                 "{0} はサーバが組み立てる派生値である", computed);
     }
 
-    // 🔴 IADR-0321 (#1101): **黙って捨てられたら失敗にする。**
+    // 🔴 IADR-0329 (#1101): **黙って捨てられたら失敗にする。**
     // realm の user profile が unmanaged 属性の書き込みを許していないと、Keycloak は 204 を返して
     // ABAC 属性を捨てる。**200 を返して画面に「保存しました」と描かせない。**
     [Fact]

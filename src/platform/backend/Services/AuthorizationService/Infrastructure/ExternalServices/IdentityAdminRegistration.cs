@@ -2,7 +2,7 @@ using AuthorizationService.Domain.Ports;
 
 namespace AuthorizationService.Infrastructure.ExternalServices;
 
-// FR-05, FR-09, SC-17, IADR-0301 決定 3, IADR-0321: 身元プロバイダ実装の選択と、その資格情報の受け取り。
+// FR-05, FR-09, SC-17, IADR-0301 決定 3, IADR-0329: 身元プロバイダ実装の選択と、その資格情報の受け取り。
 //
 // 🔴 **`IdentityAdmin:Provider` に既定を置かない。**
 //   - 既定を `in-memory` にすると、構成の注入漏れが「起動失敗」ではなく
@@ -11,7 +11,7 @@ namespace AuthorizationService.Infrastructure.ExternalServices;
 //   - 既定を `keycloak` にすると、資格情報が未整備の配備が一斉に起動できなくなる。
 //   **どちらの既定も誤りなので、宣言そのものを必須にして選択を配備側へ出す。**
 //
-// 🔴 **IADR-0321 (#1101): `in-memory` は非配備ホストでしか選べない。**
+// 🔴 **IADR-0329 (#1101): `in-memory` は非配備ホストでしか選べない。**
 //   宣言を必須にしても「配備が明示的に `in-memory` と書く」ことは止められなかった —— 実際に
 //   稼働 dev クラスタは `IdentityAdmin__Provider=in-memory` のまま動き、SC-17 の無効化・ロール変更・
 //   属性変更は 1 件も Keycloak へ届いていなかった。**警告ログ 1 行は運用が見落とす**（画面は 200 を
@@ -25,7 +25,7 @@ public static class IdentityAdminRegistration
     public const string InMemoryProvider = "in-memory";
 
     /// <summary>
-    /// IADR-0321 (#1101): 偽の身元プロバイダを選んでよいホストの環境名（**許可集合＝deny by default**）。
+    /// IADR-0329 (#1101): 偽の身元プロバイダを選んでよいホストの環境名（**許可集合＝deny by default**）。
     ///
     /// 🔴 **「配備ではない」を否定形で書かない。** 否定形（Production / Staging だけを弾く）にすると、
     /// 環境名を `Prod` などと書いた配備が素通りする。本リポジトリが非配備ホストに使う名前は 3 つで、
@@ -55,7 +55,7 @@ public static class IdentityAdminRegistration
 
         if (string.Equals(provider, InMemoryProvider, StringComparison.OrdinalIgnoreCase))
         {
-            // IADR-0321 (#1101): 偽の身元プロバイダは非配備ホストでしか選べない。
+            // IADR-0329 (#1101): 偽の身元プロバイダは非配備ホストでしか選べない。
             // ここを緩めると、SC-17 の変更が実 IdP へ 1 件も届かないまま画面だけが成功を返す
             // 配備が再び作れてしまう（#1101 が実測した稼働クラスタの状態そのもの）。
             if (!NonDeployedEnvironments.Contains(environment.EnvironmentName, StringComparer.Ordinal))
