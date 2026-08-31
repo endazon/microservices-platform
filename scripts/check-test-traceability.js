@@ -199,8 +199,15 @@ function expandPlanIds(ranges) {
  * skip すると「計画レンジ 0 件・不足 0 件」という最も安全に見える出力で素通りし、本検査が塞ごうと
  * している fail-open そのものへ戻る。RULES_FILE は submodule ではなく本リポジトリの追跡ファイルなので、
  * 読めないのは環境差ではなく規約側の破壊（節の改名・書式変更）である。
+ *
+ * 既定パスは `PLAN_ID_RULES` で差し替えられる（`PLAN_ID_OWNERS` と同じ、**変異試験のための**
+ * 逃げ道である。IADR-0324 / #1106）。#1106 で計画レンジ 54 件の**全件がテスト仕様書を持った**
+ * ため、「担当 issue が無い計画 ID」の母集合（`missingSpec`）がリポジトリの実状態では常に空になり、
+ * 無主の変異試験が**仕込んでも fail しない**（＝検出力ゼロで緑）状態になった。合成レンジを
+ * 読ませて仕様書の無い ID を 1 件作れるようにし、変異試験の検出力を実状態から切り離す。
+ * **本番実行では未設定であり、挙動は変わらない。**
  */
-function readPlanIds(rulesPath = path.join(REPO_ROOT, RULES_FILE)) {
+function readPlanIds(rulesPath = process.env.PLAN_ID_RULES || path.join(REPO_ROOT, RULES_FILE)) {
   let md;
   try {
     md = fs.readFileSync(rulesPath, 'utf8');
