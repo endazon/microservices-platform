@@ -37,6 +37,8 @@ bash deploy/local/vault/oidc/bootstrap.sh
 
 ```sh
 SEC=$(kubectl -n platform-infra get secret vault-oidc -o jsonpath='{.data.client-secret}' | base64 -d)
+# エッジ証明書のローカル CA（cert-manager が実行時に作る。リポジトリには置かない）
+CA_PEM=$(kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d)
 
 # auth/oidc 有効化（冪等）
 kubectl -n platform-infra exec deploy/vault -- sh -c '
@@ -47,7 +49,8 @@ vault auth list | grep -q "^oidc/" || vault auth enable oidc'
 kubectl -n platform-infra exec deploy/vault -- sh -c "
 export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=\"\$VAULT_DEV_ROOT_TOKEN_ID\"
 vault write auth/oidc/config \
-  oidc_discovery_url='http://keycloak:8080/realms/platform' \
+  oidc_discovery_url='https://keycloak.localhost/realms/platform' \
+  oidc_discovery_ca_pem="$CA_PEM" \
   oidc_client_id='vault' oidc_client_secret='$SEC' default_role='default'"
 
 # role default
@@ -87,8 +90,11 @@ curl -s --cacert ca.crt --resolve vault.localhost:50000:127.0.0.1 \
 ```
 
 `bootstrap.sh` が行うこと:
-- `auth/oidc` を有効化し、`oidc_discovery_url=http://keycloak:8080/realms/platform`／`client_id=vault`／
-  client secret（Secret 由来）で `config`。
+- `auth/oidc` を有効化し、`oidc_discovery_url=https://keycloak.localhost/realms/platform`（**エッジ host**・
+  IADR-0243 / #780）／`oidc_discovery_ca_pem`（cert-manager の `local-edge-root-ca` から実行時に読む）／
+  `client_id=vault`／client secret（Secret 由来）で `config`。
+  🔴 **Vault は discovery URL とその文書の `issuer` が一致していないと `config` の書き込み自体を拒む**ので、
+  Grafana のような「ブラウザだけエッジ」の分離はできない。CA を渡すのはそのためである。
 - OIDC role `default`（`groups_claim=groups`・`token_policies=default`＝**最小・secret アクセス無し**）。
 - policy `admin`（`policies/admin.hcl`）／`operator`（`policies/operator.hcl`）を作成。
 - **external group** `platform-admin`→`admin` / `platform-operator`→`operator` を作成し group-alias で OIDC accessor に紐付け。
@@ -111,8 +117,9 @@ LOCALEDGE=1 VAULT=1 bash scripts/k8s-local-up.sh
 # CLI: vault login -method=oidc role=default    # ブラウザが localhost:8250 の callback を開く
 ```
 
-- **issuer 整合（#284 手順A）**: browser も `keycloak:8080` を解決できるよう hosts 追記＋`port-forward svc/keycloak 8080:8080`。
-  Vault server（platform-infra）は in-cluster の `keycloak:8080` で discovery する。
+- **issuer 整合（#780・IADR-0243）**: issuer は `https://keycloak.localhost/realms/platform` である。
+  Vault server（platform-infra）は pod から同じ host を引いて discovery する（`coredns-custom`＝IADR-0227）。
+  **hosts 追記も port-forward も不要。**
 - **redirect**: UI は `https://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback`（IADR-0220 / #841 で edge admin:50000 が
   TLS 終端になったため、realm と Vault role の登録は https のみにした）。CLI は `http://localhost:8250/oidc/callback`。
 - CLI で `*.localhost` 未解決なら hosts 追記 or `*.nip.io`。**realm 反映**: `vault` client は realm 再インポートで有効化。

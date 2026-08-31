@@ -22,7 +22,21 @@ if [ -z "$CLIENT_SECRET" ]; then
 fi
 : "${CLIENT_SECRET:?vault-oidc secret も VAULT_OIDC_CLIENT_SECRET env も無い。k8s-local-up.sh を VAULT=1 で実行済みか確認}"
 
-ISSUER="${VAULT_OIDC_DISCOVERY_URL:-http://keycloak:8080/realms/platform}"
+# IADR-0243 決定 3 / #780: issuer を **https のエッジ host** へ移した。
+# 🔴 **Vault は discovery URL とその文書の `issuer` が一致していないと config 書き込み自体を拒む**
+#    （"error checking oidc discovery URL"）。したがって in-cluster 名を残す選択肢が無い ——
+#    Keycloak が広告する issuer はエッジ host 1 本だからである（KC_HOSTNAME_URL・IADR-0243 決定 1）。
+ISSUER="${VAULT_OIDC_DISCOVERY_URL:-https://keycloak.localhost/realms/platform}"
+# エッジ証明書はローカル CA（cert-manager の local-edge-ca）が署名しており、Vault コンテナの
+# 既定ルートには入っていない。Vault は `oidc_discovery_ca_pem` を一次サポートするので、
+# CA をクラスタから読んでその場で渡す（**リポジトリへ PEM を焼き込まない**）。
+# fail-safe: CA が取れなければ空のまま渡す（＝既定ルートで検証する）。http の issuer を
+# 指定した場合も空のままでよい（Vault は ca_pem を無視する）。
+CA_PEM="${VAULT_OIDC_DISCOVERY_CA_PEM:-}"
+if [ -z "$CA_PEM" ] && printf %s "$ISSUER" | grep -q "^https://"; then
+  CA_PEM="$(kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  [ -z "$CA_PEM" ] && echo "    warn: cert-manager/local-edge-root-ca が読めない。既定ルートで検証する（自己署名なら失敗する）"
+fi
 # IADR-0220 (#841): admin(50000) が TLS 終端になったため UI の redirect は https のみ（NFR-11「平文 HTTP を残さない」）。
 # CLI の localhost:8250 はエッジを経由しないローカル callback であり対象外。
 REDIRECTS="https://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback,http://localhost:8250/oidc/callback"
@@ -39,6 +53,7 @@ ACCESSOR="$(vault auth list -format=json | jq -r '."oidc/".accessor')"
 echo "==> auth/oidc/config"
 vault write auth/oidc/config \
   oidc_discovery_url="$ISSUER" \
+  oidc_discovery_ca_pem="$CA_PEM" \
   oidc_client_id="vault" \
   oidc_client_secret="$CLIENT_SECRET" \
   default_role="default"

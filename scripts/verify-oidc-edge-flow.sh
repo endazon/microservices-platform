@@ -17,12 +17,16 @@
 #   どこで壊れているかを名指しできるようにする。ブラウザを使わないため、#466 が目指す
 #   CI 実行の土台にもなる。
 #
-#   経路B のエッジは **Traefik**（k3s 内蔵。Istio ではない。IADR-0091）で、
+#   経路B のエッジは **Traefik**（k3s 内蔵・IADR-0091）か、`ISTIO=1` のときは
+#   **Istio Ingress Gateway**（IADR-0317・#782）である。どちらでも host とポートは同じで、
 #   `/bff` → bff-service、catch-all → frontend-service に振っている。
 #   issuer はエッジ host `https://keycloak.localhost` へ移した（IADR-0076 決定3 手順B・IADR-0243・
 #   #780 第2段）。pod からの到達は IADR-0227（coredns-custom）が既に可能にしているため、
 #   **hosts 追記・port-forward（手順A）は前提にしない**。TLS はローカル CA（local-edge-ca。
-#   IADR-0206）の自己署名であり検証しない（`curl -k`。dev 専用の検証スクリプトのため）。
+#   IADR-0206）が署名しており、**既定で検証する**（#780。CA は cert-manager から自動で取り出す。
+#   OIDC_CA_BUNDLE で明示指定・OIDC_TLS_INSECURE=1 で従来の `-k` へ戻せる）。
+#   🔴 **かつてここは無条件 `-k` だった。** #1074 で証明書の SAN が足りていなかったのに、
+#      測る側が全員 `-k` を付けていたため誰も気付かなかった。**検証器が検証を切らない。**
 #
 # 実行方法:
 #   1) 経路B を起動し、エッジを有効にする（LOCALEDGE=1 / Rancher Desktop は overlay 適用のみ）。
@@ -66,9 +70,48 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 EDGE_URL="${EDGE_URL:-https://localhost}"
 KC_URL="${KC_URL:-https://keycloak.localhost}"
-# エッジ（EDGE_URL・KC_URL とも）はローカル CA の自己署名（local-edge-ca・IADR-0206）。dev 専用の
-# 検証スクリプトのため証明書チェーンは検証しない。http:// へ差し替えた場合は無害（curl が -k を無視する）。
-CURL_K="-k"
+# ---- TLS 検証の方針（#780・#1074 の事故の再発防止） ---------------------------
+#
+# 🔴 **従前はここが無条件に `-k` だった。** #1074 で「エッジ証明書の SAN が足りず
+#    `https://keycloak.localhost` の検証が落ちていた」のに、**測る側が全員 `-k` を
+#    付けていたため誰も気付かなかった**。検証器が検証を切っていては、証明書の欠陥は
+#    利用者のブラウザで初めて見つかることになる。
+#
+# 既定は「検証する」。CA は次の順に解決する。
+#   1) OIDC_CA_BUNDLE（明示。ファイルパス）
+#   2) クラスタから取り出す（cert-manager/local-edge-root-ca。kubectl があるときだけ）
+#   3) どちらも無ければ `-k` へ落ちる（**警告を出す**。CA を持たない環境で
+#      スクリプト全体が使えなくなるほうが害が大きいため fail-safe にする）
+# OIDC_TLS_INSECURE=1 を明示したときだけ、CA が取れても `-k` を使う（切り分け用）。
+#
+# ※ `$CURL_K` は**意図的に引用しない**（`--cacert <path>` の 2 語へ展開させる）。
+#   したがって CA のパスに空白を含めないこと。
+CA_BUNDLE="${OIDC_CA_BUNDLE:-}"
+if [ "${OIDC_TLS_INSECURE:-}" = "1" ]; then
+  CURL_K="-k"
+  TLS_MODE="検証しない（OIDC_TLS_INSECURE=1 の明示）"
+else
+  if [ -z "$CA_BUNDLE" ] && command -v kubectl >/dev/null 2>&1; then
+    CA_BUNDLE="${TMPDIR:-/tmp}/msp-verify-oidc-edge-ca.pem"
+    kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' 2>/dev/null \
+      | base64 -d > "$CA_BUNDLE" 2>/dev/null || true
+    [ -s "$CA_BUNDLE" ] || CA_BUNDLE=""
+  fi
+  if [ -n "$CA_BUNDLE" ] && [ -s "$CA_BUNDLE" ]; then
+    # Windows の curl は schannel なので私有 CA の失効確認が unknown になり接続ごと落ちる。
+    # `--ssl-revoke-best-effort` が緩めるのは**失効確認だけ**で、チェーン検証とホスト名照合は
+    # 有効なまま残る（`-k` とは別物）。schannel 以外では未知オプションとして無視されないため、
+    # 対応しているときだけ付ける。
+    CURL_K="--cacert $CA_BUNDLE"
+    if curl --help all 2>/dev/null | grep -q -- '--ssl-revoke-best-effort'; then
+      CURL_K="$CURL_K --ssl-revoke-best-effort"
+    fi
+    TLS_MODE="検証する（CA=$CA_BUNDLE）"
+  else
+    CURL_K="-k"
+    TLS_MODE="🔴 検証しない（CA を解決できなかった。OIDC_CA_BUNDLE で与えると検証する）"
+  fi
+fi
 REALM="${OIDC_REALM:-platform}"
 CLIENT_ID="${OIDC_CLIENT_ID:-platform-spa}"
 REDIRECT_URI="${OIDC_REDIRECT_URI:-${EDGE_URL}/callback}"
@@ -76,6 +119,21 @@ OIDC_USER="${OIDC_USER:-developer}"
 OIDC_PASSWORD="${OIDC_PASSWORD:-Developer-2026}"
 # 固定の code_verifier（再現可能性のため乱数を使わない。dev 専用の検証値であり秘密ではない）。
 CODE_VERIFIER="${OIDC_CODE_VERIFIER:-msp-verify-oidc-edge-flow-fixed-code-verifier-0123456789}"
+
+# ---- TOTP シークレットの持ち回し（#780 基準 4） --------------------------------
+#
+# 🔴 **本スクリプトは「同じスタックに 2 回目を走らせると必ず落ちる」状態だった。**
+#    1 回目は CONFIGURE_TOTP の登録画面（下の (a)）でシークレットを画面から拾えるが、
+#    **登録した瞬間にその画面は二度と出ない**（2 回目以降は (b) の login-otp）。
+#    Keycloak の Admin API は登録済み OTP の `secretData` を返さないので、
+#    **一度登録したら誰にも復元できない。** 実測（#780・稼働 k3s）: `developer` は
+#    過去の実行が登録した OTP を持っており、段 4 で必ず止まっていた。
+#
+# したがって **登録したシークレットを状態ファイルへ保存し、次回はそこから読む。**
+# 置き場は既定で一時ディレクトリ（リポジトリを汚さない）。realm と利用者ごとに分ける。
+# 明示の OIDC_TOTP_SECRET が最優先で、状態ファイルはその次である。
+TOTP_STATE_DIR="${OIDC_TOTP_STATE_DIR:-${TMPDIR:-/tmp}}"
+totp_state_file() { printf '%s/msp-verify-oidc-totp-%s-%s.secret' "$TOTP_STATE_DIR" "$REALM" "$1"; }
 
 # #972: ABAC の正常系（許可 → 非空）を測る段。既定オフ。**有効にすると文書を 1 件作る。**
 ABAC_POSITIVE="${ABAC_POSITIVE:-}"
@@ -152,6 +210,7 @@ hr
 
 # ---- 前提の確認（未整備は SKIP=2 で終える。導線の失敗と区別する） -----------------
 step "前提" "エッジと Keycloak への到達性"
+info "TLS: $TLS_MODE"
 if ! curl -s $CURL_K -o /dev/null -m 5 "$EDGE_URL/"; then
   info "エッジ（$EDGE_URL）へ到達できません。"
   info "経路B のエッジを有効にしてください（deploy/local/edge/README.md）。"
@@ -289,12 +348,17 @@ acquire_token() {
         [ "$verbose" = "1" ] && [ -n "$otp_secret" ] \
           && pass "表示用 base32 が無いので hidden の生シークレットから導出した"
       fi
+      # 明示指定 → 状態ファイルの順に埋める（画面から拾えたときは触らない）。
       [ -z "$otp_secret" ] && otp_secret="${OIDC_TOTP_SECRET:-}"
+      if [ -z "$otp_secret" ] && [ -r "$(totp_state_file "$user")" ]; then
+        otp_secret=$(cat "$(totp_state_file "$user")")
+        [ "$verbose" = "1" ] && [ -n "$otp_secret" ] && pass "登録済み TOTP のシークレットを状態ファイルから読んだ（$(totp_state_file "$user")）"
+      fi
       if [ -z "$otp_secret" ]; then
         # 🔴 **判別に要る 2 値を必ず載せる。** field=totp なら初回登録画面（(a)）、field=otp なら
         # 2 回目以降（(b)）であり、これだけで次の実走が原因を確定させる。**生 HTML は出さない**
         # （session ID・資格情報を CI ログへ載せてしまう）。
-        ACQUIRE_ERR="OTP の段に入ったがシークレットを解決できない（$user・field=$otp_field・生シークレット=$([ -n "$otp_raw" ] && printf 'あり' || printf 'なし')）。field=totp なら初回登録画面の抽出が外れている。field=otp なら 2 回目以降なので OIDC_TOTP_SECRET を与えること。"
+        ACQUIRE_ERR="OTP の段に入ったがシークレットを解決できない（$user・field=$otp_field・生シークレット=$([ -n "$otp_raw" ] && printf 'あり' || printf 'なし')）。field=totp なら初回登録画面の抽出が外れている。field=otp なら 2 回目以降なので OIDC_TOTP_SECRET を与えるか、状態ファイル $(totp_state_file "$user") を置くこと。"
         rm -f "$jar" "$hdr" "$body"; return 1
       fi
       otp_code=$(node "$SCRIPT_DIR/lib/totp.js" "$otp_secret")
@@ -309,6 +373,15 @@ acquire_token() {
         "${otp_form[@]}" \
         | grep -i '^location:' | tail -1 | tr -d '\r' | sed 's/^[Ll]ocation: //')
       code=$(printf '%s' "$location" | sed -n 's/.*[?&]code=\([^&]*\).*/\1/p')
+      # 🔴 **登録に成功したときだけ**シークレットを保存する（code が返ったことが成功の証拠）。
+      #    失敗した値を残すと、次回はその値で必ず落ちる。**間違った状態を持ち越さない。**
+      if [ -n "$code" ] && [ -n "$otp_raw" ]; then
+        mkdir -p "$TOTP_STATE_DIR" 2>/dev/null || true
+        if printf %s "$otp_secret" > "$(totp_state_file "$user")" 2>/dev/null; then
+          chmod 600 "$(totp_state_file "$user")" 2>/dev/null || true
+          [ "$verbose" = "1" ] && pass "登録した TOTP を状態ファイルへ保存した（$(totp_state_file "$user")）"
+        fi
+      fi
     fi
   fi
 

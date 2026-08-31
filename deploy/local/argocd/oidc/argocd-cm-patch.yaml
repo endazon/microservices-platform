@@ -1,16 +1,29 @@
 # IADR-0092 (#353): argocd-cm への OIDC(Keycloak) 設定 merge patch（既存キーは保持）。
 # k8s-local-up.sh の ARGOCD=1 ブロックが `kubectl -n argocd patch configmap argocd-cm --type merge --patch-file` で適用。
 # dex は使わず oidc.config を直接指定（dex.config を置かない＝dex 経路は無効）。
-# url は集約後 URL（argocd.localhost:50000・ホスト名ベース・#357/IADR-0091）。issuer は手順A の in-cluster 正準名。
+# url は集約後 URL（argocd.localhost:50000・ホスト名ベース・#357/IADR-0091）。
+#
+# IADR-0243 決定 3 / #780: issuer を **https のエッジ host** へ移した。
+#   🔴 **ArgoCD は Grafana のような URL 分離ができない** —— argocd-server はサーバ側で
+#   discovery を叩き、ブラウザも同じ issuer の認可エンドポイントへ飛ぶ。1 つの値が両方を決める。
+#   したがってブラウザ側に合わせて **エッジ host** を採り、サーバ側の TLS 検証には rootCA を渡す。
+#
+# 🔴 rootCA の PEM は**リポジトリに焼き込まない**。cert-manager が実行時に作る CA（Secret
+#   cert-manager/local-edge-root-ca）であり、クラスタを作り直すと変わるためである。
+#   `k8s-local-up.sh` が下のプレースホルダを live の PEM へ置換してから patch する
+#   （CA が取れないときは rootCA 行ごと落とす —— fail-safe。OIDC は成立しないが
+#    ArgoCD 自体は起動し、break-glass の local admin は残る）。
 # client secret は本ファイルに書かず argocd-secret の key を $ 参照する（平文コミットなし）。
 data:
   url: https://argocd.localhost:50000
   oidc.config: |
     name: Keycloak
-    issuer: http://keycloak:8080/realms/platform
+    issuer: https://keycloak.localhost/realms/platform
     clientID: argocd
     clientSecret: $oidc.keycloak.clientSecret
     requestedScopes:
       - openid
       - profile
       - email
+    rootCA: |
+      __LOCAL_EDGE_ROOT_CA_PEM__

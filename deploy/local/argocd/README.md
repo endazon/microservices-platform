@@ -49,7 +49,11 @@ kubectl apply -f src/ai-stock-trading/deploy/argocd/application.yaml
 - **RBAC**: `platform-admin`→`role:admin`、`platform-operator`→`role:readonly`、未マッピングは `policy.default=''`＝
   無権限（fail-safe・Admin へ昇格しない）。レルムロールは `argocd` client の protocolMapper が `groups` クレームへ発行。
 - **フォールバック（fail-safe）**: ArgoCD 組み込み **local admin**（`argocd-initial-admin-secret`）は break-glass として残す。
-- **issuer 整合（#284 手順A）**: browser も `http://keycloak:8080` を解決させる（hosts＋`port-forward svc/keycloak 8080:8080`）。
+- **issuer 整合（#780・IADR-0243）**: issuer は **`https://keycloak.localhost/realms/platform`**（エッジ host）である。
+  ArgoCD は **server もブラウザも同じ issuer を使う**ので分離できない —— したがって argocd-server 側の TLS 検証に
+  ローカル CA が要る。`argocd-cm` の `oidc.config.rootCA` へ `k8s-local-up.sh` が実行時に注入する
+  （PEM はリポジトリに焼き込まない）。**hosts 追記も port-forward も不要**（pod からの `*.localhost` 解決は
+  `coredns-custom`＝IADR-0227 が担う）。
 - **realm 反映**: `argocd` client は `deploy/keycloak/microservices-platform-realm.json` に定義。realm 再インポートで有効化。
 
 ## 妥当性の事前確認（クラスタ非依存）
