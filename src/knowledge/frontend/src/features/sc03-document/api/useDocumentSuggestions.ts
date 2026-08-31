@@ -22,41 +22,36 @@ import type {
 //   したがって問い合わせは `state=pending` 固定で、画面に状態フィルタを持たない
 //   （状態を跨いだ棚卸しは SC-21 の仕事である）。
 //
-// 🔴 **当該文書での絞り込みは画面側で行う。**
-//   後段（`/bff/graph/suggestions`）は `state` と `kind` しか受けず、**文書での絞り込みを持たない。**
-//   SC-21（一覧）はそれで足りるが、SC-03 は「当該文書を両端のいずれかとする提案」だけを描く。
-//   本来はサーバ側で絞るべきで、そのほうが往復も転送量も小さい —— **後段の変更を伴うため
-//   本作業（#450）の射程外**とし、追随 issue へ回した（[[IADR-0300]] 決定 6・作業仕様書 §未決事項 1）。
-//   ⚠️ **したがってここでの間引きは「権限内の全件」を減らしていない。** 権限による絞りは
-//   サーバ側が済ませており（権限外の提案は件数を含め届かない）、ここは表示対象の限定である。
+// 🔴 **当該文書での絞り込みはサーバ側で行う**（#1104。［2026-08-31］従前ここには
+//   「画面側で行う」と書いてあったが、その記述は失効した）。
+//   後段（`/bff/graph/suggestions`）が `documentId` を受け、**その文書を両端のいずれかに持つ提案
+//   だけ**を返す。SC-21（棚卸しの一覧）は `documentId` を送らず、従来どおり権限内の全件を引く。
+//   ⚠️ **クライアントで間引かない。** 間引くと表示件数と取得件数がずれ、
+//   0 件の意味（「無い」／「絞られた」）が読めなくなる（SC-21 の `useAiSuggestions` と同じ作法）。
+//   **秘匿の実施点は依然としてサーバ側の ABAC** である（権限外の提案は件数を含め届かない）——
+//   `documentId` は転送量を減らす絞りであって、秘匿を担ってはいない。
 
 // **export しない** —— feature の外から使う口を作ると未使用 export の床（check-knip）を押し上げる
 // （SC-21 の `suggestionParams` と同じ理由）。
-const PENDING_PARAMS: BffGraphSuggestionsParams = { state: 'pending' };
-const suggestionsKey = getBffGraphSuggestionsQueryKey(PENDING_PARAMS);
-
-/** 当該文書を端点に持つ提案か（リンク提案は両端、タグ提案は対象文書 1 件を見る）。 */
-function touches(suggestion: AiSuggestion, documentId: string): boolean {
-  return suggestion.sourceDocumentId === documentId || suggestion.targetDocumentId === documentId;
+function pendingParams(documentId: string): BffGraphSuggestionsParams {
+  return { state: 'pending', documentId };
 }
 
 /**
  * 当該文書に関わる `pending` の提案。
  *
- * **返す形はクエリの結果そのままではなく、絞り込み後の配列を添えたものである。**
  * `isPending` / `isError` は呼び出し側が欄の出し分けに使う（0 件と「引けない」を混同しない）。
+ *
+ * **クエリキーは文書ごとに分かれる**（パラメータに `documentId` が入るため）。
+ * したがって承認・却下後の無効化も文書ごとになる —— `useSuggestionActions` に同じ ID を渡す。
  */
 export function useDocumentSuggestions(documentId: string) {
-  const query = useBffGraphSuggestions<AiSuggestion[], unknown>(PENDING_PARAMS, {
-    query: { queryKey: suggestionsKey, select: okArray },
+  const params = useMemo(() => pendingParams(documentId), [documentId]);
+  const query = useBffGraphSuggestions<AiSuggestion[], unknown>(params, {
+    query: { queryKey: getBffGraphSuggestionsQueryKey(params), select: okArray },
   });
 
-  const items = useMemo(
-    () => (query.data ?? []).filter((s) => touches(s, documentId)),
-    [query.data, documentId],
-  );
-
-  return { items, isPending: query.isPending, isError: query.isError };
+  return { items: query.data ?? [], isPending: query.isPending, isError: query.isError };
 }
 
 /**
@@ -90,9 +85,14 @@ export function useEdgeTypeNames() {
  * IADR-0127 決定 5: 更新系の成功後は `invalidateQueries` だけを行う（手書きの再取得を持たない）。
  * 無効化の対象は `pending` の一覧 1 本でよい —— 承認・却下はいずれも `pending` から出す遷移であり、
  * 欄から消えることが利用者にとっての結果である。
+ *
+ * 🔴 **`documentId` を受け取る**（#1104）。絞りをサーバへ移したことでクエリキーが文書ごとに
+ * 分かれたため、**引数を落とすと「承認したのに欄から消えない」** ——
+ * 無効化が誰も見ていないキーへ飛ぶからである。
  */
-export function useSuggestionActions() {
+export function useSuggestionActions(documentId: string) {
   const queryClient = useQueryClient();
+  const suggestionsKey = getBffGraphSuggestionsQueryKey(pendingParams(documentId));
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: suggestionsKey });
   const onChanged = { mutation: { onSuccess: invalidate } };
 

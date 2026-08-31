@@ -73,7 +73,7 @@ public static class WolverinePipelineExtensions
         //
         // 症状は「キュー名は正しい・購読は Accepting・30 秒待って 1 通も処理されない」であり、
         // 配送の欠落と見分けがつかない。#1038 → #1059 → #1073 の 3 回、6 ラウンドを費やした
-        // （実測は `.ai-context/adr/IADR-0322_wolverine-application-assembly-pinning.md`）。
+        // （実測は `.ai-context/adr/IADR-0324_wolverine-application-assembly-pinning.md`）。
         //
         // 🔴 **`Discovery.IncludeAssembly` では直らない** —— あれは走査対象を**足す**ので、
         // 相手のアセンブリが走査対象に残り続ける。置き換えるのは `ApplicationAssembly` だけである。

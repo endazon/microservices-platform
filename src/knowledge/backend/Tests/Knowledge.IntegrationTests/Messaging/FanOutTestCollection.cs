@@ -39,7 +39,7 @@ namespace Knowledge.IntegrationTests.Messaging;
 //   混雑は原因ではない。真因は **Wolverine の `ApplicationAssembly` がプロセス全体で
 //   共有され、後発のホストが相手のハンドラを拾う**ことであり、
 //   共通ヘルパ（`AddPlatformWolverineStep`）で探索アセンブリを明示固定して閉じた
-//   （実測と判断は `.ai-context/adr/IADR-0322_wolverine-application-assembly-pinning.md`）。
+//   （実測と判断は `.ai-context/adr/IADR-0324_wolverine-application-assembly-pinning.md`）。
 //
 //   🔴 **それでも本定義は残す。** 残す理由は「効いているから」ではない ——
 //   取り除いても実行時間が数十秒戻るだけであり、**取り除くことを支える新しい実測を

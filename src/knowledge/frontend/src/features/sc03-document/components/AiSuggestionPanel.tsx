@@ -51,7 +51,8 @@ export function AiSuggestionPanel({ documentId }: { documentId: string }) {
   const { t } = useLingui();
   const { items, isPending, isError } = useDocumentSuggestions(documentId);
   const edgeTypeNames = useEdgeTypeNames();
-  const { approve, reject } = useSuggestionActions();
+  // #1104: 無効化の対象は**この文書の**一覧である（絞りをサーバへ移してキーが分かれた）。
+  const { approve, reject } = useSuggestionActions(documentId);
 
   // 読み込み中は欄ごと出さない（0 件のときと同じ見え方にする。見出しだけが先に出ない）。
   if (isPending) return null;

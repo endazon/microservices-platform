@@ -495,6 +495,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-deploy-manifests.js
 
+      # NFR-21, ADR-0006, Issue #1090 / #546: すべての OTel Collector 設定が自己テレメトリの
+      # 待受（Prometheus の**唯一の scrape 対象**）を明示していることを検査する。
+      # スキーマ検査では捕まらない —— `service.telemetry` は任意項目であり、無くても正当な設定である。
+      # **同型の事故 2 回目で足した**（1 回目は IADR-0304 の記録に留めた）。
+      # **設定ファイル名をここへ書かないこと。** 検査器が deploy/ を走査して発見する。
+      - name: Self-test collector self-telemetry checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-collector-self-telemetry.js --self-test
+      - name: Check collector self-telemetry declarations are in parity
+        if: ${{ !cancelled() }}
+        run: node scripts/check-collector-self-telemetry.js
+
       # FR-14, IADR-0107, Issue #407 再発防止: 可変ユニット（AST）が所有するサービスを MSP 側の values でも
       # 有効化する「重複デプロイ」を機械検査する。経路B で risk-management / market-monitor が 2 namespace に
       # 並び、ExternalName 経由で同一の platform-infra RabbitMQ を共有した結果、同名キュー TradeDecisionMade を

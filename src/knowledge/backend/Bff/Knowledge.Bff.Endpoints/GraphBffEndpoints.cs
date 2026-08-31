@@ -102,10 +102,12 @@ public static class GraphBffEndpoints
         //
         // ルートの衝突は起きない —— `{documentId:guid}` の 2 本は GUID に制約されており、
         // `suggestions` は GUID として解釈されない（`edge-types` と同じ）。
-        g.MapGet("/suggestions", (string? state, string? kind,
+        // FR-18, SC-03 (#1104): **`documentId` は SC-03（文書詳細）の承認欄が使う絞りである。**
+        // SC-21（棚卸しの一覧）は送らない —— 送らなければ従来どおり権限内の全件が返る。
+        g.MapGet("/suggestions", (string? state, string? kind, string? documentId,
                 IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
             => ProxyAsync<List<AiSuggestionDto>>(httpFactory, http,
-                "/graph/suggestions/" + BuildSuggestionQuery(state, kind), ct))
+                "/graph/suggestions/" + BuildSuggestionQuery(state, kind, documentId), ct))
             .WithName("BffGraphSuggestions")
             .Produces<List<AiSuggestionDto>>()
             .Produces(StatusCodes.Status400BadRequest);
@@ -150,11 +152,16 @@ public static class GraphBffEndpoints
     // **正規化も既定値の補完も検証も BFF では行わない**（グラフ読み取りと同じ作法）。
     // 既定（未指定 = `pending`）と値域の検査（`invalid_state` / `invalid_kind` の 400）は
     // GraphService が一箇所で持つ。ここで既定を補うと、**既定値の情報源が 2 つ**になる。
-    private static string BuildSuggestionQuery(string? state, string? kind)
+    //
+    // 🔴 **`documentId` も `string?` のまま透過する**（#1104）。BFF で `Guid` へ束縛すると
+    // 形式不正の 400 の出所が 2 か所になり、片方が腐っても気付けない。
+    private static string BuildSuggestionQuery(string? state, string? kind, string? documentId)
     {
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(state)) parts.Add($"state={Uri.EscapeDataString(state)}");
         if (!string.IsNullOrWhiteSpace(kind)) parts.Add($"kind={Uri.EscapeDataString(kind)}");
+        if (!string.IsNullOrWhiteSpace(documentId))
+            parts.Add($"documentId={Uri.EscapeDataString(documentId)}");
         return parts.Count == 0 ? "" : "?" + string.Join("&", parts);
     }
 

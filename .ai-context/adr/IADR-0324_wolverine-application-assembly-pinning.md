@@ -1,5 +1,5 @@
 ---
-title: IADR-0322 Wolverine のハンドラ探索アセンブリを段登録の共通ヘルパで明示固定する
+title: IADR-0324 Wolverine のハンドラ探索アセンブリを段登録の共通ヘルパで明示固定する
 type: impl-adr
 status: Accepted
 related_ids:
@@ -25,7 +25,7 @@ plan_refs:
   - "ADR-0027 移行チェックリスト手順 6（3〜5 を共通ヘルパへ封じ込める）"
 ---
 
-# IADR-0322: Wolverine のハンドラ探索アセンブリを共通ヘルパで明示固定する
+# IADR-0324: Wolverine のハンドラ探索アセンブリを共通ヘルパで明示固定する
 
 - 状態: Accepted
 - 日付: 2026-08-30

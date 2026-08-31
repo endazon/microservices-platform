@@ -298,6 +298,149 @@ public class AiSuggestionEndpointsTests : IClassFixture<TestWebApplicationFactor
         res.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    // ---- #1104（SC-03 の文書での絞り込み）が要求する一覧の形 ----
+
+    // 同じ文書を複数の提案が共有する形を作る（本節の題材はまさにそれである）。
+    // `SeedLinkAsync` は端点の文書も毎回追加するため、共有する文書は先にここで 1 度だけ入れる。
+    private Task SeedDocumentsAsync(params (Guid Id, string Conf)[] documents)
+        => _factory.SeedAsync(db =>
+        {
+            foreach (var (id, conf) in documents) db.Documents.Add(Doc(id, conf));
+            return Task.CompletedTask;
+        });
+
+    // 端点の文書は既に在る前提で、リンク提案だけを追加する。
+    private Task SeedLinkOnlyAsync(Guid source, Guid target)
+        => _factory.SeedAsync(db =>
+        {
+            var type = EdgeType.Create($"t-{Guid.NewGuid():N}", EdgeTypeLayer.Core, false);
+            db.EdgeTypes.Add(type);
+            db.AiSuggestions.Add(
+                AiSuggestion.CreateLink(source, target, type.Id, "根拠", DateTimeOffset.UtcNow));
+            return Task.CompletedTask;
+        });
+
+    // 同上（タグ提案）。
+    private Task SeedTagOnlyAsync(Guid document, string tagValue)
+        => _factory.SeedAsync(db =>
+        {
+            db.AiSuggestions.Add(
+                AiSuggestion.CreateTag(document, tagValue, "根拠", DateTimeOffset.UtcNow));
+            return Task.CompletedTask;
+        });
+
+    // FR-18, SC-03 (#1104): `documentId` を渡すと**その文書を端点に持つ提案だけ**が返る。
+    //
+    // 🔴 **陽性対照と陰性対照を対で置く。** 「関係するものが返る」だけを見ると、
+    // `Where` を消しても（＝全件返す実装でも）緑のままである。**同じ種を `documentId` 無しで
+    // 引いて無関係な提案が返ることまで見る**（絞りが効いていることの検出力）。
+    [Fact]
+    public async Task Filtering_by_document_returns_only_suggestions_that_touch_it()
+    {
+        _factory.ScopeProvider = _ => InternalOnly();
+        var subject = Guid.NewGuid();
+        var neighbour = Guid.NewGuid();
+        var predecessor = Guid.NewGuid();
+        await SeedDocumentsAsync(
+            (subject, "internal"), (neighbour, "internal"), (predecessor, "internal"));
+        // 起点が当該文書 / 終点が当該文書 / タグ提案（終点なし） の 3 通りを拾えること。
+        await SeedLinkOnlyAsync(subject, neighbour);
+        await SeedLinkOnlyAsync(predecessor, subject);
+        await SeedTagOnlyAsync(subject, "経理");
+        // 当該文書に触れない提案（返ってはならない）。
+        var unrelatedSource = Guid.NewGuid();
+        await SeedLinkAsync(unrelatedSource, Guid.NewGuid());
+
+        var filtered = await ListAsync($"?documentId={subject}");
+
+        filtered.Should().HaveCount(3, "起点・終点・タグ提案の 3 件が当該文書に触れる");
+        filtered.Should().OnlyContain(
+            i => i.SourceDocumentId == subject || i.TargetDocumentId == subject);
+        filtered.Should().NotContain(i => i.SourceDocumentId == unrelatedSource);
+
+        // 陽性対照: **絞らなければ無関係な提案も返る**（＝上の否定形は自明ではない）。
+        var unfiltered = await ListAsync("");
+        unfiltered.Should().Contain(i => i.SourceDocumentId == unrelatedSource,
+            "documentId 無しは従来どおり権限内の全件を返す（SC-21 の一覧は絞らない）");
+    }
+
+    // 🔴 FR-18, SC-03, ADR-0034 決定 1・2 (#1104): **絞り込みを足しても ABAC は落ちていない。**
+    //
+    // 絞りは可視性解決の**前段**にあり、判定そのものは端点の文書属性で行われる。
+    // **陽性対照（見える文書の提案は返る）と陰性対照（見えない端点を持つ提案は
+    // documentId で名指ししても返らない）を対で置く。**
+    [Fact]
+    public async Task Filtering_by_document_still_hides_invisible_endpoints()
+    {
+        _factory.ScopeProvider = _ => InternalOnly();
+        var subject = Guid.NewGuid();
+        var visibleNeighbour = Guid.NewGuid();
+        var hiddenNeighbour = Guid.NewGuid();
+        await SeedDocumentsAsync(
+            (subject, "internal"), (visibleNeighbour, "internal"), (hiddenNeighbour, "restricted"));
+        // 陽性対照: 両端とも internal（見える）。
+        await SeedLinkOnlyAsync(subject, visibleNeighbour);
+        // 陰性対照: 当該文書は見えるが、**終点が restricted**（見えない）。
+        await SeedLinkOnlyAsync(subject, hiddenNeighbour);
+
+        var items = await ListAsync($"?documentId={subject}");
+
+        items.Should().Contain(i => i.TargetDocumentId == visibleNeighbour,
+            "陽性対照: 権限のある文書の提案は返る（装置が空振りしていない）");
+        items.Should().NotContain(i => i.TargetDocumentId == hiddenNeighbour,
+            "陰性対照: 端点が見えない提案は、documentId で名指ししても件数にすら現れない");
+    }
+
+    // 🔴 FR-18, SC-03, ADR-0034 決定 2, IADR-0009 (#1104): **存在秘匿と整合する。**
+    //
+    // 「その文書は無い」「その文書は見えない」「その文書の提案は 0 件」の 3 つが
+    // **応答として区別できてはならない**。3 通りとも 200 ＋ 空配列であることを固定する。
+    [Fact]
+    public async Task An_unauthorized_document_id_is_indistinguishable_from_one_with_no_suggestions()
+    {
+        _factory.ScopeProvider = _ => InternalOnly();
+        // ① 実在するが、スコープ外（restricted）の文書。提案も 1 件ある。
+        var unauthorized = Guid.NewGuid();
+        await SeedLinkAsync(unauthorized, Guid.NewGuid(),
+            sourceConf: "restricted", targetConf: "restricted");
+        // ② 実在し、見えるが、提案が 1 件も無い文書。
+        var visibleWithoutSuggestions = Guid.NewGuid();
+        await _factory.SeedAsync(db =>
+        {
+            db.Documents.Add(Doc(visibleWithoutSuggestions, "internal"));
+            return Task.CompletedTask;
+        });
+        // ③ そもそも存在しない文書。
+        var nonExistent = Guid.NewGuid();
+        // 🔴 **検出力**: 見える提案を 1 件置く。これが無いと DB が空でも 3 通りとも空になり、
+        // 絞りを消しても本テストは緑のまま通る（「空だった」を「隠せている」と読む事故）。
+        var decoy = Guid.NewGuid();
+        await SeedLinkAsync(decoy, Guid.NewGuid());
+        (await ListAsync($"?documentId={decoy}")).Should().ContainSingle(
+            "陽性対照: 絞りも可視性も効いていて、漏れ得る中身が実在する");
+
+        var forUnauthorized = await ListAsync($"?documentId={unauthorized}");
+        var forEmpty = await ListAsync($"?documentId={visibleWithoutSuggestions}");
+        var forNonExistent = await ListAsync($"?documentId={nonExistent}");
+
+        forUnauthorized.Should().BeEmpty();
+        forEmpty.Should().BeEmpty();
+        forNonExistent.Should().BeEmpty();
+        // ListAsync は 200 を assert している。**3 通りとも状態コードも本文も同じ**である。
+    }
+
+    // #1104: 形式不正の `documentId` は 400（値域の検査ではなく束縛の失敗）。
+    // **存在は漏れない** —— UUID でない文字列はどの文書も指さないためである。
+    [Fact]
+    public async Task A_malformed_document_id_is_rejected()
+    {
+        var res = await _factory.CreateClient()
+            .GetAsync("/graph/suggestions/?documentId=not-a-guid",
+                TestContext.Current.CancellationToken);
+
+        res.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     private async Task<List<AiSuggestionDto>> ListAsync(string query)
     {
         var res = await _factory.CreateClient()
