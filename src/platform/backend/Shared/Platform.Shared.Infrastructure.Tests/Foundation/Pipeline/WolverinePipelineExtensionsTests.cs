@@ -192,6 +192,65 @@ public class WolverinePipelineExtensionsTests
         return (string[])field.GetValue(null)!;
     }
 
+    // 🔴 規則 0（#1073 / [[IADR-0320]]）: ハンドラ探索アセンブリの明示固定。
+    //
+    // Wolverine の `ApplicationAssembly` は**プロセス全体で 1 つの静的値**であり、最初に起動した
+    // ホストが固定する。明示しないと、1 プロセスで 2 サービスのホストを立てる統合テストで
+    // **後発ホストが相手のハンドラを拾い、自分のハンドラを拾わない**。しかもその失敗は
+    // 例外にも再配信にもデッドレターにもならず、「30 秒待って何も起きない」としてしか現れない。
+    [Fact]
+    public void 規則0_宣言が無いときもハンドラ探索アセンブリを段の実装アセンブリへ固定する()
+    {
+        var options = new WolverineOptions();
+        // 🔴 **陽性対照**: 固定前は未設定である。これが無いと「元から入っていた値」を
+        // 「固定できた」と読み違える。
+        options.ApplicationAssembly.Should().BeNull("AddPlatformWolverineStep を呼ぶ前は未設定");
+
+        options.AddPlatformWolverineStep<GoodStep>(new PipelineOptions());
+
+        options.ApplicationAssembly.Should().BeSameAs(typeof(GoodStep).Assembly);
+    }
+
+    [Fact]
+    public void 規則0_宣言があるときもハンドラ探索アセンブリを段の実装アセンブリへ固定する()
+    {
+        var options = new WolverineOptions();
+        options.ApplicationAssembly.Should().BeNull("AddPlatformWolverineStep を呼ぶ前は未設定");
+
+        options.AddPlatformWolverineStep<GoodStep>(Declared());
+
+        options.ApplicationAssembly.Should().BeSameAs(typeof(GoodStep).Assembly);
+    }
+
+    [Fact]
+    public void 規則0_段が無効化されていてもハンドラ探索アセンブリは固定する()
+    {
+        // enabled:false は「登録させない」経路（規則 8）だが、**同居する他の段のために
+        // 探索アセンブリは固定しなければならない**。ここを早期 return にすると、
+        // 無効な段を 1 つ持つだけでホストが相手のアセンブリを走査し始める。
+        var options = new WolverineOptions();
+
+        options.AddPlatformWolverineStep<GoodStep>(Declared(enabled: false));
+
+        options.ApplicationAssembly.Should().BeSameAs(typeof(GoodStep).Assembly);
+    }
+
+    [Fact]
+    public void 追随_Wolverineのアプリケーションアセンブリはプロセス共有のままである()
+    {
+        // 🔴 **規則 0 が要る前提そのものの追随試験である。**
+        // この静的フィールドが消えた（＝ Wolverine がホスト単位に直した）なら、規則 0 の
+        // 明示固定は不要になり得る。**逆に、在る限り外してはならない。**
+        // 版更新でずれたら落ちる形にしておく（HandlerMethodNames の追随試験と同じ作法）。
+        typeof(WolverineOptions)
+            .GetField(nameof(WolverineOptions.RememberedApplicationAssembly),
+                BindingFlags.Public | BindingFlags.Static)
+            .Should().NotBeNull(
+                "WolverineOptions.RememberedApplicationAssembly（プロセス全体で共有される"
+                + "アプリケーションアセンブリ）が見つからない。Wolverine の版更新で"
+                + " ApplicationAssembly の決まり方が変わった可能性がある —— 規則 0 の要否を測り直すこと。");
+    }
+
     [Fact]
     public void 規則1_宣言が無ければ段は既定で登録される()
     {

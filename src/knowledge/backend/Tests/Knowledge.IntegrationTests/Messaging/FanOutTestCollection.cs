@@ -33,6 +33,18 @@ namespace Knowledge.IntegrationTests.Messaging;
 //   Postgres / RabbitMQ のコンテナは**今までどおりクラスごとに別々**であり、
 //   本定義でブローカを共有させてはいない（共有させるとクラス跨ぎの競合コンシューマを
 //   自分で作り込むことになる —— それはこのテストが検出したい退行そのものである）。
+// 🔴 ［2026-08-30 追記 / #1073］**上の相関は交絡であり、直列化では直らなかった。**
+//   本定義が着地した後の run 33309205241（`beaeb9e4`）で同じ 2 件が同じ形で落ちた。
+//   これにより本定義の主目的（「同時実行による混雑」を証拠つきで除外する）は**達せられた** ——
+//   混雑は原因ではない。真因は **Wolverine の `ApplicationAssembly` がプロセス全体で
+//   共有され、後発のホストが相手のハンドラを拾う**ことであり、
+//   共通ヘルパ（`AddPlatformWolverineStep`）で探索アセンブリを明示固定して閉じた
+//   （実測と判断は `.ai-context/adr/IADR-0320_wolverine-application-assembly-pinning.md`）。
+//
+//   🔴 **それでも本定義は残す。** 残す理由は「効いているから」ではない ——
+//   取り除いても実行時間が数十秒戻るだけであり、**取り除くことを支える新しい実測を
+//   持っていない**からである（測らずに戻すのは、測らずに入れるのと同じ損なわれ方である）。
+//   **上の「重なりが原因である」とは書いていないという断りは、結果的に正しかった。**
 [CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class FanOutTestCollection
 {
