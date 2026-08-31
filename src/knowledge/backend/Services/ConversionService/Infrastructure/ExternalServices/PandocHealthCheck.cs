@@ -2,7 +2,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace ConversionService.Infrastructure.ExternalServices;
 
-// FR-12, UC-06, ADR-0012, IADR-0318 決定 5 (#1097): pandoc が実行時イメージに在ることを
+// FR-12, UC-06, ADR-0012, IADR-0320 決定 5 (#1097): pandoc が実行時イメージに在ることを
 // readiness で確かめる。
 //
 // 🔴 **これが「無い状態を検知できる」ことの実物側の担保である。**

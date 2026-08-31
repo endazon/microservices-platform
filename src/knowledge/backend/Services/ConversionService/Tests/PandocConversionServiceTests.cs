@@ -21,7 +21,7 @@ namespace ConversionService.Tests;
 // 無いのに緑に見える。xUnit v3 へ移り `Assert.Skip` が標準で使えるようになったため、
 // 追加パッケージゼロで**真の Skipped** へ改めた。
 //
-// 🔴 IADR-0318 (#1097): 従前このクラスは「pandoc が無ければプレースホルダへ縮退する」ことを
+// 🔴 IADR-0320 (#1097): 従前このクラスは「pandoc が無ければプレースホルダへ縮退する」ことを
 // **正常な振る舞いとして固定していた**。ところが実行時イメージが pandoc を持っておらず、
 // 配備した実物がその縮退のまま「成功」を返し続けていた。既定を fail-closed へ改め、
 // 縮退は `Conversion:AllowDegradedBodyConversion=true` のときだけに限る。
@@ -94,7 +94,7 @@ public class PandocConversionServiceTests
         }
     }
 
-    // IADR-0318 決定 3: オブジェクトストレージ上の原本を取り寄せて変換する。
+    // IADR-0320 決定 3: オブジェクトストレージ上の原本を取り寄せて変換する。
     // 🔴 これが無いと、配備した実物では **pandoc があっても** 原本が解決できず縮退したままになる
     // （`DataSourceSyncService` が発行する StorageUri は常にオブジェクトストレージの参照である）。
     [Fact]
@@ -113,7 +113,7 @@ public class PandocConversionServiceTests
         storage.Fetched.Should().ContainSingle().Which.Should().Be(uri);
     }
 
-    // IADR-0318 決定 4: PDF は pandoc の入力形式にならない。**既定の markdown へ落とさない。**
+    // IADR-0320 決定 4: PDF は pandoc の入力形式にならない。**既定の markdown へ落とさない。**
     [Theory]
     [InlineData("application/pdf", "storage://bucket/raw/report.pdf")]
     [InlineData("application/pdf", "storage://bucket/raw/no-extension")]
@@ -137,7 +137,7 @@ public class PandocConversionServiceTests
     public void Maps_content_type_to_pandoc_input_format(string contentType, string path, string expected) =>
         PandocConversionService.PandocInputFormat(contentType, path).Should().Be(expected);
 
-    // 🔴 IADR-0318 決定 1 (#1097): **実行時イメージが pandoc を導入していることを機械的に確かめる。**
+    // 🔴 IADR-0320 決定 1 (#1097): **実行時イメージが pandoc を導入していることを機械的に確かめる。**
     // 本サービスは pandoc を外部プロセスとして起動する。Dockerfile から導入行が消えると、
     // 変換は例外にならずプレースホルダ本文へ落ち、変換ジョブは成功として並ぶ（実際にそうなっていた）。
     // 単体テストで捕まえられるのは「Dockerfile に書いてあるか」までであり、

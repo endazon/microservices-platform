@@ -1,5 +1,3 @@
-using DocumentService.Features.McpTools;
-
 namespace DocumentService.Features.McpTools.Declare;
 
 // FR-16, FR-15, ADR-0024 §2: ツール定義の自己申告（メッシュ内部限定）。

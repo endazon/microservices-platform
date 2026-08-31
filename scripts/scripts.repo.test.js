@@ -8176,7 +8176,8 @@ ${r.stderr}`);
     ok('#992: TOTAL は加算式である（モードの組み合わせで門が誤発火しない）', () => {
       // 固定値（TOTAL=17 / TOTAL=11 の二択）へ戻すと、SEARCH_* を足した瞬間に門が誤発火する。
       assert.match(VERIFY, /^TOTAL=11$/m, 'TOTAL の基底が 11 でない');
-      for (const [flag, addend] of [['ABAC_POSITIVE', 6], ['SEARCH_SEEDED', 2], ['SEARCH_HITS', 1]]) {
+      // #1116: SEARCH_HITS は S3（ハイブリッド）＋ S4・S5（全文側の正負対照）＋ readiness の 3 段を足す。
+      for (const [flag, addend] of [['ABAC_POSITIVE', 6], ['SEARCH_SEEDED', 2], ['SEARCH_HITS', 3]]) {
         const re = new RegExp(`\\$${''}{?${flag}}?" = "1" \\]; then TOTAL=\\$\\(\\(TOTAL \\+ ${addend}\\)\\)`);
         assert.match(VERIFY, re, `${flag} の加算（+${addend}）が無い`);
       }
@@ -8195,6 +8196,54 @@ ${r.stderr}`);
       assert.match(zero.slice(0, 400), /fail "seed 文書/, '0 件が FAIL になっていない');
       // 非空でも seed 自身を含まなければ落とす（decoy を通さない）。
       assert.match(hit, /fail "ヒット .* seed 文書.*を含まない"/);
+    });
+
+    // --- #1116: 全文（キーワード）側が実際に効いていることの門 --------------------
+    //
+    // 🔴 **S3（ハイブリッド）は #1116 の欠陥を通す。** 合言葉をそのまま引くと、
+    //    全文インデックスが無くても当たる（Qdrant v1.18.1 は索引の無い full-text Match を
+    //    部分文字列の全走査へ落とす。実機で実測）。しかもベクトル側は閾値の無い kNN なので
+    //    どんな語でも最近傍を返す。**索引の有無を分けられるのは S4 だけである。**
+    ok('#1116: 全文側でしか答えられないクエリを合言葉から導く（合言葉を 2 つに増やさない）', () => {
+      // 語は同じまま順序だけ替える。索引が無ければ部分文字列として現れないので 0 件になる。
+      assert.strictEqual(
+        seeder.seedKeywordOnlyQuery({ probeTerm: 'msp-searchseed-tanpopo' }),
+        'tanpopo searchseed msp');
+      // 区切りが無く 1 語に割れないときは **null**。合言葉そのものへ黙って落とさない
+      // （落とすと索引が無くても門が PASS してしまう）。
+      assert.strictEqual(seeder.seedKeywordOnlyQuery({ probeTerm: 'onlyoneword' }), null);
+    });
+
+    ok('#1116: 実データの合言葉から全文専用クエリを導ける（門が導出不能で落ちない）', () => {
+      const seed = JSON.parse(fsSS.readFileSync(seeder.SEED_FILE, 'utf8'));
+      const q = seeder.seedKeywordOnlyQuery(seed);
+      assert.ok(q, `合言葉 ${seed.probeTerm} から全文専用クエリを導けない`);
+      // 🔴 **原文に部分文字列として現れてはならない**（現れると索引が無くても当たる）。
+      for (const d of seed.documents)
+        assert.ok(!String(d.body || '').includes(q),
+          `全文専用クエリ「${q}」が本文に部分文字列として現れる（索引の有無を分けられない）`);
+    });
+
+    ok('#1116: 門は mode=keyword で引き、正の対照と陰性対照を対で置いている', () => {
+      const s4 = VERIFY.slice(VERIFY.indexOf('S4・S5)'));
+      assert.ok(s4.length > 0, 'S4 の段が見つからない');
+      // ベクトル側を混ぜない（混ぜると閾値の無い kNN が必ず何かを返し、判定が意味を失う）。
+      assert.match(s4, /"mode":"keyword"/, 'mode=keyword で引いていない');
+      // 正の対照: 0 件は FAIL。
+      assert.match(s4, /fail "全文検索（mode=keyword/);
+      // 陰性対照: 索引に無い語で 0 件（「常に全件返す」実装を検出する）。
+      assert.match(s4, /KEYWORD_ABSENT_TERM/);
+      assert.match(s4, /pass "索引に無い語/);
+      // 縮退の可観測化（受け入れ基準 3）を門からも見る。
+      assert.match(s4, /qdrant-fulltext-index|health\/ready/);
+    });
+
+    ok('#1116: 全文専用クエリの値をスクリプトへ写していない（単一情報源を崩さない）', () => {
+      const seed = JSON.parse(fsSS.readFileSync(seeder.SEED_FILE, 'utf8'));
+      const q = seeder.seedKeywordOnlyQuery(seed);
+      assert.ok(!VERIFY.includes(q),
+        `全文専用クエリ「${q}」が verify-oidc-edge-flow.sh へ写されている`);
+      assert.match(VERIFY, /seed-search-documents\.js" --print-keyword-only-query/);
     });
 
     ok('#992: 合言葉は seed の宣言から採り、スクリプトへ値を写していない', () => {
