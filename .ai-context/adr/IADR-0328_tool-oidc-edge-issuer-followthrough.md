@@ -1,5 +1,5 @@
 ---
-title: IADR-0325 非 .NET ツールの OIDC は「ブラウザが開く URL だけをエッジ host にする」で追随させ、分離できないツールにはローカル CA を渡す
+title: IADR-0328 非 .NET ツールの OIDC は「ブラウザが開く URL だけをエッジ host にする」で追随させ、分離できないツールにはローカル CA を渡す
 type: impl-adr
 status: Accepted
 related_ids:
@@ -30,7 +30,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0047_edge-cert-scope-local-route.md
 ---
 
-# IADR-0325: ツール側 OIDC の issuer 追随（#780 第3段・最終段）
+# IADR-0328: ツール側 OIDC の issuer 追随（#780 第3段・最終段）
 
 - 状態: Accepted
 - 日付: 2026-08-31
