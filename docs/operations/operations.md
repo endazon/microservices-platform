@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-11, FR-13, FR-15, NFR-21, SC-02, UC-04, UC-07]
 adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0322, IADR-0313]
 specs: []
 issues: [#66, #88, #98, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #455, #532, #536, #546, #587, #665, #674, #863, #443, #438, #466, #992, planning#196]
 -->
@@ -588,8 +588,10 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 「障害検出 5 分以内・MTTR 30 分以内」に対し、SLO ベースのアラートルールを Prometheus に定義する。
 
 - **アラートルール**: [`deploy/prometheus/alerts.yml`](../../deploy/prometheus/alerts.yml)（`prometheus.yml` の
-  `rule_files` で読み込む）。**通知経路**は Alertmanager（`prometheus.yml` の `alerting`。受信先＝メール/チャットは
-  運用環境ごとに配備・設定）。未配備でもルール評価は行われ Prometheus UI / Grafana から発火を確認できる。
+  `rule_files` で読み込む）。**通知経路**は Alertmanager（`prometheus.yml` の `alerting`）。
+  **［2026-08-30 更新 / #546］Alertmanager は compose・経路B の両方へ配備済みで、`alertmanagers.targets` も
+  2 か所とも埋まっている。発火は Alertmanager まで届く**（実測。下記★）。**受信先＝メール/チャットは
+  運用環境ごとに設定するもので、既定は `default-null`＝どこへも送らない**（設定漏れではなく既定）。
 - **暫定のアラート（Grafana 統合アラート。#665 / 計画 決定 42）**:
   [`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)
   が同じ 5 ルールを Grafana 側でも評価し、**Alerting 画面に発火を表示する**。**通知は送らない**（下記★）。
@@ -608,15 +610,20 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   換算はゲートウェイが**有効期間つき単価表**を読んで行い、Grafana のクエリには単価を書かない）。
   🔴 **金額は「単価を解決できなかった呼び出し」が 0 のときだけ正しい** —— 該当する単価が無い呼び出しは
   金額に計上されないため、**0 でなければ表示は過小である**（無音で 0 円にしないための警報である）。
-  **自動検知が無いことと、検知の遅れが最大 1 か月であることは変わらない**（Alertmanager は未配備であり、
-  月次予算のしきい値も未確定である）。
+  **［2026-08-30 更新 / #546］Alertmanager を配備しても、自動検知が無いことと検知の遅れが最大 1 か月で
+  あることは変わらない。** 🔴 **理由が変わっただけである** —— 配備前の理由は「通知基盤が無い」だったが、
+  いまの理由は**月次予算のしきい値が計画側で未確定**だからである（計画 決定 41。実測を待って確定する）。
+  **しきい値が無いものにアラートは置けない。** したがって月次の手動確認は**引き続き唯一の統制**であり、
+  終了しない（終了条件は「配備」ではなく「配備 **かつ** 上限アラートの配線」である）。
 - **ピン留めモデルの版数移行と利用不能時の振る舞い**: 用途別にピン留めした LLM モデルの版数を上げる手順
   （**Stage 0 再検証が前提**）と、**モデルが使えないときは取引判断を実行せず発注もしない**（**障害ではなく
   設計上の正常な結果**）ことは [`llm-model-pin-runbook.md`](llm-model-pin-runbook.md) が定める（#587。報告書の種別別用途と取引判断モデルの改定を定めた実装 ADR の決定 3）。
   **提供終了の監視は月次の費用確認に相乗りする**（自動検知は無い。検知の遅れは最大 1 か月）。
 - **適用範囲（現状）**: Prometheus/アラートルール（`deploy/prometheus/alerts.yml`）と可観測性スタックは
-  現状 **dev（docker-compose）にのみ配線**されている（`deploy/helm/microservices-platform/` 配下に Prometheus/
-  Alertmanager リソースは無い）。stg/prod（k3s）への Prometheus（Operator/rule 配備）・Alertmanager 通知の
+  **dev の 2 経路（docker-compose と、ローカル k8s の可観測性オーバーレイ）に配線**されている。
+  **［2026-08-30 更新 / #546］経路B（ローカル k8s）にも Alertmanager を配備し、両経路で同じ 5 ルールが
+  同じ受け手へ届くようにした**（それ以前は compose だけだった）。**stg/prod は依然として対象外**である
+  （`deploy/helm/microservices-platform/` 配下に Prometheus / Alertmanager リソースは無い）。
   展開は follow-up（下記「未決事項」）。本節のアラート定義・閾値は環境非依存に流用できる。
 
 > **★ 通知先の現状（#546 / #665 / 計画 決定 40・42）**: 下表の**ルールは Prometheus が実際に評価しており、
@@ -756,17 +763,23 @@ LlmGateway は補完 1 回ごとに `llm.completion.total`（Prometheus では `
 
 ## 未決事項
 
-- **Alertmanager の受信先設定**: メール/チャット通知経路（`prometheus.yml` の `alerting.alertmanagers`）は
-  運用環境ごとに配備・設定する（現状はターゲット未設定でルール評価のみ。**compose・k8s の 2 か所とも空**）。
-  **配備時期は実環境の判断**であり **#546 で追跡している**。
+- **Alertmanager の受信先設定**: **［2026-08-30 更新 / #546］Alertmanager 本体は配備済みで、
+  `alertmanagers.targets` は compose・k8s の 2 か所とも埋まっている**（発火が Alertmanager へ届くことは
+  意図的に閾値を割って実測した）。**残っているのは受信先（メール/チャット）だけ**であり、
+  既定は `default-null`＝どこへも送らない。**実環境の宛先は利用者が決める事柄**であり、実装側で代替値を置かない。
   **暫定の通知先（Grafana 内蔵アラート）は #665 で配線済み**だが、**push 配信の宛先は依然として無い**
-  （本書「監視・アラート」の★参照。気づく経路は Grafana の Alerting 画面を見ることだけ）。
-  **配備後は暫定経路を削除する**（併存させない。条件は同★）。
-- **LLM 費用の自動検知**: **無い**（Alertmanager 未配備）。**検知の遅れは最大 1 か月**であることを受け入れ、
-  月次の手動確認を暫定の統制として置いた（計画 決定 39 / [Runbook](llm-cost-monthly-review-runbook.md)）。
-  **月次予算の金額（しきい値）も未確定**であり、実測後に確定する（決定 41）。
+  （本書「監視・アラート」の★参照。気づく経路は Alertmanager / Grafana の画面を見ることだけ）。
+  **受信先が設定されテスト通知が届いた時点で暫定経路を削除する**（併存させない。条件は同★）。**#546 で追跡している。**
+- **LLM 費用の自動検知**: **無い**。**［2026-08-30 更新 / #546］理由は「通知基盤が無い」ではなくなった** ——
+  Alertmanager は配備済みであり、**残る障害は月次予算のしきい値が計画側で未確定であること**である
+  （計画 決定 41。実測を待って確定し、確定の前提は費用の実績が数か月分そろうこと）。
+  **検知の遅れは最大 1 か月**であることを受け入れ、月次の手動確認を暫定の統制として置いている
+  （計画 決定 39 / [Runbook](llm-cost-monthly-review-runbook.md)）。
+  🔴 **しきい値が定まるまで上限アラートは置かない。** 実装が数字を決めると、それが既成事実として
+  計画へ逆流する（計画が明示的に禁じている）。
 - **監視の stg/prod（k3s）展開**: Prometheus/Alertmanager を Helm（Operator 等）で配備し、`alerts.yml` 相当の
-  ルールと通知を k3s にも展開する（現状は dev/compose のみ配線）。
+  ルールと通知を k3s にも展開する（**［2026-08-30 更新 / #546］現状は dev の 2 経路のみ**。
+  本番像の chart には Prometheus / Alertmanager / Grafana のリソースが無い）。
 - **RabbitMQ キュー滞留・デッドレター・構成ドリフトのアラート**: それぞれ RabbitMQ Prometheus プラグインの
   exporter メトリクスと、ドリフト検出のカスタムメトリクス化が必要（`alerts.yml` 末尾に雛形をコメントで用意）。
 - **サービスダウンの厳密検知**: push（remote write）モデルのため per-service `up` が無く、メトリクス途絶での

@@ -35,6 +35,15 @@ data:
       debug:
         verbosity: normal
     service:
+      # #546 / #1090: 自己テレメトリの待受を**明示する**（image 既定に頼らない —— collector は版によって
+      # 既定が localhost:8888 と :8888 の間で変わっており、既定任せだと版上げで静かに scrape 不能になる）。
+      # ここが Prometheus の**唯一の scrape 対象**である（prometheus.yaml の job_name: otel-collector）。
+      # 🔴 本 ConfigMap は fail-safe 側（deploy/local/infra/otel-collector.yaml）を**同名で上書きする**。
+      #    宣言を落とすと、転送を有効にした瞬間に唯一の scrape 対象が消える。3 つの collector 設定が
+      #    同じ宣言を持つことは scripts/check-collector-self-telemetry.js が突合する。
+      telemetry:
+        metrics:
+          address: 0.0.0.0:8888
       pipelines:
         traces:
           receivers: [otlp]
