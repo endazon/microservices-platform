@@ -3,15 +3,15 @@ title: セキュリティ仕様書
 type: security-spec
 status: in-progress
 created: 2026-07-02
-updated: 2026-08-28
+updated: 2026-08-31
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, NFR-11, SC-05, SC-11, UC-07]
+ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, NFR-11, SC-05, SC-11, SC-17, UC-07]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0026, ADR-0045]
-iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295]
+iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329]
 specs: []
-issues: [#55, #100, #198, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, AST#18, AST#24, planning#383]
+issues: [#55, #100, #198, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1101, AST#18, AST#24, planning#383]
 -->
 
 # セキュリティ仕様書
@@ -143,7 +143,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 `deploy/keycloak/microservices-platform-realm.json` の realm import には、開発・E2E 検証用の dev ユーザーが
 平文パスワードで含まれる（`poc-user`／`poc-operator`／`developer`、および OIDC クライアントシークレット
 `wiki-js-dev-secret-change-me` / `ai-stock-trading-kb-writer-dev-secret-change-me` / `headlamp-dev-secret-change-me` /
-`abac-seeder-dev-secret-change-me`）。これらは **dev 環境限定**の便宜であり、以下を守る。
+`abac-seeder-dev-secret-change-me` / `identity-admin-dev-secret-change-me`）。これらは **dev 環境限定**の便宜であり、以下を守る。
 
 > **🔴 ［2026-08-28 / #438］パスワードだけではログインできない。** 計画が確定した「TOTP による多要素認証を必須」を
 > realm で実効化したため、この 3 名は初回ログインで `CONFIGURE_TOTP` を求められ、以後は毎回 6 桁を要求される。
@@ -164,6 +164,17 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
   `platform-operator`・client_credentials のみ）。realm import 内の `ai-stock-trading-kb-writer-dev-secret-change-me`
   は **dev 専用**で、本番シークレットは環境変数／Secret（Vault）経由で AST 環境へ注入し、realm import へは
   コミットしない。AST 側は空既定なら no-op（トークンを付けない）。
+- **`identity-admin`（利用者アカウント管理の反映先）**: 管理画面の「ロール割当・ABAC 属性割当・
+  無効化」を認可基盤の管理 API へ反映するための機密クライアント（client_credentials のみ・
+  standard flow と直接付与は無効）。**service-account へ与えるのはレルム管理の 3 つだけ**
+  （利用者の参照・利用者の管理・レルムの参照）で、**レルムロールは 1 つも与えない**。
+  レルムの管理・クライアントの作成・なりすましは与えない —— 与えていないことは稼働クラスタで
+  **403 になることを陰性対照として実測**してある。取り込み経路の投入器（`abac-seeder`）とは
+  **別のクライアント**にする（同じ資格情報を共用すると、投入の資格情報が漏れた時点で利用者の
+  権限まで書き換えられる）。realm import 内の `identity-admin-dev-secret-change-me` は **dev 専用**で、
+  本番は Vault → ExternalSecret → Secret 経由で注入する（`bff-oidc` と同型）。
+  🔴 **この資格情報が無いと認可サービスは起動しない**（非 optional な参照）——
+  注入漏れが「偽の身元プロバイダで起動し、変更が実は届いていない」へ倒れないようにするためである。
 - **`headlamp`（#271・dev の k8s 管理 UI 用）**: Headlamp（[headlamp.dev](https://headlamp.dev/)）を
   Keycloak OIDC でログインさせる confidential クライアント。Headlamp backend が authorization code を server-side で
   交換するため client secret を要する。realm import 内の `headlamp-dev-secret-change-me` は **dev 専用**で、`k8s-local-up.sh`
