@@ -8173,14 +8173,33 @@ ${r.stderr}`);
     const VERIFY = fsSS.readFileSync(
       pathSS.join(__dirname, 'verify-oidc-edge-flow.sh'), 'utf8');
 
-    ok('#992: TOTAL は加算式である（モードの組み合わせで門が誤発火しない）', () => {
+    ok('#992 / #1124: TOTAL は加算式で、宣言の合計が段の実在数と一致する', () => {
       // 固定値（TOTAL=17 / TOTAL=11 の二択）へ戻すと、SEARCH_* を足した瞬間に門が誤発火する。
       assert.match(VERIFY, /^TOTAL=11$/m, 'TOTAL の基底が 11 でない');
-      // #1116: SEARCH_HITS は S3（ハイブリッド）＋ S4・S5（全文側の正負対照）＋ readiness の 3 段を足す。
-      for (const [flag, addend] of [['ABAC_POSITIVE', 6], ['SEARCH_SEEDED', 2], ['SEARCH_HITS', 3]]) {
-        const re = new RegExp(`\\$${''}{?${flag}}?" = "1" \\]; then TOTAL=\\$\\(\\(TOTAL \\+ ${addend}\\)\\)`);
-        assert.match(VERIFY, re, `${flag} の加算（+${addend}）が無い`);
+
+      // 🔴 **加算値をここへ書き写さない**（#1124）。#1117 は SEARCH_HITS のブロックへ
+      //    next_step を 3 本足したとき増分を `+1` → `+3` にし（元から 1 本あったので `+4` が正）、
+      //    **同じ PR でこの試験の期待値も 3 に書き換えた**。数値を 2 箇所に持つと、
+      //    片方を間違えたときにもう片方が追認する。**試験は数え直す。**
+      const addends = {};
+      for (const flag of ['ABAC_POSITIVE', 'SEARCH_SEEDED', 'SEARCH_HITS']) {
+        const m = VERIFY.match(
+          new RegExp(`"\\$${flag}" = "1" \\]; then TOTAL=\\$\\(\\(TOTAL \\+ (\\d+)\\)\\)`));
+        assert.ok(m, `${flag} の加算式が無い`);
+        addends[flag] = Number(m[1]);
       }
+
+      // 段の実在数 ＝ 番号つき step の呼び出し箇所 ＋ next_step の呼び出し箇所。
+      // 定義側（`next_step() { step ... }`）とコメント中の言及は数えない。
+      const numbered = (VERIFY.match(/^\s*(?:\[[^\]]*\]\s*&&\s*)?step "\d+\/\$TOTAL"/gm) || []).length;
+      const nexts = (VERIFY.match(/^\s+next_step "/gm) || []).length;
+      const declared = 11 + addends.ABAC_POSITIVE + addends.SEARCH_SEEDED + addends.SEARCH_HITS;
+      assert.strictEqual(
+        declared,
+        numbered + nexts,
+        `TOTAL の宣言合計（${declared}）と段の実在数（番号つき ${numbered} ＋ next_step ${nexts}）が`
+          + ' 一致しない。段を足したゲートの増分を、**足した本数ではなくブロックを数え直した本数**へ直すこと',
+      );
     });
 
     ok('#992: SEARCH_HITS は SEARCH_SEEDED を含意する', () => {
