@@ -82,6 +82,12 @@ public class BffGraphSuggestionTests : IClassFixture<BffTestFactory>
     [InlineData("?state=approved", "state=approved")]
     [InlineData("?state=all", "state=all")]
     [InlineData("?kind=tag", "kind=tag")]
+    // FR-18, SC-03 (#1104): **文書フィルタも同じ作法で透過する。**
+    // BFF は Guid へ束縛しない（形式不正の 400 の出所を 2 か所にしない）。
+    [InlineData("?documentId=11111111-1111-1111-1111-111111111111",
+        "documentId=11111111-1111-1111-1111-111111111111")]
+    [InlineData("?state=pending&documentId=11111111-1111-1111-1111-111111111111",
+        "documentId=11111111-1111-1111-1111-111111111111")]
     public async Task Filters_are_forwarded_verbatim(string query, string expected)
     {
         _factory.GraphStubStatusCode = HttpStatusCode.OK;
@@ -106,6 +112,8 @@ public class BffGraphSuggestionTests : IClassFixture<BffTestFactory>
 
         _factory.LastGraphPath.Should().NotContain("state=",
             "既定（pending）は GraphService が一箇所で持つ");
+        _factory.LastGraphPath.Should().NotContain("documentId=",
+            "文書フィルタも補わない。SC-21 は絞らずに全件を引く（#1104）");
     }
 
     // C-03: 未認証は BFF の入口で 401。後段へ行かない。
