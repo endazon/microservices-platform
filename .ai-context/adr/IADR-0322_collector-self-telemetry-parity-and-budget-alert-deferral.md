@@ -1,5 +1,5 @@
 ---
-title: IADR-0312 collector の自己テレメトリ宣言は検査器で揃え、LLM 予算アラートは分けて置かない
+title: IADR-0322 collector の自己テレメトリ宣言は検査器で揃え、LLM 予算アラートは分けて置かない
 type: impl-adr
 status: Accepted
 related_ids:
@@ -21,7 +21,7 @@ plan_refs:
   - planning:projects/microservices-platform/06_technical/05_observability-ops.md
 ---
 
-# IADR-0312: 転送構成の自己テレメトリ宣言と、LLM 予算アラートを置かない判断（#1090 / #546）
+# IADR-0322: 転送構成の自己テレメトリ宣言と、LLM 予算アラートを置かない判断（#1090 / #546）
 
 - 状態: Accepted
 - 日付: 2026-08-30

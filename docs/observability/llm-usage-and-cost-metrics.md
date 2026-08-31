@@ -9,7 +9,7 @@ updated: 2026-08-30
 <!-- trace:
 ids: [FR-10, FR-11, NFR, UC-05, SC-10]
 adrs: [ADR-0006, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044]
-iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0312]
+iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322]
 specs: [20260823_issue-443_llm-usage-metrics-and-pricing]
 issues: [#380, #443, #546]
 -->
