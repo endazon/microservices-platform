@@ -52,9 +52,11 @@ kubectl -n platform-infra port-forward svc/grafana 3000:3000   # http://localhos
   を指すため edge 未起動だと到達できず、ログインは完了しない → **fail-safe の local admin へ落ちる**（下記）。
   port-forward で OIDC したい場合は `GF_SERVER_ROOT_URL` を `http://localhost:3000/` に戻す（realm に旧 redirect 登録済み）。
   詳細は [`deploy/local/edge/README.md`](../edge/README.md) の「OIDC（集約後 URL）」。
-- **issuer 整合（#284 手順A）**: Grafana は auth/token/userinfo を `http://keycloak:8080/realms/platform`
-  で解決する。browser も `keycloak:8080` を解決できるよう hosts 追記＋`port-forward svc/keycloak 8080:8080` を行う
-  （`deploy/local/README.md`「エッジ経路（/bff・ブラウザ OIDC）」手順A と同一の理由：iss 一致）。
+- **issuer 整合（#780・IADR-0243）**: **3 つの URL は役割が違うので揃えない。**
+  `AUTH_URL` は**ブラウザが開く**ので **`https://keycloak.localhost/realms/platform/...`**（エッジ host）、
+  `TOKEN_URL` / `API_URL` は **Grafana pod がサーバ側で叩く**ので `http://keycloak:8080/...`（in-cluster）である。
+  in-cluster を残すのはローカル CA を Grafana コンテナへ配らずに済ませるためで、IADR-0086 が .NET に入れた
+  metadata / issuer 分離と同じ形である。**hosts 追記も port-forward も不要。**
 - **フォールバック（fail-safe）**: OIDC 未設定/失敗時も匿名フルアクセスへは倒れない。Grafana 組み込みの
   **local admin**（dev 既定 `admin`/`admin`）でログインできる（`grafana-oidc` Secret は optional 参照のため
   未作成でも Pod は起動する）。
