@@ -12,7 +12,7 @@ related_ids:
   - IADR-0124
   - IADR-0125
   - IADR-0321
-  - IADR-0322
+  - IADR-0325
   - ADR-0065
   - ADR-0067
 author: claude
@@ -117,7 +117,7 @@ plan_refs:
 ## 決定 3: 中身の無い区分もフォルダと `.gitkeep` で枠を残す
 
 > 🔴 **［2026-08-31 追記 / #1122］本決定は 2 点で部分改定された。改定者は
-> [IADR-0322](./IADR-0322_unit-level-scaffolding-frames-await-arbitration.md) である。
+> [IADR-0325](./IADR-0325_unit-level-scaffolding-frames-await-arbitration.md) である。
 > ID は付け替えない —— 本 IADR は `IADR-0262` のままである。**
 >
 > 1. **射程から「各 feature 配下の `hooks/` `stores/`」が外れた。** 本決定はそれを枠の対象として
@@ -132,7 +132,7 @@ plan_refs:
 >    （ツリー全体への適合が必須。ディレクトリ名を名指しで列挙している）**であって、
 >    バックエンドの同型規範ではない。**
 >
-> **撤去の可否そのものは未確定である**（planning#510 で裁定を求めている）。`IADR-0322` 参照。
+> **撤去の可否そのものは未確定である**（planning#510 で裁定を求めている）。`IADR-0325` 参照。
 
 
 雛形 README（PR #777）が定めた作法をそのまま採る——「中身が無い区分も、フォルダと `.gitkeep` だけは
@@ -213,4 +213,4 @@ knowledge ユニットでは、直下の `app/ assets/ components/ hooks/ lib/ l
 
 - Supersedes: なし
 - Superseded by: なし
-- Amended by: [IADR-0322](./IADR-0322_unit-level-scaffolding-frames-await-arbitration.md)（2026-08-31 / #1122。**決定 3 の射程から feature 配下を外し、根拠を planning#445 へ差し替える**。決定 1・2・4・5 は無傷であり `Accepted` を維持する）
+- Amended by: [IADR-0325](./IADR-0325_unit-level-scaffolding-frames-await-arbitration.md)（2026-08-31 / #1122。**決定 3 の射程から feature 配下を外し、根拠を planning#445 へ差し替える**。決定 1・2・4・5 は無傷であり `Accepted` を維持する）

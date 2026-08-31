@@ -152,7 +152,7 @@ related_specs:
   > **この 4 件に限られる。**
   >
   > **教訓**: 「`.gitkeep` があるか」と「`.gitkeep` が要るか」は別の測定である。
-  > 詳細は [IADR-0322](./IADR-0322_unit-level-scaffolding-frames-await-arbitration.md)。
+  > 詳細は [IADR-0325](./IADR-0325_unit-level-scaffolding-frames-await-arbitration.md)。
 
 ## 残余リスク
 

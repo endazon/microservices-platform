@@ -1,5 +1,5 @@
 ---
-title: IADR-0322 ユニット直下の枠は裁定まで残し、何も keep していない .gitkeep は撤去する
+title: IADR-0325 ユニット直下の枠は裁定まで残し、何も keep していない .gitkeep は撤去する
 type: impl-adr
 status: Accepted
 related_ids:
@@ -18,7 +18,7 @@ related_specs:
   - ../specs/20260831_issue-1122_unit-level-scaffolding-frames.md
 ---
 
-# IADR-0322: ユニット直下の枠は裁定まで残し、何も keep していない `.gitkeep` は撤去する
+# IADR-0325: ユニット直下の枠は裁定まで残し、何も keep していない `.gitkeep` は撤去する
 
 - 状態: Accepted
 - 日付: 2026-08-31

@@ -195,7 +195,7 @@ live な記述で本作業が偽にし得るもの:
   ブロック」とし、**frontmatter の状態欄は凍結の対象外**（#717 / `IADR-0191` 決定 2）と定める。
   `.ai-context/adr/` は書き換え禁止の列挙（`specs/` / `superpowers/`）に入らない live な権威文書
   である。→ **日付つき追記で是正し、`updated:` を前進させる。**
-- **新 IADR（`IADR-0322`）**: 群 α を「消さずに待つ」と決めること、その**トリガー条件**、
+- **新 IADR（`IADR-0325`）**: 群 α を「消さずに待つ」と決めること、その**トリガー条件**、
   `IADR-0262` 決定 3 の部分改定は、**新しい決定**である。追記では射程が読めない。
 
 ## 6. 受け入れ基準（#1122 から写像）
@@ -233,7 +233,7 @@ $ git ls-files | grep -cE '(^|/)\.gitkeep$'
 `check-plan-id-qualification` ／ `check-cross-repo-refs` ／ `gen-knowledge-graph --check` ／
 `REQUIRE_REPO_TESTS=1 scripts.test.js`（668 件）。**すべて緑。**
 
-`check-adr-numbering` は索引行の追加時に 1 度だけ先に叩いており（`IADR-0322` の追加直後）、
+`check-adr-numbering` は索引行の追加時に 1 度だけ先に叩いており（`IADR-0325` の追加直後）、
 `check-doc-links` は `IADR-0262` / `IADR-0321` から新 IADR へのリンクを検証している
 —— **#1125 でリンクの取り残しに 1 度捕まっているため、コミット前に個別に叩いた。**
 
