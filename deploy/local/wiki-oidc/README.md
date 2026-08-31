@@ -9,6 +9,19 @@ realm には `wiki-js` client が既存（[IADR-0020](../../../.ai-context/adr/I
 **Wiki.js の OIDC 設定は DB/管理UI 保持**（"Generic OpenID Connect" ストラテジ）で manifest 自動化できないため、下記の
 **管理UI 手順**（realm import と同型の runtime 設定）で入れる。ローカルログインは既定無効の OIDC 単一経路（IADR-0020）。
 
+## 前提: Wiki.js のセットアップが済んでいること（#1108）
+
+🔴 **本ページの手順は、Wiki.js の初期セットアップが完了していることが前提である。**
+未完了だと Wiki.js は setup モードのままで、管理 UI（`/a`）も `/graphql` も存在しない
+（`server/setup.js` の catch-all が `/healthz` を含む全 URL に 200 を返すので、
+**Pod は `2/2 Running` に見える**）。
+
+セットアップと Site URL（`settings.host`）の設定は
+[`../wikijs-setup/`](../wikijs-setup/README.md)（`scripts/k8s-local-up.sh` が既定で呼ぶ）が入れる。
+下の DB seed 手順のうち **`settings.host` の更新は wikijs-setup が担う**ので、
+経路を変えたいときは `WIKIJS_SITE_URL` を渡して bootstrap を再実行すればよい。
+**OIDC ストラテジ（`authentication` 行）の投入は依然として本ページの手順である**（#397 は未実装のまま close）。
+
 ## 到達（集約後 URL・#357/edge）
 
 ```sh
