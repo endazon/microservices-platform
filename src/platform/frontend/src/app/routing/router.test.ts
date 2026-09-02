@@ -9,7 +9,7 @@ import { NotFound } from '@foundation/ui/NotFound';
 // - 決定 6: 計画（05_screens §共通シェル「ルートパス」）のルートが木に存在すること
 // - 決定 5: ナビ項目（ユニットが公開する**データ**）の遷移先が木に解決すること
 //   — `<Link to>` の静的検査はデータ駆動のナビには効かないため、その穴を実行時に塞ぐ
-// - 決定 2: 旧契約ブリッジ（AST）のルートも木に載ること
+// - 決定 1: 本計画に属さないユニット（AST）のルートも同じ型付きの木に載ること（AST#414 でブリッジは撤去）
 
 /**
  * 05_screens §共通シェル「ルートパス（wireframe の URL バー準拠）」のうち、本 SPA が持つもの。
@@ -154,7 +154,7 @@ describe('existence hiding: catch-all wiring (IADR-0009)', () => {
     ['/login', '認証導線'],
     ['/ask', 'ユニットの画面（SC-01）'],
     ['/admin/config-viewer', 'ユニットの画面（SC-11）'],
-    ['/settings', '旧契約ブリッジ（AST）'],
+    ['/settings', '本計画に属さないユニットの画面（AST）'],
   ])('does not hijack %s (%s)', async (path) => {
     await router.navigate({ to: path as '/ask' });
     await router.load();
@@ -170,9 +170,11 @@ describe('existence hiding: catch-all wiring (IADR-0009)', () => {
   });
 });
 
-describe('legacy unit bridge (IADR-0124 決定 2)', () => {
-  it('mounts routes declared with the legacy contract', () => {
-    // AST（変更できない別プロジェクト。IADR-0120）の 3 画面。旧契約は相対パスで宣言する。
+// ［2026-09-03 / AST#414］旧称 `legacy unit bridge`。AST が型付きルート factory を公開したため、
+// **ブリッジ（`createLegacyRoutes`）は消え、この 3 画面は型付きの木そのものに載る**。
+describe('non-plan unit routes (AST)', () => {
+  it('mounts the AST screens in the typed route tree', () => {
+    // AST（本リポジトリの計画に属さない別プロジェクト。IADR-0120）の 3 画面。
     expect(fullPaths()).toEqual(
       expect.arrayContaining(['/settings', '/settings/risk', '/controls']),
     );
