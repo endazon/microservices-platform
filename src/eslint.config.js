@@ -533,6 +533,13 @@ export default tseslint.config(
       '**/*.{test,spec}.{ts,tsx}',
       '**/*.config.{ts,js}',
       'ai-stock-trading/frontend/e2e/**',
+      // (5) FR-20 / ADR-0037 決定 1 / IADR-0338 決定 4・6: 自作 Obsidian プラグインの HTTP の出口。
+      //     プラグインは SPA ではなく BFF も経由しない（DocumentService の同期プロトコルを Bearer
+      //     同期トークンで直接呼ぶ。契約の正は docs/api/FR-20_obsidian-sync.md）ので、本規則の意図
+      //     「SPA から出る HTTP を foundation/api へ収束させる」は当たらない。**出口を `transport/` の
+      //     2 ファイル（Obsidian requestUrl / Node fetch）に限る**ことで同じ規律（1 箇所へ収束）を保つ——
+      //     `protocol/` や `main.ts` で `fetch` を書けば本ブロックがそのまま error にする。
+      'obsidian-plugin/src/transport/**',
     ],
     rules: {
       'no-restricted-globals': [

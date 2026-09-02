@@ -52,7 +52,7 @@ builder.Services.AddScoped<IWikiAccessResolver, WikiAccessResolver>();
 
 // FR-13, UC-07, ADR-0011, IADR-0021: Wiki.js への同期・本文取得（GraphQL API push）。
 // API キーは環境変数/シークレット経由で注入（コミットしない）。
-builder.Services.AddHttpClient<IWikiJsClient, WikiJsGraphQlClient>(c =>
+void ConfigureWikiJsHttpClient(HttpClient c)
 {
     c.BaseAddress = new Uri(builder.Configuration["WikiJs:GraphQlEndpoint"]
         ?? "http://wiki-js:3000/graphql");
@@ -60,7 +60,14 @@ builder.Services.AddHttpClient<IWikiJsClient, WikiJsGraphQlClient>(c =>
     if (!string.IsNullOrWhiteSpace(apiKey))
         c.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-});
+}
+
+builder.Services.AddHttpClient<IWikiJsClient, WikiJsGraphQlClient>(ConfigureWikiJsHttpClient);
+// UC-07 基本フロー 1「検索する」, FR-13, ADR-0011, IADR-0335: 全文検索の委譲口。
+// **同期の口（IWikiJsClient）と別の口として登録する** —— 実装クラスは同じだが、検索は読み取り経路の
+// 関心であり、同期・削除の面を一緒に背負わせない。接続設定は上と同じ 1 箇所（`ConfigureWikiJsHttpClient`）
+// から与える（**接続先と API キーの解決点を 2 つに増やさない**）。
+builder.Services.AddHttpClient<IWikiJsSearchClient, WikiJsGraphQlClient>(ConfigureWikiJsHttpClient);
 // FR-06, ADR-0014/ADR-0015: オブジェクトストレージ（MinIO）クライアント（storage:// 本文の実取得用）。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
 
