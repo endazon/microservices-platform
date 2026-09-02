@@ -14,7 +14,7 @@ plan_refs:
   - planning:projects/ai-stock-trading/07_adr/ADR-0014_llm-model-assignment-revision.md
   - planning:projects/ai-stock-trading/07_adr/ADR-0017_llm-fallback-policy.md
 related_specs:
-  - "../adr/IADR-0334_trade-decision-screening-purpose-registration.md"
+  - "../adr/IADR-0335_trade-decision-screening-purpose-registration.md"
 issue: "AST#571"
 ---
 
@@ -82,7 +82,7 @@ AST#571 はこの 2 点の基盤側不足を解消する受け皿 issue であ�
      「鎖が無い用途は落ちない」という分岐の固定先として適切）。
 4. `docs/functional/FR-11_llm-egress-routing.md`（必須機能仕様書）: 用途一覧・用途別モデル解決・
    フォールバック順序・受け入れ基準の各節へ `trade-decision-screening` と報告書 3 種の鎖を反映。
-   trace ブロック（frontmatter 直後の HTML コメント）へ `IADR-0334` と `AST#571` を追加。
+   trace ブロック（frontmatter 直後の HTML コメント）へ `IADR-0335` と `AST#571` を追加。
 
 ## 判断が要った点
 
