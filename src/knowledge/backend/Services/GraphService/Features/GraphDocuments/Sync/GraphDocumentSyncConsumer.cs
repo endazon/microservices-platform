@@ -5,7 +5,6 @@ using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 
-using GraphService.Features.GraphDocuments;
 
 namespace GraphService.Features.GraphDocuments.Sync;
 
