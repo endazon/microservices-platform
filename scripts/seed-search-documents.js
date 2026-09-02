@@ -161,6 +161,24 @@ function seedKeywordOnlyQuery(seed) {
 }
 
 /**
+ * FR-03, #1118 / [[IADR-0331]] 決定 4: **日本語の語**で全文検索が当たることを門で見るためのクエリ。
+ *
+ * seed のタイトル（本文の H1 としてチャンクに入る）の**最初の CJK の連なり**を採る。
+ * 合言葉（英数字の識別子）では日本語の系統（`text_ngram`）を通らないので、S4 が緑でも
+ * 日本語は 0 件のままになり得る（#1118 がまさにその形）。**語をここへ書かない** —— seed の
+ * タイトルが単一情報源であり、値を写すと seed を替えたとき片方だけ取り残される。
+ *
+ * タイトルに CJK が無ければ **null を返す**（呼び出し側は判定を「導けない」と明示して落とす）。
+ * @param {{documents?:Array<{title?:string}>}} seed
+ * @returns {string|null}
+ */
+function seedJapaneseKeywordQuery(seed) {
+  const title = String(((seed.documents || [])[0] || {}).title || '');
+  const m = title.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー々]+/u);
+  return m ? m[0] : null;
+}
+
+/**
  * 合言葉が seed 文書に実際に現れるかを検査する。
  * **現れない合言葉で検索しても当たらない** —— 判定が「検索の故障」と「合言葉の書き間違い」を
  * 区別できなくなるので、投入の前にここで落とす。
@@ -278,6 +296,17 @@ async function main(argv) {
     return 0;
   }
 
+  // FR-03, #1118: 日本語の語で全文側を引くクエリを読む口（同上・副作用なし）。
+  if (argv.includes('--print-japanese-keyword-query')) {
+    const q = seedJapaneseKeywordQuery(seed);
+    if (q === null) {
+      warn('seed のタイトルに日本語（CJK）が無いため、日本語の語のクエリを導けません。');
+      return 1;
+    }
+    log(q);
+    return 0;
+  }
+
   const documents = seed.documents || [];
   const probeTerm = seedProbeTerm(seed);
   log(`シード: 文書 ${documents.length} 件 / 合言葉 ${probeTerm}（${SEED_FILE}）`);
@@ -359,6 +388,7 @@ module.exports = {
   selectMissingDocuments,
   seedProbeTerm,
   seedKeywordOnlyQuery,
+  seedJapaneseKeywordQuery,
   documentsMissingProbeTerm,
   SEED_FILE,
 };

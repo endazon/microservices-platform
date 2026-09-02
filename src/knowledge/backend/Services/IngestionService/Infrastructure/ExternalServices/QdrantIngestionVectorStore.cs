@@ -1,5 +1,6 @@
 using IngestionService.Domain.Ports;
 using IngestionService.Domain;
+using Knowledge.Contracts.Indexing;
 using Microsoft.Extensions.Options;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
@@ -69,6 +70,121 @@ public class QdrantIngestionVectorStore(
             }
         };
 
+    // FR-03, #1118, [[IADR-0331]] 決定 1・2: 日本語（CJK）2-gram ペイロード `text_ngram` の全文索引を、
+    // 全コレクションへ**存在の有無によらず**張る（`EnsureCollectionsAsync` の `text` と同じ作法）。
+    //
+    // 🔴 `multilingual` は公式イメージ v1.18.1 では日本語の分かち書きを持たず、語で当たるかは連なりの切れ目次第
+    // （稼働 Qdrant で実測: 実配備チャンクの日本語 25 語のうち当たるのは 1 語）。そこで CJK は
+    // アプリ側で 2-gram に割って別ペイロードに載せ（`CjkBigramPayload`）、その索引をここで張る。
+    // `text` の索引・系統は #1117 のまま変えない（識別子・型番・略語の再現率を落とさない）。
+    public async Task EnsureCjkNgramIndexAsync(CancellationToken ct = default)
+    {
+        foreach (var c in _collections)
+        {
+            await client.CreatePayloadIndexAsync(c.Name, CjkBigramPayload.PayloadKey, PayloadSchemaType.Text,
+                BuildCjkNgramIndexParams(), cancellationToken: ct);
+        }
+    }
+
+    // FR-03, #1118, [[IADR-0331]] 決定 1: `text_ngram` の索引パラメータ。
+    //
+    // **`prefix` を採る。** ペイロードは 2 文字トークンの列なので、`prefix` は各トークンの
+    // 1 文字接頭辞も索引に入れる。これで **1 文字の語（「本」）も当たる**（実測: whitespace / word では
+    // 1 文字が 0 件、prefix では当たる）。`MaxTokenLen = 2` は 2-gram より長いトークンを索引に入れない
+    // （入るとしたら符号化の欠陥であり、索引で黙って受けない）。
+    internal static PayloadIndexParams BuildCjkNgramIndexParams() =>
+        new()
+        {
+            TextIndexParams = new TextIndexParams
+            {
+                Tokenizer = TokenizerType.Prefix,
+                MinTokenLen = 1,
+                MaxTokenLen = 2,
+                Lowercase = true,
+            }
+        };
+
+    // 1 回の scroll で埋める点の数。索引の後付けは起動後のバックグラウンドで走り、
+    // 1 ページごとに `UpdateBatch`（SetPayload × 点数）を 1 回出す。
+    internal const uint BackfillPageSize = 256;
+
+    // FR-03, #1118, [[IADR-0331]] 決定 2: `text_ngram` を持たない点だけを scroll し、`text` から
+    // 2-gram を作って後付けする。
+    //
+    // 🔴 **移行スクリプトにしない**（[[IADR-0318]] が索引の後付けで退けた案 2 と同じ理由。呼び忘れが
+    // 起き、実行されたかを誰も見ない）。起動のたびに「無い点だけ」を埋めるので、**2 回目以降は
+    // 0 件走査で終わる**（埋めた点は `is_empty` に当たらない）。再取り込み（DocumentUpdated の再発行）は要らない。
+    //
+    // `text` が無い点にも空文字列を書く —— Qdrant の `is_empty` は空文字列を「空」と見ないので、
+    // 同じ点を毎回拾い直すことはない。
+    public async Task<int> BackfillCjkNgramAsync(CancellationToken ct = default)
+    {
+        var filled = 0;
+        foreach (var c in _collections)
+        {
+            PointId? previousFirst = null;
+            while (!ct.IsCancellationRequested)
+            {
+                var page = await client.ScrollAsync(c.Name,
+                    filter: BuildMissingCjkNgramFilter(),
+                    limit: BackfillPageSize,
+                    payloadSelector: new WithPayloadSelector
+                    {
+                        Include = new PayloadIncludeSelector { Fields = { FullTextKey } }
+                    },
+                    vectorsSelector: new WithVectorsSelector { Enable = false },
+                    cancellationToken: ct);
+
+                if (page.Result.Count == 0)
+                    break;
+
+                // 🔴 同じ先頭の点が続けて返ったら止める。SetPayload が効いていないのに回り続けると
+                //    無限ループになる（wait=true でも保証を疑って、進んでいないことを自分で見る）。
+                if (previousFirst is not null && previousFirst.Equals(page.Result[0].Id))
+                    throw new InvalidOperationException(
+                        $"Backfill of {CjkBigramPayload.PayloadKey} on {c.Name} is not making progress "
+                        + $"(point {page.Result[0].Id} was returned twice)");
+                previousFirst = page.Result[0].Id;
+
+                var operations = page.Result
+                    .Select(p => BuildSetCjkNgramOperation(p.Id,
+                        p.Payload.TryGetValue(FullTextKey, out var text) ? text.StringValue : ""))
+                    .ToList();
+                await client.UpdateBatchAsync(c.Name, operations, cancellationToken: ct);
+                filled += operations.Count;
+            }
+        }
+
+        return filled;
+    }
+
+    // `text_ngram` を持たない点だけを選ぶフィルタ（純関数。試験が形を固定する）。
+    internal static Filter BuildMissingCjkNgramFilter() =>
+        new()
+        {
+            Must =
+            {
+                new Condition
+                {
+                    IsEmpty = new IsEmptyCondition { Key = CjkBigramPayload.PayloadKey }
+                }
+            }
+        };
+
+    // 1 点に `text_ngram` を書く SetPayload 操作（純関数）。
+    internal static PointsUpdateOperation BuildSetCjkNgramOperation(PointId id, string text) =>
+        new()
+        {
+            SetPayload = new PointsUpdateOperation.Types.SetPayload
+            {
+                Payload =
+                {
+                    [CjkBigramPayload.PayloadKey] = new Value { StringValue = CjkBigramPayload.Encode(text) }
+                },
+                PointsSelector = new PointsSelector { Points = new PointsIdsList { Ids = { id } } },
+            }
+        };
+
     public async Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
         string text, int chunkIndex, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
@@ -96,6 +212,9 @@ public class QdrantIngestionVectorStore(
             ["document_title"] = new Value { StringValue = title },
             // FR-03, #1116: 全文インデックスを張るキーと同じ 1 つの値を使う（書き込みと索引を割らない）。
             [FullTextKey] = new Value { StringValue = text },
+            // FR-03, #1118, [[IADR-0331]] 決定 1: 日本語（CJK）の 2-gram。同じ本文から、検索側と共有する
+            // 変換（`CjkBigramPayload`）で作る。CJK を含まない本文では空文字列（`is_empty` には当たらない）。
+            [CjkBigramPayload.PayloadKey] = new Value { StringValue = CjkBigramPayload.Encode(text) },
             ["markdown_uri"] = new Value { StringValue = markdownUri ?? "" },
             // FR-02: チャンクの並び順・出典の一部として保持
             ["chunk_index"] = new Value { IntegerValue = chunkIndex },

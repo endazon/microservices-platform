@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# FR-03, UC-01, SC-01, Issue #1116 / [[IADR-0318]]:
+# FR-03, UC-01, SC-01, Issue #1116 / [[IADR-0318]]・Issue #1118 / [[IADR-0331]]:
 #   Qdrant の **全文（full-text）ペイロードインデックス**が、実機で本当に効いていることを
 #   **陽性対照と陰性対照の対**で確かめる。
+#   #1118 で、**日本語の語**（アプリ側 2-gram ペイロード `text_ngram`）も同じ対で判定する（段 7）。
 #
 # 背景:
 #   `RetrievalService.QdrantVectorStore.KeywordSearchAsync` はペイロード `text` への
@@ -72,16 +73,60 @@ read_point_count() {
   node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);console.log(o.result&&o.result.points?o.result.points.length:-1)}catch{console.log(-1)}})"
 }
 
-# 全文 Match で当たった点の件数を返す。
-count_matches() {
-  local query="$1" f
+# 指定ペイロードへの全文 Match で当たった点の件数を返す。
+count_matches_in() {
+  local field="$1" query="$2" f
   f=$(mktemp)
   # 展開ありのヒアドキュメント（$query を差し込む）。検証用の語に " や \ は含めない。
   cat > "$f" <<JSON
-{"limit":50,"with_payload":false,"filter":{"must":[{"key":"text","match":{"text":"${query}"}}]}}
+{"limit":50,"with_payload":false,"filter":{"must":[{"key":"${field}","match":{"text":"${query}"}}]}}
 JSON
   qcurl POST "/collections/${COLLECTION}/points/scroll" "$f" | read_point_count
   rm -f "$f"
+}
+
+# `text`（識別子の系統・multilingual）への全文 Match。
+count_matches() { count_matches_in text "$1"; }
+
+# FR-03, #1118 / [[IADR-0331]] 決定 1: 日本語（CJK）の 2-gram 符号化。
+#   **アプリ（Knowledge.Contracts.Indexing.CjkBigramPayload.Encode）の写し**である ——
+#   CJK の連なりごとに 2-gram（1 文字の連なりは 1-gram）を空白区切りで並べ、CJK 以外は区切りとしてだけ働く。
+#   アプリ側が変わったらここも変える（固定はアプリ側の単体試験 CjkBigramPayloadTests が持つ）。
+#   🔴 日本語は **stdin だけ**で渡す（argv に載せない。上の qcurl の注記と同じ罠）。
+#      **JS 本体も \`node -e\` の argv に載せず、引用ヒアドキュメントで一時ファイルへ置く** ——
+#      正規表現の \`\p{Script=…}\` や日本語の文字が argv の途中で壊れ、符号化が空になって全件 -1 になった（実測）。
+# 🔴 node は MSYS の /tmp を解決できない（Windows では mktemp の経路を node に渡せない）。スクリプトと同じ場所に置く。
+NGRAM_JS="$(dirname "$0")/.verify-qdrant-ngram.$$.js"
+cat > "$NGRAM_JS" <<'JS'
+let s = '';
+process.stdin.on('data', (d) => (s += d)).on('end', () => {
+  const isCjk = (ch) => /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー々〆〤]/u.test(ch);
+  const out = [];
+  let run = [];
+  const flush = () => {
+    if (run.length === 1) out.push(run[0]);
+    for (let i = 0; i + 1 < run.length; i++) out.push(run[i] + run[i + 1]);
+    run = [];
+  };
+  for (const ch of s) {
+    if (isCjk(ch)) run.push(ch);
+    else flush();
+  }
+  flush();
+  process.stdout.write(out.join(' '));
+});
+JS
+cjk_ngram_of_file() { node "$NGRAM_JS" < "$1"; }
+
+# 日本語の語（`text_ngram` へ、2-gram にしたクエリで Match）で当たった点の件数を返す。
+count_ja_matches() {
+  local f q
+  f=$(mktemp)
+  printf '%s' "$1" > "$f"
+  q=$(cjk_ngram_of_file "$f")
+  rm -f "$f"
+  [ -z "$q" ] && { echo -1; return; }
+  count_matches_in text_ngram "$q"
 }
 
 payload_schema_tokenizer() {
@@ -99,7 +144,8 @@ send_body() {
 }
 
 cleanup() { qcurl DELETE "/collections/${COLLECTION}" "" >/dev/null 2>&1; }
-trap cleanup EXIT
+# 🔴 符号化の JS は**終了時にだけ**消す（`cleanup` は準備段でも呼ぶので、そこへ入れると使う前に消える。実測で踏んだ）。
+trap 'cleanup; rm -f "$NGRAM_JS"' EXIT
 
 hr
 printf 'Qdrant 全文ペイロードインデックスの実機検証（Issue #1116 / FR-03）\n'
@@ -119,12 +165,23 @@ cleanup
 send_body PUT "/collections/${COLLECTION}" \
   '{"vectors":{"size":4,"distance":"Cosine"}}' >/dev/null
 
+# 点 1〜3 の本文。点 3 は実配備の seed チャンク（日本語＋識別子＋記号の長文）の形である。
+TEXT1="合言葉は ${PRESENT_PHRASE} である。型番 RX-7800X3D と略語 ABAC を含む。"
+TEXT2="オブジェクトストレージへ本文を格納し、チャンクに分けて索引へ登録する。"
+TEXT3="3. IngestionService が本文を読み、チャンクに分け、埋め込みを得て Qdrant へ登録する（MarkdownUri）"
+# #1118: アプリ（取り込み側）と同じく、本文から日本語 2-gram ペイロード `text_ngram` を作って併記する。
+ngram_tmp=$(mktemp)
+printf '%s' "$TEXT1" > "$ngram_tmp"; NGRAM1=$(cjk_ngram_of_file "$ngram_tmp")
+printf '%s' "$TEXT2" > "$ngram_tmp"; NGRAM2=$(cjk_ngram_of_file "$ngram_tmp")
+printf '%s' "$TEXT3" > "$ngram_tmp"; NGRAM3=$(cjk_ngram_of_file "$ngram_tmp")
+rm -f "$ngram_tmp"
+
 seed_body=$(mktemp)
 cat > "$seed_body" <<JSON
 {"points":[
-  {"id":1,"vector":[1,0,0,0],"payload":{"text":"合言葉は ${PRESENT_PHRASE} である。型番 RX-7800X3D と略語 ABAC を含む。"}},
-  {"id":2,"vector":[1,0,0,0],"payload":{"text":"オブジェクトストレージへ本文を格納し、チャンクに分けて索引へ登録する。"}},
-  {"id":3,"vector":[1,0,0,0],"payload":{"text":"3. IngestionService が本文を読み、チャンクに分け、埋め込みを得て Qdrant へ登録する（MarkdownUri）"}}
+  {"id":1,"vector":[1,0,0,0],"payload":{"text":"${TEXT1}","text_ngram":"${NGRAM1}"}},
+  {"id":2,"vector":[1,0,0,0],"payload":{"text":"${TEXT2}","text_ngram":"${NGRAM2}"}},
+  {"id":3,"vector":[1,0,0,0],"payload":{"text":"${TEXT3}","text_ngram":"${NGRAM3}"}}
 ]}
 JSON
 upsert_out=$(qcurl PUT "/collections/${COLLECTION}/points?wait=true" "$seed_body")
@@ -151,7 +208,7 @@ else
 fi
 
 # ---- 段 2) 索引を張る（アプリと同じパラメータ） ----------------------------------------
-printf '\n[2/7] 全文ペイロードインデックスを張る（tokenizer=multilingual）\n'
+printf '\n[2/7] 全文ペイロードインデックスを張る（text: multilingual ／ text_ngram: prefix 1..2）\n'
 create_out=$(send_body PUT "/collections/${COLLECTION}/index?wait=true" \
   '{"field_name":"text","field_schema":{"type":"text","tokenizer":"multilingual","min_token_len":1,"max_token_len":40,"lowercase":true}}')
 tokenizer=$(payload_schema_tokenizer)
@@ -160,6 +217,18 @@ if [ "$tokenizer" = "multilingual" ]; then
 else
   fail "索引を張れない、または tokenizer が multilingual にならない（実際: ${tokenizer}）"
   info "$(printf '%s' "$create_out" | head -c 200)"
+fi
+# #1118 / [[IADR-0331]] 決定 1: 日本語 2-gram ペイロード `text_ngram` の索引も、アプリと同じパラメータで張る
+# （tokenizer=prefix / 1..2 文字。`prefix` は 2-gram の 1 文字接頭辞も索引に入れるので 1 文字の語も当たる）。
+create_ngram_out=$(send_body PUT "/collections/${COLLECTION}/index?wait=true" \
+  '{"field_name":"text_ngram","field_schema":{"type":"text","tokenizer":"prefix","min_token_len":1,"max_token_len":2,"lowercase":true}}')
+ngram_tokenizer=$(qcurl GET "/collections/${COLLECTION}" "" \
+  | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const p=JSON.parse(s).result.payload_schema.text_ngram;console.log(p&&p.params?p.params.tokenizer:'(none)')}catch{console.log('(none)')}})")
+if [ "$ngram_tokenizer" = "prefix" ]; then
+  pass "text_ngram（日本語 2-gram）の索引を prefix トークナイザで張れた"
+else
+  fail "text_ngram の索引を張れない、または tokenizer が prefix にならない（実際: ${ngram_tokenizer}）"
+  info "$(printf '%s' "$create_ngram_out" | head -c 200)"
 fi
 
 # ---- 段 3) 🔴 陽性対照 ------------------------------------------------------------------
@@ -203,29 +272,36 @@ else
   fail "識別子・型番・略語のいずれかに当たらない（識別子=${n_id} / 型番=${n_model} / 略語=${n_abbr}）"
 fi
 
-# ---- 段 7) 日本語の当たり方（**部分的にしか当たらない**ことを毎回そのまま出す） -----------
+# ---- 段 7) 🔴 日本語の語が当たること（#1118。陽性・陰性を対で判定する） ----------------------
 #
-# 🔴 **`multilingual` の日本語の再現率は部分的で、文書の中身に左右される。** 実機での実測:
-#    - 短い日本語の文では語中に当たる語がある（`索引` `チャンク` `埋め込み` `オブジェクトストレージ`）
-#    - 一方、同じ文の中でも当たらない語がある（`文書` `検索` `統合` `合言葉`）
-#    - 実配備の seed チャンク（日本語と識別子・記号が混じる長文）では、**日本語の語で 1 件も当たらなかった**
-#      （12 語を試して全滅。識別子は当たる）
-#    **だから「日本語で引ける」と言い切らない。** 数字を毎回出し、記録（実装 ADR・機能仕様書の
-#    §既知の限界）と食い違ったら記録を更新すること。
-printf '\n[7/7] 日本語の当たり方（🔴 部分的である。数字をそのまま出す）\n'
-n_ja_word=$(count_matches "索引")           # 点 2（短い日本語の文）
-n_ja_other=$(count_matches "文書")          # 同じ文書群に在るのに当たらないことがある語
-n_ja_mixed=$(count_matches "チャンクに分け") # 点 3（英数字が混じる文）
-info "「索引」          : ${n_ja_word} 件"
-info "「文書」          : ${n_ja_other} 件"
-info "「チャンクに分け」: ${n_ja_mixed} 件"
-if [ "$n_ja_word" -ge 1 ] || [ "$n_ja_other" -ge 1 ] || [ "$n_ja_mixed" -ge 1 ]; then
-  pass "日本語でも当たる語がある（＝CJK として扱われている。ただし**全ての語では当たらない**）"
+# 🔴 `text`（multilingual）は公式イメージ v1.18.1 では日本語の分かち書きを持たず、語で当たるかは連なりの
+#    切れ目次第である（実配備チャンクの日本語 25 語のうち当たるのは 1 語。[[IADR-0331]] 実測 1）。
+#    アプリは CJK を 2-gram に割って `text_ngram` に載せ、クエリも同じ変換で引く（[[IADR-0331]] 決定 1）。
+#    ここでは **同じ語**を `text`（旧経路）と `text_ngram`（新経路）の両方で引き、対比をそのまま出す。
+#    判定は `text_ngram` の側 —— **在る語 4 つが全て 1 件以上・在らない語が 0 件**。
+printf '\n[7/7] 日本語の語が当たること（text_ngram の 2-gram。text=旧経路との対比も出す）\n'
+ja_fail=0
+for w in "索引" "本文" "チャンクに分け" "合言葉"; do
+  n_old=$(count_matches "$w")
+  n_new=$(count_ja_matches "$w")
+  info "「${w}」: text(multilingual)=${n_old} 件 / text_ngram(2-gram)=${n_new} 件"
+  [ "$n_new" -ge 1 ] || ja_fail=1
+done
+n_ja_absent=$(count_ja_matches "零細企業")
+n_ja_single=$(count_ja_matches "本")
+info "「零細企業」（在らない語・陰性対照）: text_ngram=${n_ja_absent} 件"
+info "「本」（1 文字の語）: text_ngram=${n_ja_single} 件"
+if [ "$ja_fail" = "0" ] && [ "$n_ja_absent" = "0" ]; then
+  pass "日本語の語は text_ngram で全て当たり、在らない語は 0 件（陽性・陰性の対が成立）"
 else
-  fail "日本語の語が 1 つも当たらない（このイメージの multilingual が CJK を分割していない）"
-  info "🔴 ADR と機能仕様書の §既知の限界を更新し、トークナイザの選定をやり直すこと。"
+  fail "日本語の語が text_ngram で当たらない、または在らない語が当たる（陽性=${ja_fail} / 陰性=${n_ja_absent}）"
+  info "🔴 疑う順: ①text_ngram の索引が無い（段 2） ②ペイロードの符号化が CjkBigramPayload.Encode と食い違う"
 fi
-info '🔴 上の 3 つが揃って当たることは期待していない。日本語の再現率は文書に依存する（既知の限界）。'
+if [ "$n_ja_single" -ge 1 ]; then
+  pass "1 文字の語も当たる（prefix トークナイザが 2-gram の 1 文字接頭辞を索引に持つ）"
+else
+  fail "1 文字の語が当たらない（text_ngram の tokenizer が prefix ではない疑い）"
+fi
 
 hr
 printf '結果: PASS %d / FAIL %d\n' "$PASS" "$FAIL"

@@ -37,6 +37,9 @@ builder.Services.AddSingleton<IIngestionVectorStore, QdrantIngestionVectorStore>
 
 // FR-02: 起動時に検索インデックス（Qdrant コレクション）の存在を保証する
 builder.Services.AddHostedService<QdrantBootstrapHostedService>();
+// FR-03, #1118 / [[IADR-0331]] 決定 2: 既存の点へ日本語 2-gram（`text_ngram`）を後付けする（起動後・非同期）。
+// **上のブートストラップより後に登録する**（索引を張ってから埋める。hosted service は登録順に始まる）。
+builder.Services.AddHostedService<QdrantCjkNgramBackfillHostedService>();
 
 // FR-06, ADR-0014/ADR-0015: オブジェクトストレージ（MinIO）クライアント（storage:// 本文の実取得用）。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
