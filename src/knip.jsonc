@@ -59,5 +59,12 @@
       // どこからも import されないのが正しい（ビルドを環境非依存に保つための設計。issue #126）。
       "entry": ["src/lib/api/generated/**/*.ts", "public/config.js"],
     },
+    "obsidian-plugin": {
+      // FR-20 / ADR-0037 決定 1 / IADR-0338 決定 2・3: 自作 Obsidian プラグイン。package.json に `main` は
+      // 無く（Obsidian は manifest.json と main.js を読む）、入口は esbuild の entryPoints
+      // （src/main.ts = プラグイン本体・src/cli/pull.ts = Node ハーネス）である。knip は esbuild.config.js の
+      // 引数まで解釈しないため名指しする。esbuild.config.js 自身も `pnpm run build` から起動される入口。
+      "entry": ["src/main.ts", "src/cli/pull.ts", "esbuild.config.js"],
+    },
   },
 }

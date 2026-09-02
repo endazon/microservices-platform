@@ -1,5 +1,6 @@
 using System.Globalization;
 using Knowledge.Contracts.Dtos;
+using Knowledge.Contracts.Indexing;
 using Platform.Shared.Contracts.Dtos;
 using Grpc.Core;
 using Qdrant.Client;
@@ -118,13 +119,10 @@ public class QdrantVectorStore(
         if (string.IsNullOrWhiteSpace(query))
             return [];
 
-        var conditions = new List<Condition>
-        {
-            new()
-            {
-                Field = new FieldCondition { Key = FullTextKey, Match = new Match { Text = query } }
-            }
-        };
+        var conditions = BuildFullTextConditions(query);
+        if (conditions.Count == 0)
+            return [];
+
         // FR-05: ABAC 属性フィルタを全文検索にも適用（権限外文書を候補から除外）
         conditions.AddRange(BuildAttributeConditions(filters));
 
@@ -155,6 +153,43 @@ public class QdrantVectorStore(
                 _collection);
             return [];
         }
+    }
+
+    // FR-03, #1118, [[IADR-0339]] 決定 1: クエリを 2 系統に割る。
+    //
+    //   - CJK 以外（識別子・型番・略語・英単語）→ `text`（`multilingual`）。**#1117 のままで、落とさない。**
+    //   - CJK（日本語）→ `text_ngram`（アプリ側 2-gram。取り込み側と同じ `CjkBigramPayload.Encode`）。
+    //
+    // 🔴 `multilingual` は公式イメージ v1.18.1 では日本語の分かち書きを持たない（実測: 実配備チャンクの
+    // 日本語 25 語のうち当たるのは 1 語）。日本語のクエリを `text` へそのまま投げてもほぼ当たらない。
+    //
+    // 両方が非空なら **両方 `must`**（「識別子も日本語も含む」チャンク）。Qdrant の全文 Match は
+    // トークン集合の包含なので、2-gram を全部含む＝その並びを含む、に近い意味論になる。
+    internal static List<Condition> BuildFullTextConditions(string query)
+    {
+        var (nonCjk, ngram) = CjkBigramPayload.SplitQuery(query);
+        var conditions = new List<Condition>();
+        if (nonCjk.Length > 0)
+        {
+            conditions.Add(new Condition
+            {
+                Field = new FieldCondition { Key = FullTextKey, Match = new Match { Text = nonCjk } }
+            });
+        }
+
+        if (ngram.Length > 0)
+        {
+            conditions.Add(new Condition
+            {
+                Field = new FieldCondition
+                {
+                    Key = CjkBigramPayload.PayloadKey,
+                    Match = new Match { Text = ngram }
+                }
+            });
+        }
+
+        return conditions;
     }
 
     // FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会（計画 ADR-0043 / [[IADR-0151]] 決定 1・2）。
