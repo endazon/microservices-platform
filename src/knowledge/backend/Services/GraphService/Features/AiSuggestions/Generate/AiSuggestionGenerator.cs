@@ -4,7 +4,7 @@ using GraphService.Domain.Ports;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Contracts.Dtos;
 
-namespace GraphService.Features.AiSuggestions;
+namespace GraphService.Features.AiSuggestions.Generate;
 
 // FR-18, UC-10, ADR-0034 決定 5, ADR-0051 決定 1〜4, ADR-0033 決定 7, IADR-0266 (#915):
 // **AI 提案（リンク候補・タグ候補）の生成。**
