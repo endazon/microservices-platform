@@ -3,15 +3,15 @@ title: 技術要件書
 type: tech-requirements
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-30
+updated: 2026-09-03
 author: claude
 ---
 <!-- trace:
 ids: [FR-14]
-adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041, ADR-0065]
-iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282]
-specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260828_arch-foundation_eight-element-materialization]
-issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
+adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041, ADR-0065, ADR-0068]
+iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282, IADR-0319, IADR-0334]
+specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260828_arch-foundation_eight-element-materialization, 20260903_issue-1179_slice-split-status-correction]
+issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, #1062, #1093, #1179, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
 -->
 
 # 技術要件書
@@ -139,8 +139,15 @@ src/<unit>/backend/Services/<Name>Service/
 （`src/<Name>.<Api|Worker>/Foundation/ ・ Composable/`）が実態であり、新規コードも現行配置で書く」と
 書いていたが、**14 サービス全件が新配置へ移送済み**であり `Services/<Name>/src/` は 1 つも残っていない。
 **新規コードは新配置（サービス直下の単一プロジェクト＋ `Features/` `Domain/` `Infrastructure/` `Common/` `Tests/`）で書く。**
-なお**操作単位のスライス分割（`Features/<集約>/<操作>/` の 3 分割）はまだ行っていない** ——
-器の移送までが移送波の射程であり、端点は集約フォルダ直下に 1 枚のまま置かれている。
+🔴 **［2026-09-03 追記］操作単位のスライス分割（`Features/<集約>/<操作>/`）は完了した。**
+従前ここは「スライス分割はまだ行っていない —— 端点は集約フォルダ直下に 1 枚のまま置かれている」と
+書いていたが、**端点は全件が操作フォルダへ降りており、集約フォルダ直下に端点は 1 つも残っていない**。
+**集約フォルダ直下に残るのは、複数の操作が使うものだけ**である —— 各操作の `Map` を束ねる**登録表**と、
+DTO 束・ストア・ポート・ホステッドサービス・共有ヘルパ。**これらは「降ろし残し」ではなく、
+「使う操作を数えた結果として集約の側に属する」と裁定されたもの**であり、操作フォルダへ複写しない
+（複写すると片方だけ直したときに黙ってズレる）。
+**ただし完了したのは端点の段であって、`Command` / `Handler` までの分割は一部にとどまる** ——
+太いエンドポイントのハンドラ化・値オブジェクト化・ドメインイベント導入は引き続き別作業である。
 
 **`Tests` は 1 プロジェクトである**（計画 12_backend-application-stack（計画リポ）
 §規範性・粒度・置き場。利用者裁定 2026-08-04）。プロジェクトを分けるとビルド時間と
