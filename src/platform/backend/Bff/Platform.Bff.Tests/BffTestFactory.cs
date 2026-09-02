@@ -51,7 +51,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public bool FeedbackRequiresAuthorization { get; set; }
     public bool DashboardReturnsNullBody { get; set; }
 
-    // FR-10, SC-10, IADR-0336 (#1103): 受け口 `POST /dashboard/events` に届いた利用状況イベント。
+    // FR-10, SC-10, IADR-0343 (#1103): 受け口 `POST /dashboard/events` に届いた利用状況イベント。
     // **発火側が本番コードに 1 本も無かった**ため、届いたことを観測できる場所がここに要る。
     public sealed record RecordedUsageEvent(string? EventType, string? Query, string? Authorization);
 
@@ -563,7 +563,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            // FR-10, SC-10, IADR-0336 (#1103): 利用状況イベントの受け口。**まず記録してから応答する**
+            // FR-10, SC-10, IADR-0343 (#1103): 利用状況イベントの受け口。**まず記録してから応答する**
             // —— 非 2xx・到達不能を再現するときも「発火はした」ことを観測できるようにするためである。
             if (request.RequestUri?.AbsolutePath == "/dashboard/events")
             {

@@ -3,7 +3,7 @@ using System.Threading.Channels;
 
 namespace Knowledge.Bff.Endpoints.Usage;
 
-// FR-10, SC-10, [[IADR-0336]] (#1103): 利用状況イベント 1 件ぶんの送出指示。
+// FR-10, SC-10, [[IADR-0343]] (#1103): 利用状況イベント 1 件ぶんの送出指示。
 //
 // 🔴 **HttpContext を持ち回らない。** 送出は要求の応答が終わったあとに別のスレッドで走るため、
 // そのときには HttpContext は破棄され得る。必要な値（種別・検索語・資格情報）を**文字列として
@@ -13,7 +13,7 @@ namespace Knowledge.Bff.Endpoints.Usage;
 // **`answer` では null を渡す** —— 捨てられる値を経路とログに晒す理由が無い（決定 5）。
 public sealed record UsageEventSignal(string EventType, string? Query, string? Authorization);
 
-// FR-10, SC-10, [[IADR-0336]] 決定 3 (#1103): 発火の口。**同期・O(1)・例外を投げない。**
+// FR-10, SC-10, [[IADR-0343]] 決定 3 (#1103): 発火の口。**同期・O(1)・例外を投げない。**
 //
 // 呼び出し元（検索・回答の各エンドポイント）は本処理の成功後にこれを 1 回呼ぶだけであり、
 // 送出の往復を待たない —— NFR の検索 p95 1.5s に計測の往復を載せないためである。
@@ -22,7 +22,7 @@ public interface IUsageEventReporter
     void Report(UsageEventSignal signal);
 }
 
-// FR-10, SC-10, [[IADR-0336]] 決定 3: 送出待ちの有界列。Reporter（書き手）と Dispatcher（読み手）が
+// FR-10, SC-10, [[IADR-0343]] 決定 3: 送出待ちの有界列。Reporter（書き手）と Dispatcher（読み手）が
 // 共有するため singleton で持つ。
 //
 // ★ **`FullMode` は `Wait` だが `TryWrite` しか使わない。** `DropWrite` にすると溢れても
@@ -45,7 +45,7 @@ public sealed class UsageEventQueue
     public ChannelReader<UsageEventSignal> Reader => _channel.Reader;
 }
 
-// FR-10, SC-10, [[IADR-0336]] 決定 3・4 (#1103): 発火の実装。列へ載せるだけで送出はしない。
+// FR-10, SC-10, [[IADR-0343]] 決定 3・4 (#1103): 発火の実装。列へ載せるだけで送出はしない。
 public sealed class UsageEventReporter(
     UsageEventQueue queue,
     UsageEventMetrics metrics,

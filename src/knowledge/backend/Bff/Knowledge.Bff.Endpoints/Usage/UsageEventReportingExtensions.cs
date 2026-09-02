@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Knowledge.Bff.Endpoints.Usage;
 
-// FR-10, SC-10, [[IADR-0336]] (#1103): 利用状況イベントの発火側の配線。
+// FR-10, SC-10, [[IADR-0343]] (#1103): 利用状況イベントの発火側の配線。
 //
 // **BFF ホスト（Platform.Bff）から 1 行で呼ぶ。** 名前付きクライアント `DashboardService` は
 // ホスト側に既に在る（`/bff/dashboard/summary` の集約が使うもの）ので、ここでは作らない。

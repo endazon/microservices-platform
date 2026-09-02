@@ -1,5 +1,5 @@
 ---
-title: IADR-0336 利用状況イベントの発火は BFF に置き、HTTP で有界の列を介して送る —— 検索語の秘匿は集計側の裁定に委ねる
+title: IADR-0343 利用状況イベントの発火は BFF に置き、HTTP で有界の列を介して送る —— 検索語の秘匿は集計側の裁定に委ねる
 type: impl-adr
 status: Accepted
 related_ids:
@@ -31,7 +31,7 @@ plan_refs:
   - "07_adr/ADR-0044_llm-usage-metrics-and-pricing-table.md 決定 1（利用者識別子を計測の属性にしない）"
 ---
 
-# IADR-0336: 利用状況イベントの生産者
+# IADR-0343: 利用状況イベントの生産者
 
 - 状態: Accepted
 - 日付: 2026-09-02

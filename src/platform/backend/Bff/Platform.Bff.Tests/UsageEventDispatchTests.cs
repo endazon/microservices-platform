@@ -5,7 +5,7 @@ using System.Net.Http.Json;
 
 namespace Platform.Bff.Tests;
 
-// FR-10, SC-10, ADR-0006, IADR-0336 (#1103): 利用状況イベント（`POST /dashboard/events`）の**発火側**。
+// FR-10, SC-10, ADR-0006, IADR-0343 (#1103): 利用状況イベント（`POST /dashboard/events`）の**発火側**。
 //
 // 🔴 受け口・永続化・集計・画面はすべて在ったが、**投入する製品コードが 1 本も無かった**ため
 // SC-10 の利用状況・検索傾向は恒久的に 0 だった。**「0 件」と「一度も測っていない」は
@@ -41,7 +41,7 @@ public class UsageEventDispatchTests(BffTestFactory factory) : IClassFixture<Bff
     }
 
     // ★ 発火（回答）＋ **最小フィールド**。受け口は種別が `answer` のとき検索語を捨てるので、
-    // 質問文（利用者の自由文）を経路と相手側のログに晒さない（IADR-0336 決定 5）。
+    // 質問文（利用者の自由文）を経路と相手側のログに晒さない（IADR-0343 決定 5）。
     [Fact]
     public async Task PostAsk_WhenSucceeded_ReportsAnswerUsageEventWithoutQuestionText()
     {
@@ -136,7 +136,7 @@ public class UsageEventDispatchTests(BffTestFactory factory) : IClassFixture<Bff
     }
 
     // ★ fail-open（受け口へ到達できない）。列挙した例外型だけを握る作りだと漏れるので、
-    // **停止要求以外はすべて握る**（IADR-0336 決定 4）。
+    // **停止要求以外はすべて握る**（IADR-0343 決定 4）。
     [Fact]
     public async Task PostSearch_WhenUsageEndpointUnreachable_SearchStillSucceeds()
     {

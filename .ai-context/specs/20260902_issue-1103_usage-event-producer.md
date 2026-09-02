@@ -20,7 +20,7 @@ related_ids:
   - ADR-0044
   - IADR-0215
   - IADR-0299
-  - IADR-0336
+  - IADR-0343
 author: claude
 created: 2026-09-02
 updated: 2026-09-02
@@ -84,7 +84,7 @@ src/knowledge/backend/Services/AiAnalysisService/Features/Analysis/{Ask,Analyze,
 | 5 | `POST /bff/attribute-values` | — | **しない** | 対象範囲フィルタの**候補一覧**であり検索ではない（`/search/attribute-values` は値集合の照会）。数えると検索件数が画面操作で膨らむ |
 | 6 | `RagOrchestrator` → `POST /search` | — | **しない** | 2〜4 の回答生成が内部で行う retrieval である。数えると 1 回の質問が `answer` 1 件 ＋ `search` 1 件になり、**利用状況の 2 系列が二重計上で歪む** |
 | 7 | `RetrievalService` `POST /search`（後段そのもの） | — | **しない** | ここへ置くと 6 と区別できない（呼び出し元が RAG か利用者かを後段は知らない）。加えて BFF を迂回した呼び出しには利用者の主体が無い |
-| 8 | `AiAnalysisService` `POST /analysis/{ask,ask/stream,analyze}`（後段そのもの） | — | **しない** | 発火点を BFF に一本化する（IADR-0336 決定 1）。後段にも置くと 2〜4 と二重に数える |
+| 8 | `AiAnalysisService` `POST /analysis/{ask,ask/stream,analyze}`（後段そのもの） | — | **しない** | 発火点を BFF に一本化する（IADR-0343 決定 1）。後段にも置くと 2〜4 と二重に数える |
 | 9 | MCP ツール `retrieval.search_documents` | — | **しない**（不能） | **申告だけで実体が無い。** 宣言先 `/internal/mcp/search_documents` を実装したコードは 0 件である。陽性対照として、同じ走査で `/internal/mcp-tools`（申告の口）は 3 サービスに実装が見つかる。加えて MCP はサービスアカウント実行であり、`RequireAuthorization()` な受け口に載せる利用者主体を持たない |
 | 10 | SPA（`src/*/frontend`） | — | **しない** | issue #1103 が明示的に除外（利用者が計測を止められ数が信頼できない） |
 | 11 | 文書閲覧（`/bff/documents/*`）・グラフ（`/bff/graph/*`）等 | — | **しない** | 受け口の値域が `search` / `answer` の 2 値で、閲覧の種別が無い。**種別を増やすのは契約の変更であり計画の裁定が要る** |
@@ -100,14 +100,14 @@ src/knowledge/backend/Services/AiAnalysisService/Features/Analysis/{Ask,Analyze,
 利用者主体は受け口が `HttpContext.User.Identity.Name` から取る。BFF は利用者の `Authorization` を
 既に後段へ伝播しており（検索・回答とも）、**同じヘッダをそのまま受け口へ運べば主体が乗る**。
 後段（RetrievalService / AiAnalysisService）へ置く案は、母集合 6・7・8 のとおり二重計上と
-主体の運搬という 2 つの問題を新たに作る。詳細と却下理由は IADR-0336。
+主体の運搬という 2 つの問題を新たに作る。詳細と却下理由は IADR-0343。
 
 ### 送出方式 —— HTTP（名前付き `HttpClient`）
 
 受け口は `POST /dashboard/events`（HTTP・利用者 JWT 必須）である。BFF から後段への呼び出しは
 **すべて `IHttpClientFactory` の名前付きクライアント**であり、Refit はこの層で使われていない
 （`DashboardService` クライアントは `Platform.Bff/Program.cs` に既に在る）。既存の形に揃える。
-Wolverine を採らない理由は IADR-0336 決定 2（要旨: BFF も DashboardService も Wolverine ホストではなく、
+Wolverine を採らない理由は IADR-0343 決定 2（要旨: BFF も DashboardService も Wolverine ホストではなく、
 ブローカ経由にすると受け口が**自己申告の userId** を信じることになり認証が外れる）。
 
 ### 同期性 —— 有界キュー ＋ 常駐ドレイン（要求の応答経路に載せない）

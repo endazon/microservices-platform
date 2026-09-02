@@ -3,7 +3,7 @@ using System.Diagnostics.Metrics;
 
 namespace Knowledge.Bff.Endpoints.Usage;
 
-// FR-10, SC-10, ADR-0006, ADR-0044 決定 1, [[IADR-0336]] 決定 4 (#1103):
+// FR-10, SC-10, ADR-0006, ADR-0044 決定 1, [[IADR-0343]] 決定 4 (#1103):
 // **利用状況イベントの送出の結末を計器に載せる。**
 //
 // ★ 送出は fail-open（計測の失敗で検索・回答を落とさない）である。**落ちたことがどこにも

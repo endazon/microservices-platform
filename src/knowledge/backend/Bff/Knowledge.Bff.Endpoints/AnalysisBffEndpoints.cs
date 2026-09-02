@@ -43,7 +43,7 @@ public static class AnalysisBffEndpoints
             var answer = await resp.Content.ReadFromJsonAsync<AiAnswerDto>(ct);
             if (answer is null) return Results.StatusCode(StatusCodes.Status502BadGateway);
 
-            // FR-10, SC-10, [[IADR-0336]] (#1103): **利用状況イベント（answer）を発火する。**
+            // FR-10, SC-10, [[IADR-0343]] (#1103): **利用状況イベント（answer）を発火する。**
             // 回答が実際に生成できたときだけ数える（後段の非 2xx・本文 null は上で返っている）。
             // 🔴 **質問文は送らない** —— 受け口は `answer` の `query` を捨てるので、捨てられる
             // 自由文を経路とログに晒す理由が無い（決定 5）。
@@ -74,7 +74,7 @@ public static class AnalysisBffEndpoints
             var answer = await resp.Content.ReadFromJsonAsync<AiAnswerDto>(ct);
             if (answer is null) return Results.StatusCode(StatusCodes.Status502BadGateway);
 
-            // FR-10, SC-10, [[IADR-0336]] (#1103): **分析も `answer` として数える。**
+            // FR-10, SC-10, [[IADR-0343]] (#1103): **分析も `answer` として数える。**
             // 契約の `answer` は「AI 回答生成」であって SC-01 の質問に限られていない ——
             // 本経路も LLM が根拠つきの `AiAnswerDto` を生成する。落とすと総回答数が
             // 実際の生成回数と食い違う（作業仕様書 §母集合 4）。
@@ -124,7 +124,7 @@ public static class AnalysisBffEndpoints
                     return;
                 }
 
-                // FR-10, SC-10, [[IADR-0336]] (#1103): **上流が 2xx を返した時点で `answer` を数える。**
+                // FR-10, SC-10, [[IADR-0343]] (#1103): **上流が 2xx を返した時点で `answer` を数える。**
                 // SSE は 200 のヘッダを先に返すため「回答が生成された」と言えるのはここである
                 // （中継の途中で切れたか最後まで届いたかは利用者側の事情であり、回答の生成回数は変わらない）。
                 ReportAnswer(usage, http);
@@ -144,7 +144,7 @@ public static class AnalysisBffEndpoints
         return app;
     }
 
-    // FR-10, SC-10, [[IADR-0336]] 決定 5 (#1103): 回答生成 3 経路が共有する発火。
+    // FR-10, SC-10, [[IADR-0343]] 決定 5 (#1103): 回答生成 3 経路が共有する発火。
     //
     // 🔴 **`query` を渡さない。** 受け口は種別が `answer` のとき検索語を保持しないので、
     // 質問文（利用者の自由文）を送っても捨てられるだけである。捨てられる自由文を

@@ -6,10 +6,10 @@ using System.Net.Http.Json;
 
 namespace Knowledge.Bff.Endpoints.Usage;
 
-// FR-10, SC-10, ADR-0002, ADR-0006, [[IADR-0336]] 決定 2・3・4 (#1103):
+// FR-10, SC-10, ADR-0002, ADR-0006, [[IADR-0343]] 決定 2・3・4 (#1103):
 // 送出待ちの列を排出し、DashboardService の受け口へ POST する常駐処理。
 //
-// **送出は HTTP である。メッセージングは選べない**（[[IADR-0336]] 決定 2）——
+// **送出は HTTP である。メッセージングは選べない**（[[IADR-0343]] 決定 2）——
 // 受け口 `POST /dashboard/events` は `RequireAuthorization()` を持ち、**利用者主体を
 // `HttpContext.User` から解決する**。ブローカ経由にすると受け手は本文の自己申告 userId を
 // 信じるほかなく、認証済みの主体が自己申告に置き換わる（認可の後退）。

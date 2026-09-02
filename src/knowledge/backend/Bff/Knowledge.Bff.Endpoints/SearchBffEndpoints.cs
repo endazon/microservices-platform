@@ -77,7 +77,7 @@ public static class SearchBffEndpoints
 
                 var result = await searchResp.Content.ReadFromJsonAsync<SearchResponse>(ct);
 
-                // FR-10, SC-10, [[IADR-0336]] (#1103): **利用状況イベント（search）を発火する。**
+                // FR-10, SC-10, [[IADR-0343]] (#1103): **利用状況イベント（search）を発火する。**
                 // ここまで来たときだけ数える —— 空クエリ・許可スコープ無し・後段の非 2xx は
                 // 上で早期に返っており、**実行されていない検索を利用状況に数えない**。
                 //
