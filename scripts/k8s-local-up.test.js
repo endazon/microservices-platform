@@ -2454,6 +2454,93 @@ ok('#782: up は「Traefik を明け渡す → Gateway を立てる」の順で�
   assert.ok(uninstallAt < restoreAt, '切り戻しで Traefik の復旧が Gateway の撤去より先にある（同上）');
 });
 
+// ---------------------------------------------------------------------------
+// FR-20 / #1154 / IADR-0348: Obsidian プラグインの同期プロトコルをエッジから外へ出す 1 本。
+//
+// ここで固定するのは **経路が効くための前提**と**露出面が広がっていないこと**である。実クラスタでの
+// 200 / 401 と「sync 以外は API へ届かない」ことは IADR-0348 が実測で持つ
+// （この検査は「壊すと落ちる門」であって証拠ではない）。
+// ---------------------------------------------------------------------------
+const CHART_EDGE = readAt(REPO_ROOT, 'deploy', 'helm', 'microservices-platform', 'templates', 'edge.yaml');
+const CHART_NETPOL = readAt(
+  REPO_ROOT, 'deploy', 'helm', 'microservices-platform', 'templates', 'networkpolicy.yaml',
+);
+
+/** コメント行を落とす（ルートの有無をコメントの散文で誤判定しないため）。 */
+const stripYamlComments = (src) =>
+  src.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+
+const EDGE_ISTIO_VS_APP_CODE = stripYamlComments(EDGE_ISTIO_VS_APP);
+const CHART_EDGE_CODE = stripYamlComments(CHART_EDGE);
+
+ok('#1154: 同期プロトコルの経路が overlay と本番チャートの両方にあり、document-service へ振る', () => {
+  assert.match(
+    EDGE_ISTIO_VS_APP_CODE,
+    /prefix:\s*\/private-notes\/sync\/[\s\S]{0,200}host:\s*document-service\.microservices-platform\.svc\.cluster\.local/,
+    'ローカル overlay に /private-notes/sync/ → document-service の route が無い（配備済みクラスタへプラグインが到達できない。#1154）',
+  );
+  assert.match(
+    CHART_EDGE_CODE,
+    /prefix:\s*\/private-notes\/sync\/[\s\S]{0,200}\.Values\.edge\.privateNotesSync\.service/,
+    '本番チャートに /private-notes/sync/ → edge.privateNotesSync.service の route が無い',
+  );
+  // rewrite を張らない（公開パス ＝ 契約パス。/bff と同じ規律）。
+  for (const [name, src] of [['overlay', EDGE_ISTIO_VS_APP_CODE], ['chart', CHART_EDGE_CODE]]) {
+    assert.ok(!/\brewrite:/.test(src), `${name} が rewrite を張っている（公開パスと契約パスがずれる）`);
+  }
+});
+
+ok('#1154: 同期の route は catch-all（prefix: /）より前にある（Istio のルートは先勝ち）', () => {
+  for (const [name, src] of [['overlay', EDGE_ISTIO_VS_APP_CODE], ['chart', CHART_EDGE_CODE]]) {
+    const syncAt = src.indexOf('prefix: /private-notes/sync/');
+    // catch-all は flow 記法（`- uri: { prefix: / }`）で書かれている。block 記法も拾えるようにする。
+    const catchAllAt = src.search(/prefix:\s*\/\s*(\}|$)/m);
+    assert.ok(syncAt > 0, `${name} に同期の route が無い`);
+    assert.ok(catchAllAt > 0, `${name} に catch-all が無い`);
+    assert.ok(
+      syncAt < catchAllAt,
+      `${name} の同期 route が catch-all より後ろにある（SPA に吸われて API に届かない）`,
+    );
+  }
+});
+
+ok('#1154: 露出面は /private-notes/sync/ だけ（sync 以外の JWT 経路と /documents を外へ出していない）', () => {
+  // 陰性の静的対照。実クラスタの挙動は実測が持つが、**マニフェストに route を書いた瞬間に落ちる**門を置く。
+  for (const [name, src] of [['overlay', EDGE_ISTIO_VS_APP_CODE], ['chart', CHART_EDGE_CODE]]) {
+    for (const leaked of ['/private-notes/devices', '/private-notes/quotas', '/documents']) {
+      assert.ok(
+        !src.includes(leaked),
+        `${name} が ${leaked} をエッジへ出している（08_data-egress-policy 許容条件 2 のスコープ限定が経路で破れる）`,
+      );
+    }
+    // 末尾スラッシュを落とすと /private-notes 全体（一覧・端末登録）が外へ出る。
+    assert.ok(
+      !/(prefix|exact):\s*\/private-notes\s*(\}|$)/m.test(src),
+      `${name} が /private-notes そのものを route している（sync 以外まで外へ出る）`,
+    );
+  }
+});
+
+ok('#1154: 本番像の既定は opt-in（false）で、NetworkPolicy の穴も同じ条件でしか開かない', () => {
+  const at = CHART_VALUES.indexOf('privateNotesSync:');
+  assert.ok(at !== -1, 'values.yaml に edge.privateNotesSync が無い');
+  assert.match(
+    CHART_VALUES.slice(at, at + 200),
+    /enabled:\s*false/,
+    '既定が false でない（内部サービスの端点を既定で外へ出している。fail-safe は「気付ける方向」へ倒す）',
+  );
+  assert.match(
+    stripYamlComments(CHART_NETPOL),
+    /if\s+\.Values\.edge\.privateNotesSync\.enabled[\s\S]{0,900}name:\s*allow-edge-ingress-to-document-service/,
+    'NetworkPolicy の穴が edge.privateNotesSync.enabled で条件付けられていない',
+  );
+  assert.match(
+    CHART_NETPOL,
+    /app:\s*\{\{\s*\.Values\.edge\.privateNotesSync\.service\s*\}\}/,
+    'NetworkPolicy の podSelector が route の行き先と同じ単一情報源から描画されていない（ドリフトする）',
+  );
+});
+
 ok('#782: 切り戻しは mTLS を先に緩める（入口だけ戻して 502 のままにしない）', () => {
   const permissiveAt = ISTIO_EDGE_DOWN.indexOf('"PERMISSIVE"');
   const restoreAt = ISTIO_EDGE_DOWN.indexOf('kubectl apply -k deploy/local/edge');

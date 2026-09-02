@@ -3,15 +3,15 @@ title: セキュリティ仕様書
 type: security-spec
 status: in-progress
 created: 2026-07-02
-updated: 2026-09-02
+updated: 2026-09-03
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-20, NFR-11, SC-05, SC-11, SC-17, SC-20, UC-07]
-adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0026, ADR-0037, ADR-0045]
-iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338]
-specs: [20260902_issue-1098_obsidian-plugin-pull-stage1]
-issues: [#55, #100, #198, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, AST#18, AST#24, planning#383]
+adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0037, ADR-0045]
+iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348]
+specs: [20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1154_private-notes-sync-edge-route]
+issues: [#55, #100, #198, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1154, AST#18, AST#24, planning#383]
 -->
 
 # セキュリティ仕様書
@@ -117,6 +117,16 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 - `docker-compose.yml`（ローカル開発）は BFF=エッジのみ host 公開、他は `expose` を維持。
   回帰は `NetworkIsolationTests` で担保する。
 - 外部からの入口は **BFF（エッジ）に一本化**し、BFF が Keycloak JWT で認証する。
+  - **［2026-09-03 追記］例外は個人資料の同期プロトコル 1 前置（`/private-notes/sync/`）だけである。**
+    従前の「一本化」は本追記で例外つきに置き換わる。資格情報がブラウザセッション（HttpOnly Cookie ＋
+    CSRF ヘッダ）と**別系統の不透明トークン**であり、BFF に載せると「BFF は Cookie セッションだけ」という
+    境界が崩れるため、エッジから文書サービスへ直接通す。エッジで JWT 検証はしない（**端点が自前で
+    ハッシュ照合し、欠落・不正・期限切れ・失効をすべて 401 にする** deny-by-default）。
+    外へ出るのはこの 1 前置だけで、個人資料の一覧・端末登録・上限管理・組織文書はエッジから届かない
+    （画面配信へ落ちるので **404 ではなく画面**が返る。API に届いていないことは、同じ端点を直に叩くと
+    401 になるのと**対で**確かめた）。
+    本番像は**既定で出さない opt-in**（`edge.privateNotesSync.enabled`）で、有効時のみ NetworkPolicy が
+    エッジ → 文書サービスの穴を当該ポートに限って開ける。
 
 **恒久像への残課題**: 全 API の OIDC/JWT 認証（内部 API でのトークン検証）は継続課題として別 Issue で追跡する
 （STRICT mTLS の実装 ADR §4）。RetrievalService `/search` の ABAC 取り扱いは #55 で別管理。
@@ -252,7 +262,7 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
 
 | 脅威 | 影響 | 対策 |
 | --- | --- | --- |
-| 内部 API へのホストからの無認証到達 | 全文書メタデータ＋ABAC 属性の列挙、無認証 LLM 呼び出し | 内部サービスを host 公開しない。エッジ(BFF)で JWT 認証。回帰は `NetworkIsolationTests` で担保 |
+| 内部 API へのホストからの無認証到達 | 全文書メタデータ＋ABAC 属性の列挙、無認証 LLM 呼び出し | 内部サービスを host 公開しない。エッジ(BFF)で JWT 認証。回帰は `NetworkIsolationTests` で担保。**［2026-09-03 追記］唯一の例外は個人資料の同期プロトコル 1 前置**で、公開するのはサービスではなく端点群である（端点が同期トークンを自前検証し、所有者の個人資料に構造的に閉じる）。露出範囲は末尾スラッシュ込みの前置 1 本に閉じ、静的検査（`k8s-local-up.test.js`）と、実測の**対**（エッジ経由は画面配信へ落ちる／同じ端点を直に叩くと 401）で固定した |
 | 同一ネットワーク内からの内部 API 無認証到達（残余リスク） | ネットワーク内の侵害があれば内部 API へ到達可能 | **Istio STRICT mTLS 配備済み**（サービスメッシュの計画 ADR は Accepted・#100）でサイドカー未注入クライアントの平文到達を拒否し相互認証。k8s NetworkPolicy を多層防御として併用。残課題は内部 API での OIDC/JWT 検証（別 Issue で追跡） |
 | NetworkPolicy 退行・誤設定による Wiki.js への直接到達 | 機密文書が Wiki.js 上で無条件閲覧可能に | ABAC ゲートウェイ＋ネットワーク分離に加え、機密区分由来の `isPrivate`（public 以外は非公開）を多層防御として付与。稼働 Wiki.js での分離検証は PoC フォロー |
 | 削除・非公開化された文書が Wiki.js に残存 | 撤回済み社内文書が外部システム（Wiki.js）に残り続ける | **削除・アーカイブ同期経路を実装済み**。`DocumentDeleted` 新設と `status=archived` 拡張で下流 WikiService が Wiki.js ページの撤去・非公開化・メタデータ Archived 化を伝播する。加えて `isPrivate`（public 以外は非公開）を多層防御として維持 |
