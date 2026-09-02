@@ -82,7 +82,7 @@ builder.Services.AddHttpClient("McpServer", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:McpServer"]
         ?? "http://mcp-service:8080"));
 
-// FR-22, UC-11, ADR-0037, IADR-0215 / IADR-0347 (#600): 利用者本人へのアプリ内通知の集約用。
+// FR-22, UC-11, ADR-0037, IADR-0215 / IADR-0346 (#600): 利用者本人へのアプリ内通知の集約用。
 // 🔴 **コード既定を :8080 にする**（後発サービスの規約。#342 の上書き漏れで不達になる面を最初から作らない）。
 // ホスト名 `notification-service` は送出側 DocumentService のコード既定・compose のサービス名・
 // helm の `{{ $name }}-service` と文字列一致する（IADR-0288）。

@@ -5,7 +5,7 @@ using System.Net.Http.Headers;
 
 namespace Platform.Bff.Tests;
 
-// FR-22, UC-11, ADR-0037, IADR-0215 / IADR-0267 / IADR-0347, #600:
+// FR-22, UC-11, ADR-0037, IADR-0215 / IADR-0267 / IADR-0346, #600:
 // `/bff/notifications*` が NotificationService へ中継することを検証する。
 //
 // 固定する性質は 5 つで、**どれも「拒否の側だけ」では測れない**ので陽性対照と対で置く。
@@ -96,7 +96,7 @@ public class BffNotificationEndpointTests : IClassFixture<BffTestFactory>
     }
 
     // **指定が無いときは何も載せない**（既定値を BFF が埋めない）。既定 50 / 上限 100 の
-    // クランプは後段の `NotificationOptions` が唯一の情報源である（IADR-0347 決定 4）。
+    // クランプは後段の `NotificationOptions` が唯一の情報源である（IADR-0346 決定 4）。
     [Fact]
     public async Task List_WithoutFilters_DoesNotInventDefaults()
     {

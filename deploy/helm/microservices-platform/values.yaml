@@ -642,7 +642,7 @@ services:
       # 🔴 **下記の Services__* への上書きは不要である**（#600 で /bff/notifications* が入り BFF は
       # 通知の下流を持つようになったが、named client のコード既定が既に :8080 のため上書きが要らない）。
       # **readiness の UriHealthCheck へは足さない** —— 通知は Should であり、後段の不調で
-      # BFF 全体を not-ready にするのは fail-safe の後退である（IADR-0347 決定 6）。
+      # BFF 全体を not-ready にするのは fail-safe の後退である（IADR-0346 決定 6）。
       - name: Introspection__Services__notification-service
         value: "http://notification-service:8080"
       # FR-04/FR-08/FR-10, UC-01: BFF の下流集約先（Refit クライアント・readiness の UriHealthCheck）。

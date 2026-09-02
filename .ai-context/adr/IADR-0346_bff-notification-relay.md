@@ -1,5 +1,5 @@
 ---
-title: IADR-0347 BFF 通知中継は platform 同居の透過中継とし、本人絞り・クランプ・存在秘匿を後段の 1 箇所に残す
+title: IADR-0346 BFF 通知中継は platform 同居の透過中継とし、本人絞り・クランプ・存在秘匿を後段の 1 箇所に残す
 type: impl-adr
 status: Accepted
 related_ids:
@@ -27,7 +27,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md
 ---
 
-# IADR-0347: BFF 通知中継（`/bff/notifications*`）の形（#600）
+# IADR-0346: BFF 通知中継（`/bff/notifications*`）の形（#600）
 
 > 🔴 **番号は暫定である。** 起草時点の `develop` の最大は `IADR-0334` だが、**0335〜0346 は
 > 進行中の並行 PR へ割当済み**であるため 0347 を仮置きした。**マージ直前に実際の空き番号へ

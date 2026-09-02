@@ -1,6 +1,6 @@
 namespace Platform.Bff.Foundation.Endpoints;
 
-// FR-22, UC-11, ADR-0037 決定 6・17・18, ADR-0045, IADR-0215 / IADR-0267 / IADR-0347, #600:
+// FR-22, UC-11, ADR-0037 決定 6・17・18, ADR-0045, IADR-0215 / IADR-0267 / IADR-0346, #600:
 // 利用者本人へのアプリ内通知の BFF 集約。後段 `NotificationService` の `/notifications*` へ中継する。
 //
 // **前段（契約・orval 生成フック・ベル UI）と後段（サービス・発火の結線・配備）は先に入っており、

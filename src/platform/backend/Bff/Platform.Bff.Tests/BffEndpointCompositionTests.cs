@@ -76,7 +76,7 @@ public class BffEndpointCompositionTests
         // #452, FR-05, FR-09, UC-05, SC-17: 利用者アカウント管理（UserAdmin）を追加した（platform 同居。
         // 後段の AuthorizationService が platform ユニットのサービスであるため。IADR-0301 決定 1）。
         // #600, FR-22, UC-11: 利用者本人へのアプリ内通知（Notification）を追加した（platform 同居。
-        // 後段の NotificationService が platform ユニットのサービスであるため。IADR-0347 決定 1）。
+        // 後段の NotificationService が platform ユニットのサービスであるため。IADR-0346 決定 1）。
         BffEndpointComposition.Modules.Should().HaveCount(19);
     }
 

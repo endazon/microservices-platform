@@ -15,7 +15,7 @@ related_ids:
   - IADR-0273
   - IADR-0285
   - IADR-0288
-  - IADR-0347
+  - IADR-0346
 author: Claude
 created: 2026-09-02
 updated: 2026-09-02
@@ -31,12 +31,12 @@ related_specs:
   - ../adr/IADR-0215_notification-service-and-in-app-delivery.md
   - ../adr/IADR-0267_notification-service-backend-subject-scoping-and-send-rate.md
   - ../adr/IADR-0288_notification-service-deployment-and-name-collision.md
-  - ../adr/IADR-0347_bff-notification-relay.md
+  - ../adr/IADR-0346_bff-notification-relay.md
 ---
 
 # 仕様書: FR-22 BFF 通知中継（#600 最終トラック）
 
-> 🔴 **IADR-0347 の番号は暫定である**（起草時の `develop` の最大は `IADR-0334` だが 0335〜0346 は
+> 🔴 **IADR-0346 の番号は暫定である**（起草時の `develop` の最大は `IADR-0334` だが 0335〜0346 は
 > 並行 PR へ割当済み）。**マージ直前に空き番号へ付け直す。** それまで
 > `node scripts/check-adr-numbering.js` は欠番で赤になる（既知・意図的）。
 
@@ -52,7 +52,7 @@ related_specs:
 - 実装 ADR: **IADR-0215**（送出主体・実体・メール経路・送信レート・発火の検知）／
   **IADR-0267**（本人限定・送出レート。決定 5 が「BFF 端点は #600 継続」と線を引いた）／
   **IADR-0288**（配備・名前衝突）／**IADR-0251・IADR-0273**（BFF セッション / Token Handler）。
-- 本作業の判断は **IADR-0347** に置く。
+- 本作業の判断は **IADR-0346** に置く。
 
 ## 母集合の再測定（棚卸しコメントの主張を自分で引き直した）
 
@@ -135,7 +135,7 @@ Features/PrivateNotes/PrivateNoteUsage.cs                          -> StorageQuo
   - `src/platform/backend/Bff/Platform.Bff.Tests/`（スタブ 1 件＋端点テスト 1 ファイル）
   - `deploy/docker-compose.yml` / `deploy/helm/microservices-platform/values.yaml`（**「下流を持たない」注記の是正のみ**）
   - `docs/api/BFF_notifications.md` / `docs/api/BFF_bff-surface.md` / `docs/tests/FR-22_user-notifications.md`（追随）
-  - `.ai-context/adr/IADR-0347_bff-notification-relay.md`（新規）
+  - `.ai-context/adr/IADR-0346_bff-notification-relay.md`（新規）
 - **対象外**: 契約（`openapi.yaml`）・orval 生成物・画面・後段・SMTP・E2E（Playwright）。
 
 ### 並行作業との交差（着手時に再確認した）
