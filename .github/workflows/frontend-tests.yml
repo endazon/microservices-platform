@@ -11,6 +11,9 @@ on:
     paths:
       - "src/*/frontend/**"
       - "src/packages/**"
+      # FR-20 / ADR-0037 決定 1 / IADR-0331 決定 2: 自作 Obsidian プラグイン（pnpm workspace メンバ）。
+      # "src/*/frontend/**" にも "src/packages/**" にも一致しない第 3 の成果物なので名指しで足す。
+      - "src/obsidian-plugin/**"
       - "src/package.json"
       - "src/pnpm-lock.yaml"
       - "src/pnpm-workspace.yaml"
@@ -46,6 +49,9 @@ on:
     paths:
       - "src/*/frontend/**"
       - "src/packages/**"
+      # FR-20 / ADR-0037 決定 1 / IADR-0331 決定 2: 自作 Obsidian プラグイン（pnpm workspace メンバ）。
+      # "src/*/frontend/**" にも "src/packages/**" にも一致しない第 3 の成果物なので名指しで足す。
+      - "src/obsidian-plugin/**"
       - "src/package.json"
       - "src/pnpm-lock.yaml"
       - "src/pnpm-workspace.yaml"
