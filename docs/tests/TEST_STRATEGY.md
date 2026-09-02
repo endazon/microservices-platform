@@ -3,15 +3,15 @@ title: テスト戦略（退行防止テスト基盤）
 type: test-spec
 status: in-progress
 created: 2026-08-03
-updated: 2026-08-30
+updated: 2026-09-02
 author: Claude
 ---
 <!-- trace:
 ids: [SC-05, SC-06, SC-07, SC-08]
-adrs: [ADR-0027, ADR-0030]
-iadrs: [IADR-0034, IADR-0049, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0122, IADR-0123, IADR-0130, IADR-0137, IADR-0138, IADR-0195, IADR-0231, IADR-0236]
-specs: [20260803_issue-453_regression-test-foundation, 20260807_issue-571_coverage-exclude-generated, 20260821_issue-455_xunit-v3-migration, 20260822_issue-900_coverage-cross-report-dedup]
-issues: [#454, #503, #510, #568, #571, #580, #882, #899, #900, #901, planning#146, planning#160, planning#161, planning#162, planning#180]
+adrs: [ADR-0027, ADR-0030, ADR-0065, ADR-0068]
+iadrs: [IADR-0034, IADR-0049, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0122, IADR-0123, IADR-0130, IADR-0137, IADR-0138, IADR-0195, IADR-0231, IADR-0236, IADR-0282, IADR-0334]
+specs: [20260803_issue-453_regression-test-foundation, 20260831_issue-1063_tests-mirror-body-structure, 20260807_issue-571_coverage-exclude-generated, 20260821_issue-455_xunit-v3-migration, 20260822_issue-900_coverage-cross-report-dedup]
+issues: [#454, #503, #1063, #510, #568, #571, #580, #882, #899, #900, #901, planning#146, planning#160, planning#161, planning#162, planning#180]
 -->
 
 # テスト戦略 — 再実装の退行防止基盤
@@ -282,8 +282,8 @@ submodule populate 済み）である——**line 34.14%（9314/27280） / branc
 
 | 種別 | 置き場所 | 使うもの | 責務 |
 | --- | --- | --- | --- |
-| 単体（バックエンド） | `Services/<Name>/tests/<Name>.Tests/Unit`（**テストは 1 プロジェクト**。下記） | **xUnit v3**（バックエンド標準ライブラリの決定どおり。[`src/Directory.Packages.props`](../../src/Directory.Packages.props) の `xunit.runner.visualstudio` は v3 用の 3.1.5）＋ AwesomeAssertions ＋ NSubstitute | ドメイン規則・ハンドラの分岐 |
-| 統合（バックエンド） | `Services/<Name>/tests/<Name>.Tests/Integration`（同上。ユニット横断の統合は `src/<unit>/backend/Tests/<Unit>.IntegrationTests`） | Testcontainers（PostgreSQL / RabbitMQ / Redis / Qdrant）＋ Respawn ＋ `Mvc.Testing` | 実依存を伴う往復・イベント連鎖 |
+| 単体（バックエンド） | `Services/<Name>/Tests/` の**本体を鏡写しにした位置**（**テストは 1 プロジェクト**。下記） | **xUnit v3**（バックエンド標準ライブラリの決定どおり。[`src/Directory.Packages.props`](../../src/Directory.Packages.props) の `xunit.runner.visualstudio` は v3 用の 3.1.5）＋ AwesomeAssertions ＋ NSubstitute | ドメイン規則・ハンドラの分岐 |
+| 統合（バックエンド） | 同上（**種別で置き場所を分けない**。ユニット横断の統合は `src/<unit>/backend/Tests/<Unit>.IntegrationTests`） | Testcontainers（PostgreSQL / RabbitMQ / Redis / Qdrant）＋ Respawn ＋ `Mvc.Testing` | 実依存を伴う往復・イベント連鎖 |
 | 単体（フロント） | 実装と同居（`*.test.tsx`） | Vitest（jsdom）＋ Testing Library | 画面要素・状態遷移 |
 | E2E | `src/*/frontend/e2e` | Playwright | 主要導線（**統合スタックでの拡充は後続 issue**） |
 | 契約 | `scripts/contract-schema-baseline.json`（スナップショット） | [`check-contract-schema.js`](../../scripts/check-contract-schema.js)（C# ソース構文解析。外部依存ゼロ Node） | `Shared.Contracts` のイベント/API スキーマの後方互換（[#465](https://github.com/endazon/microservices-platform/issues/465) / 契約スキーマの抽出方式（C# ソース構文解析）と後方互換ゲート） |
@@ -302,8 +302,16 @@ submodule populate 済み）である——**line 34.14%（9314/27280） / branc
 この規則の対象外である。雛形は `templates/unit-template/backend/Services/SampleService/Tests`
 がこの形を示す（2026-08-28 の構成裁定で、テストのフォルダは Unit / Integration の種別区分ではなく
 **実装のスライスを鏡写しにする形**（`Tests/Features/`・`Tests/Domain/`）へ改まった。
-実サービスの `Unit/` / `Integration/` 区分は移送の波で解消済みで、追跡下に 0 件である ——
-**現況の 14 サービスは `Tests/` 直下がフラット**であり、スライス鏡写しへの整理は未着手である）。
+実サービスの `Unit/` / `Integration/` 区分は移送の波で解消済みで、追跡下に 0 件である）。
+
+**鏡写しは 14 サービス全件で済んでいる。** 鏡写しの相手は「そのテストが検証する本体の要素が
+置かれたディレクトリ」であり、`Features/` と `Domain/` に限らず `Infrastructure/<Sub>/`・
+`Common/<Sub>/`・`Domain/Ports/` も写す。段の決め方（操作を数える）と、`Tests/` 直下に残すもの
+（テスト専用の器・`Program.cs` 由来の検証・主題が `Platform.Shared.*` にあるもの）の規則は
+実装ADR が持つ。名前空間はフォルダへ追随させる（`<Name>.Tests.<移送先>`）。
+
+> 🔴 **単体か結合かはフォルダで表さない。** テストの書き方（命名・`Assert.SkipUnless` による
+> 環境依存の明示）で表す。**種別でフォルダを割ると 1 つのユースケースのテストが 2 箇所に散る。**
 
 ### xUnit は v3 で書く
 

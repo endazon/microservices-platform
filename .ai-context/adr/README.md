@@ -407,5 +407,5 @@
 | [IADR-0331](./IADR-0331_planning-submodule-residual-references.md) | **撤去済み planning submodule の残存記述は「凍結記録を残し、それを引く live 側を直す」で是正する**（#1092 / ADR-0048 決定 2）。🔴 `submodules: recursive` を避ける理由は消さずに置き換える（`src/*` 限定・非再帰は今も生きている）。常に skip していたキット同期バイト一致試験は撤去する。 | Accepted |
 | [IADR-0332](./IADR-0332_keycloak-smtp-externalsecret-wiring.md) | **`keycloak-smtp` の ExternalSecret を起動器で常時 apply し `eso_wait` でも待つ**（#1102 / SC-15・ADR-0045 決定 6）。待つ理由は rollout ではなく「案内と runbook が `up` 直後に打てること」。🔴 再発防止は**向きを逆にし**列挙を持たない不変条件で置いた。 | Accepted |
 | [IADR-0333](./IADR-0333_non-rendering-module-placement.md) | **描画しないモジュールの置き場は「外へ何を渡すか」で決める**（#1131）。ライブラリを外へ渡すなら `lib/`、自前の関数なら `utils/`。🔴 「内部で使うか」を基準にすると dayjs を 1 行使う関数まで `lib/` へ流れ `utils/` は空のまま。`@foundation` の面は改名せず追加し、宣言 5 箇所すべてへ足す。 | Accepted |
+| [IADR-0334](./IADR-0334_tests-mirror-target-resolution.md) | **テストの鏡写し先は「検証する本体の要素が置かれた場所」で決め、対応物が無いものは `Tests/` 直下に残す**（#1063 / ADR-0065 決定 3）。`Features/` と `Domain/` だけでは足りず `Infrastructure/<Sub>/`・`Common/<Sub>/` も写す。段は叩く操作を数えて決める。 | Accepted |
 | [IADR-0337](./IADR-0337_screen-smoke-widening-and-mutation-target.md) | **画面スモークは全 17 画面でセッション付きにし、変異試験の的をパスからロール条件へ移す**（#1139 / IADR-0330 決定 1 の徹底）。🔴 パスの改名は `tsc -b` が先に落とすため**ブラウザ E2E の検出力を測れない**（#918 の「0 件」は変異前の成果物に対する測定だった）。効くのは型検査を通るロール条件の緩めであり、**陰性対照は「隣のロール」で当てる**。「落ちなかった」は変異が成果物へ届いた確認と対でしか読めない。 | Accepted |
-
