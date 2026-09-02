@@ -1,5 +1,5 @@
 {
-  "description": "Office(docx) 原本（図 2 件・コード化 1 件＋画像保持 1 件）。混在時の順序・空行と .jpg への写像を固定する。",
+  "description": "Office(docx) 原本（図 2 件・コード化 1 件＋画像保持 1 件）。混在時の順序・空行と .jpg への写像、およびコードブロック／画像参照が目印の位置へ入ることを固定する。",
   "sourceId": "33333333-3333-3333-3333-333333333333",
   "sourceType": "filesystem",
   "originalPath": "/docs/design/system-architecture.docx",

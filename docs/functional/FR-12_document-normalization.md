@@ -3,15 +3,15 @@ title: 機能仕様書 — FR-12 原本の正規化変換（pandoc＋LLMコー�
 type: functional-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-08-31
+updated: 2026-09-03
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-11, FR-12, SC-07, UC-06]
 adrs: [ADR-0010, ADR-0012, ADR-0014, ADR-0053]
-iadrs: [IADR-0007, IADR-0008, IADR-0137, IADR-0154, IADR-0298, IADR-0320]
-specs: [20260703_FR-12_document-normalization-pipeline, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed]
-issues: [#533, #543, #1097]
+iadrs: [IADR-0007, IADR-0008, IADR-0137, IADR-0154, IADR-0298, IADR-0320, IADR-0352]
+specs: [20260703_FR-12_document-normalization-pipeline, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1120_extract-media-path-rewrite]
+issues: [#533, #543, #1097, #1120]
 -->
 
 # 機能仕様書: 原本の正規化変換
@@ -59,12 +59,21 @@ issues: [#533, #543, #1097]
    取り寄せて（`file` スキーム・ローカルパスはそのまま）pandoc で GFM へ変換し、
    `--extract-media` で図（画像）を抽出する。本文 Markdown ＋ 抽出図一覧を得る。
    pandoc は**実行時イメージへ導入済み**であり、その存在は readiness（`pandoc` チェック）が見る。
+   🔴 `--extract-media` は**本文中の画像参照を一時ディレクトリの絶対パスへ書き換える**が、
+   そのディレクトリは変換直後に消える。よって変換器は返す前に、その参照を
+   **図の目印（`![figureId](figure:figureId)`）へ書き換える**——`<img>` タグや `![](…)` を
+   **構文まるごと**置き換え、写像できない参照は落とす。**一時パスは 1 件も残さない**
+   （残渣の走査つき）。目印の綴りは `FigureMarkdown` を単一情報源とする。
 4. 冪等 `DocumentId` を `SourceId`＋`OriginalPath` から決定的に導出する（`DeterministicGuid`）。
 5. 各図について（`IDiagramCoder` / `LlmGatewayDiagramCoder`）:
    1. LLMゲートウェイ `/complete` に `confidentiality` ＋ `purpose="diagram-coding"` を渡してコード化を依頼する。
    2. **成功**（```mermaid / ```plantuml を抽出）: 本文へコードブロックを埋め込む。
    3. **不可**（送信拒否 `Sent=false`／コード化不能／呼び出し失敗）: 画像を `IObjectStore` へ保存し、
       本文へ `![figureId](uri)` を埋め込む（deny-by-default で画像保持へ収束）。
+   4. 埋め込み先は**変換器が置いた目印の位置**、すなわち**原本で図があった場所**である。
+      目印を持たない本文（縮退したプレースホルダ本文など）では**末尾へ足す**。
+      🔴 従前は無条件に末尾へ足しており、本文中には消えたディレクトリへの壊れた参照が
+      残ったまま、**同じ図が 2 度出ていた**（変換器を実走させて初めて観測された）。
       **この埋め込み形は人手補正が置換する目印でもある**——形は `FigureMarkdown` を単一情報源とし、
       埋め込む側と置換する側が別々に書かないようにする（人手補正の実装判断による。片方だけ変えると
       置換が静かに空振りする）。

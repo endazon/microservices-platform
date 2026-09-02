@@ -1,5 +1,5 @@
 {
-  "description": "HTML 原本（図 1 件・コード化不能で画像保持）。画像埋め込みの綴りと資産キー（.png）を固定する。",
+  "description": "HTML 原本（図 1 件・コード化不能で画像保持）。画像埋め込みの綴りと資産キー（.png）、および目印（figure:fig-N）が本文中の元の位置で最終参照へ替わることを固定する。",
   "sourceId": "22222222-2222-2222-2222-222222222222",
   "sourceType": "wiki",
   "originalPath": "/wiki/onboarding/index.html",

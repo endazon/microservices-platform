@@ -11,6 +11,44 @@ public static class FigureMarkdown
     // 画像保持へ縮退した図の埋め込み（`![figureId](uri)`）。
     public static string ImageEmbed(string figureId, string uri) => $"![{figureId}]({uri})";
 
+    // FR-12, IADR-0352 決定 2 (#1120): 変換直後の本文が図を指す**暫定の目印**のスキーム。
+    //
+    // pandoc の `--extract-media` は本文中の画像参照を一時ディレクトリの絶対パスへ書き換えるが、
+    // そのディレクトリは変換直後に消える。いっぽう最終参照（`storage://…/assets/fig-1.png`）は
+    // **図をアップロードするまで判らない**。位置を知っているのは変換器、最終参照を知っているのは
+    // 正規化オーケストレータであり、**両者を繋ぐ 2 段の目印**が要る。
+    //
+    // 目印の綴りは `ImageEmbed` そのもの（`![id](uri)`）にしてある —— 置換に失敗して本文へ残っても
+    // 「どの図の目印か」が読め、`TryReplacePlaceholder` の走査対象としても 1 箇所で決まる。
+    public const string PlaceholderScheme = "figure:";
+
+    // 図 1 つを指す暫定参照（`figure:fig-1`）。
+    public static string PlaceholderUri(string figureId) => PlaceholderScheme + figureId;
+
+    // 図 1 つの暫定の埋め込み（`![fig-1](figure:fig-1)`）。
+    public static string PlaceholderEmbed(string figureId) =>
+        ImageEmbed(figureId, PlaceholderUri(figureId));
+
+    // 本文中の暫定の目印を、最終的な埋め込み（画像参照またはコードブロック）へ置き換える。
+    // 目印が 1 つも無ければ false を返す（呼び出し側は末尾へ append する。IADR-0352 決定 6）。
+    //
+    // **全出現を置換する。** 同じ媒体を 2 度参照する原本では目印も 2 つ置かれ、片方だけ置換すると
+    // 解決できない `figure:` 参照が本文へ残る —— 本 ADR が直している事故がまさにそれである
+    // （人手補正の `TryReplaceImageWithCode` が先頭 1 件のみなのは IADR-0154 決定 3 の別判断）。
+    public static bool TryReplacePlaceholder(string markdown, string figureId, string embed,
+        out string replaced)
+    {
+        var target = PlaceholderEmbed(figureId);
+        if (markdown.IndexOf(target, StringComparison.Ordinal) < 0)
+        {
+            replaced = markdown;
+            return false;
+        }
+
+        replaced = markdown.Replace(target, embed, StringComparison.Ordinal);
+        return true;
+    }
+
     // 人手補正で入ったコード片の埋め込み（コードブロック）。
     public static string CodeEmbed(string language, string code) => $"```{language}\n{code}\n```";
 

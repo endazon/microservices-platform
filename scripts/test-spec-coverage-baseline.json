@@ -339,6 +339,7 @@
       "ConversionJobStoreTests",
       "NormalizationServiceTests",
       "PandocConversionServiceTests",
+      "PandocExtractedMediaRewriteTests",
       "RawDocumentFetchedConsumerJobTests",
       "RawDocumentFetchedConsumerTests"
     ],
