@@ -3,7 +3,7 @@ title: 引継資料 — issue 消化フェーズ運用の現在地と、繰り�
 type: how-to
 status: active
 created: 2026-08-08
-updated: 2026-08-31
+updated: 2026-09-02
 author: Claude
 ---
 <!-- trace:

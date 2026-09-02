@@ -3,7 +3,7 @@ title: SC-10 運用ダッシュボード テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-29
+updated: 2026-09-02
 author: claude
 ---
 <!-- trace:

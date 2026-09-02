@@ -3,7 +3,7 @@ title: SC-04 Wiki 閲覧導線 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-07-08
-updated: 2026-08-21
+updated: 2026-09-02
 author: claude
 ---
 <!-- trace:

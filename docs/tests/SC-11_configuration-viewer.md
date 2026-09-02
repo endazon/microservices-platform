@@ -3,7 +3,7 @@ title: SC-11 構成ビューア テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-28
+updated: 2026-09-02
 author: claude
 ---
 <!-- trace:
