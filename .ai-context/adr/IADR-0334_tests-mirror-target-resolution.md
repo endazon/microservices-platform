@@ -1,5 +1,5 @@
 ---
-title: IADR-0331 テストの鏡写し先は「検証する本体の要素が置かれた場所」で決め、対応物が無いものは Tests/ 直下に残す
+title: IADR-0334 テストの鏡写し先は「検証する本体の要素が置かれた場所」で決め、対応物が無いものは Tests/ 直下に残す
 type: impl-adr
 status: Accepted
 related_ids:
@@ -17,7 +17,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0068_three-level-slice-split-rule.md (Accepted 2026-08-30) 決定 1・2・5
 ---
 
-# IADR-0331: テストの鏡写し先の決め方（#1063）
+# IADR-0334: テストの鏡写し先の決め方（#1063）
 
 - 状態: Accepted
 - 日付: 2026-08-31

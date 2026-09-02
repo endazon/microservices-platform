@@ -444,7 +444,7 @@ function main() {
   }
   // 典拠は CLAUDE.md（＋ issue #467）である。**計画 ADR-0030 を典拠として挙げない**——同 ADR は
   // 「どのライブラリを使うか」の決定であり、版をどこに書くかには触れていない。本プロジェクト（MSP）の
-  // 計画コーパス planning/projects/microservices-platform/ には CPM / Central Package /
+  // 計画コーパス（計画リポジトリ project-planning の projects/microservices-platform/）には CPM / Central Package /
   // Directory.Packages の言及が 0 件である（submodule を populate した環境での実測。planning 配下
   // 全体では AST の計画書と impl-handoff-kit の雛形に計 2 件あるが、いずれも MSP の計画制約ではない）。
   // 存在しない出典を失敗メッセージに書くと、直された人が典拠を確かめに行って迷子になる。

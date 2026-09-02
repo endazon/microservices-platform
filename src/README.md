@@ -164,7 +164,9 @@ Common/・Tests/ のフォルダ**で分ける。8 要素の実プロジェク�
 3. バックエンド: `Platform.Shared.*` への参照は相対パス
    `..\..\..\..\..\..\platform\backend\Shared\<Project>\<Project>.csproj`（サービス csproj から）とする。
    **CI は編集不要**（`.github/workflows/ci.yml` は `src/*/backend/backend.slnx` を自動発見する。IADR-0060）。
-   追加ユニットが private submodule の場合は checkout の `submodules: recursive` + トークンを有効化する。
+   取得は checkout の `submodules:` オプションではなく **`src/*` のユニット submodule のみを非再帰で init**
+   する形で行う（既存ワークフローが実装済み。追加ユニットが private の場合はその init に read 権限を持つ
+   PAT を与える）。
 4. フロントエンド: pnpm workspace のパターンが `'*/frontend'` のため自動認識される。platform の合成点
    （`platform/frontend/src/features/index.ts`）へ **import 1 行 ＋ 2 か所へのスプレッド 1 行ずつ**を追加する
    （[IADR-0124](../.ai-context/adr/IADR-0124_tanstack-router-unit-composition.md) 決定 1。

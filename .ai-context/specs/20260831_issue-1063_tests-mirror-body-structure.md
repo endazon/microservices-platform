@@ -9,7 +9,7 @@ related_ids:
   - IADR-0282
   - IADR-0298
   - IADR-0319
-  - IADR-0331
+  - IADR-0334
 author: claude
 created: 2026-08-31
 updated: 2026-09-02
@@ -111,7 +111,7 @@ $ git ls-files | grep -cE '^src/(platform|knowledge)/backend/Services/[^/]+/Test
 
 `ADR-0065` 決定 3 は「`Tests/Features/` ／ `Tests/Domain/` の形を採る」としか書いていない。
 **本体には `Infrastructure/` と `Common/` もあるため、鏡写しの意味を決める必要がある。**
-判定手続きは `IADR-0331` に置いた（本仕様書は適用結果を持つ）。要旨:
+判定手続きは `IADR-0334` に置いた（本仕様書は適用結果を持つ）。要旨:
 
 - **鏡写しの相手は「そのテストが検証する本体の要素が置かれているディレクトリ」である。**
   `Features/` と `Domain/` に限らず、`Infrastructure/<Sub>/`・`Common/<Sub>/` も鏡写す。
@@ -249,7 +249,7 @@ private static string DockerfilePath([CallerFilePath] string thisFile = "") =>
 **存在しない `Tests/Dockerfile` を読みに行って落ちる。**
 
 `ConversionService.csproj` のある階層を探して引き当てる形へ直した（**移送先の深さに依存しない**）。
-これは `IADR-0331` 決定 6 が `Tests/Golden/` を動かさなかったのと同じ罠であり、
+これは `IADR-0334` 決定 6 が `Tests/Golden/` を動かさなかったのと同じ罠であり、
 **Golden 以外にも同型が 1 件あった**ということである。
 
 **同型の全走査**（陽性対照つき）:
