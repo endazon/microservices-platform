@@ -1,7 +1,7 @@
 ---
 title: パス形 `planning/<パス>` の残存記述と、AST 入れ子 planning への許可エントリを畳む（issue #1141）
 type: spec
-status: draft
+status: done
 created: 2026-09-02
 updated: 2026-09-02
 author: claude
