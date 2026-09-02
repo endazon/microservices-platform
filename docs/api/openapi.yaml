@@ -1949,6 +1949,34 @@ paths:
         "200":
           description: ページリスト
 
+  /wiki/search:
+    get:
+      tags: [Wiki]
+      summary: "FR-13, UC-07: Wiki ページの検索（ABAC 適用済み）"
+      description: |
+        UC-07 基本フロー 1 の後半「検索する」。全文検索は Wiki.js（`pages.search`）へ委譲し、
+        **前段が台帳と突き合わせて ABAC で絞り直す**（ADR-0011: Wiki.js 側の権限を属性ベース
+        細粒度判定の代替にしない。実装記録 IADR-0335）。本文は返さない。
+
+        - 許可ポリシーが無い（deny-by-default）／検索語が空白のみ → **200 ＋ 空配列**
+          （このとき Wiki.js は呼ばない）。
+        - Wiki.js 上に在っても**台帳（WikiPage）に無いページ**は返さない（ABAC 判定の足場が無い）。
+        - アーカイブ済みページは返さない（一覧・個別と同じ意味論。#88）。
+        - 並びは **Wiki.js の関連度順**を保つ。
+        - **未認証は 200 ＋ 空**（存在秘匿。401 にしない —— エッジは BFF。ADR-0032）。
+        - 🔴 **Wiki.js へ到達できない／GraphQL がエラーを返した場合は 502。**
+          存在秘匿が区別させないのは「権限が無い」と「該当が無い」であり、
+          **「後段が壊れている」は別の軸**なので 200 ＋ 空で隠さない。
+      operationId: search-wiki-pages
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 20, minimum: 1, maximum: 50 } }
+      responses:
+        "200":
+          description: 権限内の検索結果（関連度順。空配列を含む）
+        "502":
+          description: Wiki.js が応答しない／誤りを返した
+
   /wiki/pages/{slug}:
     get:
       tags: [Wiki]
@@ -1959,7 +1987,7 @@ paths:
         "200":
           description: Wiki ページ
         "404":
-          description: 見つからない
+          description: 見つからない（権限外・不存在・未認証を区別しない。IADR-0009）
 
   # ── FeedbackService（直接・内部 API / IADR-0017）─────
   /feedback:
