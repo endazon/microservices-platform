@@ -460,6 +460,22 @@ ok('既定: keycloak-theme-platform ConfigMap は keycloak-realms の直後・in
   );
 });
 
+// SC-15, FR-22, ADR-0045 決定 9, IADR-0333 (#1144): 捕捉用 MTA は **dev 既定**である。
+//
+// 🔴 **ゲートを持たないことが、この配備物の要点である。** 決定 9 は「開発環境では実送信しない」を
+// 無条件で定めており、opt-in にすると**ゲートを立てない人の既定が外を向いたまま**になる（決定 9 の
+// 弱い版）。「ゲートが無いのだから起動器に書かなくても kustomize が持っていく」と読んで rollout 待ちを
+// 落とすと、**Keycloak より後に立った捕捉用 MTA へ最初の申請が届かない**。ここで両方を固定する。
+ok('#1144: 捕捉用 MTA は既定（env 未設定）で rollout を待つ —— どの opt-in にも属さない', () => {
+  assert.ok(
+    anyLineHas(DEFAULT.lines, 'rollout status deploy/mailpit'),
+    '既定の起動で mailpit の rollout 待ちが発行されていない（捕捉用 MTA が居ない開発環境になる）',
+  );
+  // 陽性対照: 宣言が base の kustomization に居ること（overlay 側だけに居ると PERSIST 時しか立たない）。
+  const kust = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra/kustomization.yaml'), 'utf8');
+  assert.ok(/^\s*-\s*mailpit\.yaml\s*$/m.test(kust), 'deploy/local/infra/kustomization.yaml に mailpit.yaml が無い');
+});
+
 ok('deploy/local/infra/keycloak.yaml: theme ConfigMap の items キーが k8s-local-up.sh の生成キーと一致する', () => {
   const infraKc = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra/keycloak.yaml'), 'utf8');
   for (const key of ['login-theme-properties', 'login-css', 'account-theme-properties', 'account-css']) {

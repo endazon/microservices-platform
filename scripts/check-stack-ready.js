@@ -60,6 +60,17 @@
  *   locale の値は **WikiService の実装から走査して得る**（ここへ書き写さない）。
  *   `wiki-js` の Deployment が無い構成（`wikijs.enabled=false`）は notice で飛ばす（G5 と同じ作法）。
  *
+ * - **G8 捕捉用 MTA が居て、API が読めること**（#1144 / ADR-0045 決定 9）: 決定 9 は
+ *   「開発環境では実送信しない。k3s 上に捕捉用 MTA を置く」と**無条件で**定めている。
+ *   🔴 **G7 と違って「無ければ飛ばす」をしない。** 飛ばせるゲートは opt-in の構成にしか無く、
+ *   捕捉用 MTA は base（`deploy/local/infra`）に居る dev 既定である —— 居ないなら、その開発環境は
+ *   決定 9 を満たしていない（`from` に実値が入った瞬間に外部の本番リレーへ実送信する側へ倒れる）。
+ *   検査は 2 段: **(a)** Deployment が在ること、**(b)** HTTP API が**ループバックで**応答すること
+ *   （G7 と同じ理由でエッジからも port-forward からも測らない）。
+ *   🔴 **realm の実行時 `smtpServer.host` は見ない。** 決定 9 の但し書き（疎通と文面の検証が要る段階に
+ *   限り実リレーを用いてよい）で運用者が正当に実リレーを向けている状態と区別できず、正しい状態を
+ *   赤にしてしまう。**dev 既定が外を向いていないこと**は静的検査（`check-realm-constraints.js`）が持つ。
+ *
  * ## 列挙を持たない
  *
  * namespace は `k8s-local-up.sh` と同じ 2 つ（`platform-infra` / `microservices-platform`）だが、
@@ -101,6 +112,14 @@ const WIKI_CLIENT_SRC = path.join(
   'src', 'knowledge', 'backend', 'Services', 'WikiService',
   'Infrastructure', 'ExternalServices', 'WikiJsGraphQlClient.cs',
 );
+
+/**
+ * G8 (#1144): 開発環境の捕捉用 MTA。**名前と HTTP ポートは宣言から走査して得る**
+ * （`deploy/local/infra/mailpit.yaml` の Service が単一情報源。ここへ書き写すと、宣言を変えたときに
+ * 検査が静かに空回りする —— G7 の locale と同じ姿勢）。
+ */
+const MAIL_CAPTURE_NS = 'platform-infra';
+const MAIL_CAPTURE_MANIFEST = path.join('deploy', 'local', 'infra', 'mailpit.yaml');
 
 /** Keycloak の Deployment（issuer の単一情報源 `KC_HOSTNAME_URL` を持つ）。 */
 const KEYCLOAK_NS = 'platform-infra';
@@ -167,6 +186,20 @@ function wikiJsGraphql(query, bearer) {
   const lines = String(r.stdout || '').split('\n');
   const status = (lines.pop() || '').trim();
   return { status, body: lines.join('\n'), stderr: String(r.stderr || '') };
+}
+
+/**
+ * G8: 捕捉用 MTA のコンテナ内 loopback へ HTTP GET を投げる（G7 と同じ理由でエッジも port-forward も使わない）。
+ * image は alpine/busybox なので `wget` を持つ（curl は無い）。
+ */
+function mailCaptureApi(deploy, httpPort, apiPath) {
+  const r = spawnSync(
+    'kubectl',
+    ['-n', MAIL_CAPTURE_NS, 'exec', '-i', `deploy/${deploy}`, '--',
+      'wget', '-q', '-O-', '-T', '15', `http://127.0.0.1:${httpPort}${apiPath}`],
+    { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 },
+  );
+  return { status: r.status, body: String(r.stdout || ''), stderr: String(r.stderr || '') };
 }
 
 /** G7: `wikijs-sync` の `apiKey` の**長さ**を得る（値は返さない・出力もしない）。 */
@@ -270,6 +303,67 @@ function evaluateWikiJs(input) {
 }
 
 /** `deploy/keycloak/*-realm.json` を走査して realm 名を得る。0 件は失敗（G2 と同型）。 */
+/**
+ * G8 の対象（Deployment 名と HTTP ポート）を**宣言から**読む。
+ * 読めなければ `null`（呼び出し側は「測れなかった」として落とす —— 既定値へ落とすと、宣言を
+ * 変えたときに検査が静かに空回りする）。
+ * @returns {{deploy:string, httpPort:string}|null}
+ */
+function mailCaptureTarget(repoRoot = REPO_ROOT) {
+  try {
+    const text = fs.readFileSync(path.join(repoRoot, MAIL_CAPTURE_MANIFEST), 'utf8');
+    const svc = text.split(/^---\s*$/m).find((d) => /^kind:\s*Service\s*$/m.test(d));
+    if (!svc) return null;
+    const name = /^\s{2}name:\s*(\S+)\s*$/m.exec(svc);
+    const http = /\{\s*name:\s*http,\s*port:\s*(\d+)/.exec(svc);
+    return name && http ? { deploy: name[1], httpPort: http[1] } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * G8 (#1144): 捕捉用 MTA が居て、その API が読めるか。**純関数**（入力は採取済みの値だけ）。
+ * @param {{target:({deploy:string,httpPort:string}|null), deployExists:boolean,
+ *          apiStatus:(number|null), apiBody:string}} input
+ * @returns {string[]} 失敗メッセージ
+ */
+function evaluateMailCapture(input) {
+  const failures = [];
+  if (!input.target) {
+    failures.push(
+      `[G8] 捕捉用 MTA の宣言（${MAIL_CAPTURE_MANIFEST}）から Service 名と HTTP ポートを読めなかった。`
+      + ' 期待値を組み立てられないので検査を成立させない（既定値へ落とさない）。',
+    );
+    return failures;
+  }
+  const { deploy, httpPort } = input.target;
+  if (!input.deployExists) {
+    failures.push(
+      `[G8] ${MAIL_CAPTURE_NS}/${deploy} の Deployment が無い（#1144 / ADR-0045 決定 9）。`
+      + ' 決定 9 は「開発環境では実送信しない。k3s 上に捕捉用 MTA を置く」と**無条件で**定めている。'
+      + ' 捕捉用 MTA が居ない開発環境は、SMTP の実値が入った瞬間に外部の本番リレーへ実送信する側へ倒れる。'
+      + ` 起動器（scripts/k8s-local-up.sh の [4/7]）が ${MAIL_CAPTURE_MANIFEST} を apply しているか確かめよ。`,
+    );
+    return failures; // 居ないなら API も測れない（同じことを 2 回言わない）
+  }
+  if (input.apiStatus !== 0) {
+    failures.push(
+      `[G8] ${MAIL_CAPTURE_NS}/${deploy} は居るが HTTP API（:${httpPort}/api/v1/info）を読めなかった。`
+      + ' Pod が Running でも API が死んでいれば、送出の成立を機械で確かめる手段が無い'
+      + '（docs/tests/SC-15_password-reset.md の T-16 / T-17 を測れなくなる）。',
+    );
+    return failures;
+  }
+  if (!/"Version"\s*:/.test(input.apiBody)) {
+    failures.push(
+      `[G8] ${MAIL_CAPTURE_NS}/${deploy} の API 応答が想定と違う（"Version" を含まない）。`
+      + ' 応答を読めたことと、捕捉用 MTA として答えたことは別である。',
+    );
+  }
+  return failures;
+}
+
 function discoverRealms(repoRoot = REPO_ROOT) {
   const dir = path.join(repoRoot, REALM_DIR);
   if (!fs.existsSync(dir)) return [];
@@ -545,6 +639,30 @@ function check({ repoRoot = REPO_ROOT } = {}) {
     );
   }
 
+  // G8 (#1144): 捕捉用 MTA が居て、API が読めるか。**opt-in ではないので「無ければ飛ばす」をしない。**
+  const mailTarget = mailCaptureTarget(repoRoot);
+  if (!mailTarget) {
+    failures.push(...evaluateMailCapture({ target: null, deployExists: false, apiStatus: null, apiBody: '' }));
+  } else {
+    const mailDeploy = kubectlJson(['get', 'deploy', mailTarget.deploy, '-n', MAIL_CAPTURE_NS, '-o', 'json']);
+    const api = mailDeploy.ok
+      ? mailCaptureApi(mailTarget.deploy, mailTarget.httpPort, '/api/v1/info')
+      : { status: null, body: '' };
+    failures.push(...evaluateMailCapture({
+      target: mailTarget,
+      deployExists: mailDeploy.ok,
+      apiStatus: api.status,
+      apiBody: api.body,
+    }));
+    if (mailDeploy.ok) {
+      const version = /"Version"\s*:\s*"([^"]*)"/.exec(api.body);
+      notices.push(
+        `[check-stack-ready] ${MAIL_CAPTURE_NS}/${mailTarget.deploy}: API=:${mailTarget.httpPort}`
+        + ` / version=${version ? version[1] : '(読めなかった)'}。開発環境の送出はここで止まる（外へは出ない）。`,
+      );
+    }
+  }
+
   return { failures, notices, totalDeployments };
 }
 
@@ -729,6 +847,45 @@ function selfTest() {
       `WikiService の実装から locale を読めていない（${WIKI_CLIENT_SRC}）`);
   });
 
+  // ---- G8 (#1144) ----
+  const mailOk = {
+    target: { deploy: 'mailpit', httpPort: '8025' },
+    deployExists: true,
+    apiStatus: 0,
+    apiBody: '{"Version":"v1.21.8","Messages":0}',
+  };
+
+  ok('G8: 捕捉用 MTA が居て API が読めれば通る（陽性対照）', () => {
+    assert.deepStrictEqual(evaluateMailCapture(mailOk), [], '健全なスタックを落としている');
+  });
+
+  ok('G8: 捕捉用 MTA が居なければ**失敗**になる（G7 と違い「無ければ飛ばす」をしない）', () => {
+    const f = evaluateMailCapture({ ...mailOk, deployExists: false, apiStatus: null, apiBody: '' });
+    assert.strictEqual(f.length, 1, '不在を通している');
+    assert.ok(f[0].includes('決定 9'), '計画の根拠（ADR-0045 決定 9）を指していない');
+    assert.ok(f[0].includes('k8s-local-up.sh'), '復旧手段を書いていない');
+  });
+
+  ok('G8: API が読めなければ失敗になる（Running と 使える の乖離を落とす）', () => {
+    assert.strictEqual(evaluateMailCapture({ ...mailOk, apiStatus: 1, apiBody: '' }).length, 1,
+      'API 到達不能を通している');
+  });
+
+  ok('G8: 応答が捕捉用 MTA のものでなければ失敗になる（読めたことと答えたことは別）', () => {
+    assert.strictEqual(evaluateMailCapture({ ...mailOk, apiBody: '<html>404</html>' }).length, 1,
+      '別物の応答を通している');
+  });
+
+  ok('G8: 宣言を読めなければ失敗になる（既定値へ落とさない）', () => {
+    assert.strictEqual(evaluateMailCapture({ ...mailOk, target: null }).length, 1, '測れないのに通している');
+  });
+
+  ok('G8: 対象は宣言（mailpit.yaml の Service）から走査して得る（値を書き写さない）', () => {
+    const t = mailCaptureTarget();
+    assert.ok(t && t.deploy && /^\d+$/.test(t.httpPort),
+      `捕捉用 MTA の宣言から Service 名と HTTP ポートを読めていない（${MAIL_CAPTURE_MANIFEST}）`);
+  });
+
   console.log(`[check-stack-ready] self-test OK: ${n} 件`);
 }
 
@@ -756,7 +913,7 @@ function main() {
   }
   console.log(
     `[check-stack-ready] OK: Deployment ${r.totalDeployments} 件が available で、` +
-      'エッジ・issuer・admin entrypoint・Wiki.js の初期化も成立している。',
+      'エッジ・issuer・admin entrypoint・Wiki.js の初期化・捕捉用 MTA も成立している。',
   );
 }
 

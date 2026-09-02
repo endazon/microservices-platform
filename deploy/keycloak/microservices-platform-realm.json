@@ -27,6 +27,15 @@
   "waitIncrementSeconds": 900,
   "maxFailureWaitSeconds": 900,
   "actionTokenGeneratedByUserLifespan": 1800,
+  "smtpServer": {
+    "host": "mailpit.platform-infra.svc.cluster.local",
+    "port": "1025",
+    "from": "noreply@platform.localhost",
+    "fromDisplayName": "汎用プラットフォーム (dev)",
+    "auth": "false",
+    "starttls": "false",
+    "ssl": "false"
+  },
   "rememberMe": true,
   "ssoSessionIdleTimeoutRememberMe": 2592000,
   "ssoSessionMaxLifespanRememberMe": 2592000,

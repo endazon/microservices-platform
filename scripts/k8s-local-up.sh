@@ -141,6 +141,9 @@ kubectl -n "$INFRA_NS" rollout status deploy/redis --timeout=120s
 kubectl -n "$INFRA_NS" rollout status deploy/keycloak --timeout=300s
 kubectl -n "$INFRA_NS" rollout status deploy/qdrant --timeout=120s
 kubectl -n "$INFRA_NS" rollout status deploy/otel-collector --timeout=120s
+# SC-15, FR-22, ADR-0045 決定 9 (#1144): 捕捉用 MTA。**opt-in ゲートを持たない**（決定 9 は無条件）。
+# realm の dev 既定 smtpServer がここを指すので、Keycloak より後に立つと最初の申請が送出に失敗する。
+kubectl -n "$INFRA_NS" rollout status deploy/mailpit --timeout=120s
 
 echo "==> [5/7] MSP namespace & app secrets (dev 既定; fail-safe 空 = no-op)"
 kubectl create namespace "$MSP_NS" --dry-run=client -o yaml | kubectl apply -f -
@@ -765,6 +768,9 @@ echo ""
 echo "done. 状態確認:"
 echo "  kubectl get pods -A"
 echo "  kubectl -n $MSP_NS port-forward svc/bff-service 5080:8080   # http://localhost:5080/health"
+# ADR-0045 決定 9 (#1144): 捕捉用 MTA の閲覧 UI。**エッジへは出していない**（UI は認証を持たず、中身は
+# リセットリンク＝認証資格である）。運用者が明示的に開く。
+echo "  kubectl -n $INFRA_NS port-forward svc/mailpit 8025:8025     # http://localhost:8025 （開発環境の捕捉用 MTA）"
 # IADR-0093 (#353): MinIO Console SSO は集約 URL 前提（LOCALEDGE=1）＋ポリシー適用が必要。
 echo "MinIO Console SSO(#353): https://minio.localhost:50000 (要 LOCALEDGE=1)。ポリシー適用と port-forward 単独時の"
 echo "  制約（OIDC 未成立→root フォールバック）は deploy/local/minio-oidc/README.md を参照。"
