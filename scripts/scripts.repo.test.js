@@ -8376,6 +8376,47 @@ ${r.stderr}`);
       assert.match(VERIFY, /seed-search-documents\.js" --print-keyword-only-query/);
     });
 
+    // --- #1118: 日本語の語で全文側が当たることの門（text_ngram の系統） --------------------
+    //
+    // 🔴 **S4 は合言葉（英数字の識別子）で引くので `text` の系統しか通らない。** 公式イメージの
+    //    multilingual は CJK の連なりを語で割らず、実配備チャンクの日本語 25 語のうち当たるのは
+    //    1 語だった（#1118 の実測）。日本語はアプリ側 2-gram の `text_ngram` を通るので、
+    //    **S4 が緑でも日本語は 0 件であり得る**。系統ごとに門を置く。
+    ok('#1118: 日本語の語のクエリを seed のタイトルから導く（語をスクリプトへ書かない）', () => {
+      assert.strictEqual(
+        seeder.seedJapaneseKeywordQuery({ documents: [{ title: 'msp-searchseed-tanpopo 検索導線の検証用文書' }] }),
+        '検索導線の検証用文書');
+      // タイトルに CJK が無ければ null（合言葉へ黙って落とすと text の系統で PASS してしまう）。
+      assert.strictEqual(seeder.seedJapaneseKeywordQuery({ documents: [{ title: 'ascii only title' }] }), null);
+      assert.strictEqual(seeder.seedJapaneseKeywordQuery({ documents: [] }), null);
+    });
+
+    ok('#1118: 実データの seed から日本語の語を導け、その語は本文にも現れる（門が導出不能で落ちない）', () => {
+      const seed = JSON.parse(fsSS.readFileSync(seeder.SEED_FILE, 'utf8'));
+      const q = seeder.seedJapaneseKeywordQuery(seed);
+      assert.ok(q, 'seed のタイトルから日本語の語を導けない');
+      // タイトルは本文の H1 としてチャンクに入る。本文に無い語では判定が「検索の故障」と区別できない。
+      for (const d of seed.documents)
+        assert.ok(String(d.body || '').includes(q), `日本語の語「${q}」が本文に現れない`);
+      // 値をスクリプトへ写していない（seed が単一情報源）。
+      assert.ok(!VERIFY.includes(q), `日本語の語「${q}」が verify-oidc-edge-flow.sh へ写されている`);
+      assert.match(VERIFY, /seed-search-documents\.js" --print-japanese-keyword-query/);
+    });
+
+    ok('#1118: 日本語の門は mode=keyword で引き、陽性と在らない日本語の陰性を対で置いている', () => {
+      const s6 = VERIFY.slice(VERIFY.indexOf('S6)'));
+      assert.ok(s6.length > 0, 'S6 の段が見つからない');
+      assert.match(s6, /JAPANESE_KEYWORD_QUERY/);
+      assert.match(s6, /"mode":"keyword"/, 'mode=keyword で引いていない');
+      assert.match(s6, /fail "全文検索（mode=keyword・日本語の語/);
+      assert.match(s6, /JAPANESE_ABSENT_TERM/);
+      assert.match(s6, /pass "在らない日本語の語は 0 件/);
+      // 日本語は printf の書式へ載せずファイル経由で送る（Windows の Git Bash で argv の日本語が壊れる）。
+      assert.match(s6, /--data-binary "@\$req_file"/);
+      // 縮退の可観測化: 日本語 2-gram の索引を見る check 名を門が知っている。
+      assert.match(s6, /qdrant-cjk-ngram-index/);
+    });
+
     ok('#992: 合言葉は seed の宣言から採り、スクリプトへ値を写していない', () => {
       const seed = JSON.parse(fsSS.readFileSync(seeder.SEED_FILE, 'utf8'));
       assert.ok(!VERIFY.includes(seed.probeTerm),
