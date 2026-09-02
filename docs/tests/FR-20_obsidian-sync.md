@@ -3,15 +3,15 @@ title: FR-20 Obsidian 双方向同期 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-08-23
-updated: 2026-08-30
+updated: 2026-09-02
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-20]
 adrs: [ADR-0037, ADR-0046]
-iadrs: [IADR-0270]
-specs: [20260823_issue-451_private-note-obsidian-sync-core]
-issues: [#451]
+iadrs: [IADR-0270, IADR-0338]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260902_issue-1098_obsidian-plugin-pull-stage1]
+issues: [#451, #1098]
 -->
 
 # テスト仕様書: Obsidian 双方向同期
@@ -19,10 +19,12 @@ issues: [#451]
 ## テスト対象・範囲
 
 同期プロトコル（manifest / push / pull / delete）・同期トークン（発行・期限・再発行・失効）・
-監査・期限予告の検知。**対象外**: Obsidian プラグイン本体（未実装の残件）・実ブローカ／実ストレージ
-での結合（この環境では実行していない）。
+監査・期限予告の検知、および **Obsidian プラグイン第 1 段（取り込みのみ）のプロトコル部**。
+**対象外**: プラグインの push / delete / 競合解決 UI（第 2 段・未実装）・Obsidian 本体上の GUI 操作
+（本体は CI に無い）・実ブローカ／実ストレージでの結合（この環境では実行していない）。
 
-実体: `DocumentService.Tests` の `ObsidianSyncProtocolTests` / `SyncDeviceTokenTests`。
+実体: `DocumentService.Tests` の `ObsidianSyncProtocolTests` / `SyncDeviceTokenTests`（サーバ側）、
+`src/obsidian-plugin/src/**/*.test.ts`（プラグイン側。Vitest・Obsidian 実体なし）。
 
 ## テスト観点
 
@@ -50,11 +52,32 @@ issues: [#451]
 | 14 | 他人の端末は見えず・失効も再発行もできない（存在秘匿） | `他人の端末は見えず失効も再発行もできない` |
 | 15 | 期限 7 日前の通知が窓内で 1 回だけ・当日／事後の追加通知なし | `トークン期限の7日前通知は窓内で1回だけ検知される` |
 
+## テストケース一覧（Obsidian プラグイン第 1 段。Obsidian 実体なし）
+
+| # | 受け入れ基準 | テスト（ファイル › 名前） |
+| --- | --- | --- |
+| P1 | 同期トークンを設定したプラグインで manifest を取得し、資料一覧と版が読める（陽性対照） | `syncClient.test.ts` › `manifest を Bearer 同期トークンで取得し、契約どおりの形なら返す` |
+| P2 | pull は本文つきの応答を返す | `syncClient.test.ts` › `pull は資料 ID を URL エンコードして本文つきの応答を返す` |
+| P3 | 401 は理由を問わず利用者に判る失敗（期限切れ・失効・不正を区別しない） | `syncClient.test.ts` › `401 は SyncAuthError になる`／`pullSync.test.ts` › `401 なら SyncAuthError を投げ、ファイルにも状態にも触らない` |
+| P4 | 契約と違う形・不正な JSON・想定外の状態コードは黙って空にせず止める | `syncClient.test.ts` › `契約と違う形・不正な JSON・想定外の状態コードは SyncProtocolError になる` |
+| P5 | 差分のある資料だけ pull して Vault へ書き、同期状態を保存する | `pullSync.test.ts` › `差分のある資料だけ pull して Vault へ書き、同期状態を保存する` |
+| P6 | 変化が無ければ manifest だけ読み、本文の取得（egress）を増やさない | `pullSync.test.ts` › `変化が無い 2 巡目は manifest だけ読み、pull も書き込みもしない` |
+| P7 | サーバが進めば上書き、ローカルで編集された資料は上書きしない（自動解決しない） | `pullSync.test.ts` › `サーバが進んだ資料は上書きし、ローカルで編集された資料は conflict として残す`／`pullPlanner.test.ts` の conflict 2 件 |
+| P8 | ローカルで消された追跡済み資料は再取得しない・サーバ側削除は件数のみ | `pullPlanner.test.ts` › `追跡済みの資料がローカルに無ければ conflict(local-deleted) で再取得しない`／`deleted=true の資料は server-deleted として報告するだけ` |
+| P9 | Vault の外へ出るパス・制御文字・同じパスへ落ちる 2 件は取り込まない（有効なパスの取り込みと対） | `vaultPath.test.ts` › `絶対パス・親参照・制御文字・空は理由付きで拒否する`／`pullPlanner.test.ts` › `不正なパスは invalid-path、同じローカルパスへ落ちる 2 件は両方 path-collision で skipped` |
+| P10 | 接続先は https のみ（loopback だけ http 可） | `endpoint.test.ts` の 4 件 |
+| P11 | ローカル内容のハッシュはサーバの `ContentHash` と同じ計算 | `hash.test.ts` › `既知のベクタと一致する（空文字・abc）` |
+| P12 | トークンは端末ローカルに保存・削除でき、設定ファイルには入らない | `tokenStore.test.ts` の 2 件 |
+
 ## 実行
 
 ```bash
 dotnet test src/knowledge/backend/Services/DocumentService/Tests
+cd src && pnpm exec vitest run obsidian-plugin   # プラグイン側（横断 vitest にも含まれる）
 ```
+
+実 HTTP の証跡（Obsidian 本体なし）は `src/obsidian-plugin/dist/cli.mjs` で取る
+（[手順ガイド](../how-to/obsidian-plugin-install.md) §ローカル検証）。
 
 ## 関連
 

@@ -237,11 +237,16 @@ if [ "${ISTIO:-}" = "1" ]; then
     -f deploy/istio/istiod-values-local.yaml --wait --timeout 10m
   # CRD が Established になるまで待つ（apply の競合を避ける。cert-manager と同じ作法）。
   for crd in peerauthentications.security.istio.io destinationrules.networking.istio.io \
+             authorizationpolicies.security.istio.io \
              gateways.networking.istio.io virtualservices.networking.istio.io; do
     kubectl wait --for=condition=Established "crd/$crd" --timeout=120s
   done
   # アプリチャート側のメッシュ宣言を有効化する（values-local.yaml は既定 false）。
-  ISTIO_MESH_ARGS="--set mesh.enabled=true --set mesh.mtlsMode=${ISTIO_MTLS_MODE:-PERMISSIVE} --set namespace.istioInjection=true"
+  # #1115: 経路B の Keycloak は **platform-infra（メッシュ外）**に居る。STRICT のままだと
+  # バックチャネルログアウトの POST が Envoy に落とされ、BFF へ一度も届かない（失効が
+  # アクセストークンの寿命ぶん遅れる）。ここだけを通す 2 枚組を有効にする
+  # （範囲は「principal 無し × /bff/auth/backchannel-logout 以外は DENY」。istio-mtls.yaml の注記参照）。
+  ISTIO_MESH_ARGS="--set mesh.enabled=true --set mesh.mtlsMode=${ISTIO_MTLS_MODE:-PERMISSIVE} --set namespace.istioInjection=true --set mesh.backchannelLogout.fromOutsideMesh=true"
   # 🔴 経路B は values-local.yaml が namespace.create=false のため、**Helm は Namespace を作らない**
   #   ＝ istioInjection=true にしても注入ラベルが誰にも適用されない。ここで明示的に貼る。
   #   （本番像は namespace.create=true なのでチャートが貼る。同じ結果を 2 経路で担保する。）
@@ -281,6 +286,17 @@ fi
 
 echo "==> [7/7] ExternalName aliases (素のサービス名 -> platform-infra FQDN)"
 kubectl apply -f deploy/local/aliases/microservices-platform-externalnames.yaml
+# #1115: 逆向き（platform-infra -> microservices-platform）。Keycloak がバックチャネルログアウトを
+# 素のサービス名 `bff-service` で叩けるようにする。理由はファイル冒頭の注記を参照。
+kubectl apply -f deploy/local/aliases/platform-infra-externalnames.yaml
+
+# NFR, SC-13, ADR-0026/ADR-0032, IADR-0273 (#1115): realm の `backchannel.logout.url` を稼働 realm へ当てる。
+# 🔴 **`--import-realm` は既存 realm があると黙って飛ばす（IGNORE_EXISTING）。realm JSON を直しても
+#    既存クラスタには届かない。** Wiki.js の bootstrap（IADR-0327）と同型の冪等な後追いで面倒を見る。
+# best-effort: 失敗しても up 全体は止めない（再実行は冪等）。
+echo "==> Keycloak realm の runtime 追随（バックチャネルログアウトの宛先 / 冪等）"
+bash "$ROOT/deploy/local/keycloak-setup/reconcile-backchannel-logout.sh" \
+  || echo "    WARN: realm の追随に失敗（best-effort）。bash deploy/local/keycloak-setup/reconcile-backchannel-logout.sh で再実行できる" >&2
 
 # ADR-0006, IADR-0077 (AST#24): opt-in オーバーレイ（既定オフ・fail-safe）。
 # 既定（env 未設定）では以下は一切実行されず、上記 [1/7]..[7/7] の挙動は不変。

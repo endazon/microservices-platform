@@ -136,7 +136,7 @@ node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in 
 | `static-checks`（再掲） | `validate-pipeline-config.js --self-test`（任意コンポーネント。採否は HOWTO Part B-6） |
 | `static-checks`（再掲） | `check-test-traceability.js --self-test` と本検査（受け入れ基準 → テストの写像）、および `check-test-spec-coverage.js --self-test` と本検査（#510 / IADR-0130。実在するテスト → テスト仕様書の記載） |
 | `static-checks-units` | `check-unit-dependencies.js --self-test` と本検査（#231 / IADR-0057）。**submodule 取得が要る組**（helm / kubectl も導入する） |
-| `static-checks`（再掲） | `check-realm-constraints.js --self-test` と本検査（#18 / #307 / #385） |
+| `static-checks`（再掲） | `check-realm-constraints.js --self-test` と本検査（#18 / #307 / #385 / #438 / #1115。#1115 は**サーバ間の口**（`backchannel.logout.url`）に pod から到達し得ない host（裸の `localhost` / ループバック / `*.localhost`）を書いていないかを見る。**ブラウザ向けの URL 群は対象外**——あちらは裸の `localhost` が正しい） |
 | `static-checks`（再掲） | `check-bff-downstreams.js --self-test` と本検査（#342 / IADR-0089） |
 | `static-checks`（再掲） | `check-secret-injected-options.js --self-test` と本検査（#1107 / IADR-0316 決定 4。**コード側が「実値は k8s Secret から環境変数で注入する」と doc コメントで宣言した構成値**が、helm（`secretKeyRef` 由来）と compose（`${...}` 展開）の**両方**で注入されていることを突合する。列挙を持たず宣言から母集合を引き、**0 件走査は fail-closed**。値の正しさは見ない——realm とのズレは疎通の側で現れる） |
 | `static-checks-units`（再掲） | `check-unit-service-ownership.js --self-test` と本検査（#407 / IADR-0107）／`check-deploy-manifests.js`（chart / overlay のレンダリング）／`check-collector-self-telemetry.js`（collector の自己テレメトリ宣言のパリティ。#1090） |
