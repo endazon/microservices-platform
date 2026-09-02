@@ -196,8 +196,9 @@ dotnet build backend.slnx
 
 1. 本テンプレートを複製し新ユニットのリポジトリを作成。
 2. `git submodule add <repo-url> src/<unit>`。
-3. バックエンド: CI は `src/*/backend/backend.slnx` を自動発見（編集不要）。private submodule は
-   checkout に `submodules: recursive` + トークンを与える（[how-to](../../docs/how-to/adding-a-unit-submodule.md) §3）。
+3. バックエンド: CI は `src/*/backend/backend.slnx` を自動発見（編集不要）。取得は `src/*` のユニット
+   submodule のみを非再帰で init する（checkout の `submodules:` は使わない）。private ユニットは
+   その init に read 権限を持つ PAT を与える（[how-to](../../docs/how-to/adding-a-unit-submodule.md) §3）。
 4. フロント: 雛形の `package.json` の `name` と `tsconfig.json` の `paths`（`@sample-unit` の行、および
    テンプレート位置向けの 2 つ目の候補パス）を自ユニット名へ直す。そのうえで **3 か所**を追加する
    （[IADR-0124](../../.ai-context/adr/IADR-0124_tanstack-router-unit-composition.md) 決定 1。

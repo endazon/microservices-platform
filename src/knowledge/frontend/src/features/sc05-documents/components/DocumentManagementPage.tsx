@@ -43,7 +43,8 @@ import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 //       **本画面が補完へ載せる作業は未了**であり、そこが残りである。
 //   機密区分の**値**を訳さない理由は abac/confidentiality.ts を参照。
 //   **［2026-08-10 追記 / #553］裁定は着地している** —— 4 値の表示名は 2026-08-05 の裁定
-//   （Q7・Q8・派生 Q30）で確定し、正は planning/docs/glossary.md（restricted＝**取扱制限**）。
+//   （Q7・Q8・派生 Q30）で確定し、正は計画リポジトリ project-planning の docs/glossary.md
+//   （restricted＝**取扱制限**）。
 //   **写像の実装先は #541 であり、それまでは生値を出す。**
 
 /** 未公開状態のみ公開できる（アーカイブ済みの誤再公開を防ぐ。サーバも 409 で拒否する）。 */
