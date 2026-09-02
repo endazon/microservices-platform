@@ -11,7 +11,8 @@
 
 ```
 [k3d cluster: msp-ast-dev]
-  ns platform-infra          postgres / rabbitmq / redis / keycloak / qdrant / otel-collector   ← deploy/local/infra
+  ns platform-infra          postgres / rabbitmq / redis / keycloak / qdrant / otel-collector
+                             + mailpit（開発環境の捕捉用 MTA。メールはここで止まり外へ出ない）  ← deploy/local/infra
   ns microservices-platform  既存 Helm chart（values-local: mesh/NP/HPA off, registry=local）
                              + ExternalName エイリアス（素のサービス名 → platform-infra）
   ns ai-stock-trading        AST chart（AST#122 で追加）
@@ -253,6 +254,25 @@ BFF を直接 port-forward する:
 kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 #   → http://localhost:5080/bff/...   （認証必須。匿名は 401）
 ```
+
+### 送信メールの確認（開発環境の捕捉用 MTA。Issue #1144 / IADR-0344）
+
+**開発環境から外部へメールは出ない。** 計画 ADR が「開発環境では実送信しない。捕捉用 MTA を置く」と
+確定しているため、`platform-infra` に `mailpit` が **dev 既定**（opt-in ではない）で立ち、
+Keycloak の realm もそこを送出先の既定にしている。**パスワードリセットのメールはここに溜まる。**
+
+```bash
+kubectl -n platform-infra port-forward svc/mailpit 8025:8025
+#   → http://localhost:8025            （受信箱。認証は無い）
+node scripts/check-password-reset-mail.js
+#   → 申請 → 送出 → 受信 → 本文（リンクと有効期限のみ）を機械で確かめる
+```
+
+> **エッジ（50000）には出していない。** 受信箱の中身は**パスワードリセットリンク＝認証資格**であり、
+> UI は認証を持たない。見るときは上のように**運用者が明示的に開く**。
+>
+> 実リレー（go-live のメールテナント）へ向けるのは、`SMTP_HOST` を明示したときだけである
+> （[運用 Runbook](../../docs/operations/keycloak-smtp-relay-setup-runbook.md)）。
 
 ### SPA(/settings) 到達（Issue #313 / IADR-0078）
 

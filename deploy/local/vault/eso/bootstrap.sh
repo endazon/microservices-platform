@@ -69,12 +69,28 @@ vexec "vault kv put secret/msp/postgres password='${PG_PASSWORD:-postgres}'"
 vexec "vault kv put secret/msp/rabbitmq username='${RABBITMQ_USER:-guest}' password='${RABBITMQ_PASSWORD:-guest}'"
 vexec "vault kv put secret/msp/keycloak-admin password='${KEYCLOAK_ADMIN_PASSWORD:-admin}'"
 # #438, ADR-0045 決定 2-b/6: SMTP リレー（go-live では Google Workspace への STARTTLS リレー）の資格情報。
-# **実環境の値は未供給のため既定は空文字**（他 secret と同じ fail-safe。空のままでは Keycloak の smtpServer は
-# 機能しない＝現状と不変）。値の投入手順・Secret の消費方法は
-# docs/operations/keycloak-smtp-relay-setup-runbook.md を参照。host/port/starttls は ADR-0045 決定 2-b の
-# 確定値（smtp.gmail.com / 587 / true）を既定に置く——これらは接続先の書式であり秘匿値ではない。
+# **実環境の値は未供給のため from/user/password の既定は空文字**（他 secret と同じ fail-safe。runbook §2 の
+# 「長さが 0 なら kcadm を打つな」判定はこの空既定に依る）。値の投入手順・Secret の消費方法は
+# docs/operations/keycloak-smtp-relay-setup-runbook.md を参照。
+#
+# ADR-0045 決定 9 (#1144): **宛先の既定はクラスタ内の捕捉用 MTA（Mailpit）である。**
+# 決定 9 は「開発環境では実送信しない。本番のメールテナントを開発環境から指さない」と無条件で定めており、
+# 既定が `smtp.gmail.com` のままでは **`from` に実値を入れた瞬間に外部の本番リレーへ実送信する**。
+# 宛先の単一情報源は deploy/local/infra/mailpit.yaml の Service（`mailpit` / 1025）である。
+# 実リレーへ向けるのは `SMTP_HOST` を明示したときだけ。
+#
+# 🔴 **port / starttls の既定は「宛先から導出する」** —— 素朴に `false` を既定へ書くと、実リレーへ向ける
+# ために `SMTP_HOST`/`SMTP_FROM`/… だけを渡した運用者が **STARTTLS 無しで外部へ繋ぐ**（決定 5 の破れ）。
+# 捕捉用 MTA 宛のときだけ平文（1025 / false）、**それ以外の宛先なら決定 2-b の確定値（587 / true）**。
+SMTP_CAPTURE_HOST='mailpit.platform-infra.svc.cluster.local'
+smtp_host="${SMTP_HOST:-$SMTP_CAPTURE_HOST}"
+if [ "$smtp_host" = "$SMTP_CAPTURE_HOST" ]; then
+  smtp_port_default='1025'; smtp_starttls_default='false'
+else
+  smtp_port_default='587'; smtp_starttls_default='true'
+fi
 vexec "vault kv put secret/msp/keycloak-smtp \
-  host='${SMTP_HOST:-smtp.gmail.com}' port='${SMTP_PORT:-587}' starttls='${SMTP_STARTTLS:-true}' \
+  host='$smtp_host' port='${SMTP_PORT:-$smtp_port_default}' starttls='${SMTP_STARTTLS:-$smtp_starttls_default}' \
   from='${SMTP_FROM:-}' user='${SMTP_USER:-}' password='${SMTP_PASSWORD:-}'"
 
 echo ""
@@ -84,7 +100,7 @@ echo "  PR-3: minio-oidc (MSP ns) / grafana-oidc, vault-oidc, headlamp-oidc (pla
 echo "  #1107: bff-oidc (MSP ns。BFF セッションの client secret。空だと /bff/auth/login が 500)"
 echo "  #1101: identity-admin-oidc (MSP ns。SC-17 の Keycloak Admin REST 反映。空だと authorization-service が起動しない)"
 echo "  PR-4: postgres, rabbitmq, keycloak-admin (platform-infra ns・creationPolicy: Merge・手動 apply は保持)"
-echo "  #438/#1102: keycloak-smtp (platform-infra ns。既定は空＝実値未供給。k8s-local-up.sh の ESO=1 が常時 apply する。docs/operations/keycloak-smtp-relay-setup-runbook.md 参照)"
+echo "  #438/#1102/#1144: keycloak-smtp (platform-infra ns。from/user/password は空＝実値未供給。宛先の既定はクラスタ内の捕捉用 MTA。k8s-local-up.sh の ESO=1 が常時 apply する。docs/operations/keycloak-smtp-relay-setup-runbook.md 参照)"
 echo "  #1127: wikijs-oidc (MSP ns。Wiki.js の OIDC ストラテジ seed が読む。WIKIJS_OIDC=1 のときだけ apply される)"
 # 🔴 案内は **実際に apply される名前だけ**を挙げる（#1102: 挙げた名前が作られないと、手順どおり
 #    打った人が必ず NotFound を踏む）。grafana-oidc / headlamp-oidc は OBSERVABILITY=1 / HEADLAMP=1 の、

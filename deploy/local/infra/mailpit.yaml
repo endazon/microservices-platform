@@ -1,0 +1,77 @@
+# SC-15, FR-22, ADR-0045 決定 9 (#1144): 開発環境の**捕捉用 MTA**（Mailpit）。
+#
+# 決定 9 は「**開発環境では実送信しない。k3s 上に捕捉用 MTA（Mailpit 等）を置き、送信内容を画面で
+# 確認できるようにする。本番のメールテナントを開発環境から指さない**」と確定している（Accepted）。
+#
+# 🔴 **opt-in ゲートに載せない。** 決定 9 は無条件であり、ゲートに載せると「ゲートを立てない人の既定は
+# 外を向いたまま」になる —— 決定 9 の弱い版（守る人だけが守る）にしかならない。base の並びへ置く。
+#
+# 送出先としての単一情報源: 本ファイルの Service 名 `mailpit` と port 1025。
+#   - realm の dev 既定（deploy/keycloak/microservices-platform-realm.json の smtpServer）
+#   - Vault seed の既定（deploy/local/vault/eso/bootstrap.sh の SMTP_HOST）
+#   - 静的検査（scripts/check-realm-constraints.js）が**この Service 名を走査して**両者と突き合わせる。
+#
+# 平文で受ける（STARTTLS を張らない）のは意図である。ADR-0045 決定 5 の理由は「リセットリンク＝認証資格が
+# **経路上で読めてはならない**」であり、捕捉用 MTA は**読ませるために置く装置**で、経路はクラスタ内の Pod
+# ネットワークに閉じ外へ 1 通も出さない。決定 5 の明示的な適用外である（射程は捕捉用 MTA 宛に限る）。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailpit
+  namespace: platform-infra
+  labels: { app: mailpit }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: mailpit }
+  template:
+    metadata:
+      labels: { app: mailpit }
+    spec:
+      containers:
+        - name: mailpit
+          image: axllent/mailpit:v1.21.8
+          env:
+            # 受信は認証を要求しない（dev の閉じたクラスタ内であり、資格情報を 1 つも増やさないため）。
+            # Keycloak 側も auth=false / starttls=false で繋ぐ（realm.json の dev 既定）。
+            - name: MP_SMTP_AUTH_ACCEPT_ANY
+              value: "true"
+            - name: MP_SMTP_AUTH_ALLOW_INSECURE
+              value: "true"
+            # 保持は使い捨て（既定はインメモリ）。up のたびに空から始まるほうが検査の前提が単純になる。
+            - name: MP_MAX_MESSAGES
+              value: "500"
+          ports:
+            - { containerPort: 1025, name: smtp }
+            - { containerPort: 8025, name: http }
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8025
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: 8025
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailpit
+  namespace: platform-infra
+  labels: { app: mailpit }
+spec:
+  selector: { app: mailpit }
+  ports:
+    # SMTP 受信（送出先）。realm の smtpServer / Vault seed の SMTP_HOST がここを指す。
+    - { name: smtp, port: 1025, targetPort: 1025 }
+    # 閲覧 UI と API（決定 9「画面で確認できる」）。**エッジへは出さない** —— UI は認証を持たず、
+    # 中身はリセットリンク＝認証資格である。運用者が明示的に開く:
+    #   kubectl -n platform-infra port-forward svc/mailpit 8025:8025  → http://localhost:8025
+    - { name: http, port: 8025, targetPort: 8025 }
