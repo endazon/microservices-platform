@@ -158,6 +158,20 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // 401 を返す型なので、ここを測らないと「全部 401 でも緑」になる。
     public string? LastMcpForwardedAuthorization { get; private set; }
 
+    // FR-22, UC-11, #600: NotificationService（/notifications*）のスタブ。**テスト間で共有される**
+    // （IClassFixture）ため、観測する側が呼ぶ前に既定へ戻すこと。
+    //
+    // 🔴 **後段の状態コードをそのまま返せることを測るための可変値である。** BFF は透過中継であり、
+    // 404（存在秘匿。「無い」と「本人のものでない」を区別しない）を作り替えてはならない。
+    public HttpStatusCode NotificationStubStatusCode { get; set; } = HttpStatusCode.OK;
+    public bool NotificationStubThrows { get; set; }
+    public string? LastNotificationPath { get; private set; }
+    public string? LastNotificationMethod { get; private set; }
+
+    // 🔴 **資格情報が後段へ届いているかの観測点**（陽性対照）。後段は主体を JWT からしか採らないため、
+    // 伝播が切れると全部 401 になる。ここを測らないと「全部 401 でも緑」になる。
+    public string? LastNotificationForwardedAuthorization { get; private set; }
+
     public bool TagDictionaryFetched { get; set; }
     public HttpStatusCode TagDictionaryStatusCode { get; set; } = HttpStatusCode.OK;
 
@@ -407,6 +421,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 // （mcp-service）とメッシュポート（:8080）を明示注入し、named client の BaseAddress が
                 // Services 設定駆動であることを固定する（BffDownstreamResolutionTests 参照）。
                 ["Services:McpServer"] = "http://mcp-service:8080",
+                // FR-22, UC-11 (#600): NotificationService の集約先（テスト用）。named client の
+                // BaseAddress が Services 設定駆動である（コード既定の直書きに退行していない）ことを
+                // BffNotificationEndpointTests が固定する。
+                ["Services:NotificationService"] = "http://notification-service:8080",
                 // FR-15: 構成情報 API テスト。定期ドリフト検出は無効化し、構成バージョンを固定する。
                 ["Drift:Enabled"] = "false",
                 ["Config:GitCommit"] = "abc1234",
@@ -454,6 +472,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // FR-16, UC-09, SC-12 (#452): McpServer(/mcp-clients*) をスタブ化する。
             services.AddHttpClient("McpServer")
                 .ConfigurePrimaryHttpMessageHandler(() => new McpStubHandler(this));
+
+            // FR-22, UC-11 (#600): NotificationService(/notifications*) をスタブ化する。
+            services.AddHttpClient("NotificationService")
+                .ConfigurePrimaryHttpMessageHandler(() => new NotificationStubHandler(this));
 
             // FR-10: /bff/dashboard/summary は管理系ロール（admin ＋ operator。#544）を要求する。テストでは Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
@@ -1361,6 +1383,60 @@ public class BffTestFactory : WebApplicationFactory<Program>
                     + "\"registeredAt\":\"2026-08-28T00:00:00Z\",\"updatedAt\":\"2026-08-28T00:00:00Z\"}]",
                     System.Text.Encoding.UTF8, "application/json"),
             };
+        }
+    }
+
+    // FR-22, UC-11 (#600): NotificationService(/notifications*) のスタブ。BFF の pass-through
+    // （状態・本文・Content-Type の透過、資格情報の伝播、クエリの載せ替え、502 縮退）を検証する最小スタブ。
+    //
+    // 🔴 **資格情報が届かないときは 401 を返す。** 後段の /notifications 群は RequireAuthorization()
+    // であり、主体はトークンからしか採られない。ここを一律 200 にすると、BFF が Authorization を
+    // 伝播し忘れても緑のままになる（伝播の陽性対照が成立しなくなる）。
+    private sealed class NotificationStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            owner.LastNotificationPath = request.RequestUri?.PathAndQuery;
+            owner.LastNotificationMethod = request.Method.Method;
+            owner.LastNotificationForwardedAuthorization =
+                request.Headers.TryGetValues("Authorization", out var auth) ? string.Join(' ', auth) : null;
+
+            if (owner.NotificationStubThrows)
+                throw new HttpRequestException("notification-service unreachable");
+
+            if (string.IsNullOrEmpty(owner.LastNotificationForwardedAuthorization))
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized));
+
+            // 後段の 404（存在秘匿）などを再現する。**本文まで透過することを測る**ため空にしない。
+            if (owner.NotificationStubStatusCode != HttpStatusCode.OK)
+                return Task.FromResult(new HttpResponseMessage(owner.NotificationStubStatusCode)
+                {
+                    Content = new StringContent(
+                        "{\"errors\":{\"request\":[\"stub-detail\"]}}",
+                        System.Text.Encoding.UTF8, "application/problem+json"),
+                });
+
+            // 既読化（POST /notifications/{id}/read）は NotificationReadResultDto、
+            // 一覧（GET /notifications）は NotificationListDto。形が違うので分ける。
+            // 🔴 **自由文の項目を 1 つも置かない**（契約が持たないものをテストデータで作らない）。
+            if (owner.LastNotificationPath?.EndsWith("/read", StringComparison.Ordinal) == true)
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "{\"id\":\"22222222-2222-2222-2222-222222222222\",\"unreadCount\":0}",
+                        System.Text.Encoding.UTF8, "application/json"),
+                });
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"items\":[{\"id\":\"22222222-2222-2222-2222-222222222222\","
+                    + "\"kind\":\"private-note-purge-imminent\",\"count\":3,\"thresholdPercent\":null,"
+                    + "\"deadline\":\"2026-09-09T00:00:00Z\",\"occurredAt\":\"2026-09-02T00:00:00Z\","
+                    + "\"read\":false}],\"unreadCount\":1}",
+                    System.Text.Encoding.UTF8, "application/json"),
+            });
         }
     }
 
