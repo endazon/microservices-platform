@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { MessageDescriptor } from '@lingui/core';
 import {
@@ -21,13 +20,13 @@ import { i18n } from '@foundation/i18n';
 import { toMessages } from '@foundation/utils/apiErrors';
 import {
   attributeScopeLabel,
-  buildConditions,
   policyActionLabel,
   POLICY_ACTIONS,
   summarizeConditions,
 } from '../types/abacVocabulary';
 import type { ConditionEntry, PolicyAction } from '../types/abacVocabulary';
 import { usePolicyActions } from '../api/useAbacAdmin';
+import { usePolicyDraft } from '../hooks/usePolicyDraft';
 // SC-09, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type { AbacPolicyDto, AttributeDefinitionDto } from '@foundation/api/generated/bff.schemas';
 
@@ -132,11 +131,11 @@ export function PolicyEditorPanel({
   const actions = usePolicyActions();
   const { create, setActive, remove, validate } = actions;
 
-  const [name, setName] = useState('');
-  const [action, setAction] = useState<PolicyAction>('read');
-  const [conditions, setConditions] = useState<ConditionEntry[]>([]);
-  const [attributeKey, setAttributeKey] = useState('');
-  const [conditionValue, setConditionValue] = useState('');
+  // SC-09 / IADR-0341: 登録フォームの下書き（クライアント状態）は `hooks/` に在る。
+  // 「属性を選び直すと条件の値が消える」「条件は属性定義の scope で積む」「保存と検証で同じ本文を送る」
+  // といった遷移の規則はフック側に閉じており、画面を描かずに固定してある
+  // （`hooks/usePolicyDraft.test.ts`）。
+  const draft = usePolicyDraft(attributes);
 
   // **列挙は手書きの配列にしない**（[[IADR-0127]] 決定 7）——
   // 4 本目のミューテーションを足したときに配列へ足し忘れて同じ穴が開く。
@@ -152,14 +151,6 @@ export function PolicyEditorPanel({
   function beginOperation() {
     for (const mutation of mutations) mutation.reset();
   }
-
-  /** 現在の入力から要求本文を組み立てる。**保存と検証で同じものを送る**（ズレる余地を作らない）。 */
-  function currentPolicyBody() {
-    return { name: name.trim(), action, ...buildConditions(conditions) };
-  }
-
-  const selected = attributes.find((a) => a.key === attributeKey);
-  const values = selected?.allowedValues ?? [];
 
   return (
     <div className="grid gap-3 lg:grid-cols-2">
@@ -229,15 +220,7 @@ export function PolicyEditorPanel({
           onSubmit={(e) => {
             e.preventDefault();
             beginOperation();
-            create.mutate(
-              { data: currentPolicyBody() },
-              {
-                onSuccess: () => {
-                  setName('');
-                  setConditions([]);
-                },
-              },
-            );
+            create.mutate({ data: draft.body() }, { onSuccess: draft.resetAfterSave });
           }}
         >
           <h3 className="text-sm font-medium text-[--color-fg-muted]">
@@ -248,7 +231,11 @@ export function PolicyEditorPanel({
               <Label htmlFor="policy-name">
                 <Trans>名前（必須）</Trans>
               </Label>
-              <Input id="policy-name" value={name} onChange={(e) => setName(e.target.value)} />
+              <Input
+                id="policy-name"
+                value={draft.name}
+                onChange={(e) => draft.setName(e.target.value)}
+              />
             </div>
             <div>
               <Label htmlFor="policy-action">
@@ -256,8 +243,8 @@ export function PolicyEditorPanel({
               </Label>
               <Select
                 id="policy-action"
-                value={action}
-                onChange={(e) => setAction(e.target.value as PolicyAction)}
+                value={draft.action}
+                onChange={(e) => draft.setAction(e.target.value as PolicyAction)}
               >
                 {POLICY_ACTIONS.map((a) => (
                   <option key={a} value={a}>
@@ -277,11 +264,8 @@ export function PolicyEditorPanel({
               </Label>
               <Select
                 id="policy-attr"
-                value={attributeKey}
-                onChange={(e) => {
-                  setAttributeKey(e.target.value);
-                  setConditionValue('');
-                }}
+                value={draft.attributeKey}
+                onChange={(e) => draft.selectAttributeKey(e.target.value)}
               >
                 <option value="">{t`選択してください`}</option>
                 {attributes.map((a) => (
@@ -297,12 +281,12 @@ export function PolicyEditorPanel({
               </Label>
               <Select
                 id="policy-value"
-                value={conditionValue}
-                onChange={(e) => setConditionValue(e.target.value)}
-                disabled={values.length === 0}
+                value={draft.conditionValue}
+                onChange={(e) => draft.setConditionValue(e.target.value)}
+                disabled={draft.values.length === 0}
               >
                 <option value="">{t`選択してください`}</option>
-                {values.map((v) => (
+                {draft.values.map((v) => (
                   <option key={v} value={v}>
                     {v}
                   </option>
@@ -312,28 +296,21 @@ export function PolicyEditorPanel({
             <div className="flex items-end">
               <Button
                 type="button"
-                disabled={!selected || conditionValue === ''}
-                onClick={() => {
-                  if (!selected) return;
-                  setConditions((prev) => [
-                    ...prev,
-                    { scope: selected.scope, key: selected.key, value: conditionValue },
-                  ]);
-                  setConditionValue('');
-                }}
+                disabled={!draft.selected || draft.conditionValue === ''}
+                onClick={draft.addCondition}
               >
                 <Trans>条件を追加</Trans>
               </Button>
             </div>
           </div>
 
-          {conditions.length > 0 && (
+          {draft.conditions.length > 0 && (
             <ul aria-label={t`設定した条件`} className="flex flex-wrap gap-2">
-              {conditions.map((c, i) => (
+              {draft.conditions.map((c, i) => (
                 <ConditionChip
                   key={`${c.scope}-${c.key}-${c.value}`}
                   condition={c}
-                  onRemove={() => setConditions((prev) => prev.filter((_, j) => j !== i))}
+                  onRemove={() => draft.removeCondition(i)}
                 />
               ))}
             </ul>
@@ -345,15 +322,15 @@ export function PolicyEditorPanel({
             <Button
               type="button"
               variant="secondary"
-              disabled={name.trim().length === 0 || validate.isPending}
+              disabled={!draft.canSubmit || validate.isPending}
               onClick={() => {
                 beginOperation();
-                validate.mutate({ data: currentPolicyBody() });
+                validate.mutate({ data: draft.body() });
               }}
             >
               <Trans>検証</Trans>
             </Button>
-            <Button type="submit" variant="primary" disabled={name.trim().length === 0}>
+            <Button type="submit" variant="primary" disabled={!draft.canSubmit}>
               <Trans>保存</Trans>
             </Button>
           </div>

@@ -1,3 +1,4 @@
+using Knowledge.Bff.Endpoints.Usage;
 using Knowledge.Contracts.Dtos;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -33,6 +34,7 @@ public static class SearchBffEndpoints
         g.MapPost("/", async (
             SearchRequest req,
             IHttpClientFactory httpFactory,
+            IUsageEventReporter usage,
             HttpContext http,
             CancellationToken ct) =>
         {
@@ -74,6 +76,16 @@ public static class SearchBffEndpoints
                     return Results.StatusCode((int)searchResp.StatusCode);
 
                 var result = await searchResp.Content.ReadFromJsonAsync<SearchResponse>(ct);
+
+                // FR-10, SC-10, [[IADR-0343]] (#1103): **利用状況イベント（search）を発火する。**
+                // ここまで来たときだけ数える —— 空クエリ・許可スコープ無し・後段の非 2xx は
+                // 上で早期に返っており、**実行されていない検索を利用状況に数えない**。
+                //
+                // 🔴 **応答を待たない**（`Report` は列へ載せるだけで例外も投げない）。検索の
+                // 応答時間（NFR 検索 p95 1.5s）に計測の往復を載せず、計測の失敗で検索を落とさない。
+                // 送るのは種別と検索語だけで、利用者は受け口が `Authorization` から解決する。
+                usage.Report(new UsageEventSignal(UsageEventType.Search, req.Query, auth));
+
                 return Results.Ok(result ?? new SearchResponse([], 0, 0));
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
