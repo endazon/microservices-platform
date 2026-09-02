@@ -171,7 +171,7 @@ if [ "${ESO:-}" != "1" ]; then
   apply_secret "$MSP_NS" identity-admin-oidc \
     "client-secret=${IDENTITY_ADMIN_CLIENT_SECRET:-identity-admin-dev-secret-change-me}"
 fi
-# NFR-09, ADR-0011/ADR-0026, IADR-0095/IADR-0328/IADR-0334 (#1127): Wiki.js の Keycloak OIDC
+# NFR-09, ADR-0011/ADR-0026, IADR-0095/IADR-0328/IADR-0342 (#1127): Wiki.js の Keycloak OIDC
 # ストラテジ（Wiki.js の DB 保持・manifest 化できない）を冪等に投入する
 # `deploy/local/wikijs-setup/bootstrap.sh` 段 8 が読む client secret。
 # 🔴 **この Secret を env で読む Pod は 1 つも無い**（読み手は bootstrap）。したがって ESO 後段の
@@ -763,13 +763,13 @@ fi
 # best-effort: 失敗しても up 全体は止めない。**fail-closed の門は `scripts/check-stack-ready.js` の
 # G7** に置いてある（そちらが setup モード・空 apiKey・locale 欠落を落とす）。
 #
-# NFR-09, IADR-0334 (#1127): 同じ bootstrap の **段 8** が Keycloak OIDC ストラテジ
+# NFR-09, IADR-0342 (#1127): 同じ bootstrap の **段 8** が Keycloak OIDC ストラテジ
 # （`authentication` テーブル＝これも manifest 化できない runtime 状態）を冪等に投入する。
 # こちらは **opt-in（`WIKIJS_OIDC=1`・既定オフ）** —— endpoint がエッジ host を前提にするため、
 # `LOCALEDGE` 抜きで既定 ON にすると「押せるが 502 になるボタン」を作ることになる。
 # 既定では `local` ログインだけが残る（fail-safe）。**新しい入口は増やさない**（段として相乗りする）。
 wikijs_oidc_note=""
-[ "${WIKIJS_OIDC:-}" = "1" ] && wikijs_oidc_note=" ＋ [opt-in] OIDC ストラテジ投入（IADR-0334）"
+[ "${WIKIJS_OIDC:-}" = "1" ] && wikijs_oidc_note=" ＋ [opt-in] OIDC ストラテジ投入（IADR-0342）"
 echo "==> Wiki.js 初期セットアップ（冪等 / IADR-0327）${wikijs_oidc_note}"
 bash "$ROOT/deploy/local/wikijs-setup/bootstrap.sh" \
   || echo "    WARN: Wiki.js の初期化に失敗（best-effort）。bash deploy/local/wikijs-setup/bootstrap.sh で再実行できる" >&2

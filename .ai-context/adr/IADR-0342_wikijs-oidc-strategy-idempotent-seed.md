@@ -1,5 +1,5 @@
 ---
-title: IADR-0334 Wiki.js の OIDC ストラテジを既存 bootstrap の段として冪等に投入し、DELETE→INSERT をやめる
+title: IADR-0342 Wiki.js の OIDC ストラテジを既存 bootstrap の段として冪等に投入し、DELETE→INSERT をやめる
 type: impl-adr
 status: Accepted
 related_ids: [NFR-09, FR-13, UC-07, SC-04, ADR-0011, ADR-0026, IADR-0020, IADR-0095, IADR-0098, IADR-0103, IADR-0327, IADR-0328, IADR-0332]
@@ -11,7 +11,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0026_authentication-ux-and-account-management.md
 ---
 
-# IADR-0334: Wiki.js の OIDC ストラテジを既存 bootstrap の段として冪等に投入し、DELETE→INSERT をやめる
+# IADR-0342: Wiki.js の OIDC ストラテジを既存 bootstrap の段として冪等に投入し、DELETE→INSERT をやめる
 
 - 状態: Accepted
 - 日付: 2026-09-02

@@ -54,7 +54,7 @@ vexec "vault kv put secret/msp/bff-oidc client-secret='${BFF_OIDC_CLIENT_SECRET:
 # **空だと authorization-service Pod が起動しない**（helm は非 optional な secretKeyRef で読む）。
 # 既定は realm import の置き場と同値（ズレると client_credentials が 401 になり SC-17 が 500 になる）。
 vexec "vault kv put secret/msp/identity-admin-oidc client-secret='${IDENTITY_ADMIN_CLIENT_SECRET:-identity-admin-dev-secret-change-me}'"
-# NFR-09, IADR-0095/IADR-0334 (#1127): Wiki.js の OIDC ストラテジ（DB 保持・manifest 化できない runtime 状態）
+# NFR-09, IADR-0095/IADR-0342 (#1127): Wiki.js の OIDC ストラテジ（DB 保持・manifest 化できない runtime 状態）
 # を冪等に再適用する `deploy/local/wikijs-setup/bootstrap.sh` 段 8 が読む client secret。
 # **Pod は誰も env で読まない**（読み手は bootstrap）。既定は realm import の置き場と同値 ——
 # ズレると Keycloak の token 端点が `invalid_client` を返し、認可までは進むのに callback で落ちる。

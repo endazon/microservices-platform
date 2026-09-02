@@ -36,7 +36,7 @@
 #   WIKIJS_API_KEY_NAME     既定 wiki-service-sync
 #   WIKIJS_API_KEY_TTL      既定 1y
 #
-# 段 8（Keycloak OIDC ストラテジ）は **opt-in・既定オフ**（IADR-0334 / #1127）。env は段 8 の直前に列挙する。
+# 段 8（Keycloak OIDC ストラテジ）は **opt-in・既定オフ**（IADR-0342 / #1127）。env は段 8 の直前に列挙する。
 set -euo pipefail
 
 MSP_NS="${MSP_NS:-microservices-platform}"
@@ -294,7 +294,7 @@ fi
 
 # ---------------------------------------------------------------- 8) Keycloak OIDC ストラテジ（opt-in）
 #
-# NFR-09, IADR-0095/IADR-0103/IADR-0328, IADR-0334 (#1127・#397 の再起票):
+# NFR-09, IADR-0095/IADR-0103/IADR-0328, IADR-0342 (#1127・#397 の再起票):
 # Wiki.js の OIDC 設定は **Wiki.js の DB（`authentication` テーブル）保持**であり、manifest にも Helm
 # values にも無い。したがって up でスタックを起こしただけでは OIDC ログインは**存在しない**し、
 # wikijs DB を作り直すたびに消える。ここで冪等に再適用する（realm import・Vault bootstrap と同じ種類の

@@ -329,7 +329,7 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
   登録済み。`http://localhost:3001/*` は compose(dev) の host 公開用（[IADR-0032](../../.ai-context/adr/IADR-0032_wikijs-dev-exposure-opt-in.md)）
   であり k8s の port-forward では使わない。非 edge で SSO を使う場合は Wiki.js の **Site URL も `http://localhost:3300`** に
   揃える（コールバックは `{Site URL}/login/{strategyKey}/callback`・[wiki-oidc/README](wiki-oidc/README.md)）。
-  **ストラテジと Site URL の投入は自動である**（#1127・IADR-0334）——
+  **ストラテジと Site URL の投入は自動である**（#1127・IADR-0342）——
   `WIKIJS_OIDC=1 bash scripts/k8s-local-up.sh`（既定オフの opt-in）か、既に立っているスタックなら
   `WIKIJS_OIDC=1 bash deploy/local/wikijs-setup/bootstrap.sh`。冪等で、2 回目は何も変えない。
   非 edge で使うときは同時に `WIKIJS_SITE_URL=http://localhost:3300` を渡す。
