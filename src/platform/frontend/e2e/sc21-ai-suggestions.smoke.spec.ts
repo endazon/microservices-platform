@@ -9,8 +9,9 @@ import { test, expect } from '@playwright/test';
 // ルートの実在は router.test.ts（計画のルート表とナビ項目の解決）が Vitest 側で固定している。
 //
 // 🔴 **一覧の中身・フィルタ・一括承認の不在・SC-03 への導線も Vitest（単体）で検証する。**
-// セッションは BFF（Keycloak）との往復で成立し、プレビューにはどちらも無いため、
-// **認証済みの導線を Playwright で実走できない**（既存 14 本の smoke がすべて同じ形である）。
+// **本 spec は認証済みの導線を踏んでいない。踏めないからではない**（#1099 が実測で覆した）。
+// セッションを与える土台は `support/bffSession.ts` にあり、SC-12 / SC-17 / SC-19 / SC-20 が使う。
+// 本画面へ広げるかは #1139 が判断する。
 test('unauthenticated visit to /ai-suggestions redirects to /login', async ({ page }) => {
   await page.goto('/ai-suggestions?state=pending');
 
