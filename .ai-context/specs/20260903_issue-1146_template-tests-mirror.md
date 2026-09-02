@@ -263,6 +263,32 @@ expected_test_attributes=4 executed_passed=6
 **移送は 2 件とも rename として履歴に残った**（`git commit` の出力が `rename ... (52%)` /
 `rename ... (50%)` を報告した。**内容も編集したので類似度は 100% ではない**）。
 
+### 6-4. ［2026-09-03 追記 / #1146］merge train の head で再検証した
+
+PR #1170 のブランチは、依頼者が `develop` と先行 PR を取り込む **merge train** として運用している
+（`train1170`。本作業の commit `6ae92904` を含んだまま、他 PR のマージコミットが積まれた）。
+**§6-1・§6-2 の実測は自分の commit 単体での結果であり、train の head での結果ではない。**
+`git pull --ff-only` で追随（ahead/behind = 0 / 0）したうえで**同じ手順を引き直した。**
+
+雛形は `src/platform/backend/Shared/` の 3 プロジェクトを相対参照するため、
+**train が取り込んだ他 PR の Shared 変更が雛形を壊し得る。** 引き直しはその可能性を潰すためである。
+
+| 実行（train head） | 結果 |
+| --- | --- |
+| 雛形の複製 → `dotnet build --artifacts-path` | ビルドに成功しました / 0 警告 0 エラー |
+| `dotnet test --no-build` | **テストの合計数 6 / 成功 6** |
+| `dotnet format --verify-no-changes` | 終了コード 0（差分なし） |
+| CI と同じ下限検査 | `expected_test_attributes=4 executed_passed=6` |
+| 複製の後片付け | `git status --short --ignored -- src/` に `template-buildcheck` の残骸 **0 件**（**陽性対照**: 削除直前は 1 件在った） |
+| `check-doc-links` | OK（**1097 件** —— train が文書を増やしたため §6-2 の 1079 件から増えている） |
+| `check-trace-blocks` / `check-doc-updated` / `check-test-traceability` | OK（`check-doc-updated` は train 込みで `docs/` 変更 11 件） |
+| `check-xunit1051-ratchet` / `check-cpm-versions` / `check-backend-libraries` | OK |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | **677 tests passed**（train が検査器のテストを 3 件増やした） |
+
+**GitHub Actions 側でも、自分の commit が head だった時点で `template-backend-build` が pass している**
+（41s。受け入れ基準 3 の直接の証拠）。train の head での CI 結果は train 全体の責任範囲であり、
+本作業の射程外である。
+
 ## 7. 本 PR で扱わない（申し送り）
 
 1. 🔴 **`docs/tech/tech-requirements.md` L142-143 の陳腐化**: 「**操作単位のスライス分割
