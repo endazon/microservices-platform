@@ -4,14 +4,14 @@ type: observability-spec
 status: in-progress
 author: claude
 created: 2026-08-31
-updated: 2026-08-31
+updated: 2026-09-02
 ---
 <!-- trace:
 ids: [FR-03, FR-05, NFR, NFR-06, UC-01, SC-01, SC-02]
 adrs: [ADR-0009, ADR-0016]
-iadrs: [IADR-0009, IADR-0252, IADR-0255, IADR-0256, IADR-0313, IADR-0318]
-specs: [20260831_issue-1116_qdrant-fulltext-payload-index]
-issues: [#972, #992, #1116]
+iadrs: [IADR-0009, IADR-0252, IADR-0255, IADR-0256, IADR-0313, IADR-0318, IADR-0339]
+specs: [20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext]
+issues: [#972, #992, #1116, #1118]
 -->
 <!-- 起点 ID・関連 ADR/IADR・仕様書名・修飾付き issue 参照は本文へ書かず、上の trace ブロックへ入れる -->
 
@@ -57,6 +57,7 @@ issues: [#972, #992, #1116]
 | 属性 | 値域 | 意味 |
 | --- | --- | --- |
 | `search.keyword_degraded_reason` | `missing_index` | 索引そのものが無い（readiness が検出した。**この理由は例外を伴わない**） |
+| | `missing_ngram_index` | 日本語 2-gram（`text_ngram`）の索引が無い（readiness が検出した。識別子は当たるが**日本語の語だけが 0 件**になる。例外を伴わない） |
 | | `backend_error` | ベクトルDB が全文検索の要求を拒んだ（接続断・旧版の索引未作成エラー等） |
 
 - Prometheus 上の名前は OTLP の変換後（`.` → `_`）である。**コード側の計器名とは表記が違う。**
@@ -71,6 +72,9 @@ issues: [#972, #992, #1116]
 | `qdrant-fulltext-index` | 検索が見ているコレクションの `payload_schema` に `text`（text 型）が在る | `Healthy` |
 | | 在らない | **`Degraded`** |
 | | 応答を読めない（ベクトルDB が答えない） | **`Degraded`**（到達性そのものは別のチェックが `Unhealthy` で受け持つ） |
+| `qdrant-cjk-ngram-index` | 同じコレクションの `payload_schema` に `text_ngram`（text 型）が在る | `Healthy` |
+| | 在らない（`text` は在っても） | **`Degraded`**（識別子は当たるが日本語の語だけが 0 件になる。本文でその別を報告する） |
+| | 応答を読めない | **`Degraded`** |
 
 🔴 **`Unhealthy` にしない。** ベクトル側は生きており検索は結果を返し続ける。
 ここで pod を Ready から外すと、**キーワード側の欠落を理由に検索全体を落とす**ことになり、
@@ -82,10 +86,11 @@ k8s の readinessProbe は落ちず、**運用（本文・ログ基盤・Grafana
 
 ## 運用手順（Degraded を見たとき）
 
-1. 取り込みサービスの起動ログに索引生成の失敗（`Error`）が無いか見る。
-2. ベクトルDB のコレクション定義を直接見る（`payload_schema.text` の有無と `tokenizer`）。
-3. 取り込みサービスを再起動する。**索引は起動時に無条件・冪等に張り直される**ので、
-   手作業での索引作成や移行スクリプトは要らない。
+1. 取り込みサービスの起動ログに索引生成の失敗（`Error`）が無いか見る。日本語 2-gram の後付け
+   （起動後のバックグラウンド）の失敗も同じログに `Error` で出る。
+2. ベクトルDB のコレクション定義を直接見る（`payload_schema.text` / `payload_schema.text_ngram` の有無と `tokenizer`）。
+3. 取り込みサービスを再起動する。**索引は起動時に無条件・冪等に張り直され、`text_ngram` を持たない点は
+   起動後に後付けされる**ので、手作業での索引作成・移行スクリプト・再取り込みは要らない。
 4. 直ったことは、全文だけで既知文書がヒットすることで確かめる（統合スタックの検証スクリプトと
    実機の全文インデックス検証スクリプトが、陽性対照と陰性対照を対で測る）。
 

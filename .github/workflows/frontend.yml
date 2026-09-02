@@ -11,6 +11,9 @@ on:
     paths:
       - "src/*/frontend/**"
       - "src/packages/**"
+      # FR-20 / ADR-0037 決定 1 / IADR-0338 決定 2: 自作 Obsidian プラグイン（pnpm workspace メンバ）。
+      # "src/*/frontend/**" にも "src/packages/**" にも一致しない第 3 の成果物なので名指しで足す。
+      - "src/obsidian-plugin/**"
       - "src/package.json"
       - "src/pnpm-lock.yaml"
       - "src/pnpm-workspace.yaml"
@@ -65,6 +68,9 @@ on:
     paths:
       - "src/*/frontend/**"
       - "src/packages/**"
+      # FR-20 / ADR-0037 決定 1 / IADR-0338 決定 2: 自作 Obsidian プラグイン（pnpm workspace メンバ）。
+      # "src/*/frontend/**" にも "src/packages/**" にも一致しない第 3 の成果物なので名指しで足す。
+      - "src/obsidian-plugin/**"
       - "src/package.json"
       - "src/pnpm-lock.yaml"
       - "src/pnpm-workspace.yaml"
@@ -206,6 +212,10 @@ jobs:
       # 次のステップの走査対象を作ることを兼ねる。
       - name: Build Storybook (catalog)
         run: pnpm --filter @platform/ui run build-storybook
+      # FR-20 / ADR-0037 決定 1 / IADR-0338 決定 3: 自作 Obsidian プラグインの成果物（dist/main.js・manifest.json・
+      # cli.mjs）。ビルドが通ることの確認と、次のステップの走査対象を作ることを兼ねる（Storybook と同じ位置づけ）。
+      - name: Build Obsidian plugin
+        run: pnpm --filter @platform/obsidian-plugin run build
       # 08_data-egress-policy / IADR-0125 決定 5: 外部 CDN・Web フォント・analytics を使わない。
       # 設定（disableTelemetry 等）だけでは「設定したつもり」を検出できないため、**成果物を走査**する。
       # --require は対象が存在しなければ fail する（走査 0 件を成功と誤らせない）。
@@ -215,6 +225,7 @@ jobs:
           node scripts/check-static-egress.js
           --require src/packages/ui/storybook-static
           --require src/platform/frontend/dist
+          --require src/obsidian-plugin/dist
 
   e2e:
     runs-on: ubuntu-latest
@@ -242,7 +253,10 @@ jobs:
           cache: pnpm
           cache-dependency-path: src/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      # スクリーンレベル・スモーク（バックエンド不要。ログイン画面到達を検証）。
+      # スクリーンレベル・スモーク（バックエンドを 1 つも起動しない）。
+      # ［2026-09-02 / #1139］従前ここには「ログイン画面到達を検証」と書いていたが誤りである。
+      # 身元を返す応答をネットワーク層で差し替えることで**認証済みの画面まで**検証する
+      # （土台は src/platform/frontend/e2e/support/bffSession.ts）。基盤不要なのは変わらない。
       # --filter で platform/frontend の文脈を指定する。@playwright/test は workspace ルート（src/）では
       # なく platform/frontend の devDependency であり、pnpm は npm と違って各パッケージの .bin しか
       # 見せないため、src/ での素の `pnpm exec playwright` はバイナリを解決できず

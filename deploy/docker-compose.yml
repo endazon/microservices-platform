@@ -687,6 +687,14 @@ services:
     build:
       context: ..
       dockerfile: src/platform/backend/Bff/Platform.Bff/Dockerfile
+    # NFR, SC-13, ADR-0026/ADR-0032, IADR-0273 (#1115): realm の `backchannel.logout.url` は
+    # **素のサービス名 `bff-service`** である（compose と k8s で同じ realm ファイルを import するため。
+    # k8s 側は deploy/local/aliases/platform-infra-externalnames.yaml が同じ名前を解決させる）。
+    # compose の本サービス名は `bff` なので、ここで別名を足して Keycloak コンテナから引けるようにする。
+    networks:
+      default:
+        aliases:
+          - bff-service
     ports:
       - "5000:8080"
     environment:
