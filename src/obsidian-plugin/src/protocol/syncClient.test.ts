@@ -3,6 +3,7 @@ import {
   PUSH_PATH,
   SyncClient,
   noteDeletePath,
+  noteMovePath,
   noteSyncPath,
 } from './syncClient.ts';
 import type { HttpRequest, HttpTransport } from './transport.ts';
@@ -56,6 +57,35 @@ describe('SyncClient', () => {
     await expect(client.pull(entry.noteId)).resolves.toEqual(pulled);
     expect(calls[0]!.url).toBe(`https://kb.example.co.jp${noteSyncPath(entry.noteId)}`);
     expect(noteSyncPath('a b')).toBe('/private-notes/sync/notes/a%20b');
+  });
+
+  // FR-20, [[IADR-0353]] 決定 1・2: move は名前だけを運び、版は進まない
+  it('move は vaultPath と version を送り、契約どおりの形なら返す', async () => {
+    const body = {
+      noteId: entry.noteId,
+      vaultPath: 'notes/renamed.md',
+      version: 3,
+      updatedAt: '2026-09-03T09:00:00Z',
+    };
+    const { transport, calls } = transportReturning(200, JSON.stringify(body));
+    const client = new SyncClient(transport, 'https://kb.example.co.jp', 'tok');
+
+    await expect(
+      client.move(entry.noteId, { vaultPath: 'notes/renamed.md', version: 3 }),
+    ).resolves.toEqual(body);
+    expect(calls[0]!.method).toBe('POST');
+    expect(calls[0]!.url).toBe(`https://kb.example.co.jp${noteMovePath(entry.noteId)}`);
+    expect(noteMovePath('a b')).toBe('/private-notes/sync/notes/a%20b/move');
+    expect(JSON.parse(calls[0]!.body!)).toEqual({ vaultPath: 'notes/renamed.md', version: 3 });
+
+    // 契約と違う形（version が無い）は黙って通さない
+    const bad = transportReturning(200, JSON.stringify({ noteId: entry.noteId }));
+    await expect(
+      new SyncClient(bad.transport, 'https://kb.example.co.jp', 'tok').move(entry.noteId, {
+        vaultPath: 'x.md',
+        version: 1,
+      }),
+    ).rejects.toBeInstanceOf(SyncProtocolError);
   });
 
   // FR-20, [[IADR-0270]] 決定 3: 401 は理由を問わず SyncAuthError（期限切れ・失効・不正を区別しない）

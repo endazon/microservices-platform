@@ -70,6 +70,16 @@ public class PrivateNote
         UpdatedAt = now;
     }
 
+    // FR-20, ADR-0037 決定 2, [[IADR-0353]] 決定 2: Obsidian 側のリネームの伝播（同期 move）。
+    // **版は進めない** —— `VaultPath` は台帳の項目であって `Document` の版ではなく、本文も
+    // 変わっていない。名前の変更で版履歴（直近 50 版）を使い切らせない。
+    // 一意性（有効な行の中で所有者ごとに一意）は呼び出し側が判定する（新規作成と同じ関数）。
+    public void MoveTo(string vaultPath, DateTimeOffset now)
+    {
+        VaultPath = vaultPath;
+        UpdatedAt = now;
+    }
+
     // FR-19: 露出 3 トグルの変更（SC-20 露出設定）。
     public void SetExposure(bool includeInSearch, bool includeInGraph, bool includeInAi,
         DateTimeOffset now)

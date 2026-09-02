@@ -164,6 +164,7 @@
       "DocumentShareTests"
     ],
     "docs/tests/FR-20_obsidian-sync.md": [
+      "ObsidianSyncMoveTests",
       "ObsidianSyncProtocolTests",
       "SyncDeviceTokenTests"
     ],

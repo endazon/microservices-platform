@@ -280,9 +280,15 @@ export function summarizePush(report: PushReport): string {
     lines.push(
       `ℹ 同期フォルダから外れたため同期を止めた（削除はしていません）: ${report.untracked.length} 件`,
     );
-  if (report.renamedLocally.length > 0)
+  const propagated = report.renamedLocally.filter((r) => r.propagated);
+  const notPropagated = report.renamedLocally.filter((r) => !r.propagated);
+  if (propagated.length > 0)
     lines.push(
-      `ℹ この端末で名前を変えた資料: ${report.renamedLocally.length} 件（ナレッジベース側の名前は変わりません）`,
+      `ℹ この端末で名前を変えた資料: ${propagated.length} 件（ナレッジベース側の名前も変えました）`,
+    );
+  if (notPropagated.length > 0)
+    lines.push(
+      `⚠ 名前をナレッジベース側へ伝えられなかった: ${notPropagated.length} 件（下の競合で確認します）`,
     );
   if (report.missingLocal.length > 0)
     lines.push(

@@ -1,5 +1,5 @@
 // FR-20, UC-11, ADR-0037 課題 2, [[IADR-0270]] 決定 3, [[IADR-0338]] 決定 4, [[IADR-0352]]:
-// 同期プロトコルの client（manifest / pull / push / delete の 4 つ）。
+// 同期プロトコルの client（manifest / pull / push / delete / move の 5 つ）。
 //
 // - 資格情報は **Bearer 同期トークン**（ブラウザセッションと別系統）。BFF は経由しない。
 // - 401 は理由を問わず `SyncAuthError`（サーバが区別しないので client も区別しない）。
@@ -16,6 +16,8 @@ import {
   SyncQuotaError,
   SyncTooLargeError,
   type DeleteNoteResponse,
+  type MoveNoteRequest,
+  type MoveNoteResponse,
   type PullNoteResponse,
   type PushNoteRequest,
   type PushNoteResponse,
@@ -28,6 +30,7 @@ export const PUSH_PATH = '/private-notes/sync/notes';
 export const noteSyncPath = (noteId: string): string =>
   `/private-notes/sync/notes/${encodeURIComponent(noteId)}`;
 export const noteDeletePath = (noteId: string): string => `${noteSyncPath(noteId)}/delete`;
+export const noteMovePath = (noteId: string): string => `${noteSyncPath(noteId)}/move`;
 
 export class SyncClient {
   constructor(
@@ -58,6 +61,19 @@ export class SyncClient {
     const body = await this.request('POST', PUSH_PATH, request);
     if (!isPushResponse(body)) {
       throw new SyncProtocolError(200, PUSH_PATH, 'push の形が契約と違います');
+    }
+    return body;
+  }
+
+  /**
+   * リネーム（`vaultPath` の更新）。**版は進まない**ので、成功しても状態の版は積み直さない。
+   * 409（version_conflict / vault_path_conflict / deleted）は**再送しない**（決定 7 と同じ向き）。
+   */
+  async move(noteId: string, request: MoveNoteRequest): Promise<MoveNoteResponse> {
+    const path = noteMovePath(noteId);
+    const body = await this.request('POST', path, request);
+    if (!isMoveResponse(body)) {
+      throw new SyncProtocolError(200, path, 'move の形が契約と違います');
     }
     return body;
   }
@@ -167,6 +183,16 @@ function isPushResponse(v: unknown): v is PushNoteResponse {
     typeof v.version === 'number' &&
     typeof v.contentHash === 'string' &&
     typeof v.bytes === 'number'
+  );
+}
+
+function isMoveResponse(v: unknown): v is MoveNoteResponse {
+  return (
+    isRecord(v) &&
+    typeof v.noteId === 'string' &&
+    typeof v.vaultPath === 'string' &&
+    typeof v.version === 'number' &&
+    typeof v.updatedAt === 'string'
   );
 }
 

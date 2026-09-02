@@ -1,5 +1,9 @@
 // FR-20, UC-11, ADR-0037 決定 2・4・5・7・8・14, [[IADR-0270]] 決定 7, [[IADR-0352]] 決定 2・3:
-// push の一巡。同期フォルダを走査 → 計画 → 新規／更新／論理削除を送る → 状態と journal を進める。
+// push の一巡。同期フォルダを走査 → 計画 → リネーム／新規／更新／論理削除を送る → 状態と journal を進める。
+//
+// リネームは**中身より先に**送る（[[IADR-0353]] 決定 4）。move は版を進めないので、成功しても
+// 状態の版は積み直さない。409 はここでも**再送しない**（`vault_path_conflict` は名前だけの失敗であり、
+// 本文の送信は続ける。`version_conflict` は続く update も同じ 409 になるので送らない）。
 //
 // 🔴 **409（version_conflict）を受けたら上書きしない。** 状態も journal も進めず、競合として報告する。
 // 解決（ローカル採用／サーバ採用／両方残す）は利用者が選んでから `conflictResolver.ts` が行う
@@ -57,8 +61,11 @@ export interface PushReport {
   versionsPushed: number;
   deleted: string[];
   untracked: { localPath: string; reason: UntrackReason }[];
-  /** ローカルのリネーム。紐付けは更新したがサーバへは伝播していない（契約に口が無い）。 */
-  renamedLocally: { from: string; to: string }[];
+  /**
+   * ローカルのリネーム。`propagated` はナレッジベース側の名前も変わったか
+   * （409 で拒まれた場合は false。紐付けだけ更新して競合として報告する）。
+   */
+  renamedLocally: { from: string; to: string; propagated: boolean }[];
   unchanged: number;
   missingLocal: string[];
   conflicts: PushConflict[];
@@ -124,6 +131,9 @@ export async function runPushSync(deps: PushSyncDeps): Promise<PushReport> {
   const touch = () => {
     dirty = true;
   };
+  // move が版ずれ・サーバ側削除で拒まれた資料。同じ一巡で続く update も同じ 409 になるので、
+  // 送らずに飛ばす（同じ競合を 2 件報告しない）。パス重複は本文の送信を妨げないので入れない。
+  const moveBlocked = new Set<string>();
 
   try {
     for (const action of actions) {
@@ -174,6 +184,8 @@ export async function runPushSync(deps: PushSyncDeps): Promise<PushReport> {
           break;
         }
         case 'update': {
+          // 直前の move が同じ 409 で拒まれている。送っても同じ結果なので飛ばす（報告は 1 件）。
+          if (moveBlocked.has(action.noteId)) break;
           const tracked = state[action.noteId]!;
           const content = contents.get(action.localPath)!;
           const edits = await collectEdits(
@@ -285,10 +297,67 @@ export async function runPushSync(deps: PushSyncDeps): Promise<PushReport> {
           break;
         case 'rename-local': {
           const tracked = state[action.noteId]!;
+          // 🔴 [[IADR-0353]] 決定 4: 紐付け（localPath）は move の成否によらず進める ——
+          // ファイルは既にローカルで移動しており、戻すとこの資料が missing-local になり続ける。
+          // サーバの vaultPath は**成功したときだけ**進める（失敗しても pull が引き戻さない）。
           state[action.noteId] = { ...tracked, localPath: action.to };
           delete journal.renamed[action.to];
           touch();
-          report.renamedLocally.push({ from: action.from, to: action.to });
+          let propagated = false;
+          try {
+            const res = await deps.client.move(action.noteId, {
+              vaultPath: action.vaultPath,
+              version: action.baseVersion,
+            });
+            state[action.noteId] = {
+              ...state[action.noteId]!,
+              vaultPath: res.vaultPath,
+              syncedAt: deps.now().toISOString(),
+            };
+            propagated = true;
+          } catch (e) {
+            // 🔴 409 は再送しない（自動で名前を付け替えない）。利用者が選び直す。
+            if (e instanceof SyncConflictError && e.conflict.error === 'version_conflict') {
+              moveBlocked.add(action.noteId);
+              report.conflicts.push({
+                cause: 'version',
+                noteId: action.noteId,
+                localPath: action.to,
+                baseVersion: action.baseVersion,
+                serverVersion: e.conflict.serverVersion,
+                serverUpdatedAt: e.conflict.serverUpdatedAt,
+                pendingEdits: journal.edits[action.to]?.length ?? 0,
+              });
+            } else if (
+              e instanceof SyncConflictError &&
+              e.conflict.error === 'vault_path_conflict'
+            ) {
+              report.conflicts.push({
+                cause: 'path-taken',
+                localPath: action.to,
+                vaultPath: e.conflict.vaultPath,
+              });
+            } else if (
+              (e instanceof SyncConflictError && e.conflict.error === 'deleted') ||
+              e instanceof SyncNotFoundError
+            ) {
+              moveBlocked.add(action.noteId);
+              state[action.noteId] = { ...state[action.noteId]!, serverDeleted: true };
+              report.conflicts.push({
+                cause: 'server-deleted',
+                noteId: action.noteId,
+                localPath: action.to,
+                localExists: true,
+                purgeAt:
+                  e instanceof SyncConflictError && e.conflict.error === 'deleted'
+                    ? e.conflict.purgeAt
+                    : null,
+              });
+            } else {
+              throw e;
+            }
+          }
+          report.renamedLocally.push({ from: action.from, to: action.to, propagated });
           break;
         }
         case 'server-deleted': {
