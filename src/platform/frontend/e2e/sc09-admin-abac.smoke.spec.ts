@@ -6,8 +6,10 @@ import { test, expect } from '@playwright/test';
 // 未知のパスの受け皿（catchAllRoute）は `RequireAuth` 配下の shellRoute の子であるため、
 // **ルートが存在しなくても未認証なら /login へ行く**（#918 が改名の変異で実測。#1013 で全数を是正した）。
 // ルートの実在は router.test.ts（計画のルート表とナビ項目の解決）が Vitest 側で固定している。
-// 属性辞書・ポリシー定義・検証結果・権限別の出し分けは Vitest（単体）で検証する——セッションは
-// BFF（Keycloak）との往復で成立し、プレビューにはどちらも無いため、認証済みの導線は Playwright で実走できない。
+// 属性辞書・ポリシー定義・検証結果・権限別の出し分けは Vitest（単体）で検証する。
+// **本 spec は認証済みの導線を踏んでいない。踏めないからではない**（#1099 が実測で覆した）。
+// セッションを与える土台は `support/bffSession.ts` にあり、SC-12 / SC-17 / SC-19 / SC-20 が使う。
+// 本画面へ広げるかは #1139 が判断する。
 test('unauthenticated visit to /admin/abac redirects to /login', async ({ page }) => {
   await page.goto('/admin/abac');
 

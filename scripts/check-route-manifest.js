@@ -28,6 +28,20 @@
  *   **パス値を計画に対して固定するのは `router.test.ts`（木に載っているかを実行時に見る）の役目**で、
  *   本検査器の役目は**行の有無**である。2 つの層で別のものを見る。
  *
+ * ── 判定 3: 画面ごとのブラウザ E2E（#1099）
+ *   画面 feature（判定 1 と**同じ母集合**）に `<unit>/frontend/e2e/sc<NN>-*.smoke.spec.ts` が
+ *   1 本あるか。除外は理由つきでしか宣言できない（`SCREENS_WITHOUT_E2E_SMOKE`）。
+ *
+ *   🔴 **なぜ足したか（`CLAUDE.md`「同型の事故が 2 回起きたら」の適用）**: 同型＝**列挙の伸ばし忘れ**は
+ *   #1078（lingui の `files`）・#1066（feature 分割）で既に 2 回起きており、#1099 が 3 回目である
+ *   —— SPA ルートを持つ 17 画面のうち 4 画面（SC-12 / SC-17 / SC-19 / SC-20）に spec が無く、
+ *   **UC-11 が E2E で 1 度も踏まれていなかった。** 画面を足すときに spec を足し忘れても
+ *   何も赤くならないのが機序であり、判定 1 と同じ場所・同じ母集合で見るのが自然である。
+ *
+ *   🔴 **「spec がある」ことしか見ない。** 中身が意味のあることを見ているかは検査できない
+ *   （#918 が実測したとおり、未認証リダイレクトだけの spec は**ルートを消しても落ちない**）。
+ *   本判定は行の有無の検査であり、検出力は各 spec の変異試験が受け持つ。
+ *
  * ── 判定 2: 誤った主張の再混入（grep-zero）
  *   走査対象は `src/<unit>/frontend/e2e/` と `docs/tests/`。
  *   🔴 **これは文面のリテラル検査であり、新しい言い回しの誤記は捕まえられない。**
@@ -253,6 +267,90 @@ function findManifestViolations(screens, { planned, exempt }) {
   return out;
 }
 
+// --- 判定 3: 画面ごとのブラウザ E2E（#1099） ----------------------------------
+
+/** ブラウザ E2E の spec の形（`sc<NN>-<概要>.smoke.spec.ts`）。 */
+const E2E_SPEC_RE = /^sc(\d{2})-[^/]*\.smoke\.spec\.tsx?$/;
+
+/**
+ * spec を置かない画面と、その理由。**空で始める**（#1099 時点で除外は 0 件である）。
+ *
+ * 🔴 **理由なしで外す道を用意しない**（判定 1 の除外表と同じ作法）。ここへ足すときは
+ * 「なぜこの画面だけブラウザで踏まなくてよいのか」を書くこと。「あとで書く」は理由ではない。
+ * @type {Record<string, string>}
+ */
+const SCREENS_WITHOUT_E2E_SMOKE = {};
+
+/**
+ * e2e ファイル名の集合から SC 番号を拾う（純関数）。
+ * @param {string[]} fileNames
+ * @returns {Set<string>}
+ */
+function collectE2eScreens(fileNames) {
+  const out = new Set();
+  for (const name of fileNames) {
+    const m = E2E_SPEC_RE.exec(name);
+    if (m) out.add(`SC-${m[1]}`);
+  }
+  return out;
+}
+
+/**
+ * 判定 3 の違反（純関数）。
+ * @param {{sc: string, dir: string}[]} screens
+ * @param {Set<string>} specScreens
+ * @param {Record<string, string>} exempt
+ * @returns {{kind: string, sc: string, detail: string}[]}
+ */
+function findE2eViolations(screens, specScreens, exempt = SCREENS_WITHOUT_E2E_SMOKE) {
+  const out = [];
+  const screenIds = new Set(screens.map((s) => s.sc));
+
+  for (const s of screens) {
+    if (specScreens.has(s.sc)) continue;
+    const reason = exempt[s.sc];
+    if (reason === undefined) {
+      out.push({
+        kind: 'missing-e2e-smoke',
+        sc: s.sc,
+        detail:
+          `${s.dir} は SPA ルートを持つ画面だが、<unit>/frontend/e2e/ に ` +
+          `sc${s.sc.slice(3)}-*.smoke.spec.ts が無い（#1099。足せないなら ` +
+          'SCREENS_WITHOUT_E2E_SMOKE へ理由つきで宣言する）',
+      });
+      continue;
+    }
+    if (String(reason).trim().length < MIN_REASON_LENGTH) {
+      out.push({
+        kind: 'empty-e2e-reason',
+        sc: s.sc,
+        detail: `${s.sc} の除外理由が ${MIN_REASON_LENGTH} 文字未満である`,
+      });
+    }
+  }
+
+  // 画面が消えたのに spec と除外が残る（判定 1 の逆方向と同じ趣旨）。
+  for (const sc of specScreens) {
+    if (!screenIds.has(sc)) {
+      out.push({
+        kind: 'e2e-without-screen',
+        sc,
+        detail: `${sc} の e2e spec があるが、ルートを宣言する画面 feature（sc<NN>-*）が無い`,
+      });
+    }
+  }
+  for (const sc of Object.keys(exempt)) {
+    if (!screenIds.has(sc)) {
+      out.push({
+        kind: 'e2e-exempt-without-screen',
+        sc,
+        detail: `${sc} が SCREENS_WITHOUT_E2E_SMOKE に居るが、対応する画面 feature が無い`,
+      });
+    }
+  }
+  return out;
+}
+
 // --- 判定 2: 誤った主張の再混入 -----------------------------------------------
 
 /**
@@ -348,6 +446,16 @@ function collectFeatureFiles(repo = REPO) {
     files.push(...walk(dir, (n) => n.endsWith('.ts') || n.endsWith('.tsx')).map(read));
   }
   return files;
+}
+
+/** 各ユニットの `frontend/e2e/` にあるファイル名（basename）。判定 3 の一次情報。 */
+function collectE2eFileNames(repo = REPO) {
+  const names = [];
+  for (const unit of localUnits(repo)) {
+    const dir = path.join(repo, 'src', unit, 'frontend', 'e2e');
+    names.push(...walk(dir, () => true).map((abs) => path.basename(abs)));
+  }
+  return names;
 }
 
 function collectClaimFiles(repo = REPO) {
@@ -494,6 +602,60 @@ function selfTest() {
     assert.strictEqual(v[0].kind, 'in-both-lists');
   });
 
+  // --- 判定 3（#1099） --------------------------------------------------------
+
+  const SCREENS3 = [
+    { sc: 'SC-01', dir: 'd/sc01-search/' },
+    { sc: 'SC-19', dir: 'd/sc19-private-notes/' },
+  ];
+  const E2E3 = [
+    'login.smoke.spec.ts',
+    'bundle-splitting.smoke.spec.ts',
+    'sc01-search.smoke.spec.ts',
+    'sc19-private-notes.smoke.spec.ts',
+    'support/bffSession.ts',
+  ];
+
+  t('e2e ファイル名から SC 番号を拾う（画面に紐づかない spec と土台は拾わない）', () => {
+    assert.deepStrictEqual([...collectE2eScreens(E2E3)].sort(), ['SC-01', 'SC-19']);
+  });
+
+  t('★ 画面ごとに spec が揃っていれば違反 0 件', () =>
+    assert.deepStrictEqual(findE2eViolations(SCREENS3, collectE2eScreens(E2E3), {}), []));
+
+  t('★ 画面を足して spec を書き忘れると落ちる（#1099 の欠陥そのもの）', () => {
+    const v = findE2eViolations(SCREENS3, collectE2eScreens(['sc01-search.smoke.spec.ts']), {});
+    assert.strictEqual(v.length, 1, JSON.stringify(v));
+    assert.strictEqual(v[0].kind, 'missing-e2e-smoke');
+    assert.strictEqual(v[0].sc, 'SC-19');
+  });
+
+  t('★ 除外は理由つきでしか宣言できない', () => {
+    const specs = collectE2eScreens(['sc01-search.smoke.spec.ts']);
+    assert.deepStrictEqual(
+      findE2eViolations(SCREENS3, specs, { 'SC-19': '実体は別ホストであり SPA では踏めない' }),
+      [],
+    );
+    const v = findE2eViolations(SCREENS3, specs, { 'SC-19': '未定' });
+    assert.strictEqual(v.length, 1, JSON.stringify(v));
+    assert.strictEqual(v[0].kind, 'empty-e2e-reason');
+  });
+
+  t('★ 画面が消えたのに spec / 除外が残ると落ちる（逆方向）', () => {
+    const v = findE2eViolations(
+      [SCREENS3[0]],
+      collectE2eScreens(['sc01-search.smoke.spec.ts', 'sc99-ghost.smoke.spec.ts']),
+      { 'SC-98': '消えた画面の除外が残っている' },
+    );
+    assert.deepStrictEqual(
+      v.map((x) => `${x.kind}:${x.sc}`).sort(),
+      ['e2e-exempt-without-screen:SC-98', 'e2e-without-screen:SC-99'],
+    );
+  });
+
+  t('陰性対照: 命名が違うファイルを spec と数えない（`.smoke.spec.ts` の形だけ）', () =>
+    assert.deepStrictEqual([...collectE2eScreens(['sc19-private-notes.spec.ts', 'sc19.md'])], []));
+
   // --- 判定 2 -----------------------------------------------------------------
 
   const claims = (s, markdown = false) => findClaimViolations(s, { markdown }).map((v) => v.id);
@@ -594,7 +756,16 @@ function main(argv) {
     return 1;
   }
 
+  const e2eFileNames = collectE2eFileNames();
+  if (e2eFileNames.length === 0) {
+    console.error('[check-route-manifest] 判定 3 の走査対象（<unit>/frontend/e2e）が 0 件でした。');
+    console.error('  0 件検査は「検査しているつもりで何も見ていない」状態なので fail させています。');
+    return 1;
+  }
+  const specScreens = collectE2eScreens(e2eFileNames);
+
   const manifestViolations = findManifestViolations(screens, manifest);
+  const e2eViolations = findE2eViolations(screens, specScreens);
   const claimViolations = [];
   for (const f of claimFiles) {
     for (const v of findClaimViolations(f.text, { markdown: f.markdown })) {
@@ -602,11 +773,19 @@ function main(argv) {
     }
   }
 
-  if (manifestViolations.length === 0 && claimViolations.length === 0) {
+  if (
+    manifestViolations.length === 0 &&
+    e2eViolations.length === 0 &&
+    claimViolations.length === 0
+  ) {
+    // 🔴 **語順を崩さない。** `scripts.repo.test.js` の 0 件走査の門がこの文から件数を読む
+    //（#1099 で判定 3 の件数を足したとき、間へ差し込んで一度壊した）。追記は末尾へ寄せる。
     console.log(
       `[check-route-manifest] OK: 画面 ${screens.length} 件とマニフェスト ` +
         `${manifest.planned.length} 行（除外 ${manifest.exempt.length} 件）が対応し、` +
-        `${claimFiles.length} 件の e2e / 試験仕様に誤った主張はありません。`,
+        `${claimFiles.length} 件の e2e / 試験仕様に誤った主張はありません` +
+        `（ブラウザ E2E は ${specScreens.size} 画面ぶん・除外 ` +
+        `${Object.keys(SCREENS_WITHOUT_E2E_SMOKE).length} 件）。`,
     );
     return 0;
   }
@@ -615,6 +794,11 @@ function main(argv) {
     console.error(`[check-route-manifest] 判定 1（マニフェストの網羅）の違反 ${manifestViolations.length} 件:`);
     for (const v of manifestViolations) console.error(`  - [${v.kind}] ${v.detail}`);
     console.error(`  表は ${MANIFEST_REL} にあります。計画の正本は 05_screens §共通シェル「ルートパス」です。`);
+  }
+  if (e2eViolations.length > 0) {
+    console.error(`[check-route-manifest] 判定 3（画面ごとのブラウザ E2E）の違反 ${e2eViolations.length} 件:`);
+    for (const v of e2eViolations) console.error(`  - [${v.kind}] ${v.detail}`);
+    console.error('  spec は src/platform/frontend/e2e/ に置きます（#1099 の 4 本が実例）。');
   }
   if (claimViolations.length > 0) {
     console.error(`[check-route-manifest] 判定 2（誤った主張）の違反 ${claimViolations.length} 件:`);
@@ -630,11 +814,15 @@ function main(argv) {
 module.exports = {
   MANIFEST_REL,
   MIN_REASON_LENGTH,
+  SCREENS_WITHOUT_E2E_SMOKE,
   parseManifest,
   collectScreens,
   collectFeatureFiles,
   collectClaimFiles,
+  collectE2eFileNames,
+  collectE2eScreens,
   findManifestViolations,
+  findE2eViolations,
   findClaimViolations,
   maskCode,
 };

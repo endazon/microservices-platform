@@ -23,10 +23,11 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
       config/                    # 実行時 config（shared。原典が app の兄弟に置く区分）
       components/                # 共通コンポーネント（ui / notifications / ai-chat）
       lib/                       # api（orval 生成物と HTTP 出口）/ auth / i18n（設定済み Lingui）
+      utils/                     # 自前の共有ユーティリティ関数（apiErrors / formatDateTime）
       testing/                   # 横断 setup と画面テスト用ハーネス（テスト専用の第 4 層）
       features/index.ts          # ユニット合成点（可変ユニットの features を束ねる。層としては app）
       locales/                   # ja / en の Lingui カタログ（実体あり。生成物はコミットする）
-      assets/ hooks/ stores/ types/ utils/   # 🔴 中身が無い（.gitkeep のみ）。下の注記を読むこと
+      assets/ hooks/ stores/ types/          # 🔴 中身が無い（.gitkeep のみ）。下の注記を読むこと
       main.tsx                   # エントリ
     index.html / vite.config.ts / e2e/ / public/
     nginx.default.conf.template / config.js.template   # 配信・実行時 config
@@ -36,15 +37,21 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
 ```
 
 - 🔴 **空の区分（`.gitkeep` のみ）について** ——
-  `platform` は `assets/ hooks/ stores/ types/ utils/`、`knowledge` は
+  `platform` は `assets/ hooks/ stores/ types/`、`knowledge` は
   `app/ assets/ hooks/ locales/ stores/ testing/ types/ utils/` が空である。
   **「枠があること」を適合の証拠として読まないこと。**
   - **なぜ空か**（区分ごとに理由が違う）: `assets/` は外部 CDN と Web フォントを禁じた結果
     フォントがシステムフォント・アイコンがパッケージになり**置くものが無い**。`hooks/` の横断フックは
     **関心の隣に置いてある**（`lib/auth/useAuth.ts` 等）。`stores/` の Zustand は 1 本だけで、
     その 4 つの参照元がすべて `components/ai-chat/` 配下にある。`types/` は表示型が**生成 DTO**である。
-    `utils/` の純粋関数は `components/ui/` に居る。`knowledge` の `app/` `locales/` `testing/` は
-    **アプリホスト（platform）が持つ**という意図的な不在である。
+    `knowledge` の `app/` `locales/` `testing/` は**アプリホスト（platform）が持つ**という意図的な不在で、
+    同ユニットの `utils/` は**自前の純粋関数をまだ 1 つも持たない**（echarts の読み込み口は
+    「設定済みライブラリを外へ渡す」形なので `lib/echarts/` にある。
+    [IADR-0333](../../../.ai-context/adr/IADR-0333_non-rendering-module-placement.md) 決定 2）。
+    - **［2026-09-02 追記 / #1131］`platform` の `utils/` はこの一覧から外れた。** 従前ここには
+      「`utils/` の純粋関数は `components/ui/` に居る」と書いてあった —— **空だった理由は
+      「置くものが無いから」ではなく、置くべきものが `components/` に居たからである。**
+      実体（`apiErrors.ts` / `formatDateTime.ts`）を移したので、この区分はもう空ではない。
   - **消してよいかは未確定である。** planning#445 は**これらのディレクトリ名を名指しで**
     「ツリー全体への適合が必須」と裁定した一方、同じ裁定が「名前だけを揃える対応は採らない」とも言う。
     計画 `ADR-0065` 決定 4 は `.gitkeep` の枠置き規範を撤回したが、その明文はバックエンド標準の
@@ -54,11 +61,18 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
 
 - **エイリアス**: `@foundation/<区分>` は **platform 基盤の公開面の名前**であり、ディレクトリ名ではない。
   向き先は `config` → `src/config`、`routing` → `src/app/routing`、`api` / `auth` / `i18n` → `src/lib/*`、
-  `ui` / `notifications` / `ai-chat` → `src/components/*`、`testing` → `src/testing`。
+  `utils` → `src/utils`、`ui` / `notifications` / `ai-chat` → `src/components/*`、`testing` → `src/testing`。
   ほかに `@knowledge` → `knowledge/frontend/src`、`@features` → `platform/frontend/src/features`（合成点）。
   **エイリアス名は変えない**（submodule の可変ユニットと `templates/unit-template` の契約が割れるため）。
-  定義は `platform/frontend/tsconfig.app.json` / `platform/frontend/vite.config.ts` / `src/vitest.config.ts`
-  の 3 箇所にあり、**3 つとも同じ向き先を持たせる**。
+  🔴 **「変えない」は改名の禁止であって、区分が増えたときに面を足すことは禁じていない**
+  （[IADR-0333](../../../.ai-context/adr/IADR-0333_non-rendering-module-placement.md) 決定 4。
+  `@foundation/utils` は #1131 で足した）。
+  定義は `platform/frontend/tsconfig.app.json` / `knowledge/frontend/tsconfig.json` /
+  `templates/unit-template/frontend/tsconfig.json` / `platform/frontend/vite.config.ts` /
+  `src/vitest.config.ts` の **5 箇所**にあり、**5 つとも同じ向き先を持たせる**
+  （**従前ここには「3 箇所」と書いてあったが誤りである** —— knowledge ユニットと unit-template も
+  同じ `@foundation/*` の面を宣言している。片方だけ足すと
+  「型検査は通るがビルド／テストだけ壊れる」形になる）。
   **ESLint の依存方向の規則もこのエイリアスを解決する** —— `src/eslint-import-resolver-unit-alias.cjs` が
   tsconfig の `paths` を読むので、向き先を足す・変えるときも ESLint 側に表を書き足す必要は無い。
 - **層と依存の向き**: `shared`（`components` / `hooks` / `lib` / `stores` / `types` / `utils` / `config` /
