@@ -3,16 +3,18 @@
 **本リポジトリの主たる成果物は、マイクロサービスプラットフォームの基盤（platform ユニット）である。**
 認証・認可（ABAC）、LLM エグレス統制、メッセージング、可観測性、エッジ集約（BFF）、SPA 基盤といった
 横断能力を、機能ドメインから独立した再利用可能な土台として提供する（別プロジェクトからの再利用前提:
-`planning/projects/ai-stock-trading/07_adr/ADR-0001_platform-reuse.md`）。
+計画リポジトリ `project-planning` の `projects/ai-stock-trading/07_adr/ADR-0001_platform-reuse.md`）。
 
 **ナレッジ活用機能（knowledge ユニット）は、この基盤に付随する必須の可変機能セット**である。
 社内ナレッジ（文書・Wiki）の横断検索、AI による回答・出典提示・データ分析を提供するが、
 位置づけはあくまで「基盤の上で組み替え可能な一機能ユニット」であり、本リポジトリの主目的ではない
 （issue #209 / [IADR-0056](.ai-context/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。
 
-このリポジトリは、上流の計画リポジトリ（`project-planning`、`planning/` に git submodule として
-参照）で確定した計画書（要求・ユースケース・画面・ADR）を実装する。**実装の進め方・トレーサビリティ
-規約・仕様書の作成規約は [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) を参照。**
+このリポジトリは、上流の計画リポジトリ `project-planning` で確定した計画書（要求・ユースケース・画面・ADR）を
+実装する。**計画リポジトリは submodule として持たない**（本リポジトリは planning に依存しない）。参照は
+GitHub 上の URL を直接開くか、隣接クローン（既定パス `../project-planning`。**読み取り専用・pin 固定なし**）で
+行う。**実装の進め方・トレーサビリティ規約・仕様書の作成規約は [`CLAUDE.md`](CLAUDE.md) /
+[`AGENTS.md`](AGENTS.md) を参照。**
 
 ## アーキテクチャ概要
 
@@ -96,7 +98,7 @@ flowchart LR
 ├── deploy/              # デプロイ定義: docker-compose（dev）、helm/argocd/istio/keycloak（stg/prod）
 ├── docs/                # 実装仕様書（機能/画面/API/データ/技術/テスト/運用/セキュリティ/ADR）と how-to
 ├── scripts/             # 補助スクリプト（CHANGELOG/OpenAPI 生成、doc リンク検査、環境セットアップ）
-├── planning/            # 計画リポジトリ project-planning（git submodule）
+├── .ai-context/         # AI 向け文脈資料・凍結記録（実装ADR adr/、作業仕様書 specs/）
 └── CLAUDE.md / AGENTS.md / AI_SETUP.md  # AI 実装エージェント向けの運用規約
 ```
 
@@ -107,7 +109,7 @@ flowchart LR
 | .NET SDK | 10.0.x（`global.json` は `8.0.0` + `rollForward: latestMajor`） | バックエンドのビルド・テスト（[`src/Directory.Build.props`](src/Directory.Build.props)） |
 | Node.js | 22（CI と同一。フロントは `frontend-tests.yml`/`frontend.yml` で node 22） | フロントエンドのビルド・テスト、`scripts/` の補助スクリプト |
 | Docker / Docker Compose | 任意（compose v2 相当） | ローカルのインフラ・全サービス起動（`deploy/docker-compose.yml`） |
-| git | — | `planning/` submodule の取得を含む |
+| git | — | ユニット submodule（`src/ai-stock-trading`）の取得を含む |
 
 ## ローカル起動手順
 
@@ -115,7 +117,7 @@ flowchart LR
 [`docs/how-to/local-development.md`](docs/how-to/local-development.md) を参照。ここでは要点のみ示す。
 
 ```bash
-# 1. clone（計画リポジトリの submodule を含める）
+# 1. clone（ユニット submodule を含める。計画リポジトリは submodule ではない）
 git clone --recurse-submodules <this-repo-url>
 # 既に clone 済みの場合:
 git submodule update --init --recursive
@@ -166,7 +168,8 @@ bash scripts/compose-up.sh up -d
 - **使い方・デプロイの how-to**: [`docs/how-to/local-development.md`](docs/how-to/local-development.md)・[`docs/how-to/deployment.md`](docs/how-to/deployment.md)
 - **完了の定義**（PR を出す前のチェックリスト）: [`docs/DEFINITION_OF_DONE.md`](docs/DEFINITION_OF_DONE.md)
 - **AI 駆動の実装ワークフロー全体**: [`docs/ai-workflow.md`](docs/ai-workflow.md)
-- **計画リポジトリの参照**: `planning/`（submodule、既定パス）。要求・ユースケース・画面設計・ADR の一次情報。
+- **計画リポジトリの参照**: `project-planning`（**submodule ではない**）。GitHub 上の URL か隣接クローン
+  （既定パス `../project-planning`。読み取り専用）で読む。要求・ユースケース・画面設計・計画 ADR の一次情報。
 
 ## 技術スタック（要約）
 

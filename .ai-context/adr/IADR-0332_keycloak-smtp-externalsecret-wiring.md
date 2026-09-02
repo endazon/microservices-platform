@@ -1,5 +1,5 @@
 ---
-title: IADR-0330 keycloak-smtp の ExternalSecret を起動器へ配線する位置と、「起動器から参照されない配備宣言物が無い」ことの機械化
+title: IADR-0332 keycloak-smtp の ExternalSecret を起動器へ配線する位置と、「起動器から参照されない配備宣言物が無い」ことの機械化
 type: impl-adr
 status: Accepted
 related_ids: [SC-15, SC-16, FR-22, NFR, ADR-0026, ADR-0045, IADR-0261]
@@ -11,7 +11,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0026_authentication-ux-and-account-management.md
 ---
 
-# IADR-0330: `keycloak-smtp` の ExternalSecret を起動器へ配線する位置と、「起動器から参照されない配備宣言物が無い」ことの機械化
+# IADR-0332: `keycloak-smtp` の ExternalSecret を起動器へ配線する位置と、「起動器から参照されない配備宣言物が無い」ことの機械化
 
 - 状態: Accepted
 - 日付: 2026-08-31

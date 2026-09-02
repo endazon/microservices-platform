@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [SC-10, SC-15, FR-05, FR-09, FR-22]
 adrs: [ADR-0026, ADR-0045]
-iadrs: [IADR-0197, IADR-0261, IADR-0330]
+iadrs: [IADR-0197, IADR-0261, IADR-0332]
 specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring]
 issues: [#438, #578, #600, #1102]
 -->

@@ -384,7 +384,7 @@ if [ "${ESO:-}" = "1" ]; then
   kubectl apply -f deploy/local/vault/eso/externalsecret-postgres.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-admin.yaml
-  # SC-15, FR-22, ADR-0026/ADR-0045 決定 6, IADR-0261 決定 2 / IADR-0330 (#1102): SMTP リレーの資格情報。
+  # SC-15, FR-22, ADR-0026/ADR-0045 決定 6, IADR-0261 決定 2 / IADR-0332 (#1102): SMTP リレーの資格情報。
   # **手動 apply の対になる `ESO != 1` ブロックを持たない**（postgres/rabbitmq/keycloak-admin と違い
   # step [3/7] の bootstrap 対象でもない）ので、**これが唯一の供給元**である。常時供給。
   # 🔴 **Pod は 1 つもこの Secret を env で読まない。** 読むのは runbook の `kcadm` 手順（人間）であり、

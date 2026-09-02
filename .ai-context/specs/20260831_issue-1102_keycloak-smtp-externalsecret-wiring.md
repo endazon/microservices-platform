@@ -10,7 +10,7 @@ related_ids:
   - ADR-0026
   - ADR-0045
   - IADR-0261
-  - IADR-0330
+  - IADR-0332
 author: claude
 created: 2026-08-31
 updated: 2026-09-02
@@ -157,7 +157,7 @@ role・seed が全部消えている。** `secret/msp/keycloak-smtp` も当然�
    `docs/operations/keycloak-smtp-relay-setup-runbook.md`（§2「★現時点は手動」）・
    `bootstrap.sh` の確認コマンド 2 行（MSP ns 側は本件と独立に既に古い。§3 で開示）。
 5. `docs/screens/SC-15_password-reset.md` の「存在秘匿 | する」を実測に合わせて直す（0-2 (c)）。
-6. 実装ADR `IADR-0330`。
+6. 実装ADR `IADR-0332`。
 
 **入れないもの**
 
@@ -281,7 +281,7 @@ MSP の数えは動かない。**infra 側の案内（`infra_es`）に `keycloak
 
 ## 6. 実装ADR
 
-`IADR-0330`（配置・待ち合わせ・不変条件の置き場・射程の境界）。
+`IADR-0332`（配置・待ち合わせ・不変条件の置き場・射程の境界）。
 
 ## 7. 実測の記録（2026-09-02・稼働 k3s）
 
@@ -345,4 +345,4 @@ store を apply した直後も `InvalidProviderConfig` のままで、ESO の�
   （§7-1 のとおり意図的に seed しなかった。Secret 実体は 36 日前のものが残っており、実害は無い）。
   **次に `k8s-local-up.sh` を通しで回した人が `bootstrap.sh` ごと復旧させる。** 本 PR の射程外。
 - `eso_wait` の `MSP_NS` 側が `bff-oidc` / `identity-admin-oidc` / `postgres-app` / `rabbitmq-app` を
-  待っていない件（IADR-0330 フォローアップ 1）は**未着手**。「同型が 2 回起きたら」の 1 回目として記録に留める。
+  待っていない件（IADR-0332 フォローアップ 2）は**未着手**。「同型が 2 回起きたら」の 1 回目として記録に留める。
