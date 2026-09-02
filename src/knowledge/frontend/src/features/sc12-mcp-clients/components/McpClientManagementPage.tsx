@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { MessageDescriptor } from '@lingui/core';
 import { i18n } from '@foundation/i18n';
@@ -16,14 +16,13 @@ import {
 } from '../api/useMcpClients';
 import {
   CLIENT_KINDS,
-  assignableAttributes,
-  buildAttributes,
   clientAuthLabel,
   clientKindLabel,
   requiresAttributes,
-  validateRegistration,
 } from '../types/mcpClientVocabulary';
-import type { AttributeEntry, ClientKind, RegistrationIssue } from '../types/mcpClientVocabulary';
+import type { ClientKind, RegistrationIssue } from '../types/mcpClientVocabulary';
+import { useMcpClientRegistrationForm } from '../hooks/useMcpClientRegistrationForm';
+import { useMcpClientAttributeEditor } from '../hooks/useMcpClientAttributeEditor';
 
 // SC-12, UC-09, FR-16, ADR-0024: MCP クライアント登録管理（05_screens: ルート /admin/mcp-clients）。
 //
@@ -73,25 +72,21 @@ export function McpClientManagementPage() {
   const actions = useMcpClientActions();
   const issueLabels = useIssueLabels();
 
-  const [clientId, setClientId] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [kind, setKind] = useState<ClientKind>('interactive');
-  const [attributeKey, setAttributeKey] = useState('');
-  const [attributeValue, setAttributeValue] = useState('');
-  const [entries, setEntries] = useState<AttributeEntry[]>([]);
-  const [issues, setIssues] = useState<RegistrationIssue[]>([]);
+  // SC-12 / IADR-0341: 下書き（クライアント状態）は `hooks/` に在る。画面はそれを描くだけで、
+  // 「キーを選び直すと値が消える」「同じキーは後勝ち」「登録後も種別は残す」といった遷移の規則は
+  // フック側に閉じており、画面を描かずに固定してある（`hooks/*.test.ts`）。
+  const form = useMcpClientRegistrationForm(dictionary.data ?? []);
   // FR-16, UC-09, SC-12「無人アカウントの ABAC 属性割当」: **登録後の差し替え**の対象。
   // 🔴 後段には差し替えの端点が在るのに、画面から呼ぶ経路が無かった —— 登録時にしか
   // 属性を置けず、機密区分を打ち間違えたら**クライアントを消して作り直す**しかなかった。
   // 「後段 API はあるが画面から呼ばれない＝使えない」は本画面が閉じにきた欠陥そのものであり、
   // それを 1 経路で再演していた（AI レビューが検出）。
-  const [editingClientId, setEditingClientId] = useState<string | null>(null);
-  const [editEntries, setEditEntries] = useState<AttributeEntry[]>([]);
-  const [editKey, setEditKey] = useState('');
-  const [editValue, setEditValue] = useState('');
+  const editor = useMcpClientAttributeEditor();
+  // 列定義（`useMemo`）から呼ぶので、**参照の固定してある関数だけ**を取り出して依存に置く
+  // （`editor` ごと依存に入れるとフックの戻り値は毎描画で新しく、列定義が作り直される）。
+  const { start: startEditingAttributes } = editor;
 
-  const definitions = useMemo(() => assignableAttributes(dictionary.data ?? []), [dictionary.data]);
-  const selectedDefinition = definitions.find((d) => d.key === attributeKey);
+  const definitions = form.definitions;
 
   const rows = useMemo(() => clients.data ?? [], [clients.data]);
 
@@ -198,52 +193,15 @@ export function McpClientManagementPage() {
         ),
       },
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- startEditingAttributes は
-    // setState だけを呼ぶ安定した関数である（依存に入れると列定義が毎描画で作り直される）。
-    [t, actions.disable, actions.enable],
+    // `startEditingAttributes` は `useCallback` で参照が固定してあるので、依存に入れても列定義は
+    // 毎描画で作り直されない（従前ここは eslint-disable で規則を止めていた。IADR-0341）。
+    [t, actions.disable, actions.enable, startEditingAttributes],
   );
 
-  // 一覧の行から差し替えを始める。**現在の値を初期値として読み込む** ——
-  // 空から始めると「変更しなかった属性が消える」（差し替えは置換であって追加ではない）。
-  const startEditingAttributes = (target: string, current: Record<string, string>) => {
-    setEditingClientId(target);
-    setEditEntries(Object.entries(current).map(([key, value]) => ({ key, value })));
-    setEditKey('');
-    setEditValue('');
-  };
-
-  const addEntry = () => {
-    if (!attributeKey || !attributeValue) return;
-    setEntries((prev) => [
-      ...prev.filter((e) => e.key !== attributeKey),
-      { key: attributeKey, value: attributeValue },
-    ]);
-    setAttributeValue('');
-  };
-
   const submit = () => {
-    const found = validateRegistration({ clientId, displayName, kind, attributes: entries });
-    setIssues(found);
-    if (found.length > 0) return;
-
-    actions.register.mutate(
-      {
-        data: {
-          clientId: clientId.trim(),
-          displayName: displayName.trim(),
-          kind,
-          // 有人には属性を送らない（送る値が無いのが正しい）。
-          ...(requiresAttributes(kind) ? { attributes: buildAttributes(entries) } : {}),
-        },
-      },
-      {
-        onSuccess: () => {
-          setClientId('');
-          setDisplayName('');
-          setEntries([]);
-        },
-      },
-    );
+    // 有人には属性を送らない（送る値が無いのが正しい）—— 本文の組み立ては form.body() が持つ。
+    if (!form.validate()) return;
+    actions.register.mutate({ data: form.body() }, { onSuccess: form.resetAfterRegister });
   };
 
   return (
@@ -314,13 +272,13 @@ export function McpClientManagementPage() {
 
       {/* FR-16, UC-09, SC-12: 登録後の ABAC 属性の差し替え。**置換であって追加ではない** ——
           後段の端点が属性の集合ごと入れ替えるので、画面も現在値を読み込んでから編集させる。 */}
-      {editingClientId !== null && (
+      {editor.editingClientId !== null && (
         <div data-testid="attribute-edit">
           <h2 className="mb-2 text-sm font-medium text-[--color-fg-muted]">
             <Trans>ABAC 属性の変更</Trans>
           </h2>
           <p className="text-xs text-[--color-fg-muted]" data-testid="attribute-edit-target">
-            {editingClientId}
+            {editor.editingClientId}
           </p>
           <p className="mt-1 text-xs text-[--color-fg-muted]">
             <Trans>
@@ -335,11 +293,8 @@ export function McpClientManagementPage() {
               <Select
                 id="mcp-edit-attribute-key"
                 selectSize="sm"
-                value={editKey}
-                onChange={(e) => {
-                  setEditKey(e.target.value);
-                  setEditValue('');
-                }}
+                value={editor.key}
+                onChange={(e) => editor.selectKey(e.target.value)}
               >
                 <option value="">{t`選択してください`}</option>
                 {definitions.map((definition) => (
@@ -356,40 +311,28 @@ export function McpClientManagementPage() {
               <Select
                 id="mcp-edit-attribute-value"
                 selectSize="sm"
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
+                value={editor.value}
+                onChange={(e) => editor.setValue(e.target.value)}
               >
                 <option value="">{t`選択してください`}</option>
-                {(definitions.find((d) => d.key === editKey)?.allowedValues ?? []).map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
+                {(definitions.find((d) => d.key === editor.key)?.allowedValues ?? []).map(
+                  (value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ),
+                )}
               </Select>
             </div>
-            <Button
-              size="sm"
-              onClick={() => {
-                if (!editKey || !editValue) return;
-                setEditEntries((prev) => [
-                  ...prev.filter((e) => e.key !== editKey),
-                  { key: editKey, value: editValue },
-                ]);
-                setEditValue('');
-              }}
-            >
+            <Button size="sm" onClick={editor.addEntry}>
               <Trans>属性を追加</Trans>
             </Button>
           </div>
           <ul className="mt-2 text-xs" data-testid="attribute-edit-entries">
-            {editEntries.map((entry) => (
+            {editor.entries.map((entry) => (
               <li key={entry.key} className="flex items-center gap-2">
                 <span>{`${entry.key}: ${entry.value}`}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setEditEntries((prev) => prev.filter((e) => e.key !== entry.key))}
-                >
+                <Button variant="ghost" size="sm" onClick={() => editor.removeEntry(entry.key)}>
                   <Trans>削除</Trans>
                 </Button>
               </li>
@@ -397,7 +340,7 @@ export function McpClientManagementPage() {
           </ul>
           {/* 🔴 空で保存させない。無人アカウントに属性が 1 つも無い状態は、登録時に
               禁じているのと同じ理由（判定軸が消える）で作らせてはならない。 */}
-          {editEntries.length === 0 && (
+          {!editor.canSave && (
             <Alert
               tone="warning"
               role="alert"
@@ -425,20 +368,20 @@ export function McpClientManagementPage() {
           <div className="mt-3 flex gap-2">
             <Button
               size="sm"
-              disabled={editEntries.length === 0}
+              disabled={!editor.canSave}
               onClick={() =>
                 actions.replaceAttributes.mutate(
                   {
-                    clientId: editingClientId,
-                    data: { attributes: buildAttributes(editEntries) },
+                    clientId: editor.editingClientId as string,
+                    data: { attributes: editor.attributes() },
                   },
-                  { onSuccess: () => setEditingClientId(null) },
+                  { onSuccess: editor.close },
                 )
               }
             >
               <Trans>保存</Trans>
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => setEditingClientId(null)}>
+            <Button variant="secondary" size="sm" onClick={editor.close}>
               <Trans>取消</Trans>
             </Button>
           </div>
@@ -456,8 +399,8 @@ export function McpClientManagementPage() {
             </Label>
             <Input
               id="mcp-client-id"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
+              value={form.clientId}
+              onChange={(e) => form.setClientId(e.target.value)}
             />
           </div>
           <div>
@@ -466,8 +409,8 @@ export function McpClientManagementPage() {
             </Label>
             <Input
               id="mcp-display-name"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
+              value={form.displayName}
+              onChange={(e) => form.setDisplayName(e.target.value)}
             />
           </div>
           <div>
@@ -477,8 +420,8 @@ export function McpClientManagementPage() {
             <Select
               id="mcp-kind"
               selectSize="sm"
-              value={kind}
-              onChange={(e) => setKind(e.target.value as ClientKind)}
+              value={form.kind}
+              onChange={(e) => form.setKind(e.target.value as ClientKind)}
             >
               {CLIENT_KINDS.map((option) => (
                 <option key={option} value={option}>
@@ -490,7 +433,7 @@ export function McpClientManagementPage() {
         </div>
 
         {/* 無人のときだけ属性の入力を出す。**有人では要求しない**（05_screens §SC-12）。 */}
-        {requiresAttributes(kind) && (
+        {form.needsAttributes && (
           <div className="mt-3" data-testid="attribute-assignment">
             <p className="text-xs text-[--color-fg-muted]">
               <Trans>
@@ -506,11 +449,8 @@ export function McpClientManagementPage() {
                 <Select
                   id="mcp-attribute-key"
                   selectSize="sm"
-                  value={attributeKey}
-                  onChange={(e) => {
-                    setAttributeKey(e.target.value);
-                    setAttributeValue('');
-                  }}
+                  value={form.attributeKey}
+                  onChange={(e) => form.selectAttributeKey(e.target.value)}
                 >
                   <option value="">{t`選択してください`}</option>
                   {definitions.map((definition) => (
@@ -527,30 +467,30 @@ export function McpClientManagementPage() {
                 <Select
                   id="mcp-attribute-value"
                   selectSize="sm"
-                  value={attributeValue}
-                  onChange={(e) => setAttributeValue(e.target.value)}
+                  value={form.attributeValue}
+                  onChange={(e) => form.setAttributeValue(e.target.value)}
                 >
                   <option value="">{t`選択してください`}</option>
-                  {(selectedDefinition?.allowedValues ?? []).map((value) => (
+                  {(form.selectedDefinition?.allowedValues ?? []).map((value) => (
                     <option key={value} value={value}>
                       {value}
                     </option>
                   ))}
                 </Select>
               </div>
-              <Button size="sm" onClick={addEntry}>
+              <Button size="sm" onClick={form.addEntry}>
                 <Trans>属性を追加</Trans>
               </Button>
             </div>
             <ul className="mt-2 text-xs" data-testid="attribute-entries">
-              {entries.map((entry) => (
+              {form.entries.map((entry) => (
                 <li key={entry.key}>{`${entry.key}: ${entry.value}`}</li>
               ))}
             </ul>
           </div>
         )}
 
-        {issues.length > 0 && (
+        {form.issues.length > 0 && (
           <Alert
             tone="warning"
             role="alert"
@@ -558,7 +498,7 @@ export function McpClientManagementPage() {
             className="mt-3"
             data-testid="registration-issues"
           >
-            {issues.map((issue) => issueLabels[issue]).join(' / ')}
+            {form.issues.map((issue) => issueLabels[issue]).join(' / ')}
           </Alert>
         )}
 

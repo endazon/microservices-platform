@@ -3,7 +3,29 @@
 #
 # メトリクス経路: アプリ → OTLP → otel-collector → prometheusremotewrite → Prometheus（push モデル）。
 # 使用メトリクス名は既存 Grafana ダッシュボード（microservices-platform-overview.json）と一致させている
-# （`http_server_duration_milliseconds_{count,bucket}`、ラベル service_name / http_status_code / http_route / le）。
+# （`http_server_request_duration_seconds_{count,bucket}`、ラベル job / http_response_status_code / http_route / le）。
+#
+# 🔴 名前・ラベル・単位は「稼働 Prometheus に実在するもの」である。推測で書き換えないこと（#1110）。
+#   2026-08-30 まで、この 4 ルール（OtelCollectorDown 以外）は **一度も存在したことのない**
+#   `http_server_duration_milliseconds_*` を見ており、**どれだけ障害が起きても永久に発火しなかった。**
+#   式は構文として正当なので Prometheus はエラーを出さない（health: "ok" / state: "inactive"）。
+#   **「評価されている」と「評価対象がある」は別である。**
+#
+#   由来: `AddAspNetCoreInstrumentation()` が出すのは現行の安定 HTTP セマンティック規約
+#   （`http.server.request.duration`・**単位は秒**）である。旧規約の `http.server.duration`（ミリ秒）ではない。
+#   さらに prometheusremotewrite はリソース属性 `service.namespace`+`service.name` を **`job`** へ写すため、
+#   アプリのメトリクスに `service_name` ラベルは**付かない**（付くのは collector 自己テレメトリだけ）。
+#
+#   ★ 式を変えるときの検証手順（機械検査は無い。人が守る）:
+#     1. 転送構成を有効にする（deploy/local/observability を apply → collector を rollout restart）。
+#        既定は debug exporter だけの fail-safe であり、**アプリのメトリクスは 1 件も届かない。**
+#     2. `kubectl -n platform-infra exec deploy/prometheus -- wget -qO- \
+#          --post-data='match[]=<メトリクス名>' http://localhost:9090/api/v1/series`
+#     3. 🔴 **「0 件だった」を「無い」と読む前に、陽性対照を対で置く** ——
+#        実在すると分かっているもの（例: `otelcol_receiver_accepted_metric_points`）で
+#        **同じ問い合わせ方**をして非ゼロが返ることを示す。
+#        （`--post-data` は form 符号化であり **式中の `+` が空白へ復号される**。
+#         `{__name__=~"otelcol_.+"}` が 0 件で返り、実際に読み違えかけた。`+` は `%2B` で送る。）
 #
 # 注意（要検証）: RabbitMQ キュー滞留・デッドレター・構成ドリフトのアラートは、それぞれ RabbitMQ Prometheus
 # プラグインの exporter メトリクスと、ドリフト検出のカスタムメトリクス（現状は監査ログ/警告ログで表出）が
@@ -24,12 +46,12 @@ groups:
       # リクエストメトリクスが途絶したことを近似シグナルとする。アイドルサービスでは誤検知し得るため for を長めに。）
       - alert: ServiceRequestMetricsAbsent
         expr: |
-          sum by (service_name) (rate(http_server_duration_milliseconds_count[5m])) == 0
-          and on (service_name) (sum by (service_name) (http_server_duration_milliseconds_count offset 15m) > 0)
+          sum by (job) (rate(http_server_request_duration_seconds_count[5m])) == 0
+          and on (job) (sum by (job) (http_server_request_duration_seconds_count offset 15m) > 0)
         for: 5m
         labels: { severity: warning }
         annotations:
-          summary: "サービス {{ $labels.service_name }} のリクエストメトリクスが途絶"
+          summary: "サービス {{ $labels.job }} のリクエストメトリクスが途絶"
           description: "直近まで処理していたサービスの HTTP メトリクスが 5 分間ゼロ。ダウン/到達不可の可能性（要 blackbox 補完）。"
 
   - name: platform-slo
@@ -37,18 +59,19 @@ groups:
       # HTTP 5xx 率（サービス別）。NFR 可用性 99.9% の逸脱検知。
       - alert: HighHttp5xxRate
         expr: |
-          sum by (service_name) (rate(http_server_duration_milliseconds_count{http_status_code=~"5.."}[5m]))
-          / sum by (service_name) (rate(http_server_duration_milliseconds_count[5m])) > 0.05
+          sum by (job) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
+          / sum by (job) (rate(http_server_request_duration_seconds_count[5m])) > 0.05
         for: 5m
         labels: { severity: critical }
         annotations:
-          summary: "{{ $labels.service_name }} の 5xx 率が 5% 超"
+          summary: "{{ $labels.job }} の 5xx 率が 5% 超"
           description: "直近 5 分の 5xx 率が閾値超過。障害検出 5 分以内（NFR）。"
 
       # 検索 p95 レイテンシ（NFR: 検索 p95 1.5s）。retrieval-service。
+      # 🔴 しきい値の単位は**秒**である（メトリクスが秒。1500 と書くと 25 分の意味になり永久に真にならない）。
       - alert: SearchLatencyP95High
         expr: |
-          histogram_quantile(0.95, sum by (le) (rate(http_server_duration_milliseconds_bucket{service_name="microservices-platform.retrieval-service"}[5m]))) > 1500
+          histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job="microservices-platform.retrieval-service"}[5m]))) > 1.5
         for: 10m
         labels: { severity: warning }
         annotations:
@@ -58,7 +81,7 @@ groups:
       # RAG 初回応答 p95（NFR: 5s）。aianalysis-service /analysis/ask。
       - alert: RagLatencyP95High
         expr: |
-          histogram_quantile(0.95, sum by (le) (rate(http_server_duration_milliseconds_bucket{service_name="microservices-platform.aianalysis-service", http_route="/analysis/ask"}[5m]))) > 5000
+          histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job="microservices-platform.aianalysis-service", http_route="/analysis/ask"}[5m]))) > 5
         for: 10m
         labels: { severity: warning }
         annotations:

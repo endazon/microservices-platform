@@ -14,7 +14,12 @@
 #   人が見に行くまでの時間は、見に行く間隔に等しい。
 route:
   # 同じ原因の再通知で埋もれさせない。SLO アラートは分単位で判定するため待ちは短く取る。
-  group_by: ['alertname', 'service_name']
+  #
+  # 🔴 束ねの軸は **`job`** である（#1110）。**`service_name` ではない。**
+  #   prometheusremotewrite はリソース属性 `service.namespace`+`service.name` を `job` へ写すため、
+  #   アプリ由来のアラートに `service_name` ラベルは付かない（付くのは collector 自己テレメトリだけ）。
+  #   `service_name` のままだと**全サービスが 1 群へ潰れ**、束ねも下の抑止も効かない。
+  group_by: ['alertname', 'job']
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
@@ -27,6 +32,7 @@ receivers:
 
 inhibit_rules:
   # critical が出ている対象については warning を抑止する（同じ事象の二重通知を作らない）。
+  # 抑止の同一性判定も `job` で行う（上の group_by と同じ理由。#1110）。
   - source_matchers: [severity = "critical"]
     target_matchers: [severity = "warning"]
-    equal: ['alertname', 'service_name']
+    equal: ['alertname', 'job']
