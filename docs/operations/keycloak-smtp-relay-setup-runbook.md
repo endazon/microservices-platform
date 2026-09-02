@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [SC-10, SC-15, FR-05, FR-09, FR-22]
 adrs: [ADR-0026, ADR-0045]
-iadrs: [IADR-0197, IADR-0261, IADR-0332]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring]
-issues: [#438, #578, #600, #1102]
+iadrs: [IADR-0197, IADR-0261, IADR-0332, IADR-0344]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta]
+issues: [#438, #578, #600, #1102, #1144]
 -->
 
 # 運用 Runbook: Keycloak smtpServer（SMTP リレー）の設定
@@ -29,8 +29,18 @@ issues: [#438, #578, #600, #1102]
 - 送信元アドレスの変更・アプリパスワードのローテーションが必要になったとき（再投入）。
 - realm を作り直した（`--import-realm` の再インポート・PVC 削除等）ため `smtpServer` が消えたとき。
 
-**実行しなくてよい場合**: 検証だけであれば、メール配信の計画 ADR の決定（開発環境では実送信しない）に従い、
-捕捉用 MTA（Mailpit 等。本 runbook の対象外）を別途使う。
+**実行しなくてよい場合**: 検証だけであれば本手順は要らない。メール配信の計画 ADR の決定（開発環境では
+実送信しない）に従い、**開発環境には捕捉用 MTA が dev 既定で立っている**（`deploy/local/infra/mailpit.yaml`）。
+`scripts/k8s-local-up.sh` が起動し、realm の既定の送出先もそこを指す —— **何もしなくても送出は成立し、
+1 通も外へ出ない**。受信したメールは次で読む。
+
+```sh
+kubectl -n platform-infra port-forward svc/mailpit 8025:8025   # → http://localhost:8025
+node scripts/check-password-reset-mail.js                       # 申請→送出→受信→本文を機械で確かめる
+```
+
+🔴 **本手順は「外部の実リレーへ向ける」ための手順である。** 実行すると、その開発環境からのメールは
+**外部へ実送信される**。疎通と文面の検証が要る段階に限って行うこと（計画 ADR の同決定の但し書き）。
 
 ## なぜ realm.json に直接書かないか
 
@@ -39,9 +49,16 @@ issues: [#438, #578, #600, #1102]
 **実環境の秘匿値または個人情報相当の値**であり、ここへ書くと平文コミットになる（メール配信の計画 ADR の決定）。
 
 **`host` / `port` / `starttls` は秘匿値ではない**（メール配信の計画 ADR が接続の書式として確定している値：
-`smtp.gmail.com` / `587` / STARTTLS 必須）。将来これらだけを realm.json へ静的に投入する余地はあるが、
-**`from` / `user` / `password` を realm.json へ書くことは今後もしない**——理由は上記のとおりであり、
-「実環境の値が判明したから書いてよくなる」ものではない（値の性質が変わらない限り恒久的な方針）。
+`smtp.gmail.com` / `587` / STARTTLS 必須）。**`from` / `user` / `password` を realm.json へ書くことは今後もしない**
+——理由は上記のとおりであり、「実環境の値が判明したから書いてよくなる」ものではない
+（値の性質が変わらない限り恒久的な方針）。
+
+> **［2026-09-02］realm.json には dev 既定の `smtpServer` が入っている。** 宛先は**クラスタ内の捕捉用 MTA**
+> であり、`from` も `noreply@platform.localhost` という**クラスタの外では意味を持たない合成値**である。
+> **秘匿値は 1 つも入っていない**（上の恒久方針と矛盾しない —— 禁じているのは**実環境の値**である）。
+> 本手順を実行すると、**稼働中の realm の実行時状態だけ**が実リレーへ向く（`realm.json` は書き換えない）。
+> **realm を再インポートすると dev 既定へ戻る** —— これは事故ではなく fail-safe である
+> （再インポート後にうっかり実送信する状態にならない）。
 
 ## 前提
 
@@ -68,8 +85,17 @@ bash deploy/local/vault/eso/bootstrap.sh
 unset SMTP_FROM SMTP_USER SMTP_PASSWORD
 ```
 
-`host` / `port` / `starttls` はメール配信の計画 ADR の確定値が既定のため、通常は上書き不要
-（変える場合のみ `SMTP_HOST` / `SMTP_PORT` / `SMTP_STARTTLS` を同様に env で渡す）。
+🔴 **`SMTP_HOST` は必ず明示すること。** `bootstrap.sh` の**宛先の既定はクラスタ内の捕捉用 MTA**であり、
+外部の実リレーではない（メール配信の計画 ADR の決定「開発環境では実送信しない」を既定で満たすため）。
+`SMTP_HOST` を渡さずに `from`/`user`/`password` だけ入れても、**メールは捕捉用 MTA に溜まるだけで外へは出ない**。
+
+```sh
+export SMTP_HOST=<供給されたホスト>   # 秘匿値ではない（計画 ADR が書式として確定している値）
+```
+
+`SMTP_PORT` / `SMTP_STARTTLS` は**宛先から導出される** —— 捕捉用 MTA 以外を指した時点で
+**計画 ADR の確定値（`587` / STARTTLS 有効）が既定になる**。明示的に変えたいときだけ env で渡す。
+**STARTTLS を無効のまま外部へ繋ぐ経路は作らないこと**（計画 ADR の決定。平文フォールバックを許さない）。
 
 ### 2. ExternalSecret の同期を確認する（適用は起動器が済ませている）
 
@@ -134,6 +160,10 @@ unset SMTP_HOST SMTP_PORT SMTP_FROM SMTP_USER SMTP_PASSWORD KC_ADMIN_PW
 Vault が無い compose 経路では、値を環境変数から直接 kcadm へ渡す（Vault 相当のシークレットストアを
 compose には持たないため、実行者が値を保持する時間を最短にする）。
 
+> 🔴 **compose 経路には捕捉用 MTA が居ない。** 計画 ADR の決定は「**k3s 上に**捕捉用 MTA を置く」と
+> 述べており、本リポジトリもそこに置いた（`deploy/local/infra/mailpit.yaml`）。**compose でこの手順を
+> 実行すると、その時点から外部へ実送信される** —— 検証は k8s 経路で行うこと。
+
 ```sh
 read -rs SMTP_FROM;     export SMTP_FROM
 read -rs SMTP_USER;     export SMTP_USER
@@ -159,10 +189,25 @@ unset SMTP_FROM SMTP_USER SMTP_PASSWORD
 ## 確認（この手順が成功したと言える条件）
 
 1. `kubectl -n platform-infra exec -i "$KC_POD" -- /opt/keycloak/bin/kcadm.sh get realms/platform` の
-   `smtpServer.host` が `smtp.gmail.com` であること（`password` は出力に含まれないことが Keycloak の
+   `smtpServer.host` が供給されたホストであること（`password` は出力に含まれないことが Keycloak の
    既定挙動——含まれていたら管理コンソールから目視確認に切り替える）。
+
+   > 🔴 **`--fields smtpServer` を付けて確認してはならない**（2026-09-02 実測）。**設定済みの realm に対しても
+   > `"smtpServer" : { }` を返す** —— `--fields` の絞り込みは入れ子のマップを描かない。
+   > **付けずに全体を取り、`grep -A8 smtpServer` で読むこと。** 付けたまま読むと「設定が入っていない」と
+   > 誤診し、**入っているのに入れ直す**（あるいは「入れたのに効かない」と原因を取り違える）。
+   > 同じ誤診が、本 runbook 以前の調査記録にも残っている。
 2. Keycloak 管理コンソール → Realm settings → Email → **Test connection** が成功する。
 3. パスワードリセット画面を実運用アカウントで申請し、リセットメールが着信する。
+
+**捕捉用 MTA へ戻すとき**（検証が終わったら戻すこと。戻さないと以後の申請が外部へ実送信され続ける）:
+
+```sh
+kubectl -n platform-infra exec -i "$KC_POD" -- /opt/keycloak/bin/kcadm.sh update realms/platform \
+  -s "smtpServer.host=mailpit.platform-infra.svc.cluster.local" \
+  -s "smtpServer.port=1025" -s "smtpServer.auth=false" -s "smtpServer.starttls=false"
+node scripts/check-password-reset-mail.js   # 戻ったことを機械で確かめる
+```
 
 ## 失敗したときの分岐
 

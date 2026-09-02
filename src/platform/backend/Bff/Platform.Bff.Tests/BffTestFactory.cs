@@ -51,6 +51,33 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public bool FeedbackRequiresAuthorization { get; set; }
     public bool DashboardReturnsNullBody { get; set; }
 
+    // FR-10, SC-10, IADR-0343 (#1103): 受け口 `POST /dashboard/events` に届いた利用状況イベント。
+    // **発火側が本番コードに 1 本も無かった**ため、届いたことを観測できる場所がここに要る。
+    public sealed record RecordedUsageEvent(string? EventType, string? Query, string? Authorization);
+
+    public System.Collections.Concurrent.ConcurrentQueue<RecordedUsageEvent> RecordedUsageEvents { get; } = new();
+
+    // 受け口の応答を差し替える（非 2xx の fail-open の検証用）。既定は実体と同じ 201。
+    public HttpStatusCode UsageEventStubStatusCode { get; set; } = HttpStatusCode.Created;
+
+    // 受け口へ到達できない状況を再現する（到達不能の fail-open の検証用）。
+    public bool UsageEventStubThrows { get; set; }
+
+    private readonly SemaphoreSlim _usageEventArrived = new(0);
+
+    // 送出は要求の応答経路から外れている（有界の列 ＋ 常駐ドレイン）ため、**届くのを待つ**。
+    // 待たずに数えると「まだ届いていない」を「発火していない」と読み違える。
+    public async Task<bool> WaitForUsageEventAsync(TimeSpan timeout, CancellationToken ct = default)
+        => await _usageEventArrived.WaitAsync(timeout, ct);
+
+    public void ResetUsageEvents()
+    {
+        RecordedUsageEvents.Clear();
+        while (_usageEventArrived.CurrentCount > 0) _usageEventArrived.Wait(0);
+        UsageEventStubStatusCode = HttpStatusCode.Created;
+        UsageEventStubThrows = false;
+    }
+
     // FR-03/FR-05 BFF テスト（SC-01 横断検索）: ABAC スコープ解決の許可可否と検索結果をスタブ制御する。
     public bool SearchScopeGranted { get; set; } = true;
     // FR-05, FR-06 (#1010): write スコープの許可可否と文書条件（read とは独立に制御する）。
@@ -533,9 +560,26 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-10: DashboardService への転送をスタブ化する。/dashboard/summary は DashboardUsageDto を返す。
     private sealed class DashboardStubHandler(BffTestFactory owner) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            // FR-10, SC-10, IADR-0343 (#1103): 利用状況イベントの受け口。**まず記録してから応答する**
+            // —— 非 2xx・到達不能を再現するときも「発火はした」ことを観測できるようにするためである。
+            if (request.RequestUri?.AbsolutePath == "/dashboard/events")
+            {
+                var body = await request.Content!.ReadFromJsonAsync<UsageEventRequest>(cancellationToken);
+                owner.RecordedUsageEvents.Enqueue(new RecordedUsageEvent(
+                    body?.EventType, body?.Query, request.Headers.Authorization?.ToString()));
+                owner._usageEventArrived.Release();
+
+                if (owner.UsageEventStubThrows)
+                    throw new HttpRequestException("dashboard-service unreachable");
+                return new HttpResponseMessage(owner.UsageEventStubStatusCode)
+                {
+                    Content = JsonContent.Create(new { id = Guid.NewGuid() })
+                };
+            }
+
             owner.LastDashboardForwardedAuthorization = request.Headers.Authorization?.ToString();
             var usage = new DashboardUsageDto(
                 5, 3,
@@ -546,11 +590,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
             var content = owner.DashboardReturnsNullBody
                 ? new StringContent("null", System.Text.Encoding.UTF8, "application/json")
                 : (HttpContent)JsonContent.Create(usage);
-            var response = new HttpResponseMessage(owner.DashboardStubStatusCode)
+            return new HttpResponseMessage(owner.DashboardStubStatusCode)
             {
                 Content = content
             };
-            return Task.FromResult(response);
         }
     }
 
