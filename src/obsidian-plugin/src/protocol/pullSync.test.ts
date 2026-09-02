@@ -1,90 +1,22 @@
-import type { Hasher } from './hash.ts';
-import type { SyncState } from './pullPlanner.ts';
-import { runPullSync, type FileStore, type SyncStateStore } from './pullSync.ts';
+import { emptyJournal, recordRename } from './editJournal.ts';
+import { runPullSync } from './pullSync.ts';
 import { MANIFEST_PATH, SyncClient } from './syncClient.ts';
-import type { HttpRequest, HttpTransport } from './transport.ts';
-import { SyncAuthError, type PullNoteResponse, type SyncManifestEntry } from './types.ts';
-
-// テスト用の決定的ハッシュ（Web Crypto に依存しない）。サーバの contentHash も同じ関数で作る。
-const fakeHasher: Hasher = async (text) => `h(${text})`;
-
-class MemoryFiles implements FileStore {
-  readonly files = new Map<string, string>();
-  readonly writes: string[] = [];
-  async exists(path: string) {
-    return this.files.has(path);
-  }
-  async read(path: string) {
-    const v = this.files.get(path);
-    if (v === undefined) throw new Error(`missing ${path}`);
-    return v;
-  }
-  async write(path: string, content: string) {
-    this.files.set(path, content);
-    this.writes.push(path);
-  }
-}
-
-class MemoryState implements SyncStateStore {
-  saved: SyncState | null = null;
-  constructor(private current: SyncState = {}) {}
-  async load() {
-    return structuredClone(this.current);
-  }
-  async save(state: SyncState) {
-    this.saved = structuredClone(state);
-    this.current = state;
-  }
-}
-
-interface ServerNote {
-  entry: SyncManifestEntry;
-  content: string;
-}
-
-function server(notes: ServerNote[], opts: { unauthorized?: boolean } = {}) {
-  const calls: HttpRequest[] = [];
-  const transport: HttpTransport = async (req) => {
-    calls.push(req);
-    if (opts.unauthorized) return { status: 401, text: '' };
-    const path = new URL(req.url).pathname;
-    if (path === MANIFEST_PATH)
-      return { status: 200, text: JSON.stringify(notes.map((n) => n.entry)) };
-    const id = path.slice('/private-notes/sync/notes/'.length);
-    const note = notes.find((n) => n.entry.noteId === id);
-    if (!note) return { status: 404, text: '' };
-    const body: PullNoteResponse = { ...note.entry, content: note.content };
-    return { status: 200, text: JSON.stringify(body) };
-  };
-  return { transport, calls };
-}
+import {
+  FakeServer,
+  MemoryFiles,
+  MemoryJournal,
+  MemoryState,
+  fakeHasher,
+  manifestEntryOf,
+} from './testFakes.ts';
+import type { HttpTransport } from './transport.ts';
+import { SyncAuthError } from './types.ts';
 
 const FOLDER = '個人資料';
 
-async function note(
-  noteId: string,
-  vaultPath: string,
-  content: string,
-  extra: Partial<SyncManifestEntry> = {},
-): Promise<ServerNote> {
+function deps(server: FakeServer, files: MemoryFiles, state: MemoryState) {
   return {
-    entry: {
-      noteId,
-      title: noteId,
-      vaultPath,
-      version: 1,
-      contentHash: await fakeHasher(content),
-      deleted: false,
-      updatedAt: '2026-09-02T00:00:00Z',
-      ...extra,
-    },
-    content,
-  };
-}
-
-function deps(transport: HttpTransport, files: MemoryFiles, state: MemoryState) {
-  return {
-    client: new SyncClient(transport, 'https://kb.example.co.jp', 'tok'),
+    client: new SyncClient(server.transport, 'https://kb.example.co.jp', 'tok'),
     files,
     state,
     hasher: fakeHasher,
@@ -96,22 +28,22 @@ function deps(transport: HttpTransport, files: MemoryFiles, state: MemoryState) 
 describe('runPullSync', () => {
   // FR-20, UC-11, ADR-0037 決定 2（pull 側）: manifest → pull → Vault へ書き下ろし、状態を記録する（陽性対照）
   it('差分のある資料だけ pull して Vault へ書き、同期状態を保存する', async () => {
-    const a = await note('a', 'notes/a.md', '# A\n');
-    const b = await note('b', 'b', 'B body');
-    const { transport, calls } = server([a, b]);
+    const server = new FakeServer();
+    await server.seed('a', 'notes/a.md', '# A\n');
+    await server.seed('b', 'b', 'B body');
     const files = new MemoryFiles();
     const state = new MemoryState();
 
-    const report = await runPullSync(deps(transport, files, state));
+    const report = await runPullSync(deps(server, files, state));
 
     expect(report.manifestCount).toBe(2);
     expect(report.written).toEqual([`${FOLDER}/notes/a.md`, `${FOLDER}/b.md`]);
     expect(files.files.get(`${FOLDER}/notes/a.md`)).toBe('# A\n');
     expect(files.files.get(`${FOLDER}/b.md`)).toBe('B body');
-    expect(calls.map((c) => new URL(c.url).pathname)).toEqual([
-      MANIFEST_PATH,
-      '/private-notes/sync/notes/a',
-      '/private-notes/sync/notes/b',
+    expect(server.paths()).toEqual([
+      `GET ${MANIFEST_PATH}`,
+      'GET /private-notes/sync/notes/a',
+      'GET /private-notes/sync/notes/b',
     ]);
     expect(state.saved).toEqual({
       a: {
@@ -120,6 +52,8 @@ describe('runPullSync', () => {
         contentHash: 'h(# A\n)',
         localHash: 'h(# A\n)',
         syncedAt: '2026-09-02T09:00:00.000Z',
+        vaultPath: 'notes/a.md',
+        title: 'a',
       },
       b: {
         localPath: `${FOLDER}/b.md`,
@@ -127,39 +61,42 @@ describe('runPullSync', () => {
         contentHash: 'h(B body)',
         localHash: 'h(B body)',
         syncedAt: '2026-09-02T09:00:00.000Z',
+        vaultPath: 'b',
+        title: 'b',
       },
     });
   });
 
   // FR-20: 2 巡目は何も pull せず up-to-date になる（無駄な本文取得＝egress を増やさない）
   it('変化が無い 2 巡目は manifest だけ読み、pull も書き込みもしない', async () => {
-    const a = await note('a', 'a.md', 'A');
-    const first = server([a]);
+    const server = new FakeServer();
+    await server.seed('a', 'a.md', 'A');
     const files = new MemoryFiles();
     const state = new MemoryState();
-    await runPullSync(deps(first.transport, files, state));
+    await runPullSync(deps(server, files, state));
+    server.calls.length = 0;
 
-    const second = server([a]);
-    const report = await runPullSync(deps(second.transport, files, state));
+    const report = await runPullSync(deps(server, files, state));
 
     expect(report.upToDate).toBe(1);
     expect(report.written).toEqual([]);
-    expect(second.calls.map((c) => new URL(c.url).pathname)).toEqual([MANIFEST_PATH]);
+    expect(server.paths()).toEqual([`GET ${MANIFEST_PATH}`]);
     expect(files.writes).toEqual([`${FOLDER}/a.md`]);
   });
 
   // FR-20, ADR-0037 決定 7・14: サーバが進めば上書き、ローカルが編集されていれば上書きしない
   it('サーバが進んだ資料は上書きし、ローカルで編集された資料は conflict として残す', async () => {
-    const a = await note('a', 'a.md', 'A v1');
-    const b = await note('b', 'b.md', 'B v1');
+    const server = new FakeServer();
+    await server.seed('a', 'a.md', 'A v1');
+    await server.seed('b', 'b.md', 'B v1');
     const files = new MemoryFiles();
     const state = new MemoryState();
-    await runPullSync(deps(server([a, b]).transport, files, state));
+    await runPullSync(deps(server, files, state));
 
     files.files.set(`${FOLDER}/b.md`, 'B edited locally');
-    const a2 = await note('a', 'a.md', 'A v2', { version: 2 });
-    const b2 = await note('b', 'b.md', 'B v2', { version: 2 });
-    const report = await runPullSync(deps(server([a2, b2]).transport, files, state));
+    await server.editOnServer('a', 'A v2');
+    await server.editOnServer('b', 'B v2');
+    const report = await runPullSync(deps(server, files, state));
 
     expect(files.files.get(`${FOLDER}/a.md`)).toBe('A v2');
     expect(files.files.get(`${FOLDER}/b.md`)).toBe('B edited locally');
@@ -175,11 +112,12 @@ describe('runPullSync', () => {
     const files = new MemoryFiles();
     files.files.set(`${FOLDER}/a.md`, 'stale');
     const state = new MemoryState();
-    const { transport, calls } = server([], { unauthorized: true });
+    const server = new FakeServer();
+    server.unauthorized = true;
 
-    await expect(runPullSync(deps(transport, files, state))).rejects.toBeInstanceOf(SyncAuthError);
+    await expect(runPullSync(deps(server, files, state))).rejects.toBeInstanceOf(SyncAuthError);
 
-    expect(calls).toHaveLength(1);
+    expect(server.calls).toHaveLength(1);
     expect(files.writes).toEqual([]);
     expect(files.files.get(`${FOLDER}/a.md`)).toBe('stale');
     expect(state.saved).toBeNull();
@@ -187,45 +125,163 @@ describe('runPullSync', () => {
 
   // FR-20: 既に同じ内容がローカルにあれば書かずに採用し、サーバ側削除と不正パスは件数で報告する
   it('同一内容は adopt、削除済みと不正パスは書かずに報告する', async () => {
-    const a = await note('a', 'a.md', 'same');
-    const gone = await note('gone', 'gone.md', '', { deleted: true });
-    const bad = await note('bad', '../x.md', 'x');
+    const server = new FakeServer();
+    await server.seed('a', 'a.md', 'same');
+    await server.seed('gone', 'gone.md', '', { deleted: true });
+    await server.seed('bad', '../x.md', 'x');
     const files = new MemoryFiles();
     files.files.set(`${FOLDER}/a.md`, 'same');
     const state = new MemoryState();
 
-    const report = await runPullSync(deps(server([a, gone, bad]).transport, files, state));
+    const report = await runPullSync(deps(server, files, state));
 
     expect(report.adopted).toEqual([`${FOLDER}/a.md`]);
     expect(report.written).toEqual([]);
     expect(report.serverDeleted).toBe(1);
+    expect(report.serverDeletedLocal).toEqual([]);
     expect(report.skipped).toEqual([{ vaultPath: '../x.md', reason: 'invalid-path' }]);
     expect(files.writes).toEqual([]);
     expect(state.saved?.a).toMatchObject({
       localPath: `${FOLDER}/a.md`,
       version: 1,
       localHash: 'h(same)',
+      vaultPath: 'a.md',
+      title: 'a',
     });
   });
 
   // FR-20: manifest 後に消えた資料（404）は 1 件の失敗として記録し、残りは続ける
   it('pull が 404 の資料は pullErrors に記録し、他の資料は取り込む', async () => {
-    const a = await note('a', 'a.md', 'A');
-    const ghost = await note('ghost', 'ghost.md', 'G');
-    const { transport } = server([a]);
+    const server = new FakeServer();
+    await server.seed('a', 'a.md', 'A');
+    const ghost = await server.seed('ghost', 'ghost.md', 'G');
     const manifestWithGhost: HttpTransport = async (req) => {
       const path = new URL(req.url).pathname;
-      if (path === MANIFEST_PATH)
-        return { status: 200, text: JSON.stringify([ghost.entry, a.entry]) };
-      return transport(req);
+      if (path === MANIFEST_PATH) {
+        server.notes.splice(server.notes.indexOf(ghost), 1);
+        const res = await server.transport(req);
+        return {
+          status: 200,
+          text: JSON.stringify([manifestEntryOf(ghost), ...(JSON.parse(res.text) as unknown[])]),
+        };
+      }
+      return server.transport(req);
     };
     const files = new MemoryFiles();
     const state = new MemoryState();
 
-    const report = await runPullSync(deps(manifestWithGhost, files, state));
+    const report = await runPullSync({
+      ...deps(server, files, state),
+      client: new SyncClient(manifestWithGhost, 'https://kb.example.co.jp', 'tok'),
+    });
 
     expect(report.pullErrors).toHaveLength(1);
     expect(report.pullErrors[0]!.noteId).toBe('ghost');
     expect(report.written).toEqual([`${FOLDER}/a.md`]);
+  });
+
+  // FR-20, ADR-0037 決定 14, [[IADR-0352]] 決定 5: サーバ側のリネームに追随してローカルを移動する
+  // （旧パスが最終同期時のままなら消す／編集されていれば残す。対で置く）
+  it('サーバ側で vaultPath が変わった資料は新パスへ書き、旧パスは未編集なら消し、編集済みなら残す', async () => {
+    const server = new FakeServer();
+    await server.seed('a', 'old-a.md', 'A');
+    await server.seed('b', 'old-b.md', 'B');
+    const files = new MemoryFiles();
+    const state = new MemoryState();
+    await runPullSync(deps(server, files, state));
+
+    server.find('a')!.vaultPath = 'new-a.md';
+    server.find('b')!.vaultPath = 'new-b.md';
+    files.files.set(`${FOLDER}/old-b.md`, 'B edited locally');
+    const report = await runPullSync(deps(server, files, state));
+
+    expect(report.moved).toEqual([{ from: `${FOLDER}/old-a.md`, to: `${FOLDER}/new-a.md` }]);
+    expect(files.files.has(`${FOLDER}/old-a.md`)).toBe(false);
+    expect(files.files.get(`${FOLDER}/new-a.md`)).toBe('A');
+    expect(files.removed).toEqual([`${FOLDER}/old-a.md`]);
+    expect(report.staleOld).toEqual([`${FOLDER}/old-b.md`]);
+    expect(files.files.get(`${FOLDER}/old-b.md`)).toBe('B edited locally');
+    expect(files.files.get(`${FOLDER}/new-b.md`)).toBe('B');
+    expect(state.saved?.a).toMatchObject({
+      localPath: `${FOLDER}/new-a.md`,
+      vaultPath: 'new-a.md',
+    });
+  });
+
+  // FR-20, [[IADR-0352]] 決定 5: ローカルのリネーム（journal）はサーバ側のリネームと区別し、追跡パスをそのまま使う
+  it('journal にローカルのリネームがあれば新パスを追跡パスとして読み、サーバから書き戻さない', async () => {
+    const server = new FakeServer();
+    await server.seed('a', 'a.md', 'A');
+    const files = new MemoryFiles();
+    const state = new MemoryState();
+    await runPullSync(deps(server, files, state));
+
+    await files.rename(`${FOLDER}/a.md`, `${FOLDER}/renamed.md`);
+    const journal = recordRename(emptyJournal(), `${FOLDER}/a.md`, `${FOLDER}/renamed.md`, {
+      fromInFolder: true,
+      toInFolder: true,
+    });
+    const report = await runPullSync({
+      ...deps(server, files, state),
+      journal: new MemoryJournal(journal),
+    });
+
+    expect(report.upToDate).toBe(1);
+    expect(report.conflicts).toEqual([]);
+    expect(files.files.has(`${FOLDER}/a.md`)).toBe(false);
+    expect(files.writes).toEqual([`${FOLDER}/a.md`]);
+  });
+
+  // FR-20, ADR-0037 決定 5・14, フォローアップ 11, [[IADR-0352]] 決定 4: サーバ側の削除はローカルを消さず状態に残す
+  it('追跡済み資料がサーバ側で削除（または manifest から消滅）されたら serverDeleted を状態に残し、ファイルは触らない', async () => {
+    const server = new FakeServer();
+    await server.seed('a', 'a.md', 'A');
+    await server.seed('b', 'b.md', 'B');
+    const files = new MemoryFiles();
+    const state = new MemoryState();
+    await runPullSync(deps(server, files, state));
+
+    server.find('a')!.deleted = true;
+    server.notes.splice(server.notes.indexOf(server.find('b')!), 1);
+    const report = await runPullSync(deps(server, files, state));
+
+    expect(report.serverDeleted).toBe(2);
+    expect(report.serverDeletedLocal).toEqual([`${FOLDER}/a.md`, `${FOLDER}/b.md`]);
+    expect(files.files.get(`${FOLDER}/a.md`)).toBe('A');
+    expect(files.files.get(`${FOLDER}/b.md`)).toBe('B');
+    expect(files.removed).toEqual([]);
+    expect(state.saved?.a?.serverDeleted).toBe(true);
+    expect(state.saved?.b?.serverDeleted).toBe(true);
+  });
+
+  // FR-20, [[IADR-0352]]: 第 1 段の状態（vaultPath 無し）でもそのまま読め、up-to-date のときに第 2 段の形へ揃える
+  it('第 1 段の状態（vaultPath 無し）はサーバ値を正として扱い、揃えた状態を保存する', async () => {
+    const server = new FakeServer();
+    await server.seed('a', 'a.md', 'A');
+    const files = new MemoryFiles();
+    files.files.set(`${FOLDER}/a.md`, 'A');
+    const state = new MemoryState({
+      a: {
+        localPath: `${FOLDER}/a.md`,
+        version: 1,
+        contentHash: 'h(A)',
+        localHash: 'h(A)',
+        syncedAt: 't',
+      },
+    });
+
+    const report = await runPullSync(deps(server, files, state));
+
+    expect(report.upToDate).toBe(1);
+    expect(files.writes).toEqual([]);
+    expect(state.saved?.a).toEqual({
+      localPath: `${FOLDER}/a.md`,
+      version: 1,
+      contentHash: 'h(A)',
+      localHash: 'h(A)',
+      syncedAt: 't',
+      vaultPath: 'a.md',
+      title: 'a',
+    });
   });
 });

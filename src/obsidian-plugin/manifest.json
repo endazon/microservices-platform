@@ -1,9 +1,9 @@
 {
   "id": "msp-private-notes-sync",
   "name": "個人資料同期（汎用プラットフォーム）",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minAppVersion": "1.5.0",
-  "description": "ナレッジベースの個人資料（private-note）を Obsidian Vault と同期する社内配布プラグイン。第 1 段はナレッジベースから Vault への取り込み（pull）のみ。",
+  "description": "ナレッジベースの個人資料（private-note）を Obsidian Vault と双方向に同期する社内配布プラグイン。取り込み（pull）・送信（push / 論理削除）・競合の 3 択（ローカル採用／サーバ採用／両方残す）。",
   "author": "microservices-platform",
   "isDesktopOnly": false
 }

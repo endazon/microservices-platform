@@ -3,15 +3,15 @@ title: FR-20 個人資料・Obsidian 同期 API 通信仕様書
 type: api-spec
 status: completed
 created: 2026-08-23
-updated: 2026-09-02
+updated: 2026-09-03
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-19, SC-20]
 adrs: [ADR-0037, ADR-0054]
-iadrs: [IADR-0270, IADR-0338]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1]
-issues: [#451, #1098]
+iadrs: [IADR-0270, IADR-0338, IADR-0352]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2]
+issues: [#451, #1098, #1153]
 -->
 
 # 通信仕様書: 個人資料・Obsidian 同期 API
@@ -68,15 +68,28 @@ push の `baseVersion`（クライアントが最後に見た版）と現在版�
 自動解決しない。クライアントは pull で現在版を取得し、利用者の選択
 （ローカル採用＝再 push／サーバ採用＝上書き／両方残す＝別パスで新規 push）に従う。
 
+push の 409 は他に 2 形ある。クライアントは `error` で区別する。
+
+| `error` | 場面 | 本文 |
+| --- | --- | --- |
+| `version_conflict` | 更新の `baseVersion` が現在版と不一致 | `serverVersion` / `serverUpdatedAt` |
+| `deleted` | 更新先がサーバ側で論理削除済み | `purgeAt` |
+| `vault_path_conflict` | 新規作成の `vaultPath` が既存の有効な資料と重なる | `vaultPath` |
+
 ## 同期プロトコルの呼び手（Obsidian プラグイン）
 
-- **呼ぶのは自作プラグイン**（`src/obsidian-plugin/`）だけである。第 1 段は `manifest` と `pull` のみ呼ぶ
-  （`push` / `delete` は第 2 段）。BFF は経由せず、資格情報は Bearer 同期トークン。
+- **呼ぶのは自作プラグイン**（`src/obsidian-plugin/`）だけである。`manifest` / `pull` / `push` / `delete` の
+  4 つを呼ぶ。BFF は経由せず、資格情報は Bearer 同期トークン。
 - 応答の形は client 側の型ガードで確かめ、契約と違えば失敗にする（黙って空扱いにしない）。
   **契約を変えるときはサーバ側テストと `src/obsidian-plugin/src/protocol/types.ts` の両方を動かす。**
 - 接続先は基底 URL（https）で、パスは本書の `/private-notes/sync/*` をそのまま連結する。
+- push の `edits[]` はプラグインが**保存の間隔 30 秒で刻んだ編集列**（未送信分をまとめて送る。1 要素 = 1 版）。
+  更新の `baseVersion` は最終同期時の版（楽観ロック）。409 `version_conflict` を受けても**再送しない**——
+  利用者の選択を待つ。
+- 🔴 **更新の push は `vaultPath` を書き換えない**（サーバは本文・タイトルだけを更新する）。プラグインは
+  ローカルのリネームを伝播できず、契約にリネームの口を足すのは別 issue。
 - 🔴 **配備済みクラスタのエッジは `/private-notes/sync/*` を外へ出していない**（`/bff/*` と SPA のみ）。
-  実測: `https://localhost/bff/private-notes/sync/manifest` → 404。公開経路は配備側の後続 issue。
+  実測: `https://localhost/bff/private-notes/sync/manifest` → 404。公開経路は配備側の別 issue。
   ローカル検証は `kubectl port-forward svc/document-service` を接続先にする。
 
 ## 関連

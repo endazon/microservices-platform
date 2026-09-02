@@ -1,5 +1,5 @@
-// FR-20, ADR-0037 決定 4, [[IADR-0338]] 決定 1・9: サーバの `vaultPath` をローカル（Vault 内）の
-// パスへ落とす規則。
+// FR-20, ADR-0037 決定 4, [[IADR-0338]] 決定 1・9, [[IADR-0352]]: サーバの `vaultPath` とローカル
+// （Vault 内）のパスを相互に落とす規則。
 //
 // サーバは `vaultPath` を文字列として受けるだけで形を検証しない（push 側の契約）。Vault へ書く側で
 // **Vault の外へ出るパス**（絶対パス・`..`）と Obsidian が扱えない文字を弾き、拡張子が無ければ `.md` を
@@ -49,4 +49,41 @@ export function parentFolders(path: string): string[] {
   const out: string[] = [];
   for (let i = 1; i < parts.length; i += 1) out.push(parts.slice(0, i).join('/'));
   return out;
+}
+
+/** ローカルパスが同期フォルダの配下か（フォルダが空なら Vault 全体）。 */
+export function isInFolder(syncFolder: string, localPath: string): boolean {
+  const folder = normalizeFolder(syncFolder);
+  return folder === '' ? true : localPath.startsWith(`${folder}/`);
+}
+
+/** ローカルパス → サーバへ送る `vaultPath`（同期フォルダを剥がした相対パス）。配下でなければ null。 */
+export function toVaultPath(syncFolder: string, localPath: string): string | null {
+  const folder = normalizeFolder(syncFolder);
+  if (folder === '') return localPath;
+  return localPath.startsWith(`${folder}/`) ? localPath.slice(folder.length + 1) : null;
+}
+
+/** `a/b/メモ.md` → `メモ`。新規 push の title（サーバは title 必須）。 */
+export function titleOf(localPath: string): string {
+  const base = localPath.split('/').pop() ?? localPath;
+  const title = base.replace(/\.[^.]+$/, '');
+  return title === '' ? base : title;
+}
+
+/** 「両方残す」の複製先。`a/b.md` + `20260903-0912` → `a/b (ローカル 20260903-0912).md`。 */
+export function localCopyPath(localPath: string, stamp: string): string {
+  const slash = localPath.lastIndexOf('/');
+  const dir = slash >= 0 ? localPath.slice(0, slash + 1) : '';
+  const base = slash >= 0 ? localPath.slice(slash + 1) : localPath;
+  const dot = base.lastIndexOf('.');
+  const stem = dot > 0 ? base.slice(0, dot) : base;
+  const ext = dot > 0 ? base.slice(dot) : '';
+  return `${dir}${stem} (ローカル ${stamp})${ext}`;
+}
+
+/** `Date` → `YYYYMMDD-HHmm`（ローカル時刻）。 */
+export function stampOf(date: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}`;
 }

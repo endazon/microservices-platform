@@ -17,7 +17,7 @@ function entry(overrides: Partial<SyncManifestEntry> & { noteId: string }): Sync
 }
 
 function plan(entries: SyncManifestEntry[], state: SyncState, local: Record<string, string>) {
-  return planPull(resolveTargets(entries, FOLDER), state, new Map(Object.entries(local)));
+  return planPull(resolveTargets(entries, FOLDER), state, new Map(Object.entries(local)), FOLDER);
 }
 
 describe('planPull', () => {
@@ -123,7 +123,7 @@ describe('planPull', () => {
     ]);
   });
 
-  // FR-20, ADR-0037 決定 5（第 1 段の範囲）: ローカルで消された追跡済み資料は再取得しない
+  // FR-20, ADR-0037 決定 5: ローカルで消された追跡済み資料は再取得しない（削除か同期停止かは push 側が journal で決める）
   it('追跡済みの資料がローカルに無ければ conflict(local-deleted) で再取得しない', () => {
     const state: SyncState = {
       a: {
@@ -139,7 +139,7 @@ describe('planPull', () => {
     ]);
   });
 
-  // FR-20, ADR-0037 決定 14: サーバ側の削除は検知するがローカルは触らない（第 1 段）
+  // FR-20, ADR-0037 決定 14, [[IADR-0352]] 決定 4: サーバ側の削除は検知するがローカルは触らない（提示は push 側）
   it('deleted=true の資料は server-deleted として報告するだけ', () => {
     const state: SyncState = {
       a: {
@@ -196,8 +196,8 @@ describe('planPull', () => {
       entry({ noteId: 'c3', vaultPath: 'same.md', deleted: true }),
     ];
     const targets = resolveTargets(entries, FOLDER);
-    expect(probePaths(targets)).toEqual([`${FOLDER}/ok.md`]);
-    expect(planPull(targets, {}, new Map())).toEqual([
+    expect(probePaths(targets, {}, FOLDER)).toEqual([`${FOLDER}/ok.md`]);
+    expect(planPull(targets, {}, new Map(), FOLDER)).toEqual([
       {
         kind: 'write',
         noteId: 'ok',

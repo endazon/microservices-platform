@@ -4,14 +4,14 @@ type: how-to
 status: in-progress
 author: claude
 created: 2026-09-02
-updated: 2026-09-02
+updated: 2026-09-03
 ---
 <!-- trace:
 ids: [FR-19, FR-20, UC-11, SC-20]
 adrs: [ADR-0037]
-iadrs: [IADR-0270, IADR-0338]
-specs: [20260902_issue-1098_obsidian-plugin-pull-stage1]
-issues: [#1098, #451]
+iadrs: [IADR-0270, IADR-0338, IADR-0352]
+specs: [20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2]
+issues: [#1098, #1153, #451]
 -->
 
 # 手順ガイド: Obsidian プラグイン（個人資料同期）のビルドと導入
@@ -20,9 +20,8 @@ issues: [#1098, #451]
 > [機能仕様書: Obsidian 双方向同期](../functional/FR-20_obsidian-sync.md) と
 > [通信仕様書](../api/FR-20_obsidian-sync.md) を正とする。
 >
-> 🔴 **第 1 段（取り込みのみ）である。** Obsidian 側の編集・削除はナレッジベースへ送られない。
-> また、**配備済みクラスタのエッジは同期プロトコルを外へ出していない**ため、いま実際に届く接続先は
-> `kubectl port-forward` した文書サービスだけである（後続 issue で公開経路を足す）。
+> 🔴 **配備済みクラスタのエッジは同期プロトコルを外へ出していない**ため、いま実際に届く接続先は
+> `kubectl port-forward` した文書サービスだけである（公開経路は別 issue）。
 
 ## 何が配られるか
 
@@ -52,12 +51,26 @@ node ../scripts/check-static-egress.js --require obsidian-plugin/dist   # 外部
 3. プラグイン設定で次を入れる。
    - **接続先 URL**: 同期プロトコルを受ける基底 URL（`https://…`。末尾に `/private-notes/sync` は付けない）。
      ローカル検証では `http://127.0.0.1:<port>`（loopback だけ http を許す）。
-   - **同期フォルダ**: 取り込み先（既定 `個人資料`）。**このフォルダに入れた資料は業務関連資料として扱われる**。
+   - **同期フォルダ**: 同期対象（既定 `個人資料`）。**このフォルダに入れた資料は業務関連資料として扱われる**。
+     フォルダの外へ移したファイルは同期が止まるだけで、ナレッジベース側は削除されない。
    - **同期トークン**: 画面「Obsidian 連携設定」で端末を登録して発行された値を貼り付けて **保存**。
      トークンは**この端末にだけ**保存され、Vault のファイル（`data.json`）には入らない。
      再表示はできない（再発行のみ）。
-4. コマンドパレットの「個人資料をナレッジベースから取り込む（pull）」か、設定タブの「いま取り込む」を実行する。
-   結果は通知に出る（取得 / 一致 / 最新 / 上書きしなかった件数）。
+4. コマンドパレットの「個人資料を同期する（取り込み → 送信）」か、設定タブの「いま同期する」を実行する。
+   結果は通知に出る。「取り込みのみ」「送信のみ」も選べる。
+
+## 同期の振る舞い
+
+| 操作 | 結果 |
+| --- | --- |
+| 同期フォルダで `.md` を保存する | 保存の間隔が **30 秒以上空くごとに 1 版**として記録され、次の送信でまとめて送られる（オフラインで 10 回保存すれば 10 版） |
+| 同期フォルダで新しい `.md` を作る | 次の送信でナレッジベースに新しい資料ができる（ファイル名がタイトル） |
+| 同期フォルダのファイルを削除する | 次の送信でナレッジベース側が**論理削除**（90 日保管・画面から復元可）になる |
+| 同期フォルダの外へ移す | 同期が止まるだけ。ナレッジベースには何も送らない |
+| 同期フォルダの中で名前を変える | 追跡は続くが、**ナレッジベース側の名前は変わらない**（通知に出る） |
+| ナレッジベース側で名前が変わった | 取り込み時にローカルのファイルが移動する（ローカルで編集していれば旧ファイルを残して通知） |
+| ナレッジベース側で削除された | ローカルのファイルは**消さない**。送信時に「ローカルを採用（新規として送り直す）／サーバを採用（ゴミ箱へ）」を確認する |
+| 両方で編集していた | 送信時に**競合**として 1 件ずつ確認ダイアログが出る。「ローカルを採用」「サーバを採用」「両方残す」「保留」から選ぶまで、どちらも上書きされない |
 
 ## 期限切れ・失効のとき
 
@@ -69,10 +82,15 @@ node ../scripts/check-static-egress.js --require obsidian-plugin/dist   # 外部
 
 ```bash
 kubectl -n microservices-platform port-forward svc/document-service 18093:8080
-MSP_SYNC_ENDPOINT=http://127.0.0.1:18093 \
-MSP_SYNC_TOKEN_FILE=/path/to/token.txt \
-MSP_VAULT_DIR=/tmp/vault \
-node src/obsidian-plugin/dist/cli.mjs
+export MSP_SYNC_ENDPOINT=http://127.0.0.1:18093 MSP_SYNC_TOKEN_FILE=/path/to/token.txt MSP_VAULT_DIR=/tmp/vault
+node src/obsidian-plugin/dist/cli.mjs pull                      # 取り込み（既定）
+node src/obsidian-plugin/dist/cli.mjs record 個人資料/メモ.md    # 保存イベントに相当（1 版を積む）
+node src/obsidian-plugin/dist/cli.mjs push                      # 送信（新規・更新・論理削除）
+node src/obsidian-plugin/dist/cli.mjs sync                      # 取り込み → 送信
+node src/obsidian-plugin/dist/cli.mjs delete 個人資料/メモ.md    # 削除イベントに相当
+node src/obsidian-plugin/dist/cli.mjs rename 個人資料/a.md archive/a.md   # フォルダ外へ移す（同期停止）
+node src/obsidian-plugin/dist/cli.mjs resolve 個人資料/メモ.md local|server|both   # 競合を非対話で解決
 ```
 
-終了コードは `0`（完了）/ `2`（401。トークン無効）/ `3`（設定不備）。出力の JSON にトークンは含まれない。
+終了コードは `0`（完了）/ `2`（401。トークン無効）/ `3`（設定不備）/ `4`（競合あり。`resolve` で解決する）。
+出力の JSON にトークンは含まれない。`MSP_EDIT_QUIET_MS=0` にすると `record` のたびに版を刻める（実測用）。
