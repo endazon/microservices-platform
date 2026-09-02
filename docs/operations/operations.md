@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-11, FR-13, FR-15, NFR-21, SC-02, UC-04, UC-07]
 adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0322, IADR-0327]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0322, IADR-0327, IADR-0330]
 specs: []
-issues: [#66, #88, #98, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #455, #532, #536, #546, #587, #665, #674, #863, #443, #438, #466, #992, #1108, planning#196]
+issues: [#66, #88, #98, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #455, #532, #536, #546, #587, #665, #674, #863, #443, #438, #466, #992, #1108, #1110, planning#196]
 -->
 
 # 運用仕様書
@@ -681,10 +681,31 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 | 監視対象 | 指標（メトリクス） | 閾値 | 通知先（Alertmanager までは到達。**その先は未配線**） | 対応 NFR |
 | --- | --- | --- | --- | --- |
 | 可観測性パイプライン | `up{job="otel-collector"}`（唯一の scrape 対象） | ==0 が 2 分 | Alertmanager（critical） | 検出 5 分以内 |
-| サービス応答断（近似） | `rate(http_server_duration_milliseconds_count)` の途絶（直近まで受信有） | 0 が 5 分 | Alertmanager（warning） | 可用性 99.9% |
-| HTTP エラー率 | 5xx 率 = `http_server_duration_milliseconds_count{http_status_code=~"5.."}` 比率 | > 5% が 5 分 | Alertmanager（critical） | 可用性 99.9% |
-| 検索レイテンシ | retrieval-service p95（`http_server_duration_milliseconds_bucket`） | > 1.5s が 10 分 | Alertmanager（warning） | 検索 p95 1.5s |
-| RAG レイテンシ | aianalysis `/analysis/ask` p95 | > 5s が 10 分 | Alertmanager（warning） | RAG 初回 5s |
+| サービス応答断（近似） | `rate(http_server_request_duration_seconds_count)` の途絶（`job` 別・直近まで受信有） | 0 が 5 分 | Alertmanager（warning） | 可用性 99.9% |
+| HTTP エラー率 | 5xx 率 = `http_server_request_duration_seconds_count{http_response_status_code=~"5.."}` 比率（`job` 別） | > 5% が 5 分 | Alertmanager（critical） | 可用性 99.9% |
+| 検索レイテンシ | retrieval-service p95（`http_server_request_duration_seconds_bucket`） | > 1.5（**秒**）が 10 分 | Alertmanager（warning） | 検索 p95 1.5s |
+| RAG レイテンシ | aianalysis `/analysis/ask` p95 | > 5（**秒**）が 10 分 | Alertmanager（warning） | RAG 初回 5s |
+
+> 🔴 **上表の 5 件のうち 4 件は、2026-08-31 まで一度も発火し得なかった。**
+> `up{job="otel-collector"}` を見る 1 件を除く 4 件が、**Prometheus に一度も存在したことのない**
+> メトリクス名（`http_server_duration_milliseconds_*`）を参照していた。**式は構文として正当**なので
+> Prometheus はエラーを出さず、ルールは `health: "ok"` / `state: "inactive"` のまま静かに評価され続けていた。
+> **「アラートが設定されている」ことと「アラートが発火しうる」ことは別である。**
+>
+> ずれは 4 種類あった —— **名前**（旧 HTTP セマンティック規約の `http.server.duration`）／
+> **ラベル軸**（`service_name` はアプリ由来のメトリクスに付かない。付くのは `job` である）／
+> **ラベル名**（`http_status_code` → `http_response_status_code`）／**単位**（ミリ秒 → **秒**）。
+> **ダッシュボードも同じ名前を使っており、5xx 率・p99・RAG レイテンシのパネルは空だった。**
+> アラートだけ直すと、**運用者が空のグラフを見て「異常なし」と記録する**状態が残るため、同時に直した。
+>
+> **Alertmanager の束ね（`group_by`）と抑止（`inhibit_rules.equal`）も同じラベルを使う。**
+> 片方だけ `job` へ移すと束ねが全サービス 1 群へ潰れるため、`deploy/alertmanager/alertmanager.yml`
+> と経路B の inline も同時に直してある。
+>
+> **式を書き換えるときは、稼働 Prometheus に対して参照先が実在することを 1 件ずつ確かめること。**
+> 手順（`/api/v1/series` での問い合わせと、**「0 件だった」を「無い」と読む前に置く陽性対照**）は
+> `deploy/prometheus/alerts.yml` の冒頭コメントが正本である。**機械検査は置いていない**
+> —— 式が参照する名前が稼働 TSDB に存在するかは、リポジトリの静的検査では原理的に判定できない。
 
 ### LLM 拒否率の監視（LLM 送信先切替の要求 / 非機能要件 / #395）
 

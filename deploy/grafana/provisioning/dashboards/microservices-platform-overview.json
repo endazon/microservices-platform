@@ -2,7 +2,7 @@
   "title": "Platform Overview",
   "uid": "microservices-platform-overview",
   "schemaVersion": 38,
-  "version": 2,
+  "version": 3,
   "refresh": "30s",
   "tags": ["microservices-platform"],
   "panels": [
@@ -13,8 +13,8 @@
       "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
       "targets": [{
         "datasource": "Prometheus",
-        "expr": "sum by (service_name) (rate(http_server_duration_milliseconds_count[1m]))",
-        "legendFormat": "{{service_name}}"
+        "expr": "sum by (job) (rate(http_server_request_duration_seconds_count[1m]))",
+        "legendFormat": "{{job}}"
       }]
     },
     {
@@ -24,29 +24,29 @@
       "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
       "targets": [{
         "datasource": "Prometheus",
-        "expr": "sum by (service_name) (rate(http_server_duration_milliseconds_count{http_status_code=~'5..'}[1m])) / sum by (service_name) (rate(http_server_duration_milliseconds_count[1m])) * 100",
-        "legendFormat": "{{service_name}}"
+        "expr": "sum by (job) (rate(http_server_request_duration_seconds_count{http_response_status_code=~'5..'}[1m])) / sum by (job) (rate(http_server_request_duration_seconds_count[1m])) * 100",
+        "legendFormat": "{{job}}"
       }]
     },
     {
       "id": 3,
-      "title": "HTTP P99 Latency (ms)",
+      "title": "HTTP P99 Latency (s)",
       "type": "timeseries",
       "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
       "targets": [{
         "datasource": "Prometheus",
-        "expr": "histogram_quantile(0.99, sum by (le, service_name) (rate(http_server_duration_milliseconds_bucket[5m])))",
-        "legendFormat": "p99 {{service_name}}"
+        "expr": "histogram_quantile(0.99, sum by (le, job) (rate(http_server_request_duration_seconds_bucket[5m])))",
+        "legendFormat": "p99 {{job}}"
       }]
     },
     {
       "id": 4,
-      "title": "RAG Ask Latency P99 (ms)",
+      "title": "RAG Ask Latency P99 (s)",
       "type": "timeseries",
       "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
       "targets": [{
         "datasource": "Prometheus",
-        "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_duration_milliseconds_bucket{service_name='microservices-platform.aianalysis-service', http_route='/analysis/ask'}[5m])))",
+        "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{job='microservices-platform.aianalysis-service', http_route='/analysis/ask'}[5m])))",
         "legendFormat": "p99 /analysis/ask"
       }]
     },
