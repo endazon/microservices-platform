@@ -1,5 +1,4 @@
 using GraphService.Infrastructure.ExternalServices;
-using GraphService.Features.GraphDocuments;
 using GraphService.Features.GraphDocuments.Delete;
 using GraphService.Features.GraphDocuments.Sync;
 using GraphService.Features.KnowledgeHealth.Report;

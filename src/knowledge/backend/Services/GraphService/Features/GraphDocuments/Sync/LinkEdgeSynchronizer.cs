@@ -3,7 +3,7 @@ using GraphService.Common.Observability;
 using GraphService.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
-namespace GraphService.Features.GraphDocuments;
+namespace GraphService.Features.GraphDocuments.Sync;
 
 // FR-17, UC-10, ADR-0033 決定 3・4・6・8, IADR-0281 (#912): 本文から抽出したリンクを辺へ反映する。
 //
@@ -18,10 +18,14 @@ namespace GraphService.Features.GraphDocuments;
 // ノード upsert・却下解除・辺の差分を**同一トランザクション**に収める。ここで保存すると
 // 「辺は入ったがノードの属性は入らなかった」という中途半端な状態が作れてしまう。
 //
-// 🔴 **配置は合成ルート側（現 Features/GraphDocuments/）である。** IADR-0280 決定 2 の写像では調整サービスは Application だが、
+// 🔴 **層は合成ルート側（Features/）である。** IADR-0280 決定 2 の写像では調整サービスは Application だが、
 // 本クラスが触る `GraphDbContext` / `Edge` / `EdgeType` は段 2 の移送が済んでおらず、まだ Api 側に
 // ある（同 決定 1 の段階計画）。**依存の向きに従い、依存先と同じ層に置く。** 段 2 で
 // Persistence / Domain が移るときに一緒に移す。
+//
+// **段は 3 段目（`Sync/`）である**（#1094 / IADR-0350）。使う操作が `GraphDocuments/Sync` の 1 つ
+// だけなので ADR-0068 決定 2 が下ろす。**層の理由（上段）と段の理由は別であり、段を下げても
+// 層は動かない**（IADR-0349 決定 3）。
 public sealed class LinkEdgeSynchronizer(
     GraphDbContext db,
     EdgeTypeFallbackMetrics metrics,
