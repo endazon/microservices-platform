@@ -7,7 +7,8 @@
 # 前提ツール: docker / k3d / kubectl / helm（scripts/README や docs/operations 参照）。
 # 機密の上書きは環境変数で: PG_PASSWORD / RABBITMQ_PASSWORD / KEYCLOAK_ADMIN_PASSWORD /
 #   MINIO_ACCESS_KEY / MINIO_SECRET_KEY / WIKIJS_DB_PASSWORD / WIKIJS_SYNC_APIKEY / ANTHROPIC_API_KEY /
-#   RABBITMQ_USER（#1022。helm の global.messaging.user と揃えること）
+#   RABBITMQ_USER（#1022。helm の global.messaging.user と揃えること）/
+#   WIKIJS_OIDC_CLIENT_SECRET（#1127。WIKIJS_OIDC=1 のときだけ使う。realm の wiki-js client と揃えること）
 set -euo pipefail
 
 CLUSTER="${1:-msp-ast-dev}"
@@ -169,6 +170,17 @@ fi
 if [ "${ESO:-}" != "1" ]; then
   apply_secret "$MSP_NS" identity-admin-oidc \
     "client-secret=${IDENTITY_ADMIN_CLIENT_SECRET:-identity-admin-dev-secret-change-me}"
+fi
+# NFR-09, ADR-0011/ADR-0026, IADR-0095/IADR-0328/IADR-0342 (#1127): Wiki.js の Keycloak OIDC
+# ストラテジ（Wiki.js の DB 保持・manifest 化できない）を冪等に投入する
+# `deploy/local/wikijs-setup/bootstrap.sh` 段 8 が読む client secret。
+# 🔴 **この Secret を env で読む Pod は 1 つも無い**（読み手は bootstrap）。したがって ESO 後段の
+# rollout 対象にも入れない —— 作るところまでが本行の責務である（keycloak-smtp と同じ性質）。
+# 供給は **段 8 と同じ opt-in（WIKIJS_OIDC=1）に揃える** ——機能オフのときに未使用 Secret を残さない
+# （grafana-oidc / headlamp-oidc と同じゲート意味論）。dev 既定は realm import の置き場と同値。
+if [ "${WIKIJS_OIDC:-}" = "1" ] && [ "${ESO:-}" != "1" ]; then
+  apply_secret "$MSP_NS" wikijs-oidc \
+    "client-secret=${WIKIJS_OIDC_CLIENT_SECRET:-wiki-js-dev-secret-change-me}"
 fi
 # IADR-0097 (#310) PR-2: minio-credentials/wikijs-db/wikijs-sync は ESO=1 のとき Vault→ExternalSecret 供給へ委譲し
 # 手動 apply をスキップする（二重所有回避）。既定（ESO 未設定）は従来どおり手動 apply（バイト等価）。
@@ -388,6 +400,11 @@ if [ "${ESO:-}" = "1" ]; then
   # 起動しない）。常時供給。
   kubectl apply -f deploy/local/vault/eso/externalsecret-identity-admin-oidc.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-vault-oidc.yaml
+  # #1127: Wiki.js の OIDC ストラテジ seed が読む client secret。段 8 と同じ opt-in に揃える
+  # （機能オフのときに未使用 Secret を残さない）。**env で読む Pod は無い**ので rollout 対象外。
+  if [ "${WIKIJS_OIDC:-}" = "1" ]; then
+    kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-oidc.yaml
+  fi
   if [ "${OBSERVABILITY:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-grafana-oidc.yaml
   fi
@@ -410,14 +427,16 @@ if [ "${ESO:-}" = "1" ]; then
   # ことは runbook 側の前提であり、ここでは空の Secret を作るだけで実害は無い（秘匿値は 1 つも増えない）。
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-smtp.yaml
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 9 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc を追加し 6 → 7 → 8 → 9 へ数え直した）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
+  # 誤解させない）。MSP ns は常時 9 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc を追加し 6 → 7 → 8 → 9 へ数え直した）＋有効ゲートの wikijs-oidc（#1127）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
+  msp_es="llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc"
+  [ "${WIKIJS_OIDC:-}" = "1" ] && msp_es="$msp_es wikijs-oidc"
   infra_es="postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
   echo "    ESO: llm/minio-credentials/postgres-app/rabbitmq-app/wikijs-db/wikijs-sync/minio-oidc（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
-  echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc/keycloak-smtp および有効ゲートの grafana/headlamp-oidc を"
+  echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc/keycloak-smtp、および有効ゲートの grafana/headlamp-oidc（infra ns）と wikijs-oidc（MSP ns）を"
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
-  echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc"
+  echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret $msp_es"
   echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret $infra_es"
 
   # IADR-0103 (#354): env の `secretKeyRef` は **Pod 起動時に一度だけ解決され、その後の Secret 更新は
@@ -440,7 +459,13 @@ if [ "${ESO:-}" = "1" ]; then
         || echo "      warn: $ns/$es が SecretSynced になりません（rollout は継続）"
     done
   }
-  eso_wait "$MSP_NS" llm-provider-credentials minio-credentials minio-oidc wikijs-db wikijs-sync
+  msp_sync="llm-provider-credentials minio-credentials minio-oidc wikijs-db wikijs-sync"
+  # #1127: wikijs-oidc を待つ理由は **rollout ではない**（env で読む Pod が無い）。`up` の後段で走る
+  # deploy/local/wikijs-setup/bootstrap.sh の段 8 がこの Secret を読むためである。同期前だと段 8 は
+  # 「client secret を取得できない」で何もせずに終わり、**OIDC ログインが入らないまま up は緑で終わる。**
+  [ "${WIKIJS_OIDC:-}" = "1" ] && msp_sync="$msp_sync wikijs-oidc"
+  # shellcheck disable=SC2086
+  eso_wait "$MSP_NS" $msp_sync
   # #1102: keycloak-smtp は **rollout のために待つのではない**（env で読む Pod が無い。上の apply の注記参照）。
   # 待つのは、`up` の直後に運用者が案内文どおり
   # `kubectl -n platform-infra get externalsecret,secret keycloak-smtp` を打ったとき、また runbook
@@ -753,7 +778,15 @@ fi
 # 冪等（セットアップ済みなら finalize を飛ばし、有効なキーが在れば再発行しない）。
 # best-effort: 失敗しても up 全体は止めない。**fail-closed の門は `scripts/check-stack-ready.js` の
 # G7** に置いてある（そちらが setup モード・空 apiKey・locale 欠落を落とす）。
-echo "==> Wiki.js 初期セットアップ（冪等 / IADR-0327）"
+#
+# NFR-09, IADR-0342 (#1127): 同じ bootstrap の **段 8** が Keycloak OIDC ストラテジ
+# （`authentication` テーブル＝これも manifest 化できない runtime 状態）を冪等に投入する。
+# こちらは **opt-in（`WIKIJS_OIDC=1`・既定オフ）** —— endpoint がエッジ host を前提にするため、
+# `LOCALEDGE` 抜きで既定 ON にすると「押せるが 502 になるボタン」を作ることになる。
+# 既定では `local` ログインだけが残る（fail-safe）。**新しい入口は増やさない**（段として相乗りする）。
+wikijs_oidc_note=""
+[ "${WIKIJS_OIDC:-}" = "1" ] && wikijs_oidc_note=" ＋ [opt-in] OIDC ストラテジ投入（IADR-0342）"
+echo "==> Wiki.js 初期セットアップ（冪等 / IADR-0327）${wikijs_oidc_note}"
 bash "$ROOT/deploy/local/wikijs-setup/bootstrap.sh" \
   || echo "    WARN: Wiki.js の初期化に失敗（best-effort）。bash deploy/local/wikijs-setup/bootstrap.sh で再実行できる" >&2
 
