@@ -9,7 +9,7 @@ updated: 2026-09-02
 <!-- trace:
 ids: [FR-19, FR-20, UC-11, SC-20]
 adrs: [ADR-0037]
-iadrs: [IADR-0270, IADR-0331]
+iadrs: [IADR-0270, IADR-0338]
 specs: [20260902_issue-1098_obsidian-plugin-pull-stage1]
 issues: [#1098, #451]
 -->

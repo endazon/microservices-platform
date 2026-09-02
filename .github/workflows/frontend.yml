@@ -11,7 +11,7 @@ on:
     paths:
       - "src/*/frontend/**"
       - "src/packages/**"
-      # FR-20 / ADR-0037 決定 1 / IADR-0331 決定 2: 自作 Obsidian プラグイン（pnpm workspace メンバ）。
+      # FR-20 / ADR-0037 決定 1 / IADR-0338 決定 2: 自作 Obsidian プラグイン（pnpm workspace メンバ）。
       # "src/*/frontend/**" にも "src/packages/**" にも一致しない第 3 の成果物なので名指しで足す。
       - "src/obsidian-plugin/**"
       - "src/package.json"
@@ -68,7 +68,7 @@ on:
     paths:
       - "src/*/frontend/**"
       - "src/packages/**"
-      # FR-20 / ADR-0037 決定 1 / IADR-0331 決定 2: 自作 Obsidian プラグイン（pnpm workspace メンバ）。
+      # FR-20 / ADR-0037 決定 1 / IADR-0338 決定 2: 自作 Obsidian プラグイン（pnpm workspace メンバ）。
       # "src/*/frontend/**" にも "src/packages/**" にも一致しない第 3 の成果物なので名指しで足す。
       - "src/obsidian-plugin/**"
       - "src/package.json"
@@ -212,7 +212,7 @@ jobs:
       # 次のステップの走査対象を作ることを兼ねる。
       - name: Build Storybook (catalog)
         run: pnpm --filter @platform/ui run build-storybook
-      # FR-20 / ADR-0037 決定 1 / IADR-0331 決定 3: 自作 Obsidian プラグインの成果物（dist/main.js・manifest.json・
+      # FR-20 / ADR-0037 決定 1 / IADR-0338 決定 3: 自作 Obsidian プラグインの成果物（dist/main.js・manifest.json・
       # cli.mjs）。ビルドが通ることの確認と、次のステップの走査対象を作ることを兼ねる（Storybook と同じ位置づけ）。
       - name: Build Obsidian plugin
         run: pnpm --filter @platform/obsidian-plugin run build

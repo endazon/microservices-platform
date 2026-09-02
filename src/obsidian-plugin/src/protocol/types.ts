@@ -1,4 +1,4 @@
-// FR-20, UC-11, ADR-0037 決定 2・14, [[IADR-0270]] 決定 3・7, [[IADR-0331]] 決定 4:
+// FR-20, UC-11, ADR-0037 決定 2・14, [[IADR-0270]] 決定 3・7, [[IADR-0338]] 決定 4:
 // DocumentService の同期プロトコル（/private-notes/sync/*）の契約の写し。
 //
 // 🔴 契約の正はサーバ（`Features/ObsidianSync/{Manifest,Pull}/Query.cs`）と

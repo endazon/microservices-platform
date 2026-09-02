@@ -1,4 +1,4 @@
-// FR-20, 08_data-egress-policy 許容条件 2・3, [[IADR-0331]] 決定 4: 接続先 URL の正規化。
+// FR-20, 08_data-egress-policy 許容条件 2・3, [[IADR-0338]] 決定 4: 接続先 URL の正規化。
 //
 // 同期トークンは Bearer で平文のまま載るので、**https 以外では送らない**。例外は loopback
 // （port-forward で叩くローカル検証）だけである。末尾の `/` は落とし、`/private-notes/sync/...`

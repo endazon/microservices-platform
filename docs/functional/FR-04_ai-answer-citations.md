@@ -3,7 +3,7 @@ title: AI 回答・出典提示 機能仕様書
 type: functional-spec
 status: draft
 created: 2026-06-27
-updated: 2026-08-21
+updated: 2026-09-02
 author: claude
 ---
 <!-- trace:
@@ -59,7 +59,7 @@ issues: [#201, #403, #541]
   （`ConfidentialityLevels`）から導く。画面に「公開」と出ているのにゲートウェイは `restricted` として
   扱う、という食い違いを作らない。
 - **表示名（公開 / 社内限 / 秘 / 取扱制限）は本リポジトリで定義しない。** 正は計画リポジトリの用語集
-  （`planning/docs/glossary.md`）である。**`restricted` は「取扱制限」であって「極秘」ではない。**
+  （`project-planning` の `docs/glossary.md`）である。**`restricted` は「取扱制限」であって「極秘」ではない。**
 
 ## 処理フロー / 状態遷移
 

@@ -1,4 +1,4 @@
-// FR-20, UC-11, [[IADR-0331]] 決定 6: Obsidian 本体なしで同じ pull を実 HTTP に当てる Node ハーネス。
+// FR-20, UC-11, [[IADR-0338]] 決定 6: Obsidian 本体なしで同じ pull を実 HTTP に当てる Node ハーネス。
 // 実測（#1098 の証跡）と CI の成果物検査に使う。**トークンは環境変数かファイルから読み、出力に載せない。**
 //
 //   MSP_SYNC_ENDPOINT   接続先（例: http://127.0.0.1:18093 ← port-forward した DocumentService）

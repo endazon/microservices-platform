@@ -9,7 +9,7 @@ author: Claude
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-20]
 adrs: [ADR-0037, ADR-0046]
-iadrs: [IADR-0270, IADR-0331]
+iadrs: [IADR-0270, IADR-0338]
 specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260902_issue-1098_obsidian-plugin-pull-stage1]
 issues: [#451, #1098]
 -->

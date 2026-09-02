@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, SC-19, SC-20, UC-11]
 adrs: [ADR-0031, ADR-0036, ADR-0037, ADR-0046, ADR-0054]
-iadrs: [IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0134, IADR-0135, IADR-0262, IADR-0270, IADR-0331]
+iadrs: [IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0134, IADR-0135, IADR-0262, IADR-0270, IADR-0338]
 specs: [20260828_issue-451c_sc19-sc20-screens, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1]
 issues: [#451, #1098]
 -->

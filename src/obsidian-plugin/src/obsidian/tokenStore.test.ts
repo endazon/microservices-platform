@@ -12,7 +12,7 @@ class FakeLocalStorage implements LocalStorageLike {
 }
 
 describe('LocalStorageTokenStore', () => {
-  // FR-20, ADR-0037 決定 11・13, [[IADR-0331]] 決定 5: トークンは端末ローカルの localStorage に保存し、
+  // FR-20, ADR-0037 決定 11・13, [[IADR-0338]] 決定 5: トークンは端末ローカルの localStorage に保存し、
   // 読み戻せる（陽性対照）
   it('保存したトークンを端末ローカルのキーから読み戻せる', () => {
     const storage = new FakeLocalStorage();

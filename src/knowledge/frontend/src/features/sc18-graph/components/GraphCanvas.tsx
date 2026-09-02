@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { loadGraphECharts } from '../../../components/echartsGraphLoader';
-import type { GraphEChartsInstance } from '../../../components/echartsGraphLoader';
+import { loadGraphECharts } from '../../../lib/echarts/echartsGraphLoader';
+import type { GraphEChartsInstance } from '../../../lib/echarts/echartsGraphLoader';
 
 // SC-18, UC-10, FR-17, ADR-0039 (#917): グラフ描画の器。
 //

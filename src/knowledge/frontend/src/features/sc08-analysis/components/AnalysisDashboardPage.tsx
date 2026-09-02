@@ -20,7 +20,7 @@ import {
   Textarea,
 } from '@platform/ui';
 import { i18n } from '@foundation/i18n';
-import { toMessages } from '@foundation/ui/apiErrors';
+import { toMessages } from '@foundation/utils/apiErrors';
 import { AnalysisTaskRequestTaskType } from '@foundation/api/generated/bff.schemas';
 import type { AiAnswerDto, CitationDto } from '@foundation/api/generated/bff.schemas';
 import {

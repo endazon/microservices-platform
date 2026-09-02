@@ -21,7 +21,7 @@ describe('resolveLocalPath', () => {
     expect(normalizeFolder('a\\b/./c/')).toBe('a/b/c');
   });
 
-  // FR-20, [[IADR-0331]] 決定 9: Vault の外へ出るパスと制御文字は取り込まない（陰性）
+  // FR-20, [[IADR-0338]] 決定 9: Vault の外へ出るパスと制御文字は取り込まない（陰性）
   it('絶対パス・親参照・制御文字・空は理由付きで拒否する', () => {
     expect(resolveLocalPath('個人資料', '/etc/passwd')).toEqual({ ok: false, reason: 'absolute' });
     expect(resolveLocalPath('個人資料', 'C:/Users/x.md')).toEqual({

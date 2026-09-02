@@ -1,4 +1,4 @@
-// FR-20, UC-11, ADR-0037 決定 2・7・14, 08_data-egress-policy 許容条件 1〜4, [[IADR-0331]] 決定 1・6:
+// FR-20, UC-11, ADR-0037 決定 2・7・14, 08_data-egress-policy 許容条件 1〜4, [[IADR-0338]] 決定 1・6:
 // pull の一巡。manifest → 差分計算 → 必要な資料だけ pull → Vault へ書く → 同期状態を記録する。
 //
 // Obsidian への依存はポート（FileStore / SyncStateStore / Hasher / HttpTransport 経由の SyncClient）

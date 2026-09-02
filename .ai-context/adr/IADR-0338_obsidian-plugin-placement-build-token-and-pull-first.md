@@ -1,5 +1,5 @@
 ---
-title: IADR-0331 自作 Obsidian プラグインは src/ の workspace メンバに置き、esbuild で束ね、同期トークンは端末ローカルに保管し、第 1 段は pull のみとする
+title: IADR-0338 自作 Obsidian プラグインは src/ の workspace メンバに置き、esbuild で束ね、同期トークンは端末ローカルに保管し、第 1 段は pull のみとする
 type: impl-adr
 status: Proposed
 related_ids: [FR-19, FR-20, UC-11, SC-20, ADR-0037, ADR-0046, ADR-0054, IADR-0270]
@@ -13,7 +13,7 @@ plan_refs:
 issue: "#1098"
 ---
 
-# IADR-0331: 自作 Obsidian プラグインの配置・ビルド・接続先・トークン保管・段分割
+# IADR-0338: 自作 Obsidian プラグインの配置・ビルド・接続先・トークン保管・段分割
 
 - 状態: Proposed
 - 日付: 2026-09-02

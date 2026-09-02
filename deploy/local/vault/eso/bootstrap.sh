@@ -79,6 +79,10 @@ echo "  PR-3: minio-oidc (MSP ns) / grafana-oidc, vault-oidc, headlamp-oidc (pla
 echo "  #1107: bff-oidc (MSP ns。BFF セッションの client secret。空だと /bff/auth/login が 500)"
 echo "  #1101: identity-admin-oidc (MSP ns。SC-17 の Keycloak Admin REST 反映。空だと authorization-service が起動しない)"
 echo "  PR-4: postgres, rabbitmq, keycloak-admin (platform-infra ns・creationPolicy: Merge・手動 apply は保持)"
-echo "  #438: keycloak-smtp (platform-infra ns。既定は空＝実値未供給。docs/operations/keycloak-smtp-relay-setup-runbook.md 参照)"
-echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials minio-credentials wikijs-db wikijs-sync minio-oidc"
-echo "  確認(infra): kubectl -n platform-infra get externalsecret,secret postgres rabbitmq keycloak-admin vault-oidc grafana-oidc headlamp-oidc keycloak-smtp"
+echo "  #438/#1102: keycloak-smtp (platform-infra ns。既定は空＝実値未供給。k8s-local-up.sh の ESO=1 が常時 apply する。docs/operations/keycloak-smtp-relay-setup-runbook.md 参照)"
+# 🔴 案内は **実際に apply される名前だけ**を挙げる（#1102: 挙げた名前が作られないと、手順どおり
+#    打った人が必ず NotFound を踏む）。grafana-oidc / headlamp-oidc は OBSERVABILITY=1 / HEADLAMP=1 の
+#    ときだけ apply されるため、無条件の並びからは外して注記に回す。
+echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc"
+echo "  確認(infra): kubectl -n platform-infra get externalsecret,secret postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp"
+echo "             （grafana-oidc は OBSERVABILITY=1、headlamp-oidc は HEADLAMP=1 のときだけ apply される）"

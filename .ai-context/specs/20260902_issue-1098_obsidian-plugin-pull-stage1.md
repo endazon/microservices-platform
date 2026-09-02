@@ -11,7 +11,7 @@ related_ids:
   - ADR-0046
   - ADR-0054
   - IADR-0270
-  - IADR-0331
+  - IADR-0338
 author: claude
 created: 2026-09-02
 updated: 2026-09-02
@@ -27,7 +27,7 @@ plan_refs:
 > 実装 issue #1098（#451 の残射程のうち最大のもの）。**本リポジトリで最大級の新規実装**であるため、
 > 本書で「この PR で作る最小の縦の一筋」を切り、残りを後続 issue へ明示的に送る。
 > 実装判断（配置・ビルド・接続先・トークン保管・段分割・テストの器）は
-> `IADR-0331` に置き、本書は範囲・母集合・受け入れ基準・実測を持つ。
+> `IADR-0338` に置き、本書は範囲・母集合・受け入れ基準・実測を持つ。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -37,7 +37,7 @@ plan_refs:
 - 関連 ADR: `ADR-0037`（決定 1〜20。とくに 1・2・4・7・12〜15。**課題 2** = 同期トークンは BFF の
   ブラウザセッションと別系統）/ `ADR-0046`（本文編集は Obsidian 同期のみ）/ `ADR-0054`（語彙）/
   08_data-egress-policy §個人資料の同期に関する例外（許容条件 1〜7）
-- 実装 IADR: `IADR-0270`（サーバ側中核。決定 3・7 がプラグインの前提）/ `IADR-0331`（本作業）
+- 実装 IADR: `IADR-0270`（サーバ側中核。決定 3・7 がプラグインの前提）/ `IADR-0338`（本作業）
 
 ## 着手条件の確認（実測 2026-09-02・`develop` `89b4d26e`）
 
@@ -47,7 +47,7 @@ plan_refs:
    `src/knowledge/backend/Services/DocumentService/Features/ObsidianSync/{Manifest,Pull,Push,Delete}`・
    `Features/SyncDevices/{Issue,Reissue,List,Revoke,RevokeAll}`。契約の正は
    `docs/api/FR-20_obsidian-sync.md`（同期プロトコル群は **BFF に載っていない**）。
-3. 🔴 **issue の提案（第 1 段 = 読み取り方向のみ）を採る。** 覆さない。理由は `IADR-0331` 決定 1。
+3. 🔴 **issue の提案（第 1 段 = 読み取り方向のみ）を採る。** 覆さない。理由は `IADR-0338` 決定 1。
 
 ## 目的・背景
 
@@ -65,7 +65,7 @@ FR-20 のサーバ側（同期プロトコル・同期端末・監査・期限�
 | `git ls-files \| grep -i obsidian` | 30 | すべてサーバ・画面・文書・IADR。**`manifest.json` / `main.ts` に当たるものは 0**（`git ls-files 'src/*' \| grep -E '(manifest\.json\|main\.ts)$'` の唯一の一致は `src/packages/ui/.storybook/main.ts`＝Storybook の設定で無関係） |
 | `private-notes/sync` を TS/TSX から参照 | **0** | client 実装は無い |
 | 同 `.cs` から参照（陽性対照） | 9 | サーバ側の口・テストは実在する（走査形が効いている） |
-| 同 `deploy/` `openapi.yaml` から参照 | 1（`openapi.yaml` のみ） | 🔴 **エッジ（`deploy/local/edge-istio/virtualservice-app.yaml`）は `/bff` と `/` しか通さず、`/private-notes/sync/*` を外へ出す経路が無い**。実測: `https://localhost/bff/private-notes/sync/manifest` → **404**（BFF に無い）。プラグインは配備済みクラスタへ**到達できない**（後続 issue。`IADR-0331` 決定 4） |
+| 同 `deploy/` `openapi.yaml` から参照 | 1（`openapi.yaml` のみ） | 🔴 **エッジ（`deploy/local/edge-istio/virtualservice-app.yaml`）は `/bff` と `/` しか通さず、`/private-notes/sync/*` を外へ出す経路が無い**。実測: `https://localhost/bff/private-notes/sync/manifest` → **404**（BFF に無い）。プラグインは配備済みクラスタへ**到達できない**（後続 issue。`IADR-0338` 決定 4） |
 | `obsidian` を workspace / knip / vitest / eslint / CI の設定から参照 | 0 | 配線はすべて本 PR が新設する |
 | 既存 issue の重複検索（`Obsidian` / `プラグイン` / `private-notes/sync`） | #1098・#451 のみ | プラグイン側の実装 issue は他に無い |
 
@@ -97,7 +97,7 @@ FR-20 のサーバ側（同期プロトコル・同期端末・監査・期限�
 | カバレッジ ratchet（`coverage.include`）への算入 | 母数を動かすと床の再計測が要る。templates と同じ扱い（走らせるが数えない） | 後続 issue |
 | SC-20 画面の変更（フォルダ設定・競合一覧） | 口が無い（画面仕様書 §未決事項）。本 PR は画面を触らない | #451 / 第 2 段 |
 
-## 設計（要点。判断の記録は `IADR-0331`）
+## 設計（要点。判断の記録は `IADR-0338`）
 
 ```text
 src/obsidian-plugin/
@@ -130,7 +130,7 @@ src/obsidian-plugin/
 
 ## 受け入れ基準（issue の第 1 段からの写像）
 
-- [ ] Given 段分割と置き場所・配布方式 / When 決める / Then `IADR-0331` に残っている（論点 1〜4 すべてに答えている）
+- [ ] Given 段分割と置き場所・配布方式 / When 決める / Then `IADR-0338` に残っている（論点 1〜4 すべてに答えている）
 - [ ] Given 同期トークンを設定したプラグイン / When `manifest` を取得する / Then サーバの資料一覧と版が読める（単体: `syncClient.test.ts`。実測: §実測）
 - [ ] Given 差分 / When `pull` する / Then Vault にファイルが書き下ろされる（単体: `pullSync.test.ts`。実測: §実測）
 - [ ] Given 期限切れ・失効したトークン / When 同期する / Then 利用者に判る形で失敗する（単体: 401 → `SyncAuthError` → ファイル・状態を触らない。実測: 無トークン／不正トークン → 401）
@@ -145,7 +145,7 @@ src/obsidian-plugin/
   単体テストの対象は `protocol/` と `obsidian/tokenStore.ts`（`Storage` を注入）に限る。
 - 🔴 否定形は陽性対照と対で置く: 401 で「何も書かない」は、200 で「書く」と同じテストファイルに置く。
   無効パスの `skipped` は、有効パスの `write` と対にする。
-- 実 HTTP の証跡は Vitest ではなく `dist/cli.mjs` で取る（Obsidian 本体は無い。`IADR-0331` 決定 6）。
+- 実 HTTP の証跡は Vitest ではなく `dist/cli.mjs` で取る（Obsidian 本体は無い。`IADR-0338` 決定 6）。
 
 ## 実測（証跡は本文末尾の「実測記録」節）
 
@@ -153,7 +153,7 @@ src/obsidian-plugin/
 
 - **プラグインへの受け渡し方法**（計画 SC-20 §未確定「手入力かワンタイムコード方式か」）は計画が未確定のまま
   である。本段は**手入力（貼り付け）**で実装し、ワンタイムコード方式へ替えるならプラグイン側の入力欄
-  だけが変わる形に留めた（`IADR-0331` 決定 5）。計画側の裁定は不要と判断（計画が「未確定」と明記している
+  だけが変わる形に留めた（`IADR-0338` 決定 5）。計画側の裁定は不要と判断（計画が「未確定」と明記している
   論点の実装値であり、覆れば設定タブだけを直す）。
 - **接続先の公開経路**が計画に無い。08_data-egress-policy の許容条件 3「同期経路が本システムの提供する手段」は
   プラグインを指しており、どの host で `/private-notes/sync/*` を受けるかは実装（配備）の判断である。
@@ -163,7 +163,7 @@ src/obsidian-plugin/
 
 1. `/private-notes/sync/*` のエッジ公開（`deploy/`）—— **#1154 に起票**
 2. 第 2 段（push / delete / 競合解決 UI / サーバ側削除・リネームの伝播 / 「1 編集」の刻み）—— **#1153 に起票**
-3. 配布（リリース資産化）・カバレッジ算入・en ロケール —— `IADR-0331` フォローアップ 3〜5（起票は配布形式の
+3. 配布（リリース資産化）・カバレッジ算入・en ロケール —— `IADR-0338` フォローアップ 3〜5（起票は配布形式の
    運用裁定と併せて行う。#1153 / #1154 の着地後）
 4. 🔴 有効トークンでの実 HTTP 陽性（manifest 200 → pull → 書き下ろし）は本セッションで実行できていない
    （§実測記録）。手順は用意済みで、PR のレビュー時に 1 コマンドで再現できる
@@ -215,7 +215,7 @@ src/obsidian-plugin/
 
 ### 受け入れ基準の充足
 
-- [x] 論点 1〜4（＋受け渡し・段分割）が `IADR-0331` に在る
+- [x] 論点 1〜4（＋受け渡し・段分割）が `IADR-0338` に在る
 - [x] manifest 取得（単体 P1。実 HTTP は陰性まで）
 - [x] pull → Vault 書き下ろし（単体 P5〜P7。実 HTTP は陰性まで）
 - [x] 期限切れ・失効は利用者に判る失敗で、ファイルを触らない（単体 P3・実 HTTP N5〜N7）

@@ -1,4 +1,4 @@
-// FR-20, [[IADR-0331]] 決定 6: Node ハーネス（`cli/pull.ts`）用の HttpTransport。
+// FR-20, [[IADR-0338]] 決定 6: Node ハーネス（`cli/pull.ts`）用の HttpTransport。
 // Obsidian 本体を持たない環境（CI・実測）で、同じ SyncClient / runPullSync を実 HTTP に当てる。
 //
 // ESLint の `no-restricted-globals: fetch`（SPA → BFF 境界の規則）は本ディレクトリだけ外してある

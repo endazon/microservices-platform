@@ -1,4 +1,4 @@
-// FR-20, UC-11, SC-20, ADR-0037 決定 1・2・14, 08_data-egress-policy 例外規定, [[IADR-0331]]:
+// FR-20, UC-11, SC-20, ADR-0037 決定 1・2・14, 08_data-egress-policy 例外規定, [[IADR-0338]]:
 // 自作 Obsidian プラグイン（社内配布）の入口。第 1 段は **設定 → manifest → pull** のみ。
 //
 // Obsidian に触るのはこのファイルと `settings/` `obsidian/` `transport/obsidianTransport.ts` だけで、

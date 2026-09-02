@@ -186,7 +186,7 @@ describe('planPull', () => {
     ]);
   });
 
-  // FR-20, [[IADR-0331]] 決定 9: 不正なパスと衝突するパスは取り込まない（陰性。有効なパスの write と対）
+  // FR-20, [[IADR-0338]] 決定 9: 不正なパスと衝突するパスは取り込まない（陰性。有効なパスの write と対）
   it('不正なパスは invalid-path、同じローカルパスへ落ちる 2 件は両方 path-collision で skipped', () => {
     const entries = [
       entry({ noteId: 'ok' }),

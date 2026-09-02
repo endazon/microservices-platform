@@ -1,4 +1,4 @@
-// FR-20, [[IADR-0331]] 決定 6: Vault の DataAdapter を FileStore に写す。
+// FR-20, [[IADR-0338]] 決定 6: Vault の DataAdapter を FileStore に写す。
 // `vault.create` / `modify` ではなく adapter を使うのは、TFile の有無で分岐せずに
 // 「無ければ作る・あれば上書く」を 1 本にするため（書くかどうかの判断は pullPlanner が済ませている）。
 import { normalizePath, type DataAdapter } from 'obsidian';
