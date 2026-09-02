@@ -1,3 +1,4 @@
+using Knowledge.Bff.Endpoints.Usage;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
@@ -48,6 +49,16 @@ builder.Services.AddHttpClient("FeedbackService", c =>
 builder.Services.AddHttpClient("DashboardService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DashboardService"]
         ?? "http://dashboard-service:5009"));
+
+// FR-10, SC-10, ADR-0006, IADR-0336 (#1103): 利用状況イベント（POST /dashboard/events）の発火側。
+// 受け口・集計・画面は在ったが**投入する製品コードが 1 本も無く**、SC-10 の利用状況・検索傾向は
+// 恒久的に 0 だった。送出は上の名前付きクライアントを使い、**要求の応答経路には載せない**
+// （有界の列 ＋ 常駐ドレイン。検索 p95 に計測の往復を足さない）。
+builder.Services.AddKnowledgeUsageEventReporting();
+builder.Services.AddOpenTelemetry()
+    // 🔴 宣言が無い Meter は収集されない＝**送出の失敗が静かに消える**。
+    // Meter 名は BFF のサービス名と同じなので収集対象そのものは増えない。
+    .WithMetrics(metrics => metrics.AddMeter(UsageEventMetrics.MeterName));
 
 // FR-03, UC-01, SC-01: 横断検索の集約用。ABAC スコープ解決（AuthorizationService）→ 検索（RetrievalService）。
 builder.Services.AddHttpClient("AuthorizationService", c =>
