@@ -241,7 +241,7 @@ function loadExistingIadrIds(dir = path.join(__dirname, '..', '.ai-context', 'ad
   return loadExistingAdrIds('IADR', dir);
 }
 
-// 【置換点】本リポジトリが主に実装する計画プロジェクト名（`planning/projects/<name>/`）。
+// 【置換点】本リポジトリが主に実装する計画プロジェクト名（計画リポジトリ `project-planning` の `projects/<name>/`）。
 // 裸（無修飾）の `ADR-xxxx` はこの名前空間を指す（.claude/rules/traceability.md の規約）。
 // 環境変数 PLAN_PROJECT で上書きできる（テスト・複数構成の検証用）。
 // ★ 固有デルタ（分類 B 種 5・#790）: 置換点を本リポの計画プロジェクト名で埋めている。

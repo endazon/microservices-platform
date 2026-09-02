@@ -30,6 +30,8 @@
       "@foundation/api": ["../../platform/frontend/src/lib/api"],
       "@foundation/auth/*": ["../../platform/frontend/src/lib/auth/*"],
       "@foundation/auth": ["../../platform/frontend/src/lib/auth"],
+      "@foundation/utils/*": ["../../platform/frontend/src/utils/*"],
+      "@foundation/utils": ["../../platform/frontend/src/utils"],
       "@foundation/ui/*": ["../../platform/frontend/src/components/ui/*"],
       "@foundation/ui": ["../../platform/frontend/src/components/ui"],
       "@foundation/notifications/*": ["../../platform/frontend/src/components/notifications/*"],
