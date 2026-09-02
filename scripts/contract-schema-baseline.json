@@ -2347,6 +2347,16 @@
             "position": 7
           }
         }
+      },
+      "Knowledge.Contracts.Indexing.CjkBigramPayload": {
+        "kind": "class",
+        "members": {
+          "PayloadKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"text_ngram\""
+          }
+        }
       }
     },
     "src/platform/backend/Shared/Platform.Shared.Contracts": {
