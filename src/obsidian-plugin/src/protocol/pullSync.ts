@@ -27,8 +27,6 @@ import {
 import type { SyncClient } from './syncClient.ts';
 import { SyncNotFoundError } from './types.ts';
 
-export type { FileStore, SyncStateStore } from './ports.ts';
-
 export interface PullSyncDeps {
   client: SyncClient;
   files: FileStore;

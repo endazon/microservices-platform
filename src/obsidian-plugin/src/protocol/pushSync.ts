@@ -7,10 +7,9 @@
 // それは後勝ちの自動解決である（変異試験の的。`pushSync.test.ts`）。
 //
 // 🔴 401（SyncAuthError）はそのまま投げる。送り終えた分の状態は残す（finally）。
-import { clearPath, type EditJournal, type JournalEdit } from './editJournal.ts';
+import { clearPath, type JournalEdit } from './editJournal.ts';
 import type { Hasher } from './hash.ts';
 import type { FileStore, JournalStore, SyncStateStore } from './ports.ts';
-import type { SyncState } from './pullPlanner.ts';
 import { planPush, type UntrackReason } from './pushPlanner.ts';
 import type { SyncClient } from './syncClient.ts';
 import {
@@ -325,5 +324,3 @@ export async function runPushSync(deps: PushSyncDeps): Promise<PushReport> {
   }
   return report;
 }
-
-export type { EditJournal, SyncState };
