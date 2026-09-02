@@ -21,6 +21,20 @@ public class WikiPage
     // DocumentId から正準パスを導出できるようにする（WikiPath と同一の導出規則）。
     public static string PathFor(Guid documentId) => $"doc/{documentId}";
 
+    // UC-07, FR-13, IADR-0335: `PathFor` の逆写像。Wiki.js が返した検索ヒットのパスから台帳の行を
+    // 引き当てるために要る。**導出規則を 2 箇所に散らさない**ため `PathFor` の隣に置く。
+    // 先頭スラッシュの有無・大小文字は吸収し、`doc/<guid>` 以外の形（人手で作られたページ・
+    // 別の名前空間）は false を返す —— **台帳に足場を持たないページは ABAC で判定できないので落とす。**
+    public static bool TryParseDocumentId(string? path, out Guid documentId)
+    {
+        documentId = Guid.Empty;
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        var segments = path.Trim().Trim('/').Split('/');
+        return segments.Length == 2
+            && segments[0].Equals("doc", StringComparison.OrdinalIgnoreCase)
+            && Guid.TryParse(segments[1], out documentId);
+    }
+
     private WikiPage() { }
 
     public static WikiPage CreateFromDocument(Guid documentId, string title,
