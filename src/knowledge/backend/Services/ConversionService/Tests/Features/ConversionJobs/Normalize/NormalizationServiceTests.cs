@@ -101,7 +101,7 @@ public class NormalizationServiceTests
             DeterministicGuid.ForDocument(Raw().SourceId, "/docs/design.docx"));
     }
 
-    // --- 図の位置（T-29〜T-32 / #1120 / IADR-0352） ---------------------------------------
+    // --- 図の位置（T-29〜T-32 / #1120 / IADR-0351） ---------------------------------------
     //
     // 🔴 従前は図を**無条件に末尾へ append** していた。pandoc の `--extract-media` は本文中の画像参照を
     // 一時ディレクトリの絶対パスへ書き換えるので、**本文には消えたパスへの壊れた参照が残ったまま、
@@ -150,7 +150,7 @@ public class NormalizationServiceTests
     }
 
     // T-31: 目印を持たない本文（縮退プレースホルダ・変換器の差し替え）では**従来どおり末尾へ append**
-    // する。図が本文からまったく参照できなくなるほうが悪い（IADR-0352 決定 6）。
+    // する。図が本文からまったく参照できなくなるほうが悪い（IADR-0351 決定 6）。
     // 綴りは従前とバイト等価であり、目印を含まないゴールデンは動かない。
     [Fact]
     public async Task Appends_at_the_end_when_the_body_carries_no_placeholder()

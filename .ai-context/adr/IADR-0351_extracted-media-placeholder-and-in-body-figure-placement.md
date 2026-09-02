@@ -1,5 +1,5 @@
 ---
-title: IADR-0352 --extract-media の一時パスは変換器が目印へ書き換え、図は本文中の元の位置へ戻す
+title: IADR-0351 --extract-media の一時パスは変換器が目印へ書き換え、図は本文中の元の位置へ戻す
 type: impl-adr
 status: Accepted
 related_ids:
@@ -20,7 +20,7 @@ plan_refs:
   - planning:projects/microservices-platform/03_usecases/01_usecases.md
 ---
 
-# IADR-0352: `--extract-media` の一時パスは変換器が目印へ書き換え、図は本文中の元の位置へ戻す
+# IADR-0351: `--extract-media` の一時パスは変換器が目印へ書き換え、図は本文中の元の位置へ戻す
 
 - 状態: Accepted
 - 日付: 2026-09-03

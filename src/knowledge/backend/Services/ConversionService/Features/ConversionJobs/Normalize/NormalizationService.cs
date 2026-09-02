@@ -72,7 +72,7 @@ public class NormalizationService(
         return new NormalizationResult(documentId, markdownUri, assetUris, coded, retained, figures);
     }
 
-    // FR-12, UC-06, IADR-0352 決定 2・6 (#1120): 図を**本文中の元の位置**へ埋め込む。
+    // FR-12, UC-06, IADR-0351 決定 2・6 (#1120): 図を**本文中の元の位置**へ埋め込む。
     //
     // 変換器が `--extract-media` 由来の参照を `![fig-N](figure:fig-N)` の目印へ書き換えているので、
     // その目印を最終の埋め込みへ置換する。🔴 従前は無条件に末尾へ append しており、

@@ -113,7 +113,7 @@ public class PandocConversionServiceTests
         storage.Fetched.Should().ContainSingle().Which.Should().Be(uri);
     }
 
-    // T-33 / IADR-0352 (#1120): 図を含む原本を**実 pandoc で端から端まで**変換し、
+    // T-33 / IADR-0351 (#1120): 図を含む原本を**実 pandoc で端から端まで**変換し、
     // 一時パスが本文に残らないこと・図が目印として 1 度だけ現れることを確かめる。
     //
     // 🔴 書き換えそのものの検査は `PandocExtractedMediaRewriteTests` が pandoc 無しで行う

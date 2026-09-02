@@ -26,11 +26,11 @@ namespace ConversionService.Tests;
 // 差し替えは `IADR-0008` が置いた 3 ポート（IBodyConverter / IDiagramCoder / IObjectStore）の
 // 境界で行う。本器が新しい接ぎ目を作っているわけではない。
 //
-// 🔴 IADR-0352 (#1120): 変換器は `--extract-media` 由来の参照を **`![fig-N](figure:fig-N)` の目印**へ
+// 🔴 IADR-0351 (#1120): 変換器は `--extract-media` 由来の参照を **`![fig-N](figure:fig-N)` の目印**へ
 // 書き換えて返すようになった。`Cases/<name>.body.md` は「変換器がこう出すであろう Markdown」なので、
 // **目印を含む case（`html-article` / `office-docx-report`）と含まない case（`pdf-report`）の両方**を
 // 置いてある —— 前者は図が**本文中の元の位置**へ入ること、後者は目印が無いときに**末尾へ append**
-// する経路（IADR-0352 決定 6）を固定する。決定 2「pandoc は実走させない」は変えていない。
+// する経路（IADR-0351 決定 6）を固定する。決定 2「pandoc は実走させない」は変えていない。
 //
 // **golden の更新は手で書き換えない**（IADR-0298 決定 4）:
 //   UPDATE_GOLDEN=1 dotnet test src/knowledge/backend/backend.slnx \

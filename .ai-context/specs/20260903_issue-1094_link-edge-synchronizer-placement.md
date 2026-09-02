@@ -14,8 +14,8 @@ related_ids:
   - IADR-0282
   - IADR-0319
   - IADR-0334
+  - IADR-0349
   - IADR-0350
-  - IADR-0351
 author: claude
 created: 2026-09-03
 updated: 2026-09-03
@@ -72,7 +72,7 @@ $ grep -rn "LinkEdgeSynchronizer" src --include=*.cs
 （`Approve` / `Generate` / `List` / `Reject` の各 `Endpoint.cs`）。**同じサービス・同じ走査で
 1 と 4 に割れる。**「参照が 1 つしか出ないのは走査が壊れているから」ではない。
 
-### 層は動かさない（`IADR-0350` 決定 2・3）
+### 層は動かさない（`IADR-0349` 決定 2・3）
 
 `LinkEdgeSynchronizer` は `GraphDbContext` を受け取り `db.Edges` / `db.EdgeTypes` /
 `db.Documents` を読み書きする。**`Domain/` へ置くと `Domain` → `Infrastructure` の using が
@@ -111,4 +111,4 @@ GraphService の他クラスの段（射程外）。
 5. `node scripts/check-unit-dependencies.js` / **`check-event-topology.js`**（`GraphDocumentSyncConsumer`
    は購読の宣言元。`scripts/event-topology-baseline.json` にパス結合が無いことを併せて確認する）/
    `check-test-traceability.js` / `check-doc-links.js` / `check-trace-blocks.js` が通る
-6. 判断が `IADR-0351` に残る
+6. 判断が `IADR-0350` に残る

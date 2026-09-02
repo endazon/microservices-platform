@@ -11,7 +11,7 @@ public static class FigureMarkdown
     // 画像保持へ縮退した図の埋め込み（`![figureId](uri)`）。
     public static string ImageEmbed(string figureId, string uri) => $"![{figureId}]({uri})";
 
-    // FR-12, IADR-0352 決定 2 (#1120): 変換直後の本文が図を指す**暫定の目印**のスキーム。
+    // FR-12, IADR-0351 決定 2 (#1120): 変換直後の本文が図を指す**暫定の目印**のスキーム。
     //
     // pandoc の `--extract-media` は本文中の画像参照を一時ディレクトリの絶対パスへ書き換えるが、
     // そのディレクトリは変換直後に消える。いっぽう最終参照（`storage://…/assets/fig-1.png`）は
@@ -30,7 +30,7 @@ public static class FigureMarkdown
         ImageEmbed(figureId, PlaceholderUri(figureId));
 
     // 本文中の暫定の目印を、最終的な埋め込み（画像参照またはコードブロック）へ置き換える。
-    // 目印が 1 つも無ければ false を返す（呼び出し側は末尾へ append する。IADR-0352 決定 6）。
+    // 目印が 1 つも無ければ false を返す（呼び出し側は末尾へ append する。IADR-0351 決定 6）。
     //
     // **全出現を置換する。** 同じ媒体を 2 度参照する原本では目印も 2 つ置かれ、片方だけ置換すると
     // 解決できない `figure:` 参照が本文へ残る —— 本 ADR が直している事故がまさにそれである

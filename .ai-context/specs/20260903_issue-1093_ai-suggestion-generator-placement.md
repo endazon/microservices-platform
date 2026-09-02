@@ -15,7 +15,7 @@ related_ids:
   - IADR-0282
   - IADR-0319
   - IADR-0334
-  - IADR-0350
+  - IADR-0349
 author: claude
 created: 2026-09-03
 updated: 2026-09-03
@@ -147,7 +147,7 @@ $ grep -rn "^using GraphService\.\(Infrastructure\|Features\|Common\)" Domain/
 **`Features/AiSuggestions/AiSuggestionGenerator.cs` → `Features/AiSuggestions/Generate/AiSuggestionGenerator.cs`。**
 `ADR-0068` 決定 2 の機械適用（案 1）を採り、**中身は 1 行も割らない**（同 決定 5「純粋な移送に留める」）。
 
-論拠は `IADR-0350` に残す（`ADR-0068` 決定 2 の適用範囲が `Features/` の中に閉じるか、の一般論を含む）。
+論拠は `IADR-0349` に残す（`ADR-0068` 決定 2 の適用範囲が `Features/` の中に閉じるか、の一般論を含む）。
 
 ## 3. 作業（純粋な移送）
 
@@ -175,4 +175,4 @@ $ grep -rn "^using GraphService\.\(Infrastructure\|Features\|Common\)" Domain/
 4. `dotnet format src/knowledge/backend/backend.slnx --verify-no-changes` が通る
 5. `node scripts/check-unit-dependencies.js` / `check-event-topology.js` / `check-test-traceability.js` /
    `check-doc-links.js` / `check-trace-blocks.js` が通る
-6. 判断が `IADR-0350` に残る
+6. 判断が `IADR-0349` に残る

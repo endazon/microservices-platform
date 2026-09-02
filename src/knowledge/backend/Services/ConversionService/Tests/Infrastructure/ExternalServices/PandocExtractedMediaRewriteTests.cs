@@ -5,7 +5,7 @@ using ConversionService.Infrastructure.ExternalServices;
 
 namespace ConversionService.Tests.Infrastructure.ExternalServices;
 
-// FR-12, UC-06, SC-07, ADR-0012, IADR-0352 (#1120):
+// FR-12, UC-06, SC-07, ADR-0012, IADR-0351 (#1120):
 // `--extract-media` が本文へ書き込んだ一時パスを、図の目印へ書き換える部分の単体テスト。
 //
 // 🔴 **不変条件は「一時パスを 1 件も残さない」である。** pandoc は本文中の画像参照を
@@ -79,7 +79,7 @@ public class PandocExtractedMediaRewriteTests
 
     // T-25: 図として採らなかった媒体（画像でない拡張子）への参照は**落とす**。
     // `ExtractMedia` は画像以外を図にしないので、この参照には対応する figureId が無い。
-    // 残すと消えたディレクトリを指したままになる（IADR-0352 決定 4）。
+    // 残すと消えたディレクトリを指したままになる（IADR-0351 決定 4）。
     [Fact]
     public void Drops_references_to_extracted_media_that_is_not_a_figure()
     {
@@ -99,7 +99,7 @@ public class PandocExtractedMediaRewriteTests
         rewritten.Should().Contain("para").And.Contain("tail");
     }
 
-    // T-25b: 構文として認識できなかった参照の**安全網**（IADR-0352 決定 4）。
+    // T-25b: 構文として認識できなかった参照の**安全網**（IADR-0351 決定 4）。
     // `<embed>` のように画像構文でない形で一時パスが出ても、一時パスは 1 件も残さない。
     [Fact]
     public void Scrubs_residual_temp_paths_left_by_unrecognized_syntax()
@@ -118,7 +118,7 @@ public class PandocExtractedMediaRewriteTests
         rewritten.Should().Contain(FigureMarkdown.PlaceholderUri("fig-1"));
     }
 
-    // T-26: 原本が目印の綴りを含んでいたら**落とす**（IADR-0352 決定 5）。
+    // T-26: 原本が目印の綴りを含んでいたら**落とす**（IADR-0351 決定 5）。
     // 残すと正規化側が無関係の図をそこへ差し込むか、解決できない参照が保管物へ残る。
     [Fact]
     public void Drops_source_authored_figure_placeholders()
@@ -138,7 +138,7 @@ public class PandocExtractedMediaRewriteTests
         rewritten.Should().Contain("para").And.Contain("tail");
     }
 
-    // T-27: 同じ媒体を 2 度参照する原本では、目印も 2 つ置く（IADR-0352 決定 7）。
+    // T-27: 同じ媒体を 2 度参照する原本では、目印も 2 つ置く（IADR-0351 決定 7）。
     // 片方だけにすると、置換されない `figure:` 参照が本文へ残る。
     [Fact]
     public void Places_one_placeholder_per_reference_when_the_same_media_is_used_twice()

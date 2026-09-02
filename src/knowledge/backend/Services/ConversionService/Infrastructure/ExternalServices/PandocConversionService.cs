@@ -61,7 +61,7 @@ public class PandocConversionService(
             var rawMarkdown = await RunPandocAsync(source.Path, inputFormat, mediaDir, ct);
             var media = ExtractMedia(mediaDir);
 
-            // 🔴 IADR-0352 (#1120): **一時パスを本文へ残さない。**
+            // 🔴 IADR-0351 (#1120): **一時パスを本文へ残さない。**
             // pandoc は本文中の画像参照を mediaDir の絶対パスへ書き換えるが、下の finally が
             // そのディレクトリを消す —— 保管された時点で既に存在しない参照になる。
             // 図の位置を運ぶため、参照を `![fig-N](figure:fig-N)` の目印へ書き換えて返す。
@@ -138,7 +138,7 @@ public class PandocConversionService(
 
     // --extract-media が書き出した画像ファイルを ExtractedFigure へ写す（決定的順序で採番）。
     //
-    // IADR-0352 決定 2 (#1120): **書き出し元のパスを一緒に返す。** 従前は捨てていたため、
+    // IADR-0351 決定 2 (#1120): **書き出し元のパスを一緒に返す。** 従前は捨てていたため、
     // 本文中の参照（同じパスを指す）と図の対応が付かず、一時パスを目印へ書き換えられなかった。
     private static IReadOnlyList<ExtractedMedia> ExtractMedia(string mediaDir)
     {
@@ -166,7 +166,7 @@ public class PandocConversionService(
     internal sealed record ExtractedMedia(string Path, ExtractedFigure Figure);
 
     // 画像構文まるごと（HTML の <img> タグ／Markdown の `![…](…)`）。
-    // 🔴 **src 属性だけを差し替えない**（IADR-0352 決定 3）。`<img src="figure:fig-1" style="…">` を
+    // 🔴 **src 属性だけを差し替えない**（IADR-0351 決定 3）。`<img src="figure:fig-1" style="…">` を
     // 残すと `FigureMarkdown` の目印と一致せず、人手補正（TryReplaceImageWithCode）が空振りする。
     // docx 由来の <img> は属性が改行をまたぐ（実測）が、`[^>]` は改行にも当たるので拾える。
     private static readonly Regex ImageConstructPattern = new(
@@ -185,7 +185,7 @@ public class PandocConversionService(
         RegexOptions.Compiled);
 
     /// <summary>
-    /// FR-12, UC-06, IADR-0352 (#1120): 本文中の <c>--extract-media</c> 由来の参照を、図の目印
+    /// FR-12, UC-06, IADR-0351 (#1120): 本文中の <c>--extract-media</c> 由来の参照を、図の目印
     /// （<c>![fig-N](figure:fig-N)</c>）へ書き換える。**一時パスを 1 件も残さない**のが不変条件である。
     /// </summary>
     /// <remarks>
@@ -203,7 +203,7 @@ public class PandocConversionService(
         foreach (var m in media) figureIdByPath[NormalizeSeparators(m.Path)] = m.Figure.FigureId;
 
         // 1 パスで画像構文を走査する。Regex.Replace は自分の出力を再走査しないため、
-        // ここで見える `figure:` は**必ず原本由来**である（IADR-0352 決定 5）。
+        // ここで見える `figure:` は**必ず原本由来**である（IADR-0351 決定 5）。
         var rewritten = ImageConstructPattern.Replace(markdown, match =>
         {
             var url = ExtractUrl(match.Value);
@@ -227,7 +227,7 @@ public class PandocConversionService(
             return string.Empty;
         });
 
-        // IADR-0352 決定 4: 構文を認識できなかった参照の安全網。**一時パスは 1 件も残さない。**
+        // IADR-0351 決定 4: 構文を認識できなかった参照の安全網。**一時パスは 1 件も残さない。**
         foreach (var prefix in prefixes)
         {
             if (!rewritten.Contains(prefix, StringComparison.Ordinal)) continue;
