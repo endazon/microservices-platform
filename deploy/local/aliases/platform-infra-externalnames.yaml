@@ -1,0 +1,31 @@
+# IADR-0066 と同じ形の逆向きエイリアス（#1115）。
+#
+# 背景: realm の `bff` クライアントは `backchannel.logout.url` に**素のサービス名**を持つ。
+# 素の名前にしてあるのは、同じ realm ファイルを **compose も import する**ためである
+# （compose では `bff` サービスのネットワーク別名 `bff-service` が同じ名前を解決する）。
+# k8s では Keycloak が platform-infra に居るため、そこに `bff-service` の ExternalName エイリアスを置く。
+#
+# ★ なぜエッジ host（`https://localhost/...` や `https://*.localhost/...`）ではないか:
+#   - 裸の `localhost` は **pod の `/etc/hosts` が必ず 127.0.0.1 へ向ける**。CoreDNS には届かないので、
+#     書き換え規則（deploy/local/edge-istio/coredns-edge-hosts.yaml）をどう広げても pod 自身のままである。
+#   - ドット付きの `*.localhost` は CoreDNS が正しく答えるが、**Keycloak イメージ（UBI9 / glibc 2.34）の
+#     名前解決が引かない**。同じ pod の netns に musl のコンテナを足すと同じ名前が解決する（#1115 で実測）。
+#   したがってサーバ間の宛先はクラスタ内の名前しか採れない。
+#
+# ★ 平文（http）で良い理由: この一区間は Istio の mTLS が包む。境界（platform-infra はメッシュ外）の
+#   通し方は helm チャートの `mesh.backchannelLogoutFromOutsideMesh` が宣言する
+#   （deploy/helm/microservices-platform/templates/istio-mtls.yaml）。
+#   Keycloak にエッジ CA の truststore を積まずに済み、**Keycloak を再起動しなくてよい**（#1088）。
+#
+# 適用: kubectl apply -f deploy/local/aliases/platform-infra-externalnames.yaml
+#      （scripts/k8s-local-up.sh の [7/7] が適用する）
+apiVersion: v1
+kind: Service
+metadata:
+  name: bff-service
+  namespace: platform-infra
+  labels:
+    app.kubernetes.io/part-of: platform-infra-alias
+spec:
+  type: ExternalName
+  externalName: bff-service.microservices-platform.svc.cluster.local

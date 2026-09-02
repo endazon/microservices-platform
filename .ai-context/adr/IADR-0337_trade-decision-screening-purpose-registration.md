@@ -1,5 +1,5 @@
 ---
-title: IADR-0336 trade-decision-screening を用途登録し、報告書 3 種のフォールバック鎖を追加する
+title: IADR-0337 trade-decision-screening を用途登録し、報告書 3 種のフォールバック鎖を追加する
 type: impl-adr
 status: Accepted
 related_ids:
@@ -12,7 +12,7 @@ created: 2026-09-02
 updated: 2026-09-02
 ---
 
-# IADR-0336: `trade-decision-screening` を用途登録し、報告書 3 種のフォールバック鎖を追加する
+# IADR-0337: `trade-decision-screening` を用途登録し、報告書 3 種のフォールバック鎖を追加する
 
 - 状態: Accepted
 - 日付: 2026-09-02
