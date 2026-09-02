@@ -3,24 +3,25 @@ title: FR-20 Obsidian 双方向同期 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-08-23
-updated: 2026-08-28
+updated: 2026-09-02
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-20]
 adrs: [ADR-0037, ADR-0046, ADR-0054]
-iadrs: [IADR-0270]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff]
-issues: [#451, #600]
+iadrs: [IADR-0270, IADR-0338]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1]
+issues: [#451, #600, #1098]
 -->
 
 # 機能仕様書: Obsidian 双方向同期
 
 > **`status: in-progress` の理由と、いま残っているもの**。サーバ側の同期プロトコル・
-> 同期トークン（端末・発行・失効）・監査・期限予告の検知は入っている。
-> **入っていないのは** ①Obsidian プラグイン本体（自作・社内配布）②連携設定画面である
-> （**BFF 端点は 2026-08-28 に実装済み**。残るのはフロントエンドである）
-> （③通知は受け口・発火の結線とも 2026-08-28 に実装済み — 通知サービスの配備が残る）。
+> 同期トークン（端末・発行・失効）・監査・期限予告の検知と、連携設定画面・BFF 端点は入っている。
+> **［2026-09-02］Obsidian プラグイン本体（自作・社内配布）は第 1 段（取り込み = pull のみ）が入った**
+> （`src/obsidian-plugin/`。§Obsidian プラグイン）。**入っていないのは** ①プラグインの push / delete /
+> 競合解決 UI（第 2 段）②同期プロトコルをエッジで外へ出す経路（配備済みクラスタからは到達できない）
+> ③配布のリリース資産化 である（③通知は受け口・発火の結線とも 2026-08-28 に実装済み — 通知サービスの配備が残る）。
 
 ## 概要
 
@@ -77,6 +78,27 @@ sequenceDiagram
     P->>D: GET /private-notes/sync/notes/{id}（pull）
     D-->>P: 本文（監査: 件数のみ記録）
 ```
+
+## Obsidian プラグイン（client 側・第 1 段）
+
+`src/obsidian-plugin/`（pnpm workspace メンバ）。Obsidian 本体に依存するのは入口・設定タブ・
+Vault アダプタ・`requestUrl` の 4 箇所だけで、同期の中身（client・差分計算・命名・ハッシュ）は
+Obsidian なしで単体テストされる。導入手順は
+[手順ガイド](../how-to/obsidian-plugin-install.md)。
+
+| 項目 | 第 1 段の挙動 |
+| --- | --- |
+| 方向 | **取り込み（pull）のみ**。Obsidian 側の編集・削除はナレッジベースへ送らない（第 2 段） |
+| 設定 | 接続先 URL（https。loopback だけ http 可）・同期フォルダ・同期トークン |
+| トークンの保管 | **端末ローカル**（Obsidian の Vault 固有 localStorage）。プラグイン設定ファイル `data.json` には置かない —— `data.json` は Vault と一緒に他の端末へ複製されるため、端末ごとの発行・失効と矛盾する。保存後は再表示しない |
+| 差分計算 | manifest の版とハッシュを最終同期時の記録と突き合わせ、変化のある資料だけ pull する。ローカルが既に同じ内容なら書かずに採用する |
+| 衝突（読み取り方向） | ローカルで編集・削除された資料は**上書き・再取得しない**で件数と対象を通知する（解決の 3 択は第 2 段） |
+| サーバ側の削除 | `deleted=true` を検知して件数を通知する。ローカルは触らない（第 2 段で伝播を決める） |
+| 失敗の可視化 | トークン未設定・401（期限切れ・失効・不正）・接続先不備は**通知で失敗を告げ、Vault のファイルと同期状態を変更しない** |
+| 命名 | サーバの `vaultPath` を同期フォルダ配下へ落とす。絶対パス・`..`・制御文字は取り込まない。拡張子が無ければ `.md` を補う。同じローカルパスへ落ちる 2 件は両方取り込まない |
+
+🔴 **接続先の公開経路が無い。** 配備済みクラスタのエッジは `/bff` と SPA しか通しておらず、
+`/private-notes/sync/*` へ外から届かない。契約は変えず、配備側で経路を足す（後続 issue）。
 
 ## エラー・例外
 
