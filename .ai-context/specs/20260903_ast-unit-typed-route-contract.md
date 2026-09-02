@@ -15,8 +15,8 @@ author: claude
 created: 2026-09-03
 updated: 2026-09-03
 plan_refs:
-  - ../../../project-planning/projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md
-  - ../../../project-planning/projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md
+  - planning:projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md
+  - planning:projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md
 ---
 
 # 作業仕様書: AST ユニットを型付きルート契約で合成し、旧契約の互換ブリッジを撤去する
@@ -165,3 +165,69 @@ AST が型付き factory を公開した以上、この関数ごと消える。`
 
 **したがって submodule pin を更新する PR は、同じコミットで `src/pnpm-lock.yaml` も再生成する必要がある。**
 lockfile だけを先に更新すると、pin が指す実体と食い違う状態になるため**本 PR では触らない**。
+
+## pin 更新後の CI 失敗 7 件と、その原因（2026-09-03・実測）
+
+pin を `0844b58` → `7507540` へ進めた最初の push で CI が 7 件落ちた。**3 つの独立した原因**であり、
+**いずれも MSP 側で直せるもの**である。AST 側の欠陥は 1 件も見つからなかった（起票なし）。
+
+### 原因 1 — AST の樹形移行に追随していない build args（4 ジョブ）
+
+`build (configuration-service)` / `build (market-monitor-service)` / `build (risk-management-service)` /
+`image-build`。
+
+```
+MSBUILD : error MSB1009: Project file does not exist.
+ERROR: process "/bin/sh -c dotnet restore \"${SERVICE_PROJECT}\"" did not complete successfully
+```
+
+AST は単一プロジェクト＋VSA 構成へ移り、層プロジェクト（`*.Api` ほか）と `src/` 段を撤去した
+（AST/IADR-0259・AST/IADR-0261）。MSP 側の `SERVICE_PROJECT` / `SERVICE_DLL` は旧樹形
+（`…/src/<Svc>.Api/<Svc>.Api.csproj` ＋ `<Svc>.Api.dll`）のままだった。
+
+**これは #570 と同型の事故である**（前回は `*.Worker` → `*.Api` の改名で同じ MSB1009 が出た）。
+`deploy/docker-compose.yml` と `scripts/k8s-local-images.sh` の**両方**を同値で直し
+（`check-image-mapping` がドリフト 0 を確認）、compose に日付つきの追記を残した。
+
+🔴 **同型の事故が 2 回起きた。** 本リポジトリの規約（検査器の追加は同型事故 2 回から）に照らせば、
+**「pin bump のときに AST の csproj パスが実在するか」を機械で見る検査器を足す条件が揃っている。**
+本 PR の射程ではないので**別 issue で起票する**（`check-image-mapping` は MAPPING と compose の
+一致しか見ておらず、**両方が同時に古くなる本事故は素通りする**——今回まさにそれが起きた）。
+
+### 原因 2 — 作業仕様書の `plan_refs` が隣接クローンの相対パスだった（2 ジョブ）
+
+`static-checks` / `scripts-tests`。どちらも `check-doc-links` で落ちていた。
+
+本仕様書の `plan_refs` を `../../../project-planning/…` と書いていた。**手元では隣接クローンが実在するので
+緑になり、CI では存在しないので落ちる。** 本リポジトリの書式は `planning:` 接頭辞であり、そちらへ直した。
+
+**これは AST の pin とは無関係で、本 PR が最初から持っていた欠陥である**（pin を進めるまで
+`scripts-tests` が回っていなかったため表に出ていなかった）。
+
+### 原因 3 — knip ラチェットの床を締め忘れた（1 ジョブ）
+
+`build-test`。
+
+```
+✗ [check-knip] 未使用コード・依存の床から外れました:
+  - types: 16 件 < 床 17 件（-1）
+```
+
+**本 PR が旧契約の型（`FeatureModule` / `LegacyFeatureRoute`）を削ったことで、未使用の型が 1 件減った。**
+ラチェットは「減らしたら床を締める」ことを要求するので `scripts/knip-baseline.json` の
+`types` を 17 → 16 へ下げた。
+
+🔴 **Windows では `node scripts/check-knip.js --update` が動かない**（`spawnSync` が
+`src/node_modules/.bin/knip`＝拡張子なしの sh を起動できず ENOENT。`.CMD` は在る）。
+そこで `knip.CMD` で JSON を採取し、**`check-knip.js` 自身の `parsePayload` / `aggregate` / `evaluate`**
+を使って床との差を確認した（数え方を自前で再実装しない）。CI の指摘と同じ差分（`types` のみ -1）が
+再現し、床を締めた後は `failures: []` になることを確認している。
+
+### 修正後のローカル実測
+
+| 検査                                                   | 結果                    |
+| ------------------------------------------------------ | ----------------------- |
+| `check-doc-links`                                      | ✅                      |
+| `check-image-mapping`（MAPPING と compose のドリフト） | ✅ ドリフト 0           |
+| `check-knip`（床との突合）                             | ✅ `failures: []`       |
+| `node scripts/scripts.test.js`                         | ✅ **677 tests passed** |

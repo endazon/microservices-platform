@@ -59,11 +59,11 @@ MAPPING=(
   # Issue #570: AST がホストプロジェクトを *.Worker → *.Api へ一斉改名した（AST/IADR-0128）ため 3 件とも
   # 追随した。context / dockerfile / イメージ名は不変。
   # Issue #283, IADR-0070: AST 設定画面の ConfigurationService。単一 Dockerfile＋build args＋ユニットルート context。
-  "microservices-platform/configuration-service|src/ai-stock-trading|backend/Dockerfile|SERVICE_PROJECT=backend/Services/ConfigurationService/src/ConfigurationService.Api/ConfigurationService.Api.csproj,SERVICE_DLL=ConfigurationService.Api.dll"
+  "microservices-platform/configuration-service|src/ai-stock-trading|backend/Dockerfile|SERVICE_PROJECT=backend/Services/ConfigurationService/ConfigurationService.csproj,SERVICE_DLL=ConfigurationService.dll"
   # Issue #287, IADR-0071: AST リスク設定/統制状態の RiskManagementService。同型（単一 Dockerfile＋build args＋context）。
-  "microservices-platform/risk-management-service|src/ai-stock-trading|backend/Dockerfile|SERVICE_PROJECT=backend/Services/RiskManagementService/src/RiskManagementService.Api/RiskManagementService.Api.csproj,SERVICE_DLL=RiskManagementService.Api.dll"
+  "microservices-platform/risk-management-service|src/ai-stock-trading|backend/Dockerfile|SERVICE_PROJECT=backend/Services/RiskManagementService/RiskManagementService.csproj,SERVICE_DLL=RiskManagementService.dll"
   # Issue #288, IADR-0072: AST 監視銘柄（watchlist）の MarketMonitorService。同型（単一 Dockerfile＋build args＋context）。
-  "microservices-platform/market-monitor-service|src/ai-stock-trading|backend/Dockerfile|SERVICE_PROJECT=backend/Services/MarketMonitorService/src/MarketMonitorService.Api/MarketMonitorService.Api.csproj,SERVICE_DLL=MarketMonitorService.Api.dll"
+  "microservices-platform/market-monitor-service|src/ai-stock-trading|backend/Dockerfile|SERVICE_PROJECT=backend/Services/MarketMonitorService/MarketMonitorService.csproj,SERVICE_DLL=MarketMonitorService.dll"
   # Issue #313, IADR-0078: SPA(frontend) を k8s chart 配信（templates/frontend.yaml）へ移行。compose の
   # frontend build（context ルート・args 無し）と整合。従来は check-image-mapping.js の COMPOSE_ONLY で除外。
   "microservices-platform/frontend|src/platform/frontend/Dockerfile"
