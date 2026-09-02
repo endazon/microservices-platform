@@ -3,7 +3,7 @@ title: SC-05 文書管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-30
+updated: 2026-09-02
 author: claude
 ---
 <!-- trace:
@@ -111,8 +111,8 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 ## バックエンド（DocumentService・状態遷移ガード・xUnit）
 
 対象: [`Domain/Document.cs`](../../src/knowledge/backend/Services/DocumentService/Domain/Document.cs)（`Publish()` / `CanPublish`）と `POST /documents/{id}/publish`
-テスト: [`DocumentVersioningTests.cs`](../../src/knowledge/backend/Services/DocumentService/Tests/DocumentVersioningTests.cs)（ドメイン）／
-[`DocumentEndpointVersioningTests.cs`](../../src/knowledge/backend/Services/DocumentService/Tests/DocumentEndpointVersioningTests.cs)（API）
+テスト: [`DocumentVersioningTests.cs`](../../src/knowledge/backend/Services/DocumentService/Tests/Domain/DocumentVersioningTests.cs)（ドメイン）／
+[`DocumentEndpointVersioningTests.cs`](../../src/knowledge/backend/Services/DocumentService/Tests/Features/Documents/DocumentEndpointVersioningTests.cs)（API）
 
 | # | 観点 | 起点 | 検証内容 | ケース |
 | --- | --- | --- | --- | --- |
