@@ -7,7 +7,8 @@ import type { MessageDescriptor } from '@lingui/core';
 //
 // **［2026-08-10 追記 / #553］保留の理由は解消した。** 従前は「モックに現れる表示名が 4 値中 2 値だけで、
 // 残る 2 値を実装が決めると事実上の用語定義になる」ため生値を出していた（planning#197 で裁定待ち）。
-// **利用者裁定 2026-08-05 で 4 値すべての表示名が確定した**（正は `planning/docs/glossary.md`。
+// **利用者裁定 2026-08-05 で 4 値すべての表示名が確定した**（正は計画リポジトリ `project-planning` の
+// `docs/glossary.md`。
 // public＝公開 / internal＝社内限 / confidential＝秘 / restricted＝**取扱制限**。
 // **`restricted` は「極秘」ではない** —— 個人資料が既定でこの区分を持つため）。
 //
