@@ -101,6 +101,95 @@ public class NormalizationServiceTests
             DeterministicGuid.ForDocument(Raw().SourceId, "/docs/design.docx"));
     }
 
+    // --- 図の位置（T-29〜T-32 / #1120 / IADR-0351） ---------------------------------------
+    //
+    // 🔴 従前は図を**無条件に末尾へ append** していた。pandoc の `--extract-media` は本文中の画像参照を
+    // 一時ディレクトリの絶対パスへ書き換えるので、**本文には消えたパスへの壊れた参照が残ったまま、
+    // 同じ図が末尾にも出ていた**（#1097 で pandoc を実走させて初めて観測された）。
+    // 変換器が置いた目印（`![fig-N](figure:fig-N)`）を、ここで最終の埋め込みへ置換する。
+
+    // T-29: 画像保持へ縮退した図は、目印の位置（＝本文中の元の位置）へ埋め込まれる。
+    [Fact]
+    public async Task Embeds_retained_image_at_the_placeholder_position()
+    {
+        var store = new RecordingObjectStore();
+        var body = "# 本文\n\n段落。\n\n" + FigureMarkdown.PlaceholderEmbed("fig-1") + "\n\n## まとめ\n";
+        var svc = new NormalizationService(
+            new FakeBodyConverter(new BodyConversionResult(body, [Figure()])),
+            new FakeDiagramCoder(DiagramCodingResult.Retain("not-codeable")),
+            store,
+            NullLogger<NormalizationService>.Instance);
+
+        var result = await svc.NormalizeAsync(Raw(), TestContext.Current.CancellationToken);
+
+        store.LastMarkdown.Should().Contain(
+            "段落。\n\n" + FigureMarkdown.ImageEmbed("fig-1", result.AssetUris[0]) + "\n\n## まとめ");
+        store.LastMarkdown.Should().NotContain(FigureMarkdown.PlaceholderScheme,
+            "目印が残ると解決できない参照が保管物に入る");
+        store.LastMarkdown.Should().EndWith("## まとめ\n", "末尾へ append し直していない");
+    }
+
+    // T-30: コード化に成功した図も、目印の位置へ埋め込まれる。
+    [Fact]
+    public async Task Embeds_coded_diagram_at_the_placeholder_position()
+    {
+        var store = new RecordingObjectStore();
+        var body = "# 本文\n\n段落。\n\n" + FigureMarkdown.PlaceholderEmbed("fig-1") + "\n\n## まとめ\n";
+        var svc = new NormalizationService(
+            new FakeBodyConverter(new BodyConversionResult(body, [Figure()])),
+            new FakeDiagramCoder(DiagramCodingResult.Success("mermaid", "graph TD; A-->B")),
+            store,
+            NullLogger<NormalizationService>.Instance);
+
+        await svc.NormalizeAsync(Raw(), TestContext.Current.CancellationToken);
+
+        store.LastMarkdown.Should().Contain(
+            "段落。\n\n```mermaid\ngraph TD; A-->B\n```\n\n## まとめ");
+        store.LastMarkdown.Should().NotContain(FigureMarkdown.PlaceholderScheme);
+        store.LastMarkdown.Should().EndWith("## まとめ\n");
+    }
+
+    // T-31: 目印を持たない本文（縮退プレースホルダ・変換器の差し替え）では**従来どおり末尾へ append**
+    // する。図が本文からまったく参照できなくなるほうが悪い（IADR-0351 決定 6）。
+    // 綴りは従前とバイト等価であり、目印を含まないゴールデンは動かない。
+    [Fact]
+    public async Task Appends_at_the_end_when_the_body_carries_no_placeholder()
+    {
+        var store = new RecordingObjectStore();
+        var svc = new NormalizationService(
+            new FakeBodyConverter(new BodyConversionResult("# 本文\n", [Figure()])),
+            new FakeDiagramCoder(DiagramCodingResult.Retain("not-codeable")),
+            store,
+            NullLogger<NormalizationService>.Instance);
+
+        var result = await svc.NormalizeAsync(Raw(), TestContext.Current.CancellationToken);
+
+        store.LastMarkdown.Should().Be(
+            "# 本文\n\n\n" + FigureMarkdown.ImageEmbed("fig-1", result.AssetUris[0]) + "\n");
+    }
+
+    // T-32: 受け入れ基準 3 —— **人手補正が空振りしない。**
+    // 位置を本文中へ戻しても、埋め込みの綴りは `FigureMarkdown.ImageEmbed` のままである
+    // （IADR-0154 決定 3 の目印。`src` 属性だけ差し替えていたらここが false になる）。
+    [Fact]
+    public async Task Keeps_the_embed_form_the_manual_correction_replaces()
+    {
+        var store = new RecordingObjectStore();
+        var body = "段落。\n\n" + FigureMarkdown.PlaceholderEmbed("fig-1") + "\n\n続き。\n";
+        var svc = new NormalizationService(
+            new FakeBodyConverter(new BodyConversionResult(body, [Figure()])),
+            new FakeDiagramCoder(DiagramCodingResult.Retain("not-codeable")),
+            store,
+            NullLogger<NormalizationService>.Instance);
+
+        var result = await svc.NormalizeAsync(Raw(), TestContext.Current.CancellationToken);
+
+        FigureMarkdown.TryReplaceImageWithCode(store.LastMarkdown, "fig-1", result.AssetUris[0],
+                "mermaid", "graph TD; A-->B", out var corrected)
+            .Should().BeTrue("補正の置換が空振りすると、補正だけ保存されて本文に出ない");
+        corrected.Should().Contain("段落。\n\n```mermaid\ngraph TD; A-->B\n```\n\n続き。");
+    }
+
     // --- ゴールデンファイル（T-14〜T-18 / #447 退行防止 / IADR-0298） ---------------------
     //
     // 上の 4 件は部分一致（`Should().Contain(...)`）であり、**出力の形が変わっても緑のまま通る**。

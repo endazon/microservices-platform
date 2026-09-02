@@ -1,5 +1,5 @@
 {
-  "description": "PDF 由来と宣言された変換器出力（図 2 件・いずれも画像保持）。機密区分の受け渡しと .svg / 未知拡張子 .bin への写像を固定する。",
+  "description": "PDF 由来と宣言された変換器出力（図 2 件・いずれも画像保持）。機密区分の受け渡しと .svg / 未知拡張子 .bin への写像を固定する。目印を置かず、末尾へ append する経路も固定する。",
   "sourceId": "44444444-4444-4444-4444-444444444444",
   "sourceType": "filesystem",
   "originalPath": "/docs/reports/2026Q1-operations.pdf",

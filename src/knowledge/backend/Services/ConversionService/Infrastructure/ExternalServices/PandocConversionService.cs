@@ -1,8 +1,11 @@
+using ConversionService.Domain;
 using ConversionService.Domain.Ports;
 using ConversionService.Infrastructure.Configuration;
 using Microsoft.Extensions.Options;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using System.Diagnostics;
+using System.Net;
+using System.Text.RegularExpressions;
 
 namespace ConversionService.Infrastructure.ExternalServices;
 
@@ -55,8 +58,15 @@ public class PandocConversionService(
         try
         {
             // 本文を GFM へ変換し、--extract-media で取り出した画像を ExtractedFigure に写す。
-            var markdown = await RunPandocAsync(source.Path, inputFormat, mediaDir, ct);
-            var figures = ExtractFigures(mediaDir);
+            var rawMarkdown = await RunPandocAsync(source.Path, inputFormat, mediaDir, ct);
+            var media = ExtractMedia(mediaDir);
+
+            // 🔴 IADR-0351 (#1120): **一時パスを本文へ残さない。**
+            // pandoc は本文中の画像参照を mediaDir の絶対パスへ書き換えるが、下の finally が
+            // そのディレクトリを消す —— 保管された時点で既に存在しない参照になる。
+            // 図の位置を運ぶため、参照を `![fig-N](figure:fig-N)` の目印へ書き換えて返す。
+            var markdown = RewriteExtractedMediaReferences(rawMarkdown, mediaDir, media, logger);
+            var figures = media.Select(m => m.Figure).ToList();
             logger.LogInformation("pandoc converted {Uri}: {Chars} chars, {Figures} figures",
                 storageUri, markdown.Length, figures.Count);
             return new BodyConversionResult(markdown, figures);
@@ -127,27 +137,141 @@ public class PandocConversionService(
     }
 
     // --extract-media が書き出した画像ファイルを ExtractedFigure へ写す（決定的順序で採番）。
-    private static IReadOnlyList<ExtractedFigure> ExtractFigures(string mediaDir)
+    //
+    // IADR-0351 決定 2 (#1120): **書き出し元のパスを一緒に返す。** 従前は捨てていたため、
+    // 本文中の参照（同じパスを指す）と図の対応が付かず、一時パスを目印へ書き換えられなかった。
+    private static IReadOnlyList<ExtractedMedia> ExtractMedia(string mediaDir)
     {
         if (!Directory.Exists(mediaDir)) return [];
-        var figures = new List<ExtractedFigure>();
+        var media = new List<ExtractedMedia>();
         var index = 0;
         foreach (var file in Directory.EnumerateFiles(mediaDir, "*", SearchOption.AllDirectories)
                      .OrderBy(p => p, StringComparer.Ordinal))
         {
             var figureContentType = ContentTypeFor(Path.GetExtension(file));
             if (figureContentType is null) continue; // 画像以外（媒体外ファイル）はスキップ。
-            figures.Add(new ExtractedFigure(
+            media.Add(new ExtractedMedia(file, new ExtractedFigure(
                 FigureId: $"fig-{++index}",
                 ImageContentType: figureContentType,
                 ImageBytes: File.ReadAllBytes(file))
             {
                 // ファイル名をコード化ヒント（Vision 未対応時のプロンプト材料）に使う。
                 Caption = Path.GetFileNameWithoutExtension(file)
-            });
+            }));
         }
-        return figures;
+        return media;
     }
+
+    // --extract-media が書き出した媒体ファイルと、そこから起こした図の対。
+    internal sealed record ExtractedMedia(string Path, ExtractedFigure Figure);
+
+    // 画像構文まるごと（HTML の <img> タグ／Markdown の `![…](…)`）。
+    // 🔴 **src 属性だけを差し替えない**（IADR-0351 決定 3）。`<img src="figure:fig-1" style="…">` を
+    // 残すと `FigureMarkdown` の目印と一致せず、人手補正（TryReplaceImageWithCode）が空振りする。
+    // docx 由来の <img> は属性が改行をまたぐ（実測）が、`[^>]` は改行にも当たるので拾える。
+    private static readonly Regex ImageConstructPattern = new(
+        @"<img\b[^>]*>|!\[[^\]]*\]\([^)]*\)",
+        RegexOptions.IgnoreCase
+        | RegexOptions.Compiled);
+
+    // 画像構文から参照先 URL を取り出す（HTML は src 属性、Markdown は括弧の中の先頭トークン）。
+    private static readonly Regex HtmlSrcPattern = new(
+        @"\bsrc\s*=\s*(?:""(?<u>[^""]*)""|'(?<u>[^']*)'|(?<u>[^\s>]+))",
+        RegexOptions.IgnoreCase
+        | RegexOptions.Compiled);
+
+    private static readonly Regex MarkdownTargetPattern = new(
+        @"^!\[[^\]]*\]\(\s*<?(?<u>[^)\s>]*)",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// FR-12, UC-06, IADR-0351 (#1120): 本文中の <c>--extract-media</c> 由来の参照を、図の目印
+    /// （<c>![fig-N](figure:fig-N)</c>）へ書き換える。**一時パスを 1 件も残さない**のが不変条件である。
+    /// </summary>
+    /// <remarks>
+    /// 純関数にしてある —— pandoc を実走できない環境でも、pod で採取した**実出力**を入力に
+    /// 綴りを検査できる（`PandocExtractedMediaRewriteTests` T-23〜T-28）。
+    /// </remarks>
+    internal static string RewriteExtractedMediaReferences(string markdown, string mediaDir,
+        IReadOnlyList<ExtractedMedia> media, ILogger? logger = null)
+    {
+        if (string.IsNullOrEmpty(markdown)) return markdown;
+
+        // mediaDir の綴り（区切り文字が処理系で変わる）と、媒体ファイル → figureId の写像。
+        var prefixes = MediaDirPrefixes(mediaDir);
+        var figureIdByPath = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var m in media) figureIdByPath[NormalizeSeparators(m.Path)] = m.Figure.FigureId;
+
+        // 1 パスで画像構文を走査する。Regex.Replace は自分の出力を再走査しないため、
+        // ここで見える `figure:` は**必ず原本由来**である（IADR-0351 決定 5）。
+        var rewritten = ImageConstructPattern.Replace(markdown, match =>
+        {
+            var url = ExtractUrl(match.Value);
+            if (url is null) return match.Value;
+
+            if (url.StartsWith(FigureMarkdown.PlaceholderScheme, StringComparison.Ordinal))
+            {
+                // 原本が目印の綴りを含んでいた。**受け取らない** —— 残すと正規化側が無関係の図を
+                // そこへ差し込むか、解決できない参照が保管物へ残る。
+                logger?.LogWarning("Dropped a source-authored figure placeholder reference {Url}", url);
+                return string.Empty;
+            }
+
+            if (!PointsInto(url, prefixes)) return match.Value; // 媒体外の参照（外部 URL 等）は触らない。
+
+            if (figureIdByPath.TryGetValue(NormalizeSeparators(url), out var figureId))
+                return FigureMarkdown.PlaceholderEmbed(figureId);
+
+            // 図として採らなかった媒体（画像でない拡張子）への参照。消える先を指すので落とす。
+            logger?.LogWarning("Dropped a reference to non-figure extracted media {Url}", url);
+            return string.Empty;
+        });
+
+        // IADR-0351 決定 4: 構文を認識できなかった参照の安全網。**一時パスは 1 件も残さない。**
+        foreach (var prefix in prefixes)
+        {
+            if (!rewritten.Contains(prefix, StringComparison.Ordinal)) continue;
+            logger?.LogWarning(
+                "Residual --extract-media reference survived syntax rewriting in {MediaDir}", mediaDir);
+            rewritten = new Regex(
+                    Regex.Escape(prefix) + @"[^\s""'<>)\]]*")
+                .Replace(rewritten, m =>
+                    figureIdByPath.TryGetValue(NormalizeSeparators(m.Value), out var id)
+                        ? FigureMarkdown.PlaceholderUri(id)
+                        : string.Empty);
+        }
+
+        return rewritten;
+    }
+
+    // 画像構文（HTML / Markdown）から参照先 URL を取り出す。取れなければ null。
+    private static string? ExtractUrl(string construct)
+    {
+        if (construct.StartsWith("<img", StringComparison.OrdinalIgnoreCase))
+        {
+            var m = HtmlSrcPattern.Match(construct);
+            return m.Success ? WebUtility.HtmlDecode(m.Groups["u"].Value) : null;
+        }
+        var md = MarkdownTargetPattern.Match(construct);
+        return md.Success ? md.Groups["u"].Value : null;
+    }
+
+    // mediaDir の綴り（区切り文字違い）。Linux では 1 通りだが、Windows の開発機では両方出る。
+    private static IReadOnlyList<string> MediaDirPrefixes(string mediaDir)
+    {
+        var trimmed = mediaDir.TrimEnd('/', '\\');
+        return trimmed.Contains('\\', StringComparison.Ordinal)
+            ? [trimmed, NormalizeSeparators(trimmed)]
+            : [trimmed];
+    }
+
+    private static bool PointsInto(string url, IReadOnlyList<string> prefixes) =>
+        prefixes.Any(p => url.StartsWith(p, StringComparison.Ordinal));
+
+    // 写像の鍵は区切り文字を `/` へ寄せた綴りにする。
+    // `Directory.EnumerateFiles` の返す綴りも pandoc の出す綴りも同じ mediaDir を前置に持つので、
+    // 区切り文字さえ揃えれば一致する（絶対パス化は要らない）。
+    private static string NormalizeSeparators(string path) => path.Replace('\\', '/');
 
     // contentType（不明時は拡張子）から pandoc の入力形式を決める。
     //

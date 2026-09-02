@@ -8,10 +8,10 @@ author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-19, SC-20]
-adrs: [ADR-0037, ADR-0054]
-iadrs: [IADR-0270, IADR-0338, IADR-0352]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2]
-issues: [#451, #1098, #1153]
+adrs: [ADR-0021, ADR-0037, ADR-0054]
+iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route]
+issues: [#451, #1098, #1153, #1154]
 -->
 
 # 通信仕様書: 個人資料・Obsidian 同期 API
@@ -88,9 +88,17 @@ push の 409 は他に 2 形ある。クライアントは `error` で区別す�
   利用者の選択を待つ。
 - 🔴 **更新の push は `vaultPath` を書き換えない**（サーバは本文・タイトルだけを更新する）。プラグインは
   ローカルのリネームを伝播できず、契約にリネームの口を足すのは別 issue。
-- 🔴 **配備済みクラスタのエッジは `/private-notes/sync/*` を外へ出していない**（`/bff/*` と SPA のみ）。
-  実測: `https://localhost/bff/private-notes/sync/manifest` → 404。公開経路は配備側の別 issue。
-  ローカル検証は `kubectl port-forward svc/document-service` を接続先にする。
+- **［2026-09-03 追記］エッジは `/private-notes/sync/` 配下を文書サービスへ直接通す**（従前の
+  「エッジは外へ出していない」は本追記で置き換わる）。**BFF は経由しない**（`/bff/private-notes/sync/*`
+  は今も 404 であり、そちらに口を作る予定は無い）。
+  - 公開パスは**契約パスと同一**である（rewrite を張らない）。プラグインの設定は基底 URL だけでよい。
+  - **外へ出るのは `/private-notes/sync/` 配下だけ**である。ライフサイクル群（`/private-notes`）・
+    端末登録（`/private-notes/devices`）・上限管理・組織文書（`/documents`）はエッジから届かず、
+    従来どおり BFF セッション経由でしか到達できない。**これらは 404 ではなく画面（`text/html` の 200）が
+    返る**（画面配信の history fallback）。API に届いていないことは、同じ端点を `port-forward` で直に叩くと
+    401（JSON）になるのと**対で**確かめられる。
+  - 本番像は**既定で出さない opt-in** である（配備側の値で有効化する）。ローカル検証は
+    `kubectl port-forward svc/document-service` でも従来どおり通る。
 
 ## 関連
 

@@ -15,12 +15,9 @@ export interface SessionUser {
   roles: string[];
   /** ログアウト先（セッションの sid を含む。BFF だけが正しく組み立てられる）。 */
   logoutUrl?: string | null;
-  /**
-   * 旧方式（ブラウザ内トークン）互換の JWT。**本体の SPA では常に undefined。**
-   * `ai-stock-trading` submodule のテストが旧形の値を流し込むため、roles.ts の
-   * フォールバックだけがこれを読む（狭める条件は IADR-0273 決定 7）。
-   */
-  access_token?: string;
+  // ［2026-09-03 / AST#414］旧方式（ブラウザ内トークン）互換の `access_token` は消えた。
+  // IADR-0273 決定 7 が「`ai-stock-trading` submodule のテストが旧形の値を流し込むため残す。
+  // AST 側が追随したらこのフォールバックごと削る」と定めていた条件が満たされたためである。
 }
 
 export interface AuthState {

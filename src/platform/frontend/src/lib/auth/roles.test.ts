@@ -3,7 +3,11 @@ import type { SessionUser } from './AuthContext';
 import { extractRealmRoles, hasAnyRole, PlatformRole } from './roles';
 
 // IADR-0035 / IADR-0273: ロールの一次情報は /bff/auth/me の roles 配列。取得不能はフェイルクローズ。
-// access_token(JWT) の復号は AST submodule 互換のフォールバック（IADR-0273 決定 7）。
+//
+// ［2026-09-03 / AST#414］**旧形（`{ access_token }`）のフォールバックを検証していたケースは削除した。**
+// IADR-0273 決定 7 が「AST 側が追随したらフォールバックごと削る」と定めた条件が満たされたためである。
+// 代わりに、**トークンを渡しても権限が付かない**ことを否定形で固定する——フォールバックが
+// 「親切心で」戻ってくると、`/me` が空ロールを返しても JWT で権限が付く形が復活する。
 
 /** テスト用の JWT を組み立てる（署名は検証しないためダミー）。payload は base64url。 */
 function makeJwt(payload: unknown): string {
@@ -14,11 +18,6 @@ function makeJwt(payload: unknown): string {
 
 function sessionUser(roles: unknown): SessionUser {
   return { name: 'tester', subject: 'tester', roles: roles as string[] };
-}
-
-/** 旧形（AST のテストが流し込む形）: roles 配列を持たず access_token だけを持つ。 */
-function legacyUser(token: string | undefined): SessionUser {
-  return { access_token: token } as unknown as SessionUser;
 }
 
 describe('extractRealmRoles (IADR-0273)', () => {
@@ -36,36 +35,28 @@ describe('extractRealmRoles (IADR-0273)', () => {
     ]);
   });
 
-  // 🔴 優先順位: roles 配列があるなら access_token は**読まない**（トークンを一次情報へ
-  // 昇格させない。逆転すると「/me が空ロールを返しても JWT で権限が付く」形になる）。
-  it('prefers the roles array over a bundled access_token', () => {
+  it('returns [] for a null user (fail-closed)', () => {
+    expect(extractRealmRoles(null)).toEqual([]);
+  });
+
+  // 🔴 否定形（AST#414 でフォールバックを削った後の要）: **トークンは読まない。**
+  // `/me` が空ロールを返しているのに JWT で権限が付く形は、フォールバックが復活した瞬間に戻る。
+  it('never reads roles from a bundled token, even when the roles array is empty', () => {
     const user = {
       name: 't',
       subject: 't',
       roles: [] as string[],
       access_token: makeJwt({ realm_access: { roles: ['platform-admin'] } }),
     };
-    expect(extractRealmRoles(user)).toEqual([]);
+    expect(extractRealmRoles(user as unknown as SessionUser)).toEqual([]);
   });
 
-  it('returns [] for a null user (fail-closed)', () => {
-    expect(extractRealmRoles(null)).toEqual([]);
-  });
-
-  // ── AST submodule 互換のフォールバック（旧形。IADR-0273 決定 7。AST 追随後に削る）
-
-  it('falls back to decoding realm_access.roles from a legacy access_token', () => {
-    const user = legacyUser(makeJwt({ realm_access: { roles: ['platform-admin'] } }));
-    expect(extractRealmRoles(user)).toEqual(['platform-admin']);
-  });
-
-  it('returns [] when the legacy token lacks realm_access', () => {
-    expect(extractRealmRoles(legacyUser(makeJwt({ sub: 'u1' })))).toEqual([]);
-  });
-
-  it('returns [] for a malformed legacy token (fail-closed)', () => {
-    expect(extractRealmRoles(legacyUser('not-a-jwt'))).toEqual([]);
-    expect(extractRealmRoles(legacyUser(undefined))).toEqual([]);
+  // 旧形（roles 配列そのものが無い）も同じく空である——`roles` が唯一の情報源である。
+  it('returns [] when the identity has no roles array (fail-closed)', () => {
+    const legacy = {
+      access_token: makeJwt({ realm_access: { roles: ['platform-admin'] } }),
+    } as unknown as SessionUser;
+    expect(extractRealmRoles(legacy)).toEqual([]);
   });
 });
 

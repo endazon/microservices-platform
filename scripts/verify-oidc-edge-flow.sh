@@ -162,6 +162,8 @@ SEARCH_PROBE_TERM="${SEARCH_PROBE_TERM:-}"
 #     seed の内容に依存しないので**ここで宣言してよい**（合言葉とは性質が違う）。
 KEYWORD_ONLY_QUERY="${KEYWORD_ONLY_QUERY:-}"
 KEYWORD_ABSENT_TERM="${KEYWORD_ABSENT_TERM:-msp-absent-zzzznotexistword}"
+# #1118: 日本語の系統（text_ngram）の陰性対照。seed 文書に現れない日本語の語。
+JAPANESE_ABSENT_TERM="${JAPANESE_ABSENT_TERM:-零細企業月餅}"
 
 # 🔴 TOTAL は「本来走るべき段数」の単一情報源である。**モードの組み合わせで変わるので加算式で持つ**。
 #    固定値を並べると、組み合わせを 1 つ足すたびに門（末尾の STEPS 突合）が誤発火する。
@@ -171,8 +173,9 @@ if [ "$SEARCH_SEEDED" = "1" ]; then TOTAL=$((TOTAL + 2)); fi
 # 🔴 内訳を書くときは「足した段」ではなく「**そのブロックの段数全部**」である。
 #    （#1124: 既存の 1 本（合言葉のヒット）を数え落として「足した 3 本」を書き、実行 23 対宣言 22 で門が発火した。
 #     実測の仕方: `sed -n '/if \[ "$SEARCH_HITS"/,/^fi$/p' して next_step を数える。）
-# FR-03 / #992 + #1116: 合言葉のヒット 1 本 ＋ 全文側の正の対照 / 陰性対照 / readiness の 3 本。
-if [ "$SEARCH_HITS" = "1" ]; then TOTAL=$((TOTAL + 4)); fi
+# FR-03 / #992 + #1116 + #1118: 合言葉のヒット 1 本 ＋ 全文側の正の対照 / 陰性対照 の 2 本
+#   ＋ 日本語の語の正の対照 / 在らない日本語の陰性対照 の 2 本 ＋ readiness 1 本 ＝ 6 本。
+if [ "$SEARCH_HITS" = "1" ]; then TOTAL=$((TOTAL + 6)); fi
 
 PASS=0
 FAIL=0
@@ -880,8 +883,70 @@ if [ "$SEARCH_HITS" = "1" ]; then
   fi
   rm -f "$body_file"
 
+  # ---- S6) 🔴 FR-03 / #1118: **日本語の語**で全文側が当たること（識別子の合言葉では通らない系統） ----
+  #
+  # 🔴 段 S4 は合言葉（英数字の識別子）で引くので、`text`（multilingual）の系統しか通らない。
+  #    公式イメージの multilingual は CJK の連なりを語で割らないため、**S4 が緑でも日本語は 0 件**であり得る
+  #    （#1118 の実測: 実配備チャンクの日本語 25 語のうち当たるのは 1 語）。日本語はアプリ側の 2-gram
+  #    ペイロード `text_ngram` を通る（[[IADR-0339]] 決定 1）ので、**その系統を別の段で見る**。
+  #    語は seed のタイトルから導く（`--print-japanese-keyword-query`。値をここへ写さない）。
+  #    陰性対照は**在らない日本語の語**で 0 件（S5 の識別子の陰性対照とは系統が違うので別に置く）。
+  next_step "全文検索だけ（mode=keyword）で、日本語の語が seed 文書に当たること（text_ngram の系統）"
+  JAPANESE_KEYWORD_QUERY="${JAPANESE_KEYWORD_QUERY:-}"
+  if [ -z "$JAPANESE_KEYWORD_QUERY" ]; then
+    JAPANESE_KEYWORD_QUERY=$(node "$(dirname "$0")/seed-search-documents.js" --print-japanese-keyword-query 2>/dev/null | tail -1)
+  fi
+  if [ -z "$JAPANESE_KEYWORD_QUERY" ]; then
+    fail "日本語の語のクエリを導けない（seed-search-documents.js --print-japanese-keyword-query）"
+    info "🔴 seed のタイトルに日本語（CJK）が無いと導けない。"
+  else
+    body_file=$(mktemp)
+    req_file=$(mktemp)
+    # 🔴 日本語は printf の書式へ載せずファイル経由で送る（Windows の Git Bash で argv の日本語が壊れる罠）。
+    printf '{"query":"%s","topK":10,"mode":"keyword"}' "$JAPANESE_KEYWORD_QUERY" > "$req_file"
+    code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST \
+      -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
+      --data-binary "@$req_file" "$EDGE_URL/bff/search")
+    ja_state=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);const r=o.results??o.Results;if(!Array.isArray(r))return console.log('bad');const t=process.argv[1];const seen=r.some(x=>String(x.documentTitle??x.DocumentTitle??'').includes(t)||String(x.text??x.Text??'').includes(t));console.log(r.length+':'+(seen?1:0))}catch{console.log('bad')}})" "$SEARCH_PROBE_TERM" < "$body_file")
+    if [ "$code" != "200" ]; then
+      fail "POST /bff/search（mode=keyword・日本語）→ $code（200 を期待）"
+      info "$(head -c 200 "$body_file")"
+    elif [ "$ja_state" = "bad" ]; then
+      fail "POST /bff/search（mode=keyword・日本語）→ 200 だが SearchResponse の形ではない"
+    elif [ "${ja_state%%:*}" = "0" ]; then
+      fail "全文検索（mode=keyword・日本語の語「$JAPANESE_KEYWORD_QUERY」）がヒットしない（0 件）"
+      info '🔴 疑う順: ①Qdrant の text_ngram ペイロードに索引が無い／点が text_ngram を持たない（#1118。最有力）'
+      info "         ②取り込みサービスの後付け（QdrantCjkNgramBackfillHostedService）が失敗している（起動ログの Error）"
+      info "  確認: retrieval-service の /health/ready（qdrant-cjk-ngram-index が Degraded になる）"
+    elif [ "${ja_state##*:}" = "0" ]; then
+      fail "日本語の語で ${ja_state%%:*} 件返ったが seed 文書（$SEARCH_PROBE_TERM）を含まない"
+    else
+      pass "日本語の語だけで seed 文書がヒットした（${ja_state%%:*} 件・クエリ「$JAPANESE_KEYWORD_QUERY」）"
+    fi
+    rm -f "$body_file" "$req_file"
+  fi
+
+  next_step "全文検索だけ（mode=keyword）で、在らない日本語の語が 0 件であること（text_ngram の全件返しを検出する）"
+  body_file=$(mktemp)
+  req_file=$(mktemp)
+  printf '{"query":"%s","topK":10,"mode":"keyword"}' "$JAPANESE_ABSENT_TERM" > "$req_file"
+  code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST \
+    -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
+    --data-binary "@$req_file" "$EDGE_URL/bff/search")
+  ja_absent_hits=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);const r=o.results??o.Results;console.log(Array.isArray(r)?r.length:-1)}catch{console.log(-1)}})" < "$body_file")
+  if [ "$code" != "200" ]; then
+    fail "POST /bff/search（mode=keyword・日本語の陰性対照）→ $code（200 を期待）"
+  elif [ "$ja_absent_hits" = "0" ]; then
+    pass "在らない日本語の語は 0 件（text_ngram の系統も全件返しではない）"
+  else
+    fail "在らない日本語の語で $ja_absent_hits 件返った（text_ngram の絞り込みが効いていない）"
+    info "$(head -c 200 "$body_file")"
+  fi
+  rm -f "$body_file" "$req_file"
+
   # 縮退の可観測化（#1116 受け入れ基準 3）。**索引が無いことは例外にならない**ので、
   # 検索側の readiness に載せた `qdrant-fulltext-index` が唯一の運用上の検出点である。
+  # #1118: 日本語 2-gram の索引は `qdrant-cjk-ngram-index` が同型で見る（同じ本文の Degraded 判定で拾う）。
   next_step "retrieval-service の readiness が Degraded でないこと（全文インデックスの有無を見る）"
   ready_state=$(kubectl -n "${MSP_NS:-microservices-platform}" get pods -l app=retrieval-service \
     -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)

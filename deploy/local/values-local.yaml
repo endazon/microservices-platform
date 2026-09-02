@@ -30,6 +30,12 @@ mesh:
 # Issue #284, IADR-0076: エッジ /bff/* ルーティングは Istio Gateway/VirtualService 前提。ローカル（経路B）は
 # Istio を導入しないため無効化する（本番像 values.yaml は enabled のまま不変）。経路B のエッジ疎通は
 # deploy/local/README.md「エッジ経路（/bff・ブラウザ OIDC）」の手順（port-forward / Traefik）に委ねる。
+#
+# 🔴 **ここが false である以上、chart の edge.* は 1 バイトも描画されない。** ローカルの実エッジは
+# ADR-0021 / #782 の overlay `deploy/local/edge-istio/`（ISTIO=1 かつ LOCALEDGE=1）であり、ルートの正本は
+# そちらの VirtualService である。**edge 配下の knob をここへ書き足さないこと** —— 不活性な設定になり、
+# overlay 側と静かに食い違う（例: FR-20 の /private-notes/sync/ 公開は overlay が無条件に持ち、
+# 本番像の edge.privateNotesSync.enabled は既定 false の opt-in である。IADR-0348 / #1154）。
 edge:
   enabled: false
 

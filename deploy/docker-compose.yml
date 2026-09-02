@@ -617,13 +617,18 @@ services:
   # なり restore が MSB1009 で落ちていた。実行時の契約（Web SDK・:8080・/health/live・/health/ready・
   # アセンブリ名＝csproj 名）は改名前後で同一のため、追随したのは名前だけである。
   # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）。
+  # ［2026-09-03 追記 / AST#414 の pin bump］AST は単一プロジェクト＋VSA 構成へ移行し、層プロジェクト
+  # （*.Api / *.Application / *.Domain / *.Infrastructure）と `src/` 段を撤去した（AST/IADR-0259・AST/IADR-0261）。
+  # 本 PR の pin bump（0844b58 → 7507540）で旧パスが実在しなくなり、上の #570 と**同じ MSB1009** で
+  # 3 サービスの restore が落ちた。よって `…/src/<Svc>.Api/<Svc>.Api.csproj` → `…/<Svc>.csproj`、
+  # `<Svc>.Api.dll` → `<Svc>.dll` へ追随する（実行時の契約は不変。AST 自身の docker-compose.yml と同値）。
   configuration-service:
     build:
       context: ../src/ai-stock-trading
       dockerfile: backend/Dockerfile
       args:
-        SERVICE_PROJECT: backend/Services/ConfigurationService/src/ConfigurationService.Api/ConfigurationService.Api.csproj
-        SERVICE_DLL: ConfigurationService.Api.dll
+        SERVICE_PROJECT: backend/Services/ConfigurationService/ConfigurationService.csproj
+        SERVICE_DLL: ConfigurationService.dll
     expose:
       - "8080"
     environment:
@@ -644,8 +649,8 @@ services:
       context: ../src/ai-stock-trading
       dockerfile: backend/Dockerfile
       args:
-        SERVICE_PROJECT: backend/Services/RiskManagementService/src/RiskManagementService.Api/RiskManagementService.Api.csproj
-        SERVICE_DLL: RiskManagementService.Api.dll
+        SERVICE_PROJECT: backend/Services/RiskManagementService/RiskManagementService.csproj
+        SERVICE_DLL: RiskManagementService.dll
     expose:
       - "8080"
     environment:
@@ -669,8 +674,8 @@ services:
       context: ../src/ai-stock-trading
       dockerfile: backend/Dockerfile
       args:
-        SERVICE_PROJECT: backend/Services/MarketMonitorService/src/MarketMonitorService.Api/MarketMonitorService.Api.csproj
-        SERVICE_DLL: MarketMonitorService.Api.dll
+        SERVICE_PROJECT: backend/Services/MarketMonitorService/MarketMonitorService.csproj
+        SERVICE_DLL: MarketMonitorService.dll
     expose:
       - "8080"
     environment:
@@ -757,8 +762,11 @@ services:
       # FR-22, IADR-0288 (#1025): NotificationService は段を持たないが
       # AddPlatformIntrospection("notification-service", …) で**到達可能性を申告する**。
       # 申告する側が居るのに収集側に無いと、その申告は永久に読まれない。
-      # 下流集約先（Services__*・readiness の UriHealthCheck）へは足さない —— BFF は
-      # 通知の下流を持たない（/bff/notifications* は未実装）。
+      # 🔴 **Services__* の上書きは不要である**（#600 で /bff/notifications* が入り BFF は通知の
+      # 下流を持つようになったが、named client のコード既定が既に :8080 のため上書きが要らない。
+      # check-bff-downstreams.js の不変条件を上書き無しで満たす）。
+      # **readiness の UriHealthCheck へは足さない** —— 通知は Should であり、後段の不調で
+      # BFF 全体を not-ready にするのは fail-safe の後退である（IADR-0346 決定 6）。
       Introspection__Services__notification-service: http://notification-service:8080
     # FR-15, #146: 正の pipeline.json をそのまま読み取り専用でマウントする（複製しない・単一の真実源）。
     # ローダは生の pipeline.json を "Pipeline" セクションへ包んで読む（PipelineExtensions）。

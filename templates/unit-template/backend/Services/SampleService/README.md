@@ -11,7 +11,10 @@ Services/<Name>/
 ├── Infrastructure/      # Persistence/（DbContext・Configurations/・Migrations/）・
 │                        # Authentication/・Messaging/・ExternalServices/
 ├── Common/              # サービス固有の横断関心（Exceptions/・Behaviors/）
-└── Tests/               # <Name>.Tests.csproj ＋ Features/・Domain/（実装の鏡写し）
+└── Tests/               # <Name>.Tests.csproj ＋ **本体の鏡写し**（IADR-0334）
+                         #   Features/<集約>/<操作>/ … 段まで写す（統合テストも種別で割らずここへ）
+                         #   Domain/ ・ Infrastructure/<Sub>/ ・ Common/<Sub>/ … 相手が在るぶんだけ
+                         #   Tests/ 直下 … 写す相手が無いもの（器・GlobalUsings.cs・Program.cs 由来）
 ```
 
 - **参照方向はフォルダ（名前空間）で守る**: `Domain/` は `Features/`・`Infrastructure/`・

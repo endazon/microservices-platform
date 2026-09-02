@@ -7,56 +7,23 @@ import { useAuth } from './useAuth';
 // 出し分け専用であり、認可の実効境界はサーバ側（AdminOnly=403 / ConfigViewer=404 秘匿）に置く。
 // 取得不能・欠落時は空配列（＝権限なし）として扱う（フェイルクローズ）。
 //
-// 🔴 **`access_token` の JWT 復号はフォールバックである（IADR-0273 決定 7）。**
-// 本体の SPA はトークンを持たない（ADR-0032）。残しているのは `ai-stock-trading` submodule の
-// テストが旧形（`{ access_token }`）の値を AuthContext へ流し込むためで、AST 側が追随したら
-// このフォールバックごと削る。**新しいコードから access_token を供給してはならない。**
+// ［2026-09-03 / AST#414］🔴 **`access_token` の JWT 復号フォールバックは消えた。**
+// IADR-0273 決定 7 はそれを「`ai-stock-trading` submodule のテストが旧形（`{ access_token }`）の値を
+// AuthContext へ流し込むため」に残し、**「AST 側が追随したらこのフォールバックごと削る」**と定めていた。
+// AST#414 で供給側が消えたので、条件どおり削除した。**トークンを読む経路は SPA に 1 つも無い。**
 
 export const PlatformRole = {
   Admin: 'platform-admin',
   Operator: 'platform-operator',
 } as const;
 
-interface RealmAccess {
-  roles?: unknown;
-}
-interface AccessTokenClaims {
-  realm_access?: RealmAccess;
-}
-
-/** JWT のペイロード（2 番目のセグメント）を復号して JSON として返す。失敗時は null。 */
-function decodeJwtPayload(token: string): unknown {
-  const parts = token.split('.');
-  if (parts.length < 2) return null;
-  try {
-    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
-    // atob → バイト列を UTF-8 として復号する（日本語等のマルチバイトに対応）。
-    const bytes = atob(b64 + pad);
-    const json = decodeURIComponent(
-      Array.from(bytes, (c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')).join(''),
-    );
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
-
 /**
- * 現在の身元からレルムロールを取り出す。第 1 情報源は `roles` 配列（`/bff/auth/me`）。
- * 旧形（`access_token` のみ）の値には JWT 復号でフォールバックする（上の注記）。
- * どちらも取れなければ空配列（フェイルクローズ）。
+ * 現在の身元からレルムロールを取り出す。情報源は `roles` 配列（`/bff/auth/me`）ただ 1 つで、
+ * 取れなければ空配列（フェイルクローズ）。
  */
 export function extractRealmRoles(user: SessionUser | null): string[] {
-  if (!user) return [];
-  if (Array.isArray(user.roles)) {
-    return user.roles.filter((r): r is string => typeof r === 'string');
-  }
-  const token = user.access_token;
-  if (!token) return [];
-  const claims = decodeJwtPayload(token) as AccessTokenClaims | null;
-  const roles = claims?.realm_access?.roles;
-  return Array.isArray(roles) ? roles.filter((r): r is string => typeof r === 'string') : [];
+  if (!user || !Array.isArray(user.roles)) return [];
+  return user.roles.filter((r): r is string => typeof r === 'string');
 }
 
 /** ロール集合が指定ロールのいずれかを含むか（純関数。テスト・非フックからも使える）。 */

@@ -49,6 +49,7 @@ const OPTIN_TOKENS = [
   'vault-oidc', //                     VAULT (OIDC client secret, IADR-0094)
   'deploy/local/headlamp', //          HEADLAMP
   'headlamp-oidc', //                  HEADLAMP (secret)
+  'wikijs-oidc', //                    WIKIJS_OIDC (Wiki.js の OIDC ストラテジ seed が読む secret, IADR-0342)
   'deploy/argocd/', //                 ARGOCD（配下の appproject/application のみが apply される）
   'namespace argocd', //               ARGOCD (namespace)
   'argocd-cm-patch.yaml', //           ARGOCD OIDC (CM patch, IADR-0092)
@@ -352,6 +353,7 @@ const GATES_ALL = {
   SEARCHSEED: '1',
   LOCALEMBED: '1',
   HEADLAMP: '1',
+  WIKIJS_OIDC: '1',
 };
 const { PERSIST: _p, ESO: _e, ...GATES_NO_REPLACEMENT } = GATES_ALL;
 const EMITTED_LINES = [
@@ -458,6 +460,22 @@ ok('既定: keycloak-theme-platform ConfigMap は keycloak-realms の直後・in
     themeIdx < infraApplyIdx,
     'ConfigMap 作成が Deployment 適用（apply -k）より後になっている（初回起動でテーマが解決されない）',
   );
+});
+
+// SC-15, FR-22, ADR-0045 決定 9, IADR-0344 (#1144): 捕捉用 MTA は **dev 既定**である。
+//
+// 🔴 **ゲートを持たないことが、この配備物の要点である。** 決定 9 は「開発環境では実送信しない」を
+// 無条件で定めており、opt-in にすると**ゲートを立てない人の既定が外を向いたまま**になる（決定 9 の
+// 弱い版）。「ゲートが無いのだから起動器に書かなくても kustomize が持っていく」と読んで rollout 待ちを
+// 落とすと、**Keycloak より後に立った捕捉用 MTA へ最初の申請が届かない**。ここで両方を固定する。
+ok('#1144: 捕捉用 MTA は既定（env 未設定）で rollout を待つ —— どの opt-in にも属さない', () => {
+  assert.ok(
+    anyLineHas(DEFAULT.lines, 'rollout status deploy/mailpit'),
+    '既定の起動で mailpit の rollout 待ちが発行されていない（捕捉用 MTA が居ない開発環境になる）',
+  );
+  // 陽性対照: 宣言が base の kustomization に居ること（overlay 側だけに居ると PERSIST 時しか立たない）。
+  const kust = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra/kustomization.yaml'), 'utf8');
+  assert.ok(/^\s*-\s*mailpit\.yaml\s*$/m.test(kust), 'deploy/local/infra/kustomization.yaml に mailpit.yaml が無い');
 });
 
 ok('deploy/local/infra/keycloak.yaml: theme ConfigMap の items キーが k8s-local-up.sh の生成キーと一致する', () => {
@@ -841,6 +859,106 @@ ok('#1108: bootstrap は既定パスワードをコミットしない（乱数�
   assert.ok(!/log\s+"[^"]*\$\{?new_key/.test(sh), 'API キーを log に出している');
   assert.ok(!/log\s+"[^"]*\$\{?admin_password/.test(sh), '管理者パスワードを log に出している');
   assert.ok(!/log\s+"[^"]*\$\{?jwt/.test(sh), 'JWT を log に出している');
+});
+
+// --- NFR-09, IADR-0095/IADR-0328/IADR-0342 (#1127・#397 の再起票) ---------------
+//
+// Wiki.js の OIDC ストラテジは **Wiki.js の DB（`authentication` テーブル）保持**で、manifest にも
+// Helm values にも無い。#780 が「7 クライアントすべてでログインが成立する」と測ったとき、
+// **Wiki.js の分だけは人が手で SQL を流していた。**
+//
+// 🔴 ここの検査は **stub ハーネスの実行ログでは測れない。** bootstrap は Wiki.js のコンテナ内
+// loopback へ HTTP を出すが、スタブは何も返さないので段 0 の判定不能で早期終了する（＝段 8 まで
+// 到達しない）。したがって **script の本文に対する静的な不変条件**として置く ——
+// 上の「既定パスワードをコミットしない」（#1108）と同じ形である。
+const WIKIJS_BOOTSTRAP = fs.readFileSync(
+  path.join(REPO_ROOT, 'deploy', 'local', 'wikijs-setup', 'bootstrap.sh'), 'utf8');
+// 「やらない形」を名指しで禁じる検査は、**注意書きの中の悪い例を拾って落ちる**（#1108 で実際に落ちた）。
+// コメント行を外した版を対にして持つ。SQL の heredoc は `#` 始まりでないので落ちない。
+const WIKIJS_BOOTSTRAP_CODE = WIKIJS_BOOTSTRAP
+  .split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+
+ok('#1127: OIDC ストラテジの投入は既定オフ（WIKIJS_OIDC ゲートを持つ）', () => {
+  // endpoint はエッジ host を前提にする（IADR-0328）。LOCALEDGE 抜きで既定 ON にすると
+  // 「押せるが 502 になるボタン」を作る。既定では `local` ログインだけが残る（fail-safe）。
+  assert.ok(/if \[ "\$\{WIKIJS_OIDC:-\}" != "1" \]/.test(WIKIJS_BOOTSTRAP),
+    'WIKIJS_OIDC のゲートが無い（既定で authentication テーブルへ書き込む形になっている）');
+  // 起動器側の secret 供給も同じゲートに揃える（機能オフのとき未使用 Secret を残さない）。
+  const up = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-up.sh'), 'utf8');
+  assert.ok(/\[ "\$\{WIKIJS_OIDC:-\}" = "1" \] && \[ "\$\{ESO:-\}" != "1" \]/.test(up),
+    '手動 apply 側に WIKIJS_OIDC ゲートが無い');
+});
+
+ok('#1127: DELETE→INSERT にしない（users.providerKey の外部キーを壊す形を持ち込まない）', () => {
+  // 🔴 `deploy/local/wiki-oidc/README.md` が載せてきた手作業は
+  //   `DELETE FROM authentication WHERE "strategyKey"='oidc'` → `INSERT` だが、これは
+  //   **誰か 1 人でも OIDC でログインした後は必ず落ちる**（`users_providerkey_foreign`）。
+  //   稼働クラスタで ROLLBACK 付きに実測済み。自動化を UPSERT から DELETE→INSERT へ
+  //   「戻す」変更をここで止める。
+  assert.ok(!/DELETE\s+FROM\s+authentication/i.test(WIKIJS_BOOTSTRAP_CODE),
+    'authentication を DELETE している（初回しか冪等でない形へ戻っている）');
+  assert.ok(/ON CONFLICT \(key\) DO UPDATE SET/.test(WIKIJS_BOOTSTRAP), 'UPSERT になっていない');
+  // 既存行があればその key を再利用する（外部キーを切らず、二重行も作らない）。
+  assert.ok(/SELECT a\.key FROM authentication a WHERE a\."strategyKey" = 'oidc'/.test(WIKIJS_BOOTSTRAP),
+    '既存の oidc 行の key を再利用していない（管理 UI 由来の乱数 key に二重行を作る）');
+});
+
+ok('#1127: 変わったときだけ wiki-js を再起動する（2 回目は no-op）', () => {
+  // 無条件に rollout を打つと、up の再実行や並行作業のたびに wiki-js が落ちる。
+  // 「差分があった件数」を SQL に返させ、0 件の枝では再起動しない。
+  assert.ok(/RETURNING 1/.test(WIKIJS_BOOTSTRAP), '変更件数を返す形になっていない');
+  const at = WIKIJS_BOOTSTRAP.indexOf('case "$oidc_changed" in');
+  assert.ok(at > 0, '変更件数による分岐が無い');
+  const body = WIKIJS_BOOTSTRAP.slice(at, WIKIJS_BOOTSTRAP.indexOf('esac', at));
+  const branches = body.split(';;');
+  const zero = branches.find((b) => /(^|\n)\s*0 \)/.test(b));
+  const other = branches.find((b) => /(^|\n)\s*\* \)/.test(b));
+  assert.ok(zero, '「変更 0 件」の枝が無い');
+  assert.ok(other, '「変更あり」の枝が無い');
+  assert.ok(!/rollout restart/.test(zero), '変更 0 件なのに wiki-js を再起動している（no-op でない）');
+  assert.ok(/rollout restart/.test(other), '変更があっても再起動しない（DB だけ書いても反映されない）');
+});
+
+ok('#1127: client secret を取れないときは既存の設定に触らない（空で潰さない）', () => {
+  const guard = 'if [ "${WIKIJS_OIDC:-}" = "1" ] && [ -z "$oidc_secret" ]; then';
+  const at = WIKIJS_BOOTSTRAP.indexOf(guard);
+  assert.ok(at > 0, 'secret 不在で「何もしない」へ倒す枝が無い');
+  const branch = WIKIJS_BOOTSTRAP.slice(at, WIKIJS_BOOTSTRAP.indexOf('elif', at));
+  assert.ok(!/psql/.test(branch), 'secret が無いのに DB を書きにいっている（動いていたログインを壊す）');
+  // 秘密を標準出力へ出さない（#1108 と同じ作法を段 8 にも課す）。
+  assert.ok(!/log\s+"[^"]*\$\{?oidc_secret/.test(WIKIJS_BOOTSTRAP), 'client secret を log に出している');
+  assert.ok(!/log\s+"[^"]*\$\{?oidc_config/.test(WIKIJS_BOOTSTRAP), 'config（secret を含む）を log に出している');
+});
+
+ok('#1127: 5 つの URL を揃えない（ブラウザ 3 つはエッジ host / pod が叩く 2 つは in-cluster）', () => {
+  // IADR-0328 / #780。揃えるとローカル CA を wiki-js コンテナへ配る必要が出る。
+  // 逆に in-cluster へ揃えるとブラウザが解決できず、issuer を in-cluster にすると
+  // id_token の `iss` 突合が落ちる。**役割で分ける**ことがこの設定の要点である。
+  for (const k of ['authorizationURL', 'issuer', 'logoutURL']) {
+    const m = new RegExp(`\\\\"${k}\\\\":\\\\"\\$\\{OIDC_BROWSER\\}`).test(WIKIJS_BOOTSTRAP);
+    assert.ok(m, `${k} がブラウザ側（エッジ host）を向いていない`);
+  }
+  for (const k of ['tokenURL', 'userInfoURL']) {
+    const m = new RegExp(`\\\\"${k}\\\\":\\\\"\\$\\{OIDC_SERVER\\}`).test(WIKIJS_BOOTSTRAP);
+    assert.ok(m, `${k} が in-cluster を向いていない（wiki-js pod がサーバ側で叩く 2 つ）`);
+  }
+});
+
+ok('#1127: WIKIJS_OIDC=1 のとき wikijs-oidc の Secret が供給され、eso_wait が待つ', () => {
+  // ESO 経路: ExternalSecret を apply し、**同期を待つ**。待つ理由は rollout ではなく、
+  // up の後段で走る bootstrap の段 8 がこの Secret を読むためである（未同期だと段 8 は
+  // 「secret を取得できない」で何もせず、OIDC ログインが入らないまま up が緑で終わる）。
+  const eso = runUp({ VAULT: '1', ESO: '1', WIKIJS_OIDC: '1' });
+  assert.ok(anyLineHas(eso.lines, 'deploy/local/vault/eso/externalsecret-wikijs-oidc.yaml'),
+    'externalsecret-wikijs-oidc.yaml が apply されない');
+  assert.ok(eso.lines.some((l) => l.includes('wait') && l.includes('externalsecret/wikijs-oidc')),
+    'eso_wait が wikijs-oidc を待っていない（段 8 が読む前に同期が終わっている保証が無い）');
+  // 手動経路（ESO 未設定）: apply_secret で同名 Secret を作る。
+  const manual = runUp({ WIKIJS_OIDC: '1' });
+  assert.ok(manual.lines.some((l) => l.includes('create secret generic wikijs-oidc')),
+    'ESO 未設定のとき wikijs-oidc Secret が作られない（唯一の供給元が無くなる）');
+  // 既定オフでは 1 つも現れない（上の OPTIN_TOKENS 検査と対）。
+  assert.ok(!anyLineHas(DEFAULT.lines, 'wikijs-oidc'), '既定オフなのに wikijs-oidc が現れた');
 });
 
 ok('ABACSEED=1: 投入が失敗しても up 全体は止めない（best-effort）', () => {
@@ -2452,6 +2570,93 @@ ok('#782: up は「Traefik を明け渡す → Gateway を立てる」の順で�
   const restoreAt = ISTIO_EDGE_DOWN.indexOf('kubectl apply -f deploy/local/edge/traefik-entrypoint.yaml');
   assert.ok(uninstallAt > 0 && restoreAt > 0, 'istio-edge-down.sh に撤去/復旧が無い');
   assert.ok(uninstallAt < restoreAt, '切り戻しで Traefik の復旧が Gateway の撤去より先にある（同上）');
+});
+
+// ---------------------------------------------------------------------------
+// FR-20 / #1154 / IADR-0348: Obsidian プラグインの同期プロトコルをエッジから外へ出す 1 本。
+//
+// ここで固定するのは **経路が効くための前提**と**露出面が広がっていないこと**である。実クラスタでの
+// 200 / 401 と「sync 以外は API へ届かない」ことは IADR-0348 が実測で持つ
+// （この検査は「壊すと落ちる門」であって証拠ではない）。
+// ---------------------------------------------------------------------------
+const CHART_EDGE = readAt(REPO_ROOT, 'deploy', 'helm', 'microservices-platform', 'templates', 'edge.yaml');
+const CHART_NETPOL = readAt(
+  REPO_ROOT, 'deploy', 'helm', 'microservices-platform', 'templates', 'networkpolicy.yaml',
+);
+
+/** コメント行を落とす（ルートの有無をコメントの散文で誤判定しないため）。 */
+const stripYamlComments = (src) =>
+  src.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+
+const EDGE_ISTIO_VS_APP_CODE = stripYamlComments(EDGE_ISTIO_VS_APP);
+const CHART_EDGE_CODE = stripYamlComments(CHART_EDGE);
+
+ok('#1154: 同期プロトコルの経路が overlay と本番チャートの両方にあり、document-service へ振る', () => {
+  assert.match(
+    EDGE_ISTIO_VS_APP_CODE,
+    /prefix:\s*\/private-notes\/sync\/[\s\S]{0,200}host:\s*document-service\.microservices-platform\.svc\.cluster\.local/,
+    'ローカル overlay に /private-notes/sync/ → document-service の route が無い（配備済みクラスタへプラグインが到達できない。#1154）',
+  );
+  assert.match(
+    CHART_EDGE_CODE,
+    /prefix:\s*\/private-notes\/sync\/[\s\S]{0,200}\.Values\.edge\.privateNotesSync\.service/,
+    '本番チャートに /private-notes/sync/ → edge.privateNotesSync.service の route が無い',
+  );
+  // rewrite を張らない（公開パス ＝ 契約パス。/bff と同じ規律）。
+  for (const [name, src] of [['overlay', EDGE_ISTIO_VS_APP_CODE], ['chart', CHART_EDGE_CODE]]) {
+    assert.ok(!/\brewrite:/.test(src), `${name} が rewrite を張っている（公開パスと契約パスがずれる）`);
+  }
+});
+
+ok('#1154: 同期の route は catch-all（prefix: /）より前にある（Istio のルートは先勝ち）', () => {
+  for (const [name, src] of [['overlay', EDGE_ISTIO_VS_APP_CODE], ['chart', CHART_EDGE_CODE]]) {
+    const syncAt = src.indexOf('prefix: /private-notes/sync/');
+    // catch-all は flow 記法（`- uri: { prefix: / }`）で書かれている。block 記法も拾えるようにする。
+    const catchAllAt = src.search(/prefix:\s*\/\s*(\}|$)/m);
+    assert.ok(syncAt > 0, `${name} に同期の route が無い`);
+    assert.ok(catchAllAt > 0, `${name} に catch-all が無い`);
+    assert.ok(
+      syncAt < catchAllAt,
+      `${name} の同期 route が catch-all より後ろにある（SPA に吸われて API に届かない）`,
+    );
+  }
+});
+
+ok('#1154: 露出面は /private-notes/sync/ だけ（sync 以外の JWT 経路と /documents を外へ出していない）', () => {
+  // 陰性の静的対照。実クラスタの挙動は実測が持つが、**マニフェストに route を書いた瞬間に落ちる**門を置く。
+  for (const [name, src] of [['overlay', EDGE_ISTIO_VS_APP_CODE], ['chart', CHART_EDGE_CODE]]) {
+    for (const leaked of ['/private-notes/devices', '/private-notes/quotas', '/documents']) {
+      assert.ok(
+        !src.includes(leaked),
+        `${name} が ${leaked} をエッジへ出している（08_data-egress-policy 許容条件 2 のスコープ限定が経路で破れる）`,
+      );
+    }
+    // 末尾スラッシュを落とすと /private-notes 全体（一覧・端末登録）が外へ出る。
+    assert.ok(
+      !/(prefix|exact):\s*\/private-notes\s*(\}|$)/m.test(src),
+      `${name} が /private-notes そのものを route している（sync 以外まで外へ出る）`,
+    );
+  }
+});
+
+ok('#1154: 本番像の既定は opt-in（false）で、NetworkPolicy の穴も同じ条件でしか開かない', () => {
+  const at = CHART_VALUES.indexOf('privateNotesSync:');
+  assert.ok(at !== -1, 'values.yaml に edge.privateNotesSync が無い');
+  assert.match(
+    CHART_VALUES.slice(at, at + 200),
+    /enabled:\s*false/,
+    '既定が false でない（内部サービスの端点を既定で外へ出している。fail-safe は「気付ける方向」へ倒す）',
+  );
+  assert.match(
+    stripYamlComments(CHART_NETPOL),
+    /if\s+\.Values\.edge\.privateNotesSync\.enabled[\s\S]{0,900}name:\s*allow-edge-ingress-to-document-service/,
+    'NetworkPolicy の穴が edge.privateNotesSync.enabled で条件付けられていない',
+  );
+  assert.match(
+    CHART_NETPOL,
+    /app:\s*\{\{\s*\.Values\.edge\.privateNotesSync\.service\s*\}\}/,
+    'NetworkPolicy の podSelector が route の行き先と同じ単一情報源から描画されていない（ドリフトする）',
+  );
 });
 
 ok('#782: 切り戻しは mTLS を先に緩める（入口だけ戻して 502 のままにしない）', () => {

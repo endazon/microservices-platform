@@ -1,6 +1,5 @@
 using System.Diagnostics.Metrics;
 using AwesomeAssertions;
-using GraphService.Features.GraphDocuments;
 using GraphService.Features.GraphDocuments.Sync;
 using GraphService.Domain;
 using GraphService.Common.Observability;
@@ -10,7 +9,7 @@ using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace GraphService.Tests.Features.GraphDocuments;
+namespace GraphService.Tests.Features.GraphDocuments.Sync;
 
 // FR-17, UC-10, ADR-0033 決定 3・4・6・8, ADR-0050 決定 3, IADR-0281 (#912):
 // **リンク抽出と辺の差分更新**（consumer 経由の統合）。

@@ -23,9 +23,12 @@
       Domain/                                ← エンティティ・値オブジェクト（**外部依存ゼロ**）
       Infrastructure/                        ← Persistence（EF Core）・Messaging 等のアダプタ
       Common/                                ← サービス固有の横断関心（Result は Platform.Shared.Kernel）
-      Tests/SampleService.Tests.csproj       ← **テストは 1 プロジェクト**。フォルダは実装の鏡写し
-        Features/                            ←   xUnit v3 + AwesomeAssertions + NSubstitute
-        Domain/                              ←   （統合テストも対象スライスのフォルダへ。Testcontainers + Respawn + Mvc.Testing）
+      Tests/SampleService.Tests.csproj       ← **テストは 1 プロジェクト**。フォルダは**本体の鏡写し**
+        GlobalUsings.cs                      ←   器は Tests/ 直下（全スライスが使う。写す相手が無い）
+        HealthEndpointTests.cs               ←   Program.cs 由来の検証も Tests/ 直下（本体でも Program.cs は直下）
+        Features/<集約>/<操作>/               ←   **段まで写す**。統合テストも対象スライスのここへ
+        Domain/                              ←   ドメインの単体テスト（xUnit v3 + AwesomeAssertions + NSubstitute /
+                                             ←   統合は Mvc.Testing + Testcontainers + Respawn）
   frontend/
     package.json                            ← name: @<unit>/frontend（pnpm workspace で自動認識）
     tsconfig.json                           ← paths で @foundation を解決（無いと typecheck が動かない）
@@ -105,8 +108,16 @@
   `projects/microservices-platform/06_technical/12_backend-application-stack.md`
   §規範性・粒度・置き場。利用者裁定 2026-08-04 / planning#180）。プロジェクトを分けるとビルド時間と
   参照管理のコストが増えるためである。フォルダは **`Unit/` / `Integration/` の種別区分ではなく、
-  実装のスライスを鏡写しにする**（`Tests/Features/`・`Tests/Domain/`。IADR-0282 決定 1。
-  種別区分の計画側条文は改定を環流中 —— planning#490 のコメント参照）。1 プロジェクトに畳むので、
+  本体を鏡写しにする**（IADR-0282 決定 1。**［2026-09-03 更新 / #1146］** 従前ここは
+  「`Tests/Features/`・`Tests/Domain/`」の 2 つだけを挙げ、雛形も `Tests/Features/` へ平置きしていた。
+  種別区分の計画側条文は `ADR-0065` 決定 3 として **Accepted 済み**であり「環流中」ではない）。
+  **鏡写しの規則は IADR-0334** —— 相手は「そのテストが検証する本体の要素が置かれたディレクトリ」で、
+  `Features/` と `Domain/` に限らない（`Infrastructure/<Sub>/`・`Common/<Sub>/`・`Domain/Ports/` も写す）。
+  **段は叩く操作の数で決める**（1 操作なら 3 段目 `Tests/Features/<集約>/<操作>/`、同じ集約の 2 操作以上なら
+  2 段目 `Tests/Features/<集約>/`。`ADR-0068` 決定 2 のテスト側への適用）。**本体に写す相手が無いもの**
+  （テスト専用の器・`GlobalUsings.cs`・`Program.cs` 由来の検証）は `Tests/` 直下に残す ——
+  これは漏れではなく規則の適用結果である。**名前空間はフォルダへ追随させる**（`<Name>.Tests.<移送先>`。
+  外側の名前空間は自動で探索されるので `using` は足さない）。1 プロジェクトに畳むので、
   `SampleService.Tests.csproj` は単体側（NSubstitute 等）と統合側（`Mvc.Testing` / Testcontainers /
   Respawn）の**和集合**を参照する。**テスト種別ごとに `.csproj` を割らないこと**
   —— 実サービス（`src/**` の `Services/<Name>/Tests/<Name>.Tests.csproj`）も全て 1 プロジェクトである。

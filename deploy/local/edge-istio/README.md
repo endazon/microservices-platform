@@ -19,7 +19,7 @@ mesh 内の 4 Service（`frontend-service` / `bff-service` / `wiki-js` / `minio`
 | --- | --- |
 | `traefik-service-off.yaml` | Traefik の LoadBalancer Service を落として **80/443/50000 の hostPort を明け渡す**（`HelmChartConfig`）。**kustomization には入れない**（Gateway より先に当てる必要があるため） |
 | `gateway.yaml` | `msp-edge`（80 は 443 へリダイレクト／443 HTTPS）と `msp-admin-edge`（50000 HTTPS）。どちらも `credentialName: edge-tls` |
-| `virtualservice-app.yaml` | 443: catch-all（`/bff`→bff-service、残り→frontend-service）と `keycloak.localhost` |
+| `virtualservice-app.yaml` | 443: catch-all（`/bff`→bff-service、`/private-notes/sync/`→document-service、残り→frontend-service）と `keycloak.localhost` |
 | `virtualservice-admin.yaml` | 50000: grafana / headlamp / vault / qdrant / minio / wiki / argocd の 7 host |
 | `coredns-edge-hosts.yaml` | pod 側の `*.localhost` 解決先を `istio-ingressgateway.istio-system` へ差し替える |
 | `tls/edge-certificate-istio.yaml` | `istio-system` の葉証明書 `edge-tls`（Gateway は同 namespace の Secret しか読めない）。**kustomization には入れない**（cert-manager の CRD 依存） |
