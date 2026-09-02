@@ -20,7 +20,7 @@ vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
   apiRequest: mocks.apiRequest,
 }));
-vi.mock('../../../components/echartsGraphLoader', () => ({
+vi.mock('../../../lib/echarts/echartsGraphLoader', () => ({
   loadGraphECharts: () =>
     Promise.resolve({
       init: () => ({

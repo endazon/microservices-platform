@@ -3,7 +3,7 @@ import { i18n } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import { Bell } from 'lucide-react';
 import { Alert, Button, StatusBadge } from '@platform/ui';
-import { formatDateTime } from '@foundation/ui/formatDateTime';
+import { formatDateTime } from '@foundation/utils/formatDateTime';
 import { notificationText, notificationTone, notificationToneLabel } from './notificationMessages';
 import { useMarkNotificationRead, useNotificationList } from './useNotifications';
 

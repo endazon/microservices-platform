@@ -16,7 +16,7 @@ import {
 } from '@platform/ui';
 import { i18n } from '@foundation/i18n';
 import { PlatformRole, useHasAnyRole } from '@foundation/auth/roles';
-import { toMessages } from '@foundation/ui/apiErrors';
+import { toMessages } from '@foundation/utils/apiErrors';
 import { DataSourceForm } from './DataSourceForm';
 import { DataSourceAttributesForm } from './DataSourceAttributesForm';
 import { formatDateTime, sourceTypeLabel, syncStateView } from '../types/syncState';
