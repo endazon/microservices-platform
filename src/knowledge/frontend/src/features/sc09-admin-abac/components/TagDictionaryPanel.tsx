@@ -13,7 +13,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from '@platform/ui';
-import { toMessages } from '@foundation/ui/apiErrors';
+import { toMessages } from '@foundation/utils/apiErrors';
 import { tagInUseCount, useTagActions, useTagDictionary } from '../api/useTagDictionary';
 // SC-09, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type { TagDto } from '@foundation/api/generated/bff.schemas';

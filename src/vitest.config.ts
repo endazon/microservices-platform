@@ -21,7 +21,8 @@ export default defineConfig({
       // ADR-0031（§ディレクトリ構成）/ IADR-0262 決定 1（第 2 段）: `@foundation` は
       // **ディレクトリ名ではなく platform 基盤の公開面の名前**である。実体は計画のツリーに従って
       // app/ lib/ components/ testing/ へ分かれているので、区分ごとに向き先を張る。
-      // 同じ 9 本を platform/frontend/tsconfig.app.json と platform/frontend/vite.config.ts にも置く。
+      // 同じ 10 本を platform/frontend/tsconfig.app.json と platform/frontend/vite.config.ts にも置く。
+      // ADR-0067 決定 5 / IADR-0333（#1131）: `@foundation/utils` を足した（改名ではなく追加）。
       '@foundation/config': fileURLToPath(
         new URL('./platform/frontend/src/config', import.meta.url),
       ),
@@ -35,6 +36,7 @@ export default defineConfig({
       '@foundation/auth': fileURLToPath(
         new URL('./platform/frontend/src/lib/auth', import.meta.url),
       ),
+      '@foundation/utils': fileURLToPath(new URL('./platform/frontend/src/utils', import.meta.url)),
       '@foundation/ui': fileURLToPath(
         new URL('./platform/frontend/src/components/ui', import.meta.url),
       ),
@@ -75,6 +77,12 @@ export default defineConfig({
       // 全新規ユニットへ配ることになる。カバレッジの母数には入れない（下の coverage.include に
       // templates を含めない）ので、ラチェットの水準は動かさない。
       '../templates/*/frontend/src/**/*.{test,spec}.{ts,tsx}',
+      // FR-20 / ADR-0037 決定 1 / IADR-0338 決定 6: 自作 Obsidian プラグインのプロトコル部
+      // （manifest / pull の client・差分計算・命名・トークン保管）を Obsidian 実体なしで固定する。
+      // カバレッジの母数には入れない（下の coverage.include に含めない。雛形と同じ扱いで、
+      // ラチェットの水準を動かさない。算入は IADR-0338 のフォローアップ）。
+      // **ここへ足したら frontend-tests.yml の paths: にも足す**（scripts.repo.test.js #801 節が突合する）。
+      'obsidian-plugin/src/**/*.{test,spec}.{ts,tsx}',
     ],
     css: false,
     // IADR-0033/0034: カバレッジはしきい値ゲート（回帰防止のラチェット）。CI(frontend-tests.yml)
