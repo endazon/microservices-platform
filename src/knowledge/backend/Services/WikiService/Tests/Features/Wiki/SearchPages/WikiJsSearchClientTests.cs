@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using WikiService.Infrastructure.ExternalServices;
+using WikiService.Tests.Infrastructure.ExternalServices;
 
 namespace WikiService.Tests.Features.Wiki.SearchPages;
 
