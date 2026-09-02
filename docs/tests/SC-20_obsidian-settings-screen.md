@@ -3,7 +3,7 @@ title: SC-20 Obsidian 連携設定画面 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-08-28
-updated: 2026-08-28
+updated: 2026-08-31
 author: Claude
 ---
 <!-- trace:
@@ -37,6 +37,7 @@ issues: [#451]
 | 文書サービス | `SyncDeviceTokenTests` | 有効期限 30 日・手動再発行のみ ／ 個別失効・一括失効 ／ 他人の端末に到達できない |
 | 画面 | `sc20-obsidian-settings/components/ObsidianSettingsPage.test.tsx` | 固定文言 3 段落・4 状態の描き分け・平文の一度きり表示・確認ダイアログ・否定形 |
 | 純関数 | `sc20-obsidian-settings/types/deviceState.test.ts` | 4 状態の境界（残り 7 日と 8 日）・失効の最優先判定 |
+| ブラウザ E2E | `platform/frontend/e2e/sc20-obsidian-settings.smoke.spec.ts` | 実ブラウザ・実ビルド成果物での描画（遅延チャンクの読み込みを含む）と、本文を書く経路＝端末接続の導線 |
 
 ## 観点
 
@@ -69,11 +70,23 @@ issues: [#451]
 | 15 | 業務関連資料の説明を削除の説明と同じ段落にまとめない | 緑（同じ段落に 90 日の文が無いことを固定） |
 | 16 | 端末が 0 台のときは空状態を出し、一括失効を押せない | 緑（発行の導線は残ることを対で固定） |
 | 17 | 一覧を引けないときは空状態へ縮退しない | 緑 |
+| 18 | 未認証で開くとログインへ誘導される | 緑（ブラウザ E2E） |
+| 19 | 認証済みの利用者が実ブラウザで画面へ到達し、同期の範囲と削除の固定文言が出る | 緑（ブラウザ E2E。承認ステップと他利用者への導線の不在を陰性対照として対で置く） |
+| 20 | 発行した平文トークンが一度だけ出て、一覧にも再読込にも戻らない | 緑（ブラウザ E2E。応答の状態コード 201 まで契約どおりでないと画面は何も描かない） |
+
+## ブラウザ E2E で見ていること・見ていないこと
+
+- **見ている**: ビルド成果物の上でルート単位の遅延チャンクが実際に読み込まれ、画面が描かれること。
+  経路の取り違え（パスの改名）は**ここでだけ落ちる** —— 未認証の往復では見分けられない（受け皿が
+  認証ガードの配下に居るため）。変異試験で 2 件が落ちることを実測した。
+- 🔴 **見ていない**: 後段の実応答との一致。セッションと BFF 応答はネットワーク層のスタブであり、
+  **契約の写しであって後段ではない。** 実基盤を伴う実行は別 issue（#466）が持つ。
 
 ## 実行
 
 ```bash
 cd src && pnpm run test
+cd src/platform/frontend && pnpm exec playwright test e2e/sc20-obsidian-settings.smoke.spec.ts
 dotnet test src/platform/backend/Bff/Platform.Bff.Tests
 ```
 
