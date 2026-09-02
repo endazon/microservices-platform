@@ -119,6 +119,25 @@ edge:
     enabled: false
     host: keycloak
     port: 8080
+  # FR-20, UC-11, ADR-0037 課題 2, IADR-0338 決定 4, IADR-0348 (#1154): Obsidian プラグインの
+  # 同期プロトコル（/private-notes/sync/*）をエッジから DocumentService へ直接通す任意配線。
+  #
+  # 🔴 **既定は false（opt-in）。** どちら向きに壊れるかで決めている ——
+  #   経路が無い側の失敗は**利用者に見える**（プラグインが即座に失敗する。#1154 そのものの形）。
+  #   経路が余分にある側の失敗は**誰にも気付かれないまま**内部サービスの端点群が外に面する。
+  #   egress 統制は default-deny（08_data-egress-policy）であり、見えない方向へは倒さない。
+  #   露出面そのものは狭い（端点は同期トークンを自前検証し、所有者の個人資料に閉じる）が、
+  #   fail-safe は「露出しても平気か」ではなく「間違いに気付けるか」で決める。
+  #
+  # 有効化すると、エッジ host の /private-notes/sync/* が下記 Service へ **rewrite 無しで**流れる
+  # （公開パス ＝ 契約パス。プラグインの設定は基底 URL だけで済む）。前置文字列は templates/edge.yaml に
+  # 直書きで、ここでは knob にしない（打ち間違いで露出面が広がる経路を作らないため）。
+  # networkPolicy.enabled と併用するときは templates/networkpolicy.yaml が gateway → document-service の
+  # 穴を同じ条件で開ける。
+  privateNotesSync:
+    enabled: false
+    service: document-service
+    port: 8080
 
 # IADR-0017 フォローアップ: ClusterIP + NetworkPolicy（デフォルト拒否）を実体化。
 # mesh(mTLS) 配下でも多層防御（defense-in-depth）として維持する（IADR-0026）。

@@ -104,5 +104,36 @@ spec:
         - protocol: TCP
           port: {{ .Values.edge.frontend.port }}
 {{- end }}
+{{- /* FR-20, UC-11, IADR-0338 決定 4, IADR-0348 (#1154): エッジ → DocumentService（同期プロトコル）も
+       default-deny 下では L3/L4 で塞がれる。VirtualService が描画されても実到達しないという壊れ方は
+       allow-edge-ingress-to-bff / -to-frontend と同型なので、同じ型で 3 本目を開ける。
+       **edge.privateNotesSync.enabled が立っているときだけ**（既定 false）＝ルートが無い配備では穴も開かない。 */}}
+{{- if .Values.edge.privateNotesSync.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-edge-ingress-to-document-service
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  # DocumentService の Pod 宛のみに限定する（deployment.yaml のラベル app: <name>-service）。
+  # 行き先は edge.privateNotesSync.service を単一情報源に描画するため、VirtualService の
+  # destination と必ず一致する（knob 変更時のドリフト無し）。
+  podSelector:
+    matchLabels:
+      app: {{ .Values.edge.privateNotesSync.service }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.edge.gateway.namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.edge.privateNotesSync.port }}
+{{- end }}
 {{- end }}
 {{- end }}
