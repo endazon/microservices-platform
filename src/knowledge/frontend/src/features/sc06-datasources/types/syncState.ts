@@ -94,4 +94,4 @@ export function sourceTypeLabel(sourceType: string): MessageDescriptor | string 
 
 // 日時の整形は foundation の単一実装を使う（#536 で SC-02 が 2 つ目の利用者になったため移した）。
 // **同じ整形規則を 2 か所に置かない** —— `—`（値なし）の書き方が画面ごとに割れる。
-export { formatDateTime } from '@foundation/ui/formatDateTime';
+export { formatDateTime } from '@foundation/utils/formatDateTime';

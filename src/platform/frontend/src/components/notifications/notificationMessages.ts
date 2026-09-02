@@ -1,7 +1,7 @@
 import { i18n } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import type { NotificationDto } from '@foundation/api/generated/bff.schemas';
-import { formatDateTime } from '@foundation/ui/formatDateTime';
+import { formatDateTime } from '@foundation/utils/formatDateTime';
 
 // FR-22, UC-11, IADR-0215 決定 2: **アプリ内通知の表示文言をここで組み立てる。**
 //

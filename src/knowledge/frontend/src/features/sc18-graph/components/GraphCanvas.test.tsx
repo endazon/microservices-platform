@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   dispose: vi.fn(),
   handlers: new Map<string, (params: unknown) => void>(),
 }));
-vi.mock('../../../components/echartsGraphLoader', () => ({
+vi.mock('../../../lib/echarts/echartsGraphLoader', () => ({
   loadGraphECharts: mocks.loadGraphECharts,
 }));
 

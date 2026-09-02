@@ -57,7 +57,7 @@ export default defineConfig({
           // ADR-0031 §採用技術一覧（チャート = Apache ECharts・自己ホスト）/ #788:
           // ECharts と zrender は本リポジトリで最大級の依存である。**初期ロードへ入れない**
           // （IADR-0134 の初期ロード ratchet に直撃する）。実際の遅延は
-          // `knowledge/frontend/src/components/echartsLoader.ts` の**動的 import**が作っており、
+          // `knowledge/frontend/src/lib/echarts/echartsLoader.ts` の**動的 import**が作っており、
           // この規則はそれを 1 本のチャンクへ束ねて意図を固定するためのものである
           // （規則が無いと図を使う画面ごとに echarts の断片が散る）。
           //
@@ -83,12 +83,14 @@ export default defineConfig({
       // **ディレクトリ名ではなく platform 基盤の公開面の名前**である。実体は計画のツリーに従って
       // app/ lib/ components/ testing/ へ分かれているので、区分ごとに向き先を張る。
       // **エイリアス名は変えない**（AST submodule と unit-template の契約が割れるため）。
-      // 同じ 9 本を tsconfig.app.json の paths と src/vitest.config.ts にも置く。
+      // 同じ 10 本を tsconfig.app.json の paths と src/vitest.config.ts にも置く。
+      // ADR-0067 決定 5 / IADR-0331（#1131）: `@foundation/utils` を足した（改名ではなく追加）。
       '@foundation/config': fileURLToPath(new URL('./src/config', import.meta.url)),
       '@foundation/i18n': fileURLToPath(new URL('./src/lib/i18n', import.meta.url)),
       '@foundation/routing': fileURLToPath(new URL('./src/app/routing', import.meta.url)),
       '@foundation/api': fileURLToPath(new URL('./src/lib/api', import.meta.url)),
       '@foundation/auth': fileURLToPath(new URL('./src/lib/auth', import.meta.url)),
+      '@foundation/utils': fileURLToPath(new URL('./src/utils', import.meta.url)),
       '@foundation/ui': fileURLToPath(new URL('./src/components/ui', import.meta.url)),
       '@foundation/notifications': fileURLToPath(
         new URL('./src/components/notifications', import.meta.url),
