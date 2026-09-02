@@ -4,14 +4,14 @@ type: how-to
 status: in-progress
 author: claude
 created: 2026-09-02
-updated: 2026-09-02
+updated: 2026-09-03
 ---
 <!-- trace:
-ids: [FR-19, FR-20, UC-11, SC-20]
-adrs: [ADR-0037]
-iadrs: [IADR-0270, IADR-0338]
-specs: [20260902_issue-1098_obsidian-plugin-pull-stage1]
-issues: [#1098, #451]
+ids: [FR-19, FR-20, UC-11, SC-20, NFR-11]
+adrs: [ADR-0021, ADR-0037]
+iadrs: [IADR-0270, IADR-0338, IADR-0348]
+specs: [20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1154_private-notes-sync-edge-route]
+issues: [#1098, #451, #1154]
 -->
 
 # 手順ガイド: Obsidian プラグイン（個人資料同期）のビルドと導入
@@ -21,8 +21,10 @@ issues: [#1098, #451]
 > [通信仕様書](../api/FR-20_obsidian-sync.md) を正とする。
 >
 > 🔴 **第 1 段（取り込みのみ）である。** Obsidian 側の編集・削除はナレッジベースへ送られない。
-> また、**配備済みクラスタのエッジは同期プロトコルを外へ出していない**ため、いま実際に届く接続先は
-> `kubectl port-forward` した文書サービスだけである（後続 issue で公開経路を足す）。
+>
+> **［2026-09-03 追記］配備済みクラスタのエッジから届く。** 従前の「接続先は `kubectl port-forward` した
+> 文書サービスだけ」は本追記で置き換わる。接続先はエッジの基底 URL（`https://<エッジ>`）でよい。
+> ただし**本番像は既定で出さない**ので、配備側で公開を有効にしておくこと（下記「接続先」）。
 
 ## 何が配られるか
 
@@ -51,6 +53,7 @@ node ../scripts/check-static-egress.js --require obsidian-plugin/dist   # 外部
 2. Obsidian の「設定 → コミュニティプラグイン」で **制限モードを解除**し、「個人資料同期（汎用プラットフォーム）」を有効にする。
 3. プラグイン設定で次を入れる。
    - **接続先 URL**: 同期プロトコルを受ける基底 URL（`https://…`。末尾に `/private-notes/sync` は付けない）。
+     配備済みクラスタではエッジの基底 URL をそのまま入れる（下記「接続先」）。
      ローカル検証では `http://127.0.0.1:<port>`（loopback だけ http を許す）。
    - **同期フォルダ**: 取り込み先（既定 `個人資料`）。**このフォルダに入れた資料は業務関連資料として扱われる**。
    - **同期トークン**: 画面「Obsidian 連携設定」で端末を登録して発行された値を貼り付けて **保存**。
@@ -64,6 +67,21 @@ node ../scripts/check-static-egress.js --require obsidian-plugin/dist   # 外部
 同期トークンは 30 日で切れ、自動更新は無い。切れたトークンは**プラグイン設定に残ったまま**になり、
 同期は「同期トークンが無効です」で止まる（黙って古いままにはならない）。画面で再発行し、プラグイン設定へ
 入れ直す。端末を失効させたときも同じ表示になる。
+
+## 接続先（エッジ）
+
+エッジは `/private-notes/sync/` 配下だけを文書サービスへ通す。**BFF は経由しない**（同期トークンは
+ブラウザセッションと別系統の資格情報である）。外へ出るのはこの 1 前置だけで、個人資料の一覧・端末登録・
+組織文書はエッジから届かない（画面配信へ落ちるので **404 ではなく画面**が返る）。
+
+- **プラグインに入れるのはエッジの基底 URL だけ**である（例: `https://<エッジ>`）。公開パスは通信仕様書の
+  パスと同一なので、`/private-notes/sync` を足さない。
+- **本番像は既定で出さない**（opt-in）。配備側の値 `edge.privateNotesSync.enabled` を `true` にする。
+  無効のままだと、正しい設定・正しいトークンでも同期は成立しない（画面配信へ落ち、`manifest` の応答が
+  JSON にならない）。
+- ローカル（`ISTIO=1` かつ `LOCALEDGE=1` のエッジ）では最初から通る。接続先は `https://localhost`。
+  **証明書検証を切らないこと**（`-k` を使わない。ローカル CA を信頼させる手順は `deploy/local/edge-istio/README.md`）。
+- 平文 http では同期しない（トークンが Bearer でそのまま載る）。プラグインが loopback 以外の http を拒む。
 
 ## ローカル検証（Obsidian 本体なし）
 
