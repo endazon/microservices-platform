@@ -3,15 +3,15 @@ title: テスト戦略（退行防止テスト基盤）
 type: test-spec
 status: in-progress
 created: 2026-08-03
-updated: 2026-09-02
+updated: 2026-09-03
 author: Claude
 ---
 <!-- trace:
 ids: [SC-05, SC-06, SC-07, SC-08]
 adrs: [ADR-0027, ADR-0030, ADR-0065, ADR-0068]
 iadrs: [IADR-0034, IADR-0049, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0122, IADR-0123, IADR-0130, IADR-0137, IADR-0138, IADR-0195, IADR-0231, IADR-0236, IADR-0282, IADR-0334]
-specs: [20260803_issue-453_regression-test-foundation, 20260831_issue-1063_tests-mirror-body-structure, 20260807_issue-571_coverage-exclude-generated, 20260821_issue-455_xunit-v3-migration, 20260822_issue-900_coverage-cross-report-dedup]
-issues: [#454, #503, #1063, #510, #568, #571, #580, #882, #899, #900, #901, planning#146, planning#160, planning#161, planning#162, planning#180]
+specs: [20260803_issue-453_regression-test-foundation, 20260831_issue-1063_tests-mirror-body-structure, 20260903_issue-1146_template-tests-mirror, 20260807_issue-571_coverage-exclude-generated, 20260821_issue-455_xunit-v3-migration, 20260822_issue-900_coverage-cross-report-dedup]
+issues: [#454, #503, #1063, #510, #568, #571, #580, #882, #899, #900, #901, #1146, planning#146, planning#160, planning#161, planning#162, planning#180]
 -->
 
 # テスト戦略 — 再実装の退行防止基盤
@@ -301,10 +301,13 @@ submodule populate 済み）である——**line 34.14%（9314/27280） / branc
 （`src/knowledge/backend/Tests/Knowledge.IntegrationTests`）はサービス単位の `Tests` とは別の層であり、
 この規則の対象外である。雛形は `templates/unit-template/backend/Services/SampleService/Tests`
 がこの形を示す（2026-08-28 の構成裁定で、テストのフォルダは Unit / Integration の種別区分ではなく
-**実装のスライスを鏡写しにする形**（`Tests/Features/`・`Tests/Domain/`）へ改まった。
+**実装のスライスを鏡写しにする形**へ改まった。
 実サービスの `Unit/` / `Integration/` 区分は移送の波で解消済みで、追跡下に 0 件である）。
 
-**鏡写しは 14 サービス全件で済んでいる。** 鏡写しの相手は「そのテストが検証する本体の要素が
+**鏡写しは 14 サービス全件と雛形で済んでいる。** 🔴 **［2026-09-03 更新］** 雛形は実サービスの移送から
+1 波遅れており、`Tests/Features/` へ平置きしたまま**移送前の形を再生産していた**。段まで写す形へ揃え、
+雛形の `Tests/` は 3 分岐（3 段目 `Features/<集約>/<操作>/`・`Domain/`・写す相手が無いものの `Tests/` 直下）の
+実例をそれぞれ 1 つ持つ。鏡写しの相手は「そのテストが検証する本体の要素が
 置かれたディレクトリ」であり、`Features/` と `Domain/` に限らず `Infrastructure/<Sub>/`・
 `Common/<Sub>/`・`Domain/Ports/` も写す。段の決め方（操作を数える）と、`Tests/` 直下に残すもの
 （テスト専用の器・`Program.cs` 由来の検証・主題が `Platform.Shared.*` にあるもの）の規則は
