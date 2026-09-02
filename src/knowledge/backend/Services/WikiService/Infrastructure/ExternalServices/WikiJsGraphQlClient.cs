@@ -14,7 +14,8 @@ namespace WikiService.Infrastructure.ExternalServices;
 //   documented スキーマ（pages.singleByPath / pages.create / pages.update）に忠実に構成し、
 //   スキーマ確定は PoC フォローで調整する。呼び出し側（DocumentSyncConsumer）は例外を送出させ、
 //   ブローカのリトライ/デッドレター（Wolverine の UsePlatformMessagingDefaults）へ委ねる。
-public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> logger) : IWikiJsClient
+public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> logger)
+    : IWikiJsClient, IWikiJsSearchClient
 {
     private const string Locale = "ja";
     private const string Editor = "markdown";
@@ -49,6 +50,41 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
         return page.TryGetProperty("render", out var r) && r.ValueKind == JsonValueKind.String
             ? r.GetString()
             : page.GetProperty("content").GetString();
+    }
+
+    // UC-07 基本フロー 1「検索する」, FR-13, ADR-0011, IADR-0331: 全文検索を Wiki.js へ委譲する。
+    //
+    // Wiki.js 2.x の `pages.search(query, locale)` は `results { id title description path locale }` と
+    // `suggestions` / `totalHits` を返す。**前段が使うのは `path` だけ**であり、`id` は検索エンジン側の
+    // 文字列 ID（ページ ID ではない）なので取らない。
+    //
+    // 🔴 **ここが返す集合は Wiki.js の権限で絞られたものであり、本システムの ABAC を通っていない。**
+    // 呼び出し側（SearchWikiPagesEndpoint）が台帳と突き合わせて必ず絞り直す。
+    // 未存在（0 件）は空配列であり、GraphQL エラーは例外にする（呼び出し側が 502 へ写す）。
+    public async Task<IReadOnlyList<WikiJsSearchHit>> SearchAsync(string query, CancellationToken ct = default)
+    {
+        const string gql = """
+            query ($query: String!, $locale: String) {
+              pages { search(query: $query, locale: $locale) {
+                results { title path locale }
+                totalHits
+              } }
+            }
+            """;
+        var data = await PostAsync(gql, new { query, locale = Locale }, ct);
+        var results = data.GetProperty("pages").GetProperty("search").GetProperty("results");
+        if (results.ValueKind != JsonValueKind.Array)
+            return [];
+
+        var hits = new List<WikiJsSearchHit>();
+        foreach (var r in results.EnumerateArray())
+        {
+            var path = r.TryGetProperty("path", out var p) ? p.GetString() : null;
+            if (string.IsNullOrWhiteSpace(path)) continue;
+            var title = r.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+            hits.Add(new WikiJsSearchHit(NormalizePath(path), title));
+        }
+        return hits;
     }
 
     // Issue #88: アーカイブ（非公開化）。unpublish で Wiki.js 上から不可視にする。
