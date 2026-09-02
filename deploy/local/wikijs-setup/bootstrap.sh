@@ -35,6 +35,8 @@
 #   WIKIJS_SITE_URL         既定 https://wiki.localhost:50000（LOCALEDGE=1 の集約 URL。#385 と同じ値）
 #   WIKIJS_API_KEY_NAME     既定 wiki-service-sync
 #   WIKIJS_API_KEY_TTL      既定 1y
+#
+# 段 8（Keycloak OIDC ストラテジ）は **opt-in・既定オフ**（IADR-0333 / #1127）。env は段 8 の直前に列挙する。
 set -euo pipefail
 
 MSP_NS="${MSP_NS:-microservices-platform}"
@@ -44,6 +46,7 @@ WIKI_CONTAINER="wiki-js"
 SYNC_DEPLOY="wiki-service"
 ADMIN_SECRET="wikijs-admin"
 SYNC_SECRET="wikijs-sync"
+OIDC_SECRET="wikijs-oidc"
 WIKI_URL="http://127.0.0.1:3000"
 
 ADMIN_EMAIL="${WIKIJS_ADMIN_EMAIL:-admin@example.com}"
@@ -286,6 +289,188 @@ else
     kubectl -n "$MSP_NS" rollout status "deploy/${SYNC_DEPLOY}" --timeout=180s >/dev/null 2>&1 \
       || warn "${SYNC_DEPLOY} の再起動が時間内に終わらなかった"
     log "${SYNC_DEPLOY} を再起動して新しい API キーを読ませた"
+  fi
+fi
+
+# ---------------------------------------------------------------- 8) Keycloak OIDC ストラテジ（opt-in）
+#
+# NFR-09, IADR-0095/IADR-0103/IADR-0328, IADR-0333 (#1127・#397 の再起票):
+# Wiki.js の OIDC 設定は **Wiki.js の DB（`authentication` テーブル）保持**であり、manifest にも Helm
+# values にも無い。したがって up でスタックを起こしただけでは OIDC ログインは**存在しない**し、
+# wikijs DB を作り直すたびに消える。ここで冪等に再適用する（realm import・Vault bootstrap と同じ種類の
+# 「runtime 設定の再適用」であり、段 3 の locale 投入と同じ経路を使う）。
+#
+# ## 既定オフである理由
+#
+# endpoint は **エッジ host（`https://keycloak.localhost`）を前提にする**（IADR-0328）。`LOCALEDGE` 抜きの
+# スタックで既定 ON にすると「押せるが 502 になるボタン」を作ることになる。既定オフなら `local` ログイン
+# だけが残る（fail-safe）。有効化は `WIKIJS_OIDC=1`。
+#
+# ## 🔴 DELETE→INSERT にしない
+#
+# `deploy/local/wiki-oidc/README.md` が載せてきた手作業は `DELETE FROM authentication WHERE
+# "strategyKey"='oidc'` → `INSERT` だが、これは **誰か 1 人でも OIDC でログインした後は必ず落ちる**。
+# `users.providerKey` が `authentication.key` を参照する外部キー `users_providerkey_foreign` があるためで、
+# 稼働クラスタで実測した（#1127）。**行を保存したままの UPSERT** にして、既存行があればその `key` を
+# 再利用する（外部キーが切れず、管理 UI 由来の乱数 key の残骸に二重行を作らない）。
+#
+# ## 🔴 GraphQL の `authentication.updateStrategies` を使わない
+#
+# 再起動が要らない魅力はあるが、**渡さなかったストラテジを全部削除する**
+# （`server/graph/resolvers/authentication.js` の `_.differenceBy(previousStrategies, args.strategies)`）。
+# oidc だけを渡すと `local` を消しにいき、トランザクションが無いので oidc を patch した後で例外になる。
+# 安全に使うには全ストラテジの往復が要るが、**読みと書きで config の形が違う**（読み `{...propDef,value}` /
+# 書き `{v:value}`）ため、往復の実装ミスが `local` の設定を静かに消す。「潰さない」を優先する。
+#
+# 環境変数（すべて任意）:
+#   WIKIJS_OIDC                   `1` のときだけ本段を実行する（既定オフ）
+#   WIKIJS_OIDC_CLIENT_SECRET     client secret。未指定なら Secret `wikijs-oidc`（key `client-secret`）を読む
+#   WIKIJS_OIDC_CLIENT_ID         既定 wiki-js（realm の client）
+#   WIKIJS_OIDC_BROWSER_ISSUER    既定 https://keycloak.localhost/realms/platform（ブラウザが開く 3 つ）
+#   WIKIJS_OIDC_SERVER_ISSUER     既定 http://keycloak:8080/realms/platform（wiki-js pod が叩く 2 つ）
+#   WIKIJS_OIDC_STRATEGY_KEY      既存行が無いときに使う正準 key
+#   WIKIJS_OIDC_DISPLAY_NAME      既定 Keycloak（ログイン画面のボタン文言）
+#   WIKIJS_OIDC_AUTOENROLL_GROUP  既定 Guests（未マッピング利用者が落ちる最小権限の床）
+oidc_secret=""
+if [ "${WIKIJS_OIDC:-}" != "1" ]; then
+  log "OIDC ストラテジの投入は既定オフ（有効化は WIKIJS_OIDC=1）。authentication テーブルには触らない"
+else
+  OIDC_CLIENT_ID="${WIKIJS_OIDC_CLIENT_ID:-wiki-js}"
+  OIDC_BROWSER="${WIKIJS_OIDC_BROWSER_ISSUER:-https://keycloak.localhost/realms/platform}"
+  OIDC_SERVER="${WIKIJS_OIDC_SERVER_ISSUER:-http://keycloak:8080/realms/platform}"
+  OIDC_KEY="${WIKIJS_OIDC_STRATEGY_KEY:-7c1f6f2e-9d3a-4b5c-8e10-000000000001}"
+  OIDC_DISPLAY="${WIKIJS_OIDC_DISPLAY_NAME:-Keycloak}"
+  OIDC_GROUP="${WIKIJS_OIDC_AUTOENROLL_GROUP:-Guests}"
+
+  # client secret: 明示 env ＞ Secret `wikijs-oidc` ＞ 断念。**取れなければ既存行に触らない**
+  # ——空の clientSecret で上書きすると、動いていたログインを黙って壊す。
+  # key に `-` を含むので jsonpath はブラケット記法で引く（`.data.client-secret` は解釈が割れる）。
+  oidc_secret="${WIKIJS_OIDC_CLIENT_SECRET:-}"
+  if [ -z "$oidc_secret" ]; then
+    oidc_secret="$(kubectl -n "$MSP_NS" get secret "$OIDC_SECRET" \
+      -o "jsonpath={.data['client-secret']}" 2>/dev/null | base64 -d 2>/dev/null || true)"
+  fi
+fi
+
+if [ "${WIKIJS_OIDC:-}" = "1" ] && [ -z "$oidc_secret" ]; then
+  warn "client secret を取得できない（env WIKIJS_OIDC_CLIENT_SECRET も Secret ${MSP_NS}/${OIDC_SECRET} も空）。"
+  warn "既存の OIDC 設定には触らずに終了する。供給経路は deploy/local/wiki-oidc/README.md を参照すること"
+elif [ "${WIKIJS_OIDC:-}" = "1" ]; then
+  # 値は SQL の単一引用符文字列と JSON へそのまま埋める。**危険な文字を弾いてから埋める**
+  # （エスケープを書くより、通す文字を絞るほうが破れにくい）。
+  for v in "$oidc_secret" "$OIDC_CLIENT_ID" "$OIDC_BROWSER" "$OIDC_SERVER" "$OIDC_KEY" \
+           "$OIDC_DISPLAY" "$OIDC_GROUP" "$SITE_URL"; do
+    case "$v" in
+      *[!A-Za-z0-9_.:/@+=-]* )
+        warn "OIDC の設定値に SQL/JSON へ素で埋められない文字が含まれる。英数と _.:/@+=- のみにすること"
+        exit 1
+        ;;
+    esac
+  done
+
+  # config の 14 プロパティは wiki-js の `modules/authentication/oidc/definition.yml` と 1 対 1。
+  # 🔴 **5 つの URL を揃えない**（IADR-0328・#780）。ブラウザが開く 3 つ（authorization / issuer /
+  #   logout）はエッジ host、wiki-js pod がサーバ側で叩く 2 つ（token / userinfo）は in-cluster にする。
+  #   揃えるとローカル CA を wiki-js コンテナへ配る必要が出る。
+  oidc_config="$(printf '%s' "{\
+\"clientId\":\"${OIDC_CLIENT_ID}\",\
+\"clientSecret\":\"${oidc_secret}\",\
+\"authorizationURL\":\"${OIDC_BROWSER}/protocol/openid-connect/auth\",\
+\"tokenURL\":\"${OIDC_SERVER}/protocol/openid-connect/token\",\
+\"userInfoURL\":\"${OIDC_SERVER}/protocol/openid-connect/userinfo\",\
+\"skipUserProfile\":false,\
+\"issuer\":\"${OIDC_BROWSER}\",\
+\"emailClaim\":\"email\",\
+\"displayNameClaim\":\"preferred_username\",\
+\"pictureClaim\":\"picture\",\
+\"mapGroups\":true,\
+\"groupsClaim\":\"groups\",\
+\"logoutURL\":\"${OIDC_BROWSER}/protocol/openid-connect/logout\",\
+\"acrValues\":\"\"}")"
+
+  if ! kubectl -n "$INFRA_NS" get deploy postgres >/dev/null 2>&1; then
+    warn "${INFRA_NS}/postgres が無いので OIDC ストラテジを投入できない"
+  else
+    # 差分があった行数だけを返す。**0 なら何も変わっていない**＝再起動しない（＝2 回目は no-op）。
+    # `settings.host`（Site URL）も同じトランザクションで突き合わせる —— Wiki.js はコールバックを
+    # `{Site URL}/login/{key}/callback` で組むため、ここがズレると realm に登録があっても
+    # `invalid_redirect_uri` になる。**`/finalize` は初回しか通らない**ので、経路を変えたときに
+    # Site URL を動かせるのはこの段だけである。
+    oidc_out="$(kubectl -n "$INFRA_NS" exec -i deploy/postgres -- \
+      psql -U "${WIKIJS_DB_USER:-kp}" -d "${WIKIJS_DB_NAME:-wikijs}" -v ON_ERROR_STOP=1 -q -At -f - 2>&1 <<SQL
+BEGIN;
+CREATE TEMP TABLE _wanted ON COMMIT DROP AS
+SELECT
+  COALESCE(
+    (SELECT a.key FROM authentication a WHERE a."strategyKey" = 'oidc' ORDER BY a."order", a.key LIMIT 1),
+    '${OIDC_KEY}') AS key,
+  true AS "isEnabled",
+  '${oidc_config}'::json AS config,
+  true AS "selfRegistration",
+  '{"v":[]}'::json AS "domainWhitelist",
+  (SELECT json_build_object('v', COALESCE(json_agg(g.id ORDER BY g.id), '[]'::json))
+     FROM groups g WHERE g.name = '${OIDC_GROUP}') AS "autoEnrollGroups",
+  1 AS "order",
+  'oidc' AS "strategyKey",
+  '${OIDC_DISPLAY}' AS "displayName";
+WITH up AS (
+  INSERT INTO authentication AS t
+    (key, "isEnabled", config, "selfRegistration", "domainWhitelist", "autoEnrollGroups", "order", "strategyKey", "displayName")
+  SELECT key, "isEnabled", config, "selfRegistration", "domainWhitelist", "autoEnrollGroups", "order", "strategyKey", "displayName"
+    FROM _wanted
+  ON CONFLICT (key) DO UPDATE SET
+    "isEnabled"        = EXCLUDED."isEnabled",
+    config             = EXCLUDED.config,
+    "selfRegistration" = EXCLUDED."selfRegistration",
+    "domainWhitelist"  = EXCLUDED."domainWhitelist",
+    "autoEnrollGroups" = EXCLUDED."autoEnrollGroups",
+    "order"            = EXCLUDED."order",
+    "strategyKey"      = EXCLUDED."strategyKey",
+    "displayName"      = EXCLUDED."displayName"
+  WHERE ROW(t."isEnabled", t.config::jsonb, t."selfRegistration", t."domainWhitelist"::jsonb,
+            t."autoEnrollGroups"::jsonb, t."order", t."strategyKey", t."displayName")
+        IS DISTINCT FROM
+        ROW(EXCLUDED."isEnabled", EXCLUDED.config::jsonb, EXCLUDED."selfRegistration",
+            EXCLUDED."domainWhitelist"::jsonb, EXCLUDED."autoEnrollGroups"::jsonb,
+            EXCLUDED."order", EXCLUDED."strategyKey", EXCLUDED."displayName")
+  RETURNING 1
+), host_up AS (
+  UPDATE settings SET value = json_build_object('v', '${SITE_URL}'), "updatedAt" = now()::text
+   WHERE key = 'host'
+     AND value::jsonb IS DISTINCT FROM jsonb_build_object('v', '${SITE_URL}')
+  RETURNING 1
+)
+SELECT (SELECT count(*) FROM up) + (SELECT count(*) FROM host_up);
+COMMIT;
+SQL
+    )" || true
+    oidc_changed="$(printf '%s' "$oidc_out" | tail -n 1)"
+    case "$oidc_changed" in
+      '' | *[!0-9]* )
+        warn "OIDC ストラテジの投入に失敗した: $(printf '%s' "$oidc_out" | tail -c 400)"
+        ;;
+      0 )
+        log "OIDC ストラテジと Site URL は既に一致している（変更なし・wiki-js は再起動しない）"
+        ;;
+      * )
+        log "OIDC ストラテジ / Site URL を ${oidc_changed} 件更新した（siteUrl=${SITE_URL}・secret は表示しない）"
+        # Wiki.js は**起動時に**ストラテジを読む。DB だけ書いても反映されないので作り直す。
+        # 🔴 変わったときだけ再起動する —— 無条件に打つと、up の再実行や並行作業のたびに
+        #   wiki-js が落ちる（同じクラスタで別の検証が走っている）。
+        kubectl -n "$MSP_NS" rollout restart "deploy/${WIKI_DEPLOY}" >/dev/null 2>&1 || true
+        kubectl -n "$MSP_NS" rollout status "deploy/${WIKI_DEPLOY}" --timeout=180s >/dev/null 2>&1 \
+          || warn "${WIKI_DEPLOY} の再起動が時間内に終わらなかった"
+        log "${WIKI_DEPLOY} を再起動して OIDC ストラテジを読ませた"
+        ;;
+    esac
+
+    # 反映確認（値は出さない）。ここが空なら、ログイン画面に Keycloak のボタンは出ない。
+    act_out="$(graphql '{authentication{activeStrategies(enabledOnly:true){key strategy{key} displayName}}}' \
+      "$jwt" || true)"
+    case "$(http_body "$act_out")" in
+      *'"key":"oidc"'*) log "activeStrategies に oidc が出ている（ログイン画面に ${OIDC_DISPLAY} が並ぶ）" ;;
+      *) warn "activeStrategies に oidc が見えない。wiki-js のログを確認すること" ;;
+    esac
   fi
 fi
 

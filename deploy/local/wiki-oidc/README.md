@@ -18,9 +18,30 @@ realm には `wiki-js` client が既存（[IADR-0020](../../../.ai-context/adr/I
 
 セットアップと Site URL（`settings.host`）の設定は
 [`../wikijs-setup/`](../wikijs-setup/README.md)（`scripts/k8s-local-up.sh` が既定で呼ぶ）が入れる。
-下の DB seed 手順のうち **`settings.host` の更新は wikijs-setup が担う**ので、
-経路を変えたいときは `WIKIJS_SITE_URL` を渡して bootstrap を再実行すればよい。
-**OIDC ストラテジ（`authentication` 行）の投入は依然として本ページの手順である**（#397 は未実装のまま close）。
+
+## 🔴 いまは自動である（#1127・IADR-0333）
+
+**OIDC ストラテジ（`authentication` 行）の投入も `settings.host` の突き合わせも、
+[`../wikijs-setup/bootstrap.sh`](../wikijs-setup/README.md) の段 8 が冪等に行う。**
+以前は本ページの手作業 SQL が正本だったが（#397 が未実装のまま close されていた）、
+それを自動化したのが #1127 である。**手で SQL を流す必要は無い。**
+
+```sh
+# 既定オフの opt-in。エッジ（LOCALEDGE=1）で立てたスタックに対して使う。
+WIKIJS_OIDC=1 bash scripts/k8s-local-up.sh          # up ごと（推奨）
+WIKIJS_OIDC=1 bash deploy/local/wikijs-setup/bootstrap.sh   # 既に立っているスタックへ後から
+```
+
+- **冪等**。2 回目は「変更なし」を報告し、`wiki-js` を再起動しない。
+- **潰さない**。`local` ストラテジ・既存利用者・発行済みの API キーに触らない。
+  既存の oidc 行があればその `key` を再利用する（`users.providerKey` の外部キーが切れない）。
+- client secret は **Vault/ESO 経路**（`secret/msp/wikijs-oidc` → Secret `wikijs-oidc` の
+  `client-secret`）か env `WIKIJS_OIDC_CLIENT_SECRET` から取る。**取れなければ既存設定に触らずに終わる**
+  （空で上書きして動いているログインを壊さない）。
+- 既定オフである理由: endpoint は**エッジ host を前提にする**ので、`LOCALEDGE` 抜きで既定 ON にすると
+  「押せるが 502 になるボタン」を作ることになる。既定では `local` ログインだけが残る。
+
+以下は **中身を知るため**と、**自動化が効かないときに手で当てるため**の説明である。
 
 ## 到達（集約後 URL・#357/edge）
 
@@ -82,9 +103,12 @@ Wiki.js は **コールバックを `{Site URL}/login/{strategyKey}/callback`** 
 `WIKI_BASE_URL`（SPA の「Wiki を開く」導線）とは**別物**なので両方を揃えること。経路別の port topology は
 [IADR-0095 の「追記（2026-07-26・Issue #385）」](../../../.ai-context/adr/IADR-0095_wikijs-keycloak-oidc.md)が単一情報源。
 
-## DB seed で入れる（管理UI を使わない手順・IADR-0103）
+## DB seed で入れる（手で当てるときの手順・IADR-0103 / IADR-0333）
 
-管理UI を開けない/自動化したい場合は、Wiki.js の `authentication` テーブルへ直接投入する（設定は DB 保持）。
+> **通常は上の自動化（`WIKIJS_OIDC=1`）を使うこと。** 本節は、bootstrap を実行できない状況で
+> 手で当てるときと、段 8 が何をしているかを読むためのものである。
+
+管理UI を開けない場合は、Wiki.js の `authentication` テーブルへ直接投入する（設定は DB 保持）。
 **前提として次の 2 つが realm 側に必要**（`realm.json` に恒久化済み）:
 
 - `wiki-js` client の **`groups` claim mapper**（`wikijs-realm-roles`）— 無いと Map Groups が効かない
@@ -114,15 +138,26 @@ CFG=$(jq -cn --arg s "$WSEC" --arg b "$KC_BROWSER" --arg i "$KC_SERVER" '{
   mapGroups:true, groupsClaim:"groups",
   logoutURL:($b+"/protocol/openid-connect/logout"), acrValues:""}')
 
+# 🔴 DELETE→INSERT にしない（#1127 で実測）。`users.providerKey` が `authentication.key` を参照する
+#    外部キー `users_providerkey_foreign` があるため、**誰か 1 人でも OIDC でログインした後は
+#    DELETE が必ず落ちる**（"violates foreign key constraint"）。既存行があればその key を再利用して
+#    UPSERT する ——「冪等」を名乗るならこちらでなければならない。
 cat > /tmp/wiki_oidc.sql <<SQL
 BEGIN;
-UPDATE settings SET value='{"v":"$SITE_URL"}' WHERE key='host';
-DELETE FROM authentication WHERE "strategyKey"='oidc';
+UPDATE settings SET value='{"v":"$SITE_URL"}', "updatedAt"=now()::text WHERE key='host';
 INSERT INTO authentication (key,"isEnabled",config,"selfRegistration","domainWhitelist","autoEnrollGroups","order","strategyKey","displayName")
-VALUES ('7c1f6f2e-9d3a-4b5c-8e10-000000000001', true, \$json\$$CFG\$json\$, true, '{"v":[]}', '{"v":[2]}', 1, 'oidc', 'Keycloak');
+SELECT COALESCE((SELECT a.key FROM authentication a WHERE a."strategyKey"='oidc' ORDER BY a."order", a.key LIMIT 1),
+                '7c1f6f2e-9d3a-4b5c-8e10-000000000001'),
+       true, \$json\$$CFG\$json\$::json, true, '{"v":[]}'::json,
+       (SELECT json_build_object('v', COALESCE(json_agg(g.id ORDER BY g.id), '[]'::json)) FROM groups g WHERE g.name='Guests'),
+       1, 'oidc', 'Keycloak'
+ON CONFLICT (key) DO UPDATE SET
+  "isEnabled"=EXCLUDED."isEnabled", config=EXCLUDED.config, "selfRegistration"=EXCLUDED."selfRegistration",
+  "domainWhitelist"=EXCLUDED."domainWhitelist", "autoEnrollGroups"=EXCLUDED."autoEnrollGroups",
+  "order"=EXCLUDED."order", "strategyKey"=EXCLUDED."strategyKey", "displayName"=EXCLUDED."displayName";
 COMMIT;
 SQL
-kubectl -n platform-infra exec -i deploy/postgres -- psql -U postgres -d wikijs -q -f - < /tmp/wiki_oidc.sql
+kubectl -n platform-infra exec -i deploy/postgres -- psql -U kp -d wikijs -q -f - < /tmp/wiki_oidc.sql
 rm -f /tmp/wiki_oidc.sql
 kubectl -n microservices-platform rollout restart deploy/wiki-js
 ```
@@ -131,8 +166,10 @@ kubectl -n microservices-platform rollout restart deploy/wiki-js
   port-forward 単独なら `SITE_URL=http://localhost:3300` を付けて実行する）。Wiki.js は callback を
   `{Site URL}/login/{key}/callback` で組むため、ここが経路と不一致だと realm 側に登録があっても redirect が合わない。
   なお `values-local.yaml` の `WIKI_BASE_URL`（SPA の「Wiki を開く」導線）とは**別物**なので両方を揃える。
-- `autoEnrollGroups: {"v":[2]}` は Guests（id=2）＝**最小権限の床**（deny-by-default 寄り）。Guests は既定で
+- `autoEnrollGroups` は **Guests**＝**最小権限の床**（deny-by-default 寄り）。Guests は既定で
   `read:pages`/`read:assets`/`read:comments` と全パスの pageRule を持つため**追加付与は不要**。
+  id を `2` と決め打たず、**名前 `Guests` から引く**（上の SQL / 段 8 とも）—— DB を作り直した環境で
+  採番が変わると、決め打ちは黙って別グループへ auto-enroll する。
 - `selfRegistration: true` が無いと、Wiki.js に未登録の OIDC ユーザー（`admin` 等）がログインできない。
 
 成功確認:
@@ -161,5 +198,7 @@ curl -s -o /dev/null -w '%{http_code}\n' --cacert ca.crt --resolve wiki.localhos
   **compose(dev) の host 公開＝`http://localhost:3001/*`**（[IADR-0032](../../../.ai-context/adr/IADR-0032_wikijs-dev-exposure-opt-in.md)
   の `ports: 3001:3000`）/ in-cluster＝`http://wiki-js:3000/*`。k8s の port-forward に `3001` は使わない。
 - **realm 反映**: `wiki-js` client の redirect 追加は realm 再インポートで反映（永続化時は管理コンソール追加 or 再作成）。
-- **dev の Wiki.js DB**: OIDC ストラテジは DB 保持。DB を作り直すと再設定が必要（realm import と同様の runtime 手順）。
+- **dev の Wiki.js DB**: OIDC ストラテジは DB 保持なので、DB を作り直すと消える。**復旧は
+  `WIKIJS_OIDC=1 bash deploy/local/wikijs-setup/bootstrap.sh` の 1 本**（#1127・IADR-0333。
+  realm import や Vault bootstrap と同じ「runtime 設定の冪等な再適用」）。手で SQL を流す必要は無い。
 - CLI/一部 OS で `*.localhost` 未解決なら hosts 追記 or `*.nip.io`。

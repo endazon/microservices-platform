@@ -3,15 +3,15 @@ title: 経路B SSO 復旧 Runbook（揮発 live 設定の再適用手順）
 type: runbook
 status: active
 created: 2026-07-25
-updated: 2026-08-28
+updated: 2026-09-02
 author: claude
 ---
 <!-- trace:
-ids: []
+ids: [NFR-09]
 adrs: []
-iadrs: [IADR-0084, IADR-0091, IADR-0096, IADR-0103, IADR-0220]
-specs: []
-issues: [#328, #388, #841, AST#245]
+iadrs: [IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0333]
+specs: [20260902_issue-1127_wikijs-oidc-strategy-seed]
+issues: [#328, #388, #841, #1127, AST#245]
 -->
 
 # 経路B SSO 復旧 Runbook
@@ -25,7 +25,7 @@ issues: [#328, #388, #841, AST#245]
 | --- | --- | --- |
 | Keycloak realm 全体（`admin` ユーザー・mapper・client ロール・redirect） | **realm 再インポート**（`keycloak-data` PVC 削除／新規クラスタ） | **STEP 0 で自動**（`realm.json` に恒久化済み） |
 | Vault dev の全状態（ESO seed・`auth/oidc`・policy・external group） | **vault Pod 再起動**（インメモリ）・クラスタ再構築 | STEP 0 で seed は自動。**OIDC は STEP 2 が手動** |
-| Wiki.js の OIDC ストラテジ・Site URL | **`postgres-data` PVC 削除**／wikijs DB 再作成 | **STEP 3**（手動・DB seed） |
+| Wiki.js の OIDC ストラテジ・Site URL | **`postgres-data` PVC 削除**／wikijs DB 再作成 | **STEP 3**（`WIKIJS_OIDC=1` で bootstrap を 1 本。手動 SQL は退役） |
 | Pod の env に載った secret 値 | ESO が Secret を作る前に Pod が起動 | **STEP 0 で自動**（`ESO=1` 末尾の rollout） |
 | `argocd` ns の `keycloak` エイリアス | クラスタ再構築 | **STEP 0 で自動**（`ARGOCD=1` が適用） |
 | `ast-secrets` の実鍵 | `k8s-local-deploy.sh` を鍵未 export で実行 | STEP 1（鍵を export して再実行） |
@@ -99,14 +99,31 @@ curl -s --cacert ca.crt --resolve vault.localhost:50000:127.0.0.1 \
   https://vault.localhost:50000/v1/sys/internal/ui/mounts | jq -c '.data.auth|keys'   # → ["oidc/"]
 ```
 
-## STEP 3: Wiki.js OIDC（**wikijs DB 再作成時のみ**）
+## STEP 3: Wiki.js OIDC（**wikijs DB 再作成時のみ**・コマンド 1 本）
 
-DB seed 手順の全文は [`deploy/local/wiki-oidc/README.md`](../../deploy/local/wiki-oidc/README.md)「DB seed で入れる」。
+**手で SQL を流す手順は退役した。** 既定オフの opt-in を立てて bootstrap を走らせる。冪等で、
+2 回目は「変更なし」を報告して `wiki-js` を再起動しない。ローカルログインも発行済みの API キーも潰さない。
+
+```sh
+# 既に立っているスタックへ後から入れる（エッジ経路が既定）
+WIKIJS_OIDC=1 bash deploy/local/wikijs-setup/bootstrap.sh
+# 非 edge（port-forward 単独）で使うときは Site URL も経路に揃える
+WIKIJS_OIDC=1 WIKIJS_SITE_URL=http://localhost:3300 bash deploy/local/wikijs-setup/bootstrap.sh
+```
+
+client secret は Secret `microservices-platform/wikijs-oidc`（key `client-secret`）か
+env `WIKIJS_OIDC_CLIENT_SECRET` から取る。**どちらも空だと、既存設定に触らずに終わる**
+（空で上書きして動いているログインを壊さないため）。`ESO=1` で立てたスタックでは
+`WIKIJS_OIDC=1` を付けて `up` すれば Vault からこの Secret が供給される。
 
 成功確認:
 
 ```sh
 kubectl -n microservices-platform logs deploy/wiki-js --tail=40 | grep "Authentication Strategy Keycloak"
+#   → Authentication Strategy Keycloak: [ OK ]
+kubectl -n platform-infra exec -i deploy/postgres -- \
+  psql -U kp -d wikijs -c 'SELECT key, "strategyKey", "displayName" FROM authentication ORDER BY "order";'
+#   → local と oidc(Keycloak) の 2 行（local が消えていないこと）
 ```
 
 ## STEP 4: 総合検証

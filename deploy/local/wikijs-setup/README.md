@@ -37,6 +37,7 @@ manifest だけでは復元できない runtime 状態なので、Vault の boot
 | 5 | API 有効化 | `authentication.setApiState(enabled:true)` |
 | 6 | 外部取得の停止 | `localization.updateLocale(autoUpdate:false)`。既定では `graph.requarks.io` を毎起動叩く |
 | 7 | API キー | 既存キーが有効なら**再発行しない**。無ければ発行し、Secret `wikijs-sync.apiKey`（＋ Vault が居れば `secret/msp/wikijs-sync`）へ書き、`wiki-service` を再起動する |
+| 8 | **Keycloak OIDC ストラテジ**（**opt-in・既定オフ**） | `WIKIJS_OIDC=1` のときだけ。`authentication` の oidc 行と `settings.host` を UPSERT で突き合わせる。**変わったときだけ** `wiki-js` を再起動する。IADR-0333・#1127 |
 
 **HTTP はすべて wiki-js コンテナ内の loopback（`http://127.0.0.1:3000`）へ出す。**
 エッジ（Traefik / Istio Ingress Gateway）にも port-forward にも依存せず、`PeerAuthentication` が
@@ -73,9 +74,13 @@ node scripts/check-stack-ready.js --self-test
 | --- | --- | --- |
 | `WIKIJS_ADMIN_EMAIL` | `admin@example.com` | 管理者のメールアドレス（＝ログイン ID） |
 | `WIKIJS_ADMIN_PASSWORD` | **無し（乱数生成）** | 指定すると既存 Secret より優先する。英数と `_.@:+=-` のみ |
-| `WIKIJS_SITE_URL` | `https://wiki.localhost:50000` | `settings.host`。**OIDC の callback を組む値**なので経路と一致させる |
+| `WIKIJS_SITE_URL` | `https://wiki.localhost:50000` | `settings.host`。**OIDC の callback を組む値**なので経路と一致させる。🔴 段 2（finalize）は**初回しか通らない**ので、既にセットアップ済みの Wiki.js でこの値を動かせるのは**段 8（`WIKIJS_OIDC=1`）だけ**である |
 | `WIKIJS_CONTENT_LOCALE` | 実装から走査 | 走査できないときの明示指定 |
 | `WIKIJS_API_KEY_NAME` / `WIKIJS_API_KEY_TTL` | `wiki-service-sync` / `1y` | 発行する API キー |
+| `WIKIJS_OIDC` | **無し（オフ）** | `1` で段 8（Keycloak OIDC ストラテジの投入）を有効にする |
+| `WIKIJS_OIDC_CLIENT_SECRET` | Secret `wikijs-oidc` の `client-secret` | 段 8 が使う client secret。**どちらも空なら段 8 は既存設定に触らずに終わる** |
+| `WIKIJS_OIDC_BROWSER_ISSUER` / `WIKIJS_OIDC_SERVER_ISSUER` | `https://keycloak.localhost/realms/platform` / `http://keycloak:8080/realms/platform` | **揃えない**（ブラウザが開く 3 つ / pod が叩く 2 つ）。理由は [`../wiki-oidc/README.md`](../wiki-oidc/README.md) |
+| `WIKIJS_OIDC_CLIENT_ID` / `WIKIJS_OIDC_DISPLAY_NAME` / `WIKIJS_OIDC_AUTOENROLL_GROUP` | `wiki-js` / `Keycloak` / `Guests` | realm の client、ボタン文言、未マッピング利用者が落ちる最小権限の床 |
 
 管理者パスワードの取り出し（**値をリポジトリへ書かない**）:
 
@@ -91,5 +96,11 @@ kubectl -n microservices-platform get secret wikijs-admin -o jsonpath='{.data.pa
 - **「管理者ログインに失敗した」と出る** → Secret `wikijs-admin` のパスワードと Wiki.js の DB が
   食い違っている（人が管理 UI でセットアップを済ませた等）。DB 側の値が正なので、
   `WIKIJS_ADMIN_PASSWORD=<実際の値>` を渡して再実行するか、Wiki.js の DB を作り直して本 script を走らせる。
-- **Keycloak SSO（OIDC ストラテジ）は本 script の射程外**である。`settings.host`（Site URL）だけが
-  接点で、ストラテジ自体の投入手順は [`../wiki-oidc/README.md`](../wiki-oidc/README.md) に在る。
+- **Keycloak SSO（OIDC ストラテジ）は段 8 が入れる**（#1127・IADR-0333。以前は射程外で、
+  手作業の SQL が正本だった）。**既定オフ**なので、要るときは `WIKIJS_OIDC=1` を付ける:
+
+  ```sh
+  WIKIJS_OIDC=1 bash deploy/local/wikijs-setup/bootstrap.sh
+  ```
+
+  設定の中身と、自動化が効かないときの手当ては [`../wiki-oidc/README.md`](../wiki-oidc/README.md) に在る。
