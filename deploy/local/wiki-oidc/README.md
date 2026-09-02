@@ -9,6 +9,19 @@ realm には `wiki-js` client が既存（[IADR-0020](../../../.ai-context/adr/I
 **Wiki.js の OIDC 設定は DB/管理UI 保持**（"Generic OpenID Connect" ストラテジ）で manifest 自動化できないため、下記の
 **管理UI 手順**（realm import と同型の runtime 設定）で入れる。ローカルログインは既定無効の OIDC 単一経路（IADR-0020）。
 
+## 前提: Wiki.js のセットアップが済んでいること（#1108）
+
+🔴 **本ページの手順は、Wiki.js の初期セットアップが完了していることが前提である。**
+未完了だと Wiki.js は setup モードのままで、管理 UI（`/a`）も `/graphql` も存在しない
+（`server/setup.js` の catch-all が `/healthz` を含む全 URL に 200 を返すので、
+**Pod は `2/2 Running` に見える**）。
+
+セットアップと Site URL（`settings.host`）の設定は
+[`../wikijs-setup/`](../wikijs-setup/README.md)（`scripts/k8s-local-up.sh` が既定で呼ぶ）が入れる。
+下の DB seed 手順のうち **`settings.host` の更新は wikijs-setup が担う**ので、
+経路を変えたいときは `WIKIJS_SITE_URL` を渡して bootstrap を再実行すればよい。
+**OIDC ストラテジ（`authentication` 行）の投入は依然として本ページの手順である**（#397 は未実装のまま close）。
+
 ## 到達（集約後 URL・#357/edge）
 
 ```sh
@@ -27,11 +40,21 @@ Wiki.js 管理コンソール（`/a`）→ **Authentication** → **+ Add Strate
 | --- | --- |
 | Client ID | `wiki-js` |
 | Client Secret | realm の `wiki-js` client secret（dev プレースホルダ `wiki-js-dev-secret-change-me`・**本番は変更**・**UI 入力＝リポジトリに平文コミットしない**） |
-| Authorization Endpoint URL | `http://keycloak:8080/realms/platform/protocol/openid-connect/auth` |
-| Token Endpoint URL | `http://keycloak:8080/realms/platform/protocol/openid-connect/token` |
-| User Info Endpoint URL | `http://keycloak:8080/realms/platform/protocol/openid-connect/userinfo` |
-| Issuer | `http://keycloak:8080/realms/platform` |
-| Logout URL（任意） | `http://keycloak:8080/realms/platform/protocol/openid-connect/logout` |
+| Authorization Endpoint URL | **`https://keycloak.localhost/realms/platform/protocol/openid-connect/auth`**（ブラウザが開く） |
+| Token Endpoint URL | `http://keycloak:8080/realms/platform/protocol/openid-connect/token`（Wiki.js pod が叩く） |
+| User Info Endpoint URL | `http://keycloak:8080/realms/platform/protocol/openid-connect/userinfo`（同上） |
+| Issuer | **`https://keycloak.localhost/realms/platform`**（token の `iss` と一致させる） |
+| Logout URL（任意） | **`https://keycloak.localhost/realms/platform/protocol/openid-connect/logout`**（ブラウザが開く） |
+
+> 🔴 **［2026-08-31 / #780・IADR-0243］issuer を https のエッジ host へ移した。**
+> 従前は 5 つとも in-cluster 名 `http://keycloak:8080/...` だったが、**ブラウザはそれを解決できない。**
+>
+> **5 つを揃えないのは役割が違うからである**（Grafana と同じ分離。IADR-0086 の一般化）:
+> **ブラウザが開く 3 つ（Authorization / Issuer / Logout）はエッジ host**、
+> **Wiki.js pod がサーバ側で叩く 2 つ（Token / UserInfo）は in-cluster** にする。
+> `Issuer` は id_token の `iss` と突き合わせるのでエッジ側でなければならない。
+> in-cluster を残すのは、**ローカル CA（`local-edge-ca`）を Wiki.js コンテナへ配らずに済ませる**ためである
+> （揃えたい場合は `NODE_EXTRA_CA_CERTS` で `edge-tls` の `ca.crt` を渡す）。
 
 - **Site URL（重要・Administration → General）**: **利用する経路の到達 URL と一致させる**。値は下の
   **次節「Site URL は経路と一致させる」**を参照（edge=`https://wiki.localhost:50000` /
@@ -39,8 +62,9 @@ Wiki.js 管理コンソール（`/a`）→ **Authentication** → **+ Add Strate
 - **claim / group マッピング（fail-safe）**: strategy の **Map Groups** を有効化し、`groups`（realm の abac-attributes /
   roles スコープ由来）を Wiki.js グループへ対応づける。**未マッピングのユーザーは最小権限グループ（Guests 相当）に割当**
   （deny-by-default 寄り。管理権限は `platform-admin` 等のグループにのみ付与）。
-- **issuer 整合（#284 手順A）**: Wiki.js server（microservices-platform ns）は ExternalName alias `keycloak` で in-cluster の
-  endpoint に到達する。browser も `keycloak:8080` を解決できるよう hosts 追記＋`port-forward svc/keycloak 8080:8080`。
+- **issuer 整合（#780・IADR-0243）**: Wiki.js server（microservices-platform ns）も browser も
+  `https://keycloak.localhost` を使う。pod からの解決は `coredns-custom`（IADR-0227）が担う。
+  **hosts 追記も port-forward も不要。**
 
 ### Site URL は経路と一致させる（#385）
 
@@ -75,18 +99,20 @@ T=$(curl -s $KCADM/realms/master/protocol/openid-connect/token -d grant_type=pas
   -d password="$(kubectl -n platform-infra get secret keycloak-admin -o jsonpath='{.data.password}' | base64 -d)" | jq -r .access_token)
 WSEC=$(curl -s -H "Authorization: Bearer $T" "$KCADM/admin/realms/$R/clients?clientId=wiki-js" | jq -r '.[0].secret')
 
-KC=http://keycloak:8080/realms/platform
+# IADR-0243 / #780: ブラウザが開く URL はエッジ host、Wiki.js pod が叩く URL は in-cluster（上表の注記）
+KC_BROWSER=https://keycloak.localhost/realms/platform
+KC_SERVER=http://keycloak:8080/realms/platform
 # Site URL は経路と一致させる（#385）。既定＝edge 集約。port-forward 単独なら SITE_URL=http://localhost:3300
 SITE_URL="${SITE_URL:-https://wiki.localhost:50000}"
-CFG=$(jq -cn --arg s "$WSEC" --arg kc "$KC" '{
+CFG=$(jq -cn --arg s "$WSEC" --arg b "$KC_BROWSER" --arg i "$KC_SERVER" '{
   clientId:"wiki-js", clientSecret:$s,
-  authorizationURL:($kc+"/protocol/openid-connect/auth"),
-  tokenURL:($kc+"/protocol/openid-connect/token"),
-  userInfoURL:($kc+"/protocol/openid-connect/userinfo"),
-  skipUserProfile:false, issuer:$kc,
+  authorizationURL:($b+"/protocol/openid-connect/auth"),
+  tokenURL:($i+"/protocol/openid-connect/token"),
+  userInfoURL:($i+"/protocol/openid-connect/userinfo"),
+  skipUserProfile:false, issuer:$b,
   emailClaim:"email", displayNameClaim:"preferred_username", pictureClaim:"picture",
   mapGroups:true, groupsClaim:"groups",
-  logoutURL:($kc+"/protocol/openid-connect/logout"), acrValues:""}')
+  logoutURL:($b+"/protocol/openid-connect/logout"), acrValues:""}')
 
 cat > /tmp/wiki_oidc.sql <<SQL
 BEGIN;

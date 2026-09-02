@@ -1,5 +1,5 @@
 ---
-title: IADR-0327 撤去済み planning submodule の残存記述は「凍結記録を残し、それを引く live 側を直す」で是正する
+title: IADR-0331 撤去済み planning submodule の残存記述は「凍結記録を残し、それを引く live 側を直す」で是正する
 type: impl-adr
 status: Accepted
 related_ids:
@@ -16,7 +16,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0048_impl-docs-restructure.md
 ---
 
-# IADR-0327: 撤去済み planning submodule の残存記述の是正方針
+# IADR-0331: 撤去済み planning submodule の残存記述の是正方針
 
 - 状態: Accepted
 - 日付: 2026-08-31

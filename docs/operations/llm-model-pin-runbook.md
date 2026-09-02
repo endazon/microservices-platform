@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-11]
 adrs: [ADR-0038, ADR-0048, AST:ADR-0011]
-iadrs: [IADR-0058, IADR-0102, IADR-0112, IADR-0141, IADR-0225, IADR-0228, IADR-0327]
+iadrs: [IADR-0058, IADR-0102, IADR-0112, IADR-0141, IADR-0225, IADR-0228, IADR-0331]
 specs: [20260811_issue-587_pin-migration-runbook, 20260831_issue-1092_planning-submodule-residual-refs]
 issues: [#382, #440, #587, #1092, AST#296, planning#50, planning#426]
 -->

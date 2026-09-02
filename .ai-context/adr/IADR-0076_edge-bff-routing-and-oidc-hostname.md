@@ -11,9 +11,13 @@ related_ids:
   - IADR-0070
   - IADR-0071
   - IADR-0072
+  - IADR-0086
+  - IADR-0227
+  - IADR-0243
+  - IADR-0317
 author: claude
 created: 2026-07-19
-updated: 2026-07-19
+updated: 2026-08-31
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
@@ -82,6 +86,28 @@ in-repo 登録した（deploy 既定 disabled・`/bff/*` pass-through 済み）�
   fail-safe 既定を崩さない。有効化は経路B の overlay と CD の `--set` に限定する。
 
 ### 決定3: ブラウザ OIDC issuer は「issuer URL を browser/cluster で一致させる」原則で解く（手順A 主・手順B 機構）
+
+> **［2026-08-31 追記 / #780］本決定 3 の「手順A 主／手順B 任意」という主従は
+> [IADR-0243](./IADR-0243_keycloak-edge-issuer-migration.md) が Supersede した。**
+> **経路B の既定は手順B（同一エッジ host 集約）である。** issuer は
+> `https://keycloak.localhost/realms/platform` であり、単一情報源は
+> `deploy/local/infra/keycloak.yaml` の `KC_HOSTNAME_URL` である。
+>
+> 🔴 **#780 の受け入れ基準は「IADR-0076 を改定するか、手順 B の既定化を決める新 IADR を起こすか、
+> どちらかを明示的に選ぶ」ことを求めていた。選んだのは後者である**
+> —— 新 IADR（[IADR-0243](./IADR-0243_keycloak-edge-issuer-migration.md)、2026-08-22 Accepted）が
+> 既に既定化を決めており、**本追記はその決定を旧側から辿れるようにするためのものである**
+> （本 IADR の決定文そのものは書き換えない）。
+>
+> **覆ったのは主従だけで、原則（`iss` と検証側が同一 URL であること）は 1 文字も動いていない。**
+> 手順A が前提にしていた「(iii) in-cluster から同 host を解決させる」は
+> [IADR-0227](./IADR-0227_edge-host-pod-side-resolution.md)（`coredns-custom`）が、
+> .NET 側の追随は [IADR-0086](./IADR-0086_oidc-issuer-metadata-split.md) の
+> metadata / issuer 分離が担う。**手順A は経緯として残すが、いま実行すると `iss` が合わない。**
+>
+> **決定 1（エッジ `/bff/*` のルーティング）と決定 2（経路B の 3 サービス有効化）は動いていない。**
+> なお決定 1 が言う「経路B は Istio 未導入なので `edge.enabled: false`」は、`ISTIO=1` の経路に限り
+> [IADR-0317](./IADR-0317_istio-ingressgateway-edge-and-strict-mtls.md) が別実装（`deploy/local/edge-istio/`）を与えた。
 
 原則: token の `iss` と検証側 `Auth__Authority` が同一 URL であること。これを 2 手順で満たす。
 

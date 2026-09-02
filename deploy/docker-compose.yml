@@ -392,15 +392,23 @@ services:
     environment:
       <<: [*common-env, *db-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=authz_svc;Username=kp;Password=kp
-      # SC-17, IADR-0298 決定 3 (#452): 利用者アカウント管理の反映先。**既定は無く、宣言が必須**
-      # （未設定なら起動時に落ちる）。
-      # 🔴 **暫定である。** 実 IdP へ反映するには `realm-management` の view-users / manage-users /
-      #    view-realm を持つ機密クライアントが realm に要るが、まだ登録されていない。
-      #    配備されたら `keycloak` へ切り替え、IdentityAdmin__Keycloak__{BaseUrl,Realm,ClientId,
-      #    ClientSecret} を注入する（既定値は持たない。未注入なら起動時に落ちる）。
-      #    それまでの間、SC-17 の変更は **authorization-service のプロセス内にしか残らない**
-      #    （起動時に警告ログが 1 行出る）。解消は #452 の残件として記録してある。
-      IdentityAdmin__Provider: in-memory
+      # SC-17, IADR-0301 決定 3 (#452) / IADR-0329 (#1101): 利用者アカウント管理の反映先。
+      # **既定は無く、宣言が必須**（未設定なら起動時に落ちる）。
+      # （旧コメントは決定記録の番号を `IADR-0298` と誤記していた。正は `IADR-0301` である。）
+      #
+      # 🔴 **[#1101] 暫定は解消した。実 IdP（Keycloak Admin REST）へ反映する。**
+      #    realm へ機密クライアント `identity-admin`（`realm-management` の view-users /
+      #    manage-users / view-realm のみ）を登録したので、ここを `keycloak` へ移した。
+      #    `in-memory` は **Development 以外では起動失敗**になる（IdentityAdminRegistration）ため、
+      #    戻すとコンテナが起動しない —— 「反映したつもりで消える」静かな縮退へは落ちない。
+      #
+      # dev の client secret は realm import の置き場と同値（ズレると client_credentials が 401）。
+      # 本番は Secret / Vault から注入し、この既定値は使わない。
+      IdentityAdmin__Provider: keycloak
+      IdentityAdmin__Keycloak__BaseUrl: http://keycloak:8080
+      IdentityAdmin__Keycloak__Realm: platform
+      IdentityAdmin__Keycloak__ClientId: identity-admin
+      IdentityAdmin__Keycloak__ClientSecret: ${IDENTITY_ADMIN_CLIENT_SECRET:-identity-admin-dev-secret-change-me}
     depends_on:
       postgres:
         condition: service_healthy

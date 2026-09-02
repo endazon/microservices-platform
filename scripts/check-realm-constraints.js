@@ -69,9 +69,20 @@ const THEME_FIELDS = { loginTheme: 'login', accountTheme: 'account' };
 // Keycloak の該当カラムはいずれも varchar(255)。閾値は 1 箇所に集約する。
 const MAX_LEN = 255;
 
-// 経路ごとに必須の redirect URI / web origin（Issue #385 再発防止）。落とすとその経路の OIDC が
-// invalid_redirect_uri で完了しなくなるため、宣言的に列挙して CI で欠落を検出する。
-// 経路の対応は IADR-0095 の追記（2026-07-26・#385）の表を単一情報源とする。
+// 経路ごとに必須の redirect URI / web origin / post-logout URI（Issue #385・#780 再発防止）。
+// 落とすとその経路の OIDC が invalid_redirect_uri で完了しなくなるため、宣言的に列挙して
+// CI で欠落を検出する。経路の対応は IADR-0095 の追記（2026-07-26・#385）の表を単一情報源とする。
+//
+// 🔴 #780: **宣言は `wiki-js` 1 件だけだった。** ブラウザ OIDC を持つ 7 クライアントのうち
+//    6 つが無検査であり、「片方の経路だけ足して片方を忘れる」事故を止める仕掛けが
+//    その事故を最も起こしやすい 6 件を見ていなかった。本表を 7 クライアント＋`bff` へ広げる。
+//
+// 🔴 **`attributes.post.logout.redirect.uris` は `##` 区切りの 1 本の文字列である。**
+//    redirect / origin と別フィールドなので、片方だけ足す事故がここでも起きる（#780 本文が
+//    「3 フィールドすべてに追記が要る」と名指ししていた箇所）。`attributes.` 接頭辞つきで宣言し、
+//    検査側が `##` で割って突合する。
+//
+// 対象外: `abac-seeder` / `ai-stock-trading-kb-writer`（service account 専用。redirect を持たない）。
 const REQUIRED_CLIENT_URLS = {
   'wiki-js': {
     redirectUris: [
@@ -85,6 +96,67 @@ const REQUIRED_CLIENT_URLS = {
       'http://localhost:3300',
       'http://localhost:3001',
     ],
+  },
+  // SPA（public client・PKCE）。origin 由来で redirect を組むため、経路の数だけ登録が要る。
+  'platform-spa': {
+    redirectUris: [
+      'https://localhost/*',      // edge（LOCALEDGE=1・443）
+      'http://localhost:3100/*',  // compose(dev) の host 公開
+      'http://localhost:8081/*',  // 非 edge の port-forward
+    ],
+    webOrigins: ['https://localhost', 'http://localhost:3100', 'http://localhost:8081'],
+    'attributes.post.logout.redirect.uris': [
+      'https://localhost/*', 'http://localhost:3100/*', 'http://localhost:8081/*',
+    ],
+  },
+  // BFF セッション方式（ADR-0032・Token Handler）の confidential client。**ブラウザは
+  // BFF の callback へ戻る**ので、SPA とは別の URL 集合を持つ（#439 3a）。
+  bff: {
+    redirectUris: [
+      'https://localhost/bff/auth/callback',      // edge
+      'http://localhost:3100/bff/auth/callback',  // compose(dev)
+      'http://localhost:5000/bff/auth/callback',  // 非 edge の port-forward
+    ],
+    webOrigins: ['https://localhost', 'http://localhost:3100', 'http://localhost:5000'],
+    'attributes.post.logout.redirect.uris': [
+      'https://localhost/*', 'http://localhost:3100/*', 'http://localhost:5000/*',
+    ],
+  },
+  headlamp: {
+    redirectUris: ['https://headlamp.localhost:50000/*', 'http://localhost:4466/*'],
+    webOrigins: ['https://headlamp.localhost:50000', 'http://localhost:4466'],
+  },
+  // Grafana は root_url から redirect を一意生成する（IADR-0090）。パスは固定。
+  grafana: {
+    redirectUris: [
+      'https://grafana.localhost:50000/login/generic_oauth',
+      'http://localhost:3000/login/generic_oauth',
+    ],
+    webOrigins: ['https://grafana.localhost:50000', 'http://localhost:3000'],
+  },
+  argocd: {
+    redirectUris: [
+      'https://argocd.localhost:50000/auth/callback',
+      'http://localhost:8083/auth/callback',
+    ],
+    webOrigins: ['https://argocd.localhost:50000', 'http://localhost:8083'],
+  },
+  minio: {
+    redirectUris: [
+      'https://minio.localhost:50000/oauth_callback',
+      'http://localhost:9001/oauth_callback',
+    ],
+    webOrigins: ['https://minio.localhost:50000', 'http://localhost:9001'],
+  },
+  // Vault UI の callback パスは `/ui/vault/auth/<mount>/oidc/callback` 固定。
+  // `http://localhost:8250/oidc/callback` は **CLI（vault login -method=oidc）のローカル待受**で
+  // あり、エッジを経由しない（IADR-0220 の注記）。両方が要る。
+  vault: {
+    redirectUris: [
+      'https://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback',
+      'http://localhost:8250/oidc/callback',
+    ],
+    webOrigins: ['https://vault.localhost:50000'],
   },
 };
 
@@ -275,7 +347,13 @@ function collectMissingUrls(realm, required = REQUIRED_CLIENT_URLS) {
     const client = clients.find((c) => c && c.clientId === clientId);
     if (!client) continue;
     for (const field of Object.keys(required[clientId])) {
-      const present = new Set(((client[field] || []).filter((u) => u != null)).map(String));
+      // `attributes.<key>` は **`##` 区切りの 1 本の文字列**（Keycloak の post-logout の持ち方）。
+      // 配列フィールドと同じ形へ正規化してから突合する。空要素は落とす（末尾 `##` に耐える）。
+      const values = field.startsWith('attributes.')
+        ? String((client.attributes || {})[field.slice('attributes.'.length)] ?? '')
+          .split('##').filter((u) => u !== '')
+        : (client[field] || []).filter((u) => u != null);
+      const present = new Set(values.map(String));
       for (const url of required[clientId][field]) {
         if (!present.has(url)) out.push({ path: `clients[${clientId}].${field}`, url });
       }
@@ -619,6 +697,40 @@ function selfTest() {
         webOrigins: REQUIRED_CLIENT_URLS['wiki-js'].webOrigins,
       }],
     })).length === 0,
+  });
+
+  // --- #780: post-logout（`##` 連結）と、7 クライアントへ広げた宣言の検査 ---
+  const reqPl = { 'platform-spa': { 'attributes.post.logout.redirect.uris': ['https://localhost/*', 'http://localhost:3100/*'] } };
+  cases.push({
+    name: 'post-logout（## 連結）が揃っていれば欠落なし',
+    pass: collectMissingUrls({
+      clients: [{ clientId: 'platform-spa', attributes: { 'post.logout.redirect.uris': 'http://localhost:3100/*##https://localhost/*##https://localhost' } }],
+    }, reqPl).length === 0,
+  });
+  cases.push({
+    name: '変異: post-logout から https 版を落とすと検出する（片方だけ足す事故・#780）',
+    pass: (() => {
+      const m = collectMissingUrls({
+        clients: [{ clientId: 'platform-spa', attributes: { 'post.logout.redirect.uris': 'http://localhost:3100/*' } }],
+      }, reqPl);
+      return m.length === 1 && m[0].url === 'https://localhost/*'
+        && m[0].path === 'clients[platform-spa].attributes.post.logout.redirect.uris';
+    })(),
+  });
+  cases.push({
+    name: 'post-logout 属性が無ければ全件欠落として検出する',
+    pass: collectMissingUrls({ clients: [{ clientId: 'platform-spa' }] }, reqPl).length === 2,
+  });
+  cases.push({
+    name: '#780: ブラウザ OIDC を持つ 7 クライアント＋bff がすべて宣言されている',
+    pass: ['wiki-js', 'platform-spa', 'bff', 'headlamp', 'grafana', 'argocd', 'minio', 'vault']
+      .every((c) => Object.prototype.hasOwnProperty.call(REQUIRED_CLIENT_URLS, c)),
+  });
+  cases.push({
+    name: '#780: 宣言された URL のうち edge 経路（*.localhost / localhost 443）は必ず https である',
+    pass: Object.values(REQUIRED_CLIENT_URLS).every((spec) => Object.entries(spec).every(([, urls]) => urls.every(
+      (u) => !/^http:\/\/(?:[a-z-]+\.)?localhost(?::50000)?\//.test(u),
+    ))),
   });
 
   // --- ADR-0026 の確定要件からの逸脱検査（Issue #578 / IADR-0197）---

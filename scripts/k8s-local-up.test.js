@@ -782,6 +782,67 @@ ok('SEARCHSEED=1: 投入が失敗しても up 全体は止めない（best-effor
   assert.ok(/\|\|\s*echo\s+"?\s*WARN/.test(block), 'SEARCHSEED の投入失敗が best-effort になっていない');
 });
 
+// FR-13, IADR-0327 (#1108): Wiki.js の初期セットアップ。**opt-in ではない。**
+// 稼働 dev クラスタで、Wiki.js が setup モードのまま `2/2 Running` で 8 日間放置され、
+// `DocumentUpdated` / `DocumentDeleted` が全件エラーキューへ落ちていた。既定の経路が
+// この状態を残すことが #1108 そのものなので、**既定で走ること自体が回帰対象**である。
+ok('#1108: 既定（env を 1 つも与えない）でも Wiki.js の初期化が走る（opt-in にしない）', () => {
+  assert.ok(
+    anyLineHas(DEFAULT.lines, 'get deploy wiki-js'),
+    'bootstrap が呼ばれていない（wiki-js の存在確認が出ていない）',
+  );
+  assert.ok(
+    anyLineHas(DEFAULT.lines, 'exec -i deploy/wiki-js -c wiki-js'),
+    'wiki-js コンテナ内 loopback への問い合わせが出ていない',
+  );
+});
+
+ok('#1108: 初期化は wiki-js コンテナ内の loopback へ出す（エッジにも port-forward にも依存しない）', () => {
+  const line = DEFAULT.lines.find((l) => l.includes('exec -i deploy/wiki-js -c wiki-js'));
+  assert.ok(line, 'wiki-js への exec が無い');
+  assert.ok(line.includes('http://127.0.0.1:3000'), `loopback を叩いていない: ${line}`);
+  // 🔴 STRICT mTLS（#1109）だとメッシュ外からの平文は Envoy に落とされる。port-forward も使わない。
+  assert.ok(!anyLineHas(DEFAULT.lines, 'port-forward svc/wiki-js'), 'port-forward に依存している');
+});
+
+ok('#1108: 初期化が失敗しても up 全体は止めない（best-effort。門は check-stack-ready 側）', () => {
+  const src = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-up.sh'), 'utf8');
+  const at = src.indexOf('bash "$ROOT/deploy/local/wikijs-setup/bootstrap.sh"');
+  assert.ok(at > 0, 'bootstrap の呼び出しが k8s-local-up.sh に無い');
+  assert.ok(/\|\|\s*echo\s+"?\s*WARN/.test(src.slice(at, at + 400)),
+    'Wiki.js 初期化の失敗が best-effort になっていない');
+});
+
+ok('#1108: 発行済みの apiKey を空で潰さない（up の再実行が同期を壊さない）', () => {
+  // コメント行は判定から外す —— **注意書きの中の悪い例を検出して落ちる**（実際に落ちた）。
+  const src = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-up.sh'), 'utf8')
+    .split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  // 🔴 既存値を見ずに空既定で上書きすると、up を再実行するたびに apiKey が空へ戻り、
+  //   次に wiki-service の Pod が作り直された瞬間に #1108 が再発する（時間差で表面化する）。
+  assert.ok(
+    !/apiKey=\$\{WIKIJS_SYNC_APIKEY:-\}/.test(src),
+    '既存の apiKey を無条件に空で上書きしている（#1108 が再発する）',
+  );
+  assert.ok(
+    /apiKey=\$\{WIKIJS_SYNC_APIKEY:-\$\{wikijs_apikey_existing\}\}/.test(src),
+    '既存値へのフォールバックが無い',
+  );
+  assert.ok(anyLineHas(DEFAULT.lines, 'get secret wikijs-sync'), '既存 apiKey を読んでいない');
+});
+
+ok('#1108: bootstrap は既定パスワードをコミットしない（乱数生成へ倒す）', () => {
+  const sh = fs.readFileSync(
+    path.join(REPO_ROOT, 'deploy', 'local', 'wikijs-setup', 'bootstrap.sh'), 'utf8');
+  // 他の dev 既定（`*-dev-secret-change-me`）と**同じ形を置かない**。ここはエッジに露出する
+  // 実ログイン口であり、既定値を置くと「変えなければ誰でも入れる管理者」がリポジトリに載る。
+  assert.ok(!/change-me/.test(sh), 'bootstrap.sh に dev 既定パスワードが書かれている');
+  assert.ok(/randomBytes/.test(sh), '乱数生成の経路が無い');
+  // 秘密を標準出力へ出さない（長さだけ出す）。
+  assert.ok(!/log\s+"[^"]*\$\{?new_key/.test(sh), 'API キーを log に出している');
+  assert.ok(!/log\s+"[^"]*\$\{?admin_password/.test(sh), '管理者パスワードを log に出している');
+  assert.ok(!/log\s+"[^"]*\$\{?jwt/.test(sh), 'JWT を log に出している');
+});
+
 ok('ABACSEED=1: 投入が失敗しても up 全体は止めない（best-effort）', () => {
   // node スタブを非0 に差し替える代わりに、存在しないシードディレクトリを指して実失敗させる…のではなく、
   // ここでは「|| で握る」構造そのものを固定する（スタブは常に exit 0 のため、構造を静的に確認する）。
@@ -958,6 +1019,43 @@ ok('既定 (#1022): rabbitmq-app を手動 apply する（ESO 未設定）', () 
   assert.ok(
     anyLineHas(DEFAULT.lines, 'create secret generic rabbitmq-app'),
     'rabbitmq-app の手動 apply が無い（ESO 未設定では唯一の供給元）',
+  );
+});
+
+// FR-05, FR-09, SC-17, IADR-0301/IADR-0329 (#1101): identity-admin-oidc（SC-17 の変更を Keycloak
+// Admin REST へ反映する機密クライアントの secret）も postgres-app / rabbitmq-app と同じ対にする。
+//
+// 🔴 **#1101 は「配備が偽の身元プロバイダのまま動いていた」欠陥である。** 実プロバイダへ移した以上、
+// helm の deployment.yaml はこの Secret を **非 optional** な secretKeyRef で参照する ——
+// 手動 apply を `ESO != 1` ブロックへ入れたなら、**対応する ExternalSecret を必ず置く**。
+// 置き忘れると ESO=1 で供給元が 1 つも無くなり、authorization-service が
+// `CreateContainerConfigError` で起動しない（#1012 / #1022 と同型）。
+//
+// **横断の機械検査は依然として無い**（上の #1012 のコメントが 1 回目の記録）。本件は
+// 「先例に倣って対を置いた」ケースであって、事故の 2 回目ではない。
+ok('ESO=1 (#1101): identity-admin-oidc の ExternalSecret を apply・手動 apply はスキップ', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  assert.ok(
+    anyLineHas(res.lines, 'deploy/local/vault/eso/externalsecret-identity-admin-oidc.yaml'),
+    'externalsecret-identity-admin-oidc.yaml が apply されない（ESO=1 で供給元が無くなる）',
+  );
+  assert.ok(
+    !anyLineHas(res.lines, 'create secret generic identity-admin-oidc'),
+    'ESO=1 なのに identity-admin-oidc を手動 apply している（二重所有）',
+  );
+});
+
+// 回帰: 既定（ESO 未設定）は identity-admin-oidc を手動 apply する。
+// **陽性対照つき**: ExternalSecret を apply しないことも併せて見る（片方だけだと
+// 「常に apply する / 常にしない」実装と区別がつかない）。
+ok('既定 (#1101): identity-admin-oidc を手動 apply する（ESO 未設定）', () => {
+  assert.ok(
+    anyLineHas(DEFAULT.lines, 'create secret generic identity-admin-oidc'),
+    'identity-admin-oidc の手動 apply が無い（ESO 未設定では唯一の供給元）',
+  );
+  assert.ok(
+    !anyLineHas(DEFAULT.lines, 'externalsecret-identity-admin-oidc.yaml'),
+    'ESO 未設定なのに ExternalSecret を apply した',
   );
 });
 

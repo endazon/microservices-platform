@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-05, FR-09, UC-05, SC-09, SC-17, ADR-0004, ADR-0026, ADR-0031, ADR-0032, ADR-0036]
 author: implementation-agent
 created: 2026-08-29
-updated: 2026-08-29
+updated: 2026-08-31
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/07_adr/ADR-0026_authentication-ux-and-account-management.md
@@ -167,3 +167,10 @@ subject 単位でチケットを削除する（ADR-0032 / IADR-0251 / IADR-0273�
   画面は送る前に検証し、失敗した側の理由を出す。原子性が要るなら後段に 1 つの口を足す改定が要る。
 - 追随: 計画側へ 2 件の環流を起票する（SC-17 の帰属の食い違い／`07_abac-attribute-model` の
   「即時失効は満たされていない」が BFF セッション移行後の実態と食い違う）。
+
+［2026-08-31 追記 / #1101］**代償 1 と代償 2 は解消した。後継は IADR-0329 である**
+（本文は当時の記録として残す。付け替えない）。realm へ機密クライアント `identity-admin` を登録して
+配備を `keycloak` へ移し、稼働クラスタで疎通を実測した。**決定 3 の「配備側は当面 `in-memory` を
+宣言する」はもう成り立たない** —— `in-memory` は非配備ホストでしか選べない（IADR-0329 決定 5）。
+なお決定 2 の 3 ロールは実測でも過不足が無かったが、**それだけでは Admin API が 403 になる**
+（トークンにクライアントロールを載せるスコープが要る。IADR-0329 決定 2）。代償 3 は未解消のまま。

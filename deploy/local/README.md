@@ -167,7 +167,8 @@ PERSIST=1 OBSERVABILITY=1 bash scripts/k8s-local-up.sh
 | `KEYCLOAK_ADMIN_PASSWORD` | `platform-infra/keycloak-admin.password` | `admin` | Keycloak 管理 |
 | `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` | `microservices-platform/minio-credentials` | `minioadmin` | MinIO（chart 参照） |
 | `WIKIJS_DB_PASSWORD` | `microservices-platform/wikijs-db.password` | `kp` | Wiki.js DB |
-| `WIKIJS_SYNC_APIKEY` | `microservices-platform/wikijs-sync.apiKey` | 空 | WikiService→Wiki.js 同期 |
+| `WIKIJS_SYNC_APIKEY` | `microservices-platform/wikijs-sync.apiKey` | 空→**bootstrap が発行**（#1108） | WikiService→Wiki.js 同期。**明示指定が無ければ `deploy/local/wikijs-setup/bootstrap.sh` が Wiki.js に発行させて書き戻す**。up の再実行では既存値を保つ（空で潰さない） |
+| `WIKIJS_ADMIN_PASSWORD` | `microservices-platform/wikijs-admin.password` | **無し（乱数生成）** | Wiki.js の管理者（#1108 / [IADR-0327](../../.ai-context/adr/IADR-0327_wikijs-setup-bootstrap.md)）。**dev 既定文字列を置かない** —— エッジに露出する実ログイン口である |
 | `ANTHROPIC_API_KEY` | `microservices-platform/llm-provider-credentials` | 空=呼ばない | MSP LLM Gateway（values-local が `Llm__ApiKey` へ配線） |
 
 > `llm-provider-credentials` は values-local の `services.llmgateway.extraEnv` で LlmGateway の
@@ -277,13 +278,29 @@ kubectl -n microservices-platform port-forward svc/frontend-service 8081:8080
 > 「realm を更新したときの反映手順」を参照）。
 
 frontend pod の nginx が `/bff/*` を in-cluster の `bff-service:8080` へ内部プロキシするため、上の BFF port-forward
-（5080）は SPA 経由では不要（`/bff` を直接叩いて確認したい場合のみ使う）。OIDC は下記 issuer 統一の**手順A**に
-従う（browser も cluster も `http://keycloak:8080` を issuer として共有する。`values-local` は OIDC を上書きせず
-base 既定 `http://keycloak:8080/realms/platform` のまま＝backend の `Auth__Authority` と一致）。
+（5080）は SPA 経由では不要（`/bff` を直接叩いて確認したい場合のみ使う）。OIDC は下記 issuer 統一の**手順B**
+（エッジ host 集約）に従う —— **issuer は `https://keycloak.localhost/realms/platform` である**
+（IADR-0243・#780。`values-local.yaml` が `global.auth.metadataAddress`（in-cluster）と
+`global.auth.validIssuers`（エッジ）を与えて backend を追随させる）。
 
 > 本番像は `edge.enabled=true` で Istio VirtualService の catch-all（`/bff`・`/realms` の後）が SPA を
 > `frontend-service` へ流し、`allow-edge-ingress-to-frontend` NetworkPolicy が default-deny 下の到達を許可する。
 > 実ブラウザでの `/settings` 実表示・OIDC 実ログインは稼働 k3d 依存（本 issue の live 分・#284 手順）。
+
+### Wiki.js の初期セットアップ（#1108）
+
+`scripts/k8s-local-up.sh` は **既定で** [`wikijs-setup/bootstrap.sh`](wikijs-setup/README.md) を呼び、
+Wiki.js の初期セットアップ・同期 API キー・本文 locale を冪等に入れる（opt-in ではない）。
+
+🔴 **これが無いと Wiki.js は「`2/2 Running` なのに使えない」状態で残る。** Wiki.js 2.x は
+セットアップが済むまで `/graphql` を載せず、その間 `server/setup.js` の catch-all が
+**`/healthz` を含む全 URL に 200 を返す**ため、probe は通り Pod は Running のまま、
+**Wiki 同期だけが全件エラーキューへ落ちる（画面には何も出ない）**。
+
+セットアップ状態は共有 Postgres の `wikijs` DB に載る。`PERSIST=1` を付けずに立てたクラスタでは
+`emptyDir` なので、**postgres Pod を作り直すと消える** —— そのときは bootstrap を再実行する（冪等）。
+検知は `node scripts/check-stack-ready.js` の **G7**（fail-closed）。詳細は
+[wikijs-setup/README.md](wikijs-setup/README.md)。
 
 ### Wiki 閲覧の到達（SC-04・Issue #344）
 
@@ -318,10 +335,16 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
 
 ### ブラウザ OIDC の issuer 統一（原則と 2 手順）
 
-**原則**: ブラウザが受け取る token の `iss` と、サービス側の検証基準（`Auth__Authority`）が **同一 URL** で
-なければならない。issuer は in-cluster 正準名 `http://keycloak:8080` に固定している（サービス間 JWT 用）。
+**原則**: ブラウザが受け取る token の `iss` と、サービス側の検証基準が **同一 URL** でなければならない。
 
-- **手順A（推奨・realm/manifest 無改変）**: ブラウザに同じ in-cluster 名を解決させる。
+> 🔴 **［2026-08-31 / #780・IADR-0243］既定は手順B（エッジ host 集約）である。**
+> issuer は **`https://keycloak.localhost/realms/platform`** であり、`deploy/local/infra/keycloak.yaml` の
+> `KC_HOSTNAME_URL` がその単一情報源である。**`http://keycloak:8080` を issuer とする記述（手順A）は
+> 過去の姿であり、いま実行すると `iss` が合わない。** 手順A の記述は経緯として残すが、追随しないこと。
+> pod からエッジ host を引けるようにするのは `coredns-custom`（IADR-0227）で、**hosts 追記も
+> port-forward も要らない**（`scripts/verify-oidc-edge-flow.sh` がその前提なしで完走する）。
+
+- **手順A（過去の姿・2026-08-22 の IADR-0243 で既定から外れた）**: ブラウザに in-cluster 名を解決させる。
   1. hosts に `127.0.0.1 keycloak` を追記（Windows: `C:\Windows\System32\drivers\etc\hosts`）。
   2. `kubectl -n platform-infra port-forward svc/keycloak 8080:8080`。
   3. これで browser も cluster も `http://keycloak:8080` を issuer として共有する。SPA は compose の frontend
@@ -372,11 +395,18 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
 
 Kubernetes 1.30 以降は、レガシーな `--oidc-*` フラグを内部で**構造化認証設定（`jwt[0]`）へ変換**し、
 `issuer.url` に **https スキームを強制**する（`URL scheme must be https`。scheme の例外も insecure 用の逃げ道も無い）。
-一方、経路B の Keycloak は [`deploy/local/infra/keycloak.yaml`](infra/keycloak.yaml) の
-`KC_HOSTNAME_URL=http://keycloak:8080` により、realm が発行する token の `iss` が **http に固定**されている
-（サービス間 JWT 検証と一致させるため）。apiserver が受理できる issuer（https）と realm が発行する issuer（http）は
-**両立し得ない**ため、apiserver 側にフラグを足しても OIDC ログインは成立しない。issuer を https へ移すと
-backend（`Auth__Authority`）・ArgoCD・Grafana・MinIO・Vault・Wiki.js の `iss` 検証すべてに波及する＝**#388 の範囲**。
+かつて経路B の Keycloak は [`deploy/local/infra/keycloak.yaml`](infra/keycloak.yaml) の
+`KC_HOSTNAME_URL=http://keycloak:8080` により、realm が発行する token の `iss` が **http に固定**されていた。
+apiserver が受理できる issuer（https）と realm が発行する issuer（http）が**両立し得なかった**ため、
+apiserver 側にフラグを足しても OIDC ログインは成立しなかった。
+
+> 🔴 **［2026-08-31 / #780］この前提は解消した。** `KC_HOSTNAME_URL` は
+> **`https://keycloak.localhost`** であり、token の `iss` は https である（IADR-0243）。
+> apiserver 側の OIDC 検証と issuer host の名前解決は **#781（IADR-0310）**が `APISERVER_OIDC=1` の
+> opt-in として配線した。Headlamp のブラウザ OIDC ログインが成立することは #780 で実測済みである
+> （`/oidc?cluster=main` → エッジの認可 → `/oidc-callback` → `headlamp-auth-main.0` cookie）。
+> **ただし apiserver 側を有効にしていないクラスタでは、ログインは通ってもクラスタ API が 401 になる**
+> ——「ログインできない」と「クラスタが見えない」は別の話である。下の token 方式は引き続き有効な代替である。
 
 ### 🚫 やってはいけないこと（クラスタが起動不能になる）
 

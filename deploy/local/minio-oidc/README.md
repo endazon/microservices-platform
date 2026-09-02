@@ -50,8 +50,10 @@ LOCALEDGE=1 bash scripts/k8s-local-up.sh
 #   → https://minio.localhost:50000 →「Login with SSO」→ realm ユーザー（例 developer/developer）
 ```
 
-- **issuer 整合（#284 手順A）**: browser も `keycloak:8080` を解決できるよう hosts 追記＋`port-forward svc/keycloak 8080:8080`。
-  MinIO server（MSP ns）は ExternalName alias `keycloak` で in-cluster の well-known を取得する。
+- **issuer 整合（#780・IADR-0243）**: MinIO server（MSP ns）は `configUrl`＝`http://keycloak:8080/...`（in-cluster）で
+  well-known を取得するが、**そこに載っている `authorization_endpoint` は `https://keycloak.localhost/...`（エッジ host）**
+  なので、ブラウザは正しくエッジへ飛ぶ（実測）。**したがって `configUrl` は in-cluster のままでよく、
+  hosts 追記も port-forward も不要である**（動いているものを触らない）。
 - ⚠️ **port-forward 単独（`LOCALEDGE` 未使用）では OIDC は完了しない**: `MINIO_BROWSER_REDIRECT_URL` を集約 URL に
   固定しているため redirect が `minio.localhost:50000` を指す（edge 未起動だと到達不能）→ **fail-safe の root で入る**。
   realm には `http://localhost:9001/oauth_callback` も登録済みで、`MINIO_BROWSER_REDIRECT_URL` を外せば port-forward で

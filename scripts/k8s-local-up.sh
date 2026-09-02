@@ -159,6 +159,17 @@ fi
 if [ "${ESO:-}" != "1" ]; then
   apply_secret "$MSP_NS" bff-oidc "client-secret=${BFF_OIDC_CLIENT_SECRET:-bff-dev-secret-change-me}"
 fi
+# FR-05, FR-09, SC-17, ADR-0004/ADR-0026, IADR-0301/IADR-0329 (#1101): SC-17（利用者アカウント管理）の
+# 変更を Keycloak Admin REST へ反映する機密クライアント `identity-admin` の client secret。
+# helm の deployment.yaml が **非 optional** な secretKeyRef で参照するため、これが無いと
+# authorization-service Pod は起動できない —— 注入漏れが「偽の身元プロバイダで起動し、SC-17 の
+# 変更がプロセス内にしか残らない」という静かな縮退へ倒れないようにするためである（#1101）。
+# dev 既定は realm import の置き場と同値。ズレると client_credentials が 401 になり SC-17 が落ちる。
+# ESO=1 のときは Vault→ExternalSecret 供給へ委譲する（二重所有回避）。
+if [ "${ESO:-}" != "1" ]; then
+  apply_secret "$MSP_NS" identity-admin-oidc \
+    "client-secret=${IDENTITY_ADMIN_CLIENT_SECRET:-identity-admin-dev-secret-change-me}"
+fi
 # IADR-0097 (#310) PR-2: minio-credentials/wikijs-db/wikijs-sync は ESO=1 のとき Vault→ExternalSecret 供給へ委譲し
 # 手動 apply をスキップする（二重所有回避）。既定（ESO 未設定）は従来どおり手動 apply（バイト等価）。
 if [ "${ESO:-}" != "1" ]; then
@@ -174,7 +185,15 @@ if [ "${ESO:-}" != "1" ]; then
   # dev 既定は step 3 のブローカ側と同値（env RABBITMQ_PASSWORD で両方を上書きする）。
   apply_secret "$MSP_NS" rabbitmq-app "password=${RABBITMQ_PASSWORD:-guest}"
   apply_secret "$MSP_NS" wikijs-db "password=${WIKIJS_DB_PASSWORD:-kp}"
-  apply_secret "$MSP_NS" wikijs-sync "apiKey=${WIKIJS_SYNC_APIKEY:-}"
+  # FR-13, IADR-0327 (#1108): 🔴 **発行済みの API キーを空で潰さない。**
+  # Wiki.js のセットアップ後、`deploy/local/wikijs-setup/bootstrap.sh` がここへ実キーを書き戻す。
+  # 素直に `apiKey=${WIKIJS_SYNC_APIKEY:-}` で apply すると、**up を再実行するたびに空へ戻り**、
+  # 次に wiki-service の Pod が作り直された瞬間に同期が全件エラーキューへ落ちる（#1108 の再来）。
+  # しかも Pod が作り直されるまで表面化しないので、原因と結果が時間的に離れる。
+  # 明示指定（env）＞ 既存値 ＞ 空 の順で選ぶ（既定は従来どおり空＝fail-safe）。
+  wikijs_apikey_existing="$(kubectl -n "$MSP_NS" get secret wikijs-sync \
+    -o jsonpath='{.data.apiKey}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  apply_secret "$MSP_NS" wikijs-sync "apiKey=${WIKIJS_SYNC_APIKEY:-${wikijs_apikey_existing}}"
 fi
 # fail-safe: 空=外部 LLM を呼ばない（ADR-0010 ルーティングは明示設定時のみ有効）。
 # IADR-0096 (#310): ESO=1 のときは llm-provider-credentials を Vault→ExternalSecret 供給に委譲し、手動 apply は
@@ -348,6 +367,10 @@ if [ "${ESO:-}" = "1" ]; then
   # #1107: BFF セッションの client secret。手動 apply は上の `ESO != 1` ブロックでスキップされるので、
   # **これが唯一の供給元**である（欠けると bff-service Pod が起動しない）。常時供給。
   kubectl apply -f deploy/local/vault/eso/externalsecret-bff-oidc.yaml
+  # #1101: SC-17 の Keycloak Admin REST 反映に使う client secret。手動 apply は上の `ESO != 1`
+  # ブロックでスキップされるので、**これが唯一の供給元**である（欠けると authorization-service Pod が
+  # 起動しない）。常時供給。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-identity-admin-oidc.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-vault-oidc.yaml
   if [ "${OBSERVABILITY:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-grafana-oidc.yaml
@@ -362,14 +385,14 @@ if [ "${ESO:-}" = "1" ]; then
   kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-admin.yaml
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 8 本（#1022 で rabbitmq-app、#1107 で bff-oidc を追加し 6 → 7 → 8 へ数え直した）。infra ns は基盤 3 本＋vault-oidc 常時＋有効ゲートの grafana/headlamp-oidc。
+  # 誤解させない）。MSP ns は常時 9 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc を追加し 6 → 7 → 8 → 9 へ数え直した）。infra ns は基盤 3 本＋vault-oidc 常時＋有効ゲートの grafana/headlamp-oidc。
   infra_es="postgres rabbitmq keycloak-admin vault-oidc"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
   echo "    ESO: llm/minio-credentials/postgres-app/rabbitmq-app/wikijs-db/wikijs-sync/minio-oidc（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
   echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc および有効ゲートの grafana/headlamp-oidc を"
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
-  echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc"
+  echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc"
   echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret $infra_es"
 
   # IADR-0103 (#354): env の `secretKeyRef` は **Pod 起動時に一度だけ解決され、その後の Secret 更新は
@@ -426,8 +449,10 @@ if [ "${ARGOCD:-}" = "1" ]; then
   kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
   # IADR-0103 (#354): argocd namespace に keycloak の ExternalName エイリアスを張る。無いと DNS がノードの
   # リゾルバへフォールスルーし、手順A の hosts エントリ `127.0.0.1 keycloak` を拾って argocd-server が
-  # **自分自身の :8080** へ discovery を投げ 404 になる（OIDC ログイン不能）。issuer は in-cluster 正準名の
-  # ままにしたいので、エイリアスで名前解決だけを正す（issuer/metadata の分離は不要）。
+  # **自分自身の :8080** へ discovery を投げ 404 になる（OIDC ログイン不能）。
+  # ※ #780 で issuer が `https://keycloak.localhost` へ移ったため OIDC はこのエイリアスを使わなくなった。
+  #   それでも残すのは、**エイリアスが無い状態でノードの hosts へフォールスルーする経路自体は生きている**
+  #   ためである（argocd ns の他の何かが `keycloak` を引いたときに同じ罠を踏む）。撤去は別途測ってから。
   kubectl apply -f deploy/local/aliases/argocd-externalnames.yaml
   # IADR-0077 (#348): ArgoCD 公式 install manifest は巨大な CRD（applicationsets.argoproj.io 等）を含み、
   # client-side apply では manifest 全体が last-applied-configuration annotation に載って 262144 バイト
@@ -443,12 +468,38 @@ if [ "${ARGOCD:-}" = "1" ]; then
   # IADR-0092 (#353): ArgoCD を Keycloak OIDC(SSO) へ配線する。dex は使わず oidc.config を直接指定。
   # 集約後 URL（argocd.localhost:50000・ホスト名ベース・#357/IADR-0091）で登録する。
   # IADR-0220 (#841): エッジは https で終端する（NFR-11）。server.insecure=true は据え置く ——
-  # TLS を終端するのは Traefik であり、そこから argocd-server への in-cluster 転送は平文のままだからである
+  # TLS を終端するのはエッジ（IADR-0091 の Traefik ／ ISTIO=1 では IADR-0317 の Istio Ingress Gateway）
+  # であり、そこから argocd-server への転送は in-cluster の平文（あるいは mTLS）のままだからである
   # （insecure を外すと argocd-server 自身が http→https リダイレクトを返し、エッジ経由が二重終端で壊れる）。
   # fail-safe: local admin は残す（OIDC は追加・未マッピングは policy.default='' で
   # no-access）。install が作成した ConfigMap/Secret へ merge patch で「追加のみ」適用し既存キー（server.secretkey 等）
   # を保持する（apply による全置換はしない）。client secret は平文で置かず argocd-secret に merge patch。
-  kubectl -n argocd patch configmap argocd-cm --type merge --patch-file deploy/local/argocd/oidc/argocd-cm-patch.yaml
+  # IADR-0243 決定 3 / #780: argocd-cm の oidc.config は issuer を **エッジ host** に取るため、
+  # サーバ側の TLS 検証にローカル CA が要る。PEM は cert-manager が実行時に作るものであり
+  # リポジトリに焼き込めないので、patch を当てる直前にプレースホルダを live の値へ置換する。
+  #
+  # 🔴 **CA が取れないときは rootCA の 2 行ごと落とす**（fail-safe）。プレースホルダのまま
+  #    patch すると argocd-server が「不正な PEM」で OIDC を初期化できず、**local admin まで
+  #    巻き添えで落ちる**。CA が無い＝OIDC が成立しないだけに留める。
+  # 🔴 **ファイル名は `argocd-cm-patch.yaml` のままにする。** 一時ディレクトリへ置くが、
+  #    basename を変えると `k8s-local-up.test.js` の「各 opt-in トークンが単独で検出力を持つ」検査が
+  #    このトークンを dead と判定する（実際に踏んだ）。**描画結果は同じ patch なので、名前も同じにする。**
+  ARGOCD_TMPDIR="$(mktemp -d)"
+  ARGOCD_CM_PATCH="$ARGOCD_TMPDIR/argocd-cm-patch.yaml"
+  ARGOCD_CA_FILE="$ARGOCD_TMPDIR/edge-root-ca.pem"
+  kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' 2>/dev/null \
+    | base64 -d 2>/dev/null | sed 's/^/      /' > "$ARGOCD_CA_FILE" || true
+  if [ -s "$ARGOCD_CA_FILE" ]; then
+    # oidc.config はブロックスカラーなので、PEM の各行を 6 スペースでインデントして差し込む。
+    sed -e "/__LOCAL_EDGE_ROOT_CA_PEM__/{r $ARGOCD_CA_FILE" -e "d}" \
+      deploy/local/argocd/oidc/argocd-cm-patch.yaml > "$ARGOCD_CM_PATCH"
+  else
+    echo "    warn: cert-manager/local-edge-root-ca が読めない。argocd の oidc.config から rootCA を落とす（OIDC は成立しない・local admin は残る）"
+    grep -v -e 'rootCA: |' -e '__LOCAL_EDGE_ROOT_CA_PEM__' \
+      deploy/local/argocd/oidc/argocd-cm-patch.yaml > "$ARGOCD_CM_PATCH"
+  fi
+  kubectl -n argocd patch configmap argocd-cm --type merge --patch-file "$ARGOCD_CM_PATCH"
+  rm -f "$ARGOCD_CM_PATCH" "$ARGOCD_CA_FILE"; rmdir "$ARGOCD_TMPDIR" 2>/dev/null || true
   kubectl -n argocd patch configmap argocd-rbac-cm --type merge --patch-file deploy/local/argocd/oidc/argocd-rbac-cm-patch.yaml
   kubectl -n argocd patch configmap argocd-cmd-params-cm --type merge --patch-file deploy/local/argocd/oidc/argocd-cmdparams-patch.yaml
   kubectl -n argocd patch secret argocd-secret --type merge \
@@ -658,6 +709,23 @@ fi
 # （仕様どおりだが「壊れている」のと区別が付かない）。既定（env 未設定）は投入せず挙動不変＝バイト等価で、
 # 本番 values には一切影響しない（投入先は経路B の稼働中サービスであり、chart ではない）。
 # best-effort: 投入の失敗で up 全体を止めない（クラスタ自体は使えるため。再実行は冪等）。
+# FR-13, UC-07, SC-04, ADR-0011, IADR-0327 (#1108): Wiki.js の初期セットアップ・同期 API キー・
+# 本文 locale を入れる。**opt-in ではない。**
+#
+# 🔴 **既定の経路が「Running なのに使えない Wiki.js」を残すことが #1108 そのものである。**
+# Wiki.js 2.x はセットアップが済むまで `/graphql` を載せず、その間 `server/setup.js` の catch-all が
+# `/healthz` を含む全 URL に 200 を返す ——**probe は通り、Pod は Running のまま、同期だけが
+# 全件エラーキューへ落ちる。画面にも SC-10 にも何も出ない。** opt-in にすると、この状態が
+# 既定のままになる（ABACSEED / SEARCHSEED とはここが違う。あちらは**文書を作る副作用**が
+# あるので既定オフだが、こちらは配備の初期化であって副作用ではない）。
+#
+# 冪等（セットアップ済みなら finalize を飛ばし、有効なキーが在れば再発行しない）。
+# best-effort: 失敗しても up 全体は止めない。**fail-closed の門は `scripts/check-stack-ready.js` の
+# G7** に置いてある（そちらが setup モード・空 apiKey・locale 欠落を落とす）。
+echo "==> Wiki.js 初期セットアップ（冪等 / IADR-0327）"
+bash "$ROOT/deploy/local/wikijs-setup/bootstrap.sh" \
+  || echo "    WARN: Wiki.js の初期化に失敗（best-effort）。bash deploy/local/wikijs-setup/bootstrap.sh で再実行できる" >&2
+
 if [ "${ABACSEED:-}" = "1" ]; then
   echo "==> [opt-in] ABAC 初期投入（属性辞書・ポリシー / IADR-0133）"
   node "$ROOT/scripts/seed-abac-policies.js" \

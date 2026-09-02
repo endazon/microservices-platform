@@ -14,7 +14,7 @@ related_ids:
   - IADR-0060
   - IADR-0065
   - IADR-0228
-  - IADR-0327
+  - IADR-0331
 ---
 
 # 作業仕様書: 撤去済み planning submodule の残存記述を是正する（#1092）

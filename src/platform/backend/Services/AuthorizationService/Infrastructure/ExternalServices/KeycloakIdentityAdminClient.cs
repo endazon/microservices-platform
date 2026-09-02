@@ -3,19 +3,26 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace AuthorizationService.Infrastructure.ExternalServices;
 
-// FR-05, FR-09, UC-05, SC-17, ADR-0026, IADR-0301: Keycloak Admin REST による身元管理。
+// FR-05, FR-09, UC-05, SC-17, ADR-0026, IADR-0301, IADR-0329: Keycloak Admin REST による身元管理。
 //
-// 🔴 **実 Keycloak との疎通は未検証である（#452 の残件）。** 本環境に実 Keycloak が無く、
-// `realm-management` ロールを持つ機密クライアントも realm export に未登録である。
-// 本クラスはスタブした `HttpMessageHandler` に対してのみ検証した（`KeycloakIdentityAdminClientTests`）。
-// **「緑である」ことは「実 IdP へ反映できる」ことを意味しない。**
+// ■ 疎通の状態（#1101 で更新。旧記述「実 Keycloak との疎通は未検証」は解消した）
+//   稼働 k3s の Keycloak 24 に対して、一覧・属性差し替え・`enabled` 切替を**実測で通した**。
+//   実測して初めて分かった罠が 2 つあり、どちらもスタブでは絶対に出ない:
+//   1. **`PUT /users/{id}` は部分更新ではない。** 送らなかった項目は消える（`firstName` /
+//      `lastName` / `email` が実際に消えた）。→ read-modify-write にした（`UpdateAndReloadAsync`）。
+//   2. **realm の user profile が unmanaged 属性の書き込みを許していないと、属性は 204 を返しながら
+//      黙って捨てられる。** → realm へ `unmanagedAttributePolicy: ADMIN_EDIT` を入れ、
+//      それでも捨てられたら例外にする（`EnsureAttributesWereApplied`）。
+//   単体テストは今もスタブした `HttpMessageHandler` に対する固定であり（`KeycloakIdentityAdminClientTests`）、
+//   **「緑である」ことは「実 IdP へ反映できる」ことを意味しない。** 疎通は稼働クラスタで測る。
 //
-// 認証は client_credentials（機密クライアント）。必要なクライアントロールは 3 つだけである
-// （`view-users` / `manage-users` / `view-realm`。KeycloakAdminOptions のコメント参照）。
+// 認証は client_credentials（機密クライアント `identity-admin`）。必要なクライアントロールは
+// 3 つだけである（`view-users` / `manage-users` / `view-realm`。KeycloakAdminOptions のコメント参照）。
 public sealed class KeycloakIdentityAdminClient(
     IHttpClientFactory httpClientFactory,
     KeycloakAdminOptions options,
@@ -26,6 +33,10 @@ public sealed class KeycloakIdentityAdminClient(
     // （出すと「利用者に default-roles-platform を割り当てる」が画面から可能になる）。
     private static readonly string[] NonAssignableRoles =
         ["offline_access", "uma_authorization"];
+
+    // #1101: Keycloak がサーバ側で組み立てる読み取り専用の派生値。read-modify-write で送り返さない。
+    private static readonly string[] ServerComputedFields =
+        ["access", "disableableCredentialTypes", "userProfileMetadata"];
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -78,7 +89,37 @@ public sealed class KeycloakIdentityAdminClient(
         {
             ["attributes"] = attributes.ToDictionary(kv => kv.Key, kv => new[] { kv.Value }),
         };
-        return await UpdateAndReloadAsync(client, userId, payload, ct);
+        var updated = await UpdateAndReloadAsync(client, userId, payload, ct);
+        if (updated is not null) EnsureAttributesWereApplied(attributes, updated);
+        return updated;
+    }
+
+    // 🔴 **書けたことを確かめる（#1101 で実測した静かな縮退への fail-closed）。**
+    //
+    // realm の user profile が `unmanagedAttributePolicy` を持たない（既定＝無効）と、Keycloak は
+    // ABAC 属性（`clearance` / `department` は managed でない）を **204 を返しながら黙って捨てる**。
+    // 画面は 200 と「保存しました」を見て、認可判定は一切変わらない —— #1101 が潰した穴と同型の
+    // 壊れが、配備の設定から realm の設定へ 1 段ずれて再発する。
+    // したがって**書き戻した値を読み直して突き合わせ、食い違ったら例外にする**。
+    // 解消は realm 側（`components["org.keycloak.userprofile.UserProfileProvider"]` の
+    // `unmanagedAttributePolicy: ADMIN_EDIT`）で行う。
+    private static void EnsureAttributesWereApplied(
+        IReadOnlyDictionary<string, string> requested, IdentityUser reloaded)
+    {
+        var dropped = requested
+            .Where(kv => !reloaded.Attributes.TryGetValue(kv.Key, out var value)
+                         || !string.Equals(value, kv.Value, StringComparison.Ordinal))
+            .Select(kv => kv.Key)
+            .ToList();
+        if (dropped.Count == 0) return;
+
+        throw new InvalidOperationException(
+            $"Keycloak が利用者 '{reloaded.Username}' の属性 {string.Join(" / ", dropped)} を"
+            + "受け付けなかった（更新要求は成功を返したが、読み直すと反映されていない）。"
+            + " realm の user profile が unmanaged 属性の書き込みを許していない可能性が高い"
+            + "（components[\"org.keycloak.userprofile.UserProfileProvider\"] の"
+            + " unmanagedAttributePolicy を ADMIN_EDIT にする）。"
+            + " **成功を返して黙って捨てるより、失敗として上げる。**");
     }
 
     public async Task<IdentityUser?> SetEnabledAsync(string userId, bool enabled, CancellationToken ct)
@@ -150,11 +191,30 @@ public sealed class KeycloakIdentityAdminClient(
 
     private string Realm => Uri.EscapeDataString(options.Realm);
 
+    // 🔴 **部分更新をしてはならない（#1101 で実 Keycloak に対して実測）。**
+    //
+    // `PUT /users/{id}` は「送った表現で置き換える」意味論であり、**送らなかった項目は消える**。
+    // `{"enabled": false}` だけを送ると `firstName` / `lastName` / `email` が実際に消え、
+    // `{"attributes": ...}` だけを送っても同じことが起きる（204 が返るので気付けない）。
+    // したがって **read-modify-write** にする —— 現在の表現を取り、変更点だけ上書きし、全体を返す。
+    //
+    // サーバ計算のフィールド（`access` / `disableableCredentialTypes` / `userProfileMetadata`）は
+    // 送り返さない（読み取り専用の派生値であり、送っても意味が無い）。
     private async Task<IdentityUser?> UpdateAndReloadAsync(
         HttpClient client, string userId, Dictionary<string, object?> payload, CancellationToken ct)
     {
-        var response = await client.PutAsJsonAsync(
-            $"admin/realms/{Realm}/users/{Uri.EscapeDataString(userId)}", payload, Json, ct);
+        var path = $"admin/realms/{Realm}/users/{Uri.EscapeDataString(userId)}";
+        var current = await client.GetAsync(path, ct);
+        if (current.StatusCode == HttpStatusCode.NotFound) return null;
+        current.EnsureSuccessStatusCode();
+        var representation = await current.Content.ReadFromJsonAsync<JsonObject>(Json, ct);
+        if (representation is null) return null;
+
+        foreach (var computed in ServerComputedFields) representation.Remove(computed);
+        foreach (var (key, value) in payload)
+            representation[key] = JsonSerializer.SerializeToNode(value, Json);
+
+        var response = await client.PutAsJsonAsync(path, representation, Json, ct);
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         response.EnsureSuccessStatusCode();
         return await ReloadAsync(client, userId, ct);

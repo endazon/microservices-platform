@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-13, FR-14, UC-07]
 adrs: [ADR-0048]
-iadrs: [IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056, IADR-0228, IADR-0327]
+iadrs: [IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056, IADR-0228, IADR-0331]
 specs: [20260831_issue-1092_planning-submodule-residual-refs]
 issues: [#1092]
 -->
