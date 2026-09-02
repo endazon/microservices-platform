@@ -253,7 +253,10 @@ jobs:
           cache: pnpm
           cache-dependency-path: src/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      # スクリーンレベル・スモーク（バックエンド不要。ログイン画面到達を検証）。
+      # スクリーンレベル・スモーク（バックエンドを 1 つも起動しない）。
+      # ［2026-09-02 / #1139］従前ここには「ログイン画面到達を検証」と書いていたが誤りである。
+      # 身元を返す応答をネットワーク層で差し替えることで**認証済みの画面まで**検証する
+      # （土台は src/platform/frontend/e2e/support/bffSession.ts）。基盤不要なのは変わらない。
       # --filter で platform/frontend の文脈を指定する。@playwright/test は workspace ルート（src/）では
       # なく platform/frontend の devDependency であり、pnpm は npm と違って各パッケージの .bin しか
       # 見せないため、src/ での素の `pnpm exec playwright` はバイナリを解決できず
