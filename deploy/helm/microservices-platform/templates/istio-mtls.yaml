@@ -31,4 +31,69 @@ spec:
   trafficPolicy:
     tls:
       mode: ISTIO_MUTUAL
+{{- if .Values.mesh.backchannelLogout.fromOutsideMesh }}
+---
+# NFR, SC-13, ADR-0026 / ADR-0032, IADR-0273, #1115:
+# **メッシュ外に居る認可サーバ（Keycloak）から、バックチャネルログアウトの 1 本だけを通す。**
+#
+# ## なぜ要るか
+#
+# OIDC Back-Channel Logout は認可サーバが**サーバとして BFF を叩く**口である。認可サーバが
+# メッシュの外（サイドカー無し）に居ると、STRICT の Envoy が平文流入を落とし、**要求は BFF に
+# 一度も届かない**（Keycloak 側に `KC-SERVICES0057` が 1 行出るだけで、管理者の画面には
+# 「ログアウトさせた」と映る）。結果、ADR-0032 の**即時**失効が成立せず、実際に効くのは
+# refresh 拒否の第 2 経路（IADR-0273 決定 3）＝**アクセストークンの寿命ぶん遅れる**失効だけになる。
+#
+# ## 開ける範囲を最小にする 2 枚組
+#
+# 1. `PeerAuthentication`（BFF ワークロードのみ）: **namespace 全体の STRICT は下げない。**
+#    BFF の受信ポートだけを PERMISSIVE にする（mTLS で来る要求は今までどおり mTLS のまま）。
+# 2. `AuthorizationPolicy`（DENY）: **principal を持たない要求（＝平文）を、バックチャネルの
+#    URI 以外へは通さない。** `notPrincipals: ["*"]` は Istio の「principal が無い」の書き方である。
+#    エッジ（istio-ingressgateway）から来る要求はメッシュ内の principal を持つので影響しない。
+#
+# 開けた口の安全性は**署名済み `logout_token` の検証**が担う（IADR-0273 決定 1 が iss / aud / exp /
+# events / nonce 不在 / sub まで検証する）。バックチャネル端点は本来インターネットに面する口であり、
+# 平文で到達できること自体は資格ではない。
+#
+# 既定は false（認可サーバがメッシュ内、またはエッジ経由で入る配備では不要）。
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: {{ .Values.mesh.backchannelLogout.workload }}-backchannel-logout
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.mesh.backchannelLogout.workload }}
+  mtls:
+    mode: {{ .Values.mesh.mtlsMode }}
+  portLevelMtls:
+    {{ .Values.mesh.backchannelLogout.port | int }}:
+      mode: PERMISSIVE
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: {{ .Values.mesh.backchannelLogout.workload }}-plaintext-only-backchannel
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.mesh.backchannelLogout.workload }}
+  action: DENY
+  rules:
+    - from:
+        - source:
+            # principal が「無い」＝ mTLS ではない（平文）要求。
+            notPrincipals: ["*"]
+      to:
+        - operation:
+            notPaths:
+              - {{ .Values.mesh.backchannelLogout.path | quote }}
+{{- end }}
 {{- end }}
