@@ -215,6 +215,17 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
             "ピン留めしたモデルが使えないとき、取引判断は実行しない（別モデルへ逃がさない）");
     }
 
+    // AST#571, AST/ADR-0017 決定2: 取引判断の一次スクリーニングも本判断と同様にフォールバック禁止である。
+    // 別モデルで下したスクリーニングは、本判断と同じ理由で再現性・監査可能性を失う。
+    [Fact]
+    public void TradeDecisionScreening_HasNoFallbackChainInProductionConfig()
+    {
+        var options = factory.Services.GetRequiredService<IOptions<LlmRoutingOptions>>().Value;
+
+        options.PurposeFallbackModels.Should().NotContainKey("trade-decision-screening",
+            "一次スクリーニングも本判断と同じ理由でフォールバックしない（AST/ADR-0017 決定2）");
+    }
+
     // T-19, ADR-0022 / IADR-0106: 定型 RAG 回答は Sonnet 5 を選択し、既定（DefaultModel=claude-opus-5）へ
     // 落ちない。ADR-0022（Accepted）の確定値であり、ADR-0025 §決定も他層は Sonnet 5 と明記している。
     [Fact]
@@ -270,6 +281,24 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         body.Model.Should().Be("claude-sonnet-5");
         body.Model.Should().NotBe("claude-opus-5");   // DefaultModel への無音フォールバックでないこと
         body.Model.Should().NotBe("claude-opus-4-8"); // 旧ピン（IADR-0102）が残っていないこと
+    }
+
+    // AST#571, AST/ADR-0014 §決定1・AST/ADR-0017 決定1: 取引判断の一次スクリーニングは本判断とは別の
+    // 軽量モデル（claude-haiku-4-5）を用いる。基盤未登録のあいだは本判断の割当（sonnet-5）と照合され
+    // 「割当外」と判定され続けていた（二段判断の層別用途登録の実装 ADR）。DefaultModel への無音フォールバック
+    // でないことも併せて固定する。
+    [Fact]
+    public async Task PostComplete_TradeDecisionScreening_SelectsHaiku45AndDoesNotFallBackToDefault()
+    {
+        var req = new { Prompt = "銘柄の一次絞り込み", MaxTokens = 100, Confidentiality = "internal", Purpose = "trade-decision-screening" };
+        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
+        body!.Sent.Should().BeTrue();
+        body.Model.Should().Be("claude-haiku-4-5");
+        body.Model.Should().NotBe("claude-opus-5");     // DefaultModel への無音フォールバックでないこと
+        body.Model.Should().NotBe("claude-sonnet-5");   // 本判断の割当（trade-decision）と混同していないこと
     }
 
     // T-23, IADR-0113 (#309), IADR-0022 / 08_data-egress-policy: 報告書の割当モデルは機密区分によって

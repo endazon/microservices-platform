@@ -3,15 +3,15 @@ title: LLM 呼び出し先ルーティング 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-21
+updated: 2026-09-02
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, UC-01, UC-02]
 adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0038]
-iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225]
-specs: []
-issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, AST#290, planning#50, planning#426]
+iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0332]
+specs: [20260902_571_trade-decision-screening-purpose]
+issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, AST#290, AST#571, planning#50, planning#426]
 -->
 
 # 機能仕様書: LLM 呼び出し先ルーティング（用途・機密度別）
@@ -39,7 +39,7 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 
 | 項目 | 内容 |
 | --- | --- |
-| 入力 | `CompletionApiRequest`（`Prompt`, `MaxTokens`, `Model`(任意), `Confidentiality`(任意), `Purpose`(任意)）。呼び出し元（`RagOrchestrator` 等）が入力文脈文書の**最高機密区分**（`SensitivityClasses.Highest`）と用途（`rag-answer` / `analysis` / `diagram-coding` / `report-monthly` / `report-weekly` / `report-daily` / `trade-decision`）を付与する。 |
+| 入力 | `CompletionApiRequest`（`Prompt`, `MaxTokens`, `Model`(任意), `Confidentiality`(任意), `Purpose`(任意)）。呼び出し元（`RagOrchestrator` 等）が入力文脈文書の**最高機密区分**（`SensitivityClasses.Highest`）と用途（`rag-answer` / `analysis` / `diagram-coding` / `report-monthly` / `report-weekly` / `report-daily` / `trade-decision` / `trade-decision-screening`）を付与する。 |
 | 処理 | ① `SensitivityClasses.Parse` で `Confidentiality` を `SensitivityClass`（Public/Internal/Confidential/Restricted）へ写像。② `EgressMatrix.AllowedTiers` で許容ティア集合を算出。③ `LlmRouter.Route` が「有効・許容ティア・（要承認でない）」エンドポイントを `Priority` 昇順→ティア昇順（A<B<C, 保護の強い順）で選び先頭を採用。④ `ResolveModel` で用途→モデルを解決。⑤ `decision.Provider` を keyed DI（`claude` / `selfhosted`）で解決し送信。 |
 | 出力 | `CompletionApiResponse`（`Text`, `Model`, `InputTokens`, `OutputTokens`, `Sent`, `Endpoint`, `RoutingReason`）。`Sent=false` 時は呼び出し元が出典のみ返す等の縮退へ切替可能。判定（機密区分・用途・ティア・エンドポイント・モデル・要承認・理由）を監査ログへ記録。 |
 | 業務ルール | **機密区分→許容ティア**は越境マトリクス（下表）に固定。`Confidential`/`Restricted` は**ティアA/B のみ**でティアC（標準外部API）へは送信不可。`Internal × ティアC` は「条件付き可（要承認）」で、`AllowUnapprovedTierC=false`（既定）の間は候補から除外。許容ティアに送信可能な有効エンドポイントが無ければ**送信拒否（縮退）**。未指定・未知の機密区分は `Restricted` へ倒す（安全側）。 |
@@ -63,7 +63,10 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 - 既定設定（`appsettings.json`。LLM ゲートウェイ・モデル選定の各計画 ADR と、既定モデル改定・既定 `max_tokens` 引き上げ・RAG 回答の追随・報告書の用途分離とモデル改定を定めた各実装 ADR による）:
   既定 `claude-opus-5`、定型 `rag-answer→claude-sonnet-5` / `diagram-coding→claude-haiku-4-5`、最難関 `analysis→claude-opus-5`（**分析用途のモデル割当の計画 ADR 決定 1 で `claude-fable-5` から改定**。#850）、
   `default→claude-opus-5`、**報告書 `report-monthly→claude-opus-5`（月報のモデル改定の実装 ADR で `claude-fable-5` から改定）/ `report-weekly→claude-opus-5` / `report-daily→claude-sonnet-5`**、
-  **取引判断 `trade-decision→claude-sonnet-5`（版数固定。ピン改定の実装 ADR 決定 3）**。
+  **取引判断 `trade-decision→claude-sonnet-5`（版数固定。ピン改定の実装 ADR 決定 3）**、
+  **取引判断の一次スクリーニング `trade-decision-screening→claude-haiku-4-5`（二段判断の層別用途登録の実装 ADR）**——
+  本判断とは別の軽量モデルを充てる用途であり、`AST/ADR-0014` §決定1・`AST/ADR-0017` 決定1 が定める層別割当を
+  基盤側の用途登録として反映する。
 - **用途別モデルは `Models`（利用許可集合）にも登録する**: `ResolveModel` は `eligible.Contains(purposeModel)` を条件とするため、`PurposeModels` にのみ書いて `Models` へ登録し忘れると、例外もログも出さずに `DefaultModel` へフォールバックし割当が無音で失効する。
   `Models` は「割当」ではなく「利用を許可するモデル集合」であり、版数改定時は**追加**する（削除は明示 `Model` 要求をしている呼び出し側に対する破壊的変更）。
   **ただし計画 ADR（`ADR-0038` 決定 2）が利用そのものを禁じたモデルは例外で、`Models` から除去する** —— 破壊的変更であることを承知のうえで、非 ZDR モデルを基盤から無くすことを優先した。
@@ -71,6 +74,9 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 - **取引判断のモデルピン留め（`AST/ADR-0011` と、ピン留め・その改定を定めた実装 ADR）**: 取引判断は再現性・監査可能性のため基盤の既定モデル改定に**自動追随させない**。`PurposeModels` に `trade-decision` を固定指定する。
   ピン留め対象はエンドポイントの `Models` 許可一覧にも含める必要がある（含めないと `ResolveModel` が黙って `DefaultModel` へフォールバックし、ピン留めが無効化される）。本エントリの更新には Stage 0 再検証を要する（設定値の書き換えだけで更新しない）。
   ピン改定の実装 ADR の決定 3 でピンの値を `claude-opus-4-8` → `claude-sonnet-5` へ改定した際は、計画側 ADR の改定依頼を先行させ、`claude-sonnet-5` での Stage 0 再検証を**実弾解禁の必須ゲート**として追跡している（固定する仕組みは維持し、改定したのはピンの値のみ）。
+  **`trade-decision-screening` も同じ理由でピン留め対象とする**（二段判断の層別用途登録の実装 ADR）。一次スクリーニングは
+  本判断より先に走る絞り込みであり、`AST/ADR-0017` 決定2 は本判断・一次スクリーニングの**両方**をフォールバック禁止と
+  定めている。基盤側は `PurposeFallbackModels` へ鎖を登録しないことでこれを表現する（次節）。
 - **報告書の種別別ルーティング（報告書の用途分離と月報のモデル改定を定めた実装 ADR・`AST/04_workflows/03_reporting-cycle`）**: 報告書は取引方針を **月報→週報→日報→取引** の階層で管理する方針書であり、上位ほど難度が高い。
   用途を種別ごとに分け `report-monthly` / `report-weekly` / `report-daily` を割り当てる。`report-weekly` は `default` と同値だが、**明示エントリが無いと `default` の改定で無音に失効する**ため省略しない。
   **`report-monthly` は月報のモデル改定の実装 ADR で `claude-opus-5` へ改定した結果 `report-weekly` と同値になるが、同じ理由で明示エントリを残す**
@@ -96,7 +102,7 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 | 項目 | 内容 |
 | --- | --- |
 | 設定 | `Llm:Routing:PurposeFallbackModels`（用途 → **第 2 候補以降**の順序つきモデル配列）。第 1 候補は `PurposeModels`（無ければ `DefaultModel`） |
-| 既定値 | `analysis: ["claude-sonnet-5"]` / `diagram-coding: ["claude-haiku-4-5"]` / `default: ["claude-sonnet-5"]` / `rag-answer: ["claude-haiku-4-5"]` の 4 用途。**いずれも第 1 候補より安価側の 1 段下位**であり、発火で費用が上振れすることはない |
+| 既定値 | `analysis: ["claude-sonnet-5"]` / `diagram-coding: ["claude-haiku-4-5"]` / `default: ["claude-sonnet-5"]` / `rag-answer: ["claude-haiku-4-5"]` / `report-monthly: ["claude-sonnet-5"]` / `report-weekly: ["claude-sonnet-5"]` / `report-daily: ["claude-haiku-4-5"]` の 7 用途。**いずれも第 1 候補より安価側の 1 段下位**であり、発火で費用が上振れすることはない |
 | 発火条件 | **上流が HTTP 400〜499（429 を除く）** |
 | **発火しない** | **429（レート制限）**・5xx・通信断・ステータスの取れない失敗 |
 | 適用範囲 | **非ストリーミング `/complete` のみ**（`/complete/stream` は実装しない） |
@@ -108,13 +114,18 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
   **429 の再試行そのもの（回数・バックオフ・`Retry-After`）は未実装**である —— 計画側が方針を
   定めておらず、決めていない方針を実装が発明しないため（用途別フォールバックの実装 ADR §フォローアップ 1）。
   現行の 429 の挙動は従来どおり `Sent=false` の縮退である。
-- **`trade-decision` は鎖を持たない。** 別モデルで下した取引判断は再現性・監査可能性を失った別物である
-  （`AST/ADR-0011` と取引判断のピン留めの実装 ADR）。設定に鎖が足されたら落ちるテストで固定する。
+- **`trade-decision` と `trade-decision-screening` は鎖を持たない。** 別モデルで下した取引判断・その一次
+  スクリーニングは再現性・監査可能性を失った別物である（`AST/ADR-0011`・`AST/ADR-0017` 決定2 と、取引判断の
+  ピン留め・二段判断の層別用途登録の各実装 ADR）。設定に鎖が足されたら落ちるテストで両用途とも固定する。
+  **「鎖が無い用途は落ちない」という分岐が生きていることを、鎖を持たない用途で固定し続ける。**
 - **`default` / `rag-answer` の第 2 候補は 2026-08-21 に確定した**（計画側の裁定。分析用途のモデル割当の計画 ADR §未決事項の行は、
   AI・RAG スタックの技術検討書（`fixed`）が 2026-08-07 に確定させていた値への追随が漏れていたものであり、
   計画側で打ち消し線＋日付つき追記により是正済み）。`default` → `claude-sonnet-5`、`rag-answer` → `claude-haiku-4-5`。
-- 鎖を持たない用途（`report-monthly` / `report-weekly` / `report-daily` / `trade-decision`）の挙動は従来と同一である
-  （1 回試して失敗したら縮退する）。**「鎖が無い用途は落ちない」という分岐が生きていることを、鎖を持たない用途で固定し続ける。**
+- **報告書 3 種（`report-monthly` / `report-weekly` / `report-daily`）の第 2 候補を登録した**（二段判断の層別用途登録の
+  実装 ADR。`AST/ADR-0017` 決定1 が定める用途別フォールバック順序を基盤側の鎖として反映する）。
+  `report-monthly` → `claude-sonnet-5`、`report-weekly` → `claude-sonnet-5`、`report-daily` → `claude-haiku-4-5`。
+  取引判断（前項）とは異なり報告書生成にはフォールバック禁止の制約が無く、単発の障害で方針階層（月報→週報→日報）が
+  途切れる不利益のほうが大きいため、報告書 3 種はいずれも鎖を持つ。
 
 ### エンドポイント定義（`LlmEndpointOptions` / `Llm:Routing:Endpoints`）
 
@@ -261,7 +272,9 @@ Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロック�
 - [x] 用途 `analysis` の第 1 候補（`claude-opus-5`）が HTTP 400 系で失敗したとき、`claude-sonnet-5` へフォールバックして応答が返る（#863 / 分析用途のモデル割当の計画 ADR 決定 3 / 用途別フォールバックの実装 ADR）。
 - [x] **429 ではフォールバックしない**（429 は再試行であってフォールバックではない。#863 / 分析用途のモデル割当の計画 ADR 決定 4）。5xx・ステータス不明の失敗も同様に従来の縮退へ落ちる。
 - [x] フォールバックの発火が `llm.completion.total{llm_result="fallback"}` として観測でき、見送った候補と実際に使った候補が `llm.model` で区別できる（#863 / 分析用途のモデル割当の計画 ADR 決定 6）。
-- [x] フォールバック先が `Models`（利用許可集合）に登録済みであることをガードが固定する（#863 / 分析用途のモデル割当の計画 ADR 決定 5。既存 T-19 の射程を拡大）。`trade-decision` は鎖を持たない。
+- [x] フォールバック先が `Models`（利用許可集合）に登録済みであることをガードが固定する（#863 / 分析用途のモデル割当の計画 ADR 決定 5。既存 T-19 の射程を拡大）。`trade-decision` / `trade-decision-screening` は鎖を持たない。
+- [x] `trade-decision-screening` は `Models` に登録済みの軽量モデルへ解決され、既定（`DefaultModel`）へ無音で落ちない（二段判断の層別用途登録の実装 ADR）。
+- [x] 報告書 3 種（`report-monthly` / `report-weekly` / `report-daily`）は HTTP 400 系で第 1 候補が失敗したとき、それぞれの第 2 候補へフォールバックして応答が返る（二段判断の層別用途登録の実装 ADR）。
 
 > 検証: `LlmRouterTests`（越境マトリクス・ティア除外・フォールバック・ZDR・縮退）／
 > `CompletionRoutingEndpointTests`／`EmbeddingRouterTests`・`EmbeddingEndpointTests`（埋め込み egress）。
@@ -274,12 +287,14 @@ Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロック�
 
 - テスト仕様書: `../tests/FR-11_llm-egress-routing.md`
 - 作業仕様書: `../../.ai-context/specs/20260702_FR-11_llm-egress-routing.md`、`../../.ai-context/specs/20260704_FR-11_llm-routing-runtime-fixes.md`、`../../.ai-context/specs/20260725_issue-379_llm-stop-reason-refusal.md`、
-  `../../.ai-context/specs/20260728_issue-394_openai-finish-reason.md`、`../../.ai-context/specs/20260728_issue-403_degraded-answer-model.md`、`../../.ai-context/specs/20260728_issue-395_refusal-metrics.md`
+  `../../.ai-context/specs/20260728_issue-394_openai-finish-reason.md`、`../../.ai-context/specs/20260728_issue-403_degraded-answer-model.md`、`../../.ai-context/specs/20260728_issue-395_refusal-metrics.md`、
+  `../../.ai-context/specs/20260902_571_trade-decision-screening-purpose.md`
 - 通信仕様書: `../api/openapi.yaml`（`/complete`・`CompletionApiResponse.stopReason`）
 - セキュリティ仕様書: `../security/`（データ越境統制 / NFR）
 - 実装ADR: `../../.ai-context/adr/IADR-0225_llm-purpose-fallback-chain-and-429-boundary.md`（用途別フォールバック順序・429 の境界・発火の可観測化）、`../../.ai-context/adr/IADR-0007_llm-egress-routing-config-driven.md`（config 駆動ルーティング）、
   `../../.ai-context/adr/IADR-0014_qdrant-attribute-payload-key.md`（属性ペイロード復元）、`../../.ai-context/adr/IADR-0104_llm-stop-reason-refusal.md`（終了理由の判別と拒否の伝達）、
-  `../../.ai-context/adr/IADR-0109_openai-finish-reason-normalization.md`（OpenAI 互換 finish_reason の正規化）、`../../.ai-context/adr/IADR-0110_llm-completion-stop-reason-metrics.md`（終了理由のメトリクス）、`../../.ai-context/adr/IADR-0111_degraded-answer-model-label.md`（縮退応答の「使用モデル」ラベル）
+  `../../.ai-context/adr/IADR-0109_openai-finish-reason-normalization.md`（OpenAI 互換 finish_reason の正規化）、`../../.ai-context/adr/IADR-0110_llm-completion-stop-reason-metrics.md`（終了理由のメトリクス）、`../../.ai-context/adr/IADR-0111_degraded-answer-model-label.md`（縮退応答の「使用モデル」ラベル）、
+  `../../.ai-context/adr/IADR-0332_trade-decision-screening-purpose-registration.md`（二段判断の層別用途登録・報告書 3 種のフォールバック鎖登録）
 - 可観測性仕様書: `../observability/llm-completion-metrics.md`（終了理由・拒否率のメトリクス）
 - 運用仕様書: `../operations/operations.md`（監視・アラート）
 - 関連機能仕様書: `./FR-04_ai-answer-citations.md`（`RagOrchestrator` が本ルーティングを利用）
