@@ -17,7 +17,7 @@ using Wolverine;
 
 namespace WikiService.Tests.Features.Wiki.SearchPages;
 
-// UC-07 基本フロー 1「**検索する**」, FR-13, FR-05, FR-19, ADR-0011, IADR-0009, IADR-0331:
+// UC-07 基本フロー 1「**検索する**」, FR-13, FR-05, FR-19, ADR-0011, IADR-0009, IADR-0334:
 // Wiki 前段の検索経路に ABAC が適用され、**権限外の文書が検索結果に現れない**こと。
 //
 // 🔴 **否定形だけでは足りない。** 検索の検査は「出ない」ばかりになるため、**常に空を返す実装**でも
@@ -128,7 +128,7 @@ public class WikiSearchAbacTests(WikiSearchTestFactory factory) : IClassFixture<
         hits.Select(h => h.DocumentId).Should().BeEquivalentTo([pub]);
     }
 
-    // IADR-0331: 台帳に足場を持たないページ（Wiki.js 上で人手で作られた等）は ABAC 判定できないので落ちる。
+    // IADR-0334: 台帳に足場を持たないページ（Wiki.js 上で人手で作られた等）は ABAC 判定できないので落ちる。
     // 陽性対照として、同じ応答に混ぜた台帳のページは現れる。
     [Fact]
     public async Task Search_DropsHitsWithoutLedgerEntry()
@@ -191,7 +191,7 @@ public class WikiSearchAbacTests(WikiSearchTestFactory factory) : IClassFixture<
         hits.Select(h => h.DocumentId).Should().NotContain(theirs);
     }
 
-    // IADR-0331: **Wiki.js の関連度順を保つ**（台帳の並びで上書きしない）。
+    // IADR-0334: **Wiki.js の関連度順を保つ**（台帳の並びで上書きしない）。
     [Fact]
     public async Task Search_PreservesWikiJsRelevanceOrder()
     {
@@ -244,7 +244,7 @@ public class WikiSearchAbacTests(WikiSearchTestFactory factory) : IClassFixture<
         factory.WikiJs.Calls.Should().Be(0);
     }
 
-    // 🔴 IADR-0331 / IADR-0256: **後段の故障を 200 ＋ 空で隠さない。**
+    // 🔴 IADR-0334 / IADR-0256: **後段の故障を 200 ＋ 空で隠さない。**
     // 存在秘匿が区別させないのは「権限が無い」と「該当が無い」であり、「壊れている」は別の軸である。
     [Fact]
     public async Task Search_Returns502_WhenWikiJsIsUnavailable()
@@ -313,7 +313,7 @@ public class WikiSearchTestFactory : WebApplicationFactory<Program>
 
 // 検索のヒット・呼び出し回数・故障を試験から制御できる Wiki.js 検索スタブ。
 // **同期の口（`IWikiJsClient`）には触らない** —— 検索の口が分かれているので、同期側のスタブを
-// 抱え込まずに済む（[[IADR-0331]] 決定 3）。
+// 抱え込まずに済む（[[IADR-0334]] 決定 3）。
 public class ControllableWikiJsClient : IWikiJsSearchClient
 {
     public IReadOnlyList<WikiJsSearchHit> Hits { get; set; } = [];

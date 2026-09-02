@@ -20,7 +20,7 @@ using Wolverine;
 
 namespace WikiService.Tests.Features.Wiki;
 
-// UC-07 事前条件「**認証済み**」, FR-05, ADR-0032, IADR-0009, IADR-0044, IADR-0331（#1126）:
+// UC-07 事前条件「**認証済み**」, FR-05, ADR-0032, IADR-0009, IADR-0044, IADR-0334（#1126）:
 // Wiki 前段の 4 経路が、**未認証の要求に対して固定した応答を返す**こと。
 //
 // 決めた契約: **一覧・検索は 200 ＋ 空、個別（slug / documentId）は 404**（存在秘匿）。401 にはしない

@@ -1059,6 +1059,62 @@ ok('既定 (#1101): identity-admin-oidc を手動 apply する（ESO 未設定�
   );
 });
 
+// SC-15, FR-22, ADR-0026/ADR-0045, IADR-0261/IADR-0332 (#1102): **起動器から一度も参照されない
+// ExternalSecret マニフェストが存在しないこと。**
+//
+// 🔴 これが 2 回目である。上の #1012 / #1022 / #1101 のコメントが「同型がもう一度起きたら一般化せよ」と
+// 書いたのは *手動 apply → ExternalSecret* の向きだが、**#1102 で実際に起きたのは逆向き** ——
+// `externalsecret-keycloak-smtp.yaml` は 2026-08-23 に置かれてから 8 日間、**`k8s-local-up.sh` に
+// 1 度も現れなかった**。定義も Vault の seed も在り、`bootstrap.sh` の案内文は
+// `keycloak-smtp` を確認対象として案内していたのに、**その Secret は作られなかった**（必ず NotFound）。
+// 個別の secret ごとに対を置く上の検査群は、**そもそも誰も対を置き忘れた名前**を捕まえられない。
+//
+// ここが持つ不変条件は**向きが逆で、列挙を持たない**:
+//   「`deploy/local/vault/eso/externalsecret-*.yaml` のすべてが、いずれかのゲート組み合わせで apply される」
+// 新しい ExternalSecret を足した人は、`k8s-local-up.sh` へ apply を書くまでこの検査で止まる。
+//
+// - **母集合はディレクトリの実体**（このファイルへ名前を書き足す設計にしない。
+//   書き足す設計だと、書き忘れが静かに素通りする —— check-secret-injected-options.js と同じ姿勢）。
+// - **0 件走査は fail-closed**（glob が壊れて空になったら緑を返さない。#797 の「沈黙の exit 0」）。
+// - 突合先は `EMITTED_LINES`（全ゲートを立てた run の和）。ゲート付きで apply されるもの
+//   （grafana-oidc / headlamp-oidc）もここには現れる。**「どのゲートでも出ない」だけを落とす。**
+ok('#1102: 起動器から一度も apply されない ExternalSecret マニフェストが無い（列挙を持たない）', () => {
+  const esoDir = path.join(REPO_ROOT, 'deploy', 'local', 'vault', 'eso');
+  const manifests = fs
+    .readdirSync(esoDir)
+    .filter((f) => /^externalsecret-.*\.yaml$/.test(f))
+    .sort();
+  assert.ok(
+    manifests.length > 0,
+    `${esoDir} に externalsecret-*.yaml が 1 件も無い —— 走査が壊れている（0 件を緑にしない）`,
+  );
+  const orphans = manifests.filter(
+    (f) => !anyLineHas(EMITTED_LINES, `deploy/local/vault/eso/${f}`),
+  );
+  assert.deepStrictEqual(
+    orphans,
+    [],
+    'マニフェストは在るのに scripts/k8s-local-up.sh がどのゲートでも apply しない ExternalSecret:'
+      + ` ${orphans.join(', ')} —— 置いただけでは Secret は作られない（#1102 で 8 日間 NotFound だった形）`,
+  );
+});
+
+// SC-15, IADR-0332 決定 2 (#1102): `eso_wait` が keycloak-smtp を待つ。
+//
+// **待つ理由が他の secret と違う**（rollout の空振り回避ではない。env でこの Secret を読む Pod は
+// 1 つも無い）。待つのは、`up` 直後に運用者が案内文どおり
+// `kubectl -n platform-infra get externalsecret,secret keycloak-smtp` を打ったときと、runbook の
+// kcadm 手順へ進むときに、**未同期の NotFound を踏まない**ためである —— 未同期の NotFound は
+// 「配線が無い」ときと**同じ見え方**をするので、本 issue の欠陥そのものと区別がつかない。
+// 理由が違うぶん「rollout 対象に無いのだから待ちも要らない」と後任に削られやすい。ここで固定する。
+ok('#1102: eso_wait が platform-infra の keycloak-smtp を待つ（rollout ではなく案内の実行可能性のため）', () => {
+  assert.ok(
+    anyLineHas(EMITTED_LINES, 'wait --for=condition=Ready externalsecret/keycloak-smtp'),
+    'ESO=1 で keycloak-smtp の SecretSynced 待ちが発行されていない'
+      + ' —— 案内文と runbook が `up` 直後に NotFound を返しうる（infra_sync を確認せよ）',
+  );
+});
+
 // NFR (#1022): ブローカ自身の資格情報は **利用者名も** Secret 由来である。
 // deploy/local/infra/rabbitmq.yaml は RABBITMQ_DEFAULT_USER を `secretKeyRef: rabbitmq/username` で
 // **非 optional** に参照するので、username を作らないとブローカ Pod が起動しない。

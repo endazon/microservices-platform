@@ -22,7 +22,7 @@ related_ids:
   - IADR-0044
   - IADR-0253
   - IADR-0256
-  - IADR-0331
+  - IADR-0334
 author: claude
 created: 2026-09-02
 updated: 2026-09-02
@@ -52,7 +52,7 @@ plan_refs:
 - 実装 ADR: [[IADR-0009]]（権限外・不存在をともに 404 にする存在秘匿）／[[IADR-0020]]（WikiService は
   Wiki.js 前段の認可ゲートウェイ。本文を自前で持たない）／[[IADR-0021]]（GraphQL API）／
   [[IADR-0044]]（多層防御）／[[IADR-0253]]（分岐は選言）／[[IADR-0256]]（縮退と故障の切り分け）
-- 本作業の実装 ADR: **[[IADR-0331]]**（`develop` の最大値 +1。並行 PR と衝突したらマージ直前に改番する）
+- 本作業の実装 ADR: **[[IADR-0334]]**（`develop` の最大値 +1。並行 PR と衝突したらマージ直前に改番する）
 
 ## 母集合（自分で引いた。結果と除外理由）
 
@@ -139,12 +139,18 @@ issue は「401 か、存在秘匿として空／404 か。**どちらでもよ�
 
 - 追加 `src/knowledge/backend/Services/WikiService/Features/Wiki/SearchPages/Endpoint.cs`
 - 変更 `src/knowledge/backend/Services/WikiService/Features/Wiki/WikiEndpoints.cs`（登録 1 行）
-- 変更 `src/knowledge/backend/Services/WikiService/Domain/Ports/IWikiJsClient.cs`（`SearchAsync` 追加）
+- 追加 `src/knowledge/backend/Services/WikiService/Domain/Ports/IWikiJsSearchClient.cs`
+  （**`IWikiJsClient` へ足さない** —— 足すと既存 5 スタブが実装を強いられ、`Tests/` を移送中の #1063 と
+  衝突する。実測: `dotnet build` が CS0535 を 4 件出した。決定 3 として IADR へ記録した）
+- 変更 `src/knowledge/backend/Services/WikiService/Domain/WikiPage.cs`（`TryParseDocumentId`）
 - 変更 `src/knowledge/backend/Services/WikiService/Infrastructure/ExternalServices/WikiJsGraphQlClient.cs`
 - 変更 `src/knowledge/backend/Services/WikiService/Infrastructure/ExternalServices/WikiAccessResolver.cs`
+- 変更 `src/knowledge/backend/Services/WikiService/Program.cs`（検索の委譲口を登録。接続設定は 1 箇所）
 - 追加 `src/knowledge/backend/Services/WikiService/Tests/Features/Wiki/SearchPages/WikiSearchAbacTests.cs`
+- 追加 `src/knowledge/backend/Services/WikiService/Tests/Features/Wiki/SearchPages/WikiJsSearchClientTests.cs`
 - 追加 `src/knowledge/backend/Services/WikiService/Tests/Features/Wiki/AnonymousAccessContractTests.cs`
-- 追加 `.ai-context/adr/IADR-0331_wiki-search-delegated-with-gateway-abac.md` ＋ 索引
+- 追加 `src/knowledge/backend/Services/WikiService/Tests/Domain/WikiPagePathTests.cs`
+- 追加 `.ai-context/adr/IADR-0334_wiki-search-delegated-with-gateway-abac.md` ＋ 索引
 - 変更 `docs/tests/UC-07_wiki-browsing.md`（未実施 2 件を削除しテストケース表へ移す）
 - 変更 `docs/api/openapi.yaml`（`/wiki/search`）
 - 変更 `scripts/test-spec-coverage-baseline.json`（`--update`）
@@ -225,3 +231,8 @@ src/knowledge/backend/Services/WikiService/Dockerfile -t k3d-local/microservices
 ```
 
 **匿名の 4 本が落ち、陽性対照（認証済み）だけが残る。** テストが短絡そのものを見ていることの確認である。
+
+【2026-09-02 改番の記録】本作業の実装 ADR は起草時 `IADR-0331` だったが、`develop` へ先に着地した
+#1148（planning submodule 残存記述）が同番を取ったため **`IADR-0334` へ改番**した（0332・0333 も
+並行 PR が取得済み）。**最初のコミットのメッセージには旧番号 `IADR-0331` が残っている** —— force push を
+行わない規約のため書き換えず、ここに対応を残す。

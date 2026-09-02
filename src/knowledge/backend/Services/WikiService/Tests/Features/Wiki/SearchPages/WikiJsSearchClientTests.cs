@@ -4,7 +4,7 @@ using WikiService.Infrastructure.ExternalServices;
 
 namespace WikiService.Tests.Features.Wiki.SearchPages;
 
-// UC-07 基本フロー 1「検索する」, FR-13, ADR-0011, IADR-0021, IADR-0331（#1126）:
+// UC-07 基本フロー 1「検索する」, FR-13, ADR-0011, IADR-0021, IADR-0334（#1126）:
 // Wiki.js 2.x の `pages.search` 応答形の取り扱い。**スキーマ整合を実測した応答形で固定する**
 // （既存の `WikiJsGraphQlClientTests` が upsert / 本文取得に対して行っているのと同じ作法）。
 public class WikiJsSearchClientTests

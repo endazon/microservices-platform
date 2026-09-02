@@ -1,5 +1,5 @@
 ---
-title: IADR-0331 Wiki の「検索する」は Wiki.js へ委譲して前段の ABAC で絞り直し、未認証は認可サービスを呼ばずに存在秘匿へ倒す
+title: IADR-0334 Wiki の「検索する」は Wiki.js へ委譲して前段の ABAC で絞り直し、未認証は認可サービスを呼ばずに存在秘匿へ倒す
 type: impl-adr
 status: Accepted
 related_ids:
@@ -25,7 +25,7 @@ created: 2026-09-02
 updated: 2026-09-02
 ---
 
-# IADR-0331: Wiki の検索は委譲＋前段 ABAC、未認証は存在秘匿で固定する（#1126）
+# IADR-0334: Wiki の検索は委譲＋前段 ABAC、未認証は存在秘匿で固定する（#1126）
 
 - 状態: Accepted
 - 日付: 2026-09-02

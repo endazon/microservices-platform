@@ -52,7 +52,7 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
             : page.GetProperty("content").GetString();
     }
 
-    // UC-07 基本フロー 1「検索する」, FR-13, ADR-0011, IADR-0331: 全文検索を Wiki.js へ委譲する。
+    // UC-07 基本フロー 1「検索する」, FR-13, ADR-0011, IADR-0334: 全文検索を Wiki.js へ委譲する。
     //
     // Wiki.js 2.x の `pages.search(query, locale)` は `results { id title description path locale }` と
     // `suggestions` / `totalHits` を返す。**前段が使うのは `path` だけ**であり、`id` は検索エンジン側の

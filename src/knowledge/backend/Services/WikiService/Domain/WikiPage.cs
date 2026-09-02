@@ -21,7 +21,7 @@ public class WikiPage
     // DocumentId から正準パスを導出できるようにする（WikiPath と同一の導出規則）。
     public static string PathFor(Guid documentId) => $"doc/{documentId}";
 
-    // UC-07, FR-13, IADR-0331: `PathFor` の逆写像。Wiki.js が返した検索ヒットのパスから台帳の行を
+    // UC-07, FR-13, IADR-0334: `PathFor` の逆写像。Wiki.js が返した検索ヒットのパスから台帳の行を
     // 引き当てるために要る。**導出規則を 2 箇所に散らさない**ため `PathFor` の隣に置く。
     // 先頭スラッシュの有無・大小文字は吸収し、`doc/<guid>` 以外の形（人手で作られたページ・
     // 別の名前空間）は false を返す —— **台帳に足場を持たないページは ABAC で判定できないので落とす。**

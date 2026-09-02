@@ -63,7 +63,7 @@ void ConfigureWikiJsHttpClient(HttpClient c)
 }
 
 builder.Services.AddHttpClient<IWikiJsClient, WikiJsGraphQlClient>(ConfigureWikiJsHttpClient);
-// UC-07 基本フロー 1「検索する」, FR-13, ADR-0011, IADR-0331: 全文検索の委譲口。
+// UC-07 基本フロー 1「検索する」, FR-13, ADR-0011, IADR-0334: 全文検索の委譲口。
 // **同期の口（IWikiJsClient）と別の口として登録する** —— 実装クラスは同じだが、検索は読み取り経路の
 // 関心であり、同期・削除の面を一緒に背負わせない。接続設定は上と同じ 1 箇所（`ConfigureWikiJsHttpClient`）
 // から与える（**接続先と API キーの解決点を 2 つに増やさない**）。

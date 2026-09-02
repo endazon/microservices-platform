@@ -49,7 +49,7 @@ export class ApiError extends Error {
    * HTTP ステータスから種別を導出する（IADR-0009: 404 は不在/秘匿を区別しない）。
    *
    * ［2026-08-30 / #1078］**文言を翻訳カタログへ載せた。** ここで組み立てた `message` は
-   * `components/ui/apiErrors.ts` の `toMessages()` を通って**画面に表示される**ため、
+   * `utils/apiErrors.ts` の `toMessages()` を通って**画面に表示される**ため、
    * 日本語の直書きは en ロケールでそのまま日本語が出ることを意味していた。
    *
    * React の外なので `<Trans>` ではなく `i18n._(msg\`…\`)` を使う

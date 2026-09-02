@@ -3,15 +3,15 @@ title: how-to — ローカル開発フロー
 type: how-to
 status: published
 created: 2026-07-09
-updated: 2026-08-21
+updated: 2026-08-31
 author: claude
 ---
 <!-- trace:
 ids: [FR-13, FR-14, UC-07]
-adrs: []
-iadrs: [IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056]
-specs: []
-issues: []
+adrs: [ADR-0048]
+iadrs: [IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056, IADR-0228, IADR-0331]
+specs: [20260831_issue-1092_planning-submodule-residual-refs]
+issues: [#1092]
 -->
 
 # how-to: ローカル開発フロー
@@ -27,7 +27,7 @@ issues: []
 | .NET SDK | 10.0.x | [`global.json`](../../global.json) は `8.0.0` + `rollForward: latestMajor`（10.x でビルド可）。ターゲットは [`src/Directory.Build.props`](../../src/Directory.Build.props) で `net10.0` |
 | Node.js | 22 | フロントエンド CI（[`frontend.yml`](../../.github/workflows/frontend.yml)）と揃える |
 | Docker / Docker Compose | v2 相当 | インフラ・全サービスのローカル起動 |
-| git | — | `planning/` submodule 取得を含む |
+| git | — | ユニット submodule（`src/ai-stock-trading`）の取得を含む |
 
 ## 2. clone・計画リポジトリの参照
 
@@ -37,8 +37,12 @@ git clone --recurse-submodules <this-repo-url>
 git submodule update --init --recursive
 ```
 
-`planning/` は計画リポジトリ `project-planning` の submodule（既定パス）。要求（FR）・
-ユースケース（UC）・画面設計（SC）・計画ADR の一次情報はここにある。
+取得されるのは `src/<unit>` のユニット submodule である（現在は `src/ai-stock-trading` の 1 件）。
+
+**計画リポジトリ `project-planning` は本リポジトリの submodule ではない。** 要求（FR）・
+ユースケース（UC）・画面設計（SC）・計画 ADR の一次情報は別リポジトリにあり、GitHub 上の URL を
+直接開くか、**隣接クローン**（既定パス `../project-planning`。読み取り専用・pin 固定なし）を用意して読む。
+参照専用のトークンは要らない。
 
 ## 3. バックエンド（.NET）
 
@@ -125,7 +129,8 @@ Wiki.js を使う機能を試す場合、初回のみ管理 UI（`http://localho
 
 | 症状 | 対処 |
 | --- | --- |
-| `planning/` が空 | `git submodule update --init --recursive` を実行する |
+| `src/ai-stock-trading/` が空 | `git submodule update --init --recursive` を実行する |
+| 計画書（FR/UC/SC/計画 ADR）が見つからない | **本リポジトリには入っていない**（submodule ではない）。隣接クローン `../project-planning` を用意するか、GitHub 上で開く |
 | Keycloak の healthcheck が unhealthy のまま | Keycloak 24 イメージは curl/wget 非搭載。compose の healthcheck は bash の `/dev/tcp` で検査するため数十秒〜1分程度は正常な起動待ち（`deploy/docker-compose.yml` のコメント参照） |
 | Wiki.js の OIDC ログインが `Failed to fetch user profile` | Issuer は `http://localhost:8080/realms/platform`（ブラウザ経路）で設定する。`keycloak:8080` を指定すると失敗する（`docs/operations/operations.md` 実測記録） |
 | フロントエンドから BFF に到達しない | dev は `pnpm run dev` の Vite プロキシ（`VITE_BFF_TARGET` で上書き可）または compose の nginx `/bff` プロキシ経由。BFF(5000) が起動しているか確認する |
