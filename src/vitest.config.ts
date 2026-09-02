@@ -22,7 +22,7 @@ export default defineConfig({
       // **ディレクトリ名ではなく platform 基盤の公開面の名前**である。実体は計画のツリーに従って
       // app/ lib/ components/ testing/ へ分かれているので、区分ごとに向き先を張る。
       // 同じ 10 本を platform/frontend/tsconfig.app.json と platform/frontend/vite.config.ts にも置く。
-      // ADR-0067 決定 5 / IADR-0331（#1131）: `@foundation/utils` を足した（改名ではなく追加）。
+      // ADR-0067 決定 5 / IADR-0333（#1131）: `@foundation/utils` を足した（改名ではなく追加）。
       '@foundation/config': fileURLToPath(
         new URL('./platform/frontend/src/config', import.meta.url),
       ),

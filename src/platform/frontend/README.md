@@ -47,7 +47,7 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
     `knowledge` の `app/` `locales/` `testing/` は**アプリホスト（platform）が持つ**という意図的な不在で、
     同ユニットの `utils/` は**自前の純粋関数をまだ 1 つも持たない**（echarts の読み込み口は
     「設定済みライブラリを外へ渡す」形なので `lib/echarts/` にある。
-    [IADR-0331](../../../.ai-context/adr/IADR-0331_non-rendering-module-placement.md) 決定 2）。
+    [IADR-0333](../../../.ai-context/adr/IADR-0333_non-rendering-module-placement.md) 決定 2）。
     - **［2026-09-02 追記 / #1131］`platform` の `utils/` はこの一覧から外れた。** 従前ここには
       「`utils/` の純粋関数は `components/ui/` に居る」と書いてあった —— **空だった理由は
       「置くものが無いから」ではなく、置くべきものが `components/` に居たからである。**
@@ -65,7 +65,7 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
   ほかに `@knowledge` → `knowledge/frontend/src`、`@features` → `platform/frontend/src/features`（合成点）。
   **エイリアス名は変えない**（submodule の可変ユニットと `templates/unit-template` の契約が割れるため）。
   🔴 **「変えない」は改名の禁止であって、区分が増えたときに面を足すことは禁じていない**
-  （[IADR-0331](../../../.ai-context/adr/IADR-0331_non-rendering-module-placement.md) 決定 4。
+  （[IADR-0333](../../../.ai-context/adr/IADR-0333_non-rendering-module-placement.md) 決定 4。
   `@foundation/utils` は #1131 で足した）。
   定義は `platform/frontend/tsconfig.app.json` / `knowledge/frontend/tsconfig.json` /
   `templates/unit-template/frontend/tsconfig.json` / `platform/frontend/vite.config.ts` /

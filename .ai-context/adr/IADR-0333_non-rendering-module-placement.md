@@ -1,5 +1,5 @@
 ---
-title: IADR-0331 描画しないモジュールの置き場は「外へ何を渡すか」で決める（`utils/` と `lib/` の分界）
+title: IADR-0333 描画しないモジュールの置き場は「外へ何を渡すか」で決める（`utils/` と `lib/` の分界）
 type: impl-adr
 status: Accepted
 related_ids:
@@ -17,7 +17,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0067_frontend-layer-classification-and-composition-point.md (Accepted 2026-08-30) 決定 5
 ---
 
-# IADR-0331: 描画しないモジュールの置き場は「外へ何を渡すか」で決める
+# IADR-0333: 描画しないモジュールの置き場は「外へ何を渡すか」で決める
 
 - 状態: Accepted
 - 日付: 2026-09-02
