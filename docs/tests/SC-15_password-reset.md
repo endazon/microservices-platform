@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [SC-10, SC-15, FR-22, UC-05]
 adrs: [ADR-0026, ADR-0045]
-iadrs: [IADR-0197, IADR-0261, IADR-0332, IADR-0335]
+iadrs: [IADR-0197, IADR-0261, IADR-0332, IADR-0344]
 specs: [20260902_issue-1144_dev-mail-capture-mta]
 issues: [#438, #1102, #1144]
 -->

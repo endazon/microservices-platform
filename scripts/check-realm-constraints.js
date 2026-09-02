@@ -1356,7 +1356,7 @@ function main() {
     console.error('\n🔴 これは「設定の食い違い」ではなく**開発環境から外部へ出る経路**の話です。'
       + '\n画面上は何も変わらないため、`from` に実値が入った日に初めて外部の本番リレーへ実送信して気付きます。'
       + '\n期待値の単一情報源は deploy/local/infra/mailpit.yaml の Service であり、この検査器は値を持ちません。'
-      + '\n要件の正は planning の ADR-0045 決定 9、実装側の記録は IADR-0335（#1144）です。');
+      + '\n要件の正は planning の ADR-0045 決定 9、実装側の記録は IADR-0344（#1144）です。');
   }
 
   process.exit(1);

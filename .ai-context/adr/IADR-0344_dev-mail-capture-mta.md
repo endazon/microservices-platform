@@ -1,5 +1,5 @@
 ---
-title: IADR-0335 開発環境の捕捉用 MTA を dev 既定で置き、送出先の既定を「外向き」から「内向き」へ反転させる
+title: IADR-0344 開発環境の捕捉用 MTA を dev 既定で置き、送出先の既定を「外向き」から「内向き」へ反転させる
 type: impl-adr
 status: Accepted
 related_ids: [SC-15, SC-10, FR-22, NFR, ADR-0026, ADR-0045, IADR-0261, IADR-0332]
@@ -11,7 +11,7 @@ plan_refs:
   - planning:projects/microservices-platform/06_technical/08_data-egress-policy.md
 ---
 
-# IADR-0335: 開発環境の捕捉用 MTA を dev 既定で置き、送出先の既定を「外向き」から「内向き」へ反転させる
+# IADR-0344: 開発環境の捕捉用 MTA を dev 既定で置き、送出先の既定を「外向き」から「内向き」へ反転させる
 
 - 状態: Accepted
 - 日付: 2026-09-02
