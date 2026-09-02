@@ -1,3 +1,4 @@
+using Knowledge.Bff.Endpoints.Usage;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
@@ -49,6 +50,16 @@ builder.Services.AddHttpClient("DashboardService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DashboardService"]
         ?? "http://dashboard-service:5009"));
 
+// FR-10, SC-10, ADR-0006, IADR-0343 (#1103): 利用状況イベント（POST /dashboard/events）の発火側。
+// 受け口・集計・画面は在ったが**投入する製品コードが 1 本も無く**、SC-10 の利用状況・検索傾向は
+// 恒久的に 0 だった。送出は上の名前付きクライアントを使い、**要求の応答経路には載せない**
+// （有界の列 ＋ 常駐ドレイン。検索 p95 に計測の往復を足さない）。
+builder.Services.AddKnowledgeUsageEventReporting();
+builder.Services.AddOpenTelemetry()
+    // 🔴 宣言が無い Meter は収集されない＝**送出の失敗が静かに消える**。
+    // Meter 名は BFF のサービス名と同じなので収集対象そのものは増えない。
+    .WithMetrics(metrics => metrics.AddMeter(UsageEventMetrics.MeterName));
+
 // FR-03, UC-01, SC-01: 横断検索の集約用。ABAC スコープ解決（AuthorizationService）→ 検索（RetrievalService）。
 builder.Services.AddHttpClient("AuthorizationService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
@@ -81,6 +92,16 @@ builder.Services.AddHttpClient("GraphService", c =>
 builder.Services.AddHttpClient("McpServer", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:McpServer"]
         ?? "http://mcp-service:8080"));
+
+// FR-22, UC-11, ADR-0037, IADR-0215 / IADR-0346 (#600): 利用者本人へのアプリ内通知の集約用。
+// 🔴 **コード既定を :8080 にする**（後発サービスの規約。#342 の上書き漏れで不達になる面を最初から作らない）。
+// ホスト名 `notification-service` は送出側 DocumentService のコード既定・compose のサービス名・
+// helm の `{{ $name }}-service` と文字列一致する（IADR-0288）。
+// **readiness の UriHealthCheck には入れない** —— 通知は Should であり、後段の不調で BFF 全体を
+// not-ready にするのは fail-safe の後退である（McpServer / DocumentService と同じ扱い）。
+builder.Services.AddHttpClient("NotificationService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:NotificationService"]
+        ?? "http://notification-service:8080"));
 
 // FR-06, UC-03/UC-07, SC-03: 文書閲覧の集約用。ABAC スコープ解決（AuthorizationService）→ 文書取得。
 builder.Services.AddHttpClient("DocumentService", c =>

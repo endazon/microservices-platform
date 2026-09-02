@@ -3,9 +3,19 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <!-- サービスのテストは **1 プロジェクト**にする（計画 06_technical/12_backend-application-stack
-       §規範性・粒度・置き場。利用者裁定 2026-08-04 / planning#180）。フォルダは実装のスライスを
-       鏡写しにする（Tests/Features/・Tests/Domain/。IADR-0282 決定 1 —— 従前の Unit/ ・ Integration/
-       区分に代わる。統合テストも対象スライスのフォルダへ置く）。
+       §規範性・粒度・置き場。利用者裁定 2026-08-04 / planning#180）。フォルダは実装の
+       **鏡写し**にする（IADR-0282 決定 1 —— 従前の Unit/ ・ Integration/ 区分に代わる）。
+       鏡写しの規則は IADR-0334（ADR-0065 決定 3 / ADR-0068 決定 1・2 の実装側の写像）:
+         - 相手は「そのテストが検証する本体の要素が置かれたディレクトリ」であり、Features/ と
+           Domain/ に限らない（Infrastructure/<Sub>/・Common/<Sub>/・Domain/Ports/ も写す）。
+         - 段は**叩く操作の数**で決める。1 操作だけなら 3 段目 Tests/Features/<集約>/<操作>/、
+           同じ集約の 2 操作以上なら 2 段目 Tests/Features/<集約>/。統合テストも同じ規則で置き、
+           種別ごとの専用フォルダは作らない。
+         - 本体に写す相手が無いもの（テスト専用の器・GlobalUsings.cs・Program.cs 由来の検証）は
+           Tests/ 直下に残す。これは漏れではなく規則の適用結果である。
+         - 名前空間はフォルダへ追随させる（<Name>.Tests.<移送先>）。外側の名前空間は自動で
+           探索されるので、Tests/ 直下の器を参照する using を足す必要は無い。
+       雛形の Tests/ 配下は、この 3 分岐（3 段目 / Tests/ 直下 / Domain/）の実例をそれぞれ 1 つ持つ。
        PackageReference は単体側（NSubstitute 等）と統合側（Mvc.Testing / Testcontainers /
        Respawn）の**和集合**を持つ。
 

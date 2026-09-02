@@ -11,7 +11,8 @@
 
 ```
 [k3d cluster: msp-ast-dev]
-  ns platform-infra          postgres / rabbitmq / redis / keycloak / qdrant / otel-collector   ← deploy/local/infra
+  ns platform-infra          postgres / rabbitmq / redis / keycloak / qdrant / otel-collector
+                             + mailpit（開発環境の捕捉用 MTA。メールはここで止まり外へ出ない）  ← deploy/local/infra
   ns microservices-platform  既存 Helm chart（values-local: mesh/NP/HPA off, registry=local）
                              + ExternalName エイリアス（素のサービス名 → platform-infra）
   ns ai-stock-trading        AST chart（AST#122 で追加）
@@ -254,6 +255,25 @@ kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 #   → http://localhost:5080/bff/...   （認証必須。匿名は 401）
 ```
 
+### 送信メールの確認（開発環境の捕捉用 MTA。Issue #1144 / IADR-0344）
+
+**開発環境から外部へメールは出ない。** 計画 ADR が「開発環境では実送信しない。捕捉用 MTA を置く」と
+確定しているため、`platform-infra` に `mailpit` が **dev 既定**（opt-in ではない）で立ち、
+Keycloak の realm もそこを送出先の既定にしている。**パスワードリセットのメールはここに溜まる。**
+
+```bash
+kubectl -n platform-infra port-forward svc/mailpit 8025:8025
+#   → http://localhost:8025            （受信箱。認証は無い）
+node scripts/check-password-reset-mail.js
+#   → 申請 → 送出 → 受信 → 本文（リンクと有効期限のみ）を機械で確かめる
+```
+
+> **エッジ（50000）には出していない。** 受信箱の中身は**パスワードリセットリンク＝認証資格**であり、
+> UI は認証を持たない。見るときは上のように**運用者が明示的に開く**。
+>
+> 実リレー（go-live のメールテナント）へ向けるのは、`SMTP_HOST` を明示したときだけである
+> （[運用 Runbook](../../docs/operations/keycloak-smtp-relay-setup-runbook.md)）。
+
 ### SPA(/settings) 到達（Issue #313 / IADR-0078）
 
 `values-local` は `frontend.enabled=true` で SPA(frontend) を k8s に配信する（`k8s-local-images.sh` が
@@ -329,6 +349,10 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
   登録済み。`http://localhost:3001/*` は compose(dev) の host 公開用（[IADR-0032](../../.ai-context/adr/IADR-0032_wikijs-dev-exposure-opt-in.md)）
   であり k8s の port-forward では使わない。非 edge で SSO を使う場合は Wiki.js の **Site URL も `http://localhost:3300`** に
   揃える（コールバックは `{Site URL}/login/{strategyKey}/callback`・[wiki-oidc/README](wiki-oidc/README.md)）。
+  **ストラテジと Site URL の投入は自動である**（#1127・IADR-0342）——
+  `WIKIJS_OIDC=1 bash scripts/k8s-local-up.sh`（既定オフの opt-in）か、既に立っているスタックなら
+  `WIKIJS_OIDC=1 bash deploy/local/wikijs-setup/bootstrap.sh`。冪等で、2 回目は何も変えない。
+  非 edge で使うときは同時に `WIKIJS_SITE_URL=http://localhost:3300` を渡す。
   実ブラウザでの SSO ログイン疎通は稼働 k3d・edge 設定依存＝**live**（本 issue の live 分）。
 - 本番像 `values.yaml` の `frontend.extraEnv` は空のまま不変。本番は実 Wiki URL を per-env の `extraEnv` で供給する
   （opt-in・後方互換）。Wiki.js への直接到達は既定で塞ぐ運用（Ingress 既定 disabled・[IADR-0020](../../.ai-context/adr/IADR-0020_wiki-js-deployment-abac-gateway.md)）に従う。

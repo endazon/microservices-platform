@@ -85,6 +85,10 @@ jobs:
       - name: Self-test the readiness gate
         run: node scripts/check-stack-ready.js --self-test
 
+      # SC-15 / #1144: メール送出の門も、**高価な起動の前に**自身を確かめる（上と同じ理由）。
+      - name: Self-test the password-reset mail gate
+        run: node scripts/check-password-reset-mail.js --self-test
+
       - name: Install k3d (pinned)
         run: |
           set -euo pipefail
@@ -141,9 +145,24 @@ jobs:
           done
 
       # 🔴 ここが門である。G1（readiness）/ G2（0 件で緑にしない）/ G3（ツール不在は失敗）/
-      # G4（エッジと issuer の完全一致）/ G5（admin=50000）をすべて fail-closed で判定する。
+      # G4（エッジと issuer の完全一致）/ G5（admin=50000）/ G6（pod 側の名前解決）/
+      # G7（Wiki.js が使える）/ G8（捕捉用 MTA が居て API が読める）をすべて fail-closed で判定する。
       - name: 🔴 Gate — the stack is actually up
         run: node scripts/check-stack-ready.js
+
+      # 🔴 ここが 3 つめの門である（#1144 / SC-15・ADR-0045 決定 7・9）。
+      # readiness（G8）は「捕捉用 MTA が居て API が読める」までしか言わない。**送出が成立すること**と
+      # **本文がリンクと有効期限だけであること**は別の判定が要る。
+      #
+      # 🔴 これが `docs/tests/SC-15_password-reset.md` の T-10 / T-16 / T-17 の実体である。
+      # 捕捉先が無かったあいだ、これらは「手動（実環境）」で止まっていた（#1144）。
+      # 0 通は「送らなくてよかった」ではなく「送出が成立していない」として落ちる。
+      #
+      # **メールを 2 通作る**（実在／非実在の申請）。このクラスタは次のステップで破棄されるので
+      # 副作用は残らない（ABAC_POSITIVE / SEARCH_SEEDED と同じ扱い）。**外へは 1 通も出ない** ——
+      # 送出先はクラスタ内の捕捉用 MTA であり、それ自体が本門の測っていることである。
+      - name: 🔴 Gate — パスワードリセットの送出とメール本文（#1144）
+        run: node scripts/check-password-reset-mail.js
 
       # 🔴 `k8s-local-up.sh` の ABACSEED は **best-effort**（失敗しても WARN で通す）。
       # 投入が失敗したまま「空」になると、次の門が「認可の故障」と「投入漏れ」を区別できない。
