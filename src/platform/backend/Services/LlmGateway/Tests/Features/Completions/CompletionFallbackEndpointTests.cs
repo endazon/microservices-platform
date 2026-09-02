@@ -121,20 +121,46 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
     }
 
     // T-25e2: **鎖を持たない用途は 400 でもフォールバックしない**（従来の挙動が変わっていないこと）。
-    // planning#426 裁定 (a) が鎖を足したのは default / rag-answer の 2 つだけであり、
-    // report-weekly 等は依然として鎖を持たない。「鎖が無い用途は落ちない」という分岐そのものが
-    // 生きていることを、鎖を得た rag-answer から別の用途へ移して固定し直す。
+    // ［2026-09-02 / AST#571 で改訂］旧テストは report-weekly を用いていたが、二段判断の層別用途登録の
+    // 実装 ADR で report-weekly にも第 2 候補（claude-sonnet-5）を登録したため、鎖を持たない例として
+    // 使えなくなった。**取引判断の一次スクリーニング（trade-decision-screening）はフォールバック禁止
+    // （本判断と同じ理由。AST/ADR-0017 決定2）であり、恒久的に鎖を持たない用途**として移し替える。
+    // 「鎖が無い用途は落ちない」という分岐そのものが生きていることを固定し続ける。
     [Fact]
-    public async Task PostComplete_ReportWeekly_When400_DoesNotFallBack()
+    public async Task PostComplete_TradeDecisionScreening_When400_DoesNotFallBack()
     {
         var client = ClientFailing(ModelScriptedProvider.AnyModel, HttpStatusCode.BadRequest);
 
-        var req = new { Prompt = "週報", MaxTokens = 100, Confidentiality = "public", Purpose = "report-weekly" };
+        var req = new { Prompt = "銘柄の一次絞り込み", MaxTokens = 100, Confidentiality = "internal", Purpose = "trade-decision-screening" };
         var response = await client.PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
         var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeFalse();
-        body.Model.Should().Be("claude-opus-5", "鎖が無いので第 1 候補のまま縮退する");
+        body.Model.Should().Be("claude-haiku-4-5", "鎖が無いので第 1 候補のまま縮退する");
+    }
+
+    // AST#571, AST/ADR-0017 決定1: 報告書 3 種は取引判断と異なりフォールバックを許す。第 1 候補が
+    // HTTP 400 で失敗したら、二段判断の層別用途登録の実装 ADR が定めた第 2 候補へ落ちて応答が返る。
+    // いずれも安価側への遷移であり（月報・週報は opus-5→sonnet-5、日報は sonnet-5→haiku-4-5）、
+    // 費用が上振れすることはない。
+    [Theory]
+    [InlineData("report-monthly", "claude-opus-5", "claude-sonnet-5")]
+    [InlineData("report-weekly", "claude-opus-5", "claude-sonnet-5")]
+    [InlineData("report-daily", "claude-sonnet-5", "claude-haiku-4-5")]
+    public async Task PostComplete_ReportKindPurpose_When400_FallsBackToKindSpecificModel(
+        string purpose, string primaryModel, string expectedFallbackModel)
+    {
+        var client = ClientFailing(primaryModel, HttpStatusCode.BadRequest);
+
+        var req = new { Prompt = "報告書の散文", MaxTokens = 100, Confidentiality = "internal", Purpose = purpose };
+        var response = await client.PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
+        body!.Sent.Should().BeTrue("400 系はフォールバックの発火条件である（AST/ADR-0017 決定1）");
+        body.Model.Should().Be(expectedFallbackModel);
+        body.Model.Should().NotBe(primaryModel);
+        body.Endpoint.Should().Be("claude-managed");
     }
 
     // T-25f: **ストリーム経路はフォールバックしない**（IADR-0225 の射程外）。
