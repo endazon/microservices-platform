@@ -5057,7 +5057,7 @@ ${r.stderr}`);
   // --- #583: 他リポジトリ参照の走査を .md 外へ広げる ------------------------------
   //
   // ★ #507 は対象を *.md に限っていた（決定 4）。そのため
-  //   `.github/workflows/doc-links-planning.yml` の空白区切り参照を誰も見ていなかった。
+  //   撤去済みの夜間リンク検査ワークフローの空白区切り参照を誰も見ていなかった。
   //   人が読む散文は docs/（.md）だけでなく .github/ と deploy/ にもある。
   {
     const { spawnSync, execFileSync } = require('child_process');
@@ -5105,23 +5105,31 @@ ${r.stderr}`);
       );
     });
 
-    // ★★ 直したものを捕まえるか、実データで確かめる（#675 の教訓）。
-    ok('check-cross-repo-refs: develop 時点の workflow へ当てると空白区切りを検出する（変異試験）', () => {
-      let before;
-      try {
-        before = execFileSync('git', ['show', 'origin/develop:.github/workflows/doc-links-planning.yml'], {
-          encoding: 'utf8',
-          cwd: REPO,
-        });
-      } catch {
-        return; // origin/develop が無い環境（tarball 展開等）では飛ばす
-      }
-      const v = xrepo.findViolations(before, { markdown: false });
-      // develop 側に既に是正が入っている（＝本 PR がマージ済み）なら前提が消える。
-      if (v.length === 0) return;
+    // ★★ 直したものを捕まえるか、変異試験で確かめる（#675 の教訓）。
+    //
+    // ★ #1092: 本試験の入力は `git show origin/develop:.github/workflows/doc-links-planning.yml` だった。
+    //   同ワークフローは planning submodule の撤去（ADR-0048 決定 2 / IADR-0228）で退役しており、
+    //   `git show` は必ず失敗して **catch で return する＝何も検査しないまま緑になっていた**
+    //   （実在しないワークフローを指す死んだ試験）。入力を当時の形を写したフィクスチャへ置き換え、
+    //   **試験が実際に走る**ようにする。捕まえたい形（YAML コメント中の空白区切り参照）は同じである。
+    ok('check-cross-repo-refs: .md 外（workflow の YAML コメント）の空白区切りを検出する（変異試験）', () => {
+      const mutated = [
+        'name: doc-links',
+        'jobs:',
+        '  check:',
+        '    steps:',
+        '      # 追随の経緯は ai-stock-trading #245 を参照（← 空白区切り。規約違反）。',
+        '      - run: node scripts/check-doc-links.js',
+      ].join('\n');
+      const v = xrepo.findViolations(mutated, { markdown: false });
       assert.ok(
         v.some((x) => x.kind === 'spaced' && x.matched.includes('ai-stock-trading')),
-        `develop の空白区切りを検出できなかった: ${JSON.stringify(v)}`,
+        `空白区切りを検出できなかった: ${JSON.stringify(v)}`,
+      );
+      // 正しい形（修飾つき・空白なし）は検出しない（陽性対照に対する陰性対照）。
+      assert.deepStrictEqual(
+        xrepo.findViolations(mutated.replace('ai-stock-trading #245', 'AST#245'), { markdown: false }),
+        [],
       );
     });
 
@@ -5447,27 +5455,12 @@ ${r.stderr}`);
       }
     });
 
-    ok('#703: キットが正本 —— issue テンプレートはキットとバイト一致（分類 A）', () => {
-      const kit = path.join(
-        REPO,
-        'planning/tools/impl-handoff-kit/repo-template',
-        TEMPLATE,
-      );
-      // planning が未 populate の環境では比較できない。**静かに緑を返さない**ため、
-      // populate 済みかどうかを先に確かめ、未 populate のときだけ明示して抜ける。
-      if (!fs.existsSync(path.join(REPO, 'planning/tools/impl-handoff-kit'))) {
-        console.log('    (planning 未 populate のためバイト一致比較を省略)');
-        return;
-      }
-      assert.ok(fs.existsSync(kit), `キット側に ${TEMPLATE} が無い（キットの改名を疑う）`);
-      const a = fs.readFileSync(path.join(REPO, TEMPLATE));
-      const b = fs.readFileSync(kit);
-      assert.ok(
-        a.equals(b),
-        `${TEMPLATE} がキットとバイト一致しない（IADR-0115 決定 1 分類 A）: ` +
-          `本リポ ${a.length}B / キット ${b.length}B`,
-      );
-    });
+    // ★ #1092: ここには「issue テンプレートはキットとバイト一致（分類 A）」があった。
+    //   入力は `planning/tools/impl-handoff-kit/repo-template/…` ——**撤去済みの planning submodule
+    //   配下のパス**であり、`fs.existsSync` が必ず偽になって「未 populate のため省略」を印字して
+    //   抜けるだけの試験になっていた。`CLAUDE.md` は「kit 同期のバイト一致検査は退役済み。
+    //   復活させない」「kit との乖離は受容する」（ADR-0048 決定 6）と定めているので**復活させず撤去する**。
+    //   本リポ側の到達状態は直上の「Given-When-Then とファイル領域の 2 欄を必須で持つ」が固定している。
 
     ok('#703: PR サイズ検査は warn 方式（マージを止めない）', () => {
       const t = fs.readFileSync(path.join(REPO, PRSIZE), 'utf8');
@@ -6323,16 +6316,12 @@ ${r.stderr}`);
       }
     });
 
-    // ★ 根拠がキット側に在ること（本リポの理屈だけで組み直されないように固定する）。
-    ok('#717: 状態欄の更新主体をキットが定めている', () => {
-      const kit = path.join(REPO, 'planning/tools/impl-handoff-kit/repo-template/feedback/README.md');
-      if (!fs.existsSync(kit)) {
-        console.log('notice: planning が未 populate のため、#717 のキット根拠は検査していない。');
-        return;
-      }
-      const k = fs.readFileSync(kit, 'utf8');
-      assert.match(k, /誰が書き換えるか/, 'キットから status の更新主体の表が消えた（IADR-0191 決定 1 の根拠）');
-    });
+    // ★ #1092: ここには「状態欄の更新主体をキットが定めている」があった。入力は
+    //   `planning/tools/impl-handoff-kit/repo-template/feedback/README.md` ——**撤去済みの
+    //   planning submodule 配下**であり、notice を出して抜けるだけの試験になっていた。
+    //   加えて `feedback/` 自体が ADR-0048 決定 5 で本リポジトリから撤去済みである。
+    //   キット側を出典にする検査は復活させない（ADR-0048 決定 6）。規範そのものは直上の
+    //   「書き換え境界（本文は不可 / 状態欄は対象外）が入口にある」が入口側で固定している。
 
     // ★ 母集合の規則は 8 つとも入口に残り、実例だけが出ていること。
     ok('#730: 母集合の規則（キット 1〜8 ＋ 本リポ 9・10）が入口に残り、実例は入口に無い', () => {
