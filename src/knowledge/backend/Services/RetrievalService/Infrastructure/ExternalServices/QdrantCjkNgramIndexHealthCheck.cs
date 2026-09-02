@@ -6,7 +6,7 @@ using RetrievalService.Common.Observability;
 
 namespace RetrievalService.Infrastructure.ExternalServices;
 
-// FR-03, UC-01, NFR-06, #1118, [[IADR-0331]] 決定 3:
+// FR-03, UC-01, NFR-06, #1118, [[IADR-0339]] 決定 3:
 // **検索が見ているコレクションに日本語 2-gram（`text_ngram`）の全文ペイロードインデックスが在るか**を readiness に載せる。
 //
 // `QdrantFullTextIndexHealthCheck`（`text`）と同型で、見るキーだけが違う。1 つの check に畳まず別に置くのは、

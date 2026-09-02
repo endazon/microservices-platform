@@ -29,7 +29,7 @@ public sealed class KeywordSearchMetrics
     // 部分文字列の全走査へ黙って落ちる（実測）。だからこそ readiness 側で「索引が在るか」を見る。
     public const string MissingIndexReason = "missing_index";
 
-    // FR-03, #1118, [[IADR-0331]] 決定 3: 日本語 2-gram（`text_ngram`）の全文ペイロードインデックスが無い。
+    // FR-03, #1118, [[IADR-0339]] 決定 3: 日本語 2-gram（`text_ngram`）の全文ペイロードインデックスが無い。
     // 識別子の系統（`text`）は生きていて、**日本語の語だけが 0 件へ落ちる**縮退。これも例外を伴わない。
     public const string MissingNgramIndexReason = "missing_ngram_index";
 

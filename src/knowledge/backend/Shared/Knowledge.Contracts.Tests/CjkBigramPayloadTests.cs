@@ -4,7 +4,7 @@ using Xunit;
 
 namespace Knowledge.Contracts.Tests;
 
-// FR-03, UC-01, ADR-0009, #1118, [[IADR-0331]] 決定 1:
+// FR-03, UC-01, ADR-0009, #1118, [[IADR-0339]] 決定 1:
 // **取り込み側と検索側が共有する 2-gram 変換を固定する。**
 //
 // 🔴 ここが黙って変わると、取り込み済みの `text_ngram` とクエリの変換が食い違い、

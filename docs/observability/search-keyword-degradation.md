@@ -9,7 +9,7 @@ updated: 2026-09-02
 <!-- trace:
 ids: [FR-03, FR-05, NFR, NFR-06, UC-01, SC-01, SC-02]
 adrs: [ADR-0009, ADR-0016]
-iadrs: [IADR-0009, IADR-0252, IADR-0255, IADR-0256, IADR-0313, IADR-0318, IADR-0331]
+iadrs: [IADR-0009, IADR-0252, IADR-0255, IADR-0256, IADR-0313, IADR-0318, IADR-0339]
 specs: [20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext]
 issues: [#972, #992, #1116, #1118]
 -->

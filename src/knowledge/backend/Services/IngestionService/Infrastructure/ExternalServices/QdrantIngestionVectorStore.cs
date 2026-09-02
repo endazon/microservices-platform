@@ -70,7 +70,7 @@ public class QdrantIngestionVectorStore(
             }
         };
 
-    // FR-03, #1118, [[IADR-0331]] 決定 1・2: 日本語（CJK）2-gram ペイロード `text_ngram` の全文索引を、
+    // FR-03, #1118, [[IADR-0339]] 決定 1・2: 日本語（CJK）2-gram ペイロード `text_ngram` の全文索引を、
     // 全コレクションへ**存在の有無によらず**張る（`EnsureCollectionsAsync` の `text` と同じ作法）。
     //
     // 🔴 `multilingual` は公式イメージ v1.18.1 では日本語の分かち書きを持たず、語で当たるかは連なりの切れ目次第
@@ -86,7 +86,7 @@ public class QdrantIngestionVectorStore(
         }
     }
 
-    // FR-03, #1118, [[IADR-0331]] 決定 1: `text_ngram` の索引パラメータ。
+    // FR-03, #1118, [[IADR-0339]] 決定 1: `text_ngram` の索引パラメータ。
     //
     // **`prefix` を採る。** ペイロードは 2 文字トークンの列なので、`prefix` は各トークンの
     // 1 文字接頭辞も索引に入れる。これで **1 文字の語（「本」）も当たる**（実測: whitespace / word では
@@ -108,7 +108,7 @@ public class QdrantIngestionVectorStore(
     // 1 ページごとに `UpdateBatch`（SetPayload × 点数）を 1 回出す。
     internal const uint BackfillPageSize = 256;
 
-    // FR-03, #1118, [[IADR-0331]] 決定 2: `text_ngram` を持たない点だけを scroll し、`text` から
+    // FR-03, #1118, [[IADR-0339]] 決定 2: `text_ngram` を持たない点だけを scroll し、`text` から
     // 2-gram を作って後付けする。
     //
     // 🔴 **移行スクリプトにしない**（[[IADR-0318]] が索引の後付けで退けた案 2 と同じ理由。呼び忘れが
@@ -212,7 +212,7 @@ public class QdrantIngestionVectorStore(
             ["document_title"] = new Value { StringValue = title },
             // FR-03, #1116: 全文インデックスを張るキーと同じ 1 つの値を使う（書き込みと索引を割らない）。
             [FullTextKey] = new Value { StringValue = text },
-            // FR-03, #1118, [[IADR-0331]] 決定 1: 日本語（CJK）の 2-gram。同じ本文から、検索側と共有する
+            // FR-03, #1118, [[IADR-0339]] 決定 1: 日本語（CJK）の 2-gram。同じ本文から、検索側と共有する
             // 変換（`CjkBigramPayload`）で作る。CJK を含まない本文では空文字列（`is_empty` には当たらない）。
             [CjkBigramPayload.PayloadKey] = new Value { StringValue = CjkBigramPayload.Encode(text) },
             ["markdown_uri"] = new Value { StringValue = markdownUri ?? "" },

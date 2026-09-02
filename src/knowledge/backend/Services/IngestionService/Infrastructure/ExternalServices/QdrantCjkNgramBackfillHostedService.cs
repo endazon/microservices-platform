@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace IngestionService.Infrastructure.ExternalServices;
 
-// FR-03, #1118, [[IADR-0331]] 決定 2: **既に索引されている点へ、日本語 2-gram ペイロード `text_ngram` を後付けする。**
+// FR-03, #1118, [[IADR-0339]] 決定 2: **既に索引されている点へ、日本語 2-gram ペイロード `text_ngram` を後付けする。**
 //
 // `text_ngram` の索引は `QdrantBootstrapHostedService` が起動時に張るが、索引があっても**点がペイロードを
 // 持たなければ日本語は 0 件のまま**である。再取り込み（DocumentUpdated の再発行）を運用に要求せず、

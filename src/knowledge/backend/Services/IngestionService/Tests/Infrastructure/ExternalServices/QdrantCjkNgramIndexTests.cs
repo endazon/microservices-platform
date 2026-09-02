@@ -10,7 +10,7 @@ using Qdrant.Client.Grpc;
 
 namespace IngestionService.Tests.Infrastructure.ExternalServices;
 
-// FR-03, UC-01, ADR-0009, #1118, [[IADR-0331]] 決定 1・2:
+// FR-03, UC-01, ADR-0009, #1118, [[IADR-0339]] 決定 1・2:
 // **日本語 2-gram ペイロード `text_ngram` の索引が全コレクションへ張られ、既存の点へ後付けされること。**
 //
 // 🔴 索引が在っても、点が `text_ngram` を持たなければ日本語は 0 件のままである。

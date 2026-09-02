@@ -37,7 +37,7 @@ builder.Services.AddPlatformHealthChecks()
     .AddCheck<QdrantFullTextIndexHealthCheck>(
         QdrantFullTextIndexHealthCheck.Name,
         failureStatus: HealthStatus.Degraded, tags: ["ready"])
-    // FR-03, #1118 / [[IADR-0331]] 決定 3: 日本語 2-gram（`text_ngram`）の索引の有無も同型で載せる。
+    // FR-03, #1118 / [[IADR-0339]] 決定 3: 日本語 2-gram（`text_ngram`）の索引の有無も同型で載せる。
     // `text` の索引が在っても、こちらが無ければ**日本語の語だけが 0 件**になる（識別子は当たる）。
     .AddCheck<QdrantCjkNgramIndexHealthCheck>(
         QdrantCjkNgramIndexHealthCheck.Name,

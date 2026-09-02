@@ -2,7 +2,7 @@ using System.Text;
 
 namespace Knowledge.Contracts.Indexing;
 
-// FR-03, UC-01, ADR-0009, #1118, [[IADR-0331]] 決定 1:
+// FR-03, UC-01, ADR-0009, #1118, [[IADR-0339]] 決定 1:
 // **日本語（CJK）の語で全文検索が当たるための、取り込み側と検索側の共通契約。**
 //
 // Qdrant 公式イメージ v1.18.1 の `multilingual` トークナイザは**日本語の分かち書きを持たず**、語で当たるかは

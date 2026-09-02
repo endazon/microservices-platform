@@ -155,7 +155,7 @@ public class QdrantVectorStore(
         }
     }
 
-    // FR-03, #1118, [[IADR-0331]] 決定 1: クエリを 2 系統に割る。
+    // FR-03, #1118, [[IADR-0339]] 決定 1: クエリを 2 系統に割る。
     //
     //   - CJK 以外（識別子・型番・略語・英単語）→ `text`（`multilingual`）。**#1117 のままで、落とさない。**
     //   - CJK（日本語）→ `text_ngram`（アプリ側 2-gram。取り込み側と同じ `CjkBigramPayload.Encode`）。

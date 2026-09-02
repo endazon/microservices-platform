@@ -21,7 +21,7 @@ public class QdrantBootstrapHostedService(
             // ADR-0016: モデル別コレクション（voyage/1024・ruri/768）を実次元で作成・保証する。
             // FR-03, #1116: 併せて `text` の全文ペイロードインデックスを（新規・既存とも）張る。
             await store.EnsureCollectionsAsync(ct);
-            // FR-03, #1118, [[IADR-0331]] 決定 2: 日本語 2-gram（`text_ngram`）の索引も同じ作法で張る。
+            // FR-03, #1118, [[IADR-0339]] 決定 2: 日本語 2-gram（`text_ngram`）の索引も同じ作法で張る。
             // 既存の点への後付けは `QdrantCjkNgramBackfillHostedService` が起動後に行う（ここで待たない）。
             await store.EnsureCjkNgramIndexAsync(ct);
             logger.LogInformation(

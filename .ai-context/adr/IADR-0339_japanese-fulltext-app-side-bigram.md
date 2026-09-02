@@ -1,5 +1,5 @@
 ---
-title: IADR-0331 日本語の全文検索はアプリ側 2-gram を Qdrant の全文索引に載せて成立させる（形態素解析・別エンジン・要求の読み替えは採らず、計画の裁定も要しない）
+title: IADR-0339 日本語の全文検索はアプリ側 2-gram を Qdrant の全文索引に載せて成立させる（形態素解析・別エンジン・要求の読み替えは採らず、計画の裁定も要しない）
 type: impl-adr
 status: Accepted
 related_ids: [FR-03, UC-01, SC-01, SC-02, NFR, NFR-01, NFR-06, NFR-08, ADR-0009, ADR-0016, IADR-0014, IADR-0252, IADR-0313, IADR-0315, IADR-0318]
@@ -14,7 +14,7 @@ related_specs:
   - ../specs/20260902_issue-1118_japanese-bigram-fulltext.md
 ---
 
-# IADR-0331: 日本語の全文検索はアプリ側 2-gram で成立させる（#1118）
+# IADR-0339: 日本語の全文検索はアプリ側 2-gram で成立させる（#1118）
 
 - 状態: Accepted
 - 日付: 2026-09-02

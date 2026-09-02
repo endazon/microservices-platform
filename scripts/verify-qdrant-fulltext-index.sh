@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FR-03, UC-01, SC-01, Issue #1116 / [[IADR-0318]]・Issue #1118 / [[IADR-0331]]:
+# FR-03, UC-01, SC-01, Issue #1116 / [[IADR-0318]]・Issue #1118 / [[IADR-0339]]:
 #   Qdrant の **全文（full-text）ペイロードインデックス**が、実機で本当に効いていることを
 #   **陽性対照と陰性対照の対**で確かめる。
 #   #1118 で、**日本語の語**（アプリ側 2-gram ペイロード `text_ngram`）も同じ対で判定する（段 7）。
@@ -88,7 +88,7 @@ JSON
 # `text`（識別子の系統・multilingual）への全文 Match。
 count_matches() { count_matches_in text "$1"; }
 
-# FR-03, #1118 / [[IADR-0331]] 決定 1: 日本語（CJK）の 2-gram 符号化。
+# FR-03, #1118 / [[IADR-0339]] 決定 1: 日本語（CJK）の 2-gram 符号化。
 #   **アプリ（Knowledge.Contracts.Indexing.CjkBigramPayload.Encode）の写し**である ——
 #   CJK の連なりごとに 2-gram（1 文字の連なりは 1-gram）を空白区切りで並べ、CJK 以外は区切りとしてだけ働く。
 #   アプリ側が変わったらここも変える（固定はアプリ側の単体試験 CjkBigramPayloadTests が持つ）。
@@ -218,7 +218,7 @@ else
   fail "索引を張れない、または tokenizer が multilingual にならない（実際: ${tokenizer}）"
   info "$(printf '%s' "$create_out" | head -c 200)"
 fi
-# #1118 / [[IADR-0331]] 決定 1: 日本語 2-gram ペイロード `text_ngram` の索引も、アプリと同じパラメータで張る
+# #1118 / [[IADR-0339]] 決定 1: 日本語 2-gram ペイロード `text_ngram` の索引も、アプリと同じパラメータで張る
 # （tokenizer=prefix / 1..2 文字。`prefix` は 2-gram の 1 文字接頭辞も索引に入れるので 1 文字の語も当たる）。
 create_ngram_out=$(send_body PUT "/collections/${COLLECTION}/index?wait=true" \
   '{"field_name":"text_ngram","field_schema":{"type":"text","tokenizer":"prefix","min_token_len":1,"max_token_len":2,"lowercase":true}}')
@@ -275,8 +275,8 @@ fi
 # ---- 段 7) 🔴 日本語の語が当たること（#1118。陽性・陰性を対で判定する） ----------------------
 #
 # 🔴 `text`（multilingual）は公式イメージ v1.18.1 では日本語の分かち書きを持たず、語で当たるかは連なりの
-#    切れ目次第である（実配備チャンクの日本語 25 語のうち当たるのは 1 語。[[IADR-0331]] 実測 1）。
-#    アプリは CJK を 2-gram に割って `text_ngram` に載せ、クエリも同じ変換で引く（[[IADR-0331]] 決定 1）。
+#    切れ目次第である（実配備チャンクの日本語 25 語のうち当たるのは 1 語。[[IADR-0339]] 実測 1）。
+#    アプリは CJK を 2-gram に割って `text_ngram` に載せ、クエリも同じ変換で引く（[[IADR-0339]] 決定 1）。
 #    ここでは **同じ語**を `text`（旧経路）と `text_ngram`（新経路）の両方で引き、対比をそのまま出す。
 #    判定は `text_ngram` の側 —— **在る語 4 つが全て 1 件以上・在らない語が 0 件**。
 printf '\n[7/7] 日本語の語が当たること（text_ngram の 2-gram。text=旧経路との対比も出す）\n'

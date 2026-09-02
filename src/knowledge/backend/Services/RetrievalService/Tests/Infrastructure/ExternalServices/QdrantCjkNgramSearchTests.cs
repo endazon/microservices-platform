@@ -12,7 +12,7 @@ using RetrievalService.Infrastructure.ExternalServices;
 
 namespace RetrievalService.Tests.Infrastructure.ExternalServices;
 
-// FR-03, UC-01, NFR-06, ADR-0009, #1118, [[IADR-0331]] 決定 1・3:
+// FR-03, UC-01, NFR-06, ADR-0009, #1118, [[IADR-0339]] 決定 1・3:
 // **日本語のクエリは 2-gram にして `text_ngram` へ、識別子は `text` へ Match すること**と、
 // **`text_ngram` の索引の欠落を readiness で観測できること**。
 //

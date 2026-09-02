@@ -18,7 +18,7 @@ related_ids:
   - IADR-0313
   - IADR-0315
   - IADR-0318
-  - IADR-0331
+  - IADR-0339
 author: claude
 created: 2026-09-02
 updated: 2026-09-02
@@ -40,7 +40,7 @@ plan_refs:
   `06_technical/08_data-egress-policy`（実行時の外部取得の禁止）
 - 実装 ADR: [[IADR-0318]]（`multilingual` 採用と索引の後付け）／[[IADR-0315]]（Qdrant 1.18.1）／[[IADR-0014]]（ペイロードキーの表現）／
   [[IADR-0252]]（正負の対照を対で置く）／[[IADR-0313]]（決定的ローカル埋め込みと門）
-- 本作業の実装 ADR: **[[IADR-0331]]**（`develop` の最大値 0330 + 1。並行 PR と衝突した場合はマージ直前に改番する）
+- 本作業の実装 ADR: **[[IADR-0339]]**（起草時は `develop` の最大値 0330 + 1 で IADR-0331 を仮採番したが、#1140 が先に確保し先行 PR に 0333〜0338 が割り当てられたため、マージ前に IADR-0339 へ改番した）
 
 > 🔴 **issue #1118 は「ADR-0016（ベクトルストアの選定）」と書くが、ベクトルストアの選定は ADR-0009 である。**
 > ADR-0016 は埋め込みプロバイダ（Voyage / Ruri）の ADR で、本件が触れるのは ADR-0009 の射程である。
@@ -100,7 +100,7 @@ A / C / D へ進む必要が出たとき（B の精度が実運用で問題に�
 | `scripts/verify-qdrant-fulltext-index.sh` | **変更** | 段 7 を「数字を出すだけ」から**日本語の陽性・陰性対照の判定**へ格上げ（`text_ngram` を張って測る） |
 | `scripts/seed-search-documents.js` / `scripts/verify-oidc-edge-flow.sh` / `scripts/scripts.repo.test.js` | **変更** | 門 S4 の隣に **日本語の語（seed のタイトルから導く）** の段 S6 を足す |
 | `docs/functional/FR-03_hybrid-search.md` / `docs/tests/FR-03_hybrid-search.md` / `docs/observability/search-keyword-degradation.md` | **変更** | 「日本語は部分的」の記述を現況へ。新 check・理由値・テスト行の追加 |
-| `.ai-context/adr/IADR-0331_*.md` ＋ `README.md` | **新設** | 実装判断の記録 |
+| `.ai-context/adr/IADR-0339_*.md` ＋ `README.md` | **新設** | 実装判断の記録 |
 | `.ai-context/adr/IADR-0318` / `.ai-context/specs/20260831_issue-1116_*` | **変更しない** | 凍結記録 |
 | `src/.../Tests/QdrantFullTextIndexBootstrapTests.cs` / `QdrantFullTextIndexObservabilityTests.cs` | **変更しない** | 🔴 #1063 が全サービスの `Tests/` を移送中。既存テストファイルを触らない。**この制約が設計を決めた**（`EnsureCollectionsAsync` へ足すと既存の `OnlyContain(FieldName == text)` が割れる → 別メソッド／既存 check へ足すと `text` だけで Healthy の固定が割れる → 別 check） |
 | `docs/api/openapi.yaml` / `SearchResponse` | **変更しない** | 契約は 1 バイトも変えない |
@@ -162,7 +162,7 @@ A / C / D へ進む必要が出たとき（B の精度が実運用で問題に�
 `text` の索引は `multilingual` のまま据え置き、非 CJK のクエリ断片はこれまでどおり `text` へ Match する。
 実測 1 の識別子行がそのまま成立する（`IngestionService=2` / `tanpopo searchseed msp=1` / `anpop=0` / `estionServ=0`）。
 
-## 設計（詳細は [[IADR-0331]]）
+## 設計（詳細は [[IADR-0339]]）
 
 ### 決定 1: `text` は `multilingual` のまま、CJK は別ペイロード `text_ngram` の 2-gram で引く
 
@@ -195,7 +195,7 @@ A / C / D へ進む必要が出たとき（B の精度が実運用で問題に�
       毎回判定する —— 実機で **PASS 9 / FAIL 0**。同じ語の `text` 側の件数を併記し対比を残す）
 - [x] 3. 識別子・型番・略語の再現率を落とさない（`text` の系統は条件が不変 —— 単体 `BuildFullTextConditions_IdentifierOnly_IsUnchangedFromTheMultilingualPath`
       が固定。実機の変異試験（§実測 4）: `text_ngram` ペイロードを持たない点＝本 PR 以前の姿では**日本語だけ 0 件で識別子は当たり続ける**）
-- [x] 4. 採った道（B）の根拠を [[IADR-0331]] に残す（計画の裁定は不要と判定した根拠を含む）
+- [x] 4. 採った道（B）の根拠を [[IADR-0339]] に残す（計画の裁定は不要と判定した根拠を含む）
 
 ### 実測 4: 変異試験（実配備チャンク 3 点・使い捨てコレクション）
 
