@@ -54,6 +54,8 @@ public class BffEndpointCompositionTests
             app.MapUserAdminBffEndpoints();
             // NFR, SC-16, ADR-0032 / IADR-0251 / #439 第 3 段(3a): BFF セッションの入口。
             app.MapAuthBffEndpoints();
+            // #600, FR-22, UC-11: 利用者本人へのアプリ内通知（後段は NotificationService）。
+            app.MapNotificationBffEndpoints();
         });
 
         viaComposition.Should().BeGreaterThan(0);
@@ -73,7 +75,9 @@ public class BffEndpointCompositionTests
         // 後段の McpServer が platform ユニットのサービスであるため）。
         // #452, FR-05, FR-09, UC-05, SC-17: 利用者アカウント管理（UserAdmin）を追加した（platform 同居。
         // 後段の AuthorizationService が platform ユニットのサービスであるため。IADR-0301 決定 1）。
-        BffEndpointComposition.Modules.Should().HaveCount(18);
+        // #600, FR-22, UC-11: 利用者本人へのアプリ内通知（Notification）を追加した（platform 同居。
+        // 後段の NotificationService が platform ユニットのサービスであるため。IADR-0347 決定 1）。
+        BffEndpointComposition.Modules.Should().HaveCount(19);
     }
 
     // 内容一致の検証（claude-review 指摘対応）: 合成点経由でビルドした実アプリ（全 DI 込み）の実体化ルートが、
@@ -82,7 +86,7 @@ public class BffEndpointCompositionTests
     [Fact]
     public void Composition_maps_exactly_the_expected_bff_route_groups()
     {
-        // 期待する 18 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
+        // 期待する 19 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
         string[] expectedGroups =
         [
             // #451, FR-19, FR-20, SC-19, SC-20: 個人資料と同期端末（後段は DocumentService の
@@ -119,6 +123,9 @@ public class BffEndpointCompositionTests
             "/bff/tags",
             // #916a, FR-17, UC-10: グラフ読み取り（後段は GraphService。Authorization を伝播する）。
             "/bff/graph",
+            // #600, FR-22, UC-11: 本人宛のアプリ内通知（後段は NotificationService。**認証必須・
+            // ロールは問わない**。絞るのは役割ではなく主体＝JWT の sub）。
+            "/bff/notifications",
         ];
 
         using var factory = new BffTestFactory();

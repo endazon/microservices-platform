@@ -82,6 +82,16 @@ builder.Services.AddHttpClient("McpServer", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:McpServer"]
         ?? "http://mcp-service:8080"));
 
+// FR-22, UC-11, ADR-0037, IADR-0215 / IADR-0347 (#600): 利用者本人へのアプリ内通知の集約用。
+// 🔴 **コード既定を :8080 にする**（後発サービスの規約。#342 の上書き漏れで不達になる面を最初から作らない）。
+// ホスト名 `notification-service` は送出側 DocumentService のコード既定・compose のサービス名・
+// helm の `{{ $name }}-service` と文字列一致する（IADR-0288）。
+// **readiness の UriHealthCheck には入れない** —— 通知は Should であり、後段の不調で BFF 全体を
+// not-ready にするのは fail-safe の後退である（McpServer / DocumentService と同じ扱い）。
+builder.Services.AddHttpClient("NotificationService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:NotificationService"]
+        ?? "http://notification-service:8080"));
+
 // FR-06, UC-03/UC-07, SC-03: 文書閲覧の集約用。ABAC スコープ解決（AuthorizationService）→ 文書取得。
 builder.Services.AddHttpClient("DocumentService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DocumentService"]

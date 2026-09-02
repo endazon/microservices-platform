@@ -3,14 +3,14 @@ title: FR-22 利用者本人への通知 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-08-16
-updated: 2026-08-28
+updated: 2026-09-02
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, SC-10, UC-11]
 adrs: [ADR-0037, ADR-0045, ADR-0046]
-iadrs: [IADR-0009, IADR-0056, IADR-0119, IADR-0121, IADR-0125, IADR-0132, IADR-0142, IADR-0215, IADR-0267, IADR-0270, IADR-0288]
-specs: [20260816_issue-600_fr22-in-app-notifications, 20260823_issue-600_notification-service-backend, 20260828_issue-451b_notification-ingress, 20260828_issue-600_notification-triggers, 20260828_issue-1025_notification-service-deployment]
+iadrs: [IADR-0009, IADR-0056, IADR-0119, IADR-0121, IADR-0125, IADR-0132, IADR-0142, IADR-0215, IADR-0267, IADR-0270, IADR-0288, IADR-0347]
+specs: [20260816_issue-600_fr22-in-app-notifications, 20260823_issue-600_notification-service-backend, 20260828_issue-451b_notification-ingress, 20260828_issue-600_notification-triggers, 20260828_issue-1025_notification-service-deployment, 20260902_issue-600_bff-notifications-relay]
 issues: [#451, #600, #1025]
 -->
 
@@ -182,7 +182,8 @@ flowchart TD
 > **同じ名前**で解決するため、上書き設定を持たない）。
 > **ただし実クラスタでの稼働と通知の実到達は未実測である。** 届かなかったことは送出側の計器
 > （結末 `unreachable`）とエラーログに必ず残り、**業務処理（同期・削除・容量計算）は止まらない**。
-> **画面に出るには BFF 端点が要る**（未実装）。
+> **画面に出るための集約（BFF 中継）は 2026-09-02 に入った** —— 前段（生成フック・ベル）と
+> 後段が結線され、残るのはメール経路の実体だけである。
 > 「基準を満たした」と「機能が働いている」を読み分けられる形で書いている。
 
 ## 関連仕様
