@@ -1,5 +1,5 @@
 ---
-title: IADR-0350 操作の処理は「外部境界か純粋な判断か」に分解できない限り Features/ の中に残し、段だけを数えて決める
+title: IADR-0349 操作の処理は「外部境界か純粋な判断か」に分解できない限り Features/ の中に残し、段だけを数えて決める
 type: impl-adr
 status: Accepted
 related_ids:
@@ -24,7 +24,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0051_ai-suggestion-abac-boundary.md (Accepted) 決定 1・3・4
 ---
 
-# IADR-0350: `AiSuggestionGenerator` は `Features/AiSuggestions/Generate/` へ下ろす（#1093）
+# IADR-0349: `AiSuggestionGenerator` は `Features/AiSuggestions/Generate/` へ下ろす（#1093）
 
 - 状態: Accepted
 - 日付: 2026-09-03
