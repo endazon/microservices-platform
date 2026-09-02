@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-13, FR-19, UC-07, SC-03, SC-04, NFR]
 adrs: [ADR-0004, ADR-0011, ADR-0032, ADR-0036, ADR-0046, ADR-0054, ADR-0056]
-iadrs: [IADR-0009, IADR-0020, IADR-0021, IADR-0044, IADR-0253, IADR-0256, IADR-0334]
+iadrs: [IADR-0009, IADR-0020, IADR-0021, IADR-0044, IADR-0253, IADR-0256, IADR-0335]
 specs: [20260831_issue-1106_uc-test-specs, 20260902_issue-1126_wiki-search-and-anonymous-contract]
 issues: [#88, #472, #1063, #1106, #1126]
 -->

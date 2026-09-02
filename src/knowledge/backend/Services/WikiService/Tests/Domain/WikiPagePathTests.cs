@@ -3,7 +3,7 @@ using WikiService.Domain;
 
 namespace WikiService.Tests.Domain;
 
-// UC-07, FR-13, IADR-0021, IADR-0334（#1126）: 正準パス `doc/<documentId>` の往復。
+// UC-07, FR-13, IADR-0021, IADR-0335（#1126）: 正準パス `doc/<documentId>` の往復。
 // 検索は Wiki.js が返した**パス**から台帳の行を引き当てるため、`PathFor` の逆写像が要る。
 // **台帳に足場を持たない形（人手で作られたページ・別の名前空間）は落とす** ——
 // ABAC で判定できないものを可視にしないための、検索経路の最初の関門である。

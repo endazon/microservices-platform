@@ -28,7 +28,7 @@ public static class WikiEndpoints
         var g = app.MapGroup("/wiki").WithTags("Wiki");
 
         ListWikiPagesEndpoint.Map(g);
-        // UC-07 基本フロー 1「検索する」（#1126 / IADR-0334）。**`/pages/{slug}` より先に登録しない**
+        // UC-07 基本フロー 1「検索する」（#1126 / IADR-0335）。**`/pages/{slug}` より先に登録しない**
         // 理由は無い（`/search` は `/pages/...` と前置が違うので衝突しない）が、
         // 経路の並びは UC-07 の逐語（開く／検索する）と同じ順にしておく。
         SearchWikiPagesEndpoint.Map(g);

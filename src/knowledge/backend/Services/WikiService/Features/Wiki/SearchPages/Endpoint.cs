@@ -6,10 +6,10 @@ using WikiService.Infrastructure.Persistence;
 
 namespace WikiService.Features.Wiki.SearchPages;
 
-// UC-07 基本フロー 1「**検索する**」, FR-13, FR-05, ADR-0011, IADR-0009, IADR-0020, IADR-0334:
+// UC-07 基本フロー 1「**検索する**」, FR-13, FR-05, ADR-0011, IADR-0009, IADR-0020, IADR-0335:
 // Wiki 前段の検索。**全文検索は Wiki.js へ委譲し、到達可否は前段の ABAC が決める**。
 //
-// なぜこの形か（IADR-0334）:
+// なぜこの形か（IADR-0335）:
 //   - **本文は前段が持たない**（IADR-0020: ゲートウェイは本文を自前で保持しない）。台帳（`WikiPage`）が
 //     持つのは表題・スラッグ・タグ・属性だけなので、前段だけで検索すると本文に当たらない。
 //   - 一方 ADR-0011 は「**Wiki.js 側のページ／グループ権限を属性ベース細粒度判定の代替としない**」と

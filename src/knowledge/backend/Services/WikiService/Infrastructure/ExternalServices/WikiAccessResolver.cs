@@ -10,7 +10,7 @@ namespace WikiService.Infrastructure.ExternalServices;
 // （RagOrchestrator.ResolveScopeAsync と同一方針）。
 public class WikiAccessResolver(IHttpClientFactory httpFactory) : IWikiAccessResolver
 {
-    // UC-07 事前条件「**認証済み**」（#1126 / IADR-0334）。**未認証は認可サービスを呼ばずに拒否する。**
+    // UC-07 事前条件「**認証済み**」（#1126 / IADR-0335）。**未認証は認可サービスを呼ばずに拒否する。**
     // 匿名でも到達し得る要求へ与える身元。**認可サービスへは渡らない**（この値で問い合わせない）。
     private const string AnonymousUserId = "anonymous";
 
@@ -27,7 +27,7 @@ public class WikiAccessResolver(IHttpClientFactory httpFactory) : IWikiAccessRes
         //
         // **401 にはしない。** エッジは BFF（ADR-0032 / Token Handler）であり、ここは mesh 内の
         // 後段である。既存 3 経路は空／404 を返す契約で固定されており、状態コードを変えると
-        // 4 経路のうち 3 本の契約が黙って変わる（判断の記録は IADR-0334）。
+        // 4 経路のうち 3 本の契約が黙って変わる（判断の記録は IADR-0335）。
         if (ctx.User.Identity?.IsAuthenticated != true)
             return new AccessScopeResponse(AnonymousUserId, [], false);
 
