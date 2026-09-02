@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { MessageDescriptor } from '@lingui/core';
 import {
@@ -19,9 +18,10 @@ import {
 import { ApiError } from '@foundation/api/ApiError';
 import { i18n } from '@foundation/i18n';
 import { toMessages } from '@foundation/utils/apiErrors';
-import { ATTRIBUTE_SCOPES, attributeScopeLabel, parseAllowedValues } from '../types/abacVocabulary';
+import { ATTRIBUTE_SCOPES, attributeScopeLabel } from '../types/abacVocabulary';
 import type { AttributeScope } from '../types/abacVocabulary';
 import { useAttributeActions } from '../api/useAbacAdmin';
+import { useAttributeDraft } from '../hooks/useAttributeDraft';
 // SC-09, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type { AttributeDefinitionDto } from '@foundation/api/generated/bff.schemas';
 
@@ -89,11 +89,10 @@ export function AttributeDictionaryPanel({
   const { t } = useLingui();
   const actions = useAttributeActions();
   const { create, remove } = actions;
-  const [key, setKey] = useState('');
-  const [label, setLabel] = useState('');
-  const [allowedValues, setAllowedValues] = useState('');
-  const [required, setRequired] = useState(false);
-  const [scope, setScope] = useState<AttributeScope>('document');
+  // SC-09 / IADR-0341: 登録フォームの下書き（クライアント状態）は `hooks/` に在る。
+  // 「本文はキーとラベルを trim する」「作成後もスコープと必須は残す」といった遷移の規則は
+  // フック側に閉じており、画面を描かずに固定してある（`hooks/useAttributeDraft.test.ts`）。
+  const draft = useAttributeDraft();
 
   // IADR-0127 決定 7 と同じ形: 画面が出す操作結果は**直近の 1 件だけ**。新しい操作の開始時に
   // 全ミューテーションの状態を捨てる。TanStack Query は「別のミューテーションが成功した」ことでは
@@ -210,24 +209,7 @@ export function AttributeDictionaryPanel({
         onSubmit={(e) => {
           e.preventDefault();
           beginOperation();
-          create.mutate(
-            {
-              data: {
-                key: key.trim(),
-                label: label.trim(),
-                allowedValues: parseAllowedValues(allowedValues),
-                required,
-                scope,
-              },
-            },
-            {
-              onSuccess: () => {
-                setKey('');
-                setLabel('');
-                setAllowedValues('');
-              },
-            },
-          );
+          create.mutate({ data: draft.body() }, { onSuccess: draft.resetAfterCreate });
         }}
       >
         <h3 className="text-sm font-medium text-[--color-fg-muted]">
@@ -238,13 +220,17 @@ export function AttributeDictionaryPanel({
             <Label htmlFor="attr-key">
               <Trans>キー（必須）</Trans>
             </Label>
-            <Input id="attr-key" value={key} onChange={(e) => setKey(e.target.value)} />
+            <Input id="attr-key" value={draft.key} onChange={(e) => draft.setKey(e.target.value)} />
           </div>
           <div>
             <Label htmlFor="attr-label">
               <Trans>ラベル</Trans>
             </Label>
-            <Input id="attr-label" value={label} onChange={(e) => setLabel(e.target.value)} />
+            <Input
+              id="attr-label"
+              value={draft.label}
+              onChange={(e) => draft.setLabel(e.target.value)}
+            />
           </div>
           <div>
             <Label htmlFor="attr-values">
@@ -252,8 +238,8 @@ export function AttributeDictionaryPanel({
             </Label>
             <Input
               id="attr-values"
-              value={allowedValues}
-              onChange={(e) => setAllowedValues(e.target.value)}
+              value={draft.allowedValues}
+              onChange={(e) => draft.setAllowedValues(e.target.value)}
             />
           </div>
           <div>
@@ -262,8 +248,8 @@ export function AttributeDictionaryPanel({
             </Label>
             <Select
               id="attr-scope"
-              value={scope}
-              onChange={(e) => setScope(e.target.value as AttributeScope)}
+              value={draft.scope}
+              onChange={(e) => draft.setScope(e.target.value as AttributeScope)}
             >
               {ATTRIBUTE_SCOPES.map((s) => (
                 <option key={s} value={s}>
@@ -276,13 +262,13 @@ export function AttributeDictionaryPanel({
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
-            checked={required}
-            onChange={(e) => setRequired(e.target.checked)}
+            checked={draft.required}
+            onChange={(e) => draft.setRequired(e.target.checked)}
           />
           <Trans>必須属性にする</Trans>
         </label>
         <div>
-          <Button type="submit" variant="primary" disabled={key.trim().length === 0}>
+          <Button type="submit" variant="primary" disabled={!draft.canSubmit}>
             <Trans>追加する</Trans>
           </Button>
         </div>
