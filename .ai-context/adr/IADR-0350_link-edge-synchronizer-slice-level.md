@@ -1,5 +1,5 @@
 ---
-title: IADR-0351 層の理由と段の理由は別に持ち、段を下げても層の説明を失効させない
+title: IADR-0350 層の理由と段の理由は別に持ち、段を下げても層の説明を失効させない
 type: impl-adr
 status: Accepted
 related_ids:
@@ -15,7 +15,7 @@ related_ids:
   - IADR-0282
   - IADR-0319
   - IADR-0334
-  - IADR-0350
+  - IADR-0349
 author: claude
 created: 2026-09-03
 updated: 2026-09-03
@@ -24,7 +24,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0065_backend-service-single-project-vsa.md (Accepted 2026-08-30) 決定 1・2・3
 ---
 
-# IADR-0351: `LinkEdgeSynchronizer` を `Features/GraphDocuments/Sync/` へ下ろす（#1094）
+# IADR-0350: `LinkEdgeSynchronizer` を `Features/GraphDocuments/Sync/` へ下ろす（#1094）
 
 - 状態: Accepted
 - 日付: 2026-09-03
@@ -62,7 +62,7 @@ namespace は `GraphService.Features.GraphDocuments.Sync`（`IADR-0261` の `<Sv
 その理由＝依存の向き）と**段の段落**（`ADR-0068` 決定 2 の適用結果）を別に持つ。
 **段を下げても層の理由は失効しない**ことを、コメント自身が示す形にする。
 
-`IADR-0350` 決定 3 が定めた順序（先に層、次に段）を、**記録の側にも同じ形で持たせるもの**である。
+`IADR-0349` 決定 3 が定めた順序（先に層、次に段）を、**記録の側にも同じ形で持たせるもの**である。
 
 **決定 3: 移送で型を失った名前空間の `using` は落とす。足さない。**
 
@@ -85,7 +85,7 @@ namespace は `GraphService.Features.GraphDocuments.Sync`（`IADR-0261` の `<Sv
 
 🔴 **決定 2 が要るのは、注記が「配置」という語で 2 つの問いを覆っていたからである。**
 `ADR-0068` は段の規則、`ADR-0065` 決定 1 は層の規則であり、**片方の答えでもう片方を
-動かせない**（`IADR-0350` 決定 3）。ところが日本語の「配置」も英語の placement も両方を指す。
+動かせない**（`IADR-0349` 決定 3）。ところが日本語の「配置」も英語の placement も両方を指す。
 **語が問いを覆っている限り、次に読む者は同じ読み違えをする。** だから語を直すのではなく、
 **段落を分けて 2 つの理由を並置する** —— どちらが動いたのかが見える形にする。
 
@@ -109,12 +109,12 @@ namespace は `GraphService.Features.GraphDocuments.Sync`（`IADR-0261` の `<Sv
   - **`IADR-0280` 決定 1 の段 2（Persistence / Domain の移送）が来たとき、本クラスは
     もう一度動く。** そのとき動くのは**層**であり、段は改めて数え直すことになる。
     決定 2 の並置は、そのときどちらの理由が効いているかを読み手に示すためのものである。
-  - **機械検査は置かない。** `IADR-0319` / `IADR-0350` と同じ理由（シンボル解決が要る）。
+  - **機械検査は置かない。** `IADR-0319` / `IADR-0349` と同じ理由（シンボル解決が要る）。
 
 ## 関連
 
 - 計画 ADR: `ADR-0068` 決定 2・5、`ADR-0065` 決定 1・2・3、`ADR-0033` 決定 3・6
-- 実装 IADR: `IADR-0350`（層を先に決め、`Features/` に居ると決まったものだけに決定 2 を当てる。
+- 実装 IADR: `IADR-0349`（層を先に決め、`Features/` に居ると決まったものだけに決定 2 を当てる。
   本 IADR はその順序を記録の書き方へ広げる）、`IADR-0319`（段は数えて決める。本件の違反を
   発見した走査）、`IADR-0281`（リンク辺の差分更新の規則。**本 IADR は位置だけを変え、
   規則には触れない**）、`IADR-0280` 決定 1・2（層の段階計画）、`IADR-0282`（標準樹形）、

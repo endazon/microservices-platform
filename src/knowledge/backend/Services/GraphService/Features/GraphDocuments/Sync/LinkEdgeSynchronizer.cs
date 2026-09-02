@@ -23,9 +23,9 @@ namespace GraphService.Features.GraphDocuments.Sync;
 // ある（同 決定 1 の段階計画）。**依存の向きに従い、依存先と同じ層に置く。** 段 2 で
 // Persistence / Domain が移るときに一緒に移す。
 //
-// **段は 3 段目（`Sync/`）である**（#1094 / IADR-0351）。使う操作が `GraphDocuments/Sync` の 1 つ
+// **段は 3 段目（`Sync/`）である**（#1094 / IADR-0350）。使う操作が `GraphDocuments/Sync` の 1 つ
 // だけなので ADR-0068 決定 2 が下ろす。**層の理由（上段）と段の理由は別であり、段を下げても
-// 層は動かない**（IADR-0350 決定 3）。
+// 層は動かない**（IADR-0349 決定 3）。
 public sealed class LinkEdgeSynchronizer(
     GraphDbContext db,
     EdgeTypeFallbackMetrics metrics,
