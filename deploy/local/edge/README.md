@@ -139,7 +139,11 @@ mkcert を使う手もあるが、**CA が開発者マシン固有でリポジ�
 
 ## OIDC（集約後 URL）
 
-issuer は最小案（`http://keycloak:8080`・[README 手順A](../README.md)）を維持し、ツール UI のみ 50000 に集約する。
+issuer は **`https://keycloak.localhost/realms/platform`（エッジ host）**である（[IADR-0243](../../../.ai-context/adr/IADR-0243_keycloak-edge-issuer-migration.md)・#780。[IADR-0091](../../../.ai-context/adr/IADR-0091_local-edge-aggregation-traefik.md) 決定 5 の最小案「`keycloak:8080` 維持」は Supersede された）。ツール UI は従来どおり 50000 に集約する。
+
+> **ブラウザが開く URL だけをエッジ host にし、ツールがサーバ側で叩く URL は in-cluster のまま**にする（Grafana の `TOKEN_URL`/`API_URL`・MinIO の `configUrl`・Wiki.js の `tokenURL`/`userInfoURL`）。
+> ローカル CA を各コンテナへ配らずに済むためで、IADR-0086 が .NET へ入れた metadata / issuer 分離の一般化である。
+> **分離できないツール**（ArgoCD・Vault）は 1 つの値が両方を決めるため、エッジ host ＋ CA を渡す設定を使う。
 
 - **Grafana（PR-2 適用済み）**: realm `grafana` client の `redirectUris`/`webOrigins` に集約後 URL
   （`https://grafana.localhost:50000/login/generic_oauth` 等）を追加し、`GF_SERVER_ROOT_URL` を

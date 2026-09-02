@@ -309,6 +309,9 @@ public sealed class AuthorizationServiceFactory : IntegrationTestFactoryBase<
     {
         base.ConfigureWebHost(builder);
         builder.UseSetting(IdentityAdminProviderKey, IdentityAdminProviderValue);
+        // IADR-0329 (#1101): 偽の身元プロバイダを選べるのは**非配備ホスト**だけになった。
+        // 本器は基底が `Integration` を宣言しており、その名前が許可集合に載っている
+        // （`IdentityAdminRegistration.NonDeployedEnvironments`）ので、ここで環境を宣言し直さない。
     }
 }
 
