@@ -3,7 +3,7 @@ title: データソース登録・同期・カタログ化 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-04
-updated: 2026-08-30
+updated: 2026-09-02
 author: claude
 ---
 <!-- trace:
@@ -119,7 +119,7 @@ issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, planning#34
 - 業務DB コネクタテスト: `.../DataSourceService.Tests/DatabaseConnectorTests.cs`（T-19〜T-25・ハンドロール ADO.NET フェイク）
 - 同期健全性: `.../DataSourceService.Tests/DataSourceSyncServiceTests.cs`（T-26〜T-28）、`.../SyncErrorRedactorTests.cs`（T-29）
 - 更新 API: `.../DataSourceService.Tests/DataSourceUpdateEndpointTests.cs`（T-30〜T-35）、`.../DataSourceAuthorizationTests.cs`（T-36）
-- 資格情報の露出封鎖: `src/knowledge/backend/Services/DataSourceService/Tests/DataSourceCredentialExposureTests.cs`（T-46〜T-52。**すべて秘密を実際に通す陽性対照**であり、マスクを外す変異で落ちることを実測している）
+- 資格情報の露出封鎖: `src/knowledge/backend/Services/DataSourceService/Tests/Features/DataSources/DataSourceCredentialExposureTests.cs`（T-46〜T-52。**すべて秘密を実際に通す陽性対照**であり、マスクを外す変異で落ちることを実測している）
 - BFF の中継: `src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs`（健全性の透過・`PUT` / `PATCH` の転送・運用者の 403）
 - 実装 ADR（追加）: `../../.ai-context/adr/IADR-0051_datasource-connector-port-and-filesystem.md`
 
