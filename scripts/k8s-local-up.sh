@@ -400,13 +400,22 @@ if [ "${ESO:-}" = "1" ]; then
   kubectl apply -f deploy/local/vault/eso/externalsecret-postgres.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-admin.yaml
+  # SC-15, FR-22, ADR-0026/ADR-0045 決定 6, IADR-0261 決定 2 / IADR-0332 (#1102): SMTP リレーの資格情報。
+  # **手動 apply の対になる `ESO != 1` ブロックを持たない**（postgres/rabbitmq/keycloak-admin と違い
+  # step [3/7] の bootstrap 対象でもない）ので、**これが唯一の供給元**である。常時供給。
+  # 🔴 **Pod は 1 つもこの Secret を env で読まない。** 読むのは runbook の `kcadm` 手順（人間）であり、
+  # 反映先は realm の実行時状態である（`realm.json` へは書かない＝秘匿値を非コミットに保つため）。
+  # したがって下の rollout 対象にも入れない —— **作るところまでが本行の責務**である。
+  # 既定では `from`/`user`/`password` が空（bootstrap.sh の fail-safe）。**空のまま kcadm を打たない**
+  # ことは runbook 側の前提であり、ここでは空の Secret を作るだけで実害は無い（秘匿値は 1 つも増えない）。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-smtp.yaml
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 9 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc を追加し 6 → 7 → 8 → 9 へ数え直した）。infra ns は基盤 3 本＋vault-oidc 常時＋有効ゲートの grafana/headlamp-oidc。
-  infra_es="postgres rabbitmq keycloak-admin vault-oidc"
+  # 誤解させない）。MSP ns は常時 9 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc を追加し 6 → 7 → 8 → 9 へ数え直した）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
+  infra_es="postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
   echo "    ESO: llm/minio-credentials/postgres-app/rabbitmq-app/wikijs-db/wikijs-sync/minio-oidc（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
-  echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc および有効ゲートの grafana/headlamp-oidc を"
+  echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc/keycloak-smtp および有効ゲートの grafana/headlamp-oidc を"
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
   echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc"
   echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret $infra_es"
@@ -432,7 +441,13 @@ if [ "${ESO:-}" = "1" ]; then
     done
   }
   eso_wait "$MSP_NS" llm-provider-credentials minio-credentials minio-oidc wikijs-db wikijs-sync
-  infra_sync=""
+  # #1102: keycloak-smtp は **rollout のために待つのではない**（env で読む Pod が無い。上の apply の注記参照）。
+  # 待つのは、`up` の直後に運用者が案内文どおり
+  # `kubectl -n platform-infra get externalsecret,secret keycloak-smtp` を打ったとき、また runbook
+  # （docs/operations/keycloak-smtp-relay-setup-runbook.md）の kcadm 手順へ進むときに、
+  # **Secret が「まだ作られていない」状態で NotFound を返さない**ようにするためである。
+  # 他と同じく best-effort（warn を出して継続。実値が空でも同期自体は成立する）。
+  infra_sync="keycloak-smtp"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_sync="$infra_sync grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_sync="$infra_sync headlamp-oidc"
   # shellcheck disable=SC2086

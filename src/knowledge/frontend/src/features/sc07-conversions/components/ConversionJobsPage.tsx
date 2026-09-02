@@ -19,7 +19,7 @@ import {
 import { ApiError } from '@foundation/api/ApiError';
 import { PlatformRole, useHasAnyRole } from '@foundation/auth/roles';
 import { i18n } from '@foundation/i18n';
-import { toMessages } from '@foundation/ui/apiErrors';
+import { toMessages } from '@foundation/utils/apiErrors';
 import {
   hasRetainedFigures,
   isCorrectable,
