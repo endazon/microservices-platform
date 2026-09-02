@@ -757,8 +757,11 @@ services:
       # FR-22, IADR-0288 (#1025): NotificationService は段を持たないが
       # AddPlatformIntrospection("notification-service", …) で**到達可能性を申告する**。
       # 申告する側が居るのに収集側に無いと、その申告は永久に読まれない。
-      # 下流集約先（Services__*・readiness の UriHealthCheck）へは足さない —— BFF は
-      # 通知の下流を持たない（/bff/notifications* は未実装）。
+      # 🔴 **Services__* の上書きは不要である**（#600 で /bff/notifications* が入り BFF は通知の
+      # 下流を持つようになったが、named client のコード既定が既に :8080 のため上書きが要らない。
+      # check-bff-downstreams.js の不変条件を上書き無しで満たす）。
+      # **readiness の UriHealthCheck へは足さない** —— 通知は Should であり、後段の不調で
+      # BFF 全体を not-ready にするのは fail-safe の後退である（IADR-0346 決定 6）。
       Introspection__Services__notification-service: http://notification-service:8080
     # FR-15, #146: 正の pipeline.json をそのまま読み取り専用でマウントする（複製しない・単一の真実源）。
     # ローダは生の pipeline.json を "Pipeline" セクションへ包んで読む（PipelineExtensions）。

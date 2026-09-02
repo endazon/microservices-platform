@@ -36,6 +36,27 @@ spec:
             host: bff-service.microservices-platform.svc.cluster.local
             port:
               number: 8080
+    # FR-20, UC-11, ADR-0037 課題 2, IADR-0270 決定 3, IADR-0338 決定 4, IADR-0348 (#1154):
+    # Obsidian プラグインの同期プロトコルを DocumentService へ直接通す（BFF は経由しない）。
+    # **catch-all より前**に置くこと（Istio のルートは先勝ち。後ろに置くと SPA に吸われて API に届かない）。
+    #
+    # 公開するのは **/private-notes/sync/ 配下だけ**である。前置は末尾スラッシュ込みなので
+    # /private-notes（一覧）・/private-notes/devices（端末登録）・/private-notes/quotas/*・/documents は
+    # 当たらず、catch-all → SPA へ落ちる（**404 ではなく index.html の 200 text/html** である。frontend の
+    # nginx が history fallback を返すためで、「API に届いていない」ことは port-forward 直叩きの 401 と
+    # 対で確かめる）。08_data-egress-policy 許容条件 2「資格情報のスコープ限定」を経路の側でも守る形である。
+    #
+    # エッジで JWT 検証は要求しない。資格情報は不透明な同期トークン（Bearer）で、DocumentService が
+    # ハッシュ照合して自前で検証する（IADR-0270 決定 3）。欠落・不正・期限切れ・失効はすべて同じ 401。
+    # 本番チャート（templates/edge.yaml）側は edge.privateNotesSync.enabled の opt-in（既定 false）だが、
+    # この overlay 自体が opt-in（ISTIO=1 かつ LOCALEDGE=1）であり、FR-20 を実測する環境なので無条件に持つ。
+    - match:
+        - uri: { prefix: /private-notes/sync/ }
+      route:
+        - destination:
+            host: document-service.microservices-platform.svc.cluster.local
+            port:
+              number: 8080
     # catch-all → SPA(frontend)。history fallback は frontend pod の nginx が担う。
     - match:
         - uri: { prefix: / }

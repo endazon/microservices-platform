@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Alert, Button, Label, Select, StatusBadge } from '@platform/ui';
 import { appConfig } from '@foundation/config/runtimeConfig';
@@ -19,9 +19,9 @@ import {
   filterUsers,
   optionalAttributes,
   requiredAttributes,
-  validateAssignment,
 } from '../types/userAccountVocabulary';
 import type { AssignmentIssue } from '../types/userAccountVocabulary';
+import { useUserPermissionEditor } from '../hooks/useUserPermissionEditor';
 
 // SC-17, UC-05, FR-05, FR-09, ADR-0026: ユーザーアカウント管理（05_screens: ルート /admin/users）。
 //
@@ -60,14 +60,21 @@ export function UserAccountManagementPage() {
   const actions = useUserAccountActions();
   const issueLabels = useIssueLabels();
 
+  // 絞り込みは画面に残す（SC-17 / IADR-0341 決定 3）。**規則を持たない** —— `useState` 2 本と、
+  // 既に純関数として在る `filterUsers()` の呼び出しだけであり、フックへ出しても
+  // 呼び出し元が 1 つしかない間接層が増えるだけになる。
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [draftRoles, setDraftRoles] = useState<string[]>([]);
-  const [draftAttributes, setDraftAttributes] = useState<Record<string, string>>({});
-  const [issues, setIssues] = useState<AssignmentIssue[]>([]);
 
   const rows = useMemo(() => users.data ?? [], [users.data]);
+  // SC-17 / IADR-0341: 権限編集の下書き（クライアント状態）は `hooks/` に在る。
+  // 「対象が変わったときだけ引き直す」「任意属性を空へ戻すとキーごと落ちる」といった遷移の規則は
+  // フック側に閉じており、画面を描かずに固定してある（`hooks/useUserPermissionEditor.test.ts`）。
+  const editor = useUserPermissionEditor(rows);
+  const editing = editor.editing;
+  // 列定義（`useMemo`）から呼ぶので、**参照の固定してある関数だけ**を取り出して依存に置く
+  // （`editor` ごと依存に入れるとフックの戻り値は毎描画で新しく、列定義が作り直される）。
+  const { open: openEditor } = editor;
   const assignableRoles = useMemo(() => roles.data ?? [], [roles.data]);
   const definitions = useMemo(() => assignableAttributes(dictionary.data ?? []), [dictionary.data]);
   const required = useMemo(() => requiredAttributes(definitions), [definitions]);
@@ -78,19 +85,9 @@ export function UserAccountManagementPage() {
     [rows, departmentFilter, roleFilter],
   );
   const departments = useMemo(() => departmentsInUse(rows), [rows]);
-  const editing = rows.find((u) => u.id === editingId) ?? null;
   // Lingui のマクロは `${変数}` しか受け取らない（`${obj.prop}` は抽出時に壊れる）ので先に畳む。
   const editingName = editing?.displayName ?? '';
   const editorHeading = t`権限編集 — ${editingName}`;
-
-  // 一覧が入れ替わったら編集中の下書きを引き直す（他の管理者の変更を握り潰さない）。
-  useEffect(() => {
-    if (!editing) return;
-    setDraftRoles([...editing.roles]);
-    setDraftAttributes({ ...editing.attributes });
-    // 対象が変わったときだけ引き直す（入力途中の下書きを毎再描画で潰さない）。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingId]);
 
   // 監査ログの参照先はログ基盤（可観測性基盤）に在る。**SPA 側に監査ログ画面は無い。**
   // 接続先はビルドへ焼き込まず実行時 config から取り、未設定なら導線を出さず所在を文言で示す
@@ -153,48 +150,28 @@ export function UserAccountManagementPage() {
         header: t`操作`,
         enableSorting: false,
         cell: ({ row }) => (
-          <Button size="sm" onClick={() => setEditingId(row.original.id)}>
+          <Button size="sm" onClick={() => openEditor(row.original.id)}>
             <Trans>編集</Trans>
           </Button>
         ),
       },
     ],
-    [t],
+    // `openEditor` は `useCallback` で参照が固定してあるので、依存に入れても列定義は
+    // 毎描画で作り直されない（IADR-0341）。
+    [t, openEditor],
   );
-
-  const toggleRole = (role: string) =>
-    setDraftRoles((prev) =>
-      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
-    );
-
-  const setAttribute = (key: string, value: string) =>
-    setDraftAttributes((prev) => {
-      // 任意属性を空へ戻したらキーごと落とす（差し替えなので、送らなければ外れる）。
-      if (value === '') {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      }
-      return { ...prev, [key]: value };
-    });
 
   const save = () => {
     if (!editing) return;
-    const found = validateAssignment({
-      roles: draftRoles,
-      attributes: draftAttributes,
-      definitions,
-    });
-    setIssues(found);
-    if (found.length > 0) return;
+    if (!editor.validate(definitions)) return;
 
     // 🔴 **2 本の要求に分かれる**（ロールと属性は別の反映先を持つ）。片方だけ通る余地があるため、
     // 画面側で先に検証してから送る。**中間状態は隠さない** —— どちらが失敗したかは
     // 各 mutation のエラーとして下に出る。
-    actions.replaceRoles.mutate({ userId: editing.id, data: { roles: draftRoles } });
+    actions.replaceRoles.mutate({ userId: editing.id, data: { roles: editor.draftRoles } });
     actions.replaceAttributes.mutate({
       userId: editing.id,
-      data: { attributes: draftAttributes },
+      data: { attributes: editor.draftAttributes },
     });
   };
 
@@ -318,8 +295,8 @@ export function UserAccountManagementPage() {
               <label key={role} className="mr-4 inline-flex items-center gap-1 text-sm">
                 <input
                   type="checkbox"
-                  checked={draftRoles.includes(role)}
-                  onChange={() => toggleRole(role)}
+                  checked={editor.draftRoles.includes(role)}
+                  onChange={() => editor.toggleRole(role)}
                 />
                 {role}
               </label>
@@ -333,8 +310,8 @@ export function UserAccountManagementPage() {
                 <Select
                   id={`user-attr-${definition.key}`}
                   selectSize="sm"
-                  value={draftAttributes[definition.key] ?? ''}
-                  onChange={(e) => setAttribute(definition.key, e.target.value)}
+                  value={editor.draftAttributes[definition.key] ?? ''}
+                  onChange={(e) => editor.setAttribute(definition.key, e.target.value)}
                 >
                   <option value="">{t`選択してください`}</option>
                   {definition.allowedValues.map((value) => (
@@ -352,8 +329,8 @@ export function UserAccountManagementPage() {
                 <Select
                   id={`user-attr-${definition.key}`}
                   selectSize="sm"
-                  value={draftAttributes[definition.key] ?? ''}
-                  onChange={(e) => setAttribute(definition.key, e.target.value)}
+                  value={editor.draftAttributes[definition.key] ?? ''}
+                  onChange={(e) => editor.setAttribute(definition.key, e.target.value)}
                 >
                   <option value="">{t`指定しない`}</option>
                   {definition.allowedValues.map((value) => (
@@ -366,7 +343,7 @@ export function UserAccountManagementPage() {
             ))}
           </div>
 
-          {issues.length > 0 && (
+          {editor.issues.length > 0 && (
             <Alert
               tone="warning"
               role="alert"
@@ -374,7 +351,7 @@ export function UserAccountManagementPage() {
               className="mt-3"
               data-testid="assignment-issues"
             >
-              {issues.map((issue) => issueLabels[issue]).join(' / ')}
+              {editor.issues.map((issue) => issueLabels[issue]).join(' / ')}
             </Alert>
           )}
 
@@ -413,7 +390,7 @@ export function UserAccountManagementPage() {
                 <Trans>再有効化</Trans>
               </Button>
             )}
-            <Button onClick={() => setEditingId(null)}>
+            <Button onClick={editor.close}>
               <Trans>閉じる</Trans>
             </Button>
           </div>

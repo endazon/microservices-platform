@@ -3,15 +3,15 @@ title: FR-20 Obsidian 双方向同期 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-08-23
-updated: 2026-09-02
+updated: 2026-09-03
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-20]
-adrs: [ADR-0037, ADR-0046, ADR-0054]
-iadrs: [IADR-0270, IADR-0338]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1]
-issues: [#451, #600, #1098]
+adrs: [ADR-0021, ADR-0037, ADR-0046, ADR-0054]
+iadrs: [IADR-0270, IADR-0338, IADR-0348]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1154_private-notes-sync-edge-route]
+issues: [#451, #600, #1098, #1154]
 -->
 
 # 機能仕様書: Obsidian 双方向同期
@@ -19,9 +19,10 @@ issues: [#451, #600, #1098]
 > **`status: in-progress` の理由と、いま残っているもの**。サーバ側の同期プロトコル・
 > 同期トークン（端末・発行・失効）・監査・期限予告の検知と、連携設定画面・BFF 端点は入っている。
 > **［2026-09-02］Obsidian プラグイン本体（自作・社内配布）は第 1 段（取り込み = pull のみ）が入った**
-> （`src/obsidian-plugin/`。§Obsidian プラグイン）。**入っていないのは** ①プラグインの push / delete /
-> 競合解決 UI（第 2 段）②同期プロトコルをエッジで外へ出す経路（配備済みクラスタからは到達できない）
-> ③配布のリリース資産化 である（③通知は受け口・発火の結線とも 2026-08-28 に実装済み — 通知サービスの配備が残る）。
+> （`src/obsidian-plugin/`。§Obsidian プラグイン）。**［2026-09-03］同期プロトコルをエッジで外へ出す経路も
+> 入った**（配備済みクラスタへプラグインが到達できる。従前の未達②は本追記で解消した）。
+> **入っていないのは** ①プラグインの push / delete / 競合解決 UI（第 2 段）②配布のリリース資産化 である
+> （通知は受け口・発火の結線とも 2026-08-28 に実装済み — 通知サービスの配備が残る）。
 
 ## 概要
 
@@ -97,8 +98,12 @@ Obsidian なしで単体テストされる。導入手順は
 | 失敗の可視化 | トークン未設定・401（期限切れ・失効・不正）・接続先不備は**通知で失敗を告げ、Vault のファイルと同期状態を変更しない** |
 | 命名 | サーバの `vaultPath` を同期フォルダ配下へ落とす。絶対パス・`..`・制御文字は取り込まない。拡張子が無ければ `.md` を補う。同じローカルパスへ落ちる 2 件は両方取り込まない |
 
-🔴 **接続先の公開経路が無い。** 配備済みクラスタのエッジは `/bff` と SPA しか通しておらず、
-`/private-notes/sync/*` へ外から届かない。契約は変えず、配備側で経路を足す（後続 issue）。
+**［2026-09-03 追記］接続先の公開経路が入った**（従前の「公開経路が無い」は本追記で置き換わる）。
+エッジは `/private-notes/sync/` 配下だけを文書サービスへ直接通す（契約は変えていない）。
+**外へ出るのはこの 1 前置だけ**で、個人資料の一覧・端末登録・上限管理・組織文書はエッジから届かない
+（越境ポリシー許容条件②のスコープ限定を経路の側でも守る）。届かないときに返るのは **404 ではなく画面**である
+（画面配信の history fallback）。API に届いていないことは、同じ端点を直に叩くと 401 になるのと対で確かめる。
+本番像は既定で出さない opt-in である。
 
 ## エラー・例外
 
