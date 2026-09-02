@@ -1,5 +1,5 @@
 ---
-title: IADR-0331 バックチャネルログアウトの宛先は in-cluster の素のサービス名にし、メッシュ境界は BFF の 1 URI だけ開ける
+title: IADR-0336 バックチャネルログアウトの宛先は in-cluster の素のサービス名にし、メッシュ境界は BFF の 1 URI だけ開ける
 type: impl-adr
 status: Accepted
 related_ids: [NFR, SC-13, ADR-0005, ADR-0021, ADR-0026, ADR-0032, IADR-0066, IADR-0076, IADR-0103, IADR-0227, IADR-0251, IADR-0273, IADR-0307, IADR-0317, IADR-0327]
@@ -13,7 +13,7 @@ related_specs:
   - ../specs/20260902_issue-1115_backchannel-logout-destination.md
 ---
 
-# IADR-0331: バックチャネルログアウトの宛先とメッシュ境界（#1115）
+# IADR-0336: バックチャネルログアウトの宛先とメッシュ境界（#1115）
 
 > 実装リポジトリ内の意思決定記録。[IADR-0273](./IADR-0273_bff-session-completion.md) 決定 1 / 2 が
 > 実装した**受け口**を、配備した状態で実際に働かせるための「送り手の宛先」と「境界」を決める。
