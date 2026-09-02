@@ -177,6 +177,7 @@
       "RagContextPolicyTests"
     ],
     "docs/tests/FR-22_user-notifications.md": [
+      "BffNotificationEndpointTests",
       "EmailIndependenceTests",
       "EmailSendRateTests",
       "NotificationContractTests",

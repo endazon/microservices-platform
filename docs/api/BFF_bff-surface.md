@@ -3,15 +3,15 @@ title: BFF 境界（/bff/*）通信仕様書
 type: api-spec
 status: in-progress
 created: 2026-08-05
-updated: 2026-08-29
+updated: 2026-09-02
 author: Claude
 ---
 <!-- trace:
 ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-15, FR-16, FR-22, SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-12, SC-17, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-09, UC-11]
 adrs: [ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0037, ADR-0043]
-iadrs: [IADR-0009, IADR-0010, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0297, IADR-0301]
+iadrs: [IADR-0009, IADR-0010, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0346]
 specs: [20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at]
-issues: [#439, #452, #506, #519, #520, #521, #538, #544, #586, #629, #634, #640, planning#200, planning#236, planning#244, planning#299]
+issues: [#439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, planning#200, planning#236, planning#244, planning#299]
 -->
 
 # 通信仕様書: BFF 境界（`/bff/*`）
