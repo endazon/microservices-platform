@@ -255,7 +255,7 @@ kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 #   → http://localhost:5080/bff/...   （認証必須。匿名は 401）
 ```
 
-### 送信メールの確認（開発環境の捕捉用 MTA。Issue #1144 / IADR-0333）
+### 送信メールの確認（開発環境の捕捉用 MTA。Issue #1144 / IADR-0335）
 
 **開発環境から外部へメールは出ない。** 計画 ADR が「開発環境では実送信しない。捕捉用 MTA を置く」と
 確定しているため、`platform-infra` に `mailpit` が **dev 既定**（opt-in ではない）で立ち、

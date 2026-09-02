@@ -19,8 +19,8 @@ import {
   TableHeaderCell,
   TableRow,
 } from '@platform/ui';
-import { formatDateTime } from '@foundation/ui/formatDateTime';
-import { toMessages } from '@foundation/ui/apiErrors';
+import { formatDateTime } from '@foundation/utils/formatDateTime';
+import { toMessages } from '@foundation/utils/apiErrors';
 import type { SyncDeviceDto } from '@foundation/api/generated/bff.schemas';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { useSyncDeviceActions, useSyncDevices } from '../api/useSyncDevices';

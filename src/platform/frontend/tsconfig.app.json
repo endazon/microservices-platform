@@ -24,9 +24,13 @@
     // 計画のツリーへ適合させるため実体は app/ lib/ components/ testing/ へ分かれたが、
     // **エイリアス名は変えない**（変えると submodule の ai-stock-trading と
     // templates/unit-template の契約が同時に割れる）。よってワイルドカード 1 本ではなく
-    // **区分ごとに 9 本**を張る。同じ 9 本を platform/frontend/vite.config.ts と
+    // **区分ごとに 10 本**を張る。同じ 10 本を platform/frontend/vite.config.ts と
     // src/vitest.config.ts の resolve.alias にも置く（3 箇所とも要る。片方だけだと
     // 「型検査は通るがビルド／テストだけ壊れる」形になる）。
+    // ADR-0067 決定 5 / IADR-0333（#1131）: `@foundation/utils` を足した。**改名ではなく追加である**
+    // ——「エイリアス名は変えない」は改名の禁止であり、区分が増えたときに面を足すことは禁じていない。
+    // 面を宣言しているのは本ファイルを含めて 5 箇所（knowledge/frontend/tsconfig.json と
+    // templates/unit-template/frontend/tsconfig.json も同じ面を持つ）。**足すなら 5 箇所すべてに足す。**
     "paths": {
       "@foundation/config/*": ["src/config/*"],
       "@foundation/config": ["src/config"],
@@ -38,6 +42,8 @@
       "@foundation/api": ["src/lib/api"],
       "@foundation/auth/*": ["src/lib/auth/*"],
       "@foundation/auth": ["src/lib/auth"],
+      "@foundation/utils/*": ["src/utils/*"],
+      "@foundation/utils": ["src/utils"],
       "@foundation/ui/*": ["src/components/ui/*"],
       "@foundation/ui": ["src/components/ui"],
       "@foundation/notifications/*": ["src/components/notifications/*"],
