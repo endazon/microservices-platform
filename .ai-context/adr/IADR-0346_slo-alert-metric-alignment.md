@@ -1,5 +1,5 @@
 ---
-title: IADR-0330 SLO アラートの参照先を稼働 TSDB の実在に合わせ、束ねの軸も同時に移す
+title: IADR-0346 SLO アラートの参照先を稼働 TSDB の実在に合わせ、束ねの軸も同時に移す
 type: impl-adr
 status: Accepted
 related_ids:
@@ -20,7 +20,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0006_observability-otel-prom-loki.md
 ---
 
-# IADR-0330: SLO アラート 5 件のうち 4 件が発火し得なかった件の是正（#1110）
+# IADR-0346: SLO アラート 5 件のうち 4 件が発火し得なかった件の是正（#1110）
 
 - 状態: Accepted
 - 日付: 2026-09-02
