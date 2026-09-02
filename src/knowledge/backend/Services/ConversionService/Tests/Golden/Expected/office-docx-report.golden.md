@@ -1,5 +1,5 @@
 # golden: office-docx-report
-# Office(docx) 原本（図 2 件・コード化 1 件＋画像保持 1 件）。混在時の順序・空行と .jpg への写像を固定する。
+# Office(docx) 原本（図 2 件・コード化 1 件＋画像保持 1 件）。混在時の順序・空行と .jpg への写像、およびコードブロック／画像参照が目印の位置へ入ることを固定する。
 # 原本は読んでいない。入力は変換器出力を模した Markdown である（IADR-0298 決定 2）。
 
 ## input
@@ -14,8 +14,8 @@ markdownKey     : e7656827eb8c514ea73c310e6f5af1dd/document.md
 markdownUri     : storage://normalized/e7656827eb8c514ea73c310e6f5af1dd/document.md
 diagramsCoded   : 1
 diagramsRetained: 1
-markdownLength  : 378
-markdownSha256  : 28a0c37d72db382e423bf59d5b0653affd02df8bdf019802cd801a57c917b4a9
+markdownLength  : 376
+markdownSha256  : 9d75467abb894973fae7a2c944df38db6fd6fa50669de84922735e94d781b3a7
 
 ## assets
 1) key=e7656827eb8c514ea73c310e6f5af1dd/assets/fig-2.jpg uri=storage://normalized/e7656827eb8c514ea73c310e6f5af1dd/assets/fig-2.jpg contentType=image/jpeg bytes=30 sha256=ac1053bb46f5680eb48b3a1babe9f9274f2e8a86aaea544122c8c0b130af20e6
@@ -36,15 +36,6 @@ markdownSha256  : 28a0c37d72db382e423bf59d5b0653affd02df8bdf019802cd801a57c917b4
 
 本システムはマイクロサービス構成を採る。
 
-## 正規化変換の流れ
-
-原本は変換サービスが受け取り、本文と図に分けて処理する。
-
-## 画面
-
-管理画面は変換ジョブの一覧と詳細を提供する。
-
-
 ```mermaid
 sequenceDiagram
     participant DS as DataSourceService
@@ -53,6 +44,13 @@ sequenceDiagram
     CS-->>DS: DocumentNormalized
 ```
 
+## 正規化変換の流れ
+
+原本は変換サービスが受け取り、本文と図に分けて処理する。
 
 ![fig-2](storage://normalized/e7656827eb8c514ea73c310e6f5af1dd/assets/fig-2.jpg)
+
+## 画面
+
+管理画面は変換ジョブの一覧と詳細を提供する。
 --8<-- markdown end

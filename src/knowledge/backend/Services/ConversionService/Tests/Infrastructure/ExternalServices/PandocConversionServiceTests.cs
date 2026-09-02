@@ -113,6 +113,51 @@ public class PandocConversionServiceTests
         storage.Fetched.Should().ContainSingle().Which.Should().Be(uri);
     }
 
+    // T-33 / IADR-0351 (#1120): 図を含む原本を**実 pandoc で端から端まで**変換し、
+    // 一時パスが本文に残らないこと・図が目印として 1 度だけ現れることを確かめる。
+    //
+    // 🔴 書き換えそのものの検査は `PandocExtractedMediaRewriteTests` が pandoc 無しで行う
+    // （pod で採取した実出力を固定入力にしてある）。本ケースは「pandoc が実際にその形を出し、
+    // 配線が繋がっている」ことだけを見るため、pandoc 未導入環境では**真の Skipped** にする。
+    [Fact]
+    public async Task Leaves_no_extract_media_temp_path_in_the_body()
+    {
+        Assert.SkipUnless(PandocAvailable(), "pandoc 未導入環境では実行できない。");
+
+        var dir = Path.Combine(Path.GetTempPath(), $"conv-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            // 1x1 の PNG。図の中身に意味は無い（抽出されることだけが要る）。
+            var png = Path.Combine(dir, "fig.png");
+            await File.WriteAllBytesAsync(png, Convert.FromBase64String(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="),
+                TestContext.Current.CancellationToken);
+
+            // pandoc は相対パスを作業ディレクトリ基準で解くため、原本には絶対パスを書く。
+            var html = Path.Combine(dir, "src.html");
+            await File.WriteAllTextAsync(html,
+                $"<h1>四半期レポート</h1><p>本文の段落である。</p>"
+                + $"<p><img src=\"{png.Replace('\\', '/')}\" alt=\"構成図\" /></p><h2>まとめ</h2>",
+                TestContext.Current.CancellationToken);
+
+            var result = await NewService().ConvertAsync(new Uri(html).AbsoluteUri, "text/html",
+                TestContext.Current.CancellationToken);
+
+            result.Figures.Should().ContainSingle().Which.FigureId.Should().Be("fig-1");
+            // 受け入れ基準 1: 消えるディレクトリへの参照を残さない。
+            result.Markdown.Should().NotContain(Path.GetTempPath().Replace('\\', '/'));
+            result.Markdown.Should().NotContain("conv-", "一時ディレクトリ名が保管物へ漏れない");
+            // 受け入れ基準 2: 図は本文から参照でき、**1 度だけ**出る。
+            result.Markdown.Split(FigureMarkdown.PlaceholderEmbed("fig-1")).Should().HaveCount(2);
+            result.Markdown.Should().Contain("四半期レポート").And.Contain("まとめ");
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     // IADR-0320 決定 4: PDF は pandoc の入力形式にならない。**既定の markdown へ落とさない。**
     [Theory]
     [InlineData("application/pdf", "storage://bucket/raw/report.pdf")]
