@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-11, UC-01, UC-02]
 adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0038]
-iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0337]
+iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340]
 specs: [20260902_571_trade-decision-screening-purpose]
 issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, AST#290, AST#571, planning#50, planning#426]
 -->
@@ -294,7 +294,7 @@ Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロック�
 - 実装ADR: `../../.ai-context/adr/IADR-0225_llm-purpose-fallback-chain-and-429-boundary.md`（用途別フォールバック順序・429 の境界・発火の可観測化）、`../../.ai-context/adr/IADR-0007_llm-egress-routing-config-driven.md`（config 駆動ルーティング）、
   `../../.ai-context/adr/IADR-0014_qdrant-attribute-payload-key.md`（属性ペイロード復元）、`../../.ai-context/adr/IADR-0104_llm-stop-reason-refusal.md`（終了理由の判別と拒否の伝達）、
   `../../.ai-context/adr/IADR-0109_openai-finish-reason-normalization.md`（OpenAI 互換 finish_reason の正規化）、`../../.ai-context/adr/IADR-0110_llm-completion-stop-reason-metrics.md`（終了理由のメトリクス）、`../../.ai-context/adr/IADR-0111_degraded-answer-model-label.md`（縮退応答の「使用モデル」ラベル）、
-  `../../.ai-context/adr/IADR-0337_trade-decision-screening-purpose-registration.md`（二段判断の層別用途登録・報告書 3 種のフォールバック鎖登録）
+  `../../.ai-context/adr/IADR-0340_trade-decision-screening-purpose-registration.md`（二段判断の層別用途登録・報告書 3 種のフォールバック鎖登録）
 - 可観測性仕様書: `../observability/llm-completion-metrics.md`（終了理由・拒否率のメトリクス）
 - 運用仕様書: `../operations/operations.md`（監視・アラート）
 - 関連機能仕様書: `./FR-04_ai-answer-citations.md`（`RagOrchestrator` が本ルーティングを利用）
