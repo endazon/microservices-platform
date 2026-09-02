@@ -4,14 +4,14 @@ using System.Text.Json;
 using AwesomeAssertions;
 using GraphService.Infrastructure.ExternalServices;
 using GraphService.Domain;
-using GraphService.Features.AiSuggestions;
+using GraphService.Features.AiSuggestions.Generate;
 using GraphService.Infrastructure.Persistence;
 using GraphService.Domain.Ports;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Platform.Shared.Contracts.Dtos;
 
-namespace GraphService.Tests.Features.AiSuggestions;
+namespace GraphService.Tests.Features.AiSuggestions.Generate;
 
 // FR-18, ADR-0034 決定 5, ADR-0051 決定 1〜4, ADR-0033 決定 7 (#915):
 // **AI 提案の生成 —— スコープ内候補限定の LLM 境界。**

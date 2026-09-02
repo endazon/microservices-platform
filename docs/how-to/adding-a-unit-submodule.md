@@ -1,9 +1,9 @@
 <!-- trace:
 ids: [FR-14]
 adrs: [ADR-0030, ADR-0032, ADR-0048]
-iadrs: [IADR-0027, IADR-0056, IADR-0057, IADR-0058, IADR-0059, IADR-0060, IADR-0064, IADR-0065, IADR-0117, IADR-0120, IADR-0121, IADR-0124, IADR-0125, IADR-0228, IADR-0262, IADR-0331]
-specs: [20260712_issue-260_dependabot-gitsubmodule, 20260831_issue-1092_planning-submodule-residual-refs]
-issues: [#229, #230, #245, #785, #1092]
+iadrs: [IADR-0027, IADR-0056, IADR-0057, IADR-0058, IADR-0059, IADR-0060, IADR-0064, IADR-0065, IADR-0117, IADR-0120, IADR-0121, IADR-0124, IADR-0125, IADR-0228, IADR-0262, IADR-0282, IADR-0331, IADR-0334]
+specs: [20260712_issue-260_dependabot-gitsubmodule, 20260831_issue-1092_planning-submodule-residual-refs, 20260903_issue-1146_template-tests-mirror]
+issues: [#229, #230, #245, #785, #1092, #1146]
 -->
 
 # 追加可変機能ユニットを submodule として組み込む手順
@@ -32,7 +32,11 @@ issues: [#229, #230, #245, #785, #1092]
       Domain/                   ← エンティティ・値オブジェクト・ポート（Domain/Ports/）
       Infrastructure/           ← Persistence/ ・ Messaging/ ・ ExternalServices/（アダプタ）
       Common/                   ← サービス固有の横断関心（Exceptions/・Behaviors/）
-      Tests/<Name>.Tests.csproj ← テストは 1 プロジェクト
+      Tests/                    ← テストは 1 プロジェクト（<Name>.Tests.csproj）＋ 本体の鏡写し
+        Features/<集約>/<操作>/ ←   段まで写す（統合テストも種別で割らず対象スライスのここへ）
+        Domain/ Infrastructure/<Sub>/ Common/<Sub>/  ← 鏡写しの相手が在るぶんだけ作る
+        （直下）                ←   写す相手が無いもの（テスト専用の器・GlobalUsings.cs・
+                                ←   Program.cs 由来の検証）は Tests/ 直下に置く
     Shared/<Unit>.Contracts/    ← 任意: ユニット固有のイベント契約（段間連携イベント。契約階層化は #229/IADR-0059）
   frontend/
     package.json                ← name: @<unit>/frontend、pnpm workspace で自動認識。**依存を明示宣言する**

@@ -64,6 +64,29 @@ spec:
             host: {{ .Values.edge.bff.service | quote }}
             port:
               number: {{ .Values.edge.bff.port }}
+    {{- if .Values.edge.privateNotesSync.enabled }}
+    # FR-20, UC-11, ADR-0037 課題 2, IADR-0270 決定 3, IADR-0338 決定 4, IADR-0348 (#1154):
+    # Obsidian プラグインの同期プロトコルを DocumentService へ直接通す（BFF は経由しない）。
+    #
+    # - **rewrite は張らない。** 公開パスと契約パス（/private-notes/sync/*）を同一にすることで、
+    #   プラグインの設定値は基底 URL だけで済む（/bff と同じ規律）。
+    # - **前置は末尾スラッシュ込みで直書きする。** これは環境ごとに変える値ではなくサーバ契約そのもの
+    #   であり、values の knob にすると打ち間違いで露出面が広がる経路を作るだけである。
+    #   /private-notes（sync 以外）・/private-notes/devices・/documents は当たらず、下の catch-all
+    #   （SPA）へ落ちる。**そこは 404 ではなく SPA の index.html（200 text/html）である** ——
+    #   frontend の nginx が history fallback を返すためで、「API に届いていない」ことは同じ端点を
+    #   port-forward で直に叩くと 401（JSON）になるのと対で確かめる（IADR-0348 §実測）。
+    # - **エッジで JWT 検証を要求しない。** 資格情報は不透明な同期トークン（Bearer）で、DocumentService が
+    #   ハッシュ照合で自前検証する（IADR-0270 決定 3）。RequestAuthentication を置くと正当な要求が落ちる。
+    # - catch-all より**前**に置くこと（Istio のルートは先勝ち）。
+    - match:
+        - uri: { prefix: /private-notes/sync/ }
+      route:
+        - destination:
+            host: {{ .Values.edge.privateNotesSync.service | quote }}
+            port:
+              number: {{ .Values.edge.privateNotesSync.port }}
+    {{- end }}
     {{- if .Values.frontend.enabled }}
     # Issue #313, IADR-0078: SPA(frontend) の catch-all。/bff（と任意の /realms・/resources）を先に評価した後、
     # 残る全パス（/・/settings・/assets/*・/config.js 等）を frontend の Service（edge.frontend.service）へ流す。

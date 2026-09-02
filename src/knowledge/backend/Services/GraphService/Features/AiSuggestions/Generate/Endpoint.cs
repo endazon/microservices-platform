@@ -18,8 +18,9 @@ namespace GraphService.Features.AiSuggestions.Generate;
 // ADR-0051 決定 4 は本経路の不変条件を「1 実行 = 1 利用者のスコープ」だけとしており、
 // read で解決する現状が計画に反しているとは読めない。**裁定待ちとして範囲の外に置く。**
 //
-// 生成器（`AiSuggestionGenerator`）は集約直下に居る —— DI へ登録され、端点を介さずに
-// 直接検証されるためである（ADR-0065 決定 2 は深さの規範であり、器の置き場所は変えない）。
+// 生成器（`AiSuggestionGenerator`）は**同じフォルダに居る**（#1093 / IADR-0350）。使う操作が
+// この 1 つだけなので ADR-0068 決定 2 により 3 段目へ下ろした。DI へ登録されることも、端点を
+// 介さず直接検証されることも、段の判定には関わらない（IADR-0319 決定 1）。
 internal static class GenerateAiSuggestionsEndpoint
 {
     internal static void Map(RouteGroupBuilder g)

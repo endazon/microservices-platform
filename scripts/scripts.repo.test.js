@@ -5877,7 +5877,12 @@ ${r.stderr}`);
         //    待受を宣言し、Prometheus の scrape 対象ポートと一致すること。**同型の事故 2 回目**——
         //    1 回目は IADR-0304 の記録に留めた）を新設したため 46 → 47（ラチェットが設計どおり発火した）。
         //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
-        assert.strictEqual(scripts.length, 47, `検査器の母集合が 47 本から変わった（${scripts.length} 件）`);
+        // ★ #1144 で `check-password-reset-mail.js`（パスワードリセットの送出が開発環境で成立し、
+        //    メール本文がリンクと有効期限だけであること。**捕捉先が無かったので T-10 / T-16 は
+        //    「手動（実環境）」で止まっていた**）を新設したため 47 → 48（ラチェットが設計どおり発火した）。
+        //    git を一切呼ばず kubectl を外部コマンドとして叩くため、TRACKED_CHECKERS / HEAD_CHECKERS の
+        //    どちらにも載らない（`check-stack-ready.js` と同じ扱い）。
+        assert.strictEqual(scripts.length, 48, `検査器の母集合が 48 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
