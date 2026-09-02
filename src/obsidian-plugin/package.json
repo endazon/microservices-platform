@@ -1,0 +1,18 @@
+{
+  "name": "@platform/obsidian-plugin",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "FR-20 / ADR-0037 決定 1 / IADR-0338: 自作 Obsidian プラグイン（社内配布）。個人資料（private-note）を DocumentService の同期プロトコル（/private-notes/sync/*・Bearer 同期トークン）で Vault と同期する。第 1 段は manifest → pull（読み取り方向）のみ。アプリでもライブラリでもない第 3 の成果物であり、pnpm workspace のメンバとして typecheck / lint / format / test の横断ゲートに乗せる（配置の判断は IADR-0338 決定 2）。",
+  "scripts": {
+    "//build": "IADR-0338 決定 3: esbuild で dist/main.js（Obsidian が読む CJS バンドル）と dist/cli.mjs（Obsidian 本体なしで同じ同期モジュールを実 HTTP で叩く Node ハーネス）を作り、manifest.json を dist/ へ写す。外部 CDN・Web フォント・analytics を含まないことは scripts/check-static-egress.js --require src/obsidian-plugin/dist が成果物を走査して確かめる（08_data-egress-policy）。",
+    "build": "node esbuild.config.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "esbuild": "^0.25.12",
+    "obsidian": "^1.13.1",
+    "typescript": "^5.6.2"
+  }
+}

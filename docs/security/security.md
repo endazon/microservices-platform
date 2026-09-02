@@ -3,15 +3,15 @@ title: セキュリティ仕様書
 type: security-spec
 status: in-progress
 created: 2026-07-02
-updated: 2026-08-31
+updated: 2026-09-02
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, NFR-11, SC-05, SC-11, SC-17, UC-07]
-adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0026, ADR-0045]
-iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329]
-specs: []
-issues: [#55, #100, #198, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1101, AST#18, AST#24, planning#383]
+ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-20, NFR-11, SC-05, SC-11, SC-17, SC-20, UC-07]
+adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0026, ADR-0037, ADR-0045]
+iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338]
+specs: [20260902_issue-1098_obsidian-plugin-pull-stage1]
+issues: [#55, #100, #198, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, AST#18, AST#24, planning#383]
 -->
 
 # セキュリティ仕様書
@@ -137,6 +137,16 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 ## 秘密情報管理
 
 <!-- 鍵・トークンの保管・ローテーション・コミット禁止 -->
+
+### Obsidian プラグインの同期トークン — 端末ローカル保管・設定ファイルに置かない
+
+個人資料の同期トークン（有効期限 30 日・手動再発行のみ・端末ごとに発行し個別／一括で失効できる資格情報）は、
+自作 Obsidian プラグイン（`src/obsidian-plugin/`）が **Obsidian の Vault 固有 localStorage（端末ローカル）** に
+保管する。**プラグイン設定ファイル `data.json` には置かない** —— `data.json` は Vault の一部で Obsidian Sync や
+git により**他の端末へ複製される**ため、端末単位の失効と矛盾する。保存後は画面へ戻さず（再表示不可）、
+削除の操作を持つ。暗号化はしていない（OS のキーチェーンはプラグイン API から届かない）。露出は当該端末の
+プロファイル内に閉じ、端末の紛失・盗難は計画の egress ポリシーが「受け入れたリスク」と明記する範囲である。
+Bearer で平文のまま載るため、接続先は https に限る（loopback のみ http 可）。
 
 ### 開発専用（dev-only）の平文認証情報 — 本番流用禁止
 

@@ -52,6 +52,14 @@
  * 迂回する**。利用者名・パスワード・client secret があれば OTP を一切問われずにトークンが出る。
  * いずれも realm JSON だけで静的に判定できるため、import 前に止める。
  *
+ * 検査6: **サーバ間の口**の宛先が、pod から到達し得ない host になっていないか（#1115）。
+ * 背景: realm の URL 欄はほとんどが「ブラウザが開く URL」で、裸の `localhost` が正しい。例外は
+ * `backchannel.logout.url` —— **認可サーバが pod の中から叩く**宛先である。ここにブラウザ向けの値を
+ * 書くと、Keycloak は自分自身の :443 へ POST して `Connection refused` になり、**BFF には一度も届かない**。
+ * 失敗は静かで、Keycloak 側に `KC-SERVICES0057` が 1 行出るだけ、管理者の画面には「ログアウトさせた」
+ * と映る。到達可能性そのものは静的に測れないので、**到達し得ない形**（裸の localhost / ループバック /
+ * `*.localhost`）だけを止める。詳細は collectServerSideUrlGaps の注記。
+ *
  * 使い方:
  *   node scripts/check-realm-constraints.js            # deploy/keycloak/*-realm.json を検査。違反で exit 1。
  *   node scripts/check-realm-constraints.js <path...>  # 明示したファイルのみ検査。
@@ -583,6 +591,63 @@ function checkRealmThemeText(text, reader, themeRoot = THEME_ROOT) {
   return collectThemeGaps(JSON.parse(text), reader, themeRoot);
 }
 
+/*
+ * 検査6: **サーバ間の口**に、pod から到達し得ない host を書いていないか（#1115）。
+ *
+ * realm の URL 欄はほとんどが「ブラウザが開く URL」で、そこは裸の `localhost`（エッジ host）が正しい。
+ * 例外が `backchannel.logout.url` である —— これは **Keycloak 自身が pod の中から叩く**宛先であり、
+ * ブラウザ向けの値をそのまま書くと**一度も届かない**。しかも失敗は静かで、Keycloak 側に
+ * `KC-SERVICES0057` が 1 行出るだけ、管理者の画面には「ログアウトさせた」と映る。
+ *
+ * 「realm に書いた URL が実際に到達可能か」は静的には測れない（DNS もメッシュも実行時の性質である）。
+ * 測れるのは「**到達し得ない形をしていないか**」であり、本検査はそこだけを見る:
+ *
+ *   - 裸の `localhost` / `127.0.0.1` / `::1`: pod の `/etc/hosts` が必ず **pod 自身**へ向ける。
+ *     CoreDNS には届かないので、書き換え規則をどう広げても宛先にはならない（#1115 実測）。
+ *   - `*.localhost`（エッジ host）: CoreDNS は答えるが、**Keycloak イメージ（UBI9 / glibc）の
+ *     名前解決が引かない**。同じ pod の netns に musl のコンテナを足すと同じ名前が解決する（#1115 実測）。
+ *
+ * ブラウザ向けの欄（redirectUris / webOrigins / post.logout.redirect.uris）は**対象にしない**。
+ */
+const SERVER_SIDE_URL_ATTRS = ['backchannel.logout.url'];
+const POD_SELF_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '0:0:0:0:0:0:0:1']);
+
+function collectServerSideUrlGaps(realm, attrs = SERVER_SIDE_URL_ATTRS) {
+  const gaps = [];
+  for (const client of (realm && realm.clients) || []) {
+    const attributes = (client && client.attributes) || {};
+    for (const attr of attrs) {
+      const raw = attributes[attr];
+      // 宣言していない client は検査しない（バックチャネルログアウトを使わないのは正当な選択である）。
+      if (typeof raw !== 'string' || raw === '') continue;
+      const where = `clients[${client.clientId}].attributes["${attr}"]`;
+      let host;
+      try {
+        host = new URL(raw).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+      } catch {
+        gaps.push({ path: where, detail: `URL として解釈できない: ${raw}` });
+        continue;
+      }
+      if (POD_SELF_HOSTS.has(host)) {
+        gaps.push({
+          path: where,
+          detail: `host が "${host}" —— pod の /etc/hosts が必ず pod 自身へ向けるため、サーバ間の宛先にならない（${raw}）`,
+        });
+      } else if (host.endsWith('.localhost')) {
+        gaps.push({
+          path: where,
+          detail: `host が "${host}"（エッジ host）—— 認可サーバの pod の名前解決が *.localhost を引かない（${raw}）`,
+        });
+      }
+    }
+  }
+  return gaps;
+}
+
+function checkRealmServerSideUrlsText(text, attrs = SERVER_SIDE_URL_ATTRS) {
+  return collectServerSideUrlGaps(JSON.parse(text), attrs);
+}
+
 // --- ADR-0045 決定 9: 開発環境の送出先は捕捉用 MTA である（#1144） ------------------
 //
 // 決定 9（Accepted）は「**開発環境では実送信しない。k3s 上に捕捉用 MTA（Mailpit 等）を置き、
@@ -811,6 +876,7 @@ function checkFiles(relPaths) {
       deviations: checkRealmPolicyText(text),
       themeGaps: checkRealmThemeText(text, diskReader()),
       mfaGaps: checkRealmMfaAuditText(text),
+      serverUrlGaps: checkRealmServerSideUrlsText(text),
       mailGaps: checkRealmMailCaptureText(text, diskReader()),
       concealGaps: checkRealmResetConcealmentText(text),
     });
@@ -1226,6 +1292,79 @@ function selfTest() {
     })(),
   });
 
+  // --- 検査6: サーバ間の口の宛先（#1115）---
+  const s2s = (url) => ({ clients: [{ clientId: 'bff', attributes: { 'backchannel.logout.url': url } }] });
+  cases.push({
+    name: 'S2S: in-cluster の素のサービス名は合格',
+    pass: collectServerSideUrlGaps(s2s('http://bff-service:8080/bff/auth/backchannel-logout')).length === 0,
+  });
+  cases.push({
+    name: 'S2S: FQDN（*.svc.cluster.local）も合格',
+    pass: collectServerSideUrlGaps(
+      s2s('http://bff-service.microservices-platform.svc.cluster.local:8080/bff/auth/backchannel-logout'),
+    ).length === 0,
+  });
+  cases.push({
+    name: 'S2S: 実在の公開 host（https://bff.example.com）も合格',
+    pass: collectServerSideUrlGaps(s2s('https://bff.example.com/bff/auth/backchannel-logout')).length === 0,
+  });
+  cases.push({
+    name: 'S2S: 裸の localhost を検出する（#1115 の事故そのもの）',
+    pass: (() => {
+      const g = collectServerSideUrlGaps(s2s('https://localhost/bff/auth/backchannel-logout'));
+      return g.length === 1 && /pod 自身/.test(g[0].detail);
+    })(),
+  });
+  cases.push({
+    name: 'S2S: 127.0.0.1 / ::1 も同じ理由で検出する',
+    pass: collectServerSideUrlGaps(s2s('http://127.0.0.1:8080/x')).length === 1
+      && collectServerSideUrlGaps(s2s('http://[::1]:8080/x')).length === 1,
+  });
+  cases.push({
+    name: 'S2S: エッジ host（*.localhost）を検出する',
+    pass: (() => {
+      const g = collectServerSideUrlGaps(s2s('https://app.localhost/bff/auth/backchannel-logout'));
+      return g.length === 1 && /エッジ host/.test(g[0].detail);
+    })(),
+  });
+  cases.push({
+    name: 'S2S: 属性を持たない client は検査しない（誤検出しない）',
+    pass: collectServerSideUrlGaps({ clients: [{ clientId: 'other' }, { clientId: 'x', attributes: {} }] }).length === 0,
+  });
+  cases.push({
+    name: 'S2S: URL として壊れている値も落とす',
+    pass: collectServerSideUrlGaps(s2s('not a url')).length === 1,
+  });
+  cases.push({
+    name: 'S2S: ブラウザ向けの欄（redirectUris）は裸の localhost でも検出しない',
+    pass: collectServerSideUrlGaps({
+      clients: [{
+        clientId: 'bff',
+        redirectUris: ['https://localhost/bff/auth/callback'],
+        webOrigins: ['https://localhost'],
+        attributes: { 'post.logout.redirect.uris': 'https://localhost/*' },
+      }],
+    }).length === 0,
+  });
+  cases.push({
+    name: 'S2S: JSON パース→検査（checkRealmServerSideUrlsText）が通る',
+    pass: checkRealmServerSideUrlsText(JSON.stringify(s2s('https://localhost/x'))).length === 1,
+  });
+  cases.push({
+    name: 'S2S: 実データの realm が不変条件を満たす（実データ・ラチェット／0 件走査の門つき）',
+    pass: (() => {
+      const realmPath = path.join(REPO_ROOT, REALM_DIR, 'microservices-platform-realm.json');
+      if (!fs.existsSync(realmPath)) return true; // realm が無い配布物では skip
+      const realm = JSON.parse(fs.readFileSync(realmPath, 'utf8'));
+      // 0 件走査の門: サーバ間の口を 1 つも宣言していない realm を「違反なし」と読まない。
+      const declared = (realm.clients || []).filter(
+        (c) => c.attributes && typeof c.attributes['backchannel.logout.url'] === 'string',
+      );
+      if (declared.length === 0) return false;
+      return collectServerSideUrlGaps(realm).length === 0;
+    })(),
+  });
+
   // --- ADR-0045 決定 9: dev 既定の送出先（#1144）---
   //
   // 受け入れ基準 5 が要求する「**実リレーへ向ける変更を入れると落ちる（陽性対照つき）**」は、
@@ -1412,11 +1551,12 @@ function main() {
   const totalDeviations = results.reduce((n, r) => n + r.deviations.length, 0);
   const totalThemeGaps = results.reduce((n, r) => n + r.themeGaps.length, 0);
   const totalMfaGaps = results.reduce((n, r) => n + r.mfaGaps.length, 0);
+  const totalServerUrlGaps = results.reduce((n, r) => n + r.serverUrlGaps.length, 0);
   const totalMailGaps = results.reduce((n, r) => n + r.mailGaps.length, 0);
   const totalConcealGaps = results.reduce((n, r) => n + r.concealGaps.length, 0);
-  if (total === 0 && totalMissing === 0 && totalDeviations === 0 && totalThemeGaps === 0
-    && totalMfaGaps === 0 && totalMailGaps === 0 && totalConcealGaps === 0) {
-    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・dev 既定の送出先の逸脱・SC-15 の存在秘匿の破れはありません。`);
+  if (total === 0 && totalMissing === 0 && totalDeviations === 0 && totalThemeGaps === 0 && totalMfaGaps === 0
+      && totalServerUrlGaps === 0 && totalMailGaps === 0 && totalConcealGaps === 0) {
+    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・到達し得ないサーバ間 URL・dev 既定の送出先の逸脱・SC-15 の存在秘匿の破れはありません。`);
     process.exit(0);
   }
 
@@ -1473,6 +1613,19 @@ function main() {
       + '\n要件の正は planning の ADR-0026・ADR-0045 決定 9-b、実装側の記録は IADR-0294（#438）です。');
   }
 
+  if (totalServerUrlGaps > 0) {
+    console.error(`[check-realm-constraints] pod から到達し得ないサーバ間 URL ${totalServerUrlGaps} 件を検出しました:`);
+    for (const r of results) {
+      for (const g of r.serverUrlGaps) {
+        console.error(`\n  ${r.file}\n    ${g.path}: ${g.detail}`);
+      }
+    }
+    console.error('\nブラウザ向けの URL 群（redirectUris / webOrigins / post.logout.redirect.uris）とは別系統です。'
+      + '\nバックチャネルログアウトは**認可サーバが pod の中から叩く**口であり、届かなくても失敗は静かです'
+      + '\n（Keycloak 側に KC-SERVICES0057 が 1 行出るだけで、管理者の画面には「ログアウトさせた」と映ります）。'
+      + '\n「実際に到達するか」は静的には測れません。本検査は「到達し得ない形」だけを止めています（#1115）。');
+  }
+
   if (totalMailGaps > 0) {
     console.error(`[check-realm-constraints] dev 既定の送出先（ADR-0045 決定 9）の逸脱 ${totalMailGaps} 件を検出しました:`);
     for (const r of results) {
@@ -1497,7 +1650,7 @@ function main() {
       + '\nKeycloak の設定でこの 500 は消せません（テーマはステータスを変えられず、'
       + '\nreset-credential-email は configurable: false / REQUIRED 固定であることを実測済み）。'
       + '\n**申請を開くなら送出先を与える／与えられないなら閉じる**の二択です。'
-      + '\n要件の正は planning の ADR-0026・ADR-0045 決定 8、実装側の記録は IADR-0345（#1143）です。');
+      + '\n要件の正は planning の ADR-0026・ADR-0045 決定 8、実装側の記録は IADR-0347（#1143）です。');
   }
 
   process.exit(1);
@@ -1524,10 +1677,13 @@ module.exports = {
   checkRealmMailCaptureText,
   collectResetConcealmentGaps,
   checkRealmResetConcealmentText,
-  MAIL_CAPTURE_MANIFEST,
-  VAULT_SEED_SCRIPT,
+  collectServerSideUrlGaps,
+  checkRealmServerSideUrlsText,
+  SERVER_SIDE_URL_ATTRS,
   satisfiesPasswordClasses,
   MAX_LEN,
+  MAIL_CAPTURE_MANIFEST,
+  VAULT_SEED_SCRIPT,
   REQUIRED_CLIENT_URLS,
   PASSWORD_CLASS_REGEX,
   AUTH_POLICY_REALM,
