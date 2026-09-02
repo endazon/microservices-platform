@@ -1,7 +1,8 @@
-// FR-20, SC-20, ADR-0037 決定 4, [[IADR-0338]] 決定 5: プラグイン設定と永続化の形。
+// FR-20, SC-20, ADR-0037 決定 4, [[IADR-0338]] 決定 5, [[IADR-0352]] 決定 1: プラグイン設定と永続化の形。
 //
-// `data.json` に持つのは**接続先・同期フォルダ・同期状態**だけである。同期トークンは持たない
-// （`obsidian/tokenStore.ts`）。
+// `data.json` に持つのは**接続先・同期フォルダ・同期状態・未送信の編集（journal）**である。
+// 同期トークンは持たない（`obsidian/tokenStore.ts`）。
+import { readJournal, type EditJournal } from '../protocol/editJournal.ts';
 import type { SyncState } from '../protocol/pullPlanner.ts';
 
 export interface PluginSettings {
@@ -19,6 +20,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 export interface PersistedData {
   settings: PluginSettings;
   syncState: SyncState;
+  journal: EditJournal;
 }
 
 export function readPersistedData(raw: unknown): PersistedData {
@@ -39,5 +41,6 @@ export function readPersistedData(raw: unknown): PersistedData {
         typeof settings.syncFolder === 'string' ? settings.syncFolder : DEFAULT_SETTINGS.syncFolder,
     },
     syncState,
+    journal: readJournal(record.journal),
   };
 }

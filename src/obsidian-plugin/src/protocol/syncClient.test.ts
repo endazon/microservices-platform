@@ -1,6 +1,19 @@
-import { MANIFEST_PATH, SyncClient, noteSyncPath } from './syncClient.ts';
+import {
+  MANIFEST_PATH,
+  PUSH_PATH,
+  SyncClient,
+  noteDeletePath,
+  noteSyncPath,
+} from './syncClient.ts';
 import type { HttpRequest, HttpTransport } from './transport.ts';
-import { SyncAuthError, SyncNotFoundError, SyncProtocolError } from './types.ts';
+import {
+  SyncAuthError,
+  SyncConflictError,
+  SyncNotFoundError,
+  SyncProtocolError,
+  SyncQuotaError,
+  SyncTooLargeError,
+} from './types.ts';
 
 const entry = {
   noteId: '11111111-1111-1111-1111-111111111111',
@@ -88,5 +101,98 @@ describe('SyncClient', () => {
       't',
     );
     await expect(pullWrong.pull(entry.noteId)).rejects.toBeInstanceOf(SyncProtocolError);
+  });
+
+  // FR-20, ADR-0037 決定 2・8, [[IADR-0352]]: push は edits[] と baseVersion を JSON で POST する（陽性対照）
+  it('push は edits と baseVersion を JSON で POST し、契約どおりの応答を返す', async () => {
+    const response = { noteId: entry.noteId, version: 5, contentHash: 'h', bytes: 12 };
+    const { transport, calls } = transportReturning(200, JSON.stringify(response));
+    const client = new SyncClient(transport, 'https://kb.example.co.jp', 'tok');
+    const request = {
+      noteId: entry.noteId,
+      vaultPath: 'notes/memo.md',
+      title: 'メモ',
+      baseVersion: 3,
+      edits: [{ content: 'v4' }, { content: 'v5' }],
+    };
+
+    await expect(client.push(request)).resolves.toEqual(response);
+    expect(calls[0]!.method).toBe('POST');
+    expect(calls[0]!.url).toBe(`https://kb.example.co.jp${PUSH_PATH}`);
+    expect(calls[0]!.headers['Content-Type']).toBe('application/json');
+    expect(JSON.parse(calls[0]!.body!)).toEqual(request);
+  });
+
+  // FR-20, ADR-0037 決定 5: delete は POST …/notes/{id}/delete で論理削除の応答を返す
+  it('delete は POST …/delete を送り、deletedAt / purgeAt を返す', async () => {
+    const response = { deletedAt: '2026-09-03T00:00:00Z', purgeAt: '2026-12-02T00:00:00Z' };
+    const { transport, calls } = transportReturning(200, JSON.stringify(response));
+    const client = new SyncClient(transport, 'https://kb.example.co.jp', 'tok');
+
+    await expect(client.delete(entry.noteId)).resolves.toEqual(response);
+    expect(calls[0]!.method).toBe('POST');
+    expect(calls[0]!.url).toBe(`https://kb.example.co.jp${noteDeletePath(entry.noteId)}`);
+    expect(calls[0]!.body).toBeUndefined();
+  });
+
+  // FR-20, ADR-0037 決定 7, [[IADR-0270]] 決定 7: 409 は 3 つの形を区別して SyncConflictError にし、自動解決しない
+  it('409 は version_conflict / deleted / vault_path_conflict を区別した SyncConflictError になる', async () => {
+    const request = {
+      noteId: entry.noteId,
+      vaultPath: 'x.md',
+      title: 'x',
+      baseVersion: 1,
+      edits: [{ content: 'c' }],
+    };
+    const version = new SyncClient(
+      transportReturning(
+        409,
+        JSON.stringify({ error: 'version_conflict', serverVersion: 7, serverUpdatedAt: 'u' }),
+      ).transport,
+      'https://x',
+      't',
+    );
+    await expect(version.push(request)).rejects.toMatchObject({
+      name: 'SyncConflictError',
+      conflict: { error: 'version_conflict', serverVersion: 7, serverUpdatedAt: 'u' },
+    });
+
+    const deleted = new SyncClient(
+      transportReturning(409, JSON.stringify({ error: 'deleted', purgeAt: 'p' })).transport,
+      'https://x',
+      't',
+    );
+    await expect(deleted.push(request)).rejects.toMatchObject({
+      conflict: { error: 'deleted', purgeAt: 'p' },
+    });
+
+    const path = new SyncClient(
+      transportReturning(409, JSON.stringify({ error: 'vault_path_conflict', vaultPath: 'x.md' }))
+        .transport,
+      'https://x',
+      't',
+    );
+    await expect(path.push({ ...request, noteId: null, baseVersion: null })).rejects.toSatisfy(
+      (e: unknown) => e instanceof SyncConflictError && e.conflict.error === 'vault_path_conflict',
+    );
+
+    // 409 でも契約と違う本文なら黙って「競合」に丸めず止める
+    const unknown = new SyncClient(transportReturning(409, '{}').transport, 'https://x', 't');
+    await expect(unknown.push(request)).rejects.toBeInstanceOf(SyncProtocolError);
+  });
+
+  // FR-20, [[IADR-0270]] 決定 7 / ADR-0037 決定 17: 413 と 507 は利用者に判る失敗にする
+  it('413 は SyncTooLargeError、507 は SyncQuotaError になる', async () => {
+    const request = {
+      noteId: null,
+      vaultPath: 'x.md',
+      title: 'x',
+      baseVersion: null,
+      edits: [{ content: 'c' }],
+    };
+    const large = new SyncClient(transportReturning(413, '').transport, 'https://x', 't');
+    await expect(large.push(request)).rejects.toBeInstanceOf(SyncTooLargeError);
+    const quota = new SyncClient(transportReturning(507, '').transport, 'https://x', 't');
+    await expect(quota.push(request)).rejects.toBeInstanceOf(SyncQuotaError);
   });
 });

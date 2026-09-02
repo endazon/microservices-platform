@@ -5,7 +5,7 @@ status: Proposed
 related_ids: [FR-19, FR-20, UC-11, SC-20, ADR-0037, ADR-0046, ADR-0054, IADR-0270]
 author: claude
 created: 2026-09-02
-updated: 2026-09-02
+updated: 2026-09-03
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0037_obsidian-sync-method.md
   - planning:projects/microservices-platform/06_technical/08_data-egress-policy.md
@@ -174,6 +174,8 @@ issue の提案する**⑥段分割**を決める。
 - フォローアップ:
   1. `/private-notes/sync/*` のエッジ公開（`deploy/`。契約は変えない）
   2. 第 2 段: push（`edits[]`・デバウンス）/ delete / 競合解決 UI（3 択）/ サーバ側削除・リネームの伝播
+     ［2026-09-03 追記 / #1153］**`IADR-0352` で実装した。** 決定 9 の表で `previousPath` を添えるだけだった
+     サーバ側リネームは第 2 段で旧パスの移動として消費する（同 IADR 決定 5）
   3. 配布のリリース資産化（zip）と社内配布手順
   4. `coverage.include` への算入と床の再計測
   5. en ロケール（必要になったら）

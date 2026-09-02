@@ -3,15 +3,15 @@ title: FR-20 Obsidian 双方向同期 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-08-23
-updated: 2026-09-02
+updated: 2026-09-03
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-20]
 adrs: [ADR-0037, ADR-0046]
-iadrs: [IADR-0270, IADR-0338]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260902_issue-1098_obsidian-plugin-pull-stage1]
-issues: [#451, #1098]
+iadrs: [IADR-0270, IADR-0338, IADR-0352]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2]
+issues: [#451, #1098, #1153]
 -->
 
 # テスト仕様書: Obsidian 双方向同期
@@ -19,9 +19,10 @@ issues: [#451, #1098]
 ## テスト対象・範囲
 
 同期プロトコル（manifest / push / pull / delete）・同期トークン（発行・期限・再発行・失効）・
-監査・期限予告の検知、および **Obsidian プラグイン第 1 段（取り込みのみ）のプロトコル部**。
-**対象外**: プラグインの push / delete / 競合解決 UI（第 2 段・未実装）・Obsidian 本体上の GUI 操作
-（本体は CI に無い）・実ブローカ／実ストレージでの結合（この環境では実行していない）。
+監査・期限予告の検知、および **Obsidian プラグインのプロトコル部**（取り込み・送信・論理削除・
+「1 編集」の刻み・競合の 3 択・サーバ側削除／リネームの伝播）。
+**対象外**: Obsidian 本体上の GUI 操作（本体は CI に無い。競合ダイアログの見た目・Vault イベントの配線は
+実機で確かめる）・実ブローカ／実ストレージでの結合（この環境では実行していない）。
 
 実体: `DocumentService.Tests` の `ObsidianSyncProtocolTests` / `SyncDeviceTokenTests`（サーバ側）、
 `src/obsidian-plugin/src/**/*.test.ts`（プラグイン側。Vitest・Obsidian 実体なし）。
@@ -68,6 +69,30 @@ issues: [#451, #1098]
 | P10 | 接続先は https のみ（loopback だけ http 可） | `endpoint.test.ts` の 4 件 |
 | P11 | ローカル内容のハッシュはサーバの `ContentHash` と同じ計算 | `hash.test.ts` › `既知のベクタと一致する（空文字・abc）` |
 | P12 | トークンは端末ローカルに保存・削除でき、設定ファイルには入らない | `tokenStore.test.ts` の 2 件 |
+
+## テストケース一覧（Obsidian プラグイン第 2 段: 送信・削除・競合・伝播。Obsidian 実体なし）
+
+偽サーバ（`testFakes.ts` の `FakeServer`）はサーバ契約どおり **楽観ロック**（`baseVersion` 不一致 → 409）と
+**1 編集 = 1 版**を実装しており、client が 409 を勝手に再送すれば後勝ちで上書きされる。
+🔴 **変異試験**: `pushSync.ts` の 409 分岐を「`serverVersion` を積んで即再送」に書き換えると P15 と P19〜P22 の
+5 件が落ちる（2026-09-03 実測。戻して緑）。
+
+| # | 受け入れ基準 | テスト（ファイル › 名前） |
+| --- | --- | --- |
+| P13 | オフラインで 10 回保存 → 10 編集（30 秒の静穏窓で畳み込み、超えたら次の編集。50 件上限） | `editJournal.test.ts` › `30 秒以上空けた 10 回の保存は 10 編集として積まれる`／`30 秒未満の連続保存は 1 編集に畳み込み…`／`50 件を超える…` |
+| P14 | 1 回の push で edits 10 要素 → サーバの版が 10 進む | `pushSync.test.ts` › `未送信の 10 編集は 1 回の push で edits 10 要素として送られ、サーバの版は 10 進む` |
+| P15 | サーバが進んだ資料をローカルでも編集 → 409 → 上書きしない・再送しない（版が合う資料は同じ一巡で 200） | `pushSync.test.ts` › `409（版ずれ）の資料は上書きせず競合として報告し、版が合う資料だけ送る` |
+| P16 | Obsidian 側の削除は論理削除、同期フォルダから外したものは削除を送らない（対） | `pushSync.test.ts` › `削除は POST …/delete で論理削除にし、フォルダから外したものは追跡を外すだけで何も送らない`／`pushPlanner.test.ts` › `journal の deleted は delete、movedOut は untrack…`／`editJournal.test.ts` › `削除は deleted に、フォルダ外への移動は movedOut に…` |
+| P17 | 未追跡のファイルは新規として push し、返った ID で追跡を始める | `pushSync.test.ts` › `未追跡のファイルは新規として push し…` |
+| P18 | pull の書き込みが発火させた保存イベントは版として送らない | `pushSync.test.ts` › `journal が pull の書き込みの写しだけなら送らず unchanged…`／`collectEdits は…` |
+| P19 | ローカルを採用: サーバの現在版を baseVersion にして編集列を再 push | `conflictResolver.test.ts` › `local は…` |
+| P20 | サーバを採用: サーバの本文で上書きし未送信の編集を捨て、push しない | `conflictResolver.test.ts` › `server は…` |
+| P21 | 両方残す: 別名で新規 push し、元のパスはサーバの本文 | `conflictResolver.test.ts` › `both は…` |
+| P22 | 解決の途中でサーバがまた進んだら実行せず retry | `conflictResolver.test.ts` › `local の再 push がまた 409 になれば retry を返し、何も進めない` |
+| P23 | サーバ側削除はローカルを消さず状態に残し、送信時に提示（両側で無ければ外すだけ） | `pullSync.test.ts` › `追跡済み資料がサーバ側で削除…されたら serverDeleted を状態に残し、ファイルは触らない`／`pushSync.test.ts` › `serverDeleted の資料は…`／`conflictResolver.test.ts` の `resolveServerDeleted` 2 件 |
+| P24 | サーバ側リネームは移動（旧パスが未編集なら消す・編集済みなら残す）。ローカルのリネームは紐付けだけ更新し新規にしない | `pullSync.test.ts` › `サーバ側で vaultPath が変わった資料は…`／`journal にローカルのリネームがあれば…`／`pushSync.test.ts` › `ローカルのリネームは追跡パスを更新して報告し、サーバに新しい資料を作らない` |
+| P25 | 409 の 3 形（version_conflict / deleted / vault_path_conflict）を区別し、契約と違う 409 は止める。413 / 507 は判る失敗 | `syncClient.test.ts` › `409 は …を区別した SyncConflictError になる`／`413 は SyncTooLargeError、507 は SyncQuotaError になる` |
+| P26 | 401 は送信でも一巡ごと止め、状態と journal を触らない | `pushSync.test.ts` › `401 なら SyncAuthError を投げ、状態と journal を触らない` |
 
 ## 実行
 

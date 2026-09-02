@@ -1,4 +1,4 @@
-// FR-20, SC-20, ADR-0037 決定 4・12・15, [[IADR-0338]] 決定 5・8: 設定タブ。
+// FR-20, SC-20, ADR-0037 決定 4・5・7・12・15, [[IADR-0338]] 決定 5・8, [[IADR-0352]]: 設定タブ。
 //
 // - 同期トークンは**貼り付けて保存するだけ**で、保存後は値を画面へ戻さない（SC-20 の
 //   「発行直後に一度だけ表示・再表示不可」と同じ規律を受け側でも守る）。
@@ -40,7 +40,8 @@ export class SyncSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName('同期フォルダ')
       .setDesc(
-        'Vault 内のこのフォルダへ個人資料を取り込みます。対象から外したファイルは削除されず、同期が止まるだけです。' +
+        'Vault 内のこのフォルダをナレッジベースと双方向に同期します。対象から外したファイルは削除されず、同期が止まるだけです。' +
+          'このフォルダで削除したファイルはナレッジベース側で論理削除（90 日保管・復元可）になります。' +
           '同期した資料は業務関連資料として扱われます。',
       )
       .addText((text) =>
@@ -97,11 +98,28 @@ export class SyncSettingTab extends PluginSettingTab {
 
     new Setting(containerEl).setName('同期').setHeading();
     new Setting(containerEl)
-      .setName('ナレッジベースから取り込む（pull）')
-      .setDesc('第 1 段では取り込みのみ行い、Obsidian 側の変更はナレッジベースへ送りません。')
+      .setName('いま同期する（取り込み → 送信）')
+      .setDesc(
+        'ナレッジベースの変更を取り込んでから、この端末の編集・新規作成・削除を送ります。' +
+          '両方が変わっている資料は競合として 1 件ずつ確認し、選ぶまで上書きしません。' +
+          '編集は保存の間隔が 30 秒以上空くごとに 1 版として刻まれます。',
+      )
       .addButton((button) =>
-        button.setButtonText('いま取り込む').onClick(() => {
+        button
+          .setButtonText('いま同期する')
+          .setCta()
+          .onClick(() => {
+            void this.plugin.sync();
+          }),
+      )
+      .addButton((button) =>
+        button.setButtonText('取り込みのみ').onClick(() => {
           void this.plugin.pull();
+        }),
+      )
+      .addButton((button) =>
+        button.setButtonText('送信のみ').onClick(() => {
+          void this.plugin.push();
         }),
       );
   }
