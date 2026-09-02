@@ -423,6 +423,13 @@ data:
     #      **配備時に `/api/v1/provisioning/alert-rules` が 5 件返すことを確かめること。**
     #
     # 式は `deploy/prometheus/alerts.yml` と**同じもの**を使う（二重管理だが、暫定期間だけである）。
+    #
+    # 🔴 **しきい値の置き場所が Prometheus 版と違う**（#1110）。Prometheus 版は `expr` の中に `> 1.5` と書くが、
+    #   Grafana 版は `expr` に閾値を持たず **`conditions[].evaluator.params`** に持つ。**両方を直すこと。**
+    #   単位は**秒**である（`http_server_request_duration_seconds_*`）。2026-08-30 まで
+    #   `params: [1500]` / `[5000]` とミリ秒の数値が残っており、名前も旧規約のままで**永久に発火しなかった。**
+    #   メトリクス名・ラベル・単位の由来と、式を変えるときの検証手順（**陽性対照を対で置く**）は
+    #   `deploy/prometheus/alerts.yml` の冒頭が正本である。
     apiVersion: 1
     groups:
       - orgId: 1
@@ -550,6 +557,7 @@ data:
                   type: threshold
                   expression: A
                   conditions:
+                    # 単位は**秒**（1.5s）。ミリ秒の 1500 ではない。
                     - evaluator: { type: gt, params: [1.5] }
 
           - uid: slo-rag-latency-p95-high
@@ -579,6 +587,7 @@ data:
                   type: threshold
                   expression: A
                   conditions:
+                    # 単位は**秒**（5s）。ミリ秒の 5000 ではない。
                     - evaluator: { type: gt, params: [5] }
 ---
 apiVersion: apps/v1

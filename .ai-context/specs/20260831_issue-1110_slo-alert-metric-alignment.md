@@ -14,7 +14,7 @@ related_ids:
   - IADR-0330
 author: claude
 created: 2026-08-31
-updated: 2026-08-31
+updated: 2026-09-02
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md (NFR-21)
   - planning:projects/microservices-platform/06_technical/05_observability-ops.md (§アラートの通知経路・§ゴールデンシグナルとSLO/SLI)
@@ -211,18 +211,130 @@ CI に Prometheus と全サービスを立てて実データを流す門は、�
 2. **`alerts.yml` / `slo-alerts.yaml` の冒頭**に、**式の検証手順**（稼働 Prometheus へ
    `/api/v1/series` で問い合わせ、陽性対照を対で置く）を書く。**人が守る手順として明示する。**
 
+## 実測結果（2026-09-02・稼働 k3s `platform-infra`。生出力）
+
+### 受け入れ基準 3: 5 件すべてが評価対象を持つ（陽性）／旧式は持たない（陰性対照）
+
+```
+RULE                           FIXED (evaluation target)  OLD (negative control)
+OtelCollectorDown              1 series,  sample=1        0 series
+ServiceRequestMetricsAbsent    26 series, sample=0.149999 0 series
+HighHttp5xxRate                26 series, sample=0.149999 0 series
+SearchLatencyP95High           1 series,  sample=0.008499 0 series
+RagLatencyP95High              1 series,  sample=0.062844 0 series
+```
+
+`/api/v1/label/__name__/values` の `http_server*` は 4 つだけ（陽性対照: 全体で 92 の名前を返す）:
+
+```
+"http_server_active_requests"
+"http_server_request_duration_seconds_bucket"
+"http_server_request_duration_seconds_count"
+"http_server_request_duration_seconds_sum"
+```
+
+🔴 `RagLatencyP95High` は**着手時 0 系列**であった（`/analysis/ask` が一度も呼ばれていない）。
+人為的に POST して `http_route` を生やし、**50 秒後に系列が出現**した。
+
+```
+t=  0s routes=['/health/live', '/health/ready', '/internal/introspection']
+t= 50s routes=['/analysis/ask', '/health/live', '/health/ready', '/internal/introspection']
+APPEARED at t=50s
+```
+
+### 受け入れ基準 4: 変異試験（Alertmanager `/api/v2/alerts` への到達）
+
+一時ルール群 `probe-issue-1110` を SIGHUP で読み込ませた（TSDB を失わないため再起動しない）。
+
+```
+GROUP probe-issue-1110
+   ProbeServiceRequestMetricsAbsent   state=firing    health=ok   alerts=26
+   ProbeHighHttp5xxRate               state=firing    health=ok   alerts=24
+   ProbeSearchLatencyP95High          state=firing    health=ok   alerts=1
+   ProbeRagLatencyP95High             state=firing    health=ok   alerts=1
+   ProbeNegativeControlMustNotFire    state=inactive  health=ok   alerts=0
+   ProbeOtelCollectorDown             state=firing    health=ok   alerts=1
+```
+
+Alertmanager `/api/v2/alerts`:
+
+```
+total alerts delivered to Alertmanager: 53
+  ProbeHighHttp5xxRate               count=24  status=active   jobs=['ai-stock-trading.audit-service', ...]
+  ProbeOtelCollectorDown             count=1   status=active   jobs=['otel-collector']
+  ProbeRagLatencyP95High             count=1   status=active
+  ProbeSearchLatencyP95High          count=1   status=active
+  ProbeServiceRequestMetricsAbsent   count=26  status=active   jobs=['ai-stock-trading.audit-service', ...]
+
+NEGATIVE CONTROL present? False (must be False)
+all 5 production rule shapes represented? ['HighHttp5xxRate', 'OtelCollectorDown',
+  'RagLatencyP95High', 'SearchLatencyP95High', 'ServiceRequestMetricsAbsent']
+```
+
+🔴 **合成プローブの発火は「本番ルールが発火した」ではない。** ただし本番の
+`ServiceRequestMetricsAbsent` は**変異なしで `pending`** に入り、実在の `job` を伴った ——
+**旧式では `pending` にすら入れなかった**（評価対象 0 のため）。
+
+```
+t=240s  ServiceRequestMetricsAbsent -> pending 2 ['microservices-platform.ingestion-service',
+                                                 'microservices-platform.conversion-service']
+```
+
+### 束ねの軸（`group_by`）—— 対象 7・8 の根拠
+
+同じ 54 件のアラートに対し Alertmanager の設定だけを入れ替えた。
+
+```
+group_by: ['alertname', 'job']           -> 54 群（キーの形 (alertname, job)）
+group_by: ['alertname', 'service_name']  ->  4 群  🔴 ProbeHighHttp5xxRate の 26 件が 1 群へ潰れた
+```
+
+### Grafana provisioning（未決事項を閉じた）
+
+```
+=== BEFORE: 5 rules provisioned ===        === AFTER: 5 rules provisioned ===
+  OtelCollectorDown            thr=[0]       OtelCollectorDown            thr=[0]
+  ServiceRequestMetricsAbsent  OLD-BROKEN    ServiceRequestMetricsAbsent  OK
+  HighHttp5xxRate              OLD-BROKEN    HighHttp5xxRate              OK
+  SearchLatencyP95High         thr=[1500]    SearchLatencyP95High         thr=[1.5]
+  RagLatencyP95High            thr=[5000]    RagLatencyP95High            thr=[5]
+```
+
+🔴 **稼働 Grafana には旧式が残っていた**（Prometheus 側だけ直っていた）。すべて `provenance: "file"`。
+
+### 受け入れ基準 8: fail-safe へ戻したこと
+
+```
+--- 1. otel-collector: fail-safe (debug only) ---
+  prometheusremotewrite occurrences: 0
+--- 2. prometheus rules: 本番 5 件 / probe 参照 0 件 ---
+  5
+  0
+--- 3. alertmanager: group_by/equal は job ---
+  2:  group_by: ['alertname', 'job']
+  12:    equal: ['alertname', 'job']
+--- 4. pods ---
+  alertmanager-8b47567cd-lvkdz      true   3
+  grafana-667dff455d-994kt          true   2
+  otel-collector-864f49647f-5kdck   true   0
+  prometheus-6bb9574cd4-8kx5q       true   3
+```
+
+一時的に張った `/analysis/ask` の port-forward と負荷生成も停止した
+（**他エージェントの port-forward（qdrant / document-service）は残置**）。
+
 ## 受け入れ基準
 
-- [ ] 1. 4 ルールが、実際に届いているメトリクス名・ラベル名・単位を使う（8 ファイル同時）
-- [ ] 2. ダッシュボードのパネル 1〜4 も同時に直す（**単位表記を含む**）
-- [ ] 3. **5 件すべてが「発火しうる」ことを稼働クラスタで実測する**
+- [x] 1. 4 ルールが、実際に届いているメトリクス名・ラベル名・単位を使う（8 ファイル同時）
+- [x] 2. ダッシュボードのパネル 1〜4 も同時に直す（**単位表記を含む**）
+- [x] 3. **5 件すべてが「発火しうる」ことを稼働クラスタで実測する**
       —— 各ルールの式が**非空のベクタを返す**こと（＝評価対象がある）
-- [ ] 4. 🔴 **変異試験**: 閾値を割る条件を実際に作り、**Alertmanager の `/api/v2/alerts` に届く**こと。
+- [x] 4. 🔴 **変異試験**: 閾値を割る条件を実際に作り、**Alertmanager の `/api/v2/alerts` に届く**こと。
       届かないものは理由を書いて別 issue へ分ける
-- [ ] 5. `check-grafana-alerting.js` が Prometheus / Grafana の 1 対 1 を保ったまま通る
-- [ ] 6. 運用仕様書 §監視・アラート の SLO 表を追随させる
-- [ ] 7. 退行防止の判断（何回目か）を IADR と PR 本文に書く
-- [ ] 8. **クラスタを作業前の状態（fail-safe 構成）へ戻す**
+- [x] 5. `check-grafana-alerting.js` が Prometheus / Grafana の 1 対 1 を保ったまま通る
+- [x] 6. 運用仕様書 §監視・アラート の SLO 表を追随させる
+- [x] 7. 退行防止の判断（何回目か）を IADR と PR 本文に書く
+- [x] 8. **クラスタを作業前の状態（fail-safe 構成）へ戻す**
 
 ## テスト方針（変異試験の設計）
 
@@ -251,9 +363,22 @@ CI に Prometheus と全サービスを立てて実データを流す門は、�
   本 PR は実装側を直すが、**計画側の「検知は足りている」という前提は残る。**
   → **planning へ issue を起票して環流する**（`/plan-feedback`）。実装側で計画書を書き換えない。
 
-## 未決事項
+## 未決事項（実測で閉じた分を含む）
 
-- **Grafana 側の provisioning が実際に受理されるか**は依然として未検証である
-  （#665 §判断 0 / `check-grafana-alerting.js` 冒頭の自己申告）。本件でも変わらない。
-  配備済みの Grafana が動いているので、**今回は `/api/v1/provisioning/alert-rules` を叩いて確かめる。**
-- **`HighHttp5xxRate` の変異試験に使える 5xx の入口**があるか（着手時点で未確認）。
+- ✅ **閉じた: Grafana 側の provisioning は受理される。** `/api/v1/provisioning/alert-rules` が
+  5 件を `provenance: "file"` で返す（#665 §判断 0 の積み残しを閉じた）。
+  🔴 **同時に、稼働 Grafana には旧式が残っていた**ことも判明した（Prometheus 側だけ直っていた）。
+  是正版を apply → `POST /api/admin/provisioning/alerting/reload` で 4 件とも是正を確認した。
+- ✅ **閉じた（否定形で）: `HighHttp5xxRate` の変異試験に使える 5xx の入口は無かった。**
+  `/analysis/ask` へ不正な本文・負の `topK`・巨大な `topK` を送っても 200 か 400 で、5xx は作れない。
+  TSDB には `503`（5 サービスの `/health/ready`・起動直後の失敗）が**実在する**が、
+  これは過去の累積であり `rate(...[5m])` は現在 0 である。
+  → **ステータス選択を `5..` → `2..` へ変異させた合成プローブで代替した**（§実測 C）。
+  この変異はラベル名・除算・`by (job)` の grouping を**そのまま**残すので、
+  **5xx が実際に出た瞬間に本番ルールが発火することは示せている。**
+- 🔴 **残る未決: 本番 `ServiceRequestMetricsAbsent` の `firing` までの到達は実測していない。**
+  `pending` には変異なしで入った（実在の `job` を伴う）が、`for: 5m` を満たすには
+  サービスを 5 分止める必要があり、**他エージェントと共有するクラスタでの許可範囲外**とした。
+- 🔴 **残る未決: `RagLatencyP95High` は `/analysis/ask` が呼ばれない限り評価対象を持たない。**
+  仕様どおりだが、**「鳴らない」と「鳴りようがない」の区別が付かない**。
+  無風時に区別するには合成監視が要る（本 PR の射程外）。
