@@ -18,8 +18,8 @@ import {
   TabsList,
   TabsTrigger,
 } from '@platform/ui';
-import { formatDateTime } from '@foundation/ui/formatDateTime';
-import { toMessages } from '@foundation/ui/apiErrors';
+import { formatDateTime } from '@foundation/utils/formatDateTime';
+import { toMessages } from '@foundation/utils/apiErrors';
 import type { PrivateNoteDto } from '@foundation/api/generated/bff.schemas';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { usePrivateNoteActions, usePrivateNotes } from '../api/usePrivateNotes';

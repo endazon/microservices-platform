@@ -37,7 +37,7 @@ manifest だけでは復元できない runtime 状態なので、Vault の boot
 | 5 | API 有効化 | `authentication.setApiState(enabled:true)` |
 | 6 | 外部取得の停止 | `localization.updateLocale(autoUpdate:false)`。既定では `graph.requarks.io` を毎起動叩く |
 | 7 | API キー | 既存キーが有効なら**再発行しない**。無ければ発行し、Secret `wikijs-sync.apiKey`（＋ Vault が居れば `secret/msp/wikijs-sync`）へ書き、`wiki-service` を再起動する |
-| 8 | **Keycloak OIDC ストラテジ**（**opt-in・既定オフ**） | `WIKIJS_OIDC=1` のときだけ。`authentication` の oidc 行と `settings.host` を UPSERT で突き合わせる。**変わったときだけ** `wiki-js` を再起動する。IADR-0333・#1127 |
+| 8 | **Keycloak OIDC ストラテジ**（**opt-in・既定オフ**） | `WIKIJS_OIDC=1` のときだけ。`authentication` の oidc 行と `settings.host` を UPSERT で突き合わせる。**変わったときだけ** `wiki-js` を再起動する。IADR-0334・#1127 |
 
 **HTTP はすべて wiki-js コンテナ内の loopback（`http://127.0.0.1:3000`）へ出す。**
 エッジ（Traefik / Istio Ingress Gateway）にも port-forward にも依存せず、`PeerAuthentication` が
@@ -96,7 +96,7 @@ kubectl -n microservices-platform get secret wikijs-admin -o jsonpath='{.data.pa
 - **「管理者ログインに失敗した」と出る** → Secret `wikijs-admin` のパスワードと Wiki.js の DB が
   食い違っている（人が管理 UI でセットアップを済ませた等）。DB 側の値が正なので、
   `WIKIJS_ADMIN_PASSWORD=<実際の値>` を渡して再実行するか、Wiki.js の DB を作り直して本 script を走らせる。
-- **Keycloak SSO（OIDC ストラテジ）は段 8 が入れる**（#1127・IADR-0333。以前は射程外で、
+- **Keycloak SSO（OIDC ストラテジ）は段 8 が入れる**（#1127・IADR-0334。以前は射程外で、
   手作業の SQL が正本だった）。**既定オフ**なので、要るときは `WIKIJS_OIDC=1` を付ける:
 
   ```sh

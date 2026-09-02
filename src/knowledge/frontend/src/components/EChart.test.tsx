@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   setOption: vi.fn(),
   dispose: vi.fn(),
 }));
-vi.mock('./echartsLoader', () => ({ loadECharts: mocks.loadECharts }));
+vi.mock('../lib/echarts/echartsLoader', () => ({ loadECharts: mocks.loadECharts }));
 
 import { EChart } from './EChart';
 

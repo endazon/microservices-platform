@@ -16,7 +16,7 @@ related_ids:
   - IADR-0327
   - IADR-0328
   - IADR-0332
-  - IADR-0333
+  - IADR-0334
 author: Claude（実装）
 created: 2026-09-02
 updated: 2026-09-02
@@ -107,7 +107,7 @@ DETAIL:  Key (key)=(7c1f6f2e-9d3a-4b5c-8e10-000000000001) is still referenced fr
 つまり **現行の「冪等」手順は初回しか冪等でない。** 自動化は DELETE→INSERT ではなく
 **行を保存したままの UPSERT** でなければならない。
 
-## 4. 決定（詳細は IADR-0333）
+## 4. 決定（詳細は IADR-0334）
 
 ### 決定 1: 新しい入口を増やさず `deploy/local/wikijs-setup/bootstrap.sh` の段 8 として置く
 
@@ -178,7 +178,7 @@ realm に登録があっても `invalid_redirect_uri` になる。**`/finalize` 
 - `scripts/k8s-local-up.test.js` — 不変条件テスト
 - `deploy/local/wiki-oidc/README.md` / `deploy/local/wikijs-setup/README.md` / `deploy/local/README.md`
 - `docs/operations/local-sso-recovery-runbook.md`
-- `.ai-context/adr/IADR-0333_*.md` ＋ `.ai-context/adr/README.md`
+- `.ai-context/adr/IADR-0334_*.md` ＋ `.ai-context/adr/README.md`
 
 **`deploy/keycloak/microservices-platform-realm.json` は触らない**（#1115 と非重複）。
 

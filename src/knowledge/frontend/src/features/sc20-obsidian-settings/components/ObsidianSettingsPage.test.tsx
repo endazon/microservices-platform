@@ -3,7 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 import { jsonResponse } from '@foundation/testing/bffResponse';
-import { formatDateTime } from '@foundation/ui/formatDateTime';
+import { formatDateTime } from '@foundation/utils/formatDateTime';
 
 // SC-20, UC-11, FR-20（#451）: Obsidian 連携設定画面。
 //

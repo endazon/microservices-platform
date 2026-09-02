@@ -49,7 +49,7 @@ const OPTIN_TOKENS = [
   'vault-oidc', //                     VAULT (OIDC client secret, IADR-0094)
   'deploy/local/headlamp', //          HEADLAMP
   'headlamp-oidc', //                  HEADLAMP (secret)
-  'wikijs-oidc', //                    WIKIJS_OIDC (Wiki.js の OIDC ストラテジ seed が読む secret, IADR-0333)
+  'wikijs-oidc', //                    WIKIJS_OIDC (Wiki.js の OIDC ストラテジ seed が読む secret, IADR-0334)
   'deploy/argocd/', //                 ARGOCD（配下の appproject/application のみが apply される）
   'namespace argocd', //               ARGOCD (namespace)
   'argocd-cm-patch.yaml', //           ARGOCD OIDC (CM patch, IADR-0092)
@@ -845,7 +845,7 @@ ok('#1108: bootstrap は既定パスワードをコミットしない（乱数�
   assert.ok(!/log\s+"[^"]*\$\{?jwt/.test(sh), 'JWT を log に出している');
 });
 
-// --- NFR-09, IADR-0095/IADR-0328/IADR-0333 (#1127・#397 の再起票) ---------------
+// --- NFR-09, IADR-0095/IADR-0328/IADR-0334 (#1127・#397 の再起票) ---------------
 //
 // Wiki.js の OIDC ストラテジは **Wiki.js の DB（`authentication` テーブル）保持**で、manifest にも
 // Helm values にも無い。#780 が「7 クライアントすべてでログインが成立する」と測ったとき、

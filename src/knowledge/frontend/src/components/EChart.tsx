@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { loadECharts } from './echartsLoader';
-import type { EChartsInstance } from './echartsLoader';
+import { loadECharts } from '../lib/echarts/echartsLoader';
+import type { EChartsInstance } from '../lib/echarts/echartsLoader';
 
 // ADR-0031 §採用技術一覧（チャート = Apache ECharts）/ IADR-0121 決定 1 の第 4 段（#788）。
 //

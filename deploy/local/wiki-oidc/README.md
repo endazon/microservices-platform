@@ -19,7 +19,7 @@ realm には `wiki-js` client が既存（[IADR-0020](../../../.ai-context/adr/I
 セットアップと Site URL（`settings.host`）の設定は
 [`../wikijs-setup/`](../wikijs-setup/README.md)（`scripts/k8s-local-up.sh` が既定で呼ぶ）が入れる。
 
-## 🔴 いまは自動である（#1127・IADR-0333）
+## 🔴 いまは自動である（#1127・IADR-0334）
 
 **OIDC ストラテジ（`authentication` 行）の投入も `settings.host` の突き合わせも、
 [`../wikijs-setup/bootstrap.sh`](../wikijs-setup/README.md) の段 8 が冪等に行う。**
@@ -103,7 +103,7 @@ Wiki.js は **コールバックを `{Site URL}/login/{strategyKey}/callback`** 
 `WIKI_BASE_URL`（SPA の「Wiki を開く」導線）とは**別物**なので両方を揃えること。経路別の port topology は
 [IADR-0095 の「追記（2026-07-26・Issue #385）」](../../../.ai-context/adr/IADR-0095_wikijs-keycloak-oidc.md)が単一情報源。
 
-## DB seed で入れる（手で当てるときの手順・IADR-0103 / IADR-0333）
+## DB seed で入れる（手で当てるときの手順・IADR-0103 / IADR-0334）
 
 > **通常は上の自動化（`WIKIJS_OIDC=1`）を使うこと。** 本節は、bootstrap を実行できない状況で
 > 手で当てるときと、段 8 が何をしているかを読むためのものである。
@@ -199,6 +199,6 @@ curl -s -o /dev/null -w '%{http_code}\n' --cacert ca.crt --resolve wiki.localhos
   の `ports: 3001:3000`）/ in-cluster＝`http://wiki-js:3000/*`。k8s の port-forward に `3001` は使わない。
 - **realm 反映**: `wiki-js` client の redirect 追加は realm 再インポートで反映（永続化時は管理コンソール追加 or 再作成）。
 - **dev の Wiki.js DB**: OIDC ストラテジは DB 保持なので、DB を作り直すと消える。**復旧は
-  `WIKIJS_OIDC=1 bash deploy/local/wikijs-setup/bootstrap.sh` の 1 本**（#1127・IADR-0333。
+  `WIKIJS_OIDC=1 bash deploy/local/wikijs-setup/bootstrap.sh` の 1 本**（#1127・IADR-0334。
   realm import や Vault bootstrap と同じ「runtime 設定の冪等な再適用」）。手で SQL を流す必要は無い。
 - CLI/一部 OS で `*.localhost` 未解決なら hosts 追記 or `*.nip.io`。

@@ -18,7 +18,7 @@ import {
 } from '@platform/ui';
 import { ApiError } from '@foundation/api/ApiError';
 import { i18n } from '@foundation/i18n';
-import { toMessages } from '@foundation/ui/apiErrors';
+import { toMessages } from '@foundation/utils/apiErrors';
 import { ATTRIBUTE_SCOPES, attributeScopeLabel, parseAllowedValues } from '../types/abacVocabulary';
 import type { AttributeScope } from '../types/abacVocabulary';
 import { useAttributeActions } from '../api/useAbacAdmin';

@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [NFR-09]
 adrs: []
-iadrs: [IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0333]
+iadrs: [IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0334]
 specs: [20260902_issue-1127_wikijs-oidc-strategy-seed]
 issues: [#328, #388, #841, #1127, AST#245]
 -->
