@@ -12,6 +12,9 @@ resources:
   - keycloak.yaml
   - qdrant.yaml
   - otel-collector.yaml
+  # ADR-0045 決定 9 (#1144): 開発環境の捕捉用 MTA。**opt-in にしない**（決定 9 は無条件で、
+  # ゲートに載せるとゲートを立てない人の既定が外を向いたままになる）。
+  - mailpit.yaml
 
 # NOTE: Keycloak realm import 用 ConfigMap `keycloak-realms` は kustomize の外
 # （scripts/k8s-local-up.sh）で実 realm ファイル（単一情報源）から生成する。

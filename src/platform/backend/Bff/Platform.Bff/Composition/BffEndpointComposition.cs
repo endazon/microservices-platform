@@ -65,6 +65,10 @@ public static class BffEndpointComposition
         // platform 同居とする。**管理者限定**（05_screens §共通シェル「SC-09・SC-12・SC-17 =
         // システム管理者」）。**新規作成の口は持たない**（計画が本画面からの作成を禁じている）。
         new DelegateBffEndpointModule(a => a.MapUserAdminBffEndpoints()),
+        // Issue #600, FR-22, UC-11, ADR-0037/0045, IADR-0215/0340: 利用者本人へのアプリ内通知
+        // （NotificationService の /notifications* へ pass-through）。後段は platform ユニットなので
+        // platform 同居とする。**認証必須・ロールは問わない**（絞るのは役割ではなく主体＝JWT の sub）。
+        new DelegateBffEndpointModule(a => a.MapNotificationBffEndpoints()),
         // Issue #283/#286, AST/FR-17, AST/UC-06, IADR-0070/0073: AST 設定画面（全体前提条件）の BFF 集約
         // （ConfigurationService へ pass-through）。AiStockTrading.Bff.Endpoints（AST unit-owned Bff・例外3）を参照。
         new DelegateBffEndpointModule(a => a.MapAssumptionsBffEndpoints()),
