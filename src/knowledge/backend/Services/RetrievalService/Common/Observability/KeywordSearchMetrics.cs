@@ -15,7 +15,7 @@ namespace RetrievalService.Common.Observability;
 //   裁定が求めているのは「運用で観測できること」であり、Grafana で観測できれば成立する。
 //
 // 🔴 **クエリ文字列をタグにしない。** 利用者の入力は基数が無界であり、時系列 DB の系列数が爆発する。
-// **理由はタグへ、詳細はログへ**分ける。理由の値域は 2 つに閉じている。
+// **理由はタグへ、詳細はログへ**分ける。理由の値域は 3 つに閉じている（#1118 で `missing_ngram_index` を足した）。
 public sealed class KeywordSearchMetrics
 {
     // Meter 名はサービス名と一致させる（OTLP の収集対象）。
@@ -28,6 +28,10 @@ public sealed class KeywordSearchMetrics
     // 🔴 **この理由は例外を伴わない。** Qdrant v1.18.1 は索引が無くても例外を投げず、
     // 部分文字列の全走査へ黙って落ちる（実測）。だからこそ readiness 側で「索引が在るか」を見る。
     public const string MissingIndexReason = "missing_index";
+
+    // FR-03, #1118, [[IADR-0339]] 決定 3: 日本語 2-gram（`text_ngram`）の全文ペイロードインデックスが無い。
+    // 識別子の系統（`text`）は生きていて、**日本語の語だけが 0 件へ落ちる**縮退。これも例外を伴わない。
+    public const string MissingNgramIndexReason = "missing_ngram_index";
 
     // Qdrant が全文検索の要求を拒んだ（索引未作成で例外を返す旧版・接続断・不正なフィルタ等）。
     public const string BackendErrorReason = "backend_error";
