@@ -717,6 +717,69 @@ function checkRealmMailCaptureText(text, reader) {
   return collectMailCaptureGaps(JSON.parse(text), reader);
 }
 
+// --- SC-15 の存在秘匿: 申請は「送出経路が使える間」だけ開く（#1143） ---------------
+//
+// ADR-0026 は「存在秘匿（登録の有無によらず常に同じ完了文言）」を確定している。**稼働環境で測ると
+// 偽だった** —— 送出に失敗すると **実在する利用者名のときだけ 500** が返り、実在しない利用者名は 200
+// を返す。**この差だけで利用者名を 1 リクエストずつ列挙できる**（#1143 の実測）。
+//
+// 🔴 **Keycloak の設定でこの 500 は消せない**（#1143 で実測して確かめた）:
+//   - **テーマは HTTP ステータスを変えられない。** 500 は認証器がエラーページとして組み立てる。
+//     加えて IADR-0261 決定 1 が「テンプレート（.ftl）は上書きしない」と定めている。
+//   - **`reset-credential-email` は `configurable: false` / `requirementChoices: ["REQUIRED"]`。**
+//     ALTERNATIVE にも DISABLED にもできず、フローの組み替えで挙動を変える余地が無い。
+//
+// 残る道が **fail-closed で同値にする**ことである。**申請そのものを閉じれば**（`resetPasswordAllowed=false`）、
+// ログイン画面から導線が消え、端点を直接叩いても**両者に同じ 400 と同じ本文**が返る（#1143 で実測。
+// フローの識別子と入力の再表示だけを伏せた正規化で**バイト一致**）。
+//
+// したがって不変条件はこうなる: **`resetPasswordAllowed = true` は「使える送出先」と一対でしか成立しない。**
+// 片方だけの状態を宣言で許さない。**これは設定の整合ではなく、利用者名の漏洩の有無である。**
+//
+// 🔴 **この組は放っておくと勝手に戻る。** 稼働クラスタで実測したところ、**Keycloak コンテナが再起動すると
+// realm は再インポートされ、`kcadm` で入れた実行時の `smtpServer` は消える**（H2 はコンテナ層）。
+// realm 宣言が `resetPasswordAllowed=true` だけを持ち `smtpServer` を持たないと、**再起動のたびに
+// 脆弱な組へ戻る**。だから検査対象は「稼働状態」ではなく**宣言**である。
+
+/**
+ * SC-15 の存在秘匿が宣言の時点で成立しているかを検査する。**純関数**。
+ *
+ * 「使える送出先」の条件は 2 つだけを見る: **宛先（`host`）があること**と
+ * **差出人（`from`）があること**。空の `from` は Keycloak が送出前に拒否するため、
+ * **宛先だけ揃っていても 500 になる**（#1143 の状態 B と同じ結果になる）。
+ *
+ * @param {object} realm realm JSON
+ * @param {{realmName?:string}} opts
+ * @returns {{path:string, detail:string}[]}
+ */
+function collectResetConcealmentGaps(realm, { realmName = AUTH_POLICY_REALM } = {}) {
+  // 別プロジェクトの realm は対象外（ADR-0026 は MSP の計画である）。
+  if (!realm || realm.realm !== realmName) return [];
+  // 申請が閉じているなら、そもそも利用者ごとの分岐が起きない（＝同値。実測済み）。
+  if (realm.resetPasswordAllowed !== true) return [];
+
+  const smtp = realm.smtpServer;
+  const host = smtp && typeof smtp === 'object' ? String(smtp.host || '') : '';
+  const from = smtp && typeof smtp === 'object' ? String(smtp.from || '') : '';
+  if (host !== '' && from !== '') return [];
+
+  const missing = [host === '' ? 'host' : null, from === '' ? 'from' : null].filter(Boolean);
+  return [{
+    path: 'resetPasswordAllowed',
+    detail:
+      `パスワードリセットの申請が開いている（resetPasswordAllowed=true）のに、送出先が使えない`
+      + `（smtpServer.${missing.join(' / smtpServer.')} が空）。`
+      + ' この組では**実在する利用者名のときだけ送出に失敗して 500** が返り、実在しない利用者名は 200 を返す ——'
+      + ' **その差だけで利用者名を列挙できる**（SC-15 の存在秘匿の破れ / #1143 の実測）。'
+      + ' 送出先を与えるか、与えられないなら resetPasswordAllowed を false にして**両者に同じ応答**を返すこと'
+      + '（閉じた状態は 400 で本文もバイト一致することを実測済み）。',
+  }];
+}
+
+function checkRealmResetConcealmentText(text) {
+  return collectResetConcealmentGaps(JSON.parse(text));
+}
+
 // --- I/O（副作用は main / checkFiles に閉じる） --------------------------------
 
 // 既定の検査対象（REALM_DIR 配下の *-realm.json）をリポジトリ相対で列挙する。
@@ -749,6 +812,7 @@ function checkFiles(relPaths) {
       themeGaps: checkRealmThemeText(text, diskReader()),
       mfaGaps: checkRealmMfaAuditText(text),
       mailGaps: checkRealmMailCaptureText(text, diskReader()),
+      concealGaps: checkRealmResetConcealmentText(text),
     });
   }
   return results;
@@ -1257,6 +1321,68 @@ function selfTest() {
     })(),
   });
 
+  // --- SC-15 の存在秘匿: 申請は「送出経路が使える間」だけ開く（#1143）---
+  //
+  // 受け入れ基準 5 が要求する「**片方だけ壊すと落ちる**（陽性対照つき）」を、宣言側でここに固定する。
+  // 実際の応答の同値性（稼働クラスタ）は scripts/check-password-reset-mail.js の T-10 が測る。
+  const concealRealm = {
+    realm: 'platform',
+    resetPasswordAllowed: true,
+    smtpServer: { host: 'mailpit.platform-infra.svc.cluster.local', port: '1025', from: 'noreply@platform.localhost' },
+  };
+  const conceal = (mut) => collectResetConcealmentGaps({ ...concealRealm, ...(mut || {}) });
+
+  cases.push({
+    name: '秘匿: 開いていて送出先も使える組は通る（陰性対照 / #1143 の状態 A）',
+    pass: conceal().length === 0,
+  });
+  cases.push({
+    name: '秘匿: 変異 1 — 開いたまま smtpServer を消すと落ちる（状態 B＝実在だけ 500 になる組）',
+    pass: (() => {
+      const f = conceal({ smtpServer: {} });
+      return f.length === 1 && f[0].detail.includes('列挙');
+    })(),
+  });
+  cases.push({
+    name: '秘匿: 変異 2 — 開いたまま from だけ空にしても落ちる（宛先だけでは送出は成立しない）',
+    pass: conceal({ smtpServer: { ...concealRealm.smtpServer, from: '' } }).length === 1,
+  });
+  cases.push({
+    name: '秘匿: 変異 3 — 開いたまま host だけ空にしても落ちる',
+    pass: conceal({ smtpServer: { ...concealRealm.smtpServer, host: '' } }).length === 1,
+  });
+  cases.push({
+    name: '秘匿: 閉じていれば送出先が無くても落ちない（状態 D＝両者に同じ 400。実測済み）',
+    pass: conceal({ resetPasswordAllowed: false, smtpServer: {} }).length === 0,
+  });
+  cases.push({
+    name: '秘匿: resetPasswordAllowed 未宣言は「閉じている」と読む（Keycloak の既定に委ねない側へ倒さない）',
+    pass: (() => {
+      const { resetPasswordAllowed: _drop, ...rest } = concealRealm;
+      return collectResetConcealmentGaps({ ...rest, smtpServer: {} }).length === 0;
+    })(),
+  });
+  cases.push({
+    name: '秘匿: 別プロジェクトの realm（realm 名が違う）は検査しない',
+    pass: conceal({ realm: 'other', smtpServer: {} }).length === 0,
+  });
+  cases.push({
+    name: '秘匿: JSON パース→検査（checkRealmResetConcealmentText）が通る',
+    pass: checkRealmResetConcealmentText(JSON.stringify({ ...concealRealm, smtpServer: {} })).length === 1,
+  });
+  cases.push({
+    name: '秘匿: 実データの realm が不変条件を満たす（実データ・ラチェット）',
+    pass: (() => {
+      const realmPath = path.join(REPO_ROOT, REALM_DIR, 'microservices-platform-realm.json');
+      if (!fs.existsSync(realmPath)) return true; // realm が無い配布物では skip
+      const realm = JSON.parse(fs.readFileSync(realmPath, 'utf8'));
+      // 0 件走査の門: 申請が閉じている realm を「違反なし」と読んで安心しない
+      // （閉じているなら本検査は空振りする。**開いている**ことまで確かめて初めてラチェットになる）。
+      if (realm.resetPasswordAllowed !== true) return false;
+      return collectResetConcealmentGaps(realm).length === 0;
+    })(),
+  });
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -1287,9 +1413,10 @@ function main() {
   const totalThemeGaps = results.reduce((n, r) => n + r.themeGaps.length, 0);
   const totalMfaGaps = results.reduce((n, r) => n + r.mfaGaps.length, 0);
   const totalMailGaps = results.reduce((n, r) => n + r.mailGaps.length, 0);
+  const totalConcealGaps = results.reduce((n, r) => n + r.concealGaps.length, 0);
   if (total === 0 && totalMissing === 0 && totalDeviations === 0 && totalThemeGaps === 0
-    && totalMfaGaps === 0 && totalMailGaps === 0) {
-    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・dev 既定の送出先の逸脱はありません。`);
+    && totalMfaGaps === 0 && totalMailGaps === 0 && totalConcealGaps === 0) {
+    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・dev 既定の送出先の逸脱・SC-15 の存在秘匿の破れはありません。`);
     process.exit(0);
   }
 
@@ -1359,6 +1486,20 @@ function main() {
       + '\n要件の正は planning の ADR-0045 決定 9、実装側の記録は IADR-0344（#1144）です。');
   }
 
+  if (totalConcealGaps > 0) {
+    console.error(`[check-realm-constraints] SC-15 の存在秘匿の破れ ${totalConcealGaps} 件を検出しました:`);
+    for (const r of results) {
+      for (const g of r.concealGaps) {
+        console.error(`\n  ${r.file}\n    ${g.path}: ${g.detail}`);
+      }
+    }
+    console.error('\n🔴 これは「設定の食い違い」ではなく**利用者名の漏洩**です。'
+      + '\nKeycloak の設定でこの 500 は消せません（テーマはステータスを変えられず、'
+      + '\nreset-credential-email は configurable: false / REQUIRED 固定であることを実測済み）。'
+      + '\n**申請を開くなら送出先を与える／与えられないなら閉じる**の二択です。'
+      + '\n要件の正は planning の ADR-0026・ADR-0045 決定 8、実装側の記録は IADR-0345（#1143）です。');
+  }
+
   process.exit(1);
 }
 
@@ -1381,6 +1522,8 @@ module.exports = {
   parseMailCaptureEndpoint,
   collectMailCaptureGaps,
   checkRealmMailCaptureText,
+  collectResetConcealmentGaps,
+  checkRealmResetConcealmentText,
   MAIL_CAPTURE_MANIFEST,
   VAULT_SEED_SCRIPT,
   satisfiesPasswordClasses,

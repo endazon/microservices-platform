@@ -2,8 +2,9 @@
 'use strict';
 /*
  * check-password-reset-mail.js
- * SC-15 / FR-22 / ADR-0045 決定 7・9（#1144）: **パスワードリセットの送出が開発環境で成立し、
- * メール本文がリンクと有効期限だけであること**を、捕捉用 MTA の API を読んで確かめる。
+ * SC-15 / FR-22 / ADR-0026 / ADR-0045 決定 7・8・9（#1144 / #1143）:
+ * **パスワードリセットの送出が開発環境で成立し、メール本文がリンクと有効期限だけであり、
+ * かつ実在／非実在の利用者名で応答が分かれないこと**を、捕捉用 MTA の API と稼働 realm を読んで確かめる。
  *
  * ## なぜ要るか —— 「手動（実環境）」が消えない原因は捕捉先が無いことだった
  *
@@ -21,6 +22,16 @@
  *   `actionTokenGeneratedByUserLifespan` から導いた分数）を述べ**、
  *   **他の URL を 1 つも含まない**（＝リンクと期限以外の導線を足していない）。添付は 0 件。
  * - **宛先**: 対象利用者の登録アドレスであること（別人へ出ていない）。
+ * - **T-10 存在秘匿**（#1143）: 実在／非実在の利用者名で**ステータスと本文が区別できない**
+ *   （フローの識別子と、申請者自身が送った利用者名の再表示だけを伏せて比較する）。
+ * - **T-20 稼働状態の組**（#1143）: **応答を測る前に**「申請の開閉 × 送出先」を見る。
+ *   🔴 **開いているのに送出先が使えない組は、それ自体が漏洩である** —— 実在する利用者名のときだけ
+ *   送出に失敗して 500 が返り、実在しない利用者名は 200 を返す。**その差で利用者名を列挙できる。**
+ *   Keycloak の設定でこの 500 は消せない（テーマはステータスを変えられず、`reset-credential-email` は
+ *   `configurable: false` / REQUIRED 固定。#1143 で実測）ので、**開くなら送出先を与える／
+ *   与えられないなら閉じる**の二択になる。閉じた状態は両者に同じ 400 を返す（本文もバイト一致・実測）。
+ *   🔴 **宣言が正しくてもこの組にはなる** —— Keycloak コンテナが再起動すると `kcadm` で入れた
+ *   実行時の `smtpServer` は消える（H2 はコンテナ層）。だから**稼働状態を**見る。
  *
  * ## 値を書き写さない（列挙を持たない）
  *
@@ -130,7 +141,77 @@ function edgeCa() {
   return { ok: true, value: Buffer.from(b64, 'base64').toString('utf8') };
 }
 
+/**
+ * SC-15 の存在秘匿（#1143）: **稼働 realm の**「申請の開閉」と「送出先」を読む。
+ *
+ * 🔴 **宣言（realm.json）を見るだけでは足りない。** 稼働クラスタで実測したところ、
+ * **Keycloak コンテナが再起動すると `kcadm` で入れた実行時の `smtpServer` は消える**
+ * （H2 はコンテナ層にある）。宣言が正しくても、**稼働状態は脆弱な組へ戻り得る**。
+ *
+ * 資格情報は **Pod の env のまま**使い（`$KEYCLOAK_ADMIN_PASSWORD`）、値は返さないし出力もしない。
+ * `--fields` は使わない —— **設定済みの realm に対しても `smtpServer: { }` を返す**（#1144 で実測）。
+ *
+ * @returns {{ok:true, resetPasswordAllowed:boolean, host:string, from:string}|{ok:false, error:string}}
+ */
+function runtimeResetConfig(realmName) {
+  // realm 名は宣言から走査して得た値。シェルへ素で渡さないよう、英数と一部記号だけを許す。
+  if (!/^[A-Za-z0-9._-]+$/.test(String(realmName || ''))) {
+    return { ok: false, error: `realm 名が想定の字種でない: ${JSON.stringify(realmName)}` };
+  }
+  const script =
+    '/opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master'
+    + ' --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null 2>&1'
+    + ` && /opt/keycloak/bin/kcadm.sh get realms/${realmName}`;
+  const r = kubectl(
+    ['-n', KEYCLOAK_NS, 'exec', '-i', `deploy/${KEYCLOAK_DEPLOY}`, '-c', KEYCLOAK_DEPLOY, '--',
+      'sh', '-c', script],
+  );
+  if (r.status !== 0) return { ok: false, error: `稼働 realm を読めなかった: ${(r.stderr || '').trim()}` };
+  let realm;
+  try {
+    // kcadm はログイン行を混ぜないが、念のため最初の `{` から読む。
+    const body = String(r.stdout || '');
+    realm = JSON.parse(body.slice(body.indexOf('{')));
+  } catch (e) {
+    return { ok: false, error: `稼働 realm の応答を JSON として読めなかった: ${e.message}` };
+  }
+  const smtp = realm.smtpServer && typeof realm.smtpServer === 'object' ? realm.smtpServer : {};
+  return {
+    ok: true,
+    resetPasswordAllowed: realm.resetPasswordAllowed === true,
+    host: String(smtp.host || ''),
+    from: String(smtp.from || ''),
+  };
+}
+
 // ---------------------------------------------------------------- 判定（純粋関数）
+
+/**
+ * SC-15 の存在秘匿（#1143）: **稼働状態の**「申請の開閉 × 送出先」の組を判定する。**純関数**。
+ *
+ * 応答を測る**前に**この門を通す。理由は 2 つある。
+ *   1. **原因を名指しできる。** T-10 が 500/200 で落ちたとき、「どの状態に居るのか」が分からないと
+ *      「実装が壊れた」と「realm が脆弱な組へ戻った」を取り違える。
+ *   2. **窓を短くできる。** この組は**再起動のたびに戻り得る**（実測）ので、検出は早いほどよい。
+ *
+ * @param {{resetPasswordAllowed:boolean, host:string, from:string}} cfg
+ * @returns {string[]}
+ */
+function evaluateRuntimeConcealment(cfg) {
+  if (!cfg.resetPasswordAllowed) return []; // 閉じている＝両者に同じ 400（実測済み）
+  const missing = [cfg.host === '' ? 'host' : null, cfg.from === '' ? 'from' : null].filter(Boolean);
+  if (missing.length === 0) return [];
+  return [
+    `[T-20] 稼働 realm が**脆弱な組**に居る: 申請は開いている（resetPasswordAllowed=true）のに`
+    + ` 送出先が使えない（smtpServer.${missing.join(' / smtpServer.')} が空）。`
+    + ' この組では**実在する利用者名のときだけ 500** が返り、実在しない利用者名は 200 を返す ——'
+    + ' **その差だけで利用者名を列挙できる**（SC-15 の存在秘匿の破れ / #1143）。'
+    + ' 🔴 **宣言が正しくてもこの状態にはなる** —— Keycloak コンテナが再起動すると kcadm で入れた'
+    + ' 実行時の smtpServer は消える（H2 はコンテナ層）。realm 宣言を再インポートするか、'
+    + ' 送出先を与えられないなら resetPasswordAllowed を false にして**両者に同じ応答**を返すこと'
+    + '（手順は docs/operations/keycloak-smtp-relay-setup-runbook.md）。',
+  ];
+}
 
 /**
  * 対象の利用者を realm 宣言から選ぶ。**サービスアカウントと無効な利用者は除く**。
@@ -439,6 +520,26 @@ async function run() {
   notices.push(`[check-password-reset-mail] realm=${realmName} / 対象=${user.username} / client=${client.clientId}`
     + ` / edge=${base} / 捕捉用 MTA=${MAIL_CAPTURE_NS}/${target.deploy}:${target.httpPort}`);
 
+  // 0) SC-15 の存在秘匿（#1143）: **応答を測る前に**稼働状態の組を見る。
+  //    落ちたときに「実装が壊れた」と「realm が脆弱な組へ戻った」を取り違えないため。
+  const runtimeCfg = runtimeResetConfig(realmName);
+  if (!runtimeCfg.ok) {
+    return { failures: [`[前提] ${runtimeCfg.error}`], notices };
+  }
+  notices.push(`[check-password-reset-mail] 稼働 realm: resetPasswordAllowed=${runtimeCfg.resetPasswordAllowed}`
+    + ` / smtpServer.host=${runtimeCfg.host || '(空)'} / smtpServer.from の長さ=${runtimeCfg.from.length}`);
+  const concealFailures = evaluateRuntimeConcealment(runtimeCfg);
+  if (concealFailures.length > 0) {
+    // 脆弱な組に居るなら、応答を測るまでもなく漏洩している。**先に落とす**（測って 500 を出させない）。
+    return { failures: concealFailures, notices };
+  }
+  if (!runtimeCfg.resetPasswordAllowed) {
+    // 閉じている＝両者に同じ 400（実測済み）。秘匿としては健全だが、**送出の試験はできない**。
+    notices.push('[check-password-reset-mail] 申請が閉じている（resetPasswordAllowed=false）ので、'
+      + '送出とメール本文の試験（T-16 / T-17）は行わない。**存在秘匿としては健全な状態である**。');
+    return { failures, notices, verified: 'closed' };
+  }
+
   // 1) 受信前の件数を控える（増分で測る。DELETE は busybox wget では打てないので消さない）。
   const before = mailApi(target, '/api/v1/info');
   if (!before.ok) return { failures: [`[前提] ${before.error}`], notices };
@@ -522,7 +623,7 @@ async function run() {
         + `（非実在の利用者名 ${absentUsername} は realm 宣言と突き合わせて不在を確認済み）`);
     }
   }
-  return { failures, notices };
+  return { failures, notices, verified: 'open' };
 }
 
 // ---------------------------------------------------------------- 自己試験
@@ -634,6 +735,31 @@ function selfTest() {
     assert.notStrictEqual(a, c, '文言の差まで伏せている（漏洩を見逃す）');
   });
 
+  // ---- T-20（#1143）: 稼働状態の「申請の開閉 × 送出先」の組 ----
+  ok('T-20: 開いていて送出先も使えるなら通る（陰性対照 / 状態 A）', () => {
+    assert.deepStrictEqual(
+      evaluateRuntimeConcealment({ resetPasswordAllowed: true, host: 'mailpit', from: 'noreply@x' }),
+      [], '健全な組を落としている');
+  });
+
+  ok('T-20: 開いたまま送出先が空なら落ちる（状態 B＝実在だけ 500 になる組）', () => {
+    const f = evaluateRuntimeConcealment({ resetPasswordAllowed: true, host: '', from: '' });
+    assert.strictEqual(f.length, 1, '脆弱な組を通している');
+    assert.ok(f[0].includes('列挙'), '漏洩であることを書いていない');
+    assert.ok(f[0].includes('再起動'), '**宣言が正しくてもこの状態になる**理由を書いていない');
+  });
+
+  ok('T-20: from だけ空・host だけ空のどちらでも落ちる（宛先だけでは送出は成立しない）', () => {
+    assert.strictEqual(evaluateRuntimeConcealment({ resetPasswordAllowed: true, host: 'mailpit', from: '' }).length, 1);
+    assert.strictEqual(evaluateRuntimeConcealment({ resetPasswordAllowed: true, host: '', from: 'noreply@x' }).length, 1);
+  });
+
+  ok('T-20: 閉じていれば送出先が空でも落ちない（状態 D＝両者に同じ 400。実測済み）', () => {
+    assert.deepStrictEqual(
+      evaluateRuntimeConcealment({ resetPasswordAllowed: false, host: '', from: '' }), [],
+      '閉じた状態を漏洩として落としている');
+  });
+
   ok('T-10: 非実在の利用者名は realm 宣言と突き合わせて作る', () => {
     const r = loadRealm();
     assert.ok(r.ok, '実データの realm を読めない');
@@ -672,7 +798,12 @@ async function main() {
     for (const f of r.failures) console.error(`\n  - ${f}`);
     process.exit(1);
   }
-  console.log('[check-password-reset-mail] OK: 申請 → 送出 → 捕捉用 MTA での受信 → 本文（リンクと有効期限のみ）が成立している。');
+  // 🔴 **測っていないことを「OK」と言わない。** 申請が閉じている状態では送出そのものを試していない。
+  console.log(r.verified === 'closed'
+    ? '[check-password-reset-mail] OK: 申請が閉じており、実在／非実在で応答が分かれない（存在秘匿は成立）。'
+      + ' **送出とメール本文（T-16 / T-17）は測っていない。**'
+    : '[check-password-reset-mail] OK: 申請 → 送出 → 捕捉用 MTA での受信 → 本文（リンクと有効期限のみ）'
+      + '、および実在／非実在の応答同値性（T-10）が成立している。');
 }
 
 if (require.main === module) {
@@ -690,6 +821,7 @@ module.exports = {
   evaluateResetMail,
   normalizeConcealmentBody,
   evaluateConcealment,
+  evaluateRuntimeConcealment,
   makeAbsentUsername,
   submitResetRequest,
   mailCaptureTarget,

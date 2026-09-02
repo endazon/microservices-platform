@@ -3,15 +3,15 @@ title: 運用 Runbook — Keycloak smtpServer（SMTP リレー）の設定
 type: runbook
 status: draft
 created: 2026-08-23
-updated: 2026-09-02
+updated: 2026-09-03
 author: claude
 ---
 <!-- trace:
 ids: [SC-10, SC-15, FR-05, FR-09, FR-22]
 adrs: [ADR-0026, ADR-0045]
-iadrs: [IADR-0197, IADR-0261, IADR-0332, IADR-0344]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta]
-issues: [#438, #578, #600, #1102, #1144]
+iadrs: [IADR-0197, IADR-0261, IADR-0332, IADR-0344, IADR-0345]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment]
+issues: [#438, #578, #600, #1102, #1143, #1144]
 -->
 
 # 運用 Runbook: Keycloak smtpServer（SMTP リレー）の設定
@@ -70,6 +70,24 @@ node scripts/check-password-reset-mail.js                       # 申請→送�
 | 所要時間の目安 | 15 分（Vault seed → ExternalSecret 同期確認 → kcadm 反映 → 疎通確認） |
 
 ## 手順（k8s 経路。`deploy/local/` の dev 環境）
+
+### 0. 🔴 先に申請を閉じる（存在秘匿を割らないため。**省略しないこと**）
+
+**送出先を差し替えている間、パスワードリセットの申請を開いたままにしてはならない。**
+送出に失敗すると**実在する利用者名のときだけ 500** が返り、実在しない利用者名は 200 を返す ——
+**その差だけで利用者名を 1 リクエストずつ列挙できる**（稼働環境で実測済み）。
+
+閉じてしまえば、実在／非実在のどちらにも**同じ 400 と同じ本文**が返る（実測済み）。
+
+```sh
+KC_POD=$(kubectl -n platform-infra get pod -l app=keycloak -o jsonpath='{.items[0].metadata.name}')
+kubectl -n platform-infra exec -i "$KC_POD" -- sh -c   '/opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master      --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null    && /opt/keycloak/bin/kcadm.sh update realms/platform -s "resetPasswordAllowed=false"'
+```
+
+> **同じ理由で、送出経路が落ちたときも閉じる。** 起動器の到達判定（`node scripts/check-stack-ready.js`）が
+> 捕捉用 MTA の停止を検出したら、復旧までの間は上のコマンドで閉じておくこと。
+> **閉じている間はリセットが使えない**が、**利用者名が漏れるよりはよい**（fail-closed）。
+
 
 ### 1. Vault へ値を投入する（Secret の値は画面や CLI 履歴に残さない）
 
@@ -198,9 +216,17 @@ unset SMTP_FROM SMTP_USER SMTP_PASSWORD
    > 誤診し、**入っているのに入れ直す**（あるいは「入れたのに効かない」と原因を取り違える）。
    > 同じ誤診が、本 runbook 以前の調査記録にも残っている。
 2. Keycloak 管理コンソール → Realm settings → Email → **Test connection** が成功する。
-3. パスワードリセット画面を実運用アカウントで申請し、リセットメールが着信する。
+3. 🔴 **送出が成立することを確かめてから、申請を開き直す**（§0 で閉じたものを戻す。**順序を逆にしない** ——
+   送出が壊れたまま開くと、実在する利用者名だけ 500 になり利用者名が漏れる）。
 
-**捕捉用 MTA へ戻すとき**（検証が終わったら戻すこと。戻さないと以後の申請が外部へ実送信され続ける）:
+   ```sh
+   kubectl -n platform-infra exec -i "$KC_POD" -- sh -c      '/opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master         --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null       && /opt/keycloak/bin/kcadm.sh update realms/platform -s "resetPasswordAllowed=true"'
+   node scripts/check-password-reset-mail.js   # 開閉と送出先の組・応答の同値性を機械で確かめる
+   ```
+4. パスワードリセット画面を実運用アカウントで申請し、リセットメールが着信する。
+
+**捕捉用 MTA へ戻すとき**（検証が終わったら戻すこと。戻さないと以後の申請が外部へ実送信され続ける）。
+**戻すときも §0 と同じ順序で** —— 先に閉じ、送出先を戻し、成立を確かめてから開く:
 
 ```sh
 kubectl -n platform-infra exec -i "$KC_POD" -- /opt/keycloak/bin/kcadm.sh update realms/platform \

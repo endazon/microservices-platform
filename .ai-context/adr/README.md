@@ -409,3 +409,4 @@
 | [IADR-0333](./IADR-0333_non-rendering-module-placement.md) | **描画しないモジュールの置き場は「外へ何を渡すか」で決める**（#1131）。ライブラリを外へ渡すなら `lib/`、自前の関数なら `utils/`。🔴 「内部で使うか」を基準にすると dayjs を 1 行使う関数まで `lib/` へ流れ `utils/` は空のまま。`@foundation` の面は改名せず追加し、宣言 5 箇所すべてへ足す。 | Accepted |
 | [IADR-0334](./IADR-0334_tests-mirror-target-resolution.md) | **テストの鏡写し先は「検証する本体の要素が置かれた場所」で決め、対応物が無いものは `Tests/` 直下に残す**（#1063 / ADR-0065 決定 3）。`Features/` と `Domain/` だけでは足りず `Infrastructure/<Sub>/`・`Common/<Sub>/` も写す。段は叩く操作を数えて決める。 | Accepted |
 | [IADR-0344](./IADR-0344_dev-mail-capture-mta.md) | **開発環境の捕捉用 MTA（Mailpit）を dev 既定で置き、送出先の既定を外向きから内向きへ反転させる**（#1144 / SC-15・ADR-0045 決定 9）。🔴 **opt-in にしない**（ゲートを立てない人の既定が外を向いたまま残る）。STARTTLS の既定は宛先から導出し、捕捉用 MTA 以外では確定値へ戻る。 | Accepted |
+| [IADR-0345](./IADR-0345_reset-existence-concealment.md) | **パスワードリセットの存在秘匿は「応答を揃える」では閉じない**（#1143 / SC-15・ADR-0026）。テーマはステータスを変えられず認証器は設定不能と**測って確かめた**。**申請は送出経路が使える間だけ開く**（閉じれば両者に同じ 400）。宣言・稼働・運用の三層で強制する。 | Accepted |
