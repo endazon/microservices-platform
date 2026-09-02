@@ -21,7 +21,7 @@ import { appConfig } from '@foundation/config/runtimeConfig';
 import { useBreadcrumbLeaf } from '@foundation/routing/breadcrumbLeaf';
 // ADR-0031 §採用技術一覧（日付 = dayjs）/ #788: 同じ整形を自前で持っていたが、
 // **同じ整形規則を 2 か所に置かない**ため foundation の 1 本へ寄せた。
-import { formatDateTime } from '@foundation/ui/formatDateTime';
+import { formatDateTime } from '@foundation/utils/formatDateTime';
 import { attributeLabel, orderedAttributes } from '../types/attributes';
 import { isNotFound, useDocumentQueries } from '../api/useDocumentQueries';
 // SC-03, FR-18 (#450): AI 提案の承認欄。**承認の主導線は本画面である**（SC-21 は棚卸しの従）。

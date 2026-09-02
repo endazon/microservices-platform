@@ -1,5 +1,5 @@
 ---
-title: IADR-0332 画面スモークは全画面でセッション付きにし、変異試験の的をパスからロール条件へ移す
+title: IADR-0337 画面スモークは全画面でセッション付きにし、変異試験の的をパスからロール条件へ移す
 type: impl-adr
 status: Accepted
 related_ids:
@@ -29,7 +29,7 @@ related_specs:
   - ../specs/20260902_issue-1139_authenticated-e2e-claim-correction-and-screen-widening.md
 ---
 
-# IADR-0332: 画面スモークは全画面でセッション付きにし、変異試験の的をパスからロール条件へ移す
+# IADR-0337: 画面スモークは全画面でセッション付きにし、変異試験の的をパスからロール条件へ移す
 
 - 状態: Accepted
 - 日付: 2026-09-02

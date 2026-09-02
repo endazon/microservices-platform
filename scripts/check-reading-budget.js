@@ -5,7 +5,8 @@
  * 必読規約の総量予算（NFR / #755 / IADR-0200。裁定 planning#364）を検査する。
  * 外部依存ゼロ（Node 標準モジュールのみ）。ai-stock-trading の同名検査器（AST/IADR-0204）を土台にした。
  *
- * 運用標準（`planning/docs/ai-implementation-workflow-guide.md` §8・`CLAUDE.md`「実装作業の進め方」）は
+ * 運用標準（計画リポジトリ `project-planning` の `docs/ai-implementation-workflow-guide.md` §8・
+ * `CLAUDE.md`「実装作業の進め方」）は
  * 「**毎セッション必読の規約は総量 50KB の予算内に収める**」と定める。
  * 本スクリプトはその**母集合を定義し**、実測して予算と比べる。
  *
@@ -35,7 +36,8 @@
  *
  * ■ 予算値（**正本は計画リポ運用ガイド §8**）
  *
- *   **51,200 バイト（50KB）。** 出典: `planning/docs/ai-implementation-workflow-guide.md` §8
+ *   **51,200 バイト（50KB）。** 出典: 計画リポジトリ `project-planning` の
+ *   `docs/ai-implementation-workflow-guide.md` §8
  *   「毎セッション必読の規約文書に総量予算を設ける（50KB 目安。効率が出ている AST の実測 36KB に余裕を見た値）」
  *   ＋ 同節の追記（2026-08-15・planning#364）「予算値 51,200 の算定根拠は Claude 側の実測である」。
  *   **本スクリプトが値を持つのは複製である。** 正本が動いたらここも動かす（出典の無い複製は認めない）。
@@ -65,7 +67,8 @@ const fs = require('fs');
 const path = require('path');
 
 const REPO = path.resolve(__dirname, '..');
-// 出典: planning/docs/ai-implementation-workflow-guide.md §8（50KB = 51,200。裁定 planning#364）。複製である。
+// 出典: 計画リポジトリ project-planning の docs/ai-implementation-workflow-guide.md §8
+// （50KB = 51,200。裁定 planning#364）。複製である。
 const BUDGET_BYTES = Number(process.env.READING_BUDGET_BYTES || 51200);
 const WARN_RATIO = Number(process.env.READING_BUDGET_WARN || 0.9);
 // ★ #730 / [[IADR-0190]] が確保した「恒久的な余白」の下限。**上限だけでは足りない** ——
@@ -249,7 +252,8 @@ function main(argv = process.argv) {
   if (bad) {
     console.error(
       `\n[check-reading-budget] ${bad} 件の集合が予算 ${BUDGET_BYTES.toLocaleString()} バイトを超えた。\n` +
-        '  減量するか、予算そのものを計画側へ環流して見直すこと（正本: planning/docs/ai-implementation-workflow-guide.md §8）。\n' +
+        '  減量するか、予算そのものを計画側へ環流して見直すこと' +
+        '（正本: 計画リポジトリ project-planning の docs/ai-implementation-workflow-guide.md §8）。\n' +
         '  🔴 集合をまたいで足し引きしてはならない —— 拘束するのは「セッション 1 本が背負う量」である。',
     );
     return 1;
