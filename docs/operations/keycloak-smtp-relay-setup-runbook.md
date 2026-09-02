@@ -3,15 +3,15 @@ title: 運用 Runbook — Keycloak smtpServer（SMTP リレー）の設定
 type: runbook
 status: draft
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-09-02
 author: claude
 ---
 <!-- trace:
 ids: [SC-10, SC-15, FR-05, FR-09, FR-22]
 adrs: [ADR-0026, ADR-0045]
-iadrs: [IADR-0197]
-specs: [20260823_issue-438_keycloak-theme-and-smtp]
-issues: [#438, #578, #600]
+iadrs: [IADR-0197, IADR-0261, IADR-0330]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring]
+issues: [#438, #578, #600, #1102]
 -->
 
 # 運用 Runbook: Keycloak smtpServer（SMTP リレー）の設定
@@ -71,20 +71,28 @@ unset SMTP_FROM SMTP_USER SMTP_PASSWORD
 `host` / `port` / `starttls` はメール配信の計画 ADR の確定値が既定のため、通常は上書き不要
 （変える場合のみ `SMTP_HOST` / `SMTP_PORT` / `SMTP_STARTTLS` を同様に env で渡す）。
 
-### 2. ExternalSecret を適用する（★現時点は手動。scripts/ 未配線）
+### 2. ExternalSecret の同期を確認する（適用は起動器が済ませている）
 
-[`externalsecret-keycloak-smtp.yaml`](../../deploy/local/vault/eso/externalsecret-keycloak-smtp.yaml) は
-`scripts/k8s-local-up.sh` にまだ組み込まれていない（follow-up。詳細は同ファイルの参照元
+**ExternalSecret は手で適用しない。** 起動スクリプトが `ESO=1` のとき常時適用し、同期の完了まで
+待ち合わせる（適用の並び・待ち合わせの根拠は
 [`deploy/local/vault/eso/README.md`](../../deploy/local/vault/eso/README.md)）。
+**§1 で値を入れ替えたあとに残るのは、同期が済んだことの確認だけである。**
 
 ```sh
-kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-smtp.yaml
 kubectl -n platform-infra wait --for=condition=Ready externalsecret/keycloak-smtp --timeout=60s
-kubectl -n platform-infra get secret keycloak-smtp -o jsonpath='{.data.from}' | base64 -d; echo
+kubectl -n platform-infra get secret keycloak-smtp -o jsonpath='{.data.from}' | base64 -d | wc -c
 ```
 
-最後のコマンドが空でなければ Vault → k8s Secret の同期は成立している（値そのものはここでは表示を
-最小限にとどめ、`password` キーは確認しない）。
+**最後のコマンドが 0 より大きければ**、Vault → k8s Secret の同期は成立している。
+**値そのものは表示しない**（長さだけを見る。`password` キーは確認しない）。
+
+> **同期の間隔は 1 時間である**（`refreshInterval: 1h`）。§1 の再 seed 直後に長さが 0 のままなら、
+> まだ前の（空の）値を保持している。`kubectl -n platform-infra delete secret keycloak-smtp` で
+> ESO に作り直させるか、次の refresh を待つ。
+>
+> 🔴 **長さが 0 のまま §3 へ進まないこと。** 空の `from` で `kcadm` を打つと、Keycloak は
+> `Please provide a valid address` で送信を拒否し、**パスワードリセット申請が 500 になる**
+> （空の `smtpServer` を持たない状態より悪い）。
 
 ### 3. 稼働中の realm へ smtpServer を反映する（kcadm。realm.json は書き換えない）
 

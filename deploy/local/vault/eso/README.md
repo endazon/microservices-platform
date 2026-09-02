@@ -29,7 +29,7 @@ end-to-end 疎通**する。認証は **kubernetes auth**（静的 root トー�
 | `externalsecret-postgres.yaml` | ExternalSecret（`secret/msp/postgres` → `postgres` password・**platform-infra ns**・**creationPolicy: Merge**・PR-4/IADR-0099） |
 | `externalsecret-rabbitmq.yaml` | ExternalSecret（`secret/msp/rabbitmq` → `rabbitmq` **username/password**・**platform-infra ns**・**Merge**・PR-4/IADR-0099。username は #1022 で追加） |
 | `externalsecret-keycloak-admin.yaml` | ExternalSecret（`secret/msp/keycloak-admin` → `keycloak-admin` password・**platform-infra ns**・**Merge**・PR-4/IADR-0099） |
-| `externalsecret-keycloak-smtp.yaml` | ExternalSecret（`secret/msp/keycloak-smtp` → `keycloak-smtp` host/port/starttls/from/user/password・**platform-infra ns**・#438・ADR-0045 決定 2-b/6。★**未配線**、下記参照） |
+| `externalsecret-keycloak-smtp.yaml` | ExternalSecret（`secret/msp/keycloak-smtp` → `keycloak-smtp` host/port/starttls/from/user/password・**platform-infra ns**・#438/#1102・ADR-0045 決定 2-b/6。`ESO=1` で常時 apply、下記参照） |
 
 ## 有効化（opt-in・`ESO=1`・`VAULT=1` 併用）
 
@@ -73,12 +73,15 @@ kubectl -n platform-infra get externalsecret,secret postgres rabbitmq keycloak-a
   `minio-oidc` は常時、`vault-oidc` は VAULT 前提（`ESO=1` のガード下で常に真）で常時、`grafana-oidc`／`headlamp-oidc`
   は `OBSERVABILITY`／`HEADLAMP` 有効時のみ（機能オフ時に未使用 Secret を残さない）。ExternalSecret は namespaced だが
   `ClusterSecretStore` は cluster-scoped のため MSP／platform-infra 両 ns から同名 store を参照できる。
-- **★ `externalsecret-keycloak-smtp.yaml`（#438）は `scripts/k8s-local-up.sh` にまだ組み込まれていない**
-  （follow-up・未着手。同スクリプトの変更は本 issue の射程外）。`ESO=1` を立てても自動 apply されないため、
-  当面は手動で `kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-smtp.yaml` する。
+- **`externalsecret-keycloak-smtp.yaml`（#438・配線は #1102）は `ESO=1` のとき常時 apply される**
+  （infra ns の並び。`eso_wait` の待ち合わせ対象にも入っている）。
   seed は `bootstrap.sh` が行う（`SMTP_FROM`/`SMTP_USER`/`SMTP_PASSWORD` の env 由来 or 空既定＝未供給時は無害）。
-  同期後の Secret `keycloak-smtp`（platform-infra ns）を realm へ反映する手順は
+  🔴 **この Secret を env で読む Pod は無い。** 読むのは runbook の `kcadm` 手順（人間）であり、
+  反映先は realm の**実行時状態**である（`realm.json` へは書かない＝秘匿値を非コミットに保つため。IADR-0261 決定 2）。
+  そのため ESO 供給後の rollout 対象には**入れない**。realm へ反映する手順は
   [`docs/operations/keycloak-smtp-relay-setup-runbook.md`](../../../docs/operations/keycloak-smtp-relay-setup-runbook.md) を参照。
+  🔴 **`from`/`user`/`password` が空のまま `kcadm` を打たないこと** —— Keycloak は空の `from` を
+  `Please provide a valid address` で拒否し、パスワードリセット申請が 500 になる（#1102 で実測）。
 - **PR-4 基盤 secret（`postgres`／`rabbitmq`／`keycloak-admin`）は PR-1〜3 と扱いが異なる**。これらは step [4/7] の
   infra rollout（ブロッキング）で **非 optional** に消費されるため、Vault/ESO がまだ無いこの時点で手動作成が必須
   （bootstrap）。よって **`ESO=1` でも手動 apply をスキップしない**。ExternalSecret は **`creationPolicy: Merge`** で
