@@ -344,10 +344,14 @@
     ],
     "docs/tests/UC-07_wiki-browsing.md": [
       "AbacPageFilterTests",
+      "AnonymousAccessContractTests",
       "DocumentDeleteArchiveSyncTests",
       "DocumentSyncConsumerTests",
       "WikiEndpointsAbacTests",
-      "WikiJsGraphQlClientTests"
+      "WikiJsGraphQlClientTests",
+      "WikiJsSearchClientTests",
+      "WikiPagePathTests",
+      "WikiSearchAbacTests"
     ],
     "docs/tests/UC-08_mcp-agent-knowledge-access.md": [
       "EgressPolicyTests",
