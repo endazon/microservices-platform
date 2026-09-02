@@ -7,6 +7,21 @@ public interface IIngestionVectorStore
     // FR-02: 全モデル別コレクション（索引）の存在を保証する（起動時ブートストラップ）。
     Task EnsureCollectionsAsync(CancellationToken ct = default);
 
+    // FR-03, #1118: 日本語（CJK）2-gram ペイロード `text_ngram` の全文索引を全コレクションへ張る
+    // （新規・既存とも、存在の有無によらず冪等に）。起動時ブートストラップが `EnsureCollectionsAsync` の
+    // 直後に呼ぶ。**別メソッドにしているのは、`text` の索引を固定している既存の試験を動かさないため**
+    // （[[IADR-0339]] 決定 2）。
+    //
+    // 既定実装は何もしない。**索引を持たない試験用の実装（書き込みを記録するだけの偽物）に
+    // 「維持する索引が無い」を表させるため**であり、実装（Qdrant）は必ず上書きする。
+    // 上書き漏れは検索側の readiness（`qdrant-cjk-ngram-index` が Degraded）に現れる。
+    Task EnsureCjkNgramIndexAsync(CancellationToken ct = default) => Task.CompletedTask;
+
+    // FR-03, #1118: `text_ngram` を持たない既存の点へ、`text` から作った 2-gram を後付けする。
+    // 埋めた点の数を返す（2 回目以降の起動では 0）。**再取り込みを要求しない**ための移行経路であり、
+    // 起動後にバックグラウンドで走る（[[IADR-0339]] 決定 2）。既定実装（0 件）の位置づけは上と同じ。
+    Task<int> BackfillCjkNgramAsync(CancellationToken ct = default) => Task.FromResult(0);
+
     // FR-02: 指定コレクションへチャンクを索引する（コレクションはゲートウェイの機密区分ルーティングが決める）。
     // FR-03, SC-02, #536: `updatedAt` は文書の更新日時（DocumentUpdated.UpdatedAt）である。
     // **取り込み時刻を渡さないこと**（IADR-0149 決定 5）——渡すと再索引のたびに全文書の
