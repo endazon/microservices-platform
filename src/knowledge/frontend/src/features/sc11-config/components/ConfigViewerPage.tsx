@@ -16,10 +16,10 @@ import {
 } from '@platform/ui';
 import { ApiError } from '@foundation/api/ApiError';
 import { i18n } from '@foundation/i18n';
-import { toMessages } from '@foundation/ui/apiErrors';
+import { toMessages } from '@foundation/utils/apiErrors';
 // ADR-0031 §採用技術一覧（日付 = dayjs）/ #788: 同名のローカル実装を持っていたが、
 // **同じ整形規則を 2 か所に置かない**ため foundation の 1 本へ寄せた。
-import { formatDateTime } from '@foundation/ui/formatDateTime';
+import { formatDateTime } from '@foundation/utils/formatDateTime';
 import { driftKindLabel, driftSeverityView, driftTargets, hadDriftLabel } from '../types/driftView';
 import {
   useConfigDrift,

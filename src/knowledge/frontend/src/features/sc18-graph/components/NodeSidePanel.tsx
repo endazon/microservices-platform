@@ -6,7 +6,7 @@ import {
   useBffDocumentDetail,
 } from '@foundation/api/generated/documents/documents';
 import { okData } from '@foundation/api/orvalSelect';
-import { formatDateTime } from '@foundation/ui/formatDateTime';
+import { formatDateTime } from '@foundation/utils/formatDateTime';
 import type {
   DocumentDto,
   EdgeTypeCatalogItem,

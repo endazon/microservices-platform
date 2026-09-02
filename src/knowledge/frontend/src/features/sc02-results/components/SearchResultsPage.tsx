@@ -15,9 +15,9 @@ import {
   TableRow,
   Tag,
 } from '@platform/ui';
-import { toMessages } from '@foundation/ui/apiErrors';
+import { toMessages } from '@foundation/utils/apiErrors';
 import { useSearchQuery } from '../api/useSearchQuery';
-import { formatDateTime } from '@foundation/ui/formatDateTime';
+import { formatDateTime } from '@foundation/utils/formatDateTime';
 // SC-02, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type { SearchResultDto } from '@foundation/api/generated/bff.schemas';
 
