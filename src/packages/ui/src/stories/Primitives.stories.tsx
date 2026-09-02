@@ -93,7 +93,7 @@ export const FormControls: Story = {
         <Label htmlFor="sb-class" requiredHint="（必須）">
           機密区分
         </Label>
-        {/* 機密区分の表示名は計画リポジトリの用語集（planning/docs/glossary.md）が正である。
+        {/* 機密区分の表示名は計画リポジトリ project-planning の用語集（docs/glossary.md）が正である。
             restricted は「取扱制限」であって「極秘」ではない——個人資料が既定でこの区分を持つため、
             「極秘」にすると本当に極秘の組織文書を見分けられなくなる（利用者裁定 Q30 / planning#200）。 */}
         <Select id="sb-class" defaultValue="internal">

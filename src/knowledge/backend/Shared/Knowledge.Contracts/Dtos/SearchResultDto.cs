@@ -40,7 +40,7 @@ public record CitationDto(
 // FR-04, FR-05, FR-11, SC-01, #541: 機密区分（ABAC 文書属性 confidentiality）の値集合と安全側への縮退。
 // enum ではなく文字列 + const で持つ（IADR-0131 決定 5。後段の値追加を SPA 側の破壊的変更にしない）。
 // **表示名（公開 / 社内限 / 秘 / 取扱制限）はここに置かない。** 正は計画リポジトリの用語集
-// （planning/docs/glossary.md）であり、実装側で再定義すると用語の正が 2 か所へ割れる。
+// （計画リポジトリ project-planning の docs/glossary.md）であり、実装側で再定義すると用語の正が 2 か所へ割れる。
 // なお restricted の表示名は「取扱制限」であって「極秘」ではない（個人資料が既定でこの区分を持つため。
 // 利用者裁定 Q30）。
 public static class ConfidentialityLevels

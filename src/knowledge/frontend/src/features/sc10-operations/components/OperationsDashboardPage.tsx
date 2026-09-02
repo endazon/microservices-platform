@@ -14,7 +14,7 @@ import { searchTermBarOption, usageTrendLineOption } from '../types/dashboardCha
 import { ApiError } from '@foundation/api/ApiError';
 import { appConfig } from '@foundation/config/runtimeConfig';
 import { i18n } from '@foundation/i18n';
-import { toMessages } from '@foundation/ui/apiErrors';
+import { toMessages } from '@foundation/utils/apiErrors';
 import { opsTools } from '../types/opsTools';
 import { DAYS_OPTIONS, useDashboardSummary } from '../api/useDashboardSummary';
 import type { DaysOption } from '../api/useDashboardSummary';

@@ -71,6 +71,14 @@
         "../../platform/frontend/src/lib/auth",
         "../../../src/platform/frontend/src/lib/auth"
       ],
+      "@foundation/utils/*": [
+        "../../platform/frontend/src/utils/*",
+        "../../../src/platform/frontend/src/utils/*"
+      ],
+      "@foundation/utils": [
+        "../../platform/frontend/src/utils",
+        "../../../src/platform/frontend/src/utils"
+      ],
       "@foundation/ui/*": [
         "../../platform/frontend/src/components/ui/*",
         "../../../src/platform/frontend/src/components/ui/*"

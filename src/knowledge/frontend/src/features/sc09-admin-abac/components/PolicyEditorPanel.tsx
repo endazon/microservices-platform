@@ -18,7 +18,7 @@ import {
   Tag,
 } from '@platform/ui';
 import { i18n } from '@foundation/i18n';
-import { toMessages } from '@foundation/ui/apiErrors';
+import { toMessages } from '@foundation/utils/apiErrors';
 import {
   attributeScopeLabel,
   buildConditions,

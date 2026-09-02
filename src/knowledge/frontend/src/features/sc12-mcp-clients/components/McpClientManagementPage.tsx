@@ -4,7 +4,7 @@ import type { MessageDescriptor } from '@lingui/core';
 import { i18n } from '@foundation/i18n';
 import { Alert, Button, Input, Label, Select, StatusBadge } from '@platform/ui';
 import { appConfig } from '@foundation/config/runtimeConfig';
-import { toMessages } from '@foundation/ui/apiErrors';
+import { toMessages } from '@foundation/utils/apiErrors';
 import type { McpClientView } from '@foundation/api/generated/bff.schemas';
 import { DataTable } from '../../../components/DataTable';
 import type { DataTableColumns } from '../../../components/DataTable';
