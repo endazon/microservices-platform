@@ -1,4 +1,6 @@
 # ADR-0006, NFR-21, #546: 経路B（k8s）の Alertmanager（opt-in・platform-infra）。
+# 🔴 束ね／抑止の軸は `job` である（#1110。`service_name` はアプリ由来のアラートに付かない）。
+#    理由は compose 側（deploy/alertmanager/alertmanager.yml）のコメントが正本。
 # ⚠️ config は compose（deploy/alertmanager/alertmanager.yml）と同内容を inline する
 #    （kustomize の root 外参照制約に従う。prometheus.yaml / grafana.yaml と同じ方針＝二重管理を許容）。
 apiVersion: v1
@@ -9,7 +11,7 @@ metadata:
 data:
   alertmanager.yml: |
     route:
-      group_by: ['alertname', 'service_name']
+      group_by: ['alertname', 'job']
       group_wait: 30s
       group_interval: 5m
       repeat_interval: 4h
@@ -19,7 +21,7 @@ data:
     inhibit_rules:
       - source_matchers: [severity = "critical"]
         target_matchers: [severity = "warning"]
-        equal: ['alertname', 'service_name']
+        equal: ['alertname', 'job']
 ---
 apiVersion: apps/v1
 kind: Deployment
