@@ -633,4 +633,115 @@ describe('DataSourceManagementPage (SC-06)', () => {
       expect(screen.queryByRole('button', { name: '既定属性' })).not.toBeInTheDocument();
     });
   });
+
+  // FR-05, UC-04, SC-06, ADR-0074 決定 1・4 (#1194): `owner` の**写像表**。
+  //
+  // 計画 ADR-0074 決定 1 は「`owner` の②の写像表は SC-06 の登録・更新フォームが持つ。
+  // データソース単位で『ソース側識別子 → 利用者識別子』の対を並べる欄とし、**既定属性 3 つと
+  // 同じ面・同じ権限**に置く」と定める。**新しい画面 ID も新しい権限も作らない。**
+  describe('owner mapping table (#1194)', () => {
+    const MAPPED_SOURCE = {
+      ...ACTIVE_SOURCE,
+      ownerMappings: { 'hr_system:tanaka': 'tanaka', 'hr_system:suzuki': 'suzuki' },
+    };
+
+    function bodyOf(method: string) {
+      const call = mocks.apiRequest.mock.calls.find(
+        ([, init]) => (init as RequestInit).method === method,
+      )!;
+      return JSON.parse(String((call[1] as RequestInit).body));
+    }
+
+    it('sends a mapping entered on the register form', async () => {
+      mocks.apiRequest.mockResolvedValue(jsonResponse([]));
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(await screen.findByRole('button', { name: '＋ ソース登録' }));
+      await user.type(screen.getByLabelText(/名前/), '人事DB');
+      await user.type(screen.getByLabelText(/接続先 URI/), 'postgres://db/records');
+
+      await user.click(screen.getByRole('button', { name: '＋ 写像を追加' }));
+      await user.type(screen.getByLabelText('ソース側の利用者 1'), 'hr_system:tanaka');
+      await user.type(screen.getByLabelText('基盤の利用者 1'), 'tanaka');
+      await user.click(screen.getByRole('button', { name: '登録する' }));
+
+      await waitFor(() => expect(bodyOf('POST')).toBeDefined());
+      expect(bodyOf('POST').ownerMappings).toEqual({ 'hr_system:tanaka': 'tanaka' });
+      // 🔴 **既定属性へ混ぜない。** 混ぜると片方の更新がもう片方を消す（ADR-0074 決定 1 が
+      // 器を分けた理由そのもの）。
+      expect(Object.keys(bodyOf('POST').defaultAttributes)).not.toContain('owner');
+    });
+
+    // **空の写像表はキーごと送らない**（既定属性の `department` / `lifecycle` と同じ規約）。
+    // 送ると「管理者が空にした」と「触っていない」の区別が消える。
+    it('omits the key entirely when no mapping is entered', async () => {
+      mocks.apiRequest.mockResolvedValue(jsonResponse([]));
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(await screen.findByRole('button', { name: '＋ ソース登録' }));
+      await user.type(screen.getByLabelText(/名前/), '規程集');
+      await user.type(screen.getByLabelText(/接続先 URI/), 'smb://fs01/share');
+      // 「＋」を押しただけの**空行**は送らない（管理者の入力の誤りではない）。
+      await user.click(screen.getByRole('button', { name: '＋ 写像を追加' }));
+      await user.click(screen.getByRole('button', { name: '登録する' }));
+
+      await waitFor(() => expect(bodyOf('POST')).toBeDefined());
+      expect(Object.keys(bodyOf('POST'))).not.toContain('ownerMappings');
+    });
+
+    it('prefills the stored mappings on the edit form and patches them independently', async () => {
+      mocks.apiRequest.mockResolvedValue(jsonResponse([MAPPED_SOURCE]));
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(await screen.findByRole('button', { name: '既定属性' }));
+
+      // 保存済みの 2 対が開く（キー昇順で安定させる。辞書の列挙順に依存しない）。
+      expect(screen.getByLabelText('ソース側の利用者 1')).toHaveValue('hr_system:suzuki');
+      expect(screen.getByLabelText('ソース側の利用者 2')).toHaveValue('hr_system:tanaka');
+
+      await user.click(screen.getByRole('button', { name: '写像を削除 1' }));
+      await user.click(screen.getByRole('button', { name: '更新する' }));
+
+      await waitFor(() => expect(bodyOf('PATCH')).toBeDefined());
+      expect(bodyOf('PATCH').ownerMappings).toEqual({ 'hr_system:tanaka': 'tanaka' });
+      // 🔴 既定属性は**同じ要求で独立に**運ばれる（片方の更新がもう片方を消さない）。
+      expect(bodyOf('PATCH').defaultAttributes).toMatchObject({ confidentiality: 'internal' });
+    });
+
+    // 🔴 **サーバが拒否した理由を画面に出す**（#1194 受け入れ基準 2）。
+    // 後段は RFC7807（`errors`）で返すので `ApiError.details` に載る。
+    it('shows the server reason when a mapping target does not exist', async () => {
+      mocks.apiRequest
+        .mockResolvedValueOnce(jsonResponse([ACTIVE_SOURCE]))
+        .mockRejectedValueOnce(
+          new ApiError('validation', '入力内容に誤りがあります。', 400, [
+            '写像先の利用者が存在しません: nobody。利用者識別子（ログイン名）で指定してください。',
+          ]),
+        );
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(await screen.findByRole('button', { name: '既定属性' }));
+      await user.click(screen.getByRole('button', { name: '＋ 写像を追加' }));
+      await user.type(screen.getByLabelText('ソース側の利用者 1'), 'src');
+      await user.type(screen.getByLabelText('基盤の利用者 1'), 'nobody');
+      await user.click(screen.getByRole('button', { name: '更新する' }));
+
+      expect(await screen.findByText(/写像先の利用者が存在しません: nobody/)).toBeInTheDocument();
+    });
+
+    // 予約値 `system` は**文書側の属性**に入る値であって写像表の値ではない。
+    // 補助文がそれを伝える（`lib/abac/owner.ts` の規約）。
+    it('tells the admin what happens when a mapping is missing', async () => {
+      mocks.apiRequest.mockResolvedValue(jsonResponse([]));
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(await screen.findByRole('button', { name: '＋ ソース登録' }));
+      expect(screen.getByText(/予約値 system になります/)).toBeInTheDocument();
+    });
+  });
 });

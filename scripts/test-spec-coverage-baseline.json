@@ -207,6 +207,9 @@
     "docs/tests/SC-06_datasource-management.md": [
       "BffDataSourceEndpointTests",
       "DataSourceAuthorizationTests",
+      "DataSourceSyncServiceTests",
+      "OwnerMappingEndpointTests",
+      "OwnerMappingTableTests",
       "SyncScheduleTests"
     ],
     "docs/tests/SC-07_conversion-jobs.md": [

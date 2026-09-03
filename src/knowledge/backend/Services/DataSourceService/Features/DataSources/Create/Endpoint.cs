@@ -1,4 +1,5 @@
 using DataSourceService.Domain;
+using DataSourceService.Domain.Ports;
 using DataSourceService.Infrastructure.Persistence;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
@@ -12,15 +13,22 @@ internal static class CreateDataSourceEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
     {
-        g.MapPost("/", async (CreateDataSourceRequest req, DataSourceDbContext db, SyncSchedule schedule) =>
+        g.MapPost("/", async (CreateDataSourceRequest req, DataSourceDbContext db, SyncSchedule schedule,
+            IPlatformUserDirectory userDirectory, CancellationToken ct) =>
         {
             // IADR-0295 決定 3: 資格情報つきの connectionUri は受け付けない（登録時が第 1 の関門）。
             if (ConnectionUriPolicy.Validate(req.ConnectionUri, existing: null) is { } uriError)
                 return Results.BadRequest(new { error = uriError });
 
+            // FR-05, SC-06, ADR-0074 決定 4 (#1194): 写像先の実在をサーバ側で検証する。
+            // **通らない対は保存しない** —— 誤った写像は偽の所有者を作り、ADR-0036 の
+            // 裁量制御が意図しない相手に開く。
+            if (await OwnerMappingValidation.ValidateAsync(req.OwnerMappings, userDirectory, ct) is { } mapError)
+                return mapError;
+
             // FR-01, FR-05: 既定 ABAC 属性（機密区分）を伴ってデータソースを登録する。
             var ds = DataSource.Create(req.Name, req.SourceType, req.ConnectionUri,
-                req.Config, req.DefaultAttributes);
+                req.Config, req.DefaultAttributes, req.OwnerMappings);
             db.DataSources.Add(ds);
             await db.SaveChangesAsync();
             return Results.Created($"/datasources/{ds.Id}",

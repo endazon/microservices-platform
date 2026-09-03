@@ -1,3 +1,4 @@
+using DataSourceService.Domain.Ports;
 using DataSourceService.Infrastructure.Persistence;
 using Wolverine;
 using Microsoft.AspNetCore.Authentication;
@@ -45,6 +46,14 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // 実ブローカへの接続を試み、**20 回再試行して BrokerInitializationException で失敗する**
             // （W4 で実測した挙動）。外部トランスポートを無効化して、起動を実ブローカから切り離す。
             services.DisableAllExternalWolverineTransports();
+
+            // FR-05, SC-06, ADR-0074 決定 4 (#1194): 写像先の実在検証の後段（AuthorizationService の
+            // /authz/users）へ HTTP を出さない。**判断の側だけをテストで固定する。**
+            // 🔴 シングルトンで差す —— テストは `factory.Services` から同じ実体を掴み、
+            // 名簿の中身と `Available` を要求の前に切り替える。
+            services.RemoveAll<IPlatformUserDirectory>();
+            services.AddSingleton<StubPlatformUserDirectory>();
+            services.AddSingleton<IPlatformUserDirectory>(sp => sp.GetRequiredService<StubPlatformUserDirectory>());
 
             services.RemoveAll<IMessageBus>();
             services.AddSingleton<RecordingMessageBus>();

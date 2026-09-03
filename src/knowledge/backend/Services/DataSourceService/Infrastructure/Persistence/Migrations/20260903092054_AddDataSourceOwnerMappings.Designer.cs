@@ -3,6 +3,7 @@ using System;
 using DataSourceService.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DataSourceService.Infrastructure.Migrations
 {
     [DbContext(typeof(DataSourceDbContext))]
-    partial class DataSourceDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260903092054_AddDataSourceOwnerMappings")]
+    partial class AddDataSourceOwnerMappings
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

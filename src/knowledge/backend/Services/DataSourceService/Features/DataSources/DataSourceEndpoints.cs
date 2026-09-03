@@ -61,6 +61,11 @@ public static class DataSourceEndpoints
         Config = RedactSecrets(ds.Config),
         ds.DefaultAttributes,
         ds.CreatedAt,
+        // FR-05, SC-06, ADR-0074 決定 1 (#1194): `owner` の写像表。
+        // **マスクしない** —— 対の両側とも利用者識別子であり、秘密ではない
+        // （`Config` の apiToken や `ConnectionUri` の資格情報とは性質が違う）。
+        // 伏せると管理者が自分の入れた写像を確認できず、更新のたびに再入力になる。
+        ds.OwnerMappings,
         NextSyncAt = nextSyncAt,
         // SC-06（Q14 / #537）: 同期健全性。RetryLimit は画面が「3/5」の分母を契約から得るために返す
         // （画面へ定数を複写すると IADR-0127 決定 2 が禁じた「契約から導出できない表示」に戻る）。

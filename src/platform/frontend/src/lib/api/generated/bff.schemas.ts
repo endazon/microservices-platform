@@ -558,6 +558,14 @@ export type DataSourceDtoConfig = {[key: string]: string};
 export type DataSourceDtoDefaultAttributes = {[key: string]: string};
 
 /**
+ * FR-05, SC-06（ADR-0074 決定 1 / #1194）: `owner` の**写像表**（データソース単位）。
+ * キーが**ソース側の利用者識別子**、値が**基盤の利用者識別子**（ログイン名）である。
+ * **既定属性（`defaultAttributes`）とは別の器**であり、片方の更新はもう片方を消さない。
+ * **マスクしない**（対の両側とも識別子であり秘密ではない）。
+ */
+export type DataSourceDtoOwnerMappings = {[key: string]: string} | null;
+
+/**
  * FR-01, UC-04, SC-06: データソース 1 件（`Knowledge.Contracts/Dtos/DataSourceDto.cs`）。
  * IADR-0053: `config` の**秘密キー（token / password / secret / credential を含むキー）は
  * 後段が `***` へマスク済み**である。SPA から秘密を埋め込むことはしない。
@@ -604,6 +612,13 @@ export interface DataSourceDto {
   lastSyncError?: string | null;
   /** SC-06（裁定 Q14 / #537）: 直近の同期エラーの発生時刻。 */
   lastSyncErrorAt?: string | null;
+  /**
+     * FR-05, SC-06（ADR-0074 決定 1 / #1194）: `owner` の**写像表**（データソース単位）。
+     * キーが**ソース側の利用者識別子**、値が**基盤の利用者識別子**（ログイン名）である。
+     * **既定属性（`defaultAttributes`）とは別の器**であり、片方の更新はもう片方を消さない。
+     * **マスクしない**（対の両側とも識別子であり秘密ではない）。
+     */
+  ownerMappings?: DataSourceDtoOwnerMappings;
 }
 
 export type CreateDataSourceRequestConfig = {[key: string]: string} | null;
@@ -613,6 +628,14 @@ export type CreateDataSourceRequestConfig = {[key: string]: string} | null;
  */
 export type CreateDataSourceRequestDefaultAttributes = {[key: string]: string} | null;
 
+/**
+ * FR-05, SC-06（ADR-0074 決定 1・4 / #1194）: `owner` の写像表。未指定は空。
+ * 🔴 **写像先の実在は後段が検証する。実在しない値を含む要求は 400 で拒否され、1 対も保存されない**
+ * （誤った写像は偽の所有者を作り、ADR-0036 の裁量制御が意図しない相手に開く）。
+ * 名簿を引けなかったときは **502**（「存在しない」と報告しない）。
+ */
+export type CreateDataSourceRequestOwnerMappings = {[key: string]: string} | null;
+
 export interface CreateDataSourceRequest {
   name: string;
   sourceType: string;
@@ -620,6 +643,13 @@ export interface CreateDataSourceRequest {
   config?: CreateDataSourceRequestConfig;
   /** 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない */
   defaultAttributes?: CreateDataSourceRequestDefaultAttributes;
+  /**
+     * FR-05, SC-06（ADR-0074 決定 1・4 / #1194）: `owner` の写像表。未指定は空。
+     * 🔴 **写像先の実在は後段が検証する。実在しない値を含む要求は 400 で拒否され、1 対も保存されない**
+     * （誤った写像は偽の所有者を作り、ADR-0036 の裁量制御が意図しない相手に開く）。
+     * 名簿を引けなかったときは **502**（「存在しない」と報告しない）。
+     */
+  ownerMappings?: CreateDataSourceRequestOwnerMappings;
 }
 
 /**
@@ -633,6 +663,14 @@ export type UpdateDataSourceRequestConfig = {[key: string]: string} | null;
  * 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない
  */
 export type UpdateDataSourceRequestDefaultAttributes = {[key: string]: string} | null;
+
+/**
+ * FR-05, SC-06（ADR-0074 決定 1 / #1194）: `owner` の写像表。
+ * 🔴 **`config` / `defaultAttributes` と違い、省略は 400 ではなく現状維持である。**
+ * 全置換の必須指定は契約の初期からある規約であり、後から足した項目を必須にすると
+ * 既存の PUT クライアントが一斉に 400 になる。空にするときは `{}` を送る。
+ */
+export type UpdateDataSourceRequestOwnerMappings = {[key: string]: string} | null;
 
 /**
  * FR-01, UC-04, SC-06（裁定 Q16 / #534）: データソース更新（全置換）。
@@ -652,6 +690,13 @@ export interface UpdateDataSourceRequest {
   config: UpdateDataSourceRequestConfig;
   /** 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない */
   defaultAttributes: UpdateDataSourceRequestDefaultAttributes;
+  /**
+     * FR-05, SC-06（ADR-0074 決定 1 / #1194）: `owner` の写像表。
+     * 🔴 **`config` / `defaultAttributes` と違い、省略は 400 ではなく現状維持である。**
+     * 全置換の必須指定は契約の初期からある規約であり、後から足した項目を必須にすると
+     * 既存の PUT クライアントが一斉に 400 になる。空にするときは `{}` を送る。
+     */
+  ownerMappings?: UpdateDataSourceRequestOwnerMappings;
 }
 
 export type PatchDataSourceRequestConfig = {[key: string]: string} | null;
@@ -660,6 +705,13 @@ export type PatchDataSourceRequestConfig = {[key: string]: string} | null;
  * 指定したときのみ差し替える。差し替え時も必須属性のフェイルセーフを通す（confidentiality / owner / department / lifecycle）
  */
 export type PatchDataSourceRequestDefaultAttributes = {[key: string]: string} | null;
+
+/**
+ * FR-05, SC-06（ADR-0074 決定 1・4 / #1194）: `owner` の写像表。**`null` は現状維持**。
+ * 指定したときは全置換であり、**既定属性とは独立**である（片方だけ送っても他方は消えない）。
+ * 写像先の実在は後段が検証する（実在しない値は 400・名簿を引けなければ 502。いずれも保存しない）。
+ */
+export type PatchDataSourceRequestOwnerMappings = {[key: string]: string} | null;
 
 /**
  * FR-01, UC-04, SC-06（裁定 Q16 / #534）: データソース部分更新。
@@ -672,6 +724,12 @@ export interface PatchDataSourceRequest {
   config?: PatchDataSourceRequestConfig;
   /** 指定したときのみ差し替える。差し替え時も必須属性のフェイルセーフを通す（confidentiality / owner / department / lifecycle） */
   defaultAttributes?: PatchDataSourceRequestDefaultAttributes;
+  /**
+     * FR-05, SC-06（ADR-0074 決定 1・4 / #1194）: `owner` の写像表。**`null` は現状維持**。
+     * 指定したときは全置換であり、**既定属性とは独立**である（片方だけ送っても他方は消えない）。
+     * 写像先の実在は後段が検証する（実在しない値は 400・名簿を引けなければ 502。いずれも保存しない）。
+     */
+  ownerMappings?: PatchDataSourceRequestOwnerMappings;
 }
 
 /**

@@ -40,23 +40,27 @@ public sealed class DataSourceSyncService(
     // 🔴 **運んでこなければ null を返す**（＝上書きが 1 件も無い＝挙動不変）。
     // 現時点でコネクタ 4 実装はいずれも `UpdatedBy` を載せないため、常に null である。
     //
-    // 🔴 **ここには解決段が無い。`UpdatedBy` はそのまま `owner` になる。**
+    // ［2026-09-03 更新 / #1194 / ADR-0074 決定 1・4］**解決段が入った。**
+    // 従前ここには「🔴 ここには解決段が無い。`UpdatedBy` はそのまま `owner` になる」と書いていたが、
+    // **もう素通ししない。** 解決順 **① Keycloak ユーザー検索 → ② データソース単位の写像表
+    // → 予約値 `system`**（裁定 2026-08-16。planning#371）のうち、**② を
+    // `DataSource.ResolveOwner` として実装した**（写像表の器は SC-06 の登録・更新フォームが持つ。
+    // ADR-0074 決定 1）。**① は未配備のままでよい** —— 解決順は保ったまま ② だけを埋める。
     //
-    // ［2026-08-28 訂正 / #752］**従前ここには「未裁定である」と書いていたが誤りである。**
-    // 解決順は **① Keycloak ユーザー検索 → ② データソース単位の写像表 → 予約値 `system`** と
-    // **確定済み**である（裁定 2026-08-16。planning#371）。**未裁定なのは規則ではなく、
-    // ①が未配備・②の写像表の置き場所が組織側で未確定**という配備状況の側である。
-    //
-    // 🔴 **その解決順がここに実装されていない。** 現在はどのコネクタも `UpdatedBy` を
-    // 載せないため無害だが（`perItem` は常に null）、**コネクタが値を載せた瞬間に、
-    // OS ユーザー名や DB の列値のような別名前空間の識別子がそのまま `owner` になる。**
+    // 🔴 **写像に当たらなければ null を返す。生の識別子は 1 件も `owner` へ入らない。**
     // 計画は「**別名前空間の識別子をそのまま `owner` へ入れてはならない**」「誤った写像は
-    // **偽の所有者**を作り、**裁量制御が意図しない相手に開く**」と定める（ADR-0036）。
-    // **コネクタ側の値搭載は、ここへ解決段を入れるのと同じ変更で行うこと。**
-    private static Dictionary<string, string>? PerItemAttributes(SourceItem item)
-        => string.IsNullOrWhiteSpace(item.UpdatedBy)
+    // **偽の所有者**を作り、**裁量制御が意図しない相手に開く**」「安全側は『解決しない』」と
+    // 定める（09_datasource-connectors §システム投入経路 / ADR-0036）。
+    //
+    // **これが ADR-0074 決定 5 が定めた先後の前半である** —— `db` コネクタへ更新者列を載せてよいのは
+    // 「解決器が配備された後」であり、それが本メソッドである（値の搭載自体は #752 の射程）。
+    private static Dictionary<string, string>? PerItemAttributes(DataSource source, SourceItem item)
+    {
+        var owner = source.ResolveOwner(item.UpdatedBy);
+        return owner is null
             ? null
-            : new Dictionary<string, string> { [DataSource.OwnerKey] = item.UpdatedBy };
+            : new Dictionary<string, string> { [DataSource.OwnerKey] = owner };
+    }
 
     private async Task<SyncResult> RunAsync(DataSource source, CancellationToken ct)
     {
@@ -135,9 +139,10 @@ public sealed class DataSourceSyncService(
                 // **アイテム単位の上書き**を重ねて原本へ付与する（#752 段 1）。優先順位は
                 // 明示指定 > アイテム単位 > 予約値（`DataSource.GetEffectiveAttributes` を参照）。
                 //
-                // 🔴 **本段ではどのコネクタも `UpdatedBy` を載せないため、`perItem` は常に null であり
-                // 挙動は 1 バイトも変わらない。** 器と経路だけを先に作っている。
-                var attributes = source.GetEffectiveAttributes(PerItemAttributes(item));
+                // ［2026-09-03 更新 / #1194］**アイテム単位の上書きは写像表を引いた結果だけである。**
+                // 写像に当たらない（または `UpdatedBy` が無い）ときは `perItem` が null になり、
+                // `owner` は予約値 `system` へ倒れる（ADR-0074 決定 3。**減らなくてよい**）。
+                var attributes = source.GetEffectiveAttributes(PerItemAttributes(source, item));
 
                 await bus.PublishAsync(new RawDocumentFetched(
                     fetchId, source.Id, source.SourceType,

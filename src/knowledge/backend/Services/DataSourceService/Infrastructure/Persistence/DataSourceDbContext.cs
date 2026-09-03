@@ -40,6 +40,18 @@ public class DataSourceDbContext(DbContextOptions<DataSourceDbContext> options) 
                     (a, b) => System.Text.Json.JsonSerializer.Serialize(a, (System.Text.Json.JsonSerializerOptions?)null) == System.Text.Json.JsonSerializer.Serialize(b, (System.Text.Json.JsonSerializerOptions?)null),
                     // ハッシュも等価判定と同じ内容ベースにする（参照 GetHashCode は equals と契約不整合になるため）。
                     v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null).GetHashCode(), v => new Dictionary<string, string>(v)));
+            // FR-05, SC-06, ADR-0074 決定 1 (#1194): `owner` の写像表を jsonb 保管。
+            // **`DefaultAttributes` と同じ形にする**（#184 / JsonbValueComparerContractTests が
+            // 「jsonb の辞書列は内容ベースの ValueComparer を持つ」ことを反射で固定している ——
+            // 参照比較のままだと変更が検出されず、更新が黙って保存されない）。
+            e.Property(d => d.OwnerMappings)
+                .HasConversion(
+                    v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                    v => System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new())
+                .HasColumnType("jsonb")
+                .Metadata.SetValueComparer(new ValueComparer<Dictionary<string, string>>(
+                    (a, b) => System.Text.Json.JsonSerializer.Serialize(a, (System.Text.Json.JsonSerializerOptions?)null) == System.Text.Json.JsonSerializer.Serialize(b, (System.Text.Json.JsonSerializerOptions?)null),
+                    v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null).GetHashCode(), v => new Dictionary<string, string>(v)));
         });
     }
 }

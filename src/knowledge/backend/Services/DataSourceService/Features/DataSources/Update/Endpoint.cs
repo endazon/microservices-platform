@@ -1,4 +1,5 @@
 using DataSourceService.Domain;
+using DataSourceService.Domain.Ports;
 using DataSourceService.Infrastructure.Persistence;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
@@ -17,7 +18,7 @@ internal static class UpdateDataSourceEndpoint
     internal static void Map(RouteGroupBuilder g)
     {
         g.MapPut("/{id:guid}", async (Guid id, UpdateDataSourceRequest req, DataSourceDbContext db,
-            SyncSchedule schedule) =>
+            SyncSchedule schedule, IPlatformUserDirectory userDirectory, CancellationToken ct) =>
         {
             // AI レビュー 🟡（#627）: **省略を受理しない。** PUT は全置換なので「省略 ＝ 空で置換」は
             // 意味論としては筋が通るが、契約が省略を許していると**うっかりで秘密が消える**
@@ -38,7 +39,12 @@ internal static class UpdateDataSourceEndpoint
             if (ConnectionUriPolicy.Validate(req.ConnectionUri, ds.ConnectionUri) is { } uriError)
                 return Results.BadRequest(new { error = uriError });
 
-            ds.Update(req.Name, req.SourceType, req.ConnectionUri, req.Config, req.DefaultAttributes);
+            // FR-05, SC-06, ADR-0074 決定 4 (#1194): 写像先の実在をサーバ側で検証する。
+            if (await OwnerMappingValidation.ValidateAsync(req.OwnerMappings, userDirectory, ct) is { } mapError)
+                return mapError;
+
+            ds.Update(req.Name, req.SourceType, req.ConnectionUri, req.Config, req.DefaultAttributes,
+                req.OwnerMappings);
             await db.SaveChangesAsync();
             return Results.Ok(DataSourceEndpoints.ToResponse(ds, schedule.NextRunAt));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);

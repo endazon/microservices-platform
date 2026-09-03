@@ -15,6 +15,23 @@ public class DataSource
     // 取り込み時に RawDocumentFetched.Attributes へ写像され、下流の fail-closed 検索（IADR-0012）で
     // 文書が機密区分（confidentiality）欠落により除外されるのを防ぐ。
     public Dictionary<string, string> DefaultAttributes { get; private set; } = [];
+
+    // FR-05, UC-04, SC-06, ADR-0036, ADR-0074 決定 1 (#1194): `owner` の解決順②に当たる
+    // **データソース単位の写像表**（ソース側の利用者識別子 → 基盤の利用者識別子）。
+    //
+    // 🔴 **`Config` とも `DefaultAttributes` とも別の器にする。** 既定属性は「指定したときは全置換」の
+    // PATCH 意味論を持っており（`Patch`）、同じ辞書へ混ぜると**片方の更新がもう片方を消す**。
+    //
+    // **値は基盤の `preferred_username` である**（`AuthExtensions` の `NameClaimType`。
+    // `AbacEvaluator` が `${current_user}` へ束縛する値であり、`DocumentBodyIntake.CanWrite` が
+    // `Ordinal` で突き合わせる値でもある）。**Keycloak の内部 ID（UUID）ではない** ——
+    // ID を入れると保存も実在検証も通るのに `owner` として 1 度も一致しない（静かに壊れる）。
+    //
+    // 🔴 **登録・更新の時点で写像先の実在を検証する**（ADR-0074 決定 4）。検証は端点側が
+    // `IPlatformUserDirectory`（SC-17 側の `view-users` の後段）で行い、通らない対は保存しない ——
+    // **誤った写像は偽の所有者を作り、裁量制御が意図しない相手に開く**（09_datasource-connectors）。
+    public Dictionary<string, string> OwnerMappings { get; private set; } = [];
+
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
 
     // FR-01, FR-02, UC-04, SC-06（Q14 / #537）: 同期健全性。**エンティティに持って永続化する**。
@@ -76,7 +93,8 @@ public class DataSource
 
     public static DataSource Create(string name, string sourceType, string connectionUri,
         Dictionary<string, string>? config = null,
-        Dictionary<string, string>? defaultAttributes = null)
+        Dictionary<string, string>? defaultAttributes = null,
+        Dictionary<string, string>? ownerMappings = null)
     {
         return new()
         {
@@ -87,6 +105,9 @@ public class DataSource
             // FR-01, FR-05, #516: 原本には計画が必須と定める属性を必ず付与する。
             // 未指定・空はフェイルセーフ既定値・予約値で補う。
             DefaultAttributes = WithRequiredAttributeFailsafe(defaultAttributes),
+            // FR-05, SC-06, ADR-0074 決定 1 (#1194): 写像表は**補完しない**。
+            // 未指定は「写像が無い」であって、埋めるべき既定値を持たない。
+            OwnerMappings = OwnerMappingTable.Normalize(ownerMappings),
         };
     }
 
@@ -252,9 +273,16 @@ public class DataSource
     // FR-01, UC-04, SC-06（Q16 / #534）: 全置換（PUT）。**Id / CreatedAt / LastSyncedAt / 同期健全性は
     // 変えない** —— Q16 の目的は「削除→再登録が ID と履歴を切る」ことの解消であり、更新で履歴を
     // 巻き戻せてはならない。DefaultAttributes は登録時と同じフェイルセーフを必ず通す（下記 Patch も同様）。
+    //
+    // FR-05, SC-06, ADR-0074 決定 1 (#1194): 🔴 **`ownerMappings` だけは null を「現状維持」にする。**
+    // `config` / `defaultAttributes` の「省略は 400」は**契約の初期からある規約**だが、写像表は
+    // **後から足す項目**である。ここで必須にすると**既存の PUT クライアントが一斉に 400 になる**
+    // （契約の破壊）。400 の目的（送り忘れで消えるのを防ぐ）は現状維持でも同じだけ果たせ、
+    // 明示的に空にしたければ `{}` を送れる。**非対称は意図的である。**
     public void Update(string name, string sourceType, string connectionUri,
         Dictionary<string, string>? config = null,
-        Dictionary<string, string>? defaultAttributes = null)
+        Dictionary<string, string>? defaultAttributes = null,
+        Dictionary<string, string>? ownerMappings = null)
     {
         Name = name;
         SourceType = sourceType;
@@ -264,6 +292,7 @@ public class DataSource
         // IADR-0148 決定 6: 応答のマスク値（***）を書き戻しても本物の秘密を壊さない。
         Config = SecretConfigMask.PreserveMasked(config ?? [], Config);
         DefaultAttributes = WithRequiredAttributeFailsafe(defaultAttributes);
+        if (ownerMappings is not null) OwnerMappings = OwnerMappingTable.Normalize(ownerMappings);
     }
 
     // FR-01, UC-04, SC-06（Q16 / #534）: 部分更新（PATCH）。**null の項目は現状維持**である。
@@ -271,7 +300,8 @@ public class DataSource
     // （往復させると応答のマスク済みの値〔***〕を書き戻して秘密を破壊する）。
     public void Patch(string? name = null, string? sourceType = null, string? connectionUri = null,
         Dictionary<string, string>? config = null,
-        Dictionary<string, string>? defaultAttributes = null)
+        Dictionary<string, string>? defaultAttributes = null,
+        Dictionary<string, string>? ownerMappings = null)
     {
         if (name is not null) Name = name;
         if (sourceType is not null) SourceType = sourceType;
@@ -283,6 +313,31 @@ public class DataSource
         // FR-05: 属性を差し替えるときも必須属性のフェイルセーフを通す。空にできると fail-closed 検索
         // （IADR-0012）から文書が落ちる。省略時（null）は現状維持なので補完も走らせない。
         if (defaultAttributes is not null) DefaultAttributes = WithRequiredAttributeFailsafe(defaultAttributes);
+        // FR-05, SC-06, ADR-0074 決定 1 (#1194): 写像表も**独立に**部分更新できる。
+        // 🔴 **片方だけを送ってももう片方が消えない**のは、器が別だからである
+        // （同じ辞書に混ぜていたら、全置換の意味論により片方の更新が他方を消していた）。
+        if (ownerMappings is not null) OwnerMappings = OwnerMappingTable.Normalize(ownerMappings);
+    }
+
+    // FR-05, UC-04, ADR-0036, ADR-0074 決定 1・4 (#1194): 解決順②。**ソース側の識別子を写像表で引く。**
+    //
+    // 🔴 **当たらなければ null を返す**（＝上書きしない＝`WithRequiredAttributeFailsafe` が
+    // 予約値 `system` を入れる）。**生の識別子をそのまま返さない** —— 計画
+    // 09_datasource-connectors §システム投入経路 は「推測で埋めない」「安全側は『解決しない』」と定め、
+    // ADR-0036 はその帰結（裁量制御が意図しない相手に開く）を根拠として持つ。
+    //
+    // **突合は完全一致（`Ordinal`）である。** 大小文字の畳み込みも部分一致もしない ——
+    // 別名前空間の識別子どうしを実装の裁量で近似すると、それは「推測で埋める」ことに他ならない。
+    //
+    // **①（Keycloak のユーザー検索）は未配備のままでよい**（#1194 やること 5・#752 の `blocked:env`）。
+    // 解決順は保ったまま②だけを埋める。
+    public string? ResolveOwner(string? sourceIdentifier)
+    {
+        if (string.IsNullOrWhiteSpace(sourceIdentifier)) return null;
+        return OwnerMappings.TryGetValue(sourceIdentifier.Trim(), out var owner)
+               && !string.IsNullOrWhiteSpace(owner)
+            ? owner
+            : null;
     }
 
     // FR-01, UC-04, SC-06（Q14 / #537）: 同期失敗を記録し、更新後の連続失敗回数を返す。
