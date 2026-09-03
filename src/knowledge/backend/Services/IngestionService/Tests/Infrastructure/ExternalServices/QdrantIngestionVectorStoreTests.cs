@@ -104,7 +104,7 @@ public class QdrantIngestionVectorStoreTests
         payload["tags"].ListValue.Values.Select(v => v.StringValue).Should().Equal("a", "b");
     }
 
-    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 3:
+    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 3:
     // **本文なしの点だけが `has_body` を持つ。** 既存の点はすべて本文チャンクなので、
     // キーの欠落が「本文あり」を正しく表す（backfill が要らない）。
     [Fact]
@@ -129,7 +129,7 @@ public class QdrantIngestionVectorStoreTests
 
         payload[DocumentBodyPresence.PayloadKey].KindCase.Should().Be(Value.KindOneofCase.BoolValue);
         payload[DocumentBodyPresence.PayloadKey].BoolValue.Should().BeFalse();
-        // 索引テキストは `text` に載る（全文索引をもう 1 対増やさない。[[IADR-0354]] 案 C）。
+        // 索引テキストは `text` に載る（全文索引をもう 1 対増やさない。[[IADR-0358]] 案 C）。
         payload["text"].StringValue.Should().Be("タイトル 経理");
         // FR-05: ABAC 属性はチャンクと同じネスト構造体で載る（判定軸を変えない）。
         payload["attributes"].StructValue.Fields.Should().ContainKey("confidentiality");

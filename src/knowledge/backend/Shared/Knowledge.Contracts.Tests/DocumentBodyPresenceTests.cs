@@ -4,7 +4,7 @@ using Xunit;
 
 namespace Knowledge.Contracts.Tests;
 
-// FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 3:
+// FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 3:
 // 索引テキストから本文抜粋を導く射影。取り込み側と検索側が共有する唯一の点である。
 public class DocumentBodyPresenceTests
 {

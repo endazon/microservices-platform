@@ -225,7 +225,7 @@ public class RagOrchestrator(
         if (selection.ExcludedFromContextChunkIds.Count > 0)
         {
             logger?.LogInformation(
-                // #1193 / [[IADR-0354]] 決定 5: 除外の理由は 2 つになった
+                // #1193 / [[IADR-0358]] 決定 5: 除外の理由は 2 つになった
                 // （ai_input の露出／**本文を持たない文書**）。理由は結果からは区別できないため、
                 // ログの文言でも 2 つあることを示す。
                 "RAG context: {Excluded} of {Total} chunk(s) excluded from the LLM context "

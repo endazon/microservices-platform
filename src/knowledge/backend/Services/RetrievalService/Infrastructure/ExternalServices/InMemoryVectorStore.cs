@@ -53,7 +53,7 @@ public class InMemoryVectorStore : IVectorStore
         return Task.FromResult(results);
     }
 
-    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 3:
+    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 3:
     // **Qdrant 実装と同じ射影を通す唯一の点。**
     //
     // 🔴 `ChunkPayload.Text` は**索引テキスト**であり、突合（全文一致）にはそのまま使うが、

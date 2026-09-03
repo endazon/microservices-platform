@@ -70,7 +70,7 @@ public class RagContextPolicyTests
         selection.ContextChunks.Should().BeSubsetOf(selection.SearchResults);
     }
 
-    // FR-02, SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 5:
+    // FR-02, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 5:
     // **本文を持たない文書は検索結果に残り、コンテキストからは落ちる。**
     // 根拠に使える本文が無い以上、出典にも文脈にもならない —— 入れると `[n] タイトル` だけの
     // 空の根拠が LLM へ渡り、中身を知らない文書について答えることになる。

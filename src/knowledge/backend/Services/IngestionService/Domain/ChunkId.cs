@@ -8,7 +8,7 @@ namespace IngestionService.Domain;
 // 暗号用途ではなく ID 導出のためのハッシュであり MD5 で十分。
 public static class ChunkId
 {
-    // FR-02, FR-03, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 1: メタデータ点（本文なしの文書を
+    // FR-02, FR-03, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 1: メタデータ点（本文なしの文書を
     // 索引へ載せるための 1 点）の索引位置。**本文チャンクの索引は 0 以上しか取らない**ので衝突しない。
     // ペイロードの `chunk_index` にもこの値が入り、「これは本文チャンクではない」が索引を直接読んでも分かる。
     internal const int MetadataChunkIndex = -1;

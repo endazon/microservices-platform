@@ -30,7 +30,7 @@ public class ChunkIdTests
         ChunkId.Derive(Guid.NewGuid(), 0).Should().NotBe(ChunkId.Derive(Guid.NewGuid(), 0));
     }
 
-    // FR-02, FR-03, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 1:
+    // FR-02, FR-03, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 1:
     // メタデータ点（本文なしの文書の 1 点）の ID は決定的で、**どの本文チャンクとも衝突しない**。
     [Fact]
     public void DeriveMetadata_ShouldBeDeterministicAndDistinctFromEveryChunk()

@@ -32,7 +32,7 @@ public interface IIngestionVectorStore
         DateTimeOffset? updatedAt = null,
         CancellationToken ct = default);
 
-    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 1・2:
+    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 1・2:
     // **本文を持たない文書を、メタデータだけで索引へ載せる（1 文書 1 点）。**
     //
     // `indexText` は題名・タグから作った**索引テキスト**であり（`MetadataIndexText`）、本文ではない。

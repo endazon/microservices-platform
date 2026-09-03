@@ -195,7 +195,7 @@ public class QdrantVectorStoreTests
         QdrantVectorStore.ExtractTags(payload).Should().Equal("経理", "規程");
     }
 
-    // ── ADR-0070 決定 4 / #1193 / [[IADR-0354]] 決定 3: 本文の有無（`has_body`）の表現 ──────
+    // ── ADR-0070 決定 4 / #1193 / [[IADR-0358]] 決定 3: 本文の有無（`has_body`）の表現 ──────
 
     // **キーが無ければ「本文あり」**。本項目より前に索引された点はすべて本文チャンクであり、
     // 欠落はそれを正しく表す（backfill を要らなくしている既定そのもの）。

@@ -22,7 +22,7 @@ plan_refs:
   - "ADR-0070 決定 3（テキスト層を持たない PDF は「本文なし」で確定させる。失敗として溜めない）"
   - "planning#509（環流）/ planning#521（反映 PR）"
 related_adrs:
-  - IADR-0354
+  - IADR-0358
   - IADR-0002
   - IADR-0012
   - IADR-0014
@@ -81,7 +81,7 @@ issue: "#1193"
    検索結果に現れる経路そのものが無い。**
 4. `SearchResultDto` は「本文なし」を表す欄を持たない。SC-02 は `result.text` をそのまま抜粋として描く。
 
-## 方針（詳細と根拠は `IADR-0354`）
+## 方針（詳細と根拠は `IADR-0358`）
 
 1. **本文なしの文書には「メタデータ点」を 1 つだけ作る。** 本文由来のチャンク・埋め込みは 0 件のまま。
 2. **索引テキストは題名とタグから作る**（`MetadataIndexText`）。ベクトルは**その索引テキスト**から
@@ -222,7 +222,7 @@ $ curl -s .../collections/knowledge_chunks_deterministic_v1      → points_coun
   `Attributes` / `Tags` / `UpdatedAt` しか運ばず、**取り込み元のパス（`RawDocumentFetched.OriginalPath`）は
   ConversionService で題名（拡張子なしファイル名）へ畳まれてそこで終わる**（実測）。
   ADR-0070 決定 4 が挙げる「パス・データソース」を索引に載せるにはイベント契約の変更が要るため、
-  **本 PR の射程外**とし `IADR-0354` §フォローアップ へ残す。**題名は原本のファイル名であり、
+  **本 PR の射程外**とし `IADR-0358` §フォローアップ へ残す。**題名は原本のファイル名であり、
   決定 4 の「タイトル」は満たす。**
 - **既存の点に `has_body` を後付けしない**（backfill 不要）。**現存する点はすべて本文チャンク**であり、
   キーが無いことは「本文あり」を正しく表す（IADR-0339 が `text_ngram` で backfill を要したのとは

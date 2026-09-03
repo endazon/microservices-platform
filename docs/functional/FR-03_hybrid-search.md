@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-03, FR-02, UC-01]
 adrs: [ADR-0009, ADR-0016, ADR-0070]
-iadrs: [IADR-0012, IADR-0014, IADR-0149, IADR-0150, IADR-0256, IADR-0313, IADR-0318, IADR-0339, IADR-0354]
+iadrs: [IADR-0012, IADR-0014, IADR-0149, IADR-0150, IADR-0256, IADR-0313, IADR-0318, IADR-0339, IADR-0358]
 specs: [20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index]
 issues: [#536, #995, #1116, #1118, #1193]
 -->

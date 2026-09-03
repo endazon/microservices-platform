@@ -50,7 +50,7 @@ public class DocumentUpdatedConsumer(
         // FR-02 chunk: チャンク化
         var chunks = chunker.Chunk(markdownText);
 
-        // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 1:
+        // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 1:
         // 🔴 **チャンクが 0 件になったときが「本文なし」である。** 本文（の分割結果）そのもので判定し、
         // **上流の状態名（変換側の「本文なしで完了」）には依存しない** ——
         // 依存すると、状態名の改名や別経路（直接投入・再正規化）で静かに漏れる。
@@ -116,7 +116,7 @@ public class DocumentUpdatedConsumer(
         logger.LogInformation("Ingestion complete for {Id}: {Count} chunks", ev.DocumentId, chunkCount);
     }
 
-    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 1・2・7:
+    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 1・2・7:
     // 本文なしの文書を**メタデータ点 1 つ**で索引する。
     //
     // ベクトルは**索引テキスト（題名・タグ）から**作る —— 本文由来ではないので

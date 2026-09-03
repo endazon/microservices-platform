@@ -198,7 +198,7 @@ public class QdrantIngestionVectorStore(
             cancellationToken: ct);
     }
 
-    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 1・2:
+    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 1・2:
     // 本文なしの文書のメタデータ点を索引する。**チャンクと同じコレクション・同じペイロード表現**で、
     // 違うのは `has_body = false` と、`text` に入るのが本文ではなく索引テキストであることだけである。
     //
@@ -225,7 +225,7 @@ public class QdrantIngestionVectorStore(
     // FR-02, FR-03, ADR-0070 決定 4, #1193: `hasBody = false` はメタデータ点である
     // （`text` に入るのは本文ではなく索引テキスト）。**`has_body` は本文なしのときだけ書く** ——
     // 既存の点はすべて本文チャンクであり、**キーの欠落が「本文あり」を正しく表す**ので
-    // backfill が要らない（[[IADR-0354]] 決定 3。`DocumentBodyPresence.DefaultWhenAbsent`）。
+    // backfill が要らない（[[IADR-0358]] 決定 3。`DocumentBodyPresence.DefaultWhenAbsent`）。
     internal static Dictionary<string, Value> BuildChunkPayload(Guid documentId, string title,
         string text, int chunkIndex, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,

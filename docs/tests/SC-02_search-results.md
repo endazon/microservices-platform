@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-02, FR-03, FR-05, SC-01, SC-02, SC-03, UC-01]
 adrs: [ADR-0031, ADR-0070]
-iadrs: [IADR-0009, IADR-0014, IADR-0126, IADR-0354]
+iadrs: [IADR-0009, IADR-0014, IADR-0126, IADR-0358]
 specs: [20260804_issue-502_sc01-03-search-flow, 20260903_issue-1193_bodyless-document-metadata-index]
 issues: [#519, #1193]
 -->

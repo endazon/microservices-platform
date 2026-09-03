@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-02, FR-03, FR-05, SC-01, SC-02, SC-03, SC-06, UC-01]
 adrs: [ADR-0070]
-iadrs: [IADR-0009, IADR-0014, IADR-0038, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0135, IADR-0149, IADR-0150, IADR-0354]
+iadrs: [IADR-0009, IADR-0014, IADR-0038, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0135, IADR-0149, IADR-0150, IADR-0358]
 specs: [20260804_issue-502_sc01-03-search-flow, 20260809_issue-642_qdrant-tag-restoration, 20260903_issue-1193_bodyless-document-metadata-index]
 issues: [#446, #490, #502, #519, #531, #532, #534, #536, #538, #553, #642, #1193, planning#197]
 -->

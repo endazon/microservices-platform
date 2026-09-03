@@ -271,7 +271,7 @@ public class DocumentUpdatedConsumerTests
         store.MetadataUpserts.Should().BeEmpty();
     }
 
-    // T-14 (FR-05, ADR-0016, [[IADR-0354]] 決定 7): 本文が無いことを理由に送信制御を緩めない。
+    // T-14 (FR-05, ADR-0016, [[IADR-0358]] 決定 7): 本文が無いことを理由に送信制御を緩めない。
     // 埋め込みが fail-closed で拒否されたらメタデータ点も作らない（題名も文書の内容である）。
     [Fact]
     public async Task Consumer_ShouldSkipMetadataPoint_WhenEmbeddingFailsClosed()

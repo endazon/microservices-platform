@@ -6,7 +6,7 @@ using RetrievalService.Infrastructure.ExternalServices;
 
 namespace RetrievalService.Tests.Infrastructure.ExternalServices;
 
-// FR-02, FR-03, FR-05, SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]]:
+// FR-02, FR-03, FR-05, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]]:
 // **本文を持たない文書（メタデータだけで索引した点）が検索に現れ、抜粋は空で返る**ことを固定する。
 //
 // ADR-0070 決定 4: 「タイトル・パス・データソース・更新日時などのメタデータで FR-03 の検索に載せる」

@@ -321,7 +321,7 @@ public class QdrantVectorStore(
             ChunkId: Guid.Parse(idUuid),
             DocumentId: Guid.TryParse(payload.GetValueOrDefault(DocumentIdKey)?.StringValue, out var docId) ? docId : Guid.Empty,
             DocumentTitle: payload.GetValueOrDefault("document_title")?.StringValue ?? "",
-            // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 3:
+            // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 3:
             // 🔴 **`text` は「索引テキスト」であって「本文」ではない。** 本文なしの文書は
             // 題名由来のメタデータをここへ載せて検索に当てているので、**射影を通して空にする** ——
             // 通さないと、メタデータが本文の抜粋として SC-02 と LLM の文脈へ出る。
@@ -340,7 +340,7 @@ public class QdrantVectorStore(
             // FR-02, SC-02, #1193: 本文の有無を復元する（既定は「本文あり」）。
             HasBody: ExtractHasBody(payload));
 
-    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 3:
+    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 3:
     // 索引ペイロードの `has_body`（真偽）を復元する。
     // **キーが無ければ「本文あり」**である —— 本項目より前に索引された点はすべて本文チャンクであり、
     // 欠落はそれを正しく表す（backfill は要らない）。真偽以外の型で入っていたら既定へ倒す。
@@ -456,7 +456,7 @@ public class QdrantVectorStore(
         if (chunk.UpdatedAt is { } updatedAt)
             payload["updated_at"] = new Value { IntegerValue = updatedAt.ToUnixTimeMilliseconds() };
 
-        // FR-02, SC-02, #1193: 本文なしの点だけが印を持つ（欠落＝本文あり。[[IADR-0354]] 決定 3）。
+        // FR-02, SC-02, #1193: 本文なしの点だけが印を持つ（欠落＝本文あり。[[IADR-0358]] 決定 3）。
         // 取り込み側（`QdrantIngestionVectorStore.BuildChunkPayload`）と**同じキー・同じ書き方**であること。
         if (!chunk.HasBody)
             payload[DocumentBodyPresence.PayloadKey] = new Value { BoolValue = false };

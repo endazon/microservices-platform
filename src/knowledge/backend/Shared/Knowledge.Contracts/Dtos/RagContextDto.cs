@@ -46,7 +46,7 @@ public static class RagContextPolicy
         var excluded = new List<Guid>();
         foreach (var result in searchResults)
         {
-            // FR-02, SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 5:
+            // FR-02, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 5:
             // **本文を持たない文書（メタデータだけで索引した点）は文脈に入れない。**
             // 検索結果には出す（ADR-0070 決定 4 の「結果から除外しない」）が、
             // **根拠に使える本文が無い以上、出典にも文脈にもならない** ——

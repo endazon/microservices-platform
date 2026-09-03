@@ -1,5 +1,5 @@
 ---
-title: IADR-0354 本文なしの文書は「メタデータ点」1 つで索引し、抜粋は空にして返す
+title: IADR-0358 本文なしの文書は「メタデータ点」1 つで索引し、抜粋は空にして返す
 type: impl-adr
 status: Accepted
 related_ids:
@@ -30,7 +30,7 @@ plan_refs:
   - "planning#509（環流）/ planning#521（反映 PR）"
 ---
 
-# IADR-0354: 本文なしの文書のメタデータ索引
+# IADR-0358: 本文なしの文書のメタデータ索引
 
 - 状態: Accepted
 - 日付: 2026-09-03

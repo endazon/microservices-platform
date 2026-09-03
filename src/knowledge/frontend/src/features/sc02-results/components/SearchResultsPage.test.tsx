@@ -51,7 +51,7 @@ const RESPONSE_NOT_REINDEXED = {
   results: [{ ...RESPONSE.results[0], updatedAt: null }],
 };
 
-// #1193 / ADR-0070 決定 4 / [[IADR-0354]]: **本文を持たない文書**（テキスト層の無い PDF 相当）。
+// #1193 / ADR-0070 決定 4 / [[IADR-0358]]: **本文を持たない文書**（テキスト層の無い PDF 相当）。
 // 索引にはメタデータしか無く、`text` は空で `hasBody` が `false` で返る。
 // **本文ありの行と 2 件並べる** —— 本文なしの表示が全件に付かないことを同じ描画で見るためである
 // （陽性対照。issue の受け入れ基準 4）。
@@ -141,7 +141,7 @@ describe('SearchResultsPage (SC-02)', () => {
     expect(within(row).getByText('—')).toBeInTheDocument();
   });
 
-  // SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 6:
+  // SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 6:
   // 本文を持たない文書は**結果から除外されず**、抜粋の位置へ「本文なし（原本を参照）」が出る。
   // **原本の所在を持つのは SC-03（文書詳細）**なので、その表示はそこへの導線になっている。
   it('shows a no-body notice linking to the original for body-less documents', async () => {
