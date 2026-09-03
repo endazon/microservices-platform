@@ -26,10 +26,18 @@ internal static class KnowledgeHealthViewEndpoint
                 .GroupBy(r => r.Indicator, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(gr => gr.Key, gr => gr.Count(), StringComparer.OrdinalIgnoreCase);
 
+            // planning#494 決定 3 (#1186): 現在のしきい値を件数へ併記する。
+            // **観測値とは別の表から引く** —— 件数 0 の指標にも添える必要があるためである。
+            var thresholds = await db.KnowledgeHealthIndicatorThresholds
+                .ToDictionaryAsync(t => t.Indicator, t => t.ThresholdDays,
+                    StringComparer.OrdinalIgnoreCase, ct);
+
             // 規則 4: 件数のみ。**7 指標すべてを 0 埋めして返す**（欠落と 0 を混同させない）。
             var indicators = KnowledgeHealthIndicators.All
                 .Select(name => new KnowledgeHealthIndicatorDto(
-                    name, byIndicator.TryGetValue(name, out var count) ? count : 0))
+                    name,
+                    byIndicator.TryGetValue(name, out var count) ? count : 0,
+                    thresholds.TryGetValue(name, out var days) ? days : null))
                 .ToList();
 
             // 観測時刻は**除外前の全行**から採る —— 「いつの観測か」は集計対象の有無とは別の情報であり、

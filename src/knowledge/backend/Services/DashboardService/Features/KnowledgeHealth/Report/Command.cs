@@ -15,6 +15,13 @@ public record KnowledgeHealthObservationRequest(string SubjectKey, string? DocSc
 // 指標 1 つ分の観測値の**スナップショット置換**。
 // 差分ではなく全量で送る —— 「解消した観測値」を取り消す経路を別に持つと、
 // 取り消し漏れが件数を恒久的に膨らませる。
+//
+// `ThresholdDays` — 生産者が判定に使った日数のしきい値（planning#494 決定 3 / [[IADR-0357]] 決定 4）。
+//   🔴 **観測値ではなく報告 1 通の属性である** —— 件数が 0 のとき観測値は 1 行も無く、
+//   観測値へ乗せるとしきい値も一緒に消える（0 件こそ表示したい状態である）。
+//   **省略可**（しきい値を持たない指標では現れない）。**0 以下は 400** で落とす ——
+//   意味を持たない値を保存すると、画面が「しきい値 0 日」と表示してしまう。
 public record KnowledgeHealthReportRequest(
     string Indicator,
-    IReadOnlyList<KnowledgeHealthObservationRequest> Observations);
+    IReadOnlyList<KnowledgeHealthObservationRequest> Observations,
+    int? ThresholdDays = null);

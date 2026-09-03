@@ -36,19 +36,26 @@ public sealed class HttpKnowledgeHealthReporter(
     public async Task ReportAsync(
         string indicator,
         IReadOnlyList<KnowledgeHealthObservation> observations,
+        int? thresholdDays = null,
         CancellationToken ct = default)
     {
         try
         {
             var client = httpFactory.CreateClient(ClientName);
-            var resp = await client.PostAsJsonAsync(ObservationsPath, new
-            {
-                indicator,
-                // **件数ではなく観測値**を送る（受け手が個人資料の除外を強制できるようにするため)。
-                observations = observations
-                    .Select(o => new { subjectKey = o.SubjectKey, docScope = o.DocScope })
-                    .ToList(),
-            }, ct);
+            // **件数ではなく観測値**を送る（受け手が個人資料の除外を強制できるようにするため)。
+            var payload = observations
+                .Select(o => new { subjectKey = o.SubjectKey, docScope = o.DocScope })
+                .ToList();
+
+            // 🔴 **しきい値を持たない指標では項目そのものを出さない。**
+            // `thresholdDays: null` を常に送ると、受け口は「しきい値が無い」と「しきい値を
+            // 持たない指標」を区別できるが、**本文の形が指標をまたいで揺れる**。
+            // 送るのは持つ指標だけにし、受け口は**欠落＝しきい値なし**として扱う。
+            object body = thresholdDays is { } days
+                ? new { indicator, observations = payload, thresholdDays = days }
+                : new { indicator, observations = payload };
+
+            var resp = await client.PostAsJsonAsync(ObservationsPath, body, ct);
 
             if (resp.IsSuccessStatusCode)
                 return;

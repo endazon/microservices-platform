@@ -8,6 +8,7 @@ using GraphService.Infrastructure.ExternalServices;
 using GraphService.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace GraphService.Tests.Features.KnowledgeHealth.Report;
 
@@ -177,8 +178,9 @@ public sealed class KnowledgeHealthProducerTests
         var ran = await worker.TryRunCycleAsync(TestContext.Current.CancellationToken);
 
         ran.Should().BeTrue();
-        reporter.Calls.Should().ContainSingle()
-            .Which.Indicator.Should().Be(KnowledgeHealthIndicators.OrphanDocuments);
+        // ★［#1186］1 周期で **2 指標**を報告する（孤立文書数と陳腐化文書数）。
+        reporter.Calls.Select(c => c.Indicator).Should().BeEquivalentTo(
+            [KnowledgeHealthIndicators.OrphanDocuments, KnowledgeHealthIndicators.StaleDocuments]);
         lease.Disposed.Should().BeTrue("報告後にリースを解放する（次周期で他レプリカも取得できる）");
     }
 
@@ -197,8 +199,8 @@ public sealed class KnowledgeHealthProducerTests
 
         await worker.TryRunCycleAsync(TestContext.Current.CancellationToken);
 
-        reporter.Calls.Should().ContainSingle()
-            .Which.Observations.Should().BeEmpty("空のスナップショットで受け口の既存行を落とす");
+        reporter.Call(KnowledgeHealthIndicators.OrphanDocuments)
+            .Observations.Should().BeEmpty("空のスナップショットで受け口の既存行を落とす");
     }
 
     // FR-10 (T-42): アダプタが実際に投げるパスと本文を固定する。
@@ -214,7 +216,7 @@ public sealed class KnowledgeHealthProducerTests
 
         await reporter.ReportAsync(KnowledgeHealthIndicators.OrphanDocuments,
             [new KnowledgeHealthObservation("doc-1", GraphDocumentScope.PrivateNote)],
-            TestContext.Current.CancellationToken);
+            ct: TestContext.Current.CancellationToken);
 
         handler.LastPath.Should().Be(HttpKnowledgeHealthReporter.ObservationsPath,
             "★ 受け口 ReportKnowledgeHealthEndpoint.ObservationsPath と 1 バイトでも違えば観測値は届かない");
@@ -255,7 +257,7 @@ public sealed class KnowledgeHealthProducerTests
             NullLogger<HttpKnowledgeHealthReporter>.Instance);
 
         var act = async () => await reporter.ReportAsync(
-            KnowledgeHealthIndicators.OrphanDocuments, [], CancellationToken.None);
+            KnowledgeHealthIndicators.OrphanDocuments, [], ct: CancellationToken.None);
 
         await act.Should().NotThrowAsync();
     }
@@ -276,12 +278,256 @@ public sealed class KnowledgeHealthProducerTests
         await cts.CancelAsync();
 
         var act = async () => await reporter.ReportAsync(
-            KnowledgeHealthIndicators.OrphanDocuments, [], cts.Token);
+            KnowledgeHealthIndicators.OrphanDocuments, [], ct: cts.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
 
+    // ── 6. 陳腐化文書数（stale-documents） ─────────────────────
+    //
+    // FR-10, UC-05, SC-10, planning#494, [[IADR-0357]] (#1186)。
+    // 🔴 **本節の中心は T-48 である** —— タグを付け替えただけの文書が件数から消えないこと。
+    // 計画の言い方では「指標が自分の改善作業で消えるなら、それは測定ではない」。
+
+    // FR-10 (T-45): しきい値より古い本文更新は陳腐である（境界の**外側**）。
+    [Fact]
+    public async Task 本文が181日前に更新された文書は陳腐化として報告される()
+    {
+        var observed = await CollectStaleAsync(Now, doc => doc.WithBodyAgeInDays(181));
+
+        observed.Should().ContainSingle("180 日を超えた本文更新は陳腐である");
+    }
+
+    // FR-10 (T-46): **境界を両側から測る。** しきい値の内側は陳腐ではない。
+    [Fact]
+    public async Task 本文が179日前に更新された文書は陳腐化に含まれない()
+    {
+        var observed = await CollectStaleAsync(Now, doc => doc.WithBodyAgeInDays(179));
+
+        observed.Should().BeEmpty();
+    }
+
+    // FR-10 (T-47): しきい値**ちょうど**は陳腐でない（`<` であって `<=` ではない）。
+    [Fact]
+    public async Task しきい値ちょうどの文書は陳腐化に含まれない()
+    {
+        var observed = await CollectStaleAsync(Now, doc => doc.WithBodyAgeInDays(180));
+
+        observed.Should().BeEmpty("境界は開いている。ちょうどの日を含めると 1 日早く警告が出る");
+    }
+
+    // 🔴 FR-10 (T-48): **本裁定の中心（受け入れ基準 3）。**
+    // 200 日前に本文が更新され、**昨日タグを付け替えただけ**の文書は**依然として陳腐**である。
+    // ここを落とすと、棚卸し作業そのもの（タグ整理）が指標を改善させる。
+    // 判定は `TryApply` を通した**振る舞い**で測る（列へ直接書かない —— 直接書くと、
+    // 前進規則が壊れていても緑になる）。
+    [Fact]
+    public async Task 昨日タグを付け替えただけの古い文書は依然として陳腐化に含まれる()
+    {
+        var observed = await CollectStaleAsync(Now, doc =>
+        {
+            doc.WithBodyAgeInDays(200);
+            // メタデータのみの更新: **同じ指紋**・新しい属性・新しい更新時刻。
+            doc.Node.TryApply("t",
+                new Dictionary<string, string> { ["dept"] = "sales" }, doc.Hash, Now.AddDays(-1));
+        });
+
+        observed.Should().ContainSingle(
+            "🔴 タグ整理で件数が減る指標は測定ではない（planning#494 決定 2）");
+    }
+
+    // FR-10 (T-49): **陽性対照（受け入れ基準 4）。** 昨日**本文を**編集した文書は陳腐でない。
+    // T-48 と対で置く —— これが無いと「常に陳腐と数える実装」でも T-48 は緑になる。
+    [Fact]
+    public async Task 昨日本文を編集した古い文書は陳腐化に含まれない()
+    {
+        var observed = await CollectStaleAsync(Now, doc =>
+        {
+            doc.WithBodyAgeInDays(200);
+            // 本文の編集: **指紋が変わる**。
+            doc.Node.TryApply("t", [], "hash-new", Now.AddDays(-1));
+        });
+
+        observed.Should().BeEmpty();
+    }
+
+    // FR-10 (T-50): 個人資料には文書スコープが添う（受け入れ基準 8）。
+    // **陽性対照つき** —— スコープを持たない文書は巻き添えで落とされない。
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("organization", null)]
+    [InlineData(GraphDocumentScope.PrivateNote, GraphDocumentScope.PrivateNote)]
+    [InlineData("PRIVATE-NOTE", GraphDocumentScope.PrivateNote)]
+    public async Task 陳腐化の観測値には文書スコープが添えられる(string? scope, string? expected)
+    {
+        var attributes = scope is null
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string> { [GraphDocumentScope.Key] = scope };
+
+        var observed = await CollectStaleAsync(Now, doc =>
+        {
+            doc.WithBodyAgeInDays(200);
+            doc.Node.TryApply("t", attributes, doc.Hash, Now.AddDays(-1));
+        });
+
+        observed.Should().ContainSingle().Which.DocScope.Should().Be(expected);
+    }
+
+    // FR-10 (T-51): **0 件でも送る**（受け入れ基準 5）。孤立文書と同じ理由
+    // —— 受け口はスナップショット置換であり、送らないと前回の件数が残る。
+    [Fact]
+    public async Task 陳腐化が0件でも報告を送る()
+    {
+        using var factory = new TestWebApplicationFactory();
+        using var _ = factory.CreateClient();
+        var reporter = new RecordingReporter();
+        var worker = BuildWorker(factory, new GrantingCoordinator(new RecordingLease()), reporter);
+
+        await worker.TryRunCycleAsync(TestContext.Current.CancellationToken);
+
+        var call = reporter.Call(KnowledgeHealthIndicators.StaleDocuments);
+        call.Observations.Should().BeEmpty();
+        call.ThresholdDays.Should().Be(KnowledgeHealthOptions.DefaultStaleDocumentThresholdDays,
+            "🔴 0 件のときこそしきい値が要る（件数だけでは意味が読めない）");
+    }
+
+    // FR-10 (T-52): 構成なしなら **180 日**で判定する（受け入れ基準 7）。
+    [Fact]
+    public async Task 構成が無ければ180日で判定する()
+    {
+        var included = await CollectStaleAsync(Now, doc => doc.WithBodyAgeInDays(181));
+        var excluded = await CollectStaleAsync(Now, doc => doc.WithBodyAgeInDays(179));
+
+        included.Should().ContainSingle();
+        excluded.Should().BeEmpty();
+    }
+
+    // FR-10 (T-53): 構成で **90 日**にすると、判定も報告に添えるしきい値も 90 になる
+    // （受け入れ基準 6。planning#494 決定 3「配備時の構成で変更できる」）。
+    [Fact]
+    public async Task 構成でしきい値を変えると判定も報告値も追随する()
+    {
+        var options = new KnowledgeHealthOptions { StaleDocumentThresholdDays = 90 };
+
+        var observed = await CollectStaleAsync(Now, doc => doc.WithBodyAgeInDays(100), options);
+
+        observed.Should().ContainSingle("90 日を超えているので、既定の 180 日では拾われない文書が陳腐になる");
+
+        using var factory = new TestWebApplicationFactory();
+        using var _ = factory.CreateClient();
+        var reporter = new RecordingReporter();
+        var worker = BuildWorker(
+            factory, new GrantingCoordinator(new RecordingLease()), reporter, options);
+
+        await worker.TryRunCycleAsync(TestContext.Current.CancellationToken);
+
+        reporter.Call(KnowledgeHealthIndicators.StaleDocuments).ThresholdDays.Should().Be(90);
+    }
+
+    // FR-10, [[IADR-0357]] 決定 3 (T-54): 🔴 **不正な構成では既定へ倒す。起動は落とさない。**
+    // 落とすと本サービスの DocumentUpdated / DocumentDeleted 購読ごと止まる（指標の都合で
+    // 購読を止めない）。**報告に添える値も倒した後の 180 になる** —— 画面へ嘘の数字を出さない。
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task しきい値の構成が不正なら既定へ倒し報告値も既定になる(int configured)
+    {
+        var options = new KnowledgeHealthOptions { StaleDocumentThresholdDays = configured };
+        using var factory = new TestWebApplicationFactory();
+        using var _ = factory.CreateClient();
+        var reporter = new RecordingReporter();
+        var worker = BuildWorker(
+            factory, new GrantingCoordinator(new RecordingLease()), reporter, options);
+
+        await worker.TryRunCycleAsync(TestContext.Current.CancellationToken);
+
+        reporter.Call(KnowledgeHealthIndicators.StaleDocuments).ThresholdDays
+            .Should().Be(KnowledgeHealthOptions.DefaultStaleDocumentThresholdDays);
+    }
+
+    // FR-10 (T-55): 送出の面。**しきい値を持つ指標だけ本文に `thresholdDays` が現れる。**
+    // 型ではなく綴りが噛み合っている必要がある（匿名オブジェクトは綴り違いを黙って通す）。
+    [Fact]
+    public async Task 陳腐化の送出本文にはしきい値が現れる()
+    {
+        var handler = new FakeIngressHandler();
+        var reporter = new HttpKnowledgeHealthReporter(
+            new SingleClientHttpClientFactory(handler),
+            NullLogger<HttpKnowledgeHealthReporter>.Instance);
+
+        await reporter.ReportAsync(KnowledgeHealthIndicators.StaleDocuments,
+            [new KnowledgeHealthObservation("doc-1", null)], 180,
+            TestContext.Current.CancellationToken);
+
+        using var body = JsonDocument.Parse(handler.LastBody!);
+        body.RootElement.EnumerateObject().Select(p => p.Name)
+            .Should().BeEquivalentTo(["indicator", "observations", "thresholdDays"], "3 項目ちょうど");
+        body.RootElement.GetProperty("thresholdDays").GetInt32().Should().Be(180);
+    }
+
+    // FR-10 (T-56): **陰性対照。** しきい値を持たない指標の本文は 2 項目のままである
+    // （受け口は欠落を「しきい値なし」として扱う）。
+    [Fact]
+    public async Task しきい値を渡さない報告の本文は2項目のままである()
+    {
+        var handler = new FakeIngressHandler();
+        var reporter = new HttpKnowledgeHealthReporter(
+            new SingleClientHttpClientFactory(handler),
+            NullLogger<HttpKnowledgeHealthReporter>.Instance);
+
+        await reporter.ReportAsync(KnowledgeHealthIndicators.OrphanDocuments, [],
+            ct: TestContext.Current.CancellationToken);
+
+        using var body = JsonDocument.Parse(handler.LastBody!);
+        body.RootElement.EnumerateObject().Select(p => p.Name)
+            .Should().BeEquivalentTo(["indicator", "observations"]);
+    }
+
     // ── 器 ─────────────────────────────────────────────────────────────────
+
+    // 陳腐化の収集を 1 回だけ決定的に回す。
+    //
+    // 🔴 **`BodyUpdatedAt` へ直接書かない。** 種を播くのも更新するのも
+    // `GraphDocument.Create` / `TryApply` を通す —— 列へ直接書くと、前進規則が壊れていても
+    // テストが緑になる（測っているのが実装ではなく種になる）。
+    private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-09-03T00:00:00Z");
+
+    private sealed class StaleSeed(DateTimeOffset now)
+    {
+        public GraphDocument Node { get; private set; } = default!;
+
+        public string Hash => "hash-0";
+
+        // 本文の更新が `days` 日前だった文書を作る。
+        public void WithBodyAgeInDays(int days)
+            => Node = GraphDocument.Create(
+                Guid.NewGuid(), "t", [], Hash, now.AddDays(-days));
+    }
+
+    private static async Task<IReadOnlyList<KnowledgeHealthObservation>> CollectStaleAsync(
+        DateTimeOffset now,
+        Action<StaleSeed> arrange,
+        KnowledgeHealthOptions? options = null)
+    {
+        var opts = options ?? new KnowledgeHealthOptions();
+        using var factory = new TestWebApplicationFactory();
+        using var _ = factory.CreateClient();
+
+        var seed = new StaleSeed(now);
+        arrange(seed);
+        await SeedAsync(factory, db => db.Documents.Add(seed.Node));
+
+        using var scope = factory.Services.CreateScope();
+        var collector = new KnowledgeHealthCollector(
+            scope.ServiceProvider.GetRequiredService<GraphDbContext>(),
+            new RecordingReporter(),
+            Options.Create(opts),
+            new FixedClock(now),
+            NullLogger<KnowledgeHealthCollector>.Instance);
+
+        return await collector.CollectStaleDocumentsAsync(
+            opts.EffectiveStaleDocumentThresholdDays, TestContext.Current.CancellationToken);
+    }
 
     private static async Task<IReadOnlyList<KnowledgeHealthObservation>> CollectAsync(
         TestWebApplicationFactory factory)
@@ -315,20 +561,26 @@ public sealed class KnowledgeHealthProducerTests
     private static KnowledgeHealthHostedService BuildWorker(
         TestWebApplicationFactory factory,
         IKnowledgeHealthLeaseCoordinator coordinator,
-        IKnowledgeHealthReporter reporter) =>
+        IKnowledgeHealthReporter reporter,
+        KnowledgeHealthOptions? options = null,
+        TimeProvider? clock = null) =>
         new(
             new ReporterOverridingScopeFactory(
-                factory.Services.GetRequiredService<IServiceScopeFactory>(), reporter),
+                factory.Services.GetRequiredService<IServiceScopeFactory>(), reporter,
+                options ?? new KnowledgeHealthOptions(), clock ?? TimeProvider.System),
             coordinator,
             NullLogger<KnowledgeHealthHostedService>.Instance);
 
-    // 収集は実 DbContext で回しつつ、送出だけを差し替える。
+    // 収集は実 DbContext で回しつつ、送出・構成・時計だけを差し替える。
     private sealed class ReporterOverridingScopeFactory(
-        IServiceScopeFactory inner, IKnowledgeHealthReporter reporter) : IServiceScopeFactory
+        IServiceScopeFactory inner, IKnowledgeHealthReporter reporter,
+        KnowledgeHealthOptions options, TimeProvider clock) : IServiceScopeFactory
     {
-        public IServiceScope CreateScope() => new Scope(inner.CreateScope(), reporter);
+        public IServiceScope CreateScope() => new Scope(inner.CreateScope(), reporter, options, clock);
 
-        private sealed class Scope(IServiceScope inner, IKnowledgeHealthReporter reporter)
+        private sealed class Scope(
+            IServiceScope inner, IKnowledgeHealthReporter reporter,
+            KnowledgeHealthOptions options, TimeProvider clock)
             : IServiceScope, IAsyncDisposable, IServiceProvider
         {
             public IServiceProvider ServiceProvider => this;
@@ -339,6 +591,8 @@ public sealed class KnowledgeHealthProducerTests
                     return new KnowledgeHealthCollector(
                         inner.ServiceProvider.GetRequiredService<GraphDbContext>(),
                         reporter,
+                        Options.Create(options),
+                        clock,
                         NullLogger<KnowledgeHealthCollector>.Instance);
                 return inner.ServiceProvider.GetService(serviceType);
             }
@@ -353,17 +607,27 @@ public sealed class KnowledgeHealthProducerTests
         }
     }
 
+    // 陳腐化の判定を決定的に測るための時計（GraphDocumentSyncConsumerTests と同じ最小実装）。
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
     private sealed record ReportCall(
-        string Indicator, IReadOnlyList<KnowledgeHealthObservation> Observations);
+        string Indicator, IReadOnlyList<KnowledgeHealthObservation> Observations, int? ThresholdDays);
 
     private sealed class RecordingReporter : IKnowledgeHealthReporter
     {
         public List<ReportCall> Calls { get; } = [];
 
+        public ReportCall Call(string indicator) =>
+            Calls.Single(c => c.Indicator == indicator);
+
         public Task ReportAsync(string indicator,
-            IReadOnlyList<KnowledgeHealthObservation> observations, CancellationToken ct = default)
+            IReadOnlyList<KnowledgeHealthObservation> observations,
+            int? thresholdDays = null, CancellationToken ct = default)
         {
-            Calls.Add(new ReportCall(indicator, observations));
+            Calls.Add(new ReportCall(indicator, observations, thresholdDays));
             return Task.CompletedTask;
         }
     }
