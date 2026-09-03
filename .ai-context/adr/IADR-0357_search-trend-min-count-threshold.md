@@ -1,5 +1,5 @@
 ---
-title: IADR-0354 検索傾向の出現件数の下限は封筒 DTO が運び、画面でも同じ下限でふるう
+title: IADR-0357 検索傾向の出現件数の下限は封筒 DTO が運び、画面でも同じ下限でふるう
 type: impl-adr
 status: Accepted
 related_ids:
@@ -26,7 +26,7 @@ plan_refs:
   - "planning#514（環流・裁定 2026-09-03） / planning#525（計画 PR）"
 ---
 
-# IADR-0354: 検索傾向の出現件数しきい値の運び方
+# IADR-0357: 検索傾向の出現件数しきい値の運び方
 
 - 状態: Accepted
 - 日付: 2026-09-03

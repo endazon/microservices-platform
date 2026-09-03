@@ -9,7 +9,7 @@ namespace DashboardService.Features.Dashboard.Summary;
 // FR-10: 利用側サマリ（総件数・利用状況・検索傾向）を 1 応答で返す。
 // 回答品質は BFF が FeedbackService から付加して DashboardSummaryDto を組み立てる。
 //
-// 🔴 **検索傾向のしきい値は封筒（DashboardUsageDto）が運ぶ**（ADR-0071 決定 2 / [[IADR-0354]] 決定 2）。
+// 🔴 **検索傾向のしきい値は封筒（DashboardUsageDto）が運ぶ**（ADR-0071 決定 2 / [[IADR-0357]] 決定 2）。
 // **検索語の行に持たせない** —— 行はしきい値で伏せた結果として **0 件になり得る**。
 // 0 件はしきい値の効果が最も強く出ている状態であり、そこで併記が消えるのは本末転倒である。
 internal static class DashboardSummaryEndpoint

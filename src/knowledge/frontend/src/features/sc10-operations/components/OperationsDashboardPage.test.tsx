@@ -206,7 +206,7 @@ describe('OperationsDashboardPage (SC-10)', () => {
     expect(screen.getByText('3 件以上検索された語のみを表示します。')).toBeInTheDocument();
   });
 
-  // ★ 🔴 **稼働 k3s で実測した事故の再現**（#1197 / [[IADR-0354]] 決定 3 の追記）。
+  // ★ 🔴 **稼働 k3s で実測した事故の再現**（#1197 / [[IADR-0357]] 決定 3 の追記）。
   //
   // しきい値を知らない**旧 BFF** が後段に居ると、応答 JSON に `searchTermMinCount` が**無い**
   // （生成型は `number` と言うが実体は `undefined`）。`count >= undefined` は**全件 false** であり、

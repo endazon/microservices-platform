@@ -305,7 +305,7 @@ function SearchTrendTable({ terms, minCount }: { terms: SearchTrendDto[]; minCou
     ],
     [t],
   );
-  // 🔴 **項目が届かない場合を 0 へ倒す**（[[IADR-0354]] 決定 3 の 2026-09-03 追記）。
+  // 🔴 **項目が届かない場合を 0 へ倒す**（[[IADR-0357]] 決定 3 の 2026-09-03 追記）。
   //
   // 契約上 `searchTermMinCount` は必須だが、**しきい値を知らない旧 BFF が後段に居る配備**
   // （ローリング更新の最中）では **JSON に項目そのものが無く**、生成型が `number` と言っていても

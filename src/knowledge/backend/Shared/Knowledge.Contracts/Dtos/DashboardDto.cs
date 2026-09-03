@@ -26,7 +26,7 @@ public record UsagePointDto(DateOnly Date, string EventType, int Count);
 
 // FR-10: 検索傾向の 1 点（検索語 × 件数）。よく検索される語の可視化に用いる。
 //
-// 🔴 **しきい値をここへ持たせない**（ADR-0071 決定 2 / [[IADR-0354]] 決定 2）——
+// 🔴 **しきい値をここへ持たせない**（ADR-0071 決定 2 / [[IADR-0357]] 決定 2）——
 // **しきい値で伏せた結果としてこの行は 0 件になり得る**。0 件はしきい値の効果が最も強く出た状態であり、
 // そこで併記が消えるのは本末転倒である。しきい値は下の封筒 2 つが運ぶ。
 public record SearchTrendDto(string Term, int Count);

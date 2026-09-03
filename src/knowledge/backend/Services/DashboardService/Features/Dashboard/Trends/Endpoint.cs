@@ -7,7 +7,7 @@ namespace DashboardService.Features.Dashboard.Trends;
 
 // FR-10: 検索傾向（よく検索される語の上位）。
 //
-// **応答は配列のままである**（ADR-0071 決定 2 のしきい値併記は封筒 DTO 側が担う。[[IADR-0354]] 決定 2）。
+// **応答は配列のままである**（ADR-0071 決定 2 のしきい値併記は封筒 DTO 側が担う。[[IADR-0357]] 決定 2）。
 // 包み直すと `GET /dashboard/trends` の応答の形が変わり**破壊的変更**になるが、
 // 併記が要るのは画面であり、画面が読むのは `/bff/dashboard/summary` である。
 // **ふるい落とし自体はここにも等しく効く**（下の `minCount`）。

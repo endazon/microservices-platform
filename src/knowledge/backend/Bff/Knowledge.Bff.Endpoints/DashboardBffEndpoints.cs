@@ -77,7 +77,7 @@ public static class DashboardBffEndpoints
             // 🔴 **BFF で既定値を補わない。** 補うと、後段が実際に使った値と画面の表示が食い違い、
             // **見えている語と併記された数字が矛盾する**（画面が嘘をつく）。
             // 後段が本項目を持たない旧版なら 0 が入り、画面のふるい落としは素通りになる ——
-            // それが安全側である（[[IADR-0354]] 決定 3）。
+            // それが安全側である（[[IADR-0357]] 決定 3）。
             var summary = new DashboardSummaryDto(
                 usage.TotalSearches,
                 usage.TotalAnswers,
