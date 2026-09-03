@@ -43,7 +43,7 @@ spec:
     # 公開するのは **/private-notes/sync/ 配下だけ**である。前置は末尾スラッシュ込みなので
     # /private-notes（一覧）・/private-notes/devices（端末登録）・/private-notes/quotas/*・/documents は
     # 当たらず、catch-all → SPA へ落ちる（**404 ではなく index.html の 200 text/html** である。frontend の
-    # nginx が history fallback を返すためで、「API に届いていない」ことは port-forward 直叩きの 401 と
+    # Caddy が history fallback を返すためで、「API に届いていない」ことは port-forward 直叩きの 401 と
     # 対で確かめる）。08_data-egress-policy 許容条件 2「資格情報のスコープ限定」を経路の側でも守る形である。
     #
     # エッジで JWT 検証は要求しない。資格情報は不透明な同期トークン（Bearer）で、DocumentService が
@@ -57,7 +57,7 @@ spec:
             host: document-service.microservices-platform.svc.cluster.local
             port:
               number: 8080
-    # catch-all → SPA(frontend)。history fallback は frontend pod の nginx が担う。
+    # catch-all → SPA(frontend)。history fallback は frontend pod の Caddy が担う（#1135）。
     - match:
         - uri: { prefix: / }
       route:

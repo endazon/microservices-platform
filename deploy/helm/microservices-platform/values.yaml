@@ -826,8 +826,9 @@ wikijs:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: 1000m, memory: 1Gi }
 
-# FR-14, IADR-0056, IADR-0078 (#313): SPA(frontend)。platform/frontend の nginx イメージ（静的配信＋/bff
-# プロキシ＋実行時 config.js 注入）を k8s で配信する。汎用 services ループに載せず専用 template
+# FR-14, IADR-0056, IADR-0078 (#313), IADR-0361 (#1135): SPA(frontend)。platform/frontend の **Caddy**
+# イメージ（静的配信＋/bff プロキシ＋実行時 config.js 注入。ADR-0021 の指定）を k8s で配信する。
+# 汎用 services ループに載せず専用 template
 # (templates/frontend.yaml) で描画する（wikijs/minio と同じ非 .NET パターン）。イメージは
 # global.image.registry を接頭辞に使う（本番=harbor、経路B=k3d-local）。#275 MAPPING に登録済み。
 # 外部からの入口はエッジ（edge ブロックの VirtualService catch-all → frontend-service）。
@@ -836,11 +837,12 @@ frontend:
   replicas: 1
   image: microservices-platform/frontend
   tag: latest
-  # nginx 待受ポート（src/platform/frontend/Dockerfile の EXPOSE 8080）。
+  # Caddy 待受ポート（src/platform/frontend/Dockerfile の EXPOSE 8080 / Caddyfile の :8080）。
+  # #1135 の nginx → Caddy 移送でも**ポートは変えていない**（compose の 3100:8080 と probe が依存する）。
   port: 8080
-  # nginx /bff プロキシの上流（in-cluster BFF）。edge.frontend/edge.bff と同じ bff-service を指す。
+  # Caddy の /bff プロキシ上流（in-cluster BFF）。edge.frontend/edge.bff と同じ bff-service を指す。
   bffUpstream: http://bff-service:8080
-  # ブラウザから見た BFF ベース URL（同一オリジンの nginx プロキシ）。compose と同値。
+  # ブラウザから見た BFF ベース URL（同一オリジンの Caddy プロキシ）。compose と同値。
   bffBaseUrl: /bff
   oidc:
     # ブラウザが到達する OIDC issuer。本番は外部公開する Keycloak の URL（エッジ host 経由なら IADR-0076
@@ -849,7 +851,7 @@ frontend:
     authority: http://keycloak:8080/realms/platform
     clientId: platform-spa
   # 任意の追加 env（config.js の GRAFANA_URL / JAEGER_URL / KIALI_URL / WIKI_BASE_URL 等）。既定は空で、
-  # 40-render-config.sh が未設定を空文字にフォールバックし SC-10 の外部ツール導線を画面に出さない。compose は
+  # docker-entrypoint.sh が未設定を空文字にフォールバックし SC-10 の外部ツール導線を画面に出さない。compose は
   # dev の Grafana(3000) を直挿しするが、k8s は可観測性/外部 UI を経路B の opt-in オーバーレイ（ADR-0006・
   # IADR-0077）に委ねる方針のため既定で未配線とする（配線したい環境は extraEnv で URL を供給する。IADR-0078）。
   extraEnv: []

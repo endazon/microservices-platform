@@ -1,0 +1,69 @@
+# Issue #1135, ADR-0021 / IADR-0361: フロントエンド配信 + BFF プロキシ（Caddy）。
+# 計画 ADR-0021 は SPA の静的配信 Web サーバを Caddy と定める（#442 の残作業。#782 で入口だけが
+# Istio Ingress Gateway へ移り、配信の側は nginx のままだった）。
+#
+# 🔴 **このファイルは「静的ファイルを配るだけ」ではない。** 3 つの契約を同時に担う:
+#   1. /bff/* を ${BFF_UPSTREAM} へ **元 URI 無改変**でプロキシする（IADR-0076 決定 1）
+#   2. 実行時 config（config.js）を no-store で返す（接続先をビルドへ焼き込まない。CLAUDE.md）
+#   3. SPA の history fallback（未知パス → index.html。TanStack Router のクライアントルーティング）
+# どれか 1 つでも落とすと、画面は一見動いたまま経路だけが静かに壊れる。
+{
+	# 外部 TLS は入口の Istio Ingress Gateway が終端する（ADR-0021「TLS の分担」＝二重終端にしない）。
+	# サイト指定が :8080（host 名なし）なので Caddy は本来 ACME を試みないが、明示して事故を防ぐ。
+	auto_https off
+	# 管理 API（既定 localhost:2019）は使わないので開けない。露出面を増やさない。
+	admin off
+}
+
+# ポートは nginx 時代と同じ 8080（compose の 3100:8080・chart の frontend.port・probe が依存する）。
+:8080 {
+	root * /usr/share/caddy
+
+	# ADR-0021 が Caddy を選んだ理由の 1 つ。nginx 側は無圧縮だったので改善方向の差分である。
+	# brotli は Caddy v2 の標準配布バイナリに含まれない（gzip / zstd のみ）。
+	encode zstd gzip
+
+	# SPA を壊さない範囲のセキュリティヘッダに限る。**CSP はここに入れない** ——
+	# 実測の裏付けなしに入れると画面が静かに欠ける（別 issue の仕事）。
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		X-Frame-Options DENY
+		# 配信サーバの版を名乗らない。
+		-Server
+	}
+
+	# 手動スモーク・切り分け用の口。**k8s の probe はここを使わない** ——
+	# readiness は /config.js のままである（IADR-0078 決定 2。readiness の意味は
+	# 「実行時 config の生成が完了した」ことであり、/healthz はそれを確かめられない）。
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	# 実行時 config は常に最新を返す（キャッシュしない）。docker-entrypoint.sh が起動時に描画する。
+	# ファイルが無ければ file_server が 404 を返す＝ readiness が落ちる（生成失敗の fail-safe）。
+	handle /config.js {
+		header Cache-Control "no-store"
+		file_server
+	}
+
+	# 🔴 **handle であって handle_path ではない。** handle_path は一致した前置を剥がす。剥がすと
+	# IADR-0076 決定 1 の「rewrite を張らない」契約が破れ、/bff を剥がさず受ける BFF と食い違う
+	# （エッジ VirtualService も同じ理由で rewrite を張っていない＝compose 経路とバイト等価）。
+	#
+	# {$BFF_UPSTREAM} は Caddy が設定読み込み時に環境変数から展開する（nginx の envsubst 相当が不要）。
+	# Host は reverse_proxy が既定で元のまま上流へ渡す（nginx の proxy_set_header Host $host と同じ）。
+	# X-Forwarded-For / X-Forwarded-Proto も既定で付く。X-Real-IP は付かないが backend は読んでいない
+	# （git grep -ci "X-Real-IP\|X-Forwarded" -- src/platform/backend が 0 件）。
+	handle /bff/* {
+		reverse_proxy {$BFF_UPSTREAM}
+	}
+
+	# 残り全部。実ファイルがあればそれを、無ければ index.html を返す（history fallback）。
+	# エッジ（Istio VirtualService）の catch-all が非 /bff を全部ここへ流すため、**未知パスが
+	# 404 ではなく index.html の 200 text/html になる**のはこの 1 行の帰結である（IADR-0348 §実測）。
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}
