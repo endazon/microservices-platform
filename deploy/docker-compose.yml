@@ -292,6 +292,9 @@ services:
       # FR-01, IADR-0051: 実コネクタが取得した原本を MinIO へ格納する（書き込み側）。未設定時は縮退。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=datasource_svc;Username=kp;Password=kp
+      # FR-05, UC-04, SC-06, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証の後段
+      # （AuthorizationService の /authz/users。SC-17 側の `view-users` を持つ経路）。
+      Services__AuthorizationService: http://authorization-service:8080
     depends_on:
       postgres:
         condition: service_healthy

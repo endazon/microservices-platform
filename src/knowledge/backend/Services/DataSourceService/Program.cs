@@ -76,6 +76,22 @@ builder.Host.UseWolverine(opts =>
 // データソースコネクタは実行時データ（DB）のため静的申告の対象外。到達可能性とトポロジを与えるため存在申告する。
 builder.Services.AddPlatformIntrospection("datasource-service", new PipelineOptions());
 
+// FR-05, UC-04, SC-06, SC-17, ADR-0064 決定 4, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証。
+// 後段は AuthorizationService の /authz/users（`view-users` を持つ機密クライアント。IADR-0329）である。
+//
+// 🔴 **既定を 8080 にする。** 先行 3 サービス（Graph / Wiki / AiAnalysis）のコード既定は
+// `:5005` だが、**compose も k8s も 8080 で上書きしており、既定値のほうが古い**。
+// 新規に口を開く側で古い既定を写すと、配備の上書き漏れが「名前解決は通るがポートが無い」形で
+// 沈黙する（values.yaml の bff に同型の実測が記録されている）。
+builder.Services.AddHttpClient(
+    DataSourceService.Infrastructure.ExternalServices.AuthorizationServiceUserDirectory.HttpClientName,
+    c => c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
+        ?? "http://authorization-service:8080"));
+// 呼び出し元の Authorization を後段へ転送するために要る（サービス専用の資格情報を新設しない）。
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IPlatformUserDirectory,
+    DataSourceService.Infrastructure.ExternalServices.AuthorizationServiceUserDirectory>();
+
 // FR-01, UC-04, IADR-0051: 実データソースコネクタと同期基盤。
 // オブジェクトストレージ（原本格納。未設定時は Null クライアントで縮退）。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);

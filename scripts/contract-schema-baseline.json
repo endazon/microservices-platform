@@ -620,6 +620,12 @@
             "required": true,
             "position": 0
           },
+          "OwnerMappings": {
+            "source": "positional",
+            "type": "Dictionary<string,string>?",
+            "required": false,
+            "position": 5
+          },
           "SourceType": {
             "source": "positional",
             "type": "string",
@@ -857,6 +863,12 @@
             "type": "DateTimeOffset?",
             "required": false,
             "position": 9
+          },
+          "OwnerMappings": {
+            "source": "positional",
+            "type": "Dictionary<string,string>?",
+            "required": false,
+            "position": 14
           },
           "RetryLimit": {
             "source": "positional",
@@ -1458,6 +1470,12 @@
             "required": false,
             "position": 0
           },
+          "OwnerMappings": {
+            "source": "positional",
+            "type": "Dictionary<string,string>?",
+            "required": false,
+            "position": 5
+          },
           "SourceType": {
             "source": "positional",
             "type": "string?",
@@ -2057,6 +2075,12 @@
             "type": "string",
             "required": true,
             "position": 0
+          },
+          "OwnerMappings": {
+            "source": "positional",
+            "type": "Dictionary<string,string>?",
+            "required": false,
+            "position": 5
           },
           "SourceType": {
             "source": "positional",

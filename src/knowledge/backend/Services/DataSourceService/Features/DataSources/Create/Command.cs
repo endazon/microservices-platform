@@ -9,4 +9,7 @@ public record CreateDataSourceRequest(
     string ConnectionUri,
     Dictionary<string, string>? Config,
     // FR-05: 原本へ付与する既定 ABAC 文書属性（confidentiality 等）。未指定時は internal を補完。
-    Dictionary<string, string>? DefaultAttributes = null);
+    Dictionary<string, string>? DefaultAttributes = null,
+    // FR-05, SC-06, ADR-0074 決定 1 (#1194): `owner` の写像表（ソース側の識別子 → 基盤の利用者識別子）。
+    // **既定属性とは別の器である**（混ぜると片方の更新がもう片方を消す）。未指定は空。
+    Dictionary<string, string>? OwnerMappings = null);

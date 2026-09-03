@@ -110,6 +110,10 @@ msgstr "→ 取り込み・Wiki同期をトリガ"
 msgid "＋ ソース登録"
 msgstr "＋ ソース登録"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
+msgid "＋ 写像を追加"
+msgstr "＋ 写像を追加"
+
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "＋ 新規登録"
 msgstr "＋ 新規登録"
@@ -585,6 +589,10 @@ msgstr "ソース"
 msgid "ソースの登録・無効化は管理者のみ実行できます"
 msgstr "ソースの登録・無効化は管理者のみ実行できます"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
+msgid "ソース側の利用者 {rowNumber}"
+msgstr "ソース側の利用者 {rowNumber}"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "その他の型（implements / refines / depends-on / part-of）は細い実線で表示"
 msgstr "その他の型（implements / refines / depends-on / part-of）は細い実線で表示"
@@ -1028,6 +1036,10 @@ msgstr "作成する"
 msgid "使用件数"
 msgstr "使用件数"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
+msgid "例: hr_system\\tanaka"
+msgstr "例: hr_system\\tanaka"
+
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "例: Q1の営業報告を部門別に比較し、共通する失注要因を抽出して"
 msgstr "例: Q1の営業報告を部門別に比較し、共通する失注要因を抽出して"
@@ -1035,6 +1047,10 @@ msgstr "例: Q1の営業報告を部門別に比較し、共通する失注要�
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "例: smb://fs01/share/規程集"
 msgstr "例: smb://fs01/share/規程集"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
+msgid "例: tanaka"
+msgstr "例: tanaka"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "例: 経費精算"
@@ -1253,6 +1269,14 @@ msgstr "再試行中（{failures}/{limit}）"
 msgid "最終同期"
 msgstr "最終同期"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
+msgid "写像に無いソース側の利用者は、予約値 {UNRESOLVED_OWNER} になります。基盤の利用者は ログイン名で指定してください（存在しない利用者は保存できません）。"
+msgstr "写像に無いソース側の利用者は、予約値 {UNRESOLVED_OWNER} になります。基盤の利用者は ログイン名で指定してください（存在しない利用者は保存できません）。"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
+msgid "写像を削除 {rowNumber}"
+msgstr "写像を削除 {rowNumber}"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "凡例（アイコンと形で区別・色は補助）"
 msgstr "凡例（アイコンと形で区別・色は補助）"
@@ -1340,6 +1364,7 @@ msgid "利用者一覧を取得できませんでした。"
 msgstr "利用者一覧を取得できませんでした。"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
@@ -1498,6 +1523,10 @@ msgstr "図を読み込み中…"
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "型不明"
 msgstr "型不明"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
+msgid "基盤の利用者 {rowNumber}"
+msgstr "基盤の利用者 {rowNumber}"
 
 #: knowledge/frontend/src/features/sc07-conversions/routes/sc07ConversionsRoute.tsx
 msgid "変換ジョブ"
@@ -1710,6 +1739,10 @@ msgstr "情報"
 #: platform/frontend/src/components/ui/notifications.tsx
 msgid "成功"
 msgstr "成功"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
+msgid "所有者の写像（ソース側の利用者 → 基盤の利用者）"
+msgstr "所有者の写像（ソース側の利用者 → 基盤の利用者）"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "手動同期"

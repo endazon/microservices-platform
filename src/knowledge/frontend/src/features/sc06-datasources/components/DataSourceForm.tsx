@@ -22,6 +22,7 @@ import {
 } from '../../../lib/abac';
 import { i18n } from '@foundation/i18n';
 import { SOURCE_TYPES, sourceTypeLabel } from '../types/syncState';
+import { OwnerMappingRows, useOwnerMappingRows } from './OwnerMappingRows';
 import type { CreateDataSourceRequest } from '@foundation/api/generated/bff.schemas';
 
 // SC-06, UC-04 基本 1, FR-01: データソース登録フォーム
@@ -55,6 +56,10 @@ export function DataSourceForm({
   // **初期値は空（未指定）である。** 終端の `active` は**指定が無いときだけ**効くと計画が定めるため、
   // `DEFAULT_LIFECYCLE` を初期選択にすると「明示的に active を指定した」と「指定しなかった」の区別が消える。
   const [lifecycle, setLifecycle] = useState('');
+  // FR-05, UC-04, SC-06, ADR-0074 決定 1 (#1194): `owner` の写像表。計画 09_datasource-connectors
+  // §システム投入経路の**解決順②**（データソース単位の写像表）を開ける。
+  // ①（Keycloak のユーザー検索）は未配備であり、本欄はそれを待たずに②だけを埋める。
+  const ownerMap = useOwnerMappingRows();
 
   const canSubmit = name.trim().length > 0 && connectionUri.trim().length > 0 && !submitting;
 
@@ -82,6 +87,10 @@ export function DataSourceForm({
             // `department` の予約値と違って**終端が正規の値**なので、値だけでは「指定しなかった」と
             // 「`active` を選んだ」を見分けられない。**キーの有無だけが区別を持つ。**
             const trimmedDepartment = department.trim();
+            // FR-05, UC-04, SC-06（#1194）: 写像表も**空なら送らない**（同じ規約）。
+            // 🔴 **`defaultAttributes` とは別のキーで送る。** 既定属性は全置換の意味論を持つため、
+            // 同じ辞書へ入れると片方の更新がもう片方を消す（ADR-0074 決定 1 が器を分けた理由）。
+            const ownerMappings = ownerMap.mappings();
             onSubmit({
               name: name.trim(),
               sourceType,
@@ -91,6 +100,7 @@ export function DataSourceForm({
                 ...(trimmedDepartment ? { [DEPARTMENT_KEY]: trimmedDepartment } : {}),
                 ...(lifecycle ? { [LIFECYCLE_KEY]: lifecycle } : {}),
               },
+              ...(Object.keys(ownerMappings).length > 0 ? { ownerMappings } : {}),
             });
           }}
         >
@@ -202,6 +212,12 @@ export function DataSourceForm({
               <Trans>未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。</Trans>
             </p>
           </div>
+
+          <OwnerMappingRows
+            rows={ownerMap.rows}
+            onChange={ownerMap.setRows}
+            idPrefix={ownerMap.idPrefix}
+          />
 
           <div className="flex gap-2">
             <Button type="submit" variant="primary" disabled={!canSubmit}>

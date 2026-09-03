@@ -12,4 +12,8 @@ public record UpdateDataSourceRequest(
     string SourceType,
     string ConnectionUri,
     Dictionary<string, string>? Config = null,
-    Dictionary<string, string>? DefaultAttributes = null);
+    Dictionary<string, string>? DefaultAttributes = null,
+    // FR-05, SC-06, ADR-0074 決定 1 (#1194): `owner` の写像表。
+    // 🔴 **これだけは省略（null）を「現状維持」にする**（`DataSource.Update` の理由書き）——
+    // 後から足す項目を必須にすると既存の PUT クライアントが一斉に 400 になる。消すなら {} を送る。
+    Dictionary<string, string>? OwnerMappings = null);

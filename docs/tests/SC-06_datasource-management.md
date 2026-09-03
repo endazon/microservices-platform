@@ -3,15 +3,15 @@ title: SC-06 データソース管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-02
+updated: 2026-09-03
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-05, SC-05, SC-06, SC-07, UC-04]
-adrs: [ADR-0031, ADR-0066]
-iadrs: [IADR-0009, IADR-0035, IADR-0039, IADR-0044, IADR-0051, IADR-0127, IADR-0128, IADR-0136, IADR-0148, IADR-0199, IADR-0308]
-specs: [20260805_issue-503_sc05-08-admin-screens, 20260806_issue-538_next-sync-at, 20260830_issue-1065_feature-import-isolation]
-issues: [#501, #537, #538, #628, #767, #796, #1065, planning#200, planning#299, planning#361]
+ids: [FR-01, FR-02, FR-05, SC-05, SC-06, SC-07, SC-17, UC-04]
+adrs: [ADR-0031, ADR-0036, ADR-0064, ADR-0066, ADR-0074]
+iadrs: [IADR-0009, IADR-0035, IADR-0039, IADR-0044, IADR-0051, IADR-0127, IADR-0128, IADR-0136, IADR-0148, IADR-0199, IADR-0308, IADR-0359]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260806_issue-538_next-sync-at, 20260830_issue-1065_feature-import-isolation, 20260903_issue-1194_sc06-owner-mapping-table]
+issues: [#501, #537, #538, #628, #767, #796, #1065, #1194, planning#200, planning#299, planning#361, planning#518]
 -->
 
 # テスト仕様書: データソース管理
@@ -67,6 +67,11 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 | 4-d | **既定のライフサイクル状態を送る** | **登録・同期の基本 1** / ABAC アクセス制御 / 必須属性フェイルセーフの拡張・決定 4 | `draft` を選ぶと `defaultAttributes.lifecycle` に乗る。これが無いと**ソース単位で下書き扱いにする指定が画面からできない**（計画 09_datasource-connectors が明記する運用が API 直叩きでしか行えない） |
 | 4-e | **値域が計画どおり** | 計画側 07_abac-attribute-model の `lifecycle` 属性 / 画面設計 §文書管理画面 | 選択肢が「未指定」＋ `draft` / `active` / `archived` の**ちょうど 4 つ**であり、**既定の選択が「未指定」**である。**計画に無い値（`normalized` / `published`）を実装が持ち込まない**（計画が名指しで「計画側の語彙ではない」と書いている）。`active` を初期選択にすると「明示指定した」と「しなかった」の区別が消える |
 | 4-f | **ライフサイクル状態は任意** | **登録・同期のユースケース** / 本画面の計画記述 | 未指定でも「登録する」が押せる。未指定時に何が入るか（**予約値ではなく既定値** `active`）を補助文が伝える |
+| 4-g | **所有者の写像を登録で送る** | **登録・同期の基本 1** / ABAC アクセス制御 / 所有者の写像表の裁定（決定 1） | 「＋ 写像を追加」で行を足し、両側を入力すると `ownerMappings` に乗る。🔴 **`defaultAttributes` へ混ぜない**（混ぜると既定属性の全置換が写像表を消す）。これが無いと解決順②が画面から開かない |
+| 4-h | **空の行は送らない** | 同上 | 「＋」を押しただけの空行は `ownerMappings` に入らず、**1 行も埋まっていなければキーごと送らない**（部門・ライフサイクル状態と同じ規約）。押しただけで保存が失敗するのは入力の誤りではなく画面の落ち度である |
+| 4-i | **写像に無いときの結末を伝える** | 所有者の写像表の裁定（決定 3） | 補助文が「写像に無いソース側の利用者は予約値 `system` になる」と伝える。**値は訳さない**（保存値である） |
+| 4-j | **編集フォームで写像を開く・直す** | 所有者の写像表の裁定（決定 1） | 保存済みの対が**キー昇順**で開く（辞書の列挙順に依存しない）。行を消して更新すると `ownerMappings` が新しい表になり、**既定属性は同じ要求で独立に運ばれる** |
+| 4-k | **拒否の理由を出す** | 同（決定 4） | 実在しない写像先を送ってサーバが拒否したら、**どの値が実在しないかを画面が出す**（`role="alert"`）。後段は RFC7807 で返すので詳細が拾える |
 | 5 | 必須項目 | —| 名前と接続先が埋まるまで登録できない |
 | 6 | 手動同期 | **登録・同期の代替フロー** | `POST …/sync` を呼び、完了を伝える |
 | 6-b | **再取得** | 管理画面の実装方針（決定 5） | 手動同期の成功後に一覧を取り直す（`invalidateQueries` のみ） |
@@ -112,6 +117,16 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 **どちらも後段と一致していなければ意味を失う文字列である。** キーがずれると属性辞書の別のキーへ書き込まれ、
 後段はフェイルセーフで `unassigned` を入れるため、**画面上は何も起きずに管理者の入力だけが消える**。
 画面テスト経由の間接被覆では文字列そのものを固定できないため、`confidentiality` と同じく直接固定する。
+
+### 語彙（`lib/abac/owner.test.ts`。［2026-09-03］）
+
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| O1 | 予約値 | `UNRESOLVED_OWNER` が `system`（バックエンド `DataSource.UnresolvedOwner` と同値）。**ただしこの件数を完了判定に使わない**（所有者の写像表の裁定・決定 3） |
+
+**属性キーの定数は置かない。** 機密区分・部門・ライフサイクル状態の 3 つと違い、`owner` は
+登録・更新フォームが組み立てる既定属性のキーにならない（写像表は**別の器**である）。
+**使い道の無い定数は未使用 export の床を動かす**ため、置かずにバックエンド側を正とする。
 
 ### 語彙（`lib/abac/lifecycle.test.ts`。［2026-08-16 / #796］）
 
@@ -184,6 +199,46 @@ BFF が後段障害を空一覧へ丸めてしまえば画面には何も届か�
 
 **E1 と BFF の 9（透過）は対である。** 後段が同値を返しても BFF が落とせば画面には届かない。
 
+## DataSourceService（xUnit・所有者の写像表）
+
+対象: [`.../DataSourceService/Domain/DataSource.cs`](../../src/knowledge/backend/Services/DataSourceService/Domain/DataSource.cs) ／
+[`.../Domain/OwnerMappingTable.cs`](../../src/knowledge/backend/Services/DataSourceService/Domain/OwnerMappingTable.cs) ／
+[`.../Features/DataSources/OwnerMappingValidation.cs`](../../src/knowledge/backend/Services/DataSourceService/Features/DataSources/OwnerMappingValidation.cs) ／
+[`.../Features/DataSources/Sync/DataSourceSyncService.cs`](../../src/knowledge/backend/Services/DataSourceService/Features/DataSources/Sync/DataSourceSyncService.cs)
+テスト: [`OwnerMappingTableTests.cs`](../../src/knowledge/backend/Services/DataSourceService/Tests/Domain/OwnerMappingTableTests.cs) ／
+[`OwnerMappingEndpointTests.cs`](../../src/knowledge/backend/Services/DataSourceService/Tests/Features/DataSources/OwnerMappingEndpointTests.cs) ／
+[`DataSourceSyncServiceTests.cs`](../../src/knowledge/backend/Services/DataSourceService/Tests/Features/DataSources/Sync/DataSourceSyncServiceTests.cs)
+
+**画面だけの検証では足りない** —— API を直接叩いた経路で偽の所有者が入るため、
+**サーバ側が拒否することを直叩きで固定する**（所有者の写像表の裁定・決定 4）。
+利用者名簿は差し替える（`StubPlatformUserDirectory`）。**「居ない」と「引けなかった」を作り分けられることが要件**であり、
+作り分けられないと 400 と 502 の別を固定できない。
+
+| # | 観点 | 起点 | 検証内容 | ケース |
+| --- | --- | --- | --- | --- |
+| M1 | 正規化 | 決定 1 | 前後空白を落とす。**大小文字は畳まない**（別名前空間の識別子を実装の裁量で同一視しない） | `Normalize_TrimsBothSides_ButDoesNotFoldCase` |
+| M2 | 書式 | 決定 4 | 空キー・空値の対を拒否する（陽性対照つき） | `ValidateShape_RejectsBlankTarget_AndBlankSourceKey` |
+| M3 | 実在検査 | 決定 4 | 名簿に無い写像先を**すべて名指しし、同じ値を 2 度並べない** | `ValidateTargetsExist_NamesEveryMissingTarget_Once` |
+| M4 | 突合の厳密さ | 決定 4 | 大小文字違いは「実在しない」。**保存できたのに一致しない写像を作らない** | `ValidateTargetsExist_IsCaseSensitive` |
+| M5 | 解決（陽性） | 決定 1 | 写像が当たれば写像先を返す。ソース側の前後空白も落とす | `ResolveOwner_ReturnsMappedUser_WhenTheTableHits` |
+| M6 | 解決（陰性） | **09_datasource-connectors「推測で埋めない」** | 🔴 当たらなければ `null`。**生の識別子を返さない** | `ResolveOwner_ReturnsNull_WhenTheTableMisses_NeverTheRawIdentifier` |
+| M7 | 表を持たないソース | **陽性対照** | 写像表が空なら従来どおり（＝予約値へ倒れる） | `ResolveOwner_ReturnsNull_WhenNoTableIsConfigured` |
+| M8 | 器の独立 | 決定 1 | 既定属性と写像表は**片方の全置換がもう片方を消さない** | `Patch_AndDefaultAttributes_DoNotOverwriteEachOther` |
+| M9 | 全置換の非対称 | 決定 5 | `PUT` で省略すれば現状維持、`{}` なら空になる | `Update_KeepsOwnerMappings_WhenOmitted_AndClearsThem_WhenEmptyGiven` |
+| A1 | 登録（陽性） | 決定 4 | 実在する写像先は保存され、再読込しても残る | `Post_WithExistingTarget_SavesMappingAndSurvivesReload` |
+| A2 | 登録（陰性） | 決定 4 | 実在しない写像先は 400。理由に値が載る。🔴 **行が増えていないことを件数で固定する** | `Post_WithUnknownTarget_IsRejected_AndNothingIsPersisted` |
+| A3 | 名簿を引かない場合 | 決定 4 | 書式違反は後段へ問い合わせない | `Post_WithBlankTarget_IsRejectedWithoutConsultingTheDirectory` |
+| A4 | 「引けなかった」 | 決定 4 | 名簿不達は **502**（400 ではない）。陽性対照つき | `Post_WhenDirectoryUnavailable_Returns502_NotBadRequest` |
+| A5 | 巻き添えにしない | 決定 4 | 写像表を送らない要求は名簿を引かない | `Post_WithoutOwnerMappings_DoesNotConsultTheDirectory` |
+| A6 | 部分更新の独立 | 決定 1 | 片方だけの `PATCH` がもう片方を消さない（両向き） | `Patch_OwnerMappingsOnly_KeepsDefaultAttributes_AndViceVersa` |
+| A7 | 拒否は壊さない | 決定 4 | 400 になった更新が既存の表を書き換えない | `Patch_WithUnknownTarget_IsRejected_AndStoredMappingIsUnchanged` |
+| A8 | 全置換の非対称（API） | 決定 5 | `PUT` の省略は現状維持、`{}` は消去 | `Put_WithoutOwnerMappings_KeepsThem_AndEmptyObjectClearsThem` |
+| A9 | 認可 | 決定 1 | 運用者は**閲覧できるが更新できない**（既定属性 3 つと同じ権限） | `Operator_CanReadMappings_ButCannotWriteThem` |
+| Y1 | 取り込み（陽性） | 決定 1 | 写像が当たると発行属性の `owner` が写像先になる | `Sync_WhenTheMappingTableHits_OwnerBecomesTheMappedUser` |
+| Y2 | 取り込み（陰性） | **同（決定 3）／ 所有者ベースの裁量アクセス制御** | 🔴 当たらなければ予約値 `system`。**生の識別子が 1 件も混ざらない** | `Sync_WhenTheMappingTableMisses_OwnerFallsBackToReservedValue_NeverTheRawIdentifier` |
+| Y3 | 表が空のソース | **陽性対照** | 発行される属性が従来と同一（既存挙動を壊さない） | `Sync_WhenConnectorCarriesNoUpdater_AttributesAreUnchanged` |
+| Y4 | 明示指定が最優先 | 必須属性フェイルセーフの拡張 | データソースの明示 `owner` は写像結果より強い | `Sync_WhenSourceHasExplicitOwner_ItemUpdaterDoesNotOverrideIt` |
+
 ## ロール・存在秘匿の担保
 
 - BFF はグループ全体を admin / operator に限定し（3 / 4 で 403 / 401 を固定）、
@@ -198,15 +253,19 @@ BFF が後段障害を空一覧へ丸めてしまえば画面には何も届か�
 
 ## 実行
 
-- `pnpm run test -- knowledge/frontend/src/features/sc06-datasources`（純関数 **12** ＋ 画面 **26**。
+- `pnpm run test -- knowledge/frontend/src/features/sc06-datasources`（純関数 **12** ＋ 画面 **36**。
   **［2026-08-16 / #796］数え直した** —— 従前の「7 ＋ 15」は #503 当時の値で、その後の追加（#537 / #538 / #767 /
-  本 issue）に追随していなかった。**導出値は走査ではなく計算し直す**という規約に従い、`vitest run` の
-  実測値へ置き換えた）
-- `pnpm run test -- knowledge/frontend/src/lib/abac`（語彙 **9**。機密区分 3 ＋ 部門 2 ＋ **ライフサイクル 4**）
+  同 issue）に追随していなかった。**導出値は走査ではなく計算し直す**という規約に従い、`vitest run` の
+  実測値へ置き換えた。**［2026-09-03］所有者の写像表で 5 件増え、26 → 36 になった**（数え直した値である））
+- `pnpm run test -- knowledge/frontend/src/lib/abac`（語彙 **10**。機密区分 3 ＋ 部門 2 ＋ ライフサイクル 4 ＋ **所有者 1**）
 - `pnpm run test -- knowledge/frontend/src/features/adminFlow.test.tsx`（導線）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
 - `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDataSourceEndpointTests`
 - `dotnet test src/knowledge/backend/backend.slnx --filter SyncScheduleTests`（次回同期・#538）
+- `dotnet test src/knowledge/backend/backend.slnx --filter OwnerMapping`（所有者の写像表。**17 件**：
+  `OwnerMappingTableTests` 8 ＋ `OwnerMappingEndpointTests` 9）
+- `dotnet test src/knowledge/backend/backend.slnx --filter DataSourceSyncServiceTests`（取り込み経路の写像適用。
+  Y1〜Y4 は既存ケースの書き直しを含み、増分には数えない）
 
 <!-- trace-table:
 row1: SC-06, FR-01

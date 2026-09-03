@@ -260,6 +260,13 @@ services:
     dataSourceSync:
       enabled: true
       intervalSeconds: 300
+    # FR-05, UC-04, SC-06, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証の後段。
+    # 🔴 **k8s の Service は 8080 で待つ。** コード既定も 8080 にしてあるが、
+    # **明示しておく**（先行 3 サービスは既定 `:5005` を extraEnv で上書きしており、
+    # ここだけ暗黙にすると「なぜこのサービスだけ書いていないのか」が読めなくなる）。
+    extraEnv:
+      - name: Services__AuthorizationService
+        value: "http://authorization-service:8080"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }

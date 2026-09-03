@@ -192,20 +192,20 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
             "アイテム単位の上書きが 1 件も無いなら、全アイテムが同じ属性を受け取る");
     }
 
-    // FR-05, UC-04, #752 段 1: アイテムが更新者を運んできたら、**予約値より優先**して載る。
+    // FR-05, UC-04, SC-06, ADR-0074 決定 1・4 (#1194): **写像表に当たった更新者だけが `owner` になる。**
     //
-    // 🔴 現時点でこれを満たすコネクタは無い。4 実装のうち `filesystem` / `wiki` / `saas` の 3 本は
-    // 構造上取れず、`db` の 1 本は載せられるが**載せてはならない** —— 解決順（① Keycloak 検索 →
-    // ② 写像表 → 予約値。裁定 2026-08-16）が**実装されていない**ため、生の値がそのまま `owner` に
-    // なるからである（#752。詳細は `DataSourceSyncService.PerItemAttributes` の注記）。
-    // **経路が生きていることだけ**をスタブで固定する。
+    // ［2026-09-03 書き直し / #1194］従前この試験は「アイテムが運んできた更新者が予約値より優先する」
+    // ことだけを固定しており、**写像表を経ずに生の識別子が `owner` になる**振る舞いを是としていた。
+    // ADR-0074 決定 4 が「写像先の実在を検証して保存する」形を確定させたため、
+    // **経路の前提が変わった。試験は消さずに、解決段を通る形へ書き直す。**
     [Fact]
-    public async Task Sync_WhenItemCarriesUpdater_OwnerBeatsReservedValue()
+    public async Task Sync_WhenTheMappingTableHits_OwnerBecomesTheMappedUser()
     {
         using var scope = factory.Services.CreateScope();
         var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
-        var svc = BuildService(scope, new TwoItemConnector(updatedBy: "alice"));
-        var source = DataSource.Create("share", "filesystem", "");
+        var svc = BuildService(scope, new TwoItemConnector(updatedBy: "hr-tanaka"));
+        var source = DataSource.Create("share", "filesystem", "",
+            ownerMappings: new Dictionary<string, string> { ["hr-tanaka"] = "alice" });
 
         await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
@@ -215,7 +215,34 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
 
         published.Should().HaveCount(2);
         published.Should().OnlyContain(m => m.Attributes[DataSource.OwnerKey] == "alice",
-            "アイテムが運んできた更新者は予約値 system より優先する");
+            "写像表で解決した利用者識別子が予約値 system より優先する");
+    }
+
+    // FR-05, UC-04, SC-06, ADR-0036, ADR-0074 (#1194): 🔴 **写像表に無い識別子は予約値へ倒れる。**
+    //
+    // **陰性対照であり、本 issue の安全側の本体である。** 計画は「別名前空間の識別子をそのまま
+    // `owner` へ入れてはならない」「安全側は『解決しない』」と定める（09_datasource-connectors /
+    // ADR-0036）。**生の値が 1 件も混ざらないこと**を、値の比較として固定する。
+    [Fact]
+    public async Task Sync_WhenTheMappingTableMisses_OwnerFallsBackToReservedValue_NeverTheRawIdentifier()
+    {
+        using var scope = factory.Services.CreateScope();
+        var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
+        var svc = BuildService(scope, new TwoItemConnector(updatedBy: "hr-suzuki"));
+        var source = DataSource.Create("share", "filesystem", "",
+            ownerMappings: new Dictionary<string, string> { ["hr-tanaka"] = "alice" });
+
+        await svc.SyncAsync(source, TestContext.Current.CancellationToken);
+
+        var published = bus.PublishedOf<RawDocumentFetched>()
+            .Where(m => m.SourceId == source.Id)
+            .ToList();
+
+        published.Should().HaveCount(2);
+        published.Should().OnlyContain(m => m.Attributes[DataSource.OwnerKey] == DataSource.UnresolvedOwner,
+            "写像できない更新者は予約値 system へ倒す（ADR-0074 決定 3。件数は完了判定に使わない）");
+        published.Should().NotContain(m => m.Attributes[DataSource.OwnerKey].Contains("suzuki"),
+            "🔴 生のソース側識別子は 1 件も owner へ入らない");
     }
 
     // FR-05, UC-04, #752 段 1: **明示指定はアイテム単位の値にも負けない。**
@@ -227,11 +254,16 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     {
         using var scope = factory.Services.CreateScope();
         var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
-        var svc = BuildService(scope, new TwoItemConnector(updatedBy: "alice"));
+        var svc = BuildService(scope, new TwoItemConnector(updatedBy: "hr-tanaka"));
         // 🔴 名前付き引数で渡す。4 番目の位置引数は `config` であり `defaultAttributes` ではない
         // （位置で渡して 1 度取り違えた。属性ではなく接続設定に入り、テストが誤って落ちた）。
+        //
+        // ［2026-09-03 更新 / #1194］**写像表も持たせる。** 解決段が入った後は、表が無いと
+        // アイテム単位の値がそもそも届かず、「明示指定の方が強い」ことを測れない
+        // （常に真になる試験になり、退行を検出しなくなる）。
         var source = DataSource.Create("share", "filesystem", "",
-            defaultAttributes: new Dictionary<string, string> { [DataSource.OwnerKey] = "explicit-owner" });
+            defaultAttributes: new Dictionary<string, string> { [DataSource.OwnerKey] = "explicit-owner" },
+            ownerMappings: new Dictionary<string, string> { ["hr-tanaka"] = "alice" });
 
         await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
@@ -248,13 +280,17 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     //
     // これが「ソース単位で 1 回だけ計算していた」構造では原理的に不可能だった振る舞いであり、
     // 本段が解いた問題そのものである。
+    //
+    // ［2026-09-03 追記 / #1194］解決段が入ったので、**写像表を持たせた上で**同じことを測る
+    // （表が無いと 2 件とも予約値になり、「混ざらない」を測れなくなる）。
     [Fact]
     public async Task Sync_WhenItemsCarryDifferentUpdaters_EachKeepsItsOwn()
     {
         using var scope = factory.Services.CreateScope();
         var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
         var svc = BuildService(scope, new PerItemUpdaterConnector());
-        var source = DataSource.Create("share", "filesystem", "");
+        var source = DataSource.Create("share", "filesystem", "",
+            ownerMappings: new Dictionary<string, string> { ["alice"] = "alice", ["bob"] = "bob" });
 
         await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
@@ -318,6 +354,10 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     }
 
     // 2 件を返し、両方に同じ更新者（または null）を載せるスタブ。
+    //
+    // 🔴 **`SourceType` が `filesystem` なのはスタブの都合である。** 実物の `filesystem` は
+    // 構造上更新者を運べない（ADR-0074 実測 3）。本スタブは「更新者を運べるコネクタ」の代役であり、
+    // 種別そのものを測っているわけではない（種別は `ConnectorRegistry.Resolve` の照合に使うだけ）。
     private sealed class TwoItemConnector(string? updatedBy) : IDataSourceConnector
     {
         public string SourceType => "filesystem";
