@@ -1,4 +1,4 @@
-# FR-14, IADR-0056, IADR-0078 (#313), IADR-0361 (#1135): SPA(frontend) の Deployment/Service。
+# FR-14, IADR-0056, IADR-0078 (#313), IADR-0362 (#1135): SPA(frontend) の Deployment/Service。
 # platform/frontend の **Caddy** イメージ（静的配信＋/bff プロキシ＋実行時 config.js 注入）を k8s で配信する
 # （ADR-0021 の指定。#1135 で nginx から移送した。配信の契約は src/platform/frontend/Caddyfile が持つ）。
 # 汎用 services ループ（deployment.yaml）は .NET 前提（/health/live プローブ・Otlp/Auth env）のため、

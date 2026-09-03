@@ -826,7 +826,7 @@ wikijs:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: 1000m, memory: 1Gi }
 
-# FR-14, IADR-0056, IADR-0078 (#313), IADR-0361 (#1135): SPA(frontend)。platform/frontend の **Caddy**
+# FR-14, IADR-0056, IADR-0078 (#313), IADR-0362 (#1135): SPA(frontend)。platform/frontend の **Caddy**
 # イメージ（静的配信＋/bff プロキシ＋実行時 config.js 注入。ADR-0021 の指定）を k8s で配信する。
 # 汎用 services ループに載せず専用 template
 # (templates/frontend.yaml) で描画する（wikijs/minio と同じ非 .NET パターン）。イメージは

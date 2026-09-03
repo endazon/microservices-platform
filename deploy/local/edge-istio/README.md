@@ -63,7 +63,7 @@ redirect URI が `:50000` 付きで Keycloak に登録済み**である（`IADR-
 
 - **エッジ宣言が 2 つある**（Traefik 用と Istio 用）。ルートを足すときは**両方を触る**。
   opt-in を保つ（既定はバイト等価）ための代償である。
-- ~~**SPA 配信はまだ nginx である。**~~ **解消した**（#1135 / [IADR-0361](../../../.ai-context/adr/IADR-0361_spa-serving-caddy.md)）。
+- ~~**SPA 配信はまだ nginx である。**~~ **解消した**（#1135 / [IADR-0362](../../../.ai-context/adr/IADR-0362_spa-serving-caddy.md)）。
   `ADR-0021` が定める Caddy へ移送済みで、`ADR-0021` のエッジ構成（入口 ＝ Istio Ingress Gateway ＋
   SPA 配信 ＝ Caddy）は**両方揃った**。
 - `istio-system` の Gateway / VirtualService は **ArgoCD の AppProject の対象外**である

@@ -1,4 +1,4 @@
-# Issue #1135, ADR-0021 / IADR-0361: フロントエンド配信 + BFF プロキシ（Caddy）。
+# Issue #1135, ADR-0021 / IADR-0362: フロントエンド配信 + BFF プロキシ（Caddy）。
 # 計画 ADR-0021 は SPA の静的配信 Web サーバを Caddy と定める（#442 の残作業。#782 で入口だけが
 # Istio Ingress Gateway へ移り、配信の側は nginx のままだった）。
 #

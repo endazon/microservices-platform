@@ -1,5 +1,5 @@
 ---
-title: IADR-0361 SPA の静的配信を nginx から Caddy へ移す。3 つの契約（元 URI 無改変の /bff プロキシ・実行時 config の起動時描画・history fallback）を Caddyfile 1 枚で保ち、ポート・Service・probe は変えない
+title: IADR-0362 SPA の静的配信を nginx から Caddy へ移す。3 つの契約（元 URI 無改変の /bff プロキシ・実行時 config の起動時描画・history fallback）を Caddyfile 1 枚で保ち、ポート・Service・probe は変えない
 type: impl-adr
 status: Proposed
 related_ids:
@@ -21,7 +21,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0023_edge-cert-automation-cert-manager-letsencrypt.md
 ---
 
-# IADR-0361: SPA 静的配信の Caddy 移送（#442 の残作業）
+# IADR-0362: SPA 静的配信の Caddy 移送（#442 の残作業）
 
 - 状態: Proposed
 - 日付: 2026-09-03

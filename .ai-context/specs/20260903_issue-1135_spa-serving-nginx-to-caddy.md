@@ -2,7 +2,7 @@
 title: 作業仕様書 — SPA 静的配信を nginx から Caddy へ移す（#442 の残作業）
 type: spec
 status: draft
-related_ids: [FR-14, NFR, NFR-11, ADR-0021, ADR-0023, IADR-0076, IADR-0078, IADR-0081, IADR-0317, IADR-0348, IADR-0361]
+related_ids: [FR-14, NFR, NFR-11, ADR-0021, ADR-0023, IADR-0076, IADR-0078, IADR-0081, IADR-0317, IADR-0348, IADR-0362]
 author: claude
 created: 2026-09-03
 updated: 2026-09-03
@@ -94,7 +94,7 @@ issue: "#1135"
 ## 対象範囲
 
 - **対象**: `src/platform/frontend/**`（Dockerfile・配信設定・エントリポイント）／上表 15 ファイルの追随／
-  実装 ADR（`IADR-0361`）と索引
+  実装 ADR（`IADR-0362`）と索引
 - **対象外**: 入口（Istio Gateway / VirtualService / Traefik）のルーティング宣言の**中身**（コメント以外）／
   probe・Service・ポート（`IADR-0078` 決定 2 を維持）／`images.yml`・`check-image-mapping.js`・
   `k8s-local-images.sh` の配線（compose の build 定義から導出しており、**Dockerfile の中身が変わっても
@@ -174,7 +174,7 @@ Caddy 公式イメージは nginx の `/docker-entrypoint.d/*.sh` 規約を持�
       `dockerfile: src/platform/frontend/Dockerfile` のまま実ビルドが成立。**build 定義そのものは無改変**なので
       `images.yml` の起動条件も必須チェック名（`image-build`）も変わらない）
 - [x] イメージサイズ・起動時間を before/after で実測して記録する
-- [x] 移送の判断を `IADR-0361` に残す（`ADR-0021` の Caddy 指定への追随であることを明記）
+- [x] 移送の判断を `IADR-0362` に残す（`ADR-0021` の Caddy 指定への追随であることを明記）
 
 ## テスト方針
 

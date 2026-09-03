@@ -37,7 +37,7 @@ COPY src/knowledge/frontend/ knowledge/frontend/
 COPY src/ai-stock-trading/frontend/ ai-stock-trading/frontend/
 RUN pnpm run build
 
-# Issue #1135, ADR-0021 / IADR-0361: SPA の静的配信は **Caddy** である（計画 ADR-0021 の指定。#442 の残作業）。
+# Issue #1135, ADR-0021 / IADR-0362: SPA の静的配信は **Caddy** である（計画 ADR-0021 の指定。#442 の残作業）。
 # #782（IADR-0317）で入口だけが Istio Ingress Gateway へ移り、配信の側は nginx のままだった差分を閉じる。
 # 配信・fallback・/bff プロキシの契約は Caddyfile が持つ（そちらを読むこと）。
 #
