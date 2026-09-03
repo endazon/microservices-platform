@@ -36,6 +36,14 @@ builder.Services.AddDbContext<DashboardDbContext>(opt => opt.UseNpgsql(connStr))
 // ホストしないが、到達可能性とトポロジ（段なし）を実効構成へ与えるため存在申告する。
 builder.Services.AddPlatformIntrospection("dashboard-service", new PipelineOptions());
 
+// FR-10, SC-10, ADR-0071 決定 1, [[IADR-0354]] (#1197): 検索傾向の出現件数の下限。
+// **配備時の構成で変更できる**（環境変数 `SearchTrend__MinimumCount`）。
+// 🔴 **ValidateOnStart は付けない** —— 秘匿パラメータの打ち間違いで、利用イベントの記録
+// （`POST /dashboard/events`）まで巻き添えに止める価値は無い。不正値は既定へ倒し、
+// 照会のたびに警告を残す（`DashboardEndpoints.EffectiveMinCount`）。
+builder.Services.Configure<SearchTrendOptions>(
+    builder.Configuration.GetSection(SearchTrendOptions.SectionName));
+
 // FR-10, FR-17, FR-18, SC-10, ADR-0004 (#443): ナレッジ健全性指標の閲覧を監査ログに残す
 // （計画 §ナレッジ健全性の指標「閲覧は監査ログに記録する」）。
 builder.Services.AddSingleton<IAuditLogger, AuditLogger>();

@@ -73,12 +73,18 @@ public static class DashboardBffEndpoints
             if (usage is null || quality is null)
                 return Results.StatusCode(StatusCodes.Status502BadGateway);
 
+            // FR-10, SC-10, ADR-0071 決定 2 (#1197): 検索傾向のしきい値を**そのまま透過する**。
+            // 🔴 **BFF で既定値を補わない。** 補うと、後段が実際に使った値と画面の表示が食い違い、
+            // **見えている語と併記された数字が矛盾する**（画面が嘘をつく）。
+            // 後段が本項目を持たない旧版なら 0 が入り、画面のふるい落としは素通りになる ——
+            // それが安全側である（[[IADR-0354]] 決定 3）。
             var summary = new DashboardSummaryDto(
                 usage.TotalSearches,
                 usage.TotalAnswers,
                 usage.UsageTrend,
                 usage.TopSearchTerms,
-                quality);
+                quality,
+                usage.SearchTermMinCount);
             return Results.Ok(summary);
         }).WithName("BffDashboardSummary")
           .RequireAuthorization(p => p.RequireRole(

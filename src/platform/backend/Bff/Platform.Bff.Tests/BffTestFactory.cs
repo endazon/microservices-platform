@@ -51,6 +51,11 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public bool FeedbackRequiresAuthorization { get; set; }
     public bool DashboardReturnsNullBody { get; set; }
 
+    // FR-10, SC-10, ADR-0071 決定 2 (#1197): 後段が返す検索傾向のしきい値。
+    // **既定 3 と違う値にしてある** —— 既定と同じにすると、BFF が透過せず自前の既定を
+    // 埋めていても緑を通る（透過の検査にならない）。
+    public const int DashboardSearchTermMinCount = 7;
+
     // FR-10, SC-10, IADR-0343 (#1103): 受け口 `POST /dashboard/events` に届いた利用状況イベント。
     // **発火側が本番コードに 1 本も無かった**ため、届いたことを観測できる場所がここに要る。
     public sealed record RecordedUsageEvent(string? EventType, string? Query, string? Authorization);
@@ -607,7 +612,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 5, 3,
                 [new UsagePointDto(new DateOnly(2026, 7, 3), "search", 5),
                  new UsagePointDto(new DateOnly(2026, 7, 3), "answer", 3)],
-                [new SearchTrendDto("経費", 4), new SearchTrendDto("有給", 1)]);
+                // FR-10, ADR-0071 決定 1（#1197）: 後段（DashboardService）は既にしきい値で
+                // ふるった結果を返す。**スタブも同じ姿にする** —— 有給 1 件は落ちた後の姿である。
+                [new SearchTrendDto("経費", 4)],
+                DashboardSearchTermMinCount);
             // 502 分岐の検証: 2xx でも本文が null（JSON リテラル "null"）なら BFF は 502 を返す。
             var content = owner.DashboardReturnsNullBody
                 ? new StringContent("null", System.Text.Encoding.UTF8, "application/json")

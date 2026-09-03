@@ -6,6 +6,7 @@ using DashboardService.Features.Dashboard.Usage;
 using DashboardService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace DashboardService.Features.Dashboard;
 
@@ -59,8 +60,19 @@ public static class DashboardEndpoints
     //   グルーピングはメモリ上で行う（GroupBy+集計はプロバイダ非依存にし、InMemory でも同結果にする）。
     //   ただし DB からは集計に必要な Query 列のみを射影して取得し、全エンティティのロードは避ける。
     // **検索傾向とサマリの 2 操作が使う**ため 2 段目に残る（ADR-0068 決定 2）。
+    //
+    // 🔴 **ADR-0071 決定 1（#1197）: 出現件数が `minCount` 未満の語は落とす。**
+    // 検索語は自由文であり、個人資料を狙った語・固有名詞・機密文書の題名の断片がそのまま
+    // 運用者に読める。計画の原則（内容は出さず件数まで）を画面へ届かせるのがこの述語である。
+    //
+    // 🔴 **伏せた語を「その他 M 件」へ集約しない。** M 自体が推測の材料になる ——
+    // とくに「その他 1 件」は「1 回だけ検索された語が 1 つある」と等価であり、伏せた意味が
+    // ほとんど残らない。**落とすだけである。**
+    //
+    // **述語は `Take(top)` の前に置く。** 後に置くと、上位 `top` 件に紛れ込んだ低件数語を
+    // 落とした結果として**返る件数が `top` より減る**（伏せた分だけ枠が空いたままになる）。
     internal static async Task<List<SearchTrendDto>> AggregateTrendsAsync(
-        DashboardDbContext db, DateTimeOffset since, int top, CancellationToken ct)
+        DashboardDbContext db, DateTimeOffset since, int top, int minCount, CancellationToken ct)
     {
         var terms = await db.UsageEvents
             .Where(u => u.OccurredAt >= since
@@ -72,9 +84,26 @@ public static class DashboardEndpoints
         return terms
             .GroupBy(term => term)
             .Select(gr => new SearchTrendDto(gr.Key, gr.Count()))
+            .Where(t => t.Count >= minCount)
             .OrderByDescending(t => t.Count).ThenBy(t => t.Term)
             .Take(top)
             .ToList();
+    }
+
+    // FR-10, ADR-0071 決定 1: 実際に使う出現件数の下限。不正な構成では既定へ倒し、
+    // **倒したことを警告として残す**（[[IADR-0354]]。起動は落とさない —— 秘匿パラメータの
+    // 打ち間違いで利用イベントの記録まで巻き添えにしない）。
+    // **応答へ添えるのもこの戻り値**である（画面へ嘘の数字を出さない）。
+    // **検索傾向とサマリの 2 操作が使う**ため 2 段目に残る（ADR-0068 決定 2）。
+    internal static int EffectiveMinCount(IOptions<SearchTrendOptions> options, ILogger logger)
+    {
+        var opt = options.Value;
+        if (opt.HasInvalidMinimumCount)
+            logger.LogWarning(
+                "検索傾向の最小件数の構成が不正である（{Configured} 件）。既定の {Default} 件へ倒した。"
+                + "構成キーは {Key}:MinimumCount である。",
+                opt.MinimumCount, SearchTrendOptions.DefaultMinimumCount, SearchTrendOptions.SectionName);
+        return opt.EffectiveMinimumCount;
     }
 
     // FR-10: days を [1, MaxDays] にクランプし、集計開始時刻（UTC 当日 00:00 を含む起点）を求める。

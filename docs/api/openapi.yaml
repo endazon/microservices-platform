@@ -2159,6 +2159,10 @@ paths:
     get:
       tags: [Dashboard]
       summary: "FR-10: 検索傾向（よく検索される語の上位）"
+      description: |
+        出現件数がしきい値（既定 3。構成キー `SearchTrend:MinimumCount`）未満の語は含まない。
+        伏せた語は落とし、「その他 M 件」に相当する項目も返さない。
+        本操作の応答は配列であり、しきい値そのものは `/dashboard/summary` が返す。
       operationId: dashboard-trends
       parameters:
         - name: days
@@ -4179,7 +4183,7 @@ components:
     DashboardUsageDto:
       type: object
       description: "DashboardService が返す利用側サマリ（回答品質は含まない）"
-      required: [totalSearches, totalAnswers, usageTrend, topSearchTerms]
+      required: [totalSearches, totalAnswers, usageTrend, topSearchTerms, searchTermMinCount]
       properties:
         totalSearches: { type: integer }
         totalAnswers: { type: integer }
@@ -4189,13 +4193,19 @@ components:
             $ref: "#/components/schemas/UsagePointDto"
         topSearchTerms:
           type: array
+          description: "出現件数が searchTermMinCount 以上の語だけを含む"
           items:
             $ref: "#/components/schemas/SearchTrendDto"
+        searchTermMinCount:
+          type: integer
+          description: |
+            検索傾向に出す最小の出現件数。これ未満の語は落とす（「その他 M 件」も出さない）。
+            構成キー `SearchTrend:MinimumCount`（既定 3）。不正値は既定へ倒し、本項目も倒した後の値を返す。
 
     DashboardSummaryDto:
       type: object
       description: "BFF が組み立てるダッシュボードサマリ（利用状況・検索傾向・回答品質を集約）"
-      required: [totalSearches, totalAnswers, usageTrend, topSearchTerms, quality]
+      required: [totalSearches, totalAnswers, usageTrend, topSearchTerms, quality, searchTermMinCount]
       properties:
         totalSearches: { type: integer }
         totalAnswers: { type: integer }
@@ -4205,10 +4215,14 @@ components:
             $ref: "#/components/schemas/UsagePointDto"
         topSearchTerms:
           type: array
+          description: "出現件数が searchTermMinCount 以上の語だけを含む"
           items:
             $ref: "#/components/schemas/SearchTrendDto"
         quality:
           $ref: "#/components/schemas/FeedbackStatsDto"
+        searchTermMinCount:
+          type: integer
+          description: "検索傾向の出現件数の下限。後段（DashboardService）の値をそのまま透過する"
 
     # ── FR-11: LlmGateway completion ──────────────────
     CompletionApiRequest:

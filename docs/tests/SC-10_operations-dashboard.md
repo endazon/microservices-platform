@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-10, SC-05, SC-06, SC-07, SC-09, SC-10, SC-11, UC-05]
-adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0035]
-iadrs: [IADR-0009, IADR-0011, IADR-0035, IADR-0119, IADR-0121, IADR-0129, IADR-0265, IADR-0299, IADR-0353]
-specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator]
-issues: [#443, #452, #490, #503, #504, #510, #544, #586, #1186, planning#237, planning#244, planning#494]
+adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0071]
+iadrs: [IADR-0009, IADR-0011, IADR-0035, IADR-0044, IADR-0119, IADR-0121, IADR-0129, IADR-0265, IADR-0299, IADR-0353, IADR-0354]
+specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count]
+issues: [#443, #452, #490, #503, #504, #510, #544, #586, #1186, #1197, planning#237, planning#244, planning#494, planning#514, planning#525]
 -->
 
 # テスト仕様書: 運用ダッシュボード
@@ -57,6 +57,8 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | --- | --- |
 | 利用状況の可視化 | `shows the usage, trend and answer-quality summary`（総数 ＋ 日次一覧） |
 | 検索傾向の可視化 | 同上（上位語の一覧） |
+| 検索傾向の秘匿（出現件数の下限） | `omits terms below the threshold from both the table and the chart` ／ `says there is no trend yet when every term is below the threshold` |
+| 下限の併記 | `states the search-term threshold alongside the trend card` ／ `takes the stated threshold from the contract rather than a hard-coded default` |
 | 回答品質の可視化 | 同上（満足率 ＋ 👍/👎 の内訳） |
 | 期間の切替 | `starts at seven days and sends the selected period to the API` |
 
@@ -77,6 +79,11 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | 11 | **着手保留**（実装しない要素） | 関係探索・AI 提案の着手保留 | ナレッジ健全性の語（節見出し・4 KPI・辺の型・フォールバック・個人資料の注記）が無い。**先にサマリが在ることを確かめてから**無いことを見る |
 | 12 | **契約の不在**（実装しない要素） | 画面仕様書 §hi-fi 対応 #3・#5 | **KPI カードの見出しの集合**が 3 枚に固定される（「SLO」の語は副題にも出るため、テキスト検索ではなく**カードが在るか**で見る） |
 | 13 | ロケール `en` | —| 見出しが英語で描画される |
+| 14 | **下限の併記** | 検索語の秘匿の裁定（決定 2） | 「N 件以上検索された語のみを表示します。」が出る |
+| 15 | **併記の出所** | 同上 | 契約が 7 を返せば **7** と出る（画面に既定を焼き込んでいない。定数実装ならここで落ちる） |
+| 16 | **下限未満の語を出さない**（陰性） | 同上（決定 1）／多層防御 | 下限未満の語を**含む**スタブでも、**表にも棒グラフにも**出ない。陽性対照として下限以上の語は表と図の両方に在る。図は `echartsLoader` をモックして**渡った option そのもの**を見る（jsdom では器のテキストは常に空で、見ても何も確かめたことにならない） |
+| 17 | **全語が下限未満** | 同上 | 「検索傾向はまだありません。」へ倒れ、🔴 **「その他」の行が無い**。**併記は消えない**（0 件こそ理由が読めるべき状態） |
+| 18 | 🔴 **下限の項目そのものが届かない**（旧後段との 2 版混在） | 稼働クラスタでの実測 | **全語を出し、下限は名乗らない**。生成型は必須と言うが実体は `undefined` になり得る。**`count >= undefined` は全件 false** なので、素で使うと**ふるいが一覧を丸ごと空にする**——いちばん避けたい壊れ方である |
 
 ## アクセス制御・存在秘匿（画面）
 
@@ -126,6 +133,7 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | 3-b | **ロール開放**（**#544**） | 計画側の運用ダッシュボード・裁定 Q19 / Q28 | **運用者は 200**。**この対が無いと「広げる」作業は検査にならない**（権限を全開にしても 3 は緑のまま） | `GetSummary_AsOperator_IsAllowed` |
 | 4 | 後段障害 | — | 後段の非成功ステータスをそのまま伝播し、空サマリへ縮退させない | `GetSummary_WhenDashboardFails_PropagatesStatus` ／ `GetSummary_WhenFeedbackStatsFails_PropagatesStatus` |
 | 5 | 本文欠落 | — | 後段が本文を返さなければ 502 | `GetSummary_WhenDashboardBodyNull_Returns502` |
+| 6 | **下限の透過** | 検索語の秘匿の裁定（決定 2） | 後段が返した下限を**そのまま**返す（自前の既定を埋めない）。スタブは既定と別の値にしてあり、既定を埋める実装はここで落ちる | `GetSummary_PassesThroughSearchTermMinCount` |
 
 集計そのもの（期間の丸め・日次集計・上位語）は `DashboardService` 側で検証する
 （`src/knowledge/backend/Services/DashboardService/Tests/Features/Dashboard/DashboardEndpointTests.cs`）。
@@ -141,7 +149,8 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 ## テストデータ
 
 - ロール別のダミー利用者（セッション身元の `roles` 配列。`renderUnitRoute` が生成する）。
-- `DashboardSummaryDto` のダミー（`totalSearches` / `totalAnswers` / `usageTrend` / `topSearchTerms` / `quality`）。
+- `DashboardSummaryDto` のダミー（`totalSearches` / `totalAnswers` / `usageTrend` / `topSearchTerms` / `quality` /
+  `searchTermMinCount`）。
 - 実行時 config（`window.__APP_CONFIG__.opsLinks`）。**各テストでキャッシュを破棄する**
   （`resetAppConfigCache()`。持ち越すと前のテストの config を次が読む）。
 

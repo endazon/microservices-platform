@@ -46,6 +46,10 @@ msgstr "（表示 {shownCount} 件）"
 msgid "{count} 件で絞り込み中"
 msgstr "{count} 件で絞り込み中"
 
+#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+msgid "{effectiveMinCount} 件以上検索された語のみを表示します。"
+msgstr "{effectiveMinCount} 件以上検索された語のみを表示します。"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "{h}（上限）"
 msgstr "{h}（上限）"

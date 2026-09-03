@@ -716,6 +716,12 @@
             "required": true,
             "position": 4
           },
+          "SearchTermMinCount": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 5
+          },
           "TopSearchTerms": {
             "source": "positional",
             "type": "IReadOnlyList<SearchTrendDto>",
@@ -745,6 +751,12 @@
       "Knowledge.Contracts.Dtos.DashboardUsageDto": {
         "kind": "record",
         "members": {
+          "SearchTermMinCount": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 4
+          },
           "TopSearchTerms": {
             "source": "positional",
             "type": "IReadOnlyList<SearchTrendDto>",

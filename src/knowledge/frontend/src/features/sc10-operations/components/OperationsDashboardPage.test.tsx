@@ -12,11 +12,27 @@ import { jsonResponse } from '@foundation/testing/bffResponse';
 //
 // IADR-0135 決定 4（#519）: 生成コードは mutator（`bffFetch`）→ **`apiRequest`** を通るため、
 // モックは `apiRequest` に当てる（`apiFetch` を差し替えても効かない）。
-const mocks = vi.hoisted(() => ({ apiRequest: vi.fn() }));
+const mocks = vi.hoisted(() => ({ apiRequest: vi.fn(), setOption: vi.fn() }));
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
   apiRequest: mocks.apiRequest,
 }));
+
+// ADR-0071 §結果（#1197）: 「しきい値未満の語が出ない」検査は**図にも**要る。
+// jsdom には canvas も実 SVG 描画も無く、器の中身は空のままなので、
+// **器のテキストを見ても何も確かめたことにならない**（何を渡しても緑になる）。
+// `echartsLoader` へモックを当て、**図へ渡った option そのもの**を見る
+// （`EChart.test.tsx` / `GraphCanvas.test.tsx` と同じ構図）。
+vi.mock('../../../lib/echarts/echartsLoader', () => ({
+  loadECharts: vi.fn().mockResolvedValue({
+    init: () => ({ setOption: mocks.setOption, dispose: vi.fn(), resize: vi.fn() }),
+  }),
+}));
+
+/** 図へ渡った option を 1 本の文字列にする（系列名・軸ラベルを横断で検索するため）。 */
+function chartOptionsText() {
+  return mocks.setOption.mock.calls.map((c) => JSON.stringify(c[0])).join('\n');
+}
 
 import { createSc10OperationsRoute, sc10OperationsNav } from '../routes/sc10OperationsRoute';
 
@@ -32,6 +48,8 @@ const SUMMARY = {
     { term: '就業規則', count: 33 },
   ],
   quality: { up: 82, down: 18, total: 100, satisfactionRate: 0.82 },
+  // FR-10, SC-10, ADR-0071 決定 1・2（#1197）: 検索傾向の出現件数の下限。
+  searchTermMinCount: 3,
 };
 
 async function renderPage(roles: readonly string[] = ['platform-admin']) {
@@ -43,6 +61,8 @@ async function renderPage(roles: readonly string[] = ['platform-admin']) {
 
 beforeEach(() => {
   mocks.apiRequest.mockReset();
+  // **図の記録もテストごとに空へ戻す**——残すと、前のテストで渡った語を後のテストが拾う。
+  mocks.setOption.mockReset();
   resetAppConfigCache();
   window.__APP_CONFIG__ = undefined;
 });
@@ -119,6 +139,89 @@ describe('OperationsDashboardPage (SC-10)', () => {
 
     expect(await screen.findByText('期間内の利用はありません。')).toBeInTheDocument();
     expect(screen.getByText('検索傾向はまだありません。')).toBeInTheDocument();
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // SC-10, FR-10, ADR-0071 決定 1・2（#1197）: 検索傾向の出現件数しきい値。
+  // ───────────────────────────────────────────────────────────────────────
+
+  // ★ ADR-0071 決定 2: **現在のしきい値を画面に併記する。**
+  // 値が変われば見える語も変わるため、数字だけでは時系列の比較が成り立たない。
+  it('states the search-term threshold alongside the trend card', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
+    await renderPage();
+
+    expect(await screen.findByText('3 件以上検索された語のみを表示します。')).toBeInTheDocument();
+  });
+
+  // ★ 併記の値は**契約が返した値**である（画面の定数ではない）。
+  // 定数を焼き込んだ実装ではこのテストが落ちる。
+  it('takes the stated threshold from the contract rather than a hard-coded default', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse({ ...SUMMARY, searchTermMinCount: 7 }));
+    await renderPage();
+
+    expect(await screen.findByText('7 件以上検索された語のみを表示します。')).toBeInTheDocument();
+  });
+
+  // ★ ADR-0071 §結果「SC-10 の画面テストに『しきい値未満の語が出ない』検査が要る」。
+  //
+  // **しきい値未満の語を含むサマリを渡す。** 後段が既にふるっている前提であっても、
+  // 画面が素通しなら**後段の取りこぼしがそのまま運用者へ出る**（[[IADR-0044]] の多層防御）。
+  // **表と棒グラフの両方**を見る——片方だけだと、図に残ったまま気付けない。
+  it('omits terms below the threshold from both the table and the chart', async () => {
+    mocks.apiRequest.mockResolvedValue(
+      jsonResponse({
+        ...SUMMARY,
+        topSearchTerms: [
+          { term: '経費精算', count: 51 },
+          { term: '田中の評価面談メモ', count: 2 },
+        ],
+      }),
+    );
+    await renderPage();
+
+    // **陽性対照**: しきい値以上の語は在る（描画そのものが空振りしていない）。
+    const trend = within(await screen.findByRole('table', { name: '検索傾向（上位語）の一覧' }));
+    expect(trend.getByText('経費精算')).toBeInTheDocument();
+    await waitFor(() => expect(chartOptionsText()).toContain('経費精算'));
+
+    // 表にも図にも出ない。
+    expect(screen.queryByText('田中の評価面談メモ')).not.toBeInTheDocument();
+    expect(chartOptionsText()).not.toContain('田中の評価面談メモ');
+  });
+
+  // ★ しきい値未満の語**しか**無い期間は、「まだありません」へ倒す。
+  // 🔴 **「その他 1 件」に相当する行を出さない**（ADR-0071 決定 1。M 自体が推測の材料になる）。
+  it('says there is no trend yet when every term is below the threshold', async () => {
+    mocks.apiRequest.mockResolvedValue(
+      jsonResponse({ ...SUMMARY, topSearchTerms: [{ term: '私信', count: 2 }] }),
+    );
+    await renderPage();
+
+    expect(await screen.findByText('検索傾向はまだありません。')).toBeInTheDocument();
+    expect(screen.queryByText('私信')).not.toBeInTheDocument();
+    expect(screen.queryByText(/その他/)).not.toBeInTheDocument();
+    // **併記は空でも消えない**——0 件はしきい値の効果が最も強く出た状態であり、
+    // そこで数字が消えると「なぜ空なのか」が読めなくなる。
+    expect(screen.getByText('3 件以上検索された語のみを表示します。')).toBeInTheDocument();
+  });
+
+  // ★ 🔴 **稼働 k3s で実測した事故の再現**（#1197 / [[IADR-0354]] 決定 3 の追記）。
+  //
+  // しきい値を知らない**旧 BFF** が後段に居ると、応答 JSON に `searchTermMinCount` が**無い**
+  // （生成型は `number` と言うが実体は `undefined`）。`count >= undefined` は**全件 false** であり、
+  // 素で使うと**一覧が丸ごと空になる**——「知らないものを消す」向きで、いちばん避けたい壊れ方である。
+  // **0 へ倒し、ふるわず、下限も名乗らない。**
+  it('shows every term and states no threshold when the field is missing (older BFF)', async () => {
+    const withoutThreshold = { ...SUMMARY };
+    delete (withoutThreshold as Partial<typeof SUMMARY>).searchTermMinCount;
+    mocks.apiRequest.mockResolvedValue(jsonResponse(withoutThreshold));
+    await renderPage();
+
+    const trend = within(await screen.findByRole('table', { name: '検索傾向（上位語）の一覧' }));
+    expect(trend.getByText('経費精算')).toBeInTheDocument();
+    expect(trend.getByText('就業規則')).toBeInTheDocument();
+    expect(screen.queryByText(/件以上検索された語のみを表示します。/)).not.toBeInTheDocument();
   });
 
   // IADR-0129 決定 3 / IADR-0009: 403 と 404 は**同じ**中立文言。文言から権限の有無を読ませない。
