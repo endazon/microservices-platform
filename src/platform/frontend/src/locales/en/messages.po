@@ -717,6 +717,10 @@ msgstr "Data source registration"
 msgid "データソース管理"
 msgstr "Data source management"
 
+#: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
+msgid "テキスト層が無いため本文を抽出できませんでした（原本を参照）"
+msgstr "The body could not be extracted because the PDF has no text layer (see the original)"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "トークンを発行する"
 msgstr "Issue a token"
@@ -2073,6 +2077,10 @@ msgstr "The default value {DEFAULT_LIFECYCLE} is used when left unspecified."
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "本文"
 msgstr "Body"
+
+#: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
+msgid "本文なしで完了"
+msgstr "Completed without a body"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "本文はこの画面では編集できません。本文を書くには Obsidian 連携を設定してください。"

@@ -7,11 +7,11 @@ updated: 2026-09-03
 author: Claude
 ---
 <!-- trace:
-ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-15, FR-16, FR-22, SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-12, SC-17, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-09, UC-11]
-adrs: [ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0037, ADR-0043, ADR-0074]
-iadrs: [IADR-0009, IADR-0010, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0346, IADR-0364]
-specs: [20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table]
-issues: [#439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, planning#200, planning#236, planning#244, planning#299, planning#518]
+ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-13, FR-15, FR-16, FR-22, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-12, SC-17, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-07, UC-09, UC-11]
+adrs: [ADR-0011, ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0037, ADR-0043, ADR-0073, ADR-0074]
+iadrs: [IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0355, IADR-0357]
+specs: [20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes]
+issues: [#439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, planning#200, planning#236, planning#244, planning#299, planning#518]
 -->
 
 # 通信仕様書: BFF 境界（`/bff/*`）
@@ -180,6 +180,10 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | PUT | `/bff/admin/users/{userId}/roles` | **admin のみ** | —| `useBffUserAdminReplaceUserRoles`（差し替え。空集合は 400 —— 権限剥奪は無効化で行う） |
 | POST | `/bff/admin/users/{userId}/disable` | **admin のみ** | —| `useBffUserAdminDisableUser`（**無効化と全セッション失効は 1 つの操作である**。後段の 404 を**そのまま**返す） |
 | POST | `/bff/admin/users/{userId}/enable` | **admin のみ** | —| `useBffUserAdminEnableUser`（セッションは復活しない） |
+| GET | `/bff/wiki/pages` | **認証必須・ロールは問わない**（`x-roles: []`）。可視性を決めるのは役割ではなく属性ベースの権限であり、許可が無ければ **200 ＋ 空**（deny-by-default） | —| `useBffWikiPageList` |
+| GET | `/bff/wiki/search` | 同上。**絞り込みは指定されたときだけ後段へ載る**（既定・上限は後段が唯一の情報源）。委譲先の故障は **502**（空で隠さない） | —| `useBffWikiSearch` |
+| GET | `/bff/wiki/pages/{slug}` | 同上。**権限外・不存在・非公開化はいずれも 404**（存在秘匿。403 を返さない） | —| `useBffWikiPageBySlug` |
+| GET | `/bff/wiki/pages/by-doc/{documentId}` | 同上。文書詳細から本文へ渡る導線が使う | —| `useBffWikiPageByDocument` |
 | GET | `/bff/admin/config` | **ConfigViewer**（非権限は 404） | —| `useBffConfigEffective` |
 | GET | `/bff/admin/config/drift` | 同上 | —| `useBffConfigDrift` |
 | GET | `/bff/admin/config/history` | 同上 | —| `useBffConfigHistory` |

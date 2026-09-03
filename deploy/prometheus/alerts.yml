@@ -78,15 +78,36 @@ groups:
           summary: "検索 p95 が 1.5s 超"
           description: "RetrievalService の p95 レイテンシが NFR 目標(1.5s)を 10 分継続で超過。"
 
-      # RAG 初回応答 p95（NFR: 5s）。aianalysis-service /analysis/ask。
+      # NFR-02, ADR-0076 決定 5 (#1204): RAG 回答の**初回応答** p95 ＝ 初回トークンまでの時間（TTFT）。
+      # 🔴 **NFR-02 の SLO 判定はこのルールで行う。** 下の RagLatencyP95High（応答完了 p95）ではない。
+      #   計器は AiAnalysisService の `rag.answer.first_token.duration`（**単位は秒**。ADR-0076 決定 1）で、
+      #   要求受領から最初の `token` イベントを書き出すまでを測る。**token が 1 件も出なければ記録されない**
+      #   （初回トークンが無かったことを「速かった」として積まない）。
+      #   経路は SC-01 が実際に使う **/analysis/ask/stream** であり、一括経路 /analysis/ask ではない。
+      # 🔴 **この計器は呼ばれない限り系列を持たない。** 無風でいられる時間が検知要件（5 分）を超えるため、
+      #   ADR-0076 決定 3 の `absent` 併設の対象外である（決定 4 の合成監視が入るまで）。
+      - alert: RagFirstTokenP95High
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(rag_answer_first_token_duration_seconds_bucket{job="microservices-platform.aianalysis-service"}[5m]))) > 5
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "RAG 初回応答（初回トークン）p95 が 5s 超"
+          description: "AiAnalysisService /analysis/ask/stream の初回トークンまでの p95 が NFR-02 目標(5s)を 10 分継続で超過。"
+
+      # RAG **応答完了** p95。aianalysis-service /analysis/ask（一括経路）。
+      # 🔴 **これは NFR-02 の SLI ではない**（#1204 で注釈を是正した。それまで「初回応答」と称していた）。
+      #   ADR-0076 §統制と現在の実現手段 が「応答完了 p95 は代理値として読む。ただし**長い回答ほど悪化する**ため
+      #   **SLO 判定には用いない（傾向の観察に留める）**」と定めている。SLO 判定は上の RagFirstTokenP95High。
+      #   式・しきい値・severity は据え置く —— 一括経路が極端に遅いことは運用上の異常として拾う価値がある。
       - alert: RagLatencyP95High
         expr: |
           histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job="microservices-platform.aianalysis-service", http_route="/analysis/ask"}[5m]))) > 5
         for: 10m
         labels: { severity: warning }
         annotations:
-          summary: "RAG 応答 p95 が 5s 超"
-          description: "AiAnalysisService /analysis/ask の p95 が NFR 目標(5s)を 10 分継続で超過。"
+          summary: "RAG 応答完了 p95 が 5s 超（傾向の観察。NFR-02 の判定ではない）"
+          description: "AiAnalysisService /analysis/ask（一括経路）の応答完了 p95 が 5s を 10 分継続で超過。NFR-02 の初回応答 SLO は RagFirstTokenP95High が判定する。"
 
   # --- follow-up: exporter/カスタムメトリクス配線後に有効化する（#198 注意参照） ---
   # - name: platform-messaging

@@ -70,6 +70,22 @@ const CORRECTED_JOB = {
   hasCorrection: true,
 };
 
+/**
+ * #1192: テキスト層を持たない PDF。**`status` は `succeeded`** で、内訳 `bodyAbsent` が立つ
+ * （計画 ADR「PDF の本文抽出は pandoc の外に置く」決定 3。失敗にもデッドレターにもしない）。
+ */
+const BODY_ABSENT_JOB = {
+  ...SUCCEEDED_JOB,
+  id: '9813abcd-0000-0000-0000-000000000007',
+  originalPath: '押印済み契約書.pdf',
+  documentId: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+  diagramsCoded: 0,
+  diagramsRetained: 0,
+  hasCorrection: false,
+  deadLettered: false,
+  bodyAbsent: true,
+};
+
 /** 失敗かつ縮退あり。**再変換と人手補正の両方の導線が同じ行に出る**（決定 7 の試験に要る）。 */
 const FAILED_RETAINED_JOB = {
   ...FAILED_JOB,
@@ -399,6 +415,38 @@ describe('ConversionJobsPage (SC-07)', () => {
     expect(table.getByText('図コード化失敗（画像保持へ縮退済み）')).toBeInTheDocument();
     expect(table.getByText('補正あり')).toBeInTheDocument();
     expect(table.getByText('Mermaid 2図')).toBeInTheDocument();
+  });
+
+  // #1192 / 計画 ADR「PDF の本文抽出は pandoc の外に置く」決定 3: テキスト層を持たない PDF は
+  // **「本文なしで完了」を理由つきで**表示し、`failed` の列（再変換の対象）に並ばない。
+  // 状態バッジは「完了」のまま（4 値モデル不変）。色だけで意味を持たせない（標識はテキスト付き）。
+  it('shows a succeeded PDF without a text layer as completed-without-body, not as failed', async () => {
+    mockConversionApi([BODY_ABSENT_JOB]);
+    await renderPage(['platform-admin']);
+
+    const table = within(await screen.findByRole('table'));
+    expect(table.getByText('押印済み契約書.pdf')).toBeInTheDocument();
+    // **`status` は succeeded のまま**。失敗ではない。
+    expect(table.getByText('完了')).toBeInTheDocument();
+    expect(table.queryByText('失敗')).not.toBeInTheDocument();
+    expect(table.getByText('本文なしで完了')).toBeInTheDocument();
+    // 理由つき（備考列）。
+    expect(
+      table.getByText('テキスト層が無いため本文を抽出できませんでした（原本を参照）'),
+    ).toBeInTheDocument();
+    // 再変換の対象に並ばない（管理者でもボタンは出ない）。結果への導線はある（原本参照のみの文書）。
+    expect(screen.queryByRole('button', { name: '再変換' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '人手補正' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '変換結果の文書を開く' })).toBeInTheDocument();
+  });
+
+  // 陽性対照: 本文ありの完了ジョブに「本文なしで完了」を出さない（導出が「常に真」になっていない側）。
+  it('shows no body-absent marker for a succeeded job with a body', async () => {
+    mockConversionApi([SUCCEEDED_JOB]);
+    await renderPage(['platform-admin']);
+
+    expect(await screen.findByText('経費精算規程.docx')).toBeInTheDocument();
+    expect(screen.queryByText('本文なしで完了')).not.toBeInTheDocument();
   });
 
   // 縮退していないジョブに標識を出さない（導出が「常に真」になっていないことの側）。
