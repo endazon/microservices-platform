@@ -158,7 +158,7 @@ public class PandocConversionServiceTests
         }
     }
 
-    // ADR-0070 決定 2 / IADR-0362 (#1192): PDF は pandoc の担当ではない（null ＝ 抽出器へ振り分ける）。
+    // ADR-0070 決定 2 / IADR-0356 (#1192): PDF は pandoc の担当ではない（null ＝ 抽出器へ振り分ける）。
     // **`UnsupportedSourceFormatException` を投げない**（IADR-0320 決定 4 の明示的拒否は覆った）。
     // 既定の markdown へ落とさないことは不変（null であって "markdown" ではない）。
     [Theory]

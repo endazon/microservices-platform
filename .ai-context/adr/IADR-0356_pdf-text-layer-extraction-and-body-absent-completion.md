@@ -1,5 +1,5 @@
 ---
-title: IADR-0362 PDF の本文は pandoc の外の pdftotext で取り出し、テキスト層の無い PDF は failed ではなく「本文なしで完了」にする
+title: IADR-0356 PDF の本文は pandoc の外の pdftotext で取り出し、テキスト層の無い PDF は failed ではなく「本文なしで完了」にする
 type: impl-adr
 status: Accepted
 related_ids: [FR-01, FR-12, UC-06, SC-07, ADR-0012, ADR-0070, IADR-0008, IADR-0122, IADR-0137, IADR-0298, IADR-0320, IADR-0351]
@@ -12,7 +12,7 @@ plan_refs:
   - "05_screens/01_screens.md §SC-07（状態モデルは 4 値）"
 ---
 
-# IADR-0362: PDF の本文は pandoc の外の pdftotext で取り出し、テキスト層の無い PDF は failed ではなく「本文なしで完了」にする
+# IADR-0356: PDF の本文は pandoc の外の pdftotext で取り出し、テキスト層の無い PDF は failed ではなく「本文なしで完了」にする
 
 - 状態: Accepted
 - 日付: 2026-09-03

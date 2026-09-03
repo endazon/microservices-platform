@@ -10,7 +10,7 @@ using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace ConversionService.Tests.Infrastructure.ExternalServices;
 
-// FR-12, UC-06, SC-07, ADR-0070 決定 2・3, IADR-0362 (#1192): PDF のテキスト層抽出器のテスト。
+// FR-12, UC-06, SC-07, ADR-0070 決定 2・3, IADR-0356 (#1192): PDF のテキスト層抽出器のテスト。
 //
 // 陽性／陰性の対で固定する:
 //   陽性 … テキスト層を持つ PDF → 本文あり（`BodyAbsent = false`）
@@ -203,7 +203,7 @@ public class PdfTextLayerConverterTests
 
     // --- 実行時イメージ -----------------------------------------------------------------
 
-    // 🔴 IADR-0362 決定 1 (#1192): **実行時イメージが poppler-utils を導入していることを機械的に確かめる。**
+    // 🔴 IADR-0356 決定 1 (#1192): **実行時イメージが poppler-utils を導入していることを機械的に確かめる。**
     // `PandocConversionServiceTests.Dockerfile_installs_pandoc_into_the_runtime_stage` と同型。
     // 「焼いたイメージに実在するか」は readiness（`PdfToTextHealthCheck`）が配備側で見る。
     [Fact]

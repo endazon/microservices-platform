@@ -96,7 +96,7 @@ internal static class NormalizationGolden
 
         var coder = new ScriptedDiagramCoder(spec.Figures);
         var store = new GoldenObjectStore();
-        // ADR-0070 決定 3 / IADR-0362 (#1192): case が `bodyAbsent: true` を宣言していれば、変換器が
+        // ADR-0070 決定 3 / IADR-0356 (#1192): case が `bodyAbsent: true` を宣言していれば、変換器が
         // 「テキスト層なし」を返したとみなす（`pdf-no-text-layer`）。抽出器そのものは実走させない
         // （決定 2 と同じ理由。空判定は `PdfTextLayerConverterTests` が持つ）。
         var service = new NormalizationService(
@@ -373,7 +373,7 @@ internal sealed class GoldenCaseSpec
     public List<GoldenFigureSpec> Figures { get; set; } = [];
 
     /// <summary>
-    /// ADR-0070 決定 3 / IADR-0362 (#1192): 変換器が「テキスト層なし」を返したとみなす宣言。
+    /// ADR-0070 決定 3 / IADR-0356 (#1192): 変換器が「テキスト層なし」を返したとみなす宣言。
     /// 省略時は本文あり。`true` の case は `.body.md` を空にする。
     /// </summary>
     public bool BodyAbsent { get; set; }

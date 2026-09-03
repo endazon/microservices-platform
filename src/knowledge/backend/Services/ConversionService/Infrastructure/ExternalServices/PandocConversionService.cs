@@ -13,7 +13,7 @@ namespace ConversionService.Infrastructure.ExternalServices;
 // オブジェクトストレージから取得した原本を pandoc で本文 Markdown 化しつつ、
 // --extract-media で図（画像）を抽出する。
 //
-// ADR-0070 決定 2 / IADR-0362 (#1192): **PDF は本クラスの担当ではない。** `FormatRoutingBodyConverter` が
+// ADR-0070 決定 2 / IADR-0356 (#1192): **PDF は本クラスの担当ではない。** `FormatRoutingBodyConverter` が
 // `PandocInputFormat` の戻り値（PDF は null）で `PdfTextLayerConverter` へ振り分ける。
 //
 // 🔴 IADR-0320 (#1097): **縮退の既定は fail-closed である。**
@@ -287,7 +287,7 @@ public class PandocConversionService(
     // 戻り値:
     //   - pandoc の `-f` 値 …… pandoc が読む形式
     //   - null …… **PDF**。pandoc は PDF を出力にはできるが入力には取れない（IADR-0320 決定 4）。
-    //     ADR-0070 決定 2 / IADR-0362 (#1192) により**テキスト層の抽出器（`PdfTextLayerConverter`）へ振り分ける**。
+    //     ADR-0070 決定 2 / IADR-0356 (#1192) により**テキスト層の抽出器（`PdfTextLayerConverter`）へ振り分ける**。
     //     従前はここで `UnsupportedSourceFormatException` を投げて `failed` にしていたが、その裁定は覆った。
     //   - 例外 …… 🔴 **計画の対応形式表に無い未知の形式**（未知の MIME ＋未知の拡張子）。
     //     従前は既定の `markdown` へ落として pandoc に食わせていたが、対応していない形式が**静かに壊れた
@@ -365,7 +365,7 @@ public class PandocConversionService(
     };
 
     // 原本の解決（オブジェクトストレージからの取り寄せ。IADR-0320 決定 3）は `RawSourceResolver` が持つ。
-    // PDF の抽出器と同じ経路を使うため、本クラスから切り出した（IADR-0362）。
+    // PDF の抽出器と同じ経路を使うため、本クラスから切り出した（IADR-0356）。
 
     private static async Task<bool> CheckPandocAsync(CancellationToken ct) =>
         await TryGetPandocVersionAsync(ct) is not null;

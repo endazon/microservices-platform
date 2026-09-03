@@ -47,7 +47,7 @@ public class RawDocumentFetchedConsumerJobTests
             throw new InvalidOperationException("pandoc failed");
     }
 
-    // ADR-0070 決定 3 / IADR-0362 (#1192): テキスト層の無い PDF。正規化は**成功**し、本文なしを運ぶ。
+    // ADR-0070 決定 3 / IADR-0356 (#1192): テキスト層の無い PDF。正規化は**成功**し、本文なしを運ぶ。
     private sealed class BodyAbsentNormalizer : INormalizationService
     {
         public Task<NormalizationResult> NormalizeAsync(RawDocumentFetched raw, CancellationToken ct = default) =>
@@ -105,7 +105,7 @@ public class RawDocumentFetchedConsumerJobTests
         harness.Publisher.Calls.Should().ContainSingle();
     }
 
-    // FR-12, UC-06, SC-07, ADR-0070 決定 3 / IADR-0362 (#1192): テキスト層を持たない PDF は
+    // FR-12, UC-06, SC-07, ADR-0070 決定 3 / IADR-0356 (#1192): テキスト層を持たない PDF は
     // **`succeeded` で確定し、`failed` にならず `deadLettered` も立たない**。内訳は `BodyAbsent` が運び、
     // 発行口へも同じ値が渡る（後続がメタデータ索引へ回す判断に使う）。
     // 🔴 従前はこの原本が `failed` ＋ `deadLettered=true` になっていた（#1192 の実測）。

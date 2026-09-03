@@ -11,7 +11,7 @@ public interface IBodyConverter
 // FR-12: 本文変換の結果。Markdown 本文と、原本から抽出した図の一覧を返す。
 public record BodyConversionResult(string Markdown, IReadOnlyList<ExtractedFigure> Figures)
 {
-    // FR-12, UC-06, SC-07, ADR-0070 決定 3, IADR-0362 (#1192): **原本に本文が存在しない**
+    // FR-12, UC-06, SC-07, ADR-0070 決定 3, IADR-0356 (#1192): **原本に本文が存在しない**
     // （テキスト層を持たない PDF）。抽出結果が空白のみであることを確かめたうえで立てる。
     //
     // 🔴 これは失敗ではない —— 再試行しても結果は変わらず、デッドレターに溜める価値も無い。
@@ -28,7 +28,7 @@ public record BodyConversionResult(string Markdown, IReadOnlyList<ExtractedFigur
 // 縮退は ConversionOptions.AllowDegradedBodyConversion が true のときだけに限る。
 public sealed class BodyConversionUnavailableException(string message) : Exception(message);
 
-// FR-12, UC-06, ADR-0012, ADR-0070 決定 5, IADR-0320 (#1097), IADR-0362 (#1192): 原本の形式が
+// FR-12, UC-06, ADR-0012, ADR-0070 決定 5, IADR-0320 (#1097), IADR-0356 (#1192): 原本の形式が
 // **どの変換器の入力にもならない**（計画の対応形式表に無い未知の形式）。
 //
 // 🔴 従前の代表は PDF だったが、ADR-0070 決定 2 により PDF はテキスト層の抽出器へ振り分ける

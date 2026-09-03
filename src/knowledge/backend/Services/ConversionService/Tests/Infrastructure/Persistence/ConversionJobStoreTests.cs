@@ -47,11 +47,11 @@ public class ConversionJobStoreTests
         job.DocumentId.Should().Be(docId);
         job.MarkdownUri.Should().Be("storage://bucket/a.md");
         job.Error.Should().BeNull();
-        // ADR-0070 決定 3 / IADR-0362: 本文ありの成功に「本文なし」標識は立たない（陽性対照）。
+        // ADR-0070 決定 3 / IADR-0356: 本文ありの成功に「本文なし」標識は立たない（陽性対照）。
         job.BodyAbsent.Should().BeFalse();
     }
 
-    // FR-12, SC-07, ADR-0070 決定 3 / IADR-0362 (#1192): 「本文なしで完了」は succeeded の内訳として
+    // FR-12, SC-07, ADR-0070 決定 3 / IADR-0356 (#1192): 「本文なしで完了」は succeeded の内訳として
     // 記録され（状態値は 4 値のまま）、処理を再開したら落ちる（DeadLettered と同型）。
     [Fact]
     public async Task Succeed_with_body_absent_records_marker_and_reprocessing_clears_it()

@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-05, FR-12, SC-06, UC-04, UC-06]
 adrs: [ADR-0002, ADR-0003, ADR-0012, ADR-0014, ADR-0027, ADR-0070]
-iadrs: [IADR-0001, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0295, IADR-0304, IADR-0320, IADR-0362]
+iadrs: [IADR-0001, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0295, IADR-0304, IADR-0320, IADR-0356]
 specs: [20260627_FR-01_data-source-catalog-pipeline, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1192_pdf-text-layer-extraction]
 issues: [#195, #217, #218, #219, #458, #537, #546, #580, #1097, #1192, planning#200]
 -->

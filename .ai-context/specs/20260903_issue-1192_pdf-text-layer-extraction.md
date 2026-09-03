@@ -18,7 +18,7 @@ plan_refs:
   - "07_adr/ADR-0012_conversion-pipeline.md（§決定「本文は pandoc」を ADR-0070 決定 2 が部分改定）"
   - "05_screens/01_screens.md §SC-07（状態モデルは 4 値。「本文なしで完了」は succeeded の内訳）"
 related_adrs:
-  - IADR-0362
+  - IADR-0356
   - IADR-0320
   - IADR-0351
   - IADR-0298
@@ -156,11 +156,11 @@ DocumentService/Features/Documents/Catalog/DocumentNormalizedConsumer.cs      �
 - 対象: 上記走査 1〜7 の変更点。`ConversionService/**`（Dockerfile 含む）、`Knowledge.Contracts`
   （`ConversionJobDto` / `DocumentNormalized`）、`FileSystemConnector` のコメント、`sc07-conversions/**`、
   `docs/api/openapi.yaml` ＋ orval 生成物、`docs/functional/FR-12*` `FR-01*` / `docs/tests/FR-12*` `UC-06*`
-  `SC-07*` / `docs/screens/SC-07*` / `docs/data/conversion-job.md`、`IADR-0362`、索引。
+  `SC-07*` / `docs/screens/SC-07*` / `docs/data/conversion-job.md`、`IADR-0356`、索引。
 - 対象外: ADR-0070 決定 4（#1193。IngestionService / RetrievalService / SC-02）、OCR（ADR-0070 案 4）、
   `.rtf` 等の表外形式の増減（計画側）、PDF 内画像の図抽出（`pdfimages`。計画に無い）。
 
-## 決めること（実装 ADR: `IADR-0362`）
+## 決めること（実装 ADR: `IADR-0356`）
 
 1. **抽出器は poppler-utils の `pdftotext` を外部プロセスとして起動する。** NuGet は足さない
    （`scripts/backend-library-baseline.json` 不変）。取得元はベースイメージの APT ミラー（`IADR-0320` 決定 1 と同じ線）。
@@ -224,7 +224,7 @@ flowchart LR
 | `sc07-conversions/types/jobStatus.ts` / `components/ConversionJobsPage.tsx` ＋ テスト、`locales/{ja,en}/messages.po` | `isBodyAbsent` 導出・標識・備考 |
 | `docs/api/openapi.yaml` ＋ `platform/frontend/src/lib/api/generated/**` | `bodyAbsent` |
 | `scripts/contract-schema-baseline.json` | `--update`（非破壊の追加 2 件） |
-| docs 6 件 / `IADR-0362` / 索引 | 追随 |
+| docs 6 件 / `IADR-0356` / 索引 | 追随 |
 
 ## 受け入れ基準（#1192 の 10 件の写像）
 

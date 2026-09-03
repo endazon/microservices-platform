@@ -22,7 +22,7 @@ public class ConversionJob
     // 導出（Attempts >= 上限）にしないのは、Attempts が手動再変換をまたいで累積するためである。
     public bool DeadLettered { get; private set; }
 
-    // FR-12, SC-07, ADR-0070 決定 3 / IADR-0362 (#1192): **本文なしで完了したか**（succeeded の内訳）。
+    // FR-12, SC-07, ADR-0070 決定 3 / IADR-0356 (#1192): **本文なしで完了したか**（succeeded の内訳）。
     // テキスト層を持たない PDF は再試行しても結果が変わらないため、failed に置かず succeeded として
     // 確定させる。DeadLettered と同型の「状態の 5 値目ではない標識」である。処理を再開したら落とす。
     public bool BodyAbsent { get; private set; }
@@ -74,7 +74,7 @@ public class ConversionJob
 
     // IADR-0154 決定 1: 図の記録は成功のたびに洗い替える（再変換は図を作り直すため、
     // 前回の図をそのまま残すと「どの図が今の本文に居るか」が割れる）。
-    // ADR-0070 決定 3 / IADR-0362: bodyAbsent＝テキスト層の無い PDF を「本文なし」で完了させたか。
+    // ADR-0070 決定 3 / IADR-0356: bodyAbsent＝テキスト層の無い PDF を「本文なし」で完了させたか。
     // **状態は succeeded のまま**である（failed に置くと再変換の対象として並び、何度やっても結果の
     // 変わらないジョブが溜まる）。
     public void MarkSucceeded(Guid documentId, string markdownUri,

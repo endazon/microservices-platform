@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-12, UC-06, SC-07, NFR]
 adrs: [ADR-0010, ADR-0012, ADR-0014, ADR-0015, ADR-0053, ADR-0070]
-iadrs: [IADR-0154, IADR-0298, IADR-0320, IADR-0351, IADR-0362]
+iadrs: [IADR-0154, IADR-0298, IADR-0320, IADR-0351, IADR-0356]
 specs: [20260831_issue-1106_uc-test-specs, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction]
 issues: [#472, #1106, #1120, #1192]
 -->

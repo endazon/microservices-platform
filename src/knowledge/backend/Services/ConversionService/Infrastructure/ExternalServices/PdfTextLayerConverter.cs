@@ -7,7 +7,7 @@ using System.Text;
 
 namespace ConversionService.Infrastructure.ExternalServices;
 
-// FR-12, UC-06, ADR-0070 決定 2・3, IADR-0362 (#1192): PDF の本文を**テキスト層の抽出器**で取り出す。
+// FR-12, UC-06, ADR-0070 決定 2・3, IADR-0356 (#1192): PDF の本文を**テキスト層の抽出器**で取り出す。
 //
 // pandoc は PDF を出力にはできるが入力には取れない（IADR-0320 決定 4）。ADR-0070 決定 2 は
 // 「PDF はテキスト層の抽出器で本文を取り出し、Markdown 本文とする（poppler の pdftotext 相当）」と
@@ -124,7 +124,7 @@ public class PdfTextLayerConverter(
     }
 
     /// <summary>
-    /// FR-12, ADR-0070 決定 3, IADR-0362 (#1192): 抽出したプレーンテキストを本文 Markdown へ整え、
+    /// FR-12, ADR-0070 決定 3, IADR-0356 (#1192): 抽出したプレーンテキストを本文 Markdown へ整え、
     /// **テキスト層の有無**を判定する。
     /// </summary>
     /// <remarks>
@@ -160,7 +160,7 @@ public class PdfTextLayerConverter(
         return (sb.ToString().Trim('\n') + "\n", false);
     }
 
-    // IADR-0362 決定 7 / IADR-0320 決定 5 と同型: pdftotext の版（`pdftotext -v` の 1 行目）。
+    // IADR-0356 決定 7 / IADR-0320 決定 5 と同型: pdftotext の版（`pdftotext -v` の 1 行目）。
     // 取得できなければ null ＝**実行時イメージに pdftotext が無い**。readiness ヘルスチェックが同じ口を使う。
     //
     // 版の出力は**標準エラー**へ出る（標準出力は空）ので、両方読んで空でない側を採る。

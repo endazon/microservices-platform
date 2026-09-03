@@ -2,7 +2,7 @@ using ConversionService.Domain.Ports;
 
 namespace ConversionService.Infrastructure.ExternalServices;
 
-// FR-12, UC-06, ADR-0012, ADR-0070 決定 2・5, IADR-0362 決定 2 (#1192): 原本の形式で本文変換器を振り分ける。
+// FR-12, UC-06, ADR-0012, ADR-0070 決定 2・5, IADR-0356 決定 2 (#1192): 原本の形式で本文変換器を振り分ける。
 //
 // - PDF → `PdfTextLayerConverter`（テキスト層の抽出器。ADR-0070 決定 2）
 // - それ以外 → `PandocConversionService`（ADR-0012「本文は pandoc」は PDF 以外でそのまま有効）

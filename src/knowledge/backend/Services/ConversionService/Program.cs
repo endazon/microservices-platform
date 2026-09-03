@@ -52,11 +52,11 @@ var health = builder.Services.AddPlatformHealthChecks()
 if (!allowDegradedConversion)
 {
     health.AddCheck<PandocHealthCheck>("pandoc", tags: ["ready"]);
-    // FR-12, ADR-0070 決定 2, IADR-0362 決定 7 (#1192): PDF のテキスト層抽出器（pdftotext）も同じ線で readiness に載せる。
+    // FR-12, ADR-0070 決定 2, IADR-0356 決定 7 (#1192): PDF のテキスト層抽出器（pdftotext）も同じ線で readiness に載せる。
     health.AddCheck<PdfToTextHealthCheck>("pdftotext", tags: ["ready"]);
 }
 
-// FR-12, ADR-0012, ADR-0070 決定 2, IADR-0362 決定 2 (#1192): 本文変換。
+// FR-12, ADR-0012, ADR-0070 決定 2, IADR-0356 決定 2 (#1192): 本文変換。
 // `IBodyConverter` は形式で振り分ける合成器であり、PDF はテキスト層の抽出器（pdftotext）、
 // それ以外は pandoc が変換する。`NormalizationService` は合成器しか知らない（IADR-0008 の 3 ポートは不変）。
 builder.Services.AddSingleton<PandocConversionService>();

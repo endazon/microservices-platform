@@ -59,7 +59,7 @@ public class MassTransitDocumentNormalizedPublisherTests
             ev.Attributes.Should().ContainKey("confidentiality").WhoseValue.Should().Be("internal");
             ev.Tags.Should().ContainSingle().Which.Should().Be("knowledge-mgmt");
             ev.NormalizedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1));
-            // ADR-0070 決定 3 / IADR-0362 (#1192): 「本文なし」も写る（既定 false なので true を渡して見る）。
+            // ADR-0070 決定 3 / IADR-0356 (#1192): 「本文なし」も写る（既定 false なので true を渡して見る）。
             ev.BodyAbsent.Should().BeTrue();
         }
         finally

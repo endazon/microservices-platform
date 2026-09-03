@@ -20,7 +20,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 # 外部 CDN・GitHub リリース資産・任意 URL からは取らない（配布元を 1 つに保つ）。
 # 版は noble の pandoc 3.1.3。イメージは約 +190MB（実測は PR 本文）。
 #
-# FR-12, ADR-0070 決定 2, IADR-0362 (#1192): 🔴 **poppler-utils（pdftotext）も本サービスの実行時依存である。**
+# FR-12, ADR-0070 決定 2, IADR-0356 (#1192): 🔴 **poppler-utils（pdftotext）も本サービスの実行時依存である。**
 # pandoc は PDF を入力に取れないため、PDF の本文は `PdfTextLayerConverter` が `pdftotext` を
 # 外部プロセスとして起動して取り出す。これが無いと PDF の変換は既定で失敗する（fail-closed。
 # `PdfToTextHealthCheck` が readiness で見るので Pod は Ready にならない）。

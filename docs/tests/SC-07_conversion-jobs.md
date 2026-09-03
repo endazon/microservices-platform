@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-12, SC-03, SC-06, SC-07, UC-06]
 adrs: [ADR-0031, ADR-0070]
-iadrs: [IADR-0009, IADR-0035, IADR-0042, IADR-0044, IADR-0127, IADR-0128, IADR-0132, IADR-0154, IADR-0157, IADR-0162, IADR-0362]
+iadrs: [IADR-0009, IADR-0035, IADR-0042, IADR-0044, IADR-0127, IADR-0128, IADR-0132, IADR-0154, IADR-0157, IADR-0162, IADR-0356]
 specs: [20260805_issue-501_retry-admin-only, 20260805_issue-503_sc05-08-admin-screens, 20260903_issue-1192_pdf-text-layer-extraction]
 issues: [#533, #543, #553, #651, #658, #1192, planning#198]
 -->

@@ -2,7 +2,7 @@ using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace ConversionService.Infrastructure.ExternalServices;
 
-// FR-12, ADR-0014, IADR-0320 決定 3 (#1097), IADR-0362 (#1192): 原本 URI をローカルの読み取り可能
+// FR-12, ADR-0014, IADR-0320 決定 3 (#1097), IADR-0356 (#1192): 原本 URI をローカルの読み取り可能
 // ファイルへ解決する。pandoc（`PandocConversionService`）と PDF のテキスト層抽出器
 // （`PdfTextLayerConverter`）の**両方が同じ経路で原本を取り寄せる**ため、ここへ 1 箇所に置く。
 //

@@ -2,7 +2,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace ConversionService.Infrastructure.ExternalServices;
 
-// FR-12, UC-06, ADR-0070 決定 2, IADR-0362 決定 7 (#1192): pdftotext（poppler-utils）が実行時イメージに
+// FR-12, UC-06, ADR-0070 決定 2, IADR-0356 決定 7 (#1192): pdftotext（poppler-utils）が実行時イメージに
 // 在ることを readiness で確かめる。`PandocHealthCheck`（IADR-0320 決定 5）と同型である。
 //
 // 🔴 **これが「無い状態を検知できる」ことの実物側の担保である。** 抽出器を持たないイメージを配ると

@@ -8,7 +8,7 @@ using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace ConversionService.Tests.Infrastructure.ExternalServices;
 
-// FR-12, UC-06, ADR-0070 決定 2・5, IADR-0362 決定 2 (#1192): 本文変換器の振り分け。
+// FR-12, UC-06, ADR-0070 決定 2・5, IADR-0356 決定 2 (#1192): 本文変換器の振り分け。
 //
 // 外部プロセス（pandoc / pdftotext）の有無に依存せずに**どちらへ振り分けたか**を測るため、
 // 縮退を明示的に許可（`AllowDegradedBodyConversion=true`）し、原本を解決できないストレージを渡す。

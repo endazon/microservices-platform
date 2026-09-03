@@ -22,7 +22,7 @@ public sealed class RecordingDocumentNormalizedPublisher : IDocumentNormalizedPu
         IReadOnlyList<string> AssetUris,
         IReadOnlyDictionary<string, string> Attributes,
         IReadOnlyList<string> Tags,
-        // ADR-0070 決定 3 / IADR-0362 (#1192): 本文なしで完了したか（ハンドラが発行口へ渡した値）。
+        // ADR-0070 決定 3 / IADR-0356 (#1192): 本文なしで完了したか（ハンドラが発行口へ渡した値）。
         bool BodyAbsent = false);
 
     private readonly List<Call> _calls = [];

@@ -44,7 +44,7 @@ public class RawDocumentFetchedConsumer(
 
             // FR-12: 正規化完了イベント発行 → DocumentService が文書を登録し取り込みへ連鎖する。
             // DocumentId は冪等（再変換で同一）。文書管理側で重複登録を避けられる。
-            // ADR-0070 決定 3 / IADR-0362 (#1192): 「本文なし」も運ぶ。後続（カタログ・索引）が
+            // ADR-0070 決定 3 / IADR-0356 (#1192): 「本文なし」も運ぶ。後続（カタログ・索引）が
             // 本文由来のチャンクを作らず、メタデータで検索に載せる判断に使う（決定 4 の射程）。
             var title = Path.GetFileNameWithoutExtension(ev.OriginalPath);
             await publisher.PublishNormalizedAsync(
@@ -65,7 +65,7 @@ public class RawDocumentFetchedConsumer(
         }
         catch (UnsupportedSourceFormatException ex)
         {
-            // FR-12, UC-06, SC-07, IADR-0320 決定 4 (#1097), IADR-0362 (#1192): 原本の形式がどの変換器の
+            // FR-12, UC-06, SC-07, IADR-0320 決定 4 (#1097), IADR-0356 (#1192): 原本の形式がどの変換器の
             // 入力にもならない（計画の対応形式表に無い未知の形式）。**PDF はもうここへ来ない** ——
             // ADR-0070 決定 2 によりテキスト層の抽出器へ振り分ける。
             // **再試行しても結果は変わらない**ので、再送出せず恒久失敗として記録する。
