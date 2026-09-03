@@ -2,6 +2,7 @@ using IngestionService.Infrastructure.ExternalServices;
 using AwesomeAssertions;
 using IngestionService.Domain.Ports;
 using IngestionService.Domain;
+using Knowledge.Contracts.Indexing;
 using Qdrant.Client.Grpc;
 
 namespace IngestionService.Tests.Infrastructure.ExternalServices;
@@ -101,5 +102,38 @@ public class QdrantIngestionVectorStoreTests
         payload["markdown_uri"].StringValue.Should().Be("s3://bucket/doc.md");
         payload["chunk_index"].IntegerValue.Should().Be(3);
         payload["tags"].ListValue.Values.Select(v => v.StringValue).Should().Equal("a", "b");
+    }
+
+    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 3:
+    // **本文なしの点だけが `has_body` を持つ。** 既存の点はすべて本文チャンクなので、
+    // キーの欠落が「本文あり」を正しく表す（backfill が要らない）。
+    [Fact]
+    public void BuildChunkPayload_OmitsHasBody_ForBodyChunks()
+    {
+        Build().Should().NotContainKey(DocumentBodyPresence.PayloadKey);
+    }
+
+    [Fact]
+    public void BuildChunkPayload_WritesHasBodyFalse_ForMetadataPoint()
+    {
+        var payload = QdrantIngestionVectorStore.BuildChunkPayload(
+            documentId: Guid.NewGuid(),
+            title: "タイトル",
+            text: MetadataIndexText.Build("タイトル", ["経理"]),
+            chunkIndex: ChunkId.MetadataChunkIndex,
+            markdownUri: "s3://bucket/doc.md",
+            attributes: new Dictionary<string, string> { ["confidentiality"] = "internal" },
+            tags: ["経理"],
+            updatedAt: null,
+            hasBody: false);
+
+        payload[DocumentBodyPresence.PayloadKey].KindCase.Should().Be(Value.KindOneofCase.BoolValue);
+        payload[DocumentBodyPresence.PayloadKey].BoolValue.Should().BeFalse();
+        // 索引テキストは `text` に載る（全文索引をもう 1 対増やさない。[[IADR-0358]] 案 C）。
+        payload["text"].StringValue.Should().Be("タイトル 経理");
+        // FR-05: ABAC 属性はチャンクと同じネスト構造体で載る（判定軸を変えない）。
+        payload["attributes"].StructValue.Fields.Should().ContainKey("confidentiality");
+        // 索引を直接読んでも「本文チャンクではない」が分かる。
+        payload["chunk_index"].IntegerValue.Should().Be(-1);
     }
 }

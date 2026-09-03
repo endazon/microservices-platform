@@ -18,12 +18,17 @@
       "WikiConnectorTests"
     ],
     "docs/tests/FR-02_ingestion.md": [
+      "ChunkIdTests",
       "DocumentUpdatedConsumerTests",
+      "MetadataIndexTextTests",
       "QdrantIngestionVectorStoreTests"
     ],
     "docs/tests/FR-03_hybrid-search.md": [
       "BffSearchEndpointTests",
-      "HybridSearchServiceTests"
+      "BodylessDocumentSearchTests",
+      "DocumentBodyPresenceTests",
+      "HybridSearchServiceTests",
+      "QdrantVectorStoreTests"
     ],
     "docs/tests/FR-04_ai-answer-citations.md": [
       "AskAttributeFilterTests",

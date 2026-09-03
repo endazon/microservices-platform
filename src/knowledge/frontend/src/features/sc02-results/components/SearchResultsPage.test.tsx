@@ -51,6 +51,29 @@ const RESPONSE_NOT_REINDEXED = {
   results: [{ ...RESPONSE.results[0], updatedAt: null }],
 };
 
+// #1193 / ADR-0070 決定 4 / [[IADR-0358]]: **本文を持たない文書**（テキスト層の無い PDF 相当）。
+// 索引にはメタデータしか無く、`text` は空で `hasBody` が `false` で返る。
+// **本文ありの行と 2 件並べる** —— 本文なしの表示が全件に付かないことを同じ描画で見るためである
+// （陽性対照。issue の受け入れ基準 4）。
+const BODYLESS_DOC_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+const RESPONSE_WITH_BODYLESS = {
+  ...RESPONSE,
+  results: [
+    RESPONSE.results[0],
+    {
+      chunkId: 'c2',
+      documentId: BODYLESS_DOC_ID,
+      documentTitle: 'スキャン版 就業規則',
+      text: '',
+      score: 0.42,
+      attributes: { confidentiality: 'internal' },
+      tags: ['人事'],
+      updatedAt: '2026-07-20T03:00:00Z',
+      hasBody: false,
+    },
+  ],
+};
+
 async function renderPage(initialPath = '/search') {
   return renderUnitRoute((shell) => [createSc02ResultsRoute(shell)], { initialEntry: initialPath });
 }
@@ -116,6 +139,33 @@ describe('SearchResultsPage (SC-02)', () => {
 
     const row = (await screen.findByRole('link', { name: '経費精算規程 v3.2' })).closest('tr')!;
     expect(within(row).getByText('—')).toBeInTheDocument();
+  });
+
+  // SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 6:
+  // 本文を持たない文書は**結果から除外されず**、抜粋の位置へ「本文なし（原本を参照）」が出る。
+  // **原本の所在を持つのは SC-03（文書詳細）**なので、その表示はそこへの導線になっている。
+  it('shows a no-body notice linking to the original for body-less documents', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(RESPONSE_WITH_BODYLESS));
+    await renderPage();
+    await search('就業規則');
+
+    // 除外されない（行として在る）。
+    const row = (await screen.findByRole('link', { name: 'スキャン版 就業規則' })).closest('tr')!;
+    // 抜粋の位置に「本文なし（原本を参照）」が出て、**原本（SC-03）へ辿れる**。
+    const notice = within(row).getByRole('link', { name: '本文なし（原本を参照）' });
+    expect(notice).toHaveAttribute('href', `/docs/${BODYLESS_DOC_ID}`);
+  });
+
+  // **陽性対照**: 本文ありの行は従来どおり抜粋が出て、本文なしの表示は付かない
+  // （「全件に付く」実装では上のテストだけでは緑になる）。
+  it('keeps the body excerpt for documents that have one', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(RESPONSE_WITH_BODYLESS));
+    await renderPage();
+    await search('就業規則');
+
+    const row = (await screen.findByRole('link', { name: '経費精算規程 v3.2' })).closest('tr')!;
+    expect(within(row).getByText(/精算の締め日は毎月25日/)).toBeInTheDocument();
+    expect(within(row).queryByText('本文なし（原本を参照）')).not.toBeInTheDocument();
   });
 
   it('states that only permitted documents are listed', async () => {

@@ -2049,6 +2049,10 @@ msgstr "The default value {DEFAULT_LIFECYCLE} is used when left unspecified."
 msgid "本文"
 msgstr "Body"
 
+#: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+msgid "本文なし（原本を参照）"
+msgstr "No body text (see the original)"
+
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "本文なしで完了"
 msgstr "Completed without a body"

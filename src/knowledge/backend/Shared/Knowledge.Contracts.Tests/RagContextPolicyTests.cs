@@ -70,6 +70,30 @@ public class RagContextPolicyTests
         selection.ContextChunks.Should().BeSubsetOf(selection.SearchResults);
     }
 
+    // FR-02, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 5:
+    // **本文を持たない文書は検索結果に残り、コンテキストからは落ちる。**
+    // 根拠に使える本文が無い以上、出典にも文脈にもならない —— 入れると `[n] タイトル` だけの
+    // 空の根拠が LLM へ渡り、中身を知らない文書について答えることになる。
+    [Fact]
+    public void 本文なしの文書は検索結果に残りコンテキストから落ちる()
+    {
+        var bodylessId = Guid.NewGuid();
+        var withBodyId = Guid.NewGuid();
+        var results = new List<SearchResultDto>
+        {
+            Result(withBodyId, "alice", aiAllowed: true),
+            // 本文なし: 索引はメタデータだけで、抜粋（Text）は空になっている。
+            Result(bodylessId, "alice", aiAllowed: true) with { Text = "", HasBody = false },
+        };
+
+        var selection = RagContextPolicy.Select(results, AiAllowed);
+
+        selection.SearchResults.Select(r => r.ChunkId).Should().Contain(bodylessId,
+            "ADR-0070 決定 4 は「結果から除外しない」と定める");
+        selection.ContextChunks.Should().ContainSingle().Which.ChunkId.Should().Be(withBodyId);
+        selection.ExcludedFromContextChunkIds.Should().ContainSingle().Which.Should().Be(bodylessId);
+    }
+
     // FR-21 ⑨: **既定の述語を持たない。** 判定を渡し忘れた呼び出しが黙って「全件許可」へ倒れると
     // ⑨ が静かに破れるため、null は例外にする。
     [Fact]

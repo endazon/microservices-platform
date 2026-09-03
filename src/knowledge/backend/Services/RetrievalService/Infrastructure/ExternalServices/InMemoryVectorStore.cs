@@ -1,4 +1,5 @@
 using Knowledge.Contracts.Dtos;
+using Knowledge.Contracts.Indexing;
 using Platform.Shared.Contracts.Dtos;
 using RetrievalService.Domain.Ports;
 
@@ -15,8 +16,7 @@ public class InMemoryVectorStore : IVectorStore
         var results = _store
             .Where(c => MatchesFilters(c, filters))
             .Take(topK)
-            .Select(c => new SearchResultDto(c.ChunkId, c.DocumentId, c.DocumentTitle,
-                c.Text, 0.9f, c.MarkdownUri, c.Attributes, c.Tags, c.UpdatedAt))
+            .Select(c => ToResult(c, 0.9f))
             .ToList();
 
         return Task.FromResult(results);
@@ -47,13 +47,23 @@ public class InMemoryVectorStore : IVectorStore
             .Select(c => (Chunk: c, Score: CosineSimilarity(queryVector, c.Vector)))
             .OrderByDescending(x => x.Score)
             .Take(topK)
-            .Select(x => new SearchResultDto(x.Chunk.ChunkId, x.Chunk.DocumentId, x.Chunk.DocumentTitle,
-                x.Chunk.Text, x.Score, x.Chunk.MarkdownUri, x.Chunk.Attributes, x.Chunk.Tags,
-                x.Chunk.UpdatedAt))
+            .Select(x => ToResult(x.Chunk, x.Score))
             .ToList();
 
         return Task.FromResult(results);
     }
+
+    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 3:
+    // **Qdrant 実装と同じ射影を通す唯一の点。**
+    //
+    // 🔴 `ChunkPayload.Text` は**索引テキスト**であり、突合（全文一致）にはそのまま使うが、
+    // `SearchResultDto.Text` は `DocumentBodyPresence.Excerpt` を通して**本文なしの点では空**にする。
+    // ここを素朴に `c.Text` で埋めると、**テストは緑のまま本番だけが正しい**（あるいはその逆の）
+    // 状態になる —— [[IADR-0014]] が ABAC 属性で、#642 がタグで踏んだのと同型である。
+    private static SearchResultDto ToResult(ChunkPayload c, float score) =>
+        new(c.ChunkId, c.DocumentId, c.DocumentTitle,
+            DocumentBodyPresence.Excerpt(c.Text, c.HasBody), score, c.MarkdownUri,
+            c.Attributes, c.Tags, c.UpdatedAt, c.HasBody);
 
     // FR-04, #969: コサイン類似度。次元が違う／ノルムが 0 のときは 0（比較不能を「似ていない」とする）。
     private static float CosineSimilarity(float[] a, float[] b)
@@ -87,8 +97,7 @@ public class InMemoryVectorStore : IVectorStore
             .Where(x => x.Hits > 0)
             .OrderByDescending(x => x.Hits)
             .Take(topK)
-            .Select(x => new SearchResultDto(x.Chunk.ChunkId, x.Chunk.DocumentId, x.Chunk.DocumentTitle,
-                x.Chunk.Text, x.Hits, x.Chunk.MarkdownUri, x.Chunk.Attributes, x.Chunk.Tags, x.Chunk.UpdatedAt))
+            .Select(x => ToResult(x.Chunk, x.Hits))
             .ToList();
 
         return Task.FromResult(results);

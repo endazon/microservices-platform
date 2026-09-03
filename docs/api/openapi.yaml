@@ -3400,7 +3400,7 @@ components:
     SearchResultDto:
       type: object
       description: "FR-03, FR-04: 検索結果 1 件（`Knowledge.Contracts/Dtos/SearchResultDto.cs`）"
-      required: [chunkId, documentId, documentTitle, text, score, attributes, tags]
+      required: [chunkId, documentId, documentTitle, text, score, attributes, tags, hasBody]
       properties:
         chunkId: { type: string, format: uuid }
         documentId: { type: string, format: uuid }
@@ -3423,6 +3423,15 @@ components:
             （IADR-0149 決定 3）。本項目は索引（Qdrant のペイロード）へ日時を取り込むところから必要であり、
             **本項目より前に索引されたチャンクは日時を持たない**。再索引が済むまでの縮退であって障害ではない
             —— 画面は `—` を描く。**`0001-01-01` のような既定値で埋めない**（「知らない」が「とても古い」に化ける）。
+        hasBody:
+          type: boolean
+          description: |
+            FR-02, FR-03, SC-02（ADR-0070 決定 4 / #1193）: この結果が**本文由来か**。
+            `false` は「本文を持たない文書（テキスト層の無い PDF 等）を**メタデータだけで索引した点**」であり、
+            **`text` は空文字列**になる（索引テキストは題名由来なので、本文の抜粋としては出さない）。
+            画面は抜粋の位置へ「本文なし（原本を参照）」を示し、**結果から除外しない**。
+            RAG（`/bff/ask`）の文脈と出典にも入らない —— 根拠に使える本文が無いためである。
+            **既定は `true`（本文あり）**: 本項目を持たない旧発行者の応答は従来どおり抜粋が描かれる。
 
     AskRequest:
       type: object
