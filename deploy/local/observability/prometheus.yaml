@@ -21,7 +21,7 @@ data:
       - job_name: otel-collector
         static_configs:
           - targets: ['otel-collector:8888']
-  # compose（deploy/prometheus/alerts.yml）と同一の全 5 ルールを inline する（follow-up の
+  # compose（deploy/prometheus/alerts.yml）と同一の全 6 ルールを inline する（follow-up の
   # コメントアウト例＝exporter 依存は compose 同様に除く）。
   # 🔴 メトリクス名・ラベル・単位を変えるときは compose 側と**同時に**直す。式の検証手順と
   #    「陽性対照を対で置く」規律は deploy/prometheus/alerts.yml の冒頭に書いてある（#1110）。
@@ -64,14 +64,24 @@ data:
             annotations:
               summary: "検索 p95 が 1.5s 超"
               description: "RetrievalService の p95 レイテンシが NFR 目標(1.5s)を 10 分継続で超過。"
+          # NFR-02, ADR-0076 決定 5 (#1204): 初回トークンまでの時間（TTFT）。**NFR-02 の SLO 判定はこれで行う。**
+          - alert: RagFirstTokenP95High
+            expr: |
+              histogram_quantile(0.95, sum by (le) (rate(rag_answer_first_token_duration_seconds_bucket{job="microservices-platform.aianalysis-service"}[5m]))) > 5
+            for: 10m
+            labels: { severity: warning }
+            annotations:
+              summary: "RAG 初回応答（初回トークン）p95 が 5s 超"
+              description: "AiAnalysisService /analysis/ask/stream の初回トークンまでの p95 が NFR-02 目標(5s)を 10 分継続で超過。"
+          # 応答完了 p95（一括経路）。**NFR-02 の SLI ではない** —— 傾向の観察に留める（ADR-0076）。
           - alert: RagLatencyP95High
             expr: |
               histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job="microservices-platform.aianalysis-service", http_route="/analysis/ask"}[5m]))) > 5
             for: 10m
             labels: { severity: warning }
             annotations:
-              summary: "RAG 応答 p95 が 5s 超"
-              description: "AiAnalysisService /analysis/ask の p95 が NFR 目標(5s)を 10 分継続で超過。"
+              summary: "RAG 応答完了 p95 が 5s 超（傾向の観察。NFR-02 の判定ではない）"
+              description: "AiAnalysisService /analysis/ask（一括経路）の応答完了 p95 が 5s を 10 分継続で超過。NFR-02 の初回応答 SLO は RagFirstTokenP95High が判定する。"
 ---
 apiVersion: apps/v1
 kind: Deployment
