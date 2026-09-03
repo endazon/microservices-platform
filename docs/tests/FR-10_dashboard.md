@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-10, FR-17, FR-18, FR-19, UC-05, SC-10]
-adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0034, ADR-0044, ADR-0050, ADR-0054]
-iadrs: [IADR-0011, IADR-0265, IADR-0299, IADR-0353]
-specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator]
-issues: [#443, #1186, planning#494]
+adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0034, ADR-0044, ADR-0050, ADR-0054, ADR-0071]
+iadrs: [IADR-0011, IADR-0122, IADR-0265, IADR-0299, IADR-0353, IADR-0357]
+specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count]
+issues: [#443, #1186, #1197, planning#494, planning#514, planning#525]
 -->
 
 # テスト仕様書: 利用状況・検索傾向・回答品質ダッシュボード
@@ -31,9 +31,9 @@ issues: [#443, #1186, planning#494]
 | T-02 | DashboardService | `ANSWER`（大文字）を記録 | 201（正規化） |
 | T-03 | DashboardService | 不正な `EventType`（`click`） | 400 |
 | T-04 | DashboardService | 検索×2・回答×1 → 利用状況集計 | search 合計 2・answer 合計 1 |
-| T-05 | DashboardService | 同一語×3・別語×1 → 検索傾向 | 件数降順、先頭が該当語（count=3） |
+| T-05 | DashboardService | 同一語×4・別語×3 → 検索傾向 | 件数降順、先頭が該当語（count=4）。**両語とも下限（3）以上に置く**——下限が入ると 1 件の語は落ちるため、並び順の検証にならない |
 | T-06 | DashboardService | `Foo`/` foo `/`FOO` → 検索傾向 | 1 語 `foo`（count=3、正規化） |
-| T-07 | DashboardService | サマリ集約 | 総件数・利用状況・検索傾向が整合 |
+| T-07 | DashboardService | サマリ集約（同一語×3） | 総件数・利用状況・検索傾向が整合。**総件数は下限の影響を受けない**（伏せるのは語であり件数ではない） |
 | T-08 | DashboardService | **管理系ロール以外**で `/dashboard/{usage,trends,summary}` | 403（**#544** で名称と趣旨を実態へ）／**運用者は 200**（`Aggregates_AsOperator_AreAllowed`） |
 | T-09 | DashboardService | 非管理ロールで `POST /dashboard/events` | 201（記録は開放） |
 | T-10 | BFF | `/bff/dashboard/summary` 集約 | 利用状況・検索傾向・回答品質を集約して返す |
@@ -76,6 +76,21 @@ issues: [#443, #1186, planning#494]
 | T-60 | DashboardService | しきい値を添えない報告で上書き | **行を消す**（しきい値もスナップショット置換） |
 | T-61 | DashboardService | しきい値が 0 以下 | **400**（保存すると画面が「しきい値 0 日」と表示する） |
 | T-62 | DashboardService | **生産者が組み立てる生の JSON**（しきい値つき） | 束縛できる（`thresholdDays` の綴りが噛み合う。匿名オブジェクトは綴り違いを黙って通す） |
+
+### 検索傾向の出現件数の下限（秘匿）
+
+**陽性と陰性を対で置く。** 片方だけだと検査にならない —— 下限の述語を丸ごと外しても
+「3 件の語が出る」テスト（T-64）は緑のまま通る（変異試験で実測した。落ちるのは T-63 / T-65 / T-66 / T-68 の 4 本）。
+
+| ID | 対象 | 内容 | 期待 |
+| --- | --- | --- | --- |
+| T-63 | DashboardService | **2 件の語**（陰性）＋ 3 件の語（陽性対照） | 2 件の語は `/dashboard/trends` に**含まれない**。3 件の語は含まれる |
+| T-64 | DashboardService | **ちょうど 3 件**（境界） | **含まれる**（`>=` であって `>`）。T-63 と対で境界を上下から固定する |
+| T-65 | DashboardService | 2 件の語が 5 種類だけ | 応答は**空**。🔴 **「その他 5 件」に相当する項目が無い**（M 自体が推測の材料になる） |
+| T-66 | DashboardService | 構成 `SearchTrend:MinimumCount=5` で 4 件の語 ＋ 5 件の語 | 4 件は含まれず、5 件は含まれる（**配備時の構成で変更できることを実測する**） |
+| T-67 | DashboardService | サマリの下限（既定 / 構成 5） | `SearchTermMinCount` が **3 / 5** で返る |
+| T-68 | DashboardService | **不正な構成**（0 / -1） | **起動は落ちない。既定 3 へ倒す。** 応答の `SearchTermMinCount` も**倒した後の値**で、実際に 3 でふるっている（構成値をそのまま返すと画面が嘘をつく） |
+| T-69 | BFF | 下限の透過 | 後段が返した下限を**そのまま**返す。スタブは既定と別の値（7）にしてあり、**BFF が自前の既定を埋める実装はここで落ちる** |
 
 ### LLM 利用実績（単価表・金額換算）
 
@@ -152,6 +167,7 @@ issues: [#443, #1186, planning#494]
 - **観測値の生産**（孤立文書。両端点・スコープ付与・単一書き手化・0 件でも送る・fail-open）… P-01〜P-12。
 - **陳腐化文書数の生産**（本文更新起点・境界の両側・配備時構成のしきい値）… T-45〜T-56。
 - **件数と現在のしきい値の併記**（0 件でも消えない）… T-57〜T-62。
+- **検索傾向の出現件数の下限**（陰性・境界・「その他」を出さない・配備時構成・不正値の退避・BFF 透過）… T-63〜T-69。
 - **LLM 利用実績の用途別・モデル別の計測**（総額のみを採らない）… T-37, T-39, T-40。
 - **有効期間つき単価表と期間をまたぐ集計**（境界を含む）… T-30〜T-35。
 - **期間外・該当なしは警告として表に出す**（無音の 0 円にしない）… T-34, T-38。

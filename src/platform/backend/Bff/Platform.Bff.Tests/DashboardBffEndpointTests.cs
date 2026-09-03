@@ -50,6 +50,21 @@ public class DashboardBffEndpointTests(BffTestFactory factory)
         summary.Quality.Total.Should().Be(summary.Quality.Up + summary.Quality.Down);
     }
 
+    // ★ #1197 / ADR-0071 決定 2: **検索傾向のしきい値を後段からそのまま透過する**（両段で同じ値）。
+    //
+    // **BFF で既定値を補ってはならない。** 補うと、後段が実際にふるった値と画面の表示が食い違い、
+    // **見えている語と併記された数字が矛盾する**。スタブのしきい値を既定（3）と別の値にしてある
+    // ため、自前の既定を埋める実装ではこのテストが落ちる。
+    [Fact]
+    public async Task GetSummary_PassesThroughSearchTermMinCount()
+    {
+        var summary = await factory.CreateClient()
+            .GetFromJsonAsync<DashboardSummaryDto>("/bff/dashboard/summary", TestContext.Current.CancellationToken);
+
+        summary.Should().NotBeNull();
+        summary!.SearchTermMinCount.Should().Be(BffTestFactory.DashboardSearchTermMinCount);
+    }
+
     // FR-10: DashboardService も管理系ロール（admin ＋ operator。#544）を要求するため、資格情報を後段へ伝播する。
     [Fact]
     public async Task GetSummary_PropagatesAuthorizationHeader()

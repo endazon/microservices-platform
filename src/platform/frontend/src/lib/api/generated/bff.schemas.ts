@@ -1161,7 +1161,13 @@ export interface DashboardUsageDto {
   totalSearches: number;
   totalAnswers: number;
   usageTrend: UsagePointDto[];
+  /** 出現件数が searchTermMinCount 以上の語だけを含む */
   topSearchTerms: SearchTrendDto[];
+  /**
+     * 検索傾向に出す最小の出現件数。これ未満の語は落とす（「その他 M 件」も出さない）。
+     * 構成キー `SearchTrend:MinimumCount`（既定 3）。不正値は既定へ倒し、本項目も倒した後の値を返す。
+     */
+  searchTermMinCount: number;
 }
 
 /**
@@ -1171,8 +1177,11 @@ export interface DashboardSummaryDto {
   totalSearches: number;
   totalAnswers: number;
   usageTrend: UsagePointDto[];
+  /** 出現件数が searchTermMinCount 以上の語だけを含む */
   topSearchTerms: SearchTrendDto[];
   quality: FeedbackStatsDto;
+  /** 検索傾向の出現件数の下限。後段（DashboardService）の値をそのまま透過する */
+  searchTermMinCount: number;
 }
 
 /**
