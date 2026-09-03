@@ -90,10 +90,15 @@
       "RagOrchestratorStopReasonTests"
     ],
     "docs/tests/FR-12_document-normalization.md": [
+      "ConversionJobStoreTests",
       "DeterministicGuidTests",
+      "FormatRoutingBodyConverterTests",
       "LlmGatewayDiagramCoderTests",
+      "MassTransitDocumentNormalizedPublisherTests",
       "NormalizationServiceTests",
       "PandocConversionServiceTests",
+      "PdfTextLayerConverterTests",
+      "RawDocumentFetchedConsumerJobTests",
       "RawDocumentFetchedConsumerTests"
     ],
     "docs/tests/FR-13_wiki-browsing-abac.md": [
@@ -348,6 +353,7 @@
     "docs/tests/UC-07_wiki-browsing.md": [
       "AbacPageFilterTests",
       "AnonymousAccessContractTests",
+      "BffWikiEndpointTests",
       "DocumentDeleteArchiveSyncTests",
       "DocumentSyncConsumerTests",
       "WikiEndpointsAbacTests",

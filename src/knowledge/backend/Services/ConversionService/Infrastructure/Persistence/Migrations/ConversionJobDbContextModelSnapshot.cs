@@ -34,6 +34,11 @@ namespace ConversionService.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
+                    b.Property<bool>("BodyAbsent")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("ContentType")
                         .IsRequired()
                         .HasMaxLength(255)

@@ -21,7 +21,9 @@ public sealed class RecordingDocumentNormalizedPublisher : IDocumentNormalizedPu
         string MarkdownUri,
         IReadOnlyList<string> AssetUris,
         IReadOnlyDictionary<string, string> Attributes,
-        IReadOnlyList<string> Tags);
+        IReadOnlyList<string> Tags,
+        // ADR-0070 決定 3 / IADR-0356 (#1192): 本文なしで完了したか（ハンドラが発行口へ渡した値）。
+        bool BodyAbsent = false);
 
     private readonly List<Call> _calls = [];
 
@@ -35,9 +37,10 @@ public sealed class RecordingDocumentNormalizedPublisher : IDocumentNormalizedPu
         IReadOnlyList<string> assetUris,
         IReadOnlyDictionary<string, string> attributes,
         IReadOnlyList<string> tags,
+        bool bodyAbsent = false,
         CancellationToken ct = default)
     {
-        _calls.Add(new Call(documentId, sourceId, title, markdownUri, assetUris, attributes, tags));
+        _calls.Add(new Call(documentId, sourceId, title, markdownUri, assetUris, attributes, tags, bodyAbsent));
         return Task.CompletedTask;
     }
 }

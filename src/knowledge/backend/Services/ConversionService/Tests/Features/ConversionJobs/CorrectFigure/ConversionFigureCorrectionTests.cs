@@ -47,7 +47,7 @@ public class ConversionFigureCorrectionTests
             TestContext.Current.CancellationToken);
         await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
         await store.SucceedAsync(id, documentId, markdownUri, TwoFigures(),
-            TestContext.Current.CancellationToken);
+            ct: TestContext.Current.CancellationToken);
         return id;
     }
 
@@ -235,7 +235,7 @@ public class ConversionFigureCorrectionTests
             // 本文を保存せずに成功として記録する（参照だけがある状態）。
             await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
             await store.SucceedAsync(id, Guid.NewGuid(), "storage://normalized/missing.md", TwoFigures(),
-                TestContext.Current.CancellationToken);
+                ct: TestContext.Current.CancellationToken);
         }
 
         var resp = await client.PostAsJsonAsync($"/jobs/{id}/figures/fig-1/correction",

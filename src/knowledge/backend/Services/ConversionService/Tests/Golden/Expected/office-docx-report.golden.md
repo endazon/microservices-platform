@@ -14,6 +14,7 @@ markdownKey     : e7656827eb8c514ea73c310e6f5af1dd/document.md
 markdownUri     : storage://normalized/e7656827eb8c514ea73c310e6f5af1dd/document.md
 diagramsCoded   : 1
 diagramsRetained: 1
+bodyAbsent      : false
 markdownLength  : 376
 markdownSha256  : 9d75467abb894973fae7a2c944df38db6fd6fa50669de84922735e94d781b3a7
 

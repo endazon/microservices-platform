@@ -22,6 +22,11 @@ public class ConversionJob
     // 導出（Attempts >= 上限）にしないのは、Attempts が手動再変換をまたいで累積するためである。
     public bool DeadLettered { get; private set; }
 
+    // FR-12, SC-07, ADR-0070 決定 3 / IADR-0356 (#1192): **本文なしで完了したか**（succeeded の内訳）。
+    // テキスト層を持たない PDF は再試行しても結果が変わらないため、failed に置かず succeeded として
+    // 確定させる。DeadLettered と同型の「状態の 5 値目ではない標識」である。処理を再開したら落とす。
+    public bool BodyAbsent { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; private set; } = DateTimeOffset.UtcNow;
 
@@ -61,6 +66,7 @@ public class ConversionJob
         Status = ConversionJobStatus.Processing;
         Error = null;
         DeadLettered = false;
+        BodyAbsent = false;
         Attempts++;
         UpdatedAt = DateTimeOffset.UtcNow;
         ApplyEvent(ev);
@@ -68,13 +74,17 @@ public class ConversionJob
 
     // IADR-0154 決定 1: 図の記録は成功のたびに洗い替える（再変換は図を作り直すため、
     // 前回の図をそのまま残すと「どの図が今の本文に居るか」が割れる）。
+    // ADR-0070 決定 3 / IADR-0356: bodyAbsent＝テキスト層の無い PDF を「本文なし」で完了させたか。
+    // **状態は succeeded のまま**である（failed に置くと再変換の対象として並び、何度やっても結果の
+    // 変わらないジョブが溜まる）。
     public void MarkSucceeded(Guid documentId, string markdownUri,
-        IReadOnlyList<ConversionJobFigure>? figures = null)
+        IReadOnlyList<ConversionJobFigure>? figures = null, bool bodyAbsent = false)
     {
         Status = ConversionJobStatus.Succeeded;
         Error = null;
         DocumentId = documentId;
         MarkdownUri = markdownUri;
+        BodyAbsent = bodyAbsent;
         UpdatedAt = DateTimeOffset.UtcNow;
         if (figures is null) return;
         Figures.Clear();
@@ -97,6 +107,7 @@ public class ConversionJob
         Status = ConversionJobStatus.Failed;
         Error = error;
         DeadLettered = deadLettered;
+        BodyAbsent = false;
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 
@@ -111,6 +122,7 @@ public class ConversionJob
         Status = ConversionJobStatus.Queued;
         Error = null;
         DeadLettered = false;
+        BodyAbsent = false;
         UpdatedAt = DateTimeOffset.UtcNow;
         return true;
     }
@@ -126,7 +138,8 @@ public class ConversionJob
     public ConversionJobDto ToDto() =>
         new(Id, SourceId, SourceType, OriginalPath, Status, Error, DocumentId, MarkdownUri,
             Attempts, CreatedAt, UpdatedAt, DeadLettered, ConversionJobRetryPolicy.MaxAttempts,
-            Figures.Count(f => f.Coded), Figures.Count(f => !f.Coded), Figures.Any(f => f.Corrected));
+            Figures.Count(f => f.Coded), Figures.Count(f => !f.Coded), Figures.Any(f => f.Corrected),
+            BodyAbsent);
 
     // UC-06: 再変換で失われる補正の件数（409 corrections_would_be_lost の本文へ載せる）。
     public int CorrectedFigureCount => Figures.Count(f => f.Corrected);

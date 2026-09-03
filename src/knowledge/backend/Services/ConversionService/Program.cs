@@ -50,10 +50,18 @@ var health = builder.Services.AddPlatformHealthChecks()
 // 従前 pandoc の欠落はどこにも現れなかった（変換は縮退して「成功」し、probe も緑だった）。
 // 縮退を許した開発機では登録しない —— そこでは縮退が正常な振る舞いである。
 if (!allowDegradedConversion)
+{
     health.AddCheck<PandocHealthCheck>("pandoc", tags: ["ready"]);
+    // FR-12, ADR-0070 決定 2, IADR-0356 決定 7 (#1192): PDF のテキスト層抽出器（pdftotext）も同じ線で readiness に載せる。
+    health.AddCheck<PdfToTextHealthCheck>("pdftotext", tags: ["ready"]);
+}
 
-// FR-12, ADR-0012: 本文変換（pandoc ラッパー）。
-builder.Services.AddSingleton<IBodyConverter, PandocConversionService>();
+// FR-12, ADR-0012, ADR-0070 決定 2, IADR-0356 決定 2 (#1192): 本文変換。
+// `IBodyConverter` は形式で振り分ける合成器であり、PDF はテキスト層の抽出器（pdftotext）、
+// それ以外は pandoc が変換する。`NormalizationService` は合成器しか知らない（IADR-0008 の 3 ポートは不変）。
+builder.Services.AddSingleton<PandocConversionService>();
+builder.Services.AddSingleton<PdfTextLayerConverter>();
+builder.Services.AddSingleton<IBodyConverter, FormatRoutingBodyConverter>();
 
 // FR-12, ADR-0014/ADR-0015, IADR-0024: 正規化本文・資産の S3 互換オブジェクトストレージ（MinIO）保管。
 // 共有クライアントを登録し、起動時にバケット存在・バージョニングを保証する。

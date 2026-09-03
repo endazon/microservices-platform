@@ -74,6 +74,20 @@ export function isCorrectable(job: { diagramsRetained?: number }): boolean {
 }
 
 /**
+ * **本文なしで完了**したか（計画 ADR「PDF の本文抽出は pandoc の外に置く」決定 3 の導出元）。
+ *
+ * テキスト層を持たない PDF（スキャン等）は本文が存在しないため、変換は失敗ではなく
+ * 「本文なし・原本参照のみ」として**完了**する。**`status` は `succeeded`** であり、これも
+ * `deadLettered` / `diagramsRetained` と同じく**内訳の標識**である（5 値目にしない）。
+ * `failed` の列に並ばないので再変換ボタンも出ない —— 何度やっても結果は変わらない。
+ *
+ * フィールドが無い応答（古いサーバ）は「本文あり」へ倒す（`hasRetainedFigures` と同じ防御）。
+ */
+export function isBodyAbsent(job: { bodyAbsent?: boolean }): boolean {
+  return job.bodyAbsent === true;
+}
+
+/**
  * 再変換できる状態か。
  *
  * 05_screens §SC-07 §データソース: 「同一ジョブの再変換は直列化し、実行中（`processing`）の

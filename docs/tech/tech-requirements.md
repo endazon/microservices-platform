@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-14]
-adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041, ADR-0065, ADR-0068]
-iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282, IADR-0319, IADR-0334]
-specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260828_arch-foundation_eight-element-materialization, 20260903_issue-1179_slice-split-status-correction]
-issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, #1062, #1093, #1179, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
+adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041, ADR-0065, ADR-0068, ADR-0077]
+iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282, IADR-0319, IADR-0334, IADR-0349, IADR-0350]
+specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260828_arch-foundation_eight-element-materialization, 20260903_issue-1179_slice-split-status-correction, 20260903_issue-1196_operation-semantics-in-standard-docs]
+issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, #1062, #1093, #1094, #1179, #1196, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390, planning#527, planning#532]
 -->
 
 # 技術要件書
@@ -116,12 +116,41 @@ flowchart TB
 src/<unit>/backend/Services/<Name>Service/
  ├── <Name>Service.csproj        # 単一プロジェクト（層をプロジェクト分割しない）
  ├── Program.cs                  # 合成ルート（束ねるだけ。判断を書かない）
- ├── Features/<集約>/<操作>/     # Vertical Slice（Endpoint / Command|Query / Handler）
+ ├── Features/<集約>/<操作>/     # Vertical Slice（Endpoint / Command|Query / Handler / *Consumer / 常駐ジョブ）
  ├── Domain/                     # エンティティ・値オブジェクト（外部依存なし。＋ Errors/）
  ├── Infrastructure/             # Persistence（EF Core・Migrations）・Messaging 等のアダプタ
  ├── Common/                     # サービス固有の横断関心（Exceptions/・Behaviors/）
  └── Tests/<Name>.Tests.csproj   # テストは 1 プロジェクト（フォルダは実装の鏡写し: Features/・Domain/）
 ```
+
+#### 「操作」とは何か（契機の形では決めない）
+
+**操作とは、そのサービスが外部からの 1 つの契機に応えて行う 1 つのユースケースである**
+（オーナー裁定 2026-09-03。「操作」の語義を定めた計画 ADR が正本）。
+
+🔴 **契機の形（HTTP 要求・イベント購読・スケジュール実行・チャットコマンド）では決めない。**
+形は実装の都合で変わるからである —— **同じユースケースが HTTP からもスケジュールからも駆動される
+ことはあり、契機で切ると 1 つのユースケースが 2 つの操作に割れる。**
+**契機が 2 つある操作は 1 つの操作である。** `DataSourceService/Features/DataSources/Sync/` が実例で、
+`Endpoint.cs`（HTTP）と `DataSourceSyncHostedService.cs`（スケジュール）が**同じ操作フォルダに同居する**。
+🔴 **HTTP 端点を 1 つも持たない操作フォルダも正しい形である** ——
+`GraphService/Features/KnowledgeHealth/Report/` は `Endpoint.cs` を持たず、
+唯一の契機がスケジュール実行である（`KnowledgeHealthCollector.cs` /
+`KnowledgeHealthHostedService.cs` / `KnowledgeHealthOptions.cs` の 3 件）。
+**「操作＝登録表に登録された HTTP 端点」と読んではならない** —— この読みは計画側で明示的に退けられた。
+**端点がどこで宣言されているかという実装の都合で答えが変わってしまう**うえ、
+**基盤が既に採っている形と食い違う**からである。
+
+**分界は「入口の配線」と「操作の処理」である。** これは「登録表は 2 段目に残し、操作の処理を
+3 段目へ下ろす」という既存の分界をそのまま延長したものであり、**新しい規則ではない。**
+
+| | どこに置くか |
+| --- | --- |
+| **入口の配線** | **現在の置き場に残す** —— HTTP の登録表（`<集約>Endpoints.cs`）は 2 段目、イベント購読の宣言は `Infrastructure/Messaging`、常駐ジョブの起動と間隔設定は常駐ジョブの置き場 |
+| **操作の処理** | `Features/<集約>/<操作>/` へ下ろす |
+
+**判定の 1 問は従来どおり「そのファイルが 1 つの操作にしか使われないか」である。**
+本節が与えるのは、その問いの主語である。
 
 **`Api` と `Worker` は同一サービス内で排他である。** いずれか一方のみを持ち、**持たない側は空フォルダを作らない**
 （実行入口は 1 サービスに 1 つであり、「空の実行入口」という状態が存在しないため）。
@@ -142,10 +171,16 @@ src/<unit>/backend/Services/<Name>Service/
 🔴 **［2026-09-03 追記］操作単位のスライス分割（`Features/<集約>/<操作>/`）は完了した。**
 従前ここは「スライス分割はまだ行っていない —— 端点は集約フォルダ直下に 1 枚のまま置かれている」と
 書いていたが、**端点は全件が操作フォルダへ降りており、集約フォルダ直下に端点は 1 つも残っていない**。
-**集約フォルダ直下に残るのは、複数の操作が使うものだけ**である —— 各操作の `Map` を束ねる**登録表**と、
-DTO 束・ストア・ポート・ホステッドサービス・共有ヘルパ。**これらは「降ろし残し」ではなく、
-「使う操作を数えた結果として集約の側に属する」と裁定されたもの**であり、操作フォルダへ複写しない
-（複写すると片方だけ直したときに黙ってズレる）。
+🔴 **集約フォルダ直下に残るのは、複数の操作が使うものだけ**である —— 各操作の `Map` を束ねる**登録表**の
+ほか、DTO 束・ストア・ポート・共有ヘルパ・常駐ジョブが、**いずれも「2 つ以上の操作が使う」ときに
+かぎり**ここに残る。**これらは「降ろし残し」ではなく、「使う操作を数えた結果として集約の側に属する」と
+裁定されたもの**であり、操作フォルダへ複写しない（複写すると片方だけ直したときに黙ってズレる）。
+🔴 **常駐ジョブは無条件に集約直下ではない。1 操作しか駆動しないなら 3 段目である。**
+`NotificationService` の `NotificationMaintenanceHostedService.cs` は 1 巡で
+`DispatchEmails/EmailOutboxDispatcher` と `PurgeExpired/NotificationRetention` の **2 操作を駆動する
+ので 2 段目**である（**操作の処理はそれぞれ 3 段目にあり、2 段目に居るのは入口の配線だけ**である）。
+対して `KnowledgeHealth/Report/` と `DataSources/Sync/` の常駐ジョブは **1 操作なので 3 段目**である。
+**段は「内容の抽象度」でも「契機の形」でもなく、「使う操作を数えた結果」で決める。**
 **ただし完了したのは端点の段であって、`Command` / `Handler` までの分割は一部にとどまる** ——
 太いエンドポイントのハンドラ化・値オブジェクト化・ドメインイベント導入は引き続き別作業である。
 

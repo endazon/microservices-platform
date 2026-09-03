@@ -26,6 +26,7 @@ public sealed class MassTransitDocumentNormalizedPublisher(IPublishEndpoint bus)
         IReadOnlyList<string> assetUris,
         IReadOnlyDictionary<string, string> attributes,
         IReadOnlyList<string> tags,
+        bool bodyAbsent = false,
         CancellationToken ct = default) =>
         // 🔴 イベントの構築をここに置くのは、`findPublishers` が `Publish(new <Event>(` にしか
         // 一致しないためである。組み立て済みの変数を渡す形にすると**発行が検査器から見えなくなる**。
@@ -37,5 +38,6 @@ public sealed class MassTransitDocumentNormalizedPublisher(IPublishEndpoint bus)
             AssetUris: [.. assetUris],
             Attributes: new Dictionary<string, string>(attributes),
             Tags: [.. tags],
-            NormalizedAt: DateTimeOffset.UtcNow), ct);
+            NormalizedAt: DateTimeOffset.UtcNow,
+            BodyAbsent: bodyAbsent), ct);
 }
