@@ -16,8 +16,10 @@ public static class KnowledgeHealthIndicators
     // 未要約クラスタ数: 要約が生成されていないクラスタ（コミュニティ）。
     public const string UnsummarizedClusters = "unsummarized-clusters";
 
-    // 陳腐化文書数: 更新が一定期間途絶えている文書（**しきい値は計画側で未確定**であり、
-    // 判定は観測値の生産者側に委ねる。ここは枠だけを持つ）。
+    // 陳腐化文書数: **本文**の更新が一定期間途絶えている文書。
+    // ★［2026-09-03 / #1186］planning#494 が **180 日**（初期値）・**起点は本文の更新のみ**・
+    // **配備時の構成で変更できる**を確定させた。**判定と現在のしきい値は生産者側が持つ**
+    // （しきい値は報告 1 通の属性として運ばれ、KnowledgeHealthIndicatorThreshold に写る）。
     public const string StaleDocuments = "stale-documents";
 
     // 辺の型ごとの使用件数（ADR-0033 決定 9）。
@@ -98,4 +100,40 @@ public class KnowledgeHealthObservation
 
     private static string Truncate(string value, int max)
         => value.Length <= max ? value : value[..max];
+}
+
+// FR-10, UC-05, SC-10, planning#494 決定 3, [[IADR-0357]] (#1186):
+// 指標ごとの**現在のしきい値**。いまは陳腐化文書数（日数）だけが持つ。
+//
+// 🔴 **観測値の行に持たせない。** 観測値は指標 1 つ分の全量スナップショットであり、
+// **件数が 0 のときは 1 行も無い**。そこへ持たせるとしきい値も一緒に消え、
+// 計画が求めた「件数と現在のしきい値を併記する」が **0 件のときにだけ満たせなくなる**
+// ——「0 件」は最も表示したい状態であり、そこで欠けるのは本末転倒である。
+//
+// 生産者が報告のたびに置き換える（**しきい値を添えない報告では行を消す**。観測値と同じ姿勢）。
+public class KnowledgeHealthIndicatorThreshold
+{
+    public string Indicator { get; private set; } = string.Empty;
+
+    // 日数。**0 以下は受け付けない**（受け口が 400 で落とす）。
+    public int ThresholdDays { get; private set; }
+
+    public DateTimeOffset ReportedAt { get; private set; } = DateTimeOffset.UtcNow;
+
+    private KnowledgeHealthIndicatorThreshold() { }
+
+    public static KnowledgeHealthIndicatorThreshold Create(
+        string indicator, int thresholdDays, DateTimeOffset reportedAt)
+        => new()
+        {
+            Indicator = KnowledgeHealthIndicators.Normalize(indicator),
+            ThresholdDays = thresholdDays,
+            ReportedAt = reportedAt,
+        };
+
+    public void Update(int thresholdDays, DateTimeOffset reportedAt)
+    {
+        ThresholdDays = thresholdDays;
+        ReportedAt = reportedAt;
+    }
 }
