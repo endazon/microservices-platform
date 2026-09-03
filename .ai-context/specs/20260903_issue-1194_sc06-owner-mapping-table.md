@@ -21,7 +21,7 @@ plan_refs:
   - "ADR-0074 決定 5（db コネクタへの値搭載は解決器の配備より後）"
   - "06_technical/09_datasource-connectors.md §システム投入経路（解決順 ① Keycloak 検索 → ② 写像表 → 予約値 system・「推測で埋めない」）"
 related_adrs:
-  - IADR-0357
+  - IADR-0359
   - IADR-0019
   - IADR-0051
   - IADR-0122
@@ -178,7 +178,7 @@ helm/.../values.yaml:355,428,498,686     → （aianalysis / graph / wiki / bff 
 | `AuthorizationService/Features/Users/**` | **既存の `GET /authz/users` で足りる**ため触らない（#1185 が同領域を宣言している。衝突を避ける） |
 | `POST /authz/users` 系の新設 | `IIdentityAdminClient` は**新規作成の口を型で持たない**（計画 SC-17。`IdentityAdminContractTests` が反射で固定） |
 
-## 決めること（実装 ADR: [[IADR-0357]]）
+## 決めること（実装 ADR: [[IADR-0359]]）
 
 1. **写像表を `Config` / `DefaultAttributes` と別の器にする**（`OwnerMappings`）。
 2. **写像先は `username` であり、実在検証は `GET /authz/users`（`view-users` の後段）で行う。**
@@ -274,7 +274,7 @@ public string? ResolveOwner(string? sourceUpdatedBy)
 - `scripts/contract-schema-baseline.json`
 - `deploy/docker-compose.yml` / `deploy/helm/microservices-platform/values.yaml`（後段の宛先）
 - `docs/screens/SC-06_*` / `docs/data/data-source.md` / `docs/tests/SC-06_*` / `docs/tests/FR-01_*`
-- `.ai-context/adr/IADR-0357_*.md` ＋ `.ai-context/adr/README.md`
+- `.ai-context/adr/IADR-0359_*.md` ＋ `.ai-context/adr/README.md`
 
 ## 受け入れ基準（#1194 の 11 件の写像）
 

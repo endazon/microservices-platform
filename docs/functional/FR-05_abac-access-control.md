@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-19, FR-21, SC-01, SC-06, SC-08, UC-01, UC-04, UC-05]
 adrs: [ADR-0034, ADR-0036, ADR-0043, ADR-0046, ADR-0074]
-iadrs: [IADR-0151, IADR-0253, IADR-0272, IADR-0357]
+iadrs: [IADR-0151, IADR-0253, IADR-0272, IADR-0359]
 specs: [20260823_issue-989_authz-scope-disjunction-stages, 20260823_issue-993_graph-write-action-authorization, 20260903_issue-1194_sc06-owner-mapping-table]
 issues: [#540, #542, #989, #993, #1194, planning#466, planning#470, planning#518]
 -->

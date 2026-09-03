@@ -1,5 +1,5 @@
 ---
-title: IADR-0357 owner の写像表は既定属性と別の器に持ち、写像先の実在を SC-17 側の名簿で検証してから取り込みへ効かせる
+title: IADR-0359 owner の写像表は既定属性と別の器に持ち、写像先の実在を SC-17 側の名簿で検証してから取り込みへ効かせる
 type: impl-adr
 status: Accepted
 related_ids: [FR-01, FR-05, UC-04, SC-06, SC-17, ADR-0036, ADR-0064, ADR-0074]
@@ -13,7 +13,7 @@ plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
 ---
 
-# IADR-0357: owner の写像表の器と解決器
+# IADR-0359: owner の写像表の器と解決器
 
 - 状態: Accepted
 - 日付: 2026-09-03

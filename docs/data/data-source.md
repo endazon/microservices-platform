@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-05, SC-06, SC-17, UC-04]
 adrs: [ADR-0002, ADR-0003, ADR-0009, ADR-0013, ADR-0027, ADR-0036, ADR-0064, ADR-0074]
-iadrs: [IADR-0019, IADR-0136, IADR-0148, IADR-0199, IADR-0295, IADR-0357]
+iadrs: [IADR-0019, IADR-0136, IADR-0148, IADR-0199, IADR-0295, IADR-0359]
 specs: [20260903_issue-1194_sc06-owner-mapping-table]
 issues: [#458, #516, #537, #538, #580, #752, #754, #767, #796, #1194, planning#344, planning#361, planning#372, planning#518]
 -->
