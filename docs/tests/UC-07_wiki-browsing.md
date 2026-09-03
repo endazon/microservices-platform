@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-13, FR-19, UC-07, SC-03, SC-04, NFR-09]
 adrs: [ADR-0004, ADR-0011, ADR-0032, ADR-0036, ADR-0046, ADR-0054, ADR-0056, ADR-0073]
-iadrs: [IADR-0009, IADR-0020, IADR-0021, IADR-0044, IADR-0253, IADR-0256, IADR-0335, IADR-0361]
+iadrs: [IADR-0009, IADR-0020, IADR-0021, IADR-0044, IADR-0253, IADR-0256, IADR-0335, IADR-0355]
 specs: [20260831_issue-1106_uc-test-specs, 20260902_issue-1126_wiki-search-and-anonymous-contract, 20260903_issue-1199_bff-wiki-routes]
 issues: [#88, #472, #1063, #1106, #1126, #1199]
 -->

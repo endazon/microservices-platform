@@ -80,7 +80,7 @@ public class BffEndpointCompositionTests
         // #600, FR-22, UC-11: 利用者本人へのアプリ内通知（Notification）を追加した（platform 同居。
         // 後段の NotificationService が platform ユニットのサービスであるため。IADR-0346 決定 1）。
         // #1199, FR-13, UC-07, SC-04: Wiki 前段の 4 経路（Wiki）を追加した（Knowledge.Bff.Endpoints。
-        // 後段の WikiService が knowledge ユニットのサービスであるため。IADR-0361 決定 1）。
+        // 後段の WikiService が knowledge ユニットのサービスであるため。IADR-0355 決定 1）。
         BffEndpointComposition.Modules.Should().HaveCount(20);
     }
 

@@ -152,7 +152,7 @@ src/platform/backend/Bff/Platform.Bff.Tests
   - orval 生成物（`src/platform/frontend/src/lib/api/generated/`）
   - `docs/api/BFF_bff-surface.md`（エンドポイント一覧へ 4 行）
   - `docs/tests/UC-07_wiki-browsing.md`（§未実施 の該当項目 → テストケース表へ）
-  - `.ai-context/adr/IADR-0361`（新規）＋ `.ai-context/adr/README.md`（索引）
+  - `.ai-context/adr/IADR-0355`（新規）＋ `.ai-context/adr/README.md`（索引）
   - `.ai-context/adr/IADR-0335_*.md`（**日付つき追記のみ**）
 - **対象外**: SC-04 の画面実装（#1200）／WikiService 本体／dev の直接露出／Wiki.js での編集（ADR-0073 決定 6 が未決）
 

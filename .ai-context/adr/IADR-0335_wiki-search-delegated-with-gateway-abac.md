@@ -151,7 +151,7 @@ Infrastructure/ExternalServices/WikiAccessResolver.cs:15:        var userId = ct
 - **「`/bff/wiki/*` は作らない」は解けた。** 計画 ADR-0073（Accepted / 2026-09-03）決定 2 が
   SC-04 の実現方式を「基盤 SPA のルートとし、BFF 経由で取得して SPA が描く」と確定させ、
   決定 4 が「**IADR-0335 が BFF 口を作らなかった判断は正しかった。本決定がその『1 回でまとめて
-  行う』時点である**」と明記した。よって 4 経路をまとめて開いた。**中継の形は [[IADR-0361]] が正本**
+  行う』時点である**」と明記した。よって 4 経路をまとめて開いた。**中継の形は [[IADR-0355]] が正本**
   である（透過中継・Authorization の伝播・BFF 側に ABAC を置かない・未認証は BFF で 401）。
 - **「Wiki.js 本体の検索 UI が前段を通らない」も同 ADR 決定 1・3 が閉じた** ——
   塞ぐべきは UI の一機能ではなく到達経路であり、stg/prod では `wikijs.ingress.enabled: false` により

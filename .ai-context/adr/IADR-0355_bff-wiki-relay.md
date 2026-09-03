@@ -1,5 +1,5 @@
 ---
-title: IADR-0361 Wiki の BFF 中継は knowledge 側の透過中継とし、ABAC・存在秘匿・クランプを後段の 1 箇所に残す
+title: IADR-0355 Wiki の BFF 中継は knowledge 側の透過中継とし、ABAC・存在秘匿・クランプを後段の 1 箇所に残す
 type: impl-adr
 status: Accepted
 related_ids:
@@ -31,7 +31,7 @@ plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md SC-04
 ---
 
-# IADR-0361: Wiki の BFF 中継（`/bff/wiki/*`）の形（#1199）
+# IADR-0355: Wiki の BFF 中継（`/bff/wiki/*`）の形（#1199）
 
 > 🔴 **番号は暫定である。** 起草時点の `develop`（`45853885`）の最大は `IADR-0353` だが、
 > **0354〜0360 は進行中の並行 PR へ割当済み**であるため 0361 を仮置きした。**マージ直前に実際の

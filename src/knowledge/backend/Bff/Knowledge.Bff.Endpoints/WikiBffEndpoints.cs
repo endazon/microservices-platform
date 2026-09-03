@@ -6,7 +6,7 @@ using System.Net.Http;
 namespace Knowledge.Bff.Endpoints;
 
 // FR-13, UC-07, SC-04, ADR-0011, ADR-0032, ADR-0073 決定 2・4, IADR-0009 / IADR-0020 / IADR-0335 /
-// IADR-0361, #1199: Wiki 前段（WikiService の `/wiki/*`）を画面用の口へ露出する透過中継。
+// IADR-0355, #1199: Wiki 前段（WikiService の `/wiki/*`）を画面用の口へ露出する透過中継。
 //
 // **後段の 4 経路は先に入っており（IADR-0020 / IADR-0335）、本ファイルはその真ん中の 1 本である。**
 // これが入るまで SPA から Wiki の内容へ到達する経路は 1 本も無かった。
@@ -60,7 +60,7 @@ namespace Knowledge.Bff.Endpoints;
 //    既定 20 / 上限 50 のクランプは後段 `SearchWikiPagesEndpoint` が唯一の情報源である
 //    （2 つ持つと、後段を変えたとき BFF だけ古い上限で切る。[[IADR-0346]] 決定 4 と同じ）。
 //
-// ── 決定の記録: 上記 1〜6 と置き場所（knowledge 側）の理由は [[IADR-0361]] が正本である。
+// ── 決定の記録: 上記 1〜6 と置き場所（knowledge 側）の理由は [[IADR-0355]] が正本である。
 public static class WikiBffEndpoints
 {
     /// <summary>後段（WikiService）の named HttpClient 名。Program.cs の登録と一致させる。</summary>

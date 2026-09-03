@@ -6,7 +6,7 @@ using System.Net.Http.Headers;
 namespace Platform.Bff.Tests;
 
 // FR-13, UC-07, SC-04, ADR-0011 / ADR-0032 / ADR-0073 決定 2・4, IADR-0009 / IADR-0020 /
-// IADR-0335 / IADR-0361, #1199:
+// IADR-0335 / IADR-0355, #1199:
 // `/bff/wiki/*` の 4 経路が WikiService へ中継することを検証する。
 //
 // 固定する性質は 6 つで、**どれも「拒否の側だけ」では測れない**ので陽性対照と対で置く。
