@@ -512,10 +512,15 @@ export type bffGraphSuggestionApproveResponse409 = {
   status: 409
 }
 
+export type bffGraphSuggestionApproveResponse502 = {
+  data: void
+  status: 502
+}
+
 export type bffGraphSuggestionApproveResponseSuccess = (bffGraphSuggestionApproveResponse200) & {
   headers: Headers;
 };
-export type bffGraphSuggestionApproveResponseError = (bffGraphSuggestionApproveResponse400 | bffGraphSuggestionApproveResponse404 | bffGraphSuggestionApproveResponse409) & {
+export type bffGraphSuggestionApproveResponseError = (bffGraphSuggestionApproveResponse400 | bffGraphSuggestionApproveResponse404 | bffGraphSuggestionApproveResponse409 | bffGraphSuggestionApproveResponse502) & {
   headers: Headers;
 };
 
@@ -535,10 +540,16 @@ export const getBffGraphSuggestionApproveUrl = (id: string,) => {
  * **リンク提案の承認は辺を作る**（`EdgeProvenance.AiApproved`。ADR-0033 決定 7
  * 「承認済みの提案だけが辺になる」）。既に同じ辺があるときは二重に作らない。
  *
- * ⚠️ **タグ提案の承認は状態を `approved` にするだけで、文書のタグは増えない。**
- * タグの反映経路は未実装である（提案の側にだけ状態が残る）。
- * **したがって SC-03 の承認欄はタグ提案の承認を実行できないものとして描く**（却下は実行できる）。
- * 本注記は事実の開示であり、契約としての遷移規則は種別で変わらない。
+ * **タグ提案の承認は対象文書のタグへ反映する**（ADR-0063 決定 1）。後段は承認者本人の資格で
+ * 文書サービスへ書き（サービスアカウントが代わりに書く形は採らない。決定 3）、
+ * **反映が確定してから状態を `approved` にする**。既に付いていれば二重には付かない（冪等）。
+ *
+ * **反映できる値は SC-09 のタグ辞書に定義済みのタグに限る**（決定 2）。辞書に無い値を持つ提案は
+ * 400 `unknown_tag` で承認できず、**却下だけができる**。
+ *
+ * **承認の資格**は「①対象文書への `write`（所有者） **または** ②管理者ロール」の選言である
+ * （決定 3。②が無いと取り込み文書〔`owner=system`〕の提案は誰も承認できない）。
+ * 資格の有無は一覧の `canDecide` が行ごとに運ぶ（画面はそれで表示を分ける。決定 5）。
  *
  * 応答は遷移後の提案（一覧と同じ `AiSuggestion`）である。
  * @summary FR-18, UC-10, SC-03: AI 提案を承認する（1 件ずつ）
@@ -639,6 +650,7 @@ export const getBffGraphSuggestionRejectUrl = (id: string,) => {
  *
  * **却下も書き込みである** —— 提案は端点が見える利用者に共有される行であり、却下すると
  * 他の利用者の `pending` 一覧からも消える。読み取り権限しか持たない主体は 404 になる。
+ * **承認と却下は同じ資格に従う**（ADR-0063 決定 4。①対象文書への `write` または ②管理者ロール）。
  *
  * **却下は再提示の抑止に用いる**（ADR-0033 決定 10）。却下回数は累積し、
  * **両端いずれかの文書の本文が変更された時点で自動的に解除される**（文書更新イベントの購読）。

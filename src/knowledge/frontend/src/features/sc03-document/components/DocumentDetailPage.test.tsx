@@ -90,6 +90,8 @@ const LINK_SUGGESTION = {
   reinstatedReason: null,
   sourceDocumentTitle: '経費精算規程 v3.2',
   targetDocumentTitle: '旅費規程',
+  // ADR-0063 決定 3〜5 (#1187): 承認・却下の資格はサーバが行ごとに判定して運ぶ。
+  canDecide: true,
 };
 const TAG_SUGGESTION = {
   ...LINK_SUGGESTION,
@@ -101,6 +103,8 @@ const TAG_SUGGESTION = {
   rationale: '本文が精算手続きを定めている',
   targetDocumentTitle: null,
 };
+// 資格を持たない利用者に見えるタグ提案（起点文書への write も管理者ロールも無い）。
+const TAG_SUGGESTION_FORBIDDEN = { ...TAG_SUGGESTION, canDecide: false };
 const EDGE_TYPES = [{ id: EDGE_TYPE_ID, name: '関連する', layer: 'core', isSymmetric: true }];
 
 /** BFF の各エンドポイントへ応答を割り当てる（既定はすべて成功・提案は 0 件）。 */
@@ -110,12 +114,15 @@ function respond({
   versions = VERSIONS as unknown,
   suggestions = [] as unknown,
   edgeTypes = EDGE_TYPES as unknown,
+  approve = undefined as unknown,
 }: {
   detail?: unknown;
   content?: unknown;
   versions?: unknown;
   suggestions?: unknown;
   edgeTypes?: unknown;
+  /** 承認の口の応答を差し替える（既定は成功。`Error` を渡すと拒否を再現する）。 */
+  approve?: unknown;
 } = {}) {
   const reply = (value: unknown) => {
     if (value instanceof Error) return Promise.reject(value);
@@ -127,6 +134,7 @@ function respond({
     // 一覧の判定を後ろに置くと `endsWith('/content')` 等と取り違えはしないが、
     // 「承認したのに一覧の応答が返る」形になって観測が壊れる。
     if (path.includes('/graph/suggestions')) {
+      if (path.endsWith('/approve') && approve !== undefined) return reply(approve);
       if (path.endsWith('/approve') || path.endsWith('/reject')) {
         return reply({
           ...LINK_SUGGESTION,
@@ -340,18 +348,96 @@ describe('DocumentDetailPage (SC-03)', () => {
     expect(screen.getByRole('button', { name: '却下' })).toBeEnabled();
   });
 
-  // SC-03, FR-18, IADR-0300 決定 4: **タグ提案の承認は実行できない。**
-  // 後段はタグ提案を承認しても状態を変えるだけで文書のタグは増えない（反映経路が未実装）。
-  // **却下は完全に効く**ので押せるままにする。押せない理由は画面に必ず出す。
-  it('shows a tag suggestion but disables approval (the tag is never applied)', async () => {
+  // SC-03, FR-18, ADR-0063 決定 3〜5, IADR-0361 決定 5 (#1187): **タグ提案の行は資格で 2 つに分ける。**
+  // 1187-9: 資格を持つ利用者には承認ボタンが有効で、「準備中」「未実装」の文言が**無い**
+  // （IADR-0300 決定 4 の「承認だけを実行不可にする」は反映経路の実装をもって失効した）。
+  it('enables approval of a tag suggestion for a user who can decide (no "not implemented" wording)', async () => {
     respond({ suggestions: [TAG_SUGGESTION] });
     await renderPage();
 
     expect(await screen.findByRole('heading', { name: 'AI 提案' })).toBeInTheDocument();
     expect(screen.getByText(/「経理」を付与/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '承認' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '承認' })).toBeEnabled();
     expect(screen.getByRole('button', { name: '却下' })).toBeEnabled();
-    expect(screen.getByText(/反映経路が未実装/)).toBeInTheDocument();
+    expect(screen.queryByText(/未実装|準備中/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/権限がありません/)).not.toBeInTheDocument();
+
+    // 承認は**その提案の口**へ送る（タグ提案でも経路は同じ）。
+    await userEvent.click(screen.getByRole('button', { name: '承認' }));
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(
+          (call) => String(call[0]) === `/graph/suggestions/${TAG_SUGGESTION.id}/approve`,
+        ),
+      ).toBe(true),
+    );
+  });
+
+  // 1187-8: 資格を持たない利用者には承認・却下とも押せず、「この文書のタグを編集する権限が無い」が
+  // **画面上のテキストとして**読める（決定 4: 却下も同じ権限に従うので両方を塞ぐ）。
+  it('disables both actions and explains the missing permission for a user who cannot decide', async () => {
+    respond({ suggestions: [TAG_SUGGESTION_FORBIDDEN] });
+    await renderPage();
+
+    expect(await screen.findByRole('heading', { name: 'AI 提案' })).toBeInTheDocument();
+    expect(screen.getByText(/「経理」を付与/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '承認' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '却下' })).toBeDisabled();
+    expect(screen.getByText('この文書のタグを編集する権限がありません。')).toBeInTheDocument();
+    expect(screen.queryByText(/未実装|準備中/)).not.toBeInTheDocument();
+  });
+
+  // 🔴 旧版の後段は `canDecide` を載せない。**欠けていれば deny 側**に倒す（「できる」と描いて 404 に
+  // なるより、「権限が無い」と描くほうが安全側）。
+  it('treats a missing canDecide as "cannot decide"', async () => {
+    const { canDecide: _omitted, ...withoutFlag } = TAG_SUGGESTION;
+    void _omitted;
+    respond({ suggestions: [withoutFlag] });
+    await renderPage();
+
+    await screen.findByRole('heading', { name: 'AI 提案' });
+    expect(screen.getByRole('button', { name: '承認' })).toBeDisabled();
+    expect(screen.getByText('この文書のタグを編集する権限がありません。')).toBeInTheDocument();
+  });
+
+  // 1187-7 / 1014-3, ADR-0063 決定 2 後段: 辞書に無い値の提案は承認できず却下のみ。後段が
+  // 400 `unknown_tag` を本文ごと透過したとき、汎用の「操作できませんでした」ではなく
+  // **その事実を読める文言**で出す（利用者が次に取るべき行動＝却下が分かる）。
+  it('explains an unknown_tag rejection so the user knows to reject the suggestion', async () => {
+    respond({
+      suggestions: [TAG_SUGGESTION],
+      approve: new ApiError('validation', '入力に誤りがあります。', 400, [], {
+        error: 'unknown_tag',
+      }),
+    });
+    await renderPage();
+    await screen.findByRole('heading', { name: 'AI 提案' });
+
+    await userEvent.click(screen.getByRole('button', { name: '承認' }));
+
+    expect(
+      await screen.findByText('このタグは辞書に無いため反映できません。却下してください。'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/操作できませんでした/)).not.toBeInTheDocument();
+    // 却下は引き続き押せる（承認できず却下のみ）。
+    expect(screen.getByRole('button', { name: '却下' })).toBeEnabled();
+  });
+
+  // 陽性対照: 400 でも `unknown_tag` 以外は汎用エラーのまま（本文を見ずに 400 全部を辞書外と読まない）。
+  it('keeps the generic error for a 400 that is not unknown_tag', async () => {
+    respond({
+      suggestions: [TAG_SUGGESTION],
+      approve: new ApiError('validation', '入力に誤りがあります。', 400, [], {
+        error: 'unknown_edge_type',
+      }),
+    });
+    await renderPage();
+    await screen.findByRole('heading', { name: 'AI 提案' });
+
+    await userEvent.click(screen.getByRole('button', { name: '承認' }));
+
+    expect(await screen.findByText(/操作できませんでした/)).toBeInTheDocument();
+    expect(screen.queryByText(/辞書に無いため/)).not.toBeInTheDocument();
   });
 
   // SC-03: 本欄が描くのは**当該文書を両端のいずれかとする提案**だけである（05_screens §SC-03）。

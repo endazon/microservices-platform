@@ -131,6 +131,24 @@ public class Document
         Snapshot(changeNote ?? "metadata-updated");
     }
 
+    // FR-18, SC-03, SC-05, ADR-0063 決定 1, IADR-0361 (#1187): **タグを 1 つ足す**（AI 提案の承認の反映先）。
+    //
+    // **冪等である** —— 既に付いていれば何もせず false を返す（版も進めず `UpdatedAt` も動かさない）。
+    // 承認の再試行（GraphService 側の保存だけが失敗した場合）で版が積み上がらないようにするためである。
+    // 付けたときは `UpdateMetadata` と同じく版を 1 つ進める —— 利用者の意思による内容変更であり、
+    // 「いつ誰の承認で付いたか」を版履歴に残す（`changeNote` は呼び出し側が与える）。
+    //
+    // **辞書との突き合わせはここでは行わない**（識別子を受け取る時点で済んでいる。`TagResolver.ToIdsAsync`）。
+    public bool AddTag(Guid tagId, string? changeNote = null)
+    {
+        if (Tags.Contains(tagId)) return false;
+
+        Tags = [.. Tags, tagId];
+        Touch();
+        Snapshot(changeNote ?? "tag-added");
+        return true;
+    }
+
     // FR-01, UC-04: 同一文書の DocumentNormalized 再配信時に正規化内容を反映する（冪等更新）。
     //
     // **［#637］タグ欄は上書きしない**（計画確定・2026-08-09。SC-05「再正規化はタグ欄を上書きしない」）。

@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { RotateCcw } from 'lucide-react';
 import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Tag } from '@platform/ui';
 import type { AiSuggestion } from '@foundation/api/generated/bff.schemas';
+import { ApiError } from '@foundation/api/ApiError';
 import {
   useDocumentSuggestions,
   useEdgeTypeNames,
@@ -23,12 +24,18 @@ import {
 //   一覧の 1 行に収まる情報では承認を判断できず、タイトルだけを見た機械的な承認に落ちるためである。
 //   **本画面はまさに「文脈のある側」であり、判断はここで 1 件ずつ行う。**
 //
-// ■ 🔴 **タグ提案は承認できないものとして描く**（[[IADR-0300]] 決定 4）。
-//   後段はタグ提案を承認しても状態を `approved` にするだけで、**文書のタグは 1 つも増えない**
-//   （反映経路が未実装である）。押せる承認ボタンを置くと「承認したのにタグが付かない」という
-//   偽の作用を約束することになる。**却下は完全に効く**ので押せるままにする ——
-//   隠してしまうと、SC-21 の全行が持つ「文書詳細で確認」の導線がタグ提案について行き止まりになる。
-//   計画（「その場で承認／却下できる」）との差異であり、計画へ環流する。
+// ■ 🔴 **タグ提案の行は `canDecide` で 2 つに分けて描く**（ADR-0063 決定 3〜5 / [[IADR-0361]] 決定 5。
+//   #1187。[[IADR-0300]] 決定 4「承認だけを実行不可にする」は反映経路の実装をもって失効した）。
+//   後段はタグ提案の承認を**文書のタグへ反映してから** `approved` にする（承認者本人の資格で書く）。
+//   - **資格を持つ**（起点文書への write **または** 管理者ロール）: 承認・却下とも押せる。
+//     「準備中」「未実装」の文言は**存在しない**。
+//   - **資格を持たない**: 承認・却下とも押せず、「この文書のタグを編集する権限がありません。」を
+//     画面上のテキストとして出す（恒久。却下も塞ぐのは決定 4「承認と却下は同じ権限に従う」）。
+//   資格の判定はサーバ側（一覧の各行が運ぶ）。**画面は辞書もポリシーも引かない。**
+//   隠さないのは従来どおり —— SC-21 の全行が持つ「文書詳細で確認」の導線を行き止まりにしない。
+//
+// ■ 🔴 **辞書に無い値の提案は承認できず、却下だけができる**（決定 2 後段）。承認が 400 `unknown_tag`
+//   で返ったときは、汎用の「操作できませんでした」ではなく**その事実を読める文言**で出す。
 //
 // ■ 状態は**色だけで意味を持たせない**（文言とアイコンを併用する）。
 
@@ -71,6 +78,8 @@ export function AiSuggestionPanel({ documentId }: { documentId: string }) {
   if (items.length === 0) return null;
 
   const busy = approve.isPending || reject.isPending;
+  // ADR-0063 決定 2 後段: 辞書に無い値は承認できず却下のみ。後段は 400 `unknown_tag` を本文ごと透過する。
+  const unknownTag = isUnknownTagError(approve.error);
 
   return (
     <Card className="mb-3">
@@ -100,13 +109,19 @@ export function AiSuggestionPanel({ documentId }: { documentId: string }) {
           ))}
         </ul>
 
-        {(approve.isError || reject.isError) && (
+        {unknownTag ? (
           <Alert tone="danger" role="alert" label={t`エラー`} className="mt-3">
-            <Trans>
-              操作できませんでした。すでに他の利用者が承認・却下した可能性があります。
-              画面を再読み込みして確認してください。
-            </Trans>
+            <Trans>このタグは辞書に無いため反映できません。却下してください。</Trans>
           </Alert>
+        ) : (
+          (approve.isError || reject.isError) && (
+            <Alert tone="danger" role="alert" label={t`エラー`} className="mt-3">
+              <Trans>
+                操作できませんでした。すでに他の利用者が承認・却下した可能性があります。
+                画面を再読み込みして確認してください。
+              </Trans>
+            </Alert>
+          )
         )}
 
         {/* 05_screens §SC-03: 本欄から SC-21（棚卸しの一覧）への導線を置く。 */}
@@ -141,6 +156,10 @@ function SuggestionRow({
 }) {
   const { t } = useLingui();
   const isTag = suggestion.kind === 'tag';
+  // ADR-0063 決定 5 / IADR-0361 決定 5: **タグ提案の行だけ**資格で表示を分ける（リンク提案の行は
+  // 従来どおり押せる。拒否は 404 → 汎用エラー）。値はサーバが行ごとに判定して運ぶ。
+  // **旧版の後段は載せない**ので、欠けていれば deny 側（権限が無い）に倒す。
+  const forbidden = isTag && !(suggestion.canDecide ?? false);
   // `lingui/no-expression-in-message`: 翻訳単位へ渡せるのは単一の変数だけである
   // （プロパティ参照・`??` はカタログの ID を壊す）。SC-03 の本体が既に採っている作法に揃える。
   const tagValue = suggestion.tagValue ?? '';
@@ -168,27 +187,32 @@ function SuggestionRow({
       {suggestion.reinstatedReason ? <ReinstatedNotice /> : null}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <Button
-          variant="primary"
-          size="sm"
-          disabled={busy || isTag}
-          onClick={onApprove}
-          // 🔴 押せない理由を**必ず添える**。無効なボタンだけを置くと理由が読めない。
-          title={isTag ? t`タグ提案の反映経路が未実装のため、承認は実行できません。` : undefined}
-        >
+        {/* 承認と却下は同じ権限に従う（ADR-0063 決定 4）。資格が無ければ両方を塞ぐ。 */}
+        <Button variant="primary" size="sm" disabled={busy || forbidden} onClick={onApprove}>
           <Trans>承認</Trans>
         </Button>
-        <Button variant="secondary" size="sm" disabled={busy} onClick={onReject}>
+        <Button variant="secondary" size="sm" disabled={busy || forbidden} onClick={onReject}>
           <Trans>却下</Trans>
         </Button>
-        {isTag && (
+        {forbidden && (
+          // 🔴 押せない理由を**画面上のテキストとして**出す（無効なボタンだけを置くと理由が読めない）。
           <span className="text-xs text-[--color-fg-muted]">
-            <Trans>
-              タグ提案の反映経路が未実装のため、承認は実行できません。却下は実行できます。
-            </Trans>
+            <Trans>この文書のタグを編集する権限がありません。</Trans>
           </span>
         )}
       </div>
     </li>
   );
+}
+
+/**
+ * 承認が **400 `unknown_tag`**（提案の値が SC-09 のタグ辞書に無い）で拒まれたか。
+ *
+ * 後段は本文 `{ error: "unknown_tag" }` を透過する（`unknown_edge_type` と同じ形）。`ApiError.body` は
+ * 解析済みの本文であり、**状態コードだけで判定しない** —— 400 は検証エラー一般の器である。
+ */
+function isUnknownTagError(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 400) return false;
+  const body = error.body as { error?: unknown } | undefined;
+  return body?.error === 'unknown_tag';
 }

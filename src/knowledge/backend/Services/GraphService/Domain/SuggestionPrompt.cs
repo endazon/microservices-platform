@@ -39,6 +39,11 @@ public sealed class SuggestionPrompt
     // ADR-0033 決定 3: 辺の型は実行時辞書である。**LLM に選ばせる値集合をここで渡す。**
     public IReadOnlyList<string> EdgeTypeNames { get; }
 
+    // FR-18, SC-09, ADR-0063 決定 2, IADR-0361 決定 2 (#1014): **タグ辞書の名前集合。** 辺の型と同じく
+    // LLM に選ばせる値集合であり、生成段はこれと突き合わせて辞書外を落とす。
+    // **空なら「タグ候補を提案しない」と指示する**（辞書が引けなかったときの fail-closed もこの形で表す）。
+    public IReadOnlyList<string> TagNames { get; }
+
     // FR-11, IADR-0266 決定 7: 封に入っている文書の**最高機密区分**。
     // ゲートウェイはこれで送信先ティアを決める（越境判定は「文脈に含む文書のうち最も高い区分」）。
     // 語彙と順位は Knowledge.Contracts の ConfidentialityLevels が単一情報源であり、ここで再定義しない。
@@ -50,12 +55,14 @@ public sealed class SuggestionPrompt
         Guid originDocumentId, string originTitle,
         IReadOnlyList<PromptDocument> candidates,
         IReadOnlyList<string> edgeTypeNames,
+        IReadOnlyList<string> tagNames,
         string confidentiality)
     {
         OriginDocumentId = originDocumentId;
         OriginTitle = originTitle;
         Candidates = candidates;
         EdgeTypeNames = edgeTypeNames;
+        TagNames = tagNames;
         Confidentiality = confidentiality;
     }
 
@@ -67,6 +74,7 @@ public sealed class SuggestionPrompt
         AuthorizedNode origin,
         IReadOnlyList<AuthorizedNode> candidates,
         IReadOnlyList<string> edgeTypeNames,
+        IReadOnlyList<string> tagNames,
         AccessScopeResponse scope)
     {
         // FR-05: deny-by-default。許可ポリシーが無ければ何も送らない。
@@ -92,7 +100,7 @@ public sealed class SuggestionPrompt
             .First();
 
         return new SuggestionPrompt(
-            origin.DocumentId, origin.Node.Title, visible, edgeTypeNames, highest);
+            origin.DocumentId, origin.Node.Title, visible, edgeTypeNames, tagNames, highest);
     }
 
     // FR-18: **実際に送信する本文。** 封の外で本文を組み立てられないよう、ここで作る
@@ -116,10 +124,23 @@ public sealed class SuggestionPrompt
         sb.AppendLine("次の値集合から選ぶ。該当が無ければ related を使う。");
         sb.AppendLine($"- {string.Join(", ", EdgeTypeNames)}");
         sb.AppendLine();
+        // FR-18, SC-09, ADR-0063 決定 2 (#1014): タグは**辞書の値集合からのみ**選ばせる。
+        // 一覧に無い値を返しても生成段が落とす（`AiSuggestionGenerator.PersistAsync`）。
+        sb.AppendLine("## タグ");
+        if (TagNames.Count == 0)
+        {
+            sb.AppendLine("**タグ候補は提案しない**（選べる値が無い）。");
+        }
+        else
+        {
+            sb.AppendLine("**この一覧に無いタグを提案してはならない。** 該当が無ければタグ候補を提案しない。");
+            sb.AppendLine($"- {string.Join(", ", TagNames)}");
+        }
+        sb.AppendLine();
         sb.AppendLine("## 出力");
         sb.AppendLine("JSON 配列のみを返す。説明文を付けない。要素の形は次のいずれか。");
         sb.AppendLine("""{"kind":"link","targetDocumentId":"<候補文書の id>","edgeTypeName":"<辺の型>","rationale":"<根拠>"}""");
-        sb.AppendLine("""{"kind":"tag","tagValue":"<タグ値>","rationale":"<根拠>"}""");
+        sb.AppendLine("""{"kind":"tag","tagValue":"<タグ一覧の値>","rationale":"<根拠>"}""");
         return sb.ToString();
     }
 }

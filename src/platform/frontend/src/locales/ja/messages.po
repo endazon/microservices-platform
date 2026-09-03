@@ -482,6 +482,10 @@ msgstr "このジョブは再変換できません（実行中、または失敗
 msgid "このタグは {inUseCount} 件の文書で使われているため削除できません。"
 msgstr "このタグは {inUseCount} 件の文書で使われているため削除できません。"
 
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "このタグは辞書に無いため反映できません。却下してください。"
+msgstr "このタグは辞書に無いため反映できません。却下してください。"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "このトークンを表示できるのは今回だけです。閉じると再表示できません（再発行のみ可能です）。"
 msgstr "このトークンを表示できるのは今回だけです。閉じると再表示できません（再発行のみ可能です）。"
@@ -506,6 +510,10 @@ msgstr "この文書には表示できる関係がありません。"
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "この文書に対するリンク候補・タグ候補です。両端の文書の内容を確かめたうえで、 1 件ずつ承認または却下してください。"
 msgstr "この文書に対するリンク候補・タグ候補です。両端の文書の内容を確かめたうえで、 1 件ずつ承認または却下してください。"
+
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "この文書のタグを編集する権限がありません。"
+msgstr "この文書のタグを編集する権限がありません。"
 
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "この画面について質問する"
@@ -652,14 +660,6 @@ msgstr "タグを選択"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "タグ名（必須）"
 msgstr "タグ名（必須）"
-
-#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
-msgid "タグ提案の反映経路が未実装のため、承認は実行できません。"
-msgstr "タグ提案の反映経路が未実装のため、承認は実行できません。"
-
-#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
-msgid "タグ提案の反映経路が未実装のため、承認は実行できません。却下は実行できます。"
-msgstr "タグ提案の反映経路が未実装のため、承認は実行できません。却下は実行できます。"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AdminAbacSettingsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx

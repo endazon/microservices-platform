@@ -14,6 +14,10 @@ namespace GraphService.Features.AiSuggestions.Reject;
 //
 // 却下回数を増やし、両端の**本文指紋**を控える（解除の判定に使う）。
 // 指紋は呼び出し側が与える —— 本サービスは本文を持たない。
+//
+// FR-18, ADR-0063 決定 3・4, IADR-0361 決定 3 (#1187): **承認と同じ資格**（①起点文書への write
+// **または** ②管理者ロール）で判定する。却下レコードは永久保持され再提案を止める（ADR-0033 決定 10）
+// ので、却下だけを誰にでも開かない。②が無いと取り込み文書（`owner=system`）の提案は誰も却下できない。
 internal static class RejectAiSuggestionEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
@@ -32,7 +36,7 @@ internal static class RejectAiSuggestionEndpoint
 
             // ★書き込みの認可★ —— **状態遷移より前に置く**（拒否したときに副作用を残さない）。
             var writeScope = await accessResolver.ResolveAsync(http, GraphAccessAction.Write, ct);
-            if (!await AiSuggestionEndpoints.IsSourceWritableAsync(suggestion, writeScope, db, ct))
+            if (!await AiSuggestionEndpoints.CanDecideAsync(suggestion, writeScope, http.User, db, ct))
                 return AiSuggestionEndpoints.NotFound();
 
             if (!suggestion.TryReject(req?.SourceFingerprint, req?.TargetFingerprint,
@@ -40,8 +44,8 @@ internal static class RejectAiSuggestionEndpoint
                 return Results.Conflict(new { error = "invalid_transition", state = suggestion.State });
 
             await db.SaveChangesAsync(ct);
-            return Results.Ok(
-                AiSuggestionEndpoints.ToDto(suggestion, ends.SourceTitle, ends.TargetTitle));
+            return Results.Ok(AiSuggestionEndpoints.ToDto(
+                suggestion, ends.SourceTitle, ends.TargetTitle, canDecide: true));
         }).WithName("RejectAiSuggestion").Produces<AiSuggestionDto>();
     }
 }

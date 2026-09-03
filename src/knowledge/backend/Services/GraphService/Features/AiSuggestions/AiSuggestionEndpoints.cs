@@ -3,9 +3,11 @@ using GraphService.Features.AiSuggestions.Approve;
 using GraphService.Features.AiSuggestions.Generate;
 using GraphService.Features.AiSuggestions.List;
 using GraphService.Features.AiSuggestions.Reject;
+using System.Security.Claims;
 using GraphService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace GraphService.Features.AiSuggestions;
 
@@ -84,8 +86,41 @@ public static class AiSuggestionEndpoints
         return source is not null && AuthorizedNode.Authorize(source, writeScope) is not null;
     }
 
-    internal static AiSuggestionDto ToDto(AiSuggestion s, string sourceTitle, string? targetTitle)
+    // FR-18, SC-03, SC-05, ADR-0063 決定 3・4, IADR-0361 決定 3 (#1187): **承認・却下の資格。**
+    //
+    //   ① 起点文書への `write`（`IsSourceWritableAsync`。ADR-0036 D-07）  **または**
+    //   ② SC-05 の管理者経路のロール（`platform-admin`）
+    //
+    // 🔴 **①だけを要求してはならない。** 取り込み文書の `owner` は予約値 `system` であり、所有者ベースでは
+    // 誰も一致しない —— 提案が最も多く付く文書を誰も承認（も却下も）できなくなる（ADR-0063 決定 3 が
+    // 名指しで警告した形）。②は新しいロールではなく、`09_datasource-connectors` が「取り込み文書の編集は
+    // SC-05 の管理者経路で行う」と定めた経路を承認欄からも使えるようにするものである。
+    //
+    // 🔴 **②は `platform-admin` だけである。** SC-05「作成・編集は管理者限定」。運用者は含めない
+    // （DocumentService の `UpdateMetadata` が `AdminOnly` であることと揃える。ここで緩めると
+    // 後段（最終防衛線）が 404 で拒み、承認欄は「できる」と描いたのに失敗する形になる）。
+    //
+    // **②でも起点文書の実在は要る**（複製に無い文書へは何もしない。呼び出し側は可視性を先に通している）。
+    // **承認と却下は同じ判定を通す**（決定 4）。**種別で分けない** —— リンク提案にも②が効く
+    // （ADR-0063 §結果「認可の判定が ADR-0059 と揃う。所有者、または管理者経路という同じ形」）。
+    internal static async Task<bool> CanDecideAsync(
+        AiSuggestion s, Platform.Shared.Contracts.Dtos.AccessScopeResponse writeScope,
+        ClaimsPrincipal user, GraphDbContext db, CancellationToken ct)
+    {
+        if (await IsSourceWritableAsync(s, writeScope, db, ct))
+            return true;
+
+        if (!user.IsInRole(PlatformAuthPolicies.AdminRole))
+            return false;
+
+        return await db.Documents.AsNoTracking()
+            .AnyAsync(d => d.DocumentId == s.SourceDocumentId, ct);
+    }
+
+    internal static AiSuggestionDto ToDto(
+        AiSuggestion s, string sourceTitle, string? targetTitle, bool canDecide = false)
         => new(
             s.Id, s.Kind, s.SourceDocumentId, s.TargetDocumentId, s.EdgeTypeId, s.TagValue,
-            s.Rationale, s.State, s.RejectedCount, s.ReinstatedReason, sourceTitle, targetTitle);
+            s.Rationale, s.State, s.RejectedCount, s.ReinstatedReason, sourceTitle, targetTitle,
+            canDecide);
 }

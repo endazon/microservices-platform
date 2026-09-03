@@ -33,6 +33,19 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     // **書き込みの認可を測るテストは、必ずここを明示的に置くこと。**
     public Func<HttpContext, AccessScopeResponse>? WriteScopeProvider { get; set; }
 
+    // FR-18, ADR-0063 決定 1〜3, IADR-0361 (#1187 / #1014): DocumentService との 2 本の経路を差し替える。
+    //
+    // **反映先（`IDocumentTagWriter`）は記録するスタブ**である —— 呼ばれた文書 ID・タグ値を残し、
+    // 応答は `TagWriter.Outcome` で差し替える（辞書外・後段の拒否・不達を再現する）。
+    // 実 HTTP アダプタ（`HttpDocumentTagWriter`）の写像は `HttpDocumentTagWriterTests` が
+    // `HttpMessageHandler` 層で直接試験する。
+    public RecordingTagWriter TagWriter { get; } = new();
+
+    // **辞書（`ITagDictionaryReader`）**。既定は「引けた・空」ではなく **null（引けなかった）**にする ——
+    // fail-closed の既定を試験の既定にしておけば、辞書を置き忘れたテストはタグ提案を 1 件も作れず、
+    // 「辞書を突き合わせていない実装」で偶然通ることが無い。
+    public Func<IReadOnlySet<string>?> TagDictionary { get; set; } = () => null;
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -53,6 +66,12 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // ABAC スコープを差し替える。
             services.RemoveAll<IGraphAccessResolver>();
             services.AddScoped<IGraphAccessResolver>(_ => new StubAccessResolver(this));
+
+            // DocumentService への 2 経路（#1187 / #1014）。実通信は行わない。
+            services.RemoveAll<IDocumentTagWriter>();
+            services.AddSingleton<IDocumentTagWriter>(TagWriter);
+            services.RemoveAll<ITagDictionaryReader>();
+            services.AddScoped<ITagDictionaryReader>(_ => new StubTagDictionaryReader(this));
 
             // ADR-0027 / #1016: graph-delete 段の購読は Wolverine。
             // 🔴 **これが無いとテストが約 135 秒ハングする** —— Program.cs が UseWolverine +
@@ -78,6 +97,38 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             => Task.FromResult(action == GraphAccessAction.Write
                 ? (owner.WriteScopeProvider ?? owner.ScopeProvider)(ctx)
                 : owner.ScopeProvider(ctx));
+    }
+
+    private sealed class StubTagDictionaryReader(TestWebApplicationFactory owner) : ITagDictionaryReader
+    {
+        public Task<IReadOnlySet<string>?> ReadNamesAsync(CancellationToken ct = default)
+            => Task.FromResult(owner.TagDictionary());
+    }
+
+    // FR-18, ADR-0063 決定 1 (#1187): 反映先の記録スタブ。**テスト間で共有される**（IClassFixture）ため、
+    // 観測する側が呼ぶ前に `Reset()` すること。
+    public sealed class RecordingTagWriter : IDocumentTagWriter
+    {
+        private readonly List<(Guid DocumentId, string TagName)> _calls = [];
+
+        public TagWriteOutcome Outcome { get; set; } = TagWriteOutcome.Applied;
+
+        public IReadOnlyList<(Guid DocumentId, string TagName)> Calls
+        {
+            get { lock (_calls) return [.. _calls]; }
+        }
+
+        public void Reset(TagWriteOutcome outcome = TagWriteOutcome.Applied)
+        {
+            lock (_calls) _calls.Clear();
+            Outcome = outcome;
+        }
+
+        public Task<TagWriteOutcome> AddTagAsync(Guid documentId, string tagName, CancellationToken ct = default)
+        {
+            lock (_calls) _calls.Add((documentId, tagName));
+            return Task.FromResult(Outcome);
+        }
     }
 
     private static void ReplaceDbContext<TContext>(IServiceCollection services, string dbName)

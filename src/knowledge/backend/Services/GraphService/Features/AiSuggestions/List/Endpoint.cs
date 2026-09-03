@@ -53,14 +53,23 @@ internal static class ListAiSuggestionsEndpoint
 
             var rows = await query.OrderBy(s => s.CreatedAt).ToListAsync(ct);
 
+            // FR-18, SC-03, ADR-0063 決定 3〜5, IADR-0361 決定 4 (#1187): 行ごとに**承認・却下の資格**
+            // （`CanDecide`）を載せる。SPA はこの値だけで「承認できる／権限が無い」を分けて描く。
+            // write スコープは**要求ごとに 1 回**だけ解決し、**可視な行が 1 つも無ければ解決しない**
+            // （往復を増やさない）。判定そのものは承認・却下の口と同じ `CanDecideAsync` である。
+            Platform.Shared.Contracts.Dtos.AccessScopeResponse? writeScope = null;
+
             var visible = new List<AiSuggestionDto>();
             foreach (var s in rows)
             {
                 var ends = await AiSuggestionEndpoints.ResolveEndpointsAsync(s, scope, db, ct);
                 if (!ends.Visible) continue;
+                writeScope ??= await accessResolver.ResolveAsync(http, GraphAccessAction.Write, ct);
+                var canDecide = await AiSuggestionEndpoints.CanDecideAsync(
+                    s, writeScope, http.User, db, ct);
                 // SC-21 主要素 1: 一覧は**両端の文書名**を描く（#918）。可視性の判定で既に
                 // 読んでいる複製をそのまま使うので、照会は 1 件も増えない。
-                visible.Add(AiSuggestionEndpoints.ToDto(s, ends.SourceTitle, ends.TargetTitle));
+                visible.Add(AiSuggestionEndpoints.ToDto(s, ends.SourceTitle, ends.TargetTitle, canDecide));
             }
             return Results.Ok(visible);
         }).WithName("ListAiSuggestions").Produces<List<AiSuggestionDto>>();
