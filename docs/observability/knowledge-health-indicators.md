@@ -9,7 +9,7 @@ updated: 2026-09-03
 <!-- trace:
 ids: [FR-10, FR-17, FR-18, FR-19, NFR, UC-05, SC-05, SC-09, SC-10]
 adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0034, ADR-0050, ADR-0054]
-iadrs: [IADR-0011, IADR-0119, IADR-0153, IADR-0265, IADR-0281, IADR-0299, IADR-0357]
+iadrs: [IADR-0011, IADR-0119, IADR-0153, IADR-0265, IADR-0281, IADR-0299, IADR-0353]
 specs: [20260829_issue-443_knowledge-health-producer, 20260809_issue-637_ingest-no-tag-generation, 20260903_issue-1186_stale-documents-indicator]
 issues: [#443, #637, #912, #1186, planning#70, planning#304, planning#494]
 -->

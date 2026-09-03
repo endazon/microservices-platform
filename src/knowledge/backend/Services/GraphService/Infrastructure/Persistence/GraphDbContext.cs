@@ -23,7 +23,7 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
             e.Property(d => d.Title).HasMaxLength(1000).IsRequired();
             e.Property(d => d.BodyHash).HasMaxLength(128);
             e.Property(d => d.UpdatedAt).IsRequired();
-            // FR-10, SC-10, planning#494 決定 2, [[IADR-0357]] (#1186): 本文更新の時刻。
+            // FR-10, SC-10, planning#494 決定 2, [[IADR-0353]] (#1186): 本文更新の時刻。
             // **必須である**（既存行はマイグレーションが UpdatedAt を写す）。NULL 可にすると
             // 「不明」が母集合から落ち、指標がほぼ 0 を返し続ける（決定 2 の却下案）。
             // **索引は置かない** —— 走査は 1 時間に 1 回の全件であり、

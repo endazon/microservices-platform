@@ -29,12 +29,12 @@ public class GraphDocument
     // **順序ガードに使う** —— 保持中より古いイベントは適用しない。再配信・追い越しで
     // 「厳格化したのに緩和が復活する」事故を塞ぐ。
     //
-    // 🔴 **陳腐化の判定には使えない**（planning#494 決定 2 / [[IADR-0357]]）。本欄は
+    // 🔴 **陳腐化の判定には使えない**（planning#494 決定 2 / [[IADR-0353]]）。本欄は
     // `Document.UpdateMetadata` / `Document.Update`（本文を変えない更新）でも前進するため、
     // これで数えると**タグ・属性の整理そのものが指標を改善させる**。判定は BodyUpdatedAt を使う。
     public DateTimeOffset UpdatedAt { get; private set; }
 
-    // FR-10, UC-05, SC-10, ADR-0006, ADR-0050 決定 2, planning#494 決定 2, [[IADR-0357]] (#1186):
+    // FR-10, UC-05, SC-10, ADR-0006, ADR-0050 決定 2, planning#494 決定 2, [[IADR-0353]] (#1186):
     // **本文が変わったときにだけ前進する時刻**。陳腐化文書数（stale-documents）の起点である。
     //
     // 前進の条件は **BodyHash の変化のみ**であり、UpdatedAt とは独立に動く
@@ -44,7 +44,7 @@ public class GraphDocument
     // ⚠️ 既存行にはマイグレーションが UpdatedAt を写す（backfill）。UpdatedAt は実際の本文更新
     // 時刻以降であるため、既存文書は**実際より新しく見える** —— **偽陽性は出ず**、真に陳腐な
     // 文書も遅くとも移行から 1 しきい値以内には数えられる。「不明として数えない」を採らない
-    // 理由は [[IADR-0357]] 決定 2（既存文書が母集合から恒久的に外れ、指標が 0 を返し続ける）。
+    // 理由は [[IADR-0353]] 決定 2（既存文書が母集合から恒久的に外れ、指標が 0 を返し続ける）。
     public DateTimeOffset BodyUpdatedAt { get; private set; }
 
     private GraphDocument() { }
@@ -77,7 +77,7 @@ public class GraphDocument
         if (updatedAt < UpdatedAt)
             return false;
 
-        // 🔴 [[IADR-0357]] 決定 1 / ADR-0050 決定 2: **本文が変わったときだけ** BodyUpdatedAt を進める。
+        // 🔴 [[IADR-0353]] 決定 1 / ADR-0050 決定 2: **本文が変わったときだけ** BodyUpdatedAt を進める。
         // - `bodyHash` が null は「指紋化できなかった＝**不明**」であり、変更と見なさない
         //   （GraphDocumentSyncConsumer が却下解除・リンク抽出で採っているのと同じ向き）。
         // - **タグ・属性だけの更新はここを通らない**（指紋が同値のため）。planning#494 決定 2 の

@@ -11,7 +11,7 @@ namespace GraphService.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // FR-10, SC-10, planning#494 決定 2, IADR-0357 (#1186): 本文が変わったときだけ
+            // FR-10, SC-10, planning#494 決定 2, IADR-0353 (#1186): 本文が変わったときだけ
             // 前進する時刻。陳腐化文書数（stale-documents）の起点である。
             //
             // 🔴 **3 段で入れる。列の既定値では入れない。**
@@ -24,7 +24,7 @@ namespace GraphService.Infrastructure.Migrations
                 type: "timestamp with time zone",
                 nullable: true);
 
-            // backfill: 既存行は UpdatedAt を写す（IADR-0357 決定 2）。
+            // backfill: 既存行は UpdatedAt を写す（IADR-0353 決定 2）。
             //
             // UpdatedAt は**実際の本文更新時刻以降**であるため、既存文書は実際より新しく見える
             // —— **偽陽性は出ない**（新しい文書を陳腐と数えない）。真に陳腐な文書も、遅くとも

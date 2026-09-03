@@ -106,7 +106,7 @@ builder.Services.AddHttpClient(HttpKnowledgeHealthReporter.ClientName, c =>
     c.Timeout = HttpKnowledgeHealthReporter.SendTimeout;
 });
 builder.Services.AddScoped<IKnowledgeHealthReporter, HttpKnowledgeHealthReporter>();
-// FR-10, UC-05, SC-10, planning#494 決定 1・3, [[IADR-0357]] (#1186): 陳腐化のしきい値（既定 180 日）。
+// FR-10, UC-05, SC-10, planning#494 決定 1・3, [[IADR-0353]] (#1186): 陳腐化のしきい値（既定 180 日）。
 // **配備時の構成で変更できる**（環境変数 KnowledgeHealth__StaleDocumentThresholdDays）。
 // 🔴 **ValidateOnStart を付けない** —— 不正値で起動を落とすと本サービスの DocumentUpdated /
 // DocumentDeleted 購読ごと止まる。既定へ倒して警告を出す（HttpKnowledgeHealthReporter の

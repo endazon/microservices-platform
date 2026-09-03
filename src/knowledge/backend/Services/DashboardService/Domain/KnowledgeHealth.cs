@@ -102,7 +102,7 @@ public class KnowledgeHealthObservation
         => value.Length <= max ? value : value[..max];
 }
 
-// FR-10, UC-05, SC-10, planning#494 決定 3, [[IADR-0357]] (#1186):
+// FR-10, UC-05, SC-10, planning#494 決定 3, [[IADR-0353]] (#1186):
 // 指標ごとの**現在のしきい値**。いまは陳腐化文書数（日数）だけが持つ。
 //
 // 🔴 **観測値の行に持たせない。** 観測値は指標 1 つ分の全量スナップショットであり、

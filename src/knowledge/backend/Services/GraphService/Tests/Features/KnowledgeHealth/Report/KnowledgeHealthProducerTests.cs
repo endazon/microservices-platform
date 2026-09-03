@@ -285,7 +285,7 @@ public sealed class KnowledgeHealthProducerTests
 
     // ── 6. 陳腐化文書数（stale-documents） ─────────────────────
     //
-    // FR-10, UC-05, SC-10, planning#494, [[IADR-0357]] (#1186)。
+    // FR-10, UC-05, SC-10, planning#494, [[IADR-0353]] (#1186)。
     // 🔴 **本節の中心は T-48 である** —— タグを付け替えただけの文書が件数から消えないこと。
     // 計画の言い方では「指標が自分の改善作業で消えるなら、それは測定ではない」。
 
@@ -424,7 +424,7 @@ public sealed class KnowledgeHealthProducerTests
         reporter.Call(KnowledgeHealthIndicators.StaleDocuments).ThresholdDays.Should().Be(90);
     }
 
-    // FR-10, [[IADR-0357]] 決定 3 (T-54): 🔴 **不正な構成では既定へ倒す。起動は落とさない。**
+    // FR-10, [[IADR-0353]] 決定 3 (T-54): 🔴 **不正な構成では既定へ倒す。起動は落とさない。**
     // 落とすと本サービスの DocumentUpdated / DocumentDeleted 購読ごと止まる（指標の都合で
     // 購読を止めない）。**報告に添える値も倒した後の 180 になる** —— 画面へ嘘の数字を出さない。
     [Theory]

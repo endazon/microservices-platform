@@ -13,7 +13,7 @@ namespace DashboardService.Features.KnowledgeHealth.View;
 //
 // `ThresholdDays` — その指標の**現在のしきい値**（日数）。持たない指標では null。
 //   planning#494 決定 3「SC-10 には件数と**現在のしきい値**を併記する」を画面が読める形にする
-//   （[[IADR-0357]] 決定 4）。**件数だけを出すと、同じ数字でも意味が配備ごとに違ってしまう。**
+//   （[[IADR-0353]] 決定 4）。**件数だけを出すと、同じ数字でも意味が配備ごとに違ってしまう。**
 public record KnowledgeHealthIndicatorDto(string Indicator, int Count, int? ThresholdDays = null);
 
 // ナレッジ健全性の集計結果。

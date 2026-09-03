@@ -21,7 +21,7 @@ plan_refs:
   - "ADR-0050 決定 2（本文指紋。タグ・属性の更新を本文の変更と見なさない）"
   - "planning#494（2026-08-29 CLOSED / COMPLETED。しきい値 180 日・起点は本文の更新のみ・配備時構成で変更可・SC-10 に件数としきい値を併記）"
 related_adrs:
-  - IADR-0357
+  - IADR-0353
   - IADR-0299
   - IADR-0265
   - IADR-0242
@@ -123,7 +123,7 @@ Document を touch する実装に変われば即座に当たる**。したが�
 材料が `BodyHash` であることは走査 1 で裏が取れている——`GraphDocumentSyncConsumer` は既に
 **指紋の変化だけ**を契機に却下解除とリンク抽出を回している（ADR-0050 決定 2・3）。
 
-## 決めること（実装 ADR: [[IADR-0357]]）
+## 決めること（実装 ADR: [[IADR-0353]]）
 
 1. **本文が変わったときにだけ前進する時刻**を `GraphDocument` に持たせる（`BodyUpdatedAt`）。
 2. 既存行の扱い（backfill か「不明」か）。
@@ -210,7 +210,7 @@ Document を touch する実装に変われば即座に当たる**。したが�
 | `DashboardService/Tests/Features/KnowledgeHealth/*` | 同上 |
 | `knowledge/frontend/.../OperationsDashboardPage.{tsx,test.tsx}` | **コメントのみ**（節は開かない） |
 | `docs/functional/FR-10_dashboard.md` / `docs/observability/knowledge-health-indicators.md` / `docs/screens/SC-10_operations-dashboard.md` | 追随 |
-| `.ai-context/adr/IADR-0357_*.md` ＋ `README.md` | 新規・索引 |
+| `.ai-context/adr/IADR-0353_*.md` ＋ `README.md` | 新規・索引 |
 
 **除外した領域と理由**:
 

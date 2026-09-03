@@ -3,7 +3,7 @@ using GraphService.Domain;
 
 namespace GraphService.Tests.Domain;
 
-// FR-10, UC-05, SC-10, ADR-0006, ADR-0050 決定 2, planning#494 決定 2, [[IADR-0357]] (#1186):
+// FR-10, UC-05, SC-10, ADR-0006, ADR-0050 決定 2, planning#494 決定 2, [[IADR-0353]] (#1186):
 // **本文が変わったときにだけ前進する時刻**の契約を固定する。
 //
 // 🔴 **本ファイルが守るのは、陳腐化文書数が「自分の改善作業で消えない」ことである。**

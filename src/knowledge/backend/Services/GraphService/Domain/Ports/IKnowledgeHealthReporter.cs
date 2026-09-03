@@ -17,7 +17,7 @@ public interface IKnowledgeHealthReporter
     //
     // `thresholdDays` — 判定に使った日数のしきい値。**持たない指標では null**。
     //   planning#494 決定 3「SC-10 には件数と現在のしきい値を併記する」を、画面が読める形に
-    //   するために運ぶ（[[IADR-0357]] 決定 4）。🔴 **観測値 1 件ごとの属性ではなく報告 1 通の属性**
+    //   するために運ぶ（[[IADR-0353]] 決定 4）。🔴 **観測値 1 件ごとの属性ではなく報告 1 通の属性**
     //   である —— 件数が 0 のとき観測値は 1 件も無く、そこへ乗せると**しきい値も一緒に消える**。
     Task ReportAsync(
         string indicator,

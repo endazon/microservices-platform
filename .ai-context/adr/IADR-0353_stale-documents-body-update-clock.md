@@ -1,5 +1,5 @@
 ---
-title: IADR-0357 陳腐化文書数は「本文が変わったときだけ前進する時刻」で数え、既存行は UpdatedAt を写して backfill する
+title: IADR-0353 陳腐化文書数は「本文が変わったときだけ前進する時刻」で数え、既存行は UpdatedAt を写して backfill する
 type: impl-adr
 status: Accepted
 related_ids:
@@ -27,7 +27,7 @@ plan_refs:
   - "planning#494（2026-08-29 CLOSED / COMPLETED。180 日・本文の更新のみ・配備時構成で変更可・SC-10 に件数としきい値を併記）"
 ---
 
-# IADR-0357: 陳腐化文書数（stale-documents）の生産
+# IADR-0353: 陳腐化文書数（stale-documents）の生産
 
 - 状態: Accepted
 - 日付: 2026-09-03

@@ -1,6 +1,6 @@
 namespace GraphService.Features.KnowledgeHealth.Report;
 
-// FR-10, UC-05, SC-10, ADR-0006, planning#494 決定 1・3, [[IADR-0357]] (#1186):
+// FR-10, UC-05, SC-10, ADR-0006, planning#494 決定 1・3, [[IADR-0353]] (#1186):
 // ナレッジ健全性の**運用パラメータ**。
 //
 // 🔴 **SC-09（タグ辞書の実行時管理）には載せない**（planning#494 決定 3）。
