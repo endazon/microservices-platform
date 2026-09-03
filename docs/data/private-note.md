@@ -3,15 +3,15 @@ title: 個人資料（台帳・容量・同期端末） データ仕様書
 type: data-spec
 status: completed
 created: 2026-08-23
-updated: 2026-08-28
+updated: 2026-09-03
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11]
 adrs: [ADR-0037, ADR-0054, ADR-0057]
-iadrs: [IADR-0253, IADR-0270, IADR-0296]
-specs: [20260823_issue-451_private-note-obsidian-sync-core]
-issues: [#451]
+iadrs: [IADR-0253, IADR-0270, IADR-0296, IADR-0360]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260903_issue-1176_obsidian-sync-rename-contract]
+issues: [#451, #1176]
 -->
 
 # データ仕様書: 個人資料（台帳・容量・同期端末）
@@ -27,7 +27,7 @@ issues: [#451]
 | --- | --- | --- | --- | --- |
 | DocumentId | uuid | ○ | PK・FK Documents（**カスケード削除**） | 文書 ID。文書の物理削除＝台帳行の消滅＝容量からの解放 |
 | OwnerId | varchar(200) | ○ | index | 所有者（同期スコープ・容量集計のキー） |
-| VaultPath | varchar(1024) | ○ | | Obsidian Vault 内の相対パス（同期の突き合わせキー。アクティブ行内で所有者ごとに一意をアプリ層で強制） |
+| VaultPath | varchar(1024) | ○ | | Obsidian Vault 内の相対パス（同期の突き合わせキー。アクティブ行内で所有者ごとに一意をアプリ層で強制）。**同期のリネーム経路で更新される**（文書の版は進まない。一意性の判定は新規作成と同じ実体） |
 | LatestBytes | bigint | ○ | | **最新版の本文 UTF-8 バイト数**。容量算入の単位。版履歴のバイト数を持つ場所は無い（＝版履歴は構造的に非算入） |
 | ContentHash | varchar(64) | | | 最新版本文の SHA-256（hex）。プラグインの差分判定用 |
 | IncludeInSearch / IncludeInGraph / IncludeInAi | boolean | ○ | 既定 false | 露出 3 トグル（独立・既定 OFF） |

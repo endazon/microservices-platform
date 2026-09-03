@@ -85,7 +85,8 @@ describe('planPush（ADR-0037 決定 2・4・5・8・14, IADR-0352 決定 2）',
     ]);
   });
 
-  // IADR-0352 決定 5: フォルダ内のリネームは紐付けの更新（rename-local）→ 新パスの内容で判定。新規にも missing にもしない
+  // IADR-0352 決定 5 / IADR-0360 決定 4: フォルダ内のリネームは rename-local（紐付けの更新 ＋ move の材料）
+  // → 新パスの内容で判定。新規にも missing にもしない
   it('ローカルのリネームは rename-local を出してから新パスの内容で判定し、新パスを create にしない', () => {
     const state: SyncState = { a: tracked(`${FOLDER}/a.md`) };
     const journal = recordRename(emptyJournal(), `${FOLDER}/a.md`, `${FOLDER}/b.md`, {
@@ -94,7 +95,15 @@ describe('planPush（ADR-0037 決定 2・4・5・8・14, IADR-0352 決定 2）',
     });
     const local = new Map([[`${FOLDER}/b.md`, 'L']]);
     expect(planPush(state, journal, local, FOLDER)).toEqual([
-      { kind: 'rename-local', noteId: 'a', from: `${FOLDER}/a.md`, to: `${FOLDER}/b.md` },
+      {
+        kind: 'rename-local',
+        noteId: 'a',
+        from: `${FOLDER}/a.md`,
+        to: `${FOLDER}/b.md`,
+        // IADR-0360 決定 4: move へ渡す新しいサーバパスと、最後に見た版（楽観ロック）
+        vaultPath: 'b.md',
+        baseVersion: 3,
+      },
       { kind: 'unchanged', noteId: 'a', localPath: `${FOLDER}/b.md` },
     ]);
 

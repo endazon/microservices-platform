@@ -3,7 +3,7 @@ import { runPullSync } from './pullSync.ts';
 import { collectEdits, runPushSync } from './pushSync.ts';
 import { SyncClient } from './syncClient.ts';
 import { FakeServer, MemoryFiles, MemoryJournal, MemoryState, fakeHasher } from './testFakes.ts';
-import type { PushNoteRequest } from './types.ts';
+import type { MoveNoteRequest, PushNoteRequest } from './types.ts';
 import { SyncAuthError } from './types.ts';
 
 const FOLDER = '個人資料';
@@ -26,6 +26,13 @@ function pushed(server: FakeServer): PushNoteRequest[] {
   return server.calls
     .filter((c) => c.method === 'POST' && c.url.endsWith('/private-notes/sync/notes'))
     .map((c) => JSON.parse(c.body!) as PushNoteRequest);
+}
+
+/** サーバへ届いた move 要求（本文）。 */
+function moved(server: FakeServer): MoveNoteRequest[] {
+  return server.calls
+    .filter((c) => c.method === 'POST' && c.url.endsWith('/move'))
+    .map((c) => JSON.parse(c.body!) as MoveNoteRequest);
 }
 
 describe('runPushSync（ADR-0037 決定 2・4・5・7・8・14, IADR-0352 決定 2・3）', () => {
@@ -192,8 +199,8 @@ describe('runPushSync（ADR-0037 決定 2・4・5・7・8・14, IADR-0352 決定
     expect(journal.saved?.edits).toEqual({});
   });
 
-  // ローカルのリネームは紐付けを更新し、サーバへは伝播しない（契約に口が無い）。新規にはしない
-  it('ローカルのリネームは追跡パスを更新して報告し、サーバに新しい資料を作らない', async () => {
+  // IADR-0360 決定 4: ローカルのリネームは move でサーバへ伝播する。新規は作らない
+  it('ローカルのリネームは move でサーバの vaultPath を変え、新しい資料を作らない', async () => {
     const server = new FakeServer();
     await server.seed('a', 'a.md', 'A');
     const files = new MemoryFiles();
@@ -209,13 +216,101 @@ describe('runPushSync（ADR-0037 決定 2・4・5・7・8・14, IADR-0352 決定
 
     const report = await runPushSync(deps(server, files, state, journal));
 
-    expect(report.renamedLocally).toEqual([{ from: `${FOLDER}/a.md`, to: `${FOLDER}/b.md` }]);
+    expect(report.renamedLocally).toEqual([
+      { from: `${FOLDER}/a.md`, to: `${FOLDER}/b.md`, propagated: true },
+    ]);
     expect(report.created).toEqual([]);
     expect(report.updated).toEqual([`${FOLDER}/b.md`]);
     expect(server.notes).toHaveLength(1);
+    expect(server.find('a')!.vaultPath).toBe('b.md');
+    expect(moved(server)).toEqual([{ vaultPath: 'b.md', version: 1 }]);
+    // 名前を先に送ってから中身を送る（決定 4）
+    expect(server.paths()).toEqual([
+      'GET /private-notes/sync/manifest',
+      'GET /private-notes/sync/notes/a',
+      'POST /private-notes/sync/notes/a/move',
+      'POST /private-notes/sync/notes',
+    ]);
     expect(pushed(server)[0]).toMatchObject({ noteId: 'a', vaultPath: 'b.md', baseVersion: 1 });
     expect(state.saved?.a?.localPath).toBe(`${FOLDER}/b.md`);
+    expect(state.saved?.a?.vaultPath).toBe('b.md');
     expect(journal.saved?.renamed).toEqual({});
+  });
+
+  // 🔴 変異試験の的（IADR-0360 決定 2・4）: move の版チェックを外す／409 を再送すると落ちる。
+  it('サーバが進んでいれば move は 409 になり、名前も中身も送り直さない', async () => {
+    const server = new FakeServer();
+    await server.seed('a', 'a.md', 'A');
+    const files = new MemoryFiles();
+    const state = new MemoryState();
+    const journal = new MemoryJournal();
+    await runPullSync(deps(server, files, state, journal));
+
+    await server.editOnServer('a', 'サーバの編集'); // 版が 2 へ
+    await files.rename(`${FOLDER}/a.md`, `${FOLDER}/b.md`);
+    files.files.set(`${FOLDER}/b.md`, 'ローカルの編集');
+    const j = journal.value;
+    recordRename(j, `${FOLDER}/a.md`, `${FOLDER}/b.md`, { fromInFolder: true, toInFolder: true });
+    await journal.save(j);
+
+    const report = await runPushSync(deps(server, files, state, journal));
+
+    expect(moved(server)).toEqual([{ vaultPath: 'b.md', version: 1 }]);
+    expect(report.renamedLocally).toEqual([
+      { from: `${FOLDER}/a.md`, to: `${FOLDER}/b.md`, propagated: false },
+    ]);
+    expect(report.conflicts).toEqual([
+      {
+        cause: 'version',
+        noteId: 'a',
+        localPath: `${FOLDER}/b.md`,
+        baseVersion: 1,
+        serverVersion: 2,
+        serverUpdatedAt: '2026-09-02T12:00:00Z',
+        pendingEdits: 0,
+      },
+    ]);
+    // サーバの名前も中身も動いていない（後勝ちで上書きされていない）
+    expect(server.find('a')).toMatchObject({
+      vaultPath: 'a.md',
+      version: 2,
+      content: 'サーバの編集',
+    });
+    // 版ずれの資料は本文も送らない（続く update も同じ 409 になる）
+    expect(pushed(server)).toEqual([]);
+    // 紐付け（localPath）は進める（ファイルは既に移動済み）が、サーバ値は据え置く
+    expect(state.saved?.a).toMatchObject({ localPath: `${FOLDER}/b.md`, vaultPath: 'a.md' });
+  });
+
+  // 名前の重複は名前だけの失敗であり、本文の送信は続く（IADR-0360 決定 1）
+  it('移動先の名前が埋まっていれば move は 409 path-taken になり、本文の送信は続く', async () => {
+    const server = new FakeServer();
+    await server.seed('a', 'a.md', 'A');
+    const files = new MemoryFiles();
+    const state = new MemoryState();
+    const journal = new MemoryJournal();
+    await runPullSync(deps(server, files, state, journal));
+
+    // 別端末（または画面）が b.md を作った。この端末はまだ取り込んでいない
+    await server.seed('b', 'b.md', 'B');
+    await files.rename(`${FOLDER}/a.md`, `${FOLDER}/b.md`); // b.md は既に存在する資料の名前
+    files.files.set(`${FOLDER}/b.md`, 'A2');
+    const j = journal.value;
+    recordRename(j, `${FOLDER}/a.md`, `${FOLDER}/b.md`, { fromInFolder: true, toInFolder: true });
+    await journal.save(j);
+
+    const report = await runPushSync(deps(server, files, state, journal));
+
+    expect(report.renamedLocally[0]!.propagated).toBe(false);
+    expect(report.conflicts).toEqual([
+      { cause: 'path-taken', localPath: `${FOLDER}/b.md`, vaultPath: 'b.md' },
+    ]);
+    // 相手の資料は動かない。自分の名前も旧名のまま
+    expect(server.find('b')).toMatchObject({ vaultPath: 'b.md', content: 'B' });
+    expect(server.find('a')!.vaultPath).toBe('a.md');
+    // 陽性対照: 本文は送れている（名前の失敗が中身を巻き添えにしない）
+    expect(report.updated).toEqual([`${FOLDER}/b.md`]);
+    expect(server.find('a')!.content).toBe('A2');
   });
 
   // フォローアップ 11: サーバ側で削除された資料は競合として提示し、ローカルが無ければ外すだけ

@@ -9,7 +9,7 @@
 // | 無い | 追跡済み | deleted | delete（論理削除を送る。決定 5） |
 // | 無い | 追跡済み | movedOut | untrack（同期停止。削除は送らない。決定 4） |
 // | 無い | 追跡済み | 記録なし | missing-local（報告のみ。削除は送らない＝安全側） |
-// | 在る（新パス） | 追跡済み（旧パス） | renamed | rename-local（紐付けだけ更新）→ 続けて内容で判定 |
+// | 在る（新パス） | 追跡済み（旧パス） | renamed | rename-local（紐付けを更新し、move で名前を伝播）→ 続けて内容で判定 |
 // | 任意 | serverDeleted | 任意 | server-deleted（競合として提示。ローカルが無ければ外すだけ） |
 // | — | 追跡済みだが同期フォルダの外 | — | untrack（設定変更で外れた） |
 //
@@ -33,7 +33,16 @@ export type PushAction =
     }
   | { kind: 'delete'; noteId: string; localPath: string }
   | { kind: 'untrack'; noteId: string; localPath: string; reason: UntrackReason }
-  | { kind: 'rename-local'; noteId: string; from: string; to: string }
+  | {
+      kind: 'rename-local';
+      noteId: string;
+      from: string;
+      to: string;
+      /** 新しいサーバパス（同期フォルダを剥がした相対パス）。move で送る。 */
+      vaultPath: string;
+      /** 最後に見た版（楽観ロック）。move は版を進めないので、成功後もこの値のままである。 */
+      baseVersion: number;
+    }
   | { kind: 'server-deleted'; noteId: string; localPath: string; localExists: boolean }
   | { kind: 'missing-local'; noteId: string; localPath: string }
   | { kind: 'unchanged'; noteId: string; localPath: string };
@@ -61,7 +70,15 @@ export function planPush(
     let path = tracked.localPath;
     const renamedTo = renames.get(tracked.localPath);
     if (renamedTo !== undefined && !tracked.serverDeleted) {
-      actions.push({ kind: 'rename-local', noteId, from: tracked.localPath, to: renamedTo });
+      // [[IADR-0360]] 決定 4: 中身より先に名前を送る（rename-local は update より前に積む）。
+      actions.push({
+        kind: 'rename-local',
+        noteId,
+        from: tracked.localPath,
+        to: renamedTo,
+        vaultPath: toVaultPath(syncFolder, renamedTo) ?? renamedTo,
+        baseVersion: tracked.version,
+      });
       path = renamedTo;
     }
     handled.add(path);

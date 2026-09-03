@@ -7,7 +7,8 @@
 //   node dist/cli.mjs sync                         pull → push
 //   node dist/cli.mjs record <path>                Obsidian の保存イベントに相当（journal へ 1 編集を積む）
 //   node dist/cli.mjs delete <path>                Obsidian の削除イベントに相当（ファイルも消す）
-//   node dist/cli.mjs rename <from> <to>           Obsidian のリネームに相当（ファイルも移す）
+//   node dist/cli.mjs rename <from> <to>           Obsidian のリネームに相当（ファイルも移す。HTTP は出さない）
+//   node dist/cli.mjs move <from> <to>             rename ＋ push（サーバへ名前を伝播する）
 //   node dist/cli.mjs resolve <path> local|server|both   競合（409）を非対話で解決する
 //
 //   MSP_SYNC_ENDPOINT   接続先（例: http://127.0.0.1:18093 ← port-forward した DocumentService）
@@ -135,29 +136,37 @@ async function main(argv: string[]): Promise<number> {
   const journal = journalStore(vaultDir);
   const quietMs = Number(process.env.MSP_EDIT_QUIET_MS ?? EDIT_QUIET_MS);
 
+  /** Obsidian のリネームイベント相当（ファイルを移し、journal へ記録する）。HTTP は出さない。 */
+  const applyRename = async (from: string, to: string): Promise<void> => {
+    const j = await journal.load();
+    await files.rename(from, to);
+    recordRename(j, from, to, {
+      fromInFolder: isInFolder(syncFolder, from),
+      toInFolder: isInFolder(syncFolder, to),
+    });
+    await journal.save(j);
+  };
+
   // ── ローカルだけで完結する副コマンド（Obsidian のイベントに相当。HTTP は出さない） ──
-  if (command === 'record' || command === 'delete' || command === 'rename') {
+  if (command === 'record' || command === 'delete') {
+    const path = argv[1];
+    if (!path) return usage();
     const j = await journal.load();
     if (command === 'record') {
-      const path = argv[1];
-      if (!path) return usage();
       recordSave(j, path, await files.read(path), new Date(), quietMs);
-    } else if (command === 'delete') {
-      const path = argv[1];
-      if (!path) return usage();
+    } else {
       await files.remove(path);
       recordDelete(j, path);
-    } else {
-      const [from, to] = [argv[1], argv[2]];
-      if (!from || !to) return usage();
-      await files.rename(from, to);
-      recordRename(j, from, to, {
-        fromInFolder: isInFolder(syncFolder, from),
-        toInFolder: isInFolder(syncFolder, to),
-      });
     }
     await journal.save(j);
     print({ command, journal: summarizeJournal(j) });
+    return 0;
+  }
+  if (command === 'rename') {
+    const [from, to] = [argv[1], argv[2]];
+    if (!from || !to) return usage();
+    await applyRename(from, to);
+    print({ command, journal: summarizeJournal(await journal.load()) });
     return 0;
   }
 
@@ -193,6 +202,15 @@ async function main(argv: string[]): Promise<number> {
       case 'push': {
         const report = await runPushSync(deps);
         print({ endpoint, vaultDir, report });
+        return report.conflicts.length > 0 ? 4 : 0;
+      }
+      case 'move': {
+        // ローカルのリネーム（Obsidian のイベント相当）→ push で名前をサーバへ伝播する。
+        const [from, to] = [argv[1], argv[2]];
+        if (!from || !to) return usage();
+        await applyRename(from, to);
+        const report = await runPushSync(deps);
+        print({ endpoint, vaultDir, renamed: { from, to }, report });
         return report.conflicts.length > 0 ? 4 : 0;
       }
       case 'sync': {
@@ -239,7 +257,7 @@ const isChoice = (v: string | undefined): v is ConflictChoice =>
 
 function usage(): number {
   console.error(
-    '使い方: cli.mjs [pull|push|sync] | record <path> | delete <path> | rename <from> <to> | resolve <path> local|server|both',
+    '使い方: cli.mjs [pull|push|sync] | record <path> | delete <path> | rename <from> <to> | move <from> <to> | resolve <path> local|server|both',
   );
   return 3;
 }

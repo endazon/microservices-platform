@@ -9,22 +9,23 @@ author: Claude
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-20]
 adrs: [ADR-0037, ADR-0046]
-iadrs: [IADR-0270, IADR-0338, IADR-0352]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2]
-issues: [#451, #1098, #1153]
+iadrs: [IADR-0270, IADR-0338, IADR-0352, IADR-0360]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1176_obsidian-sync-rename-contract]
+issues: [#451, #1098, #1153, #1176]
 -->
 
 # テスト仕様書: Obsidian 双方向同期
 
 ## テスト対象・範囲
 
-同期プロトコル（manifest / push / pull / delete）・同期トークン（発行・期限・再発行・失効）・
+同期プロトコル（manifest / push / pull / delete / リネーム）・同期トークン（発行・期限・再発行・失効）・
 監査・期限予告の検知、および **Obsidian プラグインのプロトコル部**（取り込み・送信・論理削除・
-「1 編集」の刻み・競合の 3 択・サーバ側削除／リネームの伝播）。
+「1 編集」の刻み・競合の 3 択・サーバ側削除／リネームの伝播・ローカル側リネームの伝播）。
 **対象外**: Obsidian 本体上の GUI 操作（本体は CI に無い。競合ダイアログの見た目・Vault イベントの配線は
 実機で確かめる）・実ブローカ／実ストレージでの結合（この環境では実行していない）。
 
-実体: `DocumentService.Tests` の `ObsidianSyncProtocolTests` / `SyncDeviceTokenTests`（サーバ側）、
+実体: `DocumentService.Tests` の `ObsidianSyncProtocolTests` / `ObsidianSyncMoveTests` /
+`SyncDeviceTokenTests`（サーバ側）、
 `src/obsidian-plugin/src/**/*.test.ts`（プラグイン側。Vitest・Obsidian 実体なし）。
 
 ## テスト観点
@@ -52,6 +53,12 @@ issues: [#451, #1098, #1153]
 | 13 | 全端末の一括失効 | `一括失効で全端末のトークンが同時に無効になる` |
 | 14 | 他人の端末は見えず・失効も再発行もできない（存在秘匿） | `他人の端末は見えず失効も再発行もできない` |
 | 15 | 期限 7 日前の通知が窓内で 1 回だけ・当日／事後の追加通知なし | `トークン期限の7日前通知は窓内で1回だけ検知される` |
+| 16 | Obsidian 側でリネームした資料は一覧の名前が新しくなり、版履歴は保たれる（冪等） | `リネームはマニフェストに反映され版履歴を進めない` |
+| 17 | 既存の有効な資料と同じ名前へのリネームは 409 で上書きしない（空いている名前へは通る＝陽性対照） | `既存の有効な資料と重なる名前へのリネームは409で上書きしない` |
+| 18 | 古い版でのリネームは 409 で名前が動かない・版の省略は 400（現在版なら通る＝陽性対照） | `版がずれたリネームは409になり名前は変わらない` |
+| 19 | 他人の資料・不在 ID のリネームは 404（存在秘匿）・トークン無しは 401（本人の同じ操作は 200＝陽性対照） | `他人の資料のリネームは404で存在ごと秘匿される` |
+| 20 | 論理削除済み資料のリネームは 409（復元すれば通る＝陽性対照） | `論理削除済みの資料のリネームは409deletedになる` |
+| 21 | リネームの実行記録が「誰が・いつ・何件」だけで、パス（＝実質的な題名）を含まない | `リネームの監査ログは件数のみでパスを含まない` |
 
 ## テストケース一覧（Obsidian プラグイン第 1 段。Obsidian 実体なし）
 
@@ -74,8 +81,9 @@ issues: [#451, #1098, #1153]
 
 偽サーバ（`testFakes.ts` の `FakeServer`）はサーバ契約どおり **楽観ロック**（`baseVersion` 不一致 → 409）と
 **1 編集 = 1 版**を実装しており、client が 409 を勝手に再送すれば後勝ちで上書きされる。
-🔴 **変異試験**: `pushSync.ts` の 409 分岐を「`serverVersion` を積んで即再送」に書き換えると P15 と P19〜P22 の
-5 件が落ちる（2026-09-03 実測。戻して緑）。
+🔴 **変異試験**: `pushSync.ts` の push の 409 分岐を「`serverVersion` を積んで即再送」に書き換えると
+P15 と P19〜P22 の 5 件が落ちる。**リネームの 409 分岐**を同じく即再送に書き換えると P28 の 1 件が落ちる
+（いずれも 2026-09-03 実測。戻して緑）。
 
 | # | 受け入れ基準 | テスト（ファイル › 名前） |
 | --- | --- | --- |
@@ -90,9 +98,11 @@ issues: [#451, #1098, #1153]
 | P21 | 両方残す: 別名で新規 push し、元のパスはサーバの本文 | `conflictResolver.test.ts` › `both は…` |
 | P22 | 解決の途中でサーバがまた進んだら実行せず retry | `conflictResolver.test.ts` › `local の再 push がまた 409 になれば retry を返し、何も進めない` |
 | P23 | サーバ側削除はローカルを消さず状態に残し、送信時に提示（両側で無ければ外すだけ） | `pullSync.test.ts` › `追跡済み資料がサーバ側で削除…されたら serverDeleted を状態に残し、ファイルは触らない`／`pushSync.test.ts` › `serverDeleted の資料は…`／`conflictResolver.test.ts` の `resolveServerDeleted` 2 件 |
-| P24 | サーバ側リネームは移動（旧パスが未編集なら消す・編集済みなら残す）。ローカルのリネームは紐付けだけ更新し新規にしない | `pullSync.test.ts` › `サーバ側で vaultPath が変わった資料は…`／`journal にローカルのリネームがあれば…`／`pushSync.test.ts` › `ローカルのリネームは追跡パスを更新して報告し、サーバに新しい資料を作らない` |
+| P24 | サーバ側リネームは移動（旧パスが未編集なら消す・編集済みなら残す）。ローカルのリネームは紐付けを更新し新規にしない | `pullSync.test.ts` › `サーバ側で vaultPath が変わった資料は…`／`journal にローカルのリネームがあれば…` |
 | P25 | 409 の 3 形（version_conflict / deleted / vault_path_conflict）を区別し、契約と違う 409 は止める。413 / 507 は判る失敗 | `syncClient.test.ts` › `409 は …を区別した SyncConflictError になる`／`413 は SyncTooLargeError、507 は SyncQuotaError になる` |
 | P26 | 401 は送信でも一巡ごと止め、状態と journal を触らない | `pushSync.test.ts` › `401 なら SyncAuthError を投げ、状態と journal を触らない` |
+| P27 | ローカルのリネームは名前をナレッジベースへ伝え（中身より先に送る）、新しい資料を作らない | `pushSync.test.ts` › `ローカルのリネームは move でサーバの vaultPath を変え、新しい資料を作らない`／`pushPlanner.test.ts` › `ローカルのリネームは rename-local を出してから…`／`syncClient.test.ts` › `move は vaultPath と version を送り、契約どおりの形なら返す` |
+| P28 | サーバが進んでいれば名前も中身も送り直さない（版ずれ）。移動先が埋まっていれば名前だけ失敗し、本文の送信は続く | `pushSync.test.ts` › `サーバが進んでいれば move は 409 になり、名前も中身も送り直さない`／`移動先の名前が埋まっていれば move は 409 path-taken になり、本文の送信は続く` |
 
 ## 実行
 
