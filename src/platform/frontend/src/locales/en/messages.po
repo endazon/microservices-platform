@@ -2041,6 +2041,10 @@ msgstr "The default value {DEFAULT_LIFECYCLE} is used when left unspecified."
 msgid "本文"
 msgstr "Body"
 
+#: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+msgid "本文なし（原本を参照）"
+msgstr "No body text (see the original)"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "本文はこの画面では編集できません。本文を書くには Obsidian 連携を設定してください。"
 msgstr "You cannot edit note bodies on this screen. To write a body, set up the Obsidian integration."

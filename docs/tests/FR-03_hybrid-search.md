@@ -3,15 +3,15 @@ title: ハイブリッド検索 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-02
+updated: 2026-09-03
 author: claude
 ---
 <!-- trace:
-ids: [FR-03, SC-01, SC-02, UC-01]
-adrs: [ADR-0016]
-iadrs: [IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0256, IADR-0318, IADR-0339]
-specs: [20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext]
-issues: [#448, #532, #536, #642, #995, #1116, #1118]
+ids: [FR-02, FR-03, SC-01, SC-02, UC-01]
+adrs: [ADR-0016, ADR-0070]
+iadrs: [IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0256, IADR-0318, IADR-0339, IADR-0354]
+specs: [20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index]
+issues: [#448, #532, #536, #642, #995, #1116, #1118, #1193]
 -->
 
 # テスト仕様書: ハイブリッド検索
@@ -115,6 +115,15 @@ issues: [#448, #532, #536, #642, #995, #1116, #1118]
 | T-57 | 実 Qdrant に実配備と同型の 3 チャンク＋両索引 | 日本語の語で `text_ngram` へ Match | 🔴 **陽性対照**: 在る語 4 つが全て 1 件以上・1 文字の語も 1 件以上。同じ語を `text` で引いた件数を併記する（対比） | 日本語の全文側が動くこと | 自動（実機・opt-in） |
 | T-58 | 同上 | 在らない日本語の語で Match | 🔴 **陰性対照**: 0 件 | 同上 | 自動（実機・opt-in） |
 | T-59 | 統合スタック（seed 文書） | `mode=keyword` ＋ seed タイトル由来の日本語の語 | seed 文書が当たる。在らない日本語の語は 0 件（識別子の門とは系統が違うので別段に置く） | 同上 | 自動（統合スタック） |
+| T-60 | 本文なしの点（索引テキストは題名） | 全文検索 | **題名で当たる**（結果から除外されない）（`BodylessDocumentSearchTests`） | 本文なしの文書をメタデータで索引する裁定（決定 4） | 自動 |
+| T-61 | 同上 | 復元された結果 | `hasBody = false` かつ **`text` は空**（索引に載せたメタデータを本文の抜粋として外へ出さない） | 同上 | 自動 |
+| T-62 | **陽性対照**: 本文を持つ点 | 同上 | `hasBody = true` で抜粋がそのまま返る（「全件を本文なしにする」実装を落とす） | 同上 | 自動 |
+| T-63 | 本文なしの点 2 件（部署が違う） | ABAC フィルタつき検索 | 🔴 **本文の有無に関わらず ABAC が効く**（許可された 1 件だけ返る） | ABAC は緩めない | 自動 |
+| T-64 | 本文なしの点 | 意味検索（ベクトル側） | 全文側と同じ射影を通る（`text` は空・`hasBody = false`）。系統ごとに扱いが割れない | 同上 | 自動 |
+| T-65 | `has_body` を持たないペイロード | 復元（`ExtractHasBody`） | **`true`（本文あり）**。既存の点はすべて本文チャンクであり、後付けを要らなくする既定である（`QdrantVectorStoreTests`） | 本文なしの文書をメタデータで索引する裁定（決定 4） | 自動 |
+| T-66 | `has_body` が真偽以外の型 | 同上 | 既定（本文あり）へ倒す。手投入のデータで全件が「本文なし」表示にならない | 例外フロー | 自動 |
+| T-67 | 本文なしの `ChunkPayload` | `BuildPayload` → `ExtractHasBody` | 書いた表現をそのまま復元できる（**取り込み側と同じキー・同じ書き方**） | 表現の一致 | 自動 |
+| T-68 | **変異試験**: 索引テキストと本文抜粋の射影 | 契約の純関数（`DocumentBodyPresenceTests`） | 恒等関数へ変異させると落ちる —— **メタデータが本文の抜粋として画面と LLM へ出る**変異を殺す | 本文なしの文書をメタデータで索引する裁定（決定 4） | 自動 |
 
 ## テストデータ
 

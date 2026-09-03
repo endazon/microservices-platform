@@ -6,6 +6,7 @@ import {
   Button,
   Input,
   Label,
+  StatusBadge,
   Table,
   TableBody,
   TableCaption,
@@ -36,6 +37,9 @@ import type { SearchResultDto } from '@foundation/api/generated/bff.schemas';
 //   もとの記録は feedback/20260804_sc01-03-bff-contract-gaps.md（planning#197 で裁定済み）。
 //   **［2026-08-09 / #536］更新日時列は実装した。** 契約（`SearchResultDto.updatedAt`）が
 //   裁定 Q6 を受けて日時を持ち、索引（Qdrant のペイロード）へも取り込むようにしたため（[[IADR-0149]]）。
+//   **［2026-09-03 / #1193］本文なしの文書の縮退表示を足した**（ADR-0070 決定 4 / [[IADR-0354]]）。
+//   本文抜粋が出せない文書（テキスト層の無い PDF 等）を**結果から除外せず**、抜粋の位置へ
+//   「本文なし（原本を参照）」を出す。**SC-07 の「画像保持へ縮退済み」と同じ形の併記**である。
 
 export function SearchResultsPage() {
   const { t } = useLingui();
@@ -168,6 +172,13 @@ export function SearchResultsPage() {
 }
 
 function ResultRow({ result }: { result: SearchResultDto }) {
+  const { t } = useLingui();
+  // SC-02（ADR-0070 決定 4 / #1193）: **本文を持たない文書**（テキスト層の無い PDF 等）は
+  // 索引にメタデータしか無く、抜粋が出せない。**結果からは除外しない**ので、抜粋の位置へ
+  // 「本文なし（原本を参照）」を出す。**`hasBody === false` のときだけ**である
+  // （項目を持たない応答＝本文ありとして従来どおり描く）。
+  const bodyless = result.hasBody === false;
+
   return (
     <TableRow>
       <TableCell>
@@ -179,7 +190,19 @@ function ResultRow({ result }: { result: SearchResultDto }) {
         >
           {result.documentTitle}
         </Link>
-        <p className="text-xs text-[--color-fg-muted]">{result.text}</p>
+        {bodyless ? (
+          // **原本への導線を残す**（ADR-0070 決定 4）。原本の所在（`sourceUri`）を持っているのは
+          // SC-03（文書詳細）なので、そこへ辿れる形で示す。**`markdownUri` は原本ではない**
+          // （正規化 Markdown の置き場）ので出さない。
+          // 色だけで意味を持たせない —— `StatusBadge` がアイコン＋テキストを強制する。
+          <p className="mt-1">
+            <Link to="/docs/$id" params={{ id: result.documentId }}>
+              <StatusBadge tone="neutral">{t`本文なし（原本を参照）`}</StatusBadge>
+            </Link>
+          </p>
+        ) : (
+          <p className="text-xs text-[--color-fg-muted]">{result.text}</p>
+        )}
       </TableCell>
       <TableCell>
         <span className="flex flex-wrap gap-1">

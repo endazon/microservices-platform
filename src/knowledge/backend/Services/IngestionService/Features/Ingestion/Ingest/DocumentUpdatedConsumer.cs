@@ -49,6 +49,20 @@ public class DocumentUpdatedConsumer(
 
         // FR-02 chunk: チャンク化
         var chunks = chunker.Chunk(markdownText);
+
+        // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 1:
+        // 🔴 **チャンクが 0 件になったときが「本文なし」である。** 本文（の分割結果）そのもので判定し、
+        // **上流の状態名（変換側の「本文なしで完了」）には依存しない** ——
+        // 依存すると、状態名の改名や別経路（直接投入・再正規化）で静かに漏れる。
+        //
+        // 本文由来のチャンク・埋め込みは作らない（作れない）が、**メタデータで索引へ載せる。**
+        // 載せなければ利用者はその文書の存在を知る手段を持たない（ADR-0070 決定 4 / P-01）。
+        if (chunks.Count == 0)
+        {
+            await IndexMetadataOnlyAsync(ev, confidentiality, ct);
+            return;
+        }
+
         var chunkCount = 0;
         var skipped = 0;
 
@@ -100,6 +114,61 @@ public class DocumentUpdatedConsumer(
         await bus.PublishCompletedAsync(ev.DocumentId, chunkCount, DateTimeOffset.UtcNow, ct);
 
         logger.LogInformation("Ingestion complete for {Id}: {Count} chunks", ev.DocumentId, chunkCount);
+    }
+
+    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 1・2・7:
+    // 本文なしの文書を**メタデータ点 1 つ**で索引する。
+    //
+    // ベクトルは**索引テキスト（題名・タグ）から**作る —— 本文由来ではないので
+    // 「本文由来の埋め込みは作らない」（決定 4）に反しない。
+    // 🔴 **埋め込みの機密区分ルーティング（ADR-0016）は本文チャンクと同一に扱う。**
+    // 本文が無いことを理由に送信制御を緩めない —— 題名も文書の内容である。
+    private async Task IndexMetadataOnlyAsync(
+        DocumentUpdated ev, string? confidentiality, CancellationToken ct)
+    {
+        var indexText = MetadataIndexText.Build(ev.Title, ev.Tags);
+
+        // 索引テキストが空（題名もタグも無い）なら載せる意味が無い。**当たりようがない点を作らない。**
+        if (indexText.Length == 0)
+        {
+            logger.LogWarning(
+                "Ingestion {Id}: no body and no metadata to index (empty title and tags); nothing indexed",
+                ev.DocumentId);
+            await bus.PublishCompletedAsync(ev.DocumentId, 0, DateTimeOffset.UtcNow, ct);
+            return;
+        }
+
+        var embedding = await embed.EmbedAsync(indexText, confidentiality, ct);
+
+        // 本文チャンクと同じ規則: 一時障害は例外（ブローカの再試行へ）、恒久的な拒否はスキップ。
+        if (!embedding.Embedded && embedding.Retryable)
+        {
+            logger.LogWarning(
+                "Ingestion {Id} metadata point: transient embedding failure, retrying via broker "
+                + "(confidentiality={Confidentiality})", ev.DocumentId, confidentiality ?? "(unset)");
+            throw new EmbeddingTransientException(ev.DocumentId, ChunkId.MetadataChunkIndex);
+        }
+
+        if (embedding.Embedded)
+        {
+            await store.UpsertMetadataPointAsync(embedding.Collection,
+                ChunkId.DeriveMetadata(ev.DocumentId), ev.DocumentId, ev.Title, indexText,
+                embedding.Vector, ev.MarkdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt, ct);
+
+            logger.LogInformation(
+                "Ingestion {Id}: no body; indexed metadata only (title/tags). 0 body chunks",
+                ev.DocumentId);
+        }
+        else
+        {
+            logger.LogWarning(
+                "Ingestion {Id}: metadata point skipped (embedding fail-closed; confidentiality={Confidentiality})",
+                ev.DocumentId, confidentiality ?? "(unset)");
+        }
+
+        // FR-02: **本文なしでも取り込みは完了である**（ADR-0070 決定 3。失敗として溜めない）。
+        // チャンク数は 0 —— 本文由来のチャンクは 1 件も作っていない。
+        await bus.PublishCompletedAsync(ev.DocumentId, 0, DateTimeOffset.UtcNow, ct);
     }
 }
 

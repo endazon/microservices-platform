@@ -2041,6 +2041,10 @@ msgstr "未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。"
 msgid "本文"
 msgstr "本文"
 
+#: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+msgid "本文なし（原本を参照）"
+msgstr "本文なし（原本を参照）"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "本文はこの画面では編集できません。本文を書くには Obsidian 連携を設定してください。"
 msgstr "本文はこの画面では編集できません。本文を書くには Obsidian 連携を設定してください。"

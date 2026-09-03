@@ -1833,6 +1833,12 @@
             "required": true,
             "position": 2
           },
+          "HasBody": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 9
+          },
           "MarkdownUri": {
             "source": "positional",
             "type": "string?",
@@ -2355,6 +2361,21 @@
             "source": "const",
             "type": "string",
             "value": "\"text_ngram\""
+          }
+        }
+      },
+      "Knowledge.Contracts.Indexing.DocumentBodyPresence": {
+        "kind": "class",
+        "members": {
+          "DefaultWhenAbsent": {
+            "source": "const",
+            "type": "bool",
+            "value": "true"
+          },
+          "PayloadKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"has_body\""
           }
         }
       }

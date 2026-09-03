@@ -321,7 +321,12 @@ public class QdrantVectorStore(
             ChunkId: Guid.Parse(idUuid),
             DocumentId: Guid.TryParse(payload.GetValueOrDefault(DocumentIdKey)?.StringValue, out var docId) ? docId : Guid.Empty,
             DocumentTitle: payload.GetValueOrDefault("document_title")?.StringValue ?? "",
-            Text: payload.GetValueOrDefault("text")?.StringValue ?? "",
+            // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 3:
+            // 🔴 **`text` は「索引テキスト」であって「本文」ではない。** 本文なしの文書は
+            // 題名由来のメタデータをここへ載せて検索に当てているので、**射影を通して空にする** ——
+            // 通さないと、メタデータが本文の抜粋として SC-02 と LLM の文脈へ出る。
+            Text: DocumentBodyPresence.Excerpt(
+                payload.GetValueOrDefault("text")?.StringValue, ExtractHasBody(payload)),
             Score: score,
             MarkdownUri: payload.GetValueOrDefault("markdown_uri")?.StringValue,
             // FR-05, FR-11: ABAC 属性（confidentiality 等）を DTO へ復元する。
@@ -331,7 +336,19 @@ public class QdrantVectorStore(
             // （`InMemoryVectorStore` は運ぶのでテストは緑のまま。[[IADR-0014]] と同型）。
             Tags: ExtractTags(payload),
             // FR-03, SC-02, #536: 更新日時を復元する（IADR-0149 決定 1・3）。
-            UpdatedAt: ExtractUpdatedAt(payload));
+            UpdatedAt: ExtractUpdatedAt(payload),
+            // FR-02, SC-02, #1193: 本文の有無を復元する（既定は「本文あり」）。
+            HasBody: ExtractHasBody(payload));
+
+    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0354]] 決定 3:
+    // 索引ペイロードの `has_body`（真偽）を復元する。
+    // **キーが無ければ「本文あり」**である —— 本項目より前に索引された点はすべて本文チャンクであり、
+    // 欠落はそれを正しく表す（backfill は要らない）。真偽以外の型で入っていたら既定へ倒す。
+    internal static bool ExtractHasBody(IReadOnlyDictionary<string, Value> payload) =>
+        payload.TryGetValue(DocumentBodyPresence.PayloadKey, out var value)
+        && value.KindCase == Value.KindOneofCase.BoolValue
+            ? value.BoolValue
+            : DocumentBodyPresence.DefaultWhenAbsent;
 
     // FR-03, SC-02, #536: 索引ペイロードの `updated_at`（Unix epoch ミリ秒の整数）を復元する。
     // **キーが無ければ null を返す**（IADR-0149 決定 3）——本項目より前に索引されたチャンクは
@@ -438,6 +455,11 @@ public class QdrantVectorStore(
         // 取り込み側（QdrantIngestionVectorStore.BuildChunkPayload）と**同じキー・同じ表現**であること。
         if (chunk.UpdatedAt is { } updatedAt)
             payload["updated_at"] = new Value { IntegerValue = updatedAt.ToUnixTimeMilliseconds() };
+
+        // FR-02, SC-02, #1193: 本文なしの点だけが印を持つ（欠落＝本文あり。[[IADR-0354]] 決定 3）。
+        // 取り込み側（`QdrantIngestionVectorStore.BuildChunkPayload`）と**同じキー・同じ書き方**であること。
+        if (!chunk.HasBody)
+            payload[DocumentBodyPresence.PayloadKey] = new Value { BoolValue = false };
 
         // FR-03, SC-02（#642）: タグをペイロードに保持する（結果一覧の表示用）。
         // **これは予防であって、本番の欠陥の是正ではない** —— `UpsertAsync` を呼ぶ本番コードは

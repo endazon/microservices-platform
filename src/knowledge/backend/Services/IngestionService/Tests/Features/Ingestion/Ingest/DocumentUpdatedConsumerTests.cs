@@ -222,6 +222,87 @@ public class DocumentUpdatedConsumerTests
 
         store.DeletedFromAll.Should().Contain(SampleEvent().DocumentId);
     }
+
+    // ── ADR-0070 決定 4 / #1193: 本文なしの文書をメタデータで索引へ載せる ──────────────
+
+    // T-12 (FR-02, FR-03, SC-02, ADR-0070 決定 4): 本文が空でも文書は索引へ載り、
+    // **本文由来のチャンク・埋め込みは 0 件**である。
+    [Fact]
+    public async Task Consumer_ShouldIndexMetadataPoint_WhenBodyIsEmpty()
+    {
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("   \n\n  ");   // テキスト層の無い PDF 相当（空の正規化結果）
+        var embed = new RecordingEmbeddingService();
+        var (consumer, completed) = Build(store, reader, embed);
+
+        await HandleAsync(consumer, SampleEvent());
+
+        // 本文由来のチャンクは 1 件も作らない（作れない）。
+        store.Upserts.Should().BeEmpty("本文が無いのだからチャンクは作れない");
+        // メタデータ点は 1 文書 1 点。
+        store.MetadataUpserts.Should().HaveCount(1);
+        var point = store.MetadataUpserts[0];
+        point.DocumentId.Should().Be(SampleEvent().DocumentId);
+        point.PointId.Should().Be(ChunkId.DeriveMetadata(SampleEvent().DocumentId));
+        // 索引テキストは題名とタグから作る（本文由来ではない）。
+        point.IndexText.Should().Contain("テスト文書").And.Contain("knowledge-mgmt");
+        // 埋め込みは**索引テキスト**に対して 1 回だけ。本文は 1 バイトも渡らない。
+        embed.Requests.Should().ContainSingle().Which.Text.Should().Be(point.IndexText);
+        // FR-05, ADR-0016: ABAC 属性・タグ・更新日時はチャンクと同じ表現で載る（判定軸を変えない）。
+        point.Attributes.Should().ContainKey("confidentiality");
+        point.Tags.Should().BeEquivalentTo(["knowledge-mgmt", "ops"]);
+        point.UpdatedAt.Should().NotBeNull();
+        // ADR-0070 決定 3: 本文なしでも**完了**である（失敗として溜めない）。チャンク数は 0。
+        completed.Published.Should().ContainSingle().Which.ChunkCount.Should().Be(0);
+    }
+
+    // T-13 **陽性対照** (FR-02): 本文があるときはメタデータ点を作らない（従来どおりチャンクだけ）。
+    // これが無いと「常にメタデータ点を作る」実装でも T-12 が緑になる。
+    [Fact]
+    public async Task Consumer_ShouldNotIndexMetadataPoint_WhenBodyExists()
+    {
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("# 見出しA\n\n本文アルファ");
+        var (consumer, _) = Build(store, reader);
+
+        await HandleAsync(consumer, SampleEvent());
+
+        store.Upserts.Should().NotBeEmpty();
+        store.MetadataUpserts.Should().BeEmpty();
+    }
+
+    // T-14 (FR-05, ADR-0016, [[IADR-0354]] 決定 7): 本文が無いことを理由に送信制御を緩めない。
+    // 埋め込みが fail-closed で拒否されたらメタデータ点も作らない（題名も文書の内容である）。
+    [Fact]
+    public async Task Consumer_ShouldSkipMetadataPoint_WhenEmbeddingFailsClosed()
+    {
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("");
+        var embed = new RecordingEmbeddingService(embedded: false);
+        var (consumer, completed) = Build(store, reader, embed);
+
+        await HandleAsync(consumer, SampleEvent(confidentiality: "confidential"));
+
+        store.MetadataUpserts.Should().BeEmpty();
+        embed.Requests.Should().OnlyContain(r => r.Confidentiality == "confidential");
+        completed.Published.Should().ContainSingle();
+    }
+
+    // T-15 (FR-02, #98 と同じ規則): 本文なしの経路でも一時障害は恒久スキップにしない。
+    [Fact]
+    public async Task Consumer_ShouldFaultForRetry_WhenMetadataEmbeddingTransientFailure()
+    {
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("");
+        var embed = new RecordingEmbeddingService(embedded: false, retryable: true);
+        var (consumer, completed) = Build(store, reader, embed);
+
+        var act = () => HandleAsync(consumer, SampleEvent());
+        await act.Should().ThrowAsync<EmbeddingTransientException>();
+
+        store.MetadataUpserts.Should().BeEmpty();
+        completed.Published.Should().BeEmpty();
+    }
 }
 
 // テスト用スタブ群
@@ -272,9 +353,17 @@ file record UpsertRecord(string Collection, Guid ChunkId, Guid DocumentId, strin
     int ChunkIndex, string? MarkdownUri, Dictionary<string, string> Attributes, List<string> Tags,
     DateTimeOffset? UpdatedAt);
 
+// FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193: 本文なしの文書のメタデータ点の記録。
+// **チャンクの記録（`UpsertRecord`）と分けてある** —— 「本文由来のチャンクは 0 件」を
+// 数えられなくなるため、同じ袋に入れない。
+file record MetadataUpsertRecord(string Collection, Guid PointId, Guid DocumentId, string Title,
+    string IndexText, float[] Vector, string? MarkdownUri, Dictionary<string, string> Attributes,
+    List<string> Tags, DateTimeOffset? UpdatedAt);
+
 file class RecordingVectorStore : IIngestionVectorStore
 {
     public List<UpsertRecord> Upserts { get; } = [];
+    public List<MetadataUpsertRecord> MetadataUpserts { get; } = [];
     public List<Guid> DeletedFromAll { get; } = [];
     public bool CollectionsEnsured { get; private set; }
 
@@ -291,6 +380,17 @@ file class RecordingVectorStore : IIngestionVectorStore
     {
         Upserts.Add(new UpsertRecord(collection, chunkId, documentId, title, text, chunkIndex,
             markdownUri, attributes, tags, updatedAt));
+        return Task.CompletedTask;
+    }
+
+    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193: 本文なしの文書のメタデータ点。
+    public Task UpsertMetadataPointAsync(string collection, Guid pointId, Guid documentId,
+        string title, string indexText, float[] vector, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null, CancellationToken ct = default)
+    {
+        MetadataUpserts.Add(new MetadataUpsertRecord(collection, pointId, documentId, title,
+            indexText, vector, markdownUri, attributes, tags, updatedAt));
         return Task.CompletedTask;
     }
 

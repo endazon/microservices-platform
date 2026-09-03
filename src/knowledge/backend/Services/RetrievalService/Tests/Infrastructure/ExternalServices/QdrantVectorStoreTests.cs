@@ -1,6 +1,7 @@
 using RetrievalService.Infrastructure.ExternalServices;
 using RetrievalService.Domain.Ports;
 using AwesomeAssertions;
+using Knowledge.Contracts.Indexing;
 using Qdrant.Client.Grpc;
 
 namespace RetrievalService.Tests.Infrastructure.ExternalServices;
@@ -192,6 +193,52 @@ public class QdrantVectorStoreTests
         var payload = QdrantVectorStore.BuildPayload(Chunk(["経理", "規程"]));
 
         QdrantVectorStore.ExtractTags(payload).Should().Equal("経理", "規程");
+    }
+
+    // ── ADR-0070 決定 4 / #1193 / [[IADR-0354]] 決定 3: 本文の有無（`has_body`）の表現 ──────
+
+    // **キーが無ければ「本文あり」**。本項目より前に索引された点はすべて本文チャンクであり、
+    // 欠落はそれを正しく表す（backfill を要らなくしている既定そのもの）。
+    [Fact]
+    public void ExtractHasBody_WhenAbsent_IsTrue()
+    {
+        QdrantVectorStore.ExtractHasBody(new Dictionary<string, Value>()).Should().BeTrue();
+    }
+
+    [Fact]
+    public void ExtractHasBody_RestoresFalse_ForMetadataPoint()
+    {
+        var payload = new Dictionary<string, Value>
+        {
+            [DocumentBodyPresence.PayloadKey] = new() { BoolValue = false },
+        };
+
+        QdrantVectorStore.ExtractHasBody(payload).Should().BeFalse();
+    }
+
+    // 真偽以外の型で入っていたら既定（本文あり）へ倒す —— 手で投入されたデータで
+    // 全文書が「本文なし」表示になるのを避ける。
+    [Fact]
+    public void ExtractHasBody_WhenNotABool_FallsBackToDefault()
+    {
+        var payload = new Dictionary<string, Value>
+        {
+            [DocumentBodyPresence.PayloadKey] = new() { StringValue = "false" },
+        };
+
+        QdrantVectorStore.ExtractHasBody(payload).Should().BeTrue();
+    }
+
+    // 書き込みの表現が取り込み側（`QdrantIngestionVectorStore.BuildChunkPayload`）と一致すること。
+    [Fact]
+    public void BuildPayload_WritesHasBodyOnlyWhenBodyIsAbsent()
+    {
+        QdrantVectorStore.BuildPayload(Chunk([]))
+            .ContainsKey(DocumentBodyPresence.PayloadKey).Should().BeFalse();
+
+        var metadataOnly = QdrantVectorStore.BuildPayload(Chunk([]) with { HasBody = false });
+        metadataOnly[DocumentBodyPresence.PayloadKey].BoolValue.Should().BeFalse();
+        QdrantVectorStore.ExtractHasBody(metadataOnly).Should().BeFalse();
     }
 
     private static Value TagList(params string[] tags)
