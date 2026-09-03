@@ -21,7 +21,7 @@ related_ids:
   - IADR-0321
   - IADR-0325
   - IADR-0333
-  - IADR-0366
+  - IADR-0361
 ---
 
 # 仕様書: 空枠 23 件の撤去と「`.gitkeep` のみのディレクトリが無いこと」の機械検査
@@ -35,7 +35,7 @@ related_ids:
 - 実装 ADR: `IADR-0321`（feature 内部 30 件の撤去。決定 4 で「機械検査は追加しない」）／
   `IADR-0325`（ユニット直下は裁定まで残す。決定 5 で同じく「機械検査は追加しない」）／
   `IADR-0218`（`Superseded`。フロント側に検査器が無いことを記録した）／`IADR-0333`（描画しないモジュールの置き場）
-- 本 PR で起こす実装 ADR: `IADR-0366`
+- 本 PR で起こす実装 ADR: `IADR-0361`
 
 ## 1. 裁定の確認 —— `IADR-0325` が委ねた問いの答えは「消す」である
 
@@ -162,7 +162,7 @@ $ git grep -n -E "gitkeep|空枠|枠のみ|枠置き|枠だけ" -- docs/ src/ te
   `knowledge/frontend/src/locales`（空枠）は 1 件も引っかからない。
 - `IADR-0321` §影響 と `IADR-0325` §決定 1 は「ユニット直下は残す」と書いているが、
   **確定済み記録なので書き換えない**（`.claude/rules/traceability.repo.md` §凍結の射程）。
-  置き換えは後続 IADR（`IADR-0366`）で記録し、索引の `IADR-0325` 行へ後継 ID を併記する。
+  置き換えは後続 IADR（`IADR-0361`）で記録し、索引の `IADR-0325` 行へ後継 ID を併記する。
 
 ## 4. 機械検査（`scripts/check-scaffolding-frames.js`。新設）
 
@@ -258,7 +258,7 @@ scripts/check-scaffolding-frames.js                    （新設）
 scripts/README.md
 scripts/scripts.repo.test.js
 .github/workflows/ci.yml
-.ai-context/adr/IADR-0366_no-gitkeep-only-directories.md（新設）
+.ai-context/adr/IADR-0361_no-gitkeep-only-directories.md（新設）
 .ai-context/adr/README.md
 .ai-context/specs/20260903_issue-1195_empty-scaffolding-frames-removal-and-check.md（本書）
 ```
@@ -331,7 +331,7 @@ scripts/scripts.repo.test.js
 ### ★ IADR 番号について（既知の赤）
 
 **`node scripts/check-adr-numbering.js` は `IADR-0361`〜`0365` を欠番として 5 件検出する。**
-本 PR の実装 ADR は**オーケストレータからの割り当て（`IADR-0366`。仮番号）**であり、
+本 PR の実装 ADR は**オーケストレータからの割り当て（`IADR-0361`。仮番号）**であり、
 **マージ時に改番される**前提である。現在の最大は `IADR-0360`。
 上の 688 件の実測は、検証のあいだだけ `IADR-0361` へ寄せて取ったものである
-（**取得後 `IADR-0366` へ戻した**。`grep -rn "IADR-0361"` = 0 件で確認）。
+（**取得後 `IADR-0361` へ戻した**。`grep -rn "IADR-0361"` = 0 件で確認）。

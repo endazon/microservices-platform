@@ -1,5 +1,5 @@
 ---
-title: IADR-0366 ユニット直下と雛形の空枠も撤去し、「.gitkeep のみのディレクトリが無いこと」を 1 述語で機械検査する
+title: IADR-0361 ユニット直下と雛形の空枠も撤去し、「.gitkeep のみのディレクトリが無いこと」を 1 述語で機械検査する
 type: impl-adr
 status: Accepted
 related_ids:
@@ -21,7 +21,7 @@ related_specs:
   - ../specs/20260903_issue-1195_empty-scaffolding-frames-removal-and-check.md
 ---
 
-# IADR-0366: ユニット直下と雛形の空枠も撤去し、「`.gitkeep` のみのディレクトリが無いこと」を 1 述語で機械検査する
+# IADR-0361: ユニット直下と雛形の空枠も撤去し、「`.gitkeep` のみのディレクトリが無いこと」を 1 述語で機械検査する
 
 - 状態: Accepted
 - 日付: 2026-09-03
