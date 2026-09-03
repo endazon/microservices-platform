@@ -3,15 +3,15 @@ title: 別紙 — 計画 ID レンジの追随記録と、計画 ADR の状態�
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-08-30
+updated: 2026-09-03
 author: claude
 ---
 <!-- trace:
-ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-06, SC-17, SC-18, SC-19, SC-20]
-adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068]
+ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-06, SC-17, SC-18, SC-19, SC-20]
+adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228]
 specs: []
-issues: [#1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506]
+issues: [#1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -23,6 +23,54 @@ issues: [#1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#7
 >
 > **本別紙が持つのは「レンジをいつどう引き直したか」（pin 時代の記録を含む）「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れなかったか」の記録だけ**である（必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
+
+### ［2026-09-03・6 回目］ADR `0001..0068` → `0001..0077`（9 件。**1 日半で 9 件。これまでの最大幅である**）
+
+**`ADR` だけが `0001..0068` → `0001..0077` へ増えた**（9 件）。**他の 4 種は不動**
+（`FR-01..22` 22 件 / `NFR-01..27` 27 件 / `UC-01..11` 11 件 / `SC-01..21` 21 件。
+計画リポジトリの `02_requirements` / `03_usecases` / `05_screens` を GitHub API で直接走査し、
+返った列挙が非空であることを走査の陽性対照として確認した）。
+
+| ADR | planning コミット | planning PR | 環流 issue | 内容 |
+| --- | --- | --- | --- | --- |
+| `ADR-0069` | `6bdc950` | `planning#517` | `planning#510` | フロントエンドにも空枠を置かない。不在は「関心が無い」と「置き場所が違う」を区別する |
+| `ADR-0070` | `1824ec5` | `planning#521` | `planning#509` | PDF の本文抽出は pandoc の外に置く。取り込み形式の集合は計画が持つ |
+| `ADR-0071` | `e6b713f` | `planning#525` | `planning#514` | 検索傾向は出現件数のしきい値で伏せる。ハッシュ化は採らない |
+| `ADR-0072` | `6e7f787` | `planning#526` | `planning#515` | 利用イベントに利用者識別子を保持しない。保持期間は集計の上限期間に合わせる |
+| `ADR-0073` | `23390d9` | `planning#528` | `planning#516` | Wiki.js 本体 UI は利用者へ露出しない。`SC-04` は前段ゲートウェイ経由で描く |
+| `ADR-0074` | `37e732a` | `planning#529` | `planning#518` | owner の写像表は `SC-06` が器を持つ。ただし器だけでは予約値は減らない |
+| `ADR-0075` | `2f1bc8d` | `planning#530` | `planning#520` | east-west gRPC への移行は基盤先行とする。一括移行の義務は緩めない |
+| `ADR-0076` | `67ceb5b` | `planning#531` | `planning#524` | SLO の統制は「評価対象があること」まで含む。閾値には単位と規約の版を持たせる |
+| `ADR-0077` | `e6fd295` | `planning#532` | `planning#527` | 「操作」は契機の形で決めない。分界は入口の配線と操作の処理である |
+
+**9 件とも `status: Accepted`**。欠番が無いことは、`07_adr` の `ADR-` 始まりのファイルが
+**77 件**あり、その番号の最小と最大が **`0001` と `0077`** であることの対で確かめた
+（件数と両端が一致すれば連番である）。
+
+#### 出所は 5 回目と同じ「実装側の環流」だが、規模が一桁違う
+
+5 回目は環流 2 本から 2 件だった。**6 回目は環流 9 本から 9 件が 2026-09-02 15:26 〜 2026-09-03 01:57 の
+約 10 時間半に連続して着地している**（planning のコミット時刻。上表の順）。
+**レンジ宣言を追わないと、この 9 件を引く記述はコミット件名・PR タイトル・trace ブロックの
+どの経路でも書けない** —— 追随の遅れが実装作業そのものを止める幅が、それだけ広がった。
+
+#### 検出は「参照するより先に」（4 回目と同じ向き）
+
+3 回目までは `check-trace-blocks.js` の値域検査に落ちて初めて気づいていた。
+**4 回目以降は参照する前に引き直しており、本回もその形である。**
+本回は planning 側の新 ADR 9 件を受け皿 issue へ配る作業の前提として先に引いた。
+
+#### 新 ADR を引く既存の記述は 1 件も無かった（陽性対照つき）
+
+```console
+$ git grep -nE "(^|[^I[:alnum:]])ADR-00(69|7[0-7])" -- . ':!src/ai-stock-trading' | wc -l
+0
+$ git grep -nE "(^|[^I[:alnum:]])ADR-0065"          -- . ':!src/ai-stock-trading' | wc -l
+218
+```
+
+**同じ形の正規表現が 218 件を返す対照があるため、0 件は走査の失敗ではない。**
+`IADR-0069`〜`IADR-0077` は実装 ADR として実在するが別物であり、正規表現の直前否定（`[^I…]`）で分離している。
 
 ### ［2026-08-30・5 回目］ADR `0001..0066` → `0001..0068`（2 件。**自分が出した環流の裁定で増えた**）
 
