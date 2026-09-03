@@ -60,7 +60,7 @@ public sealed class RawDocumentFetchedEdge : IAsyncDisposable
         public Task PublishNormalizedAsync(
             Guid documentId, Guid sourceId, string title, string markdownUri,
             IReadOnlyList<string> assetUris, IReadOnlyDictionary<string, string> attributes,
-            IReadOnlyList<string> tags, CancellationToken ct = default)
+            IReadOnlyList<string> tags, bool bodyAbsent = false, CancellationToken ct = default)
         {
             recorder.Record(Role, sourceId);
             return Task.CompletedTask;

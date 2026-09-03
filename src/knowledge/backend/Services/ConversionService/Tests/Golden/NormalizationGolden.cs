@@ -96,8 +96,11 @@ internal static class NormalizationGolden
 
         var coder = new ScriptedDiagramCoder(spec.Figures);
         var store = new GoldenObjectStore();
+        // ADR-0070 決定 3 / IADR-0356 (#1192): case が `bodyAbsent: true` を宣言していれば、変換器が
+        // 「テキスト層なし」を返したとみなす（`pdf-no-text-layer`）。抽出器そのものは実走させない
+        // （決定 2 と同じ理由。空判定は `PdfTextLayerConverterTests` が持つ）。
         var service = new NormalizationService(
-            new ScriptedBodyConverter(new BodyConversionResult(body, figures)),
+            new ScriptedBodyConverter(new BodyConversionResult(body, figures) { BodyAbsent = spec.BodyAbsent }),
             coder,
             store,
             NullLogger<NormalizationService>.Instance);
@@ -185,6 +188,8 @@ internal static class NormalizationGolden
         sb.Append("markdownUri     : ").Append(result.MarkdownUri).Append('\n');
         sb.Append("diagramsCoded   : ").Append(result.DiagramsCoded).Append('\n');
         sb.Append("diagramsRetained: ").Append(result.DiagramsRetained).Append('\n');
+        // ADR-0070 決定 3: 「本文なしで完了」は succeeded の内訳。正規化結果が運ぶ値なので golden に載せる。
+        sb.Append("bodyAbsent      : ").Append(result.BodyAbsent ? "true" : "false").Append('\n');
         sb.Append("markdownLength  : ").Append(markdown.Length).Append('\n');
         sb.Append("markdownSha256  : ").Append(Sha256(Encoding.UTF8.GetBytes(markdown))).Append('\n');
         sb.Append('\n');
@@ -366,6 +371,12 @@ internal sealed class GoldenCaseSpec
     public List<string> Tags { get; set; } = [];
 
     public List<GoldenFigureSpec> Figures { get; set; } = [];
+
+    /// <summary>
+    /// ADR-0070 決定 3 / IADR-0356 (#1192): 変換器が「テキスト層なし」を返したとみなす宣言。
+    /// 省略時は本文あり。`true` の case は `.body.md` を空にする。
+    /// </summary>
+    public bool BodyAbsent { get; set; }
 }
 
 /// <summary>抽出図 1 つと、その図に対する `IDiagramCoder` の応答の宣言。</summary>

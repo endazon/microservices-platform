@@ -709,6 +709,10 @@ msgstr "データソース登録"
 msgid "データソース管理"
 msgstr "データソース管理"
 
+#: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
+msgid "テキスト層が無いため本文を抽出できませんでした（原本を参照）"
+msgstr "テキスト層が無いため本文を抽出できませんでした（原本を参照）"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "トークンを発行する"
 msgstr "トークンを発行する"
@@ -2040,6 +2044,10 @@ msgstr "未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。"
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "本文"
 msgstr "本文"
+
+#: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
+msgid "本文なしで完了"
+msgstr "本文なしで完了"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "本文はこの画面では編集できません。本文を書くには Obsidian 連携を設定してください。"

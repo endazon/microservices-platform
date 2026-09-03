@@ -1,0 +1,12 @@
+{
+  "description": "テキスト層を持たない PDF（スキャン相当）由来と宣言された抽出器出力（空）。本文なしで完了し（bodyAbsent=true）、空の document.md が保管され、図も資産も作らないことを固定する（ADR-0070 決定 3）。",
+  "sourceId": "66666666-6666-6666-6666-666666666666",
+  "sourceType": "filesystem",
+  "originalPath": "/docs/scans/signed-contract-2026.pdf",
+  "storageUri": "storage://bucket/raw/signed-contract-2026.pdf",
+  "contentType": "application/pdf",
+  "attributes": { "confidentiality": "confidential" },
+  "tags": ["knowledge-mgmt"],
+  "figures": [],
+  "bodyAbsent": true
+}
