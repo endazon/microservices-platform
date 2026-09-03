@@ -3,15 +3,15 @@ title: 経路B SSO 復旧 Runbook（揮発 live 設定の再適用手順）
 type: runbook
 status: active
 created: 2026-07-25
-updated: 2026-09-02
+updated: 2026-09-03
 author: claude
 ---
 <!-- trace:
 ids: [NFR-09]
 adrs: []
-iadrs: [IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0342]
-specs: [20260902_issue-1127_wikijs-oidc-strategy-seed]
-issues: [#328, #388, #841, #1127, AST#245]
+iadrs: [IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0361]
+specs: [20260902_issue-1127_wikijs-oidc-strategy-seed, 20260903_issue-1163_tool-oidc-login-verifier]
+issues: [#328, #388, #841, #1127, #1163, AST#245]
 -->
 
 # 経路B SSO 復旧 Runbook
@@ -129,13 +129,10 @@ kubectl -n platform-infra exec -i deploy/postgres -- \
 ## STEP 4: 総合検証
 
 ```sh
-# 各ツールの auth 開始
-# IADR-0220 (#841): admin(50000) は TLS 終端。selfsigned CA なので --cacert でルート CA を渡す:
-#   kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt
-curl -s -o /dev/null -w 'argocd  %{http_code}\n' --cacert ca.crt --resolve argocd.localhost:50000:127.0.0.1  https://argocd.localhost:50000/auth/login            # 303
-curl -s -o /dev/null -w 'grafana %{http_code}\n' --cacert ca.crt --resolve grafana.localhost:50000:127.0.0.1 https://grafana.localhost:50000/login/generic_oauth  # 302
-curl -s --cacert ca.crt --resolve minio.localhost:50000:127.0.0.1 https://minio.localhost:50000/api/v1/login | jq -r .loginStrategy                              # redirect
-curl -s --cacert ca.crt --resolve vault.localhost:50000:127.0.0.1 https://vault.localhost:50000/v1/sys/internal/ui/mounts | jq -c '.data.auth|keys'               # ["oidc/"]
+# ブラウザ OIDC を持つツール 7 件のログイン開始をまとめて測る（段 15 本・読み取り専用）。
+# ルート CA はクラスタから自動で取り出し、**TLS 検証は切らない**（-k を持たない）。
+# 終了コード: 0=全 PASS / 1=導線の失敗（落ちたクライアントを名指しする） / 2=前提未整備。
+bash scripts/verify-tool-oidc-logins.sh
 
 # 実弾 OFF（最重要・不変であること）
 kubectl -n ai-stock-trading set env deploy/order-execution-service --list | grep Broker__Provider   # paper
@@ -155,8 +152,8 @@ kubectl -n ai-stock-trading get deploy | grep -c opend                          
 | Headlamp | `headlamp.localhost:50000` | **SA トークン**（下記） | `headlamp-viewer` SA = cluster-admin |
 | Qdrant | `qdrant.localhost:50000/dashboard` | 認証なし | — |
 
-**ブラウザ側の前提（全 OIDC ツール共通）**: 各ツールは `http://keycloak:8080/...` へリダイレクトするため
-`hosts` に `127.0.0.1 keycloak` ＋ `kubectl -n platform-infra port-forward svc/keycloak 8080:8080` が必要（手順A）。
+**ブラウザ側の前提（全 OIDC ツール共通）**: 各ツールの飛び先は **`https://keycloak.localhost`（エッジ host）**であり、
+`hosts` への `keycloak` 追記も port-forward も要らない（上の検証器が 7 件とも実測して確かめる）。
 **admin entrypoint (50000) は TLS 終端である**（#841。計画 `NFR-11`・`ADR-0047`）ため、
 各ツールは **`https://`** で開く。平文 `http://<tool>.localhost:50000` は TLS ハンドシェイクに失敗する。
 ルート CA を信頼ストアへ入れるまでブラウザ警告が出る（取り出し手順は [edge README](../../deploy/local/edge/README.md)）。
