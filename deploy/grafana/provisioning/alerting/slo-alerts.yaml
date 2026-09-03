@@ -21,7 +21,7 @@
 #      機械で確かめたのは **`scripts/check-grafana-alerting.js`** の範囲
 #      —— ルール数と名前が `deploy/prometheus/alerts.yml` と 1 対 1、参照する
 #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、まで。
-#      **配備時に `/api/v1/provisioning/alert-rules` が 5 件返すことを確かめること。**
+#      **配備時に `/api/v1/provisioning/alert-rules` が 6 件返すことを確かめること。**
 #
 # 式は `deploy/prometheus/alerts.yml` と**同じもの**を使う（二重管理だが、暫定期間だけである）。
 #
@@ -161,6 +161,36 @@ groups:
                 # 単位は**秒**（1.5s）。ミリ秒の 1500 ではない。
                 - evaluator: { type: gt, params: [1.5] }
 
+      - uid: slo-rag-first-token-p95-high
+        title: RagFirstTokenP95High
+        condition: C
+        for: 10m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "RAG 初回応答（初回トークン）p95 が 5s 超"
+          description: "AiAnalysisService /analysis/ask/stream の初回トークンまでの p95 が NFR-02 目標(5s)を 10 分継続で超過。**NFR-02 の SLO 判定はこのルールである**（RagLatencyP95High は応答完了であり傾向の観察に留める）。"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: |
+                histogram_quantile(0.95, sum by (le) (rate(rag_answer_first_token_duration_seconds_bucket{job="microservices-platform.aianalysis-service"}[5m])))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                # 単位は**秒**（5s）。ミリ秒の 5000 ではない（ADR-0076 決定 1）。
+                - evaluator: { type: gt, params: [5] }
+
       - uid: slo-rag-latency-p95-high
         title: RagLatencyP95High
         condition: C
@@ -170,8 +200,8 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "RAG 応答 p95 が 5s 超"
-          description: "AiAnalysisService /analysis/ask の p95 が NFR-02 目標(5s)を 10 分継続で超過。"
+          summary: "RAG 応答完了 p95 が 5s 超（傾向の観察。NFR-02 の判定ではない）"
+          description: "AiAnalysisService /analysis/ask（一括経路）の応答完了 p95 が 5s を 10 分継続で超過。NFR-02 の初回応答 SLO は RagFirstTokenP95High が判定する（ADR-0076 §統制と現在の実現手段）。"
         data:
           - refId: A
             relativeTimeRange: { from: 600, to: 0 }

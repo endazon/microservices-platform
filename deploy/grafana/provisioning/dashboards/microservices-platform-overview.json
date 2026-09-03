@@ -2,7 +2,7 @@
   "title": "Platform Overview",
   "uid": "microservices-platform-overview",
   "schemaVersion": 38,
-  "version": 3,
+  "version": 4,
   "refresh": "30s",
   "tags": ["microservices-platform"],
   "panels": [
@@ -72,6 +72,18 @@
         "datasource": "Prometheus",
         "expr": "sum by (ingest_source) (increase(ingest_unknown_tag_total[$__range]))",
         "legendFormat": "{{ingest_source}}"
+      }]
+    },
+    {
+      "id": 7,
+      "title": "RAG 初回応答 P95 / RAG first-token (TTFT) P95 (s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "description": "**NFR-02 の SLI そのものである（初回応答 p95 5 秒以下）。** `/analysis/ask/stream` の要求受領から最初の `token` イベントを書き出すまでの秒数（ADR-0076 決定 5 / #1204）。\n\n🔴 **上のパネル 4（RAG Ask Latency P99）と混同しない** —— あちらは一括経路 `/analysis/ask` の**応答完了**であり、長い回答ほど悪化する。**SLO の判定はこのパネルの指標で行う。**\n\n🔴 **空なら「速い」ではなく「呼ばれていない」である。** 本計器は `/analysis/ask/stream` が呼ばれた分しか系列を持たない。",
+      "targets": [{
+        "datasource": "Prometheus",
+        "expr": "histogram_quantile(0.95, sum by (le) (rate(rag_answer_first_token_duration_seconds_bucket{job='microservices-platform.aianalysis-service'}[5m])))",
+        "legendFormat": "p95 TTFT /analysis/ask/stream"
       }]
     }
   ]

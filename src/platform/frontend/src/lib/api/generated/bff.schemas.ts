@@ -1056,6 +1056,54 @@ export interface NotificationReadResultDto {
 }
 
 /**
+ * FR-13: 一覧・ツリー表示用の軽量サマリ。本文と認可属性は含まない
+ */
+export interface WikiPageSummary {
+  /** 台帳（WikiPage）の識別子 */
+  id: string;
+  /** 対応する文書の識別子 */
+  documentId: string;
+  /** 表題。**台帳を正とする**（Wiki.js 側の写しではない） */
+  title: string;
+  /** ページのスラッグ */
+  slug: string;
+  /** Wiki.js 上の正準パス（doc/<documentId>） */
+  wikiPath: string;
+  /** ページの状態。一覧に現れるのは Active のみ */
+  status: string;
+  /** Wiki.js へ同期した時刻 */
+  syncedAt: string;
+}
+
+/**
+ * FR-13, UC-07: 検索結果の 1 件。本文は含まない（本文は個別取得が ABAC 通過後にプロキシする）
+ */
+export interface WikiSearchHit {
+  id: string;
+  documentId: string;
+  /** 表題。**台帳を正とする**（IADR-0021 と同じ分界） */
+  title: string;
+  slug: string;
+  wikiPath: string;
+  syncedAt: string;
+}
+
+/**
+ * FR-13, UC-07: 個別取得の応答。メタデータ ＋ **Wiki.js が描画した本文**（ゲートウェイは本文を自前で保持しない。IADR-0020）
+ */
+export interface WikiPageView {
+  id: string;
+  documentId: string;
+  title: string;
+  slug: string;
+  wikiPath: string;
+  status: string;
+  syncedAt: string;
+  /** Wiki.js が描画した本文（HTML）。ABAC 通過時のみ返る */
+  content: string;
+}
+
+/**
  * 検索実行（search）/ AI 回答生成（answer）
  */
 export type UsageEventRequestEventType = typeof UsageEventRequestEventType[keyof typeof UsageEventRequestEventType];
@@ -1687,6 +1735,19 @@ unreadOnly?: boolean;
  * 取得件数。既定 50、上限 100 にクランプする
  * @minimum 1
  * @maximum 100
+ */
+limit?: number;
+};
+
+export type BffWikiSearchParams = {
+/**
+ * 検索語。空白のみなら 200 ＋ 空（後段が判定する）
+ */
+q?: string;
+/**
+ * 取得件数。既定 20、上限 50 へ後段がクランプする
+ * @minimum 1
+ * @maximum 50
  */
 limit?: number;
 };
