@@ -56,6 +56,12 @@ public static class BffEndpointComposition
         // 後段は knowledge ユニットなので Knowledge.Bff.Endpoints に置く（タグ辞書と同じ切り分け）。
         // **本人性は後段の台帳が判定する**ので、BFF は認証必須＋資格情報の転送を担う。
         new DelegateBffEndpointModule(a => a.MapPrivateNoteBffEndpoints()),
+        // Issue #1199, FR-13, UC-07, SC-04, ADR-0011/0032/0073 決定 2・4, IADR-0335/0361:
+        // Wiki 前段の 4 経路（WikiService の /wiki/* へ pass-through）。後段は knowledge ユニットなので
+        // Knowledge.Bff.Endpoints に置く（タグ辞書・個人資料と同じ切り分け）。
+        // **Authorization を伝播する方式**を採る（後段が自分で ABAC を解決する型のため。Graph と同じ）。
+        // [[IADR-0335]] が「/bff/wiki/* は作らない」と置いたフォローアップは ADR-0073 決定 4 が解いた。
+        new DelegateBffEndpointModule(a => a.MapWikiBffEndpoints()),
         // Issue #452, FR-16, UC-09, SC-12, ADR-0024: MCP クライアント登録管理（McpServer の
         // /mcp-clients* へ pass-through）。後段は platform ユニットなので platform 同居とする。
         // **管理者限定**（05_screens §共通シェル「SC-09・SC-12・SC-17 = システム管理者」）。

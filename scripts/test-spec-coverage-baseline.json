@@ -348,6 +348,7 @@
     "docs/tests/UC-07_wiki-browsing.md": [
       "AbacPageFilterTests",
       "AnonymousAccessContractTests",
+      "BffWikiEndpointTests",
       "DocumentDeleteArchiveSyncTests",
       "DocumentSyncConsumerTests",
       "WikiEndpointsAbacTests",
