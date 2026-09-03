@@ -10,7 +10,14 @@ public sealed class FileSystemConnector(ILogger<FileSystemConnector> logger) : I
 {
     public string SourceType => "filesystem";
 
-    // 対応フォーマット→content-type。変換サービス（Pandoc/正規化）が扱える形式に限定する。
+    // 対応フォーマット→content-type。
+    //
+    // 🔴 FR-01, ADR-0070 決定 1・5 (#1192): **取り込み形式の集合の正本は計画側の対応形式表**
+    // （06_technical/09_datasource-connectors §対応形式）であり、本表はそれを写したものである。
+    // **実装が独自に増減させない**（増減が要るときは計画へ環流して起票する）。
+    // 従前のコメント「変換サービス（Pandoc/正規化）が扱える形式に限定する」は `.pdf` を含む時点で
+    // 自己矛盾していた（pandoc は PDF を入力に取れない）—— PDF はテキスト層の抽出器が本文を取り出す
+    // （ADR-0070 決定 2）ため、集合は「変換サービスが扱える形式」ではなく計画の表で定まる。
     private static readonly IReadOnlyDictionary<string, string> ContentTypes =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {

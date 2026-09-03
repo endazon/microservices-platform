@@ -62,14 +62,20 @@ public class NormalizationService(
         }
 
         // 3. 正規化 Markdown をオブジェクトストレージへ保管する。
+        //
+        // ADR-0070 決定 3 / IADR-0362 決定 6 (#1192): **本文なし（テキスト層の無い PDF）でも保管する**
+        // （内容は空）。`MarkdownUri` を null にすると `DocumentNormalized` / `ConversionJobDto` の契約が
+        // 破壊的に変わる。空の本文は「本文が無い」の正直な表現であり、作った文を索引に載せない
+        // （後続の取り込みはチャンク 0 件で通る。メタデータで検索に載せるのは ADR-0070 決定 4 の射程）。
         var markdownUri = await objectStore.SaveMarkdownAsync($"{documentId:N}/document.md",
             markdown, ct);
 
         logger.LogInformation(
-            "Normalized {DocumentId}: diagrams coded={Coded} retained={Retained} assets={Assets}",
-            documentId, coded, retained, assetUris.Count);
+            "Normalized {DocumentId}: diagrams coded={Coded} retained={Retained} assets={Assets} bodyAbsent={BodyAbsent}",
+            documentId, coded, retained, assetUris.Count, body.BodyAbsent);
 
-        return new NormalizationResult(documentId, markdownUri, assetUris, coded, retained, figures);
+        return new NormalizationResult(documentId, markdownUri, assetUris, coded, retained, figures,
+            BodyAbsent: body.BodyAbsent);
     }
 
     // FR-12, UC-06, IADR-0351 決定 2・6 (#1120): 図を**本文中の元の位置**へ埋め込む。

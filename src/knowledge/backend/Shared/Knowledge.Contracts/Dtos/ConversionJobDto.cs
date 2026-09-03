@@ -34,7 +34,12 @@ public record ConversionJobDto(
     int DiagramsRetained = 0,
     // SC-07（hi-fi:422）「補正あり」の標識。**再変換すると失われる補正があること**を示す
     // （05_screens:313・333。IADR-0154 決定 4）。
-    bool HasCorrection = false);
+    bool HasCorrection = false,
+    // SC-07, ADR-0070 決定 3 / IADR-0362 (#1192): **「本文なしで完了」の標識。** テキスト層を持たない PDF
+    // （スキャン等）は本文が存在しないため、`failed` にせず `succeeded` の内訳として理由つきで表示する。
+    // **状態の 5 値目ではない**（DeadLettered / DiagramsRetained と同じ扱い）。再試行もデッドレターもしない
+    // （何度やっても結果は変わらない）。Status == succeeded のときだけ真。
+    bool BodyAbsent = false);
 
 // FR-12, UC-06, SC-07: 変換ジョブの状態値。
 public static class ConversionJobStatus

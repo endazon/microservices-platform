@@ -228,6 +228,9 @@ public class NormalizationServiceTests
         cases.Should().NotBeEmpty("case が 0 件なら走査が空振りしている");
         cases.Should().Contain(["markdown-plain", "html-article", "office-docx-report", "pdf-report"],
             "代表 4 形式は #447 の退行防止項目が名指ししている");
+        // ADR-0070 決定 2・3 / IADR-0362 (#1192): PDF はテキスト層の有無で終端が分かれる。両方を固定する。
+        cases.Should().Contain(["pdf-text-layer", "pdf-no-text-layer"],
+            "テキスト層あり（本文あり）／なし（本文なしで完了）の対が要る");
         goldens.Should().BeEquivalentTo(cases,
             "golden と case は 1 対 1 である（孤児 golden は case の削除漏れ）");
     }

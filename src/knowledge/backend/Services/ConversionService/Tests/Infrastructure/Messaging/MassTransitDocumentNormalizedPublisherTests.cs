@@ -41,6 +41,7 @@ public class MassTransitDocumentNormalizedPublisherTests
                 assetUris: ["storage://normalized/assets/fig-1.png"],
                 attributes: new Dictionary<string, string> { ["confidentiality"] = "internal" },
                 tags: ["knowledge-mgmt"],
+                bodyAbsent: true,
                 ct: TestContext.Current.CancellationToken);
 
             (await harness.Published.Any<DocumentNormalized>(TestContext.Current.CancellationToken))
@@ -58,6 +59,8 @@ public class MassTransitDocumentNormalizedPublisherTests
             ev.Attributes.Should().ContainKey("confidentiality").WhoseValue.Should().Be("internal");
             ev.Tags.Should().ContainSingle().Which.Should().Be("knowledge-mgmt");
             ev.NormalizedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1));
+            // ADR-0070 決定 3 / IADR-0362 (#1192): 「本文なし」も写る（既定 false なので true を渡して見る）。
+            ev.BodyAbsent.Should().BeTrue();
         }
         finally
         {

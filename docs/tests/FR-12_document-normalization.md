@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-11, FR-12, UC-06, SC-07]
-adrs: [ADR-0010, ADR-0012, ADR-0014]
-iadrs: [IADR-0008, IADR-0104, IADR-0132, IADR-0162, IADR-0296, IADR-0298, IADR-0320, IADR-0351]
-specs: [20260703_FR-12_document-normalization-pipeline, 20260829_issue-447_fr12-golden-files, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1120_extract-media-path-rewrite]
-issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120]
+adrs: [ADR-0010, ADR-0012, ADR-0014, ADR-0070]
+iadrs: [IADR-0008, IADR-0104, IADR-0132, IADR-0162, IADR-0296, IADR-0298, IADR-0320, IADR-0351, IADR-0362]
+specs: [20260703_FR-12_document-normalization-pipeline, 20260829_issue-447_fr12-golden-files, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction]
+issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120, #1192]
 -->
 
 # テスト仕様書: 原本の正規化変換
@@ -36,8 +36,9 @@ issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120]
 | T-10 | **縮退は既定で起きない**（fail-closed） | pandoc 未導入／原本を読み出せないとき、既定は例外である | `BodyConversionUnavailableException`。**プレースホルダ本文を返さない** | 正規化変換: 例外 E1 |
 | T-10b | 縮退（明示的に許可したとき） | `Conversion:AllowDegradedBodyConversion=true` のときだけプレースホルダ本文（図0件） | 本文にファイル名が出現、`Figures` 空 | 正規化変換: 例外 E1 |
 | T-19 | **原本の取り寄せ** | オブジェクトストレージ上の原本を取得して pandoc に食わせる | 本文に原本の中身が出現し、プレースホルダの綴りを含まない。取得が 1 回起きる | 正規化変換: 本文変換 |
-| T-20 | **PDF の明示的な拒否** | PDF は pandoc の入力形式にならない。既定形式（`markdown`）へ落とさない | `UnsupportedSourceFormatException`。MIME・拡張子のどちらから判っても拒否する | 正規化変換: 例外 E5 |
-| T-21 | 入力形式の写像 | MIME（不明なら拡張子）から pandoc 入力形式を決める | `docx` / `html` / `gfm` / `markdown` が期待どおり。PDF だけ例外 | 正規化変換: 本文変換 |
+| T-20 | **PDF は拒否せず抽出器へ振り分ける**（2026-09-03 に反転） | PDF は pandoc の入力形式にならないが、**例外にせず**テキスト層の抽出器の担当とする（`PandocInputFormat` が `null`）。既定形式（`markdown`）へ落とさないことは不変 | `UnsupportedSourceFormatException` を**投げない**。MIME・拡張子のどちらから判っても `null` | 正規化変換: 処理フロー 3（振り分け） / `PandocConversionServiceTests` |
+| T-20b | **PDF 以外の未対応形式は引き続き拒否**（T-20 の陽性対照） | 計画の対応形式表に無い未知の MIME ＋未知の拡張子は既定へ落とさず拒否する。「PDF で投げない」が「何も投げない」に退化していないことの証拠 | `UnsupportedSourceFormatException`（`.xls` / 拡張子なし / `image/png`） | 正規化変換: 例外 E5 |
+| T-21 | 入力形式の写像 | MIME（不明なら拡張子）から pandoc 入力形式を決める | `docx` / `html` / `gfm` / `markdown`（`.txt` は明示）が期待どおり。PDF は `null` | 正規化変換: 本文変換 |
 | T-22 | **実行時イメージの退行防止** | 実行時段の `apt-get install` 行に pandoc が居ること | Dockerfile の runtime 段に導入行がある。消すと落ちる | 実行時イメージへの pandoc 導入 |
 | T-23 | **抽出媒体の参照書き換え（HTML 形）** | 図抽出が本文へ書き込む一時ディレクトリの絶対パスを、図の目印へ書き換える。docx 由来は属性が改行をまたぐ `<img>` である | 一時パス 0 件・`<img>` が残らない・図の**元の位置**に目印が入る | 正規化変換: 本文変換 / 抽出図の位置 |
 | T-24 | **抽出媒体の参照書き換え（Markdown 画像形）** | html / gfm 由来は `![alt](パス)` の形で出る | 一時パス 0 件・元の位置に目印 | 同上 |
@@ -52,6 +53,16 @@ issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120]
 | T-31 | **目印が無ければ末尾へ append**（回帰） | 目印を持たない本文では従来どおり末尾へ足す。綴りは従前とバイト等価 | append の全文一致 | 抽出図の位置: 縮退 |
 | T-32 | **人手補正が空振りしない** | 位置を本文中へ戻しても、埋め込みの綴りは人手補正が置換する目印のままである | `TryReplaceImageWithCode` が true を返し、コードブロックへ替わる | 人手補正の目印 / 抽出図の位置 |
 | T-33 | **実 pandoc の端から端**（pandoc 導入環境のみ） | 図を含む原本を実変換し、一時パスが残らず図が 1 度だけ出ること | 一時パス 0 件・`conv-` 0 件・目印 1 件 | 正規化変換: 本文変換 / 抽出図の位置 |
+| T-34 | **振り分け（PDF → 抽出器）** | `IBodyConverter` の合成器が PDF を抽出器へ、それ以外を pandoc へ渡す。外部プロセスの有無に依存しないよう縮退プレースホルダの綴りで「どちらが走ったか」を見る | PDF は「から pdftotext で抽出します」、docx / html / md / txt は「から pandoc で変換します」。未知の形式は取り寄せる前に `UnsupportedSourceFormatException` | 正規化変換: 処理フロー 3 / `FormatRoutingBodyConverterTests` |
+| T-35 | **テキスト層なしの判定（純関数）** | 抽出結果が空白のみ（空・改行・改頁 `\f`・タブ）なら本文なし。可視の文字が 1 つでもあれば本文あり | `ToBody` が `(""、true)` ／ `(本文、false)`。整形は改行正規化・行末空白除去・空行の畳み込みだけ | 正規化変換: 例外 E6 / `PdfTextLayerConverterTests` |
+| T-36 | **テキスト層あり PDF の抽出**（pdftotext 導入環境のみ・陽性） | 実行時に生成した最小 PDF（Helvetica のテキスト）から本文を取り出す。図は抽出しない | 本文に描いた文字列が出現・`BodyAbsent = false`・図 0 件・プレースホルダではない | 正規化変換: 処理フロー 3 |
+| T-37 | **テキスト層なし PDF は本文なしで完了**（pdftotext 導入環境のみ・陰性） | 描画だけの PDF（スキャン相当）は**例外にならず** `BodyAbsent = true` で返る | 例外なし・本文空・図 0 件 | 正規化変換: 例外 E6 |
+| T-38 | **本文があるのに作れない失敗は従来どおり**（pdftotext 導入環境のみ） | 壊れた PDF は `pdftotext` が非 0 終了する → 例外（再試行 → デッドレター）。原本未解決も既定は例外 | `InvalidOperationException` ／ `BodyConversionUnavailableException` | 正規化変換: 例外 E1 / E2 |
+| T-39 | **抽出器不在は fail-closed**（pdftotext 未導入環境のみ） | pdftotext が無いとき既定は例外。縮退は `AllowDegradedBodyConversion=true` のときだけで、縮退は「本文なし」ではない | `BodyConversionUnavailableException` ／ 明示許可時はプレースホルダ＋ `BodyAbsent = false` | 正規化変換: 例外 E1 |
+| T-40 | **実行時イメージの退行防止（poppler-utils）** | 実行時段の `apt-get install` 行に `poppler-utils` が居ること | Dockerfile の runtime 段に導入行がある。消すと落ちる | 実行時イメージへの抽出器導入 |
+| T-41 | **本文なしはジョブの成功として記録される** | コンシューマは `BodyAbsent = true` の正規化結果を `succeeded` で確定し、発行口へも同じ値を渡す | `status = succeeded`・`bodyAbsent = true`・`deadLettered = false`・`error = null`。本文ありでは `bodyAbsent = false`（陽性対照） | 正規化変換: 例外 E6 / `RawDocumentFetchedConsumerJobTests` |
+| T-42 | **読み取りモデルの標識** | `bodyAbsent` は succeeded の内訳として保存され、処理を再開したら落ちる | 成功直後 true → 再受信で processing ＋ false | `ConversionJobStoreTests` |
+| T-43 | **発行イベントへの写像** | `DocumentNormalized.BodyAbsent` へ写る（既定 false なので true を渡して見る） | `ev.BodyAbsent == true` | `MassTransitDocumentNormalizedPublisherTests` |
 | T-11 | 完了イベント | 変換後に `DocumentNormalized` が発行され後続へ連鎖する | Published = true、`MarkdownUri` 非空 | 正規化変換: 連鎖 / `RawDocumentFetchedConsumerTests` |
 | T-12 | **画像保持（モデル拒否）** | `stopReason="refusal"`（送信は成立したがモデルが拒否）は本文が空で返るためフェンスも無いが、T-02 の「コード化不能」と混同せず拒否として記録する。縮退先（画像保持）は不変 | `Coded=false`、`Reason="llm-refused"`（`not-codeable` でない） | LLM 送信先切替・正規化変換 / `LlmGatewayDiagramCoderTests.Retains_with_refusal_reason_when_model_refuses` |
 
@@ -63,7 +74,9 @@ issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120]
 | T-15 | **ゴールデン（HTML 由来・画像保持 1 件）** | 画像埋め込みの綴り（`![figureId](uri)`）と資産キー（`.png`）の全文、資産のバイト長・SHA-256 を固定する | `Expected/html-article.golden.md` と完全一致 | 正規化変換: 段階的コード化 / 人手補正が置換する目印 / 削除伝播が逆引きする鍵 |
 | T-16 | **ゴールデン（Office(docx) 由来・コード化＋画像保持の混在）** | コードブロックと画像埋め込みが混ざったときの**順序と空行**、`image/jpeg` → `.jpg` の写像を固定する | `Expected/office-docx-report.golden.md` と完全一致 | 正規化変換: 基本フロー |
 | T-17 | **ゴールデン（PDF 由来と宣言された変換器出力・画像保持 2 件）** | 未知の画像 MIME が `.bin` へ落ちること、および**機密区分が図コード化ポートへ渡ること**を固定する。後者は正規化結果に現れないため、他のどのテストでも見えない | `Expected/pdf-report.golden.md` と完全一致。`diagramCoderCalls` に `restricted` が並ぶ | 正規化変換: 機密制御 |
-| T-18 | **器の fail-closed** | case が 0 件・case の無い golden（孤児）で落ちる。走査が空振りしたまま緑にならないこと | `Golden_case_set_is_closed` が失敗する | 退行防止の器そのものの見張り |
+| T-17b | **ゴールデン（テキスト層あり PDF 由来と宣言された抽出器出力・図なし）** | プレーンテキスト相当の本文が素通しで保管され、`bodyAbsent` が立たないことを固定する | `Expected/pdf-text-layer.golden.md` と完全一致（`bodyAbsent : false`） | 正規化変換: 処理フロー 3 |
+| T-17c | **ゴールデン（テキスト層なし PDF 由来と宣言された抽出器出力・空）** | 本文なしで完了し（`bodyAbsent : true`）、**空の `document.md`** が保管され、図も資産も作らないことを固定する | `Expected/pdf-no-text-layer.golden.md` と完全一致（`markdownLength : 0`） | 正規化変換: 例外 E6 |
+| T-18 | **器の fail-closed** | case が 0 件・case の無い golden（孤児）で落ちる。走査が空振りしたまま緑にならないこと | `Golden_case_set_is_closed` が失敗する（PDF の 2 case も名指しで要る） | 退行防止の器そのものの見張り |
 
 ## 補足
 
@@ -122,3 +135,21 @@ issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120]
 > - ゴールデンは**目印を含む case（`html-article` / `office-docx-report`）と含まない case
 >   （`pdf-report`）の両方**を持つ。前者は図が本文中の元の位置へ入ること、後者は目印が
 >   無いときに末尾へ append する経路を固定する。
+
+> **［2026-09-03 追記］PDF はテキスト層の抽出器へ振り分け、テキスト層が無ければ「本文なしで完了」にした。**
+> T-20 は「PDF の明示的な拒否」から「PDF は拒否せず抽出器へ」へ**反転**した（T-20b がその陽性対照）。
+> 追加した T-34〜T-43 と T-17b / T-17c の作法:
+>
+> - **PDF の原本はテスト実行時に生成する**（`MinimalPdf`。ASCII のみ・xref 計算済み）。追跡下に
+>   バイナリを置かない前提（NUL バイト検査）を守るためで、生成器そのものは検証対象ではない。
+> - **実 `pdftotext` を要するケース（T-36〜T-38）は真の Skipped**。未導入環境でしか走らないケース
+>   （T-39）と対になっており、どちらの環境でも「両方が走った」ことにはならない。**在／不在の判定は
+>   終了コードではなく版の行で行う**（poppler は `-v` で 0、同名の xpdf 版は 99 を返す。開発機の
+>   xpdf 版で終了コードを見ると全ケースが Skipped になり、実行実績が無いのに緑に見えた）。
+> - **空判定（T-35）は純関数**で、pdftotext 無しで走る。変異試験（空判定を「常に本文あり」へ変える）で
+>   T-35 の 5 件と T-37 が落ちることを確かめた。
+> - **振り分け（T-34）は縮退プレースホルダの綴りで観測する**。外部プロセスの有無に依存しないよう、
+>   縮退を明示許可して原本を解決できないストレージを渡すと、両変換器は必ず自分のプレースホルダを返す。
+> - ゴールデンは `bodyAbsent` を `## result` に描く（既存 4 件は `false` の 1 行が増えた）。
+>   `pdf-no-text-layer` は `.body.md` が空であり、空の `document.md` が保管されることを固定する。
+>   「pandoc / pdftotext は実走させない」方針は変えていない。

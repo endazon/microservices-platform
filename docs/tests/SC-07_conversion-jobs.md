@@ -3,15 +3,15 @@ title: SC-07 変換ジョブ テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-30
+updated: 2026-09-03
 author: claude
 ---
 <!-- trace:
 ids: [FR-12, SC-03, SC-06, SC-07, UC-06]
-adrs: [ADR-0031]
-iadrs: [IADR-0009, IADR-0035, IADR-0042, IADR-0044, IADR-0127, IADR-0128, IADR-0132, IADR-0154, IADR-0157, IADR-0162]
-specs: [20260805_issue-501_retry-admin-only, 20260805_issue-503_sc05-08-admin-screens]
-issues: [#533, #543, #553, #651, #658, planning#198]
+adrs: [ADR-0031, ADR-0070]
+iadrs: [IADR-0009, IADR-0035, IADR-0042, IADR-0044, IADR-0127, IADR-0128, IADR-0132, IADR-0154, IADR-0157, IADR-0162, IADR-0362]
+specs: [20260805_issue-501_retry-admin-only, 20260805_issue-503_sc05-08-admin-screens, 20260903_issue-1192_pdf-text-layer-extraction]
+issues: [#533, #543, #553, #651, #658, #1192, planning#198]
 -->
 
 # テスト仕様書: 変換ジョブ
@@ -49,6 +49,7 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 | **人手補正の 2 ペイン編集（Phase 1）** | **［2026-08-10 / #651］実装した**——§テストケース 14〜21。契約は #543（人手補正 Phase 1 の実装判断）、画面の決定は人手補正 UI の実装 ADR による |
 | **補正のあるジョブの再実行は明示確認を求める** | **［2026-08-10 / #651］実装した**——**409 を受けてから**確認を出す（§テストケース 18・19） |
 | デッドレターの表示は `failed` の**内訳** | **画面では実装しない**（画面側が未着手。理由は画面仕様書 §実装しない要素 (b)）。**契約と後段は #533 で固定した**——§バックエンド の読み取りモデル 8〜12・エンドポイント 4・コンシューマ 3〜4 |
+| **「本文なしで完了」は `succeeded` の内訳**（2026-09-03 の計画裁定。テキスト層を持たない PDF を失敗として溜めない） | 画面: `shows a succeeded PDF without a text layer as completed-without-body, not as failed` ／ `shows no body-absent marker for a succeeded job with a body`（陽性対照）。純関数: `derives the body-absent marker without adding a fifth status`。**契約・後段**（#1192）: `Consume_pdf_without_text_layer_records_succeeded_job_with_body_absent` ／ `Succeed_with_body_absent_records_marker_and_reprocessing_clears_it` |
 | 照会 API は `GET /jobs` 相当・**状態でのフィルタ**を備える | `sends the status filter to the query API` ／ `starts with the "all" filter so the first view is not narrowed` |
 | 再変換 API は `retry` 相当 | `lets an administrator retry a failed job` |
 | **再変換の実行権限は管理者ロールに限る**（「画面と API の権限を揃える」） | 画面: `lets an administrator retry a failed job` ／ **`hides the retry button from an operator and says why`**。API: **`Retry_AsOperator_IsForbidden`**（403）／ `Retry_WhenAnonymous_IsUnauthorized`（401）／ `Retry_AsAdmin_Returns202`（§BFF 7 / 7b / 7c） |
@@ -81,6 +82,7 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 | 11 | 導線 | 遷移図 | 「← データソース管理へ戻る」が `/admin/sources` を指す |
 | 12 | **Phase 2 が射程外**（実装しない要素） | 画面仕様書 §hi-fi 対応 #10・#12 / `05_screens:330` | **［2026-08-10 / #651］この項目は反転した。** 従前は「2 ペインが**無い**こと」を理由「保存先の契約が無い」とともに固定していたが、契約は #543・画面は #651 で載り、**その理由は成り立たなくなった**。現在は「**図ごとの編集欄は在り、変換結果 Markdown 全体の編集欄は無い**」を固定する——本口はコード片しか受け付けないため、全体編集欄を置くと契約を超える |
 | 13 | **導出標識**（縮退・補正あり・Mermaid n図） | 人手補正 UI の実装 ADR 決定 3 / 計画側の画面設計 `:320` | `diagramsRetained` / `hasCorrection` / `diagramsCoded` から導出する。**`status` は 4 値のまま**（縮退したジョブは `succeeded`） |
+| 13b | **「本文なしで完了」**（#1192） | 計画 ADR「PDF の本文抽出は pandoc の外に置く」決定 3 | `bodyAbsent` から「本文なしで完了」（`warning`）と備考の理由文を導出する。状態は「完了」のまま・「失敗」は出ない・再変換と人手補正のボタンは出ない・「結果 →」の導線は出る。本文ありの完了ジョブには出ない（陽性対照） |
 | 14 | **人手補正（管理者）** | 計画側の画面設計 `:314` / 人手補正 Phase 1 の決定 6 | 縮退した図のある行から 2 ペインを開き、コードを投稿して成功を伝える。**対象は `coded === false` の図だけ** |
 | 15 | **人手補正（運用者に出さない）** | 同上 / 管理画面の実装方針（決定 1） | ボタンが無く「人手補正は管理者のみ実行できます」と理由が出る。**先に行が描かれていることを確かめてから**無いことを見る |
 | 16 | **★ 右ペインの画像が解析層を通る** | 人手補正 UI の実装 ADR 決定 1・5 | `/image` を呼び、**`<img>` まで届く**（オブジェクト URL）。`storage://` を `src` に入れない。**「要求が飛んだ」だけを見てはいけない**——変異試験で、それだけでは `bffFetch` の欠陥を素通りすると実測した |
@@ -102,6 +104,7 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 | P4 | 再変換可否 | `failed` のみ `true` |
 | P5 | **縮退の導出** | `diagramsRetained > 0`。**フィールドが無い場合は「縮退なし」へ倒す**（**［#658］契約は `required` へ移ったが、防御は残す** —— 応答スキーマの `required` 規則が言う「契約上は必須」と「実行時に必ず来る」は別） |
 | P6 | **補正可否** | 縮退した図があること。**権限は混ぜない**（人手補正 UI の実装 ADR 決定 3） |
+| P7 | **本文なしの導出** | `bodyAbsent === true`。フィールドが無い応答は「本文あり」へ倒す（P5 と同じ防御）。`status` の 5 値目にしない |
 
 ## 導線（`adminFlow.test.tsx`）
 

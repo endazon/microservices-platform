@@ -22,6 +22,7 @@ import { i18n } from '@foundation/i18n';
 import { toMessages } from '@foundation/utils/apiErrors';
 import {
   hasRetainedFigures,
+  isBodyAbsent,
   isCorrectable,
   isRetryable,
   jobStatusView,
@@ -380,6 +381,8 @@ function JobRow({
   // **導出であって `status` の 5 値目ではない**（`05_screens:320`「ジョブ状態モデルは 4 値である」）。
   const retained = hasRetainedFigures(job);
   const coded = job.diagramsCoded ?? 0;
+  // ADR-0070 決定 3（#1192）: 「本文なしで完了」も同じく導出。`status` は `succeeded` のまま。
+  const bodyAbsent = isBodyAbsent(job);
 
   return (
     <TableRow>
@@ -398,12 +401,23 @@ function JobRow({
           )}
           {/* hi-fi:422「補正あり」。 */}
           {job.hasCorrection && <StatusBadge tone="success">{t`補正あり`}</StatusBadge>}
+          {/* ADR-0070 決定 3（#1192）「本文なしで完了」。**状態ではなく併記の標識**である
+              （色 ＋ アイコン ＋ テキスト。tone は warning＝注意であって失敗ではない）。 */}
+          {bodyAbsent && <StatusBadge tone="warning">{t`本文なしで完了`}</StatusBadge>}
         </div>
       </TableCell>
       <TableCell className="text-xs text-[--color-fg-muted]">
         {/* hi-fi:422「Mermaid 2図」——備考は `diagramsCoded` から導出する。
-            補間には**素の変数だけ**を置く（`lingui/no-expression-in-message`）。 */}
-        {coded > 0 ? <Trans>Mermaid {coded}図</Trans> : (job.error ?? '—')}
+            補間には**素の変数だけ**を置く（`lingui/no-expression-in-message`）。
+            「本文なしで完了」は**理由つき**で出す（ADR-0070 決定 3。理由は契約の `bodyAbsent` から
+            導出する固定文であり、サーバの自由文字列 `error` ではない）。 */}
+        {bodyAbsent ? (
+          <Trans>テキスト層が無いため本文を抽出できませんでした（原本を参照）</Trans>
+        ) : coded > 0 ? (
+          <Trans>Mermaid {coded}図</Trans>
+        ) : (
+          (job.error ?? '—')
+        )}
       </TableCell>
       <TableCell>
         <div className="flex flex-wrap items-center gap-2">

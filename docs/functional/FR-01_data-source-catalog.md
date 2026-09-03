@@ -3,15 +3,15 @@ title: データソース登録・同期・カタログ化 機能仕様書
 type: functional-spec
 status: completed
 created: 2026-06-27
-updated: 2026-08-31
+updated: 2026-09-03
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-05, FR-12, SC-06, UC-04, UC-06]
-adrs: [ADR-0002, ADR-0003, ADR-0012, ADR-0014, ADR-0027]
-iadrs: [IADR-0001, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0295, IADR-0304, IADR-0320]
-specs: [20260627_FR-01_data-source-catalog-pipeline, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed]
-issues: [#195, #217, #218, #219, #458, #537, #546, #580, #1097, planning#200]
+adrs: [ADR-0002, ADR-0003, ADR-0012, ADR-0014, ADR-0027, ADR-0070]
+iadrs: [IADR-0001, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0295, IADR-0304, IADR-0320, IADR-0362]
+specs: [20260627_FR-01_data-source-catalog-pipeline, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1192_pdf-text-layer-extraction]
+issues: [#195, #217, #218, #219, #458, #537, #546, #580, #1097, #1192, planning#200]
 -->
 
 # 機能仕様書: データソース登録・同期・カタログ化
@@ -78,7 +78,7 @@ flowchart TB
 | 同期健全性（連続失敗回数・再試行上限・直近エラー） | ✅ **エンティティへ永続化し `DataSourceDto` で返す** | #537 / 裁定 Q14。**継続失敗のしきい値は再試行上限（5）に達した時点**。直近エラーは保存時点でマスクする。同期の例外フロー「継続失敗はアラートする」の表示側の土台である（健全性はエンティティへ永続化する、という実装判断）。発報は構造化ログ（`Alert=true`）である。**［2026-08-30 更新 / #546］Alertmanager 自体は配備済みだが、この事象に対応する Prometheus のアラートルールが無い**ため、依然として自動では届かない（配線されていないのは通知基盤ではなくルールの側である）。 |
 | 更新（`PUT` 全置換 / `PATCH` 部分更新） | ✅ **管理者限定** | #534 / 裁定 Q16。従前は「削除→再登録」しかなく **ID と履歴が切れた**（認証情報のローテーションのたびに文書の出所の追跡が切れる）。**更新は `Id` / `CreatedAt` / `LastSyncedAt` / 健全性を変えない**。 |
 | 接続失敗の継続アラート | ✅ **インメモリ追跡** | 連続失敗閾値超過で構造化アラートログ（同期の例外フロー）。DB 永続化は follow-up。 |
-| 変換（pandoc） | ✅ **実装済（実行時イメージに pandoc を同梱・実変換・`--extract-media` 図抽出）** | `PandocConversionService`。原本はオブジェクトストレージから取り寄せる。pandoc 不在・原本を読み出せないときは**既定で失敗する**（fail-closed。縮退は `Conversion:AllowDegradedBodyConversion=true` を明示した開発機に限る）。PDF は pandoc の入力形式にならないため明示的に拒否する。 |
+| 変換（pandoc） | ✅ **実装済（実行時イメージに pandoc を同梱・実変換・`--extract-media` 図抽出）** | `PandocConversionService`。原本はオブジェクトストレージから取り寄せる。pandoc 不在・原本を読み出せないときは**既定で失敗する**（fail-closed。縮退は `Conversion:AllowDegradedBodyConversion=true` を明示した開発機に限る）。**PDF は pandoc ではなくテキスト層の抽出器（`pdftotext`。実行時イメージに同梱）が本文を取り出し、テキスト層が無い PDF は失敗ではなく「本文なしで完了」にする**（2026-09-03 の計画裁定。従前の「明示的に拒否する」は覆った）。取り込み形式の集合の正本は計画側の対応形式表であり、`FileSystemConnector` はそれを写す。 |
 | **正規化文書→カタログ登録** | ✅ 実装済 | `DocumentNormalizedConsumer`。 |
 | カタログ CRUD | ✅ 実装済 | DocumentService |
 | チャンク化・埋め込み・Qdrant | ✅ 実装済 | IngestionService（Markdown 本文は `StorageDocumentContentReader` が取得。実オブジェクトストレージ未接続時はプレースホルダへデグレード） |
@@ -101,8 +101,11 @@ flowchart TB
   > pandoc を実行時イメージへ同梱し、原本はオブジェクトストレージから取り寄せるようにしたため、
   > **稼働クラスタで docx / HTML の実原本が実際に変換される**（実測済み）。
   > 未接続時のデグレードは既定で起きない（fail-closed）。
-- PDF の本文抽出。ファイルサーバーコネクタは `.pdf` を列挙するが、pandoc は PDF を入力に取れないため
-  **取り込めるが変換できない**状態が残る。別経路を足すかどうかは計画側の裁定事項。
+- ~~PDF の本文抽出。ファイルサーバーコネクタは `.pdf` を列挙するが、pandoc は PDF を入力に取れないため
+  **取り込めるが変換できない**状態が残る。別経路を足すかどうかは計画側の裁定事項。~~
+  **［2026-09-03］解消した。** 計画側の裁定で PDF を取り込み対象に含めることを追認し、本文はテキスト層の
+  抽出器で取り出す（正規化変換の機能仕様書 処理フロー 3・E6）。残るのは本文なし文書のメタデータ索引
+  （別作業）と OCR（計画が将来の別判断として留保）である。
 - 同期ジョブの進捗・状態管理。
 - 検索結果への属性・タグ復元（`QdrantVectorStore`）。
 - 出典（出自データソース）の永続化と検索結果への整形表示。

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { i18n } from '@foundation/i18n';
 import {
   hasRetainedFigures,
+  isBodyAbsent,
   isCorrectable,
   isRetryable,
   jobStatusView,
@@ -55,6 +56,15 @@ describe('jobStatus (SC-07)', () => {
     expect(isCorrectable({ diagramsRetained: 1 })).toBe(true);
     expect(isCorrectable({ diagramsRetained: 0 })).toBe(false);
     expect(isCorrectable({})).toBe(false);
+  });
+
+  // #1192 / 計画 ADR「PDF の本文抽出は pandoc の外に置く」決定 3: 「本文なしで完了」は導出であり、
+  // `status` の 5 値目にしない。テキスト層の無い PDF は `succeeded` ＋ `bodyAbsent` で表す。
+  it('derives the body-absent marker without adding a fifth status', () => {
+    expect(isBodyAbsent({ bodyAbsent: true })).toBe(true);
+    expect(isBodyAbsent({ bodyAbsent: false })).toBe(false);
+    // フィールド自体が無い応答（古いサーバ）は「本文あり」へ倒す（`hasRetainedFigures` と同じ防御）。
+    expect(isBodyAbsent({})).toBe(false);
   });
 
   // 計画確定: 同一ジョブの再変換は直列化し、実行中（processing）の要求は拒否する。

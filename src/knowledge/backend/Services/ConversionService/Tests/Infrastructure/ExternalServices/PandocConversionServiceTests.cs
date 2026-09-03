@@ -158,26 +158,39 @@ public class PandocConversionServiceTests
         }
     }
 
-    // IADR-0320 決定 4: PDF は pandoc の入力形式にならない。**既定の markdown へ落とさない。**
+    // ADR-0070 決定 2 / IADR-0362 (#1192): PDF は pandoc の担当ではない（null ＝ 抽出器へ振り分ける）。
+    // **`UnsupportedSourceFormatException` を投げない**（IADR-0320 決定 4 の明示的拒否は覆った）。
+    // 既定の markdown へ落とさないことは不変（null であって "markdown" ではない）。
     [Theory]
     [InlineData("application/pdf", "storage://bucket/raw/report.pdf")]
-    [InlineData("application/pdf", "storage://bucket/raw/no-extension")]
+    [InlineData("application/x-pdf", "storage://bucket/raw/no-extension")]
     [InlineData("application/octet-stream", "storage://bucket/raw/report.pdf")]
-    public async Task Rejects_pdf_instead_of_falling_back_to_markdown(string contentType, string uri)
-    {
-        var act = async () => await NewService().ConvertAsync(uri, contentType,
-            TestContext.Current.CancellationToken);
+    public void Pdf_is_routed_to_the_extractor_instead_of_being_rejected(string contentType, string uri) =>
+        PandocConversionService.PandocInputFormat(contentType, uri).Should().BeNull();
 
-        (await act.Should().ThrowAsync<UnsupportedSourceFormatException>())
-            .WithMessage("*PDF*");
+    // 🔴 陽性対照（同じテストクラスに置く）: PDF **以外**の未対応形式は引き続き投げる。
+    // 従前は未知の形式が既定の `markdown` へ落ちて pandoc に食わされ、静かに壊れた本文になっていた
+    // （ADR-0070 決定 5「この既定に頼らない」）。「PDF で投げない」が「何も投げない」に退化していないことの証拠。
+    [Theory]
+    [InlineData("application/vnd.ms-excel", "storage://bucket/raw/sheet.xls")]
+    [InlineData("application/octet-stream", "storage://bucket/raw/no-extension")]
+    [InlineData("image/png", "storage://bucket/raw/scan.png")]
+    public void Rejects_formats_outside_the_plan_table_instead_of_falling_back_to_markdown(
+        string contentType, string uri)
+    {
+        var act = () => PandocConversionService.PandocInputFormat(contentType, uri);
+
+        act.Should().Throw<UnsupportedSourceFormatException>().WithMessage("*対応形式表*");
     }
 
-    // 形式判定そのものの回帰。PDF 以外は従来どおりの写像である。
+    // 形式判定そのものの回帰。計画の対応形式表（09_datasource-connectors）の 4 形式 ＋ 既存の写像。
     [Theory]
     [InlineData("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "a.docx", "docx")]
     [InlineData("text/html", "a.html", "html")]
     [InlineData("text/markdown", "a.md", "gfm")]
     [InlineData("text/plain", "a.txt", "markdown")]
+    [InlineData("application/octet-stream", "a.txt", "markdown")]
+    [InlineData("application/octet-stream", "a.md", "gfm")]
     [InlineData("application/octet-stream", "storage://b/k/raw.docx", "docx")]
     public void Maps_content_type_to_pandoc_input_format(string contentType, string path, string expected) =>
         PandocConversionService.PandocInputFormat(contentType, path).Should().Be(expected);

@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-11, FR-12, SC-07, UC-06]
-adrs: [ADR-0010, ADR-0012, ADR-0014, ADR-0053]
-iadrs: [IADR-0007, IADR-0008, IADR-0137, IADR-0154, IADR-0298, IADR-0320, IADR-0351]
-specs: [20260703_FR-12_document-normalization-pipeline, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1120_extract-media-path-rewrite]
-issues: [#533, #543, #1097, #1120]
+adrs: [ADR-0010, ADR-0012, ADR-0014, ADR-0053, ADR-0070]
+iadrs: [IADR-0007, IADR-0008, IADR-0137, IADR-0154, IADR-0298, IADR-0320, IADR-0351, IADR-0362]
+specs: [20260703_FR-12_document-normalization-pipeline, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction]
+issues: [#533, #543, #1097, #1120, #1192]
 -->
 
 # 機能仕様書: 原本の正規化変換
@@ -25,7 +25,9 @@ issues: [#533, #543, #1097, #1120]
 ## 機能概要
 
 `ConversionService` が `RawDocumentFetched` イベントを購読し、取得済みの原本を
-正規化形式（本文 Markdown＋資産）へ変換する。本文は **pandoc** で Markdown 化し、図は
+正規化形式（本文 Markdown＋資産）へ変換する。本文は **pandoc** で Markdown 化し
+（**PDF だけは例外**で、pandoc の外に置いたテキスト層の抽出器 `pdftotext` が本文を取り出す。
+2026-09-03 の計画裁定による部分改定）、図は
 **LLM（LLMゲートウェイ `/complete` 経由）** で PlantUML/Mermaid にコード化する。コード化できない図は
 **画像として保持**し（変換パイプラインの決定。段階的に全面コード化）、本文・資産は **オブジェクトストレージ**へ
 保管する。完了時に `DocumentNormalized` を発行し、文書管理・取り込みへ連鎖する。
@@ -64,6 +66,11 @@ issues: [#533, #543, #1097, #1120]
    **図の目印（`![figureId](figure:figureId)`）へ書き換える**——`<img>` タグや `![](…)` を
    **構文まるごと**置き換え、写像できない参照は落とす。**一時パスは 1 件も残さない**
    （残渣の走査つき）。目印の綴りは `FigureMarkdown` を単一情報源とする。
+   - **PDF は pandoc ではなくテキスト層の抽出器へ振り分ける**（`FormatRoutingBodyConverter` →
+     `PdfTextLayerConverter`。`pdftotext -enc UTF-8 -nopgbrk` を外部プロセスとして起動する。
+     ローカル完結・外部送信なし・図は抽出しない）。抽出結果が**空白のみ**なら「テキスト層なし」とし、
+     `BodyAbsent = true` の本文なし結果を返す（E6）。**振り分けの判定は `PandocInputFormat` の
+     1 箇所**であり、PDF は `null`、計画の対応形式表に無い未知の形式は E5 で拒否する。
 4. 冪等 `DocumentId` を `SourceId`＋`OriginalPath` から決定的に導出する（`DeterministicGuid`）。
 5. 各図について（`IDiagramCoder` / `LlmGatewayDiagramCoder`）:
    1. LLMゲートウェイ `/complete` に `confidentiality` ＋ `purpose="diagram-coding"` を渡してコード化を依頼する。
@@ -94,14 +101,26 @@ issues: [#533, #543, #1097, #1120]
   > 配備（helm / compose）はこの値を注入しない。
 - **E2（pandoc 恒久失敗）**: pandoc が非0終了した場合は例外を送出し、メッセージ再試行→
   デッドレター（`<queue>_error`）へ委ねる。
-- **E5（pandoc が入力に取れない形式）**: PDF は pandoc の**入力形式にならない**
-  （出力にはできる）。既定形式へ落として pandoc に食わせず、
-  `UnsupportedSourceFormatException` として**明示的に拒否**する。
+- **E5（どの変換器の入力にもならない形式）**: 計画の対応形式表に無い未知の形式
+  （未知の MIME ＋未知の拡張子）は、既定形式へ落として pandoc に食わせず、
+  `UnsupportedSourceFormatException` として**明示的に拒否**する（従前の既定 `markdown` は
+  対応していない形式を静かに壊れた本文にするため、計画裁定で頼らないことになった）。
   再試行しても結果が変わらないため、コンシューマは**再送出せず**恒久失敗として記録する
   （`status = failed` ／ `deadLettered = true`。デッドレターキューへは流さない）。
   変換ジョブ画面には理由つきの失敗として並び、`POST /retry` で再変換できる。
-  🔴 **PDF の本文をどう取るかは未決である**（ファイルサーバーコネクタは PDF を列挙するため、
-  「取り込めるが変換できない」状態が残る）。計画側の裁定を仰いでいる。
+
+  > **［2026-09-03 追記］PDF はもう E5 ではない。** 従前は「pandoc が入力に取れない」として PDF を
+  > ここで拒否していた（2026-08-31 の暫定処置）が、計画側の裁定で **PDF はテキスト層の抽出器で
+  > 本文を取り出す**ことになった（処理フロー 3 の振り分け）。「取り込めるが変換できない」状態は解消した。
+- **E6（テキスト層を持たない PDF）**: スキャン等でテキスト層が無い PDF は、抽出結果が**空白のみ**で
+  あることを確かめたうえで「**本文なし・原本参照のみの文書**」として変換を**完了**させる。
+  🔴 **失敗ではない**——再試行もデッドレターもしない（何度やっても結果は変わらない）。
+  `status = succeeded` のまま `bodyAbsent = true` を内訳として記録し（状態値の 5 値目にしない）、
+  変換ジョブ画面には「本文なしで完了」と理由つきで表示する（再変換の対象に並ばない）。
+  `document.md` は空の内容で保管し、`DocumentNormalized.BodyAbsent = true` で後続へ伝える
+  （本文由来のチャンクは作らず、メタデータで検索に載せるのは別作業）。
+  抽出器そのものが無い・原本が読めない・`pdftotext` が非 0 終了する（壊れた PDF・暗号化）場合は
+  **本文があるのに作れない失敗**であり、E1 / E2 と同じく fail-closed のまま（縮退しない）。
 - **E3（図コード化の LLM 一時障害・送信拒否・コード化不能）**: 例外を送出せず**画像保持へ縮退**する
   （パイプラインを完了させる）。この経路はメッセージ再試行を発火させない。計画書（draft）との差異は
   `feedback/20260703_conversion-retry-vs-image-fallback.md` で計画側へ環流する。
@@ -136,8 +155,12 @@ issues: [#533, #543, #1097, #1120]
 ## スコープ外（フォローアップ）
 
 - LLMゲートウェイのマルチモーダル（Vision）画像入力。現状はキャプション/抽出テキストをプロンプト化。
-- PDF の本文抽出。pandoc は PDF を入力に取れないため、現状は E5 として明示的に拒否する
-  （別経路を足すかどうかは計画側の裁定事項）。
+- ~~PDF の本文抽出。pandoc は PDF を入力に取れないため、現状は E5 として明示的に拒否する
+  （別経路を足すかどうかは計画側の裁定事項）。~~ **［2026-09-03］スコープ外ではなくなった。**
+  計画側の裁定でテキスト層の抽出器（`pdftotext`）を pandoc の外に置き、実行時イメージへ
+  `poppler-utils` を同梱した（処理フロー 3・E6）。残るのは **OCR**（テキスト層を持たない PDF の
+  本文を作る手段。計画が「将来の別判断」として留保）と、**本文なし文書のメタデータ索引・検索結果の
+  表示**（別作業）である。PDF 内画像の図抽出も行わない（計画に無い）。
 
 > **［2026-08-31 追記］「実ストレージからの原本フェッチ（pandoc 入力は `file` スキームと
 > ローカルパスのみ）」はスコープ外ではなくなった。** オブジェクトストレージの原本は
