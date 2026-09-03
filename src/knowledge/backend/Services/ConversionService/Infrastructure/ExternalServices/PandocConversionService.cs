@@ -13,6 +13,9 @@ namespace ConversionService.Infrastructure.ExternalServices;
 // オブジェクトストレージから取得した原本を pandoc で本文 Markdown 化しつつ、
 // --extract-media で図（画像）を抽出する。
 //
+// ADR-0070 決定 2 / IADR-0356 (#1192): **PDF は本クラスの担当ではない。** `FormatRoutingBodyConverter` が
+// `PandocInputFormat` の戻り値（PDF は null）で `PdfTextLayerConverter` へ振り分ける。
+//
 // 🔴 IADR-0320 (#1097): **縮退の既定は fail-closed である。**
 // 従前は pandoc 未導入・原本未解決のとき無条件にプレースホルダ本文（図0件）を返して「成功」しており、
 // 実行時イメージが pandoc を持たなかったため **配備した実物でずっと縮退していた**。
@@ -25,15 +28,20 @@ public class PandocConversionService(
 {
     private bool AllowDegraded => options.Value.AllowDegradedBodyConversion;
 
+    private readonly RawSourceResolver _resolver = new(storage, logger);
+
     public async Task<BodyConversionResult> ConvertAsync(string storageUri, string contentType,
         CancellationToken ct = default)
     {
         logger.LogInformation("Converting body {Uri} (contentType={ContentType})", storageUri, contentType);
 
-        // 形式判定を最初に行う。pandoc が入力に取れない形式（PDF）は**取り寄せる前に拒否する** ——
+        // 形式判定を最初に行う。pandoc が入力に取れない未知の形式は**取り寄せる前に拒否する** ——
         // 既定の markdown へ落として pandoc に食わせると「pandoc exited with code 1」という
         // 原因の判らない失敗になり、意味の無い再試行を 4 回繰り返す（#1097）。
-        var inputFormat = PandocInputFormat(contentType, storageUri);
+        // PDF（null）は `FormatRoutingBodyConverter` が抽出器へ振り分けるので、ここへ来るのは配線の誤りである。
+        var inputFormat = PandocInputFormat(contentType, storageUri)
+            ?? throw new InvalidOperationException(
+                $"PDF は pandoc の担当ではない（{storageUri}）。FormatRoutingBodyConverter を経由すること。");
 
         // pandoc が利用可能か確認する。無いのは環境の欠陥であり、既定では失敗させる。
         if (!await CheckPandocAsync(ct))
@@ -44,7 +52,7 @@ public class PandocConversionService(
         }
 
         // 原本を pandoc が読めるローカルファイルへ解決する（オブジェクトストレージはここで取り寄せる）。
-        var source = await ResolveSourceAsync(storageUri, contentType, ct);
+        var source = await _resolver.ResolveAsync(storageUri, contentType, ct);
         if (source is null)
         {
             return Degrade(storageUri,
@@ -273,13 +281,22 @@ public class PandocConversionService(
     // 区切り文字さえ揃えれば一致する（絶対パス化は要らない）。
     private static string NormalizeSeparators(string path) => path.Replace('\\', '/');
 
-    // contentType（不明時は拡張子）から pandoc の入力形式を決める。
+    // contentType（不明時は拡張子）から pandoc の入力形式を決める。**形式判定の単一情報源**である
+    // （`FormatRoutingBodyConverter` も同じ関数で振り分ける。写像表を 2 箇所へ持たない）。
     //
-    // 🔴 IADR-0320 決定 4 (#1097): **pandoc が入力に取れない形式は既定へ落とさず拒否する。**
-    // PDF は `FileSystemConnector` が列挙対象に含めており（`.pdf` → `application/pdf`）、
-    // 従前はどの case にも当たらず拡張子判定の既定 `markdown` へ落ちていた。
-    // 実 pandoc を入れると `pandoc -f markdown foo.pdf` が非0終了し、原因の判らない失敗になる。
-    internal static string PandocInputFormat(string contentType, string sourcePath)
+    // 戻り値:
+    //   - pandoc の `-f` 値 …… pandoc が読む形式
+    //   - null …… **PDF**。pandoc は PDF を出力にはできるが入力には取れない（IADR-0320 決定 4）。
+    //     ADR-0070 決定 2 / IADR-0356 (#1192) により**テキスト層の抽出器（`PdfTextLayerConverter`）へ振り分ける**。
+    //     従前はここで `UnsupportedSourceFormatException` を投げて `failed` にしていたが、その裁定は覆った。
+    //   - 例外 …… 🔴 **計画の対応形式表に無い未知の形式**（未知の MIME ＋未知の拡張子）。
+    //     従前は既定の `markdown` へ落として pandoc に食わせていたが、対応していない形式が**静かに壊れた
+    //     本文**になる（ADR-0070 決定 5「この既定に頼らない」）ため、取り寄せる前に拒否する。
+    //
+    // 取り込み形式の集合の正本は計画（06_technical/09_datasource-connectors §対応形式）である。
+    // 表に無い形式（rtf / epub / rst / latex / org）の写像は従前からあるものを残しているだけで、
+    // 取り込み側（`FileSystemConnector`）が列挙しないため実害は無い。**実装が独自に増減させない。**
+    internal static string? PandocInputFormat(string contentType, string sourcePath)
     {
         switch (contentType.ToLowerInvariant())
         {
@@ -292,6 +309,9 @@ public class PandocConversionService(
             case "text/markdown":
             case "text/x-markdown":
                 return "gfm";
+            case "text/plain":
+                // 計画の対応形式表: `.txt` は「pandoc（markdown として読む）」。
+                return "markdown";
             case "application/rtf":
             case "text/rtf":
                 return "rtf";
@@ -306,26 +326,28 @@ public class PandocConversionService(
                 return "org";
             case "application/pdf":
             case "application/x-pdf":
-                throw UnsupportedPdf(contentType, sourcePath);
+                return null;
         }
-        // contentType 不明（text/plain 等）時は拡張子から推定し、既定は markdown。
-        return Path.GetExtension(SourceFileName(sourcePath)).ToLowerInvariant() switch
+        // contentType 不明（application/octet-stream 等）時は拡張子から推定する。
+        var extension = Path.GetExtension(RawSourceResolver.FileName(sourcePath)).ToLowerInvariant();
+        return extension switch
         {
             ".docx" or ".doc" => "docx",
             ".html" or ".htm" => "html",
+            ".md" or ".markdown" => "gfm",
+            ".txt" => "markdown",
             ".rtf" => "rtf",
             ".epub" => "epub",
             ".rst" => "rst",
             ".tex" or ".latex" => "latex",
             ".org" => "org",
-            ".pdf" => throw UnsupportedPdf(contentType, sourcePath),
-            _ => "markdown"
+            ".pdf" => null,
+            _ => throw new UnsupportedSourceFormatException(
+                $"対応形式表に無い形式である（contentType={contentType}, source={sourcePath}）。"
+                + "取り込み形式の集合は計画（09_datasource-connectors §対応形式）が持つ。"
+                + "広げるときは変換側の対応を同時に決めること（ADR-0070 決定 5）。")
         };
     }
-
-    private static UnsupportedSourceFormatException UnsupportedPdf(string contentType, string sourcePath) =>
-        new($"PDF は pandoc の入力形式にならない（contentType={contentType}, source={sourcePath}）。"
-            + "本文抽出の経路が決まるまで、この原本は変換できない。");
 
     // 抽出画像の拡張子 → contentType。画像でない拡張子は null（図として扱わない）。
     private static string? ContentTypeFor(string extension) => extension.ToLowerInvariant() switch
@@ -342,60 +364,8 @@ public class PandocConversionService(
         _ => null
     };
 
-    // 原本 URI をローカルの読み取り可能ファイルへ解決する。
-    //
-    // 🔴 IADR-0320 決定 3 (#1097): **オブジェクトストレージの原本を取り寄せる。**
-    // 従前は file スキームとローカルパスしか解決できず、`DataSourceSyncService` が発行する
-    // storage:// の原本は常に解決不能だった —— つまり pandoc を入れても縮退したままだった。
-    private async Task<ResolvedSource?> ResolveSourceAsync(string storageUri, string contentType,
-        CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(storageUri)) return null;
-
-        // オブジェクトストレージ上の原本は一時ファイルへ落として pandoc に食わせる。
-        if (storage.CanResolve(storageUri))
-        {
-            var bytes = await storage.GetBytesAsync(storageUri, ct);
-            var temp = Path.Combine(Path.GetTempPath(),
-                $"conv-src-{Guid.NewGuid():N}{SourceExtension(storageUri, contentType)}");
-            await File.WriteAllBytesAsync(temp, bytes, ct);
-            logger.LogInformation("Fetched raw source {Uri} ({Bytes} bytes) for conversion",
-                storageUri, bytes.Length);
-            return new ResolvedSource(temp, IsTemporary: true);
-        }
-
-        if (Uri.TryCreate(storageUri, UriKind.Absolute, out var uri))
-        {
-            if (uri.IsFile)
-                return File.Exists(uri.LocalPath) ? new ResolvedSource(uri.LocalPath, false) : null;
-            // storage:// を実クライアントが解決できない（未構成）場合はここへ来る。
-            return null;
-        }
-        // スキーム無し＝ローカルパスとして扱う。
-        return File.Exists(storageUri) ? new ResolvedSource(storageUri, false) : null;
-    }
-
-    // 一時ファイルの拡張子。pandoc は `-f` を明示するので必須ではないが、
-    // 失敗時のログとダンプが読めるように原本の形を残す。
-    private static string SourceExtension(string storageUri, string contentType)
-    {
-        var fromUri = Path.GetExtension(SourceFileName(storageUri));
-        if (!string.IsNullOrEmpty(fromUri)) return fromUri;
-        return contentType.ToLowerInvariant() switch
-        {
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => ".docx",
-            "text/html" or "application/xhtml+xml" => ".html",
-            "application/pdf" => ".pdf",
-            _ => ".bin"
-        };
-    }
-
-    // storage://bucket/key/raw.docx のようにスキーム付きでも拡張子を取れるようにする
-    // （Path.GetExtension は URI のクエリ・フラグメントを知らないので、パス部だけを見る）。
-    private static string SourceFileName(string uriOrPath) =>
-        Uri.TryCreate(uriOrPath, UriKind.Absolute, out var uri) && !uri.IsFile
-            ? uri.AbsolutePath
-            : uriOrPath;
+    // 原本の解決（オブジェクトストレージからの取り寄せ。IADR-0320 決定 3）は `RawSourceResolver` が持つ。
+    // PDF の抽出器と同じ経路を使うため、本クラスから切り出した（IADR-0356）。
 
     private static async Task<bool> CheckPandocAsync(CancellationToken ct) =>
         await TryGetPandocVersionAsync(ct) is not null;
@@ -425,15 +395,4 @@ public class PandocConversionService(
         catch { return null; }
     }
 
-    // 解決した原本。オブジェクトストレージから取り寄せたものは変換後に消す。
-    private sealed record ResolvedSource(string Path, bool IsTemporary) : IDisposable
-    {
-        public void Dispose()
-        {
-            if (!IsTemporary) return;
-            try { File.Delete(Path); }
-            catch (IOException) { /* 一時ファイルの後始末は best-effort。 */ }
-            catch (UnauthorizedAccessException) { /* 同上。 */ }
-        }
-    }
 }

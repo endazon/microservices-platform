@@ -3,15 +3,15 @@ title: 運用仕様書
 type: operations-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-02
+updated: 2026-09-03
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-11, FR-13, FR-15, NFR-21, SC-02, UC-04, UC-07]
-adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0322, IADR-0327, IADR-0345]
+ids: [FR-01, FR-02, FR-04, FR-11, FR-13, FR-15, NFR-02, NFR-21, SC-01, SC-02, UC-01, UC-04, UC-07]
+adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0076]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0322, IADR-0327, IADR-0345, IADR-0354]
 specs: []
-issues: [#66, #88, #98, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #455, #532, #536, #546, #587, #665, #674, #863, #443, #438, #466, #992, #1108, #1110, planning#196]
+issues: [#66, #88, #98, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #455, #532, #536, #546, #587, #665, #674, #863, #443, #438, #466, #992, #1108, #1110, #1204, planning#196]
 -->
 
 # 運用仕様書
@@ -604,13 +604,13 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   運用環境ごとに設定するもので、既定は `default-null`＝どこへも送らない**（設定漏れではなく既定）。
 - **暫定のアラート（Grafana 統合アラート。#665 / 計画 決定 42）**:
   [`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)
-  が同じ 5 ルールを Grafana 側でも評価し、**Alerting 画面に発火を表示する**。**通知は送らない**（下記★）。
+  が同じ 6 ルールを Grafana 側でも評価し、**Alerting 画面に発火を表示する**。**通知は送らない**（下記★）。
   `alerts.yml` との対応は `node scripts/check-grafana-alerting.js` が CI で突合する。
 - **★ 経路間のパリティ（#674。Grafana provisioning は経路間で同内容とする実装 ADR）**: provisioning（datasources / dashboards / alerting）は
   **compose と k8s の両方に同内容で置く**。`node scripts/check-grafana-provisioning-parity.js` が突合する。
   **是正前は k8s 側にダッシュボードが 1 枚も無く、下記 `llm-usage.json` へ経路 B から辿り着けなかった。**
 - **ダッシュボード**: `deploy/grafana/provisioning/dashboards/microservices-platform-overview.json`（サービス別
-  スループット・5xx 率・p99・RAG レイテンシ）と
+  スループット・5xx 率・p99・RAG レイテンシ・**RAG 初回応答 p95**）と
   [`llm-usage.json`](../../deploy/grafana/provisioning/dashboards/llm-usage.json)（**LLM の金額・トークン消費量・
   呼び出し回数**。**［2026-08-23］費用のパネルを追加した**）。
 - **LLM 費用の統制（暫定）**: **上限アラートは Alertmanager 配備後に有効となる。配備までは月次の手動確認である**
@@ -631,7 +631,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   **提供終了の監視は月次の費用確認に相乗りする**（自動検知は無い。検知の遅れは最大 1 か月）。
 - **適用範囲（現状）**: Prometheus/アラートルール（`deploy/prometheus/alerts.yml`）と可観測性スタックは
   **dev の 2 経路（docker-compose と、ローカル k8s の可観測性オーバーレイ）に配線**されている。
-  **［2026-08-30 更新 / #546］経路B（ローカル k8s）にも Alertmanager を配備し、両経路で同じ 5 ルールが
+  **［2026-08-30 更新 / #546］経路B（ローカル k8s）にも Alertmanager を配備し、両経路で同じ 6 ルールが
   同じ受け手へ届くようにした**（それ以前は compose だけだった）。**stg/prod は依然として対象外**である
   （`deploy/helm/microservices-platform/` 配下に Prometheus / Alertmanager リソースは無い）。
   展開は follow-up（下記「未決事項」）。本節のアラート定義・閾値は環境非依存に流用できる。
@@ -648,7 +648,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 >
 > 計画が定めた**暫定の通知先＝ Grafana の内蔵アラート**（決定 42）は、**#665 で provisioning を配線した**
 > （[`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)。
-> compose・k8s の 2 か所。5 ルールは `alerts.yml` と 1 対 1）。**ただし、配線したのは検知と可視化までである。**
+> compose・k8s の 2 か所。6 ルールは `alerts.yml` と 1 対 1）。**ただし、配線したのは検知と可視化までである。**
 >
 > - **push 配信の宛先（contactPoints / policies）は設定していない。** 届かない宛先を書くと「配線した」と
 >   読めてしまうため、**意図的に書いていない**（SLO の暫定通知先を Grafana 統合アラートへ配線する実装 ADR の決定 3）。
@@ -658,7 +658,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 > - **Grafana が provisioning を受理するかは未検証**である（実装環境で Grafana を起動できない。
 >   同実装 ADR の決定 1）。機械で確かめたのは
 >   `node scripts/check-grafana-alerting.js` の範囲（ルール数・名前の 1 対 1・`datasourceUid` の実在・
->   compose と k8s の同内容・必須キー）まで。**配備時に `/api/v1/provisioning/alert-rules` が 5 件返すことを確かめる。**
+>   compose と k8s の同内容・必須キー）まで。**配備時に `/api/v1/provisioning/alert-rules` が 6 件返すことを確かめる。**
 >
 > **★ 暫定経路を閉じる条件（併存させない）**: **可観測性の計画 ADR は改めない**（アラートは Alertmanager を用いる）。
 > 次の 3 つが揃った時点で、**`deploy/grafana/provisioning/alerting/` を削除する**。
@@ -668,12 +668,12 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 > | ---: | --- | --- |
 > | 1 | `prometheus.yml`（compose・k8s の**両方**）の `alertmanagers.targets` に到達可能な Alertmanager がある | ✅ **満たした**（`/api/v1/alertmanagers` が `activeAlertmanagers` を 1 件返す） |
 > | 2 | Alertmanager 側に受信先（メール/チャット）が設定され、**テスト通知が実際に届いた** | 🔴 **満たしていない。** 既定は `default-null`＝どこへも送らない。**実環境の宛先は利用者が決める事柄**であり、実装側で代替値を置けない |
-> | 3 | 下表 5 ルールの発火が Alertmanager 経由で通知されることを**1 件以上、実際に確かめた** | ✅ **満たした**（`OtelCollectorDown` の発火が Alertmanager の `/api/v2/alerts` に `active` として現れた。**合成ルールではなく下表の実ルールである**） |
+> | 3 | 下表 6 ルールの発火が Alertmanager 経由で通知されることを**1 件以上、実際に確かめた** | ✅ **満たした**（`OtelCollectorDown` の発火が Alertmanager の `/api/v2/alerts` に `active` として現れた。**合成ルールではなく下表の実ルールである**） |
 >
 > **条件 2 が満たされるまで併存させる。** 本来は避けたい状態だが、**暫定側（Grafana）にも宛先が無い**ため
 > **二重通知は構造的に起き得ない** —— 併存を禁じた理由（重複通知が「既知の誤報」の習慣を生む）は現時点では働かない。
 >
-> **併存させない理由**: 同じ 5 ルールが 2 系統で評価されると**同じ事象に対して 2 通の通知が出る**。
+> **併存させない理由**: 同じ 6 ルールが 2 系統で評価されると**同じ事象に対して 2 通の通知が出る**。
 > 重複は「片方は既知の誤報だ」という運用習慣を生み、**本物の通知を握り潰す方向に働く。**
 > 削除の際は `scripts/check-grafana-alerting.js` も併せて削除する（対象ファイルが消えると門 A で fail するため、
 > **残したままにはできない** ——「暫定を消し忘れる」ことが CI で表面化する）。
@@ -684,9 +684,26 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 | サービス応答断（近似） | `rate(http_server_request_duration_seconds_count)` の途絶（`job` 別・直近まで受信有） | 0 が 5 分 | Alertmanager（warning） | 可用性 99.9% |
 | HTTP エラー率 | 5xx 率 = `http_server_request_duration_seconds_count{http_response_status_code=~"5.."}` 比率（`job` 別） | > 5% が 5 分 | Alertmanager（critical） | 可用性 99.9% |
 | 検索レイテンシ | retrieval-service p95（`http_server_request_duration_seconds_bucket`） | > 1.5（**秒**）が 10 分 | Alertmanager（warning） | 検索 p95 1.5s |
-| RAG レイテンシ | aianalysis `/analysis/ask` p95 | > 5（**秒**）が 10 分 | Alertmanager（warning） | RAG 初回 5s |
+| **RAG 初回応答（SLO 判定）** | aianalysis `/analysis/ask/stream` の**初回トークンまでの時間**（`rag_answer_first_token_duration_seconds_bucket`）p95 | > 5（**秒**）が 10 分 | Alertmanager（warning） | **RAG 初回応答 p95 5s** |
+| RAG 応答完了（**傾向の観察に留める**） | aianalysis `/analysis/ask`（一括経路）の応答完了 p95 | > 5（**秒**）が 10 分 | Alertmanager（warning） | — （**判定に用いない**） |
 
-> 🔴 **上表の 5 件のうち 4 件は、2026-08-31 まで一度も発火し得なかった。**
+> 🔴 **［2026-09-03 更新］RAG 回答の SLO 判定は「初回応答」を測る計器へ移した。**
+> それまでこの表は `/analysis/ask` の**応答完了 p95** を「RAG 初回 5s」の指標として載せていたが、
+> **応答完了と初回応答は別物であり、しかも画面が実際に使うのは SSE 経路 `/analysis/ask/stream` である。**
+>
+> **SLI の定義は変えていない**（要求の数値も据え置き）。変えたのは**計器の側**である ——
+> AiAnalysisService が要求受領から最初の `token` イベントを書き出すまでの秒数を記録する。
+> **`token` が 1 件も出なかったストリームは記録しない**（初回トークンが無かったことを「速かった」として積まない）。
+>
+> **応答完了 p95 の行は残してある。ただし SLO の判定には用いない（傾向の観察に留める）。**
+> 応答完了を SLI にすると**長い回答ほど SLO 違反になり、回答品質を上げると SLO が悪化する**
+> —— 指標として逆向きの誘因を持つため、計画がその案を却下している。
+>
+> 🔴 **この指標は呼ばれない限り系列を持たない。** ダッシュボードのパネルが空でも「速い」ではなく
+> **「まだ誰も質問していない」**である。無風時に「鳴らない」と「鳴りようがない」を区別する手段
+> （系列の不在を warning とする規則・合成監視）は**まだ無い**。下の未決事項に残す。
+>
+> 🔴 **当時の 5 ルールのうち 4 件は、2026-08-31 まで一度も発火し得なかった**（上表は #1204 で 6 行になった）。
 > `up{job="otel-collector"}` を見る 1 件を除く 4 件が、**Prometheus に一度も存在したことのない**
 > メトリクス名（`http_server_duration_milliseconds_*`）を参照していた。**式は構文として正当**なので
 > Prometheus はエラーを出さず、ルールは `health: "ok"` / `state: "inactive"` のまま静かに評価され続けていた。

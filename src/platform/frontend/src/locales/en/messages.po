@@ -46,6 +46,10 @@ msgstr "({shownCount} shown)"
 msgid "{count} 件で絞り込み中"
 msgstr "Narrowed by {count}"
 
+#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+msgid "{effectiveMinCount} 件以上検索された語のみを表示します。"
+msgstr "Only terms searched at least {effectiveMinCount} times are shown."
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "{h}（上限）"
 msgstr "{h} (max)"
@@ -708,6 +712,10 @@ msgstr "Data source registration"
 #: knowledge/frontend/src/features/sc07-conversions/routes/sc07ConversionsRoute.tsx
 msgid "データソース管理"
 msgstr "Data source management"
+
+#: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
+msgid "テキスト層が無いため本文を抽出できませんでした（原本を参照）"
+msgstr "The body could not be extracted because the PDF has no text layer (see the original)"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "トークンを発行する"
@@ -2044,6 +2052,10 @@ msgstr "Body"
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "本文なし（原本を参照）"
 msgstr "No body text (see the original)"
+
+#: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
+msgid "本文なしで完了"
+msgstr "Completed without a body"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "本文はこの画面では編集できません。本文を書くには Obsidian 連携を設定してください。"

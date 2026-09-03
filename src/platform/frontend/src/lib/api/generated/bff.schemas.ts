@@ -705,7 +705,7 @@ export interface ConversionJobDto {
   sourceId: string;
   sourceType: string;
   originalPath: string;
-  /** `queued` / `processing` / `succeeded` / `failed`。**`failed` のみ再変換できる** */
+  /** `queued` / `processing` / `succeeded` / `failed`。**`failed` のみ再変換できる**（「本文なしで完了」は `succeeded` の内訳 `bodyAbsent` であり、再変換の対象に並ばない） */
   status: string;
   /** 失敗ジョブの理由 */
   error?: string | null;
@@ -744,6 +744,14 @@ export interface ConversionJobDto {
      * `corrections_would_be_lost` で明示確認を求める（IADR-0154 決定 4）。
      */
   hasCorrection: boolean;
+  /**
+     * **「本文なしで完了」の標識**（ADR-0070 決定 3）。テキスト層を持たない PDF（スキャン等）は
+     * 本文が存在しないため、`failed` にせず **`succeeded` の内訳**として理由つきで表示する。
+     * **`status` の 5 値目ではない**（`deadLettered` / `diagramsRetained` と同じ扱い）。
+     * `true` のジョブは再試行してもデッドレターへ送っても結果が変わらないため、再変換の対象に並ばない。
+     * `markdownUri` は空の本文を指す（原本参照のみの文書）。`status` が `succeeded` のときだけ真。
+     */
+  bodyAbsent: boolean;
 }
 
 /**
@@ -1057,6 +1065,54 @@ export interface NotificationReadResultDto {
 }
 
 /**
+ * FR-13: 一覧・ツリー表示用の軽量サマリ。本文と認可属性は含まない
+ */
+export interface WikiPageSummary {
+  /** 台帳（WikiPage）の識別子 */
+  id: string;
+  /** 対応する文書の識別子 */
+  documentId: string;
+  /** 表題。**台帳を正とする**（Wiki.js 側の写しではない） */
+  title: string;
+  /** ページのスラッグ */
+  slug: string;
+  /** Wiki.js 上の正準パス（doc/<documentId>） */
+  wikiPath: string;
+  /** ページの状態。一覧に現れるのは Active のみ */
+  status: string;
+  /** Wiki.js へ同期した時刻 */
+  syncedAt: string;
+}
+
+/**
+ * FR-13, UC-07: 検索結果の 1 件。本文は含まない（本文は個別取得が ABAC 通過後にプロキシする）
+ */
+export interface WikiSearchHit {
+  id: string;
+  documentId: string;
+  /** 表題。**台帳を正とする**（IADR-0021 と同じ分界） */
+  title: string;
+  slug: string;
+  wikiPath: string;
+  syncedAt: string;
+}
+
+/**
+ * FR-13, UC-07: 個別取得の応答。メタデータ ＋ **Wiki.js が描画した本文**（ゲートウェイは本文を自前で保持しない。IADR-0020）
+ */
+export interface WikiPageView {
+  id: string;
+  documentId: string;
+  title: string;
+  slug: string;
+  wikiPath: string;
+  status: string;
+  syncedAt: string;
+  /** Wiki.js が描画した本文（HTML）。ABAC 通過時のみ返る */
+  content: string;
+}
+
+/**
  * 検索実行（search）/ AI 回答生成（answer）
  */
 export type UsageEventRequestEventType = typeof UsageEventRequestEventType[keyof typeof UsageEventRequestEventType];
@@ -1114,7 +1170,13 @@ export interface DashboardUsageDto {
   totalSearches: number;
   totalAnswers: number;
   usageTrend: UsagePointDto[];
+  /** 出現件数が searchTermMinCount 以上の語だけを含む */
   topSearchTerms: SearchTrendDto[];
+  /**
+     * 検索傾向に出す最小の出現件数。これ未満の語は落とす（「その他 M 件」も出さない）。
+     * 構成キー `SearchTrend:MinimumCount`（既定 3）。不正値は既定へ倒し、本項目も倒した後の値を返す。
+     */
+  searchTermMinCount: number;
 }
 
 /**
@@ -1124,8 +1186,11 @@ export interface DashboardSummaryDto {
   totalSearches: number;
   totalAnswers: number;
   usageTrend: UsagePointDto[];
+  /** 出現件数が searchTermMinCount 以上の語だけを含む */
   topSearchTerms: SearchTrendDto[];
   quality: FeedbackStatsDto;
+  /** 検索傾向の出現件数の下限。後段（DashboardService）の値をそのまま透過する */
+  searchTermMinCount: number;
 }
 
 /**
@@ -1688,6 +1753,19 @@ unreadOnly?: boolean;
  * 取得件数。既定 50、上限 100 にクランプする
  * @minimum 1
  * @maximum 100
+ */
+limit?: number;
+};
+
+export type BffWikiSearchParams = {
+/**
+ * 検索語。空白のみなら 200 ＋ 空（後段が判定する）
+ */
+q?: string;
+/**
+ * 取得件数。既定 20、上限 50 へ後段がクランプする
+ * @minimum 1
+ * @maximum 50
  */
 limit?: number;
 };

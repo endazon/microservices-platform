@@ -46,6 +46,10 @@ msgstr "（表示 {shownCount} 件）"
 msgid "{count} 件で絞り込み中"
 msgstr "{count} 件で絞り込み中"
 
+#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+msgid "{effectiveMinCount} 件以上検索された語のみを表示します。"
+msgstr "{effectiveMinCount} 件以上検索された語のみを表示します。"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "{h}（上限）"
 msgstr "{h}（上限）"
@@ -708,6 +712,10 @@ msgstr "データソース登録"
 #: knowledge/frontend/src/features/sc07-conversions/routes/sc07ConversionsRoute.tsx
 msgid "データソース管理"
 msgstr "データソース管理"
+
+#: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
+msgid "テキスト層が無いため本文を抽出できませんでした（原本を参照）"
+msgstr "テキスト層が無いため本文を抽出できませんでした（原本を参照）"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "トークンを発行する"
@@ -2044,6 +2052,10 @@ msgstr "本文"
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "本文なし（原本を参照）"
 msgstr "本文なし（原本を参照）"
+
+#: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
+msgid "本文なしで完了"
+msgstr "本文なしで完了"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "本文はこの画面では編集できません。本文を書くには Obsidian 連携を設定してください。"

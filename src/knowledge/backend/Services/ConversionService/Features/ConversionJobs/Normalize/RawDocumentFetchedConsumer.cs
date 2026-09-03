@@ -44,24 +44,31 @@ public class RawDocumentFetchedConsumer(
 
             // FR-12: 正規化完了イベント発行 → DocumentService が文書を登録し取り込みへ連鎖する。
             // DocumentId は冪等（再変換で同一）。文書管理側で重複登録を避けられる。
+            // ADR-0070 決定 3 / IADR-0356 (#1192): 「本文なし」も運ぶ。後続（カタログ・索引）が
+            // 本文由来のチャンクを作らず、メタデータで検索に載せる判断に使う（決定 4 の射程）。
             var title = Path.GetFileNameWithoutExtension(ev.OriginalPath);
             await publisher.PublishNormalizedAsync(
                 result.DocumentId, ev.SourceId, title, result.MarkdownUri,
-                [.. result.AssetUris], ev.Attributes, ev.Tags, ct);
+                [.. result.AssetUris], ev.Attributes, ev.Tags, result.BodyAbsent, ct);
 
             // SC-07: 成功を記録。IADR-0154 決定 1: 図の記録も渡す（人手補正 Phase 1 の対象を残すため。
             // 従前は件数をログへ出して捨てており、どの図が縮退したかを後から引けなかった）。
+            // 🔴 テキスト層の無い PDF も**ここ（成功）**を通る。`failed` にも `deadLettered` にもしない
+            // （ADR-0070 決定 3）—— 内訳は `BodyAbsent` が運ぶ。
             await jobs.SucceedAsync(ev.FetchId, result.DocumentId, result.MarkdownUri,
-                result.Figures, ct);
+                result.Figures, result.BodyAbsent, ct);
 
             logger.LogInformation(
-                "Conversion complete for {FetchId}: doc={DocumentId} markdown={Uri} coded={Coded} retained={Retained}",
-                ev.FetchId, result.DocumentId, result.MarkdownUri, result.DiagramsCoded, result.DiagramsRetained);
+                "Conversion complete for {FetchId}: doc={DocumentId} markdown={Uri} coded={Coded} retained={Retained} bodyAbsent={BodyAbsent}",
+                ev.FetchId, result.DocumentId, result.MarkdownUri, result.DiagramsCoded, result.DiagramsRetained,
+                result.BodyAbsent);
         }
         catch (UnsupportedSourceFormatException ex)
         {
-            // FR-12, UC-06, SC-07, IADR-0320 決定 4 (#1097): 原本の形式が pandoc の入力形式にならない
-            // （代表は PDF）。**再試行しても結果は変わらない**ので、再送出せず恒久失敗として記録する。
+            // FR-12, UC-06, SC-07, IADR-0320 決定 4 (#1097), IADR-0356 (#1192): 原本の形式がどの変換器の
+            // 入力にもならない（計画の対応形式表に無い未知の形式）。**PDF はもうここへ来ない** ——
+            // ADR-0070 決定 2 によりテキスト層の抽出器へ振り分ける。
+            // **再試行しても結果は変わらない**ので、再送出せず恒久失敗として記録する。
             //
             // 🔴 デッドレターへは流さない —— 判る形で拒否したいのであって、原因不明の毒メッセージとして
             // 溜めたいのではない。`DeadLettered = true` は「この失敗の後に自動再試行は起きない」の意であり

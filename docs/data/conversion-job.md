@@ -3,15 +3,15 @@ title: 変換ジョブ（ConversionJob） データ仕様書
 type: data-spec
 status: in-progress
 created: 2026-07-09
-updated: 2026-08-21
+updated: 2026-09-03
 author: claude
 ---
 <!-- trace:
 ids: [FR-12, SC-07, UC-06]
-adrs: [ADR-0002, ADR-0003, ADR-0027]
-iadrs: [IADR-0042, IADR-0043, IADR-0127, IADR-0137, IADR-0154]
-specs: []
-issues: [#533, #543, #580]
+adrs: [ADR-0002, ADR-0003, ADR-0027, ADR-0070]
+iadrs: [IADR-0042, IADR-0043, IADR-0127, IADR-0137, IADR-0154, IADR-0356]
+specs: [20260903_issue-1192_pdf-text-layer-extraction]
+issues: [#533, #543, #580, #1192]
 -->
 
 # データ仕様書: 変換ジョブ（ConversionJob）
@@ -57,6 +57,7 @@ ConversionService はイベント駆動の fire-and-forget ワーカーで、`Ra
 | MarkdownUri | string? (varchar(2048)) | - | NULL 可。成功時に設定 | 正規化本文（Markdown）の URI |
 | Attempts | int | ○ | 既定 0。受信・再試行の都度 +1。**手動再変換でリセットしない**（累積） | 変換試行回数 |
 | DeadLettered | bool | ○ | 既定 `false`（列の DEFAULT も false）。`Status = failed` のときのみ true になり得る | **デッドレター標識**（自動再試行を使い切って `<queue>_error` へ送られたか。変換ジョブ画面が用いる） |
+| BodyAbsent | bool | ○ | 既定 `false`（列の DEFAULT も false。マイグレーション `AddBodyAbsentMarker`・2026-09-03）。`Status = succeeded` のときのみ true になり得る。処理再開・失敗・再変換受付で false へ戻す | **「本文なしで完了」標識**（テキスト層を持たない PDF。失敗ではなく succeeded の内訳。変換ジョブ画面が理由つきで表示する） |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 初回受信時刻 |
 | UpdatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow`。状態遷移の都度更新 | 最終更新時刻 |
 | StorageUri | string (varchar(2048)) | ○ | 再変換のため保持（`RawDocumentFetched.StorageUri`） | 原本の保管 URI |
@@ -66,7 +67,7 @@ ConversionService はイベント駆動の fire-and-forget ワーカーで、`Ra
 | FetchedAt | DateTimeOffset (timestamptz) | ○ | 再変換のため保持 | 原本取得時刻 |
 
 > `ConversionJobDto`（BFF↔SPA 契約）には Id / SourceId / SourceType / OriginalPath / Status / Error /
-> DocumentId / MarkdownUri / Attempts / CreatedAt / UpdatedAt / **DeadLettered** を射影し、加えて
+> DocumentId / MarkdownUri / Attempts / CreatedAt / UpdatedAt / **DeadLettered** / **BodyAbsent** を射影し、加えて
 > **MaxAttempts**（自動再試行の試行上限。エンティティの列ではなく設定値）を載せる。原本イベント再構成用の
 > StorageUri / ContentType / Attributes / Tags / FetchedAt は DTO に含めない（再変換にのみ用いる内部列）。
 
@@ -85,6 +86,7 @@ erDiagram
         varchar MarkdownUri
         int Attempts
         bool DeadLettered
+        bool BodyAbsent
         timestamptz CreatedAt
         timestamptz UpdatedAt
         varchar StorageUri

@@ -204,7 +204,7 @@ function SummaryView({ summary }: { summary: DashboardSummaryDto }) {
 
       <div className="mb-3 grid gap-3 lg:grid-cols-2">
         <UsageTrendTable points={summary.usageTrend} />
-        <SearchTrendTable terms={summary.topSearchTerms} />
+        <SearchTrendTable terms={summary.topSearchTerms} minCount={summary.searchTermMinCount} />
       </div>
     </>
   );
@@ -279,8 +279,24 @@ function UsageTrendTable({ points }: { points: UsagePointDto[] }) {
   );
 }
 
-/** 検索傾向（上位語）。図と表を両方出す理由は `UsageTrendTable` と同じ。 */
-function SearchTrendTable({ terms }: { terms: SearchTrendDto[] }) {
+/**
+ * 検索傾向（上位語）。図と表を両方出す理由は `UsageTrendTable` と同じ。
+ *
+ * SC-10, FR-10, ADR-0071 決定 1・2（#1197）: **出現件数がしきい値未満の語は出さない。**
+ * 検索語は自由文であり、個人資料を狙った語・固有名詞・機密文書の題名の断片がそのまま
+ * 運用者に読める。計画は「内容は出さず件数まで」を通知・メール・ログについて既に定めており、
+ * `ADR-0071` はその射程を画面へ届かせた。
+ *
+ * 🔴 **ふるい落としは後段（DashboardService）が既に済ませているが、ここでも行う**——
+ * `IADR-0044` の多層防御と同じ向きである。片側だけだと、後段の取りこぼしがそのまま画面へ出る。
+ * ふるいは**表と図の手前 1 箇所**に置く（2 箇所へ書くと片方が腐り、表と図で見えるものが食い違う）。
+ *
+ * 🔴 **しきい値を併記する**（`ADR-0071` 決定 2）。陳腐化文書数（`IADR-0353`）と同じ理由 ——
+ * 値が変われば見える語も変わるため、**数字だけでは時系列の比較が成り立たない。**
+ *
+ * **「その他 M 件」を出さない**（`ADR-0071` 決定 1）。M 自体が推測の材料になる。
+ */
+function SearchTrendTable({ terms, minCount }: { terms: SearchTrendDto[]; minCount: number }) {
   const { t } = useLingui();
   const columns = useMemo<DataTableColumns<SearchTrendDto>>(
     () => [
@@ -289,7 +305,21 @@ function SearchTrendTable({ terms }: { terms: SearchTrendDto[] }) {
     ],
     [t],
   );
-  const chartOption = useMemo(() => searchTermBarOption(terms, t`件数`), [terms, t]);
+  // 🔴 **項目が届かない場合を 0 へ倒す**（[[IADR-0357]] 決定 3 の 2026-09-03 追記）。
+  //
+  // 契約上 `searchTermMinCount` は必須だが、**しきい値を知らない旧 BFF が後段に居る配備**
+  // （ローリング更新の最中）では **JSON に項目そのものが無く**、生成型が `number` と言っていても
+  // 実体は `undefined` になる。**稼働 k3s で実測した**（#1197。旧 BFF は `undefined` を返した）。
+  //
+  // `count >= undefined` は**全件 false** である —— 素で使うと、**取りこぼしを止めるはずの
+  // ふるいが一覧を丸ごと空にする**。「知らないものを消す」向きであり、決定 3 が避けたかった側である。
+  // 有限数でなければ 0（＝ふるわない）へ倒す。
+  const effectiveMinCount = Number.isFinite(minCount) ? minCount : 0;
+  const visible = useMemo(
+    () => terms.filter((x) => x.count >= effectiveMinCount),
+    [terms, effectiveMinCount],
+  );
+  const chartOption = useMemo(() => searchTermBarOption(visible, t`件数`), [visible, t]);
 
   return (
     <Card>
@@ -299,7 +329,16 @@ function SearchTrendTable({ terms }: { terms: SearchTrendDto[] }) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {terms.length === 0 ? (
+        {/* 併記は一覧が空のときも出す——0 件はしきい値の効果が最も強く出ている状態であり、
+            そこで数字が消えると「なぜ空なのか」が読めなくなる。
+            **ただし下限を知らないときは名乗らない**——「0 件以上の語のみを表示します」は
+            何も言っていないうえ、しきい値が効いているかのように読める。 */}
+        {effectiveMinCount > 0 && (
+          <p className="mb-2 text-xs text-[--color-fg-muted]">
+            <Trans>{effectiveMinCount} 件以上検索された語のみを表示します。</Trans>
+          </p>
+        )}
+        {visible.length === 0 ? (
           <p>
             <Trans>検索傾向はまだありません。</Trans>
           </p>
@@ -310,7 +349,7 @@ function SearchTrendTable({ terms }: { terms: SearchTrendDto[] }) {
               caption={t`検索傾向（上位語）の一覧`}
               sortHint={t`並べ替え`}
               columns={columns}
-              data={terms}
+              data={visible}
             />
           </>
         )}
