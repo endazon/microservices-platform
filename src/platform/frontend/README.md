@@ -27,8 +27,9 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
       testing/                   # 横断 setup と画面テスト用ハーネス（テスト専用の第 4 層）
       features/index.ts          # ユニット合成点（可変ユニットの features を束ねる。層としては app）
       locales/                   # ja / en の Lingui カタログ（実体あり。生成物はコミットする）
-      assets/ hooks/ stores/ types/          # 🔴 中身が無い（.gitkeep のみ）。下の注記を読むこと
       main.tsx                   # エントリ
+      # 🔴 assets/ hooks/ stores/ types/ は**存在しない**（空枠を置かない）。下の注記を読むこと
+      # ツリー全体の正本は計画 13_frontend-stack §ディレクトリ構成 であり、上は実体の一覧である
     index.html / vite.config.ts / e2e/ / public/
     nginx.default.conf.template / config.js.template   # 配信・実行時 config
   knowledge/frontend/            # 可変機能ユニット（ナレッジ画面群）
@@ -36,28 +37,43 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
   <unit>/frontend/               # 追加の可変機能ユニット（git submodule でリンク）
 ```
 
-- 🔴 **空の区分（`.gitkeep` のみ）について** ——
-  `platform` は `assets/ hooks/ stores/ types/`、`knowledge` は
-  `app/ assets/ hooks/ locales/ stores/ testing/ types/ utils/` が空である。
-  **「枠があること」を適合の証拠として読まないこと。**
-  - **なぜ空か**（区分ごとに理由が違う）: `assets/` は外部 CDN と Web フォントを禁じた結果
-    フォントがシステムフォント・アイコンがパッケージになり**置くものが無い**。`hooks/` の横断フックは
-    **関心の隣に置いてある**（`lib/auth/useAuth.ts` 等）。`stores/` の Zustand は 1 本だけで、
+- 🔴 **無い区分について —— 空枠（`.gitkeep` のみのディレクトリ）は置かない。**
+  計画 `ADR-0069` 決定 1（Accepted 2026-09-02。環流 planning#510）が、`ADR-0065` 決定 4 の
+  「枠が**適合の見え方**を作る」という理由は**フロントエンドにも及ぶ**と定めた。射程は
+  **feature 内部・ユニット直下（`src/` 最上位）・雛形の 3 者すべて**である。
+  実体を持たない `platform` の `assets/ hooks/ stores/ types/` と `knowledge` の
+  `app/ assets/ hooks/ locales/ stores/ testing/ types/ utils/` は**もう存在しない**。
+  **必要になった時点で作る。**
+  - 🔴 **不在の意味は 2 通りあり、区別すること**（`ADR-0069` 決定 3）。
+    **枠を置いても (b) は直らない。枠は (b) を「揃っている」ように見せるだけである。**
+
+    | 型 | 意味 | 適合か |
+    | --- | --- | --- |
+    | **(a) 関心が無い** | この単位にはその関心そのものが無い | **適合している。**不在それ自体が情報である |
+    | **(b) 関心はあるが置き場所が違う** | 実体は存在するが、ツリーが定めた場所に無い | 🔴 **非適合である。枠の有無にかかわらず** |
+
+  - **上の区分はすべて型 (a) である**（理由は区分ごとに違う）: `assets/` は外部 CDN と Web フォントを
+    禁じた結果フォントがシステムフォント・アイコンがパッケージになり**置くものが無い**。
+    `hooks/` の横断フックは**関心の隣に置いてある**（`lib/auth/useAuth.ts` 等。`ADR-0069` 決定 4 が
+    「共有層の区分は唯一の置き場ではない」と認めている）。`stores/` の Zustand は 1 本だけで、
     その 4 つの参照元がすべて `components/ai-chat/` 配下にある。`types/` は表示型が**生成 DTO**である。
     `knowledge` の `app/` `locales/` `testing/` は**アプリホスト（platform）が持つ**という意図的な不在で、
     同ユニットの `utils/` は**自前の純粋関数をまだ 1 つも持たない**（echarts の読み込み口は
     「設定済みライブラリを外へ渡す」形なので `lib/echarts/` にある。
     [IADR-0333](../../../.ai-context/adr/IADR-0333_non-rendering-module-placement.md) 決定 2）。
-    - **［2026-09-02 追記 / #1131］`platform` の `utils/` はこの一覧から外れた。** 従前ここには
-      「`utils/` の純粋関数は `components/ui/` に居る」と書いてあった —— **空だった理由は
-      「置くものが無いから」ではなく、置くべきものが `components/` に居たからである。**
-      実体（`apiErrors.ts` / `formatDateTime.ts`）を移したので、この区分はもう空ではない。
-  - **消してよいかは未確定である。** planning#445 は**これらのディレクトリ名を名指しで**
-    「ツリー全体への適合が必須」と裁定した一方、同じ裁定が「名前だけを揃える対応は採らない」とも言う。
-    計画 `ADR-0065` 決定 4 は `.gitkeep` の枠置き規範を撤回したが、その明文はバックエンド標準の
-    部分改定である。**裁定を planning#510 で求めている。答えが出るまで消さない。**
-  - **従前ここには「枠のみ（`.gitkeep`。消さない）」とだけ書いてあった。**
-    無条件の指示に読めるうえ、実体のある `locales/` まで枠の側に並べていた（誤り）。
+  - 🔴 **`platform` の `utils/` は型 (b) だった。**［2026-09-02 / #1131］従前ここには
+    「`utils/` の純粋関数は `components/ui/` に居る」と型 (a) のように書いてあった —— **空だった理由は
+    「置くものが無いから」ではなく、置くべきものが `components/` に居たからである。**
+    実体（`apiErrors.ts` / `formatDateTime.ts`）を移したので、この区分はもう空ではない。
+    **枠があった間、この誤配置は一度も検出されなかった** —— **「空でよいか」ではなく「なぜ空か」を問うこと。**
+  - **「`.gitkeep` のみのディレクトリが無いこと」は機械が守る** ——
+    `node scripts/check-scaffolding-frames.js`（CI の `static-checks` ジョブ）。
+    述語はこの 1 つだけで、型 (b) は検査しない。
+  - **［2026-09-03］従前ここには「消してよいかは未確定である……planning#510 で裁定を求めている。
+    答えが出るまで消さない」と書いてあった。** その裁定が `ADR-0069` として下り、答えは**「消す」**である。
+    同 決定 2 は「planning#445 はどちらの側も支えない」という従前の読みを**否定した** ——
+    同 issue の列挙は**非適合の実測**であって必須項目の一覧ではなく、
+    「名前だけを揃える対応は採らない」が空枠を明示的に排除している。
 
 - **エイリアス**: `@foundation/<区分>` は **platform 基盤の公開面の名前**であり、ディレクトリ名ではない。
   向き先は `config` → `src/config`、`routing` → `src/app/routing`、`api` / `auth` / `i18n` → `src/lib/*`、
