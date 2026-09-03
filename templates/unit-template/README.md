@@ -19,7 +19,8 @@
     Services/SampleService/                  ← 単一プロジェクト標準（IADR-0282。2026-08-28 裁定）
       SampleService.csproj                  ← platform Shared を相対参照（配置後に解決）。層は分割しない
       Program.cs                            ← 合成ルート（Minimal API + ヘルスチェック。束ねるだけ）
-      Features/<集約>/<操作>/                ← Vertical Slice（Endpoint / Command|Query / Handler）
+      Features/<集約>/<操作>/                ← Vertical Slice（Endpoint / Command|Query / Handler / *Consumer / 常駐ジョブ）
+                                             ←   **操作は契機の形では決めない**（下の「『操作』とは何か」）
       Domain/                                ← エンティティ・値オブジェクト（**外部依存ゼロ**）
       Infrastructure/                        ← Persistence（EF Core）・Messaging 等のアダプタ
       Common/                                ← サービス固有の横断関心（Result は Platform.Shared.Kernel）
@@ -104,6 +105,28 @@
   [`docs/tech/tech-requirements.md`](../../docs/tech/tech-requirements.md)「バックエンドアプリケーション層標準」。
   不採用ライブラリ（MediatR / AutoMapper / MassTransit / FluentAssertions / Serilog 等）の混入は
   `scripts/check-backend-libraries.js` が CI で止める。
+- **「操作」とは何か —— 契機の形では決めない**（`ADR-0077`。オーナー裁定 2026-09-03）。
+  **操作とは、そのサービスが外部からの 1 つの契機に応えて行う 1 つのユースケースである。**
+  🔴 **契機の形（HTTP 要求・イベント購読・スケジュール実行・チャットコマンド）では決めない。**
+  **上の構成図の `Features/<集約>/<操作>/` は、雛形が HTTP の例（`Samples/Create/`）しか持たないだけで、
+  HTTP 専用の段ではない。** 本体リポジトリの実サービスには**契機が HTTP でない操作フォルダが実在する**。
+  - **メッセージ受信**: `WikiService/Features/Wiki/SyncDocument/DocumentSyncConsumer.cs` ——
+    購読ハンドラ（`*Consumer.cs`）も操作の処理として 3 段目に来る（追跡下の `*Consumer.cs` は
+    **8 件あり、8 件とも 3 段目**である）。
+  - **スケジュール実行**: `GraphService/Features/KnowledgeHealth/Report/` ——
+    🔴 **`Endpoint.cs` を持たない操作フォルダ**であり、唯一の契機がスケジュール実行である。
+  - **契機が 2 つある操作は 1 つの操作である**: `DataSourceService/Features/DataSources/Sync/` は
+    `Endpoint.cs`（HTTP）と `DataSourceSyncHostedService.cs`（スケジュール）を**同じ操作フォルダに
+    同居させている**。契機で切ると 1 つのユースケースが 2 つの操作に割れてしまう。
+
+  **分界は「入口の配線」と「操作の処理」である**（`ADR-0068` 決定 1 の分界の延長であって新しい規則ではない）。
+  **入口の配線は現在の置き場に残す** —— HTTP の登録表（`<集約>Endpoints.cs`）は 2 段目、
+  イベント購読の宣言は `Infrastructure/Messaging`、常駐ジョブの起動と間隔設定は常駐ジョブの置き場。
+  **操作の処理だけを `Features/<集約>/<操作>/` へ下ろす。**
+  🔴 **「操作＝登録表に登録された HTTP 端点」と読まないこと** —— `ADR-0077` 決定 3 が退けた読みであり、
+  複製したユニットが HTTP 端点を持たないサービスを含むと**操作フォルダが 1 つも生まれなくなる。**
+  **常駐ジョブも無条件に集約直下ではない。1 操作しか駆動しないなら 3 段目である**
+  （`ADR-0068` 決定 2 の判定「そのファイルが 1 つの操作にしか使われないか」は従来どおり）。
 - **サービスのテストは 1 プロジェクトにする**（計画 project-planning の
   `projects/microservices-platform/06_technical/12_backend-application-stack.md`
   §規範性・粒度・置き場。利用者裁定 2026-08-04 / planning#180）。プロジェクトを分けるとビルド時間と
