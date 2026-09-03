@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [NFR-02, NFR-21, FR-04, UC-01, SC-01]
 adrs: [ADR-0006, ADR-0076]
-iadrs: [IADR-0037, IADR-0110, IADR-0212, IADR-0345, IADR-0365]
+iadrs: [IADR-0037, IADR-0110, IADR-0212, IADR-0345, IADR-0354]
 specs: []
 issues: [#1110, #1204]
 -->

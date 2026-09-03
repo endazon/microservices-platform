@@ -2,7 +2,7 @@ using System.Diagnostics.Metrics;
 
 namespace AiAnalysisService.Common.Observability;
 
-// NFR-02, NFR-21, FR-04, UC-01, SC-01, ADR-0006, ADR-0076 決定 5, IADR-0365 (#1204):
+// NFR-02, NFR-21, FR-04, UC-01, SC-01, ADR-0006, ADR-0076 決定 5, IADR-0354 (#1204):
 // RAG 回答の **初回トークンまでの時間（TTFT）** を測るヒストグラム。
 //
 // 計画の SLI は「RAG 回答 初回応答 p95 5 秒」である。これまで代理値として読んでいた

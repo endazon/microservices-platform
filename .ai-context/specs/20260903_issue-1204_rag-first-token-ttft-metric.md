@@ -20,7 +20,7 @@ plan_refs:
   - "02_requirements/01_requirements.md NFR-02（RAG 回答の初回応答 p95 5 秒以下。［2026-09-03］単位は秒）"
   - "02_requirements/01_requirements.md NFR-21（障害検出 5 分以内 / MTTR 30 分以内。［2026-09-03 訂正］充足は『評価対象があること』まで含めて判断する）"
 related_adrs:
-  - IADR-0365
+  - IADR-0354
   - IADR-0345
   - IADR-0212
   - IADR-0110

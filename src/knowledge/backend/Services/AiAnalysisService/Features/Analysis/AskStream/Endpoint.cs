@@ -23,7 +23,7 @@ internal static class AskStreamEndpoint
         g.MapPost("/ask/stream", async (AskRequest req, IRagOrchestrator rag,
             RagStreamMetrics metrics, HttpContext http, CancellationToken ct) =>
         {
-            // NFR-02, ADR-0076 決定 5, IADR-0365 (#1204): TTFT の**起点**。
+            // NFR-02, ADR-0076 決定 5, IADR-0354 (#1204): TTFT の**起点**。
             // ミドルウェア（相関 ID・認証）を通過した後のハンドラ入口である。その差分は本計器に
             // 含まれないが、同じ経路を丸ごと測る http_server_request_duration_seconds との差で観測できる。
             var startedAt = Stopwatch.GetTimestamp();
@@ -56,7 +56,7 @@ internal static class AskStreamEndpoint
                     $"event: {name}\ndata: {JsonSerializer.Serialize(payload, SseJson)}\n\n", ct);
                 await http.Response.Body.FlushAsync(ct);
 
-                // NFR-02, ADR-0076 決定 5, IADR-0365 (#1204): TTFT の**終点**は
+                // NFR-02, ADR-0076 決定 5, IADR-0354 (#1204): TTFT の**終点**は
                 // **最初の token フレームを書き、フラッシュし終えた時刻**である（バイトがサーバを出た瞬間）。
                 // 🔴 **citations では止めない。** 出典は本文のトークンではなく LLM 生成の前に確定するため、
                 //    ここで止めると「生成が始まる前の時刻」を初回応答として記録することになる。

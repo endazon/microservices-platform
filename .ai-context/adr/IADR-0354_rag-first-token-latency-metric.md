@@ -1,5 +1,5 @@
 ---
-title: IADR-0365 初回応答は SSE の最初の token で測り、応答完了のルールは名前を保ったまま「傾向の観察」へ降ろす
+title: IADR-0354 初回応答は SSE の最初の token で測り、応答完了のルールは名前を保ったまま「傾向の観察」へ降ろす
 type: impl-adr
 status: Accepted
 related_ids:
@@ -24,7 +24,7 @@ plan_refs:
   - planning:projects/microservices-platform/06_technical/05_observability-ops.md
 ---
 
-# IADR-0365: `/analysis/ask/stream` の初回トークンまでの時間（TTFT）計器の新設（#1204）
+# IADR-0354: `/analysis/ask/stream` の初回トークンまでの時間（TTFT）計器の新設（#1204）
 
 - 状態: Accepted
 - 日付: 2026-09-03

@@ -15,7 +15,7 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 
-// NFR-02, NFR-21, ADR-0006, ADR-0076 決定 5, IADR-0365 (#1204): RAG 回答の初回トークンまでの時間（TTFT）。
+// NFR-02, NFR-21, ADR-0006, ADR-0076 決定 5, IADR-0354 (#1204): RAG 回答の初回トークンまでの時間（TTFT）。
 // 計画の SLI「初回応答 p95 5 秒」を測る計器はこれまで存在せず、応答完了 p95 を代理値として読んでいた。
 // OpenTelemetry の builder は加算的なので、全サービス共通の AddPlatformObservability を変えずに
 // サービス固有の Meter（名前はサービス名と一致）を同じ OTLP パイプラインへ載せられる。

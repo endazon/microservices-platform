@@ -12,7 +12,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace AiAnalysisService.Tests.Features.Analysis.AskStream;
 
-// NFR-02, NFR-21, FR-04, UC-01, SC-01, ADR-0006, ADR-0076 決定 5, IADR-0365 (#1204):
+// NFR-02, NFR-21, FR-04, UC-01, SC-01, ADR-0006, ADR-0076 決定 5, IADR-0354 (#1204):
 // /analysis/ask/stream の **初回トークンまでの時間（TTFT）** が計上されることを固定する。
 //
 // 計器が無いまま「応答完了 p95」を SLI の代理値として読んでいたのが #1204 の起点である。
