@@ -150,15 +150,16 @@ export class FakeServer {
     }
     if (req.method === 'POST' && path === PUSH_PATH) return this.push(req.body ?? '');
 
-    const m = /^\/private-notes\/sync\/notes\/([^/]+)(\/delete)?$/.exec(path);
+    const m = /^\/private-notes\/sync\/notes\/([^/]+)(\/delete|\/move)?$/.exec(path);
     if (!m) return { status: 404, text: '' };
     const note = this.find(decodeURIComponent(m[1]!));
     if (!note) return { status: 404, text: '' };
+    if (req.method === 'POST' && m[2] === '/move') return this.move(note, req.body ?? '');
     if (req.method === 'GET' && m[2] === undefined) {
       const body: PullNoteResponse = { ...note };
       return { status: 200, text: JSON.stringify(body) };
     }
-    if (req.method === 'POST' && m[2] !== undefined) {
+    if (req.method === 'POST' && m[2] === '/delete') {
       if (!note.deleted) {
         note.deleted = true;
         note.updatedAt = '2026-09-02T13:00:00Z';
@@ -173,6 +174,47 @@ export class FakeServer {
     }
     return { status: 405, text: '' };
   };
+
+  /**
+   * リネーム。サーバ契約どおり **版を進めず**、楽観ロック（`version` 不一致 → 409）と
+   * パス一意性（有効な行の中で重複 → 409）と削除済み（409）を実装する。
+   * client が 409 を握り潰して再送すれば、名前は後勝ちで上書きされる —— ここを甘くしない。
+   */
+  private move(note: ServerNote, body: string) {
+    const req = JSON.parse(body) as { vaultPath?: string; version?: number };
+    if (!req.vaultPath?.trim()) return { status: 400, text: 'validation' };
+    if (typeof req.version !== 'number') return { status: 400, text: 'version required' };
+    if (note.deleted)
+      return { status: 409, text: JSON.stringify({ error: 'deleted', purgeAt: '2026-12-01' }) };
+    if (req.version !== note.version)
+      return {
+        status: 409,
+        text: JSON.stringify({
+          error: 'version_conflict',
+          serverVersion: note.version,
+          serverUpdatedAt: note.updatedAt,
+        }),
+      };
+    if (
+      note.vaultPath !== req.vaultPath &&
+      this.notes.some((n) => !n.deleted && n.vaultPath === req.vaultPath)
+    )
+      return {
+        status: 409,
+        text: JSON.stringify({ error: 'vault_path_conflict', vaultPath: req.vaultPath }),
+      };
+    note.vaultPath = req.vaultPath;
+    note.updatedAt = '2026-09-03T09:00:00Z';
+    return {
+      status: 200,
+      text: JSON.stringify({
+        noteId: note.noteId,
+        vaultPath: note.vaultPath,
+        version: note.version,
+        updatedAt: note.updatedAt,
+      }),
+    };
+  }
 
   private async push(body: string) {
     const req = JSON.parse(body) as PushNoteRequest;

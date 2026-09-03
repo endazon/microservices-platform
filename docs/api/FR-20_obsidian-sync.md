@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-19, SC-20]
 adrs: [ADR-0021, ADR-0037, ADR-0054]
-iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route]
-issues: [#451, #1098, #1153, #1154]
+iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract]
+issues: [#451, #1098, #1153, #1154, #1176]
 -->
 
 # 通信仕様書: 個人資料・Obsidian 同期 API
@@ -50,6 +50,7 @@ issues: [#451, #1098, #1153, #1154]
 | POST | `/private-notes/sync/notes` | push（noteId 無し=新規・有り=更新。edits 1 件 = 1 版） | 201・200 / 401 / 404 / 409 / 413 / 507 |
 | GET | `/private-notes/sync/notes/{id}` | pull（本文取得） | 200 / 401 / 404 |
 | POST | `/private-notes/sync/notes/{id}/delete` | 論理削除（Obsidian 側削除の伝播） | 200 / 401 / 404 |
+| POST | `/private-notes/sync/notes/{id}/move` | リネーム（Obsidian 側の名前変更の伝播。`vaultPath` ＋ `version`） | 200 / 400 / 401 / 404 / 409 |
 
 ## 認証・認可の規則
 
@@ -68,26 +69,46 @@ push の `baseVersion`（クライアントが最後に見た版）と現在版�
 自動解決しない。クライアントは pull で現在版を取得し、利用者の選択
 （ローカル採用＝再 push／サーバ採用＝上書き／両方残す＝別パスで新規 push）に従う。
 
-push の 409 は他に 2 形ある。クライアントは `error` で区別する。
+409 は他に 2 形ある。クライアントは `error` で区別する。**push とリネームは同じ 3 形を返す**ので、
+クライアントの解析は 1 本で足りる。
 
 | `error` | 場面 | 本文 |
 | --- | --- | --- |
-| `version_conflict` | 更新の `baseVersion` が現在版と不一致 | `serverVersion` / `serverUpdatedAt` |
-| `deleted` | 更新先がサーバ側で論理削除済み | `purgeAt` |
-| `vault_path_conflict` | 新規作成の `vaultPath` が既存の有効な資料と重なる | `vaultPath` |
+| `version_conflict` | 更新の `baseVersion`／リネームの `version` が現在版と不一致 | `serverVersion` / `serverUpdatedAt` |
+| `deleted` | 対象がサーバ側で論理削除済み | `purgeAt` |
+| `vault_path_conflict` | 新規作成・リネームの `vaultPath` が既存の有効な資料と重なる | `vaultPath` |
+
+## リネームの契約（`POST /private-notes/sync/notes/{id}/move`）
+
+```json
+{ "vaultPath": "notes/renamed.md", "version": 7 }
+```
+
+**名前だけを動かす**（本文は push が運ぶ）。名前と中身を 1 つの要求に混ぜないため、更新 push へは
+相乗りさせていない —— 更新 push の `vaultPath` は**いまも新規作成でしか使わない**（相乗りさせると、
+サーバ側の名前変更をまだ取り込んでいない端末の push が新しい名前を旧名へ巻き戻す）。
+
+- 応答は 200 `{ noteId, vaultPath, version, updatedAt }`。**版は進まない**（本文が変わっていないため。
+  版履歴に行も足さない）。現在と同じ名前への要求は冪等な 200。
+- `version` は必須（欠けると 400）。**楽観ロック**であり、古い認識のまま名前を動かさせない。
+- 移動先が既存の有効な資料と重なれば 409 `vault_path_conflict`（判定は新規作成と同じ実体）。
+- 所有者スコープ外・不在の ID は 404（存在秘匿）。論理削除済みは 409 `deleted`。
+- 監査は「誰が・いつ・何件」。🔴 **`vaultPath` は記録しない**（ファイル名は実質的な題名であり、
+  記録すればタイトルを残さない規則の抜け道になる）。
 
 ## 同期プロトコルの呼び手（Obsidian プラグイン）
 
-- **呼ぶのは自作プラグイン**（`src/obsidian-plugin/`）だけである。`manifest` / `pull` / `push` / `delete` の
-  4 つを呼ぶ。BFF は経由せず、資格情報は Bearer 同期トークン。
+- **呼ぶのは自作プラグイン**（`src/obsidian-plugin/`）だけである。`manifest` / `pull` / `push` / `delete` /
+  `move` の 5 つを呼ぶ。BFF は経由せず、資格情報は Bearer 同期トークン。
 - 応答の形は client 側の型ガードで確かめ、契約と違えば失敗にする（黙って空扱いにしない）。
   **契約を変えるときはサーバ側テストと `src/obsidian-plugin/src/protocol/types.ts` の両方を動かす。**
 - 接続先は基底 URL（https）で、パスは本書の `/private-notes/sync/*` をそのまま連結する。
 - push の `edits[]` はプラグインが**保存の間隔 30 秒で刻んだ編集列**（未送信分をまとめて送る。1 要素 = 1 版）。
   更新の `baseVersion` は最終同期時の版（楽観ロック）。409 `version_conflict` を受けても**再送しない**——
   利用者の選択を待つ。
-- 🔴 **更新の push は `vaultPath` を書き換えない**（サーバは本文・タイトルだけを更新する）。プラグインは
-  ローカルのリネームを伝播できず、契約にリネームの口を足すのは別 issue。
+- **更新の push は `vaultPath` を書き換えない**（サーバは本文・タイトルだけを更新する）。名前を変えるのは
+  リネームの口であり、プラグインは**中身より先に名前を送る**。リネームが 409 で拒まれても本文の送信は
+  続く（名前だけの失敗が中身を巻き添えにしない）。
 - **［2026-09-03 追記］エッジは `/private-notes/sync/` 配下を文書サービスへ直接通す**（従前の
   「エッジは外へ出していない」は本追記で置き換わる）。**BFF は経由しない**（`/bff/private-notes/sync/*`
   は今も 404 であり、そちらに口を作る予定は無い）。

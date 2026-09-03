@@ -1,6 +1,7 @@
 using DocumentService.Domain;
 using DocumentService.Features.ObsidianSync.Delete;
 using DocumentService.Features.ObsidianSync.Manifest;
+using DocumentService.Features.ObsidianSync.Move;
 using DocumentService.Features.ObsidianSync.Pull;
 using DocumentService.Features.ObsidianSync.Push;
 using DocumentService.Features.PrivateNotes;
@@ -37,6 +38,7 @@ public static class ObsidianSyncEndpoints
         PushNoteEndpoint.Map(g);
         PullNoteEndpoint.Map(g);
         DeleteNoteEndpoint.Map(g);
+        MoveNoteEndpoint.Map(g);
 
         return app;
     }

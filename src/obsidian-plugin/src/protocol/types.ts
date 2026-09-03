@@ -56,6 +56,22 @@ export interface DeleteNoteResponse {
 }
 
 /**
+ * リネーム（`vaultPath` の更新）の要求。**本文は運ばない**（中身は push が送る）。
+ * `version` は最後に見た版で、楽観ロックのためだけに使う —— サーバはリネームで版を進めない。
+ */
+export interface MoveNoteRequest {
+  vaultPath: string;
+  version: number;
+}
+
+export interface MoveNoteResponse {
+  noteId: string;
+  vaultPath: string;
+  version: number;
+  updatedAt: string;
+}
+
+/**
  * 401。欠落・不正・期限切れ・失効を**サーバは区別しない**（[[IADR-0270]] 決定 3）ので、
  * プラグインも区別せず「トークンが無効」として利用者に伝える。
  */
@@ -75,10 +91,13 @@ export class SyncNotFoundError extends Error {
 }
 
 /**
- * 409。サーバは 3 つの形で返す（`Push/Endpoint.cs` / `PrivateNoteEndpoints.PathConflictProblem`）:
- * - `version_conflict`（`baseVersion` と現在版の不一致。**自動解決しない**。ADR-0037 決定 7）
- * - `deleted`（更新先がサーバ側で論理削除済み）
- * - `vault_path_conflict`（新規作成のパスが既存の有効な資料と重なる）
+ * 409。サーバは 3 つの形で返す（`Push/Endpoint.cs` / `Move/Endpoint.cs` /
+ * `PrivateNoteEndpoints.PathConflictProblem`）:
+ * - `version_conflict`（`baseVersion`／`version` と現在版の不一致。**自動解決しない**。ADR-0037 決定 7）
+ * - `deleted`（対象がサーバ側で論理削除済み）
+ * - `vault_path_conflict`（新規作成・リネームのパスが既存の有効な資料と重なる）
+ *
+ * **push と move は同じ 3 形を返す**（[[IADR-0360]] 決定 2・3）ので、解析は 1 本で足りる。
  */
 export type SyncConflict =
   | { error: 'version_conflict'; serverVersion: number; serverUpdatedAt: string }

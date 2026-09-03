@@ -9,9 +9,9 @@ updated: 2026-09-03
 <!-- trace:
 ids: [FR-19, FR-20, UC-11, SC-20, NFR-11]
 adrs: [ADR-0021, ADR-0037]
-iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352]
-specs: [20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route]
-issues: [#451, #1098, #1153, #1154]
+iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360]
+specs: [20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract]
+issues: [#451, #1098, #1153, #1154, #1176]
 -->
 
 # 手順ガイド: Obsidian プラグイン（個人資料同期）のビルドと導入
@@ -71,7 +71,7 @@ node ../scripts/check-static-egress.js --require obsidian-plugin/dist   # 外部
 | 同期フォルダで新しい `.md` を作る | 次の送信でナレッジベースに新しい資料ができる（ファイル名がタイトル） |
 | 同期フォルダのファイルを削除する | 次の送信でナレッジベース側が**論理削除**（90 日保管・画面から復元可）になる |
 | 同期フォルダの外へ移す | 同期が止まるだけ。ナレッジベースには何も送らない |
-| 同期フォルダの中で名前を変える | 追跡は続くが、**ナレッジベース側の名前は変わらない**（通知に出る） |
+| 同期フォルダの中で名前を変える | 次の送信で**ナレッジベース側の名前も変わる**（中身より先に名前が送られる）。同じ名前の資料が既にある／ナレッジベース側が先に進んでいる場合は名前だけ変わらず、競合として確認する（勝手に別名は付けない） |
 | ナレッジベース側で名前が変わった | 取り込み時にローカルのファイルが移動する（ローカルで編集していれば旧ファイルを残して通知） |
 | ナレッジベース側で削除された | ローカルのファイルは**消さない**。送信時に「ローカルを採用（新規として送り直す）／サーバを採用（ゴミ箱へ）」を確認する |
 | 両方で編集していた | 送信時に**競合**として 1 件ずつ確認ダイアログが出る。「ローカルを採用」「サーバを採用」「両方残す」「保留」から選ぶまで、どちらも上書きされない |
@@ -107,7 +107,8 @@ node src/obsidian-plugin/dist/cli.mjs record 個人資料/メモ.md    # 保存�
 node src/obsidian-plugin/dist/cli.mjs push                      # 送信（新規・更新・論理削除）
 node src/obsidian-plugin/dist/cli.mjs sync                      # 取り込み → 送信
 node src/obsidian-plugin/dist/cli.mjs delete 個人資料/メモ.md    # 削除イベントに相当
-node src/obsidian-plugin/dist/cli.mjs rename 個人資料/a.md archive/a.md   # フォルダ外へ移す（同期停止）
+node src/obsidian-plugin/dist/cli.mjs rename 個人資料/a.md archive/a.md   # フォルダ外へ移す（同期停止。HTTP は出さない）
+node src/obsidian-plugin/dist/cli.mjs move 個人資料/a.md 個人資料/b.md    # 名前を変えて送信（ナレッジベース側の名前も変わる）
 node src/obsidian-plugin/dist/cli.mjs resolve 個人資料/メモ.md local|server|both   # 競合を非対話で解決
 ```
 
