@@ -537,6 +537,139 @@ paths:
         "401": { description: 未認証 }
         "404": { description: 存在しない、または本人の通知でない（区別しない） }
 
+  # ── Wiki 閲覧の BFF 集約（FR-13 / UC-07 / SC-04。ADR-0073 決定 2・4 / #1199）─────────
+  #
+  # ADR-0073 決定 1 は「利用者が Wiki の内容へ到達する経路は WikiService（/wiki/*）の 1 本とする」と
+  # 定め、決定 2 は「SC-04 は基盤 SPA のルートとし、ページツリー・本文・検索結果を BFF 経由で取得して
+  # SPA が描く」と確定させた。以下の 4 本はその口である（後段の 4 経路と 1 対 1 に対応する）。
+  #
+  # 🔴 **どれも認証は要るがロールは問わない**（x-roles: []）。計画 05_screens は利用者グループ
+  # （SC-01〜04）を「ABAC の権限内で全利用者が利用できる」と定めており、可視性を決めるのは
+  # 役割ではなく ABAC である。ロールを足すと一般利用者が Wiki を 1 ページも開けなくなる。
+  #
+  # 🔴 **BFF は後段の応答をそのまま返す（状態・Content-Type・本文）。** 後段は「権限外・不存在・
+  # アーカイブ済み」を区別せず 404、「権限が無い・該当が無い」を区別せず 200 ＋ 空を返す
+  # （存在秘匿。IADR-0009 / ADR-0011）。BFF がこれを作り替えると秘匿が BFF 層で破れる。
+  # **未認証は BFF で 401**（NFR-09 の暫定運用＝エッジで認証を担保する。ADR-0032）——
+  # 後段が未認証に対して固定した「一覧・検索は 200 ＋ 空、個別は 404」（IADR-0335 決定 4）は
+  # mesh 内の契約であり、要求は BFF で止まって後段へ到達しないため食い違わない。
+  /bff/wiki/pages:
+    get:
+      x-roles: []
+      tags: [Wiki]
+      summary: "FR-13, UC-07, SC-04: 権限内の Wiki ページ一覧（BFF 集約）"
+      description: |
+        後段 WikiService の `/wiki/pages` へ中継する。deny-by-default の属性フィルタで
+        **権限内のメタデータだけ**が並ぶ。許可ポリシーが無ければ **200 ＋ 空配列**。
+        本文は含まない（本文は個別取得が ABAC 通過後に Wiki.js からプロキシする）。
+        アーカイブ済みページは権限があっても現れない。
+      operationId: bff-wiki-page-list
+      responses:
+        "200":
+          description: 権限内のページ一覧（表題順。空配列を含む）
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WikiPageSummary"
+        "401": { description: 未認証 }
+        "502": { description: 後段（WikiService）へ到達できない }
+
+  /bff/wiki/search:
+    get:
+      x-roles: []
+      tags: [Wiki]
+      summary: "FR-13, UC-07, SC-04: Wiki ページの検索（ABAC 適用済み。BFF 集約）"
+      description: |
+        後段 WikiService の `/wiki/search` へ中継する。全文検索は Wiki.js へ委譲され、
+        **前段が台帳と突き合わせて ABAC で絞り直した**結果が返る（IADR-0335）。
+        並びは Wiki.js の関連度順を保つ。本文は含まない。
+
+        - **`q` / `limit` は指定されたときだけ後段へ載せる。** 既定 20 / 上限 50 のクランプは
+          後段が唯一の情報源であり、BFF は 2 つ目のクランプを持たない。
+        - 許可ポリシーが無い／検索語が空白のみ → **200 ＋ 空配列**（後段が Wiki.js を呼ばない）。
+        - 🔴 Wiki.js へ到達できない場合は後段が **502** を返し、BFF はそれを透過する
+          （200 ＋ 空で隠さない。「権限が無い」と「壊れている」は別の軸である）。
+      operationId: bff-wiki-search
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+          description: "検索語。空白のみなら 200 ＋ 空（後段が判定する）"
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 20, minimum: 1, maximum: 50 }
+          description: "取得件数。既定 20、上限 50 へ後段がクランプする"
+      responses:
+        "200":
+          description: 権限内の検索結果（関連度順。空配列を含む）
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WikiSearchHit"
+        "401": { description: 未認証 }
+        "502": { description: Wiki.js が応答しない／後段へ到達できない }
+
+  /bff/wiki/pages/by-doc/{documentId}:
+    get:
+      x-roles: []
+      tags: [Wiki]
+      summary: "FR-13, UC-07, SC-03, SC-04: 文書 ID で Wiki ページ本文を取得（BFF 集約）"
+      description: |
+        後段 WikiService の `/wiki/pages/by-doc/{documentId}` へ中継する。
+        ABAC 通過時のみ Wiki.js が描画した本文をプロキシして返す。
+        **権限外・不存在・アーカイブ済みはいずれも 404**（存在秘匿。403 を返さない）。
+        文書詳細（SC-03）から Wiki 本文へ渡る導線が使う。
+      operationId: bff-wiki-page-by-document
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+          description: "文書の識別子"
+      responses:
+        "200":
+          description: Wiki ページ（メタデータ ＋ Wiki.js が描画した本文）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WikiPageView"
+        "401": { description: 未認証 }
+        "404": { description: 見つからない（権限外・不存在・アーカイブ済みを区別しない。IADR-0009） }
+        "502": { description: 後段（WikiService）へ到達できない }
+
+  /bff/wiki/pages/{slug}:
+    get:
+      x-roles: []
+      tags: [Wiki]
+      summary: "FR-13, UC-07, SC-04: スラッグで Wiki ページ本文を取得（BFF 集約）"
+      description: |
+        後段 WikiService の `/wiki/pages/{slug}` へ中継する。意味論は文書 ID 版と同じで、
+        ABAC 通過時のみ Wiki.js が描画した本文を返し、**権限外・不存在・アーカイブ済みは 404**。
+        ページツリーから本文を開く導線が使う。
+      operationId: bff-wiki-page-by-slug
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+          description: "ページのスラッグ"
+      responses:
+        "200":
+          description: Wiki ページ（メタデータ ＋ Wiki.js が描画した本文）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WikiPageView"
+        "401": { description: 未認証 }
+        "404": { description: 見つからない（権限外・不存在・アーカイブ済みを区別しない。IADR-0009） }
+        "502": { description: 後段（WikiService）へ到達できない }
+
   /bff/admin/config:
     get:
       x-roles: [platform-admin, platform-operator]
@@ -1988,6 +2121,22 @@ paths:
           description: Wiki ページ
         "404":
           description: 見つからない（権限外・不存在・未認証を区別しない。IADR-0009）
+
+  # ［2026-09-03 追記 / #1199］**4 経路のうち本 1 本だけが契約に載っていなかった。**
+  # 実装は `Features/Wiki/GetPageByDocument/` に最初から在り、`/bff/wiki/pages/by-doc/{documentId}` を
+  # 開けるときに欠落が判った（BFF 口だけ載って後段が載っていない状態を残さない）。
+  /wiki/pages/by-doc/{documentId}:
+    get:
+      tags: [Wiki]
+      summary: "FR-13, UC-07: 文書 ID で Wiki ページを取得（ABAC 適用済み）"
+      operationId: get-wiki-page-by-document
+      parameters:
+        - { name: documentId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Wiki ページ
+        "404":
+          description: 見つからない（権限外・不存在・アーカイブ済み・未認証を区別しない。IADR-0009）
 
   # ── FeedbackService（直接・内部 API / IADR-0017）─────
   /feedback:
@@ -4135,6 +4284,52 @@ components:
       properties:
         id: { type: string, format: uuid, description: "既読にした通知の識別子" }
         unreadCount: { type: integer, minimum: 0, description: "更新後の未読件数" }
+
+    # ── FR-13, UC-07, SC-04: Wiki（前段ゲートウェイの応答。#1199 / ADR-0073 決定 2）────
+    #
+    # 🔴 **対応する C# 契約 record は置かない。** これらの形は WikiService の内部 record
+    # （`WikiPageSummary` / `WikiSearchHit` / `WikiPageView`）であり、BFF は本文を**そのまま透過**
+    # するので型を通さない。`Shared.Contracts` へ持ち上げると、使う側が居ないまま
+    # `check-contract-schema.js` の baseline だけが動く。
+    # **すべて非 null**（後段は `System.Text.Json` で必ず出力する）ため required に全項目を挙げる。
+    WikiPageSummary:
+      type: object
+      description: "FR-13: 一覧・ツリー表示用の軽量サマリ。本文と認可属性は含まない"
+      required: [id, documentId, title, slug, wikiPath, status, syncedAt]
+      properties:
+        id: { type: string, format: uuid, description: "台帳（WikiPage）の識別子" }
+        documentId: { type: string, format: uuid, description: "対応する文書の識別子" }
+        title: { type: string, description: "表題。**台帳を正とする**（Wiki.js 側の写しではない）" }
+        slug: { type: string, description: "ページのスラッグ" }
+        wikiPath: { type: string, description: "Wiki.js 上の正準パス（doc/<documentId>）" }
+        status: { type: string, description: "ページの状態。一覧に現れるのは Active のみ" }
+        syncedAt: { type: string, format: date-time, description: "Wiki.js へ同期した時刻" }
+
+    WikiSearchHit:
+      type: object
+      description: "FR-13, UC-07: 検索結果の 1 件。本文は含まない（本文は個別取得が ABAC 通過後にプロキシする）"
+      required: [id, documentId, title, slug, wikiPath, syncedAt]
+      properties:
+        id: { type: string, format: uuid }
+        documentId: { type: string, format: uuid }
+        title: { type: string, description: "表題。**台帳を正とする**（IADR-0021 と同じ分界）" }
+        slug: { type: string }
+        wikiPath: { type: string }
+        syncedAt: { type: string, format: date-time }
+
+    WikiPageView:
+      type: object
+      description: "FR-13, UC-07: 個別取得の応答。メタデータ ＋ **Wiki.js が描画した本文**（ゲートウェイは本文を自前で保持しない。IADR-0020）"
+      required: [id, documentId, title, slug, wikiPath, status, syncedAt, content]
+      properties:
+        id: { type: string, format: uuid }
+        documentId: { type: string, format: uuid }
+        title: { type: string }
+        slug: { type: string }
+        wikiPath: { type: string }
+        status: { type: string }
+        syncedAt: { type: string, format: date-time }
+        content: { type: string, description: "Wiki.js が描画した本文（HTML）。ABAC 通過時のみ返る" }
 
     # ── FR-10: Dashboard ──────────────────────────────
     UsageEventRequest:

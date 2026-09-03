@@ -45,6 +45,8 @@ public class BffEndpointCompositionTests
             app.MapGraphBffEndpoints();
             // #451, FR-19, FR-20, SC-19, SC-20: 個人資料・Obsidian 連携設定。
             app.MapPrivateNoteBffEndpoints();
+            // #1199, FR-13, UC-07, SC-04: Wiki 前段の 4 経路（後段は WikiService）。
+            app.MapWikiBffEndpoints();
             app.MapAssumptionsBffEndpoints();
             app.MapRiskControlsBffEndpoints();
             app.MapMonitorBffEndpoints();
@@ -77,7 +79,9 @@ public class BffEndpointCompositionTests
         // 後段の AuthorizationService が platform ユニットのサービスであるため。IADR-0301 決定 1）。
         // #600, FR-22, UC-11: 利用者本人へのアプリ内通知（Notification）を追加した（platform 同居。
         // 後段の NotificationService が platform ユニットのサービスであるため。IADR-0346 決定 1）。
-        BffEndpointComposition.Modules.Should().HaveCount(19);
+        // #1199, FR-13, UC-07, SC-04: Wiki 前段の 4 経路（Wiki）を追加した（Knowledge.Bff.Endpoints。
+        // 後段の WikiService が knowledge ユニットのサービスであるため。IADR-0361 決定 1）。
+        BffEndpointComposition.Modules.Should().HaveCount(20);
     }
 
     // 内容一致の検証（claude-review 指摘対応）: 合成点経由でビルドした実アプリ（全 DI 込み）の実体化ルートが、
@@ -86,7 +90,7 @@ public class BffEndpointCompositionTests
     [Fact]
     public void Composition_maps_exactly_the_expected_bff_route_groups()
     {
-        // 期待する 19 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
+        // 期待する 20 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
         string[] expectedGroups =
         [
             // #451, FR-19, FR-20, SC-19, SC-20: 個人資料と同期端末（後段は DocumentService の
@@ -126,6 +130,10 @@ public class BffEndpointCompositionTests
             // #600, FR-22, UC-11: 本人宛のアプリ内通知（後段は NotificationService。**認証必須・
             // ロールは問わない**。絞るのは役割ではなく主体＝JWT の sub）。
             "/bff/notifications",
+            // #1199, FR-13, UC-07, SC-04, ADR-0073 決定 2・4: Wiki 前段の 4 経路（後段は WikiService。
+            // **認証必須・ロールは問わない**。可視性を決めるのは役割ではなく ABAC である）。
+            // **`/bff/wiki/pages/by-doc/{documentId}` もこの接頭辞に含まれる。**
+            "/bff/wiki",
         ];
 
         using var factory = new BffTestFactory();

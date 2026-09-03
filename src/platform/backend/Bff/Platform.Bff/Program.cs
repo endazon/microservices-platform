@@ -103,6 +103,24 @@ builder.Services.AddHttpClient("NotificationService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:NotificationService"]
         ?? "http://notification-service:8080"));
 
+// FR-13, UC-07, SC-04, ADR-0011 / ADR-0073 決定 4, IADR-0020 / IADR-0335 / IADR-0361 (#1199):
+// Wiki 前段（WikiService の /wiki/*）の集約用。**利用者の JWT を伝播して呼ぶ** ——
+// WikiService は IWikiAccessResolver で自分で ABAC を解決する型であり、本文で scope を渡す方式は
+// 採らない（GraphService と同じ判断）。
+//
+// 🔴 **コード既定を :8080 にする**（後発サービスの規約。IADR-0089 / #342 の上書き漏れで不達になる面を
+// 最初から作らない）。ホスト名 `wiki-service` は compose のサービス名・helm の `{{ $name }}-service`
+// （chart キー `wiki`）と文字列一致する。**helm の `Services__WikiService` は同値で既に在り**
+// （named client 不在のまま先に入っていた宙ぶらりん項目が、ここで実体を得る）、
+// **compose 側の上書きは不要である**（コード既定が既に :8080。check-bff-downstreams.js の不変条件を
+// 上書き無しで満たす）。
+//
+// **readiness の UriHealthCheck には入れない** —— Wiki 閲覧は 1 機能であり、後段の不調で BFF 全体を
+// not-ready にするのは fail-safe の後退である（McpServer / DocumentService / NotificationService と同じ扱い）。
+builder.Services.AddHttpClient("WikiService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:WikiService"]
+        ?? "http://wiki-service:8080"));
+
 // FR-06, UC-03/UC-07, SC-03: 文書閲覧の集約用。ABAC スコープ解決（AuthorizationService）→ 文書取得。
 builder.Services.AddHttpClient("DocumentService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DocumentService"]

@@ -158,6 +158,26 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // 401 を返す型なので、ここを測らないと「全部 401 でも緑」になる。
     public string? LastMcpForwardedAuthorization { get; private set; }
 
+    // FR-13, UC-07, SC-04, #1199: WikiService（/wiki/*）のスタブ。**テスト間で共有される**
+    // （IClassFixture）ため、観測する側が呼ぶ前に既定へ戻すこと。
+    //
+    // 🔴 **後段の状態コードと本文をそのまま返せることを測るための可変値である。** BFF は透過中継で
+    // あり、404（存在秘匿。「権限外」と「不存在」を区別しない）・502（Wiki.js 不達）・
+    // 200 ＋ 空（deny-by-default）のいずれも作り替えてはならない。
+    public HttpStatusCode WikiStubStatusCode { get; set; } = HttpStatusCode.OK;
+    public bool WikiStubThrows { get; set; }
+    /// <summary>一覧・検索の応答を空配列にする（deny-by-default の 200 ＋ 空を再現する）。</summary>
+    public bool WikiStubReturnsEmpty { get; set; }
+    public string? LastWikiPath { get; private set; }
+
+    /// <summary>スタブが返す Wiki ページの文書 ID（`by-doc` 経路の陽性対照に使う）。</summary>
+    public const string StubWikiDocumentId = "44444444-4444-4444-4444-444444444444";
+
+    // 🔴 **資格情報が後段へ届いているかの観測点**（陽性対照）。WikiAccessResolver は未認証を
+    // Granted=false へ短絡させるため、伝播が切れると**一覧・検索は 200 ＋ 空、個別は 404** になる
+    // ——「Wiki に何も無い」と読める壊れ方なので、ここを測らないと落としても緑のままになる。
+    public string? LastWikiForwardedAuthorization { get; private set; }
+
     // FR-22, UC-11, #600: NotificationService（/notifications*）のスタブ。**テスト間で共有される**
     // （IClassFixture）ため、観測する側が呼ぶ前に既定へ戻すこと。
     //
@@ -425,6 +445,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 // BaseAddress が Services 設定駆動である（コード既定の直書きに退行していない）ことを
                 // BffNotificationEndpointTests が固定する。
                 ["Services:NotificationService"] = "http://notification-service:8080",
+                // FR-13, UC-07, SC-04 (#1199): WikiService の集約先（テスト用）。named client の
+                // BaseAddress が Services 設定駆動である（コード既定の直書きに退行していない）ことを
+                // BffWikiEndpointTests が固定する。
+                ["Services:WikiService"] = "http://wiki-service:8080",
                 // FR-15: 構成情報 API テスト。定期ドリフト検出は無効化し、構成バージョンを固定する。
                 ["Drift:Enabled"] = "false",
                 ["Config:GitCommit"] = "abc1234",
@@ -476,6 +500,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // FR-22, UC-11 (#600): NotificationService(/notifications*) をスタブ化する。
             services.AddHttpClient("NotificationService")
                 .ConfigurePrimaryHttpMessageHandler(() => new NotificationStubHandler(this));
+
+            // FR-13, UC-07, SC-04 (#1199): WikiService(/wiki/*) をスタブ化する。
+            services.AddHttpClient("WikiService")
+                .ConfigurePrimaryHttpMessageHandler(() => new WikiStubHandler(this));
 
             // FR-10: /bff/dashboard/summary は管理系ロール（admin ＋ operator。#544）を要求する。テストでは Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
@@ -1438,6 +1466,80 @@ public class BffTestFactory : WebApplicationFactory<Program>
                     System.Text.Encoding.UTF8, "application/json"),
             });
         }
+    }
+
+    // FR-13, UC-07, SC-04 (#1199): WikiService(/wiki/*) のスタブ。BFF の pass-through
+    // （状態・本文・Content-Type の透過、資格情報の伝播、クエリの載せ替え、502 縮退）を検証する最小スタブ。
+    //
+    // 🔴 **資格情報が届かないときは、後段の実挙動と同じ「一覧・検索は 200 ＋ 空、個別は 404」を返す。**
+    // WikiService は未認証を 401 にせず存在秘匿へ倒す（IADR-0335 決定 4）。ここを一律 200 ＋ 本文に
+    // すると、BFF が Authorization を伝播し忘れても緑のままになる（伝播の陽性対照が成立しなくなる）。
+    private sealed class WikiStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            owner.LastWikiPath = request.RequestUri?.PathAndQuery;
+            owner.LastWikiForwardedAuthorization =
+                request.Headers.TryGetValues("Authorization", out var auth) ? string.Join(' ', auth) : null;
+
+            if (owner.WikiStubThrows)
+                throw new HttpRequestException("wiki-service unreachable");
+
+            var path = owner.LastWikiPath ?? string.Empty;
+            // 一覧・検索は「集合」、個別（/pages/... と /pages/by-doc/...）は「単票」である。
+            var isCollection = path == "/wiki/pages"
+                || path.StartsWith("/wiki/search", StringComparison.Ordinal);
+
+            // 資格情報が無い＝後段は Granted=false へ短絡する（存在秘匿）。**401 にはしない。**
+            if (string.IsNullOrEmpty(owner.LastWikiForwardedAuthorization))
+                return Task.FromResult(Empty(isCollection));
+
+            // 後段の 404（存在秘匿）・502（Wiki.js 不達）などを再現する。
+            // **本文まで透過することを測る**ため空にしない。
+            if (owner.WikiStubStatusCode != HttpStatusCode.OK)
+                return Task.FromResult(new HttpResponseMessage(owner.WikiStubStatusCode)
+                {
+                    Content = new StringContent(
+                        "{\"errors\":{\"request\":[\"stub-detail\"]}}",
+                        System.Text.Encoding.UTF8, "application/problem+json"),
+                });
+
+            if (owner.WikiStubReturnsEmpty)
+                return Task.FromResult(Empty(isCollection));
+
+            // 一覧（WikiPageSummary[]）・検索（WikiSearchHit[]）・個別（WikiPageView）で形が違う。
+            if (path == "/wiki/pages")
+                return Task.FromResult(Json(
+                    "[{\"id\":\"33333333-3333-3333-3333-333333333333\","
+                    + "\"documentId\":\"" + StubWikiDocumentId + "\",\"title\":\"design policy\","
+                    + "\"slug\":\"design-policy\",\"wikiPath\":\"doc/" + StubWikiDocumentId + "\","
+                    + "\"status\":\"Active\",\"syncedAt\":\"2026-09-03T00:00:00Z\"}]"));
+
+            if (path.StartsWith("/wiki/search", StringComparison.Ordinal))
+                return Task.FromResult(Json(
+                    "[{\"id\":\"33333333-3333-3333-3333-333333333333\","
+                    + "\"documentId\":\"" + StubWikiDocumentId + "\",\"title\":\"design policy\","
+                    + "\"slug\":\"design-policy\",\"wikiPath\":\"doc/" + StubWikiDocumentId + "\","
+                    + "\"syncedAt\":\"2026-09-03T00:00:00Z\"}]"));
+
+            return Task.FromResult(Json(
+                "{\"id\":\"33333333-3333-3333-3333-333333333333\","
+                + "\"documentId\":\"" + StubWikiDocumentId + "\",\"title\":\"design policy\","
+                + "\"slug\":\"design-policy\",\"wikiPath\":\"doc/" + StubWikiDocumentId + "\","
+                + "\"status\":\"Active\",\"syncedAt\":\"2026-09-03T00:00:00Z\","
+                + "\"content\":\"<h1>design policy</h1>\"}"));
+        }
+
+        // 一覧・検索は 200 ＋ 空配列、個別は 404（存在秘匿）。**後段の実挙動と同じ切り分けである。**
+        private static HttpResponseMessage Empty(bool isCollection) =>
+            isCollection ? Json("[]") : new HttpResponseMessage(HttpStatusCode.NotFound);
+
+        private static HttpResponseMessage Json(string body) =>
+            new(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
+            };
     }
 
 }
