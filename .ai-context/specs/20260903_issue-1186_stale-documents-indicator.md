@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 陳腐化文書数（stale-documents）を「本文更新起点・180 日」で生産し、件数としきい値を受け口まで運ぶ
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-10
   - FR-17
@@ -242,11 +242,52 @@ Document を touch する実装に変われば即座に当たる**。したが�
 | 10 | 受け口が `thresholdDays` を保存し、`GET /dashboard/knowledge-health` が件数と併せて返す | xUnit（DashboardService） |
 | 11 | しきい値を持たない指標では null（孤立文書の本文は 2 項目のまま） | xUnit（両側） |
 
-## 実測（稼働 k3s）
+## 実測（稼働 k3s。2026-09-03 実施）
 
-1. GraphService / DashboardService のイメージだけ差し替え（`kubectl set image`）。
-2. 起動ログでマイグレーションの適用を確認する。
-3. `graph_documents."BodyUpdatedAt"` が backfill されていること（`UpdatedAt` と一致）。
-4. 1 周期後、`dashboard_svc` に `stale-documents` の観測値としきい値 180 が入ること。
-5. 🔴 **陰性対照**: タグだけ変えた文書が件数を動かさないこと。
-6. 他 Pod を再起動しない。
+GraphService / DashboardService のイメージだけ `kubectl set image` で差し替えた。
+**他の Pod は再起動していない。**
+
+| # | 測ったこと | 結果 |
+| --- | --- | --- |
+| 1 | 2 サービスのロールアウト | `successfully rolled out`（両方） |
+| 2 | マイグレーションの適用と backfill | `graph_documents` 8 行すべてで `BodyUpdatedAt` = `UpdatedAt` |
+| 3 | 受け口の表 | `KnowledgeHealthIndicatorThresholds`（`Indicator` が主キー）が作られた |
+| 4 | 1 周期後の報告 | `stale-documents` の観測値 1 件 ＋ しきい値 180 |
+| 5 | 🔴 陰性対照（下記） | `UpdatedAt` が 4 日前の文書が陳腐として数えられた |
+
+### 🔴 陰性対照の置き方（測定の設計）
+
+計画の決定 2 が禁じたのは「メタデータだけの更新で件数が減る」ことである。**それを測るには、
+`UpdatedAt` と `BodyUpdatedAt` が食い違う文書が要る。** そこで 1 件だけ
+**本文が 200 日前・`UpdatedAt` は 4 日前**の状態を作った（メタデータだけを最近更新された
+古い文書と同じ状態）。残り 7 件は両方とも数日前である。
+
+**この置き方なら、判定がどちらの列を見ているかで結果が分かれる** ——
+`UpdatedAt` を見ていれば 0 件、`BodyUpdatedAt` を見ていれば 1 件。
+
+```console
+$ kubectl logs deploy/graph-service -c graph-service --since=15m | grep 健全性
+ナレッジ健全性の観測値を報告した（indicator=orphan-documents count=8）。…
+ナレッジ健全性の観測値を報告した（indicator=stale-documents count=1 thresholdDays=180）。…
+
+$ psql -d dashboard_svc -c 'select * from "KnowledgeHealthIndicatorThresholds";'
+ stale-documents |           180 | 2026-09-03 01:45:02.837965+00
+
+$ psql -d dashboard_svc -c 'select "Indicator", count(*) from "KnowledgeHealthObservations" group by 1;'
+ orphan-documents |     8
+ stale-documents  |     1
+```
+
+**件数（1）としきい値（180）が対で受け口まで届いた**（ログ・受け口の表・観測値の 3 点で一致）。
+観測値の `DocScope` は空である —— 当該文書が個人資料でないためで、集合帰属の判定が効いている。
+
+測定後に仕掛けは戻した（`BodyUpdatedAt` <> `UpdatedAt` の行が 0 件）。
+
+### 測れなかったこと（正直に残す）
+
+- 🔴 **実際の `DocumentUpdated` イベントを通した陰性対照は測っていない。** メタデータ更新の
+  API（`PATCH /documents/{id}/metadata`）は管理者 JWT を要し、realm は
+  `directAccessGrantsEnabled: false` で直接付与を閉じているため、認可コード ＋ PKCE の
+  一連を回す必要がある。**上の実測が測ったのは「収集が `BodyUpdatedAt` を見ている」ことまで**で
+  あり、「`TryApply` が同一指紋で前進しない」ことは xUnit 側（変異試験つき）が押さえている。
+- `/bff/dashboard/knowledge-health` は存在しないため、画面経路での確認はできない（走査 3）。
