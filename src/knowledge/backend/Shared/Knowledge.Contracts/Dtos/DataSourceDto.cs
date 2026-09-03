@@ -43,7 +43,13 @@ public record DataSourceDto(
     int RetryLimit = DataSourceSyncHealth.DefaultRetryLimit,
     // 直近の同期エラー。メッセージは秘密を含み得るためサービス側でマスクしてから保存する。
     string? LastSyncError = null,
-    DateTimeOffset? LastSyncErrorAt = null);
+    DateTimeOffset? LastSyncErrorAt = null,
+    // FR-05, UC-04, SC-06, ADR-0074 決定 1 (#1194): `owner` の写像表
+    // （ソース側の利用者識別子 → 基盤の利用者識別子）。**データソース単位**である。
+    // **末尾に既定値つきで足す**（IADR-0122 決定 2。位置引数の並べ替えも既定値なしの追加も破壊的）。
+    // **既定属性（`DefaultAttributes`）とは別の器である** —— 既定属性は全置換の意味論を持つため、
+    // 混ぜると片方の更新がもう片方を消す。
+    Dictionary<string, string>? OwnerMappings = null);
 
 // FR-01, UC-04, SC-06: データソース登録リクエスト（BFF 経由）。DataSourceService の CreateDataSourceRequest
 // と JSON 互換。DefaultAttributes 未指定時はサービス側が機密区分 internal をフェイルセーフ補完する。
@@ -52,7 +58,10 @@ public record CreateDataSourceRequest(
     string SourceType,
     string ConnectionUri,
     Dictionary<string, string>? Config = null,
-    Dictionary<string, string>? DefaultAttributes = null);
+    Dictionary<string, string>? DefaultAttributes = null,
+    // FR-05, SC-06, ADR-0074 決定 1・4 (#1194): `owner` の写像表。未指定は空。
+    // **写像先の実在はサービス側が検証し、通らない対は保存しない**（400）。
+    Dictionary<string, string>? OwnerMappings = null);
 
 // FR-01, UC-04, SC-06（Q16 / issue #534）: データソース更新リクエスト（全置換 = PUT）。
 // 従前は更新の口が無く、登録済みソースの変更が「削除→再登録」でしかできなかった。削除→再登録は
@@ -66,7 +75,12 @@ public record UpdateDataSourceRequest(
     string SourceType,
     string ConnectionUri,
     Dictionary<string, string>? Config = null,
-    Dictionary<string, string>? DefaultAttributes = null);
+    Dictionary<string, string>? DefaultAttributes = null,
+    // FR-05, SC-06, ADR-0074 決定 1 (#1194): `owner` の写像表。
+    // 🔴 **`config` / `defaultAttributes` と違い、省略（null）は 400 ではなく現状維持である。**
+    // 全置換の 400 は契約の初期からある規約であり、後から足す項目を必須にすると
+    // **既存の PUT クライアントが一斉に 400 になる**（契約の破壊）。消すなら {} を送る。
+    Dictionary<string, string>? OwnerMappings = null);
 
 // FR-01, UC-04, SC-06（Q16 / issue #534）: データソース部分更新リクエスト（PATCH）。
 // **null の項目は現状維持**である。接続先だけ・認証情報だけを差し替える日常運用を、
@@ -77,4 +91,7 @@ public record PatchDataSourceRequest(
     string? SourceType = null,
     string? ConnectionUri = null,
     Dictionary<string, string>? Config = null,
-    Dictionary<string, string>? DefaultAttributes = null);
+    Dictionary<string, string>? DefaultAttributes = null,
+    // FR-05, SC-06, ADR-0074 決定 1 (#1194): `owner` の写像表。null は現状維持。
+    // **既定属性とは独立に部分更新できる**（片方だけ送っても、もう片方は消えない）。
+    Dictionary<string, string>? OwnerMappings = null);

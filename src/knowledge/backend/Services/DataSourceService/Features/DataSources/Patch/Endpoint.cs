@@ -1,4 +1,5 @@
 using DataSourceService.Domain;
+using DataSourceService.Domain.Ports;
 using DataSourceService.Infrastructure.Persistence;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
@@ -12,7 +13,7 @@ internal static class PatchDataSourceEndpoint
     internal static void Map(RouteGroupBuilder g)
     {
         g.MapPatch("/{id:guid}", async (Guid id, PatchDataSourceRequest req, DataSourceDbContext db,
-            SyncSchedule schedule) =>
+            SyncSchedule schedule, IPlatformUserDirectory userDirectory, CancellationToken ct) =>
         {
             var ds = await db.DataSources.FindAsync(id);
             if (ds is null) return Results.NotFound();
@@ -22,7 +23,13 @@ internal static class PatchDataSourceEndpoint
             if (ConnectionUriPolicy.Validate(req.ConnectionUri, ds.ConnectionUri) is { } uriError)
                 return Results.BadRequest(new { error = uriError });
 
-            ds.Patch(req.Name, req.SourceType, req.ConnectionUri, req.Config, req.DefaultAttributes);
+            // FR-05, SC-06, ADR-0074 決定 4 (#1194): 写像先の実在をサーバ側で検証する。
+            // **写像表を送らない PATCH は名簿を引かない**（無関係な操作を認可サービスの障害へ道連れにしない）。
+            if (await OwnerMappingValidation.ValidateAsync(req.OwnerMappings, userDirectory, ct) is { } mapError)
+                return mapError;
+
+            ds.Patch(req.Name, req.SourceType, req.ConnectionUri, req.Config, req.DefaultAttributes,
+                req.OwnerMappings);
             await db.SaveChangesAsync();
             return Results.Ok(DataSourceEndpoints.ToResponse(ds, schedule.NextRunAt));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);

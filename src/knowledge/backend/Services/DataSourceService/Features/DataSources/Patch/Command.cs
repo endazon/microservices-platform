@@ -7,4 +7,7 @@ public record PatchDataSourceRequest(
     string? SourceType = null,
     string? ConnectionUri = null,
     Dictionary<string, string>? Config = null,
-    Dictionary<string, string>? DefaultAttributes = null);
+    Dictionary<string, string>? DefaultAttributes = null,
+    // FR-05, SC-06, ADR-0074 決定 1 (#1194): `owner` の写像表。null は現状維持。
+    // **既定属性とは独立に部分更新できる**（片方だけ送っても、もう片方は消えない）。
+    Dictionary<string, string>? OwnerMappings = null);

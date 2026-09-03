@@ -3,15 +3,15 @@ title: ABAC 文書アクセス制御 機能仕様書
 type: functional-spec
 status: draft
 created: 2026-06-27
-updated: 2026-08-31
+updated: 2026-09-03
 author: claude
 ---
 <!-- trace:
-ids: [FR-03, FR-04, FR-05, FR-19, FR-21, SC-01, SC-08, UC-01, UC-05]
-adrs: [ADR-0034, ADR-0036, ADR-0043, ADR-0046]
-iadrs: [IADR-0151, IADR-0253, IADR-0272]
-specs: [20260823_issue-989_authz-scope-disjunction-stages, 20260823_issue-993_graph-write-action-authorization]
-issues: [#540, #542, #989, #993, planning#466, planning#470]
+ids: [FR-03, FR-04, FR-05, FR-19, FR-21, SC-01, SC-06, SC-08, UC-01, UC-04, UC-05]
+adrs: [ADR-0034, ADR-0036, ADR-0043, ADR-0046, ADR-0074]
+iadrs: [IADR-0151, IADR-0253, IADR-0272, IADR-0359]
+specs: [20260823_issue-989_authz-scope-disjunction-stages, 20260823_issue-993_graph-write-action-authorization, 20260903_issue-1194_sc06-owner-mapping-table]
+issues: [#540, #542, #989, #993, #1194, planning#466, planning#470, planning#518]
 -->
 
 # 機能仕様書: ABAC 文書アクセス制御
@@ -113,6 +113,22 @@ ABAC ポリシーで突き合わせ、**アクセス可能な文書のみ**を�
 - 作業仕様書: `../../.ai-context/specs/20260627_FR-05_abac-deny-by-default.md`
 - テスト仕様書: `../tests/FR-05_abac-access-control.md`
 - 実装 ADR: `../../.ai-context/adr/IADR-0004_abac-multivalue-allowlist-deny-by-default.md`
+
+## 所有者ベースの分岐が効くための前提（属性側）
+
+**分岐の表現構造は在る**（上記）。効くかどうかは**文書側に `owner` が入っているか**で決まる。
+
+- **人が投入する経路**の `owner` は作成操作を行った利用者本人であり、要求由来の値は必ず捨てる
+  （所有権は要求ではなく主体から決まる）。
+- **人が居ない取り込み経路**の `owner` は解決順（① 身元プロバイダの利用者検索 → ②
+  データソース単位の写像表 → 予約値）で決まる。**［2026-09-03］② の器と解決器が入った** ——
+  データソース管理画面から写像表を保守でき、**写像先の実在は保存時にサーバが検証する**
+  （検証に通らない対は保存しない。誤った写像は偽の所有者を作り、**本節の裁量制御が意図しない相手に開く**）。
+  🔴 **当たらなければ予約値へ倒す。生のソース側識別子は `owner` に入らない。**
+- 🔴 **それでも取り込み済み文書の `owner` はほとんど予約値のままである。** ファイルサーバー由来の
+  文書は構造上更新者を運べず、計画はこれを**意図的な縮退**と裁定した。
+  **したがって所有者ベースの分岐は、当面これらの文書に及ばない**（管理者経路で扱う）。
+  **予約値の件数を本節の達成度として読まない。**
 
 ## 未決事項
 

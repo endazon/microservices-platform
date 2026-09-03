@@ -21,6 +21,7 @@ import {
   UNRESOLVED_DEPARTMENT,
 } from '../../../lib/abac';
 import type { DataSourceDto, PatchDataSourceRequest } from '@foundation/api/generated/bff.schemas';
+import { OwnerMappingRows, useOwnerMappingRows } from './OwnerMappingRows';
 
 // FR-05, UC-04, SC-06（#754）: 登録済みデータソースの**既定属性の更新フォーム**。
 //
@@ -74,6 +75,11 @@ export function DataSourceAttributesForm({
   // 記録の意味は変わらない（保存地図には既にこの値が入っている）。**「未指定」も選べる。**
   const [lifecycle, setLifecycle] = useState(current[LIFECYCLE_KEY] ?? '');
 
+  // FR-05, UC-04, SC-06, ADR-0074 決定 1 (#1194): `owner` の写像表。**保存済みの表を開いて編集する。**
+  // 🔴 `defaultAttributes` と違い**予約値の読み替えが要らない** —— 写像表に予約値は入らない
+  // （`system` は解決できなかった結果として**文書側の属性**に入る値であり、写像表の値ではない）。
+  const ownerMap = useOwnerMappingRows(source.ownerMappings);
+
   // 値域に無い機密区分が保存されている場合でも、現在値を選択肢として見せる（黙って別の値へ
   // 倒さない）。**実装が値集合を決めない**という abac/confidentiality.ts の方針に従う。
   const confidentialityOptions: string[] = CONFIDENTIALITY_VALUES.includes(
@@ -106,6 +112,11 @@ export function DataSourceAttributesForm({
             // 未入力の `department` / 未指定の `lifecycle` は**キーごと送らない**（登録側と同じ
             // 規約。#767 / #796）。値の有無ではなく**キーの有無**が「指定しなかった」を表す。
             const trimmedDepartment = department.trim();
+            //
+            // FR-05, SC-06（#1194）: 🔴 **写像表は `defaultAttributes` とは別のキーで、常に送る。**
+            // 別の器なので「土台を保つ」細工は要らない（本フォームが表全体を持っている）。
+            // **空の表も送る** —— 管理者が最後の行を消したのなら、それは「空にした」である
+            // （既定属性の「未入力ならキーごと送らない」とは意味が違う。写像表には予約値が無い）。
             onSubmit({
               defaultAttributes: {
                 ...next,
@@ -113,6 +124,7 @@ export function DataSourceAttributesForm({
                 ...(trimmedDepartment ? { [DEPARTMENT_KEY]: trimmedDepartment } : {}),
                 ...(lifecycle ? { [LIFECYCLE_KEY]: lifecycle } : {}),
               },
+              ownerMappings: ownerMap.mappings(),
             });
           }}
         >
@@ -170,6 +182,12 @@ export function DataSourceAttributesForm({
               <Trans>未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。</Trans>
             </p>
           </div>
+
+          <OwnerMappingRows
+            rows={ownerMap.rows}
+            onChange={ownerMap.setRows}
+            idPrefix={ownerMap.idPrefix}
+          />
 
           {/* 既定属性が効くのは**これ以降に取り込まれる文書**である。取り込み済みの文書の属性は
               この操作では変わらない（遡及適用は #516 の裁定待ち）。誤解を招くため明示する。 */}

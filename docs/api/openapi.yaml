@@ -3833,6 +3833,15 @@ components:
           format: date-time
           nullable: true
           description: "SC-06（裁定 Q14 / #537）: 直近の同期エラーの発生時刻。"
+        ownerMappings:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+          description: |
+            FR-05, SC-06（ADR-0074 決定 1 / #1194）: `owner` の**写像表**（データソース単位）。
+            キーが**ソース側の利用者識別子**、値が**基盤の利用者識別子**（ログイン名）である。
+            **既定属性（`defaultAttributes`）とは別の器**であり、片方の更新はもう片方を消さない。
+            **マスクしない**（対の両側とも識別子であり秘密ではない）。
 
     CreateDataSourceRequest:
       type: object
@@ -3850,6 +3859,15 @@ components:
           nullable: true
           additionalProperties: { type: string }
           description: "未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない"
+        ownerMappings:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+          description: |
+            FR-05, SC-06（ADR-0074 決定 1・4 / #1194）: `owner` の写像表。未指定は空。
+            🔴 **写像先の実在は後段が検証する。実在しない値を含む要求は 400 で拒否され、1 対も保存されない**
+            （誤った写像は偽の所有者を作り、ADR-0036 の裁量制御が意図しない相手に開く）。
+            名簿を引けなかったときは **502**（「存在しない」と報告しない）。
 
     UpdateDataSourceRequest:
       type: object
@@ -3876,6 +3894,15 @@ components:
           nullable: true
           additionalProperties: { type: string }
           description: "未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない"
+        ownerMappings:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+          description: |
+            FR-05, SC-06（ADR-0074 決定 1 / #1194）: `owner` の写像表。
+            🔴 **`config` / `defaultAttributes` と違い、省略は 400 ではなく現状維持である。**
+            全置換の必須指定は契約の初期からある規約であり、後から足した項目を必須にすると
+            既存の PUT クライアントが一斉に 400 になる。空にするときは `{}` を送る。
 
     PatchDataSourceRequest:
       type: object
@@ -3895,6 +3922,14 @@ components:
           nullable: true
           additionalProperties: { type: string }
           description: "指定したときのみ差し替える。差し替え時も必須属性のフェイルセーフを通す（confidentiality / owner / department / lifecycle）"
+        ownerMappings:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+          description: |
+            FR-05, SC-06（ADR-0074 決定 1・4 / #1194）: `owner` の写像表。**`null` は現状維持**。
+            指定したときは全置換であり、**既定属性とは独立**である（片方だけ送っても他方は消えない）。
+            写像先の実在は後段が検証する（実在しない値は 400・名簿を引けなければ 502。いずれも保存しない）。
 
     DataSourceSyncResultDto:
       type: object

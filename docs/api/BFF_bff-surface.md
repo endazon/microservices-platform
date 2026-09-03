@@ -8,10 +8,10 @@ author: Claude
 ---
 <!-- trace:
 ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-13, FR-15, FR-16, FR-22, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-12, SC-17, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-07, UC-09, UC-11]
-adrs: [ADR-0011, ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0037, ADR-0043, ADR-0073]
-iadrs: [IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0355]
-specs: [20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1199_bff-wiki-routes]
-issues: [#439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1199, planning#200, planning#236, planning#244, planning#299]
+adrs: [ADR-0011, ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0037, ADR-0043, ADR-0073, ADR-0074]
+iadrs: [IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0355, IADR-0359]
+specs: [20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes]
+issues: [#439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, planning#200, planning#236, planning#244, planning#299, planning#518]
 -->
 
 # 通信仕様書: BFF 境界（`/bff/*`）
@@ -140,6 +140,14 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | PATCH | `/bff/datasources/{id}` | **admin のみ** | —| `useBffDataSourcePatch` |
 | DELETE | `/bff/datasources/{id}` | **admin のみ** | —| `useBffDataSourceDelete` |
 | POST | `/bff/datasources/{id}/sync` | **admin / operator**（破壊的操作に含めない。計画側の裁定による） | —| `useBffDataSourceSync` |
+
+**［2026-09-03］データソースの 3 つの書き込み口（`POST` / `PUT` / `PATCH`）は `ownerMappings`（所有者の写像表）を受ける。**
+**後段が写像先の実在を検証し、実在しない値を含む要求は 400（RFC7807。理由に値が載る）で拒否して 1 対も保存しない。**
+**名簿を引けなかったときは 502**（「存在しない」とは報告しない）。BFF は透過中継であり、**この検証を肩代わりしない**
+——画面だけ・BFF だけの検証は、後段を直接叩く経路で破れる。
+🔴 **`PUT` では `ownerMappings` の省略が 400 ではなく現状維持である**（`config` / `defaultAttributes` とは非対称。
+後から足した項目を必須にすると既存クライアントが一斉に 400 になるため。空にするときは `{}` を送る）。
+
 | GET | `/bff/conversion/jobs` | **admin / operator** | —| `useBffConversionJobList` |
 | GET | `/bff/conversion/jobs/{id}` | **admin / operator** | —| `useBffConversionJobGet` |
 | POST | `/bff/conversion/jobs/{id}/retry` | **admin のみ** | —| `useBffConversionJobRetry` |
