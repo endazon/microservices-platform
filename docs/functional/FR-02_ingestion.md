@@ -3,15 +3,15 @@ title: 機能仕様書 — FR-02 取り込み（パース・チャンク化・�
 type: functional-spec
 status: in-progress
 created: 2026-06-27
-updated: 2026-08-30
+updated: 2026-09-03
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, FR-03, FR-05, UC-04]
-adrs: [ADR-0003, ADR-0009, ADR-0013, ADR-0027]
-iadrs: [IADR-0002, IADR-0149]
-specs: [20260627_FR-02_ingestion-pipeline, 20260809_issue-536_search-result-updated-at]
-issues: [#532, #536, #580]
+adrs: [ADR-0003, ADR-0009, ADR-0013, ADR-0027, ADR-0070]
+iadrs: [IADR-0002, IADR-0149, IADR-0358]
+specs: [20260627_FR-02_ingestion-pipeline, 20260809_issue-536_search-result-updated-at, 20260903_issue-1193_bodyless-document-metadata-index]
+issues: [#532, #536, #580, #1193]
 -->
 
 # 機能仕様書: 取り込み
@@ -50,12 +50,14 @@ issues: [#532, #536, #580]
 3. 既存チャンクを `DeleteByDocumentAsync(DocumentId)` で削除する（再取り込みの冪等性）。
 4. **parse**: `IDocumentContentReader.ReadAsync(MarkdownUri)` で本文 Markdown を取得する。
 5. **chunk**: `IChunkingService.Chunk(text, maxTokens, overlap)` で見出し単位 + オーバーラップで分割する。
-6. 各チャンクについて:
+6. **チャンクが 0 件なら**（本文が空＝テキスト層の無い原本など）、本文由来のチャンク・埋め込みは作らず、
+   **メタデータ点を 1 つだけ**登録して 7 へ進む（§本文なしの文書）。
+7. 各チャンクについて:
    1. `chunkIndex`（0始まり）を採番する。
    2. `chunkId` を `DocumentId` + `chunkIndex` から決定的に生成する。
    3. **embed**: `IEmbeddingService.EmbedAsync(text)` で埋め込みベクトルを得る。
    4. **index**: `IIngestionVectorStore.UpsertChunkAsync(...)` で Qdrant に登録する（`chunk_index`/`tags`/`attributes` を含む）。
-7. `IngestionCompleted(DocumentId, chunkCount, now)` を発行する。
+8. `IngestionCompleted(DocumentId, chunkCount, now)` を発行する。
 
 ### 例外フロー
 
@@ -69,16 +71,37 @@ issues: [#532, #536, #580]
 - 超える場合は文（`。` `.` 改行）単位で詰め、`maxTokens` 到達で切り出す。
 - **overlap**（既定 50 トークン ≒ 200 文字）: 長いセクションを分割する際、直前チャンク末尾の文字を次チャンク先頭へ引き継ぎ、文脈の断絶を防ぐ。
 
+## 本文なしの文書（メタデータだけで索引する）
+
+本文が取り出せない原本（テキスト層を持たない PDF など）は、**本文由来のチャンク・埋め込みを作らない**
+（作れない）。それでも**題名・タグから作った索引テキストを持つ点を 1 つだけ**登録し、横断検索に載せる。
+載せなければ、利用者はその文書の存在を知る手段を持たない。
+
+- **判定は本文（の分割結果）そのもので行う** —— チャンクが 0 件になったときが「本文なし」である。
+  変換側の状態名には依存しない（状態名の改名や別経路で静かに漏れるため）。
+- 点の ID は文書 ID から決定的に導き、**本文チャンクとは決して衝突しない**位置（`chunk_index` = `-1`）を使う。
+  取り込みは冒頭で当該文書の点を全消しするので、**本文チャンクとメタデータ点が同時に存在することはない。**
+- **索引テキストに入るのは題名とタグだけ**である。更新日時は既にペイロードが持ち、
+  ABAC 属性は入れない（絞り込みとは別経路の当て方を作らないため）。
+  **取り込み元のパスとデータソース名は取り込みの口へ届いていない**ため索引できない（イベント契約の変更が要る）。
+- ベクトルは**索引テキスト**から作る（本文由来ではない）。埋め込みの機密区分ルーティングは
+  本文チャンクと同一に扱う —— 本文が無いことを理由に送信制御を緩めない。
+- 点は `has_body = false` を持つ。検索側は復元時にこれを見て**本文抜粋を空にする**ので、
+  索引テキスト（メタデータ）が本文の抜粋として外へ出ることはない。
+- 完了イベントは**チャンク数 0 で発行する**（本文なしは失敗ではない。溜めない）。
+
 ## 索引（Qdrant コレクション）
 
 - コレクション名: `Qdrant:CollectionName`（既定 `knowledge_chunks`）。後方互換で `Qdrant:Collection` もフォールバックで解決する。
 - ベクトル: 次元 = `Qdrant:VectorSize`（既定 1536）、距離 = Cosine。
 - 起動時に `QdrantBootstrapHostedService` が存在保証（無ければ作成）する。
-- ペイロード: `document_id` / `document_title` / `text` / `markdown_uri` / `chunk_index` / `tags` / `attributes.<key>` / **`updated_at`**。
+- ペイロード: `document_id` / `document_title` / `text` / `markdown_uri` / `chunk_index` / `tags` / `attributes.<key>` / **`updated_at`** / **`has_body`**。
 - **`updated_at` は Unix epoch ミリ秒の整数**である（同実装判断の決定 1）。ISO-8601 文字列にすると同じ時刻を `+09:00` とも `Z` とも書けるため、辞書順が実時刻順と一致しない（並び順は #532 が使う）。
   **本項目より前に索引されたチャンクはキーを持たない** —— 検索側は `null` で返す（縮退。再索引で解消する）。
+- **`has_body` は本文なしの点だけが持つ**（真偽）。**キーの欠落は「本文あり」を表す** ——
+  既存の点はすべて本文チャンクなので、後付け（backfill）は要らない。
 
 ## トレーサビリティ
 
-- コード: `IngestionService`（`DocumentUpdatedConsumer`, `MarkdownChunkingService`, `QdrantIngestionVectorStore`, `IDocumentContentReader`, `QdrantBootstrapHostedService`）。各所に `// FR-02, UC-04` を付す。
+- コード: `IngestionService`（`DocumentUpdatedConsumer`, `MarkdownChunkingService`, `MetadataIndexText`, `QdrantIngestionVectorStore`, `IDocumentContentReader`, `QdrantBootstrapHostedService`）。各所に `// FR-02, UC-04` を付す。
 - テスト: `IngestionService.Tests`。

@@ -198,13 +198,39 @@ public class QdrantIngestionVectorStore(
             cancellationToken: ct);
     }
 
+    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 1・2:
+    // 本文なしの文書のメタデータ点を索引する。**チャンクと同じコレクション・同じペイロード表現**で、
+    // 違うのは `has_body = false` と、`text` に入るのが本文ではなく索引テキストであることだけである。
+    //
+    // 同じ表現にしてあるので、ABAC フィルタ（`attributes`）・削除（`document_id`）・
+    // 並び順（`updated_at`）・全文索引（`text` / `text_ngram`）は**1 行も書き足さずにそのまま効く。**
+    public async Task UpsertMetadataPointAsync(string collection, Guid pointId, Guid documentId,
+        string title, string indexText, float[] vector, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null,
+        CancellationToken ct = default)
+    {
+        var payload = BuildChunkPayload(documentId, title, indexText, ChunkId.MetadataChunkIndex,
+            markdownUri, attributes, tags, updatedAt, hasBody: false);
+
+        await client.UpsertAsync(collection,
+            [new PointStruct { Id = new PointId { Uuid = pointId.ToString() }, Vectors = vector, Payload = { payload } }],
+            cancellationToken: ct);
+    }
+
     // FR-02, FR-05: チャンクの Qdrant ペイロードを構築する。
     // IADR-0014（選択肢C・実機検証済み・Issue #71）: ABAC 属性はネスト構造体 `attributes -> { k: v }`
     // へ統一する。RetrievalService.QdrantVectorStore の書き込み・フィルタ表現と一致させる。
+    //
+    // FR-02, FR-03, ADR-0070 決定 4, #1193: `hasBody = false` はメタデータ点である
+    // （`text` に入るのは本文ではなく索引テキスト）。**`has_body` は本文なしのときだけ書く** ——
+    // 既存の点はすべて本文チャンクであり、**キーの欠落が「本文あり」を正しく表す**ので
+    // backfill が要らない（[[IADR-0358]] 決定 3。`DocumentBodyPresence.DefaultWhenAbsent`）。
     internal static Dictionary<string, Value> BuildChunkPayload(Guid documentId, string title,
         string text, int chunkIndex, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
-        DateTimeOffset? updatedAt = null)
+        DateTimeOffset? updatedAt = null,
+        bool hasBody = true)
     {
         var payload = new Dictionary<string, Value>
         {
@@ -219,6 +245,10 @@ public class QdrantIngestionVectorStore(
             // FR-02: チャンクの並び順・出典の一部として保持
             ["chunk_index"] = new Value { IntegerValue = chunkIndex },
         };
+
+        // FR-02, FR-03, SC-02, #1193: 本文なしの点だけが印を持つ（上の注記のとおり、欠落は「本文あり」）。
+        if (!hasBody)
+            payload[DocumentBodyPresence.PayloadKey] = new Value { BoolValue = false };
 
         // FR-03, SC-02, #536: 文書の更新日時（利用者裁定 Q6）。**Unix epoch ミリ秒の整数**で持つ
         // （IADR-0149 決定 1）。ISO-8601 文字列は同じ時刻を `+09:00` とも `Z` とも書けるため、

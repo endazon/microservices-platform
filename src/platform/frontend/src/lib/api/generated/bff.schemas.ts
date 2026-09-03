@@ -241,6 +241,15 @@ export interface SearchResultDto {
      * —— 画面は `—` を描く。**`0001-01-01` のような既定値で埋めない**（「知らない」が「とても古い」に化ける）。
      */
   updatedAt?: string | null;
+  /**
+     * FR-02, FR-03, SC-02（ADR-0070 決定 4 / #1193）: この結果が**本文由来か**。
+     * `false` は「本文を持たない文書（テキスト層の無い PDF 等）を**メタデータだけで索引した点**」であり、
+     * **`text` は空文字列**になる（索引テキストは題名由来なので、本文の抜粋としては出さない）。
+     * 画面は抜粋の位置へ「本文なし（原本を参照）」を示し、**結果から除外しない**。
+     * RAG（`/bff/ask`）の文脈と出典にも入らない —— 根拠に使える本文が無いためである。
+     * **既定は `true`（本文あり）**: 本項目を持たない旧発行者の応答は従来どおり抜粋が描かれる。
+     */
+  hasBody: boolean;
 }
 
 /**
@@ -1219,7 +1228,13 @@ export interface DashboardUsageDto {
   totalSearches: number;
   totalAnswers: number;
   usageTrend: UsagePointDto[];
+  /** 出現件数が searchTermMinCount 以上の語だけを含む */
   topSearchTerms: SearchTrendDto[];
+  /**
+     * 検索傾向に出す最小の出現件数。これ未満の語は落とす（「その他 M 件」も出さない）。
+     * 構成キー `SearchTrend:MinimumCount`（既定 3）。不正値は既定へ倒し、本項目も倒した後の値を返す。
+     */
+  searchTermMinCount: number;
 }
 
 /**
@@ -1229,8 +1244,11 @@ export interface DashboardSummaryDto {
   totalSearches: number;
   totalAnswers: number;
   usageTrend: UsagePointDto[];
+  /** 出現件数が searchTermMinCount 以上の語だけを含む */
   topSearchTerms: SearchTrendDto[];
   quality: FeedbackStatsDto;
+  /** 検索傾向の出現件数の下限。後段（DashboardService）の値をそのまま透過する */
+  searchTermMinCount: number;
 }
 
 /**

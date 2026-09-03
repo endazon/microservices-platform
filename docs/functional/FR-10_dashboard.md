@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-08, FR-10, FR-17, FR-18, FR-19, UC-05, SC-10]
-adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0034, ADR-0044, ADR-0050, ADR-0054]
-iadrs: [IADR-0011, IADR-0026, IADR-0119, IADR-0265, IADR-0299, IADR-0353]
-specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator]
-issues: [#443, #452, #504, #1186, planning#494]
+adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0034, ADR-0044, ADR-0050, ADR-0054, ADR-0071]
+iadrs: [IADR-0011, IADR-0026, IADR-0119, IADR-0265, IADR-0299, IADR-0353, IADR-0357]
+specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count]
+issues: [#443, #452, #504, #1186, #1197, planning#494, planning#514, planning#525]
 -->
 
 # 機能仕様書: 利用状況・検索傾向・回答品質ダッシュボード
@@ -43,13 +43,39 @@ issues: [#443, #452, #504, #1186, planning#494]
 | --- | --- | --- | --- |
 | POST | `/dashboard/events` | 認証済み（`RequireAuthorization`。管理者限定にはしない） | 利用イベント記録。`EventType` 必須（`search`/`answer`）。201 |
 | GET | `/dashboard/usage?days=N` | admin ＋ operator（**#544**） | 日次利用状況（日付 × 種別の件数） |
-| GET | `/dashboard/trends?days=N&top=M` | admin ＋ operator（**#544**） | 検索傾向（検索語 × 件数の上位） |
+| GET | `/dashboard/trends?days=N&top=M` | admin ＋ operator（**#544**） | 検索傾向（検索語 × 件数の上位）。**出現件数の下限に満たない語は含まない** |
 | GET | `/dashboard/summary?days=N&top=M` | admin ＋ operator（**#544**） | 利用側サマリ（総件数・利用状況・検索傾向） |
 | POST | `/internal/knowledge-health/observations` | **無し**（メッシュ内部限定） | ナレッジ健全性の観測値の報告（指標 1 つ分のスナップショット置換）。202。**OpenAPI には載せない** |
 | GET | `/dashboard/knowledge-health` | **operator ＋ admin のみ** | ナレッジ健全性の指標（**件数のみ**） |
 
 - `days`：既定 7・上限 90 にクランプ。`top`：既定 10・上限 50 にクランプ（無制限集計を防ぐ）。
 - 集計は UTC 当日 00:00 を含む起点から現在まで。日付は UTC で丸める。
+
+## 検索傾向の出現件数の下限（秘匿）
+
+検索語は自由文であり、**語の種類が `top` に満たない期間では 1 回しか検索されていない語もそのまま
+運用者に出る**。個人資料を狙った語・固有名詞・機密文書の題名の断片がそこに含まれ得る。
+「内容（タイトル・本文・検索語）は出さず件数まで」の原則は通知・メール・ログについて既に定まっており、
+**画面だけがその外に居た**。
+
+| 事項 | 決まり |
+| --- | --- |
+| 下限 | **3 件**（初期値。運用開始後の実測で改める）。1 回は偶発、2 回は同じ人の打ち直しで説明できる |
+| 境界 | **ちょうど 3 件は出す**（`>=`） |
+| 伏せた語 | **落とす。「その他 M 件」に集約しない** —— M 自体が推測の材料になる（とくに「その他 1 件」） |
+| 変更の手段 | **配備時の構成**（`SearchTrend:MinimumCount`。環境変数 `SearchTrend__MinimumCount`）。`appsettings.json` に既定を明記 |
+| 不正値（0 以下） | **既定へ倒し、警告ログを残す。起動は落とさない**。**応答に添える値も倒した後の値**（見える語と表示された数字を食い違わせない） |
+| 併記 | `/dashboard/summary` と `/bff/dashboard/summary` が**現在の下限を 1 項目**として返し、画面が併記する |
+| 総件数への影響 | **無い。** 伏せるのは**語**であり、利用状況（`TotalSearches` など）は変わらない |
+| 正規化 | **前後空白の除去 ＋ 小文字化のまま**（現状の追認）。畳まないと同じ語が分散し、**伏せられる語が増える**だけである |
+| ハッシュ化 | **採らない**（読めない語は「検索傾向」として成立しない） |
+
+🔴 **下限は「何人が探したか」を保証しない。** 数えているのはイベント件数であり、
+1 人が 3 回検索すれば通過する。受け入れたトレードオフである。
+
+🔴 **`/dashboard/trends` は配列を返したままで、下限そのものは運ばない。** 包み直すと応答の形が
+変わって破壊的になり、併記が要るのは画面（`/bff/dashboard/summary` を読む）だからである。
+**ふるい落とし自体は同じ経路で等しく効く。**
 
 ## ナレッジ健全性の指標
 
@@ -131,8 +157,11 @@ OpenAPI にも載せない（同リポジトリの内部 API と同じ扱い）�
 - `UsageEventRequest(EventType, Query?)`
 - `UsagePointDto(Date, EventType, Count)`
 - `SearchTrendDto(Term, Count)`
-- `DashboardUsageDto(TotalSearches, TotalAnswers, UsageTrend, TopSearchTerms)` — DashboardService の利用側サマリ
-- `DashboardSummaryDto(TotalSearches, TotalAnswers, UsageTrend, TopSearchTerms, Quality)` — BFF が回答品質を付加
+- `DashboardUsageDto(TotalSearches, TotalAnswers, UsageTrend, TopSearchTerms, SearchTermMinCount)` — DashboardService の利用側サマリ
+- `DashboardSummaryDto(TotalSearches, TotalAnswers, UsageTrend, TopSearchTerms, Quality, SearchTermMinCount)` — BFF が回答品質を付加
+  - `SearchTermMinCount` は**封筒が持つ**。`SearchTrendDto` の行に持たせると、**下限で伏せた結果として
+    行が 0 件になったときに一緒に消える**（0 件こそ併記したい状態である）。既定値 0 を与えてあり、
+    項目を返さない旧版が後段に居ても**ふるいが素通りする安全側**へ倒れる
 - `UsageEventType`（`search` / `answer` の定数・検証・正規化）
 
 ナレッジ健全性の DTO は**サービス間契約に置かず** `DashboardService.Api` 内に持つ。画面へ載せる段

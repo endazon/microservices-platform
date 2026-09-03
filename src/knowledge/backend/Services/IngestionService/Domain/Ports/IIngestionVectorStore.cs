@@ -32,8 +32,27 @@ public interface IIngestionVectorStore
         DateTimeOffset? updatedAt = null,
         CancellationToken ct = default);
 
+    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 1・2:
+    // **本文を持たない文書を、メタデータだけで索引へ載せる（1 文書 1 点）。**
+    //
+    // `indexText` は題名・タグから作った**索引テキスト**であり（`MetadataIndexText`）、本文ではない。
+    // 点には `has_body = false` が載り、検索側は復元時にこれを見て**本文抜粋を空にする**
+    // （`DocumentBodyPresence.Excerpt`）。
+    //
+    // 🔴 **チャンクの口（`UpsertChunkAsync`）と分けてある。** 同じ口に真偽値を足すと、
+    // 呼び出しの取り違えが**メタデータを本文として索引する**形で静かに通る。
+    // 属性・タグ・更新日時はチャンクと同じ表現で載せる —— **ABAC の判定軸は本文の有無で変えない。**
+    Task UpsertMetadataPointAsync(string collection, Guid pointId, Guid documentId, string title,
+        string indexText, float[] vector, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null,
+        CancellationToken ct = default);
+
     // FR-02, FR-05: 全モデル別コレクションから当該文書のチャンクを削除する。
     // 機密区分変更（例 public→confidential）でモデル/コレクションが変わっても旧コレクションに残存させない
     // （残存すると ABAC を跨いだ検索ヒットになり得るため fail-closed で全消しする）。
+    //
+    // #1193: **メタデータ点（本文なし）も同じ `document_id` を持つ**ので、この 1 本で一緒に消える。
+    // 本文が生えた／消えた文書は、次の取り込みでチャンクとメタデータ点が入れ替わる（両方は残らない）。
     Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default);
 }

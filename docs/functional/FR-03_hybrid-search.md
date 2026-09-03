@@ -3,15 +3,15 @@ title: ハイブリッド検索 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-02
+updated: 2026-09-03
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-02, UC-01]
-adrs: [ADR-0009, ADR-0016]
-iadrs: [IADR-0012, IADR-0014, IADR-0149, IADR-0150, IADR-0256, IADR-0313, IADR-0318, IADR-0339]
-specs: [20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext]
-issues: [#536, #995, #1116, #1118]
+adrs: [ADR-0009, ADR-0016, ADR-0070]
+iadrs: [IADR-0012, IADR-0014, IADR-0149, IADR-0150, IADR-0256, IADR-0313, IADR-0318, IADR-0339, IADR-0358]
+specs: [20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index]
+issues: [#536, #995, #1116, #1118, #1193]
 -->
 
 # 機能仕様書: ハイブリッド検索
@@ -46,12 +46,13 @@ issues: [#536, #995, #1116, #1118]
 | --- | --- |
 | `ChunkId` / `DocumentId` | 該当チャンク・元文書の識別子（RRF は `ChunkId` を融合キーとする） |
 | `DocumentTitle` | 元文書タイトル（出典表示） |
-| `Text` | チャンク本文 |
+| `Text` | チャンク本文。**本文を持たない文書（`HasBody=false`）では空文字列**である（索引テキストは題名由来なので抜粋として返さない） |
 | `Score` | 融合後スコア（RRF 合算値。順位ベースで再計算） |
 | `MarkdownUri` | 正規化 Markdown へのリンク（出典。無い場合あり） |
 | `Attributes` | ABAC 属性（`confidentiality`/`department` 等。Qdrant ペイロードから復元） |
 | `Tags` | タグ |
 | `UpdatedAt` | 文書の更新日時（Qdrant ペイロード `updated_at` から復元。#536 / 裁定 Q6）。**未再索引のチャンクは `null`** とし、`0001-01-01` で埋めない |
+| `HasBody` | この結果が**本文由来か**（Qdrant ペイロード `has_body` から復元）。`false` は「本文を持たない文書をメタデータだけで索引した点」で、画面は抜粋の位置へ「本文なし（原本を参照）」を示す。**キーを持たない点は本文ありとして扱う**（既存の点はすべて本文チャンクである） |
 
 ## 処理フロー / 状態遷移
 
@@ -76,6 +77,17 @@ flowchart TD
   M --> H
 ```
 
+### 本文を持たない文書
+
+本文が取り出せない原本（テキスト層を持たない PDF など）は、取り込み側が**題名・タグから作った索引テキストを
+持つ点を 1 つだけ**索引へ載せる（本文由来のチャンク・埋め込みは 0 件）。検索から見ると:
+
+- **通常の点と同じ 1 点**である —— ABAC フィルタ・削除・並び順・RRF はいずれも書き足しなしで効く。
+  **本文が無いことを理由に権限判定は緩めない。**
+- 全文検索は索引テキスト（題名・タグ）に当たる。**返す `Text` は空**で、`HasBody` が `false` になる。
+- **結果からは除外しない**（存在を知る手段を残す）。ただし **RAG 回答の文脈・出典には入らない** ——
+  根拠に使える本文が無いためである。
+
 ## 例外・エラー処理
 
 | 条件 | 振る舞い | 備考 |
@@ -94,7 +106,8 @@ flowchart TD
 
 - [x] 利用者は 1 つの検索窓（`POST /search`）からキーワード・自然文の双方で横断検索でき、結果に出典（`MarkdownUri`/`DocumentTitle`）が付く。
 - [x] ベクトル検索結果と全文検索結果が RRF で統合され、両系統に現れる文書ほど上位になる。
-- [x] 権限の無い文書は検索結果に現れない（ABAC 属性フィルタを両系統へ適用、deny-by-default）。
+- [x] 権限の無い文書は検索結果に現れない（ABAC 属性フィルタを両系統へ適用、deny-by-default）。**本文の有無で判定は変わらない。**
+- [x] 本文を持たない文書が、その題名で検索結果に現れる（除外されない）。抜粋は空で `HasBody=false` を伴う。
 - [ ] 文書更新後 15 分以内に反映（インジェスト経路の責務。本サービスは最新インデックスを参照するのみ）。
 - [ ] p95 レイテンシ目標（負荷試験で別途確認。並行実行・候補数制限で素地を用意）。
 

@@ -67,4 +67,12 @@ public record ChunkPayload(
     // FR-03, SC-02, #536: 文書の更新日時（IADR-0149）。本番の書き込みは IngestionService が担うが、
     // **同じコレクションを読む復元側と表現を揃える**ため本ポートでも同じ値を運ぶ
     // （表現がずれると「テストは緑・本番は空」になる。IADR-0014 が ABAC 属性で踏んだのと同じ型）。
-    DateTimeOffset? UpdatedAt = null);
+    DateTimeOffset? UpdatedAt = null,
+    // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 3: この点が本文由来か。
+    //
+    // 🔴 **`Text` は「索引テキスト」であって「本文」ではない。** `HasBody = false` の点では
+    // 題名由来のメタデータが入り、**検索の突合には使うが利用者へは返さない**
+    // （`SearchResultDto.Text` は `DocumentBodyPresence.Excerpt` が空にする）。
+    // **本実装と Qdrant 実装の双方が同じ射影を通すこと** —— 片方だけだと
+    // 「テストは緑・本番はメタデータが本文として漏れる」になる（IADR-0014 と同型）。
+    bool HasBody = true);

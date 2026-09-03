@@ -301,6 +301,17 @@ internal sealed class RecordingVectorStore(RecordingProbe probe) : IIngestionVec
         return Task.CompletedTask;
     }
 
+    // #1193: 本文なしの文書のメタデータ点。**本試験の本文は非空**なのでここは呼ばれないが、
+    // 呼ばれたら同じ観測点を立てる（fan-out の観測が本文の有無で消えないようにする）。
+    public Task UpsertMetadataPointAsync(string collection, Guid pointId, Guid documentId,
+        string title, string indexText, float[] vector, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null, CancellationToken ct = default)
+    {
+        probe.IngestionUpserts.Signal(documentId);
+        return Task.CompletedTask;
+    }
+
     public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
         => Task.CompletedTask;
 }

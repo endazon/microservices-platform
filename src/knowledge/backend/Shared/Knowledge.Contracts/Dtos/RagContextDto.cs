@@ -46,8 +46,13 @@ public static class RagContextPolicy
         var excluded = new List<Guid>();
         foreach (var result in searchResults)
         {
-            if (isAiInputAllowed(result.Attributes)) context.Add(result);
-            else excluded.Add(result.ChunkId);
+            // FR-02, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 5:
+            // **本文を持たない文書（メタデータだけで索引した点）は文脈に入れない。**
+            // 検索結果には出す（ADR-0070 決定 4 の「結果から除外しない」）が、
+            // **根拠に使える本文が無い以上、出典にも文脈にもならない** ——
+            // 入れると `[n] タイトル` だけの空の根拠が LLM へ渡り、中身を知らない文書について答えることになる。
+            if (!result.HasBody || !isAiInputAllowed(result.Attributes)) excluded.Add(result.ChunkId);
+            else context.Add(result);
         }
 
         return new RagContextSelection(searchResults, context, excluded);

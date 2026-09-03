@@ -46,6 +46,10 @@ msgstr "（表示 {shownCount} 件）"
 msgid "{count} 件で絞り込み中"
 msgstr "{count} 件で絞り込み中"
 
+#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+msgid "{effectiveMinCount} 件以上検索された語のみを表示します。"
+msgstr "{effectiveMinCount} 件以上検索された語のみを表示します。"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "{h}（上限）"
 msgstr "{h}（上限）"
@@ -2077,6 +2081,10 @@ msgstr "未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。"
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "本文"
 msgstr "本文"
+
+#: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+msgid "本文なし（原本を参照）"
+msgstr "本文なし（原本を参照）"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "本文なしで完了"

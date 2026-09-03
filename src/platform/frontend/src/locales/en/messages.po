@@ -46,6 +46,10 @@ msgstr "({shownCount} shown)"
 msgid "{count} 件で絞り込み中"
 msgstr "Narrowed by {count}"
 
+#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+msgid "{effectiveMinCount} 件以上検索された語のみを表示します。"
+msgstr "Only terms searched at least {effectiveMinCount} times are shown."
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "{h}（上限）"
 msgstr "{h} (max)"
@@ -2077,6 +2081,10 @@ msgstr "The default value {DEFAULT_LIFECYCLE} is used when left unspecified."
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "本文"
 msgstr "Body"
+
+#: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+msgid "本文なし（原本を参照）"
+msgstr "No body text (see the original)"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "本文なしで完了"

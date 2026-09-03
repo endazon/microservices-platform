@@ -21,6 +21,8 @@ const summary: DashboardSummaryDto = {
   usageTrend: [],
   topSearchTerms: [],
   quality: { up: 0, down: 0, total: 0, satisfactionRate: 0 },
+  // FR-10, SC-10, ADR-0071 決定 2（#1197）: 検索傾向の出現件数の下限（既定 3）。
+  searchTermMinCount: 3,
 };
 
 test('unauthenticated visit to /admin/ops redirects to /login', async ({ page }) => {
