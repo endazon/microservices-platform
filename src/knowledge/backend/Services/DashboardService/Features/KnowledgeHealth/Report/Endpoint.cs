@@ -41,6 +41,11 @@ public static class ReportKnowledgeHealthEndpoint
                     error = "indicator must be one of: " + string.Join(", ", KnowledgeHealthIndicators.All)
                 });
 
+            // planning#494 決定 3 (#1186): しきい値は省略可だが、**0 以下は受け付けない** ——
+            // 保存すると画面が「しきい値 0 日」と表示し、件数の意味が読めなくなる。
+            if (req.ThresholdDays is <= 0)
+                return Results.BadRequest(new { error = "thresholdDays must be greater than zero" });
+
             var indicator = KnowledgeHealthIndicators.Normalize(req.Indicator);
             var observedAt = DateTimeOffset.UtcNow;
 
@@ -55,6 +60,25 @@ public static class ReportKnowledgeHealthEndpoint
                 .Select(o => KnowledgeHealthObservation.Create(indicator, o.SubjectKey, o.DocScope, observedAt))
                 .ToList();
             db.KnowledgeHealthObservations.AddRange(observations);
+
+            // planning#494 決定 3 (#1186): 現在のしきい値も**スナップショットとして置き換える**。
+            // 🔴 **添えられていなければ行を消す。** 残すと、生産者がしきい値の要らない指標へ
+            // 変わった後も古い日数が画面に出続ける（観測値を全量置換するのと同じ理由）。
+            var threshold = await db.KnowledgeHealthIndicatorThresholds
+                .FirstOrDefaultAsync(t => t.Indicator == indicator, ct);
+            if (req.ThresholdDays is { } days)
+            {
+                if (threshold is null)
+                    db.KnowledgeHealthIndicatorThresholds.Add(
+                        KnowledgeHealthIndicatorThreshold.Create(indicator, days, observedAt));
+                else
+                    threshold.Update(days, observedAt);
+            }
+            else if (threshold is not null)
+            {
+                db.KnowledgeHealthIndicatorThresholds.Remove(threshold);
+            }
+
             await db.SaveChangesAsync(ct);
 
             // **受け付けた件数だけを返す**（個人資料を含み得る生の値であり、ここは集計面ではない）。

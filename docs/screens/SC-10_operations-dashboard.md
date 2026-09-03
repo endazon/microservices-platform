@@ -3,15 +3,15 @@ title: 運用ダッシュボード 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-30
+updated: 2026-09-03
 author: claude
 ---
 <!-- trace:
 ids: [FR-08, FR-10, FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-05, SC-06, SC-07, SC-10, SC-11, UC-05, UC-07]
-adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0037]
-iadrs: [IADR-0009, IADR-0011, IADR-0035, IADR-0036, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0135, IADR-0142, IADR-0265, IADR-0299]
-specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260807_issue-586_planning-pin-adr-accepted, 20260829_issue-443_knowledge-health-producer]
-issues: [#3, #5, #10, #17, #443, #446, #452, #503, #504, #519, #544, #586, #599, planning#198, planning#237, planning#244]
+adrs: [ADR-0006, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0037, ADR-0050]
+iadrs: [IADR-0009, IADR-0011, IADR-0035, IADR-0036, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0135, IADR-0142, IADR-0265, IADR-0299, IADR-0353]
+specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260807_issue-586_planning-pin-adr-accepted, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator]
+issues: [#3, #5, #10, #17, #443, #446, #452, #503, #504, #519, #544, #586, #599, #1186, planning#198, planning#237, planning#244, planning#494]
 -->
 
 # 画面仕様書: 運用ダッシュボード
@@ -239,6 +239,16 @@ flowchart LR
 > **置いてよいのは、その指標に生産者がある行だけである。** 残り 6 が生産されない理由は指標ごとに違い
 > （しきい値の裁定待ち・永続化が未設計・前提機能が未実装・観測値モデルの制約・別経路で観測済み）、
 > 解ける順序も別である。内訳は実装 ADR が持つ。
+
+> **［2026-09-03 追記 / #1186］陳腐化文書数の生産者ができた。それでも節は開かない。**
+> 計画側でしきい値が確定し（180 日・**起点は本文の更新のみ**・配備時の構成で変更可）、
+> **件数と現在のしきい値を対で運ぶところまで通した**。生産者は **2 件**（孤立文書数・陳腐化文書数）に
+> なったが、**生産者の無い指標がなお 3 件残る**（解決できないリンク数・未要約クラスタ数・
+> 辺の型ごとの使用件数）。計画自身が「**生産者の無い指標を 0 件として並べてはならない**」
+> 「**節を開く条件は別の判断である**」「**実装側がこの理由で節を置かず否定テストを残したのは正しい**」と
+> 明記しており、**本作業では節を開かない**。
+> ⚠️ 併せて実測した事実: **BFF に健全性の口が無い**（あるのは `/bff/dashboard/summary` の 1 本だけ）。
+> 節を開くには BFF の口と契約の昇格が要る。**使う側が居ない契約は先に固定しない。**
 
 **(b) 契約の不在 — SLO・LLM コスト・一意利用者数（#4 の部分）**
 

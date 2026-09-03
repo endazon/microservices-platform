@@ -13,4 +13,10 @@ internal static class KnowledgeHealthIndicators
 {
     // 孤立文書数: どの文書からも参照されず、どの文書も参照していない文書。
     public const string OrphanDocuments = "orphan-documents";
+
+    // FR-10, UC-05, SC-10, planning#494, [[IADR-0353]] (#1186):
+    // 陳腐化文書数: **本文**が一定期間更新されていない文書。
+    // 🔴 **起点は本文の更新のみである**（タグ・属性の更新は起点にしない）。
+    // 判定は GraphDocument.BodyUpdatedAt、しきい値は KnowledgeHealthOptions（既定 180 日）。
+    public const string StaleDocuments = "stale-documents";
 }

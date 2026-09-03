@@ -106,6 +106,13 @@ builder.Services.AddHttpClient(HttpKnowledgeHealthReporter.ClientName, c =>
     c.Timeout = HttpKnowledgeHealthReporter.SendTimeout;
 });
 builder.Services.AddScoped<IKnowledgeHealthReporter, HttpKnowledgeHealthReporter>();
+// FR-10, UC-05, SC-10, planning#494 決定 1・3, [[IADR-0353]] (#1186): 陳腐化のしきい値（既定 180 日）。
+// **配備時の構成で変更できる**（環境変数 KnowledgeHealth__StaleDocumentThresholdDays）。
+// 🔴 **ValidateOnStart を付けない** —— 不正値で起動を落とすと本サービスの DocumentUpdated /
+// DocumentDeleted 購読ごと止まる。既定へ倒して警告を出す（HttpKnowledgeHealthReporter の
+// fail-open と同じ向き。倒した後の値がそのまま画面へ出る）。
+builder.Services.Configure<KnowledgeHealthOptions>(
+    builder.Configuration.GetSection(KnowledgeHealthOptions.SectionName));
 builder.Services.AddScoped<KnowledgeHealthCollector>();
 // 🔴 [[IADR-0299]] 決定 3: 単一書き手化。受け口は**全量スナップショット置換**であり、2 レプリカが
 // 同時に走ると片方の DELETE が他方の INSERT 済み行を消して**恒久的に過少な件数**が残る。

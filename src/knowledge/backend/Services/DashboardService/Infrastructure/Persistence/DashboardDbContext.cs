@@ -12,6 +12,10 @@ public class DashboardDbContext(DbContextOptions<DashboardDbContext> options) : 
     public DbSet<KnowledgeHealthObservation> KnowledgeHealthObservations
         => Set<KnowledgeHealthObservation>();
 
+    // FR-10, SC-10, planning#494 決定 3 (#1186): 指標ごとの現在のしきい値。
+    public DbSet<KnowledgeHealthIndicatorThreshold> KnowledgeHealthIndicatorThresholds
+        => Set<KnowledgeHealthIndicatorThreshold>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         mb.Entity<UsageEvent>(e =>
@@ -41,6 +45,17 @@ public class DashboardDbContext(DbContextOptions<DashboardDbContext> options) : 
             // 指標ごとの置換・集計を効率化する。DocScope を含めるのは、
             // 個人資料の除外が**毎回の集計で必ず走る**述語だからである。
             e.HasIndex(o => new { o.Indicator, o.DocScope });
+        });
+
+        // FR-10, SC-10, planning#494 決定 3 (#1186): 指標ごとの現在のしきい値。
+        // **指標名が主キー**である（1 指標につき 1 行。観測値と違い集合ではない）。
+        mb.Entity<KnowledgeHealthIndicatorThreshold>(e =>
+        {
+            e.HasKey(t => t.Indicator);
+            e.Property(t => t.Indicator)
+                .HasMaxLength(KnowledgeHealthObservation.MaxIndicatorLength).IsRequired();
+            e.Property(t => t.ThresholdDays).IsRequired();
+            e.Property(t => t.ReportedAt).IsRequired();
         });
     }
 }

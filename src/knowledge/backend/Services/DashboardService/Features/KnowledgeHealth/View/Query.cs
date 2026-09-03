@@ -10,7 +10,11 @@ namespace DashboardService.Features.KnowledgeHealth.View;
 // **閲覧の操作だけが使う**ため、その操作のフォルダに置く（ADR-0068 決定 2）。
 
 // 指標 1 つ分の件数。**件数のみ**（計画: 個々の文書名を出さない）。
-public record KnowledgeHealthIndicatorDto(string Indicator, int Count);
+//
+// `ThresholdDays` — その指標の**現在のしきい値**（日数）。持たない指標では null。
+//   planning#494 決定 3「SC-10 には件数と**現在のしきい値**を併記する」を画面が読める形にする
+//   （[[IADR-0353]] 決定 4）。**件数だけを出すと、同じ数字でも意味が配備ごとに違ってしまう。**
+public record KnowledgeHealthIndicatorDto(string Indicator, int Count, int? ThresholdDays = null);
 
 // ナレッジ健全性の集計結果。
 //   ObservedAt — 最も新しい観測時刻（1 件も無ければ null）。指標が古びていないかの判断材料。
