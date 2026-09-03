@@ -33,7 +33,7 @@ issue: "#1186"
 
 ## 起点
 
-planning#494 が 3 論点を確定させた（2026-08-29 CLOSED / COMPLETED、planning PR #499 `03c4bfe`）。
+planning#494 が 3 論点を確定させた（2026-08-29 CLOSED / COMPLETED、planning#499 `03c4bfe`）。
 
 | # | 論点 | 裁定 |
 | --- | --- | --- |
