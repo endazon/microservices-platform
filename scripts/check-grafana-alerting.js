@@ -9,7 +9,8 @@
  * ★ 本検査器で確かめられないこと（先に書く）:
  *   **「Grafana がこの provisioning を受理するか」は分からない。**
  *   実装環境で Grafana を起動できなかった（docker daemon へ到達不可。#665 §判断 0）。
- *   **配備時に `/api/v1/provisioning/alert-rules` が 5 件返すことを別途確かめること。**
+ *   **配備時に `/api/v1/provisioning/alert-rules` が 6 件返すことを別途確かめること。**
+ *   （#1204 で `RagFirstTokenP95High` を足して 5 → 6 になった。件数は導出値なので数え直すこと。）
  *   ここで見るのは下の 5 点だけである。
  *
  * 検査:
