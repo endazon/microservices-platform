@@ -1,3 +1,4 @@
+using GraphService.Common.Observability;
 using GraphService.Domain;
 using GraphService.Infrastructure.Persistence;
 using GraphService.Domain.Ports;
@@ -27,10 +28,17 @@ namespace GraphService.Features.AiSuggestions.Generate;
 // 🔴 **不足分を追加で引き直さない**（IADR-0266 決定 4）。ADR-0051 は応答時間の相関を禁じていないが
 // 「範囲の外に置いた」と明記して実装側へ判断を残している。追加照会を採らなければ、フィルタで
 // 落ちた件数と後段の処理量が相関しない。**費用ゼロで側チャネルを 1 本閉じられるので閉じる。**
+//
+// 🔴 **タグ提案は SC-09 のタグ辞書に定義済みの値に限る**（ADR-0063 決定 2 / IADR-0364 決定 2 / #1014）。
+// 辞書（`ITagDictionaryReader`。権威は DocumentService）を辺の型と同じく LLM に選ばせる値集合として
+// 渡し、**返ってきた値を [6] で突き合わせて辞書外を落とす**。辞書が引けなければタグ提案を作らない
+// （fail-closed）。落とした件数は `TagSuggestionDropMetrics` が数える（0 が正常）。
 public sealed class AiSuggestionGenerator(
     IGraphStore store,
     ISimilarityCandidateSource similarity,
     ISuggestionLlmClient llm,
+    ITagDictionaryReader tagDictionary,
+    TagSuggestionDropMetrics dropMetrics,
     GraphDbContext db,
     TimeProvider clock)
 {
@@ -86,9 +94,16 @@ public sealed class AiSuggestionGenerator(
         // ADR-0033 決定 3: 辺の型は実行時辞書である。**LLM に選ばせる値集合を渡す。**
         var types = await db.EdgeTypes.AsNoTracking().OrderBy(t => t.Name).ToListAsync(ct);
 
+        // ADR-0063 決定 2 (#1014): タグ辞書も**実行時辞書**として LLM へ渡す。**null ＝引けなかった**
+        // （空集合とは別）。引けなければ値集合を空で渡し、[6] でタグ提案を全件落とす（fail-closed）。
+        var dictionary = await tagDictionary.ReadNamesAsync(ct);
+        var tagNames = dictionary is null
+            ? []
+            : dictionary.OrderBy(n => n, StringComparer.Ordinal).ToList();
+
         // [4] 封。ここを通らない文字列を LLM へ送る経路は無い。
         var prompt = SuggestionPrompt.Seal(
-            origin, candidates, types.Select(t => t.Name).ToList(), scope);
+            origin, candidates, types.Select(t => t.Name).ToList(), tagNames, scope);
         if (prompt is null)
             return [];
 
@@ -98,17 +113,22 @@ public sealed class AiSuggestionGenerator(
             return [];
 
         // [6] 取り込み。
-        return await PersistAsync(originDocumentId, candidates, types, proposals, ct);
+        return await PersistAsync(originDocumentId, candidates, types, dictionary, proposals, ct);
     }
 
     // FR-18, ADR-0033 決定 7, IADR-0266 決定 5: LLM の応答を提案として実体化する。
     //
     // 🔴 **許可済み候補集合に無い対象は捨てる。** 渡していない ID を LLM が返しても
     // 提案にならない（幻覚・復唱で越境が実体化する経路を塞ぐ）。
+    //
+    // 🔴 **辞書に無いタグ値も同じく捨てる**（ADR-0063 決定 2「辞書外の値を持つ提案は生成しない」）。
+    // `dictionary` が null（引けなかった）ならタグ提案は 1 件も作らない。**比較は Ordinal** ——
+    // DocumentService の `TagResolver.ToIdsAsync` と同じ比較でないと、生成段で通した値が承認段で落ちる。
     private async Task<IReadOnlyList<AiSuggestion>> PersistAsync(
         Guid originDocumentId,
         IReadOnlyList<AuthorizedNode> candidates,
         IReadOnlyList<EdgeType> types,
+        IReadOnlySet<string>? dictionary,
         IReadOnlyList<LlmSuggestionProposal> proposals,
         CancellationToken ct)
     {
@@ -152,7 +172,22 @@ public sealed class AiSuggestionGenerator(
             else if (p.Kind == SuggestionKind.Tag)
             {
                 var value = p.TagValue?.Trim();
-                if (string.IsNullOrWhiteSpace(value) || !tagsSeen.Add(value))
+                if (string.IsNullOrWhiteSpace(value))
+                    continue;
+
+                // ★辞書の値域★（#1014）。辞書が分からなければ全件、分かっていれば辞書外を落とす。
+                if (dictionary is null)
+                {
+                    dropMetrics.RecordDropped(TagSuggestionDropMetrics.DictionaryUnavailable);
+                    continue;
+                }
+                if (!dictionary.Contains(value))
+                {
+                    dropMetrics.RecordDropped(TagSuggestionDropMetrics.OutOfDictionary);
+                    continue;
+                }
+
+                if (!tagsSeen.Add(value))
                     continue;
 
                 created.Add(AiSuggestion.CreateTag(originDocumentId, value, p.Rationale, now));

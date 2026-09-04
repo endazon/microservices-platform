@@ -17,6 +17,17 @@
   ],
   "projects": {
     "src/knowledge/backend/Shared/Knowledge.Contracts": {
+      "Knowledge.Contracts.Dtos.AddDocumentTagRequest": {
+        "kind": "record",
+        "members": {
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.AiAnswerDto": {
         "kind": "record",
         "members": {
@@ -80,6 +91,12 @@
       "Knowledge.Contracts.Dtos.AiSuggestionDto": {
         "kind": "record",
         "members": {
+          "CanDecide": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 12
+          },
           "EdgeTypeId": {
             "source": "positional",
             "type": "Guid?",
@@ -2046,6 +2063,17 @@
             "type": "int",
             "required": true,
             "position": 2
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.TagNamesResponse": {
+        "kind": "record",
+        "members": {
+          "Names": {
+            "source": "positional",
+            "type": "List<string>",
+            "required": true,
+            "position": 0
           }
         }
       },
