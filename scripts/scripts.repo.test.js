@@ -6284,7 +6284,12 @@ ${r.stderr}`);
         //    空枠の残置。**撤回済み規範の残置という 1 述語だけ**を見る。同型の入口が 3 度使われた）を
         //    新設したため 48 → 49（ラチェットが設計どおり発火した）。**git ls-files を呼ぶので
         //    TRACKED_CHECKERS に載る**（`check-nul-bytes.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 49, `検査器の母集合が 49 本から変わった（${scripts.length} 件）`);
+        // ★ #1213 / FR-20 / IADR-0375 で `check-plugin-release-version.js`（Obsidian プラグインの配布の版が
+        //    `package.json` / `manifest.json` / リリースタグの 3 箇所で一致すること。**Obsidian は
+        //    `manifest.json` の version しか見ない**ので、片方だけ上げるとビルドもテストも通ったまま
+        //    利用者側で版が変わらない）を新設したため 49 → 50（ラチェットが設計どおり発火した）。
+        //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        assert.strictEqual(scripts.length, 50, `検査器の母集合が 50 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -9670,6 +9675,191 @@ exit $RC
     ok('#1163: scripts/README.md が verify-tool-oidc-logins を載せている', () => {
       const readme = fsTO.readFileSync(pathTO.join(__dirname, 'README.md'), 'utf8');
       assert.ok(readme.includes('verify-tool-oidc-logins.sh'), 'scripts/README.md に行が無い');
+    });
+  }
+
+  // --- FR-20 / IADR-0375, #1213: プラグインの配布（版の整合とリリースワークフローの不変条件） ---
+  //
+  // 🔴 **リリースワークフローは PR で 1 度も起動しない**（`on:` はタグ push と workflow_dispatch だけ）。
+  //   必須チェックを増やさないための設計だが、その代償として「壊れても PR で気付けない」。
+  //   よって**中身の不変条件はここ（必須チェック `scripts-tests`）で静的に固定する**。
+  //
+  // 版が食い違うと静かに壊れる: Obsidian は manifest.json の version しか見ないので、
+  //   タグだけ上げると利用者側で版が変わらず「入れ替えたのに古いまま」に見える。
+  {
+    const RELEASE_VERSION_GATE = path.join(__dirname, 'check-plugin-release-version.js');
+    const REPO_R = path.join(__dirname, '..');
+    const {
+      TAG_PREFIX: PLUGIN_TAG_PREFIX,
+      evaluate: evaluatePluginVersion,
+      stripRefPrefix: stripPluginRefPrefix,
+    } = require('./check-plugin-release-version.js');
+
+    const releaseYmlPath = path.join(REPO_R, '.github/workflows/obsidian-plugin-release.yml');
+    const readReleaseYml = () => fs.readFileSync(releaseYmlPath, 'utf8');
+
+    // --- 実データ: 現物の package.json / manifest.json が揃っている ---------------------
+
+    ok('#1213: src/obsidian-plugin の package.json と manifest.json の version が一致する', () => {
+      const pkg = JSON.parse(fs.readFileSync(path.join(REPO_R, 'src/obsidian-plugin/package.json'), 'utf8'));
+      const manifest = JSON.parse(fs.readFileSync(path.join(REPO_R, 'src/obsidian-plugin/manifest.json'), 'utf8'));
+      assert.deepStrictEqual(
+        evaluatePluginVersion({ pkgVersion: pkg.version, manifestVersion: manifest.version }),
+        [],
+        `版が揃っていない（package=${pkg.version} / manifest=${manifest.version}）`,
+      );
+      // タグを打つときの形も、現物の版から組み立てて合格することを見る（陽性対照）。
+      assert.deepStrictEqual(
+        evaluatePluginVersion({
+          pkgVersion: pkg.version,
+          manifestVersion: manifest.version,
+          tag: `refs/tags/${PLUGIN_TAG_PREFIX}${manifest.version}`,
+        }),
+        [],
+      );
+    });
+
+    // --- 純関数の判定（陽性 / 陰性の対） -------------------------------------------------
+
+    ok('#1213: 版の突合 —— 一致で 0 件、食い違いで 1 件（陽性 / 陰性の対）', () => {
+      assert.strictEqual(evaluatePluginVersion({ pkgVersion: '0.2.0', manifestVersion: '0.2.0' }).length, 0);
+      const bad = evaluatePluginVersion({ pkgVersion: '0.3.0', manifestVersion: '0.2.0' });
+      assert.strictEqual(bad.length, 1, `食い違いを検出していない: ${JSON.stringify(bad)}`);
+      assert.match(bad[0], /manifest\.json しか見ない/);
+    });
+
+    ok('#1213: タグの突合 —— 前置あり / なし・ずれ・裸の版タグ', () => {
+      const base = { pkgVersion: '0.2.0', manifestVersion: '0.2.0' };
+      for (const tag of [`${PLUGIN_TAG_PREFIX}0.2.0`, `refs/tags/${PLUGIN_TAG_PREFIX}0.2.0`]) {
+        assert.deepStrictEqual(evaluatePluginVersion({ ...base, tag }), [], `合格のはず: ${tag}`);
+      }
+      for (const tag of [`${PLUGIN_TAG_PREFIX}0.3.0`, 'v0.2.0', 'obsidian-plugin-0.2.0', 'refs/tags/v0.2.0']) {
+        assert.strictEqual(evaluatePluginVersion({ ...base, tag }).length, 1, `違反のはず: ${tag}`);
+      }
+      assert.strictEqual(stripPluginRefPrefix('refs/tags/x'), 'x');
+      assert.strictEqual(stripPluginRefPrefix('x'), 'x');
+    });
+
+    ok('#1213: fail-closed —— version が無い / semver でない / ビルドメタデータつき', () => {
+      assert.ok(evaluatePluginVersion({ pkgVersion: undefined, manifestVersion: '0.2.0' }).length > 0);
+      assert.ok(evaluatePluginVersion({ pkgVersion: '0.2', manifestVersion: '0.2' }).length > 0);
+      assert.ok(evaluatePluginVersion({ pkgVersion: '0.2.0+1', manifestVersion: '0.2.0+1' }).length > 0);
+      // 形が壊れているときはタグの突合まで行かない（無意味な連鎖エラーを出さない）。
+      const broken = evaluatePluginVersion({ pkgVersion: '0.2', manifestVersion: '0.2', tag: 'v9' });
+      assert.ok(broken.every((m) => !m.includes('タグ')), `形が壊れているのにタグを見ている: ${broken}`);
+    });
+
+    ok('#1213: 実走 —— 現物に対して EXIT=0、ずれたタグで EXIT=1', () => {
+      const spawn = require('child_process').spawnSync;
+      const okRun = spawn(process.execPath, [RELEASE_VERSION_GATE], { encoding: 'utf8' });
+      assert.strictEqual(okRun.status, 0, `現物で exit ${okRun.status}:\n${okRun.stdout}${okRun.stderr}`);
+      const ngRun = spawn(
+        process.execPath, [RELEASE_VERSION_GATE, '--tag', `${PLUGIN_TAG_PREFIX}99.0.0`], { encoding: 'utf8' },
+      );
+      assert.strictEqual(ngRun.status, 1, `ずれたタグで exit ${ngRun.status}（1 のはず）`);
+      const selfTest = spawn(process.execPath, [RELEASE_VERSION_GATE, '--self-test'], { encoding: 'utf8' });
+      assert.strictEqual(selfTest.status, 0, `--self-test が落ちた:\n${selfTest.stdout}${selfTest.stderr}`);
+    });
+
+    // --- 変異試験: 版の突合を消すと門が落ちる ------------------------------------------
+    //
+    // 🔴 これが無いと「門が書いてある」ことしか確かめられない。**消して落ちるか**を見る。
+
+    ok('#1213: 変異試験 —— 版の突合を外すと食い違いが素通りする（門が実際に効いている）', () => {
+      const src = fs.readFileSync(RELEASE_VERSION_GATE, 'utf8');
+      const marker = '  if (pkgVersion !== manifestVersion) {';
+      assert.ok(src.includes(marker), '変異させる行（版の突合）が見つからない');
+      // 突合ブロックを「起きない条件」へ書き換える（構文は壊さない）。
+      const mutated = src.replace(marker, '  if (false) {');
+      const work = fs.mkdtempSync(path.join(os.tmpdir(), 'msp-1213-'));
+      const mutantPath = path.join(work, 'mutant.js');
+      fs.writeFileSync(mutantPath, mutated);
+      try {
+        const mutant = require(mutantPath);
+        assert.strictEqual(
+          mutant.evaluate({ pkgVersion: '0.3.0', manifestVersion: '0.2.0' }).length,
+          0,
+          '変異させたのに食い違いが検出されている（消したのは別の行だ）',
+        );
+        // 元は 1 件検出する ＝ この 1 行が門の本体である。
+        assert.strictEqual(evaluatePluginVersion({ pkgVersion: '0.3.0', manifestVersion: '0.2.0' }).length, 1);
+      } finally {
+        delete require.cache[mutantPath];
+        fs.rmSync(work, { recursive: true, force: true });
+      }
+    });
+
+    // --- リリースワークフローの静的不変条件 --------------------------------------------
+
+    ok('#1213: リリースワークフローは pull_request で起動しない（必須チェックを増やさない）', () => {
+      const yml = readReleaseYml();
+      const on = yml.slice(yml.indexOf('\non:'), yml.indexOf('\npermissions:'));
+      assert.ok(!/^\s*pull_request:/m.test(on), `pull_request トリガが在る:\n${on}`);
+      assert.ok(/^\s*workflow_dispatch:/m.test(on), 'workflow_dispatch が無い（打ち直しの口）');
+      assert.match(on, /tags:\s*\n\s*-\s*"obsidian-plugin-v\*"/, 'タグの起動条件が違う');
+    });
+
+    ok('#1213: リリースのタグ前置が検査器の TAG_PREFIX と同じ（2 箇所で食い違わせない）', () => {
+      const yml = readReleaseYml();
+      const m = yml.match(/tags:\s*\n\s*-\s*"([^"]+)"/);
+      assert.ok(m, 'on.push.tags を読めない');
+      assert.strictEqual(
+        m[1], `${PLUGIN_TAG_PREFIX}*`,
+        `ワークフローのタグ前置（${m[1]}）が check-plugin-release-version.js の TAG_PREFIX と違う`,
+      );
+      // changelog.yml の `v*` と互いに起動しない（モノレポでタグ名前空間を奪い合わない）。
+      const changelog = fs.readFileSync(path.join(REPO_R, '.github/workflows/changelog.yml'), 'utf8');
+      assert.match(changelog, /tags:\s*\["v\*"\]/, 'changelog.yml のタグ条件が変わった（前提が崩れる）');
+      assert.ok(
+        !PLUGIN_TAG_PREFIX.startsWith('v'),
+        `前置 ${PLUGIN_TAG_PREFIX} は changelog.yml の "v*" にも一致してしまう`,
+      );
+    });
+
+    ok('#1213: リリースは版の突合と egress 走査を通してから資産を出す（順序込み）', () => {
+      const yml = readReleaseYml();
+      const at = (needle) => {
+        const i = yml.indexOf(needle);
+        assert.ok(i >= 0, `ワークフローに "${needle}" が無い`);
+        return i;
+      };
+      const version = at('node scripts/check-plugin-release-version.js --tag');
+      const build = at('run build');
+      const egress = at('node scripts/check-static-egress.js --require src/obsidian-plugin/dist');
+      const publish = at('softprops/action-gh-release@');
+      assert.ok(version < build, '版の突合がビルドより後にある');
+      assert.ok(build < egress, 'egress 走査がビルドより前にある（走査対象が無い）');
+      assert.ok(egress < publish, 'egress 走査を通さずに資産を出している');
+    });
+
+    ok('#1213: 資産は Obsidian が読む 2 つだけ（cli.mjs を配らない）', () => {
+      const yml = readReleaseYml();
+      const files = yml.slice(yml.indexOf('files: |'), yml.indexOf('body: |'));
+      assert.match(files, /src\/obsidian-plugin\/dist\/main\.js/);
+      assert.match(files, /src\/obsidian-plugin\/dist\/manifest\.json/);
+      assert.ok(
+        !files.includes('cli.mjs'),
+        'cli.mjs は実測用ハーネスであって配布物ではない（IADR-0338 決定 3・6）',
+      );
+      // 08_data-egress-policy: 資産の指定に外部から取りに行く URL を書かない。
+      assert.ok(!/https?:\/\//.test(files), `資産の指定に外部 URL がある:\n${files}`);
+    });
+
+    ok('#1213: frontend.yml は版の整合をプラグインのビルドより前に見る', () => {
+      const yml = fs.readFileSync(path.join(REPO_R, '.github/workflows/frontend.yml'), 'utf8');
+      const gate = yml.indexOf('run: node scripts/check-plugin-release-version.js');
+      const build = yml.indexOf('run: pnpm --filter @platform/obsidian-plugin run build');
+      assert.ok(gate >= 0, 'frontend.yml に版の整合ゲートが無い');
+      assert.ok(build >= 0, 'frontend.yml にプラグインのビルドが無い');
+      assert.ok(gate < build, '版の整合ゲートがビルドより後にある');
+      // ここではタグを渡さない（PR の文脈にタグは無い。渡すと恒久 fail になる）。
+      const line = yml.slice(gate, yml.indexOf('\n', gate));
+      assert.ok(!line.includes('--tag'), `frontend.yml で --tag を渡している: ${line}`);
+    });
+
+    ok('#1213: scripts/README.md が check-plugin-release-version を載せている', () => {
+      const readme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
+      assert.ok(readme.includes('check-plugin-release-version.js'), 'scripts/README.md に行が無い');
     });
   }
 

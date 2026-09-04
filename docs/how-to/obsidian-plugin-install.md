@@ -1,20 +1,20 @@
 ---
-title: 手順ガイド — Obsidian プラグイン（個人資料同期）のビルドと導入
+title: 手順ガイド — Obsidian プラグイン（個人資料同期）の入手・導入・配布
 type: how-to
 status: in-progress
 author: claude
 created: 2026-09-02
-updated: 2026-09-03
+updated: 2026-09-05
 ---
 <!-- trace:
 ids: [FR-19, FR-20, UC-11, SC-20, NFR-11]
 adrs: [ADR-0021, ADR-0037]
-iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360]
-specs: [20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract]
-issues: [#451, #1098, #1153, #1154, #1176]
+iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0375]
+specs: [20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260905_issue-1213_obsidian-plugin-release-assets]
+issues: [#451, #1098, #1153, #1154, #1176, #1213]
 -->
 
-# 手順ガイド: Obsidian プラグイン（個人資料同期）のビルドと導入
+# 手順ガイド: Obsidian プラグイン（個人資料同期）の入手・導入・配布
 
 > **仕様ではなく作業手順の案内である**（`docs/README.md`）。仕様は
 > [機能仕様書: Obsidian 双方向同期](../functional/FR-20_obsidian-sync.md) と
@@ -25,31 +25,36 @@ issues: [#451, #1098, #1153, #1154, #1176]
 > **配備済みクラスタのエッジから届く**（2026-09-03）。接続先はエッジの基底 URL（`https://<エッジ>`）でよい。
 > ただし**本番像は既定で出さない**ので、配備側で公開を有効にしておくこと（下記「接続先」）。
 > ローカル検証は従来どおり `kubectl port-forward` した文書サービスでも通る。
+>
+> **［2026-09-05］利用者はリポジトリを取得しない。** GitHub Release の資産（`main.js` と
+> `manifest.json`）を落として Vault へ置く（下記「入手（利用者向け）」）。クローンからのビルドは
+> **開発者向け**の節へ移した。
 
 ## 何が配られるか
 
-`src/obsidian-plugin/` を pnpm workspace メンバとしてビルドすると `dist/` に 3 つできる。
+配られるのは **2 つだけ**である。
 
 | ファイル | 役割 |
 | --- | --- |
 | `main.js` | Obsidian が読むプラグイン本体（CommonJS） |
 | `manifest.json` | プラグインの識別子 `msp-private-notes-sync`・版・最小アプリ版 |
-| `cli.mjs` | Obsidian 本体なしで同じ同期処理を実 HTTP に当てる Node ハーネス（実測・検証用。配布物ではない） |
 
-社内配布のリリース資産化（zip 等）は未整備で、いまは `dist/` をそのまま置く。
+独自の見た目を持たないので `styles.css` は無い。`cli.mjs`（Obsidian 本体なしで同じ同期処理を実 HTTP に
+当てる Node ハーネス）はビルドすると `dist/` にできるが、**実測・検証用であって配布物ではない**ため
+リリース資産には含めない。
 
-## ビルド
+## 入手（利用者向け）
 
-```bash
-cd src
-pnpm install
-pnpm --filter @platform/obsidian-plugin run build
-node ../scripts/check-static-egress.js --require obsidian-plugin/dist   # 外部 CDN・フォント・analytics が無いことの走査
-```
+1. リポジトリの **Releases** を開き、`obsidian-plugin-v<版>` のリリースを選ぶ。
+2. 資産の `main.js` と `manifest.json` を落とす。
+3. 下の「Vault への導入」へ進む。**クローンも pnpm も要らない。**
+
+版は `manifest.json` の `version` と一致する（Obsidian の「コミュニティプラグイン」画面に出る版と
+同じ値）。入れ替えたのに版が変わらないときは、古い資産を落としている。
 
 ## Vault への導入
 
-1. Vault の `.obsidian/plugins/msp-private-notes-sync/` を作り、`dist/main.js` と `dist/manifest.json` を置く。
+1. Vault の `.obsidian/plugins/msp-private-notes-sync/` を作り、`main.js` と `manifest.json` を置く。
 2. Obsidian の「設定 → コミュニティプラグイン」で **制限モードを解除**し、「個人資料同期（汎用プラットフォーム）」を有効にする。
 3. プラグイン設定で次を入れる。
    - **接続先 URL**: 同期プロトコルを受ける基底 URL（`https://…`。末尾に `/private-notes/sync` は付けない）。
@@ -96,6 +101,50 @@ node ../scripts/check-static-egress.js --require obsidian-plugin/dist   # 外部
 - ローカル（`ISTIO=1` かつ `LOCALEDGE=1` のエッジ）では最初から通る。接続先は `https://localhost`。
   **証明書検証を切らないこと**（`-k` を使わない。ローカル CA を信頼させる手順は `deploy/local/edge-istio/README.md`）。
 - 平文 http では同期しない（トークンが Bearer でそのまま載る）。プラグインが loopback 以外の http を拒む。
+
+## ビルド（開発者向け）
+
+利用者は上の「入手」で済む。ここから先は**プラグインを直す人と、配る人**の手順である。
+
+```bash
+cd src
+pnpm install
+pnpm --filter @platform/obsidian-plugin run build
+node ../scripts/check-static-egress.js --require obsidian-plugin/dist   # 外部 CDN・フォント・analytics が無いことの走査
+```
+
+`dist/` に `main.js` / `manifest.json` / `cli.mjs` ができる。手元で試すときは前 2 つを Vault の
+プラグインフォルダへ置く（利用者にこの手順を踏ませない）。
+
+## 配る（リリース手順）
+
+配布は**タグを打つだけ**である。資産の作成と公開はワークフローが行う。
+
+1. 版を上げる。**`src/obsidian-plugin/package.json` と `manifest.json` の `version` を同じ値にする**
+   （Obsidian が見るのは `manifest.json` の方だが、片方だけ動かすと配布物と workspace の版がずれる）。
+   手元で確かめる:
+
+   ```bash
+   node scripts/check-plugin-release-version.js
+   ```
+
+2. その変更を通常どおり PR で `develop` へ入れる。
+3. 着地したコミットにタグを打って push する。**タグの形は `obsidian-plugin-v<版>`** である。
+
+   ```bash
+   git tag obsidian-plugin-v0.2.0
+   git push origin obsidian-plugin-v0.2.0
+   ```
+
+4. ワークフローが版とタグの一致を確かめ、ビルドし、成果物の外部参照を走査し、リリースを作って
+   `main.js` と `manifest.json` を資産として上げる。タグと `manifest.json` の版がずれていれば、
+   **資産を作る前に落ちる**。
+5. 落ちた場合は版を直して入れ直し、タグを打ち直す。既に在るタグに対して回し直すだけなら、
+   Actions の「Obsidian Plugin Release」を手動実行してタグ名を入力する。
+
+裸の `v0.2.0` は使わない —— モノレポであり、`v*` はリポジトリ全体のリリースノート生成が既に使っている。
+
+**署名と公開レジストリ（Obsidian community plugins）への登録は行っていない。** 配布は社内に閉じる。
 
 ## ローカル検証（Obsidian 本体なし）
 
