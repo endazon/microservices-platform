@@ -25,6 +25,14 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-04 BFF テスト: 後段 AiAnalysisService への転送を捕捉・スタブ化する
     public string? LastForwardedAuthorization { get; private set; }
 
+    // NFR-02, ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視の主体として扱う識別子。
+    // 実配備の Keycloak クライアント名と同じ綴りにしておく（両側の一致は本テストで固定する）。
+    public const string SyntheticSubject = "synthetic-monitor";
+
+    // 後段 AiAnalysisService へ**内周の標識が伝播したか**。null＝付いていない。
+    // **テスト間で共有される**（IClassFixture）ため、観測する側が呼ぶ前に null へ戻すこと。
+    public string? LastForwardedSyntheticHeader { get; set; }
+
     // FR-07 BFF テスト: 後段が返すステータスコードを差し替え、非 2xx の透過を検証する。
     public HttpStatusCode StubStatusCode { get; set; } = HttpStatusCode.OK;
 
@@ -425,6 +433,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
             cfg.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Redis:ConnectionString"] = "localhost:6379",
+                // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視の主体（許可集合）。
+                // **空だと何も合成と見なさない**（fail-closed）ため、テストでは明示的に 1 件入れる。
+                ["SyntheticMonitoring:Subjects:0"] = SyntheticSubject,
                 ["Otlp:Endpoint"] = "http://localhost:4317",
                 ["Auth:Authority"] = "https://localhost/realms/test",
                 ["Services:RetrievalService"] = "http://localhost:5003",
@@ -553,6 +564,13 @@ public class BffTestFactory : WebApplicationFactory<Program>
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
             owner.LastForwardedAuthorization = request.Headers.Authorization?.ToString();
+            // #1203: 内周へ標識が伝播したかを観測する（伝播しないと LlmGateway が費用から外せない）。
+            owner.LastForwardedSyntheticHeader =
+                request.Headers.TryGetValues(
+                    Platform.Shared.Infrastructure.Foundation.Observability.SyntheticTraffic.HeaderName,
+                    out var syntheticValues)
+                    ? string.Join(",", syntheticValues)
+                    : null;
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
 
             // IADR-0037: /analysis/ask/stream は SSE を返す（BFF は逐次中継する）。
