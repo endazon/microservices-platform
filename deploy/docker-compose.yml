@@ -603,6 +603,9 @@ services:
       # ここで上書きしないと不達 → GraphAccessResolver が Granted=false へ縮退し、
       # **グラフが常に空になる**（エラーにならないので気付けない）。
       Services__AuthorizationService: http://authorization-service:8080
+      # FR-18, ADR-0010, IADR-0380 (#1244): AI 提案の生成が LLM ゲートウェイを呼ぶ。コード既定は
+      # `:5010` で compose の llm-gateway（8080）と合わないため上書きする（aianalysis-service と同じ）。
+      Services__LlmGateway: http://llm-gateway:8080
     depends_on:
       postgres:
         condition: service_healthy
