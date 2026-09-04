@@ -3,15 +3,15 @@ title: ハイブリッド検索 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-03
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, FR-03, SC-01, SC-02, UC-01]
 adrs: [ADR-0016, ADR-0070]
-iadrs: [IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0256, IADR-0318, IADR-0339, IADR-0358]
-specs: [20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index]
-issues: [#448, #532, #536, #642, #995, #1116, #1118, #1193]
+iadrs: [IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0256, IADR-0318, IADR-0339, IADR-0358, IADR-0390]
+specs: [20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration]
+issues: [#448, #532, #536, #642, #995, #1116, #1118, #1193, #1247]
 -->
 
 # テスト仕様書: ハイブリッド検索
@@ -156,3 +156,9 @@ row1: SC-02
 row2: SC-02
 row3: SC-02
 -->
+
+## 取り込みから来た点が当たるか（段間結合）
+
+本書のテストは**検索の中**だけを測る。索引へ**取り込みが書いた**点が当たるかは、
+取り込み側のテスト仕様書「段間結合（取り込み → 索引 → 検索ヒット）」の節が正本である
+（テストの実体は `Knowledge.IntegrationTests/Search/`）。**ここへ複写しない。**
