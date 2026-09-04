@@ -5,7 +5,7 @@ using DashboardService.Features.KnowledgeHealth.Report;
 namespace DashboardService.Tests.Features.KnowledgeHealth.Report;
 
 // FR-10, FR-17, FR-18, planning#494 決定 3, 計画 ADR-0030 §決定（検証 = FluentValidation）/
-// IADR-0371 決定 2 / IADR-0376: 観測値の受け口の入力検証を手書きガード節から AbstractValidator へ
+// IADR-0371 決定 2 / IADR-0377: 観測値の受け口の入力検証を手書きガード節から AbstractValidator へ
 // 移した際の**振る舞い同値**を固定する。
 [Trait("TestKind", "Unit")]
 public class ReportKnowledgeHealthValidatorTests

@@ -256,6 +256,173 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         m.Tags[LlmCompletionMetrics.StopReasonTag].Should().Be(CompletionStopReasons.Refusal);
     }
 
+    // --- IADR-0374 (#1091): 上流 HTTP ステータスの軸（llm.upstream_status）-------------
+    //
+    // ★ 本節の要点は「429 を他の失敗と**メトリクスだけで**区別できること」と
+    //   「そのために載せる値が**有限集合に閉じている**こと」の 2 つである。
+    //   従前は 429・5xx・通信断・設定ミスがすべて llm.result="upstream_error" の一点へ潰れており、
+    //   レート制限の有無を計器から判定できなかった（#380 の受け入れ基準 ③ が達成不能だった）。
+
+    // 全モデルを同じ例外で失敗させるクライアント（上流ステータスの軸を作り分けるための共通構成）。
+    private HttpClient ClientFailingWith(ILlmProvider provider) =>
+        factory.WithWebHostBuilder(b =>
+            b.ConfigureServices(s =>
+            {
+                s.RemoveAll<ILlmProvider>();
+                s.AddKeyedSingleton<ILlmProvider>("claude", provider);
+                s.AddKeyedSingleton<ILlmProvider>("selfhosted", provider);
+                s.AddKeyedSingleton<ILlmProvider>("copilot", provider);
+            })).CreateClient();
+
+    // T-1091a（陽性）: 429 は rate_limited として計上され、他の失敗と区別できる。
+    // ADR-0038 決定 4 のとおり 429 ではフォールバックしないため llm.result は upstream_error のままである
+    // （軸を足しただけで既存の値域は動かしていない）。
+    [Fact]
+    public async Task PostComplete_WhenUpstreamReturns429_CountsRateLimitedUpstreamStatus()
+    {
+        using var probe = new MetricsProbe();
+        var client = ClientFailingWith(new StatusFailingProvider(System.Net.HttpStatusCode.TooManyRequests));
+
+        await client.PostAsJsonAsync("/complete", Request("rag-answer"), TestContext.Current.CancellationToken);
+
+        var m = probe.Measurements.Should().ContainSingle().Subject;
+        m.Tags[LlmCompletionMetrics.ResultTag].Should().Be(LlmCompletionMetrics.ResultUpstreamError);
+        m.Tags[LlmCompletionMetrics.UpstreamStatusTag].Should().Be(LlmCompletionMetrics.UpstreamRateLimited);
+    }
+
+    // T-1091b（陰性）: 500 は 429 と同じ値にならない。**陽性だけでは軸が定数でないことを示せない。**
+    [Fact]
+    public async Task PostComplete_WhenUpstreamReturns500_CountsServerErrorNotRateLimited()
+    {
+        using var probe = new MetricsProbe();
+        var client = ClientFailingWith(new StatusFailingProvider(System.Net.HttpStatusCode.InternalServerError));
+
+        await client.PostAsJsonAsync("/complete", Request("rag-answer"), TestContext.Current.CancellationToken);
+
+        var m = probe.Measurements.Should().ContainSingle().Subject;
+        m.Tags[LlmCompletionMetrics.UpstreamStatusTag].Should().Be(LlmCompletionMetrics.UpstreamServerError);
+        m.Tags[LlmCompletionMetrics.UpstreamStatusTag].Should().NotBe(LlmCompletionMetrics.UpstreamRateLimited);
+    }
+
+    // T-1091c（陰性）: ステータスの取れない通信断は transport。
+    [Fact]
+    public async Task PostComplete_WhenTransportFails_CountsTransportUpstreamStatus()
+    {
+        using var probe = new MetricsProbe();
+        var client = ClientFailingWith(new ThrowingProvider());
+
+        await client.PostAsJsonAsync("/complete", Request("rag-answer"), TestContext.Current.CancellationToken);
+
+        probe.Measurements.Should().ContainSingle()
+            .Which.Tags[LlmCompletionMetrics.UpstreamStatusTag].Should().Be(LlmCompletionMetrics.UpstreamTransport);
+    }
+
+    // T-1091d（陰性）: 設定ミス（BaseUrl 未設定）は transport ではなく other。
+    // ★ ここを transport に混ぜると「呼び出し先の通信障害」と「自分の設定の誤り」が同じ系列になり、
+    //   直す対象を取り違える。
+    [Fact]
+    public async Task PostComplete_WhenConfigurationError_CountsOtherNotTransport()
+    {
+        using var probe = new MetricsProbe();
+        var client = ClientFailingWith(new ConfigErrorProvider());
+
+        await client.PostAsJsonAsync("/complete", Request("rag-answer"), TestContext.Current.CancellationToken);
+
+        var m = probe.Measurements.Should().ContainSingle().Subject;
+        m.Tags[LlmCompletionMetrics.UpstreamStatusTag].Should().Be(LlmCompletionMetrics.ValueOther);
+        m.Tags[LlmCompletionMetrics.UpstreamStatusTag].Should().NotBe(LlmCompletionMetrics.UpstreamTransport);
+    }
+
+    // T-1091e: フォールバックした行にも軸が載る（400 系のみで発火するため常に client_error）。
+    // 成功した第 2 候補の行は none —— **軸は「その試行に上流が何を返したか」であり、リクエスト単位ではない。**
+    [Fact]
+    public async Task PostComplete_WhenFallsBack_TagsFallbackRowClientErrorAndSentRowNone()
+    {
+        using var probe = new MetricsProbe();
+        var client = ClientFailingWith(
+            new ModelFailingProvider("claude-opus-5", System.Net.HttpStatusCode.BadRequest));
+
+        await client.PostAsJsonAsync("/complete", Request("analysis"), TestContext.Current.CancellationToken);
+
+        probe.Measurements.Should()
+            .ContainSingle(m => m.Tags[LlmCompletionMetrics.ResultTag] == LlmCompletionMetrics.ResultFallback)
+            .Which.Tags[LlmCompletionMetrics.UpstreamStatusTag].Should()
+            .Be(LlmCompletionMetrics.UpstreamClientError);
+
+        probe.Measurements.Should()
+            .ContainSingle(m => m.Tags[LlmCompletionMetrics.ResultTag] == LlmCompletionMetrics.ResultSent)
+            .Which.Tags[LlmCompletionMetrics.UpstreamStatusTag].Should().Be(LlmCompletionMetrics.ValueNone);
+    }
+
+    // T-1091f: 上流を叩いていない経路（越境拒否）も none で計上される（軸が欠けた測定を作らない）。
+    [Fact]
+    public async Task PostComplete_WhenEgressDenied_TagsUpstreamStatusNone()
+    {
+        using var probe = new MetricsProbe();
+        var client = factory.WithWebHostBuilder(b =>
+            b.ConfigureServices(s =>
+                s.Configure<LlmRoutingOptions>(o =>
+                {
+                    o.AllowUnapprovedTierC = false;
+                    o.Endpoints =
+                    [
+                        new LlmEndpointOptions
+                        {
+                            Name = "standard-external", Tier = ProtectionTier.C,
+                            Provider = "claude", Enabled = true, Priority = 1,
+                            DefaultModel = "std", Models = ["std"]
+                        }
+                    ];
+                }))).CreateClient();
+
+        await client.PostAsJsonAsync("/complete", Request("analysis", "confidential"), TestContext.Current.CancellationToken);
+
+        var m = probe.Measurements.Should().ContainSingle().Subject;
+        m.Tags[LlmCompletionMetrics.ResultTag].Should().Be(LlmCompletionMetrics.ResultEgressDenied);
+        m.Tags[LlmCompletionMetrics.UpstreamStatusTag].Should().Be(LlmCompletionMetrics.ValueNone);
+    }
+
+    // T-1091g: 🔴 **値域が閉じていること**を固定する。生の HTTP ステータス（"429" 等）を載せない。
+    // 5 種類の失敗を通したうえで、観測された値がすべて宣言済みの 6 値に含まれることを見る。
+    // 実装の分岐ではなく **UpstreamStatusValues の宣言**に対して確かめるのが要点である
+    // （分岐を足しただけで値域宣言を更新し忘れた変更を落とす）。
+    [Theory]
+    [InlineData(429)]
+    [InlineData(500)]
+    [InlineData(400)]
+    [InlineData(404)]
+    [InlineData(418)]
+    public async Task PostComplete_WhateverUpstreamReturns_TagValueStaysInsideClosedDomain(int status)
+    {
+        using var probe = new MetricsProbe();
+        var client = ClientFailingWith(new StatusFailingProvider((System.Net.HttpStatusCode)status));
+
+        await client.PostAsJsonAsync("/complete", Request("trade-decision"), TestContext.Current.CancellationToken);
+
+        probe.Measurements.Should().NotBeEmpty();
+        foreach (var m in probe.Measurements)
+        {
+            var value = m.Tags[LlmCompletionMetrics.UpstreamStatusTag];
+            LlmCompletionMetrics.UpstreamStatusValues.Should().Contain(value);
+            // 生ステータスが漏れていないことを名指しで見る（"429" は値域に無い）。
+            value.Should().NotBe(status.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+    }
+
+    // T-1091h: ストリーム経路（鎖を持たない＝全ての上流失敗がここへ来る）も同じ軸で計上する。
+    [Fact]
+    public async Task PostCompleteStream_WhenUpstreamReturns429_CountsRateLimitedUpstreamStatus()
+    {
+        using var probe = new MetricsProbe();
+        var client = ClientFailingWith(new StatusFailingProvider(System.Net.HttpStatusCode.TooManyRequests));
+
+        await client.PostAsJsonAsync("/complete/stream", Request("rag-answer"), TestContext.Current.CancellationToken);
+
+        var m = probe.Measurements.Should().ContainSingle().Subject;
+        m.Tags[LlmCompletionMetrics.ResultTag].Should().Be(LlmCompletionMetrics.ResultUpstreamError);
+        m.Tags[LlmCompletionMetrics.UpstreamStatusTag].Should().Be(LlmCompletionMetrics.UpstreamRateLimited);
+    }
+
     // --- IADR-0212 (#786): 出力トークンの Histogram ------------------------------------
 
     // llm.completion.output_tokens の測定を収集する（Counter とは別の計器なので別プローブにする）。
@@ -321,6 +488,20 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
 
         probe.Measurements.Should().ContainSingle()
             .Which.Tags.Should().NotContainKey(LlmCompletionMetrics.ResultTag);
+    }
+
+    // T-1091i: llm.upstream_status も Histogram の属性に載せない（IADR-0374 決定 5）。
+    // Histogram は送信が成立した経路にしか記録せず、その経路の値は常に none で系列を分けない。
+    [Fact]
+    public async Task PostComplete_WhenSent_OmitsUpstreamStatusTagFromHistogram()
+    {
+        using var probe = new OutputTokensProbe();
+        var client = ClientReturning(new CompletionResult("回答本文", 11, 22, CompletionStopReasons.EndTurn));
+
+        await client.PostAsJsonAsync("/complete", Request("rag-answer"), TestContext.Current.CancellationToken);
+
+        probe.Measurements.Should().ContainSingle()
+            .Which.Tags.Should().NotContainKey(LlmCompletionMetrics.UpstreamStatusTag);
     }
 
     // T-786c: ★ 送信していない経路は Histogram を記録しない（IADR-0212 決定 3）。
@@ -438,6 +619,21 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
     {
         public Task<CompletionResult> CompleteAsync(CompletionRequest request, CancellationToken ct = default)
             => throw new HttpRequestException("upstream is down");
+    }
+
+    // #1091: どのモデルでも指定の HTTP ステータスで失敗する（429 / 500 の作り分け用）。
+    private sealed class StatusFailingProvider(System.Net.HttpStatusCode status) : ILlmProvider
+    {
+        public Task<CompletionResult> CompleteAsync(CompletionRequest request, CancellationToken ct = default)
+            => throw new HttpRequestException($"upstream returned {(int)status}", null, status);
+    }
+
+    // #1091: ステータスも通信でもない失敗（設定ミスの形）。SelfHostedProvider が BaseUrl 未設定で
+    // 実際に投げるのがこの型である。
+    private sealed class ConfigErrorProvider : ILlmProvider
+    {
+        public Task<CompletionResult> CompleteAsync(CompletionRequest request, CancellationToken ct = default)
+            => throw new InvalidOperationException("BaseUrl が未設定です");
     }
 
     // #863: 指定モデルへの呼び出しだけを HTTP ステータス付きで失敗させる（フォールバックの発火用）。

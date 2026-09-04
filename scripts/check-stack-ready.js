@@ -18,6 +18,12 @@
  *
  * - **G1 readiness**: 対象 namespace の Deployment がすべて `availableReplicas >= 1` で、
  *   pod が Ready であること。**待つのは呼び出し側（kubectl wait）で、ここは判定だけを行う。**
+ *   🔴 **`Failed` な Pod の可否は所有 Job の `status` で決まる**（#1219 / [IADR-0376]）。
+ *   `restartPolicy: Never` の Job は**再試行で成功しても失敗した attempt の Pod を残す**ので、
+ *   残骸を無条件に致命にすると**Job が成功しているのに赤**になる（間欠赤の正体）。
+ *   見逃すのは「所有 Job が `Complete` に達したことを確かめられた」Pod **だけ**であり、
+ *   `Failed` に達した Job・Job に所有されていない Pod・Job を引けなかった場合は**致命のまま**。
+ *   再試行中（終端未達）は有界に待ち、**待ちきれなければ致命**（`waitForJobsToSettle`）。
  * - **G2 0 件で緑にしない**: 走査した Deployment が 0 件なら失敗にする。
  *   🔴 **理由は「`kubectl wait --all` が 0 件のとき成功するから」ではない。** 当初そう書いていたが
  *   **実測は逆で、`error: no matching resources found` で exit 1 になる**（run 32556579646 の
@@ -637,20 +643,148 @@ function evaluateDeployments(ns, items) {
   return { failures, total: items.length, ready };
 }
 
-/** G1: pod の Ready 条件を判定する。`Succeeded`（完了 Job）は対象外。 */
-function evaluatePods(ns, items) {
+/** Job の `status.conditions` から終端状態を取る。`'Complete'` / `'Failed'` / `null`（終端未達）。 */
+function jobTerminalState(job) {
+  const conds = (job && job.status && job.status.conditions) || [];
+  // 🔴 `type` が在るだけでは足りない。**`status: 'True'` を見る** —— Kubernetes は条件を
+  // `status: 'False'` のまま残すことがあり、type だけで読むと「失敗した Job」を成功と読む。
+  if (conds.some((c) => c.type === 'Failed' && c.status === 'True')) return 'Failed';
+  if (conds.some((c) => c.type === 'Complete' && c.status === 'True')) return 'Complete';
+  return null;
+}
+
+/**
+ * #1219: `Failed` な Pod を**所有 Job の状態で**分類する（純関数）。
+ *
+ * 🔴 **`restartPolicy: Never` の Job は、再試行で成功しても失敗した attempt の Pod を残す。**
+ * 実測（run 33869773915 / 33865471843 / 33759232177 の 3 本。いずれも同じ形）:
+ *
+ *     config-drift-postsync-r86s5   0/1  Error      112s   ← 1 本目（予算切れ）
+ *     config-drift-postsync-t84h8   0/1  Completed   36s   ← 2 本目（成功）→ Job は Complete
+ *
+ * G1 はこの残骸を `phase=Failed` として致命にしていた。**Job は成功しているのに赤になる**
+ * ＝ 間欠赤の正体である（#1219）。
+ *
+ * 🔴 **`Succeeded` 以外を一律に見逃す形にはしない。** 見逃すのは
+ * 「**所有 Job が `Complete` で終端に達したことを稼働側の status で確かめられた**失敗 Pod」だけ。
+ * 予算を使い切って `Failed` に達した Job の Pod は**今までどおり致命**である
+ * （`keycloak-realm-reconcile` は `backoffLimit: 0` なので、1 度落ちれば必ずこちらへ倒れる）。
+ *
+ * @returns {'fatal'|'benign'|'pending'} `pending` ＝ Job が終端未達（呼び出し側が有界に待つ）。
+ */
+function classifyFailedPod(pod, jobsByName) {
+  const owners = (pod.metadata && pod.metadata.ownerReferences) || [];
+  const owner = owners.find((o) => o.kind === 'Job');
+  // Job に所有されていない `Failed` Pod は、誰も再試行しない＝そのまま壊れている。
+  if (!owner) return { verdict: 'fatal', reason: 'Job に所有されていない' };
+  const job = jobsByName.get(owner.name);
+  // fail-closed: 所有 Job が見つからなければ、成功したことを確かめられない。
+  if (!job) return { verdict: 'fatal', reason: `所有 Job ${owner.name} が見つからない` };
+  const state = jobTerminalState(job);
+  if (state === 'Complete') {
+    return { verdict: 'benign', reason: `所有 Job ${owner.name} は Complete（再試行で成功済み）`, job: owner.name };
+  }
+  if (state === 'Failed') {
+    return { verdict: 'fatal', reason: `所有 Job ${owner.name} も Failed（backoffLimit を使い切った）`, job: owner.name };
+  }
+  return { verdict: 'pending', reason: `所有 Job ${owner.name} が終端未達（再試行中）`, job: owner.name };
+}
+
+/**
+ * #1219: 再試行中（`pending`）の Job が終端に達するのを**有界に**待ってから判定し直す。
+ *
+ * 🔴 **なぜ 120 秒で足りるか。** 本検査が走る時点で、ワークフロー段 9 の
+ * `kubectl wait --for=condition=Ready`（`--timeout=600s`）が **BFF が Ready であることを既に証明している**。
+ * したがって「今まさに走っている attempt」は数秒で成功するはずである。実測された attempt 間隔は
+ * 76 秒（run 33869773915: 1 本目 age 112s / 2 本目 age 36s）なので、120 秒は
+ * **1 回分の attempt ＋ backoff を丸ごと覆う**。
+ *
+ * 🔴 **期限切れは致命**（fail-closed）。「待てたこと」を成功の根拠にしない。
+ */
+function waitForJobsToSettle(
+  ns,
+  podItems,
+  first,
+  notices,
+  {
+    budgetMs = 120000,
+    intervalMs = 5000,
+    sleep = sleepSync,
+    now = Date.now,
+    // 稼働側の再取得。self-test は差し替える（kubectl を呼ばない）。
+    fetchJobs = (namespace) => {
+      const r = kubectlJson(['get', 'jobs', '-n', namespace, '-o', 'json']);
+      return r.ok ? r.value.items : [];
+    },
+  } = {},
+) {
+  const deadline = now() + budgetMs;
+  const names = first.pending.map((p) => `${p.pod}（Job ${p.job}）`).join(' / ');
+  notices.push(`[check-stack-ready] G1: ${ns} に再試行中の Job Pod が ${first.pending.length} 件ある（${names}）。終端まで最大 ${Math.round(budgetMs / 1000)} 秒待つ。`);
+  let last = first;
+  while (now() < deadline) {
+    sleep(intervalMs);
+    last = evaluatePods(ns, podItems, fetchJobs(ns));
+    if (last.pending.length === 0) return last;
+  }
+  return {
+    failures: [
+      ...last.failures,
+      ...last.pending.map(
+        (p) =>
+          `[G1] ${ns}/${p.pod}: Pod が Failed で、所有 Job ${p.job} が ${Math.round(budgetMs / 1000)} 秒待っても終端（Complete / Failed）に達しなかった。` +
+          ' readiness は既に成立しているので、再試行はすぐ成功するはずである（#1219）。',
+      ),
+    ],
+    notices: last.notices,
+    pending: [],
+  };
+}
+
+/** ミリ秒だけ同期に眠る（本検査は同期の spawnSync で組まれている。async へ広げない）。 */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * G1: pod の Ready 条件を判定する。`Succeeded`（完了 Job）は対象外。
+ *
+ * `jobs` は同じ namespace の `kubectl get jobs -o json` の `items`。**渡さなければ Job 対応は効かず、
+ * `Failed` Pod はすべて致命になる**（従来の挙動＝ fail-closed 側）。
+ *
+ * @returns {{failures: string[], notices: string[], pending: {pod: string, job: string}[]}}
+ */
+function evaluatePods(ns, items, jobs = []) {
   const failures = [];
+  const notices = [];
+  const pending = [];
+  const jobsByName = new Map(
+    (Array.isArray(jobs) ? jobs : []).map((j) => [(j.metadata && j.metadata.name) || '', j]),
+  );
   for (const p of Array.isArray(items) ? items : []) {
     const name = (p.metadata && p.metadata.name) || '(名前不明)';
     const phase = p.status && p.status.phase;
     if (phase === 'Succeeded') continue;
+    if (phase === 'Failed') {
+      const c = classifyFailedPod(p, jobsByName);
+      if (c.verdict === 'benign') {
+        notices.push(`[check-stack-ready] G1: ${ns}/${name} は失敗した attempt の残骸だが、${c.reason}。致命にしない（#1219）。`);
+        continue;
+      }
+      if (c.verdict === 'pending') {
+        pending.push({ pod: name, job: c.job });
+        continue;
+      }
+      failures.push(`[G1] ${ns}/${name}: Pod が Failed で、${c.reason}。`);
+      continue;
+    }
     const conds = (p.status && p.status.conditions) || [];
     const readyCond = conds.find((c) => c.type === 'Ready');
     if (!readyCond || readyCond.status !== 'True') {
       failures.push(`[G1] ${ns}/${name}: Ready ではない（phase=${phase}, Ready=${readyCond ? readyCond.status : '無し'}）。`);
     }
   }
-  return failures;
+  return { failures, notices, pending };
 }
 
 /** admin(50000) を提供しているか（Service 1 つぶんの判定。純関数）。 */
@@ -768,7 +902,19 @@ function check({ repoRoot = REPO_ROOT } = {}) {
       failures.push(`[G1] namespace ${ns} の Pod を取得できなかった: ${pods.error}`);
       continue;
     }
-    failures.push(...evaluatePods(ns, pods.value.items));
+    // #1219: `Failed` Pod の可否は**所有 Job の status で決まる**ので Job も引く。
+    // 取得できなければ Job 一覧は空＝ `Failed` Pod はすべて致命（fail-closed）になる。
+    const jobs = kubectlJson(['get', 'jobs', '-n', ns, '-o', 'json']);
+    if (!jobs.ok) {
+      notices.push(`[check-stack-ready] G1: namespace ${ns} の Job を取得できなかった（${jobs.error}）。Failed Pod は致命として判定する。`);
+    }
+    let pv = evaluatePods(ns, pods.value.items, jobs.ok ? jobs.value.items : []);
+    if (pv.pending.length > 0) {
+      // 再試行中の Job は有界に待つ。**待ちきれなければ致命**（fail-closed）。
+      pv = waitForJobsToSettle(ns, pods.value.items, pv, notices);
+    }
+    failures.push(...pv.failures);
+    notices.push(...pv.notices);
     notices.push(`[check-stack-ready] ${ns}: Deployment ${d.ready}/${d.total} が available、Pod ${pods.value.items.length} 件を判定した。`);
   }
 
@@ -970,10 +1116,102 @@ function selfTest() {
     const bad = evaluatePods('ns', [
       { metadata: { name: 'p1' }, status: { phase: 'Running', conditions: [{ type: 'Ready', status: 'False' }] } },
     ]);
-    assert.strictEqual(bad.length, 1, 'Ready=False が失敗になっていない');
+    assert.strictEqual(bad.failures.length, 1, 'Ready=False が失敗になっていない');
     const done = evaluatePods('ns', [{ metadata: { name: 'job' }, status: { phase: 'Succeeded' } }]);
-    assert.deepStrictEqual(done, [], '完了 Job を失敗にしている');
+    assert.deepStrictEqual(done.failures, [], '完了 Job を失敗にしている');
   });
+
+  //
+  // #1219: `Failed` Pod の可否は**所有 Job の status で決まる**。
+  // 実測の形（run 33869773915）をそのまま入力にする —— Job Pod が 2 本あり、1 本目が Error、
+  // 2 本目が Completed で Job は Complete。
+  //
+  {
+    const failedPod = (name, jobName) => ({
+      metadata: { name, ownerReferences: jobName ? [{ kind: 'Job', name: jobName }] : [] },
+      status: { phase: 'Failed', conditions: [{ type: 'Ready', status: 'False' }] },
+    });
+    const job = (name, cond) => ({
+      metadata: { name },
+      status: { conditions: cond ? [{ type: cond, status: 'True' }] : [] },
+    });
+
+    ok('G1 陽性対照 (#1219): 再試行で成功した Job の残骸 Failed Pod は緑になる', () => {
+      const r = evaluatePods(
+        'microservices-platform',
+        [
+          failedPod('config-drift-postsync-r86s5', 'config-drift-postsync'),
+          { metadata: { name: 'config-drift-postsync-t84h8' }, status: { phase: 'Succeeded' } },
+        ],
+        [job('config-drift-postsync', 'Complete')],
+      );
+      assert.deepStrictEqual(r.failures, [], '所有 Job が Complete なのに残骸を致命にしている（#1219 の再発）');
+      assert.deepStrictEqual(r.pending, [], '終端に達した Job を保留にしている');
+      assert.strictEqual(r.notices.length, 1, '見逃したことを記録していない（沈黙で見逃さない）');
+    });
+
+    ok('G1 陰性対照 (#1219): backoffLimit を使い切って Failed に達した Job の Pod は赤のまま', () => {
+      const r = evaluatePods('platform-infra', [failedPod('keycloak-realm-reconcile-abcde', 'keycloak-realm-reconcile')], [
+        job('keycloak-realm-reconcile', 'Failed'),
+      ]);
+      assert.strictEqual(r.failures.length, 1, '落ちた Job を見逃している（検知能力を捨てている）');
+      assert.ok(r.failures[0].includes('keycloak-realm-reconcile'), '所有 Job を名指ししていない');
+    });
+
+    ok('G1 陰性対照 (#1219): Job に所有されていない Failed Pod / Job が引けない場合は赤', () => {
+      const orphan = evaluatePods('ns', [failedPod('lonely-pod', null)], [job('unrelated', 'Complete')]);
+      assert.strictEqual(orphan.failures.length, 1, 'Job に所有されていない Failed Pod を見逃している');
+      // Job 一覧が引けなかった場合（`jobs` が空）は fail-closed 側へ倒れる。
+      const noJobs = evaluatePods('ns', [failedPod('config-drift-postsync-r86s5', 'config-drift-postsync')], []);
+      assert.strictEqual(noJobs.failures.length, 1, 'Job を引けないのに見逃している（fail-closed が崩れている）');
+    });
+
+    ok('G1 (#1219): Complete / Failed が status=False で残っている Job は終端未達として扱う', () => {
+      // 🔴 type だけで読むと「落ちた Job」を成功と読む。status: 'True' を要求していることを固定する。
+      assert.strictEqual(jobTerminalState({ status: { conditions: [{ type: 'Complete', status: 'False' }] } }), null);
+      assert.strictEqual(jobTerminalState({ status: { conditions: [{ type: 'Failed', status: 'True' }] } }), 'Failed');
+      assert.strictEqual(jobTerminalState({}), null);
+      const r = evaluatePods('ns', [failedPod('p', 'j')], [job('j', null)]);
+      assert.deepStrictEqual(r.failures, [], '終端未達を即座に致命にしている（再試行中に落ちる新しい間欠赤になる）');
+      assert.strictEqual(r.pending.length, 1, '終端未達を保留にしていない');
+    });
+
+    ok('G1 (#1219): 再試行中の Job は有界に待ち、終端に達しなければ致命（fail-closed）', () => {
+      const podItems = [failedPod('p', 'j')];
+      const first = evaluatePods('ns', podItems, [job('j', null)]);
+      const spin = (settleAt) => {
+        let t = 0;
+        let polls = 0;
+        const notices = [];
+        const r = waitForJobsToSettle('ns', podItems, first, notices, {
+          budgetMs: 20000,
+          intervalMs: 5000,
+          sleep: (ms) => {
+            t += ms;
+          },
+          now: () => t,
+          fetchJobs: () => {
+            polls += 1;
+            return [job('j', polls >= settleAt ? 'Complete' : null)];
+          },
+        });
+        return { r, notices, polls };
+      };
+
+      // 陰性対照: 期限内に終端へ達しない（settleAt を届かない値にする）。
+      const never = spin(999);
+      assert.strictEqual(never.r.pending.length, 0, '期限切れなのに保留のままにしている');
+      assert.strictEqual(never.r.failures.length, 1, '待ちきれなかった Job を緑にしている（待てたことを成功の根拠にしている）');
+      assert.ok(never.r.failures[0].includes('終端'), '期限切れであることを述べていない');
+      assert.ok(never.notices.length >= 1, '待ちに入ったことを記録していない');
+
+      // 陽性対照: 2 回目のポーリングで Complete に達したら緑になる。
+      const settles = spin(2);
+      assert.deepStrictEqual(settles.r.failures, [], '終端で成功した Job を致命にしている');
+      assert.strictEqual(settles.polls, 2, '終端に達しても待ち続けている（または待たずに抜けている）');
+    });
+
+  }
 
   ok('G5: admin=50000 がどちらのエッジにも無ければ失敗になり、#953 を指す', () => {
     const traefikNoAdmin = { spec: { ports: [{ name: 'web', port: 80 }, { name: 'websecure', port: 443 }] } };
@@ -1278,6 +1516,9 @@ module.exports = {
   discoverRealms,
   evaluateDeployments,
   evaluatePods,
+  classifyFailedPod,
+  jobTerminalState,
+  waitForJobsToSettle,
   evaluateAdminEntrypoint,
   evaluateIssuer,
   evaluatePodDnsOutput,

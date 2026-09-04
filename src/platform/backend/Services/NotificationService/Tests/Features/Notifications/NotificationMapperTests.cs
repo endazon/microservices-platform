@@ -4,7 +4,7 @@ using NotificationService.Features.Notifications;
 
 namespace NotificationService.Tests.Features.Notifications;
 
-// FR-22, 計画 ADR-0030 §決定（マッピング = Riok.Mapperly）/ IADR-0371 決定 3 / IADR-0376:
+// FR-22, 計画 ADR-0030 §決定（マッピング = Riok.Mapperly）/ IADR-0371 決定 3 / IADR-0377:
 // 手書きの詰め替えを生成マッパへ置き換えた際の**振る舞い同値**を固定する。
 //
 // 🔴 **生成物を信じるのではなく、写った値を見る。** Mapperly は名前が一致しないプロパティを

@@ -4,7 +4,7 @@ using Riok.Mapperly.Abstractions;
 namespace NotificationService.Features.Notifications;
 
 // FR-22, 計画 ADR-0030 §決定（マッピング = Riok.Mapperly。選定基準 4「実行時リフレクションより
-// コンパイル時生成を優先する」）/ IADR-0371 決定 3 / IADR-0376: ドメイン → DTO の写像。
+// コンパイル時生成を優先する」）/ IADR-0371 決定 3 / IADR-0377: ドメイン → DTO の写像。
 //
 // 従前は `NotificationStore.ToDto` の手書き詰め替え 1 本であった。`Notification` の 7 プロパティが
 // `NotificationDto` と同名の 1:1 であり、Mapperly の既定規約でそのまま写る。

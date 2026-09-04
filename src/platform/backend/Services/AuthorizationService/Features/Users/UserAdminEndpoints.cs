@@ -49,7 +49,7 @@ public static class UserAdminEndpoints
 
     // 全操作が同じ形で返す（画面が 1 種類の読み方だけを覚えれば済む）。集約直下に置く点は変えず、
     // 実体は手書きをやめて Riok.Mapperly の生成マッパ（`PlatformUserMapper.ToDto`）へ移した
-    // （計画 ADR-0030 §決定 / IADR-0371 決定 3 / IADR-0376）。**このクラスに写像は残さない。**
+    // （計画 ADR-0030 §決定 / IADR-0371 決定 3 / IADR-0377）。**このクラスに写像は残さない。**
 
     // RFC7807 準拠のバリデーションエラー（400）。AuthzEndpoints と同じ形へ揃える
     // （画面が 2 種類の読み方を覚えなくて済む）。

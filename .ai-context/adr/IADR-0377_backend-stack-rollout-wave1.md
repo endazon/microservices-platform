@@ -1,5 +1,5 @@
 ---
-title: IADR-0376 計画スタック 3 種の横展開は「参照実装をそのまま写せるか」で波を割り、波 1 は 6 サービスに限る（何を入れ、何を入れなかったか）
+title: IADR-0377 計画スタック 3 種の横展開は「参照実装をそのまま写せるか」で波を割り、波 1 は 6 サービスに限る（何を入れ、何を入れなかったか）
 type: impl-adr
 status: Accepted
 related_ids:
@@ -22,7 +22,7 @@ plan_refs:
   - planning:projects/microservices-platform/06_technical/12_backend-application-stack.md (fixed 2026-08-30) 基本方針・実装状況・Application 層
 ---
 
-# IADR-0376: 計画スタック 3 種の横展開（波 1）で、どのサービスに何を入れ、何を入れなかったか（#1230）
+# IADR-0377: 計画スタック 3 種の横展開（波 1）で、どのサービスに何を入れ、何を入れなかったか（#1230）
 
 - 状態: Accepted
 - 日付: 2026-09-05

@@ -53,7 +53,7 @@ builder.Services.AddHttpClient("LlmGateway", c =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IRagOrchestrator, RagOrchestrator>();
 
-// FR-07, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0376: 分析依頼の入力検証。
+// FR-07, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0377: 分析依頼の入力検証。
 // **アセンブリ走査（AddValidatorsFromAssembly）は使わない** —— 登録が暗黙になり、
 // 検証器を消しても起動時には何も起きず、端点が黙って無検証になるためである。
 // 1 行 1 検証器の明示登録なら、消したときにコンパイルか DI 解決で止まる。

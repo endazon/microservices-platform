@@ -3,7 +3,7 @@ using Knowledge.Contracts.Dtos;
 
 namespace DashboardService.Features.Dashboard.RecordEvent;
 
-// FR-10, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0376:
+// FR-10, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0377:
 // 利用イベント記録の入力規則。従前は Endpoint.cs 内の手書きガード節 1 本であった。
 //
 // 🔴 **振る舞いを変えない移送である。** 同じ 400・同じ本文を返す。

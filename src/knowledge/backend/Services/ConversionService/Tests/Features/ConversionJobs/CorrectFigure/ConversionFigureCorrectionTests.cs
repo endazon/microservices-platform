@@ -316,7 +316,7 @@ public class ConversionFigureCorrectionTests
         body.Should().NotContain("<script>");
     }
 
-    // UC-06 / IADR-0371 決定 2 / IADR-0376: 検証を FluentValidation へ移した際、
+    // UC-06 / IADR-0371 決定 2 / IADR-0377: 検証を FluentValidation へ移した際、
     // **HTTP の面で応答が変わっていない**ことを固定する。
     //
     // 🔴 **上の `Correction_WithFenceBreakingCode_Is400_AndDoesNotPersist` は状態コードしか見ていない。**
