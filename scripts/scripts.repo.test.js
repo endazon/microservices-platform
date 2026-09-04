@@ -2925,6 +2925,184 @@ ${r.stderr}`);
     });
   }
 
+  // --- check-scaffolding-frames: `.gitkeep` のみのディレクトリ（#1195 / ADR-0069 決定 5） -----
+  //
+  // 述語は 1 つだけである —— **追跡下に `.gitkeep` のみのディレクトリが存在しない**。
+  // 区分ごとの不変条件（i18n カタログの網羅・feature 区分の実体・型 (b) の置き場所違い）は
+  // **意図的に対象外**である（ADR-0069 決定 5 がそう限った。IADR-0321 決定 4 の指摘への答え）。
+  //
+  // 🔴 実データは射程内 0 件なので、**検出力は変異でしか示せない。**
+  // 追跡下へ空枠を 1 件足して赤になること・戻すと緑に戻ることを対で見る。
+  {
+    const { spawnSync: spawnFrames } = require('child_process');
+    const pathFrames = require('path');
+    const fsFrames = require('fs');
+    const framesScript = pathFrames.join(__dirname, 'check-scaffolding-frames.js');
+    const REPO_FRAMES = pathFrames.join(__dirname, '..');
+    const runFrames = (args = []) =>
+      spawnFrames(process.execPath, [framesScript, ...args], {
+        cwd: REPO_FRAMES,
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 * 1024,
+      });
+
+    ok('check-scaffolding-frames --self-test が通る', () => {
+      const r = runFrames(['--self-test']);
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('check-scaffolding-frames が実データ（追跡下すべて）で違反 0 件', () => {
+      const r = runFrames();
+      assert.strictEqual(r.status, 0, `空枠が残っている:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    // ★ 陽性対照。**追跡下へ**空枠を作る（未追跡だと母集合に入らないので何も測れない）。
+    ok('★ check-scaffolding-frames: 追跡下へ空枠を 1 件足すと exit 1 で名指しする', () => {
+      const dir = pathFrames.join(REPO_FRAMES, 'src/platform/frontend/src/stores');
+      const keep = pathFrames.join(dir, '.gitkeep');
+      const rel = 'src/platform/frontend/src/stores/.gitkeep';
+      fsFrames.mkdirSync(dir, { recursive: true });
+      fsFrames.writeFileSync(keep, '');
+      try {
+        spawnFrames('git', ['add', '-f', rel], { cwd: REPO_FRAMES, encoding: 'utf8' });
+        const r = runFrames();
+        assert.notStrictEqual(r.status, 0, '空枠を足したのに exit 0 だった');
+        assert.match(r.stderr, /src\/platform\/frontend\/src\/stores\/\.gitkeep/, 'パスを名指ししていない');
+      } finally {
+        spawnFrames('git', ['rm', '-q', '-f', '--ignore-unmatch', rel], {
+          cwd: REPO_FRAMES,
+          encoding: 'utf8',
+        });
+        fsFrames.rmSync(keep, { force: true });
+        fsFrames.rmSync(dir, { recursive: true, force: true });
+      }
+      // 陰性対照: 戻したら緑に戻る（後始末が効いていることの確認も兼ねる）。
+      assert.strictEqual(runFrames().status, 0, '復元後も落ちたままである');
+    });
+
+    // ★ 受け入れ基準そのもの（#1195）: 除外から docs/batch を外すと 1 件検出する。
+    ok('★ check-scaffolding-frames: 除外から docs/batch を外すと 1 件検出する', () => {
+      const frames = require('./check-scaffolding-frames.js');
+      const files = frames.trackedFiles(REPO_FRAMES);
+      const without = new Map(frames.ALLOWED_EMPTY_FRAMES);
+      without.delete('docs/batch');
+      const r = frames.scan(files, without);
+      assert.strictEqual(r.violations.length, 1, `1 件だけ出るはず: ${JSON.stringify(r.violations)}`);
+      assert.strictEqual(r.violations[0].dir, 'docs/batch');
+      // 陰性対照: 除外を戻すと 0 件（同じ入力で結果が変わるのは除外リストのせいだと示す）。
+      assert.strictEqual(frames.scan(files).violations.length, 0);
+    });
+
+    ok('check-scaffolding-frames: 理由の無い除外は fail 側に置く', () => {
+      const frames = require('./check-scaffolding-frames.js');
+      assert.strictEqual(frames.inspectAllowlist(new Map([['a', '短い']])).length, 1);
+      assert.strictEqual(frames.inspectAllowlist(new Map([['a', '']])).length, 1);
+      // 実在しない除外行（腐った除外）も落とす。
+      assert.strictEqual(
+        frames.inspectAllowlist(new Map([['a', '十分に長い理由をここへ書く']]), ['b/.gitkeep']).length,
+        1
+      );
+    });
+
+    ok('check-scaffolding-frames: 走査件数の門が 0 件を fail 側に置く', () => {
+      const frames = require('./check-scaffolding-frames.js');
+      assert.strictEqual(frames.isScanTooSmall(0), true);
+      assert.strictEqual(frames.isScanTooSmall(frames.MIN_SCANNED - 1), true);
+      assert.strictEqual(frames.isScanTooSmall(frames.MIN_SCANNED), false);
+    });
+
+    // 🔴 除外は**黙って伸びる**と検査が静かに効かなくなる。現在の 4 件を固定する。
+    ok('check-scaffolding-frames: 除外は docs/ の 4 件だけ（黙って伸びたら気付く）', () => {
+      const frames = require('./check-scaffolding-frames.js');
+      assert.deepStrictEqual(
+        [...frames.ALLOWED_EMPTY_FRAMES.keys()].sort(),
+        ['docs/batch', 'docs/errors', 'docs/infra', 'docs/integration'],
+        '除外を足したなら、そのぶん検査されなくなることを IADR へ記録すること'
+      );
+      for (const [dir, reason] of frames.ALLOWED_EMPTY_FRAMES) {
+        assert.ok(reason.length >= frames.MIN_REASON_LENGTH, `${dir} の理由が短い`);
+      }
+    });
+
+    // 撤去の結果そのもの（#1195 の受け入れ基準 1）。src/ と templates/ に .gitkeep は 1 件も無い。
+    ok('#1195: 追跡下の .gitkeep は docs/ の 4 件だけ（src/ と templates/ は 0 件）', () => {
+      const frames = require('./check-scaffolding-frames.js');
+      const keeps = frames
+        .trackedFiles(REPO_FRAMES)
+        .filter((f) => f === '.gitkeep' || f.endsWith('/.gitkeep'))
+        .sort();
+      assert.deepStrictEqual(keeps, [
+        'docs/batch/.gitkeep',
+        'docs/errors/.gitkeep',
+        'docs/infra/.gitkeep',
+        'docs/integration/.gitkeep',
+      ]);
+    });
+
+    ok('#1195: scripts/README.md が check-scaffolding-frames を載せている', () => {
+      const readme = fsFrames.readFileSync(pathFrames.join(REPO_FRAMES, 'scripts/README.md'), 'utf8');
+      assert.ok(readme.includes('check-scaffolding-frames.js'), 'scripts/README.md に行が無い');
+    });
+
+    // ci.yml への配線（宣言 → 実挙動）。自己試験と本走査の 2 ステップが static-checks に居ること。
+    ok('#1195: ci.yml の static-checks が検査器を叩いている', () => {
+      const ci = fsFrames.readFileSync(pathFrames.join(REPO_FRAMES, '.github/workflows/ci.yml'), 'utf8');
+      assert.ok(
+        ci.includes('node scripts/check-scaffolding-frames.js --self-test'),
+        'ci.yml に自己試験のステップが無い'
+      );
+      assert.match(
+        ci,
+        /run: node scripts\/check-scaffolding-frames\.js\s*$/m,
+        'ci.yml に本走査のステップが無い'
+      );
+    });
+
+    // 🔴 追随: 2 つの README が「裁定待ち」を**live な指示として**残していないこと（#1195 / ADR-0069）。
+    //
+    // ★ 単純な doesNotMatch は使えない。**両 README は撤回した旧文を「従前ここには…と書いてあった」
+    //   という形で引用しており**（本リポジトリ共通の作法）、字面はどちらにも残る。
+    //   見るべきは「その字面が引用の中にあるか」である。
+    const quotedAsSuperseded = (text, phrase) => {
+      const idx = text.indexOf(phrase);
+      if (idx === -1) return true; // そもそも無い（撤去済み）
+      // 直前 200 字以内に「従前」があれば、撤回した旧文の引用とみなす。
+      return /従前/.test(text.slice(Math.max(0, idx - 200), idx));
+    };
+
+    ok('#1195: 2 つの README が planning#510 の裁定待ちを live な指示として残していない', () => {
+      const plat = fsFrames.readFileSync(
+        pathFrames.join(REPO_FRAMES, 'src/platform/frontend/README.md'),
+        'utf8'
+      );
+      assert.ok(
+        quotedAsSuperseded(plat, '答えが出るまで消さない'),
+        'platform README に裁定待ちが live な指示として残っている'
+      );
+      assert.match(plat, /答えは\*\*「消す」\*\*である/, 'platform README が裁定の答えを書いていない');
+      assert.match(plat, /\(a\) 関心が無い/, 'ADR-0069 決定 3 の (a)/(b) の区別が無い');
+      assert.match(plat, /\(b\) 関心はあるが置き場所が違う/, 'ADR-0069 決定 3 の (b) が無い');
+
+      const tmpl = fsFrames.readFileSync(
+        pathFrames.join(REPO_FRAMES, 'templates/unit-template/README.md'),
+        'utf8'
+      );
+      assert.ok(
+        quotedAsSuperseded(tmpl, 'したがって裁定を待つ'),
+        '雛形 README に裁定待ちが live な指示として残っている'
+      );
+      // ツリー全体の正本を指していること（ADR-0069 §結果 悪い影響 1 / 決定 1 のフォローアップ 2）。
+      assert.match(
+        tmpl,
+        /ツリー全体の(?:像|正本)[\s\S]{0,80}13_frontend-stack/,
+        '雛形 README が計画 13_frontend-stack §ディレクトリ構成 を正本として指していない'
+      );
+      // `src/` 直下ツリーから .gitkeep の記載が消えていること（受け入れ基準 5）。
+      const tree = tmpl.slice(tmpl.indexOf('```'), tmpl.indexOf('```', tmpl.indexOf('```') + 3));
+      assert.doesNotMatch(tree, /\.gitkeep/, '雛形 README の構成図に .gitkeep の記載が残っている');
+    });
+  }
+
   // **実データは全判定 clean なので、検出力は変異でしか示せない** —— 一時ツリーで当てる。
   {
     const { spawnSync: spawnAdrNum } = require('child_process');
@@ -5629,11 +5807,17 @@ ${r.stderr}`);
     // ★ #975 で check-trace-followthrough.js を追加（範囲の diff と終端の文書を読むためクラス A）。
     const HEAD_CHECKERS = ['check-doc-updated.js', 'check-landed-subjects.js', 'check-trace-followthrough.js'];
     // ★ #956 で check-nul-bytes.js を追加（git ls-files を母集合にするためクラス B）。
-    const TRACKED_CHECKERS = ['check-cross-repo-refs.js', 'check-nul-bytes.js', 'check-plan-id-qualification.js'];
+    // ★ #1195 で check-scaffolding-frames.js を追加（同上。追跡下の .gitkeep だけを見るため）。
+    const TRACKED_CHECKERS = [
+      'check-cross-repo-refs.js',
+      'check-nul-bytes.js',
+      'check-plan-id-qualification.js',
+      'check-scaffolding-frames.js',
+    ];
     const GUARDED = [...HEAD_CHECKERS, ...TRACKED_CHECKERS];
     const readScript = (f) => fs.readFileSync(path.join(REPO, 'scripts', f), 'utf8');
 
-    ok('#683: 偽の緑を返しうる検査器が A=3 / B=3 で宣言されている', () => {
+    ok('#683: 偽の緑を返しうる検査器が A=3 / B=4 で宣言されている', () => {
       const all = fs
         .readdirSync(path.join(REPO, 'scripts'))
         .filter((f) => /\.js$/.test(f) && !/\.test\.js$/.test(f))
@@ -5658,7 +5842,7 @@ ${r.stderr}`);
       assert.deepStrictEqual(strays, [], 'クラス C の検査器に順序警告が足されている');
     });
 
-    ok('#683: 該当 6 本すべてが実際に警告を出し、終了コードを変えない', () => {
+    ok('#683: 該当 7 本すべてが実際に警告を出し、終了コードを変えない', () => {
       const probe = path.join(REPO, '.tmp-worktree-state-probe-683');
       const run = (f) =>
         spawnSync(process.execPath, [path.join(REPO, 'scripts', f)], {
@@ -5882,7 +6066,11 @@ ${r.stderr}`);
         //    「手動（実環境）」で止まっていた**）を新設したため 47 → 48（ラチェットが設計どおり発火した）。
         //    git を一切呼ばず kubectl を外部コマンドとして叩くため、TRACKED_CHECKERS / HEAD_CHECKERS の
         //    どちらにも載らない（`check-stack-ready.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 48, `検査器の母集合が 48 本から変わった（${scripts.length} 件）`);
+        // ★ #1195 / ADR-0069 決定 5 で `check-scaffolding-frames.js`（`.gitkeep` のみのディレクトリ＝
+        //    空枠の残置。**撤回済み規範の残置という 1 述語だけ**を見る。同型の入口が 3 度使われた）を
+        //    新設したため 48 → 49（ラチェットが設計どおり発火した）。**git ls-files を呼ぶので
+        //    TRACKED_CHECKERS に載る**（`check-nul-bytes.js` と同じ扱い）。
+        assert.strictEqual(scripts.length, 49, `検査器の母集合が 49 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
