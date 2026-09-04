@@ -3,15 +3,15 @@ title: 運用仕様書
 type: operations-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-03
+updated: 2026-09-04
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-04, FR-11, FR-13, FR-15, NFR-02, NFR-21, SC-01, SC-02, UC-01, UC-04, UC-07]
 adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0076]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0322, IADR-0327, IADR-0345, IADR-0354]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0322, IADR-0327, IADR-0345, IADR-0354, IADR-0368]
 specs: []
-issues: [#66, #88, #98, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #455, #532, #536, #546, #587, #665, #674, #863, #443, #438, #466, #992, #1108, #1110, #1204, planning#196]
+issues: [#66, #88, #98, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #455, #532, #536, #546, #587, #665, #674, #863, #443, #438, #466, #992, #1088, #1108, #1110, #1204, planning#196]
 -->
 
 # 運用仕様書
@@ -186,18 +186,19 @@ docker compose -f deploy/docker-compose.yml up -d
 > ローカル k8s dev 環境（`deploy/local/`＝経路B）は「k3d ＋ dev 専用 in-cluster インフラ資産で構成する」という
 > 割り切りで infra が既定 `emptyDir`（Pod 再起動で再 init）であり、本節の compose 永続化とは別レイヤ。経路B の
 > 恒久化（Keycloak realm/runtime state の保持）は #324（opt-in オーバーレイで Keycloak/Postgres を local-path PVC 化する実装 ADR）
-> で **opt-in（`PERSIST=1`）** を追加した（下記「経路B の永続化」節）。
+> で **opt-in（`PERSIST=1`）** を追加し、#1088 で**既定オン**へ返した（下記「経路B の永続化」節）。
 
-#### 経路B（ローカル k8s dev）の永続化（opt-in・非機能要件: 運用性 / #324、経路B の Qdrant／可観測性 4 種の永続化と Prometheus 保持期間 / #787）
+#### 経路B（ローカル k8s dev）の永続化（既定オン・非機能要件: 運用性 / #324、経路B の Qdrant／可観測性 4 種の永続化と Prometheus 保持期間 / #787、既定化と realm の後追い / #1088）
 
-`PERSIST=1 bash scripts/k8s-local-up.sh` で [`deploy/local/infra-persistence`](../../deploy/local/infra-persistence/)
-オーバーレイが適用され、**Keycloak（`/opt/keycloak/data`＝`start-dev` の file H2）・Postgres
+`bash scripts/k8s-local-up.sh` は**既定で** [`deploy/local/infra-persistence`](../../deploy/local/infra-persistence/)
+オーバーレイを適用し、**Keycloak（`/opt/keycloak/data`＝`start-dev` の file H2）・Postgres
 （`/var/lib/postgresql/data`）・Qdrant（`/qdrant/storage`）を `local-path` PVC で永続化**する。realm + runtime state
 （追加ユーザー・シークレット・セッション）・全アプリ DB・コレクション/ベクトルが Pod 再起動でも保持される。
 **`OBSERVABILITY=1` を併用**すると [`deploy/local/observability-persistence`](../../deploy/local/observability-persistence/)
 が素の観測 overlay を**置換**し、**Prometheus（`/prometheus`）・Loki（`/tmp/loki`）・Tempo（`/tmp/tempo`）・
 Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 config の storage パスと一致させ、config は書き換えない）。
-**既定（`PERSIST` 未設定）は従来どおり emptyDir（挙動不変・fail-safe。provisioner 不在クラスタでも Pod Pending 化しない）**。
+**opt-out は `PERSIST=0`（使い捨てスタック専用）。StorageClass `local-path` が無ければ起動器は止まる**（黙って emptyDir へは
+落とさない —— 稼働 dev クラスタが誰にも気付かれず非永続で立っていたのが #1088 である）。
 **rabbitmq/redis/otel は emptyDir 継続**（queue/cache は揮発前提・otel は stateless。**qdrant は #787 で永続化対象へ移った**）。
 
 - **Prometheus の保持期間**は `--storage.tsdb.retention.time=7d` / `--storage.tsdb.retention.size=4GB` を
@@ -222,12 +223,18 @@ Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 c
   配備先が変わったら `kubectl -n platform-infra get pvc`（有効にしたゲートの PVC が**すべて** Bound であること）と
   `curl prometheus:9090/api/v1/status/runtimeinfo` の `storageRetention` で同じ確認を行うこと。
 
-- **realm 更新の反映**（compose 側と同じ運用差分）: 永続化後は `--import-realm` が既存 realm をスキップするため、
-  `realm.json` の編集は自動反映されない。反映するには **(A 破壊的)** `keycloak-data` PVC を消して Pod 再作成で再 import
-  （`kubectl -n platform-infra delete pvc keycloak-data && kubectl -n platform-infra rollout restart deploy/keycloak`）、
-  または **(B 非破壊)** 管理コンソール / `kcadm` の partial import で当該変更のみ適用する。
-- **移行**: 途中から `PERSIST=1` に切り替えると初回は空 PVC のため realm/DB は再生成される（既存 emptyDir データは
+- **realm 更新の反映は自動**（#1088）: 永続化後は `--import-realm` が既存 realm をスキップするため、`realm.json` の編集は
+  import では届かない。`k8s-local-up.sh` は [7/7] の後に
+  [`deploy/local/keycloak-setup/reconcile-realm.sh`](../../deploy/local/keycloak-setup/README.md) を呼び、
+  **宣言と稼働 realm の差分を Job（Admin REST API）で当てる**。**realm JSON を変えたら up を再実行すれば届く**
+  （単独実行も可・冪等）。届いているかは `node scripts/check-stack-ready.js` の **G9** が見る。
+  **既存の人間の利用者と `smtpServer` は触らない**（実行時が正）。seed 利用者の宣言を変えるときだけ **破壊経路**
+  （`kubectl -n platform-infra delete pvc keycloak-data && kubectl -n platform-infra rollout restart deploy/keycloak`）を使う。
+  **Keycloak pod で `kcadm.sh` を exec しない**（本体が OOMKilled になる）。
+- **非永続で立っていた環境の移行**: up を再実行すると初回は空 PVC のため realm/DB は再生成される（既存 emptyDir データは
   元々揮発）。手順の全文は [`deploy/local/README.md`](../../deploy/local/README.md) の「永続化」節を参照。
+  非永続で立っていることは `check-stack-ready.js` の **G10** が赤くし、稼働イメージが宣言（chart / kustomize の描画結果）と
+  違うことは **G11** が赤くする。
 - **保持範囲**: 保持されるのは Pod の再起動/再作成まで。`scripts/k8s-local-down.sh` はクラスタ／`platform-infra`
   namespace を削除するため PVC も消える（`down`→`up` では realm/DB は再生成）。PVC を残すなら `down` を使わず Pod のみ再作成する。
 
@@ -243,8 +250,8 @@ Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 c
   OIDC client secret を Secret `headlamp-oidc`（`platform-infra`・dev 既定＝realm import の dev 値・`HEADLAMP_OIDC_CLIENT_SECRET`
   で上書き可）へ作成する。UI 到達は `kubectl -n platform-infra port-forward svc/headlamp 4466:80`（http://localhost:4466）。
 - **realm client**: `deploy/keycloak/microservices-platform-realm.json` の client `headlamp`（confidential）が単一情報源。
-  経路B の Keycloak は既定 `emptyDir`（Pod 再起動で realm を再 import・上記注記）のため、ConfigMap 経由で自動反映される
-  （`PERSIST=1` で永続化した場合は上記「経路B の永続化」の realm 更新反映手順に従う）。
+  経路B の Keycloak は永続化が既定で realm が残るため、realm client の変更は起動器の後段（realm の後追い Job）が
+  差分として当てる（上記「経路B の永続化」の realm 更新の反映）。
 - **認証モデル / RBAC**: OIDC token passthrough（Headlamp が利用者 id_token を API server へ委譲）。fail-safe として
   Headlamp の ServiceAccount には広域権限を与えず、OIDC ログイン無しではクラスタ可視化不可。`developer` の OIDC
   アイデンティティ `oidc:developer` に `cluster-admin` を bind する（`headlamp-developer-cluster-admin`）。

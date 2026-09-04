@@ -3,15 +3,15 @@ title: 経路B SSO 復旧 Runbook（揮発 live 設定の再適用手順）
 type: runbook
 status: active
 created: 2026-07-25
-updated: 2026-09-03
+updated: 2026-09-04
 author: claude
 ---
 <!-- trace:
 ids: [NFR-09]
 adrs: []
-iadrs: [IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363]
+iadrs: [IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363, IADR-0368]
 specs: [20260902_issue-1127_wikijs-oidc-strategy-seed, 20260903_issue-1163_tool-oidc-login-verifier]
-issues: [#328, #388, #841, #1127, #1163, AST#245]
+issues: [#328, #388, #841, #1088, #1127, #1163, AST#245]
 -->
 
 # 経路B SSO 復旧 Runbook
@@ -30,7 +30,8 @@ issues: [#328, #388, #841, #1127, #1163, AST#245]
 | `argocd` ns の `keycloak` エイリアス | クラスタ再構築 | **STEP 0 で自動**（`ARGOCD=1` が適用） |
 | `ast-secrets` の実鍵 | `k8s-local-deploy.sh` を鍵未 export で実行 | STEP 1（鍵を export して再実行） |
 
-`PERSIST=1` を維持し vault Pod を再起動していなければ、**STEP 2・3 はスキップ可**。
+永続化（既定オン。`PERSIST=0` を付けていない）のまま vault Pod を再起動していなければ、**STEP 2・3 はスキップ可**。
+realm の変更は起動器の後段（realm の後追い Job）が差分として当てるので、STEP 0 の再実行で届く。
 
 ---
 
@@ -41,8 +42,8 @@ cd <repo>
 git checkout develop && git pull --ff-only origin develop && git submodule update --init --recursive
 
 read -rs ANTHROPIC_API_KEY; export ANTHROPIC_API_KEY
-LOCALEDGE=1 ESO=1 VAULT=1 OBSERVABILITY=1 HEADLAMP=1 PERSIST=1 ARGOCD=1 \
-  bash scripts/k8s-local-up.sh
+LOCALEDGE=1 ESO=1 VAULT=1 OBSERVABILITY=1 HEADLAMP=1 ARGOCD=1 \
+  bash scripts/k8s-local-up.sh     # 永続化は既定オン（PERSIST=1 は不要。外すときだけ PERSIST=0）
 ```
 
 > `ESO=1` は `VAULT=1` 必須（未併記なら fail-fast）。この起動で ①ESO seed 投入 ②ESO 供給後の rollout

@@ -1,0 +1,67 @@
+# FR-05, NFR-09, ADR-0004 / ADR-0026, IADR-0368 (#1088 / #324):
+# realm JSON（ConfigMap keycloak-realms＝単一情報源）と稼働 realm の差分を Admin REST API で当てる Job。
+#
+# ★ kustomize には入れない。Job は immutable（spec を変えて apply できない）ため、起動器
+#   （deploy/local/keycloak-setup/reconcile-realm.sh）が毎回 delete → apply する。スクリプト本体
+#   （reconcile-realm.js）は ConfigMap keycloak-realm-reconcile として同じ起動器が --from-file で作る
+#   （テーマ ConfigMap keycloak-theme-platform と同型。root 外ファイルは kustomize が参照できない）。
+# ★ platform-infra に置く。keycloak と同じ namespace なので **エッジ・TLS・メッシュのどれにも依存しない**
+#   （メッシュ内に置くとサイドカー付き Job が完了しない）。
+# ★ Keycloak pod で kcadm.sh を exec しない。別 JVM が本体を OOMKilled にする（2026-09-02 実測）。
+# ★ RECONCILE_MODE は起動器が apply / check へ書き換える（check-stack-ready.js の G9 は check で走らせる）。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-realm-reconcile
+  namespace: platform-infra
+  labels:
+    app: keycloak-realm-reconcile
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: keycloak-realm-reconcile
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: reconcile
+          # CI（Node 22）と同じメジャー版。外部依存ゼロ（Node 標準の fetch / fs のみ）。
+          image: node:22-alpine
+          command: ["node", "/reconcile/reconcile-realm.js"]
+          env:
+            - name: KC_URL
+              value: http://keycloak:8080
+            - name: REALM_DIR
+              value: /import
+            - name: RECONCILE_MODE
+              value: "apply"
+            # 管理者名・パスワードの単一情報源は Secret keycloak-admin（deploy/local/infra/keycloak.yaml も同じ Secret を読む）。
+            - name: KC_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: username
+            - name: KC_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+          volumeMounts:
+            - name: reconcile
+              mountPath: /reconcile
+              readOnly: true
+            - name: realms
+              mountPath: /import
+              readOnly: true
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+      volumes:
+        - name: reconcile
+          configMap:
+            name: keycloak-realm-reconcile
+        - name: realms
+          configMap:
+            name: keycloak-realms

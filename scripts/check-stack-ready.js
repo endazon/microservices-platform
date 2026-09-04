@@ -71,6 +71,25 @@
  *   限り実リレーを用いてよい）で運用者が正当に実リレーを向けている状態と区別できず、正しい状態を
  *   赤にしてしまう。**dev 既定が外を向いていないこと**は静的検査（`check-realm-constraints.js`）が持つ。
  *
+ * - **G9 realm の乖離**（#1088 / [IADR-0368]）: `deploy/local/keycloak-setup/reconcile-realm.sh --check` を
+ *   走らせ、**realm JSON（宣言）と稼働 realm の差分が 0 件**であることを要求する（書き換えない）。
+ *   🔴 `--import-realm` は同名 realm が在ると黙って飛ばす（`IGNORE_EXISTING`）。永続化が既定になった
+ *   今、**realm JSON を直しても稼働 realm は変わらない**のが通常状態であり、後追い（up.sh の
+ *   reconcile。best-effort）が落ちても up は EXIT=0 で返る。同型の事故は #1115 → #1088 → 本作業の実測と
+ *   3 度目である。`realms=0` は失敗（走査が壊れている）。
+ * - **G10 永続化**（#1088 / [IADR-0368]）: `deploy/local/infra-persistence/pvcs.yaml`（と
+ *   `observability-persistence/pvcs.yaml`）が宣言する PVC を走査し、`app` ラベルと同名の Deployment が
+ *   居るなら、**その Deployment が当該 PVC を参照し、PVC が `Bound`** であることを要求する。
+ *   🔴 稼働 dev クラスタは 6 本の PVC が `Bound`/`Pending` で在るのに **どの Deployment も参照しておらず**、
+ *   誰も気付かないまま runtime state（TOTP 資格情報）が Pod 再作成のたびに消えていた。
+ *   `PERSIST=0` を明示したときだけ notice に落とす（up.sh と同じ意味の env。既定は永続を期待する）。
+ * - **G11 イメージ参照の乖離**（#1088 / [IADR-0368]）: chart（`helm template … -f values-local.yaml`）と
+ *   infra（`kubectl kustomize`）の描画結果から Deployment ごとのイメージ参照を取り、稼働 Deployment の
+ *   同名のものと**文字列で完全一致**することを要求する。稼働クラスタは PR 検証用のタグ
+ *   （`bff:issue1187` / `conversion-service:pdf-1192` …）が 7 件残ったまま develop から乖離していた
+ *   （2 回目。1 回目は 2026-07 に古いスクリプトで作られたクラスタ）。描画に無い Deployment（opt-in の
+ *   overlay 由来）は見ない。**`:latest` の中身が最新かは見ない**（記録に留める。IADR-0368 §却下した代替案）。
+ *
  * ## 列挙を持たない
  *
  * namespace は `k8s-local-up.sh` と同じ 2 つ（`platform-infra` / `microservices-platform`）だが、
@@ -128,6 +147,20 @@ const KEYCLOAK_EDGE_INGRESS = 'keycloak-edge';
 
 /** realm 宣言の在り処。realm 名はここから走査して得る。 */
 const REALM_DIR = path.join('deploy', 'keycloak');
+
+// G9 (#1088 / IADR-0368): realm の後追いを check モードで走らせる入口（書き換えない）。
+const REALM_RECONCILE_SCRIPT = path.join('deploy', 'local', 'keycloak-setup', 'reconcile-realm.sh');
+// G10: 永続化オーバーレイの PVC 宣言（走査して得る。列挙を書かない）。
+const PERSISTENCE_PVC_MANIFESTS = [
+  path.join('deploy', 'local', 'infra-persistence', 'pvcs.yaml'),
+  path.join('deploy', 'local', 'observability-persistence', 'pvcs.yaml'),
+];
+const PERSISTENCE_NS = 'platform-infra';
+// G11: 描画元（宣言）。MSP は chart ＋ values-local、infra は永続化オーバーレイ（イメージは base と同じ）。
+const CHART_DIR = path.join('deploy', 'helm', 'microservices-platform');
+const CHART_VALUES_LOCAL = path.join('deploy', 'local', 'values-local.yaml');
+const INFRA_KUSTOMIZE_DIR = path.join('deploy', 'local', 'infra-persistence');
+const MSP_NS = 'microservices-platform';
 
 // ---------------------------------------------------------------- 収集（外部依存）
 
@@ -214,7 +247,196 @@ function wikiJsApiKey() {
   return { ok: true, key, length: key.length };
 }
 
+/** G9: realm の後追いを check モードで走らせる（realm を書き換えない）。戻り値は status と標準出力。 */
+function runRealmDriftCheck(repoRoot) {
+  const r = spawnSync('bash', [REALM_RECONCILE_SCRIPT, '--check'], {
+    cwd: repoRoot, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
+    env: { ...process.env, RECONCILE_JOB_TIMEOUT: process.env.RECONCILE_JOB_TIMEOUT || '300' },
+  });
+  return { status: r.status, stdout: String(r.stdout || ''), stderr: String(r.stderr || '') };
+}
+
+/** G11: chart を values-local で描画する（`helm template`）。 */
+function renderChart(repoRoot) {
+  const r = spawnSync('helm', ['template', 'msp', CHART_DIR, '-f', CHART_VALUES_LOCAL], {
+    cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+  });
+  return r.status === 0 ? { ok: true, text: r.stdout } : { ok: false, error: (r.stderr || '').trim() };
+}
+
+/** G11: infra の kustomize を描画する。 */
+function renderInfra(repoRoot) {
+  const r = spawnSync('kubectl', ['kustomize', INFRA_KUSTOMIZE_DIR], {
+    cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+  });
+  return r.status === 0 ? { ok: true, text: r.stdout } : { ok: false, error: (r.stderr || '').trim() };
+}
+
 // ---------------------------------------------------------------- 判定（純粋関数）
+
+/**
+ * G9: reconcile の check モードの結果を判定する。**沈黙を成功と読まない** —— exit 0 でも最終行
+ * `realms=<n> drift=<m>` が読めなければ失敗、`realms=0` も失敗（走査が壊れている）。
+ */
+function evaluateRealmDrift({ status, stdout }) {
+  const failures = [];
+  const m = /realms=(\d+) drift=(\d+)/.exec(stdout || '');
+  if (!m) {
+    failures.push(
+      `[G9] realm の後追い（${REALM_RECONCILE_SCRIPT} --check）の結果行 \`realms=<n> drift=<m>\` を読めなかった` +
+        `（exit ${status}）。測れなかったことを緑にしない。出力:\n${String(stdout || '').trim().slice(-1500)}`,
+    );
+    return failures;
+  }
+  const realms = Number(m[1]);
+  const drift = Number(m[2]);
+  if (realms === 0) {
+    failures.push('[G9] realm JSON が 1 件も無い（realms=0）。走査が壊れている（0 件を緑にしない）。');
+  }
+  if (drift > 0 || status !== 0) {
+    failures.push(
+      `[G9] realm JSON（宣言）と稼働 realm の差分が ${drift} 件（exit ${status}）。` +
+        ' `--import-realm` は既存 realm を黙って飛ばす（IGNORE_EXISTING）ので、宣言を直しただけでは届かない。' +
+        ' `bash deploy/local/keycloak-setup/reconcile-realm.sh` で当てる（up.sh の後段が同じことをする）。差分:\n' +
+        String(stdout || '').split('\n').filter((l) => /\bdrift\b|deferred/.test(l)).join('\n'),
+    );
+  }
+  return failures;
+}
+
+/**
+ * G10 / G11 が読む: マニフェスト（複数ドキュメント YAML）を `---` で割る。YAML パーサは持ち込まない
+ * （k8s-local-up.test.js と同じ原則。描画結果は kubectl / helm が整形しているので正規表現で足りる）。
+ */
+function yamlDocs(text) {
+  return String(text || '').split(/^---\s*$/m).map((d) => d.trim()).filter(Boolean);
+}
+const docKind = (doc) => (/^kind:\s*(\S+)\s*$/m.exec(doc) || [])[1] || null;
+// metadata 直下の name（最初に現れる 2 スペース字下げの name）。
+const docName = (doc) => (/^metadata:\s*\n(?:\s{2,}.*\n)*?\s{2}name:\s*(\S+)\s*$/m.exec(doc) || [])[1] || null;
+
+/**
+ * G10: 永続化オーバーレイの PVC 宣言から `{ pvc, app }` を走査する（`labels: { app: x }` は flow 形）。
+ */
+function declaredPersistence(pvcYamlText) {
+  const out = [];
+  for (const doc of yamlDocs(pvcYamlText)) {
+    if (docKind(doc) !== 'PersistentVolumeClaim') continue;
+    const pvc = docName(doc);
+    const app = (/\bapp:\s*([\w.-]+)/.exec(doc) || [])[1] || null;
+    if (pvc && app) out.push({ pvc, app });
+  }
+  return out;
+}
+
+/**
+ * G10: 宣言された PVC ごとに、同名 app の Deployment が居るなら参照と Bound を要求する。**純関数**。
+ * @param {{expectPersist:boolean, declared:{pvc:string,app:string}[], deployments:object[], pvcs:object[]}} input
+ */
+function evaluatePersistence({ expectPersist, declared, deployments, pvcs }) {
+  const failures = [];
+  const notices = [];
+  if (!Array.isArray(declared) || declared.length === 0) {
+    failures.push('[G10] 永続化オーバーレイの PVC 宣言を 1 件も読めなかった。走査が壊れている（0 件を緑にしない）。');
+    return { failures, notices };
+  }
+  const deployByName = new Map((deployments || []).map((d) => [d.metadata && d.metadata.name, d]));
+  const pvcByName = new Map((pvcs || []).map((p) => [p.metadata && p.metadata.name, p]));
+  let checked = 0;
+  for (const { pvc, app } of declared) {
+    const dep = deployByName.get(app);
+    if (!dep) {
+      notices.push(`[check-stack-ready] G10: ${PERSISTENCE_NS}/${app} が無いので PVC ${pvc} は見ない（opt-in の overlay 由来）。`);
+      continue;
+    }
+    const claims = ((dep.spec && dep.spec.template && dep.spec.template.spec && dep.spec.template.spec.volumes) || [])
+      .map((v) => v.persistentVolumeClaim && v.persistentVolumeClaim.claimName)
+      .filter(Boolean);
+    const bound = pvcByName.get(pvc);
+    const phase = bound && bound.status && bound.status.phase;
+    if (!expectPersist) {
+      notices.push(
+        `[check-stack-ready] G10: PERSIST=0 の明示により ${app} の永続化は期待しない（参照=${claims.includes(pvc)} / PVC=${phase || '無し'}）。`,
+      );
+      continue;
+    }
+    checked += 1;
+    if (!claims.includes(pvc)) {
+      failures.push(
+        `[G10] ${PERSISTENCE_NS}/${app} が PVC ${pvc} を参照していない（volumes の claimName: ${claims.join(', ') || '無し'}）。` +
+          ' **非永続で立っている** —— Pod 再作成のたびに realm / DB / ベクトルが黙って消える（#1088）。' +
+          ' 永続化は既定なので、up.sh を再実行するか、使い捨てなら PERSIST=0 を明示すること。',
+      );
+      continue;
+    }
+    if (phase !== 'Bound') {
+      failures.push(
+        `[G10] ${PERSISTENCE_NS}/${app} は PVC ${pvc} を参照しているが、PVC が Bound でない（${phase || '存在しない'}）。` +
+          ' local-path は WaitForFirstConsumer なので、Pending のままなら Pod が一度も立っていない。',
+      );
+    }
+  }
+  if (expectPersist && checked === 0) {
+    failures.push('[G10] 永続化を期待したのに、宣言された PVC に対応する Deployment が 1 件も無かった（測れていない）。');
+  }
+  return { failures, notices };
+}
+
+/**
+ * G11: 描画結果（複数ドキュメント YAML）から `Deployment 名 → イメージ参照の集合` を走査する。
+ * containers と initContainers を区別しない（比較側も和集合を取る）。
+ */
+function imagesFromRendered(text) {
+  const out = {};
+  for (const doc of yamlDocs(text)) {
+    if (docKind(doc) !== 'Deployment') continue;
+    const name = docName(doc);
+    if (!name) continue;
+    const images = [...doc.matchAll(/^\s*(?:-\s+)?image:\s*"?([^"\s]+)"?\s*$/gm)].map((m) => m[1]);
+    out[name] = [...new Set(images)].sort();
+  }
+  return out;
+}
+
+/** G11: 稼働 Deployment の一覧から `名前 → イメージ参照の集合`（containers ∪ initContainers）。 */
+function imagesFromLive(items) {
+  const out = {};
+  for (const d of items || []) {
+    const spec = (d.spec && d.spec.template && d.spec.template.spec) || {};
+    const images = [...(spec.containers || []), ...(spec.initContainers || [])].map((c) => c.image).filter(Boolean);
+    out[d.metadata && d.metadata.name] = [...new Set(images)].sort();
+  }
+  return out;
+}
+
+/**
+ * G11: 描画（宣言）と稼働のイメージ参照を Deployment ごとに突き合わせる。**純関数**。
+ * 描画に無い Deployment は見ない。描画に在って稼働に無いものは失敗（宣言が配備されていない）。
+ */
+function evaluateImageDrift(ns, rendered, live) {
+  const failures = [];
+  const names = Object.keys(rendered || {});
+  if (names.length === 0) {
+    failures.push(`[G11] ${ns}: 描画結果に Deployment が 1 件も無い。走査が壊れている（0 件を緑にしない）。`);
+    return failures;
+  }
+  for (const name of names) {
+    const want = rendered[name];
+    const have = live && live[name];
+    if (!have) {
+      failures.push(`[G11] ${ns}/${name}: 宣言（描画結果）に在るのに稼働していない。`);
+      continue;
+    }
+    const same = want.length === have.length && want.every((x, i) => x === have[i]);
+    if (!same) {
+      failures.push(
+        `[G11] ${ns}/${name}: イメージ参照が宣言と違う。宣言=${want.join(', ')} / 稼働=${have.join(', ')}。` +
+          ' PR 検証用のタグや kubectl set image の残骸である。develop から焼き直して配備し直すこと（#1088）。',
+      );
+    }
+  }
+  return failures;
+}
 
 /**
  * G7 の (c) が使う locale を **WikiService の実装から**読む。
@@ -519,8 +741,8 @@ function check({ repoRoot = REPO_ROOT } = {}) {
   const failures = [];
   const notices = [];
 
-  // G3: ツール不在は失敗。抜け道は置かない。
-  for (const bin of ['kubectl', 'curl']) {
+  // G3: ツール不在は失敗。抜け道は置かない。helm / bash は G9 / G11 が使う（IADR-0368）。
+  for (const bin of ['kubectl', 'curl', 'helm', 'bash']) {
     if (!hasTool(bin)) {
       failures.push(`[G3] ${bin} が見つからない。本検査はクラスタが在ることが前提であり、抜け道は用意していない。`);
     }
@@ -529,12 +751,14 @@ function check({ repoRoot = REPO_ROOT } = {}) {
 
   // G1 / G2
   let totalDeployments = 0;
+  const liveDeployments = {}; // ns → items（G10 / G11 が再利用する）
   for (const ns of NAMESPACES) {
     const deploys = kubectlJson(['get', 'deploy', '-n', ns, '-o', 'json']);
     if (!deploys.ok) {
       failures.push(`[G1] namespace ${ns} の Deployment を取得できなかった: ${deploys.error}`);
       continue;
     }
+    liveDeployments[ns] = deploys.value.items;
     const d = evaluateDeployments(ns, deploys.value.items);
     failures.push(...d.failures);
     totalDeployments += d.total;
@@ -661,6 +885,50 @@ function check({ repoRoot = REPO_ROOT } = {}) {
         + ` / version=${version ? version[1] : '(読めなかった)'}。開発環境の送出はここで止まる（外へは出ない）。`,
       );
     }
+  }
+
+  // G9 (#1088 / IADR-0368): realm JSON（宣言）と稼働 realm の差分。check モード＝書き換えない。
+  {
+    const r = runRealmDriftCheck(repoRoot);
+    failures.push(...evaluateRealmDrift(r));
+    const m = /realms=(\d+) drift=(\d+)/.exec(r.stdout);
+    if (m) notices.push(`[check-stack-ready] G9: realm ${m[1]} 件を突き合わせ、差分 ${m[2]} 件。`);
+  }
+
+  // G10 (#1088 / IADR-0368): 永続化オーバーレイが宣言する PVC が、対応する Deployment から参照され Bound であること。
+  {
+    const declared = [];
+    for (const rel of PERSISTENCE_PVC_MANIFESTS) {
+      try {
+        declared.push(...declaredPersistence(fs.readFileSync(path.join(repoRoot, rel), 'utf8')));
+      } catch (e) {
+        failures.push(`[G10] ${rel} を読めなかった: ${e.message}`);
+      }
+    }
+    const pvcs = kubectlJson(['get', 'pvc', '-n', PERSISTENCE_NS, '-o', 'json']);
+    if (!pvcs.ok) {
+      failures.push(`[G10] ${PERSISTENCE_NS} の PVC を取得できなかった: ${pvcs.error}`);
+    } else {
+      const r = evaluatePersistence({
+        expectPersist: process.env.PERSIST !== '0',
+        declared,
+        deployments: liveDeployments[PERSISTENCE_NS] || [],
+        pvcs: pvcs.value.items,
+      });
+      failures.push(...r.failures);
+      notices.push(...r.notices);
+    }
+  }
+
+  // G11 (#1088 / IADR-0368): 宣言（描画結果）と稼働のイメージ参照が一致すること。
+  {
+    const chart = renderChart(repoRoot);
+    if (!chart.ok) failures.push(`[G11] chart を描画できなかった（helm template）: ${chart.error}`);
+    else failures.push(...evaluateImageDrift(MSP_NS, imagesFromRendered(chart.text), imagesFromLive(liveDeployments[MSP_NS] || [])));
+    const infra = renderInfra(repoRoot);
+    if (!infra.ok) failures.push(`[G11] infra を描画できなかった（kubectl kustomize）: ${infra.error}`);
+    else failures.push(...evaluateImageDrift(PERSISTENCE_NS, imagesFromRendered(infra.text), imagesFromLive(liveDeployments[PERSISTENCE_NS] || [])));
+    notices.push('[check-stack-ready] G11: 宣言（chart ＋ infra kustomize）と稼働のイメージ参照を突き合わせた。');
   }
 
   return { failures, notices, totalDeployments };
@@ -886,6 +1154,92 @@ function selfTest() {
       `捕捉用 MTA の宣言から Service 名と HTTP ポートを読めていない（${MAIL_CAPTURE_MANIFEST}）`);
   });
 
+  // ---- G9 (#1088 / IADR-0368)
+  ok('G9: drift=0 かつ exit 0 なら通る（陽性対照）', () => {
+    assert.deepStrictEqual(evaluateRealmDrift({ status: 0, stdout: 'x\nrealms=2 drift=0 applied=0\n' }), []);
+  });
+  ok('G9: 差分が 1 件でも在れば失敗になり、差分の行を名指しする', () => {
+    const f = evaluateRealmDrift({ status: 1, stdout: '    drift     client.update bff — client の差分: attributes\nrealms=2 drift=1 applied=0\n' });
+    assert.strictEqual(f.length, 1);
+    assert.ok(/client\.update bff/.test(f[0]), '差分の行が載っていない');
+  });
+  ok('G9: 結果行が読めなければ失敗（exit 0 でも沈黙を成功と読まない）', () => {
+    assert.strictEqual(evaluateRealmDrift({ status: 0, stdout: '' }).length, 1);
+    assert.strictEqual(evaluateRealmDrift({ status: 0, stdout: 'Keycloak が居ないためスキップします' }).length, 1);
+  });
+  ok('G9: realms=0 は失敗（走査が壊れている）', () => {
+    assert.ok(evaluateRealmDrift({ status: 0, stdout: 'realms=0 drift=0 applied=0' }).some((f) => /realms=0/.test(f)));
+  });
+
+  // ---- G10 (#1088 / IADR-0368)
+  const dep = (name, claims) => ({
+    metadata: { name },
+    spec: { template: { spec: { volumes: claims.map((c) => ({ name: c, persistentVolumeClaim: { claimName: c } })) } } },
+  });
+  const pvc = (name, phase) => ({ metadata: { name }, status: { phase } });
+  const declared = [{ pvc: 'keycloak-data', app: 'keycloak' }, { pvc: 'grafana-data', app: 'grafana' }];
+  ok('G10: 参照あり ＋ Bound なら通る。宣言に在って Deployment が無いもの（opt-in）は notice（陽性対照）', () => {
+    const r = evaluatePersistence({ expectPersist: true, declared, deployments: [dep('keycloak', ['keycloak-data'])], pvcs: [pvc('keycloak-data', 'Bound')] });
+    assert.deepStrictEqual(r.failures, []);
+    assert.ok(r.notices.some((s) => /grafana/.test(s)));
+  });
+  ok('G10: PVC が在っても Deployment が参照していなければ失敗（#1088 の稼働状態そのもの）', () => {
+    const r = evaluatePersistence({ expectPersist: true, declared, deployments: [dep('keycloak', [])], pvcs: [pvc('keycloak-data', 'Pending')] });
+    assert.strictEqual(r.failures.length, 1);
+    assert.ok(/参照していない/.test(r.failures[0]));
+  });
+  ok('G10: 参照していても Bound でなければ失敗', () => {
+    const r = evaluatePersistence({ expectPersist: true, declared, deployments: [dep('keycloak', ['keycloak-data'])], pvcs: [pvc('keycloak-data', 'Pending')] });
+    assert.strictEqual(r.failures.length, 1);
+    assert.ok(/Bound でない/.test(r.failures[0]));
+  });
+  ok('G10: PERSIST=0 の明示なら失敗にせず notice に落とす', () => {
+    const r = evaluatePersistence({ expectPersist: false, declared, deployments: [dep('keycloak', [])], pvcs: [] });
+    assert.deepStrictEqual(r.failures, []);
+    assert.ok(r.notices.some((s) => /PERSIST=0/.test(s)));
+  });
+  ok('G10: 宣言 0 件・対応 Deployment 0 件は失敗（測れていないことを緑にしない）', () => {
+    assert.strictEqual(evaluatePersistence({ expectPersist: true, declared: [], deployments: [], pvcs: [] }).failures.length, 1);
+    assert.strictEqual(evaluatePersistence({ expectPersist: true, declared, deployments: [], pvcs: [] }).failures.length, 1);
+  });
+  ok('G10: PVC 宣言はオーバーレイから走査して得る（pvc 名と app ラベルの対）', () => {
+    const d = [];
+    for (const rel of PERSISTENCE_PVC_MANIFESTS) d.push(...declaredPersistence(fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8')));
+    assert.ok(d.length >= 3, `PVC 宣言を読めていない（${d.length} 件）`);
+    assert.ok(d.every((x) => x.pvc && x.app), 'pvc / app の対が欠けている');
+    assert.ok(d.some((x) => x.app === 'keycloak'), 'keycloak の PVC 宣言が読めていない');
+  });
+
+  // ---- G11 (#1088 / IADR-0368)
+  const rendered = [
+    'apiVersion: apps/v1', 'kind: Deployment', 'metadata:', '  labels:', '    app: x', '  name: bff-service', 'spec:',
+    '  template:', '    spec:', '      containers:', '        - name: bff', '          image: "k3d-local/microservices-platform/bff:latest"',
+    '---', 'kind: Service', 'metadata:', '  name: bff-service', '---',
+    'kind: Deployment', 'metadata:', '  name: qdrant', 'spec:', '  template:', '    spec:', '      containers:',
+    '      - image: qdrant/qdrant:v1.18.1', '        name: qdrant',
+  ].join('\n');
+  const liveDep = (name, images) => ({ metadata: { name }, spec: { template: { spec: { containers: images.map((i) => ({ image: i })) } } } });
+  ok('G11: 描画結果から Deployment ごとのイメージ参照を走査できる（Service の name に惑わされない）', () => {
+    assert.deepStrictEqual(imagesFromRendered(rendered), {
+      'bff-service': ['k3d-local/microservices-platform/bff:latest'],
+      qdrant: ['qdrant/qdrant:v1.18.1'],
+    });
+  });
+  ok('G11: 一致すれば通る（陽性対照）', () => {
+    const live = imagesFromLive([liveDep('bff-service', ['k3d-local/microservices-platform/bff:latest']), liveDep('qdrant', ['qdrant/qdrant:v1.18.1'])]);
+    assert.deepStrictEqual(evaluateImageDrift('ns', imagesFromRendered(rendered), live), []);
+  });
+  ok('G11: PR 検証用タグ（bff:issue1187）は失敗になり、宣言と稼働の両方を名指しする', () => {
+    const live = imagesFromLive([liveDep('bff-service', ['k3d-local/microservices-platform/bff:issue1187']), liveDep('qdrant', ['qdrant/qdrant:v1.18.1'])]);
+    const f = evaluateImageDrift('ns', imagesFromRendered(rendered), live);
+    assert.strictEqual(f.length, 1);
+    assert.ok(/bff:issue1187/.test(f[0]) && /bff:latest/.test(f[0]));
+  });
+  ok('G11: 宣言に在って稼働していない Deployment は失敗。描画 0 件も失敗', () => {
+    assert.strictEqual(evaluateImageDrift('ns', imagesFromRendered(rendered), imagesFromLive([liveDep('qdrant', ['qdrant/qdrant:v1.18.1'])])).length, 1);
+    assert.strictEqual(evaluateImageDrift('ns', {}, {}).length, 1);
+  });
+
   console.log(`[check-stack-ready] self-test OK: ${n} 件`);
 }
 
@@ -913,7 +1267,7 @@ function main() {
   }
   console.log(
     `[check-stack-ready] OK: Deployment ${r.totalDeployments} 件が available で、` +
-      'エッジ・issuer・admin entrypoint・Wiki.js の初期化・捕捉用 MTA も成立している。',
+      'エッジ・issuer・admin entrypoint・Wiki.js の初期化・捕捉用 MTA・realm の一致・永続化・イメージ参照も成立している。',
   );
 }
 
@@ -929,5 +1283,11 @@ module.exports = {
   evaluatePodDnsOutput,
   evaluateWikiJs,
   wikiSyncLocale,
+  evaluateRealmDrift,
+  declaredPersistence,
+  evaluatePersistence,
+  imagesFromRendered,
+  imagesFromLive,
+  evaluateImageDrift,
   NAMESPACES,
 };

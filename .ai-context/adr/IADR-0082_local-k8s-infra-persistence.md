@@ -10,7 +10,7 @@ related_ids:
   - IADR-0210
 author: claude
 created: 2026-07-19
-updated: 2026-08-16
+updated: 2026-09-04
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0004_authz-abac.md (認証＝Keycloak)
   - planning:projects/microservices-platform/02_requirements/ (NFR 運用性・信頼性)
@@ -42,6 +42,14 @@ plan_refs:
 (3) kustomize での volume 差し替え方法、(4) realm import 冪等性と更新反映手順。
 
 ## 決定
+
+> ［2026-09-04 追記 / #1088］ **決定 1（opt-in）は [IADR-0368](./IADR-0368_persist-by-default-and-realm-reconcile-job.md)
+> 決定 1 が置換した。永続化は既定オン、opt-out は `PERSIST=0`、StorageClass 不在は止める。**
+> 本決定の根拠「provisioner 不在クラスタで Pod が Pending になる」は、起動器が受け付けるランタイム
+> （Rancher Desktop 内蔵 k3s / k3d）がどちらも `local-path` を同梱するため成り立たず、その fail-safe が守った環境は
+> 実在しなかった。代償は稼働 dev クラスタが誰にも気付かれず非永続で立っていたこと（#1088）。
+> 決定 2〜4 は生きている。決定 4 の「realm 更新の反映」は IADR-0368 決定 2（起動器の後段で Job が差分を当てる）が
+> 既定の経路になり、本決定の破壊的経路（PVC を消して再 import）は seed 利用者の宣言を変えるときの手順として残る。
 
 ### 1. opt-in kustomize オーバーレイ（`PERSIST=1`）で有効化し、既定は現行 emptyDir を不変に保つ
 
