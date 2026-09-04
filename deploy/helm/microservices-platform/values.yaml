@@ -550,6 +550,13 @@ services:
     image: microservices-platform/mcp-service
     tag: latest
     port: 8080
+    # FR-16, FR-05, SC-12, ADR-0062 決定 3 (#1185): 無人アカウントへ渡す機密区分・タグが
+    # 登録者の集合の部分集合かを判定するため、登録者の ABAC 属性と認可スコープをここから解決する。
+    # graph と同じ落とし穴を踏まないように明示する —— **不達でも 5xx にならず deny 側へ縮退する**
+    # （属性の割当だけが通らなくなる）ため、状態コードにも出ず live で気付けない。
+    extraEnv:
+      - name: Services__AuthorizationService
+        value: "http://authorization-service:8080"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }

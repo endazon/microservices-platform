@@ -830,6 +830,14 @@ services:
       Mcp__Services__document-service: http://document-service:8080
       Mcp__Services__retrieval-service: http://retrieval-service:8080
       Mcp__Services__graph-service: http://graph-service:8080
+      # FR-16, SC-12, ADR-0062 決定 3 (#1185): 無人アカウントの属性が登録者の集合の部分集合かを
+      # 判定するために、登録者の ABAC 属性と認可スコープを認可サービスから解決する。
+      # 上と同じ理由で明示する（既定へ黙って寄りかからない）。authorization-service が開けているのは
+      # :8080 だけであり、コード既定の :5005 は古い（他サービスの同キーと同じ落とし穴）。
+      Services__AuthorizationService: http://authorization-service:8080
+    # 🔴 認可サービスは `depends_on` へ足さない。判定は deny 側へ倒れる（解決できなければ属性を
+    # 配らない）ので起動順を強制する必要が無く、強制すると自己申告の収集先 3 サービスと扱いが
+    # 食い違う（それらも `depends_on` に無い）。
     depends_on:
       postgres:
         condition: service_healthy
