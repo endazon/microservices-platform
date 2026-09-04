@@ -16,7 +16,7 @@ related_ids:
   - IADR-0371
 author: claude
 created: 2026-09-04
-updated: 2026-09-04
+updated: 2026-09-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (Accepted 2026-07-25) 決定・選定基準 3
   - planning:projects/microservices-platform/07_adr/ADR-0041_result-type-external-library.md (Accepted 2026-08-22) 決定 1・2・3・4
@@ -284,11 +284,15 @@ $ REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js → ✓ 705 tests passed
 1. **`check-coverage-floor` の素実行試験が落ちた。** 同試験は「作業ツリーにレポートが 1 件だけ」を
    前提にフィクスチャを置くため、**自分の `--collect:"XPlat Code Coverage"` が残した 19 件の
    `src/**/TestResults/`** がそのまま偽の赤になる。撤去してから走らせた。
-2. **`check-adr-numbering` が `IADR-0369` / `IADR-0370` の欠番で落ちる。** 並行セッションが
-   確保している番号であり**想定内**（本 IADR は `IADR-0371` を仮に採り、マージ時に改番される）。
-   ただし `scripts.test.js` はここで**中断する**ため、その後ろの試験が走らない。
+2. **`check-adr-numbering` が `IADR-0369` / `IADR-0370` の欠番で落ちた（当時）。** 並行セッションが
+   確保していた番号である。`scripts.test.js` はここで**中断する**ため、その後ろの試験が走らなかった。
    **一時的に `0369` へ改番して全量を走らせ（705 件緑）、その後 `0371` へ戻した。**
-   欠番の赤だけが残る状態であることを実測で確かめている。
+
+   ［2026-09-05 追記 / #1064］**欠番は解消した。** PR を出した後に `origin/develop` を取り込んだところ、
+   `IADR-0369`（#1227）と `IADR-0370`（#1228）が着地しており、**`0371` がそのまま連番の次になった**。
+   取り込み後の実測は `check-adr-numbering` **EXIT=0**（重複・欠番なし、索引とも双方向で一致し昇順）である。
+   衝突したのは `.ai-context/adr/README.md` の**索引末尾 1 箇所だけ**で、双方とも append であったため
+   develop 側（0369 / 0370）→ 本ブランチ側（0371）の順に並べて昇順を保った。
 
 ### 7.3 変異試験（2 本とも実際に走らせた）
 
@@ -341,5 +345,6 @@ obj/Debug/net10.0/Riok.Mapperly/Riok.Mapperly.MapperGenerator/FeedbackMapper.g.c
 - **`Error` → ProblemDetails の共通変換**は応答本文の変更を伴うため、計画側の確認が要る。
 - **`DataSourceService.ToResponse` は匿名型を返すため Mapperly の対象外**である。先に DTO を起こすか、
   射程外として理由を残すかを #1230 で決める。
-- 🔴 **`check-adr-numbering.js` は `IADR-0369` / `IADR-0370` の欠番で赤のままである**（並行セッションが
-  確保している番号。マージ時に改番される）。**本 PR の変更に起因する赤ではない。**
+- ~~`check-adr-numbering.js` は `IADR-0369` / `IADR-0370` の欠番で赤のままである。~~
+  **［2026-09-05 追記 / #1064］解消した。** `origin/develop` の取り込みで両番号が着地し、
+  `IADR-0371` は改番せずそのまま連番の次になった（§7.2 の 2 を参照）。

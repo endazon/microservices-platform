@@ -3,7 +3,7 @@ title: 技術要件書
 type: tech-requirements
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-04
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:

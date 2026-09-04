@@ -15,7 +15,7 @@ related_ids:
   - IADR-0282
 author: claude
 created: 2026-09-04
-updated: 2026-09-04
+updated: 2026-09-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (Accepted 2026-07-25) 決定・選定基準 3・4
   - planning:projects/microservices-platform/07_adr/ADR-0041_result-type-external-library.md (Accepted 2026-08-22) 決定 2・3
