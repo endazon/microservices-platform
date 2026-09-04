@@ -1,6 +1,8 @@
 using DashboardService.Domain;
 using DashboardService.Infrastructure.Persistence;
+using FluentValidation;
 using Knowledge.Contracts.Dtos;
+using Platform.Shared.Kernel;
 
 namespace DashboardService.Features.Dashboard.RecordEvent;
 
@@ -15,12 +17,21 @@ internal static class RecordUsageEventEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
     {
-        g.MapPost("/events", async (UsageEventRequest req, DashboardDbContext db,
-            CancellationToken ct) =>
+        g.MapPost("/events", async (UsageEventRequest req, IValidator<UsageEventRequest> validator,
+            DashboardDbContext db, CancellationToken ct) =>
         {
-            // バリデーション（入力規則）
-            if (!UsageEventType.IsValid(req.EventType))
-                return Results.BadRequest(new { error = "eventType must be 'search' or 'answer'" });
+            // FR-10 / IADR-0371 決定 2・4 / IADR-0376: 入力検証（FluentValidation）の失敗を
+            // Kernel の `Result` で表し、**HTTP への写像は 1 度だけ行う**
+            // （計画 ADR-0030 §決定「ProblemDetails 変換は API 層」/ ADR-0041 §結果）。
+            // 返す状態コードも本文も移送前と変わらない。
+            var gate = Validate(validator, req);
+            if (gate.IsFailure)
+            {
+                // ErrorKind で HTTP を決める。**分岐は 1 箇所に閉じる。**
+                return gate.Error.Kind == ErrorKind.Validation
+                    ? Results.BadRequest(new { error = gate.Error.Message })
+                    : Results.StatusCode(StatusCodes.Status500InternalServerError);
+            }
 
             var type = UsageEventType.Normalize(req.EventType);
             // 検索語は種別が search のときのみ意味を持つ（answer では保持しない）。
@@ -31,6 +42,18 @@ internal static class RecordUsageEventEndpoint
             await db.SaveChangesAsync(ct);
             return Results.Created($"/dashboard/events/{ev.Id}", new { ev.Id });
         }).WithName("RecordUsageEvent").RequireAuthorization().Produces(StatusCodes.Status201Created);
+    }
+
+    // FR-10 / IADR-0371 決定 2: 入力規則の判定。**規則そのものは `RecordUsageEventValidator` が持つ。**
+    //
+    // 🔴 **`Errors[0]` を採る。** FluentValidation は既定で全規則を走らせるため、
+    // 移送前の「最初の違反で 400 を返す」と同じ本文にするには最初の失敗を採るしかない。
+    private static Result Validate(IValidator<UsageEventRequest> validator, UsageEventRequest req)
+    {
+        var result = validator.Validate(req);
+        return result.IsValid
+            ? Result.Success()
+            : Result.Failure(Error.Validation("dashboard.event.invalid", result.Errors[0].ErrorMessage));
     }
 
     // 検索語の集計キーを安定させるため、前後空白を除去し小文字化する（空は null 扱い）。

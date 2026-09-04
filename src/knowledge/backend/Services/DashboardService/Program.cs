@@ -1,7 +1,11 @@
 using DashboardService.Features.Dashboard;
 using DashboardService.Features.Dashboard.PurgeExpired;
+using DashboardService.Features.Dashboard.RecordEvent;
 using DashboardService.Features.KnowledgeHealth;
+using DashboardService.Features.KnowledgeHealth.Report;
 using DashboardService.Infrastructure.Persistence;
+using FluentValidation;
+using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
@@ -58,6 +62,13 @@ builder.Services.AddHostedService<UsageRetentionHostedService>();
 // FR-10, FR-17, FR-18, SC-10, ADR-0004 (#443): ナレッジ健全性指標の閲覧を監査ログに残す
 // （計画 §ナレッジ健全性の指標「閲覧は監査ログに記録する」）。
 builder.Services.AddSingleton<IAuditLogger, AuditLogger>();
+
+// FR-10, FR-17, FR-18, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0376:
+// 端点の入力検証。**アセンブリ走査（AddValidatorsFromAssembly）は使わない** —— 登録が暗黙になり、
+// 検証器を消しても起動時には何も起きず、端点が黙って無検証になるためである。
+// 1 行 1 検証器の明示登録なら、消したときにコンパイルか DI 解決で止まる。
+builder.Services.AddScoped<IValidator<UsageEventRequest>, RecordUsageEventValidator>();
+builder.Services.AddScoped<IValidator<KnowledgeHealthReportRequest>, ReportKnowledgeHealthValidator>();
 
 var app = builder.Build();
 
