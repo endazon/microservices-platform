@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR, SC-13, ADR-0005, ADR-0021, ADR-0026, ADR-0032, IADR-0066, IADR-0076, IADR-0103, IADR-0227, IADR-0251, IADR-0273, IADR-0307, IADR-0317, IADR-0327]
 author: claude
 created: 2026-09-02
-updated: 2026-09-02
+updated: 2026-09-04
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md
   - planning:projects/microservices-platform/07_adr/ADR-0026_security-requirements.md
@@ -126,6 +126,11 @@ Keycloak に truststore を積む必要が無く、**Keycloak を再起動しな
   - `platform-infra` をメッシュへ入れる恒久像（選択肢 C）。本件の射程外。
   - #1088（PERSIST=1 で立っていない）が解決しても、決定 3 の後追いは引き続き要る
     （`IGNORE_EXISTING` は永続化とは別の問題である）。
+
+> ［2026-09-04 追記 / #1088］ **決定 3 は [IADR-0369](./IADR-0369_persist-by-default-and-realm-reconcile-job.md) 決定 2 が置換した。**
+> `reconcile-backchannel-logout.sh`（pod 内 `kcadm.sh` の exec）は撤去した —— 別 JVM が Keycloak 本体を
+> OOMKilled にする（2026-09-02 実測）。`backchannel.logout.url` は client の属性として、宣言全体の差分を
+> 当てる Job（`deploy/local/keycloak-setup/reconcile-realm.sh`）が引き続き当てる。決定 1・2・4 は生きている。
 
 ## 関連
 

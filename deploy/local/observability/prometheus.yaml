@@ -21,7 +21,7 @@ data:
       - job_name: otel-collector
         static_configs:
           - targets: ['otel-collector:8888']
-  # compose（deploy/prometheus/alerts.yml）と同一の全 6 ルールを inline する（follow-up の
+  # compose（deploy/prometheus/alerts.yml）と同一の全 9 ルールを inline する（follow-up の
   # コメントアウト例＝exporter 依存は compose 同様に除く）。
   # 🔴 メトリクス名・ラベル・単位を変えるときは compose 側と**同時に**直す。式の検証手順と
   #    「陽性対照を対で置く」規律は deploy/prometheus/alerts.yml の冒頭に書いてある（#1110）。
@@ -82,6 +82,33 @@ data:
             annotations:
               summary: "RAG 応答完了 p95 が 5s 超（傾向の観察。NFR-02 の判定ではない）"
               description: "AiAnalysisService /analysis/ask（一括経路）の応答完了 p95 が 5s を 10 分継続で超過。NFR-02 の初回応答 SLO は RagFirstTokenP95High が判定する。"
+      # ADR-0076 決定 3 (#1202): **評価対象そのものの不在**。上の ServiceRequestMetricsAbsent は
+      # 「直近まで受信していたのに途絶した」だけを拾い、**系列が消えると式が空になって発火しない**。
+      # 対象は無風が 5 分より短い経路だけ（/analysis/ask 系は対象外。決定 4 の合成監視待ち）。
+      # 検知までは最大およそ 10 分（absent の 5 分 lookback ＋ for: 5m）。理由は compose 側の冒頭が正本。
+      - name: platform-slo-evaluation-target
+        rules:
+          - alert: OtelCollectorUpSeriesAbsent
+            expr: absent(up{job="otel-collector"})
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: 'SLO の評価対象が無い: up{job="otel-collector"} の系列が存在しない'
+              description: "otel-collector の scrape 対象が設定から失われている疑い。OtelCollectorDown は空ベクタになり発火しない。"
+          - alert: HttpServerMetricsSeriesAbsent
+            expr: absent(http_server_request_duration_seconds_count)
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "SLO の評価対象が無い: http_server_request_duration_seconds_count の系列が 1 つも存在しない"
+              description: "全サービスの HTTP メトリクスが無い。転送経路の断、またはメトリクス名・単位の規約変更の疑い（#1110 の再発）。"
+          - alert: SearchLatencySeriesAbsent
+            expr: absent(http_server_request_duration_seconds_bucket{job="microservices-platform.retrieval-service"})
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "SLO の評価対象が無い: retrieval-service のレイテンシ分布が存在しない"
+              description: "RetrievalService のレイテンシ分布が無い。SearchLatencyP95High は空ベクタになり発火しない。"
 ---
 apiVersion: apps/v1
 kind: Deployment
