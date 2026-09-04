@@ -90,8 +90,12 @@ public static class CompleteEndpoint
                         // ADR-0038 決定 6: 発火を可観測にする。メトリクスは llm.result=fallback（llm.model は
                         // 見送った候補）、ログには遷移と上流ステータスを残す。**利用者由来の purpose は
                         // 載せない**（設定由来のモデル名・エンドポイント名だけを載せ、ログ行偽造の経路を作らない）。
+                        // IADR-0374 (#1091): 見送った試行に対して上流が返したものも軸として残す。
+                        // 発火は 400 系に限り 429 を除くため、この行の値は構成上 client_error に限られる
+                        // （系列は増えない）。「この試行に上流が何を返したか」を全行で真にしておく。
                         metrics.RecordCompletion(
-                            LlmCompletionMetrics.ResultFallback, null, attempt, purpose, sensitivity);
+                            LlmCompletionMetrics.ResultFallback, null, attempt, purpose, sensitivity,
+                            failure: ex);
                         logger.LogWarning(ex,
                             "LLM falling back at endpoint {Endpoint}: {FromModel} -> {ToModel} (upstream status {Status})",
                             attempt.EndpointName, attempt.Model, chain[attemptIndex + 1],
@@ -100,10 +104,14 @@ public static class CompleteEndpoint
                     }
 
                     // 呼び出し先が不調な場合も 500 を伝播させず、縮退可能な応答を返す。
-                    logger.LogError(ex, "LLM call failed at endpoint {Endpoint} ({Model})",
-                        attempt.EndpointName, attempt.Model);
+                    // IADR-0374 (#1091): **429 が来るのはここである。** 従前この経路は上流ステータスを
+                    // ログにもメトリクスにも残しておらず、429 と 5xx・通信断が upstream_error の一点へ
+                    // 潰れていた（フォールバックした側だけが観測できるという非対称）。両方へ残す。
+                    logger.LogError(ex, "LLM call failed at endpoint {Endpoint} ({Model}) (upstream status {Status})",
+                        attempt.EndpointName, attempt.Model, LlmFallbackPolicy.StatusCodeOf(ex));
                     metrics.RecordCompletion(
-                        LlmCompletionMetrics.ResultUpstreamError, null, attempt, purpose, sensitivity);
+                        LlmCompletionMetrics.ResultUpstreamError, null, attempt, purpose, sensitivity,
+                        failure: ex);
                     return Results.Ok(new CompletionApiResponse(
                         Text: $"呼び出し先 {attempt.EndpointName} が現在利用できません。",
                         Model: attempt.Model ?? string.Empty, InputTokens: 0, OutputTokens: 0,
