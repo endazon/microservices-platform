@@ -8,7 +8,10 @@
 # 機密の上書きは環境変数で: PG_PASSWORD / RABBITMQ_PASSWORD / KEYCLOAK_ADMIN_PASSWORD /
 #   MINIO_ACCESS_KEY / MINIO_SECRET_KEY / WIKIJS_DB_PASSWORD / WIKIJS_SYNC_APIKEY / ANTHROPIC_API_KEY /
 #   RABBITMQ_USER（#1022。helm の global.messaging.user と揃えること）/
-#   WIKIJS_OIDC_CLIENT_SECRET（#1127。WIKIJS_OIDC=1 のときだけ使う。realm の wiki-js client と揃えること）
+#   WIKIJS_OIDC_CLIENT_SECRET（#1127。WIKIJS_OIDC=1 のときだけ使う。realm の wiki-js client と揃えること）/
+#   KEYCLOAK_ADMIN_USER（IADR-0369。既定 admin。Keycloak と realm 後追い Job が同じ Secret から読む）
+# 永続化（Keycloak/Postgres/Qdrant ＋ OBSERVABILITY=1 の可観測性 4 種の PVC）は **既定オン**（IADR-0369 / #1088）。
+#   使い捨てスタックでだけ PERSIST=0 で外す。
 set -euo pipefail
 
 CLUSTER="${1:-msp-ast-dev}"
@@ -94,7 +97,10 @@ apply_secret "$INFRA_NS" postgres        "password=${PG_PASSWORD:-postgres}"
 # ⚠️ RABBITMQ_USER を変えるときは helm の global.messaging.user も併せて上書きすること
 #    （app 側の接続文字列は chart が組む）。AST chart は自前の guest:guest を持つ（#1022 §申し送り）。
 apply_secret "$INFRA_NS" rabbitmq        "username=${RABBITMQ_USER:-guest}" "password=${RABBITMQ_PASSWORD:-guest}"
-apply_secret "$INFRA_NS" keycloak-admin  "password=${KEYCLOAK_ADMIN_PASSWORD:-admin}"
+# IADR-0369 (#1088): 管理者名も Secret に持つ。deploy/local/infra/keycloak.yaml（KEYCLOAK_ADMIN）と
+# realm 後追い Job（deploy/local/keycloak-setup/realm-reconcile-job.yaml の KC_ADMIN_USER）が同じキーを読む
+# ＝管理者名の単一情報源。ESO の externalsecret-keycloak-admin.yaml は Merge なので password だけ供給しても壊れない。
+apply_secret "$INFRA_NS" keycloak-admin  "username=${KEYCLOAK_ADMIN_USER:-admin}" "password=${KEYCLOAK_ADMIN_PASSWORD:-admin}"
 
 # Keycloak realm import 用 ConfigMap（実 realm ファイル＝単一情報源）。
 # AST realm（submodule）が存在すれば同一 Keycloak へ併せて import する（MSP+AST 連結）。
@@ -121,13 +127,26 @@ kubectl create configmap keycloak-theme-platform -n "$INFRA_NS" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 echo "==> [4/7] apply in-cluster infra"
-# IADR-0082 (#324) / IADR-0210 (#787): PERSIST=1 で永続化オーバーレイ（Keycloak/Postgres/Qdrant を
-# local-path PVC 化）を選ぶ。
-# 既定（未設定）は base（emptyDir）＝従来挙動不変・fail-safe（provisioner 不在クラスタで Pod Pending 化させない）。
-INFRA_KUSTOMIZE="deploy/local/infra"
-if [ "${PERSIST:-}" = "1" ]; then
-  INFRA_KUSTOMIZE="deploy/local/infra-persistence"
-  echo "    [PERSIST=1] Keycloak(realm+runtime state)/Postgres/Qdrant(embeddings) を PVC 永続化（local-path）"
+# IADR-0082 (#324) / IADR-0210 (#787) → IADR-0369 (#1088): 永続化オーバーレイ（Keycloak/Postgres/Qdrant を
+# local-path PVC 化）は **既定オン**である。opt-out は `PERSIST=0`（使い捨てスタック専用）。
+#
+# 🔴 IADR-0082 決定 1 は「provisioner 不在クラスタで Pod が Pending になる」を理由に opt-in を選んだが、
+#    本スクリプトが受け付けるランタイム（Rancher Desktop 内蔵 k3s / k3d）はどちらも local-path を同梱する。
+#    その fail-safe が守った環境は実在せず、代わりに**常用クラスタが誰にも気付かれず非永続で立っていた**
+#    （#1088。TOTP 資格情報が Pod 再作成で消え、#1114 の実測が代替に倒れた）。既定を永続へ返す。
+# 🔴 黙って emptyDir へ落とさない。StorageClass が無ければ止める —— 「非永続で立っている」ことに気付けないのが
+#    #1088 の本体であり、静かな fallback はそれを作り直すことになる。
+INFRA_KUSTOMIZE="deploy/local/infra-persistence"
+if [ "${PERSIST:-1}" = "0" ]; then
+  INFRA_KUSTOMIZE="deploy/local/infra"
+  echo "    [PERSIST=0] 永続化オーバーレイを外す（emptyDir。使い捨てスタック専用）"
+else
+  if ! kubectl get storageclass local-path >/dev/null 2>&1; then
+    echo "ERROR: StorageClass 'local-path' が無く、永続化オーバーレイ（既定）を当てられません。" >&2
+    echo "       provisioner を入れるか、使い捨てなら PERSIST=0 を明示してください（黙って非永続にはしない・#1088）。" >&2
+    exit 1
+  fi
+  echo "    [PERSIST 既定] Keycloak(realm+runtime state)/Postgres/Qdrant(embeddings) を PVC 永続化（local-path）"
 fi
 kubectl apply -k "$INFRA_KUSTOMIZE"
 echo "    waiting for infra to become Ready..."
@@ -283,7 +302,13 @@ helm upgrade --install msp deploy/helm/microservices-platform \
 if [ "${ISTIO:-}" = "1" ]; then
   echo "==> [opt-in] Istio sidecar injection (rollout restart)"
   kubectl -n "$MSP_NS" rollout restart deployment
-  kubectl -n "$MSP_NS" rollout status deployment --timeout=10m
+  # #1088 実測（空の namespace から ISTIO=1 ＋ ESO=1 で立てたとき）: ESO が供給する Secret（postgres-app /
+  # rabbitmq-app / bff-oidc / identity-admin-oidc …）は**この後**の ESO ブロックで初めて作られるため、ここで
+  # Pod の Ready を待つと CreateContainerConfigError のまま 10 分待って up 全体が落ちる。既存クラスタへの
+  # 再実行（Secret が残っている）では表面化しなかった。待ちは best-effort にし、**fail-closed の門は
+  # check-stack-ready.js の G1**（Deployment の available と Pod の Ready）に置く。
+  kubectl -n "$MSP_NS" rollout status deployment --timeout="${ISTIO_ROLLOUT_TIMEOUT:-10m}" \
+    || echo "    WARN: サイドカー注入後の rollout が期限内に Ready にならない（ESO=1 なら Secret 供給後に Ready になる。判定は check-stack-ready.js の G1）" >&2
   echo "    注入の確認: kubectl -n $MSP_NS get pods -o custom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name"
 fi
 
@@ -293,13 +318,15 @@ kubectl apply -f deploy/local/aliases/microservices-platform-externalnames.yaml
 # 素のサービス名 `bff-service` で叩けるようにする。理由はファイル冒頭の注記を参照。
 kubectl apply -f deploy/local/aliases/platform-infra-externalnames.yaml
 
-# NFR, SC-13, ADR-0026/ADR-0032, IADR-0273 (#1115): realm の `backchannel.logout.url` を稼働 realm へ当てる。
-# 🔴 **`--import-realm` は既存 realm があると黙って飛ばす（IGNORE_EXISTING）。realm JSON を直しても
-#    既存クラスタには届かない。** Wiki.js の bootstrap（IADR-0327）と同型の冪等な後追いで面倒を見る。
-# best-effort: 失敗しても up 全体は止めない（再実行は冪等）。
-echo "==> Keycloak realm の runtime 追随（バックチャネルログアウトの宛先 / 冪等）"
-bash "$ROOT/deploy/local/keycloak-setup/reconcile-backchannel-logout.sh" \
-  || echo "    WARN: realm の追随に失敗（best-effort）。bash deploy/local/keycloak-setup/reconcile-backchannel-logout.sh で再実行できる" >&2
+# FR-05, NFR-09, ADR-0004/ADR-0026, IADR-0369 (#1088 / #324): realm JSON の差分を稼働 realm へ当てる。
+# 🔴 **`--import-realm` は既存 realm があると黙って飛ばす（IGNORE_EXISTING）。永続化（既定）で realm が
+#    PVC に残るようになった瞬間から、realm JSON を直しても稼働 realm は変わらない。** ここが唯一の反映経路である
+#    （旧 reconcile-backchannel-logout.sh の 1 値だけの後追い（IADR-0336 決定 3）を、宣言全体の差分へ一般化した）。
+# 🔴 pod 内で kcadm.sh を exec しない（本体が OOMKilled になる）。同じ namespace の Job が Admin REST API を叩く。
+# best-effort: 失敗しても up 全体は止めない（再実行は冪等）。**fail-closed の門は check-stack-ready.js の G9。**
+echo "==> Keycloak realm の追随（宣言との差分を Job で当てる / 冪等 / IADR-0369）"
+bash "$ROOT/deploy/local/keycloak-setup/reconcile-realm.sh" \
+  || echo "    WARN: realm の追随に失敗（best-effort）。bash deploy/local/keycloak-setup/reconcile-realm.sh で再実行できる" >&2
 
 # ADR-0006, IADR-0077 (AST#24): opt-in オーバーレイ（既定オフ・fail-safe）。
 # 既定（env 未設定）では以下は一切実行されず、上記 [1/7]..[7/7] の挙動は不変。
@@ -313,13 +340,14 @@ if [ "${OBSERVABILITY:-}" = "1" ]; then
     apply_secret "$INFRA_NS" grafana-oidc \
       "client-secret=${GRAFANA_OIDC_CLIENT_SECRET:-grafana-dev-secret-change-me}"
   fi
-  # IADR-0210 (#787): PERSIST=1 なら可観測性側も永続化オーバーレイを選ぶ（INFRA_KUSTOMIZE と同型）。
-  # **PERSIST=1 かつ OBSERVABILITY=1 のときだけ効く**（PERSIST 単独ではスタック自体が立たない）。
-  # 既定（PERSIST 未設定）は base ＝従来挙動不変・fail-safe（provisioner 不在クラスタで Pod Pending 化させない）。
-  OBS_KUSTOMIZE="deploy/local/observability"
-  if [ "${PERSIST:-}" = "1" ]; then
-    OBS_KUSTOMIZE="deploy/local/observability-persistence"
-    echo "    [PERSIST=1] Prometheus/Loki/Tempo/Grafana を PVC 永続化（local-path）"
+  # IADR-0210 (#787) → IADR-0369 (#1088): 可観測性側も永続化オーバーレイが**既定**（INFRA_KUSTOMIZE と同じ意味論）。
+  # **OBSERVABILITY=1 のときだけ効く**（永続化単独ではスタック自体が立たない）。opt-out は PERSIST=0。
+  OBS_KUSTOMIZE="deploy/local/observability-persistence"
+  if [ "${PERSIST:-1}" = "0" ]; then
+    OBS_KUSTOMIZE="deploy/local/observability"
+    echo "    [PERSIST=0] 可観測性 4 種も emptyDir（使い捨てスタック専用）"
+  else
+    echo "    [PERSIST 既定] Prometheus/Loki/Tempo/Grafana を PVC 永続化（local-path）"
   fi
   kubectl apply -k "$OBS_KUSTOMIZE"
   # otel-collector を forwarding 構成（debug-only から切替）へ反映。
