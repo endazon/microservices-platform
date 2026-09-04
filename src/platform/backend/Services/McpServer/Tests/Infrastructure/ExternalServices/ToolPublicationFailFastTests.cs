@@ -62,6 +62,34 @@ public class ToolPublicationFailFastTests : IDisposable
         finished.Should().NotBeSameAs(run, "構成が正しい限り常駐処理は落ちない");
     }
 
+    // 🔴 FR-16 (#1190), AST/ADR-0032 決定 2 (3): **「CI のスキーマ検証で弾く」の実体はここである。**
+    // 割当禁止を検証関数へ書いても、**公開構成 JSON の `service_account_attributes` が
+    // 検証まで届いていなければ**構成は素通りする（デシリアライズの形と検証の呼び出しは別の主張）。
+    // 実ファイルを読ませて、起動が止まることで固定する。
+    [Fact]
+    public void 制限プロジェクトを割り当てた公開構成は読み込みで例外になる()
+    {
+        const string json =
+            """{"version":"v1","tools":[],"service_account_attributes":{"batch-agent":{"projects":"ai-stock-trading"}}}""";
+
+        var act = () => LoaderFor(WriteConfig(json)).Load();
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*ai-stock-trading*");
+    }
+
+    // FR-16 (#1190・陽性対照): 制限外のプロジェクト属性を割り当てた構成は読み込める。
+    // これが無いと「`service_account_attributes` があれば必ず落ちる実装」と区別できない。
+    [Fact]
+    public void 制限外のプロジェクトを割り当てた公開構成は読み込める()
+    {
+        const string json =
+            """{"version":"v1","tools":[],"service_account_attributes":{"batch-agent":{"projects":"knowledge-base"}}}""";
+
+        var config = LoaderFor(WriteConfig(json)).Load();
+
+        config.ServiceAccountAttributes.Should().ContainKey("batch-agent");
+    }
+
     // FR-16 (#445): 構成ファイルが無い場合は落ちない（既定は非公開＝空で起動してよい）。
     // 「壊れている」と「まだ何も公開していない」を取り違えると、公開前の環境が起動できなくなる。
     [Fact]

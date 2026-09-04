@@ -131,4 +131,97 @@ public class ServiceAccountDocumentFilterTests
 
         Filter.Apply(ServiceAccount(), new McpToolResult([doc], 1)).Documents.Should().BeEmpty();
     }
+
+    // --- #1190 / AST/ADR-0032 決定 2・決定 3: MCP から外すプロジェクトの一律除外 -----------
+    //
+    // 🔴 **属性を付けるだけでは弾かれない。** 基盤の ABAC の具体判定規則に `project` は無く、
+    // サービスアカウントへの割当を禁止しても到達可否は変わらない。効くのは本フィルタである。
+
+    private static McpToolDocument AstDoc(string id = "doc-ast") =>
+        new(id, "取引報告書", new Dictionary<string, string>
+        {
+            ["project"] = "ai-stock-trading",
+            ["doc_scope"] = "organization",
+            ["confidentiality"] = "internal"
+        }, Body: "AST の判断根拠");
+
+    private static McpToolDocument OtherProjectDoc(string id = "doc-other") =>
+        new(id, "別プロジェクトの文書", new Dictionary<string, string>
+        {
+            ["project"] = "knowledge-base",
+            ["doc_scope"] = "organization"
+        }, Body: "別プロジェクトの本文");
+
+    // FR-16 (#1190・否定形): サービスアカウント実行では制限プロジェクトの文書が返らない。
+    [Fact]
+    public void サービスアカウント実行では制限プロジェクトの文書が返らない()
+    {
+        var result = new McpToolResult([AstDoc(), OrganizationDoc()], TotalCount: 2);
+
+        var filtered = Filter.Apply(ServiceAccount(), result);
+
+        filtered.Documents.Should().ContainSingle().Which.DocumentId.Should().Be("doc-org");
+    }
+
+    // FR-16 (#1190・否定形): 除外した文書は**件数にも含まれない**（ADR-0034 決定 2・4 の存在秘匿）。
+    [Fact]
+    public void 除外した制限プロジェクトの文書は件数にも含まれない()
+    {
+        var result = new McpToolResult(
+            [AstDoc("a1"), AstDoc("a2"), OrganizationDoc()], TotalCount: 3);
+
+        var filtered = Filter.Apply(ServiceAccount(), result);
+
+        filtered.Documents.Should().HaveCount(1);
+        filtered.TotalCount.Should().Be(1);
+    }
+
+    // 🔴 FR-16 (#1190・陽性対照 1): 同じ文書が**有人実行では返る**。
+    // AST/ADR-0032 決定 2「有人経路（利用者本人）は従来どおり本人権限で読める」。
+    [Fact]
+    public void 有人実行では制限プロジェクトの文書が返る()
+    {
+        var result = new McpToolResult([AstDoc(), OrganizationDoc()], TotalCount: 2);
+
+        var filtered = Filter.Apply(Human(), result);
+
+        filtered.Documents.Should().HaveCount(2);
+        filtered.TotalCount.Should().Be(2);
+    }
+
+    // 🔴 FR-16 (#1190・陽性対照 2): **project を持たない文書は落ちない。**
+    // 判定を否定（`project != "ai-stock-trading"`）で書いていたらここが落ちる ——
+    // `project` は任意属性であり、付いていない文書のほうが圧倒的に多い。
+    [Fact]
+    public void project_を持たない文書はサービスアカウントでも返る()
+    {
+        var result = new McpToolResult([LegacyDoc(), OrganizationDoc()], TotalCount: 2);
+
+        var filtered = Filter.Apply(ServiceAccount(), result);
+
+        filtered.Documents.Should().HaveCount(2);
+        filtered.TotalCount.Should().Be(2);
+    }
+
+    // 🔴 FR-16 (#1190・陽性対照 3): **別の project 値の文書は落ちない**（集合帰属で判定している証明）。
+    [Fact]
+    public void 制限外のプロジェクトの文書はサービスアカウントでも返る()
+    {
+        var result = new McpToolResult([OtherProjectDoc()], TotalCount: 1);
+
+        Filter.Apply(ServiceAccount(), result).Documents.Should().ContainSingle();
+    }
+
+    // FR-16 (#1190): 綴りの揺れ（大文字小文字）でも制限対象と判定する。
+    [Theory]
+    [InlineData("ai-stock-trading")]
+    [InlineData("AI-Stock-Trading")]
+    [InlineData("AI-STOCK-TRADING")]
+    public void 制限プロジェクトの判定は大文字小文字を問わない(string project)
+    {
+        var doc = new McpToolDocument("d", "t",
+            new Dictionary<string, string> { ["project"] = project });
+
+        Filter.Apply(ServiceAccount(), new McpToolResult([doc], 1)).Documents.Should().BeEmpty();
+    }
 }
