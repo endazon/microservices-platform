@@ -3,15 +3,15 @@ title: 運用仕様書
 type: operations-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-04
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-04, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-21, SC-01, SC-02, SC-10, UC-01, UC-04, UC-05, UC-07]
-adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0072, ADR-0076]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0322, IADR-0327, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370]
-specs: [20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts]
-issues: [#1088, #1108, #1110, #1198, #1202, #1204, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524]
+adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0322, IADR-0327, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0378]
+specs: [20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion]
+issues: [#1088, #1108, #1110, #1198, #1202, #1203, #1204, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538]
 -->
 
 # 運用仕様書
@@ -803,6 +803,34 @@ LlmGateway は補完 1 回ごとに `llm.completion.total`（Prometheus では `
   Prometheus プラグイン）、構成ドリフト Warning（ドリフト検出のカスタムメトリクス化。現状は監査/警告ログで表出）。
   `alerts.yml` 末尾にコメントで雛形を用意。
 
+### 合成監視（synthetic）の運用（非機能要件: 可観測性 / #1203）
+
+低頻度の経路（`/analysis/ask` 系）へ一定間隔で代表リクエストを打ち、SLO の**評価対象そのもの**を
+存在させる常駐プローブである。**クラスタ内で完結し、外部の監視 SaaS は使わない。**
+
+配備物と手順は `deploy/local/synthetic-monitor/README.md` に置く（`docs/` の外なのでリンクは張らない）。
+**既定の起動器には入っていない（opt-in）。**
+
+🔴 **標識と除外が揃っていない構成では配備しない。** 合成トラフィックが利用実績・費用・検索傾向へ
+混ざると、**それらの指標が「人が使った量」を表さなくなる。** 除外はコード側（BFF・DashboardService・
+LlmGateway）に在るため、**当該イメージが更新済みであることを確かめてから当てる。**
+
+| 項目 | 現在の扱い |
+| --- | --- |
+| **標識** | 専用の Keycloak クライアント（`synthetic-monitor`）で `client_credentials` 認証し、**検証済み JWT の主体**で判定する。**受信ヘッダは外周では一切見ない**（外から印を付けて費用計上を免れる経路を作らない） |
+| **除外先** | 利用状況・検索傾向（利用イベントの発火の口と受け口）／ LLM のトークン累計・金額換算 |
+| **除外の可視化** | `usage_event_dispatch_total{usage_event_outcome="excluded_synthetic"}` と `llm_usage_synthetic_excluded_total` |
+| **実行頻度** | 🔴 **計画側で未確定。** 配備時に `PROBE_INTERVAL_SECONDS` で与える（**実装は既定値を持たない**。未設定ならプローブは起動しない）。マニフェストの `60` は「検知要件 5 分より十分に短い」という運用上の暫定値である |
+| **費用の上限** | 🔴 **計画側で未確定。** そのため**合成は既定で LLM を呼ばない**（`SyntheticMonitoring:AllowLlmEgress` の既定は `false`）。したがって現状の配備で恒常的に発生する費用は **0** である |
+| **停止手順** | `kubectl -n microservices-platform scale deploy/synthetic-monitor --replicas=0`（次の間隔を待たずに止まる）。恒久的に外すなら `kubectl delete -k deploy/local/synthetic-monitor` ＋ Secret の削除 |
+
+🔴 **除外は指標を守るためのものであり、費用そのものを減らさない。**
+`excluded_synthetic` が伸びていて `sent` が伸びていないときは、**実利用が 0 である。**
+
+🔴 **初回応答の SLO については、これでもまだ評価対象が生まれない。** 初回トークンの計器は
+最初のトークンが 1 件も出て初めて記録する設計であり、**合成が実際に LLM を呼ばない限り系列が立たない。**
+呼べば恒常的に費用が出るため、**頻度と費用の上限が確定するまで意図的に空けてある**（計画リポジトリで裁定待ち）。
+
 ## データ保持期間（利用イベント）
 
 利用イベント（検索実行・AI 回答生成の 1 行）は **90 日を超えて保持しない**。
@@ -917,12 +945,16 @@ LlmGateway は補完 1 回ごとに `llm.completion.total`（Prometheus では `
   exporter メトリクスと、ドリフト検出のカスタムメトリクス化が必要（`alerts.yml` 末尾に雛形をコメントで用意）。
 - **サービスダウンの厳密検知**: push（remote write）モデルのため per-service `up` が無く、メトリクス途絶での
   近似検知に留まる。blackbox exporter / k8s liveness による補完を検討する。
-- **合成監視（synthetic）**: **無い**。**［2026-09-04 追記］「評価対象の不在」を鳴らす規則は入ったが、
-  `/analysis/ask` 系は対象外のままである** —— 呼ばれない限り系列を持たず、無風が検知要件（5 分）を
-  超え得るため、対象へ入れると恒常発火する。🔴 **したがって RAG の 2 行は、無風時に「鳴らない」と
-  「鳴りようがない」の区別が付かない。** 区別を付けるには一定間隔で代表リクエストを打つ観測専用の経路が要る。
-  🔴 **合成トラフィックは識別できる標識を持ち、LLM 費用の計測と利用状況・検索傾向の集計から除外する。
-  除外できない構成では配備しない**（標識と除外は同時に入れる）。**頻度・費用の上限は未確定**である。
+- **合成監視（synthetic）**: **［2026-09-05 更新 / #1203］標識と除外、および配備物（opt-in）は入った**
+  （本書「合成監視（synthetic）の運用」）。**残るのは 3 点である。**
+  ① 🔴 **実行頻度と費用の上限が計画側で未確定**であり、**実装は数字を決めない**（既定値を持たず、
+  配備時に与える）。② 🔴 **初回応答の SLO の評価対象は依然として生まれない** —— 初回トークンの計器は
+  トークンが出て初めて記録するため、合成が実際に LLM を呼ばない限り系列が立たない。呼べば恒常的に
+  費用が出るので、**上限が決まるまで既定で呼ばない側へ倒してある**。③ **意図的に 5xx を出す合成経路**は
+  製品の振る舞いを変えるため置いていない（本番相当の 5xx 経路が無いことは計画も認めている）。
+  **①〜③ は計画リポジトリへ裁定を依頼済みである。**
+- **`absent` の対象拡大**: 上記①が決まり合成が常時トラフィックを作れば、`/analysis/ask` 系を
+  「評価対象の不在」の対象へ入れられる。**本書の表はまだ 3 行のままである。**
 - **保存時暗号化**: PostgreSQL/MinIO/Qdrant のインフラ層暗号化の有効化・鍵管理（`docs/security/security.md`
   データ保護表と連動）。
 - **監査ログの保管期間・改ざん防止・エクスポート**: 可観測性基盤側の保持設定で確定する（NFR「監査ログ保持」の具体化）。

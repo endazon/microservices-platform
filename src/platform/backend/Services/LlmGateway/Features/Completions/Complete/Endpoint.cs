@@ -3,6 +3,7 @@ using Platform.Shared.Contracts.Dtos;
 using LlmGateway.Common.Observability;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Domain.Routing;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 
 namespace LlmGateway.Features.Completions.Complete;
 
@@ -20,9 +21,14 @@ public static class CompleteEndpoint
             ILoggerFactory loggerFactory,
             LlmCompletionMetrics metrics,
             LlmUsageMetrics usage,
+            HttpContext http,
             CancellationToken ct) =>
         {
             var logger = loggerFactory.CreateLogger("LlmGateway.Complete");
+            // NFR-02, ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視のトラフィックか。
+            // 🔴 **本サービスはメッシュ内部の面である**（外部から到達しない）。標識は外周（BFF）が
+            // 検証済み JWT の主体から決めて付けたヘッダであり、ここでは引き継ぐだけである。
+            var isSynthetic = SyntheticTraffic.IsSyntheticInternalRequest(http.Request);
 
             // FR-11: 越境マトリクスで送信先を判定する。
             var sensitivity = SensitivityClasses.Parse(req.Confidentiality);
@@ -74,7 +80,14 @@ public static class CompleteEndpoint
                     // FR-10, ADR-0044 決定 1・3 (#443): 用途別・モデル別のトークン累計と金額換算。
                     // **実際に投げたモデル（attempt）で計上する** —— フォールバックが起きた呼び出しの
                     // 費用は第 1 候補ではなく成功した候補の単価で発生する。
-                    usage.RecordUsage(attempt, purpose, sensitivity, result.InputTokens, result.OutputTokens);
+                    //
+                    // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 🔴 **合成監視は費用へ計上しない。**
+                    // 監視のために打った呼び出しが費用に入ると、費用が「人が使った量」を表さなくなる。
+                    // **黙って落とさず、除外した件数を別の計器に積む。**
+                    if (isSynthetic)
+                        usage.RecordSyntheticExclusion(attempt, purpose, sensitivity);
+                    else
+                        usage.RecordUsage(attempt, purpose, sensitivity, result.InputTokens, result.OutputTokens);
                     return Results.Ok(new CompletionApiResponse(
                         result.Text, attempt.Model ?? string.Empty, result.InputTokens, result.OutputTokens,
                         Sent: true, Endpoint: attempt.EndpointName, RoutingReason: attempt.Reason,

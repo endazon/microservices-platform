@@ -4,6 +4,7 @@ using Platform.Shared.Contracts.Dtos;
 using LlmGateway.Common.Observability;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Domain.Routing;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 
 namespace LlmGateway.Features.Completions.CompleteStream;
 
@@ -135,8 +136,18 @@ public static class CompleteStreamEndpoint
                     sawDone ? outputTokens : null);
                 // FR-10, ADR-0044 決定 1・3 (#443): 利用実績は **Done で実数を受け取れたときだけ**計上する。
                 // 途中で終わった送信を 0 トークンとして積むと、費用が実態より安く見える。
+                //
+                // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 🔴 **合成監視は費用へ計上しない。**
+                // 除外は黙って落とさず件数を積む（一括経路 `/complete` と同じ規則）。
+                // **`sawDone` の条件はそのまま**である —— 途中で終わった送信は費用でも除外でもなく、
+                // 「実数を受け取れなかった」であって、どちらの数にも入れない。
                 if (sawDone)
-                    usage.RecordUsage(decision, purpose, sensitivity, inputTokens, outputTokens);
+                {
+                    if (SyntheticTraffic.IsSyntheticInternalRequest(http.Request))
+                        usage.RecordSyntheticExclusion(decision, purpose, sensitivity);
+                    else
+                        usage.RecordUsage(decision, purpose, sensitivity, inputTokens, outputTokens);
+                }
                 await Send(new CompletionStreamEvent(
                     string.Empty, Done: true, Sent: true, Model: decision.Model ?? string.Empty,
                     InputTokens: inputTokens, OutputTokens: outputTokens, RoutingReason: decision.Reason,
