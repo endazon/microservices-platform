@@ -12,6 +12,7 @@ namespace GraphService.Tests.Features.McpTools.Declare;
 //
 // 🔴 **陽性対照を必ず対で置く。** 「個人資料が除外される」「要約系が現れない」だけを測ると、
 // **常に空を返す実装がテストを通る** —— #1020 が是正しようとしている状態そのものである。
+[Trait("TestKind", "Integration")]
 public class McpToolDeclarationEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

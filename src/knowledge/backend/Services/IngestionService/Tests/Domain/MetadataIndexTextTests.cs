@@ -5,6 +5,7 @@ namespace IngestionService.Tests.Domain;
 
 // FR-02, FR-03, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 2:
 // 本文なしの文書の索引テキスト（題名・タグ）を作る純関数。
+[Trait("TestKind", "Unit")]
 public class MetadataIndexTextTests
 {
     [Fact]

@@ -17,6 +17,7 @@ namespace ConversionService.Tests.Infrastructure.ExternalServices;
 // 稼働 k3s の conversion-service pod で実変換して採取した綴りをそのまま固定入力にしてある
 // （2026-09-03 実測）。「変換器がこう出すであろう」と人が想像した綴りではない —— 想像で書くと
 // **属性が改行をまたぐ `<img>`** のような実際の形を取りこぼす。
+[Trait("TestKind", "Unit")]
 public class PandocExtractedMediaRewriteTests
 {
     // 本番と同じ形の一時ディレクトリ（`Path.GetTempPath()` + `conv-<乱数>`）。

@@ -11,6 +11,7 @@ namespace NotificationService.Tests.Features.Notifications;
 // ★ フロント側の契約テスト（notificationContract.test.ts）は openapi.yaml を読んで同じ集合を固定する。
 // **本テストは後段が実際に書き出す JSON を見る** —— 契約の記述と実装の出力が割れていないことは、
 // 契約ファイルだけを読むテストでは確かめられない。
+[Trait("TestKind", "Unit")]
 public class NotificationContractTests
 {
     private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);

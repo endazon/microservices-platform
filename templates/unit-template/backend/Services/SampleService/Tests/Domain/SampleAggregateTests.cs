@@ -9,6 +9,9 @@ namespace SampleService.Tests.Domain;
 // 本体のパスをそのまま Tests/ 配下へ写す。鏡写しの相手は Features/ と Domain/ に限らない ——
 // 実サービスでは Infrastructure/<Sub>/・Common/<Sub>/・Domain/Ports/ も同じ規則で写す
 // （雛形はそれらの実体を持たないので、空の枠は作らない。IADR-0321）。
+// 種別: **単体**（IADR-0370）。置き場（上記）とは独立した軸であり、フォルダでは表さない。
+// 型を直接 new して呼び、外側の合成（ホスト・DI・HTTP パイプライン）も実資源も通さない。
+[Trait("TestKind", "Unit")]
 public class SampleAggregateTests
 {
     [Theory]

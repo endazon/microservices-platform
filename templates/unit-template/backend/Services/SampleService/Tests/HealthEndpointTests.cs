@@ -11,6 +11,8 @@ namespace SampleService.Tests;
 // であって、「鏡写しから漏れた残り」ではない。
 // スライスを叩くテストはここに置かない —— Tests/Features/<集約>/<操作>/ へ置く
 // （同 IADR 決定 2。実例は Features/Samples/Create/CreateSampleEndpointTests.cs）。
+// 種別: **結合**（IADR-0370）。置き場が Tests/ 直下であることと種別は独立である。
+[Trait("TestKind", "Integration")]
 public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly WebApplicationFactory<Program> _factory;

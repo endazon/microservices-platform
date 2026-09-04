@@ -12,6 +12,7 @@ namespace LlmGateway.Tests.Features.Completions.Complete;
 // 許容ティアが無い場合は送信を拒否（縮退）することを検証する。
 // IADR-0110 (#395): メトリクス購読テスト（CompletionMetricsTests）と直列化する。
 [Collection(CompletionEndpointCollection.Name)]
+[Trait("TestKind", "Integration")]
 public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

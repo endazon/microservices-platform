@@ -18,6 +18,7 @@ namespace ConversionService.Tests.Features.ConversionJobs.Normalize;
 // **「届くか」＝ 登録経路（`AddPlatformWolverineStep`）は `PipelineStepRegistrationTests` が
 // 実際に Wolverine ホストを起こして測る。**直接呼びだけにすると登録が壊れても気づかないので、
 // 両方を置いている（片方だけにしない）。
+[Trait("TestKind", "Unit")]
 public class RawDocumentFetchedConsumerTests
 {
     [Fact]

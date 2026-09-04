@@ -16,6 +16,7 @@ namespace DocumentService.Tests.Features.ObsidianSync;
 //
 // 🔴 スコープの否定形（他者の資料・組織文書・共有された資料が見えない）は、
 // 陽性対照（自分の資料は見える）と対で置く —— 「常に 404 を返す実装」でも否定形だけは緑になる。
+[Trait("TestKind", "Integration")]
 public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

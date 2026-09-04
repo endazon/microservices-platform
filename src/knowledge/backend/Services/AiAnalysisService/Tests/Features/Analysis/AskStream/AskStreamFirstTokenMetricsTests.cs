@@ -24,6 +24,7 @@ namespace AiAnalysisService.Tests.Features.Analysis.AskStream;
 // IMeterFactory は容器ごとに別の Meter インスタンスを作るので、自分の factory の容器から
 // 解決した RagStreamMetrics が使っている Meter と同一インスタンスのものだけを拾えば混入しない
 // （クラスごとに factory が分かれる IClassFixture の性質を使う。Collection による直列化は要らない）。
+[Trait("TestKind", "Integration")]
 public class AskStreamFirstTokenMetricsTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

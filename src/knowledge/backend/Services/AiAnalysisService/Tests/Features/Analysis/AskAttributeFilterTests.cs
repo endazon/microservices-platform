@@ -16,6 +16,7 @@ namespace AiAnalysisService.Tests.Features.Analysis;
 //
 // **最重要の不変条件は narrowing-only である** —— 範囲指定は ABAC 許可スコープを**決して広げない**。
 // クライアントが権限外の値を送っても結果は広がらず、権限の外だけを指す範囲は全体 deny へ倒れる。
+[Trait("TestKind", "Integration")]
 public class AskAttributeFilterTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

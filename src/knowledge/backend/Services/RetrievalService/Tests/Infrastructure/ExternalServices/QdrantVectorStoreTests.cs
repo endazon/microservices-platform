@@ -9,6 +9,7 @@ namespace RetrievalService.Tests.Infrastructure.ExternalServices;
 // FR-05, FR-11 (Issue #58 の #2 / Issue #71): Qdrant ペイロードから ABAC 属性を DTO へ復元することを検証する。
 // 復元しないと機密区分判定が常に「属性欠落 → restricted」へ縮退し、FR-11 の機密区分別ルーティングが
 // 事実上無効化される。IADR-0014（実機検証・選択肢C）によりネスト構造体表現へ統一済み。
+[Trait("TestKind", "Unit")]
 public class QdrantVectorStoreTests
 {
     // ネスト構造体表現: 書き込み（UpsertAsync）と同じ `attributes -> { k: v }` から復元できる。

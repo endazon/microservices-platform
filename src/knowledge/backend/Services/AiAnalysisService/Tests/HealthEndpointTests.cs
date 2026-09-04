@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 namespace AiAnalysisService.Tests;
 
 // FR-04, FR-07, UC-01, UC-02: AI 分析サービス ヘルスチェック
+[Trait("TestKind", "Integration")]
 public class HealthEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

@@ -14,6 +14,7 @@ namespace IngestionService.Tests.Domain.Ports;
 // 「ensured」の成功ログだけが出る —— 稼働クラスタで `GET /collections` が空を返すことで実測した。
 //
 // したがってここで検査するのは「バインド結果が空でないこと」であって、値の中身ではない。
+[Trait("TestKind", "Unit")]
 public class EmbeddingCollectionsOptionsBindingTests
 {
     // 実際の appsettings.json と同じ形。JSON の配列は `:0:` `:1:` の添字キーへ平坦化される。

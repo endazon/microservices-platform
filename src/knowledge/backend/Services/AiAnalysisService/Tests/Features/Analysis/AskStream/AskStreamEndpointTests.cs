@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 namespace AiAnalysisService.Tests.Features.Analysis.AskStream;
 
 // IADR-0037, FR-04, UC-01: /analysis/ask/stream が SSE で citations → token* → done を送ることを検証する。
+[Trait("TestKind", "Integration")]
 public class AskStreamEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

@@ -6,6 +6,7 @@ namespace WikiService.Tests.Infrastructure.Persistence;
 
 // #184: jsonb Dictionary 列の ValueComparer が hash/equals 契約（equals(a,b) ⟹ hash(a)==hash(b)）を満たすことを
 // EF モデルメタデータ経由で検証する。参照ベース hash（v => v.GetHashCode()）の再導入を機械的に検出する。
+[Trait("TestKind", "Unit")]
 public class JsonbValueComparerContractTests
 {
     [Fact]

@@ -6,6 +6,7 @@ using Platform.Shared.Contracts.Dtos;
 namespace GraphService.Tests;
 
 // FR-15, IADR-0029: 自己申告エンドポイントが到達でき、サービス名を申告する。
+[Trait("TestKind", "Integration")]
 public class IntrospectionEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

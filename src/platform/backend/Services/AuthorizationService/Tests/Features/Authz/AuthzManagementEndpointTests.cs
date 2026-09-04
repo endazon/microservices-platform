@@ -6,6 +6,7 @@ namespace AuthorizationService.Tests.Features.Authz;
 
 // FR-09, UC-05, ADR-0004: 属性辞書・ABAC ポリシー管理エンドポイントの結合テスト。
 // ※ InMemory DB はプロセス内で名前共有のため、各テストは衝突回避に一意なキー／名前を用いる。
+[Trait("TestKind", "Integration")]
 public class AuthzManagementEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

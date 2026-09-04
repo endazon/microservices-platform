@@ -6,6 +6,7 @@ namespace DataSourceService.Tests.Domain;
 // FR-01, FR-05, UC-04, SC-06（Q14 / issue #537）, IADR-0053: 直近同期エラーのマスク。
 // 例外メッセージは接続文字列・資格情報つき URL を運ぶため、**保存の時点で**伏せる
 // （表示の時点ではない。DB に平文が残るとバックアップ・ログ・将来の別の読み口すべてが漏洩面になる）。
+[Trait("TestKind", "Unit")]
 public class SyncErrorRedactorTests
 {
     [Theory]

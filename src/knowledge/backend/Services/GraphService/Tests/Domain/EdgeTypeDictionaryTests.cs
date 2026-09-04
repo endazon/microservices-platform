@@ -9,6 +9,7 @@ namespace GraphService.Tests.Domain;
 //
 // CRUD の API は #910 が足す。ここで固定するのは**モデルの性質**である ——
 // 改名が既存の辺を書き換えないこと、初期値集合が入ること、seed が既存を壊さないこと。
+[Trait("TestKind", "Unit")]
 public class EdgeTypeDictionaryTests
 {
     private static GraphDbContext NewDb()

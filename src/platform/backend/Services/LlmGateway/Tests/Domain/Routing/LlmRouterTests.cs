@@ -18,6 +18,7 @@ namespace LlmGateway.Tests.Domain.Routing;
 // PurposeFallbackModels は本番と**同じキー集合・同じ値**に揃える（下の該当箇所を参照）——
 // 揃えない運用にした結果、diagram-coding の鎖を写し忘れたまま緑だった実例がある。
 // **この 2 つの扱いの違いを混同しないこと。**
+[Trait("TestKind", "Unit")]
 public class LlmRouterTests
 {
     private static LlmEndpointOptions Claude(bool enabled = true, int priority = 10) => new()

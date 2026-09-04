@@ -5,6 +5,7 @@ using IngestionService.Domain;
 namespace IngestionService.Tests.Domain;
 
 // FR-02: 冪等な再取り込みのための決定的チャンク ID テスト
+[Trait("TestKind", "Unit")]
 public class ChunkIdTests
 {
     // T-04: 同一 documentId + chunkIndex は常に同じ ID

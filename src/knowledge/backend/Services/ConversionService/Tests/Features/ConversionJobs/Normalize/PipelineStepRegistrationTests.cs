@@ -23,6 +23,7 @@ namespace ConversionService.Tests.Features.ConversionJobs.Normalize;
 // （W2 で作った経路が本当に使われていることを確かめる価値がある）。
 // 外部トランスポートは `DisableAllExternalWolverineTransports()` で落とすので、
 // ブローカは要らない —— 配送は `InvokeAsync`（プロセス内呼び出し）で駆動する。
+[Trait("TestKind", "Integration")]
 public class PipelineStepRegistrationTests
 {
     private const string ConvertConsumer =

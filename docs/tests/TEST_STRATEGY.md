@@ -3,15 +3,15 @@ title: テスト戦略（退行防止テスト基盤）
 type: test-spec
 status: in-progress
 created: 2026-08-03
-updated: 2026-09-03
+updated: 2026-09-04
 author: Claude
 ---
 <!-- trace:
 ids: [SC-05, SC-06, SC-07, SC-08]
 adrs: [ADR-0027, ADR-0030, ADR-0065, ADR-0068]
-iadrs: [IADR-0034, IADR-0049, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0122, IADR-0123, IADR-0130, IADR-0137, IADR-0138, IADR-0195, IADR-0231, IADR-0236, IADR-0282, IADR-0334]
-specs: [20260803_issue-453_regression-test-foundation, 20260831_issue-1063_tests-mirror-body-structure, 20260903_issue-1146_template-tests-mirror, 20260807_issue-571_coverage-exclude-generated, 20260821_issue-455_xunit-v3-migration, 20260822_issue-900_coverage-cross-report-dedup]
-issues: [#454, #503, #1063, #510, #568, #571, #580, #882, #899, #900, #901, #1146, planning#146, planning#160, planning#161, planning#162, planning#180]
+iadrs: [IADR-0034, IADR-0049, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0122, IADR-0123, IADR-0130, IADR-0137, IADR-0138, IADR-0161, IADR-0195, IADR-0231, IADR-0232, IADR-0236, IADR-0282, IADR-0334, IADR-0370]
+specs: [20260803_issue-453_regression-test-foundation, 20260831_issue-1063_tests-mirror-body-structure, 20260903_issue-1146_template-tests-mirror, 20260904_issue-1145_unit-integration-trait, 20260807_issue-571_coverage-exclude-generated, 20260821_issue-455_xunit-v3-migration, 20260822_issue-900_coverage-cross-report-dedup]
+issues: [#454, #503, #1063, #510, #568, #571, #580, #882, #899, #900, #901, #1145, #1146, planning#146, planning#160, planning#161, planning#162, planning#180]
 -->
 
 # テスト戦略 — 再実装の退行防止基盤
@@ -313,8 +313,48 @@ submodule populate 済み）である——**line 34.14%（9314/27280） / branc
 （テスト専用の器・`Program.cs` 由来の検証・主題が `Platform.Shared.*` にあるもの）の規則は
 実装ADR が持つ。名前空間はフォルダへ追随させる（`<Name>.Tests.<移送先>`）。
 
-> 🔴 **単体か結合かはフォルダで表さない。** テストの書き方（命名・`Assert.SkipUnless` による
-> 環境依存の明示）で表す。**種別でフォルダを割ると 1 つのユースケースのテストが 2 箇所に散る。**
+> 🔴 **単体か結合かはフォルダで表さない。** テストの書き方で表す。
+> **種別でフォルダを割ると 1 つのユースケースのテストが 2 箇所に散る。**
+
+### 単体 / 結合はトレイト `TestKind` で宣言する
+
+サービス内の `Tests/` のテストクラスは、**トップレベル 1 クラスにつき 1 つ**
+`[Trait("TestKind", "Unit")]` または `[Trait("TestKind", "Integration")]` を持つ。
+
+```csharp
+[Trait("TestKind", "Integration")]
+public class CreateSampleEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+```
+
+**判定は「検証対象の外側にある合成、または実資源を実際に通すか」で決める。**
+次のいずれかに当たれば結合、どれにも当たらなければ単体である。
+
+| | 内容 |
+| --- | --- |
+| A | `WebApplicationFactory` 派生を通す（`.CreateClient()` / `CreateDefaultClient` を含む） |
+| B | `HostApplicationBuilder` / `Host.CreateApplicationBuilder` / `new HostBuilder` / `WebApplication.CreateBuilder` を自前で組む |
+| C | プロセス外の実資源への到達を `Assert.SkipUnless` / `Assert.SkipWhen` で門にしている |
+| D | Testcontainers / Respawn / 実 DB・実ブローカ・実オブジェクトストレージの器を使う |
+
+`UseInMemoryDatabase` で `DbContext` を組み、ホストを立てずに直接呼ぶものは**単体**である
+（InMemory プロバイダは実 DB の代役であって実依存ではない）。
+**置き場所の軸と種別の軸は独立である** —— `Tests/` 直下だから、あるいは `Tests/Domain/` だからで
+種別は決まらない。
+
+> 🔴 **`TestKind` と `Category` を混同しないこと。別の軸である。**
+>
+> | トレイト | 問い | 使い手 |
+> | --- | --- | --- |
+> | `Category` | **実コンテナ（Docker）を起こすか** | CI の振り分け（PR は `Category!=Integration`、回収実行は全量） |
+> | `TestKind` | **単体か結合か** | 手元の選択実行・区分の宣言 |
+>
+> サービス内 `Tests/` の結合テストは `WebApplicationFactory` ＋ InMemory DB ＋ 差し替えたブローカで
+> 動くため **Docker を要さない**。`Category` を流用すると、これらが PR の検証から静かに消える。
+
+**選択実行**（`dotnet test <slnx> --filter "TestKind=Unit"` / `"TestKind=Integration"`）は
+**手元での絞り込みのための口である。CI はこのフィルタに依存させない** ——
+ユニット横断の統合テストと共有ライブラリのテストは `TestKind` を持たないため、
+ソリューション全体へ掛けると**どちらのバケツからも落ちる**。
 
 ### xUnit は v3 で書く
 

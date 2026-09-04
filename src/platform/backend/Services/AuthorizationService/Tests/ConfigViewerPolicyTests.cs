@@ -10,6 +10,7 @@ namespace AuthorizationService.Tests;
 // FR-15, SC-11, IADR-0030: ConfigViewer ポリシーの単体テスト。
 // AddPlatformAuth が登録する認可ポリシーを IAuthorizationService で直接評価し、
 // 管理者・運用者のいずれか一方の保持で許可、どちらも無ければ拒否（fail-closed）を確認する。
+[Trait("TestKind", "Unit")]
 public class ConfigViewerPolicyTests
 {
     private static IAuthorizationService BuildAuthorizationService()

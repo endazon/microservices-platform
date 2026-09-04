@@ -11,6 +11,7 @@ namespace LlmGateway.Tests.Features.Completions.CompleteStream;
 // 通すこと（拒否時はプロバイダを呼ばず理由のみ返す）を検証する。egress ゲート保持が最重要の検証点。
 // IADR-0110 (#395): メトリクス購読テスト（CompletionMetricsTests）と直列化する。
 [Collection(CompletionEndpointCollection.Name)]
+[Trait("TestKind", "Integration")]
 public class CompletionStreamEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

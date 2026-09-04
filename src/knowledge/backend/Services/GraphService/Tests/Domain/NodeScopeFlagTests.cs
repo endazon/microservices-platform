@@ -14,6 +14,7 @@ namespace GraphService.Tests.Domain;
 // すべて個人資料に化ける。2 つの書き方は private-note の文書だけでは見分けがつかないため、
 // **属性を持たない文書が false になる陽性対照**を必ず対で置く（McpServer の
 // ServiceAccountDocumentFilterTests と同じ構図）。
+[Trait("TestKind", "Integration")]
 public class NodeScopeFlagTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;

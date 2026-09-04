@@ -9,6 +9,7 @@ namespace LlmGateway.Tests.Domain.Pricing;
 // **境界（切替時刻ちょうど・その前後）を固定する**のがこのクラスの主眼である ——
 // 導入価格の終了日を反映し忘れると試算は**エラーを出さずに過小**になる、という失敗の形が
 // ADR-0044 のコンテキストそのものだからである。
+[Trait("TestKind", "Unit")]
 public class ModelPriceTableTests
 {
     // 単価改定の実例（ADR-0044 §コンテキスト）: claude-sonnet-5 の $2/$10 は 2026-08-31 まで、

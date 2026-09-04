@@ -15,6 +15,7 @@ namespace DocumentService.Tests.Features.SyncDevices;
 
 // FR-20, FR-22, ADR-0037 決定 10〜13・15・18, [[IADR-0270]] 決定 3:
 // 同期トークンの発行・期限（30 日）・手動再発行・個別／一括失効・期限 7 日前通知の検知。
+[Trait("TestKind", "Integration")]
 public class SyncDeviceTokenTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

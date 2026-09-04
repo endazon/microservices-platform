@@ -7,6 +7,7 @@ namespace AiAnalysisService.Tests.Domain;
 
 // FR-07, FR-05, UC-02: データ範囲×ABAC スコープ交差の安全性（narrowing-only）を検証する。
 // 中核不変条件: 実効スコープは ABAC 許可スコープを決して広げない。
+[Trait("TestKind", "Unit")]
 public class DataRangeScopeResolverTests
 {
     private static AccessScopeResponse Abac(bool granted, params AttributeFilter[] filters)

@@ -9,6 +9,7 @@ namespace McpServer.Tests.Domain;
 
 // FR-16: データ越境ポリシー（機密区分 × 送信先ティア）の文書単位判定
 // （計画 ADR-0024 §4 / 06_technical/08_data-egress-policy §越境マトリクス）。
+[Trait("TestKind", "Unit")]
 public class EgressPolicyTests
 {
     // FR-16: 越境マトリクスの各行（計画 08_data-egress-policy）。

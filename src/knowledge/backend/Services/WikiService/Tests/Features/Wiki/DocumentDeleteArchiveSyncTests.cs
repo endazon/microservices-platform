@@ -21,6 +21,7 @@ namespace WikiService.Tests.Features.Wiki;
 //
 // E3a / E3b: 両段とも Wolverine になったため、本ファイルは Handle を直接呼ぶ（測るのは削除・
 // アーカイブの写像であって配送ではない。登録経路は PipelineRecomposeTests が Wolverine ホストで持つ）。
+[Trait("TestKind", "Unit")]
 public class DocumentDeleteArchiveSyncTests
 {
     private static readonly Guid DocId = Guid.Parse("33333333-3333-3333-3333-333333333333");

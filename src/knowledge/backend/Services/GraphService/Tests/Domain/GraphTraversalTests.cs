@@ -10,6 +10,7 @@ namespace GraphService.Tests.Domain;
 //
 // 🔴 **否定形テストには必ず陽性対照を対で置く。** フィクスチャが壊れて「そもそも到達し得ない」
 // 状態でも否定形は緑になるため、陽性対照が無い否定形テストは**何も測っていない**。
+[Trait("TestKind", "Integration")]
 public class GraphTraversalTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;

@@ -4,6 +4,7 @@ using AwesomeAssertions;
 namespace DataSourceService.Tests.Domain;
 
 // FR-01, FR-05: データソースの既定 ABAC 属性（機密区分）付与ロジックの単体テスト
+[Trait("TestKind", "Unit")]
 public class DataSourceTests
 {
     // FR-05: 既定属性未指定なら confidentiality=internal を補完する（フェイルセーフ既定値）

@@ -11,6 +11,7 @@ namespace RetrievalService.Tests.Infrastructure.ExternalServices;
 //
 // ADR-0070 決定 4: 「タイトル・パス・データソース・更新日時などのメタデータで FR-03 の検索に載せる」
 // 「SC-02 の検索結果では本文抜粋が出せないため『本文なし（原本を参照）』である旨を示す。**結果から除外しない**」
+[Trait("TestKind", "Unit")]
 public class BodylessDocumentSearchTests
 {
     // 本文なしの点: `Text` は**索引テキスト**（題名・タグ由来）であり、本文ではない。

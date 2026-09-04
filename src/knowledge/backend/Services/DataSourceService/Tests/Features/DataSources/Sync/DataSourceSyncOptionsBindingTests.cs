@@ -11,6 +11,7 @@ namespace DataSourceService.Tests.Features.DataSources.Sync;
 // 回帰ガードする。env を実際に設定して ASP.NET の __→: 正規化を通し、Helm が出す env 文字列そのものを検証する。
 // 環境変数はプロセス全体へ作用するため、相互干渉を避ける非並列コレクションに置く。
 [Collection(nameof(EnvVarSerialCollection))]
+[Trait("TestKind", "Unit")]
 public sealed class DataSourceSyncOptionsBindingTests
 {
     [Fact]

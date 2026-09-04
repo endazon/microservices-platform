@@ -14,6 +14,7 @@ namespace DataSourceService.Tests.Features.DataSources;
 //     画面だけの検証にすると API を直接叩いた経路で偽の所有者が入る）
 //   - 写像表と既定属性は**片方だけ PATCH してももう片方が消えない**
 //   - 運用者は更新できない（管理者限定。既定属性 3 つと同じ権限）
+[Trait("TestKind", "Integration")]
 public class OwnerMappingEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

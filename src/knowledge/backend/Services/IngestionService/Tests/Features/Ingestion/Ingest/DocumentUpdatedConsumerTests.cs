@@ -12,6 +12,7 @@ namespace IngestionService.Tests.Features.Ingestion.Ingest;
 // E3b: 購読は Wolverine 段になった。本ファイルは Handle を直接呼ぶ（測るのは取り込みの写像で
 // あって配送ではない。E1 の器の選び分けと同じ —— 登録経路・実配送は別の器が持つ）。
 // IngestionCompleted の発行は IIngestionCompletedPublisher（ポート）への引数で観測する。
+[Trait("TestKind", "Unit")]
 public class DocumentUpdatedConsumerTests
 {
     private static DocumentUpdated SampleEvent(

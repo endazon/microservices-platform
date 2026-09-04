@@ -11,6 +11,7 @@ namespace AuthorizationService.Tests;
 // metadata 取得アドレス（in-cluster 名）と issuer 検証値（エッジ host）の分離を検証する。
 // 手順B（単一エッジ host OIDC を CoreDNS 無しに成立させる・#314）のための配線であり、
 // 既定（新キー未設定）は現行と等価・issuer 検証は弱めない（fail-safe）ことを確認する。
+[Trait("TestKind", "Unit")]
 public class PlatformAuthJwtBearerOptionsTests
 {
     private const string DefaultAuthority = "http://keycloak:8080/realms/platform";

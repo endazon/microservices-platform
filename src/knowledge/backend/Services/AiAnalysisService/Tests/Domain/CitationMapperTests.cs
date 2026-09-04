@@ -5,6 +5,7 @@ using Knowledge.Contracts.Dtos;
 namespace AiAnalysisService.Tests.Domain;
 
 // FR-04, UC-01, UC-02: 検索結果→番号付き出典（元文書リンク）の写像を検証する
+[Trait("TestKind", "Unit")]
 public class CitationMapperTests
 {
     private static SearchResultDto Result(string title, string? uri, string text = "本文",

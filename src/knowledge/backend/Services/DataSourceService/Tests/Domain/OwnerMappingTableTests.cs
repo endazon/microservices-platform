@@ -5,6 +5,7 @@ namespace DataSourceService.Tests.Domain;
 
 // FR-05, UC-04, SC-06, ADR-0036, ADR-0074 決定 1・4 (#1194): 写像表の正規化・検証・解決。
 // **HTTP も EF も要らない純粋な判断**なので、ここで直接固定する。
+[Trait("TestKind", "Unit")]
 public class OwnerMappingTableTests
 {
     [Fact]

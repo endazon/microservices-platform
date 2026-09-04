@@ -10,6 +10,7 @@ namespace NotificationService.Tests.Features.Notifications.DispatchEmails;
 //
 // ★ **「落ちない」ではなく「静かに落ちない」である。** 上限に触れたぶんが送られないこと自体は
 // 設計どおりであり、確かめるべきは**その事実が状態・監査ログ・メトリクスに残ること**である。
+[Trait("TestKind", "Unit")]
 public class EmailSendRateTests
 {
     private static readonly DateTimeOffset Now = new(2026, 8, 23, 9, 0, 0, TimeSpan.Zero);

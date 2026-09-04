@@ -19,6 +19,7 @@ namespace DocumentService.Tests.Features.Documents;
 // 「`doc_scope` を含む更新を拒否」と実装すると陰性はすべて緑になるが、**SC-05 の通常の保存が
 // 全部壊れる** —— 属性編集フォームは既存属性をスプレッドして送るため、機密区分だけを変える
 // 保存でも `doc_scope` が同送されるからである。**陽性対照はその実装を落とすために置く。**
+[Trait("TestKind", "Integration")]
 public class DocScopeImmutabilityTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

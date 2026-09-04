@@ -16,6 +16,7 @@ namespace WikiService.Tests.Infrastructure.ExternalServices;
 //      → アーカイブ（unpublish）は現在の content 等を取得してから全項目シェイプで update する。
 //   3. update は tags 省略で 'map' エラーになり、しかも部分適用される（非トランザクショナル）。
 //      → update は常に全項目を送る。
+[Trait("TestKind", "Unit")]
 public class WikiJsGraphQlClientTests
 {
     private static readonly string PageNotFoundEnvelope = """

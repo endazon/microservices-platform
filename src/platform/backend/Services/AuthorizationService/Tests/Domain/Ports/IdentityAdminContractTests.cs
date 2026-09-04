@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 namespace AuthorizationService.Tests.Domain.Ports;
 
 // FR-05, FR-09, SC-17, ADR-0026, IADR-0301 (#452): 身元管理の抽象そのものに掛ける固定。
+[Trait("TestKind", "Unit")]
 public class IdentityAdminContractTests
 {
     // 🔴 計画 05_screens §SC-17 アクション:「**本画面から新規作成はしない**」。

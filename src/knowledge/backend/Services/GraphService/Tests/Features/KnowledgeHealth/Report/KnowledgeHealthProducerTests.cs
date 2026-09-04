@@ -23,6 +23,7 @@ namespace GraphService.Tests.Features.KnowledgeHealth.Report;
 //  3. 陽性対照（**スコープを持たない文書が巻き添えで落ちない**）
 //  4. 単一書き手化（リースを取れない周期は**収集も送出もしない**）
 //  5. 送出の面（パス・本文・**0 件でも送る**・fail-open）
+[Trait("TestKind", "Integration")]
 public sealed class KnowledgeHealthProducerTests
 {
     // ── 1. 孤立の判定 ──────────────────────────────────────────────────────

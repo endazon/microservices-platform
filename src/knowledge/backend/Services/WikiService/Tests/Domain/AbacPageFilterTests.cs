@@ -6,6 +6,7 @@ using WikiService.Domain.Ports;
 namespace WikiService.Tests.Domain;
 
 // FR-13, FR-05, UC-07: Wiki ページ ABAC フィルタの評価意味論（AND / OR / deny-by-default）。
+[Trait("TestKind", "Unit")]
 public class AbacPageFilterTests
 {
     private static WikiPage Page(Dictionary<string, string> attrs)

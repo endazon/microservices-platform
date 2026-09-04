@@ -11,6 +11,7 @@ namespace GraphService.Tests.Domain;
 // `Seal` は「未フィルタが外へ出ない」ことを担保する多層防御の 2 段目である。入口のゲート
 // （`AuthorizedNode`）を通っていれば結果は変わらないが、**迂回経路があっても出口で必ず濾される**
 // ことをここで固定する。
+[Trait("TestKind", "Unit")]
 public class AuthorizedGraphViewTests
 {
     private static GraphDocument Doc(Guid id, string confidentiality)

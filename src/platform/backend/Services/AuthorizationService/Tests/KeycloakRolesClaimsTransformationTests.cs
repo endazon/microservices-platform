@@ -7,6 +7,7 @@ namespace AuthorizationService.Tests;
 // FR-09, ADR-0004: Keycloak の realm_access.roles → ClaimTypes.Role 展開の単体テスト。
 // 実 JwtBearer が realm_access をネストした JSON クレームのまま保持する挙動を模し、
 // 展開後に IsInRole("platform-admin") が成立すること（= AdminOnly が正規管理者を許可）を確認する。
+[Trait("TestKind", "Unit")]
 public class KeycloakRolesClaimsTransformationTests
 {
     private static ClaimsPrincipal PrincipalWith(params Claim[] claims)

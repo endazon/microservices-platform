@@ -13,6 +13,7 @@ namespace DocumentService.Tests.Features.Tags;
 // SC-09 が確定した規則（参照が 1 件でもあるタグは削除拒否・削除前に使用件数を示す）は
 // **使用件数の数え方が正しいことに全面的に依存している**。数え方を間違えると、
 // 使われているタグを削除できてしまうか、逆に**一度でも使われたタグを永久に削除できなくなる**。
+[Trait("TestKind", "Integration")]
 public class TagDictionaryTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

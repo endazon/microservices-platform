@@ -12,6 +12,7 @@ namespace GraphService.Tests.Features.Graph.Neighbors;
 // 「フィルタ後の上位 200 件」ではなく「上位 200 件のうち一致したもの」になり、利用者が見る範囲が
 // 意図せず狭まる。したがって本テストは (a) 絞りが探索そのものに効くこと（型を消すと、その型の辺で
 // しか到達できないノードごと消える）と、(b) 総数がフィルタ後の母集合で数え直されることを固定する。
+[Trait("TestKind", "Integration")]
 public class EdgeTypeFilterTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;

@@ -12,6 +12,7 @@ namespace DocumentService.Tests.Features.Documents;
 // 🔴 判定の向き（集合帰属）の検証には陽性対照が要る —— doc_scope を持たない既存文書の挙動が
 // 変わらないこと（欠落を拒否しない・個人資料扱いしない）は、否定（!= organization）で書いた
 // 実装では破れる。実データ 0 件の現在、この対照だけが向きを見分ける。
+[Trait("TestKind", "Integration")]
 public class DocScopeValidationTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {
