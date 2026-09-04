@@ -19,6 +19,9 @@ set -euo pipefail
 MSP_NS="${MSP_NS:-microservices-platform}"
 ISTIO_VERSION="${ISTIO_VERSION:-1.30.4}"
 cd "$(dirname "$0")/.."
+# #1159 / IADR-0377: mTLS モードを書く唯一の口（helm を通す）。
+# shellcheck source=scripts/lib/mesh-mtls-mode.sh
+. "$(dirname "$0")/lib/mesh-mtls-mode.sh"
 
 # 前提の確認。**黙って続けない**（入口を落としてから気付くのが最悪である）。
 if ! kubectl -n istio-system get deploy istiod >/dev/null 2>&1; then
@@ -65,8 +68,15 @@ echo "==> [5/5] mTLS モード: ${ISTIO_MTLS_MODE:-（変更しない）}"
 if [ "${ISTIO_MTLS_MODE:-}" = "STRICT" ]; then
   # 🔴 入口が Envoy になった**後**でしか STRICT にしない。順序を入れ替えると 502 になる
   #   （#1072 / IADR-0307 が実測した形）。
-  kubectl -n "$MSP_NS" patch peerauthentication "$MSP_NS-mtls" \
-    --type=merge -p '{"spec":{"mtls":{"mode":"STRICT"}}}'
+  #
+  # 🔴 **helm を通す。`kubectl patch` で書かない**（#1159 / IADR-0377）。
+  #   `PeerAuthentication` を所有しているのは helm（Helm 4 はサーバサイド apply）であり、
+  #   `kubectl patch` は `.spec.mtls.mode` の field manager を `kubectl-patch` へ奪う。
+  #   奪われると**以後の `helm upgrade` が conflict で恒久的に失敗する** ——
+  #   `--take-ownership` も `--force` も効かず（後者は SSA と併用できない）、
+  #   復旧には対象を delete して helm に作り直させる人手が要る（実測）。
+  #   ここが #1159 の「手動 patch によるドリフト」の出どころそのものである。
+  set_mesh_mtls_mode "STRICT"
 fi
 
 echo "OK: エッジは istio-ingressgateway です。"

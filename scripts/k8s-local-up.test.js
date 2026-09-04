@@ -2775,4 +2775,119 @@ ok('#782: 切り戻しは mTLS を先に緩める（入口だけ戻して 502 �
   assert.ok(permissiveAt < restoreAt, 'PERMISSIVE へ戻すのが Traefik の復旧より後になっている');
 });
 
+// ---------------------------------------------------------------------------
+// #1159 / IADR-0377: 稼働の mTLS モードを書く口は helm ただ 1 つ（kubectl patch を禁じる）
+//
+// 🔴 これは「行儀の問題」ではない。Helm 4 はサーバサイド apply なので、`kubectl patch` は
+//   `.spec.mtls.mode` の field manager を奪い、**以後の `helm upgrade` が conflict で恒久的に失敗する**
+//   （2026-09-04 実測。`--take-ownership` も `--force` も効かない）。つまり 1 回の patch で
+//   `k8s-local-up.sh` が [6/7] で止まるようになる。禁止の根拠は収束性そのものである。
+// ---------------------------------------------------------------------------
+
+const MESH_MTLS_LIB_REL = 'scripts/lib/mesh-mtls-mode.sh';
+const MESH_MTLS_LIB = fs.readFileSync(path.join(REPO_ROOT, MESH_MTLS_LIB_REL), 'utf8');
+const UP_SH = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-up.sh'), 'utf8');
+
+ok('#1159: 追跡下のどのファイルも PeerAuthentication を kubectl patch しない（母集合を走査して確かめる）', () => {
+  // 記憶で 2 本挙げない。**誤りの側の文字列で全ファイルを引く**（規則 9）。
+  // 🔴 `--others` を併せる —— 追跡前の新しいスクリプトが母集合から漏れると、
+  //   「新しく足した違反」だけが素通りする（規則 10）。
+  const tracked = spawnSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], {
+    cwd: REPO_ROOT, encoding: 'utf8',
+  });
+  assert.strictEqual(tracked.status, 0, 'git ls-files が失敗した（母集合を引けていない）');
+  const files = String(tracked.stdout).split('\n')
+    .filter((f) => f && !f.startsWith('src/ai-stock-trading')); // submodule は別リポジトリ
+  assert.ok(files.length > 100, `母集合が小さすぎる（${files.length} 件）。走査が壊れている`);
+  const offenders = [];
+  for (const rel of files) {
+    let src;
+    try {
+      src = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
+    } catch {
+      continue; // バイナリ / 読めないものは飛ばす
+    }
+    // 凍結記録（実測の引用として patch コマンドを含む）は対象外。live な装備だけを縛る。
+    if (rel.startsWith('.ai-context/')) continue;
+    if (/kubectl[^\n]*\bpatch\b[^\n]*peerauthentication/i.test(src)) offenders.push(rel);
+  }
+  assert.deepStrictEqual(
+    offenders, [],
+    'PeerAuthentication を kubectl patch している。helm から field manager を奪い、'
+    + `以後の helm upgrade を恒久的に壊す（#1159）。${MESH_MTLS_LIB_REL} の set_mesh_mtls_mode を使うこと`,
+  );
+});
+
+ok('#1159: mTLS モードを書く口は helm 経由の 1 本で、両スクリプトがそれを source して使う', () => {
+  assert.match(MESH_MTLS_LIB, /helm upgrade[^\n]*--set "mesh\.mtlsMode=\$mode"/,
+    'set_mesh_mtls_mode が helm 経由で書いていない');
+  for (const [name, src] of [['istio-edge-up.sh', ISTIO_EDGE_UP], ['istio-edge-down.sh', ISTIO_EDGE_DOWN]]) {
+    assert.ok(src.includes('lib/mesh-mtls-mode.sh'), `${name} が ${MESH_MTLS_LIB_REL} を source していない`);
+    assert.match(src, /set_mesh_mtls_mode\s+"(STRICT|PERMISSIVE)"/, `${name} が set_mesh_mtls_mode を呼んでいない`);
+  }
+});
+
+ok('#1159: リリースが無ければ set_mesh_mtls_mode は何もせず 0 で返る（切り戻しの冪等性）', () => {
+  const bodyAt = MESH_MTLS_LIB.indexOf('set_mesh_mtls_mode() {');
+  assert.ok(bodyAt > 0, 'set_mesh_mtls_mode の定義が読めない');
+  const body = MESH_MTLS_LIB.slice(bodyAt); // 冒頭の解説コメントを母集合に混ぜない
+  const at = body.indexOf('helm status');
+  const setAt = body.indexOf('helm upgrade');
+  assert.ok(at > 0 && setAt > at, 'リリース存在確認が helm upgrade より後にある（未導入クラスタで落ちる）');
+  assert.match(body.slice(at, setAt), /return 0/, 'リリース不在時に 0 で返っていない');
+});
+
+ok('#1159: 未知のモードは受け付けない（typo が静かに DISABLE 相当へ落ちない）', () => {
+  assert.match(MESH_MTLS_LIB, /STRICT \| PERMISSIVE \| DISABLE\)/, 'モードの値域が閉じていない');
+  assert.match(MESH_MTLS_LIB, /未知のモード/, '未知のモードを非 0 で弾いていない');
+});
+
+ok('#1159: G12 の前提 — テンプレートは mode を values から描画し、開ける口だけを PERMISSIVE 直書きにする', () => {
+  const tpl = readAt(REPO_ROOT, 'deploy', 'helm', 'microservices-platform', 'templates', 'istio-mtls.yaml');
+  assert.match(tpl, /mode:\s*\{\{\s*\.Values\.mesh\.mtlsMode\s*\}\}/,
+    'PeerAuthentication の mode が values を参照していない（G12 が値を values から採れなくなる）');
+  assert.match(tpl, /portLevelMtls:[\s\S]{0,200}mode:\s*PERMISSIVE/,
+    'portLevelMtls の口が PERMISSIVE 直書きでない（バックチャネルの 1 本が塞がる）');
+});
+
+ok('#1159: ArgoCD の許可種別に AuthorizationPolicy が在る（本番同期が種別欠落で止まらない）', () => {
+  const proj = readAt(REPO_ROOT, 'deploy', 'argocd', 'appproject.yaml');
+  for (const kind of ['PeerAuthentication', 'DestinationRule', 'AuthorizationPolicy']) {
+    assert.ok(new RegExp(`kind:\\s*${kind}\\b`).test(proj), `appproject.yaml が ${kind} を許可していない`);
+  }
+});
+
+ok('#1159: ISTIO=1 単独なら [6/7] が要求どおりのモードを宣言する（昇格の口が無いため）', () => {
+  const line = runUp({ ISTIO: '1', ISTIO_MTLS_MODE: 'STRICT' }).lines.find((l) => HELM_UPGRADE_RE.test(l));
+  assert.ok(line, 'helm upgrade --install msp の行が無い');
+  assert.ok(line.includes('--set mesh.mtlsMode=STRICT'), `STRICT が宣言されていない: ${line}`);
+});
+
+ok('#1159: ISTIO=1 かつ LOCALEDGE=1 なら [6/7] は PERMISSIVE を宣言する（入口はまだ Traefik である）', () => {
+  const res = runUp({ ISTIO: '1', LOCALEDGE: '1', ISTIO_MTLS_MODE: 'STRICT' });
+  const line = res.lines.find((l) => HELM_UPGRADE_RE.test(l));
+  assert.ok(line, 'helm upgrade --install msp の行が無い');
+  assert.ok(
+    line.includes('--set mesh.mtlsMode=PERMISSIVE'),
+    `入口がまだ Traefik の段で STRICT を宣言している（IADR-0307 決定 4 の段取りが崩れている）: ${line}`,
+  );
+});
+
+ok('#1159: STRICT への昇格は入口を Envoy へ移した後に来る（順序は 2 本のスクリプトを跨いで固定する）', () => {
+  // 🔴 ハーネスでは測れない —— istio-edge-up.sh は「Traefik の Service が消えるのを待つ」段で
+  //   スタブ相手には永久に成立せず、そこで非 0 終了する。順序は**テキストで**固定する。
+  const upAt = UP_SH.indexOf('scripts/istio-edge-up.sh');
+  const installAt = UP_SH.indexOf('helm upgrade --install msp');
+  assert.ok(installAt > 0 && upAt > installAt, 'k8s-local-up.sh で入口の移設が [6/7] より前に来ている');
+  const gwAt = ISTIO_EDGE_UP.indexOf('istio/gateway');
+  const promoteAt = ISTIO_EDGE_UP.indexOf('set_mesh_mtls_mode "STRICT"');
+  assert.ok(gwAt > 0 && promoteAt > 0, 'istio-edge-up.sh の段が読めない');
+  assert.ok(promoteAt > gwAt, 'STRICT への昇格が Gateway の導入より前に来ている（入口が 502 になる）');
+});
+
+ok('#1159: ISTIO 未設定なら mesh.* の --set が 1 つも足されない（既定のバイト等価）', () => {
+  const line = DEFAULT.lines.find((l) => HELM_UPGRADE_RE.test(l));
+  assert.ok(!line.includes('mesh.'), `既定なのに mesh.* が付いている: ${line}`);
+});
+
 process.stdout.write(`\n✓ ${passed} tests passed\n`);
