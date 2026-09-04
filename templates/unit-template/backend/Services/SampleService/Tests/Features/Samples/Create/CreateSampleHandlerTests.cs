@@ -10,7 +10,7 @@ namespace SampleService.Tests.Features.Samples.Create;
 // その型が定義されたフォルダ Features/Samples/Create/ をそのまま Tests/ 配下へ写す。
 // **段（集約 / 操作）まで写す**——Tests/Features/ 直下に平置きしない。
 // 名前空間はフォルダへ追随させる（同決定 5）。
-// 種別: **単体**（IADR-0370）。ハンドラを直接呼ぶ。
+// 種別: **単体**（IADR-0368）。ハンドラを直接呼ぶ。
 [Trait("TestKind", "Unit")]
 public class CreateSampleHandlerTests
 {

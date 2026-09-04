@@ -1,5 +1,5 @@
 ---
-title: IADR-0370 単体 / 結合の区分は Category とは別の TestKind トレイトで表し、CI の振り分けには使わない
+title: IADR-0368 単体 / 結合の区分は Category とは別の TestKind トレイトで表し、CI の振り分けには使わない
 type: impl-adr
 status: Accepted
 related_ids:
@@ -17,7 +17,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0065_backend-service-single-project-vsa.md (Accepted 2026-08-30) 決定 3
 ---
 
-# IADR-0370: 単体 / 結合の区分の表し方（#1145）
+# IADR-0368: 単体 / 結合の区分の表し方（#1145）
 
 - 状態: Accepted
 - 日付: 2026-09-04
