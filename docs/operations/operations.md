@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-04, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-21, SC-01, SC-02, SC-10, UC-01, UC-04, UC-05, UC-07]
 adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0072, ADR-0076]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0322, IADR-0327, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374]
-specs: [20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts]
-issues: [#1088, #1108, #1110, #1198, #1202, #1204, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0322, IADR-0327, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377]
+specs: [20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer]
+issues: [#1088, #1108, #1110, #1159, #1198, #1202, #1204, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524]
 -->
 
 # 運用仕様書
@@ -876,6 +876,31 @@ LlmGateway は補完 1 回ごとに `llm.completion.total`（Prometheus では `
 | PostgreSQL 停止 | サービス起動失敗/DB 接続エラー | DB 再起動・接続確認。書き込み不可の間は該当サービスを縮退 | データ破損時はバックアップからリストア（RPO/RTO 節） |
 | サービス 5xx スパイク | `HighHttp5xxRate` アラート | 対象サービスのログ/トレース（Tempo）で原因特定。必要ならロールバック（Git revert → ArgoCD 同期） | 依存（DB/ブローカ/外部）起因の切り分け。HPA 上限到達なら `scaling` 見直し |
 | 構成ドリフト検出 | ドリフト検出 Warning（監査/警告ログ） | 宣言（`pipeline.json`）と実効の差分を確認。意図せぬ差分は Git を正として再同期 | 起動時 fail-fastで不整合構成の反映は阻止済み。恒常化は宣言の是正 |
+
+### メッシュ設定のドリフトと、helm リリースが固まったときの復旧（NFR / #1159）
+
+サービスメッシュの `PeerAuthentication` / `AuthorizationPolicy` / `DestinationRule` は **helm チャートの
+描画物**であり、稼働の値を書いてよいのは helm だけである。モードの切り替えは
+`scripts/lib/mesh-mtls-mode.sh` の `set_mesh_mtls_mode`（内部で `helm upgrade` を呼ぶ）を使う。
+
+🔴 **`kubectl patch` / `kubectl apply` で直接書かないこと。** Helm 4 はサーバサイド apply を使うため、
+外から書くとフィールドの所有者（field manager）が helm から奪われ、**以後の `helm upgrade` が
+conflict で必ず失敗する**。`--take-ownership` も `--force` も効かない（後者はサーバサイド apply と
+併用できない）。結果として `scripts/k8s-local-up.sh` は helm の段で止まり、**再実行しても収束しない。**
+
+| 事象 | 検知 | 一次対応 |
+| --- | --- | --- |
+| 宣言と稼働の mTLS モードが食い違う／`spec` を helm 以外が書いている | `node scripts/check-stack-ready.js` の門 G12 が対象を名指しして落ちる | 下の復旧手順。以後はモードを `set_mesh_mtls_mode` で切り替える |
+| `helm upgrade` が `conflict with "kubectl-patch" … .spec.mtls.mode` で失敗する | 起動スクリプトが helm の段で停止する | 同上（値を戻すだけでは直らない。所有権が残っているため） |
+
+復旧（対象を消して helm に作り直させる。ダウンタイムは秒単位で、その間は名前空間の既定 = 平文許容になる）:
+
+```sh
+kubectl -n microservices-platform delete peerauthentication microservices-platform-mtls
+helm upgrade msp deploy/helm/microservices-platform -n microservices-platform --reuse-values
+kubectl -n microservices-platform get peerauthentication microservices-platform-mtls \
+  -o yaml --show-managed-fields | grep -A1 'manager:'   # helm 以外が居ないこと
+```
 
 - **エスカレーション/通知**: **Alertmanager の配備後**に受信先（メール/チャット）と担当・当番を運用体制に応じて定める（環境ごと）。
   **配備までは自動通知が無い** —— 一次検知は Prometheus UI / Grafana の目視である。

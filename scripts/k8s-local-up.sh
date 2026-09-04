@@ -268,12 +268,29 @@ if [ "${ISTIO:-}" = "1" ]; then
   # バックチャネルログアウトの POST が Envoy に落とされ、BFF へ一度も届かない（失効が
   # アクセストークンの寿命ぶん遅れる）。ここだけを通す 2 枚組を有効にする
   # （範囲は「principal 無し × /bff/auth/backchannel-logout 以外は DENY」。istio-mtls.yaml の注記参照）。
-  ISTIO_MESH_ARGS="--set mesh.enabled=true --set mesh.mtlsMode=${ISTIO_MTLS_MODE:-PERMISSIVE} --set namespace.istioInjection=true --set mesh.backchannelLogout.fromOutsideMesh=true"
+  #
+  # #1159 / IADR-0377: **STRICT は入口を Istio Ingress Gateway へ移した後でしか宣言しない。**
+  #   LOCALEDGE=1 のときは、この [6/7] では PERMISSIVE を宣言し、末尾の istio-edge-up.sh が
+  #   エッジを移した**後**で helm 経由で STRICT へ上げる（IADR-0307 決定 4 の段取り
+  #   「注入 → 全 Pod Ready → PERMISSIVE で疎通確認 → STRICT」そのもの）。
+  #   ここで先に STRICT を宣言すると、エッジがまだ kube-system の Traefik（メッシュ外）なので
+  #   入口が 502 のまま残りの段が進む（#1072 実測）。
+  #   🔴 **昇格も helm で行う。`kubectl patch` では書かない** —— Helm 4 はサーバサイド apply なので
+  #   patch が field manager を奪い、以後の helm upgrade が conflict で恒久的に失敗する
+  #   （#1159 の「手動 patch によるドリフト」の正体。scripts/lib/mesh-mtls-mode.sh 冒頭に実測を置いた）。
+  ISTIO_MTLS_MODE_AT_INSTALL="${ISTIO_MTLS_MODE:-PERMISSIVE}"
+  if [ "${LOCALEDGE:-}" = "1" ] && [ "${ISTIO_MTLS_MODE:-}" = "STRICT" ]; then
+    ISTIO_MTLS_MODE_AT_INSTALL="PERMISSIVE"
+  fi
+  ISTIO_MESH_ARGS="--set mesh.enabled=true --set mesh.mtlsMode=${ISTIO_MTLS_MODE_AT_INSTALL} --set namespace.istioInjection=true --set mesh.backchannelLogout.fromOutsideMesh=true"
   # 🔴 経路B は values-local.yaml が namespace.create=false のため、**Helm は Namespace を作らない**
   #   ＝ istioInjection=true にしても注入ラベルが誰にも適用されない。ここで明示的に貼る。
   #   （本番像は namespace.create=true なのでチャートが貼る。同じ結果を 2 経路で担保する。）
   kubectl label namespace "$MSP_NS" istio-injection=enabled --overwrite
   echo "    mTLS モード: ${ISTIO_MTLS_MODE:-PERMISSIVE}（STRICT へ移すには ISTIO_MTLS_MODE=STRICT で再実行）"
+  if [ "$ISTIO_MTLS_MODE_AT_INSTALL" != "${ISTIO_MTLS_MODE:-PERMISSIVE}" ]; then
+    echo "    （この段では ${ISTIO_MTLS_MODE_AT_INSTALL}。STRICT への昇格は入口を移した後 = istio-edge-up.sh の [5/5]）"
+  fi
 fi
 # FR-02, FR-03, #992 案 2, IADR-0313: 決定的ローカル埋め込み（ティアA・プロセス内計算）。opt-in。
 #
