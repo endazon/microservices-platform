@@ -12,9 +12,23 @@
     <None Remove="Tests/**" />
   </ItemGroup>
   <ItemGroup>
+    <!-- NFR / IADR-0371 決定 2・3: 検証器（SubmitFeedbackValidator）と生成マッパ（FeedbackMapper）は
+         スライスの内側であり internal である。単体で直に試験するために試験プロジェクトへだけ開ける。
+         他 9 サービス（DocumentService / GraphService 等）と同じ形。 -->
+    <InternalsVisibleTo Include="FeedbackService.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <!-- NFR, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 1・2。
+         端点の入力検証は Features/ 側（Application 相当）で AbstractValidator に写す。
+         版は書かない（CPM。src/Directory.Packages.props が単一情報源）。 -->
+    <PackageReference Include="FluentValidation" />
+    <!-- NFR, 計画 ADR-0030 §決定（マッピング = Riok.Mapperly。選定基準 4「コンパイル時生成を優先」）
+         / IADR-0371 決定 3。source generator であり、生成物は obj/ 配下に出るため
+         カバレッジ集計からは既に落ちている（IADR-0195 決定 1）。 -->
+    <PackageReference Include="Riok.Mapperly" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <!-- EF Core Tools（dotnet ef）は startup project 側に Design を要求する。
          単一プロジェクトになったので、migrations の出力先を別プロジェクトへ向ける指定は要らない。 -->
@@ -24,5 +38,10 @@
     </PackageReference>
     <ProjectReference Include="..\..\Shared\Knowledge.Contracts\Knowledge.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
+    <!-- NFR, 計画 ADR-0041 決定 2 / IADR-0229 / IADR-0371 決定 4。失敗は Kernel の Result / Error で
+         表し、HTTP への写像は API 層（端点）で 1 度だけ行う。**ユニット外参照として許可されている
+         3 プロジェクトの 1 つ**である（IADR-0117。check-unit-dependencies.js 規則 1）。
+         単一プロジェクト＋VSA への移送（IADR-0282）で参照そのものが落ちていたのを回復する。 -->
+    <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Kernel\Platform.Shared.Kernel.csproj" />
   </ItemGroup>
 </Project>

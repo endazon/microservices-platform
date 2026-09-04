@@ -40,9 +40,10 @@ internal static class ListFeedbackEndpoint
             var pageTake = Math.Clamp(take ?? DefaultPageSize, 1, MaxPageSize);
 
             // ToDto はクライアント側で写像（Select 内のカスタムメソッドは SQL 翻訳不可）。
+            // 写像の実体は Riok.Mapperly の生成マッパである（IADR-0371 決定 3）。
             var rows = await q.OrderByDescending(f => f.UpdatedAt)
                 .Skip(pageSkip).Take(pageTake).ToListAsync(ct);
-            return Results.Ok(rows.Select(FeedbackEndpoints.ToDto).ToList());
+            return Results.Ok(rows.Select(FeedbackMapper.ToDto).ToList());
         }).WithName("ListFeedback").RequireAuthorization(PlatformAuthPolicies.AdminOnly)
           .Produces<List<FeedbackDto>>();
     }
