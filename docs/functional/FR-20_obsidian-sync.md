@@ -3,15 +3,15 @@ title: FR-20 Obsidian 双方向同期 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-08-23
-updated: 2026-09-03
+updated: 2026-09-05
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-20]
 adrs: [ADR-0021, ADR-0037, ADR-0046, ADR-0054]
-iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451b_notification-ingress, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract]
-issues: [#451, #600, #1098, #1153, #1154, #1176]
+iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0375]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451b_notification-ingress, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260905_issue-1213_obsidian-plugin-release-assets]
+issues: [#451, #600, #1098, #1153, #1154, #1176, #1213]
 -->
 
 # 機能仕様書: Obsidian 双方向同期
@@ -22,7 +22,13 @@ issues: [#451, #600, #1098, #1153, #1154, #1176]
 > 第 2 段 = 送信・論理削除・競合の 3 択・サーバ側削除／リネームの伝播。`src/obsidian-plugin/`。
 > §Obsidian プラグイン）。**同じ日に同期プロトコルをエッジで外へ出す経路も入った**（配備済みクラスタへ
 > プラグインが到達できる）。**［2026-09-03］名前についても双方向になった** —— ローカル側のリネームを
-> ナレッジベースへ伝えるリネームの口を契約へ足した。**入っていないのは** 配布のリリース資産化 である
+> ナレッジベースへ伝えるリネームの口を契約へ足した。
+> **［2026-09-05］配布がリリース資産になった** —— 利用者はリポジトリを取得せず、リリースの
+> `main.js` と `manifest.json` を Vault へ置く（[手順ガイド](../how-to/obsidian-plugin-install.md)）。
+> **入っていないのは Obsidian 実機での目視**である —— 競合の 3 択ダイアログ・Vault のイベント配線
+> （保存 / 削除 / リネーム）・設定タブは、単体テストと実 HTTP のハーネスでしか確かめていない
+> （Obsidian 本体が検証環境にも CI にも無い）。**契約と同期の振る舞いは配備済みクラスタに対して
+> 実 HTTP で測ってある**が、それは画面の目視を代替しない。
 > （通知は受け口・発火の結線とも 2026-08-28 に実装済み — 通知サービスの配備が残る）。
 
 ## 概要

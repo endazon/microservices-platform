@@ -1,0 +1,101 @@
+# FR-20 / ADR-0037 決定 1 / IADR-0338 フォローアップ 3 / IADR-0375, issue #1213:
+# 自作 Obsidian プラグイン（社内配布）の成果物を GitHub Release の資産として出す。
+#
+# なぜ要るか: プラグインは CI で build されるが**利用者へ渡す経路が無かった**。手順書は
+# `dist/` を手でコピーする前提で、導入にリポジトリのクローンと pnpm のビルドを要求していた。
+#
+# 🔴 **起動は「タグ push」と「手動」だけである。** `pull_request` を持たないので、
+#   - PR で 1 度も起動しない ＝ **必須チェック（develop の 8 件）を増やさない**
+#     （必須チェックの正は docs/ai-workflow.md の表。この YAML はそこへ 1 件も足さない）
+#   - 逆に「PR で走らないから壊れても気付かない」経路になるため、**中身の不変条件は
+#     scripts/scripts.repo.test.js（必須チェック `scripts-tests`）が静的に固定する**。
+#
+# タグの形: `obsidian-plugin-v<manifest.json の version>`。モノレポなので裸の `v*` は使わない
+#   （`v*` は changelog.yml がリポジトリ全体のリリースノート用に既に使っている。
+#    `obsidian-plugin-v…` は `v*` に一致しないので、両者は互いに起動しない）。
+#   前置の文字列は scripts/check-plugin-release-version.js の TAG_PREFIX と同じでなければならない。
+#
+# 08_data-egress-policy: 外部 CDN・Web フォント・analytics・テレメトリを足さない。使うアクションは
+#   本リポジトリで既に使っている 4 種だけで、資産は `check-static-egress.js` の走査を通ったものだけを出す。
+#
+# 署名と公開レジストリ（Obsidian community plugins）への登録は射程外である（ADR-0037 決定 1 は
+#   **社内配布**。やるなら別 issue。公開登録はタグの形と versions.json の要件が別に付く）。
+name: Obsidian Plugin Release
+
+on:
+  push:
+    tags:
+      - "obsidian-plugin-v*"
+  # 打ち直しに手作業の口を残す（タグを消して打ち直すより、既存タグに対して回し直す方が安全）。
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "資産を作るタグ（例: obsidian-plugin-v0.2.0）"
+        required: true
+        type: string
+
+permissions:
+  # Release の作成に要る最小。プラグインのビルドはリポジトリの他の何も書き換えない。
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # workflow_dispatch では入力のタグを、タグ push では push されたタグそのものを取る。
+          ref: ${{ inputs.tag || github.ref }}
+      # 🔴 **submodule は取らない。** プラグインは src/ai-stock-trading を 1 行も参照しない
+      # （frontend.yml が取るのは SPA が @ai-stock-trading を合成するからで、ここには当たらない）。
+      # 取らないことで、可変ユニットの取得失敗が配布を止めない。
+      - uses: pnpm/action-setup@v6
+        with:
+          # 版の単一情報源は src/package.json の packageManager（frontend.yml と同じ理由）。
+          package_json_file: src/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: src/pnpm-lock.yaml
+
+      # 🔴 **資産を作る前に版を突き合わせる。** Obsidian は manifest.json の version しか見ないので、
+      # タグだけ上げると利用者の画面では版が変わらない（静かに壊れる。ビルドもテストも通る）。
+      - name: Plugin version matches the tag
+        run: node scripts/check-plugin-release-version.js --tag "${{ inputs.tag || github.ref }}"
+
+      - name: Install
+        working-directory: src
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Obsidian plugin
+        working-directory: src
+        run: pnpm --filter @platform/obsidian-plugin run build
+
+      # 08_data-egress-policy / IADR-0125 決定 5: 配る成果物そのものを走査する。
+      # --require は対象が無ければ fail する（走査 0 件を成功と誤らせない）。
+      # frontend.yml と同じ検査だが、**配布経路にも置く** —— 配るものを配る直前に見る。
+      - name: No external egress in release artifacts
+        run: node scripts/check-static-egress.js --require src/obsidian-plugin/dist
+
+      # 資産は Obsidian が読む 2 つだけである（styles.css は持たない。IADR-0338 決定 3）。
+      # cli.mjs は実測・検証用のハーネスであって配布物ではないので**出さない**。
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: Obsidian プラグイン ${{ inputs.tag || github.ref_name }}
+          files: |
+            src/obsidian-plugin/dist/main.js
+            src/obsidian-plugin/dist/manifest.json
+          body: |
+            個人資料同期（汎用プラットフォーム）— Obsidian プラグインの社内配布用ビルド。
+
+            ## 導入
+
+            1. Vault の `.obsidian/plugins/msp-private-notes-sync/` を作る。
+            2. 下の `main.js` と `manifest.json` をそのフォルダへ置く（クローンもビルドも要らない）。
+            3. Obsidian の「設定 → コミュニティプラグイン」で制限モードを解除し、有効にする。
+            4. 接続先 URL・同期フォルダ・同期トークンを入れる。
+
+            詳しい手順と同期の振る舞いは `docs/how-to/obsidian-plugin-install.md` にある。
