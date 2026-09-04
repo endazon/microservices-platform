@@ -27,6 +27,11 @@
 #        （`--post-data` は form 符号化であり **式中の `+` が空白へ復号される**。
 #         `{__name__=~"otelcol_.+"}` が 0 件で返り、実際に読み違えかけた。`+` は `%2B` で送る。）
 #
+# 🔵 「評価対象があること」を見るルールを別の群（platform-slo-evaluation-target）に置いてある（#1202 /
+#   ADR-0076 決定 3）。**上の #1110 の注意書きが人手の規律として書いていることを、稼働環境の側から拾う器**である。
+#   静的検査（CI で全ルールの非空ベクタを確かめる）は IADR-0345 決定 5 の繰り延べのままで、
+#   ADR-0076 はその判断を覆していない。**稼働側と変更時では、検知できる時点が違う。**
+#
 # 注意（要検証）: RabbitMQ キュー滞留・デッドレター・構成ドリフトのアラートは、それぞれ RabbitMQ Prometheus
 # プラグインの exporter メトリクスと、ドリフト検出のカスタムメトリクス（現状は監査ログ/警告ログで表出）が
 # 必要。exporter/メトリクスを配線後に下記コメントアウト例を有効化する（follow-up）。
@@ -108,6 +113,57 @@ groups:
         annotations:
           summary: "RAG 応答完了 p95 が 5s 超（傾向の観察。NFR-02 の判定ではない）"
           description: "AiAnalysisService /analysis/ask（一括経路）の応答完了 p95 が 5s を 10 分継続で超過。NFR-02 の初回応答 SLO は RagFirstTokenP95High が判定する。"
+
+  # ADR-0076 決定 3 (#1202): **SLO の評価対象そのものが無いこと**を warning とする。
+  #
+  # 🔴 **上の ServiceRequestMetricsAbsent とは拾うものが違う。名前が似ているので読み分けること。**
+  #   - `ServiceRequestMetricsAbsent` = **直近まで受信していたのに途絶した**（`== 0` かつ `offset 15m > 0`）。
+  #     系列そのものが消えると `rate()` が空になり、**式全体が空になって発火しない。**
+  #   - 本群の `…SeriesAbsent` = **系列が存在しない**（`absent()`）。一度も存在しなかった場合も拾う。
+  #     2026-08-30 まで 4 ルールが存在しないメトリクス名を見ていた事故（#1110）は、**この形でしか検知できない。**
+  #
+  # 🔴 **対象は「無風でいられる時間が検知要件（5 分）より短い経路」だけである**（ADR-0076 決定 3 の判定基準）。
+  #   全 SLO へ対で置くと低頻度経路で恒常発火し、警報を無視する習慣を作る（同 §検討した選択肢 ② 案 B は却下）。
+  #   **`/analysis/ask` 系（RagFirstTokenP95High / RagLatencyP95High）は対象外**である ——
+  #   呼ばれない限り系列を持たないため、無風が 5 分を超え得る。決定 4 の合成監視が着地してから入れる。
+  #
+  # 🔴 **検知までは最大およそ 10 分である。NFR-21 の「5 分以内」ではない。**
+  #   `absent()` は瞬間ベクタ選択子の既定 5 分 lookback が空になって初めて真になり、そこへ `for: 5m` が積まる。
+  #   本群が拾うのは**サービス障害ではなく統制の欠落**であり、障害の 5 分検知は
+  #   OtelCollectorDown（2m）と HighHttp5xxRate（5m）が担う。**速さより恒常発火の回避を採っている。**
+  #
+  # 系列ごとに 1 件だけ置く（ルールごとに対を置かない）。ServiceRequestMetricsAbsent と HighHttp5xxRate は
+  # 同じ系列を見ており、対で置くと**同じ不在で 2 通鳴る**。
+  - name: platform-slo-evaluation-target
+    rules:
+      # OtelCollectorDown の評価対象。scrape 設定から otel-collector が消えると `up` 系列ごと無くなり、
+      # `up == 0` は**空になって発火しない**（「落ちた」ではなく「見ていない」）。
+      - alert: OtelCollectorUpSeriesAbsent
+        expr: absent(up{job="otel-collector"})
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: 'SLO の評価対象が無い: up{job="otel-collector"} の系列が存在しない'
+          description: "otel-collector の scrape 対象が Prometheus の設定から失われている疑い。OtelCollectorDown は空ベクタになり発火しない（ADR-0076 決定 3）。"
+
+      # ServiceRequestMetricsAbsent と HighHttp5xxRate の評価対象。全 job の HTTP サーバーメトリクス。
+      # 常時トラフィックの源は kubelet の liveness/readiness プローブであり、無風になり得ない（§実測）。
+      - alert: HttpServerMetricsSeriesAbsent
+        expr: absent(http_server_request_duration_seconds_count)
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "SLO の評価対象が無い: http_server_request_duration_seconds_count の系列が 1 つも存在しない"
+          description: "全サービスの HTTP メトリクスが Prometheus に無い。転送経路（OTLP → collector → remote write）の断、またはメトリクス名・単位の規約変更の疑い。ServiceRequestMetricsAbsent と HighHttp5xxRate は空ベクタになり発火しない（#1110 の再発。ADR-0076 決定 3）。"
+
+      # SearchLatencyP95High の評価対象。job ラベルまで絞る（全体はあるのに retrieval-service だけ無い、を拾う）。
+      - alert: SearchLatencySeriesAbsent
+        expr: absent(http_server_request_duration_seconds_bucket{job="microservices-platform.retrieval-service"})
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "SLO の評価対象が無い: retrieval-service のレイテンシ分布が存在しない"
+          description: "RetrievalService の http_server_request_duration_seconds_bucket が無い。SearchLatencyP95High は空ベクタになり発火しない（NFR-01 の検索 p95 が無監視になる）。"
 
   # --- follow-up: exporter/カスタムメトリクス配線後に有効化する（#198 注意参照） ---
   # - name: platform-messaging

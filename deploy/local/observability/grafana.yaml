@@ -432,7 +432,7 @@ data:
     #      機械で確かめたのは **`scripts/check-grafana-alerting.js`** の範囲
     #      —— ルール数と名前が `deploy/prometheus/alerts.yml` と 1 対 1、参照する
     #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、まで。
-    #      **配備時に `/api/v1/provisioning/alert-rules` が 6 件返すことを確かめること。**
+    #      **配備時に `/api/v1/provisioning/alert-rules` が 9 件返すことを確かめること。**
     #
     # 式は `deploy/prometheus/alerts.yml` と**同じもの**を使う（二重管理だが、暫定期間だけである）。
     #
@@ -631,6 +631,106 @@ data:
                   conditions:
                     # 単位は**秒**（5s）。ミリ秒の 5000 ではない。
                     - evaluator: { type: gt, params: [5] }
+
+      # ADR-0076 決定 3 (#1202): SLO の**評価対象そのものの不在**を warning とする。
+      #
+      # 🔴 **この群だけ `noDataState` が `OK` である。Prometheus 版には無い、Grafana 版だけの落とし穴。**
+      #   `absent(m)` は **`m` が存在するとき空ベクタを返す**（＝正常時が「データ無し」）。Grafana の閾値式は
+      #   空入力を NoData として扱うため、他の 6 件と同じ `NoData` にすると**正常時に `DatasourceNoData` が
+      #   恒常発火する** —— ADR-0076 理由が「警報を無効化する」と名指しした型そのものになる。
+      #   **既存 6 件は `NoData` のままでよい**（あちらは正常時に値を返す式であり、空になること自体が異常）。
+      #
+      # しきい値の置き場所は他と同じく `conditions[].evaluator.params`（`gt 0`）。`absent()` は真のとき 1 を返す。
+      # 対象経路の選び方・`for: 5m` の理由・検知が最大およそ 10 分になることは
+      # `deploy/prometheus/alerts.yml` の同名の群の冒頭が正本である。
+      - orgId: 1
+        name: platform-slo-evaluation-target
+        folder: SLO
+        interval: 1m
+        rules:
+          - uid: slo-otel-collector-up-series-absent
+            title: OtelCollectorUpSeriesAbsent
+            condition: C
+            for: 5m
+            noDataState: OK
+            execErrState: Error
+            labels:
+              severity: warning
+            annotations:
+              summary: 'SLO の評価対象が無い: up{job="otel-collector"} の系列が存在しない'
+              description: "otel-collector の scrape 対象が Prometheus の設定から失われている疑い。OtelCollectorDown は空ベクタになり発火しない（ADR-0076 決定 3）。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: 'absent(up{job="otel-collector"})'
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+
+          - uid: slo-http-server-metrics-series-absent
+            title: HttpServerMetricsSeriesAbsent
+            condition: C
+            for: 5m
+            noDataState: OK
+            execErrState: Error
+            labels:
+              severity: warning
+            annotations:
+              summary: "SLO の評価対象が無い: http_server_request_duration_seconds_count の系列が 1 つも存在しない"
+              description: "全サービスの HTTP メトリクスが Prometheus に無い。転送経路（OTLP → collector → remote write）の断、またはメトリクス名・単位の規約変更の疑い。ServiceRequestMetricsAbsent と HighHttp5xxRate は空ベクタになり発火しない（#1110 の再発。ADR-0076 決定 3）。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: 'absent(http_server_request_duration_seconds_count)'
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+
+          - uid: slo-search-latency-series-absent
+            title: SearchLatencySeriesAbsent
+            condition: C
+            for: 5m
+            noDataState: OK
+            execErrState: Error
+            labels:
+              severity: warning
+            annotations:
+              summary: "SLO の評価対象が無い: retrieval-service のレイテンシ分布が存在しない"
+              description: "RetrievalService の http_server_request_duration_seconds_bucket が無い。SearchLatencyP95High は空ベクタになり発火しない（NFR-01 の検索 p95 が無監視になる）。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: 'absent(http_server_request_duration_seconds_bucket{job="microservices-platform.retrieval-service"})'
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
 ---
 apiVersion: apps/v1
 kind: Deployment
