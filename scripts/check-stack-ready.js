@@ -18,6 +18,12 @@
  *
  * - **G1 readiness**: 対象 namespace の Deployment がすべて `availableReplicas >= 1` で、
  *   pod が Ready であること。**待つのは呼び出し側（kubectl wait）で、ここは判定だけを行う。**
+ *   🔴 **`Failed` な Pod の可否は所有 Job の `status` で決まる**（#1219 / [IADR-0376]）。
+ *   `restartPolicy: Never` の Job は**再試行で成功しても失敗した attempt の Pod を残す**ので、
+ *   残骸を無条件に致命にすると**Job が成功しているのに赤**になる（間欠赤の正体）。
+ *   見逃すのは「所有 Job が `Complete` に達したことを確かめられた」Pod **だけ**であり、
+ *   `Failed` に達した Job・Job に所有されていない Pod・Job を引けなかった場合は**致命のまま**。
+ *   再試行中（終端未達）は有界に待ち、**待ちきれなければ致命**（`waitForJobsToSettle`）。
  * - **G2 0 件で緑にしない**: 走査した Deployment が 0 件なら失敗にする。
  *   🔴 **理由は「`kubectl wait --all` が 0 件のとき成功するから」ではない。** 当初そう書いていたが
  *   **実測は逆で、`error: no matching resources found` で exit 1 になる**（run 32556579646 の
@@ -89,6 +95,19 @@
  *   （`bff:issue1187` / `conversion-service:pdf-1192` …）が 7 件残ったまま develop から乖離していた
  *   （2 回目。1 回目は 2026-07 に古いスクリプトで作られたクラスタ）。描画に無い Deployment（opt-in の
  *   overlay 由来）は見ない。**`:latest` の中身が最新かは見ない**（記録に留める。IADR-0369 §却下した代替案）。
+ * - **G12 メッシュ宣言の乖離**（#1159 / [IADR-0377]）: `PeerAuthentication` / `AuthorizationPolicy` /
+ *   `DestinationRule` について、**(a) 稼働の集合が helm の描画（`helm get manifest`）と一致し、
+ *   (b) mTLS モードが宣言（`helm get values -a` の `mesh.*`）と一致し、(c) `spec` を書いている
+ *   field manager が `helm` ただ 1 つ**であることを要求する。
+ *   🔴 **(c) が本体である。** Helm 4 はサーバサイド apply なので、`kubectl patch` / `kubectl apply` で
+ *   同じフィールドを書くと field manager を奪い、**以後の `helm upgrade` が conflict で恒久的に失敗する**
+ *   （`--take-ownership` も `--force` も効かない。復旧は対象の delete が要る）。値が偶然一致していても
+ *   壊れているので、**値の一致だけを見る門では捕まらない。**
+ *   同型の事故は 2 回目（1 回目 = `istio-edge-up.sh` の `kubectl patch` 由来のドリフト（#1159 が観測）。
+ *   2 回目 = #1115 の計測スクリプトが STRICT を `kubectl apply` して戻さなかった件（#1168 が記録））。
+ *   `mesh.enabled=false` の構成では notice で飛ばす（G5 / G7 と同じ作法）。ただし
+ *   **宣言が無いのに稼働にメッシュ資材が在る**なら飛ばさず失敗にする（IADR-0317 が
+ *   「動いているが宣言が持っていない」として記録に留めた形そのもの）。
  *
  * ## 列挙を持たない
  *
@@ -161,6 +180,11 @@ const CHART_DIR = path.join('deploy', 'helm', 'microservices-platform');
 const CHART_VALUES_LOCAL = path.join('deploy', 'local', 'values-local.yaml');
 const INFRA_KUSTOMIZE_DIR = path.join('deploy', 'local', 'infra-persistence');
 const MSP_NS = 'microservices-platform';
+// G12 (#1159 / IADR-0377): メッシュ資材の種別と helm リリース名。**サービス名は書かない**（列挙を持たない）。
+const MESH_KINDS = ['PeerAuthentication', 'AuthorizationPolicy', 'DestinationRule'];
+const MSP_HELM_RELEASE = 'msp';
+/** G12: `spec` を書いてよい field manager。Helm 4 のサーバサイド apply は `helm` を名乗る。 */
+const MESH_SPEC_WRITER = 'helm';
 
 // ---------------------------------------------------------------- 収集（外部依存）
 
@@ -262,6 +286,34 @@ function renderChart(repoRoot) {
     cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
   });
   return r.status === 0 ? { ok: true, text: r.stdout } : { ok: false, error: (r.stderr || '').trim() };
+}
+
+/**
+ * G12 (#1159): 稼働している helm リリースの**宣言**を採る。
+ * 資材の集合は `helm get manifest`（実際に適用された描画）、値は `helm get values -a`（既定値込み）。
+ * リリースが無い / helm が居ないときは `null`（呼び出し側は「稼働に資材が在るか」で判定を分ける）。
+ */
+function declaredMesh(repoRoot, ns = MSP_NS, release = MSP_HELM_RELEASE) {
+  const run = (args) => spawnSync('helm', args, { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const values = run(['get', 'values', release, '-n', ns, '-a', '-o', 'json']);
+  const manifest = run(['get', 'manifest', release, '-n', ns]);
+  if (values.status !== 0 || manifest.status !== 0) return null;
+  let v;
+  try {
+    v = JSON.parse(values.stdout || '{}');
+  } catch {
+    return null;
+  }
+  const mesh = v.mesh || {};
+  const bc = mesh.backchannelLogout || {};
+  return {
+    enabled: mesh.enabled === true,
+    mtlsMode: mesh.mtlsMode,
+    backchannel: bc.fromOutsideMesh === true
+      ? { workload: bc.workload, port: Number(bc.port), path: bc.path }
+      : null,
+    objects: meshObjectsFromManifest(manifest.stdout),
+  };
 }
 
 /** G11: infra の kustomize を描画する。 */
@@ -436,6 +488,155 @@ function evaluateImageDrift(ns, rendered, live) {
     }
   }
   return failures;
+}
+
+/**
+ * G12 (#1159 / IADR-0377): helm の描画（`helm get manifest`）から**メッシュ資材の集合**を走査する。
+ * 値は見ない（値は `helm get values -a` の `mesh.*` が正本。描画テキストの字下げに依存させない）。
+ */
+function meshObjectsFromManifest(text) {
+  const out = [];
+  for (const doc of yamlDocs(text || '')) {
+    const kind = docKind(doc);
+    if (!MESH_KINDS.includes(kind)) continue;
+    const name = docName(doc);
+    if (name) out.push({ kind, name });
+  }
+  return out;
+}
+
+/** G12: `managedFields` のうち **`spec` を書いている** manager の名前を採る（重複は畳む）。 */
+function specWriters(item) {
+  const names = new Set();
+  for (const f of (item && item.metadata && item.metadata.managedFields) || []) {
+    if (f && f.fieldsV1 && Object.prototype.hasOwnProperty.call(f.fieldsV1, 'f:spec')) {
+      names.add(f.manager || '(無名)');
+    }
+  }
+  return [...names].sort();
+}
+
+/**
+ * G12: 宣言（helm）と稼働のメッシュ資材を突き合わせる。**純関数**。
+ *
+ * @param {{declared:(null|{enabled:boolean, mtlsMode:string, backchannel:(null|{workload:string,port:number,path:string}),
+ *          objects:{kind:string,name:string}[]}), live:(null|object[]), liveError:(string|null)}} input
+ */
+function evaluateMeshDrift({ declared, live, liveError }) {
+  const failures = [];
+  const notices = [];
+  const items = live || [];
+
+  // 宣言が読めない（helm リリースが無い / helm が居ない）。稼働に資材が在るなら**飛ばさない**。
+  if (!declared) {
+    if (items.length > 0) {
+      failures.push(
+        `[G12] helm の宣言を読めないのに、稼働にメッシュ資材が ${items.length} 件在る` +
+          `（${items.map((i) => `${i.kind}/${i.metadata && i.metadata.name}`).join(', ')}）。` +
+          ' **動いているが宣言が持っていない**状態である（手で apply したものが残っている）。',
+      );
+    } else {
+      notices.push('[check-stack-ready] G12: helm の宣言を読めず、稼働にもメッシュ資材が無い。メッシュ未導入とみなして飛ばす。');
+    }
+    return { failures, notices };
+  }
+
+  if (!declared.enabled) {
+    if (items.length > 0) {
+      failures.push(
+        `[G12] 宣言は mesh.enabled=false なのに、稼働にメッシュ資材が ${items.length} 件在る` +
+          `（${items.map((i) => `${i.kind}/${i.metadata && i.metadata.name}`).join(', ')}）。` +
+          ' helm を経ない手動適用である。撤去するか、宣言（ISTIO=1）で立て直すこと（#1159）。',
+      );
+    } else {
+      notices.push('[check-stack-ready] G12: 宣言が mesh.enabled=false で稼働にも資材が無い（一致）。');
+    }
+    return { failures, notices };
+  }
+
+  if (liveError) {
+    failures.push(`[G12] 宣言は mesh.enabled=true だが、稼働のメッシュ資材を取得できなかった: ${liveError}`);
+    return { failures, notices };
+  }
+
+  const declaredKeys = (declared.objects || []).map((o) => `${o.kind}/${o.name}`).sort();
+  if (declaredKeys.length === 0) {
+    failures.push('[G12] mesh.enabled=true なのに helm の描画にメッシュ資材が 1 件も無い。走査が壊れている（0 件を緑にしない）。');
+    return { failures, notices };
+  }
+  const liveKeys = items.map((i) => `${i.kind}/${i.metadata && i.metadata.name}`).sort();
+
+  for (const key of declaredKeys) {
+    if (!liveKeys.includes(key)) failures.push(`[G12] 宣言（helm の描画）に在る ${key} が稼働に無い。`);
+  }
+  for (const key of liveKeys) {
+    if (!declaredKeys.includes(key)) {
+      failures.push(
+        `[G12] 稼働の ${key} を helm の描画が持っていない。**helm を経ない手動適用**である` +
+          '（計測スクリプトの当てっぱなしが典型。#1168 が同型を記録している）。',
+      );
+    }
+  }
+
+  // (b) mTLS モードが宣言と一致すること。**値はテンプレートではなく values から採る**
+  //     （`MeshMtlsTests` と `k8s-local-up.test.js` が「テンプレートが values を参照していること」を固定する）。
+  const byName = new Map(items.map((i) => [`${i.kind}/${i.metadata && i.metadata.name}`, i]));
+  for (const item of items) {
+    if (item.kind !== 'PeerAuthentication') continue;
+    const mode = ((item.spec || {}).mtls || {}).mode;
+    if (mode !== declared.mtlsMode) {
+      failures.push(
+        `[G12] PeerAuthentication/${item.metadata.name} の mtls.mode が宣言と違う。` +
+          `宣言=${declared.mtlsMode} / 稼働=${mode || '(無し)'}。**手で書き換えた跡**である（#1159）。`,
+      );
+    }
+  }
+  const bc = declared.backchannel;
+  if (bc) {
+    const pa = byName.get(`PeerAuthentication/${bc.workload}-backchannel-logout`);
+    const portMode = pa && ((((pa.spec || {}).portLevelMtls || {})[String(bc.port)]) || {}).mode;
+    if (pa && portMode !== 'PERMISSIVE') {
+      failures.push(
+        `[G12] PeerAuthentication/${bc.workload}-backchannel-logout の portLevelMtls[${bc.port}] が` +
+          ` PERMISSIVE でない（${portMode || '(無し)'}）。メッシュ外の認可サーバからの 1 本が塞がる（#1115 / #1168）。`,
+      );
+    }
+    const ap = byName.get(`AuthorizationPolicy/${bc.workload}-plaintext-only-backchannel`);
+    if (ap && (ap.spec || {}).action !== 'DENY') {
+      failures.push(
+        `[G12] AuthorizationPolicy/${bc.workload}-plaintext-only-backchannel の action が DENY でない` +
+          `（${(ap.spec || {}).action || '(無し)'}）。開けた平文の口が 1 URI に絞られていない。`,
+      );
+    }
+  }
+
+  // (c) 🔴 本体。`spec` を書いている field manager が helm ただ 1 つであること。
+  for (const item of items) {
+    const writers = specWriters(item);
+    const others = writers.filter((w) => w !== MESH_SPEC_WRITER);
+    if (writers.length === 0) {
+      failures.push(
+        `[G12] ${item.kind}/${item.metadata.name} の managedFields が読めない（spec の書き手が 0 件）。` +
+          ' `--show-managed-fields` を付けて取得しているか確認すること（0 件を緑にしない）。',
+      );
+      continue;
+    }
+    if (others.length > 0) {
+      failures.push(
+        `[G12] ${item.kind}/${item.metadata.name} の spec を helm 以外が書いている（${others.join(', ')}）。` +
+          ' Helm 4 はサーバサイド apply なので、**以後の `helm upgrade` は conflict で恒久的に失敗する**' +
+          '（`--take-ownership` も `--force` も効かない）。復旧手順は docs/operations/operations.md。' +
+          ' モードの変更は `scripts/lib/mesh-mtls-mode.sh` の `set_mesh_mtls_mode`（helm 経由）で行うこと（#1159）。',
+      );
+    }
+  }
+
+  notices.push(
+    `[check-stack-ready] G12: 宣言 mesh.mtlsMode=${declared.mtlsMode}` +
+      ` / 資材 ${declaredKeys.length} 件（${declaredKeys.join(', ')}）` +
+      ` / spec の書き手=${[...new Set(items.flatMap(specWriters))].join(', ') || '(無し)'}。`,
+  );
+  return { failures, notices };
 }
 
 /**
@@ -637,20 +838,148 @@ function evaluateDeployments(ns, items) {
   return { failures, total: items.length, ready };
 }
 
-/** G1: pod の Ready 条件を判定する。`Succeeded`（完了 Job）は対象外。 */
-function evaluatePods(ns, items) {
+/** Job の `status.conditions` から終端状態を取る。`'Complete'` / `'Failed'` / `null`（終端未達）。 */
+function jobTerminalState(job) {
+  const conds = (job && job.status && job.status.conditions) || [];
+  // 🔴 `type` が在るだけでは足りない。**`status: 'True'` を見る** —— Kubernetes は条件を
+  // `status: 'False'` のまま残すことがあり、type だけで読むと「失敗した Job」を成功と読む。
+  if (conds.some((c) => c.type === 'Failed' && c.status === 'True')) return 'Failed';
+  if (conds.some((c) => c.type === 'Complete' && c.status === 'True')) return 'Complete';
+  return null;
+}
+
+/**
+ * #1219: `Failed` な Pod を**所有 Job の状態で**分類する（純関数）。
+ *
+ * 🔴 **`restartPolicy: Never` の Job は、再試行で成功しても失敗した attempt の Pod を残す。**
+ * 実測（run 33869773915 / 33865471843 / 33759232177 の 3 本。いずれも同じ形）:
+ *
+ *     config-drift-postsync-r86s5   0/1  Error      112s   ← 1 本目（予算切れ）
+ *     config-drift-postsync-t84h8   0/1  Completed   36s   ← 2 本目（成功）→ Job は Complete
+ *
+ * G1 はこの残骸を `phase=Failed` として致命にしていた。**Job は成功しているのに赤になる**
+ * ＝ 間欠赤の正体である（#1219）。
+ *
+ * 🔴 **`Succeeded` 以外を一律に見逃す形にはしない。** 見逃すのは
+ * 「**所有 Job が `Complete` で終端に達したことを稼働側の status で確かめられた**失敗 Pod」だけ。
+ * 予算を使い切って `Failed` に達した Job の Pod は**今までどおり致命**である
+ * （`keycloak-realm-reconcile` は `backoffLimit: 0` なので、1 度落ちれば必ずこちらへ倒れる）。
+ *
+ * @returns {'fatal'|'benign'|'pending'} `pending` ＝ Job が終端未達（呼び出し側が有界に待つ）。
+ */
+function classifyFailedPod(pod, jobsByName) {
+  const owners = (pod.metadata && pod.metadata.ownerReferences) || [];
+  const owner = owners.find((o) => o.kind === 'Job');
+  // Job に所有されていない `Failed` Pod は、誰も再試行しない＝そのまま壊れている。
+  if (!owner) return { verdict: 'fatal', reason: 'Job に所有されていない' };
+  const job = jobsByName.get(owner.name);
+  // fail-closed: 所有 Job が見つからなければ、成功したことを確かめられない。
+  if (!job) return { verdict: 'fatal', reason: `所有 Job ${owner.name} が見つからない` };
+  const state = jobTerminalState(job);
+  if (state === 'Complete') {
+    return { verdict: 'benign', reason: `所有 Job ${owner.name} は Complete（再試行で成功済み）`, job: owner.name };
+  }
+  if (state === 'Failed') {
+    return { verdict: 'fatal', reason: `所有 Job ${owner.name} も Failed（backoffLimit を使い切った）`, job: owner.name };
+  }
+  return { verdict: 'pending', reason: `所有 Job ${owner.name} が終端未達（再試行中）`, job: owner.name };
+}
+
+/**
+ * #1219: 再試行中（`pending`）の Job が終端に達するのを**有界に**待ってから判定し直す。
+ *
+ * 🔴 **なぜ 120 秒で足りるか。** 本検査が走る時点で、ワークフロー段 9 の
+ * `kubectl wait --for=condition=Ready`（`--timeout=600s`）が **BFF が Ready であることを既に証明している**。
+ * したがって「今まさに走っている attempt」は数秒で成功するはずである。実測された attempt 間隔は
+ * 76 秒（run 33869773915: 1 本目 age 112s / 2 本目 age 36s）なので、120 秒は
+ * **1 回分の attempt ＋ backoff を丸ごと覆う**。
+ *
+ * 🔴 **期限切れは致命**（fail-closed）。「待てたこと」を成功の根拠にしない。
+ */
+function waitForJobsToSettle(
+  ns,
+  podItems,
+  first,
+  notices,
+  {
+    budgetMs = 120000,
+    intervalMs = 5000,
+    sleep = sleepSync,
+    now = Date.now,
+    // 稼働側の再取得。self-test は差し替える（kubectl を呼ばない）。
+    fetchJobs = (namespace) => {
+      const r = kubectlJson(['get', 'jobs', '-n', namespace, '-o', 'json']);
+      return r.ok ? r.value.items : [];
+    },
+  } = {},
+) {
+  const deadline = now() + budgetMs;
+  const names = first.pending.map((p) => `${p.pod}（Job ${p.job}）`).join(' / ');
+  notices.push(`[check-stack-ready] G1: ${ns} に再試行中の Job Pod が ${first.pending.length} 件ある（${names}）。終端まで最大 ${Math.round(budgetMs / 1000)} 秒待つ。`);
+  let last = first;
+  while (now() < deadline) {
+    sleep(intervalMs);
+    last = evaluatePods(ns, podItems, fetchJobs(ns));
+    if (last.pending.length === 0) return last;
+  }
+  return {
+    failures: [
+      ...last.failures,
+      ...last.pending.map(
+        (p) =>
+          `[G1] ${ns}/${p.pod}: Pod が Failed で、所有 Job ${p.job} が ${Math.round(budgetMs / 1000)} 秒待っても終端（Complete / Failed）に達しなかった。` +
+          ' readiness は既に成立しているので、再試行はすぐ成功するはずである（#1219）。',
+      ),
+    ],
+    notices: last.notices,
+    pending: [],
+  };
+}
+
+/** ミリ秒だけ同期に眠る（本検査は同期の spawnSync で組まれている。async へ広げない）。 */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * G1: pod の Ready 条件を判定する。`Succeeded`（完了 Job）は対象外。
+ *
+ * `jobs` は同じ namespace の `kubectl get jobs -o json` の `items`。**渡さなければ Job 対応は効かず、
+ * `Failed` Pod はすべて致命になる**（従来の挙動＝ fail-closed 側）。
+ *
+ * @returns {{failures: string[], notices: string[], pending: {pod: string, job: string}[]}}
+ */
+function evaluatePods(ns, items, jobs = []) {
   const failures = [];
+  const notices = [];
+  const pending = [];
+  const jobsByName = new Map(
+    (Array.isArray(jobs) ? jobs : []).map((j) => [(j.metadata && j.metadata.name) || '', j]),
+  );
   for (const p of Array.isArray(items) ? items : []) {
     const name = (p.metadata && p.metadata.name) || '(名前不明)';
     const phase = p.status && p.status.phase;
     if (phase === 'Succeeded') continue;
+    if (phase === 'Failed') {
+      const c = classifyFailedPod(p, jobsByName);
+      if (c.verdict === 'benign') {
+        notices.push(`[check-stack-ready] G1: ${ns}/${name} は失敗した attempt の残骸だが、${c.reason}。致命にしない（#1219）。`);
+        continue;
+      }
+      if (c.verdict === 'pending') {
+        pending.push({ pod: name, job: c.job });
+        continue;
+      }
+      failures.push(`[G1] ${ns}/${name}: Pod が Failed で、${c.reason}。`);
+      continue;
+    }
     const conds = (p.status && p.status.conditions) || [];
     const readyCond = conds.find((c) => c.type === 'Ready');
     if (!readyCond || readyCond.status !== 'True') {
       failures.push(`[G1] ${ns}/${name}: Ready ではない（phase=${phase}, Ready=${readyCond ? readyCond.status : '無し'}）。`);
     }
   }
-  return failures;
+  return { failures, notices, pending };
 }
 
 /** admin(50000) を提供しているか（Service 1 つぶんの判定。純関数）。 */
@@ -768,7 +1097,19 @@ function check({ repoRoot = REPO_ROOT } = {}) {
       failures.push(`[G1] namespace ${ns} の Pod を取得できなかった: ${pods.error}`);
       continue;
     }
-    failures.push(...evaluatePods(ns, pods.value.items));
+    // #1219: `Failed` Pod の可否は**所有 Job の status で決まる**ので Job も引く。
+    // 取得できなければ Job 一覧は空＝ `Failed` Pod はすべて致命（fail-closed）になる。
+    const jobs = kubectlJson(['get', 'jobs', '-n', ns, '-o', 'json']);
+    if (!jobs.ok) {
+      notices.push(`[check-stack-ready] G1: namespace ${ns} の Job を取得できなかった（${jobs.error}）。Failed Pod は致命として判定する。`);
+    }
+    let pv = evaluatePods(ns, pods.value.items, jobs.ok ? jobs.value.items : []);
+    if (pv.pending.length > 0) {
+      // 再試行中の Job は有界に待つ。**待ちきれなければ致命**（fail-closed）。
+      pv = waitForJobsToSettle(ns, pods.value.items, pv, notices);
+    }
+    failures.push(...pv.failures);
+    notices.push(...pv.notices);
     notices.push(`[check-stack-ready] ${ns}: Deployment ${d.ready}/${d.total} が available、Pod ${pods.value.items.length} 件を判定した。`);
   }
 
@@ -931,6 +1272,22 @@ function check({ repoRoot = REPO_ROOT } = {}) {
     notices.push('[check-stack-ready] G11: 宣言（chart ＋ infra kustomize）と稼働のイメージ参照を突き合わせた。');
   }
 
+  // G12 (#1159 / IADR-0377): 宣言（helm）と稼働のメッシュ資材、および spec の field manager。
+  {
+    const declared = declaredMesh(repoRoot);
+    // 🔴 `--show-managed-fields` を落とすと (c) が測れないまま緑になる（沈黙を成功と読まない）。
+    const liveMesh = kubectlJson([
+      'get', MESH_KINDS.join(','), '-n', MSP_NS, '-o', 'json', '--show-managed-fields',
+    ]);
+    const r = evaluateMeshDrift({
+      declared,
+      live: liveMesh.ok ? liveMesh.value.items : null,
+      liveError: liveMesh.ok ? null : liveMesh.error,
+    });
+    failures.push(...r.failures);
+    notices.push(...r.notices);
+  }
+
   return { failures, notices, totalDeployments };
 }
 
@@ -970,10 +1327,102 @@ function selfTest() {
     const bad = evaluatePods('ns', [
       { metadata: { name: 'p1' }, status: { phase: 'Running', conditions: [{ type: 'Ready', status: 'False' }] } },
     ]);
-    assert.strictEqual(bad.length, 1, 'Ready=False が失敗になっていない');
+    assert.strictEqual(bad.failures.length, 1, 'Ready=False が失敗になっていない');
     const done = evaluatePods('ns', [{ metadata: { name: 'job' }, status: { phase: 'Succeeded' } }]);
-    assert.deepStrictEqual(done, [], '完了 Job を失敗にしている');
+    assert.deepStrictEqual(done.failures, [], '完了 Job を失敗にしている');
   });
+
+  //
+  // #1219: `Failed` Pod の可否は**所有 Job の status で決まる**。
+  // 実測の形（run 33869773915）をそのまま入力にする —— Job Pod が 2 本あり、1 本目が Error、
+  // 2 本目が Completed で Job は Complete。
+  //
+  {
+    const failedPod = (name, jobName) => ({
+      metadata: { name, ownerReferences: jobName ? [{ kind: 'Job', name: jobName }] : [] },
+      status: { phase: 'Failed', conditions: [{ type: 'Ready', status: 'False' }] },
+    });
+    const job = (name, cond) => ({
+      metadata: { name },
+      status: { conditions: cond ? [{ type: cond, status: 'True' }] : [] },
+    });
+
+    ok('G1 陽性対照 (#1219): 再試行で成功した Job の残骸 Failed Pod は緑になる', () => {
+      const r = evaluatePods(
+        'microservices-platform',
+        [
+          failedPod('config-drift-postsync-r86s5', 'config-drift-postsync'),
+          { metadata: { name: 'config-drift-postsync-t84h8' }, status: { phase: 'Succeeded' } },
+        ],
+        [job('config-drift-postsync', 'Complete')],
+      );
+      assert.deepStrictEqual(r.failures, [], '所有 Job が Complete なのに残骸を致命にしている（#1219 の再発）');
+      assert.deepStrictEqual(r.pending, [], '終端に達した Job を保留にしている');
+      assert.strictEqual(r.notices.length, 1, '見逃したことを記録していない（沈黙で見逃さない）');
+    });
+
+    ok('G1 陰性対照 (#1219): backoffLimit を使い切って Failed に達した Job の Pod は赤のまま', () => {
+      const r = evaluatePods('platform-infra', [failedPod('keycloak-realm-reconcile-abcde', 'keycloak-realm-reconcile')], [
+        job('keycloak-realm-reconcile', 'Failed'),
+      ]);
+      assert.strictEqual(r.failures.length, 1, '落ちた Job を見逃している（検知能力を捨てている）');
+      assert.ok(r.failures[0].includes('keycloak-realm-reconcile'), '所有 Job を名指ししていない');
+    });
+
+    ok('G1 陰性対照 (#1219): Job に所有されていない Failed Pod / Job が引けない場合は赤', () => {
+      const orphan = evaluatePods('ns', [failedPod('lonely-pod', null)], [job('unrelated', 'Complete')]);
+      assert.strictEqual(orphan.failures.length, 1, 'Job に所有されていない Failed Pod を見逃している');
+      // Job 一覧が引けなかった場合（`jobs` が空）は fail-closed 側へ倒れる。
+      const noJobs = evaluatePods('ns', [failedPod('config-drift-postsync-r86s5', 'config-drift-postsync')], []);
+      assert.strictEqual(noJobs.failures.length, 1, 'Job を引けないのに見逃している（fail-closed が崩れている）');
+    });
+
+    ok('G1 (#1219): Complete / Failed が status=False で残っている Job は終端未達として扱う', () => {
+      // 🔴 type だけで読むと「落ちた Job」を成功と読む。status: 'True' を要求していることを固定する。
+      assert.strictEqual(jobTerminalState({ status: { conditions: [{ type: 'Complete', status: 'False' }] } }), null);
+      assert.strictEqual(jobTerminalState({ status: { conditions: [{ type: 'Failed', status: 'True' }] } }), 'Failed');
+      assert.strictEqual(jobTerminalState({}), null);
+      const r = evaluatePods('ns', [failedPod('p', 'j')], [job('j', null)]);
+      assert.deepStrictEqual(r.failures, [], '終端未達を即座に致命にしている（再試行中に落ちる新しい間欠赤になる）');
+      assert.strictEqual(r.pending.length, 1, '終端未達を保留にしていない');
+    });
+
+    ok('G1 (#1219): 再試行中の Job は有界に待ち、終端に達しなければ致命（fail-closed）', () => {
+      const podItems = [failedPod('p', 'j')];
+      const first = evaluatePods('ns', podItems, [job('j', null)]);
+      const spin = (settleAt) => {
+        let t = 0;
+        let polls = 0;
+        const notices = [];
+        const r = waitForJobsToSettle('ns', podItems, first, notices, {
+          budgetMs: 20000,
+          intervalMs: 5000,
+          sleep: (ms) => {
+            t += ms;
+          },
+          now: () => t,
+          fetchJobs: () => {
+            polls += 1;
+            return [job('j', polls >= settleAt ? 'Complete' : null)];
+          },
+        });
+        return { r, notices, polls };
+      };
+
+      // 陰性対照: 期限内に終端へ達しない（settleAt を届かない値にする）。
+      const never = spin(999);
+      assert.strictEqual(never.r.pending.length, 0, '期限切れなのに保留のままにしている');
+      assert.strictEqual(never.r.failures.length, 1, '待ちきれなかった Job を緑にしている（待てたことを成功の根拠にしている）');
+      assert.ok(never.r.failures[0].includes('終端'), '期限切れであることを述べていない');
+      assert.ok(never.notices.length >= 1, '待ちに入ったことを記録していない');
+
+      // 陽性対照: 2 回目のポーリングで Complete に達したら緑になる。
+      const settles = spin(2);
+      assert.deepStrictEqual(settles.r.failures, [], '終端で成功した Job を致命にしている');
+      assert.strictEqual(settles.polls, 2, '終端に達しても待ち続けている（または待たずに抜けている）');
+    });
+
+  }
 
   ok('G5: admin=50000 がどちらのエッジにも無ければ失敗になり、#953 を指す', () => {
     const traefikNoAdmin = { spec: { ports: [{ name: 'web', port: 80 }, { name: 'websecure', port: 443 }] } };
@@ -1240,6 +1689,101 @@ function selfTest() {
     assert.strictEqual(evaluateImageDrift('ns', {}, {}).length, 1);
   });
 
+  // ---- G12 (#1159 / IADR-0377)
+  const meshManifest = [
+    'apiVersion: security.istio.io/v1', 'kind: PeerAuthentication', 'metadata:', '  name: microservices-platform-mtls',
+    'spec:', '  mtls:', '    mode: PERMISSIVE', '---',
+    'apiVersion: networking.istio.io/v1', 'kind: DestinationRule', 'metadata:', '  name: microservices-platform-mtls',
+    'spec:', '  host: "*.microservices-platform.svc.cluster.local"', '---',
+    'apiVersion: apps/v1', 'kind: Deployment', 'metadata:', '  name: bff-service',
+  ].join('\n');
+  const helmWriter = (extra = []) => ({
+    managedFields: [{ manager: 'helm', operation: 'Apply', fieldsV1: { 'f:spec': {} } }, ...extra],
+  });
+  const livePa = (mode, extraWriters = []) => ({
+    kind: 'PeerAuthentication',
+    metadata: { name: 'microservices-platform-mtls', ...helmWriter(extraWriters) },
+    spec: { mtls: { mode } },
+  });
+  const liveDr = () => ({
+    kind: 'DestinationRule',
+    metadata: { name: 'microservices-platform-mtls', ...helmWriter() },
+    spec: { host: '*', trafficPolicy: { tls: { mode: 'ISTIO_MUTUAL' } } },
+  });
+  const declaredMeshFixture = {
+    enabled: true, mtlsMode: 'PERMISSIVE', backchannel: null,
+    objects: meshObjectsFromManifest(meshManifest),
+  };
+  ok('G12: helm の描画からメッシュ資材だけを走査する（Deployment に惑わされない）', () => {
+    assert.deepStrictEqual(meshObjectsFromManifest(meshManifest), [
+      { kind: 'PeerAuthentication', name: 'microservices-platform-mtls' },
+      { kind: 'DestinationRule', name: 'microservices-platform-mtls' },
+    ]);
+  });
+  ok('G12: 宣言どおり・helm 単独所有なら通る（陽性対照）', () => {
+    const r = evaluateMeshDrift({ declared: declaredMeshFixture, live: [livePa('PERMISSIVE'), liveDr()], liveError: null });
+    assert.deepStrictEqual(r.failures, []);
+  });
+  ok('G12: kubectl patch のドリフト（値が違う＋spec の書き手が増える）は 2 件とも失敗になる', () => {
+    const patched = livePa('STRICT', [{ manager: 'kubectl-patch', operation: 'Update', fieldsV1: { 'f:spec': {} } }]);
+    const f = evaluateMeshDrift({ declared: declaredMeshFixture, live: [patched, liveDr()], liveError: null }).failures;
+    assert.strictEqual(f.length, 2, f.join(' / '));
+    assert.ok(f.some((x) => /宣言=PERMISSIVE \/ 稼働=STRICT/.test(x)), '値の乖離を名指ししていない');
+    assert.ok(f.some((x) => /kubectl-patch/.test(x)), 'field manager の奪取を名指ししていない');
+  });
+  ok('G12: 🔴 値が偶然一致していても、spec の書き手が helm 以外なら失敗にする', () => {
+    const stolen = livePa('PERMISSIVE', [{ manager: 'kubectl-client-side-apply', operation: 'Update', fieldsV1: { 'f:spec': {} } }]);
+    const f = evaluateMeshDrift({ declared: declaredMeshFixture, live: [stolen, liveDr()], liveError: null }).failures;
+    assert.strictEqual(f.length, 1);
+    assert.ok(/kubectl-client-side-apply/.test(f[0]));
+  });
+  ok('G12: 描画が持たない資材が稼働に在れば失敗（計測スクリプトの当てっぱなし。#1168 の同型）', () => {
+    const stray = { kind: 'AuthorizationPolicy', metadata: { name: 'ad-hoc', ...helmWriter() }, spec: { action: 'DENY' } };
+    const f = evaluateMeshDrift({ declared: declaredMeshFixture, live: [livePa('PERMISSIVE'), liveDr(), stray], liveError: null }).failures;
+    assert.strictEqual(f.length, 1);
+    assert.ok(/AuthorizationPolicy\/ad-hoc/.test(f[0]) && /手動適用/.test(f[0]));
+  });
+  ok('G12: mesh.enabled=false なのに稼働に資材が在れば失敗。無ければ notice で飛ばす', () => {
+    const off = { enabled: false, mtlsMode: 'STRICT', backchannel: null, objects: [] };
+    assert.strictEqual(evaluateMeshDrift({ declared: off, live: [livePa('STRICT')], liveError: null }).failures.length, 1);
+    assert.deepStrictEqual(evaluateMeshDrift({ declared: off, live: [], liveError: null }).failures, []);
+  });
+  ok('G12: 宣言を読めないのに稼働に資材が在れば失敗（動いているが宣言が持っていない。IADR-0317 の記録）', () => {
+    assert.strictEqual(evaluateMeshDrift({ declared: null, live: [livePa('STRICT')], liveError: null }).failures.length, 1);
+    assert.deepStrictEqual(evaluateMeshDrift({ declared: null, live: [], liveError: null }).failures, []);
+  });
+  ok('G12: mesh.enabled=true で稼働を読めない・描画 0 件は失敗（測れていないことを緑にしない）', () => {
+    assert.strictEqual(evaluateMeshDrift({ declared: declaredMeshFixture, live: null, liveError: 'CRD なし' }).failures.length, 1);
+    const empty = { enabled: true, mtlsMode: 'PERMISSIVE', backchannel: null, objects: [] };
+    assert.strictEqual(evaluateMeshDrift({ declared: empty, live: [], liveError: null }).failures.length, 1);
+  });
+  ok('G12: managedFields を採れていない（spec の書き手 0 件）なら失敗にする', () => {
+    const bare = { kind: 'PeerAuthentication', metadata: { name: 'microservices-platform-mtls' }, spec: { mtls: { mode: 'PERMISSIVE' } } };
+    const f = evaluateMeshDrift({ declared: declaredMeshFixture, live: [bare, liveDr()], liveError: null }).failures;
+    assert.strictEqual(f.length, 1);
+    assert.ok(/show-managed-fields/.test(f[0]));
+  });
+  ok('G12: 2 枚組は portLevelMtls の口が PERMISSIVE・AuthorizationPolicy が DENY であることを要求する', () => {
+    const manifest2 = [
+      meshManifest, '---',
+      'apiVersion: security.istio.io/v1', 'kind: PeerAuthentication', 'metadata:', '  name: bff-service-backchannel-logout', 'spec:', '  mtls:', '    mode: STRICT', '---',
+      'apiVersion: security.istio.io/v1', 'kind: AuthorizationPolicy', 'metadata:', '  name: bff-service-plaintext-only-backchannel', 'spec:', '  action: DENY',
+    ].join('\n');
+    const declared2 = {
+      enabled: true, mtlsMode: 'PERMISSIVE',
+      backchannel: { workload: 'bff-service', port: 8080, path: '/bff/auth/backchannel-logout' },
+      objects: meshObjectsFromManifest(manifest2),
+    };
+    const pair = (portMode, action) => [
+      livePa('PERMISSIVE'), liveDr(),
+      { kind: 'PeerAuthentication', metadata: { name: 'bff-service-backchannel-logout', ...helmWriter() }, spec: { mtls: { mode: 'PERMISSIVE' }, portLevelMtls: { 8080: { mode: portMode } } } },
+      { kind: 'AuthorizationPolicy', metadata: { name: 'bff-service-plaintext-only-backchannel', ...helmWriter() }, spec: { action } },
+    ];
+    assert.deepStrictEqual(evaluateMeshDrift({ declared: declared2, live: pair('PERMISSIVE', 'DENY'), liveError: null }).failures, []);
+    assert.strictEqual(evaluateMeshDrift({ declared: declared2, live: pair('STRICT', 'DENY'), liveError: null }).failures.length, 1);
+    assert.strictEqual(evaluateMeshDrift({ declared: declared2, live: pair('PERMISSIVE', 'ALLOW'), liveError: null }).failures.length, 1);
+  });
+
   console.log(`[check-stack-ready] self-test OK: ${n} 件`);
 }
 
@@ -1278,6 +1822,9 @@ module.exports = {
   discoverRealms,
   evaluateDeployments,
   evaluatePods,
+  classifyFailedPod,
+  jobTerminalState,
+  waitForJobsToSettle,
   evaluateAdminEntrypoint,
   evaluateIssuer,
   evaluatePodDnsOutput,
@@ -1289,5 +1836,8 @@ module.exports = {
   imagesFromRendered,
   imagesFromLive,
   evaluateImageDrift,
+  meshObjectsFromManifest,
+  specWriters,
+  evaluateMeshDrift,
   NAMESPACES,
 };

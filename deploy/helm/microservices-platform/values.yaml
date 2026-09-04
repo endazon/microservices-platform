@@ -182,7 +182,9 @@ drift:
   postSyncHook:
     enabled: true
     # curl を含む軽量イメージ。mesh 有効時はサイドカーを注入し、curl 実行後に /quitquitquit で
-    # Envoy を終了させて Job を完了させる（drift-postsync-job.yaml 参照）。起動待ちは --retry で吸収する。
+    # Envoy を終了させて Job を完了させる（drift-postsync-job.yaml 参照）。
+    # 起動待ちは --retry × --retry-delay だけが決める（180 秒。--max-time は 1 試行の上限であって
+    # 総時間の上限ではない）。**この数字は実測から決めている** —— 根拠は同 template の注記（#1219）。
     image: curlimages/curl:8.11.1
 
 # NFR (#197): 水平スケール（HPA）と可用性（PDB）。計画 NFR「HPA で水平スケール」「可用性 99.9%」の実現手段。

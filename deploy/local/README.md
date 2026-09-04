@@ -546,6 +546,13 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
   rabbitmq / redis / otel / Vault dev は揮発のまま。
 - **Istio/mTLS/NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
   エッジ `/bff/*` ルーティング等）は不変。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
+  `ISTIO=1`（＋ `LOCALEDGE=1`）で有効化したときも **mTLS の既定は PERMISSIVE** である（IADR-0307 決定 4）。
+  🔴 **STRICT へ上げると `ai-stock-trading`（サイドカー無し）から MSP への平文が全断する** ——
+  ナレッジ保存・日報の LLM 生成・取引判断の LLM 呼び出しが RST で落ちる（#1159 実測。逆向きは落ちない）。
+  AST を mesh へ入れるまで（AST#627）既定は PERMISSIVE のままにする。
+  **モードは `scripts/lib/mesh-mtls-mode.sh` の `set_mesh_mtls_mode`（helm 経由）でしか書かない** ——
+  `kubectl patch` で書くと以後の `helm upgrade` が恒久的に失敗する（IADR-0377。乖離は
+  `node scripts/check-stack-ready.js` の G12 が落とす）。
 
 ## 手動でステップ実行する場合
 
