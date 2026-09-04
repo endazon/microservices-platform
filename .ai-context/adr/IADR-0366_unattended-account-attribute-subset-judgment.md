@@ -1,5 +1,5 @@
 ---
-title: IADR-0361 無人アカウントの clearance とタグは登録者が持つ集合の部分集合かを後段で判定し、外れた値を拒否応答へ載せる
+title: IADR-0366 無人アカウントの clearance とタグは登録者が持つ集合の部分集合かを後段で判定し、外れた値を拒否応答へ載せる
 type: impl-adr
 status: Accepted
 related_ids: [FR-05, FR-09, FR-16, UC-09, SC-12, SC-17, ADR-0004, ADR-0024, ADR-0034, ADR-0036, ADR-0062]
@@ -14,7 +14,7 @@ plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
 ---
 
-# IADR-0361: 無人アカウントの属性を登録者の集合の部分集合に限る判定の置き場所と形
+# IADR-0366: 無人アカウントの属性を登録者の集合の部分集合に限る判定の置き場所と形
 
 - 状態: Accepted
 - 日付: 2026-09-03

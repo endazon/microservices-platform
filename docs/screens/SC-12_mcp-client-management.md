@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-09, FR-16, SC-09, SC-10, SC-12, UC-09]
 adrs: [ADR-0021, ADR-0024, ADR-0031, ADR-0032, ADR-0034, ADR-0054, ADR-0062]
-iadrs: [IADR-0009, IADR-0035, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0134, IADR-0135, IADR-0269, IADR-0292, IADR-0297, IADR-0361]
+iadrs: [IADR-0009, IADR-0035, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0134, IADR-0135, IADR-0269, IADR-0292, IADR-0297, IADR-0366]
 specs: [20260828_issue-452_sc12-mcp-client-management, 20260823_issue-445_mcp-server-integration, 20260903_issue-1185_unattended-account-attribute-subset]
 issues: [#445, #452, #1020, #1185]
 -->
