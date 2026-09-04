@@ -3,7 +3,7 @@ title: SC-01 検索／チャット質問画面 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-09-03
+updated: 2026-09-04
 author: claude
 ---
 <!-- trace:

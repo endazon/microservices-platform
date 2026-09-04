@@ -3,7 +3,7 @@ title: UC-07 Wikiで閲覧する テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-31
-updated: 2026-09-03
+updated: 2026-09-04
 author: claude
 ---
 <!-- trace:

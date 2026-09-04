@@ -3,7 +3,7 @@ title: SC-04 Wiki 閲覧画面 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-09-03
+updated: 2026-09-04
 author: claude
 ---
 <!-- trace:
