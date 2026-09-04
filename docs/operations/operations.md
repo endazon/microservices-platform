@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-04, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-21, SC-01, SC-02, SC-10, UC-01, UC-04, UC-05, UC-07]
 adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0322, IADR-0327, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0378]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0322, IADR-0327, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0378]
 specs: [20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion]
 issues: [#1088, #1108, #1110, #1198, #1202, #1203, #1204, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538]
 -->
@@ -793,6 +793,15 @@ LlmGateway は補完 1 回ごとに `llm.completion.total`（Prometheus では `
   **`upstream_error` には含まれない** —— 回復した呼び出しを障害の率に入れると上の critical が誤発火する。
   **429 ではフォールバックしない**（429 は再試行の対象。同決定 4）ため、429 は従来どおり
   `upstream_error` に現れる。フォールバック率のしきい値は**実測前のため置かない**。
+- **［2026-09-05 追記 / #1091］`llm.upstream_status` が加わった**（`none` / `rate_limited` /
+  `client_error` / `server_error` / `transport` / `other` の 6 値）。**`llm.result` とは独立した軸**で、
+  「基盤側が何をしたか」と「上流が何を返したか」を別々に読む。**429 が他の失敗と区別できる**ように
+  なった —— `sum by (llm_upstream_status) (rate(llm_completion_total{llm_result="upstream_error"}[30m]))`。
+  **上のしきい値の式も数値も変えていない**（429 を除きたいときだけ `llm_upstream_status!="rate_limited"`
+  を足す）。設定ミス（`other`）と通信障害（`transport`）は別の値である —— 混ぜると直す対象を取り違える。
+  🔴 **「429 が起きていない」と読むときは、同じ期間に `llm_upstream_status="none"` の系列が実在する
+  ことを陽性対照として対で示す**（Prometheus は起きていないラベル値を 0 として持たないため、
+  空ベクタは「起きていない」とも「計器が動いていない」とも読める）。
 - **アラートルールの実配線は未了**（`deploy/prometheus/alerts.yml` への追加と Alertmanager 通知先の設定）。
   本節はしきい値の方針までを定める（補完の終了理由メトリクスの実装 ADR §フォローアップ 1）。
 

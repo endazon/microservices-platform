@@ -118,10 +118,14 @@ public static class CompleteStreamEndpoint
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // 呼び出し先不調でも 500 を伝播させず、SSE で縮退イベントを返す。
-                logger.LogError(ex, "LLM stream failed at endpoint {Endpoint} ({Model})",
-                    decision.EndpointName, decision.Model);
+                // IADR-0374 (#1091): ストリーム経路は鎖を持たないため**全ての上流失敗がここへ来る**
+                // （429 を含む）。非ストリームと同じ軸・同じ構造化フィールドで残す ——
+                // 経路によって観測が欠けると、レート制限の有無が「どちらの経路を使ったか」に依存する。
+                logger.LogError(ex, "LLM stream failed at endpoint {Endpoint} ({Model}) (upstream status {Status})",
+                    decision.EndpointName, decision.Model, LlmFallbackPolicy.StatusCodeOf(ex));
                 metrics.RecordCompletion(
-                    LlmCompletionMetrics.ResultUpstreamError, null, decision, purpose, sensitivity);
+                    LlmCompletionMetrics.ResultUpstreamError, null, decision, purpose, sensitivity,
+                    failure: ex);
                 faulted = true;
                 await Send(new CompletionStreamEvent(
                     string.Empty, Done: true, Sent: false,
