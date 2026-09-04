@@ -3,7 +3,7 @@ import { citationKind } from './citations';
 
 // SC-01, UC-01 基本フロー 5: 出典（Wiki／原本リンク）付きで結果を返す。
 // 出典の種別は**権限内の Wiki 台帳に文書 ID が載っているか**で判定する（画面仕様書 SC-01 §出典の種別判定。
-// #1200 / IADR-0367 決定 1）。`sourceUri` や実行時 config は見ない。
+// #1200 / IADR-0365 決定 1）。`sourceUri` や実行時 config は見ない。
 describe('citationKind (SC-01)', () => {
   const WIKI_DOC = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
   const OTHER_DOC = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';

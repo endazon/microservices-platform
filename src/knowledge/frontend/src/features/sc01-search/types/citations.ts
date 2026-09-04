@@ -3,7 +3,7 @@
 // `CitationDto` は出典の種別を持たない。**判定は権限内の Wiki 台帳（`GET /bff/wiki/pages`）に
 // その文書 ID が載っているか**で行う（画面仕様書 SC-01 §出典の種別判定。`lib/wiki-pages`）。
 //
-// ［2026-09-03 / #1200 / IADR-0367 決定 1］従前は `sourceUri` が実行時 config `wikiBaseUrl` で始まるかで
+// ［2026-09-03 / #1200 / IADR-0365 決定 1］従前は `sourceUri` が実行時 config `wikiBaseUrl` で始まるかで
 // 判定していた。ADR-0073 決定 1 が stg/prod で `WIKI_BASE_URL` を**設定しない**と定めたため、その判定は
 // 本番で一度も真にならなかった。台帳は後段の ABAC を通った権限内のメタデータだけを返すので、
 // 「載っている ＝ 利用者が SC-04 で開ける」が成り立つ。`sourceUri` はもう見ない。

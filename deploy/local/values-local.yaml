@@ -101,7 +101,7 @@ services:
 # bffUpstream も base の bff-service:8080（nginx が /bff を in-cluster BFF へプロキシ）で正しく上書き不要。
 # base は既定 enabled だが経路B での有効化を明示する。実 Pod 起動/ヘルス緑・実ログインは live（#284 手順）。
 #
-# Issue #344 → #1200, SC-04/UC-07/FR-13, ADR-0073 決定 1・5, IADR-0020/IADR-0078/IADR-0367:
+# Issue #344 → #1200, SC-04/UC-07/FR-13, ADR-0073 決定 1・5, IADR-0020/IADR-0078/IADR-0365:
 # 🔴 **「Wiki 閲覧」(SC-04) はもう WIKI_BASE_URL を読まない**（#1200。画面は /bff/wiki/* 経由でページツリー・本文・検索を
 # 描く）。この値は dev の Wiki.js **管理 UI** の到達先を示す手引きとして残してある（決定 5。dev では ABAC の統制が働かない
 # —— deploy/local/README.md §Wiki 閲覧の到達）。**本番像 values.yaml では設定しないことが統制**（決定 1）。

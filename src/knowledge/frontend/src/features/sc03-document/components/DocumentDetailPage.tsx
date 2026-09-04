@@ -16,7 +16,7 @@ import {
   TableRow,
   Tag,
 } from '@platform/ui';
-// SC-03, UC-07, #1200 / IADR-0367 決定 1: 「Wiki で閲覧」は**権限内の Wiki 台帳にこの文書が載っているとき**だけ出す
+// SC-03, UC-07, #1200 / IADR-0365 決定 1: 「Wiki で閲覧」は**権限内の Wiki 台帳にこの文書が載っているとき**だけ出す
 // （実行時 config `wikiBaseUrl` の有無で出し分ける形は廃止。stg/prod では同値が供給されないため一度も出なかった）。
 import { useWikiPageIndex } from '../../../lib/wiki-pages';
 // SC-03 / #446: 共通シェルのパンくずの**動的な葉**（文書タイトル）を渡す。

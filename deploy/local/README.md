@@ -327,7 +327,7 @@ Wiki.js の初期セットアップ・同期 API キー・本文 locale を冪�
 SPA の「Wiki 閲覧」画面（SC-04）は、**BFF（`/bff/wiki/*`）→ WikiService（前段 ABAC ゲートウェイ）経由で
 ページツリー・本文・検索結果を取得し、SPA の中に描く**（計画 ADR-0073 決定 2。口は #1199 /
 [IADR-0355](../../.ai-context/adr/IADR-0355_bff-wiki-relay.md)、画面は #1200 /
-[IADR-0367](../../.ai-context/adr/IADR-0367_sc04-wiki-screen-ledger-and-sanitize.md)）。Wiki.js 本体 UI への外部リンクは無く、
+[IADR-0365](../../.ai-context/adr/IADR-0365_sc04-wiki-screen-ledger-and-sanitize.md)）。Wiki.js 本体 UI への外部リンクは無く、
 画面は `WIKI_BASE_URL` を**読まない**。利用者が Wiki の内容へ到達する経路は前段ゲートウェイの 1 本である（決定 1）。
 本番像 `values.yaml` の `wikijs.ingress.enabled: false` はそのまま不変であり、**画面が BFF 経由になったことで本番でも
 SC-04 が機能する**（従前は `WIKI_BASE_URL` 未設定で「接続先が未設定」となり機能していなかった）。

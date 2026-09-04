@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify';
 
-// SC-04, UC-07, FR-13, ADR-0073 決定 2 / IADR-0367 決定 3 (#1200): Wiki.js が描画した本文（HTML）の sanitize。
+// SC-04, UC-07, FR-13, ADR-0073 決定 2 / IADR-0365 決定 3 (#1200): Wiki.js が描画した本文（HTML）の sanitize。
 //
 // `WikiPageView.content` は **Wiki.js が Markdown から描画した HTML** であり、ゲートウェイ（WikiService）が
 // ABAC 通過時にそのままプロキシする。SPA は Markdown を再レンダリングしない（ADR-0073 決定 2 の逐語）。

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { sanitizeWikiHtml, wikiDocLinkTarget } from './sanitizeWikiHtml';
 
-// SC-04, UC-07, FR-13, ADR-0073 決定 2 / IADR-0367 決定 3 (#1200): Wiki.js が描画した本文の sanitize。
+// SC-04, UC-07, FR-13, ADR-0073 決定 2 / IADR-0365 決定 3 (#1200): Wiki.js が描画した本文の sanitize。
 // **落とすもの**と**残すもの**を対で固定する —— 落とす側だけだと「全部消す実装」でも緑になる。
 
 const DOC_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';

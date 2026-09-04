@@ -17,7 +17,7 @@ import type {
 } from '@foundation/api/generated/bff.schemas';
 import type { WikiSearch } from '../types/wikiSearch';
 
-// SC-04, UC-07, FR-13, ADR-0073 決定 2・4 / IADR-0355 / IADR-0367 (#1200): Wiki 閲覧のデータ取得（`/bff/wiki/*`）。
+// SC-04, UC-07, FR-13, ADR-0073 決定 2・4 / IADR-0355 / IADR-0365 (#1200): Wiki 閲覧のデータ取得（`/bff/wiki/*`）。
 //
 // 4 本とも **orval 生成フック**で呼ぶ（IADR-0135 決定 1）。キーは生成キー（`['/bff/wiki/pages']` 等）。
 // 後段の意味論は BFF が**作り替えずに透過**する（IADR-0355 決定 5）ので、画面が読むのはそのままの形である:
@@ -31,7 +31,7 @@ export function isNotFound(error: unknown): boolean {
   return error instanceof ApiError && error.kind === 'notFound';
 }
 
-/** ページツリー。台帳は平坦（`wikiPath` = `doc/<id>`）で、後段が題名順に返す（IADR-0367 決定 2）。 */
+/** ページツリー。台帳は平坦（`wikiPath` = `doc/<id>`）で、後段が題名順に返す（IADR-0365 決定 2）。 */
 export function useWikiPages() {
   return useBffWikiPageList<WikiPageSummary[], unknown>({
     query: { queryKey: getBffWikiPageListQueryKey(), select: okArray },

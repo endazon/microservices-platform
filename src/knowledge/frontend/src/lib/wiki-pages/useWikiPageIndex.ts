@@ -5,7 +5,7 @@ import {
 import type { bffWikiPageListResponse } from '@foundation/api/generated/wiki/wiki';
 import { okArray } from '@foundation/api/orvalSelect';
 
-// FR-13, UC-07, SC-01, SC-03, SC-04, ADR-0073 / IADR-0367 決定 1 (#1200): **権限内の Wiki 台帳の索引**。
+// FR-13, UC-07, SC-01, SC-03, SC-04, ADR-0073 / IADR-0365 決定 1 (#1200): **権限内の Wiki 台帳の索引**。
 //
 // SC-01 の出典が Wiki 由来か（📖）、SC-03 に「Wiki で閲覧」を出すかは、従前 `sourceUri` が
 // 実行時 config `wikiBaseUrl` で始まるかで判定していた。ADR-0073 決定 1 が stg/prod で

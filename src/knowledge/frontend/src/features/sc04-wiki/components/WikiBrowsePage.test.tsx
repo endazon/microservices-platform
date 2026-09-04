@@ -11,7 +11,7 @@ import type {
   WikiSearchHit,
 } from '@foundation/api/generated/bff.schemas';
 
-// SC-04, UC-07, FR-13, FR-05, ADR-0073 決定 1・2・4 / IADR-0367 (#1200): Wiki 閲覧画面。
+// SC-04, UC-07, FR-13, FR-05, ADR-0073 決定 1・2・4 / IADR-0365 (#1200): Wiki 閲覧画面。
 // ページツリー・本文・検索を `/bff/wiki/*` 経由で描くこと、存在秘匿（404 と空）を中立に描くこと、
 // 故障（502）を空で隠さないこと、外部リンクが 1 本も無いことを固定する。
 //
@@ -154,7 +154,7 @@ describe('WikiBrowsePage (SC-04) — page body', () => {
     ).toBeInTheDocument();
     const article = screen.getByTestId('wiki-page-content');
     expect(article.querySelector('b')).toHaveTextContent('領収書');
-    // ★ 陰性対照: スクリプト・画像・新規タブ属性は落ちる（IADR-0367 決定 3）。
+    // ★ 陰性対照: スクリプト・画像・新規タブ属性は落ちる（IADR-0365 決定 3）。
     expect(article.querySelector('script')).toBeNull();
     expect(article.querySelector('img')).toBeNull();
     expect(article.querySelector('a[target]')).toBeNull();

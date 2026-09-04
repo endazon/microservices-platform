@@ -17,7 +17,7 @@ import type { AskCitation } from '../types/citations';
 import { useAskStream, useFeedback } from '../api/useAskStream';
 import { EMPTY_SELECTION, ScopeFilter, toAttributeFilters } from '../../../lib/scope-filter';
 import type { ScopeSelection } from '../../../lib/scope-filter';
-// SC-01, UC-07, #1200 / IADR-0367 決定 1: 出典が Wiki 由来かは**権限内の Wiki 台帳**で判定する
+// SC-01, UC-07, #1200 / IADR-0365 決定 1: 出典が Wiki 由来かは**権限内の Wiki 台帳**で判定する
 // （実行時 config `wikiBaseUrl` の接頭辞判定は廃止。stg/prod では同値が供給されないため一度も真にならなかった）。
 import { useWikiPageIndex } from '../../../lib/wiki-pages';
 

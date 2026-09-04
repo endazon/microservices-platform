@@ -30,7 +30,7 @@ const ANSWER_ID = '11111111-1111-1111-1111-111111111111';
 const DOC_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const WIKI_DOC_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 
-// #1200 / IADR-0367 決定 1: 出典が Wiki 由来かは**権限内の Wiki 台帳**（`GET /bff/wiki/pages`）で判定する。
+// #1200 / IADR-0365 決定 1: 出典が Wiki 由来かは**権限内の Wiki 台帳**（`GET /bff/wiki/pages`）で判定する。
 const WIKI_PAGE = {
   id: 'page-b',
   documentId: WIKI_DOC_ID,

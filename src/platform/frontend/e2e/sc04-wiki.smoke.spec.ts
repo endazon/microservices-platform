@@ -105,7 +105,7 @@ test('SC-04: draws the page tree, opens a page and searches — all through the 
   await expect(page.getByRole('heading', { name: '申請の手順' })).toBeVisible();
   const body = page.getByTestId('wiki-page-content');
   await expect(body.locator('b')).toHaveText('領収書');
-  // ★ 陰性対照 2: sanitize（IADR-0367 決定 3）。スクリプトと画像は届かない。
+  // ★ 陰性対照 2: sanitize（IADR-0365 決定 3）。スクリプトと画像は届かない。
   await expect(body.locator('script')).toHaveCount(0);
   await expect(body.locator('img')).toHaveCount(0);
   // e2e の tsconfig は DOM lib を持たないので `window` ではなく `globalThis` で読む（ブラウザ側で評価される）。

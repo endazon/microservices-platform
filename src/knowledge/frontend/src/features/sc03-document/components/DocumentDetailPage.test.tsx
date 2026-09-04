@@ -99,7 +99,7 @@ const TAG_SUGGESTION = {
 };
 const EDGE_TYPES = [{ id: EDGE_TYPE_ID, name: '関連する', layer: 'core', isSymmetric: true }];
 
-// SC-03, UC-07, #1200 / IADR-0367 決定 1: 「Wiki で閲覧」は**権限内の Wiki 台帳**（`GET /bff/wiki/pages`）に
+// SC-03, UC-07, #1200 / IADR-0365 決定 1: 「Wiki で閲覧」は**権限内の Wiki 台帳**（`GET /bff/wiki/pages`）に
 // この文書が載っているときだけ出す。台帳の応答はここで差し替える（既定は**載っていない**）。
 const WIKI_PAGE = {
   id: 'page-1',

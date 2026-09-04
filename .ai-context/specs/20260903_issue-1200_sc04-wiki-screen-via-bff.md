@@ -23,7 +23,7 @@ related_ids:
   - IADR-0335
   - IADR-0337
   - IADR-0355
-  - IADR-0367
+  - IADR-0365
 author: claude
 created: 2026-09-03
 updated: 2026-09-03
@@ -131,7 +131,7 @@ Wiki に関するヒット（`遷移導線` は SC-10 など無関係画面に�
 - **`WikiService` 本体**: ADR-0073 §結果「実装は変更不要」。
 - **`platform/frontend/src/app/`（共通シェル）**: 計画 §SC-04「閲覧時は左レールを Wiki ページツリーへ置換する」は
   シェル（platform）の改修であり、本 issue の宣言領域に無い。**ページツリーは画面内の側柱として描き、
-  左レール置換は未決として画面仕様書に残す**（IADR-0367 §残るもの）。
+  左レール置換は未決として画面仕様書に残す**（IADR-0365 §残るもの）。
 
 ## 対象範囲
 
@@ -149,7 +149,7 @@ Wiki に関するヒット（`遷移導線` は SC-10 など無関係画面に�
   - `deploy/local/README.md`、`deploy/local/values-local.yaml`（コメント）、`deploy/local/wiki-oidc/README.md`（1 語）、
     `deploy/helm/microservices-platform/values.yaml`（コメント）
   - `src/platform/frontend/src/config/runtimeConfig.ts` / `config.js.template`（コメントのみ）
-  - `.ai-context/adr/IADR-0367_*.md`（新規）＋ 索引、`IADR-0355` への日付つき追記
+  - `.ai-context/adr/IADR-0365_*.md`（新規）＋ 索引、`IADR-0355` への日付つき追記
 - 対象外: Wiki.js での**編集**（ADR-0073 決定 6 は未決）。バックリンク欄・ローカルグラフ（計画が未確定）。
   左レール置換（上記）。`WIKI_BASE_URL` の config 項目そのものの撤去。Wiki.js 資産（画像）のプロキシ。
 
@@ -177,13 +177,13 @@ Wiki に関するヒット（`遷移導線` は SC-10 など無関係画面に�
 
 401 は既存の `apiClient` の再ログイン導線（`setUnauthorizedHandler`）に委ねる。画面は何も足さない。
 
-### 3. ページツリーの取得単位（IADR-0367 決定 2）
+### 3. ページツリーの取得単位（IADR-0365 決定 2）
 
 `GET /bff/wiki/pages` **1 回**。台帳（`WikiPage`）の `wikiPath` は `doc/<documentId>` の**平坦**な正準パスであり、
 後段は題名順で返す（`ListWikiPagesEndpoint`: `OrderBy(p => p.Title)`）。**階層は台帳に無い**ので、ツリーは
 「題名順の一覧」として描く（`nav aria-label`）。階層を SPA 側で捏造しない。
 
-### 4. 本文の描画と sanitize（IADR-0367 決定 3）
+### 4. 本文の描画と sanitize（IADR-0365 決定 3）
 
 `WikiPageView.content` は **Wiki.js が描画した HTML** である（ゲートウェイがプロキシ。ADR-0073 決定 2）。SPA は
 Markdown を再レンダリングしない。HTML は **DOMPurify で sanitize してから `dangerouslySetInnerHTML`** で描く。
@@ -197,7 +197,7 @@ Markdown を再レンダリングしない。HTML は **DOMPurify で sanitize �
   書き換える（ページ間リンクが SPA 内で解決する。UC-07 基本フロー 1「開く」）。それ以外の `href` は触らない。
 - `dompurify` は `@knowledge/frontend` の依存に足す（外部 CDN ではなく npm。`check-static-egress.js` の射程内）。
 
-### 5. 出典種別の判定（IADR-0367 決定 1。SC-01 / SC-03）
+### 5. 出典種別の判定（IADR-0365 決定 1。SC-01 / SC-03）
 
 - `src/knowledge/frontend/src/lib/wiki-pages/useWikiPageIndex.ts`: `useBffWikiPageList` を `select` で
   **文書 ID の集合**へ畳む。SC-04 のツリーと同じ生成キー（`['/bff/wiki/pages']`）なのでキャッシュを共有する。
@@ -218,7 +218,7 @@ Markdown を再レンダリングしない。HTML は **DOMPurify で sanitize �
 
 - `WikiAccessPage.tsx` の誤ったコメント「到達はゲートウェイ（ABAC）経由に限定される（IADR-0020）」は
   ファイルごと消えるが、**根拠が変わったこと**（従前は外部リンクで前段を通っていなかった。今は `/bff/wiki/*` →
-  WikiService の 1 本に限られる）を新画面の冒頭コメントと IADR-0367 に残す。
+  WikiService の 1 本に限られる）を新画面の冒頭コメントと IADR-0365 に残す。
 - `values.yaml` `frontend.extraEnv` のコメント: stg/prod で `WIKI_BASE_URL` を設定しないことが**統制**であり、
   **機械検査は無く構成の規律である**と書く（決定 1）。
 - `deploy/local/README.md` §Wiki 閲覧の到達: 「BFF 経由ではない」を消し、**dev では ABAC の統制が働かない**
@@ -266,7 +266,7 @@ Markdown を再レンダリングしない。HTML は **DOMPurify で sanitize �
   - 計画 §SC-04「閲覧時は左レールを Wiki ページツリーへ置換する」は共通シェル（platform）の改修を要し、本 issue の宣言領域に無い。
     ページツリーは画面内の側柱に置く。**画面仕様書 §未決事項へ残す**（環流不要。計画は hi-fi を正と確定済みで、実装側の段取りの問題）。
   - バックリンク欄・ローカルグラフ・`[[` 補完・ヘルプ文言は計画が「未確定」としており、本 issue で決めない（issue 補足）。
-  - Wiki.js 資産（画像）は SPA から到達できないため本文から落とす。計画に資産の扱いの記述は無い。**IADR-0367 §残るもの**に置く
+  - Wiki.js 資産（画像）は SPA から到達できないため本文から落とす。計画に資産の扱いの記述は無い。**IADR-0365 §残るもの**に置く
     （必要になれば資産のプロキシを別 issue で切る）。
 
 ## 実測（2026-09-03。稼働 k3s ＝ Rancher Desktop の k3s。`git rev-parse --is-shallow-repository` = `false`）

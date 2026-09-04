@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-13, SC-01, SC-03, SC-04, UC-07]
 adrs: [ADR-0073]
-iadrs: [IADR-0009, IADR-0337, IADR-0355, IADR-0367]
+iadrs: [IADR-0009, IADR-0337, IADR-0355, IADR-0365]
 specs: [20260708_issue-130_sc04-wiki-access, 20260903_issue-1200_sc04-wiki-screen-via-bff]
 issues: [#1200]
 -->

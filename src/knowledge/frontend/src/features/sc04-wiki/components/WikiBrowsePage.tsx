@@ -23,7 +23,7 @@ import { isNotFound, useWikiPage, useWikiPages, useWikiSearchHits } from '../api
 import { sanitizeWikiHtml } from '../types/sanitizeWikiHtml';
 import type { WikiSearch } from '../types/wikiSearch';
 
-// SC-04, UC-07, FR-13, FR-05, ADR-0073 決定 1・2・4 / IADR-0355 / IADR-0367 (#1200): Wiki 閲覧画面（ルート /wiki）。
+// SC-04, UC-07, FR-13, FR-05, ADR-0073 決定 1・2・4 / IADR-0355 / IADR-0365 (#1200): Wiki 閲覧画面（ルート /wiki）。
 //
 // **ページツリー・本文・検索を基盤 SPA が描く。** 取得はすべて `/bff/wiki/*`（→ WikiService）経由であり、
 // 利用者が Wiki の内容へ到達する経路は**その 1 本**に限られる（ADR-0073 決定 1）。
@@ -37,9 +37,9 @@ import type { WikiSearch } from '../types/wikiSearch';
 //
 // ■ 描くもの（05_screens §SC-04 §主要素）
 //   - ページツリー（権限内のみ）: `GET /bff/wiki/pages` の 1 回。台帳は平坦（`wikiPath` = `doc/<id>`）で
-//     後段が題名順に返すので、**題名順の一覧**として描く（階層を SPA 側で捏造しない。IADR-0367 決定 2）。
+//     後段が題名順に返すので、**題名順の一覧**として描く（階層を SPA 側で捏造しない。IADR-0365 決定 2）。
 //   - 検索（権限内のみ）: `GET /bff/wiki/search?q=`。並びは Wiki.js の関連度順（IADR-0335）。
-//   - 本文: **Wiki.js が描画した HTML** を DOMPurify で sanitize して描く（IADR-0367 決定 3。
+//   - 本文: **Wiki.js が描画した HTML** を DOMPurify で sanitize して描く（IADR-0365 決定 3。
 //     `types/sanitizeWikiHtml.ts`）。SPA は Markdown を再レンダリングしない。
 //   - 最終同期日時（`syncedAt`）と文書詳細（SC-03）への復帰リンク。
 // ■ 描かないもの
@@ -277,7 +277,7 @@ function PageBody({ page }: { page: UseQueryResult<WikiPageView, unknown> }) {
         <CardTitle as="h2">{view.title}</CardTitle>
       </CardHeader>
       <CardContent>
-        {/* IADR-0367 決定 3: sanitize 済み。生の `content` をここへ渡さない。 */}
+        {/* IADR-0365 決定 3: sanitize 済み。生の `content` をここへ渡さない。 */}
         <article
           className="prose max-w-none text-sm"
           data-testid="wiki-page-content"

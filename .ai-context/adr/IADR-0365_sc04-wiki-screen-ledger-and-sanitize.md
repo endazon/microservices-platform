@@ -1,5 +1,5 @@
 ---
-title: IADR-0367 SC-04 は権限内 Wiki 台帳を導線の根拠にし、Wiki.js の描画結果を sanitize して SPA の中に描く
+title: IADR-0365 SC-04 は権限内 Wiki 台帳を導線の根拠にし、Wiki.js の描画結果を sanitize して SPA の中に描く
 type: impl-adr
 status: Accepted
 related_ids:
@@ -34,7 +34,7 @@ plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md SC-01 / SC-03 / SC-04
 ---
 
-# IADR-0367: SC-04 の画面（出典種別の判定・ページツリーの取得単位・本文の sanitize・URL の持ち方）（#1200）
+# IADR-0365: SC-04 の画面（出典種別の判定・ページツリーの取得単位・本文の sanitize・URL の持ち方）（#1200）
 
 > 🔴 **番号は暫定である。** 起草時点の `develop`（`d06cf387`）の最大は `IADR-0360` だが、
 > 進行中の並行 PR が 0361〜0366 を採り得るため 0367 を仮置きした。**マージ直前に実際の空き番号へ

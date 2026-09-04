@@ -19,7 +19,7 @@ export const createSc04WikiRoute = (shell: ShellRoute) =>
   createRoute({
     getParentRoute: () => shell,
     path: '/wiki',
-    // IADR-0124 決定 3 / IADR-0367 決定 4: 開いているページ（`?page=` / `?doc=`）と検索語（`?q=`）は
+    // IADR-0124 決定 3 / IADR-0365 決定 4: 開いているページ（`?page=` / `?doc=`）と検索語（`?q=`）は
     // URL が単一情報源。値の正規化は `types/wikiSearch.ts`。
     validateSearch: validateWikiSearch,
     component: WikiBrowsePage,
