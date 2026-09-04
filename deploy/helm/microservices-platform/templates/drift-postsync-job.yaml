@@ -44,8 +44,23 @@ spec:
       containers:
         - name: drift-trigger
           image: {{ .Values.drift.postSyncHook.image | quote }}
-          # BFF 起動待ちのため接続単位でタイムアウト（--connect-timeout）しつつ全体上限（--max-time）を
-          # リトライ総時間より長く取る（10 回 × 6 秒 + 応答）。応答は 202（本文なし）。
+          # BFF の起動待ち。応答は 202（本文なし）。
+          #
+          # 🔴 **待ち予算を決めているのは `--retry` × `--retry-delay` だけである**（#1219 / IADR-0377）。
+          # `--max-time` は **1 試行あたりの上限**であって、リトライ総時間の上限ではない
+          # （curl 8.19.0 で実測: `--retry 3 --retry-delay 2 --max-time 3` は 3 秒ではなく **14 秒**掛かり、
+          #  `--max-time` 無しと同じだった）。以前の注記はここを取り違えていた。
+          #
+          # 🔴 **`--connect-timeout` も効かない。** Ready な endpoint が 1 つも無い Service は
+          # kube-proxy が即座に REJECT するので、各試行は **0 ms** で終わる
+          # （実測 run 33869773915 の Job ログ: `Failed to connect ... after 0 ms`）。
+          #
+          # したがって予算は **30 × 6 秒 = 180 秒**。実測した BFF の time-to-ready は
+          # Job Pod 起動から **51〜82 秒**（run 33869773915）で、旧予算 60 秒はこの区間の内側に在ったため
+          # **間欠的に 1 本目の attempt が落ちていた**。180 秒は実測上限の約 2.2 倍である。
+          # 段 9 の readiness 待ち（`--timeout=600s`）より十分短いので、BFF が本当に起きない場合は
+          # **段 9 が先に落ちる** —— 予算を伸ばして検知能力を捨ててはいない。
+          #
           # 処理後、注入されていれば Envoy サイドカーを /quitquitquit で終了させ Job を完了させる
           # （未注入なら接続失敗を無視）。BFF へ到達できない場合は非ゼロ終了し、PostSync の失敗として顕在化する。
           command:
@@ -54,8 +69,8 @@ spec:
             - |
               set -u
               curl -fsS -X POST \
-                --connect-timeout 5 --max-time 180 \
-                --retry 10 --retry-delay 6 --retry-connrefused --retry-all-errors \
+                --connect-timeout 5 --max-time 240 \
+                --retry 30 --retry-delay 6 --retry-connrefused --retry-all-errors \
                 http://bff-service:8080/internal/config/drift-run
               code=$?
               curl -fsS -X POST http://127.0.0.1:15020/quitquitquit >/dev/null 2>&1 || true

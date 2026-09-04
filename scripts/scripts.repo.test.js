@@ -8546,6 +8546,106 @@ ${r.stderr}`);
         'check-stack-ready.js が環境変数で検査を飛ばせるようになっている（fail-closed を崩している）',
       );
     });
+
+    //
+    // NFR / #1219 / [[IADR-0377]]: 間欠赤の 2 つの原因を、宣言と判定の両側で固定する。
+    //
+    // 🔴 **ここが測っているのは「数字が好みどおりか」ではない。**
+    // ① Job の待ち予算が**実測した BFF の time-to-ready（51〜82 秒）より十分長い**こと、
+    // ② 門 G1 が**再試行で成功した Job の残骸を致命にしない**こと、そして
+    // ③ **その判定を外すと陰性対照が落ちる**こと（＝対照が実装を測っている証明）である。
+    //
+    {
+      const JOB_PATH = 'deploy/helm/microservices-platform/templates/drift-postsync-job.yaml';
+      const jobYaml = fs.readFileSync(path.join(REPO_IS, JOB_PATH), 'utf8').replace(/\r\n/g, '\n');
+      // 🔴 **注記行を落としてから読む。** 注記には curl の意味論を実測したときの
+      // `--retry 3 --retry-delay 2 --max-time 3` が引用されており、素で正規表現を当てると
+      // **注記の数字を実効値と読んでしまう**（実際に踏んだ: 予算を「6 秒」と誤読した）。
+      const jobCommand = jobYaml
+        .split('\n')
+        .filter((l) => !/^\s*#/.test(l))
+        .join('\n');
+
+      ok('NFR / #1219: drift Job の待ち予算が 180 秒以上ある（実測 BFF time-to-ready の 2 倍以上）', () => {
+        const retry = /--retry\s+(\d+)\s+--retry-delay\s+(\d+)/.exec(jobCommand);
+        assert.ok(retry, `${JOB_PATH} から --retry / --retry-delay を読み取れない`);
+        const budget = Number(retry[1]) * Number(retry[2]);
+        assert.ok(
+          budget >= 180,
+          `待ち予算が ${budget} 秒しかない。実測した BFF の time-to-ready は Job Pod 起動から 51〜82 秒` +
+            '（run 33869773915）であり、60 秒だった旧値はこの区間の内側に在って間欠赤の原因だった（#1219）',
+        );
+      });
+
+      ok('NFR / #1219: --max-time に「総時間の上限」の意味を持たせていない', () => {
+        // 🔴 curl の --max-time は **1 試行あたりの上限**である（curl 8.19.0 で実測:
+        // `--retry 3 --retry-delay 2 --max-time 3` は 3 秒ではなく 14 秒＝ --max-time 無しと同じ）。
+        // 総時間を --max-time で縛ったつもりの宣言に戻らないよう、注記ごと固定する。
+        assert.ok(
+          !/全体上限（--max-time）/.test(jobYaml),
+          `${JOB_PATH} が --max-time を「全体上限」と説明している（curl の意味論と食い違う。#1219）`,
+        );
+        assert.ok(
+          /1 試行あたりの上限/.test(jobYaml),
+          `${JOB_PATH} が --max-time の意味（1 試行あたりの上限）を書いていない。数字だけ残ると次に読む者が同じ取り違えをする`,
+        );
+        const maxTime = /--max-time\s+(\d+)/.exec(jobCommand);
+        const retry = /--retry\s+(\d+)\s+--retry-delay\s+(\d+)/.exec(jobCommand);
+        assert.ok(maxTime && retry, '--max-time / --retry を読み取れない');
+        assert.ok(
+          Number(maxTime[1]) > Number(retry[1]) * Number(retry[2]),
+          '--max-time が待ち予算より短い。per-attempt の解釈でも overall の解釈でも予算を削らない値にすること',
+        );
+      });
+
+      // 🔴 **変異試験（源泉を書き換える本物）。** 判定を「Job の status を見ない」形へ差し替えた
+      // check-stack-ready.js を実際にコンパイルして走らせ、**陰性対照が落ちなくなる**ことを見る。
+      // これが無いと、上の陽性対照は「常に緑を返す実装」でも通ってしまう。
+      ok('NFR / #1219 変異試験: 所有 Job の状態判定を外すと陰性対照（Failed な Job）が落ちる', () => {
+        const Module = require('module');
+        const gateSrc = fs.readFileSync(path.join(REPO_IS, 'scripts/check-stack-ready.js'), 'utf8');
+
+        const load = (source) => {
+          const m = new Module('check-stack-ready-mutant', module);
+          m.filename = path.join(REPO_IS, 'scripts', 'check-stack-ready.js');
+          m.paths = Module._nodeModulePaths(path.join(REPO_IS, 'scripts'));
+          m._compile(source, m.filename);
+          return m.exports;
+        };
+
+        // 変異体: `classifyFailedPod` の分類を「所有 Job を見ず常に benign」へ倒す。
+        const NEEDLE = "  const state = jobTerminalState(job);";
+        assert.ok(gateSrc.includes(NEEDLE), '変異点が見つからない（実装が変わったら変異試験も直すこと）');
+        const mutantSrc = gateSrc.replace(
+          NEEDLE,
+          "  const state = 'Complete'; if (job) { /* 変異: Job の status を見ない */ }",
+        );
+        assert.notStrictEqual(mutantSrc, gateSrc, '変異が当たっていない');
+
+        const negativePods = [
+          {
+            metadata: {
+              name: 'keycloak-realm-reconcile-abcde',
+              ownerReferences: [{ kind: 'Job', name: 'keycloak-realm-reconcile' }],
+            },
+            status: { phase: 'Failed', conditions: [{ type: 'Ready', status: 'False' }] },
+          },
+        ];
+        const failedJob = [
+          { metadata: { name: 'keycloak-realm-reconcile' }, status: { conditions: [{ type: 'Failed', status: 'True' }] } },
+        ];
+
+        const real = load(gateSrc).evaluatePods('platform-infra', negativePods, failedJob);
+        const mutant = load(mutantSrc).evaluatePods('platform-infra', negativePods, failedJob);
+
+        assert.strictEqual(real.failures.length, 1, '本実装が陰性対照（Failed な Job）を捕まえていない');
+        assert.strictEqual(
+          mutant.failures.length,
+          0,
+          '判定を外しても陰性対照が落ちたままである ＝ この対照は所有 Job の状態判定を測っていない',
+        );
+      });
+    }
   }
 
   //
