@@ -13,6 +13,7 @@ namespace GraphService.Tests.Features.AiSuggestions;
 // **［2026-08-23 追記 / #918］SC-21（AI 提案一覧）の実装に伴い、一覧の口が画面の受け入れ基準を
 // 直接支えるようになったため、一覧に関するテストは SC-21 も参照する。** 承認・却下の状態遷移
 // （#914 の射程）は従来どおり FR-18 だけを参照する。テスト仕様書は `docs/tests/SC-21_*.md`。
+[Trait("TestKind", "Integration")]
 public class AiSuggestionEndpointsTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;

@@ -16,6 +16,7 @@ namespace AuthorizationService.Tests.Infrastructure.ExternalServices;
 // ①`PUT /users/{id}` は部分更新ではない（送らない項目が消える）。②realm が unmanaged 属性の
 // 書き込みを許していないと 204 を返しながら黙って捨てる。**どちらもスタブでは自然には出ない**
 // ので、実測した挙動をスタブ側に再現して固定する。
+[Trait("TestKind", "Unit")]
 public class KeycloakIdentityAdminClientTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

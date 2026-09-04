@@ -23,6 +23,7 @@ namespace WikiService.Tests.Features.Wiki.SearchPages;
 // 🔴 **否定形だけでは足りない。** 検索の検査は「出ない」ばかりになるため、**常に空を返す実装**でも
 // 全部緑になる。**同じテスト群の中に陽性対照（見えるものは見える）を置く**
 // （`WikiEndpointsAbacTests` が採っている作法と同じ）。
+[Trait("TestKind", "Integration")]
 public class WikiSearchAbacTests(WikiSearchTestFactory factory) : IClassFixture<WikiSearchTestFactory>
 {
     private record Hit(Guid Id, Guid DocumentId, string Title, string Slug, string WikiPath, DateTimeOffset SyncedAt);

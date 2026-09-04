@@ -18,6 +18,7 @@ namespace RetrievalService.Tests.Infrastructure.ExternalServices;
 //
 // 🔴 #1117 の獲得物（識別子・型番・略語）を落とさないことがここで固定される ——
 // 識別子の系統は `text`（`multilingual`）のまま、条件を 1 つも変えない。
+[Trait("TestKind", "Unit")]
 public class QdrantCjkNgramSearchTests
 {
     private const string Collection = "knowledge_chunks_test";

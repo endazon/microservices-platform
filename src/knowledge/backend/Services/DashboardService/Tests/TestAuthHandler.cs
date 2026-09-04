@@ -19,8 +19,17 @@ public class TestAuthHandler(
     public const string SchemeName = "Test";
     public const string RolesHeader = "X-Test-Roles";
 
+    // FR-10, ADR-0072 決定 1 (#1198): **未認証の呼び出しを作る口**。
+    // 受け口の `RequireAuthorization()` を維持したことを機械で固定するには、
+    // 「認証されていない要求」が要る。ヘッダが付いた要求だけ `NoResult` を返し、
+    // **既定の挙動（常に認証成功）は変えない**（既存テストへ影響させない）。
+    public const string AnonymousHeader = "X-Test-Anonymous";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        if (Request.Headers.ContainsKey(AnonymousHeader))
+            return Task.FromResult(AuthenticateResult.NoResult());
+
         var roles = Request.Headers.TryGetValue(RolesHeader, out var header)
             ? header.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : ["platform-admin"];

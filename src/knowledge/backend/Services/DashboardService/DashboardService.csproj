@@ -11,6 +11,13 @@
     <None Remove="Tests/**" />
   </ItemGroup>
   <ItemGroup>
+    <!-- ADR-0072 決定 3, IADR-0367 (#1198): 保持期間の削除は境界を測る必要がある
+         （基準時刻ちょうどの行が残ること）。基準時刻の式は本体（DashboardEndpoints.SinceUtc）に
+         1 つだけ置き、テストは**同じ式**を引く —— テスト側で式を書き写すと、
+         本体を直しても写しが古いまま緑になる。ConversionService ほか 6 サービスと同じ形。 -->
+    <InternalsVisibleTo Include="DashboardService.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <!-- #34: Relational を直接ピンし MSB3277 (Npgsql 10.0.4 vs Design 10.0.9) を解消 -->

@@ -3,15 +3,15 @@ title: 機能仕様書 — FR-10 利用状況・検索傾向・回答品質ダ�
 type: functional-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-09-03
+updated: 2026-09-04
 author: claude
 ---
 <!-- trace:
 ids: [FR-08, FR-10, FR-17, FR-18, FR-19, UC-05, SC-10]
-adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0034, ADR-0044, ADR-0050, ADR-0054, ADR-0071]
-iadrs: [IADR-0011, IADR-0026, IADR-0119, IADR-0265, IADR-0299, IADR-0353, IADR-0357]
-specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count]
-issues: [#443, #452, #504, #1186, #1197, planning#494, planning#514, planning#525]
+adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0034, ADR-0044, ADR-0050, ADR-0054, ADR-0071, ADR-0072]
+iadrs: [IADR-0011, IADR-0026, IADR-0119, IADR-0265, IADR-0299, IADR-0343, IADR-0353, IADR-0357, IADR-0367]
+specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count, 20260904_issue-1198_usage-event-subject-and-retention]
+issues: [#443, #452, #504, #1186, #1197, #1198, planning#494, planning#514, planning#515, planning#525, planning#526]
 -->
 
 # 機能仕様書: 利用状況・検索傾向・回答品質ダッシュボード
@@ -32,10 +32,20 @@ issues: [#443, #452, #504, #1186, #1197, planning#494, planning#514, planning#52
 | Id | Guid | 主キー |
 | EventType | string(16) | `search`（検索実行）/ `answer`（AI 回答生成）。小文字正規化 |
 | Query | string(512)? | 検索語（種別が `search` のときのみ保持。前後空白除去・小文字化。超過は切り詰め） |
-| UserId | string(256) | 記録者（JWT の名前。テスト・開発は `anonymous`） |
 | OccurredAt | DateTimeOffset | 発生時刻（UTC）。期間フィルタ・集計の基準 |
 
-索引: `(OccurredAt, EventType)`（期間フィルタ・種別集計の効率化）。
+索引: `(OccurredAt, EventType)`（期間フィルタ・種別集計の効率化。**保持期間の削除も同じ索引で引く**）。
+
+🔴 **利用者を識別する列は持たない。** 記録の受け口は認証必須のままであり（認証済みでなければ
+記録できない）、変わったのは**解決した主体を列へ書かないこと**だけである。どの集計も利用者を
+読んでおらず、応答契約にも欄が無い —— 持っていることの唯一の効果が「誰がいつ何を検索したかの
+記録が残ること」であるなら、それは画面が採らないと決めた指標のために避けた効果そのものである。
+
+**行は 90 日を超えて残らない。** 保持期間は**画面から照会できる最大期間と同じ 1 つの定数**であり、
+別々には変更できない（片方だけ動かすと、照会できるのに行が無い期間が生じる）。
+削除の基準時刻は集計の起点と同じ 1 点で、**基準時刻ちょうどの行は残る**。
+実施は `dashboard-service` の常駐処理（既定 6 時間ごと・`UsageRetention__*` で構成）。
+運用手順は `../operations/operations.md` の §データ保持期間（利用イベント）。
 
 ## API（DashboardService）
 

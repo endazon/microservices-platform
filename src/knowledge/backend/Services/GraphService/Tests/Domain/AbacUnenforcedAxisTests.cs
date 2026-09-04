@@ -61,6 +61,7 @@ namespace GraphService.Tests.Domain;
 // 下の 2 件（分岐なし応答＝従来評価）は**残す** —— 後方互換の固定として意味を持ち続ける。
 // **陽性対照を 1 件足した** —— 分岐を運ぶ応答なら owner で見え方が変わることを示し、
 // 「分岐評価を消す・キー単位 union へ潰す」変異をここで捕まえる。
+[Trait("TestKind", "Unit")]
 public class AbacUnenforcedAxisTests
 {
     // #516 / ADR-0036: owner だけが異なる 2 文書は、現状のスコープでは区別されない。

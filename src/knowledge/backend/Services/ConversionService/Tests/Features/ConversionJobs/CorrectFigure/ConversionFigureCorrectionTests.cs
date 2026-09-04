@@ -18,6 +18,7 @@ namespace ConversionService.Tests.Features.ConversionJobs.CorrectFigure;
 // FR-12, UC-06, SC-07, IADR-0154: 人手補正 Phase 1（図のコード化のやり直し）の受け入れ基準を写像する。
 // 対象は**画像保持へ縮退した図を持つ成功ジョブ**である（UC-06 は縮退を例外フローの中の正常な収束と
 // 定めており、ジョブの状態は succeeded になる）。**再変換（failed 限定）とは別の操作である。**
+[Trait("TestKind", "Integration")]
 public class ConversionFigureCorrectionTests
 {
     private const string ImageUri = "storage://normalized/assets/fig-1.png";

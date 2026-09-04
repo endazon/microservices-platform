@@ -21,6 +21,7 @@ namespace ConversionService.Tests.Infrastructure.ExternalServices;
 //
 // 実 `pdftotext` を要するケースは `Assert.SkipUnless` で**真の Skipped** にする（`PandocConversionServiceTests`
 // と同じ流儀。ソフトスキップにしない）。空判定（`ToBody`）は純関数なので pdftotext 無しで走る。
+[Trait("TestKind", "Integration")]
 public class PdfTextLayerConverterTests
 {
     private static PdfTextLayerConverter NewConverter(

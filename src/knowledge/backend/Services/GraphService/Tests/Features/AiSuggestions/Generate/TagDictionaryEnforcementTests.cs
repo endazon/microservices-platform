@@ -18,6 +18,7 @@ namespace GraphService.Tests.Features.AiSuggestions.Generate;
 //
 // 🔴 **変異試験の対象である**（#1014 受け入れ基準 3）。`AiSuggestionGenerator.PersistAsync` の
 // `dictionary.Contains(value)` を外すと `Out_of_dictionary_tag_is_not_persisted` が落ちる。
+[Trait("TestKind", "Unit")]
 public class TagDictionaryEnforcementTests
 {
     private static AccessScopeResponse InternalOnly()

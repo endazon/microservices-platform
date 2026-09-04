@@ -4,6 +4,7 @@ using AwesomeAssertions;
 namespace DocumentService.Tests.Domain;
 
 // FR-05, UC-03, SC-05, IADR-0047, Issue #199: 機密区分検証ヘルパー（単一情報源）の単体テスト。
+[Trait("TestKind", "Unit")]
 public class DocumentAttributesTests
 {
     [Theory]

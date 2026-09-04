@@ -17,6 +17,7 @@ namespace ConversionService.Tests.Infrastructure.Messaging;
 // ⚠️ **辺 DocumentNormalized のトランスポートは MassTransit のままである**（E2 の射程）。
 // よってここは MassTransit のテストハーネスで測るのが正しい。E2 でこの辺が動いたら、
 // 本ファイルも一緒に動かすこと。
+[Trait("TestKind", "Unit")]
 public class MassTransitDocumentNormalizedPublisherTests
 {
     [Fact]

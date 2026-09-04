@@ -13,6 +13,7 @@ namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 // 実測（Anthropic.SDK 4.0.0）: content に thinking ブロックが 1 個でも含まれると
 // `System.Text.Json.JsonException: Unknown type thinking` で応答全体が失われる。既知は
 // text / image / tool_use / tool_result の 4 種のみ（本テストの許可リストの根拠）。
+[Trait("TestKind", "Unit")]
 public class AnthropicContentBlockSanitizerTests
 {
     private static string Envelope(string blocks) =>

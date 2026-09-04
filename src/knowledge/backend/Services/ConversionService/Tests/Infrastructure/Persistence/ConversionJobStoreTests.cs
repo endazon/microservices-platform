@@ -9,6 +9,7 @@ namespace ConversionService.Tests.Infrastructure.Persistence;
 // FR-12, UC-06, SC-07, IADR-0042/IADR-0043: 変換ジョブ読み取りモデル（EF・Postgres 永続化）の状態遷移・
 // 絞り込み・人手補正（再変換）を検証する。ここでは EF Core InMemory provider で EfConversionJobStore を検証する。
 // NFR, IADR-0238: xUnit1051 移行。TestContext.Current.CancellationToken をすべての呼び出しへ通す。
+[Trait("TestKind", "Unit")]
 public class ConversionJobStoreTests
 {
     private static EfConversionJobStore NewStore() =>

@@ -19,6 +19,7 @@ namespace AuthorizationService.Tests.Features.Authz.ResolveScope;
 //   （`AbacEvaluator.MatchesUserConditions` は条件が空なら全利用者にマッチする）、
 //   `granted=false` を端点越しに固定するとテストの実行順に依存して壊れる。
 //   よって「値の対応」は決定的なシリアライズで、「本文に載っていること」は端点で固定する。
+[Trait("TestKind", "Integration")]
 public class AccessScopeContractTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

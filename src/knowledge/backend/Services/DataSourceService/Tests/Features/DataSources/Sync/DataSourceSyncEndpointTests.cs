@@ -13,6 +13,7 @@ namespace DataSourceService.Tests.Features.DataSources.Sync;
 // 既定 ABAC 属性（機密区分）を付与した RawDocumentFetched を発行することを検証する。
 // 一時ディレクトリに実ファイルを置き、コネクタがそれを列挙・取得する（オブジェクトストレージは
 // 未構成のため NullObjectStorageClient で縮退＝決定的 URI 発行）。
+[Trait("TestKind", "Integration")]
 public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>, IDisposable
 {

@@ -20,6 +20,7 @@ namespace RetrievalService.Tests.Infrastructure.ExternalServices;
 //
 // 🔴 **索引が無いことは例外にならない**（Qdrant v1.18.1 は部分文字列の全走査へ黙って落ちる。実機で実測）。
 // だから「例外を数える」だけでは足りず、**索引の存在そのもの**を見る health check が要る。
+[Trait("TestKind", "Unit")]
 public class QdrantFullTextIndexObservabilityTests
 {
     private const string Collection = "knowledge_chunks_test";

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace ConversionService.Tests.Features.ConversionJobs.Normalize;
 
 // FR-12, UC-06: 正規化オーケストレータ（本文＋図コード化/画像保持＋保管）の単体テスト。
+[Trait("TestKind", "Unit")]
 public class NormalizationServiceTests
 {
     private static RawDocumentFetched Raw(string? confidentiality = "internal") => new(

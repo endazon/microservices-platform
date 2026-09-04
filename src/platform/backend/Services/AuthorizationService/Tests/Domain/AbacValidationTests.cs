@@ -4,6 +4,7 @@ using AwesomeAssertions;
 namespace AuthorizationService.Tests.Domain;
 
 // FR-09, UC-05, ADR-0004: 属性辞書・ポリシー・文書属性バリデーションの単体テスト
+[Trait("TestKind", "Unit")]
 public class AbacValidationTests
 {
     private static AttributeDefinition Confidentiality() =>

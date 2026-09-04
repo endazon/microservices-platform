@@ -11,6 +11,7 @@ namespace DocumentService.Tests.Features.Documents;
 // FR-18, ADR-0050 決定 1 (#911): 本文指紋（ContentFingerprint）。
 // 契約が要求する性質は 1 つ —— **本文が変われば変わり、変わらなければ変わらない**。
 // #911 受け入れ基準「本文ハッシュが本文変化で変わり、無変化で変わらない」の写像である。
+[Trait("TestKind", "Integration")]
 public class ContentFingerprintTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

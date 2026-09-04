@@ -13,6 +13,10 @@ namespace SampleService.Tests.Features.Samples.Create;
 //
 // 器（WebApplicationFactory の派生や TestAuthHandler 等）は Tests/ 直下に置く。C# は外側の
 // 名前空間を自動で探索するため、ここから無修飾で見える（同決定 5。using は足さない）。
+// 種別: **結合**（IADR-0368）。WebApplicationFactory でホストの合成を丸ごと立て、端点越しに叩く。
+// 実コンテナは使わない —— 実 DB / 実ブローカを要するテストの Category トレイト（ci.yml が
+// PR から外す軸）とは別の軸であり、両者を同じ名前で表さない。
+[Trait("TestKind", "Integration")]
 public class CreateSampleEndpointTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly WebApplicationFactory<Program> _factory;

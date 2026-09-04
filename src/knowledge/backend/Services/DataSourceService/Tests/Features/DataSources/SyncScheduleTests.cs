@@ -13,6 +13,7 @@ namespace DataSourceService.Tests.Features.DataSources;
 // SC-06（planning#200 / 利用者裁定 2026-08-05 質問票 第12回 Q15）, FR-01, UC-04, IADR-0136:
 // 「次回同期」は**共通間隔の次回実行時刻**であり、**全ソースで同じ値**を返す。ソース別スケジュールは持たない。
 // 時刻依存は TimeProvider を注入して決定的にする（DateTimeOffset.UtcNow をテストから呼ばない）。
+[Trait("TestKind", "Integration")]
 public sealed class SyncScheduleTests
 {
     // 検証の基準時刻。どのテストも実時間に依存しない。

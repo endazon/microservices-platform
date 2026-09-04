@@ -15,6 +15,7 @@ namespace ConversionService.Tests.Infrastructure.ExternalServices;
 // すると両変換器は**必ず自分のプレースホルダ本文**を返す（pandoc は「から pandoc で変換します」、
 // 抽出器は「から pdftotext で抽出します」）。その綴りが「どちらが走ったか」の観測点である。
 // 生産コードへテスト用の接ぎ目を足していない。
+[Trait("TestKind", "Unit")]
 public class FormatRoutingBodyConverterTests
 {
     private static FormatRoutingBodyConverter NewRouter()

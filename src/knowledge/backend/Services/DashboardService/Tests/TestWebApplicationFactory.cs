@@ -31,7 +31,12 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             cfg.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Otlp:Endpoint"] = "http://localhost:4317",
-                ["Auth:Authority"] = "https://localhost/realms/test"
+                ["Auth:Authority"] = "https://localhost/realms/test",
+                // FR-10, ADR-0072 決定 3 (#1198): **保持期間の掃除は既定で止める。**
+                // 器がホストを起こすたびに背景で削除が走ると、投入した行がテストの
+                // 途中で消え得る（`NotificationOptions.MaintenanceEnabled` と同じ理由）。
+                // 掃除そのものは `UsageEventRetention` を直接呼んで測る。
+                ["UsageRetention:Enabled"] = "false"
             });
             // **既定の後に足す**（後勝ち）。テストが指定した値が実際に効く順序である。
             if (Settings is { Count: > 0 })

@@ -6,6 +6,7 @@ namespace DataSourceService.Tests.Features.DataSources;
 
 // IADR-0053, claude-review #222: データソース応答は Config 内の秘密（apiToken 等）をマスクし、
 // 非秘密キー（listPath 等）はそのまま返すことを検証する（Vault 移行までの API 応答からの秘匿）。
+[Trait("TestKind", "Integration")]
 public class DataSourceSecretRedactionTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

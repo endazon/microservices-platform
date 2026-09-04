@@ -18,6 +18,7 @@ namespace NotificationService.Tests.Features.Notifications.Accept;
 // **何でも受理して何でも作るコードでも緑になる**。
 //
 // **器はテストメソッドごとに作り直す**（他のテストの seed が件数の表明を揺らさないため）。
+[Trait("TestKind", "Integration")]
 public class NotificationIngressTests : IDisposable
 {
     private readonly TestWebApplicationFactory _factory = new();

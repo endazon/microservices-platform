@@ -17,6 +17,7 @@ namespace GraphService.Tests.Domain;
 //
 // 🔴 **次数上限の意味は「展開の中継点にしない」であって「結果から除く」ではない。**
 // 同じコードで両方書けるが、意味は正反対である。T-05 と T-06 を対で置いて区別する。
+[Trait("TestKind", "Integration")]
 public class EdgeWeightAndHubDegreeTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;

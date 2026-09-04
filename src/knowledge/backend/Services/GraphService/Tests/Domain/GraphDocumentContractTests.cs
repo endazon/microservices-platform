@@ -8,6 +8,7 @@ namespace GraphService.Tests.Domain;
 // 消費側（DocumentUpdated の購読）は #911 が足すが、**順序ガードは契約であって実装詳細ではない**
 // ため、契約を定義した本 issue で試験する。ここが緩むと、再配信や追い越しで
 // 「厳格化したのに緩和が復活する」＝**権限外文書が見えるようになる**。
+[Trait("TestKind", "Unit")]
 public class GraphDocumentContractTests
 {
     private static GraphDocument At(string ts, string confidentiality = "internal", string? hash = null)

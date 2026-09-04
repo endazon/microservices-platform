@@ -13,6 +13,7 @@ namespace DocumentService.Tests.Features.McpTools.Declare;
 // 🔴 **陽性対照を必ず対で置く。** 「個人資料のツールが現れない」だけを測ると、
 // **常に空を返す実装がテストを通る** —— それは #1020 が是正しようとしている
 // 「実効カタログが空」という状態そのものである。
+[Trait("TestKind", "Integration")]
 public class McpToolDeclarationEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

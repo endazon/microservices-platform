@@ -16,6 +16,7 @@ namespace DocumentService.Tests.Features.Documents.AddTag;
 // 🔴 **辞書照合の変異試験の対象である**（#1014 受け入れ基準 3・4）。`AddTag/Endpoint.cs` の
 // `UnknownTagsProblem` 分岐を外すと `Unknown_tag_is_rejected_and_nothing_is_attached` が落ちる
 // （辞書に無い名前は識別子へ解決できないので、そのまま進めると保存で落ちるか空の識別子を付ける）。
+[Trait("TestKind", "Integration")]
 public class DocumentTagReflectionTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

@@ -16,6 +16,7 @@ namespace DocumentService.Tests.Features.Documents;
 //
 // **「狭める」と「狭めすぎない」を必ず対で置く**（#628 が採った形）——
 // 運用者の書き込みが 403 になることだけを固定すると、閲覧まで塞いでも緑のまま通る。
+[Trait("TestKind", "Integration")]
 public class DocumentAuthorizationTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

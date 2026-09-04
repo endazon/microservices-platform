@@ -3,6 +3,7 @@ using AwesomeAssertions;
 namespace GraphService.Tests;
 
 // FR-17: サービスが独立して稼働する。
+[Trait("TestKind", "Integration")]
 public class HealthEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

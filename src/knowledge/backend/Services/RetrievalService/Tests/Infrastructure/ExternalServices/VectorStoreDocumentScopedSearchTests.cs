@@ -19,6 +19,7 @@ namespace RetrievalService.Tests.Infrastructure.ExternalServices;
 //   1. 文書 ID 集合の**外**は返らない（否定形 ＋ 陽性対照）
 //   2. ABAC フィルタと **AND** で重なる（文書 ID の制約は ABAC を置き換えない）
 //   3. **空集合は「該当なし」**であって「全件」ではない（グラフが 0 件を返したときに全文書へ広がらない）
+[Trait("TestKind", "Unit")]
 public class VectorStoreDocumentScopedSearchTests
 {
     private static readonly Guid DocA = Guid.Parse("11111111-1111-1111-1111-111111111111");

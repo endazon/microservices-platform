@@ -15,6 +15,7 @@ namespace RetrievalService.Tests.Infrastructure.ExternalServices;
 //
 // 🔴 **本試験群の要は「混成の拒否」である**（IADR-0253 決定 2 の追記が実証した反例）。
 // キー単位 union へ畳むと、**どのポリシー単独も許可しない値の組合せ**を許してしまう。
+[Trait("TestKind", "Unit")]
 public class ScopeBranchFilteringTests
 {
     private static ChunkPayload Chunk(string title, params (string Key, string Value)[] attrs) =>

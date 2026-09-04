@@ -19,6 +19,7 @@ namespace DocumentService.Tests.Features.Documents;
 //
 // 🔴 **陰性だけでは緑にならないようにする。** 「全経路が常に 404」でも陰性は通るため、
 // **所有者が同じ経路で成功することを対で固定する**。
+[Trait("TestKind", "Integration")]
 public class DocumentExistenceConcealmentTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

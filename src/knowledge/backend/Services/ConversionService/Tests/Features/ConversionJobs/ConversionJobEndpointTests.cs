@@ -18,6 +18,7 @@ namespace ConversionService.Tests.Features.ConversionJobs;
 // FR-12, UC-06, SC-07, IADR-0042/IADR-0043: 変換ジョブ照会・人手補正エンドポイントが状況一覧（絞り込み含む）・
 // 個別取得・再変換（202/404/409）を提供することを検証する。RabbitMQ は使わず MassTransit テストハーネスに、
 // DB は EF Core InMemory provider に差し替える。各テストは Factory を都度生成し状態を独立させる。
+[Trait("TestKind", "Integration")]
 public class ConversionJobEndpointTests
 {
     private static RawDocumentFetched Raw(Guid id) =>

@@ -14,6 +14,7 @@ namespace GraphService.Tests.Domain;
 // 🔴 **本テストが守っているのは「ゲートが後から緩められないこと」である。**
 // コンストラクタを public に上げる・スコープを取らないファクトリを足す、といった変更は
 // コンパイルは通ってしまうため、機械で見張る必要がある。
+[Trait("TestKind", "Unit")]
 public class GraphTypeGateArchitectureTests
 {
     // ADR-0034 決定 1: AuthorizedNode は述語を通さずに作れない。

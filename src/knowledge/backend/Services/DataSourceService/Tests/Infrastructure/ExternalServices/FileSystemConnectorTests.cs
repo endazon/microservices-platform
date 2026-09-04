@@ -8,6 +8,7 @@ namespace DataSourceService.Tests.Infrastructure.ExternalServices;
 
 // FR-01, UC-04, IADR-0051: ファイルサーバーコネクタ（優先1）の単体テスト。
 // 一時ディレクトリを実データソースとして、対応形式の列挙・増分検知・取得・縮退を検証する。
+[Trait("TestKind", "Unit")]
 public sealed class FileSystemConnectorTests : IDisposable
 {
     private readonly string _root;

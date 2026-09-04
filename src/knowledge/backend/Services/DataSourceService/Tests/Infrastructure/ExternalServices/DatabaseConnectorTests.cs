@@ -16,6 +16,7 @@ namespace DataSourceService.Tests.Infrastructure.ExternalServices;
 // 行→SourceItem マッピング・更新列によるインメモリ増分・本文取得・縮退・DB エラー伝播を検証する。
 // ※ 実 SQL の正しさ（派生表ラップ・WHERE id=@id）は実 PostgreSQL の統合テスト（DockerRequired.SkipUnlessAvailable()・follow-up）で確認する。
 // ※ SQLite は SQLitePCLRaw の未修正 CVE-2025-6965（NU1903）を持ち込むため採用しない。
+[Trait("TestKind", "Unit")]
 public sealed class DatabaseConnectorTests
 {
     private static DataSource DbSource()

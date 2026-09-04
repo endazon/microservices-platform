@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 namespace AiAnalysisService.Tests.Features.Analysis;
 
 // FR-04, UC-01, UC-02: /analysis/ask が回答本文と番号付き出典を返すことを検証する
+[Trait("TestKind", "Integration")]
 public class AnalysisEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

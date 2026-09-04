@@ -6,6 +6,7 @@ namespace NotificationService.Tests.Features.Notifications.PurgeExpired;
 
 // FR-22, IADR-0215 決定 2: アプリ内通知の保持期間（既定 90 日）。
 // **90 日は計画に根拠が無い実装側の判断である**（ADR-0037 決定 5 の保管期間へ揃えた）。
+[Trait("TestKind", "Unit")]
 public class NotificationRetentionTests
 {
     private static readonly DateTimeOffset Now = new(2026, 8, 23, 9, 0, 0, TimeSpan.Zero);

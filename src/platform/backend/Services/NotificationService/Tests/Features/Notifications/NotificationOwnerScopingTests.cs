@@ -16,6 +16,7 @@ namespace NotificationService.Tests.Features.Notifications;
 // **器はテストメソッドごとに作り直す**（IClassFixture で共有しない）。xUnit はテストごとに
 // クラスの新しいインスタンスを作るので、ここで作れば InMemory の DB もテストごとに分かれる。
 // 共有すると各テストの seed が積み上がり、**件数の表明が他のテストの影響で揺れる**（実測）。
+[Trait("TestKind", "Integration")]
 public class NotificationOwnerScopingTests : IDisposable
 {
     private readonly TestWebApplicationFactory _factory = new();

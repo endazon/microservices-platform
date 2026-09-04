@@ -25,6 +25,7 @@ namespace DocumentService.Tests.Features.Documents.Catalog;
 // テストホストには登録されていない（`IngestTagFilterTests` の実測どおり）ため、
 // `ConsumeContext` を得るには consumer だけを載せた最小の provider を組むのが唯一の手である。
 // RabbitMQ もテストサーバも要らない。
+[Trait("TestKind", "Unit")]
 public sealed class NormalizedAssetLedgerTests
 {
     private sealed class NoopUpdatedPublisher : IDocumentUpdatedPublisher
