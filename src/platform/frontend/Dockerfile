@@ -1,5 +1,5 @@
 # FR-14, IADR-0056 / IADR-0121: フロントエンド（pnpm workspace: src/<unit>/frontend。platform=基盤アプリホスト、
-# knowledge=可変機能）build → nginx 配信。実行時 config で接続先を注入する（環境非依存ビルド）。
+# knowledge=可変機能）build → Caddy 配信。実行時 config で接続先を注入する（環境非依存ビルド）。
 # ビルドコンテキストはリポジトリルート（compose の context: ..）を想定。
 #
 # Issue #325, IADR-0081: base イメージは docker.io を直参照せず、Google の Docker Hub プルスルー
@@ -37,15 +37,25 @@ COPY src/knowledge/frontend/ knowledge/frontend/
 COPY src/ai-stock-trading/frontend/ ai-stock-trading/frontend/
 RUN pnpm run build
 
+# Issue #1135, ADR-0021 / IADR-0362: SPA の静的配信は **Caddy** である（計画 ADR-0021 の指定。#442 の残作業）。
+# #782（IADR-0317）で入口だけが Istio Ingress Gateway へ移り、配信の側は nginx のままだった差分を閉じる。
+# 配信・fallback・/bff プロキシの契約は Caddyfile が持つ（そちらを読むこと）。
+#
 # IADR-0081: runtime も同じミラーから引く（docker.io 非依存）。BASE_REGISTRY は上の build ステージと
 # 同じ ARG を FROM で再利用するため、複数ステージで有効な「最初の FROM より前で宣言した global ARG」。
-FROM ${BASE_REGISTRY}/nginx:1.27-alpine AS runtime
-# nginx テンプレート（BFF_UPSTREAM を envsubst で注入）と実行時 config テンプレート。
-COPY src/platform/frontend/nginx.default.conf.template /etc/nginx/templates/default.conf.template
+# タグは nginx 時代の 1.27-alpine と同じ**マイナー固定**に揃える（:2 だけだと major 内で任意に動く）。
+FROM ${BASE_REGISTRY}/caddy:2.11-alpine AS runtime
+# envsubst（gettext）は実行時 config の描画に使う。nginx 公式イメージは同梱していたが Caddy は持たない。
+# sed で代替しないのは、値に含まれる & / \ のエスケープという新しい壊れ方を持ち込むためである。
+RUN apk add --no-cache gettext
+COPY src/platform/frontend/Caddyfile /etc/caddy/Caddyfile
 COPY src/platform/frontend/config.js.template /etc/microservices-platform/config.js.template
-COPY src/platform/frontend/docker-entrypoint.d/40-render-config.sh /docker-entrypoint.d/40-render-config.sh
-RUN chmod +x /docker-entrypoint.d/40-render-config.sh
-COPY --from=build /app/platform/frontend/dist /usr/share/nginx/html
-# 既定の BFF 上流（compose）。k8s は env で上書きする。
+COPY src/platform/frontend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+COPY --from=build /app/platform/frontend/dist /usr/share/caddy
+# 既定の BFF 上流（compose）。k8s は env で上書きする。Caddyfile の {$BFF_UPSTREAM} が読み込み時に展開する。
 ENV BFF_UPSTREAM=http://bff:8080
 EXPOSE 8080
+# entrypoint が config.js を描画してから exec で Caddy へ渡す（描画に失敗したら起動しない）。
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
