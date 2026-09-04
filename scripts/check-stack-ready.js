@@ -18,7 +18,7 @@
  *
  * - **G1 readiness**: 対象 namespace の Deployment がすべて `availableReplicas >= 1` で、
  *   pod が Ready であること。**待つのは呼び出し側（kubectl wait）で、ここは判定だけを行う。**
- *   🔴 **`Failed` な Pod の可否は所有 Job の `status` で決まる**（#1219 / [IADR-0377]）。
+ *   🔴 **`Failed` な Pod の可否は所有 Job の `status` で決まる**（#1219 / [IADR-0376]）。
  *   `restartPolicy: Never` の Job は**再試行で成功しても失敗した attempt の Pod を残す**ので、
  *   残骸を無条件に致命にすると**Job が成功しているのに赤**になる（間欠赤の正体）。
  *   見逃すのは「所有 Job が `Complete` に達したことを確かめられた」Pod **だけ**であり、

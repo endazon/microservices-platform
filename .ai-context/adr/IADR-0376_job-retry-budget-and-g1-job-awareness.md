@@ -1,5 +1,5 @@
 ---
-title: IADR-0377 門 G1 は Failed Pod を所有 Job の status で判定し、drift Job の待ち予算は実測した BFF の time-to-ready から決める
+title: IADR-0376 門 G1 は Failed Pod を所有 Job の status で判定し、drift Job の待ち予算は実測した BFF の time-to-ready から決める
 type: impl-adr
 status: Accepted
 related_ids:
@@ -14,7 +14,7 @@ updated: 2026-09-05
 plan_refs: []
 ---
 
-# IADR-0377: 門 G1 は Failed Pod を所有 Job の status で判定し、drift Job の待ち予算は実測した BFF の time-to-ready から決める
+# IADR-0376: 門 G1 は Failed Pod を所有 Job の status で判定し、drift Job の待ち予算は実測した BFF の time-to-ready から決める
 
 - 状態: Accepted
 - 日付: 2026-09-05

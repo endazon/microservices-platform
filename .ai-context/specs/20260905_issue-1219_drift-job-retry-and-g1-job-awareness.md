@@ -2,7 +2,7 @@
 title: integration-stack の間欠赤: 再試行で成功した Job の残骸 Pod を門 G1 が致命扱いする（#1219）
 type: spec
 status: done
-related_ids: [NFR-09, ADR-0007, ADR-0008, IADR-0029, IADR-0232, IADR-0369, IADR-0377]
+related_ids: [NFR-09, ADR-0007, ADR-0008, IADR-0029, IADR-0232, IADR-0369, IADR-0376]
 author: Claude
 created: 2026-09-05
 updated: 2026-09-05

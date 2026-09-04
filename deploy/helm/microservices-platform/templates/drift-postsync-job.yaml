@@ -46,7 +46,7 @@ spec:
           image: {{ .Values.drift.postSyncHook.image | quote }}
           # BFF の起動待ち。応答は 202（本文なし）。
           #
-          # 🔴 **待ち予算を決めているのは `--retry` × `--retry-delay` だけである**（#1219 / IADR-0377）。
+          # 🔴 **待ち予算を決めているのは `--retry` × `--retry-delay` だけである**（#1219 / IADR-0376）。
           # `--max-time` は **1 試行あたりの上限**であって、リトライ総時間の上限ではない
           # （curl 8.19.0 で実測: `--retry 3 --retry-delay 2 --max-time 3` は 3 秒ではなく **14 秒**掛かり、
           #  `--max-time` 無しと同じだった）。以前の注記はここを取り違えていた。
