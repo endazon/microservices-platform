@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [NFR-09]
 adrs: []
-iadrs: [IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363, IADR-0368]
+iadrs: [IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363, IADR-0369]
 specs: [20260902_issue-1127_wikijs-oidc-strategy-seed, 20260903_issue-1163_tool-oidc-login-verifier]
 issues: [#328, #388, #841, #1088, #1127, #1163, AST#245]
 -->

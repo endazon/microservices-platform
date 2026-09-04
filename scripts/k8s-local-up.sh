@@ -9,8 +9,8 @@
 #   MINIO_ACCESS_KEY / MINIO_SECRET_KEY / WIKIJS_DB_PASSWORD / WIKIJS_SYNC_APIKEY / ANTHROPIC_API_KEY /
 #   RABBITMQ_USER（#1022。helm の global.messaging.user と揃えること）/
 #   WIKIJS_OIDC_CLIENT_SECRET（#1127。WIKIJS_OIDC=1 のときだけ使う。realm の wiki-js client と揃えること）/
-#   KEYCLOAK_ADMIN_USER（IADR-0368。既定 admin。Keycloak と realm 後追い Job が同じ Secret から読む）
-# 永続化（Keycloak/Postgres/Qdrant ＋ OBSERVABILITY=1 の可観測性 4 種の PVC）は **既定オン**（IADR-0368 / #1088）。
+#   KEYCLOAK_ADMIN_USER（IADR-0369。既定 admin。Keycloak と realm 後追い Job が同じ Secret から読む）
+# 永続化（Keycloak/Postgres/Qdrant ＋ OBSERVABILITY=1 の可観測性 4 種の PVC）は **既定オン**（IADR-0369 / #1088）。
 #   使い捨てスタックでだけ PERSIST=0 で外す。
 set -euo pipefail
 
@@ -97,7 +97,7 @@ apply_secret "$INFRA_NS" postgres        "password=${PG_PASSWORD:-postgres}"
 # ⚠️ RABBITMQ_USER を変えるときは helm の global.messaging.user も併せて上書きすること
 #    （app 側の接続文字列は chart が組む）。AST chart は自前の guest:guest を持つ（#1022 §申し送り）。
 apply_secret "$INFRA_NS" rabbitmq        "username=${RABBITMQ_USER:-guest}" "password=${RABBITMQ_PASSWORD:-guest}"
-# IADR-0368 (#1088): 管理者名も Secret に持つ。deploy/local/infra/keycloak.yaml（KEYCLOAK_ADMIN）と
+# IADR-0369 (#1088): 管理者名も Secret に持つ。deploy/local/infra/keycloak.yaml（KEYCLOAK_ADMIN）と
 # realm 後追い Job（deploy/local/keycloak-setup/realm-reconcile-job.yaml の KC_ADMIN_USER）が同じキーを読む
 # ＝管理者名の単一情報源。ESO の externalsecret-keycloak-admin.yaml は Merge なので password だけ供給しても壊れない。
 apply_secret "$INFRA_NS" keycloak-admin  "username=${KEYCLOAK_ADMIN_USER:-admin}" "password=${KEYCLOAK_ADMIN_PASSWORD:-admin}"
@@ -127,7 +127,7 @@ kubectl create configmap keycloak-theme-platform -n "$INFRA_NS" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 echo "==> [4/7] apply in-cluster infra"
-# IADR-0082 (#324) / IADR-0210 (#787) → IADR-0368 (#1088): 永続化オーバーレイ（Keycloak/Postgres/Qdrant を
+# IADR-0082 (#324) / IADR-0210 (#787) → IADR-0369 (#1088): 永続化オーバーレイ（Keycloak/Postgres/Qdrant を
 # local-path PVC 化）は **既定オン**である。opt-out は `PERSIST=0`（使い捨てスタック専用）。
 #
 # 🔴 IADR-0082 決定 1 は「provisioner 不在クラスタで Pod が Pending になる」を理由に opt-in を選んだが、
@@ -318,13 +318,13 @@ kubectl apply -f deploy/local/aliases/microservices-platform-externalnames.yaml
 # 素のサービス名 `bff-service` で叩けるようにする。理由はファイル冒頭の注記を参照。
 kubectl apply -f deploy/local/aliases/platform-infra-externalnames.yaml
 
-# FR-05, NFR-09, ADR-0004/ADR-0026, IADR-0368 (#1088 / #324): realm JSON の差分を稼働 realm へ当てる。
+# FR-05, NFR-09, ADR-0004/ADR-0026, IADR-0369 (#1088 / #324): realm JSON の差分を稼働 realm へ当てる。
 # 🔴 **`--import-realm` は既存 realm があると黙って飛ばす（IGNORE_EXISTING）。永続化（既定）で realm が
 #    PVC に残るようになった瞬間から、realm JSON を直しても稼働 realm は変わらない。** ここが唯一の反映経路である
 #    （旧 reconcile-backchannel-logout.sh の 1 値だけの後追い（IADR-0336 決定 3）を、宣言全体の差分へ一般化した）。
 # 🔴 pod 内で kcadm.sh を exec しない（本体が OOMKilled になる）。同じ namespace の Job が Admin REST API を叩く。
 # best-effort: 失敗しても up 全体は止めない（再実行は冪等）。**fail-closed の門は check-stack-ready.js の G9。**
-echo "==> Keycloak realm の追随（宣言との差分を Job で当てる / 冪等 / IADR-0368）"
+echo "==> Keycloak realm の追随（宣言との差分を Job で当てる / 冪等 / IADR-0369）"
 bash "$ROOT/deploy/local/keycloak-setup/reconcile-realm.sh" \
   || echo "    WARN: realm の追随に失敗（best-effort）。bash deploy/local/keycloak-setup/reconcile-realm.sh で再実行できる" >&2
 
@@ -340,7 +340,7 @@ if [ "${OBSERVABILITY:-}" = "1" ]; then
     apply_secret "$INFRA_NS" grafana-oidc \
       "client-secret=${GRAFANA_OIDC_CLIENT_SECRET:-grafana-dev-secret-change-me}"
   fi
-  # IADR-0210 (#787) → IADR-0368 (#1088): 可観測性側も永続化オーバーレイが**既定**（INFRA_KUSTOMIZE と同じ意味論）。
+  # IADR-0210 (#787) → IADR-0369 (#1088): 可観測性側も永続化オーバーレイが**既定**（INFRA_KUSTOMIZE と同じ意味論）。
   # **OBSERVABILITY=1 のときだけ効く**（永続化単独ではスタック自体が立たない）。opt-out は PERSIST=0。
   OBS_KUSTOMIZE="deploy/local/observability-persistence"
   if [ "${PERSIST:-1}" = "0" ]; then

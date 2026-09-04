@@ -148,7 +148,7 @@ jobs:
       # G4（エッジと issuer の完全一致）/ G5（admin=50000）/ G6（pod 側の名前解決）/
       # G7（Wiki.js が使える）/ G8（捕捉用 MTA が居て API が読める）/ G9（realm JSON と稼働 realm の差分 0 件）/
       # G10（永続化オーバーレイの PVC が参照され Bound）/ G11（宣言と稼働のイメージ参照の一致）を
-      # すべて fail-closed で判定する（G9〜G11 は #1088 / IADR-0368）。
+      # すべて fail-closed で判定する（G9〜G11 は #1088 / IADR-0369）。
       - name: 🔴 Gate — the stack is actually up
         run: node scripts/check-stack-ready.js
 

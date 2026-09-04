@@ -36,7 +36,7 @@ spec:
           image: quay.io/keycloak/keycloak:24.0
           args: ["start-dev", "--import-realm"]
           env:
-            # IADR-0368 (#1088): 管理者名も Secret から読む。realm の後追い Job
+            # IADR-0369 (#1088): 管理者名も Secret から読む。realm の後追い Job
             # （deploy/local/keycloak-setup/realm-reconcile-job.yaml）が同じ Secret の同じキーを読むので、
             # 管理者名の単一情報源が Secret keycloak-admin になる（scripts/k8s-local-up.sh [3/7] が作る）。
             - name: KEYCLOAK_ADMIN

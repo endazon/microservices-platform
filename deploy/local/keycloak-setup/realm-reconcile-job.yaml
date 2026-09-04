@@ -1,4 +1,4 @@
-# FR-05, NFR-09, ADR-0004 / ADR-0026, IADR-0368 (#1088 / #324):
+# FR-05, NFR-09, ADR-0004 / ADR-0026, IADR-0369 (#1088 / #324):
 # realm JSON（ConfigMap keycloak-realms＝単一情報源）と稼働 realm の差分を Admin REST API で当てる Job。
 #
 # ★ kustomize には入れない。Job は immutable（spec を変えて apply できない）ため、起動器

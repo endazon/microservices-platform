@@ -71,24 +71,24 @@
  *   限り実リレーを用いてよい）で運用者が正当に実リレーを向けている状態と区別できず、正しい状態を
  *   赤にしてしまう。**dev 既定が外を向いていないこと**は静的検査（`check-realm-constraints.js`）が持つ。
  *
- * - **G9 realm の乖離**（#1088 / [IADR-0368]）: `deploy/local/keycloak-setup/reconcile-realm.sh --check` を
+ * - **G9 realm の乖離**（#1088 / [IADR-0369]）: `deploy/local/keycloak-setup/reconcile-realm.sh --check` を
  *   走らせ、**realm JSON（宣言）と稼働 realm の差分が 0 件**であることを要求する（書き換えない）。
  *   🔴 `--import-realm` は同名 realm が在ると黙って飛ばす（`IGNORE_EXISTING`）。永続化が既定になった
  *   今、**realm JSON を直しても稼働 realm は変わらない**のが通常状態であり、後追い（up.sh の
  *   reconcile。best-effort）が落ちても up は EXIT=0 で返る。同型の事故は #1115 → #1088 → 本作業の実測と
  *   3 度目である。`realms=0` は失敗（走査が壊れている）。
- * - **G10 永続化**（#1088 / [IADR-0368]）: `deploy/local/infra-persistence/pvcs.yaml`（と
+ * - **G10 永続化**（#1088 / [IADR-0369]）: `deploy/local/infra-persistence/pvcs.yaml`（と
  *   `observability-persistence/pvcs.yaml`）が宣言する PVC を走査し、`app` ラベルと同名の Deployment が
  *   居るなら、**その Deployment が当該 PVC を参照し、PVC が `Bound`** であることを要求する。
  *   🔴 稼働 dev クラスタは 6 本の PVC が `Bound`/`Pending` で在るのに **どの Deployment も参照しておらず**、
  *   誰も気付かないまま runtime state（TOTP 資格情報）が Pod 再作成のたびに消えていた。
  *   `PERSIST=0` を明示したときだけ notice に落とす（up.sh と同じ意味の env。既定は永続を期待する）。
- * - **G11 イメージ参照の乖離**（#1088 / [IADR-0368]）: chart（`helm template … -f values-local.yaml`）と
+ * - **G11 イメージ参照の乖離**（#1088 / [IADR-0369]）: chart（`helm template … -f values-local.yaml`）と
  *   infra（`kubectl kustomize`）の描画結果から Deployment ごとのイメージ参照を取り、稼働 Deployment の
  *   同名のものと**文字列で完全一致**することを要求する。稼働クラスタは PR 検証用のタグ
  *   （`bff:issue1187` / `conversion-service:pdf-1192` …）が 7 件残ったまま develop から乖離していた
  *   （2 回目。1 回目は 2026-07 に古いスクリプトで作られたクラスタ）。描画に無い Deployment（opt-in の
- *   overlay 由来）は見ない。**`:latest` の中身が最新かは見ない**（記録に留める。IADR-0368 §却下した代替案）。
+ *   overlay 由来）は見ない。**`:latest` の中身が最新かは見ない**（記録に留める。IADR-0369 §却下した代替案）。
  *
  * ## 列挙を持たない
  *
@@ -148,7 +148,7 @@ const KEYCLOAK_EDGE_INGRESS = 'keycloak-edge';
 /** realm 宣言の在り処。realm 名はここから走査して得る。 */
 const REALM_DIR = path.join('deploy', 'keycloak');
 
-// G9 (#1088 / IADR-0368): realm の後追いを check モードで走らせる入口（書き換えない）。
+// G9 (#1088 / IADR-0369): realm の後追いを check モードで走らせる入口（書き換えない）。
 const REALM_RECONCILE_SCRIPT = path.join('deploy', 'local', 'keycloak-setup', 'reconcile-realm.sh');
 // G10: 永続化オーバーレイの PVC 宣言（走査して得る。列挙を書かない）。
 const PERSISTENCE_PVC_MANIFESTS = [
@@ -741,7 +741,7 @@ function check({ repoRoot = REPO_ROOT } = {}) {
   const failures = [];
   const notices = [];
 
-  // G3: ツール不在は失敗。抜け道は置かない。helm / bash は G9 / G11 が使う（IADR-0368）。
+  // G3: ツール不在は失敗。抜け道は置かない。helm / bash は G9 / G11 が使う（IADR-0369）。
   for (const bin of ['kubectl', 'curl', 'helm', 'bash']) {
     if (!hasTool(bin)) {
       failures.push(`[G3] ${bin} が見つからない。本検査はクラスタが在ることが前提であり、抜け道は用意していない。`);
@@ -887,7 +887,7 @@ function check({ repoRoot = REPO_ROOT } = {}) {
     }
   }
 
-  // G9 (#1088 / IADR-0368): realm JSON（宣言）と稼働 realm の差分。check モード＝書き換えない。
+  // G9 (#1088 / IADR-0369): realm JSON（宣言）と稼働 realm の差分。check モード＝書き換えない。
   {
     const r = runRealmDriftCheck(repoRoot);
     failures.push(...evaluateRealmDrift(r));
@@ -895,7 +895,7 @@ function check({ repoRoot = REPO_ROOT } = {}) {
     if (m) notices.push(`[check-stack-ready] G9: realm ${m[1]} 件を突き合わせ、差分 ${m[2]} 件。`);
   }
 
-  // G10 (#1088 / IADR-0368): 永続化オーバーレイが宣言する PVC が、対応する Deployment から参照され Bound であること。
+  // G10 (#1088 / IADR-0369): 永続化オーバーレイが宣言する PVC が、対応する Deployment から参照され Bound であること。
   {
     const declared = [];
     for (const rel of PERSISTENCE_PVC_MANIFESTS) {
@@ -920,7 +920,7 @@ function check({ repoRoot = REPO_ROOT } = {}) {
     }
   }
 
-  // G11 (#1088 / IADR-0368): 宣言（描画結果）と稼働のイメージ参照が一致すること。
+  // G11 (#1088 / IADR-0369): 宣言（描画結果）と稼働のイメージ参照が一致すること。
   {
     const chart = renderChart(repoRoot);
     if (!chart.ok) failures.push(`[G11] chart を描画できなかった（helm template）: ${chart.error}`);
@@ -1154,7 +1154,7 @@ function selfTest() {
       `捕捉用 MTA の宣言から Service 名と HTTP ポートを読めていない（${MAIL_CAPTURE_MANIFEST}）`);
   });
 
-  // ---- G9 (#1088 / IADR-0368)
+  // ---- G9 (#1088 / IADR-0369)
   ok('G9: drift=0 かつ exit 0 なら通る（陽性対照）', () => {
     assert.deepStrictEqual(evaluateRealmDrift({ status: 0, stdout: 'x\nrealms=2 drift=0 applied=0\n' }), []);
   });
@@ -1171,7 +1171,7 @@ function selfTest() {
     assert.ok(evaluateRealmDrift({ status: 0, stdout: 'realms=0 drift=0 applied=0' }).some((f) => /realms=0/.test(f)));
   });
 
-  // ---- G10 (#1088 / IADR-0368)
+  // ---- G10 (#1088 / IADR-0369)
   const dep = (name, claims) => ({
     metadata: { name },
     spec: { template: { spec: { volumes: claims.map((c) => ({ name: c, persistentVolumeClaim: { claimName: c } })) } } },
@@ -1210,7 +1210,7 @@ function selfTest() {
     assert.ok(d.some((x) => x.app === 'keycloak'), 'keycloak の PVC 宣言が読めていない');
   });
 
-  // ---- G11 (#1088 / IADR-0368)
+  // ---- G11 (#1088 / IADR-0369)
   const rendered = [
     'apiVersion: apps/v1', 'kind: Deployment', 'metadata:', '  labels:', '    app: x', '  name: bff-service', 'spec:',
     '  template:', '    spec:', '      containers:', '        - name: bff', '          image: "k3d-local/microservices-platform/bff:latest"',

@@ -40,12 +40,12 @@ const CLUSTER = 'testcluster'; // 決定的なクラスタ名（既定 msp-ast-d
 //   発行されず、配下のファイルだけが apply されるゲート用）。
 //   **各トークンが単独で検出力を持つことは、下の「単独検出力」テストが毎回検査する。**
 //
-// IADR-0368 (#1088): **永続化は opt-in ではなくなった**（既定オン・opt-out は PERSIST=0）。
+// IADR-0369 (#1088): **永続化は opt-in ではなくなった**（既定オン・opt-out は PERSIST=0）。
 //   `deploy/local/infra-persistence` / `deploy/local/observability-persistence` は既定で現れるので
 //   この表から外し、既定オン側の意味論は下の「PERSIST 既定オン」節が固定する。
 const OPTIN_TOKENS = [
   'deploy/local/observability', //     OBSERVABILITY ＋ PERSIST=0（素の overlay）
-  'deploy/local/observability-persistence', // OBSERVABILITY（永続化は既定。IADR-0210 → IADR-0368）
+  'deploy/local/observability-persistence', // OBSERVABILITY（永続化は既定。IADR-0210 → IADR-0369）
   'grafana-oidc', //                   OBSERVABILITY (Grafana OIDC secret, IADR-0090)
   'deploy/local/vault', //             VAULT
   'vault-dev-token', //                VAULT (secret)
@@ -197,10 +197,10 @@ const KUBECTL_STUB = [
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
   'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
   'if [ "${STUB_TRAEFIK_ADMIN_MISSING:-}" = "1" ]; then case "$*" in *--for=jsonpath*svc/traefik*) exit 1;; esac; fi',
-  // IADR-0368 (#1088): STUB_SC_ABSENT=1 で `kubectl get storageclass local-path` を非0（provisioner 不在）に返させ、
+  // IADR-0369 (#1088): STUB_SC_ABSENT=1 で `kubectl get storageclass local-path` を非0（provisioner 不在）に返させ、
   // 既定（永続化）が黙って emptyDir へ落ちずに止まることを検証できるようにする。
   'if [ "${STUB_SC_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "storageclass" ]; then exit 1; fi',
-  // IADR-0368 (#1088): realm 後追い Job（deploy/local/keycloak-setup/reconcile-realm.sh）の完了待ち。
+  // IADR-0369 (#1088): realm 後追い Job（deploy/local/keycloak-setup/reconcile-realm.sh）の完了待ち。
   // conditions の問い合わせに Complete を返す（返さないと起動器が Job の完了を 300 秒待つ）。
   'case "$*" in *"get job"*conditions*) echo "Complete "; exit 0;; esac',
   // #953: 反映の待ち合わせ **だけ** は記録して 0 を返さない。宣言を helm-controller の模型に通す。
@@ -348,7 +348,7 @@ ok('既定: opt-in 由来リソースが一切現れない', () => {
 // を検査する。冗長なトークンが混ざったらここが名指しで落ちる ——
 // 「足したのに守っていない」を人の注意力ではなく機械が持つ（issue #817 受け入れ基準 1・2）。
 //
-// 母集合は 2 通りの run の和を取る。永続化（既定オン。IADR-0368）/ ESO は他ゲートの出力を *置換* するため
+// 母集合は 2 通りの run の和を取る。永続化（既定オン。IADR-0369）/ ESO は他ゲートの出力を *置換* するため
 // （observability → observability-persistence / grafana-oidc の手動 apply → ExternalSecret 委譲）、
 // 全部立てた run だけでは素の側の行が採れない。素の側は PERSIST=0 で採る。
 const GATES_ALL = {
@@ -462,7 +462,7 @@ ok('既定: keycloak-theme-platform は realm ConfigMap と同型の dry-run|app
 ok('既定: keycloak-theme-platform ConfigMap は keycloak-realms の直後・infra kustomize 適用より前に作られる', () => {
   const realmIdx = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create configmap keycloak-realms '));
   const themeIdx = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create configmap keycloak-theme-platform '));
-  // 永続化が既定（IADR-0368）なので infra の apply 先は infra-persistence。PERSIST=0 なら素の infra。どちらでも同じ順序を要求する。
+  // 永続化が既定（IADR-0369）なので infra の apply 先は infra-persistence。PERSIST=0 なら素の infra。どちらでも同じ順序を要求する。
   const infraApplyIdx = DEFAULT.lines.findIndex((l) => /^kubectl apply -k deploy\/local\/infra(-persistence)?$/.test(l));
   assert.ok(realmIdx >= 0 && themeIdx >= 0 && infraApplyIdx >= 0, '3 行のいずれかが見つからない');
   assert.ok(realmIdx < themeIdx, 'keycloak-realms より前に keycloak-theme-platform が作られている');
@@ -559,7 +559,7 @@ ok('HEADLAMP=1 × 既存クラスタ reuse: 再作成 WARN も apiserver 引数�
   assert.ok(!/OIDC/.test(res.stderr), `reuse で OIDC の WARN が出た: ${res.stderr}`);
 });
 
-// --- IADR-0368 (#1088): 永続化は **既定オン**（IADR-0082 決定 1 の置換）。opt-out は PERSIST=0 ---------
+// --- IADR-0369 (#1088): 永続化は **既定オン**（IADR-0082 決定 1 の置換）。opt-out は PERSIST=0 ---------
 //
 // 稼働 dev クラスタは誰も PERSIST=1 を付けずに立てられ、runtime state（TOTP 資格情報）が Pod 再作成のたびに
 // 黙って消えていた。既定を永続へ返し、**黙って emptyDir へ落ちる経路を持たない**ことを固定する。
@@ -597,7 +597,7 @@ ok('StorageClass local-path が無ければ止まる（黙って emptyDir へ落
 });
 
 // OBSERVABILITY=1: observability スタックを apply（IADR-0077）＋ Grafana OIDC secret を作成（IADR-0090）。
-// 永続化が既定なので、選ばれるのは observability-persistence（IADR-0210 → IADR-0368）。
+// 永続化が既定なので、選ばれるのは observability-persistence（IADR-0210 → IADR-0369）。
 ok('OBSERVABILITY=1: observability-persistence を apply・grafana-oidc secret を作成', () => {
   const res = runUp({ OBSERVABILITY: '1' });
   assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/observability-persistence'), 'observability-persistence が apply されない');
@@ -605,7 +605,7 @@ ok('OBSERVABILITY=1: observability-persistence を apply・grafana-oidc secret �
   assert.ok(anyLineHas(res.lines, 'grafana-oidc'), 'grafana-oidc secret が作られない');
 });
 
-// --- IADR-0210 (#787) → IADR-0368 (#1088): 可観測性スタックの永続化 overlay のゲート意味論 -------------
+// --- IADR-0210 (#787) → IADR-0369 (#1088): 可観測性スタックの永続化 overlay のゲート意味論 -------------
 //
 // `deploy/local/observability-persistence` は **OBSERVABILITY=1**（かつ PERSIST=0 でない）ときに選ばれる。
 // 既定オフは上の OPTIN_TOKENS が固定済み。ここでは「片肺では現れない」「立てたら *置換* であって併存でない」
@@ -646,7 +646,7 @@ ok('PERSIST=0 + OBSERVABILITY=1: 素の observability が apply され、永続�
   assert.ok(!anyLineHas(res.lines, 'deploy/local/observability-persistence'), 'PERSIST=0 なのに永続化版が現れた');
 });
 
-// --- IADR-0368 (#1088 / #324): realm は「静的 import ＋ 起動器の後段で差分を当てる」 -------------------
+// --- IADR-0369 (#1088 / #324): realm は「静的 import ＋ 起動器の後段で差分を当てる」 -------------------
 //
 // 永続化が既定になった瞬間から `--import-realm` は既存 realm を黙って飛ばす（IGNORE_EXISTING）。
 // **realm JSON を変えたら up の再実行で稼働 realm へ届く**ことを、次の不変条件で固定する:
@@ -658,7 +658,7 @@ const KC_SETUP_DIR = path.join(REPO_ROOT, 'deploy', 'local', 'keycloak-setup');
 const RECONCILE_JOB_YAML = fs.readFileSync(path.join(KC_SETUP_DIR, 'realm-reconcile-job.yaml'), 'utf8');
 const KEYCLOAK_INFRA_YAML = fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'local', 'infra', 'keycloak.yaml'), 'utf8');
 
-ok('IADR-0368: realm ConfigMap は実 realm ファイルから毎回作られ、後追い Job は同じ ConfigMap を読む（単一情報源）', () => {
+ok('IADR-0369: realm ConfigMap は実 realm ファイルから毎回作られ、後追い Job は同じ ConfigMap を読む（単一情報源）', () => {
   const cmLine = DEFAULT.lines.find((l) => l.startsWith('kubectl create configmap keycloak-realms '));
   assert.ok(cmLine, 'keycloak-realms の create 行が無い');
   assert.ok(cmLine.includes('--from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json'),
@@ -668,7 +668,7 @@ ok('IADR-0368: realm ConfigMap は実 realm ファイルから毎回作られ、
     'Job の REALM_DIR と ConfigMap のマウント先が一致しない');
 });
 
-ok('IADR-0368: 後追いは Keycloak の rollout の後に走り、Job は毎回 delete → apply される（Job は immutable）', () => {
+ok('IADR-0369: 後追いは Keycloak の rollout の後に走り、Job は毎回 delete → apply される（Job は immutable）', () => {
   const rolloutIdx = DEFAULT.lines.findIndex((l) => l.includes('rollout status deploy/keycloak'));
   const scriptCm = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create configmap keycloak-realm-reconcile '));
   const del = DEFAULT.lines.findIndex((l) => l.includes('delete job keycloak-realm-reconcile'));
@@ -680,7 +680,7 @@ ok('IADR-0368: 後追いは Keycloak の rollout の後に走り、Job は毎回
   assert.ok(!anyLineHas(DEFAULT.lines, 'keycloak-realm-check'), 'up の既定経路で check 用 Job が現れた');
 });
 
-ok('IADR-0368: 管理者名・パスワードの単一情報源は Secret keycloak-admin（Keycloak と Job が同じキーを読む）', () => {
+ok('IADR-0369: 管理者名・パスワードの単一情報源は Secret keycloak-admin（Keycloak と Job が同じキーを読む）', () => {
   const secret = DEFAULT.lines.find((l) => l.startsWith('kubectl create secret generic keycloak-admin '));
   assert.ok(secret && secret.includes('--from-literal=username=') && secret.includes('--from-literal=password='),
     'keycloak-admin に username / password の両方が無い');
@@ -693,7 +693,7 @@ ok('IADR-0368: 管理者名・パスワードの単一情報源は Secret keyclo
   assert.ok(!/KEYCLOAK_ADMIN\n\s+value:/.test(KEYCLOAK_INFRA_YAML), 'keycloak.yaml に管理者名の直書きが残っている');
 });
 
-ok('IADR-0368: Keycloak pod で kcadm.sh を exec しない（旧 reconcile-backchannel-logout.sh は撤去済み）', () => {
+ok('IADR-0369: Keycloak pod で kcadm.sh を exec しない（旧 reconcile-backchannel-logout.sh は撤去済み）', () => {
   assert.ok(!fs.existsSync(path.join(KC_SETUP_DIR, 'reconcile-backchannel-logout.sh')), '旧スクリプトが残っている');
   assert.ok(!DEFAULT.lines.some((l) => /exec .*keycloak/.test(l) && /kcadm/.test(l)), 'pod 内で kcadm.sh を exec している');
   assert.ok(!anyLineHas(DEFAULT.lines, 'reconcile-backchannel-logout'), '旧スクリプトが呼ばれている');
@@ -701,7 +701,7 @@ ok('IADR-0368: Keycloak pod で kcadm.sh を exec しない（旧 reconcile-back
   assert.ok(anyLineHas(DEFAULT.lines, 'delete job keycloak-realm-reconcile'), '後追い Job が走っていない');
 });
 
-ok('IADR-0368: 後追い Job は Keycloak と同じ namespace に置き、in-cluster の Service を叩く（エッジ・TLS・メッシュに依存しない）', () => {
+ok('IADR-0369: 後追い Job は Keycloak と同じ namespace に置き、in-cluster の Service を叩く（エッジ・TLS・メッシュに依存しない）', () => {
   assert.ok(/namespace: platform-infra/.test(RECONCILE_JOB_YAML), 'Job が platform-infra に無い');
   assert.ok(/name: KC_URL\n\s+value: http:\/\/keycloak:8080/.test(RECONCILE_JOB_YAML), 'Job が in-cluster の keycloak:8080 を向いていない');
   assert.ok(/backoffLimit: 0/.test(RECONCILE_JOB_YAML), '失敗を再試行で隠さないための backoffLimit: 0 が無い');

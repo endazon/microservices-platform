@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FR-05, NFR-09, ADR-0004 / ADR-0026, IADR-0368 (#1088 / #324):
+# FR-05, NFR-09, ADR-0004 / ADR-0026, IADR-0369 (#1088 / #324):
 # realm JSON（ConfigMap keycloak-realms＝単一情報源）と稼働 realm の差分を、Job で Admin REST API から当てる。
 #
 #   bash deploy/local/keycloak-setup/reconcile-realm.sh            # 差分を当てる（apply）
@@ -8,7 +8,7 @@
 # ## なぜ要るか —— realm JSON を直しても既存クラスタには届かない
 #
 # Keycloak は `start-dev --import-realm` で立つ。**同名 realm が既に在ると import は黙って飛ばされる**
-# （`IGNORE_EXISTING`）。永続化（IADR-0368: 既定オン）で realm が PVC に残るようになった瞬間から、
+# （`IGNORE_EXISTING`）。永続化（IADR-0369: 既定オン）で realm が PVC に残るようになった瞬間から、
 # `deploy/keycloak/microservices-platform-realm.json` を直しても稼働 realm は変わらない。
 # 本スクリプトが後追いで差分を当てる。Wiki.js の bootstrap（IADR-0327）と同型の「冪等な再適用」である。
 #

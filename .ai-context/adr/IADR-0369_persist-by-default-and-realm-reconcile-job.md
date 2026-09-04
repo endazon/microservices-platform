@@ -1,5 +1,5 @@
 ---
-title: IADR-0368 経路B の永続化を既定にし、realm は「静的 import ＋ 起動器の後段で Job が差分を当てる」形へ移して、realm・永続化・イメージ参照の乖離を門で検知する
+title: IADR-0369 経路B の永続化を既定にし、realm は「静的 import ＋ 起動器の後段で Job が差分を当てる」形へ移して、realm・永続化・イメージ参照の乖離を門で検知する
 type: impl-adr
 status: Proposed
 related_ids:
@@ -28,7 +28,7 @@ plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md NFR-09
 ---
 
-# IADR-0368: 経路B の永続化を既定にし、realm の差分は起動器の後段で Job が当て、乖離は門で検知する（#1088 / #324）
+# IADR-0369: 経路B の永続化を既定にし、realm の差分は起動器の後段で Job が当て、乖離は門で検知する（#1088 / #324）
 
 - 状態: Proposed
 - 日付: 2026-09-04
@@ -202,9 +202,30 @@ G3 の必須ツールに `helm` / `bash` を足す（抜け道は置かない）
 - `.ai-context/adr/README.md` の索引と `scripts/README.md` の門一覧（8 → 11）を本 ADR で追随した。
 - `check-stack-ready.js` の G4 は `curl -sk`（検証しない）のまま残っている（本 ADR の射程外。IADR-0363 の方針に照らせば直す価値がある）。
 
-## 実測（作り直し後）
+## 実測（作り直し後・2026-09-04）
 
-（クラスタ作り直し後にここへ追記する。）
+`microservices-platform` / `platform-infra` namespace を消し（`ai-stock-trading` は残す）、`origin/develop` `bd6a18f5` のイメージで
+`LOCALEDGE=1 ISTIO=1 ESO=1 VAULT=1 OBSERVABILITY=1 HEADLAMP=1 ARGOCD=1 WIKIJS_OIDC=1 ABACSEED=1 SEARCHSEED=1 LOCALEMBED=1 APISERVER_OIDC=1`
+（永続化は既定）で立て直した。
+
+- `node scripts/check-stack-ready.js` → **OK**（Deployment 32 件 available。G9 `realm 2 件 / 差分 0 件`、G10 PVC 3＋4 本すべて参照・Bound、G11 一致）。
+- **AC-1**（runtime state が Pod 再作成をまたぐ）: 一時利用者を作成 → `rollout restart deploy/keycloak`（Pod `…-wmxnn` → `…-46gs2`）→
+  起動ログ `Strategy: IGNORE_EXISTING` / `Realm 'platform' already exists. Import skipped` → 利用者 **count=1**（残存）→ 削除。
+  `keycloak-data` Bound・Deployment が参照。
+- **AC-2**（realm JSON の変更が届く）: `accessTokenLifespan` 300→301 と `headlamp.description` を変えて ConfigMap を作り直し →
+  `--check` が `drift=2`（`realm.update platform — accessTokenLifespan` / `client.update headlamp — description`）→ apply →
+  Admin REST で **301 / 'AC-2 probe (issue #1088)'** を確認 → JSON を戻して apply → 300 / 元の説明 → `--check` `drift=0`。
+- `scripts/verify-oidc-edge-flow.sh`（`SEARCH_HITS=1 SEARCH_SEEDED=1`）→ **PASS 27 / FAIL 0**。
+  `scripts/verify-tool-oidc-logins.sh` → **PASS 15 / FAIL 0**（Vault の `auth/oidc` は runbook STEP 2 を手で入れた後。
+  README 経路 2 の CA 直渡しは `error checking oidc discovery URL` で落ち、CA を pod 内ファイルで渡すと通った）。
+- 作り直しで踏んだこと（本 ADR の射程外だが記録する）:
+  - 空の namespace から `ISTIO=1` ＋ `ESO=1` で立てると、サイドカー注入後の `rollout status` が ESO の Secret 供給前に
+    10 分待って up 全体が落ちる → 待ちを best-effort にした（門は G1）。
+  - `LOCALEDGE=1` ＋ `ISTIO=1` の再実行では、Traefik の Service が Istio エッジで落とされているため、HelmChartConfig の
+    再 apply が chart の reinstall を起こし、180 秒の待ちに間に合わず一度落ちる（再実行で通る）。既知の #953 の門の
+    再実行時の限界の一種。
+  - `nerdctl images` の CREATED 列は再タグした名前の記録日を出すので、`:latest` が焼き直されたかの根拠にならない
+    （イメージ内の DLL の mtime で確かめた）。決定 5 の「`:latest` の中身」を見る門が無い限界がここにも現れる。
 
 ## 関連
 

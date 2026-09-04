@@ -418,7 +418,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/k8s-local-up.test.js
 
-      # FR-05 / NFR-09, IADR-0368, Issue #1088: realm JSON（宣言）と稼働 realm の差分を当てる計画器
+      # FR-05 / NFR-09, IADR-0369, Issue #1088: realm JSON（宣言）と稼働 realm の差分を当てる計画器
       # （deploy/local/keycloak-setup/reconcile-realm.js）の純粋関数を、実物の realm JSON から切り出した
       # fixture で固定する。「一致なら 0 件」「実行時層（既存利用者・smtpServer）には触れない」が肝。
       - name: Unit-test the Keycloak realm reconcile planner

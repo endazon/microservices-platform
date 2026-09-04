@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * FR-05, NFR-09, ADR-0004 / ADR-0026, IADR-0368 (#1088 / #324):
+ * FR-05, NFR-09, ADR-0004 / ADR-0026, IADR-0369 (#1088 / #324):
  * realm JSON（宣言）と稼働 realm（Keycloak Admin REST API）の**差分を計画し、当てる**。
  *
  *   Job（deploy/local/keycloak-setup/realm-reconcile-job.yaml）の中で node:22-alpine が実行する。
@@ -15,7 +15,7 @@
  * `kc.sh import --override` は realm を丸ごと作り直すので、永続化で守りたい runtime state（TOTP 資格情報・
  * 追加利用者・セッション）を毎回消す。**両立する形は「静的 import（空 PVC のときだけ）＋ 起動後に差分を当てる」**である。
  *
- * ## 境界 —— 宣言が所有する層と、実行時が所有する層（IADR-0368 決定 2）
+ * ## 境界 —— 宣言が所有する層と、実行時が所有する層（IADR-0369 決定 2）
  *
  * 宣言（realm JSON）が正: realm の非コレクション設定 / requiredActions / realm ロール・client ロール / グループ /
  *   client scopes ＋ protocol mappers / clients（属性・redirect・secret・scope 割当 ＋ mappers）/ **seed 利用者の存在** /
@@ -57,7 +57,7 @@ const REALM_COLLECTION_KEYS = new Set([
   'defaultRoles', 'defaultGroups', 'localizationTexts',
 ]);
 const REALM_IDENTITY_KEYS = new Set(['id', 'realm', 'keycloakVersion']);
-// 実行時が所有する realm のキー。**ここへ足すときは IADR-0368 の境界表も直す。**
+// 実行時が所有する realm のキー。**ここへ足すときは IADR-0369 の境界表も直す。**
 const RUNTIME_OWNED_REALM_KEYS = new Set(['smtpServer']);
 
 // client 表現のうち、トップレベルの PUT で扱わないキー（別端点で当てる／同一性／読み取り専用）。

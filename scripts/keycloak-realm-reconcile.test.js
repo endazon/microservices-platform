@@ -2,7 +2,7 @@
 'use strict';
 /*
  * keycloak-realm-reconcile.test.js
- * FR-05, NFR-09, ADR-0004 / ADR-0026, IADR-0368 (#1088 / #324):
+ * FR-05, NFR-09, ADR-0004 / ADR-0026, IADR-0369 (#1088 / #324):
  * deploy/local/keycloak-setup/reconcile-realm.js の計画器（純粋関数）の単体試験。
  *
  * 固定するもの:

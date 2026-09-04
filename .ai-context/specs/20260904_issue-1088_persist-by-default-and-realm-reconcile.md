@@ -1,7 +1,7 @@
 ---
 title: 経路B の永続化を既定にし、realm は「静的 import ＋ 起動器の後段で差分を当てる」形へ移して、乖離を門で検知する
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-05
   - NFR-09
@@ -17,7 +17,7 @@ related_ids:
   - IADR-0332
   - IADR-0336
   - IADR-0342
-  - IADR-0368
+  - IADR-0369
 author: claude
 created: 2026-09-04
 updated: 2026-09-04
@@ -40,7 +40,7 @@ plan_refs:
   （smtpServer は runtime 注入＝本作業が触ってはならない層）／[[IADR-0327]]・[[IADR-0342]]（Wiki.js の冪等 bootstrap。同型）／
   [[IADR-0248]]（`check-stack-ready.js` の門）
 - Issue: #1088（本体）／#324（永続化。closed。受け入れ基準「realm 更新の反映手順」を本作業が満たし直す）
-- 新設 IADR: [[IADR-0368]]（仮番。マージ時に改番される）
+- 新設 IADR: [[IADR-0369]]（仮番。マージ時に改番される）
 
 ## 目的・背景
 
@@ -81,7 +81,7 @@ plan_refs:
 | realm JSON の変更が稼働 realm へ届かない | #1115（`backchannel.logout.url`。IADR-0336 決定 3 で後追いスクリプトを置いた） | #1088 起票時（ConfigMap が 1 日古く TOTP が効いていない）、**本作業の実測（上表最終行。3 回目）** | **検査器を足す**（G9） |
 | 永続化オーバーレイが当たっていない | #324 close 後の残骸 PVC（`postgres-data` 38d） | #1088（`keycloak-data` Pending 13d） | **検査器を足す**（G10） |
 | 稼働イメージが宣言と違う | 2026-07-27 前後に作られたクラスタと現行マニフェストの乖離（記憶ファイル `msp-cluster-drift-and-tls`。rabbitmq Secret のキー欠落で実際に踏んだ） | #1088 の追記（`conversion-service:pdf-1192` / `bff:issue1187` / `datasource-service:issue1194` / `ingestion`・`retrieval:issue-1193` / `mcp-service:issue1185` / `wiki-service:issue1200` / graph・dashboard の 7 件） | **検査器を足す**（G11。ただし**参照の一致**まで。中身が develop 最新かは下記「記録に留める」） |
-| `:latest` の中身が古い（再ビルドしたが Pod が古いイメージのまま） | 未観測（本作業で imageID を突合する手段が無いことを確認しただけ） | — | **記録に留める**（IADR-0368 §却下した代替案） |
+| `:latest` の中身が古い（再ビルドしたが Pod が古いイメージのまま） | 未観測（本作業で imageID を突合する手段が無いことを確認しただけ） | — | **記録に留める**（IADR-0369 §却下した代替案） |
 
 ### 軸 3: `reconcile-backchannel-logout.sh` を引く記述（撤去に伴う追随）
 
@@ -113,7 +113,7 @@ plan_refs:
      keycloak rollout の後）、Job マニフェストと up.sh の ConfigMap 名の対応を固定。reconcile の計画器（純粋関数）の単体試験
      `scripts/keycloak-realm-reconcile.test.js`。
   6. 文書: `deploy/local/README.md`・`docs/operations/operations.md`・`docs/operations/local-sso-recovery-runbook.md`・
-     `scripts/README.md`・`deploy/local/keycloak-setup/README.md`（新規）。IADR-0368 ＋ 索引。IADR-0082 / IADR-0336 へ日付つき追記。
+     `scripts/README.md`・`deploy/local/keycloak-setup/README.md`（新規）。IADR-0369 ＋ 索引。IADR-0082 / IADR-0336 へ日付つき追記。
   7. 稼働クラスタの作り直し（利用者承認済み）と、#1215 / #1118 / #600 AC-14 / #1176 / #1168 / #1185 の再測。
 - 対象外:
   - RabbitMQ / Redis / Vault dev の永続化（IADR-0082 の却下は生きている。Vault は別 issue）。
@@ -208,17 +208,17 @@ seed 利用者の宣言を変えて既存クラスタへ届けたいときは、
 
 ## 受け入れ基準
 
-- [ ] AC-1 Keycloak が Pod 再作成をまたいで realm と runtime state を保持する（一時利用者を作り、`rollout restart` 後も残ることを実測）。
-- [ ] AC-2 realm JSON の変更が稼働 realm へ届く（realm JSON を実際に変え、up を再実行して Admin REST で値が変わることを実測。
+- [x] AC-1 Keycloak が Pod 再作成をまたいで realm と runtime state を保持する（一時利用者を作り、`rollout restart` 後も残ることを実測）。
+- [x] AC-2 realm JSON の変更が稼働 realm へ届く（realm JSON を実際に変え、up を再実行して Admin REST で値が変わることを実測。
       変更は戻す）。
-- [ ] AC-3 #324 の受け入れ基準（Keycloak / Postgres の PVC 化・realm 更新の反映手順の docs 明記）を満たす。
-- [ ] AC-4 AC-1・AC-2 が自動で確かめられる（G9 / G10 の門 ＋ `k8s-local-up.test.js` の不変条件。検査器を足した根拠は §母集合 軸 2）。
-- [ ] AC-5 既定（env 未設定）で `deploy/local/infra-persistence` が apply され、`PERSIST=0` で base が apply される（stub 試験）。
-- [ ] AC-6 reconcile の計画器は「一致なら 0 件」「差分の種類ごとに 1 件」「smtpServer と既存利用者の実行時状態には触れない」を単体試験で固定する。
-- [ ] AC-7 `check-stack-ready.js --self-test` に G9 / G10 / G11 の陽性・陰性対照が入る（変異で赤くなる）。
-- [ ] AC-8 稼働クラスタの全 MSP イメージが `k3d-local/microservices-platform/<x>:latest`（G11 緑）。
-- [ ] AC-9 `scripts/verify-oidc-edge-flow.sh` と `scripts/verify-tool-oidc-logins.sh` が新クラスタで通る。
-- [ ] AC-10 再測の結果を各 issue（#1215 / #1118 / #600 / #1176 / #1168 / #1185）へコメントする。閉じられるものは閉じる。
+- [x] AC-3 #324 の受け入れ基準（Keycloak / Postgres の PVC 化・realm 更新の反映手順の docs 明記）を満たす。
+- [x] AC-4 AC-1・AC-2 が自動で確かめられる（G9 / G10 の門 ＋ `k8s-local-up.test.js` の不変条件。検査器を足した根拠は §母集合 軸 2）。
+- [x] AC-5 既定（env 未設定）で `deploy/local/infra-persistence` が apply され、`PERSIST=0` で base が apply される（stub 試験）。
+- [x] AC-6 reconcile の計画器は「一致なら 0 件」「差分の種類ごとに 1 件」「smtpServer と既存利用者の実行時状態には触れない」を単体試験で固定する。
+- [x] AC-7 `check-stack-ready.js --self-test` に G9 / G10 / G11 の陽性・陰性対照が入る（変異で赤くなる）。
+- [x] AC-8 稼働クラスタの全 MSP イメージが `k3d-local/microservices-platform/<x>:latest`（G11 緑）。
+- [x] AC-9 `scripts/verify-oidc-edge-flow.sh` と `scripts/verify-tool-oidc-logins.sh` が新クラスタで通る。
+- [x] AC-10 再測の結果を各 issue（#1215 / #1118 / #600 / #1176 / #1168 / #1185）へコメントする。閉じられるものは閉じる。
 
 ## テスト方針
 
@@ -231,7 +231,7 @@ seed 利用者の宣言を変えて既存クラスタへ届けたいときは、
 ## 計画書との差異
 
 - 差異: なし（ADR-0004 / ADR-0026 は Keycloak を認証基盤とする決定で、realm の配備方式は実装側の判断）。
-  実装 ADR の側で IADR-0082 決定 1 と IADR-0336 決定 3 を置換する（IADR-0368）。
+  実装 ADR の側で IADR-0082 決定 1 と IADR-0336 決定 3 を置換する（IADR-0369）。
 
 ## 未決事項
 

@@ -1,6 +1,6 @@
-# Keycloak realm の追随（FR-05 / NFR-09 / ADR-0004・ADR-0026・IADR-0368・#1088 / #324）
+# Keycloak realm の追随（FR-05 / NFR-09 / ADR-0004・ADR-0026・IADR-0369・#1088 / #324）
 
-> 起点: [IADR-0368](../../../.ai-context/adr/IADR-0368_persist-by-default-and-realm-reconcile-job.md) /
+> 起点: [IADR-0369](../../../.ai-context/adr/IADR-0369_persist-by-default-and-realm-reconcile-job.md) /
 > 作業仕様書 [`.ai-context/specs/20260904_issue-1088_persist-by-default-and-realm-reconcile.md`](../../../.ai-context/specs/20260904_issue-1088_persist-by-default-and-realm-reconcile.md)
 
 `reconcile-realm.sh` は **realm JSON（宣言）と稼働 realm の差分を Admin REST API で当てる**冪等な runtime 後追いである。
@@ -14,7 +14,7 @@ bash deploy/local/keycloak-setup/reconcile-realm.sh --check   # 差分を数え�
 ## なぜ要るか —— `--import-realm` は同名 realm が在ると黙って飛ばす
 
 Keycloak は `start-dev --import-realm` で立つ。**同名 realm が既に在ると import は飛ばされる**（`IGNORE_EXISTING`。
-エラーも警告も出ない）。永続化が既定（IADR-0368 決定 1）になり realm が PVC に残るようになった今、
+エラーも警告も出ない）。永続化が既定（IADR-0369 決定 1）になり realm が PVC に残るようになった今、
 **`deploy/keycloak/microservices-platform-realm.json` を直しても稼働 realm は変わらない**のが通常状態である。
 かといって `OVERWRITE_EXISTING` は realm を丸ごと作り直し、永続化で守りたい runtime state（TOTP 資格情報・
 追加利用者・セッション）を毎回消す。両立する形が「静的 import（空 PVC のときだけ）＋ 起動後に差分を当てる」である。

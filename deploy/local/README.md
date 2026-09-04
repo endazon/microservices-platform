@@ -63,7 +63,7 @@ bash scripts/k8s-local-down.sh
 OBSERVABILITY=1 bash scripts/k8s-local-up.sh   # Prometheus/Loki/Tempo/Grafana + collector forwarding
 VAULT=1         bash scripts/k8s-local-up.sh   # Vault dev + ClusterSecretStore(vault-backend)（要 ESO CRD）
 ARGOCD=1        bash scripts/k8s-local-up.sh   # ArgoCD install + Application 適用（MSP/AST）
-PERSIST=0       bash scripts/k8s-local-up.sh   # 【opt-out】永続化を外す（使い捨てスタック専用）。永続化は既定オン（下記「永続化」節・IADR-0368）
+PERSIST=0       bash scripts/k8s-local-up.sh   # 【opt-out】永続化を外す（使い捨てスタック専用）。永続化は既定オン（下記「永続化」節・IADR-0369）
 LOCALEDGE=1     bash scripts/k8s-local-up.sh   # ローカルエッジ集約: platform フロント 80/443 ＋ 管理ツール 50000（下記 edge 節）
 ESO=1           bash scripts/k8s-local-up.sh   # Vault＋ESO で secret 自動供給（要 VAULT=1・本番同等 k8s auth・IADR-0096・#310）
 ```
@@ -74,11 +74,11 @@ ESO=1           bash scripts/k8s-local-up.sh   # Vault＋ESO で secret 自動�
 - [`deploy/local/edge/README.md`](edge/README.md) — **ローカルエッジ集約**（platform 80/443 ＋ 管理ツール 50000・ホスト名ベース・IADR-0091）。**k3d はポート再作成が必要**（同 README のユーザー手順）
 - Hetzner 実 stand-up・本番 NFR は **Tier 3**（対象外）。
 
-### 永続化（**既定オン**・opt-out は `PERSIST=0`・Issue #324 / IADR-0082、#787 / IADR-0210、#1088 / IADR-0368）
+### 永続化（**既定オン**・opt-out は `PERSIST=0`・Issue #324 / IADR-0082、#787 / IADR-0210、#1088 / IADR-0369）
 
 > 起点: [IADR-0082](../../.ai-context/adr/IADR-0082_local-k8s-infra-persistence.md)（Keycloak / Postgres）＋
 > [IADR-0210](../../.ai-context/adr/IADR-0210_local-k8s-observability-persistence.md)（Qdrant / 可観測性 4 種）＋
-> [IADR-0368](../../.ai-context/adr/IADR-0368_persist-by-default-and-realm-reconcile-job.md)（**既定オン・realm の後追い・門**） /
+> [IADR-0369](../../.ai-context/adr/IADR-0369_persist-by-default-and-realm-reconcile-job.md)（**既定オン・realm の後追い・門**） /
 > 作業仕様書 [`.ai-context/specs/20260719_issue-324_infra-persistence-k8s.md`](../../.ai-context/specs/20260719_issue-324_infra-persistence-k8s.md) ・
 > [`.ai-context/specs/20260816_issue-787_k8s-observability-persistence.md`](../../.ai-context/specs/20260816_issue-787_k8s-observability-persistence.md) ・
 > [`.ai-context/specs/20260904_issue-1088_persist-by-default-and-realm-reconcile.md`](../../.ai-context/specs/20260904_issue-1088_persist-by-default-and-realm-reconcile.md)
@@ -89,7 +89,7 @@ ESO=1           bash scripts/k8s-local-up.sh   # Vault＋ESO で secret 自動�
 で立ち、**Prometheus / Loki / Tempo / Grafana** が永続化される。
 
 🔴 **かつては opt-in（`PERSIST=1`）だった**（IADR-0082 決定 1）。稼働 dev クラスタは誰も付けずに立てられ、Keycloak の
-runtime state（TOTP 資格情報・追加利用者・セッション）が Pod 再作成のたびに黙って消えていた（#1088）。IADR-0368 が既定を
+runtime state（TOTP 資格情報・追加利用者・セッション）が Pod 再作成のたびに黙って消えていた（#1088）。IADR-0369 が既定を
 永続へ返した。**`local-path` StorageClass が無ければ起動器は止まる**（黙って emptyDir へは落とさない。使い捨てなら `PERSIST=0`）。
 
 ```bash
@@ -146,7 +146,7 @@ PERSIST=0 bash scripts/k8s-local-up.sh
 - **非永続で立っていることは門が赤くする**: `node scripts/check-stack-ready.js` の **G10** が、オーバーレイの宣言する PVC を
   対応する Deployment が参照し `Bound` であることを要求する（`PERSIST=0` を明示したときだけ notice）。
 
-#### realm（`microservices-platform-realm.json`）を更新したときの反映（自動・IADR-0368）
+#### realm（`microservices-platform-realm.json`）を更新したときの反映（自動・IADR-0369）
 
 永続化後は `--import-realm` が **既存 realm をスキップ**（`IGNORE_EXISTING`）するため、`realm.json` を編集しても
 import では届かない。そこで `k8s-local-up.sh` は [7/7] の後に **[`keycloak-setup/reconcile-realm.sh`](keycloak-setup/README.md)**
@@ -542,7 +542,7 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
 - **観測 UI は非同梱**: otel-collector は dev では `debug` エクスポータのみ（Prometheus/Tempo/Loki/Grafana は
   立てない）。UI が要るなら compose（`deploy/docker-compose.yml`）を併用する。
 - **永続化は既定オン**: Keycloak/Postgres/Qdrant を、`OBSERVABILITY=1` なら Prometheus/Loki/Tempo/Grafana も PVC 永続化する
-  （上記「永続化」節・IADR-0082 / IADR-0210 / IADR-0368）。`PERSIST=0` で emptyDir（使い捨てスタック専用）。
+  （上記「永続化」節・IADR-0082 / IADR-0210 / IADR-0369）。`PERSIST=0` で emptyDir（使い捨てスタック専用）。
   rabbitmq / redis / otel / Vault dev は揮発のまま。
 - **Istio/mTLS/NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
   エッジ `/bff/*` ルーティング等）は不変。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
