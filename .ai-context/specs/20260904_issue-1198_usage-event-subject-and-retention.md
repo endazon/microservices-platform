@@ -22,7 +22,7 @@ plan_refs:
   - "ADR-0072 §残るもの（移送で既存行の UserId は失われ復元できない。Query は 90 日残る。集計の上限を変えるときは保持期間も同時に見直す）"
   - "planning#515（環流・裁定 2026-09-03） / planning#526（計画 PR）"
 related_adrs:
-  - IADR-0368
+  - IADR-0367
   - IADR-0343
   - IADR-0357
   - IADR-0353
@@ -207,9 +207,9 @@ docs/functional/FR-10_dashboard.md:35
 
 ### 4. 文書の追随
 
-走査 4 の 5 文書 ＋ 実装ADR `IADR-0368` ＋ 索引。
+走査 4 の 5 文書 ＋ 実装ADR `IADR-0367` ＋ 索引。
 
-## 判断（IADR-0368 へ書く）
+## 判断（IADR-0367 へ書く）
 
 ### A. 主体解決の「維持」の形
 
@@ -232,7 +232,7 @@ T-71 / T-72 の 2 本が押さえる**（`RequireAuthorization()` を消せば�
 
 **これは orchestrator の指示（保持日数も構成可）からの意図的な逸脱である**。理由は上記のとおり
 計画 ADR §残るもの と衝突するためで、`CLAUDE.md`「ADR で確定した制約の無断逸脱」を避ける
-判断として `IADR-0368` に残す。
+判断として `IADR-0367` に残す。
 
 ### C. 削除は `RemoveRange`（`ExecuteDelete` を使わない）
 

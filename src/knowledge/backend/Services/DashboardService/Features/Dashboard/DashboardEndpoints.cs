@@ -22,7 +22,7 @@ public static class DashboardEndpoints
     // FR-10: 集計期間の既定・上限（無制限な全期間集計を防ぐ）。`SinceUtc` が使う。
     private const int DefaultDays = 7;
 
-    // 🔴 **保持期間（ADR-0072 決定 3）はこの定数から導く**（[[IADR-0368]] (#1198)）。
+    // 🔴 **保持期間（ADR-0072 決定 3）はこの定数から導く**（[[IADR-0367]] (#1198)）。
     // `UsageEventRetention` が `SinceUtc(MaxDays)` を削除の基準時刻に使うため、
     // **上限を動かすと保持期間も同じ値で動く。片方だけは動かせない**
     // （ADR-0072 §残るもの 末尾。片方だけ動かすと、照会できるのに行が無い期間が生じる）。

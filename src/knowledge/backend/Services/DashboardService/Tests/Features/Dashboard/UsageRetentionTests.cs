@@ -13,7 +13,7 @@ using Microsoft.Extensions.Options;
 
 namespace DashboardService.Tests.Features.Dashboard;
 
-// FR-10, UC-05, SC-10, ADR-0072 決定 1・3, [[IADR-0368]] (#1198):
+// FR-10, UC-05, SC-10, ADR-0072 決定 1・3, [[IADR-0367]] (#1198):
 // 利用イベントの主体（持たない）と保持期間（90 日で消す）。
 //
 // **陽性と陰性を対で置く。** 片方だけだと検査にならない —— 保持日数の述語を丸ごと外して

@@ -45,7 +45,7 @@ builder.Services.AddPlatformIntrospection("dashboard-service", new PipelineOptio
 builder.Services.Configure<SearchTrendOptions>(
     builder.Configuration.GetSection(SearchTrendOptions.SectionName));
 
-// FR-10, SC-10, ADR-0072 決定 3, [[IADR-0368]] (#1198): 利用イベントの保持期間（90 日）の実施。
+// FR-10, SC-10, ADR-0072 決定 3, [[IADR-0367]] (#1198): 利用イベントの保持期間（90 日）の実施。
 // **保持日数は構成キーを持たない** —— 集計の上限（`DashboardEndpoints.MaxDays`）そのものであり、
 // 片方だけ動かせる形にしない（ADR-0072 §残るもの 末尾）。構成できるのは有無と間隔だけである。
 // 🔴 **ここも ValidateOnStart は付けない** —— 掃除の間隔の打ち間違いで、利用イベントの記録と

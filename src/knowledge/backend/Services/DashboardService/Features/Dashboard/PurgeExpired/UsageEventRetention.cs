@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DashboardService.Features.Dashboard.PurgeExpired;
 
-// FR-10, UC-05, SC-10, ADR-0072 決定 3, [[IADR-0368]] (#1198):
+// FR-10, UC-05, SC-10, ADR-0072 決定 3, [[IADR-0367]] (#1198):
 // 保持期間（90 日）を過ぎた利用イベントを物理削除する。
 //
 // 🔴 **`UserId` を落としても行は残る**（ADR-0072 §コンテキスト）。`Query`（検索語）と

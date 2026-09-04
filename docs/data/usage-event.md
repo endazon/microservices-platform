@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-10, SC-10, UC-05]
 adrs: [ADR-0002, ADR-0006, ADR-0072]
-iadrs: [IADR-0368]
+iadrs: [IADR-0367]
 specs: [20260904_issue-1198_usage-event-subject-and-retention]
 issues: [#1198, planning#515, planning#526]
 -->

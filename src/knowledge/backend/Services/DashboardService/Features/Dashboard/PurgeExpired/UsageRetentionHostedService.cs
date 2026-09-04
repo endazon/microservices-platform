@@ -2,7 +2,7 @@ using Microsoft.Extensions.Options;
 
 namespace DashboardService.Features.Dashboard.PurgeExpired;
 
-// FR-10, UC-05, SC-10, ADR-0072 決定 3, [[IADR-0368]] (#1198):
+// FR-10, UC-05, SC-10, ADR-0072 決定 3, [[IADR-0367]] (#1198):
 // 保持期間を過ぎた利用イベントの削除を定期的に回す常駐処理。
 //
 // 形は `NotificationMaintenanceHostedService`（platform 側の前例。`BackgroundService` ＋
