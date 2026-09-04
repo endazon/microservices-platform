@@ -34,11 +34,19 @@ internal static class RecordUsageEventEndpoint
             // 400 にしないのは、これが**誤りではなく設計どおりの除外**だからである。
             if (SyntheticTraffic.IsSyntheticPrincipal(http.User, synthetic.Value))
             {
+                // 🔴 **本文の値をそのままログへ出さない。** `req.EventType` は要求本文由来であり、
+                // ここは検証（`IsValid`）より前なので改行や制御文字を含み得る。素通しすると
+                // 偽の行を差し込めてしまう（ログ注入）。既知の値集合へ畳んでから出す
+                // —— 知りたいのは「どの種別で来たか」であって原文ではない（[[IADR-0306]] の
+                // ログ衛生と同じ向き）。
+                var loggedType = UsageEventType.IsValid(req.EventType)
+                    ? UsageEventType.Normalize(req.EventType)
+                    : "(invalid)";
                 loggerFactory.CreateLogger(typeof(RecordUsageEventEndpoint)).LogWarning(
                     "合成監視の主体から利用イベントが直接投入された。行は作らない（ADR-0076 決定 4）。"
                     + "eventType={EventType}。検索語と利用者は本文へ出さない。"
                     + "**通常の経路（BFF）は発火前に落とすため、ここへ到達するのは想定外である。**",
-                    req.EventType);
+                    loggedType);
                 return Results.Accepted();
             }
 
