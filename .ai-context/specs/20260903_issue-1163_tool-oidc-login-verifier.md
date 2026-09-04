@@ -16,7 +16,7 @@ plan_refs:
   - "NFR-11（平文 HTTP を残さない。admin entrypoint も TLS 終端）"
   - "ADR-0047（エッジ証明書の適用範囲。ローカル経路）"
 related_adrs:
-  - IADR-0361
+  - IADR-0363
   - IADR-0328
   - IADR-0316
   - IADR-0310
@@ -114,7 +114,7 @@ realm JSON に無く、ツール側の配線対象でもない）。
 （keycloak / argocd / grafana / headlamp / minio / vault / wiki）が Traefik Ingress と
 Istio VirtualService の両方で宣言されていることを確認した（`qdrant` は OIDC を持たないため対象外）。
 
-## 決定（詳細は IADR-0361）
+## 決定（詳細は IADR-0363）
 
 1. **別スクリプト `scripts/verify-tool-oidc-logins.sh` を置く**（既存へ段を足さない）。
 2. **段は 3 種**: (a) ログイン開始がエッジ Keycloak の認可端点へ向くこと、
@@ -217,7 +217,7 @@ $ kubectl -n argocd logs deploy/argocd-server --tail=200 | grep -i oidc
 - `scripts/scripts.repo.test.js`（追記のみ）
 - `scripts/README.md`（行の追加）
 - `docs/operations/local-sso-recovery-runbook.md`（STEP 4 の追随）
-- `.ai-context/adr/IADR-0361_*.md`（新規）・`.ai-context/adr/README.md`（索引）
+- `.ai-context/adr/IADR-0363_*.md`（新規）・`.ai-context/adr/README.md`（索引）
 - `.ai-context/specs/20260903_issue-1163_tool-oidc-login-verifier.md`（本書）
 
 ## 未決事項 / 積み残し

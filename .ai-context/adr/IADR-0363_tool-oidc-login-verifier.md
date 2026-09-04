@@ -1,5 +1,5 @@
 ---
-title: IADR-0361 ツール側 OIDC のログイン開始は別スクリプトで測り、期待値は稼働している側から引く。到達できないツールは段を消費して SKIP と記録する
+title: IADR-0363 ツール側 OIDC のログイン開始は別スクリプトで測り、期待値は稼働している側から引く。到達できないツールは段を消費して SKIP と記録する
 type: impl-adr
 status: Accepted
 related_ids:
@@ -33,7 +33,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0047_edge-cert-scope-local-route.md
 ---
 
-# IADR-0361: ツール側 OIDC ログイン開始の検証器（#1163）
+# IADR-0363: ツール側 OIDC ログイン開始の検証器（#1163）
 
 - 状態: Accepted
 - 日付: 2026-09-03
