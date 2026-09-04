@@ -85,6 +85,47 @@ public class McpClientEndpointTests(TestWebApplicationFactory factory)
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    // 🔴 FR-16 (#1190), AST/ADR-0032 決定 2 (2): 制限プロジェクトの属性割当は API でも拒否する。
+    // 構成検証と同じ 1 つの関数を通っていることを **API 面から**固定する（関数共用が外れたら落ちる）。
+    [Fact]
+    public async Task サービスアカウントへ制限プロジェクトの属性割当は拒否される()
+    {
+        var response = await Admin().PostAsJsonAsync("/mcp-clients",
+            new RegisterMcpClientRequest("batch-p", "無人P", "service-account",
+                new Dictionary<string, string> { ["projects"] = "ai-stock-trading" }), TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().Contain("ai-stock-trading");
+    }
+
+    // 🔴 FR-16 (#1190): 差し替え経路でも効く（登録時だけ塞いでも意味がない。ADR-0062 決定 3）。
+    [Fact]
+    public async Task 属性差し替えでも制限プロジェクトの割当は拒否される()
+    {
+        var client = Admin();
+        await client.PostAsJsonAsync("/mcp-clients",
+            new RegisterMcpClientRequest("batch-q", "無人Q", "service-account"), TestContext.Current.CancellationToken);
+
+        var response = await client.PutAsJsonAsync("/mcp-clients/batch-q/attributes",
+            new ReplaceMcpClientAttributesRequest(
+                new Dictionary<string, string> { ["projects"] = "ai-stock-trading" }), TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    // FR-16 (#1190・陽性対照): 制限外のプロジェクト属性は通る。
+    // これが無いと「`projects` を持つ登録を全部落とす実装」と区別できない。
+    [Fact]
+    public async Task サービスアカウントへ制限外のプロジェクト属性は通る()
+    {
+        var response = await Admin().PostAsJsonAsync("/mcp-clients",
+            new RegisterMcpClientRequest("batch-r", "無人R", "service-account",
+                new Dictionary<string, string> { ["projects"] = "knowledge-base" }), TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
     // FR-16, UC-09: 公開ツール一覧の確認。公開構成が空なら 0 件（既定は非公開）。
     [Fact]
     public async Task 公開ツール一覧を取得できる()

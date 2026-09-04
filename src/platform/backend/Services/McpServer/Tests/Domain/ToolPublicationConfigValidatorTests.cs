@@ -96,4 +96,76 @@ public class ToolPublicationConfigValidatorTests
 
         errors.Should().BeEmpty();
     }
+
+    // 🔴 FR-16 (#1190), AST/ADR-0032 決定 2 (2)(3): MCP のサービスアカウントへ
+    // `ai-stock-trading` を含むプロジェクト属性を割り当てられない。**構成の検証で弾く**
+    // （＝起動時 fail-fast。「①② と同じ場所・同じ形」）。
+    [Fact]
+    public void サービスアカウントへ制限プロジェクトの属性割当は禁止される()
+    {
+        var errors = ToolPublicationConfigValidator.Validate(Config(
+            [new ToolPublicationEntry("retrieval.search", "retrieval")],
+            new Dictionary<string, IReadOnlyDictionary<string, string>>
+            {
+                ["batch-agent"] = new Dictionary<string, string>
+                {
+                    ["projects"] = "ai-stock-trading"
+                }
+            }));
+
+        errors.Should().ContainSingle().Which.Should().Contain("ai-stock-trading");
+    }
+
+    // 🔴 FR-16 (#1190): **綴りの揺れで抜けない。** 計画は文書側を単数 `project`、主体側を複数
+    // `projects` と定めるが、#1190 の本文は `attributes["project"]` と書く。片方だけ塞ぐと
+    // 綴りを変えただけで通ってしまう。
+    [Theory]
+    [InlineData("projects")]
+    [InlineData("project")]
+    public void 制限プロジェクトの割当は単数複数どちらの綴りでも弾かれる(string key)
+    {
+        var errors = ToolPublicationConfigValidator.ValidateServiceAccountAttributes(
+            "batch-agent", new Dictionary<string, string> { [key] = "ai-stock-trading" });
+
+        errors.Should().ContainSingle().Which.Should().Contain("ai-stock-trading");
+    }
+
+    // FR-16 (#1190): 多値（`ServiceAccountAttributeSubset.Tokens` の分解）でも当たる。
+    [Fact]
+    public void 制限プロジェクトが多値の一部でも弾かれる()
+    {
+        var errors = ToolPublicationConfigValidator.ValidateServiceAccountAttributes(
+            "batch-agent", new Dictionary<string, string> { ["projects"] = "kb, ai-stock-trading" });
+
+        errors.Should().ContainSingle().Which.Should().Contain("ai-stock-trading");
+    }
+
+    // FR-16 (#1190・陽性対照): 制限外のプロジェクト属性は割り当てられる。
+    // 🔴 これが無いと「`projects` を持つ割当を全部落とす実装」と区別できない。
+    [Fact]
+    public void 制限外のプロジェクト属性は割り当てられる()
+    {
+        var errors = ToolPublicationConfigValidator.ValidateServiceAccountAttributes(
+            "batch-agent", new Dictionary<string, string> { ["projects"] = "knowledge-base, kb" });
+
+        errors.Should().BeEmpty();
+    }
+
+    // 🔴 FR-16 (#1190): 2 つの違反があれば**両方返す**（最初の 1 件で打ち切らない）。
+    // 打ち切ると、2 つ目は 1 つ目を直したあとの実行でしか現れない。
+    [Fact]
+    public void 個人資料と制限プロジェクトを同時に含む割当は両方の理由を返す()
+    {
+        var errors = ToolPublicationConfigValidator.ValidateServiceAccountAttributes(
+            "batch-agent",
+            new Dictionary<string, string>
+            {
+                ["doc_scope"] = "private-note",
+                ["projects"] = "ai-stock-trading"
+            });
+
+        errors.Should().HaveCount(2);
+        errors.Should().ContainSingle(e => e.Contains("private-note"));
+        errors.Should().ContainSingle(e => e.Contains("ai-stock-trading"));
+    }
 }

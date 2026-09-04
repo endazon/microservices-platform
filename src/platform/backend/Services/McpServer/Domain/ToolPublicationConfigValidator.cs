@@ -49,10 +49,13 @@ public static class ToolPublicationConfigValidator
         => name.StartsWith(ForbiddenToolPrefix, StringComparison.OrdinalIgnoreCase)
             || name.EndsWith(ForbiddenToolSuffix, StringComparison.OrdinalIgnoreCase);
 
-    // 🔴 FR-16, ADR-0024（2026-08-02 注記）, ADR-0034 決定 9:
-    // **サービスアカウントに個人資料を読ませる属性割当は構成上禁止**であり、スキーマ検証で弾く。
+    // 🔴 FR-16, ADR-0024（2026-08-02 注記）, ADR-0034 決定 9, AST/ADR-0032 決定 2 (#1190):
+    // **サービスアカウントに読ませてはならない資料の属性割当は構成上禁止**であり、スキーマ検証で弾く。
     // 同じ検証を管理 API（属性割当）でも使う（McpClientEndpoints）。単一の関数に閉じるのは、
     // 2 箇所へ書くと片方だけが緩む形になるためである。
+    //
+    // 対象は 2 つある —— 個人資料（`doc_scope=private-note`）と、MCP から外すプロジェクト
+    // （`projects` / `project` に `ai-stock-trading`。AST/ADR-0032 決定 2 (2)(3)）。
     public static IReadOnlyList<string> ValidateServiceAccountAttributes(
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? assignments)
     {
@@ -64,17 +67,31 @@ public static class ToolPublicationConfigValidator
         return errors;
     }
 
+    // 🔴 **違反はすべて返す（最初の 1 件で打ち切らない）。** 打ち切ると、2 つ目の違反は
+    // 1 つ目を直したあとの実行でしか現れない。ADR-0062 §結果「拒否理由は丸めない」と同じ理由。
     public static IReadOnlyList<string> ValidateServiceAccountAttributes(
         string clientId, IReadOnlyDictionary<string, string> attributes)
     {
+        var errors = new List<string>();
+
         if (DocumentScope.IsPrivateNote(attributes))
         {
-            return
-            [
+            errors.Add(
                 $"サービスアカウント '{clientId}' へ {DocumentScope.Key}={DocumentScope.PrivateNote} は"
-                + "割り当てられません（個人資料を読ませる属性割当は構成上禁止）。"
-            ];
+                + "割り当てられません（個人資料を読ませる属性割当は構成上禁止）。");
         }
-        return [];
+
+        // AST/ADR-0032 決定 2 (2): MCP のサービスアカウントへ `ai-stock-trading` を含む
+        // プロジェクト属性を割り当てない。**どの値が外れたかを名指しする。**
+        var projects = RestrictedProject.AssignedValues(attributes);
+        if (projects.Count > 0)
+        {
+            errors.Add(
+                $"サービスアカウント '{clientId}' へ {RestrictedProject.SubjectKey} の値 "
+                + string.Join(", ", projects.Select(v => $"'{v}'"))
+                + " は割り当てられません（MCP から外すプロジェクトの資料を読ませる属性割当は構成上禁止）。");
+        }
+
+        return errors;
     }
 }
