@@ -316,6 +316,70 @@ describe('McpClientManagementPage (SC-12)', () => {
     );
   });
 
+  // 🔴 SC-12, ADR-0062 決定 2・§結果 (#1185): **後段が名指しした「外れた値」を画面上のテキストとして出す。**
+  //
+  // 本画面は「割り当てられるか」を**事前に示さない**（部分集合の判定は後段だけが持つ。
+  // 画面が判定すると API を直接叩けば素通しになる）。計画はその代償として
+  // 「拒否応答にどの値が外れたかを含め、それを表示する」ことを緩和策に置いた。
+  // **表示を落とすと、緩和策ごと消える。** `title` 属性ではなく本文として出ていることを測る。
+  it('names the value that fell outside the registrar set when registering', async () => {
+    mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && String(path).endsWith('/mcp-clients')) {
+        return Promise.reject(
+          new ApiError('validation', 'bad request', 400, [
+            "clearance の値 'confidential' は割り当てられません（登録者が持つ機密区分は 'internal', 'public' です）。",
+          ]),
+        );
+      }
+      if (String(path).includes('/mcp-clients/tools')) return Promise.resolve(jsonResponse(TOOLS));
+      if (String(path).includes('/authz/attributes'))
+        return Promise.resolve(jsonResponse(ATTRIBUTES));
+      return Promise.resolve(jsonResponse(CLIENTS));
+    });
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: '登録された MCP クライアントの一覧' });
+
+    await user.type(screen.getByLabelText('クライアント ID'), 'bot');
+    await user.type(screen.getByLabelText('表示名'), 'ボット');
+    await user.click(screen.getByRole('button', { name: '登録' }));
+
+    const alert = await screen.findByTestId('registration-error');
+    expect(alert).toHaveTextContent("'confidential'");
+    // ★ 陽性対照: 理由の本体も出ている（値だけを拾う実装で緑にしない）。
+    expect(alert).toHaveTextContent('割り当てられません');
+  });
+
+  // 🔴 SC-12, ADR-0062 決定 3 (#1185): **差し替え経路の拒否理由も同じように出る。**
+  // 登録だけ理由を出して差し替えが黙る形にしない（後段は同じ 1 つの関数で判定している）。
+  it('names the value that fell outside the registrar set when replacing attributes', async () => {
+    mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
+      if (init?.method === 'PUT' && String(path).includes('/attributes')) {
+        return Promise.reject(
+          new ApiError('validation', 'bad request', 400, [
+            "tags の値 'finance' は割り当てられません（登録者が持つタグは 'hr', 'sales' です）。",
+          ]),
+        );
+      }
+      if (String(path).includes('/mcp-clients/tools')) return Promise.resolve(jsonResponse(TOOLS));
+      if (String(path).includes('/authz/attributes'))
+        return Promise.resolve(jsonResponse(ATTRIBUTES));
+      return Promise.resolve(jsonResponse(CLIENTS));
+    });
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: '登録された MCP クライアントの一覧' });
+
+    const row = screen.getByText('夜間ダイジェスト').closest('tr') as HTMLElement;
+    await user.click(within(row).getByRole('button', { name: '属性を変更' }));
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    const alert = await screen.findByTestId('attribute-edit-error');
+    expect(alert).toHaveTextContent("'finance'");
+    // 🔴 **外れていない値を混ぜない**ことは後段の責務だが、画面が勝手に足さないことも測る。
+    expect(alert).not.toHaveTextContent("'sales' は割り当てられません");
+  });
+
   // 🔴 FR-16, UC-09, SC-12「無人アカウントの ABAC 属性割当」: **登録後の差し替え。**
   //
   // このテストが在る理由は、**後段に端点があり生成フックもあるのに画面から呼ばれていなかった**

@@ -1,3 +1,4 @@
+using McpServer.Domain.Ports;
 using McpServer.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -5,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace McpServer.Tests;
 
@@ -28,6 +30,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
 
             services.AddAuthentication(TestAuthHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
+
+            // FR-16, SC-12, ADR-0062: 登録者が配れる属性値の集合は要求ヘッダから注入する
+            // （本物は認可サービスを 2 本叩く。疎通は稼働クラスタでの実測で確かめる）。
+            services.RemoveAll<IRegistrarAttributeResolver>();
+            services.AddScoped<IRegistrarAttributeResolver, StubRegistrarAttributeResolver>();
         });
     }
 

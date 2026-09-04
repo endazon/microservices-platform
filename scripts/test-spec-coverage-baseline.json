@@ -136,6 +136,8 @@
       "EgressPolicyTests",
       "LogForgingSanitizationTests",
       "McpClientEndpointTests",
+      "ServiceAccountAttributeSubsetEndpointTests",
+      "ServiceAccountAttributeSubsetTests",
       "ServiceAccountDocumentFilterTests",
       "ToolCatalogTests",
       "ToolInvocationServiceTests",
@@ -241,6 +243,7 @@
     ],
     "docs/tests/SC-12_mcp-client-management.md": [
       "BffEndpointCompositionTests",
+      "BffIdentityContractTests",
       "BffMcpClientEndpointTests",
       "McpClientEndpointTests"
     ],
