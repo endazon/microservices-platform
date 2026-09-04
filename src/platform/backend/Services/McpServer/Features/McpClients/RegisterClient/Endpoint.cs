@@ -1,4 +1,5 @@
 using McpServer.Domain;
+using McpServer.Domain.Ports;
 using McpServer.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,7 +10,9 @@ public static class RegisterMcpClientEndpoint
 {
     public static IEndpointRouteBuilder MapRegisterMcpClient(this IEndpointRouteBuilder app)
     {
-        app.MapPost("", async (RegisterMcpClientRequest req, McpDbContext db, TimeProvider clock) =>
+        app.MapPost("", async (
+            RegisterMcpClientRequest req, McpDbContext db, TimeProvider clock,
+            IRegistrarAttributeResolver registrar, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(req.ClientId))
                 return McpClientEndpoints.Problem("clientId は必須です。");
@@ -21,23 +24,20 @@ public static class RegisterMcpClientEndpoint
 
             var attributes = req.Attributes ?? [];
 
-            // 🔴 ADR-0024（2026-08-02 注記）/ ADR-0034 決定 9:
-            // サービスアカウントへ個人資料を読ませる属性割当は禁止する。
-            // 構成（公開構成のスキーマ検証）と API の**両方**で弾く。検証関数は 1 つを共用する。
-            if (kind == McpClientKind.ServiceAccount)
-            {
-                var errors = ToolPublicationConfigValidator
-                    .ValidateServiceAccountAttributes(req.ClientId, attributes);
-                if (errors.Count > 0) return McpClientEndpoints.Problem(errors[0]);
-            }
+            // 🔴 ADR-0024（2026-08-02 注記）/ ADR-0034 決定 9 / ADR-0062 決定 2・3:
+            // 無人アカウントへの属性割当の統制（個人資料の禁止 ＋ 登録者の集合の部分集合）は
+            // **差し替え経路と同じ 1 つの関数**が行う（McpClientEndpoints）。
+            var rejected = await McpClientEndpoints.RejectUnassignableAsync(
+                req.ClientId, kind, attributes, registrar, ct);
+            if (rejected is not null) return rejected;
 
-            if (await db.Clients.AnyAsync(c => c.ClientId == req.ClientId))
+            if (await db.Clients.AnyAsync(c => c.ClientId == req.ClientId, ct))
                 return McpClientEndpoints.Problem($"クライアント '{req.ClientId}' は既に登録されています。");
 
             var client = McpClient.Register(
                 req.ClientId, req.DisplayName, kind, attributes, tier, clock.GetUtcNow());
             db.Clients.Add(client);
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(ct);
             return Results.Created($"/mcp-clients/{client.ClientId}", McpClientEndpoints.ToView(client));
         });
 

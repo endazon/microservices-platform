@@ -6,6 +6,7 @@ using McpServer.Features.Tools.ListTools;
 using McpServer.Features.McpClients;
 using McpServer.Infrastructure.Persistence;
 using McpServer.Domain;
+using McpServer.Domain.Ports;
 using McpServer.Infrastructure.ExternalServices;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
@@ -36,6 +37,20 @@ builder.Services.AddDbContext<McpDbContext>(opt => opt.UseNpgsql(connStr));
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHttpClient();
+
+// 🔴 FR-16, FR-05, UC-09, SC-12, ADR-0062 決定 2・3: 無人アカウントの `clearance` / タグは
+// **登録者が持つ集合の部分集合**でなければならず、その判定は後段（ここ）が行う。
+// 登録者の属性の正は認可サービスであり、身元の口（/bff/auth/me）へは配らない（同 決定 4）。
+//
+// 既定は 8080 とする（compose も k8s も 8080 で上書きしている。コード既定の :5005 は古く、
+// 新規に口を開く側で写すと配備の上書き漏れが「名前解決は通るがポートが無い」形で沈黙する）。
+builder.Services.AddHttpClient(
+    AuthorizationServiceRegistrarAttributes.HttpClientName,
+    c => c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
+        ?? "http://authorization-service:8080"));
+// 呼び出し元の Authorization を後段へ転送するために要る（サービス専用の資格情報を新設しない）。
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IRegistrarAttributeResolver, AuthorizationServiceRegistrarAttributes>();
 
 // FR-16, ADR-0024: 宣言的公開構成・自己申告の集約・実効ツール一覧
 builder.Services.AddSingleton<ToolPublicationConfigLoader>();
