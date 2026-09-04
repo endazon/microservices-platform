@@ -11,6 +11,7 @@ namespace GraphService.Tests.Domain;
 //   ③ 既定     それ以外 → related
 //
 // **未定義型は拒否も破棄もしない。related へ丸め、フォールバックの印を返す**（決定 3）。
+[Trait("TestKind", "Unit")]
 public class EdgeTypeResolverTests
 {
     // 実行時辞書（seed 相当）。**コード定義ではない**ので、テストも「今の辞書」を渡して測る。

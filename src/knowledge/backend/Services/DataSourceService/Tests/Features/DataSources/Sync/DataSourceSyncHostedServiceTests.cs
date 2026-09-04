@@ -14,6 +14,7 @@ namespace DataSourceService.Tests.Features.DataSources.Sync;
 // FR-01, UC-04, IADR-0083 (#305): 定期同期ワーカーの単一書き手化ゲートを検証する。
 // リースを取得できたレプリカのみが同期を実行し、取得できない周期はスキップする（本番マルチレプリカでの冗長 fetch 排除）。
 // 各テストは独立した InMemory DB を持つ専用 factory を用いる（ワーカーは有効化するが、TryRunCycleAsync を直接 1 回だけ回す）。
+[Trait("TestKind", "Integration")]
 public sealed class DataSourceSyncHostedServiceTests : IDisposable
 {
     private readonly List<string> _tempDirs = [];

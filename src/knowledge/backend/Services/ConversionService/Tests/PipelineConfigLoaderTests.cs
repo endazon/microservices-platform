@@ -9,6 +9,7 @@ namespace ConversionService.Tests;
 //   1) Helm ConfigMap の {"Pipeline": {...}} オーバレイ
 //   2) compose がマウントする「生の pipeline.json」（"Pipeline" セクションへ包んで読む）
 // これにより正の pipeline.json を複製せず compose の BFF へ供給でき、ドリフト突合が正しく働く。
+[Trait("TestKind", "Integration")]
 public class PipelineConfigLoaderTests
 {
     private const string RawPipeline = """

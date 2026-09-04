@@ -20,6 +20,7 @@ namespace DocumentService.Tests.Features.PrivateNotes;
 // FR-19, UC-11, SC-19, ADR-0037 決定 5・6・16・20, [[IADR-0270]] 決定 2・6:
 // 個人資料のライフサイクル（作成→論理削除→復元／完全削除）・90 日の自動物理削除・
 // 3 段通知（週次／7 日前／事後）・版履歴の保持上限（直近 50 版かつ 90 日）。
+[Trait("TestKind", "Integration")]
 public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

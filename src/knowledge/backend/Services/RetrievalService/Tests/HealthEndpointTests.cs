@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 namespace RetrievalService.Tests;
 
 // FR-03, UC-01: 検索サービス エンドポイントテスト
+[Trait("TestKind", "Integration")]
 public class HealthEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

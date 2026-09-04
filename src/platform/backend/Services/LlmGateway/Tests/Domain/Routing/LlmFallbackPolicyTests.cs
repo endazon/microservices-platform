@@ -11,6 +11,7 @@ namespace LlmGateway.Tests.Domain.Routing;
 // ★ 429 の行が本テストの要点である。429 を「モデルが使えない」と読んで別モデルへ逃がすと、
 //   docs/operations/llm-model-pin-runbook.md の禁止（利用不能時に別モデルへ切り替えない）を
 //   実質的に破る経路になる。**429 で落ちないことが、機構が空振りしていないことと同じくらい重要である。**
+[Trait("TestKind", "Unit")]
 public class LlmFallbackPolicyTests
 {
     // ADR-0038 決定 4: 400 系（モデル不可・コンテキスト超過等）はフォールバックさせる。

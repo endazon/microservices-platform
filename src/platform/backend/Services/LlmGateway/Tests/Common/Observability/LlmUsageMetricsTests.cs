@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 namespace LlmGateway.Tests.Common.Observability;
 
 // FR-10, NFR, ADR-0006, ADR-0044 決定 1・3 (#443): LLM 利用実績（用途別・モデル別のトークンと金額）。
+[Trait("TestKind", "Unit")]
 public class LlmUsageMetricsTests
 {
     private static readonly DateTimeOffset At = new(2026, 9, 10, 0, 0, 0, TimeSpan.Zero);

@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace ConversionService.Tests.Infrastructure.ExternalServices;
 
 // FR-12, ADR-0012/0010: 図コード化クライアント（LLMゲートウェイ /complete 経由）の単体テスト。
+[Trait("TestKind", "Unit")]
 public class LlmGatewayDiagramCoderTests
 {
     private static ExtractedFigure Figure() => new("fig-1", "image/png", [1, 2, 3]);

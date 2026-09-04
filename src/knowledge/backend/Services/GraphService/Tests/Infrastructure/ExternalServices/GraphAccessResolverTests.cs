@@ -12,6 +12,7 @@ namespace GraphService.Tests.Infrastructure.ExternalServices;
 //
 // グラフでは 1 文書の露出が近傍の存在まで明かすため、fail-open は特に許されない。
 // WikiAccessResolver / RagOrchestrator と同一方針。
+[Trait("TestKind", "Unit")]
 public class GraphAccessResolverTests
 {
     private static HttpContext Ctx()

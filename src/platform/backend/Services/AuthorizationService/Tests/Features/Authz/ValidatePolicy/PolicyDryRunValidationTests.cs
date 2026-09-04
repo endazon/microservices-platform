@@ -13,6 +13,7 @@ namespace AuthorizationService.Tests.Features.Authz.ValidatePolicy;
 //
 // **本テストの中心は「dry-run と保存が一致すること」である**（T-04）。
 // 一致しなくなった瞬間に、この機能は「無いより悪い」ものへ変わる。
+[Trait("TestKind", "Integration")]
 public class PolicyDryRunValidationTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

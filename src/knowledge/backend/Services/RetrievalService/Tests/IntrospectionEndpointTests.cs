@@ -7,6 +7,7 @@ namespace RetrievalService.Tests;
 
 // FR-15, IADR-0029 (#143): 自己申告エンドポイントが到達でき、選択中の合成可能ポート
 // （vector-store / embedding）を申告することを検証する。
+[Trait("TestKind", "Integration")]
 public class IntrospectionEndpointTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;

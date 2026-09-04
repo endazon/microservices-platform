@@ -26,6 +26,7 @@ namespace DataSourceService.Tests.Features.DataSources;
 //   (b) `ConnectionUri` が一切マスクされていなかった（`SecretConfigMask` は `Config` にしか掛からない）
 //   (c) 秘密キーのマーカー集合が 2 箇所にあり食い違っていた（`apiKey` / `pwd` / `privateKey` が素通し）
 //   (d) 例外オブジェクトがそのままログへ渡されていた（`Exception.ToString()` が LogRecord に入る）
+[Trait("TestKind", "Integration")]
 public class DataSourceCredentialExposureTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

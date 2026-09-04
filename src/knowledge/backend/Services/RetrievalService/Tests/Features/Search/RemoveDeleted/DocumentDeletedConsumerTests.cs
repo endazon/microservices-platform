@@ -11,6 +11,7 @@ namespace RetrievalService.Tests.Features.Search.RemoveDeleted;
 //
 // 🔴 **否定形テストには必ず陽性対照を対で置く**（GraphTraversalTests と同じ作法）。
 // 「削除後に出ない」だけでは、そもそも索引されていなくても緑になる。
+[Trait("TestKind", "Unit")]
 public class DocumentDeletedConsumerTests
 {
     private static readonly Guid DocA = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");

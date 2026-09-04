@@ -11,6 +11,7 @@ namespace GraphService.Tests.Features.Graph.GetNode;
 // 明記している。区別できてしまうと、**権限外文書の存在そのものが漏れる**。
 //
 // 本テストは 3 つの経路（権限なし / 複製なし / 文書なし）が**応答として区別できない**ことを見る。
+[Trait("TestKind", "Integration")]
 public class GraphEndpointsSecrecyTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;

@@ -11,6 +11,7 @@ namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 // FR-04, FR-11, ADR-0025, IADR-0104 (#379): ゲートウェイが stopReason="refusal" を返したとき、
 // 呼び出し側が「モデルが拒否した」と「送信したが空応答」を取り違えないことを検証する。
 // 拒否は sent=true で返る（越境は成立している）ため、sent だけを見る従来の分岐では区別できない。
+[Trait("TestKind", "Unit")]
 public class RagOrchestratorStopReasonTests
 {
     // 拒否時は「回答を生成できませんでした」ではなく、拒否である旨を出典つきで返す。

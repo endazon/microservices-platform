@@ -12,6 +12,7 @@ using System.Net.Http.Json;
 namespace RetrievalService.Tests.Features.Search;
 
 // FR-03, UC-01: /search ハイブリッド検索のエンドポイント結合テスト（InMemory ストア）
+[Trait("TestKind", "Integration")]
 public class HybridSearchEndpointTests
 {
     private static ChunkPayload Chunk(string text, Dictionary<string, string>? attrs = null,

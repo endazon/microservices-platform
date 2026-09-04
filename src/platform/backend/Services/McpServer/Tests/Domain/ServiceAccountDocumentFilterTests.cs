@@ -12,6 +12,7 @@ namespace McpServer.Tests.Domain;
 //
 // 🔴 **否定形テストと陽性対照を対で置く。** 否定形（個人資料が返らない）だけでは
 // 「全部落としている実装」と区別できず、除外の向き（集合帰属か否定か）も分けられない。
+[Trait("TestKind", "Unit")]
 public class ServiceAccountDocumentFilterTests
 {
     private static readonly ServiceAccountDocumentFilter Filter =

@@ -5,6 +5,7 @@ namespace LlmGateway.Tests.Domain.Routing;
 
 // FR-02, ADR-0016（Issue #98 レビュー対応）: 埋め込みルーティング設定の起動時バリデーション。
 // インデックス依存の環境変数上書きによる取り違え（例 Voyage を誤って無効化）を fail-fast することを検証する。
+[Trait("TestKind", "Unit")]
 public class EmbeddingRoutingOptionsValidatorTests
 {
     private static EmbeddingEndpointOptions Voyage(bool enabled = true) => new()

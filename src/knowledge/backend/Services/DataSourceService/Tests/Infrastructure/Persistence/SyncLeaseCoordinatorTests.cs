@@ -7,6 +7,7 @@ namespace DataSourceService.Tests.Infrastructure.Persistence;
 // FR-01, UC-04, IADR-0083 (#305): 定期同期の単一書き手化コーディネータの契約を検証する。
 // NoOp は非リレーショナル環境で常に取得し従来どおり動く。Postgres advisory lock は取得失敗（接続不能）を
 // 安全側でスキップ（null 返却・例外を投げない）する fail-safe を回帰ガードする。
+[Trait("TestKind", "Unit")]
 public sealed class SyncLeaseCoordinatorTests
 {
     // NoOp コーディネータ: 常に取得成功（非 null）し、ハンドル破棄が例外を投げない。

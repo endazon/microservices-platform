@@ -16,6 +16,7 @@ namespace GraphService.Tests.Features.GraphDocuments.Sync;
 // デノーマライズと、本文指紋（ADR-0050）による却下済み AI 提案の解除。
 //
 // 🔴 **否定形テストには必ず陽性対照を対で置く**（GraphTraversalTests と同じ作法）。
+[Trait("TestKind", "Unit")]
 public class GraphDocumentSyncConsumerTests
 {
     private static readonly Guid DocA = Guid.Parse("aaaaaaaa-0000-0000-0000-0000000000aa");

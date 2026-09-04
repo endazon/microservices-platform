@@ -14,6 +14,7 @@ namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 // 段を有効化しても展開は常に 0 件だった**（IADR-0263 残件 2）。ここで固定するのは
 // 「そのまま転送する」「無ければ付けない」の対である —— 否定形だけでは
 // 「常に固定トークンを付ける実装」も「常に付けない実装」も通してしまう。
+[Trait("TestKind", "Unit")]
 public class RagOrchestratorAuthPropagationTests
 {
     private const string UserToken = "Bearer user-jwt";

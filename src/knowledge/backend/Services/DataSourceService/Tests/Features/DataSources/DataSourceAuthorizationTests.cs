@@ -7,6 +7,7 @@ namespace DataSourceService.Tests.Features.DataSources;
 
 // FR-09, IADR-0044: 多層防御。/datasources は BFF を迂回してもサービス単体で admin/operator を要求する。
 // 非権限ロールは 403、運用者は許可されることを検証する（TestAuthHandler は常時認証のため 401 は対象外）。
+[Trait("TestKind", "Integration")]
 public class DataSourceAuthorizationTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

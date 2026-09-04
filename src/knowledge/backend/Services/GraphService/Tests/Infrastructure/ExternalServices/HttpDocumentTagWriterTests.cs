@@ -13,6 +13,7 @@ namespace GraphService.Tests.Infrastructure.ExternalServices;
 //
 // 🔴 **資格情報の転送は陽性対照つきで固定する。** 転送を外しても本サービスのテストは緑のまま
 // （記録スタブは資格を見ない）で、実配備で後段が匿名として拒み承認が静かに全件 404 になる。
+[Trait("TestKind", "Unit")]
 public class HttpDocumentTagWriterTests
 {
     private sealed class CapturingHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler

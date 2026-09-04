@@ -9,6 +9,7 @@ using WikiService.Infrastructure.Persistence;
 namespace WikiService.Tests.Features.Wiki;
 
 // FR-13, FR-05, UC-07: Wiki 閲覧 API に ABAC が適用され、権限外文書が一覧・本文のいずれにも現れないこと。
+[Trait("TestKind", "Integration")]
 public class WikiEndpointsAbacTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

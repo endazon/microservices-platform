@@ -16,6 +16,7 @@ namespace McpServer.Tests.Infrastructure.ExternalServices;
 // 見ている）と、**その例外が実際にサービスを止めること**は別の主張である。後者を誰も試していないと、
 // 例外が握り潰されても CI は緑のままになり、壊れた構成で Web サーバーが起動して
 // 「公開されているつもりの公開されていない」状態がエラーログだけを吐きながら継続する。
+[Trait("TestKind", "Unit")]
 public class ToolPublicationFailFastTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), $"mcp-pub-{Guid.NewGuid():N}");

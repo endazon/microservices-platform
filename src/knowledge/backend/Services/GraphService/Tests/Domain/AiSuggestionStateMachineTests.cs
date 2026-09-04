@@ -13,6 +13,7 @@ namespace GraphService.Tests.Domain;
 // 🔴 **［2026-08-28 追記 / #438］「その未配線は `AiSuggestionWiringTests` が機械で固定している」
 // と書いてあったが、そのテストは一度も存在しなかった**（クラス定義が全域で 0 件）。
 // 配線が済んだ今は前提そのものも古い。**機械が守っていると書くときは、その機械を指させること。**
+[Trait("TestKind", "Unit")]
 public class AiSuggestionStateMachineTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 8, 22, 0, 0, 0, TimeSpan.Zero);

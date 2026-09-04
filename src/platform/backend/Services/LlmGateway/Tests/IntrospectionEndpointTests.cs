@@ -7,6 +7,7 @@ namespace LlmGateway.Tests;
 
 // FR-15, IADR-0029 (#143): 自己申告エンドポイントが到達でき、LLM 生成・埋め込みの合成可能ポート
 // （llm / embedding ルータ）を申告することを検証する。
+[Trait("TestKind", "Integration")]
 public class IntrospectionEndpointTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;

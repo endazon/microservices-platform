@@ -20,6 +20,7 @@ namespace DocumentService.Tests.Features.Documents;
 // 実体だけが残っていた。ここで測るのは **台帳から逆引きした URI が過不足なく消されたか**である。
 // 器は `RecordingObjectStorageClient`（消された URI を記録する）—— Docker 非依存で、
 // MinIO を立てずに「何が消えたか」を直接見られる唯一の観測点である。
+[Trait("TestKind", "Integration")]
 public class DeletionPropagationTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

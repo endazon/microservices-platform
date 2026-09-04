@@ -5,6 +5,7 @@ using IngestionService.Domain;
 namespace IngestionService.Tests.Domain;
 
 // FR-02: チャンク化（見出し分割・overlap）テスト
+[Trait("TestKind", "Unit")]
 public class MarkdownChunkingServiceTests
 {
     private readonly MarkdownChunkingService _sut = new();

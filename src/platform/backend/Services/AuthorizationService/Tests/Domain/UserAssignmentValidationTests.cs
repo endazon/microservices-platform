@@ -7,6 +7,7 @@ namespace AuthorizationService.Tests.Domain;
 //
 // 🔴 **判定は HTTP を通さずに試験する。** 画面テストも端点テストも「値集合から 1 値落としても
 // 落ちない」ことが実測されている（IADR-0129 決定 6）。値域と必須の判定そのものは、ここで固定する。
+[Trait("TestKind", "Unit")]
 public class UserAssignmentValidationTests
 {
     private static List<AttributeDefinition> Dictionary() =>

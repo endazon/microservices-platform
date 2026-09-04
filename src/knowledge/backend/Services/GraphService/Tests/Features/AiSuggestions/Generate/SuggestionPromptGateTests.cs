@@ -16,6 +16,7 @@ namespace GraphService.Tests.Features.AiSuggestions.Generate;
 // 生の文書へ緩める、といった変更はいずれもコンパイルが通ってしまうため、機械で見張る必要がある。
 //
 // GraphTypeGateArchitectureTests（探索側の 2 段ゲート）と同じ作法である。
+[Trait("TestKind", "Unit")]
 public class SuggestionPromptGateTests
 {
     // ADR-0034 決定 5: 封は述語を通さずに作れない。
@@ -76,6 +77,7 @@ public class SuggestionPromptGateTests
 }
 
 // FR-18 (#915): 生成の口が配線されていることと、応答が件数を持たないことを HTTP 面で固定する。
+[Trait("TestKind", "Integration")]
 public class AiSuggestionGenerationEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

@@ -4,6 +4,7 @@ using DocumentService.Domain;
 namespace DocumentService.Tests.Domain;
 
 // FR-06, UC-03: ドメインの版管理（append-only スナップショット）ユニットテスト
+[Trait("TestKind", "Unit")]
 public class DocumentVersioningTests
 {
     // #635: タグは**識別子**である（[[IADR-0153]] 決定 1）。ドメインは表示名を知らないので、

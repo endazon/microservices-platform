@@ -20,6 +20,7 @@ namespace McpServer.Tests.Features.Tools;
 //
 // **公開の振る舞い（InvokeAsync が実際に書いたログ）で検査する** —— LlmGateway が
 // 同じ理由の sanitize を私有のままにして経路越しに固定しているのと同じ作法である。
+[Trait("TestKind", "Unit")]
 public class LogForgingSanitizationTests
 {
     // 実際に書かれたログ行を捕まえる。整形済みの本文を見るのが要点で、

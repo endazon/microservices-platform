@@ -16,6 +16,7 @@ namespace DocumentService.Tests.Features.Documents.Catalog;
 // **SC-05 の「既定タグ辞書に整合」は経路を問わない不変条件**である。
 // **取り込み経路はタグを生成しない**ので、ここが非空になること自体が規定違反であり、
 // **0 でない件数が「計画に無い経路でタグが生まれている」ことの検出**になる（SC-10。**0 が正常**）。
+[Trait("TestKind", "Unit")]
 public sealed class IngestTagFilterTests
 {
     private static DocumentDbContext NewDb() => new(

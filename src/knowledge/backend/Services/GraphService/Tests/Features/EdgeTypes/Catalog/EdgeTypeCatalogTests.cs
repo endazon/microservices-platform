@@ -16,6 +16,7 @@ namespace GraphService.Tests.Features.EdgeTypes.Catalog;
 // グラフビュー画面は一般利用者向けであり、辺の型名が引けないと描き分けも型フィルタも描けない
 // （グラフ応答が返すのは `EdgeTypeId` だけである）。しかし既存口をそのまま開けると
 // **ABAC で絞られていない使用件数**が漏れる。だから件数を持たない口を分けた。
+[Trait("TestKind", "Integration")]
 public class EdgeTypeCatalogTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;

@@ -22,6 +22,7 @@ namespace WikiService.Tests.Features.Wiki;
 // 🔴 ADR-0027 / E3a・E3b: 両段とも Wolverine 段になった。
 // **実際にホストを起こして登録経路（AddPlatformWolverineStep）を通す**
 // （E1 の PipelineStepRegistrationTests と同じ器。直接呼びだけでは登録経路の破れを測れない —— 変異 R の実測）。
+[Trait("TestKind", "Integration")]
 public class PipelineRecomposeTests
 {
     private static PipelineOptions Pipeline(bool syncEnabled, bool deleteEnabled) => new()

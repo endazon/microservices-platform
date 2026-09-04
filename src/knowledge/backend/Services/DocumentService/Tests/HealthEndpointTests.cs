@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 
 namespace DocumentService.Tests;
 
+[Trait("TestKind", "Integration")]
 public class HealthEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

@@ -8,6 +8,7 @@ using McpServer.Infrastructure.Persistence;
 namespace McpServer.Tests.Domain;
 
 // FR-16: 公開構成のスキーマ検証（計画 ADR-0024 §5 / 2026-08-02 注記）。
+[Trait("TestKind", "Unit")]
 public class ToolPublicationConfigValidatorTests
 {
     private static ToolPublicationConfig Config(

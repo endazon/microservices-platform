@@ -16,6 +16,7 @@ namespace DocumentService.Tests.Features.ObsidianSync.Move;
 //
 // 🔴 否定形（他人の資料へ届かない・版がずれたら動かない・重複する名前へ移せない）は、
 // **陽性対照と対で**置く —— 「常に 404／常に 409 を返す実装」でも否定形だけは緑になる。
+[Trait("TestKind", "Integration")]
 public class ObsidianSyncMoveTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

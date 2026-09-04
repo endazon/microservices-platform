@@ -27,6 +27,7 @@ namespace ConversionService.Tests.Features.ConversionJobs.Normalize;
 //      境界（上限 -1 / 上限）の両側を見るので、旧テストより**判定点が正確**である。
 //   ③ 契約定数と上限の一致 …… 本ファイル末尾のテスト。
 // ①②③ が揃って初めて「使い切ったらデッドレター」が言える。**どれか 1 本でも欠けると言えない。**
+[Trait("TestKind", "Unit")]
 public class RawDocumentFetchedConsumerJobTests
 {
     private static RawDocumentFetched Raw(Guid id) =>

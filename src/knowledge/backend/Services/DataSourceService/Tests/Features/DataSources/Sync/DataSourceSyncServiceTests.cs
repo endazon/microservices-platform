@@ -14,6 +14,7 @@ namespace DataSourceService.Tests.Features.DataSources.Sync;
 
 // FR-01, UC-04, IADR-0051, claude-review #220（🔴）: 増分 watermark（LastSyncedAt）は完全成功時のみ前進し、
 // discover 失敗・一部 fetch 失敗時は前進しないこと（＝失敗ファイルが次回再試行対象に残る）を検証する。
+[Trait("TestKind", "Integration")]
 public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>, IDisposable
 {

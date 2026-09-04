@@ -7,6 +7,7 @@ namespace AuthorizationService.Tests.Infrastructure.Persistence;
 // #184: jsonb Dictionary 列の ValueComparer が hash/equals 契約（equals(a,b) ⟹ hash(a)==hash(b)）を満たすことを
 // EF モデルメタデータ経由で検証する。参照ベース hash（v => v.GetHashCode()）の再導入を機械的に検出する。
 // AuthorizationDbContext の対象は AbacPolicy の条件（Dictionary<string, List<string>>）。
+[Trait("TestKind", "Unit")]
 public class JsonbValueComparerContractTests
 {
     [Fact]

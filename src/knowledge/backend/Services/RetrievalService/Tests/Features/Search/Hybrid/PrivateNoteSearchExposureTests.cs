@@ -20,6 +20,7 @@ namespace RetrievalService.Tests.Features.Search.Hybrid;
 // 分離を検索側で実装すると**前半が静かに壊れる**（「検索にも出ない」になり、基準が半分だけ満たされる）。
 // [[IADR-0283]] が B-2（Retrieval への要求属性）を採らなかった理由がこれであり、
 // **その決定が守られていることを機械で見張る**のが本テストである。
+[Trait("TestKind", "Unit")]
 public class PrivateNoteSearchExposureTests
 {
     // 「横断検索に含める」ON・「AI の入力に含める」OFF の個人資料（⑨ の主語そのもの）。

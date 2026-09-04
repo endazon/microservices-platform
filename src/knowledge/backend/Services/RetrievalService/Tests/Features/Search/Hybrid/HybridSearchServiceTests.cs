@@ -84,6 +84,7 @@ internal sealed class ThrowingEmbeddingService : IEmbeddingService
 }
 
 // FR-03, UC-01: ハイブリッド検索の核 — Reciprocal Rank Fusion ロジックの単体テスト
+[Trait("TestKind", "Unit")]
 public class HybridSearchServiceTests
 {
     private static SearchResultDto Hit(Guid id, float score = 0f, DateTimeOffset? updatedAt = null) =>
@@ -576,6 +577,7 @@ internal sealed class FixedQueryEmbeddingService(IReadOnlyDictionary<string, flo
 }
 
 // FR-03, UC-01, #448: 検索の回帰評価セット。
+[Trait("TestKind", "Unit")]
 public class SearchRelevanceRegressionSet
 {
     private static readonly AccessScope Granted = new([], true);

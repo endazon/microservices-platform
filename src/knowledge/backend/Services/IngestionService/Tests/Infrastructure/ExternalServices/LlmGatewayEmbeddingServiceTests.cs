@@ -12,6 +12,7 @@ namespace IngestionService.Tests.Infrastructure.ExternalServices;
 // `expected dim: 1024, got 0` で拒否していた。**HTTP は成功し、例外も出ない。**
 // 契約の項目名が 1 つずれるだけでこの形になり、既存のテストは誰も気づかない
 // （消費側のテストは `IEmbeddingService` をスタブに差し替えているため、この結線を一度も通らない）。
+[Trait("TestKind", "Unit")]
 public class LlmGatewayEmbeddingServiceTests
 {
     // ゲートウェイが実際に返す形（LlmGateway の EmbeddingEndpoints ＋ 既定の Web JSON 規約）。

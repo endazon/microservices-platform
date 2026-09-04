@@ -17,6 +17,7 @@ namespace WikiService.Tests.Features.Wiki.SyncDocument;
 //
 // E3b: 購読は Wolverine 段になった。本ファイルは Handle を直接呼ぶ（測るのは同期の写像であって
 // 配送ではない。登録経路は PipelineRecomposeTests が Wolverine ホストで持つ —— E1 変異 R の教訓）。
+[Trait("TestKind", "Unit")]
 public class DocumentSyncConsumerTests
 {
     private static readonly Guid DocId = Guid.Parse("22222222-2222-2222-2222-222222222222");

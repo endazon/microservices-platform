@@ -13,6 +13,7 @@ namespace AuthorizationService.Tests.Features.Users;
 //
 // ※ InMemory DB はクラスごとに分離されるため（TestWebApplicationFactory の注記）、
 //   本クラスは自分で利用者スコープの属性辞書を投入してから割当を試す。
+[Trait("TestKind", "Integration")]
 public class UserAdminEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

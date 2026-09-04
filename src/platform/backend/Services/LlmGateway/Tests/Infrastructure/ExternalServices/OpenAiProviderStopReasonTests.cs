@@ -13,6 +13,7 @@ namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 // ティアC Copilot）が finish_reason を読み、正準語彙の StopReason として返すことを固定する。
 // 以前は finish_reason を読んでおらず StopReason が常に null で、拒否・上限到達・正常終了を
 // 呼び出し側が区別できなかった（Claude 経路だけ区別できる非対称）。
+[Trait("TestKind", "Unit")]
 public class OpenAiProviderStopReasonTests
 {
     // OpenAI 互換 /chat/completions の応答（必要部分）。finishReason=null は当該フィールドを載せない。

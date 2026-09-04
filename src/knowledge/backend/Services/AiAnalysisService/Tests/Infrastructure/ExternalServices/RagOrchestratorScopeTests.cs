@@ -6,6 +6,7 @@ using Knowledge.Contracts.Dtos;
 namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 
 // FR-05: ABAC スコープ解決の通信失敗時に deny-by-default へ縮退することを検証する。
+[Trait("TestKind", "Unit")]
 public class RagOrchestratorScopeTests
 {
     // 認可サービスへの通信が例外（ネットワーク障害・タイムアウト）で失敗しても、

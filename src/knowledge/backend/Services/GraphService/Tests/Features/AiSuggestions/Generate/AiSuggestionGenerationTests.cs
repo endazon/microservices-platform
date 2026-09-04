@@ -22,6 +22,7 @@ namespace GraphService.Tests.Features.AiSuggestions.Generate;
 // **結果のフィルタではなく、送信そのものを検査する** —— ADR-0034 決定 5 が
 // 「送信そのものが違反であり、後段のフィルタでは償えない」と定めているためである。
 // したがって LLM クライアントは差し替えず、**実際に出ていく HTTP 要求の本文を捕まえる。**
+[Trait("TestKind", "Unit")]
 public class AiSuggestionGenerationTests
 {
     // 既定 scope は全許可なので、可視性を測るテストは必ず絞る。

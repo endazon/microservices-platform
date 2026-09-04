@@ -20,6 +20,7 @@ namespace GraphService.Tests.Features.AiSuggestions.Approve;
 //
 // 反映先（DocumentService）は `TestWebApplicationFactory.TagWriter`（記録スタブ）である。
 // 実 HTTP の写像は `HttpDocumentTagWriterTests`、後段そのものは DocumentService.Tests が見る。
+[Trait("TestKind", "Integration")]
 public class TagSuggestionApprovalTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;

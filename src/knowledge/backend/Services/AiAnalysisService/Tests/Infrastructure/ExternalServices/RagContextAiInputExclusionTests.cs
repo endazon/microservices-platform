@@ -21,6 +21,7 @@ namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 //
 // 🔴 **否定形と陽性対照を対で置く。** AI 入力 OFF は落ち、ON は入る。
 // 片方だけだと「全部落とす」実装も「全部通す」実装も緑になる。
+[Trait("TestKind", "Unit")]
 public class RagContextAiInputExclusionTests
 {
     private static readonly Guid AiOffChunk = Guid.NewGuid();

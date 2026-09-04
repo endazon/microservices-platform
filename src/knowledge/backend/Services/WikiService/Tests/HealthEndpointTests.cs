@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 namespace WikiService.Tests;
 
 // FR-13, UC-07: Wiki サービス ヘルスチェック
+[Trait("TestKind", "Integration")]
 public class HealthEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

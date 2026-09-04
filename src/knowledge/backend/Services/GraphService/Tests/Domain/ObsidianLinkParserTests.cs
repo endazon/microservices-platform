@@ -10,6 +10,7 @@ namespace GraphService.Tests.Domain;
 // EdgeTypeResolver は何も分けられない。
 //
 // 🔴 **否定形テストには必ず陽性対照を対で置く**（GraphTraversalTests と同じ作法）。
+[Trait("TestKind", "Unit")]
 public class ObsidianLinkParserTests
 {
     // ── 3 意味層の写像（ADR-0033 決定 8 の表） ─────────────────────────────────

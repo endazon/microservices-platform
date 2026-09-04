@@ -5,6 +5,7 @@ using Knowledge.Contracts.Dtos;
 namespace AiAnalysisService.Tests.Domain;
 
 // FR-07, UC-02: タスク種別ごとにプロンプトが切り替わり、出典・根拠の制約が常に含まれることを検証する。
+[Trait("TestKind", "Unit")]
 public class AnalysisPromptBuilderTests
 {
     private const string Context = "[1] 文書A\n抜粋A\n";

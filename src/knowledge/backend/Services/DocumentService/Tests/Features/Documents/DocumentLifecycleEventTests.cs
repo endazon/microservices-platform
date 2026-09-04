@@ -11,6 +11,7 @@ namespace DocumentService.Tests.Features.Documents;
 // FR-06, UC-03, Issue #88: 文書のアーカイブ（非公開化）・削除が下流（Wiki.js 同期）へ伝播すること。
 //   - POST /documents/{id}/archive → status=archived の DocumentUpdated を発行。
 //   - DELETE /documents/{id} → DocumentDeleted を発行（現状イベント未発行の設計ギャップを解消）。
+[Trait("TestKind", "Integration")]
 public class DocumentLifecycleEventTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

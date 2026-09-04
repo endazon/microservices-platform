@@ -7,6 +7,7 @@ namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 // T-20, FR-11, IADR-0109 (#394): OpenAI 互換 finish_reason → 契約の正準語彙（CompletionStopReasons）の
 // 写像表そのものを固定する。未知値を既定値へ潰さないこと（潰すと「正常終了」に見えて最悪である）と、
 // 大小文字非依存であることが要点。
+[Trait("TestKind", "Unit")]
 public class OpenAiFinishReasonTests
 {
     // T-20a: 既知語彙は正準語彙へ写像する。

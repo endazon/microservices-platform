@@ -9,6 +9,7 @@ namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 // FR-04, FR-05, FR-11, IADR-0111 (#403): 応答が名乗る「使用モデル」が実際に使われたモデルと一致することを固定する。
 // 縮退経路（ABAC 不許可・越境拒否・呼び出し失敗）は LLM を呼んでいないため、モデル名を捏造してはならない。
 // 以前は存在しない設定キー `Llm:DefaultModel` のフォールバックで常に "claude-opus-5" を名乗っていた。
+[Trait("TestKind", "Unit")]
 public class RagOrchestratorDegradedModelTests
 {
     // 用途 rag-answer の実 route 結果（ADR-0022 / IADR-0106）。ゲートウェイが解決して報告する値。

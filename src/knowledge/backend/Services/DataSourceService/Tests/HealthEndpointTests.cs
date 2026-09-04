@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 
 namespace DataSourceService.Tests;
 
+[Trait("TestKind", "Integration")]
 public class HealthEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {
