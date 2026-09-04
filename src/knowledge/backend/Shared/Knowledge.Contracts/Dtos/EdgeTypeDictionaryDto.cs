@@ -99,7 +99,7 @@ public record AiSuggestionDto(
     // タグ提案は終点を持たないので `TargetDocumentTitle` は null である。
     string SourceDocumentTitle = "",
     string? TargetDocumentTitle = null,
-    // FR-18, SC-03, ADR-0063 決定 3〜5, IADR-0361 決定 4 (#1187): **この利用者が承認・却下できるか**
+    // FR-18, SC-03, ADR-0063 決定 3〜5, IADR-0364 決定 4 (#1187): **この利用者が承認・却下できるか**
     // （①起点文書への write **または** ②SC-05 の管理者経路のロール）。
     //
     // サーバ側で判定した値である —— SPA は辞書もポリシーも引かず、この値だけで

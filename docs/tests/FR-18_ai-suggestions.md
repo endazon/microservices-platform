@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-18, SC-03, SC-05, SC-09]
 adrs: [ADR-0033, ADR-0034, ADR-0051, ADR-0063]
-iadrs: [IADR-0242, IADR-0266, IADR-0361]
+iadrs: [IADR-0242, IADR-0266, IADR-0364]
 specs: [20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary]
 issues: [#450, #914, #911, #915, #1014, #1187]
 -->

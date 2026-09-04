@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocumentService.Tests.Features.Documents.AddTag;
 
-// FR-18, SC-03, SC-05, SC-09, ADR-0063 決定 1〜3, ADR-0036 D-07, IADR-0361 (#1187 / #1014):
+// FR-18, SC-03, SC-05, SC-09, ADR-0063 決定 1〜3, ADR-0036 D-07, IADR-0364 (#1187 / #1014):
 // **AI タグ提案の承認の反映先** `POST /documents/{id}/tags`。
 //
 // 🔴 **陰性は陽性対照と対で置く。** 「常に 404」「常に 400」の実装でも陰性だけなら緑になる。
@@ -206,7 +206,7 @@ public class DocumentTagReflectionTests(TestWebApplicationFactory factory)
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    // ---- 生成段が引く内部口（IADR-0361 決定 2） ----
+    // ---- 生成段が引く内部口（IADR-0364 決定 2） ----
 
     // FR-18, ADR-0063 決定 2 (#1014): `/internal/tags/names` は**名前だけ**を返す（使用件数を運ばない）。
     // 認証を要求しない（メッシュ内部 API。`/internal/knowledge-health/observations` と同じ形）。

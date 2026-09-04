@@ -15,7 +15,7 @@ namespace GraphService.Features.AiSuggestions.Reject;
 // 却下回数を増やし、両端の**本文指紋**を控える（解除の判定に使う）。
 // 指紋は呼び出し側が与える —— 本サービスは本文を持たない。
 //
-// FR-18, ADR-0063 決定 3・4, IADR-0361 決定 3 (#1187): **承認と同じ資格**（①起点文書への write
+// FR-18, ADR-0063 決定 3・4, IADR-0364 決定 3 (#1187): **承認と同じ資格**（①起点文書への write
 // **または** ②管理者ロール）で判定する。却下レコードは永久保持され再提案を止める（ADR-0033 決定 10）
 // ので、却下だけを誰にでも開かない。②が無いと取り込み文書（`owner=system`）の提案は誰も却下できない。
 internal static class RejectAiSuggestionEndpoint

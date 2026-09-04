@@ -53,7 +53,7 @@ internal static class ListAiSuggestionsEndpoint
 
             var rows = await query.OrderBy(s => s.CreatedAt).ToListAsync(ct);
 
-            // FR-18, SC-03, ADR-0063 決定 3〜5, IADR-0361 決定 4 (#1187): 行ごとに**承認・却下の資格**
+            // FR-18, SC-03, ADR-0063 決定 3〜5, IADR-0364 決定 4 (#1187): 行ごとに**承認・却下の資格**
             // （`CanDecide`）を載せる。SPA はこの値だけで「承認できる／権限が無い」を分けて描く。
             // write スコープは**要求ごとに 1 回**だけ解決し、**可視な行が 1 つも無ければ解決しない**
             // （往復を増やさない）。判定そのものは承認・却下の口と同じ `CanDecideAsync` である。

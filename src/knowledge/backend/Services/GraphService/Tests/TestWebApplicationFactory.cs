@@ -33,7 +33,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     // **書き込みの認可を測るテストは、必ずここを明示的に置くこと。**
     public Func<HttpContext, AccessScopeResponse>? WriteScopeProvider { get; set; }
 
-    // FR-18, ADR-0063 決定 1〜3, IADR-0361 (#1187 / #1014): DocumentService との 2 本の経路を差し替える。
+    // FR-18, ADR-0063 決定 1〜3, IADR-0364 (#1187 / #1014): DocumentService との 2 本の経路を差し替える。
     //
     // **反映先（`IDocumentTagWriter`）は記録するスタブ**である —— 呼ばれた文書 ID・タグ値を残し、
     // 応答は `TagWriter.Outcome` で差し替える（辞書外・後段の拒否・不達を再現する）。

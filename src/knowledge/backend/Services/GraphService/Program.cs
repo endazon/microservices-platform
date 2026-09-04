@@ -80,7 +80,7 @@ builder.Services.AddHttpClient<ISuggestionLlmClient, LlmGatewaySuggestionClient>
 builder.Services.AddScoped<ISimilarityCandidateSource, UnconfiguredSimilarityCandidateSource>();
 builder.Services.AddScoped<AiSuggestionGenerator>();
 
-// FR-18, SC-03, SC-05, SC-09, ADR-0063 決定 1〜3, IADR-0361 (#1187 / #1014): DocumentService との
+// FR-18, SC-03, SC-05, SC-09, ADR-0063 決定 1〜3, IADR-0364 (#1187 / #1014): DocumentService との
 // 2 本の経路 —— 生成段が引くタグ辞書（`/internal/tags/names`。本サービス自身が読む）と、
 // 承認の反映（`POST /documents/{id}/tags`。**承認者本人の資格を転送する**。サービスアカウントは持たない）。
 //

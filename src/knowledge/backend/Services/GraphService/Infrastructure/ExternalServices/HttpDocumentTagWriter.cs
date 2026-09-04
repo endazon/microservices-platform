@@ -5,7 +5,7 @@ using Knowledge.Contracts.Dtos;
 
 namespace GraphService.Infrastructure.ExternalServices;
 
-// FR-18, SC-03, ADR-0063 決定 1〜3, IADR-0361 決定 1 (#1187):
+// FR-18, SC-03, ADR-0063 決定 1〜3, IADR-0364 決定 1 (#1187):
 // DocumentService の `POST /documents/{id}/tags` を**承認者本人の資格で**呼ぶアダプタ。
 //
 // 🔴 **権限伝播は方式 A（`Authorization` ヘッダの転送）である**（`RagOrchestrator` → RetrievalService、

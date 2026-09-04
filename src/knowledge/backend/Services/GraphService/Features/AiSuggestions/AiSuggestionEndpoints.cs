@@ -86,7 +86,7 @@ public static class AiSuggestionEndpoints
         return source is not null && AuthorizedNode.Authorize(source, writeScope) is not null;
     }
 
-    // FR-18, SC-03, SC-05, ADR-0063 決定 3・4, IADR-0361 決定 3 (#1187): **承認・却下の資格。**
+    // FR-18, SC-03, SC-05, ADR-0063 決定 3・4, IADR-0364 決定 3 (#1187): **承認・却下の資格。**
     //
     //   ① 起点文書への `write`（`IsSourceWritableAsync`。ADR-0036 D-07）  **または**
     //   ② SC-05 の管理者経路のロール（`platform-admin`）

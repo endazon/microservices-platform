@@ -4,7 +4,7 @@ using Knowledge.Contracts.Dtos;
 
 namespace GraphService.Infrastructure.ExternalServices;
 
-// FR-18, SC-09, ADR-0063 決定 2, IADR-0361 決定 2 (#1014):
+// FR-18, SC-09, ADR-0063 決定 2, IADR-0364 決定 2 (#1014):
 // DocumentService の内部口 `GET /internal/tags/names` から辞書の**名前集合**を読むアダプタ。
 //
 // 🔴 **利用者の資格情報を転送しない。** 読み取り主体は本サービス自身である ——

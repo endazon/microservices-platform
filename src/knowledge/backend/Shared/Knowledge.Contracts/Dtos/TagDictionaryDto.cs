@@ -42,7 +42,7 @@ public record RenameTagResponse(TagDto Tag, int RepublishedDocuments);
 // **辞書は管理面、facet は利用者面**という 2 経路を意図的に保つ。
 public record TagDictionaryResponse(List<TagDto> Tags);
 
-// FR-18, SC-03, SC-05, SC-09, ADR-0063 決定 1〜3, IADR-0361 (#1187): **文書へタグを 1 つ足す**要求。
+// FR-18, SC-03, SC-05, SC-09, ADR-0063 決定 1〜3, IADR-0364 (#1187): **文書へタグを 1 つ足す**要求。
 //
 // AI のタグ提案を承認したとき、GraphService が**承認者本人の資格情報を転送して**
 // `POST /documents/{id}/tags` を呼ぶ（サービスアカウントが代わりに書く形は採らない —— 決定 3）。
@@ -50,7 +50,7 @@ public record TagDictionaryResponse(List<TagDto> Tags);
 // （SC-05「既定タグ辞書に整合」は経路を問わない不変条件。決定 2）。
 public record AddDocumentTagRequest(string Name);
 
-// FR-18, SC-09, ADR-0063 決定 2, IADR-0361 決定 2 (#1014): **辞書の名前だけ**を返す内部応答。
+// FR-18, SC-09, ADR-0063 決定 2, IADR-0364 決定 2 (#1014): **辞書の名前だけ**を返す内部応答。
 //
 // GraphService が提案の**生成段**で LLM に選ばせる値集合として引く（`GET /internal/tags/names`。
 // メッシュ内部 API。利用者へは返らない）。**使用件数を持たない** —— 件数は管理面の集計値であり

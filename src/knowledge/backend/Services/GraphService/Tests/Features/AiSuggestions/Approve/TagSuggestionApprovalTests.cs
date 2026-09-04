@@ -11,7 +11,7 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace GraphService.Tests.Features.AiSuggestions.Approve;
 
-// FR-18, SC-03, SC-05, SC-09, ADR-0033 決定 7・10, ADR-0063 決定 1〜4, IADR-0361 (#1187 / #1014):
+// FR-18, SC-03, SC-05, SC-09, ADR-0033 決定 7・10, ADR-0063 決定 1〜4, IADR-0364 (#1187 / #1014):
 // **タグ提案の承認 —— 反映・辞書の値域・認可の選言。**
 //
 // 🔴 **陰性は陽性対照と対で置く。** 「常に 404」「常に 400」「反映先を呼ばない」実装でも陰性だけなら

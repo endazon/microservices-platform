@@ -10,7 +10,7 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace GraphService.Tests.Features.AiSuggestions.Generate;
 
-// FR-18, SC-03, SC-09, ADR-0063 決定 2, IADR-0361 決定 2 (#1014): **生成段のタグ辞書の値域強制。**
+// FR-18, SC-03, SC-09, ADR-0063 決定 2, IADR-0364 決定 2 (#1014): **生成段のタグ辞書の値域強制。**
 //
 // 「辞書外の値を持つ提案は生成しない」を、LLM が辞書外を返した場合について固定する。
 // 🔴 **陰性は陽性対照と対で置く** —— 辞書内の値が提案になることを同じクラスで見る。

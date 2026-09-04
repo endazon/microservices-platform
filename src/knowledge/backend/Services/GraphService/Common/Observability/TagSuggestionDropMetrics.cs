@@ -2,7 +2,7 @@ using System.Diagnostics.Metrics;
 
 namespace GraphService.Common.Observability;
 
-// FR-18, SC-09, SC-10, ADR-0063 決定 2, IADR-0361 決定 2 (#1014): **生成段で辞書と突き合わせて
+// FR-18, SC-09, SC-10, ADR-0063 決定 2, IADR-0364 決定 2 (#1014): **生成段で辞書と突き合わせて
 // 落としたタグ提案の件数**。
 //
 // `EdgeTypeFallbackMetrics`（#912）と同型である。同じ形を採る理由:

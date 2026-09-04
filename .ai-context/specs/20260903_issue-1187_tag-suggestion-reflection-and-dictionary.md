@@ -29,7 +29,7 @@ plan_refs:
   - "planning#495（環流。裁定 2026-08-29） / planning#304（取り込み経路はタグを生成しない）"
   - "05_screens §SC-03 AI 提案の承認欄（タグ提案は SC-09 のタグ辞書に定義済みの値のみ） / §SC-05 既定タグ辞書に整合の射程（経路を問わない）"
 related_adrs:
-  - IADR-0361
+  - IADR-0364
   - IADR-0300
   - IADR-0272
   - IADR-0266
@@ -129,7 +129,7 @@ $ git grep -il "IKnowledgeHealthReporter" | wc -l                    → 9   （
 
 | 除外したもの | 理由 |
 | --- | --- |
-| `.ai-context/specs/**` `.ai-context/adr/IADR-0300` ほか確定済み記録 | 凍結記録は書き換えない（`traceability.repo.md`）。IADR-0300 決定 4 は本作業で事実上失効するが、後継 IADR（[[IADR-0361]]）側に Supersedes を書き、旧記録は触らない |
+| `.ai-context/specs/**` `.ai-context/adr/IADR-0300` ほか確定済み記録 | 凍結記録は書き換えない（`traceability.repo.md`）。IADR-0300 決定 4 は本作業で事実上失効するが、後継 IADR（[[IADR-0364]]）側に Supersedes を書き、旧記録は触らない |
 | `Domain/KnowledgeHealth*` `Features/KnowledgeHealth/**` `GraphDocuments/Sync/**` DashboardService | #1186 の宣言領域 |
 | McpServer / AuthorizationService `Features/Users` | #1185 の宣言領域 |
 | frontend Dockerfile / edge | #1135 の宣言領域 |
@@ -186,7 +186,7 @@ $ git grep -il "IKnowledgeHealthReporter" | wc -l                    → 9   （
     LLM が返す自由文であり基数が無界、かつ本文由来の語を含み得る）。`EdgeTypeFallbackMetrics` と同型。
 - **承認段**（決定 2 後段）: §1 の DocumentService が権威として 400 を返し、GraphService は
   `unknown_tag` で承認を拒む。**GraphService が辞書を二重に引くことはしない**（判断点を 1 つに保つ）。
-- **辞書の削除・改名と承認済みタグの関係**（#1014 受け入れ基準 5）: [[IADR-0361]] 決定 6 に明記する。
+- **辞書の削除・改名と承認済みタグの関係**（#1014 受け入れ基準 5）: [[IADR-0364]] 決定 6 に明記する。
   改名は文書が識別子を参照するので自動追随（IADR-0153 決定 1）。削除は使用件数 1 以上で拒まれる
   （SC-09）ため、反映済みのタグは剥がれない。**提案行の `TagValue` は記録であり、改名に追随させない。**
 
@@ -215,7 +215,7 @@ $ git grep -il "IKnowledgeHealthReporter" | wc -l                    → 9   （
   - 承認が 400 `unknown_tag` で返ったときは「このタグは辞書に無いため反映できません。却下してください。」
     を出す（決定 2 後段の帰結を利用者に読める形で）。
 - **リンク提案の行は従来どおり**（ボタン有効・拒否は 404 → 汎用エラー）。決定 5 の射程はタグ提案であり、
-  リンク行への拡張は [[IADR-0361]] フォローアップ。
+  リンク行への拡張は [[IADR-0364]] フォローアップ。
 
 ### 5. 変更ファイル（宣言領域の内側）
 
@@ -237,7 +237,7 @@ $ git grep -il "IKnowledgeHealthReporter" | wc -l                    → 9   （
 | `sc03-document/components/AiSuggestionPanel.tsx`（＋テスト）→ `pnpm run i18n` | 決定 5 |
 | `docs/screens/SC-03,SC-21` `docs/tests/SC-03,SC-21,FR-18` | 追随 |
 | `scripts/contract-schema-baseline.json` | `--update`（非破壊の追加） |
-| `.ai-context/adr/IADR-0361_*.md` ＋ README | 実装 ADR |
+| `.ai-context/adr/IADR-0364_*.md` ＋ README | 実装 ADR |
 
 ## 受け入れ基準（#1187 の 11 件 ＋ #1014 の 5 件を写像）
 
@@ -255,7 +255,7 @@ $ git grep -il "IKnowledgeHealthReporter" | wc -l                    → 9   （
 | 1187-10 | SC-21 の行は非表示にならず導線を持つ | 既存 `AiSuggestionListPage.test.tsx`（変更なし＝影響なし） |
 | 1187-11 | 一括承認に当たるルートが無い | 既存 `No_bulk_approval_route_exists` / `BffGraphSuggestionTests`（変更なし） |
 | 1014-4 | 辞書内の値は従来どおり通る（陽性対照を同じクラスに置く） | 上記の各陽性対照 |
-| 1014-5 | 辞書の削除・改名後の挙動が IADR に明記されている | [[IADR-0361]] 決定 6 |
+| 1014-5 | 辞書の削除・改名後の挙動が IADR に明記されている | [[IADR-0364]] 決定 6 |
 
 ## テスト方針
 
@@ -290,13 +290,13 @@ GraphService / DocumentService / BFF のイメージだけ差し替え、一時�
 ## 計画書との差異
 
 - 差異: なし。ADR-0063 決定 1〜5 をそのまま実装する。
-- **生成段の読み取り主体**（issue #1014 ⑦「唯一の実装設計上の論点」）は [[IADR-0361]] 決定 2 で決めた
+- **生成段の読み取り主体**（issue #1014 ⑦「唯一の実装設計上の論点」）は [[IADR-0364]] 決定 2 で決めた
   （メッシュ内部 API・GraphService 自身が読む）。計画への裁定依頼は要らない（ADR-0063 が「新たな裁定を
   与えるのではない」と明記）。
 
 ## 未決事項
 
-1. **リンク提案の行にも `canDecide` で表示を分けるか**（決定 5 の射程外。[[IADR-0361]] フォローアップ 1）。
+1. **リンク提案の行にも `canDecide` で表示を分けるか**（決定 5 の射程外。[[IADR-0364]] フォローアップ 1）。
 2. **辞書が大きくなったときのプロンプト長**（値集合をそのまま渡す。上限を置くなら「どの部分集合を渡すか」の
    決めが要る。同 フォローアップ 2）。
 3. **`/internal/tags/names` の残余リスク**（メッシュ内から無認証で辞書の名前を読める）は IADR-0299 と同じ受容。

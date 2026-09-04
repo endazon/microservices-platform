@@ -58,7 +58,7 @@ public static class DocumentEndpoints
         // 認証だけは要る（主体が決まらないと動的束縛が評価できない）。
         var bodyIntake = app.MapGroup("/documents").WithTags("Documents").RequireAuthorization();
 
-        // ── FR-18, SC-03, ADR-0063 決定 3, IADR-0361 (#1187): AI タグ提案の承認の反映先 ──
+        // ── FR-18, SC-03, ADR-0063 決定 3, IADR-0364 (#1187): AI タグ提案の承認の反映先 ──
         //
         // 🔴 **この群にもロールを積まない。** 認可は「①所有者の動的束縛 **または** ②管理者ロール」の
         // 選言であり（決定 3）、group にロールを積むと①の側（自分の文書の提案を承認する一般利用者）が

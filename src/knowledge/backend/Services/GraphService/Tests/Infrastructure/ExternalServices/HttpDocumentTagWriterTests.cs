@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GraphService.Tests.Infrastructure.ExternalServices;
 
-// FR-18, ADR-0063 決定 1〜3, IADR-0361 決定 1・2 (#1187 / #1014):
+// FR-18, ADR-0063 決定 1〜3, IADR-0364 決定 1・2 (#1187 / #1014):
 // DocumentService へ向く 2 つのアダプタの**写像**を `HttpMessageHandler` 層で固定する。
 //
 // 🔴 **資格情報の転送は陽性対照つきで固定する。** 転送を外しても本サービスのテストは緑のまま
@@ -116,7 +116,7 @@ public class HttpDocumentTagWriterTests
         outcome.Should().Be(TagWriteOutcome.Unavailable);
     }
 
-    // ── 辞書の読み取り（IADR-0361 決定 2） ──────────────────────────────────
+    // ── 辞書の読み取り（IADR-0364 決定 2） ──────────────────────────────────
 
     private static HttpTagDictionaryReader Reader(CapturingHandler handler)
         => new(new StubHttpClientFactory(handler), NullLogger<HttpTagDictionaryReader>.Instance);

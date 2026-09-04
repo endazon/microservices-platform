@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-06, FR-12, FR-17, FR-18, FR-19, FR-20, FR-21, SC-01, SC-02, SC-03, SC-04, SC-05, SC-09, SC-18, SC-21, UC-01, UC-02, UC-07]
 adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0063]
-iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0121, IADR-0124, IADR-0126, IADR-0272, IADR-0276, IADR-0290, IADR-0300, IADR-0323, IADR-0361]
+iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0121, IADR-0124, IADR-0126, IADR-0272, IADR-0276, IADR-0290, IADR-0300, IADR-0323, IADR-0364]
 specs: [20260804_issue-502_sc01-03-search-flow, 20260828_issue-1011_version-body-contract, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary]
 issues: [#12, #446, #450, #452, #490, #502, #519, #541, #553, #586, #918, #1011, #1014, #1104, #1187, planning#197, planning#237, planning#244, planning#473, planning#495]
 -->

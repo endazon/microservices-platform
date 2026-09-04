@@ -14,7 +14,7 @@ namespace GraphService.Features.AiSuggestions.Approve;
 // 🔴 **承認は辺を作る＝書き込みである**（ADR-0033 決定 7「承認済みの提案だけが辺になる」）。
 // したがって到達可能性（read）とは別に **write スコープで判定する**（#993 / IADR-0272 決定 2）。
 //
-// ── FR-18, SC-03, SC-05, SC-09, ADR-0063 決定 1〜3, IADR-0361 (#1187 / #1014): **タグ提案の反映**
+// ── FR-18, SC-03, SC-05, SC-09, ADR-0063 決定 1〜3, IADR-0364 (#1187 / #1014): **タグ提案の反映**
 //
 // タグ提案の反映先は DocumentService のタグである（本サービスは辺を持たない）。承認者本人の資格で
 // `POST /documents/{id}/tags` を呼び（`IDocumentTagWriter`。方式 A の権限伝播）、**反映が確定して

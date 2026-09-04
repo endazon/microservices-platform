@@ -39,7 +39,7 @@ public sealed class SuggestionPrompt
     // ADR-0033 決定 3: 辺の型は実行時辞書である。**LLM に選ばせる値集合をここで渡す。**
     public IReadOnlyList<string> EdgeTypeNames { get; }
 
-    // FR-18, SC-09, ADR-0063 決定 2, IADR-0361 決定 2 (#1014): **タグ辞書の名前集合。** 辺の型と同じく
+    // FR-18, SC-09, ADR-0063 決定 2, IADR-0364 決定 2 (#1014): **タグ辞書の名前集合。** 辺の型と同じく
     // LLM に選ばせる値集合であり、生成段はこれと突き合わせて辞書外を落とす。
     // **空なら「タグ候補を提案しない」と指示する**（辞書が引けなかったときの fail-closed もこの形で表す）。
     public IReadOnlyList<string> TagNames { get; }

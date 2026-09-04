@@ -6,7 +6,7 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace DocumentService.Features.Documents.AddTag;
 
-// FR-18, SC-03, SC-05, SC-09, ADR-0063 決定 1〜3, ADR-0036 D-07, IADR-0361 (#1187):
+// FR-18, SC-03, SC-05, SC-09, ADR-0063 決定 1〜3, ADR-0036 D-07, IADR-0364 (#1187):
 // **文書へタグを 1 つ足す**（AI のタグ提案を承認したときの反映先）。
 //
 // 🔴 **認可は「①その文書への write（所有者の動的束縛）または ②管理者ロール」の選言である**

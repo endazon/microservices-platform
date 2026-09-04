@@ -131,7 +131,7 @@ public class Document
         Snapshot(changeNote ?? "metadata-updated");
     }
 
-    // FR-18, SC-03, SC-05, ADR-0063 決定 1, IADR-0361 (#1187): **タグを 1 つ足す**（AI 提案の承認の反映先）。
+    // FR-18, SC-03, SC-05, ADR-0063 決定 1, IADR-0364 (#1187): **タグを 1 つ足す**（AI 提案の承認の反映先）。
     //
     // **冪等である** —— 既に付いていれば何もせず false を返す（版も進めず `UpdatedAt` も動かさない）。
     // 承認の再試行（GraphService 側の保存だけが失敗した場合）で版が積み上がらないようにするためである。

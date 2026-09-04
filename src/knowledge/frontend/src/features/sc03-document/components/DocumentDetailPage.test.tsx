@@ -348,7 +348,7 @@ describe('DocumentDetailPage (SC-03)', () => {
     expect(screen.getByRole('button', { name: '却下' })).toBeEnabled();
   });
 
-  // SC-03, FR-18, ADR-0063 決定 3〜5, IADR-0361 決定 5 (#1187): **タグ提案の行は資格で 2 つに分ける。**
+  // SC-03, FR-18, ADR-0063 決定 3〜5, IADR-0364 決定 5 (#1187): **タグ提案の行は資格で 2 つに分ける。**
   // 1187-9: 資格を持つ利用者には承認ボタンが有効で、「準備中」「未実装」の文言が**無い**
   // （IADR-0300 決定 4 の「承認だけを実行不可にする」は反映経路の実装をもって失効した）。
   it('enables approval of a tag suggestion for a user who can decide (no "not implemented" wording)', async () => {
