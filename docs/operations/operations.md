@@ -793,6 +793,15 @@ LlmGateway は補完 1 回ごとに `llm.completion.total`（Prometheus では `
   **`upstream_error` には含まれない** —— 回復した呼び出しを障害の率に入れると上の critical が誤発火する。
   **429 ではフォールバックしない**（429 は再試行の対象。同決定 4）ため、429 は従来どおり
   `upstream_error` に現れる。フォールバック率のしきい値は**実測前のため置かない**。
+- **［2026-09-05 追記 / #1091］`llm.upstream_status` が加わった**（`none` / `rate_limited` /
+  `client_error` / `server_error` / `transport` / `other` の 6 値）。**`llm.result` とは独立した軸**で、
+  「基盤側が何をしたか」と「上流が何を返したか」を別々に読む。**429 が他の失敗と区別できる**ように
+  なった —— `sum by (llm_upstream_status) (rate(llm_completion_total{llm_result="upstream_error"}[30m]))`。
+  **上のしきい値の式も数値も変えていない**（429 を除きたいときだけ `llm_upstream_status!="rate_limited"`
+  を足す）。設定ミス（`other`）と通信障害（`transport`）は別の値である —— 混ぜると直す対象を取り違える。
+  🔴 **「429 が起きていない」と読むときは、同じ期間に `llm_upstream_status="none"` の系列が実在する
+  ことを陽性対照として対で示す**（Prometheus は起きていないラベル値を 0 として持たないため、
+  空ベクタは「起きていない」とも「計器が動いていない」とも読める）。
 - **アラートルールの実配線は未了**（`deploy/prometheus/alerts.yml` への追加と Alertmanager 通知先の設定）。
   本節はしきい値の方針までを定める（補完の終了理由メトリクスの実装 ADR §フォローアップ 1）。
 

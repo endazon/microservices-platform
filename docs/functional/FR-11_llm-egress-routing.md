@@ -3,15 +3,15 @@ title: LLM 呼び出し先ルーティング 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-02
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
-ids: [FR-11, UC-01, UC-02]
+ids: [FR-11, NFR-21, UC-01, UC-02]
 adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0038]
-iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340]
-specs: [20260902_571_trade-decision-screening-purpose]
-issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, AST#290, AST#571, planning#50, planning#426]
+iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374]
+specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis]
+issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, AST#290, AST#571, planning#50, planning#426]
 -->
 
 # 機能仕様書: LLM 呼び出し先ルーティング（用途・機密度別）
@@ -200,6 +200,11 @@ OpenAI 互換 API を呼ぶプロバイダ（`SelfHostedProvider`＝ティアA /
 **`fallback` は前節のフォールバックが発火した呼び出し**（見送った候補）であり、
 **計器は増やしていない**（#863。用途別フォールバックの実装 ADR 決定 5）。フォールバックした 1 リクエストは
 `fallback` と `sent` の 2 件になるが、**拒否率の分母（`sent`）はリクエストあたり最大 1 件**のままである。
+**［2026-09-05 追記 / #1091］上流が返したものは `llm.upstream_status` という別の軸で持つ**
+（`none` / `rate_limited` / `client_error` / `server_error` / `transport` / `other`）。
+`llm.result` が「基盤側が何をしたか」、`llm.upstream_status` が「上流が何を返したか」であり、
+**429（レート制限）を 5xx・通信断・設定ミスと区別できる**。**生の HTTP ステータスは載せない**
+（値域が非有界になる。原文は失敗時のログに `upstream status {Status}` として残る）。
 定義・クエリ例・しきい値の方針は [`docs/observability/llm-completion-metrics.md`](../observability/llm-completion-metrics.md)。
 
 ### 縮退応答の `Model`（呼び出し側が名乗る「使用モデル」）
