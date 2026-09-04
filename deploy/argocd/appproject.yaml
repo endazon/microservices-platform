@@ -57,6 +57,13 @@ spec:
       kind: PeerAuthentication
     - group: "networking.istio.io"
       kind: DestinationRule
+    # #1115 → #1159: mesh.backchannelLogout.fromOutsideMesh=true の配備で
+    #   istio-mtls.yaml が AuthorizationPolicy（平文を 1 URI に限る DENY）を描画する。
+    #   許可種別に無いと ArgoCD の同期はその時点で止まる（IADR-0307 が直した 6 種別の欠落と同型）。
+    #   ここは**列挙**なので、テンプレートが種別を増やしたら足す。追随は
+    #   scripts/k8s-local-up.test.js の「ArgoCD の許可種別」が固定する。
+    - group: "security.istio.io"
+      kind: AuthorizationPolicy
     # #782: エッジ（ADR-0021 の Istio Ingress Gateway）。edge.enabled=true の本番像でレンダリングされる。
     - group: "networking.istio.io"
       kind: Gateway
