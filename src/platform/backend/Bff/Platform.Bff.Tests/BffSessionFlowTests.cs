@@ -128,7 +128,8 @@ public sealed class SessionTestHost : IAsyncDisposable
 
                         // 本物のセッション Cookie を発行させるためのテスト専用入口。
                         e.MapGet("/test/signin", async (
-                            string sub, string? sid, string? roles, string? expiresAt, HttpContext http) =>
+                            string sub, string? sid, string? roles, string? expiresAt,
+                            string? attrs, HttpContext http) =>
                         {
                             var claims = new List<Claim>
                             {
@@ -136,6 +137,15 @@ public sealed class SessionTestHost : IAsyncDisposable
                                 new(ClaimTypes.Name, sub),
                             };
                             if (!string.IsNullOrEmpty(sid)) claims.Add(new Claim("sid", sid));
+                            // FR-05, SC-12, ADR-0062 決定 4: ABAC 属性のクレーム（`clearance` /
+                            // `department`）を**セッションには持たせられる**が、身元の口は返さない。
+                            // その否定形を試験するには、まず持っている状態を作れる必要がある。
+                            foreach (var pair in (attrs ?? string.Empty).Split(
+                                ',', StringSplitOptions.RemoveEmptyEntries))
+                            {
+                                var kv = pair.Split('=', 2);
+                                if (kv.Length == 2) claims.Add(new Claim(kv[0], kv[1]));
+                            }
                             foreach (var role in (roles ?? string.Empty).Split(
                                 ',', StringSplitOptions.RemoveEmptyEntries))
                                 claims.Add(new Claim(ClaimTypes.Role, role));
@@ -179,12 +189,14 @@ public sealed class SessionTestHost : IAsyncDisposable
 
     /// <summary>サインインしてセッション Cookie（`名前=値` の 1 組）を返す。</summary>
     public async Task<string> SignInAsync(
-        string sub, string? sid = "sid-1", string roles = "", string? expiresAt = null)
+        string sub, string? sid = "sid-1", string roles = "", string? expiresAt = null,
+        string? attrs = null)
     {
         var url = $"/test/signin?sub={Uri.EscapeDataString(sub)}"
             + (sid is null ? "" : $"&sid={Uri.EscapeDataString(sid)}")
             + $"&roles={Uri.EscapeDataString(roles)}"
-            + (expiresAt is null ? "" : $"&expiresAt={Uri.EscapeDataString(expiresAt)}");
+            + (expiresAt is null ? "" : $"&expiresAt={Uri.EscapeDataString(expiresAt)}")
+            + (attrs is null ? "" : $"&attrs={Uri.EscapeDataString(attrs)}");
         var resp = await Client.GetAsync(url);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var setCookie = resp.Headers.GetValues("Set-Cookie")

@@ -1,4 +1,5 @@
 using McpServer.Domain;
+using McpServer.Domain.Ports;
 using McpServer.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,20 +12,20 @@ public static class ReplaceMcpClientAttributesEndpoint
     {
         app.MapPut("/{clientId}/attributes",
             async (string clientId, ReplaceMcpClientAttributesRequest req,
-                   McpDbContext db, TimeProvider clock) =>
+                   McpDbContext db, TimeProvider clock,
+                   IRegistrarAttributeResolver registrar, CancellationToken ct) =>
         {
-            var client = await db.Clients.FirstOrDefaultAsync(c => c.ClientId == clientId);
+            var client = await db.Clients.FirstOrDefaultAsync(c => c.ClientId == clientId, ct);
             if (client is null) return Results.NotFound();
 
-            if (client.Kind == McpClientKind.ServiceAccount)
-            {
-                var errors = ToolPublicationConfigValidator
-                    .ValidateServiceAccountAttributes(clientId, req.Attributes);
-                if (errors.Count > 0) return McpClientEndpoints.Problem(errors[0]);
-            }
+            // 🔴 ADR-0034 決定 9 / ADR-0062 決定 2・3: 登録経路と**同じ 1 つの関数**が判定する。
+            // 登録だけ塞いで差し替えが緩い形にしない（片方だけ直したときに黙ってズレる）。
+            var rejected = await McpClientEndpoints.RejectUnassignableAsync(
+                clientId, client.Kind, req.Attributes, registrar, ct);
+            if (rejected is not null) return rejected;
 
             client.ReplaceAttributes(req.Attributes, clock.GetUtcNow());
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(ct);
             return Results.Ok(McpClientEndpoints.ToView(client));
         });
 
