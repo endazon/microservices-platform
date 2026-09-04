@@ -9,7 +9,7 @@ public static class ListUsersEndpoint
     public static IEndpointRouteBuilder MapListUsers(this IEndpointRouteBuilder app)
     {
         app.MapGet("", async (IIdentityAdminClient identity, CancellationToken ct) =>
-            Results.Ok((await identity.ListUsersAsync(ct)).Select(UserAdminEndpoints.ToDto).ToList()));
+            Results.Ok((await identity.ListUsersAsync(ct)).Select(PlatformUserMapper.ToDto).ToList()));
 
         return app;
     }
