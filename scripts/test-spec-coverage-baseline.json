@@ -76,7 +76,8 @@
       "KnowledgeHealthEndpointTests",
       "KnowledgeHealthProducerTests",
       "LlmUsageMetricsTests",
-      "ModelPriceTableTests"
+      "ModelPriceTableTests",
+      "UsageRetentionTests"
     ],
     "docs/tests/FR-11_llm-egress-routing.md": [
       "AnthropicContentBlockSanitizerTests",

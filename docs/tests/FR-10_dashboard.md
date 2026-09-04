@@ -3,15 +3,15 @@ title: テスト仕様書 — FR-10 利用状況・検索傾向・回答品質�
 type: test-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-09-03
+updated: 2026-09-04
 author: claude
 ---
 <!-- trace:
 ids: [FR-10, FR-17, FR-18, FR-19, UC-05, SC-10]
-adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0034, ADR-0044, ADR-0050, ADR-0054, ADR-0071]
-iadrs: [IADR-0011, IADR-0122, IADR-0265, IADR-0299, IADR-0353, IADR-0357]
-specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count]
-issues: [#443, #1186, #1197, planning#494, planning#514, planning#525]
+adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0034, ADR-0044, ADR-0050, ADR-0054, ADR-0071, ADR-0072]
+iadrs: [IADR-0011, IADR-0122, IADR-0265, IADR-0299, IADR-0343, IADR-0353, IADR-0357, IADR-0368]
+specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count, 20260904_issue-1198_usage-event-subject-and-retention]
+issues: [#443, #1186, #1197, #1198, planning#494, planning#514, planning#515, planning#525, planning#526]
 -->
 
 # テスト仕様書: 利用状況・検索傾向・回答品質ダッシュボード
@@ -92,6 +92,26 @@ issues: [#443, #1186, #1197, planning#494, planning#514, planning#525]
 | T-68 | DashboardService | **不正な構成**（0 / -1） | **起動は落ちない。既定 3 へ倒す。** 応答の `SearchTermMinCount` も**倒した後の値**で、実際に 3 でふるっている（構成値をそのまま返すと画面が嘘をつく） |
 | T-69 | BFF | 下限の透過 | 後段が返した下限を**そのまま**返す。スタブは既定と別の値（7）にしてあり、**BFF が自前の既定を埋める実装はここで落ちる** |
 
+### 利用イベントの主体と保持期間
+
+**陽性と陰性を対で置く。** 保持日数の述語を丸ごと外して全件削除にしても
+「91 日前の行が消える」テスト（T-73）は緑のまま通る（**変異試験で実測した。落ちるのは
+T-74 / T-75 の 2 本**）。境界は**上下から**固定する —— 基準時刻ちょうどは残り、1 ティック前は消える。
+
+| ID | 対象 | 内容 | 期待 |
+| --- | --- | --- | --- |
+| T-70 | DashboardService | 1 件記録してからモデルの列を引く | **利用者を識別する列が無い**。他の 4 列は引ける（陽性対照） |
+| T-71 | DashboardService | **未認証**で `POST /dashboard/events` | **401**（認証の維持を機械で固定する。認証は不正投入の統制であり、記録の統制とは別である） |
+| T-72 | DashboardService | 認証済みの一般利用者で `POST /dashboard/events` | **201**（管理者限定にしない。T-71 と対で「誰が呼べるか」を上下から固定する） |
+| T-73 | DashboardService | **91 日前**の行で掃除を回す（陽性） | 消える。日数は**絶対値**で置く（基準時刻の式を引かない） |
+| T-74 | DashboardService | **89 日前**＋91 日前を同時に置く（陰性＋陽性対照） | 89 日前は**残り**、`GET /dashboard/summary?days=90` に出る。91 日前は消える |
+| T-75 | DashboardService | 基準時刻**ちょうど**（境界） | **残る**（集計が読む側と同じ 1 点。`<` であって `<=` ではない） |
+| T-76 | DashboardService | 基準時刻の**1 ティック前**（境界） | **消える**。T-75 と対で境界を上下から固定する |
+| T-77 | DashboardService | 掃除の間隔の**不正値**（0 / -5） | **起動は落ちない。既定へ倒す**。倒した後の値が実効値である（構成値は読めており、読んだうえで倒している） |
+| T-78 | DashboardService | 保持日数と集計の上限 | **同じ 1 つの定数**から来る（保持日数の構成キーは無い。片方だけは動かせない） |
+| T-79 | DashboardService | 常駐処理を有効にして起動（陽性） | 起動直後の 1 周で古い行が消える（結線の確認） |
+| T-80 | DashboardService | 常駐処理を無効にして起動（陰性） | **消えない**。T-79 と対で置く（片方だけだと「そもそも回っていない」と区別できない） |
+
 ### LLM 利用実績（単価表・金額換算）
 
 > **ID は節ごとに独立している**（本節の T-30 以降は上の健全性の T-30 とは別物である）。
@@ -168,6 +188,8 @@ issues: [#443, #1186, #1197, planning#494, planning#514, planning#525]
 - **陳腐化文書数の生産**（本文更新起点・境界の両側・配備時構成のしきい値）… T-45〜T-56。
 - **件数と現在のしきい値の併記**（0 件でも消えない）… T-57〜T-62。
 - **検索傾向の出現件数の下限**（陰性・境界・「その他」を出さない・配備時構成・不正値の退避・BFF 透過）… T-63〜T-69。
+- **利用イベントに利用者識別子を持たない**（列が無い・認証は維持）… T-70〜T-72。
+- **保持期間 90 日の実施**（陽性・陰性・境界の両側・構成の退避・常駐処理の結線）… T-73〜T-80。
 - **LLM 利用実績の用途別・モデル別の計測**（総額のみを採らない）… T-37, T-39, T-40。
 - **有効期間つき単価表と期間をまたぐ集計**（境界を含む）… T-30〜T-35。
 - **期間外・該当なしは警告として表に出す**（無音の 0 円にしない）… T-34, T-38。
@@ -179,4 +201,5 @@ issues: [#443, #1186, #1197, planning#494, planning#514, planning#525]
 - `LlmUsageMetricsTests` — 用途別・モデル別の利用実績
 - `ModelPriceTableTests` — 有効期間つき単価表と金額換算（区間は半開・期間外は無音の 0 円にしない）
 - `DashboardEndpointTests` — ダッシュボードの集計端点
+- `UsageRetentionTests` — 利用イベントの主体（持たない）と保持期間（90 日で消す。境界は上下から）
 - `KnowledgeHealthProducerTests` — 観測値の生産（孤立文書の判定・スコープ付与・単一書き手化・送出）

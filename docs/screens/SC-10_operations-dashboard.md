@@ -3,15 +3,15 @@ title: 運用ダッシュボード 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-09-03
+updated: 2026-09-04
 author: claude
 ---
 <!-- trace:
 ids: [FR-08, FR-10, FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-05, SC-06, SC-07, SC-10, SC-11, UC-05, UC-07]
-adrs: [ADR-0006, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0037, ADR-0050, ADR-0071]
-iadrs: [IADR-0009, IADR-0011, IADR-0035, IADR-0036, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0135, IADR-0142, IADR-0265, IADR-0299, IADR-0353, IADR-0357]
-specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260807_issue-586_planning-pin-adr-accepted, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count]
-issues: [#3, #5, #10, #17, #443, #446, #452, #503, #504, #519, #544, #586, #599, #1186, #1197, planning#198, planning#237, planning#244, planning#494, planning#514, planning#525]
+adrs: [ADR-0006, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0037, ADR-0050, ADR-0071, ADR-0072]
+iadrs: [IADR-0009, IADR-0011, IADR-0035, IADR-0036, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0135, IADR-0142, IADR-0265, IADR-0299, IADR-0343, IADR-0353, IADR-0357, IADR-0368]
+specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260807_issue-586_planning-pin-adr-accepted, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count, 20260904_issue-1198_usage-event-subject-and-retention]
+issues: [#3, #5, #10, #17, #443, #446, #452, #503, #504, #519, #544, #586, #599, #1186, #1197, #1198, planning#198, planning#237, planning#244, planning#494, planning#514, planning#515, planning#525, planning#526]
 -->
 
 # 画面仕様書: 運用ダッシュボード
@@ -190,6 +190,23 @@ SLO・利用状況・コストの運用 KPI を一覧し、**専用ツール（G
   `件数 >= undefined` は**全件 false** であり、素で使うと**一覧が丸ごと空になる** ——
   「知らないものを消す」向きで、いちばん避けたい壊れ方である。**稼働クラスタで実測した。**
 - 検索語に紐づく**利用者・時刻・ヒットした文書は表示しない**（件数のみ）。
+
+### 記録されるものと残る期間（画面には出ないが、画面が拠って立つもの）
+
+**画面の表示はこの節によって変わらない。** それでもここに書くのは、画面が読む集計の**元の行**に
+何が入っていて、いつまで残るのかが読めないと、**画面が採らないと決めた指標の理由が実装で
+成立しているか**を確かめられないからである。
+
+- **利用イベントは利用者を識別する列を持たない。** 残るのは種別・検索語・発生時刻だけである。
+  記録の受け口は認証必須のままであり（認証済みでなければ記録できない）、変わったのは
+  **解決した主体を列へ書かないこと**だけである。
+- **行は 90 日を超えて残らない。** 90 日は**本画面が照会できる最大期間**（`days` の上限）と
+  同じ 1 つの値であり、**別々には変更できない** —— 片方だけ動かすと、
+  **画面からは選べるのに行が無い期間**が生じる。
+- **したがって、消える行は最初から本画面に出ていなかった行である。** 保持期間の実施で
+  グラフ・表・総件数のいずれも変わらない。
+- 🔴 **出現件数の下限（前節）は画面の統制であって保管の統制ではない。** 画面で伏せた語も
+  DB には残る —— **その語も 90 日で消える**というのが本節の意味である。
 
 ## バリデーション
 
