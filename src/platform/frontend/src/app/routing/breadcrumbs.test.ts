@@ -29,6 +29,8 @@ const DECLARATIONS: readonly FeatureBreadcrumb[] = [
   },
   // 動的な葉（SC-03 相当）。**自分の段を宣言しない。**
   { routePath: '/docs/$id', group: 'user', parents: [{ label: '検索結果', to: '/search' }] },
+  // 動的な葉＋自画面の名を親の段に置く（SC-04 相当。#1200）。葉の無いときは親の段が現在地になる。
+  { routePath: '/wiki', group: 'user', parents: [{ label: 'Wiki', to: '/wiki' }] },
   // 管理グループ（SC-05 相当）。
   {
     routePath: '/admin/documents',
@@ -153,6 +155,32 @@ describe('breadcrumbTrail: 動的な葉（SC-03）', () => {
   });
 });
 
+// SC-04（#1200）: 自画面の名「Wiki」を親の段に置き、葉（開いたページの題名）は画面が与える。
+// 🔴 **葉の無いときは「Wiki」が現在地であり、リンクにしない**（Layout.test.tsx の描画契約
+// 「現在地はリンクではない」と同じ事実を、段の側で固定する）。
+describe('breadcrumbTrail: 動的な葉＋自画面の名を親の段に置く画面（SC-04）', () => {
+  it('demotes the self-pointing parent to the current segment while no leaf is supplied', () => {
+    const t = trail('/wiki');
+    expect(t.map((s) => s.label)).toEqual(['ホーム', 'Wiki']);
+    expect(t.at(-1)?.kind).toBe('current');
+    expect(t.at(-1)?.to).toBeUndefined();
+  });
+
+  it('links the self-pointing parent and renders the leaf as current once supplied', () => {
+    const t = trail('/wiki', [], '経費精算規程');
+    expect(t.map((s) => s.label)).toEqual(['ホーム', 'Wiki', '経費精算規程']);
+    expect(t.at(-2)).toEqual({ kind: 'parent', label: 'Wiki', to: '/wiki' });
+    expect(t.at(-1)?.kind).toBe('current');
+    expect(t.at(-1)?.to).toBeUndefined();
+  });
+
+  // 陽性対照: 自ルートを指さない親の段（SC-03 の「検索結果」→ /search）は葉が無くてもリンクのまま。
+  it('leaves a parent that points elsewhere linked even without a leaf (SC-03)', () => {
+    const t = trail('/docs/$id');
+    expect(t.at(-1)).toEqual({ kind: 'parent', label: '検索結果', to: '/search' });
+  });
+});
+
 describe('breadcrumbTrail: 存在秘匿（IADR-0009）', () => {
   it('returns nothing for an unknown route path', () => {
     expect(trail('/no-such-screen', [ADMIN])).toEqual([]);
@@ -202,7 +230,7 @@ describe('registered breadcrumbs (実アプリの宣言)', () => {
   const routeFullPaths = () => Object.keys(router.routesByPath);
 
   it('registers a declaration for every screen route the plan lists', () => {
-    // 05_screens §共通シェル「ルートパス」。SC-04（/wiki）は SPA 側の遷移導線として持つ。
+    // 05_screens §共通シェル「ルートパス」。SC-04（/wiki）は基盤 SPA のルートである（#1200 / ADR-0073 決定 2）。
     const planned = [
       '/ask',
       '/search',
@@ -261,8 +289,13 @@ describe('registered breadcrumbs (実アプリの宣言)', () => {
   });
 
   // 動的な葉を持つ画面だけが label を省略できる。他の画面の省略は「段が出ない」欠陥である。
-  it('omits the static label only for the screen with a dynamic leaf (SC-03)', () => {
+  // SC-04（/wiki）は #1200 で葉（開いたページの題名）を持つようになった。`label` を置くと
+  // `label ?? leaf` で葉が一度も描かれないため、「Wiki」は親の段に置く（稼働環境で実測）。
+  it('omits the static label only for the screens with a dynamic leaf (SC-03 / SC-04)', () => {
     const withoutLabel = registered().filter((d) => d.label === undefined);
-    expect(withoutLabel.map((d) => d.routePath)).toEqual(['/docs/$id']);
+    expect(withoutLabel.map((d) => d.routePath).sort()).toEqual(['/docs/$id', '/wiki']);
+    // 葉を持つ画面は、葉が無いときにも自画面の名が消えないよう親の段を持つ（`ホーム / Wiki`）。
+    const wiki = registered().find((d) => d.routePath === '/wiki');
+    expect(wiki?.parents?.map((c) => c.to)).toEqual(['/wiki']);
   });
 });

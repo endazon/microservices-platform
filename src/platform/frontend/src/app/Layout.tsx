@@ -86,7 +86,15 @@ function Breadcrumb({ leaf }: { leaf: string | undefined }) {
                 {seg.label}
               </span>
             ) : (
-              <Link to={seg.to as '/ask'} className="hover:underline">
+              // 🔴 親の段は「いま居る画面」ではないので、TanStack の活性判定（既定は前方一致）に
+              // `aria-current="page"` を付けさせない。SC-04（#1200）は「Wiki」を `/wiki` への親の段に置き、
+              // 葉（題名）が現在地になる —— `/wiki?page=…` で既定のままだと親と葉の両方に
+              // `aria-current` が立つ（Playwright で実測）。`exact` は検索パラメータまで完全一致を要求する。
+              <Link
+                to={seg.to as '/ask'}
+                activeOptions={{ exact: true }}
+                className="hover:underline"
+              >
                 {seg.label}
               </Link>
             )}

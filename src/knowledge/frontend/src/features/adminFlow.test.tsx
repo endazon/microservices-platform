@@ -25,10 +25,6 @@ vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
   apiRequest: mocks.apiRequest,
 }));
-vi.mock('@foundation/config/runtimeConfig', () => ({
-  appConfig: () => ({ wikiBaseUrl: undefined }),
-}));
-
 import { createSc03DocumentRoute } from './sc03-document';
 import { createSc05DocumentsRoute } from './sc05-documents';
 import { createSc06DataSourcesRoute } from './sc06-datasources';
@@ -82,6 +78,8 @@ function routeResponses(path: string): Promise<unknown> {
   if (path === `/documents/${DOC_ID}`) return Promise.resolve(jsonResponse(DOCUMENT));
   if (path === `/documents/${DOC_ID}/content`) return Promise.resolve(jsonResponse(CONTENT));
   if (path === `/documents/${DOC_ID}/versions`) return Promise.resolve(jsonResponse([]));
+  // #1200: SC-03 は「Wiki で閲覧」の出し分けに権限内の Wiki 台帳を引く（本フローでは空）。
+  if (path === '/wiki/pages') return Promise.resolve(jsonResponse([]));
   return Promise.reject(new Error(`unexpected path: ${path}`));
 }
 

@@ -85,6 +85,9 @@ export interface BreadcrumbTrailOptions {
  *   （モックの crumb でグループ段は `<a>` ではない）。描画側はここをバッジにする。
  * - **現在地の段はリンクにしない**（`to` を持たない）。
  * - **自画面の段は `label` も `leaf` も無ければ出さない**（未確定の文字列を描かない）。
+ * - **葉が無く、末尾の親の段が自ルートを指すなら、その段が現在地である**（リンクにしない。
+ *   SC-04 の `ホーム / Wiki`。#1200 —— 葉を持つ画面が自画面の名を親の段に置くと、葉の無いときに
+ *   「いま居る画面へのリンク」が現在地の位置に立つ。段の構成は宣言のまま、リンクだけを外す）。
  */
 export function breadcrumbTrail({
   routePath,
@@ -110,7 +113,15 @@ export function breadcrumbTrail({
     trail.push(segment('parent', parent.label, parent.to));
   }
   const current = declaration.label ?? leaf;
-  if (current !== undefined) trail.push(segment('current', current));
+  if (current !== undefined) {
+    trail.push(segment('current', current));
+    return trail;
+  }
+  // 葉が無い（取得前・ページを開いていない）。末尾の親の段が自ルートを指すなら現在地に格下げする。
+  const last = trail.at(-1);
+  if (last?.kind === 'parent' && last.to === routePath) {
+    trail[trail.length - 1] = { kind: 'current', label: last.label };
+  }
   return trail;
 }
 

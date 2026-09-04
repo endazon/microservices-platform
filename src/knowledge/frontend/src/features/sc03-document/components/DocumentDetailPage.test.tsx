@@ -13,7 +13,6 @@ import { jsonResponse, noContent } from '@foundation/testing/bffResponse';
 // モックは `apiRequest` に当てる（`apiFetch` を差し替えても効かない）。
 const mocks = vi.hoisted(() => ({
   apiRequest: vi.fn(),
-  wikiBaseUrl: undefined as string | undefined,
   // 05_screens §共通シェル / #446: パンくずの**動的な葉**。本画面はこれで文書タイトルを
   // 共通シェルへ渡す。ハーネス（renderUnitRoute）はシェルを描かないので、
   // 渡している値そのものを見る（描画は platform 側 Layout.test.tsx が見る）。
@@ -22,9 +21,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
   apiRequest: mocks.apiRequest,
-}));
-vi.mock('@foundation/config/runtimeConfig', () => ({
-  appConfig: () => ({ wikiBaseUrl: mocks.wikiBaseUrl }),
 }));
 vi.mock('@foundation/routing/breadcrumbLeaf', () => ({
   useBreadcrumbLeaf: mocks.useBreadcrumbLeaf,
@@ -107,7 +103,19 @@ const TAG_SUGGESTION = {
 const TAG_SUGGESTION_FORBIDDEN = { ...TAG_SUGGESTION, canDecide: false };
 const EDGE_TYPES = [{ id: EDGE_TYPE_ID, name: '関連する', layer: 'core', isSymmetric: true }];
 
-/** BFF の各エンドポイントへ応答を割り当てる（既定はすべて成功・提案は 0 件）。 */
+// SC-03, UC-07, #1200 / IADR-0365 決定 1: 「Wiki で閲覧」は**権限内の Wiki 台帳**（`GET /bff/wiki/pages`）に
+// この文書が載っているときだけ出す。台帳の応答はここで差し替える（既定は**載っていない**）。
+const WIKI_PAGE = {
+  id: 'page-1',
+  documentId: DOC_ID,
+  title: DETAIL.title,
+  slug: 'keihi-seisan',
+  wikiPath: `doc/${DOC_ID}`,
+  status: 'Active',
+  syncedAt: '2026-05-30T00:00:00Z',
+};
+
+/** BFF の各エンドポイントへ応答を割り当てる（既定はすべて成功・提案は 0 件・Wiki 台帳は空）。 */
 function respond({
   detail = DETAIL as unknown,
   content = CONTENT as unknown,
@@ -115,6 +123,7 @@ function respond({
   suggestions = [] as unknown,
   edgeTypes = EDGE_TYPES as unknown,
   approve = undefined as unknown,
+  wikiPages = [] as unknown,
 }: {
   detail?: unknown;
   content?: unknown;
@@ -123,6 +132,7 @@ function respond({
   edgeTypes?: unknown;
   /** 承認の口の応答を差し替える（既定は成功。`Error` を渡すと拒否を再現する）。 */
   approve?: unknown;
+  wikiPages?: unknown;
 } = {}) {
   const reply = (value: unknown) => {
     if (value instanceof Error) return Promise.reject(value);
@@ -130,6 +140,7 @@ function respond({
     return Promise.resolve(jsonResponse(value));
   };
   mocks.apiRequest.mockImplementation((path: string) => {
+    if (path === '/wiki/pages') return reply(wikiPages);
     // 🔴 提案の口を**最初に**見る。承認・却下は `/graph/suggestions/{id}/approve` であり、
     // 一覧の判定を後ろに置くと `endsWith('/content')` 等と取り違えはしないが、
     // 「承認したのに一覧の応答が返る」形になって観測が壊れる。
@@ -158,7 +169,6 @@ async function renderPage() {
 
 beforeEach(() => {
   mocks.apiRequest.mockReset();
-  mocks.wikiBaseUrl = undefined;
   mocks.useBreadcrumbLeaf.mockClear();
 });
 
@@ -210,19 +220,37 @@ describe('DocumentDetailPage (SC-03)', () => {
     );
   });
 
-  // UC-07: Wiki 閲覧への導線。未設定の環境では導線を出さない。
-  it('links to SC-04 only when a wiki base url is configured', async () => {
-    respond();
-    await renderPage();
+  // UC-07 / #1200: Wiki 閲覧への導線は**権限内の Wiki 台帳にこの文書が載っているとき**だけ出し、
+  // 文書別ディープリンク（`/wiki?doc=<id>`）へ送る。台帳に無ければ出さない（到達できない導線を押させない）。
+  it('links to the SC-04 deep link only when the wiki ledger lists the document', async () => {
+    const { queryClient } = await (async () => {
+      respond();
+      return renderPage();
+    })();
     await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
+    // 台帳の取得が終わってから否定する（読み込み中に出さないだけの実装を緑にしない）。
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    expect(mocks.apiRequest).toHaveBeenCalledWith('/wiki/pages', expect.anything());
     expect(screen.queryByRole('link', { name: 'Wikiで閲覧' })).not.toBeInTheDocument();
 
-    mocks.wikiBaseUrl = 'https://wiki.example.co.jp';
+    respond({ wikiPages: [WIKI_PAGE] });
     await renderPage();
     expect((await screen.findAllByRole('link', { name: 'Wikiで閲覧' }))[0]).toHaveAttribute(
       'href',
-      '/wiki',
+      `/wiki?doc=${DOC_ID}`,
     );
+  });
+
+  // 台帳が読めなくても導線を推測で出さない。
+  it('hides the wiki link when the ledger cannot be read', async () => {
+    respond({ wikiPages: ApiError.fromStatus(502) });
+    const { queryClient } = await renderPage();
+    await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+    expect(screen.queryByRole('link', { name: 'Wikiで閲覧' })).not.toBeInTheDocument();
+    // 本体表示は続く（台帳の失敗で文書詳細を壊さない）。
+    expect(screen.getByText(/締め日は毎月25日とする。/)).toBeInTheDocument();
   });
 
   // UC-02 例外フロー: 権限の有無は利用者に開示しない。404 は「不在」と同じ中立表示にする。
@@ -301,10 +329,9 @@ describe('DocumentDetailPage (SC-03)', () => {
   // **本テストが否定するのは FR-17 の画面側だけになり、その FR-17 は SC-18 の画面として着手済みである**
   // （本リポジトリに sc18-graph の feature が在る）。誤報の前提が無いので、起点 ID を書く。
   it('does not render the knowledge-graph link (SC-18 belongs to another screen)', async () => {
-    // **導線の並びを全部描かせた状態で見る。** wikiBaseUrl 未設定だと「Wikiで閲覧」を含む行ごと
-    // 描画されず、そこへ保留対象の導線を足しても検出できない（実測: 変異試験 M3 が素通りした）。
-    mocks.wikiBaseUrl = 'https://wiki.example.co.jp';
-    respond();
+    // **導線の並びを全部描かせた状態で見る。** 台帳に載せないと「Wikiで閲覧」が描画されず、
+    // そこへ保留対象の導線を足しても検出できない（実測: 変異試験 M3 が素通りした）。
+    respond({ wikiPages: [WIKI_PAGE] });
     await renderPage();
     await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
 
@@ -322,8 +349,7 @@ describe('DocumentDetailPage (SC-03)', () => {
   // 素通りした）。`queryClient.isFetching()` が 0 になるまで待つのが、この画面で使える唯一の
   // 決定的な合図である（欄が出ないので「現れるのを待つ」ことができない）。
   it('does not render the suggestion panel when there is nothing pending', async () => {
-    mocks.wikiBaseUrl = 'https://wiki.example.co.jp';
-    respond({ suggestions: [] });
+    respond({ suggestions: [], wikiPages: [WIKI_PAGE] });
     const { queryClient } = await renderPage();
     await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
     await waitFor(() => expect(queryClient.isFetching()).toBe(0));
@@ -553,9 +579,8 @@ describe('DocumentDetailPage (SC-03)', () => {
   // **ここに起点 ID を書かないのは意図的である**（上の保留テストと同じ理由。
   // check-test-traceability.js が未着手機能の ID を「実装が先行している」と誤報する）。
   it('does not render a backlink panel or a local graph (they belong to the wiki screen only)', async () => {
-    // 導線の並びを全部描かせた状態で見る（wikiBaseUrl 未設定だと行ごと消えて検出できない）。
-    mocks.wikiBaseUrl = 'https://wiki.example.co.jp';
-    respond();
+    // 導線の並びを全部描かせた状態で見る（台帳に載せないと Wiki の導線が消えて検出できない）。
+    respond({ wikiPages: [WIKI_PAGE] });
     await renderPage();
     await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
 

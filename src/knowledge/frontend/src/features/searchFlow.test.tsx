@@ -26,10 +26,6 @@ vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   apiRequest: mocks.apiRequest,
   apiStream: mocks.apiStream,
 }));
-vi.mock('@foundation/config/runtimeConfig', () => ({
-  appConfig: () => ({ wikiBaseUrl: undefined }),
-}));
-
 import { createSc01SearchRoute } from './sc01-search';
 import { createSc02ResultsRoute } from './sc02-results';
 import { createSc03DocumentRoute } from './sc03-document';
@@ -74,6 +70,8 @@ beforeEach(() => {
   mocks.apiStream.mockReset();
   mocks.apiRequest.mockImplementation((path: string) => {
     if (path === '/search') return Promise.resolve(jsonResponse(SEARCH_RESPONSE));
+    // #1200: SC-03 は「Wiki で閲覧」の出し分けに権限内の Wiki 台帳を引く（本フローでは空）。
+    if (path === '/wiki/pages') return Promise.resolve(jsonResponse([]));
     if (path.endsWith('/content')) return Promise.resolve(jsonResponse(CONTENT));
     if (path.endsWith('/versions')) return Promise.resolve(jsonResponse([]));
     return Promise.resolve(jsonResponse(DETAIL));

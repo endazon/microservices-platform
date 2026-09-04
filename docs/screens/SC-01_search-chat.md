@@ -3,15 +3,15 @@ title: 検索／チャット質問画面 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-30
+updated: 2026-09-04
 author: claude
 ---
 <!-- trace:
-ids: [FR-03, FR-04, FR-05, FR-08, FR-17, FR-18, FR-19, FR-20, FR-21, SC-01, SC-02, SC-03, SC-04, SC-08, SC-18, SC-19, UC-01]
-adrs: [ADR-0031, ADR-0036, ADR-0037, ADR-0043, ADR-0066]
-iadrs: [IADR-0009, IADR-0037, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0131, IADR-0142, IADR-0151, IADR-0308]
-specs: [20260804_issue-502_sc01-03-search-flow, 20260806_issue-541_citation-confidentiality, 20260830_issue-1065_feature-import-isolation]
-issues: [#446, #490, #502, #519, #539, #540, #541, #586, #599, #1065, planning#197, planning#200, planning#237, planning#244]
+ids: [FR-03, FR-04, FR-05, FR-08, FR-13, FR-17, FR-18, FR-19, FR-20, FR-21, SC-01, SC-02, SC-03, SC-04, SC-08, SC-18, SC-19, UC-01, UC-07]
+adrs: [ADR-0031, ADR-0036, ADR-0037, ADR-0043, ADR-0066, ADR-0073]
+iadrs: [IADR-0009, IADR-0037, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0131, IADR-0142, IADR-0151, IADR-0308, IADR-0355, IADR-0365]
+specs: [20260804_issue-502_sc01-03-search-flow, 20260806_issue-541_citation-confidentiality, 20260830_issue-1065_feature-import-isolation, 20260903_issue-1200_sc04-wiki-screen-via-bff]
+issues: [#446, #490, #502, #519, #539, #540, #541, #586, #599, #1065, #1200, planning#197, planning#200, planning#237, planning#244]
 -->
 
 # 画面仕様書: 検索／チャット質問画面
@@ -231,21 +231,27 @@ hi-fi `sc-01.html:428-429` は出典 1 行に**チップを 2 つ**描く——`
 | --- | --- | --- |
 | 送信 | 直前のストリームを `AbortController` で中断 → `POST /bff/analysis/ask/stream` を購読し、`citations` → `token`* → `done` を反映 | — |
 | キーワード検索のみ → | 入力中の語を `?q=` に載せて検索結果一覧へ（検索・質問の代替フロー） | `/search?q=…` |
-| 出典クリック | 文書出典は文書詳細へ内部遷移。Wiki 出典は Wiki 閲覧画面へ | `/docs/$id` ／ `/wiki` |
+| 出典クリック | 文書出典は文書詳細へ内部遷移。Wiki 出典は Wiki 閲覧画面の**当該ページ**へ（文書別ディープリンク） | `/docs/$id` ／ `/wiki?doc=<documentId>` |
 | 👍 / 👎 | `POST /bff/feedback`（`answerId` ＋ `rating` ＋ 質問文） | — |
 | 範囲を指定してAI分析を依頼 → | AI 分析ダッシュボードへ | `/analyze` |
 
 ## 出典の種別判定（📄 と 📖）
 
-`CitationDto` は種別を持たない。判定は `sourceUri` の形で行う。
+`CitationDto` は種別を持たない。判定は**権限内の Wiki 台帳**（`GET /bff/wiki/pages`。前段ゲートウェイが ABAC を通した
+メタデータだけが返る）に**その出典の文書 ID が載っているか**で行う。
 
 | 条件 | 記号 | 遷移先 | ラベル |
 | --- | --- | --- | --- |
-| `sourceUri` が実行時 config の `wikiBaseUrl` で始まる | `📖` | Wiki 閲覧画面（`/wiki`） | 組織文書 |
-| 上記以外（`sourceUri` の有無を問わない） | `📄` | 文書詳細（`/docs/$id`） | 組織文書 |
+| 出典の `documentId` が権限内の Wiki 台帳に載っている | `📖` | Wiki 閲覧画面の文書別ディープリンク（`/wiki?doc=<documentId>`） | 組織文書 |
+| 載っていない／台帳が未取得・取得失敗 | `📄` | 文書詳細（`/docs/$id`） | 組織文書 |
 
-- 判定に用いる `wikiBaseUrl` は**実行時 config**（`platform/frontend/public/config.js`）であり、ビルドへ焼き込まない。
-- `wikiBaseUrl` が未設定の環境では全件が `📄` になる（Wiki 由来かどうかを推測しない）。
+- **［2026-09-03 是正］従前は `sourceUri` が実行時 config `wikiBaseUrl` で始まるかで判定していた。** 計画側の裁定
+  「Wiki.js 本体 UI は利用者へ露出しない」が stg/prod で `WIKI_BASE_URL` を**設定しない**と定めたため、その判定は本番で
+  一度も真にならなかった（📖 が本番で一度も出ない）。判定の根拠を台帳へ移し、`sourceUri` と実行時 config は見ない。
+- 台帳は**出典が現れてから 1 回だけ**引く（問う前に Wiki の口を叩かない）。Wiki 閲覧画面のページツリーと同じ問い合わせなので
+  キャッシュを共有する。
+- 台帳が未取得・取得失敗のときは Wiki 由来を**推測しない**（到達できない導線へ送らない）。`documentId` は常にあるので
+  文書詳細へは必ず辿れる。
 - **色では区別しない**（INDEX 決定 21（計画リポ））。記号は装飾（`aria-hidden`）とし、意味はタグの文字が担う。
 
 ## 権限・表示条件・存在秘匿
