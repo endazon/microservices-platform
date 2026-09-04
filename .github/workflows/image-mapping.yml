@@ -30,11 +30,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # Issue #1182, IADR-0372: 可変ユニット（src/*）の submodule を取得する。SERVICE_PROJECT /
+      # dockerfile が **pin されたツリーに実在するか**を見るのに実体が要る（ci.yml / images.yml と
+      # 同型のイディオム。public ユニットはトークン不要）。取得できなければ次のステップが
+      # --require-submodule で赤くなる（「何も検査せず緑」にしない）。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
       # --self-test で検査器自体を毎回試験する（check-unit-dependencies.js / validate-pipeline-config.js と同型）。
       - name: Self-test image-mapping checker
         run: node scripts/check-image-mapping.js --self-test
-      - name: Check MAPPING ↔ compose drift
-        run: node scripts/check-image-mapping.js
+      # #1182: 同値（ドリフト）に加え、submodule ツリーへのパス実在も見る。--require-submodule は
+      # 未 populate を notice ではなく赤にする（上の取得ステップが壊れたら黙って緑にならない）。
+      - name: Check MAPPING ↔ compose drift and submodule path existence
+        run: node scripts/check-image-mapping.js --require-submodule

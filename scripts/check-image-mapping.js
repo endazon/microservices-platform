@@ -14,9 +14,16 @@
  * （対象消失・MAPPING への二重掲載）も検査する（IADR-0068）。#313/IADR-0078 で frontend を k8s 化した
  * ため現在 COMPOSE_ONLY は空。除外機構は将来の compose 専用対象に備えて残す。
  *
+ * #1182 / IADR-0372: 上記「対応表の整合」に加え、**submodule（src/ai-stock-trading）の pin された
+ * ツリーに dockerfile / SERVICE_PROJECT が実在するか**も見る。MAPPING と compose は同じ値を持つため、
+ * submodule が樹形を変えると両方が同時に古くなり、ドリフト 0 のまま実在だけが失われる（実測 2 回:
+ * #577 / #1178。どちらもイメージビルドの dotnet restore が MSB1009 で落ちた）。
+ *
  * 使い方:
  *   node scripts/check-image-mapping.js             # 実ファイルを突合。ドリフトがあれば終了コード 1。
  *   node scripts/check-image-mapping.js --self-test # 検査ロジック自体の自己試験。
+ *   node scripts/check-image-mapping.js --require-submodule
+ *                                                   # submodule 未 populate を notice ではなく赤にする（CI 用）。
  */
 const fs = require('fs');
 const path = require('path');
@@ -270,6 +277,140 @@ function computeDrift({
   }
 
   return violations;
+}
+
+// --- #1182: submodule の pin されたツリーにパスが実在するか ---------------------
+//
+// 上の computeDrift は「MAPPING ⇔ compose の同値」だけを見る。この 2 つは同じ値を持つので、
+// submodule（src/ai-stock-trading）が樹形を変えると **両方が同時に古くなり、ドリフトは 0 のまま
+// 通る**。実測で 2 回（#577 / #1178）、pin bump のあとイメージビルドの `dotnet restore` が
+// `MSBUILD : error MSB1009: Project file does not exist.` で落ちている。**最も遅い場所で最初に
+// 落ちる**ので、数秒で読める静的検査を先に置く。設計は IADR-0372。
+//
+// SERVICE_DLL はビルド成果物の名前でありツリーに存在しないため、本検査の対象外である
+// （実ビルドの可否は images.yml が担う。IADR-0067）。
+
+// .gitmodules から submodule の path 一覧を得る（check-doc-links.js の submodulePaths と同型。
+// 本スクリプトは外部依存ゼロ・単一ファイル完結の方針なので、8 行を共有せず持つ）。
+function parseGitmodulesPaths(text) {
+  const out = [];
+  const re = /^\s*path\s*=\s*(.+?)\s*$/gm;
+  let m;
+  while ((m = re.exec(String(text)))) out.push(m[1].replace(/\\/g, '/'));
+  return out;
+}
+
+// build 定義（compose / MAPPING）のうち **context が submodule 配下**のものについて、
+// 「リポルート相対のパス」を列挙する。kind は 'dockerfile' / 'SERVICE_PROJECT'。
+// dockerfile と SERVICE_PROJECT はどちらも context 相対であり、同じタプルで同時に腐る。
+function collectSubmodulePaths({ mappingEntries = [], composeTargets = [], submodules = [] }) {
+  const out = [];
+  const under = (ctx) => submodules.find((s) => ctx === s || ctx.startsWith(s + '/')) || null;
+  const push = (source, id, sub, ctx, relPath, kind) => {
+    if (!relPath) return;
+    // context が submodule ルートより深い場合に備え、context 相対 → リポルート相対へ寄せる。
+    const repoRel = `${ctx.replace(/\/$/, '')}/${relPath}`.replace(/\/{2,}/g, '/');
+    out.push({ source, id, submodule: sub, path: repoRel, kind });
+  };
+  for (const t of composeTargets) {
+    const ctx = normalizeComposeContext(t.context);
+    const sub = under(ctx);
+    if (!sub) continue;
+    push('compose', t.service, sub, ctx, t.dockerfile, 'dockerfile');
+    push('compose', t.service, sub, ctx, (t.args || {}).SERVICE_PROJECT, 'SERVICE_PROJECT');
+  }
+  for (const e of mappingEntries) {
+    const ctx = (e.context || '.').replace(/\/$/, '');
+    const sub = under(ctx);
+    if (!sub) continue;
+    push('MAPPING', e.image, sub, ctx, e.dockerfile, 'dockerfile');
+    push('MAPPING', e.image, sub, ctx, (e.args || {}).SERVICE_PROJECT, 'SERVICE_PROJECT');
+  }
+  return out;
+}
+
+// collectSubmodulePaths の結果を実在検査する。`exists(repoRelPath) => boolean` を **注入** するので、
+// submodule を populate しなくても陽性・陰性の両方を自己試験できる。
+//
+// populated が null なら全 submodule を populate 済みとみなす（純粋ロジックの試験用）。
+// 未 populate の submodule 配下は:
+//   - requireSubmodule なら **赤**（CI はこちらで呼ぶ。populate ステップが将来壊れたときに
+//     「何も検査せず緑」ではなく赤になる）。
+//   - そうでなければ notice のために skipped へ計上して飛ばす（ローカルの fail-open）。
+function computeMissingPaths(entries, exists, { populated = null, requireSubmodule = false } = {}) {
+  const violations = [];
+  const skipped = new Map();
+  const isPop = (sub) => populated === null || populated.has(sub);
+  for (const sub of [...new Set(entries.map((e) => e.submodule))]) {
+    if (isPop(sub)) continue;
+    const n = entries.filter((e) => e.submodule === sub).length;
+    if (requireSubmodule) {
+      violations.push({
+        kind: 'submodule-unpopulated',
+        detail:
+          `submodule '${sub}' が未 populate のため ${n} 件のパス実在検査ができない` +
+          '（--require-submodule 指定。CI の submodule 取得ステップを確認すること）',
+      });
+    } else {
+      skipped.set(sub, n);
+    }
+  }
+  for (const e of entries) {
+    if (!isPop(e.submodule)) continue;
+    if (exists(e.path)) continue;
+    violations.push({
+      kind: 'missing-path',
+      detail:
+        `${e.source} の '${e.id}' が指す ${e.kind} '${e.path}' が submodule '${e.submodule}' の ` +
+        'pin されたツリーに実在しない（pin bump に追随できていない可能性が高い）',
+    });
+  }
+  return { violations, skipped };
+}
+
+// 実ファイルを読んで実在検査する。violations と skipped（notice 用）と checked 件数を返す。
+function checkSubmodulePathExistence({ requireSubmodule = false, root = REPO_ROOT } = {}) {
+  const empty = (kind, detail) => ({ violations: [{ kind, detail }], skipped: new Map(), checked: 0 });
+  let gitmodules;
+  try {
+    gitmodules = fs.readFileSync(path.join(root, '.gitmodules'), 'utf8');
+  } catch (e) {
+    return empty('empty-submodules', `.gitmodules を読めなかった（${e.message}）`);
+  }
+  const submodules = parseGitmodulesPaths(gitmodules);
+  if (submodules.length === 0) {
+    return empty('empty-submodules', '.gitmodules から submodule の path を 1 件も導出できなかった');
+  }
+  const composeTargets = parseComposeBuildTargets(
+    fs.readFileSync(path.join(root, COMPOSE_PATH), 'utf8'),
+  );
+  const mappingEntries = parseMappingEntries(fs.readFileSync(path.join(root, SCRIPT_PATH), 'utf8'));
+  const entries = collectSubmodulePaths({ mappingEntries, composeTargets, submodules });
+  // 導出が空になると「何も検査せず緑」になる。それを失敗として顕在化させる（checkTree と同思想）。
+  if (entries.length === 0) {
+    return empty(
+      'empty-submodule-paths',
+      `${COMPOSE_PATH} / ${SCRIPT_PATH} から submodule 配下を指す build 定義を 1 件も導出できなかった` +
+        '（パーサの破綻か、submodule ユニットのビルド定義が消えたか）',
+    );
+  }
+  const populated = new Set(
+    submodules.filter((s) => {
+      try {
+        const abs = path.join(root, s);
+        return fs.existsSync(abs) && fs.readdirSync(abs).length > 0;
+      } catch (e) {
+        return false;
+      }
+    }),
+  );
+  const { violations, skipped } = computeMissingPaths(
+    entries,
+    (rel) => fs.existsSync(path.join(root, rel)),
+    { populated, requireSubmodule },
+  );
+  const skippedCount = [...skipped.values()].reduce((a, b) => a + b, 0);
+  return { violations, skipped, checked: entries.length - skippedCount };
 }
 
 // --- ファイル読取・実行 -------------------------------------------------------
@@ -530,6 +671,85 @@ function selfTest() {
   });
   cases.push({ name: 'drift: build args 不一致を検出', pass: argsV.some((v) => v.kind === 'args-mismatch'), actual: argsV });
 
+  // --- #1182 / IADR-0372: submodule ツリーのパス実在検査 -----------------------
+
+  expectCount(
+    'existence: .gitmodules から path を導出する',
+    parseGitmodulesPaths(
+      '[submodule "src/ai-stock-trading"]\n\tpath = src/ai-stock-trading\n\turl = https://example.com/a.git\n',
+    ).length,
+    1,
+  );
+
+  const subs = ['src/ai-stock-trading'];
+  const exEntries = collectSubmodulePaths({
+    mappingEntries: astMapping,
+    composeTargets: astCompose,
+    submodules: subs,
+  });
+  // compose 1 件 ＋ MAPPING 1 件 × (dockerfile, SERVICE_PROJECT) = 4 件。
+  expectCount('existence: submodule 配下の build 定義から 4 件のパスを導出', exEntries.length, 4);
+  cases.push({
+    name: 'existence: compose の ../ 付き context も submodule 配下と判定する',
+    pass: exEntries.some((e) => e.source === 'compose' && e.path === 'src/ai-stock-trading/p.csproj'),
+    actual: exEntries,
+  });
+  expectCount(
+    'existence: submodule 配下でない build 定義（context=.）は導出しない',
+    collectSubmodulePaths({
+      mappingEntries: [{ image: 'microservices-platform/frontend', context: '.', dockerfile: 'src/platform/frontend/Dockerfile', args: {} }],
+      composeTargets: [],
+      submodules: subs,
+    }).length,
+    0,
+  );
+
+  // 陰性（すべて実在）→ 違反 0。陽性（1 本だけ実在しない）→ missing-path。**対で置く。**
+  const allExist = () => true;
+  expectCount(
+    'existence: 陰性対照 — すべて実在するなら違反 0',
+    computeMissingPaths(exEntries, allExist).violations.length,
+    0,
+  );
+  const missingV = computeMissingPaths(
+    exEntries,
+    (p) => !p.endsWith('p.csproj'),
+  ).violations;
+  cases.push({
+    name: 'existence: 陽性対照 — SERVICE_PROJECT が実在しないと missing-path',
+    pass: missingV.length === 2 && missingV.every((v) => v.kind === 'missing-path'),
+    actual: missingV,
+  });
+  const missingDockerfileV = computeMissingPaths(
+    exEntries,
+    (p) => !p.endsWith('backend/Dockerfile'),
+  ).violations;
+  cases.push({
+    name: 'existence: 陽性対照 — dockerfile が実在しないと missing-path',
+    pass: missingDockerfileV.length === 2 && missingDockerfileV.every((v) => v.kind === 'missing-path'),
+    actual: missingDockerfileV,
+  });
+
+  // 未 populate: 既定は notice（skipped へ計上）、--require-submodule 相当なら赤。
+  const openRes = computeMissingPaths(exEntries, allExist, { populated: new Set() });
+  cases.push({
+    name: 'existence: 未 populate は既定で fail-open（skip 件数を報告）',
+    pass: openRes.violations.length === 0 && openRes.skipped.get('src/ai-stock-trading') === 4,
+    actual: { violations: openRes.violations, skipped: [...openRes.skipped] },
+  });
+  const closedRes = computeMissingPaths(exEntries, allExist, {
+    populated: new Set(),
+    requireSubmodule: true,
+  });
+  cases.push({
+    name: 'existence: 未 populate は requireSubmodule で赤（submodule-unpopulated）',
+    pass:
+      closedRes.violations.length === 1 &&
+      closedRes.violations[0].kind === 'submodule-unpopulated' &&
+      closedRes.skipped.size === 0,
+    actual: closedRes.violations,
+  });
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -550,17 +770,37 @@ function main() {
     selfTest();
     return;
   }
+  const requireSubmodule = process.argv.includes('--require-submodule');
   const violations = checkTree();
-  if (violations.length === 0) {
-    console.log('[check-image-mapping] OK: MAPPING と compose の build 定義は整合しています（ドリフト 0）。');
+  // #1182 / IADR-0372: 同値だけでなく実在も見る。ドリフトがあっても実在検査は走らせ、
+  // 2 種類の違反を 1 回の実行でまとめて報告する（pin bump の追随は両方に現れることが多い）。
+  const existence = checkSubmodulePathExistence({ requireSubmodule });
+
+  // 「検査していない範囲」は黙って飛ばさない（planning#139 と同じ作法）。
+  for (const [sub, n] of existence.skipped) {
+    console.log(
+      `[check-image-mapping] notice: submodule '${sub}' が未 populate のため、` +
+        `そのツリーを指す ${n} 件（dockerfile / SERVICE_PROJECT）の実在は検査していません。` +
+        '\n  CI では submodule を取得したうえで --require-submodule 付きで実行し、この skip を赤にします。',
+    );
+  }
+
+  const all = [...violations, ...existence.violations];
+  if (all.length === 0) {
+    console.log(
+      '[check-image-mapping] OK: MAPPING と compose の build 定義は整合しています（ドリフト 0）。' +
+        `\n[check-image-mapping] OK: submodule ツリーを指すパスの実在検査 ${existence.checked} 件。`,
+    );
     process.exit(0);
   }
-  console.error(`[check-image-mapping] MAPPING と compose の build 定義に ${violations.length} 件のドリフトを検出しました:`);
-  for (const v of violations) {
+  console.error(`[check-image-mapping] ${all.length} 件の違反を検出しました:`);
+  for (const v of all) {
     console.error(`\n  [${v.kind}] ${v.detail}`);
   }
   console.error(
     `\n${SCRIPT_PATH} の MAPPING と ${COMPOSE_PATH} の build 定義を突き合わせてください。` +
+      '\nsubmodule ツリーを指すパスが実在しない場合は、pin されたコミットの樹形に追随してください' +
+      '（#1182 / .ai-context/adr/IADR-0372_submodule-pinned-path-existence.md）。' +
       '\n設計の根拠は .ai-context/adr/IADR-0068_image-mapping-drift-check.md を参照。',
   );
   process.exit(1);
@@ -575,4 +815,9 @@ module.exports = {
   parseMappingEntries,
   computeDrift,
   checkTree,
+  // #1182 / IADR-0372: submodule の pin されたツリーに対するパス実在検査。
+  parseGitmodulesPaths,
+  collectSubmodulePaths,
+  computeMissingPaths,
+  checkSubmodulePathExistence,
 };

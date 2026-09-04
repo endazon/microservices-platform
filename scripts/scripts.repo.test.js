@@ -1048,6 +1048,220 @@ module.exports = ({ ok, assert }) => {
     assert.ok(v.some((x) => x.kind === 'compose-only-stale'));
   });
 
+  // --- check-image-mapping: submodule の pin されたツリーへのパス実在検査（#1182 / IADR-0372） ---
+  //
+  // computeDrift は「MAPPING ⇔ compose の同値」しか見ない。両者は同じ値を持つので、submodule が
+  // 樹形を変えると **両方が同時に古くなり、ドリフト 0 のまま実在だけが失われる**（実測 2 回:
+  // #577 / #1178。どちらもイメージビルドの dotnet restore が MSB1009 で落ちた）。
+  // ここでは存在判定を注入して、submodule を populate せずに陽性・陰性の対を固定する。
+
+  const {
+    parseGitmodulesPaths,
+    collectSubmodulePaths,
+    computeMissingPaths,
+  } = require('./check-image-mapping.js');
+
+  const SUB = ['src/ai-stock-trading'];
+  // compose 側は deploy/ 相対（'../src/…'）、MAPPING 側はリポルート相対（'src/…'）。同じ値の 2 表現。
+  const SUB_COMPOSE = [
+    {
+      service: 'configuration-service',
+      context: '../src/ai-stock-trading',
+      dockerfile: 'backend/Dockerfile',
+      args: { SERVICE_PROJECT: 'backend/Services/Cfg/Cfg.csproj', SERVICE_DLL: 'Cfg.dll' },
+    },
+  ];
+  const SUB_MAPPING = [
+    {
+      image: 'microservices-platform/configuration-service',
+      context: 'src/ai-stock-trading',
+      dockerfile: 'backend/Dockerfile',
+      args: { SERVICE_PROJECT: 'backend/Services/Cfg/Cfg.csproj', SERVICE_DLL: 'Cfg.dll' },
+    },
+  ];
+  const subEntries = () =>
+    collectSubmodulePaths({ mappingEntries: SUB_MAPPING, composeTargets: SUB_COMPOSE, submodules: SUB });
+
+  ok('parseGitmodulesPaths: .gitmodules から submodule の path を取り出す', () => {
+    const txt =
+      '[submodule "src/ai-stock-trading"]\n\tpath = src/ai-stock-trading\n\turl = https://x/a.git\n' +
+      '[submodule "src/other"]\n\tpath = src/other\n\turl = https://x/b.git\n';
+    assert.deepStrictEqual(parseGitmodulesPaths(txt), ['src/ai-stock-trading', 'src/other']);
+  });
+
+  ok('parseGitmodulesPaths: path 行が無ければ空（0 件を「submodule なし」と黙って読ませない）', () => {
+    assert.deepStrictEqual(parseGitmodulesPaths('[submodule "x"]\n\turl = https://x/a.git\n'), []);
+  });
+
+  ok('collectSubmodulePaths: compose の "../" 付き context も submodule 配下と判定する', () => {
+    const e = subEntries();
+    // compose 1 件 ＋ MAPPING 1 件 × (dockerfile, SERVICE_PROJECT) = 4 件。
+    assert.strictEqual(e.length, 4);
+    assert.ok(
+      e.some(
+        (x) =>
+          x.source === 'compose' &&
+          x.kind === 'SERVICE_PROJECT' &&
+          x.path === 'src/ai-stock-trading/backend/Services/Cfg/Cfg.csproj',
+      ),
+      JSON.stringify(e),
+    );
+    assert.ok(e.every((x) => x.submodule === 'src/ai-stock-trading'));
+  });
+
+  ok('collectSubmodulePaths: submodule 配下でない build 定義（context=.）は拾わない', () => {
+    const e = collectSubmodulePaths({
+      mappingEntries: [
+        { image: 'microservices-platform/frontend', context: '.', dockerfile: 'src/platform/frontend/Dockerfile', args: {} },
+      ],
+      composeTargets: [{ service: 'frontend', context: '..', dockerfile: 'src/platform/frontend/Dockerfile', args: {} }],
+      submodules: SUB,
+    });
+    assert.strictEqual(e.length, 0);
+  });
+
+  ok('collectSubmodulePaths: SERVICE_PROJECT を持たない submodule 配下の定義は dockerfile だけ拾う', () => {
+    const e = collectSubmodulePaths({
+      mappingEntries: [],
+      composeTargets: [{ service: 'x', context: '../src/ai-stock-trading', dockerfile: 'backend/Dockerfile', args: {} }],
+      submodules: SUB,
+    });
+    assert.strictEqual(e.length, 1);
+    assert.strictEqual(e[0].kind, 'dockerfile');
+  });
+
+  ok('computeMissingPaths: 陰性対照 — すべて実在するなら違反 0', () => {
+    const r = computeMissingPaths(subEntries(), () => true);
+    assert.strictEqual(r.violations.length, 0);
+    assert.strictEqual(r.skipped.size, 0);
+  });
+
+  ok('computeMissingPaths: 陽性対照 — SERVICE_PROJECT が消えると compose / MAPPING の両方で赤', () => {
+    // #1178 の事故そのもの: 両側が同じ値なので computeDrift は 0 のまま、実在だけが失われる。
+    const r = computeMissingPaths(subEntries(), (p) => !p.endsWith('Cfg.csproj'));
+    assert.strictEqual(r.violations.length, 2);
+    assert.ok(r.violations.every((v) => v.kind === 'missing-path'));
+    assert.ok(r.violations.some((v) => v.detail.includes('compose')));
+    assert.ok(r.violations.some((v) => v.detail.includes('MAPPING')));
+  });
+
+  ok('computeMissingPaths: 陽性対照 — dockerfile が消えても赤（同じタプルで同時に腐る）', () => {
+    const r = computeMissingPaths(subEntries(), (p) => !p.endsWith('backend/Dockerfile'));
+    assert.strictEqual(r.violations.length, 2);
+    assert.ok(r.violations.every((v) => v.kind === 'missing-path'));
+  });
+
+  ok('computeMissingPaths: 未 populate は既定で fail-open（件数を skipped で報告する）', () => {
+    const r = computeMissingPaths(subEntries(), () => false, { populated: new Set() });
+    // 存在判定が常に false でも、未 populate なら違反にしない（誤検知を出さない）。
+    assert.strictEqual(r.violations.length, 0);
+    assert.strictEqual(r.skipped.get('src/ai-stock-trading'), 4);
+  });
+
+  ok('computeMissingPaths: 未 populate は requireSubmodule で赤（黙って 0 件検査にしない）', () => {
+    const r = computeMissingPaths(subEntries(), () => true, {
+      populated: new Set(),
+      requireSubmodule: true,
+    });
+    assert.strictEqual(r.violations.length, 1);
+    assert.strictEqual(r.violations[0].kind, 'submodule-unpopulated');
+    assert.strictEqual(r.skipped.size, 0);
+  });
+
+  ok('check-image-mapping: --require-submodule は未 populate の submodule で exit 1 になる', () => {
+    // 実運用の CI はこの形で呼ぶ。populate ステップが将来壊れたときに「何も検査せず緑」に
+    // ならないことを、**入口（子プロセス）から**固定する。
+    const fs = require('fs');
+    const os = require('os');
+    const pathMod = require('path');
+    const { spawnSync } = require('child_process');
+    const root = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'img-map-req-'));
+    fs.mkdirSync(pathMod.join(root, 'deploy'), { recursive: true });
+    fs.mkdirSync(pathMod.join(root, 'scripts'), { recursive: true });
+    // submodule は「空のプレースホルダ」（未 populate な CI checkout と同じ形）。
+    fs.mkdirSync(pathMod.join(root, 'src', 'ai-stock-trading'), { recursive: true });
+    fs.writeFileSync(
+      pathMod.join(root, '.gitmodules'),
+      '[submodule "src/ai-stock-trading"]\n\tpath = src/ai-stock-trading\n\turl = https://x/a.git\n'
+    );
+    fs.writeFileSync(
+      pathMod.join(root, 'deploy', 'docker-compose.yml'),
+      [
+        'services:',
+        '  configuration-service:',
+        '    build:',
+        '      context: ../src/ai-stock-trading',
+        '      dockerfile: backend/Dockerfile',
+        '      args:',
+        '        SERVICE_PROJECT: backend/Services/Cfg/Cfg.csproj',
+        '',
+      ].join('\n')
+    );
+    fs.writeFileSync(
+      pathMod.join(root, 'scripts', 'k8s-local-images.sh'),
+      [
+        'MAPPING=(',
+        '  "microservices-platform/configuration-service|src/ai-stock-trading|backend/Dockerfile|SERVICE_PROJECT=backend/Services/Cfg/Cfg.csproj"',
+        ')',
+        '',
+      ].join('\n')
+    );
+    // 検査器本体は本リポジトリのものを使い、REPO_ROOT だけ差し替えて呼ぶ。
+    const driver =
+      'const m = require(' +
+      JSON.stringify(pathMod.join(__dirname, 'check-image-mapping.js')) +
+      ');' +
+      'const r = m.checkSubmodulePathExistence({ requireSubmodule: true, root: ' +
+      JSON.stringify(root) +
+      ' });' +
+      'process.stdout.write(JSON.stringify(r.violations));' +
+      'process.exit(r.violations.length ? 1 : 0);';
+    const red = spawnSync(process.execPath, ['-e', driver], { encoding: 'utf8' });
+    assert.strictEqual(red.status, 1, `stdout=${red.stdout} stderr=${red.stderr}`);
+    assert.ok(red.stdout.includes('submodule-unpopulated'), red.stdout);
+
+    // 陽性対照の相方: populate 済み（実在する）なら同じ入口が exit 0 になる。
+    fs.mkdirSync(pathMod.join(root, 'src', 'ai-stock-trading', 'backend', 'Services', 'Cfg'), {
+      recursive: true,
+    });
+    fs.writeFileSync(pathMod.join(root, 'src', 'ai-stock-trading', 'backend', 'Dockerfile'), '# x\n');
+    fs.writeFileSync(
+      pathMod.join(root, 'src', 'ai-stock-trading', 'backend', 'Services', 'Cfg', 'Cfg.csproj'),
+      '<Project />\n'
+    );
+    const green = spawnSync(process.execPath, ['-e', driver], { encoding: 'utf8' });
+    assert.strictEqual(green.status, 0, `stdout=${green.stdout} stderr=${green.stderr}`);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  ok('checkSubmodulePathExistence: submodule 配下の build 定義が 0 件なら赤（0 件走査で緑にしない）', () => {
+    const fs = require('fs');
+    const os = require('os');
+    const pathMod = require('path');
+    const { checkSubmodulePathExistence } = require('./check-image-mapping.js');
+    const root = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'img-map-empty-'));
+    fs.mkdirSync(pathMod.join(root, 'deploy'), { recursive: true });
+    fs.mkdirSync(pathMod.join(root, 'scripts'), { recursive: true });
+    fs.writeFileSync(
+      pathMod.join(root, '.gitmodules'),
+      '[submodule "src/ai-stock-trading"]\n\tpath = src/ai-stock-trading\n\turl = https://x/a.git\n'
+    );
+    // submodule 配下を指す build 定義が 1 件も無い compose / MAPPING。
+    fs.writeFileSync(
+      pathMod.join(root, 'deploy', 'docker-compose.yml'),
+      'services:\n  frontend:\n    build:\n      context: ..\n      dockerfile: src/platform/frontend/Dockerfile\n'
+    );
+    fs.writeFileSync(
+      pathMod.join(root, 'scripts', 'k8s-local-images.sh'),
+      'MAPPING=(\n  "microservices-platform/frontend|src/platform/frontend/Dockerfile"\n)\n'
+    );
+    const r = checkSubmodulePathExistence({ root });
+    assert.strictEqual(r.violations.length, 1);
+    assert.strictEqual(r.violations[0].kind, 'empty-submodule-paths');
+    assert.strictEqual(r.checked, 0);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
   // --- check-realm-constraints: realm フィールド長検査（Issue #18 再発防止） ---
 
   const {
