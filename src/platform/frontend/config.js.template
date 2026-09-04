@@ -12,6 +12,7 @@ window.__APP_CONFIG__ = {
     jaegerUrl: "${JAEGER_URL}",
     kialiUrl: "${KIALI_URL}"
   },
-  // Issue #130: SC-04 Wiki.js（ABAC ゲートウェイ経由・SSO）の基点 URL（未設定＝導線非表示）。
+  // Issue #130 → #1200: Wiki.js 管理 UI の到達先（dev のみ）。**SC-04 の画面は読まない**（ADR-0073 決定 1・2:
+  // 画面は /bff/wiki/* 経由で描き、stg/prod では WIKI_BASE_URL を設定しないことが統制）。
   wikiBaseUrl: "${WIKI_BASE_URL}"
 };

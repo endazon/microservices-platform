@@ -16,7 +16,9 @@ import {
   TableRow,
   Tag,
 } from '@platform/ui';
-import { appConfig } from '@foundation/config/runtimeConfig';
+// SC-03, UC-07, #1200 / IADR-0367 決定 1: 「Wiki で閲覧」は**権限内の Wiki 台帳にこの文書が載っているとき**だけ出す
+// （実行時 config `wikiBaseUrl` の有無で出し分ける形は廃止。stg/prod では同値が供給されないため一度も出なかった）。
+import { useWikiPageIndex } from '../../../lib/wiki-pages';
 // SC-03 / #446: 共通シェルのパンくずの**動的な葉**（文書タイトル）を渡す。
 import { useBreadcrumbLeaf } from '@foundation/routing/breadcrumbLeaf';
 // ADR-0031 §採用技術一覧（日付 = dayjs）/ #788: 同じ整形を自前で持っていたが、
@@ -191,18 +193,27 @@ function ContentView({
 /**
  * 出典元（原本）リンクと SC-04（Wiki）への導線。
  * `http(s)` のときだけリンク化し、`storage://` 等は等幅表記で参照だけ示す（押せないものを押させない）。
+ *
+ * 「Wiki で閲覧」は台帳（権限内の Wiki ページ一覧）にこの文書があるときだけ出し、**文書別ディープリンク**
+ * `/wiki?doc=<id>` へ送る（#1200。従前の「`/wiki` までで、ページ単位では飛べない」を解いた）。
+ * 台帳が未取得・取得失敗のときは出さない（到達できない導線を押させない）。
  */
 function SourceLinks({ doc, content }: { doc: DocumentDto; content?: DocumentContentDto }) {
-  const { wikiBaseUrl } = appConfig();
+  const wiki = useWikiPageIndex();
+  const hasWikiPage = wiki.documentIds?.has(doc.id) ?? false;
   const sourceUri = content?.sourceUri ?? doc.markdownUri ?? null;
   const isHttp = !!sourceUri && /^https?:\/\//i.test(sourceUri);
   return (
     <p className="flex flex-wrap items-center gap-2 text-sm">
-      {wikiBaseUrl && (
+      {hasWikiPage && (
         <>
-          {/* UC-07: Wiki 閲覧導線（内部ルート）。閲覧範囲はゲートウェイ（ABAC）で制御される。 */}
+          {/* UC-07: Wiki 閲覧導線（内部ルート）。閲覧範囲は前段ゲートウェイ（ABAC）が台帳の側で決めている。 */}
           <span aria-hidden>📖</span>
-          <Link to="/wiki" className="text-[--color-brand] hover:underline">
+          <Link
+            to="/wiki"
+            search={{ doc: doc.id }}
+            className="text-[--color-brand] hover:underline"
+          >
             <Trans>Wikiで閲覧</Trans>
           </Link>
           <span className="text-[--color-fg-muted]" aria-hidden>

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 import { jsonResponse } from '@foundation/testing/bffResponse';
@@ -16,22 +17,41 @@ import type { SseEvent } from '@foundation/api/apiClient';
 const mocks = vi.hoisted(() => ({
   apiStream: vi.fn(),
   apiRequest: vi.fn(),
-  wikiBaseUrl: undefined as string | undefined,
 }));
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
   apiStream: mocks.apiStream,
   apiRequest: mocks.apiRequest,
 }));
-vi.mock('@foundation/config/runtimeConfig', () => ({
-  appConfig: () => ({ wikiBaseUrl: mocks.wikiBaseUrl }),
-}));
 
 import { createSc01SearchRoute } from '../routes/sc01SearchRoute';
 
-const WIKI = 'https://wiki.example.co.jp';
 const ANSWER_ID = '11111111-1111-1111-1111-111111111111';
 const DOC_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+const WIKI_DOC_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+
+// #1200 / IADR-0367 決定 1: 出典が Wiki 由来かは**権限内の Wiki 台帳**（`GET /bff/wiki/pages`）で判定する。
+const WIKI_PAGE = {
+  id: 'page-b',
+  documentId: WIKI_DOC_ID,
+  title: '経費精算FAQ',
+  slug: 'keihi-faq',
+  wikiPath: `doc/${WIKI_DOC_ID}`,
+  status: 'Active',
+  syncedAt: '2026-09-01T00:00:00Z',
+};
+
+/** 画面が起動時・出典表示時に引く口の既定応答（台帳には Wiki 出典の文書だけが載る）。 */
+function respondDefault(wikiPages: unknown = [WIKI_PAGE]) {
+  mocks.apiRequest.mockImplementation((path: string) => {
+    if (path === '/wiki/pages')
+      return wikiPages instanceof Error
+        ? Promise.reject(wikiPages)
+        : Promise.resolve(jsonResponse(wikiPages));
+    if (path === '/attribute-values') return Promise.resolve(jsonResponse({ values: [] }));
+    return Promise.resolve(jsonResponse({}));
+  });
+}
 
 const DOCUMENT_CITATION = {
   number: 1,
@@ -44,10 +64,11 @@ const DOCUMENT_CITATION = {
 };
 const WIKI_CITATION = {
   number: 2,
-  documentId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+  documentId: WIKI_DOC_ID,
   documentTitle: 'Wiki: 経費精算FAQ',
   chunkId: 'c2',
-  sourceUri: `${WIKI}/ja/keihi-faq`,
+  // `sourceUri` は判定に**使わない**（台帳で判定する）。形が Wiki らしくなくても台帳に載れば Wiki 出典である。
+  sourceUri: 'storage://normalized/keihi-faq.md',
   score: 0.8,
   snippet: 'よくある質問',
 };
@@ -84,7 +105,7 @@ async function ask(question: string) {
 beforeEach(() => {
   mocks.apiStream.mockReset();
   mocks.apiRequest.mockReset();
-  mocks.wikiBaseUrl = WIKI;
+  respondDefault();
 });
 
 afterEach(() => {
@@ -173,28 +194,48 @@ describe('SearchChatPage (SC-01)', () => {
     expect(screen.getAllByText('組織文書').length).toBe(2);
   });
 
-  // UC-01 基本フロー 5: Wiki 由来の出典は SC-04 へ送る（wikiBaseUrl 配下の sourceUri で判定）。
-  it('renders wiki citations linking to SC-04', async () => {
+  // UC-01 基本フロー 5 / UC-07: 台帳に載る出典は 📖 ＋ SC-04 の**文書別ディープリンク**へ送る（#1200）。
+  it('renders wiki citations linking to the SC-04 deep link when the ledger lists the document', async () => {
     streamEvents([CITATIONS_EVENT, DONE_EVENT]);
     await renderPage();
     await ask('締め日は？');
 
     expect(await screen.findByRole('link', { name: 'Wiki: 経費精算FAQ' })).toHaveAttribute(
       'href',
-      '/wiki',
+      `/wiki?doc=${WIKI_DOC_ID}`,
+    );
+    // 台帳は出典が現れてから引く（問う前に Wiki の口を叩かない）。
+    expect(mocks.apiRequest).toHaveBeenCalledWith('/wiki/pages', expect.anything());
+    // ★ 陽性対照と対: 台帳に無い出典は同じ回答の中で 📄 のまま。
+    expect(screen.getByRole('link', { name: '経費精算規程 v3.2' })).toHaveAttribute(
+      'href',
+      `/docs/${DOC_ID}`,
     );
   });
 
-  // wikiBaseUrl 未設定の環境では Wiki 由来を推測しない（到達できない導線へ送らない）。
-  it('does not infer wiki citations when no wiki base url is configured', async () => {
-    mocks.wikiBaseUrl = undefined;
+  // 台帳に無ければ Wiki 由来を推測しない（`sourceUri` の形も見ない）。
+  it('treats a citation as a document when the ledger does not list it', async () => {
+    respondDefault([]);
     streamEvents([CITATIONS_EVENT, DONE_EVENT]);
     await renderPage();
     await ask('締め日は？');
 
     expect(await screen.findByRole('link', { name: 'Wiki: 経費精算FAQ' })).toHaveAttribute(
       'href',
-      '/docs/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+      `/docs/${WIKI_DOC_ID}`,
+    );
+  });
+
+  // 台帳が読めなくても Wiki 由来を推測しない（到達できない導線へ送らない）。
+  it('treats citations as documents when the ledger cannot be read', async () => {
+    respondDefault(ApiError.fromStatus(502));
+    streamEvents([CITATIONS_EVENT, DONE_EVENT]);
+    await renderPage();
+    await ask('締め日は？');
+
+    expect(await screen.findByRole('link', { name: 'Wiki: 経費精算FAQ' })).toHaveAttribute(
+      'href',
+      `/docs/${WIKI_DOC_ID}`,
     );
   });
 

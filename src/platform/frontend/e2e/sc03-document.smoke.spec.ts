@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
-import type { DocumentContentDto, DocumentDto } from '../src/lib/api/generated/bff.schemas';
+import type {
+  DocumentContentDto,
+  DocumentDto,
+  WikiPageSummary,
+} from '../src/lib/api/generated/bff.schemas';
 import { installBffSession, sessionUser, expectBffTrafficIsComplete } from './support/bffSession';
 
 // SC-03 (#502 / #1139): 文書詳細／プレビュー（`/docs/:id`）のスクリーンレベル・スモーク。
@@ -33,6 +37,17 @@ const content: DocumentContentDto = {
   markdown: '## 申請の手順\n\n<b>領収書</b>を添付して申請する。',
 };
 
+// #1200 / UC-07: 「Wiki で閲覧」は権限内の Wiki 台帳にこの文書が載っているときだけ出る。
+const wikiPage: WikiPageSummary = {
+  id: 'page-1',
+  documentId: ID,
+  title: '経費精算マニュアル',
+  slug: 'keihi-manual',
+  wikiPath: `doc/${ID}`,
+  status: 'Active',
+  syncedAt: '2026-08-02T00:00:00Z',
+};
+
 test('unauthenticated visit to /docs/:id redirects to /login', async ({ page }) => {
   await page.goto(`/docs/${ID}`);
 
@@ -55,6 +70,8 @@ test('SC-03: the id in the path reaches the fetch, and the body renders as norma
       [`GET /documents/${ID}/versions`]: [],
       'GET /graph/suggestions': [],
       'GET /graph/edge-types': [],
+      // #1200: 本文の下の「Wiki で閲覧」が引く権限内の Wiki 台帳（用意し忘れると `unhandled` で落ちる）。
+      'GET /wiki/pages': [wikiPage],
     },
   });
 
@@ -76,6 +93,12 @@ test('SC-03: the id in the path reaches the fetch, and the body renders as norma
 
   // ★ 陰性対照 2: 取得は**パスの id で**行う。取り違え（別 id・空 id）はここで落ちる。
   expect(traffic.calls.map((c) => c.key)).toContain(`GET /documents/${ID}`);
+
+  // ★ 陽性対照（#1200 / UC-07）: 台帳に載る文書なので「Wiki で閲覧」が SC-04 の**文書別ディープリンク**へ出る。
+  await expect(page.getByRole('link', { name: 'Wikiで閲覧' })).toHaveAttribute(
+    'href',
+    `/wiki?doc=${ID}`,
+  );
 
   expectBffTrafficIsComplete(traffic);
 });

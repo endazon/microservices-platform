@@ -848,10 +848,15 @@ frontend:
     # ブラウザ到達性のため実運用では必ず外部到達可能な URL へ上書きすること（config.gitCommit 等と同じ placeholder）。
     authority: http://keycloak:8080/realms/platform
     clientId: platform-spa
-  # 任意の追加 env（config.js の GRAFANA_URL / JAEGER_URL / KIALI_URL / WIKI_BASE_URL 等）。既定は空で、
+  # 任意の追加 env（config.js の GRAFANA_URL / JAEGER_URL / KIALI_URL 等）。既定は空で、
   # 40-render-config.sh が未設定を空文字にフォールバックし SC-10 の外部ツール導線を画面に出さない。compose は
   # dev の Grafana(3000) を直挿しするが、k8s は可観測性/外部 UI を経路B の opt-in オーバーレイ（ADR-0006・
   # IADR-0077）に委ねる方針のため既定で未配線とする（配線したい環境は extraEnv で URL を供給する。IADR-0078）。
+  #
+  # 🔴 **WIKI_BASE_URL は stg/prod で設定しない。これは統制である**（FR-13 / SC-04 / ADR-0073 決定 1 / #1200）。
+  # 利用者が Wiki の内容へ到達する経路は WikiService（/bff/wiki/* → 前段 ABAC ゲートウェイ）の 1 本に限り、
+  # Wiki.js 本体 UI は露出しない（下の wikijs.ingress.enabled: false と対）。SC-04 の画面は #1200 で BFF 経由になったので
+  # この値が無くても機能する（画面は読まない）。**設定すれば統制は外れる —— 機械検査は無く、構成の規律である。**
   extraEnv: []
   resources:
     requests: { cpu: 50m, memory: 64Mi }

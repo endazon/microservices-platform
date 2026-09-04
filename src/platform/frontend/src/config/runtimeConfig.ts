@@ -21,7 +21,11 @@ export interface AppConfig {
   oidc: OidcConfig;
   /** SC-10 の外部ツール導線（任意。未設定項目は非表示）。 */
   opsLinks: OpsLinks;
-  /** SC-04: Wiki.js（ABAC ゲートウェイ経由・Keycloak SSO）の基点 URL。未設定なら導線を出さない。 */
+  /**
+   * Wiki.js 管理 UI の到達先（dev のみ）。**画面は読まない**（#1200 / ADR-0073 決定 1・2: SC-04 は `/bff/wiki/*`
+   * 経由でページツリー・本文・検索を描き、stg/prod では `WIKI_BASE_URL` を設定しないことが統制）。
+   * 項目は dev の手引き（`deploy/local/values-local.yaml`）のために残してある。
+   */
   wikiBaseUrl?: string;
 }
 

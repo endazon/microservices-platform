@@ -322,28 +322,36 @@ Wiki.js の初期セットアップ・同期 API キー・本文 locale を冪�
 検知は `node scripts/check-stack-ready.js` の **G7**（fail-closed）。詳細は
 [wikijs-setup/README.md](wikijs-setup/README.md)。
 
-### Wiki 閲覧の到達（SC-04・Issue #344）
+### Wiki 閲覧の到達（SC-04・Issue #344 → #1200）
 
-SPA の「Wiki 閲覧」画面（SC-04）は、ブラウザ向け実行時 config `wikiBaseUrl`（config.js の `WIKI_BASE_URL`）から
-社内 Wiki（Wiki.js）を**新規タブで直接開く**導線である（BFF 経由ではない）。`WIKI_BASE_URL` が未設定（空文字）だと
-画面は「**Wiki の接続先が未設定です**」と表示してリンクを出さない。経路B は `values-local.yaml` の
-`frontend.extraEnv` で `WIKI_BASE_URL` を供給する。到達は他の管理ツール（grafana/minio/vault 等）と同じく
-**edge 集約後の正規 URL** に整合させる（[IADR-0091](../../.ai-context/adr/IADR-0091_local-edge-aggregation-traefik.md) の
-edge overlay `deploy/local/edge`・`LOCALEDGE=1` で Wiki.js を `wiki.localhost:50000` に公開。realm `wiki-js` client も
-同 URL 登録済み。[edge/README](edge/README.md)「アクセス／OIDC（集約後 URL）」）:
+SPA の「Wiki 閲覧」画面（SC-04）は、**BFF（`/bff/wiki/*`）→ WikiService（前段 ABAC ゲートウェイ）経由で
+ページツリー・本文・検索結果を取得し、SPA の中に描く**（計画 ADR-0073 決定 2。口は #1199 /
+[IADR-0355](../../.ai-context/adr/IADR-0355_bff-wiki-relay.md)、画面は #1200 /
+[IADR-0367](../../.ai-context/adr/IADR-0367_sc04-wiki-screen-ledger-and-sanitize.md)）。Wiki.js 本体 UI への外部リンクは無く、
+画面は `WIKI_BASE_URL` を**読まない**。利用者が Wiki の内容へ到達する経路は前段ゲートウェイの 1 本である（決定 1）。
+本番像 `values.yaml` の `wikijs.ingress.enabled: false` はそのまま不変であり、**画面が BFF 経由になったことで本番でも
+SC-04 が機能する**（従前は `WIKI_BASE_URL` 未設定で「接続先が未設定」となり機能していなかった）。
 
-- **既定（`LOCALEDGE=1`）**: `values-local.yaml` は `WIKI_BASE_URL=https://wiki.localhost:50000` を供給する。SPA を
-  `https://localhost/`（edge のフロント）で開き、「Wiki 閲覧」→「Wiki を開く」で `https://wiki.localhost:50000` が開く。
-- **非 edge（`LOCALEDGE` 未使用・port-forward）で使う場合**: `values-local.yaml` の `WIKI_BASE_URL` を
-  `http://localhost:3300` へ **override** し、`wiki-js` を port-forward する（値と port-forward を揃えること。
-  不一致だと到達しない）:
+🔴 **dev では ABAC の統制が働かない。** 開発環境は Wiki.js 本体を**管理 UI**（OIDC 構成・ロケール導入・API キー発行）の
+ために edge overlay（`LOCALEDGE=1`。`edge/admin-ingress-wiki.yaml` が `wiki.localhost:50000` を `wiki-js:3000` へ直結）で
+**直接露出したまま**である（ADR-0073 決定 5・[IADR-0032](../../.ai-context/adr/IADR-0032_wikijs-dev-exposure-opt-in.md) 決定 1）。
+この経路は WikiService を通らないため、**一覧・本文・検索のすべてが前段を迂回して読める**。「dev だから安全」ではなく
+「**dev には統制が無い**」と読むこと（planning#286 裁定の型）。開発者が `wiki.localhost` で見た挙動を本番の挙動と読むと、
+存在秘匿が効いていない画面を正常と誤認する。**本番の挙動（権限外は一覧に出ず本文は 404）を確かめるのは SPA の `/wiki` 側**である。
+
+- **`WIKI_BASE_URL`（`values-local.yaml` の `frontend.extraEnv`）**: 画面はもう読まない。dev の管理 UI の到達先を示す値として
+  残してある（決定 5。撤去は本 issue の射程外）。**本番像 `values.yaml` では設定しないことが統制**（決定 1。同ファイル
+  `frontend.extraEnv` のコメント）であり、**機械検査は無く構成の規律**である。
+- **Wiki.js 管理 UI（dev のみ）**: 既定（`LOCALEDGE=1`）は `https://wiki.localhost:50000`（他の管理ツールと同じく
+  **edge 集約後の正規 URL**。[IADR-0091](../../.ai-context/adr/IADR-0091_local-edge-aggregation-traefik.md)・
+  [edge/README](edge/README.md)「アクセス／OIDC（集約後 URL）」）。非 edge（port-forward）で使う場合:
 
 ```bash
 kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
-#   → http://localhost:3300/     （非 edge 利用時の override 先。WIKI_BASE_URL も同値へ）
+#   → http://localhost:3300/     （非 edge 利用時の管理 UI。Site URL も同値へ揃える）
 ```
 
-- **Wiki.js の SSO（Keycloak OIDC）ログイン**: Wiki.js は開いた後 Keycloak へリダイレクトするため、issuer 到達性は
+- **Wiki.js の SSO（Keycloak OIDC）ログイン**（管理 UI 用）: Wiki.js は開いた後 Keycloak へリダイレクトするため、issuer 到達性は
   **手順A**（`hosts` に `127.0.0.1 keycloak` ＋ `port-forward svc/keycloak 8080:8080`）と同じく解く。realm `wiki-js`
   client は `https://wiki.localhost:50000/*`（edge 集約）と `http://localhost:3300/*`（**上記 k8s の port-forward 用**・#385）を
   登録済み。`http://localhost:3001/*` は compose(dev) の host 公開用（[IADR-0032](../../.ai-context/adr/IADR-0032_wikijs-dev-exposure-opt-in.md)）
@@ -354,8 +362,10 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
   `WIKIJS_OIDC=1 bash deploy/local/wikijs-setup/bootstrap.sh`。冪等で、2 回目は何も変えない。
   非 edge で使うときは同時に `WIKIJS_SITE_URL=http://localhost:3300` を渡す。
   実ブラウザでの SSO ログイン疎通は稼働 k3d・edge 設定依存＝**live**（本 issue の live 分）。
-- 本番像 `values.yaml` の `frontend.extraEnv` は空のまま不変。本番は実 Wiki URL を per-env の `extraEnv` で供給する
-  （opt-in・後方互換）。Wiki.js への直接到達は既定で塞ぐ運用（Ingress 既定 disabled・[IADR-0020](../../.ai-context/adr/IADR-0020_wiki-js-deployment-abac-gateway.md)）に従う。
+- 本番像 `values.yaml` の `frontend.extraEnv` は空のまま不変で、**`WIKI_BASE_URL` は供給しない**（ADR-0073 決定 1）。
+  Wiki.js への直接到達は既定で塞ぐ運用（Ingress 既定 disabled・[IADR-0020](../../.ai-context/adr/IADR-0020_wiki-js-deployment-abac-gateway.md)）に従う。
+  従前ここには「本番は実 Wiki URL を per-env の `extraEnv` で供給する（opt-in）」と書いてあったが、**それは統制を外す設定**であり
+  #1200 で撤回した。
 
 ### ブラウザ OIDC の issuer 統一（原則と 2 手順）
 
