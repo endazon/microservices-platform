@@ -8931,4 +8931,432 @@ ${r.stderr}`);
     });
   }
 
+  // --- #1163: ツール側 7 クライアントの OIDC ログイン開始（verify-tool-oidc-logins.sh） ----
+  //
+  // 実クラスタ無しで固定できるのは (a) 判定ロジック（`scripts/lib/tool-oidc-login.js` の
+  // 純粋関数）(b) 検証器の結線（段数の式・段の本数・`-k` の不在）(c) 前提未整備の終了コード
+  // である。**実走は稼働 dev クラスタに委ねる**（PR 本文に生出力を貼る）。
+  //
+  // 🔴 **シェル本文の grep だけで済ませない。** grep は「文字列が在ること」しか見ないので、
+  //    判定そのものが逆になっても緑のまま通る（#992 / #1124 で学んだ形）。だから判定を
+  //    JS 側の純粋関数へ出し、**変異させて落ちることを確かめる**。
+  {
+    const fsTO = require('fs');
+    const pathTO = require('path');
+    const { spawnSync: spawnTO } = require('child_process');
+    const tol = require('./lib/tool-oidc-login.js');
+    const TOOLSH = fsTO.readFileSync(pathTO.join(__dirname, 'verify-tool-oidc-logins.sh'), 'utf8');
+    const TOOLJS = fsTO.readFileSync(pathTO.join(__dirname, 'lib/tool-oidc-login.js'), 'utf8');
+
+    const AUTHZ = 'https://keycloak.localhost/realms/platform/protocol/openid-connect/auth';
+
+    // ---- 母集合 -------------------------------------------------------------------
+    ok('#1163: 母集合はブラウザ OIDC を持つ 7 クライアントである', () => {
+      // 走査の出所は作業仕様書 §母集合（realm JSON の standardFlowEnabled 8 件 − platform-spa）。
+      // 🔴 件数が変わったら**作業仕様書の走査をやり直す**（issue の数えを写さない）。
+      assert.strictEqual(tol.TOOLS.length, 7, `母集合が ${tol.TOOLS.length} 件（7 件のはず）`);
+      const keys = tol.TOOLS.map((t) => t.key);
+      assert.strictEqual(new Set(keys).size, keys.length, `key が重複している: ${keys}`);
+      for (const t of tol.TOOLS) {
+        assert.ok(t.host, `${t.key}: host が無い`);
+        assert.ok(t.probe && t.probe.startsWith('/'), `${t.key}: probe が無い`);
+        assert.ok(
+          ['redirect', 'json-get', 'json-post', 'wikijs'].includes(t.start.kind),
+          `${t.key}: 未知の start.kind ${t.start.kind}`,
+        );
+      }
+    });
+
+    // ---- 段 (a) の判定を変異させる ---------------------------------------------------
+    ok('#1163: 段 (a) は認可端点・client_id・redirect_uri の帰属をすべて見る', () => {
+      const origin = 'https://grafana.localhost:50000';
+      const good = `${AUTHZ}?client_id=grafana&redirect_uri=${encodeURIComponent(`${origin}/login/generic_oauth`)}`;
+      assert.strictEqual(
+        tol.classifyStart({ location: good, authorizationEndpoint: AUTHZ, toolOrigin: origin }).status,
+        'ok',
+      );
+      // 変異 1: 認可端点が別 realm（issuer 追随が外れた形）。
+      const other = 'https://keycloak.localhost/realms/master/protocol/openid-connect/auth';
+      assert.strictEqual(
+        tol.classifyStart({ location: good, authorizationEndpoint: other, toolOrigin: origin }).status,
+        'fail', '認可端点のずれを見逃した',
+      );
+      // 変異 2: in-cluster 名のまま（IADR-0328 が直した縮退そのもの）。
+      const inCluster = `http://keycloak:8080/realms/platform/protocol/openid-connect/auth?client_id=grafana`
+        + `&redirect_uri=${encodeURIComponent(`${origin}/login/generic_oauth`)}`;
+      assert.strictEqual(
+        tol.classifyStart({ location: inCluster, authorizationEndpoint: AUTHZ, toolOrigin: origin }).status,
+        'fail', 'in-cluster issuer を見逃した',
+      );
+      // 変異 3: redirect_uri が別ホスト（Site URL のずれ）。
+      const foreign = `${AUTHZ}?client_id=grafana&redirect_uri=${encodeURIComponent('https://evil.example/x')}`;
+      assert.strictEqual(
+        tol.classifyStart({ location: foreign, authorizationEndpoint: AUTHZ, toolOrigin: origin }).status,
+        'fail', 'redirect_uri の帰属ずれを見逃した',
+      );
+      // 変異 4: client_id が無い。
+      const noClient = `${AUTHZ}?redirect_uri=${encodeURIComponent(`${origin}/x`)}`;
+      assert.strictEqual(
+        tol.classifyStart({ location: noClient, authorizationEndpoint: AUTHZ, toolOrigin: origin }).status,
+        'fail', 'client_id の欠落を見逃した',
+      );
+      // 変異 5: そもそもログイン開始が何も返さない（Vault の実測がこの形）。
+      const empty = tol.classifyStart({ location: '', authorizationEndpoint: AUTHZ, toolOrigin: origin });
+      assert.strictEqual(empty.status, 'fail');
+      assert.ok(empty.reason && empty.reason.length > 0, '理由の無い FAIL を返している');
+    });
+
+    ok('#1163: PAR（request_uri）は redirect_uri が無くても FAIL にしない', () => {
+      // 🔴 BFF（.NET）は `redirect_uri` を URL へ載せず `request_uri` で押し込む（実測）。
+      //    「載っていない＝壊れている」と読むと、正常な BFF を毎回 FAIL にする。
+      const par = `${AUTHZ}?client_id=bff&request_uri=urn%3Aietf%3Aparams%3Aoauth%3Arequest_uri%3Aabc`;
+      const r = tol.classifyStart({ location: par, authorizationEndpoint: AUTHZ, toolOrigin: 'https://localhost' });
+      assert.strictEqual(r.status, 'ok');
+      assert.strictEqual(r.par, true, 'PAR と認識していない');
+      // ただし **どちらも無い**なら FAIL（「何も無い」を PAR と誤読しない）。
+      assert.strictEqual(
+        tol.classifyStart({
+          location: `${AUTHZ}?client_id=bff`, authorizationEndpoint: AUTHZ, toolOrigin: 'https://localhost',
+        }).status,
+        'fail',
+      );
+    });
+
+    // ---- 段 (b) と陰性対照 -----------------------------------------------------------
+    ok('#1163: 段 (b) はログインフォームとエラー画面を取り違えない', () => {
+      const form = '<html><form id="kc-form-login" action="...">';
+      const err = '<html><div id="kc-error-message">';
+      assert.strictEqual(tol.classifyLoginForm(200, form).status, 'form');
+      assert.strictEqual(tol.classifyLoginForm(400, err).status, 'error');
+      // 🔴 200 でもフォームが無ければ PASS にしない（リバースプロキシの案内ページ等）。
+      assert.strictEqual(tol.classifyLoginForm(200, '<html>ok</html>').status, 'other');
+      // 502 / 000 も PASS にしない。
+      assert.strictEqual(tol.classifyLoginForm(502, '').status, 'other');
+    });
+
+    ok('#1163: 陰性対照は「拒まれなかったら FAIL」である', () => {
+      // これが無いと段 (b) の PASS は「Keycloak が何でも通している」ときと区別できない。
+      assert.strictEqual(tol.classifyNegativeControl(400, '<div id="kc-error-message">').status, 'ok');
+      const passed = tol.classifyNegativeControl(200, '<form id="kc-form-login">');
+      assert.strictEqual(passed.status, 'fail', '未登録の redirect_uri を通したのに緑を返した');
+      assert.match(passed.reason, /根拠にならない/);
+      // 400 以外は（エラー画面でも）FAIL —— 状態コードまで含めて対照である。
+      assert.strictEqual(tol.classifyNegativeControl(500, '<div id="kc-error">').status, 'fail');
+    });
+
+    ok('#1163: 陰性対照の URL は実在しない redirect_uri を使う', () => {
+      const u = new URL(tol.buildNegativeControlUrl(AUTHZ, 'grafana'));
+      assert.strictEqual(`${u.origin}${u.pathname}`, AUTHZ);
+      assert.strictEqual(u.searchParams.get('client_id'), 'grafana');
+      // RFC 2606 の予約 TLD。解決されることが無いので、万一通っても外部へ飛ばない。
+      assert.match(u.searchParams.get('redirect_uri'), /\.invalid\//);
+    });
+
+    // ---- 実行時に引く値の取り出し ----------------------------------------------------
+    ok('#1163: 期待値を列挙で持たず、稼働している側から引く', () => {
+      assert.strictEqual(
+        tol.extractAuthorizationEndpoint(JSON.stringify({ authorization_endpoint: AUTHZ })), AUTHZ);
+      assert.strictEqual(tol.extractAuthorizationEndpoint('not json'), '');
+      assert.strictEqual(
+        tol.extractMinioRedirect(JSON.stringify({ redirectRules: [{ redirect: 'https://x/y' }] })), 'https://x/y');
+      assert.strictEqual(tol.extractMinioRedirect(JSON.stringify({ redirectRules: [] })), '');
+      assert.strictEqual(
+        tol.extractVaultAuthUrl(JSON.stringify({ data: { auth_url: 'https://x/y' } })), 'https://x/y');
+      // Vault は auth mount が消えると `{"errors":["permission denied"]}` を返す（実測・#1163）。
+      assert.strictEqual(tol.extractVaultAuthUrl(JSON.stringify({ errors: ['permission denied'] })), '');
+      // Wiki.js は local と oidc の 2 本を返す。**oidc の側だけを取る。**
+      const wiki = JSON.stringify({
+        data: {
+          authentication: {
+            activeStrategies: [
+              { key: 'local', strategy: { key: 'local' } },
+              { key: 'abc-123', strategy: { key: 'oidc' } },
+            ],
+          },
+        },
+      });
+      assert.strictEqual(tol.extractWikiOidcStrategyKey(wiki), 'abc-123');
+      assert.strictEqual(tol.extractWikiOidcStrategyKey('{}'), '');
+    });
+
+    ok('#1163: 判定の区切りは TAB ではない（空フィールドが畳まれる罠）', () => {
+      // 🔴 実測（本 PR の実走 1 回目）: TAB は IFS の空白類なので bash の `read` が
+      //    連続する区切りを 1 つに畳み、PAR の bff が `redirect_uri=par` と表示され、
+      //    vault の FAIL が理由なしで出た。
+      assert.notStrictEqual(tol.FS, '\t', '区切りが TAB へ戻っている');
+      assert.strictEqual(tol.FS, '\u001f');
+      assert.ok(TOOLSH.includes("FS=$'\\x1f'"), 'シェル側の区切り宣言が無い');
+      assert.ok(TOOLSH.includes('IFS="$FS" read -r st cid ruri par reason'), '段 (a) の読み取りが FS を使っていない');
+      assert.ok(TOOLSH.includes('IFS="$FS" read -r fst freason'), '段 (b) の読み取りが FS を使っていない');
+      assert.ok(TOOLSH.includes('IFS="$FS" read -r nst nreason'), '陰性対照の読み取りが FS を使っていない');
+    });
+
+    // ---- 検証器の結線 ---------------------------------------------------------------
+    ok('#1163: 段数の合計を母集合から導き、宣言（TOTAL の式）と実段数が一致する', () => {
+      // 🔴 #1124 と同じ形にする。**段数をテスト側へ書き写さない** —— 写しは、書き手が
+      //    両方を同じ誤った値で揃えた瞬間に検出力がゼロになる（#1117 が実際にそれで通った）。
+      //    宣言（TOTAL の式の係数）と、**本文を走査して数えた実段数**を突き合わせる。
+      const decl = /^TOTAL=\$\(\(TOOL_COUNT \* (\d+) \+ (\d+)\)\)$/m.exec(TOOLSH);
+      assert.ok(decl, 'TOTAL が母集合（TOOL_COUNT）から導かれていない（固定値を書いている）');
+      const declaredPerTool = Number(decl[1]);
+      const declaredStandalone = Number(decl[2]);
+
+      // 反復ブロック（`while … done <<< "$TOOLS_TSV"`）の中の段は 1 件あたり 1 本、
+      // 外の段は 1 本きり。**どちらも本文から数える。**
+      let inLoop = false;
+      let perTool = 0;
+      let standalone = 0;
+      for (const line of TOOLSH.split('\n')) {
+        if (/^while IFS=\$'\\t' read -r tool host kind probe; do$/.test(line)) {
+          assert.ok(!inLoop, '反復ブロックが入れ子になっている（走査の前提が崩れている）');
+          inLoop = true;
+          continue;
+        }
+        if (inLoop && /^done <<< "\$TOOLS_TSV"$/.test(line)) {
+          inLoop = false;
+          continue;
+        }
+        if (/^\s*step "/.test(line)) {
+          if (inLoop) perTool += 1;
+          else standalone += 1;
+        }
+      }
+      assert.ok(!inLoop, '反復ブロックの終端を読み落としている（走査が壊れている）');
+      // 陽性対照: 1 本も数えられていない走査で「一致した」と言わない（0 === 0 で通る形を塞ぐ）。
+      assert.ok(perTool > 0, 'ツールを反復する段を 1 本も数えられていない（走査が空振りしている）');
+      assert.ok(standalone > 0, '単発の段（陰性対照）を数えられていない');
+      assert.strictEqual(
+        perTool, declaredPerTool,
+        `ツール 1 件あたりの段が ${perTool} 本で、TOTAL の宣言（${declaredPerTool}）と違う`,
+      );
+      assert.strictEqual(
+        standalone, declaredStandalone,
+        `反復の外の段が ${standalone} 本で、TOTAL の宣言（${declaredStandalone}）と違う`,
+      );
+
+      assert.match(TOOLSH, /TOOLS_TSV="\$\(node "\$LIB" tools\)"/, '母集合をライブラリから引いていない');
+      // 段が消えたら最後に落ちる門（#466 / IADR-0255 と同じ形）。
+      // **本当に落ちるかは下の変異試験で動かして見る**（本文の走査だけでは分からない）。
+      assert.match(TOOLSH, /if \[ "\$STEPS" -ne "\$TOTAL" \]; then/, '段数の門が無い');
+    });
+
+    ok('#1163: 段 (a)(b) が 7 クライアントすべてを通る（反復元が母集合）', () => {
+      // 反復は TSV を回すので、**ツール名をシェルへ列挙しない**のが正しい形である。
+      // 逆に、母集合の各 key がライブラリから 1 行ずつ出ていることは実行して確かめる。
+      const r = spawnTO(process.execPath, [pathTO.join(__dirname, 'lib/tool-oidc-login.js'), 'tools'], {
+        encoding: 'utf8',
+      });
+      assert.strictEqual(r.status, 0, `tools が失敗した: ${r.stderr}`);
+      const lines = String(r.stdout).split('\n').filter((l) => l.trim() !== '');
+      assert.strictEqual(lines.length, tol.TOOLS.length, '出力行数が母集合と違う');
+      for (const t of tol.TOOLS) {
+        assert.ok(lines.some((l) => l.split('\t')[0] === t.key), `${t.key} の行が出ていない`);
+      }
+    });
+
+    ok('#1163: 検証器が TLS 検証を切る手段を持たない', () => {
+      // 🔴 #1074: かつて verify-oidc-edge-flow.sh は無条件 `-k` を付けており、
+      //    証明書の SAN が足りていなかったのに誰も気付かなかった。**同じ穴を開けない。**
+      // 🔴 **コメントを落としてから見る。** 本文は「`--insecure` とは別物である」と
+      //    **書いてある**ので、素の grep は散文で誤発火する（実際に落ちた）。
+      //    見たいのは「実行される行に検証を切る手段があるか」である。
+      const code = TOOLSH.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+      assert.ok(!/CURL_K/.test(code), 'CURL_K（`-k` へ落ちる仕組み）が入り込んでいる');
+      assert.ok(!/--insecure/.test(code), '--insecure がある');
+      assert.ok(!/OIDC_TLS_INSECURE/.test(code), 'TLS 検証を切る逃げ道がある');
+      // curl の引数として `-k` を渡していない。
+      assert.ok(!/curl [^\n]*\s-k(\s|$)/.test(code), 'curl へ -k を渡している');
+      assert.ok(TOOLSH.includes('CURL_TLS=(--cacert "$CA_BUNDLE")'), '--cacert を使っていない');
+      // CA を解決できないときは測らずに終える（`-k` へ落ちない）。
+      assert.match(TOOLSH, /ローカル CA を解決できません[\s\S]{0,400}exit 2/);
+    });
+
+    ok('#1163: 期待値（認可端点・redirect_uri・Wiki.js のキー）を検証器へ書き写していない', () => {
+      // 認可端点のパスを書くと、realm 側が変わったとき片方だけ取り残される。
+      for (const src of [['verify-tool-oidc-logins.sh', TOOLSH], ['lib/tool-oidc-login.js', TOOLJS]]) {
+        assert.ok(
+          !src[1].includes('protocol/openid-connect/auth'),
+          `${src[0]} が認可端点のパスを写している（discovery から引くこと）`,
+        );
+        // Wiki.js のストラテジキーは環境ごとに違う（seed が既存値を再利用する）。
+        assert.ok(
+          !/7c1f6f2e-9d3a-4b5c-8e10-[0-9a-f]{12}/.test(src[1]),
+          `${src[0]} が Wiki.js のストラテジキーを写している（GraphQL から引くこと）`,
+        );
+        // ツールごとの登録済み redirect_uri も写さない。
+        assert.ok(
+          !/localhost:50000\//.test(src[1]),
+          `${src[0]} が具体的な redirect_uri（origin ＋ パスの完全形）を写している。`
+            + 'ログイン開始のパスは入力なので宣言してよいが、戻り先の完全な URL は書かない',
+        );
+      }
+    });
+
+    ok('#1163: 前提未整備（CA 不在）は exit 2 で、失敗（1）と区別する', () => {
+      const r = spawnTO('bash', [pathTO.join(__dirname, 'verify-tool-oidc-logins.sh')], {
+        encoding: 'utf8',
+        env: { ...process.env, OIDC_CA_BUNDLE: pathTO.join(__dirname, 'no-such-ca-for-test.pem') },
+        timeout: 60000,
+      });
+      if (r.error && r.error.code === 'ENOENT') return; // bash が無い環境
+      assert.strictEqual(r.status, 2, `CA 不在で exit ${r.status} を返した（2 のはず）:\n${r.stderr}`);
+    });
+
+    // ---- 実走と変異試験（スタブの Keycloak / ツールへ向ける） -------------------------
+    //
+    // 🔴 ここまでの検査は**本文の走査**である。走査は「書いてあること」しか見ないので、
+    //    **段の門が実際に落ちるか**は分からない（#992 / #1124 で学んだ形の続き）。動かして見る。
+    //
+    //    稼働クラスタは要らない —— 接続先（`KC_URL` / `EDGE_URL` / `TOOLS_ADMIN_ORIGIN_FMT`）は
+    //    env で差し替えられるので、**7 ツールと Keycloak を演じる HTTP スタブ**へ向ける。
+    //    ここで測っているのは**検証器の結線**（段が全部刻まれるか・門が落ちるか・終了コードの
+    //    分岐）であって、**クラスタの健全性ではない**（そちらは PR 本文の実走が持つ）。
+    {
+      const osTO = require('os');
+      const work = fsTO.mkdtempSync(pathTO.join(osTO.tmpdir(), 'msp-1163-'));
+
+      // ツール 7 件と Keycloak を 1 本のサーバで演じる。**認可端点のパスは realm のものを
+      // 写さない**（`/authz`）—— 検証器は discovery から引くので、何であれ追随するのが正しい。
+      const STUB_JS = `'use strict';
+const http = require('http');
+const fs = require('fs');
+let BASE = '';
+const srv = http.createServer(function (req, res) {
+  const u = new URL(req.url, BASE);
+  const p = u.pathname;
+  const authz = BASE + '/authz';
+  function send(code, body, headers) {
+    res.writeHead(code, Object.assign({ 'content-type': 'text/html; charset=utf-8' }, headers || {}));
+    res.end(body);
+  }
+  function json(o) { send(200, JSON.stringify(o), { 'content-type': 'application/json' }); }
+  function authUrl(cid, cb) {
+    return authz + '?client_id=' + cid + '&redirect_uri=' + encodeURIComponent(BASE + cb);
+  }
+  if (/\\/realms\\/[^/]+\\/\\.well-known\\/openid-configuration$/.test(p)) {
+    return json({ authorization_endpoint: authz });
+  }
+  if (p === '/authz') {
+    const ru = u.searchParams.get('redirect_uri') || '';
+    // 陰性対照: 未登録（.invalid）の戻り先は Keycloak と同じく 400 + kc-error で拒む。
+    if (ru.indexOf('.invalid') >= 0) {
+      return send(400, '<html><div id="kc-error-message">invalid_redirect_uri</div></html>');
+    }
+    return send(200, '<html><form id="kc-form-login"></form></html>');
+  }
+  // bff は PAR（redirect_uri を URL へ載せない）。**正常な形なので PASS でなければならない。**
+  if (p === '/bff/auth/login') {
+    return send(302, '', { location: authz + '?client_id=bff&request_uri=urn%3Aietf%3Aparams%3Aoauth%3Arequest_uri%3Astub' });
+  }
+  if (p === '/login/generic_oauth') return send(302, '', { location: authUrl('grafana', '/login/generic_oauth') });
+  if (p === '/auth/login') return send(303, '', { location: authUrl('argocd', '/auth/callback') });
+  if (p === '/oidc') return send(302, '', { location: authUrl('headlamp', '/oidc-callback') });
+  if (p === '/api/v1/login') return json({ redirectRules: [{ redirect: authUrl('minio', '/oauth_callback') }] });
+  if (p === '/v1/auth/oidc/oidc/auth_url') {
+    return json({ data: { auth_url: authUrl('vault', '/ui/vault/auth/oidc/oidc/callback') } });
+  }
+  if (p === '/graphql') {
+    return json({ data: { authentication: { activeStrategies: [
+      { key: 'local', strategy: { key: 'local' } },
+      { key: 'stub-key', strategy: { key: 'oidc' } },
+    ] } } });
+  }
+  if (p === '/login/stub-key') return send(302, '', { location: authUrl('wiki-js', '/login/stub-key/callback') });
+  if (p === '/' || p === '/login' || p === '/healthz' || p === '/v1/sys/health') return send(200, 'ok');
+  return send(404, 'not found');
+});
+srv.listen(0, '127.0.0.1', function () {
+  BASE = 'http://127.0.0.1:' + srv.address().port;
+  fs.writeFileSync(process.argv[2], String(srv.address().port));
+});
+`;
+      // スタブを起こし、検証器をそこへ向けて走らせ、片付ける。第 4 引数はツール側 origin へ
+      // 足す接尾辞（`/nowhere` を与えると 7 件とも到達不能になり、全件未配備の経路を測れる）。
+      const DRIVE_SH = `set -u
+STUB="$1"; SCRIPT="$2"; WORK="$3"; SUFFIX="\${4:-}"
+PORTFILE="$WORK/port"
+rm -f "$PORTFILE"
+node "$STUB" "$PORTFILE" &
+STUB_PID=$!
+for _ in $(seq 1 100); do [ -s "$PORTFILE" ] && break; sleep 0.1; done
+if [ ! -s "$PORTFILE" ]; then echo "stub did not start"; kill "$STUB_PID" 2>/dev/null; exit 99; fi
+PORT="$(cat "$PORTFILE")"
+BASE="http://127.0.0.1:$PORT"
+printf 'dummy\\n' > "$WORK/ca.pem"
+OIDC_CA_BUNDLE="$WORK/ca.pem" KC_URL="$BASE" EDGE_URL="$BASE$SUFFIX" TOOLS_ADMIN_ORIGIN_FMT="$BASE$SUFFIX" \\
+  KUBECONFIG="$WORK/no-such-kubeconfig" bash "$SCRIPT"
+RC=$?
+kill "$STUB_PID" 2>/dev/null
+exit $RC
+`;
+      fsTO.writeFileSync(pathTO.join(work, 'stub.js'), STUB_JS);
+      fsTO.writeFileSync(pathTO.join(work, 'drive.sh'), DRIVE_SH);
+      // 変異体は検証器の隣（`lib/` を解決できる場所）に要るので、ライブラリも複写する。
+      fsTO.mkdirSync(pathTO.join(work, 'lib'), { recursive: true });
+      fsTO.copyFileSync(pathTO.join(__dirname, 'lib/tool-oidc-login.js'), pathTO.join(work, 'lib/tool-oidc-login.js'));
+
+      const runAgainstStub = (scriptPath, suffix) =>
+        spawnTO(
+          'bash',
+          [pathTO.join(work, 'drive.sh'), pathTO.join(work, 'stub.js'), scriptPath, work, suffix || ''],
+          { encoding: 'utf8', timeout: 180000 },
+        );
+      const VERIFIER = pathTO.join(__dirname, 'verify-tool-oidc-logins.sh');
+      const bashMissing = (r) => r.error && r.error.code === 'ENOENT';
+
+      ok('#1163: 実走で 7 クライアント × 2 段 ＋ 陰性対照が実際に刻まれる（EXIT=0）', () => {
+        const r = runAgainstStub(VERIFIER);
+        if (bashMissing(r)) return; // bash が無い環境
+        const out = `${r.stdout || ''}${r.stderr || ''}`;
+        assert.strictEqual(r.status, 0, `全 PASS のはずが exit ${r.status}:\n${out}`);
+        assert.match(out, /結果: PASS 15 \/ FAIL 0 \/ SKIP 0（段 15\/15）/, `段の集計が違う:\n${out}`);
+        // **各段の存在**: 7 件それぞれが段 (a)(b) の 2 本を持つ（名指しできている）。
+        for (const t of tol.TOOLS) {
+          const n = (out.match(new RegExp(`^\\[\\d+/15\\] ${t.key}: `, 'gm')) || []).length;
+          assert.strictEqual(n, 2, `${t.key} の段が ${n} 本（(a)(b) の 2 本のはず）:\n${out}`);
+        }
+        // PAR の bff を「redirect_uri が無い＝壊れている」と読んでいない（実挙動で確かめる）。
+        assert.match(out, /PASS\s+bff: client_id=bff .*PAR/, `PAR を PASS にしていない:\n${out}`);
+        assert.match(out, /PASS\s+未登録の redirect_uri は HTTP 400 で拒まれた/, `陰性対照が通っていない:\n${out}`);
+      });
+
+      ok('#1163: 変異試験 —— 段を 1 本消すと段数の門が落ちる（EXIT=1）', () => {
+        // 🔴 これが無いと「門が書いてある」ことしか確かめられない。**消して落ちるか**を見る。
+        const marker = '  step "$tool: 認可 URL で Keycloak のログインフォームが返る';
+        const lines = fsTO.readFileSync(VERIFIER, 'utf8').split('\n');
+        const before = lines.length;
+        const mutated = lines.filter((l) => !l.startsWith(marker));
+        assert.strictEqual(before - mutated.length, 1, '変異させる段（段 (b) の step）が 1 本見つからない');
+        const mutantPath = pathTO.join(work, 'mutant.sh');
+        fsTO.writeFileSync(mutantPath, mutated.join('\n'));
+
+        const r = runAgainstStub(mutantPath);
+        if (bashMissing(r)) return;
+        const out = `${r.stdout || ''}${r.stderr || ''}`;
+        assert.strictEqual(r.status, 1, `段を消したのに exit ${r.status}（1 のはず）:\n${out}`);
+        assert.match(
+          out, /実行した段が 8 本で、宣言（TOTAL=15）と一致しません/,
+          `段数の門が落ちていない（PASS が減るだけで緑になっている）:\n${out}`,
+        );
+      });
+
+      ok('#1163: 全クライアントが未配備なら「緑」ではなく前提未整備（EXIT=2）', () => {
+        // 🔴 **何も測っていない実行を緑と呼ばせない**（受け入れ基準 6）。到達できない先へ
+        //    向けると 15 段すべて SKIP になり、PASS も FAIL も 0 のまま exit 2 で終わる。
+        const r = runAgainstStub(VERIFIER, '/nowhere');
+        if (bashMissing(r)) return;
+        const out = `${r.stdout || ''}${r.stderr || ''}`;
+        assert.strictEqual(r.status, 2, `全件未配備で exit ${r.status}（2 のはず）:\n${out}`);
+        assert.match(out, /結果: PASS 0 \/ FAIL 0 \/ SKIP 15（段 15\/15）/, `段を飛ばしている:\n${out}`);
+      });
+
+      fsTO.rmSync(work, { recursive: true, force: true });
+    }
+
+    ok('#1163: scripts/README.md が verify-tool-oidc-logins を載せている', () => {
+      const readme = fsTO.readFileSync(pathTO.join(__dirname, 'README.md'), 'utf8');
+      assert.ok(readme.includes('verify-tool-oidc-logins.sh'), 'scripts/README.md に行が無い');
+    });
+  }
+
 };
