@@ -22,14 +22,14 @@ set -euo pipefail
 
 MSP_NS="${MSP_NS:-microservices-platform}"
 cd "$(dirname "$0")/.."
+# #1159 / IADR-0374: mTLS モードを書く唯一の口（helm を通す）。
+# shellcheck source=scripts/lib/mesh-mtls-mode.sh
+. "$(dirname "$0")/lib/mesh-mtls-mode.sh"
 
 echo "==> [1/4] PeerAuthentication -> PERMISSIVE"
-if kubectl -n "$MSP_NS" get peerauthentication "$MSP_NS-mtls" >/dev/null 2>&1; then
-  kubectl -n "$MSP_NS" patch peerauthentication "$MSP_NS-mtls" \
-    --type=merge -p '{"spec":{"mtls":{"mode":"PERMISSIVE"}}}'
-else
-  echo "    （PeerAuthentication が無い。メッシュ未導入とみなして飛ばす）"
-fi
+# 🔴 **`kubectl patch` で書かない**（#1159 / IADR-0374）。helm が所有するフィールドを奪うと、
+#   以後の `helm upgrade` が conflict で恒久的に失敗する（詳細は lib/mesh-mtls-mode.sh の冒頭）。
+set_mesh_mtls_mode "PERMISSIVE"
 
 echo "==> [2/4] Istio エッジ資材の撤去（hostPort を空ける）"
 kubectl delete -k deploy/local/edge-istio --ignore-not-found=true || true

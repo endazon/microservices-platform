@@ -85,12 +85,36 @@ bash scripts/istio-edge-down.sh   # 🔴 切り戻し（1 コマンド）。**�
 🔴 **`ISTIO=1` を `LOCALEDGE=1` 無しで使うとエッジは移らない**（port-forward のまま）。
 その状態で STRICT へ上げると mesh へ入る経路が無くなる。スクリプトが警告を出す。
 
+`LOCALEDGE=1` と併用したときは、**[6/7] の helm はいったん PERMISSIVE を宣言し、入口を Envoy へ移した
+後に `istio-edge-up.sh` [5/5] が STRICT へ上げる**（#1159 / [`IADR-0374`](../../.ai-context/adr/IADR-0374_mesh-mtls-single-writer-and-drift-gate.md) 決定 2）。
+上の段取りをスクリプトの側で満たすためであり、STRICT を要求した再実行では**一度緩んでから上がる**。
+
+### 🔴 mTLS モードを書いてよいのは helm だけである（#1159）
+
+`PeerAuthentication` は helm チャートの描画物である。**`kubectl patch` で直接書かないこと。**
+Helm 4 はサーバサイド apply を使うので、外から書くと field manager が奪われ、
+**以後の `helm upgrade` が conflict で恒久的に失敗する**（`--take-ownership` も `--force` も効かない）。
+モードの切り替えは [`../../scripts/lib/mesh-mtls-mode.sh`](../../scripts/lib/mesh-mtls-mode.sh) の
+`set_mesh_mtls_mode` を使う。乖離は `node scripts/check-stack-ready.js` の門 **G12** が落とす。
+固まった release の復旧手順は `docs/operations/operations.md` の Runbook にある。
+
+### 🔴 STRICT は **`ai-stock-trading`（メッシュ外のテナント）→ MSP を落とす**（#1159）
+
+経路B の AST namespace はサイドカーを持たない。STRICT の間、AST の 3 サービスから MSP への平文
+（ナレッジ保存・日報の LLM 生成・**取引判断の LLM 呼び出し**）が RST で全断する（2026-09-04 実測）。
+**逆向き（MSP→AST）は auto-mTLS が平文へフォールバックするので落ちない** —— 片方向だけである。
+恒久像は AST を mesh へ入れること（AST#627）。それまで経路B の既定は PERMISSIVE のままにする
+（[`IADR-0374`](../../.ai-context/adr/IADR-0374_mesh-mtls-single-writer-and-drift-gate.md) 決定 3・4）。
+
 ### 本番像
 
 `values.yaml` は `mesh.enabled: true` / `mtlsMode: STRICT` / `namespace.create: true` が既定であり、
-ArgoCD が同期する。**AppProject の `namespaceResourceWhitelist` に Istio の 4 種別
-（PeerAuthentication / DestinationRule / Gateway / VirtualService）が載っていること**を前提とする
-（#782 で 6 種別の欠落を是正した。[`../argocd/appproject.yaml`](../argocd/appproject.yaml)）。
+ArgoCD が同期する。**AppProject の `namespaceResourceWhitelist` に Istio の 5 種別
+（PeerAuthentication / AuthorizationPolicy / DestinationRule / Gateway / VirtualService）が
+載っていること**を前提とする（#782 で 6 種別の欠落を是正し、#1159 で `AuthorizationPolicy` を足した
+—— `mesh.backchannelLogout.fromOutsideMesh=true` の配備で描画される。
+[`../argocd/appproject.yaml`](../argocd/appproject.yaml)）。
+**追随は `scripts/k8s-local-up.test.js` の許可種別テストが固定する**（記憶で足さない）。
 
 ## 2. STRICT mTLS の適用（Helm が宣言）
 

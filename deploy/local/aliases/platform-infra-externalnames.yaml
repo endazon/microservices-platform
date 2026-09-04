@@ -12,9 +12,13 @@
 #     名前解決が引かない**。同じ pod の netns に musl のコンテナを足すと同じ名前が解決する（#1115 で実測）。
 #   したがってサーバ間の宛先はクラスタ内の名前しか採れない。
 #
-# ★ 平文（http）で良い理由: この一区間は Istio の mTLS が包む。境界（platform-infra はメッシュ外）の
-#   通し方は helm チャートの `mesh.backchannelLogoutFromOutsideMesh` が宣言する
-#   （deploy/helm/microservices-platform/templates/istio-mtls.yaml）。
+# ★ 平文（http）で良い理由: 境界（platform-infra はメッシュ外）の通し方は helm チャートの
+#   `mesh.backchannelLogout.fromOutsideMesh` が宣言する
+#   （deploy/helm/microservices-platform/templates/istio-mtls.yaml。値名の誤り
+#   `mesh.backchannelLogoutFromOutsideMesh` を #1159 で是正した）。
+#   🔴 **mTLS が包むのは mesh 内どうしの区間だけである。** この区間の送り手（Keycloak）はメッシュ外なので、
+#   STRICT のときに通るのは上記 2 枚組が開けた 1 URI だけで、他の URI は AuthorizationPolicy が
+#   DENY する（#1159 実測: backchannel-logout は 400 まで届き、他は 403）。
 #   Keycloak にエッジ CA の truststore を積まずに済み、**Keycloak を再起動しなくてよい**（#1088）。
 #
 # 適用: kubectl apply -f deploy/local/aliases/platform-infra-externalnames.yaml

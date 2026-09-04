@@ -41,6 +41,14 @@ ISTIO_MTLS_MODE=STRICT bash scripts/istio-edge-up.sh
 bash scripts/istio-edge-down.sh
 ```
 
+🔴 **mTLS モードは helm を通してしか書かない**（#1159 / [`IADR-0374`](../../../.ai-context/adr/IADR-0374_mesh-mtls-single-writer-and-drift-gate.md)）。
+`ISTIO_MTLS_MODE` は最終的に `scripts/lib/mesh-mtls-mode.sh` の `set_mesh_mtls_mode`
+（＝ `helm upgrade --reuse-values --set mesh.mtlsMode=…`）に落ちる。
+`kubectl patch` で直接書くと field manager が helm から奪われ、**以後の `helm upgrade` が
+恒久的に失敗する**（復旧手順は `docs/operations/operations.md` の Runbook）。
+`ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT` の up は、**[6/7] でいったん PERMISSIVE を宣言し、
+入口を移した後に STRICT へ上げる**（段取りは `IADR-0307` 決定 4）。
+
 ## 🔴 順序が命である
 
 k3s の ServiceLB（klipper）は **LoadBalancer Service ごとに hostPort を握る DaemonSet を作る**。
