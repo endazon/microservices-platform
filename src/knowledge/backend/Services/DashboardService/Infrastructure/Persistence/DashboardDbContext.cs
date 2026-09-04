@@ -23,10 +23,11 @@ public class DashboardDbContext(DbContextOptions<DashboardDbContext> options) : 
             e.HasKey(u => u.Id);
             e.Property(u => u.EventType).HasMaxLength(16).IsRequired();
             e.Property(u => u.Query).HasMaxLength(UsageEvent.MaxQueryLength);
-            e.Property(u => u.UserId).HasMaxLength(256).IsRequired();
             e.Property(u => u.OccurredAt).IsRequired();
 
             // FR-10: 期間フィルタ・種別集計を効率化するインデックス。
+            // **保持期間の削除（UsageEventRetention）も同じ索引で引く**
+            // （述語は `OccurredAt < 基準時刻` であり、集計の `>=` の否定である）。
             e.HasIndex(u => new { u.OccurredAt, u.EventType });
         });
 

@@ -1,4 +1,5 @@
 using DashboardService.Features.Dashboard;
+using DashboardService.Features.Dashboard.PurgeExpired;
 using DashboardService.Features.KnowledgeHealth;
 using DashboardService.Infrastructure.Persistence;
 using Platform.Shared.Infrastructure.Foundation.Audit;
@@ -43,6 +44,16 @@ builder.Services.AddPlatformIntrospection("dashboard-service", new PipelineOptio
 // 照会のたびに警告を残す（`DashboardEndpoints.EffectiveMinCount`）。
 builder.Services.Configure<SearchTrendOptions>(
     builder.Configuration.GetSection(SearchTrendOptions.SectionName));
+
+// FR-10, SC-10, ADR-0072 決定 3, [[IADR-0367]] (#1198): 利用イベントの保持期間（90 日）の実施。
+// **保持日数は構成キーを持たない** —— 集計の上限（`DashboardEndpoints.MaxDays`）そのものであり、
+// 片方だけ動かせる形にしない（ADR-0072 §残るもの 末尾）。構成できるのは有無と間隔だけである。
+// 🔴 **ここも ValidateOnStart は付けない** —— 掃除の間隔の打ち間違いで、利用イベントの記録と
+// 集計まで巻き添えに止める価値は無い。不正値は既定へ倒し、起動時に警告を残す。
+builder.Services.Configure<UsageRetentionOptions>(
+    builder.Configuration.GetSection(UsageRetentionOptions.SectionName));
+builder.Services.AddScoped<UsageEventRetention>();
+builder.Services.AddHostedService<UsageRetentionHostedService>();
 
 // FR-10, FR-17, FR-18, SC-10, ADR-0004 (#443): ナレッジ健全性指標の閲覧を監査ログに残す
 // （計画 §ナレッジ健全性の指標「閲覧は監査ログに記録する」）。
