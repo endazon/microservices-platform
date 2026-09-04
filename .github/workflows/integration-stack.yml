@@ -147,8 +147,17 @@ jobs:
       # 🔴 ここが門である。G1（readiness）/ G2（0 件で緑にしない）/ G3（ツール不在は失敗）/
       # G4（エッジと issuer の完全一致）/ G5（admin=50000）/ G6（pod 側の名前解決）/
       # G7（Wiki.js が使える）/ G8（捕捉用 MTA が居て API が読める）/ G9（realm JSON と稼働 realm の差分 0 件）/
-      # G10（永続化オーバーレイの PVC が参照され Bound）/ G11（宣言と稼働のイメージ参照の一致）を
-      # すべて fail-closed で判定する（G9〜G11 は #1088 / IADR-0369）。
+      # G10（永続化オーバーレイの PVC が参照され Bound）/ G11（宣言と稼働のイメージ参照の一致）/
+      # G12（メッシュ宣言と稼働の一致・spec の書き手が helm 単独）/
+      # G13（検索側が読むコレクションに点が在り、全文ペイロード索引が張られている）を
+      # すべて fail-closed で判定する（G9〜G11 は #1088 / IADR-0369、G12 は #1159 / IADR-0377、
+      # G13 は #1215 / IADR-0383）。
+      #
+      # 🔴 **ここへ SEARCHSEED=1 を渡さない。** G13 は「点が在るのに検索側が 0 点」＝読み書き先の
+      # 乖離を fail-closed で見る。SEARCHSEED=1 を宣言すると「点が 1 つも無いこと」も赤になるが、
+      # この時点では up の中の seed（best-effort）から取り込みが**非同期で**進んでいる途中であり、
+      # 「まだ届いていない」を欠陥として報告してしまう（間欠赤）。**取り込みの成立は
+      # 後段の `SEARCH_HITS=1` の門が陽性・陰性の対で測る。**
       - name: 🔴 Gate — the stack is actually up
         run: node scripts/check-stack-ready.js
 
