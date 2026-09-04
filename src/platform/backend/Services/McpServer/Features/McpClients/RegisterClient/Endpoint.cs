@@ -38,7 +38,7 @@ public static class RegisterMcpClientEndpoint
                 req.ClientId, req.DisplayName, kind, attributes, tier, clock.GetUtcNow());
             db.Clients.Add(client);
             await db.SaveChangesAsync(ct);
-            return Results.Created($"/mcp-clients/{client.ClientId}", McpClientEndpoints.ToView(client));
+            return Results.Created($"/mcp-clients/{client.ClientId}", McpClientMapper.ToView(client));
         });
 
         return app;
