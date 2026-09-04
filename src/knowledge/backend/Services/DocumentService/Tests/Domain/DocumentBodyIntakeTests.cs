@@ -16,6 +16,7 @@ namespace DocumentService.Tests.Domain;
 //
 // **本クラスは専用のファクトリを持つ**（`IClassFixture`）—— 格納内容と格納回数を数えるため、
 // 他クラスの書き込みが混ざらない状態で測る必要がある。
+[Trait("TestKind", "Integration")]
 public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {
@@ -272,6 +273,7 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
 
 // FR-21 ⑤⑧, ADR-0036 D-02/D-07/D-14: 書き込み認可の**判定そのもの**を単体で固定する。
 // 端点越しの ⑧ と対で置く —— 端点だけだと「たまたま 403 になっている」経路の変化を検出できない。
+[Trait("TestKind", "Unit")]
 public class DocumentBodyIntakeAuthorizationTests
 {
     private static Dictionary<string, string> Owned(string owner) => new() { ["owner"] = owner };

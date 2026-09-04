@@ -9,6 +9,7 @@ namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 // 🔴 このプロバイダの存在理由は**統合スタックで「検索が実際に効くこと」を観測できるようにする**ことである。
 // したがって「同じ本文なら常に同じベクトル」「ルーターの決定と同じ次元」「Cosine 空間で扱える
 // （零ベクトルでない）」の 3 点が壊れると、目的そのものが果たせない。ここで固定する。
+[Trait("TestKind", "Unit")]
 public class DeterministicEmbeddingProviderTests
 {
     private static readonly DeterministicEmbeddingProvider Provider = new();

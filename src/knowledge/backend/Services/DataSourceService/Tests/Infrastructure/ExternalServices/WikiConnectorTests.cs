@@ -11,6 +11,7 @@ namespace DataSourceService.Tests.Infrastructure.ExternalServices;
 // FR-01, UC-04, 09_datasource-connectors（優先2: Wiki）, IADR-0053, Issue #217:
 // Wiki コネクタ（汎用 REST 契約）の単体テスト。fake HttpMessageHandler で応答を模す（実サーバ不要＝CI 緑）。
 // 実 Wiki 製品に対する結合検証は実コンテナ前提の follow-up（本テスト対象外）。
+[Trait("TestKind", "Unit")]
 public sealed class WikiConnectorTests
 {
     private const string Base = "https://wiki.example.com";

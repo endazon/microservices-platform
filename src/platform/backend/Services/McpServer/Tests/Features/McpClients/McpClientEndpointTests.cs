@@ -8,6 +8,7 @@ namespace McpServer.Tests.Features.McpClients;
 
 // FR-16, UC-09: MCP クライアント登録管理 API。管理者限定である
 // （画面そのものは本作業の射程外であり、ここで検査するのはバックエンド API の統制だけである）。
+[Trait("TestKind", "Integration")]
 public class McpClientEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

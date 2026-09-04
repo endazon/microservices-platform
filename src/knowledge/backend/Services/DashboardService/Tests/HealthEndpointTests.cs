@@ -3,6 +3,7 @@ using AwesomeAssertions;
 namespace DashboardService.Tests;
 
 // FR-10: サービスが独立して稼働する（受け入れ基準④の一部）。
+[Trait("TestKind", "Integration")]
 public class HealthEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

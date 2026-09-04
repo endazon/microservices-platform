@@ -12,6 +12,7 @@ namespace GraphService.Tests.Features.EdgeTypes;
 // **アプリ層のガード**（事前検査 → 409）までである。**DB 層の防壁**（`ON DELETE RESTRICT`・
 // 一意制約・競合の 409 変換）は実 PostgreSQL が要るため `Knowledge.IntegrationTests` 側に置く。
 // この切り分けを書かずに InMemory だけで緑にすると「DB 層の防壁を試験した」と誤認する。
+[Trait("TestKind", "Integration")]
 public class EdgeTypeEndpointsTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;

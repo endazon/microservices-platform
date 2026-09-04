@@ -14,6 +14,7 @@ namespace DocumentService.Tests.Features.Tags;
 // **正本が識別子を持つことでしか満たせない**——表示名を複写していると、改名しても
 // 既存文書は古い名前を持ち続ける（複写を全件書き換える経路が別に要る）。
 // ここで固定するのは、その追随が**文書を 1 件も書き換えずに**起きることである。
+[Trait("TestKind", "Integration")]
 public class TagIdentityTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

@@ -7,6 +7,7 @@ namespace DataSourceService.Tests;
 
 // FR-15, IADR-0029 (#143): 自己申告エンドポイントが到達でき、サービス名を申告することを検証する
 // （段は持たず、コネクタは実行時データのため静的申告対象外の存在申告のみのサービス）。
+[Trait("TestKind", "Integration")]
 public class IntrospectionEndpointTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;

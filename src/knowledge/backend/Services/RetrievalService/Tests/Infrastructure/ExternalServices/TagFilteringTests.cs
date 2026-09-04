@@ -14,6 +14,7 @@ namespace RetrievalService.Tests.Infrastructure.ExternalServices;
 // 画面は候補として出したタグで絞れると期待するので、**食い違うと利用者から見て壊れている**。
 //
 // **写像を 1 つの関数（`ToPayloadKey`）へ寄せたことを、ここで両側から確かめる。**
+[Trait("TestKind", "Unit")]
 public class TagFilteringTests
 {
     private static ChunkPayload Chunk(string title, Dictionary<string, string> attributes, List<string> tags) =>

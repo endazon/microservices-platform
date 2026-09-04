@@ -22,6 +22,7 @@ namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 // ［2026-08-18 追記 / #850］計画 ADR-0038 決定 1 により analysis の割当を claude-fable-5 → claude-opus-5 へ
 // 改めたので、上の背景記述を現行値へ書き改めた。**本テストの挙動は変わらない** —— ここは背景の説明であって
 // テストが渡すモデル文字列ではない（本ファイルが実際に渡すのは claude-sonnet-5 と null だけである）。
+[Trait("TestKind", "Unit")]
 public class ClaudeProviderThinkingTests
 {
     private static string Envelope(string blocks, string stopReason = "end_turn") =>

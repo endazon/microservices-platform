@@ -18,6 +18,7 @@ namespace DashboardService.Tests.Features.KnowledgeHealth;
 // 計画 §ナレッジ健全性の指標 は **ABAC の文書単位判定に対する明示的な例外**として全体集計を許すが、
 // **件数のみ・ロール限定・個人資料除外の 3 つを同時に満たすことが条件**である。
 // 3 つのうち 1 つでも欠けると存在秘匿が崩れるため、**それぞれを独立にテストで固定する**。
+[Trait("TestKind", "Integration")]
 public class KnowledgeHealthEndpointTests
 {
     // 🔴 送信側 GraphService.Infrastructure.ExternalServices.HttpKnowledgeHealthReporter.ObservationsPath の値。

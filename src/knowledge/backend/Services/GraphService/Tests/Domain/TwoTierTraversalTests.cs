@@ -18,6 +18,7 @@ namespace GraphService.Tests.Domain;
 // **決定 1 の具体化（不許可ノードはその場で打ち切り、次ホップへ進まない）は改まっていない。**
 // むしろ本改定の前提である（許可済みだけを数える限り「中間結果に不許可文書が載らない」という
 // 理由は損なわれない、というのが改定の根拠だから）。
+[Trait("TestKind", "Integration")]
 public class TwoTierTraversalTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;

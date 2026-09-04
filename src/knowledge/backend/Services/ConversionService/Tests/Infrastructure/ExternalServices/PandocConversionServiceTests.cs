@@ -25,6 +25,7 @@ namespace ConversionService.Tests.Infrastructure.ExternalServices;
 // **正常な振る舞いとして固定していた**。ところが実行時イメージが pandoc を持っておらず、
 // 配備した実物がその縮退のまま「成功」を返し続けていた。既定を fail-closed へ改め、
 // 縮退は `Conversion:AllowDegradedBodyConversion=true` のときだけに限る。
+[Trait("TestKind", "Integration")]
 public class PandocConversionServiceTests
 {
     private static PandocConversionService NewService(

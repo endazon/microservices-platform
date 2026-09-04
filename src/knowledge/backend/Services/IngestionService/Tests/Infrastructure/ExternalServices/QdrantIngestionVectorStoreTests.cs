@@ -11,6 +11,7 @@ namespace IngestionService.Tests.Infrastructure.ExternalServices;
 // ABAC 属性がネスト構造体 `attributes -> { k: v }` として構築されることを検証する。
 // フラットキー `attributes.{k}` で書き込むと、フィルタ側がドットを JSON パスとして解釈するため
 // 過剰除外が発生する（実機検証で確認）。書き込み表現を RetrievalService.QdrantVectorStore と一致させる。
+[Trait("TestKind", "Unit")]
 public class QdrantIngestionVectorStoreTests
 {
     private static Dictionary<string, Value> Build(

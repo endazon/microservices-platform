@@ -8,6 +8,7 @@ namespace McpServer.Tests.Domain;
 // タグの集合は、**登録者が持つ集合の部分集合**でなければならない。
 //
 // **判定そのものを器なしで固定する。** 端点側のテストは経路（登録・差し替え・応答形式）を見る。
+[Trait("TestKind", "Unit")]
 public class ServiceAccountAttributeSubsetTests
 {
     private static RegistrarAssignableAttributes Registrar(string clearance, string tags = "")

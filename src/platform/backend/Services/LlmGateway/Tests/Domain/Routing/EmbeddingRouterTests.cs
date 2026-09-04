@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 namespace LlmGateway.Tests.Domain.Routing;
 
 // FR-02, FR-05, ADR-0016, ADR-0017: 埋め込みルーターの機密区分ティア判定・fail-closed を検証する。
+[Trait("TestKind", "Unit")]
 public class EmbeddingRouterTests
 {
     private static EmbeddingRouter Build(bool selfHostedEnabled)

@@ -32,6 +32,7 @@ namespace DocumentService.Tests.Features.PrivateNotes;
 // 2. **fail-open**（受け口が落ちていても業務処理を失敗させない。**任意の例外**を含む）
 // 3. **順序＝冪等性**（発火記録が送出より先に確定していること。再起動で重複発火しない）
 // 4. **計器**（届かなかったことが数えられる。利用者識別子は属性にしない）
+[Trait("TestKind", "Integration")]
 public class PrivateNoteNotificationDispatchTests
 {
     // ── 1. 送出の面 ────────────────────────────────────────────────────────

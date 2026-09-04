@@ -13,6 +13,7 @@ namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 // 「モデルが拒否した（refusal）」と「上限到達（max_tokens）」と「正常終了（end_turn）」を
 // 呼び出し側が区別できることを固定する。refusal は HTTP 200・例外なしで到着するため、
 // 判別しないと空文字へ静かに縮退し、監査ログ上「送信したが空応答」と見分けられなくなる。
+[Trait("TestKind", "Unit")]
 public class ClaudeProviderStopReasonTests
 {
     private static ClaudeProvider Provider(HttpMessageHandler handler) =>

@@ -6,6 +6,7 @@ namespace LlmGateway.Tests.Domain.Pricing;
 // FR-10, NFR, ADR-0044 決定 3 (#443): 単価表の起動時検証。
 // **区間の重なりを実行時に先勝ちで解決しない** —— どちらの単価で換算したかを後から特定できず、
 // 費用の突合が成り立たなくなるためである。誤った単価表は配備の失敗として表に出す。
+[Trait("TestKind", "Unit")]
 public class ModelPricingOptionsValidatorTests
 {
     private static readonly ModelPricingOptionsValidator Validator = new();

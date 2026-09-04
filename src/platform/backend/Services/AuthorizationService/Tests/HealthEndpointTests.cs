@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 namespace AuthorizationService.Tests;
 
 // FR-05, FR-09, UC-05, ADR-0004: 認可サービス エンドポイントテスト
+[Trait("TestKind", "Integration")]
 public class HealthEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

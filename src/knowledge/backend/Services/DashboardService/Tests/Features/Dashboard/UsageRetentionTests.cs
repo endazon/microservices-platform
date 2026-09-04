@@ -19,6 +19,7 @@ namespace DashboardService.Tests.Features.Dashboard;
 // **陽性と陰性を対で置く。** 片方だけだと検査にならない —— 保持日数の述語を丸ごと外して
 // 全件削除にしても「91 日前の行が消える」テスト（T-73）は緑のまま通る（変異試験で確認した。
 // 落ちるのは T-74 / T-75 の 2 本である）。
+[Trait("TestKind", "Integration")]
 public class UsageRetentionTests
 {
     // ───────────────────────────────────────────────────────────────────────

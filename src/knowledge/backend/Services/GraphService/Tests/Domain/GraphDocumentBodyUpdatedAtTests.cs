@@ -13,6 +13,7 @@ namespace GraphService.Tests.Domain;
 //
 // 陰性テスト（前進しない）だけでは「一度も前進しない実装」でも緑になるため、
 // **陽性対照（指紋が変われば前進する）と必ず対で置く**。
+[Trait("TestKind", "Unit")]
 public class GraphDocumentBodyUpdatedAtTests
 {
     private static readonly DateTimeOffset T0 = DateTimeOffset.Parse("2026-01-01T00:00:00Z");

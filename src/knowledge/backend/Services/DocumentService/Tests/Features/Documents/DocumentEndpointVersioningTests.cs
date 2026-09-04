@@ -7,6 +7,7 @@ using DocumentService.Domain;
 namespace DocumentService.Tests.Features.Documents;
 
 // FR-06, UC-03: バージョン管理・メタデータ管理エンドポイントのテスト
+[Trait("TestKind", "Integration")]
 public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

@@ -21,6 +21,7 @@ namespace AiAnalysisService.Tests.Domain.Ports;
 //   ③ ゲートウェイへ渡す **`purpose`** を誰も見ていなかった。用途別のモデル割当（ADR-0038:
 //      `analysis` → `claude-opus-5`）は**この文字列がキーである**。取り違えても応答は 200 で返り、
 //      **静かに別のモデルへ流れる**。
+[Trait("TestKind", "Unit")]
 public class RagAnswerContractTests
 {
     private const string Sales = "営業部の議事録";

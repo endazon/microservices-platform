@@ -10,6 +10,7 @@ namespace NotificationService.Tests.Features.Notifications.DispatchEmails;
 //
 // ★ **この基準は構造で成り立たせてある**（永続化と outbox 投入・送信が別トランザクション）。
 // テストはその構造が壊れていないことを外から確かめる。
+[Trait("TestKind", "Unit")]
 public class EmailIndependenceTests
 {
     private static readonly DateTimeOffset Now = new(2026, 8, 23, 9, 0, 0, TimeSpan.Zero);

@@ -5,6 +5,7 @@ using Platform.Shared.Contracts.Dtos;
 namespace AuthorizationService.Tests.Domain;
 
 // FR-05, ADR-0004: ABAC ポリシー評価（deny-by-default ＋ 多値 allow-list）の単体テスト
+[Trait("TestKind", "Unit")]
 public class AbacEvaluatorTests
 {
     private static AbacPolicy ReadPolicy(

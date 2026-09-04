@@ -16,6 +16,7 @@ namespace RetrievalService.Tests.Features.Search.Hybrid;
 // 利用者入力由来でないことは別の主張**である。CodeQL が追っていたのは後者で、そちらは真だった。
 //
 // 直し方は sink の sanitize ではなく**発生源で断つ**こと。先例は `LlmRouter.ResolveModel`。
+[Trait("TestKind", "Unit")]
 public class SearchModeNormalizationTaintTests
 {
     // 実際に書かれたログ行を捕まえる。整形済みの本文を見るのが要点である。

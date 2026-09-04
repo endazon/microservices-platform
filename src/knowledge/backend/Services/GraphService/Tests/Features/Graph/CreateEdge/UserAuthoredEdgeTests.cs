@@ -11,6 +11,7 @@ namespace GraphService.Tests.Features.Graph.CreateEdge;
 //
 // 🔴 **本クラスの中心は「辺を張る行為が権限外文書の存在を確かめる手段にならない」ことである。**
 // 検証しなければ、張れたら在る・張れなければ無い、という探索経路になる。
+[Trait("TestKind", "Integration")]
 public class UserAuthoredEdgeTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;

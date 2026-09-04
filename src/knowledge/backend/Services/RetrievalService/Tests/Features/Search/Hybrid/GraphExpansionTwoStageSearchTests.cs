@@ -22,6 +22,7 @@ namespace RetrievalService.Tests.Features.Search.Hybrid;
 // 段の輪郭:
 //   ① 既存のハイブリッド検索 → ② ベクトル側上位 N を起点にグラフ近傍展開
 //   → ③ 到達文書に絞ったベクトル検索 → ④ 重みつき合成で再ランク
+[Trait("TestKind", "Integration")]
 public class GraphExpansionTwoStageSearchTests
 {
     private static readonly float[] QueryVector = [1f, 0f];

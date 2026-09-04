@@ -19,6 +19,7 @@ namespace GraphService.Tests.Features.Graph;
 //
 // 🔴 **否定形は陽性対照と対でなければ意味が無い。** 「常に拒む実装」でも否定形だけなら緑になる。
 // 本クラスは 3 経路すべてについて、**拒む側と通す側を対で置く。**
+[Trait("TestKind", "Integration")]
 public class WriteActionAuthorizationTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;

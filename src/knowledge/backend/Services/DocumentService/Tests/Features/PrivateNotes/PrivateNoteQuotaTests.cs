@@ -14,6 +14,7 @@ namespace DocumentService.Tests.Features.PrivateNotes;
 // FR-19, NFR-27, FR-22, ADR-0037 決定 16・17・19・20, [[IADR-0270]] 決定 4:
 // 保存容量の算入範囲（最新版＋論理削除済み／版履歴は非算入）・80/95 警告・
 // 100% 到達時の「新規作成のみ拒否・更新は許す」・完全削除による自力復帰。
+[Trait("TestKind", "Integration")]
 public class PrivateNoteQuotaTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

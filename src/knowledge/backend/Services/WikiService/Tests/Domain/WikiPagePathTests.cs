@@ -7,6 +7,7 @@ namespace WikiService.Tests.Domain;
 // 検索は Wiki.js が返した**パス**から台帳の行を引き当てるため、`PathFor` の逆写像が要る。
 // **台帳に足場を持たない形（人手で作られたページ・別の名前空間）は落とす** ——
 // ABAC で判定できないものを可視にしないための、検索経路の最初の関門である。
+[Trait("TestKind", "Unit")]
 public class WikiPagePathTests
 {
     // 往復: `PathFor` が作ったパスは必ず元の ID へ戻る（陽性対照）。

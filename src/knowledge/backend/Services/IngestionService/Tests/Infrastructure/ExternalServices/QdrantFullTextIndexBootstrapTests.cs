@@ -21,6 +21,7 @@ namespace IngestionService.Tests.Infrastructure.ExternalServices;
 // `CallInvoker` を挿す。実機の挙動（索引が在るときの検索結果）は
 // `scripts/verify-qdrant-fulltext-index.sh` が別に測る（Testcontainers は Docker API を要し、
 // containerd の環境では skip のまま緑になるので判定に使わない）。
+[Trait("TestKind", "Unit")]
 public class QdrantFullTextIndexBootstrapTests
 {
     private const string CollectionA = "knowledge_chunks_voyage_3_5";

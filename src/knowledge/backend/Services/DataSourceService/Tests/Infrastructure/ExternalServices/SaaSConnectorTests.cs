@@ -12,6 +12,7 @@ namespace DataSourceService.Tests.Infrastructure.ExternalServices;
 // FR-01, UC-04, 09_datasource-connectors（優先3: SaaS）, IADR-0054, Issue #218:
 // SaaS コネクタ（汎用 REST 契約）の単体テスト。fake HttpMessageHandler で応答を模す（実 API 不要＝CI 緑）。
 // 429 は Retry-After: 0 で待機ゼロにし高速化。実 SaaS API 結合は実 API/コンテナ前提の follow-up（本テスト対象外）。
+[Trait("TestKind", "Unit")]
 public sealed class SaaSConnectorTests
 {
     private const string Base = "https://saas.example.com";

@@ -9,6 +9,7 @@ namespace GraphService.Tests.Domain;
 //
 // 一致していないと、同じ文書が Wiki では見えないのにグラフでは見える（またはその逆）という
 // 食い違いが生まれる。ケース群は AbacPageFilterTests と同型に並べてある。
+[Trait("TestKind", "Unit")]
 public class AbacNodeFilterTests
 {
     private static GraphDocument Node(params (string Key, string Value)[] attrs)

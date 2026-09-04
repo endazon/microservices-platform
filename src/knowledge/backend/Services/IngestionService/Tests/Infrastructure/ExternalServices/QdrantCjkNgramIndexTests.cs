@@ -19,6 +19,7 @@ namespace IngestionService.Tests.Infrastructure.ExternalServices;
 // 実機 Qdrant を立てずに測る（`QdrantGrpcClient(CallInvoker)` に記録用の CallInvoker を挿す。
 // `QdrantFullTextIndexBootstrapTests` と同じ作法）。実機での再現率は
 // `scripts/verify-qdrant-fulltext-index.sh` 段 7 が測る。
+[Trait("TestKind", "Unit")]
 public class QdrantCjkNgramIndexTests
 {
     private const string CollectionA = "knowledge_chunks_voyage_3_5";

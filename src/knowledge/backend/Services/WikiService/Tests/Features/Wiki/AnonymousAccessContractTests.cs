@@ -32,6 +32,7 @@ namespace WikiService.Tests.Features.Wiki;
 //   ① 匿名は空／404 になること、② **認可サービスが 1 回も呼ばれていないこと**、
 //   ③ 陽性対照として、同じ構えで**認証済みなら呼ばれて 200 が返る**こと
 // を測る。②が無いと「たまたま拒否された」と区別できず、③が無いと「常に拒否する実装」が①を通す。
+[Trait("TestKind", "Integration")]
 public class AnonymousAccessContractTests(AnonymousContractTestFactory factory)
     : IClassFixture<AnonymousContractTestFactory>
 {

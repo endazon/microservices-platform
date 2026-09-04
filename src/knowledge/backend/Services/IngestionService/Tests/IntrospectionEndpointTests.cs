@@ -16,6 +16,7 @@ namespace IngestionService.Tests;
 // FR-15, IADR-0029 (#142): ingestion ワーカーの自己申告エンドポイント（/internal/introspection）が
 // メッシュ内部限定で到達でき、担当段（ingest）を申告することを検証する。これにより ingest 段が
 // ドリフト検出で Unverifiable でなくなる。
+[Trait("TestKind", "Integration")]
 public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTests.Factory>
 {
     private readonly Factory _factory;

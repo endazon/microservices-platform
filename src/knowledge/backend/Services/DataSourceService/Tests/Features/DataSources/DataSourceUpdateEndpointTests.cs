@@ -14,6 +14,7 @@ namespace DataSourceService.Tests.Features.DataSources;
 //   - 更新で confidentiality を欠落させられない（FR-05 フェイルセーフ）
 //   - 存在しない ID は 404
 //   - 更新は管理者限定（運用者は 403）は DataSourceAuthorizationTests 側で検証する
+[Trait("TestKind", "Integration")]
 public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

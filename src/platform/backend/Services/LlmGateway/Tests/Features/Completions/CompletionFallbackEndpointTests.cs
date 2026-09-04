@@ -18,6 +18,7 @@ namespace LlmGateway.Tests.Features.Completions;
 //
 // IADR-0110 (#395): メトリクス購読テスト（CompletionMetricsTests）と直列化する。
 [Collection(CompletionEndpointCollection.Name)]
+[Trait("TestKind", "Integration")]
 public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

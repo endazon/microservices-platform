@@ -12,6 +12,7 @@ namespace McpServer.Tests.Features.Tools;
 
 // FR-16: ツール呼び出しの単一経路の統制（登録確認 → 公開確認 → 個人資料の除外 → 越境 → 監査）。
 // 計画 ADR-0024 / ADR-0034 決定 9、UC-08（外部 AI エージェント連携）の基本・代替・例外フロー。
+[Trait("TestKind", "Unit")]
 public class ToolInvocationServiceTests
 {
     // 下流サービスの代わり。**要求側の制約を意図的に無視して**個人資料を返し、

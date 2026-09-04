@@ -10,6 +10,7 @@ namespace DocumentService.Tests.Features.Documents;
 // 必須属性（機密区分 confidentiality）のサーバー側検証。BFF/フロントの既定値に依存せず、DocumentService が
 // 最終防衛線として欠落・未知値を 400 で拒否する（admin/operator 直叩き・別クライアント経路を含む）。
 // 認可（admin/operator）は既定の TestAuthHandler（platform-admin）で通過し、以降は検証の合否のみを見る。
+[Trait("TestKind", "Integration")]
 public class DocumentConfidentialityValidationTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

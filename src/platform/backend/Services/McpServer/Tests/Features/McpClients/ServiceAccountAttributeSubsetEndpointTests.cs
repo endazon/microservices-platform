@@ -11,6 +11,7 @@ namespace McpServer.Tests.Features.McpClients;
 // 判定そのものは `ServiceAccountAttributeSubsetTests` が器なしで固定する。ここで見るのは
 // **経路**である —— 登録と差し替えの両方に効くこと、拒否が 400 であること、
 // **外れた値が応答本文に載ること**（画面がそれを描くための唯一の材料である）。
+[Trait("TestKind", "Integration")]
 public class ServiceAccountAttributeSubsetEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

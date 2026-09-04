@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace McpServer.Tests.Domain;
 
 // FR-16: 宣言的公開構成（許可リスト）と自己申告の突合（計画 ADR-0024 §2・§5）。
+[Trait("TestKind", "Unit")]
 public class ToolCatalogTests
 {
     private static ToolCatalog NewCatalog() => new(NullLogger<ToolCatalog>.Instance);

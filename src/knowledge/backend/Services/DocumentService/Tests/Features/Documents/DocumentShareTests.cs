@@ -13,6 +13,7 @@ namespace DocumentService.Tests.Features.Documents;
 //
 // 拒否の応答は 404 である（ADR-0056 決定 1・[[IADR-0277]]）。不在との区別ができないことが
 // 存在秘匿の狙いであり、区別できないぶんの検出力は陽性対照が担う。
+[Trait("TestKind", "Integration")]
 public class DocumentShareTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

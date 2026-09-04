@@ -13,6 +13,7 @@ namespace GraphService.Tests.Features.GraphDocuments.Delete;
 //
 // 🔴 **否定形テストには必ず陽性対照を対で置く**（GraphTraversalTests と同じ作法）——
 // 「削除後に無い」だけでは、そもそもフィクスチャが入っていなくても緑になる。
+[Trait("TestKind", "Unit")]
 public class DocumentDeletedConsumerTests
 {
     private static readonly Guid DocA = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001");

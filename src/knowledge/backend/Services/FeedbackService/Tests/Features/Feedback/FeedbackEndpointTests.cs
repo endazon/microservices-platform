@@ -7,6 +7,7 @@ namespace FeedbackService.Tests.Features.Feedback;
 
 // FR-08, UC-01: 回答へのフィードバック（👍/👎・コメント）収集のエンドポイントテスト。
 // 各テストは固有の AnswerId を用いて共有 InMemory DB 上で独立させる。
+[Trait("TestKind", "Integration")]
 public class FeedbackEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

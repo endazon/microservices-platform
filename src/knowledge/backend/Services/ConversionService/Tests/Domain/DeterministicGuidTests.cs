@@ -5,6 +5,7 @@ using AwesomeAssertions;
 namespace ConversionService.Tests.Domain;
 
 // FR-12, ADR-0012: 冪等な DocumentId 生成（同一原本の再変換で同一 ID）の単体テスト。
+[Trait("TestKind", "Unit")]
 public class DeterministicGuidTests
 {
     [Fact]

@@ -9,6 +9,7 @@ namespace DashboardService.Tests.Features.Dashboard;
 // FR-10, UC-05: 利用状況・検索傾向・回答品質ダッシュボードのエンドポイントテスト。
 // 集計はグローバル（テスト間で共有すると混ざる）ため、各テストは専用の InMemory DB
 // （TestWebApplicationFactory を per-test 生成）で独立させる。
+[Trait("TestKind", "Integration")]
 public class DashboardEndpointTests
 {
     // T-01: 検索イベントの記録で 201。

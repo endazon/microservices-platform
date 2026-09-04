@@ -18,6 +18,7 @@ namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 // この状態で nDCG@10 を測ると、**プレフィクス必須の Ruri がより大きく損をする**。
 // ADR-0017 は「voyage-3.5 比で大幅に劣化するなら BGE-M3 へ切り替える」と定めているので、
 // 欠陥を残したまま測ると切替の判断そのものを誤る（#336 の実測の前提条件）。
+[Trait("TestKind", "Unit")]
 public class EmbeddingPurposeTests
 {
     private const string EmbeddingJson = """{"data":[{"embedding":[0.1,0.2,0.3]}]}""";

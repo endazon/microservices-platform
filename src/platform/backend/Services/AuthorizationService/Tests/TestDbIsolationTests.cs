@@ -15,6 +15,7 @@ namespace AuthorizationService.Tests;
 //    代わりに**同じ形の分離そのもの**を主張する —— ファクトリを 2 つ作り、
 //    一方への書き込みが他方から見えないことを見る。これは決定的で、
 //    DB 名を固定へ戻すと**必ず**落ちる（作業仕様書 §変異試験）。
+[Trait("TestKind", "Integration")]
 public class TestDbIsolationTests
 {
     private static object PolicyBody(string name) => new

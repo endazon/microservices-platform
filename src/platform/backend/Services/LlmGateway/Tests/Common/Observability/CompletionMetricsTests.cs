@@ -18,6 +18,7 @@ namespace LlmGateway.Tests.Common.Observability;
 // MeterListener は Meter 名でプロセス全体の測定を購読するため、他のテストクラスが並行して /complete を
 // 叩くと測定が混入する。補完エンドポイントを叩くテストクラスを 1 コレクションへまとめて直列化する。
 [Collection(CompletionEndpointCollection.Name)]
+[Trait("TestKind", "Integration")]
 public class CompletionMetricsTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

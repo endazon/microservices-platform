@@ -7,6 +7,7 @@ namespace AuthorizationService.Tests;
 
 // FR-15, IADR-0029 (#143): 自己申告エンドポイントが到達でき、サービス名を申告することを検証する
 // （段・合成可能ポートは持たない存在申告のみのサービス）。
+[Trait("TestKind", "Integration")]
 public class IntrospectionEndpointTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;
