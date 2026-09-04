@@ -3,15 +3,15 @@ title: LLM 補完メトリクス（終了理由・拒否率）ログ・可観測
 type: observability-spec
 status: in-progress
 created: 2026-07-28
-updated: 2026-08-21
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
-ids: [FR-11, UC-01, UC-02]
-adrs: [ADR-0006, ADR-0010, ADR-0025, ADR-0038]
-iadrs: [IADR-0101, IADR-0104, IADR-0109, IADR-0110, IADR-0210, IADR-0212, IADR-0225]
-specs: []
-issues: [#380, #786, #787, #863]
+ids: [FR-11, NFR-21, UC-01, UC-02]
+adrs: [ADR-0006, ADR-0010, ADR-0025, ADR-0038, ADR-0044]
+iadrs: [IADR-0101, IADR-0104, IADR-0109, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0374]
+specs: [20260905_issue-1091_llm-upstream-status-axis]
+issues: [#380, #786, #787, #863, #1091]
 -->
 
 # 可観測性仕様書: LLM 補完の終了理由（拒否率）
@@ -42,11 +42,13 @@ issues: [#380, #786, #787, #863]
 | `llm.model` | route 結果のモデル / `none` | 実際に選択されたモデル |
 | `llm.provider` | `claude` / `selfhosted` / `copilot` / `none` | 呼び出し先プロバイダ |
 | `llm.confidentiality` | `public` / `internal` / `confidential` / `restricted` | 入力の最高機密区分 |
+| `llm.upstream_status` | `none` / `rate_limited` / `client_error` / `server_error` / `transport` / `other` | **上流が返したものの軸**（`llm.result` と直交する）。#1091 で追加（下記） |
 
 **カーディナリティ**: 非有界になり得るのは `purpose`（呼び出し側の自由文字列）と `stop_reason`
 （未知値を原文透過する。プロバイダ境界での正準語彙への正規化による）の 2 つで、いずれも既知集合以外は **`other` へ集約**する。
 `model` / `provider` はルーティング設定（`Llm:Routing`）由来、`confidentiality` は `SensitivityClass`（4 値）、
-`result` は実装の終了経路の列挙であり、いずれも有限である。**プロンプト・本文・利用者識別子・
+`result` は実装の終了経路の列挙、`upstream_status` は上流 HTTP ステータスを 6 値へ正規化したもの
+（**生のステータスは載せない**。下記）であり、いずれも有限である。**プロンプト・本文・利用者識別子・
 エンドポイント URL は属性にしない**。現構成での実系列数は数十のオーダー。
 
 **未知値の原文**はメトリクスには載らない。原文が必要な調査はログ側で行う
@@ -73,6 +75,15 @@ sum by (llm_confidentiality) (rate(llm_completion_total{llm_result="egress_denie
 
 # 呼び出し先障害 — 拒否・越境拒否と切り分ける
 sum by (llm_provider) (rate(llm_completion_total{llm_result="upstream_error"}[30m]))
+
+# レート制限（429）だけを読む。#1091 以前は upstream_error に潰れていて読めなかった
+sum by (llm_provider, llm_model) (rate(llm_completion_total{llm_upstream_status="rate_limited"}[30m]))
+
+# 429 を除いた呼び出し先障害。呼び出し先の不調とレート制限は対処が異なる
+sum(rate(llm_completion_total{llm_result="upstream_error", llm_upstream_status!="rate_limited"}[30m]))
+
+# 失敗の内訳（1 枚で見る）。transport=通信断・other=設定ミス等（BaseUrl 未設定など）
+sum by (llm_upstream_status) (rate(llm_completion_total{llm_result="upstream_error"}[30m]))
 
 # 未定義 purpose の流入（ルーティングが既定へ落ちている状態の遅い警報。IADR-0102 / IADR-0106 の罠）
 sum(rate(llm_completion_total{llm_purpose="other"}[1h]))
@@ -115,8 +126,9 @@ sum(rate(llm_completion_total{llm_result="fallback"}[30m]))
 `max_tokens` の妥当性（既定値 4096）は**回数ではなく分布**でしか読めない。
 バケット境界は **4096 付近を細かく刻んである**（`… 1024, 2048, 3072, 4096, 8192`）。
 
-**属性は Counter の 6 つから `llm.result` を落とした 5 つ**である
-（Histogram は**送信が成立した経路だけ**に記録するため、`result` は常に `sent` で系列を分けない）。
+**属性は Counter の 7 つから `llm.result` と `llm.upstream_status` を落とした 5 つ**である
+（Histogram は**送信が成立した経路だけ**に記録するため、`result` は常に `sent`、
+`upstream_status` は常に `none` で、どちらも系列を分けない）。
 
 ```promql
 # 出力トークンの p95（用途別）。4096 に張り付いていれば max_tokens が足りていない
@@ -157,10 +169,45 @@ sum by (llm_model) (rate(llm_completion_output_tokens_sum[1h]))
 - **`upstream_error` には混ぜていない。** 混ぜると「フォールバックで回復した呼び出し」が
   呼び出し先障害の率へ入り、下表の `upstream_error` 率 > 10%（critical）が誤発火する。
 - **429（レート制限）ではフォールバックしない**（`ADR-0038` 決定 4）。429 は再試行の対象であり、
-  現行実装では従来どおり `upstream_error` として計上される（429 の再試行そのものは
-  用途別フォールバックの実装 ADR §フォローアップ 1 として未実装である）。
+  `llm.result` は従来どおり `upstream_error` である。**［2026-09-05 追記 / #1091］**
+  ただし `llm.upstream_status="rate_limited"` で**他の失敗と区別できるようになった**（次節）。
+  429 の再試行そのものは依然として未実装である（用途別フォールバックの実装 ADR §フォローアップ 1）。
 - **既存の Grafana パネル**（`sum by (llm_result) (increase(llm_completion_total[$__range]))`）に
   新しい系列としてそのまま現れるため、**ダッシュボードの変更を要さない**。
+
+## 上流ステータスの軸（`llm.upstream_status`・#1091）
+
+**`llm.result` は「基盤側が何をしたか」、`llm.upstream_status` は「上流が何を返したか」**であり、
+**独立した 2 軸**である。従前は 429・5xx・通信断・設定ミスがすべて `llm.result="upstream_error"` の
+一点へ潰れており、レート制限の有無を計器から判定できなかった。
+
+| 値 | 意味 | どの `llm.result` に現れるか |
+| --- | --- | --- |
+| `none` | 上流の失敗ではない | `sent` / `egress_denied` / `provider_missing` |
+| `rate_limited` | 上流が **429** を返した | `upstream_error`（`ADR-0038` 決定 4 によりフォールバックしない） |
+| `client_error` | 400–499（**429 を除く**） | `fallback`（次の候補へ切り替えた）／`upstream_error`（鎖が尽きた） |
+| `server_error` | 500–599 | `upstream_error` |
+| `transport` | ステータスが取れず、通信層の失敗の形 | `upstream_error` |
+| `other` | 上記のいずれでもない（**設定ミスはここ**。例: `Llm:SelfHosted:BaseUrl` 未設定） | `upstream_error` |
+
+- **生の HTTP ステータスは載せない。** 404 と 418 はどちらも `client_error` である。値域が非有界に
+  なるためで、原文が要る調査はログ側で行う（失敗時のログに `upstream status {Status}` が出る）。
+- **`transport` と `other` を分けている。** 設定ミスを「呼び出し先の通信障害」として数えると、
+  直す対象を取り違える。
+- 既存のしきい値方針（下表）の**式も数値も変えていない**。429 を除きたいときだけ
+  `llm_upstream_status!="rate_limited"` を足す。
+
+### 🔴 「429 が起きていない」と読むときは陽性対照を対で出す
+
+Prometheus は**起きていないラベル値を 0 として持たない**。空ベクタは「起きていない」とも
+「計器が動いていない」とも読める。**2 本を対で出して初めて結論になる。**
+
+```promql
+# 分子: 429 が起きたか
+sum(increase(llm_completion_total{llm_upstream_status="rate_limited"}[7d]))
+# 陽性対照: 同じ期間に計器そのものが動いていたか（これが空なら上の空には意味が無い）
+sum(increase(llm_completion_total{llm_upstream_status="none"}[7d]))
+```
 
 ## しきい値の方針（アラート）
 
@@ -169,6 +216,7 @@ sum by (llm_model) (rate(llm_completion_output_tokens_sum[1h]))
 | 全体の拒否率 | > 5% が 30 分継続 | warning | 既定モデル（Opus 5）の安全性分類器による劣化を検知する |
 | `purpose` 別の拒否率 | > 20% が 30 分継続 | warning | 特定用途のプロンプトが恒常的に拒否されている（AST は Hold へ縮退） |
 | `upstream_error` 率 | > 10% が 10 分継続 | critical | 呼び出し先障害。拒否とは対処が異なる |
+| `rate_limited` の出現 | > 0 | — | レート制限。**しきい値は実測前のため置かない**。除外したいときは上表の式へ `llm_upstream_status!="rate_limited"` を足す |
 | `llm.purpose="other"` の出現 | > 0 が 1 時間継続 | warning | 未定義 purpose＝ルーティングが既定へ無音で落ちている疑い |
 
 数値は**初期値であり実測前の出発点**である。運用開始後の実測で調整する。アラートルールの実配線
@@ -191,4 +239,6 @@ sum by (llm_model) (rate(llm_completion_output_tokens_sum[1h]))
 - アラートの実配線（Prometheus ルール／Alertmanager 通知先）と Grafana ダッシュボードへのパネル追加。
 - レイテンシ・トークン消費のヒストグラム（同実装 ADR §フォローアップ 2。#380 のコスト実測と接続する）。
 - **フォールバック率のしきい値**（用途別フォールバックの実装 ADR §フォローアップ 3）。**実測前に数値を置かない。**
-- 埋め込み経路（`/embeddings`）の同種メトリクス。
+- 埋め込み経路（`/embeddings`）の同種メトリクス。**上流ステータスの軸も持たない**
+  （そもそも補完カウンタを呼んでいないため。#1091 の対象外）。
+- `upstream_error` 率のしきい値を **429 を除いた式へ改めるか**（内訳の実測を得てから判断する）。
