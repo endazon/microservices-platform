@@ -26,6 +26,10 @@ const PLANNED_ROUTES: ReadonlyArray<readonly [string, string]> = [
   ['SC-01', '/ask'],
   ['SC-02', '/search'],
   ['SC-03', '/docs/$id'],
+  // #1200 / ADR-0073 決定 2: 計画 §SC-04 §ルート が `/wiki`（基盤 SPA）へ是正された（従前は「Wiki.js 別ホスト・
+  // 別配信」で本表に載らなかった）。開いているページ・検索語はクエリ（`?page=` / `?doc=` / `?q=`）で持ち、
+  // 木に載るのはパスだけである。
+  ['SC-04', '/wiki'],
   ['SC-05', '/admin/documents'],
   ['SC-06', '/admin/sources'],
   ['SC-07', '/admin/conversions'],
@@ -54,10 +58,9 @@ const PLANNED_ROUTES: ReadonlyArray<readonly [string, string]> = [
  * `PLANNED_ROUTES` にも本表にも無ければ落とす。理由の文字列は必須である。
  */
 const SCREENS_NOT_IN_THE_ROUTE_TABLE: ReadonlyArray<readonly [string, string]> = [
-  [
-    'SC-04',
-    '実体は別ホストの Wiki.js（wiki.example.co.jp）であり、計画のルートパス表は SC-04 に SPA ルートを与えていない。SPA 側の /wiki が持つのは遷移導線だけである',
-  ],
+  // ［2026-09-03 / #1200］**0 件になった。** 唯一の住人だった SC-04（「実体は別ホストの Wiki.js」）は、
+  // ADR-0073 決定 2 で計画 §ルートが `/wiki`（基盤 SPA）へ是正されたため上の表へ移った。
+  // 表は残す —— 除外を消すと「載らない画面は理由つきで宣言する」道そのものが消える。
 ];
 
 const fullPaths = () => Object.keys(router.routesByPath);

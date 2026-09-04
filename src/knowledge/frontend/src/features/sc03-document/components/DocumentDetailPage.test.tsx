@@ -13,7 +13,6 @@ import { jsonResponse, noContent } from '@foundation/testing/bffResponse';
 // モックは `apiRequest` に当てる（`apiFetch` を差し替えても効かない）。
 const mocks = vi.hoisted(() => ({
   apiRequest: vi.fn(),
-  wikiBaseUrl: undefined as string | undefined,
   // 05_screens §共通シェル / #446: パンくずの**動的な葉**。本画面はこれで文書タイトルを
   // 共通シェルへ渡す。ハーネス（renderUnitRoute）はシェルを描かないので、
   // 渡している値そのものを見る（描画は platform 側 Layout.test.tsx が見る）。
@@ -22,9 +21,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
   apiRequest: mocks.apiRequest,
-}));
-vi.mock('@foundation/config/runtimeConfig', () => ({
-  appConfig: () => ({ wikiBaseUrl: mocks.wikiBaseUrl }),
 }));
 vi.mock('@foundation/routing/breadcrumbLeaf', () => ({
   useBreadcrumbLeaf: mocks.useBreadcrumbLeaf,
@@ -90,6 +86,8 @@ const LINK_SUGGESTION = {
   reinstatedReason: null,
   sourceDocumentTitle: '経費精算規程 v3.2',
   targetDocumentTitle: '旅費規程',
+  // ADR-0063 決定 3〜5 (#1187): 承認・却下の資格はサーバが行ごとに判定して運ぶ。
+  canDecide: true,
 };
 const TAG_SUGGESTION = {
   ...LINK_SUGGESTION,
@@ -101,21 +99,40 @@ const TAG_SUGGESTION = {
   rationale: '本文が精算手続きを定めている',
   targetDocumentTitle: null,
 };
+// 資格を持たない利用者に見えるタグ提案（起点文書への write も管理者ロールも無い）。
+const TAG_SUGGESTION_FORBIDDEN = { ...TAG_SUGGESTION, canDecide: false };
 const EDGE_TYPES = [{ id: EDGE_TYPE_ID, name: '関連する', layer: 'core', isSymmetric: true }];
 
-/** BFF の各エンドポイントへ応答を割り当てる（既定はすべて成功・提案は 0 件）。 */
+// SC-03, UC-07, #1200 / IADR-0365 決定 1: 「Wiki で閲覧」は**権限内の Wiki 台帳**（`GET /bff/wiki/pages`）に
+// この文書が載っているときだけ出す。台帳の応答はここで差し替える（既定は**載っていない**）。
+const WIKI_PAGE = {
+  id: 'page-1',
+  documentId: DOC_ID,
+  title: DETAIL.title,
+  slug: 'keihi-seisan',
+  wikiPath: `doc/${DOC_ID}`,
+  status: 'Active',
+  syncedAt: '2026-05-30T00:00:00Z',
+};
+
+/** BFF の各エンドポイントへ応答を割り当てる（既定はすべて成功・提案は 0 件・Wiki 台帳は空）。 */
 function respond({
   detail = DETAIL as unknown,
   content = CONTENT as unknown,
   versions = VERSIONS as unknown,
   suggestions = [] as unknown,
   edgeTypes = EDGE_TYPES as unknown,
+  approve = undefined as unknown,
+  wikiPages = [] as unknown,
 }: {
   detail?: unknown;
   content?: unknown;
   versions?: unknown;
   suggestions?: unknown;
   edgeTypes?: unknown;
+  /** 承認の口の応答を差し替える（既定は成功。`Error` を渡すと拒否を再現する）。 */
+  approve?: unknown;
+  wikiPages?: unknown;
 } = {}) {
   const reply = (value: unknown) => {
     if (value instanceof Error) return Promise.reject(value);
@@ -123,10 +140,12 @@ function respond({
     return Promise.resolve(jsonResponse(value));
   };
   mocks.apiRequest.mockImplementation((path: string) => {
+    if (path === '/wiki/pages') return reply(wikiPages);
     // 🔴 提案の口を**最初に**見る。承認・却下は `/graph/suggestions/{id}/approve` であり、
     // 一覧の判定を後ろに置くと `endsWith('/content')` 等と取り違えはしないが、
     // 「承認したのに一覧の応答が返る」形になって観測が壊れる。
     if (path.includes('/graph/suggestions')) {
+      if (path.endsWith('/approve') && approve !== undefined) return reply(approve);
       if (path.endsWith('/approve') || path.endsWith('/reject')) {
         return reply({
           ...LINK_SUGGESTION,
@@ -150,7 +169,6 @@ async function renderPage() {
 
 beforeEach(() => {
   mocks.apiRequest.mockReset();
-  mocks.wikiBaseUrl = undefined;
   mocks.useBreadcrumbLeaf.mockClear();
 });
 
@@ -202,19 +220,37 @@ describe('DocumentDetailPage (SC-03)', () => {
     );
   });
 
-  // UC-07: Wiki 閲覧への導線。未設定の環境では導線を出さない。
-  it('links to SC-04 only when a wiki base url is configured', async () => {
-    respond();
-    await renderPage();
+  // UC-07 / #1200: Wiki 閲覧への導線は**権限内の Wiki 台帳にこの文書が載っているとき**だけ出し、
+  // 文書別ディープリンク（`/wiki?doc=<id>`）へ送る。台帳に無ければ出さない（到達できない導線を押させない）。
+  it('links to the SC-04 deep link only when the wiki ledger lists the document', async () => {
+    const { queryClient } = await (async () => {
+      respond();
+      return renderPage();
+    })();
     await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
+    // 台帳の取得が終わってから否定する（読み込み中に出さないだけの実装を緑にしない）。
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    expect(mocks.apiRequest).toHaveBeenCalledWith('/wiki/pages', expect.anything());
     expect(screen.queryByRole('link', { name: 'Wikiで閲覧' })).not.toBeInTheDocument();
 
-    mocks.wikiBaseUrl = 'https://wiki.example.co.jp';
+    respond({ wikiPages: [WIKI_PAGE] });
     await renderPage();
     expect((await screen.findAllByRole('link', { name: 'Wikiで閲覧' }))[0]).toHaveAttribute(
       'href',
-      '/wiki',
+      `/wiki?doc=${DOC_ID}`,
     );
+  });
+
+  // 台帳が読めなくても導線を推測で出さない。
+  it('hides the wiki link when the ledger cannot be read', async () => {
+    respond({ wikiPages: ApiError.fromStatus(502) });
+    const { queryClient } = await renderPage();
+    await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+    expect(screen.queryByRole('link', { name: 'Wikiで閲覧' })).not.toBeInTheDocument();
+    // 本体表示は続く（台帳の失敗で文書詳細を壊さない）。
+    expect(screen.getByText(/締め日は毎月25日とする。/)).toBeInTheDocument();
   });
 
   // UC-02 例外フロー: 権限の有無は利用者に開示しない。404 は「不在」と同じ中立表示にする。
@@ -293,10 +329,9 @@ describe('DocumentDetailPage (SC-03)', () => {
   // **本テストが否定するのは FR-17 の画面側だけになり、その FR-17 は SC-18 の画面として着手済みである**
   // （本リポジトリに sc18-graph の feature が在る）。誤報の前提が無いので、起点 ID を書く。
   it('does not render the knowledge-graph link (SC-18 belongs to another screen)', async () => {
-    // **導線の並びを全部描かせた状態で見る。** wikiBaseUrl 未設定だと「Wikiで閲覧」を含む行ごと
-    // 描画されず、そこへ保留対象の導線を足しても検出できない（実測: 変異試験 M3 が素通りした）。
-    mocks.wikiBaseUrl = 'https://wiki.example.co.jp';
-    respond();
+    // **導線の並びを全部描かせた状態で見る。** 台帳に載せないと「Wikiで閲覧」が描画されず、
+    // そこへ保留対象の導線を足しても検出できない（実測: 変異試験 M3 が素通りした）。
+    respond({ wikiPages: [WIKI_PAGE] });
     await renderPage();
     await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
 
@@ -314,8 +349,7 @@ describe('DocumentDetailPage (SC-03)', () => {
   // 素通りした）。`queryClient.isFetching()` が 0 になるまで待つのが、この画面で使える唯一の
   // 決定的な合図である（欄が出ないので「現れるのを待つ」ことができない）。
   it('does not render the suggestion panel when there is nothing pending', async () => {
-    mocks.wikiBaseUrl = 'https://wiki.example.co.jp';
-    respond({ suggestions: [] });
+    respond({ suggestions: [], wikiPages: [WIKI_PAGE] });
     const { queryClient } = await renderPage();
     await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
     await waitFor(() => expect(queryClient.isFetching()).toBe(0));
@@ -340,18 +374,96 @@ describe('DocumentDetailPage (SC-03)', () => {
     expect(screen.getByRole('button', { name: '却下' })).toBeEnabled();
   });
 
-  // SC-03, FR-18, IADR-0300 決定 4: **タグ提案の承認は実行できない。**
-  // 後段はタグ提案を承認しても状態を変えるだけで文書のタグは増えない（反映経路が未実装）。
-  // **却下は完全に効く**ので押せるままにする。押せない理由は画面に必ず出す。
-  it('shows a tag suggestion but disables approval (the tag is never applied)', async () => {
+  // SC-03, FR-18, ADR-0063 決定 3〜5, IADR-0364 決定 5 (#1187): **タグ提案の行は資格で 2 つに分ける。**
+  // 1187-9: 資格を持つ利用者には承認ボタンが有効で、「準備中」「未実装」の文言が**無い**
+  // （IADR-0300 決定 4 の「承認だけを実行不可にする」は反映経路の実装をもって失効した）。
+  it('enables approval of a tag suggestion for a user who can decide (no "not implemented" wording)', async () => {
     respond({ suggestions: [TAG_SUGGESTION] });
     await renderPage();
 
     expect(await screen.findByRole('heading', { name: 'AI 提案' })).toBeInTheDocument();
     expect(screen.getByText(/「経理」を付与/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '承認' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '承認' })).toBeEnabled();
     expect(screen.getByRole('button', { name: '却下' })).toBeEnabled();
-    expect(screen.getByText(/反映経路が未実装/)).toBeInTheDocument();
+    expect(screen.queryByText(/未実装|準備中/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/権限がありません/)).not.toBeInTheDocument();
+
+    // 承認は**その提案の口**へ送る（タグ提案でも経路は同じ）。
+    await userEvent.click(screen.getByRole('button', { name: '承認' }));
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(
+          (call) => String(call[0]) === `/graph/suggestions/${TAG_SUGGESTION.id}/approve`,
+        ),
+      ).toBe(true),
+    );
+  });
+
+  // 1187-8: 資格を持たない利用者には承認・却下とも押せず、「この文書のタグを編集する権限が無い」が
+  // **画面上のテキストとして**読める（決定 4: 却下も同じ権限に従うので両方を塞ぐ）。
+  it('disables both actions and explains the missing permission for a user who cannot decide', async () => {
+    respond({ suggestions: [TAG_SUGGESTION_FORBIDDEN] });
+    await renderPage();
+
+    expect(await screen.findByRole('heading', { name: 'AI 提案' })).toBeInTheDocument();
+    expect(screen.getByText(/「経理」を付与/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '承認' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '却下' })).toBeDisabled();
+    expect(screen.getByText('この文書のタグを編集する権限がありません。')).toBeInTheDocument();
+    expect(screen.queryByText(/未実装|準備中/)).not.toBeInTheDocument();
+  });
+
+  // 🔴 旧版の後段は `canDecide` を載せない。**欠けていれば deny 側**に倒す（「できる」と描いて 404 に
+  // なるより、「権限が無い」と描くほうが安全側）。
+  it('treats a missing canDecide as "cannot decide"', async () => {
+    const { canDecide: _omitted, ...withoutFlag } = TAG_SUGGESTION;
+    void _omitted;
+    respond({ suggestions: [withoutFlag] });
+    await renderPage();
+
+    await screen.findByRole('heading', { name: 'AI 提案' });
+    expect(screen.getByRole('button', { name: '承認' })).toBeDisabled();
+    expect(screen.getByText('この文書のタグを編集する権限がありません。')).toBeInTheDocument();
+  });
+
+  // 1187-7 / 1014-3, ADR-0063 決定 2 後段: 辞書に無い値の提案は承認できず却下のみ。後段が
+  // 400 `unknown_tag` を本文ごと透過したとき、汎用の「操作できませんでした」ではなく
+  // **その事実を読める文言**で出す（利用者が次に取るべき行動＝却下が分かる）。
+  it('explains an unknown_tag rejection so the user knows to reject the suggestion', async () => {
+    respond({
+      suggestions: [TAG_SUGGESTION],
+      approve: new ApiError('validation', '入力に誤りがあります。', 400, [], {
+        error: 'unknown_tag',
+      }),
+    });
+    await renderPage();
+    await screen.findByRole('heading', { name: 'AI 提案' });
+
+    await userEvent.click(screen.getByRole('button', { name: '承認' }));
+
+    expect(
+      await screen.findByText('このタグは辞書に無いため反映できません。却下してください。'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/操作できませんでした/)).not.toBeInTheDocument();
+    // 却下は引き続き押せる（承認できず却下のみ）。
+    expect(screen.getByRole('button', { name: '却下' })).toBeEnabled();
+  });
+
+  // 陽性対照: 400 でも `unknown_tag` 以外は汎用エラーのまま（本文を見ずに 400 全部を辞書外と読まない）。
+  it('keeps the generic error for a 400 that is not unknown_tag', async () => {
+    respond({
+      suggestions: [TAG_SUGGESTION],
+      approve: new ApiError('validation', '入力に誤りがあります。', 400, [], {
+        error: 'unknown_edge_type',
+      }),
+    });
+    await renderPage();
+    await screen.findByRole('heading', { name: 'AI 提案' });
+
+    await userEvent.click(screen.getByRole('button', { name: '承認' }));
+
+    expect(await screen.findByText(/操作できませんでした/)).toBeInTheDocument();
+    expect(screen.queryByText(/辞書に無いため/)).not.toBeInTheDocument();
   });
 
   // SC-03: 本欄が描くのは**当該文書を両端のいずれかとする提案**だけである（05_screens §SC-03）。
@@ -467,9 +579,8 @@ describe('DocumentDetailPage (SC-03)', () => {
   // **ここに起点 ID を書かないのは意図的である**（上の保留テストと同じ理由。
   // check-test-traceability.js が未着手機能の ID を「実装が先行している」と誤報する）。
   it('does not render a backlink panel or a local graph (they belong to the wiki screen only)', async () => {
-    // 導線の並びを全部描かせた状態で見る（wikiBaseUrl 未設定だと行ごと消えて検出できない）。
-    mocks.wikiBaseUrl = 'https://wiki.example.co.jp';
-    respond();
+    // 導線の並びを全部描かせた状態で見る（台帳に載せないと Wiki の導線が消えて検出できない）。
+    respond({ wikiPages: [WIKI_PAGE] });
     await renderPage();
     await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
 

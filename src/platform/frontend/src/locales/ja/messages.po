@@ -316,15 +316,15 @@ msgstr "supersedes: 太実線・矢印（旧→新）"
 msgid "Wiki"
 msgstr "Wiki"
 
-#: knowledge/frontend/src/features/sc04-wiki/components/WikiAccessPage.tsx
-msgid "Wiki の接続先が未設定です。管理者に連絡してください。"
-msgstr "Wiki の接続先が未設定です。管理者に連絡してください。"
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "Wiki の検索に失敗しました。Wiki に到達できない可能性があります。"
+msgstr "Wiki の検索に失敗しました。Wiki に到達できない可能性があります。"
 
-#: knowledge/frontend/src/features/sc04-wiki/components/WikiAccessPage.tsx
-msgid "Wiki を開く"
-msgstr "Wiki を開く"
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "Wiki を検索"
+msgstr "Wiki を検索"
 
-#: knowledge/frontend/src/features/sc04-wiki/components/WikiAccessPage.tsx
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "Wiki 閲覧"
 msgstr "Wiki 閲覧"
 
@@ -372,6 +372,7 @@ msgstr "イベント接続はありません。"
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
@@ -482,6 +483,10 @@ msgstr "このジョブは再変換できません（実行中、または失敗
 msgid "このタグは {inUseCount} 件の文書で使われているため削除できません。"
 msgstr "このタグは {inUseCount} 件の文書で使われているため削除できません。"
 
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "このタグは辞書に無いため反映できません。却下してください。"
+msgstr "このタグは辞書に無いため反映できません。却下してください。"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "このトークンを表示できるのは今回だけです。閉じると再表示できません（再発行のみ可能です）。"
 msgstr "このトークンを表示できるのは今回だけです。閉じると再表示できません（再発行のみ可能です）。"
@@ -506,6 +511,10 @@ msgstr "この文書には表示できる関係がありません。"
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "この文書に対するリンク候補・タグ候補です。両端の文書の内容を確かめたうえで、 1 件ずつ承認または却下してください。"
 msgstr "この文書に対するリンク候補・タグ候補です。両端の文書の内容を確かめたうえで、 1 件ずつ承認または却下してください。"
+
+#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+msgid "この文書のタグを編集する権限がありません。"
+msgstr "この文書のタグを編集する権限がありません。"
 
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "この画面について質問する"
@@ -652,14 +661,6 @@ msgstr "タグを選択"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "タグ名（必須）"
 msgstr "タグ名（必須）"
-
-#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
-msgid "タグ提案の反映経路が未実装のため、承認は実行できません。"
-msgstr "タグ提案の反映経路が未実装のため、承認は実行できません。"
-
-#: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
-msgid "タグ提案の反映経路が未実装のため、承認は実行できません。却下は実行できます。"
-msgstr "タグ提案の反映経路が未実装のため、承認は実行できません。却下は実行できます。"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AdminAbacSettingsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
@@ -829,6 +830,26 @@ msgstr "フィードバックを送信できませんでした。"
 #: knowledge/frontend/src/lib/scope-filter/scopeSelection.ts
 msgid "プロジェクト"
 msgstr "プロジェクト"
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "ページが見つかりませんでした。"
+msgstr "ページが見つかりませんでした。"
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "ページツリー"
+msgstr "ページツリー"
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "ページツリーまたは検索結果からページを選んでください。"
+msgstr "ページツリーまたは検索結果からページを選んでください。"
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "ページツリーを取得できませんでした。"
+msgstr "ページツリーを取得できませんでした。"
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "ページツリーを読み込み中…"
+msgstr "ページツリーを読み込み中…"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "ポート"
@@ -1268,6 +1289,10 @@ msgstr "再試行中（{failures}/{limit}）"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "最終同期"
 msgstr "最終同期"
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "最終同期: {syncedAt}"
+msgstr "最終同期: {syncedAt}"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 msgid "写像に無いソース側の利用者は、予約値 {UNRESOLVED_OWNER} になります。基盤の利用者は ログイン名で指定してください（存在しない利用者は保存できません）。"
@@ -1944,6 +1969,10 @@ msgstr "文書詳細"
 msgid "文書詳細で確認"
 msgstr "文書詳細で確認"
 
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "文書詳細へ戻る"
+msgstr "文書詳細へ戻る"
+
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "新しいお知らせが {count} 件あります"
 msgstr "新しいお知らせが {count} 件あります"
@@ -2098,7 +2127,12 @@ msgstr "本文はこの画面では編集できません。本文を書くには
 msgid "本文は利用できません。"
 msgstr "本文は利用できません。"
 
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "本文を取得できませんでした。"
+msgstr "本文を取得できませんでした。"
+
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "本文を読み込み中…"
 msgstr "本文を読み込み中…"
 
@@ -2127,6 +2161,7 @@ msgid "株式自動売買"
 msgstr "株式自動売買"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "検索"
 msgstr "検索"
@@ -2145,6 +2180,7 @@ msgid "検索に失敗しました。"
 msgstr "検索に失敗しました。"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "検索中…"
 msgstr "検索中…"
 
@@ -2171,6 +2207,7 @@ msgstr "検索条件で追加"
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc02-results/routes/sc02ResultsRoute.tsx
 #: knowledge/frontend/src/features/sc03-document/routes/sc03DocumentRoute.ts
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "検索結果"
 msgstr "検索結果"
 
@@ -2189,6 +2226,10 @@ msgstr "検索総数"
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "検索語"
 msgstr "検索語"
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "検索語を入力…"
+msgstr "検索語を入力…"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "検証"
@@ -2454,10 +2495,6 @@ msgstr "確認"
 msgid "確認時刻"
 msgstr "確認時刻"
 
-#: knowledge/frontend/src/features/sc04-wiki/components/WikiAccessPage.tsx
-msgid "社内 Wiki（Wiki.js）を開きます。ログイン中のアカウント（Keycloak SSO）でそのまま閲覧でき、 アクセス範囲はゲートウェイ（ABAC）で制御されます。"
-msgstr "社内 Wiki（Wiki.js）を開きます。ログイン中のアカウント（Keycloak SSO）でそのまま閲覧でき、 アクセス範囲はゲートウェイ（ABAC）で制御されます。"
-
 #: platform/frontend/src/lib/auth/LoginPage.tsx
 msgid "社内ナレッジ検索・AI 回答プラットフォーム"
 msgstr "社内ナレッジ検索・AI 回答プラットフォーム"
@@ -2623,6 +2660,10 @@ msgstr "許可値（カンマ区切り）"
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "該当するノードがありません。"
 msgstr "該当するノードがありません。"
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "該当するページはありません。"
+msgstr "該当するページはありません。"
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "該当する利用者はいません。"
@@ -2874,6 +2915,14 @@ msgstr "関係する文書がありません"
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 msgid "閲覧"
 msgstr "閲覧"
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "閲覧できる Wiki ページはありません。"
+msgstr "閲覧できる Wiki ページはありません。"
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "閲覧権限のある Wiki ページだけが並びます。ページを選ぶと本文を表示します。"
+msgstr "閲覧権限のある Wiki ページだけが並びます。ページを選ぶと本文を表示します。"
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "集計期間"

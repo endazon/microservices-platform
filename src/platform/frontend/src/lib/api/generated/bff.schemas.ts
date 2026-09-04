@@ -149,6 +149,8 @@ export interface AiSuggestion {
   sourceDocumentTitle: string;
   /** 終点の文書名。タグ提案では終点が無いため null である */
   targetDocumentTitle?: string | null;
+  /** FR-18, SC-03, ADR-0063 決定 3〜5: **この利用者がこの提案を承認・却下できるか** （①起点文書への `write` **または** ②管理者ロール）。サーバ側で判定した値であり、 画面は辞書もポリシーも引かず、この値だけで「承認できる／この文書のタグを編集する 権限が無い」を分けて描く。**承認と却下は同じ権限に従う**（決定 4）ので 1 つの値で 両方を表す。旧版の後段は載せないので既定は false（deny 側） */
+  canDecide?: boolean;
 }
 
 /**

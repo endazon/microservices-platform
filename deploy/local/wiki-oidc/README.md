@@ -100,7 +100,7 @@ Wiki.js は **コールバックを `{Site URL}/login/{strategyKey}/callback`** 
 
 以降の手順は **edge 経路を既定**として記述する。port-forward 単独で使う場合は Site URL を `http://localhost:3300` に
 読み替える（他の項目＝endpoint / issuer は in-cluster 名のままで変わらない）。`values-local.yaml` の
-`WIKI_BASE_URL`（SPA の「Wiki を開く」導線）とは**別物**なので両方を揃えること。経路別の port topology は
+`WIKI_BASE_URL`（dev の管理 UI の到達先。SPA の画面は読まない・#1200）とは**別物**なので両方を揃えること。経路別の port topology は
 [IADR-0095 の「追記（2026-07-26・Issue #385）」](../../../.ai-context/adr/IADR-0095_wikijs-keycloak-oidc.md)が単一情報源。
 
 ## DB seed で入れる（手で当てるときの手順・IADR-0103 / IADR-0342）
@@ -165,7 +165,7 @@ kubectl -n microservices-platform rollout restart deploy/wiki-js
 - **`settings.host`（Site URL）は上表の経路別の値**にする（`SITE_URL` 変数。既定＝edge 集約 `wiki.localhost:50000`、
   port-forward 単独なら `SITE_URL=http://localhost:3300` を付けて実行する）。Wiki.js は callback を
   `{Site URL}/login/{key}/callback` で組むため、ここが経路と不一致だと realm 側に登録があっても redirect が合わない。
-  なお `values-local.yaml` の `WIKI_BASE_URL`（SPA の「Wiki を開く」導線）とは**別物**なので両方を揃える。
+  なお `values-local.yaml` の `WIKI_BASE_URL`（dev の管理 UI の到達先。SPA の画面は読まない・#1200）とは**別物**なので両方を揃える。
 - `autoEnrollGroups` は **Guests**＝**最小権限の床**（deny-by-default 寄り）。Guests は既定で
   `read:pages`/`read:assets`/`read:comments` と全パスの pageRule を持つため**追加付与は不要**。
   id を `2` と決め打たず、**名前 `Guests` から引く**（上の SQL / 段 8 とも）—— DB を作り直した環境で

@@ -12,12 +12,14 @@ import {
   Label,
   Tag,
 } from '@platform/ui';
-import { appConfig } from '@foundation/config/runtimeConfig';
 import { citationKind } from '../types/citations';
 import type { AskCitation } from '../types/citations';
 import { useAskStream, useFeedback } from '../api/useAskStream';
 import { EMPTY_SELECTION, ScopeFilter, toAttributeFilters } from '../../../lib/scope-filter';
 import type { ScopeSelection } from '../../../lib/scope-filter';
+// SC-01, UC-07, #1200 / IADR-0365 決定 1: 出典が Wiki 由来かは**権限内の Wiki 台帳**で判定する
+// （実行時 config `wikiBaseUrl` の接頭辞判定は廃止。stg/prod では同値が供給されないため一度も真にならなかった）。
+import { useWikiPageIndex } from '../../../lib/wiki-pages';
 
 // SC-01, UC-01, FR-03/FR-04/FR-05/FR-08: 検索／チャット質問画面（本システムの主入口。ルート /ask）。
 // 1 つの入力から根拠付き AI 回答（真の SSE ストリーミング・出典併記）を得る。
@@ -179,11 +181,7 @@ export function SearchChatPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="flex flex-col gap-1.5">
-              {answer.citations.map((c) => (
-                <CitationRow key={c.chunkId} citation={c} />
-              ))}
-            </ul>
+            <CitationList citations={answer.citations} />
           </CardContent>
         </Card>
       )}
@@ -198,21 +196,51 @@ export function SearchChatPage() {
 }
 
 /**
+ * 出典の一覧。
+ *
+ * 台帳（`GET /bff/wiki/pages`）は**出典が現れてから 1 回だけ**引く（この部品は出典が 0 件なら
+ * 描画されない）。問う前に Wiki の口を叩かない —— SC-01 のスモークが「初期表示は身元と通知以外を
+ * 叩かない」を固定している。
+ */
+function CitationList({ citations }: { citations: AskCitation[] }) {
+  const wiki = useWikiPageIndex();
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {citations.map((c) => (
+        <CitationRow key={c.chunkId} citation={c} wikiDocumentIds={wiki.documentIds} />
+      ))}
+    </ul>
+  );
+}
+
+/**
  * 出典 1 行。
  *
  * 05_screens §SC-01「区別の表示方法」: **アイコンとラベルを併用し、色だけで意味を持たせない**
  * （INDEX 決定 21）。記号は装飾（`aria-hidden`）とし、意味はタグの文字が担う。
  * 計画が glyph（📄 / 📖 / 👤）を字義どおり指定しているため、ここは lucide-react ではなく計画の記号を使う。
  * **👤（個人資料）の行は本 issue では作らない**——FR-19 / FR-21 は IADR-0119 決定 1 の着手保留対象である。
+ *
+ * Wiki 由来の出典は SC-04 の**文書別ディープリンク**（`/wiki?doc=<documentId>`）へ送る（#1200）。
  */
-function CitationRow({ citation }: { citation: AskCitation }) {
+function CitationRow({
+  citation,
+  wikiDocumentIds,
+}: {
+  citation: AskCitation;
+  wikiDocumentIds: ReadonlySet<string> | undefined;
+}) {
   const { t } = useLingui();
-  const kind = citationKind(citation.sourceUri, appConfig().wikiBaseUrl);
+  const kind = citationKind(citation.documentId, wikiDocumentIds);
   return (
     <li className="flex flex-wrap items-center gap-2 text-sm">
       <span aria-hidden>{kind === 'wiki' ? '📖' : '📄'}</span>
       {kind === 'wiki' ? (
-        <Link to="/wiki" className="text-[--color-brand] hover:underline">
+        <Link
+          to="/wiki"
+          search={{ doc: citation.documentId }}
+          className="text-[--color-brand] hover:underline"
+        >
           {citation.documentTitle}
         </Link>
       ) : (

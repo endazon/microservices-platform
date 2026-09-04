@@ -80,6 +80,22 @@ builder.Services.AddHttpClient<ISuggestionLlmClient, LlmGatewaySuggestionClient>
 builder.Services.AddScoped<ISimilarityCandidateSource, UnconfiguredSimilarityCandidateSource>();
 builder.Services.AddScoped<AiSuggestionGenerator>();
 
+// FR-18, SC-03, SC-05, SC-09, ADR-0063 決定 1〜3, IADR-0364 (#1187 / #1014): DocumentService との
+// 2 本の経路 —— 生成段が引くタグ辞書（`/internal/tags/names`。本サービス自身が読む）と、
+// 承認の反映（`POST /documents/{id}/tags`。**承認者本人の資格を転送する**。サービスアカウントは持たない）。
+//
+// 接続先は `Services:DocumentService`。既定 `http://document-service:8080` は compose・helm の
+// いずれでも Service 名・ポートと一致する（`DashboardService` と同じ形）。
+// `IHttpContextAccessor` は反映側が要求の `Authorization` を読むために要る（`RagOrchestrator` と同型）。
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient(HttpDocumentTagWriter.ClientName, c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:DocumentService"]
+        ?? "http://document-service:8080"));
+builder.Services.AddScoped<IDocumentTagWriter, HttpDocumentTagWriter>();
+builder.Services.AddScoped<ITagDictionaryReader, HttpTagDictionaryReader>();
+// 生成段で辞書外として落としたタグ提案の件数（0 が正常）。Meter は EdgeTypeFallbackMetrics と同じ。
+builder.Services.AddSingleton<TagSuggestionDropMetrics>();
+
 // FR-17, FR-06, ADR-0015, ADR-0033 決定 3・6・8 (#912): リンク抽出と辺の差分更新。
 //
 // **バケットの作成（Bootstrap）はここでは行わない** —— 書き込み側の起動時保証は ConversionService が

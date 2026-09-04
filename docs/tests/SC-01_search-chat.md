@@ -3,15 +3,15 @@ title: SC-01 検索／チャット質問画面 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-09-02
+updated: 2026-09-04
 author: claude
 ---
 <!-- trace:
-ids: [FR-03, FR-04, FR-05, FR-08, FR-11, SC-01, SC-02, SC-03, SC-04, SC-08, UC-01]
-adrs: [ADR-0031, ADR-0066]
-iadrs: [IADR-0009, IADR-0037, IADR-0126, IADR-0308]
-specs: [20260804_issue-502_sc01-03-search-flow, 20260830_issue-1065_feature-import-isolation]
-issues: [#502, #539, #1065]
+ids: [FR-03, FR-04, FR-05, FR-08, FR-11, FR-13, SC-01, SC-02, SC-03, SC-04, SC-08, UC-01, UC-07]
+adrs: [ADR-0031, ADR-0066, ADR-0073]
+iadrs: [IADR-0009, IADR-0037, IADR-0126, IADR-0308, IADR-0365]
+specs: [20260804_issue-502_sc01-03-search-flow, 20260830_issue-1065_feature-import-isolation, 20260903_issue-1200_sc04-wiki-screen-via-bff]
+issues: [#502, #539, #1065, #1200]
 -->
 
 # テスト仕様書: 検索／チャット質問画面
@@ -50,7 +50,8 @@ issues: [#502, #539, #1065]
 | 2 | 送信 | `POST /bff/analysis/ask/stream` を `{ question }` だけで呼ぶ | 検索・質問 基本 2 / ABAC アクセス制御 |
 | 3 | `citations` → `token`* → `done` | 出典が先、本文が連結され、完了後に 👍/👎 が現れる | 検索・質問 基本 3〜5 / 根拠付き AI 回答 |
 | 4 | 出典（文書） | `📄` ＋ タグ「組織文書」＋ `/docs/{documentId}` へのリンク | 検索・質問 基本 5 |
-| 5 | 出典（Wiki） | `sourceUri` が `wikiBaseUrl` 配下なら `📖` ＋ `/wiki` へのリンク | 検索・質問 基本 5 |
+| 5 | 出典（Wiki） | 権限内の Wiki 台帳に文書 ID が載っていれば `📖` ＋ `/wiki?doc=<documentId>` へのリンク。同じ回答の中で台帳に無い出典は `📄` のまま（**陽性対照と対**）。台帳は出典が現れてから引く | 検索・質問 基本 5 ／ Wiki で閲覧する 基本 1 |
+| 5-b | 出典（台帳に無い／台帳が読めない） | 常に `📄` ＋ `/docs/{documentId}`（Wiki 由来を推測しない） | 同上 |
 | 6 | 「キーワード検索のみ →」 | `/search?q=<入力>` へのリンク | **検索・質問の代替フロー** |
 | 7 | SSE の `error` イベント | `role="alert"` ＋ 検索結果一覧への導線 | **検索・質問の例外フロー（縮退運転）** |
 | 8 | 通信失敗（`apiStream` が throw） | 同上 | 検索・質問の例外フロー |
@@ -64,10 +65,12 @@ issues: [#502, #539, #1065]
 
 | # | 入力 | 期待 |
 | --- | --- | --- |
-| P-1 | `sourceUri` が `wikiBaseUrl` で始まる | `kind='wiki'`（`📖` / Wiki 閲覧画面） |
-| P-2 | `sourceUri` が別ホスト | `kind='document'`（`📄` / 文書詳細画面） |
-| P-3 | `sourceUri` が `null` | `kind='document'` |
-| P-4 | `wikiBaseUrl` が未設定 | 常に `kind='document'`（Wiki 由来を推測しない） |
+| P-1 | 文書 ID が権限内の Wiki 台帳に載っている | `kind='wiki'`（`📖` / Wiki 閲覧画面） |
+| P-2 | 文書 ID が台帳に無い（空の台帳を含む） | `kind='document'`（`📄` / 文書詳細画面） |
+| P-3 | 台帳が未取得・取得失敗（`undefined`） | 常に `kind='document'`（Wiki 由来を推測しない） |
+
+> **［2026-09-03］従前の P-1〜P-4（`sourceUri` と `wikiBaseUrl` の接頭辞判定）は失効した。** 判定の根拠が
+> 権限内の Wiki 台帳へ移ったため（画面仕様書 §出典の種別判定）。
 
 ## バックエンド（#127 で作成済み・本 issue では変更しない）
 

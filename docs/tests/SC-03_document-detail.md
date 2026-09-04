@@ -3,15 +3,15 @@ title: SC-03 文書詳細／プレビュー テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-02
+updated: 2026-09-04
 author: claude
 ---
 <!-- trace:
-ids: [FR-05, FR-06, FR-12, FR-17, FR-18, SC-03, SC-04, SC-05, SC-06, SC-18, SC-21, UC-01, UC-02, UC-07, UC-10]
-adrs: [ADR-0031, ADR-0033, ADR-0034]
-iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0126, IADR-0272, IADR-0276, IADR-0300, IADR-0323]
-specs: [20260804_issue-502_sc01-03-search-flow, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter]
-issues: [#450, #1104]
+ids: [FR-05, FR-06, FR-12, FR-13, FR-17, FR-18, SC-03, SC-04, SC-05, SC-06, SC-09, SC-18, SC-21, UC-01, UC-02, UC-07, UC-10]
+adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0063, ADR-0073]
+iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0126, IADR-0272, IADR-0276, IADR-0300, IADR-0323, IADR-0364, IADR-0365]
+specs: [20260804_issue-502_sc01-03-search-flow, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff]
+issues: [#1014, #1104, #1187, #1200, #450]
 -->
 
 # テスト仕様書: 文書詳細／プレビュー
@@ -38,7 +38,7 @@ issues: [#450, #1104]
 | --- | --- | --- |
 | **検索・質問 基本 5**（出典付きで返す）／**AI 分析 基本 4**（結果と出典を返す） | 出典・一覧から `/docs/{id}` を開くと、本文・属性・版履歴が出る | `renders title, markdown body, attributes and version history` |
 | **AI 分析 例外**（対象が権限外の場合は対象から除外する。**権限の有無は利用者に開示しない**） | 404 を「見つかりません」と中立に表示し、**5xx とは別**の表示にする | `shows a neutral not-found message on 404 (existence hidden)` |
-| **Wiki 閲覧 基本 1**（利用者が Wiki で文書を開く） | 「Wikiで閲覧」から Wiki 閲覧画面へ | `links to SC-04 only when a wiki base url is configured` |
+| **Wiki 閲覧 基本 1**（利用者が Wiki で文書を開く） | 「Wikiで閲覧」から Wiki 閲覧画面の当該ページ（`/wiki?doc=<id>`）へ。権限内の Wiki 台帳に載る文書だけに出る | `links to the SC-04 deep link only when the wiki ledger lists the document` ＋ `hides the wiki link when the ledger cannot be read` |
 | **Wiki 閲覧 例外**（権限外の文書は一覧・本文のいずれにも表示しない） | 本画面は 404 で何も出さない（**AI 分析の例外と同一の中立表示**） | `shows a neutral not-found message on 404 (existence hidden)` ＋ `never requests the version history when the document is hidden`（秘匿された文書へは追加の要求も出さない） |
 | **関係探索の着手保留（実装判断）** | **ナレッジグラフビューへの導線を描かない** | `does not render the knowledge-graph link (SC-18 belongs to another screen)` |
 | **AI 提案の棚卸し 代替フロー**（承認が確定するのは文書詳細経由のみ） | 当該文書に関わる承認待ちの提案を本文の下に描き、1 件ずつ承認・却下する | `renders a link suggestion with its edge type, rationale and both actions` ＋ `posts approve and reject to the endpoint of that single suggestion` |
@@ -57,7 +57,8 @@ issues: [#450, #1104]
 | --- | --- | --- | --- |
 | 1 | 正常 | タイトル・状態・版・本文（Markdown 原文）・属性・タグ・版履歴 | —|
 | 2 | 属性ラベル | `confidentiality` → 「機密区分」、`department` → 「部門」、未知キーはそのまま。**値は変換しない** | 計画側の文書詳細画面 §主要素 |
-| 3 | Wiki 導線 | `wikiBaseUrl` 設定時のみ `/wiki` へのリンク | —|
+| 3 | Wiki 導線 | 権限内の Wiki 台帳にこの文書が載っているときだけ `/wiki?doc=<id>` へのリンク。台帳の取得が終わってから否定する（読み込み中に出さないだけの実装を緑にしない） | Wiki で閲覧する 基本 1 |
+| 3-b | Wiki 導線（台帳が読めない） | 導線を出さず、本体表示は続く | 同上 |
 | 4 | 原本リンク | `http(s)` はリンク、`storage://` 等は等幅表記（リンクにしない） | 計画側の文書詳細画面 §主要素 |
 | 5 | 404 | 中立「文書が見つかりませんでした。」 | **AI 分析の例外** / 権限外は 404 とする存在秘匿 |
 | 6 | 5xx | `role="alert"`（404 とは別表示。サーバの状態であって文書の有無ではない） | — |
@@ -68,7 +69,10 @@ issues: [#450, #1104]
 | 11 | ロケール `en` | 見出しが英語で描画される | —|
 | 12 | **提案 0 件** | 欄自体を描かない（見出しも承認・却下のボタンも無い） | 計画側の文書詳細画面 §AI 提案の承認欄 |
 | 13 | リンク提案 | 相手の文書名・**辞書で解決した辺の型名**・根拠を描き、承認・却下の両方が押せる | 同上 |
-| 14 | **タグ提案** | 描くが**承認は押せない**（理由を画面に出す）。**却下は押せる** | 同上 ＋ 実装 ADR（差異の記録） |
+| 14 | **タグ提案（資格あり）** | 承認・却下とも押せ、「未実装」「準備中」「権限がありません」の文言が**無い**。承認は**その提案の口**へ送る（**［2026-09-03 改訂］**従前の「承認は押せない」は失効） | 同上 ＋ 計画側の裁定（承認は文書のタグへ反映する） |
+| 14-b | **タグ提案（資格なし）** | 承認・却下とも押せず、「この文書のタグを編集する権限がありません。」が**画面上のテキストとして**読める。「未実装」「準備中」の文言は無い | 同上（承認と却下は同じ資格に従う） |
+| 14-c | **資格の値が欠けた行** | 「資格なし」側に倒す（承認が押せず、権限の文言が出る） | 旧版の後段との互換（「できる」と描いて失敗するより安全側） |
+| 14-d | **辞書外の値の承認** | 後段が「辞書に無い」で拒んだとき「このタグは辞書に無いため反映できません。却下してください。」を出し、却下は押せるまま。**同じ 400 でも辞書外以外は汎用エラーのまま**（陽性対照） | 計画側の裁定（反映できる値は辞書に定義済みのタグに限る。辞書外は却下のみ） |
 | 15 | **文書での絞り込み** | 一覧の要求に当該文書 ID と `state=pending` が載る（**絞りはサーバ側**） | 同上 ＋ 実装 ADR（絞り込みをサーバへ移した記録） |
 | 15-b | **再絞りの不在** | サーバが返した行をそのまま描く（画面側で間引かない） | 同上（表示件数と取得件数をずらさない） |
 | 16 | 承認・却下の宛先 | **その提案 1 件の口**へ送る（`/graph/suggestions/{id}/approve` ／ `/reject`） | AI 提案の 3 状態遷移 |

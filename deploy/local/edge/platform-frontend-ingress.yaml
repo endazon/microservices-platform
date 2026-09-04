@@ -1,6 +1,6 @@
 # IADR-0091 (#356): platform フロント（SPA/BFF）を 80/443（Traefik web/websecure entrypoint）で配信する。
 # ルーティングは prod の Istio エッジ（templates/edge.yaml）と同契約: /bff は rewrite せず bff-service へ、
-# 残り全パス（catch-all /）は frontend-service へ。SPA の history fallback は frontend pod の nginx が担う。
+# 残り全パス（catch-all /）は frontend-service へ。SPA の history fallback は frontend pod の Caddy が担う（#1135）。
 # host 指定なし＝任意 host にマッチ（管理ツールは別 entrypoint admin:50000 のため 80/443 では衝突しない）。
 # IADR-0206 (#779): 443 は cert-manager が発行する `edge-tls`（Secret・同 namespace）で終端する。
 # ルート CA は Secret cert-manager/local-edge-root-ca の ca.crt として安定して存在し、apiserver の
