@@ -3,15 +3,15 @@ title: 技術要件書
 type: tech-requirements
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-03
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
 ids: [FR-14]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041, ADR-0065, ADR-0068, ADR-0077]
-iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282, IADR-0319, IADR-0334, IADR-0349, IADR-0350]
-specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260828_arch-foundation_eight-element-materialization, 20260903_issue-1179_slice-split-status-correction, 20260903_issue-1196_operation-semantics-in-standard-docs]
-issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, #1062, #1093, #1094, #1179, #1196, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390, planning#527, planning#532]
+iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0195, IADR-0196, IADR-0216, IADR-0219, IADR-0229, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282, IADR-0319, IADR-0334, IADR-0349, IADR-0350, IADR-0371]
+specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260828_arch-foundation_eight-element-materialization, 20260903_issue-1179_slice-split-status-correction, 20260903_issue-1196_operation-semantics-in-standard-docs, 20260904_issue-1064_backend-stack-reference-impl]
+issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, #1062, #1064, #1093, #1094, #1179, #1196, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390, planning#490, planning#527, planning#532]
 -->
 
 # 技術要件書
@@ -242,6 +242,30 @@ src/<unit>/backend/Services/<Name>Service/
 | API ドキュメント / バージョニング | Microsoft.AspNetCore.OpenApi + Scalar / Asp.Versioning.Http | Kiota・NSwag |
 
 バージョンの単一情報源は [`src/Directory.Packages.props`](../../src/Directory.Packages.props)（CPM）である。
+
+#### 浸透の状況（検証・マッピング・Result 表現）
+
+**表は「定めた標準」であり、全量が働いている状態ではない。** 検証・マッピング・Result 表現の 3 つは
+版だけが中央宣言されていて参照が無い状態が続いていた（実測 2026-09-04: FluentValidation の
+`PackageReference` **0 件**・Riok.Mapperly **0 件**・`Platform.Shared.Kernel` への `ProjectReference`
+**0/14 サービス**）。単一プロジェクトへの移送で層プロジェクトを撤去した際、そこに載っていた
+`Platform.Shared.Kernel` の参照が一緒に落ちている（`.csproj` に「使う」というコメントだけが残っていた）。
+
+**`FeedbackService` を 3 つの参照実装とした**（#1064）。展開の指針は次のとおりである。
+
+- **検証**: 端点内のガード節を `AbstractValidator<T>` へ移す。🔴 **規則の宣言順が応答の契約である**
+  —— 端点は最初の失敗（`Errors[0]`）だけを本文に載せるため、順序を入れ替えると本文が変わる。
+  登録は**アセンブリ走査を使わず 1 検証器 1 行の明示**とする（走査は「検証器を消しても何も止まらない」
+  形になる）。
+- **マッピング**: 手書きの `To*()` を `[Mapper]` の生成マッパへ移す。置き場は
+  「1 操作にしか使われないなら操作フォルダ、2 操作以上が使うなら集約フォルダ」の基準どおりで、
+  **手書きだった頃と変わらない**。生成物は `obj/` 配下に出るため**カバレッジ床は動かない**。
+- **Result 表現**: `ProjectReference` を足すだけにしない。失敗経路を `Result` / `Error` で束ね、
+  `ErrorKind` から HTTP へ写す点を**端点に 1 箇所だけ**置く。参照だけがあって使われていない状態は、
+  撤回された `.gitkeep` 規範と同じく「適合しているように見える」だけである。
+
+**残り 13 サービスへの展開は別 issue が持つ。** `Error` → ProblemDetails の共通変換は応答本文の
+変更を伴うため、同じ波には載せない。
 
 ### 機械的強制と移行の進め方
 
