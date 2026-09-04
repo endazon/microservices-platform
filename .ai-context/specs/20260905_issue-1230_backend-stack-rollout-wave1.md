@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 計画スタック 3 種の横展開 波 1（AiAnalysis / Conversion / Dashboard / Notification / McpServer / Authorization の 6 サービス）（#1230）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - NFR
   - ADR-0030
@@ -125,7 +125,7 @@ AiAnalysisService 2 / ConversionService 1 / Platform.Bff 1。FeedbackService に
 使うこと」を義務づけており（`IADR-0371` 決定 1 が `ADR-0030` / `ADR-0041` を逐語で確かめた結論）、
 **関心の無いサービスへ空の参照を足すことは求めていない。** 上表の ❌ はすべてこの基準の適用結果である。
 
-### 2-2. 波 2 へ送るもの（追随 issue を起票して `Refs #1230`）
+### 2-2. 波 2 へ送るもの（追随 issue **#1248** を起票した。`Refs #1230`）
 
 1. **GraphService の 12 箇所。** うち純粋な入力検証は 9 箇所（`CreateEdge` 2 / `Neighbors` 2 /
    `EdgeTypes.Create` 2 / `EdgeTypes.Rename` 1 / `AiSuggestions.List` 2）で、残り 3 箇所は
@@ -164,13 +164,47 @@ AiAnalysisService 2 / ConversionService 1 / Platform.Bff 1。FeedbackService に
 
 ## 5. 受け入れ基準（本 PR の射程）
 
-- [ ] 波 1 の 6 サービスが、上表の ✅ どおりに 3 ライブラリを参照する（❌ には理由が仕様書と ADR にある）
-- [ ] 移送した 6 箇所の検証が**同じ状態コード・同じ本文**を返す（規則の宣言順を試験で固定）
-- [ ] 手書き写像 3 本が生成マッパに置き換わり、**全列の値が保たれる**
-- [ ] `.csproj` にバージョンを書いていない（CPM）
-- [ ] 既存テスト件数が減っていない（純粋な移送）
-- [ ] 変異試験（検証を外す／写像の列を取り違える）が**赤になることを実測**した
-- [ ] `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes` が両ユニットで通る
-- [ ] `check-backend-libraries` / `check-cpm-versions` / `check-unit-dependencies` /
+- [x] 波 1 の 6 サービスが、上表の ✅ どおりに 3 ライブラリを参照する（❌ には理由が仕様書と ADR にある）
+- [x] 移送した 6 箇所の検証が**同じ状態コード・同じ本文**を返す（規則の宣言順を試験で固定）
+- [x] 手書き写像 3 本が生成マッパに置き換わり、**全列の値が保たれる**
+- [x] `.csproj` にバージョンを書いていない（CPM）
+- [x] 既存テスト件数が減っていない（純粋な移送）
+- [x] 変異試験（検証を外す／写像の列を取り違える）が**赤になることを実測**した
+- [x] `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes` が両ユニットで通る
+- [x] `check-backend-libraries` / `check-cpm-versions` / `check-unit-dependencies` /
       `check-coverage-floor` / 文書検査器 / `scripts.test.js` が緑
-- [ ] 波 2 を追随 issue として起票し `Refs #1230` にした（重複検索済み）
+- [x] 波 2 を追随 issue **#1248** として起票し `Refs #1230` にした（重複検索済み。同主題の open issue は #1064 / #1230 の 2 件のみだった）
+
+## 6. 実測（着地後に引き直した）
+
+| 走査 | 着手前（`f2b82d7d`） | 着地後 |
+| --- | --- | --- |
+| FluentValidation の `PackageReference` | 1 | **4** |
+| Riok.Mapperly の `PackageReference` | 1 | **4** |
+| `Platform.Shared.Kernel` を参照するサービス | 1/14 | **4/14** |
+| `Results.BadRequest` のガード節 | 23 | **17**（`Results.BadRequest` の総数 22 のうち 5 件は `Result` → HTTP の写像点） |
+| DTO ↔ ドメインの手書き写像 | 11 本 | **8 本** |
+
+| テスト | 着手前 | 着地後 |
+| --- | --- | --- |
+| AiAnalysisService | 98 | 110 |
+| ConversionService | 142 | 156（skip 6 は既存の環境依存） |
+| DashboardService | 57 | 72 |
+| NotificationService | 53 | 57 |
+| McpServer | 106 | 115 |
+| AuthorizationService | 149 | 153 |
+
+**減った試験は 0 件である。**
+
+### 変異試験（6 本とも実際に走らせた）
+
+| 変異 | 結果 |
+| --- | --- |
+| AiAnalysisService: `Validate(...)` → `Result.Success()` | **失敗 4 / 110** |
+| ConversionService: 同上 | **失敗 5 / 27**（`CorrectFigure` 系に絞った実行） |
+| DashboardService: 両端点で同上 | **失敗 4 / 72** |
+| NotificationService: `[MapProperty]` で `ThresholdPercent` を `Count` へ取り違え | **失敗 1 / 4**（マッパ系に絞った実行） |
+| McpServer: `EgressTier` の変換を `Use = KindName` へ取り違え | **失敗 5 / 115** |
+| AuthorizationService: `[MapProperty]` で `Username` を `DisplayName` へ取り違え | **失敗 1 / 153** |
+
+いずれも復旧後は緑である。
