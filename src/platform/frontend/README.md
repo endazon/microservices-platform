@@ -31,7 +31,7 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
       # 🔴 assets/ hooks/ stores/ types/ は**存在しない**（空枠を置かない）。下の注記を読むこと
       # ツリー全体の正本は計画 13_frontend-stack §ディレクトリ構成 であり、上は実体の一覧である
     index.html / vite.config.ts / e2e/ / public/
-    nginx.default.conf.template / config.js.template   # 配信・実行時 config
+    Caddyfile / docker-entrypoint.sh / config.js.template   # 配信（Caddy）・実行時 config
   knowledge/frontend/            # 可変機能ユニット（ナレッジ画面群）
     src/features/<screen>/       # home, sc01..sc11。FeatureModule を公開し features/index.ts へ登録
   <unit>/frontend/               # 追加の可変機能ユニット（git submodule でリンク）

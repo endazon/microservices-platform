@@ -1,7 +1,8 @@
 # Issue #284, IADR-0076 / ADR-0005 / IADR-0017: エッジ /bff/* ルーティング。
 # 外部からの入口を BFF に一本化する（IADR-0017）ため、Istio Gateway/VirtualService で
 # エッジ host の /bff/* を bff-service へ通す。BFF は /bff プレフィックスを剥がさず受ける契約のため
-# rewrite は張らない（フロント nginx の proxy_pass と同契約＝compose 経路とバイト等価）。
+# rewrite は張らない（フロント Caddy の reverse_proxy と同契約＝compose 経路とバイト等価。#1135 で
+# nginx から Caddy へ移送したが、**元 URI 無改変という契約は同じ**である。handle_path を使わないのがその担保）。
 #
 # mesh(Istio) 前提。ローカル（経路B, Istio 未導入）は values-local が edge.enabled=false で無効化し、
 # 別経路（README「エッジ経路」手順）へ委ねる。edge.enabled=false では何も描画しない（後方互換）。
@@ -74,7 +75,7 @@ spec:
     #   であり、values の knob にすると打ち間違いで露出面が広がる経路を作るだけである。
     #   /private-notes（sync 以外）・/private-notes/devices・/documents は当たらず、下の catch-all
     #   （SPA）へ落ちる。**そこは 404 ではなく SPA の index.html（200 text/html）である** ——
-    #   frontend の nginx が history fallback を返すためで、「API に届いていない」ことは同じ端点を
+    #   frontend の Caddy が history fallback を返すためで、「API に届いていない」ことは同じ端点を
     #   port-forward で直に叩くと 401（JSON）になるのと対で確かめる（IADR-0348 §実測）。
     # - **エッジで JWT 検証を要求しない。** 資格情報は不透明な同期トークン（Bearer）で、DocumentService が
     #   ハッシュ照合で自前検証する（IADR-0270 決定 3）。RequestAuthentication を置くと正当な要求が落ちる。
@@ -91,7 +92,7 @@ spec:
     # Issue #313, IADR-0078: SPA(frontend) の catch-all。/bff（と任意の /realms・/resources）を先に評価した後、
     # 残る全パス（/・/settings・/assets/*・/config.js 等）を frontend の Service（edge.frontend.service）へ流す。
     # Istio は先勝ちのため本ルートを末尾に置くことで API/OIDC パスと衝突しない。SPA の history fallback は
-    # frontend pod の nginx (try_files … /index.html) が担うため、エッジは非 /bff を frontend へ委譲するだけでよい。
+    # frontend pod の Caddy (try_files {path} /index.html) が担うため、エッジは非 /bff を frontend へ委譲するだけでよい。
     # frontend.enabled=false では描画しない（後方互換。行き先の Service が無い状態でルートを張らない）。
     - match:
         - uri: { prefix: / }

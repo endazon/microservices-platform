@@ -1,7 +1,8 @@
-# FR-14, IADR-0056, IADR-0078 (#313): SPA(frontend) の Deployment/Service。
-# platform/frontend の nginx イメージ（静的配信＋/bff プロキシ＋実行時 config.js 注入）を k8s で配信する。
+# FR-14, IADR-0056, IADR-0078 (#313), IADR-0362 (#1135): SPA(frontend) の Deployment/Service。
+# platform/frontend の **Caddy** イメージ（静的配信＋/bff プロキシ＋実行時 config.js 注入）を k8s で配信する
+# （ADR-0021 の指定。#1135 で nginx から移送した。配信の契約は src/platform/frontend/Caddyfile が持つ）。
 # 汎用 services ループ（deployment.yaml）は .NET 前提（/health/live プローブ・Otlp/Auth env）のため、
-# 非 .NET の nginx SPA は wikijs.yaml/minio.yaml と同じ「専用 template＋トップレベル frontend ブロック」に倣う。
+# 非 .NET の SPA 配信は wikijs.yaml/minio.yaml と同じ「専用 template＋トップレベル frontend ブロック」に倣う。
 # frontend.enabled=false では何も描画しない（後方互換・fail-safe）。
 {{- if .Values.frontend.enabled }}
 {{- $f := .Values.frontend }}
@@ -38,8 +39,9 @@ spec:
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
           ports:
             - containerPort: {{ $f.port }}
-          # 実行時 config（config.js）と nginx /bff プロキシ上流を env で注入する（compose の frontend と同契約）。
-          # 40-render-config.sh が envsubst で config.js を生成し、nginx が ${BFF_UPSTREAM} を proxy_pass に埋める。
+          # 実行時 config（config.js）と Caddy の /bff プロキシ上流を env で注入する（compose の frontend と同契約）。
+          # docker-entrypoint.sh が envsubst で config.js を描画し、Caddy は設定読み込み時に
+          # Caddyfile の {$BFF_UPSTREAM} を reverse_proxy の宛先へ展開する。
           env:
             - name: BFF_UPSTREAM
               value: {{ $f.bffUpstream | quote }}
@@ -53,8 +55,11 @@ spec:
             - name: {{ .name }}
               value: {{ .value | quote }}
             {{- end }}
-          # 静的配信のためヘルスは HTTP サーフェスに合わせる: liveness=/（index.html を 200 で返す＝nginx 稼働）、
-          # readiness=/config.js（location = /config.js は try_files /config.js =404＝実行時 config 生成完了を確認）。
+          # 静的配信のためヘルスは HTTP サーフェスに合わせる: liveness=/（index.html を 200 で返す＝配信稼働）、
+          # readiness=/config.js（handle /config.js の file_server は実体が無ければ 404＝実行時 config 生成完了を確認）。
+          # 🔴 **/healthz へ寄せない。** Caddy 移送（#1135）で /healthz を足したが、それは「プロセスが生きている」
+          # しか言わない。readiness の意味は「config.js の描画が完了した」ことであり（IADR-0078 決定 2）、
+          # 宛先を変えると検査が静かに弱くなる。
           livenessProbe:
             httpGet:
               path: /
