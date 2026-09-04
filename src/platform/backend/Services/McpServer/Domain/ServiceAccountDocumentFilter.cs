@@ -12,6 +12,15 @@ namespace McpServer.Domain;
 // 🔴 **要求側の制約（ToolInvocationScope.ExcludePrivateNote）と二重に持つ。** 要求側だけでは
 // 下流サービスの実装を信用することになり、応答側だけでは下流が無駄な処理をする。**どちらか一方に
 // しない** —— 下流はまだ 1 つも実装されておらず、信用する相手が存在しない（fail-closed）。
+//
+// ■ 🔴 除外の軸は 2 つある（#1190 / AST/ADR-0032 決定 2・決定 3）
+//   個人資料（`doc_scope=private-note`）に加え、**MCP から外すプロジェクトの文書
+//   （`project=ai-stock-trading`）** も同じ後段で落とす。
+//   **属性を付けるだけでは弾かれない** —— 基盤の ABAC の具体判定規則に `project` は登場せず
+//   （06_technical/07_abac-attribute-model §ポリシー評価モデル）、サービスアカウントへの
+//   割当を禁止しても到達可否は 1 件も変わらない。`private-note` が実際に効いているのは
+//   ABAC ではなく**この一律除外**であり（ADR-0034 決定 9）、AST/ADR-0032 決定 3 の但し書きも
+//   「同じ形を採れば成立する」と述べている。**割当禁止（構成検証）だけでは統制は働かない。**
 public sealed class ServiceAccountDocumentFilter(ILogger<ServiceAccountDocumentFilter> logger)
 {
     // 応答から個人資料を除き、**件数からも外した**結果を返す。
@@ -22,12 +31,13 @@ public sealed class ServiceAccountDocumentFilter(ILogger<ServiceAccountDocumentF
     {
         if (!subject.IsServiceAccount) return result;
 
-        var kept = result.Documents.Where(d => !DocumentScope.IsPrivateNote(d.Attributes)).ToList();
+        var kept = result.Documents.Where(d => !IsExcluded(d.Attributes)).ToList();
         var removed = result.Documents.Count - kept.Count;
         if (removed == 0) return result;
 
         logger.LogInformation(
-            "Excluded {Removed} private-note document(s) for service account {ClientId} (ADR-0034 決定 9)",
+            "Excluded {Removed} document(s) (private-note / restricted project) for service account {ClientId}"
+            + " (ADR-0034 決定 9, AST/ADR-0032 決定 2)",
             removed, subject.ClientId);
 
         // TotalCount からも同数を引く。下流が全体件数として大きい値を返していても、
@@ -35,4 +45,10 @@ public sealed class ServiceAccountDocumentFilter(ILogger<ServiceAccountDocumentF
         var total = Math.Max(kept.Count, result.TotalCount - removed);
         return result with { Documents = kept, TotalCount = total };
     }
+
+    // 🔴 **どちらも集合帰属で判定する。** 否定（「organization でない」「制限値でない」）で書くと、
+    // 属性を持たない既存文書がすべて該当して一斉に落ちる。**2 つの書き方は動作で見分けがつかず、
+    // 分けられるのは「属性を持たない文書が残る」という陽性対照テストだけである。**
+    private static bool IsExcluded(IReadOnlyDictionary<string, string> attributes)
+        => DocumentScope.IsPrivateNote(attributes) || RestrictedProject.IsRestricted(attributes);
 }
