@@ -551,7 +551,7 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
   ナレッジ保存・日報の LLM 生成・取引判断の LLM 呼び出しが RST で落ちる（#1159 実測。逆向きは落ちない）。
   AST を mesh へ入れるまで（AST#627）既定は PERMISSIVE のままにする。
   **モードは `scripts/lib/mesh-mtls-mode.sh` の `set_mesh_mtls_mode`（helm 経由）でしか書かない** ——
-  `kubectl patch` で書くと以後の `helm upgrade` が恒久的に失敗する（IADR-0374。乖離は
+  `kubectl patch` で書くと以後の `helm upgrade` が恒久的に失敗する（IADR-0377。乖離は
   `node scripts/check-stack-ready.js` の G12 が落とす）。
 
 ## 手動でステップ実行する場合

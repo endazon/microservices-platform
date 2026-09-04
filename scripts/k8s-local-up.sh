@@ -269,7 +269,7 @@ if [ "${ISTIO:-}" = "1" ]; then
   # アクセストークンの寿命ぶん遅れる）。ここだけを通す 2 枚組を有効にする
   # （範囲は「principal 無し × /bff/auth/backchannel-logout 以外は DENY」。istio-mtls.yaml の注記参照）。
   #
-  # #1159 / IADR-0374: **STRICT は入口を Istio Ingress Gateway へ移した後でしか宣言しない。**
+  # #1159 / IADR-0377: **STRICT は入口を Istio Ingress Gateway へ移した後でしか宣言しない。**
   #   LOCALEDGE=1 のときは、この [6/7] では PERMISSIVE を宣言し、末尾の istio-edge-up.sh が
   #   エッジを移した**後**で helm 経由で STRICT へ上げる（IADR-0307 決定 4 の段取り
   #   「注入 → 全 Pod Ready → PERMISSIVE で疎通確認 → STRICT」そのもの）。

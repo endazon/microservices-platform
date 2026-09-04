@@ -86,7 +86,7 @@ bash scripts/istio-edge-down.sh   # 🔴 切り戻し（1 コマンド）。**�
 その状態で STRICT へ上げると mesh へ入る経路が無くなる。スクリプトが警告を出す。
 
 `LOCALEDGE=1` と併用したときは、**[6/7] の helm はいったん PERMISSIVE を宣言し、入口を Envoy へ移した
-後に `istio-edge-up.sh` [5/5] が STRICT へ上げる**（#1159 / [`IADR-0374`](../../.ai-context/adr/IADR-0374_mesh-mtls-single-writer-and-drift-gate.md) 決定 2）。
+後に `istio-edge-up.sh` [5/5] が STRICT へ上げる**（#1159 / [`IADR-0377`](../../.ai-context/adr/IADR-0377_mesh-mtls-single-writer-and-drift-gate.md) 決定 2）。
 上の段取りをスクリプトの側で満たすためであり、STRICT を要求した再実行では**一度緩んでから上がる**。
 
 ### 🔴 mTLS モードを書いてよいのは helm だけである（#1159）
@@ -104,7 +104,7 @@ Helm 4 はサーバサイド apply を使うので、外から書くと field ma
 （ナレッジ保存・日報の LLM 生成・**取引判断の LLM 呼び出し**）が RST で全断する（2026-09-04 実測）。
 **逆向き（MSP→AST）は auto-mTLS が平文へフォールバックするので落ちない** —— 片方向だけである。
 恒久像は AST を mesh へ入れること（AST#627）。それまで経路B の既定は PERMISSIVE のままにする
-（[`IADR-0374`](../../.ai-context/adr/IADR-0374_mesh-mtls-single-writer-and-drift-gate.md) 決定 3・4）。
+（[`IADR-0377`](../../.ai-context/adr/IADR-0377_mesh-mtls-single-writer-and-drift-gate.md) 決定 3・4）。
 
 ### 本番像
 

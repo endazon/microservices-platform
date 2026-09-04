@@ -22,12 +22,12 @@ set -euo pipefail
 
 MSP_NS="${MSP_NS:-microservices-platform}"
 cd "$(dirname "$0")/.."
-# #1159 / IADR-0374: mTLS モードを書く唯一の口（helm を通す）。
+# #1159 / IADR-0377: mTLS モードを書く唯一の口（helm を通す）。
 # shellcheck source=scripts/lib/mesh-mtls-mode.sh
 . "$(dirname "$0")/lib/mesh-mtls-mode.sh"
 
 echo "==> [1/4] PeerAuthentication -> PERMISSIVE"
-# 🔴 **`kubectl patch` で書かない**（#1159 / IADR-0374）。helm が所有するフィールドを奪うと、
+# 🔴 **`kubectl patch` で書かない**（#1159 / IADR-0377）。helm が所有するフィールドを奪うと、
 #   以後の `helm upgrade` が conflict で恒久的に失敗する（詳細は lib/mesh-mtls-mode.sh の冒頭）。
 set_mesh_mtls_mode "PERMISSIVE"
 

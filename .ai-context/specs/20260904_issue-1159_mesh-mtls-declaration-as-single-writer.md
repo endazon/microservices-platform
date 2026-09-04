@@ -151,7 +151,7 @@ $ helm upgrade msp deploy/helm/microservices-platform -n microservices-platform 
 
 これが本 issue の核心である。**「ドリフトしている」ではなく「宣言的経路を塞ぐ地雷が仕込まれている」。**
 
-## 決定（詳細は IADR-0374）
+## 決定（詳細は IADR-0377）
 
 1. **宣言（helm）を正とし、稼働の `mesh.mtlsMode` を書いてよいのは helm だけにする。**
    `istio-edge-up.sh` / `istio-edge-down.sh` の `kubectl patch` を
@@ -182,7 +182,7 @@ $ helm upgrade msp deploy/helm/microservices-platform -n microservices-platform 
 | `deploy/argocd/appproject.yaml` | 許可種別に `AuthorizationPolicy` を足す（後述） |
 | `deploy/istio/README.md` / `deploy/local/edge-istio/README.md` / `deploy/local/README.md` | 手順の追随 |
 | `docs/operations/operations.md` | 復旧手順（wedged release）を運用へ |
-| `.ai-context/adr/IADR-0374_*.md` ＋ `.ai-context/adr/README.md` | 実装 ADR と索引 |
+| `.ai-context/adr/IADR-0377_*.md` ＋ `.ai-context/adr/README.md` | 実装 ADR と索引 |
 
 ## 見つけた欠陥（本 PR で直す）
 

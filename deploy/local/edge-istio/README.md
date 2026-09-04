@@ -41,7 +41,7 @@ ISTIO_MTLS_MODE=STRICT bash scripts/istio-edge-up.sh
 bash scripts/istio-edge-down.sh
 ```
 
-🔴 **mTLS モードは helm を通してしか書かない**（#1159 / [`IADR-0374`](../../../.ai-context/adr/IADR-0374_mesh-mtls-single-writer-and-drift-gate.md)）。
+🔴 **mTLS モードは helm を通してしか書かない**（#1159 / [`IADR-0377`](../../../.ai-context/adr/IADR-0377_mesh-mtls-single-writer-and-drift-gate.md)）。
 `ISTIO_MTLS_MODE` は最終的に `scripts/lib/mesh-mtls-mode.sh` の `set_mesh_mtls_mode`
 （＝ `helm upgrade --reuse-values --set mesh.mtlsMode=…`）に落ちる。
 `kubectl patch` で直接書くと field manager が helm から奪われ、**以後の `helm upgrade` が

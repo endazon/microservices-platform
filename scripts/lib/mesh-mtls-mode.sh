@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR / ADR-0005・ADR-0021・ADR-0026, #1159（IADR-0374）:
+# NFR / ADR-0005・ADR-0021・ADR-0026, #1159（IADR-0377）:
 # **稼働クラスタの mTLS モードを書く唯一の口。** `source` して `set_mesh_mtls_mode <MODE>` を呼ぶ。
 #
 # ## なぜ関数を 1 本に閉じるのか
@@ -8,7 +8,7 @@
 # **所有者は helm ただ 1 つ**である。Helm 4 はサーバサイド apply（`manager: helm` / `operation: Apply`）を
 # 使うので、同じフィールドを `kubectl patch`（`operation: Update`）で書くと **field manager が奪われる**。
 #
-# 奪われたあとに起きること（2026-09-04 実測。k3s v1.35.4 / Helm v4.2.1。全文は IADR-0374）:
+# 奪われたあとに起きること（2026-09-04 実測。k3s v1.35.4 / Helm v4.2.1。全文は IADR-0377）:
 #
 #   managers=helm/Apply,kubectl-patch/Update
 #   Error: UPGRADE FAILED: conflict occurred while applying object ... PeerAuthentication:

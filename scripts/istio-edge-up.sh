@@ -19,7 +19,7 @@ set -euo pipefail
 MSP_NS="${MSP_NS:-microservices-platform}"
 ISTIO_VERSION="${ISTIO_VERSION:-1.30.4}"
 cd "$(dirname "$0")/.."
-# #1159 / IADR-0374: mTLS モードを書く唯一の口（helm を通す）。
+# #1159 / IADR-0377: mTLS モードを書く唯一の口（helm を通す）。
 # shellcheck source=scripts/lib/mesh-mtls-mode.sh
 . "$(dirname "$0")/lib/mesh-mtls-mode.sh"
 
@@ -69,7 +69,7 @@ if [ "${ISTIO_MTLS_MODE:-}" = "STRICT" ]; then
   # 🔴 入口が Envoy になった**後**でしか STRICT にしない。順序を入れ替えると 502 になる
   #   （#1072 / IADR-0307 が実測した形）。
   #
-  # 🔴 **helm を通す。`kubectl patch` で書かない**（#1159 / IADR-0374）。
+  # 🔴 **helm を通す。`kubectl patch` で書かない**（#1159 / IADR-0377）。
   #   `PeerAuthentication` を所有しているのは helm（Helm 4 はサーバサイド apply）であり、
   #   `kubectl patch` は `.spec.mtls.mode` の field manager を `kubectl-patch` へ奪う。
   #   奪われると**以後の `helm upgrade` が conflict で恒久的に失敗する** ——

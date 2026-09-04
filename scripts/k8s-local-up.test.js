@@ -2776,7 +2776,7 @@ ok('#782: 切り戻しは mTLS を先に緩める（入口だけ戻して 502 �
 });
 
 // ---------------------------------------------------------------------------
-// #1159 / IADR-0374: 稼働の mTLS モードを書く口は helm ただ 1 つ（kubectl patch を禁じる）
+// #1159 / IADR-0377: 稼働の mTLS モードを書く口は helm ただ 1 つ（kubectl patch を禁じる）
 //
 // 🔴 これは「行儀の問題」ではない。Helm 4 はサーバサイド apply なので、`kubectl patch` は
 //   `.spec.mtls.mode` の field manager を奪い、**以後の `helm upgrade` が conflict で恒久的に失敗する**

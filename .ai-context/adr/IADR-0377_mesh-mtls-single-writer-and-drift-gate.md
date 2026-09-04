@@ -1,5 +1,5 @@
 ---
-title: IADR-0374 稼働の mTLS モードは helm だけが書き、乖離は門 G12 が落とす
+title: IADR-0377 稼働の mTLS モードは helm だけが書き、乖離は門 G12 が落とす
 type: impl-adr
 status: Proposed
 related_ids:
@@ -23,7 +23,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0026_security-requirements.md
 ---
 
-# IADR-0374: メッシュ設定のドリフトを断つ（#1159）
+# IADR-0377: メッシュ設定のドリフトを断つ（#1159）
 
 - 状態: Proposed
 - 日付: 2026-09-04

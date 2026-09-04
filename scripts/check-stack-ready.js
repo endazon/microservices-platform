@@ -89,7 +89,7 @@
  *   （`bff:issue1187` / `conversion-service:pdf-1192` …）が 7 件残ったまま develop から乖離していた
  *   （2 回目。1 回目は 2026-07 に古いスクリプトで作られたクラスタ）。描画に無い Deployment（opt-in の
  *   overlay 由来）は見ない。**`:latest` の中身が最新かは見ない**（記録に留める。IADR-0369 §却下した代替案）。
- * - **G12 メッシュ宣言の乖離**（#1159 / [IADR-0374]）: `PeerAuthentication` / `AuthorizationPolicy` /
+ * - **G12 メッシュ宣言の乖離**（#1159 / [IADR-0377]）: `PeerAuthentication` / `AuthorizationPolicy` /
  *   `DestinationRule` について、**(a) 稼働の集合が helm の描画（`helm get manifest`）と一致し、
  *   (b) mTLS モードが宣言（`helm get values -a` の `mesh.*`）と一致し、(c) `spec` を書いている
  *   field manager が `helm` ただ 1 つ**であることを要求する。
@@ -174,7 +174,7 @@ const CHART_DIR = path.join('deploy', 'helm', 'microservices-platform');
 const CHART_VALUES_LOCAL = path.join('deploy', 'local', 'values-local.yaml');
 const INFRA_KUSTOMIZE_DIR = path.join('deploy', 'local', 'infra-persistence');
 const MSP_NS = 'microservices-platform';
-// G12 (#1159 / IADR-0374): メッシュ資材の種別と helm リリース名。**サービス名は書かない**（列挙を持たない）。
+// G12 (#1159 / IADR-0377): メッシュ資材の種別と helm リリース名。**サービス名は書かない**（列挙を持たない）。
 const MESH_KINDS = ['PeerAuthentication', 'AuthorizationPolicy', 'DestinationRule'];
 const MSP_HELM_RELEASE = 'msp';
 /** G12: `spec` を書いてよい field manager。Helm 4 のサーバサイド apply は `helm` を名乗る。 */
@@ -485,7 +485,7 @@ function evaluateImageDrift(ns, rendered, live) {
 }
 
 /**
- * G12 (#1159 / IADR-0374): helm の描画（`helm get manifest`）から**メッシュ資材の集合**を走査する。
+ * G12 (#1159 / IADR-0377): helm の描画（`helm get manifest`）から**メッシュ資材の集合**を走査する。
  * 値は見ない（値は `helm get values -a` の `mesh.*` が正本。描画テキストの字下げに依存させない）。
  */
 function meshObjectsFromManifest(text) {
@@ -1126,7 +1126,7 @@ function check({ repoRoot = REPO_ROOT } = {}) {
     notices.push('[check-stack-ready] G11: 宣言（chart ＋ infra kustomize）と稼働のイメージ参照を突き合わせた。');
   }
 
-  // G12 (#1159 / IADR-0374): 宣言（helm）と稼働のメッシュ資材、および spec の field manager。
+  // G12 (#1159 / IADR-0377): 宣言（helm）と稼働のメッシュ資材、および spec の field manager。
   {
     const declared = declaredMesh(repoRoot);
     // 🔴 `--show-managed-fields` を落とすと (c) が測れないまま緑になる（沈黙を成功と読まない）。
@@ -1451,7 +1451,7 @@ function selfTest() {
     assert.strictEqual(evaluateImageDrift('ns', {}, {}).length, 1);
   });
 
-  // ---- G12 (#1159 / IADR-0374)
+  // ---- G12 (#1159 / IADR-0377)
   const meshManifest = [
     'apiVersion: security.istio.io/v1', 'kind: PeerAuthentication', 'metadata:', '  name: microservices-platform-mtls',
     'spec:', '  mtls:', '    mode: PERMISSIVE', '---',
