@@ -19,7 +19,7 @@ plan_refs:
   - "ADR-0076 §統制と現在の実現手段（『評価対象が無いことを検知する』の現在の実現手段は無い。ServiceRequestMetricsAbsent が拾うのは『直近まで受信していたのに途絶した』場合だけで、一度も存在しなかった系列は拾えない）"
   - "02_requirements/01_requirements.md NFR-21（障害検出 5 分以内 / MTTR 30 分以内）"
 related_adrs:
-  - IADR-0369
+  - IADR-0370
   - IADR-0345
   - IADR-0354
   - IADR-0165

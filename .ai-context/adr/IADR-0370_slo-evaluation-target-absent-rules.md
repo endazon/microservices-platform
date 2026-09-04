@@ -1,5 +1,5 @@
 ---
-title: IADR-0369 SLO の評価対象の不在は系列ごとに 1 件の absent ルールで拾い、対象は稼働クラスタの無風時間で決める
+title: IADR-0370 SLO の評価対象の不在は系列ごとに 1 件の absent ルールで拾い、対象は稼働クラスタの無風時間で決める
 type: impl-adr
 status: Accepted
 related_ids:
@@ -22,7 +22,7 @@ plan_refs:
   - planning:projects/microservices-platform/06_technical/05_observability-ops.md
 ---
 
-# IADR-0369: SLO の評価対象の不在を `absent` で拾う（#1202）
+# IADR-0370: SLO の評価対象の不在を `absent` で拾う（#1202）
 
 - 状態: Accepted
 - 日付: 2026-09-04
