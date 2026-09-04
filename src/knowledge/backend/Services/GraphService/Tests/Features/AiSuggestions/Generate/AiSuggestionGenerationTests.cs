@@ -1,7 +1,9 @@
+using System.Diagnostics.Metrics;
 using System.Net;
 using System.Text;
 using System.Text.Json;
 using AwesomeAssertions;
+using GraphService.Common.Observability;
 using GraphService.Infrastructure.ExternalServices;
 using GraphService.Domain;
 using GraphService.Features.AiSuggestions.Generate;
@@ -91,9 +93,37 @@ public class AiSuggestionGenerationTests
         }
     }
 
+    // FR-18, ADR-0063 決定 2 (#1014): 生成器はタグ辞書を要る。本クラスの主眼はスコープ境界なので、
+    // 辞書は「G-03 が使う値を含む固定集合」を渡す（辞書の値域そのものは TagDictionaryEnforcementTests）。
+    private sealed class FixedDictionary(params string[] names) : ITagDictionaryReader
+    {
+        public Task<IReadOnlySet<string>?> ReadNamesAsync(CancellationToken ct = default)
+            => Task.FromResult<IReadOnlySet<string>?>(names.ToHashSet(StringComparer.Ordinal));
+    }
+
+    private sealed class DummyMeterFactory : IMeterFactory
+    {
+        private readonly List<Meter> _meters = [];
+
+        public Meter Create(MeterOptions options)
+        {
+            var meter = new Meter($"{options.Name}.test-{Guid.NewGuid():N}", options.Version,
+                options.Tags, scope: this);
+            _meters.Add(meter);
+            return meter;
+        }
+
+        public void Dispose()
+        {
+            foreach (var m in _meters) m.Dispose();
+            _meters.Clear();
+        }
+    }
+
     private static AiSuggestionGenerator Generator(
         GraphDbContext db, ISimilarityCandidateSource similarity, ISuggestionLlmClient llm)
-        => new(new EfGraphStore(db), similarity, llm, db, TimeProvider.System);
+        => new(new EfGraphStore(db), similarity, llm, new FixedDictionary("設計"),
+            new TagSuggestionDropMetrics(new DummyMeterFactory()), db, TimeProvider.System);
 
     private static (AiSuggestionGenerator Generator, CapturingHandler Handler) GatewayGenerator(
         GraphDbContext db, ISimilarityCandidateSource similarity, Func<string, string> respond)

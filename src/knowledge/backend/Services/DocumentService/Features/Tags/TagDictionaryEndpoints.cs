@@ -1,6 +1,7 @@
 using DocumentService.Features.Tags.Create;
 using DocumentService.Features.Tags.Delete;
 using DocumentService.Features.Tags.List;
+using DocumentService.Features.Tags.Names;
 using DocumentService.Features.Tags.Rename;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
@@ -40,6 +41,10 @@ public static class TagDictionaryEndpoints
         CreateTagEndpoint.Map(write);
         RenameTagEndpoint.Map(write);
         DeleteTagEndpoint.Map(write);
+
+        // FR-18, ADR-0063 決定 2, IADR-0364 決定 2 (#1014): 生成段が引く**名前だけ**の内部口。
+        // **`/internal/...` にあり、どちらの group にも属さない**（DashboardService の受け口と同じ形）。
+        TagNamesEndpoint.Map(app);
 
         return app;
     }

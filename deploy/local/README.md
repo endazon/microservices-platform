@@ -283,7 +283,7 @@ node scripts/check-password-reset-mail.js
 ```bash
 kubectl -n microservices-platform port-forward svc/frontend-service 8081:8080
 #   → http://localhost:8081/            （SPA。/settings=SC-01/02/03）
-#   → http://localhost:8081/bff/...     （nginx が in-cluster bff-service:8080 へプロキシ。BFF port-forward 不要）
+#   → http://localhost:8081/bff/...     （Caddy が in-cluster bff-service:8080 へプロキシ。BFF port-forward 不要）
 ```
 
 > **ローカル port-forward のポートは realm の `platform-spa` に恒久登録済みの `8081` または `3100` を使う**（`redirectUris`=
@@ -297,7 +297,7 @@ kubectl -n microservices-platform port-forward svc/frontend-service 8081:8080
 > `k3d cluster delete msp-ast-dev` → 再作成で realm を再 import して反映する。永続化 `PERSIST=1` 時の反映手順は上記
 > 「realm を更新したときの反映手順」を参照）。
 
-frontend pod の nginx が `/bff/*` を in-cluster の `bff-service:8080` へ内部プロキシするため、上の BFF port-forward
+frontend pod の Caddy が `/bff/*` を in-cluster の `bff-service:8080` へ内部プロキシするため、上の BFF port-forward
 （5080）は SPA 経由では不要（`/bff` を直接叩いて確認したい場合のみ使う）。OIDC は下記 issuer 統一の**手順B**
 （エッジ host 集約）に従う —— **issuer は `https://keycloak.localhost/realms/platform` である**
 （IADR-0243・#780。`values-local.yaml` が `global.auth.metadataAddress`（in-cluster）と

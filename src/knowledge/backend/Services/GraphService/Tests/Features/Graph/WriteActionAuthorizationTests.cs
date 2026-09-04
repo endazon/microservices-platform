@@ -84,6 +84,16 @@ public class WriteActionAuthorizationTests : IClassFixture<TestWebApplicationFac
     private Task<HttpResponseMessage> PostAsync(string path)
         => _factory.CreateClient().PostAsync(path, null, TestContext.Current.CancellationToken);
 
+    // FR-18, ADR-0063 決定 3, IADR-0364 決定 3 (#1187): 承認・却下の資格は「①write **または** ②管理者ロール」
+    // の選言になった。**TestAuthHandler の既定ロールは `platform-admin`** なので、①の否定形を測るには
+    // ②を落とさなければならない（落とさないと②で通り、否定形が空振りする）。
+    private Task<HttpResponseMessage> PostAsNonAdminAsync(string path)
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "viewer");
+        return client.PostAsync(path, null, TestContext.Current.CancellationToken);
+    }
+
     // ---- POST /graph/edges ----
 
     // 🔴 否定形: read は持つが write は持たない主体は、辺を作れない。
@@ -163,7 +173,7 @@ public class WriteActionAuthorizationTests : IClassFixture<TestWebApplicationFac
         _factory.ScopeProvider = _ => InternalOnly();
         _factory.WriteScopeProvider = _ => Denied();
 
-        var res = await PostAsync($"/graph/suggestions/{id}/approve");
+        var res = await PostAsNonAdminAsync($"/graph/suggestions/{id}/approve");
 
         res.StatusCode.Should().Be(HttpStatusCode.NotFound);
         await ReadAsync(async db =>
@@ -207,7 +217,7 @@ public class WriteActionAuthorizationTests : IClassFixture<TestWebApplicationFac
         _factory.ScopeProvider = _ => InternalOnly();
         _factory.WriteScopeProvider = _ => Denied();
 
-        var res = await PostAsync($"/graph/suggestions/{id}/reject");
+        var res = await PostAsNonAdminAsync($"/graph/suggestions/{id}/reject");
 
         res.StatusCode.Should().Be(HttpStatusCode.NotFound);
         await ReadAsync(async db =>

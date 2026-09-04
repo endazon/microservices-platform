@@ -35,7 +35,9 @@ public static class CompleteStreamEndpoint
             var logger = loggerFactory.CreateLogger("LlmGateway.CompleteStream");
             http.Response.Headers.ContentType = "text/event-stream";
             http.Response.Headers.CacheControl = "no-cache";
-            http.Response.Headers["X-Accel-Buffering"] = "no"; // nginx でのバッファリング抑止
+            // 前段プロキシでの応答バッファリング抑止。#1135 で SPA の前段が nginx から Caddy へ移ったが、
+            // **Caddy の reverse_proxy も同じヘッダを解釈する**ため値は変えない（デファクト標準のヘッダ）。
+            http.Response.Headers["X-Accel-Buffering"] = "no";
 
             async Task Send(CompletionStreamEvent ev)
             {

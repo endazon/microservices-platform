@@ -98,7 +98,7 @@ services:
 # で行う（deploy/local/README.md「SPA(/settings) 到達」）。OIDC issuer は base 既定 http://keycloak:8080/... の
 # ままにする（#284 手順A: hosts+port-forward で browser にも in-cluster 名 keycloak:8080 を解決させ、backend の
 # Auth__Authority と iss を一致させる。localhost へ上書きすると iss 不一致でトークン検証が失敗するため上書きしない）。
-# bffUpstream も base の bff-service:8080（nginx が /bff を in-cluster BFF へプロキシ）で正しく上書き不要。
+# bffUpstream も base の bff-service:8080（Caddy が /bff を in-cluster BFF へプロキシ）で正しく上書き不要。
 # base は既定 enabled だが経路B での有効化を明示する。実 Pod 起動/ヘルス緑・実ログインは live（#284 手順）。
 #
 # Issue #344 → #1200, SC-04/UC-07/FR-13, ADR-0073 決定 1・5, IADR-0020/IADR-0078/IADR-0365:
