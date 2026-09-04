@@ -1,8 +1,6 @@
-using FeedbackService.Domain;
 using FeedbackService.Features.Feedback.List;
 using FeedbackService.Features.Feedback.Stats;
 using FeedbackService.Features.Feedback.Submit;
-using Knowledge.Contracts.Dtos;
 
 namespace FeedbackService.Features.Feedback;
 
@@ -25,7 +23,7 @@ public static class FeedbackEndpoints
         return app;
     }
 
-    // **投稿と一覧の 2 操作が使う**ため 2 段目に残る（ADR-0068 決定 2）。
-    internal static FeedbackDto ToDto(AnswerFeedback f)
-        => new(f.Id, f.AnswerId, f.Rating, f.Comment, f.Question, f.UserId, f.CreatedAt, f.UpdatedAt);
+    // **投稿と一覧の 2 操作が使う** DTO 変換は 2 段目に残る（ADR-0068 決定 2）が、
+    // 実体は手書きをやめて Riok.Mapperly の生成マッパ（`FeedbackMapper.ToDto`）へ移した
+    // （計画 ADR-0030 §決定 / IADR-0371 決定 3）。**このファイルに写像は残さない。**
 }

@@ -1,5 +1,8 @@
 using FeedbackService.Features.Feedback;
+using FeedbackService.Features.Feedback.Submit;
 using FeedbackService.Infrastructure.Persistence;
+using FluentValidation;
+using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
@@ -29,6 +32,12 @@ builder.Services.AddOpenApi();
 
 // FR-08: Feedback DbContext（DB-per-service, ADR-0002）
 builder.Services.AddDbContext<FeedbackDbContext>(opt => opt.UseNpgsql(connStr));
+
+// FR-08, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2: 投稿の入力検証。
+// **アセンブリ走査（AddValidatorsFromAssembly）は使わない** —— 登録が暗黙になり、
+// 検証器を消しても起動時には何も起きず、端点が黙って無検証になるためである。
+// 1 行 1 検証器の明示登録なら、消したときにコンパイルか DI 解決で止まる。
+builder.Services.AddScoped<IValidator<FeedbackRequest>, SubmitFeedbackValidator>();
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段・合成可能ポートは
 // ホストしないが、到達可能性とトポロジ（段なし）を実効構成へ与えるため存在申告する。
