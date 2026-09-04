@@ -1,7 +1,10 @@
 using AiAnalysisService.Common.Observability;
 using AiAnalysisService.Features.Analysis;
+using AiAnalysisService.Features.Analysis.Analyze;
 using AiAnalysisService.Domain.Ports;
 using AiAnalysisService.Infrastructure.ExternalServices;
+using FluentValidation;
+using Knowledge.Contracts.Dtos;
 using OpenTelemetry.Metrics;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
@@ -49,6 +52,12 @@ builder.Services.AddHttpClient("LlmGateway", c =>
 // FR-05, ADR-0034 (#970): 受信 Authorization を RetrievalService へ伝播するため要求文脈へ触る。
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IRagOrchestrator, RagOrchestrator>();
+
+// FR-07, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0376: 分析依頼の入力検証。
+// **アセンブリ走査（AddValidatorsFromAssembly）は使わない** —— 登録が暗黙になり、
+// 検証器を消しても起動時には何も起きず、端点が黙って無検証になるためである。
+// 1 行 1 検証器の明示登録なら、消したときにコンパイルか DI 解決で止まる。
+builder.Services.AddScoped<IValidator<AnalysisTaskRequest>, AnalyzeRequestValidator>();
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。RAG オーケストレータは
 // 他サービスを HTTP で束ねるため合成可能ポートを選択しない。到達可能性とトポロジを与えるため存在申告する。
