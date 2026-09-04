@@ -44,6 +44,10 @@ on:
       - "scripts/check-chunk-budget.js"
       - "scripts/chunk-budget-baseline.json"
       - "scripts/check-static-egress.js"
+      # FR-20 / IADR-0375 / #1213: プラグインの版整合ゲート。**入力は本体と
+      # src/obsidian-plugin/{package,manifest}.json** で、後者は上の "src/obsidian-plugin/**" に
+      # 入るが、検査器本体を書き換える PR ではこの行が無いと本 CI が起動しない。
+      - "scripts/check-plugin-release-version.js"
       - "scripts/check-i18n-catalogs.js"
       # IADR-0125: ロケール追加など lingui.config.ts 単独の変更でも i18n 検査を走らせる
       # （単独で変わることは稀だが、走らない経路を残すと「検査したつもり」になる）。
@@ -95,6 +99,10 @@ on:
       - "scripts/check-chunk-budget.js"
       - "scripts/chunk-budget-baseline.json"
       - "scripts/check-static-egress.js"
+      # FR-20 / IADR-0375 / #1213: プラグインの版整合ゲート。**入力は本体と
+      # src/obsidian-plugin/{package,manifest}.json** で、後者は上の "src/obsidian-plugin/**" に
+      # 入るが、検査器本体を書き換える PR ではこの行が無いと本 CI が起動しない。
+      - "scripts/check-plugin-release-version.js"
       - "scripts/check-i18n-catalogs.js"
       # IADR-0125: ロケール追加など lingui.config.ts 単独の変更でも i18n 検査を走らせる
       # （単独で変わることは稀だが、走らない経路を残すと「検査したつもり」になる）。
@@ -214,6 +222,13 @@ jobs:
         run: pnpm --filter @platform/ui run build-storybook
       # FR-20 / ADR-0037 決定 1 / IADR-0338 決定 3: 自作 Obsidian プラグインの成果物（dist/main.js・manifest.json・
       # cli.mjs）。ビルドが通ることの確認と、次のステップの走査対象を作ることを兼ねる（Storybook と同じ位置づけ）。
+      # FR-20 / ADR-0037 決定 1 / IADR-0375 / #1213: 配布の版（manifest.json）と workspace の版
+      # （package.json）が揃っていること。**ビルドの前に見る** —— 揃っていない成果物を作ってから
+      # 気付いても、リリースワークフローが同じ検査で落ちるだけで、ずれは PR に残る。
+      # ここではタグが無いので --tag を渡さない（タグとの突合はリリース時に同じ検査器が行う）。
+      - name: Obsidian plugin versions agree (package.json / manifest.json)
+        working-directory: ${{ github.workspace }}
+        run: node scripts/check-plugin-release-version.js
       - name: Build Obsidian plugin
         run: pnpm --filter @platform/obsidian-plugin run build
       # 08_data-egress-policy / IADR-0125 決定 5: 外部 CDN・Web フォント・analytics を使わない。
