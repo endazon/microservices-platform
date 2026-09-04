@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Platform.Shared.Contracts.Dtos;
 using System.Net.Http.Json;
 
@@ -22,11 +23,20 @@ public static class BffScopeResolver
     // FR-19, ADR-0036, IADR-0253 決定 1（段 3・BFF の分岐対応 / #989）: 応答の Branches
     // （名前つき分岐）をそのまま運ぶ。BFF 内の判定には BffAccessScope を用い、
     // 後段へ渡すときは ToContractScope() で契約型へ写す（**Branches も運ばれる**。段 3 完了）。
+    //
+    // NFR-09, ADR-0029, ADR-0075, IADR-0379 (#1201): **gRPC 経路（参照実装）との並走。**
+    // `Services:AuthorizationServiceGrpc` が構成されて AuthzScopeGrpcClient が DI に在れば gRPC で解決し、
+    // 無ければ従来どおり REST で解決する。**並走中の正は REST**（gRPC は opt-in）。どちらの経路も
+    // 同じ deny-by-default（null）へ縮退する。利用者の JWT は gRPC のメタデータへ載せない ——
+    // 載せるのは BFF 自身の s2s トークンであり、利用者の文脈は本文（userId / 属性 / action）で運ぶ。
     public static async Task<BffAccessScope?> ResolveAsync(
         IHttpClientFactory httpFactory, HttpContext http, string action, CancellationToken ct)
     {
         var userId = http.User.Identity?.Name ?? "anonymous";
         var userAttrs = ExtractUserAttributes(http);
+
+        if (http.RequestServices?.GetService<AuthzScopeGrpcClient>() is { } grpc)
+            return await grpc.ResolveAsync(userId, userAttrs, action, ct);
 
         var authzClient = httpFactory.CreateClient("AuthorizationService");
         try

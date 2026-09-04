@@ -2417,6 +2417,57 @@ module.exports = ({ ok, assert }) => {
     assert.doesNotMatch(String(after.stdout), /VersionOverride を [1-9]/);
   });
 
+  // --- check-proto-contracts: east-west gRPC の proto 契約（Issue #1201 / IADR-0379 決定 2） -----
+  //
+  // 本体の網羅的な検査（規約の正例・負例・変異試験 12 件）は当該スクリプトの `--self-test` が持つ。
+  // ここでは (1) 自己試験が必ず走ること、(2) 実データの素実行が exit 0 であること、
+  // (3) baseline 側の改変で「破壊的変更が exit 1 になる出力経路」が実ツリーで生きていること、を固定する。
+  {
+    const proto = require('./check-proto-contracts.js');
+
+    ok('proto 契約: --self-test は exit 0（変異試験を含む）', () => {
+      const { spawnSync } = require('child_process');
+      const r = spawnSync(process.execPath, [path.join(__dirname, 'check-proto-contracts.js'), '--self-test'],
+        { encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, `self-test が失敗:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('proto 契約: 実データは規約違反 0・baseline と差分なし（素実行 exit 0）', () => {
+      const { spawnSync } = require('child_process');
+      const r = spawnSync(process.execPath, [path.join(__dirname, 'check-proto-contracts.js')], { encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, `素実行が失敗:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    // 変異試験（走査経路つき）: baseline 側へ「実在しないフィールド」を足すと、実ツリーとの差分は
+    // フィールドの削除（＝破壊的。しかも reserved 無し）として現れる。実ファイル（契約そのもの）は書き換えない。
+    ok('proto 契約: baseline に無いフィールドの削除は素実行で exit 1（reserved 不在は承認でも通らない）', () => {
+      const { spawnSync } = require('child_process');
+      const baselinePath = path.join(__dirname, 'proto-contract-baseline.json');
+      const orig = fs.readFileSync(baselinePath, 'utf8');
+      try {
+        const b = JSON.parse(orig);
+        const rel = Object.keys(b.files)[0];
+        const msg = Object.keys(b.files[rel].messages)[0];
+        b.files[rel].messages[msg].fields.__probe = { number: 999, type: 'string', label: 'singular' };
+        fs.writeFileSync(baselinePath, JSON.stringify(b, null, 2) + '\n');
+        const r = spawnSync(process.execPath, [path.join(__dirname, 'check-proto-contracts.js')], { encoding: 'utf8' });
+        assert.strictEqual(r.status, 1, `破壊的変更で exit ${r.status}`);
+        assert.match(String(r.stderr), /reserved に残す/);
+        assert.match(String(r.stderr), new RegExp(`field:${msg.replace(/\./g, '\\.')}\\.__probe`));
+      } finally {
+        fs.writeFileSync(baselinePath, orig);
+      }
+    });
+
+    ok('proto 契約: 純関数の compareSnapshots が番号の付け替えを破壊的と判定する', () => {
+      const a = { 'x.proto': proto.normalize(proto.parseProto('syntax = "proto3"; package platform.x.v1; option csharp_namespace = "P.Grpc.X.V1"; message M { string a = 1; }')) };
+      const b = { 'x.proto': proto.normalize(proto.parseProto('syntax = "proto3"; package platform.x.v1; option csharp_namespace = "P.Grpc.X.V1"; message M { string a = 2; }')) };
+      const r = proto.compareSnapshots(a, b);
+      assert.strictEqual(r.breaking.length, 1);
+      assert.strictEqual(r.breaking[0].key, 'field:M.a');
+    });
+  }
+
   // --- check-contract-schema: Shared.Contracts の後方互換（Issue #465 / IADR-0122） -----
 
   const contracts = require('./check-contract-schema.js');
