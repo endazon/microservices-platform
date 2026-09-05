@@ -3,8 +3,10 @@ using Knowledge.Contracts.Dtos;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Options;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 using System.Net.Http;
 using System.Net.Http.Json;
 
@@ -35,6 +37,7 @@ public static class SearchBffEndpoints
             SearchRequest req,
             IHttpClientFactory httpFactory,
             IUsageEventReporter usage,
+            IOptions<SyntheticMonitoringOptions> synthetic,
             HttpContext http,
             CancellationToken ct) =>
         {
@@ -84,7 +87,12 @@ public static class SearchBffEndpoints
                 // 🔴 **応答を待たない**（`Report` は列へ載せるだけで例外も投げない）。検索の
                 // 応答時間（NFR 検索 p95 1.5s）に計測の往復を載せず、計測の失敗で検索を落とさない。
                 // 送るのは種別と検索語だけで、利用者は受け口が `Authorization` から解決する。
-                usage.Report(new UsageEventSignal(UsageEventType.Search, req.Query, auth));
+                //
+                // NFR-02, ADR-0071, ADR-0076 決定 4, [[IADR-0378]] (#1203): 🔴 **合成監視の主体からの
+                // 検索は数えない。** 判定は**検証済み JWT の主体だけ**を見る（`http.User`）——
+                // 受信ヘッダを見ると、外から印を付けて実利用を SC-10 の集計から隠せてしまう。
+                usage.Report(new UsageEventSignal(UsageEventType.Search, req.Query, auth,
+                    SyntheticTraffic.IsSyntheticPrincipal(http.User, synthetic.Value)));
 
                 return Results.Ok(result ?? new SearchResponse([], 0, 0));
             }

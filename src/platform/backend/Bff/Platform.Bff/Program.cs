@@ -3,6 +3,7 @@ using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 using Platform.Bff.Composition;
 using Platform.Bff.Foundation.Session;
 
@@ -56,6 +57,11 @@ builder.Services.AddHttpClient("DashboardService", c =>
 // 恒久的に 0 だった。送出は上の名前付きクライアントを使い、**要求の応答経路には載せない**
 // （有界の列 ＋ 常駐ドレイン。検索 p95 に計測の往復を足さない）。
 builder.Services.AddKnowledgeUsageEventReporting();
+
+// NFR-02, ADR-0044, ADR-0071, ADR-0072, ADR-0076 決定 4, [[IADR-0378]] (#1203):
+// **合成監視の標識**。BFF は外部から到達し得る面なので、判定は**検証済み JWT の主体だけ**で行う
+// （受信ヘッダは見ない）。許可集合が空なら合成は 1 件も存在しない（fail-closed）。
+builder.Services.AddSyntheticMonitoring(builder.Configuration);
 builder.Services.AddOpenTelemetry()
     // 🔴 宣言が無い Meter は収集されない＝**送出の失敗が静かに消える**。
     // Meter 名は BFF のサービス名と同じなので収集対象そのものは増えない。

@@ -399,6 +399,21 @@
       "defaultClientScopes": ["roles", "abac-attributes"]
     },
     {
+      "clientId": "synthetic-monitor",
+      "name": "Synthetic monitoring probe (client_credentials)",
+      "description": "ADR-0076 決定 4 / IADR-0378 (#1203): 合成監視（synthetic）の専用主体。BFF はこの clientId（azp）を見て合成と判定し、LLM 費用計測と SC-10 の集計から外す。ロールを与えない・ABAC ポリシーも与えない（文書を読めない主体にする）。本番シークレットは config から供給し、dev export 値は使わない。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "synthetic-monitor-dev-secret-change-me",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": ["roles"]
+    },
+    {
       "clientId": "identity-admin",
       "name": "SC-17 identity admin (Keycloak Admin REST, client_credentials)",
       "description": "SC-17・IADR-0301 決定 2・IADR-0329 (#1101): AuthorizationService が利用者のロール/属性割当・無効化・セッション失効を Admin REST へ反映する機密クライアント。realm-management の view-users/manage-users/view-realm のみを持ち realm ロールは持たない。取り込み経路 (abac-seeder) とは別主体。secret は dev 専用。",
