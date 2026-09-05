@@ -11,9 +11,11 @@
 // **このプローブが名乗る資格情報そのものが標識**であり、外から偽装できない。
 //
 // 🔴 **LLM は既定で呼ばれない。** 合成の要求は AiAnalysisService が
-// `SyntheticMonitoring:AllowLlmEgress`（既定 false）で縮退させる。ADR-0076 §残るもの が
-// 合成監視の**頻度と費用の上限を未定**と残しているため、上限が決まるまで費用を出さない側へ倒す。
-// 頻度（PROBE_INTERVAL_SECONDS）も**既定値を実装が決めない**——配備時に必ず与える。
+// `SyntheticMonitoring:AllowLlmEgress`（既定 false）で縮退させる。
+// 🔵 ［2026-09-05 更新 / #1203］**理由が「上限が未定だから」ではなくなった** —— ADR-0079 決定 1 が
+// 間隔を 2 段に確定させ、**LLM を呼ぶのは「SLO 評価用＝60 分」側**と定めた。本プローブが担うのは
+// **「常時トラフィックの生成＝60 秒」側**であり、そちらは呼ばないことが確定値である。
+// 頻度（PROBE_INTERVAL_SECONDS）は**既定値を実装が決めない**——配備時に必ず与える（この作法は変えない）。
 
 const required = (name) => {
   const value = process.env[name];
@@ -29,7 +31,8 @@ const REALM = required('KC_REALM');
 const CLIENT_ID = required('SYNTHETIC_CLIENT_ID');
 const CLIENT_SECRET = required('SYNTHETIC_CLIENT_SECRET');
 const BFF_BASE_URL = required('BFF_BASE_URL');
-// 🔴 既定値を置かない。ADR-0076 §残るもの が頻度を未定と残しており、実装が数字を決めない。
+// 🔴 既定値を置かない。**実装が数字を決めない**（現行の確定値は ADR-0079 決定 1 の 60 秒であり、
+// マニフェスト側が与える）。未設定なら起動しない。
 const INTERVAL_SECONDS = Number(required('PROBE_INTERVAL_SECONDS'));
 // 叩く経路（カンマ区切り）。既定は費用の出ない 2 経路のみ。
 const PROBE_PATHS = (process.env.PROBE_PATHS || '/bff/analysis/ask,/bff/analysis/ask/stream')
