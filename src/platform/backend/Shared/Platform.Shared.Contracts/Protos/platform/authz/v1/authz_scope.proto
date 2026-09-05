@@ -1,0 +1,63 @@
+// FR-05, NFR-09, ADR-0004, ADR-0029, ADR-0075, IADR-0379 (#1201):
+// ABAC 権限スコープ解決（AuthorizationService の `POST /authz/scope` と同じ意味論）の gRPC 契約。
+//
+// ■ 置き場と所有（IADR-0379 決定 1）
+//   proto の所有者は呼び出される側（AuthorizationService）。置き場は所有サービスが属するユニットの
+//   共有契約プロジェクト（Platform.Shared.Contracts）の `Protos/<unit>/<service>/v<N>/`。
+//   クライアント・サーバ基底の両方をここから生成し、`*.Client` プロジェクトは作らない。
+//
+// ■ versioning（IADR-0379 決定 2。scripts/check-proto-contracts.js が検査する）
+//   - package は `<unit>.<service>.v<N>`、csharp_namespace は `<ContractsRoot>.Grpc.<Service>.V<N>`。
+//   - フィールド番号は不変。削除するときは番号と名前を `reserved` に残す。
+//   - 型・ラベル・番号・名前の変更、message / rpc / enum 値の削除は破壊的 = 新しいメジャー（v2）を並走させる。
+//
+// ■ s2s（IADR-0379 決定 4）
+//   `authorization` メタデータには**呼び出し側サービス自身**の資格情報（client credentials の JWT）を載せる。
+//   利用者のトークンは載せない。利用者の文脈（user_id / user_attributes / action）は本文で運ぶ（REST と同じ）。
+syntax = "proto3";
+
+package platform.authz.v1;
+
+option csharp_namespace = "Platform.Shared.Contracts.Grpc.Authz.V1";
+
+// ABAC 権限スコープ解決。REST の `POST /authz/scope` と同じ評価器（AbacEvaluator）を呼ぶ。
+service AuthzScope {
+  // 利用者属性 × 文書属性フィルタを解決し、許可される属性条件を返す。
+  // - 不正な action → INVALID_ARGUMENT（REST の 400 と同値）
+  // - 呼び出し側サービスの資格情報が無い → UNAUTHENTICATED、`platform-service` ロールが無い → PERMISSION_DENIED
+  // - 該当ポリシーが無い → granted=false（deny-by-default。エラーではなく応答で表す）
+  rpc Resolve(ResolveScopeRequest) returns (ResolveScopeResponse);
+}
+
+// REST の AccessScopeRequest と同じ形（UserId / UserAttributes / Action）。
+message ResolveScopeRequest {
+  // 利用者識別子（preferred_username）。
+  string user_id = 1;
+  // ABAC 判定に用いる利用者属性（clearance / department ほか）。
+  map<string, string> user_attributes = 2;
+  // 解決したいアクション（read / analyze / manage / write）。空文字は read（REST の既定値と同じ）。
+  string action = 3;
+}
+
+// REST の AttributeFilter と同じ形（key ∈ allowed_values）。
+message AttributeFilter {
+  string key = 1;
+  repeated string allowed_values = 2;
+}
+
+// REST の AccessScopeBranch と同じ形。分岐内のフィルタは AND、分岐どうしは OR。
+message AccessScopeBranch {
+  string name = 1;
+  repeated AttributeFilter filters = 2;
+}
+
+// REST の AccessScopeResponse と同じ形。
+message ResolveScopeResponse {
+  string user_id = 1;
+  // 従来の算出値（キー単位 union の連言）。Branches 未対応の消費側のために据え置く。
+  repeated AttributeFilter allowed_filters = 2;
+  // 利用者にマッチするポリシーが 1 つでもあったか。false は閲覧可能なし（フィルタが空でも全件開放ではない）。
+  bool granted = 3;
+  // read の選言（OR）を運ぶ名前つき分岐。1 件以上あればこちらで評価する。
+  repeated AccessScopeBranch branches = 4;
+}

@@ -20,6 +20,9 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
+    <!-- NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 (#1201): east-west gRPC の参照実装（受け側）。
+         ホストを起こす側が受け側パッケージを持つ（共通ヘルパ経由の推移参照に頼らない）。 -->
+    <PackageReference Include="Grpc.AspNetCore" />
     <ProjectReference Include="..\..\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
     <ProjectReference Include="..\..\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
   </ItemGroup>

@@ -36,7 +36,8 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         });
     }
 
-    private static void ReplaceDbContext<TContext>(IServiceCollection services, string dbName)
+    // #1201: gRPC 用の Kestrel 器（GrpcKestrelFactory）も同じ差し替えを使う。
+    internal static void ReplaceDbContext<TContext>(IServiceCollection services, string dbName)
         where TContext : DbContext
     {
         var toRemove = services

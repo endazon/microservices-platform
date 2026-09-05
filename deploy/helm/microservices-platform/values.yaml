@@ -379,6 +379,13 @@ services:
     image: microservices-platform/authorization-service
     tag: latest
     port: 8080
+    # NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 (#1201): east-west gRPC 用の h2c ポート
+    # （TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。設定したサービスにだけ containerPort（名前 grpc）・
+    # Service ポート（appProtocol: grpc）・env Grpc__Port が描画される。**readiness は 8080 の /health/ready
+    # のまま** —— 1 プロセスが両ポートを起動時に bind するので、8080 が ready なら 8081 も bind 済みである。
+    # メッシュ内の mTLS はサイドカーが終端し、アプリには平文 h2c が届く（PERMISSIVE / STRICT で同じ）。
+    # 参照実装は AuthorizationService だけ。他サービスへの展開は別 issue。
+    grpcPort: 8081
     # SC-17, IADR-0301 決定 3 (#452) / IADR-0329 (#1101): 利用者アカウント管理の反映先。
     # **既定は無く、宣言が必須**（未設定なら Pod が起動時に落ちる）。
     #
@@ -506,6 +513,11 @@ services:
     extraEnv:
       - name: Services__AuthorizationService
         value: "http://authorization-service:8080"
+      # FR-18, ADR-0010, IADR-0380 (#1244): AI 提案の生成が LLM ゲートウェイを呼ぶ。コード既定
+      # `http://llm-gateway:5010` は k8s に無い名前で、上書きが無いと生成が LLM の段で
+      # `Name or service not known` になり提案が 0 件のまま（#1244 の実測。aianalysis 等と同じ上書き）。
+      - name: Services__LlmGateway
+        value: "http://llmgateway-service:8080"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
