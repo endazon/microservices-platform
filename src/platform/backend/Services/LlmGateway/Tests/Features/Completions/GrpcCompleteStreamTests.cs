@@ -12,7 +12,7 @@ using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 namespace LlmGateway.Tests.Features.Completions;
 
 // FR-04, FR-11, NFR-02, NFR-09, ADR-0010, ADR-0029, ADR-0075, ADR-0076 決定 5,
-// IADR-0037, IADR-0104, IADR-0354, IADR-0379, IADR-0398 (#1255):
+// IADR-0037, IADR-0104, IADR-0354, IADR-0379, IADR-0400 (#1255):
 // 逐次生成の rpc（`LlmCompletion/CompleteStream`）を**実 Kestrel の h2c ポート**で往復する。
 //
 // 🔴 **本クラスの中心は「最初の delta が done より前に到着する」ことである**（T-P1-03）。
@@ -100,7 +100,7 @@ public class GrpcCompleteStreamTests
 
     // 🔴 T-P1-04: **delta メッセージの `sent` は true である。**
     //
-    // DTO の既定は `true`・proto3 の既定は `false` で**向きが逆**である（IADR-0398 決定 4）。
+    // DTO の既定は `true`・proto3 の既定は `false` で**向きが逆**である（IADR-0400 決定 4）。
     // 写像が `Sent` を明示的に書き忘れると、例外は 1 つも起きず、
     // **全 delta が「縮退」に見える** —— 呼び出し元（AiAnalysis / Graph / Conversion）は
     // 縮退表示・提案 0 件・画像保持へ静かに倒れる。
@@ -168,7 +168,7 @@ public class GrpcCompleteStreamTests
     }
 
     // 🔴 縮退は RpcException ではなく done=true / sent=false の**メッセージ**で返り、
-    // ストリームは**正常終了する**（REST が SSE で 500 を伝播させないのと同値。IADR-0398 決定 5）。
+    // ストリームは**正常終了する**（REST が SSE で 500 を伝播させないのと同値。IADR-0400 決定 5）。
     //
     // 観測点は上流の失敗である（既定構成ではティアB が有効で越境拒否は起こらない。実測）。
     [Fact]

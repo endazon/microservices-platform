@@ -17,7 +17,7 @@ namespace LlmGateway.Tests;
 // **インスタンス**で購読する。IADR-0394 決定 1）である —— 直列化は同一アセンブリ内でしか効かず、
 // 加入し忘れは静かに起きる（本 issue がその実例である）。
 //
-// IADR-0398 (#1255): 🔴 **gRPC の実 Kestrel 器（GrpcKestrelFactory）もこのコレクションが持つ。**
+// IADR-0400 (#1255): 🔴 **gRPC の実 Kestrel 器（GrpcKestrelFactory）もこのコレクションが持つ。**
 // 理由は 2 つあり、どちらも「1 つに保つ」という同じ形である。
 //   1. `GrpcTestConfiguration` は h2c ポートを**プロセスで 1 つだけ**選ぶ。器をクラスごとに作ると
 //      2 つ目の Kestrel が同じポートへ bind できず起動に失敗する（埋め込みだけのときは

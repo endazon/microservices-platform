@@ -82,18 +82,14 @@ public static class DocumentEndpoints
         return app;
     }
 
-    // FR-05, UC-03, SC-05, IADR-0047: 機密区分（必須属性）検証。NG のとき 400 の IResult を、
-    // 妥当なとき null を返す（呼び出し側は `is { } error` で早期リターンする）。
-    internal static IResult? ConfidentialityProblemOrNull(Dictionary<string, string>? attributes)
-    {
-        var (ok, error) = DocumentAttributes.ValidateConfidentiality(attributes);
-        return ok
-            ? null
-            : Results.ValidationProblem(new Dictionary<string, string[]>
-            {
-                [DocumentAttributes.ConfidentialityKey] = [error!]
-            });
-    }
+    // FR-05, FR-19, UC-03, SC-05 / [[IADR-0398]] 決定 4:
+    // **機密区分と doc_scope の値域検証（`ConfidentialityProblemOrNull` / `DocScopeProblemOrNull`）は
+    // ここから撤去した。** 3 操作（登録・編集・メタデータ更新）が共有する性質はそのままに、
+    // FluentValidation の規則へ移してある（`DocumentAttributeRules` の拡張メソッド 1 組）。
+    // **応答本文は 1 バイトも変わっていない**（鍵・メッセージとも `Domain/DocumentAttributes` が持つ）。
+    //
+    // **不変性検証（下の `DocScopeChangedProblemOrNull`）は残る** —— 既存文書の属性が要るため、
+    // 取得（`FindAsync`）の後ろでしか実行できず、端点入口の入力検証ではない（同 決定 8）。
 
     // FR-06, FR-19, ADR-0058 決定 2, [[IADR-0278]]: doc_scope の不変性検証。
     // **値域検証（DocScopeProblemOrNull）とは別の検査である** —— あちらは「知らない値か」を、
@@ -102,19 +98,6 @@ public static class DocumentEndpoints
         Dictionary<string, string>? incoming, IReadOnlyDictionary<string, string> current)
     {
         var (ok, error) = DocumentAttributes.ValidateDocScopeUnchanged(incoming, current);
-        return ok
-            ? null
-            : Results.ValidationProblem(new Dictionary<string, string[]>
-            {
-                [DocumentAttributes.DocScopeKey] = [error!]
-            });
-    }
-
-    // FR-19, ADR-0054, [[IADR-0270]] 決定 2: doc_scope（文書スコープ）の値域検証。
-    // 🔴 欠落は拒否しない（既存文書は遡及付与しない方針 — ADR-0054 §結果）。未知値のみ 400。
-    internal static IResult? DocScopeProblemOrNull(Dictionary<string, string>? attributes)
-    {
-        var (ok, error) = DocumentAttributes.ValidateDocScope(attributes);
         return ok
             ? null
             : Results.ValidationProblem(new Dictionary<string, string[]>

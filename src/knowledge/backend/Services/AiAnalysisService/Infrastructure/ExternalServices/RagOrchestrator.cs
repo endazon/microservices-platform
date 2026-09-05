@@ -24,7 +24,7 @@ namespace AiAnalysisService.Infrastructure.ExternalServices;
 // 本サービスは**メッシュ内部の面**なので、標識は外周（BFF）が付けたヘッダ `X-Synthetic-Traffic` から読む
 // （外周は検証済み JWT の主体から決めており、外から偽装できない）。既定 null は既存テストの
 // 直接構築（`new RagOrchestrator(factory)`）を壊さないため。
-// FR-04, NFR-02, ADR-0029, ADR-0075, [[IADR-0398]] (#1255): `completionTransport` は LlmGateway の
+// FR-04, NFR-02, ADR-0029, ADR-0075, [[IADR-0400]] (#1255): `completionTransport` は LlmGateway の
 // テキスト生成を呼ぶ輸送（REST の SSE ／ east-west gRPC のサーバストリーミング）。
 // **既定 null は REST 輸送**（`httpFactory` から組む）であり、既存テストの直接構築
 // （`new RagOrchestrator(factory)`）は 1 つも変わらない —— DI 経由では Program.cs が
@@ -255,7 +255,7 @@ public class RagOrchestrator(
     // 反復子内で yield を跨ぐ try/catch を避けるため、送信・読み取りの失敗は捕捉後に done(Sent=false) を
     // yield して終了する（呼び出し側は縮退表示に切り替えられる）。egress 判定はゲートウェイ側で保持される。
     // IADR-0037: LlmGateway の逐次生成を消費し、CompletionStreamEvent を逐次返す。
-    // IADR-0398 (#1255): 輸送は ILlmCompletionTransport が持つ（REST の SSE ／ east-west gRPC の
+    // IADR-0400 (#1255): 輸送は ILlmCompletionTransport が持つ（REST の SSE ／ east-west gRPC の
     // サーバストリーミング）。**本メソッドに残るのは合成監視の抑止だけである** ——
     // 送信・受信の失敗をどの縮退イベントへ落とすかは輸送ごとの写しであり、2 実装が同じ枝を持つ。
     private async IAsyncEnumerable<CompletionStreamEvent> StreamCompletionAsync(
@@ -341,7 +341,7 @@ public class RagOrchestrator(
         // Sonnet 5 も thinking が既定有効で、かつ新トークナイザ（同一テキストで約 +30% トークン）のため、
         // 4096 は実測前の出発値である（再調整は #380）。
         //
-        // IADR-0398 (#1255): 輸送は ILlmCompletionTransport（REST ／ east-west gRPC）が持つ。
+        // IADR-0400 (#1255): 輸送は ILlmCompletionTransport（REST ／ east-west gRPC）が持つ。
         // 🔴 **枝の読み分けはここに残る** —— 「到達できなかった」「答えたが本文が無い」「答えた」の
         // 3 値を輸送が返し（LlmCompletionOutcome）、どの文言へ倒すかは業務判断だからである。
         var outcome = await _llm.CompleteAsync(

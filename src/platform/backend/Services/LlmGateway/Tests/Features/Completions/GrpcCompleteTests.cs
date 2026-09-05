@@ -13,7 +13,7 @@ using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 namespace LlmGateway.Tests.Features.Completions;
 
 // FR-04, FR-11, NFR-02, NFR-09, NFR-16, ADR-0010, ADR-0025, ADR-0029, ADR-0075, ADR-0076,
-// IADR-0101, IADR-0104, IADR-0379, IADR-0397, IADR-0398 (#1255):
+// IADR-0101, IADR-0104, IADR-0379, IADR-0397, IADR-0400 (#1255):
 // テキスト生成の一括 rpc（`LlmCompletion/Complete`）を**実 Kestrel の h2c ポート**で往復し、
 // s2s トークンの検証・越境判定・proto3 の既定値の写しが gRPC 経路でも保たれることを固定する。
 //
@@ -127,7 +127,7 @@ public class GrpcCompleteTests
         grpc.RoutingReason.Should().Be(rest.RoutingReason);
     }
 
-    // T-S-06: 🔴 proto3 に null は無い（IADR-0398 決定 4）。`max_tokens=0` は「0 トークン」ではなく
+    // T-S-06: 🔴 proto3 に null は無い（IADR-0400 決定 4）。`max_tokens=0` は「0 トークン」ではなく
     // 「未指定」であり、REST の DTO 既定（IADR-0101 の 4096）としてプロバイダへ渡らなければならない。
     //
     // **写し漏れは例外にならない** —— プロバイダが 0 を受け取り、本文が空のまま 200 で返る
@@ -192,7 +192,7 @@ public class GrpcCompleteTests
     }
 
     // 🔴 T-S-11 相当: **ゲートウェイの縮退は RpcException ではなく sent=false の「応答」で返る**
-    // （REST の 200 ＋ Sent=false と同値。IADR-0398 決定 5）。
+    // （REST の 200 ＋ Sent=false と同値。IADR-0400 決定 5）。
     // エラーにすると呼び出し側は「後段が答えた縮退」と「輸送が壊れた」を区別できなくなり、
     // AiAnalysis は出典すら返せず、Conversion は理由コードを失う。
     //

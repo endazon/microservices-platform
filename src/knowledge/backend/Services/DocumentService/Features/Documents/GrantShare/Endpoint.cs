@@ -1,6 +1,7 @@
 using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
+using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocumentService.Features.Documents.GrantShare;
@@ -15,19 +16,18 @@ internal static class GrantDocumentShareEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
     {
-        g.MapPost("/", async (Guid id, CreateShareRequest req, DocumentDbContext db,
+        g.MapPost("/", async (Guid id, CreateShareRequest req,
+            IValidator<CreateShareRequest> validator, DocumentDbContext db,
             IDocumentUpdatedPublisher bus, HttpContext http, CancellationToken ct) =>
         {
-            if (string.IsNullOrWhiteSpace(req.SubjectId)
-                || !ShareSubjectType.IsValid(req.SubjectType))
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["errors"] =
-                    [
-                        $"subjectType は {string.Join(" / ", ShareSubjectType.All)} のいずれか、"
-                        + "subjectId は非空である必要があります。"
-                    ]
-                });
+            // FR-20, ADR-0036 D-06 / 計画 ADR-0030 §決定 / IADR-0371 決定 2 / [[IADR-0398]] 決定 1・9:
+            // 共有先の入力検証。規則は `GrantDocumentShareValidator` が持つ。
+            //
+            // 🔴 **述語は 1 本のまま**（`subjectId` の空 ∨ `subjectType` の不正 → **1 件**）。
+            // 🔴 **鍵は `errors`**（メッセージが 2 項目にまたがるため、片方の名前を鍵にできない）。
+            // 🔴 **この位置（取得・認可より前）を動かしてはならない** —— 移送前もそうだった。
+            var gate = validator.Validate(req);
+            if (!gate.IsValid) return ValidationProblems.FirstViolation(gate);
 
             var doc = await db.Documents.FindAsync(id);
             if (doc is null) return Results.NotFound();

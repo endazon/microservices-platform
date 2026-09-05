@@ -36,7 +36,7 @@ related_ids:
   - IADR-0378
   - IADR-0379
   - IADR-0397
-  - IADR-0398
+  - IADR-0400
 author: claude
 created: 2026-09-05
 updated: 2026-09-05
@@ -78,7 +78,7 @@ plan_refs:
   IADR-0225（ストリーム経路はフォールバックを持たない）／IADR-0256 決定 3（故障を「該当なし」に化けさせない）／
   IADR-0266 決定 6（縮退した応答を根拠に使わない）／IADR-0316（Secret 注入の宣言と配備の突合）／
   IADR-0354（初回トークン計器の両端）／IADR-0374（上流ステータスの軸）／IADR-0378（合成標識の 2 段）／
-  本作業で新設する IADR-0398
+  本作業で新設する IADR-0400
 - 計画書リンク: 隣接クローン `../project-planning/projects/microservices-platform/`（読み取り専用）
 
 ## 目的・背景
@@ -104,7 +104,7 @@ NFR-02 の SLI は**初回トークン**で測るため、輸送の選び方が 
 | 5 | Graph（1 箇所） | `LlmGatewayGrpcSuggestionClient : ISuggestionLlmClient`（兄弟クラス。Parse は共通 static） |
 | 6 | Conversion（1 箇所） | `LlmGatewayGrpcDiagramCoder : IDiagramCoder`（兄弟クラス。フェンス抽出は共通 static） |
 | 7 | 配備・realm | confidential client ×3（`aianalysis-service` / `graph-service` / `conversion-service`）＋ `users[]` の platform-service ＋ ExternalSecret / Vault seed / helm / compose |
-| 8 | 記録 | IADR-0398・本仕様書・`docs/api/east-west-grpc.md` の追補・`scripts/proto-contract-baseline.json` |
+| 8 | 記録 | IADR-0400・本仕様書・`docs/api/east-west-grpc.md` の追補・`scripts/proto-contract-baseline.json` |
 
 ### 対象外（理由つき）
 
@@ -292,7 +292,7 @@ RpcException になるのは s2s の面（UNAUTHENTICATED / PERMISSION_DENIED）
   RpcException になるため、**gRPC 実装は両方を「出典のみ」の枝へ落とす**。
   観測できる縮退（出典のみ返す）は一致し、**gRPC の側が REST より緩い方向**である
   （利用者に見える失敗が減る向きであり、越境・費用・認可のいずれの保証も弱めない）。
-  IADR-0398 決定 5 に記録する。**計画リポジトリへの環流は不要**と判断した ——
+  IADR-0400 決定 5 に記録する。**計画リポジトリへの環流は不要**と判断した ——
   計画は輸送ごとの例外伝播を定めておらず、ADR-0029 の射程外である。
 
 ## 未決事項

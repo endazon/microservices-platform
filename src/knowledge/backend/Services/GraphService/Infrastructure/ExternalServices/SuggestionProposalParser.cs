@@ -4,7 +4,7 @@ using GraphService.Domain.Ports;
 
 namespace GraphService.Infrastructure.ExternalServices;
 
-// FR-18, ADR-0010, ADR-0034 決定 5, IADR-0266 決定 6・7, IADR-0398 (#1255):
+// FR-18, ADR-0010, ADR-0034 決定 5, IADR-0266 決定 6・7, IADR-0400 (#1255):
 // LLM 応答本文（JSON 配列）から提案を読む**共通の読み取り**。
 //
 // 🔴 REST 実装（LlmGatewaySuggestionClient）と gRPC 実装（LlmGatewayGrpcSuggestionClient）が

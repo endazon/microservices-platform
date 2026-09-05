@@ -104,7 +104,7 @@ builder.Services.AddKeyedSingleton<IEmbeddingProvider, DeterministicEmbeddingPro
 // REST（/embed）と gRPC（LlmEmbedding/Embed）の**両方がこれを呼ぶ** —— 判定器を 2 つにしない。
 builder.Services.AddSingleton<EmbedUseCase>();
 
-// FR-04, FR-11, ADR-0010, IADR-0379 決定 5, IADR-0398 (#1255): テキスト生成の判定器本体。
+// FR-04, FR-11, ADR-0010, IADR-0379 決定 5, IADR-0400 (#1255): テキスト生成の判定器本体。
 // REST（/complete・/complete/stream）と gRPC（LlmCompletion/Complete・CompleteStream）の
 // **両方がこれを呼ぶ** —— 越境判定・フォールバック鎖・計器の計上を輸送ごとに分けない。
 builder.Services.AddSingleton<CompletionUseCase>();
@@ -150,7 +150,7 @@ app.MapEmbeddingEndpoints();
 // `[Authorize(Policy = ServiceCaller)]` を型に持ち、s2s トークン（realm ロール platform-service）だけを通す。
 app.MapGrpcService<LlmEmbeddingGrpcService>();
 
-// FR-04, FR-11, NFR-02, NFR-09, ADR-0029, ADR-0075, ADR-0076, IADR-0379, IADR-0398 (#1255):
+// FR-04, FR-11, NFR-02, NFR-09, ADR-0029, ADR-0075, ADR-0076, IADR-0379, IADR-0400 (#1255):
 // テキスト生成の gRPC 面（Complete ＝ 一括 ／ CompleteStream ＝ **サーバストリーミング**）。
 // 認可は埋め込みと同じ ServiceCaller。REST（/complete・/complete/stream）は並走したまま残る。
 app.MapGrpcService<LlmCompletionGrpcService>();

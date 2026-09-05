@@ -12,7 +12,7 @@ namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 // 呼び出し側が「モデルが拒否した」と「送信したが空応答」を取り違えないことを検証する。
 // 拒否は sent=true で返る（越境は成立している）ため、sent だけを見る従来の分岐では区別できない。
 //
-// IADR-0398 (#1255): 🔴 **同じ表明を REST 輸送と gRPC 輸送の両方で回す**（Theory の引数）。
+// IADR-0400 (#1255): 🔴 **同じ表明を REST 輸送と gRPC 輸送の両方で回す**（Theory の引数）。
 // 元データ（ゲートウェイが返す JSON / SSE）は 1 つで、TestLlmTransports が両輸送へ載せ替える ——
 // 元データを 2 つ書くと、片方だけ直して「一致した」ことにできてしまう。
 [Trait("TestKind", "Unit")]

@@ -10,7 +10,7 @@ author: claude
 ids: [FR-06, FR-13, FR-19, UC-07, UC-11]
 adrs: [ADR-0011, ADR-0036, ADR-0046, ADR-0054, ADR-0058]
 iadrs: [IADR-0020, IADR-0021, IADR-0278]
-specs: [20260822_issue-986_private-note-wikijs-sync-exclusion]
+specs: [20260822_issue-986_private-note-wikijs-sync-exclusion, 20260905_issue-449_doc-scope-immutability-note]
 issues: [#986, #451, #989, #449]
 -->
 

@@ -12,11 +12,11 @@ using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 namespace GraphService.Tests.Infrastructure.ExternalServices;
 
 // T-P1-05 —— FR-18, FR-11, ADR-0010, ADR-0025, ADR-0029, ADR-0034 決定 5, ADR-0075,
-// IADR-0104, IADR-0266 決定 6, IADR-0379, IADR-0398 (#1255):
+// IADR-0104, IADR-0266 決定 6, IADR-0379, IADR-0400 (#1255):
 // 提案生成の gRPC 実装が、REST 実装と**同じ本文に同じ提案**を返し、**同じ枝で `[]` へ降りる**
 // ことを固定する。
 //
-// 🔴 縮退の向きは埋め込みとは**逆**である（IADR-0398 決定 5）。埋め込みは輸送の失敗を例外のまま
+// 🔴 縮退の向きは埋め込みとは**逆**である（IADR-0400 決定 5）。埋め込みは輸送の失敗を例外のまま
 // 上げるが、提案は `[]` へ落とす —— REST 実装が非 2xx・HttpRequestException を `[]` にしており、
 // **提案が 0 件になるだけで越境も誤提案も起きない**からである。ここを例外にすると、
 // ゲートウェイの不調が利用者の要求そのものを落とす（挙動が変わる）。
@@ -42,7 +42,7 @@ public class LlmGatewayGrpcSuggestionClientTests
     }
 
     // 🔴 **proto は共通写像（LlmGrpcMapping.ToProto）で組む。手で組み立てない。**
-    // 手で組むと、写像そのものの欠陥（例: `Sent` の写し漏れ。IADR-0398 決定 4）を本試験が
+    // 手で組むと、写像そのものの欠陥（例: `Sent` の写し漏れ。IADR-0400 決定 4）を本試験が
     // 検出できなくなる —— 変異検査でそれを実測したので、DTO から写像を通す形へ改めた。
     private static Pb.CompleteResponse Gateway(
         bool sent = true, string text = ProposalJson, string stopReason = "end_turn") =>
@@ -91,7 +91,7 @@ public class LlmGatewayGrpcSuggestionClientTests
     // `sent=false`（越境拒否）と `stop_reason=refusal`（モデルが拒否）はどちらも提案 0 件である。
     //
     // 🔴 `sent` は proto3 の既定（false）と DTO の既定（true）で向きが逆であり、
-    // ゲートウェイが明示的に書いている（IADR-0398 決定 4）。写し漏れるとこの経路が**常に**
+    // ゲートウェイが明示的に書いている（IADR-0400 決定 4）。写し漏れるとこの経路が**常に**
     // 成立して提案が消える —— 上の陽性がその写しの対である。
     [Theory]
     [InlineData(false, "end_turn")]

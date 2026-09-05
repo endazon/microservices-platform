@@ -75,12 +75,12 @@ public static class SyntheticTraffic
             request.Headers.TryAddWithoutValidation(HeaderName, HeaderValue);
     }
 
-    // NFR-02, ADR-0076 決定 4, ADR-0029, IADR-0378, IADR-0398 (#1255): east-west gRPC への伝播。
+    // NFR-02, ADR-0076 決定 4, ADR-0029, IADR-0378, IADR-0400 (#1255): east-west gRPC への伝播。
     //
     // 🔴 **同じクラスの多重定義にする。定義を 2 つにしない。** 標識の名前・値・「合成のときだけ付ける」
     // 規則は輸送に依らず 1 つであり、gRPC 用のヘルパを別クラスへ置くと、片方だけが直る事故の口になる。
     //
-    // 🔴 **本文（proto）へ載せない**（IADR-0398 決定 3）。標識は「外周が付けたヘッダ」＝運搬の出所で
+    // 🔴 **本文（proto）へ載せない**（IADR-0400 決定 3）。標識は「外周が付けたヘッダ」＝運搬の出所で
     // あって要求の意味ではない。本文へ `bool synthetic` を置くと**全 rpc の不変契約に番号つきで残り**、
     // 呼び出し元が「試験のため」に立てる典型的な誤用の口になる。
     //

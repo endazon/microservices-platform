@@ -10,7 +10,7 @@ using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 
 namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 
-// FR-04, FR-11, NFR-02, ADR-0029, ADR-0075, IADR-0379, IADR-0398 (#1255):
+// FR-04, FR-11, NFR-02, ADR-0029, ADR-0075, IADR-0379, IADR-0400 (#1255):
 // 既存の RagOrchestrator 試験を **REST 輸送と gRPC 輸送の両方**で回すための小道具。
 //
 // 🔴 **同じ 1 つの元データから両輸送を組む。** 試験は従来どおり「ゲートウェイが返す本文」を
@@ -34,7 +34,7 @@ public static class TestLlmTransports
     /// <para>
     /// 🔴 <paramref name="status"/> が 2xx でないときの gRPC 側は <c>UNAVAILABLE</c> の
     /// <see cref="RpcException"/> にする —— gRPC には「非 2xx」に相当する概念が無く、
-    /// 到達失敗も応答の失敗も等しく RpcException になるためである（IADR-0398 決定 5）。
+    /// 到達失敗も応答の失敗も等しく RpcException になるためである（IADR-0400 決定 5）。
     /// 呼び出し元が落ちる枝が REST と同じであることを、これで測る。
     /// </para>
     /// </summary>

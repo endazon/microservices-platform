@@ -51,7 +51,7 @@ public sealed class LlmGatewaySuggestionClient(
         if (body is null || !body.Sent || CompletionStopReasons.IsRefusal(body.StopReason))
             return [];
 
-        // IADR-0398 (#1255): 読み取りは共通の SuggestionProposalParser にある
+        // IADR-0400 (#1255): 読み取りは共通の SuggestionProposalParser にある
         // （gRPC 実装が同じものを呼ぶ。輸送によって採れる提案が変わらないようにする）。
         return SuggestionProposalParser.Parse(body.Text, logger);
     }

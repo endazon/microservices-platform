@@ -1,6 +1,7 @@
 using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
+using FluentValidation;
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
@@ -35,14 +36,19 @@ internal static class AddDocumentTagEndpoint
     internal static void Map(RouteGroupBuilder tagReflection)
     {
         tagReflection.MapPost("/{id:guid}/tags", async (Guid id, AddDocumentTagRequest req,
+            IValidator<AddDocumentTagRequest> validator,
             DocumentDbContext db, IDocumentUpdatedPublisher bus, HttpContext http, CancellationToken ct) =>
         {
+            // FR-18, SC-09 / 計画 ADR-0030 §決定 / IADR-0371 決定 2 / [[IADR-0398]] 決定 1:
+            // タグ名は必須（正規化後に空なら不可）。規則は `AddDocumentTagValidator` が持つ。
+            //
+            // 🔴 **この位置（取得・認可より前）を動かしてはならない。** 移送前もそうだった ——
+            // 空のタグ名は文書の存在も認可も見ずに 400 である（後ろへ動かすと 404 に化ける）。
+            // **辞書照合（`UnknownTagsProblem`）は逆に認可の後ろ**であり、こちらとは別物である。
+            var gate = validator.Validate(req);
+            if (!gate.IsValid) return ValidationProblems.FirstViolation(gate);
+
             var name = Tag.Normalize(req.Name ?? string.Empty);
-            if (string.IsNullOrEmpty(name))
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["name"] = ["タグ名は必須です。"],
-                });
 
             var doc = await db.Documents.FindAsync([id], ct);
             if (doc is null) return Results.NotFound();

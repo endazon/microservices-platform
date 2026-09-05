@@ -2,6 +2,7 @@ using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Features.Documents;
 using DocumentService.Infrastructure.Persistence;
+using FluentValidation;
 using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,15 +20,21 @@ internal static class RenameTagEndpoint
 {
     internal static void Map(RouteGroupBuilder write)
     {
-        write.MapPut("/{id:guid}", async (Guid id, RenameTagRequest req, DocumentDbContext db,
+        write.MapPut("/{id:guid}", async (Guid id, RenameTagRequest req,
+            IValidator<RenameTagRequest> validator, DocumentDbContext db,
             IDocumentUpdatedPublisher bus, CancellationToken ct) =>
         {
+            // FR-09, SC-09 / 計画 ADR-0030 §決定 / IADR-0371 決定 2 / [[IADR-0398]] 決定 1:
+            // タグ名は必須（正規化後に空なら不可）。規則は `RenameTagValidator` が持つ。
+            //
+            // 🔴 **この位置（取得より前）を動かしてはならない。** 移送前もそうだった ——
+            // **不存在のタグ ID への空名改名は 400 であり 404 ではない。**
+            // GraphService の `RenameEdgeType` は**逆**（取得の後ろが仕様）なので、
+            // 名前が似ているからと揃えない（IADR-0395 決定 2）。
+            var gate = validator.Validate(req);
+            if (!gate.IsValid) return ValidationProblems.FirstViolation(gate);
+
             var name = Tag.Normalize(req.Name ?? string.Empty);
-            if (string.IsNullOrEmpty(name))
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["name"] = ["タグ名は必須です。"],
-                });
 
             var tag = await db.Tags.FirstOrDefaultAsync(t => t.Id == id, ct);
             if (tag is null) return Results.NotFound();

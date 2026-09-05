@@ -446,7 +446,7 @@
     {
       "clientId": "aianalysis-service",
       "name": "AiAnalysisService east-west gRPC caller (client_credentials)",
-      "description": "NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0398 (#1255): east-west gRPC で LlmGateway のテキスト生成を呼ぶ主体（RAG 回答の一括生成と逐次生成）。service-account に realm ロール platform-service のみを与え、ABAC ポリシー・属性は与えない（文書を読む主体ではない）。secret は dev 専用で本番は config から供給する。",
+      "description": "NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0400 (#1255): east-west gRPC で LlmGateway のテキスト生成を呼ぶ主体（RAG 回答の一括生成と逐次生成）。service-account に realm ロール platform-service のみを与え、ABAC ポリシー・属性は与えない（文書を読む主体ではない）。secret は dev 専用で本番は config から供給する。",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
@@ -461,7 +461,7 @@
     {
       "clientId": "graph-service",
       "name": "GraphService east-west gRPC caller (client_credentials)",
-      "description": "NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0398 (#1255): east-west gRPC で LlmGateway のテキスト生成を呼ぶ主体（AI 提案の生成）。service-account に realm ロール platform-service のみを与え、ABAC ポリシー・属性は与えない（文書を読む主体ではない）。secret は dev 専用で本番は config から供給する。",
+      "description": "NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0400 (#1255): east-west gRPC で LlmGateway のテキスト生成を呼ぶ主体（AI 提案の生成）。service-account に realm ロール platform-service のみを与え、ABAC ポリシー・属性は与えない（文書を読む主体ではない）。secret は dev 専用で本番は config から供給する。",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
@@ -476,7 +476,7 @@
     {
       "clientId": "conversion-service",
       "name": "ConversionService east-west gRPC caller (client_credentials)",
-      "description": "NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0398 (#1255): east-west gRPC で LlmGateway のテキスト生成を呼ぶ主体（図のコード化）。service-account に realm ロール platform-service のみを与え、ABAC ポリシー・属性は与えない（文書を読む主体ではない）。secret は dev 専用で本番は config から供給する。",
+      "description": "NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0400 (#1255): east-west gRPC で LlmGateway のテキスト生成を呼ぶ主体（図のコード化）。service-account に realm ロール platform-service のみを与え、ABAC ポリシー・属性は与えない（文書を読む主体ではない）。secret は dev 専用で本番は config から供給する。",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,

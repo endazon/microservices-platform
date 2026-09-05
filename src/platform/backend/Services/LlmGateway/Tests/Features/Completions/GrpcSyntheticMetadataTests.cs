@@ -11,7 +11,7 @@ using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 
 namespace LlmGateway.Tests.Features.Completions;
 
-// NFR-02, FR-10, ADR-0044, ADR-0076 決定 4, IADR-0378, IADR-0394, IADR-0398 決定 3 (#1255):
+// NFR-02, FR-10, ADR-0044, ADR-0076 決定 4, IADR-0378, IADR-0394, IADR-0400 決定 3 (#1255):
 // **合成監視の標識はメタデータ `x-synthetic-traffic` で運び、gRPC 面でも費用から除外される。**
 //
 // 🔴 標識を**本文（proto）に置かなかった**ことの実効性を測る試験でもある ——

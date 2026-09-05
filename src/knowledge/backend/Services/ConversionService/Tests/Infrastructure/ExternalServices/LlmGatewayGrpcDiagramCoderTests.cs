@@ -11,14 +11,14 @@ using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 namespace ConversionService.Tests.Infrastructure.ExternalServices;
 
 // T-P1-08 —— FR-12, FR-11, ADR-0010, ADR-0012, ADR-0025, ADR-0029, ADR-0075,
-// IADR-0104, IADR-0379, IADR-0398 (#1255):
+// IADR-0104, IADR-0379, IADR-0400 (#1255):
 // 図のコード化の gRPC 実装が、REST 実装と**同じゲートウェイ応答に同じ帰結**を返すことを
 // **4 経路すべて**（success / egress-denied / llm-refused / not-codeable）で固定する。
 //
 // 🔴 理由コード（`Reason`）まで一致させる。運用の集計は「何件がどの理由で画像保持になったか」で
 // 読むため、理由が輸送で割れると、gRPC へ切り替えた瞬間に集計が別物になる（例外は 1 つも出ない）。
 //
-// 🔴 輸送の失敗は例外にせず `Retain("llm-call-failed")` へ落とす（IADR-0398 決定 5）——
+// 🔴 輸送の失敗は例外にせず `Retain("llm-call-failed")` へ落とす（IADR-0400 決定 5）——
 // REST 実装が `EnsureSuccessStatusCode` の例外と接続失敗を同じ理由で画像保持にしているのと同じ枝。
 // 変換パイプラインを止めないための deny-by-default である。
 [Trait("TestKind", "Unit")]

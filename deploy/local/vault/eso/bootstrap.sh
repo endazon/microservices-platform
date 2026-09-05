@@ -60,7 +60,7 @@ vexec "vault kv put secret/msp/identity-admin-oidc client-secret='${IDENTITY_ADM
 # 既定は realm import の置き場と同値（ズレると client_credentials が 401 になり、埋め込みが 1 件も通らない）。
 vexec "vault kv put secret/msp/retrieval-service-token client-secret='${RETRIEVAL_SERVICE_CLIENT_SECRET:-retrieval-service-dev-secret-change-me}'"
 vexec "vault kv put secret/msp/ingestion-service-token client-secret='${INGESTION_SERVICE_CLIENT_SECRET:-ingestion-service-dev-secret-change-me}'"
-# FR-04, FR-12, FR-18, NFR-09, NFR-16, ADR-0029/ADR-0075, IADR-0379 決定 4 / IADR-0398 (#1255):
+# FR-04, FR-12, FR-18, NFR-09, NFR-16, ADR-0029/ADR-0075, IADR-0379 決定 4 / IADR-0400 (#1255):
 # テキスト生成（/complete 系）の呼び出し側 3 サービス。埋め込みの 2 つと同型・同じ理由である。
 vexec "vault kv put secret/msp/aianalysis-service-token client-secret='${AIANALYSIS_SERVICE_CLIENT_SECRET:-aianalysis-service-dev-secret-change-me}'"
 vexec "vault kv put secret/msp/graph-service-token client-secret='${GRAPH_SERVICE_CLIENT_SECRET:-graph-service-dev-secret-change-me}'"

@@ -8,7 +8,7 @@ using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 namespace LlmGateway.Features.Completions;
 
 // FR-04, FR-11, NFR-02, NFR-09, NFR-16, ADR-0010, ADR-0025, ADR-0029, ADR-0044, ADR-0075, ADR-0076,
-// IADR-0104, IADR-0378, IADR-0379, IADR-0397, IADR-0398 (#1255): テキスト生成の **gRPC 面**。
+// IADR-0104, IADR-0378, IADR-0379, IADR-0397, IADR-0400 (#1255): テキスト生成の **gRPC 面**。
 //
 // REST の `POST /complete` / `POST /complete/stream` と**同じ判定器**（CompletionUseCase）を呼ぶ ——
 // 判定器を 2 つにしない。REST と gRPC は並走し、**並走中の正は REST** である（IADR-0379 決定 5）。
@@ -19,7 +19,7 @@ namespace LlmGateway.Features.Completions;
 // —— 通すと「利用者が直接呼んだ」と区別できず confused deputy になる（IADR-0379 決定 4）。
 // この面は現行の REST より**強い**（緩めていない）。
 //
-// 🔴 **縮退は RpcException にしない**（IADR-0398 決定 5。埋め込みの呼び出し元側とは向きが逆である）。
+// 🔴 **縮退は RpcException にしない**（IADR-0400 決定 5。埋め込みの呼び出し元側とは向きが逆である）。
 // 越境拒否・プロバイダ未登録・上流不調はすべて `sent=false` の**応答**（一括）または
 // `done=true, sent=false` の**メッセージ**（逐次）で返す —— REST が 500 を伝播させないのと同値である。
 // RpcException になるのは s2s の面（UNAUTHENTICATED / PERMISSION_DENIED）・輸送不達（UNAVAILABLE）・
@@ -35,7 +35,7 @@ public sealed class LlmCompletionGrpcService(CompletionUseCase useCase) : Pb.Llm
         return LlmGrpcMapping.ToProto(result);
     }
 
-    // 🔴 **サーバストリーミング**（IADR-0398 決定 1）。unary へ潰すと最初の delta が生成完了後にしか
+    // 🔴 **サーバストリーミング**（IADR-0400 決定 1）。unary へ潰すと最初の delta が生成完了後にしか
     // 届かず、NFR-02 の SLI（初回トークン）が応答完了 p95 を測ることになる（ADR-0076 決定 5 が却下した形）。
     //
     // 🔴 **判定器が yield した 1 メッセージを、その場で WriteAsync する。**
@@ -53,7 +53,7 @@ public sealed class LlmCompletionGrpcService(CompletionUseCase useCase) : Pb.Llm
             await responseStream.WriteAsync(LlmGrpcMapping.ToProto(ev), context.CancellationToken);
     }
 
-    // 🔴 proto3 に null は無い（IADR-0398 決定 4）。REST の既定値の写しは LlmGrpcMapping.ToDto が持つ
+    // 🔴 proto3 に null は無い（IADR-0400 決定 4）。REST の既定値の写しは LlmGrpcMapping.ToDto が持つ
     // （max_tokens=0 → 4096。model / confidentiality / purpose の空文字は受け側が null と同じに扱う）。
     //
     // 負数だけはここで弾く。**REST には無い検証である** —— REST の DTO は 0 を「未指定」に使わないため
@@ -68,7 +68,7 @@ public sealed class LlmCompletionGrpcService(CompletionUseCase useCase) : Pb.Llm
         return LlmGrpcMapping.ToDto(request);
     }
 
-    // NFR-02, ADR-0076 決定 4, IADR-0378, IADR-0398 決定 3: 合成監視の標識は**メタデータ**で運ぶ。
+    // NFR-02, ADR-0076 決定 4, IADR-0378, IADR-0400 決定 3: 合成監視の標識は**メタデータ**で運ぶ。
     // ASP.NET Core gRPC では `GetHttpContext().Request` が REST と同じ `HttpRequest` なので、
     // **判定は既存の単一情報源をそのまま呼ぶ**（定義を 2 つにしない）。
     private static bool IsSynthetic(ServerCallContext context) =>

@@ -4,7 +4,7 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace ConversionService.Infrastructure.ExternalServices;
 
-// FR-12, FR-11, ADR-0010, ADR-0012, ADR-0025, IADR-0104, IADR-0398 (#1255):
+// FR-12, FR-11, ADR-0010, ADR-0012, ADR-0025, IADR-0104, IADR-0400 (#1255):
 // 図のコード化における**プロンプトの組み立てと応答の読み取り**。
 //
 // 🔴 REST 実装（LlmGatewayDiagramCoder）と gRPC 実装（LlmGatewayGrpcDiagramCoder）が
@@ -19,7 +19,7 @@ internal static partial class DiagramCodingInterpretation
     private static partial Regex FencedCodeBlock();
 
     // 図のコード化に使う上限。REST 実装が従来から明示している値をそのまま持つ
-    // （proto3 では 0 が「未指定」になるため、明示値であることに意味がある。IADR-0398 決定 4）。
+    // （proto3 では 0 が「未指定」になるため、明示値であることに意味がある。IADR-0400 決定 4）。
     public const int MaxTokens = 1024;
 
     // 監査・課金集計で用途が識別できるようにする（ゲートウェイ側は自由文字列として扱う）。
@@ -52,7 +52,7 @@ internal static partial class DiagramCodingInterpretation
         // 機密区分により送信拒否（Sent=false）→ 画像として保持する（ADR-0012 の機密制御）。
         //
         // 🔴 `Sent` は proto3 の既定（false）と DTO の既定（true）で向きが逆であり、ゲートウェイが
-        // 明示的に書いている（IADR-0398 決定 4）。写し漏れると gRPC 経路で**全ての図が
+        // 明示的に書いている（IADR-0400 決定 4）。写し漏れると gRPC 経路で**全ての図が
         // egress-denied として画像保持になる**（例外にならない）。GrpcDiagramCoderTests が対で固定する。
         if (!result.Sent)
         {

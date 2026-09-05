@@ -10,7 +10,7 @@ namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 // 縮退経路（ABAC 不許可・越境拒否・呼び出し失敗）は LLM を呼んでいないため、モデル名を捏造してはならない。
 // 以前は存在しない設定キー `Llm:DefaultModel` のフォールバックで常に "claude-opus-5" を名乗っていた。
 //
-// IADR-0398 (#1255): 🔴 **ゲートウェイを呼ぶ経路の表明は REST 輸送と gRPC 輸送の両方で回す**
+// IADR-0400 (#1255): 🔴 **ゲートウェイを呼ぶ経路の表明は REST 輸送と gRPC 輸送の両方で回す**
 // （Theory の引数）。元データは 1 つで TestLlmTransports が両輸送へ載せ替える。
 // ABAC 拒否の 2 本（ゲートウェイを一度も呼ばない）と T-16（2xx で本文が JSON の null）は
 // **REST 専用のまま**である —— 前者は輸送に到達せず、後者は proto のメッセージが欠落しないため
@@ -84,7 +84,7 @@ public class RagOrchestratorDegradedModelTests
     [InlineData(LlmTransportKind.Grpc)]
     public async Task AskAsync_WhenGatewayHttpFails_ReportsNoModel(LlmTransportKind transport)
     {
-        // gRPC 側は UNAVAILABLE の RpcException になる（非 2xx に相当する概念が無い。IADR-0398 決定 5）。
+        // gRPC 側は UNAVAILABLE の RpcException になる（非 2xx に相当する概念が無い。IADR-0400 決定 5）。
         var orchestrator = Create(
             new StubHttpClientFactory(llmBody: "unavailable", llmStatus: HttpStatusCode.ServiceUnavailable),
             TestLlmTransports.Create(transport, "unavailable", status: HttpStatusCode.ServiceUnavailable));
@@ -101,7 +101,7 @@ public class RagOrchestratorDegradedModelTests
     [InlineData(LlmTransportKind.Grpc)]
     public async Task AskStreamAsync_WhenGatewayHttpFails_DoneReportsNoModel(LlmTransportKind transport)
     {
-        // gRPC 側は UNAVAILABLE の RpcException になる（非 2xx に相当する概念が無い。IADR-0398 決定 5）。
+        // gRPC 側は UNAVAILABLE の RpcException になる（非 2xx に相当する概念が無い。IADR-0400 決定 5）。
         var orchestrator = Create(
             new StubHttpClientFactory(llmBody: "unavailable", llmStatus: HttpStatusCode.ServiceUnavailable),
             TestLlmTransports.Create(transport, "unavailable", status: HttpStatusCode.ServiceUnavailable));

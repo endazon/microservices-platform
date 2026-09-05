@@ -206,7 +206,7 @@ if [ "${ESO:-}" != "1" ]; then
     "client-secret=${RETRIEVAL_SERVICE_CLIENT_SECRET:-retrieval-service-dev-secret-change-me}"
   apply_secret "$MSP_NS" ingestion-service-token \
     "client-secret=${INGESTION_SERVICE_CLIENT_SECRET:-ingestion-service-dev-secret-change-me}"
-  # FR-04 / FR-12 / FR-18, IADR-0398 (#1255): テキスト生成（/complete 系）の呼び出し側 3 サービス。
+  # FR-04 / FR-12 / FR-18, IADR-0400 (#1255): テキスト生成（/complete 系）の呼び出し側 3 サービス。
   # 埋め込みの 2 つと同型・同じ理由（helm は非 optional な secretKeyRef で参照するので、
   # 欠けたら Pod が起動しない ＝ 注入漏れが静かな縮退へ倒れない）。
   apply_secret "$MSP_NS" aianalysis-service-token \

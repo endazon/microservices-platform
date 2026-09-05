@@ -2,7 +2,7 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace AiAnalysisService.Domain.Ports;
 
-// FR-04, FR-11, NFR-02, ADR-0010, ADR-0029, ADR-0075, IADR-0037, IADR-0379, IADR-0398 (#1255):
+// FR-04, FR-11, NFR-02, ADR-0010, ADR-0029, ADR-0075, IADR-0037, IADR-0379, IADR-0400 (#1255):
 // LlmGateway のテキスト生成を呼ぶ**輸送のポート**。REST（HttpLlmCompletionTransport）と
 // gRPC（GrpcLlmCompletionTransport）の 2 実装があり、Program.cs が `Services:LlmGatewayGrpc` の
 // 有無で選ぶ。**並走中の正は REST**（IADR-0379 決定 5）。
@@ -12,7 +12,7 @@ namespace AiAnalysisService.Domain.Ports;
 // RagOrchestrator に残る —— それらは輸送では変わらない業務判断であり、2 実装へ写すと片方だけが
 // 直る事故の口になる。輸送が持つのは**縮退の写し**（下記）だけである。
 //
-// 🔴 **縮退の写しは輸送ごとに書くが、落とす先は同じ枝でなければならない**（IADR-0398 決定 5）。
+// 🔴 **縮退の写しは輸送ごとに書くが、落とす先は同じ枝でなければならない**（IADR-0400 決定 5）。
 public interface ILlmCompletionTransport
 {
     /// <summary>

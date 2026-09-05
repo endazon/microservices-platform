@@ -6,7 +6,7 @@ namespace LlmGateway.Features.Completions.Complete;
 // FR-04, FR-11, ADR-0010: テキスト生成エンドポイント（POST /complete）。
 // FR-11: 入力の機密区分・用途に応じて呼び出し先（ティア/エンドポイント/モデル）を切り替える。
 //
-// IADR-0398 (#1255): 判定の本体は CompletionUseCase にある。**gRPC 面（GrpcService）が同じ本体を呼ぶ** ——
+// IADR-0400 (#1255): 判定の本体は CompletionUseCase にある。**gRPC 面（GrpcService）が同じ本体を呼ぶ** ——
 // ここに判定を戻すと、輸送ごとに越境判定・フォールバック鎖・計器の計上が分かれる（判定器を 2 つにしない）。
 public static class CompleteEndpoint
 {

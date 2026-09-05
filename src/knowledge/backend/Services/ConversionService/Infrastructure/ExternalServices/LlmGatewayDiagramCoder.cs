@@ -8,7 +8,7 @@ namespace ConversionService.Infrastructure.ExternalServices;
 // 変換時の LLM 呼び出しも機密区分（confidentiality）で送信制御する（FR-11 の越境マトリクスへ委譲）。
 // 送信拒否（Sent=false）・コード化不能・呼び出し失敗はいずれも「画像として保持」へ収束させる（deny-by-default）。
 //
-// IADR-0398 (#1255): プロンプトの組み立てと応答の読み取りは DiagramCodingInterpretation にある
+// IADR-0400 (#1255): プロンプトの組み立てと応答の読み取りは DiagramCodingInterpretation にある
 // （gRPC 実装が同じものを呼ぶ。輸送ごとに 4 つの帰結を書き分けない）。
 // **本クラスに残るのは REST 輸送と、その失敗を画像保持へ落とす枝だけである。**
 public class LlmGatewayDiagramCoder(

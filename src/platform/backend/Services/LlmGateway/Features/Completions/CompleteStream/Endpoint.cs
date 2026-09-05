@@ -9,7 +9,7 @@ namespace LlmGateway.Features.Completions.CompleteStream;
 // FR-11: egress ゲートは /complete と同一の router.Route(...) を通し、Allowed=false は
 // プロバイダを一切呼ばず理由イベントのみ返す（越境保証を弱めない）。
 //
-// IADR-0398 (#1255): 判定の本体は CompletionUseCase.StreamAsync にある。
+// IADR-0400 (#1255): 判定の本体は CompletionUseCase.StreamAsync にある。
 // **gRPC 面（GrpcService.CompleteStream）が同じ本体を呼ぶ**（判定器を 2 つにしない）。
 // 🔴 本ファイルに残るのは SSE の枠（ヘッダ・`data:` 行の直列化・flush）だけである ——
 // **1 イベントごとに書いて flush する性質は残す**。まとめてから書くと初回トークンの境界が消える。

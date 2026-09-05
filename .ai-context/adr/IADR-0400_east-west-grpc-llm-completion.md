@@ -1,5 +1,5 @@
 ---
-title: IADR-0398 east-west gRPC の第 2 スライス（LlmGateway のテキスト生成）— 逐次生成はサーバストリーミングで初回トークンの境界を保ち、縮退は輸送の失敗にせず呼び出し元ごとの現行の枝へ落とす
+title: IADR-0400 east-west gRPC の第 2 スライス（LlmGateway のテキスト生成）— 逐次生成はサーバストリーミングで初回トークンの境界を保ち、縮退は輸送の失敗にせず呼び出し元ごとの現行の枝へ落とす
 type: impl-adr
 status: Proposed
 related_ids:
@@ -50,7 +50,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0012_conversion-pipeline.md
 ---
 
-# IADR-0398: east-west gRPC の第 2 スライス — LlmGateway のテキスト生成（#1255）
+# IADR-0400: east-west gRPC の第 2 スライス — LlmGateway のテキスト生成（#1255）
 
 - 状態: Proposed
 - 日付: 2026-09-05

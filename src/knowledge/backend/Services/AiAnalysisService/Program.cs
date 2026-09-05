@@ -53,7 +53,7 @@ builder.Services.AddHttpClient("LlmGateway", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"]
         ?? "http://llm-gateway:5007"));
 
-// FR-04, FR-11, NFR-02, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0398 (#1255):
+// FR-04, FR-11, NFR-02, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0400 (#1255):
 // テキスト生成の輸送。**並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス）が
 // 構成されたときだけ生成クライアントが登録され、そのときに限り gRPC 輸送を使う。無ければ REST 輸送
 // （上の名前つき HttpClient を使う HttpLlmCompletionTransport）のまま。戻すのは構成を外すだけでよい。

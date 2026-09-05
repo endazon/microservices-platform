@@ -8,7 +8,7 @@ using Platform.Shared.Infrastructure.Foundation.Observability;
 namespace AiAnalysisService.Infrastructure.ExternalServices;
 
 // FR-04, FR-11, NFR-02, ADR-0010, ADR-0044, ADR-0076 決定 4, IADR-0037, IADR-0101, IADR-0378,
-// IADR-0379 決定 5, IADR-0398 (#1255): テキスト生成の **REST 輸送**（SSE ＋ JSON）。
+// IADR-0379 決定 5, IADR-0400 (#1255): テキスト生成の **REST 輸送**（SSE ＋ JSON）。
 //
 // **並走中の正はこちらである。** 本クラスは RagOrchestrator が従来インラインで持っていたコードを
 // **そのまま移した**ものであり、縮退の枝・メッセージ文言・例外の捕まえ方を 1 つも変えていない
@@ -106,7 +106,7 @@ public sealed class HttpLlmCompletionTransport(IHttpClientFactory httpFactory) :
     // 🔴 **接続失敗は捕まえない**（現行の挙動をそのまま保つ）。RagOrchestrator.GenerateAsync は
     // `PostAsJsonAsync` の周りに try/catch を持っておらず、HttpRequestException は呼び出し側へ
     // 伝播する。ここで握り潰すと**挙動が変わる**ため、非 2xx（= NotReached）だけを縮退として扱う。
-    // gRPC 実装との差は IADR-0398 決定 5 に記録した（gRPC には非 2xx に相当する概念が無い）。
+    // gRPC 実装との差は IADR-0400 決定 5 に記録した（gRPC には非 2xx に相当する概念が無い）。
     public async Task<LlmCompletionOutcome> CompleteAsync(
         CompletionApiRequest body, bool isSynthetic, CancellationToken ct)
     {

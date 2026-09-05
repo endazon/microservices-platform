@@ -60,7 +60,7 @@ public static class LlmGrpcMapping
         RoutingReason: string.IsNullOrEmpty(resp.RoutingReason) ? null : resp.RoutingReason,
         Retryable: resp.Retryable);
 
-    // ---- テキスト生成（FR-04, FR-11, ADR-0010, IADR-0398 (#1255)）----------------------------------
+    // ---- テキスト生成（FR-04, FR-11, ADR-0010, IADR-0400 (#1255)）----------------------------------
     //
     // 写像だけを置く規則は埋め込みと同じである（上の 🔴）。**呼び出し元と呼び出し先が同じ写像を使う**
     // ので、「送る側と受ける側で項目名が 1 つずれる」形の壊れ方が起こらない。
@@ -82,7 +82,7 @@ public static class LlmGrpcMapping
 
     /// <summary>
     /// proto の要求を REST の DTO へ写す（サーバ側）。
-    /// 🔴 <b>proto3 に null は無い</b>（IADR-0398 決定 4）。REST の既定値のうち、
+    /// 🔴 <b>proto3 に null は無い</b>（IADR-0400 決定 4）。REST の既定値のうち、
     /// <c>max_tokens</c> だけは <b>0 が「未指定」と区別できない</b>ため、ここで明示的に写す。
     /// <para>
     /// <c>model</c> / <c>confidentiality</c> / <c>purpose</c> の空文字は写し不要である ——
@@ -136,7 +136,7 @@ public static class LlmGrpcMapping
     /// SSE の 1 イベント（<c>CompletionStreamEvent</c>）を proto のメッセージへ写す。
     /// <para>
     /// 🔴 <b><c>Sent</c> は proto3 の既定と向きが逆である</b>（DTO 既定 <c>true</c> ／ proto3 既定
-    /// <c>false</c>。IADR-0398 決定 4）。delta メッセージにも <c>sent=true</c> を明示的に書く ——
+    /// <c>false</c>。IADR-0400 決定 4）。delta メッセージにも <c>sent=true</c> を明示的に書く ——
     /// 落とすと例外にはならず、<b>全 delta が「縮退」に見える</b>形で静かに壊れる
     /// （呼び出し元は縮退表示・提案 0 件・画像保持へ倒れる）。GrpcCompleteStreamTests が固定する。
     /// </para>

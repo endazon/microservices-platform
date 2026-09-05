@@ -33,7 +33,7 @@ namespace LlmGateway.Tests.Grpc;
 // 埋め込みプロバイダは外部 API を持たないスタブへ差し替える（TestWebApplicationFactory と同じ形）。
 // **ルータ（EmbeddingRouter / LlmRouter）と越境判定は差し替えない** —— そこが本試験の観測対象だからである。
 //
-// IADR-0398 (#1255): テキスト生成の gRPC 面（LlmCompletion）が加わったため、**本器は 2 つの面を
+// IADR-0400 (#1255): テキスト生成の gRPC 面（LlmCompletion）が加わったため、**本器は 2 つの面を
 // 同じ 1 プロセスで供する**。器を 2 つにすると、`GrpcTestConfiguration` がプロセスで 1 つだけ選ぶ
 // h2c ポートを 2 つの Kestrel が奪い合って bind に失敗する ——
 // だから各テストクラスの `IClassFixture` ではなく **`GrpcServerCollection` の共有器**にしてある。
@@ -82,7 +82,7 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
         {
             services.RemoveAll<AnthropicClient>();
 
-            // IADR-0398 (#1255): テキスト生成プロバイダを**台本つきスタブ**へ差し替える。
+            // IADR-0400 (#1255): テキスト生成プロバイダを**台本つきスタブ**へ差し替える。
             // 台本はプロンプト中の標識で決まる（ScriptedLlmProvider を参照）—— 共有器で並列に
             // 走る試験どうしが可変状態を取り合わないようにするためである。
             // **ルータ（LlmRouter）と越境判定は差し替えない**（本試験の観測対象）。
@@ -131,7 +131,7 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
     }
 }
 
-// IADR-0398 (#1255): テキスト生成の台本つきスタブ。
+// IADR-0400 (#1255): テキスト生成の台本つきスタブ。
 //
 // 🔴 **台本はプロンプトの標識で決まる。可変状態を持たない。**
 // 共有器（GrpcServerCollection）の下では複数のテストクラスが同じインスタンスを同時に使うため、

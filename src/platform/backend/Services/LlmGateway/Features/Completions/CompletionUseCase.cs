@@ -9,17 +9,17 @@ namespace LlmGateway.Features.Completions;
 
 // FR-04, FR-11, NFR-02, ADR-0010, ADR-0025, ADR-0029, ADR-0038, ADR-0044, ADR-0075, ADR-0076,
 // IADR-0037, IADR-0101, IADR-0104, IADR-0110, IADR-0111, IADR-0212, IADR-0225, IADR-0374, IADR-0378,
-// IADR-0379, IADR-0397, IADR-0398 (#1255): テキスト生成の**判定器本体**。
+// IADR-0379, IADR-0397, IADR-0400 (#1255): テキスト生成の**判定器本体**。
 // REST（Complete/Endpoint・CompleteStream/Endpoint）と gRPC（GrpcService）の**両方がここを呼ぶ**。
 //
-// 🔴 **判定器を 2 つにしない**（IADR-0398 決定 2。#1290 が EmbedUseCase を括り出したのと同型）。
+// 🔴 **判定器を 2 つにしない**（IADR-0400 決定 2。#1290 が EmbedUseCase を括り出したのと同型）。
 // 越境判定（router.Route）・プロバイダ解決・フォールバック鎖・計器の計上・LogStopReason は
 // すべてこの中に閉じ、輸送（HTTP / gRPC）は写像だけを持つ。ここを分けると、
 // **どちらか一方だけが機密区分の越境判定を通る**という最悪の食い違いが起こり得る。
 //
 // 🔴 **縮退は例外にしない。** 越境拒否・プロバイダ未登録・上流不調はすべて `Sent=false` の**応答**
 // （一括）または `done=true, Sent=false` の**イベント**（逐次）で返す。REST が 500 を伝播させないのと
-// 同じであり、gRPC 面でも RpcException にはしない（IADR-0398 決定 5）。
+// 同じであり、gRPC 面でも RpcException にはしない（IADR-0400 決定 5）。
 //
 // 🔴 `isSynthetic` は**引数で受ける**。判定そのものは SyntheticTraffic.IsSyntheticInternalRequest が
 // 単一情報源であり（REST は http.Request、gRPC は context.GetHttpContext().Request から呼ぶ）、
@@ -146,7 +146,7 @@ public sealed class CompletionUseCase(
     //
     // 🔴 **1 チャンク 1 イベントで yield する。まとめてから返さない。**
     // 呼び出し側（REST は SSE の 1 行へ書いて flush、gRPC は IServerStreamWriter.WriteAsync）が
-    // 受け取った順に送出することで、初回トークンの境界が保たれる（IADR-0398 決定 1）。
+    // 受け取った順に送出することで、初回トークンの境界が保たれる（IADR-0400 決定 1）。
     // ここでバッファリングすると、輸送を server-streaming にした意味が消える。
     public async IAsyncEnumerable<CompletionStreamEvent> StreamAsync(
         CompletionApiRequest req, bool isSynthetic, [EnumeratorCancellation] CancellationToken ct)
