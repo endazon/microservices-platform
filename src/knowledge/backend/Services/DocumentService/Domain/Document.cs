@@ -34,6 +34,27 @@ public class Document
     // 台帳から辿れないままである（`doc_scope` を遡及付与しない ADR-0054 §結果と同型の受容）。
     // **「全部消える」と読まないこと。**
     public List<string> AssetUris { get; private set; } = [];
+    // FR-06, FR-12, SC-03, ADR-0070 決定 3 / [[IADR-0381]] 決定 2 (#1254): **原本が本文を持っていたか。**
+    //
+    // `false` は「本文なしで完了した」（テキスト層を持たない PDF）。変換側の
+    // `DocumentNormalized.HasBody` を**ここで受け止める** —— 従前この項目は契約に在るのに
+    // 読み手が 1 つも無く（write-only）、SC-03 は本文なしの文書を区別できなかった。
+    //
+    // 🔴 **既定は `true`（本文あり）。** 本欄の追加以前の文書・イベントは「本文あり」として読む
+    // （遡及付与しない。`AssetUris` と同型の受容）。**`false` になるのは変換経路だけ**であり、
+    // 本文の直接投入（`CreateWithBody` / `SetMarkdownUri`）は常に本文ありである。
+    public bool HasBody { get; private set; } = true;
+    // FR-02, FR-03, ADR-0070 決定 4 / [[IADR-0381]] 決定 4 (#1253): **原本の所在**と
+    // **データソースの表示名**。本文を持たない文書を検索に載せるための索引テキストの材料であり
+    // （`IngestionService.Domain.MetadataIndexText`）、台帳に持つのは
+    // **`DocumentUpdated` の再発行（属性編集・タグ改名等）でも同じ値を運ぶため**である
+    // （イベントを右から左へ流すだけだと、変換経路以外の更新で索引から所在が消える）。
+    //
+    // 🔴 **表示名の複写である**（[[IADR-0153]] 決定 1 の「複写しない」はタグの正本の話）。
+    // データソースが改名されても遡及しない —— 次の同期で上書きされる。
+    // **直接投入・画面からの作成では null**（原本が無いので所在も無い）。
+    public string? OriginalPath { get; private set; }
+    public string? DataSourceName { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; private set; } = DateTimeOffset.UtcNow;
 
@@ -62,7 +83,8 @@ public class Document
     // パイプライン全体で ID を一貫させるため、変換側が採番した DocumentId を指定する（IADR-0001）。
     public static Document CreateNormalized(Guid id, string title, string markdownUri,
         Dictionary<string, string>? attributes = null, List<Guid>? tags = null,
-        string? contentFingerprint = null, List<string>? assetUris = null)
+        string? contentFingerprint = null, List<string>? assetUris = null,
+        bool hasBody = true, string? originalPath = null, string? dataSourceName = null)
     {
         var doc = new Document
         {
@@ -74,6 +96,9 @@ public class Document
             Tags = tags ?? [],
             ContentFingerprint = contentFingerprint,
             AssetUris = assetUris ?? [],
+            HasBody = hasBody,
+            OriginalPath = originalPath,
+            DataSourceName = dataSourceName,
         };
         doc.Snapshot("normalized");
         return doc;
@@ -168,13 +193,22 @@ public class Document
     // ADR-0057 は削除操作の伝播範囲の裁定であり、再変換時の孤児掃除はその射程に無い。
     public void ApplyNormalized(string title, string markdownUri,
         Dictionary<string, string> attributes, string? contentFingerprint = null,
-        List<string>? assetUris = null)
+        List<string>? assetUris = null,
+        bool hasBody = true, string? originalPath = null, string? dataSourceName = null)
     {
         Title = title;
         MarkdownUri = markdownUri;
         Status = DocumentStatus.Normalized;
         Attributes = attributes;
         if (assetUris is not null) AssetUris = assetUris;
+        // [[IADR-0381]] 決定 2・4 (#1254 / #1253): 本文の有無と所在は**再正規化の結果が正本**である
+        // （属性・資産 URI と同じ扱い）。原本を直して再変換すれば `false` → `true` へ戻る。
+        //
+        // 🔴 **所在は null で上書きしない。** 旧発行元（項目を運ばないイベント）からの再配信で
+        // 台帳の所在を消してしまうと、索引テキストが黙って題名だけへ縮む。
+        HasBody = hasBody;
+        if (originalPath is not null) OriginalPath = originalPath;
+        if (dataSourceName is not null) DataSourceName = dataSourceName;
         // ADR-0050 (#911): 再正規化は本文の変更であり、指紋を進める。null は「指紋化できなかった」
         // （ストレージ縮退等）で、下流は「不明」として扱う（解除判定を発火させない側に倒す）。
         ContentFingerprint = contentFingerprint;

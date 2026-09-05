@@ -17,4 +17,20 @@ public record DocumentUpdated(
     Dictionary<string, string> Attributes,
     List<string> Tags,
     DateTimeOffset UpdatedAt,
-    string? ContentFingerprint = null);
+    string? ContentFingerprint = null,
+    // ADR-0070 決定 3・決定 4 / [[IADR-0381]] (#1254 / #1253): **原本が本文を持っていたか**と、
+    // **原本の所在・データソースの表示名**。カタログ（`Document`）が台帳へ保持した値を写す。
+    //
+    // - `HasBody`: `false` は「本文なしで完了した」（テキスト層を持たない PDF）。SC-03 の
+    //   「本文なし（原本を参照）」の材料であり、**索引側の判定材料ではない**
+    //   （索引はチャンク 0 件で判定する。[[IADR-0358]] 決定 1）——
+    //   ただし**両者が食い違ったら取り込みが警告を残す**（[[IADR-0381]] 決定 3）。
+    // - `OriginalPath` / `DataSourceName`: 本文なしの文書の索引テキストへ載せる
+    //   （`MetadataIndexText`。[[IADR-0381]] 決定 4）。**本文ありのチャンクには載せない**
+    //   （同 決定 5 の非対称）。
+    //
+    // **末尾・既定値付きで足す**（[[IADR-0122]] 決定 2）。**既定は「本文あり」「所在は不明」**で、
+    // 旧発行元からのメッセージは従来と同じに読める。
+    bool HasBody = true,
+    string? OriginalPath = null,
+    string? DataSourceName = null);

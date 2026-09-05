@@ -3,15 +3,15 @@ title: 変換ジョブ（ConversionJob） データ仕様書
 type: data-spec
 status: in-progress
 created: 2026-07-09
-updated: 2026-09-03
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
 ids: [FR-12, SC-07, UC-06]
 adrs: [ADR-0002, ADR-0003, ADR-0027, ADR-0070]
-iadrs: [IADR-0042, IADR-0043, IADR-0127, IADR-0137, IADR-0154, IADR-0356]
-specs: [20260903_issue-1192_pdf-text-layer-extraction]
-issues: [#533, #543, #580, #1192]
+iadrs: [IADR-0042, IADR-0043, IADR-0127, IADR-0137, IADR-0154, IADR-0356, IADR-0358, IADR-0381]
+specs: [20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
+issues: [#533, #543, #580, #1192, #1193, #1253, #1254]
 -->
 
 # データ仕様書: 変換ジョブ（ConversionJob）
@@ -57,7 +57,7 @@ ConversionService はイベント駆動の fire-and-forget ワーカーで、`Ra
 | MarkdownUri | string? (varchar(2048)) | - | NULL 可。成功時に設定 | 正規化本文（Markdown）の URI |
 | Attempts | int | ○ | 既定 0。受信・再試行の都度 +1。**手動再変換でリセットしない**（累積） | 変換試行回数 |
 | DeadLettered | bool | ○ | 既定 `false`（列の DEFAULT も false）。`Status = failed` のときのみ true になり得る | **デッドレター標識**（自動再試行を使い切って `<queue>_error` へ送られたか。変換ジョブ画面が用いる） |
-| BodyAbsent | bool | ○ | 既定 `false`（列の DEFAULT も false。マイグレーション `AddBodyAbsentMarker`・2026-09-03）。`Status = succeeded` のときのみ true になり得る。処理再開・失敗・再変換受付で false へ戻す | **「本文なしで完了」標識**（テキスト層を持たない PDF。失敗ではなく succeeded の内訳。変換ジョブ画面が理由つきで表示する） |
+| HasBody | bool | ○ | 既定 `true`（列の DEFAULT も true。マイグレーション `AddBodyAbsentMarker`・2026-09-03 → `RenameBodyAbsentToHasBody`・2026-09-05）。`Status = succeeded` のときのみ `false` になり得る。処理再開・失敗・再変換受付で `true` へ戻す | **原本が本文を持っていたか**（`false` はテキスト層を持たない PDF。失敗ではなく succeeded の内訳で、変換ジョブ画面が理由つきで表示する）。**旧 `BodyAbsent`（既定 `false`）からの改名。極性が反転している**（§本文の有無の語彙 を参照） |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 初回受信時刻 |
 | UpdatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow`。状態遷移の都度更新 | 最終更新時刻 |
 | StorageUri | string (varchar(2048)) | ○ | 再変換のため保持（`RawDocumentFetched.StorageUri`） | 原本の保管 URI |
@@ -67,7 +67,7 @@ ConversionService はイベント駆動の fire-and-forget ワーカーで、`Ra
 | FetchedAt | DateTimeOffset (timestamptz) | ○ | 再変換のため保持 | 原本取得時刻 |
 
 > `ConversionJobDto`（BFF↔SPA 契約）には Id / SourceId / SourceType / OriginalPath / Status / Error /
-> DocumentId / MarkdownUri / Attempts / CreatedAt / UpdatedAt / **DeadLettered** / **BodyAbsent** を射影し、加えて
+> DocumentId / MarkdownUri / Attempts / CreatedAt / UpdatedAt / **DeadLettered** / **HasBody** を射影し、加えて
 > **MaxAttempts**（自動再試行の試行上限。エンティティの列ではなく設定値）を載せる。原本イベント再構成用の
 > StorageUri / ContentType / Attributes / Tags / FetchedAt は DTO に含めない（再変換にのみ用いる内部列）。
 
@@ -86,7 +86,7 @@ erDiagram
         varchar MarkdownUri
         int Attempts
         bool DeadLettered
-        bool BodyAbsent
+        bool HasBody
         timestamptz CreatedAt
         timestamptz UpdatedAt
         varchar StorageUri
@@ -172,9 +172,34 @@ erDiagram
 ## マイグレーション・初期データ
 
 - `InitialCreate` — `ConversionJobs` テーブル作成（主キーのみ）。シードなし。
+- `RenameBodyAbsentToHasBody`（2026-09-05 / #1254）— `BodyAbsent` を `HasBody` へ改名し、**極性を反転**する。
+  🔴 **改名だけでは済まない。** 列を足す → `HasBody = NOT BodyAbsent` で写す → 旧列を落とす、の順に行う
+  （EF が既定で吐く「落としてから足す」形だと**既存行の内訳が全部消える**）。§本文の有無の語彙 を参照。
 - `AddDeadLetteredMarker`（2026-08-06 / #533）— `DeadLettered`（boolean NOT NULL DEFAULT false）を追加。
   **既存行は「デッドレターへ送っていない」として読む**（過去の失敗が本当に上限到達だったかは記録が無く、
   遡って復元できないため。既定値で偽陽性を出さない側に倒す）。
+
+## 本文の有無の語彙（`hasBody` へ寄せた・［2026-09-05］）
+
+**同じ概念に 2 つの綴りと逆の極性があった。** 変換側が `bodyAbsent`（`true`＝本文なし）、
+索引・検索側が `hasBody`（`true`＝本文あり）で、画面・契約・運用の道具（索引を直接読む scroll 等）が
+「どちらを見るのか」を毎回引き直すことになっていた。**肯定形 `hasBody` へ寄せた。**
+
+| 面 | 旧（〜2026-09-04） | 新（2026-09-05〜） | 極性 |
+| --- | --- | --- | --- |
+| 変換ジョブ台帳 `ConversionJobs` | 列 `BodyAbsent`（既定 `false`） | 列 `HasBody`（既定 `true`） | 反転した |
+| 変換ジョブ契約 `ConversionJobDto` | `bodyAbsent`（既定 `false`） | `hasBody`（既定 `true`） | 反転した |
+| 正規化イベント `DocumentNormalized` | `BodyAbsent`（既定 `false`） | `HasBody`（既定 `true`） | 反転した |
+| 文書更新イベント `DocumentUpdated` | （項目なし） | `HasBody`（既定 `true`） | — |
+| 文書台帳 `Documents` / `DocumentDto` | （項目なし） | `HasBody`（既定 `true`） | — |
+| 索引ペイロード（Qdrant） | `has_body`（欠落＝本文あり） | 変更なし | もとから肯定形 |
+| 検索結果 `SearchResultDto` | `hasBody`（既定 `true`） | 変更なし | もとから肯定形 |
+
+**読み替え**: 旧 `bodyAbsent == true` ⟺ 新 `hasBody == false`。
+**既定値の意味はどちらの綴りでも「本文あり」**であり、旧発行者のメッセージ・既存行の読みは変わらない。
+
+🔴 **凍結記録（`.ai-context/adr/` と `.ai-context/specs/`）は旧綴りのままである。** 本文プロズを
+後から書き換えないためであり、そこに `bodyAbsent` と書かれていても現行の綴りではない。**この表が読み替えの正本である。**
 
 ## 関連仕様
 

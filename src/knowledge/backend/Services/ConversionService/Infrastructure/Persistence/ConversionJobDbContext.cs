@@ -24,8 +24,9 @@ public class ConversionJobDbContext(DbContextOptions<ConversionJobDbContext> opt
             e.Property(j => j.Status).HasMaxLength(20).IsRequired();
             // FR-12, SC-07: デッドレター標識。既存行は「未送出」として読むため既定 false。
             e.Property(j => j.DeadLettered).HasDefaultValue(false);
-            // FR-12, SC-07, ADR-0070 決定 3 / IADR-0356 (#1192): 本文なし標識。既存行は「本文あり」として読むため既定 false。
-            e.Property(j => j.BodyAbsent).HasDefaultValue(false);
+            // FR-12, SC-07, ADR-0070 決定 3 / IADR-0356 (#1192) / [[IADR-0381]] (#1254): 本文の有無。
+            // **既存行は「本文あり」として読むため既定 true**（旧 `BodyAbsent` の既定 false と同じ意味）。
+            e.Property(j => j.HasBody).HasDefaultValue(true);
             e.Property(j => j.MarkdownUri).HasMaxLength(2048);
             e.Property(j => j.StorageUri).HasMaxLength(2048).IsRequired();
             e.Property(j => j.ContentType).HasMaxLength(255).IsRequired();

@@ -30,8 +30,14 @@ public interface IDocumentNormalizedPublisher
         IReadOnlyList<string> assetUris,
         IReadOnlyDictionary<string, string> attributes,
         IReadOnlyList<string> tags,
-        // ADR-0070 決定 3 / IADR-0356 (#1192): 本文なし（テキスト層の無い PDF）で完了したか。
-        // 後続（カタログ・索引）が本文由来のチャンクを作らず、メタデータで検索に載せる判断に使う（決定 4 の射程）。
-        bool bodyAbsent = false,
+        // ADR-0070 決定 3 / IADR-0356 (#1192) / [[IADR-0381]] (#1254): 原本が本文を持っていたか
+        // （`false` はテキスト層の無い PDF で「本文なし」完了したことを表す）。
+        // 後続（カタログ）がこれを台帳へ保持し、SC-03 の「本文なし（原本を参照）」の材料にする。
+        bool hasBody = true,
+        // FR-02, FR-03, ADR-0070 決定 4 / [[IADR-0381]] 決定 4 (#1253): 原本の所在とデータソースの
+        // 表示名。**題名へ畳む前の値**をそのまま下流へ渡す —— 本文なしの文書はこの 2 つが
+        // 索引テキストの材料になる（`MetadataIndexText`）。
+        string? originalPath = null,
+        string? dataSourceName = null,
         CancellationToken ct = default);
 }

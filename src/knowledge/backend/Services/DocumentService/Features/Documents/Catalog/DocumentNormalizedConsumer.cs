@@ -50,8 +50,14 @@ public class DocumentNormalizedConsumer(
             // ADR-0057 決定 1, [[IADR-0296]]: **`ev.AssetUris` を台帳へ写す。**
             // 従前はイベントが運んでいるのに渡しておらず、図表資産は台帳から辿れず
             // **削除が届かなかった**（受け入れ基準①が構造的に満たせない状態だった）。
+            // ADR-0070 決定 3・決定 4 / [[IADR-0381]] 決定 2・4 (#1254 / #1253):
+            // 🔴 **`ev.HasBody` の読み手はここである。** 従前この項目は契約に在るのに読む箇所が
+            // 1 つも無く（write-only）、SC-03 は本文なしの文書を区別できなかった。
+            // 併せて原本の所在・データソース名を台帳へ写す —— 本文なしの文書はこの 2 つが
+            // 索引テキストの材料になる（`MetadataIndexText`）。
             doc = Document.CreateNormalized(ev.DocumentId, ev.Title, ev.MarkdownUri,
-                ev.Attributes, tags, fingerprint, ev.AssetUris);
+                ev.Attributes, tags, fingerprint, ev.AssetUris,
+                ev.HasBody, ev.OriginalPath, ev.DataSourceName);
             db.Documents.Add(doc);
             logger.LogInformation("Cataloged normalized document {Id} title={Title}",
                 ev.DocumentId, ev.Title);
@@ -61,7 +67,8 @@ public class DocumentNormalizedConsumer(
             // **タグ欄は上書きしない**（SC-05「再正規化はタグ欄を上書きしない」）——
             // 上書きすると管理者が付けたタグが再同期のたびに消える。
             // [[IADR-0296]]: 資産 URI も再正規化の結果で差し替える（属性と同じ扱い）。
-            doc.ApplyNormalized(ev.Title, ev.MarkdownUri, ev.Attributes, fingerprint, ev.AssetUris);
+            doc.ApplyNormalized(ev.Title, ev.MarkdownUri, ev.Attributes, fingerprint, ev.AssetUris,
+                ev.HasBody, ev.OriginalPath, ev.DataSourceName);
             logger.LogInformation("Updated cataloged document {Id} from re-normalization",
                 ev.DocumentId);
         }
@@ -77,7 +84,7 @@ public class DocumentNormalizedConsumer(
         await bus.PublishUpdatedAsync(
             doc.Id, doc.Title, doc.Status, doc.MarkdownUri,
             doc.Attributes, TagResolver.ToNames(doc.Tags, names), doc.UpdatedAt,
-            doc.ContentFingerprint, ct);
+            doc.ContentFingerprint, doc.HasBody, doc.OriginalPath, doc.DataSourceName, ct);
     }
 
     // SC-05, SC-09, SC-10, #637: 辞書に在るタグだけを返し、**無いものは件数として記録して捨てる**。

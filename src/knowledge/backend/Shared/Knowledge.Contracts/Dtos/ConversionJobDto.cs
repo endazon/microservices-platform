@@ -35,11 +35,18 @@ public record ConversionJobDto(
     // SC-07（hi-fi:422）「補正あり」の標識。**再変換すると失われる補正があること**を示す
     // （05_screens:313・333。IADR-0154 決定 4）。
     bool HasCorrection = false,
-    // SC-07, ADR-0070 決定 3 / IADR-0356 (#1192): **「本文なしで完了」の標識。** テキスト層を持たない PDF
-    // （スキャン等）は本文が存在しないため、`failed` にせず `succeeded` の内訳として理由つきで表示する。
-    // **状態の 5 値目ではない**（DeadLettered / DiagramsRetained と同じ扱い）。再試行もデッドレターもしない
-    // （何度やっても結果は変わらない）。Status == succeeded のときだけ真。
-    bool BodyAbsent = false);
+    // SC-07, ADR-0070 決定 3 / IADR-0356 (#1192) / [[IADR-0381]] (#1254): **原本が本文を持っていたか。**
+    // テキスト層を持たない PDF（スキャン等）は本文が存在しないため、`failed` にせず `succeeded` の
+    // 内訳として理由つきで表示する。**状態の 5 値目ではない**（DeadLettered / DiagramsRetained と
+    // 同じ扱い）。再試行もデッドレターもしない（何度やっても結果は変わらない）。
+    // **`false`（本文なし）になるのは Status == succeeded のときだけ**である。
+    //
+    // 🔴 **［2026-09-05 / #1254］`bodyAbsent`（否定形・既定 false）から改名し、極性を反転した。**
+    // 同じ概念が変換側 `bodyAbsent` と検索側 `hasBody` に割れており、画面・契約・運用の道具で
+    // 「どちらを見るのか」を毎回引き直すことになっていた。**肯定形の `hasBody` へ寄せた**
+    // （方向と理由は [[IADR-0381]] 決定 1）。既定値は**どちらの綴りでも「本文あり」**なので、
+    // 本項目を持たない旧発行者の応答は従来どおり読める（IADR-0122 決定 2 の非破壊条件は保つ）。
+    bool HasBody = true);
 
 // FR-12, UC-06, SC-07: 変換ジョブの状態値。
 public static class ConversionJobStatus

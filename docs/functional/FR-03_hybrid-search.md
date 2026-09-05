@@ -3,15 +3,15 @@ title: ハイブリッド検索 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-03
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-02, UC-01]
 adrs: [ADR-0009, ADR-0016, ADR-0070]
-iadrs: [IADR-0012, IADR-0014, IADR-0149, IADR-0150, IADR-0256, IADR-0313, IADR-0318, IADR-0339, IADR-0358]
-specs: [20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index]
-issues: [#536, #995, #1116, #1118, #1193]
+iadrs: [IADR-0012, IADR-0014, IADR-0149, IADR-0150, IADR-0256, IADR-0313, IADR-0318, IADR-0339, IADR-0358, IADR-0381]
+specs: [20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
+issues: [#536, #995, #1116, #1118, #1193, #1253, #1254]
 -->
 
 # 機能仕様書: ハイブリッド検索
@@ -79,14 +79,29 @@ flowchart TD
 
 ### 本文を持たない文書
 
-本文が取り出せない原本（テキスト層を持たない PDF など）は、取り込み側が**題名・タグから作った索引テキストを
-持つ点を 1 つだけ**索引へ載せる（本文由来のチャンク・埋め込みは 0 件）。検索から見ると:
+本文が取り出せない原本（テキスト層を持たない PDF など）は、取り込み側が**題名・タグ・取り込み元の
+パス・データソース名から作った索引テキストを持つ点を 1 つだけ**索引へ載せる（本文由来のチャンク・
+埋め込みは 0 件）。検索から見ると:
 
 - **通常の点と同じ 1 点**である —— ABAC フィルタ・削除・並び順・RRF はいずれも書き足しなしで効く。
   **本文が無いことを理由に権限判定は緩めない。**
-- 全文検索は索引テキスト（題名・タグ）に当たる。**返す `Text` は空**で、`HasBody` が `false` になる。
+- 全文検索は索引テキスト（題名・タグ・パス・データソース名）に当たる。**返す `Text` は空**で、
+  `HasBody` が `false` になる。
+  **［2026-09-05］パスとデータソース名を足した。** 従前は題名でしか当たらず、置き場所や
+  取り込み元の名前で探す利用者はその文書へ辿り着けなかった。
+  🔴 **本文ありの点にはパスもデータソース名も入らない**（意図した非対称）。入れると
+  「本文に書いてある語で当たった」と「置き場所の名前で当たった」が抜粋から区別できなくなる。
 - **結果からは除外しない**（存在を知る手段を残す）。ただし **RAG 回答の文脈・出典には入らない** ——
   根拠に使える本文が無いためである。
+
+#### 「本文の有無」の綴りは 1 つである（2026-09-05）
+
+同じ概念の綴りが変換側と検索側で割れていた（変換側が否定形・検索側が肯定形で、極性が逆）。
+**肯定形 `hasBody`（`true`＝本文あり）へ寄せ、極性も揃えた。** 読み替えの対応表は
+[`docs/data/conversion-job.md`](../data/conversion-job.md) §本文の有無の語彙が正本であり、ここへ複写しない。
+
+- 索引ペイロードのキーは `has_body` のままである（**本文なしの点だけが持つ**。欠落＝本文あり）。
+- 変換ジョブ・文書詳細・検索結果はいずれも `hasBody` を読む。**画面ごとに引き直す必要は無い。**
 
 ## 例外・エラー処理
 
