@@ -775,6 +775,10 @@ msgstr "ナレッジグラフ"
 msgid "ナレッジグラフ（ノード {shownCount} 件・辺 {edgeCount} 本）。詳細は凡例と選択パネルを参照"
 msgstr "ナレッジグラフ（ノード {shownCount} 件・辺 {edgeCount} 本）。詳細は凡例と選択パネルを参照"
 
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "ナレッジグラフで見る"
+msgstr "ナレッジグラフで見る"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "ナレッジグラフに表示する"
 msgstr "ナレッジグラフに表示する"
