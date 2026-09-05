@@ -8707,6 +8707,97 @@ ${r.stderr}`);
         );
       });
     }
+
+    //
+    // FR-02 / FR-03 / #1215 / [[IADR-0382]]: 検索の読み書き先の門（G13）。
+    //
+    // 🔴 **測っているのは「点の在り処」である。** #1215 の稼働クラスタは、点が
+    // `knowledge_chunks_deterministic_v1` に 3 件在るのに検索側は `knowledge_chunks_voyage_3_5`（0 点）を
+    // 読んでいた。**両サービスとも Ready のまま**検索だけが全件 0 件になり、`200 ＋ 空` は
+    // 「該当が無い」と区別できない（[[IADR-0255]]）ので、状態コードでも readiness でも捕まらない。
+    //
+    // 陽性・陰性を対で置き、**判定を外すと陰性が落ちる**ことを変異試験で確かめる。
+    //
+    {
+      const gate = require('./check-stack-ready.js');
+      const contractG13 = gate.searchIndexContract(REPO_IS);
+      const schemaOfG13 = (c) => Object.fromEntries(c.fields.map((f) => [f.key, {
+        data_type: 'text',
+        params: {
+          type: 'text', tokenizer: f.tokenizer, min_token_len: f.minTokenLen,
+          max_token_len: f.maxTokenLen, lowercase: f.lowercase,
+        },
+      }]));
+      // 稼働（2026-09-05 実測）と同じ形。読み先＝deterministic、点は 3 / 0 / 0。
+      const collectionsG13 = (readPoints, otherPoints) => [
+        { name: 'col_read', pointsCount: readPoints, payloadSchema: schemaOfG13(contractG13) },
+        { name: 'col_other', pointsCount: otherPoints, payloadSchema: schemaOfG13(contractG13) },
+      ];
+      const evalG13 = (mod, collections) => mod.evaluateSearchCollection({
+        contract: contractG13,
+        appsettingsName: 'col_default',
+        liveOverrides: [{ deploy: 'retrieval-service', name: 'col_read' }],
+        collections,
+        collectionsError: null,
+        expectPoints: false,
+      });
+
+      ok('FR-03 / #1215: 索引の期待値を**アプリの実装から**走査している（値を検査器へ書き写していない）', () => {
+        assert.ok(contractG13, 'QdrantIngestionVectorStore から索引パラメータを読めていない');
+        assert.strictEqual(contractG13.fields.length, 2, '`text` / `text_ngram` の 2 系統になっていない');
+        const gateSrc = fs.readFileSync(path.join(REPO_IS, 'scripts/check-stack-ready.js'), 'utf8');
+        for (const f of contractG13.fields) {
+          assert.ok(
+            !new RegExp(`['"\`]${f.tokenizer}['"\`]`).test(gateSrc),
+            `検査器が tokenizer '${f.tokenizer}' を直書きしている。実装が変えたとき静かに空回りする`,
+          );
+        }
+      });
+
+      ok('FR-03 / #1215 陽性対照: 検索側の読み先に点が在り索引も宣言どおりなら通る', () => {
+        assert.deepStrictEqual(evalG13(gate, collectionsG13(3, 0)).failures, []);
+      });
+
+      ok('FR-03 / #1215 陰性対照: 点が別のコレクションに在り検索側が 0 点なら赤になる', () => {
+        const r = evalG13(gate, collectionsG13(0, 3));
+        assert.strictEqual(r.failures.length, 1, r.failures.join(' / '));
+        assert.ok(/食い違っている/.test(r.failures[0]), `乖離を名指ししていない: ${r.failures[0]}`);
+      });
+
+      ok('FR-03 / #1215: 走査が壊れている（0 件・詳細を読めない）を緑にしない', () => {
+        assert.ok(evalG13(gate, []).failures.some((f) => /1 件も無い/.test(f)), '0 件が緑になっている');
+        assert.ok(
+          evalG13(gate, [{ name: 'col_read', pointsCount: null, payloadSchema: null, error: 'x' }])
+            .failures.some((f) => /詳細を読めなかった/.test(f)),
+          '測れていないことが緑になっている',
+        );
+      });
+
+      // 🔴 **変異試験（源泉を書き換える本物）。** (e) の判定を「点の在り処を見ない」形へ差し替えた
+      // check-stack-ready.js を実際にコンパイルして走らせ、**陰性対照が落ちなくなる**ことを見る。
+      // これが無いと、上の陽性対照は「常に緑を返す実装」でも通ってしまう。
+      ok('FR-03 / #1215 変異試験: 点の在り処の判定を外すと陰性対照が落ちる', () => {
+        const Module = require('module');
+        const gateSrc = fs.readFileSync(path.join(REPO_IS, 'scripts/check-stack-ready.js'), 'utf8');
+        const NEEDLE = '  } else if (withPoints.length > 0) {';
+        assert.ok(gateSrc.includes(NEEDLE), '変異点が見つからない（実装が変わったら変異試験も直すこと）');
+        // 変異体: 「点が在るのに検索側が 0 点」の枝へ二度と入らないようにする。
+        const mutantSrc = gateSrc.replace(NEEDLE, '  } else if (false /* 変異: 点の在り処を見ない */) {');
+        assert.notStrictEqual(mutantSrc, gateSrc, '変異が当たっていない');
+
+        const m = new Module('check-stack-ready-mutant-g13', module);
+        m.filename = path.join(REPO_IS, 'scripts', 'check-stack-ready.js');
+        m.paths = Module._nodeModulePaths(path.join(REPO_IS, 'scripts'));
+        m._compile(mutantSrc, m.filename);
+
+        assert.strictEqual(evalG13(gate, collectionsG13(0, 3)).failures.length, 1, '本実装が陰性対照を捕まえていない');
+        assert.strictEqual(
+          evalG13(m.exports, collectionsG13(0, 3)).failures.length,
+          0,
+          '判定を外しても陰性対照が落ちたままである ＝ この対照は点の在り処を測っていない',
+        );
+      });
+    }
   }
 
   //

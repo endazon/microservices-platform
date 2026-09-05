@@ -33,7 +33,9 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
     index.html / vite.config.ts / e2e/ / public/
     Caddyfile / docker-entrypoint.sh / config.js.template   # 配信（Caddy）・実行時 config
   knowledge/frontend/            # 可変機能ユニット（ナレッジ画面群）
-    src/features/<screen>/       # home, sc01..sc11。FeatureModule を公開し features/index.ts へ登録
+    src/features/<screen>/       # sc<NN>-<name>。FeatureModule を公開し features/index.ts へ登録
+                                 # 🔴 画面番号を列挙しない（追加のたびに腐る）。一覧の正本は
+                                 #    knowledge/frontend/src/features/index.ts である
   <unit>/frontend/               # 追加の可変機能ユニット（git submodule でリンク）
 ```
 
@@ -55,8 +57,10 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
   - **上の区分はすべて型 (a) である**（理由は区分ごとに違う）: `assets/` は外部 CDN と Web フォントを
     禁じた結果フォントがシステムフォント・アイコンがパッケージになり**置くものが無い**。
     `hooks/` の横断フックは**関心の隣に置いてある**（`lib/auth/useAuth.ts` 等。`ADR-0069` 決定 4 が
-    「共有層の区分は唯一の置き場ではない」と認めている）。`stores/` の Zustand は 1 本だけで、
-    その 4 つの参照元がすべて `components/ai-chat/` 配下にある。`types/` は表示型が**生成 DTO**である。
+    「共有層の区分は唯一の置き場ではない」と認めている）。`stores/` の Zustand ストアは
+    **`components/ai-chat/` に閉じており、参照元も同じディレクトリの中だけにある**
+    （件数は書かない。増減で腐るので `git grep -l zustand -- src/platform/frontend/src` で数える）。
+    `types/` は表示型が**生成 DTO**である。
     `knowledge` の `app/` `locales/` `testing/` は**アプリホスト（platform）が持つ**という意図的な不在で、
     同ユニットの `utils/` は**自前の純粋関数をまだ 1 つも持たない**（echarts の読み込み口は
     「設定済みライブラリを外へ渡す」形なので `lib/echarts/` にある。

@@ -420,4 +420,70 @@ public class AiSuggestionGenerationTests
         created.Should().ContainSingle();
         created![0].EdgeTypeId.Should().Be(defaultTypeId);
     }
+
+    // ── 実供給元（語の共起）を通した境界（IADR-0380 / #1244） ──────────────────
+    //
+    // G-01〜G-11 は stub の類似度を注入している。#1244 で供給元が実装されたので、**実供給元がスコープを
+    // 跨いで返す候補**が、それでも列挙の段で落ちて LLM 送信本文に現れないことを、実供給元で測る。
+
+    private static TermOverlapSimilarityCandidateSource RealSimilarity(GraphDbContext db)
+        => new(db, Microsoft.Extensions.Options.Options.Create(new AiSuggestionSimilarityOptions()),
+            NullLogger<TermOverlapSimilarityCandidateSource>.Instance);
+
+    private static GraphDocumentTermProfile Profile(Guid id, string title, string body)
+        => GraphDocumentTermProfile.Create(id, TermProfile.Extract(title, body), null, DateTimeOffset.UnixEpoch);
+
+    // 起点と**スコープ外の文書が最も似ている**形にする（供給元は hidden を最上位で返す）。
+    private static async Task SeedProfilesAsync(GraphDbContext db, Guid origin, Guid visible, Guid hidden)
+    {
+        db.TermProfiles.AddRange(
+            Profile(origin, "起点-社内議事録",
+                "ホップごとに認可述語を評価し、不許可ノードでは探索を打ち切る。属性の複製はイベントで追随する。"),
+            Profile(visible, "候補-社内設計メモ",
+                "探索はホップごとに認可述語を評価する。属性の複製で判定する。"),
+            Profile(hidden, "候補-極秘人事評価",
+                "ホップごとに認可述語を評価し、不許可ノードでは探索を打ち切る。属性の複製はイベントで追随する。"));
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    // G-12 🔴 T-47: 実供給元がスコープ外の似た文書を返しても、LLM 送信本文には現れない。
+    [Fact]
+    public async Task Real_similarity_source_crossing_scope_never_leaks_into_the_llm_payload()
+    {
+        using var db = NewDb();
+        var (origin, visible, hidden) = await SeedAsync(db);
+        await SeedProfilesAsync(db, origin, visible, hidden);
+
+        // 前提の確認: 供給元は hidden を返している（返していなければ本テストは何も測っていない）。
+        var crossing = await RealSimilarity(db).FindSimilarAsync(origin, 50, TestContext.Current.CancellationToken);
+        crossing.Select(c => c.DocumentId).Should().Contain(hidden, "供給元はスコープを跨ぐ（ADR-0051 決定 1）");
+
+        var (generator, handler) = GatewayGenerator(db, RealSimilarity(db), _ => "[]");
+
+        await generator.GenerateAsync(origin, InternalOnly(), TestContext.Current.CancellationToken);
+
+        handler.Sent.Should().HaveCount(1);
+        handler.Sent[0].Should().NotContain(hidden.ToString());
+        handler.Prompts[0].Should().Contain("社内設計メモ", "陽性対照: スコープ内の似た文書は送られる");
+        handler.Prompts[0].Should().NotContain("極秘人事評価");
+    }
+
+    // G-13 T-41 の生成経路版: 実供給元で提案が実際に生まれる（#1244 の欠陥を生成器の側からも赤にする）。
+    [Fact]
+    public async Task Real_similarity_source_produces_a_pending_link_suggestion()
+    {
+        using var db = NewDb();
+        var (origin, visible, hidden) = await SeedAsync(db);
+        await SeedProfilesAsync(db, origin, visible, hidden);
+
+        var (generator, _) = GatewayGenerator(db, RealSimilarity(db),
+            _ => $$"""[{"kind":"link","targetDocumentId":"{{visible}}","edgeTypeName":"related","rationale":"似ている"}]""");
+
+        var created = await generator.GenerateAsync(
+            origin, InternalOnly(), TestContext.Current.CancellationToken);
+
+        created.Should().NotBeNull().And.ContainSingle();
+        created![0].TargetDocumentId.Should().Be(visible);
+        created[0].State.Should().Be(SuggestionState.Pending);
+    }
 }
