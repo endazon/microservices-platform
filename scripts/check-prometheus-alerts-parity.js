@@ -63,6 +63,11 @@ function parseRules(text) {
   let pendingExprIndent = null;
   for (const raw of lines) {
     if (pendingExprIndent !== null) {
+      // 🔴 **空行はブロックスカラーを終わらせない。** YAML のブロックスカラーは
+      //   「字下げが浅い**非空**行」で終わる。空行で打ち切ると、可読性のために式へ空行を
+      //   入れた瞬間に**そこから先が静かに欠落**し、突合すべき差分を見逃す
+      //   —— **本検査器が防ごうとしている「射程の狭さ」そのもの**である。
+      if (raw.trim() === '') continue;
       const m = raw.match(/^(\s*)(\S.*)$/);
       if (m && m[1].length > pendingExprIndent) {
         rules[rules.length - 1].expr += (rules[rules.length - 1].expr ? ' ' : '') + m[2].trim();
@@ -225,6 +230,24 @@ function selfTest() {
     const rules = parseRules(SELF_TEST_COMPOSE);
     const b = rules.find((r) => r.alert === 'B');
     assert(b.expr === 'histogram_quantile(0.95, x) > 5', `expr の連結が違う: ${b.expr}`);
+  });
+
+  // 🔴 空行で打ち切ると、可読性のために式へ空行を入れた瞬間に以降が静かに欠落する。
+  check('ブロックスカラーの中の空行が expr を打ち切らない', () => {
+    const withBlank = `groups:
+  - name: g
+    rules:
+      - alert: X
+        expr: |
+          sum(a)
+
+          > 5
+        for: 1m
+        labels: { severity: warning }
+`;
+    const x = parseRules(withBlank).find((r) => r.alert === 'X');
+    assert(x.expr === 'sum(a) > 5', `空行で打ち切られた: ${JSON.stringify(x.expr)}`);
+    assert(x.for === '1m', `空行の後の for を拾えていない: ${x.for}`);
   });
 
   check('extractK8sInline が alerts.yml ブロックだけを取る', () => {
