@@ -779,6 +779,10 @@ msgstr "Knowledge graph"
 msgid "ナレッジグラフ（ノード {shownCount} 件・辺 {edgeCount} 本）。詳細は凡例と選択パネルを参照"
 msgstr "Knowledge graph ({shownCount} nodes, {edgeCount} edges). See the legend and the selection panel for details"
 
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "ナレッジグラフで見る"
+msgstr "View in the knowledge graph"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "ナレッジグラフに表示する"
 msgstr "Show in the knowledge graph"
