@@ -109,6 +109,28 @@
  *   **宣言が無いのに稼働にメッシュ資材が在る**なら飛ばさず失敗にする（IADR-0317 が
  *   「動いているが宣言が持っていない」として記録に留めた形そのもの）。
  *
+ * - **G13 検索の読み書き先**（#1215 / [IADR-0382]）: **検索側が読む Qdrant コレクションに点が在り、
+ *   全文ペイロード索引（`text` / `text_ngram`）が張られている**ことを要求する。
+ *   🔴 **本体は「点の在り処」である。** #1215 の稼働クラスタは、点が
+ *   `knowledge_chunks_deterministic_v1` に 3 件在るのに検索側は `knowledge_chunks_voyage_3_5`（0 点）を
+ *   読んでいた。**両サービスとも健全で Ready のまま**、検索だけが全件 0 件になる
+ *   —— `POST /bff/search` の `200 ＋ 空` は「該当が無い」と区別できない（[IADR-0255]）ので、
+ *   **状態コードでも readiness でも捕まらない**。
+ *   検査は 3 段: **(a)** 検索側が読むコレクション名を決められる（稼働 Deployment の
+ *   `Qdrant__CollectionName` を走査し、無ければ RetrievalService の `appsettings.json` の既定。
+ *   **どちらからも決まらなければ失敗**＝既定値へ落とさない）、**(b)** そのコレクションが実在し、
+ *   `text` / `text_ngram` の索引が**アプリの宣言と同じパラメータ**で張られている
+ *   （期待値は実装から走査して得る。G7 の locale と同じ姿勢）、**(c)** **どれかのコレクションに
+ *   点が在るのに検索側が 0 点なら失敗**（＝読み書き先の乖離そのもの）。
+ *   🔴 索引の有無は**件数では測れない**。索引が無いとき Qdrant v1.18.1 は例外を投げず
+ *   部分文字列の全走査へ静かに落ちる（[IADR-0318]）ので、「当たっている」ことは索引の証拠にならない。
+ *   どこにも点が無い状態は notice（まだ何も取り込んでいないだけ。素のスタックを一律に赤にしない）。
+ *   ただし **`SEARCHSEED=1` を宣言した実行では 0 点を失敗にする**（G10 の `PERSIST` と同じ
+ *   「宣言された期待に対して測る」作法。**検査を飛ばす向きの env は持たない**）。
+ *   🔴 RetrievalService の readiness（`QdrantFullTextIndexHealthCheck`）へは委譲できない ——
+ *   あちらは**索引の有無しか見ず、点の在り処を見ない**うえ、本文を外から読めないことがある
+ *   （`verify-oidc-edge-flow.sh` 段 19 が実測で「読めなかった」に落ちている）。
+ *
  * ## 列挙を持たない
  *
  * namespace は `k8s-local-up.sh` と同じ 2 つ（`platform-infra` / `microservices-platform`）だが、
@@ -185,6 +207,29 @@ const MESH_KINDS = ['PeerAuthentication', 'AuthorizationPolicy', 'DestinationRul
 const MSP_HELM_RELEASE = 'msp';
 /** G12: `spec` を書いてよい field manager。Helm 4 のサーバサイド apply は `helm` を名乗る。 */
 const MESH_SPEC_WRITER = 'helm';
+
+// G13 (#1215 / IADR-0382): 検索の読み書き先。**コレクション名も索引パラメータもここへ書かない**
+// （実装と宣言から走査して得る。書き写すと、変えたときに検査が静かに空回りする —— G7 の locale と同じ）。
+const QDRANT_NS = 'platform-infra';
+/** Qdrant の REST（6333）。アプリは gRPC（6334）を使うが、状態の読み取りは REST が素直である。 */
+const QDRANT_REST_URL = 'http://qdrant.platform-infra:6333';
+/** 検索側の読み先を上書きする環境変数名（chart の `Qdrant__CollectionName`）。サービス名は書かない。 */
+const RETRIEVAL_COLLECTION_ENV = 'Qdrant__CollectionName';
+/** 検索側の既定コレクション名の単一情報源（値はここへ書かず、走査して得る）。 */
+const RETRIEVAL_APPSETTINGS = path.join(
+  'src', 'knowledge', 'backend', 'Services', 'RetrievalService', 'appsettings.json',
+);
+/** 全文ペイロード索引のパラメータの単一情報源（取り込み側が張る。値はここへ書かない）。 */
+const INGESTION_VECTOR_STORE_SRC = path.join(
+  'src', 'knowledge', 'backend', 'Services', 'IngestionService',
+  'Infrastructure', 'ExternalServices', 'QdrantIngestionVectorStore.cs',
+);
+/** 日本語 2-gram ペイロードのキーの単一情報源。 */
+const CJK_BIGRAM_PAYLOAD_SRC = path.join(
+  'src', 'knowledge', 'backend', 'Shared', 'Knowledge.Contracts', 'Indexing', 'CjkBigramPayload.cs',
+);
+/** G6 と同じ使い捨てイメージ（クラスタに既に在る）。 */
+const PROBE_IMAGE = 'busybox:1.36';
 
 // ---------------------------------------------------------------- 収集（外部依存）
 
@@ -322,6 +367,107 @@ function renderInfra(repoRoot) {
     cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
   });
   return r.status === 0 ? { ok: true, text: r.stdout } : { ok: false, error: (r.stderr || '').trim() };
+}
+
+/**
+ * G13 (#1215): Qdrant の REST を**使い捨て pod 経由で**叩く。
+ *
+ * 🔴 **なぜ pod を立てるのか。** Qdrant の pod には curl も wget も無い（実測）ので
+ * `kubectl exec` では測れず、Qdrant はエッジにも出ていない。`kubectl port-forward` は
+ * 非同期の背景プロセスになり、本検査の同期構造（`spawnSync`）に載らない。
+ * G6（`nslookup`）と同じ形——**使い捨ての busybox を立てて消す**——が最も素直である。
+ *
+ * 🔴 **`--rm --attach` を使わない。** 完了が速いと attach が間に合わず、**出力を静かに取り落とす**
+ * （実測: 空文字が返り「コレクションが 1 件も無い」と読み違えた）。終端まで有界に待ち、
+ * `kubectl logs` で読み、消す。
+ *
+ * 🔴 **稼働 Pod は 1 つも触らない。** 発行するのは GET だけで、Qdrant へ書き込みを一切行わない。
+ */
+function qdrantProbe(command, { budgetMs = 120000, intervalMs = 2000, sleep = sleepSync } = {}) {
+  const name = `qdrantprobe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  const run = (args) => spawnSync('kubectl', args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+  const created = run([
+    '-n', QDRANT_NS, 'run', name, `--image=${PROBE_IMAGE}`, '--restart=Never', '--command', '--', ...command,
+  ]);
+  if (created.status !== 0) {
+    return { ok: false, error: `使い捨て pod を作れなかった: ${(created.stderr || created.stdout || '').trim()}` };
+  }
+  let phase = '';
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
+    const p = run(['-n', QDRANT_NS, 'get', 'pod', name, '-o', 'jsonpath={.status.phase}']);
+    phase = String(p.stdout || '').trim();
+    if (phase === 'Succeeded' || phase === 'Failed') break;
+    sleep(intervalMs);
+  }
+  const logs = run(['-n', QDRANT_NS, 'logs', name]);
+  // 🔴 消し切ってから戻る（`--wait=false` で残すと、次回の G1 が残骸を Failed Pod として拾う）。
+  run(['-n', QDRANT_NS, 'delete', 'pod', name, '--ignore-not-found', '--timeout=60s']);
+  if (phase !== 'Succeeded') {
+    return {
+      ok: false,
+      error: `使い捨て pod が ${phase || '(終端に達しなかった)'} で終わった: ${String(logs.stdout || logs.stderr || '').trim().slice(0, 300)}`,
+    };
+  }
+  return { ok: true, text: String(logs.stdout || '') };
+}
+
+/** G13: Qdrant のコレクション名を採る。`{ ok, names }` / `{ ok:false, error }`。 */
+function qdrantCollectionNames(probe = qdrantProbe) {
+  const r = probe(['wget', '-q', '-O-', '-T', '20', `${QDRANT_REST_URL}/collections`]);
+  if (!r.ok) return r;
+  try {
+    const parsed = JSON.parse(r.text);
+    const items = (parsed.result && parsed.result.collections) || [];
+    return { ok: true, names: items.map((c) => String(c.name)) };
+  } catch (e) {
+    return { ok: false, error: `/collections の応答を JSON として読めなかった: ${e.message}` };
+  }
+}
+
+/**
+ * G13: 各コレクションの `points_count` と `payload_schema` を**1 回の pod** で採る。
+ * 読めなかったコレクションは `pointsCount: null`（呼び出し側が「測れていない」として落とす）。
+ */
+function qdrantCollectionDetails(names, probe = qdrantProbe) {
+  if (names.length === 0) return [];
+  // 名前は Qdrant から来た値である。シェルへ載せる前に形を確かめる（想定外は測らずに落とす）。
+  const bad = names.filter((n) => !/^[A-Za-z0-9_.-]+$/.test(n));
+  if (bad.length > 0) {
+    return names.map((name) => ({ name, pointsCount: null, payloadSchema: null, error: bad.includes(name) ? '名前に想定外の文字が含まれる' : '同じ走査で測れなかった' }));
+  }
+  const script = `for c in "$@"; do echo "===C:$c==="; wget -q -O- -T 20 "${QDRANT_REST_URL}/collections/$c"; echo; done`;
+  const r = probe(['sh', '-c', script, 'sh', ...names]);
+  if (!r.ok) return names.map((name) => ({ name, pointsCount: null, payloadSchema: null, error: r.error }));
+  // 区切り行で割る。**正規表現で切り出さない** —— `$` が行末にも当たるため、素直に書くと
+  // 本文が空のまま「読めなかった」へ倒れる（実測で踏んだ）。
+  const sections = new Map();
+  let current = null;
+  for (const line of String(r.text).split(/\r?\n/)) {
+    const m = /^===C:(.+)===$/.exec(line);
+    if (m) {
+      current = m[1];
+      sections.set(current, []);
+      continue;
+    }
+    if (current !== null) sections.get(current).push(line);
+  }
+  const out = [];
+  for (const name of names) {
+    const body = (sections.get(name) || []).join('\n').trim();
+    try {
+      const parsed = JSON.parse(body);
+      const result = parsed.result || {};
+      out.push({
+        name,
+        pointsCount: typeof result.points_count === 'number' ? result.points_count : null,
+        payloadSchema: result.payload_schema || {},
+      });
+    } catch (e) {
+      out.push({ name, pointsCount: null, payloadSchema: null, error: `詳細を JSON として読めなかった: ${e.message}` });
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- 判定（純粋関数）
@@ -637,6 +783,220 @@ function evaluateMeshDrift({ declared, live, liveError }) {
       ` / spec の書き手=${[...new Set(items.flatMap(specWriters))].join(', ') || '(無し)'}。`,
   );
   return { failures, notices };
+}
+
+/**
+ * G13 (#1215): 全文ペイロード索引の**期待値をアプリの実装から**読む。
+ *
+ * 単一情報源は `QdrantIngestionVectorStore` の 2 つの純関数（`BuildFullTextIndexParams` /
+ * `BuildCjkNgramIndexParams`）と、キーを持つ 2 つの定数である。**値をここへ書き写さない** ——
+ * 書き写すと、実装がパラメータを変えたときに検査が静かに空回りする（G7 の locale と同じ姿勢）。
+ *
+ * 読めなければ `null`（呼び出し側は「期待値を組み立てられない」として落とす。既定値へ落とさない）。
+ * @returns {{fields: {key:string, tokenizer:string, minTokenLen:number, maxTokenLen:number, lowercase:boolean}[]}|null}
+ */
+function searchIndexContract(repoRoot = REPO_ROOT) {
+  try {
+    const store = fs.readFileSync(path.join(repoRoot, INGESTION_VECTOR_STORE_SRC), 'utf8');
+    const bigram = fs.readFileSync(path.join(repoRoot, CJK_BIGRAM_PAYLOAD_SRC), 'utf8');
+    const textKey = /const\s+string\s+FullTextKey\s*=\s*"([^"]+)"/.exec(store);
+    const ngramKey = /const\s+string\s+PayloadKey\s*=\s*"([^"]+)"/.exec(bigram);
+    // 🔴 本体は `};` までで切る。窓を固定長にすると**次の関数の値を読んでしまう**。
+    const paramsOf = (fn) => {
+      const at = store.indexOf(`${fn}() =>`);
+      if (at === -1) return null;
+      const rest = store.slice(at);
+      const body = rest.slice(0, rest.indexOf('};') === -1 ? rest.length : rest.indexOf('};'));
+      const tok = /Tokenizer\s*=\s*TokenizerType\.(\w+)/.exec(body);
+      const min = /MinTokenLen\s*=\s*(\d+)/.exec(body);
+      const max = /MaxTokenLen\s*=\s*(\d+)/.exec(body);
+      const low = /Lowercase\s*=\s*(true|false)/.exec(body);
+      if (!tok || !min || !max || !low) return null;
+      return {
+        tokenizer: tok[1].toLowerCase(),
+        minTokenLen: Number(min[1]),
+        maxTokenLen: Number(max[1]),
+        lowercase: low[1] === 'true',
+      };
+    };
+    const text = paramsOf('BuildFullTextIndexParams');
+    const ngram = paramsOf('BuildCjkNgramIndexParams');
+    if (!textKey || !ngramKey || !text || !ngram) return null;
+    return { fields: [{ key: textKey[1], ...text }, { key: ngramKey[1], ...ngram }] };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * G13: 検索側の**既定**コレクション名を RetrievalService の `appsettings.json` から読む。
+ * 読めなければ `null`（既定値 `knowledge_chunks` へ落とさない —— 落とすと、実装が既定を
+ * 変えたときに「在らないコレクションを期待する検査」へ静かに変わる）。
+ */
+function declaredSearchCollection(repoRoot = REPO_ROOT) {
+  try {
+    const json = JSON.parse(fs.readFileSync(path.join(repoRoot, RETRIEVAL_APPSETTINGS), 'utf8'));
+    const name = json && json.Qdrant && json.Qdrant.CollectionName;
+    return typeof name === 'string' && name.length > 0 ? name : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * G13: 稼働 Deployment の env から検索側の読み先の**上書き**を走査する。
+ * **サービス名は書かない**（列挙を持たない）。`{ deploy, name }` の配列。
+ */
+function searchCollectionOverrides(items) {
+  const found = [];
+  for (const it of Array.isArray(items) ? items : []) {
+    const deploy = (it.metadata && it.metadata.name) || '(名前不明)';
+    const spec = (it.spec && it.spec.template && it.spec.template.spec) || {};
+    for (const c of [...(spec.containers || []), ...(spec.initContainers || [])]) {
+      for (const e of c.env || []) {
+        if (e.name === RETRIEVAL_COLLECTION_ENV && typeof e.value === 'string' && e.value.length > 0) {
+          found.push({ deploy, name: e.value });
+        }
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * G13 (#1215 / [IADR-0382]): 検索の読み書き先と全文索引を判定する。**純関数**（入力は採取済みの値だけ）。
+ *
+ * @param {{contract:({fields:object[]}|null), appsettingsName:(string|null),
+ *          liveOverrides:{deploy:string,name:string}[],
+ *          collections:({name:string,pointsCount:(number|null),payloadSchema:(object|null),error?:string}[]|null),
+ *          collectionsError:(string|null), expectPoints:boolean}} input
+ * @returns {{failures:string[], notices:string[], collection:(string|null)}}
+ */
+function evaluateSearchCollection(input) {
+  const failures = [];
+  const notices = [];
+
+  // (a) 検索側が読むコレクション名。**既定値へ落とさない。**
+  const overrides = input.liveOverrides || [];
+  const distinct = [...new Set(overrides.map((o) => o.name))];
+  let collection = null;
+  if (distinct.length > 1) {
+    failures.push(
+      `[G13] 稼働 Deployment が ${RETRIEVAL_COLLECTION_ENV} に別々の値を持っている`
+      + `（${overrides.map((o) => `${o.deploy}=${o.name}`).join(' / ')}）。`
+      + ' どれが検索側の読み先かを決められないので、判定を成立させない。',
+    );
+  } else if (distinct.length === 1) {
+    collection = distinct[0];
+  } else if (input.appsettingsName) {
+    collection = input.appsettingsName;
+    notices.push(
+      `[check-stack-ready] G13: 稼働に ${RETRIEVAL_COLLECTION_ENV} の上書きが無いので、`
+      + `${RETRIEVAL_APPSETTINGS} の既定（${collection}）を検索側の読み先とみなす。`,
+    );
+  } else {
+    failures.push(
+      `[G13] 検索側が読むコレクション名を決められなかった（稼働の ${RETRIEVAL_COLLECTION_ENV} も`
+      + ` ${RETRIEVAL_APPSETTINGS} の既定も読めない）。既定値へ落とすと、在らないコレクションを`
+      + ' 期待する検査へ静かに変わるので、ここで落とす。',
+    );
+  }
+
+  // 索引の期待値。**読めなければ検査を成立させない**（空の期待値で緑にしない）。
+  const contract = input.contract && Array.isArray(input.contract.fields) && input.contract.fields.length > 0
+    ? input.contract
+    : null;
+  if (!contract) {
+    failures.push(
+      `[G13] 全文ペイロード索引の期待値をアプリの実装から読めなかった`
+      + `（${INGESTION_VECTOR_STORE_SRC} / ${CJK_BIGRAM_PAYLOAD_SRC}）。`
+      + ' 期待値を組み立てられないので検査を成立させない（値をこちらへ書き写さない）。',
+    );
+  }
+
+  // (b) 一覧。**取得できない／0 件は失敗**（0 件を緑にしない。G2 と同じ作法）。
+  if (!input.collections) {
+    failures.push(`[G13] Qdrant のコレクションを取得できなかった: ${input.collectionsError || '(理由不明)'}`);
+    return { failures, notices, collection };
+  }
+  if (input.collections.length === 0) {
+    failures.push('[G13] Qdrant にコレクションが 1 件も無い。走査が壊れている（0 件を緑にしない）。');
+    return { failures, notices, collection };
+  }
+  for (const c of input.collections) {
+    if (c.pointsCount === null) {
+      failures.push(`[G13] コレクション ${c.name} の詳細を読めなかった（${c.error || '理由不明'}）。測れていないことを緑にしない。`);
+    }
+  }
+
+  if (!collection) return { failures, notices, collection };
+
+  // (c) 検索側の読み先が実在すること。
+  const target = input.collections.find((c) => c.name === collection);
+  if (!target) {
+    failures.push(
+      `[G13] 検索側が読むコレクション ${collection} が Qdrant に無い`
+      + `（在るのは ${input.collections.map((c) => c.name).join(', ')}）。`
+      + ' 索引されていても検索は在らない先を見ており、応答は必ず空になる。',
+    );
+    return { failures, notices, collection };
+  }
+
+  // (d) 全文ペイロード索引が、アプリの宣言と同じパラメータで張られていること。
+  if (contract && target.payloadSchema) {
+    for (const want of contract.fields) {
+      const got = target.payloadSchema[want.key];
+      if (!got) {
+        failures.push(
+          `[G13] ${collection} に全文ペイロード索引 ${want.key} が無い`
+          + `（payload_schema=${Object.keys(target.payloadSchema).join(', ') || '空'}）。`
+          + ' 🔴 索引が無くても Qdrant v1.18.1 は例外を投げず部分文字列の全走査へ落ちるので、'
+          + ' **「当たっている」ことは索引の証拠にならない**（[IADR-0318]）。',
+        );
+        continue;
+      }
+      const p = got.params || {};
+      const diff = [];
+      if (String(got.data_type) !== 'text') diff.push(`data_type=${got.data_type}（期待 text）`);
+      if (String(p.tokenizer) !== want.tokenizer) diff.push(`tokenizer=${p.tokenizer}（期待 ${want.tokenizer}）`);
+      if (Number(p.min_token_len) !== want.minTokenLen) diff.push(`min_token_len=${p.min_token_len}（期待 ${want.minTokenLen}）`);
+      if (Number(p.max_token_len) !== want.maxTokenLen) diff.push(`max_token_len=${p.max_token_len}（期待 ${want.maxTokenLen}）`);
+      if (Boolean(p.lowercase) !== want.lowercase) diff.push(`lowercase=${p.lowercase}（期待 ${want.lowercase}）`);
+      if (diff.length > 0) {
+        failures.push(
+          `[G13] ${collection} の ${want.key} 索引がアプリの宣言と違う: ${diff.join(' / ')}。`
+          + ' 取り込み側（QdrantIngestionVectorStore）が張り直す形になっているか確かめること。',
+        );
+      }
+    }
+  }
+
+  // (e) 🔴 本体 —— 読み書き先の乖離。**点が在るのに検索側が 0 点**なら失敗。
+  const withPoints = input.collections.filter((c) => typeof c.pointsCount === 'number' && c.pointsCount > 0);
+  if (typeof target.pointsCount === 'number' && target.pointsCount > 0) {
+    notices.push(
+      `[check-stack-ready] G13: 検索側が読む ${collection} に ${target.pointsCount} 点`
+      + `（点が在るコレクション: ${withPoints.map((c) => `${c.name}=${c.pointsCount}`).join(', ')}）。`,
+    );
+  } else if (withPoints.length > 0) {
+    failures.push(
+      `[G13] 点が在るのは ${withPoints.map((c) => `${c.name}(${c.pointsCount})`).join(', ')} なのに、`
+      + `検索側が読む ${collection} は 0 点である。**取り込み先と検索先が食い違っている**（#1215）。`
+      + ' 両サービスとも Ready のまま検索だけが全件 0 件になり、`200 ＋ 空` は「該当が無い」と区別できない。',
+    );
+  } else if (input.expectPoints) {
+    failures.push(
+      `[G13] SEARCHSEED=1 が宣言されているのに、どのコレクションにも点が無い（検索側 ${collection} も 0 点）。`
+      + ' 取り込みが索引まで到達していない（埋め込みの供給・本文の有無・メッセージングを疑う）。',
+    );
+  } else {
+    notices.push(
+      `[check-stack-ready] G13: どのコレクションにも点が無い（まだ何も取り込んでいない）。`
+      + ' SEARCHSEED=1 を宣言した実行では失敗にする。',
+    );
+  }
+
+  return { failures, notices, collection };
 }
 
 /**
@@ -1288,6 +1648,22 @@ function check({ repoRoot = REPO_ROOT } = {}) {
     notices.push(...r.notices);
   }
 
+  // G13 (#1215 / IADR-0382): 検索側が読むコレクションに点が在り、全文索引が張られていること。
+  {
+    const list = qdrantCollectionNames();
+    const r = evaluateSearchCollection({
+      contract: searchIndexContract(repoRoot),
+      appsettingsName: declaredSearchCollection(repoRoot),
+      liveOverrides: searchCollectionOverrides(liveDeployments[MSP_NS] || []),
+      collections: list.ok ? qdrantCollectionDetails(list.names) : null,
+      collectionsError: list.ok ? null : list.error,
+      // G10 の `PERSIST` と同じ「宣言された期待に対して測る」。**検査を飛ばす向きの env は持たない。**
+      expectPoints: process.env.SEARCHSEED === '1',
+    });
+    failures.push(...r.failures);
+    notices.push(...r.notices);
+  }
+
   return { failures, notices, totalDeployments };
 }
 
@@ -1784,6 +2160,154 @@ function selfTest() {
     assert.strictEqual(evaluateMeshDrift({ declared: declared2, live: pair('PERMISSIVE', 'ALLOW'), liveError: null }).failures.length, 1);
   });
 
+  // ---- G13 (#1215 / IADR-0382)
+  //
+  // 🔴 期待値（索引のパラメータ）は**実装から走査して得る**。ここに数値を書き写すと、
+  // 実装が変わったとき検査も試験も揃って空回りする。走査そのものを陽性・陰性の対で固定する。
+  const contract = searchIndexContract();
+  ok('G13: 全文索引の期待値をアプリの実装から走査できる（text / text_ngram の 2 系統）', () => {
+    assert.ok(contract, '実装から索引パラメータを読めていない');
+    assert.strictEqual(contract.fields.length, 2);
+    const keys = contract.fields.map((f) => f.key);
+    assert.ok(keys.length === new Set(keys).size, `キーが重複している: ${keys.join(', ')}`);
+    for (const f of contract.fields) {
+      assert.ok(typeof f.tokenizer === 'string' && f.tokenizer.length > 0, `tokenizer を読めていない: ${f.key}`);
+      assert.ok(f.minTokenLen >= 1 && f.maxTokenLen >= f.minTokenLen, `token 長を読めていない: ${f.key}`);
+    }
+    // 🔴 窓が次の関数へ食い込んでいないこと ＝ 2 つの系統が別々の tokenizer になっている。
+    assert.notStrictEqual(contract.fields[0].tokenizer, contract.fields[1].tokenizer,
+      '2 系統の tokenizer が同じ。切り出しの窓が隣の関数を読んでいる疑いがある');
+  });
+  ok('G13: 走査元が読めなければ null（既定値へ落とさない）', () => {
+    assert.strictEqual(searchIndexContract(path.join(REPO_ROOT, '存在しない')), null);
+    assert.strictEqual(declaredSearchCollection(path.join(REPO_ROOT, '存在しない')), null);
+  });
+  ok('G13: 検索側の既定コレクション名を appsettings から走査できる', () => {
+    const name = declaredSearchCollection();
+    assert.ok(typeof name === 'string' && name.length > 0, 'appsettings から既定を読めていない');
+  });
+
+  const deployWith = (name, value) => ({
+    metadata: { name },
+    spec: { template: { spec: { containers: [{ env: value ? [{ name: 'Qdrant__CollectionName', value }] : [] }] } } },
+  });
+  ok('G13: 稼働 Deployment の上書きを走査する（サービス名を書かずに拾う）', () => {
+    const found = searchCollectionOverrides([deployWith('retrieval-service', 'col_a'), deployWith('bff-service', null)]);
+    assert.deepStrictEqual(found, [{ deploy: 'retrieval-service', name: 'col_a' }]);
+    assert.deepStrictEqual(searchCollectionOverrides([]), []);
+  });
+
+  const schemaOf = (c) => Object.fromEntries(c.fields.map((f) => [f.key, {
+    data_type: 'text',
+    params: {
+      type: 'text', tokenizer: f.tokenizer, min_token_len: f.minTokenLen,
+      max_token_len: f.maxTokenLen, lowercase: f.lowercase,
+    },
+  }]));
+  const searchInput = (over = {}) => ({
+    contract,
+    appsettingsName: 'col_default',
+    liveOverrides: [{ deploy: 'retrieval-service', name: 'col_read' }],
+    collections: [
+      { name: 'col_read', pointsCount: 3, payloadSchema: schemaOf(contract) },
+      { name: 'col_other', pointsCount: 0, payloadSchema: schemaOf(contract) },
+    ],
+    collectionsError: null,
+    expectPoints: false,
+    ...over,
+  });
+
+  ok('G13: 点が在り索引も宣言どおりなら通る（陽性対照）', () => {
+    const r = evaluateSearchCollection(searchInput());
+    assert.deepStrictEqual(r.failures, []);
+    assert.strictEqual(r.collection, 'col_read');
+  });
+  ok('G13: 🔴 点が別のコレクションに在り、検索側が 0 点なら失敗（#1215 の形。陰性対照）', () => {
+    const r = evaluateSearchCollection(searchInput({
+      collections: [
+        { name: 'col_read', pointsCount: 0, payloadSchema: schemaOf(contract) },
+        { name: 'col_other', pointsCount: 3, payloadSchema: schemaOf(contract) },
+      ],
+    }));
+    assert.strictEqual(r.failures.length, 1, r.failures.join(' / '));
+    assert.ok(/col_other\(3\)/.test(r.failures[0]) && /col_read は 0 点/.test(r.failures[0]));
+  });
+  ok('G13: どこにも点が無ければ notice。SEARCHSEED=1 を宣言していれば失敗', () => {
+    const empty = {
+      collections: [
+        { name: 'col_read', pointsCount: 0, payloadSchema: schemaOf(contract) },
+        { name: 'col_other', pointsCount: 0, payloadSchema: schemaOf(contract) },
+      ],
+    };
+    assert.deepStrictEqual(evaluateSearchCollection(searchInput(empty)).failures, []);
+    const declared = evaluateSearchCollection(searchInput({ ...empty, expectPoints: true }));
+    assert.strictEqual(declared.failures.length, 1);
+    assert.ok(/SEARCHSEED=1/.test(declared.failures[0]));
+  });
+  ok('G13: 検索側の読み先が Qdrant に無ければ失敗', () => {
+    const r = evaluateSearchCollection(searchInput({
+      collections: [{ name: 'col_other', pointsCount: 3, payloadSchema: schemaOf(contract) }],
+    }));
+    assert.strictEqual(r.failures.length, 1);
+    assert.ok(/col_read が Qdrant に無い/.test(r.failures[0]));
+  });
+  ok('G13: 索引が無い／パラメータが違うコレクションは失敗（件数では測れない）', () => {
+    const none = evaluateSearchCollection(searchInput({
+      collections: [{ name: 'col_read', pointsCount: 3, payloadSchema: {} }],
+    }));
+    assert.strictEqual(none.failures.length, contract.fields.length, none.failures.join(' / '));
+    const wrong = schemaOf(contract);
+    wrong[contract.fields[0].key].params.tokenizer = 'whitespace';
+    const drift = evaluateSearchCollection(searchInput({
+      collections: [{ name: 'col_read', pointsCount: 3, payloadSchema: wrong }],
+    }));
+    assert.strictEqual(drift.failures.length, 1);
+    assert.ok(/tokenizer=whitespace/.test(drift.failures[0]));
+  });
+  ok('G13: 0 件・取得失敗・詳細を読めない は失敗（測れていないことを緑にしない）', () => {
+    assert.ok(evaluateSearchCollection(searchInput({ collections: [] })).failures
+      .some((f) => /1 件も無い/.test(f)), '0 件が失敗になっていない');
+    assert.ok(evaluateSearchCollection(searchInput({ collections: null, collectionsError: 'pod が立たない' })).failures
+      .some((f) => /pod が立たない/.test(f)), '取得失敗が失敗になっていない');
+    assert.ok(evaluateSearchCollection(searchInput({
+      collections: [{ name: 'col_read', pointsCount: null, payloadSchema: null, error: '応答が JSON でない' }],
+    })).failures.some((f) => /詳細を読めなかった/.test(f)), '詳細を読めないことが失敗になっていない');
+  });
+  ok('G13: 読み先を決められない／食い違う宣言は失敗（既定値へ落とさない）', () => {
+    const undecidable = evaluateSearchCollection(searchInput({ liveOverrides: [], appsettingsName: null }));
+    assert.ok(undecidable.failures.some((f) => /決められなかった/.test(f)));
+    assert.strictEqual(undecidable.collection, null);
+    const conflict = evaluateSearchCollection(searchInput({
+      liveOverrides: [{ deploy: 'a', name: 'col_read' }, { deploy: 'b', name: 'col_other' }],
+    }));
+    assert.ok(conflict.failures.some((f) => /別々の値/.test(f)));
+  });
+  ok('G13: 上書きが無ければ appsettings の既定を読み先とみなす（notice に残す）', () => {
+    const r = evaluateSearchCollection(searchInput({
+      liveOverrides: [],
+      collections: [{ name: 'col_default', pointsCount: 1, payloadSchema: schemaOf(contract) }],
+    }));
+    assert.deepStrictEqual(r.failures, []);
+    assert.strictEqual(r.collection, 'col_default');
+    assert.ok(r.notices.some((x) => /既定（col_default）/.test(x)));
+  });
+  ok('G13: 索引の期待値を読めなければ失敗（空の期待値で緑にしない）', () => {
+    const r = evaluateSearchCollection(searchInput({ contract: null }));
+    assert.ok(r.failures.some((f) => /期待値をアプリの実装から読めなかった/.test(f)));
+  });
+  ok('G13: 詳細の走査は使い捨て pod 1 回で全コレクションを読む（区切りで割る）', () => {
+    const calls = [];
+    const probe = (command) => {
+      calls.push(command);
+      return { ok: true, text: '===C:a===\n{"result":{"points_count":2,"payload_schema":{}}}\n===C:b===\n{"result":{"points_count":0,"payload_schema":{}}}\n' };
+    };
+    const got = qdrantCollectionDetails(['a', 'b'], probe);
+    assert.strictEqual(calls.length, 1, `pod を ${calls.length} 回立てている（1 回で読むこと）`);
+    assert.deepStrictEqual(got.map((c) => [c.name, c.pointsCount]), [['a', 2], ['b', 0]]);
+    // 名前に想定外の文字が混ざったら、シェルへ載せずに「測れていない」へ倒す。
+    assert.deepStrictEqual(qdrantCollectionDetails(['a b;rm'], probe).map((c) => c.pointsCount), [null]);
+  });
+
   console.log(`[check-stack-ready] self-test OK: ${n} 件`);
 }
 
@@ -1839,5 +2363,11 @@ module.exports = {
   meshObjectsFromManifest,
   specWriters,
   evaluateMeshDrift,
+  searchIndexContract,
+  declaredSearchCollection,
+  searchCollectionOverrides,
+  qdrantCollectionNames,
+  qdrantCollectionDetails,
+  evaluateSearchCollection,
   NAMESPACES,
 };
