@@ -1,6 +1,7 @@
 using System.Text;
 using DocumentService.Domain;
 using DocumentService.Domain.Ports;
+using DocumentService.Features.Documents;
 using DocumentService.Features.PrivateNotes;
 using DocumentService.Infrastructure.Persistence;
 using Platform.Shared.Infrastructure.Foundation.Audit;
@@ -11,13 +12,19 @@ namespace DocumentService.Features.ObsidianSync.Push;
 // FR-20, ADR-0037 決定 2・8: push（新規作成・更新）。
 // **1 編集 = 1 版**。オフラインで 10 回編集して 1 回同期した場合も、edits に 10 要素を
 // 載せれば 10 版として刻まれる（決定 8）。
+//
+// **［#1184］本文の書き込みは「露出 3 トグルのうち 1 つでも ON」のときだけ `DocumentUpdated` を
+// 発行する**（ADR-0061 決定 1・2 / [[IADR-0396]] 決定 4。門は
+// `DocumentEndpoints.PublishUpdatedIfIndexableAsync` 1 か所）。**新規作成は必ず 3 つとも OFF
+// である**（`PrivateNoteDefaults`）ため、初回 push は何も発行しない —— 索引に存在しない状態を
+// 既定として構造的に守る（[[IADR-0270]] 決定 5 が守っていた性質は、門の形で残る）。
 internal static class PushNoteEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
     {
         g.MapPost("/notes", async (PushNoteRequest req, HttpContext http, DocumentDbContext db,
             IObjectStorageClient storage, IPrivateNoteNotifier notifier, IAuditLogger audit,
-            CancellationToken ct) =>
+            IDocumentUpdatedPublisher bus, CancellationToken ct) =>
         {
             var now = DateTimeOffset.UtcNow;
             var device = await ObsidianSyncEndpoints.ResolveDeviceAsync(http, db, now, ct);
@@ -79,6 +86,8 @@ internal static class PushNoteEndpoint
                 await db.SaveChangesAsync(ct);
 
                 // ADR-0037 決定 9: 監査は「誰が・いつ・何件」。タイトル・内容は記録しない。
+                await PublishIfExposedAsync(bus, db, doc, ct);
+
                 audit.Record("private-note.sync.push", owner, "granted",
                     $"device={device.Id} count=1 versions={req.Edits.Count}");
                 return Results.Created($"/private-notes/sync/notes/{id}",
@@ -119,6 +128,8 @@ internal static class PushNoteEndpoint
                 await PrivateNoteUsage.RecordUsageAndWarnAsync(db, notifier, owner, now, ct);
                 await db.SaveChangesAsync(ct);
 
+                await PublishIfExposedAsync(bus, db, doc, ct);
+
                 audit.Record("private-note.sync.push", owner, "granted",
                     $"device={device.Id} count=1 versions={req.Edits.Count}");
                 return Results.Ok(new PushNoteResponse(doc.Id, doc.Version, lastHash, lastBytes));
@@ -145,6 +156,15 @@ internal static class PushNoteEndpoint
             doc.Update(req.Title.Trim(), doc.Attributes, doc.Tags.ToList(),
                 edit.ChangeNote ?? "sync-edit");
         }
+    }
+
+    // FR-19, ADR-0061 決定 1・2 / [[IADR-0396]] 決定 4 (#1184): 本文の書き込みを索引の生産側へ流す門。
+    // **判定は `DocumentExposure.IsIndexable`（唯一の述語）**であり、条件を書き下さない。
+    private static async Task PublishIfExposedAsync(IDocumentUpdatedPublisher bus,
+        DocumentDbContext db, Document doc, CancellationToken ct)
+    {
+        var names = await TagResolver.NamesAsync(db, ct);
+        await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, names, ct);
     }
 
     // ADR-0050 (#911): 計算の実体は DocumentBodyIntake.Fingerprint（1 か所に集める）。

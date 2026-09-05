@@ -63,7 +63,7 @@ internal static class AddDocumentTagEndpoint
                 return Results.Ok(DocumentEndpoints.ToDto(doc, names));
 
             await db.SaveChangesAsync(ct);
-            await DocumentEndpoints.PublishUpdatedAsync(bus, doc, names, ct);
+            await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, names, ct);
             return Results.Ok(DocumentEndpoints.ToDto(doc, names));
         }).WithName("AddDocumentTag").Produces<DocumentDto>();
     }

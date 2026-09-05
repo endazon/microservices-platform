@@ -35,6 +35,9 @@ public class RagContextAiInputExclusionTests
             [DocumentScopes.Key] = DocumentScopes.PrivateNote,
             ["owner"] = "alice",
             [ConfidentialityLevels.AttributeKey] = ConfidentialityLevels.Restricted,
+            // #1184: ⑨ の主語は「**横断検索に含める**が ON」である。トグルが属性へ写るように
+            // なったので、主語をそのまま書けるようになった（従前はキー自体が無かった）。
+            [DocumentExposure.SearchKey] = DocumentExposure.Included,
             [AiInputExposure.AttributeKey] = AiInputExposure.Excluded,
         });
 
@@ -45,6 +48,7 @@ public class RagContextAiInputExclusionTests
             [DocumentScopes.Key] = DocumentScopes.PrivateNote,
             ["owner"] = "alice",
             [ConfidentialityLevels.AttributeKey] = ConfidentialityLevels.Restricted,
+            [DocumentExposure.SearchKey] = DocumentExposure.Included,
             [AiInputExposure.AttributeKey] = AiInputExposure.Included,
         });
 

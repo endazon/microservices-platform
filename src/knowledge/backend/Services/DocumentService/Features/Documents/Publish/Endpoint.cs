@@ -34,7 +34,7 @@ internal static class PublishDocumentEndpoint
             doc.Publish();
             await db.SaveChangesAsync();
             var names = await TagResolver.NamesAsync(db);
-            await DocumentEndpoints.PublishUpdatedAsync(bus, doc, names, ct);
+            await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, names, ct);
             return Results.Ok(DocumentEndpoints.ToDto(doc, names));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
     }

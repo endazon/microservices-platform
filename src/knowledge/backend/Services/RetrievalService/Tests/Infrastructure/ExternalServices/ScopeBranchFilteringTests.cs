@@ -197,15 +197,24 @@ public class ScopeBranchFilteringTests
             "各分岐の中はキー条件が Must（AND）で並ぶ"));
     }
 
-    // 🔴 陰性対照: 全件許可の分岐があれば選言そのものが消える（制約にならない）。
+    // 🔴 陰性対照: 全件許可の分岐があれば、**組織文書については**選言が制約にならない。
+    //
+    // **［#1184］「選言そのものが消える」ではなくなった**（ADR-0061 決定 6 /
+    // [[IADR-0396]] 決定 7）—— 条件の無い分岐は裁量（`owner` / `shared_with`）ではないので、
+    // **個人資料だけは除く**必要がある。したがって選言は残り、その分岐は
+    // 「`doc_scope` が `private-note` である点を除いた全件」になる。
     [Fact]
-    public void QdrantMapping_BranchWithNoFilters_DropsTheDisjunction()
+    public void QdrantMapping_BranchWithNoFilters_AllowsEverythingButPrivateNotes()
     {
         var conditions = QdrantVectorStore.BuildAttributeConditions(
             Branches(PolicyA, new AccessScopeBranch("無条件許可", [])));
 
-        conditions.Should().BeEmpty(
-            "文書条件を持たない分岐は「その範囲で全件許可」であり、選言は制約にならない");
+        conditions.Should().ContainSingle("選言は残る（個人資料の除外を運ぶため）");
+        var unconditional = conditions[0].Filter.Should
+            .Should().ContainSingle(c => c.Filter.Must.Count == 0).Subject;
+        unconditional.Filter.MustNot.Should().ContainSingle()
+            .Which.Field.Key.Should().Be("attributes.doc_scope",
+                "条件の無い分岐は「全件」ではなく「個人資料を除く全件」である");
     }
 
     // 回帰: 分岐が無ければ従来どおりキーごとの条件が並ぶ（写像を変えていない）。

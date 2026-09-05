@@ -1,6 +1,7 @@
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using IngestionService.Domain.Ports;
 using IngestionService.Domain;
+using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.Extensions.Logging;
 
@@ -27,6 +28,30 @@ public class DocumentUpdatedConsumer(
     // ADR-0027 / E3b: Wolverine のハンドラ。
     public async Task Handle(DocumentUpdated ev, CancellationToken ct)
     {
+        // 🔴 FR-19, ADR-0061 決定 1・2・4 / [[IADR-0396]] 決定 4・5 (#1184): **索引の門。**
+        //
+        // 露出 3 トグルのうち 1 つでも ON なら載せる。**3 つとも OFF なら載せないだけでなく、
+        // 既に載っているチャンクを削除する**（決定 4。ON → OFF は索引からの削除まで及ぶ）。
+        //
+        // **「属性で弾く」で済ませない。** 索引に本文を残したまま消費側のフィルタで隠す形は、
+        // フィルタの実装ミス 1 つで露出に変わる（`ADR-0057` 決定 1・SC-19 の
+        // 「いかなる方法でも復元できません」と同じ理由）。**実体を消す。**
+        //
+        // 判定は `DocumentExposure.IsIndexable` —— **発行側（DocumentService の門）と同じ関数**である。
+        // 生産側と消費側で述語を割ると、片方だけ改名されて静かに無効化される。
+        // **組織文書は常に true**（露出キーを持たない）なので、既存経路は 1 ビットも変わらない。
+        //
+        // 🔴 **`MarkdownUri` の判定より前に置く。** 撤収は本文の所在に依存しない ——
+        // 後ろに置くと、本文を持たない資料のチャンクが消えずに残る。
+        if (!DocumentExposure.IsIndexable(ev.Attributes))
+        {
+            await store.DeleteByDocumentFromAllAsync(ev.DocumentId, ct);
+            logger.LogInformation(
+                "DocumentUpdated {Id}: exposure toggles are all off; withdrew the document from every index",
+                ev.DocumentId);
+            return;
+        }
+
         // FR-02 例外フロー E1: 本文の所在が無ければ取り込みをスキップ
         if (ev.MarkdownUri is null)
         {
@@ -99,8 +124,10 @@ public class DocumentUpdatedConsumer(
             // FR-02 index: 機密区分ルーティングが決めたモデル別コレクションへ登録。chunk_index/tags、FR-05 ABAC 属性を保持
             // FR-03, SC-02, #536: 更新日時は**イベントが運んできた値をそのまま渡す**（IADR-0149 決定 5）。
             // ここで DateTimeOffset.UtcNow を採ると、再索引のたびに全文書の「更新日時」が今になる。
+            // #1184: `shared_with` も同じ点へ載せる（ADR-0061 決定 5 の第 3 の判定軸）。
             await store.UpsertChunkAsync(embedding.Collection, chunkId, ev.DocumentId, ev.Title, text, idx,
-                embedding.Vector, ev.MarkdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt, ct);
+                embedding.Vector, ev.MarkdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt,
+                ev.SharedWith, ct);
             chunkCount++;
         }
 
@@ -187,7 +214,8 @@ public class DocumentUpdatedConsumer(
         {
             await store.UpsertMetadataPointAsync(embedding.Collection,
                 ChunkId.DeriveMetadata(ev.DocumentId), ev.DocumentId, ev.Title, indexText,
-                embedding.Vector, ev.MarkdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt, ct);
+                embedding.Vector, ev.MarkdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt,
+                ev.SharedWith, ct);
 
             logger.LogInformation(
                 "Ingestion {Id}: no body; indexed metadata only (title/tags/path/source). 0 body chunks",

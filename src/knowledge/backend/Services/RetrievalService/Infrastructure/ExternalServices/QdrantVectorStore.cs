@@ -301,9 +301,23 @@ public class QdrantVectorStore(
         foreach (var branch in branches)
         {
             var conditions = BuildKeyConditions(branch);
-            if (conditions.Count == 0)
+
+            // 🔴 FR-19, ADR-0061 決定 5・6, [[IADR-0396]] 決定 7 (#1184):
+            // **裁量（`owner` / `shared_with`）でない分岐は個人資料を許可できない。**
+            // 意味論は `InMemoryVectorStore.MatchesFilters` と同一であること
+            // （ずれると「テストは緑・本番は漏れる」になる。[[IADR-0014]] が踏んだ型）。
+            //
+            // 表現は**否定条件 1 つ**（`doc_scope` が `private-note` である点を除く）。
+            // 🔴 **`doc_scope != organization` と書かない** —— キーを持たない既存の組織文書が
+            // 全部落ちる。**「private-note である点を除く」だけが、欠落を組織文書として残す。**
+            var branchFilter = new Filter();
+            branchFilter.Must.AddRange(conditions);
+            if (!PrivateNoteVisibility.IsDiscretionaryBranch(branch))
+                branchFilter.MustNot.Add(PrivateNoteCondition());
+            else if (conditions.Count == 0)
                 return null;   // 全件許可の分岐がある = 選言は制約にならない
-            branchFilters.Add(new Filter { Must = { conditions } });
+
+            branchFilters.Add(branchFilter);
         }
 
         return new Condition
@@ -314,6 +328,18 @@ public class QdrantVectorStore(
             }
         };
     }
+
+    // FR-19, ADR-0054, [[IADR-0396]] 決定 7: 「この点は個人資料である」という 1 条件。
+    // **集合帰属で書く**（`doc_scope == private-note`）—— 否定形（`!= organization`）で書くと、
+    // `doc_scope` を持たない既存の組織文書が一斉に該当する（[[IADR-0270]] 決定 2 の作法）。
+    private static Condition PrivateNoteCondition() => new()
+    {
+        Field = new FieldCondition
+        {
+            Key = AttributeValueKeys.ToPayloadKey(DocumentScopes.Key),
+            Match = new Match { Keyword = DocumentScopes.PrivateNote },
+        }
+    };
 
     private static SearchResultDto MapPayload(
         string idUuid, IReadOnlyDictionary<string, Value> payload, float score) =>
@@ -475,6 +501,18 @@ public class QdrantVectorStore(
             foreach (var t in chunk.Tags)
                 tagList.Values.Add(new Value { StringValue = t });
             payload[AttributeValueKeys.Tags] = new Value { ListValue = tagList };
+        }
+
+        // FR-19, FR-20, ADR-0061 決定 5 / [[IADR-0396]] 決定 3 (#1184): 共有先も `tags` と同じ
+        // リスト項目で保持する。取り込み側（`QdrantIngestionVectorStore.BuildChunkPayload`）と
+        // **同じキー・同じ表現**であること（書き込みが 2 か所にあり、片方だけ運ばないと
+        // 「この経路で入った点だけ共有先が効かない」索引になる）。
+        if (chunk.SharedWith is { Count: > 0 })
+        {
+            var shareList = new ListValue();
+            foreach (var subject in chunk.SharedWith)
+                shareList.Values.Add(new Value { StringValue = subject });
+            payload[AttributeValueKeys.SharedWith] = new Value { ListValue = shareList };
         }
 
         // FR-05: ABAC 属性をペイロードに保持（検索時フィルタ用）。

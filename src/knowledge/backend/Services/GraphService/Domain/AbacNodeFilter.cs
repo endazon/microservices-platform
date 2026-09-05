@@ -1,4 +1,5 @@
 using GraphService.Domain;
+using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
 
 namespace GraphService.Domain;
@@ -38,8 +39,15 @@ public static class AbacNodeFilter
             return false;
 
         // FR-19, IADR-0253: 分岐があれば選言で評価する（分岐間 OR・分岐内 AND）。
+        //
+        // 🔴 FR-19, ADR-0061 決定 5・6, [[IADR-0396]] 決定 7 (#1184):
+        // **個人資料を許可してよいのは裁量（`owner` / `shared_with`）の分岐だけ**である。
+        // グラフ露出 ON の個人資料がノードとして在り得るようになったため、検索側と**同じ述語**で
+        // 閉じる（`PrivateNoteVisibility`。3 つの消費面で 1 か所）。
         if (scope.Branches is { Count: > 0 })
-            return scope.Branches.Any(b => MatchesAll(node, b.Filters));
+            return scope.Branches.Any(b =>
+                MatchesAll(node, b.Filters)
+                && PrivateNoteVisibility.BranchMayGrant(node.Attributes, b.Filters));
 
         // 条件無しの許可（全件可）。
         if (scope.AllowedFilters is not { Count: > 0 })

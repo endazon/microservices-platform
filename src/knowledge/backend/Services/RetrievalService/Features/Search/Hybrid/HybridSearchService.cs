@@ -131,13 +131,33 @@ public class HybridSearchService(
     //
     // **OrderByDescending は安定ソート**である（.NET の保証）。同着（同じ日時・日時なし同士）は
     // 元の順序＝関連度の順を保つ。
+    // 🔴 FR-19, ADR-0061 決定 1・3 / [[IADR-0396]] 決定 6 (#1184): **「横断検索に含める」の評価点。**
+    //
+    // ADR-0061 決定 1 は「1 つでも ON なら索引へ載せる」であり、決定 3 は
+    // 「**用途の別は索引を分けずに文書属性で表す**」である。したがって
+    // **グラフや AI のためだけに索引へ載った個人資料が、横断検索の結果に現れてはならない。**
+    // 判定は `DocumentExposure.IsSearchAllowed` —— 生産側の門と同じクラスの、同じ形の述語である。
+    //
+    // 🔴 **これは ABAC の代わりではない。** 認可（誰に見えるか）は `ScopeFilter` の分岐が索引の
+    // 側で行い、ここが見るのは**露出の用途**（何に使ってよいか）だけである。
+    // **`confidentiality` だけで判定してはならない**（決定 6）というのは前者の話であり、
+    // ここを足したことで認可が緩むことはない（絞る向きにしか働かない）。
+    //
+    // **なぜ `Finish` なのか。** 結果の一覧を返す口が**ここ 1 つに集まっている**
+    // （`SearchAsync` と `GraphExpandingSearchService` の 3 つの return がすべて通る）。
+    // 経路ごとに書くと、後から段を足した人が落としても誰も気づかない。
+    // **切り詰め（`topK`）より前に落とす** —— 後だと除外した分だけ結果が減る。
+    //
+    // **組織文書は常に true**（露出キーを持たない）なので既存の検索結果は変わらない。
     internal static List<SearchResultDto> Finish(
         List<SearchResultDto> results, string sort, int topK)
     {
-        if (sort != SearchSorts.Updated)
-            return results.Take(topK).ToList();
+        var exposed = results.Where(r => DocumentExposure.IsSearchAllowed(r.Attributes)).ToList();
 
-        return results
+        if (sort != SearchSorts.Updated)
+            return exposed.Take(topK).ToList();
+
+        return exposed
             .OrderByDescending(r => r.UpdatedAt.HasValue)   // 日時なしを末尾へ（null-last を明示する）
             .ThenByDescending(r => r.UpdatedAt ?? default)  // 日時ありの中で新しい順
             .Take(topK)
