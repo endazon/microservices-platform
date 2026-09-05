@@ -19,6 +19,7 @@ import { PlatformRole, useHasAnyRole } from '@foundation/auth/roles';
 import { toMessages } from '@foundation/utils/apiErrors';
 import { DataSourceForm } from './DataSourceForm';
 import { DataSourceAttributesForm } from './DataSourceAttributesForm';
+import { DataSourceAttributesView } from './DataSourceAttributesView';
 import { formatDateTime, sourceTypeLabel, syncStateView } from '../types/syncState';
 import { useDataSourceActions, useDataSources } from '../api/useDataSources';
 // SC-06, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
@@ -36,6 +37,11 @@ import type { DataSourceDto } from '@foundation/api/generated/bff.schemas';
 //     **［2026-08-28 追記 / #754］既定属性（`confidentiality` / `department` / `lifecycle`）の
 //     編集フォームを置いた**（計画 §SC-06「登録・**更新**フォームは既定属性 3 つを持つ」）。
 //     接続先・認証情報の編集は依然として未実装であり、#534 の射程のまま残る。
+//   - **既定属性・owner 写像表の閲覧**: **［2026-09-05 追記 / #1252］実装した。**
+//     ADR-0074 決定 1 は写像表を「既定属性 3 つと同じ面・**同じ権限**（**閲覧は管理者・運用者**、
+//     登録・更新は管理者限定）」に置くと定めるが、**描画点が「既定属性」ボタン（管理者のみ）から
+//     開くフォームしか無く、運用者はどちらも見られなかった**（#1194 受け入れ基準 3 の画面側が未達）。
+//     一覧の行へ読み取り専用の `DataSourceAttributesView` を置いて閲覧側を満たす。
 //   もとの記録は projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md（planning#198 で裁定済み）。
 
 export function DataSourceManagementPage() {
@@ -276,6 +282,11 @@ function SourceRow({
         <p className="text-xs text-[--color-fg-muted]">
           <code>{source.connectionUri}</code>
         </p>
+        {/* FR-05, UC-04, SC-06, ADR-0074 決定 1 (#1252): 既定属性 3 つと `owner` 写像表を
+            **読み取り専用で**、**管理者にも運用者にも**見せる。閲覧は両ロールへ開くのが
+            計画の定めであり、従前は「既定属性」ボタン（管理者のみ）から開くフォームが
+            唯一の描画点だったため、**運用者はどちらも見られなかった**。 */}
+        <DataSourceAttributesView source={source} />
       </TableCell>
       <TableCell>
         <Tag tone="neutral">{typeof typeLabel === 'string' ? typeLabel : i18n._(typeLabel)}</Tag>

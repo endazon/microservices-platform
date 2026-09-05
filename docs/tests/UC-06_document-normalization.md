@@ -3,15 +3,15 @@ title: UC-06 文書を正規化変換する テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-31
-updated: 2026-09-03
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
 ids: [FR-12, UC-06, SC-07, NFR]
 adrs: [ADR-0010, ADR-0012, ADR-0014, ADR-0015, ADR-0053, ADR-0070]
-iadrs: [IADR-0154, IADR-0298, IADR-0320, IADR-0351, IADR-0356]
-specs: [20260831_issue-1106_uc-test-specs, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction]
-issues: [#472, #1106, #1120, #1192]
+iadrs: [IADR-0154, IADR-0298, IADR-0320, IADR-0351, IADR-0356, IADR-0388]
+specs: [20260831_issue-1106_uc-test-specs, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
+issues: [#472, #1106, #1120, #1192, #1254]
 -->
 
 # テスト仕様書: 文書を正規化変換する
@@ -60,7 +60,7 @@ issues: [#472, #1106, #1120, #1192]
 | T-04 | 原本の所在が解決できない | 同上 | 失敗する | 基本 2 | 自動 |
 | T-05 | ローカル Markdown ／ オブジェクトストレージの原本 | 変換する | どちらも pandoc を通る（**陽性対照**） | 基本 2 | 自動 |
 | T-06 | PDF（テキスト層あり） | 変換する | Markdown 扱いへ落とさず、pandoc の外の**テキスト層の抽出器**で本文が取れる（2026-09-03 に「拒否」から反転） | 基本 2 | 自動 |
-| T-06b | PDF（テキスト層なし。スキャン相当） | 変換する | **失敗にせず「本文なしで完了」**（`succeeded` ＋ `bodyAbsent`。デッドレター印は立たない） | 基本 2・例外 | 自動 |
+| T-06b | PDF（テキスト層なし。スキャン相当） | 変換する | **失敗にせず「本文なしで完了」**（`succeeded` ＋ `hasBody = false`。デッドレター印は立たない） | 基本 2・例外 | 自動 |
 | T-06c | 対応形式表に無い未知の形式 | 変換する | Markdown 扱いへ**落とさず拒否**する（T-06 の陽性対照） | 基本 2 | 自動 |
 | T-07 | 実行時イメージ | 構成を検査する | pandoc が入っている | 基本 2 | 自動 |
 | T-08 | コード化できる図 | 変換する | Markdown へコードとして埋め込まれる | 基本 3 | 自動 |

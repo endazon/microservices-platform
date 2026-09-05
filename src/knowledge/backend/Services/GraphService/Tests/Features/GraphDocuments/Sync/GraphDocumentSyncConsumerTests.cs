@@ -34,6 +34,7 @@ public class GraphDocumentSyncConsumerTests
         => new(db, new FixedClock(T0.AddDays(10)), new NoBodyReader(),
             new LinkEdgeSynchronizer(db, new EdgeTypeFallbackMetrics(new DummyMeterFactory()),
                 NullLogger<LinkEdgeSynchronizer>.Instance),
+            new TermProfileSynchronizer(db),
             NullLogger<GraphDocumentSyncConsumer>.Instance);
 
     // 本文が取れない（ストレージ未配備）。**辺を一切触らない**側の縮退。

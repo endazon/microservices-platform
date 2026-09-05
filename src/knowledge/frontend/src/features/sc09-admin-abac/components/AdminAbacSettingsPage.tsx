@@ -1,6 +1,7 @@
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@platform/ui';
 import { AttributeDictionaryPanel } from './AttributeDictionaryPanel';
+import { EdgeTypeDictionaryPanel } from './EdgeTypeDictionaryPanel';
 import { PolicyEditorPanel } from './PolicyEditorPanel';
 import { TagDictionaryPanel } from './TagDictionaryPanel';
 import { useAbacAttributes, useAbacPolicies } from '../api/useAbacAdmin';
@@ -22,6 +23,11 @@ import { useAbacAttributes, useAbacPolicies } from '../api/useAbacAdmin';
 //   #634 / #635 が後段（値集合・使用件数・改名の追随・削除拒否）を作り、
 //   **#640 が BFF の書き込み口（/bff/tags）を足した**。IADR-0129 決定 1 の理由 B は解除済みである。
 //   **辺の型辞書（理由 A）は残る**ので、計画 §SC-09 の 4 区画のうち 3 区画が揃った状態である。
+//   🔴 **［2026-09-05 / #1241］「辺の型」も実装した。理由 A も消えている。**
+//   前提の ADR-0033 は 2026-08-07（#586）に Accepted へ移り保留は解除されていたが、
+//   **判断先として名指しされていた #504 が判断を残さずに閉じ、解除を実行する主体が居なかった**
+//   （[[IADR-0387]] 決定 4）。**計画 §SC-09 の 4 区画はこれで揃った。**
+//   従前ここには「4 区画のうち 3 区画が揃った状態である」と書いていたが、その形は誤りになる。
 //   **空のタブを置かない**——保留であることを伝えず、むしろ壊れて見える（#502 が確立した
 //   「動かない UI を置かない」）。記録は projects/microservices-platform/10_feedback/20260805_sc09-11-admin-ops-contract-gaps.md（起票は親）。
 
@@ -45,6 +51,9 @@ export function AdminAbacSettingsPage() {
           <TabsTrigger value="tags">
             <Trans>タグ辞書</Trans>
           </TabsTrigger>
+          <TabsTrigger value="edge-types">
+            <Trans>辺の型</Trans>
+          </TabsTrigger>
           <TabsTrigger value="policies">
             <Trans>ポリシー定義</Trans>
           </TabsTrigger>
@@ -65,6 +74,12 @@ export function AdminAbacSettingsPage() {
           <TagDictionaryPanel />
         </TabsContent>
 
+        {/* FR-17, SC-09, #1241: 辺の型辞書。タグ辞書と同じく自前でデータを取るので props を持たない。
+            🔴 **後段は `/bff/edge-types`（使用件数つき・admin ＋ operator）であって、
+            SC-18 が使う `/bff/graph/edge-types`（描画用カタログ・認証のみ）ではない。** */}
+        <TabsContent value="edge-types">
+          <EdgeTypeDictionaryPanel />
+        </TabsContent>
         <TabsContent value="policies">
           <PolicyEditorPanel
             policies={policies.data ?? []}

@@ -339,6 +339,44 @@ public class AbacEvaluatorTests
         result.Branches!.Single().Name.Should().Be("組織文書");
     }
 
+    // ---- #1242 / IADR-0384: 「confidentiality フィルタが無いスコープ」が実在することの固定 ----
+    //
+    // 🔴 **本テストは消費側（MCP の登録者属性解決）の陰性対照が机上の作り物でないことの担保である。**
+    // ADR-0036 D-01 は `read` 許可を「属性ベース ∨ **所有者ベース** ∨ 共有先ベース」の選言と定め、
+    // 所有者ベースのポリシーは典型的に `userConditions` を持たない。`MatchesUserConditions` は
+    // 条件なしを**全利用者マッチ**として扱うため、`clearance` を持たない利用者にも
+    // このポリシー**だけ**がマッチする。そのとき返るスコープは
+    // **`Granted=true` かつ `confidentiality` フィルタ無し**である。
+    //
+    // **この形を「無制限」と読むと、登録者が `restricted` の無人アカウントを作れる**
+    // （McpServer 側 `AuthorizationServiceRegistrarAttributesTests` の陰性対照 3 本）。
+    // 現 seed の read ポリシーは 4 本とも階段（下の陽性対照）なので**今日は発現しない**。
+    [Fact]
+    public void ResolveScope_OwnerOnlyReadPolicy_GrantedWithoutConfidentialityFilter()
+    {
+        // `clearance` を持たない利用者。階段ポリシーには 1 本もマッチしない。
+        var req = new AccessScopeRequest("u1", new() { ["department"] = "engineering" });
+        var policies = new[]
+        {
+            // ADR-0036 D-01・D-02: 所有者ベースの read（利用者条件なし・`${current_user}` 束縛）。
+            NamedReadPolicy("所有者は自分の文書を読める", userCond: [],
+                new() { ["owner"] = ["${current_user}"] }),
+            // 陽性対照: 階段ポリシーは存在するが、この利用者にはマッチしない
+            // （＝「ポリシーが 1 本しか無い作り物」ではないことの担保）。
+            NamedReadPolicy("internal 取扱者", new() { ["clearance"] = ["internal"] },
+                new() { ["confidentiality"] = ["public", "internal"] }),
+        };
+
+        var result = AbacEvaluator.ResolveScope(req, policies);
+
+        result.Granted.Should().BeTrue("所有者ポリシーは利用者条件を持たないので全利用者にマッチする");
+        result.Branches.Should().ContainSingle().Which.Name.Should().Be("所有者は自分の文書を読める");
+        result.Branches!.Single().Filters.Should().ContainSingle()
+            .Which.Key.Should().Be("owner", "分岐は owner だけを条件に持つ");
+        result.AllowedFilters.Should().NotContain(f => f.Key == "confidentiality",
+            "🔴 これが #1242 の入力である —— **不在であって『無制限』ではない**");
+    }
+
     // ---- IADR-0253 決定 2 への追記（2026-08-23 / #989）: キー単位 union の混成（現状固定） ----
     //
     // 🔴 **本テストは既存挙動の記録であり、望ましい挙動の主張ではない。**

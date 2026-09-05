@@ -144,11 +144,16 @@ public sealed class DataSourceSyncService(
                 // `owner` は予約値 `system` へ倒れる（ADR-0074 決定 3。**減らなくてよい**）。
                 var attributes = source.GetEffectiveAttributes(PerItemAttributes(source, item));
 
+                // FR-02, FR-03, ADR-0070 決定 4 / [[IADR-0388]] 決定 4 (#1253):
+                // **データソースの表示名も運ぶ。** 本文を持たない文書は題名・タグ・所在・
+                // データソース名だけが検索の手掛かりであり、名前は下流（索引テキスト）で
+                // 人が打つ語である。正本は `source.Id` のままで、これは射影用の複写である。
                 await bus.PublishAsync(new RawDocumentFetched(
                     fetchId, source.Id, source.SourceType,
                     item.Path, storageUri, raw.ContentType,
                     attributes, [],
-                    DateTimeOffset.UtcNow));
+                    DateTimeOffset.UtcNow,
+                    source.Name));
                 fetched++;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

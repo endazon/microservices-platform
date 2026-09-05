@@ -356,6 +356,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-contract-schema.js
 
+      # NFR-09 / ADR-0029 / ADR-0075, Issue #1201 / IADR-0379 決定 2: east-west gRPC の proto 契約の配置・versioning 規約と
+      # 後方互換を検査する。上の C# 契約検査とは母集合を共有しない（構文と互換規則が違う。1 構文 1 パーサ）。
+      # フィールド番号の不変性・reserved・v<N+1> 並走は約束では守れないので機械で止める。破壊的変更は
+      # scripts/proto-breaking-allowlist.json の承認エントリで通す（手順は scripts/README.md）。
+      - name: Self-test proto contract checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-proto-contracts.js --self-test
+      - name: Check proto contract rules and backward compatibility
+        if: ${{ !cancelled() }}
+        run: node scripts/check-proto-contracts.js
+
       # NFR, Issue #453: 受け入れ基準 → テストの写像を機械検査する（退行防止テスト基盤）。
       # docs/tests/ に仕様書がある FR/SC が src/ のテストから参照されているかを見る。
       # 着手時点の実測が 27/27 写像済みだったため warn 開始ではなく fail で強制する。

@@ -409,7 +409,7 @@ function JobRow({
       <TableCell className="text-xs text-[--color-fg-muted]">
         {/* hi-fi:422「Mermaid 2図」——備考は `diagramsCoded` から導出する。
             補間には**素の変数だけ**を置く（`lingui/no-expression-in-message`）。
-            「本文なしで完了」は**理由つき**で出す（ADR-0070 決定 3。理由は契約の `bodyAbsent` から
+            「本文なしで完了」は**理由つき**で出す（ADR-0070 決定 3。理由は契約の `hasBody` から
             導出する固定文であり、サーバの自由文字列 `error` ではない）。 */}
         {bodyAbsent ? (
           <Trans>テキスト層が無いため本文を抽出できませんでした（原本を参照）</Trans>

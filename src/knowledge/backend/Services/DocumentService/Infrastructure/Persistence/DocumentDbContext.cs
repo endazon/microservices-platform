@@ -52,6 +52,13 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
                 .HasConversion(StringListConverter())
                 .HasColumnType("jsonb")
                 .Metadata.SetValueComparer(StringListComparer());
+            // ADR-0070 決定 3 / [[IADR-0388]] 決定 2 (#1254): 原本が本文を持っていたか。
+            // **既存行は「本文あり」として読むため列の DEFAULT も true。**
+            e.Property(d => d.HasBody).HasDefaultValue(true);
+            // ADR-0070 決定 4 / [[IADR-0388]] 決定 4 (#1253): 原本の所在とデータソースの表示名。
+            // 所在は `MarkdownUri` / `OriginalUri` と同じ 2048、表示名は `DataSource.Name` に合わせる。
+            e.Property(d => d.OriginalPath).HasMaxLength(2048);
+            e.Property(d => d.DataSourceName).HasMaxLength(200);
 
             // FR-06: 版履歴は集約配下の append-only コレクション。文書削除時に連動削除する。
             e.HasMany(d => d.Versions)

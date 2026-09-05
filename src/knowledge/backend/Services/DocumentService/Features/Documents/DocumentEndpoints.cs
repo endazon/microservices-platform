@@ -135,6 +135,9 @@ public static class DocumentEndpoints
         Tags = TagResolver.ToNames(d.Tags, names),
         CreatedAt = d.CreatedAt,
         UpdatedAt = d.UpdatedAt,
+        // SC-03, ADR-0070 決定 3 / [[IADR-0388]] 決定 2 (#1254): 本文なしの文書を
+        // 文書詳細が区別できるようにする（表示は SC-02 と同じ「本文なし（原本を参照）」）。
+        HasBody = d.HasBody,
     };
 
     // **過去版も現在の表示名で出る**——改名は表示上の変更である（[[IADR-0153]] 決定 4）。
@@ -167,7 +170,7 @@ public static class DocumentEndpoints
         IReadOnlyDictionary<Guid, string> names, CancellationToken ct = default) =>
         bus.PublishUpdatedAsync(d.Id, d.Title, d.Status, d.MarkdownUri,
             d.Attributes, TagResolver.ToNames(d.Tags, names), d.UpdatedAt,
-            d.ContentFingerprint, ct);
+            d.ContentFingerprint, d.HasBody, d.OriginalPath, d.DataSourceName, ct);
 
     // FR-21 受け入れ基準 ⑥: 本文が上限を超えたときの応答。**413 であって 400 ではない**
     // （計画が status を名指ししている）。本文へ上限を書き、切り詰めた成功と取り違えられないようにする。
