@@ -1,6 +1,7 @@
 using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
+using FluentValidation;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace DocumentService.Features.Documents.Create;
@@ -26,42 +27,33 @@ internal static class CreateDocumentEndpoint
 {
     internal static void Map(RouteGroupBuilder write)
     {
-        write.MapPost("/", async (CreateDocumentRequest req, DocumentDbContext db,
+        write.MapPost("/", async (CreateDocumentRequest req,
+            IValidator<CreateDocumentRequest> validator, DocumentDbContext db,
             IObjectStorageClient storage, IDocumentUpdatedPublisher bus, HttpContext http,
             CancellationToken ct) =>
         {
-            // FR-06, UC-03: タイトルは必須
-            if (string.IsNullOrWhiteSpace(req.Title))
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["title"] = ["タイトルは必須です。"]
-                });
+            // FR-06, UC-03 / 計画 ADR-0030 §決定 / IADR-0371 決定 2 / [[IADR-0398]] 決定 1・3:
+            // タイトルは必須。規則は `CreateDocumentValidator` が持つ（既定の規則集合 = title だけ）。
+            // **先頭 1 件を、その鍵で返す**（移送前は最初のガード節でここから返っていた）。
+            var titleGate = validator.Validate(req);
+            if (!titleGate.IsValid) return ValidationProblems.FirstViolation(titleGate);
 
             // FR-21 受け入れ基準 ⑥: 本文が 1 MB を超える登録要求は **413** で拒否する。
             // **切り詰めて成功を返さない**（切り詰めると ⑦「全文が索引される」が静かに破れる）。
             if (!string.IsNullOrEmpty(req.Body) && DocumentBodyIntake.ExceedsLimit(req.Body))
                 return DocumentEndpoints.BodyTooLargeProblem();
 
-            // FR-05, UC-03, SC-05, IADR-0047: 機密区分（必須属性）のサーバー側検証（最終防衛線）。
-            // 欠落・未知値は保存拒否（400）。フロントの既定値に依存せず、BFF 迂回でも実効化する。
-            if (DocumentEndpoints.ConfidentialityProblemOrNull(req.Attributes) is { } createError)
-                return createError;
-
-            // FR-19, ADR-0054, [[IADR-0270]] 決定 2: doc_scope の値域検証（未知値は 400）。
-            // さらに**一般経路での個人資料の作成を拒否する** —— 台帳（PrivateNote）を持たない
-            // 個人資料ができると容量算入（FR-19）から漏れる。作成経路は /private-notes と
-            // /private-notes/sync に限る。
-            if (DocumentEndpoints.DocScopeProblemOrNull(req.Attributes) is { } createScopeError)
-                return createScopeError;
-            if (DocumentAttributes.IsPrivateNote(req.Attributes))
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    [DocumentAttributes.DocScopeKey] =
-                    [
-                        "個人資料（doc_scope=private-note）はこの経路では作成できません。"
-                        + "/private-notes（SC-19）または Obsidian 同期から作成してください。"
-                    ]
-                });
+            // FR-05, FR-19, UC-03, SC-05, ADR-0054, IADR-0047, [[IADR-0270]] 決定 2 /
+            // [[IADR-0398]] 決定 3: 属性の 3 規則（機密区分 → doc_scope の値域 → 個人資料経路の拒否）。
+            //
+            // 🔴 **この呼び出しは 413 の後ろでなければならない。** 移送前も属性の検査は本文上限の
+            // 後ろに居た —— 前へ動かすと「題名あり・本文 1 MB 超・機密区分なし」が 413 から 400 へ化ける。
+            // 🔴 **`Validate(req)` は名前つき集合を走らせない。** この 1 行を消しても
+            // コンパイルも起動も通り、属性が**黙って無検証**になる（型では守れていない依存）。
+            // `CreateDocumentAttributeValidationTests` の 413 / 400 の**対**がこれを固定する。
+            var attributeGate = validator.Validate(req,
+                o => o.IncludeRuleSets(CreateDocumentValidator.AttributesRuleSet));
+            if (!attributeGate.IsValid) return ValidationProblems.FirstViolation(attributeGate);
 
             // SC-05, #635: タグ名を辞書の識別子へ解決する。**辞書に無い名前は 400**（手入力は自動登録しない）。
             var (createTagIds, createUnknown) = await TagResolver.ToIdsAsync(db, req.Tags);
