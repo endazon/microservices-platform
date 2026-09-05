@@ -2,10 +2,10 @@
 title: IADR-0366 無人アカウントの clearance とタグは登録者が持つ集合の部分集合かを後段で判定し、外れた値を拒否応答へ載せる
 type: impl-adr
 status: Accepted
-related_ids: [FR-05, FR-09, FR-16, UC-09, SC-12, SC-17, ADR-0004, ADR-0024, ADR-0034, ADR-0036, ADR-0062]
+related_ids: [FR-05, FR-09, FR-16, UC-09, SC-12, SC-17, ADR-0004, ADR-0024, ADR-0034, ADR-0036, ADR-0062, IADR-0384, IADR-0385]
 author: implementation-agent
 created: 2026-09-03
-updated: 2026-09-03
+updated: 2026-09-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0062_unattended-account-attribute-subset.md
   - planning:projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md
@@ -75,6 +75,17 @@ ADR-0062 の受け入れ像（`{public, internal, confidential}` を持つ登録
 広げない（＝安全側）。IADR-0253 決定 2 の 2026-08-23 追記が警告する混成は**複数キーの連言を 1 本へ
 潰す**話であり、**単一キーの許可値の読み出しには当たらない。**
 
+> **［2026-09-05 追記 / #1242］本決定は [IADR-0384](./IADR-0384_registrar-clearance-scope-absent-filter.md) が差し替えた（Superseded by IADR-0384）。**
+> 🔴 **「`AllowedFilters` から読み、`confidentiality` が無ければ無制限」は fail-open だった。**
+> 契約 `AccessScopeResponse` が「条件無しで許可（全件可）」と定めるのは **`AllowedFilters` が空**の
+> ときだけであり、**`owner` だけを持つ**（空ではないが `confidentiality` を持たない）場合は含まれない。
+> `ADR-0036` D-01 の所有者ベース `read` ポリシーだけにマッチする登録者は、本決定の読み方では
+> `ClearanceUnrestricted = true` へ倒れ、**`restricted` の無人アカウントを作れてしまう**。
+> **本決定が避けようとした昇格経路（「自分の文書を読めることを根拠に `restricted` を配る」）は
+> 正しい懸念であり、退けた手段（`Branches` を読む）の側が誤っていた** —— 分岐ごとに見て
+> **単一キー `confidentiality` の分岐だけを数えれば**、所有者分岐は値を 1 つも足さない。
+> **`IADR-0384` 決定 1〜3 が正である。決定 1・2・4〜6 は有効である。**
+
 **決定 4: 対象は `clearance` とタグの 2 キーだけとする。**
 ADR-0062 決定 2 が名指しするのがこの 2 つだからである。**`department` は対象外**（同型の昇格になり得るが
 計画が決めていない。§結果 に環流候補として残す）。`doc_scope` は ADR-0034 決定 9 の別の規則が見る。
@@ -85,6 +96,15 @@ ADR-0062 決定 2 が名指しするのがこの 2 つだからである。**`de
 契約は 1 キー 1 値（`Dictionary<string,string>`。Keycloak の多値属性も先頭 1 値へ畳まれる）であり、
 集合を運ぶ器が他に無い。カンマ / 空白で区切って集合として扱い、**順序と余白と大小文字は同値**とする
 （集合であって列ではない）。単一値はその 1 要素の集合になるので `clearance` の読み方は変わらない。
+
+> **［2026-09-05 追記 / #1243］本決定の前提の一部は [IADR-0385](./IADR-0385_set-valued-user-attribute-encoding.md) が
+> 差し替えた（Superseded by IADR-0385）。** 🔴 **「Keycloak の多値属性も先頭 1 値へ畳まれる」は
+> 欠陥であって前提ではなかった** —— `tags: ["sales","hr"]` の `hr` が静かに消え、稼働再測で
+> 拒否理由が実際より狭い集合（「登録者が持つタグは 'sales' です」）を告げていた。
+> **集合値キー（`tags` / `projects`）は Keycloak の多値属性を正の器とし**、1 キー 1 値の契約へは
+> カンマ区切りで載せる。**分割の規則そのもの（カンマ / 空白区切り・順序と余白と大小文字は同値）は
+> 変わっていない**が、置き場所は共有契約（`UserAttributeEncoding`）へ移した。
+> **本決定の「集合として読む」という結論は有効である。**
 
 **決定 6: 🔴 拒否応答（400 ValidationProblem）に「どの値が外れたか」を値そのもので載せる。**
 「権限がありません」で丸めない。**差集合だけを名指しし、外れていない値を混ぜない。**

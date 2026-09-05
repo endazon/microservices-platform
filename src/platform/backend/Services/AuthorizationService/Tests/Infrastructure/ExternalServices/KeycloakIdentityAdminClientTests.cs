@@ -96,6 +96,146 @@ public class KeycloakIdentityAdminClientTests
         users[0].Roles.Should().BeEquivalentTo(["platform-operator"]);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // IADR-0385 (#1243): 集合値キー（tags / projects）は畳まずに連結する
+    // ─────────────────────────────────────────────────────────────────────────
+    //
+    // 🔴 **これが #1243 の本体である。** 従前は一律に先頭 1 値へ畳んでおり、
+    // `tags: ["sales","hr"]` の `hr` が静かに消えていた。部分集合判定（ADR-0062 決定 2）は
+    // fail-closed 側へ倒れるが、**拒否理由が嘘になる**（「登録者が持つタグは 'sales' です」）。
+    //
+    // 🔴 **変異試験**: 連結を先頭 1 値へ戻すと本テストが落ちる。
+    // **同じ変異で下の `単一値キーは従来どおり先頭だけを読む` は緑のまま通る**
+    // （＝「全部連結する」実装と区別できている）。
+    [Fact]
+    public async Task 集合値キーの多値属性は畳まずに連結される()
+    {
+        var users = await Client(UsersHandler("""
+            "attributes":{"tags":["sales","hr"],"projects":["alpha","beta"],
+                          "clearance":["internal","public"]}
+            """)).ListUsersAsync(Ct);
+
+        users[0].Attributes["tags"].Should().Be("sales,hr");
+        users[0].Attributes["projects"].Should().Be("alpha,beta");
+    }
+
+    // 🔴 **陰性対照（対で置く）。** 単一値キーまで連結すると `clearance` が
+    // `"internal,public"` になり、階段ポリシーがどれもマッチしなくなる（deny 側だが静かに壊れる）。
+    [Fact]
+    public async Task 単一値キーは従来どおり先頭だけを読む()
+    {
+        var users = await Client(UsersHandler("""
+            "attributes":{"tags":["sales","hr"],"clearance":["internal","public"],
+                          "department":["finance","legal"]}
+            """)).ListUsersAsync(Ct);
+
+        users[0].Attributes["clearance"].Should().Be("internal");
+        users[0].Attributes["department"].Should().Be("finance");
+    }
+
+    // もう 1 つの保存形（SC-17 の単一値書き込みが残した カンマ列）も**同じ線上表現**になる。
+    [Fact]
+    public async Task 単一値に入ったカンマ列も同じ線上表現になる()
+    {
+        var users = await Client(UsersHandler("""
+            "attributes":{"tags":["sales,hr"]}
+            """)).ListUsersAsync(Ct);
+
+        users[0].Attributes["tags"].Should().Be("sales,hr");
+    }
+
+    // 空文字だけの多値は**キーごと落とす**（空文字を属性値として持たない）。
+    [Fact]
+    public async Task 空白だけの集合値キーは属性に現れない()
+    {
+        var users = await Client(UsersHandler("""
+            "attributes":{"tags":["","  "],"clearance":["internal"]}
+            """)).ListUsersAsync(Ct);
+
+        users[0].Attributes.Should().NotContainKey("tags");
+        users[0].Attributes["clearance"].Should().Be("internal");
+    }
+
+    // 書き込みの正準形は**多値配列**である（読み戻すと同じ線上表現に戻る）。
+    [Fact]
+    public async Task 集合値キーの差し替えは多値配列として送られる()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Put("admin/realms/platform/users/u1", "")
+            .Get("admin/realms/platform/users/u1", """
+                {"id":"u1","username":"tanaka.taro","enabled":true,
+                 "attributes":{"tags":["sales","hr"],"clearance":["internal"]}}
+                """)
+            .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
+
+        var updated = await Client(handler).ReplaceAttributesAsync(
+            "u1", new Dictionary<string, string> { ["tags"] = "sales,hr", ["clearance"] = "internal" }, Ct);
+
+        var put = handler.Requests.Single(r => r.Method == "PUT");
+        using var body = JsonDocument.Parse(put.Body!);
+        var attrs = body.RootElement.GetProperty("attributes");
+        attrs.GetProperty("tags").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo(["sales", "hr"], o => o.WithStrictOrdering());
+        // 陰性対照: 単一値キーは従来どおり単一要素の配列である。
+        attrs.GetProperty("clearance").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo(["internal"]);
+        // 読み戻しは同じ線上表現へ戻るので、黙って捨てられた判定（EnsureAttributesWereApplied）を通る。
+        updated!.Attributes["tags"].Should().Be("sales,hr");
+    }
+
+    // 🔴 **正準化を通る値は「捨てられた」と誤検知してはならない。**
+    // 集合値キーは分割して書き、連結して読み戻すので、`"sales hr"` と要求した値は
+    // `"sales,hr"` として返る。序数で比べると **realm の設定不備でもないのに例外になる。**
+    [Theory]
+    [InlineData("sales hr")]
+    [InlineData("sales, hr")]
+    [InlineData("hr,sales")]
+    public async Task 集合値キーは正準化後の集合として反映を突き合わせる(string requested)
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Put("admin/realms/platform/users/u1", "")
+            .Get("admin/realms/platform/users/u1", """
+                {"id":"u1","username":"tanaka.taro","enabled":true,
+                 "attributes":{"tags":["sales","hr"]}}
+                """)
+            .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
+
+        var updated = await Client(handler).ReplaceAttributesAsync(
+            "u1", new Dictionary<string, string> { ["tags"] = requested }, Ct);
+
+        updated!.Attributes["tags"].Should().Be("sales,hr");
+    }
+
+    // 🔴 **陰性対照（対で置く）。** 集合として比べても、**本当に捨てられた**ものは落とす ——
+    // 緩めた結果「黙って捨てられた」を見逃すなら、緩めた意味が無い。
+    [Fact]
+    public async Task 集合値キーでも要素が落ちていれば失敗として上げる()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Put("admin/realms/platform/users/u1", "")
+            .Get("admin/realms/platform/users/u1", """
+                {"id":"u1","username":"tanaka.taro","enabled":true,
+                 "attributes":{"tags":["sales"]}}
+                """)
+            .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
+
+        var act = async () => await Client(handler).ReplaceAttributesAsync(
+            "u1", new Dictionary<string, string> { ["tags"] = "sales,hr" }, Ct);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>())
+            .Which.Message.Should().Contain("tags");
+    }
+
+    // 上の 5 本が使う名簿応答。属性の断片だけを差し替える。
+    private static StubHandler UsersHandler(string attributesJson) => new StubHandler()
+        .Post("realms/platform/protocol/openid-connect/token", Token())
+        .Get("admin/realms/platform/users?briefRepresentation=false&max=1000",
+            $$"""[{"id":"u1","username":"tanaka.taro","enabled":true,{{attributesJson}}}]""")
+        .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
+
     // 属性の差し替えは、契約の 1 キー 1 値を Keycloak の多値表現（単一要素の配列）へ写す。
     [Fact]
     public async Task Replacing_attributes_wraps_each_value_in_a_single_element_array()

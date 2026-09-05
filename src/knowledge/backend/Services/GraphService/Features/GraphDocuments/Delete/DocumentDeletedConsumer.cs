@@ -47,10 +47,15 @@ public class DocumentDeletedConsumer(
         if (node is not null)
             db.Documents.Remove(node);
 
+        // IADR-0380 (#1244): 語の出現数（類似度候補の材料）。残すと消えた文書が候補計算の母数に残り続ける。
+        var termProfile = await db.TermProfiles.FirstOrDefaultAsync(p => p.DocumentId == id, ct);
+        if (termProfile is not null)
+            db.TermProfiles.Remove(termProfile);
+
         await db.SaveChangesAsync(ct);
 
         logger.LogInformation(
-            "Removed deleted document {DocumentId} from the graph: node={Node} edges={Edges} suggestions={Suggestions}",
-            id, node is not null ? 1 : 0, edges.Count, suggestions.Count);
+            "Removed deleted document {DocumentId} from the graph: node={Node} edges={Edges} suggestions={Suggestions} termProfile={TermProfile}",
+            id, node is not null ? 1 : 0, edges.Count, suggestions.Count, termProfile is not null ? 1 : 0);
     }
 }

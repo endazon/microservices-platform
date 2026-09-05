@@ -74,6 +74,10 @@ msgstr "{sourceTitle} → {targetTitle}（{typeName}）"
 msgid "{sourceTitle} に「{tagValue}」を付与"
 msgstr "{sourceTitle} に「{tagValue}」を付与"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "{sourceUserId} は {userId} に対応します"
+msgstr "{sourceUserId} は {userId} に対応します"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "{title} を選択"
 msgstr "{title} を選択"
@@ -780,6 +784,10 @@ msgstr "ナレッジグラフ"
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "ナレッジグラフ（ノード {shownCount} 件・辺 {edgeCount} 本）。詳細は凡例と選択パネルを参照"
 msgstr "ナレッジグラフ（ノード {shownCount} 件・辺 {edgeCount} 本）。詳細は凡例と選択パネルを参照"
+
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "ナレッジグラフで見る"
+msgstr "ナレッジグラフで見る"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "ナレッジグラフに表示する"
@@ -1799,6 +1807,10 @@ msgstr "情報"
 msgid "成功"
 msgstr "成功"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "所有者の写像"
+msgstr "所有者の写像"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 msgid "所有者の写像（ソース側の利用者 → 基盤の利用者）"
 msgstr "所有者の写像（ソース側の利用者 → 基盤の利用者）"
@@ -2026,16 +2038,19 @@ msgid "方向"
 msgstr "方向"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "既定のライフサイクル状態"
 msgstr "既定のライフサイクル状態"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "既定の機密区分"
 msgstr "既定の機密区分"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "既定の部門"
 msgstr "既定の部門"
@@ -2043,6 +2058,10 @@ msgstr "既定の部門"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "既定属性"
 msgstr "既定属性"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "既定属性と所有者の写像"
+msgstr "既定属性と所有者の写像"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 msgid "既定属性の編集"
@@ -2150,6 +2169,18 @@ msgstr "未指定"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。"
 msgstr "未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "未登録（写像に無い利用者は予約値 {UNRESOLVED_OWNER} になります）"
+msgstr "未登録（写像に無い利用者は予約値 {UNRESOLVED_OWNER} になります）"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "未設定"
+msgstr "未設定"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "未設定（予約値 {UNRESOLVED_DEPARTMENT} が入ります）"
+msgstr "未設定（予約値 {UNRESOLVED_DEPARTMENT} が入ります）"
 
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "本文"
