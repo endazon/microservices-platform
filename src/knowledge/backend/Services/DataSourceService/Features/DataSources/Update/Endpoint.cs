@@ -1,7 +1,9 @@
 using DataSourceService.Domain;
 using DataSourceService.Domain.Ports;
 using DataSourceService.Infrastructure.Persistence;
+using FluentValidation;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Kernel;
 
 namespace DataSourceService.Features.DataSources.Update;
 
@@ -17,19 +19,18 @@ internal static class UpdateDataSourceEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
     {
-        g.MapPut("/{id:guid}", async (Guid id, UpdateDataSourceRequest req, DataSourceDbContext db,
+        g.MapPut("/{id:guid}", async (Guid id, UpdateDataSourceRequest req,
+            IValidator<UpdateDataSourceRequest> validator, DataSourceDbContext db,
             SyncSchedule schedule, IPlatformUserDirectory userDirectory, CancellationToken ct) =>
         {
-            // AI レビュー 🟡（#627）: **省略を受理しない。** PUT は全置換なので「省略 ＝ 空で置換」は
-            // 意味論としては筋が通るが、契約が省略を許していると**うっかりで秘密が消える**
-            // （`config` を送り忘れた PUT が apiToken を丸ごと落とす）。消したいなら `{}` と明示させる。
-            // **null を現状維持にする道は採らない** —— それをやると PUT と PATCH の区別が消える。
-            if (req.Config is null || req.DefaultAttributes is null)
-                return Results.BadRequest(new
-                {
-                    error = "PUT は全置換です。config と defaultAttributes を明示してください"
-                          + "（消す場合は {} を送る）。一部だけ変更するなら PATCH を使ってください。",
-                });
+            // FR-01, UC-04 / IADR-0371 決定 2・4 / IADR-0395: 入力検証（FluentValidation）の失敗を
+            // Kernel の `Result` で表し、**HTTP への写像は 1 度だけ行う**
+            // （計画 ADR-0030 §決定「ProblemDetails 変換は API 層」/ ADR-0041 §結果）。
+            // 🔴 **判定の位置は移送前のガード節と同じ（`FindAsync` より前）である** ——
+            // 省略のある PUT は、対象が不存在でも 400 が返る（404 ではない）。
+            var gate = Validate(validator, req);
+            if (gate.IsFailure)
+                return Results.BadRequest(new { error = gate.Error.Message });
 
             var ds = await db.DataSources.FindAsync(id);
             if (ds is null) return Results.NotFound();
@@ -48,5 +49,18 @@ internal static class UpdateDataSourceEndpoint
             await db.SaveChangesAsync();
             return Results.Ok(DataSourceEndpoints.ToResponse(ds, schedule.NextRunAt));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
+    }
+
+    // FR-01 / IADR-0371 決定 2: 入力規則の判定。**規則そのものは `UpdateDataSourceValidator` が持つ。**
+    // 規則は 1 本だが、`Errors[0]` を採る形は他の端点と揃える（規則が増えたときに
+    // 「宣言順が応答の契約」という読み方がそのまま効く）。
+    private static Result Validate(IValidator<UpdateDataSourceRequest> validator,
+        UpdateDataSourceRequest req)
+    {
+        var result = validator.Validate(req);
+        return result.IsValid
+            ? Result.Success()
+            : Result.Failure(Error.Validation(
+                "datasource.update.invalid", result.Errors[0].ErrorMessage));
     }
 }
