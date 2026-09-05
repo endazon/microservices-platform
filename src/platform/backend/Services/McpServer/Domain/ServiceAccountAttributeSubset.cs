@@ -1,4 +1,5 @@
 using McpServer.Domain.Ports;
+using Platform.Shared.Contracts.Dtos;
 
 namespace McpServer.Domain;
 
@@ -24,7 +25,8 @@ public static class ServiceAccountAttributeSubset
     // 属性キーの綴りは属性辞書（SC-09）と判定側が読むクレームに合わせる。
     // `clearance` は `BffScopeResolver.ExtractUserAttributes` が読む 2 キーの片方である。
     public const string ClearanceKey = "clearance";
-    public const string TagsKey = "tags";
+    // 綴りは契約側の語彙（集合値キーの正）から引く。**ここへ文字列を写さない**（IADR-0385 / #1243）。
+    public const string TagsKey = UserAttributeEncoding.TagsKey;
 
     /// <summary>本規則が見る属性キー。**ここに無いキーは本規則の対象外である。**</summary>
     public static IReadOnlyList<string> GovernedKeys { get; } = [ClearanceKey, TagsKey];
@@ -95,17 +97,18 @@ public static class ServiceAccountAttributeSubset
     /// <summary>
     /// 属性値をトークンの集合として読む。
     ///
-    /// 契約は 1 キー 1 値であり（`Dictionary&lt;string,string&gt;`。Keycloak の多値属性も先頭 1 値へ
-    /// 畳まれる。`KeycloakIdentityAdminClient.ToIdentityUser`）、計画の「タグの**集合**」を運ぶ器が
-    /// 他に無い。**単一値はその 1 要素の集合になる**ので、`clearance` の読み方は変わらない。
+    /// 契約は 1 キー 1 値であり（<c>Dictionary&lt;string,string&gt;</c>）、計画の「タグの**集合**」を
+    /// 運ぶ器が他に無い。**単一値はその 1 要素の集合になる**ので、`clearance` の読み方は変わらない。
+    ///
+    /// 🔴 **分割規則そのものは契約側（<see cref="UserAttributeEncoding.Split"/>）に 1 つだけ置く**
+    /// （IADR-0385 / #1243）。従前はここが唯一の分割規則で、上流（Keycloak の多値属性を
+    /// 先頭 1 値へ畳む写像）と**食い違っていた** —— 誰も作れない形を待っていた。
+    /// AuthorizationService と本サービスは互いを直接参照できないため、規則を各側へ写すと
+    /// **その食い違いをそのまま再生産する。**
     ///
     /// 🔴 **順序は意味を持たない**（集合であって列ではない）。`"hr,sales"` と `"sales,hr"` は同値である。
     /// </summary>
-    public static IReadOnlySet<string> Tokens(string? value)
-        => new HashSet<string>(
-            (value ?? string.Empty)
-                .Split([',', ' ', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-            StringComparer.OrdinalIgnoreCase);
+    public static IReadOnlySet<string> Tokens(string? value) => UserAttributeEncoding.Split(value);
 
     // 要求された値のうち、登録者が持たないもの。**入力の綴りをそのまま返す**（画面へ出すため）。
     private static IReadOnlyList<string> Difference(string requested, IReadOnlySet<string> owned)
