@@ -172,7 +172,9 @@ FluentValidation の `AbstractValidator` へ移す。**応答本文は 1 バイ�
 - [x] `Platform.Shared.Kernel` への参照を DocumentService に足していない（空真の理由を IADR に明記した）
 - [x] Domain 層に FluentValidation の依存が入っていない（拡張メソッドは `Features/` にある）
 - [x] 変異 4 種（規則 1 本を消す／登録行を消す／`OverridePropertyName` を消す／第 2 の `Validate` を消す）で**実際に赤になった**試験名と本数を PR に書いた
-- [x] `dotnet test` の件数が前後で減っていない（DocumentService 257 → 297、両ユニット合計 3350 → 3390）
+- [x] `dotnet test` の件数が前後で減っていない（DocumentService 257 → **320**、両ユニット合計 3350 → **3413**）
+      ★［2026-09-05 追記 / #1278］**当初ここに書いた 297 / 3390 は作業途中の値であり、最終コミットへ追随していなかった**
+      （AI レビューが実走して検出した）。**受け入れ基準に導出値を書くときは、最後にもう一度測って書き直す。**
 - [x] `dotnet build` × 2 / `dotnet test` × 2 / `dotnet format --verify-no-changes` / 検査器 7 本が緑
 - [x] IADR-0398 を起草し、番号がマージ時点で連続（`origin/develop` の最大は 0397、0398 は in-flight）であることを再確認した
 
