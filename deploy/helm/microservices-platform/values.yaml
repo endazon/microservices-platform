@@ -291,6 +291,13 @@ services:
     # （バックグラウンドワーカーは /health/* を持たず、可用性判定に HTTP プローブが不適なため）。
     port: 8080
     worker: true
+    # FR-12 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0398 (#1255): east-west gRPC の
+    # 呼び出し側資格情報。realm の confidential client `conversion-service`（service account ＋
+    # realm ロール platform-service のみ。ABAC ポリシーは持たない）。
+    serviceToken:
+      clientId: conversion-service
+      existingSecret: conversion-service-token
+      clientSecretKey: client-secret
     # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先。
     # 🔴 **k8s の Service 名は `llmgateway-service` である**（chart のキー `llmgateway` ＋ `-service`）。
     # コード既定・appsettings の `http://llm-gateway:...` は **compose のサービス名**であり、
@@ -298,6 +305,11 @@ services:
     extraEnv:
       - name: Services__LlmGateway
         value: "http://llmgateway-service:8080"
+      # FR-12 / NFR-16, IADR-0398 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
+      # 図のコード化が gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # ポートは llmgateway.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
+      - name: Services__LlmGatewayGrpc
+        value: "http://llmgateway-service:8081"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
@@ -379,6 +391,13 @@ services:
     image: microservices-platform/aianalysis-service
     tag: latest
     port: 8080
+    # FR-04 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0398 (#1255): east-west gRPC の
+    # 呼び出し側資格情報。realm の confidential client `aianalysis-service`（service account ＋
+    # realm ロール platform-service のみ。ABAC ポリシーは持たない）。
+    serviceToken:
+      clientId: aianalysis-service
+      existingSecret: aianalysis-service-token
+      clientSecretKey: client-secret
     # FR-04, UC-01: 下流サービスの接続先（HTTP クライアント・readiness の UriHealthCheck）。
     # appsettings 既定はローカル用ポート（5003/5007）のため、k8s Service の実 DNS（:8080）へ上書きする。
     # llm-gateway の Service 名は llmgateway-service（chart のキー llmgateway 由来）である点に注意。
@@ -390,6 +409,11 @@ services:
         value: "http://retrieval-service:8080"
       - name: Services__LlmGateway
         value: "http://llmgateway-service:8080"
+      # FR-04 / NFR-16, IADR-0398 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
+      # テキスト生成（一括・逐次）が gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # ポートは llmgateway.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
+      - name: Services__LlmGatewayGrpc
+        value: "http://llmgateway-service:8081"
     resources:
       requests: { cpu: 200m, memory: 256Mi }
       limits: { cpu: 1000m, memory: 1Gi }
@@ -487,8 +511,9 @@ services:
     # 設定したサービスにだけ containerPort（名前 grpc）・Service ポート（appProtocol: grpc）・
     # env Grpc__Port が描画される。**readiness は 8080 の /health/ready のまま** —— 1 プロセスが
     # 両ポートを起動時に bind するので、8080 が ready なら 8081 も bind 済みである。
-    # 現時点で開いているのは埋め込み（platform.llmgateway.v1.LlmEmbedding）だけで、
-    # テキスト生成（/complete 系）は後続 PR である。
+    # 開いているのは埋め込み（platform.llmgateway.v1.LlmEmbedding）と
+    # テキスト生成（platform.llmgateway.v1.LlmCompletion。Complete ＝ 一括 /
+    # CompleteStream ＝ サーバストリーミング。IADR-0398 / #1255）の 2 面である。
     grpcPort: 8081
     # FR-02, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み（Ruri v3）の配線対象。
     # embedding.enabled=true のとき deployment.yaml が Embedding__SelfHosted__BaseUrl と
@@ -538,6 +563,13 @@ services:
     # FR-17, ADR-0033 決定 8 / #912: リンク抽出のため storage:// 本文を MinIO から実取得する
     # （読み取り側。バケット作成は書き込み側の ConversionService が担う）。
     objectStorage: true
+    # FR-18 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0398 (#1255): east-west gRPC の
+    # 呼び出し側資格情報。realm の confidential client `graph-service`（service account ＋
+    # realm ロール platform-service のみ。ABAC ポリシーは持たない）。
+    serviceToken:
+      clientId: graph-service
+      existingSecret: graph-service-token
+      clientSecretKey: client-secret
     # FR-17, FR-05, IADR-0089 (#342) / #958: ABAC スコープ解決先。appsettings 既定は :5005（ローカル用）で、
     # ここで上書きしないと不達 → GraphAccessResolver が Granted=false へ縮退し、**グラフが常に空になる**。
     # 状態コードにも出ないため live で気付けない（#958 に同型 2 件の記録）。
@@ -549,6 +581,11 @@ services:
       # `Name or service not known` になり提案が 0 件のまま（#1244 の実測。aianalysis 等と同じ上書き）。
       - name: Services__LlmGateway
         value: "http://llmgateway-service:8080"
+      # FR-18 / NFR-16, IADR-0398 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
+      # AI 提案の生成が gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # ポートは llmgateway.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
+      - name: Services__LlmGatewayGrpc
+        value: "http://llmgateway-service:8081"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }

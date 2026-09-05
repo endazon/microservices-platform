@@ -6,7 +6,6 @@ using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Observability;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
 
 namespace AiAnalysisService.Infrastructure.ExternalServices;
 
@@ -25,12 +24,21 @@ namespace AiAnalysisService.Infrastructure.ExternalServices;
 // 本サービスは**メッシュ内部の面**なので、標識は外周（BFF）が付けたヘッダ `X-Synthetic-Traffic` から読む
 // （外周は検証済み JWT の主体から決めており、外から偽装できない）。既定 null は既存テストの
 // 直接構築（`new RagOrchestrator(factory)`）を壊さないため。
+// FR-04, NFR-02, ADR-0029, ADR-0075, [[IADR-0398]] (#1255): `completionTransport` は LlmGateway の
+// テキスト生成を呼ぶ輸送（REST の SSE ／ east-west gRPC のサーバストリーミング）。
+// **既定 null は REST 輸送**（`httpFactory` から組む）であり、既存テストの直接構築
+// （`new RagOrchestrator(factory)`）は 1 つも変わらない —— DI 経由では Program.cs が
+// `Services:LlmGatewayGrpc` の有無で gRPC 実装を差し込む。**並走中の正は REST である。**
 public class RagOrchestrator(
     IHttpClientFactory httpFactory,
     IHttpContextAccessor? httpContextAccessor = null,
     ILogger<RagOrchestrator>? logger = null,
-    IOptions<SyntheticMonitoringOptions>? syntheticOptions = null) : IRagOrchestrator
+    IOptions<SyntheticMonitoringOptions>? syntheticOptions = null,
+    ILlmCompletionTransport? completionTransport = null) : IRagOrchestrator
 {
+    private readonly ILlmCompletionTransport _llm =
+        completionTransport ?? new HttpLlmCompletionTransport(httpFactory);
+
     // FR-04: 質問回答で文脈に取り込む既定チャンク数。
     private const int DefaultAskTopK = 5;
 
@@ -246,6 +254,10 @@ public class RagOrchestrator(
     // IADR-0037: LlmGateway /complete/stream の SSE を消費し、CompletionStreamEvent を逐次返す。
     // 反復子内で yield を跨ぐ try/catch を避けるため、送信・読み取りの失敗は捕捉後に done(Sent=false) を
     // yield して終了する（呼び出し側は縮退表示に切り替えられる）。egress 判定はゲートウェイ側で保持される。
+    // IADR-0037: LlmGateway の逐次生成を消費し、CompletionStreamEvent を逐次返す。
+    // IADR-0398 (#1255): 輸送は ILlmCompletionTransport が持つ（REST の SSE ／ east-west gRPC の
+    // サーバストリーミング）。**本メソッドに残るのは合成監視の抑止だけである** ——
+    // 送信・受信の失敗をどの縮退イベントへ落とすかは輸送ごとの写しであり、2 実装が同じ枝を持つ。
     private async IAsyncEnumerable<CompletionStreamEvent> StreamCompletionAsync(
         string prompt, string confidentiality, string purpose, [EnumeratorCancellation] CancellationToken ct)
     {
@@ -253,6 +265,9 @@ public class RagOrchestrator(
         // 🔴 **`done(Sent=false)` で終える。** ここで `token` イベントを 1 件も出さないことは意図であり、
         // その帰結として `rag.answer.first_token.duration`（[[IADR-0354]]）は記録されない ——
         // **`RagFirstTokenP95High` の評価対象は本 PR では生まれない。裁定待ちである**（作業仕様書 §0）。
+        //
+        // 🔴 **判定は輸送の外に置く。** 輸送へ移すと 2 実装が同じ抑止を持つことになり、片方だけが
+        // 直る事故の口になる（費用が出るのは合成が LLM を呼んだときである）。
         if (SuppressLlmForSynthetic())
         {
             yield return new CompletionStreamEvent(string.Empty, Done: true, Sent: false,
@@ -260,7 +275,6 @@ public class RagOrchestrator(
             yield break;
         }
 
-        var llmClient = httpFactory.CreateClient("LlmGateway");
         // IADR-0101: MaxTokens は思考トークンと本文の合算上限（thinking が既定有効な Opus 5 / Sonnet 5 の場合）。
         // 本経路の purpose は rag-answer で、現行設定の割当は claude-sonnet-5（ADR-0022 追随済み・IADR-0106）。
         // Sonnet 5 も thinking が既定有効で、かつ新トークナイザ（同一テキストで約 +30% トークン）のため、
@@ -268,81 +282,9 @@ public class RagOrchestrator(
         var body = new CompletionApiRequest(prompt, MaxTokens: 4096, Model: null,
             Confidentiality: confidentiality, Purpose: purpose);
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/complete/stream")
-        {
-            Content = JsonContent.Create(body),
-        };
-        // ADR-0044, ADR-0076 決定 4 (#1203): 標識を引き継ぐ（費用計測の除外はゲートウェイ側で行う）。
-        SyntheticTraffic.PropagateTo(request, IsSyntheticRequest());
-
-        HttpResponseMessage? resp = null;
-        var sendFaulted = false;
-        try
-        {
-            resp = await llmClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
-        {
-            sendFaulted = true;
-        }
-
-        if (sendFaulted || resp is null || !resp.IsSuccessStatusCode)
-        {
-            resp?.Dispose();
-            yield return new CompletionStreamEvent(string.Empty, Done: true, Sent: false,
-                Text: "LLM が現在利用できません。");
-            yield break;
-        }
-
-        using (resp)
-        await using (var stream = await resp.Content.ReadAsStreamAsync(ct))
-        using (var reader = new StreamReader(stream))
-        {
-            while (true)
-            {
-                string? line = null;
-                var readFaulted = false;
-                try
-                {
-                    line = await reader.ReadLineAsync(ct);
-                }
-                catch (Exception ex) when (ex is IOException or HttpRequestException && !ct.IsCancellationRequested)
-                {
-                    readFaulted = true;
-                }
-
-                if (readFaulted)
-                {
-                    yield return new CompletionStreamEvent(string.Empty, Done: true, Sent: false,
-                        Text: "LLM 応答の受信に失敗しました。");
-                    yield break;
-                }
-
-                if (line is null)
-                    yield break; // ストリーム終端
-
-                if (!line.StartsWith("data: ", StringComparison.Ordinal))
-                    continue; // SSE の空行・コメント行は読み飛ばす
-
-                CompletionStreamEvent? ev = null;
-                try
-                {
-                    ev = JsonSerializer.Deserialize<CompletionStreamEvent>(
-                        line["data: ".Length..], SseJson);
-                }
-                catch (JsonException)
-                {
-                    ev = null; // 壊れた行は無視
-                }
-
-                if (ev is not null)
-                    yield return ev;
-            }
-        }
+        await foreach (var ev in _llm.StreamAsync(body, IsSyntheticRequest(), ct))
+            yield return ev;
     }
-
-    // SSE data 行の JSON（camelCase）を CompletionStreamEvent へ復元する。
-    private static readonly JsonSerializerOptions SseJson = new(JsonSerializerDefaults.Web);
 
     // FR-05: ABAC スコープ解決。解決失敗時も deny-by-default（Granted=false）へ縮退する。
     private async Task<AccessScopeResponse> ResolveScopeAsync(string userId,
@@ -393,21 +335,23 @@ public class RagOrchestrator(
         if (SuppressLlmForSynthetic())
             return SyntheticNoEgressAnswer(citations);
 
-        var llmClient = httpFactory.CreateClient("LlmGateway");
-        PropagateSyntheticTo(llmClient);
         // FR-11: Model は明示せず（null）、用途（purpose）と機密区分をゲートウェイへ渡して呼び出し先・モデル選択を委ねる。
         // IADR-0101: MaxTokens は思考トークンと本文の合算上限（thinking が既定有効な Opus 5 / Sonnet 5 の場合）。
         // 本経路の purpose は rag-answer で、現行設定の割当は claude-sonnet-5（ADR-0022 追随済み・IADR-0106）。
         // Sonnet 5 も thinking が既定有効で、かつ新トークナイザ（同一テキストで約 +30% トークン）のため、
         // 4096 は実測前の出発値である（再調整は #380）。
-        var completionResp = await llmClient.PostAsJsonAsync("/complete",
+        //
+        // IADR-0398 (#1255): 輸送は ILlmCompletionTransport（REST ／ east-west gRPC）が持つ。
+        // 🔴 **枝の読み分けはここに残る** —— 「到達できなかった」「答えたが本文が無い」「答えた」の
+        // 3 値を輸送が返し（LlmCompletionOutcome）、どの文言へ倒すかは業務判断だからである。
+        var outcome = await _llm.CompleteAsync(
             new CompletionApiRequest(prompt, MaxTokens: 4096, Model: null,
-                Confidentiality: confidentiality, Purpose: purpose), ct);
+                Confidentiality: confidentiality, Purpose: purpose),
+            IsSyntheticRequest(), ct);
 
-        if (completionResp.IsSuccessStatusCode)
+        if (outcome.Reached)
         {
-            var completion = await completionResp.Content
-                .ReadFromJsonAsync<CompletionApiResponse>(ct);
+            var completion = outcome.Response;
 
             // FR-11 縮退: ゲートウェイが送信を拒否（許容ティアに送信可能な呼び出し先が無い）した場合は、
             // 外部送信せず検索結果（出典）のみ返す。
@@ -481,16 +425,6 @@ public class RagOrchestrator(
     // 許可は構成 `SyntheticMonitoring:AllowLlmEgress` で明示的に立てる。
     private bool SuppressLlmForSynthetic()
         => IsSyntheticRequest() && syntheticOptions?.Value.AllowLlmEgress != true;
-
-    // ADR-0044, ADR-0076 決定 4 (#1203): LlmGateway へ標識を引き継ぐ。
-    // **費用計測の除外はゲートウェイ側で行う** —— 単価を解決して金額を積む主体がそこだからである
-    // （ADR-0044 決定 3。呼び出し側で引き算する形にすると、経路が増えるたびに引き算が漏れる）。
-    private void PropagateSyntheticTo(HttpClient client)
-    {
-        if (IsSyntheticRequest())
-            client.DefaultRequestHeaders.TryAddWithoutValidation(
-                SyntheticTraffic.HeaderName, SyntheticTraffic.HeaderValue);
-    }
 
     // ADR-0076 決定 4 (#1203): 合成トラフィックへ返す縮退回答。**出典は通常どおり添える**
     // （検索までは実際に行っており、経路の健全性はそこまで測れている）。

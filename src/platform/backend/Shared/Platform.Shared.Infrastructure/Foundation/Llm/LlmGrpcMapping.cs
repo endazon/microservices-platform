@@ -59,4 +59,109 @@ public static class LlmGrpcMapping
         Endpoint: string.IsNullOrEmpty(resp.Endpoint) ? null : resp.Endpoint,
         RoutingReason: string.IsNullOrEmpty(resp.RoutingReason) ? null : resp.RoutingReason,
         Retryable: resp.Retryable);
+
+    // ---- テキスト生成（FR-04, FR-11, ADR-0010, IADR-0398 (#1255)）----------------------------------
+    //
+    // 写像だけを置く規則は埋め込みと同じである（上の 🔴）。**呼び出し元と呼び出し先が同じ写像を使う**
+    // ので、「送る側と受ける側で項目名が 1 つずれる」形の壊れ方が起こらない。
+
+    /// <summary>
+    /// REST の <c>CompletionApiRequest</c> 既定を proto3 の「未指定」へ写す（クライアント側）。
+    /// proto3 の string は null を持てないため、REST の null はすべて空文字にする ——
+    /// 受け側が空文字を REST の null と同じに扱うことは <see cref="ToDto(Pb.CompleteRequest)"/> の
+    /// 注記と GrpcCompleteTests が固定する。
+    /// </summary>
+    public static Pb.CompleteRequest ToProto(CompletionApiRequest req) => new()
+    {
+        Prompt = req.Prompt,
+        MaxTokens = req.MaxTokens,
+        Model = req.Model ?? string.Empty,
+        Confidentiality = req.Confidentiality ?? string.Empty,
+        Purpose = req.Purpose ?? string.Empty,
+    };
+
+    /// <summary>
+    /// proto の要求を REST の DTO へ写す（サーバ側）。
+    /// 🔴 <b>proto3 に null は無い</b>（IADR-0398 決定 4）。REST の既定値のうち、
+    /// <c>max_tokens</c> だけは <b>0 が「未指定」と区別できない</b>ため、ここで明示的に写す。
+    /// <para>
+    /// <c>model</c> / <c>confidentiality</c> / <c>purpose</c> の空文字は写し不要である ——
+    /// 受け側（<c>LlmRouter</c> の <c>IsNullOrWhiteSpace</c>・<c>SensitivityClasses.Parse</c>・
+    /// <c>CompletionUseCase</c> の <c>IsNullOrWhiteSpace ? "default"</c>）が
+    /// <b>null と空文字を同じに扱う</b>ことを実測して確かめてある。ここで null へ戻すと
+    /// 「写しが 2 か所にある」状態になり、片方だけが直る事故の口になる。
+    /// </para>
+    /// </summary>
+    public static CompletionApiRequest ToDto(Pb.CompleteRequest req) => new(
+        Prompt: req.Prompt,
+        // 🔴 0 は「未指定」であり「0 トークン」ではない。REST の既定（IADR-0101 の 4096）へ写す。
+        // 写し漏れは例外にならず、**プロバイダが max_tokens=0 を受け取って本文が空になる**
+        // 形で静かに壊れる（thinking が既定で有効なモデルでは特に）。
+        MaxTokens: req.MaxTokens == 0 ? DefaultMaxTokens : req.MaxTokens,
+        Model: req.Model,
+        Confidentiality: req.Confidentiality,
+        Purpose: req.Purpose);
+
+    /// <summary>
+    /// REST の <c>CompletionApiRequest.MaxTokens</c> の既定（IADR-0101）。
+    /// DTO の既定引数はリフレクションでしか読めないため、写しの側で名前を付けて 1 か所に置く。
+    /// </summary>
+    public const int DefaultMaxTokens = 4096;
+
+    public static Pb.CompleteResponse ToProto(CompletionApiResponse resp) => new()
+    {
+        Text = resp.Text,
+        Model = resp.Model,
+        InputTokens = resp.InputTokens,
+        OutputTokens = resp.OutputTokens,
+        // 🔴 明示的に写す（DTO の既定は true・proto3 の既定は false で向きが逆）。
+        Sent = resp.Sent,
+        Endpoint = resp.Endpoint ?? string.Empty,
+        RoutingReason = resp.RoutingReason ?? string.Empty,
+        StopReason = resp.StopReason ?? string.Empty,
+    };
+
+    public static CompletionApiResponse ToDto(Pb.CompleteResponse resp) => new(
+        Text: resp.Text,
+        Model: resp.Model,
+        InputTokens: resp.InputTokens,
+        OutputTokens: resp.OutputTokens,
+        Sent: resp.Sent,
+        // 空文字は REST の null（未設定）へ戻す。REST 応答の JSON でも null で届く項目である。
+        Endpoint: string.IsNullOrEmpty(resp.Endpoint) ? null : resp.Endpoint,
+        RoutingReason: string.IsNullOrEmpty(resp.RoutingReason) ? null : resp.RoutingReason,
+        StopReason: string.IsNullOrEmpty(resp.StopReason) ? null : resp.StopReason);
+
+    /// <summary>
+    /// SSE の 1 イベント（<c>CompletionStreamEvent</c>）を proto のメッセージへ写す。
+    /// <para>
+    /// 🔴 <b><c>Sent</c> は proto3 の既定と向きが逆である</b>（DTO 既定 <c>true</c> ／ proto3 既定
+    /// <c>false</c>。IADR-0398 決定 4）。delta メッセージにも <c>sent=true</c> を明示的に書く ——
+    /// 落とすと例外にはならず、<b>全 delta が「縮退」に見える</b>形で静かに壊れる
+    /// （呼び出し元は縮退表示・提案 0 件・画像保持へ倒れる）。GrpcCompleteStreamTests が固定する。
+    /// </para>
+    /// </summary>
+    public static Pb.CompletionStreamEvent ToProto(CompletionStreamEvent ev) => new()
+    {
+        Delta = ev.Delta,
+        Done = ev.Done,
+        Sent = ev.Sent,
+        Text = ev.Text ?? string.Empty,
+        Model = ev.Model,
+        InputTokens = ev.InputTokens,
+        OutputTokens = ev.OutputTokens,
+        RoutingReason = ev.RoutingReason ?? string.Empty,
+        StopReason = ev.StopReason ?? string.Empty,
+    };
+
+    public static CompletionStreamEvent ToDto(Pb.CompletionStreamEvent ev) => new(
+        Delta: ev.Delta,
+        Done: ev.Done,
+        Sent: ev.Sent,
+        Text: string.IsNullOrEmpty(ev.Text) ? null : ev.Text,
+        Model: ev.Model,
+        InputTokens: ev.InputTokens,
+        OutputTokens: ev.OutputTokens,
+        RoutingReason: string.IsNullOrEmpty(ev.RoutingReason) ? null : ev.RoutingReason,
+        StopReason: string.IsNullOrEmpty(ev.StopReason) ? null : ev.StopReason);
 }

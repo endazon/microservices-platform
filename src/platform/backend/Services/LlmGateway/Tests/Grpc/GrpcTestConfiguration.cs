@@ -3,7 +3,7 @@ using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
 
-namespace LlmGateway.Tests.Features.Embeddings.Embed;
+namespace LlmGateway.Tests.Grpc;
 
 // NFR-16, IADR-0379 決定 3, IADR-0397 (#1255): gRPC の器（GrpcKestrelFactory）が使う h2c ポートと
 // HTTP/1.1 側の URL を、**実配備と同じ経路（環境変数）**で注入する。

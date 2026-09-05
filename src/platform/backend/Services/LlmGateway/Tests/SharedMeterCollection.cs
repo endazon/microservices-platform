@@ -1,3 +1,5 @@
+using LlmGateway.Tests.Grpc;
+
 namespace LlmGateway.Tests;
 
 // IADR-0110 (#395) / IADR-0394 (#1275): **共有 Meter へ測定を発行するテストクラス**を直列化する
@@ -14,8 +16,19 @@ namespace LlmGateway.Tests;
 // 🔴 **これは多層防御であって主たる防護ではない。** 主は probe 側の絞り込み（Meter の
 // **インスタンス**で購読する。IADR-0394 決定 1）である —— 直列化は同一アセンブリ内でしか効かず、
 // 加入し忘れは静かに起きる（本 issue がその実例である）。
+//
+// IADR-0398 (#1255): 🔴 **gRPC の実 Kestrel 器（GrpcKestrelFactory）もこのコレクションが持つ。**
+// 理由は 2 つあり、どちらも「1 つに保つ」という同じ形である。
+//   1. `GrpcTestConfiguration` は h2c ポートを**プロセスで 1 つだけ**選ぶ。器をクラスごとに作ると
+//      2 つ目の Kestrel が同じポートへ bind できず起動に失敗する（埋め込みだけのときは
+//      gRPC のテストクラスが 1 つしか無かったので露見しなかった）。
+//   2. gRPC の補完テストは **`/complete` と同じ Meter へ発行する**。上の加入規則
+//      「発行するなら加入する」により、そもそもこのコレクションへ入らなければならない ——
+//      入れずに走らせたところ、`CompletionMetricsTests` の probe が本テストの発行を拾って
+//      落ちた（実測）。クラスは 1 つのコレクションにしか属せないので、**器の共有と
+//      直列化を同じコレクションで満たす**。
 [CollectionDefinition(Name)]
-public sealed class SharedMeterCollection
+public sealed class SharedMeterCollection : ICollectionFixture<GrpcKestrelFactory>
 {
     public const string Name = "llm-shared-meter";
 }

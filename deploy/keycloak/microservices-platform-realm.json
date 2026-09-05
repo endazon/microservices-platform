@@ -444,6 +444,51 @@
       "defaultClientScopes": ["roles"]
     },
     {
+      "clientId": "aianalysis-service",
+      "name": "AiAnalysisService east-west gRPC caller (client_credentials)",
+      "description": "NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0398 (#1255): east-west gRPC で LlmGateway のテキスト生成を呼ぶ主体（RAG 回答の一括生成と逐次生成）。service-account に realm ロール platform-service のみを与え、ABAC ポリシー・属性は与えない（文書を読む主体ではない）。secret は dev 専用で本番は config から供給する。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "aianalysis-service-dev-secret-change-me",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": ["roles"]
+    },
+    {
+      "clientId": "graph-service",
+      "name": "GraphService east-west gRPC caller (client_credentials)",
+      "description": "NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0398 (#1255): east-west gRPC で LlmGateway のテキスト生成を呼ぶ主体（AI 提案の生成）。service-account に realm ロール platform-service のみを与え、ABAC ポリシー・属性は与えない（文書を読む主体ではない）。secret は dev 専用で本番は config から供給する。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "graph-service-dev-secret-change-me",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": ["roles"]
+    },
+    {
+      "clientId": "conversion-service",
+      "name": "ConversionService east-west gRPC caller (client_credentials)",
+      "description": "NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0398 (#1255): east-west gRPC で LlmGateway のテキスト生成を呼ぶ主体（図のコード化）。service-account に realm ロール platform-service のみを与え、ABAC ポリシー・属性は与えない（文書を読む主体ではない）。secret は dev 専用で本番は config から供給する。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "conversion-service-dev-secret-change-me",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": ["roles"]
+    },
+    {
       "clientId": "identity-admin",
       "name": "SC-17 identity admin (Keycloak Admin REST, client_credentials)",
       "description": "SC-17・IADR-0301 決定 2・IADR-0329 (#1101): AuthorizationService が利用者のロール/属性割当・無効化・セッション失効を Admin REST へ反映する機密クライアント。realm-management の view-users/manage-users/view-realm のみを持ち realm ロールは持たない。取り込み経路 (abac-seeder) とは別主体。secret は dev 専用。",
@@ -762,6 +807,24 @@
       "enabled": true,
       "serviceAccountClientId": "ai-stock-trading-kb-writer",
       "realmRoles": ["platform-operator"]
+    },
+    {
+      "username": "service-account-aianalysis-service",
+      "enabled": true,
+      "serviceAccountClientId": "aianalysis-service",
+      "realmRoles": ["platform-service"]
+    },
+    {
+      "username": "service-account-graph-service",
+      "enabled": true,
+      "serviceAccountClientId": "graph-service",
+      "realmRoles": ["platform-service"]
+    },
+    {
+      "username": "service-account-conversion-service",
+      "enabled": true,
+      "serviceAccountClientId": "conversion-service",
+      "realmRoles": ["platform-service"]
     },
     {
       "username": "service-account-retrieval-service",

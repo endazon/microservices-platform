@@ -9,6 +9,7 @@ using Platform.Shared.Contracts.Dtos;
 using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
+using LlmGateway.Tests.Grpc;
 
 namespace LlmGateway.Tests.Features.Embeddings.Embed;
 
@@ -18,8 +19,13 @@ namespace LlmGateway.Tests.Features.Embeddings.Embed;
 //
 // 陽性対照（T-S-01）と陰性対照（T-S-02 / T-S-03）を同じ器で対にする —— 「拒否された」だけでは
 // 器が壊れているのか認可が効いているのか区別できない。
+//
+// IADR-0398 (#1255): 器は `SharedMeterCollection` の**共有**インスタンスである（従来は IClassFixture）。
+// テキスト生成の gRPC 面が加わり、器が 2 つになると h2c ポートを奪い合って bind に失敗するため。
+// **試験の中身は 1 行も変えていない。**
+[Collection(SharedMeterCollection.Name)]
 [Trait("TestKind", "Integration")]
-public class GrpcEmbedTests : IClassFixture<GrpcKestrelFactory>
+public class GrpcEmbedTests
 {
     private const string ServiceSubject = "service-account-retrieval-service";
     private readonly GrpcKestrelFactory _factory;

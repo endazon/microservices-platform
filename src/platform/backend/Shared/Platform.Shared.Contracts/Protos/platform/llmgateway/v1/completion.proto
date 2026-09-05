@@ -1,0 +1,86 @@
+// FR-04, FR-11, NFR-02, NFR-09, ADR-0010, ADR-0029, ADR-0075, ADR-0076, IADR-0379, IADR-0397,
+// IADR-0398 (#1255):
+// LlmGateway のテキスト生成（REST `POST /complete` / `POST /complete/stream` と同じ意味論）の gRPC 契約。
+//
+// ■ 置き場と所有（IADR-0379 決定 1）: 所有者は LlmGateway。置き場は Platform.Shared.Contracts の
+//   `Protos/platform/llmgateway/v1/`。クライアント・サーバ基底の両方をここから生成する。
+// ■ versioning（IADR-0379 決定 2）: フィールド番号は不変。削除は reserved に残す。破壊的変更は v2 の並走。
+// ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは呼び出し側サービス自身の JWT。利用者トークンは載せない。
+//   本経路は利用者の文脈を持たない（REST の本文にも無い）。
+// ■ 🔴 proto3 には null が無い（IADR-0398 決定 4。IADR-0397 決定 3 と同じ作法）。REST の既定値は
+//   ゲートウェイ側で明示的に写す: max_tokens=0 → 4096（CompletionApiRequest の既定）／
+//   model="" → 未指定（ルータが用途で選ぶ）／ confidentiality="" → restricted（SensitivityClasses.Parse）／
+//   purpose="" → "default"。**sent だけは向きが逆である**（下記 CompletionStreamEvent の 🔴）。
+// ■ 🔴 合成トラフィックの標識（IADR-0378 内周）は本文ではなくメタデータ `x-synthetic-traffic` で運ぶ
+//   （IADR-0398 決定 3）。費用の帰属軸（purpose / model / confidentiality。ADR-0044）は本文で運ぶ。
+syntax = "proto3";
+
+package platform.llmgateway.v1;
+
+option csharp_namespace = "Platform.Shared.Contracts.Grpc.LlmGateway.V1";
+
+// テキスト生成。REST と同じルータ（ILlmRouter.Route）・同じ計器（LlmCompletionMetrics / LlmUsageMetrics）を通す。
+service LlmCompletion {
+  // 一括生成。REST `POST /complete` と同値。縮退（越境拒否・プロバイダ未登録・上流不調）は
+  // **エラーではなく sent=false の応答**で表す（REST の 200 ＋ Sent=false と同じ）。
+  rpc Complete(CompleteRequest) returns (CompleteResponse);
+
+  // 逐次生成。REST `POST /complete/stream`（SSE）と同値。本文の増分を 1 メッセージ 1 delta で送り、
+  // 最後に done=true のメッセージを送る。
+  //
+  // 🔴 **サーバストリーミングである（IADR-0398 決定 1）。unary へ潰してはならない。**
+  // 初回トークンの境界は「最初の delta メッセージの到着」であり、SSE の「最初の data: 行」と同じ位置に
+  // ある。unary にすると最初の delta が生成完了後にしか届かず、NFR-02 の SLI（RagFirstTokenP95High）が
+  // **応答完了 p95** を測ることになる —— ADR-0076 決定 5 が明示的に却下した形である。
+  //
+  // 縮退は done=true / sent=false のメッセージで表し、ストリームは正常終了する（RpcException にしない）。
+  rpc CompleteStream(CompleteRequest) returns (stream CompletionStreamEvent);
+}
+
+// REST の CompletionApiRequest と同じ形。
+message CompleteRequest {
+  string prompt = 1;
+  // 0 は未指定＝4096（IADR-0101 の既定。REST の CompletionApiRequest.MaxTokens と同じ）。
+  // 負数は INVALID_ARGUMENT（0 を「未指定」に使う以上、0 未満は意味を持たない）。
+  int32 max_tokens = 2;
+  // 空文字は未指定＝ゲートウェイが用途（purpose）で選ぶ。
+  string model = 3;
+  // 入力文書の最高機密区分。空文字・未知値は restricted（安全側）。
+  string confidentiality = 4;
+  // 用途。空文字は "default"。値域は設定（PurposeModels）が閉じ、計器は未定義値を other へ丸める（IADR-0110）。
+  string purpose = 5;
+}
+
+// REST の CompletionApiResponse と同じ形。
+message CompleteResponse {
+  string text = 1;
+  string model = 2;
+  int32 input_tokens = 3;
+  int32 output_tokens = 4;
+  // false は縮退（越境拒否・プロバイダ未登録・上流不調）。text に理由が入る。🔴 サーバは常に明示的に設定する。
+  bool sent = 5;
+  string endpoint = 6;
+  string routing_reason = 7;
+  // モデル側の終了理由（end_turn / max_tokens / refusal ほか。IADR-0104）。未送信・未報告は空文字。
+  string stop_reason = 8;
+}
+
+// REST の CompletionStreamEvent（SSE の data: 行）と同じ形。
+message CompletionStreamEvent {
+  // 本文の増分（done=false のとき）。
+  string delta = 1;
+  // 最終メッセージ。model / input_tokens / output_tokens / stop_reason が確定する。
+  bool done = 2;
+  // false は縮退（text に理由）。
+  //
+  // 🔴 **DTO の既定は true・proto3 の既定は false であり、向きが逆である**（IADR-0398 決定 4）。
+  // delta メッセージでもサーバは sent=true を**明示的に**設定する。写し漏れは例外にならず、
+  // **全 delta が縮退に見える**形で静かに壊れる（呼び出し元は縮退表示へ倒れる）。
+  bool sent = 3;
+  string text = 4;
+  string model = 5;
+  int32 input_tokens = 6;
+  int32 output_tokens = 7;
+  string routing_reason = 8;
+  string stop_reason = 9;
+}

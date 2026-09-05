@@ -60,6 +60,11 @@ vexec "vault kv put secret/msp/identity-admin-oidc client-secret='${IDENTITY_ADM
 # 既定は realm import の置き場と同値（ズレると client_credentials が 401 になり、埋め込みが 1 件も通らない）。
 vexec "vault kv put secret/msp/retrieval-service-token client-secret='${RETRIEVAL_SERVICE_CLIENT_SECRET:-retrieval-service-dev-secret-change-me}'"
 vexec "vault kv put secret/msp/ingestion-service-token client-secret='${INGESTION_SERVICE_CLIENT_SECRET:-ingestion-service-dev-secret-change-me}'"
+# FR-04, FR-12, FR-18, NFR-09, NFR-16, ADR-0029/ADR-0075, IADR-0379 決定 4 / IADR-0398 (#1255):
+# テキスト生成（/complete 系）の呼び出し側 3 サービス。埋め込みの 2 つと同型・同じ理由である。
+vexec "vault kv put secret/msp/aianalysis-service-token client-secret='${AIANALYSIS_SERVICE_CLIENT_SECRET:-aianalysis-service-dev-secret-change-me}'"
+vexec "vault kv put secret/msp/graph-service-token client-secret='${GRAPH_SERVICE_CLIENT_SECRET:-graph-service-dev-secret-change-me}'"
+vexec "vault kv put secret/msp/conversion-service-token client-secret='${CONVERSION_SERVICE_CLIENT_SECRET:-conversion-service-dev-secret-change-me}'"
 # NFR-09, IADR-0095/IADR-0342 (#1127): Wiki.js の OIDC ストラテジ（DB 保持・manifest 化できない runtime 状態）
 # を冪等に再適用する `deploy/local/wikijs-setup/bootstrap.sh` 段 8 が読む client secret。
 # **Pod は誰も env で読まない**（読み手は bootstrap）。既定は realm import の置き場と同値 ——
@@ -105,13 +110,13 @@ echo "  PR-1: llm-provider-credentials / PR-2: minio-credentials, wikijs-db, wik
 echo "  PR-3: minio-oidc (MSP ns) / grafana-oidc, vault-oidc, headlamp-oidc (platform-infra ns)"
 echo "  #1107: bff-oidc (MSP ns。BFF セッションの client secret。空だと /bff/auth/login が 500)"
 echo "  #1101: identity-admin-oidc (MSP ns。SC-17 の Keycloak Admin REST 反映。空だと authorization-service が起動しない)"
-echo "  #1255: retrieval-service-token, ingestion-service-token (MSP ns。east-west gRPC の s2s 資格情報。空だと当該 Pod が起動しない)"
+echo "  #1255: retrieval-service-token, ingestion-service-token, aianalysis-service-token, graph-service-token, conversion-service-token (MSP ns。east-west gRPC の s2s 資格情報。空だと当該 Pod が起動しない)"
 echo "  PR-4: postgres, rabbitmq, keycloak-admin (platform-infra ns・creationPolicy: Merge・手動 apply は保持)"
 echo "  #438/#1102/#1144: keycloak-smtp (platform-infra ns。from/user/password は空＝実値未供給。宛先の既定はクラスタ内の捕捉用 MTA。k8s-local-up.sh の ESO=1 が常時 apply する。docs/operations/keycloak-smtp-relay-setup-runbook.md 参照)"
 echo "  #1127: wikijs-oidc (MSP ns。Wiki.js の OIDC ストラテジ seed が読む。WIKIJS_OIDC=1 のときだけ apply される)"
 # 🔴 案内は **実際に apply される名前だけ**を挙げる（#1102: 挙げた名前が作られないと、手順どおり
 #    打った人が必ず NotFound を踏む）。grafana-oidc / headlamp-oidc は OBSERVABILITY=1 / HEADLAMP=1 の、
 #    wikijs-oidc は WIKIJS_OIDC=1 のときだけ apply されるため、無条件の並びからは外して注記に回す。
-echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc retrieval-service-token ingestion-service-token"
+echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token"
 echo "  確認(infra): kubectl -n platform-infra get externalsecret,secret postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp"
 echo "             （grafana-oidc は OBSERVABILITY=1、headlamp-oidc は HEADLAMP=1 のときだけ apply される）"
