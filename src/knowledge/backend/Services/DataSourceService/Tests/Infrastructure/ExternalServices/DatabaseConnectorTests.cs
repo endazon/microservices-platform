@@ -167,6 +167,92 @@ public sealed class DatabaseConnectorTests
         await act.Should().ThrowAsync<DbException>();
     }
 
+    // FR-05, UC-04, ADR-0036, ADR-0074 決定 5, Issue #752: **更新者列を運ぶ（opt-in）。**
+
+    private static DataSource DbSourceWithUpdatedByColumn(string column)
+        => DataSource.Create("erp", "db", "Host=erp;Database=orders;Username=readonly",
+            new Dictionary<string, string>
+            {
+                ["query"] = "SELECT id AS id, updated AS updated, body AS content FROM articles",
+                ["updatedByColumn"] = column,
+            });
+
+    // 🔴 **陰性かつ本 PR の非破壊性の本体である。** 無条件に列を足すと、その別名を持たない
+    // 既存の管理者クエリが全件 SQL エラーになる。**未設定なら発行 SQL は 1 文字も変わらない。**
+    [Fact]
+    public async Task Discover_WithoutUpdatedByColumn_EmitsTheSameSqlAsBefore()
+    {
+        var conn = FakeDbConnection.WithReaderRows(
+            [new() { ["id"] = "a", ["updated"] = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc) }]);
+
+        var items = await Connector(conn).DiscoverAsync(DbSource(), null, CancellationToken.None);
+
+        conn.LastCommand!.CommandText.Should().Be(
+            "SELECT id, updated FROM ( SELECT id AS id, updated AS updated, body AS content FROM articles ) AS src");
+        items.Should().ContainSingle().Which.UpdatedBy.Should().BeNull("列を構成していないので運ばない");
+    }
+
+    [Fact]
+    public async Task Discover_WithUpdatedByColumn_SelectsItAndCarriesTheValue()
+    {
+        var conn = FakeDbConnection.WithReaderRows(
+            [
+                new()
+                {
+                    ["id"] = "a",
+                    ["updated"] = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc),
+                    ["updated_by"] = "hr-tanaka",
+                },
+            ]);
+
+        var items = await Connector(conn).DiscoverAsync(
+            DbSourceWithUpdatedByColumn("author"), null, CancellationToken.None);
+
+        conn.LastCommand!.CommandText.Should().StartWith("SELECT id, updated, author AS updated_by FROM (");
+        items.Should().ContainSingle().Which.UpdatedBy.Should().Be("hr-tanaka");
+    }
+
+    // 🔴 「取れなかった」（列を構成していない）と「取ったら空だった」（列は在るが NULL）を混ぜない。
+    // どちらも `UpdatedBy` は null だが、**列は SELECT されている**（＝構成は効いている）。
+    [Fact]
+    public async Task Discover_WithUpdatedByColumn_LeavesUpdatedByNull_WhenTheColumnIsSqlNull()
+    {
+        var conn = FakeDbConnection.WithReaderRows(
+            [
+                new()
+                {
+                    ["id"] = "a",
+                    ["updated"] = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc),
+                    ["updated_by"] = DBNull.Value,
+                },
+            ]);
+
+        var items = await Connector(conn).DiscoverAsync(
+            DbSourceWithUpdatedByColumn("author"), null, CancellationToken.None);
+
+        conn.LastCommand!.CommandText.Should().Contain("author AS updated_by");
+        items.Should().ContainSingle().Which.UpdatedBy.Should().BeNull();
+    }
+
+    // 🔴 検証に通らない列名は **SQL に載せない**（未設定として扱う）。`query` を自由に書ける経路が
+    // 別に在ることは、識別子を無検査で連結してよい理由にならない。
+    [Theory]
+    [InlineData("src.author")]
+    [InlineData("author FROM users; DROP TABLE t --")]
+    [InlineData("9author")]
+    public async Task Discover_IgnoresAnUnsafeUpdatedByColumn_AndKeepsTheOriginalSql(string column)
+    {
+        var conn = FakeDbConnection.WithReaderRows(
+            [new() { ["id"] = "a", ["updated"] = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc) }]);
+
+        var items = await Connector(conn).DiscoverAsync(
+            DbSourceWithUpdatedByColumn(column), null, CancellationToken.None);
+
+        conn.LastCommand!.CommandText.Should().StartWith("SELECT id, updated FROM (");
+        conn.LastCommand.CommandText.Should().NotContain("DROP TABLE");
+        items.Should().ContainSingle().Which.UpdatedBy.Should().BeNull();
+    }
+
     // ========================= ハンドロール ADO.NET フェイク =========================
 
     private sealed class FakeFactory(FakeDbConnection connection) : IDbConnectionFactory

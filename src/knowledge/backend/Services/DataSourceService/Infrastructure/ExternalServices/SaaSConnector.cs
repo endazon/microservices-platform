@@ -13,11 +13,16 @@ namespace DataSourceService.Infrastructure.ExternalServices;
 //
 // 契約:
 //   一覧（Discover・ページング）: GET {ConnectionUri}{listPath}（既定 /api/items）を nextCursor が尽きるまで
-//     ?{cursorParam}={cursor} でたどる。応答 { items:[{ id, title?, updatedAt }], nextCursor? }。updatedAt>since で増分。
+//     ?{cursorParam}={cursor} でたどる。応答 { items:[{ id, title?, updatedAt, updatedBy? }], nextCursor? }。updatedAt>since で増分。
 //   本文（Fetch）: GET {ConnectionUri}{contentPath}（既定 /api/items/{id}、{id} 置換）→ 本文バイト＋content-type。
 //   認証: Authorization: Bearer {Config["apiToken"]}（ログ非出力）。
 //   レート制限: HTTP 429 を Retry-After（秒/日時）で待機し再試行。無ければ指数バックオフ。maxRetries 超過は例外送出。
 //   失敗: 例外送出 → オーケストレータ（IADR-0051 決定3a）が watermark 非前進・継続失敗アラートに載せる。
+//
+// FR-05, UC-04, ADR-0036, ADR-0074, #752: **更新者（`updatedBy`）を運ぶ。** 項目名は
+//   `Config["updatedByField"]`（既定 `updatedBy`）で構成可能。🔴 **この「REST 契約」は外部組織が
+//   持つものではなく本リポジトリの自前 DTO であり**、拡張に計画側の裁定は要らない（wiki と同型）。
+//   項目が無ければ運ばない（加算のみ＝非破壊）。由来の分類は `SourceUpdatedBy`。
 public sealed class SaaSConnector(IHttpClientFactory httpFactory, ILogger<SaaSConnector> logger)
     : IDataSourceConnector
 {
@@ -46,6 +51,8 @@ public sealed class SaaSConnector(IHttpClientFactory httpFactory, ILogger<SaaSCo
         var listPath = Config(source, "listPath", DefaultListPath);
         var cursorParam = Config(source, "cursorParam", DefaultCursorParam);
         var maxRetries = ConfigInt(source, "maxRetries", DefaultMaxRetries);
+        var updatedByField = Config(source, SourceUpdatedBy.FieldConfigKey, SourceUpdatedBy.DefaultField);
+        var tally = new SourceUpdatedByTally();
 
         var items = new List<SourceItem>();
         string? cursor = null;
@@ -63,7 +70,10 @@ public sealed class SaaSConnector(IHttpClientFactory httpFactory, ILogger<SaaSCo
                     continue;
                 if (since is { } watermark && it.UpdatedAt <= watermark)
                     continue;
-                items.Add(new SourceItem(it.Id, it.UpdatedAt, 0));
+                // #752: 更新者を読む。**由来（無い／空だった／読めない）を分類して集計する。**
+                var updatedBy = SourceUpdatedBy.FromJson(it.Extra, updatedByField);
+                tally.Add(updatedBy.Origin);
+                items.Add(new SourceItem(it.Id, it.UpdatedAt, 0, updatedBy.Value));
             }
 
             cursor = pageResult?.NextCursor;
@@ -76,6 +86,14 @@ public sealed class SaaSConnector(IHttpClientFactory httpFactory, ILogger<SaaSCo
             logger.LogWarning(
                 "SaaSConnector: ページング安全上限 {MaxPages} に達したため打ち切りました。一部データが未取得の可能性があります（source {Id}）",
                 MaxPages, source.Id);
+
+        // #752: 🔴 **「取れなかった」では鳴らさない**（項目を構成していないのは正常な状態である）。
+        // 鳴らすのは「項目は在ったのに使えなかった」2 種だけで、1 サイクル 1 行に畳む。
+        if (tally.HasAnomaly)
+            logger.LogWarning(
+                "SaaSConnector: 更新者を読めなかった項目があります（source {Id}, 項目 '{Field}'）: "
+                + "取得 {Carried} 件 / ソース側が空 {Blank} 件 / 文字列として読めない {Unreadable} 件 / 項目なし {Missing} 件",
+                source.Id, updatedByField, tally.Carried, tally.BlankAtSource, tally.Unreadable, tally.NotCarried);
 
         return items;
     }
@@ -172,5 +190,12 @@ public sealed class SaaSConnector(IHttpClientFactory httpFactory, ILogger<SaaSCo
 
     // 汎用 SaaS 契約: ページ応答（items＋nextCursor）とページ項目。
     private sealed record SaaSPage(List<SaaSItem>? Items, string? NextCursor);
-    private sealed record SaaSItem(string Id, string? Title, DateTimeOffset UpdatedAt);
+
+    // #752: 更新者は**宣言済みプロパティにしない**（項目名が構成可能なので名前を固定できない）。
+    // 未知項目をまとめて捕え、構成された名前で引く（`SourceUpdatedBy.FromJson`。wiki と同型）。
+    private sealed record SaaSItem(string Id, string? Title, DateTimeOffset UpdatedAt)
+    {
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public Dictionary<string, JsonElement>? Extra { get; set; }
+    }
 }

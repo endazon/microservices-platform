@@ -159,6 +159,51 @@ public sealed class SaaSConnectorTests
         handler.Requests.Should().BeEmpty();
     }
 
+    // FR-05, UC-04, ADR-0036, ADR-0074, Issue #752: **更新者を運ぶ。**（wiki と同型）
+    [Fact]
+    public async Task Discover_CarriesUpdatedBy_FromTheDefaultField()
+    {
+        var handler = new StubHandler
+        {
+            Responder = (_, _) => Json("""
+                {"items":[{"id":"x1","updatedAt":"2026-07-01T00:00:00Z","updatedBy":"hr-tanaka"}],"nextCursor":null}
+                """),
+        };
+
+        var items = await Connector(handler).DiscoverAsync(SaasSource(), null, CancellationToken.None);
+
+        items.Should().ContainSingle().Which.UpdatedBy.Should().Be("hr-tanaka");
+    }
+
+    [Fact]
+    public async Task Discover_UsesConfiguredUpdatedByField()
+    {
+        var handler = new StubHandler
+        {
+            Responder = (_, _) => Json("""
+                {"items":[{"id":"x1","updatedAt":"2026-07-01T00:00:00Z","author":"alice"}],"nextCursor":null}
+                """),
+        };
+        var source = SaasSource(new Dictionary<string, string> { ["updatedByField"] = "author" });
+
+        var items = await Connector(handler).DiscoverAsync(source, null, CancellationToken.None);
+
+        items.Should().ContainSingle().Which.UpdatedBy.Should().Be("alice");
+    }
+
+    // 🔴 陰性: 「項目が無い」も「在るが空」も null になり、`owner` は予約値へ倒れる。
+    [Theory]
+    [InlineData("""{"items":[{"id":"x1","updatedAt":"2026-07-01T00:00:00Z"}],"nextCursor":null}""")]
+    [InlineData("""{"items":[{"id":"x1","updatedAt":"2026-07-01T00:00:00Z","updatedBy":"  "}],"nextCursor":null}""")]
+    public async Task Discover_LeavesUpdatedByNull_WhenTheSourceDoesNotCarryAUsableValue(string json)
+    {
+        var handler = new StubHandler { Responder = (_, _) => Json(json) };
+
+        var items = await Connector(handler).DiscoverAsync(SaasSource(), null, CancellationToken.None);
+
+        items.Should().ContainSingle().Which.UpdatedBy.Should().BeNull();
+    }
+
     // ---- test doubles ----------------------------------------------------
 
     private static HttpResponseMessage Json(string body) => new(HttpStatusCode.OK)

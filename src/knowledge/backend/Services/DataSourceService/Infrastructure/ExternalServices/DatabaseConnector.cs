@@ -21,6 +21,15 @@ namespace DataSourceService.Infrastructure.ExternalServices;
 //     ConnectionUri を書き込み時に 400 で拒否し（ConnectionUriPolicy）、既存行は応答で伏せる。
 //   失敗: DB エラーは例外送出 → オーケストレータ（IADR-0051 決定3a）が watermark 非前進・継続失敗アラートに載せる。
 //   縮退: ConnectionUri／query 未設定は空列挙。
+//
+// FR-05, UC-04, ADR-0036, ADR-0074 決定 5, #752: **更新者列を運ぶ（opt-in）。**
+//   `Config["updatedByColumn"]` に**列名**が与えられたときだけ Discover の SELECT へ 1 本足す
+//   （`SELECT id, updated, {col} AS updated_by FROM ( {query} ) AS src`）。
+//   🔴 **無条件に足してはならない** —— その別名を持たない既存の管理者クエリが**全件 SQL エラー**に
+//   なり、同期そのものが落ちる（＝破壊的変更）。未設定なら発行 SQL は従前と 1 文字も変わらない。
+//   🔴 **列名は `SourceUpdatedBy.IsSafeSqlIdentifier` で検証し、通らなければ未設定として扱う** ——
+//   `query` を自由に書ける経路が別に在ることは、識別子を無検査で連結してよい理由にならない。
+//   ADR-0074 決定 5「値の搭載は解決器の配備後」の前提は #1194（`DataSource.ResolveOwner`）で満たされた。
 public sealed class DatabaseConnector(IDbConnectionFactory connectionFactory, ILogger<DatabaseConnector> logger)
     : IDataSourceConnector
 {
@@ -44,8 +53,14 @@ public sealed class DatabaseConnector(IDbConnectionFactory connectionFactory, IL
         await connection.OpenAsync(ct);
         await using var command = connection.CreateCommand();
         // 参照専用: SELECT のみ。管理者クエリを派生表として包み、列挙に必要な id/updated だけを取り出す。
-        command.CommandText = $"SELECT id, updated FROM ( {query} ) AS src";
+        // #752: 更新者列が構成されているときだけ 1 本足す（未設定なら従前と同一の SQL）。
+        var updatedByColumn = UpdatedByColumn(source);
+        var projection = updatedByColumn is null
+            ? "id, updated"
+            : $"id, updated, {updatedByColumn} AS {SourceUpdatedBy.ColumnAlias}";
+        command.CommandText = $"SELECT {projection} FROM ( {query} ) AS src";
 
+        var tally = new SourceUpdatedByTally();
         var items = new List<SourceItem>();
         await using var reader = await command.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
@@ -67,8 +82,22 @@ public sealed class DatabaseConnector(IDbConnectionFactory connectionFactory, IL
             // 増分: 前回同期時刻（含む同時刻）以前は除外。since=null は初回全件。
             if (since is { } watermark && updated <= watermark)
                 continue;
-            items.Add(new SourceItem(id, updated, 0));
+            // #752: 列を構成していなければ「運ばない」（`NotCarried`）。構成していて値が NULL なら
+            // 「ソース側が空」（`BlankAtSource`）。**この 2 つを混ぜない。**
+            var updatedBy = updatedByColumn is null
+                ? SourceUpdatedByValue.NotCarried
+                : SourceUpdatedBy.FromDbValue(reader[SourceUpdatedBy.ColumnAlias]);
+            tally.Add(updatedBy.Origin);
+            items.Add(new SourceItem(id, updated, 0, updatedBy.Value));
         }
+
+        // 🔴 「取れなかった」では鳴らさない。鳴らすのは「列は在ったのに使えなかった」2 種だけ。
+        if (tally.HasAnomaly)
+            logger.LogWarning(
+                "DatabaseConnector: 更新者を読めなかった行があります（source {Id}, 列 '{Column}'）: "
+                + "取得 {Carried} 件 / ソース側が空 {Blank} 件 / 文字列として読めない {Unreadable} 件 / 列なし {Missing} 件",
+                source.Id, updatedByColumn, tally.Carried, tally.BlankAtSource, tally.Unreadable, tally.NotCarried);
+
         return items;
     }
 
@@ -122,6 +151,24 @@ public sealed class DatabaseConnector(IDbConnectionFactory connectionFactory, IL
         => source.Config.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
             ? value
             : fallback;
+
+    // #752: 更新者列（opt-in）。未設定は null。**検証に通らない値も null（＝未設定）へ倒し、警告する** ——
+    // 通らない識別子を SQL へ載せるくらいなら、更新者を運ばないほうが安全側である。
+    private string? UpdatedByColumn(DataSource source)
+    {
+        var column = Config(source, SourceUpdatedBy.ColumnConfigKey, string.Empty);
+        if (string.IsNullOrWhiteSpace(column))
+            return null;
+
+        var trimmed = column.Trim();
+        if (SourceUpdatedBy.IsSafeSqlIdentifier(trimmed))
+            return trimmed;
+
+        logger.LogWarning(
+            "DatabaseConnector: Config[\"{Key}\"] が列名として不正なため更新者を取得しません（source {Id}）",
+            SourceUpdatedBy.ColumnConfigKey, source.Id);
+        return null;
+    }
 
     // プロバイダ差（DateTime / DateTimeOffset / ISO8601 文字列）を吸収して DateTimeOffset(UTC) へ正規化する。
     // DateTime の Kind: Local は UTC へ変換、Unspecified（例 timestamp without time zone）は UTC 格納を前提とする
