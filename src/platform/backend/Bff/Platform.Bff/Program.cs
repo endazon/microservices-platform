@@ -1,5 +1,6 @@
 using Knowledge.Bff.Endpoints.Usage;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Observability;
@@ -70,6 +71,10 @@ builder.Services.AddOpenTelemetry()
 builder.Services.AddHttpClient("AuthorizationService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
         ?? "http://authorization-service:5005"));
+// NFR-09, ADR-0029, ADR-0075, IADR-0379 (#1201): 同じ解決を gRPC でも呼べるようにする（参照実装・opt-in）。
+// `Services:AuthorizationServiceGrpc`（h2c アドレス）が在るときだけ登録され、BffScopeResolver がこちらを使う。
+// 資格情報は BFF 自身の s2s トークン（`ServiceToken:*`。利用者の JWT ではない）。並走中の正は REST。
+builder.Services.AddAuthzScopeGrpcClient(builder.Configuration);
 builder.Services.AddHttpClient("RetrievalService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:RetrievalService"]
         ?? "http://retrieval-service:5003"));
