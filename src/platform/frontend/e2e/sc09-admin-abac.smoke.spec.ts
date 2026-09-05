@@ -42,6 +42,56 @@ test('SC-09: a platform administrator reaches the screen and its navigation entr
   expectBffTrafficIsComplete(traffic);
 });
 
+// SC-09, FR-17, ADR-0033 決定 3・9, INDEX 決定 18 (#1241): **辺の型辞書の区画を実ブラウザで固定する。**
+//
+// 計画 §SC-09 は 4 区画を定めており、**辺の型だけが長く欠けていた**（前提 ADR の保留が
+// 2026-08-07 に解けたのに、解除を実行する主体が居なかった）。**区画の実在をここで固定する** ——
+// 単体テストは合成したツリーを見るが、こちらは**実ビルド成果物とルータの上で**見る。
+//
+// 🔴 **画面が引くのは `/bff/edge-types`（使用件数つき・admin ＋ operator）であって、
+// SC-03 / SC-18 / SC-21 が使う `/bff/graph/edge-types`（描画用カタログ・認証のみ・件数なし）ではない。**
+// 後者しか用意しないので、**取り違えた実装は `unhandled` に載って落ちる**
+// （`expectBffTrafficIsComplete` が担保する）。
+test('SC-09: the edge-type dictionary tab reads the admin dictionary, not the drawing catalog', async ({
+  page,
+}) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser(['platform-admin']),
+    handlers: {
+      'GET /admin/authz/attributes': [],
+      'GET /admin/authz/policies': [],
+      'GET /edge-types': [
+        {
+          id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+          name: 'cites',
+          layer: 'core',
+          isSymmetric: false,
+          isSeed: true,
+          usageCount: 342,
+        },
+      ],
+    },
+  });
+
+  await page.goto('/admin/abac');
+  await expect(page.getByRole('heading', { name: '管理者設定（ABAC）', level: 1 })).toBeVisible();
+
+  // ★ 陽性対照: 4 区画のうち「辺の型」が在る（＝下の主張が「画面が描けていないだけ」ではない）。
+  await page.getByRole('tab', { name: '辺の型' }).click();
+
+  await expect(page.getByRole('table', { name: '辺の型辞書の一覧' })).toBeVisible();
+  await expect(page.getByText('cites')).toBeVisible();
+  // **使用件数が届く。** カタログ（件数なし）へ向いていればここで落ちる。
+  await expect(page.getByRole('cell', { name: '342' })).toBeVisible();
+
+  // ★ 陰性対照: 契約の無い「逆向きの表示語」の列は作っていない（#1241 / [[IADR-0388]] 決定 5）。
+  await expect(page.getByRole('columnheader', { name: '逆向きの表示語' })).toHaveCount(0);
+
+  // 取り違えの検査: 描画用カタログは 1 度も呼ばれていない。
+  expect(traffic.calls.map((c) => c.key)).not.toContain('GET /graph/edge-types');
+
+  expectBffTrafficIsComplete(traffic);
+});
 test('SC-09: an operator gets the same not-found page and never learns the screen exists', async ({
   page,
 }) => {

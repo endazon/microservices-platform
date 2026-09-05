@@ -286,6 +286,113 @@ paths:
                 $ref: "#/components/schemas/TagInUseProblem"
         "502": { description: DocumentService へ到達できない }
 
+  /bff/edge-types:
+    get:
+      x-roles: [platform-admin, platform-operator]
+      tags: [EdgeTypes]
+      summary: "FR-17, SC-09: 辺の型辞書の一覧（値集合 ＋ 使用件数。管理者・運用者）"
+      description: |
+        FR-17, SC-09, ADR-0033 決定 3・9: 辺の型の値集合を**使用件数つきで**返す。
+
+        🔴 **`/bff/graph/edge-types`（描画用カタログ）とは別の口である。取り違えてはならない。**
+        あちらは**認証のみ・ロール不問**で、**使用件数を持たない**（意図した除外）。
+        件数は全辺を数えており ABAC で絞られていないため、一般利用者へ返すと権限外の辺を含む
+        総量が漏れる。**同じ口に両方を担わせると、SC-03 / SC-18 / SC-21 の一般利用者が 403 になるか、
+        集計値が漏れるかのどちらかになる**——だから口を 2 つに分けてある。
+      operationId: bff-edge-type-list
+      responses:
+        "200":
+          description: 辺の型辞書（使用件数つき）
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EdgeTypeDto" }
+        "401": { description: 未認証 }
+        "403": { description: 管理者・運用者ロール以外 }
+        "502": { description: GraphService へ到達できない }
+    post:
+      x-roles: [platform-admin]
+      tags: [EdgeTypes]
+      summary: "FR-17, SC-09: 辺の型辞書へ追加（管理者のみ）"
+      description: |
+        ADR-0033 決定 3: **辞書は実行時に変わる**（値の追加・改名は本画面から行い、コードは触らない）。
+        **名前の重複は 409**。正規化後の名前で判定するため、前後の空白だけが違う 2 つは別物にならない。
+      operationId: bff-edge-type-create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEdgeTypeRequest"
+      responses:
+        "201":
+          description: 追加した辺の型（使用件数は 0）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EdgeTypeDto"
+        "400": { description: 型名が空、または層が値域外（core / recommended / future） }
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly。運用者も不可） }
+        "409": { description: 同名の辺の型が既に辞書にある }
+        "502": { description: GraphService へ到達できない }
+
+  /bff/edge-types/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      x-roles: [platform-admin]
+      tags: [EdgeTypes]
+      summary: "FR-17, SC-09: 辺の型辞書の改名（管理者のみ）"
+      description: |
+        ADR-0033 決定 9: **識別子は変えない** —— 既存の辺は型 ID を参照しているので、
+        改名への追随は**表示の解決だけで自動的に起こる**（辺は 1 本も書き換えない）。
+        グラフ応答が返すのは `edgeTypeId` だけで、名前は辞書で解決する設計がこれを可能にしている。
+      operationId: bff-edge-type-rename
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameEdgeTypeRequest"
+      responses:
+        "200":
+          description: 改名後の辺の型（使用件数つき）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EdgeTypeDto"
+        "400": { description: 型名が空 }
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly。運用者も不可） }
+        "404": { description: 見つからない }
+        "409": { description: 同名の辺の型が既に辞書にある（自分自身は除く） }
+        "502": { description: GraphService へ到達できない }
+    delete:
+      x-roles: [platform-admin]
+      tags: [EdgeTypes]
+      summary: "FR-17, SC-09: 辺の型辞書から削除（管理者のみ）"
+      description: |
+        ADR-0033 決定 9 / INDEX 決定 18: **参照が 1 件でもあれば削除を拒否する**。
+        **拒否は 409 に `usageCount` を添える** —— 件数があれば「まず 342 本を付け替えてから消す」と
+        管理者が行動できる。**BFF は本文を詰め替えず透過する**（数え方を 2 つ持つと一覧と削除拒否で
+        件数が割れ、管理者は辞書を信用できなくなる）。DB 側にも `ON DELETE RESTRICT` があり、
+        競合で擦り抜けた場合も同じ 409 に倒れる。
+      operationId: bff-edge-type-delete
+      responses:
+        "204": { description: 削除した }
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly。運用者も不可） }
+        "404": { description: 見つからない }
+        "409":
+          description: 使用中のため削除できない（`usageCount` つき）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EdgeTypeInUseProblem"
+        "502": { description: GraphService へ到達できない }
+
   /bff/analysis/ask:
     post:
       x-roles: []
@@ -3253,6 +3360,59 @@ components:
         name: { type: string, description: "表示名。改名されても id は変わらない" }
         layer: { type: string, description: "型の層（core / domain / user 等）" }
         isSymmetric: { type: boolean, description: "対称な関係か（向きを持たないか）" }
+
+    EdgeTypeDto:
+      type: object
+      description: |
+        FR-17, SC-09, ADR-0033 決定 3・9: 辺の型辞書の 1 件（**使用件数つき**。管理用途）。
+
+        🔴 **`EdgeTypeCatalogItem` とは別の型である。** あちらは描画用で `usageCount` を持たず、
+        代わりに `weight` を持つ。**片方をもう片方の代わりに使わない** ——
+        カタログに件数を足すと一般利用者へ総量が漏れ、辞書から件数を落とすと
+        SC-09 の「削除前に使用件数を示す」が満たせなくなる。
+      required: [id, name, layer, isSymmetric, isSeed, usageCount]
+      properties:
+        id: { type: string, format: uuid, description: "改名しても変わらない。既存の辺はこれを参照する" }
+        name: { type: string, description: "表示名。改名の対象" }
+        layer: { type: string, description: "型の層（core / recommended / future）" }
+        isSymmetric: { type: boolean, description: "対称な関係か（対称なら逆向きの表示語を持たない）" }
+        isSeed: { type: boolean, description: "初期値集合に由来するか" }
+        usageCount: { type: integer, format: int32, description: "この型を使っている辺の本数" }
+
+    CreateEdgeTypeRequest:
+      type: object
+      description: >-
+        FR-17, SC-09（ADR-0033 決定 3）: 辞書へ辺の型を追加する。
+        **識別子は辞書が採番する**（呼び出し側から与えない。改名で変わらない値を外から決めさせない）。
+      required: [name, layer, isSymmetric]
+      properties:
+        name: { type: string, description: 表示名。前後の空白は正規化される。 }
+        layer: { type: string, description: "型の層。core / recommended / future のいずれか。" }
+        isSymmetric: { type: boolean, description: 対称な関係か。 }
+
+    RenameEdgeTypeRequest:
+      type: object
+      description: >-
+        FR-17, SC-09（ADR-0033 決定 9）: 辞書の辺の型を改名する。**識別子は変えない** ——
+        既存の辺は識別子を参照しているので追随は自動である（辺は 1 本も書き換えない）。
+      required: [name]
+      properties:
+        name: { type: string, description: 新しい表示名。既存値と重複してはならない（自分自身は除く）。 }
+
+    EdgeTypeInUseProblem:
+      type: object
+      description: |
+        FR-17, SC-09（ADR-0033 決定 9 / INDEX 決定 18）: 使用中の辺の型の削除を拒否したときの本文。
+        **`usageCount` は SC-09 の「削除前に使用件数を示す」を満たすために要る** ——
+        件数が無いと管理者は「なぜ消えないか」しか分からず、付け替え作業に着手できない。
+        **BFF は本文を詰め替えず透過する**（数え方を 2 つ持つと一覧と削除拒否で件数が割れる）。
+        **タグ辞書の `TagInUseProblem` と同型である**——同じ規則を両辞書へ適用するという計画の確定事項
+        （INDEX 決定 18）が、契約の形にも現れている。
+      required: [error, message, usageCount]
+      properties:
+        error: { type: string, enum: [edge_type_in_use] }
+        message: { type: string }
+        usageCount: { type: integer, format: int32 }
 
     AiSuggestion:
       type: object

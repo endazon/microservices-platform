@@ -51,6 +51,13 @@ public static class BffEndpointComposition
         // Issue #916a, FR-17, UC-10, ADR-0034: グラフ読み取りの公開（GraphService へ pass-through）。
         // **Authorization を伝播する方式**を採る（後段が自分で ABAC を解決する型のため）。
         new DelegateBffEndpointModule(a => a.MapGraphBffEndpoints()),
+        // Issue #1241, FR-17, SC-09, ADR-0033 決定 3・9, INDEX 決定 18: 辺の型辞書の管理
+        // （追加・改名・削除 ＋ 使用件数つきの一覧）。後段は GraphService。
+        // 🔴 **すぐ上の Graph（/bff/graph/edge-types）とは別の口である。** あちらは認証のみ・
+        // 使用件数なしの**描画用カタログ**で、SC-03 / SC-18 / SC-21 が使う。こちらは admin ＋ operator
+        // 限定・使用件数つきの**辞書管理**で、SC-09 が使う。**prefix ごと分けてある** ——
+        // 1 つの口に両方を担わせると、一般利用者が 403 になるか集計値が漏れるかのどちらかになる。
+        new DelegateBffEndpointModule(a => a.MapEdgeTypeDictionaryBffEndpoints()),
         // Issue #451, FR-19, FR-20, UC-11, SC-19, SC-20, ADR-0036/0037/0054: 個人資料と
         // Obsidian 連携設定（DocumentService の /private-notes* へ pass-through）。
         // 後段は knowledge ユニットなので Knowledge.Bff.Endpoints に置く（タグ辞書と同じ切り分け）。
