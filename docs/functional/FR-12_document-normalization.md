@@ -3,15 +3,15 @@ title: 機能仕様書 — FR-12 原本の正規化変換（pandoc＋LLMコー�
 type: functional-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-09-03
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-11, FR-12, SC-07, UC-06]
+ids: [FR-01, FR-02, FR-11, FR-12, SC-03, SC-07, UC-06]
 adrs: [ADR-0010, ADR-0012, ADR-0014, ADR-0053, ADR-0070]
-iadrs: [IADR-0007, IADR-0008, IADR-0137, IADR-0154, IADR-0298, IADR-0320, IADR-0351, IADR-0356]
-specs: [20260703_FR-12_document-normalization-pipeline, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction]
-issues: [#533, #543, #1097, #1120, #1192]
+iadrs: [IADR-0007, IADR-0008, IADR-0137, IADR-0154, IADR-0298, IADR-0320, IADR-0351, IADR-0356, IADR-0381]
+specs: [20260703_FR-12_document-normalization-pipeline, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
+issues: [#533, #543, #1097, #1120, #1192, #1254]
 -->
 
 # 機能仕様書: 原本の正規化変換
@@ -118,8 +118,8 @@ issues: [#533, #543, #1097, #1120, #1192]
   `status = succeeded` のまま `hasBody = false` を内訳として記録し（状態値の 5 値目にしない）、
   変換ジョブ画面には「本文なしで完了」と理由つきで表示する（再変換の対象に並ばない）。
   `document.md` は空の内容で保管し、`DocumentNormalized.HasBody = false` で後続へ伝える。
-  **カタログ（DocumentService）がこれを台帳へ保持し、`DocumentUpdated` へ写して SC-03 の
-  「本文なし（原本を参照）」の材料にする**（#1254）。本文由来のチャンクは作らず、
+  **カタログ（DocumentService）がこれを台帳へ保持し、`DocumentUpdated` へ写して
+  文書詳細画面の「本文なし（原本を参照）」の材料にする**（#1254）。本文由来のチャンクは作らず、
   索引側はメタデータ 1 点で検索に載せる（#1193）。
   **［2026-09-05 / #1254］項目名は否定形 `BodyAbsent` から肯定形 `HasBody` へ改名し、極性を反転した**
   （読み替え表は `docs/data/conversion-job.md` §本文の有無の語彙）。

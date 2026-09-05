@@ -3,15 +3,15 @@ title: 変換ジョブ 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-03
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
 ids: [FR-12, SC-03, SC-05, SC-06, SC-07, UC-06]
 adrs: [ADR-0070]
-iadrs: [IADR-0039, IADR-0042, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0128, IADR-0135, IADR-0154, IADR-0157, IADR-0356]
-specs: [20260805_issue-501_retry-admin-only, 20260805_issue-503_sc05-08-admin-screens, 20260806_issue-533_conversion-dead-letter, 20260903_issue-1192_pdf-text-layer-extraction]
-issues: [#446, #501, #502, #503, #506, #519, #533, #543, #553, #651, #1192, planning#198]
+iadrs: [IADR-0039, IADR-0042, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0128, IADR-0135, IADR-0154, IADR-0157, IADR-0356, IADR-0381]
+specs: [20260805_issue-501_retry-admin-only, 20260805_issue-503_sc05-08-admin-screens, 20260806_issue-533_conversion-dead-letter, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
+issues: [#446, #501, #502, #503, #506, #519, #533, #543, #553, #651, #1192, #1254, planning#198]
 -->
 
 # 画面仕様書: 変換ジョブ

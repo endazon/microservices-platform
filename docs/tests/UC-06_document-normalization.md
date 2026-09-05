@@ -3,15 +3,15 @@ title: UC-06 文書を正規化変換する テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-31
-updated: 2026-09-03
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
 ids: [FR-12, UC-06, SC-07, NFR]
 adrs: [ADR-0010, ADR-0012, ADR-0014, ADR-0015, ADR-0053, ADR-0070]
-iadrs: [IADR-0154, IADR-0298, IADR-0320, IADR-0351, IADR-0356]
-specs: [20260831_issue-1106_uc-test-specs, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction]
-issues: [#472, #1106, #1120, #1192]
+iadrs: [IADR-0154, IADR-0298, IADR-0320, IADR-0351, IADR-0356, IADR-0381]
+specs: [20260831_issue-1106_uc-test-specs, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
+issues: [#472, #1106, #1120, #1192, #1254]
 -->
 
 # テスト仕様書: 文書を正規化変換する
