@@ -165,5 +165,7 @@ fail-open は緑のまま通る。本物の解決器に `HttpMessageHandler` を
 
 ## 関連
 
-- Supersedes: なし
+- Supersedes: **IADR-0366 決定 3 のみ**（`Branches` ではなく `AllowedFilters` から読む）。
+  同 IADR には日付つき追記で併記した。**同 IADR の決定 1・2・4〜6 は有効であり、
+  本体の `status:` は `Accepted` のままである**（部分的な差し替え。IADR-0141 決定 2 と同じ形）。
 - Superseded by: なし
