@@ -731,6 +731,72 @@ data:
                   expression: A
                   conditions:
                     - evaluator: { type: gt, params: [0] }
+
+      # FR-10, SC-10, ADR-0076 決定 3, IADR-0389 決定 5 (#1246): ナレッジ健全性の生産者の不在。
+      #
+      # 🔴 **上の群と式が違う（`absent_over_time` である）。** 生産は周期駆動（1 時間）であり、
+      #   `absent()` の既定 5 分 lookback では平常時に鳴り続ける。理由の正本は
+      #   `deploy/prometheus/alerts.yml` の同名グループの前書きである。
+      - orgId: 1
+        name: knowledge-health-producers
+        folder: SLO
+        interval: 1m
+        rules:
+          - uid: knowledge-health-unresolved-links-producer-absent
+            title: KnowledgeHealthUnresolvedLinksProducerAbsent
+            condition: C
+            for: 10m
+            noDataState: OK
+            execErrState: Error
+            labels:
+              severity: warning
+            annotations:
+              summary: "ナレッジ健全性の生産者が居ない: unresolved-links の報告が 2 時間届いていない"
+              description: "GraphService の定期収集が unresolved-links を DashboardService へ届けていない（周期は 1 時間）。受け口の件数は最後の値で凍るため、画面は正常に見える。収集の失敗・リースの停滞・受け口への到達不能を疑う（ADR-0076 決定 3）。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: 'absent_over_time(knowledge_health_report_total{knowledge_indicator="unresolved-links"}[2h])'
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+
+          - uid: knowledge-health-edge-type-usage-producer-absent
+            title: KnowledgeHealthEdgeTypeUsageProducerAbsent
+            condition: C
+            for: 10m
+            noDataState: OK
+            execErrState: Error
+            labels:
+              severity: warning
+            annotations:
+              summary: "ナレッジ健全性の生産者が居ない: edge-type-usage の報告が 2 時間届いていない"
+              description: "GraphService の定期収集が edge-type-usage を DashboardService へ届けていない（周期は 1 時間）。受け口の件数は最後の値で凍るため、画面は正常に見える。収集の失敗・リースの停滞・受け口への到達不能を疑う（ADR-0076 決定 3）。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: 'absent_over_time(knowledge_health_report_total{knowledge_indicator="edge-type-usage"}[2h])'
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
 ---
 apiVersion: apps/v1
 kind: Deployment

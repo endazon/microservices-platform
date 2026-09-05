@@ -16,7 +16,7 @@ internal static class KnowledgeHealthViewEndpoint
         g.MapGet("", async (DashboardDbContext db, HttpContext http, IAuditLogger audit, CancellationToken ct) =>
         {
             var rows = await db.KnowledgeHealthObservations
-                .Select(o => new { o.Indicator, o.DocScope, o.ObservedAt })
+                .Select(o => new { o.Indicator, o.DocScope, o.Dimension, o.ObservedAt })
                 .ToListAsync(ct);
 
             // 規則 3: 個人資料を除外する。**集合帰属で判定する**（KnowledgeDocScopes.IsPrivateNote）。
@@ -32,12 +32,34 @@ internal static class KnowledgeHealthViewEndpoint
                 .ToDictionaryAsync(t => t.Indicator, t => t.ThresholdDays,
                     StringComparer.OrdinalIgnoreCase, ct);
 
+            // ★［2026-09-05 / #1246・[[IADR-0389]] 決定 1］指標ごとの**内訳**。
+            //
+            // 🔴 **除外後の行から畳む**（`counted`。`rows` ではない）。除外前から畳むと
+            // 内訳の合計が件数と合わず、**個人資料の件数が内訳の差分として漏れる。**
+            //
+            // 軸を持つ観測値が 1 件も無い指標には内訳を**返さない**（null）——
+            // 「軸を持たない指標」と「軸を持つが 0 件」を混同させないためである。
+            // 並びは件数の降順、同数は軸名の昇順（表示のたびに順序が変わらないようにする）。
+            var breakdowns = counted
+                .Where(r => r.Dimension is not null)
+                .GroupBy(r => r.Indicator, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    gr => gr.Key,
+                    gr => (IReadOnlyList<KnowledgeHealthDimensionDto>)gr
+                        .GroupBy(r => r.Dimension!, StringComparer.Ordinal)
+                        .Select(d => new KnowledgeHealthDimensionDto(d.Key, d.Count()))
+                        .OrderByDescending(d => d.Count)
+                        .ThenBy(d => d.Dimension, StringComparer.Ordinal)
+                        .ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+
             // 規則 4: 件数のみ。**7 指標すべてを 0 埋めして返す**（欠落と 0 を混同させない）。
             var indicators = KnowledgeHealthIndicators.All
                 .Select(name => new KnowledgeHealthIndicatorDto(
                     name,
                     byIndicator.TryGetValue(name, out var count) ? count : 0,
-                    thresholds.TryGetValue(name, out var days) ? days : null))
+                    thresholds.TryGetValue(name, out var days) ? days : null,
+                    breakdowns.TryGetValue(name, out var breakdown) ? breakdown : null))
                 .ToList();
 
             // 観測時刻は**除外前の全行**から採る —— 「いつの観測か」は集計対象の有無とは別の情報であり、

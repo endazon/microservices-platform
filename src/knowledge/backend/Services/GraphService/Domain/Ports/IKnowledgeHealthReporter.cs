@@ -30,4 +30,10 @@ public interface IKnowledgeHealthReporter
 //   SubjectKey — 重複排除のための不透明な鍵（文書 ID）。**受け口は応答に出さない。**
 //   DocScope   — 文書スコープ。個人資料は `private-note`、それ以外は null。
 //                受け手が集計前にこの値で個人資料を落とす。
-public readonly record struct KnowledgeHealthObservation(string SubjectKey, string? DocScope);
+//   Dimension  — ★［2026-09-05 / #1246・[[IADR-0389]] 決定 1］**内訳の軸**。
+//                受け手は指標の件数に加えて軸ごとの内訳を返す。
+//                🔴 **基数が有界な語だけを載せる**（辺の型名・閉じた理由語）。
+//                自由語（文書名・リンク先の名前）を載せると内訳が無界に増えて読めなくなる。
+//                軸を持たない指標では null。
+public readonly record struct KnowledgeHealthObservation(
+    string SubjectKey, string? DocScope, string? Dimension = null);

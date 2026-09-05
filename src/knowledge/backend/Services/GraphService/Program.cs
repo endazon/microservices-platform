@@ -150,6 +150,10 @@ builder.Services.AddHttpClient(HttpKnowledgeHealthReporter.ClientName, c =>
     // 🔴 既定の 100 秒のままにしない —— 受け口が応答しないと定期処理がその間止まる。
     c.Timeout = HttpKnowledgeHealthReporter.SendTimeout;
 });
+// FR-10, NFR-21, ADR-0076 決定 3, [[IADR-0389]] 決定 5 (#1246): 観測値を届けた回数（指標ごと）。
+// 生産者が止まると受け口の数字は最後の値で凍る。**沈黙を鳴らすための系列**である。
+// Meter は EdgeTypeFallbackMetrics と同じなので、AddMeter の追加は要らない。
+builder.Services.AddSingleton<KnowledgeHealthReportMetrics>();
 builder.Services.AddScoped<IKnowledgeHealthReporter, HttpKnowledgeHealthReporter>();
 // FR-10, UC-05, SC-10, planning#494 決定 1・3, [[IADR-0353]] (#1186): 陳腐化のしきい値（既定 180 日）。
 // **配備時の構成で変更できる**（環境変数 KnowledgeHealth__StaleDocumentThresholdDays）。

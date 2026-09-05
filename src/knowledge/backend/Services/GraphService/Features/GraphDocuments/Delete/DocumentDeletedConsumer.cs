@@ -12,6 +12,9 @@ namespace GraphService.Features.GraphDocuments.Delete;
 // - **辺**: 両端いずれかが当該文書のもの。provenance を問わない（利用者付与・AI 承認済みも、
 //   端点の文書が消えた辺は指す先が無い）。ADR-0033 決定 6 の「利用者付与は再取り込みで消さない」は
 //   **再取り込み（差分更新）**の話であり、文書そのものの削除には適用されない。
+// - **リンク先の名前**: 当該文書が**書いていた**もの（`document_link_targets`）。残すと消えた文書の
+//   リンクが未解決リンク数に永久に積み上がる。**逆向き（他文書が当該文書を指すリンク）は消さない** ——
+//   あちらの本文はいま壊れたのであり、未解決として数えられるのが正しい（[[IADR-0389]] / #1246）。
 // - **AI 提案**: 当該文書を起点・対象とするもの（pending・rejected を含む全状態）。
 //   却下レコードの「原則永久保持」（ADR-0033 決定 10）は再提案抑止のためであり、
 //   端点の文書が消えれば同じ組み合わせの提案は二度と生成されない（候補に現れない）。
@@ -43,6 +46,17 @@ public class DocumentDeletedConsumer(
             .ToListAsync(ct);
         db.AiSuggestions.RemoveRange(suggestions);
 
+        // FR-10, SC-10, [[IADR-0389]] (#1246): 当該文書が**書いていた**リンク先の名前。
+        // 🔴 残すと、消えた文書のリンクが未解決リンク数に**永久に**積み上がる。
+        //
+        // ⚠️ 逆向き（**他文書が当該文書を指していたリンク**）はここでは触らない ——
+        // あちらの本文はいま壊れたのであり、**未解決として数えられるのが正しい。**
+        // だから解決の失敗ではなく名前を保存している（同決定 3）。
+        var linkTargets = await db.DocumentLinkTargets
+            .Where(t => t.SourceDocumentId == id)
+            .ToListAsync(ct);
+        db.DocumentLinkTargets.RemoveRange(linkTargets);
+
         var node = await db.Documents.FirstOrDefaultAsync(d => d.DocumentId == id, ct);
         if (node is not null)
             db.Documents.Remove(node);
@@ -55,7 +69,9 @@ public class DocumentDeletedConsumer(
         await db.SaveChangesAsync(ct);
 
         logger.LogInformation(
-            "Removed deleted document {DocumentId} from the graph: node={Node} edges={Edges} suggestions={Suggestions} termProfile={TermProfile}",
-            id, node is not null ? 1 : 0, edges.Count, suggestions.Count, termProfile is not null ? 1 : 0);
+            "Removed deleted document {DocumentId} from the graph: node={Node} edges={Edges} "
+            + "suggestions={Suggestions} linkTargets={LinkTargets} termProfile={TermProfile}",
+            id, node is not null ? 1 : 0, edges.Count, suggestions.Count, linkTargets.Count,
+            termProfile is not null ? 1 : 0);
     }
 }

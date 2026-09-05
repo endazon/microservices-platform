@@ -19,4 +19,14 @@ internal static class KnowledgeHealthIndicators
     // 🔴 **起点は本文の更新のみである**（タグ・属性の更新は起点にしない）。
     // 判定は GraphDocument.BodyUpdatedAt、しきい値は KnowledgeHealthOptions（既定 180 日）。
     public const string StaleDocuments = "stale-documents";
+
+    // FR-10, FR-17, UC-05, SC-10, [[IADR-0389]] (#1246):
+    // 解決できないリンク数。**リンク先の名前から文書 ID を特定できない**リンク。
+    // 🔴 不在（相手が無い）と曖昧（同名が複数）の**両方**を含む —— どちらも辺が作られず、
+    // 利用者から見れば同じ「繋がっていないリンク」である。内訳の軸で理由を分ける。
+    public const string UnresolvedLinks = "unresolved-links";
+
+    // FR-17, SC-10, ADR-0033 決定 9, [[IADR-0389]] (#1246):
+    // 辺の型ごとの使用件数。**内訳の軸に型名を載せる**（軸は実行時辞書 `edge_types` の語彙で有界）。
+    public const string EdgeTypeUsage = "edge-type-usage";
 }
