@@ -167,12 +167,12 @@ dev seed の属性辞書（`deploy/local/abac-seed/attributes.json`）にも `ta
 
 - `dotnet build src/platform/backend/backend.slnx` → 0 警告 0 エラー。
 - `dotnet test`（platform 全ユニット）→ 新設・改修分はすべて緑
-  （`Platform.Shared.Infrastructure.Tests` 283 / `AuthorizationService.Tests` 158 /
-  `McpServer.Tests` 125）。
+  （`Platform.Shared.Infrastructure.Tests` / `AuthorizationService.Tests` / `McpServer.Tests` の
+  3 プロジェクトが 0 失敗。🔴 **件数は書かない** —— テストが増えるたびに腐る導出値である）。
 - `node scripts/check-contract-schema.js` → 型の追加 1 件（非破壊）。`--update` で baseline を更新し
   同じ PR に含めた。
 
-### 変異試験（5 種。いずれも**対になる別のテストが落ちる**）
+### 変異試験（いずれも**対になる別のテストが落ちる**）
 
 | # | 変異 | 落ちたテスト |
 | --- | --- | --- |
