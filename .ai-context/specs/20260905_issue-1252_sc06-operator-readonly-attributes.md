@@ -2,7 +2,7 @@
 title: SC-06 で運用者が既定属性・owner 写像表を閲覧できない（ADR-0074 決定 1 の閲覧側が画面で未達）（#1252）
 type: spec
 status: done
-related_ids: [FR-05, UC-04, SC-06, ADR-0036, ADR-0074, IADR-0127, IADR-0382]
+related_ids: [FR-05, UC-04, SC-06, ADR-0036, ADR-0074, IADR-0127, IADR-0381]
 author: Claude
 created: 2026-09-05
 updated: 2026-09-05
@@ -73,7 +73,7 @@ src/knowledge/frontend/src/lib/abac/owner.ts                                    
 
 ## 2. 決めたこと
 
-[IADR-0382](../adr/IADR-0382_sc06-readonly-attributes-for-operators.md) に記録する。要点:
+[IADR-0381](../adr/IADR-0381_sc06-readonly-attributes-for-operators.md) に記録する。要点:
 
 1. **一覧の行に、既定属性 3 つと owner 写像表を読み取り専用で描く**（新しい画面 ID も新しい権限も
    作らない。ADR-0074 決定 1・案 B の否決を尊重する）。管理者にも同じものが見える

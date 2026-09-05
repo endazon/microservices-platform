@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-05, SC-05, SC-06, SC-07, SC-09, SC-17, UC-04]
 adrs: [ADR-0036, ADR-0064, ADR-0074]
-iadrs: [IADR-0019, IADR-0039, IADR-0044, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0128, IADR-0135, IADR-0136, IADR-0139, IADR-0148, IADR-0199, IADR-0329, IADR-0359, IADR-0382]
+iadrs: [IADR-0019, IADR-0039, IADR-0044, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0128, IADR-0135, IADR-0136, IADR-0139, IADR-0148, IADR-0199, IADR-0329, IADR-0359, IADR-0381]
 specs: [20260805_issue-503_sc05-08-admin-screens, 20260806_issue-538_next-sync-at, 20260808_issue-534-537_datasource-contract-bundle, 20260815_issue-767_sc06-department-input, 20260816_issue-796_sc06-lifecycle-input, 20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-1252_sc06-operator-readonly-attributes]
 issues: [#446, #490, #502, #506, #519, #534, #537, #538, #628, #754, #767, #796, #1194, #1252, planning#198, planning#200, planning#299, planning#372, planning#518]
 -->
