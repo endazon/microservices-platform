@@ -486,14 +486,14 @@ class RecordingCompletedPublisher : IIngestionCompletedPublisher
 
 file record UpsertRecord(string Collection, Guid ChunkId, Guid DocumentId, string Title, string Text,
     int ChunkIndex, string? MarkdownUri, Dictionary<string, string> Attributes, List<string> Tags,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt, List<string>? SharedWith = null);
 
 // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193: 本文なしの文書のメタデータ点の記録。
 // **チャンクの記録（`UpsertRecord`）と分けてある** —— 「本文由来のチャンクは 0 件」を
 // 数えられなくなるため、同じ袋に入れない。
 file record MetadataUpsertRecord(string Collection, Guid PointId, Guid DocumentId, string Title,
     string IndexText, float[] Vector, string? MarkdownUri, Dictionary<string, string> Attributes,
-    List<string> Tags, DateTimeOffset? UpdatedAt);
+    List<string> Tags, DateTimeOffset? UpdatedAt, List<string>? SharedWith = null);
 
 file class RecordingVectorStore : IIngestionVectorStore
 {
@@ -511,10 +511,11 @@ file class RecordingVectorStore : IIngestionVectorStore
     public Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
         string text, int chunkIndex, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
-        DateTimeOffset? updatedAt = null, CancellationToken ct = default)
+        DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+        CancellationToken ct = default)
     {
         Upserts.Add(new UpsertRecord(collection, chunkId, documentId, title, text, chunkIndex,
-            markdownUri, attributes, tags, updatedAt));
+            markdownUri, attributes, tags, updatedAt, sharedWith));
         return Task.CompletedTask;
     }
 
@@ -522,10 +523,11 @@ file class RecordingVectorStore : IIngestionVectorStore
     public Task UpsertMetadataPointAsync(string collection, Guid pointId, Guid documentId,
         string title, string indexText, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
-        DateTimeOffset? updatedAt = null, CancellationToken ct = default)
+        DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+        CancellationToken ct = default)
     {
         MetadataUpserts.Add(new MetadataUpsertRecord(collection, pointId, documentId, title,
-            indexText, vector, markdownUri, attributes, tags, updatedAt));
+            indexText, vector, markdownUri, attributes, tags, updatedAt, sharedWith));
         return Task.CompletedTask;
     }
 

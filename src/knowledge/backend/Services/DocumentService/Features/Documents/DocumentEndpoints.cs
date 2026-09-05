@@ -14,6 +14,7 @@ using DocumentService.Features.Documents.Update;
 using DocumentService.Features.Documents.UpdateMetadata;
 using DocumentService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
+using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace DocumentService.Features.Documents;
@@ -166,11 +167,39 @@ public static class DocumentEndpoints
     // **［#635］`internal` にしてある。** 改名の再発行（`Tags/Rename`）が同じ形を要るためで、
     // **識別子 → 表示名の変換点を 2 つに割らない**ことがここでの目的である（同 決定 2）。
     // （旧 `ToEvent` の後継。イベントの構築はアダプタ側にある —— 可視発行を 1 点に保つため。）
-    internal static Task PublishUpdatedAsync(IDocumentUpdatedPublisher bus, Document d,
-        IReadOnlyDictionary<Guid, string> names, CancellationToken ct = default) =>
-        bus.PublishUpdatedAsync(d.Id, d.Title, d.Status, d.MarkdownUri,
+    // **［#1184］共有先（`shared_with`）の解決もここで行う**（ADR-0061 決定 5 / [[IADR-0394]] 決定 3）。
+    // 🔴 **呼び出し側に解決させない。** 「共有先を載せる経路」と「載せない経路」に割れると、
+    // 索引の中の判定軸が経路ごとに違うものになり、**どちらが正しいかを誰も言えなくなる**
+    // （識別子 → 表示名の変換点を 1 つに保っているのと同じ理由）。
+    internal static async Task PublishUpdatedAsync(IDocumentUpdatedPublisher bus,
+        DocumentDbContext db, Document d,
+        IReadOnlyDictionary<Guid, string> names, CancellationToken ct = default)
+    {
+        var sharedWith = await db.DocumentShares
+            .Where(s => s.DocumentId == d.Id)
+            .Select(s => s.SubjectId)
+            .ToListAsync(ct);
+
+        await bus.PublishUpdatedAsync(d.Id, d.Title, d.Status, d.MarkdownUri,
             d.Attributes, TagResolver.ToNames(d.Tags, names), d.UpdatedAt,
-            d.ContentFingerprint, d.HasBody, d.OriginalPath, d.DataSourceName, ct);
+            d.ContentFingerprint, d.HasBody, d.OriginalPath, d.DataSourceName, sharedWith, ct);
+    }
+
+    // FR-19, ADR-0061 決定 1・2 / [[IADR-0394]] 決定 4 (#1184): **発行の門。**
+    //
+    // 🔴 **個人資料は「3 トグルのうち 1 つでも ON」のときだけ索引の生産側へ流す。**
+    // 3 つとも OFF の資料は**イベントそのものを出さない** —— OFF を「索引に存在しない」ことで
+    // 構造的に守る性質（[[IADR-0270]] 決定 5 が守っていたもの）をそのまま残すためである。
+    //
+    // **判定は `DocumentExposure.IsIndexable` ただ 1 つ**であり、索引の生産側
+    // （`IngestionService.DocumentUpdatedConsumer`）が呼ぶのと**同じ関数**である。
+    // 組織文書は常に true（露出キーを持たない）なので、既存経路の挙動は変わらない。
+    internal static Task PublishUpdatedIfIndexableAsync(IDocumentUpdatedPublisher bus,
+        DocumentDbContext db, Document d,
+        IReadOnlyDictionary<Guid, string> names, CancellationToken ct = default)
+        => DocumentExposure.IsIndexable(d.Attributes)
+            ? PublishUpdatedAsync(bus, db, d, names, ct)
+            : Task.CompletedTask;
 
     // FR-21 受け入れ基準 ⑥: 本文が上限を超えたときの応答。**413 であって 400 ではない**
     // （計画が status を名指ししている）。本文へ上限を書き、切り詰めた成功と取り違えられないようにする。

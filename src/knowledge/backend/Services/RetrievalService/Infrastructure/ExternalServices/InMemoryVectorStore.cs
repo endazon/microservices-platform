@@ -157,7 +157,14 @@ public class InMemoryVectorStore : IVectorStore
 
         // 文書条件を持たない分岐は「そのポリシーの範囲で全件許可」＝選言は制約にならない
         // （Qdrant 側が選言そのものを省くのと同じ扱い）。
-        return filters.Branches!.Any(b => b.Count == 0 || MatchesAll(c, b));
+        //
+        // 🔴 FR-19, ADR-0061 決定 5・6, [[IADR-0394]] 決定 7 (#1184):
+        // **個人資料を許可してよいのは裁量（`owner` / `shared_with`）の分岐だけ**である。
+        // 静的属性ベースの分岐（`confidentiality ∈ {restricted}` 等）は、露出 ON の個人資料を
+        // そのまま許可してしまう —— `restricted` クリアランスを持つ他人に他人の個人メモが見える。
+        // 判定は `PrivateNoteVisibility` の 1 か所（Qdrant 側・Graph 側と同じ述語）。
+        return filters.Branches!.Any(b =>
+            (b.Count == 0 || MatchesAll(c, b)) && PrivateNoteVisibility.BranchMayGrant(c.Attributes, b));
     }
 
     // FR-05: フィルタ間 AND、値集合内 OR。属性キーを持たない文書は不一致（安全側）。
@@ -166,11 +173,27 @@ public class InMemoryVectorStore : IVectorStore
         if (filters is not { Count: > 0 })
             return true;
 
-        return filters.All(f =>
-            AttributeValueKeys.ToPayloadKey(f.Key) == AttributeValueKeys.Tags
-                ? c.Tags.Any(t => f.AllowedValues.Contains(t, StringComparer.OrdinalIgnoreCase))
-                : c.Attributes.TryGetValue(f.Key, out var v)
-                  && f.AllowedValues.Contains(v, StringComparer.OrdinalIgnoreCase));
+        return filters.All(f => MatchesOne(c, f));
+    }
+
+    // FR-05, FR-19, #1184: 1 つの `key ∈ AllowedValues` を評価する。
+    // **リスト項目（`tags` / `shared_with`）は「いずれか一致」、属性は単一値の完全一致**である。
+    // 🔴 **どのキーがリストかを自前で書かない** —— `AttributeValueKeys.IsListValued` へ寄せて
+    // Qdrant 側と 1 つの意味論に保つ（ずれると「テストは緑・本番は別物」になる。[[IADR-0014]] の型）。
+    private static bool MatchesOne(ChunkPayload c, AttributeFilter f)
+    {
+        var payloadKey = AttributeValueKeys.ToPayloadKey(f.Key);
+        if (!AttributeValueKeys.IsListValued(payloadKey))
+        {
+            return c.Attributes.TryGetValue(f.Key, out var v)
+                   && f.AllowedValues.Contains(v, StringComparer.OrdinalIgnoreCase);
+        }
+
+        var values = payloadKey == AttributeValueKeys.Tags
+            ? c.Tags
+            : c.SharedWith ?? (IReadOnlyList<string>)[];
+
+        return values.Any(v => f.AllowedValues.Contains(v, StringComparer.OrdinalIgnoreCase));
     }
 
     private static string[] Tokenize(string query) =>

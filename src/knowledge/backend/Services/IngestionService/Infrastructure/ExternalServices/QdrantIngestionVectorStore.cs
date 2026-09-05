@@ -1,5 +1,6 @@
 using IngestionService.Domain.Ports;
 using IngestionService.Domain;
+using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Indexing;
 using Microsoft.Extensions.Options;
 using Qdrant.Client;
@@ -189,9 +190,11 @@ public class QdrantIngestionVectorStore(
         string text, int chunkIndex, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
+        List<string>? sharedWith = null,
         CancellationToken ct = default)
     {
-        var payload = BuildChunkPayload(documentId, title, text, chunkIndex, markdownUri, attributes, tags, updatedAt);
+        var payload = BuildChunkPayload(documentId, title, text, chunkIndex, markdownUri, attributes,
+            tags, updatedAt, sharedWith: sharedWith);
 
         await client.UpsertAsync(collection,
             [new PointStruct { Id = new PointId { Uuid = chunkId.ToString() }, Vectors = vector, Payload = { payload } }],
@@ -208,10 +211,11 @@ public class QdrantIngestionVectorStore(
         string title, string indexText, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
+        List<string>? sharedWith = null,
         CancellationToken ct = default)
     {
         var payload = BuildChunkPayload(documentId, title, indexText, ChunkId.MetadataChunkIndex,
-            markdownUri, attributes, tags, updatedAt, hasBody: false);
+            markdownUri, attributes, tags, updatedAt, hasBody: false, sharedWith: sharedWith);
 
         await client.UpsertAsync(collection,
             [new PointStruct { Id = new PointId { Uuid = pointId.ToString() }, Vectors = vector, Payload = { payload } }],
@@ -230,7 +234,8 @@ public class QdrantIngestionVectorStore(
         string text, int chunkIndex, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
-        bool hasBody = true)
+        bool hasBody = true,
+        List<string>? sharedWith = null)
     {
         var payload = new Dictionary<string, Value>
         {
@@ -264,6 +269,18 @@ public class QdrantIngestionVectorStore(
             foreach (var t in tags)
                 tagList.Values.Add(new Value { StringValue = t });
             payload["tags"] = new Value { ListValue = tagList };
+        }
+
+        // FR-19, FR-20, ADR-0036 D-06, ADR-0061 決定 5 / [[IADR-0394]] 決定 3 (#1184):
+        // 共有先を**リスト項目**として保持する（`tags` と同じ表現・同じ「いずれか一致」の意味論）。
+        // 🔴 **属性へ入れない** —— 単一値では集合を表せず、共有先が 1 人しか効かない索引になる。
+        // 0 件のときはキー自体を書かない（`tags` / `attributes` と同じ扱い）。
+        if (sharedWith is { Count: > 0 })
+        {
+            var shareList = new ListValue();
+            foreach (var subject in sharedWith)
+                shareList.Values.Add(new Value { StringValue = subject });
+            payload[AttributeValueKeys.SharedWith] = new Value { ListValue = shareList };
         }
 
         // FR-05: ABAC 属性をペイロードに保持（検索時フィルタ用）。ネスト構造体へ統一する（IADR-0014 選択肢C）。

@@ -42,18 +42,20 @@ internal sealed class SharedIndexIngestionVectorStore(InMemoryVectorStore index)
     public Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
         string text, int chunkIndex, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
-        DateTimeOffset? updatedAt = null, CancellationToken ct = default)
+        DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+        CancellationToken ct = default)
     {
         Record(collection);
         return index.UpsertAsync(
             new ChunkPayload(chunkId, documentId, title, text, vector, markdownUri,
-                attributes, tags, updatedAt, HasBody: true), ct);
+                attributes, tags, updatedAt, HasBody: true, SharedWith: sharedWith), ct);
     }
 
     public Task UpsertMetadataPointAsync(string collection, Guid pointId, Guid documentId, string title,
         string indexText, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
-        DateTimeOffset? updatedAt = null, CancellationToken ct = default)
+        DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+        CancellationToken ct = default)
     {
         Record(collection);
         return index.UpsertAsync(

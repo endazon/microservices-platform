@@ -47,7 +47,24 @@ public static class AttributeValueKeys
     // facet のキーはドット記法で `attributes.<key>` を指す。
     public const string AttributesPrefix = "attributes";
 
-    // 照会キーを Qdrant ペイロードのキーへ写す。**`tags` だけが例外で、他は属性として扱う。**
+    // FR-19, FR-20, ADR-0036 D-06, ADR-0061 決定 5 / [[IADR-0394]] 決定 3 (#1184):
+    // **共有先はリスト項目 `shared_with` に入る**（`tags` と同じ最上位・同じ表現）。
+    //
+    // 🔴 **属性（`attributes -> { k: v }`）には置けない。** 値が単一文字列であり集合を持てないためで、
+    // ここを間違えると「共有先が 1 人だけ効く」または「誰にも効かない」索引になる。
+    // リストにしておけば、`Match.Keywords`（いずれか一致）が `tags` と同じ意味論で通る。
+    public const string SharedWith = "shared_with";
+
+    // ペイロードが**リスト項目**であるキーの集合。属性（単一値・完全一致）と扱いが違う。
+    // **判定をここへ寄せる**のは、`InMemoryVectorStore` と Qdrant の 2 実装が
+    // 同じ意味論を持つ必要があるためである（ずれると「テストは緑・本番は別物」になる）。
+    private static readonly HashSet<string> ListValuedKeys =
+        new(StringComparer.Ordinal) { Tags, SharedWith };
+
+    // 写像済みのペイロードキーがリスト項目か（＝「いずれか一致」で真になるか）。
+    public static bool IsListValued(string payloadKey) => ListValuedKeys.Contains(payloadKey);
+
+    // 照会キーを Qdrant ペイロードのキーへ写す。**`tags` / `shared_with` が例外で、他は属性として扱う。**
     //
     // **大文字小文字の扱いが `tags` と属性キーで違うのは意図的である。**
     // `tags` は**本コードが所有するリテラル**なので、呼び出し側が `Tags` と書いても同じ口へ寄せてよい。
@@ -55,7 +72,7 @@ public static class AttributeValueKeys
     // ここで畳むと `Department` が書き込み時の `department` と一致しなくなり、**黙って空集合が返る**。
     // 属性キーの正規化は権限側（属性定義）の責務であり、照会側で勝手に変えない。
     public static string ToPayloadKey(string key) =>
-        string.Equals(key, Tags, StringComparison.OrdinalIgnoreCase)
-            ? Tags
-            : $"{AttributesPrefix}.{key}";
+        string.Equals(key, Tags, StringComparison.OrdinalIgnoreCase) ? Tags
+        : string.Equals(key, SharedWith, StringComparison.OrdinalIgnoreCase) ? SharedWith
+        : $"{AttributesPrefix}.{key}";
 }

@@ -42,42 +42,34 @@ public static class DocumentScopes
 // enum ではなく文字列 + const で持つ（[[IADR-0131]] 決定 5 と同じ理由）。
 public static class AiInputExposure
 {
+    // 🔴 **［2026-09-05 / #1184］本クラスは `DocumentExposure` への別名である。**
+    // 露出 3 トグルが揃ったことで、判定の実体は `DocumentExposure`（同ディレクトリ）へ移った
+    // （[[IADR-0394]] 決定 2）。**ここに述語の写しを置かない** —— 同じ判定を 2 か所に書くと
+    // 片方だけが改名されて静かに無効化される。既存の呼び出し面と既存テストを壊さないために
+    // 型名だけを残してある。
+    //
+    // 値域・判定表・fail-closed の向きは `DocumentExposure` の注釈が正本である。
+
     // ABAC 属性辞書における「AI 入力への包含」のキー。`doc_scope` と同じスネークケース。
+    //
+    // 🔴 **値は `DocumentExposure` の定数を参照せず、リテラルのまま複製してある。**
+    // 契約 baseline（`contract-schema`）は const の**初期化式の字面**を比較するため、
+    // 参照へ置き換えると値が 1 バイトも変わらないのに `constValueChanged`（breaking）として
+    // 検出され、`contract-breaking-allowlist.json` の承認が要る。**判定（述語）は 1 つに寄せ、
+    // 値の一致はテストで固定する**（[[IADR-0270]] 決定 6 が `NotificationKinds` で採ったのと同じ形。
+    // `DocumentExposureTests` が `AiInputExposure.* == DocumentExposure.*` を assert する）。
     public const string AttributeKey = "ai_input";
 
-    // 明示的な opt-in / opt-out の 2 値。
+    // 明示的な opt-in / opt-out の 2 値（上と同じ理由でリテラル）。
     public const string Included = "included";
     public const string Excluded = "excluded";
 
     public static readonly string[] All = [Included, Excluded];
 
     // FR-19: トグルの真偽を属性値へ写す（供給側 = DocumentService が使う）。
-    public static string FromToggle(bool includeInAi) => includeInAi ? Included : Excluded;
+    public static string FromToggle(bool includeInAi) => DocumentExposure.FromToggle(includeInAi);
 
     // FR-21 ⑨: **この文書属性を持つチャンクを AI の入力（RAG 回答・要約）に含めてよいか。**
-    //
-    // | 条件 | 結果 | 理由 |
-    // | --- | --- | --- |
-    // | `ai_input == "included"` | true | 明示的な opt-in |
-    // | `ai_input == "excluded"` | false | 明示的な opt-out |
-    // | 欠落・空・未知値 かつ **個人資料** | **false** | 🔴 fail-closed。トグル属性が欠落したら OFF 扱い |
-    // | 欠落・空・未知値 かつ それ以外 | **true** | **組織文書は従来どおり**（遡及付与しない方針を壊さない） |
-    //
-    // **未知値を「個人資料なら拒否・組織文書なら許可」へ倒すのは意図的である。**
-    // 未知値を無条件に拒否すると、綴り間違い 1 つで組織文書が RAG から静かに落ちる
-    // （**検索には出るのに回答に使われない**という、原因の見えない縮退になる）。
-    // 個人資料側は逆で、迷ったら見せない側へ倒す。
     public static bool IsAllowed(IReadOnlyDictionary<string, string> attributes)
-    {
-        ArgumentNullException.ThrowIfNull(attributes);
-
-        if (attributes.TryGetValue(AttributeKey, out var value))
-        {
-            if (string.Equals(value, Included, StringComparison.OrdinalIgnoreCase)) return true;
-            if (string.Equals(value, Excluded, StringComparison.OrdinalIgnoreCase)) return false;
-        }
-
-        // 値が読めないときの既定は**文書スコープで分ける**（集合帰属で書く）。
-        return !DocumentScopes.IsPrivateNote(attributes);
-    }
+        => DocumentExposure.IsAiAllowed(attributes);
 }

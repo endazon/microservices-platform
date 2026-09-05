@@ -1,6 +1,7 @@
 using GraphService.Domain;
 using GraphService.Infrastructure.Persistence;
 using GraphService.Domain.Ports;
+using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
@@ -61,6 +62,21 @@ public class GraphDocumentSyncConsumer(
     // ADR-0027 / #911: Wolverine のハンドラ。
     public async Task Handle(DocumentUpdated ev, CancellationToken ct)
     {
+        // 🔴 FR-19, ADR-0061 決定 1・3・4 / [[IADR-0394]] 決定 4・5 (#1184): **グラフの門。**
+        //
+        // 索引には載る（横断検索 ON）が**グラフには出さない**個人資料があり得る（決定 3:
+        // 用途の別は索引を分けずに属性で表す）。したがって受信しただけでノードを作ってはならない。
+        // **ON → OFF は「表示しない」ではなくノードの削除まで及ぶ**（決定 4）——
+        // 複製した ABAC 属性と辺を残すと、判定の実装ミス 1 つで出力に戻る。
+        //
+        // 判定は `DocumentExposure.IsGraphAllowed` —— 発行側・索引側と**同じクラスの同じ形の述語**。
+        // **組織文書は常に true**（露出キーを持たない）なので既存の同期は 1 ビットも変わらない。
+        if (!DocumentExposure.IsGraphAllowed(ev.Attributes))
+        {
+            await WithdrawAsync(ev.DocumentId, ct);
+            return;
+        }
+
         var node = await db.Documents.FirstOrDefaultAsync(d => d.DocumentId == ev.DocumentId, ct);
 
         string? previousHash;
@@ -131,6 +147,35 @@ public class GraphDocumentSyncConsumer(
             + "links={Links} edgesAdded={Added} edgesRemoved={Removed} termProfile={TermProfile})",
             ev.DocumentId, ev.Attributes.Count, reinstated,
             linkSync.Extracted, linkSync.Added, linkSync.Removed, termProfile);
+    }
+
+    // FR-19, ADR-0061 決定 4 / [[IADR-0394]] 決定 5 (#1184): グラフからの撤収。
+    //
+    // **消すのはノードと、その端点に触れる辺だけである。** 文書そのものは生きているので、
+    // 却下済み AI 提案・リンク先の名前（`document_link_targets`）は**削除イベント
+    // （`DocumentDeletedConsumer`）の担当**であり、ここでは触らない ——
+    // 露出を戻したときに「却下したはずの提案が全部よみがえる」ことになる。
+    //
+    // ノードが無いノードは**そもそも不可視**である（鮮度契約 3・[[IADR-0242]] 決定 12-3）。
+    // 辺も併せて消すのは、指す先の無い辺を残さないためである（`Seal` は両端が見える辺だけを
+    // 返すので出力には出ないが、件数の材料として残り続ける）。冪等（該当 0 件でも成功）。
+    private async Task WithdrawAsync(Guid documentId, CancellationToken ct)
+    {
+        var node = await db.Documents.FirstOrDefaultAsync(d => d.DocumentId == documentId, ct);
+        var edges = await db.Edges
+            .Where(e => e.SourceDocumentId == documentId || e.TargetDocumentId == documentId)
+            .ToListAsync(ct);
+
+        if (node is null && edges.Count == 0)
+            return;
+
+        if (node is not null) db.Documents.Remove(node);
+        db.Edges.RemoveRange(edges);
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation(
+            "Withdrew graph document {DocumentId} ({Edges} edge(s)): the graph exposure toggle is off",
+            documentId, edges.Count);
     }
 
     // 当該文書を端点とする却下済み提案について、**現在の**両端指紋で解除判定を行う。

@@ -1,4 +1,5 @@
 using GraphService.Domain;
+using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
 
 namespace GraphService.Domain;
@@ -92,6 +93,12 @@ public sealed class GraphViewResponse
         foreach (var node in subgraph.Nodes)
         {
             if (AuthorizedNode.Authorize(node, scope) is null)
+                continue;
+            // 🔴 FR-19, ADR-0061 決定 3 / [[IADR-0394]] 決定 6 (#1184): **多層防御。**
+            // 生産側（`GraphDocumentSyncConsumer`）がノードを作らない・消すのが一次の守りで、
+            // ここは**迂回経路と取りこぼしに対する二次の守り**である（`AuthorizedNode` の
+            // 恒等ゲートと同じ位置づけ）。判定は同じ `DocumentExposure.IsGraphAllowed`。
+            if (!DocumentExposure.IsGraphAllowed(node.Attributes))
                 continue;
             visible.Add(node);
             visibleIds.Add(node.DocumentId);

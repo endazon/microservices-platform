@@ -121,7 +121,7 @@ public sealed class IngestToSearchQdrantTests : IAsyncLifetime
         await writer.EnsureCollectionsAsync(ct);
         await writer.EnsureCjkNgramIndexAsync(ct);
         await writer.UpsertChunkAsync(Collection, Guid.NewGuid(), documentId, "段間結合テストの文書",
-            text, 0, Vectorize(text), null, [], [], DateTimeOffset.UtcNow, ct);
+            text, 0, Vectorize(text), null, [], [], DateTimeOffset.UtcNow, ct: ct);
 
         var reader = NewRetrievalStore();
         var scope = ScopeFilter.Empty;
@@ -149,7 +149,7 @@ public sealed class IngestToSearchQdrantTests : IAsyncLifetime
         await writer.EnsureCollectionsAsync(ct);
         await writer.EnsureCjkNgramIndexAsync(ct);
         await writer.UpsertChunkAsync(Collection, Guid.NewGuid(), documentId, "段間結合テストの文書",
-            text, 0, Vectorize(text), null, [], [], DateTimeOffset.UtcNow, ct);
+            text, 0, Vectorize(text), null, [], [], DateTimeOffset.UtcNow, ct: ct);
 
         var reader = NewRetrievalStore();
         var scope = ScopeFilter.Empty;

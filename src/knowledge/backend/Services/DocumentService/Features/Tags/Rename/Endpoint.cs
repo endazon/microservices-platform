@@ -71,7 +71,7 @@ internal static class RenameTagEndpoint
                 ? []
                 : await db.Documents.Where(d => affectedIds.Contains(d.Id)).ToListAsync(ct);
             foreach (var doc in affected)
-                await DocumentEndpoints.PublishUpdatedAsync(bus, doc, names, ct);
+                await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, names, ct);
 
             // **再発行件数 ＝ 使用件数である**（どちらも「現行版でこのタグを持つ文書の数」。
             // `LoadWithUsageAsync` と同じ母集合を使っており、2 通りの数え方を持たない）。

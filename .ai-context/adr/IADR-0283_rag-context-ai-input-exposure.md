@@ -17,7 +17,7 @@ related_ids:
   - IADR-0270
 author: claude
 created: 2026-08-28
-updated: 2026-08-28
+updated: 2026-09-05
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md (FR-19 / FR-21 受け入れ基準 ⑨⑩)
   - planning:projects/microservices-platform/07_adr/ADR-0054_doc-scope-attribute-for-private-note.md
@@ -187,3 +187,13 @@ related_specs:
 3. **他の LLM 入力面**（AI 提案 `FR-18`・MCP `FR-16`）。前者は承認前提の別経路、後者は
    `ADR-0034` によりサービスアカウント実行時に個人資料を対象外としており（`ServiceAccountDocumentFilter`）、
    **いずれも別の統制で閉じている**。本決定はそれらを変えない。
+
+［2026-09-05 追記 / #1184］**残件 1（生産側の配線）と残件 2（グラフのトグルの配線）は閉じた。**
+計画 `ADR-0061`（planning#492）の裁定を受け、`IADR-0270` 決定 5（後継
+[IADR-0394](./IADR-0394_private-note-exposure-index-production.md)）を解除して
+露出 3 トグルを索引の生産側へ配線した。引き継ぎ条件 (a)(b)(c) はいずれも満たしている ——
+(a) 段 3 は検索経路で効いており、(b) トグル変更は `DocumentUpdated` の再発行を伴い、
+(c) 全 OFF へ戻すと索引・グラフから**削除**される。
+**本 ADR の決定 1〜4 は現行である**（判定の実体は `AiInputExposure` から
+`DocumentExposure` へ移り、`AiInputExposure` は委譲する別名として残っている。IADR-0394 決定 2）。
+**本文は当時の記録として書き換えない。**

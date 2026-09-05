@@ -21,11 +21,18 @@ public class NodeScopeFlagTests : IClassFixture<TestWebApplicationFactory>
 
     public NodeScopeFlagTests(TestWebApplicationFactory factory) => _factory = factory;
 
-    private static GraphDocument Node(Guid id, string name, string? docScope = null)
+    // **［#1184］個人資料のノードは「ナレッジグラフに表示」が ON のときだけ出力に載る**
+    // （ADR-0061 決定 1・3 / [[IADR-0394]] 決定 6）。描き分け（本クラスの主題）を測るには
+    // **まず載っている**必要があるので、個人資料のノードには投影 `graph_exposure=included` を付ける。
+    // 組織文書は露出キーを持たない（＝常に載る）ままである。
+    private static GraphDocument Node(Guid id, string name, string? docScope = null,
+        bool graphExposed = true)
     {
         var attrs = new Dictionary<string, string> { ["confidentiality"] = "internal" };
         if (docScope is not null)
             attrs["doc_scope"] = docScope;
+        if (docScope is not null && !docScope.Equals("organization", StringComparison.OrdinalIgnoreCase))
+            attrs["graph_exposure"] = graphExposed ? "included" : "excluded";
         return GraphDocument.Create(id, name, attrs, null, DateTimeOffset.UtcNow);
     }
 
@@ -90,6 +97,26 @@ public class NodeScopeFlagTests : IClassFixture<TestWebApplicationFactory>
 
         view.Nodes.Single(n => n.DocumentId == legacy.DocumentId).IsPrivateNote.Should().BeFalse(
             "値が無い ⇒ 組織文書（ADR-0054 決定 5: 取り込み経路が個人資料を作ることはない）");
+    }
+
+    // 🔴 FR-19, ADR-0061 決定 1・2・3 / [[IADR-0394]] 決定 6 (#1184):
+    // **「ナレッジグラフに表示」が OFF の個人資料は、ノードとして返らない。**
+    //
+    // 陰性の主張なので**陽性対照を対で置く** —— 同じ応答の中の組織文書は返っている。
+    // 対を置かないと「グラフが空でも通る」テストになり、何も守らない。
+    [Fact]
+    public async Task グラフ露出がOFFの個人資料はノードとして返らない()
+    {
+        var hidden = Node(Guid.NewGuid(), "グラフ非表示の個人メモ", "private-note", graphExposed: false);
+        var organization = Node(Guid.NewGuid(), "組織文書", "organization");
+        var origin = await SeedAsync(hidden, organization);
+
+        var view = await GetNeighborsAsync(origin);
+
+        view.Nodes.Should().Contain(n => n.DocumentId == organization.DocumentId,
+            "陽性対照: 組織文書は従来どおり返る（応答が空なだけの緑にしない）");
+        view.Nodes.Should().NotContain(n => n.DocumentId == hidden.DocumentId,
+            "グラフ露出 OFF の個人資料は出力に載らない");
     }
 
     // FR-17, SC-18: 値の照合は大文字小文字を区別しない（属性複製の揺れで描き分けが割れない）。

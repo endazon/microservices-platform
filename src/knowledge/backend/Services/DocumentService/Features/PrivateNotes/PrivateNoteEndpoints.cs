@@ -30,8 +30,11 @@ namespace DocumentService.Features.PrivateNotes;
 // 所有者スコープは台帳（PrivateNote.OwnerId）で判定し、他者の資料は**存在ごと秘匿**する
 // （404。403 を返すと他人の資料 ID の実在が漏れる。ADR-0036 D-04 の存在秘匿と同じ向き）。
 //
-// 🔴 本経路は DocumentUpdated を**発行しない**（[[IADR-0270]] 決定 5）—— 露出 3 トグルの既定 OFF を
-// 「索引に存在しない」ことで構造的に守る。完全削除だけは DocumentDeleted を発行する（下流掃除の向き）。
+// **［#1184］本経路は「露出 3 トグルのうち 1 つでも ON」のときだけ DocumentUpdated を発行する**
+// （ADR-0061 決定 1・2 / [[IADR-0394]] 決定 4。[[IADR-0270]] 決定 5「発行しない」の後継）。
+// **作成は必ず 3 つとも OFF である**（下の `PrivateNoteDefaults`）ため作成では発行せず、
+// 露出 OFF の資料は索引に存在しないまま保たれる —— 既定を構造で守る性質は門の形で残る。
+// 完全削除は従来どおり DocumentDeleted を発行する（下流掃除の向き）。
 public static class PrivateNoteEndpoints
 {
     public static IEndpointRouteBuilder MapPrivateNoteEndpoints(this IEndpointRouteBuilder app)
@@ -60,21 +63,30 @@ public static class PrivateNoteEndpoints
     // doc_scope=private-note（ADR-0054）・owner=本人（ADR-0036 D-05）・
     // 機密区分 restricted（07_abac-attribute-model のフェイルセーフ既定）。
     //
-    // **［#447］`ai_input=excluded` を明示する**（[[IADR-0283]] 決定 4）——
+    // **［#447 → #1184］露出 3 トグルの投影をすべて `excluded` で明示する**
+    // （[[IADR-0283]] 決定 4 / ADR-0061 決定 3 / [[IADR-0394]] 決定 1）——
     // ⑩「新規に登録した個人資料は 3 トグルがすべて OFF」を、**値の不在ではなく明示された OFF**
-    // として持つ。不在に頼ると、`AiInputExposure` の fail-closed 分岐が失われたときに
+    // として持つ。不在に頼ると、`DocumentExposure` の fail-closed 分岐が失われたときに
     // 静かに全件許可へ倒れる（多層防御。IADR-0044 と同じ向き）。
     //
-    // **「横断検索に含める」「ナレッジグラフに表示」は属性へ写さない** ——
-    // 前者は「索引に載せない」ことで構造的に守られており（[[IADR-0270]] 決定 5）、
-    // 後者は ⑨ の判定対象ではない。使われない属性を先に置かない。
-    internal static Dictionary<string, string> PrivateNoteDefaults(string owner) => new()
+    // **［#1184］「横断検索に含める」「ナレッジグラフに表示」も写すようになった。**
+    // 従前は「索引に載せない」ことで構造的に守られていたため置いていなかったが、
+    // ADR-0061 決定 1 が ON の資料を索引へ載せると裁定した以上、**索引の側から
+    // 3 軸すべてを読めなければならない**（決定 5・6：`confidentiality` だけで判定しない）。
+    internal static Dictionary<string, string> PrivateNoteDefaults(string owner)
     {
-        [DocumentAttributes.DocScopeKey] = DocumentAttributes.DocScopePrivateNote,
-        [DocumentBodyIntake.OwnerKey] = owner,
-        [DocumentAttributes.ConfidentialityKey] = "restricted",
-        [AiInputExposure.AttributeKey] = AiInputExposure.Excluded,
-    };
+        var attributes = new Dictionary<string, string>
+        {
+            [DocumentAttributes.DocScopeKey] = DocumentAttributes.DocScopePrivateNote,
+            [DocumentBodyIntake.OwnerKey] = owner,
+            [DocumentAttributes.ConfidentialityKey] = "restricted",
+        };
+
+        foreach (var (key, value) in DocumentExposure.Project(false, false, false))
+            attributes[key] = value;
+
+        return attributes;
+    }
 
     internal static string? SubjectOf(HttpContext http)
         => string.IsNullOrWhiteSpace(http.User.Identity?.Name) ? null : http.User.Identity!.Name;

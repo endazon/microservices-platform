@@ -259,6 +259,11 @@
             "type": "string",
             "value": "\"attributes\""
           },
+          "SharedWith": {
+            "source": "const",
+            "type": "string",
+            "value": "\"shared_with\""
+          },
           "Tags": {
             "source": "const",
             "type": "string",
@@ -1015,6 +1020,36 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.DocumentExposure": {
+        "kind": "class",
+        "members": {
+          "AiKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"ai_input\""
+          },
+          "Excluded": {
+            "source": "const",
+            "type": "string",
+            "value": "\"excluded\""
+          },
+          "GraphKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"graph_exposure\""
+          },
+          "Included": {
+            "source": "const",
+            "type": "string",
+            "value": "\"included\""
+          },
+          "SearchKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"search_exposure\""
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.DocumentScopes": {
         "kind": "class",
         "members": {
@@ -1669,6 +1704,21 @@
             "type": "long",
             "required": true,
             "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.PrivateNoteVisibility": {
+        "kind": "class",
+        "members": {
+          "OwnerKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"owner\""
+          },
+          "SharedWithKey": {
+            "source": "const",
+            "type": "string",
+            "value": "AttributeValueKeys.SharedWith"
           }
         }
       },
@@ -2347,6 +2397,12 @@
             "type": "string?",
             "required": false,
             "position": 9
+          },
+          "SharedWith": {
+            "source": "positional",
+            "type": "List<string>?",
+            "required": false,
+            "position": 11
           },
           "Status": {
             "source": "positional",

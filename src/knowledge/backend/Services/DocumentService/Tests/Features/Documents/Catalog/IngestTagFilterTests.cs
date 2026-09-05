@@ -184,6 +184,7 @@ public sealed class IngestTagFilterTests
             Dictionary<string, string> attributes, List<string> tags, DateTimeOffset updatedAt,
             string? contentFingerprint = null, bool hasBody = true,
             string? originalPath = null, string? dataSourceName = null,
+            List<string>? sharedWith = null,
             CancellationToken ct = default) => Task.CompletedTask;
     }
 }

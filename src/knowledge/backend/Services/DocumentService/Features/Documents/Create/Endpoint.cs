@@ -96,7 +96,7 @@ internal static class CreateDocumentEndpoint
             db.Documents.Add(doc);
             await db.SaveChangesAsync();
             var createNames = await TagResolver.NamesAsync(db);
-            await DocumentEndpoints.PublishUpdatedAsync(bus, doc, createNames, ct);
+            await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, createNames, ct);
             return Results.Created($"/documents/{doc.Id}",
                 DocumentEndpoints.ToDto(doc, createNames));
         });

@@ -188,7 +188,7 @@ public class Document
     // そちらは利用者が意図した更新であり、止めるとタグを外せなくなる。
     //
     // **［IADR-0296］資産 URI は属性と同じ扱いで上書きする** —— 資産を生むのは変換経路だけであり、
-    // 再正規化の結果が正本である。**辞書ごと差し替える**（`SetAiInputExposure` と同じ理由）。
+    // 再正規化の結果が正本である。**辞書ごと差し替える**（`SetExposureAttributes` と同じ理由）。
     // 🔴 上書きで参照から落ちた旧資産は**台帳から消えて実体が残る**（IADR-0296 フォローアップ 1）。
     // ADR-0057 は削除操作の伝播範囲の裁定であり、再変換時の孤児掃除はその射程に無い。
     public void ApplyNormalized(string title, string markdownUri,
@@ -230,8 +230,13 @@ public class Document
     public void RecordContentFingerprint(string? contentFingerprint)
         => ContentFingerprint = contentFingerprint;
 
-    // FR-19, FR-21 受け入れ基準 ⑨, [[IADR-0283]] 決定 4:
-    // 個人資料の露出トグル「AI の入力に含める」を ABAC 文書属性へ写す。
+    // FR-19, FR-21 受け入れ基準 ⑨, ADR-0061 決定 3, [[IADR-0283]] 決定 4, [[IADR-0394]] 決定 1:
+    // 個人資料の露出 3 トグル（横断検索 / グラフ / AI の入力）を ABAC 文書属性へ写す。
+    //
+    // **［#1184］3 つまとめて写す。** 従前は「AI の入力に含める」だけを写しており
+    // （消費側が RAG しか無かったため）、横断検索・グラフの 2 つは索引の側から読めなかった。
+    // **投影は `DocumentExposure.Project` の 1 か所で作る** —— キーを呼び出し側で並べると、
+    // 1 つ書き漏らしたときに欠落＝ fail-closed で静かに「見えない」へ倒れる。
     //
     // 🔴 **版・時刻を動かさない**（`Touch()` / `Snapshot()` を呼ばない）。**露出トグルは本文の編集
     // ではない** —— FR-19 は「編集の回数だけ版を保持」と定めており、トグルで版が増えると
@@ -240,11 +245,17 @@ public class Document
     //
     // **辞書は差し替える**（その場で書き換えない）—— jsonb 変換器の値比較器はスナップショットとの
     // 比較で変更を検出するが、参照ごと差し替えるほうが意図が読める。
-    public void SetAiInputExposure(bool includeInAi)
-        => Attributes = new Dictionary<string, string>(Attributes)
+    public void SetExposureAttributes(bool includeInSearch, bool includeInGraph, bool includeInAi)
+    {
+        var next = new Dictionary<string, string>(Attributes);
+        foreach (var (key, value) in
+                 DocumentExposure.Project(includeInSearch, includeInGraph, includeInAi))
         {
-            [AiInputExposure.AttributeKey] = AiInputExposure.FromToggle(includeInAi),
-        };
+            next[key] = value;
+        }
+
+        Attributes = next;
+    }
 
     // FR-06, UC-03, SC-05: 公開する。アーカイブ済み（非公開化済み）からの再公開は状態遷移の意図に反する
     // ため認めない（UI だけでなくドメイン不変条件としても強制する。レビュー #171 指摘対応）。
