@@ -67,7 +67,7 @@ plan_refs:
 | McpServer の私有 sink `Problem(` の呼び出し | 6 | 軸 1 では落ちる（`Results.` が付かない） |
 | `Results.BadRequest` の非テスト行（陽性対照） | 18 | 波 2 第 1 弾が残した箇所が拾える ＝ 走査器は生きている |
 | FluentValidation の `PackageReference`（陽性対照） | 6 csproj | `IADR-0395` §結果「4 → 6」と一致 |
-| `IValidator<` の `Program.cs` 登録行（陽性対照） | 11 行 | 本 PR 適用後は 20 行（うち DocumentService 9）。`AddValidatorsFromAssembly` は 0 件 |
+| `AddScoped<IValidator<` の `Program.cs` 登録行（陽性対照） | 11 行 | 本 PR 適用後は 19 行（うち DocumentService 8）。`AddValidatorsFromAssembly` は 0 件 |
 
 呼び出し 37 は #1278 の数えと一致する（**転記ではなく再計算**）。
 
