@@ -1,5 +1,5 @@
 ---
-title: IADR-0398 経路 B の Prometheus inline は compose と「群名・名前・expr・for・severity」で突合する。文面の凝縮は許し、バイト一致は課さない
+title: IADR-0399 経路 B の Prometheus inline は compose と「群名・名前・expr・for・severity」で突合する。文面の凝縮は許し、バイト一致は課さない
 type: impl-adr
 status: Accepted
 related_ids:
@@ -22,7 +22,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0076_slo-evaluation-target-and-metric-units.md (決定 3)
 ---
 
-# IADR-0398: Prometheus のアラートルールの経路 A/B パリティを機械で止める（#1246 の取りこぼし）
+# IADR-0399: Prometheus のアラートルールの経路 A/B パリティを機械で止める（#1246 の取りこぼし）
 
 - 状態: Accepted
 - 日付: 2026-09-05
