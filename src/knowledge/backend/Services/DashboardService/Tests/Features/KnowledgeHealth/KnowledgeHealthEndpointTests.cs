@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using AwesomeAssertions;
 using DashboardService.Features.KnowledgeHealth;
 using DashboardService.Features.KnowledgeHealth.Report;
@@ -194,6 +195,11 @@ public class KnowledgeHealthEndpointTests
 
     // FR-10 (T-28): 指標の語彙は閉じる。未知の指標名は 400。
     // 語彙が開いていると、生産者側の綴り違いが「0 件の指標」として静かに現れ、改善したと読める。
+    //
+    // FR-10 / IADR-0371 決定 2 / IADR-0393: 検証を FluentValidation へ移した際、
+    // **状態コードだけでなく本文も変わっていない**ことを固定する ——
+    // 400 のままメッセージだけが変わる退行（あるいは規則順が入れ替わって別の理由が返る退行）は
+    // 状態コードでは捕まらない。
     [Fact]
     public async Task 未知の指標名は400()
     {
@@ -205,6 +211,9 @@ public class KnowledgeHealthEndpointTests
             TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        body.GetProperty("error").GetString().Should()
+            .Be(ReportKnowledgeHealthValidator.IndicatorInvalidMessage);
     }
 
     // ── 受け口の移設（#443 / [[IADR-0299]] 決定 4） ───────────────────────────
@@ -403,6 +412,10 @@ public class KnowledgeHealthEndpointTests
             TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        // IADR-0371 決定 2 / IADR-0393: 本文も移送前と同じであること。
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        body.GetProperty("error").GetString().Should()
+            .Be(ReportKnowledgeHealthValidator.ThresholdInvalidMessage);
     }
 
     // FR-10 (T-62): 🔴 **生産者が実際に送る JSON がそのまま束縛できる**（T-32 と同じ作法）。

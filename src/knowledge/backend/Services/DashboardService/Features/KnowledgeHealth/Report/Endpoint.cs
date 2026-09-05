@@ -1,6 +1,8 @@
 using DashboardService.Domain;
 using DashboardService.Infrastructure.Persistence;
+using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Platform.Shared.Kernel;
 
 namespace DashboardService.Features.KnowledgeHealth.Report;
 
@@ -33,18 +35,22 @@ public static class ReportKnowledgeHealthEndpoint
     internal static void Map(IEndpointRouteBuilder app)
     {
         app.MapPost(ObservationsPath, async (
-            KnowledgeHealthReportRequest req, DashboardDbContext db, CancellationToken ct) =>
+            KnowledgeHealthReportRequest req, IValidator<KnowledgeHealthReportRequest> validator,
+            DashboardDbContext db, CancellationToken ct) =>
         {
-            if (!KnowledgeHealthIndicators.IsValid(req.Indicator))
-                return Results.BadRequest(new
-                {
-                    error = "indicator must be one of: " + string.Join(", ", KnowledgeHealthIndicators.All)
-                });
-
-            // planning#494 決定 3 (#1186): しきい値は省略可だが、**0 以下は受け付けない** ——
-            // 保存すると画面が「しきい値 0 日」と表示し、件数の意味が読めなくなる。
-            if (req.ThresholdDays is <= 0)
-                return Results.BadRequest(new { error = "thresholdDays must be greater than zero" });
+            // FR-10, FR-17, FR-18 / IADR-0371 決定 2・4 / IADR-0393: 入力検証（FluentValidation）の
+            // 失敗を Kernel の `Result` で表し、**HTTP への写像は 1 度だけ行う**
+            // （計画 ADR-0030 §決定「ProblemDetails 変換は API 層」/ ADR-0041 §結果）。
+            // 判定の順序は移送前のガード節と同じ（指標 → しきい値）であり、
+            // 返す状態コードも本文も変わらない。
+            var gate = Validate(validator, req);
+            if (gate.IsFailure)
+            {
+                // ErrorKind で HTTP を決める。**分岐は 1 箇所に閉じる。**
+                return gate.Error.Kind == ErrorKind.Validation
+                    ? Results.BadRequest(new { error = gate.Error.Message })
+                    : Results.StatusCode(StatusCodes.Status500InternalServerError);
+            }
 
             var indicator = KnowledgeHealthIndicators.Normalize(req.Indicator);
             var observedAt = DateTimeOffset.UtcNow;
@@ -87,5 +93,21 @@ public static class ReportKnowledgeHealthEndpoint
         }).WithName("ReportKnowledgeHealth")
           .ExcludeFromDescription()
           .Produces(StatusCodes.Status202Accepted);
+    }
+
+    // FR-10 / IADR-0371 決定 2: 入力規則の判定。
+    // **規則そのものは `ReportKnowledgeHealthValidator` が持つ。**
+    //
+    // 🔴 **`Errors[0]` を採る。** FluentValidation は既定で全規則を走らせるため、
+    // 移送前の「最初の違反で 400 を返す」と同じ本文にするには最初の失敗を採るしかない。
+    // 規則の宣言順が応答の契約の一部になっている（同 Validator のコメントを参照）。
+    private static Result Validate(IValidator<KnowledgeHealthReportRequest> validator,
+        KnowledgeHealthReportRequest req)
+    {
+        var result = validator.Validate(req);
+        return result.IsValid
+            ? Result.Success()
+            : Result.Failure(Error.Validation(
+                "dashboard.knowledge-health.invalid", result.Errors[0].ErrorMessage));
     }
 }

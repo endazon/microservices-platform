@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using AwesomeAssertions;
 using DashboardService.Features.Dashboard;
+using DashboardService.Features.Dashboard.RecordEvent;
 using Knowledge.Contracts.Dtos;
 
 namespace DashboardService.Tests.Features.Dashboard;
@@ -33,13 +35,20 @@ public class DashboardEndpointTests
     }
 
     // T-03: 不正な eventType は 400。
+    //
+    // FR-10 / IADR-0371 決定 2 / IADR-0393: 検証を FluentValidation へ移した際、
+    // **状態コードだけでなく本文も変わっていない**ことを固定する ——
+    // 400 のままメッセージだけが変わる退行は状態コードでは捕まらない。
     [Fact]
-    public async Task InvalidEventType_Returns400()
+    public async Task InvalidEventType_Returns400WithOriginalBody()
     {
         using var factory = new TestWebApplicationFactory();
         var resp = await factory.CreateClient()
             .PostAsJsonAsync("/dashboard/events", new UsageEventRequest("click"), TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        body.GetProperty("error").GetString().Should()
+            .Be(RecordUsageEventValidator.EventTypeInvalidMessage);
     }
 
     // T-04: 利用状況の集計（日次 × 種別の件数）。検索×2・回答×1 を投入し件数を確認する。

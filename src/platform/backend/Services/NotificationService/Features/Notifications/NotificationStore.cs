@@ -34,7 +34,8 @@ public sealed class NotificationStore(NotificationDbContext db, IOptions<Notific
 
         var unreadCount = await CountUnreadAsync(subject, ct);
 
-        return new NotificationListDto(items.Select(ToDto).ToList(), unreadCount);
+        // 写像の実体は Riok.Mapperly の生成マッパである（IADR-0371 決定 3 / IADR-0393）。
+        return new NotificationListDto(items.Select(NotificationMapper.ToDto).ToList(), unreadCount);
     }
 
     // FR-22: 既読化。**冪等**（既読のものへもう一度呼んでも 200 相当を返す）。
@@ -63,6 +64,6 @@ public sealed class NotificationStore(NotificationDbContext db, IOptions<Notific
     public Task<int> CountUnreadAsync(string subject, CancellationToken ct = default)
         => db.Notifications.CountAsync(n => n.Subject == subject && !n.Read, ct);
 
-    private static NotificationDto ToDto(Notification n)
-        => new(n.Id, n.Kind, n.Count, n.ThresholdPercent, n.Deadline, n.OccurredAt, n.Read);
+    // 手書きの詰め替えは撤去した。写像は `NotificationMapper.ToDto`（Riok.Mapperly の生成マッパ）が
+    // 持つ（計画 ADR-0030 §決定 / IADR-0371 決定 3 / IADR-0393）。**このクラスに写像は残さない。**
 }

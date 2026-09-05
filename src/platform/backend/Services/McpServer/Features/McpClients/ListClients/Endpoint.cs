@@ -10,7 +10,7 @@ public static class ListMcpClientsEndpoint
     {
         app.MapGet("", async (McpDbContext db) =>
             Results.Ok((await db.Clients.AsNoTracking().OrderBy(c => c.ClientId).ToListAsync())
-                .Select(McpClientEndpoints.ToView).ToList()));
+                .Select(McpClientMapper.ToView).ToList()));
 
         return app;
     }

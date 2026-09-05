@@ -10,7 +10,17 @@
     <None Remove="Tests/**" />
   </ItemGroup>
   <ItemGroup>
+    <!-- NFR / IADR-0371 決定 3 / IADR-0393: 生成マッパ（McpClientMapper）はスライスの内側であり
+         internal である。単体で直に試験するために試験プロジェクトへだけ開ける
+         （FeedbackService / DocumentService 等と同じ形）。 -->
+    <InternalsVisibleTo Include="McpServer.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <!-- NFR, 計画 ADR-0030 §決定（マッピング = Riok.Mapperly。選定基準 4「コンパイル時生成を優先」）
+         / IADR-0371 決定 3 / IADR-0393。source generator であり、生成物は obj/ 配下に出るため
+         カバレッジ集計からは既に落ちている（IADR-0195 決定 1）。版は書かない（CPM）。 -->
+    <PackageReference Include="Riok.Mapperly" />
     <!-- FR-16, ADR-0024: MCP の公式 C# SDK（計画 11_mcp-server-integration §前提 が指定）。
          ツールは動的ハンドラで供給し、コードへ固定しない。 -->
     <PackageReference Include="ModelContextProtocol.AspNetCore" />

@@ -26,7 +26,7 @@ public static class ReplaceMcpClientAttributesEndpoint
 
             client.ReplaceAttributes(req.Attributes, clock.GetUtcNow());
             await db.SaveChangesAsync(ct);
-            return Results.Ok(McpClientEndpoints.ToView(client));
+            return Results.Ok(McpClientMapper.ToView(client));
         });
 
         return app;

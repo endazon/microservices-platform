@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using ConversionService.Features.ConversionJobs.CorrectFigure;
 using ConversionService.Infrastructure.Persistence;
 using ConversionService.Domain.Ports;
 using ConversionService.Domain;
@@ -312,6 +314,36 @@ public class ConversionFigureCorrectionTests
         var objects = (FakeObjectStore)scope.ServiceProvider.GetRequiredService<IObjectStore>();
         var body = await objects.TryGetMarkdownAsync(job.MarkdownUri!, TestContext.Current.CancellationToken);
         body.Should().NotContain("<script>");
+    }
+
+    // UC-06 / IADR-0371 決定 2 / IADR-0393: 検証を FluentValidation へ移した際、
+    // **HTTP の面で応答が変わっていない**ことを固定する。
+    //
+    // 🔴 **上の `Correction_WithFenceBreakingCode_Is400_AndDoesNotPersist` は状態コードしか見ていない。**
+    // 400 のままメッセージだけが変わる退行はそこでは捕まらないので、**本文の `error` 文字列**を
+    // 端点越しに固定する（移送前の `{ "error": "invalid_correction" }`）。
+    [Theory]
+    // 空のコード。
+    [InlineData("mermaid", "")]
+    // 空の言語。
+    [InlineData("", "flowchart LR; X-->Y;")]
+    // コードフェンスを内側から閉じられる入力。
+    [InlineData("mermaid", "flowchart LR;\n``" + "`\n")]
+    // 言語にバッククォート。
+    [InlineData("mer`maid", "flowchart LR; X-->Y;")]
+    public async Task Correction_WithInvalidInput_Returns400WithOriginalBody(string language, string code)
+    {
+        using var factory = new Factory();
+        var client = factory.CreateClient();
+        var id = await SeedSucceededAsync(factory);
+
+        var resp = await client.PostAsJsonAsync($"/jobs/{id}/figures/fig-1/correction",
+            new FigureCorrectionRequest(language, code), TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var payload = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        payload.GetProperty("error").GetString().Should()
+            .Be(FigureCorrectionValidator.InvalidCorrectionMessage);
     }
 
     // ★ レビュー 2 巡目の繰り越し指摘: 補正ゲートが実際に発火する経路を固定する。

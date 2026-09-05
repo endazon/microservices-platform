@@ -25,7 +25,8 @@ namespace AuthorizationService.Features.Users;
 //   不在は `UserAdminEndpointTests` が陽性対照つきで固定する。
 //
 // ADR-0065 決定 2: 1 ユースケースのファイルは操作フォルダへ束ねる。
-// **本ファイルに残すのは、グループの構築と全操作が共有する `ToDto` / `ValidationProblem` だけである。**
+// **本ファイルに残すのは、グループの構築と全操作が共有する `ValidationProblem` だけである**
+// （写像は `PlatformUserMapper` が持つ）。
 public static class UserAdminEndpoints
 {
     public static IEndpointRouteBuilder MapUserAdminEndpoints(this IEndpointRouteBuilder app)
@@ -46,10 +47,9 @@ public static class UserAdminEndpoints
         return app;
     }
 
-    // 全操作が同じ形で返す（画面が 1 種類の読み方だけを覚えれば済む）。集約直下に置く。
-    internal static PlatformUserDto ToDto(IdentityUser user)
-        => new(user.Id, user.Username, user.DisplayName, user.Enabled,
-            [.. user.Roles], new Dictionary<string, string>(user.Attributes));
+    // 全操作が同じ形で返す（画面が 1 種類の読み方だけを覚えれば済む）。集約直下に置く点は変えず、
+    // 実体は手書きをやめて Riok.Mapperly の生成マッパ（`PlatformUserMapper.ToDto`）へ移した
+    // （計画 ADR-0030 §決定 / IADR-0371 決定 3 / IADR-0393）。**このクラスに写像は残さない。**
 
     // RFC7807 準拠のバリデーションエラー（400）。AuthzEndpoints と同じ形へ揃える
     // （画面が 2 種類の読み方を覚えなくて済む）。

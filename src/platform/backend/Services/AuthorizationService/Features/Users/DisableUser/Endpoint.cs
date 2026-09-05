@@ -19,7 +19,7 @@ public static class DisableUserEndpoint
             var updated = await identity.SetEnabledAsync(userId, false, ct);
             if (updated is null) return Results.NotFound();
             await identity.RevokeSessionsAsync(userId, ct);
-            return Results.Ok(UserAdminEndpoints.ToDto(updated));
+            return Results.Ok(PlatformUserMapper.ToDto(updated));
         });
 
         return app;

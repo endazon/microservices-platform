@@ -42,7 +42,7 @@ public static class McpClientEndpoints
         if (client is null) return Results.NotFound();
         client.SetEnabled(enabled, clock.GetUtcNow());
         await db.SaveChangesAsync();
-        return Results.Ok(ToView(client));
+        return Results.Ok(McpClientMapper.ToView(client));
     }
 
     // 🔴 FR-16, UC-09, SC-12, ADR-0034 決定 9, ADR-0062 決定 2・3:
@@ -84,15 +84,7 @@ public static class McpClientEndpoints
     internal static IResult Problem(IReadOnlyList<string> messages)
         => Results.ValidationProblem(new Dictionary<string, string[]> { ["request"] = [.. messages] });
 
-    internal static string TierName(int tier) => (EgressTier)tier switch
-    {
-        EgressTier.SelfHosted => "self-hosted",
-        EgressTier.ProtectedExternal => "protected-external",
-        _ => "standard-external"
-    };
-
-    internal static McpClientView ToView(McpClient c) => new(
-        c.Id, c.ClientId, c.DisplayName,
-        c.Kind == McpClientKind.ServiceAccount ? "service-account" : "interactive",
-        c.Enabled, c.Attributes, TierName(c.EgressTier), c.RegisteredAt, c.UpdatedAt);
+    // 手書きの詰め替え（ToView）とティア名の変換（TierName）は撤去した。写像は
+    // `McpClientMapper.ToView`（Riok.Mapperly の生成マッパ）が持つ
+    // （計画 ADR-0030 §決定 / IADR-0371 決定 3 / IADR-0393）。**このクラスに写像は残さない。**
 }

@@ -11,7 +11,7 @@ public static class EnableUserEndpoint
             string userId, IIdentityAdminClient identity, CancellationToken ct) =>
         {
             var updated = await identity.SetEnabledAsync(userId, true, ct);
-            return updated is null ? Results.NotFound() : Results.Ok(UserAdminEndpoints.ToDto(updated));
+            return updated is null ? Results.NotFound() : Results.Ok(PlatformUserMapper.ToDto(updated));
         });
 
         return app;

@@ -21,7 +21,7 @@ public static class ReplaceUserAttributesEndpoint
             if (errors.Count > 0) return UserAdminEndpoints.ValidationProblem(errors);
 
             var updated = await identity.ReplaceAttributesAsync(userId, req.Attributes, ct);
-            return updated is null ? Results.NotFound() : Results.Ok(UserAdminEndpoints.ToDto(updated));
+            return updated is null ? Results.NotFound() : Results.Ok(PlatformUserMapper.ToDto(updated));
         });
 
         return app;

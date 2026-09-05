@@ -18,7 +18,7 @@ public static class ReplaceUserRolesEndpoint
             if (errors.Count > 0) return UserAdminEndpoints.ValidationProblem(errors);
 
             var updated = await identity.ReplaceRealmRolesAsync(userId, req.Roles, ct);
-            return updated is null ? Results.NotFound() : Results.Ok(UserAdminEndpoints.ToDto(updated));
+            return updated is null ? Results.NotFound() : Results.Ok(PlatformUserMapper.ToDto(updated));
         });
 
         return app;
