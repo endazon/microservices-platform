@@ -390,10 +390,15 @@ services:
       context: ..
       dockerfile: src/platform/backend/Services/AuthorizationService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（/authz/scope 等はサービス間呼び出し専用）
+    # NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 (#1201): 8081 は east-west gRPC の h2c ポート
+    # （TLS 無し HTTP/2 専用）。helm の grpcPort と同じ値。host へは公開しない。
     expose:
       - "8080"
+      - "8081"
     environment:
       <<: [*common-env, *db-env]
+      # NFR-16, IADR-0379 決定 3 (#1201): h2c リスナ。未設定ならリスナを立てない。readiness は 8080 のまま。
+      Grpc__Port: "8081"
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=authz_svc;Username=kp;Password=kp
       # SC-17, IADR-0301 決定 3 (#452) / IADR-0329 (#1101): 利用者アカウント管理の反映先。
       # **既定は無く、宣言が必須**（未設定なら起動時に落ちる）。

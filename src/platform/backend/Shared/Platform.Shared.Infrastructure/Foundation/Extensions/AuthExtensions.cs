@@ -20,6 +20,15 @@ public static class PlatformAuthPolicies
 
     // FR-15, SC-11, IADR-0030: 運用者ロール（Keycloak のレルムロール想定。構成閲覧のみ。管理系操作は不可）。
     public const string OperatorRole = "platform-operator";
+
+    // NFR-09, ADR-0029, ADR-0075, IADR-0379 決定 4 (#1201): east-west gRPC の呼び出し側サービスに要求する
+    // ポリシー。**利用者のロール（AdminOnly / ConfigViewer）とは別軸**であり、利用者のトークンでは通らない
+    // （通ると「利用者が直接呼んだ」と区別できず、confused deputy になる）。
+    public const string ServiceCaller = "ServiceCaller";
+
+    // サービスアカウント（client credentials で得た JWT）に付けるレルムロール。realm の各 confidential client の
+    // service account へ付与する（deploy/keycloak/microservices-platform-realm.json）。
+    public const string ServiceRole = "platform-service";
 }
 
 public static class AuthExtensions
@@ -88,6 +97,11 @@ public static class AuthExtensions
                 policy.RequireRole(
                     PlatformAuthPolicies.AdminRole,
                     PlatformAuthPolicies.OperatorRole));
+
+            // NFR-09, IADR-0379 決定 4 (#1201): east-west gRPC の面に掛ける。呼び出し側サービス自身の
+            // 資格情報（`platform-service`）だけを通し、利用者のトークンは（管理者であっても）通さない。
+            options.AddPolicy(PlatformAuthPolicies.ServiceCaller, policy =>
+                policy.RequireRole(PlatformAuthPolicies.ServiceRole));
         });
         return services;
     }
