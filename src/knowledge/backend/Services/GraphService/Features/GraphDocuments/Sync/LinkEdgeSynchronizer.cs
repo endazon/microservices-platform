@@ -36,7 +36,13 @@ public sealed class LinkEdgeSynchronizer(
     private const int MaxAnchorLength = 200;
 
     // 差分適用の結果。呼び出し元のログのために返す（保存は呼び出し元が行う）。
-    public readonly record struct SyncResult(int Extracted, int Added, int Removed);
+    //
+    // `Unresolved` — **本文が指しているのに文書 ID へ解決できなかったリンク先の数**
+    //   （不在・曖昧の合計）。[[IADR-0389]] (#1246) で足した。
+    //   🔴 **これは指標の値ではない。** 指標（`unresolved-links`）は `document_link_targets` から
+    //   **収集のたびに解決し直して**数える —— ここでの値は取り込んだ瞬間の写像であり、
+    //   相手が後から改名・削除されても動かない。ログの手掛かりとしてだけ返す。
+    public readonly record struct SyncResult(int Extracted, int Added, int Removed, int Unresolved);
 
     public async Task<SyncResult> SyncAsync(Guid documentId, string content, CancellationToken ct = default)
     {
@@ -47,9 +53,15 @@ public sealed class LinkEdgeSynchronizer(
         var known = new HashSet<string>(types.Select(t => t.Name), StringComparer.OrdinalIgnoreCase);
 
         // [3] 名前 → 文書 ID。**辺を作れるリンクが 1 本も無ければ照会もしない。**
-        var resolved = links.Count == 0
-            ? new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase)
+        var (resolved, unresolved) = links.Count == 0
+            ? (new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase), 0)
             : await ResolveTargetsAsync(links, ct);
+
+        // [3b] FR-10, SC-10, [[IADR-0389]] (#1246): **リンク先の名前を全量置換で保存する。**
+        // 未解決リンク数の材料である。🔴 **解決できたものも保存する** ——
+        // 相手が後から改名・削除されると解決できなくなるため、
+        // 「いま解決できた」を根拠に捨てると、その壊れ方を永久に取りこぼす。
+        await ReplaceLinkTargetsAsync(documentId, links, ct);
 
         // 望ましい辺の集合。キーは ux_edges と同じ 5 つ組（正規化後）。
         var desired = new Dictionary<EdgeKey, Edge>();
@@ -122,65 +134,82 @@ public sealed class LinkEdgeSynchronizer(
         if (added.Count > 0)
             db.Edges.AddRange(added);
 
-        return new SyncResult(links.Count, added.Count, stale.Count);
+        return new SyncResult(links.Count, added.Count, stale.Count, unresolved);
     }
 
-    // リンク先の名前を文書 ID へ解決する（IADR-0281）。
+    // 本文が指すリンク先の名前を**全量置換**で保存する（[[IADR-0389]] 決定 3 / #1246）。
     //
-    // **照会先は graph_documents の複製 Title である**（鮮度契約 1: 正本 DocumentService への同期
-    // 照会をしない）。ordinal 完全一致を優先し、無ければ大文字小文字を無視した一致を見る。
-    // **0 件（不在）・複数件（曖昧）はいずれも解決しない** —— 誤った文書へ辺を張るより張らない。
-    private async Task<Dictionary<string, Guid>> ResolveTargetsAsync(
-        IReadOnlyList<ObsidianLink> links, CancellationToken ct)
+    // 🔴 **SaveChanges を呼ばない**（本クラスの他の書き込みと同じ。呼び出し元が 1 回だけ保存する）。
+    // 🔴 **リンクが 0 本でも呼ぶ。** 本文からリンクを消した文書の行が残ると、
+    // 未解決リンク数が恒久的に減らない（受け口のスナップショット置換と同じ理由）。
+    private async Task ReplaceLinkTargetsAsync(
+        Guid documentId, IReadOnlyList<ObsidianLink> links, CancellationToken ct)
     {
-        var targets = links
+        var existing = await db.DocumentLinkTargets
+            .Where(t => t.SourceDocumentId == documentId)
+            .ToListAsync(ct);
+        if (existing.Count > 0)
+            db.DocumentLinkTargets.RemoveRange(existing);
+
+        var now = DateTimeOffset.UtcNow;
+        foreach (var target in DistinctTargets(links))
+            db.DocumentLinkTargets.Add(DocumentLinkTarget.Create(documentId, target, now));
+    }
+
+    // 空でない相手の名前を重複なしで。**ordinal で重複排除する** ——
+    // 大文字小文字だけが違う 2 つのリンクは、解決規則の上では別の問い合わせである。
+    private static List<string> DistinctTargets(IReadOnlyList<ObsidianLink> links)
+        => links
             .Select(l => l.Target)
             .Where(t => t.Length > 0)
             .Distinct(StringComparer.Ordinal)
             .ToList();
+
+    // リンク先の名前を文書 ID へ解決する（IADR-0281）。
+    //
+    // **照会先は graph_documents の複製 Title である**（鮮度契約 1: 正本 DocumentService への同期
+    // 照会をしない）。**判定そのものは `LinkTargetMatcher` が持つ** —— 収集側（未解決リンク数）が
+    // 同じ規則で数えるためであり、ここに規則を書き戻してはならない（[[IADR-0389]] 決定 3）。
+    //
+    // 戻り値の `Unresolved` は不在・曖昧の合計（ログ用）。
+    private async Task<(Dictionary<string, Guid> Resolved, int Unresolved)> ResolveTargetsAsync(
+        IReadOnlyList<ObsidianLink> links, CancellationToken ct)
+    {
+        var targets = DistinctTargets(links);
         var resolved = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
         if (targets.Count == 0)
-            return resolved;
+            return (resolved, 0);
 
-        // [1] ordinal 完全一致。PostgreSQL の既定照合順序では `=` がそのまま ordinal 比較である。
-        var exact = await db.Documents.AsNoTracking()
-            .Where(d => targets.Contains(d.Title))
+        // 候補を **1 クエリ**で引く。ordinal 一致と大文字小文字を無視した一致の**両方の候補**を
+        // まとめて取り、選別は `LinkTargetMatcher` に任せる
+        // （PostgreSQL の既定照合順序では `=` がそのまま ordinal 比較である）。
+        var lowered = targets.Select(t => t.ToLowerInvariant()).Distinct(StringComparer.Ordinal).ToList();
+        var rows = await db.Documents.AsNoTracking()
+            .Where(d => targets.Contains(d.Title) || lowered.Contains(d.Title.ToLower()))
             .Select(d => new { d.DocumentId, d.Title })
             .ToListAsync(ct);
-        var unresolved = new List<string>();
+        var candidates = rows
+            .Select(r => new LinkTargetMatcher.TitleCandidate(r.DocumentId, r.Title))
+            .ToList();
+
+        var unresolved = 0;
         foreach (var target in targets)
         {
-            var hits = exact.Where(d => string.Equals(d.Title, target, StringComparison.Ordinal)).ToList();
-            if (hits.Count == 1)
-                resolved[target] = hits[0].DocumentId;
-            else if (hits.Count == 0)
-                unresolved.Add(target);
-            else
-                logger.LogWarning("Ambiguous link target '{Target}' ({Count} documents)", target, hits.Count);
-        }
-        if (unresolved.Count == 0)
-            return resolved;
+            var match = LinkTargetMatcher.Match(target, candidates);
+            if (match.IsResolved)
+            {
+                resolved[target] = match.DocumentId;
+                continue;
+            }
 
-        // [2] 大文字小文字を無視した一意一致。**一意でなければ解決しない。**
-        var lowered = unresolved.Select(t => t.ToLowerInvariant()).Distinct(StringComparer.Ordinal).ToList();
-        var loose = await db.Documents.AsNoTracking()
-            .Where(d => lowered.Contains(d.Title.ToLower()))
-            .Select(d => new { d.DocumentId, d.Title })
-            .ToListAsync(ct);
-        foreach (var target in unresolved)
-        {
-            var hits = loose
-                .Where(d => string.Equals(d.Title, target, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            if (hits.Count == 1)
-                resolved[target] = hits[0].DocumentId;
-            else if (hits.Count > 1)
-                logger.LogWarning("Ambiguous link target '{Target}' ({Count} documents)", target, hits.Count);
+            unresolved++;
+            if (match.Outcome == LinkTargetMatcher.LinkTargetOutcome.Ambiguous)
+                logger.LogWarning("Ambiguous link target '{Target}'", target);
             else
                 logger.LogInformation("Unresolved link target '{Target}'; no edge is created", target);
         }
 
-        return resolved;
+        return (resolved, unresolved);
     }
 
     private static string? Truncate(string? anchor)

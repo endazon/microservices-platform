@@ -13,6 +13,10 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
     // FR-18, ADR-0033 決定 7・10: AI 提案（リンク・タグを同居させる。#914）。
     public DbSet<AiSuggestion> AiSuggestions => Set<AiSuggestion>();
 
+    // FR-10, SC-10, [[IADR-0389]] (#1246): 本文が指すリンク先の**名前**。
+    // 未解決リンク数はここから**集計のたびに解決し直して**数える（失敗を保存しない）。
+    public DbSet<DocumentLinkTarget> DocumentLinkTargets => Set<DocumentLinkTarget>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         // FR-17, ADR-0033 決定 2: ノード（ABAC 属性の複製）。
@@ -104,6 +108,19 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
             // 張ると、参照している提案が pending / rejected でも型の削除が RESTRICT で拒まれる。
             // ADR-0033 決定 9 が削除を拒む条件は「**辺**が参照していること」であり、提案は辺ではない
             // （未承認の提案は辺を持たない）。外部キーを張ると決定 9 より厳しい規則を勝手に作ることになる。
+        });
+
+        // FR-10, SC-10, [[IADR-0389]] (#1246): 本文が指すリンク先の名前。
+        mb.Entity<DocumentLinkTarget>(e =>
+        {
+            e.ToTable("document_link_targets");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.SourceDocumentId).IsRequired();
+            e.Property(x => x.Target).HasMaxLength(DocumentLinkTarget.MaxTargetLength).IsRequired();
+            e.Property(x => x.ExtractedAt).IsRequired();
+
+            // 書き込み側（文書 1 件ぶんの全量置換）と削除側が同じ述語で引く。
+            e.HasIndex(x => x.SourceDocumentId).HasDatabaseName("ix_document_link_targets_source");
         });
 
         // FR-17, ADR-0033 決定 4・5・6: 辺。
