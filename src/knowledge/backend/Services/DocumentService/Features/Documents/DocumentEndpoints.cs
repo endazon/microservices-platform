@@ -135,7 +135,7 @@ public static class DocumentEndpoints
         Tags = TagResolver.ToNames(d.Tags, names),
         CreatedAt = d.CreatedAt,
         UpdatedAt = d.UpdatedAt,
-        // SC-03, ADR-0070 決定 3 / [[IADR-0381]] 決定 2 (#1254): 本文なしの文書を
+        // SC-03, ADR-0070 決定 3 / [[IADR-0388]] 決定 2 (#1254): 本文なしの文書を
         // 文書詳細が区別できるようにする（表示は SC-02 と同じ「本文なし（原本を参照）」）。
         HasBody = d.HasBody,
     };

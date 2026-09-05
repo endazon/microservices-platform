@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-02, FR-03, FR-06, FR-09, FR-12, SC-03, SC-05, SC-09, UC-04]
 adrs: [ADR-0002, ADR-0014, ADR-0057, ADR-0070]
-iadrs: [IADR-0001, IADR-0152, IADR-0153, IADR-0290, IADR-0296, IADR-0381]
+iadrs: [IADR-0001, IADR-0152, IADR-0153, IADR-0290, IADR-0296, IADR-0388]
 specs: [20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
 issues: [#634, #635, #637, #1011, #1253, #1254, planning#473]
 -->

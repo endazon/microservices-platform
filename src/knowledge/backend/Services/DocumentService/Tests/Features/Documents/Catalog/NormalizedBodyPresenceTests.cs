@@ -14,7 +14,7 @@ using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 namespace DocumentService.Tests.Features.Documents.Catalog;
 
 // FR-01, FR-02, FR-03, FR-12, UC-04, SC-03, ADR-0070 決定 3・決定 4, #1254 / #1253,
-// [[IADR-0381]] 決定 2・4:
+// [[IADR-0388]] 決定 2・4:
 //
 // 🔴 **`DocumentNormalized.HasBody` の読み手がここに在ることを固定する。**
 // 従前この項目は契約に在るのに読む箇所が 1 つも無く（write-only）、SC-03 は本文なしの文書を

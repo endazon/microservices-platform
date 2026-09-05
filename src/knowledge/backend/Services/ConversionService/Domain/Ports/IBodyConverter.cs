@@ -11,7 +11,7 @@ public interface IBodyConverter
 // FR-12: 本文変換の結果。Markdown 本文と、原本から抽出した図の一覧を返す。
 public record BodyConversionResult(string Markdown, IReadOnlyList<ExtractedFigure> Figures)
 {
-    // FR-12, UC-06, SC-07, ADR-0070 決定 3, IADR-0356 (#1192), [[IADR-0381]] (#1254):
+    // FR-12, UC-06, SC-07, ADR-0070 決定 3, IADR-0356 (#1192), [[IADR-0388]] (#1254):
     // **原本が本文を持っていたか。** `false` は「本文が存在しない」（テキスト層を持たない PDF）で、
     // 抽出結果が空白のみであることを確かめたうえで倒す。
     //

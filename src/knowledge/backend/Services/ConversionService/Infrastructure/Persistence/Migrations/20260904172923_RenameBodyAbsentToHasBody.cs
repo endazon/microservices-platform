@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace ConversionService.Migrations
 {
     /// <summary>
-    /// FR-12, SC-07, ADR-0070 決定 3, IADR-0381 (#1254): `BodyAbsent`（否定形・既定 false）を
+    /// FR-12, SC-07, ADR-0070 決定 3, IADR-0388 (#1254): `BodyAbsent`（否定形・既定 false）を
     /// `HasBody`（肯定形・既定 true）へ改名し、**極性を反転する**。
     ///
     /// 🔴 **改名だけでは済まない。** 値の意味が反転するので、EF が既定で吐く

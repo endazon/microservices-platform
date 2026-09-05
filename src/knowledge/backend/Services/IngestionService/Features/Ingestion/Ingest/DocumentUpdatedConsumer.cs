@@ -118,7 +118,7 @@ public class DocumentUpdatedConsumer(
         logger.LogInformation("Ingestion complete for {Id}: {Count} chunks", ev.DocumentId, chunkCount);
     }
 
-    // FR-02, FR-12, ADR-0070 決定 3, #1254, [[IADR-0381]] 決定 3:
+    // FR-02, FR-12, ADR-0070 決定 3, #1254, [[IADR-0388]] 決定 3:
     // **契約が運ぶ「本文の有無」と、ここでの判定（チャンク 0 件）が食い違ったら警告を残す。**
     //
     // 🔴 **判定そのものは変えない。** 索引は今までどおりチャンク 0 件で決める
@@ -158,7 +158,7 @@ public class DocumentUpdatedConsumer(
     private async Task IndexMetadataOnlyAsync(
         DocumentUpdated ev, string? confidentiality, CancellationToken ct)
     {
-        // #1253 / [[IADR-0381]] 決定 4: 題名・タグに加えて**原本の所在とデータソース名**も材料にする
+        // #1253 / [[IADR-0388]] 決定 4: 題名・タグに加えて**原本の所在とデータソース名**も材料にする
         // （ADR-0070 決定 4 が名指しする「パス」「データソース」。従前は届いていなかった）。
         var indexText = MetadataIndexText.Build(ev.Title, ev.Tags, ev.OriginalPath, ev.DataSourceName);
 

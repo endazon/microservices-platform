@@ -13,7 +13,7 @@ public record RawDocumentFetched(
     Dictionary<string, string> Attributes,
     List<string> Tags,
     DateTimeOffset FetchedAt,
-    // FR-02, FR-03, ADR-0070 決定 4 / [[IADR-0381]] 決定 4 (#1253): **データソースの表示名**
+    // FR-02, FR-03, ADR-0070 決定 4 / [[IADR-0388]] 決定 4 (#1253): **データソースの表示名**
     // （`DataSource.Name`）。本文を持たない文書を「データソース名」で検索に載せるために運ぶ。
     // 正本は `SourceId` であり**これは表示名の複写である**（[[IADR-0153]] 決定 1 の例外ではない
     // ——射影＝索引テキストは人が読む面であり、改名の追随義務は無い。次の同期で上書きされる）。

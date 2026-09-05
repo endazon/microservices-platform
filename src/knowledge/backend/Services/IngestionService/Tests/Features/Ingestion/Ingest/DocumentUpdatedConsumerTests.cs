@@ -314,7 +314,7 @@ public class DocumentUpdatedConsumerTests
         completed.Published.Should().BeEmpty();
     }
 
-    // ── #1253 / [[IADR-0381]] 決定 4・5: 所在とデータソース名を索引テキストへ ──────────────
+    // ── #1253 / [[IADR-0388]] 決定 4・5: 所在とデータソース名を索引テキストへ ──────────────
 
     // A-1 / A-2 **陽性**: 本文なしの文書の索引テキストに**所在の語**と**データソース名**が載る。
     // これが無いと、利用者は題名を正確に覚えている場合しかその文書へ辿り着けない
@@ -354,7 +354,7 @@ public class DocumentUpdatedConsumerTests
         completed.Published.Should().ContainSingle().Which.ChunkCount.Should().Be(0);
     }
 
-    // A-7 **非対称の固定**（[[IADR-0381]] 決定 5）: 本文ありのチャンクには所在を載せない。
+    // A-7 **非対称の固定**（[[IADR-0388]] 決定 5）: 本文ありのチャンクには所在を載せない。
     // 載せると「本文に書いてある語で当たった」と「置き場所の名前で当たった」が抜粋から
     // 区別できなくなる。**どちらを選んでも決めていない状態を残さない**ための固定である。
     [Fact]
@@ -372,7 +372,7 @@ public class DocumentUpdatedConsumerTests
         store.Upserts.Should().OnlyContain(u => !u.Text.Contains("本社ファイルサーバー"));
     }
 
-    // ── #1254 / [[IADR-0381]] 決定 3: 契約の値とチャンク判定の食い違いを鳴らす ──────────────
+    // ── #1254 / [[IADR-0388]] 決定 3: 契約の値とチャンク判定の食い違いを鳴らす ──────────────
 
     // B-3: `hasBody=false` なのにチャンクが作れた（＝上流の標識と本文が食い違う）。
     // **判定は変えない**（チャンクが在るのだから本文チャンクとして索引する）。鳴らすだけである。
@@ -423,7 +423,7 @@ public class DocumentUpdatedConsumerTests
     }
 }
 
-// #1254 / [[IADR-0381]] 決定 3: 警告の**本文**を見るための記録用ロガー。
+// #1254 / [[IADR-0388]] 決定 3: 警告の**本文**を見るための記録用ロガー。
 // レベルだけを数えると「何か鳴った」しか言えず、食い違いの向きが固定できない。
 file class CapturingLogger<T> : ILogger<T>
 {

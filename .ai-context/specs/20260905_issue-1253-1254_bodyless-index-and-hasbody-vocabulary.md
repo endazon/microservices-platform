@@ -2,7 +2,7 @@
 title: 本文なし文書の索引にパス・データソース名を載せ、本文の有無の語彙を hasBody へ寄せる（#1253 / #1254）
 type: spec
 status: done
-related_ids: [FR-02, FR-03, FR-12, UC-04, UC-06, SC-02, SC-03, SC-07, ADR-0070, IADR-0122, IADR-0149, IADR-0356, IADR-0358, IADR-0381]
+related_ids: [FR-02, FR-03, FR-12, UC-04, UC-06, SC-02, SC-03, SC-07, ADR-0070, IADR-0122, IADR-0149, IADR-0356, IADR-0358, IADR-0388]
 author: Claude
 created: 2026-09-05
 updated: 2026-09-05
@@ -70,7 +70,7 @@ $ git grep -lIn -e BodyAbsent -e bodyAbsent -e body_absent -- . | wc -l
 本 PR で `hasBody` に寄せたあと `hasBody` 側でも全走査し、
 `docs/data/conversion-job.md` の対応表が唯一の読み替え正本になっていることを確かめる。
 
-## 4. 決定（詳細は IADR-0381）
+## 4. 決定（詳細は IADR-0388）
 
 1. **語彙は肯定形 `hasBody` へ寄せ、極性を反転する**（否定形の変数は読み違えを生む）。
 2. **#1254 は案 A（読み手を作る）**を採る。`DocumentNormalizedConsumer` が

@@ -15,7 +15,7 @@ public interface IConversionJobStore
     // 変換開始（受信・再試行の都度）。原本イベントは人手補正（再変換）のため保持する。
     Task StartAsync(RawDocumentFetched ev, CancellationToken ct = default);
     // IADR-0154 決定 1: 図の記録も一緒に受け取り、成功のたびに洗い替える。
-    // ADR-0070 決定 3 / IADR-0356 (#1192) / [[IADR-0381]] (#1254): hasBody＝原本が本文を持っていたか
+    // ADR-0070 決定 3 / IADR-0356 (#1192) / [[IADR-0388]] (#1254): hasBody＝原本が本文を持っていたか
     // （`false` は本文なし＝テキスト層の無い PDF で完了したことを表す）。
     // **succeeded の内訳**であり、状態値は 4 値のまま増やさない（DeadLettered と同型）。
     Task SucceedAsync(Guid id, Guid documentId, string markdownUri,

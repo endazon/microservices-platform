@@ -3,7 +3,7 @@ using IngestionService.Domain;
 
 namespace IngestionService.Tests.Domain;
 
-// FR-02, FR-03, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 2, #1253, [[IADR-0381]] 決定 4:
+// FR-02, FR-03, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 2, #1253, [[IADR-0388]] 決定 4:
 // 本文なしの文書の索引テキスト（題名・タグ・原本の所在・データソース名）を作る純関数。
 [Trait("TestKind", "Unit")]
 public class MetadataIndexTextTests
@@ -30,7 +30,7 @@ public class MetadataIndexTextTests
         MetadataIndexText.Build(null, null).Should().BeEmpty();
     }
 
-    // ── #1253 / [[IADR-0381]] 決定 4: 所在とデータソース名も索引テキストへ ──────────────
+    // ── #1253 / [[IADR-0388]] 決定 4: 所在とデータソース名も索引テキストへ ──────────────
 
     // A-1 / A-2 **陽性**: 所在の各要素とデータソース名が語として並ぶ。
     // 🔴 **区切りを開くのが要点である。** 開かないと `/共有/経理/2026年度経費.pdf` は

@@ -12,7 +12,7 @@ public class DocumentDto
     public List<string> Tags { get; init; } = [];
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
-    // SC-03, ADR-0070 決定 3・決定 4 / [[IADR-0381]] 決定 2 (#1254): **原本が本文を持っていたか。**
+    // SC-03, ADR-0070 決定 3・決定 4 / [[IADR-0388]] 決定 2 (#1254): **原本が本文を持っていたか。**
     // `false` は「本文なしで完了した」（テキスト層を持たない PDF）で、文書詳細は本文の位置へ
     // 「本文なし（原本を参照）」を出す（**SC-02 と同じ文言・同じ導出**）。
     // **既定は `true`**（本項目を持たない旧応答は従来どおり「本文あり」として読める）。

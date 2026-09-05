@@ -274,7 +274,7 @@ describe('DocumentDetailPage (SC-03)', () => {
     expect(screen.queryByText('文書が見つかりませんでした。')).not.toBeInTheDocument();
   });
 
-  // SC-03, ADR-0070 決定 3・決定 4 / #1254（[[IADR-0381]] 決定 2）:
+  // SC-03, ADR-0070 決定 3・決定 4 / #1254（[[IADR-0388]] 決定 2）:
   // **原本が本文を持たない文書**は、本文の位置へ SC-02 と同じ文言で「本文なし（原本を参照）」を出す。
   // 従前この画面は本文なしの文書を区別する材料を持たず、空の本文をそのまま描いていた。
   it('shows a bodyless document as completed without a body, not as an empty body', async () => {

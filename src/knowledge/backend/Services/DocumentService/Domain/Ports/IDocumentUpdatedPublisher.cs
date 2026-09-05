@@ -24,7 +24,7 @@ public interface IDocumentUpdatedPublisher
         List<string> tags,
         DateTimeOffset updatedAt,
         string? contentFingerprint = null,
-        // ADR-0070 決定 3・決定 4 / [[IADR-0381]] 決定 2・4 (#1254 / #1253):
+        // ADR-0070 決定 3・決定 4 / [[IADR-0388]] 決定 2・4 (#1254 / #1253):
         // 原本が本文を持っていたか（SC-03 の材料）と、原本の所在・データソースの表示名
         // （本文なしの文書の索引テキストの材料）。**台帳（`Document`）の値を写す** ——
         // 属性編集やタグ改名による再発行でも同じ値が乗る。

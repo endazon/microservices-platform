@@ -507,7 +507,7 @@ export interface DocumentDto {
   createdAt: string;
   updatedAt: string;
   /**
-     * SC-03, ADR-0070 決定 3 / IADR-0381: **原本が本文を持っていたか。**
+     * SC-03, ADR-0070 決定 3 / IADR-0388: **原本が本文を持っていたか。**
      * `false` はテキスト層を持たない PDF 等で、文書詳細は本文の位置へ
      * 「本文なし（原本を参照）」を示す（SC-02 の検索結果と同じ文言・同じ導出）。
      * **項目を持たない応答は「本文あり」として読む**（既定 `true`）。
@@ -812,7 +812,7 @@ export interface ConversionJobDto {
      */
   hasCorrection: boolean;
   /**
-     * **原本が本文を持っていたか**（ADR-0070 決定 3 / IADR-0381）。テキスト層を持たない PDF（スキャン等）は
+     * **原本が本文を持っていたか**（ADR-0070 決定 3 / IADR-0388）。テキスト層を持たない PDF（スキャン等）は
      * 本文が存在しないため、`failed` にせず **`succeeded` の内訳**として `false` を返し、理由つきで表示する。
      * **`status` の 5 値目ではない**（`deadLettered` / `diagramsRetained` と同じ扱い）。
      * `false` のジョブは再試行してもデッドレターへ送っても結果が変わらないため、再変換の対象に並ばない。

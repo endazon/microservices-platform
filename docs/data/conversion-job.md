@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-12, SC-07, UC-06]
 adrs: [ADR-0002, ADR-0003, ADR-0027, ADR-0070]
-iadrs: [IADR-0042, IADR-0043, IADR-0127, IADR-0137, IADR-0154, IADR-0356, IADR-0358, IADR-0381]
+iadrs: [IADR-0042, IADR-0043, IADR-0127, IADR-0137, IADR-0154, IADR-0356, IADR-0358, IADR-0388]
 specs: [20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
 issues: [#533, #543, #580, #1192, #1193, #1253, #1254]
 -->

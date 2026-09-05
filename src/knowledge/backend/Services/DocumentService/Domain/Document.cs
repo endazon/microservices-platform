@@ -34,7 +34,7 @@ public class Document
     // 台帳から辿れないままである（`doc_scope` を遡及付与しない ADR-0054 §結果と同型の受容）。
     // **「全部消える」と読まないこと。**
     public List<string> AssetUris { get; private set; } = [];
-    // FR-06, FR-12, SC-03, ADR-0070 決定 3 / [[IADR-0381]] 決定 2 (#1254): **原本が本文を持っていたか。**
+    // FR-06, FR-12, SC-03, ADR-0070 決定 3 / [[IADR-0388]] 決定 2 (#1254): **原本が本文を持っていたか。**
     //
     // `false` は「本文なしで完了した」（テキスト層を持たない PDF）。変換側の
     // `DocumentNormalized.HasBody` を**ここで受け止める** —— 従前この項目は契約に在るのに
@@ -44,7 +44,7 @@ public class Document
     // （遡及付与しない。`AssetUris` と同型の受容）。**`false` になるのは変換経路だけ**であり、
     // 本文の直接投入（`CreateWithBody` / `SetMarkdownUri`）は常に本文ありである。
     public bool HasBody { get; private set; } = true;
-    // FR-02, FR-03, ADR-0070 決定 4 / [[IADR-0381]] 決定 4 (#1253): **原本の所在**と
+    // FR-02, FR-03, ADR-0070 決定 4 / [[IADR-0388]] 決定 4 (#1253): **原本の所在**と
     // **データソースの表示名**。本文を持たない文書を検索に載せるための索引テキストの材料であり
     // （`IngestionService.Domain.MetadataIndexText`）、台帳に持つのは
     // **`DocumentUpdated` の再発行（属性編集・タグ改名等）でも同じ値を運ぶため**である
@@ -201,7 +201,7 @@ public class Document
         Status = DocumentStatus.Normalized;
         Attributes = attributes;
         if (assetUris is not null) AssetUris = assetUris;
-        // [[IADR-0381]] 決定 2・4 (#1254 / #1253): 本文の有無と所在は**再正規化の結果が正本**である
+        // [[IADR-0388]] 決定 2・4 (#1254 / #1253): 本文の有無と所在は**再正規化の結果が正本**である
         // （属性・資産 URI と同じ扱い）。原本を直して再変換すれば `false` → `true` へ戻る。
         //
         // 🔴 **所在は null で上書きしない。** 旧発行元（項目を運ばないイベント）からの再配信で

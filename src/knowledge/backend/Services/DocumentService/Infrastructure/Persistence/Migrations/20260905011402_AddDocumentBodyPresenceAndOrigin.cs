@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace DocumentService.Infrastructure.Persistence.Migrations
 {
     /// <summary>
-    /// FR-02, FR-03, FR-06, SC-03, ADR-0070 決定 3・決定 4, IADR-0381 (#1254 / #1253):
+    /// FR-02, FR-03, FR-06, SC-03, ADR-0070 決定 3・決定 4, IADR-0388 (#1254 / #1253):
     /// 文書台帳へ「原本が本文を持っていたか」（HasBody）と「原本の所在・データソースの表示名」
     /// （OriginalPath / DataSourceName）を足す。
     ///

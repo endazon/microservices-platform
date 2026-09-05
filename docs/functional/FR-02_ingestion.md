@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-02, FR-03, FR-05, UC-04]
 adrs: [ADR-0003, ADR-0009, ADR-0013, ADR-0027, ADR-0070]
-iadrs: [IADR-0002, IADR-0149, IADR-0358, IADR-0381]
+iadrs: [IADR-0002, IADR-0149, IADR-0358, IADR-0388]
 specs: [20260627_FR-02_ingestion-pipeline, 20260809_issue-536_search-result-updated-at, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
 issues: [#532, #536, #580, #1193, #1253, #1254]
 -->

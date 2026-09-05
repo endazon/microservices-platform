@@ -24,7 +24,7 @@ public sealed class RecordingDocumentNormalizedPublisher : IDocumentNormalizedPu
         IReadOnlyList<string> Tags,
         // ADR-0070 決定 3 / IADR-0356 (#1192): 本文なしで完了したか（ハンドラが発行口へ渡した値）。
         bool HasBody = true,
-        // ADR-0070 決定 4 / [[IADR-0381]] 決定 4 (#1253): 原本の所在とデータソースの表示名。
+        // ADR-0070 決定 4 / [[IADR-0388]] 決定 4 (#1253): 原本の所在とデータソースの表示名。
         string? OriginalPath = null,
         string? DataSourceName = null);
 

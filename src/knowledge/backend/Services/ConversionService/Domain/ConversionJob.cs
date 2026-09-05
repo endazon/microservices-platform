@@ -22,13 +22,13 @@ public class ConversionJob
     // 導出（Attempts >= 上限）にしないのは、Attempts が手動再変換をまたいで累積するためである。
     public bool DeadLettered { get; private set; }
 
-    // FR-12, SC-07, ADR-0070 決定 3 / IADR-0356 (#1192) / [[IADR-0381]] (#1254):
+    // FR-12, SC-07, ADR-0070 決定 3 / IADR-0356 (#1192) / [[IADR-0388]] (#1254):
     // **原本が本文を持っていたか**（succeeded の内訳）。テキスト層を持たない PDF は再試行しても
     // 結果が変わらないため、failed に置かず succeeded として確定させる。DeadLettered と同型の
     // 「状態の 5 値目ではない標識」である。**処理を再開したら `true`（本文あり）へ戻す** ——
     // 標識は最後に確定した変換の結果であり、走っている最中の値ではない。
     //
-    // 🔴 **［2026-09-05 / #1254］否定形 `BodyAbsent` から改名し、極性を反転した**（[[IADR-0381]] 決定 1）。
+    // 🔴 **［2026-09-05 / #1254］否定形 `BodyAbsent` から改名し、極性を反転した**（[[IADR-0388]] 決定 1）。
     public bool HasBody { get; private set; } = true;
 
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
@@ -78,7 +78,7 @@ public class ConversionJob
 
     // IADR-0154 決定 1: 図の記録は成功のたびに洗い替える（再変換は図を作り直すため、
     // 前回の図をそのまま残すと「どの図が今の本文に居るか」が割れる）。
-    // ADR-0070 決定 3 / IADR-0356 / [[IADR-0381]]: hasBody＝原本が本文を持っていたか
+    // ADR-0070 決定 3 / IADR-0356 / [[IADR-0388]]: hasBody＝原本が本文を持っていたか
     // （`false` はテキスト層の無い PDF を「本文なし」で完了させたことを表す）。
     // **状態は succeeded のまま**である（failed に置くと再変換の対象として並び、何度やっても結果の
     // 変わらないジョブが溜まる）。
