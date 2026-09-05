@@ -6340,7 +6340,12 @@ ${r.stderr}`);
         //    `manifest.json` の version しか見ない**ので、片方だけ上げるとビルドもテストも通ったまま
         //    利用者側で版が変わらない）を新設したため 49 → 50（ラチェットが設計どおり発火した）。
         //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
-        assert.strictEqual(scripts.length, 50, `検査器の母集合が 50 本から変わった（${scripts.length} 件）`);
+        // ★ #1201 / ADR-0075 / IADR-0379 で `check-proto-contracts.js`（proto の置き場と版付けの規約 ——
+        //    パッケージ名と `csharp_namespace` の対応・フィールド番号の不変・削除時の `reserved` 必須・
+        //    破壊的変更は `v<N+1>` 並走。**gRPC は番号で結線するので、番号を再利用すると型が合ったまま
+        //    意味だけが入れ替わる**）を新設したため 50 → 51（ラチェットが設計どおり発火した）。
+        //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        assert.strictEqual(scripts.length, 51, `検査器の母集合が 51 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
