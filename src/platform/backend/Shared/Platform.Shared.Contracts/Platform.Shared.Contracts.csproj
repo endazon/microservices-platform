@@ -2,4 +2,25 @@
   <PropertyGroup>
     <OutputType>Library</OutputType>
   </PropertyGroup>
+  <!-- NFR-09 / ADR-0029 / ADR-0075 / IADR-0379 決定 1 (#1201): east-west gRPC の proto 契約はここに置く。
+       proto の所有者は呼び出される側（ADR-0029）だが、置き場は所有サービスが属する**ユニットの共有契約
+       プロジェクト**である —— ユニット外から参照できるのは Shared/ の 3 プロジェクトだけ（IADR-0117）で、
+       サービスプロジェクトに置くと他ユニットの呼び出し元が生成クライアントを参照できない。
+       `GrpcServices="Both"` でクライアントとサーバ基底の両方を生成し、`*.Client` プロジェクトは作らない
+       （ADR-0029 2026-08-04 追記）。生成物は obj/ に落ち、コミットしない。
+       Grpc.Tools はビルド時専用（PrivateAssets=all）。Grpc.Net.Client は生成クライアント／サーバ基底が要る
+       Grpc.Core.Api を推移的に運ぶ（4 パッケージとも CPM に版が既に在り、新しいライブラリは足していない）。 -->
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Grpc.Tools">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- パス `Protos/<unit>/<service>/v<N>/*.proto` と package `<unit>.<service>.v<N>` の一致は
+         scripts/check-proto-contracts.js が検査する（IADR-0379 決定 2）。 -->
+    <Protobuf Include="Protos/**/*.proto" ProtoRoot="Protos" GrpcServices="Both" />
+  </ItemGroup>
 </Project>

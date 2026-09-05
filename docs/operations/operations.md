@@ -7,11 +7,11 @@ updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-04, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-21, SC-01, SC-02, SC-10, UC-01, UC-04, UC-05, UC-07]
-adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0322, IADR-0327, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378]
-specs: [20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer]
-issues: [#1088, #1108, #1110, #1159, #1198, #1202, #1203, #1204, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538]
+ids: [FR-01, FR-02, FR-03, FR-04, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-09, NFR-21, SC-01, SC-02, SC-10, UC-01, UC-04, UC-05, UC-07]
+adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382]
+specs: [20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate]
+issues: [#1088, #1108, #1110, #1159, #1198, #1202, #1203, #1204, #1215, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538]
 -->
 
 # 運用仕様書
@@ -46,6 +46,7 @@ issues: [#1088, #1108, #1110, #1159, #1198, #1202, #1203, #1204, #124, #144, #14
 | HPA/PDB でスケール・可用性を確保したい | §可用性・水平スケール |
 | アラートが実際にどこへ届くか（未配線の現状）を確認したい | §監視・アラート |
 | 利用イベントがいつ消えるか・消えていないときの見方を知りたい | §データ保持期間（利用イベント） |
+| 検索が全件 0 件になる（応答は 200 のまま）理由を切り分けたい | §検索が全件 0 件になる（読み書き先コレクションの乖離・全文索引の欠落） |
 | 障害発生時の一次対応を知りたい | §障害対応（Runbook） |
 
 ---
@@ -928,6 +929,31 @@ kubectl -n microservices-platform delete peerauthentication microservices-platfo
 helm upgrade msp deploy/helm/microservices-platform -n microservices-platform --reuse-values
 kubectl -n microservices-platform get peerauthentication microservices-platform-mtls \
   -o yaml --show-managed-fields | grep -A1 'manager:'   # helm 以外が居ないこと
+```
+
+### 検索が全件 0 件になる（読み書き先コレクションの乖離・全文索引の欠落）（非機能要件: 可観測性 / #1215）
+
+検索はベクトル DB の**単一のコレクション**しか読まない。取り込みが書くコレクションは埋め込みモデルごとに
+分かれているため、**モデルの切り替えを片側にだけ入れると読み先と書き先が食い違う**。このとき
+取り込みも検索も健全で `Ready` のまま、**検索だけが全件 0 件**になる。
+
+🔴 **応答では区別できない。** 検索の `200 ＋ 空` は「該当が無い」と同じ形であり、状態コードでも
+readiness でも捕まらない。**「当たっている」ことも索引の証拠にならない** —— 全文ペイロード索引が
+無いとき、ベクトル DB は例外を返さず部分文字列の全走査へ静かに落ちる（語順を替えると 0 件になる）。
+
+| 事象 | 検知 | 一次対応 |
+| --- | --- | --- |
+| 点は在るのに検索が全件 0 件 | `node scripts/check-stack-ready.js` の門 **G13** が「点が在るのは X なのに検索側が読む Y は 0 点」と名指しして落ちる | 埋め込みの向き（プロバイダの有効化）を**取り込み・検索・ゲートウェイの 3 サービスすべて**に入れ直す。片側だけ入れると再発する |
+| 全文ペイロード索引が無い／パラメータが違う | 同 **G13** が対象のコレクションとキーを名指しして落ちる | 取り込みサービスを再起動する（起動時に**存在の有無によらず**索引を張り直す。冪等） |
+| どのコレクションにも点が無い | 同 **G13** は notice に落とす（まだ何も取り込んでいない状態と区別できないため）。`SEARCHSEED=1` を宣言した実行では赤になる | 本文つきの文書が在るかを先に見る（本文の無い文書は索引に載らない） |
+
+確かめ方（**稼働コレクションには読み取りしか行わない**）:
+
+```sh
+node scripts/check-stack-ready.js            # 門 G13 を含む全門
+# 全文索引そのものの挙動（使い捨てコレクションで陽性・陰性の対）を測る場合:
+kubectl -n platform-infra port-forward svc/qdrant 6333:6333
+QDRANT_URL=http://localhost:6333 bash scripts/verify-qdrant-fulltext-index.sh
 ```
 
 - **エスカレーション/通知**: **Alertmanager の配備後**に受信先（メール/チャット）と担当・当番を運用体制に応じて定める（環境ごと）。

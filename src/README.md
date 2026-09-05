@@ -24,7 +24,7 @@ src/
   platform/                    ← 基盤ユニット（本リポジトリの主成果物）
     backend/
       backend.slnx
-      Shared/                  ←   契約（Shared.Contracts）・横断基盤（Shared.Infrastructure）
+      Shared/                  ←   契約（Shared.Contracts = REST の DTO ＋ east-west gRPC の proto `Protos/<unit>/<service>/v<N>/`。IADR-0379）・横断基盤（Shared.Infrastructure）
       Bff/                     ←   エッジ集約（フロントエンドの唯一の入口）
       Services/                ←   基盤サービス（AuthorizationService = ABAC / LlmGateway = LLM エグレス統制）
     frontend/                  ←   SPA 基盤（アプリホスト + foundation。可変ユニットの features を合成）
@@ -35,7 +35,8 @@ src/
       Services/                ←   Document / DataSource / Conversion / Ingestion / Retrieval /
                                ←   AiAnalysis / Wiki / Feedback / Dashboard
       Tests/                   ←   Knowledge.IntegrationTests（ユニット横断の統合テスト）
-    frontend/                  ←   ナレッジ画面 features（home, sc01..sc11）
+    frontend/                  ←   ナレッジ画面 features（`sc<NN>-<name>`。一覧の正本は
+                               ←   knowledge/frontend/src/features/index.ts。番号を列挙しない）
   <unit>/                      ← 追加の可変機能ユニット（git submodule でリンク。backend/・frontend/ を持つ）
 ```
 
@@ -79,8 +80,9 @@ src/
 により、サービスは**単一プロジェクト**（`Services/<Name>/<Name>.csproj`）とし、層は
 **Features/<集約>/<操作>/（Endpoint / Command|Query / Handler）・Domain/・Infrastructure/・
 Common/・Tests/ のフォルダ**で分ける。8 要素の実プロジェクト分割（IADR-0280。Superseded）と
-`.gitkeep` の枠は撤回された。計画側の 8 要素条文（`12_backend-application-stack.md`）は
-改定を環流中である（planning#490 のコメント）。
+`.gitkeep` の枠は撤回された。計画側の 8 要素条文（`12_backend-application-stack.md`）も
+**2026-08-30 に改定済み**である（`ADR-0065`。環流した planning#490 は closed。旧構成は
+打ち消し線と `<details>` で計画側に残っている）。
 
 #### 「操作」とは何か（契機の形では決めない。ADR-0077）
 
