@@ -214,12 +214,19 @@ public class DocumentSyncConsumerTests
         provider.GetRequiredService<RecordingWikiJsClient>().Pushed.Should().BeEmpty();
     }
 
-    // 🔴 現状の固定（仕様ではなく観測）: 組織文書として同期済みの文書が後から個人資料へ変わっても、
-    // 既に作られた Wiki.js ページとメタデータは**残る**。
+    // FR-06, FR-19, ADR-0046 D-01, ADR-0058 決定 1・2, IADR-0278 (#449):
+    // 組織文書として同期済みの文書が後から個人資料へ変わっても、既に作られた Wiki.js ページと
+    // メタデータは**残る**（以後の更新は止まる）。
     //
-    // ADR-0046 D-01 は「ページは作られない」と定めるが「既にあるページを消す」とは定めておらず、
-    // doc_scope が文書の生涯で変わり得るのかも計画は述べていない。**実装で決めていない。**
-    // 計画へ問い、裁定が出たら本テストを書き換える（作業仕様書 §5・§8）。
+    // ★［2026-09-05 追記 / #449］**本テストの意味が変わった。** 従前は「計画が未裁定なので
+    // 現状の観測を固定するだけ」だったが、**計画は 2026-08-23 に ADR-0058 で答えた** ——
+    // `doc_scope` は作成時に確定し、更新経路は変更要求を拒否する。実装も着地済みである
+    // （`DocumentAttributes.ValidateDocScopeUnchanged` は値の変更・既存値の削除・後からの
+    // 新規付与の 3 つを 1 本の一致判定で閉じる）。
+    //
+    // 🔴 **したがって本テストは「起こり得る遷移」ではなく「上流が破れたときの後段」を固定する
+    // 二層目である。消さない。** 上流の門（`DocScopeImmutabilityTests`）が第一層であり、
+    // それが回帰したときに WikiService が黙って挙動を変えないことを、ここが受け持つ。
     [Fact]
     public async Task Consumer_LeavesExistingPage_WhenDocumentBecomesPrivateNote_CurrentBehaviour()
     {
