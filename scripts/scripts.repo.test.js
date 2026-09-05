@@ -5009,6 +5009,108 @@ ${r.stderr}`);
     });
   }
 
+  // --- #1246 の取りこぼし: Prometheus のアラートルールの経路 A/B パリティ ----------
+  //
+  // 経路 B の inline は compose の原本から**静かに遅れた**（#1246 の 2 件が 2 世代残った）。
+  // 同型の事故は 2 回起きている —— 1 回目は経路 B の Grafana に `dashboards/` が丸ごと無かった件
+  // （#674 / IADR-0168。**「検査していたのに見つからなかったのではなく、検査の射程が狭かった」**）、
+  // 2 回目が本件である。**1 回目が門を生んだのに、その門の射程外で 2 回目が起きた。**
+  //
+  // ★ **突合するのは 群名 ＋ 名前 ＋ expr ＋ for ＋ severity だけ**である。
+  //   `summary` / `description` は経路 B が意図的に凝縮しており、バイト一致を課すと常に赤になる。
+  {
+    const { spawnSync } = require('child_process');
+    const path = require('path');
+    const fs = require('fs');
+    const os = require('os');
+    const SCRIPTS = __dirname;
+    const REPO = path.join(SCRIPTS, '..');
+    const script = path.join(SCRIPTS, 'check-prometheus-alerts-parity.js');
+
+    const runParity = (args = [], cwd = REPO) => {
+      const r = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', cwd });
+      return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+    };
+
+    ok('check-prometheus-alerts-parity --self-test が通る', () => {
+      const { code, out } = runParity(['--self-test']);
+      assert.strictEqual(code, 0, out);
+    });
+
+    // ★ **self-test の件数だけを見ない。** 件数は変異ケースを消しても通りつづける（#657 の教訓）。
+    //   **個々の変異ケースが走っていることを名指しで確かめる。**
+    ok('check-prometheus-alerts-parity: self-test が 6 種の変異ケースを実際に走らせている', () => {
+      const { out } = runParity(['--self-test']);
+      for (const name of [
+        '変異: k8s からルールを 1 件消すと違反',
+        '変異: expr を変えると違反',
+        '変異: for を変えると違反',
+        '変異: severity を変えると違反',
+        '変異: 群名を変えると違反',
+        '変異: k8s にだけ余分なルールがあると違反（逆向きの乖離）',
+      ]) {
+        assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
+      }
+    });
+
+    ok('check-prometheus-alerts-parity が実データで違反 0 件', () => {
+      const { code, out } = runParity();
+      assert.strictEqual(code, 0, out);
+    });
+
+    // #664 / IADR-0130 の下限。**件数リテラルは書かない**（ルールが増えれば動く。#558 の教訓）。
+    ok('0 件走査の門: check-prometheus-alerts-parity は実データでルールを 1 件以上拾う（下限）', () => {
+      const { code, out } = runParity();
+      assert.strictEqual(code, 0, out);
+      const m = out.match(/compose (\d+) 件 \/ k8s inline (\d+) 件/);
+      assert.ok(m, `OK メッセージから走査件数を読めない:\n${out}`);
+      assert.ok(Number(m[1]) > 0 && Number(m[2]) > 0, `走査件数が 0 だった:\n${out}`);
+    });
+
+    // ★ **変異試験は実データに対しても当てる。** フィクスチャだけだと
+    //   「実ファイルの書式が正規表現に合っていない」型の空振りを捕まえられない。
+    //   **本件はまさにその型の事故（inline が遅れても誰も見ていなかった）への門である。**
+    ok('check-prometheus-alerts-parity: 実データの inline からルールを 1 件消すと違反を出す（変異試験）', () => {
+      const g = require('./check-prometheus-alerts-parity.js');
+      const read = (p) => fs.readFileSync(path.join(REPO, p), 'utf8');
+      const compose = read('deploy/prometheus/alerts.yml');
+      const k8sRaw = read('deploy/local/observability/prometheus.yaml');
+      const k8sInline = g.extractK8sInline(k8sRaw);
+
+      const clean = g.findIssues({ compose, k8sInline });
+      assert.deepStrictEqual(clean.issues, [], `実データが既に違反を持っている:\n${clean.issues.join('\n')}`);
+
+      // 実データの inline から**最後のルールだけ**を落とす（compose 側と食い違わせる）。
+      const names = g.parseRules(k8sInline).map((r) => r.alert);
+      const last = names[names.length - 1];
+      assert.ok(last, 'inline からルール名を読めない（走査が空振りしている）');
+      const idx = k8sInline.lastIndexOf(`- alert: ${last}`);
+      const mutated = k8sInline.slice(0, idx);
+
+      const dirty = g.findIssues({ compose, k8sInline: mutated });
+      assert.ok(
+        dirty.issues.some((i) => i.includes(last)),
+        `実データから '${last}' を消しても違反を出さない。門が実書式に当たっていない:\n${dirty.issues.join('\n')}`,
+      );
+    });
+
+    ok('0 件走査の門: check-prometheus-alerts-parity は対象ファイルが無いと fail する（変異試験）', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prom-alerts-parity-'));
+      fs.cpSync(SCRIPTS, path.join(dir, 'scripts'), { recursive: true });
+      try {
+        const r = spawnSync(process.execPath, [path.join(dir, 'scripts', 'check-prometheus-alerts-parity.js')], {
+          encoding: 'utf8',
+          cwd: dir,
+        });
+        const out = `${r.stdout || ''}${r.stderr || ''}`;
+        assert.strictEqual(r.status, 1, `対象ファイルが無いのに緑を返した。門が消えている:\n${out}`);
+        assert.match(out, /0 件検査/, `0 件検査であることを述べていない:\n${out}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+
   // --- #1090: collector の自己テレメトリ宣言のパリティ ---------------------------
   //
   // 3 つの collector 設定は**排他的な別配備の全体設定**であり、単一情報源にできない
@@ -6345,7 +6447,16 @@ ${r.stderr}`);
         //    破壊的変更は `v<N+1>` 並走。**gRPC は番号で結線するので、番号を再利用すると型が合ったまま
         //    意味だけが入れ替わる**）を新設したため 50 → 51（ラチェットが設計どおり発火した）。
         //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
-        assert.strictEqual(scripts.length, 51, `検査器の母集合が 51 本から変わった（${scripts.length} 件）`);
+        // ★ #1246 の取りこぼしで `check-prometheus-alerts-parity.js`（compose の `alerts.yml` と
+        //    経路 B の inline が **群名 ＋ 名前 ＋ expr ＋ for ＋ severity** で 1 対 1 であること。
+        //    **同型の事故 2 回目** —— 1 回目は経路 B の Grafana に `dashboards/` が丸ごと無かった件
+        //    （#674 / IADR-0168 が `check-grafana-provisioning-parity.js` を生んだ）。
+        //    🔴 **1 回目が門を生んだのに、その門の射程外で 2 回目が起きた** —— #1246 の 2 ルールが
+        //    inline へ追随せず 2 世代残り、#1203 は発見したが「射程外」として受容していた）を
+        //    新設したため 51 → 52（ラチェットが設計どおり発火した）。**`summary` / `description` は
+        //    突合しない**（経路 B は意図的に凝縮した文面を持つ。バイト一致を課すと常に赤になる）。
+        //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        assert.strictEqual(scripts.length, 52, `検査器の母集合が 52 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
