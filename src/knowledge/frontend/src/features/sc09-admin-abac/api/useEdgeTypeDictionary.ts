@@ -27,7 +27,10 @@ import type { EdgeTypeDto } from '@foundation/api/generated/bff.schemas';
 // [[IADR-0135]] 決定 1 と同じ作法: **orval 生成フック**で呼ぶ（手書き HTTP クライアントを持たない）。
 // [[IADR-0127]] 決定 5 と同じ作法: 変更操作の成功後は `invalidateQueries` だけを行う。
 
-export const edgeTypeDictionaryKey = getBffEdgeTypeListQueryKey();
+// **export しない。** 本モジュールの外から使う先が無く、
+// 出すと Knip のラチェット（未使用 export の床）を 1 件押し上げる。
+// タグ辞書の同名の定数は export されているが、**それは既存の負債であって手本ではない**。
+const edgeTypeDictionaryKey = getBffEdgeTypeListQueryKey();
 
 /**
  * 辞書の一覧（値集合 ＋ 使用件数）。
