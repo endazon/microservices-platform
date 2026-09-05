@@ -7,11 +7,11 @@ updated: 2026-09-05
 author: Claude
 ---
 <!-- trace:
-ids: [FR-05, NFR-09, NFR-16]
-adrs: [ADR-0004, ADR-0029, ADR-0032, ADR-0075]
-iadrs: [IADR-0117, IADR-0122, IADR-0379]
-specs: [20260905_issue-1201_east-west-grpc-preconditions]
-issues: [#1201]
+ids: [FR-02, FR-03, FR-05, NFR-09, NFR-16]
+adrs: [ADR-0004, ADR-0013, ADR-0016, ADR-0017, ADR-0029, ADR-0032, ADR-0075]
+iadrs: [IADR-0117, IADR-0122, IADR-0256, IADR-0316, IADR-0379, IADR-0397]
+specs: [20260905_issue-1201_east-west-grpc-preconditions, 20260905_issue-1255_east-west-grpc-llm-embedding]
+issues: [#1201, #1255]
 -->
 
 # 通信仕様書: east-west gRPC（サービス間の同期呼び出し）
@@ -27,8 +27,12 @@ issues: [#1201]
 - **プロトコル**: gRPC（HTTP/2）+ Protobuf 3。メッシュ内は **h2c（TLS 無し HTTP/2）** で、mTLS はサイドカーが終端する。
 - **対象**: メッシュ内のサービスどうしの**同期**呼び出し。候補／非候補の基準は「同期 ∧ east-west ∧ 応答を待つ」であり、
   呼び出しの頻度やレイテンシ要求では判定しない。外部 SaaS・IdP・オブジェクトストレージ・非同期イベント・SSE は対象外。
-- **状態**: 参照実装は **1 経路**（BFF → 認可サービスの権限スコープ解決）。**並走中の正は REST** であり、gRPC は
+- **状態**: gRPC 面を持つのは **2 経路** —— 参照実装（BFF → 認可サービスの権限スコープ解決）と、
+  埋め込み生成（取り込み・検索 → LLM ゲートウェイ）である。**並走中の正は REST** であり、gRPC は
   構成で opt-in する。残りの経路の移行は別 issue で展開する。
+  🔴 **配備に s2s の資格情報が載っているのは埋め込みの 2 呼び出し元だけである** —— 参照実装の
+  `ServiceToken` / gRPC 宛先は helm・compose のどちらにも無く、認可サービスの realm クライアントも
+  未整備である（下記「未決事項」）。
 
 ## 1. proto の置き場と所有
 
@@ -123,6 +127,40 @@ s2s の `CallCredentials` を付ける。平文でトークンを送るには `U
 | `UNAUTHENTICATED` | s2s トークン無し・検証失敗 | deny へ縮退 |
 | `PERMISSION_DENIED` | `platform-service` ロール無し（利用者トークンの転送を含む） | deny へ縮退 |
 
+## 2 つ目の面: 埋め込み生成（`platform.llmgateway.v1.LlmEmbedding/Embed`）
+
+- 概要: 取り込み・検索の 2 サービスが `Services:LlmGatewayGrpc`（例: `http://llm-gateway:8081`）の構成が
+  あるときだけ gRPC で埋め込みを得て、無ければ REST `POST /embed` で得る。**並走中の正は REST。**
+- 認証・認可: `ServiceCaller`。REST の `/embed` は無認可のままなので、**gRPC 面のほうが強い**（緩めていない）。
+- 判定器: REST と**同じ**越境判定・ルーティング・次元照合を通る（判定器を 2 つにしない）。
+
+リクエスト（`EmbedRequest`）:
+
+| 名前 | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `text` | string | ○ | 埋め込む本文（取り込みは文書本文、検索はクエリ） |
+| `confidentiality` | string | — | 入力の機密区分。**空文字は restricted**（安全側。REST の null と同じ） |
+| `purpose` | EmbedPurpose | — | `INDEX` / `QUERY`。🔴 **`UNSPECIFIED`（既定 0）は `INDEX` として扱う**（REST の既定と同じ） |
+
+レスポンス（`EmbedResponse`）: `vector` / `dimensions` / `model` / `collection` / `embedded` /
+`endpoint` / `routing_reason` / `retryable`（REST の応答と 1 対 1）。
+
+🔴 **縮退はエラーではない。** 越境拒否（fail-closed）・プロバイダ未登録・次元不整合・上流不調はいずれも
+`embedded=false` の**応答**で返る（REST の 200 ＋ `Embedded=false` と同値）。`retryable` の意味も同じ ——
+`true` は一時的な障害（再試行へ回す）、`false` は恒久的な拒否（索引をスキップ）である。
+
+エラー（`RpcException` になるのは輸送と s2s の面だけ）:
+
+| gRPC status | 条件 | 呼び出し側の対応 |
+| --- | --- | --- |
+| `UNAUTHENTICATED` | s2s トークン無し・検証失敗 | 🔴 **例外のまま上げる**（`[]` や「再試行可」へ縮退させない） |
+| `PERMISSION_DENIED` | `platform-service` ロール無し（利用者トークンの転送を含む） | 同上 |
+| `UNAVAILABLE` | ゲートウェイ不達 | 同上 |
+
+🔴 **権限スコープ解決とは縮退の向きが逆である。** あちらは「引けなかった」を deny（閲覧可能なし）へ倒すが、
+埋め込みは倒さない —— 倒すと検索側では「該当なし」、取り込み側では「送信拒否」と**見分けがつかなくなる**。
+続行してよいのは、後段が応答で明示的に「埋め込めなかった」と答えたときだけである。
+
 ## シーケンス
 
 ```mermaid
@@ -155,7 +193,27 @@ sequenceDiagram
 - データ仕様書: 該当なし（永続化を伴わない）
 - 検査器: `scripts/check-proto-contracts.js`（`scripts/README.md`）
 
+## proto3 の「未指定」を写す
+
+🔴 **proto3 に null は無い。** REST の DTO が持つ既定値（既定引数・`null` の解釈）は、**呼び出し先の
+サーバ側で明示的に写す**。写し漏れは例外にならず、意味が静かに変わる形で現れる。
+
+| 契約 | REST の既定 | proto3 の「未指定」 | サーバの写し |
+| --- | --- | --- | --- |
+| 権限スコープの `action` | `"read"` | `""` | `"" → read`（参照実装が実施済み） |
+| 埋め込みの `purpose` | `Index` | `EMBED_PURPOSE_UNSPECIFIED`（0） | 🔴 `UNSPECIFIED → INDEX` |
+| 埋め込みの `confidentiality` | `null` → restricted | `""` | 写し不要（`""` も未知値も restricted へ倒れる） |
+
+埋め込みの `purpose` を写し忘れると、未指定が `QUERY` として扱われて越境判定が「public 相当」へ落ち、
+**機密文書の本文が外部の埋め込み API へ送られる**。新しい rpc を足す人は、
+**REST 側の既定値を一覧してから proto の 0 値と突き合わせること。**
+
 ## 未決事項
 
 - gRPC ヘルスプロトコル（`grpc.health.v1`）の要否（今は HTTP の readiness で足りる）。
 - 稼働クラスタでの h2c 往復は**未実測**（新イメージの配備＝Pod の再起動を要するため、本作業では行っていない）。
+- 🔴 **参照実装（BFF → 認可サービス）の配備上の未配線。** `ServiceToken` の資格情報と gRPC の宛先が
+  helm・compose のどちらにも無く、realm 側にも BFF の service account（とサービス用ロールの割当）が無い。
+  したがって**この経路は配備上まだ 1 度も走っていない**。埋め込みの側は本書のとおり配線済みである。
+  埋め込み以外の呼び出し元を足すときは、**コードだけでなく 4 経路（helm / compose / realm / ローカル供給元）を
+  同じ変更で揃えること**（1 つでも欠けると Pod が起動しない、あるいは呼び出しが常に拒否される）。

@@ -1,5 +1,6 @@
 using Anthropic.SDK;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using LlmGateway.Features.Completions;
@@ -18,6 +19,13 @@ const string ServiceName = "microservices-platform.llm-gateway";
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
+
+// FR-02, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 3, IADR-0397 (#1255): east-west gRPC の
+// h2c リスナ（`Grpc:Port`。既定 8081・未設定なら立てない）。HTTP/1.1 の 8080（REST・/health/*・
+// introspection）はヘルパが再宣言するので消えない。**readiness は 8080 の /health/ready のまま。**
+// AddGrpc() は常に呼ばれる（MapGrpcService は AddGrpc 無しだと起動時に落ちるため、リスナの有無と
+// サービス登録の可否を切り離す。TestServer の in-memory HTTP/2 でも gRPC が動く）。
+builder.AddPlatformGrpcListener();
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 
@@ -92,6 +100,10 @@ builder.Services.AddKeyedSingleton<IEmbeddingProvider, SelfHostedEmbeddingProvid
 // **既定は appsettings.json で Enabled: false**。使い捨ての統合スタックだけが opt-in する。
 builder.Services.AddKeyedSingleton<IEmbeddingProvider, DeterministicEmbeddingProvider>("deterministic-embedding");
 
+// FR-02, FR-05, ADR-0016, IADR-0379 決定 5, IADR-0397 (#1255): 埋め込みの判定器本体。
+// REST（/embed）と gRPC（LlmEmbedding/Embed）の**両方がこれを呼ぶ** —— 判定器を 2 つにしない。
+builder.Services.AddSingleton<EmbedUseCase>();
+
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段はホストしないが、
 // LLM 生成・埋め込みの合成可能ポート（機密区分ルーティングで複数プロバイダを束ねるルータ）を申告する。
 builder.Services.AddPlatformIntrospection("llm-gateway", new PipelineOptions(),
@@ -128,6 +140,10 @@ app.MapOpenApi();
 
 app.MapCompletionEndpoints();
 app.MapEmbeddingEndpoints();
+
+// FR-02, NFR-09, ADR-0029, ADR-0075, IADR-0379, IADR-0397 (#1255): 埋め込みの gRPC 面。
+// `[Authorize(Policy = ServiceCaller)]` を型に持ち、s2s トークン（realm ロール platform-service）だけを通す。
+app.MapGrpcService<LlmEmbeddingGrpcService>();
 
 app.Run();
 

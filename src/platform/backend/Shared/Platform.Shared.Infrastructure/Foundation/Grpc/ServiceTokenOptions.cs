@@ -19,6 +19,18 @@ public sealed class ServiceTokenOptions
 
     public string ClientId { get; set; } = "";
 
+    /// <summary>
+    /// 呼び出し側サービスの confidential client のシークレット。
+    /// 実値は <b>k8s Secret から環境変数で注入する</b>（BffSession__ClientSecret と同型）。
+    /// <para>
+    /// 🔴 この宣言は <c>scripts/check-secret-injected-options.js</c> の母集合の入口である（IADR-0316 / #1107）。
+    /// 宣言があると <c>ServiceToken__ClientSecret</c> が helm に secretKeyRef 由来の env として、
+    /// compose に変数展開の env として存在することが機械で要求される。
+    /// 既定は空文字なので、注入が抜けると <c>ClientCredentialsServiceTokenProvider</c> が
+    /// 「ClientId / ClientSecret が未設定」で例外を投げ、east-west gRPC の呼び出しがすべて落ちる ——
+    /// <b>単体テストは構成を自分で与えて走るのでこの欠落では絶対に落ちない</b>（#1107 と同型。IADR-0397）。
+    /// </para>
+    /// </summary>
     public string ClientSecret { get; set; } = "";
 
     // 省略可。Keycloak は scope 無しでも client credentials を受け付ける。

@@ -1,5 +1,6 @@
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
+using Platform.Shared.Infrastructure.Foundation.Llm;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using IngestionService.Domain.Ports;
 using IngestionService.Features.Ingestion.Ingest;
@@ -49,8 +50,16 @@ builder.Services.AddPlatformObjectStorage(builder.Configuration);
 builder.Services.AddHttpClient<IDocumentContentReader, StorageDocumentContentReader>();
 
 // ADR-0013: 埋め込みサービス（LLM ゲートウェイ経由）
-builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(c =>
-    c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"));
+//
+// FR-02, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0397 (#1255): east-west gRPC への切替。
+// **並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス）が構成されたときだけ
+// 生成クライアントが登録され、そのときに限り gRPC 実装を使う。無ければ従来の HTTP 実装のまま。
+builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
+if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
+    builder.Services.AddSingleton<IEmbeddingService, LlmGatewayGrpcEmbeddingService>();
+else
+    builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(c =>
+        c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"));
 
 // ADR-0003（Superseded by ADR-0027・注記は #580）: MassTransit
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。

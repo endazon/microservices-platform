@@ -12,6 +12,10 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Anthropic.SDK" />
+    <!-- FR-02 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0397 (#1255): east-west gRPC の受け側。
+         ホストを起こす側が受け側パッケージを持つ（共通ヘルパ経由の推移参照に頼らない）。
+         版は書かない（CPM。ADR-0030 の採用ライブラリで Directory.Packages.props に既に在る）。 -->
+    <PackageReference Include="Grpc.AspNetCore" />
     <ProjectReference Include="..\..\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
     <ProjectReference Include="..\..\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
     <!-- IADR-0109 (#394): finish_reason の写像（OpenAiFinishReasons）はトランスポート内部の実装詳細であり
