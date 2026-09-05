@@ -109,7 +109,7 @@
  *   **宣言が無いのに稼働にメッシュ資材が在る**なら飛ばさず失敗にする（IADR-0317 が
  *   「動いているが宣言が持っていない」として記録に留めた形そのもの）。
  *
- * - **G13 検索の読み書き先**（#1215 / [IADR-0383]）: **検索側が読む Qdrant コレクションに点が在り、
+ * - **G13 検索の読み書き先**（#1215 / [IADR-0382]）: **検索側が読む Qdrant コレクションに点が在り、
  *   全文ペイロード索引（`text` / `text_ngram`）が張られている**ことを要求する。
  *   🔴 **本体は「点の在り処」である。** #1215 の稼働クラスタは、点が
  *   `knowledge_chunks_deterministic_v1` に 3 件在るのに検索側は `knowledge_chunks_voyage_3_5`（0 点）を
@@ -208,7 +208,7 @@ const MSP_HELM_RELEASE = 'msp';
 /** G12: `spec` を書いてよい field manager。Helm 4 のサーバサイド apply は `helm` を名乗る。 */
 const MESH_SPEC_WRITER = 'helm';
 
-// G13 (#1215 / IADR-0383): 検索の読み書き先。**コレクション名も索引パラメータもここへ書かない**
+// G13 (#1215 / IADR-0382): 検索の読み書き先。**コレクション名も索引パラメータもここへ書かない**
 // （実装と宣言から走査して得る。書き写すと、変えたときに検査が静かに空回りする —— G7 の locale と同じ）。
 const QDRANT_NS = 'platform-infra';
 /** Qdrant の REST（6333）。アプリは gRPC（6334）を使うが、状態の読み取りは REST が素直である。 */
@@ -864,7 +864,7 @@ function searchCollectionOverrides(items) {
 }
 
 /**
- * G13 (#1215 / [IADR-0383]): 検索の読み書き先と全文索引を判定する。**純関数**（入力は採取済みの値だけ）。
+ * G13 (#1215 / [IADR-0382]): 検索の読み書き先と全文索引を判定する。**純関数**（入力は採取済みの値だけ）。
  *
  * @param {{contract:({fields:object[]}|null), appsettingsName:(string|null),
  *          liveOverrides:{deploy:string,name:string}[],
@@ -1648,7 +1648,7 @@ function check({ repoRoot = REPO_ROOT } = {}) {
     notices.push(...r.notices);
   }
 
-  // G13 (#1215 / IADR-0383): 検索側が読むコレクションに点が在り、全文索引が張られていること。
+  // G13 (#1215 / IADR-0382): 検索側が読むコレクションに点が在り、全文索引が張られていること。
   {
     const list = qdrantCollectionNames();
     const r = evaluateSearchCollection({
@@ -2160,7 +2160,7 @@ function selfTest() {
     assert.strictEqual(evaluateMeshDrift({ declared: declared2, live: pair('PERMISSIVE', 'ALLOW'), liveError: null }).failures.length, 1);
   });
 
-  // ---- G13 (#1215 / IADR-0383)
+  // ---- G13 (#1215 / IADR-0382)
   //
   // 🔴 期待値（索引のパラメータ）は**実装から走査して得る**。ここに数値を書き写すと、
   // 実装が変わったとき検査も試験も揃って空回りする。走査そのものを陽性・陰性の対で固定する。

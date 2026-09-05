@@ -2,7 +2,7 @@
 title: 検索側が読むコレクションに点と全文索引が在ることを門にする（読み書き先の乖離を静かに通さない）
 type: spec
 status: draft
-related_ids: [FR-02, FR-03, NFR-09, ADR-0009, ADR-0016, IADR-0025, IADR-0284, IADR-0313, IADR-0315, IADR-0318, IADR-0339, IADR-0369, IADR-0377, IADR-0383]
+related_ids: [FR-02, FR-03, NFR-09, ADR-0009, ADR-0016, IADR-0025, IADR-0284, IADR-0313, IADR-0315, IADR-0318, IADR-0339, IADR-0369, IADR-0377, IADR-0382]
 author: claude
 created: 2026-09-05
 updated: 2026-09-05
@@ -20,7 +20,7 @@ plan_refs:
 - 関連 ADR: ADR-0009（ベクトル DB = Qdrant）, ADR-0016（埋め込みのルーティング）
 - 実装 ADR: IADR-0025（モデル別コレクション）, IADR-0313（決定的ローカル埋め込み）,
   IADR-0315（Qdrant サーバ版をクライアントへ揃える）, IADR-0318 / IADR-0339（全文索引 `text` / `text_ngram`）,
-  IADR-0369（門 G9〜G11）, IADR-0377（門 G12）, IADR-0383（本作業の門 G13）
+  IADR-0369（門 G9〜G11）, IADR-0377（門 G12）, IADR-0382（本作業の門 G13）
 
 ## 目的・背景
 
@@ -82,7 +82,7 @@ $ 同 /collections/knowledge_chunks_ruri_v3      → "points_count":0（索引�
 ## 対象範囲
 
 - 対象: `scripts/check-stack-ready.js` へ門 **G13** を足す（判定は純関数として切り出す）。
-  `scripts/scripts.repo.test.js` に陽性・陰性の対と**変異試験**を置く。実装 ADR（IADR-0383）と索引、
+  `scripts/scripts.repo.test.js` に陽性・陰性の対と**変異試験**を置く。実装 ADR（IADR-0382）と索引、
   `docs/operations/operations.md` の追随。
 - 対象外: **索引テキストの内容**（`bodyAbsent` ↔ `hasBody` の語彙統一は #1253 / #1254 の射程。交差させない）。
   埋め込みプロバイダの選択そのもの（ADR-0016 / IADR-0313 が確定済み）。

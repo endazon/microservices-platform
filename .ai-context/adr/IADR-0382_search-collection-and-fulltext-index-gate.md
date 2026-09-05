@@ -1,5 +1,5 @@
 ---
-title: IADR-0383 検索側が読むコレクションに点と全文索引が在ることを門 G13 で落とす
+title: IADR-0382 検索側が読むコレクションに点と全文索引が在ることを門 G13 で落とす
 type: impl-adr
 status: Proposed
 related_ids:
@@ -27,7 +27,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0016_embedding-model-routing.md
 ---
 
-# IADR-0383: 検索の読み書き先を門にする（#1215）
+# IADR-0382: 検索の読み書き先を門にする（#1215）
 
 - 状態: Proposed
 - 日付: 2026-09-05
