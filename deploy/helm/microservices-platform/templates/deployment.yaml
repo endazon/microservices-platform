@@ -44,10 +44,22 @@ spec:
           {{- if $svc.port }}
           ports:
             - containerPort: {{ $svc.port }}
+            {{- if $svc.grpcPort }}
+              # NFR-16, IADR-0379 決定 3 (#1201): 複数ポートになるので名前を付ける（grpcPort 無しのサービスは不変）。
+              name: http
+            - containerPort: {{ $svc.grpcPort }}
+              name: grpc
+            {{- end }}
           {{- end }}
           env:
             - name: Otlp__Endpoint
               value: {{ $.Values.global.otel.endpoint }}
+          {{- if $svc.grpcPort }}
+            # NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 (#1201): east-west gRPC の h2c リスナ。
+            # 未設定ならアプリはリスナを立てない（既存サービスは 1 バイトも変わらない）。
+            - name: Grpc__Port
+              value: {{ $svc.grpcPort | quote }}
+          {{- end }}
             - name: Auth__Authority
               value: {{ $.Values.global.auth.authority }}
           {{- if $.Values.global.auth.metadataAddress }}

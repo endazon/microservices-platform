@@ -13,5 +13,18 @@ spec:
     - port: {{ $svc.port }}
       targetPort: {{ $svc.port }}
       protocol: TCP
+    {{- if $svc.grpcPort }}
+      # NFR-16, IADR-0379 決定 3 (#1201): 複数ポートになるので名前を付ける（grpcPort 無しのサービスは不変）。
+      name: http
+      appProtocol: http
+    # NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 (#1201): east-west gRPC（h2c）。
+    # appProtocol: grpc でサイドカーのプロトコル推定に頼らない。mTLS は既存の DestinationRule
+    # （ISTIO_MUTUAL・host ワイルドカード）が全ポートに掛かるので追加不要。
+    - port: {{ $svc.grpcPort }}
+      targetPort: {{ $svc.grpcPort }}
+      protocol: TCP
+      name: grpc
+      appProtocol: grpc
+    {{- end }}
 {{- end }}
 {{- end }}
