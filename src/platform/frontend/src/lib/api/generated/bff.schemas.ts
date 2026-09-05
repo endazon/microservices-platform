@@ -570,6 +570,13 @@ export interface DocumentDto {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+  /**
+     * SC-03, ADR-0070 決定 3 / IADR-0388: **原本が本文を持っていたか。**
+     * `false` はテキスト層を持たない PDF 等で、文書詳細は本文の位置へ
+     * 「本文なし（原本を参照）」を示す（SC-02 の検索結果と同じ文言・同じ導出）。
+     * **項目を持たない応答は「本文あり」として読む**（既定 `true`）。
+     */
+  hasBody?: boolean;
 }
 
 /**
@@ -829,7 +836,7 @@ export interface ConversionJobDto {
   sourceId: string;
   sourceType: string;
   originalPath: string;
-  /** `queued` / `processing` / `succeeded` / `failed`。**`failed` のみ再変換できる**（「本文なしで完了」は `succeeded` の内訳 `bodyAbsent` であり、再変換の対象に並ばない） */
+  /** `queued` / `processing` / `succeeded` / `failed`。**`failed` のみ再変換できる**（「本文なしで完了」は `succeeded` の内訳 `hasBody: false` であり、再変換の対象に並ばない） */
   status: string;
   /** 失敗ジョブの理由 */
   error?: string | null;
@@ -869,13 +876,15 @@ export interface ConversionJobDto {
      */
   hasCorrection: boolean;
   /**
-     * **「本文なしで完了」の標識**（ADR-0070 決定 3）。テキスト層を持たない PDF（スキャン等）は
-     * 本文が存在しないため、`failed` にせず **`succeeded` の内訳**として理由つきで表示する。
+     * **原本が本文を持っていたか**（ADR-0070 決定 3 / IADR-0388）。テキスト層を持たない PDF（スキャン等）は
+     * 本文が存在しないため、`failed` にせず **`succeeded` の内訳**として `false` を返し、理由つきで表示する。
      * **`status` の 5 値目ではない**（`deadLettered` / `diagramsRetained` と同じ扱い）。
-     * `true` のジョブは再試行してもデッドレターへ送っても結果が変わらないため、再変換の対象に並ばない。
-     * `markdownUri` は空の本文を指す（原本参照のみの文書）。`status` が `succeeded` のときだけ真。
+     * `false` のジョブは再試行してもデッドレターへ送っても結果が変わらないため、再変換の対象に並ばない。
+     * `markdownUri` は空の本文を指す（原本参照のみの文書）。**`false` になるのは `status` が `succeeded` のときだけ**である。
+     * 🔴 従前は否定形の `bodyAbsent`（既定 `false`）だった。検索側（`SearchResultDto.hasBody`）と
+     * 極性が逆で読み替えが要ったため、**肯定形へ寄せて改名した**（極性も反転している）。
      */
-  bodyAbsent: boolean;
+  hasBody: boolean;
 }
 
 /**

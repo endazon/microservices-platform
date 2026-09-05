@@ -3,15 +3,15 @@ title: 機能仕様書 — FR-12 原本の正規化変換（pandoc＋LLMコー�
 type: functional-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-09-03
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-11, FR-12, SC-07, UC-06]
+ids: [FR-01, FR-02, FR-11, FR-12, SC-03, SC-07, UC-06]
 adrs: [ADR-0010, ADR-0012, ADR-0014, ADR-0053, ADR-0070]
-iadrs: [IADR-0007, IADR-0008, IADR-0137, IADR-0154, IADR-0298, IADR-0320, IADR-0351, IADR-0356]
-specs: [20260703_FR-12_document-normalization-pipeline, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction]
-issues: [#533, #543, #1097, #1120, #1192]
+iadrs: [IADR-0007, IADR-0008, IADR-0137, IADR-0154, IADR-0298, IADR-0320, IADR-0351, IADR-0356, IADR-0388]
+specs: [20260703_FR-12_document-normalization-pipeline, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
+issues: [#533, #543, #1097, #1120, #1192, #1254]
 -->
 
 # 機能仕様書: 原本の正規化変換
@@ -69,7 +69,7 @@ issues: [#533, #543, #1097, #1120, #1192]
    - **PDF は pandoc ではなくテキスト層の抽出器へ振り分ける**（`FormatRoutingBodyConverter` →
      `PdfTextLayerConverter`。`pdftotext -enc UTF-8 -nopgbrk` を外部プロセスとして起動する。
      ローカル完結・外部送信なし・図は抽出しない）。抽出結果が**空白のみ**なら「テキスト層なし」とし、
-     `BodyAbsent = true` の本文なし結果を返す（E6）。**振り分けの判定は `PandocInputFormat` の
+     `HasBody = false` の本文なし結果を返す（E6）。**振り分けの判定は `PandocInputFormat` の
      1 箇所**であり、PDF は `null`、計画の対応形式表に無い未知の形式は E5 で拒否する。
 4. 冪等 `DocumentId` を `SourceId`＋`OriginalPath` から決定的に導出する（`DeterministicGuid`）。
 5. 各図について（`IDiagramCoder` / `LlmGatewayDiagramCoder`）:
@@ -115,10 +115,14 @@ issues: [#533, #543, #1097, #1120, #1192]
 - **E6（テキスト層を持たない PDF）**: スキャン等でテキスト層が無い PDF は、抽出結果が**空白のみ**で
   あることを確かめたうえで「**本文なし・原本参照のみの文書**」として変換を**完了**させる。
   🔴 **失敗ではない**——再試行もデッドレターもしない（何度やっても結果は変わらない）。
-  `status = succeeded` のまま `bodyAbsent = true` を内訳として記録し（状態値の 5 値目にしない）、
+  `status = succeeded` のまま `hasBody = false` を内訳として記録し（状態値の 5 値目にしない）、
   変換ジョブ画面には「本文なしで完了」と理由つきで表示する（再変換の対象に並ばない）。
-  `document.md` は空の内容で保管し、`DocumentNormalized.BodyAbsent = true` で後続へ伝える
-  （本文由来のチャンクは作らず、メタデータで検索に載せるのは別作業）。
+  `document.md` は空の内容で保管し、`DocumentNormalized.HasBody = false` で後続へ伝える。
+  **カタログ（DocumentService）がこれを台帳へ保持し、`DocumentUpdated` へ写して
+  文書詳細画面の「本文なし（原本を参照）」の材料にする**（#1254）。本文由来のチャンクは作らず、
+  索引側はメタデータ 1 点で検索に載せる（#1193）。
+  **［2026-09-05 / #1254］項目名は否定形 `BodyAbsent` から肯定形 `HasBody` へ改名し、極性を反転した**
+  （読み替え表は `docs/data/conversion-job.md` §本文の有無の語彙）。
   抽出器そのものが無い・原本が読めない・`pdftotext` が非 0 終了する（壊れた PDF・暗号化）場合は
   **本文があるのに作れない失敗**であり、E1 / E2 と同じく fail-closed のまま（縮退しない）。
 - **E3（図コード化の LLM 一時障害・送信拒否・コード化不能）**: 例外を送出せず**画像保持へ縮退**する

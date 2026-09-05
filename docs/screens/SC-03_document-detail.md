@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, FR-12, FR-13, FR-17, FR-18, FR-19, FR-20, FR-21, SC-01, SC-02, SC-03, SC-04, SC-05, SC-09, SC-18, SC-21, UC-01, UC-02, UC-07]
-adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0063, ADR-0073]
-iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0121, IADR-0124, IADR-0126, IADR-0272, IADR-0276, IADR-0290, IADR-0300, IADR-0323, IADR-0355, IADR-0364, IADR-0365, IADR-0386]
-specs: [20260804_issue-502_sc01-03-search-flow, 20260828_issue-1011_version-body-contract, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e]
-issues: [#1011, #1014, #1104, #1187, #12, #1200, #1240, #446, #449, #450, #452, #490, #502, #504, #519, #541, #553, #586, #917, #918, planning#197, planning#237, planning#244, planning#473, planning#495]
+adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0063, ADR-0070, ADR-0073]
+iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0121, IADR-0124, IADR-0126, IADR-0272, IADR-0276, IADR-0290, IADR-0300, IADR-0323, IADR-0355, IADR-0364, IADR-0365, IADR-0386, IADR-0388]
+specs: [20260804_issue-502_sc01-03-search-flow, 20260828_issue-1011_version-body-contract, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
+issues: [#1011, #1014, #1104, #1187, #12, #1200, #1240, #1254, #446, #449, #450, #452, #490, #502, #504, #519, #541, #553, #586, #917, #918, planning#197, planning#237, planning#244, planning#473, planning#495]
 -->
 
 # 画面仕様書: 文書詳細／プレビュー
@@ -84,7 +84,7 @@ issues: [#1011, #1014, #1104, #1187, #12, #1200, #1240, #446, #449, #450, #452, 
 | # | モックの要素（行） | 実装 | 備考 |
 | --- | --- | --- | --- |
 | 1 | タイトル ＋ 副題「正規化文書（Markdown）プレビュー」（417-418） | **する** | |
-| 2 | 本文プレビューのパネル（419-421） | **する** | `Card`。Markdown **原文**を等幅・改行保持で表示（§本文の描画） |
+| 2 | 本文プレビューのパネル（419-421） | **する** | `Card`。Markdown **原文**を等幅・改行保持で表示（§本文の描画）。**［2026-09-05］原本が本文を持たない文書は本文の位置へ「本文なし（原本を参照）」を出す**（`StatusBadge tone="neutral"`。検索結果と**同じ文言・同じ導出**）——導出元は `hasBody === false` で、項目を持たない旧応答は従来どおり本文を描く。空の本文をそのまま描くと「読み込みに失敗した」と読み違える |
 | 3 | 「📖 Wikiで閲覧」（422） | **する** | Wiki 閲覧画面の文書別ディープリンク `/wiki?doc=<id>` へ。**権限内の Wiki 台帳にこの文書が載っているときだけ出す**（§Wiki への導線） |
 | 4 | 「原本（ファイルサーバー）↗」（422） | **する** | `http(s)` のときだけリンク。`storage://` 等は等幅表記 |
 | 5 | 属性・タグのパネル（432-433） | **一部する** | 機密区分・部門・タグを出す（§属性の表示）。**満たしていない条件: 機密区分の値を表示名へ写像していない** —— モックが「社内限」と描く箇所へ `internal` を**生値のまま**出す。4 値の表示名は裁定 **Q7 / Q8 / 派生 Q30** で確定済み（正は計画リポジトリ `project-planning` の `docs/glossary.md`）であり、**決まっていないのではなく写像が未実装**である。**引き受け先は #541**（`attributes.ts` が「写像を入れる先は #541」と明記）。**［2026-08-10 / #552］本行は従前「する」だった** —— 文書管理画面は同じ論点を別行（#7「しない」）へ切り出しているのに、本画面は 1 行へ畳んでいたため判定に現れていなかった |
@@ -182,7 +182,8 @@ hi-fi モックの左レールにも「文書詳細」がある。しかし**本
 | 承認 | `POST /bff/graph/suggestions/{id}/approve` | orval 生成フック（mutation） | 認証のみ。**判定は後段の 4 段**（読み取り可否 → 存在 → 両端が可視 → 書き込み可）。**拒否はすべて 404** | `AiSuggestion` |
 | 却下 | `POST /bff/graph/suggestions/{id}/reject` | 同上 | 同上 | `AiSuggestion` |
 
-- `DocumentDto = { id, title, status, markdownUri?, version, attributes{}, tags[], createdAt, updatedAt }`
+- `DocumentDto = { id, title, status, markdownUri?, version, attributes{}, tags[], createdAt, updatedAt, hasBody }`
+  - `hasBody` は**原本が本文を持っていたか**（既定 `true`）。`false` は上の「本文なし（原本を参照）」の導出元である。
 - `DocumentContentDto = { id, title, markdown, sourceUri? }`（ABAC 判定後にオブジェクトストレージから取得。未配備時はプレースホルダ本文）
 - `DocumentVersionDto = { documentId, version, title, status, attributes{}, tags[], changeNote?, createdAt }`
   - **本文の参照は持たない**（#1011）。版ごとの本文は保持されておらず、「その版の本文」を指せる値が存在しないため、
@@ -389,6 +390,7 @@ flowchart LR
 | notFound | 404（不在／秘匿） | 中立「文書が見つかりませんでした。」 |
 | error | 5xx / network | `Alert tone="danger"` `role="alert"` |
 | 本文 unavailable | 本文だけ失敗（詳細は成功） | 「本文は利用できません。」（本文領域のみ縮退） |
+| 本文なし | `hasBody === false`（原本が本文を持たない） | 「本文なし（原本を参照）」。**取得失敗とは別の状態である** —— 原本を参照する導線（§出典元）へ委ねる |
 | 版履歴 失敗 | 版履歴だけ失敗 | 版履歴パネルを出さない（補助情報のため本体表示は継続） |
 | 提案 0 件 | 承認待ちの提案が無い | **欄自体を出さない** |
 | 提案 取得失敗 | 提案の取得だけ失敗 | 「取得できませんでした。提案の有無は判断できません。」（**空の欄へ縮退しない** —— 「提案が無い」と「引けない」は別の意味である） |

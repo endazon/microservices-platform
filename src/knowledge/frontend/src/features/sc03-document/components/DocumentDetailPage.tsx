@@ -7,6 +7,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  StatusBadge,
   Table,
   TableBody,
   TableCaption,
@@ -113,6 +114,7 @@ export function DocumentDetailPage() {
           isPending={content.isPending}
           isError={content.isError}
           content={content.data}
+          hasBody={doc.hasBody !== false}
         />
         {/* 05_screens §SC-03:「本文の下部に表示し、その場で承認／却下できる」。0 件なら欄ごと出ない。 */}
         <AiSuggestionPanel documentId={doc.id} />
@@ -159,11 +161,16 @@ function ContentView({
   isPending,
   isError,
   content,
+  hasBody,
 }: {
   isPending: boolean;
   isError: boolean;
   content?: DocumentContentDto;
+  hasBody: boolean;
 }) {
+  // `StatusBadge` の children は文字列を要求する（アイコン＋テキストを内部で組むため）。
+  // SC-02 と同じく `useLingui().t` のテンプレート形で渡す。
+  const { t } = useLingui();
   return (
     <Card className="mb-3">
       <CardHeader>
@@ -172,17 +179,23 @@ function ContentView({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {isPending && (
+        {/* SC-03, ADR-0070 決定 3・決定 4 / #1254（[[IADR-0388]] 決定 2）:
+            **原本が本文を持たない文書**（テキスト層の無い PDF 等）は、空の本文を出すのではなく
+            SC-02 と**同じ文言・同じ導出**で「本文なし（原本を参照）」を示し、原本の導線
+            （下の SourceLinks）へ委ねる。空の `pre` を出すと「読み込みに失敗した」と読み違える。
+            **`hasBody === false` のときだけ**である（項目を持たない旧応答は従来どおり本文を描く）。 */}
+        {!hasBody && <StatusBadge tone="neutral">{t`本文なし（原本を参照）`}</StatusBadge>}
+        {hasBody && isPending && (
           <p role="status" className="text-sm text-[--color-fg-muted]">
             <Trans>本文を読み込み中…</Trans>
           </p>
         )}
-        {isError && (
+        {hasBody && isError && (
           <p className="text-sm text-[--color-fg-muted]">
             <Trans>本文は利用できません。</Trans>
           </p>
         )}
-        {content && (
+        {hasBody && content && (
           <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-[--radius-control] bg-[--color-surface-muted] p-3 text-sm">
             {content.markdown}
           </pre>

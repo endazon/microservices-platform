@@ -13,6 +13,20 @@
       "approvedBy": "claude (実装エージェント)",
       "issue": "#1011",
       "date": "2026-08-28"
+    },
+    {
+      "key": "memberRemoved:Knowledge.Contracts.Dtos.ConversionJobDto.BodyAbsent",
+      "reason": "同じ概念（本文の有無）が変換側 bodyAbsent（否定形・true＝本文なし）と検索側 hasBody（肯定形・true＝本文あり）に割れており、画面・契約・運用の道具で「どちらを見るのか」を毎回引き直すことになっていた（#1254）。肯定形 hasBody へ寄せ、同時に極性を反転した（IADR-0388 決定 1）。安全性: (a) 既定値の意味は両方の綴りで「本文あり」なので、項目を持たない旧発行者の応答の読みは変わらない。(b) 読み手はリポジトリ内に SC-07 の SPA（isBodyAbsent）1 箇所だけで、同 PR で hasBody === false へ移した（src/ と docs/ を bodyAbsent で全走査して確認）。(c) 台帳の列も同 PR の RenameBodyAbsentToHasBody で「足す → NOT で写す → 落とす」の順に移し、既存行の内訳を保つ。(d) 非破壊で済ませる案（両方を残して deprecated にする）は、割れた語彙をもう 1 つ増やして問題そのものを悪化させるため採らない。",
+      "approvedBy": "claude (実装エージェント)",
+      "issue": "#1254",
+      "date": "2026-09-05"
+    },
+    {
+      "key": "memberRemoved:Knowledge.Contracts.Events.DocumentNormalized.BodyAbsent",
+      "reason": "同上（#1254）。加えて本項目は #1192 が足して以来 write-only であり、読み手が 1 つも無かった（ConversionService の外では定義 2 行のみ。陽性対照として ConversionService 内側 29 箇所を対で走査した）。改名で失われる読み手はゼロである。同 PR で DocumentService が読み手になり（Document.HasBody へ保持し DocumentUpdated へ写す）、SC-03 の「本文なし（原本を参照）」の材料になる（IADR-0388 決定 2）。極性の反転と既定値の安全性は ConversionJobDto と同じ。",
+      "approvedBy": "claude (実装エージェント)",
+      "issue": "#1254",
+      "date": "2026-09-05"
     }
   ],
   "projects": {
@@ -477,12 +491,6 @@
             "required": true,
             "position": 8
           },
-          "BodyAbsent": {
-            "source": "positional",
-            "type": "bool",
-            "required": false,
-            "position": 16
-          },
           "CreatedAt": {
             "source": "positional",
             "type": "DateTimeOffset",
@@ -518,6 +526,12 @@
             "type": "string?",
             "required": true,
             "position": 5
+          },
+          "HasBody": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 16
           },
           "HasCorrection": {
             "source": "positional",
@@ -957,6 +971,11 @@
           "CreatedAt": {
             "source": "property",
             "type": "DateTimeOffset",
+            "required": false
+          },
+          "HasBody": {
+            "source": "property",
+            "type": "bool",
             "required": false
           },
           "Id": {
@@ -2228,17 +2247,23 @@
             "required": true,
             "position": 5
           },
-          "BodyAbsent": {
+          "DataSourceName": {
             "source": "positional",
-            "type": "bool",
+            "type": "string?",
             "required": false,
-            "position": 8
+            "position": 10
           },
           "DocumentId": {
             "source": "positional",
             "type": "Guid",
             "required": true,
             "position": 0
+          },
+          "HasBody": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 8
           },
           "MarkdownUri": {
             "source": "positional",
@@ -2251,6 +2276,12 @@
             "type": "DateTimeOffset",
             "required": true,
             "position": 7
+          },
+          "OriginalPath": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 9
           },
           "SourceId": {
             "source": "positional",
@@ -2287,17 +2318,35 @@
             "required": false,
             "position": 7
           },
+          "DataSourceName": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 10
+          },
           "DocumentId": {
             "source": "positional",
             "type": "Guid",
             "required": true,
             "position": 0
           },
+          "HasBody": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 8
+          },
           "MarkdownUri": {
             "source": "positional",
             "type": "string?",
             "required": true,
             "position": 3
+          },
+          "OriginalPath": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 9
           },
           "Status": {
             "source": "positional",
@@ -2409,6 +2458,12 @@
             "type": "Guid",
             "required": true,
             "position": 1
+          },
+          "SourceName": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 9
           },
           "SourceType": {
             "source": "positional",

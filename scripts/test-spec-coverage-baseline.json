@@ -27,7 +27,9 @@
       "BffSearchEndpointTests",
       "BodylessDocumentSearchTests",
       "DocumentBodyPresenceTests",
+      "DocumentUpdatedConsumerTests",
       "HybridSearchServiceTests",
+      "MetadataIndexTextTests",
       "QdrantVectorStoreTests"
     ],
     "docs/tests/FR-04_ai-answer-citations.md": [

@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, FR-12, FR-13, FR-17, FR-18, SC-03, SC-04, SC-05, SC-06, SC-09, SC-18, SC-21, UC-01, UC-02, UC-07, UC-10]
-adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0063, ADR-0073]
-iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0126, IADR-0272, IADR-0276, IADR-0300, IADR-0323, IADR-0364, IADR-0365, IADR-0386]
-specs: [20260804_issue-502_sc01-03-search-flow, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e]
-issues: [#1014, #1104, #1187, #1200, #1240, #449, #450]
+adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0063, ADR-0070, ADR-0073]
+iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0126, IADR-0272, IADR-0276, IADR-0300, IADR-0323, IADR-0364, IADR-0365, IADR-0386, IADR-0388]
+specs: [20260804_issue-502_sc01-03-search-flow, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
+issues: [#1014, #1104, #1187, #1200, #1240, #1254, #449, #450]
 -->
 
 # テスト仕様書: 文書詳細／プレビュー
@@ -74,6 +74,8 @@ issues: [#1014, #1104, #1187, #1200, #1240, #449, #450]
 | 5 | 404 | 中立「文書が見つかりませんでした。」 | **AI 分析の例外** / 権限外は 404 とする存在秘匿 |
 | 6 | 5xx | `role="alert"`（404 とは別表示。サーバの状態であって文書の有無ではない） | — |
 | 7 | 本文取得失敗 | 詳細は表示、本文領域のみ「本文は利用できません。」へ縮退 | — |
+| 7-b | **本文なし**（原本が本文を持たない） | 本文の位置へ「本文なし（原本を参照）」（検索結果と同じ文言）。本文の描画へは落ちない。**取得失敗とは別の状態である** | テキスト層を持たない PDF を本文なしで確定させる裁定（決定 3・決定 4） |
+| 7-c | **陽性対照**: 本文ありの文書（項目を持たない旧応答を含む） | 本文なしの表示は出ず、従来どおり本文が描かれる（「常に出る」実装を落とす） | 同上 |
 | 8 | 版履歴の取得抑止 | 詳細が 404 のとき、**版履歴を要求しない** | 画面のサーバー状態の持ち方（実装判断） |
 | 9 | 版履歴の失敗 | 版履歴パネルを出さず、本体表示は継続 | — |
 | 10 | **グラフ導線** | `/graph?root=<id>&hops=2&by=distance` へのリンクが在る。**`href` の起点まで見る**（`to` だけでは「押しても何も見えない導線」が緑になる） | 計画側の文書詳細画面 §知識グラフ |

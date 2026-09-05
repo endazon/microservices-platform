@@ -11,13 +11,16 @@ public interface IBodyConverter
 // FR-12: 本文変換の結果。Markdown 本文と、原本から抽出した図の一覧を返す。
 public record BodyConversionResult(string Markdown, IReadOnlyList<ExtractedFigure> Figures)
 {
-    // FR-12, UC-06, SC-07, ADR-0070 決定 3, IADR-0356 (#1192): **原本に本文が存在しない**
-    // （テキスト層を持たない PDF）。抽出結果が空白のみであることを確かめたうえで立てる。
+    // FR-12, UC-06, SC-07, ADR-0070 決定 3, IADR-0356 (#1192), [[IADR-0388]] (#1254):
+    // **原本が本文を持っていたか。** `false` は「本文が存在しない」（テキスト層を持たない PDF）で、
+    // 抽出結果が空白のみであることを確かめたうえで倒す。
     //
     // 🔴 これは失敗ではない —— 再試行しても結果は変わらず、デッドレターに溜める価値も無い。
     // 変換は「本文なし・原本参照のみ」として**完了**し、ジョブは succeeded の内訳として画面へ出る。
     // 本文そのものが作れない失敗（抽出器の不在・非 0 終了）は従来どおり例外で表す。
-    public bool BodyAbsent { get; init; }
+    //
+    // **既定は `true`（本文あり）。** 明示しない変換器（pandoc 経路）は従来どおり本文ありを返す。
+    public bool HasBody { get; init; } = true;
 }
 
 // FR-12, UC-06, ADR-0012, IADR-0320 (#1097): 変換器そのものが動かせない（pandoc が実行時イメージに

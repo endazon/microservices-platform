@@ -274,6 +274,29 @@ describe('DocumentDetailPage (SC-03)', () => {
     expect(screen.queryByText('文書が見つかりませんでした。')).not.toBeInTheDocument();
   });
 
+  // SC-03, ADR-0070 決定 3・決定 4 / #1254（[[IADR-0388]] 決定 2）:
+  // **原本が本文を持たない文書**は、本文の位置へ SC-02 と同じ文言で「本文なし（原本を参照）」を出す。
+  // 従前この画面は本文なしの文書を区別する材料を持たず、空の本文をそのまま描いていた。
+  it('shows a bodyless document as completed without a body, not as an empty body', async () => {
+    respond({ detail: { ...DETAIL, hasBody: false } });
+    await renderPage();
+
+    expect(await screen.findByRole('heading', { name: '経費精算規程 v3.2' })).toBeInTheDocument();
+    expect(screen.getByText('本文なし（原本を参照）')).toBeInTheDocument();
+    // 本文の描画へは落ちない（空の `pre` を「読み込みに失敗した」と読み違えさせない）。
+    expect(screen.queryByText(/締め日は毎月25日とする/)).not.toBeInTheDocument();
+  });
+
+  // **陽性対照**: 本文ありの文書には出ない（"常に出る" 実装で上の 1 本が緑にならない）。
+  // `hasBody` を持たない旧応答（既定の DETAIL）も本文ありとして描く。
+  it('shows no bodyless notice for a document that has a body', async () => {
+    respond();
+    await renderPage();
+
+    expect(await screen.findByText(/締め日は毎月25日とする/)).toBeInTheDocument();
+    expect(screen.queryByText('本文なし（原本を参照）')).not.toBeInTheDocument();
+  });
+
   // 本文だけが取れない場合は、その領域のみ縮退して本体表示は続ける。
   it('degrades only the body area when the content request fails', async () => {
     respond({ content: ApiError.fromStatus(500) });

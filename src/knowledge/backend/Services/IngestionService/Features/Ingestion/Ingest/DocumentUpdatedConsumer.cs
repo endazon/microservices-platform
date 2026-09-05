@@ -57,6 +57,8 @@ public class DocumentUpdatedConsumer(
         //
         // 本文由来のチャンク・埋め込みは作らない（作れない）が、**メタデータで索引へ載せる。**
         // 載せなければ利用者はその文書の存在を知る手段を持たない（ADR-0070 決定 4 / P-01）。
+        WarnOnBodyPresenceDivergence(ev, chunks.Count);
+
         if (chunks.Count == 0)
         {
             await IndexMetadataOnlyAsync(ev, confidentiality, ct);
@@ -116,6 +118,36 @@ public class DocumentUpdatedConsumer(
         logger.LogInformation("Ingestion complete for {Id}: {Count} chunks", ev.DocumentId, chunkCount);
     }
 
+    // FR-02, FR-12, ADR-0070 決定 3, #1254, [[IADR-0388]] 決定 3:
+    // **契約が運ぶ「本文の有無」と、ここでの判定（チャンク 0 件）が食い違ったら警告を残す。**
+    //
+    // 🔴 **判定そのものは変えない。** 索引は今までどおりチャンク 0 件で決める
+    // （[[IADR-0358]] 決定 1。上流の状態名に依存すると、改名や別経路で静かに漏れる）。
+    // ここが足すのは**観測だけ**である —— 二重化した情報のどちらかだけが変わったとき、
+    // 従来は誰も気づかないまま索引の中身が割れていた。
+    //
+    // ⚠️ **`HasBody=true` で 0 件は「変換以外の経路で空本文が投入された」でも起きる**
+    // （直接投入・空ファイル）。これは異常ではないが、**黙って本文なし扱いにするのは異常**なので
+    // 同じ口で鳴らす。既定値（項目を運ばない旧発行元）も `true` なのでここに入り得る。
+    private void WarnOnBodyPresenceDivergence(DocumentUpdated ev, int chunkCount)
+    {
+        if (ev.HasBody && chunkCount == 0)
+        {
+            logger.LogWarning(
+                "Ingestion {Id}: contract says the document has a body (hasBody=true) but chunking "
+                + "produced 0 chunks; indexing metadata only. Either the body is empty/unreadable or "
+                + "the upstream marker is stale",
+                ev.DocumentId);
+        }
+        else if (!ev.HasBody && chunkCount > 0)
+        {
+            logger.LogWarning(
+                "Ingestion {Id}: contract says the document has no body (hasBody=false) but chunking "
+                + "produced {Count} chunk(s); indexing them. The upstream marker and the body disagree",
+                ev.DocumentId, chunkCount);
+        }
+    }
+
     // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 1・2・7:
     // 本文なしの文書を**メタデータ点 1 つ**で索引する。
     //
@@ -126,7 +158,9 @@ public class DocumentUpdatedConsumer(
     private async Task IndexMetadataOnlyAsync(
         DocumentUpdated ev, string? confidentiality, CancellationToken ct)
     {
-        var indexText = MetadataIndexText.Build(ev.Title, ev.Tags);
+        // #1253 / [[IADR-0388]] 決定 4: 題名・タグに加えて**原本の所在とデータソース名**も材料にする
+        // （ADR-0070 決定 4 が名指しする「パス」「データソース」。従前は届いていなかった）。
+        var indexText = MetadataIndexText.Build(ev.Title, ev.Tags, ev.OriginalPath, ev.DataSourceName);
 
         // 索引テキストが空（題名もタグも無い）なら載せる意味が無い。**当たりようがない点を作らない。**
         if (indexText.Length == 0)
@@ -156,7 +190,7 @@ public class DocumentUpdatedConsumer(
                 embedding.Vector, ev.MarkdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt, ct);
 
             logger.LogInformation(
-                "Ingestion {Id}: no body; indexed metadata only (title/tags). 0 body chunks",
+                "Ingestion {Id}: no body; indexed metadata only (title/tags/path/source). 0 body chunks",
                 ev.DocumentId);
         }
         else
