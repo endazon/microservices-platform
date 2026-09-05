@@ -198,6 +198,22 @@ IADR-0266 は「利用者リクエスト時」を採った** —— GraphService
 - `dotnet test src/platform/backend/backend.slnx`: 走ったプロジェクトは緑（NotificationService 53 / LlmGateway 244 ほか）。
   **`Platform.Bff` は本 worktree で `src/ai-stock-trading`（submodule）が未 populate のためビルド不能**（`AiStockTrading` 名前空間の CS0246。
   本変更と無関係で BFF には触れていない。CI は submodule 付きで走る）
+
+［2026-09-05 追記 / #1244］**上の「ビルド不能」は解消して実測した。** `git submodule update --init --depth 1 src/ai-stock-trading`
+で pin（`75075404`）を populate し、`dotnet test src/platform/backend/backend.slnx` を全プロジェクト走らせた ——
+Shared.Kernel 42 / Shared.Infrastructure 251 / McpServer 106 / Authorization 149 / Notification 53 / LlmGateway 244 /
+**Platform.Bff 486（skip 1）**、失敗 0。`dotnet format src/platform/backend/backend.slnx --verify-no-changes`: exit 0。
+`dotnet test src/knowledge/backend/backend.slnx` も再実行して全プロジェクト緑（**GraphService.Tests 356 / skip 0**）を確認した。
+`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`: **732 件緑**（`check-adr-numbering` の実データ判定 1 本のみ、
+仮番 0380 による欠番で赤。当該アサートを一時的に外して残り全件の緑を測り、外した変更は元に復した）。
+`check-commit-messages` / `check-plan-id-qualification` / `check-test-spec-coverage`: exit 0。
+
+［2026-09-05 追記 / #1244］**変異 1 を独立に再実走した**（書いたのと別のセッション・別の文脈）。
+`Program.cs` の三項演算子の偽枝を `UnconfiguredSimilarityCandidateSource` へ倒すと、`GraphService.Tests` 356 件のうち
+**ちょうど 2 件だけ**が落ちた（`失敗: 2、合格: 354`）。同クラス単独では 4 件中 2 件が落ち、落ちたのは
+T-48（`NotBeOfType<UnconfiguredSimilarityCandidateSource>`）と T-49（`NotBeNullOrEmpty` = 提案 0 件）で、
+T-50 の 2 本（`Source=none` / 未知の値）は緑のまま —— **回帰対照だけが検出し、他の 354 件は 1 件も鳴らない。**
+変異は復し、`git status` が空であることを確認した。
 - `check-trace-blocks` / `check-doc-links` / `check-doc-status-vocabulary` / `check-doc-type-vocabulary`: OK。
   `check-adr-numbering`: IADR-0378 / 0379 の欠番（仮番 0380 のため。マージ時に改番）
 - `check-test-spec-coverage --update`: 新テストクラス 4 件を床へ入れた
