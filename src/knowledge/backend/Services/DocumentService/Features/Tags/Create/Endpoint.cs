@@ -1,5 +1,6 @@
 using DocumentService.Domain;
 using DocumentService.Infrastructure.Persistence;
+using FluentValidation;
 using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,14 +12,16 @@ internal static class CreateTagEndpoint
 {
     internal static void Map(RouteGroupBuilder write)
     {
-        write.MapPost("/", async (CreateTagRequest req, DocumentDbContext db, CancellationToken ct) =>
+        write.MapPost("/", async (CreateTagRequest req, IValidator<CreateTagRequest> validator,
+            DocumentDbContext db, CancellationToken ct) =>
         {
+            // FR-09, SC-09 / 計画 ADR-0030 §決定 / IADR-0371 決定 2 / [[IADR-0398]] 決定 1:
+            // タグ名は必須（正規化後に空なら不可）。規則は `CreateTagValidator` が持つ。
+            // **重複（409）は DB の照会結果であり検証器には入っていない**（この下に残る）。
+            var gate = validator.Validate(req);
+            if (!gate.IsValid) return ValidationProblems.FirstViolation(gate);
+
             var name = Tag.Normalize(req.Name ?? string.Empty);
-            if (string.IsNullOrEmpty(name))
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["name"] = ["タグ名は必須です。"],
-                });
 
             // **正規化後の名前で重複を見る**（前後の空白だけが違う 2 つを別物にしない）。
             if (await db.Tags.AnyAsync(t => t.Name == name, ct))
