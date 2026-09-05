@@ -76,7 +76,7 @@ public class LinkEdgeSyncTests
         var reader = new StubReader(body);
         var sync = new LinkEdgeSynchronizer(db, metrics, NullLogger<LinkEdgeSynchronizer>.Instance);
         var consumer = new GraphDocumentSyncConsumer(
-            db, new FixedClock(T0.AddDays(1)), reader, sync,
+            db, new FixedClock(T0.AddDays(1)), reader, sync, new TermProfileSynchronizer(db),
             NullLogger<GraphDocumentSyncConsumer>.Instance);
         return (consumer, reader, probe);
     }

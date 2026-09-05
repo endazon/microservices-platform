@@ -513,6 +513,11 @@ services:
     extraEnv:
       - name: Services__AuthorizationService
         value: "http://authorization-service:8080"
+      # FR-18, ADR-0010, IADR-0380 (#1244): AI 提案の生成が LLM ゲートウェイを呼ぶ。コード既定
+      # `http://llm-gateway:5010` は k8s に無い名前で、上書きが無いと生成が LLM の段で
+      # `Name or service not known` になり提案が 0 件のまま（#1244 の実測。aianalysis 等と同じ上書き）。
+      - name: Services__LlmGateway
+        value: "http://llmgateway-service:8080"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
