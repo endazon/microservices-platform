@@ -12,11 +12,21 @@ namespace DataSourceService.Infrastructure.ExternalServices;
 //
 // 契約:
 //   ページ一覧（Discover）: GET {ConnectionUri}{listPath}（既定 /api/pages）
-//     → JSON 配列 [{ id, title?, updatedAt(ISO8601) }]。updatedAt > since で増分（初回=全件）。
+//     → JSON 配列 [{ id, title?, updatedAt(ISO8601), updatedBy? }]。updatedAt > since で増分（初回=全件）。
 //   ページ本文（Fetch）:    GET {ConnectionUri}{contentPath}（既定 /api/pages/{id}/content、{id} 置換）
 //     → 応答本文を原本バイト、content-type は応答ヘッダ→既定 text/markdown。
 //   認証: Authorization: Bearer {Config["apiToken"]}（存在時。ログ出力しない）。
 //   失敗: HTTP/JSON 失敗は例外を送出 → オーケストレータ（IADR-0051 決定3a）が watermark 非前進・継続失敗アラートに載せる。
+//
+// FR-05, UC-04, ADR-0036, ADR-0074, #752: **更新者（`updatedBy`）を運ぶ。**
+//   計画 09_datasource-connectors §システム投入経路 は `owner` の既定を「ソース側の更新者・作成者を
+//   利用者識別子へ解決して入れる」と定めるが、**従前この DTO は更新者を読んでいなかった**。
+//   🔴 **この「REST 契約」は外部組織が持つものではなく、本リポジトリの自前 DTO である** ——
+//   接続先は `ConnectionUri` ＋ `Config["listPath"]` で構成可能な汎用 JSON エンドポイントであり、
+//   読む項目を決めているのはここである。したがって拡張に計画側の裁定は要らない。
+//   項目名は `Config["updatedByField"]`（既定 `updatedBy`）で**構成可能**にする ——
+//   実 Wiki 製品ごとに名前が違い（`lastModifiedBy` / `author` 等）、実装が 1 つに決め打てない。
+//   **項目が無ければ運ばない**（`SourceUpdatedByOrigin.NotCarried`）。加算のみなので非破壊である。
 public sealed class WikiConnector(IHttpClientFactory httpFactory, ILogger<WikiConnector> logger)
     : IDataSourceConnector
 {
@@ -44,6 +54,9 @@ public sealed class WikiConnector(IHttpClientFactory httpFactory, ILogger<WikiCo
         // HTTP/JSON 失敗は例外を送出（ネットワーク断・4xx/5xx・不正 JSON）。呼び出し側が再試行を担保する。
         var pages = await client.GetFromJsonAsync<List<WikiPage>>(listUrl, JsonOptions, ct) ?? [];
 
+        var updatedByField = Config(source, SourceUpdatedBy.FieldConfigKey, SourceUpdatedBy.DefaultField);
+        var tally = new SourceUpdatedByTally();
+
         var items = new List<SourceItem>();
         foreach (var page in pages)
         {
@@ -53,9 +66,14 @@ public sealed class WikiConnector(IHttpClientFactory httpFactory, ILogger<WikiCo
             // 増分: 前回同期時刻（含む同時刻）以前は除外。since=null は初回全件。
             if (since is { } watermark && page.UpdatedAt <= watermark)
                 continue;
+            // #752: 更新者を読む。**由来（無い／空だった／読めない）を分類して集計する。**
+            var updatedBy = SourceUpdatedBy.FromJson(page.Extra, updatedByField);
+            tally.Add(updatedBy.Origin);
             // Path にはページ ID を載せる（Fetch で本文取得に用いる）。サイズは Wiki では不定のため 0。
-            items.Add(new SourceItem(page.Id, page.UpdatedAt, 0));
+            items.Add(new SourceItem(page.Id, page.UpdatedAt, 0, updatedBy.Value));
         }
+
+        WarnOnUpdatedByAnomaly(tally, updatedByField, source);
         return items;
     }
 
@@ -75,6 +93,19 @@ public sealed class WikiConnector(IHttpClientFactory httpFactory, ILogger<WikiCo
     }
 
     // ---- helpers ---------------------------------------------------------
+
+    // #752: 🔴 **「取れなかった」では鳴らさない。** 項目を構成していないのは正常な状態である。
+    // 鳴らすのは「項目は在ったのに使えなかった」2 種だけで、1 サイクル 1 行に畳む。
+    private void WarnOnUpdatedByAnomaly(SourceUpdatedByTally tally, string field, DataSource source)
+    {
+        if (!tally.HasAnomaly)
+            return;
+
+        logger.LogWarning(
+            "WikiConnector: 更新者を読めなかったページがあります（source {Id}, 項目 '{Field}'）: "
+            + "取得 {Carried} 件 / ソース側が空 {Blank} 件 / 文字列として読めない {Unreadable} 件 / 項目なし {Missing} 件",
+            source.Id, field, tally.Carried, tally.BlankAtSource, tally.Unreadable, tally.NotCarried);
+    }
 
     private HttpClient CreateClient(DataSource source)
     {
@@ -97,5 +128,13 @@ public sealed class WikiConnector(IHttpClientFactory httpFactory, ILogger<WikiCo
             : fallback;
 
     // 汎用 Wiki 契約のページ記述子（JSON web 既定でデシリアライズ）。
-    private sealed record WikiPage(string Id, string? Title, DateTimeOffset UpdatedAt);
+    //
+    // #752: 更新者は**宣言済みプロパティにしない**。項目名が構成可能（`updatedByField`）である以上、
+    // 名前を固定した受け皿を置くと既定名のときしか当たらない。未知項目をまとめて捕え、
+    // 構成された名前で引く（`SourceUpdatedBy.FromJson`）。
+    private sealed record WikiPage(string Id, string? Title, DateTimeOffset UpdatedAt)
+    {
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public Dictionary<string, JsonElement>? Extra { get; set; }
+    }
 }

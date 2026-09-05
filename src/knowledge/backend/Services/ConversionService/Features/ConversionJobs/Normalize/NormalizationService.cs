@@ -71,11 +71,11 @@ public class NormalizationService(
             markdown, ct);
 
         logger.LogInformation(
-            "Normalized {DocumentId}: diagrams coded={Coded} retained={Retained} assets={Assets} bodyAbsent={BodyAbsent}",
-            documentId, coded, retained, assetUris.Count, body.BodyAbsent);
+            "Normalized {DocumentId}: diagrams coded={Coded} retained={Retained} assets={Assets} hasBody={HasBody}",
+            documentId, coded, retained, assetUris.Count, body.HasBody);
 
         return new NormalizationResult(documentId, markdownUri, assetUris, coded, retained, figures,
-            BodyAbsent: body.BodyAbsent);
+            HasBody: body.HasBody);
     }
 
     // FR-12, UC-06, IADR-0351 決定 2・6 (#1120): 図を**本文中の元の位置**へ埋め込む。

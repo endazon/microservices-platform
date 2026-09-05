@@ -3,7 +3,7 @@ title: SC-10 運用ダッシュボード テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-09-03
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
@@ -176,7 +176,7 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 ## 未決事項
 
 - 契約の不在 3 件（SLO・LLM コスト・一意利用者数）は
-  `feedback/20260805_sc09-11-admin-ops-contract-gaps.md`。裁定までテストも書かない。
+  `projects/microservices-platform/10_feedback/20260805_sc09-11-admin-ops-contract-gaps.md`。裁定までテストも書かない。
   **閲覧ロールの差異（提案 7）は [2026-08-09 / #544] で解決した**（計画が正。3 層を広げて一致）。
 - ナレッジ健全性節は、関係探索・AI 提案の着手保留の解除待ちである。
   **［2026-08-07 / #586］ナレッジグラフのデータモデル・グラフ探索での ABAC 強制・GraphRAG 検索戦略の

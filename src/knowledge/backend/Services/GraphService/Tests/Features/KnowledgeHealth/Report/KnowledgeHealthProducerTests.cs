@@ -179,9 +179,16 @@ public sealed class KnowledgeHealthProducerTests
         var ran = await worker.TryRunCycleAsync(TestContext.Current.CancellationToken);
 
         ran.Should().BeTrue();
-        // ★［#1186］1 周期で **2 指標**を報告する（孤立文書数と陳腐化文書数）。
-        reporter.Calls.Select(c => c.Indicator).Should().BeEquivalentTo(
-            [KnowledgeHealthIndicators.OrphanDocuments, KnowledgeHealthIndicators.StaleDocuments]);
+        // ★［#1186 → #1246］1 周期で **4 指標**を報告する。
+        // 🔴 **ここが「生産者が居る」の唯一の証拠である。** 収集の実装があっても
+        // RunAsync が呼んでいなければ指標は永久に 0 のままであり、#1246 が名指しした
+        // 「受け口はあるのに生産者が居ない」状態と区別がつかない。
+        reporter.Calls.Select(c => c.Indicator).Should().BeEquivalentTo([
+            KnowledgeHealthIndicators.OrphanDocuments,
+            KnowledgeHealthIndicators.StaleDocuments,
+            KnowledgeHealthIndicators.UnresolvedLinks,
+            KnowledgeHealthIndicators.EdgeTypeUsage,
+        ]);
         lease.Disposed.Should().BeTrue("報告後にリースを解放する（次周期で他レプリカも取得できる）");
     }
 
@@ -213,6 +220,7 @@ public sealed class KnowledgeHealthProducerTests
         var handler = new FakeIngressHandler();
         var reporter = new HttpKnowledgeHealthReporter(
             new SingleClientHttpClientFactory(handler),
+            NewReportMetrics(),
             NullLogger<HttpKnowledgeHealthReporter>.Instance);
 
         await reporter.ReportAsync(KnowledgeHealthIndicators.OrphanDocuments,
@@ -255,6 +263,7 @@ public sealed class KnowledgeHealthProducerTests
         };
         var reporter = new HttpKnowledgeHealthReporter(
             new SingleClientHttpClientFactory(handler),
+            NewReportMetrics(),
             NullLogger<HttpKnowledgeHealthReporter>.Instance);
 
         var act = async () => await reporter.ReportAsync(
@@ -274,6 +283,7 @@ public sealed class KnowledgeHealthProducerTests
         };
         var reporter = new HttpKnowledgeHealthReporter(
             new SingleClientHttpClientFactory(handler),
+            NewReportMetrics(),
             NullLogger<HttpKnowledgeHealthReporter>.Instance);
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
@@ -454,6 +464,7 @@ public sealed class KnowledgeHealthProducerTests
         var handler = new FakeIngressHandler();
         var reporter = new HttpKnowledgeHealthReporter(
             new SingleClientHttpClientFactory(handler),
+            NewReportMetrics(),
             NullLogger<HttpKnowledgeHealthReporter>.Instance);
 
         await reporter.ReportAsync(KnowledgeHealthIndicators.StaleDocuments,
@@ -474,6 +485,7 @@ public sealed class KnowledgeHealthProducerTests
         var handler = new FakeIngressHandler();
         var reporter = new HttpKnowledgeHealthReporter(
             new SingleClientHttpClientFactory(handler),
+            NewReportMetrics(),
             NullLogger<HttpKnowledgeHealthReporter>.Instance);
 
         await reporter.ReportAsync(KnowledgeHealthIndicators.OrphanDocuments, [],
@@ -537,6 +549,12 @@ public sealed class KnowledgeHealthProducerTests
         var collector = scope.ServiceProvider.GetRequiredService<KnowledgeHealthCollector>();
         return await collector.CollectOrphanDocumentsAsync(TestContext.Current.CancellationToken);
     }
+
+    // ★［2026-09-05 / #1246］送出アダプタは受理時に計器を打つ（`absent` 系アラートの土台）。
+    // 計器そのものの主張は `KnowledgeHealthReportMetricsTests` が持つ。ここでは器だけ渡す。
+    private static GraphService.Common.Observability.KnowledgeHealthReportMetrics NewReportMetrics()
+        => new(new ServiceCollection().AddMetrics().BuildServiceProvider()
+            .GetRequiredService<System.Diagnostics.Metrics.IMeterFactory>());
 
     private static Task SeedAsync(TestWebApplicationFactory factory, Action<GraphDbContext> seed)
         => factory.SeedAsync(db =>

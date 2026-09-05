@@ -1,4 +1,5 @@
 using AuthorizationService.Domain.Ports;
+using Platform.Shared.Contracts.Dtos;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -85,9 +86,16 @@ public sealed class KeycloakIdentityAdminClient(
         // Keycloak のユーザー属性は多値（キー → 値の配列）である。契約側は 1 キー 1 値なので
         // 単一要素の配列へ写す。**判定側（BffScopeResolver）も 1 値しか読まない**ので、
         // ここで多値を作ると読まれない値が静かに増える。
+        //
+        // IADR-0385 (#1243): **ただし集合値キー（tags / projects）は分割して多値で書く**（正準形）。
+        // 読み戻しは同じ線上表現へ連結されるので `EnsureAttributesWereApplied` の突合は保たれる。
         var payload = new Dictionary<string, object?>
         {
-            ["attributes"] = attributes.ToDictionary(kv => kv.Key, kv => new[] { kv.Value }),
+            ["attributes"] = attributes.ToDictionary(
+                kv => kv.Key,
+                kv => UserAttributeEncoding.IsSetValued(kv.Key)
+                    ? UserAttributeEncoding.SplitOrdered(kv.Value).ToArray()
+                    : new[] { kv.Value }),
         };
         var updated = await UpdateAndReloadAsync(client, userId, payload, ct);
         if (updated is not null) EnsureAttributesWereApplied(attributes, updated);
@@ -106,9 +114,12 @@ public sealed class KeycloakIdentityAdminClient(
     private static void EnsureAttributesWereApplied(
         IReadOnlyDictionary<string, string> requested, IdentityUser reloaded)
     {
+        // IADR-0385 (#1243): **集合値キーは集合として比べる。** 正準化（分割して書き、連結して読む）を
+        // 通るため、`"sales hr"` と要求した値は `"sales,hr"` として読み戻る。🔴 これを序数比較すると
+        // **realm の設定不備でもないのに「Keycloak が受け付けなかった」と嘘の失敗を上げる。**
         var dropped = requested
             .Where(kv => !reloaded.Attributes.TryGetValue(kv.Key, out var value)
-                         || !string.Equals(value, kv.Value, StringComparison.Ordinal))
+                         || !Applied(kv.Key, kv.Value, value))
             .Select(kv => kv.Key)
             .ToList();
         if (dropped.Count == 0) return;
@@ -121,6 +132,13 @@ public sealed class KeycloakIdentityAdminClient(
             + " unmanagedAttributePolicy を ADMIN_EDIT にする）。"
             + " **成功を返して黙って捨てるより、失敗として上げる。**");
     }
+
+    // 要求した値が反映されたか。**単一値キーは序数で厳密に比べる**（正準化を通らないので、
+    // ここを緩めると本当に捨てられた場合を見逃す）。集合値キーだけ集合として比べる。
+    private static bool Applied(string key, string requested, string reloaded)
+        => UserAttributeEncoding.IsSetValued(key)
+            ? UserAttributeEncoding.Split(reloaded).SetEquals(UserAttributeEncoding.Split(requested))
+            : string.Equals(reloaded, requested, StringComparison.Ordinal);
 
     public async Task<IdentityUser?> SetEnabledAsync(string userId, bool enabled, CancellationToken ct)
     {
@@ -254,7 +272,19 @@ public sealed class KeycloakIdentityAdminClient(
         var attributes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (key, values) in user.Attributes ?? [])
         {
-            // 多値属性は**先頭だけを読む**（判定側が 1 値しか読まないため。上の注記を参照）。
+            // IADR-0385 (#1243): **集合値キー（tags / projects）は連結する。**
+            // 従前は一律に先頭 1 値へ畳んでおり、`["sales","hr"]` の `hr` が静かに消えていた
+            // （部分集合判定は fail-closed 側へ倒れるが、**拒否理由が嘘になる**）。
+            if (UserAttributeEncoding.IsSetValued(key))
+            {
+                var joined = UserAttributeEncoding.Join(values ?? []);
+                if (joined.Length > 0) attributes[key] = joined;
+                continue;
+            }
+
+            // 単一値キーは**従来どおり先頭だけを読む**（判定側が 1 値しか読まないため。上の注記を参照）。
+            // 🔴 ここを一律に連結へ変えると `clearance: ["internal","public"]` が
+            // `"internal,public"` になり、階段ポリシーがどれもマッチしなくなる（静かに壊れる）。
             var first = values?.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
             if (first is not null) attributes[key] = first;
         }

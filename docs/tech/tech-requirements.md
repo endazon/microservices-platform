@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-14]
-adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041, ADR-0065, ADR-0068, ADR-0077]
-iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0195, IADR-0196, IADR-0216, IADR-0219, IADR-0229, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282, IADR-0319, IADR-0334, IADR-0349, IADR-0350, IADR-0371]
-specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260828_arch-foundation_eight-element-materialization, 20260903_issue-1179_slice-split-status-correction, 20260903_issue-1196_operation-semantics-in-standard-docs, 20260904_issue-1064_backend-stack-reference-impl]
-issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, #1062, #1064, #1093, #1094, #1179, #1196, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390, planning#490, planning#527, planning#532]
+adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041, ADR-0065, ADR-0068, ADR-0075, ADR-0077]
+iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0195, IADR-0196, IADR-0216, IADR-0219, IADR-0229, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282, IADR-0319, IADR-0334, IADR-0349, IADR-0350, IADR-0371, IADR-0379, IADR-0383]
+specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_xunit-v3-migration, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260822_issue-455_wolverine-shared-helper, 20260828_arch-foundation_eight-element-materialization, 20260903_issue-1179_slice-split-status-correction, 20260903_issue-1196_operation-semantics-in-standard-docs, 20260904_issue-1064_backend-stack-reference-impl, 20260905_issue-1249-1250-1251_rotten-derived-values]
+issues: [#1062, #1064, #1093, #1094, #1179, #1196, #1249, #1251, #184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390, planning#490, planning#527, planning#532]
 -->
 
 # 技術要件書
@@ -33,7 +33,7 @@ issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, #1062
 - 計画制約との差異: **なし（解消済み）**。実装は **.NET 10 / C# 13** で、計画側も
   .NET 10 アップグレードの計画 ADR（Accepted・2026-07-23）で
   実装フレームワークを **.NET 10（LTS）** に確定した。実装が先行していた経緯は、バックエンドの .NET 10 採用を決めた実装 ADR と
-  `feedback/20260709_dotnet10-target-framework-deviation.md` に記録している（旧「計画 fixed は .NET 8」との乖離は同計画 ADR で解消）。
+  `projects/microservices-platform/10_feedback/20260709_dotnet10-target-framework-deviation.md` に記録している（旧「計画 fixed は .NET 8」との乖離は同計画 ADR で解消）。
 
 ## 技術スタック
 
@@ -109,8 +109,9 @@ flowchart TB
 **標準構成は、単一プロジェクト＋層フォルダである**（オーナー裁定 2026-08-28。
 単一プロジェクト標準を定めた実装 ADR が正本。従前の 8 要素プロジェクト分割
 （計画 12_backend-application-stack（計画リポ）§プロジェクト構成）の実体化は
-**同裁定で撤回**され、計画側条文の改定を環流中である —— 8 つの**関心**はフォルダと
-ユニット共有プロジェクトで維持する）。
+**同裁定で撤回**され、**計画側条文も 2026-08-30 に改定済みである**（環流した issue は closed。
+計画側の改定履歴に「単一プロジェクト＋ Vertical Slice フォルダへ改め、旧構成は打ち消し線で残す」と
+記録されている）—— 8 つの**関心**はフォルダとユニット共有プロジェクトで維持する）。
 
 ```text
 src/<unit>/backend/Services/<Name>Service/
@@ -120,7 +121,7 @@ src/<unit>/backend/Services/<Name>Service/
  ├── Domain/                     # エンティティ・値オブジェクト（外部依存なし。＋ Errors/）
  ├── Infrastructure/             # Persistence（EF Core・Migrations）・Messaging 等のアダプタ
  ├── Common/                     # サービス固有の横断関心（Exceptions/・Behaviors/）
- └── Tests/<Name>.Tests.csproj   # テストは 1 プロジェクト（フォルダは実装の鏡写し: Features/・Domain/）
+ └── Tests/<Name>.Tests.csproj   # テストは 1 プロジェクト（フォルダは本体の鏡写し。相手が在るぶんだけ作る）
 ```
 
 #### 「操作」とは何か（契機の形では決めない）
@@ -187,10 +188,16 @@ src/<unit>/backend/Services/<Name>Service/
 **`Tests` は 1 プロジェクトである**（計画 12_backend-application-stack（計画リポ）
 §規範性・粒度・置き場。利用者裁定 2026-08-04）。プロジェクトを分けるとビルド時間と
 参照管理のコストが増えるためである。フォルダは Unit / Integration の種別区分ではなく
-**実装のスライスを鏡写しにする**（`Tests/Features/`・`Tests/Domain/`。2026-08-28 裁定。
-種別区分の計画側条文は改定を環流中）。**`.csproj` の実名はホスト種別を含めず `<Name>.Tests` とする**
-（実装の現況は 14 サービス全件が `Services/<Name>/Tests/<Name>.Tests.csproj` であり、
-旧名 `<Name>.Api.Tests` / `<Name>.Worker.Tests` は 0 件である）。
+**実装のスライスを鏡写しにする**（2026-08-28 裁定。**種別区分の計画側条文は 2026-08-30 に部分改定済みで、
+「本体の鏡写し」へ改まっている**）。🔴 **鏡写しの相手は「そのテストが検証する本体の要素が置かれた
+ディレクトリ」であり、`Features/` と `Domain/` に限らない** —— `Infrastructure/<Sub>/`・`Common/<Sub>/`・
+`Domain/Ports/` も写す（計画側条文が挙げるのは `Tests/Features/` ／ `Tests/Domain/` の 2 つだが、
+それは形の例示であり、相手の解決規則は実装側の決定記録が持つ。詳細は
+[テスト戦略](../tests/TEST_STRATEGY.md)）。**`.csproj` の実名はホスト種別を含めず `<Name>.Tests` とする**
+（**規約は全サービスへ適用済みで、旧名 `<Name>.Api.Tests` / `<Name>.Worker.Tests` は残っていない**。
+ここでもサービス数は本文に書かない —— 数えるときは
+`git ls-files 'src/*/backend/Services/*/Tests/*.csproj'` と
+`git ls-files | grep -E '.(Api|Worker).Tests.csproj'` が正本である）。
 
 **共有カーネルはユニット単位に一本化する**（2026-08-28 裁定。サービス単位の
 `SharedKernel` 要素と `.gitkeep` の枠は撤回）。
@@ -246,10 +253,16 @@ src/<unit>/backend/Services/<Name>Service/
 #### 浸透の状況（検証・マッピング・Result 表現）
 
 **表は「定めた標準」であり、全量が働いている状態ではない。** 検証・マッピング・Result 表現の 3 つは
-版だけが中央宣言されていて参照が無い状態が続いていた（実測 2026-09-04: FluentValidation の
-`PackageReference` **0 件**・Riok.Mapperly **0 件**・`Platform.Shared.Kernel` への `ProjectReference`
-**0/14 サービス**）。単一プロジェクトへの移送で層プロジェクトを撤去した際、そこに載っていた
+**着手前（2026-09-04）にはいずれも版だけが中央宣言されていて、参照するプロジェクトが 1 つも無かった**。
+単一プロジェクトへの移送で層プロジェクトを撤去した際、そこに載っていた
 `Platform.Shared.Kernel` の参照が一緒に落ちている（`.csproj` に「使う」というコメントだけが残っていた）。
+
+🔴 **現況の数は本文に書かない。** 浸透の比率は展開作業のたびに動く導出値であり、書けばその場で腐る
+（この節自身が、参照を 1 つ足した当の変更で「0 件」と書いて偽になった）。**数えるときは実測する** ——
+`git grep -h "PackageReference" -- '*.csproj' ':!src/ai-stock-trading' | grep -ci FluentValidation`
+（`Mapperly` も同様）と
+`git grep "<ProjectReference" -- 'src/*/backend/Services/*/*.csproj' | grep -c Kernel`
+が正本である（分母のサービス数も `git ls-files 'src/*/backend/Services/*/*.csproj'` から数える）。
 
 **`FeedbackService` を 3 つの参照実装とした**（#1064）。展開の指針は次のとおりである。
 
@@ -264,7 +277,7 @@ src/<unit>/backend/Services/<Name>Service/
   `ErrorKind` から HTTP へ写す点を**端点に 1 箇所だけ**置く。参照だけがあって使われていない状態は、
   撤回された `.gitkeep` 規範と同じく「適合しているように見える」だけである。
 
-**残り 13 サービスへの展開は別 issue が持つ。** `Error` → ProblemDetails の共通変換は応答本文の
+**残りのサービスへの展開は別 issue が持つ。** `Error` → ProblemDetails の共通変換は応答本文の
 変更を伴うため、同じ波には載せない。
 
 ### 機械的強制と移行の進め方
@@ -424,7 +437,11 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
   空になった時点で `Directory.Packages.props` から不採用パッケージを削除する。**残るのは `MassTransit`
   のみ**である（Wolverine 移行。射程と分割は下記「Wolverine 移行の前提」を参照）。
   **xUnit v2 → v3 と `Xunit.SkippableFact` の v3 代替（`Assert.Skip`）は決着済みである**（上記）。
-- サービス間 HTTP の `Refit` は棚卸し表に記載が無い。gRPC / REST の使い分け基準を定めた計画 ADR（内部同期は gRPC）との関係は #441 で決着する。
+- サービス間 HTTP の `Refit` は棚卸し表に記載が無い（BFF の `.csproj` に PackageReference が残るだけで、インタフェースは 0 件）。
+  gRPC / REST の使い分け基準を定めた計画 ADR（内部同期は gRPC）は #441 では決着せず（gRPC 側が未着手のまま閉じた）、
+  その**先行条件 4 点（proto の置き場・versioning・h2c ポート・サービス間トークン）は 2026-09-05 に基盤側で履行した**。
+  実装ガイドは [east-west gRPC 通信仕様書](../api/east-west-grpc.md)。参照実装は BFF → 認可の 1 経路で、
+  **並走中の正は REST**。残る east-west 31 本の移行と `Refit` の撤去は展開 issue の射程である。
 
 ### Wolverine 移行の前提（射程の実測。#455 / #441）
 

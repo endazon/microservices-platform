@@ -116,6 +116,63 @@ public sealed class WikiConnectorTests
         handler.Requests.Should().BeEmpty("接続先未設定なら HTTP 呼び出しをしない");
     }
 
+    // FR-05, UC-04, ADR-0036, ADR-0074, Issue #752: **更新者を運ぶ。**
+    [Fact]
+    public async Task Discover_CarriesUpdatedBy_FromTheDefaultField()
+    {
+        var handler = ListResponder("""
+            [{"id":"p1","updatedAt":"2026-07-01T00:00:00Z","updatedBy":"hr-tanaka"}]
+            """);
+
+        var items = await Connector(handler).DiscoverAsync(WikiSource(), null, CancellationToken.None);
+
+        items.Should().ContainSingle().Which.UpdatedBy.Should().Be("hr-tanaka");
+    }
+
+    [Fact]
+    public async Task Discover_UsesConfiguredUpdatedByField()
+    {
+        // 実 Wiki 製品ごとに項目名が違う（`lastModifiedBy` / `author` 等）ため構成可能にした。
+        var handler = ListResponder("""
+            [{"id":"p1","updatedAt":"2026-07-01T00:00:00Z","lastModifiedBy":"alice"}]
+            """);
+        var source = WikiSource(new Dictionary<string, string> { ["updatedByField"] = "lastModifiedBy" });
+
+        var items = await Connector(handler).DiscoverAsync(source, null, CancellationToken.None);
+
+        items.Should().ContainSingle().Which.UpdatedBy.Should().Be("alice");
+    }
+
+    // 🔴 陰性: 項目が無い（＝取れなかった）・在るが空（＝取ったら空だった）のどちらも
+    // `UpdatedBy` は null になり、`owner` は予約値へ倒れる。**偽の識別子を入れない。**
+    [Theory]
+    [InlineData("""[{"id":"p1","updatedAt":"2026-07-01T00:00:00Z"}]""")]
+    [InlineData("""[{"id":"p1","updatedAt":"2026-07-01T00:00:00Z","updatedBy":""}]""")]
+    [InlineData("""[{"id":"p1","updatedAt":"2026-07-01T00:00:00Z","updatedBy":null}]""")]
+    [InlineData("""[{"id":"p1","updatedAt":"2026-07-01T00:00:00Z","updatedBy":{"name":"a"}}]""")]
+    public async Task Discover_LeavesUpdatedByNull_WhenTheSourceDoesNotCarryAUsableValue(string json)
+    {
+        var items = await Connector(ListResponder(json)).DiscoverAsync(
+            WikiSource(), null, CancellationToken.None);
+
+        items.Should().ContainSingle().Which.UpdatedBy.Should().BeNull();
+    }
+
+    // 未知項目を捕える受け皿を足しても、既存の項目の読み取りは変わらない（退行の固定）。
+    [Fact]
+    public async Task Discover_StillReadsIdAndUpdatedAt_WhenUnknownFieldsArePresent()
+    {
+        var handler = ListResponder("""
+            [{"id":"p1","title":"A","updatedAt":"2026-07-01T00:00:00Z","weird":{"a":[1,2]}}]
+            """);
+
+        var items = await Connector(handler).DiscoverAsync(WikiSource(), null, CancellationToken.None);
+
+        var item = items.Should().ContainSingle().Subject;
+        item.Path.Should().Be("p1");
+        item.ModifiedAt.Should().Be(DateTimeOffset.Parse("2026-07-01T00:00:00Z"));
+    }
+
     // ---- test doubles ----------------------------------------------------
 
     private static StubHandler ListResponder(string json) => new()

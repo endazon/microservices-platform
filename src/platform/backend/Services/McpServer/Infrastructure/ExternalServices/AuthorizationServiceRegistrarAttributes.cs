@@ -23,13 +23,15 @@ namespace McpServer.Infrastructure.ExternalServices;
 //   の文書基本属性／利用者属性）、「読める機密区分の集合」がそのまま「渡してよい `clearance` の
 //   集合」になる。
 //
-// ■ 🔴 `Branches` ではなく `AllowedFilters`（キー単位の union）から読む
-//   所有者ベースの分岐は `confidentiality` の条件を持たない。これを「全値許可」と読むと、
-//   **登録者が自分の文書を読めることを根拠に `restricted` を配れてしまう** ——
-//   サービスアカウントは登録者の所有権を継がないため、その読みは緩む向きに誤っている。
-//   キー単位 union は当該キーの**属性ベースの到達範囲**を表し、条件を持たない分岐はこのキーの
-//   union を広げない（＝安全側）。IADR-0253 決定 2 が警告する混成は**複数キーの連言を 1 本へ潰す**
-//   話であり、単一キーの許可値の読み出しには当たらない。
+// ■ 🔴 「`confidentiality` のフィルタが無い」は「無制限」ではない（#1242 で是正・IADR-0384）
+//   従前はキー単位 union（`AllowedFilters`）から `confidentiality` を引き、**見つからなければ
+//   無制限**と読んでいた。契約が「条件無しで許可（全件可）」と定めるのは **`AllowedFilters` が
+//   空**のときだけであり、**`owner` だけを持つ**（空ではないが `confidentiality` を持たない）
+//   場合は含まれない。所有者ベースの `read` ポリシー（ADR-0036 の選言 2）だけにマッチする
+//   登録者が `restricted` を配れる —— ADR-0062 が塞いだ昇格経路そのものである。
+//
+//   **不在を「制約なし」と読まない。「その軸で許可する根拠が無い」と読み、deny 側へ倒す。**
+//   読み方は `ReadAssignableConfidentiality` に 1 つだけ置く（下の注記が規則の正本）。
 //
 // ■ 🔴 呼び出し元の `Authorization` を転送する
 //   `/authz/users` は AdminOnly であり、SC-12 も AdminOnly なので**呼び出し元の資格情報が
@@ -136,13 +138,70 @@ public sealed class AuthorizationServiceRegistrarAttributes(
         var scope = await resp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct);
         if (scope is null) return (false, null);
 
+        return ReadAssignableConfidentiality(scope);
+    }
+
+    /// <summary>
+    /// 認可スコープから「登録者が渡してよい機密区分」を読む。**#1242 / IADR-0384 の規則の実体。**
+    ///
+    /// 🔴 **不在を「制約なし」と読まない。** 規則は次の 3 段である。
+    ///
+    /// <list type="number">
+    ///   <item><c>Granted == false</c> → 空集合（読めるものが無い＝配れるものも無い）。</item>
+    ///   <item>
+    ///     <c>Branches</c> が 1 件以上 → **分岐ごとに見る**（分岐＝マッチしたポリシー 1 本の連言）。
+    ///     <list type="bullet">
+    ///       <item>フィルタを 1 つも持たない分岐 → **無制限**。計画 07_abac-attribute-model
+    ///       §ポリシー評価モデル「マッチしたポリシーに文書条件が無い場合は全件許可する」。</item>
+    ///       <item>フィルタがちょうど 1 つで、そのキーが <c>confidentiality</c> → その許可値を足す。</item>
+    ///       <item>🔴 **それ以外の分岐は何も足さない。** <c>owner</c> だけの分岐はもちろん、
+    ///       <c>{owner, confidentiality}</c> のような連言も数えない —— それは「**自分が持つ**
+    ///       restricted 文書を読める」であって「restricted を読める」ではなく、
+    ///       **サービスアカウントは登録者の所有権も部門も継がない**。</item>
+    ///     </list>
+    ///   </item>
+    ///   <item>
+    ///     <c>Branches</c> が空／null（未移行の発行者。契約の後方互換規則） →
+    ///     <c>AllowedFilters</c> が**空**なら無制限（契約 <c>AccessScopeResponse</c> の明文）。
+    ///     キーが <c>confidentiality</c> **ただ 1 つ**ならその許可値。それ以外は空集合。
+    ///   </item>
+    /// </list>
+    ///
+    /// **過小に倒れうることは受容する。** 07_abac-attribute-model は「消費側が選言へ対応するまで
+    /// **多キーの文書条件を持つポリシーを運用しない**」を暫定の統制として定めており、
+    /// 多キーの分岐は運用上そもそも存在しない。現 seed の階段ポリシーは 1 件も落ちない。
+    /// </summary>
+    private static (bool Unrestricted, IReadOnlyList<string> Confidentiality) ReadAssignableConfidentiality(
+        AccessScopeResponse scope)
+    {
         // 許可ポリシーが 1 つも無い＝読めるものが無い。**配れるものも無い**（引けなかったのではない）。
         if (!scope.Granted) return (false, []);
 
-        var filter = scope.AllowedFilters
-            .FirstOrDefault(f => string.Equals(f.Key, ConfidentialityKey, StringComparison.OrdinalIgnoreCase));
+        if (scope.Branches is { Count: > 0 } branches)
+        {
+            var values = new List<string>();
+            foreach (var branch in branches)
+            {
+                var filters = branch.Filters ?? [];
+                // 文書条件を持たない分岐＝そのポリシーの範囲で全件許可（計画の具体判定規則）。
+                if (filters.Count == 0) return (true, []);
+                if (filters.Count == 1 && IsConfidentiality(filters[0].Key))
+                    values.AddRange(filters[0].AllowedValues);
+            }
+            return (false, Distinct(values));
+        }
 
-        // 契約上「Granted かつフィルタ無し ＝ 条件無しで許可（全件可）」。機密区分で絞る根拠が無い。
-        return filter is null ? (true, []) : (false, filter.AllowedValues);
+        // 後方互換（Branches を運ばない発行者）。**「空である」ことを積極的に確かめる** ——
+        // 不在から無制限を推論しない。
+        if (scope.AllowedFilters.Count == 0) return (true, []);
+        return scope.AllowedFilters is [{ } only] && IsConfidentiality(only.Key)
+            ? (false, only.AllowedValues)
+            : (false, []);
     }
+
+    private static bool IsConfidentiality(string key)
+        => string.Equals(key, ConfidentialityKey, StringComparison.OrdinalIgnoreCase);
+
+    private static IReadOnlyList<string> Distinct(IEnumerable<string> values)
+        => [.. values.Distinct(StringComparer.OrdinalIgnoreCase)];
 }

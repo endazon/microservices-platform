@@ -1,3 +1,4 @@
+using GraphService.Domain;
 using GraphService.Infrastructure.Persistence;
 using GraphService.Domain.Ports;
 using Microsoft.AspNetCore.Authentication;
@@ -46,6 +47,17 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     // 「辞書を突き合わせていない実装」で偶然通ることが無い。
     public Func<IReadOnlySet<string>?> TagDictionary { get; set; } = () => null;
 
+    // FR-18, IADR-0380 (#1244): **LLM 境界の差し替え。** 封（SuggestionPrompt）を受け取り、提案の候補を返す。
+    // 既定は「封に入っている候補すべてへ、辞書の先頭の型でリンクを提案する」—— 生成経路の結合テスト
+    // （SimilaritySourceWiringTests）が「実文書 2 件から pending の提案が 1 件以上生まれる」を測るための最小の
+    // 応答である。**封しか受け取れない**ので、スコープ外の文書がここへ届く経路は型として無い（IADR-0266 決定 1）。
+    // 実 HTTP アダプタ（LlmGatewaySuggestionClient）の写像は AiSuggestionGenerationTests が直接試験する。
+    public Func<SuggestionPrompt, IReadOnlyList<LlmSuggestionProposal>> SuggestionLlm { get; set; } =
+        prompt => prompt.Candidates
+            .Select(c => new LlmSuggestionProposal(
+                SuggestionKind.Link, c.DocumentId, prompt.EdgeTypeNames.FirstOrDefault(), null, "test"))
+            .ToList();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -72,6 +84,12 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.AddSingleton<IDocumentTagWriter>(TagWriter);
             services.RemoveAll<ITagDictionaryReader>();
             services.AddScoped<ITagDictionaryReader>(_ => new StubTagDictionaryReader(this));
+
+            // LLM 境界（#1244）。実通信は行わない。
+            // 🔴 **ISimilarityCandidateSource は差し替えない** —— 本番 DI が何を解決するかを測るのが
+            // SimilaritySourceWiringTests の目的であり、ここで差し替えると回帰対照が空振りする。
+            services.RemoveAll<ISuggestionLlmClient>();
+            services.AddScoped<ISuggestionLlmClient>(_ => new StubSuggestionLlm(this));
 
             // ADR-0027 / #1016: graph-delete 段の購読は Wolverine。
             // 🔴 **これが無いとテストが約 135 秒ハングする** —— Program.cs が UseWolverine +
@@ -103,6 +121,13 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     {
         public Task<IReadOnlySet<string>?> ReadNamesAsync(CancellationToken ct = default)
             => Task.FromResult(owner.TagDictionary());
+    }
+
+    private sealed class StubSuggestionLlm(TestWebApplicationFactory owner) : ISuggestionLlmClient
+    {
+        public Task<IReadOnlyList<LlmSuggestionProposal>> ProposeAsync(
+            SuggestionPrompt prompt, CancellationToken ct = default)
+            => Task.FromResult(owner.SuggestionLlm(prompt));
     }
 
     // FR-18, ADR-0063 決定 1 (#1187): 反映先の記録スタブ。**テスト間で共有される**（IClassFixture）ため、

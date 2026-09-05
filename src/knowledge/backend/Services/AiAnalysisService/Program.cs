@@ -8,6 +8,7 @@ using Knowledge.Contracts.Dtos;
 using OpenTelemetry.Metrics;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 
 const string ServiceName = "microservices-platform.aianalysis-service";
@@ -28,6 +29,9 @@ builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddMeter(RagStreamMetrics.MeterName));
 
 builder.Services.AddPlatformAuth(builder.Configuration);
+// NFR-02, ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視の標識。
+// 本サービスは内周なので判定はヘッダで行うが、**LLM を呼ぶ可否**（AllowLlmEgress）をここで受け取る。
+builder.Services.AddSyntheticMonitoring(builder.Configuration);
 builder.Services.AddPlatformHealthChecks()
     .AddUrlGroup(
         new Uri((builder.Configuration["Services:RetrievalService"] ?? "http://retrieval-service:5003") + "/health/live"),

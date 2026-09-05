@@ -9,6 +9,7 @@ using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,6 +21,8 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);
+// NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視の標識（受け口側の多層防御）。
+builder.Services.AddSyntheticMonitoring(builder.Configuration);
 // NFR, #1012: 接続先は構成から受け取る。**既定の資格情報を埋め込まない。**
 // 埋め込むと、構成の注入漏れが「起動失敗」ではなく「既定の資格情報で接続成功」へ倒れ、
 // 誤った DB へ書き込んだまま健全に見える。ここで落ちれば配備の誤りはその場で判る。

@@ -37,6 +37,10 @@
     <PackageReference Include="WolverineFx.RuntimeCompilation" />
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="Testcontainers.RabbitMq" />
+    <!-- FR-02/FR-03, ADR-0009 / #1247: 取り込み → 索引 → 検索の段間結合テスト（層 2）が
+         実 Qdrant を起こす。層 1（Docker 不要・PR で走る）は共有インメモリ索引で同じ段を通すが、
+         **2 つの Qdrant アダプタのペイロード表現の一致だけは実機でなければ測れない**。 -->
+    <PackageReference Include="Testcontainers.Qdrant" />
     <!-- FR-06/FR-12, ADR-0015: MinIO ラウンドトリップ統合テスト用 -->
     <PackageReference Include="Testcontainers.Minio" />
     <PackageReference Include="AWSSDK.S3" />

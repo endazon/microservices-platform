@@ -95,6 +95,41 @@
  *   （`bff:issue1187` / `conversion-service:pdf-1192` …）が 7 件残ったまま develop から乖離していた
  *   （2 回目。1 回目は 2026-07 に古いスクリプトで作られたクラスタ）。描画に無い Deployment（opt-in の
  *   overlay 由来）は見ない。**`:latest` の中身が最新かは見ない**（記録に留める。IADR-0369 §却下した代替案）。
+ * - **G12 メッシュ宣言の乖離**（#1159 / [IADR-0377]）: `PeerAuthentication` / `AuthorizationPolicy` /
+ *   `DestinationRule` について、**(a) 稼働の集合が helm の描画（`helm get manifest`）と一致し、
+ *   (b) mTLS モードが宣言（`helm get values -a` の `mesh.*`）と一致し、(c) `spec` を書いている
+ *   field manager が `helm` ただ 1 つ**であることを要求する。
+ *   🔴 **(c) が本体である。** Helm 4 はサーバサイド apply なので、`kubectl patch` / `kubectl apply` で
+ *   同じフィールドを書くと field manager を奪い、**以後の `helm upgrade` が conflict で恒久的に失敗する**
+ *   （`--take-ownership` も `--force` も効かない。復旧は対象の delete が要る）。値が偶然一致していても
+ *   壊れているので、**値の一致だけを見る門では捕まらない。**
+ *   同型の事故は 2 回目（1 回目 = `istio-edge-up.sh` の `kubectl patch` 由来のドリフト（#1159 が観測）。
+ *   2 回目 = #1115 の計測スクリプトが STRICT を `kubectl apply` して戻さなかった件（#1168 が記録））。
+ *   `mesh.enabled=false` の構成では notice で飛ばす（G5 / G7 と同じ作法）。ただし
+ *   **宣言が無いのに稼働にメッシュ資材が在る**なら飛ばさず失敗にする（IADR-0317 が
+ *   「動いているが宣言が持っていない」として記録に留めた形そのもの）。
+ *
+ * - **G13 検索の読み書き先**（#1215 / [IADR-0382]）: **検索側が読む Qdrant コレクションに点が在り、
+ *   全文ペイロード索引（`text` / `text_ngram`）が張られている**ことを要求する。
+ *   🔴 **本体は「点の在り処」である。** #1215 の稼働クラスタは、点が
+ *   `knowledge_chunks_deterministic_v1` に 3 件在るのに検索側は `knowledge_chunks_voyage_3_5`（0 点）を
+ *   読んでいた。**両サービスとも健全で Ready のまま**、検索だけが全件 0 件になる
+ *   —— `POST /bff/search` の `200 ＋ 空` は「該当が無い」と区別できない（[IADR-0255]）ので、
+ *   **状態コードでも readiness でも捕まらない**。
+ *   検査は 3 段: **(a)** 検索側が読むコレクション名を決められる（稼働 Deployment の
+ *   `Qdrant__CollectionName` を走査し、無ければ RetrievalService の `appsettings.json` の既定。
+ *   **どちらからも決まらなければ失敗**＝既定値へ落とさない）、**(b)** そのコレクションが実在し、
+ *   `text` / `text_ngram` の索引が**アプリの宣言と同じパラメータ**で張られている
+ *   （期待値は実装から走査して得る。G7 の locale と同じ姿勢）、**(c)** **どれかのコレクションに
+ *   点が在るのに検索側が 0 点なら失敗**（＝読み書き先の乖離そのもの）。
+ *   🔴 索引の有無は**件数では測れない**。索引が無いとき Qdrant v1.18.1 は例外を投げず
+ *   部分文字列の全走査へ静かに落ちる（[IADR-0318]）ので、「当たっている」ことは索引の証拠にならない。
+ *   どこにも点が無い状態は notice（まだ何も取り込んでいないだけ。素のスタックを一律に赤にしない）。
+ *   ただし **`SEARCHSEED=1` を宣言した実行では 0 点を失敗にする**（G10 の `PERSIST` と同じ
+ *   「宣言された期待に対して測る」作法。**検査を飛ばす向きの env は持たない**）。
+ *   🔴 RetrievalService の readiness（`QdrantFullTextIndexHealthCheck`）へは委譲できない ——
+ *   あちらは**索引の有無しか見ず、点の在り処を見ない**うえ、本文を外から読めないことがある
+ *   （`verify-oidc-edge-flow.sh` 段 19 が実測で「読めなかった」に落ちている）。
  *
  * ## 列挙を持たない
  *
@@ -167,6 +202,34 @@ const CHART_DIR = path.join('deploy', 'helm', 'microservices-platform');
 const CHART_VALUES_LOCAL = path.join('deploy', 'local', 'values-local.yaml');
 const INFRA_KUSTOMIZE_DIR = path.join('deploy', 'local', 'infra-persistence');
 const MSP_NS = 'microservices-platform';
+// G12 (#1159 / IADR-0377): メッシュ資材の種別と helm リリース名。**サービス名は書かない**（列挙を持たない）。
+const MESH_KINDS = ['PeerAuthentication', 'AuthorizationPolicy', 'DestinationRule'];
+const MSP_HELM_RELEASE = 'msp';
+/** G12: `spec` を書いてよい field manager。Helm 4 のサーバサイド apply は `helm` を名乗る。 */
+const MESH_SPEC_WRITER = 'helm';
+
+// G13 (#1215 / IADR-0382): 検索の読み書き先。**コレクション名も索引パラメータもここへ書かない**
+// （実装と宣言から走査して得る。書き写すと、変えたときに検査が静かに空回りする —— G7 の locale と同じ）。
+const QDRANT_NS = 'platform-infra';
+/** Qdrant の REST（6333）。アプリは gRPC（6334）を使うが、状態の読み取りは REST が素直である。 */
+const QDRANT_REST_URL = 'http://qdrant.platform-infra:6333';
+/** 検索側の読み先を上書きする環境変数名（chart の `Qdrant__CollectionName`）。サービス名は書かない。 */
+const RETRIEVAL_COLLECTION_ENV = 'Qdrant__CollectionName';
+/** 検索側の既定コレクション名の単一情報源（値はここへ書かず、走査して得る）。 */
+const RETRIEVAL_APPSETTINGS = path.join(
+  'src', 'knowledge', 'backend', 'Services', 'RetrievalService', 'appsettings.json',
+);
+/** 全文ペイロード索引のパラメータの単一情報源（取り込み側が張る。値はここへ書かない）。 */
+const INGESTION_VECTOR_STORE_SRC = path.join(
+  'src', 'knowledge', 'backend', 'Services', 'IngestionService',
+  'Infrastructure', 'ExternalServices', 'QdrantIngestionVectorStore.cs',
+);
+/** 日本語 2-gram ペイロードのキーの単一情報源。 */
+const CJK_BIGRAM_PAYLOAD_SRC = path.join(
+  'src', 'knowledge', 'backend', 'Shared', 'Knowledge.Contracts', 'Indexing', 'CjkBigramPayload.cs',
+);
+/** G6 と同じ使い捨てイメージ（クラスタに既に在る）。 */
+const PROBE_IMAGE = 'busybox:1.36';
 
 // ---------------------------------------------------------------- 収集（外部依存）
 
@@ -270,12 +333,141 @@ function renderChart(repoRoot) {
   return r.status === 0 ? { ok: true, text: r.stdout } : { ok: false, error: (r.stderr || '').trim() };
 }
 
+/**
+ * G12 (#1159): 稼働している helm リリースの**宣言**を採る。
+ * 資材の集合は `helm get manifest`（実際に適用された描画）、値は `helm get values -a`（既定値込み）。
+ * リリースが無い / helm が居ないときは `null`（呼び出し側は「稼働に資材が在るか」で判定を分ける）。
+ */
+function declaredMesh(repoRoot, ns = MSP_NS, release = MSP_HELM_RELEASE) {
+  const run = (args) => spawnSync('helm', args, { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const values = run(['get', 'values', release, '-n', ns, '-a', '-o', 'json']);
+  const manifest = run(['get', 'manifest', release, '-n', ns]);
+  if (values.status !== 0 || manifest.status !== 0) return null;
+  let v;
+  try {
+    v = JSON.parse(values.stdout || '{}');
+  } catch {
+    return null;
+  }
+  const mesh = v.mesh || {};
+  const bc = mesh.backchannelLogout || {};
+  return {
+    enabled: mesh.enabled === true,
+    mtlsMode: mesh.mtlsMode,
+    backchannel: bc.fromOutsideMesh === true
+      ? { workload: bc.workload, port: Number(bc.port), path: bc.path }
+      : null,
+    objects: meshObjectsFromManifest(manifest.stdout),
+  };
+}
+
 /** G11: infra の kustomize を描画する。 */
 function renderInfra(repoRoot) {
   const r = spawnSync('kubectl', ['kustomize', INFRA_KUSTOMIZE_DIR], {
     cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
   });
   return r.status === 0 ? { ok: true, text: r.stdout } : { ok: false, error: (r.stderr || '').trim() };
+}
+
+/**
+ * G13 (#1215): Qdrant の REST を**使い捨て pod 経由で**叩く。
+ *
+ * 🔴 **なぜ pod を立てるのか。** Qdrant の pod には curl も wget も無い（実測）ので
+ * `kubectl exec` では測れず、Qdrant はエッジにも出ていない。`kubectl port-forward` は
+ * 非同期の背景プロセスになり、本検査の同期構造（`spawnSync`）に載らない。
+ * G6（`nslookup`）と同じ形——**使い捨ての busybox を立てて消す**——が最も素直である。
+ *
+ * 🔴 **`--rm --attach` を使わない。** 完了が速いと attach が間に合わず、**出力を静かに取り落とす**
+ * （実測: 空文字が返り「コレクションが 1 件も無い」と読み違えた）。終端まで有界に待ち、
+ * `kubectl logs` で読み、消す。
+ *
+ * 🔴 **稼働 Pod は 1 つも触らない。** 発行するのは GET だけで、Qdrant へ書き込みを一切行わない。
+ */
+function qdrantProbe(command, { budgetMs = 120000, intervalMs = 2000, sleep = sleepSync } = {}) {
+  const name = `qdrantprobe-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  const run = (args) => spawnSync('kubectl', args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+  const created = run([
+    '-n', QDRANT_NS, 'run', name, `--image=${PROBE_IMAGE}`, '--restart=Never', '--command', '--', ...command,
+  ]);
+  if (created.status !== 0) {
+    return { ok: false, error: `使い捨て pod を作れなかった: ${(created.stderr || created.stdout || '').trim()}` };
+  }
+  let phase = '';
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
+    const p = run(['-n', QDRANT_NS, 'get', 'pod', name, '-o', 'jsonpath={.status.phase}']);
+    phase = String(p.stdout || '').trim();
+    if (phase === 'Succeeded' || phase === 'Failed') break;
+    sleep(intervalMs);
+  }
+  const logs = run(['-n', QDRANT_NS, 'logs', name]);
+  // 🔴 消し切ってから戻る（`--wait=false` で残すと、次回の G1 が残骸を Failed Pod として拾う）。
+  run(['-n', QDRANT_NS, 'delete', 'pod', name, '--ignore-not-found', '--timeout=60s']);
+  if (phase !== 'Succeeded') {
+    return {
+      ok: false,
+      error: `使い捨て pod が ${phase || '(終端に達しなかった)'} で終わった: ${String(logs.stdout || logs.stderr || '').trim().slice(0, 300)}`,
+    };
+  }
+  return { ok: true, text: String(logs.stdout || '') };
+}
+
+/** G13: Qdrant のコレクション名を採る。`{ ok, names }` / `{ ok:false, error }`。 */
+function qdrantCollectionNames(probe = qdrantProbe) {
+  const r = probe(['wget', '-q', '-O-', '-T', '20', `${QDRANT_REST_URL}/collections`]);
+  if (!r.ok) return r;
+  try {
+    const parsed = JSON.parse(r.text);
+    const items = (parsed.result && parsed.result.collections) || [];
+    return { ok: true, names: items.map((c) => String(c.name)) };
+  } catch (e) {
+    return { ok: false, error: `/collections の応答を JSON として読めなかった: ${e.message}` };
+  }
+}
+
+/**
+ * G13: 各コレクションの `points_count` と `payload_schema` を**1 回の pod** で採る。
+ * 読めなかったコレクションは `pointsCount: null`（呼び出し側が「測れていない」として落とす）。
+ */
+function qdrantCollectionDetails(names, probe = qdrantProbe) {
+  if (names.length === 0) return [];
+  // 名前は Qdrant から来た値である。シェルへ載せる前に形を確かめる（想定外は測らずに落とす）。
+  const bad = names.filter((n) => !/^[A-Za-z0-9_.-]+$/.test(n));
+  if (bad.length > 0) {
+    return names.map((name) => ({ name, pointsCount: null, payloadSchema: null, error: bad.includes(name) ? '名前に想定外の文字が含まれる' : '同じ走査で測れなかった' }));
+  }
+  const script = `for c in "$@"; do echo "===C:$c==="; wget -q -O- -T 20 "${QDRANT_REST_URL}/collections/$c"; echo; done`;
+  const r = probe(['sh', '-c', script, 'sh', ...names]);
+  if (!r.ok) return names.map((name) => ({ name, pointsCount: null, payloadSchema: null, error: r.error }));
+  // 区切り行で割る。**正規表現で切り出さない** —— `$` が行末にも当たるため、素直に書くと
+  // 本文が空のまま「読めなかった」へ倒れる（実測で踏んだ）。
+  const sections = new Map();
+  let current = null;
+  for (const line of String(r.text).split(/\r?\n/)) {
+    const m = /^===C:(.+)===$/.exec(line);
+    if (m) {
+      current = m[1];
+      sections.set(current, []);
+      continue;
+    }
+    if (current !== null) sections.get(current).push(line);
+  }
+  const out = [];
+  for (const name of names) {
+    const body = (sections.get(name) || []).join('\n').trim();
+    try {
+      const parsed = JSON.parse(body);
+      const result = parsed.result || {};
+      out.push({
+        name,
+        pointsCount: typeof result.points_count === 'number' ? result.points_count : null,
+        payloadSchema: result.payload_schema || {},
+      });
+    } catch (e) {
+      out.push({ name, pointsCount: null, payloadSchema: null, error: `詳細を JSON として読めなかった: ${e.message}` });
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- 判定（純粋関数）
@@ -442,6 +634,369 @@ function evaluateImageDrift(ns, rendered, live) {
     }
   }
   return failures;
+}
+
+/**
+ * G12 (#1159 / IADR-0377): helm の描画（`helm get manifest`）から**メッシュ資材の集合**を走査する。
+ * 値は見ない（値は `helm get values -a` の `mesh.*` が正本。描画テキストの字下げに依存させない）。
+ */
+function meshObjectsFromManifest(text) {
+  const out = [];
+  for (const doc of yamlDocs(text || '')) {
+    const kind = docKind(doc);
+    if (!MESH_KINDS.includes(kind)) continue;
+    const name = docName(doc);
+    if (name) out.push({ kind, name });
+  }
+  return out;
+}
+
+/** G12: `managedFields` のうち **`spec` を書いている** manager の名前を採る（重複は畳む）。 */
+function specWriters(item) {
+  const names = new Set();
+  for (const f of (item && item.metadata && item.metadata.managedFields) || []) {
+    if (f && f.fieldsV1 && Object.prototype.hasOwnProperty.call(f.fieldsV1, 'f:spec')) {
+      names.add(f.manager || '(無名)');
+    }
+  }
+  return [...names].sort();
+}
+
+/**
+ * G12: 宣言（helm）と稼働のメッシュ資材を突き合わせる。**純関数**。
+ *
+ * @param {{declared:(null|{enabled:boolean, mtlsMode:string, backchannel:(null|{workload:string,port:number,path:string}),
+ *          objects:{kind:string,name:string}[]}), live:(null|object[]), liveError:(string|null)}} input
+ */
+function evaluateMeshDrift({ declared, live, liveError }) {
+  const failures = [];
+  const notices = [];
+  const items = live || [];
+
+  // 宣言が読めない（helm リリースが無い / helm が居ない）。稼働に資材が在るなら**飛ばさない**。
+  if (!declared) {
+    if (items.length > 0) {
+      failures.push(
+        `[G12] helm の宣言を読めないのに、稼働にメッシュ資材が ${items.length} 件在る` +
+          `（${items.map((i) => `${i.kind}/${i.metadata && i.metadata.name}`).join(', ')}）。` +
+          ' **動いているが宣言が持っていない**状態である（手で apply したものが残っている）。',
+      );
+    } else {
+      notices.push('[check-stack-ready] G12: helm の宣言を読めず、稼働にもメッシュ資材が無い。メッシュ未導入とみなして飛ばす。');
+    }
+    return { failures, notices };
+  }
+
+  if (!declared.enabled) {
+    if (items.length > 0) {
+      failures.push(
+        `[G12] 宣言は mesh.enabled=false なのに、稼働にメッシュ資材が ${items.length} 件在る` +
+          `（${items.map((i) => `${i.kind}/${i.metadata && i.metadata.name}`).join(', ')}）。` +
+          ' helm を経ない手動適用である。撤去するか、宣言（ISTIO=1）で立て直すこと（#1159）。',
+      );
+    } else {
+      notices.push('[check-stack-ready] G12: 宣言が mesh.enabled=false で稼働にも資材が無い（一致）。');
+    }
+    return { failures, notices };
+  }
+
+  if (liveError) {
+    failures.push(`[G12] 宣言は mesh.enabled=true だが、稼働のメッシュ資材を取得できなかった: ${liveError}`);
+    return { failures, notices };
+  }
+
+  const declaredKeys = (declared.objects || []).map((o) => `${o.kind}/${o.name}`).sort();
+  if (declaredKeys.length === 0) {
+    failures.push('[G12] mesh.enabled=true なのに helm の描画にメッシュ資材が 1 件も無い。走査が壊れている（0 件を緑にしない）。');
+    return { failures, notices };
+  }
+  const liveKeys = items.map((i) => `${i.kind}/${i.metadata && i.metadata.name}`).sort();
+
+  for (const key of declaredKeys) {
+    if (!liveKeys.includes(key)) failures.push(`[G12] 宣言（helm の描画）に在る ${key} が稼働に無い。`);
+  }
+  for (const key of liveKeys) {
+    if (!declaredKeys.includes(key)) {
+      failures.push(
+        `[G12] 稼働の ${key} を helm の描画が持っていない。**helm を経ない手動適用**である` +
+          '（計測スクリプトの当てっぱなしが典型。#1168 が同型を記録している）。',
+      );
+    }
+  }
+
+  // (b) mTLS モードが宣言と一致すること。**値はテンプレートではなく values から採る**
+  //     （`MeshMtlsTests` と `k8s-local-up.test.js` が「テンプレートが values を参照していること」を固定する）。
+  const byName = new Map(items.map((i) => [`${i.kind}/${i.metadata && i.metadata.name}`, i]));
+  for (const item of items) {
+    if (item.kind !== 'PeerAuthentication') continue;
+    const mode = ((item.spec || {}).mtls || {}).mode;
+    if (mode !== declared.mtlsMode) {
+      failures.push(
+        `[G12] PeerAuthentication/${item.metadata.name} の mtls.mode が宣言と違う。` +
+          `宣言=${declared.mtlsMode} / 稼働=${mode || '(無し)'}。**手で書き換えた跡**である（#1159）。`,
+      );
+    }
+  }
+  const bc = declared.backchannel;
+  if (bc) {
+    const pa = byName.get(`PeerAuthentication/${bc.workload}-backchannel-logout`);
+    const portMode = pa && ((((pa.spec || {}).portLevelMtls || {})[String(bc.port)]) || {}).mode;
+    if (pa && portMode !== 'PERMISSIVE') {
+      failures.push(
+        `[G12] PeerAuthentication/${bc.workload}-backchannel-logout の portLevelMtls[${bc.port}] が` +
+          ` PERMISSIVE でない（${portMode || '(無し)'}）。メッシュ外の認可サーバからの 1 本が塞がる（#1115 / #1168）。`,
+      );
+    }
+    const ap = byName.get(`AuthorizationPolicy/${bc.workload}-plaintext-only-backchannel`);
+    if (ap && (ap.spec || {}).action !== 'DENY') {
+      failures.push(
+        `[G12] AuthorizationPolicy/${bc.workload}-plaintext-only-backchannel の action が DENY でない` +
+          `（${(ap.spec || {}).action || '(無し)'}）。開けた平文の口が 1 URI に絞られていない。`,
+      );
+    }
+  }
+
+  // (c) 🔴 本体。`spec` を書いている field manager が helm ただ 1 つであること。
+  for (const item of items) {
+    const writers = specWriters(item);
+    const others = writers.filter((w) => w !== MESH_SPEC_WRITER);
+    if (writers.length === 0) {
+      failures.push(
+        `[G12] ${item.kind}/${item.metadata.name} の managedFields が読めない（spec の書き手が 0 件）。` +
+          ' `--show-managed-fields` を付けて取得しているか確認すること（0 件を緑にしない）。',
+      );
+      continue;
+    }
+    if (others.length > 0) {
+      failures.push(
+        `[G12] ${item.kind}/${item.metadata.name} の spec を helm 以外が書いている（${others.join(', ')}）。` +
+          ' Helm 4 はサーバサイド apply なので、**以後の `helm upgrade` は conflict で恒久的に失敗する**' +
+          '（`--take-ownership` も `--force` も効かない）。復旧手順は docs/operations/operations.md。' +
+          ' モードの変更は `scripts/lib/mesh-mtls-mode.sh` の `set_mesh_mtls_mode`（helm 経由）で行うこと（#1159）。',
+      );
+    }
+  }
+
+  notices.push(
+    `[check-stack-ready] G12: 宣言 mesh.mtlsMode=${declared.mtlsMode}` +
+      ` / 資材 ${declaredKeys.length} 件（${declaredKeys.join(', ')}）` +
+      ` / spec の書き手=${[...new Set(items.flatMap(specWriters))].join(', ') || '(無し)'}。`,
+  );
+  return { failures, notices };
+}
+
+/**
+ * G13 (#1215): 全文ペイロード索引の**期待値をアプリの実装から**読む。
+ *
+ * 単一情報源は `QdrantIngestionVectorStore` の 2 つの純関数（`BuildFullTextIndexParams` /
+ * `BuildCjkNgramIndexParams`）と、キーを持つ 2 つの定数である。**値をここへ書き写さない** ——
+ * 書き写すと、実装がパラメータを変えたときに検査が静かに空回りする（G7 の locale と同じ姿勢）。
+ *
+ * 読めなければ `null`（呼び出し側は「期待値を組み立てられない」として落とす。既定値へ落とさない）。
+ * @returns {{fields: {key:string, tokenizer:string, minTokenLen:number, maxTokenLen:number, lowercase:boolean}[]}|null}
+ */
+function searchIndexContract(repoRoot = REPO_ROOT) {
+  try {
+    const store = fs.readFileSync(path.join(repoRoot, INGESTION_VECTOR_STORE_SRC), 'utf8');
+    const bigram = fs.readFileSync(path.join(repoRoot, CJK_BIGRAM_PAYLOAD_SRC), 'utf8');
+    const textKey = /const\s+string\s+FullTextKey\s*=\s*"([^"]+)"/.exec(store);
+    const ngramKey = /const\s+string\s+PayloadKey\s*=\s*"([^"]+)"/.exec(bigram);
+    // 🔴 本体は `};` までで切る。窓を固定長にすると**次の関数の値を読んでしまう**。
+    const paramsOf = (fn) => {
+      const at = store.indexOf(`${fn}() =>`);
+      if (at === -1) return null;
+      const rest = store.slice(at);
+      const body = rest.slice(0, rest.indexOf('};') === -1 ? rest.length : rest.indexOf('};'));
+      const tok = /Tokenizer\s*=\s*TokenizerType\.(\w+)/.exec(body);
+      const min = /MinTokenLen\s*=\s*(\d+)/.exec(body);
+      const max = /MaxTokenLen\s*=\s*(\d+)/.exec(body);
+      const low = /Lowercase\s*=\s*(true|false)/.exec(body);
+      if (!tok || !min || !max || !low) return null;
+      return {
+        tokenizer: tok[1].toLowerCase(),
+        minTokenLen: Number(min[1]),
+        maxTokenLen: Number(max[1]),
+        lowercase: low[1] === 'true',
+      };
+    };
+    const text = paramsOf('BuildFullTextIndexParams');
+    const ngram = paramsOf('BuildCjkNgramIndexParams');
+    if (!textKey || !ngramKey || !text || !ngram) return null;
+    return { fields: [{ key: textKey[1], ...text }, { key: ngramKey[1], ...ngram }] };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * G13: 検索側の**既定**コレクション名を RetrievalService の `appsettings.json` から読む。
+ * 読めなければ `null`（既定値 `knowledge_chunks` へ落とさない —— 落とすと、実装が既定を
+ * 変えたときに「在らないコレクションを期待する検査」へ静かに変わる）。
+ */
+function declaredSearchCollection(repoRoot = REPO_ROOT) {
+  try {
+    const json = JSON.parse(fs.readFileSync(path.join(repoRoot, RETRIEVAL_APPSETTINGS), 'utf8'));
+    const name = json && json.Qdrant && json.Qdrant.CollectionName;
+    return typeof name === 'string' && name.length > 0 ? name : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * G13: 稼働 Deployment の env から検索側の読み先の**上書き**を走査する。
+ * **サービス名は書かない**（列挙を持たない）。`{ deploy, name }` の配列。
+ */
+function searchCollectionOverrides(items) {
+  const found = [];
+  for (const it of Array.isArray(items) ? items : []) {
+    const deploy = (it.metadata && it.metadata.name) || '(名前不明)';
+    const spec = (it.spec && it.spec.template && it.spec.template.spec) || {};
+    for (const c of [...(spec.containers || []), ...(spec.initContainers || [])]) {
+      for (const e of c.env || []) {
+        if (e.name === RETRIEVAL_COLLECTION_ENV && typeof e.value === 'string' && e.value.length > 0) {
+          found.push({ deploy, name: e.value });
+        }
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * G13 (#1215 / [IADR-0382]): 検索の読み書き先と全文索引を判定する。**純関数**（入力は採取済みの値だけ）。
+ *
+ * @param {{contract:({fields:object[]}|null), appsettingsName:(string|null),
+ *          liveOverrides:{deploy:string,name:string}[],
+ *          collections:({name:string,pointsCount:(number|null),payloadSchema:(object|null),error?:string}[]|null),
+ *          collectionsError:(string|null), expectPoints:boolean}} input
+ * @returns {{failures:string[], notices:string[], collection:(string|null)}}
+ */
+function evaluateSearchCollection(input) {
+  const failures = [];
+  const notices = [];
+
+  // (a) 検索側が読むコレクション名。**既定値へ落とさない。**
+  const overrides = input.liveOverrides || [];
+  const distinct = [...new Set(overrides.map((o) => o.name))];
+  let collection = null;
+  if (distinct.length > 1) {
+    failures.push(
+      `[G13] 稼働 Deployment が ${RETRIEVAL_COLLECTION_ENV} に別々の値を持っている`
+      + `（${overrides.map((o) => `${o.deploy}=${o.name}`).join(' / ')}）。`
+      + ' どれが検索側の読み先かを決められないので、判定を成立させない。',
+    );
+  } else if (distinct.length === 1) {
+    collection = distinct[0];
+  } else if (input.appsettingsName) {
+    collection = input.appsettingsName;
+    notices.push(
+      `[check-stack-ready] G13: 稼働に ${RETRIEVAL_COLLECTION_ENV} の上書きが無いので、`
+      + `${RETRIEVAL_APPSETTINGS} の既定（${collection}）を検索側の読み先とみなす。`,
+    );
+  } else {
+    failures.push(
+      `[G13] 検索側が読むコレクション名を決められなかった（稼働の ${RETRIEVAL_COLLECTION_ENV} も`
+      + ` ${RETRIEVAL_APPSETTINGS} の既定も読めない）。既定値へ落とすと、在らないコレクションを`
+      + ' 期待する検査へ静かに変わるので、ここで落とす。',
+    );
+  }
+
+  // 索引の期待値。**読めなければ検査を成立させない**（空の期待値で緑にしない）。
+  const contract = input.contract && Array.isArray(input.contract.fields) && input.contract.fields.length > 0
+    ? input.contract
+    : null;
+  if (!contract) {
+    failures.push(
+      `[G13] 全文ペイロード索引の期待値をアプリの実装から読めなかった`
+      + `（${INGESTION_VECTOR_STORE_SRC} / ${CJK_BIGRAM_PAYLOAD_SRC}）。`
+      + ' 期待値を組み立てられないので検査を成立させない（値をこちらへ書き写さない）。',
+    );
+  }
+
+  // (b) 一覧。**取得できない／0 件は失敗**（0 件を緑にしない。G2 と同じ作法）。
+  if (!input.collections) {
+    failures.push(`[G13] Qdrant のコレクションを取得できなかった: ${input.collectionsError || '(理由不明)'}`);
+    return { failures, notices, collection };
+  }
+  if (input.collections.length === 0) {
+    failures.push('[G13] Qdrant にコレクションが 1 件も無い。走査が壊れている（0 件を緑にしない）。');
+    return { failures, notices, collection };
+  }
+  for (const c of input.collections) {
+    if (c.pointsCount === null) {
+      failures.push(`[G13] コレクション ${c.name} の詳細を読めなかった（${c.error || '理由不明'}）。測れていないことを緑にしない。`);
+    }
+  }
+
+  if (!collection) return { failures, notices, collection };
+
+  // (c) 検索側の読み先が実在すること。
+  const target = input.collections.find((c) => c.name === collection);
+  if (!target) {
+    failures.push(
+      `[G13] 検索側が読むコレクション ${collection} が Qdrant に無い`
+      + `（在るのは ${input.collections.map((c) => c.name).join(', ')}）。`
+      + ' 索引されていても検索は在らない先を見ており、応答は必ず空になる。',
+    );
+    return { failures, notices, collection };
+  }
+
+  // (d) 全文ペイロード索引が、アプリの宣言と同じパラメータで張られていること。
+  if (contract && target.payloadSchema) {
+    for (const want of contract.fields) {
+      const got = target.payloadSchema[want.key];
+      if (!got) {
+        failures.push(
+          `[G13] ${collection} に全文ペイロード索引 ${want.key} が無い`
+          + `（payload_schema=${Object.keys(target.payloadSchema).join(', ') || '空'}）。`
+          + ' 🔴 索引が無くても Qdrant v1.18.1 は例外を投げず部分文字列の全走査へ落ちるので、'
+          + ' **「当たっている」ことは索引の証拠にならない**（[IADR-0318]）。',
+        );
+        continue;
+      }
+      const p = got.params || {};
+      const diff = [];
+      if (String(got.data_type) !== 'text') diff.push(`data_type=${got.data_type}（期待 text）`);
+      if (String(p.tokenizer) !== want.tokenizer) diff.push(`tokenizer=${p.tokenizer}（期待 ${want.tokenizer}）`);
+      if (Number(p.min_token_len) !== want.minTokenLen) diff.push(`min_token_len=${p.min_token_len}（期待 ${want.minTokenLen}）`);
+      if (Number(p.max_token_len) !== want.maxTokenLen) diff.push(`max_token_len=${p.max_token_len}（期待 ${want.maxTokenLen}）`);
+      if (Boolean(p.lowercase) !== want.lowercase) diff.push(`lowercase=${p.lowercase}（期待 ${want.lowercase}）`);
+      if (diff.length > 0) {
+        failures.push(
+          `[G13] ${collection} の ${want.key} 索引がアプリの宣言と違う: ${diff.join(' / ')}。`
+          + ' 取り込み側（QdrantIngestionVectorStore）が張り直す形になっているか確かめること。',
+        );
+      }
+    }
+  }
+
+  // (e) 🔴 本体 —— 読み書き先の乖離。**点が在るのに検索側が 0 点**なら失敗。
+  const withPoints = input.collections.filter((c) => typeof c.pointsCount === 'number' && c.pointsCount > 0);
+  if (typeof target.pointsCount === 'number' && target.pointsCount > 0) {
+    notices.push(
+      `[check-stack-ready] G13: 検索側が読む ${collection} に ${target.pointsCount} 点`
+      + `（点が在るコレクション: ${withPoints.map((c) => `${c.name}=${c.pointsCount}`).join(', ')}）。`,
+    );
+  } else if (withPoints.length > 0) {
+    failures.push(
+      `[G13] 点が在るのは ${withPoints.map((c) => `${c.name}(${c.pointsCount})`).join(', ')} なのに、`
+      + `検索側が読む ${collection} は 0 点である。**取り込み先と検索先が食い違っている**（#1215）。`
+      + ' 両サービスとも Ready のまま検索だけが全件 0 件になり、`200 ＋ 空` は「該当が無い」と区別できない。',
+    );
+  } else if (input.expectPoints) {
+    failures.push(
+      `[G13] SEARCHSEED=1 が宣言されているのに、どのコレクションにも点が無い（検索側 ${collection} も 0 点）。`
+      + ' 取り込みが索引まで到達していない（埋め込みの供給・本文の有無・メッセージングを疑う）。',
+    );
+  } else {
+    notices.push(
+      `[check-stack-ready] G13: どのコレクションにも点が無い（まだ何も取り込んでいない）。`
+      + ' SEARCHSEED=1 を宣言した実行では失敗にする。',
+    );
+  }
+
+  return { failures, notices, collection };
 }
 
 /**
@@ -1077,6 +1632,38 @@ function check({ repoRoot = REPO_ROOT } = {}) {
     notices.push('[check-stack-ready] G11: 宣言（chart ＋ infra kustomize）と稼働のイメージ参照を突き合わせた。');
   }
 
+  // G12 (#1159 / IADR-0377): 宣言（helm）と稼働のメッシュ資材、および spec の field manager。
+  {
+    const declared = declaredMesh(repoRoot);
+    // 🔴 `--show-managed-fields` を落とすと (c) が測れないまま緑になる（沈黙を成功と読まない）。
+    const liveMesh = kubectlJson([
+      'get', MESH_KINDS.join(','), '-n', MSP_NS, '-o', 'json', '--show-managed-fields',
+    ]);
+    const r = evaluateMeshDrift({
+      declared,
+      live: liveMesh.ok ? liveMesh.value.items : null,
+      liveError: liveMesh.ok ? null : liveMesh.error,
+    });
+    failures.push(...r.failures);
+    notices.push(...r.notices);
+  }
+
+  // G13 (#1215 / IADR-0382): 検索側が読むコレクションに点が在り、全文索引が張られていること。
+  {
+    const list = qdrantCollectionNames();
+    const r = evaluateSearchCollection({
+      contract: searchIndexContract(repoRoot),
+      appsettingsName: declaredSearchCollection(repoRoot),
+      liveOverrides: searchCollectionOverrides(liveDeployments[MSP_NS] || []),
+      collections: list.ok ? qdrantCollectionDetails(list.names) : null,
+      collectionsError: list.ok ? null : list.error,
+      // G10 の `PERSIST` と同じ「宣言された期待に対して測る」。**検査を飛ばす向きの env は持たない。**
+      expectPoints: process.env.SEARCHSEED === '1',
+    });
+    failures.push(...r.failures);
+    notices.push(...r.notices);
+  }
+
   return { failures, notices, totalDeployments };
 }
 
@@ -1478,6 +2065,249 @@ function selfTest() {
     assert.strictEqual(evaluateImageDrift('ns', {}, {}).length, 1);
   });
 
+  // ---- G12 (#1159 / IADR-0377)
+  const meshManifest = [
+    'apiVersion: security.istio.io/v1', 'kind: PeerAuthentication', 'metadata:', '  name: microservices-platform-mtls',
+    'spec:', '  mtls:', '    mode: PERMISSIVE', '---',
+    'apiVersion: networking.istio.io/v1', 'kind: DestinationRule', 'metadata:', '  name: microservices-platform-mtls',
+    'spec:', '  host: "*.microservices-platform.svc.cluster.local"', '---',
+    'apiVersion: apps/v1', 'kind: Deployment', 'metadata:', '  name: bff-service',
+  ].join('\n');
+  const helmWriter = (extra = []) => ({
+    managedFields: [{ manager: 'helm', operation: 'Apply', fieldsV1: { 'f:spec': {} } }, ...extra],
+  });
+  const livePa = (mode, extraWriters = []) => ({
+    kind: 'PeerAuthentication',
+    metadata: { name: 'microservices-platform-mtls', ...helmWriter(extraWriters) },
+    spec: { mtls: { mode } },
+  });
+  const liveDr = () => ({
+    kind: 'DestinationRule',
+    metadata: { name: 'microservices-platform-mtls', ...helmWriter() },
+    spec: { host: '*', trafficPolicy: { tls: { mode: 'ISTIO_MUTUAL' } } },
+  });
+  const declaredMeshFixture = {
+    enabled: true, mtlsMode: 'PERMISSIVE', backchannel: null,
+    objects: meshObjectsFromManifest(meshManifest),
+  };
+  ok('G12: helm の描画からメッシュ資材だけを走査する（Deployment に惑わされない）', () => {
+    assert.deepStrictEqual(meshObjectsFromManifest(meshManifest), [
+      { kind: 'PeerAuthentication', name: 'microservices-platform-mtls' },
+      { kind: 'DestinationRule', name: 'microservices-platform-mtls' },
+    ]);
+  });
+  ok('G12: 宣言どおり・helm 単独所有なら通る（陽性対照）', () => {
+    const r = evaluateMeshDrift({ declared: declaredMeshFixture, live: [livePa('PERMISSIVE'), liveDr()], liveError: null });
+    assert.deepStrictEqual(r.failures, []);
+  });
+  ok('G12: kubectl patch のドリフト（値が違う＋spec の書き手が増える）は 2 件とも失敗になる', () => {
+    const patched = livePa('STRICT', [{ manager: 'kubectl-patch', operation: 'Update', fieldsV1: { 'f:spec': {} } }]);
+    const f = evaluateMeshDrift({ declared: declaredMeshFixture, live: [patched, liveDr()], liveError: null }).failures;
+    assert.strictEqual(f.length, 2, f.join(' / '));
+    assert.ok(f.some((x) => /宣言=PERMISSIVE \/ 稼働=STRICT/.test(x)), '値の乖離を名指ししていない');
+    assert.ok(f.some((x) => /kubectl-patch/.test(x)), 'field manager の奪取を名指ししていない');
+  });
+  ok('G12: 🔴 値が偶然一致していても、spec の書き手が helm 以外なら失敗にする', () => {
+    const stolen = livePa('PERMISSIVE', [{ manager: 'kubectl-client-side-apply', operation: 'Update', fieldsV1: { 'f:spec': {} } }]);
+    const f = evaluateMeshDrift({ declared: declaredMeshFixture, live: [stolen, liveDr()], liveError: null }).failures;
+    assert.strictEqual(f.length, 1);
+    assert.ok(/kubectl-client-side-apply/.test(f[0]));
+  });
+  ok('G12: 描画が持たない資材が稼働に在れば失敗（計測スクリプトの当てっぱなし。#1168 の同型）', () => {
+    const stray = { kind: 'AuthorizationPolicy', metadata: { name: 'ad-hoc', ...helmWriter() }, spec: { action: 'DENY' } };
+    const f = evaluateMeshDrift({ declared: declaredMeshFixture, live: [livePa('PERMISSIVE'), liveDr(), stray], liveError: null }).failures;
+    assert.strictEqual(f.length, 1);
+    assert.ok(/AuthorizationPolicy\/ad-hoc/.test(f[0]) && /手動適用/.test(f[0]));
+  });
+  ok('G12: mesh.enabled=false なのに稼働に資材が在れば失敗。無ければ notice で飛ばす', () => {
+    const off = { enabled: false, mtlsMode: 'STRICT', backchannel: null, objects: [] };
+    assert.strictEqual(evaluateMeshDrift({ declared: off, live: [livePa('STRICT')], liveError: null }).failures.length, 1);
+    assert.deepStrictEqual(evaluateMeshDrift({ declared: off, live: [], liveError: null }).failures, []);
+  });
+  ok('G12: 宣言を読めないのに稼働に資材が在れば失敗（動いているが宣言が持っていない。IADR-0317 の記録）', () => {
+    assert.strictEqual(evaluateMeshDrift({ declared: null, live: [livePa('STRICT')], liveError: null }).failures.length, 1);
+    assert.deepStrictEqual(evaluateMeshDrift({ declared: null, live: [], liveError: null }).failures, []);
+  });
+  ok('G12: mesh.enabled=true で稼働を読めない・描画 0 件は失敗（測れていないことを緑にしない）', () => {
+    assert.strictEqual(evaluateMeshDrift({ declared: declaredMeshFixture, live: null, liveError: 'CRD なし' }).failures.length, 1);
+    const empty = { enabled: true, mtlsMode: 'PERMISSIVE', backchannel: null, objects: [] };
+    assert.strictEqual(evaluateMeshDrift({ declared: empty, live: [], liveError: null }).failures.length, 1);
+  });
+  ok('G12: managedFields を採れていない（spec の書き手 0 件）なら失敗にする', () => {
+    const bare = { kind: 'PeerAuthentication', metadata: { name: 'microservices-platform-mtls' }, spec: { mtls: { mode: 'PERMISSIVE' } } };
+    const f = evaluateMeshDrift({ declared: declaredMeshFixture, live: [bare, liveDr()], liveError: null }).failures;
+    assert.strictEqual(f.length, 1);
+    assert.ok(/show-managed-fields/.test(f[0]));
+  });
+  ok('G12: 2 枚組は portLevelMtls の口が PERMISSIVE・AuthorizationPolicy が DENY であることを要求する', () => {
+    const manifest2 = [
+      meshManifest, '---',
+      'apiVersion: security.istio.io/v1', 'kind: PeerAuthentication', 'metadata:', '  name: bff-service-backchannel-logout', 'spec:', '  mtls:', '    mode: STRICT', '---',
+      'apiVersion: security.istio.io/v1', 'kind: AuthorizationPolicy', 'metadata:', '  name: bff-service-plaintext-only-backchannel', 'spec:', '  action: DENY',
+    ].join('\n');
+    const declared2 = {
+      enabled: true, mtlsMode: 'PERMISSIVE',
+      backchannel: { workload: 'bff-service', port: 8080, path: '/bff/auth/backchannel-logout' },
+      objects: meshObjectsFromManifest(manifest2),
+    };
+    const pair = (portMode, action) => [
+      livePa('PERMISSIVE'), liveDr(),
+      { kind: 'PeerAuthentication', metadata: { name: 'bff-service-backchannel-logout', ...helmWriter() }, spec: { mtls: { mode: 'PERMISSIVE' }, portLevelMtls: { 8080: { mode: portMode } } } },
+      { kind: 'AuthorizationPolicy', metadata: { name: 'bff-service-plaintext-only-backchannel', ...helmWriter() }, spec: { action } },
+    ];
+    assert.deepStrictEqual(evaluateMeshDrift({ declared: declared2, live: pair('PERMISSIVE', 'DENY'), liveError: null }).failures, []);
+    assert.strictEqual(evaluateMeshDrift({ declared: declared2, live: pair('STRICT', 'DENY'), liveError: null }).failures.length, 1);
+    assert.strictEqual(evaluateMeshDrift({ declared: declared2, live: pair('PERMISSIVE', 'ALLOW'), liveError: null }).failures.length, 1);
+  });
+
+  // ---- G13 (#1215 / IADR-0382)
+  //
+  // 🔴 期待値（索引のパラメータ）は**実装から走査して得る**。ここに数値を書き写すと、
+  // 実装が変わったとき検査も試験も揃って空回りする。走査そのものを陽性・陰性の対で固定する。
+  const contract = searchIndexContract();
+  ok('G13: 全文索引の期待値をアプリの実装から走査できる（text / text_ngram の 2 系統）', () => {
+    assert.ok(contract, '実装から索引パラメータを読めていない');
+    assert.strictEqual(contract.fields.length, 2);
+    const keys = contract.fields.map((f) => f.key);
+    assert.ok(keys.length === new Set(keys).size, `キーが重複している: ${keys.join(', ')}`);
+    for (const f of contract.fields) {
+      assert.ok(typeof f.tokenizer === 'string' && f.tokenizer.length > 0, `tokenizer を読めていない: ${f.key}`);
+      assert.ok(f.minTokenLen >= 1 && f.maxTokenLen >= f.minTokenLen, `token 長を読めていない: ${f.key}`);
+    }
+    // 🔴 窓が次の関数へ食い込んでいないこと ＝ 2 つの系統が別々の tokenizer になっている。
+    assert.notStrictEqual(contract.fields[0].tokenizer, contract.fields[1].tokenizer,
+      '2 系統の tokenizer が同じ。切り出しの窓が隣の関数を読んでいる疑いがある');
+  });
+  ok('G13: 走査元が読めなければ null（既定値へ落とさない）', () => {
+    assert.strictEqual(searchIndexContract(path.join(REPO_ROOT, '存在しない')), null);
+    assert.strictEqual(declaredSearchCollection(path.join(REPO_ROOT, '存在しない')), null);
+  });
+  ok('G13: 検索側の既定コレクション名を appsettings から走査できる', () => {
+    const name = declaredSearchCollection();
+    assert.ok(typeof name === 'string' && name.length > 0, 'appsettings から既定を読めていない');
+  });
+
+  const deployWith = (name, value) => ({
+    metadata: { name },
+    spec: { template: { spec: { containers: [{ env: value ? [{ name: 'Qdrant__CollectionName', value }] : [] }] } } },
+  });
+  ok('G13: 稼働 Deployment の上書きを走査する（サービス名を書かずに拾う）', () => {
+    const found = searchCollectionOverrides([deployWith('retrieval-service', 'col_a'), deployWith('bff-service', null)]);
+    assert.deepStrictEqual(found, [{ deploy: 'retrieval-service', name: 'col_a' }]);
+    assert.deepStrictEqual(searchCollectionOverrides([]), []);
+  });
+
+  const schemaOf = (c) => Object.fromEntries(c.fields.map((f) => [f.key, {
+    data_type: 'text',
+    params: {
+      type: 'text', tokenizer: f.tokenizer, min_token_len: f.minTokenLen,
+      max_token_len: f.maxTokenLen, lowercase: f.lowercase,
+    },
+  }]));
+  const searchInput = (over = {}) => ({
+    contract,
+    appsettingsName: 'col_default',
+    liveOverrides: [{ deploy: 'retrieval-service', name: 'col_read' }],
+    collections: [
+      { name: 'col_read', pointsCount: 3, payloadSchema: schemaOf(contract) },
+      { name: 'col_other', pointsCount: 0, payloadSchema: schemaOf(contract) },
+    ],
+    collectionsError: null,
+    expectPoints: false,
+    ...over,
+  });
+
+  ok('G13: 点が在り索引も宣言どおりなら通る（陽性対照）', () => {
+    const r = evaluateSearchCollection(searchInput());
+    assert.deepStrictEqual(r.failures, []);
+    assert.strictEqual(r.collection, 'col_read');
+  });
+  ok('G13: 🔴 点が別のコレクションに在り、検索側が 0 点なら失敗（#1215 の形。陰性対照）', () => {
+    const r = evaluateSearchCollection(searchInput({
+      collections: [
+        { name: 'col_read', pointsCount: 0, payloadSchema: schemaOf(contract) },
+        { name: 'col_other', pointsCount: 3, payloadSchema: schemaOf(contract) },
+      ],
+    }));
+    assert.strictEqual(r.failures.length, 1, r.failures.join(' / '));
+    assert.ok(/col_other\(3\)/.test(r.failures[0]) && /col_read は 0 点/.test(r.failures[0]));
+  });
+  ok('G13: どこにも点が無ければ notice。SEARCHSEED=1 を宣言していれば失敗', () => {
+    const empty = {
+      collections: [
+        { name: 'col_read', pointsCount: 0, payloadSchema: schemaOf(contract) },
+        { name: 'col_other', pointsCount: 0, payloadSchema: schemaOf(contract) },
+      ],
+    };
+    assert.deepStrictEqual(evaluateSearchCollection(searchInput(empty)).failures, []);
+    const declared = evaluateSearchCollection(searchInput({ ...empty, expectPoints: true }));
+    assert.strictEqual(declared.failures.length, 1);
+    assert.ok(/SEARCHSEED=1/.test(declared.failures[0]));
+  });
+  ok('G13: 検索側の読み先が Qdrant に無ければ失敗', () => {
+    const r = evaluateSearchCollection(searchInput({
+      collections: [{ name: 'col_other', pointsCount: 3, payloadSchema: schemaOf(contract) }],
+    }));
+    assert.strictEqual(r.failures.length, 1);
+    assert.ok(/col_read が Qdrant に無い/.test(r.failures[0]));
+  });
+  ok('G13: 索引が無い／パラメータが違うコレクションは失敗（件数では測れない）', () => {
+    const none = evaluateSearchCollection(searchInput({
+      collections: [{ name: 'col_read', pointsCount: 3, payloadSchema: {} }],
+    }));
+    assert.strictEqual(none.failures.length, contract.fields.length, none.failures.join(' / '));
+    const wrong = schemaOf(contract);
+    wrong[contract.fields[0].key].params.tokenizer = 'whitespace';
+    const drift = evaluateSearchCollection(searchInput({
+      collections: [{ name: 'col_read', pointsCount: 3, payloadSchema: wrong }],
+    }));
+    assert.strictEqual(drift.failures.length, 1);
+    assert.ok(/tokenizer=whitespace/.test(drift.failures[0]));
+  });
+  ok('G13: 0 件・取得失敗・詳細を読めない は失敗（測れていないことを緑にしない）', () => {
+    assert.ok(evaluateSearchCollection(searchInput({ collections: [] })).failures
+      .some((f) => /1 件も無い/.test(f)), '0 件が失敗になっていない');
+    assert.ok(evaluateSearchCollection(searchInput({ collections: null, collectionsError: 'pod が立たない' })).failures
+      .some((f) => /pod が立たない/.test(f)), '取得失敗が失敗になっていない');
+    assert.ok(evaluateSearchCollection(searchInput({
+      collections: [{ name: 'col_read', pointsCount: null, payloadSchema: null, error: '応答が JSON でない' }],
+    })).failures.some((f) => /詳細を読めなかった/.test(f)), '詳細を読めないことが失敗になっていない');
+  });
+  ok('G13: 読み先を決められない／食い違う宣言は失敗（既定値へ落とさない）', () => {
+    const undecidable = evaluateSearchCollection(searchInput({ liveOverrides: [], appsettingsName: null }));
+    assert.ok(undecidable.failures.some((f) => /決められなかった/.test(f)));
+    assert.strictEqual(undecidable.collection, null);
+    const conflict = evaluateSearchCollection(searchInput({
+      liveOverrides: [{ deploy: 'a', name: 'col_read' }, { deploy: 'b', name: 'col_other' }],
+    }));
+    assert.ok(conflict.failures.some((f) => /別々の値/.test(f)));
+  });
+  ok('G13: 上書きが無ければ appsettings の既定を読み先とみなす（notice に残す）', () => {
+    const r = evaluateSearchCollection(searchInput({
+      liveOverrides: [],
+      collections: [{ name: 'col_default', pointsCount: 1, payloadSchema: schemaOf(contract) }],
+    }));
+    assert.deepStrictEqual(r.failures, []);
+    assert.strictEqual(r.collection, 'col_default');
+    assert.ok(r.notices.some((x) => /既定（col_default）/.test(x)));
+  });
+  ok('G13: 索引の期待値を読めなければ失敗（空の期待値で緑にしない）', () => {
+    const r = evaluateSearchCollection(searchInput({ contract: null }));
+    assert.ok(r.failures.some((f) => /期待値をアプリの実装から読めなかった/.test(f)));
+  });
+  ok('G13: 詳細の走査は使い捨て pod 1 回で全コレクションを読む（区切りで割る）', () => {
+    const calls = [];
+    const probe = (command) => {
+      calls.push(command);
+      return { ok: true, text: '===C:a===\n{"result":{"points_count":2,"payload_schema":{}}}\n===C:b===\n{"result":{"points_count":0,"payload_schema":{}}}\n' };
+    };
+    const got = qdrantCollectionDetails(['a', 'b'], probe);
+    assert.strictEqual(calls.length, 1, `pod を ${calls.length} 回立てている（1 回で読むこと）`);
+    assert.deepStrictEqual(got.map((c) => [c.name, c.pointsCount]), [['a', 2], ['b', 0]]);
+    // 名前に想定外の文字が混ざったら、シェルへ載せずに「測れていない」へ倒す。
+    assert.deepStrictEqual(qdrantCollectionDetails(['a b;rm'], probe).map((c) => c.pointsCount), [null]);
+  });
+
   console.log(`[check-stack-ready] self-test OK: ${n} 件`);
 }
 
@@ -1530,5 +2360,14 @@ module.exports = {
   imagesFromRendered,
   imagesFromLive,
   evaluateImageDrift,
+  meshObjectsFromManifest,
+  specWriters,
+  evaluateMeshDrift,
+  searchIndexContract,
+  declaredSearchCollection,
+  searchCollectionOverrides,
+  qdrantCollectionNames,
+  qdrantCollectionDetails,
+  evaluateSearchCollection,
   NAMESPACES,
 };

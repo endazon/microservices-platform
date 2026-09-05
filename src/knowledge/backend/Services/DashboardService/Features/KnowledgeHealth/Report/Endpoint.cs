@@ -63,7 +63,8 @@ public static class ReportKnowledgeHealthEndpoint
 
             var observations = (req.Observations ?? [])
                 .Where(o => !string.IsNullOrWhiteSpace(o.SubjectKey))
-                .Select(o => KnowledgeHealthObservation.Create(indicator, o.SubjectKey, o.DocScope, observedAt))
+                .Select(o => KnowledgeHealthObservation.Create(
+                    indicator, o.SubjectKey, o.DocScope, observedAt, o.Dimension))
                 .ToList();
             db.KnowledgeHealthObservations.AddRange(observations);
 

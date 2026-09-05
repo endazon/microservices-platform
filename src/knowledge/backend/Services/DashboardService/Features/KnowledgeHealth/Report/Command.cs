@@ -10,7 +10,12 @@ namespace DashboardService.Features.KnowledgeHealth.Report;
 // 観測値 1 件の報告。
 //   SubjectKey — 重複排除のための不透明な鍵（文書 ID・辺の型名など）。**応答には現れない。**
 //   DocScope   — 文書スコープ（`private-note` は集計から除外される）。持たない対象は null。
-public record KnowledgeHealthObservationRequest(string SubjectKey, string? DocScope = null);
+//   Dimension  — ★［2026-09-05 / #1246・[[IADR-0389]] 決定 1］**内訳の軸**。
+//                閲覧は指標の件数に加えて軸ごとの内訳を返す（辺の型ごとの使用件数など）。
+//                🔴 **基数が有界な語だけを載せる**（自由語を入れると内訳が無界に増える）。
+//                **省略可**（軸を持たない指標では現れない）。
+public record KnowledgeHealthObservationRequest(
+    string SubjectKey, string? DocScope = null, string? Dimension = null);
 
 // 指標 1 つ分の観測値の**スナップショット置換**。
 // 差分ではなく全量で送る —— 「解消した観測値」を取り消す経路を別に持つと、

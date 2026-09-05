@@ -48,7 +48,7 @@ import type { ConversionJobDto } from '@foundation/api/generated/bff.schemas';
 //     `maxAttempts`。planning#198 の裁定 Q13）。**画面へ出す作業は本ファイルではまだ行っていない**——
 //     契約の追加とは別の作業単位であり、**人手補正とは別の資源**なので #651 でも束ねなかった
 //     （[[IADR-0139]] の判定単位は資源。作業仕様書 .ai-context/specs/20260806_issue-533_*.md §未決事項 1）。
-//   もとの記録は feedback/20260805_sc05-07-admin-contract-gaps.md（planning#198 で裁定済み）。
+//   もとの記録は projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md（planning#198 で裁定済み）。
 
 /** 絞り込みの選択肢。**既定は「すべて」**（理由は画面仕様書 §絞り込みの既定値）。 */
 const FILTERS: readonly JobStatusFilter[] = ['', ...JOB_STATUSES];
@@ -409,7 +409,7 @@ function JobRow({
       <TableCell className="text-xs text-[--color-fg-muted]">
         {/* hi-fi:422「Mermaid 2図」——備考は `diagramsCoded` から導出する。
             補間には**素の変数だけ**を置く（`lingui/no-expression-in-message`）。
-            「本文なしで完了」は**理由つき**で出す（ADR-0070 決定 3。理由は契約の `bodyAbsent` から
+            「本文なしで完了」は**理由つき**で出す（ADR-0070 決定 3。理由は契約の `hasBody` から
             導出する固定文であり、サーバの自由文字列 `error` ではない）。 */}
         {bodyAbsent ? (
           <Trans>テキスト層が無いため本文を抽出できませんでした（原本を参照）</Trans>

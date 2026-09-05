@@ -49,11 +49,11 @@ public class RawDocumentFetchedConsumerJobTests
     }
 
     // ADR-0070 決定 3 / IADR-0356 (#1192): テキスト層の無い PDF。正規化は**成功**し、本文なしを運ぶ。
-    private sealed class BodyAbsentNormalizer : INormalizationService
+    private sealed class BodylessNormalizer : INormalizationService
     {
         public Task<NormalizationResult> NormalizeAsync(RawDocumentFetched raw, CancellationToken ct = default) =>
             Task.FromResult(new NormalizationResult(Guid.NewGuid(), "storage://bucket/empty.md", [], 0, 0, [],
-                BodyAbsent: true));
+                HasBody: false));
     }
 
     // IADR-0043: EF ストア ＋ EF InMemory DbContext。ハンドラの書き込みを同じ DB 名の別コンテキストから
@@ -107,27 +107,27 @@ public class RawDocumentFetchedConsumerJobTests
     }
 
     // FR-12, UC-06, SC-07, ADR-0070 決定 3 / IADR-0356 (#1192): テキスト層を持たない PDF は
-    // **`succeeded` で確定し、`failed` にならず `deadLettered` も立たない**。内訳は `BodyAbsent` が運び、
+    // **`succeeded` で確定し、`failed` にならず `deadLettered` も立たない**。内訳は `HasBody` が運び、
     // 発行口へも同じ値が渡る（後続がメタデータ索引へ回す判断に使う）。
     // 🔴 従前はこの原本が `failed` ＋ `deadLettered=true` になっていた（#1192 の実測）。
     [Fact]
     public async Task Consume_pdf_without_text_layer_records_succeeded_job_with_body_absent()
     {
-        await using var harness = new Harness(new BodyAbsentNormalizer());
+        await using var harness = new Harness(new BodylessNormalizer());
         var ev = Raw(Guid.NewGuid());
 
         await harness.HandleAsync(ev, attempts: 1);
 
         var job = (await harness.ReadJobAsync(ev.FetchId))!;
         job.Status.Should().Be(ConversionJobStatus.Succeeded);
-        job.BodyAbsent.Should().BeTrue();
+        job.HasBody.Should().BeFalse();
         job.DeadLettered.Should().BeFalse();
         job.Error.Should().BeNull();
         job.MarkdownUri.Should().Be("storage://bucket/empty.md");
-        harness.Publisher.Calls.Should().ContainSingle().Which.BodyAbsent.Should().BeTrue();
+        harness.Publisher.Calls.Should().ContainSingle().Which.HasBody.Should().BeFalse();
     }
 
-    // 陽性対照: 本文ありの成功では標識は立たず、発行口へも false が渡る。
+    // 陽性対照: 本文ありの成功では標識は真のままで、発行口へも true が渡る。
     [Fact]
     public async Task Consume_success_with_body_does_not_mark_body_absent()
     {
@@ -136,8 +136,8 @@ public class RawDocumentFetchedConsumerJobTests
 
         await harness.HandleAsync(ev, attempts: 1);
 
-        (await harness.ReadJobAsync(ev.FetchId))!.BodyAbsent.Should().BeFalse();
-        harness.Publisher.Calls.Should().ContainSingle().Which.BodyAbsent.Should().BeFalse();
+        (await harness.ReadJobAsync(ev.FetchId))!.HasBody.Should().BeTrue();
+        harness.Publisher.Calls.Should().ContainSingle().Which.HasBody.Should().BeTrue();
     }
 
     [Fact]

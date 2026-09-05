@@ -115,6 +115,70 @@ export interface EdgeTypeCatalogItem {
 }
 
 /**
+ * FR-17, SC-09, ADR-0033 決定 3・9: 辺の型辞書の 1 件（**使用件数つき**。管理用途）。
+ *
+ * 🔴 **`EdgeTypeCatalogItem` とは別の型である。** あちらは描画用で `usageCount` を持たず、
+ * 代わりに `weight` を持つ。**片方をもう片方の代わりに使わない** ——
+ * カタログに件数を足すと一般利用者へ総量が漏れ、辞書から件数を落とすと
+ * SC-09 の「削除前に使用件数を示す」が満たせなくなる。
+ */
+export interface EdgeTypeDto {
+  /** 改名しても変わらない。既存の辺はこれを参照する */
+  id: string;
+  /** 表示名。改名の対象 */
+  name: string;
+  /** 型の層（core / recommended / future） */
+  layer: string;
+  /** 対称な関係か（対称なら逆向きの表示語を持たない） */
+  isSymmetric: boolean;
+  /** 初期値集合に由来するか */
+  isSeed: boolean;
+  /** この型を使っている辺の本数 */
+  usageCount: number;
+}
+
+/**
+ * FR-17, SC-09（ADR-0033 決定 3）: 辞書へ辺の型を追加する。 **識別子は辞書が採番する**（呼び出し側から与えない。改名で変わらない値を外から決めさせない）。
+ */
+export interface CreateEdgeTypeRequest {
+  /** 表示名。前後の空白は正規化される。 */
+  name: string;
+  /** 型の層。core / recommended / future のいずれか。 */
+  layer: string;
+  /** 対称な関係か。 */
+  isSymmetric: boolean;
+}
+
+/**
+ * FR-17, SC-09（ADR-0033 決定 9）: 辞書の辺の型を改名する。**識別子は変えない** —— 既存の辺は識別子を参照しているので追随は自動である（辺は 1 本も書き換えない）。
+ */
+export interface RenameEdgeTypeRequest {
+  /** 新しい表示名。既存値と重複してはならない（自分自身は除く）。 */
+  name: string;
+}
+
+export type EdgeTypeInUseProblemError = typeof EdgeTypeInUseProblemError[keyof typeof EdgeTypeInUseProblemError];
+
+
+export const EdgeTypeInUseProblemError = {
+  edge_type_in_use: 'edge_type_in_use',
+} as const;
+
+/**
+ * FR-17, SC-09（ADR-0033 決定 9 / INDEX 決定 18）: 使用中の辺の型の削除を拒否したときの本文。
+ * **`usageCount` は SC-09 の「削除前に使用件数を示す」を満たすために要る** ——
+ * 件数が無いと管理者は「なぜ消えないか」しか分からず、付け替え作業に着手できない。
+ * **BFF は本文を詰め替えず透過する**（数え方を 2 つ持つと一覧と削除拒否で件数が割れる）。
+ * **タグ辞書の `TagInUseProblem` と同型である**——同じ規則を両辞書へ適用するという計画の確定事項
+ * （INDEX 決定 18）が、契約の形にも現れている。
+ */
+export interface EdgeTypeInUseProblem {
+  error: EdgeTypeInUseProblemError;
+  message: string;
+  usageCount: number;
+}
+
+/**
  * FR-18, SC-21, ADR-0033 決定 7・10: AI 提案（リンク候補・タグ候補）。
  *
  * **リンク提案とタグ提案を 1 つの型で表す** —— SC-21 が同一の一覧を求めており、
@@ -506,6 +570,13 @@ export interface DocumentDto {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+  /**
+     * SC-03, ADR-0070 決定 3 / IADR-0388: **原本が本文を持っていたか。**
+     * `false` はテキスト層を持たない PDF 等で、文書詳細は本文の位置へ
+     * 「本文なし（原本を参照）」を示す（SC-02 の検索結果と同じ文言・同じ導出）。
+     * **項目を持たない応答は「本文あり」として読む**（既定 `true`）。
+     */
+  hasBody?: boolean;
 }
 
 /**
@@ -765,7 +836,7 @@ export interface ConversionJobDto {
   sourceId: string;
   sourceType: string;
   originalPath: string;
-  /** `queued` / `processing` / `succeeded` / `failed`。**`failed` のみ再変換できる**（「本文なしで完了」は `succeeded` の内訳 `bodyAbsent` であり、再変換の対象に並ばない） */
+  /** `queued` / `processing` / `succeeded` / `failed`。**`failed` のみ再変換できる**（「本文なしで完了」は `succeeded` の内訳 `hasBody: false` であり、再変換の対象に並ばない） */
   status: string;
   /** 失敗ジョブの理由 */
   error?: string | null;
@@ -805,13 +876,15 @@ export interface ConversionJobDto {
      */
   hasCorrection: boolean;
   /**
-     * **「本文なしで完了」の標識**（ADR-0070 決定 3）。テキスト層を持たない PDF（スキャン等）は
-     * 本文が存在しないため、`failed` にせず **`succeeded` の内訳**として理由つきで表示する。
+     * **原本が本文を持っていたか**（ADR-0070 決定 3 / IADR-0388）。テキスト層を持たない PDF（スキャン等）は
+     * 本文が存在しないため、`failed` にせず **`succeeded` の内訳**として `false` を返し、理由つきで表示する。
      * **`status` の 5 値目ではない**（`deadLettered` / `diagramsRetained` と同じ扱い）。
-     * `true` のジョブは再試行してもデッドレターへ送っても結果が変わらないため、再変換の対象に並ばない。
-     * `markdownUri` は空の本文を指す（原本参照のみの文書）。`status` が `succeeded` のときだけ真。
+     * `false` のジョブは再試行してもデッドレターへ送っても結果が変わらないため、再変換の対象に並ばない。
+     * `markdownUri` は空の本文を指す（原本参照のみの文書）。**`false` になるのは `status` が `succeeded` のときだけ**である。
+     * 🔴 従前は否定形の `bodyAbsent`（既定 `false`）だった。検索側（`SearchResultDto.hasBody`）と
+     * 極性が逆で読み替えが要ったため、**肯定形へ寄せて改名した**（極性も反転している）。
      */
-  bodyAbsent: boolean;
+  hasBody: boolean;
 }
 
 /**
