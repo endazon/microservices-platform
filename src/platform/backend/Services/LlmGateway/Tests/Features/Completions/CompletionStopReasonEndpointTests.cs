@@ -14,7 +14,7 @@ namespace LlmGateway.Tests.Features.Completions;
 // 拒否は外部送信が成立したうえでの応答であるため sent=true のままとし（越境監査・課金の意味を守る）、
 // 区別は stopReason で行う。
 // IADR-0110 (#395): メトリクス購読テスト（CompletionMetricsTests）と直列化する。
-[Collection(CompletionEndpointCollection.Name)]
+[Collection(SharedMeterCollection.Name)]
 [Trait("TestKind", "Integration")]
 public class CompletionStopReasonEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>

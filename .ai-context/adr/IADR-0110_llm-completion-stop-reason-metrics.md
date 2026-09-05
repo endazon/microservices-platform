@@ -15,9 +15,10 @@ related_ids:
   - IADR-0104
   - IADR-0225
   - ADR-0038
+  - IADR-0394
 author: claude
 created: 2026-07-28
-updated: 2026-08-18
+updated: 2026-09-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0006_observability-otel-prom-loki.md (OTel/Prometheus/Loki/Tempo への統一計装・Accepted)
   - planning:projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md (LLM ゲートウェイ設計・Accepted・本文凍結)
@@ -101,6 +102,25 @@ plan_refs:
 > 拒否率の分母 `llm.result="sent"` は従来どおりリクエストあたり最大 1 件だからである。
 > **`upstream_error` へ混ぜなかった理由**は、回復した呼び出しを呼び出し先障害の率へ入れると
 > `upstream_error` 率 > 10%（critical）のしきい値方針が誤発火するためである（[IADR-0225](./IADR-0225_llm-purpose-fallback-chain-and-429-boundary.md) §検討した選択肢 C4）。
+
+> **［2026-09-05 追記 / #1275］決定 7 が置いた直列化コレクションは、加入規則が危険の範囲より狭かった。**
+> 本 IADR が `CompletionEndpointCollection`（規則:「補完エンドポイントを叩くテストクラス」）で
+> 直列化した意図は、`MeterListener` が **Meter 名でプロセス全体の測定を購読する**ことへの対処だった。
+> **しかし危険の範囲は「共有 Meter へ発行するクラス」であり、エンドポイントを叩くクラスに閉じない。**
+> `LlmUsageMetricsTests`（#443）はエンドポイントを叩かないが `LlmUsageMetrics.RecordUsage` で
+> 同じ Meter へ `llm.tokens.total` を発行しており、加入していなかった。
+> **並列度を上げると 5 回中 5 回、`LlmSyntheticUsageExclusionTests` の不在の表明が破れる**（実測）。
+>
+> **本 IADR の決定 1〜7 はいずれも覆っていない** —— 計器・属性・計上点・値域の丸めはすべて維持している。
+> 変わったのは**テストの隔離の仕方**だけである。是正は [IADR-0394](./IADR-0394_meter-probe-instance-scoping.md) が持つ:
+>
+> 1. **probe の購読を Meter の「インスタンス」で絞る**（主。`ReferenceEquals(instrument.Meter, meter)`）。
+>    **決定 7 の「`MeterListener` で発行を購読する」やり方自体は変えていない**（絞り方だけ変えた）。
+> 2. コレクションを **`SharedMeterCollection`（`llm-shared-meter`）へ改名**し、規則を
+>    「共有 Meter へ発行するクラス」へ言い直した（多層防御）。**下の本文と決定 7 が書いている
+>    `CompletionEndpointCollection` は、当時の名前である**（原文は書き換えない）。
+>
+> production の差分は 0 行である。
 
 1. **カウンタ `llm.completion.total`**（単位 `{completion}`）を LlmGateway に定義する。
    `Meter` 名は `microservices-platform.llm-gateway`（サービス名と一致）。`IMeterFactory` 経由で生成し、
