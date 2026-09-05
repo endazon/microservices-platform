@@ -15,7 +15,7 @@ namespace GraphService.Features.Graph.Neighbors;
 //      🔴 **この 2 欄の規約を 1 欄の端点へ広げない** —— 広げると `error` の値の出どころが
 //      波 1 の 6 サービス（`Error.Message` 由来）と割れる。
 //
-// **`types` は形式だけを見る。** 解析（`HashSet<Guid>` の構築）は端点に残す（IADR-0395 決定 3）
+// **`types` は形式だけを見る。** 解析（`HashSet<Guid>` の構築）は端点に残す（IADR-0395 決定 5）
 // —— `ValidationResult` には副産物を返す口が無く、`RootContextData` へ詰めると規則が副作用を持つ。
 internal sealed class NeighborsQueryValidator : AbstractValidator<NeighborsQuery>
 {

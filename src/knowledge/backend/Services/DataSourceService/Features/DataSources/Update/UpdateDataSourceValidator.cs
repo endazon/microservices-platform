@@ -15,7 +15,7 @@ namespace DataSourceService.Features.DataSources.Update;
 // **既存値**（`ds.ConnectionUri`）を見るので、`db.DataSources.FindAsync` の後ろから動かせない
 // （先頭へ上げると 404 が 400 に化ける）。`OwnerMappingValidation.ValidateAsync` は
 // 外部の利用者名簿を引き、応答が RFC7807（全違反を返す）で形が違う。**どちらも端点に残す**
-// （IADR-0395 決定 2）。
+// （IADR-0395 決定 6）。
 internal sealed class UpdateDataSourceValidator : AbstractValidator<UpdateDataSourceRequest>
 {
     // FR-01: 元のガード節が返していた本文の文字列。**これが応答の契約である。**
