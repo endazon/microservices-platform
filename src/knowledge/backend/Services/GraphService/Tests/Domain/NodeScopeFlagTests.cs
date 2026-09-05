@@ -22,7 +22,7 @@ public class NodeScopeFlagTests : IClassFixture<TestWebApplicationFactory>
     public NodeScopeFlagTests(TestWebApplicationFactory factory) => _factory = factory;
 
     // **［#1184］個人資料のノードは「ナレッジグラフに表示」が ON のときだけ出力に載る**
-    // （ADR-0061 決定 1・3 / [[IADR-0395]] 決定 6）。描き分け（本クラスの主題）を測るには
+    // （ADR-0061 決定 1・3 / [[IADR-0396]] 決定 6）。描き分け（本クラスの主題）を測るには
     // **まず載っている**必要があるので、個人資料のノードには投影 `graph_exposure=included` を付ける。
     // 組織文書は露出キーを持たない（＝常に載る）ままである。
     private static GraphDocument Node(Guid id, string name, string? docScope = null,
@@ -99,7 +99,7 @@ public class NodeScopeFlagTests : IClassFixture<TestWebApplicationFactory>
             "値が無い ⇒ 組織文書（ADR-0054 決定 5: 取り込み経路が個人資料を作ることはない）");
     }
 
-    // 🔴 FR-19, ADR-0061 決定 1・2・3 / [[IADR-0395]] 決定 6 (#1184):
+    // 🔴 FR-19, ADR-0061 決定 1・2・3 / [[IADR-0396]] 決定 6 (#1184):
     // **「ナレッジグラフに表示」が OFF の個人資料は、ノードとして返らない。**
     //
     // 陰性の主張なので**陽性対照を対で置く** —— 同じ応答の中の組織文書は返っている。

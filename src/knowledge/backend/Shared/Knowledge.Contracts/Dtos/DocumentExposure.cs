@@ -1,6 +1,6 @@
 namespace Knowledge.Contracts.Dtos;
 
-// FR-19, FR-21 受け入れ基準 ⑨, ADR-0061 決定 1〜6, [[IADR-0395]] (#1184):
+// FR-19, FR-21 受け入れ基準 ⑨, ADR-0061 決定 1〜6, [[IADR-0396]] (#1184):
 // **個人資料の露出 3 トグルを ABAC 文書属性へ写した値域と、その判定の単一情報源。**
 //
 // 計画 `ADR-0061`（planning#492）は次を裁定した。
@@ -34,7 +34,7 @@ public static class DocumentExposure
 
     // FR-19「AI の入力に含める」の投影。**綴りは [[IADR-0283]] が置いた `ai_input` のままである。**
     // 3 者で語尾が揃わないのは承知のうえで改名しない —— 既に作成済みの個人資料の
-    // `Document.Attributes` に書かれた値であり、改名は移行を伴う（[[IADR-0395]] 決定 1）。
+    // `Document.Attributes` に書かれた値であり、改名は移行を伴う（[[IADR-0396]] 決定 1）。
     public const string AiKey = "ai_input";
 
     // 明示的な opt-in / opt-out の 2 値。**否定形の名前を新たに持ち込まない**

@@ -26,7 +26,7 @@ public interface IIngestionVectorStore
     // FR-03, SC-02, #536: `updatedAt` は文書の更新日時（DocumentUpdated.UpdatedAt）である。
     // **取り込み時刻を渡さないこと**（IADR-0149 決定 5）——渡すと再索引のたびに全文書の
     // 「更新日時」が今になり、計画が並び順を求めた動機そのものが成立しなくなる。
-    // FR-19, FR-20, ADR-0061 決定 5 / [[IADR-0395]] 決定 3 (#1184): `sharedWith` は共有先の集合であり、
+    // FR-19, FR-20, ADR-0061 決定 5 / [[IADR-0396]] 決定 3 (#1184): `sharedWith` は共有先の集合であり、
     // **属性辞書ではなく `tags` と同じリスト項目**として点に載る。null / 空は「誰とも共有していない」。
     Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
         string text, int chunkIndex, float[] vector, string? markdownUri,

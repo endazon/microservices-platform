@@ -31,7 +31,7 @@ public interface IDocumentUpdatedPublisher
         bool hasBody = true,
         string? originalPath = null,
         string? dataSourceName = null,
-        // FR-19, FR-20, ADR-0036 D-06, ADR-0061 決定 5 / [[IADR-0395]] 決定 3 (#1184):
+        // FR-19, FR-20, ADR-0036 D-06, ADR-0061 決定 5 / [[IADR-0396]] 決定 3 (#1184):
         // 共有先（`DocumentShare` の被共有主体）。**属性辞書では運べない集合**であり、
         // 索引の側から共有先ベースの分岐を評価できるようにするために独立の項目で運ぶ。
         // 解決は `DocumentEndpoints.PublishUpdatedAsync` の 1 か所だけで行う。

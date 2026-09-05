@@ -10,7 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocumentService.Tests.Features.PrivateNotes;
 
-// FR-19, FR-21 受け入れ基準 ⑨, UC-11, SC-19, SC-20, ADR-0061 決定 1・2・4・5, [[IADR-0395]]:
+// FR-19, FR-21 受け入れ基準 ⑨, UC-11, SC-19, SC-20, ADR-0061 決定 1・2・4・5, [[IADR-0396]]:
 // **露出 3 トグルを索引の生産側へ配線した「発行の門」を固定する。**
 //
 // 計画（planning#492 → `ADR-0061`）の裁定:

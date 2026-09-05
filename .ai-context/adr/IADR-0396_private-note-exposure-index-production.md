@@ -1,5 +1,5 @@
 ---
-title: IADR-0395 露出 3 トグルは 1 つの純関数へ寄せ、生産側の門と消費側の評価が同じ述語を呼ぶ。個人資料は裁量の分岐でしか可視にしない
+title: IADR-0396 露出 3 トグルは 1 つの純関数へ寄せ、生産側の門と消費側の評価が同じ述語を呼ぶ。個人資料は裁量の分岐でしか可視にしない
 type: impl-adr
 status: Accepted
 related_ids:
@@ -33,7 +33,7 @@ related_specs:
   - ../specs/20260905_issue-1184_private-note-exposure-index-production.md
 ---
 
-# IADR-0395: 露出 3 トグルの索引生産側への配線と、個人資料の可視性の閉じ方
+# IADR-0396: 露出 3 トグルの索引生産側への配線と、個人資料の可視性の閉じ方
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

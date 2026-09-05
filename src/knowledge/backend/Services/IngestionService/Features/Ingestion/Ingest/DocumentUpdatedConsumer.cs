@@ -28,7 +28,7 @@ public class DocumentUpdatedConsumer(
     // ADR-0027 / E3b: Wolverine のハンドラ。
     public async Task Handle(DocumentUpdated ev, CancellationToken ct)
     {
-        // 🔴 FR-19, ADR-0061 決定 1・2・4 / [[IADR-0395]] 決定 4・5 (#1184): **索引の門。**
+        // 🔴 FR-19, ADR-0061 決定 1・2・4 / [[IADR-0396]] 決定 4・5 (#1184): **索引の門。**
         //
         // 露出 3 トグルのうち 1 つでも ON なら載せる。**3 つとも OFF なら載せないだけでなく、
         // 既に載っているチャンクを削除する**（決定 4。ON → OFF は索引からの削除まで及ぶ）。

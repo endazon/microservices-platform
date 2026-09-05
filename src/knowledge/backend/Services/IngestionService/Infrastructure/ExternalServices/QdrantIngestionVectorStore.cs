@@ -271,7 +271,7 @@ public class QdrantIngestionVectorStore(
             payload["tags"] = new Value { ListValue = tagList };
         }
 
-        // FR-19, FR-20, ADR-0036 D-06, ADR-0061 決定 5 / [[IADR-0395]] 決定 3 (#1184):
+        // FR-19, FR-20, ADR-0036 D-06, ADR-0061 決定 5 / [[IADR-0396]] 決定 3 (#1184):
         // 共有先を**リスト項目**として保持する（`tags` と同じ表現・同じ「いずれか一致」の意味論）。
         // 🔴 **属性へ入れない** —— 単一値では集合を表せず、共有先が 1 人しか効かない索引になる。
         // 0 件のときはキー自体を書かない（`tags` / `attributes` と同じ扱い）。

@@ -2,7 +2,7 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace Knowledge.Contracts.Dtos;
 
-// 🔴 FR-19, FR-20, UC-11, ADR-0036 D-05・D-06, ADR-0061 決定 5・6, [[IADR-0395]] 決定 7 (#1184):
+// 🔴 FR-19, FR-20, UC-11, ADR-0036 D-05・D-06, ADR-0061 決定 5・6, [[IADR-0396]] 決定 7 (#1184):
 // **個人資料は裁量（所有者・共有先）の分岐でしか見えない。**
 //
 // 計画 `ADR-0061` の裁定:

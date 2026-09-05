@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace IngestionService.Tests.Features.Ingestion.Ingest;
 
-// FR-19, FR-02, ADR-0061 決定 1・2・3・4・5, [[IADR-0395]] 決定 4・5 (#1184):
+// FR-19, FR-02, ADR-0061 決定 1・2・3・4・5, [[IADR-0396]] 決定 4・5 (#1184):
 // **索引の生産側の門**（露出 3 トグルの評価と、OFF へ戻したときの撤収）。
 //
 // 🔴 **陰性（載らない）の主張には陽性対照を対で置く。** 「索引が空だった」は

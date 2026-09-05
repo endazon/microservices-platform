@@ -302,7 +302,7 @@ public class QdrantVectorStore(
         {
             var conditions = BuildKeyConditions(branch);
 
-            // 🔴 FR-19, ADR-0061 決定 5・6, [[IADR-0395]] 決定 7 (#1184):
+            // 🔴 FR-19, ADR-0061 決定 5・6, [[IADR-0396]] 決定 7 (#1184):
             // **裁量（`owner` / `shared_with`）でない分岐は個人資料を許可できない。**
             // 意味論は `InMemoryVectorStore.MatchesFilters` と同一であること
             // （ずれると「テストは緑・本番は漏れる」になる。[[IADR-0014]] が踏んだ型）。
@@ -329,7 +329,7 @@ public class QdrantVectorStore(
         };
     }
 
-    // FR-19, ADR-0054, [[IADR-0395]] 決定 7: 「この点は個人資料である」という 1 条件。
+    // FR-19, ADR-0054, [[IADR-0396]] 決定 7: 「この点は個人資料である」という 1 条件。
     // **集合帰属で書く**（`doc_scope == private-note`）—— 否定形（`!= organization`）で書くと、
     // `doc_scope` を持たない既存の組織文書が一斉に該当する（[[IADR-0270]] 決定 2 の作法）。
     private static Condition PrivateNoteCondition() => new()
@@ -503,7 +503,7 @@ public class QdrantVectorStore(
             payload[AttributeValueKeys.Tags] = new Value { ListValue = tagList };
         }
 
-        // FR-19, FR-20, ADR-0061 決定 5 / [[IADR-0395]] 決定 3 (#1184): 共有先も `tags` と同じ
+        // FR-19, FR-20, ADR-0061 決定 5 / [[IADR-0396]] 決定 3 (#1184): 共有先も `tags` と同じ
         // リスト項目で保持する。取り込み側（`QdrantIngestionVectorStore.BuildChunkPayload`）と
         // **同じキー・同じ表現**であること（書き込みが 2 か所にあり、片方だけ運ばないと
         // 「この経路で入った点だけ共有先が効かない」索引になる）。

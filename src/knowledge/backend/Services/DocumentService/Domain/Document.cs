@@ -230,7 +230,7 @@ public class Document
     public void RecordContentFingerprint(string? contentFingerprint)
         => ContentFingerprint = contentFingerprint;
 
-    // FR-19, FR-21 受け入れ基準 ⑨, ADR-0061 決定 3, [[IADR-0283]] 決定 4, [[IADR-0395]] 決定 1:
+    // FR-19, FR-21 受け入れ基準 ⑨, ADR-0061 決定 3, [[IADR-0283]] 決定 4, [[IADR-0396]] 決定 1:
     // 個人資料の露出 3 トグル（横断検索 / グラフ / AI の入力）を ABAC 文書属性へ写す。
     //
     // **［#1184］3 つまとめて写す。** 従前は「AI の入力に含める」だけを写しており
