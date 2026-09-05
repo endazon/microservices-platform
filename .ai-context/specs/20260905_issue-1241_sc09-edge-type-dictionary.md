@@ -2,7 +2,7 @@
 title: SC-09 に辺の型辞書の区画を足し、BFF に使用件数つきの読み取りと書き込み口を開ける（#1241）
 type: spec
 status: done
-related_ids: [FR-17, SC-03, SC-09, SC-10, SC-18, SC-21, UC-05, UC-10, ADR-0033, ADR-0034, ADR-0066, IADR-0044, IADR-0119, IADR-0127, IADR-0129, IADR-0135, IADR-0152, IADR-0153, IADR-0242, IADR-0281, IADR-0388]
+related_ids: [FR-17, SC-03, SC-09, SC-10, SC-18, SC-21, UC-05, UC-10, ADR-0033, ADR-0034, ADR-0066, IADR-0044, IADR-0119, IADR-0127, IADR-0129, IADR-0135, IADR-0152, IADR-0153, IADR-0242, IADR-0281, IADR-0387]
 author: Claude
 created: 2026-09-05
 updated: 2026-09-05
@@ -25,7 +25,7 @@ issue: "#1241"
 - 計画 INDEX 決定 18: 「**辺の型は参照が 1 件でもあれば削除を拒否し、改名は許す**（既存の辺は
   新しい名前へ追随）。**同じ規則をタグ辞書にも適用**する。**`SC-10` に型ごとの使用件数を表示**する」
 - 実装 ADR: `IADR-0129`（`SC-09` の未実装区画の理由）/ `IADR-0152` `IADR-0153`（タグ辞書の先例）/
-  `IADR-0281`（`related` フォールバック）/ 本作業の `IADR-0388`
+  `IADR-0281`（`related` フォールバック）/ 本作業の `IADR-0387`
 
 ## 1. 事象（自分で測った。陽性対照つき）
 
@@ -94,7 +94,7 @@ issue の受け入れ基準 1 は「読み取りも使用件数つきの `/graph
 
 実測（陽性対照）: `/bff/graph/edge-types` の消費者は `sc18-graph` / `sc03-document` /
 `sc21-ai-suggestions` の 3 feature であり、**いずれも一般利用者の画面**である。
-向け替えると全員 403 になる。詳細は `IADR-0388` 決定 1。
+向け替えると全員 403 になる。詳細は `IADR-0387` 決定 1。
 
 → **`/bff/edge-types` を新設**する（タグ辞書が `/bff/tags` であるのと同じ形）。
 

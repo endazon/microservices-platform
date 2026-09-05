@@ -84,7 +84,7 @@ test('SC-09: the edge-type dictionary tab reads the admin dictionary, not the dr
   // **使用件数が届く。** カタログ（件数なし）へ向いていればここで落ちる。
   await expect(page.getByRole('cell', { name: '342' })).toBeVisible();
 
-  // ★ 陰性対照: 契約の無い「逆向きの表示語」の列は作っていない（#1241 / [[IADR-0388]] 決定 5）。
+  // ★ 陰性対照: 契約の無い「逆向きの表示語」の列は作っていない（#1241 / [[IADR-0387]] 決定 5）。
   await expect(page.getByRole('columnheader', { name: '逆向きの表示語' })).toHaveCount(0);
 
   // 取り違えの検査: 描画用カタログは 1 度も呼ばれていない。
