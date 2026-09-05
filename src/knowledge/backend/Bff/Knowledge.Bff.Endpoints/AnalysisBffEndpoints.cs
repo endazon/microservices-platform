@@ -3,6 +3,8 @@ using Knowledge.Contracts.Dtos;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Options;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 using System.Net.Http;
 using System.Net.Http.Json;
 
@@ -26,15 +28,20 @@ public static class AnalysisBffEndpoints
             AnalysisRequest req,
             IHttpClientFactory httpFactory,
             IUsageEventReporter usage,
+            IOptions<SyntheticMonitoringOptions> synthetic,
             HttpContext http,
             CancellationToken ct) =>
         {
             var client = httpFactory.CreateClient("AiAnalysisService");
+            var isSynthetic = SyntheticTraffic.IsSyntheticPrincipal(http.User, synthetic.Value);
 
             // FR-05: 権限の無い文書を結果に出さないため、利用者の資格情報を後段へ引き継ぐ
             var auth = http.Request.Headers.Authorization.ToString();
             if (!string.IsNullOrEmpty(auth))
                 client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
+            // ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 内周へ標識を運ぶ（§標識の設計）。
+            // **外周で JWT から決めた結果だけを運ぶ** —— 受信ヘッダは転送しない。
+            PropagateSynthetic(client, isSynthetic);
 
             var resp = await client.PostAsJsonAsync("/analysis/ask", req, ct);
             if (!resp.IsSuccessStatusCode)
@@ -47,7 +54,7 @@ public static class AnalysisBffEndpoints
             // 回答が実際に生成できたときだけ数える（後段の非 2xx・本文 null は上で返っている）。
             // 🔴 **質問文は送らない** —— 受け口は `answer` の `query` を捨てるので、捨てられる
             // 自由文を経路とログに晒す理由が無い（決定 5）。
-            ReportAnswer(usage, http);
+            ReportAnswer(usage, http, isSynthetic);
             return Results.Ok(answer);
         }).WithName("BffAnalysisAsk").Produces<AiAnswerDto>();
 
@@ -57,15 +64,18 @@ public static class AnalysisBffEndpoints
             AnalysisTaskRequest req,
             IHttpClientFactory httpFactory,
             IUsageEventReporter usage,
+            IOptions<SyntheticMonitoringOptions> synthetic,
             HttpContext http,
             CancellationToken ct) =>
         {
             var client = httpFactory.CreateClient("AiAnalysisService");
+            var isSynthetic = SyntheticTraffic.IsSyntheticPrincipal(http.User, synthetic.Value);
 
             // FR-05: 権限の無い文書を結果に出さないため、利用者の資格情報を後段へ引き継ぐ
             var auth = http.Request.Headers.Authorization.ToString();
             if (!string.IsNullOrEmpty(auth))
                 client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
+            PropagateSynthetic(client, isSynthetic);
 
             var resp = await client.PostAsJsonAsync("/analysis/analyze", req, ct);
             if (!resp.IsSuccessStatusCode)
@@ -78,7 +88,7 @@ public static class AnalysisBffEndpoints
             // 契約の `answer` は「AI 回答生成」であって SC-01 の質問に限られていない ——
             // 本経路も LLM が根拠つきの `AiAnswerDto` を生成する。落とすと総回答数が
             // 実際の生成回数と食い違う（作業仕様書 §母集合 4）。
-            ReportAnswer(usage, http);
+            ReportAnswer(usage, http, isSynthetic);
             return Results.Ok(answer);
         }).WithName("BffAnalysisAnalyze").Produces<AiAnswerDto>();
 
@@ -88,6 +98,7 @@ public static class AnalysisBffEndpoints
             AnalysisRequest req,
             IHttpClientFactory httpFactory,
             IUsageEventReporter usage,
+            IOptions<SyntheticMonitoringOptions> synthetic,
             HttpContext http,
             CancellationToken ct) =>
         {
@@ -103,6 +114,9 @@ public static class AnalysisBffEndpoints
             var auth = http.Request.Headers.Authorization.ToString();
             if (!string.IsNullOrEmpty(auth))
                 upReq.Headers.TryAddWithoutValidation("Authorization", auth);
+            var isSynthetic = SyntheticTraffic.IsSyntheticPrincipal(http.User, synthetic.Value);
+            // ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 内周へ標識を運ぶ。
+            SyntheticTraffic.PropagateTo(upReq, isSynthetic);
 
             HttpResponseMessage? upResp = null;
             try
@@ -127,7 +141,7 @@ public static class AnalysisBffEndpoints
                 // FR-10, SC-10, [[IADR-0343]] (#1103): **上流が 2xx を返した時点で `answer` を数える。**
                 // SSE は 200 のヘッダを先に返すため「回答が生成された」と言えるのはここである
                 // （中継の途中で切れたか最後まで届いたかは利用者側の事情であり、回答の生成回数は変わらない）。
-                ReportAnswer(usage, http);
+                ReportAnswer(usage, http, isSynthetic);
 
                 await using var upstream = await upResp.Content.ReadAsStreamAsync(ct);
                 var buffer = new byte[4096];
@@ -152,9 +166,22 @@ public static class AnalysisBffEndpoints
     //
     // 🔴 **応答を待たない。** `Report` は列へ載せるだけで例外も投げないため、
     // 計測の失敗で回答が失敗することはない（fail-open）。
-    private static void ReportAnswer(IUsageEventReporter usage, HttpContext http)
+    //
+    // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): `isSynthetic` は**呼び出し元が
+    // 検証済み JWT の主体から決めた結果**である。ここで受信ヘッダを見てはならない。
+    private static void ReportAnswer(IUsageEventReporter usage, HttpContext http, bool isSynthetic)
         => usage.Report(new UsageEventSignal(
-            UsageEventType.Answer, null, http.Request.Headers.Authorization.ToString()));
+            UsageEventType.Answer, null, http.Request.Headers.Authorization.ToString(), isSynthetic));
+
+    // ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 内周（AiAnalysisService → LlmGateway）へ
+    // 標識を運ぶ。`CreateClient` は呼び出しごとに新しい `HttpClient` を返すため、
+    // `DefaultRequestHeaders` への追加は**この 1 リクエストにしか効かない**（Authorization と同じ扱い）。
+    private static void PropagateSynthetic(HttpClient client, bool isSynthetic)
+    {
+        if (isSynthetic)
+            client.DefaultRequestHeaders.TryAddWithoutValidation(
+                SyntheticTraffic.HeaderName, SyntheticTraffic.HeaderValue);
+    }
 }
 
 // FR-04, FR-05, SC-01, SC-08, #539: 対象範囲（属性フィルタ）。**後段の `AskRequest` と同じ形である。**
