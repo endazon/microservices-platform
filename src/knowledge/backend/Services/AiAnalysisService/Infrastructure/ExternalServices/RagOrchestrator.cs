@@ -1,7 +1,9 @@
 using AiAnalysisService.Domain;
 using AiAnalysisService.Domain.Ports;
 using Knowledge.Contracts.Dtos;
+using Microsoft.Extensions.Options;
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -19,10 +21,15 @@ namespace AiAnalysisService.Infrastructure.ExternalServices;
 // 🔴 **検索結果の集合と LLM へ渡す文脈の集合は別物である。** 検索は `SearchAsync` の 1 か所でしか
 // 行われず、そこが `RagContextSelection` を返すため、**経路を足した人が生の検索結果を受け取れない**。
 // 計画が名指しした「⑨＝検索結果をそのまま LLM へ渡す構造では分離できない」を、規律ではなく型で防ぐ。
+// NFR-02, ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): `syntheticOptions` は合成監視の構成。
+// 本サービスは**メッシュ内部の面**なので、標識は外周（BFF）が付けたヘッダ `X-Synthetic-Traffic` から読む
+// （外周は検証済み JWT の主体から決めており、外から偽装できない）。既定 null は既存テストの
+// 直接構築（`new RagOrchestrator(factory)`）を壊さないため。
 public class RagOrchestrator(
     IHttpClientFactory httpFactory,
     IHttpContextAccessor? httpContextAccessor = null,
-    ILogger<RagOrchestrator>? logger = null) : IRagOrchestrator
+    ILogger<RagOrchestrator>? logger = null,
+    IOptions<SyntheticMonitoringOptions>? syntheticOptions = null) : IRagOrchestrator
 {
     // FR-04: 質問回答で文脈に取り込む既定チャンク数。
     private const int DefaultAskTopK = 5;
@@ -242,6 +249,17 @@ public class RagOrchestrator(
     private async IAsyncEnumerable<CompletionStreamEvent> StreamCompletionAsync(
         string prompt, string confidentiality, string purpose, [EnumeratorCancellation] CancellationToken ct)
     {
+        // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視は既定で LLM を呼ばない。
+        // 🔴 **`done(Sent=false)` で終える。** ここで `token` イベントを 1 件も出さないことは意図であり、
+        // その帰結として `rag.answer.first_token.duration`（[[IADR-0354]]）は記録されない ——
+        // **`RagFirstTokenP95High` の評価対象は本 PR では生まれない。裁定待ちである**（作業仕様書 §0）。
+        if (SuppressLlmForSynthetic())
+        {
+            yield return new CompletionStreamEvent(string.Empty, Done: true, Sent: false,
+                Text: "合成監視のため AI 送信を行いませんでした。");
+            yield break;
+        }
+
         var llmClient = httpFactory.CreateClient("LlmGateway");
         // IADR-0101: MaxTokens は思考トークンと本文の合算上限（thinking が既定有効な Opus 5 / Sonnet 5 の場合）。
         // 本経路の purpose は rag-answer で、現行設定の割当は claude-sonnet-5（ADR-0022 追随済み・IADR-0106）。
@@ -254,6 +272,8 @@ public class RagOrchestrator(
         {
             Content = JsonContent.Create(body),
         };
+        // ADR-0044, ADR-0076 決定 4 (#1203): 標識を引き継ぐ（費用計測の除外はゲートウェイ側で行う）。
+        SyntheticTraffic.PropagateTo(request, IsSyntheticRequest());
 
         HttpResponseMessage? resp = null;
         var sendFaulted = false;
@@ -368,7 +388,13 @@ public class RagOrchestrator(
         var context = CitationMapper.BuildContext(citations);
         var prompt = buildPrompt(context);
 
+        // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視は既定で LLM を呼ばない（§費用の上限）。
+        // **検索までは実際に走っている**ため、`/analysis/ask` の HTTP 系列は立つ（決定 3 の評価対象になる）。
+        if (SuppressLlmForSynthetic())
+            return SyntheticNoEgressAnswer(citations);
+
         var llmClient = httpFactory.CreateClient("LlmGateway");
+        PropagateSyntheticTo(llmClient);
         // FR-11: Model は明示せず（null）、用途（purpose）と機密区分をゲートウェイへ渡して呼び出し先・モデル選択を委ねる。
         // IADR-0101: MaxTokens は思考トークンと本文の合算上限（thinking が既定有効な Opus 5 / Sonnet 5 の場合）。
         // 本経路の purpose は rag-answer で、現行設定の割当は claude-sonnet-5（ADR-0022 追随済み・IADR-0106）。
@@ -442,6 +468,34 @@ public class RagOrchestrator(
         }
         return highest;
     }
+
+    // NFR-02, ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 本要求が合成監視のものか。
+    // **外周（BFF）が検証済み JWT の主体から決めて付けたヘッダ**を読むだけであり、ここに認証の意味は無い。
+    private bool IsSyntheticRequest()
+        => SyntheticTraffic.IsSyntheticInternalRequest(httpContextAccessor?.HttpContext?.Request);
+
+    // 🔴 **合成トラフィックが LLM を呼ぶことは既定で許さない。**
+    // ADR-0076 §残るもの が「合成監視の頻度・費用の上限は定めていない。LLM を呼ぶ経路を含めるなら
+    // 費用が発生する。**除外規則は指標を守るものであり、費用そのものを減らさない**」と残している。
+    // したがって**上限が未定のまま恒常的に費用を出す構成を既定にしない**（実装で数字を決めない。#78 の向き）。
+    // 許可は構成 `SyntheticMonitoring:AllowLlmEgress` で明示的に立てる。
+    private bool SuppressLlmForSynthetic()
+        => IsSyntheticRequest() && syntheticOptions?.Value.AllowLlmEgress != true;
+
+    // ADR-0044, ADR-0076 決定 4 (#1203): LlmGateway へ標識を引き継ぐ。
+    // **費用計測の除外はゲートウェイ側で行う** —— 単価を解決して金額を積む主体がそこだからである
+    // （ADR-0044 決定 3。呼び出し側で引き算する形にすると、経路が増えるたびに引き算が漏れる）。
+    private void PropagateSyntheticTo(HttpClient client)
+    {
+        if (IsSyntheticRequest())
+            client.DefaultRequestHeaders.TryAddWithoutValidation(
+                SyntheticTraffic.HeaderName, SyntheticTraffic.HeaderValue);
+    }
+
+    // ADR-0076 決定 4 (#1203): 合成トラフィックへ返す縮退回答。**出典は通常どおり添える**
+    // （検索までは実際に行っており、経路の健全性はそこまで測れている）。
+    private static AiAnswerDto SyntheticNoEgressAnswer(List<CitationDto> citations)
+        => new("合成監視のため AI 送信を行いませんでした。", citations, NoModel, 0, 0);
 
     // FR-05: 閲覧可能文書が無い場合の空回答（検索・LLM を呼ばずコストを抑える縮退）。
     // IADR-0111 (#403): ゲートウェイを一度も呼んでいないため使用モデルは無い（NoModel）。

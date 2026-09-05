@@ -34,6 +34,11 @@ public sealed class LlmUsageMetrics
     public const string CostCounterName = "llm.cost.total";
     public const string UnpricedCounterName = "llm.pricing.unpriced.total";
 
+    // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): **合成監視のため費用へ計上しなかった**呼び出しの件数。
+    // 🔴 **黙って落とさない。** 除外を数えないと「合成だけが通っていて実利用は 0」でも
+    // 費用ダッシュボードが平常に見え、**指標を守るための除外が、指標を読めなくする**。
+    public const string SyntheticExcludedCounterName = "llm.usage.synthetic_excluded.total";
+
     public const string TokenTypeTag = "llm.token_type";
     public const string CurrencyTag = "llm.currency";
     public const string PricingStatusTag = "llm.pricing_status";
@@ -48,6 +53,7 @@ public sealed class LlmUsageMetrics
     private readonly Counter<long> _tokens;
     private readonly Counter<double> _cost;
     private readonly Counter<long> _unpriced;
+    private readonly Counter<long> _syntheticExcluded;
     private readonly IOptionsMonitor<LlmRoutingOptions> _routing;
     private readonly ModelPriceTable _prices;
     private readonly TimeProvider _clock;
@@ -74,6 +80,12 @@ public sealed class LlmUsageMetrics
             UnpricedCounterName, unit: "{completion}",
             description: "単価を解決できず金額を計上できなかった呼び出しの件数。**0 でない値は単価表の "
                        + "期限切れ・登録漏れの検出である**（無音で 0 円にしないための警報）。");
+        _syntheticExcluded = meter.CreateCounter<long>(
+            SyntheticExcludedCounterName, unit: "{completion}",
+            description: "合成監視（synthetic）のため llm.tokens.total / llm.cost.total へ計上しなかった "
+                       + "補完の件数（ADR-0076 決定 4）。**この系列が伸び、実利用の費用が伸びないときは "
+                       + "「合成だけが通っていて実利用は 0」である**。除外は指標を守るためであり、"
+                       + "費用そのものは減らない（同 §残るもの）。");
     }
 
     // 送信が成立した補完 1 回分の利用実績を計上する。
@@ -121,6 +133,27 @@ public sealed class LlmUsageMetrics
         var costTags = baseTags;
         costTags.Add(CurrencyTag, _prices.Currency);
         _cost.Add((double)estimate.Cost, costTags);
+    }
+
+    // NFR-02, ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視の呼び出しを費用から外す。
+    //
+    // 🔴 **`RecordUsage` の代わりに呼ぶ**（両方は呼ばない）。属性は用途とモデルだけで、
+    // `RecordUsage` と同じ正規化を通す —— **軸が違うと「除外したぶん」と「計上したぶん」を並べて読めない**
+    // （ADR-0044 §理由 が用途別・モデル別の分解を要求したのと同じ理由）。
+    //
+    // 🔴 **トークン数は属性にしない。** 非有界であり、載せるとカーディナリティが爆発する
+    // （[[IADR-0110]] の規律）。除外した量が要るなら `llm.completion.output_tokens` の分布を読む。
+    public void RecordSyntheticExclusion(
+        RoutingDecision decision, string purpose, SensitivityClass sensitivity)
+    {
+        var routing = _routing.CurrentValue;
+        _syntheticExcluded.Add(1, new TagList
+        {
+            { LlmCompletionMetrics.PurposeTag, LlmMetricValues.NormalizePurpose(routing, purpose) },
+            { LlmCompletionMetrics.ModelTag, LlmMetricValues.Or(decision.Model, LlmMetricValues.None) },
+            { LlmCompletionMetrics.ProviderTag, LlmMetricValues.Or(decision.Provider, LlmMetricValues.None) },
+            { LlmCompletionMetrics.ConfidentialityTag, sensitivity.ToString().ToLowerInvariant() },
+        });
     }
 
     private void RecordTokens(TagList baseTags, string tokenType, long tokens)
