@@ -123,6 +123,52 @@ public class UserAssignmentValidationTests
         UserAssignmentValidation.ValidateAttributes(attrs, Dictionary()).Should().BeEmpty();
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // IADR-0386 (#1243): 集合値キーは**要素ごと**に辞書照合する
+    // ─────────────────────────────────────────────────────────────────────────
+    //
+    // 値全体で見ると `"finance,management"` は決して許可値にならず、**画面から集合を作れない**。
+    // その集合を、無人アカウントの部分集合判定（ADR-0062 決定 2）が読む先で待っている。
+    [Fact]
+    public void ValidateAttributes_accepts_a_set_valued_tag_element_by_element()
+    {
+        var attrs = new Dictionary<string, string>
+        {
+            ["department"] = "finance",
+            ["clearance"] = "internal",
+            ["tags"] = "finance,management",
+        };
+        UserAssignmentValidation.ValidateAttributes(attrs, Dictionary()).Should().BeEmpty();
+    }
+
+    // 🔴 **陰性対照**: 要素のうち辞書外のものだけを**名指して**落とす（丸めない）。
+    [Fact]
+    public void ValidateAttributes_names_the_single_set_element_outside_the_dictionary()
+    {
+        var attrs = new Dictionary<string, string>
+        {
+            ["department"] = "finance",
+            ["clearance"] = "internal",
+            ["tags"] = "management,legal",
+        };
+        UserAssignmentValidation.ValidateAttributes(attrs, Dictionary())
+            .Should().ContainSingle().Which.Should().Contain("legal").And.NotContain("management");
+    }
+
+    // 🔴 **陰性対照（単一値キーの不変）。** 集合値でないキーで区切り文字を見出してはならない ——
+    // 見出すと辞書外の値が「要素」として通り得る。**この 1 本が「一律に分割する」変異を止める。**
+    [Fact]
+    public void ValidateAttributes_does_not_split_single_valued_keys()
+    {
+        var attrs = new Dictionary<string, string>
+        {
+            ["department"] = "finance",
+            ["clearance"] = "internal,restricted", // 各要素は辞書にあるが、値としては辞書外
+        };
+        UserAssignmentValidation.ValidateAttributes(attrs, Dictionary())
+            .Should().ContainSingle().Which.Should().Contain("internal,restricted");
+    }
+
     // 05_screens §SC-17: **SC-09 の属性体系に定義済みの値のみ。**
     [Fact]
     public void ValidateAttributes_rejects_values_outside_the_dictionary()

@@ -1,3 +1,5 @@
+using Platform.Shared.Contracts.Dtos;
+
 namespace AuthorizationService.Domain;
 
 // FR-05, FR-09, UC-05, SC-17, ADR-0026, IADR-0301: 利用者への割当（ロール・ABAC 属性）の検証。
@@ -121,8 +123,18 @@ public static class UserAssignmentValidation
                 continue;
             }
 
-            if (!def.AllowedValues.Contains(value, StringComparer.OrdinalIgnoreCase))
-                errors.Add($"属性 '{key}' の値 '{value}' は許可値に含まれません。");
+            // IADR-0386 (#1243): **集合値キー（tags / projects）は要素ごとに突き合わせる。**
+            // 値全体で見ると `"sales,hr"` は決して許可値にならず、**画面から集合を作れない**
+            // （その集合を部分集合判定〔ADR-0062 決定 2〕が読む先で待っている）。
+            // 🔴 **単一値キーの判定は 1 文字も変えない** —— `clearance` の値に区切り文字を
+            // 見出すと、辞書外の値が要素として通り得る。
+            foreach (var element in UserAttributeEncoding.IsSetValued(key)
+                ? UserAttributeEncoding.SplitOrdered(value)
+                : [value])
+            {
+                if (!def.AllowedValues.Contains(element, StringComparer.OrdinalIgnoreCase))
+                    errors.Add($"属性 '{key}' の値 '{element}' は許可値に含まれません。");
+            }
         }
 
         return errors;

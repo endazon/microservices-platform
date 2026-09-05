@@ -284,6 +284,69 @@ public class AuthorizationServiceRegistrarAttributesTests
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // IADR-0386 (#1243): 登録者のタグは畳まれない（集合として届く）
+    // ─────────────────────────────────────────────────────────────────────────
+    //
+    // 🔴 **稼働で実測された欠陥**（#1185 の再測。`tags=sales,hr` の登録者へ `finance` を要求した
+    // ところ「登録者が持つタグは 'sales' です」と返り、**`hr` が消えていた**）。上流の
+    // `KeycloakIdentityAdminClient` が多値を先頭 1 値へ畳んでいたのが原因である。
+    // ここでは**名簿がタグ集合を線上表現で運んできたとき、判定まで集合のまま届く**ことを固定する。
+    //
+    // 🔴 **変異試験**: 契約側 `UserAttributeEncoding.Split` を「分割しない」（値 1 つの集合を返す）
+    // へ戻すと、下の陽性 2 本が落ちる。**陰性 1 本は緑のまま通る**（＝「常に配れる」実装ではない）。
+    private const string OpenScope = """{"userId":"tanaka","allowedFilters":[],"granted":true}""";
+
+    [Theory]
+    // 正準形（Keycloak の多値配列を連結したもの）
+    [InlineData("sales,hr")]
+    // 人手入力の揺れ・順序違い。**どれも同じ集合である。**
+    [InlineData("hr, sales")]
+    [InlineData("sales hr")]
+    public async Task 登録者のタグ集合は先頭一値へ畳まれない(string tags)
+    {
+        var registrar = await ResolveAsync(OpenScope, tags);
+
+        registrar.Tags.Should().BeEquivalentTo(["sales", "hr"]);
+
+        // 陽性: **2 つ目のタグを配れる**（従前はここが 400 になっていた）。
+        ServiceAccountAttributeSubset.Validate(
+            "sa-batch", new Dictionary<string, string> { ["tags"] = "hr" }, registrar)
+            .Should().BeEmpty("登録者は hr を持っている");
+
+        // 陽性: 両方まとめても配れる。
+        ServiceAccountAttributeSubset.Validate(
+            "sa-batch", new Dictionary<string, string> { ["tags"] = "sales,hr" }, registrar)
+            .Should().BeEmpty();
+    }
+
+    // 🔴 **陰性対照（対で置く）。** 集合が広がったのであって、判定が緩んだのではない。
+    [Fact]
+    public async Task 登録者が持たないタグは配れない()
+    {
+        var registrar = await ResolveAsync(OpenScope, "sales,hr");
+
+        ServiceAccountAttributeSubset.Validate(
+            "sa-batch", new Dictionary<string, string> { ["tags"] = "sales,finance" }, registrar)
+            .Should().ContainSingle().Which.Should()
+            // **差集合だけを名指す** —— 外れていない `sales` を拒否理由の側へ混ぜない
+            // （登録者が持つ集合の列挙としては現れる。それは理由ではなく手掛かりである）。
+            .StartWith("tags の値 'finance' は割り当てられません")
+            .And.Contain("登録者が持つタグは 'hr', 'sales' です");
+    }
+
+    // タグを 1 つも持たない登録者は 1 つも配れない（従来どおり。空集合は「引けなかった」ではない）。
+    [Fact]
+    public async Task タグを持たない登録者は何も配れない()
+    {
+        var registrar = await ResolveAsync(OpenScope);
+
+        registrar.Tags.Should().BeEmpty();
+        ServiceAccountAttributeSubset.Validate(
+            "sa-batch", new Dictionary<string, string> { ["tags"] = "sales" }, registrar)
+            .Should().ContainSingle().Which.Should().Contain("sales").And.Contain("ありません");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // 受け入れ基準 6: 実行時の一律除外は本変更と**独立**であり、二重に掛かる
     // ─────────────────────────────────────────────────────────────────────────
     //

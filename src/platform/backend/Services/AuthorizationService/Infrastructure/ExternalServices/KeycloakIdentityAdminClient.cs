@@ -1,4 +1,5 @@
 using AuthorizationService.Domain.Ports;
+using Platform.Shared.Contracts.Dtos;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -85,9 +86,16 @@ public sealed class KeycloakIdentityAdminClient(
         // Keycloak のユーザー属性は多値（キー → 値の配列）である。契約側は 1 キー 1 値なので
         // 単一要素の配列へ写す。**判定側（BffScopeResolver）も 1 値しか読まない**ので、
         // ここで多値を作ると読まれない値が静かに増える。
+        //
+        // IADR-0386 (#1243): **ただし集合値キー（tags / projects）は分割して多値で書く**（正準形）。
+        // 読み戻しは同じ線上表現へ連結されるので `EnsureAttributesWereApplied` の突合は保たれる。
         var payload = new Dictionary<string, object?>
         {
-            ["attributes"] = attributes.ToDictionary(kv => kv.Key, kv => new[] { kv.Value }),
+            ["attributes"] = attributes.ToDictionary(
+                kv => kv.Key,
+                kv => UserAttributeEncoding.IsSetValued(kv.Key)
+                    ? UserAttributeEncoding.SplitOrdered(kv.Value).ToArray()
+                    : new[] { kv.Value }),
         };
         var updated = await UpdateAndReloadAsync(client, userId, payload, ct);
         if (updated is not null) EnsureAttributesWereApplied(attributes, updated);
@@ -254,7 +262,19 @@ public sealed class KeycloakIdentityAdminClient(
         var attributes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (key, values) in user.Attributes ?? [])
         {
-            // 多値属性は**先頭だけを読む**（判定側が 1 値しか読まないため。上の注記を参照）。
+            // IADR-0386 (#1243): **集合値キー（tags / projects）は連結する。**
+            // 従前は一律に先頭 1 値へ畳んでおり、`["sales","hr"]` の `hr` が静かに消えていた
+            // （部分集合判定は fail-closed 側へ倒れるが、**拒否理由が嘘になる**）。
+            if (UserAttributeEncoding.IsSetValued(key))
+            {
+                var joined = UserAttributeEncoding.Join(values ?? []);
+                if (joined.Length > 0) attributes[key] = joined;
+                continue;
+            }
+
+            // 単一値キーは**従来どおり先頭だけを読む**（判定側が 1 値しか読まないため。上の注記を参照）。
+            // 🔴 ここを一律に連結へ変えると `clearance: ["internal","public"]` が
+            // `"internal,public"` になり、階段ポリシーがどれもマッチしなくなる（静かに壊れる）。
             var first = values?.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
             if (first is not null) attributes[key] = first;
         }
