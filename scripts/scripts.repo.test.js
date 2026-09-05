@@ -2417,6 +2417,57 @@ module.exports = ({ ok, assert }) => {
     assert.doesNotMatch(String(after.stdout), /VersionOverride を [1-9]/);
   });
 
+  // --- check-proto-contracts: east-west gRPC の proto 契約（Issue #1201 / IADR-0379 決定 2） -----
+  //
+  // 本体の網羅的な検査（規約の正例・負例・変異試験 12 件）は当該スクリプトの `--self-test` が持つ。
+  // ここでは (1) 自己試験が必ず走ること、(2) 実データの素実行が exit 0 であること、
+  // (3) baseline 側の改変で「破壊的変更が exit 1 になる出力経路」が実ツリーで生きていること、を固定する。
+  {
+    const proto = require('./check-proto-contracts.js');
+
+    ok('proto 契約: --self-test は exit 0（変異試験を含む）', () => {
+      const { spawnSync } = require('child_process');
+      const r = spawnSync(process.execPath, [path.join(__dirname, 'check-proto-contracts.js'), '--self-test'],
+        { encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, `self-test が失敗:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('proto 契約: 実データは規約違反 0・baseline と差分なし（素実行 exit 0）', () => {
+      const { spawnSync } = require('child_process');
+      const r = spawnSync(process.execPath, [path.join(__dirname, 'check-proto-contracts.js')], { encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, `素実行が失敗:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    // 変異試験（走査経路つき）: baseline 側へ「実在しないフィールド」を足すと、実ツリーとの差分は
+    // フィールドの削除（＝破壊的。しかも reserved 無し）として現れる。実ファイル（契約そのもの）は書き換えない。
+    ok('proto 契約: baseline に無いフィールドの削除は素実行で exit 1（reserved 不在は承認でも通らない）', () => {
+      const { spawnSync } = require('child_process');
+      const baselinePath = path.join(__dirname, 'proto-contract-baseline.json');
+      const orig = fs.readFileSync(baselinePath, 'utf8');
+      try {
+        const b = JSON.parse(orig);
+        const rel = Object.keys(b.files)[0];
+        const msg = Object.keys(b.files[rel].messages)[0];
+        b.files[rel].messages[msg].fields.__probe = { number: 999, type: 'string', label: 'singular' };
+        fs.writeFileSync(baselinePath, JSON.stringify(b, null, 2) + '\n');
+        const r = spawnSync(process.execPath, [path.join(__dirname, 'check-proto-contracts.js')], { encoding: 'utf8' });
+        assert.strictEqual(r.status, 1, `破壊的変更で exit ${r.status}`);
+        assert.match(String(r.stderr), /reserved に残す/);
+        assert.match(String(r.stderr), new RegExp(`field:${msg.replace(/\./g, '\\.')}\\.__probe`));
+      } finally {
+        fs.writeFileSync(baselinePath, orig);
+      }
+    });
+
+    ok('proto 契約: 純関数の compareSnapshots が番号の付け替えを破壊的と判定する', () => {
+      const a = { 'x.proto': proto.normalize(proto.parseProto('syntax = "proto3"; package platform.x.v1; option csharp_namespace = "P.Grpc.X.V1"; message M { string a = 1; }')) };
+      const b = { 'x.proto': proto.normalize(proto.parseProto('syntax = "proto3"; package platform.x.v1; option csharp_namespace = "P.Grpc.X.V1"; message M { string a = 2; }')) };
+      const r = proto.compareSnapshots(a, b);
+      assert.strictEqual(r.breaking.length, 1);
+      assert.strictEqual(r.breaking[0].key, 'field:M.a');
+    });
+  }
+
   // --- check-contract-schema: Shared.Contracts の後方互換（Issue #465 / IADR-0122） -----
 
   const contracts = require('./check-contract-schema.js');
@@ -6289,7 +6340,12 @@ ${r.stderr}`);
         //    `manifest.json` の version しか見ない**ので、片方だけ上げるとビルドもテストも通ったまま
         //    利用者側で版が変わらない）を新設したため 49 → 50（ラチェットが設計どおり発火した）。
         //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
-        assert.strictEqual(scripts.length, 50, `検査器の母集合が 50 本から変わった（${scripts.length} 件）`);
+        // ★ #1201 / ADR-0075 / IADR-0379 で `check-proto-contracts.js`（proto の置き場と版付けの規約 ——
+        //    パッケージ名と `csharp_namespace` の対応・フィールド番号の不変・削除時の `reserved` 必須・
+        //    破壊的変更は `v<N+1>` 並走。**gRPC は番号で結線するので、番号を再利用すると型が合ったまま
+        //    意味だけが入れ替わる**）を新設したため 50 → 51（ラチェットが設計どおり発火した）。
+        //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        assert.strictEqual(scripts.length, 51, `検査器の母集合が 51 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -8648,6 +8704,97 @@ ${r.stderr}`);
           mutant.failures.length,
           0,
           '判定を外しても陰性対照が落ちたままである ＝ この対照は所有 Job の状態判定を測っていない',
+        );
+      });
+    }
+
+    //
+    // FR-02 / FR-03 / #1215 / [[IADR-0382]]: 検索の読み書き先の門（G13）。
+    //
+    // 🔴 **測っているのは「点の在り処」である。** #1215 の稼働クラスタは、点が
+    // `knowledge_chunks_deterministic_v1` に 3 件在るのに検索側は `knowledge_chunks_voyage_3_5`（0 点）を
+    // 読んでいた。**両サービスとも Ready のまま**検索だけが全件 0 件になり、`200 ＋ 空` は
+    // 「該当が無い」と区別できない（[[IADR-0255]]）ので、状態コードでも readiness でも捕まらない。
+    //
+    // 陽性・陰性を対で置き、**判定を外すと陰性が落ちる**ことを変異試験で確かめる。
+    //
+    {
+      const gate = require('./check-stack-ready.js');
+      const contractG13 = gate.searchIndexContract(REPO_IS);
+      const schemaOfG13 = (c) => Object.fromEntries(c.fields.map((f) => [f.key, {
+        data_type: 'text',
+        params: {
+          type: 'text', tokenizer: f.tokenizer, min_token_len: f.minTokenLen,
+          max_token_len: f.maxTokenLen, lowercase: f.lowercase,
+        },
+      }]));
+      // 稼働（2026-09-05 実測）と同じ形。読み先＝deterministic、点は 3 / 0 / 0。
+      const collectionsG13 = (readPoints, otherPoints) => [
+        { name: 'col_read', pointsCount: readPoints, payloadSchema: schemaOfG13(contractG13) },
+        { name: 'col_other', pointsCount: otherPoints, payloadSchema: schemaOfG13(contractG13) },
+      ];
+      const evalG13 = (mod, collections) => mod.evaluateSearchCollection({
+        contract: contractG13,
+        appsettingsName: 'col_default',
+        liveOverrides: [{ deploy: 'retrieval-service', name: 'col_read' }],
+        collections,
+        collectionsError: null,
+        expectPoints: false,
+      });
+
+      ok('FR-03 / #1215: 索引の期待値を**アプリの実装から**走査している（値を検査器へ書き写していない）', () => {
+        assert.ok(contractG13, 'QdrantIngestionVectorStore から索引パラメータを読めていない');
+        assert.strictEqual(contractG13.fields.length, 2, '`text` / `text_ngram` の 2 系統になっていない');
+        const gateSrc = fs.readFileSync(path.join(REPO_IS, 'scripts/check-stack-ready.js'), 'utf8');
+        for (const f of contractG13.fields) {
+          assert.ok(
+            !new RegExp(`['"\`]${f.tokenizer}['"\`]`).test(gateSrc),
+            `検査器が tokenizer '${f.tokenizer}' を直書きしている。実装が変えたとき静かに空回りする`,
+          );
+        }
+      });
+
+      ok('FR-03 / #1215 陽性対照: 検索側の読み先に点が在り索引も宣言どおりなら通る', () => {
+        assert.deepStrictEqual(evalG13(gate, collectionsG13(3, 0)).failures, []);
+      });
+
+      ok('FR-03 / #1215 陰性対照: 点が別のコレクションに在り検索側が 0 点なら赤になる', () => {
+        const r = evalG13(gate, collectionsG13(0, 3));
+        assert.strictEqual(r.failures.length, 1, r.failures.join(' / '));
+        assert.ok(/食い違っている/.test(r.failures[0]), `乖離を名指ししていない: ${r.failures[0]}`);
+      });
+
+      ok('FR-03 / #1215: 走査が壊れている（0 件・詳細を読めない）を緑にしない', () => {
+        assert.ok(evalG13(gate, []).failures.some((f) => /1 件も無い/.test(f)), '0 件が緑になっている');
+        assert.ok(
+          evalG13(gate, [{ name: 'col_read', pointsCount: null, payloadSchema: null, error: 'x' }])
+            .failures.some((f) => /詳細を読めなかった/.test(f)),
+          '測れていないことが緑になっている',
+        );
+      });
+
+      // 🔴 **変異試験（源泉を書き換える本物）。** (e) の判定を「点の在り処を見ない」形へ差し替えた
+      // check-stack-ready.js を実際にコンパイルして走らせ、**陰性対照が落ちなくなる**ことを見る。
+      // これが無いと、上の陽性対照は「常に緑を返す実装」でも通ってしまう。
+      ok('FR-03 / #1215 変異試験: 点の在り処の判定を外すと陰性対照が落ちる', () => {
+        const Module = require('module');
+        const gateSrc = fs.readFileSync(path.join(REPO_IS, 'scripts/check-stack-ready.js'), 'utf8');
+        const NEEDLE = '  } else if (withPoints.length > 0) {';
+        assert.ok(gateSrc.includes(NEEDLE), '変異点が見つからない（実装が変わったら変異試験も直すこと）');
+        // 変異体: 「点が在るのに検索側が 0 点」の枝へ二度と入らないようにする。
+        const mutantSrc = gateSrc.replace(NEEDLE, '  } else if (false /* 変異: 点の在り処を見ない */) {');
+        assert.notStrictEqual(mutantSrc, gateSrc, '変異が当たっていない');
+
+        const m = new Module('check-stack-ready-mutant-g13', module);
+        m.filename = path.join(REPO_IS, 'scripts', 'check-stack-ready.js');
+        m.paths = Module._nodeModulePaths(path.join(REPO_IS, 'scripts'));
+        m._compile(mutantSrc, m.filename);
+
+        assert.strictEqual(evalG13(gate, collectionsG13(0, 3)).failures.length, 1, '本実装が陰性対照を捕まえていない');
+        assert.strictEqual(
+          evalG13(m.exports, collectionsG13(0, 3)).failures.length,
+          0,
+          '判定を外しても陰性対照が落ちたままである ＝ この対照は点の在り処を測っていない',
         );
       });
     }

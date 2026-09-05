@@ -1,8 +1,10 @@
 using AuthorizationService.Features.Authz;
+using AuthorizationService.Features.Authz.ResolveScope;
 using AuthorizationService.Features.Users;
 using AuthorizationService.Infrastructure.ExternalServices;
 using AuthorizationService.Infrastructure.Persistence;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Microsoft.EntityFrameworkCore;
@@ -15,6 +17,9 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);
+// NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 3 (#1201): east-west gRPC の h2c リスナ（`Grpc:Port`。
+// 未設定なら立てない）。HTTP/1.1 のポート（REST・/health/*）はそのまま残る。
+builder.AddPlatformGrpcListener();
 // NFR, #1012: 接続先は構成から受け取る。**既定の資格情報を埋め込まない。**
 // 埋め込むと、構成の注入漏れが「起動失敗」ではなく「既定の資格情報で接続成功」へ倒れ、
 // 誤った DB へ書き込んだまま健全に見える。ここで落ちれば配備の誤りはその場で判る。
@@ -63,6 +68,9 @@ app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapAuthzEndpoints();
+// FR-05, ADR-0029, ADR-0075, IADR-0379 (#1201): `/authz/scope` の gRPC 面（参照実装）。REST と同じ評価器を呼ぶ。
+// 呼び出し側サービスの資格情報（ServiceCaller ポリシー）を要求する —— 利用者のトークンでは通らない。
+app.MapGrpcService<AuthzScopeGrpcService>();
 // FR-05, FR-09, UC-05, SC-17: 利用者アカウント管理（AdminOnly）。
 app.MapUserAdminEndpoints();
 

@@ -40,12 +40,19 @@ namespace GraphService.Features.GraphDocuments.Sync;
 // - **本文が取れないときは辺を一切触らない**（IGraphContentReader が null を返す）。プレースホルダー
 //   本文で抽出すると「全リンクが消えた」と解釈され、既存の自動抽出の辺が全消しになる。
 //
+// ## 語の出現数（類似度候補の材料。IADR-0380 / #1244）
+//
+// 同じ指紋の変化を契機に、**同じ 1 回の本文読み取り**から語の出現数（TermProfileSynchronizer）を作り直す。
+// 本文が取れなければ表題だけで作る（辺と違い「消える」ものが無いので縮退してよい）。指紋が変わらなくても
+// 出現数の行が無い文書には表題から作る（既存文書の初回。backfill の代わり）。
+//
 // 失敗時: 例外を送出し、Wolverine のリトライ／デッドレター（UsePlatformMessagingDefaults）へ委ねる。
 public class GraphDocumentSyncConsumer(
     GraphDbContext db,
     TimeProvider clock,
     IGraphContentReader content,
     LinkEdgeSynchronizer links,
+    TermProfileSynchronizer termProfiles,
     ILogger<GraphDocumentSyncConsumer> logger) : IPipelineStep<DocumentUpdated>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
@@ -81,6 +88,8 @@ public class GraphDocumentSyncConsumer(
         // 変更の判定は指紋の変化**のみ**（ADR-0050 決定 2）。
         var reinstated = 0;
         var linkSync = default(LinkEdgeSynchronizer.SyncResult);
+        // IADR-0380: 出現数をどう扱ったか（ログ用）。body / title / kept のいずれか。
+        string termProfile;
         if (ev.ContentFingerprint is not null
             && !string.Equals(previousHash, ev.ContentFingerprint, StringComparison.Ordinal))
         {
@@ -99,14 +108,29 @@ public class GraphDocumentSyncConsumer(
             {
                 linkSync = await links.SyncAsync(ev.DocumentId, body, ct);
             }
+
+            // IADR-0380 (#1244): 同じ 1 回の読み取りから語の出現数を作り直す。本文が無ければ表題だけ。
+            await termProfiles.UpsertAsync(
+                ev.DocumentId, ev.Title, body, ev.ContentFingerprint, ev.UpdatedAt, ct);
+            termProfile = body is null ? "title" : "body";
+        }
+        else if (!await termProfiles.ExistsAsync(ev.DocumentId, ct))
+        {
+            // 既存文書の初回（または指紋不明）。本文は読まない（ADR-0050 決定 3 の契機を増やさない）。
+            await termProfiles.UpsertAsync(ev.DocumentId, ev.Title, null, node.BodyHash, ev.UpdatedAt, ct);
+            termProfile = "title";
+        }
+        else
+        {
+            termProfile = "kept";
         }
 
         await db.SaveChangesAsync(ct);
         logger.LogInformation(
             "Synced graph document {DocumentId} (attributes={AttributeCount} reinstated={Reinstated} "
-            + "links={Links} edgesAdded={Added} edgesRemoved={Removed})",
+            + "links={Links} edgesAdded={Added} edgesRemoved={Removed} termProfile={TermProfile})",
             ev.DocumentId, ev.Attributes.Count, reinstated,
-            linkSync.Extracted, linkSync.Added, linkSync.Removed);
+            linkSync.Extracted, linkSync.Added, linkSync.Removed, termProfile);
     }
 
     // 当該文書を端点とする却下済み提案について、**現在の**両端指紋で解除判定を行う。
