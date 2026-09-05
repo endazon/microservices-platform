@@ -25,6 +25,10 @@ public class TestAuthHandler(
     // **既定の挙動（常に認証成功）は変えない**（既存テストへ影響させない）。
     public const string AnonymousHeader = "X-Test-Anonymous";
 
+    // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 主体のクライアント識別子（`azp`）を差し替える。
+    // 合成監視の標識は**検証済み JWT の主体**で判定するため、受け口側の多層防御を測るのに要る。
+    public const string ClientIdHeader = "X-Test-Client-Id";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         if (Request.Headers.ContainsKey(AnonymousHeader))
@@ -36,6 +40,12 @@ public class TestAuthHandler(
 
         var claims = new List<Claim> { new(ClaimTypes.Name, "test-user") };
         claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
+        // #1203: Keycloak のトークンは呼び出し元クライアントを `azp` で名乗る。
+        if (Request.Headers.TryGetValue(ClientIdHeader, out var clientId)
+            && !string.IsNullOrWhiteSpace(clientId.ToString()))
+        {
+            claims.Add(new Claim("azp", clientId.ToString()));
+        }
 
         var identity = new ClaimsIdentity(claims, SchemeName);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName);
