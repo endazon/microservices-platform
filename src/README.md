@@ -24,7 +24,7 @@ src/
   platform/                    ← 基盤ユニット（本リポジトリの主成果物）
     backend/
       backend.slnx
-      Shared/                  ←   契約（Shared.Contracts）・横断基盤（Shared.Infrastructure）
+      Shared/                  ←   契約（Shared.Contracts = REST の DTO ＋ east-west gRPC の proto `Protos/<unit>/<service>/v<N>/`。IADR-0379）・横断基盤（Shared.Infrastructure）
       Bff/                     ←   エッジ集約（フロントエンドの唯一の入口）
       Services/                ←   基盤サービス（AuthorizationService = ABAC / LlmGateway = LLM エグレス統制）
     frontend/                  ←   SPA 基盤（アプリホスト + foundation。可変ユニットの features を合成）

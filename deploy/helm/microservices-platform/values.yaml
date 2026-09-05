@@ -379,6 +379,13 @@ services:
     image: microservices-platform/authorization-service
     tag: latest
     port: 8080
+    # NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 (#1201): east-west gRPC 用の h2c ポート
+    # （TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。設定したサービスにだけ containerPort（名前 grpc）・
+    # Service ポート（appProtocol: grpc）・env Grpc__Port が描画される。**readiness は 8080 の /health/ready
+    # のまま** —— 1 プロセスが両ポートを起動時に bind するので、8080 が ready なら 8081 も bind 済みである。
+    # メッシュ内の mTLS はサイドカーが終端し、アプリには平文 h2c が届く（PERMISSIVE / STRICT で同じ）。
+    # 参照実装は AuthorizationService だけ。他サービスへの展開は別 issue。
+    grpcPort: 8081
     # SC-17, IADR-0301 決定 3 (#452) / IADR-0329 (#1101): 利用者アカウント管理の反映先。
     # **既定は無く、宣言が必須**（未設定なら Pod が起動時に落ちる）。
     #
