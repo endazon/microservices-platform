@@ -318,6 +318,13 @@ services:
     # （バックグラウンドワーカーは /health/* を持たず、可用性判定に HTTP プローブが不適なため）。
     port: 8080
     worker: true
+    # FR-02 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0397 (#1255): east-west gRPC の
+    # 呼び出し側資格情報。realm の confidential client `ingestion-service`（service account ＋
+    # realm ロール platform-service のみ。ABAC ポリシーは持たない）。
+    serviceToken:
+      clientId: ingestion-service
+      existingSecret: ingestion-service-token
+      clientSecretKey: client-secret
     # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先。
     # 🔴 **k8s の Service 名は `llmgateway-service` である**（chart のキー `llmgateway` ＋ `-service`）。
     # コード既定・appsettings の `http://llm-gateway:...` は **compose のサービス名**であり、
@@ -325,6 +332,11 @@ services:
     extraEnv:
       - name: Services__LlmGateway
         value: "http://llmgateway-service:8080"
+      # FR-02 / NFR-16, IADR-0397 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
+      # 埋め込みが gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # ポートは llmgateway.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
+      - name: Services__LlmGatewayGrpc
+        value: "http://llmgateway-service:8081"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
@@ -339,6 +351,13 @@ services:
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
     messaging: true
     port: 8080
+    # FR-03 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0397 (#1255): east-west gRPC の
+    # 呼び出し側資格情報。realm の confidential client `retrieval-service`（service account ＋
+    # realm ロール platform-service のみ。ABAC ポリシーは持たない）。
+    serviceToken:
+      clientId: retrieval-service
+      existingSecret: retrieval-service-token
+      clientSecretKey: client-secret
     # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先。
     # 🔴 **k8s の Service 名は `llmgateway-service` である**（chart のキー `llmgateway` ＋ `-service`）。
     # コード既定・appsettings の `http://llm-gateway:...` は **compose のサービス名**であり、
@@ -346,6 +365,10 @@ services:
     extraEnv:
       - name: Services__LlmGateway
         value: "http://llmgateway-service:8080"
+      # FR-03 / NFR-16, IADR-0397 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
+      # クエリ埋め込みが gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      - name: Services__LlmGatewayGrpc
+        value: "http://llmgateway-service:8081"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
@@ -459,6 +482,14 @@ services:
     image: microservices-platform/llm-gateway
     tag: latest
     port: 8080
+    # FR-02 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0397 (#1255):
+    # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
+    # 設定したサービスにだけ containerPort（名前 grpc）・Service ポート（appProtocol: grpc）・
+    # env Grpc__Port が描画される。**readiness は 8080 の /health/ready のまま** —— 1 プロセスが
+    # 両ポートを起動時に bind するので、8080 が ready なら 8081 も bind 済みである。
+    # 現時点で開いているのは埋め込み（platform.llmgateway.v1.LlmEmbedding）だけで、
+    # テキスト生成（/complete 系）は後続 PR である。
+    grpcPort: 8081
     # FR-02, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み（Ruri v3）の配線対象。
     # embedding.enabled=true のとき deployment.yaml が Embedding__SelfHosted__BaseUrl と
     # Embedding__Routing__Endpoints__1__Enabled=true を注入する。既定は embedding.enabled=false で非描画＝現状維持。

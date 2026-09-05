@@ -116,6 +116,110 @@
           }
         }
       }
+    },
+    "src/platform/backend/Shared/Platform.Shared.Contracts/Protos/platform/llmgateway/v1/embedding.proto": {
+      "syntax": "proto3",
+      "package": "platform.llmgateway.v1",
+      "csharpNamespace": "Platform.Shared.Contracts.Grpc.LlmGateway.V1",
+      "imports": [],
+      "messages": {
+        "EmbedRequest": {
+          "fields": {
+            "confidentiality": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            },
+            "purpose": {
+              "number": 3,
+              "type": "EmbedPurpose",
+              "label": "singular"
+            },
+            "text": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "EmbedResponse": {
+          "fields": {
+            "collection": {
+              "number": 4,
+              "type": "string",
+              "label": "singular"
+            },
+            "dimensions": {
+              "number": 2,
+              "type": "int32",
+              "label": "singular"
+            },
+            "embedded": {
+              "number": 5,
+              "type": "bool",
+              "label": "singular"
+            },
+            "endpoint": {
+              "number": 6,
+              "type": "string",
+              "label": "singular"
+            },
+            "model": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            },
+            "retryable": {
+              "number": 8,
+              "type": "bool",
+              "label": "singular"
+            },
+            "routing_reason": {
+              "number": 7,
+              "type": "string",
+              "label": "singular"
+            },
+            "vector": {
+              "number": 1,
+              "type": "float",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "enums": {
+        "EmbedPurpose": {
+          "values": {
+            "EMBED_PURPOSE_INDEX": 1,
+            "EMBED_PURPOSE_QUERY": 2,
+            "EMBED_PURPOSE_UNSPECIFIED": 0
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "services": {
+        "LlmEmbedding": {
+          "rpcs": {
+            "Embed": {
+              "request": "EmbedRequest",
+              "response": "EmbedResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            }
+          }
+        }
+      }
     }
   }
 }

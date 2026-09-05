@@ -1,6 +1,7 @@
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
+using Platform.Shared.Infrastructure.Foundation.Llm;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Qdrant.Client;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -55,8 +56,17 @@ builder.Services.AddSingleton<IVectorStore, QdrantVectorStore>();
 builder.Services.AddSingleton<KeywordSearchMetrics>();
 
 // ADR-0013: 埋め込みサービス（LLM ゲートウェイ経由）
-builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(c =>
-    c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"));
+//
+// FR-03, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0397 (#1255): east-west gRPC への切替。
+// **並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス）が構成されたときだけ
+// 生成クライアントが登録され、そのときに限り gRPC 実装を使う。無ければ従来の HTTP 実装のまま
+// （戻すのは構成を外すだけ。コードは変えない）。
+builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
+if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
+    builder.Services.AddSingleton<IEmbeddingService, LlmGatewayGrpcEmbeddingService>();
+else
+    builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(c =>
+        c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"));
 
 // FR-03, UC-01: ハイブリッド検索（ベクトル＋全文 RRF 統合）
 builder.Services.AddScoped<HybridSearchService>();

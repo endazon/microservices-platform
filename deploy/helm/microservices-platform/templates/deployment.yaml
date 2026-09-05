@@ -117,6 +117,27 @@ spec:
               value: {{ $.Values.global.auth.validIssuers | quote }}
           {{- end }}
           {{- end }}
+          {{- if $svc.serviceToken }}
+            # NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0397 (#1255):
+            # east-west gRPC の**呼び出し側**が名乗るための資格情報（platform realm の confidential client の
+            # client credentials）。gRPC の `authorization` メタデータへ載るのはこのトークンであり、
+            # **利用者のトークンではない**（載せると呼び出し先が「利用者が直接呼んだ」と区別できない）。
+            #
+            # 🔴 **これが無いと `ServiceTokenOptions.ClientSecret` が空のままになり、
+            # `ClientCredentialsServiceTokenProvider` が起動後の最初の呼び出しで例外を投げる**
+            # （BffSession__ClientSecret と同型の壊れ方。#1107）。単体テストは構成を自分で与えて走るので
+            # この欠落では落ちない —— だから `scripts/check-secret-injected-options.js` が機械で守る。
+            #
+            # ⚠️ 値は realm の当該 client の secret と**一致させること**（ズレると client_credentials が 401）。
+            - name: ServiceToken__ClientId
+              value: {{ $svc.serviceToken.clientId | quote }}
+            # 🔴 実値はチャートに書かない。Secret（Vault→ExternalSecret→Secret）から環境変数で注入する。
+            - name: ServiceToken__ClientSecret
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $svc.serviceToken.existingSecret }}
+                  key: {{ $svc.serviceToken.clientSecretKey }}
+          {{- end }}
           {{- if $pipelineMount }}
             # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成（ConfigMap マウント）の読み込み先。
             - name: Pipeline__ConfigPath

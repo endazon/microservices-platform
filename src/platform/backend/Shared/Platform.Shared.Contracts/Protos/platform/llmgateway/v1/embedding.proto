@@ -1,0 +1,56 @@
+// FR-02, FR-03, FR-05, NFR-09, ADR-0013, ADR-0016, ADR-0017, ADR-0029, ADR-0075, IADR-0379, IADR-0397 (#1255):
+// LlmGateway の埋め込み生成（REST `POST /embed` と同じ意味論）の gRPC 契約。
+//
+// ■ 置き場と所有（IADR-0379 決定 1）: 所有者は呼び出される側（LlmGateway）。置き場は所有サービスが属する
+//   ユニットの共有契約プロジェクト（Platform.Shared.Contracts）の `Protos/<unit>/<service>/v<N>/`。
+//   `GrpcServices="Both"` でクライアント・サーバ基底の両方をここから生成し、`*.Client` は作らない。
+// ■ versioning（IADR-0379 決定 2）: フィールド番号は不変。削除は番号と名前を reserved に残す。
+//   破壊的変更は v2 を並走させる（in-place で v1 を壊さない）。
+// ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT。
+//   利用者のトークンは載せない。本経路は利用者の文脈を持たない（REST の要求本文にも無い）。
+// ■ 🔴 proto3 に null は無い（IADR-0397 決定 3）。REST の DTO 既定はゲートウェイ側で明示的に写す ——
+//   EMBED_PURPOSE_UNSPECIFIED（proto3 の既定 0）は **INDEX** として扱う（EmbedApiRequest.Purpose の既定）。
+//   confidentiality の空文字は既存の SensitivityClasses.Parse が restricted（安全側）へ倒すので写し不要。
+syntax = "proto3";
+
+package platform.llmgateway.v1;
+
+option csharp_namespace = "Platform.Shared.Contracts.Grpc.LlmGateway.V1";
+
+// 埋め込み生成。REST `POST /embed` と**同じ判定器**（EmbedUseCase → IEmbeddingRouter.Route）を通す。
+service LlmEmbedding {
+  // 縮退（越境拒否・プロバイダ未登録・次元不整合・上流不調）は**エラーではなく embedded=false の応答**で表す
+  // （REST の 200 ＋ Embedded=false と同じ。retryable の意味も同じ）。
+  // RpcException になるのは s2s の面（UNAUTHENTICATED / PERMISSION_DENIED）と輸送不達（UNAVAILABLE）だけで、
+  // 呼び出し側はこれを**例外のまま上げる**（故障を「該当なし」に化けさせない。IADR-0256 決定 3）。
+  rpc Embed(EmbedRequest) returns (EmbedResponse);
+}
+
+// REST の EmbedPurpose と同じ意味（Index = 取り込み・fail-closed / Query = 検索・既定外部経路）。
+enum EmbedPurpose {
+  EMBED_PURPOSE_UNSPECIFIED = 0;
+  EMBED_PURPOSE_INDEX = 1;
+  EMBED_PURPOSE_QUERY = 2;
+}
+
+// REST の EmbedApiRequest と同じ形。
+message EmbedRequest {
+  string text = 1;
+  // 空文字・未知値は restricted（安全側）。
+  string confidentiality = 2;
+  EmbedPurpose purpose = 3;
+}
+
+// REST の EmbedApiResponse と同じ形。
+message EmbedResponse {
+  repeated float vector = 1;
+  int32 dimensions = 2;
+  string model = 3;
+  string collection = 4;
+  // false は送信拒否（fail-closed）・次元不整合・呼び出し失敗。呼び出し側は索引をスキップまたは再試行する。
+  bool embedded = 5;
+  string endpoint = 6;
+  string routing_reason = 7;
+  // true は一時的な障害（再試行へ回す）。恒久的な拒否は false。
+  bool retryable = 8;
+}

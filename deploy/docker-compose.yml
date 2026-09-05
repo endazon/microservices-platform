@@ -336,6 +336,15 @@ services:
       Qdrant__Host: qdrant
       Qdrant__Port: 6334
       Services__LlmGateway: http://llm-gateway:8080
+      # FR-02 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0397 (#1255): east-west gRPC。
+      # **`Services__LlmGatewayGrpc` が在るときだけ**埋め込みが gRPC 経路になる（無ければ上の REST のまま。
+      # 並走中の正は REST であり、戻すのはこの 1 行を消すだけでよい）。
+      # 🔴 compose のサービス名は `llm-gateway`（k8s の Service 名 `llmgateway-service` とは違う）。
+      Services__LlmGatewayGrpc: http://llm-gateway:8081
+      # s2s トークン（呼び出し側サービス自身の資格情報）。dev の値は realm import の置き場と同値
+      # （ズレると client_credentials が 401）。本番は Secret / Vault から注入し既定値は使わない。
+      ServiceToken__ClientId: ingestion-service
+      ServiceToken__ClientSecret: ${INGESTION_SERVICE_CLIENT_SECRET:-ingestion-service-dev-secret-change-me}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -360,6 +369,13 @@ services:
       Qdrant__Host: qdrant
       Qdrant__Port: 6334
       Services__LlmGateway: http://llm-gateway:8080
+      # FR-03 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0397 (#1255): east-west gRPC。
+      # **`Services__LlmGatewayGrpc` が在るときだけ**クエリ埋め込みが gRPC 経路になる
+      # （無ければ上の REST のまま。並走中の正は REST）。
+      Services__LlmGatewayGrpc: http://llm-gateway:8081
+      # s2s トークン（呼び出し側サービス自身の資格情報）。dev の値は realm import の置き場と同値。
+      ServiceToken__ClientId: retrieval-service
+      ServiceToken__ClientSecret: ${RETRIEVAL_SERVICE_CLIENT_SECRET:-retrieval-service-dev-secret-change-me}
     depends_on:
       qdrant:
         condition: service_healthy
@@ -517,10 +533,16 @@ services:
       context: ..
       dockerfile: src/platform/backend/Services/LlmGateway/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（/complete・/embed はサービス間呼び出し専用）
+    # FR-02 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0397 (#1255): 8081 は
+    # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用）。helm の grpcPort と同じ値。host へは公開しない。
     expose:
       - "8080"
+      - "8081"
     environment:
       <<: *common-env
+      # NFR-16, IADR-0379 決定 3, IADR-0397 (#1255): h2c リスナ。未設定ならリスナを立てない。
+      # readiness は 8080 のまま（1 プロセスが両ポートを起動時に bind する）。
+      Grpc__Port: "8081"
       Llm__ApiKey: ${ANTHROPIC_API_KEY:-}
       # ADR-0010 / ADR-0025 / IADR-0022 / IADR-0101: 既定は claude-opus-5
       # （定型 sonnet・haiku は用途別ルーティング）
