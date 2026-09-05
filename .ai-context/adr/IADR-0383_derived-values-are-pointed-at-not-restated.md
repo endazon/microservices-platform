@@ -1,5 +1,5 @@
 ---
-title: IADR-0384 木から導ける値は live 文書の本文に書かず正本を指す（腐った導出値は「書き直す」のではなく「外す」）
+title: IADR-0383 木から導ける値は live 文書の本文に書かず正本を指す（腐った導出値は「書き直す」のではなく「外す」）
 type: impl-adr
 status: Accepted
 related_ids:
@@ -21,7 +21,7 @@ plan_refs:
   - planning:projects/microservices-platform/06_technical/12_backend-application-stack.md ［2026-08-30 改定 / ADR-0065］
 ---
 
-# IADR-0384: 木から導ける値は live 文書の本文に書かず正本を指す
+# IADR-0383: 木から導ける値は live 文書の本文に書かず正本を指す
 
 - 状態: Accepted
 - 日付: 2026-09-05
