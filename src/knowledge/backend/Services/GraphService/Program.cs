@@ -1,4 +1,10 @@
+using FluentValidation;
 using GraphService.Infrastructure.ExternalServices;
+using GraphService.Features.AiSuggestions.List;
+using GraphService.Features.EdgeTypes.Create;
+using GraphService.Features.EdgeTypes.Rename;
+using GraphService.Features.Graph.CreateEdge;
+using GraphService.Features.Graph.Neighbors;
 using GraphService.Features.GraphDocuments.Delete;
 using GraphService.Features.GraphDocuments.Sync;
 using GraphService.Features.KnowledgeHealth.Report;
@@ -11,6 +17,7 @@ using GraphService.Common.Observability;
 using GraphService.Infrastructure.Persistence;
 using GraphService.Domain.Ports;
 using GraphService.Domain;
+using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
@@ -67,6 +74,15 @@ builder.Services.AddScoped<IGraphStore, EfGraphStore>();
 builder.Services.AddScoped<GraphTraversal>();
 // FR-18 (#914): 却下・解除の時刻。テストから固定できるよう TimeProvider を通す。
 builder.Services.AddSingleton(TimeProvider.System);
+
+// NFR, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0395:
+// 端点の入力検証。**アセンブリ走査（AddValidatorsFromAssembly）は使わない** —— 登録が暗黙になり、
+// 検証器を消しても起動時には何も起きず、端点が黙って無検証になる。1 行 1 検証器で明示登録する。
+builder.Services.AddScoped<IValidator<CreateGraphEdgeRequest>, CreateGraphEdgeValidator>();
+builder.Services.AddScoped<IValidator<NeighborsQuery>, NeighborsQueryValidator>();
+builder.Services.AddScoped<IValidator<CreateEdgeTypeRequest>, CreateEdgeTypeValidator>();
+builder.Services.AddScoped<IValidator<RenameEdgeTypeRequest>, RenameEdgeTypeValidator>();
+builder.Services.AddScoped<IValidator<ListAiSuggestionsQuery>, ListAiSuggestionsQueryValidator>();
 
 // FR-18, ADR-0010, ADR-0034 決定 5, ADR-0051, IADR-0266 (#915): AI 提案の生成。
 //
