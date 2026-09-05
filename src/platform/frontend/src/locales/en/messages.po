@@ -74,6 +74,10 @@ msgstr "{sourceTitle} → {targetTitle} ({typeName})"
 msgid "{sourceTitle} に「{tagValue}」を付与"
 msgstr "Add tag \"{tagValue}\" to {sourceTitle}"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "{sourceUserId} は {userId} に対応します"
+msgstr "{sourceUserId} maps to {userId}"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "{title} を選択"
 msgstr "Select {title}"
@@ -1765,6 +1769,10 @@ msgstr "Info"
 msgid "成功"
 msgstr "Success"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "所有者の写像"
+msgstr "Owner mapping"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 msgid "所有者の写像（ソース側の利用者 → 基盤の利用者）"
 msgstr "Owner mapping (source-side user -> platform user)"
@@ -1982,16 +1990,19 @@ msgid "新しい個人資料を作成する"
 msgstr "Create a new private note"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "既定のライフサイクル状態"
 msgstr "Default lifecycle state"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "既定の機密区分"
 msgstr "Default confidentiality"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "既定の部門"
 msgstr "Default department"
@@ -1999,6 +2010,10 @@ msgstr "Default department"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "既定属性"
 msgstr "Default attributes"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "既定属性と所有者の写像"
+msgstr "Default attributes and owner mapping"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 msgid "既定属性の編集"
@@ -2106,6 +2121,18 @@ msgstr "Unspecified"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。"
 msgstr "The default value {DEFAULT_LIFECYCLE} is used when left unspecified."
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "未登録（写像に無い利用者は予約値 {UNRESOLVED_OWNER} になります）"
+msgstr "Not registered (users missing from the mapping fall back to the reserved value {UNRESOLVED_OWNER})"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "未設定"
+msgstr "Not set"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "未設定（予約値 {UNRESOLVED_DEPARTMENT} が入ります）"
+msgstr "Not set (the reserved value {UNRESOLVED_DEPARTMENT} is used)"
 
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "本文"
