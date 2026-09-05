@@ -2,7 +2,7 @@
 title: 個人資料の露出 3 トグルを索引の生産側へ配線し、判定軸に doc_scope / owner / shared_with を載せる（#1184）
 type: spec
 status: done
-related_ids: [FR-19, FR-21, UC-11, SC-19, SC-20, ADR-0036, ADR-0046, ADR-0054, ADR-0057, ADR-0061, IADR-0122, IADR-0253, IADR-0270, IADR-0278, IADR-0283, IADR-0296, IADR-0358, IADR-0388, IADR-0394]
+related_ids: [FR-19, FR-21, UC-11, SC-19, SC-20, ADR-0036, ADR-0046, ADR-0054, ADR-0057, ADR-0061, IADR-0122, IADR-0253, IADR-0270, IADR-0278, IADR-0283, IADR-0296, IADR-0358, IADR-0388, IADR-0395]
 author: Claude
 created: 2026-09-05
 updated: 2026-09-05
@@ -96,7 +96,7 @@ $ grep -rn "発行しない" src docs .ai-context --include=*.cs --include=*.md 
 | `PrivateNoteEndpoints.cs:33`（「本経路は DocumentUpdated を発行しない」） | **書き換える** |
 | `SetExposure/Endpoint.cs:8`（「依然として発行しない」） | **書き換える** |
 | `docs/functional/FR-19_private-notes.md:76` | **書き換える** |
-| `.ai-context/adr/IADR-0270.md`（決定 5 本体） | **本文は書き換えない。**日付つき追記で後継 `IADR-0394` を併記する |
+| `.ai-context/adr/IADR-0270.md`（決定 5 本体） | **本文は書き換えない。**日付つき追記で後継 `IADR-0395` を併記する |
 | `.ai-context/adr/IADR-0283.md:50,179` | 同上（追記のみ） |
 | `.ai-context/specs/20260828_issue-447_*.md` | **確定済み仕様書。書き換えない**（凍結の射程。`traceability.repo.md`） |
 | `IngestionService/Tests/.../DocumentUpdatedConsumerTests.cs:217` | 別事象（埋め込み一時障害）。**対象外** |
@@ -118,7 +118,7 @@ $ grep -rn "発行しない" src docs .ai-context --include=*.cs --include=*.md 
 `IsIndexable` は**定義そのものが 3 つの選言**（`IsSearchAllowed || IsGraphAllowed || IsAiAllowed`）である。
 片方だけ改名されて静かに無効化される形にならない。
 
-## 3. 決定（詳細は `IADR-0394`）
+## 3. 決定（詳細は `IADR-0395`）
 
 1. 属性キーは `search_exposure` / `graph_exposure` / `ai_input`（既存）。値は `included` / `excluded` の 2 値。
    **否定形の名前を新たに持ち込まない**（`#1253` / `#1254` が `bodyAbsent` → `hasBody` で寄せた向きと同じ）。
@@ -156,6 +156,6 @@ $ grep -rn "発行しない" src docs .ai-context --include=*.cs --include=*.md 
   露出トグルがどれか 1 つでも ON のものは 0 件**である（`document_svc."PrivateNotes"`）。
   索引側も `attributes.doc_scope = private-note` の点は 0 件で、陽性対照
   （`attributes.confidentiality = public` → 全 6 件）でフィルタの経路が生きていることを確かめた。
-  **したがって遡及索引の対象は 0 件であり、backfill は書かない。**（出力は `IADR-0394` §結果）
+  **したがって遡及索引の対象は 0 件であり、backfill は書かない。**（出力は `IADR-0395` §結果）
 - 露出トグルの**画面は既に在る**（SC-19 の一覧の「露出」列）。したがって本作業の配線は
   着地と同時に利用者の手に届く —— 「口が無いから当面は影響が無い」と考えないこと。

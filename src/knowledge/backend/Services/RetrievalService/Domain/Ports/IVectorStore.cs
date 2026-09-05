@@ -76,7 +76,7 @@ public record ChunkPayload(
     // **本実装と Qdrant 実装の双方が同じ射影を通すこと** —— 片方だけだと
     // 「テストは緑・本番はメタデータが本文として漏れる」になる（IADR-0014 と同型）。
     bool HasBody = true,
-    // FR-19, FR-20, ADR-0036 D-06, ADR-0061 決定 5 / [[IADR-0394]] 決定 3 (#1184):
+    // FR-19, FR-20, ADR-0036 D-06, ADR-0061 決定 5 / [[IADR-0395]] 決定 3 (#1184):
     // 共有先（`shared_with`）。**属性辞書ではなく `Tags` と同じリスト**で持つ ——
     // 単一値では集合を表せないためで、絞り込みは「いずれか一致」になる
     // （`AttributeValueKeys.IsListValued` が両実装の意味論を 1 つに保つ）。

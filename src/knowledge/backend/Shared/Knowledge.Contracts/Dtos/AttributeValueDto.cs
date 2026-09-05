@@ -47,7 +47,7 @@ public static class AttributeValueKeys
     // facet のキーはドット記法で `attributes.<key>` を指す。
     public const string AttributesPrefix = "attributes";
 
-    // FR-19, FR-20, ADR-0036 D-06, ADR-0061 決定 5 / [[IADR-0394]] 決定 3 (#1184):
+    // FR-19, FR-20, ADR-0036 D-06, ADR-0061 決定 5 / [[IADR-0395]] 決定 3 (#1184):
     // **共有先はリスト項目 `shared_with` に入る**（`tags` と同じ最上位・同じ表現）。
     //
     // 🔴 **属性（`attributes -> { k: v }`）には置けない。** 値が単一文字列であり集合を持てないためで、

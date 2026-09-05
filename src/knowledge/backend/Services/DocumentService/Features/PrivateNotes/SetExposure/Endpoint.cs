@@ -7,7 +7,7 @@ namespace DocumentService.Features.PrivateNotes.SetExposure;
 
 // FR-19, SC-20, ADR-0061 決定 1〜4: 露出 3 トグル（横断検索／グラフ／AI 入力）。既定 OFF・独立に設定できる。
 //
-// **［#1184］本経路は `DocumentUpdated` を発行する**（[[IADR-0394]] 決定 4。
+// **［#1184］本経路は `DocumentUpdated` を発行する**（[[IADR-0395]] 決定 4。
 // [[IADR-0270]] 決定 5 の「発行しない」は本 ADR で解除された —— 旧 ID は残し、後継を併記する）。
 // 発行の条件は 2 つだけである。
 //

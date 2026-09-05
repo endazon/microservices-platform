@@ -34,13 +34,13 @@ public record DocumentUpdated(
     bool HasBody = true,
     string? OriginalPath = null,
     string? DataSourceName = null,
-    // FR-19, FR-20, ADR-0036 D-06, ADR-0061 決定 5 / [[IADR-0394]] 決定 3 (#1184):
+    // FR-19, FR-20, ADR-0036 D-06, ADR-0061 決定 5 / [[IADR-0395]] 決定 3 (#1184):
     // **共有先（`shared_with`）の被共有主体の識別子。**
     //
     // 🔴 **属性辞書（`Attributes`）では運べない。** 値が単一文字列であり集合を持てないためで、
     // 共有は属性とライフサイクルも違う（付与・取り消し・監査が要る。[[IADR-0253]] 決定 4）。
     // したがって**イベントの独立した項目**として運び、索引ペイロードには `Tags` と同じ
-    // **最上位のリスト項目 `shared_with`** として載る（[[IADR-0394]] 決定 3）。
+    // **最上位のリスト項目 `shared_with`** として載る（[[IADR-0395]] 決定 3）。
     //
     // ADR-0061 決定 5 が名指した判定軸のうち、`doc_scope` / `owner` は属性辞書で既に届いており、
     // **届く手段が無かったのはこれ 1 つである。** 🔴 **決定 6: `confidentiality` だけで

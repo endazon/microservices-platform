@@ -181,8 +181,8 @@ IADR-0296 決定 4 の限界（既存文書の資産を遡及付与しない）�
 ［2026-09-05 追記 / #1184］🔴 **決定 5（個人資料は `DocumentUpdated` を発行しない）は解除された。**
 計画 `ADR-0061`（planning#492）が「露出 3 トグルのうち **1 つでも ON なら索引へ載せる**／
 **3 つとも OFF なら載せない**／**ON → OFF は索引からの削除まで及ぶ**」と裁定したためで、
-現行の正は後継の [IADR-0394](./IADR-0394_private-note-exposure-index-production.md) である
-（`IADR-0270` 決定 5（後継 `IADR-0394`）と引くこと。**ID を付け替えない**）。
+現行の正は後継の [IADR-0395](./IADR-0395_private-note-exposure-index-production.md) である
+（`IADR-0270` 決定 5（後継 `IADR-0395`）と引くこと。**ID を付け替えない**）。
 **本 ADR の本文は当時の記録として書き換えない**（2026-08-28 追記と同じ扱い）。
 
 決定 5 が守っていた性質（**既定 OFF を「索引に存在しない」ことで構造的に守る**）は失われていない ——
@@ -193,6 +193,6 @@ IADR-0296 決定 4 の限界（既存文書の資産を遡及付与しない）�
 ## 関連
 
 - Supersedes: なし
-- Superseded by: なし（決定 5 のみ [IADR-0394](./IADR-0394_private-note-exposure-index-production.md) が後継。ADR 全体は現行である）
+- Superseded by: なし（決定 5 のみ [IADR-0395](./IADR-0395_private-note-exposure-index-production.md) が後継。ADR 全体は現行である）
 - 実装 issue: #451（本体）/ #989（`IADR-0253`）/ #986（Wiki 同期除外）/ #600（FR-22 通知）/
   #516（必須属性）/ #602（前提検証・CLOSED）

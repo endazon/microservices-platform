@@ -7,7 +7,7 @@ namespace DocumentService.Features.Documents.GrantShare;
 
 // FR-20, ADR-0036 D-06, ADR-0061 決定 5: 共有の付与（所有者のみ。個人／グループの 2 種別）。
 //
-// **［#1184］付与のあと `DocumentUpdated` を再発行する**（[[IADR-0394]] 決定 3）——
+// **［#1184］付与のあと `DocumentUpdated` を再発行する**（[[IADR-0395]] 決定 3）——
 // 索引のペイロードが運ぶ `shared_with` は**発行時点の写し**であり、再発行しないと
 // **共有した相手に永久に見えない**（共有先ベースの分岐が索引の側で成立しない）。
 // 門は他の書き込み経路と同じ `PublishUpdatedIfIndexableAsync`（露出 OFF の個人資料は出さない）。

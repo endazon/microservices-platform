@@ -190,10 +190,10 @@ related_specs:
 
 ［2026-09-05 追記 / #1184］**残件 1（生産側の配線）と残件 2（グラフのトグルの配線）は閉じた。**
 計画 `ADR-0061`（planning#492）の裁定を受け、`IADR-0270` 決定 5（後継
-[IADR-0394](./IADR-0394_private-note-exposure-index-production.md)）を解除して
+[IADR-0395](./IADR-0395_private-note-exposure-index-production.md)）を解除して
 露出 3 トグルを索引の生産側へ配線した。引き継ぎ条件 (a)(b)(c) はいずれも満たしている ——
 (a) 段 3 は検索経路で効いており、(b) トグル変更は `DocumentUpdated` の再発行を伴い、
 (c) 全 OFF へ戻すと索引・グラフから**削除**される。
 **本 ADR の決定 1〜4 は現行である**（判定の実体は `AiInputExposure` から
-`DocumentExposure` へ移り、`AiInputExposure` は委譲する別名として残っている。IADR-0394 決定 2）。
+`DocumentExposure` へ移り、`AiInputExposure` は委譲する別名として残っている。IADR-0395 決定 2）。
 **本文は当時の記録として書き換えない。**

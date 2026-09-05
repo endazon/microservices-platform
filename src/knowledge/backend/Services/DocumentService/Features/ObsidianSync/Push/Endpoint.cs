@@ -14,7 +14,7 @@ namespace DocumentService.Features.ObsidianSync.Push;
 // 載せれば 10 版として刻まれる（決定 8）。
 //
 // **［#1184］本文の書き込みは「露出 3 トグルのうち 1 つでも ON」のときだけ `DocumentUpdated` を
-// 発行する**（ADR-0061 決定 1・2 / [[IADR-0394]] 決定 4。門は
+// 発行する**（ADR-0061 決定 1・2 / [[IADR-0395]] 決定 4。門は
 // `DocumentEndpoints.PublishUpdatedIfIndexableAsync` 1 か所）。**新規作成は必ず 3 つとも OFF
 // である**（`PrivateNoteDefaults`）ため、初回 push は何も発行しない —— 索引に存在しない状態を
 // 既定として構造的に守る（[[IADR-0270]] 決定 5 が守っていた性質は、門の形で残る）。
@@ -158,7 +158,7 @@ internal static class PushNoteEndpoint
         }
     }
 
-    // FR-19, ADR-0061 決定 1・2 / [[IADR-0394]] 決定 4 (#1184): 本文の書き込みを索引の生産側へ流す門。
+    // FR-19, ADR-0061 決定 1・2 / [[IADR-0395]] 決定 4 (#1184): 本文の書き込みを索引の生産側へ流す門。
     // **判定は `DocumentExposure.IsIndexable`（唯一の述語）**であり、条件を書き下さない。
     private static async Task PublishIfExposedAsync(IDocumentUpdatedPublisher bus,
         DocumentDbContext db, Document doc, CancellationToken ct)

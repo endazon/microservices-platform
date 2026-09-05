@@ -62,7 +62,7 @@ public class GraphDocumentSyncConsumer(
     // ADR-0027 / #911: Wolverine のハンドラ。
     public async Task Handle(DocumentUpdated ev, CancellationToken ct)
     {
-        // 🔴 FR-19, ADR-0061 決定 1・3・4 / [[IADR-0394]] 決定 4・5 (#1184): **グラフの門。**
+        // 🔴 FR-19, ADR-0061 決定 1・3・4 / [[IADR-0395]] 決定 4・5 (#1184): **グラフの門。**
         //
         // 索引には載る（横断検索 ON）が**グラフには出さない**個人資料があり得る（決定 3:
         // 用途の別は索引を分けずに属性で表す）。したがって受信しただけでノードを作ってはならない。
@@ -149,7 +149,7 @@ public class GraphDocumentSyncConsumer(
             linkSync.Extracted, linkSync.Added, linkSync.Removed, termProfile);
     }
 
-    // FR-19, ADR-0061 決定 4 / [[IADR-0394]] 決定 5 (#1184): グラフからの撤収。
+    // FR-19, ADR-0061 決定 4 / [[IADR-0395]] 決定 5 (#1184): グラフからの撤収。
     //
     // **消すのはノードと、その端点に触れる辺だけである。** 文書そのものは生きているので、
     // 却下済み AI 提案・リンク先の名前（`document_link_targets`）は**削除イベント

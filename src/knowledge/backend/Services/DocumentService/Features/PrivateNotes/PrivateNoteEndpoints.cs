@@ -31,7 +31,7 @@ namespace DocumentService.Features.PrivateNotes;
 // （404。403 を返すと他人の資料 ID の実在が漏れる。ADR-0036 D-04 の存在秘匿と同じ向き）。
 //
 // **［#1184］本経路は「露出 3 トグルのうち 1 つでも ON」のときだけ DocumentUpdated を発行する**
-// （ADR-0061 決定 1・2 / [[IADR-0394]] 決定 4。[[IADR-0270]] 決定 5「発行しない」の後継）。
+// （ADR-0061 決定 1・2 / [[IADR-0395]] 決定 4。[[IADR-0270]] 決定 5「発行しない」の後継）。
 // **作成は必ず 3 つとも OFF である**（下の `PrivateNoteDefaults`）ため作成では発行せず、
 // 露出 OFF の資料は索引に存在しないまま保たれる —— 既定を構造で守る性質は門の形で残る。
 // 完全削除は従来どおり DocumentDeleted を発行する（下流掃除の向き）。
@@ -64,7 +64,7 @@ public static class PrivateNoteEndpoints
     // 機密区分 restricted（07_abac-attribute-model のフェイルセーフ既定）。
     //
     // **［#447 → #1184］露出 3 トグルの投影をすべて `excluded` で明示する**
-    // （[[IADR-0283]] 決定 4 / ADR-0061 決定 3 / [[IADR-0394]] 決定 1）——
+    // （[[IADR-0283]] 決定 4 / ADR-0061 決定 3 / [[IADR-0395]] 決定 1）——
     // ⑩「新規に登録した個人資料は 3 トグルがすべて OFF」を、**値の不在ではなく明示された OFF**
     // として持つ。不在に頼ると、`DocumentExposure` の fail-closed 分岐が失われたときに
     // 静かに全件許可へ倒れる（多層防御。IADR-0044 と同じ向き）。

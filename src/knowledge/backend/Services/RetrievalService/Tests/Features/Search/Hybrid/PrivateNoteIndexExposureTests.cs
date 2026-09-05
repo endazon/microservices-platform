@@ -8,7 +8,7 @@ using RetrievalService.Infrastructure.ExternalServices;
 
 namespace RetrievalService.Tests.Features.Search.Hybrid;
 
-// FR-19, FR-03, FR-21, UC-11, ADR-0036 D-05・D-06, ADR-0061 決定 3・5・6, [[IADR-0394]] 決定 6 (#1184):
+// FR-19, FR-03, FR-21, UC-11, ADR-0036 D-05・D-06, ADR-0061 決定 3・5・6, [[IADR-0395]] 決定 6 (#1184):
 // **索引に載った個人資料が、誰にどう見えるか。**
 //
 // 計画 `ADR-0061` の裁定のうち本ファイルが測るのは 3 つである。

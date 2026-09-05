@@ -26,7 +26,7 @@ public class PrivateNoteSearchExposureTests
     // 「横断検索に含める」ON・「AI の入力に含める」OFF の個人資料（⑨ の主語そのもの）。
     //
     // **［#1184］`search_exposure=included` を明示する。** ⑨ の主語は「**横断検索に含める**が ON」で
-    // あり、その ON はいま属性の投影として索引に載る（ADR-0061 決定 3 / [[IADR-0394]] 決定 1）。
+    // あり、その ON はいま属性の投影として索引に載る（ADR-0061 決定 3 / [[IADR-0395]] 決定 1）。
     // 従前このキーは存在せず（トグルが属性へ写っていなかった）、書かずに済んでいた。
     private static ChunkPayload AiOffPrivateNote() => Chunk("AI 入力 OFF の個人資料",
         (DocumentScopes.Key, DocumentScopes.PrivateNote),

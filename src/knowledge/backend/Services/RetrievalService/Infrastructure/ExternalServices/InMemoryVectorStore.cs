@@ -158,7 +158,7 @@ public class InMemoryVectorStore : IVectorStore
         // 文書条件を持たない分岐は「そのポリシーの範囲で全件許可」＝選言は制約にならない
         // （Qdrant 側が選言そのものを省くのと同じ扱い）。
         //
-        // 🔴 FR-19, ADR-0061 決定 5・6, [[IADR-0394]] 決定 7 (#1184):
+        // 🔴 FR-19, ADR-0061 決定 5・6, [[IADR-0395]] 決定 7 (#1184):
         // **個人資料を許可してよいのは裁量（`owner` / `shared_with`）の分岐だけ**である。
         // 静的属性ベースの分岐（`confidentiality ∈ {restricted}` 等）は、露出 ON の個人資料を
         // そのまま許可してしまう —— `restricted` クリアランスを持つ他人に他人の個人メモが見える。
