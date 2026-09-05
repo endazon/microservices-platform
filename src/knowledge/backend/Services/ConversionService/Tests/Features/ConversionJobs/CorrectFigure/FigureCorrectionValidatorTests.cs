@@ -5,7 +5,7 @@ using Knowledge.Contracts.Dtos;
 namespace ConversionService.Tests.Features.ConversionJobs.CorrectFigure;
 
 // UC-06, SC-07, IADR-0154 決定 3, 計画 ADR-0030 §決定（検証 = FluentValidation）/
-// IADR-0371 決定 2 / IADR-0377: 人手補正の入力検証を手書きガード節から AbstractValidator へ
+// IADR-0371 決定 2 / IADR-0393: 人手補正の入力検証を手書きガード節から AbstractValidator へ
 // 移した際の**振る舞い同値**を固定する。
 //
 // 🔴 **固定するのは「落ちること」だけではない。** 移送前の応答本文（`{ "error": "..." }` の

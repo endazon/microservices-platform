@@ -5,7 +5,7 @@ using Riok.Mapperly.Abstractions;
 namespace AuthorizationService.Features.Users;
 
 // SC-17, 計画 ADR-0030 §決定（マッピング = Riok.Mapperly。選定基準 4「実行時リフレクションより
-// コンパイル時生成を優先する」）/ IADR-0371 決定 3 / IADR-0377: 身元 → 応答 DTO の写像。
+// コンパイル時生成を優先する」）/ IADR-0371 決定 3 / IADR-0393: 身元 → 応答 DTO の写像。
 //
 // 従前は `UserAdminEndpoints.ToDto` の手書き詰め替え 1 本であった。`IdentityUser` と
 // `PlatformUserDto` は 6 プロパティすべて同名の 1:1 であり、Mapperly の既定規約でそのまま写る。

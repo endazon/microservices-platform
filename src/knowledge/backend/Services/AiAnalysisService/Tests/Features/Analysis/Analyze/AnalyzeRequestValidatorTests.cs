@@ -5,7 +5,7 @@ using Knowledge.Contracts.Dtos;
 
 namespace AiAnalysisService.Tests.Features.Analysis.Analyze;
 
-// FR-07, UC-02, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0377:
+// FR-07, UC-02, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0393:
 // 分析依頼の入力検証を手書きガード節から AbstractValidator へ移した際の**振る舞い同値**を固定する。
 //
 // 🔴 **固定するのは「落ちること」だけではない。** 移送前の応答本文（`{ "error": "..." }` の

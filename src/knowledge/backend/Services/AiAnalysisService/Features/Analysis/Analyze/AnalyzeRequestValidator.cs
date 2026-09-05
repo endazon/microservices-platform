@@ -4,7 +4,7 @@ using Knowledge.Contracts.Dtos;
 
 namespace AiAnalysisService.Features.Analysis.Analyze;
 
-// FR-07, UC-02, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0377:
+// FR-07, UC-02, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0393:
 // 分析依頼の入力規則。従前は Endpoint.cs 内の手書きガード節 2 本であった。
 //
 // 🔴 **振る舞いを変えない移送である。** 同じ 400・同じ本文（`{ "error": "..." }`）を返すため、

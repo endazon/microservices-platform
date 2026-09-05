@@ -86,5 +86,5 @@ public static class McpClientEndpoints
 
     // 手書きの詰め替え（ToView）とティア名の変換（TierName）は撤去した。写像は
     // `McpClientMapper.ToView`（Riok.Mapperly の生成マッパ）が持つ
-    // （計画 ADR-0030 §決定 / IADR-0371 決定 3 / IADR-0377）。**このクラスに写像は残さない。**
+    // （計画 ADR-0030 §決定 / IADR-0371 決定 3 / IADR-0393）。**このクラスに写像は残さない。**
 }

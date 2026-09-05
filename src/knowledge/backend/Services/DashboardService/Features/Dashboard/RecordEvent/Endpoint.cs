@@ -20,7 +20,7 @@ internal static class RecordUsageEventEndpoint
         g.MapPost("/events", async (UsageEventRequest req, IValidator<UsageEventRequest> validator,
             DashboardDbContext db, CancellationToken ct) =>
         {
-            // FR-10 / IADR-0371 決定 2・4 / IADR-0377: 入力検証（FluentValidation）の失敗を
+            // FR-10 / IADR-0371 決定 2・4 / IADR-0393: 入力検証（FluentValidation）の失敗を
             // Kernel の `Result` で表し、**HTTP への写像は 1 度だけ行う**
             // （計画 ADR-0030 §決定「ProblemDetails 変換は API 層」/ ADR-0041 §結果）。
             // 返す状態コードも本文も移送前と変わらない。

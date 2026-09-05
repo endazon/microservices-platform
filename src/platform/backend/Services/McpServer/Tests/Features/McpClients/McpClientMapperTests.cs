@@ -5,7 +5,7 @@ using McpServer.Features.McpClients;
 namespace McpServer.Tests.Features.McpClients;
 
 // FR-16, UC-09, SC-12, 計画 ADR-0030 §決定（マッピング = Riok.Mapperly）/ IADR-0371 決定 3 /
-// IADR-0377: 手書きの詰め替えを生成マッパへ置き換えた際の**振る舞い同値**を固定する。
+// IADR-0393: 手書きの詰め替えを生成マッパへ置き換えた際の**振る舞い同値**を固定する。
 //
 // 🔴 **生成物を信じるのではなく、写った値を見る。** Mapperly は名前が一致しないプロパティを
 // 黙って落とすことがあり、**列が 1 つ抜けても型は通る**。9 プロパティを 1 つずつ見る。

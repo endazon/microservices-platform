@@ -13,7 +13,7 @@ related_ids:
   - IADR-0229
   - IADR-0282
   - IADR-0371
-  - IADR-0377
+  - IADR-0393
 author: claude
 created: 2026-09-05
 updated: 2026-09-05

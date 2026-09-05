@@ -7,7 +7,7 @@ using AwesomeAssertions;
 
 namespace AiAnalysisService.Tests.Features.Analysis.Analyze;
 
-// FR-07, UC-02 / IADR-0371 決定 2 / IADR-0377: 検証を FluentValidation へ移した際、
+// FR-07, UC-02 / IADR-0371 決定 2 / IADR-0393: 検証を FluentValidation へ移した際、
 // **HTTP の面で応答が変わっていない**ことを固定する。
 //
 // 🔴 **既存の `PostAnalyze_EmptyInstruction_Returns400` は状態コードしか見ていない。**

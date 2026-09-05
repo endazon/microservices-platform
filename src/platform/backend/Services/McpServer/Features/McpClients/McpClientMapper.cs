@@ -4,7 +4,7 @@ using Riok.Mapperly.Abstractions;
 namespace McpServer.Features.McpClients;
 
 // FR-16, UC-09, SC-12, 計画 ADR-0030 §決定（マッピング = Riok.Mapperly。選定基準 4「実行時
-// リフレクションより コンパイル時生成を優先する」）/ IADR-0371 決定 3 / IADR-0377:
+// リフレクションより コンパイル時生成を優先する」）/ IADR-0371 決定 3 / IADR-0393:
 // ドメイン → 応答ビューの写像。
 //
 // 従前は `McpClientEndpoints.ToView` の手書き詰め替え 1 本であった。9 プロパティのうち

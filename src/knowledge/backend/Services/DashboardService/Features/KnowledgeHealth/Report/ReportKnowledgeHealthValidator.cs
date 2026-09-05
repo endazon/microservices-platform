@@ -4,7 +4,7 @@ using FluentValidation;
 namespace DashboardService.Features.KnowledgeHealth.Report;
 
 // FR-10, FR-17, FR-18, planning#494 決定 3, 計画 ADR-0030 §決定（検証 = FluentValidation）/
-// IADR-0371 決定 2 / IADR-0377: 観測値の受け口の入力規則。
+// IADR-0371 決定 2 / IADR-0393: 観測値の受け口の入力規則。
 // 従前は Endpoint.cs 内の手書きガード節 2 本であった。
 //
 // 🔴 **振る舞いを変えない移送である。** 同じ 400・同じ本文を返すため、次の 2 点を守る:

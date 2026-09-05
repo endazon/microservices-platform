@@ -14,7 +14,7 @@ internal static class CorrectFigureEndpoint
             FigureCorrectionRequest request, IValidator<FigureCorrectionRequest> validator,
             IFigureCorrectionService corrections, CancellationToken ct) =>
         {
-            // UC-06 / IADR-0154 決定 3 / IADR-0371 決定 2・4 / IADR-0377:
+            // UC-06 / IADR-0154 決定 3 / IADR-0371 決定 2・4 / IADR-0393:
             // 空だけでなく、**コードフェンスを内側から閉じられる入力**も弾く。
             // 保存された本文は再発行されて一般利用者が読むため、ここを通すと文書が壊れる
             // （PR #650 レビュー 2 巡目）。規則は `FigureCorrectionValidator` が持つ。

@@ -5,7 +5,7 @@ using Knowledge.Contracts.Dtos;
 namespace ConversionService.Features.ConversionJobs.CorrectFigure;
 
 // UC-06, SC-07, IADR-0154 決定 3, 計画 ADR-0030 §決定（検証 = FluentValidation）/
-// IADR-0371 決定 2 / IADR-0377: 人手補正の入力規則。
+// IADR-0371 決定 2 / IADR-0393: 人手補正の入力規則。
 // 従前は Endpoint.cs 内の手書きガード節 1 本であった。
 //
 // 🔴 **振る舞いを変えない移送である。** 同じ 400・同じ本文（`{ "error": "invalid_correction" }`）を返す。

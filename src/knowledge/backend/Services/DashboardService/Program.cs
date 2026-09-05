@@ -63,7 +63,7 @@ builder.Services.AddHostedService<UsageRetentionHostedService>();
 // （計画 §ナレッジ健全性の指標「閲覧は監査ログに記録する」）。
 builder.Services.AddSingleton<IAuditLogger, AuditLogger>();
 
-// FR-10, FR-17, FR-18, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0377:
+// FR-10, FR-17, FR-18, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0393:
 // 端点の入力検証。**アセンブリ走査（AddValidatorsFromAssembly）は使わない** —— 登録が暗黙になり、
 // 検証器を消しても起動時には何も起きず、端点が黙って無検証になるためである。
 // 1 行 1 検証器の明示登録なら、消したときにコンパイルか DI 解決で止まる。

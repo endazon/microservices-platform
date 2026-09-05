@@ -36,7 +36,7 @@ public class DashboardEndpointTests
 
     // T-03: 不正な eventType は 400。
     //
-    // FR-10 / IADR-0371 決定 2 / IADR-0377: 検証を FluentValidation へ移した際、
+    // FR-10 / IADR-0371 決定 2 / IADR-0393: 検証を FluentValidation へ移した際、
     // **状態コードだけでなく本文も変わっていない**ことを固定する ——
     // 400 のままメッセージだけが変わる退行は状態コードでは捕まらない。
     [Fact]

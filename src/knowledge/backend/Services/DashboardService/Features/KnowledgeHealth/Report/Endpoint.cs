@@ -38,7 +38,7 @@ public static class ReportKnowledgeHealthEndpoint
             KnowledgeHealthReportRequest req, IValidator<KnowledgeHealthReportRequest> validator,
             DashboardDbContext db, CancellationToken ct) =>
         {
-            // FR-10, FR-17, FR-18 / IADR-0371 決定 2・4 / IADR-0377: 入力検証（FluentValidation）の
+            // FR-10, FR-17, FR-18 / IADR-0371 決定 2・4 / IADR-0393: 入力検証（FluentValidation）の
             // 失敗を Kernel の `Result` で表し、**HTTP への写像は 1 度だけ行う**
             // （計画 ADR-0030 §決定「ProblemDetails 変換は API 層」/ ADR-0041 §結果）。
             // 判定の順序は移送前のガード節と同じ（指標 → しきい値）であり、

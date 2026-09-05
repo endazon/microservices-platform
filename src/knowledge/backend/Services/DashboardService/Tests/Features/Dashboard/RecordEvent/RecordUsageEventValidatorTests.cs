@@ -4,7 +4,7 @@ using Knowledge.Contracts.Dtos;
 
 namespace DashboardService.Tests.Features.Dashboard.RecordEvent;
 
-// FR-10, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0377:
+// FR-10, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0393:
 // 利用イベント記録の入力検証を手書きガード節から AbstractValidator へ移した際の
 // **振る舞い同値**を固定する。
 //
