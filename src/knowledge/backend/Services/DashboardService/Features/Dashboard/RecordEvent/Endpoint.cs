@@ -39,9 +39,13 @@ internal static class RecordUsageEventEndpoint
                 // 偽の行を差し込めてしまう（ログ注入）。既知の値集合へ畳んでから出す
                 // —— 知りたいのは「どの種別で来たか」であって原文ではない（[[IADR-0306]] の
                 // ログ衛生と同じ向き）。
-                var loggedType = UsageEventType.IsValid(req.EventType)
-                    ? UsageEventType.Normalize(req.EventType)
-                    : "(invalid)";
+                // `Normalize` は小文字化するだけで、値は要求本文から導かれたままである
+                // （改行は残る）。**分岐で定数リテラルそのものを選ぶ**ことで、ログへ渡る値を
+                // コンパイル時に決まる 3 つへ閉じる。
+                var loggedType = !UsageEventType.IsValid(req.EventType) ? "(invalid)"
+                    : string.Equals(req.EventType, UsageEventType.Search, StringComparison.OrdinalIgnoreCase)
+                        ? UsageEventType.Search
+                        : UsageEventType.Answer;
                 loggerFactory.CreateLogger(typeof(RecordUsageEventEndpoint)).LogWarning(
                     "合成監視の主体から利用イベントが直接投入された。行は作らない（ADR-0076 決定 4）。"
                     + "eventType={EventType}。検索語と利用者は本文へ出さない。"
