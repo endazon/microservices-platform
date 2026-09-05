@@ -39,6 +39,15 @@ public sealed class UsageEventMetrics
     /// <summary>送出待ちの列が溢れて捨てた（受け口の不調が続いたとき最初に現れる）。</summary>
     public const string OutcomeDropped = "dropped";
 
+    /// <summary>
+    /// NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視のトラフィックだったため
+    /// **意図的に発火しなかった**（`UsageEvents` に行を作らなかった）。
+    /// 🔴 **`dropped` と混ぜない** —— あちらは不調による取りこぼしで、こちらは設計どおりの除外である。
+    /// 混ぜると「除外が効いている」と「受け口が壊れている」を同じ数で読むことになる。
+    /// **この系列が伸び、かつ `sent` が伸びないときは「合成だけが通っていて実利用が 0」である。**
+    /// </summary>
+    public const string OutcomeExcludedSynthetic = "excluded_synthetic";
+
     private readonly Counter<long> _dispatch;
 
     public UsageEventMetrics(IMeterFactory meterFactory)
@@ -47,8 +56,9 @@ public sealed class UsageEventMetrics
         _dispatch = meter.CreateCounter<long>(
             DispatchCounterName, unit: "{event}",
             description: "利用状況イベント（POST /dashboard/events）の送出結果の件数。"
-                       + "usage.event.outcome = sent / rejected / unreachable / dropped。"
-                       + "**送れなかったぶんが必ずここに載る**（fail-open が静かに落ちないための計器）。");
+                       + "usage.event.outcome = sent / rejected / unreachable / dropped / excluded_synthetic。"
+                       + "**送れなかったぶんが必ずここに載る**（fail-open が静かに落ちないための計器）。"
+                       + "excluded_synthetic は合成監視のため意図的に発火しなかったぶん（ADR-0076 決定 4）。");
     }
 
     // 種別の値域は受け口の契約（UsageEventType）に閉じた 2 値であり、基数は有界である。
