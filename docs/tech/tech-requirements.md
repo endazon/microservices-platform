@@ -33,7 +33,7 @@ issues: [#1062, #1064, #1093, #1094, #1179, #1196, #1249, #1251, #184, #196, #19
 - 計画制約との差異: **なし（解消済み）**。実装は **.NET 10 / C# 13** で、計画側も
   .NET 10 アップグレードの計画 ADR（Accepted・2026-07-23）で
   実装フレームワークを **.NET 10（LTS）** に確定した。実装が先行していた経緯は、バックエンドの .NET 10 採用を決めた実装 ADR と
-  `feedback/20260709_dotnet10-target-framework-deviation.md` に記録している（旧「計画 fixed は .NET 8」との乖離は同計画 ADR で解消）。
+  `projects/microservices-platform/10_feedback/20260709_dotnet10-target-framework-deviation.md` に記録している（旧「計画 fixed は .NET 8」との乖離は同計画 ADR で解消）。
 
 ## 技術スタック
 

@@ -3,7 +3,7 @@ title: SC-01 検索／チャット質問画面 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-09-04
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
@@ -129,7 +129,7 @@ AI 分析ダッシュボードと共有する部品なので、テストも 1 �
 ## 未決事項
 
 - なし（画面要素の不足は 仕様書: 利用者の主導線（検索・結果一覧・文書詳細）の新スタックでの再実装 と
-  `feedback/20260804_sc01-03-bff-contract-gaps.md` に集約した。
+  `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` に集約した。
   **対象範囲フィルタは #539 で実装した**）
 
 <!-- trace-table:

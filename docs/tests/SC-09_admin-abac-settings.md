@@ -3,7 +3,7 @@ title: SC-09 管理者設定（ABAC） テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-02
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
@@ -173,7 +173,7 @@ issues: [#503, #504, #510, #535, #640, #989]
 ## 未決事項
 
 - 契約の不在は**残り 1 件（条件式の表現力）**である。
-  `feedback/20260805_sc09-11-admin-ops-contract-gaps.md`。裁定までテストも書かない。
+  `projects/microservices-platform/10_feedback/20260805_sc09-11-admin-ops-contract-gaps.md`。裁定までテストも書かない。
   **タグ辞書は #640 で、dry-run 検証は #535 で解消した。**
 
 <!-- trace-table:

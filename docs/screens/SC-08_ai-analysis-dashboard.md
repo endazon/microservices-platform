@@ -3,7 +3,7 @@ title: AI分析ダッシュボード 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-30
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
@@ -96,7 +96,7 @@ issues: [#446, #490, #503, #506, #519, #539, #540, #553, #1065, planning#197]
 
 **環流先は計画側の既存 issue とする**（新しい記録は作らない）。検索／チャット質問画面の対象範囲フィルタで挙げた
 「①絞り込み条件を要求へ載せる口が無い ②**権限内**候補を得る口が無い」と**同型の論点**であり、
-同じ裁定で解ける（feedback/20260804_sc01-03-bff-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設） #1・#2）。
+同じ裁定で解ける（環流記録 `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` #1・#2）。
 **重複起票を避ける。**
 
 **「押しても結果が変わらない操作」を置かない**（#502 が確立した規則）。候補を出せないまま
@@ -194,7 +194,7 @@ issues: [#446, #490, #503, #506, #519, #539, #540, #553, #1065, planning#197]
 - 作業仕様書: 仕様書: 管理者の運用導線と AI 分析の新スタックでの再実装
 - テスト仕様書: [AI 分析ダッシュボード](../tests/SC-08_ai-analysis-dashboard.md)
 - 実装 ADR: 管理画面の実装方針（再変換は画面側で管理者限定、状態表示は契約から導出できる値だけで作る）／ 指定データ範囲は ABAC スコープと交差させ権限を広げない（narrowing-only）／ 縮退応答の「使用モデル」ラベル
-- 計画への環流: feedback/20260804_sc01-03-bff-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設）（本画面のチップは同記録 #1・#2 と同型）
+- 計画への環流: 環流記録 `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md`（本画面のチップは同記録 #1・#2 と同型）
 
 ## 未決事項
 

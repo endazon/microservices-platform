@@ -3,7 +3,7 @@ title: 運用ダッシュボード 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-09-04
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
@@ -375,7 +375,7 @@ flowchart LR
 ## 未決事項
 
 1. **SLO 指標の契約**（達成率・p95）——環流記録
-   `feedback/20260805_sc09-11-admin-ops-contract-gaps.md` の提案 4。**起票は親**。
+   `projects/microservices-platform/10_feedback/20260805_sc09-11-admin-ops-contract-gaps.md` の提案 4。**起票は親**。
 2. **LLM コストの契約**——同 提案 5。
 3. **一意利用者数（人/日）**——同 提案 6。**部分未実装**の側。
 4. ~~**閲覧ロール**（計画=運用者・管理者／実装=管理者のみ）~~ **［2026-08-09 / #544］解決した。** 裁定 Q19 / Q28 で計画が正となり、3 層を広げて一致させた。

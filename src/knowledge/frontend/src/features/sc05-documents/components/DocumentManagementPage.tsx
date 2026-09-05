@@ -35,7 +35,7 @@ import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 //     ——「✕ 失敗」を決して表示できない列になる。変換状況は SC-07（/admin/conversions）が担う。
 //   - **タグ辞書からの補完**: 辞書は /bff/admin/authz（システム管理者限定）にあり、本画面の
 //     利用者（admin / operator）が引ける保証が無い。
-//   いずれも feedback/20260805_sc05-07-admin-contract-gaps.md に記録し、planning#198 として起票した。
+//   いずれも projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md に記録し、planning#198 として起票した。
 //   **［2026-08-10 追記 / #553］2 件とも裁定で決着している。**
 //     - **「変換」列 → 裁定 Q17 で計画側が「変換状況」を削除した**（01_screens.md:276）。
 //       契約を足すのではなく**要素そのものが落ちた**ので、**出していないのが正しい**。

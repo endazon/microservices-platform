@@ -42,7 +42,7 @@ import type { DataSourceDto } from '@foundation/api/generated/bff.schemas';
 //     登録・更新は管理者限定）」に置くと定めるが、**描画点が「既定属性」ボタン（管理者のみ）から
 //     開くフォームしか無く、運用者はどちらも見られなかった**（#1194 受け入れ基準 3 の画面側が未達）。
 //     一覧の行へ読み取り専用の `DataSourceAttributesView` を置いて閲覧側を満たす。
-//   もとの記録は feedback/20260805_sc05-07-admin-contract-gaps.md（planning#198 で裁定済み）。
+//   もとの記録は projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md（planning#198 で裁定済み）。
 
 export function DataSourceManagementPage() {
   const { t } = useLingui();

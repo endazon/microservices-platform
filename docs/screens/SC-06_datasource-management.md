@@ -140,7 +140,7 @@ issues: [#446, #490, #502, #506, #519, #534, #537, #538, #628, #754, #767, #796,
 `src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/DataSourceBffEndpoints.cs`（対象コミット `de55761`）。
 
 **「押しても結果が変わらないボタン」「常に空の列」を置かない**（#502 が確立した規則）。
-3 件は環流の記録に載せ（feedback/20260805_sc05-07-admin-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md` へ移設））、
+3 件は環流の記録に載せ（環流記録 `projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md`）、
 計画側へ issue として起票した。**2026-08-05 に 3 件とも裁定が出て計画本文へ反映済みである**
 （(a) = Q14 同期健全性を契約へ追加／(b) = Q15 次回同期は共通間隔・ソース別スケジュールは持たない／
 (c) = Q16 更新 API を定める）。**3 件とも契約は揃った** —— (b) は #538（`NextSyncAt` の導出）、
@@ -272,7 +272,7 @@ issues: [#446, #490, #502, #506, #519, #534, #537, #538, #628, #754, #767, #796,
 - 作業仕様書（所有者の写像表）: 仕様書: データソース単位の所有者写像表と解決器
 - 実装 ADR: 管理画面の実装方針（再変換は画面側で管理者限定、状態表示は契約から導出できる値だけで作る）／ データソース管理の BFF 集約と管理系画面のロールゲーティング ／
   `NextSyncAt` はワーカーの位相から導出し、定期同期が無効なら `null` にする ／ 同期健全性はエンティティへ永続化する
-- 計画への環流（**計画側へ issue として起票済み・2026-08-05 に裁定され計画本文へ反映済み**）: feedback/20260805_sc05-07-admin-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md` へ移設）
+- 計画への環流（**計画側へ issue として起票済み・2026-08-05 に裁定され計画本文へ反映済み**）: 環流記録 `projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md`
 
 ## 未決事項
 

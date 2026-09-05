@@ -29,7 +29,7 @@ import { useAbacAttributes, useAbacPolicies } from '../api/useAbacAdmin';
 //   （[[IADR-0387]] 決定 4）。**計画 §SC-09 の 4 区画はこれで揃った。**
 //   従前ここには「4 区画のうち 3 区画が揃った状態である」と書いていたが、その形は誤りになる。
 //   **空のタブを置かない**——保留であることを伝えず、むしろ壊れて見える（#502 が確立した
-//   「動かない UI を置かない」）。記録は feedback/20260805_sc09-11-admin-ops-contract-gaps.md（起票は親）。
+//   「動かない UI を置かない」）。記録は projects/microservices-platform/10_feedback/20260805_sc09-11-admin-ops-contract-gaps.md（起票は親）。
 
 export function AdminAbacSettingsPage() {
   const { t } = useLingui();
