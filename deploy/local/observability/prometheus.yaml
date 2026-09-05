@@ -21,8 +21,14 @@ data:
       - job_name: otel-collector
         static_configs:
           - targets: ['otel-collector:8888']
-  # compose（deploy/prometheus/alerts.yml）と同一の全 9 ルールを inline する（follow-up の
-  # コメントアウト例＝exporter 依存は compose 同様に除く）。
+  # compose（deploy/prometheus/alerts.yml）のルールを inline する（follow-up のコメントアウト例＝
+  # exporter 依存は compose 同様に除く）。
+  # 🔴 ［2026-09-05 追記 / #1203］**件数は導出値であり、ここは実際に乖離していた。**
+  #   本注記は長らく「全 9 ルール」と称していたが、compose 側は #1246 の
+  #   knowledge-health-producers 2 件を足して 11 件になっており、**この inline は追随していなかった**
+  #   （バイト一致を強制する検査器が無い。Grafana 側の inline だけが check-grafana-alerting.js の対象である）。
+  #   本 PR は #1203 の RagLatencySeriesAbsent を足して **10 / 12 件**にしたが、
+  #   **knowledge-health-producers の 2 件は #1246 の射程なのでここでは足していない**（受容として記録する）。
   # 🔴 メトリクス名・ラベル・単位を変えるときは compose 側と**同時に**直す。式の検証手順と
   #    「陽性対照を対で置く」規律は deploy/prometheus/alerts.yml の冒頭に書いてある（#1110）。
   alerts.yml: |
@@ -84,8 +90,12 @@ data:
               description: "AiAnalysisService /analysis/ask（一括経路）の応答完了 p95 が 5s を 10 分継続で超過。NFR-02 の初回応答 SLO は RagFirstTokenP95High が判定する。"
       # ADR-0076 決定 3 (#1202): **評価対象そのものの不在**。上の ServiceRequestMetricsAbsent は
       # 「直近まで受信していたのに途絶した」だけを拾い、**系列が消えると式が空になって発火しない**。
-      # 対象は無風が 5 分より短い経路だけ（/analysis/ask 系は対象外。決定 4 の合成監視待ち）。
-      # 検知までは最大およそ 10 分（absent の 5 分 lookback ＋ for: 5m）。理由は compose 側の冒頭が正本。
+      # 対象は無風が 5 分より短い経路だけ。検知までは最大およそ 10 分（absent の 5 分 lookback ＋ for: 5m）。
+      # 🔵 ［2026-09-05 更新 / #1203・ADR-0079］従前は「/analysis/ask 系は対象外。決定 4 の合成監視待ち」
+      #   と書いていた。**合成監視は着地し ADR-0079 決定 1 が間隔を確定させたので、繰り延べは失効した。**
+      #   ただし対象へ入るのは **RagLatencyP95High の系列だけ**である —— 60 秒側の合成は LLM を呼ばず、
+      #   RagFirstTokenP95High の計器は token が出なければ記録しないため、そちらは依然として系列を持たない。
+      #   理由の正本は compose 側（deploy/prometheus/alerts.yml）の同名グループの前書きである。
       - name: platform-slo-evaluation-target
         rules:
           - alert: OtelCollectorUpSeriesAbsent
@@ -109,6 +119,14 @@ data:
             annotations:
               summary: "SLO の評価対象が無い: retrieval-service のレイテンシ分布が存在しない"
               description: "RetrievalService のレイテンシ分布が無い。SearchLatencyP95High は空ベクタになり発火しない。"
+          # NFR-02, ADR-0079 決定 1 (#1203): 常時トラフィックの源は合成監視のプローブ（60 秒間隔）。
+          - alert: RagLatencySeriesAbsent
+            expr: absent(http_server_request_duration_seconds_bucket{job="microservices-platform.aianalysis-service", http_route="/analysis/ask"})
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "SLO の評価対象が無い: aianalysis-service /analysis/ask のレイテンシ分布が存在しない"
+              description: "AiAnalysisService の /analysis/ask のレイテンシ分布が無い。RagLatencyP95High は空ベクタになり発火しない。合成監視のプローブ（60 秒間隔）が止まっている疑い。"
 ---
 apiVersion: apps/v1
 kind: Deployment
