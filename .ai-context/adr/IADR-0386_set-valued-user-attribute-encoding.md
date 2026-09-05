@@ -157,5 +157,7 @@ plan_refs:
 
 ## 関連
 
-- Supersedes: なし
+- Supersedes: **`IADR-0366` 決定 5 の前提のみ**（「Keycloak の多値属性も先頭 1 値へ畳まれる」）。
+  同 IADR には日付つき追記で併記した。**「集合として読む」という同決定の結論と、
+  他の決定は有効であり、本体の `status:` は `Accepted` のままである。**
 - Superseded by: なし
