@@ -266,4 +266,5 @@ McpServer 14）に **DataSourceService の 2（`OwnerMappingValidation`）と No
   - `Errors[0]` を採る形は、**将来「全違反を返す」応答へ変えるときに書き換えが要る**
     （`IADR-0371` から引き継ぐトレードオフ）。
 - フォローアップ: 群 3（`ValidationProblem` 系 **37** 箇所。#1248 の数え 34 に DataSourceService 2 と
-  NotificationService 1 を足した実測）と群 4（写像 7 本）を追随 issue へ切り出した。
+  NotificationService 1 を足した実測）を **#1278** へ、群 4（写像 7 本）を **#1279** へ切り出した。
+  **#1248 は閉じない**（4 群のうち 2 群が残っているため）。
