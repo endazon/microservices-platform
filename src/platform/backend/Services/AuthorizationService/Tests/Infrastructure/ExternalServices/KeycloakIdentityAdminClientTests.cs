@@ -184,6 +184,51 @@ public class KeycloakIdentityAdminClientTests
         updated!.Attributes["tags"].Should().Be("sales,hr");
     }
 
+    // 🔴 **正準化を通る値は「捨てられた」と誤検知してはならない。**
+    // 集合値キーは分割して書き、連結して読み戻すので、`"sales hr"` と要求した値は
+    // `"sales,hr"` として返る。序数で比べると **realm の設定不備でもないのに例外になる。**
+    [Theory]
+    [InlineData("sales hr")]
+    [InlineData("sales, hr")]
+    [InlineData("hr,sales")]
+    public async Task 集合値キーは正準化後の集合として反映を突き合わせる(string requested)
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Put("admin/realms/platform/users/u1", "")
+            .Get("admin/realms/platform/users/u1", """
+                {"id":"u1","username":"tanaka.taro","enabled":true,
+                 "attributes":{"tags":["sales","hr"]}}
+                """)
+            .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
+
+        var updated = await Client(handler).ReplaceAttributesAsync(
+            "u1", new Dictionary<string, string> { ["tags"] = requested }, Ct);
+
+        updated!.Attributes["tags"].Should().Be("sales,hr");
+    }
+
+    // 🔴 **陰性対照（対で置く）。** 集合として比べても、**本当に捨てられた**ものは落とす ——
+    // 緩めた結果「黙って捨てられた」を見逃すなら、緩めた意味が無い。
+    [Fact]
+    public async Task 集合値キーでも要素が落ちていれば失敗として上げる()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Put("admin/realms/platform/users/u1", "")
+            .Get("admin/realms/platform/users/u1", """
+                {"id":"u1","username":"tanaka.taro","enabled":true,
+                 "attributes":{"tags":["sales"]}}
+                """)
+            .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
+
+        var act = async () => await Client(handler).ReplaceAttributesAsync(
+            "u1", new Dictionary<string, string> { ["tags"] = "sales,hr" }, Ct);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>())
+            .Which.Message.Should().Contain("tags");
+    }
+
     // 上の 5 本が使う名簿応答。属性の断片だけを差し替える。
     private static StubHandler UsersHandler(string attributesJson) => new StubHandler()
         .Post("realms/platform/protocol/openid-connect/token", Token())

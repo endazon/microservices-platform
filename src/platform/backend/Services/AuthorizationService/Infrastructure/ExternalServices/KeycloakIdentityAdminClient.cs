@@ -114,9 +114,12 @@ public sealed class KeycloakIdentityAdminClient(
     private static void EnsureAttributesWereApplied(
         IReadOnlyDictionary<string, string> requested, IdentityUser reloaded)
     {
+        // IADR-0386 (#1243): **集合値キーは集合として比べる。** 正準化（分割して書き、連結して読む）を
+        // 通るため、`"sales hr"` と要求した値は `"sales,hr"` として読み戻る。🔴 これを序数比較すると
+        // **realm の設定不備でもないのに「Keycloak が受け付けなかった」と嘘の失敗を上げる。**
         var dropped = requested
             .Where(kv => !reloaded.Attributes.TryGetValue(kv.Key, out var value)
-                         || !string.Equals(value, kv.Value, StringComparison.Ordinal))
+                         || !Applied(kv.Key, kv.Value, value))
             .Select(kv => kv.Key)
             .ToList();
         if (dropped.Count == 0) return;
@@ -129,6 +132,13 @@ public sealed class KeycloakIdentityAdminClient(
             + " unmanagedAttributePolicy を ADMIN_EDIT にする）。"
             + " **成功を返して黙って捨てるより、失敗として上げる。**");
     }
+
+    // 要求した値が反映されたか。**単一値キーは序数で厳密に比べる**（正準化を通らないので、
+    // ここを緩めると本当に捨てられた場合を見逃す）。集合値キーだけ集合として比べる。
+    private static bool Applied(string key, string requested, string reloaded)
+        => UserAttributeEncoding.IsSetValued(key)
+            ? UserAttributeEncoding.Split(reloaded).SetEquals(UserAttributeEncoding.Split(requested))
+            : string.Equals(reloaded, requested, StringComparison.Ordinal);
 
     public async Task<IdentityUser?> SetEnabledAsync(string userId, bool enabled, CancellationToken ct)
     {
