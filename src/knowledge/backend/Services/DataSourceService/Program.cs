@@ -1,6 +1,8 @@
 using DataSourceService.Infrastructure.ExternalServices;
 using DataSourceService.Features.DataSources;
 using DataSourceService.Features.DataSources.Sync;
+using DataSourceService.Features.DataSources.Update;
+using FluentValidation;
 using DataSourceService.Infrastructure.Persistence;
 using DataSourceService.Domain.Ports;
 using DataSourceService.Domain;
@@ -111,6 +113,11 @@ builder.Services.AddSingleton<ConnectorRegistry>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<SyncSchedule>();
 builder.Services.AddScoped<DataSourceSyncService>();
+
+// NFR, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0395:
+// 端点の入力検証。**アセンブリ走査（AddValidatorsFromAssembly）は使わない** —— 登録が暗黙になり、
+// 検証器を消しても起動時には何も起きず、端点が黙って無検証になる。1 行 1 検証器で明示登録する。
+builder.Services.AddScoped<IValidator<UpdateDataSourceRequest>, UpdateDataSourceValidator>();
 // 定期同期（既定無効。DataSourceSync:Enabled=true で有効化）。
 builder.Services.Configure<DataSourceSyncOptions>(
     builder.Configuration.GetSection(DataSourceSyncOptions.SectionName));

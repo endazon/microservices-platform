@@ -12,6 +12,10 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <!-- NFR, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 1・2 / IADR-0395。
+         端点の入力検証は Features/ 側（Application 相当）で AbstractValidator に写す。
+         版は書かない（CPM。src/Directory.Packages.props が単一情報源）。 -->
+    <PackageReference Include="FluentValidation" />
     <!-- ADR-0027 §決定 必須設定 1 / #441 E1: 本プロジェクトは Wolverine ホストを起こす。
          WolverineFx 本体は Platform.Shared.Infrastructure 経由で届くが、RuntimeCompilation は
          **ホストを起こす各プロジェクトが足す**（Directory.Packages.props の定め）。
@@ -33,6 +37,10 @@
     <ProjectReference Include="..\..\Shared\Knowledge.Contracts\Knowledge.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
+    <!-- NFR, 計画 ADR-0041 決定 2 / IADR-0229 / IADR-0371 決定 4 / IADR-0395。失敗は Kernel の
+         Result / Error で表し、HTTP への写像は API 層（端点）で 1 度だけ行う。**ユニット外参照として
+         許可されている 3 プロジェクトの 1 つ**である（IADR-0117。check-unit-dependencies.js 規則 1）。 -->
+    <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Kernel\Platform.Shared.Kernel.csproj" />
     <!-- IADR-0083 (#305): 単一書き手化ゲート TryRunCycleAsync 等の internal をテストへ公開する。 -->
     <InternalsVisibleTo Include="DataSourceService.Tests" />
   </ItemGroup>

@@ -1,5 +1,7 @@
+using FluentValidation;
 using GraphService.Domain;
 using GraphService.Domain.Ports;
+using Platform.Shared.Kernel;
 
 namespace GraphService.Features.Graph.Neighbors;
 
@@ -25,56 +27,50 @@ internal static class GraphNeighborsEndpoint
             // FR-17, SC-18 (#917): 辺の型フィルタ（型 ID のカンマ区切り。未指定・空 = 絞らない）。
             // サーバ側で絞るのが仕様である（planning#446。クライアントで打ち切り後に絞ると範囲が狭まる）。
             string? types,
+            IValidator<NeighborsQuery> validator,
             IGraphAccessResolver accessResolver,
             IGraphStore store,
             GraphTraversal traversal,
             HttpContext http,
             CancellationToken ct) =>
         {
-            // 🔴 **hops の検証は認可より前に置く。順序を入れ替えてはならない。**
+            // 🔴 **hops と types の検証は認可より前に置く。順序を入れ替えてはならない。**
             //
             // 入れ替えると存在秘匿が壊れる —— 認可を先にすると、権限外・不存在の文書は 404、
             // 可視の文書だけが 400 を返すようになり、**hops=4 を投げるだけで文書の存在が判る**。
-            // hops の妥当性は文書に依存しないので、先に弾けば何も漏れない。
+            // hops と types の妥当性は文書に依存しないので、先に弾けば何も漏れない。
             //
             // ⚠ CodeQL の `cs/user-controlled-bypass` がここを high で指摘する（利用者入力が
             // 条件を制御しているため）。**バイパスではない** —— この分岐は要求を*拒否*するだけで、
             // 通過した場合の認可（スコープ解決・Authorize）は無条件に実行される。
             // 指摘に従って順序を変えると、上記のとおり実際の情報漏れを作ることになる。
-            var requested = hops ?? GraphTraversal.DefaultHops;
-            if (requested < 1 || requested > GraphTraversal.MaxHops)
-                return Results.BadRequest(new
-                {
-                    error = "hops_out_of_range",
-                    message = $"hops は 1〜{GraphTraversal.MaxHops} で指定する（既定 {GraphTraversal.DefaultHops}）。",
-                });
-
-            // FR-17, SC-18 (#917): 辺の型フィルタの検証。**hops と同じく認可より前に置く** ——
-            // 後ろへ置くと、権限外・不存在の文書は 404、可視の文書だけが 400 を返すようになり、
-            // 不正な types を投げるだけで文書の存在が判る（hops の注記と同じ理由）。
-            // 形式不正（GUID として読めない要素）だけを 400 で拒む。**実在しない型 ID は拒まない** ——
-            // 辺の型辞書は認証のみで全利用者へ公開済みの語彙であり（#962）、実在の有無は秘匿対象では
-            // なく、単に 1 本も一致しないだけである（辞書の改廃と URL の共有が競合しても壊れない）。
             //
-            // ⚠ CodeQL の `cs/user-controlled-bypass` は、**hops と同じ理由でここも high で指摘し得る**
-            // （利用者入力が条件を制御しているため）。上の注記と同じく**バイパスではない** —— この分岐は
-            // 要求を*拒否*するだけで、通過した場合の認可（スコープ解決・Authorize）は無条件に実行される。
-            // 🔴 **指摘に従って認可の後ろへ動かすと、本物の情報漏れができる。** 注記を hops 側だけに
-            // 置くと、CodeQL がこの行を指したときに読み手が警告へ辿り着けないため、ここにも書く。
+            // 🔴 **`IValidator<T>` がハンドラの引数にあることは順序の証拠にならない**（引数は解決で
+            // あって実行ではない）。**順序を決めているのはこの行の位置である**（IADR-0395 決定 2）。
+            //
+            // FR-17 / IADR-0371 決定 2・4 / IADR-0395 決定 4: 検証の失敗を Kernel の `Result` で表し、
+            // **HTTP への写像は 1 度だけ行う**。本文が 2 欄なので `Error.Code` を `error` へ、
+            // `Error.Message` を `message` へ写す（1 欄の端点はこの形を使わない）。
+            var gate = Validate(validator, new NeighborsQuery(hops, types));
+            if (gate.IsFailure)
+                return Results.BadRequest(new { error = gate.Error.Code, message = gate.Error.Message });
+
+            var requested = hops ?? GraphTraversal.DefaultHops;
+
+            // FR-17, SC-18 (#917): 辺の型フィルタの**解析**。検証は上で済んでいる（IADR-0395 決定 5
+            // で検証と解析を分けた）ので、ここへ到達した `types` は全要素が GUID として読める。
+            // **実在しない型 ID は拒まない** —— 辺の型辞書は認証のみで全利用者へ公開済みの語彙であり
+            // （#962）、実在の有無は秘匿対象ではなく、単に 1 本も一致しないだけである
+            // （辞書の改廃と URL の共有が競合しても壊れない）。
+            //
+            // 🔴 **1 件も読めなければ `null`（＝絞らない）へ縮退する**（`types=",,,"` は 400 ではない）。
+            // 移送前と同じ縮退である。
             IReadOnlySet<Guid>? edgeTypes = null;
             if (!string.IsNullOrWhiteSpace(types))
             {
                 var parsed = new HashSet<Guid>();
-                foreach (var part in types.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                {
-                    if (!Guid.TryParse(part, out var typeId))
-                        return Results.BadRequest(new
-                        {
-                            error = "edge_type_filter_invalid",
-                            message = "types は辺の型 ID（GUID）のカンマ区切りで指定する。",
-                        });
-                    parsed.Add(typeId);
-                }
+                foreach (var part in types.Split(',', NeighborsQueryValidator.TypesSplitOptions))
+                    parsed.Add(Guid.Parse(part));
                 if (parsed.Count > 0)
                     edgeTypes = parsed;
             }
@@ -99,5 +95,19 @@ internal static class GraphNeighborsEndpoint
           .Produces<GraphViewResponse>()
           .Produces(StatusCodes.Status400BadRequest)
           .Produces(StatusCodes.Status404NotFound);
+    }
+
+    // FR-17 / IADR-0371 決定 2: 入力規則の判定。**規則そのものは `NeighborsQueryValidator` が持つ。**
+    //
+    // 🔴 **`Errors[0]` を採る。** FluentValidation は既定で全規則を走らせるため、
+    // 移送前の「最初の違反で 400 を返す」と同じ本文にするには最初の失敗を採るしかない。
+    // 規則の宣言順が応答の契約の一部になっている（同 Validator のコメントを参照）。
+    private static Result Validate(IValidator<NeighborsQuery> validator, NeighborsQuery query)
+    {
+        var result = validator.Validate(query);
+        return result.IsValid
+            ? Result.Success()
+            : Result.Failure(Error.Validation(
+                result.Errors[0].ErrorCode, result.Errors[0].ErrorMessage));
     }
 }
