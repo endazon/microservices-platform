@@ -1,8 +1,10 @@
+using FluentValidation;
 using GraphService.Domain;
 using GraphService.Domain.Ports;
 using GraphService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
+using Platform.Shared.Kernel;
 
 namespace GraphService.Features.Graph.CreateEdge;
 
@@ -29,16 +31,20 @@ internal static class CreateGraphEdgeEndpoint
     {
         g.MapPost("/edges", async (
             CreateGraphEdgeRequest req,
+            IValidator<CreateGraphEdgeRequest> validator,
             IGraphAccessResolver accessResolver,
             IGraphStore store,
             GraphDbContext db,
             HttpContext http,
             CancellationToken ct) =>
         {
-            if (req.SourceDocumentId == Guid.Empty || req.TargetDocumentId == Guid.Empty)
-                return Results.BadRequest(new { error = "document_id_required" });
-            if (req.SourceDocumentId == req.TargetDocumentId)
-                return Results.BadRequest(new { error = "self_edge_not_allowed" });
+            // FR-17 / IADR-0371 決定 2・4 / IADR-0395: 入力検証（FluentValidation）の失敗を
+            // Kernel の `Result` で表し、**HTTP への写像は 1 度だけ行う**
+            // （計画 ADR-0030 §決定「ProblemDetails 変換は API 層」/ ADR-0041 §結果）。
+            // **判定の位置は移送前のガード節と同じ**（認可より前）であり、状態コードも本文も変わらない。
+            var gate = Validate(validator, req);
+            if (gate.IsFailure)
+                return Results.BadRequest(new { error = gate.Error.Message });
 
             var scope = await accessResolver.ResolveAsync(http, GraphAccessAction.Read, ct);
             if (!scope.Granted)
@@ -112,5 +118,19 @@ internal static class CreateGraphEdgeEndpoint
           .Produces(StatusCodes.Status400BadRequest)
           .Produces(StatusCodes.Status404NotFound)
           .Produces(StatusCodes.Status409Conflict);
+    }
+
+    // FR-17 / IADR-0371 決定 2: 入力規則の判定。**規則そのものは `CreateGraphEdgeValidator` が持つ。**
+    //
+    // 🔴 **`Errors[0]` を採る。** FluentValidation は既定で全規則を走らせるため、
+    // 移送前の「最初の違反で 400 を返す」と同じ本文にするには最初の失敗を採るしかない。
+    // 規則の宣言順が応答の契約の一部になっている（同 Validator のコメントを参照）。
+    private static Result Validate(IValidator<CreateGraphEdgeRequest> validator,
+        CreateGraphEdgeRequest req)
+    {
+        var result = validator.Validate(req);
+        return result.IsValid
+            ? Result.Success()
+            : Result.Failure(Error.Validation("graph.edge.create.invalid", result.Errors[0].ErrorMessage));
     }
 }
