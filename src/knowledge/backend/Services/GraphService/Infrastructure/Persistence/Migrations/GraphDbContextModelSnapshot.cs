@@ -256,6 +256,28 @@ namespace GraphService.Infrastructure.Migrations
                     b.ToTable("graph_documents", (string)null);
                 });
 
+            modelBuilder.Entity("GraphService.Domain.GraphDocumentTermProfile", b =>
+                {
+                    b.Property<Guid>("DocumentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BodyHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Terms")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("DocumentId");
+
+                    b.ToTable("graph_document_term_profiles", (string)null);
+                });
+
             modelBuilder.Entity("GraphService.Domain.Edge", b =>
                 {
                     b.HasOne("GraphService.Domain.EdgeType", null)

@@ -81,10 +81,15 @@ export function isCorrectable(job: { diagramsRetained?: number }): boolean {
  * `deadLettered` / `diagramsRetained` と同じく**内訳の標識**である（5 値目にしない）。
  * `failed` の列に並ばないので再変換ボタンも出ない —— 何度やっても結果は変わらない。
  *
- * フィールドが無い応答（古いサーバ）は「本文あり」へ倒す（`hasRetainedFigures` と同じ防御）。
+ * 🔴 **契約の項目は肯定形の `hasBody`（既定 true）である。** 従前は否定形の `bodyAbsent` で、
+ * 検索側（SC-02）の `hasBody` と極性が逆だったため、画面ごとにどちらを見るのか引き直す必要があった。
+ * **契約は肯定形へ寄せ、否定の判定はこの関数 1 つに閉じる**（画面が `!hasBody` を各所に散らさない）。
+ *
+ * フィールドが無い応答（古いサーバ）は「本文あり」へ倒す（`hasRetainedFigures` と同じ防御）——
+ * `undefined` は「知らない」であって「本文なし」ではない。
  */
-export function isBodyAbsent(job: { bodyAbsent?: boolean }): boolean {
-  return job.bodyAbsent === true;
+export function isBodyAbsent(job: { hasBody?: boolean }): boolean {
+  return job.hasBody === false;
 }
 
 /**

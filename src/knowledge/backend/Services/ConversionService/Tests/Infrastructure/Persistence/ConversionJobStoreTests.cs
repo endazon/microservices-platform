@@ -49,7 +49,7 @@ public class ConversionJobStoreTests
         job.MarkdownUri.Should().Be("storage://bucket/a.md");
         job.Error.Should().BeNull();
         // ADR-0070 決定 3 / IADR-0356: 本文ありの成功に「本文なし」標識は立たない（陽性対照）。
-        job.BodyAbsent.Should().BeFalse();
+        job.HasBody.Should().BeTrue();
     }
 
     // FR-12, SC-07, ADR-0070 決定 3 / IADR-0356 (#1192): 「本文なしで完了」は succeeded の内訳として
@@ -60,18 +60,18 @@ public class ConversionJobStoreTests
         var store = NewStore();
         var id = Guid.NewGuid();
         await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
-        await store.SucceedAsync(id, Guid.NewGuid(), "storage://bucket/empty.md", bodyAbsent: true,
+        await store.SucceedAsync(id, Guid.NewGuid(), "storage://bucket/empty.md", hasBody: false,
             ct: TestContext.Current.CancellationToken);
 
         var job = (await store.GetAsync(id, TestContext.Current.CancellationToken))!;
         job.Status.Should().Be(ConversionJobStatus.Succeeded);
-        job.BodyAbsent.Should().BeTrue();
+        job.HasBody.Should().BeFalse();
         job.DeadLettered.Should().BeFalse();
 
         await store.StartAsync(Raw(id), TestContext.Current.CancellationToken);
         var reprocessing = (await store.GetAsync(id, TestContext.Current.CancellationToken))!;
         reprocessing.Status.Should().Be(ConversionJobStatus.Processing);
-        reprocessing.BodyAbsent.Should().BeFalse("processing なのに「本文なし」を出さない");
+        reprocessing.HasBody.Should().BeTrue("processing なのに「本文なし」を出さない");
     }
 
     [Fact]

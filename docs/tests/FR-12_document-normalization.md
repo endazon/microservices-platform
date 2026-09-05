@@ -3,15 +3,15 @@ title: テスト仕様書 — FR-12 原本の正規化変換
 type: test-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-09-03
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, FR-12, UC-06, SC-07]
 adrs: [ADR-0010, ADR-0012, ADR-0014, ADR-0070]
-iadrs: [IADR-0008, IADR-0104, IADR-0132, IADR-0162, IADR-0296, IADR-0298, IADR-0320, IADR-0351, IADR-0356]
-specs: [20260703_FR-12_document-normalization-pipeline, 20260829_issue-447_fr12-golden-files, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction]
-issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120, #1192]
+iadrs: [IADR-0008, IADR-0104, IADR-0132, IADR-0162, IADR-0296, IADR-0298, IADR-0320, IADR-0351, IADR-0356, IADR-0388]
+specs: [20260703_FR-12_document-normalization-pipeline, 20260829_issue-447_fr12-golden-files, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
+issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120, #1192, #1254]
 -->
 
 # テスト仕様書: 原本の正規化変換
@@ -55,14 +55,14 @@ issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120, #1192]
 | T-33 | **実 pandoc の端から端**（pandoc 導入環境のみ） | 図を含む原本を実変換し、一時パスが残らず図が 1 度だけ出ること | 一時パス 0 件・`conv-` 0 件・目印 1 件 | 正規化変換: 本文変換 / 抽出図の位置 |
 | T-34 | **振り分け（PDF → 抽出器）** | `IBodyConverter` の合成器が PDF を抽出器へ、それ以外を pandoc へ渡す。外部プロセスの有無に依存しないよう縮退プレースホルダの綴りで「どちらが走ったか」を見る | PDF は「から pdftotext で抽出します」、docx / html / md / txt は「から pandoc で変換します」。未知の形式は取り寄せる前に `UnsupportedSourceFormatException` | 正規化変換: 処理フロー 3 / `FormatRoutingBodyConverterTests` |
 | T-35 | **テキスト層なしの判定（純関数）** | 抽出結果が空白のみ（空・改行・改頁 `\f`・タブ）なら本文なし。可視の文字が 1 つでもあれば本文あり | `ToBody` が `(""、true)` ／ `(本文、false)`。整形は改行正規化・行末空白除去・空行の畳み込みだけ | 正規化変換: 例外 E6 / `PdfTextLayerConverterTests` |
-| T-36 | **テキスト層あり PDF の抽出**（pdftotext 導入環境のみ・陽性） | 実行時に生成した最小 PDF（Helvetica のテキスト）から本文を取り出す。図は抽出しない | 本文に描いた文字列が出現・`BodyAbsent = false`・図 0 件・プレースホルダではない | 正規化変換: 処理フロー 3 |
-| T-37 | **テキスト層なし PDF は本文なしで完了**（pdftotext 導入環境のみ・陰性） | 描画だけの PDF（スキャン相当）は**例外にならず** `BodyAbsent = true` で返る | 例外なし・本文空・図 0 件 | 正規化変換: 例外 E6 |
+| T-36 | **テキスト層あり PDF の抽出**（pdftotext 導入環境のみ・陽性） | 実行時に生成した最小 PDF（Helvetica のテキスト）から本文を取り出す。図は抽出しない | 本文に描いた文字列が出現・`HasBody = true`・図 0 件・プレースホルダではない | 正規化変換: 処理フロー 3 |
+| T-37 | **テキスト層なし PDF は本文なしで完了**（pdftotext 導入環境のみ・陰性） | 描画だけの PDF（スキャン相当）は**例外にならず** `HasBody = false` で返る | 例外なし・本文空・図 0 件 | 正規化変換: 例外 E6 |
 | T-38 | **本文があるのに作れない失敗は従来どおり**（pdftotext 導入環境のみ） | 壊れた PDF は `pdftotext` が非 0 終了する → 例外（再試行 → デッドレター）。原本未解決も既定は例外 | `InvalidOperationException` ／ `BodyConversionUnavailableException` | 正規化変換: 例外 E1 / E2 |
-| T-39 | **抽出器不在は fail-closed**（pdftotext 未導入環境のみ） | pdftotext が無いとき既定は例外。縮退は `AllowDegradedBodyConversion=true` のときだけで、縮退は「本文なし」ではない | `BodyConversionUnavailableException` ／ 明示許可時はプレースホルダ＋ `BodyAbsent = false` | 正規化変換: 例外 E1 |
+| T-39 | **抽出器不在は fail-closed**（pdftotext 未導入環境のみ） | pdftotext が無いとき既定は例外。縮退は `AllowDegradedBodyConversion=true` のときだけで、縮退は「本文なし」ではない | `BodyConversionUnavailableException` ／ 明示許可時はプレースホルダ＋ `HasBody = true` | 正規化変換: 例外 E1 |
 | T-40 | **実行時イメージの退行防止（poppler-utils）** | 実行時段の `apt-get install` 行に `poppler-utils` が居ること | Dockerfile の runtime 段に導入行がある。消すと落ちる | 実行時イメージへの抽出器導入 |
-| T-41 | **本文なしはジョブの成功として記録される** | コンシューマは `BodyAbsent = true` の正規化結果を `succeeded` で確定し、発行口へも同じ値を渡す | `status = succeeded`・`bodyAbsent = true`・`deadLettered = false`・`error = null`。本文ありでは `bodyAbsent = false`（陽性対照） | 正規化変換: 例外 E6 / `RawDocumentFetchedConsumerJobTests` |
-| T-42 | **読み取りモデルの標識** | `bodyAbsent` は succeeded の内訳として保存され、処理を再開したら落ちる | 成功直後 true → 再受信で processing ＋ false | `ConversionJobStoreTests` |
-| T-43 | **発行イベントへの写像** | `DocumentNormalized.BodyAbsent` へ写る（既定 false なので true を渡して見る） | `ev.BodyAbsent == true` | `MassTransitDocumentNormalizedPublisherTests` |
+| T-41 | **本文なしはジョブの成功として記録される** | コンシューマは `HasBody = false` の正規化結果を `succeeded` で確定し、発行口へも同じ値を渡す | `status = succeeded`・`hasBody = false`・`deadLettered = false`・`error = null`。本文ありでは `hasBody = true`（陽性対照） | 正規化変換: 例外 E6 / `RawDocumentFetchedConsumerJobTests` |
+| T-42 | **読み取りモデルの標識** | `hasBody` は succeeded の内訳として保存され、処理を再開したら本文ありへ戻る | 成功直後 false → 再受信で processing ＋ true | `ConversionJobStoreTests` |
+| T-43 | **発行イベントへの写像** | `DocumentNormalized.HasBody` へ写る（既定 true なので false を渡して見る） | `ev.HasBody == false` | `MassTransitDocumentNormalizedPublisherTests` |
 | T-11 | 完了イベント | 変換後に `DocumentNormalized` が発行され後続へ連鎖する | Published = true、`MarkdownUri` 非空 | 正規化変換: 連鎖 / `RawDocumentFetchedConsumerTests` |
 | T-12 | **画像保持（モデル拒否）** | `stopReason="refusal"`（送信は成立したがモデルが拒否）は本文が空で返るためフェンスも無いが、T-02 の「コード化不能」と混同せず拒否として記録する。縮退先（画像保持）は不変 | `Coded=false`、`Reason="llm-refused"`（`not-codeable` でない） | LLM 送信先切替・正規化変換 / `LlmGatewayDiagramCoderTests.Retains_with_refusal_reason_when_model_refuses` |
 
@@ -74,8 +74,8 @@ issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120, #1192]
 | T-15 | **ゴールデン（HTML 由来・画像保持 1 件）** | 画像埋め込みの綴り（`![figureId](uri)`）と資産キー（`.png`）の全文、資産のバイト長・SHA-256 を固定する | `Expected/html-article.golden.md` と完全一致 | 正規化変換: 段階的コード化 / 人手補正が置換する目印 / 削除伝播が逆引きする鍵 |
 | T-16 | **ゴールデン（Office(docx) 由来・コード化＋画像保持の混在）** | コードブロックと画像埋め込みが混ざったときの**順序と空行**、`image/jpeg` → `.jpg` の写像を固定する | `Expected/office-docx-report.golden.md` と完全一致 | 正規化変換: 基本フロー |
 | T-17 | **ゴールデン（PDF 由来と宣言された変換器出力・画像保持 2 件）** | 未知の画像 MIME が `.bin` へ落ちること、および**機密区分が図コード化ポートへ渡ること**を固定する。後者は正規化結果に現れないため、他のどのテストでも見えない | `Expected/pdf-report.golden.md` と完全一致。`diagramCoderCalls` に `restricted` が並ぶ | 正規化変換: 機密制御 |
-| T-17b | **ゴールデン（テキスト層あり PDF 由来と宣言された抽出器出力・図なし）** | プレーンテキスト相当の本文が素通しで保管され、`bodyAbsent` が立たないことを固定する | `Expected/pdf-text-layer.golden.md` と完全一致（`bodyAbsent : false`） | 正規化変換: 処理フロー 3 |
-| T-17c | **ゴールデン（テキスト層なし PDF 由来と宣言された抽出器出力・空）** | 本文なしで完了し（`bodyAbsent : true`）、**空の `document.md`** が保管され、図も資産も作らないことを固定する | `Expected/pdf-no-text-layer.golden.md` と完全一致（`markdownLength : 0`） | 正規化変換: 例外 E6 |
+| T-17b | **ゴールデン（テキスト層あり PDF 由来と宣言された抽出器出力・図なし）** | プレーンテキスト相当の本文が素通しで保管され、`hasBody` が真のままであることを固定する | `Expected/pdf-text-layer.golden.md` と完全一致（`hasBody : true`） | 正規化変換: 処理フロー 3 |
+| T-17c | **ゴールデン（テキスト層なし PDF 由来と宣言された抽出器出力・空）** | 本文なしで完了し（`hasBody : false`）、**空の `document.md`** が保管され、図も資産も作らないことを固定する | `Expected/pdf-no-text-layer.golden.md` と完全一致（`markdownLength : 0`） | 正規化変換: 例外 E6 |
 | T-18 | **器の fail-closed** | case が 0 件・case の無い golden（孤児）で落ちる。走査が空振りしたまま緑にならないこと | `Golden_case_set_is_closed` が失敗する（PDF の 2 case も名指しで要る） | 退行防止の器そのものの見張り |
 
 ## 補足
@@ -150,6 +150,6 @@ issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120, #1192]
 >   T-35 の 5 件と T-37 が落ちることを確かめた。
 > - **振り分け（T-34）は縮退プレースホルダの綴りで観測する**。外部プロセスの有無に依存しないよう、
 >   縮退を明示許可して原本を解決できないストレージを渡すと、両変換器は必ず自分のプレースホルダを返す。
-> - ゴールデンは `bodyAbsent` を `## result` に描く（既存 4 件は `false` の 1 行が増えた）。
+> - ゴールデンは本文の有無を `## result` に描く（既存 4 件は 1 行が増えた）。**［2026-09-05 / #1254］行の綴りは `bodyAbsent : <本文なしか>` から `hasBody : <本文があるか>` へ変わり、値も反転した。**
 >   `pdf-no-text-layer` は `.body.md` が空であり、空の `document.md` が保管されることを固定する。
 >   「pandoc / pdftotext は実走させない」方針は変えていない。

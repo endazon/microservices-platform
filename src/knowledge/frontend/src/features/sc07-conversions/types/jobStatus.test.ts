@@ -59,10 +59,10 @@ describe('jobStatus (SC-07)', () => {
   });
 
   // #1192 / 計画 ADR「PDF の本文抽出は pandoc の外に置く」決定 3: 「本文なしで完了」は導出であり、
-  // `status` の 5 値目にしない。テキスト層の無い PDF は `succeeded` ＋ `bodyAbsent` で表す。
+  // `status` の 5 値目にしない。テキスト層の無い PDF は `succeeded` ＋ `hasBody: false` で表す。
   it('derives the body-absent marker without adding a fifth status', () => {
-    expect(isBodyAbsent({ bodyAbsent: true })).toBe(true);
-    expect(isBodyAbsent({ bodyAbsent: false })).toBe(false);
+    expect(isBodyAbsent({ hasBody: false })).toBe(true);
+    expect(isBodyAbsent({ hasBody: true })).toBe(false);
     // フィールド自体が無い応答（古いサーバ）は「本文あり」へ倒す（`hasRetainedFigures` と同じ防御）。
     expect(isBodyAbsent({})).toBe(false);
   });

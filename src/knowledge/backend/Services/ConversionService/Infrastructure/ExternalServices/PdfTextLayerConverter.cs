@@ -15,7 +15,7 @@ namespace ConversionService.Infrastructure.ExternalServices;
 // NuGet は足さない。抽出はコンテナ内でローカル完結し、外部送信を行わない（03_conversion-flow §補足）。
 //
 // 🔴 **テキスト層が無い PDF（スキャン等）は失敗ではない**（ADR-0070 決定 3）。抽出結果が空白のみで
-// あることを確かめたうえで `BodyAbsent = true` を返し、変換は「本文なし・原本参照のみ」として完了する。
+// あることを確かめたうえで `HasBody = false` を返し、変換は「本文なし・原本参照のみ」として完了する。
 // 再試行しても結果は変わらず、デッドレターに溜める価値も無い。
 //
 // 🔴 **fail-closed は「本文があるのに作れない」場合に限って維持する**（IADR-0320 決定 2 と同じ線）。
@@ -54,8 +54,8 @@ public class PdfTextLayerConverter(
         try
         {
             var raw = await RunPdfToTextAsync(source.Path, ct);
-            var (markdown, bodyAbsent) = ToBody(raw);
-            if (bodyAbsent)
+            var (markdown, hasBody) = ToBody(raw);
+            if (!hasBody)
             {
                 // ADR-0070 決定 3: テキスト層が無い。失敗として溜めず「本文なし」で完了させる。
                 logger.LogInformation("pdftotext found no text layer in {Uri}: completing without a body",
@@ -66,7 +66,7 @@ public class PdfTextLayerConverter(
                 logger.LogInformation("pdftotext extracted {Uri}: {Chars} chars", storageUri, markdown.Length);
             }
             // 図は抽出しない（PDF 内画像の図抽出は計画に無い）。
-            return new BodyConversionResult(markdown, []) { BodyAbsent = bodyAbsent };
+            return new BodyConversionResult(markdown, []) { HasBody = hasBody };
         }
         finally
         {
@@ -135,11 +135,11 @@ public class PdfTextLayerConverter(
     /// 整形は改行の正規化・行末空白の除去・3 連以上の空行の畳み込みだけで、Markdown の記法は
     /// エスケープしない（プレーンテキストは Markdown としてそのまま読める）。
     /// </remarks>
-    internal static (string Markdown, bool BodyAbsent) ToBody(string raw)
+    internal static (string Markdown, bool HasBody) ToBody(string raw)
     {
         var text = (raw ?? string.Empty)
             .Replace("\r\n", "\n").Replace('\r', '\n').Replace('\f', '\n');
-        if (string.IsNullOrWhiteSpace(text)) return (string.Empty, true);
+        if (string.IsNullOrWhiteSpace(text)) return (string.Empty, HasBody: false);
 
         var sb = new StringBuilder(text.Length);
         var blankRun = 0;
@@ -157,7 +157,7 @@ public class PdfTextLayerConverter(
             }
             sb.Append(trimmed).Append('\n');
         }
-        return (sb.ToString().Trim('\n') + "\n", false);
+        return (sb.ToString().Trim('\n') + "\n", HasBody: true);
     }
 
     // IADR-0356 決定 7 / IADR-0320 決定 5 と同型: pdftotext の版（`pdftotext -v` の 1 行目）。

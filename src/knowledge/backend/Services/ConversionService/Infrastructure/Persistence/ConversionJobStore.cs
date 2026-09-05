@@ -15,10 +15,11 @@ public interface IConversionJobStore
     // 変換開始（受信・再試行の都度）。原本イベントは人手補正（再変換）のため保持する。
     Task StartAsync(RawDocumentFetched ev, CancellationToken ct = default);
     // IADR-0154 決定 1: 図の記録も一緒に受け取り、成功のたびに洗い替える。
-    // ADR-0070 決定 3 / IADR-0356 (#1192): bodyAbsent＝本文なし（テキスト層の無い PDF）で完了したか。
+    // ADR-0070 決定 3 / IADR-0356 (#1192) / [[IADR-0388]] (#1254): hasBody＝原本が本文を持っていたか
+    // （`false` は本文なし＝テキスト層の無い PDF で完了したことを表す）。
     // **succeeded の内訳**であり、状態値は 4 値のまま増やさない（DeadLettered と同型）。
     Task SucceedAsync(Guid id, Guid documentId, string markdownUri,
-        IReadOnlyList<NormalizedFigure>? figures = null, bool bodyAbsent = false,
+        IReadOnlyList<NormalizedFigure>? figures = null, bool hasBody = true,
         CancellationToken ct = default);
     // SC-07 / ADR-0053 決定 2: deadLettered＝この失敗で**自動再試行を使い切ったか**。
     // 🔴 **デッドレターの宛先キュー名で説明しない。** 宛先はトランスポートの都合で変わる
@@ -66,7 +67,7 @@ public sealed class EfConversionJobStore(ConversionJobDbContext db) : IConversio
     }
 
     public async Task SucceedAsync(Guid id, Guid documentId, string markdownUri,
-        IReadOnlyList<NormalizedFigure>? figures = null, bool bodyAbsent = false,
+        IReadOnlyList<NormalizedFigure>? figures = null, bool hasBody = true,
         CancellationToken ct = default)
     {
         // IADR-0154 決定 1: 図を洗い替えるため、ここだけは Figures を読み込んだうえで操作する。
@@ -79,7 +80,7 @@ public sealed class EfConversionJobStore(ConversionJobDbContext db) : IConversio
         // 洗い替えでは古い行を明示的に削除する（Clear() だけでは孤児として残る構成があるため）。
         if (records is not null && job.Figures.Count > 0)
             db.ConversionJobFigures.RemoveRange(job.Figures);
-        job.MarkSucceeded(documentId, markdownUri, records, bodyAbsent);
+        job.MarkSucceeded(documentId, markdownUri, records, hasBody);
         await db.SaveChangesAsync(ct);
     }
 

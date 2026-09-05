@@ -3,15 +3,15 @@ title: 文書・版履歴（Document / DocumentVersion） データ仕様書
 type: data-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-28
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
-ids: [FR-06, FR-09, FR-12, SC-05, SC-09, UC-04]
-adrs: [ADR-0002, ADR-0014, ADR-0057]
-iadrs: [IADR-0001, IADR-0152, IADR-0153, IADR-0290, IADR-0296]
-specs: [20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage]
-issues: [#634, #635, #637, #1011, planning#473]
+ids: [FR-02, FR-03, FR-06, FR-09, FR-12, SC-03, SC-05, SC-09, UC-04]
+adrs: [ADR-0002, ADR-0014, ADR-0057, ADR-0070]
+iadrs: [IADR-0001, IADR-0152, IADR-0153, IADR-0290, IADR-0296, IADR-0388]
+specs: [20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
+issues: [#634, #635, #637, #1011, #1253, #1254, planning#473]
 -->
 
 # データ仕様書: 文書・版履歴（Document / DocumentVersion）
@@ -56,6 +56,9 @@ DocumentVersion は Document 集約配下の**確定版スナップショット*
 | Attributes | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可（空 JSON を保存） | ABAC 属性（例: `confidentiality`, `department`） |
 | Tags | List&lt;Guid&gt; (jsonb) | ○ | 既定 空リスト。NULL 不可。要素は `Tags.Id` を指す（**FK は張らない**。後述） | 分類タグの**識別子**（#635。表示名を複写しない） |
 | AssetUris | List&lt;string&gt; (jsonb) | ○ | 既定 空リスト。NULL 不可（空 JSON `[]` を保存） | 図表資産の参照 URI。**変換経路が生んだ資産の在り処であり、完全削除で実体を消すための台帳**である。🔴 **遡及付与しない**——本欄の追加以前に取り込まれた文書は空のままで、その資産は実体が残る |
+| HasBody | bool (boolean) | ○ | 既定 `true`（列の DEFAULT も true） | **原本が本文を持っていたか。** `false` はテキスト層を持たない PDF 等で、文書詳細は本文の位置へ「本文なし（原本を参照）」を出す（検索結果と同じ文言・同じ導出）。`false` になるのは変換経路だけで、本文の直接投入は常に `true` である。🔴 **本欄の追加以前の文書は `true`（本文あり）として読む**——遡及付与しない |
+| OriginalPath | string? (varchar(2048)) | - | 最大長 2048 | **原本の所在**（取り込み元のパス）。本文を持たない文書を検索に載せる索引テキストの材料である。台帳に持つのは、属性編集やタグ改名による `DocumentUpdated` の**再発行でも同じ値を運ぶ**ためである。直接投入・画面からの作成では NULL |
+| DataSourceName | string? (varchar(200)) | - | 最大長 200 | **データソースの表示名。** 上と同じ用途。**表示名の複写であり、改名に遡及しない**（次の同期で上書きされる） |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 作成時刻 |
 | UpdatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow`。更新ごとに更新 | 最終更新時刻 |
 
@@ -101,6 +104,9 @@ erDiagram
         jsonb Attributes
         jsonb Tags
         jsonb AssetUris
+        boolean HasBody
+        varchar OriginalPath
+        varchar DataSourceName
         timestamptz CreatedAt
         timestamptz UpdatedAt
     }

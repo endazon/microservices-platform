@@ -134,6 +134,23 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-17, #962: 辺の型カタログのスタブ応答。
     public List<EdgeTypeCatalogItemDto> StubEdgeTypeCatalog { get; set; } = [];
 
+    // FR-17, SC-09, #1241: 辺の型**辞書**（`/graph/edge-types`。使用件数つき・admin ＋ operator）。
+    //
+    // 🔴 **カタログ（`StubEdgeTypeCatalog`）とは別の knob である。** あちらは描画用で使用件数を持たず、
+    // 認証のみで引ける。**同じ knob にすると、辞書とカタログを取り違えた実装が緑のままになる** ——
+    // 取り違えこそが本作業で防ぎたい事故なので、スタブの側でも 2 つを分ける。
+    public List<EdgeTypeDto> StubEdgeTypeDictionary { get; set; } = [];
+
+    // 追加・改名の応答。既定は 200/201 で `StubEdgeTypeWriteResult` を返す。
+    public HttpStatusCode EdgeTypeWriteStatusCode { get; set; } = HttpStatusCode.OK;
+    public string? EdgeTypeWriteStubBody { get; set; }
+    public EdgeTypeDto? StubEdgeTypeWriteResult { get; set; }
+
+    // 削除時の使用件数。**0 なら 204、1 以上なら 409 ＋ `usageCount`**（タグ辞書の同名 knob と同型）。
+    public int StubEdgeTypeDeleteUsageCount { get; set; }
+
+    public static readonly Guid StubEdgeTypeId = new("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+
     // FR-18, SC-21, #918: AI 提案一覧のスタブ応答。**テスト間で共有される**（IClassFixture）ため、
     // 観測する側が呼ぶ前に既定へ戻すこと。
     public List<AiSuggestionDto> StubAiSuggestions { get; set; } = [];
@@ -1132,6 +1149,48 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ?? (request.Headers.TryGetValues("Authorization", out var v) ? string.Join(",", v) : null);
             owner.LastGraphForwardedAuthorization = auth;
 
+            // FR-17, SC-09, #1241: 辺の型**辞書**（`/graph/edge-types` および `/{id}`）。
+            // 🔴 **カタログ（`/graph/edge-types/catalog`）はここに入らない。** 末尾で判別する ——
+            // 「edge-types を含む」だけで括ると、辞書とカタログが同じ枝に落ちて
+            // **取り違えた実装が緑になる**（この取り違えの防止が #1241 の主題である）。
+            var path = owner.LastGraphPath ?? string.Empty;
+            var isEdgeTypeDictionary =
+                path.Contains("/graph/edge-types", StringComparison.Ordinal)
+                && !path.EndsWith("/catalog", StringComparison.Ordinal);
+            if (isEdgeTypeDictionary)
+            {
+                // 群の RequireAuthorization が先に弾くので、資格情報が無ければ 401 である。
+                if (string.IsNullOrEmpty(auth))
+                    return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+
+                if (request.Method == HttpMethod.Get)
+                    return new HttpResponseMessage(owner.GraphStubStatusCode)
+                    {
+                        Content = owner.GraphStubStatusCode == HttpStatusCode.OK
+                            ? JsonContent.Create(owner.StubEdgeTypeDictionary)
+                            : null,
+                    };
+
+                if (request.Method == HttpMethod.Delete)
+                    return owner.StubEdgeTypeDeleteUsageCount > 0
+                        ? new HttpResponseMessage(HttpStatusCode.Conflict)
+                        {
+                            Content = JsonContent.Create(new
+                            {
+                                error = "edge_type_in_use",
+                                message = $"型「cites」は {owner.StubEdgeTypeDeleteUsageCount} 本の辺で使われているため削除できません。",
+                                usageCount = owner.StubEdgeTypeDeleteUsageCount,
+                            }),
+                        }
+                        : new HttpResponseMessage(HttpStatusCode.NoContent);
+
+                var edgeWrite = new HttpResponseMessage(owner.EdgeTypeWriteStatusCode);
+                if (owner.EdgeTypeWriteStubBody is { } edgeBody)
+                    edgeWrite.Content = new StringContent(edgeBody, System.Text.Encoding.UTF8, "application/json");
+                else if (owner.StubEdgeTypeWriteResult is { } edgeDto)
+                    edgeWrite.Content = JsonContent.Create(edgeDto);
+                return edgeWrite;
+            }
             // FR-18, SC-03, #450: 承認・却下（書き込み）。**読み取りとは別の knob で応答を決める。**
             var isWrite = owner.LastGraphPath is { } p
                 && (p.EndsWith("/approve", StringComparison.Ordinal)

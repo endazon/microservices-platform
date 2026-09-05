@@ -43,6 +43,7 @@ public class BffEndpointCompositionTests
             app.MapDataSourceBffEndpoints();
             app.MapTagDictionaryBffEndpoints();
             app.MapGraphBffEndpoints();
+            app.MapEdgeTypeDictionaryBffEndpoints();
             // #451, FR-19, FR-20, SC-19, SC-20: 個人資料・Obsidian 連携設定。
             app.MapPrivateNoteBffEndpoints();
             // #1199, FR-13, UC-07, SC-04: Wiki 前段の 4 経路（後段は WikiService）。
@@ -81,7 +82,7 @@ public class BffEndpointCompositionTests
         // 後段の NotificationService が platform ユニットのサービスであるため。IADR-0346 決定 1）。
         // #1199, FR-13, UC-07, SC-04: Wiki 前段の 4 経路（Wiki）を追加した（Knowledge.Bff.Endpoints。
         // 後段の WikiService が knowledge ユニットのサービスであるため。IADR-0355 決定 1）。
-        BffEndpointComposition.Modules.Should().HaveCount(20);
+        BffEndpointComposition.Modules.Should().HaveCount(21);
     }
 
     // 内容一致の検証（claude-review 指摘対応）: 合成点経由でビルドした実アプリ（全 DI 込み）の実体化ルートが、
@@ -117,6 +118,10 @@ public class BffEndpointCompositionTests
             "/bff/conversion/jobs",
             "/bff/dashboard",
             "/bff/datasources",
+            // #1241, FR-17, SC-09, ADR-0033: 辺の型辞書の管理（追加・改名・削除）。後段は GraphService。
+            // 🔴 **`/bff/graph/edge-types`（描画用カタログ・認証のみ）とは別の接頭辞である。**
+            // 同じ口にすると、一般利用者が 403 になるか ABAC 未適用の集計値が漏れるかのどちらかになる。
+            "/bff/edge-types",
             "/bff/documents",
             "/bff/feedback",
             "/bff/monitor",
