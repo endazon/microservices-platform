@@ -10,7 +10,7 @@ namespace LlmGateway.Tests.Features.Completions.CompleteStream;
 // IADR-0037, FR-11: /complete/stream（SSE）が本文デルタと最終イベントを流し、egress 判定は /complete と同一に
 // 通すこと（拒否時はプロバイダを呼ばず理由のみ返す）を検証する。egress ゲート保持が最重要の検証点。
 // IADR-0110 (#395): メトリクス購読テスト（CompletionMetricsTests）と直列化する。
-[Collection(CompletionEndpointCollection.Name)]
+[Collection(SharedMeterCollection.Name)]
 [Trait("TestKind", "Integration")]
 public class CompletionStreamEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>

@@ -10,6 +10,12 @@ using Microsoft.Extensions.Options;
 namespace LlmGateway.Tests.Common.Observability;
 
 // FR-10, NFR, ADR-0006, ADR-0044 決定 1・3 (#443): LLM 利用実績（用途別・モデル別のトークンと金額）。
+//
+// 🔴 [[IADR-0394]] (#1275): 本クラスは **`LlmUsageMetrics.MeterName`（= `LlmCompletionMetrics.MeterName`）
+// へ発行する**。Meter 名で購読する probe は他クラスの発行を拾うため、
+// ① 購読は Meter の**インスタンス**で絞り（主）、② 共有 Meter へ発行するクラスの
+// コレクションへ加入する（多層防御）。**加入していなかったことが #1275 の失敗の原因である。**
+[Collection(SharedMeterCollection.Name)]
 [Trait("TestKind", "Unit")]
 public class LlmUsageMetricsTests
 {
@@ -17,19 +23,20 @@ public class LlmUsageMetricsTests
 
     private sealed record Measured(string Instrument, double Value, Dictionary<string, string> Tags);
 
-    // 指定した Meter の測定を集める（long / double の両方を拾う）。
+    // 指定した Meter **インスタンス**の測定を集める（long / double の両方を拾う）。
+    // Meter 名で絞ると、同じ名前を使う production コードを叩く他のテストクラスの測定が混じる。
     private sealed class Probe : IDisposable
     {
         private readonly MeterListener _listener;
         private readonly List<Measured> _items = [];
 
-        public Probe()
+        public Probe(Meter meter)
         {
             _listener = new MeterListener
             {
                 InstrumentPublished = (instrument, l) =>
                 {
-                    if (instrument.Meter.Name == LlmUsageMetrics.MeterName)
+                    if (ReferenceEquals(instrument.Meter, meter))
                         l.EnableMeasurementEvents(instrument);
                 }
             };
@@ -49,12 +56,19 @@ public class LlmUsageMetricsTests
         public void Dispose() => _listener.Dispose();
     }
 
-    private static LlmUsageMetrics Metrics(bool withPrice = true)
+    // 計器と、その計器だけを見る probe を対で作る。**同じ IMeterFactory から Meter を引く** ——
+    // 名前が同じでも容器が違えば別インスタンスであり、他クラスの発行は入らない（[[IADR-0394]] 決定 1）。
+    private static Probe NewProbe(out LlmUsageMetrics metrics, bool withPrice = true)
     {
         var services = new ServiceCollection();
         services.AddMetrics();
         var meterFactory = services.BuildServiceProvider().GetRequiredService<IMeterFactory>();
+        metrics = Metrics(meterFactory, withPrice);
+        return new Probe(meterFactory.Create(LlmUsageMetrics.MeterName));
+    }
 
+    private static LlmUsageMetrics Metrics(IMeterFactory meterFactory, bool withPrice = true)
+    {
         var pricing = new ModelPricingOptions();
         if (withPrice)
             pricing.Models["claude-sonnet-5"] =
@@ -79,9 +93,9 @@ public class LlmUsageMetricsTests
     [Fact]
     public void トークンは用途別モデル別に入出力を分けて計上される()
     {
-        using var probe = new Probe();
+        using var probe = NewProbe(out var metrics);
 
-        Metrics().RecordUsage(Decision(), "rag-answer", SensitivityClass.Internal, 1_000, 500, At);
+        metrics.RecordUsage(Decision(), "rag-answer", SensitivityClass.Internal, 1_000, 500, At);
 
         var tokens = probe.Items.Where(m => m.Instrument == LlmUsageMetrics.TokensCounterName).ToList();
         tokens.Should().HaveCount(2);
@@ -98,9 +112,9 @@ public class LlmUsageMetricsTests
     [Fact]
     public void 金額はゲートウェイ側で換算して計上される()
     {
-        using var probe = new Probe();
+        using var probe = NewProbe(out var metrics);
 
-        Metrics().RecordUsage(Decision(), "rag-answer", SensitivityClass.Internal, 1_000_000, 1_000_000, At);
+        metrics.RecordUsage(Decision(), "rag-answer", SensitivityClass.Internal, 1_000_000, 1_000_000, At);
 
         var cost = probe.Items.Single(m => m.Instrument == LlmUsageMetrics.CostCounterName);
         cost.Value.Should().Be(18.0); // 3.0 + 15.0
@@ -113,10 +127,9 @@ public class LlmUsageMetricsTests
     [Fact]
     public void 単価を解決できない呼び出しは金額を記録せず警報を計上する()
     {
-        using var probe = new Probe();
+        using var probe = NewProbe(out var metrics, withPrice: false);
 
-        Metrics(withPrice: false)
-            .RecordUsage(Decision(), "rag-answer", SensitivityClass.Internal, 1_000, 500, At);
+        metrics.RecordUsage(Decision(), "rag-answer", SensitivityClass.Internal, 1_000, 500, At);
 
         probe.Items.Should().NotContain(m => m.Instrument == LlmUsageMetrics.CostCounterName);
         var unpriced = probe.Items.Single(m => m.Instrument == LlmUsageMetrics.UnpricedCounterName);
@@ -131,9 +144,9 @@ public class LlmUsageMetricsTests
     [Fact]
     public void 未定義の用途はotherへ集約される()
     {
-        using var probe = new Probe();
+        using var probe = NewProbe(out var metrics);
 
-        Metrics().RecordUsage(Decision(), "未定義の用途", SensitivityClass.Public, 10, 10, At);
+        metrics.RecordUsage(Decision(), "未定義の用途", SensitivityClass.Public, 10, 10, At);
 
         probe.Items.Where(m => m.Instrument == LlmUsageMetrics.TokensCounterName)
             .Should().OnlyContain(m => m.Tags[LlmCompletionMetrics.PurposeTag] == "other");
