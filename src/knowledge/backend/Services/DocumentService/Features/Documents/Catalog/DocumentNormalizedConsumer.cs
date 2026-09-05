@@ -84,7 +84,7 @@ public class DocumentNormalizedConsumer(
         // **［#1184］共有先（`shared_with`）の解決も含めて `DocumentEndpoints` の 1 か所へ寄せる**
         // （ADR-0061 決定 5 / [[IADR-0396]] 決定 3）—— ここで独自に組み立てると、
         // 取り込み経路の文書だけ判定軸が 1 本足りない索引になる。
-        await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, names, ct);
+        await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, names, ct);
     }
 
     // SC-05, SC-09, SC-10, #637: 辞書に在るタグだけを返し、**無いものは件数として記録して捨てる**。

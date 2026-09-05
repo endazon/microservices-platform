@@ -45,6 +45,9 @@ internal static class SetPrivateNoteExposureEndpoint
             doc?.SetExposureAttributes(req.IncludeInSearch, req.IncludeInGraph, req.IncludeInAi);
             await db.SaveChangesAsync(ct);
 
+            // 🔴 **ここは `PublishUpdatedIfIndexableAsync`（門）を使わない唯一の本番経路である。**
+            // 撤収（決定 4）は「今は索引可ではない」ときにこそ出す必要があり、門を通すと
+            // **消させるためのイベントが門に弾かれて索引に残る**。条件は上の 2 つで閉じている。
             if (doc is not null && (wasIndexable || DocumentExposure.IsIndexable(doc.Attributes)))
             {
                 var names = await TagResolver.NamesAsync(db, ct);

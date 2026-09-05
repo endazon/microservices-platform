@@ -134,7 +134,7 @@ related_specs:
 
 | 呼ぶ側 | 関数 | 役割 |
 | --- | --- | --- |
-| DocumentService（発行の門） | `IsIndexable` | 1 つでも ON のときだけ `DocumentUpdated` を出す |
+| DocumentService（発行の門） | `IsIndexable` | 1 つでも ON のときだけ `DocumentUpdated` を出す（`PublishUpdatedIfIndexableAsync`。**発行する本番経路はすべてこれを通る**） |
 | IngestionService（索引の門） | `IsIndexable` | 偽なら**索引から削除**して抜ける |
 | RetrievalService | `IsSearchAllowed` | 検索結果から落とす（`HybridSearchService.Finish` の 1 点） |
 | GraphService | `IsGraphAllowed` | ノードを作らない・消す（同期）／出力から落とす（`Seal`） |
@@ -147,6 +147,12 @@ related_specs:
 
 **組織文書は全キーが欠落するため 3 軸とも true** であり、既存経路の挙動は 1 ビットも変わらない
 （回帰は陽性対照テストで対にして固定した）。
+
+🔴 **門は「一部の経路だけ」に付けない。** 当初は露出を触る 4 経路（`SetExposure` / 共有の付与・取り消し /
+Obsidian push）だけを門付きにし、`/documents/*` の 7 経路は無条件の発行のままにしていた。
+消費側の門があるため実害は無かったが、**「発行の門がある」という説明とコードの実態が食い違う**
+（PR #1281 のレビュー指摘）。後から経路を足した人がどちらの作法に倣えばよいか判らなくなるため、
+`DocumentUpdated` を出す本番経路をすべて `PublishUpdatedIfIndexableAsync` へ寄せた。
 
 ### 決定 5: ON → OFF の撤収は**削除**で行う。撤収の契機は `DocumentUpdated` の再発行である
 

@@ -49,7 +49,7 @@ internal static class UpdateDocumentEndpoint
             doc.Update(req.Title, req.Attributes ?? [], updateTagIds, req.ChangeNote);
             await db.SaveChangesAsync();
             var updateNames = await TagResolver.NamesAsync(db);
-            await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, updateNames, ct);
+            await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, updateNames, ct);
             return Results.Ok(DocumentEndpoints.ToDto(doc, updateNames));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
     }

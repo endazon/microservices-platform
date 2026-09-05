@@ -54,7 +54,7 @@ internal static class PutDocumentBodyEndpoint
             // FR-21 受け入れ基準 ①②: DocumentUpdated が取り込み（parse→chunk→embed→index）を起動し、
             // 索引反映を経て RAG 検索の結果として返るようになる。
             var bodyNames = await TagResolver.NamesAsync(db);
-            await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, bodyNames, ct);
+            await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, bodyNames, ct);
             return Results.Ok(DocumentEndpoints.ToDto(doc, bodyNames));
         }).WithName("DocumentBodyPut");
     }
