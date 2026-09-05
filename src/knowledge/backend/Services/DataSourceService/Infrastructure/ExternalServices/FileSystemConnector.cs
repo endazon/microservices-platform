@@ -80,7 +80,12 @@ public sealed class FileSystemConnector(ILogger<FileSystemConnector> logger) : I
                     // 増分: 前回同期時刻（含む同時刻）以前は除外。since=null は初回フルスキャン。
                     if (since is { } watermark && modifiedAt <= watermark)
                         continue;
-                    items.Add(new SourceItem(file, modifiedAt, info.Length));
+                    // 🔴 FR-05, UC-04, ADR-0074 決定 3, #752: **更新者は「無い」を明示的に運ぶ。**
+                    // Linux でファイル所有者を取る自明な手段が無く、そもそも「ファイル所有者」は
+                    // 「最終更新者」ではない。計画はこれを**意図的な縮退**と裁定しており、
+                    // **構造上運べないことは欠陥ではない**（`owner` は予約値 `system` へ倒れる）。
+                    // 🔴 **推測で埋めない** —— 誤った所有者は裁量制御を意図しない相手に開く（ADR-0036）。
+                    items.Add(new SourceItem(file, modifiedAt, info.Length, UpdatedBy: null));
                 }
                 catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
                 {

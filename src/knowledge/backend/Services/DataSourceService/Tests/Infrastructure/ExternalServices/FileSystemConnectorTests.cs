@@ -31,6 +31,24 @@ public sealed class FileSystemConnectorTests : IDisposable
         File.WriteAllText(full, content);
     }
 
+    // FR-05, UC-04, ADR-0074 決定 3, Issue #752: 🔴 **更新者は「無い」を明示的に運ぶ。**
+    //
+    // **陰性であり、これは欠陥ではない。** Linux でファイル所有者を取る自明な手段が無く、
+    // そもそも「ファイル所有者」は「最終更新者」ではない。計画はこれを**意図的な縮退**と裁定した。
+    // **推測で埋めない** —— 誤った所有者は裁量制御を意図しない相手に開く（ADR-0036）。
+    [Fact]
+    public async Task Discover_NeverCarriesAnUpdater()
+    {
+        Write("a.md", "a");
+        Write("sub/b.txt", "b");
+
+        var items = await _connector.DiscoverAsync(Source(), since: null, CancellationToken.None);
+
+        items.Should().HaveCount(2);
+        items.Should().OnlyContain(i => i.UpdatedBy == null,
+            "filesystem は構造上更新者を運べない。owner は予約値 system へ倒れる");
+    }
+
     [Fact]
     public async Task Discover_FullScan_ReturnsSupportedFilesOnly()
     {

@@ -38,7 +38,11 @@ public sealed class DataSourceSyncService(
     // FR-05, UC-04, #752 段 1: `SourceItem` が運んできたアイテム単位のメタを ABAC 属性キーへ写す。
     //
     // 🔴 **運んでこなければ null を返す**（＝上書きが 1 件も無い＝挙動不変）。
-    // 現時点でコネクタ 4 実装はいずれも `UpdatedBy` を載せないため、常に null である。
+    //
+    // ［2026-09-05 更新 / #752］**`wiki` / `saas` / `db` が `UpdatedBy` を載せるようになった。**
+    // 従前ここには「コネクタ 4 実装はいずれも載せないため、常に null である」と書いていたが、
+    // いま null になるのは `filesystem`（構造上の縮退。ADR-0074 決定 3）と、
+    // 更新者を構成していない・ソース側が空だったソースである。
     //
     // ［2026-09-03 更新 / #1194 / ADR-0074 決定 1・4］**解決段が入った。**
     // 従前ここには「🔴 ここには解決段が無い。`UpdatedBy` はそのまま `owner` になる」と書いていたが、
@@ -53,7 +57,9 @@ public sealed class DataSourceSyncService(
     // 定める（09_datasource-connectors §システム投入経路 / ADR-0036）。
     //
     // **これが ADR-0074 決定 5 が定めた先後の前半である** —— `db` コネクタへ更新者列を載せてよいのは
-    // 「解決器が配備された後」であり、それが本メソッドである（値の搭載自体は #752 の射程）。
+    // 「解決器が配備された後」であり、それが本メソッドである。
+    // **［2026-09-05 / #752］後半（値の搭載）も着地した** —— `wiki` / `saas` は自前 DTO の項目、
+    // `db` は opt-in の列から更新者を運ぶ。`filesystem` は構造上運べないままである。
     private static Dictionary<string, string>? PerItemAttributes(DataSource source, SourceItem item)
     {
         var owner = source.ResolveOwner(item.UpdatedBy);
