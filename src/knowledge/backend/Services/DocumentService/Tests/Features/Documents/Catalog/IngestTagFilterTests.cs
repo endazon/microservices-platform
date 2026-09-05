@@ -182,7 +182,9 @@ public sealed class IngestTagFilterTests
     {
         public Task PublishUpdatedAsync(Guid documentId, string title, string status, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags, DateTimeOffset updatedAt,
-            string? contentFingerprint = null, CancellationToken ct = default) => Task.CompletedTask;
+            string? contentFingerprint = null, bool hasBody = true,
+            string? originalPath = null, string? dataSourceName = null,
+            CancellationToken ct = default) => Task.CompletedTask;
     }
 }
 

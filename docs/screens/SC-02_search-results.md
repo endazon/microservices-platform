@@ -3,7 +3,7 @@ title: 検索結果一覧 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-03
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
@@ -97,7 +97,7 @@ UI だけ置くと「押しても結果が変わらない操作」「常に空�
 1 画面のために**カタログ全件**を取りに行くことになり、件数に比例して重くなる。
 計画にない性能特性を実装の都合で持ち込まないため採らない。
 
-3 件はまとめて環流の記録に載せ、計画へ環流した（feedback/20260804_sc01-03-bff-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設）。
+3 件はまとめて環流の記録に載せ、計画へ環流した（環流記録 `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md`。
 **計画リポジトリへ issue として起票済みであり、計画側の裁定を待っている**）。
 
 > **★［2026-08-10 追記 / #553］3 件とも裁定が出て、契約はすべて解消済みである。**
@@ -225,7 +225,7 @@ UI だけ置くと「押しても結果が変わらない操作」「常に空�
 
 - 作業仕様書: 仕様書: 利用者の主導線（検索・結果一覧・文書詳細）の新スタックでの再実装
 - テスト仕様書: [検索結果一覧](../tests/SC-02_search-results.md)
-- 計画への環流: feedback/20260804_sc01-03-bff-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設）
+- 計画への環流: 環流記録 `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md`
 
 ## 未決事項
 

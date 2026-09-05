@@ -165,6 +165,44 @@ groups:
           summary: "SLO の評価対象が無い: retrieval-service のレイテンシ分布が存在しない"
           description: "RetrievalService の http_server_request_duration_seconds_bucket が無い。SearchLatencyP95High は空ベクタになり発火しない（NFR-01 の検索 p95 が無監視になる）。"
 
+  # FR-10, SC-10, ADR-0076 決定 3, IADR-0389 決定 5 (#1246):
+  # **ナレッジ健全性の生産者が居なくなったこと**を warning とする。
+  #
+  # 🔴 **受け口の数字は生産者が止まっても 0 にならない。** 観測値は指標 1 つ分の全量スナップショット
+  #   置換であり、報告が来なくなると**最後に届いた値のまま凍る**。画面上は「安定している」に見え、
+  #   **沈黙が正常と読める** —— これが #1246 が名指しした「生産者が居ない指標」の見え方そのものである。
+  #   だから件数ではなく**届けた回数の系列の不在**を鳴らす。
+  #
+  # 🔴 **`absent()` ではなく `absent_over_time(...[2h])` である。上の群と式が違う。**
+  #   上の群が見ているのはトラフィック駆動の系列であり、無風時間が 5 分より短いことを稼働クラスタで
+  #   実測して対象を決めている（IADR-0370 決定 1）。こちらは**周期駆動**で、周期は構成から確定する
+  #   （KnowledgeHealthHostedService.Interval = 1 時間）。`absent()` の既定 5 分 lookback では
+  #   **平常時のほとんどの時間で真になり、鳴り続ける。** 2 周期ぶんの窓で見る。
+  #
+  # 🔴 **検知までは最大およそ 2 時間 10 分である。** 指標は運用の棚卸しに使うもので分単位の鮮度を
+  #   要さない（生産側が周期を 1 時間に決めたのと同じ理由）。速さより恒常発火の回避を採っている。
+  #
+  # 指標ごとに 1 件置く。**同じ生産者（GraphService の 1 つの定期処理）が 4 指標すべてを送るが、
+  # 指標ごとに収集の実装が別**であり、片方だけが例外で落ちても他方は届く。
+  # 本 issue（#1246）が生産者を置いた 2 指標に対で置く。
+  - name: knowledge-health-producers
+    rules:
+      - alert: KnowledgeHealthUnresolvedLinksProducerAbsent
+        expr: absent_over_time(knowledge_health_report_total{knowledge_indicator="unresolved-links"}[2h])
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "ナレッジ健全性の生産者が居ない: unresolved-links の報告が 2 時間届いていない"
+          description: "GraphService の定期収集が unresolved-links を DashboardService へ届けていない（周期は 1 時間）。受け口の件数は最後の値で凍るため、画面は正常に見える。収集の失敗・リースの停滞・受け口への到達不能を疑う（ADR-0076 決定 3）。"
+
+      - alert: KnowledgeHealthEdgeTypeUsageProducerAbsent
+        expr: absent_over_time(knowledge_health_report_total{knowledge_indicator="edge-type-usage"}[2h])
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "ナレッジ健全性の生産者が居ない: edge-type-usage の報告が 2 時間届いていない"
+          description: "GraphService の定期収集が edge-type-usage を DashboardService へ届けていない（周期は 1 時間）。受け口の件数は最後の値で凍るため、画面は正常に見える。収集の失敗・リースの停滞・受け口への到達不能を疑う（ADR-0076 決定 3）。"
+
   # --- follow-up: exporter/カスタムメトリクス配線後に有効化する（#198 注意参照） ---
   # - name: platform-messaging
   #   rules:

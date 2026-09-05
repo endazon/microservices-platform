@@ -45,6 +45,10 @@ namespace DashboardService.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Dimension")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("DocScope")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");

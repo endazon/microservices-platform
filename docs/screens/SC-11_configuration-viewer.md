@@ -3,7 +3,7 @@ title: 構成ビューア 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-07
-updated: 2026-08-30
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
@@ -326,5 +326,5 @@ BFF の `DenyAsync`（`ConfigBffEndpoints.cs`）は無認証を含む非権限�
 > > は「ワイヤーフレームは HTML モックアップ〔`mockups/wireframe/`〕を正とし、**draw.io ワイヤーフレームは
 > > 作成しない**」と書いている（pin `d980a01` で実測。行番号は pin が動くとずれるため内容で特定する）。
 > > これにより旧 5 は「未着手の作業」ではなく「**方針として作らないと決まっている**」ものとして畳まれる。
-> > 環流記録 feedback/20260709_sc11-wireframe-drawio.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260709_sc11-wireframe-drawio.md` へ移設） も
+> > 環流記録 環流記録 `projects/microservices-platform/10_feedback/20260709_sc11-wireframe-drawio.md` も
 > > 同日 `status: rejected`（別解で解消）へ揃えた。

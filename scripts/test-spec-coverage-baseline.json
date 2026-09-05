@@ -27,7 +27,9 @@
       "BffSearchEndpointTests",
       "BodylessDocumentSearchTests",
       "DocumentBodyPresenceTests",
+      "DocumentUpdatedConsumerTests",
       "HybridSearchServiceTests",
+      "MetadataIndexTextTests",
       "QdrantVectorStoreTests"
     ],
     "docs/tests/FR-04_ai-answer-citations.md": [
@@ -162,7 +164,11 @@
       "AiSuggestionGenerationTests",
       "AiSuggestionStateMachineTests",
       "GraphDocumentSyncConsumerTests",
-      "SuggestionPromptGateTests"
+      "SimilaritySourceWiringTests",
+      "SuggestionPromptGateTests",
+      "TermOverlapSimilarityCandidateSourceTests",
+      "TermProfileSyncTests",
+      "TermProfileTests"
     ],
     "docs/tests/FR-19_private-note-wikijs-exclusion.md": [
       "DocumentSyncConsumerTests"

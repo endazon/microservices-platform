@@ -24,14 +24,20 @@ namespace GraphService.Features.KnowledgeHealth.Report;
 // 計画の 7 指標のうち、本クラスが生産するのは **孤立文書数**と**陳腐化文書数**である。
 // 残り 5 指標を**ここに足さない**理由は指標ごとに違う（[[IADR-0299]] 決定 1）:
 //
-// - `unresolved-links`  … 解決失敗は LinkEdgeSynchronizer がログへ出して**捨てている**。
-//                         永続化そのものが未設計である（曖昧一致を未解決に含めるかも未定義）。
+// ★［2026-09-05 追記 / #1246］**`unresolved-links` と `edge-type-usage` を足した。**
+// 従前ここには両者を足さない理由が書いてあったが、どちらも [[IADR-0389]] で解いた:
+//   - `unresolved-links`  … 「解決失敗を捨てている」ままではなく、**リンク先の名前**を
+//                           `document_link_targets` へ保存し、**ここで解決し直して**数える
+//                           （決定 3。失敗を保存すると相手の改名・削除を取りこぼす）。
+//   - `edge-type-usage`   … 観測値モデルに**内訳の軸**を足した（決定 1。IADR-0265 の先送りを解いた）。
+//
+// 生産するのは **4 指標**である。残り 3 指標を**ここに足さない**理由は指標ごとに違う：
+//
 // - `unsummarized-clusters` … クラスタリング・要約の実装が**リポジトリ全体で 0 件**。生産不能。
-// - `edge-type-usage`   … 件数は引けるが、観測値モデルが「指標 1 つ＝件数 1 つ」であり
-//                         **型別の内訳を表現できない**（IADR-0265 が先送り済み）。
+//                         **計画の裁定待ち**であり、実装側で先取りしない（#1246 が射程外と明記）。
 // - `undefined-type-fallbacks` / `ingest-unknown-tags`
 //                       … **既に生産されている**。宛先が観測値ではなく OTel カウンタであり、
-//                         Grafana のパネルで観測する（本作業でパネルを新設した）。
+//                         Grafana のパネルで観測する。
 public sealed class KnowledgeHealthCollector(
     GraphDbContext db,
     IKnowledgeHealthReporter reporter,
@@ -67,6 +73,24 @@ public sealed class KnowledgeHealthCollector(
             "ナレッジ健全性の観測値を報告した（indicator={Indicator} count={Count} thresholdDays={Threshold}）。"
             + "**件数には個人資料を含む** —— 除外は受け口が行う。",
             KnowledgeHealthIndicators.StaleDocuments, stale.Count, thresholdDays);
+
+        // ★［2026-09-05 / #1246・[[IADR-0389]]］解決できないリンク数。しきい値は持たない。
+        var unresolved = await CollectUnresolvedLinksAsync(ct);
+        await reporter.ReportAsync(KnowledgeHealthIndicators.UnresolvedLinks, unresolved, ct: ct);
+
+        logger.LogInformation(
+            "ナレッジ健全性の観測値を報告した（indicator={Indicator} count={Count}）。"
+            + "**件数には個人資料を含む** —— 除外は受け口が行う。",
+            KnowledgeHealthIndicators.UnresolvedLinks, unresolved.Count);
+
+        // ★［2026-09-05 / #1246・[[IADR-0389]]］辺の型ごとの使用件数。しきい値は持たない。
+        var edgeTypeUsage = await CollectEdgeTypeUsageAsync(ct);
+        await reporter.ReportAsync(KnowledgeHealthIndicators.EdgeTypeUsage, edgeTypeUsage, ct: ct);
+
+        logger.LogInformation(
+            "ナレッジ健全性の観測値を報告した（indicator={Indicator} count={Count}）。"
+            + "**件数には個人資料を含む** —— 除外は受け口が行う。",
+            KnowledgeHealthIndicators.EdgeTypeUsage, edgeTypeUsage.Count);
     }
 
     // 実際に使うしきい値。不正な構成では既定へ倒し、**倒したことを警告として残す**
@@ -112,6 +136,116 @@ public sealed class KnowledgeHealthCollector(
                 // 🔴 **集合帰属で判定する。「organization でない」と書いてはならない**
                 // （理由は CollectOrphanDocumentsAsync の同じ箇所と同一）。
                 GraphDocumentScope.IsPrivateNote(d.Attributes) ? GraphDocumentScope.PrivateNote : null))
+            .ToList();
+    }
+
+    // ★［2026-09-05 / #1246・[[IADR-0389]] 決定 2・3］解決できないリンク。
+    //
+    // 🔴 **保存された「失敗」を読むのではなく、いま解決し直す。** `document_link_targets` が
+    // 持つのはリンク先の**名前**であり、それが文書 ID へ解決できるかは**相手の側の事情で変わる**
+    // （相手が改名された・削除された）。取り込み時の判定を保存すると、
+    // **相手が消えて他文書のリンクが壊れても、その文書が再取り込みされるまで数に現れない** ——
+    // リンク切れを数える指標が、リンク切れの主因を取りこぼす（決定 3）。
+    //
+    // 🔴 **判定は `LinkTargetMatcher`（辺を張る側と同じ規則）に委ねる。** ここに規則を書き写すと、
+    // 片方だけを直したときに「辺は張られないのに未解決にも数えられない」リンクが生まれる。
+    //
+    // 軸（`Dimension`）は **`not-found` / `ambiguous`**（決定 2）。どちらも辺は作られないが、
+    // 運用の直し方が違う（作る vs 改名して一意にする）。
+    internal async Task<IReadOnlyList<KnowledgeHealthObservation>> CollectUnresolvedLinksAsync(
+        CancellationToken ct = default)
+    {
+        var targets = await db.DocumentLinkTargets.AsNoTracking()
+            .Select(t => new { t.SourceDocumentId, t.Target })
+            .ToListAsync(ct);
+        if (targets.Count == 0)
+            return [];
+
+        // 突合の候補は**全文書の題名**である。孤立・陳腐化の収集と同じく全件を引く
+        // （1 時間に 1 回であり、実データの行数に対して十分安い）。
+        var documents = await db.Documents.AsNoTracking()
+            .Select(d => new { d.DocumentId, d.Title, d.Attributes })
+            .ToListAsync(ct);
+        var candidates = documents
+            .Select(d => new LinkTargetMatcher.TitleCandidate(d.DocumentId, d.Title))
+            .ToList();
+        var scopeOf = documents.ToDictionary(
+            d => d.DocumentId,
+            d => GraphDocumentScope.IsPrivateNote(d.Attributes) ? GraphDocumentScope.PrivateNote : null);
+
+        // 同じ名前が多数の文書から参照される（実データではごく普通）。**名前ごとに 1 回だけ解く。**
+        var matches = new Dictionary<string, LinkTargetMatcher.LinkTargetMatch>(StringComparer.Ordinal);
+
+        var observations = new List<KnowledgeHealthObservation>();
+        foreach (var t in targets)
+        {
+            if (!matches.TryGetValue(t.Target, out var match))
+            {
+                match = LinkTargetMatcher.Match(t.Target, candidates);
+                matches[t.Target] = match;
+            }
+            if (match.IsResolved)
+                continue;
+
+            observations.Add(new KnowledgeHealthObservation(
+                UnresolvedLinkKey(t.SourceDocumentId, t.Target),
+                // 🔴 **リンクを書いている側の文書のスコープで判定する。** 相手は解決できていない
+                // （＝どの文書か分からない）のだから、相手のスコープは原理的に引けない。
+                // 個人資料に書かれたリンクの失敗を組織の指標へ混ぜない、が要点である。
+                scopeOf.GetValueOrDefault(t.SourceDocumentId),
+                match.Dimension));
+        }
+
+        return observations;
+    }
+
+    // 観測値の不透明な鍵。**リンク先の名前をそのまま渡さない。**
+    //
+    // 受け口は別サービスの DB であり、鍵は保存される。リンク先の名前は**文書の題名**であって、
+    // 個人資料の題名でもあり得る。受け口は鍵を応答に出さないが、
+    // **出さないことと持たないことは別である** —— 越境させる必要が無いので越境させない。
+    // 同じ (文書, リンク先) が同じ鍵になれば重複排除の目的は満たされる。
+    private static string UnresolvedLinkKey(Guid sourceDocumentId, string target)
+    {
+        var digest = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(target));
+        return $"{sourceDocumentId:N}:{Convert.ToHexString(digest.AsSpan(0, 16)).ToLowerInvariant()}";
+    }
+
+    // ★［2026-09-05 / #1246・[[IADR-0389]] 決定 1・4］辺の型ごとの使用件数（ADR-0033 決定 9）。
+    //
+    // 観測値 1 件 ＝ **辺 1 本**であり、軸に**型名**を載せる。件数だけを送ると
+    // 「辺の総数」にしかならず、どの型が使われているかが読めない（それが IADR-0265 の先送り）。
+    //
+    // 🔴 **軸に載せてよいのは辞書 `edge_types` の名前だけである**（実行時管理だが SC-09 の
+    // 管理下にあり、無界ではない）。未定義の型はここへ来ない —— 抽出側が `related` へ丸めており
+    // （ADR-0033 決定 3）、丸めた件数は別指標（`undefined-type-fallbacks`）が数えている。
+    //
+    // 🔴 **端点の**どちらか**が個人資料なら `private-note` を添える**（決定 4）。片側だけを見ると、
+    // 個人資料から組織文書へ張った辺が組織の指標に混ざる。孤立文書数が「辺の相手のスコープを
+    // 問わない」のは計画が定義した**文書**の性質だからで、辺そのものの帰属とは別の話である。
+    internal async Task<IReadOnlyList<KnowledgeHealthObservation>> CollectEdgeTypeUsageAsync(
+        CancellationToken ct = default)
+    {
+        var scopeOf = await db.Documents.AsNoTracking()
+            .Select(d => new { d.DocumentId, d.Attributes })
+            .ToDictionaryAsync(
+                d => d.DocumentId,
+                d => GraphDocumentScope.IsPrivateNote(d.Attributes),
+                ct);
+
+        var edges = await db.Edges.AsNoTracking()
+            .Join(db.EdgeTypes.AsNoTracking(), e => e.EdgeTypeId, t => t.Id,
+                (e, t) => new { e.Id, e.SourceDocumentId, e.TargetDocumentId, TypeName = t.Name })
+            .ToListAsync(ct);
+
+        return edges
+            .Select(e => new KnowledgeHealthObservation(
+                e.Id.ToString(),
+                scopeOf.GetValueOrDefault(e.SourceDocumentId) || scopeOf.GetValueOrDefault(e.TargetDocumentId)
+                    ? GraphDocumentScope.PrivateNote
+                    : null,
+                e.TypeName))
             .ToList();
     }
 

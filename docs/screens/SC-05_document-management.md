@@ -3,7 +3,7 @@ title: 文書管理 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-02
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
@@ -122,7 +122,7 @@ issues: [#7, #446, #490, #502, #506, #519, #553, #629, #634, #640, planning#197,
 **なお計画自身が、本画面と正規化変換の関係を一度是正している**——02_requirements のトレーサビリティ表（2026-07-24）は
 正規化変換の関連画面を変換ジョブ画面・文書詳細画面とし、「**文書管理画面はモックのバッジ準拠で対象外**」と明記した。
 計画側の画面設計 §主要素の「変換状況」だけが旧い記述として残っている可能性がある。この点も環流の記録へ含めた
-（feedback/20260805_sc05-07-admin-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md` へ移設）。**計画側へ issue として起票済み・裁定待ち**）。
+（環流記録 `projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md`。**計画側へ issue として起票済み・裁定待ち**）。
 
 > **★［2026-08-10 追記 / #553］この推測は当たっていた。** 裁定 **Q17**（2026-08-05）で
 > **計画側が本画面の §主要素から「変換状況」を削除した**（`01_screens.md:276`。
@@ -229,7 +229,7 @@ issues: [#7, #446, #490, #502, #506, #519, #553, #629, #634, #640, planning#197,
 - 作業仕様書: 仕様書: 管理者の運用導線と AI 分析の新スタックでの再実装
 - テスト仕様書: [文書管理画面](../tests/SC-05_document-management.md)
 - 実装 ADR: 管理画面の実装方針（再変換は画面側で管理者限定、状態表示は契約から導出できる値だけで作る）／ 文書管理（書き込み）の BFF 集約とスコープ内限定・楽観ロック透過
-- 計画への環流（**計画側へ issue として起票済み。［2026-08-10 / #553］2026-08-05 に裁定され計画本文へ反映済み**）: feedback/20260805_sc05-07-admin-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md` へ移設）
+- 計画への環流（**計画側へ issue として起票済み。［2026-08-10 / #553］2026-08-05 に裁定され計画本文へ反映済み**）: 環流記録 `projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md`
 
 ## 未決事項
 

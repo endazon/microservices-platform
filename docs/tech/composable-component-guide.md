@@ -3,7 +3,7 @@ title: 可変部品（Composable コンポーネント）共通実装ガイド �
 type: tech
 status: completed
 created: 2026-07-09
-updated: 2026-09-02
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
@@ -214,5 +214,5 @@ issues: [#195, #206, #217, #218, #219, #519]
   追随して更新する。原典と本書が矛盾したら**原典が正**。
 - 計画側（`project-planning`）の `10_composability-design` §2〜§5（プラグイン規約・イベント契約の
   標準化・差し替えポイント・安全弁）が本書 §1〜§2 の上流仕様に相当する。相互参照の追加と詳細照合は
-  feedback/20260709_composable-implementation-guide-upstream.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260709_composable-implementation-guide-upstream.md` へ移設）
+  環流記録 `projects/microservices-platform/10_feedback/20260709_composable-implementation-guide-upstream.md`
   で環流中。上流が改版されたら本書 §1（接続仕様）を照合すること。

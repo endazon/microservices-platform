@@ -16,9 +16,10 @@ public interface INormalizationService
 // （RawDocumentFetchedConsumer）がログへ出して捨てていたため、「どの図が画像保持へ縮退したか」を
 // 後から問い合わせる手段が無かった —— 人手補正 Phase 1 はまさにその図を対象とする。
 //
-// ADR-0070 決定 3 / IADR-0356 (#1192): **`BodyAbsent`（本文なしで完了）も返す。** テキスト層を持たない
-// PDF は本文が作れないのではなく**存在しない**ため、失敗ではなく succeeded の内訳として記録する。
-// `MarkdownUri` は本文なしでも空の `document.md` を指す（契約を破壊的に変えないため）。
+// ADR-0070 決定 3 / IADR-0356 (#1192) / [[IADR-0388]] (#1254): **`HasBody`（原本が本文を持っていたか）も
+// 返す。** テキスト層を持たない PDF は本文が作れないのではなく**存在しない**ため、失敗ではなく
+// succeeded の内訳として記録する。`MarkdownUri` は本文なしでも空の `document.md` を指す
+// （契約を破壊的に変えないため）。**否定形 `BodyAbsent` からの改名である**（[[IADR-0388]] 決定 1）。
 public record NormalizationResult(
     Guid DocumentId,
     string MarkdownUri,
@@ -26,7 +27,7 @@ public record NormalizationResult(
     int DiagramsCoded,
     int DiagramsRetained,
     IReadOnlyList<NormalizedFigure> Figures,
-    bool BodyAbsent = false);
+    bool HasBody = true);
 
 // FR-12, UC-06, IADR-0154: 抽出した図 1 つ分の記録。Coded == false が人手補正の対象である。
 public record NormalizedFigure(

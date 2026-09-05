@@ -47,7 +47,7 @@ import type {
 //     生産者の無い指標が 3 件（未解決リンク・未要約クラスタ・辺の型ごとの使用件数）残り、
 //     **0 件として並べると「問題が無い」と読める**ためである（planning#494 が明記。
 //     節を開く条件は別の判断である）。**BFF に健全性の口も無い**（あるのは /bff/dashboard/summary のみ）。
-//   いずれも feedback/20260805_sc09-11-admin-ops-contract-gaps.md に記録した（起票は親）。
+//   いずれも projects/microservices-platform/10_feedback/20260805_sc09-11-admin-ops-contract-gaps.md に記録した（起票は親）。
 //
 // IADR-0129 決定 3: 403（権限不足）と 404（不在／秘匿）は**同一の中立文言**へ寄せる。
 // 旧実装は出し分けており、画面の文言から権限の有無が読めた（IADR-0009 の趣旨に反する）。

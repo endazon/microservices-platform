@@ -744,4 +744,79 @@ describe('DataSourceManagementPage (SC-06)', () => {
       expect(screen.getByText(/予約値 system になります/)).toBeInTheDocument();
     });
   });
+
+  // FR-05, UC-04, SC-06, ADR-0074 決定 1 (#1252): **閲覧は管理者・運用者**である。
+  //
+  // 写像表と既定属性 3 つは「同じ面・同じ権限」に置かれる。従前は描画点が「既定属性」ボタン
+  // （管理者のみ）から開くフォームしか無く、**運用者はどちらも見られなかった** ——
+  // 「同じ権限」が「運用者にはどちらも見えない」という形でしか成立していなかった。
+  describe('read-only attributes and owner mappings for operators (#1252)', () => {
+    const FULLY_ATTRIBUTED_SOURCE = {
+      ...ACTIVE_SOURCE,
+      defaultAttributes: {
+        confidentiality: 'confidential',
+        department: '経理',
+        lifecycle: 'active',
+      },
+      ownerMappings: { 'hr_system:tanaka': 'tanaka', 'hr_system:suzuki': 'suzuki' },
+    };
+
+    it('lets an operator read the default attributes and the owner mappings', async () => {
+      mocks.apiRequest.mockResolvedValue(jsonResponse([FULLY_ATTRIBUTED_SOURCE]));
+      await renderPage(['platform-operator']);
+
+      expect(await screen.findByText('規程集')).toBeInTheDocument();
+      const table = within(screen.getByRole('table'));
+      // 既定属性 3 つが**値として**読める（ラベルだけでなく値が出る）。
+      expect(table.getByText('confidential')).toBeInTheDocument();
+      expect(table.getByText('経理')).toBeInTheDocument();
+      expect(table.getByText('active')).toBeInTheDocument();
+      // owner 写像表の対が読める（キー昇順で安定）。
+      const mappings = within(table.getByRole('list', { name: '所有者の写像' }));
+      expect(mappings.getByText('hr_system:suzuki')).toBeInTheDocument();
+      expect(mappings.getByText('hr_system:tanaka')).toBeInTheDocument();
+      expect(mappings.getAllByText(/^(tanaka|suzuki)$/)).toHaveLength(2);
+    });
+
+    // 🔴 **閲覧を開いても更新の口は開かない**（登録・更新は管理者限定）。
+    // 既存の `hides the edit action from non-admins` と対で、写像表の入力欄も無いことを固定する。
+    it('gives an operator no way to change them', async () => {
+      mocks.apiRequest.mockResolvedValue(jsonResponse([FULLY_ATTRIBUTED_SOURCE]));
+      await renderPage(['platform-operator']);
+
+      expect(await screen.findByText('規程集')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '既定属性' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '＋ 写像を追加' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '更新する' })).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('ソース側の利用者 1')).not.toBeInTheDocument();
+    });
+
+    // **陽性対照**: 管理者は同じ値を読め、かつ従来どおり編集の口を持つ。
+    // 権限で**内容**を出し分けていないこと（＝面が 1 つであること）をここで固定する。
+    it('shows an admin the same values and keeps the edit affordance', async () => {
+      mocks.apiRequest.mockResolvedValue(jsonResponse([FULLY_ATTRIBUTED_SOURCE]));
+      await renderPage(['platform-admin']);
+
+      const table = within(await screen.findByRole('table'));
+      expect(table.getByText('confidential')).toBeInTheDocument();
+      expect(table.getByText('経理')).toBeInTheDocument();
+      expect(
+        within(table.getByRole('list', { name: '所有者の写像' })).getByText('hr_system:tanaka'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '既定属性' })).toBeInTheDocument();
+    });
+
+    // 値が無いときに**空欄で終わらせない**（空欄は「取得できていない」とも読める）。
+    // 予約値の説明も出す —— `unassigned` / `system` は解決できなかったことの記録である。
+    it('says what happens when nothing is configured', async () => {
+      mocks.apiRequest.mockResolvedValue(
+        jsonResponse([{ ...ACTIVE_SOURCE, defaultAttributes: {}, ownerMappings: {} }]),
+      );
+      await renderPage(['platform-operator']);
+
+      expect(await screen.findByText('規程集')).toBeInTheDocument();
+      expect(screen.getByText(/予約値 unassigned が入ります/)).toBeInTheDocument();
+      expect(screen.getByText(/写像に無い利用者は予約値 system になります/)).toBeInTheDocument();
+    });
+  });
 });

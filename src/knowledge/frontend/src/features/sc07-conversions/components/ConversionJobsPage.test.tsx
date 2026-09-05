@@ -71,7 +71,7 @@ const CORRECTED_JOB = {
 };
 
 /**
- * #1192: テキスト層を持たない PDF。**`status` は `succeeded`** で、内訳 `bodyAbsent` が立つ
+ * #1192: テキスト層を持たない PDF。**`status` は `succeeded`** で、内訳 `hasBody` が false になる
  * （計画 ADR「PDF の本文抽出は pandoc の外に置く」決定 3。失敗にもデッドレターにもしない）。
  */
 const BODY_ABSENT_JOB = {
@@ -83,7 +83,7 @@ const BODY_ABSENT_JOB = {
   diagramsRetained: 0,
   hasCorrection: false,
   deadLettered: false,
-  bodyAbsent: true,
+  hasBody: false,
 };
 
 /** 失敗かつ縮退あり。**再変換と人手補正の両方の導線が同じ行に出る**（決定 7 の試験に要る）。 */
