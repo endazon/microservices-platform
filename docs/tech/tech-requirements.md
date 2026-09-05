@@ -8,8 +8,8 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-14]
-adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041, ADR-0065, ADR-0068, ADR-0077]
-iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0195, IADR-0196, IADR-0216, IADR-0219, IADR-0229, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282, IADR-0319, IADR-0334, IADR-0349, IADR-0350, IADR-0371]
+adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041, ADR-0065, ADR-0068, ADR-0075, ADR-0077]
+iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0195, IADR-0196, IADR-0216, IADR-0219, IADR-0229, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282, IADR-0319, IADR-0334, IADR-0349, IADR-0350, IADR-0371, IADR-0379]
 specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260828_arch-foundation_eight-element-materialization, 20260903_issue-1179_slice-split-status-correction, 20260903_issue-1196_operation-semantics-in-standard-docs, 20260904_issue-1064_backend-stack-reference-impl]
 issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, #1062, #1064, #1093, #1094, #1179, #1196, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390, planning#490, planning#527, planning#532]
 -->
@@ -424,7 +424,11 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
   空になった時点で `Directory.Packages.props` から不採用パッケージを削除する。**残るのは `MassTransit`
   のみ**である（Wolverine 移行。射程と分割は下記「Wolverine 移行の前提」を参照）。
   **xUnit v2 → v3 と `Xunit.SkippableFact` の v3 代替（`Assert.Skip`）は決着済みである**（上記）。
-- サービス間 HTTP の `Refit` は棚卸し表に記載が無い。gRPC / REST の使い分け基準を定めた計画 ADR（内部同期は gRPC）との関係は #441 で決着する。
+- サービス間 HTTP の `Refit` は棚卸し表に記載が無い（BFF の `.csproj` に PackageReference が残るだけで、インタフェースは 0 件）。
+  gRPC / REST の使い分け基準を定めた計画 ADR（内部同期は gRPC）は #441 では決着せず（gRPC 側が未着手のまま閉じた）、
+  その**先行条件 4 点（proto の置き場・versioning・h2c ポート・サービス間トークン）は 2026-09-05 に基盤側で履行した**。
+  実装ガイドは [east-west gRPC 通信仕様書](../api/east-west-grpc.md)。参照実装は BFF → 認可の 1 経路で、
+  **並走中の正は REST**。残る east-west 31 本の移行と `Refit` の撤去は展開 issue の射程である。
 
 ### Wolverine 移行の前提（射程の実測。#455 / #441）
 

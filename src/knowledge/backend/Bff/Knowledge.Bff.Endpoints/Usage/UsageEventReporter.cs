@@ -11,7 +11,12 @@ namespace Knowledge.Bff.Endpoints.Usage;
 //
 // `Query` は種別が `search` のときだけ意味を持つ（受け口は `answer` では捨てる）。
 // **`answer` では null を渡す** —— 捨てられる値を経路とログに晒す理由が無い（決定 5）。
-public sealed record UsageEventSignal(string EventType, string? Query, string? Authorization);
+//
+// NFR-02, ADR-0072, ADR-0076 決定 4, [[IADR-0378]] (#1203): `IsSynthetic` は合成監視のトラフィックか。
+// 🔴 **判定は呼び出し元（BFF の端点）が検証済み JWT の主体から行い、ここへは結果だけを運ぶ。**
+// 受信ヘッダから決めてはならない —— 外から印を付けて実利用を費用・集計から隠せてしまう。
+public sealed record UsageEventSignal(
+    string EventType, string? Query, string? Authorization, bool IsSynthetic = false);
 
 // FR-10, SC-10, [[IADR-0343]] 決定 3 (#1103): 発火の口。**同期・O(1)・例外を投げない。**
 //
@@ -53,6 +58,20 @@ public sealed class UsageEventReporter(
 {
     public void Report(UsageEventSignal signal)
     {
+        // NFR-02, ADR-0071, ADR-0072, ADR-0076 決定 4, [[IADR-0378]] (#1203):
+        // 🔴 **合成監視のトラフィックはここで落とす。** `IUsageEventReporter.Report` は
+        // 利用状況イベントの**唯一の発火の口**であり、ここを通さなければ `UsageEvents` に行は入らない。
+        // 行が入らなければ SC-10 の利用状況も、ADR-0071 のしきい値（出現件数 3 件）を通る語も生じない
+        // —— **検索傾向の側に独立した除外を置かなくてよい**のはこのためである（作業仕様書 §母集合 ②）。
+        //
+        // 🔴 **黙って捨てない。** 落とした件数を `excluded_synthetic` として数える。数えないと
+        // 「合成だけが通っていて実利用は 0」でも計器が緑に見え、#1103 が直した「0 件が正常に見える」形を作り直す。
+        if (signal.IsSynthetic)
+        {
+            metrics.RecordDispatch(signal.EventType, UsageEventMetrics.OutcomeExcludedSynthetic);
+            return;
+        }
+
         if (queue.Writer.TryWrite(signal))
             return;
 
