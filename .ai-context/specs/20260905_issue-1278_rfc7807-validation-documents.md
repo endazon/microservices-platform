@@ -72,15 +72,17 @@ FluentValidation の `AbstractValidator` へ移す。**応答本文は 1 バイ�
 | `Results.BadRequest` の非テスト行 | 18 | 波 2 第 1 弾が残した「入力検証ではない」箇所が拾える（走査器は生きている） |
 | FluentValidation の `PackageReference` を持つ csproj | 6 | IADR-0395 §結果「4 → 6」と一致 |
 | `AddScoped<IValidator<` の `Program.cs` 登録行 | 11 | 1 検証器 1 行の明示登録が全部拾える（`AddValidatorsFromAssembly` は 0 件） |
+| `DocumentService` の `ValidationProblem` 呼び出し行 | 20 | 本 PR が触る集約の上限（うち `Documents`/`Tags` は 15 行） |
 
-★［2026-09-05 追記 / #1278］🔴 **上の 3 行目は当初「`IValidator<` … 10」と書いていた。2 回直して 2 回とも誤った。**
+★［2026-09-05 追記 / #1278］🔴 **登録行の数は当初「`IValidator<` … 10」と書いていた。2 回直して 2 回とも誤った。**
 1 回目は着手時の数え違い（11 を 10 と書いた）。2 回目の是正では `grep -c "IValidator<"` を使ったため
 **説明文のコメント行**（`DocumentService/Program.cs:73` が `` `IValidator<T>` `` を引用している）を
 登録行として数え、「本 PR 適用後 20 行・DocumentService 9」と書いた —— 実測は **19 行・8** である。
 **語で数えると散文が混ざる。走査語を `AddScoped<IValidator<` へ絞り直した。**
 あわせて、同じ値を持つ `IADR-0398` §母集合の表も直した（規則 7: **値を 1 つ直したら、その値を持つ
 ファイルを全走査し直す**。1 回目の是正では ADR 側だけを直して本表を見落としていた）。
-| `DocumentService` の `ValidationProblem` 呼び出し行 | 20 | 本 PR が触る集約の上限（うち `Documents`/`Tags` は 15 行） |
+🔴 **3 回目の誤りもした** —— この追記を表の途中へ挟んで**表を分断**した（GFM はヘッダと区切り行に
+連続する行だけを表として読む）。**追記は表の後ろへ置く。**
 
 ### 🔴 #1278 の前提は半分誤りである —— 37 のうち「全違反を返す」のは 11 だけ
 
