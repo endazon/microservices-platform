@@ -9,9 +9,11 @@
  * ★ 本検査器で確かめられないこと（先に書く）:
  *   **「Grafana がこの provisioning を受理するか」は分からない。**
  *   実装環境で Grafana を起動できなかった（docker daemon へ到達不可。#665 §判断 0）。
- *   **配備時に `/api/v1/provisioning/alert-rules` が 9 件返すことを別途確かめること。**
- *   （#1204 で `RagFirstTokenP95High` を足して 5 → 6、#1202 で `…SeriesAbsent` 3 件を足して 6 → 9 になった。
- *    件数は導出値なので数え直すこと。）
+ *   **配備時に `/api/v1/provisioning/alert-rules` が 12 件返すことを別途確かめること。**
+ *   （#1204 で `RagFirstTokenP95High` を足して 5 → 6、#1202 で `…SeriesAbsent` 3 件を足して 6 → 9、
+ *    #1246 で `…ProducerAbsent` 2 件を足して 9 → 11、#1203 で `RagLatencySeriesAbsent` を足して 11 → 12。
+ *    🔴 **件数は導出値なので数え直すこと** —— この行は #1246 の 2 件を取りこぼして
+ *    「9 件」のまま 2 世代残っていた。**走査ではなく計算し直す。**）
  *   ここで見るのは下の 5 点だけである。
  *
  * 検査:

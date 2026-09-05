@@ -89,8 +89,15 @@ groups:
       #   要求受領から最初の `token` イベントを書き出すまでを測る。**token が 1 件も出なければ記録されない**
       #   （初回トークンが無かったことを「速かった」として積まない）。
       #   経路は SC-01 が実際に使う **/analysis/ask/stream** であり、一括経路 /analysis/ask ではない。
-      # 🔴 **この計器は呼ばれない限り系列を持たない。** 無風でいられる時間が検知要件（5 分）を超えるため、
-      #   ADR-0076 決定 3 の `absent` 併設の対象外である（決定 4 の合成監視が入るまで）。
+      # 🔴 **この計器は呼ばれない限り系列を持たない。** ［2026-09-05 追記 / #1203・ADR-0079］
+      #   **繰り延べの理由が入れ替わった。従前は「決定 4 の合成監視が入るまで」対象外としていたが、
+      #   合成監視は着地し、ADR-0079 決定 1 が間隔（常時 60 秒 / SLO 評価 60 分）まで確定させた。**
+      #   それでも**この計器だけは依然として対象外**である —— 60 秒側は `AllowLlmEgress` が既定 `false` で
+      #   LLM を呼ばず、**`token` イベントが 1 件も出なければ本計器は記録しない**（IADR-0354 の設計）。
+      #   系列を立てるのは **ADR-0079 フォローアップ 2（60 分間隔・LLM を呼ぶ合成）**であり、それは未配備である。
+      #   **今ここへ `absent` を置くと恒常発火**になり、ADR-0076 理由が却下した案 B そのものになる。
+      #   配備後に入れる形も決まっている —— **周期 60 分の生産者なので `absent_over_time(...[2h])`**
+      #   （下の knowledge-health-producers 群と同じ形。`absent()` の 5 分 lookback では鳴り続ける）。
       - alert: RagFirstTokenP95High
         expr: |
           histogram_quantile(0.95, sum by (le) (rate(rag_answer_first_token_duration_seconds_bucket{job="microservices-platform.aianalysis-service"}[5m]))) > 5
@@ -124,8 +131,23 @@ groups:
   #
   # 🔴 **対象は「無風でいられる時間が検知要件（5 分）より短い経路」だけである**（ADR-0076 決定 3 の判定基準）。
   #   全 SLO へ対で置くと低頻度経路で恒常発火し、警報を無視する習慣を作る（同 §検討した選択肢 ② 案 B は却下）。
-  #   **`/analysis/ask` 系（RagFirstTokenP95High / RagLatencyP95High）は対象外**である ——
-  #   呼ばれない限り系列を持たないため、無風が 5 分を超え得る。決定 4 の合成監視が着地してから入れる。
+  #
+  # 🔵 ［2026-09-05 追記 / #1203・ADR-0079］**`/analysis/ask` 系の扱いが 2 つに割れた。**
+  #   従前ここには「`/analysis/ask` 系（RagFirstTokenP95High / RagLatencyP95High）は対象外。
+  #   決定 4 の合成監視が着地してから入れる」と書いてあった。**合成監視は着地し（#1203 / IADR-0378）、
+  #   ADR-0079 決定 1 が間隔を確定させた**（常時トラフィック用 60 秒・LLM を呼ばない ／ SLO 評価用 60 分・呼ぶ）。
+  #   **繰り延べの条件は片方だけ満たされた。**
+  #
+  #   - **`RagLatencyP95High` の系列 → 対象へ入れた**（下の RagLatencySeriesAbsent）。60 秒側のプローブが
+  #     `/bff/analysis/ask` を叩き、**LLM を呼ばずとも検索までは走る**ので `/analysis/ask` の HTTP 系列は立つ
+  #     （IADR-0378 決定 7）。**60 秒 × 5 = 5 分の余裕**があり `absent()` の既定 lookback に収まる。
+  #   - **`RagFirstTokenP95High` の系列 → 依然として対象外。** LLM を呼ばない限り `token` が出ず、
+  #     計器が記録しない。系列を立てるのは ADR-0079 フォローアップ 2（60 分・LLM を呼ぶ）であり未配備である。
+  #     入れるときの形は `absent_over_time(...[2h])`（周期 60 分の 2 周期ぶん。理由は下の群の前書きと同じ）。
+  #
+  #   🔴 **本群のルールは合成監視のオーバーレイ（deploy/local/synthetic-monitor・opt-in）が
+  #   当たっていることを前提にする。** 当てていないクラスタでは RagLatencySeriesAbsent は真になるが、
+  #   **それは誤報ではなく「評価対象が本当に無い」状態である**（クラスタ再作成中に鳴るのと同じ扱い）。
   #
   # 🔴 **検知までは最大およそ 10 分である。NFR-21 の「5 分以内」ではない。**
   #   `absent()` は瞬間ベクタ選択子の既定 5 分 lookback が空になって初めて真になり、そこへ `for: 5m` が積まる。
@@ -164,6 +186,18 @@ groups:
         annotations:
           summary: "SLO の評価対象が無い: retrieval-service のレイテンシ分布が存在しない"
           description: "RetrievalService の http_server_request_duration_seconds_bucket が無い。SearchLatencyP95High は空ベクタになり発火しない（NFR-01 の検索 p95 が無監視になる）。"
+
+      # NFR-02, ADR-0076 決定 3, ADR-0079 決定 1 (#1203): RagLatencyP95High の評価対象。
+      # 常時トラフィックの源は**合成監視のプローブ**であり、kubelet のプローブではない（/analysis/ask は
+      # liveness/readiness の対象ではない）。**間隔は 60 秒**（deploy/local/synthetic-monitor の
+      # PROBE_INTERVAL_SECONDS。ADR-0079 決定 1 の確定値）で、`absent()` の既定 5 分 lookback に対し 5 周期ぶんの余裕がある。
+      - alert: RagLatencySeriesAbsent
+        expr: absent(http_server_request_duration_seconds_bucket{job="microservices-platform.aianalysis-service", http_route="/analysis/ask"})
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "SLO の評価対象が無い: aianalysis-service /analysis/ask のレイテンシ分布が存在しない"
+          description: "AiAnalysisService の http_server_request_duration_seconds_bucket{http_route=\"/analysis/ask\"} が無い。RagLatencyP95High は空ベクタになり発火しない。合成監視のプローブ（60 秒間隔）が止まっているか、AiAnalysisService が /analysis/ask を処理できていない疑い（ADR-0076 決定 3 / ADR-0079 決定 1）。"
 
   # FR-10, SC-10, ADR-0076 決定 3, IADR-0389 決定 5 (#1246):
   # **ナレッジ健全性の生産者が居なくなったこと**を warning とする。

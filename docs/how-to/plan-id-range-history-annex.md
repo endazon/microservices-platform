@@ -3,15 +3,15 @@ title: 別紙 — 計画 ID レンジの追随記録と、計画 ADR の状態�
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-09-03
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
 ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-06, SC-17, SC-18, SC-19, SC-20]
-adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077]
+adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228]
 specs: []
-issues: [#1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532]
+issues: [#1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -23,6 +23,39 @@ issues: [#1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#7
 >
 > **本別紙が持つのは「レンジをいつどう引き直したか」（pin 時代の記録を含む）「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れなかったか」の記録だけ**である（必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
+
+### ［2026-09-05・7 回目］ADR `0001..0077` → `0001..0081`（4 件。**引き当てた 1 件が、着手中の作業の前提を覆した**）
+
+**`ADR` だけが `0001..0077` → `0001..0081` へ増えた**（4 件）。**他の 4 種は不動**。
+
+| ADR | planning コミット | planning PR | 状態 | 内容 |
+| --- | --- | --- | --- | --- |
+| `ADR-0078` | `e50fd77` | `planning#546` | `Accepted` | 存在秘匿の統制を「応答の区別不能性」と定め、go-live のメール送出に近接 MTA を挟む |
+| `ADR-0079` | `f84d0c2` | `planning#549` | `Accepted` | 合成監視の間隔を 2 段に分け、SLO 判定窓を標本量に合わせる |
+| `ADR-0080` | `6b078fc` | `planning#551` | `Accepted` | 集合値の利用者属性を定義し、利用者条件のマッチを「交差が空でないこと」と定める |
+| `ADR-0081` | `fcb5bce` | `planning#553` | `Accepted` | AI 提案の生成はどのタイミングでも守るべき制約を定める（起動の選択は実装に委ねたまま） |
+
+**4 件とも `created: 2026-09-05` / `status: Accepted`**（`gh api` で各ファイルの frontmatter を直接読んだ）。
+欠番が無いことは、`07_adr` の `ADR-` 始まりのファイルが **81 件**あり、その番号の最小と最大が
+**`0001` と `0081`** であることの対で確かめた（6 回目と同じ数え方）。
+
+#### 🔴 契機が 5 回・6 回目と違う —— **引いた ADR が、着手中の作業の前提そのものを覆した**
+
+4 回目以降は「参照するより先に引く」形が続いていたが、**本回はさらに前段で引いた** ——
+着手した作業（`/analysis/ask` 系を `absent` の対象へ入れる）の**根拠を確かめるために計画 ADR を読み、
+そこで初めて `ADR-0079` の存在を知った。**
+
+**引かなければ、作業は「繰り延べの条件は満たされていない」という誤った前提のまま進んでいた。**
+直前の実装 ADR は「`absent` の対象拡大は**頻度の裁定が下りてから**である」と書いており、
+**その裁定は着手の前日〜当日に下りていた。** 走査を省いて記録だけを信じると、
+**下りた裁定を「まだ下りていない」と扱う**という、レンジ追随の遅れとは別種の誤りが生じる。
+
+#### 追随しなければ何が止まったか（本回は実際に止まる寸前だった）
+
+`ADR-0079` はコミット件名・trace ブロックの両方から引く必要があった。
+**レンジが `0001..0077` のままだと `check-commit-messages.js` / `check-trace-blocks.js` が
+「計画レンジに実在しない」として落とす。** 6 回目が書いた「追随の遅れが実装作業そのものを止める」は、
+本回に限れば**比喩ではなく実際の門**であった。
 
 ### ［2026-09-03・6 回目］ADR `0001..0068` → `0001..0077`（9 件。**1 日半で 9 件。これまでの最大幅である**）
 

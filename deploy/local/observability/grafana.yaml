@@ -432,7 +432,11 @@ data:
     #      機械で確かめたのは **`scripts/check-grafana-alerting.js`** の範囲
     #      —— ルール数と名前が `deploy/prometheus/alerts.yml` と 1 対 1、参照する
     #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、まで。
-    #      **配備時に `/api/v1/provisioning/alert-rules` が 9 件返すことを確かめること。**
+    #      **配備時に `/api/v1/provisioning/alert-rules` が 12 件返すことを確かめること。**
+    #      🔴 **件数は導出値である。ここの数字を信用せず、着手のたびに数え直すこと**（IADR-0383）——
+    #      本行は #1246 が 2 件足した後も「9 件」のままであり、**2 世代ぶん腐っていた**（#1203 で是正）。
+    #      現在の内訳: platform-availability 2 ／ platform-slo 4 ／ platform-slo-evaluation-target 4
+    #      ／ knowledge-health-producers 2 ＝ **12**。
     #
     # 式は `deploy/prometheus/alerts.yml` と**同じもの**を使う（二重管理だが、暫定期間だけである）。
     #
@@ -732,6 +736,37 @@ data:
                   conditions:
                     - evaluator: { type: gt, params: [0] }
 
+          # NFR-02, ADR-0076 決定 3, ADR-0079 決定 1 (#1203): RagLatencyP95High の評価対象。
+          # 常時トラフィックの源は合成監視のプローブ（60 秒間隔）である。**RagFirstTokenP95High の系列は
+          # 依然として対象外**（LLM を呼ばない限り token が出ず計器が記録しない）。理由は Prometheus 版が正本。
+          - uid: slo-rag-latency-series-absent
+            title: RagLatencySeriesAbsent
+            condition: C
+            for: 5m
+            noDataState: OK
+            execErrState: Error
+            labels:
+              severity: warning
+            annotations:
+              summary: "SLO の評価対象が無い: aianalysis-service /analysis/ask のレイテンシ分布が存在しない"
+              description: "AiAnalysisService の http_server_request_duration_seconds_bucket{http_route=\"/analysis/ask\"} が無い。RagLatencyP95High は空ベクタになり発火しない。合成監視のプローブ（60 秒間隔）が止まっているか、AiAnalysisService が /analysis/ask を処理できていない疑い（ADR-0076 決定 3 / ADR-0079 決定 1）。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: 'absent(http_server_request_duration_seconds_bucket{job="microservices-platform.aianalysis-service", http_route="/analysis/ask"})'
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+
       # FR-10, SC-10, ADR-0076 決定 3, IADR-0389 決定 5 (#1246): ナレッジ健全性の生産者の不在。
       #
       # 🔴 **上の群と式が違う（`absent_over_time` である）。** 生産は周期駆動（1 時間）であり、
@@ -797,6 +832,7 @@ data:
                   expression: A
                   conditions:
                     - evaluator: { type: gt, params: [0] }
+
 ---
 apiVersion: apps/v1
 kind: Deployment

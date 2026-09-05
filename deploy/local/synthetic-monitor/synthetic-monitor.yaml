@@ -49,13 +49,16 @@ spec:
                   key: client-secret
             - name: BFF_BASE_URL
               value: http://bff-service:8080
-            # 🔴 **頻度は配備時に決める。** ADR-0076 §残るもの が「合成監視の頻度・費用の上限は
-            #   定めていない」と残しており、**実装は既定値を持たない**（probe.js は未設定なら起動しない）。
-            #   ここに置く 60 は「決定 3 の 5 分境界より十分に短い」という運用上の暫定値であり、
-            #   計画側の裁定（planning へ decision-needed で起票済み）で置き換える。
+            # 🔴 **頻度は配備時に決める。実装は既定値を持たない**（probe.js は未設定なら起動しない）。
+            #   🔵 ［2026-09-05 更新 / #1203］**60 は暫定値ではなくなった** —— ADR-0079 決定 1 が
+            #   「常時トラフィックの生成＝60 秒（LLM を呼ばない）」を確定値として置いた（環流 planning#538）。
+            #   従前ここには「計画側の裁定で置き換える暫定値」と書いてあった。**その裁定が下りた。**
+            #   この 60 秒が、ADR-0076 決定 3 の `absent` 併設を /analysis/ask の HTTP 系列へ広げる根拠である
+            #   （alerts.yml の RagLatencySeriesAbsent）。**変えるならそちらの lookback も見直すこと。**
             - name: PROBE_INTERVAL_SECONDS
               value: "60"
-            # 既定は費用の出ない 2 経路のみ。**LLM を実際に呼ぶ経路は裁定待ちで足さない。**
+            # 費用の出ない 2 経路のみ。**LLM を実際に呼ぶのは ADR-0079 決定 1 の「SLO 評価用＝60 分」側であり、
+            # それは別の配備単位である**（同 §フォローアップ 2。本オーバーレイには足さない）。
             - name: PROBE_PATHS
               value: /bff/analysis/ask,/bff/analysis/ask/stream
           volumeMounts:
