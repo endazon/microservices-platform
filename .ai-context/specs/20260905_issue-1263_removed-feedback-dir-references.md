@@ -1,7 +1,7 @@
 ---
 title: 撤去済み feedback/ を指す参照の是正（凍結記録は対象外）
-type: work-spec
-status: completed
+type: spec
+status: done
 related_ids:
   - NFR
   - ADR-0048
