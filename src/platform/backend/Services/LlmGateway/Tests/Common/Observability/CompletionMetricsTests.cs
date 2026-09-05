@@ -15,9 +15,13 @@ namespace LlmGateway.Tests.Common.Observability;
 // 「送信していない（越境拒否）」と「送ったがモデルが拒否した（refusal）」が別軸で区別できることを固定する。
 // 以前は終了理由がログにしか出ず、拒否率を継続的に把握する手段が無かった（IADR-0104 §フォローアップ 3）。
 //
-// MeterListener は Meter 名でプロセス全体の測定を購読するため、他のテストクラスが並行して /complete を
-// 叩くと測定が混入する。補完エンドポイントを叩くテストクラスを 1 コレクションへまとめて直列化する。
-[Collection(CompletionEndpointCollection.Name)]
+// MeterListener は Meter 名でプロセス全体の測定を購読するため、他のテストクラスが並行して同じ
+// Meter へ発行すると測定が混入する。**共有 Meter へ発行するテストクラス**を 1 コレクションへ
+// まとめて直列化する（[[IADR-0394]] / #1275 で加入規則を「補完エンドポイントを叩くクラス」から
+// 言い直した。本クラスは購読する 2 本の計器（llm.completion.total /
+// llm.completion.output_tokens）の発行元が補完エンドポイントに閉じており、それを叩く 7 クラスは
+// すべて加入済みである —— 実測。よって購読の絞り方は Meter 名のままでよい）。
+[Collection(SharedMeterCollection.Name)]
 [Trait("TestKind", "Integration")]
 public class CompletionMetricsTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>

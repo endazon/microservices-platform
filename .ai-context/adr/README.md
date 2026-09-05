@@ -467,3 +467,4 @@
 | [IADR-0391](./IADR-0391_removed-path-references-in-prose.md) | **撤去済みディレクトリを指す散文中のパスは live な文書だけ直し、凍結記録は当時の記述のまま残す**（#1263 / ADR-0048 決定 5）。既存検査器はリンク記法しか見ないため散文は素通りする。検査器の追加は同型 2 回目まで待ち、作るときの設計だけ先に書いた。 | Accepted |
 | [IADR-0392](./IADR-0392_connector-updated-by-acquisition.md) | **更新者は `wiki` / `saas` が構成可能な JSON 項目名・`db` が opt-in の列から取り、`filesystem` は「無い」を明示的に運ぶ**（#752 / FR-05・UC-04・ADR-0036・ADR-0074 決定 3・5）。🔴 「取れなかった」と「取ったら空だった」を 4 値で分ける。db の列は無条件に足すと既存クエリが全件落ちる。 | Accepted |
 | [IADR-0393](./IADR-0393_backend-stack-rollout-wave1.md) | **計画スタック 3 種の横展開は「参照実装をそのまま写せるか」で波を割り、波 1 は 6 サービスに限る**（#1230 / ADR-0030・ADR-0041）。入れない理由は 4 種だけ。🔴 手書き検証は `Results.BadRequest` 23 箇所ではなく `ValidationProblem` 34 箇所を含む 57 箇所前後。 | Accepted |
+| [IADR-0394](./IADR-0394_meter-probe-instance-scoping.md) | **MeterListener の probe は Meter の「インスタンス」で購読を絞る**（#1275 / ADR-0006・ADR-0044・IADR-0110 決定 7）。名前で絞ると他クラスの発行を拾い不在の表明が破れる（並列度を上げると 5/5 で再現）。直列化は多層防御であり主ではない。 | Accepted |

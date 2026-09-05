@@ -6,7 +6,7 @@ namespace LlmGateway.Tests;
 
 // FR-04, ADR-0010: LlmGateway エンドポイントテスト
 // IADR-0110 (#395): 本クラスも /complete を叩くため、メトリクス購読テストと直列化する。
-[Collection(CompletionEndpointCollection.Name)]
+[Collection(SharedMeterCollection.Name)]
 [Trait("TestKind", "Integration")]
 public class HealthEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
