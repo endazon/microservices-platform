@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-13, FR-17, SC-01, SC-03, SC-04, SC-18, UC-07]
 adrs: [ADR-0011, ADR-0031, ADR-0073]
-iadrs: [IADR-0009, IADR-0020, IADR-0124, IADR-0134, IADR-0335, IADR-0355, IADR-0365, IADR-0387]
+iadrs: [IADR-0009, IADR-0020, IADR-0124, IADR-0134, IADR-0335, IADR-0355, IADR-0365, IADR-0386]
 specs: [20260708_issue-130_sc04-wiki-access, 20260903_issue-1199_bff-wiki-routes, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e]
 issues: [#129, #130, #1199, #1200, #1240]
 -->

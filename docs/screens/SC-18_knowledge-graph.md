@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-17, SC-03, SC-09, SC-18, SC-20, UC-10]
 adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0039, ADR-0049, ADR-0054]
-iadrs: [IADR-0122, IADR-0124, IADR-0134, IADR-0242, IADR-0274, IADR-0387]
+iadrs: [IADR-0122, IADR-0124, IADR-0134, IADR-0242, IADR-0274, IADR-0386]
 specs: [20260823_issue-917_sc18-graph-view, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e]
 issues: [#1240, #452, #911, #917, #962, #980, planning#446]
 -->
