@@ -206,6 +206,15 @@ if [ "${ESO:-}" != "1" ]; then
     "client-secret=${RETRIEVAL_SERVICE_CLIENT_SECRET:-retrieval-service-dev-secret-change-me}"
   apply_secret "$MSP_NS" ingestion-service-token \
     "client-secret=${INGESTION_SERVICE_CLIENT_SECRET:-ingestion-service-dev-secret-change-me}"
+  # FR-04 / FR-12 / FR-18, IADR-0398 (#1255): テキスト生成（/complete 系）の呼び出し側 3 サービス。
+  # 埋め込みの 2 つと同型・同じ理由（helm は非 optional な secretKeyRef で参照するので、
+  # 欠けたら Pod が起動しない ＝ 注入漏れが静かな縮退へ倒れない）。
+  apply_secret "$MSP_NS" aianalysis-service-token \
+    "client-secret=${AIANALYSIS_SERVICE_CLIENT_SECRET:-aianalysis-service-dev-secret-change-me}"
+  apply_secret "$MSP_NS" graph-service-token \
+    "client-secret=${GRAPH_SERVICE_CLIENT_SECRET:-graph-service-dev-secret-change-me}"
+  apply_secret "$MSP_NS" conversion-service-token \
+    "client-secret=${CONVERSION_SERVICE_CLIENT_SECRET:-conversion-service-dev-secret-change-me}"
 fi
 # NFR-09, ADR-0011/ADR-0026, IADR-0095/IADR-0328/IADR-0342 (#1127): Wiki.js の Keycloak OIDC
 # ストラテジ（Wiki.js の DB 保持・manifest 化できない）を冪等に投入する
@@ -465,6 +474,10 @@ if [ "${ESO:-}" = "1" ]; then
   # スキップされるので、**これが唯一の供給元**である（欠けると retrieval / ingestion Pod が起動しない）。常時供給。
   kubectl apply -f deploy/local/vault/eso/externalsecret-retrieval-service-token.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-ingestion-service-token.yaml
+  # #1255（テキスト生成の 3 呼び出し元）。上と同型・同じ理由で常時供給。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-aianalysis-service-token.yaml
+  kubectl apply -f deploy/local/vault/eso/externalsecret-graph-service-token.yaml
+  kubectl apply -f deploy/local/vault/eso/externalsecret-conversion-service-token.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-vault-oidc.yaml
   # #1127: Wiki.js の OIDC ストラテジ seed が読む client secret。段 8 と同じ opt-in に揃える
   # （機能オフのときに未使用 Secret を残さない）。**env で読む Pod は無い**ので rollout 対象外。
@@ -493,8 +506,8 @@ if [ "${ESO:-}" = "1" ]; then
   # ことは runbook 側の前提であり、ここでは空の Secret を作るだけで実害は無い（秘匿値は 1 つも増えない）。
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-smtp.yaml
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 11 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1255 で retrieval-service-token / ingestion-service-token を追加し 6 → 7 → 8 → 9 → 11 へ数え直した）＋有効ゲートの wikijs-oidc（#1127）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
-  msp_es="llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc retrieval-service-token ingestion-service-token"
+  # 誤解させない）。MSP ns は常時 14 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本を追加し 6 → 7 → 8 → 9 → 11 → 14 へ数え直した）＋有効ゲートの wikijs-oidc（#1127）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
+  msp_es="llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token"
   [ "${WIKIJS_OIDC:-}" = "1" ] && msp_es="$msp_es wikijs-oidc"
   infra_es="postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
@@ -527,7 +540,7 @@ if [ "${ESO:-}" = "1" ]; then
   }
   # #1255: retrieval / ingestion の s2s 資格情報。**env(secretKeyRef) で読む Pod がある**ので
   # rollout の前に同期を待つ（待たずに restart すると新 Pod も供給前の Secret を掴む。IADR-0103）。
-  msp_sync="llm-provider-credentials minio-credentials minio-oidc wikijs-db wikijs-sync retrieval-service-token ingestion-service-token"
+  msp_sync="llm-provider-credentials minio-credentials minio-oidc wikijs-db wikijs-sync retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token"
   # #1127: wikijs-oidc を待つ理由は **rollout ではない**（env で読む Pod が無い）。`up` の後段で走る
   # deploy/local/wikijs-setup/bootstrap.sh の段 8 がこの Secret を読むためである。同期前だと段 8 は
   # 「client secret を取得できない」で何もせずに終わり、**OIDC ログインが入らないまま up は緑で終わる。**
@@ -553,10 +566,14 @@ if [ "${ESO:-}" = "1" ]; then
   #      wiki-js           : wikijs-db（DB_PASS）
   #      retrieval-service : retrieval-service-token（ServiceToken__ClientSecret。#1255）
   #      ingestion-service : ingestion-service-token（ServiceToken__ClientSecret。#1255）
+  #      aianalysis-service: aianalysis-service-token（ServiceToken__ClientSecret。#1255）
+  #      graph-service     : graph-service-token（ServiceToken__ClientSecret。#1255）
+  #      conversion-service: conversion-service-token（ServiceToken__ClientSecret。#1255）
   #    対象外: postgres / rabbitmq / keycloak-admin は creationPolicy: Merge で seed（step 3）と**同一値**のため
   #    env は変化せず、再起動は DB/broker を無用に落とすだけ（IADR-0099）。vault-oidc は env 参照が無く
   #    bootstrap が CLI で読むため rollout 不要。
-  for d in minio llmgateway-service wiki-service wiki-js retrieval-service ingestion-service; do
+  for d in minio llmgateway-service wiki-service wiki-js retrieval-service ingestion-service \
+           aianalysis-service graph-service conversion-service; do
     kubectl -n "$MSP_NS" rollout restart "deploy/$d" >/dev/null 2>&1 \
       && echo "      restarted $MSP_NS/$d" || echo "      skip $MSP_NS/$d（未デプロイ）"
   done

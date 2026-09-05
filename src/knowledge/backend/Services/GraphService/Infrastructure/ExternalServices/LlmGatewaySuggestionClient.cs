@@ -1,5 +1,4 @@
 using System.Net.Http.Json;
-using System.Text.Json;
 using GraphService.Domain;
 using GraphService.Domain.Ports;
 using Platform.Shared.Contracts.Dtos;
@@ -52,48 +51,8 @@ public sealed class LlmGatewaySuggestionClient(
         if (body is null || !body.Sent || CompletionStopReasons.IsRefusal(body.StopReason))
             return [];
 
-        return Parse(body.Text);
+        // IADR-0398 (#1255): 読み取りは共通の SuggestionProposalParser にある
+        // （gRPC 実装が同じものを呼ぶ。輸送によって採れる提案が変わらないようにする）。
+        return SuggestionProposalParser.Parse(body.Text, logger);
     }
-
-    // FR-18: 応答本文（JSON 配列）を読む。**読めなければ空**（例外を投げない）——
-    // 生成の失敗は「提案が付かない」で足り、利用者の要求を落とす理由にならない。
-    private IReadOnlyList<LlmSuggestionProposal> Parse(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-            return [];
-
-        // モデルが前置きを付けた場合に備え、最初の '[' から最後の ']' までを採る。
-        var start = text.IndexOf('[');
-        var end = text.LastIndexOf(']');
-        if (start < 0 || end <= start)
-            return [];
-
-        try
-        {
-            var wire = JsonSerializer.Deserialize<List<ProposalWire>>(
-                text[start..(end + 1)],
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            if (wire is null)
-                return [];
-
-            var result = new List<LlmSuggestionProposal>();
-            foreach (var w in wire)
-            {
-                var kind = w.Kind?.Trim().ToLowerInvariant();
-                if (kind is null || !SuggestionKind.IsValid(kind))
-                    continue;
-                result.Add(new LlmSuggestionProposal(
-                    kind, w.TargetDocumentId, w.EdgeTypeName, w.TagValue, w.Rationale ?? string.Empty));
-            }
-            return result;
-        }
-        catch (JsonException ex)
-        {
-            logger.LogWarning(ex, "LLM gateway returned an unparsable suggestion payload");
-            return [];
-        }
-    }
-
-    private sealed record ProposalWire(
-        string? Kind, Guid? TargetDocumentId, string? EdgeTypeName, string? TagValue, string? Rationale);
 }

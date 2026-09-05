@@ -34,6 +34,10 @@ public static class LlmGatewayGrpcClientExtensions
             GrpcClientExtensions.CreatePlatformChannel(address, sp.GetRequiredService<IServiceTokenProvider>()));
         services.AddSingleton(sp => new Pb.LlmEmbedding.LlmEmbeddingClient(
             sp.GetRequiredKeyedService<GrpcChannel>(ChannelKey)));
+        // FR-04, FR-11, IADR-0398 (#1255): テキスト生成の生成クライアント。**同じチャネルを共有する**
+        // （宛先が同じ 1 つの LlmGateway であり、チャネルは多重化される。2 本張ると接続が二重になる）。
+        services.AddSingleton(sp => new Pb.LlmCompletion.LlmCompletionClient(
+            sp.GetRequiredKeyedService<GrpcChannel>(ChannelKey)));
         return services;
     }
 }

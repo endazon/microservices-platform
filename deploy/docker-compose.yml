@@ -314,6 +314,18 @@ services:
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       # FR-12, UC-06, SC-07, IADR-0043: 変換ジョブ読み取りモデルの永続化（conversion_svc）。
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=conversion_svc;Username=kp;Password=kp
+      # 🔴 **本サービスは compose で `Services__LlmGateway` を持たない**（appsettings の既定
+      # `http://llm-gateway:5007` のままで、compose の llm-gateway は 8080 で待つ）。
+      # 本 PR では REST 側の既定は**触らない**（#1255 の射程外。別 issue）。
+      # FR-12 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0398 (#1255): east-west gRPC。
+      # **`Services__LlmGatewayGrpc` が在るときだけ**図のコード化が gRPC 経路になる（無ければ REST のまま。
+      # 並走中の正は REST であり、戻すのはこの 1 行を消すだけでよい）。
+      # 🔴 compose のサービス名は `llm-gateway`（k8s の Service 名 `llmgateway-service` とは違う）。
+      Services__LlmGatewayGrpc: http://llm-gateway:8081
+      # s2s トークン（呼び出し側サービス自身の資格情報）。dev の値は realm import の置き場と同値
+      # （ズレると client_credentials が 401）。本番は Secret / Vault から注入し既定値は使わない。
+      ServiceToken__ClientId: conversion-service
+      ServiceToken__ClientSecret: ${CONVERSION_SERVICE_CLIENT_SECRET:-conversion-service-dev-secret-change-me}
     depends_on:
       postgres:
         condition: service_healthy
@@ -396,6 +408,15 @@ services:
       Services__AuthorizationService: http://authorization-service:8080
       Services__RetrievalService: http://retrieval-service:8080
       Services__LlmGateway: http://llm-gateway:8080
+      # FR-04 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0398 (#1255): east-west gRPC。
+      # **`Services__LlmGatewayGrpc` が在るときだけ**テキスト生成（一括・逐次）が gRPC 経路になる（無ければ REST のまま。
+      # 並走中の正は REST であり、戻すのはこの 1 行を消すだけでよい）。
+      # 🔴 compose のサービス名は `llm-gateway`（k8s の Service 名 `llmgateway-service` とは違う）。
+      Services__LlmGatewayGrpc: http://llm-gateway:8081
+      # s2s トークン（呼び出し側サービス自身の資格情報）。dev の値は realm import の置き場と同値
+      # （ズレると client_credentials が 401）。本番は Secret / Vault から注入し既定値は使わない。
+      ServiceToken__ClientId: aianalysis-service
+      ServiceToken__ClientSecret: ${AIANALYSIS_SERVICE_CLIENT_SECRET:-aianalysis-service-dev-secret-change-me}
     depends_on:
       - authorization-service
       - retrieval-service
@@ -633,6 +654,15 @@ services:
       # FR-18, ADR-0010, IADR-0380 (#1244): AI 提案の生成が LLM ゲートウェイを呼ぶ。コード既定は
       # `:5010` で compose の llm-gateway（8080）と合わないため上書きする（aianalysis-service と同じ）。
       Services__LlmGateway: http://llm-gateway:8080
+      # FR-18 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0398 (#1255): east-west gRPC。
+      # **`Services__LlmGatewayGrpc` が在るときだけ**AI 提案の生成が gRPC 経路になる（無ければ REST のまま。
+      # 並走中の正は REST であり、戻すのはこの 1 行を消すだけでよい）。
+      # 🔴 compose のサービス名は `llm-gateway`（k8s の Service 名 `llmgateway-service` とは違う）。
+      Services__LlmGatewayGrpc: http://llm-gateway:8081
+      # s2s トークン（呼び出し側サービス自身の資格情報）。dev の値は realm import の置き場と同値
+      # （ズレると client_credentials が 401）。本番は Secret / Vault から注入し既定値は使わない。
+      ServiceToken__ClientId: graph-service
+      ServiceToken__ClientSecret: ${GRAPH_SERVICE_CLIENT_SECRET:-graph-service-dev-secret-change-me}
     depends_on:
       postgres:
         condition: service_healthy

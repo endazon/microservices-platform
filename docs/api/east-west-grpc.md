@@ -7,10 +7,10 @@ updated: 2026-09-05
 author: Claude
 ---
 <!-- trace:
-ids: [FR-02, FR-03, FR-05, NFR-09, NFR-16]
-adrs: [ADR-0004, ADR-0013, ADR-0016, ADR-0017, ADR-0029, ADR-0032, ADR-0075]
-iadrs: [IADR-0117, IADR-0122, IADR-0256, IADR-0316, IADR-0379, IADR-0397]
-specs: [20260905_issue-1201_east-west-grpc-preconditions, 20260905_issue-1255_east-west-grpc-llm-embedding]
+ids: [FR-02, FR-03, FR-04, FR-05, FR-11, FR-12, FR-18, NFR-02, NFR-09, NFR-16, UC-01, UC-02]
+adrs: [ADR-0004, ADR-0010, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0038, ADR-0044, ADR-0075, ADR-0076]
+iadrs: [IADR-0037, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0256, IADR-0316, IADR-0354, IADR-0378, IADR-0379, IADR-0397, IADR-0398]
+specs: [20260905_issue-1201_east-west-grpc-preconditions, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1255_east-west-grpc-llm-completion]
 issues: [#1201, #1255]
 -->
 
@@ -27,10 +27,11 @@ issues: [#1201, #1255]
 - **プロトコル**: gRPC（HTTP/2）+ Protobuf 3。メッシュ内は **h2c（TLS 無し HTTP/2）** で、mTLS はサイドカーが終端する。
 - **対象**: メッシュ内のサービスどうしの**同期**呼び出し。候補／非候補の基準は「同期 ∧ east-west ∧ 応答を待つ」であり、
   呼び出しの頻度やレイテンシ要求では判定しない。外部 SaaS・IdP・オブジェクトストレージ・非同期イベント・SSE は対象外。
-- **状態**: gRPC 面を持つのは **2 経路** —— 参照実装（BFF → 認可サービスの権限スコープ解決）と、
-  埋め込み生成（取り込み・検索 → LLM ゲートウェイ）である。**並走中の正は REST** であり、gRPC は
+- **状態**: gRPC 面を持つのは **3 経路** —— 参照実装（BFF → 認可サービスの権限スコープ解決）、
+  埋め込み生成（取り込み・検索 → LLM ゲートウェイ）、テキスト生成（AI 分析・グラフ・変換 →
+  LLM ゲートウェイ。一括と**逐次**）である。**並走中の正は REST** であり、gRPC は
   構成で opt-in する。残りの経路の移行は別 issue で展開する。
-  🔴 **配備に s2s の資格情報が載っているのは埋め込みの 2 呼び出し元だけである** —— 参照実装の
+  🔴 **配備に s2s の資格情報が載っているのは LLM ゲートウェイを呼ぶ 5 呼び出し元だけである** —— 参照実装の
   `ServiceToken` / gRPC 宛先は helm・compose のどちらにも無く、認可サービスの realm クライアントも
   未整備である（下記「未決事項」）。
 
@@ -161,6 +162,60 @@ s2s の `CallCredentials` を付ける。平文でトークンを送るには `U
 埋め込みは倒さない —— 倒すと検索側では「該当なし」、取り込み側では「送信拒否」と**見分けがつかなくなる**。
 続行してよいのは、後段が応答で明示的に「埋め込めなかった」と答えたときだけである。
 
+## 3 つ目の面: テキスト生成（`platform.llmgateway.v1.LlmCompletion`）
+
+- 概要: AI 分析・グラフ・変換の 3 サービスが `Services:LlmGatewayGrpc` の構成があるときだけ gRPC で
+  生成を得て、無ければ REST `POST /complete` / `POST /complete/stream` で得る。**並走中の正は REST。**
+- 認証・認可: `ServiceCaller`。REST の `/complete` 系は無認可のままなので、**gRPC 面のほうが強い**。
+- 判定器: REST と**同じ**越境判定・ルーティング・フォールバック鎖・計器を通る（判定器を 2 つにしない）。
+
+rpc は 2 本ある。
+
+| rpc | 形 | REST の対応 |
+| --- | --- | --- |
+| `Complete` | unary | `POST /complete` |
+| `CompleteStream` | 🔴 **server-streaming** | `POST /complete/stream`（SSE） |
+
+🔴 **`CompleteStream` を unary へ潰してはならない。** 初回トークンの境界は「最初の `delta` メッセージの
+到着」であり、SSE の「最初の `data:` 行」と同じ位置にある。unary にすると最初の `delta` が生成完了後にしか
+届かず、性能要求の SLI（初回応答）が**応答完了 p95** を測ることになる —— 計画が明示的に却下した
+「長い回答ほど SLO 違反になる」形である。判断の記録は trace ブロックの実装 ADR にある。
+
+🔴 **サーバが早く書くことはプロトコルの保証ではない。** gRPC が保証するのは順序だけである。
+`delta` ごとに `WriteAsync` を呼ぶことは**コードの性質**であり、
+「最初の `delta` が `done` より前に到着する」ことを観測する試験でしか守れない。
+
+リクエスト（`CompleteRequest`。両 rpc 共通）:
+
+| 名前 | 型 | 必須 | 説明 |
+| --- | --- | --- | --- |
+| `prompt` | string | ○ | 送信する本文 |
+| `max_tokens` | int32 | — | 🔴 **`0` は「未指定」であり「0 トークン」ではない。** 既定 4096 として扱う。負数は `INVALID_ARGUMENT` |
+| `model` | string | — | 空文字は未指定（ゲートウェイが用途で選ぶ） |
+| `confidentiality` | string | — | **空文字は restricted**（安全側。REST の null と同じ） |
+| `purpose` | string | — | 空文字は `"default"`。**enum にしない**（値域を閉じるのは設定と計器であって契約ではない） |
+
+レスポンス: `CompleteResponse`（`text` / `model` / `input_tokens` / `output_tokens` / `sent` /
+`endpoint` / `routing_reason` / `stop_reason`）と `CompletionStreamEvent`（`delta` / `done` / `sent` /
+`text` / `model` / `input_tokens` / `output_tokens` / `routing_reason` / `stop_reason`）。いずれも REST と 1 対 1。
+
+🔴 **縮退はエラーではない。** 越境拒否・プロバイダ未登録・上流不調はいずれも `sent=false` の**応答**
+（一括）または `done=true, sent=false` の**メッセージ**（逐次。ストリームは正常終了する）で返る。
+REST が 500 を伝播させないのと同値である。
+
+🔴 **埋め込みとは縮退の向きが逆である。** 埋め込みの呼び出し元は `UNAUTHENTICATED` /
+`PERMISSION_DENIED` / `UNAVAILABLE` を**例外のまま上げる**が、生成の呼び出し元は上げない ——
+REST 実装がそれぞれ「出典のみ返す」「提案 0 件」「画像として保持」へ縮退させているからであり、
+**移行の不変条件は「挙動を変えない」であって「輸送ごとに一貫させる」ではない。**
+呼び出し元ごとの落とし先は下表のとおりである。
+
+| 呼び出し元 | 輸送の失敗（`RpcException` 全 status ＋ s2s トークン取得失敗）の落とし先 |
+| --- | --- |
+| AI 分析（逐次） | `done(sent=false, "LLM が現在利用できません。")`。**受信途中**の失敗だけ `"LLM 応答の受信に失敗しました。"` |
+| AI 分析（一括） | 出典のみ返す（REST の非 2xx と同じ枝） |
+| グラフ（提案） | 提案 0 件 |
+| 変換（図のコード化） | 画像として保持（理由コードも REST と同じ） |
+
 ## シーケンス
 
 ```mermaid
@@ -203,10 +258,17 @@ sequenceDiagram
 | 権限スコープの `action` | `"read"` | `""` | `"" → read`（参照実装が実施済み） |
 | 埋め込みの `purpose` | `Index` | `EMBED_PURPOSE_UNSPECIFIED`（0） | 🔴 `UNSPECIFIED → INDEX` |
 | 埋め込みの `confidentiality` | `null` → restricted | `""` | 写し不要（`""` も未知値も restricted へ倒れる） |
+| 生成の `max_tokens` | 4096 | `0` | 🔴 `0 → 4096`（負数は `INVALID_ARGUMENT`） |
+| 生成の `model` / `confidentiality` / `purpose` | `null` | `""` | 写し不要（受け側が null と空文字を同じに扱う。実測） |
+| 生成の `sent` | DTO 既定 **`true`** | **`false`** | 🔴 **向きが逆。** 増分メッセージにも `sent=true` を明示的に書く |
 
 埋め込みの `purpose` を写し忘れると、未指定が `QUERY` として扱われて越境判定が「public 相当」へ落ち、
 **機密文書の本文が外部の埋め込み API へ送られる**。新しい rpc を足す人は、
 **REST 側の既定値を一覧してから proto の 0 値と突き合わせること。**
+
+🔴 **`sent` は向きまで逆である。** DTO の既定は `true`・proto3 の既定は `false` であり、
+増分メッセージへ書き忘れると例外は 1 つも起きず、**すべての増分が「縮退」に見える** ——
+呼び出し元は縮退表示・提案 0 件・画像保持へ静かに倒れる。
 
 ## 未決事項
 

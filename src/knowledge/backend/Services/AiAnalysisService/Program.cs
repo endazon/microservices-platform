@@ -4,6 +4,7 @@ using AiAnalysisService.Features.Analysis.Analyze;
 using AiAnalysisService.Domain.Ports;
 using AiAnalysisService.Infrastructure.ExternalServices;
 using FluentValidation;
+using Platform.Shared.Infrastructure.Foundation.Llm;
 using Knowledge.Contracts.Dtos;
 using OpenTelemetry.Metrics;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
@@ -51,6 +52,19 @@ builder.Services.AddHttpClient("RetrievalService", c =>
 builder.Services.AddHttpClient("LlmGateway", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"]
         ?? "http://llm-gateway:5007"));
+
+// FR-04, FR-11, NFR-02, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0398 (#1255):
+// テキスト生成の輸送。**並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス）が
+// 構成されたときだけ生成クライアントが登録され、そのときに限り gRPC 輸送を使う。無ければ REST 輸送
+// （上の名前つき HttpClient を使う HttpLlmCompletionTransport）のまま。戻すのは構成を外すだけでよい。
+//
+// 🔴 `CompleteStream` は**サーバストリーミング**であり、最初の delta が到着した時点で
+// north-south の最初の `token` を書ける —— NFR-02 の SLI（初回トークン）の境界が保たれる。
+builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
+if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
+    builder.Services.AddSingleton<ILlmCompletionTransport, GrpcLlmCompletionTransport>();
+else
+    builder.Services.AddSingleton<ILlmCompletionTransport, HttpLlmCompletionTransport>();
 
 // FR-04: RAG オーケストレーター
 // FR-05, ADR-0034 (#970): 受信 Authorization を RetrievalService へ伝播するため要求文脈へ触る。

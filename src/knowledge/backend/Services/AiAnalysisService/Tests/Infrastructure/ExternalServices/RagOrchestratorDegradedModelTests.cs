@@ -9,6 +9,12 @@ namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 // FR-04, FR-05, FR-11, IADR-0111 (#403): 応答が名乗る「使用モデル」が実際に使われたモデルと一致することを固定する。
 // 縮退経路（ABAC 不許可・越境拒否・呼び出し失敗）は LLM を呼んでいないため、モデル名を捏造してはならない。
 // 以前は存在しない設定キー `Llm:DefaultModel` のフォールバックで常に "claude-opus-5" を名乗っていた。
+//
+// IADR-0398 (#1255): 🔴 **ゲートウェイを呼ぶ経路の表明は REST 輸送と gRPC 輸送の両方で回す**
+// （Theory の引数）。元データは 1 つで TestLlmTransports が両輸送へ載せ替える。
+// ABAC 拒否の 2 本（ゲートウェイを一度も呼ばない）と T-16（2xx で本文が JSON の null）は
+// **REST 専用のまま**である —— 前者は輸送に到達せず、後者は proto のメッセージが欠落しないため
+// gRPC では起こり得ない状態だからである（起こり得ない状態を「一致した」と書かない）。
 [Trait("TestKind", "Unit")]
 public class RagOrchestratorDegradedModelTests
 {
@@ -40,11 +46,14 @@ public class RagOrchestratorDegradedModelTests
     }
 
     // T-12: ゲートウェイが機密区分により送信拒否（sent=false・model は空）。外部送信していないため空を透過する。
-    [Fact]
-    public async Task AskAsync_WhenGatewayDeniesEgress_ReportsNoModel()
+    [Theory]
+    [InlineData(LlmTransportKind.Rest)]
+    [InlineData(LlmTransportKind.Grpc)]
+    public async Task AskAsync_WhenGatewayDeniesEgress_ReportsNoModel(LlmTransportKind transport)
     {
-        var orchestrator = Create(new StubHttpClientFactory(
-            llmBody: CompletionJson(sent: false, model: "", text: "機密区分により送信できません。")));
+        var body = CompletionJson(sent: false, model: "", text: "機密区分により送信できません。");
+        var orchestrator = Create(new StubHttpClientFactory(llmBody: body),
+            TestLlmTransports.Create(transport, body));
 
         var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>(),
             ct: TestContext.Current.CancellationToken);
@@ -53,13 +62,16 @@ public class RagOrchestratorDegradedModelTests
     }
 
     // T-12（ストリーミング）: SSE の done も sent=false・model 空で届くため、そのまま透過する。
-    [Fact]
-    public async Task AskStreamAsync_WhenGatewayDeniesEgress_DoneReportsNoModel()
+    [Theory]
+    [InlineData(LlmTransportKind.Rest)]
+    [InlineData(LlmTransportKind.Grpc)]
+    public async Task AskStreamAsync_WhenGatewayDeniesEgress_DoneReportsNoModel(LlmTransportKind transport)
     {
-        var orchestrator = Create(new StubHttpClientFactory(
-            llmBody: "data: {\"delta\":\"\",\"done\":true,\"sent\":false," +
-                     "\"text\":\"機密区分により送信できません。\",\"model\":\"\"}\n\n",
-            llmMediaType: "text/event-stream"));
+        var sse = "data: {\"delta\":\"\",\"done\":true,\"sent\":false," +
+                  "\"text\":\"機密区分により送信できません。\",\"model\":\"\"}\n\n";
+        var orchestrator = Create(
+            new StubHttpClientFactory(llmBody: sse, llmMediaType: "text/event-stream"),
+            TestLlmTransports.Create(transport, sse, "text/event-stream"));
 
         var done = await LastDoneAsync(orchestrator);
 
@@ -67,11 +79,15 @@ public class RagOrchestratorDegradedModelTests
     }
 
     // T-13: ゲートウェイへ到達できない（非 2xx）。モデルは解決されていないため空。
-    [Fact]
-    public async Task AskAsync_WhenGatewayHttpFails_ReportsNoModel()
+    [Theory]
+    [InlineData(LlmTransportKind.Rest)]
+    [InlineData(LlmTransportKind.Grpc)]
+    public async Task AskAsync_WhenGatewayHttpFails_ReportsNoModel(LlmTransportKind transport)
     {
-        var orchestrator = Create(new StubHttpClientFactory(
-            llmBody: "unavailable", llmStatus: HttpStatusCode.ServiceUnavailable));
+        // gRPC 側は UNAVAILABLE の RpcException になる（非 2xx に相当する概念が無い。IADR-0398 決定 5）。
+        var orchestrator = Create(
+            new StubHttpClientFactory(llmBody: "unavailable", llmStatus: HttpStatusCode.ServiceUnavailable),
+            TestLlmTransports.Create(transport, "unavailable", status: HttpStatusCode.ServiceUnavailable));
 
         var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>(),
             ct: TestContext.Current.CancellationToken);
@@ -80,11 +96,15 @@ public class RagOrchestratorDegradedModelTests
     }
 
     // T-13（ストリーミング）: 送信自体が失敗した場合も同様（下位ヘルパが done(Sent=false) へ縮退させる）。
-    [Fact]
-    public async Task AskStreamAsync_WhenGatewayHttpFails_DoneReportsNoModel()
+    [Theory]
+    [InlineData(LlmTransportKind.Rest)]
+    [InlineData(LlmTransportKind.Grpc)]
+    public async Task AskStreamAsync_WhenGatewayHttpFails_DoneReportsNoModel(LlmTransportKind transport)
     {
-        var orchestrator = Create(new StubHttpClientFactory(
-            llmBody: "unavailable", llmStatus: HttpStatusCode.ServiceUnavailable));
+        // gRPC 側は UNAVAILABLE の RpcException になる（非 2xx に相当する概念が無い。IADR-0398 決定 5）。
+        var orchestrator = Create(
+            new StubHttpClientFactory(llmBody: "unavailable", llmStatus: HttpStatusCode.ServiceUnavailable),
+            TestLlmTransports.Create(transport, "unavailable", status: HttpStatusCode.ServiceUnavailable));
 
         var done = await LastDoneAsync(orchestrator);
 
@@ -92,11 +112,14 @@ public class RagOrchestratorDegradedModelTests
     }
 
     // T-14: 正常に送信できた場合は従来どおり実モデル名（route 結果）を返す（回帰防止）。
-    [Fact]
-    public async Task AskAsync_WhenSent_ReportsResolvedModel()
+    [Theory]
+    [InlineData(LlmTransportKind.Rest)]
+    [InlineData(LlmTransportKind.Grpc)]
+    public async Task AskAsync_WhenSent_ReportsResolvedModel(LlmTransportKind transport)
     {
-        var orchestrator = Create(new StubHttpClientFactory(
-            llmBody: CompletionJson(sent: true, model: ResolvedModel, text: "回答本文")));
+        var body = CompletionJson(sent: true, model: ResolvedModel, text: "回答本文");
+        var orchestrator = Create(new StubHttpClientFactory(llmBody: body),
+            TestLlmTransports.Create(transport, body));
 
         var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>(),
             ct: TestContext.Current.CancellationToken);
@@ -105,14 +128,17 @@ public class RagOrchestratorDegradedModelTests
     }
 
     // T-14（ストリーミング）: done の model をそのまま載せる（回帰防止）。
-    [Fact]
-    public async Task AskStreamAsync_WhenSent_DoneReportsResolvedModel()
+    [Theory]
+    [InlineData(LlmTransportKind.Rest)]
+    [InlineData(LlmTransportKind.Grpc)]
+    public async Task AskStreamAsync_WhenSent_DoneReportsResolvedModel(LlmTransportKind transport)
     {
-        var orchestrator = Create(new StubHttpClientFactory(
-            llmBody: "data: {\"delta\":\"回答\"}\n\n" +
-                     $"data: {{\"delta\":\"\",\"done\":true,\"sent\":true,\"model\":\"{ResolvedModel}\"," +
-                     "\"inputTokens\":11,\"outputTokens\":7}\n\n",
-            llmMediaType: "text/event-stream"));
+        var sse = "data: {\"delta\":\"回答\"}\n\n" +
+                  $"data: {{\"delta\":\"\",\"done\":true,\"sent\":true,\"model\":\"{ResolvedModel}\"," +
+                  "\"inputTokens\":11,\"outputTokens\":7}\n\n";
+        var orchestrator = Create(
+            new StubHttpClientFactory(llmBody: sse, llmMediaType: "text/event-stream"),
+            TestLlmTransports.Create(transport, sse, "text/event-stream"));
 
         var done = await LastDoneAsync(orchestrator);
 
@@ -121,12 +147,15 @@ public class RagOrchestratorDegradedModelTests
 
     // T-15: 呼び出し先が不調（sent=false だがゲートウェイは route 済みで呼び出しを試みた）。
     // どのモデルへ向けた試行かは監査・障害解析の情報になるため、空へ潰さず透過する。
-    [Fact]
-    public async Task AskAsync_WhenUpstreamFailed_KeepsResolvedModel()
+    [Theory]
+    [InlineData(LlmTransportKind.Rest)]
+    [InlineData(LlmTransportKind.Grpc)]
+    public async Task AskAsync_WhenUpstreamFailed_KeepsResolvedModel(LlmTransportKind transport)
     {
-        var orchestrator = Create(new StubHttpClientFactory(
-            llmBody: CompletionJson(sent: false, model: ResolvedModel,
-                text: "呼び出し先 claude-managed が現在利用できません。")));
+        var body = CompletionJson(sent: false, model: ResolvedModel,
+            text: "呼び出し先 claude-managed が現在利用できません。");
+        var orchestrator = Create(new StubHttpClientFactory(llmBody: body),
+            TestLlmTransports.Create(transport, body));
 
         var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>(),
             ct: TestContext.Current.CancellationToken);
@@ -135,13 +164,16 @@ public class RagOrchestratorDegradedModelTests
     }
 
     // T-15（ストリーミング）: SSE の縮退 done も model を持つ場合はそのまま透過する。
-    [Fact]
-    public async Task AskStreamAsync_WhenUpstreamFailed_KeepsResolvedModel()
+    [Theory]
+    [InlineData(LlmTransportKind.Rest)]
+    [InlineData(LlmTransportKind.Grpc)]
+    public async Task AskStreamAsync_WhenUpstreamFailed_KeepsResolvedModel(LlmTransportKind transport)
     {
-        var orchestrator = Create(new StubHttpClientFactory(
-            llmBody: "data: {\"delta\":\"\",\"done\":true,\"sent\":false," +
-                     $"\"text\":\"呼び出し先が現在利用できません。\",\"model\":\"{ResolvedModel}\"}}\n\n",
-            llmMediaType: "text/event-stream"));
+        var sse = "data: {\"delta\":\"\",\"done\":true,\"sent\":false," +
+                  $"\"text\":\"呼び出し先が現在利用できません。\",\"model\":\"{ResolvedModel}\"}}\n\n";
+        var orchestrator = Create(
+            new StubHttpClientFactory(llmBody: sse, llmMediaType: "text/event-stream"),
+            TestLlmTransports.Create(transport, sse, "text/event-stream"));
 
         var done = await LastDoneAsync(orchestrator);
 
@@ -162,7 +194,8 @@ public class RagOrchestratorDegradedModelTests
         answer.Answer.Should().Be("回答を生成できませんでした。");
     }
 
-    private static RagOrchestrator Create(IHttpClientFactory factory) => new(factory);
+    private static RagOrchestrator Create(
+        IHttpClientFactory factory, ILlmCompletionTransport? transport = null) => new(factory, completionTransport: transport);
 
     private static async Task<AskDoneEvent> LastDoneAsync(IRagOrchestrator orchestrator)
     {

@@ -1,4 +1,5 @@
 using FluentValidation;
+using Platform.Shared.Infrastructure.Foundation.Llm;
 using GraphService.Infrastructure.ExternalServices;
 using GraphService.Features.AiSuggestions.List;
 using GraphService.Features.EdgeTypes.Create;
@@ -88,9 +89,18 @@ builder.Services.AddScoped<IValidator<ListAiSuggestionsQuery>, ListAiSuggestions
 //
 // 🔴 **LLM への送信は SuggestionPrompt（封）を通る経路しか無い。** 封の構築には
 // AuthorizedNode と AccessScopeResponse の両方が要る（IADR-0266 決定 1）。
-builder.Services.AddHttpClient<ISuggestionLlmClient, LlmGatewaySuggestionClient>(c =>
-    c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"]
-        ?? "http://llm-gateway:5010"));
+//
+// FR-18, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0398 (#1255): east-west gRPC への切替。
+// **並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス）が構成されたときだけ
+// 生成クライアントが登録され、そのときに限り gRPC 実装を使う。無ければ従来の HTTP 実装のまま
+// （戻すのは構成を外すだけ。コードは変えない）。
+builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
+if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
+    builder.Services.AddSingleton<ISuggestionLlmClient, LlmGatewayGrpcSuggestionClient>();
+else
+    builder.Services.AddHttpClient<ISuggestionLlmClient, LlmGatewaySuggestionClient>(c =>
+        c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"]
+            ?? "http://llm-gateway:5010"));
 // FR-18, ADR-0051 決定 1, IADR-0380 (#1244): 類似度候補の供給元。
 //
 // 🔴 **既定は語の共起（TermOverlapSimilarityCandidateSource）である。** #1244 の実測で、供給元が

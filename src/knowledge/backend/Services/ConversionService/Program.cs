@@ -1,6 +1,7 @@
 using Wolverine;
 using Wolverine.RabbitMQ;
 using FluentValidation;
+using Platform.Shared.Infrastructure.Foundation.Llm;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
@@ -72,8 +73,17 @@ builder.Services.AddPlatformObjectStorageBootstrap();
 builder.Services.AddSingleton<IObjectStore, StorageObjectStore>();
 
 // FR-12, ADR-0012/0010: 図のコード化（LLMゲートウェイ経由、機密区分で送信制御）。
-builder.Services.AddHttpClient<IDiagramCoder, LlmGatewayDiagramCoder>(c =>
-    c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"));
+//
+// FR-12, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0398 (#1255): east-west gRPC への切替。
+// **並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス）が構成されたときだけ
+// 生成クライアントが登録され、そのときに限り gRPC 実装を使う。無ければ従来の HTTP 実装のまま
+// （戻すのは構成を外すだけ。コードは変えない）。
+builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
+if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
+    builder.Services.AddSingleton<IDiagramCoder, LlmGatewayGrpcDiagramCoder>();
+else
+    builder.Services.AddHttpClient<IDiagramCoder, LlmGatewayDiagramCoder>(c =>
+        c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"));
 
 // FR-12, UC-06: 正規化オーケストレータ（本文＋図＋保管を束ねる）。
 builder.Services.AddScoped<INormalizationService, NormalizationService>();
