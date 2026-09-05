@@ -339,26 +339,39 @@ describe('DocumentDetailPage (SC-03)', () => {
     await waitFor(() => expect(screen.queryByText('バージョン')).not.toBeInTheDocument());
   });
 
-  // SC-18, FR-17: **知識グラフビューへの導線は依然として実装しない**（IADR-0119 の保留のうち
-  // FR-17 の画面側。着手は SC-18 の実装と同じ段）。
-  // **「無いこと」を固定するテストである**——保留対象を後から不用意に足すとこのテストが落ちる。
+  // SC-03, SC-18, FR-17, UC-10 (#1240): **ナレッジグラフビュー（SC-18）への導線。**
   //
-  // 🔴 **［2026-08-29 / #450］本テストは分割した。** 従前は「AI 提案パネル」と「知識グラフ導線」の
-  // 5 語を 1 本で否定しており、**承認欄（FR-18）を足すと落ちる**形だった。承認欄は着地したので
-  // その否定を落とし、**グラフ導線の否定だけを残す**。
+  // 🔴 **本テストは「無いこと」の固定を反転させたものである。** 従前ここには
+  // `does not render the knowledge-graph link (SC-18 belongs to another screen)` が立っており、
+  // IADR-0119 の保留（当時 FR-17 の画面側が未着手）を固定していた。**その保留は
+  // 2026-08-07（#586）に解除され、繰り延べの相手だった SC-18 の画面も #917 で着地した**ので、
+  // 不在の固定は事実に反する。**消さずに反転させる** —— 消すと、次に導線が失われても緑のままになる。
   //
-  // 🔴 **起点 ID を書かなかった理由も失効した。** 従前ここには「着手していない機能の ID を書くと
-  // check-test-traceability.js が『実装が先行している』と誤報する」と書いてあった。
-  // **本テストが否定するのは FR-17 の画面側だけになり、その FR-17 は SC-18 の画面として着手済みである**
-  // （本リポジトリに sc18-graph の feature が在る）。誤報の前提が無いので、起点 ID を書く。
-  it('does not render the knowledge-graph link (SC-18 belongs to another screen)', async () => {
+  // 🔴 **リンクが在るだけでは受け入れ基準を満たさない。** 05_screens §SC-18 は
+  // 「起点ありの近傍探索が主用途」であり、`root` を持たない `/graph` は照会せず案内文を出す。
+  // したがって **`href` の起点まで見る**（`to` だけ見ていると「押しても何も見えない導線」が緑になる）。
+  it('links to SC-18 with this document as the graph root', async () => {
     // **導線の並びを全部描かせた状態で見る。** 台帳に載せないと「Wikiで閲覧」が描画されず、
-    // そこへ保留対象の導線を足しても検出できない（実測: 変異試験 M3 が素通りした）。
+    // 並びの中での位置が変わる（従前の不在テストが台帳を載せていたのと同じ理由）。
     respond({ wikiPages: [WIKI_PAGE] });
     await renderPage();
     await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
 
-    expect(screen.queryByText(/知識グラフ/)).not.toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'ナレッジグラフで見る' });
+    expect(link).toHaveAttribute('href', `/graph?root=${DOC_ID}&hops=2&by=distance`);
+  });
+
+  // SC-03, SC-18, ADR-0034 決定 2 (#1240): **陰性対照 —— 404 のときは導線を描かない。**
+  //
+  // 権限外・不在はいずれも 404 に倒して存在を秘匿している（IADR-0009）。**導線だけが残ると、
+  // 「本文は見えないがグラフの起点としては実在する」と読めてしまい、秘匿が導線の側で破れる。**
+  // 本文の描画と同じ早期 return の内側に居ることを固定する。
+  it('hides the SC-18 link when the document is not visible (existence stays hidden)', async () => {
+    respond({ detail: ApiError.fromStatus(404), content: ApiError.fromStatus(404) });
+    await renderPage();
+
+    expect(await screen.findByText('文書が見つかりませんでした。')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'ナレッジグラフで見る' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /グラフ/ })).not.toBeInTheDocument();
   });
 
@@ -599,8 +612,17 @@ describe('DocumentDetailPage (SC-03)', () => {
   // **既存の「無いこと」テストはこれを見ていなかった** —— あちらが見るのは AI 提案欄と
   // 知識グラフ導線だけで、**バックリンク欄の不在は誰も固定していなかった**（#449 で実測）。
   //
-  // **ここに起点 ID を書かないのは意図的である**（上の保留テストと同じ理由。
-  // check-test-traceability.js が未着手機能の ID を「実装が先行している」と誤報する）。
+  // **ここに起点 ID を書かないのは意図的である** —— check-test-traceability.js が
+  // 未着手機能の ID を「実装が先行している」と誤報するためである。
+  // 🔴 **［2026-09-05 / #1240］従前この理由づけは「上の保留テストと同じ理由」と書いていた。**
+  // その「上の保留テスト」（知識グラフ導線の不在）は**存在の固定へ反転して消えた**ので、
+  // 参照先を失った。**理由そのものは本テストについて生きている** —— バックリンク欄・
+  // ローカルグラフは SC-04 側の実現方式が計画で未確定であり、まだ着手していない。
+  //
+  // 🔴 **上に足した SC-18 導線はこのテストに当たらない。** 語が違う（`ナレッジグラフ` は
+  // `ローカルグラフ` の正規表現に当たらない）だけでなく、**当たってはならない** ——
+  // 計画は「SC-03 に置くのは SC-18 への導線と AI 提案の承認欄の 2 つのみ」と定めており、
+  // 導線は置くもの、バックリンク欄は置かないものである。
   it('does not render a backlink panel or a local graph (they belong to the wiki screen only)', async () => {
     // 導線の並びを全部描かせた状態で見る（台帳に載せないと Wiki の導線が消えて検出できない）。
     respond({ wikiPages: [WIKI_PAGE] });

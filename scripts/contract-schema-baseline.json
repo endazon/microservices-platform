@@ -3363,6 +3363,31 @@
           }
         }
       },
+      "Platform.Shared.Contracts.Dtos.UserAttributeEncoding": {
+        "kind": "class",
+        "members": {
+          "ProjectsKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"projects\""
+          },
+          "Separator": {
+            "source": "const",
+            "type": "string",
+            "value": "\",\""
+          },
+          "SetValuedKeys": {
+            "source": "property",
+            "type": "IReadOnlySet<string>",
+            "required": false
+          },
+          "TagsKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"tags\""
+          }
+        }
+      },
       "Platform.Shared.Contracts.Dtos.ValidatePolicyResponse": {
         "kind": "record",
         "members": {

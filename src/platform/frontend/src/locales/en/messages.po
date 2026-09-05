@@ -74,6 +74,10 @@ msgstr "{sourceTitle} → {targetTitle} ({typeName})"
 msgid "{sourceTitle} に「{tagValue}」を付与"
 msgstr "Add tag \"{tagValue}\" to {sourceTitle}"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "{sourceUserId} は {userId} に対応します"
+msgstr "{sourceUserId} maps to {userId}"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "{title} を選択"
 msgstr "Select {title}"
@@ -379,6 +383,7 @@ msgstr "There are no event bindings."
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
@@ -423,6 +428,7 @@ msgstr "Keyword search only →"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "キャンセル"
 msgstr "Cancel"
@@ -535,6 +541,10 @@ msgstr "Revoke this device?"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "この端末を失効する"
 msgstr "Revoke this device"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "この辺の型は {inUseCount} 本の辺で使われているため削除できません。"
+msgstr "This edge type is used by {inUseCount} edges and cannot be deleted."
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "コミット"
@@ -775,6 +785,10 @@ msgstr "Knowledge graph"
 msgid "ナレッジグラフ（ノード {shownCount} 件・辺 {edgeCount} 本）。詳細は凡例と選択パネルを参照"
 msgstr "Knowledge graph ({shownCount} nodes, {edgeCount} edges). See the legend and the selection panel for details"
 
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "ナレッジグラフで見る"
+msgstr "View in the knowledge graph"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "ナレッジグラフに表示する"
 msgstr "Show in the knowledge graph"
@@ -1009,6 +1023,10 @@ msgstr "Showing the top {shownCount} items (of {totalCount} or more in total). T
 msgid "並べ替え"
 msgstr "Sort"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "中核"
+msgstr "Core"
+
 #: platform/frontend/src/app/Layout.tsx
 msgid "主要ナビゲーション"
 msgstr "Main navigation"
@@ -1053,6 +1071,7 @@ msgstr "Created"
 msgid "作成する"
 msgstr "Create"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "使用件数"
 msgstr "Usage count"
@@ -1083,6 +1102,7 @@ msgid "例: 開発"
 msgstr "e.g. engineering"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
@@ -1391,6 +1411,7 @@ msgstr "Could not load the user list."
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
@@ -1549,6 +1570,14 @@ msgstr "Loading diagrams…"
 msgid "型不明"
 msgstr "Unknown type"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "型名"
+msgstr "Type name"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "型名（必須）"
+msgstr "Type name (required)"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 msgid "基盤の利用者 {rowNumber}"
 msgstr "Platform user {rowNumber}"
@@ -1615,6 +1644,7 @@ msgstr "Isolated document (no displayed edges)"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/types/jobStatus.ts
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
@@ -1640,6 +1670,10 @@ msgstr "Implementation"
 #: knowledge/frontend/src/features/sc11-config/types/driftView.ts
 msgid "宣言に無い購読"
 msgstr "Undeclared subscription"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "対称"
+msgstr "Symmetric"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "対象"
@@ -1668,6 +1702,10 @@ msgstr "Scope"
 #: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "対象範囲フィルタ"
 msgstr "Scope filter"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "将来検討"
+msgstr "Future"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "属性"
@@ -1723,6 +1761,10 @@ msgstr "The attribute dictionary could not be updated."
 msgid "属性辞書登録"
 msgstr "Attribute registration"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "層"
+msgstr "Layer"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "履歴を確認中…"
 msgstr "Loading the history…"
@@ -1764,6 +1806,10 @@ msgstr "Info"
 #: platform/frontend/src/components/ui/notifications.tsx
 msgid "成功"
 msgstr "Success"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "所有者の写像"
+msgstr "Owner mapping"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 msgid "所有者の写像（ソース側の利用者 → 基盤の利用者）"
@@ -1837,6 +1883,10 @@ msgstr "List of connected devices"
 msgid "接続端末の一覧を取得できませんでした。時間をおいて再度お試しください。"
 msgstr "Could not load the list of connected devices. Please try again later."
 
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "推奨追加"
+msgstr "Recommended"
+
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "提案"
 msgstr "Suggestion"
@@ -1849,6 +1899,7 @@ msgstr "The list of suggestions could not be retrieved. Please try again later."
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
@@ -1876,6 +1927,7 @@ msgstr "The operation could not be accepted."
 msgid "操作を実行できませんでした。"
 msgstr "Could not carry out the operation."
 
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "改名"
 msgstr "Rename"
@@ -1981,17 +2033,24 @@ msgstr "You have {count} new notice(s)"
 msgid "新しい個人資料を作成する"
 msgstr "Create a new private note"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "方向"
+msgstr "Direction"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "既定のライフサイクル状態"
 msgstr "Default lifecycle state"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "既定の機密区分"
 msgstr "Default confidentiality"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "既定の部門"
 msgstr "Default department"
@@ -1999,6 +2058,10 @@ msgstr "Default department"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "既定属性"
 msgstr "Default attributes"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "既定属性と所有者の写像"
+msgstr "Default attributes and owner mapping"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 msgid "既定属性の編集"
@@ -2106,6 +2169,18 @@ msgstr "Unspecified"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。"
 msgstr "The default value {DEFAULT_LIFECYCLE} is used when left unspecified."
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "未登録（写像に無い利用者は予約値 {UNRESOLVED_OWNER} になります）"
+msgstr "Not registered (users missing from the mapping fall back to the reserved value {UNRESOLVED_OWNER})"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "未設定"
+msgstr "Not set"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+msgid "未設定（予約値 {UNRESOLVED_DEPARTMENT} が入ります）"
+msgstr "Not set (the reserved value {UNRESOLVED_DEPARTMENT} is used)"
 
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "本文"
@@ -2337,6 +2412,7 @@ msgstr "Compare"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 #: platform/frontend/src/components/ui/notifications.tsx
@@ -2711,6 +2787,7 @@ msgstr "Loading error"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
@@ -2760,11 +2837,53 @@ msgstr "No root specified"
 msgid "辞書に候補がありません"
 msgstr "No tags in the dictionary"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "辞書に無い型は自動抽出のときに related へ丸められ、警告として記録されます。改名しても既存の辺はそのまま追随します。"
+msgstr "Types that are not in the dictionary are folded into related during automatic extraction and recorded as a warning. Renaming a type keeps the existing edges attached to it."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/AdminAbacSettingsPage.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "辺の型"
+msgstr "Edge types"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "辺の型:"
 msgstr "Edge types:"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "辺の型の新しい名前: {typeName}"
+msgstr "New name for the edge type: {typeName}"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "辺の型は登録されていません。"
+msgstr "No edge types are registered."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "辺の型を削除: {typeName}"
+msgstr "Delete the edge type: {typeName}"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "辺の型を改名: {typeName}"
+msgstr "Rename the edge type: {typeName}"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "辺の型を改名しました。既存の辺はそのまま新しい名前で表示されます。"
+msgstr "The edge type has been renamed. The existing edges keep their link and now show the new name."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "辺の型辞書の一覧"
+msgstr "Edge type dictionary"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "辺の型辞書を更新できませんでした。"
+msgstr "The edge type dictionary could not be updated."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "辺の型辞書を読み込めませんでした。"
+msgstr "The edge type dictionary could not be loaded."
+
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "追加"
 msgstr "Add"
@@ -2932,3 +3051,7 @@ msgstr "Period"
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "露出"
 msgstr "Exposure"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "非対称"
+msgstr "Asymmetric"

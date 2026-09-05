@@ -100,5 +100,62 @@ test('SC-03: the id in the path reaches the fetch, and the body renders as norma
     `/wiki?doc=${ID}`,
   );
 
+  // ★ 陽性対照（#1240 / FR-17 / UC-10）: SC-18（ナレッジグラフ）への導線が**起点つきで**出る。
+  // 05_screens §SC-18 は「起点ありの近傍探索が主用途」であり、`root` の無い `/graph` は
+  // 照会せず案内文を出す。**`to` だけを見ると「押しても何も見えない導線」が緑になる**ので href まで見る。
+  await expect(page.getByRole('link', { name: 'ナレッジグラフで見る' })).toHaveAttribute(
+    'href',
+    `/graph?root=${ID}&hops=2&by=distance`,
+  );
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+// SC-03 / SC-04, FR-17, UC-10 (#1240 / #449): **配置規約を実ブラウザで固定する。**
+//
+// 05_screens §SC-03「知識グラフ」（2026-08-02 の利用者裁定）は 2 つを同時に定めている。
+//   (a) **SC-03 に置くのは SC-18 への導線と AI 提案の承認欄の 2 つのみ**である。
+//   (b) **バックリンク欄・ローカルグラフは SC-04 のみ**に置き、**SC-03 には併置しない**。
+//
+// 🔴 **この非対称は意図である。** 本 spec が固定するのは **(b) のうち SC-03 側の不在だけ**であり、
+// **「SC-04 に在ること」は固定しない** —— `docs/screens/SC-04_wiki-access.md` §未決事項 2 のとおり
+// バックリンク欄・ローカルグラフの実現方式は計画側で未確定である。**未確定のものを E2E で
+// 固定すると、計画が決めたときに実装ではなくテストが先に決めたことになる。**
+//
+// **併置は恒久の禁止ではない。** SC-04 側の実現性が確認できた時点で改めて判断する取り決めなので、
+// **足すときにこのテストが落ちて気づける**形にしておく（Vitest 側 `DocumentDetailPage.test.tsx` と対）。
+test('SC-03: the knowledge-graph entry is here, but the backlink panel and local graph are not', async ({
+  page,
+}) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      [`GET /documents/${ID}`]: doc,
+      [`GET /documents/${ID}/content`]: content,
+      [`GET /documents/${ID}/versions`]: [],
+      'GET /graph/suggestions': [],
+      'GET /graph/edge-types': [],
+      'GET /wiki/pages': [wikiPage],
+    },
+  });
+
+  await page.goto(`/docs/${ID}`);
+  await expect(page.getByRole('heading', { name: '経費精算マニュアル', level: 1 })).toBeVisible();
+
+  // ★ 陽性対照: 置くと定められた 2 つのうち、導線は在る（＝下の不在アサーションが
+  // 「画面がまだ描けていないだけ」で緑になっていないことの担保である）。
+  await expect(page.getByRole('link', { name: 'ナレッジグラフで見る' })).toBeVisible();
+
+  // ★ 陰性対照 1: バックリンク欄は SC-03 に無い。計画が定める 2 欄の見出しも含めて見る。
+  await expect(page.getByText(/バックリンク/)).toHaveCount(0);
+  await expect(page.getByText(/参照している文書/)).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: /バックリンク|被参照|参照元/ })).toHaveCount(0);
+
+  // ★ 陰性対照 2: ローカルグラフ（この文書を中心とした 1〜2 ホップの描画）も SC-03 に無い。
+  // **語だけでなく描画面そのものを見る** —— SC-18 の面は canvas を敷くので、
+  // 名前を変えて埋め込まれても捕まる。
+  await expect(page.getByText(/ローカルグラフ/)).toHaveCount(0);
+  await expect(page.locator('canvas')).toHaveCount(0);
+
   expectBffTrafficIsComplete(traffic);
 });

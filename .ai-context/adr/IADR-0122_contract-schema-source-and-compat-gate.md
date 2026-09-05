@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR, FR-14, ADR-0018, ADR-0027, ADR-0029, IADR-0028, IADR-0049, IADR-0115, IADR-0116, IADR-0120, IADR-0131]
 author: Claude
 created: 2026-08-04
-updated: 2026-08-05
+updated: 2026-09-05
 plan_refs:
   - planning:projects/microservices-platform/06_technical/10_composability-design.md
   - planning:projects/microservices-platform/07_adr/ADR-0029_grpc-rest-usage-criteria.md
@@ -242,6 +242,14 @@ CI 契約テストをセットで条件付き繰延**にしている。その根
   1. **east-west が gRPC へ移行した時点で、proto を east-west の正本に切り替える**
      （ADR-0029（計画リポ））。
      そのとき本検査はメッセージング契約と proto 未対応の面に縮退させ、新 IADR で改定する。
+
+     > **［2026-09-05 追記 / #1201］proto が 1 件入った（`Platform.Shared.Contracts/Protos/platform/authz/v1/`）。
+     > 本検査の母集合には proto を入れない** —— 構文が違い（C# ↔ protobuf）、互換規則も違う（フィールド番号の
+     > 不変性・`reserved`）ため、1 構文 1 パーサとして専用の `scripts/check-proto-contracts.js`（baseline
+     > `proto-contract-baseline.json` ＋ allowlist `proto-breaking-allowlist.json`。本 IADR 決定 3 と同型の逃げ道）を
+     > 置いた。本検査（C# 構文解析）は**そのまま有効**であり、REST の DTO とイベント契約を引き続き守る。
+     > 「proto を east-west の正本に切り替える」は移行の完了時点の話であり、並走中（正は REST）は両検査が並走する。
+     > 決定は [IADR-0379](IADR-0379_east-west-grpc-preconditions.md) 決定 2。
   2. 共通エンベロープの繰延解除条件（IADR-0049 決定 1）の充足監視。解除時は本検査の対象へ
      エンベロープを加える（型が増えるだけなので機構の変更は要らない見込み）。
   3. フロントエンドの契約（`orval` 生成物と OpenAPI の整合）は #446 系の管轄であり本件では扱わない。

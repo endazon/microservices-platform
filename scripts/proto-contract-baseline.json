@@ -1,0 +1,121 @@
+{
+  "$comment": [
+    "east-west gRPC の proto 契約の正規化スナップショット（Issue #1201 / IADR-0379 決定 2）。",
+    "scripts/check-proto-contracts.js が生成する。手で編集しない。",
+    "更新: node scripts/check-proto-contracts.js --update",
+    "破壊的変更は scripts/proto-breaking-allowlist.json へ承認エントリを書いてから --update する。",
+    "承認の記録は $acceptedBreakingChanges へ追記され、以後も残る（削除しない）。"
+  ],
+  "$schemaVersion": 1,
+  "$acceptedBreakingChanges": [],
+  "files": {
+    "src/platform/backend/Shared/Platform.Shared.Contracts/Protos/platform/authz/v1/authz_scope.proto": {
+      "syntax": "proto3",
+      "package": "platform.authz.v1",
+      "csharpNamespace": "Platform.Shared.Contracts.Grpc.Authz.V1",
+      "imports": [],
+      "messages": {
+        "AccessScopeBranch": {
+          "fields": {
+            "filters": {
+              "number": 2,
+              "type": "AttributeFilter",
+              "label": "repeated"
+            },
+            "name": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "AttributeFilter": {
+          "fields": {
+            "allowed_values": {
+              "number": 2,
+              "type": "string",
+              "label": "repeated"
+            },
+            "key": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "ResolveScopeRequest": {
+          "fields": {
+            "action": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            },
+            "user_attributes": {
+              "number": 2,
+              "type": "map<string,string>",
+              "label": "map"
+            },
+            "user_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "ResolveScopeResponse": {
+          "fields": {
+            "allowed_filters": {
+              "number": 2,
+              "type": "AttributeFilter",
+              "label": "repeated"
+            },
+            "branches": {
+              "number": 4,
+              "type": "AccessScopeBranch",
+              "label": "repeated"
+            },
+            "granted": {
+              "number": 3,
+              "type": "bool",
+              "label": "singular"
+            },
+            "user_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "enums": {},
+      "services": {
+        "AuthzScope": {
+          "rpcs": {
+            "Resolve": {
+              "request": "ResolveScopeRequest",
+              "response": "ResolveScopeResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            }
+          }
+        }
+      }
+    }
+  }
+}

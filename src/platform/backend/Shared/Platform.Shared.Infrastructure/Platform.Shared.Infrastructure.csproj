@@ -33,6 +33,12 @@
     <PackageReference Include="WolverineFx.RabbitMQ" />
     <!-- FR-06/FR-12, ADR-0015: S3 互換オブジェクトストレージ（MinIO）クライアント（Storage/*） -->
     <PackageReference Include="AWSSDK.S3" />
+    <!-- NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 (#1201): east-west gRPC の共通部品（Foundation/Grpc）。
+         Grpc.AspNetCore = 受け側（AddGrpc / MapGrpcService と h2c リスナ）、Grpc.Net.Client = 呼び出し側
+         （h2c チャネルに s2s トークンの CallCredentials を付ける）。どちらも CPM に版が既に在る
+         （ADR-0030 の採用ライブラリ。新しいライブラリは足していない）。 -->
+    <PackageReference Include="Grpc.AspNetCore" />
+    <PackageReference Include="Grpc.Net.Client" />
     <!-- NU1510 (Issue #33): Microsoft.Extensions.Diagnostics.HealthChecks は
          Microsoft.AspNetCore.App 共有フレームワークが提供するため明示参照は不要 -->
   </ItemGroup>
