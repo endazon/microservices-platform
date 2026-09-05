@@ -3,7 +3,7 @@ title: 検索／チャット質問画面 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-09-04
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
@@ -131,7 +131,7 @@ issues: [#446, #490, #502, #519, #539, #540, #541, #586, #599, #1065, #1200, pla
 
 候補を出せないまま入力欄だけ置くと、**利用者が「権限内のみ提示」という計画の保証を受けられない**。
 押しても何も変わらないチップを置くのはさらに悪い。よって本 issue では置かず、
-**契約の不足として計画へ環流した**（feedback/20260804_sc01-03-bff-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設）。
+**契約の不足として計画へ環流した**（環流記録 `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md`。
 **計画側へ issue として起票済みであり、裁定を待っている**）。
 
 **(b) 個人資料まわり（モック #10・#11）— 着手保留の実装 ADR の決定 1 による。**
@@ -171,7 +171,7 @@ hi-fi `sc-01.html:428-429` は出典 1 行に**チップを 2 つ**描く——`
 **これは文書詳細画面の「機密区分の表示名が計画に無い」（[文書詳細 §属性の表示](./SC-03_document-detail.md)）とは
 別の論点である**——あちらは**値は取れるが表示名が計画に無い**、本件は**値そのものが取れない**、という
 違いだった。**いずれも計画側で解消している**——表示名は計画側の裁定 Q7・Q30 で確定し、
-値は #541 で契約へ載った。両方を feedback/20260804_sc01-03-bff-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設）
+値は #541 で契約へ載った。両方を 環流記録 `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md`
 の表へ別行（#6 と #7）で載せた。あわせて「**出典の機密区分を利用者に見せるか**」自体が
 判断事項である旨も同記録へ書いた（**見せる**と裁定された。Q10）。
 
@@ -311,7 +311,7 @@ hi-fi `sc-01.html:428-429` は出典 1 行に**チップを 2 つ**描く——`
 - 作業仕様書: 仕様書: 利用者の主導線（検索・結果一覧・文書詳細）の新スタックでの再実装
 - テスト仕様書: [検索／チャット質問画面](../tests/SC-01_search-chat.md)
 - 実装 ADR: LLM 回答の SSE ストリーミング ／ SSE の状態管理と URL 状態
-- 計画への環流: feedback/20260804_sc01-03-bff-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設）
+- 計画への環流: 環流記録 `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md`
 
 ## 未決事項
 

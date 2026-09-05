@@ -36,7 +36,7 @@ import type { DataSourceDto } from '@foundation/api/generated/bff.schemas';
 //     **［2026-08-28 追記 / #754］既定属性（`confidentiality` / `department` / `lifecycle`）の
 //     編集フォームを置いた**（計画 §SC-06「登録・**更新**フォームは既定属性 3 つを持つ」）。
 //     接続先・認証情報の編集は依然として未実装であり、#534 の射程のまま残る。
-//   もとの記録は feedback/20260805_sc05-07-admin-contract-gaps.md（planning#198 で裁定済み）。
+//   もとの記録は projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md（planning#198 で裁定済み）。
 
 export function DataSourceManagementPage() {
   const { t } = useLingui();

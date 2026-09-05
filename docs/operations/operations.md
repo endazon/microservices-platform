@@ -262,7 +262,7 @@ Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 c
   （`--oidc-issuer-url` 等をクラスタ (再)作成時に付与）が実ログイン・リソース閲覧の前提（稼働 k3d 依存＝live）。
   手順の全文は [`deploy/local/README.md`](../../deploy/local/README.md) の「Headlamp」節を参照。
 - **本番導入は非スコープ**（本書の範囲では dev のみ）: 公開範囲・アクセス制御・RBAC 設計が別問題のため、まず dev で確立し本番導入は別 issue／
-  計画フィードバック（`feedback/20260719_headlamp-k8s-management-ui.md`）で論点化する。
+  計画フィードバック（`projects/microservices-platform/10_feedback/20260719_headlamp-k8s-management-ui.md`）で論点化する。
   - **［2026-08-04 追記］計画側で方針が起案された**——
     運用管理 UI の本番導入を扱う計画 ADR
     「Kubernetes 管理 UI を本番へ導入し、**内部限定（VPN／踏み台経由）・閲覧専用**で公開する」

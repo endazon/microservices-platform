@@ -3,7 +3,7 @@ title: 管理者設定（ABAC） 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-30
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
@@ -263,7 +263,7 @@ TanStack Query は「別のミューテーションが成功した」ことで�
 ## 未決事項
 
 1. ~~**タグ辞書の契約**（値集合の照会・使用件数・改名の追随）~~
-   **［2026-08-09 / #640］解決した。** 環流記録 `feedback/20260805_sc09-11-admin-ops-contract-gaps.md`
+   **［2026-08-09 / #640］解決した。** 環流記録 `projects/microservices-platform/10_feedback/20260805_sc09-11-admin-ops-contract-gaps.md`
    の提案 1 は、#634（値集合・使用件数）→ #635（識別子参照・改名・削除）→ **#640（BFF の書き込み口）**
    で消化しきった。
 2. ~~**dry-run の検証 API**——同 提案 2。~~ **［2026-08-09 / #535］解決した。**

@@ -23,7 +23,7 @@ import { useAbacAttributes, useAbacPolicies } from '../api/useAbacAdmin';
 //   **#640 が BFF の書き込み口（/bff/tags）を足した**。IADR-0129 決定 1 の理由 B は解除済みである。
 //   **辺の型辞書（理由 A）は残る**ので、計画 §SC-09 の 4 区画のうち 3 区画が揃った状態である。
 //   **空のタブを置かない**——保留であることを伝えず、むしろ壊れて見える（#502 が確立した
-//   「動かない UI を置かない」）。記録は feedback/20260805_sc09-11-admin-ops-contract-gaps.md（起票は親）。
+//   「動かない UI を置かない」）。記録は projects/microservices-platform/10_feedback/20260805_sc09-11-admin-ops-contract-gaps.md（起票は親）。
 
 export function AdminAbacSettingsPage() {
   const { t } = useLingui();

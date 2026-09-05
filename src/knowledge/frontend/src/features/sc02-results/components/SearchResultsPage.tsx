@@ -34,7 +34,7 @@ import type { SearchResultDto } from '@foundation/api/generated/bff.schemas';
 //     後段は**取得後に並べ替える**（[[IADR-0150]]）——関連度が候補を決め、並び順は表示順だけを決める。
 //   **切替 UI（上の 2 つ）はモックでは同じツールバー行に並ぶため、まとめて 1 つの画面実装として扱う**
 //   （[[IADR-0150]] フォローアップ）。**「契約が揃った」と「画面が実装された」を混同しないこと。**
-//   もとの記録は feedback/20260804_sc01-03-bff-contract-gaps.md（planning#197 で裁定済み）。
+//   もとの記録は projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md（planning#197 で裁定済み）。
 //   **［2026-08-09 / #536］更新日時列は実装した。** 契約（`SearchResultDto.updatedAt`）が
 //   裁定 Q6 を受けて日時を持ち、索引（Qdrant のペイロード）へも取り込むようにしたため（[[IADR-0149]]）。
 //   **［2026-09-03 / #1193］本文なしの文書の縮退表示を足した**（ADR-0070 決定 4 / [[IADR-0358]]）。

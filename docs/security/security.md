@@ -3,7 +3,7 @@ title: セキュリティ仕様書
 type: security-spec
 status: in-progress
 created: 2026-07-02
-updated: 2026-09-03
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
@@ -283,7 +283,7 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
 - サービス間認証の**恒久像**（内部 API での OIDC/JWT 検証。トークン非保持ワーカー含む全呼び出し元）。
   現状は mTLS（相互認証・暗号化）＋ NetworkPolicy を第一/多層防御とし、アプリ層の JWT 検証は残課題として
   別 Issue で追跡（STRICT mTLS の実装 ADR §4）。暫定運用と非機能要件の草案との相違・フェーズ分けは
-  `feedback/20260705_internal-service-auth-nfr-deviation.md` で計画側へ環流済み。
+  `projects/microservices-platform/10_feedback/20260705_internal-service-auth-nfr-deviation.md` で計画側へ環流済み。
 - インフラ系（postgres/rabbitmq/keycloak/qdrant/grafana 等）の公開は開発環境限定。共有・ステージング・本番では公開しない運用の明文化。
 - RetrievalService `/search` の ABAC 取り扱い。
 - 稼働 Wiki.js での GraphQL PoC（スキーマ整合・`isPrivate` ページのサービスアカウント本文取得可否・

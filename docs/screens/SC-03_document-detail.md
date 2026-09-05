@@ -3,7 +3,7 @@ title: 文書詳細／プレビュー 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-04
+updated: 2026-09-05
 author: claude
 ---
 <!-- trace:
@@ -216,7 +216,7 @@ hi-fi モックの左レールにも「文書詳細」がある。しかし**本
 モックに現れるのは**そのうち 2 値だけ**である（実測: `grep -n "社内限\|秘" mockups/hi-fi/sc-05.html sc-09.html`）。
 残る 2 値の表示名は計画のどこにも無く、実装が決めれば**それが事実上の用語定義になってしまう**。
 機密区分は取り違えると影響が大きい情報であるため、推測で名前を与えず生値を出す。
-表示名は環流の記録に載せ、計画へ環流した（feedback/20260804_sc01-03-bff-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設）。
+表示名は環流の記録に載せ、計画へ環流した（環流記録 `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md`。
 **計画側へ issue として起票済みであり、裁定を待っている**）。
 
 > **★［2026-08-10 追記 / #553］裁定が出た。上の「2 値しか無い」という前提はもう成り立たない。**
