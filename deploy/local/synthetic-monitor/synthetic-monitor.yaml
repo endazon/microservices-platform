@@ -1,0 +1,71 @@
+# NFR-02, NFR-21, ADR-0044, ADR-0076 決定 3・4, IADR-0378 (#1203):
+# 合成監視（synthetic）のプローブ。**クラスタ内で完結する**（外部監視 SaaS は使わない。08_data-egress-policy）。
+#
+# ★ Job（CronJob）ではなく Deployment のループにしてある。
+#   - CronJob の刻みは 1 分が下限であり、pod 起動の揺らぎが乗ると **要求間隔が 5 分境界の近くで不安定**になる。
+#     ADR-0076 決定 3 の判定基準は「無風でいられる時間が 5 分より短いこと」であり、間隔の決定性が要る。
+#   - メッシュ内の Job はサイドカーのせいで完了しない（realm reconcile Job を platform-infra へ置いたのと同じ罠）。
+#     本プローブは BFF（microservices-platform）へ到達する必要があるため、この namespace に常駐させる。
+#
+# 🔴 **既定の起動器には入れない（opt-in）。** 必要なのは realm クライアント `synthetic-monitor` と
+#   その Secret であり、どちらも揃っていない環境で回すと 401 を打ち続ける。README の手順で明示的に当てる。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: synthetic-monitor
+  namespace: microservices-platform
+  labels:
+    app: synthetic-monitor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: synthetic-monitor
+  template:
+    metadata:
+      labels:
+        app: synthetic-monitor
+    spec:
+      containers:
+        - name: probe
+          # CI（Node 22）と同じメジャー版。外部依存ゼロ（Node 標準の fetch のみ）。
+          image: node:22-alpine
+          command: ["node", "/probe/probe.js"]
+          env:
+            - name: KC_URL
+              value: http://keycloak.platform-infra.svc.cluster.local:8080
+            - name: KC_REALM
+              value: platform
+            # 🔴 **この clientId が標識そのものである。** BFF は `azp` をこの値と突き合わせ、
+            #   一致した要求だけを LLM 費用計測と SC-10 の集計から外す。
+            #   BFF 側の `SyntheticMonitoring__Subjects__0` と**同じ綴り**でなければ除外は効かない。
+            - name: SYNTHETIC_CLIENT_ID
+              value: synthetic-monitor
+            # 🔴 Secret はリポジトリに置かない。README の手順で作る（dev の既定値も使わない）。
+            - name: SYNTHETIC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: synthetic-monitor-oidc
+                  key: client-secret
+            - name: BFF_BASE_URL
+              value: http://bff-service:8080
+            # 🔴 **頻度は配備時に決める。** ADR-0076 §残るもの が「合成監視の頻度・費用の上限は
+            #   定めていない」と残しており、**実装は既定値を持たない**（probe.js は未設定なら起動しない）。
+            #   ここに置く 60 は「決定 3 の 5 分境界より十分に短い」という運用上の暫定値であり、
+            #   計画側の裁定（planning へ decision-needed で起票済み）で置き換える。
+            - name: PROBE_INTERVAL_SECONDS
+              value: "60"
+            # 既定は費用の出ない 2 経路のみ。**LLM を実際に呼ぶ経路は裁定待ちで足さない。**
+            - name: PROBE_PATHS
+              value: /bff/analysis/ask,/bff/analysis/ask/stream
+          volumeMounts:
+            - name: probe
+              mountPath: /probe
+              readOnly: true
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+      volumes:
+        - name: probe
+          configMap:
+            name: synthetic-monitor-probe

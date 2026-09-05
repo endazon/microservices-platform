@@ -75,9 +75,36 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHttpClient<ISuggestionLlmClient, LlmGatewaySuggestionClient>(c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"]
         ?? "http://llm-gateway:5010"));
-// ADR-0051 決定 1 が認めた「全文書横断の類似度」の口が RetrievalService に無いため、
-// **既定は空を返すアダプタである**（fail-closed 側。IADR-0266 論点 C）。
-builder.Services.AddScoped<ISimilarityCandidateSource, UnconfiguredSimilarityCandidateSource>();
+// FR-18, ADR-0051 決定 1, IADR-0380 (#1244): 類似度候補の供給元。
+//
+// 🔴 **既定は語の共起（TermOverlapSimilarityCandidateSource）である。** #1244 の実測で、供給元が
+// 「常に空を返す」既定アダプタ 1 つしか無く、**FR-18 の提案が構造的に 0 件**だったことが分かった
+// （状態機械・承認 UI・却下の永久保持はすべて緑のテストを持つが、守る対象が 1 件も生まれていなかった）。
+// `SimilaritySourceWiringTests` が「既定構成で解決される型が Unconfigured ではないこと」と
+// 「実文書 2 件から pending の提案が 1 件以上生まれること」を固定する —— **ここを空へ戻すと赤になる。**
+//
+// 供給元を切りたいときは構成 `AiSuggestions:Similarity:Source=none`（旧既定。fail-closed 側）。
+// **未知の値は起動を落とす**（ValidateOnStart）—— 綴り間違いで静かに 0 件へ倒れる形にしない
+// （DB 接続文字列と同じ向き。KnowledgeHealthOptions が ValidateOnStart を付けないのは「既定へ倒して
+// 警告を出す」が安全側だからであり、ここは既定へ倒すことがそのまま欠陥の再演になる）。
+//
+// 選択は**解決時**に行う（`builder.Configuration` を組み立て時に読まない）。テストホストが差し込む構成は
+// Build 時に載るため、組み立て時に読むと既定しか見えず「切り替えが効くこと」を測れない。
+builder.Services.AddOptions<AiSuggestionSimilarityOptions>()
+    .Bind(builder.Configuration.GetSection(AiSuggestionSimilarityOptions.SectionName))
+    .Validate(
+        o => o.Source is AiSuggestionSimilarityOptions.TermOverlap or AiSuggestionSimilarityOptions.None,
+        $"{AiSuggestionSimilarityOptions.SectionName}:Source は"
+        + $" '{AiSuggestionSimilarityOptions.TermOverlap}' か '{AiSuggestionSimilarityOptions.None}' のみ。"
+        + " 既定へ倒さない —— 倒すと提案が静かに 0 件になる（#1244）。")
+    .ValidateOnStart();
+builder.Services.AddScoped<TermOverlapSimilarityCandidateSource>();
+builder.Services.AddScoped<UnconfiguredSimilarityCandidateSource>();
+builder.Services.AddScoped<ISimilarityCandidateSource>(sp =>
+    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AiSuggestionSimilarityOptions>>().Value.Source
+        == AiSuggestionSimilarityOptions.None
+        ? sp.GetRequiredService<UnconfiguredSimilarityCandidateSource>()
+        : sp.GetRequiredService<TermOverlapSimilarityCandidateSource>());
 builder.Services.AddScoped<AiSuggestionGenerator>();
 
 // FR-18, SC-03, SC-05, SC-09, ADR-0063 決定 1〜3, IADR-0364 (#1187 / #1014): DocumentService との
@@ -105,6 +132,8 @@ builder.Services.AddSingleton<TagSuggestionDropMetrics>();
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
 builder.Services.AddHttpClient<IGraphContentReader, StorageContentReader>();
 builder.Services.AddScoped<LinkEdgeSynchronizer>();
+// IADR-0380 (#1244): 同じ本文読み取りから語の出現数（類似度候補の材料）を作る。
+builder.Services.AddScoped<TermProfileSynchronizer>();
 
 // FR-10, FR-17, FR-19, UC-05, SC-10, ADR-0002, ADR-0006, IADR-0265, [[IADR-0299]] (#443):
 // ナレッジ健全性の観測値の**生産者**。受け口（DashboardService）は #443 で実装済みだが、
@@ -121,6 +150,10 @@ builder.Services.AddHttpClient(HttpKnowledgeHealthReporter.ClientName, c =>
     // 🔴 既定の 100 秒のままにしない —— 受け口が応答しないと定期処理がその間止まる。
     c.Timeout = HttpKnowledgeHealthReporter.SendTimeout;
 });
+// FR-10, NFR-21, ADR-0076 決定 3, [[IADR-0389]] 決定 5 (#1246): 観測値を届けた回数（指標ごと）。
+// 生産者が止まると受け口の数字は最後の値で凍る。**沈黙を鳴らすための系列**である。
+// Meter は EdgeTypeFallbackMetrics と同じなので、AddMeter の追加は要らない。
+builder.Services.AddSingleton<KnowledgeHealthReportMetrics>();
 builder.Services.AddScoped<IKnowledgeHealthReporter, HttpKnowledgeHealthReporter>();
 // FR-10, UC-05, SC-10, planning#494 決定 1・3, [[IADR-0353]] (#1186): 陳腐化のしきい値（既定 180 日）。
 // **配備時の構成で変更できる**（環境変数 KnowledgeHealth__StaleDocumentThresholdDays）。

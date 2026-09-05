@@ -72,12 +72,34 @@ const TAGS = {
   ],
 };
 
-/** 一覧 3 本（属性・ポリシー・タグ辞書）に応答を与え、書き込みは既定で成功させる。 */
+// FR-17, SC-09, #1241: 辺の型辞書（値集合 ＋ 使用件数）。
+// **使用件数が 1 以上の行と 0 の行を 1 本ずつ置く** —— 削除拒否と削除成功の両方を測るため。
+const EDGE_TYPES = [
+  {
+    id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    name: 'cites',
+    layer: 'core',
+    isSymmetric: false,
+    isSeed: true,
+    usageCount: 342,
+  },
+  {
+    id: 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff',
+    name: 'part-of',
+    layer: 'recommended',
+    isSymmetric: false,
+    isSeed: false,
+    usageCount: 0,
+  },
+];
+
+/** 一覧 4 本（属性・ポリシー・タグ辞書・辺の型辞書）に応答を与え、書き込みは既定で成功させる。 */
 function mockApi(
   overrides: {
     attributes?: unknown;
     policies?: unknown;
     tags?: unknown;
+    edgeTypes?: unknown;
     write?: () => Promise<unknown>;
   } = {},
 ) {
@@ -92,6 +114,10 @@ function mockApi(
     if (path === '/admin/authz/attributes') return pick(overrides.attributes ?? ATTRIBUTES);
     // FR-09, SC-09, #640: タグ辞書（/bff/tags）。
     if (path === '/tags') return pick(overrides.tags ?? TAGS);
+    // FR-17, SC-09, #1241: 辺の型辞書（/bff/edge-types）。
+    // 🔴 **`/graph/edge-types`（描画用カタログ）ではない。** 取り違えるとこのモックに当たらず、
+    // ポリシー一覧の応答が返ってしまう（＝取り違えが緑になる）。
+    if (path === '/edge-types') return pick(overrides.edgeTypes ?? EDGE_TYPES);
     return pick(overrides.policies ?? POLICIES);
   });
 }
@@ -413,23 +439,47 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  // IADR-0119: 「辺の型」は**着手保留の要求**に属する（どの要求かは IADR-0119 と画面仕様書が持つ。
-  // **保留対象の ID をここへ書くと check-test-traceability.js が「実装が先行している」と
-  //  誤って報告する**——その ID は、当該機能に着手する issue が初めて書く）。
-  // **まず「見えるはずの条件」で描画されていることを確かめてから**無いことを assert する
-  // （#502 の M3 の教訓）。
-  it('does not render the edge-type dictionary (its requirement is on hold)', async () => {
+  // ★ FR-17, SC-09, #1241: 辺の型辞書は**契約が着地したので描く**。
+  //
+  // 🔴 **このテストは「不在を固定する」ものから反転させた（削除ではない）。**
+  // 従前は `does not render the edge-type dictionary (its requirement is on hold)` であり、
+  // IADR-0129 決定 1 の理由 A（要求の着手保留）を固定していた。**その保留は 2026-08-07（#586）に
+  // 解除され**、判断先の #504 が判断を残さずに閉じたまま残っていたものを本 issue が回収した。
+  // **消すと「なぜ描くようになったか」が追えなくなる**（タグ辞書の反転と同じ作法）。
+  //
+  // **起点 ID をここに書けるようになったのも本 issue からである** —— 従前は
+  // 「保留対象の ID を書くと check-test-traceability.js が『実装が先行している』と誤報する」
+  // という理由で伏せていた。**着手したので、その理由は失効した。**
+  it('renders the edge-type dictionary now that the contract exists', async () => {
     mockApi();
     await renderPage();
 
-    // 見えるはずのもの（2 つの区画）が在ることを先に確かめる。
+    // 見えるはずのもの（他の区画）が在ることを先に確かめる（#502 の M3 の教訓）。
     expect(await screen.findByRole('tab', { name: '属性体系' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'ポリシー定義' })).toBeInTheDocument();
 
-    expect(screen.queryByRole('tab', { name: '辺の型' })).not.toBeInTheDocument();
-    expect(screen.queryByText(/辺の型/)).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '辺の型' })).toBeInTheDocument();
+  });
+
+  // ★ 陰性対照（#1241）: **「逆向きの表示語」の列は作らない。**
+  //
+  // hi-fi モックはその列を描くが、ADR-0033 が逆向きの語を定めているのは
+  // **バックリンク欄での表示**であって辞書の管理項目ではなく、ドメインにも契約にもその欄が無い。
+  // **そのバックリンク欄自体 SC-04 側で実現方式が未確定である**（#1240）——
+  // **消費者の無い管理項目を先に作ると、計画が決めたときに実装ではなく画面が先に決めたことになる。**
+  it('does not invent a reverse-label column that has no contract behind it', async () => {
+    const user = userEvent.setup();
+    mockApi();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: '辺の型' }));
+
+    // 陽性対照: 契約が持つ列は在る（＝下の不在が「表がまだ描けていないだけ」ではない）。
+    expect(await screen.findByRole('columnheader', { name: '型名' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '使用件数' })).toBeInTheDocument();
+
+    expect(screen.queryByRole('columnheader', { name: '逆向きの表示語' })).not.toBeInTheDocument();
     expect(screen.queryByText(/逆向きの表示語/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/使用件数/)).not.toBeInTheDocument();
   });
 
   // ★ #535: dry-run の検証ボタンは**契約が着地したので描く**（裁定 Q23）。
@@ -749,6 +799,245 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('タグ「規程」は既に辞書にあります。');
     expect(alert).not.toHaveTextContent('件の文書で使われている');
+  });
+
+  // ── FR-17, SC-09, ADR-0033 決定 3・9, INDEX 決定 18 (#1241): 辺の型辞書 ──
+  //
+  // **タグ辞書と同じ操作体系を測る。** INDEX 決定 18 が「同じ規則をタグ辞書にも適用する」と
+  // 定めており、**規則が同じなら試験も同型にする**（別々の形にすると、片方だけ壊れても気付けない）。
+
+  it('lists edge types with their layer, direction and usage counts', async () => {
+    const user = userEvent.setup();
+    mockApi();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: '辺の型' }));
+
+    expect(await screen.findByText('cites')).toBeInTheDocument();
+
+    // **表の中だけを見る。** 追加フォームの層セレクトが同じ語（中核 / 推奨追加）を
+    // `<option>` として持つので、画面全体で引くと追加フォームの選択肢と衝突する。
+    const table = within(screen.getByRole('table', { name: '辺の型辞書の一覧' }));
+    expect(table.getByText('342')).toBeInTheDocument();
+    // 層は表示名へ写す（生値の core をそのまま出さない）。
+    expect(table.getByText('中核')).toBeInTheDocument();
+    expect(table.getByText('推奨追加')).toBeInTheDocument();
+    // ★ 方向は**語で書く**（記号や色だけで対称／非対称を示さない。INDEX 決定 21）。
+    expect(table.getAllByText('非対称')).toHaveLength(2);
+  });
+
+  // 🔴 **本区画の主眼。** 参照が 1 件でもあれば削除を拒否し、**件数を示す**。
+  it('shows the usage count when an edge-type deletion is refused', async () => {
+    mockApi({
+      write: () =>
+        Promise.reject(
+          new ApiError(
+            'conflict',
+            '競合が発生しました。',
+            409,
+            ['型「cites」は 342 本の辺で使われているため削除できません。'],
+            { error: 'edge_type_in_use', usageCount: 342 },
+          ),
+        ),
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: '辺の型' }));
+    await user.click(await screen.findByRole('button', { name: '辺の型を削除: cites' }));
+
+    // 件数が**翻訳済みの文の中に**出る（サーバの日本語をそのまま流していない）。
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'この辺の型は 342 本の辺で使われているため削除できません。',
+    );
+    // 409 は障害ではなく拒否である。ラベルも「注意」にする（INDEX 決定 21 の敷衍）。
+    expect(screen.getByRole('alert')).toHaveTextContent('注意');
+  });
+
+  it('deletes an unused edge type', async () => {
+    const user = userEvent.setup();
+    mockApi();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: '辺の型' }));
+    await user.click(await screen.findByRole('button', { name: '辺の型を削除: part-of' }));
+
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(([, init]) => (init as RequestInit)?.method === 'DELETE'),
+      ).toBe(true),
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('adds an edge type to the dictionary from the screen', async () => {
+    const user = userEvent.setup();
+    mockApi();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: '辺の型' }));
+    await user.type(screen.getByLabelText('型名（必須）'), 'refines');
+    await user.click(screen.getByRole('button', { name: '追加' }));
+
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(
+          ([path, init]) => path === '/edge-types' && (init as RequestInit)?.method === 'POST',
+        ),
+      ).toBe(true),
+    );
+    // 層と対称性も送る（後段は 3 つとも必須である）。
+    expect(sentBody(mocks.apiRequest.mock.calls)).toEqual({
+      name: 'refines',
+      layer: 'recommended',
+      isSymmetric: false,
+    });
+  });
+
+  // ADR-0033 決定 9: **改名しても辺は 1 本も書き換わらない**（辺は型 ID を参照している）。
+  // したがって画面は「何件へ反映しています」と言わない —— **起きていない処理を待っているように
+  // 見える**（タグ辞書は非同期の射影があるので件数を出す。**非対称は意図である**）。
+  it('renames an edge type and says the existing edges follow automatically', async () => {
+    const user = userEvent.setup();
+    mockApi({
+      write: () =>
+        Promise.resolve(
+          jsonResponse({
+            id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+            name: 'cites-to',
+            layer: 'core',
+            isSymmetric: false,
+            isSeed: true,
+            usageCount: 342,
+          }),
+        ),
+    });
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: '辺の型' }));
+    await user.click(await screen.findByRole('button', { name: '辺の型を改名: cites' }));
+    await user.type(screen.getByLabelText('辺の型の新しい名前: cites'), '-to');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent('辺の型を改名しました。');
+    expect(status).toHaveTextContent('既存の辺はそのまま新しい名前で表示されます。');
+    // 「N 件へ反映しています」は出さない（波及が無いため）。
+    expect(status).not.toHaveTextContent('件の');
+  });
+
+  // ADR-0033 決定 3: 未定義の型は `related` へ丸め、**警告として記録する**（拒否も破棄もしない）。
+  // 丸めるのは後段だが、**管理者は「型を消すと以後の抽出が related に寄る」ことを知って判断する**
+  // 必要がある。画面がその帰結を告げないと、削除は「ただ消える」操作に見える。
+  it('tells the administrator that unknown types fall back to related', async () => {
+    const user = userEvent.setup();
+    mockApi();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: '辺の型' }));
+
+    expect(await screen.findByText(/related へ丸められ/)).toBeInTheDocument();
+    expect(screen.getByText(/警告として記録されます/)).toBeInTheDocument();
+  });
+
+  it('says so when the edge-type dictionary is empty', async () => {
+    const user = userEvent.setup();
+    mockApi({ edgeTypes: [] });
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: '辺の型' }));
+
+    expect(await screen.findByText('辺の型は登録されていません。')).toBeInTheDocument();
+  });
+
+  it('reports a failure to load the edge-type dictionary', async () => {
+    const user = userEvent.setup();
+    mockApi({ edgeTypes: new ApiError('server', 'サーバーエラー', 500) });
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: '辺の型' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '辺の型辞書を読み込めませんでした。',
+    );
+  });
+
+  // 名前の重複（409）は使用件数を持たないので、**既定の文言へ落ちる**
+  // （削除拒否の文言を流用すると「0 本で使われている」という無意味な文になる）。
+  it('falls back to the generic message when an edge-type conflict carries no usage count', async () => {
+    const user = userEvent.setup();
+    mockApi({
+      write: () =>
+        Promise.reject(
+          new ApiError('conflict', '競合が発生しました。', 409, [
+            '型「cites」は既に辞書にあります。',
+          ]),
+        ),
+    });
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: '辺の型' }));
+    await user.type(screen.getByLabelText('型名（必須）'), 'cites');
+    await user.click(screen.getByRole('button', { name: '追加' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('型「cites」は既に辞書にあります。');
+    expect(alert).not.toHaveTextContent('本の辺で使われている');
+  });
+
+  // 🔴 **取り違えの検査（#1241 の主題）。** 画面が引くのは `/edge-types`（使用件数つき）であって
+  // `/graph/edge-types`（描画用カタログ・件数なし）ではない。**取り違えると
+  // 一般利用者が 403 になるか、ABAC で絞られていない集計値が漏れる。**
+  it('reads the admin dictionary, never the public drawing catalog', async () => {
+    const user = userEvent.setup();
+    mockApi();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: '辺の型' }));
+    await screen.findByText('cites');
+
+    const paths = mocks.apiRequest.mock.calls.map(([path]) => path);
+    expect(paths).toContain('/edge-types');
+    expect(paths).not.toContain('/graph/edge-types');
+  });
+
+  // 直近の 1 件だけを出す（[[IADR-0127]] 決定 7）。**2 つのミューテーションを跨いで測る** ——
+  // TanStack Query は同じミューテーションの再実行では状態を戻すので、跨がないと穴が見えない。
+  it('drops a stale edge-type failure when a different operation succeeds', async () => {
+    let mode: 'conflict' | 'ok' = 'conflict';
+    mockApi({
+      write: () =>
+        mode === 'conflict'
+          ? Promise.reject(
+              new ApiError('conflict', '競合が発生しました。', 409, [], {
+                error: 'edge_type_in_use',
+                usageCount: 342,
+              }),
+            )
+          : Promise.resolve(
+              jsonResponse({
+                id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+                name: 'cites-to',
+                layer: 'core',
+                isSymmetric: false,
+                isSeed: true,
+                usageCount: 342,
+              }),
+            ),
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: '辺の型' }));
+    await user.click(await screen.findByRole('button', { name: '辺の型を削除: cites' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('342 本の辺で使われている');
+
+    mode = 'ok';
+    await user.click(await screen.findByRole('button', { name: '辺の型を改名: cites' }));
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('辺の型を改名しました。');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   // 遷移先の画面（MCP クライアント管理）が未実装（#445 待ち）のリンクを置かない——押すと

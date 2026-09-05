@@ -95,6 +95,31 @@ namespace GraphService.Infrastructure.Migrations
                     b.ToTable("ai_suggestions", (string)null);
                 });
 
+            modelBuilder.Entity("GraphService.Domain.DocumentLinkTarget", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ExtractedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("SourceDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Target")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceDocumentId")
+                        .HasDatabaseName("ix_document_link_targets_source");
+
+                    b.ToTable("document_link_targets", (string)null);
+                });
+
             modelBuilder.Entity("GraphService.Domain.Edge", b =>
                 {
                     b.Property<Guid>("Id")
@@ -229,6 +254,28 @@ namespace GraphService.Infrastructure.Migrations
                     b.HasKey("DocumentId");
 
                     b.ToTable("graph_documents", (string)null);
+                });
+
+            modelBuilder.Entity("GraphService.Domain.GraphDocumentTermProfile", b =>
+                {
+                    b.Property<Guid>("DocumentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BodyHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Terms")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("DocumentId");
+
+                    b.ToTable("graph_document_term_profiles", (string)null);
                 });
 
             modelBuilder.Entity("GraphService.Domain.Edge", b =>

@@ -44,24 +44,29 @@ public class RawDocumentFetchedConsumer(
 
             // FR-12: 正規化完了イベント発行 → DocumentService が文書を登録し取り込みへ連鎖する。
             // DocumentId は冪等（再変換で同一）。文書管理側で重複登録を避けられる。
-            // ADR-0070 決定 3 / IADR-0356 (#1192): 「本文なし」も運ぶ。後続（カタログ・索引）が
-            // 本文由来のチャンクを作らず、メタデータで検索に載せる判断に使う（決定 4 の射程）。
+            // ADR-0070 決定 3 / IADR-0356 (#1192) / [[IADR-0388]] (#1254): 本文の有無も運ぶ。
+            // 後続（カタログ）が台帳へ保持し、SC-03 の「本文なし（原本を参照）」の材料にする。
+            // 🔴 ADR-0070 決定 4 / [[IADR-0388]] 決定 4 (#1253): **題名へ畳む前のパスも一緒に運ぶ。**
+            // 従前はここで `GetFileNameWithoutExtension` がパスを捨てており、決定 4 の
+            // 「タイトル・**パス**・**データソース**……で検索に載せる」のうち題名しか下流へ
+            // 届いていなかった（[[IADR-0358]] 決定 2 のフォローアップ 1）。
             var title = Path.GetFileNameWithoutExtension(ev.OriginalPath);
             await publisher.PublishNormalizedAsync(
                 result.DocumentId, ev.SourceId, title, result.MarkdownUri,
-                [.. result.AssetUris], ev.Attributes, ev.Tags, result.BodyAbsent, ct);
+                [.. result.AssetUris], ev.Attributes, ev.Tags, result.HasBody,
+                ev.OriginalPath, ev.SourceName, ct);
 
             // SC-07: 成功を記録。IADR-0154 決定 1: 図の記録も渡す（人手補正 Phase 1 の対象を残すため。
             // 従前は件数をログへ出して捨てており、どの図が縮退したかを後から引けなかった）。
             // 🔴 テキスト層の無い PDF も**ここ（成功）**を通る。`failed` にも `deadLettered` にもしない
-            // （ADR-0070 決定 3）—— 内訳は `BodyAbsent` が運ぶ。
+            // （ADR-0070 決定 3）—— 内訳は `HasBody` が運ぶ。
             await jobs.SucceedAsync(ev.FetchId, result.DocumentId, result.MarkdownUri,
-                result.Figures, result.BodyAbsent, ct);
+                result.Figures, result.HasBody, ct);
 
             logger.LogInformation(
-                "Conversion complete for {FetchId}: doc={DocumentId} markdown={Uri} coded={Coded} retained={Retained} bodyAbsent={BodyAbsent}",
+                "Conversion complete for {FetchId}: doc={DocumentId} markdown={Uri} coded={Coded} retained={Retained} hasBody={HasBody}",
                 ev.FetchId, result.DocumentId, result.MarkdownUri, result.DiagramsCoded, result.DiagramsRetained,
-                result.BodyAbsent);
+                result.HasBody);
         }
         catch (UnsupportedSourceFormatException ex)
         {

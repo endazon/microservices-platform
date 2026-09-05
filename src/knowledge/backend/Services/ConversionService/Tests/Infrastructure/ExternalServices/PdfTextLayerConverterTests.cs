@@ -13,8 +13,8 @@ namespace ConversionService.Tests.Infrastructure.ExternalServices;
 // FR-12, UC-06, SC-07, ADR-0070 決定 2・3, IADR-0356 (#1192): PDF のテキスト層抽出器のテスト。
 //
 // 陽性／陰性の対で固定する:
-//   陽性 … テキスト層を持つ PDF → 本文あり（`BodyAbsent = false`）
-//   陰性 … テキスト層を持たない PDF（描画だけのページ）→ **失敗ではなく本文なし**（`BodyAbsent = true`）
+//   陽性 … テキスト層を持つ PDF → 本文あり（`HasBody = true`）
+//   陰性 … テキスト層を持たない PDF（描画だけのページ）→ **失敗ではなく本文なし**（`HasBody = false`）
 //
 // 🔴 **PDF はテスト実行時に生成する。** 追跡下にバイナリを置かない（`check-nul-bytes.js` は追跡下が
 // 全部テキストであることを前提にしている）。生成する PDF は ASCII だけの最小構成で、xref も計算する。
@@ -41,9 +41,9 @@ public class PdfTextLayerConverterTests
     [InlineData("\r\n \r\n")]
     public void ToBody_treats_whitespace_only_output_as_body_absent(string raw)
     {
-        var (markdown, bodyAbsent) = PdfTextLayerConverter.ToBody(raw);
+        var (markdown, hasBody) = PdfTextLayerConverter.ToBody(raw);
 
-        bodyAbsent.Should().BeTrue();
+        hasBody.Should().BeFalse();
         markdown.Should().BeEmpty("本文なしのときに作った文を索引へ載せない");
     }
 
@@ -54,9 +54,9 @@ public class PdfTextLayerConverterTests
     [InlineData("四半期報告")]
     public void ToBody_keeps_any_visible_text_as_a_body(string raw)
     {
-        var (markdown, bodyAbsent) = PdfTextLayerConverter.ToBody(raw);
+        var (markdown, hasBody) = PdfTextLayerConverter.ToBody(raw);
 
-        bodyAbsent.Should().BeFalse();
+        hasBody.Should().BeTrue();
         markdown.Should().NotBeEmpty();
     }
 
@@ -64,16 +64,16 @@ public class PdfTextLayerConverterTests
     [Fact]
     public void ToBody_normalizes_line_endings_and_collapses_blank_runs()
     {
-        var (markdown, bodyAbsent) = PdfTextLayerConverter.ToBody(
+        var (markdown, hasBody) = PdfTextLayerConverter.ToBody(
             "Title  \r\n\r\n\r\n\r\nParagraph one.\fParagraph two.\n\n# not-a-heading-escape\n\n\n");
 
-        bodyAbsent.Should().BeFalse();
+        hasBody.Should().BeTrue();
         markdown.Should().Be("Title\n\nParagraph one.\nParagraph two.\n\n# not-a-heading-escape\n");
     }
 
     // --- 実 pdftotext（導入環境のみ） ---------------------------------------------------
 
-    // 陽性: テキスト層を持つ PDF から本文が取れ、`BodyAbsent` は立たない。図は抽出しない。
+    // 陽性: テキスト層を持つ PDF から本文が取れ、`HasBody` は真のままである。図は抽出しない。
     [Fact]
     public async Task Extracts_the_text_layer_of_a_pdf_as_the_body()
     {
@@ -87,7 +87,7 @@ public class PdfTextLayerConverterTests
             var result = await NewConverter().ConvertAsync(new Uri(path).AbsoluteUri, "application/pdf",
                 TestContext.Current.CancellationToken);
 
-            result.BodyAbsent.Should().BeFalse();
+            result.HasBody.Should().BeTrue();
             result.Markdown.Should().Contain("Quarterly Report").And.Contain("Uptime 99.95 percent");
             result.Markdown.Should().NotContain("から pdftotext で抽出します", "プレースホルダではない");
             result.Figures.Should().BeEmpty();
@@ -112,7 +112,7 @@ public class PdfTextLayerConverterTests
             var result = await NewConverter().ConvertAsync(new Uri(path).AbsoluteUri, "application/pdf",
                 TestContext.Current.CancellationToken);
 
-            result.BodyAbsent.Should().BeTrue();
+            result.HasBody.Should().BeFalse();
             result.Markdown.Should().BeEmpty();
             result.Figures.Should().BeEmpty();
         }
@@ -134,7 +134,7 @@ public class PdfTextLayerConverterTests
         var result = await NewConverter(storage: storage).ConvertAsync(uri, "application/pdf",
             TestContext.Current.CancellationToken);
 
-        result.BodyAbsent.Should().BeFalse();
+        result.HasBody.Should().BeTrue();
         result.Markdown.Should().Contain("Stored PDF body");
         storage.Fetched.Should().ContainSingle().Which.Should().Be(uri);
     }
@@ -198,7 +198,7 @@ public class PdfTextLayerConverterTests
             "storage://bucket/raw/report.pdf", "application/pdf", TestContext.Current.CancellationToken);
 
         result.Markdown.Should().Contain("report");
-        result.BodyAbsent.Should().BeFalse("縮退は「本文なし」ではない。区別を潰さない");
+        result.HasBody.Should().BeTrue("縮退は「本文なし」ではない。区別を潰さない");
         result.Figures.Should().BeEmpty();
     }
 

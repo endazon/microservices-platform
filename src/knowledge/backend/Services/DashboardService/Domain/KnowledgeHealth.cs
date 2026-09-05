@@ -80,21 +80,45 @@ public class KnowledgeHealthObservation
     public const int MaxSubjectKeyLength = 256;
     public const int MaxDocScopeLength = 64;
 
+    // ★［2026-09-05 / #1246・[[IADR-0389]] 決定 1］**内訳の軸**の長さ。
+    // 想定する最長は辺の型名（`edge_types.Name` は 100 字）である。
+    public const int MaxDimensionLength = 100;
+
     public Guid Id { get; private set; } = Guid.NewGuid();
     public string Indicator { get; private set; } = string.Empty;
     public string SubjectKey { get; private set; } = string.Empty;
     public string? DocScope { get; private set; }
+
+    // ★［2026-09-05 / #1246・[[IADR-0389]] 決定 1］**内訳の軸**。
+    //
+    // IADR-0265 が先送りしていた「指標 1 つ＝件数 1 つ」を解く。観測値 1 件が属する内訳の名前で、
+    // 辺の型ごとの使用件数（`edge-type-usage`）や未解決の理由（`unresolved-links`）を表す。
+    //
+    // 🔴 **基数が有界な値だけを載せる。** 軸は集計の GROUP BY 相当であり、
+    // 自由語（文書名・リンク先の名前・未定義の型名）を入れると内訳が無界に増えて読めなくなる
+    // ——`EdgeTypeFallbackMetrics` が型名をタグにしないのと同じ理由である。
+    // 載せてよいのは実行時辞書の語彙（辺の型名）と、実装が閉じた語（`not-found` / `ambiguous`）。
+    //
+    // **持たない指標では null**。null の観測値しか無い指標には内訳を返さない（`View/Endpoint`）。
+    public string? Dimension { get; private set; }
+
     public DateTimeOffset ObservedAt { get; private set; } = DateTimeOffset.UtcNow;
 
     private KnowledgeHealthObservation() { }
 
     public static KnowledgeHealthObservation Create(
-        string indicator, string subjectKey, string? docScope, DateTimeOffset observedAt)
+        string indicator, string subjectKey, string? docScope, DateTimeOffset observedAt,
+        string? dimension = null)
         => new()
         {
             Indicator = KnowledgeHealthIndicators.Normalize(indicator),
             SubjectKey = Truncate(subjectKey, MaxSubjectKeyLength),
             DocScope = docScope is null ? null : Truncate(docScope.Trim().ToLowerInvariant(), MaxDocScopeLength),
+            // 🔴 **空白だけの軸は「軸なし」に倒す。** `""` を軸として保存すると、
+            // 内訳に名前の無い行が現れ、「軸を持たない指標」と区別できなくなる。
+            Dimension = string.IsNullOrWhiteSpace(dimension)
+                ? null
+                : Truncate(dimension.Trim(), MaxDimensionLength),
             ObservedAt = observedAt,
         };
 

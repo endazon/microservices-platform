@@ -4,14 +4,14 @@ type: observability-spec
 status: in-progress
 author: claude
 created: 2026-08-23
-updated: 2026-08-30
+updated: 2026-09-05
 ---
 <!-- trace:
 ids: [FR-10, FR-11, NFR, UC-05, SC-10]
-adrs: [ADR-0006, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044]
-iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322]
-specs: [20260823_issue-443_llm-usage-metrics-and-pricing]
-issues: [#380, #443, #546]
+adrs: [ADR-0006, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0076]
+iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378]
+specs: [20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion]
+issues: [#380, #443, #546, #1203]
 -->
 
 # 可観測性仕様書: LLM 利用実績（トークン消費量と金額換算）
@@ -36,6 +36,16 @@ issues: [#380, #443, #546]
 | `llm.tokens.total` | Counter | `{token}` | `llm_tokens_total` | トークン消費量の累計（費用の分子） |
 | `llm.cost.total` | Counter | `{currency}` | `llm_cost_total` | 金額換算の累計 |
 | `llm.pricing.unpriced.total` | Counter | `{completion}` | `llm_pricing_unpriced_total` | **単価を解決できなかった呼び出し**（0 が正常） |
+| `llm.usage.synthetic_excluded.total` | Counter | `{completion}` | `llm_usage_synthetic_excluded_total` | **合成監視のため費用へ計上しなかった呼び出し** |
+
+🔴 **合成監視（synthetic）の補完は `llm.tokens.total` にも `llm.cost.total` にも載らない。**
+監視のために打った呼び出しが費用へ入ると、費用が「人が使った量」を表さなくなる。
+**ただし黙って消えるのではなく、外した件数が `llm.usage.synthetic_excluded.total` に載る** ——
+この系列が伸びていて費用が伸びていないときは、**実利用が 0 である**。
+標識の決め方と偽装できない根拠は [合成トラフィックの標識と除外](./synthetic-traffic-exclusion.md) に置く。
+
+🔴 **呼び出し回数（`llm.completion.total`）からは外していない。** あちらは「呼んだ事実」の計器であり、
+拒否率の分母である。合成を抜くと分母が欠けて拒否率が過大に見える。
 
 ### 属性（すべて有限集合）
 
@@ -48,6 +58,7 @@ issues: [#380, #443, #546]
 | `llm.token_type` | `input` / `output` | tokens |
 | `llm.currency` | 単価表の通貨（既定 `USD`） | cost |
 | `llm.pricing_status` | `out_of_period` / `no_entry` | unpriced |
+| （合成の除外） | 用途・モデル・プロバイダ・機密区分（tokens / cost と同じ軸） | synthetic_excluded |
 
 **利用者識別子・プロンプト・本文は属性にしない**（カーディナリティが非有界であり、個人の利用行動の
 記録に踏み込む）。値域の正規化は呼び出し回数のカウンタと**共有**しており、両者は同じ軸で読める ——

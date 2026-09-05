@@ -41,10 +41,17 @@ public class DashboardDbContext(DbContextOptions<DashboardDbContext> options) : 
                 .HasMaxLength(KnowledgeHealthObservation.MaxSubjectKeyLength).IsRequired();
             e.Property(o => o.DocScope)
                 .HasMaxLength(KnowledgeHealthObservation.MaxDocScopeLength);
+            // ★［2026-09-05 / #1246］内訳の軸。**NULL 可**（軸を持たない指標がある）。
+            e.Property(o => o.Dimension)
+                .HasMaxLength(KnowledgeHealthObservation.MaxDimensionLength);
             e.Property(o => o.ObservedAt).IsRequired();
 
             // 指標ごとの置換・集計を効率化する。DocScope を含めるのは、
             // 個人資料の除外が**毎回の集計で必ず走る**述語だからである。
+            //
+            // 🔴 **Dimension は索引へ足さない**（#1246）。閲覧は全行を読み込んでから
+            // メモリ上で畳んでおり、軸での絞り込みを DB へ投げていない。
+            // 使われない列を複合索引へ足すと**書き込み側（1 時間ごとの全量置換）の費用だけが増える**。
             e.HasIndex(o => new { o.Indicator, o.DocScope });
         });
 

@@ -12,9 +12,40 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
     public DbSet<Edge> Edges => Set<Edge>();
     // FR-18, ADR-0033 決定 7・10: AI 提案（リンク・タグを同居させる。#914）。
     public DbSet<AiSuggestion> AiSuggestions => Set<AiSuggestion>();
+    // FR-18, ADR-0051 決定 1, IADR-0380 (#1244): 語の出現数（類似度候補の材料。本文は持たない）。
+    public DbSet<GraphDocumentTermProfile> TermProfiles => Set<GraphDocumentTermProfile>();
+
+    // FR-10, SC-10, [[IADR-0389]] (#1246): 本文が指すリンク先の**名前**。
+    // 未解決リンク数はここから**集計のたびに解決し直して**数える（失敗を保存しない）。
+    public DbSet<DocumentLinkTarget> DocumentLinkTargets => Set<DocumentLinkTarget>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
+        // FR-18, ADR-0051 決定 1, IADR-0380 (#1244): 文書ごとの語の出現数。
+        //
+        // graph_documents と 1:1 だが**別表に置く** —— 探索・一覧はノードを頻繁に読み、出現数（≤128 語の
+        // jsonb）をそのたびに運ぶのは無駄である。読むのは提案の生成（利用者の明示操作）だけ。
+        // 🔴 **graph_documents への外部キーは張らない**（edges と同じ理由。到着順に依存を作らない）。
+        mb.Entity<GraphDocumentTermProfile>(e =>
+        {
+            e.ToTable("graph_document_term_profiles");
+            e.HasKey(p => p.DocumentId);
+            e.Property(p => p.BodyHash).HasMaxLength(128);
+            e.Property(p => p.UpdatedAt).IsRequired();
+            e.Property(p => p.Terms)
+                .HasConversion(
+                    v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                    v => System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(
+                             v, (System.Text.Json.JsonSerializerOptions?)null) ?? new())
+                .HasColumnType("jsonb")
+                .Metadata.SetValueComparer(new ValueComparer<Dictionary<string, int>>(
+                    (a, b) => a != null && b != null
+                        ? a.Count == b.Count && !a.Except(b).Any()
+                        : a == b,
+                    d => d.Aggregate(0, (acc, kv) => HashCode.Combine(acc, kv.Key.GetHashCode(), kv.Value)),
+                    d => new Dictionary<string, int>(d)));
+        });
+
         // FR-17, ADR-0033 決定 2: ノード（ABAC 属性の複製）。
         mb.Entity<GraphDocument>(e =>
         {
@@ -104,6 +135,19 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
             // 張ると、参照している提案が pending / rejected でも型の削除が RESTRICT で拒まれる。
             // ADR-0033 決定 9 が削除を拒む条件は「**辺**が参照していること」であり、提案は辺ではない
             // （未承認の提案は辺を持たない）。外部キーを張ると決定 9 より厳しい規則を勝手に作ることになる。
+        });
+
+        // FR-10, SC-10, [[IADR-0389]] (#1246): 本文が指すリンク先の名前。
+        mb.Entity<DocumentLinkTarget>(e =>
+        {
+            e.ToTable("document_link_targets");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.SourceDocumentId).IsRequired();
+            e.Property(x => x.Target).HasMaxLength(DocumentLinkTarget.MaxTargetLength).IsRequired();
+            e.Property(x => x.ExtractedAt).IsRequired();
+
+            // 書き込み側（文書 1 件ぶんの全量置換）と削除側が同じ述語で引く。
+            e.HasIndex(x => x.SourceDocumentId).HasDatabaseName("ix_document_link_targets_source");
         });
 
         // FR-17, ADR-0033 決定 4・5・6: 辺。

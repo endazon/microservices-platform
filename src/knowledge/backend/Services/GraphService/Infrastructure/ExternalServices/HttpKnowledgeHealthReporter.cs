@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using GraphService.Common.Observability;
 using GraphService.Domain.Ports;
 
 namespace GraphService.Infrastructure.ExternalServices;
@@ -21,6 +22,7 @@ namespace GraphService.Infrastructure.ExternalServices;
 // 5 秒待って届かない報告のために周期を占有する理由が無い。
 public sealed class HttpKnowledgeHealthReporter(
     IHttpClientFactory httpFactory,
+    KnowledgeHealthReportMetrics metrics,
     ILogger<HttpKnowledgeHealthReporter> logger) : IKnowledgeHealthReporter
 {
     public const string ClientName = "DashboardService";
@@ -43,8 +45,12 @@ public sealed class HttpKnowledgeHealthReporter(
         {
             var client = httpFactory.CreateClient(ClientName);
             // **件数ではなく観測値**を送る（受け手が個人資料の除外を強制できるようにするため)。
+            // ★［2026-09-05 / #1246］内訳の軸も運ぶ。**持たない観測値では項目そのものを出さない**
+            // （しきい値と同じ姿勢。本文の形が指標をまたいで揺れないようにする）。
             var payload = observations
-                .Select(o => new { subjectKey = o.SubjectKey, docScope = o.DocScope })
+                .Select(o => o.Dimension is { } dim
+                    ? new { subjectKey = o.SubjectKey, docScope = o.DocScope, dimension = dim }
+                    : (object)new { subjectKey = o.SubjectKey, docScope = o.DocScope })
                 .ToList();
 
             // 🔴 **しきい値を持たない指標では項目そのものを出さない。**
@@ -58,7 +64,13 @@ public sealed class HttpKnowledgeHealthReporter(
             var resp = await client.PostAsJsonAsync(ObservationsPath, body, ct);
 
             if (resp.IsSuccessStatusCode)
+            {
+                // ★［2026-09-05 / #1246・[[IADR-0389]] 決定 5］**受理されたときだけ数える。**
+                // ここが `absent` 系アラートの土台である —— 試みた回数を数えると、
+                // 受け口が死んでいる間も系列が生き続け、不在が鳴らない。
+                metrics.RecordDelivered(indicator);
                 return;
+            }
 
             logger.LogError(
                 "ナレッジ健全性の報告に失敗した（status={Status}）。indicator={Indicator} count={Count}。"

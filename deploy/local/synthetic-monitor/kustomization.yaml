@@ -1,0 +1,24 @@
+# ADR-0076 決定 3・4, IADR-0378 (#1203): 合成監視（opt-in オーバーレイ）。
+# ⚠️ deploy/local/infra/kustomization.yaml には**含めない**。既定の経路B 起動には出てこない（fail-safe）。
+#
+# 適用（opt-in。前提は README の手順 1〜3）:
+#   kubectl apply -k deploy/local/synthetic-monitor
+# 停止:
+#   kubectl -n microservices-platform scale deploy/synthetic-monitor --replicas=0
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: microservices-platform
+
+resources:
+  - synthetic-monitor.yaml
+
+configMapGenerator:
+  - name: synthetic-monitor-probe
+    files:
+      - probe.js
+
+generatorOptions:
+  # 名前にハッシュを付けない（Deployment 側が固定名で参照するため）。
+  # 🔴 スクリプトを変えたら `kubectl -n microservices-platform rollout restart deploy/synthetic-monitor` が要る。
+  disableNameSuffixHash: true

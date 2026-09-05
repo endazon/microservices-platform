@@ -3,6 +3,7 @@ using IngestionService.Domain;
 using IngestionService.Domain.Ports;
 using IngestionService.Features.Ingestion.Ingest;
 using Knowledge.Contracts.Events;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace IngestionService.Tests.Features.Ingestion.Ingest;
@@ -18,7 +19,10 @@ public class DocumentUpdatedConsumerTests
     private static DocumentUpdated SampleEvent(
         string? markdownUri = "https://storage.example/docs/test.md",
         string confidentiality = "internal",
-        DateTimeOffset? updatedAt = null)
+        DateTimeOffset? updatedAt = null,
+        bool hasBody = true,
+        string? originalPath = null,
+        string? dataSourceName = null)
         => new(
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
             "テスト文書",
@@ -26,12 +30,17 @@ public class DocumentUpdatedConsumerTests
             markdownUri,
             new Dictionary<string, string> { ["confidentiality"] = confidentiality },
             ["knowledge-mgmt", "ops"],
-            updatedAt ?? DateTimeOffset.UtcNow);
+            updatedAt ?? DateTimeOffset.UtcNow,
+            ContentFingerprint: null,
+            HasBody: hasBody,
+            OriginalPath: originalPath,
+            DataSourceName: dataSourceName);
 
     private static (DocumentUpdatedConsumer Consumer, RecordingCompletedPublisher Completed) Build(
         IIngestionVectorStore store,
         IDocumentContentReader reader,
-        IEmbeddingService? embed = null)
+        IEmbeddingService? embed = null,
+        ILogger<DocumentUpdatedConsumer>? logger = null)
     {
         var completed = new RecordingCompletedPublisher();
         var consumer = new DocumentUpdatedConsumer(
@@ -40,7 +49,7 @@ public class DocumentUpdatedConsumerTests
             embed ?? new StubEmbeddingService(),
             store,
             completed,
-            NullLogger<DocumentUpdatedConsumer>.Instance);
+            logger ?? NullLogger<DocumentUpdatedConsumer>.Instance);
         return (consumer, completed);
     }
 
@@ -303,6 +312,131 @@ public class DocumentUpdatedConsumerTests
 
         store.MetadataUpserts.Should().BeEmpty();
         completed.Published.Should().BeEmpty();
+    }
+
+    // ── #1253 / [[IADR-0388]] 決定 4・5: 所在とデータソース名を索引テキストへ ──────────────
+
+    // A-1 / A-2 **陽性**: 本文なしの文書の索引テキストに**所在の語**と**データソース名**が載る。
+    // これが無いと、利用者は題名を正確に覚えている場合しかその文書へ辿り着けない
+    // （ADR-0070 決定 4 が「タイトル・パス・データソース……」と書いた理由）。
+    [Fact]
+    public async Task Consumer_ShouldIndexPathAndDataSourceName_WhenBodyIsEmpty()
+    {
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("   \n\n  ");
+        var (consumer, _) = Build(store, reader);
+
+        await HandleAsync(consumer, SampleEvent(
+            hasBody: false,
+            originalPath: "/共有/経理/2026年度経費.pdf",
+            dataSourceName: "本社ファイルサーバー"));
+
+        var indexText = store.MetadataUpserts.Should().ContainSingle().Subject.IndexText;
+        indexText.Should().Contain("経理").And.Contain("共有");           // A-1: 所在の語
+        indexText.Should().Contain("本社ファイルサーバー");                 // A-2: データソース名
+        indexText.Should().Contain("テスト文書");                          // A-3 陽性対照: 題名は残る
+        indexText.Should().NotContain("人事").And.NotContain("pdf");       // A-4 陰性対照
+    }
+
+    // A-6: 旧発行者（所在もデータソース名も運ばない `DocumentUpdated`）で**例外にならず**、
+    // 題名・タグだけで従来どおり索引される。契約は末尾・既定値つきなので読める。
+    [Fact]
+    public async Task Consumer_ShouldIndexTitleAndTagsOnly_WhenPublisherDoesNotCarryOrigin()
+    {
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("");
+        var (consumer, completed) = Build(store, reader);
+
+        await HandleAsync(consumer, SampleEvent(hasBody: false));
+
+        var indexText = store.MetadataUpserts.Should().ContainSingle().Subject.IndexText;
+        indexText.Should().Be("テスト文書 knowledge-mgmt ops");
+        completed.Published.Should().ContainSingle().Which.ChunkCount.Should().Be(0);
+    }
+
+    // A-7 **非対称の固定**（[[IADR-0388]] 決定 5）: 本文ありのチャンクには所在を載せない。
+    // 載せると「本文に書いてある語で当たった」と「置き場所の名前で当たった」が抜粋から
+    // 区別できなくなる。**どちらを選んでも決めていない状態を残さない**ための固定である。
+    [Fact]
+    public async Task Consumer_ShouldNotPutPathIntoBodyChunks()
+    {
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("# 見出しA\n\n本文アルファ");
+        var (consumer, _) = Build(store, reader);
+
+        await HandleAsync(consumer, SampleEvent(
+            originalPath: "/共有/経理/2026年度経費.pdf", dataSourceName: "本社ファイルサーバー"));
+
+        store.Upserts.Should().NotBeEmpty();
+        store.Upserts.Should().OnlyContain(u => !u.Text.Contains("経理"));
+        store.Upserts.Should().OnlyContain(u => !u.Text.Contains("本社ファイルサーバー"));
+    }
+
+    // ── #1254 / [[IADR-0388]] 決定 3: 契約の値とチャンク判定の食い違いを鳴らす ──────────────
+
+    // B-3: `hasBody=false` なのにチャンクが作れた（＝上流の標識と本文が食い違う）。
+    // **判定は変えない**（チャンクが在るのだから本文チャンクとして索引する）。鳴らすだけである。
+    [Fact]
+    public async Task Consumer_ShouldWarn_WhenContractSaysNoBodyButChunksExist()
+    {
+        var logger = new CapturingLogger<DocumentUpdatedConsumer>();
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("# 見出しA\n\n本文アルファ");
+        var (consumer, _) = Build(store, reader, logger: logger);
+
+        await HandleAsync(consumer, SampleEvent(hasBody: false));
+
+        store.Upserts.Should().NotBeEmpty("判定は変えない —— チャンクが在れば本文として索引する");
+        logger.Warnings.Should().ContainSingle(w => w.Contains("hasBody=false"));
+    }
+
+    // B-3（逆向き）: `hasBody=true` なのにチャンクが 0 件。
+    [Fact]
+    public async Task Consumer_ShouldWarn_WhenContractSaysBodyButNoChunks()
+    {
+        var logger = new CapturingLogger<DocumentUpdatedConsumer>();
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("   ");
+        var (consumer, _) = Build(store, reader, logger: logger);
+
+        await HandleAsync(consumer, SampleEvent(hasBody: true));
+
+        logger.Warnings.Should().ContainSingle(w => w.Contains("hasBody=true"));
+    }
+
+    // **陰性対照**: 一致しているときは鳴らさない（「常に鳴る」実装で上の 2 本が緑にならない）。
+    [Fact]
+    public async Task Consumer_ShouldNotWarn_WhenContractAndChunksAgree()
+    {
+        var logger = new CapturingLogger<DocumentUpdatedConsumer>();
+        var (consumer, _) = Build(new RecordingVectorStore(),
+            new StubContentReader("# A\n\nまる"), logger: logger);
+        await HandleAsync(consumer, SampleEvent(hasBody: true));
+
+        var logger2 = new CapturingLogger<DocumentUpdatedConsumer>();
+        var (consumer2, _) = Build(new RecordingVectorStore(),
+            new StubContentReader(""), logger: logger2);
+        await HandleAsync(consumer2, SampleEvent(hasBody: false));
+
+        logger.Warnings.Should().NotContain(w => w.Contains("hasBody"));
+        logger2.Warnings.Should().NotContain(w => w.Contains("hasBody"));
+    }
+}
+
+// #1254 / [[IADR-0388]] 決定 3: 警告の**本文**を見るための記録用ロガー。
+// レベルだけを数えると「何か鳴った」しか言えず、食い違いの向きが固定できない。
+file class CapturingLogger<T> : ILogger<T>
+{
+    public List<string> Warnings { get; } = [];
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+        Func<TState, Exception?, string> formatter)
+    {
+        if (logLevel >= LogLevel.Warning) Warnings.Add(formatter(state, exception));
     }
 }
 
