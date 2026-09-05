@@ -2,10 +2,10 @@
 title: IADR-0366 無人アカウントの clearance とタグは登録者が持つ集合の部分集合かを後段で判定し、外れた値を拒否応答へ載せる
 type: impl-adr
 status: Accepted
-related_ids: [FR-05, FR-09, FR-16, UC-09, SC-12, SC-17, ADR-0004, ADR-0024, ADR-0034, ADR-0036, ADR-0062]
+related_ids: [FR-05, FR-09, FR-16, UC-09, SC-12, SC-17, ADR-0004, ADR-0024, ADR-0034, ADR-0036, ADR-0062, IADR-0384]
 author: implementation-agent
 created: 2026-09-03
-updated: 2026-09-03
+updated: 2026-09-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0062_unattended-account-attribute-subset.md
   - planning:projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md
@@ -74,6 +74,17 @@ ADR-0062 の受け入れ像（`{public, internal, confidential}` を持つ登録
 キー単位 union は当該キーの**属性ベースの到達範囲**を表し、条件を持たない分岐はこのキーの union を
 広げない（＝安全側）。IADR-0253 決定 2 の 2026-08-23 追記が警告する混成は**複数キーの連言を 1 本へ
 潰す**話であり、**単一キーの許可値の読み出しには当たらない。**
+
+> **［2026-09-05 追記 / #1242］本決定は [IADR-0384](./IADR-0384_registrar-clearance-scope-absent-filter.md) が差し替えた（Superseded by IADR-0384）。**
+> 🔴 **「`AllowedFilters` から読み、`confidentiality` が無ければ無制限」は fail-open だった。**
+> 契約 `AccessScopeResponse` が「条件無しで許可（全件可）」と定めるのは **`AllowedFilters` が空**の
+> ときだけであり、**`owner` だけを持つ**（空ではないが `confidentiality` を持たない）場合は含まれない。
+> `ADR-0036` D-01 の所有者ベース `read` ポリシーだけにマッチする登録者は、本決定の読み方では
+> `ClearanceUnrestricted = true` へ倒れ、**`restricted` の無人アカウントを作れてしまう**。
+> **本決定が避けようとした昇格経路（「自分の文書を読めることを根拠に `restricted` を配る」）は
+> 正しい懸念であり、退けた手段（`Branches` を読む）の側が誤っていた** —— 分岐ごとに見て
+> **単一キー `confidentiality` の分岐だけを数えれば**、所有者分岐は値を 1 つも足さない。
+> **`IADR-0384` 決定 1〜3 が正である。決定 1・2・4〜6 は有効である。**
 
 **決定 4: 対象は `clearance` とタグの 2 キーだけとする。**
 ADR-0062 決定 2 が名指しするのがこの 2 つだからである。**`department` は対象外**（同型の昇格になり得るが
