@@ -16,6 +16,14 @@ namespace DataSourceService.Features.DataSources.Update;
 // （先頭へ上げると 404 が 400 に化ける）。`OwnerMappingValidation.ValidateAsync` は
 // 外部の利用者名簿を引き、応答が RFC7807（全違反を返す）で形が違う。**どちらも端点に残す**
 // （IADR-0395 決定 6）。
+//
+// **［2026-09-05 追記 / #1278］`OwnerMappingValidation` の扱いは [[IADR-0398]] 決定 6 で確定した**
+// ——「RFC7807 の群（#1278）で改めて見る」という保留はもう無い。**恒久的に端点へ残す。**
+// 理由は 3 点（①`Update` では入口の検証器・`FindAsync`・`ConnectionUriPolicy` の後ろに居るので
+// 位置を動かせない ②形式検査と実在検査が 1 関数の 2 段で、3 操作が同じ 1 本を呼ぶことが設計である
+// ③名簿を引けなかったときの **502 は `ValidationResult` で表せない**）。
+// **依存方向（`check-unit-dependencies.js` 規則 3）は理由ではない** —— `IPlatformUserDirectory` は
+// `Domain/Ports` にあり、`Features/` の検証器が注入しても規則には触れないことを実測した。
 internal sealed class UpdateDataSourceValidator : AbstractValidator<UpdateDataSourceRequest>
 {
     // FR-01: 元のガード節が返していた本文の文字列。**これが応答の契約である。**

@@ -18,6 +18,13 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <!-- NFR, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 1・2 / IADR-0395 /
+         [[IADR-0398]]。端点の入力検証は Features/ 側（Application 相当）で AbstractValidator に写す。
+         **Domain/ には入れない**（`check-backend-libraries.js` の Domain 外部依存ゼロ規則）——
+         属性規則の実体は `Domain/DocumentAttributes` の関数のままで、FluentValidation へ橋渡しする
+         拡張メソッドは `Features/Documents/DocumentAttributeRules.cs` に置く。
+         版は書かない（CPM。src/Directory.Packages.props が単一情報源）。 -->
+    <PackageReference Include="FluentValidation" />
     <PackageReference Include="MassTransit.RabbitMQ" />
     <!-- ADR-0027 §決定 必須設定 1 / E3a: 本プロジェクトは Wolverine ホストを起こす（DocumentDeleted 発行）。
          WolverineFx 本体は Platform.Shared.Infrastructure 経由で届くが、RuntimeCompilation は

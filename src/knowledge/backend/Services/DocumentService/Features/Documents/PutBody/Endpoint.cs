@@ -1,6 +1,7 @@
 using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
+using FluentValidation;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace DocumentService.Features.Documents.PutBody;
@@ -16,14 +17,22 @@ internal static class PutDocumentBodyEndpoint
     internal static void Map(RouteGroupBuilder bodyIntake)
     {
         bodyIntake.MapPut("/{id:guid}/body", async (Guid id, UpdateDocumentBodyRequest req,
+            IValidator<UpdateDocumentBodyRequest> validator,
             DocumentDbContext db, IObjectStorageClient storage, IDocumentUpdatedPublisher bus,
             HttpContext http, CancellationToken ct) =>
         {
-            if (req.Body is null)
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["body"] = ["本文は必須です。"]
-                });
+            // FR-21 / 計画 ADR-0030 §決定 / IADR-0371 決定 2 / [[IADR-0398]] 決定 1:
+            // 本文は必須（`null` は不可。**空文字は有効**）。規則は `PutDocumentBodyValidator` が持つ。
+            //
+            // 🔴 **この位置（取得・認可・413 より前）を動かしてはならない** —— 移送前もそうだった。
+            // 1 MB 超（413）は認可の後ろに居る別の判定であり、検証器には入っていない。
+            var gate = validator.Validate(req);
+            if (!gate.IsValid) return ValidationProblems.FirstViolation(gate);
+
+            // 🔴 検証器が `null` を弾いた後なので非 null である（`EdgeTypes/Create` の `req.Layer!` と
+            // 同じ形。IADR-0395 の移送で確立した作法）。**ここで `is null` を書き直さない** ——
+            // 同じ不変条件が 2 箇所になり、どちらかだけが直る。
+            var body = req.Body!;
 
             var doc = await db.Documents.FindAsync([id], ct);
             if (doc is null) return Results.NotFound();
@@ -40,15 +49,15 @@ internal static class PutDocumentBodyEndpoint
                 return Results.NotFound();
 
             // FR-21 受け入れ基準 ⑥: 1 MB 超は 413。**切り詰めない。**
-            if (DocumentBodyIntake.ExceedsLimit(req.Body))
+            if (DocumentBodyIntake.ExceedsLimit(body))
                 return DocumentEndpoints.BodyTooLargeProblem();
 
             // FR-21 受け入れ基準 ④⑦: 全文をオブジェクトストレージへ格納し、DB は参照のみ持つ。
             var bodyUri = await storage.PutTextAsync(
-                DocumentBodyIntake.StorageKey(doc.Id), req.Body,
+                DocumentBodyIntake.StorageKey(doc.Id), body,
                 DocumentBodyIntake.ContentType, ct);
             // ADR-0050 (#911): 本文指紋。イベントが運び、却下解除・再取り込み判定に使う。
-            doc.SetMarkdownUri(bodyUri, DocumentBodyIntake.Fingerprint(req.Body));
+            doc.SetMarkdownUri(bodyUri, DocumentBodyIntake.Fingerprint(body));
             await db.SaveChangesAsync(ct);
 
             // FR-21 受け入れ基準 ①②: DocumentUpdated が取り込み（parse→chunk→embed→index）を起動し、

@@ -3,19 +3,29 @@ using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using DocumentService.Infrastructure.Messaging;
 using DocumentService.Features.Documents;
+using DocumentService.Features.Documents.AddTag;
+using DocumentService.Features.Documents.Create;
+using DocumentService.Features.Documents.GrantShare;
+using DocumentService.Features.Documents.PutBody;
+using DocumentService.Features.Documents.Update;
+using DocumentService.Features.Documents.UpdateMetadata;
 using DocumentService.Features.McpTools.Declare;
 using DocumentService.Features.ObsidianSync;
 using DocumentService.Features.PrivateNotes;
 using DocumentService.Features.SyncDevices;
 using DocumentService.Features.Tags;
+using DocumentService.Features.Tags.Create;
+using DocumentService.Features.Tags.Rename;
 using DocumentService.Infrastructure.Persistence;
 using DocumentService.Domain.Ports;
+using FluentValidation;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Wolverine;
 using Wolverine.RabbitMQ;
+using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 
 const string ServiceName = "microservices-platform.document-service";
@@ -56,6 +66,19 @@ builder.Services.AddPlatformHealthChecks()
 // MassTransit 組み込みの "masstransit-bus"（tag "ready"）で満たす。
 // 外部 AspNetCore.HealthChecks.Rabbitmq は RabbitMQ.Client 7 と非互換（TypeLoadException 'IModel'）のため使用しない。
 builder.Services.AddOpenApi();
+
+// FR-05, FR-06, FR-09, FR-18, FR-19, FR-20, FR-21, UC-03, SC-05, SC-09 /
+// 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0395 / [[IADR-0398]] 決定 1:
+// 端点の入力検証。**アセンブリ走査（AddValidatorsFromAssembly）は使わない** —— 登録が暗黙になり、
+// 検証器を消しても起動が通ってしまう（明示登録なら `IValidator<T>` の解決に失敗して止まる）。
+builder.Services.AddScoped<IValidator<CreateDocumentRequest>, CreateDocumentValidator>();
+builder.Services.AddScoped<IValidator<UpdateDocumentRequest>, UpdateDocumentValidator>();
+builder.Services.AddScoped<IValidator<UpdateMetadataRequest>, UpdateMetadataValidator>();
+builder.Services.AddScoped<IValidator<UpdateDocumentBodyRequest>, PutDocumentBodyValidator>();
+builder.Services.AddScoped<IValidator<CreateShareRequest>, GrantDocumentShareValidator>();
+builder.Services.AddScoped<IValidator<AddDocumentTagRequest>, AddDocumentTagValidator>();
+builder.Services.AddScoped<IValidator<CreateTagRequest>, CreateTagValidator>();
+builder.Services.AddScoped<IValidator<RenameTagRequest>, RenameTagValidator>();
 
 // FR-06: Document DbContext (ADR-0002 Database per Service)
 builder.Services.AddDbContext<DocumentDbContext>(opt => opt.UseNpgsql(connStr));

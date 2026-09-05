@@ -1,5 +1,6 @@
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
+using FluentValidation;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace DocumentService.Features.Documents.Update;
@@ -10,21 +11,20 @@ internal static class UpdateDocumentEndpoint
     internal static void Map(RouteGroupBuilder write)
     {
         write.MapPut("/{id:guid}", async (Guid id, UpdateDocumentRequest req,
+            IValidator<UpdateDocumentRequest> validator,
             DocumentDbContext db, IDocumentUpdatedPublisher bus, CancellationToken ct) =>
         {
-            if (string.IsNullOrWhiteSpace(req.Title))
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["title"] = ["タイトルは必須です。"]
-                });
-
-            // FR-05, UC-03, SC-05, IADR-0047: 更新でも機密区分を必須検証する（属性は全置換のため）。
-            if (DocumentEndpoints.ConfidentialityProblemOrNull(req.Attributes) is { } updateError)
-                return updateError;
-
-            // FR-19, ADR-0054: doc_scope の値域検証（未知値は 400。欠落は拒否しない — 遡及付与しない方針）。
-            if (DocumentEndpoints.DocScopeProblemOrNull(req.Attributes) is { } updateScopeError)
-                return updateScopeError;
+            // FR-05, FR-06, FR-19, UC-03, SC-05 / 計画 ADR-0030 §決定 / IADR-0371 決定 2 /
+            // [[IADR-0398]] 決定 1: 入力検証（title → confidentiality → doc_scope の値域）。
+            // 規則は `UpdateDocumentValidator` が持ち、**先頭 1 件をその鍵で返す**
+            // （移送前は最初のガード節で返っていた。宣言順が応答の契約である）。
+            //
+            // 🔴 **この位置（`FindAsync` より前）を動かしてはならない。** 移送前も 3 本とも取得の
+            // 前に居た —— **不存在の文書 ID への空題名更新は 400 であり 404 ではない。**
+            // `IValidator<T>` が引数にあることは順序の証拠にならない（引数は解決であって実行ではない。
+            // IADR-0395 決定 2）。
+            var gate = validator.Validate(req);
+            if (!gate.IsValid) return ValidationProblems.FirstViolation(gate);
 
             var doc = await db.Documents.FindAsync(id);
             if (doc is null) return Results.NotFound();
