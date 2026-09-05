@@ -115,6 +115,70 @@ export interface EdgeTypeCatalogItem {
 }
 
 /**
+ * FR-17, SC-09, ADR-0033 決定 3・9: 辺の型辞書の 1 件（**使用件数つき**。管理用途）。
+ *
+ * 🔴 **`EdgeTypeCatalogItem` とは別の型である。** あちらは描画用で `usageCount` を持たず、
+ * 代わりに `weight` を持つ。**片方をもう片方の代わりに使わない** ——
+ * カタログに件数を足すと一般利用者へ総量が漏れ、辞書から件数を落とすと
+ * SC-09 の「削除前に使用件数を示す」が満たせなくなる。
+ */
+export interface EdgeTypeDto {
+  /** 改名しても変わらない。既存の辺はこれを参照する */
+  id: string;
+  /** 表示名。改名の対象 */
+  name: string;
+  /** 型の層（core / recommended / future） */
+  layer: string;
+  /** 対称な関係か（対称なら逆向きの表示語を持たない） */
+  isSymmetric: boolean;
+  /** 初期値集合に由来するか */
+  isSeed: boolean;
+  /** この型を使っている辺の本数 */
+  usageCount: number;
+}
+
+/**
+ * FR-17, SC-09（ADR-0033 決定 3）: 辞書へ辺の型を追加する。 **識別子は辞書が採番する**（呼び出し側から与えない。改名で変わらない値を外から決めさせない）。
+ */
+export interface CreateEdgeTypeRequest {
+  /** 表示名。前後の空白は正規化される。 */
+  name: string;
+  /** 型の層。core / recommended / future のいずれか。 */
+  layer: string;
+  /** 対称な関係か。 */
+  isSymmetric: boolean;
+}
+
+/**
+ * FR-17, SC-09（ADR-0033 決定 9）: 辞書の辺の型を改名する。**識別子は変えない** —— 既存の辺は識別子を参照しているので追随は自動である（辺は 1 本も書き換えない）。
+ */
+export interface RenameEdgeTypeRequest {
+  /** 新しい表示名。既存値と重複してはならない（自分自身は除く）。 */
+  name: string;
+}
+
+export type EdgeTypeInUseProblemError = typeof EdgeTypeInUseProblemError[keyof typeof EdgeTypeInUseProblemError];
+
+
+export const EdgeTypeInUseProblemError = {
+  edge_type_in_use: 'edge_type_in_use',
+} as const;
+
+/**
+ * FR-17, SC-09（ADR-0033 決定 9 / INDEX 決定 18）: 使用中の辺の型の削除を拒否したときの本文。
+ * **`usageCount` は SC-09 の「削除前に使用件数を示す」を満たすために要る** ——
+ * 件数が無いと管理者は「なぜ消えないか」しか分からず、付け替え作業に着手できない。
+ * **BFF は本文を詰め替えず透過する**（数え方を 2 つ持つと一覧と削除拒否で件数が割れる）。
+ * **タグ辞書の `TagInUseProblem` と同型である**——同じ規則を両辞書へ適用するという計画の確定事項
+ * （INDEX 決定 18）が、契約の形にも現れている。
+ */
+export interface EdgeTypeInUseProblem {
+  error: EdgeTypeInUseProblemError;
+  message: string;
+  usageCount: number;
+}
+
+/**
  * FR-18, SC-21, ADR-0033 決定 7・10: AI 提案（リンク候補・タグ候補）。
  *
  * **リンク提案とタグ提案を 1 つの型で表す** —— SC-21 が同一の一覧を求めており、
