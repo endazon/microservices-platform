@@ -17,7 +17,7 @@ namespace LlmGateway.Tests.Features.Completions;
 // 書き忘れても緑になる（IADR-0102 / IADR-0106 が実際に踏んだ「無音失効」と同型）。
 //
 // IADR-0110 (#395): メトリクス購読テスト（CompletionMetricsTests）と直列化する。
-[Collection(CompletionEndpointCollection.Name)]
+[Collection(SharedMeterCollection.Name)]
 [Trait("TestKind", "Integration")]
 public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
