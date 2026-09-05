@@ -9,7 +9,7 @@ using System.Security.Claims;
 
 namespace McpServer.Tests.Infrastructure.ExternalServices;
 
-// FR-16, FR-05, FR-09, UC-09, SC-12, ADR-0062 決定 2・3, ADR-0036 D-01・D-02, IADR-0385 (#1242):
+// FR-16, FR-05, FR-09, UC-09, SC-12, ADR-0062 決定 2・3, ADR-0036 D-01・D-02, IADR-0384 (#1242):
 // **本物の解決器**に対して AuthorizationService の HTTP をスタブし、認可スコープの読み方を固定する。
 //
 // 🔴 **本クラスが無かったことが #1242 の原因である。** 従前は `StubRegistrarAttributeResolver`

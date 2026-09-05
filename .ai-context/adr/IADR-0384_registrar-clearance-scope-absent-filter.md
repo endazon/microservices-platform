@@ -1,5 +1,5 @@
 ---
-title: IADR-0385 認可スコープに `confidentiality` フィルタが無いことを「無制限」と読まず、軸ごとに許可の根拠を確かめる
+title: IADR-0384 認可スコープに `confidentiality` フィルタが無いことを「無制限」と読まず、軸ごとに許可の根拠を確かめる
 type: impl-adr
 status: Accepted
 related_ids:
@@ -23,7 +23,7 @@ plan_refs:
   - planning:projects/microservices-platform/06_technical/07_abac-attribute-model.md
 ---
 
-# IADR-0385: 認可スコープに `confidentiality` フィルタが無いことを「無制限」と読まず、軸ごとに許可の根拠を確かめる
+# IADR-0384: 認可スコープに `confidentiality` フィルタが無いことを「無制限」と読まず、軸ごとに許可の根拠を確かめる
 
 - 状態: Accepted
 - 日付: 2026-09-05

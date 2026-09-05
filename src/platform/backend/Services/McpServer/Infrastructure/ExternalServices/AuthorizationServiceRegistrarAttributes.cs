@@ -23,7 +23,7 @@ namespace McpServer.Infrastructure.ExternalServices;
 //   の文書基本属性／利用者属性）、「読める機密区分の集合」がそのまま「渡してよい `clearance` の
 //   集合」になる。
 //
-// ■ 🔴 「`confidentiality` のフィルタが無い」は「無制限」ではない（#1242 で是正・IADR-0385）
+// ■ 🔴 「`confidentiality` のフィルタが無い」は「無制限」ではない（#1242 で是正・IADR-0384）
 //   従前はキー単位 union（`AllowedFilters`）から `confidentiality` を引き、**見つからなければ
 //   無制限**と読んでいた。契約が「条件無しで許可（全件可）」と定めるのは **`AllowedFilters` が
 //   空**のときだけであり、**`owner` だけを持つ**（空ではないが `confidentiality` を持たない）
@@ -142,7 +142,7 @@ public sealed class AuthorizationServiceRegistrarAttributes(
     }
 
     /// <summary>
-    /// 認可スコープから「登録者が渡してよい機密区分」を読む。**#1242 / IADR-0385 の規則の実体。**
+    /// 認可スコープから「登録者が渡してよい機密区分」を読む。**#1242 / IADR-0384 の規則の実体。**
     ///
     /// 🔴 **不在を「制約なし」と読まない。** 規則は次の 3 段である。
     ///

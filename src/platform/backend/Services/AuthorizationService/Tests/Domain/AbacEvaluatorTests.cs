@@ -339,7 +339,7 @@ public class AbacEvaluatorTests
         result.Branches!.Single().Name.Should().Be("組織文書");
     }
 
-    // ---- #1242 / IADR-0385: 「confidentiality フィルタが無いスコープ」が実在することの固定 ----
+    // ---- #1242 / IADR-0384: 「confidentiality フィルタが無いスコープ」が実在することの固定 ----
     //
     // 🔴 **本テストは消費側（MCP の登録者属性解決）の陰性対照が机上の作り物でないことの担保である。**
     // ADR-0036 D-01 は `read` 許可を「属性ベース ∨ **所有者ベース** ∨ 共有先ベース」の選言と定め、
