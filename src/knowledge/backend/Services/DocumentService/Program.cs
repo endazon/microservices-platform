@@ -1,5 +1,6 @@
 using DocumentService.Common.Observability;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
+using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using DocumentService.Infrastructure.Messaging;
 using DocumentService.Features.Documents;
@@ -52,6 +53,10 @@ builder.Services.AddOpenTelemetry()
         .AddMeter(IngestTagMetrics.MeterName)
         .AddMeter(PrivateNoteNotificationMetrics.MeterName));
 builder.Services.AddPlatformAuth(builder.Configuration);
+// NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 3, [[IADR-0402]] (#1255):
+// east-west gRPC の h2c リスナ（`Grpc:Port`。未設定なら立てない）。
+// HTTP/1.1 のポート（REST・/health/*・introspection・Obsidian 同期）はそのまま残る。
+builder.AddPlatformGrpcListener();
 // NFR, #1012: 接続先は構成から受け取る。**既定の資格情報を埋め込まない。**
 // 埋め込むと、構成の注入漏れが「起動失敗」ではなく「既定の資格情報で接続成功」へ倒れ、
 // 誤った DB へ書き込んだまま健全に見える。ここで落ちれば配備の誤りはその場で判る。
@@ -122,6 +127,10 @@ builder.Services.AddScoped<DocumentService.Domain.Ports.IPrivateNoteNotifier,
 // FR-06, FR-19, ADR-0057 決定 1, IADR-0296: 削除の伝播先①（オブジェクトストレージの本文・資産）。
 // 台帳から逆引きして消すため DbContext と同じ scoped にする。
 builder.Services.AddScoped<DocumentService.Features.Documents.DocumentObjectPurger>();
+// FR-06, UC-03, NFR-09, ADR-0029, ADR-0075, [[IADR-0402]] (#1255): 文書読み取り 4 口の本体。
+// **REST の 4 端点と east-west gRPC の面（DocumentReadGrpcService）が同じ実体を通る**
+// （判定器を 2 つにしない）。DbContext と同じ scoped にする。
+builder.Services.AddScoped<DocumentReadUseCase>();
 builder.Services.AddScoped<DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceService>();
 builder.Services.AddHostedService<
     DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceHostedService>();
@@ -204,6 +213,11 @@ app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapDocumentEndpoints();
+// FR-06, UC-03, SC-03, SC-05, ADR-0029, ADR-0075, [[IADR-0402]] (#1255): 読み取り 4 口の gRPC 面。
+// REST と**同じ本体**（`DocumentReadUseCase`）を呼ぶ。呼び出し側サービスの資格情報
+// （ServiceCaller ポリシー）を要求する —— 利用者のトークンでは通らない。
+// 🔴 **書き込み・本文・共有の口はこの面に出さない**（呼び出し元が要らないものを面へ出さない）。
+app.MapGrpcService<DocumentReadGrpcService>();
 // FR-09, SC-05, SC-09, #634: タグ辞書（IADR-0152 決定 1）。
 app.MapTagDictionaryEndpoints();
 // FR-19, FR-20, ADR-0036 D-06, IADR-0253 決定 4（段 4）: 文書の共有先（所有者のみ変更可）。

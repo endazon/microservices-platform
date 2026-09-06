@@ -1,3 +1,4 @@
+using Knowledge.Bff.Endpoints.Documents;
 using Knowledge.Bff.Endpoints.Usage;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Authz;
@@ -136,6 +137,15 @@ builder.Services.AddHttpClient("WikiService", c =>
 builder.Services.AddHttpClient("DocumentService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DocumentService"]
         ?? "http://document-service:5001"));
+// FR-06, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379, IADR-0402 (#1255):
+// 文書台帳の**読み取り 4 口**を gRPC でも呼べるようにする（opt-in）。
+// `Services:DocumentServiceGrpc`（h2c アドレス）が在るときだけ登録され、DocumentBffEndpoints が使う。
+// 資格情報は BFF 自身の s2s トークン（`ServiceToken:*`。利用者の JWT ではない）。並走中の正は REST。
+//
+// 🔴 **移せるのは読み取りだけである。** 同じ named client を使う書き込み経路（作成・更新・公開・
+// アーカイブ・削除・個人資料・タグ辞書）は**利用者の資格情報を後段へ運び**、後段が
+// `AdminOnly` を二重ゲートで強制している（IADR-0044）。s2s へ替えると門が 1 枚になる。
+builder.Services.AddDocumentReadGrpcClient(builder.Configuration);
 
 // FR-12, UC-06, SC-07: 変換ジョブ管理の集約用（管理者・運用者限定）。ワーカーの HTTP サーフェスは 8080。
 builder.Services.AddHttpClient("ConversionService", c =>

@@ -835,6 +835,12 @@
       "credentials": [{ "type": "password", "value": "Developer-2026", "temporary": false }]
     },
     {
+      "username": "service-account-bff",
+      "enabled": true,
+      "serviceAccountClientId": "bff",
+      "realmRoles": ["platform-service"]
+    },
+    {
       "username": "service-account-abac-seeder",
       "enabled": true,
       "serviceAccountClientId": "abac-seeder",
