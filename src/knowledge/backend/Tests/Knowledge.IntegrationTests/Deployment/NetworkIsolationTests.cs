@@ -39,11 +39,29 @@ public sealed class NetworkIsolationTests
         // 配備と同時にここへ足す —— 受け口は認証済み内部呼び出しだけを想定しており、host 公開されると
         // 誰でも利用者宛の通知を投函できる。送出側は fail-open なので、穴が開いても不達としては現れない。
         "notification-service",
-        // FR-12, SC-07, Issue #501: **`ingestion-service` は意図的に「未対応」であって「公開してよい」ではない**。
-        // 同じく compose では expose のみだが本列挙に無く、host 公開の回帰を止められない（同型の穴）。
-        // 今回入れなかったのは、HTTP サーフェスが MapPlatformIntrospection() 1 件のみで副作用のある操作を
-        // 持たず、FR-12 / SC-07 の射程（retry の権限是正）外だからである（IADR-0128 フォローアップ 2）。
-        // 追加するときはここへ 1 行足す。
+        // NFR-09, Issue #458, IADR-0403 決定 6: 以下 3 本は **compose の側から母集合を引き直して**見つけた
+        // 列挙漏れである（記憶で挙げず `build:` を持つサービスを機械的に数えた。traceability.repo.md 規則 9）。
+        // いずれも**実態としては正しく expose のみ**で、Helm でも ClusterIP（ingress ブロックを持つのは
+        // wikijs だけ・既定 enabled: false）である。**つまり穴は開いていない。開いても止められなかった**
+        // ——`conversion-service` のとき（上記 :33-37）と同じ形の欠陥であり、その 2 回目・3 回目にあたる。
+        // 再発は EveryComposeAppService_MustBeClassified が構造で止める（列挙漏れが fail-closed になる）。
+        "graph-service",   // FR-17, UC-10, ADR-0033/ADR-0034: 知識グラフ。
+        "mcp-service",     // SC-12: MCP のエッジ集約（/mcp）と管理 REST。chart のキーは `mcp`。
+        // **`ingestion-service` は意図的に「未対応」であって「公開してよい」ではない**と旧コメントは
+        // 述べていた（IADR-0128 フォローアップ 2）。除外の理由（HTTP サーフェスが
+        // MapPlatformIntrospection() 1 件のみで副作用のある操作を持たない）は **2026-09-06 の実測でも
+        // 成り立つ**が、🔴 **本列挙の目的は「危ない口を持つか」ではなく「host 公開してよいか」である。**
+        // 公開してよくない以上、ここに居るのが正しい（IADR-0403 決定 6）。
+        "ingestion-service",
+    ];
+
+    // NFR-09, Issue #458, IADR-0403 決定 6: **host 公開してよい縁**。ここに書くことが公開の唯一の根拠になる。
+    // 🔴 wiki-js は第三者イメージ（image:）なので下の分類対象に入らない —— dev 便宜の 3001 公開は
+    // IADR-0032 が決め、WikiJs_DevExposureIsRetainedOnComposeOnly が別途固定している。
+    private static readonly string[] HostPublishedEdges =
+    [
+        "bff",       // アプリの唯一のエッジ入口（5000:8080）。
+        "frontend",  // SPA エッジ（IADR-0033）。
     ];
 
     [Fact]
@@ -61,6 +79,50 @@ public sealed class NetworkIsolationTests
             blocks[svc].Should().NotMatchRegex(@"(?m)^\s*ports:\s*$",
                 $"IADR-0017: 内部サービス '{svc}' は host ポートを公開してはならない（expose を用いる）");
         }
+    }
+
+    // NFR-09, Issue #458, IADR-0403 決定 6: 🔴 **列挙の既定を fail-open から fail-closed へ裏返す。**
+    //
+    // これまで InternalAppServices は手で維持する列挙であり、**新しい内部サービスを compose へ足して
+    // ここへ足し忘れると、CI は黙って通った**。実際にそれが 3 回起きている（conversion-service は
+    // #501 で埋めた 1 回目、graph-service / mcp-service が #458 で見つけた 2・3 回目）。
+    //
+    // 🔴 **これは検査器の新設ではない**（CLAUDE.md「同型の事故が 2 回起きたら」の対象外）——
+    // 既に在る NetworkIsolationTests の**母集合の取り方を、記憶から compose の実体へ移す**ものである。
+    //
+    // 第一者のアプリサービスは **`build:` を持つこと**で第三者インフラ（`image:`）と機械的に区別できる。
+    // その全件が「内部（InternalAppServices）」か「公開してよい縁（HostPublishedEdges）」の
+    // **どちらかに必ず属する**ことを課す。どちらでもないサービスが現れたら落ちる。
+    [Fact]
+    public void EveryComposeAppService_MustBeClassified()
+    {
+        var compose = ReadComposeFile();
+        var blocks = SplitServiceBlocks(compose);
+
+        // `build:` を持つ＝このリポジトリがビルドする第一者サービス。
+        var appServices = blocks
+            .Where(kv => Regex.IsMatch(kv.Value, @"(?m)^\s{4}build:\s*$"))
+            .Select(kv => kv.Key)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToList();
+
+        // 🔴 母集合が壊れた（パーサが何も拾わない）ときに緑で通さない。
+        appServices.Should().HaveCountGreaterThan(10,
+            "compose の第一者アプリサービスを拾えていること（パーサが壊れたら 0 件で緑になってしまう）");
+
+        var classified = InternalAppServices.Concat(HostPublishedEdges).ToHashSet(StringComparer.Ordinal);
+        var unclassified = appServices.Where(s => !classified.Contains(s)).ToList();
+
+        unclassified.Should().BeEmpty(
+            "IADR-0403 決定 6: compose の第一者アプリサービスは、内部（InternalAppServices）か "
+            + "host 公開の縁（HostPublishedEdges）のどちらかへ必ず分類すること。"
+            + "未分類のまま増えると host 公開の回帰を誰も止められない（#458 で 3 件見つかった穴と同型）");
+
+        // 逆向き: 列挙に書いたのに compose に居ないサービス（改名・削除の取り残し）も落とす。
+        var composeNames = blocks.Keys.ToHashSet(StringComparer.Ordinal);
+        var stale = InternalAppServices.Concat(HostPublishedEdges)
+            .Where(s => !composeNames.Contains(s)).ToList();
+        stale.Should().BeEmpty("列挙にあるが compose に無いサービス（改名・削除の取り残し）を残さないこと");
     }
 
     [Fact]
