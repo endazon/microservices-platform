@@ -227,13 +227,27 @@ function runtimeResetConfig(realmName) {
  * 検知して閉じるので、「閉じている」は CI では**近接 MTA が壊れている**ことを意味する。
  * これを緑にすると、relay が落ちた統合スタックで T-16 / T-17 が静かに飛ぶ。
  *
+ * 🔴 ［2026-09-07 追記 / #1245 PR-C レビュー］**宣言が閉じているなら、門の標識は理由にならない。**
+ * 門は `resetPasswordAllowed` と `${GATE_STATE_ATTRIBUTE}` を**同じ PUT で**書くので通常は同期するが、
+ * 「**宣言側が意図して `resetPasswordAllowed: false` を指定し、過去の close 記録が残っている**」組では
+ * 実際の原因は relay 障害ではなく**意図的な閉鎖**である。そこで T-20 を出すと原因の切り分けを誤らせる
+ * （fail-closed 側なので穴にはならないが、**間違った理由で赤くする**）。
+ * ⇒ **宣言が開いている実行でだけ**門の標識を理由に採る。
+ *
  * @param {{resetPasswordAllowed:boolean, host:string, from:string,
  *          gateState?:string, gateReason?:string}} cfg
- * @param {{expectGateClosed?:boolean}} opts 門が閉じていることを期待する実行（PR-D のシナリオ）だけ true
+ * @param {{expectGateClosed?:boolean, declaredResetPasswordAllowed?:boolean}} opts
+ *   `expectGateClosed` は門が閉じていることを期待する実行（PR-D のシナリオ）だけ true。
+ *   `declaredResetPasswordAllowed` は **realm 宣言側**の値（既定 true＝宣言は開いている）。
  * @returns {string[]}
  */
-function evaluateRuntimeConcealment(cfg, { expectGateClosed = false } = {}) {
-  if (String(cfg.gateState || '') === GATE_STATE_CLOSED && !expectGateClosed) {
+function evaluateRuntimeConcealment(
+  cfg,
+  { expectGateClosed = false, declaredResetPasswordAllowed = true } = {},
+) {
+  if (String(cfg.gateState || '') === GATE_STATE_CLOSED
+    && !expectGateClosed
+    && declaredResetPasswordAllowed) {
     return [
       `[T-20] 門（reset-gate）が申請を閉じている（realm 属性 ${GATE_STATE_ATTRIBUTE}=${GATE_STATE_CLOSED}`
       + `${cfg.gateReason ? ` / 理由=${cfg.gateReason}` : ''}）。`
@@ -577,6 +591,8 @@ async function run() {
     + ` / ${GATE_STATE_ATTRIBUTE}=${runtimeCfg.gateState || '(無し)'}`);
   const concealFailures = evaluateRuntimeConcealment(runtimeCfg, {
     expectGateClosed: process.env[EXPECT_GATE_CLOSED_ENV] === '1',
+    // 宣言側が閉じているなら、門の標識は原因ではない（意図的な閉鎖である）。
+    declaredResetPasswordAllowed: realm.resetPasswordAllowed === true,
   });
   if (concealFailures.length > 0) {
     // 脆弱な組に居るなら、応答を測るまでもなく漏洩している。**先に落とす**（測って 500 を出させない）。
@@ -818,6 +834,22 @@ function selfTest() {
     assert.strictEqual(f.length, 1, '門が閉じたスタックで送出の試験が静かに飛ぶ');
     assert.ok(f[0].includes('ECONNREFUSED'), '門が書いた理由を運んでいない');
     assert.ok(f[0].includes(EXPECT_GATE_CLOSED_ENV), '期待する実行での逃げ道を案内していない');
+  });
+
+  // 🔴 ［#1245 PR-C レビュー］宣言側が意図して閉じている realm では、門の標識は原因ではない。
+  // 片側（宣言が開いている場合）だけを試すと、**間違った理由で赤くする**実装が通ってしまう。
+  ok('🔴 T-20: 宣言が閉じているなら、古い門の標識が残っていても門を理由にしない', () => {
+    const cfg = {
+      resetPasswordAllowed: false, host: 'mail-relay', from: 'noreply@x',
+      gateState: GATE_STATE_CLOSED, gateReason: 'probe failed: ECONNREFUSED',
+    };
+    assert.deepStrictEqual(
+      evaluateRuntimeConcealment(cfg, { declaredResetPasswordAllowed: false }), [],
+      '意図的な閉鎖を「近接 MTA が壊れている」と誤って名指ししている');
+    // 陽性対照: 同じ稼働状態でも、宣言が開いていれば従来どおり赤である。
+    assert.strictEqual(
+      evaluateRuntimeConcealment(cfg, { declaredResetPasswordAllowed: true }).length, 1,
+      '宣言が開いている実行でも門の標識を無視している（PR-C の門が効かなくなる）');
   });
 
   ok('T-20: 門が閉じていることを期待する実行（4 状態シナリオ）では落とさない', () => {

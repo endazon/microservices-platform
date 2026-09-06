@@ -239,16 +239,23 @@ function declaredResetPasswordAllowed(files, realmName) {
  * @returns {{code:number, text:string, rest:string}|null}
  */
 function takeSmtpReply(buffer) {
+  // 🔴 ［2026-09-07 / #1245 PR-C レビュー］**行の中身で位置を引かない。**
+  // 以前は `buffer.indexOf(lines[i])` で終端を求めていたが、継続行（`250-...`）が
+  // 最終行と同じ文字列を部分列として含むと**手前の位置を返す**。実際の Postfix 応答では
+  // 起きにくいが、位置は**行の長さの累積**で決まるので、そちらで求めるほうが頑健である。
   const lines = buffer.split(/\r?\n/);
+  let offset = 0; // buffer 内での lines[i] の開始位置
   for (let i = 0; i < lines.length; i += 1) {
     const m = /^(\d{3})(?:[ \t]|$)/.exec(lines[i]);
-    if (!m) continue;
-    const consumed = lines.slice(0, i + 1).join('\n');
-    return {
-      code: Number(m[1]),
-      text: consumed.trim(),
-      rest: buffer.slice(buffer.indexOf(lines[i]) + lines[i].length).replace(/^\r?\n/, ''),
-    };
+    if (m) {
+      return {
+        code: Number(m[1]),
+        text: lines.slice(0, i + 1).join('\n').trim(),
+        rest: buffer.slice(offset + lines[i].length).replace(/^\r?\n/, ''),
+      };
+    }
+    // 区切りは `\r\n` か `\n` のどちらでもよい。実際に buffer に在ったほうを数える。
+    offset += lines[i].length + (buffer.startsWith('\r\n', offset + lines[i].length) ? 2 : 1);
   }
   return null;
 }
@@ -466,6 +473,24 @@ function selfTest() {
 
   ok('未完結なら null（途中で判定しない）', () => {
     assert.strictEqual(takeSmtpReply('250-mail-relay\r\n250-PIPELIN'), null);
+  });
+
+  // 🔴 ［#1245 PR-C レビュー］継続行が最終行を**部分列として含む**とき、
+  // 行の中身で位置を引く実装（`buffer.indexOf(lines[i])`）は手前の位置を返し、
+  // `rest` に応答の残骸が混じって次の段の読み取りがずれる。
+  ok('🔴 継続行が最終行を部分列として含んでも、次の応答の切り出しがずれない', () => {
+    // `250-250 OK` の中に、最終行 `250 OK` がそのまま含まれている。
+    const r = takeSmtpReply('250-250 OK\r\n250 OK\r\n220 next\r\n');
+    assert.strictEqual(r.code, 250);
+    assert.strictEqual(r.rest, '220 next\r\n', `rest がずれている: ${JSON.stringify(r.rest)}`);
+    // 陽性対照: 続きを読むと次の応答がそのまま取れる。
+    assert.strictEqual(takeSmtpReply(r.rest).code, 220);
+  });
+
+  ok('区切りが LF だけでも rest がずれない（CRLF を前提にしない）', () => {
+    const r = takeSmtpReply('250 OK\n220 next\n');
+    assert.strictEqual(r.code, 250);
+    assert.strictEqual(r.rest, '220 next\n');
   });
 
   ok('🔴 4xx も 5xx も成功にしない（452 キュー満杯・554 差出人拒否・556 宛先拒否）', () => {
