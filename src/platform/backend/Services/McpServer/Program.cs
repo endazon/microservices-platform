@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
+using FluentValidation;
+using McpServer.Features.McpClients.RegisterClient;
 using McpServer.Features.Tools;
 using McpServer.Features.Tools.CallTool;
 using McpServer.Features.Tools.ListTools;
@@ -38,6 +40,12 @@ builder.Services.AddDbContext<McpDbContext>(opt => opt.UseNpgsql(connStr));
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHttpClient();
+
+// FR-16, UC-09, SC-12 / 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 /
+// [[IADR-0398]] 決定 1 (b)（#1278 PR-C）: 端点の入力検証。
+// **アセンブリ走査（AddValidatorsFromAssembly）は使わない** —— 登録が暗黙になり、検証器を消しても
+// 起動が通ってしまう（明示登録なら `IValidator<T>` の解決に失敗して止まる）。
+builder.Services.AddScoped<IValidator<RegisterMcpClientRequest>, RegisterMcpClientValidator>();
 
 // 🔴 FR-16, FR-05, UC-09, SC-12, ADR-0062 決定 2・3: 無人アカウントの `clearance` / タグは
 // **登録者が持つ集合の部分集合**でなければならず、その判定は後段（ここ）が行う。

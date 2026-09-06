@@ -1,3 +1,4 @@
+using FluentValidation;
 using McpServer.Domain;
 using McpServer.Domain.Ports;
 using McpServer.Infrastructure.Persistence;
@@ -11,16 +12,23 @@ public static class RegisterMcpClientEndpoint
     public static IEndpointRouteBuilder MapRegisterMcpClient(this IEndpointRouteBuilder app)
     {
         app.MapPost("", async (
-            RegisterMcpClientRequest req, McpDbContext db, TimeProvider clock,
+            RegisterMcpClientRequest req, IValidator<RegisterMcpClientRequest> validator,
+            McpDbContext db, TimeProvider clock,
             IRegistrarAttributeResolver registrar, CancellationToken ct) =>
         {
-            if (string.IsNullOrWhiteSpace(req.ClientId))
-                return McpClientEndpoints.Problem("clientId は必須です。");
-            if (!TryParseKind(req.Kind, out var kind))
-                return McpClientEndpoints.Problem(
-                    $"kind の値 '{req.Kind}' は不正です（interactive / service-account）。");
-            if (!TryParseTier(req.EgressTier, out var tier))
-                return McpClientEndpoints.Problem($"egressTier の値 '{req.EgressTier}' は不正です。");
+            // FR-16, UC-09 / 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 /
+            // [[IADR-0398]] 決定 1 (b)・5: `clientId` → `kind` → `egressTier` の順で検査する。
+            // 規則は `RegisterMcpClientValidator` が持ち、**鍵（`request`）は sink が持つ**ので
+            // 端点は先頭 1 件の**本文だけ**を渡す（移送前は最初のガード節でここから返っていた）。
+            // 🔴 **この呼び出しは認可（管理者限定）の後ろ・`RejectUnassignableAsync` と
+            // 重複照会（`AnyAsync`）の前**でなければならない。
+            var gate = validator.Validate(req);
+            if (!gate.IsValid) return McpClientEndpoints.Problem(gate.Errors[0].ErrorMessage);
+
+            // 🔴 解析は検証通過後に、**検証器と同じ関数**で行う（[[IADR-0398]] 決定 5）。
+            // 対応表を 2 つ持つと「検証は通るが解析で落ちる」形が生まれる。
+            _ = TryParseKind(req.Kind, out var kind);
+            _ = TryParseTier(req.EgressTier, out var tier);
 
             var attributes = req.Attributes ?? [];
 
@@ -44,7 +52,9 @@ public static class RegisterMcpClientEndpoint
         return app;
     }
 
-    private static bool TryParseKind(string? value, out McpClientKind kind)
+    // 🔴 [[IADR-0398]] 決定 5: 検証器（`RegisterMcpClientValidator`）と端点が**同じ 1 つ**を呼ぶため
+    // `internal` である。片方だけ変えると「検証は通るが解析で落ちる」（またはその逆）になる。
+    internal static bool TryParseKind(string? value, out McpClientKind kind)
     {
         kind = McpClientKind.Interactive;
         switch (value?.Trim().ToLowerInvariant())
@@ -55,7 +65,9 @@ public static class RegisterMcpClientEndpoint
         }
     }
 
-    private static bool TryParseTier(string? value, out EgressTier tier)
+    // 🔴 同上。**未指定（null / 空白）は有効**であり、最も低い保護水準へ倒す ——
+    // 検証器が `NotEmpty()` を使うとこの分岐が消えて `egressTier` 省略が 400 に化ける。
+    internal static bool TryParseTier(string? value, out EgressTier tier)
     {
         // 未指定は最も低い保護水準（＝本文を出しにくい側）へ倒す。08_data-egress-policy §基本原則。
         tier = EgressTier.StandardExternal;
