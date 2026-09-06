@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-15, SC-10, FR-22, NFR, ADR-0026, ADR-0045, IADR-0261, IADR-0332]
 author: Claude（実装）
 created: 2026-09-02
-updated: 2026-09-02
+updated: 2026-09-06
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md
   - planning:projects/microservices-platform/06_technical/08_data-egress-policy.md
@@ -115,6 +115,24 @@ dev 既定は **2 箇所**にある。**片方だけ直しても、もう片方�
 - **決定 7（T-10 / T-16 の自動化）**: `scripts/check-password-reset-mail.js` を新設し、
   **申請 → 送出 → 受信 → 本文**を通しで測る。`integration-stack.yml` の 3 つめの門にする。
   **TLS の検証は切らない**（クラスタのローカル CA を使う）。
+
+> **［2026-09-06 追記 / #1245 / IADR-0403］捕捉用 MTA は「Keycloak の送出先」から「近接 MTA の上流」へ 1 ホップ後退した。**
+> 計画 ADR-0078 決定 2 が送出経路に**キュー付きの近接 MTA**（`deploy/mail-relay/`）を挟むと定めた。
+> dev の経路は **Keycloak → 近接 MTA → 捕捉用 MTA** になり、go-live は最後の 1 ホップだけが外部リレーへ変わる。
+> 追随した点:
+> - **決定 2**: realm の `smtpServer` は**近接 MTA**を指す（捕捉用 MTA ではない）。
+>   `bootstrap.sh` の `SMTP_HOST` は**据え置き** —— そこは近接 MTA の上流の宣言であり、
+>   「実リレーへ向くのは `SMTP_HOST` を明示したときだけ」という統制はそのまま生きている。
+> - **決定 3**: 「緩める条件を宛先に結び付ける」導出は**近接 MTA の中へ移った** ——
+>   relay の init スクリプトが `starttls` の値から `smtp_tls_security_level` を `encrypt` / `none` に決め、
+>   イメージの既定 `may`（平文フォールバック）へは決して落とさない。**true / false 以外なら起動しない。**
+>   🔴 **Keycloak → 近接 MTA の 1 ホップは平文である**（クラスタ内の Pod ネットワークに閉じる）。
+>   決定 3 と同じ根拠だが、**production でも同じ**である点は新しく、受容として [IADR-0403](./IADR-0403_nearby-mta-relay-and-realm-ownership.md) に記録した。
+> - **決定 5**: 門（`collectMailCaptureGaps`）は **2 区間**を見るようになった ——
+>   realm は近接 MTA の Service と、Vault seed は捕捉用 MTA の Service と突き合わせる。
+>   **「開発環境から外へ出ない」の検査は上流側へ移して残した**（移した先で消すと静かに戻る）。
+> - **決定 1・4・6・7 は変えていない。** 捕捉用 MTA はゲート無しの base のままで、
+>   `port-forward` の案内も到達判定 G8 も通しの試験もそのまま通る（relay → mailpit は数秒である）。
 - **決定 8（射程の境界）**: **SC-15 の存在秘匿の破れは本 PR では直さない。** 本 PR が固定したのは
   **送出経路が生きているとき**の同値性（T-10）だけである。**送出が死んでいるときの同値性は #1143**
   が、本 PR が置いた比較器（`normalizeConcealmentBody` / `evaluateConcealment`）を使って足す。

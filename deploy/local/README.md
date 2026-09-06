@@ -12,7 +12,9 @@
 ```
 [k3d cluster: msp-ast-dev]
   ns platform-infra          postgres / rabbitmq / redis / keycloak / qdrant / otel-collector
+                             + mail-relay（近接 MTA。キューを持つ。deploy/mail-relay ＝環境非依存の base）
                              + mailpit（開発環境の捕捉用 MTA。メールはここで止まり外へ出ない）  ← deploy/local/infra
+                             送出経路: keycloak → mail-relay → mailpit（go-live は最後だけ外部リレー）
   ns microservices-platform  既存 Helm chart（values-local: mesh/NP/HPA off, registry=local）
                              + ExternalName エイリアス（素のサービス名 → platform-infra）
   ns ai-stock-trading        AST chart（AST#122 で追加）
@@ -271,8 +273,18 @@ kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 ### 送信メールの確認（開発環境の捕捉用 MTA。Issue #1144 / IADR-0344）
 
 **開発環境から外部へメールは出ない。** 計画 ADR が「開発環境では実送信しない。捕捉用 MTA を置く」と
-確定しているため、`platform-infra` に `mailpit` が **dev 既定**（opt-in ではない）で立ち、
-Keycloak の realm もそこを送出先の既定にしている。**パスワードリセットのメールはここに溜まる。**
+確定しているため、`platform-infra` に `mailpit` が **dev 既定**（opt-in ではない）で立つ。
+
+**［2026-09-06 / #1245］経路に近接 MTA が挟まった。** 計画 ADR-0078 決定 2 が「go-live の送出経路に
+**キューを持つ近接 MTA** を挟み、上流の停止を Keycloak の応答に出さない」と定めたため、
+`platform-infra` に `mail-relay`（Postfix）が **dev 既定**で立つ。**realm の `smtpServer` はここを指す。**
+
+```
+Keycloak → mail-relay（キュー付き。deploy/mail-relay ＝ dev と go-live で同じ宣言）→ mailpit（捕捉）
+                                                                                    └ go-live は外部リレー
+```
+
+**パスワードリセットのメールは最終的に mailpit に溜まる**（relay → mailpit は数秒）。
 
 ```bash
 kubectl -n platform-infra port-forward svc/mailpit 8025:8025

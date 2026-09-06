@@ -9,7 +9,10 @@
  *   1. 一致していれば計画は 0 件（陰性対照。永続化後の「毎回何かを当ててしまう」を止める）。
  *   2. 宣言層の差分は種類ごとに 1 件の操作になる（realm 設定 / requiredAction / role / scope / client / mapper /
  *      scope 割当 / group / seed 利用者 / サービスアカウント）。
- *   3. 実行時層には触れない: 既存の人間の利用者・smtpServer。宣言に無い余剰の実体も消さない。
+ *   3. 実行時層には触れない: 既存の人間の利用者。宣言に無い余剰の実体も消さない。
+ *      ［2026-09-06 追記 / #1245 / IADR-0403］**`smtpServer` は宣言所有へ移った**（近接 MTA へ固定。状態 B を構造で消す）。
+ *      **`resetPasswordAllowed` は条件つきの門所有**（宣言 true・稼働 false・`reset-gate.state=closed` の 1 組だけ除外）。
+ *      🔴 逆向き（宣言 false・稼働 true）は drift のままであることを対で固定する。
  *   4. 前提が無い操作は deferred として数えられ、黙って消えない（check モードで drift になる）。
  *   5. fixture は **実物の realm JSON から切り出す**（値を書き写さない。宣言が変わればここも追随する）。
  *
@@ -18,7 +21,10 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { plan, contains, merge, RUNTIME_OWNED_REALM_KEYS } = require('../deploy/local/keycloak-setup/reconcile-realm.js');
+const {
+  plan, contains, merge, gateHoldsClosed,
+  RUNTIME_OWNED_REALM_KEYS, GATE_OWNED_REALM_KEYS, GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED,
+} = require('../deploy/local/keycloak-setup/reconcile-realm.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const REALM = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8'));
@@ -99,7 +105,7 @@ ok('fixture は実物の realm JSON から切り出している（宣言が空�
 
 // --- 2. 宣言層の差分は種類ごとに 1 件 --------------------------------------------------
 
-ok('realm 設定の差分（例: TOTP ポリシー・テーマ）は realm.update 1 件になり、smtpServer は body から落ちる', () => {
+ok('realm 設定の差分（例: TOTP ポリシー・テーマ）は realm.update 1 件になる', () => {
   const live = liveFrom(REALM);
   live.realm.otpPolicyDigits = 8;
   live.realm.loginTheme = 'keycloak';
@@ -112,6 +118,117 @@ ok('realm 設定の差分（例: TOTP ポリシー・テーマ）は realm.updat
   for (const k of RUNTIME_OWNED_REALM_KEYS) assert.ok(!(k in ops[0].body), `${k} が body に載っている（実行時所有）`);
   assert.ok(!('clients' in ops[0].body) && !('users' in ops[0].body), 'コレクションが realm PUT に載っている');
   assert.ok(/otpPolicyDigits/.test(ops[0].reason) && /loginTheme/.test(ops[0].reason), '理由に差分キーが無い');
+});
+
+// --- 2-b. smtpServer は宣言所有である（#1245 / ADR-0078 決定 2・IADR-0403）--------------
+//
+// 🔴 **状態 B（送出先未設定 ＋ 申請が開いている）を構造で作れなくするのが目的**である。
+//    宣言が正になったので、稼働側で送出先が消えても／外を向いても、本 Job が宣言（近接 MTA）へ戻す。
+//    実行時所有だった頃は「再起動で消えたまま」になり、**実在する利用者名だけ 500** が返る組へ落ちた。
+
+ok('smtpServer は実行時所有では**ない**（空集合。宣言所有へ移した）', () => {
+  assert.strictEqual(RUNTIME_OWNED_REALM_KEYS.size, 0, 'RUNTIME_OWNED_REALM_KEYS が空でない');
+  assert.ok(!RUNTIME_OWNED_REALM_KEYS.has('smtpServer'));
+});
+
+ok('稼働側の smtpServer が消えていれば realm.update で宣言（近接 MTA）へ戻し、body に載せる', () => {
+  const live = liveFrom(REALM);
+  delete live.realm.smtpServer;
+  const ops = opsOf(REALM, live);
+  assert.deepStrictEqual(kinds(ops), ['realm.update']);
+  assert.ok(/smtpServer/.test(ops[0].reason), '理由に smtpServer が無い');
+  assert.deepStrictEqual(ops[0].body.smtpServer, REALM.smtpServer, 'body の smtpServer が宣言と一致しない');
+});
+
+ok('稼働側の smtpServer が外（実リレー）を向いていれば宣言へ戻す（状態 B / 誤送信の温床を潰す）', () => {
+  const live = liveFrom(REALM);
+  live.realm.smtpServer = { ...live.realm.smtpServer, host: 'smtp.gmail.com', port: '587' };
+  const ops = opsOf(REALM, live);
+  assert.deepStrictEqual(kinds(ops), ['realm.update']);
+  assert.strictEqual(ops[0].body.smtpServer.host, REALM.smtpServer.host);
+  assert.strictEqual(ops[0].body.smtpServer.port, REALM.smtpServer.port);
+});
+
+ok('宣言に無い smtpServer のキー（runbook が入れた user / password）は消さない（加算的な merge）', () => {
+  const live = liveFrom(REALM);              // liveFrom は user / password を実行時注入として足す
+  live.realm.smtpServer.host = 'smtp.gmail.com';
+  const ops = opsOf(REALM, live);
+  assert.deepStrictEqual(kinds(ops), ['realm.update']);
+  assert.strictEqual(ops[0].body.smtpServer.user, 'relay-user');
+  assert.strictEqual(ops[0].body.smtpServer.password, '**********');
+});
+
+// --- 2-c. resetPasswordAllowed は「条件つきで門が所有する」（#1245 / ADR-0078 決定 4）-----
+//
+// 🔴 **無条件の実行時所有にしてはならない。** それだと「宣言 false なのに稼働 true」
+//    （閉じたはずの申請が開いている＝利用者名が漏れる向き）まで見なくなる。
+//    除外するのは「宣言 true・稼働 false・attributes["reset-gate.state"]===closed」の 1 組だけである。
+
+const closedLive = (attrs) => {
+  const live = liveFrom(REALM);
+  live.realm.resetPasswordAllowed = false;
+  if (attrs !== null) live.realm.attributes = attrs;
+  return live;
+};
+
+ok('宣言は resetPasswordAllowed=true である（この節の前提。陽性対照）', () => {
+  assert.strictEqual(REALM.resetPasswordAllowed, true, 'realm 宣言が変わった。以下の試験の前提が崩れている');
+  assert.ok(GATE_OWNED_REALM_KEYS.has('resetPasswordAllowed'));
+});
+
+ok('🔴 realm 宣言はトップレベルの attributes を持たない（門の状態を Job が open へ戻さない）', () => {
+  // 宣言が attributes を持つと、それは**宣言所有**になり、門が書いた reset-gate.state=closed を
+  // 本 Job が open へ戻す（除外は resetPasswordAllowed にしか効かない）。属性は実行時にだけ存在させる。
+  assert.ok(!('attributes' in REALM), 'realm 宣言に attributes が入った。門の状態が Job に上書きされる');
+});
+
+ok('門が閉じている間（属性 reset-gate.state=closed）は drift 0 件 —— 開き直さない', () => {
+  const ops = opsOf(REALM, closedLive({ [GATE_STATE_ATTRIBUTE]: GATE_STATE_CLOSED }));
+  assert.deepStrictEqual(ops, [], `門が閉じた realm を開き直す計画が出た: ${JSON.stringify(kinds(ops))}`);
+});
+
+ok('門が閉じている間に**別のキー**が drift しても、PUT の body は閉じたまま（開き直さない）', () => {
+  const live = closedLive({ [GATE_STATE_ATTRIBUTE]: GATE_STATE_CLOSED });
+  live.realm.loginTheme = 'keycloak';
+  const ops = opsOf(REALM, live);
+  assert.deepStrictEqual(kinds(ops), ['realm.update']);
+  assert.strictEqual(ops[0].body.loginTheme, REALM.loginTheme);
+  assert.strictEqual(ops[0].body.resetPasswordAllowed, false, 'body が申請を開き直している');
+  assert.ok(!/resetPasswordAllowed/.test(ops[0].reason), '理由に門所有のキーが混ざっている');
+});
+
+ok('属性が無い false（人が手で閉じた・realm が壊れた）は従来どおり drift 1 件で宣言へ戻す', () => {
+  const ops = opsOf(REALM, closedLive(null));
+  assert.deepStrictEqual(kinds(ops), ['realm.update']);
+  assert.ok(/resetPasswordAllowed/.test(ops[0].reason));
+  assert.strictEqual(ops[0].body.resetPasswordAllowed, true);
+});
+
+ok('属性が open（門は閉じたと言っていない）の false も drift 1 件で宣言へ戻す', () => {
+  const ops = opsOf(REALM, closedLive({ [GATE_STATE_ATTRIBUTE]: 'open' }));
+  assert.deepStrictEqual(kinds(ops), ['realm.update']);
+  assert.strictEqual(ops[0].body.resetPasswordAllowed, true);
+});
+
+ok('🔴 逆向き（宣言 false・稼働 true）は属性が closed でも drift 1 件 —— 危険な向きを見逃さない', () => {
+  const desired = { ...clone(REALM), resetPasswordAllowed: false };
+  const live = liveFrom(REALM);
+  live.realm.resetPasswordAllowed = true;
+  live.realm.attributes = { [GATE_STATE_ATTRIBUTE]: GATE_STATE_CLOSED };
+  const ops = opsOf(desired, live);
+  assert.deepStrictEqual(kinds(ops), ['realm.update']);
+  assert.ok(/resetPasswordAllowed/.test(ops[0].reason));
+  assert.strictEqual(ops[0].body.resetPasswordAllowed, false, '閉じたはずの申請が開いたまま残っている');
+});
+
+ok('gateHoldsClosed は門所有でないキーには決して真を返さない（除外の射程を固定する）', () => {
+  const liveRealm = { registrationAllowed: false, attributes: { [GATE_STATE_ATTRIBUTE]: GATE_STATE_CLOSED } };
+  assert.strictEqual(gateHoldsClosed('registrationAllowed', true, liveRealm), false);
+  assert.strictEqual(
+    gateHoldsClosed('resetPasswordAllowed', true,
+      { resetPasswordAllowed: false, attributes: { [GATE_STATE_ATTRIBUTE]: GATE_STATE_CLOSED } }),
+    true,
+  );
 });
 
 ok('requiredActions の defaultAction が違えば requiredAction.update（#1088 の症状そのもの）', () => {
@@ -263,10 +380,16 @@ ok('既存の人間の利用者は宣言と違っても触らない（資格情�
   assert.deepStrictEqual(opsOf(REALM, live), []);
 });
 
-ok('smtpServer が宣言と違っても触らない（IADR-0261 決定 2: runbook が kcadm で入れる実行時状態）', () => {
+// ［2026-09-06 / #1245 / ADR-0078 決定 2・IADR-0403］**旧: 「smtpServer が宣言と違っても触らない」**
+// （IADR-0261 決定 2 の実行時所有）を**反転させた**。送出先は近接 MTA（クラスタ内の Service 名）へ固定され、
+// 秘匿値は relay 側の Secret へ移ったので、realm 側は宣言が正である。差分は当てて宣言へ戻す。
+ok('smtpServer が宣言と違えば宣言（近接 MTA）へ戻す —— 実行時所有ではない（#1245 で反転）', () => {
   const live = liveFrom(REALM);
   live.realm.smtpServer = { host: 'smtp.example.test', port: '587', from: 'ops@example.test', user: 'u', password: '**********' };
-  assert.deepStrictEqual(opsOf(REALM, live), []);
+  const ops = opsOf(REALM, live);
+  assert.deepStrictEqual(kinds(ops), ['realm.update']);
+  assert.strictEqual(ops[0].body.smtpServer.host, REALM.smtpServer.host);
+  assert.strictEqual(ops[0].body.smtpServer.user, 'u', '宣言に無いキーまで消している');
 });
 
 ok('宣言に無い余剰の実体（client / role / group / 利用者 / mapper）は消さない（加算的）', () => {

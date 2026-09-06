@@ -1,0 +1,171 @@
+# SC-15, FR-05, FR-22, ADR-0045 決定 2-b/5（ADR-0078 決定 2 による部分改定）, IADR-0403 (#1245):
+# Keycloak の**近接 MTA（キュー付き）**。環境非依存の base であり、dev と go-live が同じ宣言を使う。
+#
+# ## なぜ器が Postfix なのか（Mailpit ではない）
+#
+# ADR-0078 決定 2 は「近接 MTA は**キューを持ち、上流が停止していても投函を受け付けて後送する**」と
+# 定めている。**Mailpit の公式文書はキュー・再送・後送を 1 つも記していない**し、`forward-smtp-errors` は
+# 上流の SMTP エラーを**送信クライアントへ転送する**選択肢である —— それを立てると上流の失敗が
+# Keycloak へ戻り、消したはずの状態 C が戻る。**Mailpit は dev の「上流（捕捉箱）」として残す。**
+#
+# ## 送出先としての単一情報源
+#
+# 本ファイルの Service 名 `mail-relay` と port 587 が、次の 2 つの単一情報源である。
+#   - realm の smtpServer（deploy/keycloak/microservices-platform-realm.json）
+#   - 静的検査（scripts/check-realm-constraints.js の collectMailCaptureGaps）が**この Service を走査して**
+#     期待値を組み立てる。**期待値をスクリプトへ書き写さない。**
+#
+# ## 上流の単一情報源
+#
+# Secret `keycloak-smtp`（host / port / starttls / from / user / password）。
+#   dev     : mailpit.platform-infra.svc.cluster.local:1025（平文・無認証。1 通も外へ出ない）
+#   go-live : 組織のメールテナント（587 / STARTTLS 必須 / SASL）
+# 値の供給は Vault → ExternalSecret（deploy/local/vault/eso/）と
+# docs/operations/keycloak-smtp-relay-setup-runbook.md が持つ。**実値は realm にも本ファイルにも入らない。**
+#
+# ## 経路の暗号化
+#
+# 🔴 Keycloak → 本 relay の 1 ホップは**平文**である（クラスタ内の Pod ネットワークに閉じる）。
+#    **production でも同じ**であり、これは IADR-0403 決定 3 の受容として記録し、計画へ環流する。
+# 🔴 本 relay → 上流は `SMTP_UPSTREAM_STARTTLS=true` のとき `smtp_tls_security_level=encrypt`
+#    （**平文フォールバック無し**。ADR-0045 決定 5）。イメージの既定は `may` なので**必ず上書きする**
+#    —— 導出は ConfigMap mail-relay-init のスクリプトが行う（env に三項演算が無いため）。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mail-relay
+  namespace: platform-infra
+  labels: { app: mail-relay }
+spec:
+  replicas: 1
+  # spool（キュー）を 1 つの Pod だけが所有する。RollingUpdate だと 2 つの Postfix が同じ役を持つ瞬間ができる。
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: mail-relay }
+  template:
+    metadata:
+      labels: { app: mail-relay }
+    spec:
+      containers:
+        - name: postfix
+          # bokysan/docker-postfix v5.1.0（2026-01-04 リリース）。mailpit.yaml と同じくタグで pin する。
+          # manifest list digest: sha256:aafc772384232497bed875e1eb66b4d3e54ba1ebc86e2e185a6dc1dbc48182ef
+          # 🔴 digest は Docker Hub の API から読んだ値であり、**本リポジトリの CI / 稼働クラスタで pull して
+          #    確かめてはいない**（本作業の実行機にクラスタが無い）。
+          image: boky/postfix:v5.1.0
+          env:
+            # --- 上流（Secret keycloak-smtp）。**非 optional** にする ---------------------------
+            # 🔴 optional にしてはならない。RELAYHOST が空だと Postfix は**宛先の MX へ直接配送する**
+            #    ＝クラスタ外へ出る（ADR-0045 決定 9 の破れ）。欠けたら起動しないほうが安全である。
+            - { name: SMTP_UPSTREAM_HOST, valueFrom: { secretKeyRef: { name: keycloak-smtp, key: host } } }
+            - { name: SMTP_UPSTREAM_PORT, valueFrom: { secretKeyRef: { name: keycloak-smtp, key: port } } }
+            - { name: SMTP_UPSTREAM_STARTTLS, valueFrom: { secretKeyRef: { name: keycloak-smtp, key: starttls } } }
+            # 外向きのエンベロープ差出人。**dev では空**（実値が供給されるまで空。fail-safe）。
+            - { name: SMTP_FROM, valueFrom: { secretKeyRef: { name: keycloak-smtp, key: from } } }
+            # --- Postfix の設定（イメージの env 契約） -------------------------------------------
+            # k8s の $(VAR) 展開は**同じコンテナで先に宣言した env** を参照できる。
+            - { name: RELAYHOST, value: "[$(SMTP_UPSTREAM_HOST)]:$(SMTP_UPSTREAM_PORT)" }
+            # user / password が空なら SASL は有効化されない（dev の捕捉箱宛はこちら）。
+            - { name: RELAYHOST_USERNAME, valueFrom: { secretKeyRef: { name: keycloak-smtp, key: user } } }
+            - { name: RELAYHOST_PASSWORD, valueFrom: { secretKeyRef: { name: keycloak-smtp, key: password } } }
+            # 差出人ドメインは realm の from（合成値）に固定する。外れた差出人は 554 で拒否される
+            # ——それは**投函できない状態**であり、門（#1245 PR-C）が検知して申請を閉じる対象である。
+            - { name: ALLOWED_SENDER_DOMAINS, value: "platform.localhost" }
+            # 🔴 キュー寿命は**リセットリンクの寿命**に合わせる。realm の actionTokenGeneratedByUserLifespan は
+            #    1800 秒であり、既定の 5 日では**期限切れのリンクを 5 日間配り続ける**。
+            #    期限切れで捨てた通数は qmgr の期限切れカウンタに出る（＝後送の失敗率の分子。観測は #1245 PR-B）。
+            #    🔴 値は**マニフェストが与える**（コードは既定を持たない）。正しさは実測で決め、環流する。
+            - { name: POSTFIX_maximal_queue_lifetime, value: "30m" }
+            # 差出人は noreply（合成値）でありバウンスに意味が無い。溜めない。
+            - { name: POSTFIX_bounce_queue_lifetime, value: "0" }
+            # 寿命 30m の内側に再送機会を作る。
+            - { name: POSTFIX_minimal_backoff_time, value: "60s" }
+            - { name: POSTFIX_maximal_backoff_time, value: "300s" }
+          ports:
+            - { containerPort: 587, name: smtp }
+          # 587（submission）はイメージが EXPOSE しており、master.cf の submission は TLS も SASL も
+          # 強制しない（`-o` がすべて無効化されている）。投函は smtpd_client_restrictions の
+          # permit_mynetworks（既定は RFC1918 全域）で許される ＝ Pod ネットワークから無認証で通る。
+          readinessProbe: { tcpSocket: { port: 587 }, initialDelaySeconds: 5, periodSeconds: 10 }
+          livenessProbe: { tcpSocket: { port: 587 }, initialDelaySeconds: 20, periodSeconds: 20 }
+          volumeMounts:
+            # イメージの起動スクリプトが `exec supervisord` の直前に走らせる init hook。
+            - { name: init, mountPath: /docker-init.d, readOnly: true }
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+      volumes:
+        - { name: init, configMap: { name: mail-relay-init, defaultMode: 0755 } }
+      # 🔴 spool（/var/spool/postfix）に volume を張っていない。キューはコンテナの書き込み層にあり、
+      #    **Pod の再作成で失われる**（載るのは寿命 30 分のメールだけなので受容する）。
+      #    観測（#1245 PR-B）が showq を読む exporter を同居させるときに、共有の emptyDir を張る
+      #    —— そのときイメージのフォルダ初期化と両立することを**稼働で確かめてから**入れる。
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mail-relay
+  namespace: platform-infra
+  labels: { app: mail-relay }
+spec:
+  selector: { app: mail-relay }
+  ports:
+    # 🔴 **realm の smtpServer と静的検査の期待値はこの 1 行から導かれる**（書き写さない）。
+    - { name: smtp, port: 587, targetPort: 587 }
+---
+# 投函できる主体を Keycloak に限る。**egress は縛らない**（上流へ出る経路が relay の役目である）。
+# 🔴 NetworkPolicy を強制しないクラスタでは無害な宣言として残るだけである。強制するクラスタでは、
+#    #1245 PR-B（観測: otel-collector → :9154）と PR-C（門: reset-gate → :587）が**それぞれの規則を足す**。
+#    足し忘れると相手側が静かに繋がらなくなるので、各 PR の受け入れ基準に入れること。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mail-relay-ingress
+  namespace: platform-infra
+  labels: { app: mail-relay }
+spec:
+  podSelector: { matchLabels: { app: mail-relay } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: keycloak } }
+      ports:
+        - { protocol: TCP, port: 587 }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mail-relay-init
+  namespace: platform-infra
+  labels: { app: mail-relay }
+data:
+  # イメージの起動スクリプトは `/docker-init.d/*.sh` を **supervisord を exec する直前**に実行する
+  # （`/docker-init.db/` は旧名）。この時点で postconf の変更は起動する Postfix に効く。
+  10-relay-policy.sh: |
+    #!/bin/sh
+    # SC-15, ADR-0045 決定 5 / ADR-0078 決定 2, IADR-0403 (#1245):
+    # 上流の接続条件を**宛先に結び付けて**導出する。env に三項演算が無いのでここで決める。
+
+    # (1) 上流が無いまま起動しない。RELAYHOST が空だと Postfix は宛先の MX へ**直接**配送する
+    #     ＝クラスタ外へ出る。宛先が無いなら起動しないほうが安全である（fail-closed）。
+    if [ -z "${SMTP_UPSTREAM_HOST}" ] || [ -z "${SMTP_UPSTREAM_PORT}" ]; then
+      echo "mail-relay: 上流（Secret keycloak-smtp の host / port）が空である。直接配送へ落ちるより起動しない。" >&2
+      exit 1
+    fi
+
+    # (2) STARTTLS の導出。true は encrypt（**平文フォールバック無し**）、false は捕捉箱宛だけに出る値である
+    #     （Vault seed は宛先が捕捉用 MTA のときにしか false を出さない）。イメージの既定 `may` へは落とさない。
+    case "${SMTP_UPSTREAM_STARTTLS}" in
+      true)  postconf -e smtp_tls_security_level=encrypt ;;
+      false) postconf -e smtp_tls_security_level=none ;;
+      *)
+        echo "mail-relay: SMTP_UPSTREAM_STARTTLS は true|false でなければならない（受け取った値: '${SMTP_UPSTREAM_STARTTLS}'）。起動しない。" >&2
+        exit 1
+        ;;
+    esac
+
+    # (3) 外向きのエンベロープ差出人を実値へ写す。realm の from はクラスタ外で意味を持たない合成値である。
+    #     🔴 **実値が未供給（空）のときは写像を張らない** —— 空値の inline 写像は壊れる。dev はこちらへ来る。
+    if [ -n "${SMTP_FROM}" ]; then
+      postconf -e "smtp_generic_maps=inline:{noreply@platform.localhost=${SMTP_FROM}}"
+    fi

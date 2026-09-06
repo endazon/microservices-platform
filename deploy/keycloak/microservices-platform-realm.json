@@ -28,10 +28,10 @@
   "maxFailureWaitSeconds": 900,
   "actionTokenGeneratedByUserLifespan": 1800,
   "smtpServer": {
-    "host": "mailpit.platform-infra.svc.cluster.local",
-    "port": "1025",
+    "host": "mail-relay.platform-infra.svc.cluster.local",
+    "port": "587",
     "from": "noreply@platform.localhost",
-    "fromDisplayName": "汎用プラットフォーム (dev)",
+    "fromDisplayName": "汎用プラットフォーム",
     "auth": "false",
     "starttls": "false",
     "ssl": "false"

@@ -1,0 +1,24 @@
+# SC-15, FR-05, FR-22, ADR-0045 決定 2-b/5（ADR-0078 決定 2 による部分改定）, IADR-0403 (#1245):
+# Keycloak の**近接 MTA（キュー付き）**。
+#
+# ADR-0078 決定 2 は go-live の送出経路を「Keycloak → 外部リレー直結」から
+# 「**Keycloak → クラスタ内の近接 MTA → 外部リレー**」へ改めた。近接 MTA はキューを持ち、
+# 上流が停止していても投函を受け付けて後送するため、**上流停止が Keycloak の応答に現れない**
+# （＝実在する利用者名だけ 500 になる状態が消える）。
+#
+# 🔴 **dev と go-live は同じ宣言を使う。違うのは上流だけ**である（Secret keycloak-smtp）。
+#   dev     : Keycloak → mail-relay → mailpit（捕捉用 MTA。1 通も外へ出ない）
+#   go-live : Keycloak → mail-relay → 組織のメールテナント（STARTTLS ＋ SASL）
+#
+# 🔴 **opt-in ゲートに載せない。** 決定 2 は無条件であり、ゲートに載せると
+# 「ゲートを立てない人の既定は近接 MTA なし」になる（IADR-0344 決定 1 と同じ理由）。
+#
+# 参照元:
+#   - deploy/local/infra/kustomization.yaml が `../../mail-relay` として取り込む
+#   - go-live は Keycloak と同じ namespace へ同じものを apply する
+#     （🔴 production の Keycloak マニフェストは本リポジトリに無い。IADR-0403 決定 2）
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - mail-relay.yaml
