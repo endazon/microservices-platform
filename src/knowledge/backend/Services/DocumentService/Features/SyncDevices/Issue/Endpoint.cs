@@ -1,6 +1,7 @@
 using DocumentService.Domain;
 using DocumentService.Features.PrivateNotes;
 using DocumentService.Infrastructure.Persistence;
+using FluentValidation;
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 
@@ -12,16 +13,18 @@ internal static class IssueSyncDeviceEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
     {
-        g.MapPost("/", async (CreateSyncDeviceRequest req, HttpContext http,
+        g.MapPost("/", async (CreateSyncDeviceRequest req,
+            IValidator<CreateSyncDeviceRequest> validator, HttpContext http,
             DocumentDbContext db, IAuditLogger audit, CancellationToken ct) =>
         {
             if (PrivateNoteEndpoints.SubjectOf(http) is not { } owner)
                 return Results.Unauthorized();
-            if (string.IsNullOrWhiteSpace(req.DeviceName))
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["deviceName"] = ["端末名は必須です。"]
-                });
+
+            // FR-20, SC-20, ADR-0037 決定 11 / 計画 ADR-0030 §決定 / IADR-0371 決定 2 /
+            // [[IADR-0398]] 決定 1: 端末名は必須。規則は `IssueSyncDeviceValidator` が持つ。
+            // 🔴 **この呼び出しは 401 の後ろ**でなければならない（無資格の呼び出しに入力の形を教えない）。
+            var gate = validator.Validate(req);
+            if (!gate.IsValid) return ValidationProblems.FirstViolation(gate);
 
             var now = DateTimeOffset.UtcNow;
             var (token, hash) = SyncTokens.Generate();

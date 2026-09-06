@@ -2,6 +2,7 @@ using DocumentService.Domain.Ports;
 // ADR-0057 決定 1 / [[IADR-0296]]: 完全削除は本文の実体まで及ぶ（台帳から逆引きする器）。
 using DocumentService.Features.Documents;
 using DocumentService.Infrastructure.Persistence;
+using FluentValidation;
 using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Audit;
@@ -19,16 +20,18 @@ internal static class PurgePrivateNotesEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
     {
-        g.MapPost("/purge", async (PurgePrivateNotesRequest req, HttpContext http,
+        g.MapPost("/purge", async (PurgePrivateNotesRequest req,
+            IValidator<PurgePrivateNotesRequest> validator, HttpContext http,
             DocumentDbContext db, IPrivateNoteNotifier notifier, IDocumentDeletedPublisher deletedBus,
             IAuditLogger audit, DocumentObjectPurger purger, CancellationToken ct) =>
         {
             if (PrivateNoteEndpoints.SubjectOf(http) is not { } owner) return Results.Unauthorized();
-            if (req.Ids is not { Count: > 0 })
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["ids"] = ["完全削除する資料の ID を 1 件以上指定してください。"]
-                });
+
+            // FR-19, SC-19, ADR-0037 決定 20 / 計画 ADR-0030 §決定 / IADR-0371 決定 2 /
+            // [[IADR-0398]] 決定 1: ID は 1 件以上。規則は `PurgePrivateNotesValidator` が持つ。
+            // 🔴 **この呼び出しは 401 の後ろ・台帳の照会（404 / 409）の前**でなければならない。
+            var gate = validator.Validate(req);
+            if (!gate.IsValid) return ValidationProblems.FirstViolation(gate);
 
             var ids = req.Ids.Distinct().ToList();
             var notes = await db.PrivateNotes

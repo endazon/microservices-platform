@@ -1,5 +1,6 @@
 using DocumentService.Features.PrivateNotes;
 using DocumentService.Infrastructure.Persistence;
+using FluentValidation;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 
 namespace DocumentService.Features.ObsidianSync.Move;
@@ -21,7 +22,8 @@ internal static class MoveNoteEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
     {
-        g.MapPost("/notes/{id:guid}/move", async (Guid id, MoveNoteRequest req, HttpContext http,
+        g.MapPost("/notes/{id:guid}/move", async (Guid id, MoveNoteRequest req,
+            IValidator<MoveNoteRequest> validator, HttpContext http,
             DocumentDbContext db, IAuditLogger audit, CancellationToken ct) =>
         {
             var now = DateTimeOffset.UtcNow;
@@ -29,16 +31,13 @@ internal static class MoveNoteEndpoint
             if (device is null) return Results.Unauthorized();
             var owner = device.OwnerId;
 
-            if (string.IsNullOrWhiteSpace(req.VaultPath))
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["vaultPath"] = ["移動先の vaultPath を指定してください。"]
-                });
-            if (req.Version is not { } version)
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["version"] = ["リネームには version（最後に見た版）が必須です。"]
-                });
+            // FR-20, ADR-0037 決定 2・7 / 計画 ADR-0030 §決定 / IADR-0371 決定 2 /
+            // [[IADR-0398]] 決定 1: `vaultPath` → `version` の順で必須。規則は `MoveNoteValidator`
+            // が持つ。**先頭 1 件を、その鍵で返す**（移送前は最初のガード節でここから返っていた）。
+            // 🔴 **この呼び出しは 401 の後ろ・`FindOwnedAsync`（404）の前**でなければならない。
+            var gate = validator.Validate(req);
+            if (!gate.IsValid) return ValidationProblems.FirstViolation(gate);
+            var version = req.Version!.Value;
 
             // 所有者スコープ外・不在はいずれも 404（存在秘匿。403 を返すと他人の資料 ID の実在が漏れる）。
             var note = await ObsidianSyncEndpoints.FindOwnedAsync(db, owner, id, ct);
