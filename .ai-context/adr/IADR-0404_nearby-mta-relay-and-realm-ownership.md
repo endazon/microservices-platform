@@ -222,6 +222,62 @@ A・B・D は #1143 / IADR-0347 の実測、C1 は V1〜V3 からの**導出**�
   (7) イメージのタグ / digest・init hook の作法・`mynetworks` の既定が Pod CIDR を覆うこと・
       submission(587) が無認証平文を受けることを**稼働クラスタで確かめる**（本 PR は上流ソースからの読み取りのみ）
 
+## ★［2026-09-06 追記 / #1307］U11 に答えが出た。反映先は違っており、**窓 W2 が実際に開いた**
+
+本 ADR を実装した `686d5934`（PR #1305）のマージ直後から、develop の `integration-stack` が
+**3 回連続で赤い**（`34028253172` / `34028289558` / `34031165560`）。失敗しているのは
+`node scripts/check-password-reset-mail.js` で、実測した一次症状は次のとおりである。
+
+```
+postfix/smtpd: NOQUEUE: reject: RCPT from ...keycloak...:
+  556 5.1.10 <admin@example.com>: Recipient address rejected: Domain example.com does not accept mail (nullMX)
+Keycloak KC-SERVICES0029: Failed to send email: SendFailedException: Invalid Addresses
+```
+
+**これは本 ADR が名前を付けていた状態 C3・窓 W2（relay 稼働だが投函を拒む）そのものである。**
+表は「実在 500 / 非実在 200」と書いており、実測はそのとおりになった（T-10 が破れた）。
+**窓の名前は正しかったが、入口の数を数え違えていた** —— C3 の原因として挙げていたのは
+「452 キュー満杯・554 差出人拒否」の 2 つだけで、**宛先ドメインの DNS 検証**が抜けていた。
+
+### U11 の答え（上流ソースで実測。`bokysan/docker-postfix` tag `v5.1.0`）
+
+| # | 実測 | 出典 |
+| --- | --- | --- |
+| V12 | 差出人ドメインの門は `smtpd_sender_restrictions` **ではなく** `smtpd_recipient_restrictions` の `check_sender_access lmdb:/etc/postfix/allowed_senders` である | `scripts/functions.sh:589`（`postfix_setup_sender_domains`） |
+| V13 | `smtpd_sender_restrictions` は `permit_mynetworks,reject` であり、**Pod 網（RFC1918）からの投函を無条件に通す** | 同 `:337`（`postfix_reject_invalid_helos`） |
+| V14 | 🔴 同じ 1 行に **`reject_unknown_recipient_domain`** が入る。**`ALLOWED_SENDER_DOMAINS` を設定したときだけ**この並びが組まれる。`permit_mynetworks` は**この並びに入っていない** | 同 `:573-592` |
+| V15 | あわせて `smtpd_relay_restrictions=permit` が入る（「behind closed doors」なので中継は全許可） | 同 `:592` |
+
+**U11 は「未確認」から「実測で解決。ただし前提が誤りだった」へ移る。**
+マニフェストのコメントが断定していた反映先（`smtpd_sender_restrictions`）は誤りであり、
+**W2 の検知が依存していた前提が 1 つ崩れた。**
+
+### なぜ本 ADR の設計と両立しないか
+
+`ADR-0078` 決定 2 は近接 MTA に「**キューを持ち、上流が停止していても投函を受け付けて後送する**」ことを
+求めている。`reject_unknown_recipient_domain` は **RCPT 時に同期的に拒む**ので、
+切り離したはずの失敗が Keycloak の応答へ戻る。**近接 MTA を挟んだ目的そのものを打ち消していた。**
+
+🔴 **これは dev 固有ではない。** 宛先ドメインの DNS が一時的に引けない利用者・null MX を出す利用者が
+1 人でも居れば、**その利用者だけが 500 になり存在秘匿が破れる**。試験利用者の `@example.com` を
+別のドメインへ替えても、DNS 検証そのものは残るので直らない。
+
+### 是正（#1307 の PR）
+
+- init スクリプトに段 (4) を足し、上流が組み立てた `smtpd_recipient_restrictions` から
+  **`reject_unknown_recipient_domain` だけを取り除く**（列を書き写さない）。
+  `reject_non_fqdn_recipient`（構文検査。DNS を引かない）と末尾の `reject`（オープンリレー防止）は残す。
+- 取り除けたか・**差出人の門を消していないか**を両方向で確かめ、破れたら**起動しない**（fail-closed）。
+- `scripts/check-realm-constraints.js` に検査 5-b を足し、宣言側で「無効化を置き忘れた形」を止める。
+  🔴 **実挙動はクラスタでしか測れない。** 検査が見るのは宣言だけである。
+
+### 残る窓（狭めたが、閉じてはいない）
+
+🔴 **C3 の入口は 1 つ減っただけである。** `reject_non_fqdn_recipient`（構文が壊れた宛先）と
+キュー満杯（452）は残る。前者は**利用者データの問題**であり Keycloak 側の登録時に閉じるべきもの、
+後者はキュー容量の設計（フォローアップ (5)）に属する。**「W2 は閉じた」と書かない。**
+
+
 ## 関連
 
 - Supersedes: なし（[IADR-0261](./IADR-0261_keycloak-theme-and-smtp-injection.md) 決定 2 の「`smtpServer` は

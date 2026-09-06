@@ -68,11 +68,26 @@ spec:
             # user / password が空なら SASL は有効化されない（dev の捕捉箱宛はこちら）。
             - { name: RELAYHOST_USERNAME, valueFrom: { secretKeyRef: { name: keycloak-smtp, key: user } } }
             - { name: RELAYHOST_PASSWORD, valueFrom: { secretKeyRef: { name: keycloak-smtp, key: password } } }
-            # 差出人ドメインは realm の from（合成値）に固定する。外れた差出人は拒否される想定であり、
+            # 差出人ドメインは realm の from（合成値）に固定する。外れた差出人は拒否され、
             # それは**投函できない状態**＝門（#1245 PR-C）が検知して申請を閉じる対象である。
-            # 🔴 **未確認**（IADR-0404 の U11）——「`smtpd_sender_restrictions` へ反映され 554 で拒まれる」ことは
-            #    上流イメージのソースで確かめていない。**W2（relay が投函を拒む）の検知はこの前提に依存する。**
-            #    確かめるまで、拒否コードを断定した書き方をしない。
+            #
+            # ★［2026-09-06 / #1307］🔴 **U11 に上流ソースで答えが出た。反映先は違っていた。**
+            #    `bokysan/docker-postfix` v5.1.0 の `scripts/functions.sh:573-592`
+            #    （`postfix_setup_sender_domains()`。**本 env を設定したときだけ走る**）:
+            #
+            #      smtpd_recipient_restrictions=reject_non_fqdn_recipient, reject_unknown_recipient_domain,
+            #                                   check_sender_access lmdb:/etc/postfix/allowed_senders, reject
+            #      smtpd_relay_restrictions=permit
+            #
+            #    - 差出人の門は `smtpd_sender_restrictions` ではなく**この `check_sender_access`** である
+            #      （同 `functions.sh:337` の `smtpd_sender_restrictions=permit_mynetworks,reject` は
+            #      Pod 網（RFC1918）を無条件に通すので、Keycloak からの投函には効かない）。
+            #    - 🔴 **同じ 1 行に `reject_unknown_recipient_domain` が入る。** 宛先ドメインの MX / A を
+            #      DNS で引き、**null MX（RFC 7505）を 556 5.1.10 で RCPT 時に拒む** ——
+            #      `permit_mynetworks` はこの並びに**入っていない**ので、クラスタ内からの投函も検証を受ける。
+            #      **本 env を設定したこと自体が宛先の DNS 検証を有効にしていた。**
+            #    ⇒ ADR-0078 決定 2（投函を受け付けて後送する）に反するので、init スクリプトの段 (4) が
+            #      **このトークンだけを取り除く**（差出人の門は残す）。
             - { name: ALLOWED_SENDER_DOMAINS, value: "platform.localhost" }
             # 🔴 キュー寿命は**リセットリンクの寿命**に合わせる。realm の actionTokenGeneratedByUserLifespan は
             #    1800 秒であり、既定の 5 日では**期限切れのリンクを 5 日間配り続ける**。
@@ -172,3 +187,30 @@ data:
     if [ -n "${SMTP_FROM}" ]; then
       postconf -e "smtp_generic_maps=inline:{noreply@platform.localhost=${SMTP_FROM}}"
     fi
+
+    # (4) 🔴 宛先ドメインの DNS 検証で「投函そのもの」を拒まない（#1307）。
+    #     ALLOWED_SENDER_DOMAINS を設定すると、上流イメージは smtpd_recipient_restrictions の先頭付近へ
+    #     reject_unknown_recipient_domain を入れる（v5.1.0 の scripts/functions.sh:589）。これは宛先ドメインの
+    #     MX / A を引き、null MX（RFC 7505）を 556 5.1.10 で RCPT 時に拒む。
+    #     ⇒ ADR-0078 決定 2 の「上流が停止していても投函を受け付けて後送する」に反する。relay が同期的に
+    #       拒めば、切り離したはずの失敗が Keycloak の応答へ戻る（IADR-0404 の状態 C3・窓 W2）。
+    #       実在利用者だけが 500 になるので、SC-15 の存在秘匿も同時に破れる（#1307 で実測）。
+    #
+    #     🔴 **列を書き写さない。** 上流が組み立てた現在値から**当該トークンだけを取り除く** ——
+    #        書き写すと、上流が並びを変えたときに差出人の門（check_sender_access）ごと固定してしまう。
+    #     🔴 reject_non_fqdn_recipient は残す（宛先の**構文**検査。DNS を引かない）。
+    #     🔴 末尾の reject は残す（これが無いとオープンリレーになる）。
+    recipient_before="$(postconf -h smtpd_recipient_restrictions)"
+    recipient_after="$(printf '%s' "${recipient_before}" | sed 's/reject_unknown_recipient_domain,[[:space:]]*//g; s/,[[:space:]]*reject_unknown_recipient_domain//g')"
+
+    # 取り除けたか・門を消していないかを両方向で確かめる。どちらかが破れたら起動しない（fail-closed）。
+    # 黙って通すと「DNS で拒む relay」に戻り、赤くなるのは稼働クラスタの中だけになる。
+    if printf '%s' "${recipient_after}" | grep -q 'reject_unknown_recipient_domain'; then
+      echo "mail-relay: reject_unknown_recipient_domain を取り除けなかった（現在値: '${recipient_before}'）。起動しない。" >&2
+      exit 1
+    fi
+    if ! printf '%s' "${recipient_after}" | grep -q 'check_sender_access'; then
+      echo "mail-relay: 差出人の門（check_sender_access）が消えた（現在値: '${recipient_before}'）。起動しない。" >&2
+      exit 1
+    fi
+    postconf -e "smtpd_recipient_restrictions=${recipient_after}"
