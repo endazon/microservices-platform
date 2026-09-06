@@ -18,7 +18,7 @@
          版は書かない（CPM。src/Directory.Packages.props が単一情報源）。 -->
     <PackageReference Include="FluentValidation" />
     <!-- NFR, 計画 ADR-0030 §決定（マッピング = Riok.Mapperly。選定基準 4「コンパイル時生成を優先」）
-         / IADR-0371 決定 3 / IADR-0405。source generator であり、生成物は obj/ 配下に出るため
+         / IADR-0371 決定 3 / IADR-0406。source generator であり、生成物は obj/ 配下に出るため
          カバレッジ集計からは既に落ちている（IADR-0195 決定 1）。 -->
     <PackageReference Include="Riok.Mapperly" />
     <!-- ADR-0027 §決定 必須設定 1 / #1016: 本プロジェクトは Wolverine ホストを起こす（graph-delete 段）。

@@ -1,4 +1,6 @@
 
+using Platform.Shared.Contracts.Dtos;
+
 namespace McpServer.Domain;
 
 // FR-16, UC-08 例外フロー, ADR-0024（2026-08-02 注記）, ADR-0034 決定 9:

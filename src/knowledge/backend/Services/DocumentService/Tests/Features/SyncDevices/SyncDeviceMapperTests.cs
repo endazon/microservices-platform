@@ -6,9 +6,9 @@ using Knowledge.Contracts.Dtos;
 namespace DocumentService.Tests.Features.SyncDevices;
 
 // FR-20, UC-11, SC-20, 計画 ADR-0030 §決定（マッピング = Riok.Mapperly）/ IADR-0371 決定 3 /
-// IADR-0393 / IADR-0405: 手書きの詰め替えを生成マッパへ置き換えた際の**振る舞い同値**を固定する。
+// IADR-0393 / IADR-0406: 手書きの詰め替えを生成マッパへ置き換えた際の**振る舞い同値**を固定する。
 //
-// 🔴 **時計は写像に入っていない**（IADR-0405 決定 4）。`Active` は追加引数として渡ってくるので、
+// 🔴 **時計は写像に入っていない**（IADR-0406 決定 4）。`Active` は追加引数として渡ってくるので、
 // この試験は `true` / `false` を直接与えて写ることだけを見る。`IsActive(now)` 自体の振る舞いは
 // ドメインの試験（`SyncDeviceTokenTests`）が持つ ——**二重に持たない**。
 [Trait("TestKind", "Unit")]

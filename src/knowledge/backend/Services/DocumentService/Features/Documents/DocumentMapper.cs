@@ -5,12 +5,12 @@ using Riok.Mapperly.Abstractions;
 namespace DocumentService.Features.Documents;
 
 // FR-06, UC-03, SC-03, 計画 ADR-0030 §決定（マッピング = Riok.Mapperly。選定基準 4「実行時
-// リフレクションより コンパイル時生成を優先する」）/ IADR-0371 決定 3 / IADR-0393 / IADR-0405:
+// リフレクションより コンパイル時生成を優先する」）/ IADR-0371 決定 3 / IADR-0393 / IADR-0406:
 // ドメイン → DTO の写像 2 本。
 //
 // 従前は `DocumentEndpoints.ToDto` / `.ToVersionDto` の手書き詰め替えであった。
 //
-// 🔴 **タグ名の辞書は写像に入れない**（IADR-0405 決定 1）。移送前がやっていた
+// 🔴 **タグ名の辞書は写像に入れない**（IADR-0406 決定 1）。移送前がやっていた
 // `TagResolver.ToNames(d.Tags, names)` は**辞書引きという導出の指示**であり、材料ではない。
 // 追加引数として渡すのは**解決済みの `List<string> tags`** であり、辞書引きは端（登録表）に残る
 // —— そこが識別子 → 表示名の変換点を 1 つに閉じている場所である（IADR-0153 決定 2）。
@@ -39,7 +39,7 @@ internal static partial class DocumentMapper
     // 公開可否は応答に出さない）。これを 8 個の `[MapperIgnoreSource]` で並べると、
     // 🔴 な省略（下の `MarkdownUri` や `SyncDevice.TokenHash` の類）が些事に埋もれる ——
     // **「部分射影である」ことは 1 回だけ宣言し、`[MapperIgnoreSource]` は
-    // 「これを出さないと決めた」という個別の合図に取っておく**（IADR-0405 決定 7）。
+    // 「これを出さないと決めた」という個別の合図に取っておく**（IADR-0406 決定 7）。
     // RMG012（対象側の取りこぼし）は宣言しても効いたままである（実測）。
     [MapperRequiredMapping(RequiredMappingStrategy.Target)]
     // 🔴 これは部分射影の一部ではなく**載せ替え**である。源の `Tags` は `List<Guid>`、対象は
@@ -60,7 +60,7 @@ internal static partial class DocumentMapper
     // **常に現行版の本文を指す**。載せると 200 の応答に「その版の本文らしい URI」が入り、
     // 呼び出し側が過去版の本文だと読み違えても区別できない。**戻さないこと。**
     //
-    // この省略は 3 層で可視である（IADR-0405 決定 6）——
+    // この省略は 3 層で可視である（IADR-0406 決定 6）——
     //   ① 下の `[MapperIgnoreSource]`。**これが無いと、Mapperly の沈黙（DTO に欄が無いので
     //      診断は 1 件も出ない）は「事故で落ちた」と区別がつかない。**
     //   ② `DocumentVersionDto` に `MarkdownUri` を戻すと **RMG012 でビルドが赤になる**

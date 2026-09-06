@@ -4,6 +4,7 @@ using System.Text.Json;
 using AwesomeAssertions;
 using McpServer.Domain;
 using McpServer.Features.McpClients;
+using Platform.Shared.Contracts.Dtos;
 
 namespace McpServer.Tests.Features.McpClients;
 

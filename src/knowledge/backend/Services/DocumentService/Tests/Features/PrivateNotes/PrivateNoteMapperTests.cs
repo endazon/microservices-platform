@@ -6,7 +6,7 @@ using Knowledge.Contracts.Dtos;
 namespace DocumentService.Tests.Features.PrivateNotes;
 
 // FR-19, UC-11, SC-19, 計画 ADR-0030 §決定（マッピング = Riok.Mapperly）/ IADR-0371 決定 3 /
-// IADR-0393 / IADR-0405: 手書きの詰め替えを生成マッパへ置き換えた際の**振る舞い同値**を固定する。
+// IADR-0393 / IADR-0406: 手書きの詰め替えを生成マッパへ置き換えた際の**振る舞い同値**を固定する。
 //
 // 🔴 **生成物を信じるのではなく、写った値を見る。** 14 列を 1 つずつ見る。
 // このマッパは `[MapProperty]` を 3 本持つ（`DocumentId → Id` / `LatestBytes → Bytes` /

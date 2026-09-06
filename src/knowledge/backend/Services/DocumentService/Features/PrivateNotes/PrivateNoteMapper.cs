@@ -5,12 +5,12 @@ using Riok.Mapperly.Abstractions;
 namespace DocumentService.Features.PrivateNotes;
 
 // FR-19, UC-11, SC-19, 計画 ADR-0030 §決定（マッピング = Riok.Mapperly。選定基準 4「実行時
-// リフレクションより コンパイル時生成を優先する」）/ IADR-0371 決定 3 / IADR-0393 / IADR-0405:
+// リフレクションより コンパイル時生成を優先する」）/ IADR-0371 決定 3 / IADR-0393 / IADR-0406:
 // ドメイン → DTO の写像。
 //
 // 従前は `PrivateNoteEndpoints.ToDto(PrivateNote n, Document? doc)` の手書き詰め替えであった。
 //
-// 🔴 **文書（`Document?`）そのものは写像に入れない**（IADR-0405 決定 1）。
+// 🔴 **文書（`Document?`）そのものは写像に入れない**（IADR-0406 決定 1）。
 // 移送前がやっていた `doc?.Title ?? string.Empty` / `doc?.Version ?? 0` は**導出の指示**であり、
 // 材料ではない。**Mapperly では書けもしない** —— 追加引数のメンバ取り出し（`"doc.Title"`）は
 // RMG006 でコンパイルエラーになり（追加引数は入れ子の写像へ渡らない）、

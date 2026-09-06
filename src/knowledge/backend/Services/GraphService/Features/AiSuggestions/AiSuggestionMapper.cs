@@ -5,10 +5,10 @@ using Riok.Mapperly.Abstractions;
 namespace GraphService.Features.AiSuggestions;
 
 // FR-18, SC-21, 計画 ADR-0030 §決定（マッピング = Riok.Mapperly。選定基準 4「実行時リフレクションより
-// コンパイル時生成を優先する」）/ IADR-0371 決定 3 / IADR-0393 / IADR-0405: ドメイン → DTO の写像。
+// コンパイル時生成を優先する」）/ IADR-0371 決定 3 / IADR-0393 / IADR-0406: ドメイン → DTO の写像。
 //
 // 従前は `AiSuggestionEndpoints.ToDto` の手書き詰め替えであった。**追加引数を 3 つ伴う**が、
-// 3 つとも**そのまま 1 つの対象メンバに載る完成値**である（IADR-0405 決定 1 の「材料」）——
+// 3 つとも**そのまま 1 つの対象メンバに載る完成値**である（IADR-0406 決定 1 の「材料」）——
 // 端点が既に解決し終えた両端の表示名と、既に判定し終えた承認資格の bool である。
 //
 // 🔴 **引数名は対象メンバ名と一致させる。** Mapperly は追加引数を**名前一致でしか**結び付けず、
@@ -20,7 +20,7 @@ namespace GraphService.Features.AiSuggestions;
 // 🔴 **認可の「判定」はここに入れない。** 入っているのは判定**結果**の名（`canDecide`）だけであり、
 // これは契約が既に持つ語である（`AiSuggestionDto.CanDecide`。ADR-0063 決定 3〜5 / IADR-0364 決定 4
 // 「資格はサーバが判定し `CanDecide` で行ごとに運ぶ」）。`CanDecideAsync` / `ClaimsPrincipal` /
-// `AccessScopeResponse` / `IsInRole` は登録表（`AiSuggestionEndpoints`）に残る（IADR-0405 決定 3）。
+// `AccessScopeResponse` / `IsInRole` は登録表（`AiSuggestionEndpoints`）に残る（IADR-0406 決定 3）。
 // **既定 `false` は deny 側である** —— 載せ忘れた経路は「できない」と描かれる。
 //
 // **置き場は 2 段目（`Features/AiSuggestions/`）である。** 承認・却下・一覧・生成の

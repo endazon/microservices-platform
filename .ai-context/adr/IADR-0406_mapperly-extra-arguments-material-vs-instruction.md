@@ -1,5 +1,5 @@
 ---
-title: IADR-0405 追加引数のある写像は「材料」だけを [Mapper] へ渡し「導出の指示」は端に残す —— 7 本のうち 5 本を移し 2 本を理由つきで残す
+title: IADR-0406 追加引数のある写像は「材料」だけを [Mapper] へ渡し「導出の指示」は端に残す —— 7 本のうち 5 本を移し 2 本を理由つきで残す
 type: impl-adr
 status: Accepted
 related_ids: [NFR, FR-06, FR-09, FR-18, FR-19, FR-20, UC-03, UC-11, SC-03, SC-19, SC-20, SC-21, ADR-0030, ADR-0033, ADR-0036, ADR-0063, ADR-0065, ADR-0068, IADR-0153, IADR-0195, IADR-0231, IADR-0238, IADR-0270, IADR-0282, IADR-0290, IADR-0358, IADR-0364, IADR-0371, IADR-0385, IADR-0393, IADR-0395]
@@ -13,7 +13,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0065_backend-service-single-project-vsa.md 決定 2
 ---
 
-# IADR-0405: 追加引数のある写像は「材料」だけを `[Mapper]` へ渡し、「導出の指示」は端に残す（#1279）
+# IADR-0406: 追加引数のある写像は「材料」だけを `[Mapper]` へ渡し、「導出の指示」は端に残す（#1279）
 
 - 状態: Accepted
 - 日付: 2026-09-06

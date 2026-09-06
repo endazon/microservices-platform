@@ -21,7 +21,7 @@ related_ids:
   - IADR-0385
   - IADR-0393
   - IADR-0395
-  - IADR-0405
+  - IADR-0406
 author: claude
 created: 2026-09-06
 updated: 2026-09-06
@@ -36,7 +36,7 @@ plan_refs:
 
 > #1279（親 #1248 / #1230 / #1064。環流 planning#490）。波 1（`IADR-0393`）は引数 1 つの 1:1 だった。
 > 本 issue の 7 本は**追加引数を伴う**ため、写す前に「追加引数が詰め替えの材料か導出の指示か」を裁定する。
-> 裁定は `IADR-0405` に残す（本仕様書はその適用）。
+> 裁定は `IADR-0406` に残す（本仕様書はその適用）。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -46,7 +46,7 @@ plan_refs:
   「実行時リフレクションよりコンパイル時生成を優先する」）/ **ADR-0068 決定 2**（3 段の分割は
   「1 つの操作にしか使われないか」だけで決める）/ **ADR-0065 決定 2**（単一プロジェクト VSA）/
   **ADR-0063 決定 3〜5**（提案の承認資格。`CanDecide` の意味）/ **ADR-0033 決定 7・10**（AI 提案の状態と指紋）
-- 実装 ADR: **IADR-0405（本 PR が起こす裁定）**／`IADR-0393` 決定 2 理由 A（波 1 で写像を入れなかった物差し）／
+- 実装 ADR: **IADR-0406（本 PR が起こす裁定）**／`IADR-0393` 決定 2 理由 A（波 1 で写像を入れなかった物差し）／
   `IADR-0371` 決定 3（参照実装・置き場）／`IADR-0290`（`DocumentVersion.MarkdownUri` を出さない）／
   `IADR-0364` 決定 4（`CanDecide` は行ごとに運ぶ）／`IADR-0195` 決定 1（生成物は `obj/` でカバレッジ対象外）／
   `IADR-0153` 決定 2（識別子 → 表示名の変換点を 1 つに閉じる）／`IADR-0282` 決定 1（Domain にアダプタを置かない）／
@@ -121,7 +121,7 @@ plan_refs:
 | 各端点の呼び出し行（Documents / PrivateNotes） | **ラッパを端に残すので 0 行変わる**（`DocumentEndpoints.ToDto(d, names)` は署名のまま 1 式になる） |
 | RMG020（源メンバ未使用）の error 化 | **しない。** 上げると `Document` の 8 メンバすべてに（実測） `[MapperIgnoreSource]` が要り、🔴 な省略（`MarkdownUri` / `TokenHash` / 指紋）が些事に埋もれる。波 1 が「意図した省略だけを宣言する」作法を採ったのを壊す |
 
-## 設計（`IADR-0405` の適用）
+## 設計（`IADR-0406` の適用）
 
 ### 決定 1: 線 —— 「材料」だけが `[Mapper]` に入る
 
@@ -142,7 +142,7 @@ plan_refs:
 
 → **`src/Directory.Build.props` に `RMG012;RMG082` の `WarningsAsErrors` を 1 行足す**（決定 7）。
 
-### 決定 2〜6（要旨。正本は `IADR-0405`）
+### 決定 2〜6（要旨。正本は `IADR-0406`）
 
 - **決定 2**: 導出は今それを持っている端に残す。`[Mapper]` クラスには `partial` 宣言と `Use=` 変換だけを置く
   （非 `partial` のメソッドを `[Mapper]` へ入れない —— Mapperly は**型の組み合わせだけで**それを選ぶ）。
@@ -170,7 +170,7 @@ plan_refs:
 ## 受け入れ基準
 
 - [x] Given 母集合 / When 着手する / Then **基点で自分で走査し、陽性対照を対で置いている**（本仕様書 §母集合）
-- [x] Given 「先に決めること」3 点 / When 着手する / Then **裁定が `IADR-0405` に残っている**
+- [x] Given 「先に決めること」3 点 / When 着手する / Then **裁定が `IADR-0406` に残っている**
 - [x] Given DTO ↔ ドメインの写像 5 本 / When 実装を読む / Then Mapperly の生成マッパを使っている
 - [x] Given 移送した写像 / When 移送前後の応答を比べる / Then **列の値も並びも同じ**である
 - [x] Given 各サービスのテスト / When 実行する / Then **件数が減っていない**（削除・skip 化は 0 件。実数を PR に書く）
@@ -178,7 +178,7 @@ plan_refs:
       Then **赤（またはビルドエラー）になることを実測**している
 - [x] Given `RMG012;RMG082` の error 化 / When 既存 4 プロジェクト ＋ 新規 2 プロジェクトをビルドする /
       Then **緑である**（弱めない。壊れたら報告する）
-- [x] Given 残した 2 本 / When 読む / Then **理由（E / A）が `IADR-0405` にあり、現場にも指し示すコメントがある**
+- [x] Given 残した 2 本 / When 読む / Then **理由（E / A）が `IADR-0406` にあり、現場にも指し示すコメントがある**
 - [x] Given `check-coverage-floor.js` / When 回す / Then 緑である（生成物は `obj/` へ出る）
 - [x] Given `dotnet build` × 2 / `dotnet test` × 2 / `dotnet format --verify-no-changes` / 検査器 ＋
       `REQUIRE_REPO_TESTS=1 scripts.test.js` / When 実行する / Then 成功する
@@ -236,10 +236,10 @@ plan_refs:
 ### 設計との差分（自分で測って変えたところ）
 
 1. **M7**: 設計 probe の「`[MapperIgnoreSource]` を外すと源の `Tags` が採られる」は本リポジトリの形では
-   再現しなかった。危険の引き金は**引数名の不一致**である。コードのコメントと `IADR-0405` V6 を実測に合わせた。
+   再現しなかった。危険の引き金は**引数名の不一致**である。コードのコメントと `IADR-0406` V6 を実測に合わせた。
 2. **RMG020 の扱い**: 設計は「警告のまま放置」でよいとしたが、`DocumentMapper` を入れると
    **新規に 8 件の警告が出る**（実測）。`check-backend-libraries.js` が記録する
    「赤（警告）の常態化は無視する学習を生む」に反するので、`[MapperRequiredMapping(RequiredMappingStrategy.Target)]`
    を**メソッドに 1 つ**付けて「部分射影である」と宣言し、`[MapperIgnoreSource]` は
-   🔴 な省略の合図に取っておく（`IADR-0405` 決定 7）。**新規の警告は 0 件になった。**
+   🔴 な省略の合図に取っておく（`IADR-0406` 決定 7）。**新規の警告は 0 件になった。**
    🔴 この属性は**クラスには付かない**（`error CS0592`）。

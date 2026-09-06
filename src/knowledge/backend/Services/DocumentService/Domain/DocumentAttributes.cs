@@ -1,4 +1,5 @@
 using Knowledge.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 
 namespace DocumentService.Domain;
 
@@ -81,6 +82,46 @@ public static class DocumentAttributes
             $"文書スコープ（{DocScopeKey}）は作成時に確定し、以後変更できません" +
             $"（現在: {Describe(before)} / 要求: {Describe(after)}）。" +
             "内容を移したい場合は、移し先の文書スコープで新しい文書を作成してください。");
+    }
+
+    // FR-06, FR-16, UC-03, SC-05, AST/ADR-0032 決定 2, [[IADR-0373]] 決定 1・3,
+    // [[IADR-0405]] 決定 2 (#1233):
+    // **文書が現に持つ制限 project の値は、保存後も残っていなければならない。**
+    //
+    // ■ 🔴 これは「`project` を必須にする」ことでも「不変にする」ことでもない
+    //   計画（07_abac-attribute-model §文書の基本属性）は **`project` を「任意」**と定めており、
+    //   `ADR-0036` は必須と定めていない。必須化の射程を AST ユニットの文書に限っているのは
+    //   `AST/ADR-0032` 決定 2 (1) 自身である（「属性そのものは任意だが、本ユニットが保存する
+    //   文書については必須とする」）。**基盤側で全文書に必須化する裁量は実装に無い**ので、
+    //   #1233 はその裁定を計画へ環流した（[[IADR-0405]] 決定 1）。
+    //
+    // ■ 🔴 `doc_scope` の等値規則（`ValidateDocScopeUnchanged`）をそのまま持ってきてはならない
+    //   等値規則は「後からの付与」と「制限外の値の変更」まで拒否する。前者は統制を**強める**向きで
+    //   あり、後者は**制限の射程外の文書の挙動を変える**。`ADR-0058`「作成時に確定」に当たる決定は
+    //   `project` に無い。よって規則は**単調非減少**（現に持つ制限値が減らないこと）1 本にする。
+    //
+    // ■ 🔴 集合帰属で判定する（否定形で書かない）
+    //   `RestrictedProject.DocumentValues` は制限値だけを拾う。`project` を持たない文書・
+    //   制限外の値だけを持つ文書は `before` が空になり、**この検査は 1 件も拒否しない**。
+    //   否定形（「制限値でない値へ変わった」）で書くと、`project` の通常の付け替えまで落ちる。
+    public static (bool Ok, string? Error) ValidateRestrictedProjectRetained(
+        IReadOnlyDictionary<string, string>? incoming,
+        IReadOnlyDictionary<string, string>? current)
+    {
+        var before = RestrictedProject.DocumentValues(current);
+        if (before.Count == 0) return (true, null);
+
+        var after = RestrictedProject.DocumentValues(incoming);
+        var lost = before
+            .Where(v => !after.Contains(v, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+        if (lost.Count == 0) return (true, null);
+
+        return (false,
+            $"プロジェクト（{RestrictedProject.DocumentKey}）の値 " +
+            $"'{string.Join(" / ", lost)}' は保存で外せません。" +
+            "この値は MCP の外部エージェント経路から文書を外すための統制であり、" +
+            "属性を落とすと除外が効かなくなります。");
     }
 
     private static string? ScopeOrNull(IReadOnlyDictionary<string, string>? attributes)

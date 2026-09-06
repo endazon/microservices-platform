@@ -267,7 +267,7 @@ public sealed class KeycloakIdentityAdminClient(
         ];
     }
 
-    // 🔴 **［#1279］ここは Riok.Mapperly へ移さない**（計画 ADR-0030 §決定 / IADR-0405 決定 8 理由 A
+    // 🔴 **［#1279］ここは Riok.Mapperly へ移さない**（計画 ADR-0030 §決定 / IADR-0406 決定 8 理由 A
     // ——`IADR-0393` 決定 2 が波 1 で使ったのと同じ物差しである）。
     // **6 つの対象メンバのうち 4 つが導出**であり、写しなのは `Enabled` と `roles` の 2 つだけである:
     // 属性はキーごとの分岐（集合値は連結・単一値は先頭。IADR-0385）、表示名は連結と縮退、

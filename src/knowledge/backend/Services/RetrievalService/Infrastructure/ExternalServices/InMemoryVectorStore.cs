@@ -60,7 +60,7 @@ public class InMemoryVectorStore : IVectorStore
     // `SearchResultDto.Text` は `DocumentBodyPresence.Excerpt` を通して**本文なしの点では空**にする。
     // ここを素朴に `c.Text` で埋めると、**テストは緑のまま本番だけが正しい**（あるいはその逆の）
     // 状態になる —— [[IADR-0014]] が ABAC 属性で、#642 がタグで踏んだのと同型である。
-    // 🔴 **［#1279］ここは Riok.Mapperly へ移さない**（計画 ADR-0030 §決定 / IADR-0405 決定 8 理由 E）。
+    // 🔴 **［#1279］ここは Riok.Mapperly へ移さない**（計画 ADR-0030 §決定 / IADR-0406 決定 8 理由 E）。
     // 理由は 2 つで、**上のコメントが宣言している不変条件そのもの**が主である ——
     //   E: 射影の相手（`QdrantVectorStore.MapPayload`）は `IReadOnlyDictionary<string, Value>` から
     //      キーごとに引いて型を判定しながら組み立てており、**Mapperly では書けない**。

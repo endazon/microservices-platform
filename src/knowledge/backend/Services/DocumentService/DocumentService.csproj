@@ -26,7 +26,7 @@
          版は書かない（CPM。src/Directory.Packages.props が単一情報源）。 -->
     <PackageReference Include="FluentValidation" />
     <!-- NFR, 計画 ADR-0030 §決定（マッピング = Riok.Mapperly。選定基準 4「コンパイル時生成を優先」）
-         / IADR-0371 決定 3 / IADR-0405。source generator であり、生成物は obj/ 配下に出るため
+         / IADR-0371 決定 3 / IADR-0406。source generator であり、生成物は obj/ 配下に出るため
          カバレッジ集計からは既に落ちている（IADR-0195 決定 1）。 -->
     <PackageReference Include="Riok.Mapperly" />
     <PackageReference Include="MassTransit.RabbitMQ" />
@@ -48,6 +48,12 @@
          AuthorizationService / LlmGateway と同じ作法）。版は書かない（CPM）。 -->
     <PackageReference Include="Grpc.AspNetCore" />
     <ProjectReference Include="..\..\Shared\Knowledge.Contracts\Knowledge.Contracts.csproj" />
+    <!-- FR-06, FR-16, SC-05, AST/ADR-0032 決定 2 / [[IADR-0406]] 決定 3 (#1233):
+         制限 project の語彙（`RestrictedProject`）は契約側に 1 つだけ置く。McpServer（platform）と
+         DocumentService（knowledge）は互いを直接参照できないため（src/README.md の依存規則）。
+         推移参照（Platform.Shared.Infrastructure 経由）でも型は届くが、**Domain が直接使う依存は
+         明示する**（AiAnalysisService と同じ作法）。 -->
+    <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

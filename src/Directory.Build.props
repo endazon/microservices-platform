@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <!--
-    Riok.Mapperly の RMG012 / RMG082（NFR / #1279 / IADR-0405 決定 7）。
+    Riok.Mapperly の RMG012 / RMG082（NFR / #1279 / IADR-0406 決定 7）。
 
     🔴 **どちらも既定は警告であり、TreatWarningsAsErrors=false のもとでは黙って通る。**
     4.3.1 で実測した中身は次のとおりで、いずれも「緑のビルドで誤った応答」を生む型である。
