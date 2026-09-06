@@ -11,7 +11,74 @@ namespace GraphService.Domain.Ports;
 // （既定値の不在は GraphTypeGateArchitectureTests がリフレクションで固定する）。
 public interface IGraphAccessResolver
 {
+    // 🔴 **多重定義を作らない。** `GraphTypeGateArchitectureTests` が
+    // `GetMethod(nameof(ResolveAsync))` で引いており、同名の多重定義は
+    // `AmbiguousMatchException` になって既定値の不在を固定する試験が落ちる。
+    // 本文で受け取った文脈から解決する口は `ResolveForUserAsync` という別名にしてある。
     Task<AccessScopeResponse> ResolveAsync(HttpContext ctx, string action, CancellationToken ct = default);
+
+    // FR-05, FR-17, UC-10, ADR-0034 決定 1, 計画 ADR-0086 決定 1, [[IADR-0410]] (#1255):
+    // **利用者文脈を本文で受け取る east-west 面（gRPC）のための解決口。**
+    //
+    // 🔴 **判定の位置は動かない。** 上の `ResolveAsync` と**同じ後段**（`AuthzScope/Resolve`）を
+    // 同じ引数で呼ぶ —— 違うのは利用者文脈の**出所**（検証済みの `HttpContext.User` か、
+    // 呼び出し元が本文で主張した値か）だけである。ホップごと ABAC の判定は依然として
+    // 本サービスが行う（`ADR-0034` 決定 1）。
+    //
+    // 🔴 **呼び出し元の主張をそのまま評価する構造は `ADR-0086` 決定 4 が受け入れたリスクとして
+    // 記録している。** 本メソッドはその形を新設したのではなく、`AuthzScope/Resolve` が
+    // 既に持っていた形を east-west のもう 1 段へ広げたものである。
+    Task<AccessScopeResponse> ResolveForUserAsync(
+        GraphUserContext user, string action, CancellationToken ct = default);
+}
+
+// FR-05, FR-17, UC-10, ADR-0004, 計画 ADR-0086 決定 1, [[IADR-0410]] (#1255):
+// ABAC 判定の**入力**としての利用者文脈。**判定結果（スコープ）ではない** ——
+// `ADR-0086` の 2026-09-07 追記が「判定結果を運ぶ形は採らない」と明示的に退けている。
+//
+// 🔴 **`IsAuthenticated` を持つのは、未認証の短絡を輸送の手前に置くためである**（[[IADR-0335]] 決定 4）。
+// 未認証なら認可サービスへ 1 度も問い合わせず deny で返す —— `AbacEvaluator` は
+// 利用者条件を持たないポリシーを全利用者にマッチさせるため、匿名で問い合わせると
+// そのようなポリシーが 1 件でも active なら**匿名にも許可が下りる**。
+public sealed record GraphUserContext(
+    string UserId,
+    IReadOnlyDictionary<string, string> Attributes,
+    bool IsAuthenticated)
+{
+    // 匿名でも到達し得る要求へ与える身元。**認可サービスへは渡らない**（この値で問い合わせない）。
+    public const string AnonymousUserId = "anonymous";
+
+    public static GraphUserContext Anonymous { get; } =
+        new(AnonymousUserId, new Dictionary<string, string>(), false);
+
+    // 検証済みの `HttpContext.User` から組み立てる（REST 経路の入口）。
+    public static GraphUserContext FromHttpContext(HttpContext ctx)
+    {
+        if (ctx.User.Identity?.IsAuthenticated != true)
+            return Anonymous;
+
+        return new GraphUserContext(
+            ctx.User.Identity.Name ?? AnonymousUserId, ExtractUserAttributes(ctx), true);
+    }
+
+    // JWT クレームから ABAC 判定に用いる利用者属性を取り出す（WikiAccessResolver と同一）。
+    //
+    // 🔴 **読むのは clearance と department の 2 つだけである。** これはプラットフォーム全体の
+    // 現状であり（`BffScopeResolver` / `WikiAccessResolver` / `AnalysisEndpoints` も同じ 2 つ）、
+    // 本サービスが絞っているのではない。計画 `07_abac-attribute-model` §利用者属性 は
+    // `projects` / `tags` も定めるが、**どの呼び出し元も送っていない**。
+    // 🔴 **運ばれない属性は判定に効かない**（`AbacEvaluator.MatchesUserConditions` は
+    // 引けなかったキーの条件を「マッチしない」として扱う。倒れる向きは deny である）。
+    // 広げるのは `ADR-0086` フォローアップ 2 の裁定を待つ。
+    private static Dictionary<string, string> ExtractUserAttributes(HttpContext ctx)
+    {
+        var attrs = new Dictionary<string, string>();
+        var clearance = ctx.User.FindFirst("clearance")?.Value;
+        var department = ctx.User.FindFirst("department")?.Value;
+        if (clearance is not null) attrs["clearance"] = clearance;
+        if (department is not null) attrs["department"] = department;
+        return attrs;
+    }
 }
 
 // FR-05, FR-21, IADR-0272 決定 4: 本サービスが解決するアクションの語彙。

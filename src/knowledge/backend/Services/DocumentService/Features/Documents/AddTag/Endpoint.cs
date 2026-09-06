@@ -1,6 +1,3 @@
-using DocumentService.Domain;
-using DocumentService.Domain.Ports;
-using DocumentService.Infrastructure.Persistence;
 using FluentValidation;
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
@@ -30,14 +27,11 @@ namespace DocumentService.Features.Documents.AddTag;
 // **本文指紋は変わらない**ので、却下解除（ADR-0050）は発火しない。
 internal static class AddDocumentTagEndpoint
 {
-    // 版履歴に残す変更メモ。**AI 提案の承認由来であることが後から読める**ようにする。
-    public const string ChangeNote = "ai-suggestion-approved";
-
     internal static void Map(RouteGroupBuilder tagReflection)
     {
         tagReflection.MapPost("/{id:guid}/tags", async (Guid id, AddDocumentTagRequest req,
             IValidator<AddDocumentTagRequest> validator,
-            DocumentDbContext db, IDocumentUpdatedPublisher bus, HttpContext http, CancellationToken ct) =>
+            AddDocumentTagUseCase tags, HttpContext http, CancellationToken ct) =>
         {
             // FR-18, SC-09 / 計画 ADR-0030 §決定 / IADR-0371 決定 2 / [[IADR-0398]] 決定 1:
             // タグ名は必須（正規化後に空なら不可）。規則は `AddDocumentTagValidator` が持つ。
@@ -45,32 +39,32 @@ internal static class AddDocumentTagEndpoint
             // 🔴 **この位置（取得・認可より前）を動かしてはならない。** 移送前もそうだった ——
             // 空のタグ名は文書の存在も認可も見ずに 400 である（後ろへ動かすと 404 に化ける）。
             // **辞書照合（`UnknownTagsProblem`）は逆に認可の後ろ**であり、こちらとは別物である。
+            //
+            // 🔴 **検証は輸送の縁に残す。** 器（`Results.ValidationProblem`）が輸送ごとに違うためで、
+            // **規則そのものは 1 つ**（同じ `IValidator<AddDocumentTagRequest>` を gRPC 面も引く）。
             var gate = validator.Validate(req);
             if (!gate.IsValid) return ValidationProblems.FirstViolation(gate);
 
-            var name = Tag.Normalize(req.Name ?? string.Empty);
+            // FR-05, FR-18, 計画 ADR-0086 決定 1, [[IADR-0410]] (#1255):
+            // 🔴 **本体は `AddDocumentTagUseCase` である。REST と east-west gRPC が同じ関数を通る。**
+            // 主体（所有者束縛）と管理者ロールは**ここで**検証済みの `HttpContext.User` から取り、
+            // gRPC 面は要求本文から取る —— **判定そのものは本体の中で 1 度だけ行われる。**
+            var outcome = await tags.ExecuteAsync(
+                id, req.Name ?? string.Empty,
+                http.User.Identity?.Name,
+                http.User.IsInRole(PlatformAuthPolicies.AdminRole),
+                ct);
 
-            var doc = await db.Documents.FindAsync([id], ct);
-            if (doc is null) return Results.NotFound();
-
-            // ★認可★ —— 副作用（辞書照合の応答を含む）より前に置く。辞書照合を先にすると、
-            // 書けない主体に「そのタグは辞書に無い」という情報が返る。
-            var subject = http.User.Identity?.Name;
-            var canWrite = DocumentBodyIntake.CanWrite(doc.Attributes, subject);
-            var isAdmin = http.User.IsInRole(PlatformAuthPolicies.AdminRole);
-            if (!canWrite && !isAdmin)
-                return Results.NotFound();
-
-            var (ids, unknown) = await TagResolver.ToIdsAsync(db, [name], ct);
-            if (unknown.Count > 0) return DocumentEndpoints.UnknownTagsProblem(unknown);
-
-            var names = await TagResolver.NamesAsync(db, ct);
-            if (!doc.AddTag(ids[0], ChangeNote))
-                return Results.Ok(DocumentEndpoints.ToDto(doc, names));
-
-            await db.SaveChangesAsync(ct);
-            await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, names, ct);
-            return Results.Ok(DocumentEndpoints.ToDto(doc, names));
+            return outcome.Status switch
+            {
+                // 🔴 **拒否は 404 である。403 にしない**（`PutBody` と同じ理由。本サービスは ABAC の
+                // 読み取り判定を持たないため「読めるが書けない」と言い切れず、403 は文書 ID の
+                // 総当たりで実在を明かす）。**「文書が無い」と同じ一本道である。**
+                AddDocumentTagStatus.NotWritable => Results.NotFound(),
+                AddDocumentTagStatus.UnknownTag =>
+                    DocumentEndpoints.UnknownTagsProblem(outcome.UnknownTags ?? []),
+                _ => Results.Ok(outcome.Document),
+            };
         }).WithName("AddDocumentTag").Produces<DocumentDto>();
     }
 }

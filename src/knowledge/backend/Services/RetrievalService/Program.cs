@@ -100,7 +100,18 @@ if (graphExpansion.Enabled)
     builder.Services.AddHttpClient("GraphService", c =>
         c.BaseAddress = new Uri(builder.Configuration["Services:GraphService"]
             ?? "http://graph-service:8080"));
-    builder.Services.AddScoped<IGraphNeighborExpander, GraphServiceNeighborExpander>();
+    // FR-04 / FR-05 / NFR-09 / NFR-16, ADR-0029, ADR-0034 決定 1, ADR-0075, 計画 ADR-0086 決定 1・3,
+    // [[IADR-0379]] 決定 4・5, [[IADR-0410]] (#1255): 近傍展開の east-west gRPC 経路。
+    // **並走中の正は REST である。** `Services:GraphServiceGrpc`（h2c のアドレス）が構成された
+    // ときだけ生成クライアントが登録され、そのときに限り gRPC 実装を使う。無ければ上の名前つき
+    // HttpClient で REST のまま（戻すのは構成を外すだけ。コードは変えない）。
+    // 🔴 **どちらの経路でも GraphService が自分で ABAC を解決する**（ADR-0034 決定 1）——
+    // 変わるのは利用者文脈の運び方（ヘッダ転送 → 本文）だけである。
+    builder.Services.AddGraphNeighborsGrpcClient(builder.Configuration);
+    if (!string.IsNullOrWhiteSpace(builder.Configuration[GraphNeighborsGrpcClientExtensions.AddressKey]))
+        builder.Services.AddScoped<IGraphNeighborExpander, GrpcGraphNeighborExpander>();
+    else
+        builder.Services.AddScoped<IGraphNeighborExpander, GraphServiceNeighborExpander>();
     builder.Services.AddScoped<IHybridSearchService, GraphExpandingSearchService>();
 }
 else

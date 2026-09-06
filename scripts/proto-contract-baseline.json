@@ -359,6 +359,248 @@
         }
       }
     },
+    "src/knowledge/backend/Shared/Knowledge.Contracts/Protos/knowledge/document/v1/document_tag_write.proto": {
+      "syntax": "proto3",
+      "package": "knowledge.document.v1",
+      "csharpNamespace": "Knowledge.Contracts.Grpc.Document.V1",
+      "imports": [],
+      "messages": {
+        "AddTagRequest": {
+          "fields": {
+            "action": {
+              "number": 6,
+              "type": "string",
+              "label": "singular"
+            },
+            "document_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "tag_name": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            },
+            "user_attributes": {
+              "number": 4,
+              "type": "map<string,string>",
+              "label": "map"
+            },
+            "user_id": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            },
+            "user_roles": {
+              "number": 5,
+              "type": "string",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "AddTagResponse": {
+          "fields": {
+            "result": {
+              "number": 1,
+              "type": "TagWriteResult",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "enums": {
+        "TagWriteResult": {
+          "values": {
+            "TAG_WRITE_RESULT_APPLIED": 1,
+            "TAG_WRITE_RESULT_NOT_WRITABLE": 3,
+            "TAG_WRITE_RESULT_UNKNOWN_TAG": 2,
+            "TAG_WRITE_RESULT_UNSPECIFIED": 0
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "services": {
+        "DocumentTagWrite": {
+          "rpcs": {
+            "AddTag": {
+              "request": "AddTagRequest",
+              "response": "AddTagResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            }
+          }
+        }
+      }
+    },
+    "src/knowledge/backend/Shared/Knowledge.Contracts/Protos/knowledge/graph/v1/graph_neighbors.proto": {
+      "syntax": "proto3",
+      "package": "knowledge.graph.v1",
+      "csharpNamespace": "Knowledge.Contracts.Grpc.Graph.V1",
+      "imports": [],
+      "messages": {
+        "EdgeTypeWeight": {
+          "fields": {
+            "edge_type_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "weight": {
+              "number": 2,
+              "type": "double",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "ExpandNeighborsRequest": {
+          "fields": {
+            "document_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "hops": {
+              "number": 2,
+              "type": "int32",
+              "label": "optional"
+            },
+            "user": {
+              "number": 3,
+              "type": "UserContext",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "ExpandNeighborsResponse": {
+          "fields": {
+            "edges": {
+              "number": 2,
+              "type": "NeighborEdge",
+              "label": "repeated"
+            },
+            "found": {
+              "number": 1,
+              "type": "bool",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "ListEdgeTypeWeightsRequest": {
+          "fields": {},
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "ListEdgeTypeWeightsResponse": {
+          "fields": {
+            "weights": {
+              "number": 1,
+              "type": "EdgeTypeWeight",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "NeighborEdge": {
+          "fields": {
+            "edge_type_id": {
+              "number": 4,
+              "type": "string",
+              "label": "singular"
+            },
+            "id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "source_document_id": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            },
+            "target_document_id": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "UserContext": {
+          "fields": {
+            "action": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            },
+            "user_attributes": {
+              "number": 2,
+              "type": "map<string,string>",
+              "label": "map"
+            },
+            "user_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "enums": {},
+      "services": {
+        "GraphNeighbors": {
+          "rpcs": {
+            "ExpandNeighbors": {
+              "request": "ExpandNeighborsRequest",
+              "response": "ExpandNeighborsResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            },
+            "ListEdgeTypeWeights": {
+              "request": "ListEdgeTypeWeightsRequest",
+              "response": "ListEdgeTypeWeightsResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            }
+          }
+        }
+      }
+    },
     "src/platform/backend/Shared/Platform.Shared.Contracts/Protos/platform/authz/v1/authz_scope.proto": {
       "syntax": "proto3",
       "package": "platform.authz.v1",

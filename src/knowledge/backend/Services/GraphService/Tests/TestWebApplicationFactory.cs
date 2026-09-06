@@ -112,9 +112,22 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     {
         public Task<AccessScopeResponse> ResolveAsync(
             HttpContext ctx, string action, CancellationToken ct = default)
-            => Task.FromResult(action == GraphAccessAction.Write
-                ? (owner.WriteScopeProvider ?? owner.ScopeProvider)(ctx)
-                : owner.ScopeProvider(ctx));
+            => Task.FromResult(Provide(action)(ctx));
+
+        // FR-05, 計画 ADR-0086 決定 1, [[IADR-0410]] (#1255): 利用者文脈を本文で受け取る解決口。
+        //
+        // 🔴 **器（HttpContext）を作って同じ提供関数へ渡す。** `ScopeProvider` / `WriteScopeProvider`
+        // を 2 系統に割らない —— 割ると「REST では見えるが gRPC では見えない」試験を書けてしまい、
+        // **判定の位置が動いていないこと**を器のほうで壊せる。
+        // 既存の提供関数はすべて `_ =>` で文脈を読み捨てているので、器の中身は結果に影響しない。
+        public Task<AccessScopeResponse> ResolveForUserAsync(
+            GraphUserContext user, string action, CancellationToken ct = default)
+            => Task.FromResult(Provide(action)(new DefaultHttpContext()));
+
+        private Func<HttpContext, AccessScopeResponse> Provide(string action) =>
+            action == GraphAccessAction.Write
+                ? (owner.WriteScopeProvider ?? owner.ScopeProvider)
+                : owner.ScopeProvider;
     }
 
     private sealed class StubTagDictionaryReader(TestWebApplicationFactory owner) : ITagDictionaryReader

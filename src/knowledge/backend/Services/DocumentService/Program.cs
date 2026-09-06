@@ -131,6 +131,9 @@ builder.Services.AddScoped<DocumentService.Features.Documents.DocumentObjectPurg
 // **REST の 4 端点と east-west gRPC の面（DocumentReadGrpcService）が同じ実体を通る**
 // （判定器を 2 つにしない）。DbContext と同じ scoped にする。
 builder.Services.AddScoped<DocumentReadUseCase>();
+// FR-05, FR-18, SC-05, ADR-0063 決定 1〜3, ADR-0065 決定 2, 計画 ADR-0086 決定 1, [[IADR-0410]] (#1255):
+// タグ反映の**本体**。🔴 **REST の端点と east-west gRPC の rpc が同じ関数を通る**（判定器を 2 つにしない）。
+builder.Services.AddScoped<AddDocumentTagUseCase>();
 builder.Services.AddScoped<DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceService>();
 builder.Services.AddHostedService<
     DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceHostedService>();
@@ -218,6 +221,12 @@ app.MapDocumentEndpoints();
 // （ServiceCaller ポリシー）を要求する —— 利用者のトークンでは通らない。
 // 🔴 **書き込み・本文・共有の口はこの面に出さない**（呼び出し元が要らないものを面へ出さない）。
 app.MapGrpcService<DocumentReadGrpcService>();
+// FR-05, FR-18, NFR-09, NFR-16, SC-03, SC-05, ADR-0029, ADR-0063, ADR-0075, 計画 ADR-0086 決定 1・3,
+// [[IADR-0044]], [[IADR-0379]], [[IADR-0410]] (#1255): タグ反映の gRPC 面。REST と**同じ本体**
+// （`AddDocumentTagUseCase`）を呼ぶ。呼び出し側サービスの資格情報（ServiceCaller ポリシー）を
+// 要求する —— 承認者本人のトークンでは通らない（利用者文脈は本文で運ぶ）。
+// 🔴 **書き込みの面は読み取りの面と別である**（`document_read.proto` は「書き込みの口は無い」と宣言している）。
+app.MapGrpcService<DocumentTagWriteGrpcService>();
 // FR-09, SC-05, SC-09, #634: タグ辞書（IADR-0152 決定 1）。
 app.MapTagDictionaryEndpoints();
 // FR-19, FR-20, ADR-0036 D-06, IADR-0253 決定 4（段 4）: 文書の共有先（所有者のみ変更可）。

@@ -3,14 +3,14 @@ title: east-west gRPC 通信仕様書（proto の置き場・versioning・h2c・
 type: api-spec
 status: completed
 created: 2026-09-05
-updated: 2026-09-06
+updated: 2026-09-07
 author: Claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11, FR-12, FR-13, FR-16, FR-17, FR-18, FR-19, NFR-02, NFR-09, NFR-16, NFR-21, UC-01, UC-02, UC-03, UC-04, UC-05, UC-07, UC-09, UC-10, SC-03, SC-05, SC-06, SC-10, SC-12, SC-17]
-adrs: [ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0038, ADR-0044, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076]
-iadrs: [IADR-0009, IADR-0012, IADR-0037, IADR-0041, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408]
-specs: [20260905_issue-1201_east-west-grpc-preconditions, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1255_east-west-grpc-llm-completion, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260906_issue-1255_knowledge-health-grpc]
+ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11, FR-12, FR-13, FR-16, FR-17, FR-18, FR-19, NFR-02, NFR-09, NFR-16, NFR-21, SC-03, SC-05, SC-06, SC-10, SC-12, SC-17, SC-18, UC-01, UC-02, UC-03, UC-04, UC-05, UC-07, UC-09, UC-10]
+adrs: [ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0038, ADR-0044, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086]
+iadrs: [IADR-0009, IADR-0012, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410]
+specs: [20260905_issue-1201_east-west-grpc-preconditions, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1255_east-west-grpc-llm-completion, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260906_issue-1255_knowledge-health-grpc, 20260907_issue-1255_user-context-in-body]
 issues: [#1201, #1255]
 -->
 
@@ -27,12 +27,13 @@ issues: [#1201, #1255]
 - **プロトコル**: gRPC（HTTP/2）+ Protobuf 3。メッシュ内は **h2c（TLS 無し HTTP/2）** で、mTLS はサイドカーが終端する。
 - **対象**: メッシュ内のサービスどうしの**同期**呼び出し。候補／非候補の基準は「同期 ∧ east-west ∧ 応答を待つ」であり、
   呼び出しの頻度やレイテンシ要求では判定しない。外部 SaaS・IdP・オブジェクトストレージ・非同期イベント・SSE は対象外。
-- **状態**: gRPC 面を持つのは **6 経路** —— 参照実装（BFF → 認可サービスの権限スコープ解決）、
+- **状態**: gRPC 面を持つのは **7 経路** —— 参照実装（BFF → 認可サービスの権限スコープ解決）、
   埋め込み生成（取り込み・検索 → LLM ゲートウェイ）、テキスト生成（AI 分析・グラフ・変換 →
   LLM ゲートウェイ。一括と**逐次**）、**認可サービスの 5 呼び出し元**
   （AI 分析・グラフ・Wiki のスコープ解決＋データソース・MCP の利用者名簿）、そして
   **BFF の文書読み取り 4 箇所**（一覧・詳細・版履歴・特定版）、そして
-  **ナレッジ健全性の観測値の報告**（グラフ → ダッシュボード）である。
+  **ナレッジ健全性の観測値の報告**（グラフ → ダッシュボード）、そして
+  ［2026-09-07 追記］**利用者の権限で動く 2 経路**（検索 → グラフの近傍展開・グラフ → 文書のタグ反映）である。
   **並走中の正は REST** であり、gRPC は構成で opt-in する。残りの経路の移行は別 issue で展開する。
   ［2026-09-06 追記］🔴 **BFF の s2s 資格情報の未配線は閉じた。** realm に BFF の service account が
   無く、`ServiceToken` が helm・compose のどちらにも無かったため、参照実装（BFF → 認可サービス）は
@@ -95,7 +96,8 @@ C# 契約（DTO・イベント）の検査器とは母集合を共有しない�
 | 利用者の文脈 | **本文で運ぶ**（`user_id` / `user_attributes` / `action`。REST の要求本文と同じ形）。移行は本文を変えないトランスポートの差し替えになる |
 | deny-by-default | 該当ポリシーが無ければ `granted=false` を**応答で**返す（エラーではない）。呼び出し側は `UNAUTHENTICATED` / `PERMISSION_DENIED` / `UNAVAILABLE` / トークン取得失敗をすべて「閲覧可能なし」へ縮退する |
 | BFF セッション方式との分け方 | セッション Cookie ↔ 利用者トークンは **north-south**、s2s トークンは **east-west**。BFF は自分の confidential client（`bff`）で client credentials を取る（realm の `bff` に service account と `platform-service` を付けてある） |
-| 将来 | 呼び出し先が利用者自身の権限で動く必要が出たら RFC 8693 token exchange（`act` claim）へ進む。今は採らない |
+| 利用者の権限で動く呼び出し先 | **利用者文脈を本文で運ぶ**（上の行と同じ形）。呼び出し先は受け取った文脈で**自分の判定を行う**ので、ホップごと ABAC は満たされる |
+| RFC 8693 token exchange | 🔴 **採らない。** 理由は preview だからではなく、**入れても閉じないから**である —— 認可サービスは呼び出し元の主張する `user_id` / `user_attributes` をそのまま評価するので、交換トークンを入れてもサービスはその隣で任意の利用者を主張できる。覆るには 2 条件が**ともに**要る |
 
 呼び出し側の共通部品: `AddPlatformServiceToken`（発行側の登録）と `GrpcClientExtensions.CreatePlatformChannel`（平文 h2c チャネルに
 s2s の `CallCredentials` を付ける。平文でトークンを送るには `UnsafeUseInsecureChannelCallCredentials` が要る —— 線上は mTLS である）。
@@ -358,6 +360,47 @@ REST の受け口は**認証を持たない**（利用者裁定で認証を外�
 🔴 **切替の試験は「登録関数」に対して置く。** 呼び出し元の選択は組み立て時に構成を読むため、
 テストホストが差し込む構成（Build 時に載る）では DI の切り替わりを測れない。
 
+## 7 つ目の面: 利用者の権限で動く 2 経路（`knowledge.graph.v1.GraphNeighbors` / `knowledge.document.v1.DocumentTagWrite`）
+
+- 呼び出し元と呼び出し先: **検索 → グラフ**（二段検索の近傍展開）と **グラフ → 文書**（AI タグ提案の承認の反映）。
+- 切替の構成キー: `Services:GraphServiceGrpc` / `Services:DocumentServiceGrpc`。**未設定なら REST のまま。**
+- 認証・認可: `ServiceCaller`。
+- 置き場: いずれも **knowledge ユニットの共有契約プロジェクト**（`Knowledge.Contracts`）。所有者は呼び出し先である（§1）。
+
+**これは「呼び出し先が利用者自身の権限で判定する」最初の面である。** 前の 6 面は、呼び出し先が
+主体を読まない（読み口を狭められた・報告だけ）か、実施点が呼び出し元にあるかのどちらかだった。
+
+🔴 **手段は「利用者文脈を本文で運ぶ」である**（`user_id` / `user_attributes` / `action`。§4 と同じ形）。
+利用者のトークンは面を通らない。**新しい形ではない** —— `AuthzScope/Resolve` が既にこの形であり、
+本面はその射程を**ホップごと ABAC の呼び出し先**へ広げたものである。
+
+🔴 **判定の位置は動かない。** グラフは受け取った文脈で `AuthzScope/Resolve` を**自分で**呼んで
+スコープを解決し、文書は所有者束縛と管理者ロールを**自分で**再判定する（最終防衛線）。
+🔴 **呼び出し元が解決したスコープを運ぶ形は採らない** —— 受け取った scope をそのまま信じる口を
+開くと、そこへ到達できる誰もが任意の scope を主張できる。
+
+🔴 **realm ロールは `user_attributes` へ混ぜない。** タグ反映の認可は「①所有者の動的束縛 または
+②管理者ロール」の選言であり、②は ABAC ではない。属性の線上表現の規則（集合値キーは 2 つだけ）とも
+食い違うため、**`user_roles` の別欄で運ぶ**。
+
+| rpc | 問い | 利用者文脈 |
+| --- | --- | --- |
+| `GraphNeighbors/ExpandNeighbors` | 「この起点から見える辺は何か」 | **持つ**（呼び出し先がスコープを解決する） |
+| `GraphNeighbors/ListEdgeTypeWeights` | 「辺の型ごとの重みは何か」 | 🔴 **持たない** —— REST の描画用カタログは主体を 1 バイトも読まない。転送トークンは認証の門にしか使われていなかったので、`ServiceCaller` がそれを**より狭く**置き換える |
+| `DocumentTagWrite/AddTag` | 「この承認者はこの文書へこのタグを足せるか」 | **持つ**（`user_roles` を含む） |
+
+🔴 **「見えない」「書けない」は応答であって status ではない。** 起点の不在・不可視・スコープ無しは
+すべて `found=false`、「所有者でも管理者でもない」と「文書が無い」はどちらも `NOT_WRITABLE` である。
+status で割ると、**割り方そのものが存在を漏らす**（1 種類しかない 404 を写している）。
+`PERMISSION_DENIED` を返すのは **s2s の門だけ**である。
+
+🔴 **縮退の枝を 1 つも増やさず・1 つも減らさない。** 近傍展開の失敗は空 ＋ 警告（検索は落とさない）、
+タグ反映の失敗は `Unavailable`（成功へ縮退しない）。**利用者文脈の欠落だけは `INVALID_ARGUMENT`** で
+あり deny へ畳まない —— 畳むと呼び出し元の配線誤りが「グラフには何も無い」に化ける。
+
+🔴 **チャネルは宛先ごとに分ける。** グラフは 4 つ目の宛先（認可・LLM・ダッシュボード・文書）を持つ
+最初のサービスである。キー無しを共有すると、タグの反映が認可サービスへ繋がる。
+
 ## シーケンス
 
 ```mermaid
@@ -434,7 +477,9 @@ sequenceDiagram
   残 5 は ①検索サービスの属性値照会（BFF）②文書 → 通知の送出 ③グラフ → 文書のタグ辞書読み
   ④MCP のツール申告の収集 ⑤実効構成の収集 で、④⑤ は**宛先集合が構成で開く扇形**であり
   本リポジトリだけでは完結しない。**issue 本文に残る古い数字（31 本）は登録単位・別時点のものである。**
-- 🔴 **利用者の権限で動く呼び出し先（ホップごと ABAC）の扱いは未決である。** AI 分析 → 検索・
-  グラフ → 文書・検索 → グラフの 3 箇所は利用者トークンを転送しており、**読み口を狭めるやり方では解けない**
-  （呼び出し先が利用者自身の権限で判定する必要がある）。§4「将来」が token exchange の条件として
-  置いた形そのものであり、**計画側の裁定を要する**（実装側の記録では決められない）。
+- ［2026-09-07 更新］🔴 **利用者の権限で動く呼び出し先（ホップごと ABAC）の扱いは裁定された。**
+  計画がその手段を「**利用者文脈を本文で運ぶ**」と定め（§7 つ目の面を参照）、
+  **token exchange は今は採らない**とした。従前ここに書いていた「未決である」は解消した。
+  **内訳は 3 箇所ではなく 2 箇所である** —— AI 分析 → 検索は**中継**であり
+  （`/search` は転送トークンを自分の認可に使っておらず、本文の `scope` で絞る）、
+  検索 → グラフが移った時点で不要になる。**その転送を落とすのは移行の後**である。
