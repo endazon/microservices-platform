@@ -277,7 +277,6 @@ Keycloak KC-SERVICES0029: Failed to send email: SendFailedException: Invalid Add
 キュー満杯（452）は残る。前者は**利用者データの問題**であり Keycloak 側の登録時に閉じるべきもの、
 後者はキュー容量の設計（フォローアップ (5)）に属する。**「W2 は閉じた」と書かない。**
 
-
 ## 関連
 
 - Supersedes: なし（[IADR-0261](./IADR-0261_keycloak-theme-and-smtp-injection.md) 決定 2 の「`smtpServer` は
