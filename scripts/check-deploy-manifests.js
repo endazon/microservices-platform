@@ -103,9 +103,19 @@ function discoverCharts(repoRoot = REPO_ROOT) {
   );
 }
 
+// 🔴 **`command -v` を使わない。** `shell: true` は Windows で `cmd.exe`（COMSPEC）を起こすが、
+// `cmd.exe` に `command` 組み込みは無い。結果、**在るツールまで「無い」と報告して常に fail する** ——
+// 実測（2026-09-06）: `helm` / `kubectl` が PATH に在る Windows 機で 3 つとも欠落と報告し、
+// **この誤報を根拠に 2 つの PR 本文へ「3 つとも入っていない」と書かれた**（どちらも後から訂正）。
+// 誤報は「検証を飛ばした」ではなく「検証できない」の形で出るため、CI（Linux）では再現しない。
+//
+// 本リポジトリの他の検査器（`check-stack-ready.js` / `check-password-reset-mail.js`）は既に
+// `where` / `which` を platform で使い分けている。**その作法へ揃えるだけであり、新しい流儀は持ち込まない。**
 function hasTool(bin) {
-  const r = spawnSync('command', ['-v', bin], { shell: true, encoding: 'utf8' });
-  return r.status === 0 && String(r.stdout || '').trim() !== '';
+  const probe = spawnSync(process.platform === 'win32' ? 'where' : 'which', [bin], {
+    encoding: 'utf8',
+  });
+  return probe.status === 0;
 }
 
 function run(bin, args, cwd = REPO_ROOT, input = undefined) {
@@ -236,6 +246,21 @@ function selfTest() {
     if (usable) return; // ツールが在る環境ではこの分岐を試験できない
     assert.ok(r.failures.length > 0, 'ツール不在なのに失敗していない');
     assert.ok(r.failures.some((f) => f.includes(ALLOW_MISSING_TOOLS_ENV)), '抜け道の名前を示していない');
+  });
+
+  // 🔴 **在るツールを「無い」と言わないこと。** 従前 `hasTool` は `command -v` を `shell: true` で
+  // 起こしており、Windows（`cmd.exe`）では `command` 組み込みが無いため**常に全欠落**を返した。
+  // 誤報は「検証を飛ばした」ではなく「検証できない」の形で出るので、**在る側から確かめる**。
+  // 陽性対照を対で置く: `node` は必ず在る（本試験を走らせている実行系そのもの）。
+  ok('hasTool: 実行系そのもの（node）を「在る」と判定する（在るものを無いと言わない）', () => {
+    assert.ok(hasTool('node'), 'node を検出できていない。hasTool が platform 依存で壊れている');
+  });
+
+  ok('hasTool: 実在しない名前は「無い」と判定する（陰性対照）', () => {
+    assert.ok(
+      !hasTool('msp-definitely-not-a-real-binary-xyz'),
+      '存在しない実行ファイルを「在る」と判定した',
+    );
   });
 
   ok('抜け道を立てたときは notice を出し、検査していない旨を明示する', () => {
