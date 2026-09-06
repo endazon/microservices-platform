@@ -23,6 +23,7 @@ using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Microsoft.EntityFrameworkCore;
@@ -43,6 +44,10 @@ builder.Services.AddSingleton<EdgeTypeFallbackMetrics>();
 builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddMeter(EdgeTypeFallbackMetrics.MeterName));
 builder.Services.AddPlatformAuth(builder.Configuration);
+// NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 3, [[IADR-0410]] (#1255):
+// east-west gRPC の h2c リスナ（`Grpc:Port`。未設定なら立てない）。
+// HTTP/1.1 のポート（REST・/health/*・introspection）はそのまま残り、readiness も 8080 のままである。
+builder.AddPlatformGrpcListener();
 // NFR, #1012: 接続先は構成から受け取る。**既定の資格情報を埋め込まない。**
 // 埋め込むと、構成の注入漏れが「起動失敗」ではなく「既定の資格情報で接続成功」へ倒れ、
 // 誤った DB へ書き込んだまま健全に見える。ここで落ちれば配備の誤りはその場で判る。
@@ -88,6 +93,9 @@ builder.Services.AddSingleton(TimeProvider.System);
 // 検証器を消しても起動時には何も起きず、端点が黙って無検証になる。1 行 1 検証器で明示登録する。
 builder.Services.AddScoped<IValidator<CreateGraphEdgeRequest>, CreateGraphEdgeValidator>();
 builder.Services.AddScoped<IValidator<NeighborsQuery>, NeighborsQueryValidator>();
+// FR-05, FR-17, UC-10, ADR-0034 決定 1, ADR-0065 決定 2, 計画 ADR-0086 決定 1, [[IADR-0410]] (#1255):
+// 近傍探索の**本体**。🔴 **REST の端点と east-west gRPC の rpc が同じ関数を通る**（判定器を 2 つにしない）。
+builder.Services.AddScoped<ExpandNeighborsUseCase>();
 builder.Services.AddScoped<IValidator<CreateEdgeTypeRequest>, CreateEdgeTypeValidator>();
 builder.Services.AddScoped<IValidator<RenameEdgeTypeRequest>, RenameEdgeTypeValidator>();
 builder.Services.AddScoped<IValidator<ListAiSuggestionsQuery>, ListAiSuggestionsQueryValidator>();
@@ -151,7 +159,17 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient(HttpDocumentTagWriter.ClientName, c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DocumentService"]
         ?? "http://document-service:8080"));
-builder.Services.AddScoped<IDocumentTagWriter, HttpDocumentTagWriter>();
+// FR-18 / FR-05 / NFR-09 / NFR-16, ADR-0029, ADR-0075, 計画 ADR-0086 決定 1・3,
+// [[IADR-0379]] 決定 4・5, [[IADR-0410]] (#1255): 承認の反映の east-west gRPC 経路。
+// **並走中の正は REST である。** `Services:DocumentServiceGrpc`（h2c のアドレス）が構成された
+// ときだけ生成クライアントが登録され、そのときに限り gRPC 実装を使う。無ければ上の名前つき
+// HttpClient で REST のまま（戻すのは構成を外すだけ。コードは変えない）。
+// 🔴 **どちらの経路でも後段が再判定する**（[[IADR-0044]]）—— 変わるのは利用者文脈の運び方だけである。
+builder.Services.AddDocumentTagWriteGrpcClient(builder.Configuration);
+if (!string.IsNullOrWhiteSpace(builder.Configuration[DocumentTagWriteGrpcClientExtensions.AddressKey]))
+    builder.Services.AddScoped<IDocumentTagWriter, GrpcDocumentTagWriter>();
+else
+    builder.Services.AddScoped<IDocumentTagWriter, HttpDocumentTagWriter>();
 builder.Services.AddScoped<ITagDictionaryReader, HttpTagDictionaryReader>();
 // 生成段で辞書外として落としたタグ提案の件数（0 が正常）。Meter は EdgeTypeFallbackMetrics と同じ。
 builder.Services.AddSingleton<TagSuggestionDropMetrics>();
@@ -291,6 +309,12 @@ app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapGraphEndpoints();
+// FR-04, FR-05, FR-17, NFR-09, NFR-16, UC-10, SC-18, ADR-0029, ADR-0034 決定 1, ADR-0075,
+// 計画 ADR-0086 決定 1・3, [[IADR-0379]], [[IADR-0410]] (#1255): 近傍展開が使う読み取り 2 口の gRPC 面。
+// REST と**同じ本体**（`ExpandNeighborsUseCase` / `LoadCatalogAsync`）を呼ぶ。
+// 呼び出し側サービスの資格情報（ServiceCaller ポリシー）を要求する —— 利用者のトークンでは通らない。
+// 🔴 **書き込み・AI 提案・辺の型の管理はこの面に出さない**（呼び出し元が要らないものを面へ出さない）。
+app.MapGrpcService<GraphNeighborsGrpcService>();
 // FR-17, SC-09, SC-10: 辺の型辞書（#910）。
 app.MapEdgeTypeEndpoints();
 // FR-18, SC-21, SC-03, ADR-0033 決定 7・10: AI 提案の 3 状態遷移（#914）。

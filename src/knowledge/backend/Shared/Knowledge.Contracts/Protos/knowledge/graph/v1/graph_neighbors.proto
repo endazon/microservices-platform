@@ -1,0 +1,124 @@
+// FR-04, FR-05, FR-17, NFR-09, NFR-16, UC-10, SC-18, ADR-0004, ADR-0029, ADR-0034, ADR-0035,
+// ADR-0049, ADR-0065, ADR-0075, ADR-0086, IADR-0242, IADR-0272, IADR-0379, IADR-0395, IADR-0397,
+// IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410 (#1255):
+// 二段検索の近傍展開が使う GraphService の読み取り 2 口
+// （REST `GET /graph/{id}/neighbors` と `GET /graph/edge-types/catalog` と同じ意味論）の gRPC 契約。
+//
+// ■ 置き場と所有（IADR-0379 決定 1）: 所有者は GraphService。置き場は knowledge ユニットの
+//   共有契約プロジェクト `Knowledge.Contracts` の `Protos/knowledge/graph/v1/`。
+//   クライアント・サーバ基底の両方をここから生成する（`GrpcServices="Both"`）。
+// ■ versioning（IADR-0379 決定 2）: フィールド番号は不変。削除は reserved に残す。破壊的変更は v2 の並走。
+// ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
+//   この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。
+//
+// ■ 🔴 **利用者の権限で動く面の 1 つ目である**（計画 ADR-0086 決定 1・3）。
+//   従前この経路は**利用者の `Authorization` ヘッダを転送**していた（方式 A）。
+//   ADR-0086 決定 1 は、利用者トークンを面に通す代わりに**利用者文脈（`user_id` /
+//   `user_attributes` / `action`）を本文で運ぶ**ことを定めた。**新しい形ではない** ——
+//   `platform.authz.v1.AuthzScope/Resolve` が既にこの形であり、本 proto はその射程を
+//   「ホップごと ABAC の呼び出し先」へ及ぼしたものである。
+//
+// ■ 🔴 **判定の位置は動かない**（ADR-0034 決定 1「ホップごとに ABAC 判定を行う。終端でまとめて
+//   フィルタしない」）。受け取った利用者文脈で **GraphService 自身が** `AuthzScope/Resolve` を呼び、
+//   自分でスコープを解決してから探索する。**呼び出し元が解決したスコープを本文で運ぶ形は採らない**
+//   （ADR-0086 の 2026-09-07 追記が明示的に退けた形である —— 判定結果を信じる口は
+//   そこへ到達できる誰もが任意のスコープを主張できる口になる）。
+//
+// ■ 🔴 **辺の型の重み（`ListEdgeTypeWeights`）は利用者文脈を持たない。**
+//   REST の `/graph/edge-types/catalog` は `RequireAuthorization()` の門を持つが、
+//   ハンドラは主体を 1 バイトも読まない（描画用の語彙であり ABAC で絞られていない）。
+//   したがって転送トークンは**認証の門にしか使われていなかった**。gRPC 面では
+//   `ServiceCaller` がその門を**より狭く**置き換える（IADR-0401 決定 1 と同じ向き）。
+//
+// ■ 🔴 **「見えない」は応答であって status ではない**（IADR-0401 決定 5 / IADR-0402 と同じ作法）。
+//   起点が不在・不可視・スコープ無しはすべて `found=false` であり、`NOT_FOUND` を投げない。
+//   REST の 404 が**存在秘匿の 1 種類しかない 404**（ADR-0034 決定 2）であることを写している ——
+//   status で割ると、割り方そのものが存在の有無を漏らす。
+//
+// ■ 🔴 **呼び出し元が要らないものを面へ出さない**（IADR-0401 決定 2 と同じ作法）。
+//   近傍展開が読むのは**辺だけ**であり（未承認の AI 提案は辺として存在しないので、辺だけを
+//   入口にすれば構造的に根拠へ混ざり得ない）、ノード・総数・打ち切りは読まない。
+//   重みも `id` と `weight` だけを使う（名前・層・対称性は SC-18 の描画が REST から引く）。
+syntax = "proto3";
+
+package knowledge.graph.v1;
+
+option csharp_namespace = "Knowledge.Contracts.Grpc.Graph.V1";
+
+// 二段検索の近傍展開が使う読み取り面。ServiceCaller（platform-service）を要求する。
+// **書き込み（辺の作成）・AI 提案・辺の型の管理はこの面に存在しない。**
+service GraphNeighbors {
+  // 1 起点ぶんの近傍を取る。REST `GET /graph/{documentId}/neighbors?hops=` と同値。
+  //
+  // 🔴 **利用者文脈を本文で運ぶ**（ADR-0086 決定 1）。GraphService は受け取った文脈で
+  // 自分の ABAC スコープを解決し、そのスコープで濾した辺だけを返す。
+  rpc ExpandNeighbors(ExpandNeighborsRequest) returns (ExpandNeighborsResponse);
+
+  // 辺の型ごとの重み。REST `GET /graph/edge-types/catalog` の**重みの列だけ**と同値。
+  // 🔴 **利用者文脈を持たない**（上の 🔴 を参照）。
+  rpc ListEdgeTypeWeights(ListEdgeTypeWeightsRequest) returns (ListEdgeTypeWeightsResponse);
+}
+
+// ABAC 判定に用いる利用者文脈。**判定結果ではなく判定の入力である**（ADR-0086 決定 1）。
+// `platform.authz.v1.ResolveScopeRequest` と同じ 3 項目であり、呼び出し先はこれを
+// そのまま `AuthzScope/Resolve` へ渡して**自分の**スコープを解決する。
+message UserContext {
+  // 利用者識別子（preferred_username）。**空文字は INVALID_ARGUMENT** ——
+  // 「利用者が分からない」を deny へ畳むと、呼び出し元の配線誤りが
+  // 「グラフには何も無い」と見分けられなくなる（呼び出し元は資格情報が無ければ**呼ばない**）。
+  string user_id = 1;
+
+  // ABAC 判定に用いる利用者属性。線上表現は REST の `AccessScopeRequest.UserAttributes` と同じ
+  // （1 キー 1 値・集合値キーはカンマ連結。`UserAttributeEncoding`）。
+  // 🔴 **現に載るのは clearance / department の 2 つだけである**（プラットフォーム全体の現状。
+  // 計画 `07_abac-attribute-model` は projects / tags も定めるが、どの呼び出し元も送っていない）。
+  // **運ばれない属性は判定に効かない。**
+  map<string, string> user_attributes = 2;
+
+  // read / analyze / manage / write。🔴 **空文字は read へ丸めない** ——
+  // 呼び出し元は明示して送る（IADR-0272 決定 4。既定値を置くと新しい経路が書き忘れで緩む）。
+  // 値域外は呼び出し先の認可サービスが 400 を返し、deny へ縮退する。
+  string action = 3;
+}
+
+message ExpandNeighborsRequest {
+  // 起点の文書 ID（GUID の文字列）。読めなければ INVALID_ARGUMENT。
+  string document_id = 1;
+
+  // ホップ数。🔴 **`0` は「未指定」ではない** —— REST の `hops` は省略可（既定 1）だが、
+  // proto3 の既定 `0` を「未指定」と読むと上限検証を素通りする。presence で運ぶ。
+  optional int32 hops = 2;
+
+  // 利用者文脈。**必須**（この rpc は利用者の権限で動く）。
+  UserContext user = 3;
+}
+
+// 近傍の辺 1 本。**近傍展開が使う 4 項目だけ**である。
+// `edge_type_id` は重みの辞書との突合キーであり、重みを辺へ複写しない
+// （真実源は `edge_types`。改名・編集に自動追随させる）。
+message NeighborEdge {
+  string id = 1;
+  string source_document_id = 2;
+  string target_document_id = 3;
+  string edge_type_id = 4;
+}
+
+message ExpandNeighborsResponse {
+  // 🔴 **起点が不在・不可視・スコープ無しのいずれでも `false`。** 区別しない
+  // （ADR-0034 決定 2 の存在秘匿。REST の 1 種類しかない 404 と同値）。
+  bool found = 1;
+
+  // 両端点が可視な辺だけ。`found=false` のときは空である。
+  repeated NeighborEdge edges = 2;
+}
+
+message ListEdgeTypeWeightsRequest {}
+
+message EdgeTypeWeight {
+  string edge_type_id = 1;
+  double weight = 2;
+}
+
+message ListEdgeTypeWeightsResponse {
+  repeated EdgeTypeWeight weights = 1;
+}

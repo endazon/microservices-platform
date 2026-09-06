@@ -404,6 +404,12 @@ services:
       # s2s トークン（呼び出し側サービス自身の資格情報）。dev の値は realm import の置き場と同値。
       ServiceToken__ClientId: retrieval-service
       ServiceToken__ClientSecret: ${RETRIEVAL_SERVICE_CLIENT_SECRET:-retrieval-service-dev-secret-change-me}
+      # FR-04 / FR-05 / NFR-09 / NFR-16, ADR-0029 / ADR-0075 / ADR-0034 決定 1 / 計画 ADR-0086 決定 1・3,
+      # IADR-0379, IADR-0410 (#1255): 二段検索の近傍展開の gRPC 宛先。**これが在るときだけ**
+      # 近傍展開が gRPC 経路になる（無ければ REST のまま。並走中の正は REST）。
+      # 🔴 利用者の JWT は面を通らず、利用者文脈（user_id / 属性 / action）は要求本文で運ぶ ——
+      # GraphService は受け取った文脈で**自分で** ABAC を解決する（判定の位置は動かない）。
+      Services__GraphServiceGrpc: http://graph-service:8081
     depends_on:
       qdrant:
         condition: service_healthy
@@ -672,8 +678,11 @@ services:
       context: ..
       dockerfile: src/knowledge/backend/Services/GraphService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）
+    # NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 / IADR-0410 (#1255): 8081 は east-west gRPC の
+    # h2c ポート（TLS 無し HTTP/2 専用）。helm の grpcPort と同じ値。host へは公開しない。
     expose:
       - "8080"
+      - "8081"
     environment:
       # ADR-0027 / #1016: DocumentDeleted 購読（graph-delete 段）のため RabbitMQ 接続が要る
       # （無いと Wolverine ホストが起動時に BrokerInitializationException）。
@@ -706,6 +715,15 @@ services:
       # 並走中の正は REST であり、戻すのはこの 1 行を消すだけでよい）。資格情報は上の ServiceToken を
       # **そのまま使う**（1 サービス 1 主体。呼び出し先ごとに主体を割らない）。
       Services__DashboardServiceGrpc: http://dashboard-service:8081
+      # FR-18 / FR-05 / NFR-09 / NFR-16, ADR-0029 / ADR-0075 / 計画 ADR-0086 決定 1・3,
+      # IADR-0379, IADR-0410 (#1255): AI タグ提案の承認の反映先の gRPC 宛先。**これが在るときだけ**
+      # 反映が gRPC 経路になる（無ければ REST のまま。並走中の正は REST）。
+      # 🔴 資格情報は上の ServiceToken を**そのまま使う**（1 サービス 1 主体）——
+      # 承認者の利用者トークンは面を通らず、利用者文脈は要求本文で運ぶ。
+      Services__DocumentServiceGrpc: http://document-service:8081
+      # NFR-16, IADR-0379 決定 3 / IADR-0410 (#1255): h2c リスナ。未設定ならリスナを立てない。
+      # readiness は 8080 のまま。
+      Grpc__Port: "8081"
     depends_on:
       postgres:
         condition: service_healthy

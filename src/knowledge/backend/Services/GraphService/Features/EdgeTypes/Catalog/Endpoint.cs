@@ -25,7 +25,11 @@ internal static class ListEdgeTypeCatalogEndpoint
 
     // FR-17, SC-18 (#962): 描画用カタログ。**辺を一切参照しない** ——
     // 参照しないことが、集計値を漏らさないことの構造的な保証である。
-    private static async Task<List<EdgeTypeCatalogItemDto>> LoadCatalogAsync(
+    // FR-04, FR-17, SC-18, NFR-16, 計画 ADR-0086, [[IADR-0410]] (#1255): east-west gRPC の
+    // `knowledge.graph.v1.GraphNeighbors/ListEdgeTypeWeights` も**この関数**を通る
+    // （判定器を 2 つにしない）。gRPC 面は id と weight だけを線上へ載せるが、
+    // **母集合と並びはここが決める**（辺を一切参照しないことも含めて 1 か所である）。
+    internal static async Task<List<EdgeTypeCatalogItemDto>> LoadCatalogAsync(
         GraphDbContext db, CancellationToken ct)
         => await db.EdgeTypes.AsNoTracking()
             .OrderBy(t => t.Name)

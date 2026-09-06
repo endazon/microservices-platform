@@ -1,0 +1,94 @@
+// FR-05, FR-18, NFR-09, NFR-16, SC-03, SC-05, SC-09, ADR-0004, ADR-0029, ADR-0030, ADR-0036,
+// ADR-0063, ADR-0065, ADR-0075, ADR-0080, ADR-0086, IADR-0044, IADR-0364, IADR-0371, IADR-0379,
+// IADR-0398, IADR-0401, IADR-0402, IADR-0410 (#1255):
+// AI タグ提案の承認が反映する 1 口（REST `POST /documents/{id}/tags` と同じ意味論）の gRPC 契約。
+//
+// ■ 置き場と所有（IADR-0379 決定 1）: 所有者は DocumentService。置き場は knowledge ユニットの
+//   共有契約プロジェクト `Knowledge.Contracts` の `Protos/knowledge/document/v1/`。
+// ■ 🔴 **`document_read.proto` へ足さない。** 同 proto は「書き込み・本文・共有の口はこの面に
+//   存在しない」と宣言しており、そこへ書き込みを混ぜると宣言が嘘になる。**面を分ける。**
+// ■ versioning（IADR-0379 決定 2）: フィールド番号は不変。削除は reserved に残す。破壊的変更は v2 の並走。
+// ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
+//   この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。
+//
+// ■ 🔴 **利用者の権限で動く面の 2 つ目である**（計画 ADR-0086 決定 1・3）。
+//   従前この経路は**承認者本人の `Authorization` ヘッダを転送**していた（ADR-0063 決定 3 が
+//   「サービスが利用者に代わって書く形は採らない」と定めたため）。ADR-0086 決定 1 は、
+//   利用者トークンを面に通す代わりに**利用者文脈を本文で運ぶ**ことを定めた。
+//   🔴 **後段が再判定することは変わらない**（IADR-0044 の最終防衛線）——
+//   変わるのは文脈の運び方だけである。
+//
+// ■ 🔴 **realm ロールは `user_attributes` へ混ぜない。**
+//   後段の認可は「①その文書への write（所有者の動的束縛）**または** ②`platform-admin`」の選言であり
+//   （ADR-0063 決定 3）、②は ABAC ではなくロール判定である。計画 `07_abac-attribute-model`
+//   §利用者属性 の 2026-09-05 追記が「`roles` は現時点で ABAC の文書単位判定には用いていない。
+//   ロール判定は ABAC とは別の経路である」と明記し、実装の `UserAttributeEncoding.SetValuedKeys` も
+//   `tags` / `projects` の 2 つだけで `roles` を含まない（同名の試験が固定している）。
+//   **混ぜると 2 つの判定経路が 1 つの地図の上で溶ける。** だから `user_roles` を別欄に置く。
+//
+// ■ 🔴 **拒否は 404 相当（`NOT_WRITABLE`）であって `PERMISSION_DENIED` ではない。**
+//   REST は「所有者でも管理者でもない」と「文書が無い」を**同じ 404** で返す（PutBody と同じ理由 ——
+//   403 は文書 ID の総当たりで実在を明かす）。gRPC status で割ると、割り方そのものが実在を漏らす。
+//   `PERMISSION_DENIED` はこの面では **s2s の門**（`platform-service` 無し）だけが返す。
+//
+// ■ 🔴 **fail-closed である。** 呼び出し元は `RpcException` をすべて `Unavailable` へ倒して
+//   502 にする。**成功へ縮退しない** —— 承認できていないのに承認済みと見えるのが最悪である。
+syntax = "proto3";
+
+package knowledge.document.v1;
+
+option csharp_namespace = "Knowledge.Contracts.Grpc.Document.V1";
+
+// 文書へのタグ反映。ServiceCaller（platform-service）を要求する。
+// **一覧・本文・共有・タグ辞書の口はこの面に存在しない**（呼び出し元が要らないものを面へ出さない）。
+service DocumentTagWrite {
+  // 文書へタグを 1 つ足す。REST `POST /documents/{id}/tags` と同値。**冪等**（既に付いていれば
+  // 版も進めずイベントも出さずに `APPLIED` を返す）。
+  rpc AddTag(AddTagRequest) returns (AddTagResponse);
+}
+
+message AddTagRequest {
+  // 対象の文書 ID（GUID の文字列）。読めなければ INVALID_ARGUMENT。
+  string document_id = 1;
+
+  // 付けるタグ名。正規化後に空なら INVALID_ARGUMENT（REST の 400 と同値。
+  // 🔴 **この検証は文書の取得・認可より前である** —— 後ろへ動かすと 404 に化ける）。
+  string tag_name = 2;
+
+  // 承認者の識別子（preferred_username）。所有者の動的束縛（`doc.owner ∈ { ${current_user} }`）に使う。
+  // 空文字は INVALID_ARGUMENT（「承認者が分からない」を「書けない」へ畳まない）。
+  string user_id = 3;
+
+  // 承認者の ABAC 属性。**この口では現に使われない**（後段の判定は所有者束縛とロールの選言である）が、
+  // 利用者文脈の 3 項目を欠かさずに運ぶ（ADR-0086 決定 1 の形。将来 ABAC 条件が足されたときに
+  // 契約を破らずに効かせられる）。
+  map<string, string> user_attributes = 4;
+
+  // 承認者の realm ロール。🔴 **`user_attributes` と別欄である**（上の 🔴 を参照）。
+  // 後段は `platform-admin` の有無だけを見る。
+  repeated string user_roles = 5;
+
+  // read / analyze / manage / write。この口は write である。
+  // 🔴 **既定へ丸めない**（IADR-0272 決定 4 と同じ理由）。
+  string action = 6;
+}
+
+// 反映の結果。REST の状態コードと 1:1 である（`TagWriteOutcome` と同じ 3 値。
+// `UNAVAILABLE` は**この enum に無い** —— 到達できないことは応答ではなく gRPC status である）。
+enum TagWriteResult {
+  // 🔴 proto3 の既定 `0` を「成功」にしない。写し漏れが成功に化けるのが最悪である。
+  TAG_WRITE_RESULT_UNSPECIFIED = 0;
+
+  // 付いた、または既に付いていた（REST の 2xx）。
+  TAG_WRITE_RESULT_APPLIED = 1;
+
+  // 既定タグ辞書に無い名前（REST の 400 / `UnknownTagsProblem`）。承認できず却下のみ。
+  TAG_WRITE_RESULT_UNKNOWN_TAG = 2;
+
+  // 所有者でも管理者でもない、または文書が無い（REST の 404。**区別しない**）。
+  TAG_WRITE_RESULT_NOT_WRITABLE = 3;
+}
+
+message AddTagResponse {
+  TagWriteResult result = 1;
+}
