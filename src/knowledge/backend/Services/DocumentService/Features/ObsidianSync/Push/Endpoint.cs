@@ -4,6 +4,7 @@ using DocumentService.Domain.Ports;
 using DocumentService.Features.Documents;
 using DocumentService.Features.PrivateNotes;
 using DocumentService.Infrastructure.Persistence;
+using FluentValidation;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
@@ -22,7 +23,8 @@ internal static class PushNoteEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
     {
-        g.MapPost("/notes", async (PushNoteRequest req, HttpContext http, DocumentDbContext db,
+        g.MapPost("/notes", async (PushNoteRequest req, IValidator<PushNoteRequest> validator,
+            HttpContext http, DocumentDbContext db,
             IObjectStorageClient storage, IPrivateNoteNotifier notifier, IAuditLogger audit,
             IDocumentUpdatedPublisher bus, CancellationToken ct) =>
         {
@@ -31,12 +33,12 @@ internal static class PushNoteEndpoint
             if (device is null) return Results.Unauthorized();
             var owner = device.OwnerId;
 
-            if (string.IsNullOrWhiteSpace(req.Title) || string.IsNullOrWhiteSpace(req.VaultPath)
-                || req.Edits is not { Count: > 0 } || req.Edits.Any(e => e.Content is null))
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["errors"] = ["title / vaultPath / edits（1 件以上・content 必須）を指定してください。"]
-                });
+            // FR-20, ADR-0037 決定 8 / 計画 ADR-0030 §決定 / IADR-0371 決定 2 /
+            // [[IADR-0398]] 決定 1・3: `title` / `vaultPath` / `edits` は **1 本の述語**（既定の規則集合）。
+            // 規則は `PushNoteValidator` が持つ。**先頭 1 件を、その鍵（`errors`）で返す。**
+            // 🔴 **この呼び出しは 401 の後ろ・413 の前**でなければならない。
+            var requiredGate = validator.Validate(req);
+            if (!requiredGate.IsValid) return ValidationProblems.FirstViolation(requiredGate);
 
             // FR-21 と同じ上限（1 MB / 413）。同期経路だけ上限が違うと
             // 「Obsidian では書けるが KB に入らない」資料ができる（[[IADR-0270]] 決定 7）。
@@ -106,11 +108,20 @@ internal static class PushNoteEndpoint
 
                 // ADR-0037 決定 7: 競合はサーバで解決しない。クライアントが最後に見た版
                 // （baseVersion）と現在版の不一致を 409 で返し、選択は利用者に委ねる。
-                if (req.BaseVersion is not { } baseVersion)
-                    return Results.ValidationProblem(new Dictionary<string, string[]>
-                    {
-                        ["baseVersion"] = ["既存資料の更新には baseVersion が必須です。"]
-                    });
+                //
+                // FR-20 / 計画 ADR-0030 §決定 / IADR-0371 決定 2 / [[IADR-0398]] 決定 3:
+                // 🔴 **この呼び出しは更新分岐の 404（`note is null` / `doc is null`）の後ろで
+                // なければならない。** 前へ動かす（＝規則を既定集合へ出す）と
+                // 「不存在の noteId ＋ baseVersion なし」が **404 から 400 へ化ける**。
+                // 🔴 **`Validate(req)` は名前つき集合を走らせない。** この 2 行を消しても
+                // コンパイルも起動も通り、`baseVersion` が**黙って無検証**になる（型で守れていない依存）。
+                // `SyncValidationProblemContractTests` の 404 / 400 の**対**がこれを固定する。
+                var baseVersionGate = validator.Validate(req,
+                    o => o.IncludeRuleSets(PushNoteValidator.BaseVersionRuleSet));
+                if (!baseVersionGate.IsValid)
+                    return ValidationProblems.FirstViolation(baseVersionGate);
+                var baseVersion = req.BaseVersion!.Value;
+
                 if (baseVersion != doc.Version)
                     return Results.Conflict(new
                     {

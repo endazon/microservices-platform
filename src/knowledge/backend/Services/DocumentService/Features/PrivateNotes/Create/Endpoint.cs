@@ -1,5 +1,6 @@
 using DocumentService.Domain;
 using DocumentService.Infrastructure.Persistence;
+using FluentValidation;
 using Knowledge.Contracts.Dtos;
 
 namespace DocumentService.Features.PrivateNotes.Create;
@@ -10,15 +11,17 @@ internal static class CreatePrivateNoteEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
     {
-        g.MapPost("/", async (CreatePrivateNoteRequest req, HttpContext http,
+        g.MapPost("/", async (CreatePrivateNoteRequest req,
+            IValidator<CreatePrivateNoteRequest> validator, HttpContext http,
             DocumentDbContext db, CancellationToken ct) =>
         {
             if (PrivateNoteEndpoints.SubjectOf(http) is not { } owner) return Results.Unauthorized();
-            if (string.IsNullOrWhiteSpace(req.Title))
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["title"] = ["タイトルは必須です。"]
-                });
+
+            // FR-19, SC-19 / 計画 ADR-0030 §決定 / IADR-0371 決定 2 / [[IADR-0398]] 決定 1:
+            // タイトルは必須。規則は `CreatePrivateNoteValidator` が持つ。
+            // 🔴 **この呼び出しは 401 の後ろ・容量の判定（DB）の前**でなければならない。
+            var gate = validator.Validate(req);
+            if (!gate.IsValid) return ValidationProblems.FirstViolation(gate);
 
             var now = DateTimeOffset.UtcNow;
             var used = await PrivateNoteUsage.UsedBytesAsync(db, owner, ct);

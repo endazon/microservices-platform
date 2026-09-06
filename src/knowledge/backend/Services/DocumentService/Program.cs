@@ -11,8 +11,13 @@ using DocumentService.Features.Documents.Update;
 using DocumentService.Features.Documents.UpdateMetadata;
 using DocumentService.Features.McpTools.Declare;
 using DocumentService.Features.ObsidianSync;
+using DocumentService.Features.ObsidianSync.Move;
+using DocumentService.Features.ObsidianSync.Push;
 using DocumentService.Features.PrivateNotes;
+using DocumentService.Features.PrivateNotes.Create;
+using DocumentService.Features.PrivateNotes.Purge;
 using DocumentService.Features.SyncDevices;
+using DocumentService.Features.SyncDevices.Issue;
 using DocumentService.Features.Tags;
 using DocumentService.Features.Tags.Create;
 using DocumentService.Features.Tags.Rename;
@@ -79,6 +84,12 @@ builder.Services.AddScoped<IValidator<CreateShareRequest>, GrantDocumentShareVal
 builder.Services.AddScoped<IValidator<AddDocumentTagRequest>, AddDocumentTagValidator>();
 builder.Services.AddScoped<IValidator<CreateTagRequest>, CreateTagValidator>();
 builder.Services.AddScoped<IValidator<RenameTagRequest>, RenameTagValidator>();
+// #1278 PR-B: PrivateNotes / ObsidianSync / SyncDevices 集約（[[IADR-0398]] 決定 10 の 2 本目）。
+builder.Services.AddScoped<IValidator<CreatePrivateNoteRequest>, CreatePrivateNoteValidator>();
+builder.Services.AddScoped<IValidator<PurgePrivateNotesRequest>, PurgePrivateNotesValidator>();
+builder.Services.AddScoped<IValidator<CreateSyncDeviceRequest>, IssueSyncDeviceValidator>();
+builder.Services.AddScoped<IValidator<MoveNoteRequest>, MoveNoteValidator>();
+builder.Services.AddScoped<IValidator<PushNoteRequest>, PushNoteValidator>();
 
 // FR-06: Document DbContext (ADR-0002 Database per Service)
 builder.Services.AddDbContext<DocumentDbContext>(opt => opt.UseNpgsql(connStr));
