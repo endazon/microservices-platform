@@ -1,4 +1,4 @@
-# SC-15, FR-05, FR-22, ADR-0045 決定 2-b/5（ADR-0078 決定 2 による部分改定）, IADR-0403 (#1245):
+# SC-15, FR-05, FR-22, ADR-0045 決定 2-b/5（ADR-0078 決定 2 による部分改定）, IADR-0404 (#1245):
 # Keycloak の**近接 MTA（キュー付き）**。環境非依存の base であり、dev と go-live が同じ宣言を使う。
 #
 # ## なぜ器が Postfix なのか（Mailpit ではない）
@@ -26,7 +26,7 @@
 # ## 経路の暗号化
 #
 # 🔴 Keycloak → 本 relay の 1 ホップは**平文**である（クラスタ内の Pod ネットワークに閉じる）。
-#    **production でも同じ**であり、これは IADR-0403 決定 3 の受容として記録し、計画へ環流する。
+#    **production でも同じ**であり、これは IADR-0404 決定 3 の受容として記録し、計画へ環流する。
 # 🔴 本 relay → 上流は `SMTP_UPSTREAM_STARTTLS=true` のとき `smtp_tls_security_level=encrypt`
 #    （**平文フォールバック無し**。ADR-0045 決定 5）。イメージの既定は `may` なので**必ず上書きする**
 #    —— 導出は ConfigMap mail-relay-init のスクリプトが行う（env に三項演算が無いため）。
@@ -143,7 +143,7 @@ data:
   # （`/docker-init.db/` は旧名）。この時点で postconf の変更は起動する Postfix に効く。
   10-relay-policy.sh: |
     #!/bin/sh
-    # SC-15, ADR-0045 決定 5 / ADR-0078 決定 2, IADR-0403 (#1245):
+    # SC-15, ADR-0045 決定 5 / ADR-0078 決定 2, IADR-0404 (#1245):
     # 上流の接続条件を**宛先に結び付けて**導出する。env に三項演算が無いのでここで決める。
 
     # (1) 上流が無いまま起動しない。RELAYHOST が空だと Postfix は宛先の MX へ**直接**配送する

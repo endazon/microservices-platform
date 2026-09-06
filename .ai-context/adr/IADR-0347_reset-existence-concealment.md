@@ -148,7 +148,7 @@ realm 再インポートが `resetPasswordAllowed=true` を復元し、`smtpServ
   3. `docs/tests/SC-15_password-reset.md` の **T-21（閉じた状態の同値性）は手動のまま**である
      （状態を作る操作を伴うため）。自動化するなら使い捨てのスタックで行う。
 
-> **［2026-09-06 追記 / #1245 / IADR-0403］フォローアップ 1 は解消し、2 は着手した。3 は残る。**
+> **［2026-09-06 追記 / #1245 / IADR-0404］フォローアップ 1 は解消し、2 は着手した。3 は残る。**
 >
 > - **フォローアップ 1（環流）は完了した** —— planning#536 として起票され、計画 ADR-0078 が
 >   「go-live の送出経路にキュー付きの近接 MTA を挟む」（決定 2）と「投函できないときは**機械で**
@@ -156,7 +156,7 @@ realm 再インポートが `resetPasswordAllowed=true` を復元し、`smtpServ
 > - **フォローアップ 2（残る窓の自動閉塞）は決定 3 の C 系（realm を書き換える調停器）が採られた。**
 >   利用者は 2026-09-05 に、専用クライアントの service account へ `realm-management` の
 >   `view-realm` ＋ `manage-realm` だけを与えることを承諾した（IADR-0329 の位置からの**部分的な後退**である）。
->   **その門はまだ着地していない**（#1245 PR-C）。#1245 PR-A（[IADR-0403](./IADR-0403_nearby-mta-relay-and-realm-ownership.md)）が
+>   **その門はまだ着地していない**（#1245 PR-C）。#1245 PR-A（[IADR-0404](./IADR-0404_nearby-mta-relay-and-realm-ownership.md)）が
 >   先に器と所有権を入れた。
 > - **本 IADR の 3 門は維持する**（ADR-0078 決定 5 が明示）。ただし宣言の門が見る**期待値は
 >   近接 MTA へ付け替わり**、`smtpServer` が**宣言所有**になったので、**状態 B は構造で作れなくなった** ——

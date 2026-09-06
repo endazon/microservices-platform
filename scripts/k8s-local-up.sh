@@ -102,7 +102,7 @@ apply_secret "$INFRA_NS" rabbitmq        "username=${RABBITMQ_USER:-guest}" "pas
 # ＝管理者名の単一情報源。ESO の externalsecret-keycloak-admin.yaml は Merge なので password だけ供給しても壊れない。
 apply_secret "$INFRA_NS" keycloak-admin  "username=${KEYCLOAK_ADMIN_USER:-admin}" "password=${KEYCLOAK_ADMIN_PASSWORD:-admin}"
 
-# SC-15, ADR-0045 決定 2-b/5/9 ＋ ADR-0078 決定 2, IADR-0332 / IADR-0403 (#438 / #1102 / #1245):
+# SC-15, ADR-0045 決定 2-b/5/9 ＋ ADR-0078 決定 2, IADR-0332 / IADR-0404 (#438 / #1102 / #1245):
 # 近接 MTA（deploy/mail-relay/）が **env(secretKeyRef) で読む**上流の接続条件。
 # 🔴 **#1245 まで、この Secret を env で読む Pod は 1 つも無かった**（読み手は runbook の kcadm ＝ 人間）。
 #    近接 MTA ができて読み手が生まれたので、**ESO の有無によらず必ず存在させる** ——
@@ -188,7 +188,7 @@ kubectl -n "$INFRA_NS" rollout status deploy/otel-collector --timeout=120s
 # SC-15, FR-22, ADR-0045 決定 9 (#1144): 捕捉用 MTA。**opt-in ゲートを持たない**（決定 9 は無条件）。
 # ［2026-09-06 / #1245］ADR-0078 決定 2 以後、ここは Keycloak の送出先ではなく**近接 MTA の上流**である。
 kubectl -n "$INFRA_NS" rollout status deploy/mailpit --timeout=120s
-# SC-15, ADR-0078 決定 2, IADR-0403 (#1245): 近接 MTA（キュー付き Postfix）。**opt-in ゲートを持たない**。
+# SC-15, ADR-0078 決定 2, IADR-0404 (#1245): 近接 MTA（キュー付き Postfix）。**opt-in ゲートを持たない**。
 # realm の smtpServer がここを指すので、**Keycloak より後に立つと最初の申請が送出に失敗する**
 # （＝実在する利用者名だけ 500。#1143 の状態 C そのもの）。上の mailpit と同じ理由でここで待ち合わせる。
 kubectl -n "$INFRA_NS" rollout status deploy/mail-relay --timeout=120s
@@ -537,7 +537,7 @@ if [ "${ESO:-}" = "1" ]; then
   kubectl apply -f deploy/local/vault/eso/externalsecret-postgres.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-admin.yaml
-  # SC-15, FR-22, ADR-0026/ADR-0045 決定 6 ＋ ADR-0078 決定 2, IADR-0332 / IADR-0403 (#1102 / #1245):
+  # SC-15, FR-22, ADR-0026/ADR-0045 決定 6 ＋ ADR-0078 決定 2, IADR-0332 / IADR-0404 (#1102 / #1245):
   # 近接 MTA が読む上流の接続条件。**手動 apply は step [3/7] で保持済み**（dev 既定。ESO の有無によらず作る）。
   # ここでは creationPolicy: Merge の ExternalSecret を適用し、既存 Secret へ Vault の値をマージするのみ。
   # 🔴 **#1245 で読み手が人間から Pod へ変わった。** 旧: runbook の `kcadm` 手順（人間）が読み realm の
@@ -621,7 +621,7 @@ if [ "${ESO:-}" = "1" ]; then
     kubectl -n "$MSP_NS" rollout restart "deploy/$d" >/dev/null 2>&1 \
       && echo "      restarted $MSP_NS/$d" || echo "      skip $MSP_NS/$d（未デプロイ）"
   done
-  # SC-15, ADR-0078 決定 2, IADR-0403 (#1245): 近接 MTA は keycloak-smtp を env(secretKeyRef) で読む。
+  # SC-15, ADR-0078 決定 2, IADR-0404 (#1245): 近接 MTA は keycloak-smtp を env(secretKeyRef) で読む。
   # ESO が実値を供給した後は**必ず作り直す** —— さもないと relay は「空の from / 捕捉用 MTA 宛」のまま動き、
   # 運用者は Vault へ実値を入れたのに 1 通も外へ出ない（静かな縮退）。
   kubectl -n "$INFRA_NS" rollout restart deploy/mail-relay >/dev/null 2>&1 \

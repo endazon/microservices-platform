@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NotificationService.Common.Observability;
@@ -17,6 +18,7 @@ namespace NotificationService.Features.Notifications.Accept;
 public sealed class NotificationIngress(
     NotificationDbContext db,
     NotificationPublisher publisher,
+    IValidator<NotificationIngressRequest> validator,
     ILogger<NotificationIngress> logger)
 {
     // DB 列（NotificationDbContext）の長さに合わせる。**入口で 400 にする** ——
@@ -27,9 +29,25 @@ public sealed class NotificationIngress(
     public async Task<NotificationIngressOutcome> AcceptAsync(
         NotificationIngressRequest? request, CancellationToken ct = default)
     {
-        var errors = Validate(request);
-        if (errors.Count > 0)
-            return NotificationIngressOutcome.Invalid(errors);
+        // FR-22, IADR-0371 決定 1・2 / [[IADR-0398]] 決定 1・7: 入力検証（FluentValidation）。
+        // 🔴 **判定の位置は移送前と同じ**（AcceptAsync の先頭・DB 照会より前）。
+        // 「不正なペイロードは 1 件も永続化しない」はこの位置が担保している。
+        //
+        // 🔴 **`request is null` だけは検証器へ移せない。** FluentValidation は null インスタンスを
+        // 検証できず（`Validate(null)` は例外）、「本文が無い」は DTO の検証ではなく**束縛の失敗**である。
+        if (request is null)
+            return NotificationIngressOutcome.Invalid(new Dictionary<string, string[]>
+            {
+                ["body"] = ["要求本文が空である。"],
+            });
+
+        // 🔴 **形 β（全違反を鍵ごとに返す）である**（[[IADR-0398]] 決定 1 の後者）。移送前は項目ごとに
+        // 独立した `if` で辞書へ積んでおり、**複数の鍵が同時に埋まる**。`ToDictionary()` は
+        // `PropertyName` で群化し、**群の出現順と群内のメッセージ順をどちらも保つ** —— したがって
+        // 検証器の**宣言順が応答の契約**である。`Errors[0]` へ丸めると鍵が減り、本文が変わる。
+        var validation = validator.Validate(request);
+        if (!validation.IsValid)
+            return NotificationIngressOutcome.Invalid(validation.ToDictionary());
 
         // 検証を通っているので必須項目は非 null である。
         var subject = request!.Subject!;
@@ -71,46 +89,6 @@ public sealed class NotificationIngress(
 
         return NotificationIngressOutcome.Accepted(notification.Id);
     }
-
-    // 不正なペイロードは 400 にし、**1 件も永続化しない**。
-    // ★ **`kind` の値そのものは検証しない**（IADR-0215 決定 2: 値集合は開いている）。閉じると
-    //   「種別を増やしたら、まだ更新されていない受け側が既存の値ごと拒否する」を再現してしまう。
-    private static Dictionary<string, string[]> Validate(NotificationIngressRequest? request)
-    {
-        var errors = new Dictionary<string, string[]>();
-
-        if (request is null)
-        {
-            errors["body"] = ["要求本文が空である。"];
-            return errors;
-        }
-
-        // 宛先が無い通知は誰にも届かない。**空白の主体を「誰か」として扱わない。**
-        if (string.IsNullOrWhiteSpace(request.Subject))
-            errors["subject"] = ["subject は必須である。"];
-        else if (request.Subject.Length > SubjectMaxLength)
-            errors["subject"] = [$"subject は {SubjectMaxLength} 文字以内である。"];
-
-        if (string.IsNullOrWhiteSpace(request.Kind))
-            errors["kind"] = ["kind は必須である。"];
-        else if (request.Kind.Length > KindMaxLength)
-            errors["kind"] = [$"kind は {KindMaxLength} 文字以内である。"];
-
-        // 既定値（0001-01-01）を黙って採ると、一覧の並び（OccurredAt 降順）と保持期間（90 日）の
-        // 両方が壊れる。**欠落は欠落として拒否する。**
-        if (request.OccurredAt is null)
-            errors["occurredAt"] = ["occurredAt は必須である。"];
-
-        if (request.Count is < 0)
-            errors["count"] = ["count は 0 以上である。"];
-
-        if (request.ThresholdPercent is < 0 or > 100)
-            errors["thresholdPercent"] = ["thresholdPercent は 0〜100 である。"];
-
-        // deadline に制約は置かない。**過去の期限も正当である** —— 期限を過ぎた繰り越しは
-        // EmailOutboxDispatcher が dropped として記録する（IADR-0215 決定 4 の例外）。
-        return errors;
-    }
 }
 
 // 受理の結末。**3 つに分かれる**（新規・畳んだ・不正）。端点はこれを状態コードへ写すだけである。
@@ -120,7 +98,10 @@ public sealed class NotificationIngressOutcome
 
     public Guid Id { get; private init; }
     public bool IsDuplicate { get; private init; }
-    public Dictionary<string, string[]>? Errors { get; private init; }
+    // 🔴 型は `IDictionary` である（`ValidationResult.ToDictionary()` の戻り値型。
+    // [[IADR-0398]] 決定 1 の形 β）。端点の `Results.ValidationProblem` は `IDictionary` を
+    // 受けるので、**端点は 1 行も変わらない**。
+    public IDictionary<string, string[]>? Errors { get; private init; }
 
     public bool IsValid => Errors is null;
 
@@ -130,6 +111,6 @@ public sealed class NotificationIngressOutcome
     public static NotificationIngressOutcome Duplicated(Guid id)
         => new() { Id = id, IsDuplicate = true };
 
-    public static NotificationIngressOutcome Invalid(Dictionary<string, string[]> errors)
+    public static NotificationIngressOutcome Invalid(IDictionary<string, string[]> errors)
         => new() { Errors = errors };
 }

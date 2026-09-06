@@ -16,7 +16,7 @@ resources:
   # ゲートに載せるとゲートを立てない人の既定が外を向いたままになる）。
   # 🔴 ADR-0078 決定 2 (#1245) 以後、mailpit は Keycloak の送出先ではなく**近接 MTA の上流**である。
   - mailpit.yaml
-  # SC-15, ADR-0078 決定 2 / IADR-0403 (#1245): Keycloak の**近接 MTA（キュー付き Postfix）**。
+  # SC-15, ADR-0078 決定 2 / IADR-0404 (#1245): Keycloak の**近接 MTA（キュー付き Postfix）**。
   # **環境非依存の base**であり、dev と go-live が同じ宣言を使う（違うのは上流だけ）。
   # ここは dev の overlay としてそれを取り込むだけである。**opt-in にしない**（決定 2 は無条件）。
   - ../../mail-relay

@@ -116,7 +116,7 @@ dev 既定は **2 箇所**にある。**片方だけ直しても、もう片方�
   **申請 → 送出 → 受信 → 本文**を通しで測る。`integration-stack.yml` の 3 つめの門にする。
   **TLS の検証は切らない**（クラスタのローカル CA を使う）。
 
-> **［2026-09-06 追記 / #1245 / IADR-0403］捕捉用 MTA は「Keycloak の送出先」から「近接 MTA の上流」へ 1 ホップ後退した。**
+> **［2026-09-06 追記 / #1245 / IADR-0404］捕捉用 MTA は「Keycloak の送出先」から「近接 MTA の上流」へ 1 ホップ後退した。**
 > 計画 ADR-0078 決定 2 が送出経路に**キュー付きの近接 MTA**（`deploy/mail-relay/`）を挟むと定めた。
 > dev の経路は **Keycloak → 近接 MTA → 捕捉用 MTA** になり、go-live は最後の 1 ホップだけが外部リレーへ変わる。
 > 追随した点:
@@ -127,7 +127,7 @@ dev 既定は **2 箇所**にある。**片方だけ直しても、もう片方�
 >   relay の init スクリプトが `starttls` の値から `smtp_tls_security_level` を `encrypt` / `none` に決め、
 >   イメージの既定 `may`（平文フォールバック）へは決して落とさない。**true / false 以外なら起動しない。**
 >   🔴 **Keycloak → 近接 MTA の 1 ホップは平文である**（クラスタ内の Pod ネットワークに閉じる）。
->   決定 3 と同じ根拠だが、**production でも同じ**である点は新しく、受容として [IADR-0403](./IADR-0403_nearby-mta-relay-and-realm-ownership.md) に記録した。
+>   決定 3 と同じ根拠だが、**production でも同じ**である点は新しく、受容として [IADR-0404](./IADR-0404_nearby-mta-relay-and-realm-ownership.md) に記録した。
 > - **決定 5**: 門（`collectMailCaptureGaps`）は **2 区間**を見るようになった ——
 >   realm は近接 MTA の Service と、Vault seed は捕捉用 MTA の Service と突き合わせる。
 >   **「開発環境から外へ出ない」の検査は上流側へ移して残した**（移した先で消すと静かに戻る）。

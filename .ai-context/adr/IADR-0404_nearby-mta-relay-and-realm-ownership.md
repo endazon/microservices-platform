@@ -1,5 +1,5 @@
 ---
-title: IADR-0403 Keycloak の送出先はクラスタ内の近接 MTA（キュー付き Postfix）に固定し、smtpServer を宣言所有・resetPasswordAllowed を条件つき門所有へ移す
+title: IADR-0404 Keycloak の送出先はクラスタ内の近接 MTA（キュー付き Postfix）に固定し、smtpServer を宣言所有・resetPasswordAllowed を条件つき門所有へ移す
 type: impl-adr
 status: Proposed
 related_ids: [SC-15, SC-10, FR-05, FR-22, NFR-09, ADR-0026, ADR-0045, ADR-0078, IADR-0261, IADR-0329, IADR-0332, IADR-0344, IADR-0347, IADR-0369]
@@ -12,7 +12,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0026_authentication-ux-and-account-management.md
 ---
 
-# IADR-0403: Keycloak の送出先はクラスタ内の近接 MTA（キュー付き Postfix）に固定し、`smtpServer` を宣言所有・`resetPasswordAllowed` を条件つき門所有へ移す
+# IADR-0404: Keycloak の送出先はクラスタ内の近接 MTA（キュー付き Postfix）に固定し、`smtpServer` を宣言所有・`resetPasswordAllowed` を条件つき門所有へ移す
 
 - 状態: Proposed
 - 日付: 2026-09-06

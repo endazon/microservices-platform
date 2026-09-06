@@ -22,14 +22,14 @@
  *   サービスアカウント利用者のロールと属性 / **`smtpServer`**（下記の追記）。
  * 実行時が正（**触らない**）: 既存の人間の利用者の資格情報・属性・ロール・グループ・requiredActions・セッション。
  *
- * ［2026-09-06 追記 / #1245 / IADR-0403］**`smtpServer` を実行時所有から宣言所有へ移した。**
+ * ［2026-09-06 追記 / #1245 / IADR-0404］**`smtpServer` を実行時所有から宣言所有へ移した。**
  *   ADR-0078 決定 2 が Keycloak の送出先を**クラスタ内の近接 MTA**（`deploy/mail-relay/`）へ固定し、
  *   秘匿値（実リレーの host/user/password）は relay 側の Secret へ移った。realm に残るのは
  *   クラスタ内の Service 名だけであり、**秘匿値は 1 つも無い**。宣言を正にすると、再起動・再インポート・
  *   本 Job のどれを経ても realm は relay を指す ＝ **状態 B（送出先未設定 ＋ 申請が開いている）が構造で作れなくなる。**
  *   宣言に無いキー（runbook が入れた `user` / `password`）は `merge` が live のまま残す（消さない）。
  *
- * ［2026-09-06 追記 / #1245 / IADR-0403］**`resetPasswordAllowed` は「条件つきで門が所有する」。**
+ * ［2026-09-06 追記 / #1245 / IADR-0404］**`resetPasswordAllowed` は「条件つきで門が所有する」。**
  *   ADR-0078 決定 4 の門（`reset-gate`。#1245 PR-C）が投函不能を検知して realm を閉じたとき、本 Job が
  *   それを drift とみなして開き直すと**門が無効になる**。そこで `GATE_OWNED_REALM_KEYS` を
  *   `RUNTIME_OWNED_REALM_KEYS` とは**別集合**として持ち、除外するのは
@@ -71,7 +71,7 @@ const REALM_COLLECTION_KEYS = new Set([
 ]);
 const REALM_IDENTITY_KEYS = new Set(['id', 'realm', 'keycloakVersion']);
 // 実行時が所有する realm のキー（＝宣言が触らない層）。**ここへ足すときは IADR-0369 の境界表も直す。**
-// ［2026-09-06 / #1245 / IADR-0403］`smtpServer` を外した（宣言所有へ移した。頭部の追記を参照）。
+// ［2026-09-06 / #1245 / IADR-0404］`smtpServer` を外した（宣言所有へ移した。頭部の追記を参照）。
 // **空集合である。** 集合そのものは残す —— 「realm のトップレベルに実行時所有のキーがあり得る」という
 // 境界の表明であり、次に足す人がここを見て IADR-0369 の境界表も直せるようにするためである。
 const RUNTIME_OWNED_REALM_KEYS = new Set([]);

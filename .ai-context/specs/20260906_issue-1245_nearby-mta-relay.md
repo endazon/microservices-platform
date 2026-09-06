@@ -156,7 +156,7 @@ scripts/keycloak-realm-reconcile.test.js:21 / :112
 
 ```console
 M-1（状態 B/C を書く追跡下ファイル）        : 着手前 5  → 着手後 11
-  ＋6 の内訳（新規 3 ＝ 本仕様書 / IADR-0403 / deploy/mail-relay/mail-relay.yaml、
+  ＋6 の内訳（新規 3 ＝ 本仕様書 / IADR-0404 / deploy/mail-relay/mail-relay.yaml、
               既存 3 ＝ .ai-context/adr/README.md（索引行）/ reconcile-realm.js（境界の追記）/ keycloak-realm-reconcile.test.js（試験の見出し））
 M-1 陽性対照（存在秘匿）                     : 着手前 211 → 着手後 213
 M-3（SMTP 設定の在り処）                     : 着手前 32 → 着手後 34 （＋2 ＝ deploy/mail-relay/{kustomization,mail-relay}.yaml）
@@ -250,7 +250,7 @@ env の三項演算は k8s に無いので、ConfigMap `mail-relay-init` の `/d
 - [x] `node scripts/keycloak-realm-reconcile.test.js` が **32 件 OK**（着手前 20 件 → ＋12）。変異 3 件を対で確かめた（下記「変異試験の記録」）
 - [x] runbook から送出先の `kcadm` PATCH（旧 §3 と compose 経路）が消え、送出先は宣言が正だと書かれている。**§0 の「先に閉じる」だけは `kcadm` のまま残る**（機械の門は PR-C。**その 1 箇所を人手に残していること自体が窓である**と本文に書いた）
 - [x] SC-15 画面仕様書に**変更後の 4 状態表**を足し、**残る窓 W1 / W1' / W2 を名前つきで残した**（「消えた」と書いていない）。実測していないことも明記した
-- [x] 実装 ADR（IADR-0403）を起こし、索引行を足した（**題目セル 183 文字 / 上限 200**）。`check-adr-numbering.js` 緑
+- [x] 実装 ADR（IADR-0404）を起こし、索引行を足した（**題目セル 183 文字 / 上限 200**）。`check-adr-numbering.js` 緑
 - [x] `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` が緑（最後の編集の後に実行）
 
 ### 変異試験の記録（実装を壊して、対の試験が赤くなることを確かめた）

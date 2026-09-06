@@ -17,6 +17,12 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <!-- NFR, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 1・2 / IADR-0395 /
+         [[IADR-0398]] 決定 7。受け口の入力検証は Features/ 側（Application 相当）で
+         AbstractValidator に写す。**Domain/ には入れない**（`check-backend-libraries.js` の
+         Domain 外部依存ゼロ規則）—— 検証器は Features/Notifications/Accept/ に置く。
+         版は書かない（CPM。src/Directory.Packages.props が単一情報源）。 -->
+    <PackageReference Include="FluentValidation" />
     <!-- NFR, 計画 ADR-0030 §決定（マッピング = Riok.Mapperly。選定基準 4「コンパイル時生成を優先」）
          / IADR-0371 決定 3 / IADR-0393。source generator であり、生成物は obj/ 配下に出るため
          カバレッジ集計からは既に落ちている（IADR-0195 決定 1）。版は書かない（CPM）。 -->

@@ -10,7 +10,7 @@
  *   2. 宣言層の差分は種類ごとに 1 件の操作になる（realm 設定 / requiredAction / role / scope / client / mapper /
  *      scope 割当 / group / seed 利用者 / サービスアカウント）。
  *   3. 実行時層には触れない: 既存の人間の利用者。宣言に無い余剰の実体も消さない。
- *      ［2026-09-06 追記 / #1245 / IADR-0403］**`smtpServer` は宣言所有へ移った**（近接 MTA へ固定。状態 B を構造で消す）。
+ *      ［2026-09-06 追記 / #1245 / IADR-0404］**`smtpServer` は宣言所有へ移った**（近接 MTA へ固定。状態 B を構造で消す）。
  *      **`resetPasswordAllowed` は条件つきの門所有**（宣言 true・稼働 false・`reset-gate.state=closed` の 1 組だけ除外）。
  *      🔴 逆向き（宣言 false・稼働 true）は drift のままであることを対で固定する。
  *   4. 前提が無い操作は deferred として数えられ、黙って消えない（check モードで drift になる）。
@@ -120,7 +120,7 @@ ok('realm 設定の差分（例: TOTP ポリシー・テーマ）は realm.updat
   assert.ok(/otpPolicyDigits/.test(ops[0].reason) && /loginTheme/.test(ops[0].reason), '理由に差分キーが無い');
 });
 
-// --- 2-b. smtpServer は宣言所有である（#1245 / ADR-0078 決定 2・IADR-0403）--------------
+// --- 2-b. smtpServer は宣言所有である（#1245 / ADR-0078 決定 2・IADR-0404）--------------
 //
 // 🔴 **状態 B（送出先未設定 ＋ 申請が開いている）を構造で作れなくするのが目的**である。
 //    宣言が正になったので、稼働側で送出先が消えても／外を向いても、本 Job が宣言（近接 MTA）へ戻す。
@@ -380,7 +380,7 @@ ok('既存の人間の利用者は宣言と違っても触らない（資格情�
   assert.deepStrictEqual(opsOf(REALM, live), []);
 });
 
-// ［2026-09-06 / #1245 / ADR-0078 決定 2・IADR-0403］**旧: 「smtpServer が宣言と違っても触らない」**
+// ［2026-09-06 / #1245 / ADR-0078 決定 2・IADR-0404］**旧: 「smtpServer が宣言と違っても触らない」**
 // （IADR-0261 決定 2 の実行時所有）を**反転させた**。送出先は近接 MTA（クラスタ内の Service 名）へ固定され、
 // 秘匿値は relay 側の Secret へ移ったので、realm 側は宣言が正である。差分は当てて宣言へ戻す。
 ok('smtpServer が宣言と違えば宣言（近接 MTA）へ戻す —— 実行時所有ではない（#1245 で反転）', () => {

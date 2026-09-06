@@ -605,7 +605,7 @@ function checkRealmThemeText(text, reader, themeRoot = THEME_ROOT) {
 //   (2) Vault seed の `SMTP_HOST` 既定（ESO 経路。IADR-0332 で起動器から常時 apply される）
 //       ＝ **近接 MTA → 上流** の区間。dev ではここが捕捉用 MTA を指す
 //
-// ［2026-09-06 / #1245 / ADR-0078 決定 2・IADR-0403］**(1) の期待値を近接 MTA へ付け替えた。**
+// ［2026-09-06 / #1245 / ADR-0078 決定 2・IADR-0404］**(1) の期待値を近接 MTA へ付け替えた。**
 // ADR-0078 決定 2 は go-live の送出経路を「Keycloak → 外部リレー直結」から
 // 「Keycloak → クラスタ内の**近接 MTA（キュー付き）** → 外部リレー」へ改めた。Keycloak が直接指すのは
 // 近接 MTA であり、**捕捉用 MTA は近接 MTA の上流へ 1 ホップ後退した**。
