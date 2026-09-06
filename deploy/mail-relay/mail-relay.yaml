@@ -68,8 +68,11 @@ spec:
             # user / password が空なら SASL は有効化されない（dev の捕捉箱宛はこちら）。
             - { name: RELAYHOST_USERNAME, valueFrom: { secretKeyRef: { name: keycloak-smtp, key: user } } }
             - { name: RELAYHOST_PASSWORD, valueFrom: { secretKeyRef: { name: keycloak-smtp, key: password } } }
-            # 差出人ドメインは realm の from（合成値）に固定する。外れた差出人は 554 で拒否される
-            # ——それは**投函できない状態**であり、門（#1245 PR-C）が検知して申請を閉じる対象である。
+            # 差出人ドメインは realm の from（合成値）に固定する。外れた差出人は拒否される想定であり、
+            # それは**投函できない状態**＝門（#1245 PR-C）が検知して申請を閉じる対象である。
+            # 🔴 **未確認**（IADR-0404 の U11）——「`smtpd_sender_restrictions` へ反映され 554 で拒まれる」ことは
+            #    上流イメージのソースで確かめていない。**W2（relay が投函を拒む）の検知はこの前提に依存する。**
+            #    確かめるまで、拒否コードを断定した書き方をしない。
             - { name: ALLOWED_SENDER_DOMAINS, value: "platform.localhost" }
             # 🔴 キュー寿命は**リセットリンクの寿命**に合わせる。realm の actionTokenGeneratedByUserLifespan は
             #    1800 秒であり、既定の 5 日では**期限切れのリンクを 5 日間配り続ける**。
