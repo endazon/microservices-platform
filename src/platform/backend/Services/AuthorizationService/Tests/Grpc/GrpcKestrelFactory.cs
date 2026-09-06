@@ -12,7 +12,7 @@ using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 
-namespace AuthorizationService.Tests.Features.Authz.ResolveScope;
+namespace AuthorizationService.Tests.Grpc;
 
 // FR-05, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 (#1201): gRPC 参照実装の器。
 //

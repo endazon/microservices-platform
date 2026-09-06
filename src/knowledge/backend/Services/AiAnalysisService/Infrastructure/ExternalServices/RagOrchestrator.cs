@@ -3,6 +3,7 @@ using AiAnalysisService.Domain.Ports;
 using Knowledge.Contracts.Dtos;
 using Microsoft.Extensions.Options;
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Observability;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
@@ -29,18 +30,32 @@ namespace AiAnalysisService.Infrastructure.ExternalServices;
 // **既定 null は REST 輸送**（`httpFactory` から組む）であり、既存テストの直接構築
 // （`new RagOrchestrator(factory)`）は 1 つも変わらない —— DI 経由では Program.cs が
 // `Services:LlmGatewayGrpc` の有無で gRPC 実装を差し込む。**並走中の正は REST である。**
+// FR-05, NFR-09, ADR-0029, ADR-0075, [[IADR-0379]], [[IADR-0401]] (#1255): `authzScopeGrpc` は
+// ABAC スコープ解決の east-west gRPC 経路。**既定 null は REST 経路**であり、既存テストの直接構築
+// （`new RagOrchestrator(factory)`）は 1 つも変わらない —— DI 経由では
+// `Services:AuthorizationServiceGrpc` が構成されたときだけ `AuthzScopeGrpcClient` が登録され、
+// 在れば gRPC で解決する（`BffScopeResolver` と同じ形）。**並走中の正は REST である。**
+// 🔴 利用者の JWT はメタデータへ載せない —— 載せるのは本サービス自身の s2s トークンであり、
+// 利用者の文脈（userId / 属性 / action）は**本文**で運ぶ（docs/api/east-west-grpc.md §4）。
 public class RagOrchestrator(
     IHttpClientFactory httpFactory,
     IHttpContextAccessor? httpContextAccessor = null,
     ILogger<RagOrchestrator>? logger = null,
     IOptions<SyntheticMonitoringOptions>? syntheticOptions = null,
-    ILlmCompletionTransport? completionTransport = null) : IRagOrchestrator
+    ILlmCompletionTransport? completionTransport = null,
+    AuthzScopeGrpcClient? authzScopeGrpc = null) : IRagOrchestrator
 {
     private readonly ILlmCompletionTransport _llm =
         completionTransport ?? new HttpLlmCompletionTransport(httpFactory);
 
     // FR-04: 質問回答で文脈に取り込む既定チャンク数。
     private const int DefaultAskTopK = 5;
+
+    // FR-05, [[IADR-0272]] 決定 4, [[IADR-0401]] 決定 1 (#1255): 本サービスが解決するアクション。
+    // 読み取り経路（質問回答・分析）しか持たないので read である。REST 側は
+    // `AccessScopeRequest.Action` の既定値に頼っているが、**gRPC 側では明示して渡す**
+    // （proto3 の空文字も呼び出し先が read へ写すが、既定への依存を輸送ごとに隠さない）。
+    private const string ScopeAction = "read";
 
     // FR-11, IADR-0111 (#403): 「モデル未使用（AI へ送信していない）」を表す応答契約上の値。
     // モデル名を決めてよいのは実際に route を行った LlmGateway だけであり、呼び出し側は運び手に徹する。
@@ -287,9 +302,24 @@ public class RagOrchestrator(
     }
 
     // FR-05: ABAC スコープ解決。解決失敗時も deny-by-default（Granted=false）へ縮退する。
+    //
+    // FR-05, NFR-09, ADR-0029, ADR-0075, [[IADR-0379]] 決定 5, [[IADR-0401]] 決定 1 (#1255):
+    // **gRPC 経路との並走。** `AuthzScopeGrpcClient` が DI に在れば gRPC で解決し、無ければ従来どおり
+    // REST で解決する（`BffScopeResolver.ResolveAsync` と同じ形）。**並走中の正は REST**（gRPC は opt-in）。
+    // どちらの経路も同じ deny-by-default（`Granted=false`）へ縮退する ——
+    // gRPC 側は `RpcException`（全 status）と s2s トークン取得失敗を、REST 側は非 2xx と不達を、
+    // それぞれ `new AccessScopeResponse(userId, [], false)` へ落とす（枝を増やさない）。
+    //
+    // 🔴 action は現行と同じ **read**（`AccessScopeRequest.Action` の既定値）である。
+    // REST 側は既定引数に頼っているが、gRPC 側は `PolicyAction.Read` を**明示して**渡す ——
+    // 空文字を送ると呼び出し先が read へ写す（同じ結果になる）が、
+    // 「既定に頼っている」ことが両輸送で見えなくなるからである。
     private async Task<AccessScopeResponse> ResolveScopeAsync(string userId,
         Dictionary<string, string> userAttributes, CancellationToken ct)
     {
+        if (authzScopeGrpc is not null)
+            return await authzScopeGrpc.ResolveScopeAsync(userId, userAttributes, ScopeAction, ct);
+
         var authzClient = httpFactory.CreateClient("AuthorizationService");
         try
         {

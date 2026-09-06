@@ -295,6 +295,16 @@ services:
       # FR-05, UC-04, SC-06, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証の後段
       # （AuthorizationService の /authz/users。SC-17 側の `view-users` を持つ経路）。
       Services__AuthorizationService: http://authorization-service:8080
+      # FR-05 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0401 (#1255): east-west gRPC。
+      # **`Services__AuthorizationServiceGrpc` が在るときだけ**実在検証が gRPC 経路になる
+      # （無ければ REST のまま。並走中の正は REST であり、戻すのはこの 1 行を消すだけでよい）。
+      # 🔴 gRPC 経路は**利用者トークンを転送しない** —— 呼び出し先の読み口が
+      # 「これらの名前は実在するか」へ狭めてあり、名簿の列挙は s2s の面に無い。
+      Services__AuthorizationServiceGrpc: http://authorization-service:8081
+      # s2s トークン（呼び出し側サービス自身の資格情報）。dev の値は realm import の置き場と同値
+      # （ズレると client_credentials が 401）。本番は Secret / Vault から注入し既定値は使わない。
+      ServiceToken__ClientId: datasource-service
+      ServiceToken__ClientSecret: ${DATASOURCE_SERVICE_CLIENT_SECRET:-datasource-service-dev-secret-change-me}
     depends_on:
       postgres:
         condition: service_healthy
@@ -417,6 +427,10 @@ services:
       # （ズレると client_credentials が 401）。本番は Secret / Vault から注入し既定値は使わない。
       ServiceToken__ClientId: aianalysis-service
       ServiceToken__ClientSecret: ${AIANALYSIS_SERVICE_CLIENT_SECRET:-aianalysis-service-dev-secret-change-me}
+      # FR-04 / FR-05, IADR-0401 (#1255): ABAC スコープ解決の gRPC 宛先。**これが在るときだけ**
+      # スコープ解決が gRPC 経路になる。資格情報は上の ServiceToken を**そのまま使う**
+      # （1 サービス 1 主体。呼び出し先ごとに主体を割らない）。
+      Services__AuthorizationServiceGrpc: http://authorization-service:8081
     depends_on:
       - authorization-service
       - retrieval-service
@@ -506,6 +520,15 @@ services:
       # FR-05 / IADR-0089 / #958: ABAC の許可スコープ解決（POST /authz/scope）の宛先。
       # コード既定は :5005 だが authorization-service が開けているのは 8080 だけである。
       Services__AuthorizationService: http://authorization-service:8080
+      # FR-13 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0401 (#1255): east-west gRPC。
+      # **`Services__AuthorizationServiceGrpc` が在るときだけ**閲覧のスコープ解決が gRPC 経路になる
+      # （無ければ REST のまま。並走中の正は REST であり、戻すのはこの 1 行を消すだけでよい）。
+      # 🔴 未認証の短絡は輸送の手前にあるので、gRPC でも匿名では 1 度も呼ばない。
+      Services__AuthorizationServiceGrpc: http://authorization-service:8081
+      # s2s トークン（呼び出し側サービス自身の資格情報）。dev の値は realm import の置き場と同値
+      # （ズレると client_credentials が 401）。本番は Secret / Vault から注入し既定値は使わない。
+      ServiceToken__ClientId: wiki-service
+      ServiceToken__ClientSecret: ${WIKI_SERVICE_CLIENT_SECRET:-wiki-service-dev-secret-change-me}
       WikiJs__GraphQlEndpoint: http://wiki-js:3000/graphql
       WikiJs__ApiKey: ${WIKIJS_API_KEY:-}
     depends_on:
@@ -663,6 +686,10 @@ services:
       # （ズレると client_credentials が 401）。本番は Secret / Vault から注入し既定値は使わない。
       ServiceToken__ClientId: graph-service
       ServiceToken__ClientSecret: ${GRAPH_SERVICE_CLIENT_SECRET:-graph-service-dev-secret-change-me}
+      # FR-17 / FR-05, IADR-0401 (#1255): ABAC スコープ解決の gRPC 宛先。**これが在るときだけ**
+      # 探索のスコープ解決が gRPC 経路になる。資格情報は上の ServiceToken を**そのまま使う**
+      # （1 サービス 1 主体。呼び出し先ごとに主体を割らない）。
+      Services__AuthorizationServiceGrpc: http://authorization-service:8081
     depends_on:
       postgres:
         condition: service_healthy
@@ -896,6 +923,16 @@ services:
       # 上と同じ理由で明示する（既定へ黙って寄りかからない）。authorization-service が開けているのは
       # :8080 だけであり、コード既定の :5005 は古い（他サービスの同キーと同じ落とし穴）。
       Services__AuthorizationService: http://authorization-service:8080
+      # FR-16 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0401 (#1255): east-west gRPC。
+      # **`Services__AuthorizationServiceGrpc` が在るときだけ**登録者の属性解決が gRPC 経路になる
+      # （無ければ REST のまま。並走中の正は REST であり、戻すのはこの 1 行を消すだけでよい）。
+      # 🔴 gRPC 経路は**利用者トークンを転送しない** —— 呼び出し先の読み口が
+      # 「この 1 人の属性は何か」へ狭めてあり、名簿の列挙は s2s の面に無い。
+      Services__AuthorizationServiceGrpc: http://authorization-service:8081
+      # s2s トークン（呼び出し側サービス自身の資格情報）。dev の値は realm import の置き場と同値
+      # （ズレると client_credentials が 401）。本番は Secret / Vault から注入し既定値は使わない。
+      ServiceToken__ClientId: mcp-server
+      ServiceToken__ClientSecret: ${MCP_SERVER_CLIENT_SECRET:-mcp-server-dev-secret-change-me}
     # 🔴 認可サービスは `depends_on` へ足さない。判定は deny 側へ倒れる（解決できなければ属性を
     # 配らない）ので起動順を強制する必要が無く、強制すると自己申告の収集先 3 サービスと扱いが
     # 食い違う（それらも `depends_on` に無い）。

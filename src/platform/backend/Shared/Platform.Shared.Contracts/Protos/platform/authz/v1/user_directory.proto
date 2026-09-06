@@ -1,0 +1,59 @@
+// FR-05, FR-16, UC-04, UC-09, SC-06, SC-12, NFR-09, ADR-0004, ADR-0029, ADR-0062, ADR-0064, ADR-0074, ADR-0075,
+// IADR-0329, IADR-0379, IADR-0384, IADR-0385, IADR-0397, IADR-0400, IADR-0401 (#1255):
+// 基盤の利用者名簿の**狭い読み口**。REST `GET /authz/users`（AdminOnly・全件列挙）を写したものではない。
+//
+// ■ なぜ列挙を出さないか（IADR-0401 決定 2）
+//   REST の 2 呼び出し元（DataSourceService の所有者写像の実在検証・McpServer の登録者属性の解決）は
+//   利用者の Authorization を転送して AdminOnly の列挙を通していた。east-west の面には利用者トークンを
+//   載せない（IADR-0379 決定 4）ため、**呼び出し元が実際に要る問い（「この利用者名は実在するか」
+//   「この 1 人の属性は何か」）だけ**を s2s の面へ出す。列挙・書き込みは出さない。
+// ■ 後段は引き続き IIdentityAdminClient（`identity-admin`。IADR-0329 決定 1）であり、
+//   `view-users` を持つ主体は 1 つのまま。
+// ■ 🔴 属性の線上表現は REST の PlatformUserDto.Attributes と同じ（1 キー 1 値・集合値キーはカンマ連結。
+//   IADR-0385 決定 2）。map<string,string> を repeated へ変えてはならない（IADR-0385 が (d) を退けた）。
+// ■ 🔴「居ない」と「引けなかった」を分ける: 居ないのは応答（exists=false / found=false）、
+//   引けなかったのは gRPC status（UNAVAILABLE 等）。呼び出し側は後者だけを Unavailable へ倒す。
+syntax = "proto3";
+
+package platform.authz.v1;
+
+option csharp_namespace = "Platform.Shared.Contracts.Grpc.Authz.V1";
+
+// 利用者名簿の狭い読み口。ServiceCaller（platform-service）を要求する。
+service UserDirectory {
+  // 利用者名（preferred_username）の実在を返す。無効化された利用者も実在として数える
+  // （ADR-0074 決定 4 が課すのは「実在」であって「有効」ではない）。
+  // 照合は序数一致（DataSourceService の現行 PlatformUserDirectorySnapshot と同じ）。
+  rpc CheckUsernames(CheckUsernamesRequest) returns (CheckUsernamesResponse);
+
+  // 1 人の ABAC 属性を返す。照合は大小文字無視（McpServer の現行 FindRegistrarAsync と同じ）。
+  // ロール・有効状態・内部 ID は返さない（呼び出し元が使わないものを面へ出さない）。
+  rpc GetUserAttributes(GetUserAttributesRequest) returns (GetUserAttributesResponse);
+}
+
+message CheckUsernamesRequest {
+  repeated string usernames = 1;
+}
+
+message UsernameExistence {
+  string username = 1;
+  bool exists = 2;
+}
+
+message CheckUsernamesResponse {
+  // 要求の usernames と同じ順・同じ数。
+  repeated UsernameExistence results = 1;
+}
+
+message GetUserAttributesRequest {
+  string username = 1;
+}
+
+message GetUserAttributesResponse {
+  // false は「名簿に居ない」（エラーではない）。
+  bool found = 1;
+  // 名簿側の正準表記。
+  string username = 2;
+  // ABAC 属性（clearance / department / tags ほか）。集合値キーはカンマ連結（UserAttributeEncoding）。
+  map<string, string> attributes = 3;
+}

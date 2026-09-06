@@ -1,6 +1,7 @@
 using AuthorizationService.Features.Authz;
 using AuthorizationService.Features.Authz.ResolveScope;
 using AuthorizationService.Features.Users;
+using AuthorizationService.Features.Users.Directory;
 using AuthorizationService.Infrastructure.ExternalServices;
 using AuthorizationService.Infrastructure.Persistence;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
@@ -71,6 +72,12 @@ app.MapAuthzEndpoints();
 // FR-05, ADR-0029, ADR-0075, IADR-0379 (#1201): `/authz/scope` の gRPC 面（参照実装）。REST と同じ評価器を呼ぶ。
 // 呼び出し側サービスの資格情報（ServiceCaller ポリシー）を要求する —— 利用者のトークンでは通らない。
 app.MapGrpcService<AuthzScopeGrpcService>();
+// FR-05, FR-16, UC-04, UC-09, SC-06, SC-12, ADR-0029, ADR-0075, IADR-0401 (#1255): 利用者名簿の
+// **s2s 向けの狭い読み口**（`CheckUsernames` / `GetUserAttributes`）。
+// 🔴 **REST の `/authz/users`（AdminOnly・全件列挙）を写したものではない** —— 列挙と書き込みは
+// この面に出さない。呼び出し元（DataSourceService / McpServer）が利用者トークンを転送していた
+// 経路を、転送ではなく読み口を狭めることで置き換える（IADR-0401 決定 2）。
+app.MapGrpcService<UserDirectoryGrpcService>();
 // FR-05, FR-09, UC-05, SC-17: 利用者アカウント管理（AdminOnly）。
 app.MapUserAdminEndpoints();
 

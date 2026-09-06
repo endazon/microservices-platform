@@ -30,7 +30,13 @@ internal static class OwnerMappingValidation
         var normalized = OwnerMappingTable.Normalize(ownerMappings);
         if (normalized.Count == 0) return null;
 
-        var snapshot = await directory.ListUsernamesAsync(ct);
+        // [[IADR-0401]] 決定 3 (#1255): 名簿は**列挙せず照会する**。送るのは「この要求が写像先として
+        // 指している利用者名」だけであり、名簿の全件は要らない（口を問いの形へ狭めた理由）。
+        // 🔴 比較子は `StringComparer.Ordinal` —— `OwnerMappingTable.ValidateTargetsExist` の
+        // 突き合わせと**同じ**でなければ、大小文字違いが照会では実在・判定では不在に割れる。
+        var targets = new HashSet<string>(
+            normalized.Values.Select(v => v.Trim()).Where(v => v.Length > 0), StringComparer.Ordinal);
+        var snapshot = await directory.LookupAsync(targets, ct);
         if (!snapshot.Available)
             // 🔴 **502 であって 400 ではない。** 「確かめられなかった」を「存在しない」と
             // 報告するのは嘘である。保存しない点は同じなので安全側は変わらない。

@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Contracts.Grpc.Authz.V1;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using AuthorizationService.Tests.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
 
 namespace AuthorizationService.Tests.Features.Authz.ResolveScope;
@@ -21,8 +22,15 @@ namespace AuthorizationService.Tests.Features.Authz.ResolveScope;
 //
 // 陽性対照（T-01）と陰性対照（T-03 / T-04 / T-05）を同じ器で対にする —— 「拒否された」だけでは
 // 器が壊れているのか認可が効いているのか区別できない。
+//
+// [[IADR-0401]] (#1255): 🔴 **器は `GrpcServerCollection` が持つ（`IClassFixture` ではない）。**
+// `GrpcTestConfiguration` は h2c ポートを**プロセスで 1 つだけ**選ぶため、gRPC のテストクラスが
+// 2 つ以上になると器をクラスごとに作れない（2 つ目の Kestrel が同じポートへ bind できない）。
+// 名簿の面（`UserDirectory`）が増えたので、器の共有と直列化を同じコレクションで満たす
+// （LlmGateway の `SharedMeterCollection` と同型）。
+[Collection(GrpcServerCollection.Name)]
 [Trait("TestKind", "Integration")]
-public class GrpcResolveScopeTests : IClassFixture<GrpcKestrelFactory>
+public class GrpcResolveScopeTests
 {
     private const string ServiceSubject = "service-account-bff";
     private readonly GrpcKestrelFactory _factory;

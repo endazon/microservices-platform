@@ -7,6 +7,7 @@ using DataSourceService.Infrastructure.Persistence;
 using DataSourceService.Domain.Ports;
 using DataSourceService.Domain;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
@@ -89,10 +90,23 @@ builder.Services.AddHttpClient(
     DataSourceService.Infrastructure.ExternalServices.AuthorizationServiceUserDirectory.HttpClientName,
     c => c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
         ?? "http://authorization-service:8080"));
-// 呼び出し元の Authorization を後段へ転送するために要る（サービス専用の資格情報を新設しない）。
+// 呼び出し元の Authorization を後段へ転送するために要る（REST 実装のみ。下の gRPC 実装は転送しない）。
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<IPlatformUserDirectory,
-    DataSourceService.Infrastructure.ExternalServices.AuthorizationServiceUserDirectory>();
+
+// FR-05, UC-04, SC-06, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4・5, IADR-0401 決定 2・3 (#1255):
+// 写像先の実在検証の輸送。**並走中の正は REST である。**
+// `Services:AuthorizationServiceGrpc`（h2c のアドレス）が構成されたときだけ gRPC 実装を使う。
+//
+// 🔴 **gRPC 実装は利用者トークンを転送しない。** 代わりに呼び出し先の読み口を
+// 「これらの名前は実在するか」へ狭めてある（`UserDirectory/CheckUsernames`）——
+// 列挙も書き込みも s2s の面に無いので、SC-06 を触れない主体が名簿を引ける経路はできない。
+builder.Services.AddUserDirectoryGrpcClient(builder.Configuration);
+if (!string.IsNullOrWhiteSpace(builder.Configuration[AuthzScopeGrpcClient.AddressKey]))
+    builder.Services.AddScoped<IPlatformUserDirectory,
+        DataSourceService.Infrastructure.ExternalServices.GrpcPlatformUserDirectory>();
+else
+    builder.Services.AddScoped<IPlatformUserDirectory,
+        DataSourceService.Infrastructure.ExternalServices.AuthorizationServiceUserDirectory>();
 
 // FR-01, UC-04, IADR-0051: 実データソースコネクタと同期基盤。
 // オブジェクトストレージ（原本格納。未設定時は Null クライアントで縮退）。

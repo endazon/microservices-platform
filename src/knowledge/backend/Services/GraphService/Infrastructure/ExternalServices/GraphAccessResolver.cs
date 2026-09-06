@@ -1,5 +1,6 @@
 using GraphService.Domain.Ports;
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 using System.Net.Http.Json;
 
 namespace GraphService.Infrastructure.ExternalServices;
@@ -20,13 +21,26 @@ namespace GraphService.Infrastructure.ExternalServices;
 // 「キャッシュキーに利用者スコープを含める」ことのみ確定しており、ADR-0036 D-14 も
 // 「キャッシュキーは必ず subject を含む —— 省くと他人の認可結果が漏れる」と定めている。
 // 導入する場合はその制約に従うこと（本単位では導入しない）。
-public class GraphAccessResolver(IHttpClientFactory httpFactory) : IGraphAccessResolver
+// FR-17, FR-05, NFR-09, ADR-0029, ADR-0075, [[IADR-0379]] 決定 5, [[IADR-0401]] 決定 1 (#1255):
+// **gRPC 経路との並走。** `Services:AuthorizationServiceGrpc` が構成されて `AuthzScopeGrpcClient` が
+// DI に在れば gRPC で解決し、無ければ従来どおり REST で解決する。**並走中の正は REST**（gRPC は opt-in）。
+// どちらの経路も同じ deny-by-default（`Granted=false`）へ縮退する。
+// 🔴 利用者の JWT はメタデータへ載せない —— 載せるのは本サービス自身の s2s トークンであり、
+// 利用者の文脈（userId / 属性 / **action**）は本文で運ぶ（docs/api/east-west-grpc.md §4）。
+// **`action` は既定値を持たない引数のまま gRPC へも明示して渡す**（[[IADR-0272]] 決定 4）。
+// 既定 null は既存テストの直接構築（`new GraphAccessResolver(factory)`）を壊さないためである。
+public class GraphAccessResolver(
+    IHttpClientFactory httpFactory,
+    AuthzScopeGrpcClient? authzScopeGrpc = null) : IGraphAccessResolver
 {
     public async Task<AccessScopeResponse> ResolveAsync(
         HttpContext ctx, string action, CancellationToken ct = default)
     {
         var userId = ctx.User.Identity?.Name ?? "anonymous";
         var userAttrs = ExtractUserAttributes(ctx);
+
+        if (authzScopeGrpc is not null)
+            return await authzScopeGrpc.ResolveScopeAsync(userId, userAttrs, action, ct);
 
         var authzClient = httpFactory.CreateClient("AuthorizationService");
         try

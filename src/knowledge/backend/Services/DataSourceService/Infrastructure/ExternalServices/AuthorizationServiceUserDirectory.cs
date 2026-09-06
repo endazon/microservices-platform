@@ -5,7 +5,7 @@ using Platform.Shared.Contracts.Dtos;
 namespace DataSourceService.Infrastructure.ExternalServices;
 
 // FR-05, UC-04, SC-06, SC-17, ADR-0064 決定 4, ADR-0074 決定 4 (#1194):
-// AuthorizationService の `GET /authz/users` を叩いて基盤の利用者名簿を得る。
+// AuthorizationService の `GET /authz/users` を叩いて基盤の利用者名簿を得る（**REST 実装**）。
 //
 // ■ 経路
 //   DataSourceService →（HTTP）→ AuthorizationService →（`IIdentityAdminClient`）→ Keycloak Admin API。
@@ -20,6 +20,14 @@ namespace DataSourceService.Infrastructure.ExternalServices;
 //   BFF セッション方式では `SessionTokenPropagationMiddleware` が Bearer を立て、
 //   `DataSourceBffEndpoints.CreateForwardingClient` が後段へ引き継いでいる（ADR-0032 / IADR-0251）。
 //
+//   ［2026-09-06 追記 / #1255・[[IADR-0401]] 決定 2］🔴 **この転送は REST 実装だけの性質である。**
+//   east-west gRPC の面へは利用者トークンを載せない（[[IADR-0379]] 決定 4 /
+//   `docs/api/east-west-grpc.md` §4）。gRPC 実装（`GrpcPlatformUserDirectory`）は転送せず、
+//   **呼び出し先の読み口を「これらの名前は実在するか」に狭めること**で同じ答えを得る ——
+//   上の「新設すると SC-06 を触れない主体が名簿を引ける経路ができる」という懸念は、
+//   **列挙を s2s の面へ出さない**ことで満たされる（名簿は引けない）。
+//   人の側の門（Create / Update / Patch / Disable の `AdminOnly`）は本サービスの端点に残る。
+//
 // ■ 縮退
 //   非 2xx・不達はいずれも `Unavailable`（＝「引けなかった」）へ倒す。**空集合と混ぜない** ——
 //   混ぜると認可サービスの障害が「その利用者は存在しません」という嘘の理由になる。
@@ -30,7 +38,11 @@ public sealed class AuthorizationServiceUserDirectory(
 {
     public const string HttpClientName = "AuthorizationService";
 
-    public async Task<PlatformUserDirectorySnapshot> ListUsernamesAsync(CancellationToken ct)
+    // [[IADR-0401]] 決定 3 (#1255): 口が「照会」になったので、**列挙してから交差する**。
+    // 🔴 **挙動は 1 バイトも変わらない** —— 呼び出し元（`OwnerMappingValidation`）は
+    // 従前も全件の名簿に対して `Contains` を引いており、交差を先に取っても答えは同じである。
+    public async Task<PlatformUserDirectorySnapshot> LookupAsync(
+        IReadOnlySet<string> usernames, CancellationToken ct)
     {
         var client = httpFactory.CreateClient(HttpClientName);
 
@@ -58,8 +70,12 @@ public sealed class AuthorizationServiceUserDirectory(
             //
             // **無効化された利用者も名簿に含める。** ADR-0074 決定 4 が課すのは「実在すること」で
             // あり、有効であることではない（退職者が所有者だった文書は所有者を失わない）。
+            //
+            // 🔴 **交差は序数一致である**（`usernames` は呼び出し元が `StringComparer.Ordinal` で
+            // 組んだ集合。`PlatformUserDirectorySnapshot.Of` も同じ比較子で畳む）。
             return PlatformUserDirectorySnapshot.Of(
-                users.Select(u => u.Username).Where(u => !string.IsNullOrWhiteSpace(u)));
+                users.Select(u => u.Username)
+                    .Where(u => !string.IsNullOrWhiteSpace(u) && usernames.Contains(u)));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
