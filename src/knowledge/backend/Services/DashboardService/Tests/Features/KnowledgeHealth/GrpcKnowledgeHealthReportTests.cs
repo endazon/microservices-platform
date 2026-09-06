@@ -169,6 +169,24 @@ public class GrpcKnowledgeHealthReportTests
         ex.Status.Detail.Should().Be(ReportKnowledgeHealthValidator.ThresholdInvalidMessage);
     }
 
+    // T-06（多重違反）: IADR-0371 決定 2 / IADR-0393 決定 3 / [[IADR-0409]] (#1230):
+    // 🔴 **宣言順の契約は 2 つの輸送で同じでなければならない。**
+    // REST 側の対（`KnowledgeHealthEndpointTests.指標としきい値が同時に不正でも最初の規則の本文が返る`）
+    // と同じ要求を gRPC で送る —— **`ReportKnowledgeHealthUseCase` が 1 本だから同じ**という
+    // [[IADR-0408]] の主張を、実際に測る側から固定する。
+    // 片方の輸送だけで写像が変わる退行は、REST のテストだけでは捕まらない。
+    [Fact]
+    public async Task Multiple_violations_report_the_first_rule_in_both_transports()
+    {
+        var act = async () => await PlainClient().ReportAsync(
+            new ReportRequest { Indicator = "made-up-indicator", ThresholdDays = 0 },
+            headers: Bearer(ServiceToken()), cancellationToken: TestContext.Current.CancellationToken);
+
+        var ex = (await act.Should().ThrowAsync<RpcException>()).Which;
+        ex.StatusCode.Should().Be(StatusCode.InvalidArgument);
+        ex.Status.Detail.Should().Be(ReportKnowledgeHealthValidator.IndicatorInvalidMessage);
+    }
+
     // T-04: 陰性対照。資格情報が無ければ UNAUTHENTICATED。
     [Fact]
     public async Task Report_without_credentials_is_unauthenticated()
