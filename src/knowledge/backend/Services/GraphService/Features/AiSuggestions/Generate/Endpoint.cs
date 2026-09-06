@@ -42,7 +42,7 @@ internal static class GenerateAiSuggestionsEndpoint
             foreach (var c in created)
             {
                 var ends = await AiSuggestionEndpoints.ResolveEndpointsAsync(c, scope, db, ct);
-                dtos.Add(AiSuggestionEndpoints.ToDto(c, ends.SourceTitle, ends.TargetTitle));
+                dtos.Add(AiSuggestionMapper.ToDto(c, ends.SourceTitle, ends.TargetTitle));
             }
             return Results.Ok(dtos);
         }).WithName("GenerateAiSuggestions").Produces<List<AiSuggestionDto>>();

@@ -5,7 +5,6 @@ using GraphService.Features.AiSuggestions.List;
 using GraphService.Features.AiSuggestions.Reject;
 using System.Security.Claims;
 using GraphService.Infrastructure.Persistence;
-using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
@@ -15,7 +14,10 @@ namespace GraphService.Features.AiSuggestions;
 //
 // ADR-0065 決定 2: 各ユースケースの実体は `Features/AiSuggestions/<操作>/` に居る。
 // **ここに残すのは、操作をまたいで共有されるもの**だけである —— route group、
-// 状態フィルタの解除値、404 の生成点、端点解決（可視性 ＋ 表示名）、write 判定、DTO 変換。
+// 状態フィルタの解除値、404 の生成点、端点解決（可視性 ＋ 表示名）、write 判定。
+//
+// **［#1279］DTO 変換はここに無い。** `AiSuggestionMapper`（同フォルダ）が持つ生成マッパへ移した
+// （計画 ADR-0030 §決定 / IADR-0405）。**置き場は変わっていない** —— 4 操作が使うので 2 段目のままである。
 //
 // 🔴 **一括承認の口を置かない。** FR-18 と SC-21「描いてはいけないもの」が明示的に禁じている。
 // 理由は「タイトルだけを見て機械的に承認する運用に落ちる」であり、承認は両端の文書の内容を
@@ -116,11 +118,4 @@ public static class AiSuggestionEndpoints
         return await db.Documents.AsNoTracking()
             .AnyAsync(d => d.DocumentId == s.SourceDocumentId, ct);
     }
-
-    internal static AiSuggestionDto ToDto(
-        AiSuggestion s, string sourceTitle, string? targetTitle, bool canDecide = false)
-        => new(
-            s.Id, s.Kind, s.SourceDocumentId, s.TargetDocumentId, s.EdgeTypeId, s.TagValue,
-            s.Rationale, s.State, s.RejectedCount, s.ReinstatedReason, sourceTitle, targetTitle,
-            canDecide);
 }

@@ -60,6 +60,15 @@ public class InMemoryVectorStore : IVectorStore
     // `SearchResultDto.Text` は `DocumentBodyPresence.Excerpt` を通して**本文なしの点では空**にする。
     // ここを素朴に `c.Text` で埋めると、**テストは緑のまま本番だけが正しい**（あるいはその逆の）
     // 状態になる —— [[IADR-0014]] が ABAC 属性で、#642 がタグで踏んだのと同型である。
+    // 🔴 **［#1279］ここは Riok.Mapperly へ移さない**（計画 ADR-0030 §決定 / IADR-0405 決定 8 理由 E）。
+    // 理由は 2 つで、**上のコメントが宣言している不変条件そのもの**が主である ——
+    //   E: 射影の相手（`QdrantVectorStore.MapPayload`）は `IReadOnlyDictionary<string, Value>` から
+    //      キーごとに引いて型を判定しながら組み立てており、**Mapperly では書けない**。
+    //      片側だけ器を替えると「両者が同じ射影を通す」保証が 1 つの読み比べで確かめられなくなる。
+    //   A: `Text` は 2 メンバの導出（`Excerpt(c.Text, c.HasBody)`）であり、材料ではなく導出の指示である
+    //      （`MapPropertyFromSource` で書けはするが、それは導出を `[Mapper]` の中へ戻すことである）。
+    // 置き場の規則も先に決めてある: 移すとしても写像は **Infrastructure に置く**
+    //（`check-unit-dependencies.js` 規則 3-③ が Infrastructure → Features を禁じる。Domain へも置かない）。
     private static SearchResultDto ToResult(ChunkPayload c, float score) =>
         new(c.ChunkId, c.DocumentId, c.DocumentTitle,
             DocumentBodyPresence.Excerpt(c.Text, c.HasBody), score, c.MarkdownUri,

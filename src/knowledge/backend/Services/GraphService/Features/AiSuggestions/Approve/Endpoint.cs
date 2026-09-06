@@ -91,7 +91,7 @@ internal static class ApproveAiSuggestionEndpoint
             }
 
             await db.SaveChangesAsync(ct);
-            return Results.Ok(AiSuggestionEndpoints.ToDto(
+            return Results.Ok(AiSuggestionMapper.ToDto(
                 suggestion, ends.SourceTitle, ends.TargetTitle, canDecide: true));
         }).WithName("ApproveAiSuggestion").Produces<AiSuggestionDto>();
     }
