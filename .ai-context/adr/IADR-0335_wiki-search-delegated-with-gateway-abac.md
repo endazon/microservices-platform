@@ -22,7 +22,7 @@ related_ids:
   - IADR-0256
 author: claude
 created: 2026-09-02
-updated: 2026-09-03
+updated: 2026-09-07
 ---
 
 # IADR-0335: Wiki の検索は委譲＋前段 ABAC、未認証は存在秘匿で固定する（#1126）
@@ -159,6 +159,38 @@ Infrastructure/ExternalServices/WikiAccessResolver.cs:15:        var userId = ct
 - 🔴 **上の「401 にはしない」は依然として正しい。** あれは *WikiService*（mesh 内の後段）の話であり、
   同じ文が「エッジは BFF」と 401 の置き場所を名指ししている。BFF 口は 401 を返すが、
   **未認証は後段へ到達しない**ので、ここで固定した契約（一覧・検索は 200 ＋ 空、個別は 404）は動かない。
+
+［2026-09-07 追記 / #1318］**決定 4 の適用先は Wiki の外にもあった。決定 1〜4 は変えていない。**
+
+#1318 欠陥 A の走査で、**同型の欠陥が 2 サービスに残っていた**ことが判った
+（作業仕様書 `.ai-context/specs/20260907_issue-1318_anonymous-abac-shortcircuit.md` §母集合）。
+本追記は決定を変えない —— **決定 4 が定めた形（①認可サービスの手前で短絡する ②401 にしない
+③既存の状態コードを変えない）をそのまま適用しただけ**である。適用にあたって判った差分を残す。
+
+- **AiAnalysisService の 3 端点（`/analysis/ask` `/analysis/analyze` `/analysis/ask/stream`）は
+  Wiki と同じだった。** 群に `RequireAuthorization()` が無く、匿名が実際に到達していた。
+  拒否の応答も既に「200 ＋ 空回答」（`RagOrchestrator` の `Granted=false` 経路）で在ったので、
+  **状態コードも本文も変えずに**、認可サービスを呼ぶ手前へ倒しただけである。
+  🔴 **短絡の置き場所だけは Wiki と違う。** Wiki は `WikiAccessResolver`（Infrastructure）へ
+  置いたが、AiAnalysis には `HttpContext` を受け取る解決器が無い（`RagOrchestrator` は
+  `userId` 文字列しか受け取らず、認証済みか否かを知り得ない）。**身元を作っている端点が
+  欠陥の在り処**なので、3 端点が共有する `AnalysisEndpoints.IsAnonymous` に 1 つ置いた。
+- 🔴 **GraphService は Wiki と前提が違う。違うので、写さずにそう書いた。**
+  `IGraphAccessResolver` の消費者は**すべて `RequireAuthorization()` を持っており**、
+  現在の HTTP 表面から `GraphAccessResolver` へ匿名で到達する経路は無い（匿名契約は **401**。
+  `GraphEndpointsSecrecyTests.Returns_401_when_unauthenticated` ほか既存 3 本が固定済み）。
+  本 PR がそこへ短絡を足したのは「今漏れている穴」を塞ぐためではなく、
+  **fail-closed が端点ごとの宣言に依存している**状態を [[IADR-0044]] の 2 枚目にするためである。
+  **Graph の状態コードは変えていない。**
+- **副次的に判ったこと**: `AiAnalysisService.Tests.TestWebApplicationFactory` が認証を構成して
+  おらず、**そこを通る既存 8 本が匿名で走っていた**。短絡を入れて初めて可視になった。
+  器へ既定の認証を足して是正した（仕様書 §実装中に判明したこと）。
+- 🔴 **未解決として記録する**: 認可側の「利用者条件なし＝全利用者にマッチ」（`AbacEvaluator`）は
+  **どの試験からも固定されていない**（変異 M-4 が platform 全 1628 本を緑のまま通った）。
+  本欠陥が成立する前提そのものが無試験である。**#1318 の射程外なので本 PR では直さない。**
+- 🔴 **#1318 欠陥 B（RetrievalService の自称 Scope）は本 PR の射程外である。**
+  「Retrieval が自分でスコープを解決するか、経路上のどこかで解決されていればよいと定めるか」は
+  **裁定を要する**問いであり、実装側の判断で閉じてよい穴ではない。
 
 ## 関連
 

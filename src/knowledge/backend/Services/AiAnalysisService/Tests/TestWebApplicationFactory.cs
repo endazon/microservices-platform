@@ -1,11 +1,16 @@
 using System.Runtime.CompilerServices;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
 using AiAnalysisService.Domain.Ports;
 using Knowledge.Contracts.Dtos;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace AiAnalysisService.Tests;
 
@@ -28,7 +33,40 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // RAG オーケストレーターをスタブへ差し替え
             services.RemoveAll<IRagOrchestrator>();
             services.AddSingleton<IRagOrchestrator, StubRagOrchestrator>();
+
+            // 🔴 FR-05, [[IADR-0335]] 決定 4 (#1318): **既定で認証済みにする。**
+            //
+            // #1318 まで本器は認証を一切構成しておらず、**ここを通る全テストが未認証で走っていた**。
+            // 端点が `?? "anonymous"` で身元を作っていたため素通りしていたのであり、
+            // 「認証済みの利用者が使う経路」を測っているつもりで**匿名の経路を測っていた**。
+            // 未認証を認可サービスの手前で倒すようにした結果、この器の 8 本が縮退応答を受け取って
+            // 落ちた —— **テストの前提が誤っていたことが、短絡によって初めて可視になった。**
+            //
+            // よって器の側を直す。**測りたかったのは認証済みの振る舞い**だからである。
+            // 未認証の契約は専用の器（`AnalysisAnonymousContractTestFactory`）が測る ——
+            // あちらは `IRagOrchestrator` を差し替えないので ABAC の経路を実際に踏む。
+            services.AddAuthentication(AlwaysAuthenticatedTestHandler.SchemeName)
+                .AddScheme<AuthenticationSchemeOptions, AlwaysAuthenticatedTestHandler>(
+                    AlwaysAuthenticatedTestHandler.SchemeName, _ => { });
         });
+    }
+}
+
+// #1318: `TestWebApplicationFactory` を通る要求を**常に**認証済みにする。
+// 未認証の契約を測るのは `AnonymousAccessContractTests` の専用器であり、こちらは切り替えない
+// （切り替え口を作ると、既存テストがどちらで走っているのか読めなくなる）。
+internal sealed class AlwaysAuthenticatedTestHandler(
+    IOptionsMonitor<AuthenticationSchemeOptions> options,
+    ILoggerFactory logger,
+    UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+{
+    public const string SchemeName = "TestAlwaysAuthenticated";
+
+    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    {
+        var identity = new ClaimsIdentity([new Claim(ClaimTypes.Name, "test-user")], SchemeName);
+        return Task.FromResult(AuthenticateResult.Success(
+            new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName)));
     }
 }
 

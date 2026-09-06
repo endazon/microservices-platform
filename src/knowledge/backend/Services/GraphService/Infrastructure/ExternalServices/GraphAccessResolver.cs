@@ -29,14 +29,42 @@ namespace GraphService.Infrastructure.ExternalServices;
 // 利用者の文脈（userId / 属性 / **action**）は本文で運ぶ（docs/api/east-west-grpc.md §4）。
 // **`action` は既定値を持たない引数のまま gRPC へも明示して渡す**（[[IADR-0272]] 決定 4）。
 // 既定 null は既存テストの直接構築（`new GraphAccessResolver(factory)`）を壊さないためである。
+// FR-05, [[IADR-0044]], [[IADR-0335]] 決定 4 (#1318):
+// 🔴 **未認証の短絡は輸送の手前にある**（下の `IsAuthenticated` 判定）—— gRPC でも
+// **匿名では 1 度も呼ばない**。状態コードは変えない（本サービスの匿名契約は 401 のまま）。
 public class GraphAccessResolver(
     IHttpClientFactory httpFactory,
     AuthzScopeGrpcClient? authzScopeGrpc = null) : IGraphAccessResolver
 {
+    // 匿名でも到達し得る要求へ与える身元。**認可サービスへは渡らない**（この値で問い合わせない）。
+    private const string AnonymousUserId = "anonymous";
+
     public async Task<AccessScopeResponse> ResolveAsync(
         HttpContext ctx, string action, CancellationToken ct = default)
     {
-        var userId = ctx.User.Identity?.Name ?? "anonymous";
+        // 🔴 FR-05, FR-17, UC-10, ADR-0004, [[IADR-0044]]（多層防御）, [[IADR-0335]] 決定 4 (#1318):
+        // **未認証の要求は、認可サービスへ問い合わせずに deny-by-default で返す。**
+        //
+        // 従前は未認証でも `anonymous` を身元として `/authz/scope` を叩いていた。認可側
+        // （`AbacEvaluator`）は**利用者条件を持たないポリシーを全利用者にマッチさせる**ので、
+        // そのようなポリシーが 1 件でも active なら**匿名にも許可が下りた**。
+        //
+        // 🔴 **Wiki（[[IADR-0335]]）とは前提が違う。違うので、そう書く。**
+        // Wiki は `/wiki` 群にも各端点にも `RequireAuthorization` を持たず、匿名が**実際に到達
+        // していた**。本サービスの消費者はすべて認証を要求しており（`/graph/suggestions` 群と
+        // `GetNode` / `Neighbors` / `CreateEdge` / `edge-types`）、**現在の HTTP 表面から
+        // ここへ匿名で到達する経路は無い**。本短絡が塞ぐのは「今漏れている穴」ではなく、
+        // **fail-closed が端点ごとの `RequireAuthorization()` 宣言に依存している**こと自体である
+        // —— 1 個書き忘れた端点が足された瞬間、その端点は `anonymous` で ABAC を通る。
+        //
+        // **したがって匿名の状態コードは変えない。** 本サービスの匿名契約は従来どおり **401**
+        // （ミドルウェアが弾く）であり、Wiki の 200 ＋ 空 / 404 とは別物である。
+        //
+        // 🔴 **短絡は輸送の手前にある** —— gRPC 経路でも**匿名では 1 度も呼ばない**。
+        if (ctx.User.Identity?.IsAuthenticated != true)
+            return new AccessScopeResponse(AnonymousUserId, [], false);
+
+        var userId = ctx.User.Identity.Name ?? AnonymousUserId;
         var userAttrs = ExtractUserAttributes(ctx);
 
         if (authzScopeGrpc is not null)

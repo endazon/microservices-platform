@@ -1,3 +1,4 @@
+using AiAnalysisService.Domain;
 using AiAnalysisService.Domain.Ports;
 using FluentValidation;
 using Knowledge.Contracts.Dtos;
@@ -26,8 +27,18 @@ internal static class AnalyzeEndpoint
                     : Results.StatusCode(StatusCodes.Status500InternalServerError);
             }
 
-            // FR-05: JWT から利用者を特定し、権限解決（範囲は権限を広げない）
-            var userId = http.User.Identity?.Name ?? "anonymous";
+            // 🔴 FR-05, [[IADR-0335]] 決定 4 (#1318): **未認証は認可サービスを呼ばずに倒す。**
+            // 判定と理由は `AnalysisEndpoints.IsAnonymous` に 1 つだけ置く。
+            //
+            // **入力検証の後に置く。** 検証は認可サービスを呼ばないので、ここより前に置いても
+            // 「認可を呼ばない」は変わらない。一方、前に置くと**不正な本文に対する 400 が
+            // 匿名にだけ 200 へ変わる** —— 本 PR は既存の状態コードを変えない（同決定）。
+            if (AnalysisEndpoints.IsAnonymous(http))
+                return Results.Ok(NoAccessAnswer.Answer());
+
+            // FR-05: JWT から利用者を特定し、権限解決（範囲は権限を広げない）。
+            // **ここへ到達するのは認証済みの要求だけである。**
+            var userId = http.User.Identity!.Name ?? "anonymous";
             var userAttrs = AnalysisEndpoints.ExtractUserAttributes(http);
             var answer = await rag.AnalyzeAsync(req, userId, userAttrs);
             return Results.Ok(answer);
