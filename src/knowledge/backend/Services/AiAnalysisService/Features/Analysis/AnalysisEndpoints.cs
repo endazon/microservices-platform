@@ -23,6 +23,29 @@ public static class AnalysisEndpoints
         return app;
     }
 
+    // 🔴 FR-05, ADR-0004, ADR-0032, [[IADR-0009]], [[IADR-0044]], [[IADR-0335]] 決定 4 (#1318):
+    // **未認証の要求は、認可サービスへ問い合わせる前に「閲覧できるものが無い」へ倒す。**
+    //
+    // 従前は未認証でも `http.User.Identity?.Name ?? "anonymous"` を身元として ABAC 判定へ進んで
+    // いた。認可側（`AbacEvaluator`）は**利用者条件を持たないポリシーを全利用者にマッチさせる**ので、
+    // そのようなポリシーが 1 件でも active なら**匿名にも許可が下りた**。fail-closed に
+    // *見えていた*だけで、未認証時の応答がポリシーの内容次第で変わる ——
+    // 固定されていない契約だった（Wiki で同型の欠陥を塞いだのが [[IADR-0335]] / #1126）。
+    //
+    // 🔴 **`!= true` である（`== false` ではない）。** `ClaimsPrincipal.Identity` は
+    // 身元を 1 つも持たない主体で **null になり得る**。`== false` と書くと null が
+    // 「匿名ではない」側へ落ち、**短絡をすり抜ける**（WikiAccessResolver と同じ綴り）。
+    //
+    // **401 にはしない。** エッジは BFF（ADR-0032 / Token Handler）であり、ここは mesh 内の後段で
+    // ある（`/bff/analysis` 群が `RequireAuthorization()` を持ち、匿名はそこで 401 になる）。
+    // 3 端点の匿名応答は**従来と同じ 200 ＋ 空回答**（`NoAccessAnswer`）のまま固定する ——
+    // これは実物の `RagOrchestrator` が `Granted=false` のときに返していた値そのものであり、
+    // **状態コードも本文も変えない。変わるのは「認可サービスを呼ばなくなる」ことだけである。**
+    //
+    // **3 操作すべてが使う**ため 2 段目に置く（ADR-0068 決定 2）。
+    internal static bool IsAnonymous(HttpContext ctx)
+        => ctx.User.Identity?.IsAuthenticated != true;
+
     // **3 操作すべてが使う**ため 2 段目に残る（ADR-0068 決定 2）。
     internal static Dictionary<string, string> ExtractUserAttributes(HttpContext ctx)
     {

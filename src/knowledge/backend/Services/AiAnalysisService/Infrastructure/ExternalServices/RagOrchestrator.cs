@@ -62,7 +62,9 @@ public class RagOrchestrator(
     // ゲートウェイ自身も未送信の縮退（越境拒否・プロバイダ未登録）で Model に空文字を載せるため、
     // レイヤ間で「未使用」の表現を一致させる。以前はここで存在しない設定キー
     // `Llm:DefaultModel` を引き、常にハードコードの "claude-opus-5" を名乗っていた（LLM 未呼出でも）。
-    private const string NoModel = "";
+    // #1318: 値の定義は `NoAccessAnswer.NoModel` へ寄せた（端点側の縮退と同じ値を使うため）。
+    // ここは従来どおりの別名であり、意味も値も変えていない。
+    private const string NoModel = NoAccessAnswer.NoModel;
 
     // IADR-0111: ゲートウェイが報告したモデル名を応答契約の値へ正規化する。契約上は非 null だが、
     // JSON 側で model が欠落・null の場合は逆シリアル化で null になり得るため NoModel へ倒す
@@ -130,9 +132,8 @@ public class RagOrchestrator(
             // IADR-0009 存在秘匿を破らない中立文言。非ストリーミング版 AskAsync（EmptyAnswer）と挙動を揃え、
             // 本文（token）が空のまま done になって理由不明の空白回答が表示されるのを防ぐ。
             // IADR-0111: ゲートウェイを一度も呼んでいないため使用モデルは無い（NoModel）。
-            yield return new AskCitationsEvent([]);
-            yield return new AskTokenEvent("閲覧権限のある文書が見つかりませんでした。");
-            yield return new AskDoneEvent(Guid.NewGuid(), NoModel, 0, 0);
+            // #1318: 値の定義は `NoAccessAnswer.StreamEvents()`（端点の未認証短絡と同じ形を返す）。
+            foreach (var ev in NoAccessAnswer.StreamEvents()) yield return ev;
             yield break;
         }
 
@@ -142,9 +143,7 @@ public class RagOrchestrator(
         var scope = DataRangeScopeResolver.Resolve(resolved, attributeFilters);
         if (!scope.GrantsAccess)
         {
-            yield return new AskCitationsEvent([]);
-            yield return new AskTokenEvent("閲覧権限のある文書が見つかりませんでした。");
-            yield return new AskDoneEvent(Guid.NewGuid(), NoModel, 0, 0);
+            foreach (var ev in NoAccessAnswer.StreamEvents()) yield return ev;
             yield break;
         }
 
@@ -464,7 +463,7 @@ public class RagOrchestrator(
     // FR-05: 閲覧可能文書が無い場合の空回答（検索・LLM を呼ばずコストを抑える縮退）。
     // IADR-0111 (#403): ゲートウェイを一度も呼んでいないため使用モデルは無い（NoModel）。
     private static AiAnswerDto EmptyAnswer()
-        => new("閲覧権限のある文書が見つかりませんでした。", [], NoModel, 0, 0);
+        => NoAccessAnswer.Answer();
 
     private static string BuildAskPrompt(string question, string context)
         => $"""

@@ -1,3 +1,4 @@
+using AiAnalysisService.Domain;
 using AiAnalysisService.Domain.Ports;
 using Knowledge.Contracts.Dtos;
 
@@ -11,8 +12,13 @@ internal static class AskEndpoint
         g.MapPost("/ask", async (AskRequest req, IRagOrchestrator rag,
             HttpContext http) =>
         {
-            // JWT から userId を取得（テスト環境では anonymous を使用）
-            var userId = http.User.Identity?.Name ?? "anonymous";
+            // 🔴 FR-05, [[IADR-0335]] 決定 4 (#1318): **未認証は認可サービスを呼ばずに倒す。**
+            // 判定と理由は `AnalysisEndpoints.IsAnonymous` に 1 つだけ置く。
+            if (AnalysisEndpoints.IsAnonymous(http))
+                return Results.Ok(NoAccessAnswer.Answer());
+
+            // JWT から userId を取得する。**ここへ到達するのは認証済みの要求だけである。**
+            var userId = http.User.Identity!.Name ?? "anonymous";
             var userAttrs = AnalysisEndpoints.ExtractUserAttributes(http);
             var answer = await rag.AskAsync(req.Question, userId, userAttrs, req.AttributeFilters);
             return Results.Ok(answer);
