@@ -1,5 +1,6 @@
 using AuthorizationService.Domain;
 using AuthorizationService.Infrastructure.Persistence;
+using FluentValidation;
 using Platform.Shared.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,11 +19,16 @@ public static class ResolveScopeEndpoint
 {
     public static IEndpointRouteBuilder MapResolveScope(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/scope", async (AccessScopeRequest req, AuthorizationDbContext db) =>
+        app.MapPost("/scope", async (AccessScopeRequest req,
+            IValidator<AccessScopeRequest> validator, AuthorizationDbContext db) =>
         {
-            if (!PolicyAction.IsValid(req.Action))
-                return AuthzEndpoints.ValidationProblem(
-                    [$"action は {string.Join(" / ", PolicyAction.All)} のいずれかである必要があります。"]);
+            // FR-05, FR-21 / 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 /
+            // [[IADR-0398]] 決定 1 (b): 値域は `ResolveScopeValidator` が持つ。
+            // **鍵（`errors`）は sink が持つ**ので、端点は先頭 1 件の**本文だけ**を渡す
+            // （移送前もガード節 1 本が 1 要素のコレクション式を渡していた ＝ 形 α）。
+            // 🔴 **この呼び出しはポリシー照会より前**でなければならない（従前のガード節と同じ位置）。
+            var gate = validator.Validate(req);
+            if (!gate.IsValid) return AuthzEndpoints.ValidationProblem([gate.Errors[0].ErrorMessage]);
 
             var policies = await db.Policies.Where(p => p.IsActive).ToListAsync();
             var scope = AbacEvaluator.ResolveScope(req, policies, req.Action);
