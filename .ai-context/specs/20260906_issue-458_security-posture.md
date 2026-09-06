@@ -87,29 +87,38 @@ $ grep -rn --include=*.cs -E 'FallbackPolicy|DefaultPolicy' src --exclude-dir=ob
 
 口の側で数え直すと（構文で数える。語で数えない）:
 
+🔴 **［2026-09-06 追記 / #458］初回の走査は語で数えており、4 サービスで実際より多い数を出していた。**
+`grep 'RequireAuthorization'` はコメント行の言及も数える（Dashboard 10 / Feedback 4 / Notification 3 /
+Document 15 と出ていた。正: 5 / 3 / 1 / 14）。**構文で数え直した数を正とする。** 口の数は
+`Map(...)\(` の実数で、こちらは初回から変わっていない（コメントアウトされた口は 0 件）。
+
 ```console
 $ for d in src/*/backend/Services/*/; do
-    eps=$(grep -rn --include=*.cs -E 'Map(Get|Post|Put|Delete|Patch)\(' "$d" --exclude-dir=obj --exclude-dir=Tests | wc -l)
-    ra=$(grep -rn --include=*.cs 'RequireAuthorization' "$d" --exclude-dir=obj --exclude-dir=Tests | wc -l)
-    printf '%-22s endpoints=%-3s RequireAuthorization=%s\n' "$(basename $d)" "$eps" "$ra"; done
+    eps=$(grep -rn --include=*.cs -E 'Map(Get|Post|Put|Delete|Patch)\(' "$d" --exclude-dir=obj --exclude-dir=Tests | grep -vE ':[0-9]+:\s*//' | wc -l)
+    ra=$(grep -rn --include=*.cs 'RequireAuthorization(' "$d" --exclude-dir=obj --exclude-dir=Tests | grep -vE ':\s*//' | wc -l)
+    ao=$(grep -rn --include=*.cs 'RequireAuthorization(PlatformAuthPolicies.AdminOnly' "$d" --exclude-dir=obj --exclude-dir=Tests | wc -l)
+    printf '%-22s endpoints=%-3s RA=%-3s AO=%s\n' "$(basename $d)" "$eps" "$ra" "$ao"; done
 ```
 
-| サービス | 口 | `RequireAuthorization` |
-| --- | --- | --- |
-| DocumentService | 39 | 15 |
-| AuthorizationService | 20 | 2 |
-| GraphService | 13 | 7 |
-| DataSourceService | 7 | 5 |
-| DashboardService | 6 | 10 |
-| McpServer | 6 | 2 |
-| **ConversionService** | **5** | **0** |
-| WikiService | 4 | 0 |
-| AiAnalysisService | 3 | 0 |
-| RetrievalService | 3 | 0 |
-| LlmGateway | 3 | 0 |
-| FeedbackService | 3 | 4 |
-| NotificationService | 3 | 3 |
-| **IngestionService** | **0** | **0** |
+🔴 **`RA` は口の数ではない。** 群（`MapGroup`）へ 1 つ掛ければ配下の全口を覆い、個別の口へ重ねると
+AND 合成になる（`IADR-0128` 決定 1）。**多い＝強いではない。**
+
+| サービス | 口 | `RequireAuthorization(` | うち `AdminOnly` |
+| --- | --- | --- | --- |
+| DocumentService | 39 | 14 | 7 |
+| AuthorizationService | 20 | 2 | 2 |
+| GraphService | 13 | 7 | 1 |
+| DataSourceService | 7 | 5 | 4 |
+| DashboardService | 6 | 5 | 0 |
+| McpServer | 6 | 2 | 1 |
+| **ConversionService** | **5** | **0** | 0 |
+| WikiService | 4 | 0 | 0 |
+| AiAnalysisService | 3 | 0 | 0 |
+| RetrievalService | 3 | 0 | 0 |
+| LlmGateway | 3 | 0 | 0 |
+| FeedbackService | 3 | 3 | 1 |
+| NotificationService | 3 | 1 | 0 |
+| **IngestionService** | **0** | **0** | 0 |
 
 **REST の口にロール門を 1 つも持たないのは 2 サービスではなく 6 サービスである**
 （Conversion / Ingestion に加え Wiki / AiAnalysis / Retrieval / LlmGateway）。

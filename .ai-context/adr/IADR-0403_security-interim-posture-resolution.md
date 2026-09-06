@@ -128,26 +128,32 @@ mTLS が来た後に残る要求は**別物（多層防御）**だからであ�
 
 ### 決定 3: 🔴 15 サービス全件の判定（**一律規則ではなく 1 件ずつ理由を持つ**）
 
-口の数は構文で数えた（`Map(Get|Post|Put|Delete|Patch)\(` の実数。語では数えない）。
-`src/ai-stock-trading` は除外している。
+🔴 **数え方**: 口は `Map(Get|Post|Put|Delete|Patch)\(` の実数、門は **`RequireAuthorization(` の呼び出し**
+（`RA` 列）と、そのうち `RequireAuthorization(PlatformAuthPolicies.AdminOnly` の実数（`AO` 列）である。
+**語で数えない。** コメント行は除いた —— 初回の走査は `RequireAuthorization` を語で数えており、
+Dashboard 10 / Feedback 4 / Notification 3 / Document 15 と**実際より多い数を出していた**（正: 5 / 3 / 1 / 14）。
+`src/ai-stock-trading` は全走査から除外している。
 
-| # | サービス | 口 | 現在の形 | アプリ層 authn/authz を要するか | 要さないなら**何が保証を担うか** |
-| --- | --- | --- | --- | --- | --- |
-| 1 | `Platform.Bff` | 縁 | R（BFF セッション） | **要する（充足）** | — |
-| 2 | `DocumentService` | 39 | R ＋ S | **要する（充足）** | 書き込み 13 口が `AdminOnly`、gRPC 読み口が `ServiceCaller` |
-| 3 | `DataSourceService` | 7 | R | **要する（充足）** | 群全体に admin/operator、12 箇所 `AdminOnly` |
-| 4 | `GraphService` | 13 | R | **要する（充足）** | 7 箇所 |
-| 5 | `DashboardService` | 6 | R | **要する（充足）** | 10 箇所 |
-| 6 | `FeedbackService` | 3 | R | **要する（充足）** | 4 箇所 |
-| 7 | `NotificationService` | 3 | R | **要する（充足）** | 3 箇所。受け口はネットワーク分離にも載る |
-| 8 | `McpServer` | 6 | R | **要する（充足）** | 管理 REST に `AdminOnly` 4 箇所 |
-| 9 | `AuthorizationService` | 20 | R ＋ S ＋ N | **要する（部分）** | 管理系は `AdminOnly`。🔴 REST `/authz/scope` は無認可のまま（`IADR-0044` 決定 2）だが、**同じ評価器の gRPC 面が `ServiceCaller` を持つ**（`IADR-0379` 決定 5） |
-| 10 | `RetrievalService` | 3 | **A** | **要さない** | `/search` は fail-closed ABAC（`ScopeFilter` / `HybridSearchService`）。**ロール門は ABAC を代替しない**ので積んでも保証は増えない |
-| 11 | `AiAnalysisService` | 3 | **A** | **要さない** | `RagOrchestrator` が取得段の ABAC を透過。回答は Retrieval の絞り込みを超えない |
-| 12 | `WikiService` | 4 | **A** | **要さない** | `AbacPageFilter` / `WikiAccessResolver` が閲覧可能ページを絞る |
-| 13 | `LlmGateway` | 3 | **S**（gRPC）＋ N（REST） | **要する（部分充足）** | gRPC の `/embed`・`/complete` は `ServiceCaller`。🔴 **REST 3 口は無認可のまま並走**（`IADR-0379` 決定 5「並走中の正は REST」） |
-| 14 | `ConversionService` | 5 | **N** | **要さない（記録された理由あり）** | 決定 4 を見よ |
-| 15 | `IngestionService` | **0** | **N** | **要さない（口が無い）** | `app.MapPlatformIntrospection()` 1 件のみ。**副作用のある操作を 1 つも持たない** |
+🔴 **`RA` は口の数ではない。** 群（`MapGroup`）に 1 つ掛ければ配下の全口を覆い、
+個別の口へ重ねると AND 合成になる（`IADR-0128` 決定 1 の形）。**多い＝強いではない。**
+
+| # | サービス | 口 | RA | AO | 形 | アプリ層 authn/authz を要するか | 要さないなら**何が保証を担うか** |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | `Platform.Bff` | 縁 | — | — | R（BFF セッション） | **要する（充足）** | — |
+| 2 | `DocumentService` | 39 | 14 | 7 | R ＋ S | **要する（充足）** | 書き込みに `AdminOnly`、gRPC 読み口が `ServiceCaller` |
+| 3 | `DataSourceService` | 7 | 5 | 4 | R | **要する（充足）** | 群全体に admin/operator、破壊的操作に `AdminOnly` |
+| 4 | `GraphService` | 13 | 7 | 1 | R | **要する（充足）** | — |
+| 5 | `DashboardService` | 6 | 5 | 0 | R | **要する（充足）** | 閲覧系のため admin/operator 止まり |
+| 6 | `FeedbackService` | 3 | 3 | 1 | R | **要する（充足）** | — |
+| 7 | `NotificationService` | 3 | 1 | 0 | R | **要する（充足）** | 受け口はネットワーク分離にも載る |
+| 8 | `McpServer` | 6 | 2 | 1 | R | **要する（充足）** | 管理 REST に `AdminOnly` |
+| 9 | `AuthorizationService` | 20 | 2 | 2 | R ＋ S ＋ N | **要する（部分）** | 管理系は `AdminOnly`。🔴 REST `/authz/scope` は無認可のまま（`IADR-0044` 決定 2）だが、**同じ評価器の gRPC 面が `ServiceCaller` を持つ**（`IADR-0379` 決定 5） |
+| 10 | `RetrievalService` | 3 | **0** | 0 | **A** | **要さない** | `/search` は fail-closed ABAC（`ScopeFilter` / `HybridSearchService`）。**ロール門は ABAC を代替しない**ので積んでも保証は増えない |
+| 11 | `AiAnalysisService` | 3 | **0** | 0 | **A** | **要さない** | `RagOrchestrator` が取得段の ABAC を透過。回答は Retrieval の絞り込みを超えない |
+| 12 | `WikiService` | 4 | **0** | 0 | **A** | **要さない** | `AbacPageFilter` / `WikiAccessResolver` が閲覧可能ページを絞る |
+| 13 | `LlmGateway` | 3 | **0** | 0 | **S**（gRPC）＋ N（REST） | **要する（部分充足）** | gRPC の `/embed`・`/complete` は `ServiceCaller`。🔴 **REST 3 口は無認可のまま並走**（`IADR-0379` 決定 5「並走中の正は REST」） |
+| 14 | `ConversionService` | 5 | **0** | 0 | **N** | **要さない（記録された理由あり）** | 決定 4 を見よ |
+| 15 | `IngestionService` | **0** | **0** | 0 | **N** | **要さない（口が無い）** | `app.MapPlatformIntrospection()` 1 件のみ。**副作用のある操作を 1 つも持たない** |
 
 **要約**: 8 件が R で充足、3 件（10-12）は A が保証を担うのでロール門は無意味、
 2 件（9・13）は**部分充足で残差を持つ**、2 件（14・15）は N で理由が記録済みである。
