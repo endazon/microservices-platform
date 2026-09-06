@@ -115,10 +115,24 @@ jobs:
       # 索引に 1 点も入らず検索は「壊れている」ときと同じ `200 ＋ 空` を返す。
       # 🔴 **越境判定（機密区分 × ティア）は緩めていない。** 本経路は HTTP を行わない＝ティアA の
       # 定義（社外送信なし）をそのまま満たす。confidential/restricted が外部へ出ないことは不変である。
-      - name: Bring up the integration stack (LOCALEDGE=1, ABACSEED=1, SEARCHSEED=1, LOCALEMBED=1)
+      # ISTIO=1 は #782 / ADR-0005 のサービスメッシュ。**#1304 で足した。**
+      # 🔴 これが無いあいだ、門の G12（メッシュ宣言のドリフト）は**対象 0 件のまま緑を返していた**
+      # （実測: `git grep -c ISTIO -- .github/` は 0、陽性対照 `LOCALEDGE` は 4）。
+      # `IADR-0377` が G12 を置いた理由は「値が偶然一致していても field manager を奪われていれば
+      # 壊れている」を捕まえることであり、**その門が一度も評価されていなかった。**
+      #
+      # 🔴 **`ISTIO=1` は入口も動かす。** `k8s-local-up.sh:884` は `LOCALEDGE=1` の枝の内側で
+      # `istio-edge-up.sh` を呼び、**エッジを kube-system の Traefik から Istio Ingress Gateway へ移す**
+      # （ADR-0021）。後段の門（G4 / パスワードリセット / 検索）はすべてエッジ越しに測っているので、
+      # **この 1 行は「env を 1 つ足す」以上の変更である。**
+      #
+      # 🔴 **`ISTIO_MTLS_MODE` は指定しない**（既定 PERMISSIVE）。STRICT は
+      # `IADR-0307` 決定 4 の段取り（注入 → 全 Pod Ready → PERMISSIVE で疎通確認 → STRICT）に従う
+      # 別の作業であり、ここでは上げない。
+      - name: Bring up the integration stack (LOCALEDGE=1, ISTIO=1, ABACSEED=1, SEARCHSEED=1, LOCALEMBED=1)
         run: |
           set -euo pipefail
-          LOCALEDGE=1 ABACSEED=1 SEARCHSEED=1 LOCALEMBED=1 K8S_LOCAL_RUNTIME=k3d \
+          LOCALEDGE=1 ISTIO=1 ABACSEED=1 SEARCHSEED=1 LOCALEMBED=1 K8S_LOCAL_RUNTIME=k3d \
             bash scripts/k8s-local-up.sh "${CLUSTER}"
 
       # 🔴 up が EXIT=0 で戻ってもアプリ pod は起きていない。ここで待つ。
@@ -150,7 +164,7 @@ jobs:
       # G10（永続化オーバーレイの PVC が参照され Bound）/ G11（宣言と稼働のイメージ参照の一致）/
       # G12（メッシュ宣言と稼働の一致・spec の書き手が helm 単独）/
       # G13（検索側が読むコレクションに点が在り、全文ペイロード索引が張られている）を
-      # すべて fail-closed で判定する（G9〜G11 は #1088 / IADR-0369、G12 は #1159 / IADR-0377、
+      # すべて fail-closed で判定する（G9〜G11 は #1088 / IADR-0369、G12 は #1159 / IADR-0377 ＋ #1304 / IADR-0407、
       # G13 は #1215 / IADR-0382）。
       #
       # 🔴 **ここへ SEARCHSEED=1 を渡さない。** G13 は「点が在るのに検索側が 0 点」＝読み書き先の
@@ -158,8 +172,13 @@ jobs:
       # この時点では up の中の seed（best-effort）から取り込みが**非同期で**進んでいる途中であり、
       # 「まだ届いていない」を欠陥として報告してしまう（間欠赤）。**取り込みの成立は
       # 後段の `SEARCH_HITS=1` の門が陽性・陰性の対で測る。**
+      #
+      # 🔴 **ここへは `ISTIO=1` を渡す**（#1304 / IADR-0407）。SEARCHSEED と違い、こちらは
+      # **渡さないと門が何も見ない**側である —— G12 は「メッシュが無い」を notice で飛ばすので、
+      # 宣言が届かなければ up で Istio を入れても**評価されないまま緑**になる。
+      # up と門の**両方**へ渡して初めて、この門は成立する。
       - name: 🔴 Gate — the stack is actually up
-        run: node scripts/check-stack-ready.js
+        run: ISTIO=1 node scripts/check-stack-ready.js
 
       # 🔴 ここが 3 つめの門である（#1144 / SC-15・ADR-0045 決定 7・9）。
       # readiness（G8）は「捕捉用 MTA が居て API が読める」までしか言わない。**送出が成立すること**と
