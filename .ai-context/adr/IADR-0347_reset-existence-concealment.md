@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-15, SC-10, FR-05, NFR, ADR-0004, ADR-0026, ADR-0045, IADR-0261, IADR-0332, IADR-0344]
 author: Claude（実装）
 created: 2026-09-02
-updated: 2026-09-06
+updated: 2026-09-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0026_authentication-ux-and-account-management.md
   - planning:projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md
@@ -166,6 +166,23 @@ realm 再インポートが `resetPasswordAllowed=true` を復元し、`smtpServ
 >   🔴 **決定 5 の窓そのものは残っている** —— 近接 MTA 自身が居ない（W1）・SYN が落ちる（W1'。
 >   実在側だけ 10 秒かかるため**ステータスを見ずとも判別できる**）・投函を拒む（W2）の 3 つである。
 >   **「窓は無い」と読まないこと。** 門（#1245 PR-C）が入って初めてプローブ周期 ＋ 往復へ縮む。
+
+> **［2026-09-07 追記 / #1245 PR-C / IADR-0404］フォローアップ 2 は着地した。3 は残る。**
+>
+> - **決定 3 の C 系（realm を書き換える調停器）が配備された** —— `platform-infra/reset-gate` が
+>   近接 MTA へ**本物の SMTP 取引**を周期的に打ち、**投函できない状態を 1 回検知した時点で申請を閉じる**
+>   （回復したら連続成功のあとに宣言値へ戻す）。決定と権限の面積は
+>   [IADR-0404](./IADR-0404_nearby-mta-relay-and-realm-ownership.md) の 2026-09-07 追記（決定 10〜12）にある。
+> - **本 IADR の決定 5「残る窓」は解消していない。縮んだだけである。**
+>   上限は「運用者が気付いて閉じるまで（分〜時間）」から
+>   「**プローブ周期 ＋ プローブのタイムアウト ＋ PUT 往復**」へ移った。
+>   🔴 **加えて門自身が落ちている間は W1 が開いたまま**である（門を監視する門は作らない）。
+>   **「窓は無い」と読まないことは、いま以前より重要である** —— 機械が入ると人は無いものと読みやすい。
+> - **本 IADR の 3 門は引き続き維持する。** `collectResetConcealmentGaps` は今回も 1 行も変えていない。
+>   足したのは**別の不変条件**（サービスアカウントの管理権限の天井）であり、門に与えた `manage-realm` の
+>   面積を宣言で固定するためのものである。
+> - **フォローアップ 3（T-21 の自動化）は残る**（#1245 PR-D）。🔴 **本追記の時点で、門の挙動を
+>   稼働クラスタで測ったものは 1 つも無い**（判定は純関数の試験と静的検査だけで固定してある）。
 
 ## 関連
 

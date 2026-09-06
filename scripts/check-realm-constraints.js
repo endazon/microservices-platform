@@ -990,6 +990,149 @@ function checkRealmResetConcealmentText(text) {
   return collectResetConcealmentGaps(JSON.parse(text));
 }
 
+// --- サービスアカウントの管理権限の天井（#1245 / IADR-0329 の「2 回目」）-----------------
+//
+// IADR-0329 §記録に留める は課題 A（`realm-management` のクライアントロールがトークンに載らず
+// Admin API が 403）について「**同型の事故は 1 回目なので検査器は足さない。2 回目が起きたら
+// `check-realm-constraints.js` へ足せ**」と申し送っていた。**#1245 の門 `reset-gate` が
+// 2 つ目の主体であり、条件が満たされた。**
+//
+// あわせて、門が要求する `manage-realm` は **realm 設定を丸ごと書ける**権限である
+// （同じ権限で `smtpServer` を外へ向ける・`bruteForceProtected` を切ることもできる）。
+// 利用者は 2026-09-05 にこの後退を承諾したが、**面積は宣言で固定しておく** ——
+// 「1 つだけ」という**関係**を見るので、ここに主体の名前を書き写さない。
+//
+// 🔴 4 つ目は #1301 の実測に由来する: **`serviceAccountsEnabled` を宣言しても、対応する利用者が
+// `users[]` に無ければロールは誰にも付かない。** クライアントは在り、import も成功し、
+// トークンも取れる —— **足りないのは認可だけ**なので、気付くのは 403 が出たときである。
+const REALM_MANAGEMENT_CLIENT = 'realm-management';
+const REALM_MANAGEMENT_ROLE_SCOPE = 'realm-management-roles';
+/** realm 設定そのものを書き換えられるロール（保持者を 1 つに絞る対象）。 */
+const REALM_WRITE_ROLE = 'manage-realm';
+/** 取り込み経路と管理経路を分ける区切り（IADR-0301 決定 2 / IADR-0329 決定 1）。 */
+const USER_WRITE_ROLE = 'manage-users';
+
+/**
+ * サービスアカウントに与えた `realm-management` のロールが、宣言の時点で天井を超えていないかを
+ * 検査する。**純関数**。
+ *
+ * 見る不変条件は 4 つ:
+ *   1. `realm-management` のロールを持つ SA のクライアントは `realm-management-roles` スコープを持つ
+ *      （無いと Admin API が 403。IADR-0329 決定 2 / 課題 A）
+ *   2. **`manage-realm` を持つ SA は高々 1 つ**（IADR-0329 の最小権限からの後退を 1 主体に閉じる）
+ *   3. `manage-realm` を持つ主体は `manage-users` を併せ持たず、対話ログインの経路
+ *      （standardFlow / directAccessGrants）を開いていない
+ *   4. `serviceAccountsEnabled` のクライアントには SA 利用者が `users[]` にちょうど 1 つ居る（#1301）
+ *
+ * @param {object} realm realm JSON
+ * @param {{realmName?:string}} opts
+ * @returns {{path:string, detail:string}[]}
+ */
+function collectServiceAccountRoleGaps(realm, { realmName = AUTH_POLICY_REALM } = {}) {
+  const gaps = [];
+  if (!realm || realm.realm !== realmName) return gaps;
+
+  const clients = Array.isArray(realm.clients) ? realm.clients : [];
+  const users = Array.isArray(realm.users) ? realm.users : [];
+  const clientById = new Map(clients.filter((c) => c && c.clientId).map((c) => [c.clientId, c]));
+  const realmWriters = [];
+
+  for (const user of users) {
+    if (!isServiceAccountUser(user)) continue;
+    const clientId = user.serviceAccountClientId;
+    const roles = ((user.clientRoles || {})[REALM_MANAGEMENT_CLIENT]) || [];
+    if (roles.length === 0) continue;
+    const client = clientById.get(clientId);
+
+    // (1) 課題 A: ロールを持っていてもトークンに載らなければ 403 になる。
+    const scopes = (client && client.defaultClientScopes) || [];
+    if (!scopes.includes(REALM_MANAGEMENT_ROLE_SCOPE)) {
+      gaps.push({
+        path: `realm.users[${user.username}].clientRoles.${REALM_MANAGEMENT_CLIENT}`,
+        detail: `${REALM_MANAGEMENT_CLIENT} のクライアントロール（${roles.join(' / ')}）を持つのに、`
+          + `クライアント ${clientId} の defaultClientScopes に ${REALM_MANAGEMENT_ROLE_SCOPE} がありません。`
+          + ' 本 realm は clientScopes を明示するため組み込みが生成されず、`roles` スコープは realm ロールしか'
+          + ' 載せません。Admin API は resource_access で認可するので、**ロールは付いているのに 403** になります'
+          + '（IADR-0329 決定 2 / 課題 A の実測）。',
+      });
+    }
+
+    if (roles.includes(REALM_WRITE_ROLE)) {
+      realmWriters.push(clientId);
+      // (3) 後退の面積を限る。
+      if (roles.includes(USER_WRITE_ROLE)) {
+        gaps.push({
+          path: `realm.users[${user.username}].clientRoles.${REALM_MANAGEMENT_CLIENT}`,
+          detail: `${REALM_WRITE_ROLE} と ${USER_WRITE_ROLE} を同じ主体が持っています。`
+            + ' realm 設定を書く主体と利用者を書く主体は別にしてください'
+            + '（IADR-0301 決定 2 / IADR-0329 決定 1 が分けた区切りです）。',
+        });
+      }
+      if (client && (client.standardFlowEnabled !== false || client.directAccessGrantsEnabled !== false)) {
+        gaps.push({
+          path: `realm.clients[${clientId}]`,
+          detail: `${REALM_WRITE_ROLE} を持つ主体が対話ログインの経路を開いています`
+            + '（standardFlowEnabled / directAccessGrantsEnabled は両方 false であること）。'
+            + ' 直接付与が通ると MFA を迂回して realm 設定を書ける経路になります（#438 検査 5 と同じ理由）。',
+        });
+      }
+    }
+  }
+
+  // (2) 「1 つだけ」という**関係**を見る（主体の名前を書き写さない）。
+  if (realmWriters.length > 1) {
+    gaps.push({
+      path: `realm.users[*].clientRoles.${REALM_MANAGEMENT_CLIENT}`,
+      detail: `${REALM_WRITE_ROLE}（realm 設定を丸ごと書ける権限）を持つサービスアカウントが`
+        + ` ${realmWriters.length} 主体あります: ${realmWriters.join(' / ')}。`
+        + ' この権限は同じ操作で smtpServer を外へ向ける・bruteForceProtected を切ることもできます。'
+        + ' 利用者が承諾したのは**投函できないときに申請を閉じる門 1 主体**だけです'
+        + '（ADR-0078 決定 4 / IADR-0404。IADR-0329 の最小権限からの後退を広げないこと）。',
+    });
+  }
+
+  // (4) #1301: **管理ロールを載せると宣言した**クライアントなのに、ロールを担う SA 利用者が居ない。
+  //
+  // 🔴 「serviceAccountsEnabled なら利用者を宣言せよ」ではない —— Keycloak は client 作成時に SA 利用者を
+  //    自動生成するので、**ロールも属性も要らない主体は宣言しないのが正しい**（例: 合成監視のプローブは
+  //    「文書を読めない主体」として意図的にロールを持たない）。ここで見るのは
+  //    **`realm-management-roles` スコープを宣言した**クライアント ——
+  //    そのスコープは realm-management のロールをトークンへ載せるためだけに在るので、
+  //    **担い手が居なければ宣言と実体が食い違っている**（#1301 の形そのものである）。
+  for (const client of clients) {
+    if (!client || client.serviceAccountsEnabled !== true) continue;
+    const owners = users.filter((u) => isServiceAccountUser(u) && u.serviceAccountClientId === client.clientId);
+    if (owners.length > 1) {
+      gaps.push({
+        path: `realm.clients[${client.clientId}].serviceAccountsEnabled`,
+        detail: `serviceAccountClientId=${client.clientId} を持つ利用者が users[] に ${owners.length} 件あります`
+          + '（1 件までであること）。どちらのロール割当が効くかが宣言から決まりません。',
+      });
+      continue;
+    }
+    if (!((client.defaultClientScopes || []).includes(REALM_MANAGEMENT_ROLE_SCOPE))) continue;
+    const roles = owners.length === 1
+      ? (((owners[0].clientRoles || {})[REALM_MANAGEMENT_CLIENT]) || [])
+      : [];
+    if (roles.length > 0) continue;
+    gaps.push({
+      path: `realm.clients[${client.clientId}].defaultClientScopes`,
+      detail: `${REALM_MANAGEMENT_ROLE_SCOPE} スコープを宣言しているのに、`
+        + `${REALM_MANAGEMENT_CLIENT} のクライアントロールを持つサービスアカウント利用者が users[] にありません`
+        + `（該当利用者 ${owners.length} 件）。`
+        + ' このスコープは realm-management のロールをトークンへ載せるためだけに在ります。'
+        + ' 担い手が居ないと realm import は成功し client_credentials でトークンも取れますが、'
+        + '**ロールが誰にも付かないので Admin API だけが 403** になります（#1301 の実測）。',
+    });
+  }
+
+  return gaps;
+}
+
+function checkRealmServiceAccountRolesText(text, opts) {
+  return collectServiceAccountRoleGaps(JSON.parse(text), opts);
+}
+
 // --- I/O（副作用は main / checkFiles に閉じる） --------------------------------
 
 // 既定の検査対象（REALM_DIR 配下の *-realm.json）をリポジトリ相対で列挙する。
@@ -1028,6 +1171,7 @@ function checkFiles(relPaths) {
         ? collectRelayRecipientPolicyGaps(diskReader())
         : [],
       concealGaps: checkRealmResetConcealmentText(text),
+      saRoleGaps: checkRealmServiceAccountRolesText(text),
       serverUrlGaps: checkRealmServerSideUrlsText(text),
     });
   }
@@ -1787,6 +1931,99 @@ function selfTest() {
     })(),
   });
 
+  // --- SA の管理権限の天井（#1245 / IADR-0329 の「2 回目」）---------------------------
+  //
+  // 陽性対照つき。健全な組で 0 件になることを先に固定し、そこから 1 つずつ壊す。
+  const saOk = {
+    realm: AUTH_POLICY_REALM,
+    clients: [
+      { clientId: 'gate', serviceAccountsEnabled: true, standardFlowEnabled: false,
+        directAccessGrantsEnabled: false, defaultClientScopes: [REALM_MANAGEMENT_ROLE_SCOPE] },
+      { clientId: 'users-admin', serviceAccountsEnabled: true, standardFlowEnabled: false,
+        directAccessGrantsEnabled: false, defaultClientScopes: [REALM_MANAGEMENT_ROLE_SCOPE] },
+      { clientId: 'plain', serviceAccountsEnabled: true, standardFlowEnabled: false,
+        directAccessGrantsEnabled: false, defaultClientScopes: ['roles'] },
+    ],
+    users: [
+      { username: 'service-account-gate', serviceAccountClientId: 'gate',
+        clientRoles: { [REALM_MANAGEMENT_CLIENT]: ['view-realm', REALM_WRITE_ROLE] } },
+      { username: 'service-account-users-admin', serviceAccountClientId: 'users-admin',
+        clientRoles: { [REALM_MANAGEMENT_CLIENT]: ['view-users', USER_WRITE_ROLE, 'view-realm'] } },
+      { username: 'service-account-plain', serviceAccountClientId: 'plain', realmRoles: ['x'] },
+      { username: 'human', enabled: true },
+    ],
+  };
+  const saMut = (fn) => { const c = JSON.parse(JSON.stringify(saOk)); fn(c); return c; };
+
+  cases.push({
+    name: 'SA 権限: 健全な組は 0 件（陰性対照）',
+    pass: collectServiceAccountRoleGaps(saOk).length === 0,
+  });
+  cases.push({
+    name: 'SA 権限: realm-management ロールを持つのにスコープが無いと落ちる（IADR-0329 課題 A の 2 回目）',
+    pass: collectServiceAccountRoleGaps(saMut((c) => { c.clients[0].defaultClientScopes = ['roles']; })).length === 1,
+  });
+  cases.push({
+    name: '🔴 SA 権限: manage-realm を持つ主体が 2 つになると落ちる（後退を 1 主体に閉じる）',
+    pass: collectServiceAccountRoleGaps(saMut((c) => {
+      c.users[1].clientRoles[REALM_MANAGEMENT_CLIENT].push(REALM_WRITE_ROLE);
+    })).length === 2, // 「2 主体」＋「manage-realm と manage-users の同居」
+  });
+  cases.push({
+    name: '🔴 SA 権限: manage-realm と manage-users を同じ主体が持つと落ちる（主体の区切り）',
+    pass: collectServiceAccountRoleGaps(saMut((c) => {
+      c.users[0].clientRoles[REALM_MANAGEMENT_CLIENT].push(USER_WRITE_ROLE);
+    })).length === 1,
+  });
+  cases.push({
+    name: '🔴 SA 権限: manage-realm を持つ主体が対話ログインの経路を開くと落ちる（MFA 迂回）',
+    pass: collectServiceAccountRoleGaps(saMut((c) => { c.clients[0].directAccessGrantsEnabled = true; })).length === 1
+      && collectServiceAccountRoleGaps(saMut((c) => { c.clients[0].standardFlowEnabled = true; })).length === 1,
+  });
+  cases.push({
+    name: '🔴 SA 権限: realm-management-roles を宣言したのに担い手が users[] に無いと落ちる（#1301 の形）',
+    pass: collectServiceAccountRoleGaps(saMut((c) => { c.users.splice(0, 1); })).length === 1,
+  });
+  cases.push({
+    name: '🔴 SA 権限: 担い手は居るが realm-management のロールが空でも落ちる（宣言と実体の食い違い）',
+    pass: collectServiceAccountRoleGaps(saMut((c) => { delete c.users[0].clientRoles; })).length === 1,
+  });
+  cases.push({
+    name: 'SA 権限: ロールを持たない主体（合成監視のような「何も読めない」SA）は宣言しなくてよい（陰性対照）',
+    pass: collectServiceAccountRoleGaps(saMut((c) => {
+      c.users = c.users.filter((u) => u.serviceAccountClientId !== 'plain');
+    })).length === 0,
+  });
+  cases.push({
+    name: 'SA 権限: SA 利用者が 2 つある（重複宣言）は落ちる',
+    pass: collectServiceAccountRoleGaps(saMut((c) => {
+      c.users.push({ username: 'dup', serviceAccountClientId: 'plain' });
+    })).length === 1,
+  });
+  cases.push({
+    name: 'SA 権限: 別プロジェクトの realm（realm 名が違う）は検査しない',
+    pass: collectServiceAccountRoleGaps(saMut((c) => { c.realm = 'other'; c.users.splice(0, 1); })).length === 0,
+  });
+  cases.push({
+    name: 'SA 権限: JSON パース→検査（checkRealmServiceAccountRolesText）が通る',
+    pass: checkRealmServiceAccountRolesText(JSON.stringify(saOk)).length === 0,
+  });
+  cases.push({
+    name: '🔴 SA 権限: 実データの realm が天井を守る（実データ・ラチェット。0 件走査を緑にしない）',
+    pass: (() => {
+      const realmPath = path.join(REPO_ROOT, REALM_DIR, 'microservices-platform-realm.json');
+      if (!fs.existsSync(realmPath)) return true; // realm が無い配布物では skip
+      const realm = JSON.parse(fs.readFileSync(realmPath, 'utf8'));
+      // 0 件走査の門: manage-realm の保持者が**ちょうど 1 つ在る**ことまで確かめる
+      // （1 つも無ければ本検査は空振りし、「違反なし」は何も意味しない）。
+      const writers = (realm.users || [])
+        .filter((u) => isServiceAccountUser(u)
+          && ((u.clientRoles || {})[REALM_MANAGEMENT_CLIENT] || []).includes(REALM_WRITE_ROLE));
+      if (writers.length !== 1) return false;
+      return collectServiceAccountRoleGaps(realm).length === 0;
+    })(),
+  });
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -1819,11 +2056,12 @@ function main() {
   const totalMailGaps = results.reduce((n, r) => n + r.mailGaps.length, 0);
   const totalRelayGaps = results.reduce((n, r) => n + r.relayGaps.length, 0);
   const totalConcealGaps = results.reduce((n, r) => n + r.concealGaps.length, 0);
+  const totalSaRoleGaps = results.reduce((n, r) => n + r.saRoleGaps.length, 0);
   const totalServerUrlGaps = results.reduce((n, r) => n + r.serverUrlGaps.length, 0);
   if (total === 0 && totalMissing === 0 && totalDeviations === 0 && totalThemeGaps === 0
     && totalMfaGaps === 0 && totalMailGaps === 0 && totalRelayGaps === 0
-    && totalServerUrlGaps === 0 && totalConcealGaps === 0) {
-    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れはありません。`);
+    && totalServerUrlGaps === 0 && totalConcealGaps === 0 && totalSaRoleGaps === 0) {
+    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れ・サービスアカウントの管理権限の天井超えはありません。`);
     process.exit(0);
   }
 
@@ -1935,6 +2173,21 @@ function main() {
       + '\n要件の正は planning の ADR-0026・ADR-0045 決定 8、実装側の記録は IADR-0347（#1143）です。');
   }
 
+  if (totalSaRoleGaps > 0) {
+    console.error(`[check-realm-constraints] サービスアカウントの管理権限の逸脱 ${totalSaRoleGaps} 件を検出しました:`);
+    for (const r of results) {
+      for (const g of r.saRoleGaps) {
+        console.error(`\n  ${r.file}\n    ${g.path}: ${g.detail}`);
+      }
+    }
+    console.error('\n🔴 これは「設定の食い違い」ではなく**権限の面積**の話です。'
+      + '\nrealm import は成功し、client_credentials でトークンも取れるので E2E では気付けません'
+      + '\n（足りない側は Admin API だけが 403、多い側は誰も落ちません）。'
+      + '\nmanage-realm は realm 設定を丸ごと書ける権限であり、同じ操作で smtpServer を外へ向ける・'
+      + '\nbruteForceProtected を切ることもできます。利用者が承諾したのは**投函できないときに申請を閉じる門**'
+      + '\n1 主体だけです。要件の正は planning の ADR-0078 決定 4、実装側の記録は IADR-0329 と IADR-0404（#1245）です。');
+  }
+
   process.exit(1);
 }
 
@@ -1966,6 +2219,12 @@ module.exports = {
   RELAY_INIT_SCRIPT_KEY,
   collectResetConcealmentGaps,
   checkRealmResetConcealmentText,
+  collectServiceAccountRoleGaps,
+  checkRealmServiceAccountRolesText,
+  REALM_MANAGEMENT_CLIENT,
+  REALM_MANAGEMENT_ROLE_SCOPE,
+  REALM_WRITE_ROLE,
+  USER_WRITE_ROLE,
   MAIL_CAPTURE_MANIFEST,
   MAIL_RELAY_MANIFEST,
   VAULT_SEED_SCRIPT,

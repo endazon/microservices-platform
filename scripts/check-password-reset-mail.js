@@ -73,6 +73,20 @@ const EDGE_CA_SECRET = 'local-edge-root-ca';
 /** 送出を待つ上限（SMTP は非同期である）。 */
 const DELIVERY_TIMEOUT_MS = 30_000;
 const DELIVERY_POLL_MS = 1_000;
+/*
+ * SC-15, ADR-0078 決定 4, IADR-0404 (#1245 PR-C): 門（reset-gate）が状態を書き込む realm 属性。
+ * **綴りの正本は deploy/mail-relay/reset-gate.js と deploy/local/keycloak-setup/reconcile-realm.js**
+ * であり、本スクリプトは**読むだけ**である（scripts/reset-gate.test.js が両者の一致を固定する）。
+ */
+const GATE_STATE_ATTRIBUTE = 'reset-gate.state';
+const GATE_REASON_ATTRIBUTE = 'reset-gate.reason';
+const GATE_STATE_CLOSED = 'closed';
+/*
+ * 門が閉じていることを**期待する**実行（#1245 PR-D の 4 状態シナリオ）だけが立てる逃げ道。
+ * 🔴 **既定では立てない。** 立てないときに門が閉じていれば、それは「測れなかった」のであって
+ * 「健全だった」ではない。
+ */
+const EXPECT_GATE_CLOSED_ENV = 'EXPECT_GATE_CLOSED';
 
 // ---------------------------------------------------------------- 収集（外部依存）
 
@@ -151,7 +165,18 @@ function edgeCa() {
  * 資格情報は **Pod の env のまま**使い（`$KEYCLOAK_ADMIN_PASSWORD`）、値は返さないし出力もしない。
  * `--fields` は使わない —— **設定済みの realm に対しても `smtpServer: { }` を返す**（#1144 で実測）。
  *
- * @returns {{ok:true, resetPasswordAllowed:boolean, host:string, from:string}|{ok:false, error:string}}
+ * ［2026-09-07 / #1245 PR-C］**門（reset-gate）の状態も返す。** 門は投函できない状態を検知すると
+ * `resetPasswordAllowed` を false へ倒し、そのことを realm 属性 `reset-gate.state` へ書く
+ * （ADR-0078 決定 4 / IADR-0404 決定 5）。この属性を見ないと、門が閉じた CI で送出の試験（T-16 / T-17）が
+ * **静かに飛ぶ**（下の「閉じている＝健全」の枝へ落ちる）。
+ *
+ * 🔴 **読み出しは依然として Keycloak pod 内の `kcadm.sh` である。** IADR-0369 は
+ * 「pod 内で kcadm.sh を exec しない（別 JVM が本体を OOMKilled にする）」を定めており、**ここは残債**である。
+ * Admin REST（門と同じ `view-realm`）へ移すのが正しいが、**経路の付け替えは稼働クラスタでしか
+ * 確かめられない**ため本 PR では行わない（#1245 の環流に含める）。
+ *
+ * @returns {{ok:true, resetPasswordAllowed:boolean, host:string, from:string,
+ *            gateState:string, gateReason:string}|{ok:false, error:string}}
  */
 function runtimeResetConfig(realmName) {
   // realm 名は宣言から走査して得た値。シェルへ素で渡さないよう、英数と一部記号だけを許す。
@@ -176,11 +201,14 @@ function runtimeResetConfig(realmName) {
     return { ok: false, error: `稼働 realm の応答を JSON として読めなかった: ${e.message}` };
   }
   const smtp = realm.smtpServer && typeof realm.smtpServer === 'object' ? realm.smtpServer : {};
+  const attrs = realm.attributes && typeof realm.attributes === 'object' ? realm.attributes : {};
   return {
     ok: true,
     resetPasswordAllowed: realm.resetPasswordAllowed === true,
     host: String(smtp.host || ''),
     from: String(smtp.from || ''),
+    gateState: String(attrs[GATE_STATE_ATTRIBUTE] || ''),
+    gateReason: String(attrs[GATE_REASON_ATTRIBUTE] || ''),
   };
 }
 
@@ -194,10 +222,28 @@ function runtimeResetConfig(realmName) {
  *      「実装が壊れた」と「realm が脆弱な組へ戻った」を取り違える。
  *   2. **窓を短くできる。** この組は**再起動のたびに戻り得る**（実測）ので、検出は早いほどよい。
  *
- * @param {{resetPasswordAllowed:boolean, host:string, from:string}} cfg
+ * ［2026-09-07 追記 / #1245 PR-C］**門が閉じているなら理由を名指しして落とす。**
+ * 存在秘匿としては健全（両者に同じ 400）だが、**送出の試験は測れていない**。門は投函できない状態を
+ * 検知して閉じるので、「閉じている」は CI では**近接 MTA が壊れている**ことを意味する。
+ * これを緑にすると、relay が落ちた統合スタックで T-16 / T-17 が静かに飛ぶ。
+ *
+ * @param {{resetPasswordAllowed:boolean, host:string, from:string,
+ *          gateState?:string, gateReason?:string}} cfg
+ * @param {{expectGateClosed?:boolean}} opts 門が閉じていることを期待する実行（PR-D のシナリオ）だけ true
  * @returns {string[]}
  */
-function evaluateRuntimeConcealment(cfg) {
+function evaluateRuntimeConcealment(cfg, { expectGateClosed = false } = {}) {
+  if (String(cfg.gateState || '') === GATE_STATE_CLOSED && !expectGateClosed) {
+    return [
+      `[T-20] 門（reset-gate）が申請を閉じている（realm 属性 ${GATE_STATE_ATTRIBUTE}=${GATE_STATE_CLOSED}`
+      + `${cfg.gateReason ? ` / 理由=${cfg.gateReason}` : ''}）。`
+      + ' **存在秘匿としては健全だが、近接 MTA へ投函できていない** ——'
+      + ' 門は投函できない状態を検知したときにだけ閉じる（ADR-0078 決定 4 / IADR-0404）。'
+      + ' 近接 MTA（platform-infra/mail-relay）の状態を確かめること。'
+      + ` 門が閉じていることを**期待する**実行（4 状態シナリオ）では ${EXPECT_GATE_CLOSED_ENV}=1 を立てる。`
+      + ' 🔴 これを緑にすると、relay が落ちたスタックで送出の試験（T-16 / T-17）が静かに飛ぶ。',
+    ];
+  }
   if (!cfg.resetPasswordAllowed) return []; // 閉じている＝両者に同じ 400（実測済み）
   const missing = [cfg.host === '' ? 'host' : null, cfg.from === '' ? 'from' : null].filter(Boolean);
   if (missing.length === 0) return [];
@@ -527,8 +573,11 @@ async function run() {
     return { failures: [`[前提] ${runtimeCfg.error}`], notices };
   }
   notices.push(`[check-password-reset-mail] 稼働 realm: resetPasswordAllowed=${runtimeCfg.resetPasswordAllowed}`
-    + ` / smtpServer.host=${runtimeCfg.host || '(空)'} / smtpServer.from の長さ=${runtimeCfg.from.length}`);
-  const concealFailures = evaluateRuntimeConcealment(runtimeCfg);
+    + ` / smtpServer.host=${runtimeCfg.host || '(空)'} / smtpServer.from の長さ=${runtimeCfg.from.length}`
+    + ` / ${GATE_STATE_ATTRIBUTE}=${runtimeCfg.gateState || '(無し)'}`);
+  const concealFailures = evaluateRuntimeConcealment(runtimeCfg, {
+    expectGateClosed: process.env[EXPECT_GATE_CLOSED_ENV] === '1',
+  });
   if (concealFailures.length > 0) {
     // 脆弱な組に居るなら、応答を測るまでもなく漏洩している。**先に落とす**（測って 500 を出させない）。
     return { failures: concealFailures, notices };
@@ -760,6 +809,40 @@ function selfTest() {
       '閉じた状態を漏洩として落としている');
   });
 
+  // ---- T-20（#1245 PR-C）: 門（reset-gate）が閉じている状態を「測れなかった」と読む ----
+  ok('🔴 T-20: 門が閉じているなら赤（存在秘匿は健全だが、送出は測れていない）', () => {
+    const f = evaluateRuntimeConcealment({
+      resetPasswordAllowed: false, host: 'mail-relay', from: 'noreply@x',
+      gateState: GATE_STATE_CLOSED, gateReason: 'probe failed: ECONNREFUSED',
+    });
+    assert.strictEqual(f.length, 1, '門が閉じたスタックで送出の試験が静かに飛ぶ');
+    assert.ok(f[0].includes('ECONNREFUSED'), '門が書いた理由を運んでいない');
+    assert.ok(f[0].includes(EXPECT_GATE_CLOSED_ENV), '期待する実行での逃げ道を案内していない');
+  });
+
+  ok('T-20: 門が閉じていることを期待する実行（4 状態シナリオ）では落とさない', () => {
+    assert.deepStrictEqual(evaluateRuntimeConcealment(
+      { resetPasswordAllowed: false, host: '', from: '', gateState: GATE_STATE_CLOSED },
+      { expectGateClosed: true },
+    ), []);
+  });
+
+  ok('T-20: 門が開いている / 属性が無い（門が居ない）状態は従来どおり（後方互換）', () => {
+    assert.deepStrictEqual(evaluateRuntimeConcealment({
+      resetPasswordAllowed: true, host: 'mail-relay', from: 'noreply@x', gateState: 'open',
+    }), []);
+    assert.deepStrictEqual(evaluateRuntimeConcealment({
+      resetPasswordAllowed: false, host: '', from: '',
+    }), [], '門が居ない環境（属性なし）で挙動を変えている');
+  });
+
+  ok('T-20: 門の属性名は門・後追い Job と同じ綴りである（ズレると読めない）', () => {
+    const gate = require('../deploy/mail-relay/reset-gate.js');
+    assert.strictEqual(GATE_STATE_ATTRIBUTE, gate.GATE_STATE_ATTRIBUTE);
+    assert.strictEqual(GATE_REASON_ATTRIBUTE, gate.GATE_REASON_ATTRIBUTE);
+    assert.strictEqual(GATE_STATE_CLOSED, gate.GATE_STATE_CLOSED);
+  });
+
   ok('T-10: 非実在の利用者名は realm 宣言と突き合わせて作る', () => {
     const r = loadRealm();
     assert.ok(r.ok, '実データの realm を読めない');
@@ -827,4 +910,8 @@ module.exports = {
   mailCaptureTarget,
   loadRealm,
   MAIL_CAPTURE_MANIFEST,
+  GATE_STATE_ATTRIBUTE,
+  GATE_REASON_ATTRIBUTE,
+  GATE_STATE_CLOSED,
+  EXPECT_GATE_CLOSED_ENV,
 };

@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-05, FR-09, UC-05, SC-17, NFR-09, ADR-0004, ADR-0026, ADR-0032, ADR-0036]
 author: implementation-agent
 created: 2026-08-31
-updated: 2026-08-31
+updated: 2026-09-07
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
   - planning:projects/microservices-platform/05_screens/01_screens.md
@@ -153,3 +153,29 @@ client_credentials も通った）。**測らずに書かないこと。**
 2 回目が起きたら `check-realm-constraints.js` へ「service account に `realm-management` の
 クライアントロールを持つクライアントは、クライアントロールを載せるスコープを持つこと」を
 陽性対照つきで足すこと。
+
+> **★［2026-09-07 追記 / #1245 PR-C / IADR-0404］条件が満たされたので検査器を足した。**
+>
+> **2 つ目の主体ができた** —— SC-15 のパスワードリセット申請を機械で閉じる門
+> （[IADR-0404](./IADR-0404_nearby-mta-relay-and-realm-ownership.md) の 2026-09-07 追記・決定 12）が
+> `realm-management` の `view-realm` ＋ `manage-realm` を持つ機密クライアントとして realm に入った。
+> **利用者は 2026-09-05 にこの権限の拡張を承諾している。**
+>
+> `check-realm-constraints.js` に `collectServiceAccountRoleGaps` を新設し、次の 4 つを宣言で固定した
+> （**主体の名前を書き写さず、「関係」として見る**）。
+>
+> 1. 上で申し送ったもの（`realm-management` のロールを持つなら `realm-management-roles` スコープを持つ）
+> 2. 🔴 **`manage-realm` を持つサービスアカウントは 1 つだけ**である
+>    —— 本 ADR 決定 1 の最小権限からの後退を、承諾された 1 主体に閉じるため
+> 3. `manage-realm` を持つ主体は `manage-users` を併せ持たず、`standardFlowEnabled` /
+>    `directAccessGrantsEnabled` も開いていない（決定 1 が分けた主体の区切りと #438 検査 5 の MFA 迂回禁止）
+> 4. `realm-management-roles` を宣言したクライアントには、**ロールを担うサービスアカウント利用者が
+>    `users[]` にちょうど 1 つ居る**（#1301 の実測: client はあるが `users[]` に無く、ロールが誰にも
+>    付いていない。**realm import は成功し、client_credentials でトークンも取れる**ので Admin API の 403 まで気付けない）
+>
+> 🔴 **4 の不変条件は当初「`serviceAccountsEnabled` なら利用者を宣言せよ」と書いたが、実データへ当てて
+> 狭めた** —— 合成監視のプローブは**ロールを 1 つも持たない主体**として意図的に利用者を宣言しておらず、
+> それは事故ではない。**「宣言と実体の食い違い」を見るのであって「宣言の欠落」を見るのではない。**
+>
+> **本 ADR 決定 1（`identity-admin` に与えるのは 3 ロールだけ）と、`manage-realm` を与えないという
+> 記述は変わらない** —— 主語は `identity-admin` であり、門は別の主体である。

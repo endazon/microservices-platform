@@ -66,7 +66,10 @@ function liveFrom(desired) {
   for (const [cid, roles] of Object.entries(desired.roles.client || {})) clientRoles[cid] = roles.map((r) => ({ ...clone(r), id: uuid() }));
   // realm-management はビルトイン。サービスアカウントの clientRoles が指すので居る。
   clients.push({ id: uuid(), clientId: 'realm-management' });
-  clientRoles['realm-management'] = ['view-users', 'manage-users', 'view-realm', 'query-users'].map((n) => ({ id: uuid(), name: n }));
+  // ［2026-09-07 / #1245 PR-C］`manage-realm` を足した —— 門（reset-gate）のサービスアカウントが
+  // これを持つ。ビルトインの realm-management には元から在るロールであり、fixture が実物から
+  // 遠いままだと「割当が deferred になる」形を試験できない。
+  clientRoles['realm-management'] = ['view-users', 'manage-users', 'view-realm', 'manage-realm', 'query-users'].map((n) => ({ id: uuid(), name: n }));
   const groups = desired.groups.map((g) => ({
     ...clone(g), id: uuid(), subGroups: (g.subGroups || []).map((s) => ({ ...clone(s), id: uuid() })),
   }));

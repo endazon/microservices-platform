@@ -80,6 +80,11 @@ vexec "vault kv put secret/msp/wikijs-oidc client-secret='${WIKIJS_OIDC_CLIENT_S
 vexec "vault kv put secret/msp/grafana-oidc client-secret='${GRAFANA_OIDC_CLIENT_SECRET:-grafana-dev-secret-change-me}'"
 vexec "vault kv put secret/msp/vault-oidc client-secret='${VAULT_OIDC_CLIENT_SECRET:-vault-dev-secret-change-me}'"
 vexec "vault kv put secret/msp/headlamp-oidc client-secret='${HEADLAMP_OIDC_CLIENT_SECRET:-headlamp-dev-secret-change-me}'"
+# SC-15, ADR-0078 決定 4, IADR-0404 (#1245 PR-C): 近接 MTA へ投函できないときに申請を閉じる門
+# （platform-infra/reset-gate）が Admin REST を叩く機密クライアントの secret。
+# **既定は realm import の置き場と同値**にする —— ズレると Keycloak の token 端点が invalid_client を返し、
+# 門は 401 を打ち続けるだけになる（窓は開いたまま。wikijs-oidc と同じ罠）。
+vexec "vault kv put secret/msp/reset-gate-oidc client-secret='${RESET_GATE_CLIENT_SECRET:-reset-gate-dev-secret-change-me}'"
 # IADR-0099 (#310) PR-4: 基盤 secret（postgres/rabbitmq/keycloak-admin）。★値は k8s-local-up.sh step 3 の手動 apply と
 # **完全一致**させること（env 由来 or 同じ既定 postgres/guest/admin）。DB/broker/keycloak は既存パスワードで初期化済みのため、
 # 値がズレると認証破壊。ExternalSecret は creationPolicy: Merge で同一値を上書きするのみ（値不変＝無害）。
@@ -117,6 +122,7 @@ echo "  PR-1: llm-provider-credentials / PR-2: minio-credentials, wikijs-db, wik
 echo "  PR-3: minio-oidc (MSP ns) / grafana-oidc, vault-oidc, headlamp-oidc (platform-infra ns)"
 echo "  #1107: bff-oidc (MSP ns。BFF セッションの client secret。空だと /bff/auth/login が 500)"
 echo "  #1101: identity-admin-oidc (MSP ns。SC-17 の Keycloak Admin REST 反映。空だと authorization-service が起動しない)"
+echo "  #1245: reset-gate-oidc (platform-infra ns。SC-15 の申請を閉じる門。空だと門が起動しない＝窓が開いたままになる)"
 echo "  #1255: retrieval-service-token, ingestion-service-token, aianalysis-service-token, graph-service-token, conversion-service-token, wiki-service-token, datasource-service-token, mcp-server-token (MSP ns。east-west gRPC の s2s 資格情報。空だと当該 Pod が起動しない)"
 echo "  PR-4: postgres, rabbitmq, keycloak-admin (platform-infra ns・creationPolicy: Merge・手動 apply は保持)"
 echo "  #438/#1102/#1144: keycloak-smtp (platform-infra ns。from/user/password は空＝実値未供給。宛先の既定はクラスタ内の捕捉用 MTA。k8s-local-up.sh の ESO=1 が常時 apply する。docs/operations/keycloak-smtp-relay-setup-runbook.md 参照)"

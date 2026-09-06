@@ -436,6 +436,19 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/keycloak-realm-reconcile.test.js
 
+      # SC-15 / FR-05, ADR-0078 決定 4, IADR-0404, Issue #1245: 近接 MTA へ投函できないときに
+      # パスワードリセットの申請を閉じる門（deploy/mail-relay/reset-gate.js）の純粋関数と、
+      # **門と後追い Job が競合しないこと**を固定する。
+      # 🔴 門が閉じたことと Job が開き直すことが競合すると、**両方が「直した」と記録して静かに壊れる**。
+      # 接点（realm 属性の綴り・閉じた realm の表現）は両モジュールを同時に読み込まないと測れないので、
+      # それぞれの自己試験ではなく専用の試験に置いている。
+      - name: Unit-test the SC-15 reset request gate
+        if: ${{ !cancelled() }}
+        run: node deploy/mail-relay/reset-gate.js --self-test
+      - name: Check the gate and the realm reconcile planner do not fight
+        if: ${{ !cancelled() }}
+        run: node scripts/reset-gate.test.js
+
       # FR-01/FR-02 ほか, IADR-0089, Issue #342 再発防止: BFF が集約する各 downstream の「実効の上流 URL」
       # （Program.cs のコード既定 ?? デプロイ manifest の Services__<Name> 上書き）が、メッシュ規約のポート
       # （:8080）に解決されることを機械検査する。DataSourceService の :8080 上書き漏れがコード既定 5002 のまま

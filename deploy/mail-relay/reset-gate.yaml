@@ -1,0 +1,148 @@
+# SC-15, FR-05, NFR-09, ADR-0026 / ADR-0045 / ADR-0078 決定 4, IADR-0404 (#1245 PR-C):
+# **近接 MTA へ投函できないとき、パスワードリセットの申請を機械で閉じる門。**
+#
+# ## なぜ Deployment のループなのか（CronJob でも Job でもない）
+#
+# - **窓の長さがプローブ周期で決まる**ので、刻みの決定性が要る。CronJob の下限は 1 分であり、
+#   Pod 起動の揺らぎがそのまま窓に乗る（合成監視のプローブを Deployment にしたのと同じ理由）。
+# - **メッシュ内の Job はサイドカーのせいで完了しない。** ここは platform-infra（メッシュ外）だが、
+#   常駐が要る以上 Job の形はそもそも合わない。
+#
+# ## 何を測るか（🔴 Pod の Ready ではない）
+#
+# 近接 MTA へ**本物の SMTP 取引**を打つ。Ready でも投函は拒まれ得る（452 キュー満杯・554 差出人拒否・
+# 宛先の DNS 検証）——#1307 は「relay は生きていて投函だけを拒む」状態を develop の CI で実測している。
+# 🔴 **DATA は送らない**（RCPT で終える）。relay は宛先によらず上流へ中継するので、DATA まで送ると
+# プローブのメールが捕捉箱へ流れ込み、scripts/check-password-reset-mail.js の「ちょうど 1 通」が壊れる。
+# 詳細と、RCPT 止まりでも W1 / W1' / W2 を捕まえられる根拠は reset-gate.js の頭部にある。
+#
+# ## 後追い Job との競合（🔴 ここを外すと門ごと無効になる）
+#
+# 門は状態を realm 属性 `reset-gate.state` へ**同じ PUT で**書く。realm の後追い
+# （deploy/local/keycloak-setup/reconcile-realm.js）は「宣言 true・稼働 false・その属性が closed」の
+# 1 組だけを差分から除く（IADR-0404 決定 5。**PR-A で着地済み**）。
+# 綴りが 1 文字でもズレると Job が開き直す —— scripts/reset-gate.test.js が両モジュールの定数を突き合わせる。
+#
+# ## 権限
+#
+# 専用の機密クライアント `reset-gate` の service account に `realm-management` の
+# **view-realm ＋ manage-realm だけ**（利用者が 2026-09-05 に承諾）。`PUT /admin/realms/{realm}` は
+# manage-realm を要求し、1 項目にだけ効く細粒度権限は Keycloak 24 に無いのでこれが下限である。
+# 面積は①コードが 4 キーしか差し替えない ②scripts/check-realm-constraints.js が
+# 「manage-realm を持つ SA は 1 つだけ」を宣言で固定する ③secret をリポジトリに置かない、で抑える。
+#
+# ## 🔴 数値の既定をコードが持たない
+#
+# PROBE_INTERVAL_SECONDS / REOPEN_AFTER_SUCCESSES / PROBE_TIMEOUT_MS は**本ファイルが与える**。
+# ADR-0078 決定 1 は所要時間の閾値を「実測してから」と定めており、**実装が数字を決めない**
+# （synthetic-monitor の probe.js と同じ作法）。未設定なら門は起動しない。
+# 🔴 **ここに書いた値は実測で正しさを確かめていない**（本作業機に稼働クラスタが無い。#1245 PR-D で測る）。
+#   - PROBE_TIMEOUT_MS=10000 は Keycloak の送出タイムアウト（DefaultEmailSenderProvider のハードコード）と同値。
+#     短くすると「Keycloak は待てるのに門だけ諦める」偽陽性になる。
+#   - PROBE_INTERVAL_SECONDS=10 が窓 W1 / W1' / W2 の上限（＝ 周期 ＋ プローブのタイムアウト ＋ PUT 往復）を決める。
+#   - REOPEN_AFTER_SUCCESSES=3 は復旧の揺らぎで開閉を繰り返さないための下限。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reset-gate
+  namespace: platform-infra
+  labels: { app: reset-gate }
+spec:
+  replicas: 1
+  # 2 つの門が同じ realm を同時に書くと admin event が二重になり、閉/開の判断も競合する。
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: reset-gate }
+  template:
+    metadata:
+      labels: { app: reset-gate }
+    spec:
+      containers:
+        - name: gate
+          # CI（Node 22）と同じメジャー版。外部依存ゼロ（Node 標準の net / fetch / fs のみ）。
+          image: node:22-alpine
+          command: ["node", "/gate/reset-gate.js"]
+          env:
+            # 認証基盤は同じ namespace に居る（エッジ・TLS・メッシュのどれにも依存しない）。
+            - name: KC_URL
+              value: http://keycloak:8080
+            - name: KC_REALM
+              value: platform
+            - name: GATE_CLIENT_ID
+              value: reset-gate
+            # 🔴 secret はリポジトリに置かない。Secret reset-gate-oidc（dev 既定は起動器が作り、
+            #   go-live は Vault → ExternalSecret が上書きする）。**非 optional** である ——
+            #   資格情報が無い門は 401 を打ち続け、窓は開いたままになる。起動しないほうが気付ける。
+            - name: GATE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: reset-gate-oidc
+                  key: client-secret
+            # 開け直す先＝**宣言**の resetPasswordAllowed。realm import と同じ ConfigMap を読む
+            # （門は「開ける主体」ではなく「宣言どおりに戻す主体」である）。
+            - name: REALM_DIR
+              value: /import
+            # 🔴 送出先の単一情報源は deploy/mail-relay/mail-relay.yaml の Service（mail-relay / 587）。
+            #   realm の smtpServer もそこから来る。ここが違うと門は relay ではない何かを測る。
+            - name: RELAY_HOST
+              value: mail-relay
+            - name: RELAY_PORT
+              value: "587"
+            # 🔴 realm の smtpServer.from と同じでなければならない（近接 MTA の差出人の門
+            #   check_sender_access に拒まれ、門が常時 closed になる）。scripts/reset-gate.test.js が突合する。
+            - name: PROBE_MAIL_FROM
+              value: noreply@platform.localhost
+            # .invalid は RFC 6761 の予約 TLD であり**決して解決されない**。DATA を送らないので
+            # 1 通も生まれないが、宛先ドメインの DNS 検証が再混入した場合（#1307 の再発）ここで拒まれて
+            # 門が閉じる ＝ **検知したい形である**。
+            - name: PROBE_RCPT_TO
+              value: probe@probe.invalid
+            - name: PROBE_TIMEOUT_MS
+              value: "10000"
+            - name: PROBE_INTERVAL_SECONDS
+              value: "10"
+            - name: REOPEN_AFTER_SUCCESSES
+              value: "3"
+          volumeMounts:
+            - name: gate
+              mountPath: /gate
+              readOnly: true
+            - name: realms
+              mountPath: /import
+              readOnly: true
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+      volumes:
+        # スクリプト本体は ConfigMap 化する（root 外ファイルを kustomize が参照できないため、
+        # テーマ・realm reconcile と同じく起動器が --from-file で作る）。
+        - name: gate
+          configMap:
+            name: reset-gate-script
+        # realm import と同じ ConfigMap（宣言の単一情報源）。
+        - name: realms
+          configMap:
+            name: keycloak-realms
+---
+# 近接 MTA の ingress へ**門を足す 2 本目の宣言**。
+#
+# 🔴 mail-relay.yaml の NetworkPolicy を書き換えていない —— NetworkPolicy は**加算的**であり、
+#   同じ Pod を選ぶ複数の宣言の ingress は和になる。近接 MTA の宣言は #1307 が触った直後であり、
+#   本 PR の射程（門の配備）で書き換えるべきものではない。同ファイルは「PR-B と PR-C が
+#   **それぞれの規則を足す**」と明記している。
+# 🔴 NetworkPolicy を強制しないクラスタ（dev の k3d 既定）では無害な宣言として残るだけである。
+#   強制するクラスタでこれが無いと、門は静かに繋がらなくなり **常時 closed** になる。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mail-relay-ingress-reset-gate
+  namespace: platform-infra
+  labels: { app: reset-gate }
+spec:
+  podSelector: { matchLabels: { app: mail-relay } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: reset-gate } }
+      ports:
+        - { protocol: TCP, port: 587 }
