@@ -7,6 +7,7 @@ using FluentValidation;
 using Platform.Shared.Infrastructure.Foundation.Llm;
 using Knowledge.Contracts.Dtos;
 using OpenTelemetry.Metrics;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Observability;
@@ -65,6 +66,13 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensi
     builder.Services.AddSingleton<ILlmCompletionTransport, GrpcLlmCompletionTransport>();
 else
     builder.Services.AddSingleton<ILlmCompletionTransport, HttpLlmCompletionTransport>();
+
+// FR-05, NFR-09, NFR-16, ADR-0004, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0401 決定 1 (#1255):
+// ABAC スコープ解決の gRPC 経路。**並走中の正は REST である。**
+// `Services:AuthorizationServiceGrpc`（h2c のアドレス）が構成されたときだけ `AuthzScopeGrpcClient` が
+// 登録され、RagOrchestrator は在ればそれを使う（無ければ上の名前つき HttpClient で REST のまま）。
+// 戻すのは構成を外すだけでよい（コードは変えない）。
+builder.Services.AddAuthzScopeGrpcClient(builder.Configuration);
 
 // FR-04: RAG オーケストレーター
 // FR-05, ADR-0034 (#970): 受信 Authorization を RetrievalService へ伝播するため要求文脈へ触る。

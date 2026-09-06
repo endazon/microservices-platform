@@ -262,6 +262,15 @@ services:
     dataSourceSync:
       enabled: true
       intervalSeconds: 300
+    # FR-05 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0401 (#1255): east-west gRPC の
+    # 呼び出し側資格情報。realm の confidential client `datasource-service`（service account ＋
+    # realm ロール platform-service のみ。ABAC ポリシーは持たない）。
+    # 🔴 これは**利用者トークンの転送をやめる**ための資格情報である —— 呼び出し先の読み口が
+    # 「これらの名前は実在するか」へ狭めてあるので、名簿の列挙は s2s の面から引けない。
+    serviceToken:
+      clientId: datasource-service
+      existingSecret: datasource-service-token
+      clientSecretKey: client-secret
     # FR-05, UC-04, SC-06, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証の後段。
     # 🔴 **k8s の Service は 8080 で待つ。** コード既定も 8080 にしてあるが、
     # **明示しておく**（先行 3 サービスは既定 `:5005` を extraEnv で上書きしており、
@@ -269,6 +278,11 @@ services:
     extraEnv:
       - name: Services__AuthorizationService
         value: "http://authorization-service:8080"
+      # FR-05 / NFR-16, IADR-0401 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
+      # 実在検証が gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # ポートは authorization.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
+      - name: Services__AuthorizationServiceGrpc
+        value: "http://authorization-service:8081"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
@@ -414,6 +428,11 @@ services:
       # ポートは llmgateway.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
       - name: Services__LlmGatewayGrpc
         value: "http://llmgateway-service:8081"
+      # FR-05 / NFR-16, IADR-0401 (#1255): ABAC スコープ解決の gRPC 宛先。**これが在るときだけ**
+      # スコープ解決が gRPC 経路になる（無ければ上の REST のまま）。資格情報は上の serviceToken を
+      # **そのまま使う**（1 サービス 1 主体。呼び出し先ごとに主体を割らない）。
+      - name: Services__AuthorizationServiceGrpc
+        value: "http://authorization-service:8081"
     resources:
       requests: { cpu: 200m, memory: 256Mi }
       limits: { cpu: 1000m, memory: 1Gi }
@@ -486,10 +505,22 @@ services:
     objectStorage: true
     # IADR-0021: Wiki.js への同期（GraphQL push）先とサービスアカウント API キー。
     # API キーは Secret 経由で注入（コミットしない。事前に kubectl/ArgoCD で作成する。docs/security）。
+    # FR-13 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0401 (#1255): east-west gRPC の
+    # 呼び出し側資格情報。realm の confidential client `wiki-service`（service account ＋
+    # realm ロール platform-service のみ。ABAC ポリシーは持たない —— 自分が文書を読む主体ではない）。
+    serviceToken:
+      clientId: wiki-service
+      existingSecret: wiki-service-token
+      clientSecretKey: client-secret
     extraEnv:
       # FR-05 / IADR-0089 / #958: ABAC の許可スコープ解決の宛先。コード既定 :5005 は開いていない。
       - name: Services__AuthorizationService
         value: "http://authorization-service:8080"
+      # FR-13 / NFR-16, IADR-0401 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
+      # 閲覧のスコープ解決が gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # 🔴 未認証の短絡は輸送の手前にあるので、gRPC でも匿名では 1 度も呼ばない。
+      - name: Services__AuthorizationServiceGrpc
+        value: "http://authorization-service:8081"
       - name: WikiJs__GraphQlEndpoint
         value: "http://wiki-js:3000/graphql"
       - name: WikiJs__ApiKey
@@ -586,6 +617,11 @@ services:
       # ポートは llmgateway.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
       - name: Services__LlmGatewayGrpc
         value: "http://llmgateway-service:8081"
+      # FR-17 / NFR-16, IADR-0401 (#1255): ABAC スコープ解決の gRPC 宛先。**これが在るときだけ**
+      # 探索のスコープ解決が gRPC 経路になる（無ければ上の REST のまま）。資格情報は上の
+      # serviceToken を**そのまま使う**（1 サービス 1 主体。呼び出し先ごとに主体を割らない）。
+      - name: Services__AuthorizationServiceGrpc
+        value: "http://authorization-service:8081"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
@@ -636,9 +672,23 @@ services:
     # 登録者の集合の部分集合かを判定するため、登録者の ABAC 属性と認可スコープをここから解決する。
     # graph と同じ落とし穴を踏まないように明示する —— **不達でも 5xx にならず deny 側へ縮退する**
     # （属性の割当だけが通らなくなる）ため、状態コードにも出ず live で気付けない。
+    #
+    # FR-16 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0401 (#1255): east-west gRPC の
+    # 呼び出し側資格情報。realm の confidential client `mcp-server`（service account ＋
+    # realm ロール platform-service のみ。ABAC ポリシーは持たない）。
+    # 🔴 これは**利用者トークンの転送をやめる**ための資格情報である —— 呼び出し先の読み口が
+    # 「この 1 人の属性は何か」へ狭めてあるので、名簿の列挙は s2s の面から引けない。
+    serviceToken:
+      clientId: mcp-server
+      existingSecret: mcp-server-token
+      clientSecretKey: client-secret
     extraEnv:
       - name: Services__AuthorizationService
         value: "http://authorization-service:8080"
+      # FR-16 / NFR-16, IADR-0401 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
+      # 登録者の属性解決が gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      - name: Services__AuthorizationServiceGrpc
+        value: "http://authorization-service:8081"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }

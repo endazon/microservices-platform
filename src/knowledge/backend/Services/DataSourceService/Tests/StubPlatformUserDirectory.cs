@@ -20,11 +20,19 @@ public sealed class StubPlatformUserDirectory : IPlatformUserDirectory
     // 何回引かれたか。**写像表を送らない要求が名簿を引かない**ことを固定するために使う。
     public int CallCount { get; private set; }
 
-    public Task<PlatformUserDirectorySnapshot> ListUsernamesAsync(CancellationToken ct)
+    // [[IADR-0401]] 決定 3 (#1255): 最後に照会された名前。口が「列挙」から「照会」へ変わったので、
+    // **送っていない名前を後段へ渡していない**ことをテストから確かめられるようにする。
+    public IReadOnlySet<string> LastQuery { get; private set; } = new HashSet<string>(StringComparer.Ordinal);
+
+    public Task<PlatformUserDirectorySnapshot> LookupAsync(
+        IReadOnlySet<string> usernames, CancellationToken ct)
     {
         CallCount++;
+        LastQuery = usernames;
         return Task.FromResult(Available
-            ? PlatformUserDirectorySnapshot.Of(Usernames)
+            // 🔴 **要求した名前との交差を返す**（実装と同じ形）。全件を返すと、
+            // 「照会していない名前が実在扱いになる」という実装には無い挙動でテストが緑になる。
+            ? PlatformUserDirectorySnapshot.Of(Usernames.Where(usernames.Contains))
             : PlatformUserDirectorySnapshot.Unavailable);
     }
 }

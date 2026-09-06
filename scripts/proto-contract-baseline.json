@@ -117,6 +117,113 @@
         }
       }
     },
+    "src/platform/backend/Shared/Platform.Shared.Contracts/Protos/platform/authz/v1/user_directory.proto": {
+      "syntax": "proto3",
+      "package": "platform.authz.v1",
+      "csharpNamespace": "Platform.Shared.Contracts.Grpc.Authz.V1",
+      "imports": [],
+      "messages": {
+        "CheckUsernamesRequest": {
+          "fields": {
+            "usernames": {
+              "number": 1,
+              "type": "string",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "CheckUsernamesResponse": {
+          "fields": {
+            "results": {
+              "number": 1,
+              "type": "UsernameExistence",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "GetUserAttributesRequest": {
+          "fields": {
+            "username": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "GetUserAttributesResponse": {
+          "fields": {
+            "attributes": {
+              "number": 3,
+              "type": "map<string,string>",
+              "label": "map"
+            },
+            "found": {
+              "number": 1,
+              "type": "bool",
+              "label": "singular"
+            },
+            "username": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "UsernameExistence": {
+          "fields": {
+            "exists": {
+              "number": 2,
+              "type": "bool",
+              "label": "singular"
+            },
+            "username": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "enums": {},
+      "services": {
+        "UserDirectory": {
+          "rpcs": {
+            "CheckUsernames": {
+              "request": "CheckUsernamesRequest",
+              "response": "CheckUsernamesResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            },
+            "GetUserAttributes": {
+              "request": "GetUserAttributesRequest",
+              "response": "GetUserAttributesResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            }
+          }
+        }
+      }
+    },
     "src/platform/backend/Shared/Platform.Shared.Contracts/Protos/platform/llmgateway/v1/completion.proto": {
       "syntax": "proto3",
       "package": "platform.llmgateway.v1",

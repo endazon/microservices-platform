@@ -9,6 +9,7 @@ using McpServer.Domain;
 using McpServer.Domain.Ports;
 using McpServer.Infrastructure.ExternalServices;
 using Microsoft.EntityFrameworkCore;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
@@ -48,9 +49,23 @@ builder.Services.AddHttpClient(
     AuthorizationServiceRegistrarAttributes.HttpClientName,
     c => c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
         ?? "http://authorization-service:8080"));
-// 呼び出し元の Authorization を後段へ転送するために要る（サービス専用の資格情報を新設しない）。
+// 登録者の主体識別子を読むために要る（REST 実装は加えて Authorization を後段へ転送する）。
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<IRegistrarAttributeResolver, AuthorizationServiceRegistrarAttributes>();
+
+// FR-16, FR-05, UC-09, SC-12, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4・5,
+// IADR-0401 決定 2・4・5 (#1255): 登録者の割当可能属性の輸送。**並走中の正は REST である。**
+// `Services:AuthorizationServiceGrpc`（h2c のアドレス）が構成されたときだけ gRPC 実装を使う。
+//
+// 🔴 **gRPC 実装は利用者トークンを転送しない。** 代わりに呼び出し先の読み口を
+// 「この 1 人の属性は何か」へ狭めてある（`UserDirectory/GetUserAttributes`）——
+// 列挙も書き込みも s2s の面に無いので、SC-12 を触れない主体が名簿を引ける経路はできない。
+// 機密区分の読み方（`RegistrarScopeReading`）は**両実装で同じ 1 つ**である（IADR-0384 決定 1）。
+builder.Services.AddAuthzScopeGrpcClient(builder.Configuration);
+builder.Services.AddUserDirectoryGrpcClient(builder.Configuration);
+if (!string.IsNullOrWhiteSpace(builder.Configuration[AuthzScopeGrpcClient.AddressKey]))
+    builder.Services.AddScoped<IRegistrarAttributeResolver, GrpcRegistrarAttributes>();
+else
+    builder.Services.AddScoped<IRegistrarAttributeResolver, AuthorizationServiceRegistrarAttributes>();
 
 // FR-16, ADR-0024: 宣言的公開構成・自己申告の集約・実効ツール一覧
 builder.Services.AddSingleton<ToolPublicationConfigLoader>();

@@ -6,6 +6,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Net;
 using System.Security.Claims;
+using System.Text.Json;
+using Platform.Shared.Contracts.Dtos;
+using Pb = Platform.Shared.Contracts.Grpc.Authz.V1;
 
 namespace McpServer.Tests.Infrastructure.ExternalServices;
 
@@ -33,27 +36,77 @@ public class AuthorizationServiceRegistrarAttributesTests
             + "\"attributes\":{\"department\":\"engineering\"" + tagAttr + "}}]";
     }
 
+    // 🔴 [[IADR-0401]] (#1255): **本ヘルパは 2 つの輸送を通し、答えが一致することを表明してから返す。**
+    // #1255 の第 3 スライスで REST と gRPC の兄弟実装ができたため、片方だけを試験すると
+    // 「読み方は 1 か所」（[[IADR-0384]] 決定 1）の保証が輸送の追加で静かに破れる。
+    // **本クラスの 19 件すべてが、この 1 行の写しで両実装を覆う。**
     private static async Task<RegistrarAssignableAttributes> ResolveAsync(string scopeJson, string? tags = null)
     {
         var handler = new StubHandler()
             .Get("/authz/users", Directory(tags))
             .Post("/authz/scope", scopeJson);
 
-        var accessor = new HttpContextAccessor
-        {
-            HttpContext = new DefaultHttpContext
-            {
-                User = new ClaimsPrincipal(new ClaimsIdentity(
-                    [new Claim(ClaimTypes.Name, Registrar)], "test")),
-            },
-        };
-
         var resolver = new AuthorizationServiceRegistrarAttributes(
-            new StubFactory(handler), accessor,
+            new StubFactory(handler), Accessor(),
             NullLogger<AuthorizationServiceRegistrarAttributes>.Instance);
 
-        return await resolver.ResolveAsync(Ct);
+        var rest = await resolver.ResolveAsync(Ct);
+        var grpc = await ResolveOverGrpcAsync(scopeJson, tags);
+
+        grpc.Should().BeEquivalentTo(rest,
+            "REST と gRPC は同じ後段の答えを同じ規則（RegistrarScopeReading）で読む");
+        return rest;
     }
+
+    // 同じ入力（名簿の 1 行 ＋ スコープ JSON）を east-west gRPC の偽クライアントへ載せ替える。
+    private static async Task<RegistrarAssignableAttributes> ResolveOverGrpcAsync(
+        string scopeJson, string? tags)
+    {
+        var attributes = new Dictionary<string, string> { ["department"] = "engineering" };
+        if (tags is not null) attributes["tags"] = tags;
+
+        var scope = JsonSerializer.Deserialize<AccessScopeResponse>(
+            scopeJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+
+        var directory = FakeUserDirectoryClient.Returning(Registrar, attributes);
+        var scopes = FakeAuthzScopeClient.Returning(ToProto(scope));
+
+        return await new GrpcRegistrarAttributes(
+            FakeAuthzGrpc.Directory(directory), FakeAuthzGrpc.Scopes(scopes), Accessor(),
+            NullLogger<GrpcRegistrarAttributes>.Instance).ResolveAsync(Ct);
+    }
+
+    // 契約 DTO → proto（呼び出し先 `AuthzScopeGrpcService` が行う写しと同じ形）。
+    internal static Pb.ResolveScopeResponse ToProto(AccessScopeResponse scope)
+    {
+        var proto = new Pb.ResolveScopeResponse { UserId = scope.UserId, Granted = scope.Granted };
+        proto.AllowedFilters.AddRange(scope.AllowedFilters.Select(ToProto));
+        if (scope.Branches is { Count: > 0 })
+            proto.Branches.AddRange(scope.Branches.Select(b =>
+            {
+                var branch = new Pb.AccessScopeBranch { Name = b.Name };
+                branch.Filters.AddRange(b.Filters.Select(ToProto));
+                return branch;
+            }));
+        return proto;
+    }
+
+    private static Pb.AttributeFilter ToProto(AttributeFilter f)
+    {
+        var proto = new Pb.AttributeFilter { Key = f.Key };
+        proto.AllowedValues.AddRange(f.AllowedValues);
+        return proto;
+    }
+
+    // 登録者の主体（`preferred_username`）。両実装が**同じ 1 つ**から名前を取る。
+    internal static HttpContextAccessor Accessor(string username = Registrar) => new()
+    {
+        HttpContext = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim(ClaimTypes.Name, username)], "test")),
+        },
+    };
 
     // ─────────────────────────────────────────────────────────────────────────
     // 🔴 受け入れ基準 1（陰性対照 / #1242 の本体）

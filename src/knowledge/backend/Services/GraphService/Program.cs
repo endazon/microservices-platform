@@ -21,6 +21,7 @@ using GraphService.Domain;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
@@ -69,6 +70,12 @@ builder.Services.AddDbContext<GraphDbContext>(opt => opt.UseNpgsql(connStr));
 builder.Services.AddHttpClient("AuthorizationService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
         ?? "http://authorization-service:5005"));
+// FR-05, NFR-09, NFR-16, ADR-0004, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0401 決定 1 (#1255):
+// ABAC スコープ解決の gRPC 経路。**並走中の正は REST である。**
+// `Services:AuthorizationServiceGrpc`（h2c のアドレス）が構成されたときだけ `AuthzScopeGrpcClient` が
+// 登録され、解決器は在ればそれを使う（無ければ上の名前つき HttpClient で REST のまま）。
+// 戻すのは構成を外すだけでよい（コードは変えない）。
+builder.Services.AddAuthzScopeGrpcClient(builder.Configuration);
 builder.Services.AddScoped<IGraphAccessResolver, GraphAccessResolver>();
 builder.Services.AddScoped<IGraphStore, EfGraphStore>();
 // UC-10: ホップごと判定を守る近傍探索（#909）。

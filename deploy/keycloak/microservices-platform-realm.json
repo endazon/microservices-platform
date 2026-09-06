@@ -489,6 +489,51 @@
       "defaultClientScopes": ["roles"]
     },
     {
+      "clientId": "wiki-service",
+      "name": "WikiService east-west gRPC caller (client_credentials)",
+      "description": "NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0401 (#1255): east-west gRPC で AuthorizationService の ABAC スコープ解決を呼ぶ主体（Wiki 閲覧）。service-account に realm ロール platform-service のみを与え、ABAC ポリシー・属性は与えない（自分が文書を読む主体ではない）。secret は dev 専用で本番は config から供給する。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "wiki-service-dev-secret-change-me",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": ["roles"]
+    },
+    {
+      "clientId": "datasource-service",
+      "name": "DataSourceService east-west gRPC caller (client_credentials)",
+      "description": "NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0401 (#1255): east-west gRPC で利用者名簿の狭い読み口（UserDirectory/CheckUsernames）を呼ぶ主体（写像先の実在検証）。platform-service のみを与える。列挙も書き込みも s2s の面に無いので名簿は引けない。secret は dev 専用で本番は config から供給する。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "datasource-service-dev-secret-change-me",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": ["roles"]
+    },
+    {
+      "clientId": "mcp-server",
+      "name": "McpServer east-west gRPC caller (client_credentials)",
+      "description": "NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0401 (#1255): east-west gRPC で登録者自身の属性（UserDirectory/GetUserAttributes）と ABAC スコープを呼ぶ主体（SC-12）。platform-service のみを与える。列挙も書き込みも s2s の面に無いので名簿は引けない。secret は dev 専用で本番は config から供給する。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "mcp-server-dev-secret-change-me",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": ["roles"]
+    },
+    {
       "clientId": "identity-admin",
       "name": "SC-17 identity admin (Keycloak Admin REST, client_credentials)",
       "description": "SC-17・IADR-0301 決定 2・IADR-0329 (#1101): AuthorizationService が利用者のロール/属性割当・無効化・セッション失効を Admin REST へ反映する機密クライアント。realm-management の view-users/manage-users/view-realm のみを持ち realm ロールは持たない。取り込み経路 (abac-seeder) とは別主体。secret は dev 専用。",
@@ -836,6 +881,24 @@
       "username": "service-account-ingestion-service",
       "enabled": true,
       "serviceAccountClientId": "ingestion-service",
+      "realmRoles": ["platform-service"]
+    },
+    {
+      "username": "service-account-wiki-service",
+      "enabled": true,
+      "serviceAccountClientId": "wiki-service",
+      "realmRoles": ["platform-service"]
+    },
+    {
+      "username": "service-account-datasource-service",
+      "enabled": true,
+      "serviceAccountClientId": "datasource-service",
+      "realmRoles": ["platform-service"]
+    },
+    {
+      "username": "service-account-mcp-server",
+      "enabled": true,
+      "serviceAccountClientId": "mcp-server",
       "realmRoles": ["platform-service"]
     }
   ]
