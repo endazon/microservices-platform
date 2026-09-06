@@ -23,12 +23,20 @@ data:
           - targets: ['otel-collector:8888']
   # compose（deploy/prometheus/alerts.yml）のルールを inline する（follow-up のコメントアウト例＝
   # exporter 依存は compose 同様に除く）。
-  # 🔴 ［2026-09-05 追記 / #1203］**件数は導出値であり、ここは実際に乖離していた。**
+  # 🔴 ［2026-09-05 / #1203］**件数は導出値であり、ここは実際に乖離していた。**
   #   本注記は長らく「全 9 ルール」と称していたが、compose 側は #1246 の
   #   knowledge-health-producers 2 件を足して 11 件になっており、**この inline は追随していなかった**
   #   （バイト一致を強制する検査器が無い。Grafana 側の inline だけが check-grafana-alerting.js の対象である）。
-  #   本 PR は #1203 の RagLatencySeriesAbsent を足して **10 / 12 件**にしたが、
-  #   **knowledge-health-producers の 2 件は #1246 の射程なのでここでは足していない**（受容として記録する）。
+  #   #1203 は RagLatencySeriesAbsent を足して 10 / 12 件にしたが、**2 件は #1246 の射程だとして
+  #   足さず、受容として記録した。**
+  # 🔴 ［2026-09-05 追記 / #1246 の取りこぼし］**その受容を解除した。** 上の 2 件を足して 12 / 12 件にし、
+  #   **乖離を止める門を新設した**（scripts/check-prometheus-alerts-parity.js）。
+  #   突合するのは **群名 ＋ ルール名 ＋ expr ＋ for ＋ severity の 1 対 1** だけである ——
+  #   🔴 **summary / description は突合しない。** この inline は意図的に凝縮した文面を持ち
+  #   （生のメトリクス名を言い換え、末尾の ADR 引用を落としている）、バイト一致を課すと常に赤になる。
+  #   門を置いた根拠は「**同型の事故が 2 回**」である: 1 回目は経路 B の Grafana に dashboards/ が
+  #   丸ごと無かった件（#674 / check-grafana-provisioning-parity.js が生まれた）、2 回目が本件。
+  #   **1 回目が門を生んだのに、その門の射程外で 2 回目が起きた。**
   # 🔴 メトリクス名・ラベル・単位を変えるときは compose 側と**同時に**直す。式の検証手順と
   #    「陽性対照を対で置く」規律は deploy/prometheus/alerts.yml の冒頭に書いてある（#1110）。
   alerts.yml: |
@@ -127,6 +135,26 @@ data:
             annotations:
               summary: "SLO の評価対象が無い: aianalysis-service /analysis/ask のレイテンシ分布が存在しない"
               description: "AiAnalysisService の /analysis/ask のレイテンシ分布が無い。RagLatencyP95High は空ベクタになり発火しない。合成監視のプローブ（60 秒間隔）が止まっている疑い。"
+      # FR-10, SC-10, ADR-0006, ADR-0076 決定 3 (#1246): ナレッジ健全性の**生産者**が居ないことを見る。
+      # 🔴 上の群と式が違う（`absent()` ではなく `absent_over_time(...[2h])`）。生産は周期駆動で
+      #   周期は 1 時間であり、`absent()` の既定 5 分 lookback では平常時も鳴り続ける。2 周期ぶんで見る。
+      #   検知は最大およそ 2 時間 10 分。指標は棚卸しに使うもので分単位の鮮度を要さない。
+      - name: knowledge-health-producers
+        rules:
+          - alert: KnowledgeHealthUnresolvedLinksProducerAbsent
+            expr: absent_over_time(knowledge_health_report_total{knowledge_indicator="unresolved-links"}[2h])
+            for: 10m
+            labels: { severity: warning }
+            annotations:
+              summary: "ナレッジ健全性の生産者が居ない: unresolved-links の報告が 2 時間届いていない"
+              description: "GraphService の定期収集が unresolved-links を DashboardService へ届けていない（周期は 1 時間）。受け口の件数は最後の値で凍るため画面は正常に見える。収集の失敗・リースの停滞・受け口への到達不能を疑う。"
+          - alert: KnowledgeHealthEdgeTypeUsageProducerAbsent
+            expr: absent_over_time(knowledge_health_report_total{knowledge_indicator="edge-type-usage"}[2h])
+            for: 10m
+            labels: { severity: warning }
+            annotations:
+              summary: "ナレッジ健全性の生産者が居ない: edge-type-usage の報告が 2 時間届いていない"
+              description: "GraphService の定期収集が edge-type-usage を DashboardService へ届けていない（周期は 1 時間）。受け口の件数は最後の値で凍るため画面は正常に見える。収集の失敗・リースの停滞・受け口への到達不能を疑う。"
 ---
 apiVersion: apps/v1
 kind: Deployment
