@@ -9,6 +9,91 @@
   "$schemaVersion": 1,
   "$acceptedBreakingChanges": [],
   "files": {
+    "src/knowledge/backend/Shared/Knowledge.Contracts/Protos/knowledge/dashboard/v1/knowledge_health.proto": {
+      "syntax": "proto3",
+      "package": "knowledge.dashboard.v1",
+      "csharpNamespace": "Knowledge.Contracts.Grpc.Dashboard.V1",
+      "imports": [],
+      "messages": {
+        "Observation": {
+          "fields": {
+            "dimension": {
+              "number": 3,
+              "type": "string",
+              "label": "optional"
+            },
+            "doc_scope": {
+              "number": 2,
+              "type": "string",
+              "label": "optional"
+            },
+            "subject_key": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "ReportRequest": {
+          "fields": {
+            "indicator": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "observations": {
+              "number": 2,
+              "type": "Observation",
+              "label": "repeated"
+            },
+            "threshold_days": {
+              "number": 3,
+              "type": "int32",
+              "label": "optional"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "ReportResponse": {
+          "fields": {
+            "accepted": {
+              "number": 2,
+              "type": "int32",
+              "label": "singular"
+            },
+            "indicator": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "enums": {},
+      "services": {
+        "KnowledgeHealthReport": {
+          "rpcs": {
+            "Report": {
+              "request": "ReportRequest",
+              "response": "ReportResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            }
+          }
+        }
+      }
+    },
     "src/knowledge/backend/Shared/Knowledge.Contracts/Protos/knowledge/document/v1/document_read.proto": {
       "syntax": "proto3",
       "package": "knowledge.document.v1",

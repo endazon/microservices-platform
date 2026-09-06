@@ -578,6 +578,13 @@ services:
     image: microservices-platform/dashboard-service
     tag: latest
     port: 8080
+    # FR-10 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0407 (#1255):
+    # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
+    # 設定したサービスにだけ containerPort（名前 grpc）・Service ポート（appProtocol: grpc）・
+    # env Grpc__Port が描画される。**readiness は 8080 の /health/ready のまま** —— 1 プロセスが
+    # 両ポートを起動時に bind するので、8080 が ready なら 8081 も bind 済みである。
+    # 開いているのは観測値の受け口（knowledge.dashboard.v1.KnowledgeHealthReport）の 1 面である。
+    grpcPort: 8081
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
@@ -628,6 +635,15 @@ services:
       # serviceToken を**そのまま使う**（1 サービス 1 主体。呼び出し先ごとに主体を割らない）。
       - name: Services__AuthorizationServiceGrpc
         value: "http://authorization-service:8081"
+      # FR-10 / NFR-16, IADR-0407 (#1255): ナレッジ健全性の観測値の報告の gRPC 宛先。
+      # **これが在るときだけ**報告が gRPC 経路になる（無ければ REST のまま。並走中の正は REST）。
+      # 資格情報は上の serviceToken を**そのまま使う**（1 サービス 1 主体）。
+      # ポートは dashboard.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
+      # 🔴 REST 側の宛先（`Services__DashboardService`）はコード既定
+      # `http://dashboard-service:8080` が chart の Service 名と一致するため上書きが無いが、
+      # gRPC は既定を持たない（未設定＝登録しない）のでここで完全修飾名を与える。
+      - name: Services__DashboardServiceGrpc
+        value: "http://dashboard-service:8081"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
