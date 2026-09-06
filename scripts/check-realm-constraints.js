@@ -769,6 +769,104 @@ function collectMailCaptureGaps(realm, reader, { realmName = AUTH_POLICY_REALM }
 }
 
 /*
+ * 検査5-b: 近接 MTA が**宛先ドメインの DNS 検証で投函そのものを拒む**形になっていないか（#1307）。
+ *
+ * 🔴 上流イメージ（`boky/postfix` v5.1.0）は **`ALLOWED_SENDER_DOMAINS` を設定したときだけ**
+ * `smtpd_recipient_restrictions` を組み立て、その並びに `reject_unknown_recipient_domain` を入れる
+ * （`scripts/functions.sh:589`）。宛先ドメインの MX / A を DNS で引き、**null MX（RFC 7505）を
+ * 556 5.1.10 で RCPT 時に拒む** —— `permit_mynetworks` はこの並びに入っていないので、
+ * クラスタ内からの投函も検証を受ける。
+ *
+ * これは `ADR-0078` 決定 2（上流が停止していても**投函を受け付けて後送する**）に反する。relay が同期的に
+ * 拒めば、切り離したはずの失敗が Keycloak の応答へ戻り（`IADR-0404` の状態 C3・窓 W2）、
+ * **実在利用者だけが 500 になる**ので SC-15 の存在秘匿も同時に破れる。develop の `integration-stack` が
+ * 3 回連続で赤になった実測がある（#1307）。
+ *
+ * **実挙動はクラスタでしか測れない。** ここで見られるのは宣言だけなので、
+ * 「`ALLOWED_SENDER_DOMAINS` を設定しているのに、無効化の段を置いていない」形だけを止める。
+ */
+const RELAY_SENDER_DOMAINS_ENV = 'ALLOWED_SENDER_DOMAINS';
+const RELAY_RECIPIENT_DNS_TOKEN = 'reject_unknown_recipient_domain';
+const RELAY_SENDER_GATE_TOKEN = 'check_sender_access';
+// 🔴 検査対象は **init スクリプトの中身だけ**である。マニフェスト全文で語を探すと、
+//    同じ語を説明しているコメントに当たって「段を消しても緑」になる（自作の偽陽性）。
+const RELAY_INIT_SCRIPT_KEY = '10-relay-policy.sh: |';
+
+/**
+ * ConfigMap の init スクリプト本体を切り出す。読めなければ null（推測しない）。
+ * @param {string} yamlText マニフェスト全文
+ * @returns {string|null}
+ */
+function extractRelayInitScript(yamlText) {
+  const i = String(yamlText).indexOf(RELAY_INIT_SCRIPT_KEY);
+  return i < 0 ? null : String(yamlText).slice(i + RELAY_INIT_SCRIPT_KEY.length);
+}
+
+/**
+ * 近接 MTA の宣言が、宛先ドメインの DNS 検証を無効化しているかを検査する。**純関数**（I/O は reader 経由）。
+ *
+ * @param {{exists:(p:string)=>boolean, read:(p:string)=>string}} reader
+ * @param {{manifest?:string}} opts
+ * @returns {{path:string, detail:string}[]}
+ */
+function collectRelayRecipientPolicyGaps(reader, { manifest = MAIL_RELAY_MANIFEST } = {}) {
+  // 0 件走査は fail-closed。宣言が読めないなら「違反なし」と読まない（既存の collectMailCaptureGaps と同じ作法）。
+  if (!reader.exists(manifest)) {
+    return [{
+      path: manifest,
+      detail: '近接 MTA の宣言が無い。宛先 DNS 検証の無効化を確かめられないので検査を成立させない',
+    }];
+  }
+  const text = String(reader.read(manifest));
+
+  // 対象外: 差出人ドメインを宣言していなければ、上流は smtpd_recipient_restrictions を組み立てない。
+  if (!text.includes(RELAY_SENDER_DOMAINS_ENV)) return [];
+
+  const script = extractRelayInitScript(text);
+  if (script === null) {
+    return [{
+      path: `${manifest}:${RELAY_INIT_SCRIPT_KEY}`,
+      detail: `${RELAY_SENDER_DOMAINS_ENV} を設定しているのに init スクリプトが読めない。`
+        + '宛先 DNS 検証の無効化を置く場所が無いので検査を成立させない',
+    }];
+  }
+
+  const gaps = [];
+  // 🔴 「語がある」では足りない。**実際に書き戻す postconf の行**があることを見る。
+  if (!/postconf\s+-e\s+"smtpd_recipient_restrictions=/.test(script)) {
+    gaps.push({
+      path: `${manifest}:smtpd_recipient_restrictions`,
+      detail: `${RELAY_SENDER_DOMAINS_ENV} を設定しているのに smtpd_recipient_restrictions を書き戻していない。`
+        + `上流既定の ${RELAY_RECIPIENT_DNS_TOKEN} が残り、宛先ドメインの DNS 検証が RCPT 時に投函を拒む`
+        + '（ADR-0078 決定 2 の後送が働かない。#1307）',
+    });
+  }
+  if (!script.includes(RELAY_RECIPIENT_DNS_TOKEN)) {
+    gaps.push({
+      path: `${manifest}:${RELAY_RECIPIENT_DNS_TOKEN}`,
+      detail: `init スクリプトが ${RELAY_RECIPIENT_DNS_TOKEN} を取り除いていない（#1307）`,
+    });
+  }
+  // 取り除く側だけを見ると、「並びを丸ごと空にする」実装でも通ってしまう。差出人の門が
+  // 残ることを対で見る（陽性対照）。
+  if (!script.includes(RELAY_SENDER_GATE_TOKEN)) {
+    gaps.push({
+      path: `${manifest}:${RELAY_SENDER_GATE_TOKEN}`,
+      detail: `init スクリプトが差出人の門（${RELAY_SENDER_GATE_TOKEN}）の残存を確かめていない。`
+        + `${RELAY_RECIPIENT_DNS_TOKEN} を外すときに門ごと消していないことを保証できない（#1307）`,
+    });
+  }
+  // 破れたときに黙って通さないこと。exit 1 が 1 つも無ければ fail-closed になっていない。
+  if (!/exit\s+1/.test(script)) {
+    gaps.push({
+      path: `${manifest}:fail-closed`,
+      detail: 'init スクリプトに fail-closed（exit 1）が無い。取り除きに失敗しても起動してしまう（#1307）',
+    });
+  }
+  return gaps;
+}
+
+/*
  * 検査6: **サーバ間の口**に、pod から到達し得ない host を書いていないか（#1115）。
  *
  * realm の URL 欄はほとんどが「ブラウザが開く URL」で、そこは裸の `localhost`（エッジ host）が正しい。
@@ -924,6 +1022,11 @@ function checkFiles(relPaths) {
       themeGaps: checkRealmThemeText(text, diskReader()),
       mfaGaps: checkRealmMfaAuditText(text),
       mailGaps: checkRealmMailCaptureText(text, diskReader()),
+      // 近接 MTA の受け入れ規則は realm に依らないが、**送出経路の検査と同じ realm の回**で報告する
+      // （MSP realm 以外の回で二重に出さない。collectMailCaptureGaps と同じ絞り方）。
+      relayGaps: JSON.parse(text).realm === AUTH_POLICY_REALM
+        ? collectRelayRecipientPolicyGaps(diskReader())
+        : [],
       concealGaps: checkRealmResetConcealmentText(text),
       serverUrlGaps: checkRealmServerSideUrlsText(text),
     });
@@ -1472,6 +1575,83 @@ function selfTest() {
     })(),
   });
 
+  // --- 検査5-b: 近接 MTA の受け入れ規則（#1307）---
+  // 宣言を差し替えて検査する。実 relay の挙動はクラスタでしか測れないので、ここで見るのは
+  // 「無効化の段を置き忘れた形」だけである。
+  const relayManifest = (script) => [
+    'kind: ConfigMap',
+    'data:',
+    `  ${RELAY_INIT_SCRIPT_KEY}`,
+    script,
+  ].join('\n');
+  const goodScript = [
+    '    recipient_before="$(postconf -h smtpd_recipient_restrictions)"',
+    `    recipient_after="$(printf '%s' "\${recipient_before}" | sed 's/${RELAY_RECIPIENT_DNS_TOKEN},[[:space:]]*//g')"`,
+    `    if printf '%s' "\${recipient_after}" | grep -q '${RELAY_RECIPIENT_DNS_TOKEN}'; then exit 1; fi`,
+    `    if ! printf '%s' "\${recipient_after}" | grep -q '${RELAY_SENDER_GATE_TOKEN}'; then exit 1; fi`,
+    '    postconf -e "smtpd_recipient_restrictions=${recipient_after}"',
+  ].join('\n');
+  const relayReader = (text, { exists = true } = {}) => ({
+    exists: () => exists,
+    read: () => text,
+  });
+  const envLine = `- { name: ${RELAY_SENDER_DOMAINS_ENV}, value: "platform.localhost" }\n`;
+
+  cases.push({
+    name: 'relay: 無効化の段がある宣言は通る（陰性対照）',
+    pass: collectRelayRecipientPolicyGaps(
+      relayReader(envLine + relayManifest(goodScript)),
+    ).length === 0,
+  });
+  cases.push({
+    name: `relay: 変異 1 — 無効化の段を消すと落ちる（${RELAY_RECIPIENT_DNS_TOKEN} が上流既定のまま残る）`,
+    pass: collectRelayRecipientPolicyGaps(
+      relayReader(envLine + relayManifest('    postconf -e smtp_tls_security_level=none')),
+    ).length > 0,
+  });
+  cases.push({
+    name: 'relay: 変異 1-b — 語だけをコメントに残して段を消しても落ちる（コメントで緑にしない）',
+    pass: collectRelayRecipientPolicyGaps(
+      relayReader(`# ${RELAY_RECIPIENT_DNS_TOKEN} / ${RELAY_SENDER_GATE_TOKEN} / exit 1\n`
+        + envLine + relayManifest('    postconf -e smtp_tls_security_level=none')),
+    ).length > 0,
+  });
+  cases.push({
+    name: `relay: 変異 2 — 差出人の門（${RELAY_SENDER_GATE_TOKEN}）の確認を落とすと落ちる（並びを空にする実装を通さない）`,
+    pass: collectRelayRecipientPolicyGaps(
+      relayReader(envLine + relayManifest(
+        goodScript.split('\n').filter((l) => !l.includes(RELAY_SENDER_GATE_TOKEN)).join('\n'),
+      )),
+    ).length === 1,
+  });
+  cases.push({
+    // 行ごと消すと門の語まで消えるので、**exit 1 だけを無害な値へ差し替える**（変異を 1 つに絞る）。
+    name: 'relay: 変異 3 — fail-closed（exit 1）を握り潰すと落ちる',
+    pass: collectRelayRecipientPolicyGaps(
+      relayReader(envLine + relayManifest(goodScript.replace(/exit 1/g, 'true'))),
+    ).length === 1,
+  });
+  cases.push({
+    name: 'relay: 変異 4 — 宣言が読めなければ緑を返さない（0 件走査の fail-closed）',
+    pass: collectRelayRecipientPolicyGaps(relayReader('', { exists: false })).length === 1,
+  });
+  cases.push({
+    name: `relay: ${RELAY_SENDER_DOMAINS_ENV} を設定していない宣言は対象外（上流が並びを組み立てない）`,
+    pass: collectRelayRecipientPolicyGaps(relayReader(relayManifest('    true'))).length === 0,
+  });
+  cases.push({
+    name: 'relay: init スクリプトが読めなければ緑を返さない（置く場所が無い）',
+    pass: collectRelayRecipientPolicyGaps(relayReader(envLine + 'kind: ConfigMap\n')).length === 1,
+  });
+  cases.push({
+    name: 'relay: 実データの宣言が門を満たす（実データ・ラチェット）',
+    pass: (() => {
+      const reader = diskReader();
+      if (!reader.exists(MAIL_RELAY_MANIFEST)) return false; // 0 件走査を緑にしない
+      return collectRelayRecipientPolicyGaps(reader).length === 0;
+    })(),
+  });
+
   // --- 検査6: サーバ間の口の宛先（#1115）---
   const s2s = (url) => ({ clients: [{ clientId: 'bff', attributes: { 'backchannel.logout.url': url } }] });
   cases.push({
@@ -1637,11 +1817,13 @@ function main() {
   const totalThemeGaps = results.reduce((n, r) => n + r.themeGaps.length, 0);
   const totalMfaGaps = results.reduce((n, r) => n + r.mfaGaps.length, 0);
   const totalMailGaps = results.reduce((n, r) => n + r.mailGaps.length, 0);
+  const totalRelayGaps = results.reduce((n, r) => n + r.relayGaps.length, 0);
   const totalConcealGaps = results.reduce((n, r) => n + r.concealGaps.length, 0);
   const totalServerUrlGaps = results.reduce((n, r) => n + r.serverUrlGaps.length, 0);
   if (total === 0 && totalMissing === 0 && totalDeviations === 0 && totalThemeGaps === 0
-    && totalMfaGaps === 0 && totalMailGaps === 0 && totalServerUrlGaps === 0 && totalConcealGaps === 0) {
-    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れはありません。`);
+    && totalMfaGaps === 0 && totalMailGaps === 0 && totalRelayGaps === 0
+    && totalServerUrlGaps === 0 && totalConcealGaps === 0) {
+    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れはありません。`);
     process.exit(0);
   }
 
@@ -1711,6 +1893,21 @@ function main() {
       + '\n要件の正は planning の ADR-0045 決定 9、実装側の記録は IADR-0344（#1144）です。');
   }
 
+  if (totalRelayGaps > 0) {
+    console.error(`[check-realm-constraints] 近接 MTA の受け入れ規則（ADR-0078 決定 2）の逸脱 ${totalRelayGaps} 件を検出しました:`);
+    for (const r of results) {
+      for (const g of r.relayGaps) {
+        console.error(`\n  ${r.file}\n    ${g.path}: ${g.detail}`);
+      }
+    }
+    console.error('\n🔴 これは「設定の食い違い」ではなく**投函が同期的に拒まれること**の話です。'
+      + '\n上流イメージは ALLOWED_SENDER_DOMAINS を設定したときだけ smtpd_recipient_restrictions を組み立て、'
+      + '\nその並びに reject_unknown_recipient_domain（宛先ドメインの DNS 検証）を入れます。'
+      + '\nRCPT 時に拒めば、近接 MTA を挟んで切り離したはずの失敗が Keycloak の応答へ戻り'
+      + '\n（IADR-0404 の状態 C3・窓 W2）、**実在利用者だけが 500 になる**ので SC-15 の存在秘匿も破れます。'
+      + '\n実挙動はクラスタでしか測れないため、本検査は宣言側の「無効化を置き忘れた形」だけを止めています（#1307）。');
+  }
+
   if (totalServerUrlGaps > 0) {
     console.error(`[check-realm-constraints] pod から到達し得ないサーバ間 URL ${totalServerUrlGaps} 件を検出しました:`);
     for (const r of results) {
@@ -1761,6 +1958,12 @@ module.exports = {
   parseMailCaptureEndpoint,
   collectMailCaptureGaps,
   checkRealmMailCaptureText,
+  extractRelayInitScript,
+  collectRelayRecipientPolicyGaps,
+  RELAY_SENDER_DOMAINS_ENV,
+  RELAY_RECIPIENT_DNS_TOKEN,
+  RELAY_SENDER_GATE_TOKEN,
+  RELAY_INIT_SCRIPT_KEY,
   collectResetConcealmentGaps,
   checkRealmResetConcealmentText,
   MAIL_CAPTURE_MANIFEST,
