@@ -4,6 +4,8 @@ using AuthorizationService.Features.Users;
 using AuthorizationService.Features.Users.Directory;
 using AuthorizationService.Infrastructure.ExternalServices;
 using AuthorizationService.Infrastructure.Persistence;
+using FluentValidation;
+using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
@@ -48,6 +50,12 @@ builder.Services.AddDbContext<AuthorizationDbContext>(opt => opt.UseNpgsql(connS
 // そのためである（Development 以外で偽物を宣言したらここで落ちる）。
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddIdentityAdminClient(builder.Configuration, builder.Environment);
+
+// FR-05, FR-21, UC-05 / 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 /
+// [[IADR-0398]] 決定 1 (b)（#1278 PR-C）: 端点の入力検証。
+// **アセンブリ走査（AddValidatorsFromAssembly）は使わない** —— 登録が暗黙になり、検証器を消しても
+// 起動が通ってしまう（明示登録なら `IValidator<T>` の解決に失敗して止まる）。
+builder.Services.AddScoped<IValidator<AccessScopeRequest>, ResolveScopeValidator>();
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段・合成可能ポートは
 // ホストしないが、到達可能性とトポロジ（段なし）を実効構成へ与えるため存在申告する。
