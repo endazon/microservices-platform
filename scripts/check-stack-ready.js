@@ -108,6 +108,12 @@
  *   `mesh.enabled=false` の構成では notice で飛ばす（G5 / G7 と同じ作法）。ただし
  *   **宣言が無いのに稼働にメッシュ資材が在る**なら飛ばさず失敗にする（IADR-0317 が
  *   「動いているが宣言が持っていない」として記録に留めた形そのもの）。
+ *   🔴 **`ISTIO=1` を宣言した実行では、その notice を失敗へ変える**（#1304 / IADR-0130 / IADR-0407）。
+ *   統合スタックは `ISTIO` を 1 度も渡しておらず（実測: `.github/` に 0 件、陽性対照 `LOCALEDGE` は 4 件）、
+ *   **本門は対象 0 件のまま緑を返し続けていた** —— 必須チェックの中で「検査しているつもりで
+ *   何も見ていない」状態が成立していた。宣言していない実行は従来どおり飛ばす
+ *   （メッシュ無しのローカル起動は正当な構成であり、赤にすべきなのは
+ *   「**入れると宣言したのに入っていない**」という食い違いのほうである）。
  *
  * - **G13 検索の読み書き先**（#1215 / [IADR-0382]）: **検索側が読む Qdrant コレクションに点が在り、
  *   全文ペイロード索引（`text` / `text_ngram`）が張られている**ことを要求する。
@@ -668,7 +674,7 @@ function specWriters(item) {
  * @param {{declared:(null|{enabled:boolean, mtlsMode:string, backchannel:(null|{workload:string,port:number,path:string}),
  *          objects:{kind:string,name:string}[]}), live:(null|object[]), liveError:(string|null)}} input
  */
-function evaluateMeshDrift({ declared, live, liveError }) {
+function evaluateMeshDrift({ declared, live, liveError, requireMesh = false }) {
   const failures = [];
   const notices = [];
   const items = live || [];
@@ -680,6 +686,13 @@ function evaluateMeshDrift({ declared, live, liveError }) {
         `[G12] helm の宣言を読めないのに、稼働にメッシュ資材が ${items.length} 件在る` +
           `（${items.map((i) => `${i.kind}/${i.metadata && i.metadata.name}`).join(', ')}）。` +
           ' **動いているが宣言が持っていない**状態である（手で apply したものが残っている）。',
+      );
+    } else if (requireMesh) {
+      // #1304 / IADR-0130: 入れると宣言した実行で「対象 0 件」を緑にしない。
+      failures.push(
+        '[G12] ISTIO=1 を宣言しているのに、helm の宣言を読めず稼働にもメッシュ資材が無い。' +
+          ' **メッシュが入っていない＝この門は 1 つも見ていない。** 起動が失敗したか、'
+          + ' 宣言が門へ届いていない（up と門の両方へ ISTIO=1 を渡すこと。#1304）。',
       );
     } else {
       notices.push('[check-stack-ready] G12: helm の宣言を読めず、稼働にもメッシュ資材が無い。メッシュ未導入とみなして飛ばす。');
@@ -693,6 +706,12 @@ function evaluateMeshDrift({ declared, live, liveError }) {
         `[G12] 宣言は mesh.enabled=false なのに、稼働にメッシュ資材が ${items.length} 件在る` +
           `（${items.map((i) => `${i.kind}/${i.metadata && i.metadata.name}`).join(', ')}）。` +
           ' helm を経ない手動適用である。撤去するか、宣言（ISTIO=1）で立て直すこと（#1159）。',
+      );
+    } else if (requireMesh) {
+      failures.push(
+        '[G12] ISTIO=1 を宣言しているのに、helm の値が mesh.enabled=false である。' +
+          ' **メッシュ資材が 1 つも描画されない＝この門は 1 つも見ていない。**'
+          + ' up が Istio の段を通っていない（#1304）。',
       );
     } else {
       notices.push('[check-stack-ready] G12: 宣言が mesh.enabled=false で稼働にも資材が無い（一致）。');
@@ -1643,6 +1662,10 @@ function check({ repoRoot = REPO_ROOT } = {}) {
       declared,
       live: liveMesh.ok ? liveMesh.value.items : null,
       liveError: liveMesh.ok ? null : liveMesh.error,
+      // #1304 / IADR-0130: **入れると宣言した実行では 0 件走査を緑にしない。**
+      // 宣言していない実行は従来どおり飛ばす（メッシュ無しのローカル起動は正当な構成である）。
+      // G10 の `PERSIST` / G13 の `SEARCHSEED` と同じ形。
+      requireMesh: process.env.ISTIO === '1',
     });
     failures.push(...r.failures);
     notices.push(...r.notices);
@@ -2127,6 +2150,46 @@ function selfTest() {
   ok('G12: 宣言を読めないのに稼働に資材が在れば失敗（動いているが宣言が持っていない。IADR-0317 の記録）', () => {
     assert.strictEqual(evaluateMeshDrift({ declared: null, live: [livePa('STRICT')], liveError: null }).failures.length, 1);
     assert.deepStrictEqual(evaluateMeshDrift({ declared: null, live: [], liveError: null }).failures, []);
+  });
+
+  // #1304 / IADR-0130 / IADR-0407: **入れると宣言した実行では 0 件走査を緑にしない。**
+  // 統合スタックは ISTIO を 1 度も渡しておらず（実測: `.github/` に 0 件、陽性対照 LOCALEDGE は 4 件）、
+  // 本門は対象 0 件のまま緑を返し続けていた。
+  ok('G12: 🔴 ISTIO=1 を宣言した実行で「宣言が読めず資材も 0 件」は失敗（0 件走査を緑にしない）', () => {
+    const r = evaluateMeshDrift({ declared: null, live: [], liveError: null, requireMesh: true });
+    assert.strictEqual(r.failures.length, 1, r.failures.join(' / '));
+    assert.ok(/ISTIO=1/.test(r.failures[0]) && /1 つも見ていない/.test(r.failures[0]));
+    assert.deepStrictEqual(r.notices, [], '失敗にしたのに notice も出している（二重報告）');
+  });
+  ok('G12: 🔴 ISTIO=1 を宣言した実行で mesh.enabled=false は失敗（up が Istio の段を通っていない）', () => {
+    const off = { enabled: false, mtlsMode: 'STRICT', backchannel: null, objects: [] };
+    const r = evaluateMeshDrift({ declared: off, live: [], liveError: null, requireMesh: true });
+    assert.strictEqual(r.failures.length, 1, r.failures.join(' / '));
+    assert.ok(/mesh\.enabled=false/.test(r.failures[0]));
+  });
+  // 陰性対照。**メッシュ無しのローカル起動は正当な構成である** —— これを赤にしない。
+  // 片側（要求した側）だけを試すと、「常に赤」の実装でも上の 2 本は通る。
+  ok('G12: 陰性対照 — ISTIO を宣言していなければ同じ状態で従来どおり notice（既定を赤にしない）', () => {
+    const off = { enabled: false, mtlsMode: 'STRICT', backchannel: null, objects: [] };
+    for (const declared of [null, off]) {
+      const r = evaluateMeshDrift({ declared, live: [], liveError: null });
+      assert.deepStrictEqual(r.failures, [], '宣言していない実行を赤にしている');
+      assert.strictEqual(r.notices.length, 1);
+    }
+  });
+  // 要求が**本体を殺していない**こと。requireMesh を「常に失敗」で実装すると、
+  // メッシュが正しく入っている状態まで赤になり、突き合わせ（値・field manager）へ到達しない。
+  ok('G12: ISTIO=1 でもメッシュが宣言どおりなら通り、突き合わせの本体へ進む', () => {
+    const good = evaluateMeshDrift({
+      declared: declaredMeshFixture, live: [livePa('PERMISSIVE'), liveDr()], liveError: null, requireMesh: true,
+    });
+    assert.deepStrictEqual(good.failures, []);
+    const stolen = livePa('PERMISSIVE', [{ manager: 'kubectl-patch', operation: 'Update', fieldsV1: { 'f:spec': {} } }]);
+    const f = evaluateMeshDrift({
+      declared: declaredMeshFixture, live: [stolen, liveDr()], liveError: null, requireMesh: true,
+    }).failures;
+    assert.strictEqual(f.length, 1, f.join(' / '));
+    assert.ok(/kubectl-patch/.test(f[0]), 'ISTIO=1 のとき field manager の奪取を見なくなっている');
   });
   ok('G12: mesh.enabled=true で稼働を読めない・描画 0 件は失敗（測れていないことを緑にしない）', () => {
     assert.strictEqual(evaluateMeshDrift({ declared: declaredMeshFixture, live: null, liveError: 'CRD なし' }).failures.length, 1);
