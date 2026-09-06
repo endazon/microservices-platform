@@ -600,34 +600,66 @@ function checkRealmThemeText(text, reader, themeRoot = THEME_ROOT) {
 // 状態は**画面上は何も変わらない** —— `from` に実値が入った日に、初めて外部の本番リレーへ実送信して
 // 気付く。気付いたときには既に出ている。だから「出る経路を宣言なしに増やせない」ことを機械で持つ。
 //
-// 見るのは **dev 既定の 2 つの供給源**である。片方だけ直しても、もう片方から外へ出る。
-//   (1) realm の `smtpServer`（`--import-realm` が読む静的既定）
+// 見るのは **送出経路の 2 つの区間**である。片方だけ直しても、もう片方から外へ出る。
+//   (1) realm の `smtpServer`（`--import-realm` が読む静的既定）＝ Keycloak → **近接 MTA** の区間
 //   (2) Vault seed の `SMTP_HOST` 既定（ESO 経路。IADR-0332 で起動器から常時 apply される）
+//       ＝ **近接 MTA → 上流** の区間。dev ではここが捕捉用 MTA を指す
 //
-// **許可する宛先の名前をここへ書かない**（列挙を持たない）。単一情報源は捕捉用 MTA の宣言
-// （`deploy/local/infra/mailpit.yaml` の Service）であり、そこから走査して期待値を組み立てる。
-// ここへ書き写すと、Service 名や port を変えたときに検査が静かに空回りする。
+// ［2026-09-06 / #1245 / ADR-0078 決定 2・IADR-0404］**(1) の期待値を近接 MTA へ付け替えた。**
+// ADR-0078 決定 2 は go-live の送出経路を「Keycloak → 外部リレー直結」から
+// 「Keycloak → クラスタ内の**近接 MTA（キュー付き）** → 外部リレー」へ改めた。Keycloak が直接指すのは
+// 近接 MTA であり、**捕捉用 MTA は近接 MTA の上流へ 1 ホップ後退した**。
+// 🔴 **「開発環境から外へ出ない」という決定 9 の統制は上流側（(2)）で引き続き見る** —— 移した先で
+// 検査が消えると、`SMTP_HOST` を指定した瞬間に dev から実送信できる状態へ静かに戻る。
+//
+// **許可する宛先の名前をここへ書かない**（列挙を持たない）。単一情報源はそれぞれの宣言
+// （`deploy/mail-relay/mail-relay.yaml` と `deploy/local/infra/mailpit.yaml` の Service）であり、
+// そこから走査して期待値を組み立てる。ここへ書き写すと、Service 名や port を変えたときに検査が静かに空回りする。
 const MAIL_CAPTURE_MANIFEST = 'deploy/local/infra/mailpit.yaml';
+const MAIL_RELAY_MANIFEST = 'deploy/mail-relay/mail-relay.yaml';
 const VAULT_SEED_SCRIPT = 'deploy/local/vault/eso/bootstrap.sh';
 
 /**
- * 捕捉用 MTA の宣言から in-cluster の宛先を組み立てる（**期待値の単一情報源**）。
- * @param {string} yamlText `deploy/local/infra/mailpit.yaml` の中身
- * @returns {{host:string, smtpPort:string, httpPort:string}|null} 読めなければ null
+ * マニフェストの Service 宣言から in-cluster の宛先を組み立てる（**期待値の単一情報源**）。
+ *
+ * 要求した port 名が 1 つでも読めなければ **null を返す**（fail-closed）。名前も port も推測しない ——
+ * 読めないまま既定値へ落とすと、宣言を変えたときに検査が静かに空回りする。
+ *
+ * @param {string} yamlText マニフェストの中身（複数ドキュメント可。最初の Service を読む）
+ * @param {string[]} portNames 読み取る port の名前（例 ['smtp'] / ['smtp','http']）
+ * @returns {{host:string, ports:Record<string,string>}|null} 読めなければ null
  */
-function parseMailCaptureEndpoint(yamlText) {
+function parseServiceEndpoint(yamlText, portNames = []) {
   const svc = String(yamlText).split(/^---\s*$/m).find((d) => /^kind:\s*Service\s*$/m.test(d));
   if (!svc) return null;
   const name = /^\s{2}name:\s*(\S+)\s*$/m.exec(svc);
   const ns = /^\s{2}namespace:\s*(\S+)\s*$/m.exec(svc);
-  const smtp = /\{\s*name:\s*smtp,\s*port:\s*(\d+)/.exec(svc);
-  const http = /\{\s*name:\s*http,\s*port:\s*(\d+)/.exec(svc);
-  if (!name || !ns || !smtp || !http) return null;
-  return { host: `${name[1]}.${ns[1]}.svc.cluster.local`, smtpPort: smtp[1], httpPort: http[1] };
+  if (!name || !ns) return null;
+  const ports = {};
+  for (const p of portNames) {
+    const m = new RegExp(`\\{\\s*name:\\s*${p},\\s*port:\\s*(\\d+)`).exec(svc);
+    if (!m) return null;
+    ports[p] = m[1];
+  }
+  return { host: `${name[1]}.${ns[1]}.svc.cluster.local`, ports };
 }
 
 /**
- * dev 既定の送出先が捕捉用 MTA を向いていることを検査する。**純関数**（I/O は reader 経由）。
+ * 捕捉用 MTA の宣言から in-cluster の宛先を組み立てる（`parseServiceEndpoint` の薄い別名）。
+ * @param {string} yamlText `deploy/local/infra/mailpit.yaml` の中身
+ * @returns {{host:string, smtpPort:string, httpPort:string}|null} 読めなければ null
+ */
+function parseMailCaptureEndpoint(yamlText) {
+  const e = parseServiceEndpoint(yamlText, ['smtp', 'http']);
+  return e ? { host: e.host, smtpPort: e.ports.smtp, httpPort: e.ports.http } : null;
+}
+
+/**
+ * 送出経路の 2 区間が宣言どおりであることを検査する。**純関数**（I/O は reader 経由）。
+ *
+ * 区間 1: realm の `smtpServer` → **近接 MTA**（`deploy/mail-relay/mail-relay.yaml` の Service）
+ * 区間 2: Vault seed の既定 → **捕捉用 MTA**（`deploy/local/infra/mailpit.yaml` の Service）＝外へ出ない
+ *
  * @param {object} realm realm JSON
  * @param {{exists:(p:string)=>boolean, read:(p:string)=>string}} reader
  * @param {{realmName?:string}} opts
@@ -639,6 +671,19 @@ function collectMailCaptureGaps(realm, reader, { realmName = AUTH_POLICY_REALM }
   const gaps = [];
 
   // 0 件走査は fail-closed。宣言が読めないなら「違反なし」と読まない（#797 の沈黙の exit 0）。
+  if (!reader.exists(MAIL_RELAY_MANIFEST)) {
+    return [{
+      path: MAIL_RELAY_MANIFEST,
+      detail: '近接 MTA の宣言が無い。ADR-0078 決定 2 は送出経路にキュー付きの近接 MTA を挟むことを無条件に求めている',
+    }];
+  }
+  const relay = parseServiceEndpoint(reader.read(MAIL_RELAY_MANIFEST), ['smtp']);
+  if (!relay) {
+    return [{
+      path: MAIL_RELAY_MANIFEST,
+      detail: '近接 MTA の Service（name/namespace/smtp ポート）を読み取れない。期待値を組み立てられないので検査を成立させない',
+    }];
+  }
   if (!reader.exists(MAIL_CAPTURE_MANIFEST)) {
     return [{
       path: MAIL_CAPTURE_MANIFEST,
@@ -653,26 +698,27 @@ function collectMailCaptureGaps(realm, reader, { realmName = AUTH_POLICY_REALM }
     }];
   }
 
-  // (1) realm の静的既定。
+  // (1) realm の静的既定 ＝ Keycloak → 近接 MTA の区間。
   const smtp = realm.smtpServer;
   if (!smtp || typeof smtp !== 'object' || Object.keys(smtp).length === 0) {
     gaps.push({
       path: 'smtpServer',
-      detail: `dev 既定の smtpServer が無い。--import-realm した開発環境に送出先が存在せず、`
-        + `パスワードリセットの申請が送出で失敗する（期待: host=${endpoint.host} / port=${endpoint.smtpPort}）`,
+      detail: `smtpServer が無い。--import-realm した環境に送出先が存在せず、`
+        + `パスワードリセットの申請が送出で失敗する（期待: host=${relay.host} / port=${relay.ports.smtp}）`,
     });
   } else {
-    if (String(smtp.host || '') !== endpoint.host) {
+    if (String(smtp.host || '') !== relay.host) {
       gaps.push({
         path: 'smtpServer.host',
-        detail: `dev 既定の送出先が捕捉用 MTA ではない（期待 ${endpoint.host} / 実際 ${JSON.stringify(smtp.host)}）。`
-          + `本番のメールテナントを開発環境から指さないこと（ADR-0045 決定 9）`,
+        detail: `送出先が近接 MTA ではない（期待 ${relay.host} / 実際 ${JSON.stringify(smtp.host)}）。`
+          + `Keycloak が直接指すのは**キューを持つ近接 MTA だけ**である（ADR-0078 決定 2）——`
+          + ` 上流へ直結すると、上流の停止がそのまま「実在する利用者名だけ 500」になって漏れる`,
       });
     }
-    if (String(smtp.port || '') !== endpoint.smtpPort) {
+    if (String(smtp.port || '') !== relay.ports.smtp) {
       gaps.push({
         path: 'smtpServer.port',
-        detail: `dev 既定の送出先ポートが捕捉用 MTA の受信ポートと違う（期待 ${endpoint.smtpPort} / 実際 ${JSON.stringify(smtp.port)}）`,
+        detail: `送出先ポートが近接 MTA の受信ポートと違う（期待 ${relay.ports.smtp} / 実際 ${JSON.stringify(smtp.port)}）`,
       });
     }
     // 送出が**成立する**ことまでを既定に含める。from が空だと Keycloak は
@@ -680,12 +726,13 @@ function collectMailCaptureGaps(realm, reader, { realmName = AUTH_POLICY_REALM }
     if (String(smtp.from || '') === '') {
       gaps.push({
         path: 'smtpServer.from',
-        detail: 'dev 既定の from が空である。Keycloak は空の from を拒否するため、捕捉用 MTA が居ても送出は成立しない',
+        detail: 'smtpServer.from が空である。Keycloak は空の from を拒否するため、近接 MTA が居ても送出は成立しない',
       });
     }
   }
 
-  // (2) Vault seed の既定。**realm を直しても、こちらが外を向いていれば ESO 経路から外へ出る。**
+  // (2) Vault seed の既定 ＝ 近接 MTA → 上流の区間。
+  // **realm を直しても、こちらが外を向いていれば ESO 経路から外へ出る。**
   if (!reader.exists(VAULT_SEED_SCRIPT)) {
     gaps.push({ path: VAULT_SEED_SCRIPT, detail: 'Vault seed スクリプトが読めない（dev 既定の供給源の片方を検査できない）' });
   } else {
@@ -1292,10 +1339,18 @@ function selfTest() {
     })(),
   });
 
-  // --- ADR-0045 決定 9: dev 既定の送出先（#1144）---
+  // --- ADR-0045 決定 9 ＋ ADR-0078 決定 2: 送出経路の 2 区間（#1144 / #1245）---
   //
   // 受け入れ基準 5 が要求する「**実リレーへ向ける変更を入れると落ちる（陽性対照つき）**」は、
   // ここで固定する。健全な入力が通ること（陰性）と、外へ向ける各変異が必ず落ちること（陽性）を対で置く。
+  // ［2026-09-06 / #1245］realm が指すべき先を**近接 MTA**へ付け替えたので、
+  // **「realm を捕捉用 MTA 直結へ戻す」変異が落ちる側へ回った**（区間が 1 つ増えた）。
+  const MAIL_RELAY_YAML = [
+    'apiVersion: apps/v1', 'kind: Deployment', 'metadata:', '  name: mail-relay', '  namespace: platform-infra',
+    '---',
+    'apiVersion: v1', 'kind: Service', 'metadata:', '  name: mail-relay', '  namespace: platform-infra',
+    'spec:', '  ports:', '    - { name: smtp, port: 587, targetPort: 587 }',
+  ].join('\n');
   const MAILPIT_YAML = [
     'apiVersion: apps/v1', 'kind: Deployment', 'metadata:', '  name: mailpit', '  namespace: platform-infra',
     '---',
@@ -1316,11 +1371,15 @@ function selfTest() {
     exists: (p) => Object.prototype.hasOwnProperty.call(files, p),
     read: (p) => files[p],
   });
-  const goodFiles = { [MAIL_CAPTURE_MANIFEST]: MAILPIT_YAML, [VAULT_SEED_SCRIPT]: GOOD_SEED_SH };
+  const goodFiles = {
+    [MAIL_RELAY_MANIFEST]: MAIL_RELAY_YAML,
+    [MAIL_CAPTURE_MANIFEST]: MAILPIT_YAML,
+    [VAULT_SEED_SCRIPT]: GOOD_SEED_SH,
+  };
   const goodRealm = {
     realm: 'platform',
     smtpServer: {
-      host: 'mailpit.platform-infra.svc.cluster.local', port: '1025',
+      host: 'mail-relay.platform-infra.svc.cluster.local', port: '587',
       from: 'noreply@platform.localhost', auth: 'false', starttls: 'false', ssl: 'false',
     },
   };
@@ -1330,19 +1389,25 @@ function selfTest() {
   );
 
   cases.push({
-    name: 'MTA: 健全な dev 既定は通る（陰性対照）',
+    name: 'MTA: 健全な送出経路（realm → 近接 MTA / seed → 捕捉用 MTA）は通る（陰性対照）',
     pass: mailGaps().length === 0,
   });
   cases.push({
     name: 'MTA: 変異 1 — realm の宛先を実リレー（smtp.gmail.com）へ向けると落ちる',
-    pass: mailGaps({ smtpServer: { ...goodRealm.smtpServer, host: 'smtp.gmail.com', port: '587' } }).length === 2,
+    pass: mailGaps({ smtpServer: { ...goodRealm.smtpServer, host: 'smtp.gmail.com', port: '25' } }).length === 2,
   });
   cases.push({
-    name: 'MTA: 変異 2 — realm の smtpServer を丸ごと消すと落ちる（送出先が無い開発環境に戻る）',
+    name: 'MTA: 変異 1-b — realm を捕捉用 MTA へ直結し直すと落ちる（近接 MTA を飛ばす＝ADR-0078 決定 2 の破れ）',
+    pass: mailGaps({
+      smtpServer: { ...goodRealm.smtpServer, host: 'mailpit.platform-infra.svc.cluster.local', port: '1025' },
+    }).length === 2,
+  });
+  cases.push({
+    name: 'MTA: 変異 2 — realm の smtpServer を丸ごと消すと落ちる（送出先が無い環境に戻る）',
     pass: mailGaps({ smtpServer: {} }).length === 1,
   });
   cases.push({
-    name: 'MTA: 変異 3 — from を空にすると落ちる（捕捉用 MTA が居ても送出は成立しない）',
+    name: 'MTA: 変異 3 — from を空にすると落ちる（近接 MTA が居ても送出は成立しない）',
     pass: mailGaps({ smtpServer: { ...goodRealm.smtpServer, from: '' } }).length === 1,
   });
   cases.push({
@@ -1366,9 +1431,29 @@ function selfTest() {
     })(),
   });
   cases.push({
-    name: 'MTA: 期待値は宣言から走査して得る（Service の port を変えると realm 側が落ちる）',
+    name: 'MTA: 変異 6-b — 近接 MTA の宣言が消えると落ちる（0 件走査を緑にしない・#1245）',
+    pass: (() => {
+      const files = { ...goodFiles };
+      delete files[MAIL_RELAY_MANIFEST];
+      return collectMailCaptureGaps(goodRealm, mailReader(files)).length === 1;
+    })(),
+  });
+  cases.push({
+    name: 'MTA: 変異 6-c — 近接 MTA の Service の smtp ポートが読めないと落ちる（期待値を推測しない）',
     pass: mailGaps(null, {
-      [MAIL_CAPTURE_MANIFEST]: MAILPIT_YAML.replace('name: smtp, port: 1025', 'name: smtp, port: 2025'),
+      [MAIL_RELAY_MANIFEST]: MAIL_RELAY_YAML.replace('name: smtp, port: 587', 'name: submission, port: 587'),
+    }).length === 1,
+  });
+  cases.push({
+    name: 'MTA: 期待値は宣言から走査して得る（近接 MTA の Service の port を変えると realm 側が落ちる）',
+    pass: mailGaps(null, {
+      [MAIL_RELAY_MANIFEST]: MAIL_RELAY_YAML.replace('name: smtp, port: 587', 'name: smtp, port: 2587'),
+    }).length === 1,
+  });
+  cases.push({
+    name: 'MTA: 上流側の期待値も宣言から走査して得る（捕捉用 MTA の Service 名を変えると seed 側が落ちる）',
+    pass: mailGaps(null, {
+      [MAIL_CAPTURE_MANIFEST]: MAILPIT_YAML.replace(/name: mailpit/g, 'name: mailbox'),
     }).length === 1,
   });
   cases.push({
@@ -1556,7 +1641,7 @@ function main() {
   const totalServerUrlGaps = results.reduce((n, r) => n + r.serverUrlGaps.length, 0);
   if (total === 0 && totalMissing === 0 && totalDeviations === 0 && totalThemeGaps === 0
     && totalMfaGaps === 0 && totalMailGaps === 0 && totalServerUrlGaps === 0 && totalConcealGaps === 0) {
-    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・dev 既定の送出先の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れはありません。`);
+    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れはありません。`);
     process.exit(0);
   }
 
@@ -1614,7 +1699,7 @@ function main() {
   }
 
   if (totalMailGaps > 0) {
-    console.error(`[check-realm-constraints] dev 既定の送出先（ADR-0045 決定 9）の逸脱 ${totalMailGaps} 件を検出しました:`);
+    console.error(`[check-realm-constraints] 送出経路（ADR-0045 決定 9 / ADR-0078 決定 2）の逸脱 ${totalMailGaps} 件を検出しました:`);
     for (const r of results) {
       for (const g of r.mailGaps) {
         console.error(`\n  ${r.file}\n    ${g.path}: ${g.detail}`);
@@ -1672,12 +1757,14 @@ module.exports = {
   isServiceAccountUser,
   collectMfaAuditGaps,
   checkRealmMfaAuditText,
+  parseServiceEndpoint,
   parseMailCaptureEndpoint,
   collectMailCaptureGaps,
   checkRealmMailCaptureText,
   collectResetConcealmentGaps,
   checkRealmResetConcealmentText,
   MAIL_CAPTURE_MANIFEST,
+  MAIL_RELAY_MANIFEST,
   VAULT_SEED_SCRIPT,
   collectServerSideUrlGaps,
   checkRealmServerSideUrlsText,

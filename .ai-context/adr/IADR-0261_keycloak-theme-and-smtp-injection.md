@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-13, SC-14, SC-15, SC-16, ADR-0026, ADR-0045]
 author: Claude（実装）
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-09-06
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0026_authentication-ux-and-account-management.md
   - planning:projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md
@@ -76,6 +76,17 @@ issue #438 の残作業は 2026-08-21 時点で次の 2 点に絞られている
   - **`host`/`port`/`starttls` は秘匿値ではない**（ADR-0045 決定 2-b の確定書式）ため Vault 側の既定値に含めてよいが、
     **realm.json への静的投入はしない**——単一の反映経路（kcadm）に統一し、「realm.json に一部だけ入っていて
     残りは実行時」という分割された状態を作らないため。
+
+> **［2026-09-06 追記 / #1245 / IADR-0404］決定 2 の反映先が変わった（秘匿値の扱いは変えない）。**
+> 計画 ADR-0078 決定 2 が Keycloak の送出経路に**クラスタ内の近接 MTA（キュー付き）**を挟むと定め、
+> 実装は `deploy/mail-relay/` を新設した。接続条件は **近接 MTA → 上流**の区間へ移り、
+> **Secret `keycloak-smtp` を読むのは近接 MTA の Pod（env）**である。realm の `smtpServer` は
+> 近接 MTA の Service を指す**宣言固定**になり、`kcadm` の反映手順（runbook §3）は退役した。
+> **秘匿値（`from` / `user` / `password`）をバージョン管理下に置かないという本決定の核は変わらない** ——
+> むしろ**稼働 realm にも入らなくなった**ぶん、より強く満たされている。
+> **反転したのは「`host`/`port`/`starttls` を realm.json へ静的投入しない」という細部だけ**であり、
+> 理由（分割された状態を作らない）は近接 MTA によって別の形で満たされる ——
+> realm 側の値はすべて非秘匿のクラスタ内 Service 名であり、実値は 1 つも混ざらない。詳細は [IADR-0404](./IADR-0404_nearby-mta-relay-and-realm-ownership.md)。
 
 ## 理由
 

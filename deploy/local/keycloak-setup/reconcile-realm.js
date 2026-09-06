@@ -19,9 +19,23 @@
  *
  * 宣言（realm JSON）が正: realm の非コレクション設定 / requiredActions / realm ロール・client ロール / グループ /
  *   client scopes ＋ protocol mappers / clients（属性・redirect・secret・scope 割当 ＋ mappers）/ **seed 利用者の存在** /
- *   サービスアカウント利用者のロールと属性。
- * 実行時が正（**触らない**）: 既存の人間の利用者の資格情報・属性・ロール・グループ・requiredActions・セッション /
- *   `smtpServer`（IADR-0261 決定 2: runbook が入れる秘匿値）。
+ *   サービスアカウント利用者のロールと属性 / **`smtpServer`**（下記の追記）。
+ * 実行時が正（**触らない**）: 既存の人間の利用者の資格情報・属性・ロール・グループ・requiredActions・セッション。
+ *
+ * ［2026-09-06 追記 / #1245 / IADR-0404］**`smtpServer` を実行時所有から宣言所有へ移した。**
+ *   ADR-0078 決定 2 が Keycloak の送出先を**クラスタ内の近接 MTA**（`deploy/mail-relay/`）へ固定し、
+ *   秘匿値（実リレーの host/user/password）は relay 側の Secret へ移った。realm に残るのは
+ *   クラスタ内の Service 名だけであり、**秘匿値は 1 つも無い**。宣言を正にすると、再起動・再インポート・
+ *   本 Job のどれを経ても realm は relay を指す ＝ **状態 B（送出先未設定 ＋ 申請が開いている）が構造で作れなくなる。**
+ *   宣言に無いキー（runbook が入れた `user` / `password`）は `merge` が live のまま残す（消さない）。
+ *
+ * ［2026-09-06 追記 / #1245 / IADR-0404］**`resetPasswordAllowed` は「条件つきで門が所有する」。**
+ *   ADR-0078 決定 4 の門（`reset-gate`。#1245 PR-C）が投函不能を検知して realm を閉じたとき、本 Job が
+ *   それを drift とみなして開き直すと**門が無効になる**。そこで `GATE_OWNED_REALM_KEYS` を
+ *   `RUNTIME_OWNED_REALM_KEYS` とは**別集合**として持ち、除外するのは
+ *   「**宣言 true ・稼働 false ・`attributes["reset-gate.state"] === "closed"`**」の 1 組だけにする。
+ *   🔴 実行時所有へ入れてはならない —— それだと「**宣言 false なのに稼働 true**」という
+ *   **危険な向きの drift**（閉じたはずの申請が開いている）まで見なくなる。
  *
  * 集合欄（redirectUris / webOrigins / scope 割当 / enabledEventTypes …）は**宣言が全集合**（置換）。
  * 実体（client / role / group / mapper / user）は**加算的**（宣言に無い余剰は消さない）。
@@ -46,8 +60,7 @@ const path = require('path');
 const MAX_PASSES = 3;
 
 // realm 表現のうち、トップレベルの PUT で扱わないキー。
-//   コレクション（別の端点で個別に当てる）／同一性（id・realm 名）／export 由来のメタ／
-//   実行時所有（smtpServer。IADR-0261 決定 2）。
+//   コレクション（別の端点で個別に当てる）／同一性（id・realm 名）／export 由来のメタ。
 const REALM_COLLECTION_KEYS = new Set([
   'users', 'clients', 'clientScopes', 'roles', 'groups', 'components', 'requiredActions',
   'authenticationFlows', 'authenticatorConfig', 'identityProviders', 'identityProviderMappers',
@@ -57,8 +70,23 @@ const REALM_COLLECTION_KEYS = new Set([
   'defaultRoles', 'defaultGroups', 'localizationTexts',
 ]);
 const REALM_IDENTITY_KEYS = new Set(['id', 'realm', 'keycloakVersion']);
-// 実行時が所有する realm のキー。**ここへ足すときは IADR-0369 の境界表も直す。**
-const RUNTIME_OWNED_REALM_KEYS = new Set(['smtpServer']);
+// 実行時が所有する realm のキー（＝宣言が触らない層）。**ここへ足すときは IADR-0369 の境界表も直す。**
+// ［2026-09-06 / #1245 / IADR-0404］`smtpServer` を外した（宣言所有へ移した。頭部の追記を参照）。
+// **空集合である。** 集合そのものは残す —— 「realm のトップレベルに実行時所有のキーがあり得る」という
+// 境界の表明であり、次に足す人がここを見て IADR-0369 の境界表も直せるようにするためである。
+const RUNTIME_OWNED_REALM_KEYS = new Set([]);
+
+// 門（ADR-0078 決定 4 の `reset-gate`。#1245 PR-C）が**条件つきで**所有する realm のキー。
+// 🔴 RUNTIME_OWNED_REALM_KEYS とは別集合である。無条件に実行時所有へ入れると
+//    「宣言 false なのに稼働 true」（閉じたはずの申請が開いている）という**危険な向きの drift** まで
+//    見なくなる。除外するのは `gateHoldsClosed()` が真になる 1 組だけにする。
+const GATE_OWNED_REALM_KEYS = new Set(['resetPasswordAllowed']);
+// 門が状態を書き込む realm 属性の名前（門と本 Job の唯一の接点）。
+// 🔴 **この属性を realm 宣言（realm JSON）へ書いてはならない。** 書くと `attributes` が宣言所有になり、
+//    本 Job が `closed` を `open` へ戻してしまう（下の除外は `resetPasswordAllowed` にしか効かない）。
+//    属性は**実行時にだけ存在する** —— 門が書き、本 Job は読むだけである。
+const GATE_STATE_ATTRIBUTE = 'reset-gate.state';
+const GATE_STATE_CLOSED = 'closed';
 
 // client 表現のうち、トップレベルの PUT で扱わないキー（別端点で当てる／同一性／読み取り専用）。
 const CLIENT_SKIP_KEYS = new Set([
@@ -112,6 +140,32 @@ function merge(live, desired) {
 const pick = (obj, keep) => Object.fromEntries(Object.entries(obj).filter(([k]) => keep(k)));
 const byKey = (list, key) => new Map((list || []).map((x) => [x[key], x]));
 
+/**
+ * 門が閉じたことによる差分か（＝この差分を drift として扱わないか）を判定する。**純関数**。
+ *
+ * 真になるのは次の 3 つが**すべて**成り立つときだけである:
+ *   1. 門が所有し得るキーである（`GATE_OWNED_REALM_KEYS`）
+ *   2. **宣言が true**（開いてよい）で、**稼働が false**（閉じている）
+ *   3. 稼働 realm の属性 `reset-gate.state` が `closed`（＝**門が自分で閉じたと記録している**）
+ *
+ * 3 を要求するのが要点である。属性が無い（人が手で閉じた・realm が壊れた）ときは**従来どおり drift** であり、
+ * 宣言へ戻す。逆向き（宣言 false・稼働 true ＝ 閉じたはずの申請が開いている）も**常に drift** である。
+ *
+ * @param {string} key realm のトップレベルキー
+ * @param {*} wantedValue 宣言側の値
+ * @param {object|null} liveRealm 稼働 realm の表現
+ * @returns {boolean}
+ */
+function gateHoldsClosed(key, wantedValue, liveRealm) {
+  if (!GATE_OWNED_REALM_KEYS.has(key)) return false;
+  if (!isObj(liveRealm)) return false;
+  if (asStr(wantedValue) !== 'true') return false;
+  if (asStr(liveRealm[key]) !== 'false') return false;
+  const attrs = liveRealm.attributes;
+  if (!isObj(attrs)) return false;
+  return asStr(attrs[GATE_STATE_ATTRIBUTE]) === GATE_STATE_CLOSED;
+}
+
 // ---------------------------------------------------------------- 計画（純粋関数）
 
 /**
@@ -148,8 +202,15 @@ function plan(desired, live) {
 
   // 1. realm の非コレクション設定（GET の全体へ宣言を合成して PUT。実行時所有キーは落とす）
   {
+    // 門（#1245 PR-C）が閉じている間だけ、そのキーを**宣言側から落とす** ——
+    // 落とすと (a) drift として数えられず (b) `merge` が稼働側の値（false）をそのまま body へ運ぶ。
+    // 他のキーの差分で PUT が起きても、門が閉じた申請を開き直さない。
+    const heldByGate = new Set(
+      [...GATE_OWNED_REALM_KEYS].filter((k) => gateHoldsClosed(k, desired[k], live.realm)),
+    );
     const wanted = pick(desired, (k) =>
-      !REALM_COLLECTION_KEYS.has(k) && !REALM_IDENTITY_KEYS.has(k) && !RUNTIME_OWNED_REALM_KEYS.has(k));
+      !REALM_COLLECTION_KEYS.has(k) && !REALM_IDENTITY_KEYS.has(k) && !RUNTIME_OWNED_REALM_KEYS.has(k)
+      && !heldByGate.has(k));
     const drifted = Object.keys(wanted).filter((k) => !contains(wanted[k], live.realm[k]));
     if (drifted.length > 0) {
       const body = pick(merge(live.realm, wanted), (k) => !RUNTIME_OWNED_REALM_KEYS.has(k) && !REALM_COLLECTION_KEYS.has(k));
@@ -568,6 +629,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  plan, planMappers, contains, merge, describe,
-  REALM_COLLECTION_KEYS, RUNTIME_OWNED_REALM_KEYS, CLIENT_SKIP_KEYS, MAX_PASSES,
+  plan, planMappers, contains, merge, describe, gateHoldsClosed,
+  REALM_COLLECTION_KEYS, RUNTIME_OWNED_REALM_KEYS, GATE_OWNED_REALM_KEYS, CLIENT_SKIP_KEYS, MAX_PASSES,
+  GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED,
 };

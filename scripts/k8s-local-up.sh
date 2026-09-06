@@ -102,6 +102,30 @@ apply_secret "$INFRA_NS" rabbitmq        "username=${RABBITMQ_USER:-guest}" "pas
 # ＝管理者名の単一情報源。ESO の externalsecret-keycloak-admin.yaml は Merge なので password だけ供給しても壊れない。
 apply_secret "$INFRA_NS" keycloak-admin  "username=${KEYCLOAK_ADMIN_USER:-admin}" "password=${KEYCLOAK_ADMIN_PASSWORD:-admin}"
 
+# SC-15, ADR-0045 決定 2-b/5/9 ＋ ADR-0078 決定 2, IADR-0332 / IADR-0404 (#438 / #1102 / #1245):
+# 近接 MTA（deploy/mail-relay/）が **env(secretKeyRef) で読む**上流の接続条件。
+# 🔴 **#1245 まで、この Secret を env で読む Pod は 1 つも無かった**（読み手は runbook の kcadm ＝ 人間）。
+#    近接 MTA ができて読み手が生まれたので、**ESO の有無によらず必ず存在させる** ——
+#    非 optional な secretKeyRef であり、無いと relay が起動せず [4/7] の rollout で止まる。
+#    （非 optional なのは意図である。RELAYHOST が空だと Postfix は宛先の MX へ**直接**配送する＝外へ出る。）
+# 既定は **Vault seed（deploy/local/vault/eso/bootstrap.sh）の導出と同じ**にする ——
+#   宛先が捕捉用 MTA なら 1025 / STARTTLS 無し、それ以外なら計画 ADR の確定値 587 / STARTTLS 必須。
+#   from / user / password は**空**（実環境の値が供給されるまでの fail-safe。runbook §2 の長さ判定が依る）。
+# ESO=1 のときは externalsecret-keycloak-smtp.yaml が creationPolicy: Merge で同じ Secret へ Vault の値を
+# 上書きする（keycloak-admin と同じ形。手動 apply を保持したまま実値へ差し替わる）。
+SMTP_CAPTURE_HOST='mailpit.platform-infra.svc.cluster.local'
+smtp_host="${SMTP_HOST:-$SMTP_CAPTURE_HOST}"
+if [ "$smtp_host" = "$SMTP_CAPTURE_HOST" ]; then
+  smtp_port_default='1025'; smtp_starttls_default='false'
+else
+  smtp_port_default='587';  smtp_starttls_default='true'
+fi
+apply_secret "$INFRA_NS" keycloak-smtp \
+  "host=$smtp_host" \
+  "port=${SMTP_PORT:-$smtp_port_default}" \
+  "starttls=${SMTP_STARTTLS:-$smtp_starttls_default}" \
+  "from=${SMTP_FROM:-}" "user=${SMTP_USER:-}" "password=${SMTP_PASSWORD:-}"
+
 # Keycloak realm import 用 ConfigMap（実 realm ファイル＝単一情報源）。
 # AST realm（submodule）が存在すれば同一 Keycloak へ併せて import する（MSP+AST 連結）。
 realm_args=(--from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json)
@@ -162,8 +186,12 @@ kubectl -n "$INFRA_NS" rollout status deploy/keycloak --timeout=300s
 kubectl -n "$INFRA_NS" rollout status deploy/qdrant --timeout=120s
 kubectl -n "$INFRA_NS" rollout status deploy/otel-collector --timeout=120s
 # SC-15, FR-22, ADR-0045 決定 9 (#1144): 捕捉用 MTA。**opt-in ゲートを持たない**（決定 9 は無条件）。
-# realm の dev 既定 smtpServer がここを指すので、Keycloak より後に立つと最初の申請が送出に失敗する。
+# ［2026-09-06 / #1245］ADR-0078 決定 2 以後、ここは Keycloak の送出先ではなく**近接 MTA の上流**である。
 kubectl -n "$INFRA_NS" rollout status deploy/mailpit --timeout=120s
+# SC-15, ADR-0078 決定 2, IADR-0404 (#1245): 近接 MTA（キュー付き Postfix）。**opt-in ゲートを持たない**。
+# realm の smtpServer がここを指すので、**Keycloak より後に立つと最初の申請が送出に失敗する**
+# （＝実在する利用者名だけ 500。#1143 の状態 C そのもの）。上の mailpit と同じ理由でここで待ち合わせる。
+kubectl -n "$INFRA_NS" rollout status deploy/mail-relay --timeout=120s
 
 echo "==> [5/7] MSP namespace & app secrets (dev 既定; fail-safe 空 = no-op)"
 kubectl create namespace "$MSP_NS" --dry-run=client -o yaml | kubectl apply -f -
@@ -509,14 +537,14 @@ if [ "${ESO:-}" = "1" ]; then
   kubectl apply -f deploy/local/vault/eso/externalsecret-postgres.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-admin.yaml
-  # SC-15, FR-22, ADR-0026/ADR-0045 決定 6, IADR-0261 決定 2 / IADR-0332 (#1102): SMTP リレーの資格情報。
-  # **手動 apply の対になる `ESO != 1` ブロックを持たない**（postgres/rabbitmq/keycloak-admin と違い
-  # step [3/7] の bootstrap 対象でもない）ので、**これが唯一の供給元**である。常時供給。
-  # 🔴 **Pod は 1 つもこの Secret を env で読まない。** 読むのは runbook の `kcadm` 手順（人間）であり、
-  # 反映先は realm の実行時状態である（`realm.json` へは書かない＝秘匿値を非コミットに保つため）。
-  # したがって下の rollout 対象にも入れない —— **作るところまでが本行の責務**である。
-  # 既定では `from`/`user`/`password` が空（bootstrap.sh の fail-safe）。**空のまま kcadm を打たない**
-  # ことは runbook 側の前提であり、ここでは空の Secret を作るだけで実害は無い（秘匿値は 1 つも増えない）。
+  # SC-15, FR-22, ADR-0026/ADR-0045 決定 6 ＋ ADR-0078 決定 2, IADR-0332 / IADR-0404 (#1102 / #1245):
+  # 近接 MTA が読む上流の接続条件。**手動 apply は step [3/7] で保持済み**（dev 既定。ESO の有無によらず作る）。
+  # ここでは creationPolicy: Merge の ExternalSecret を適用し、既存 Secret へ Vault の値をマージするのみ。
+  # 🔴 **#1245 で読み手が人間から Pod へ変わった。** 旧: runbook の `kcadm` 手順（人間）が読み realm の
+  # 実行時状態へ反映する。現: **近接 MTA（platform-infra/mail-relay）が env(secretKeyRef) で読む**。
+  # したがって下の同期待ちと rollout の対象に**入れる**（IADR-0332 決定 2 の前提が外れた）。
+  # 既定では `from`/`user`/`password` が空（bootstrap.sh の fail-safe）。relay は空の user/password を
+  # 「認証なし」として扱い、空の from では外向きの差出人写像を張らない（どちらも dev の正しい姿である）。
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-smtp.yaml
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
   # 誤解させない）。MSP ns は常時 17 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 へ数え直した）＋有効ゲートの wikijs-oidc（#1127）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
@@ -560,11 +588,11 @@ if [ "${ESO:-}" = "1" ]; then
   [ "${WIKIJS_OIDC:-}" = "1" ] && msp_sync="$msp_sync wikijs-oidc"
   # shellcheck disable=SC2086
   eso_wait "$MSP_NS" $msp_sync
-  # #1102: keycloak-smtp は **rollout のために待つのではない**（env で読む Pod が無い。上の apply の注記参照）。
-  # 待つのは、`up` の直後に運用者が案内文どおり
-  # `kubectl -n platform-infra get externalsecret,secret keycloak-smtp` を打ったとき、また runbook
-  # （docs/operations/keycloak-smtp-relay-setup-runbook.md）の kcadm 手順へ進むときに、
-  # **Secret が「まだ作られていない」状態で NotFound を返さない**ようにするためである。
+  # #1102 → #1245: keycloak-smtp は **rollout のために待つ**（近接 MTA が env で読む。上の apply の注記参照）。
+  # 待たずに restart すると新しい relay Pod も供給前の Secret を掴んで同じ状態で固定される（IADR-0103）。
+  # 併せて、`up` の直後に運用者が案内文どおり
+  # `kubectl -n platform-infra get externalsecret,secret keycloak-smtp` を打ったときに
+  # **Secret が「まだ作られていない」状態で NotFound を返さない**ことも担保する。
   # 他と同じく best-effort（warn を出して継続。実値が空でも同期自体は成立する）。
   infra_sync="keycloak-smtp"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_sync="$infra_sync grafana-oidc"
@@ -593,6 +621,11 @@ if [ "${ESO:-}" = "1" ]; then
     kubectl -n "$MSP_NS" rollout restart "deploy/$d" >/dev/null 2>&1 \
       && echo "      restarted $MSP_NS/$d" || echo "      skip $MSP_NS/$d（未デプロイ）"
   done
+  # SC-15, ADR-0078 決定 2, IADR-0404 (#1245): 近接 MTA は keycloak-smtp を env(secretKeyRef) で読む。
+  # ESO が実値を供給した後は**必ず作り直す** —— さもないと relay は「空の from / 捕捉用 MTA 宛」のまま動き、
+  # 運用者は Vault へ実値を入れたのに 1 通も外へ出ない（静かな縮退）。
+  kubectl -n "$INFRA_NS" rollout restart deploy/mail-relay >/dev/null 2>&1 \
+    && echo "      restarted $INFRA_NS/mail-relay" || echo "      skip $INFRA_NS/mail-relay（未デプロイ）"
   if [ "${OBSERVABILITY:-}" = "1" ]; then
     kubectl -n "$INFRA_NS" rollout restart deploy/grafana >/dev/null 2>&1 \
       && echo "      restarted $INFRA_NS/grafana" || echo "      skip $INFRA_NS/grafana（未デプロイ）"

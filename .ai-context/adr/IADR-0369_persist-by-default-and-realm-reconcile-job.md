@@ -21,7 +21,7 @@ related_ids:
   - IADR-0342
 author: claude
 created: 2026-09-04
-updated: 2026-09-04
+updated: 2026-09-06
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0004_authz-abac.md（認証＝Keycloak）
   - planning:projects/microservices-platform/07_adr/ADR-0026_auth-keycloak.md
@@ -126,6 +126,23 @@ CI（`integration-stack.yml`。k3d）も既定＝永続で走る（k3d は local
 | --- | --- | --- |
 | 宣言（realm JSON が正） | realm の非コレクション設定（テーマ・ロケール・token/セッション寿命・パスワードポリシー・OTP ポリシー・ブルートフォース・events）／`requiredActions`／realm ロール・client ロール／グループ（属性つき）／client scopes ＋ protocol mappers／clients（属性・redirect・secret・default/optional scope 割当 ＋ mappers）／**seed 利用者の存在**（作成時は資格情報・requiredActions・グループ・ロール割当を運ぶ）／サービスアカウント利用者のロールと属性 | 差分があれば当てる。**集合欄**（redirectUris / webOrigins / scope 割当 / enabledEventTypes …）は宣言が全集合（置換）。**実体**（client / role / group / mapper / user）は加算的（宣言に無い余剰は消さない） |
 | 実行時（Keycloak / SC-17 / 本人が正） | 既存の人間の利用者の資格情報・属性・ロール・グループ・`requiredActions`・セッション／`smtpServer`（IADR-0261 決定 2） | **触らない** |
+
+  > **［2026-09-06 追記 / #1245 / IADR-0404］境界表の 2 行を改めた（表そのものは上のまま。追記で言い直す）。**
+  >
+  > 1. **`smtpServer` は実行時所有から宣言所有へ移った**（実行時の行から外れ、宣言の行へ入る）。
+  >    計画 ADR-0078 決定 2 が Keycloak の送出先を**クラスタ内の近接 MTA**（`deploy/mail-relay/`）へ固定し、
+  >    秘匿値は relay 側の Secret へ移ったため、realm に残るのは非秘匿のクラスタ内 Service 名だけである。
+  >    `RUNTIME_OWNED_REALM_KEYS` は**空集合**になった（集合そのものは境界の表明として残す）。
+  >    宣言に無いキー（runbook が入れた `user` / `password`）は `merge` が live のまま残す。
+  >    🔴 これにより **「送出先が未設定のまま申請だけ開いている」状態が構造として作れなくなる。**
+  > 2. **`resetPasswordAllowed` は「条件つきで門が所有する」第 3 の層になった。**
+  >    `GATE_OWNED_REALM_KEYS` を `RUNTIME_OWNED_REALM_KEYS` とは**別集合**として持ち、差分から除くのは
+  >    「**宣言 true・稼働 false・`attributes["reset-gate.state"]==="closed"`**」の 1 組だけである。
+  >    🔴 **実行時所有へ入れてはならない** —— それだと「宣言 false なのに稼働 true」（閉じたはずの申請が
+  >    開いている＝利用者名が漏れる向き）という**危険な向きの drift** まで見なくなる。
+  >    属性が無い false（人が手で閉じた）も従来どおり drift である。
+  >    門そのもの（`reset-gate`）は #1245 PR-C で着地する。**所有権を先に入れたのは、順序が逆だと
+  >    「門が閉じた realm を Job が静かに開き直す」事故に、門と同じ PR で初めて気付く形になるからである。**
 
   既存利用者の `requiredActions` を宣言へ戻さないのは、TOTP を登録し終えた利用者へ `CONFIGURE_TOTP` を再要求するためである。
   TOTP 既定は realm の `requiredActions[CONFIGURE_TOTP].defaultAction`（宣言層）で新規利用者へ効く。seed 利用者の宣言を

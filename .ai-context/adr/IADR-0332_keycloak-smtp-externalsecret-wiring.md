@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-15, SC-16, FR-22, NFR, ADR-0026, ADR-0045, IADR-0261]
 author: Claude（実装）
 created: 2026-08-31
-updated: 2026-09-02
+updated: 2026-09-06
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md
   - planning:projects/microservices-platform/07_adr/ADR-0026_authentication-ux-and-account-management.md
@@ -76,6 +76,16 @@ plan_refs:
 - **決定 2: 案 A。** `infra_sync` の初期値を `keycloak-smtp` にし、**常時待ち合わせる**。
   **rollout 対象には入れない**（env で読む Pod が無い）。待つ理由は「`up` 直後に案内文と runbook が
   そのまま実行できること」であり、rollout ではない —— この理由をコードのコメントに残す。
+
+  > **［2026-09-06 追記 / #1245 / IADR-0404］「env で読む Pod が無い」という前提が外れた。**
+  > 計画 ADR-0078 決定 2 の**近接 MTA**（`deploy/mail-relay/`）が、この Secret の 6 キーを
+  > **env(`secretKeyRef`) で読む**。したがって:
+  > (a) `keycloak-smtp` は **ESO の有無によらず存在しなければならない**（無いと relay が起動しない）——
+  >     起動器の `[3/7]` が dev 既定で常時 apply し、ExternalSecret は `creationPolicy: Merge` にした
+  >     （`keycloak-admin` と同じ形。手動 apply を保持したまま Vault の値へ差し替わる）。
+  > (b) **`mail-relay` を rollout 対象へ加えた**（`secretKeyRef` の env は Pod 起動時に一度だけ解決される。
+  >     IADR-0103）。待ち合わせの理由も「案内文のため」から「rollout の空振りを避けるため」へ戻った。
+  > **決定 4（realm への実値投入は行わない）は変わらない** —— むしろ実値は稼働 realm にも入らなくなった。
 - **決定 3: 案 C。** `scripts/k8s-local-up.test.js` に
   **「`deploy/local/vault/eso/externalsecret-*.yaml` のすべてが、いずれかのゲート組み合わせで
   apply される」**を足す。母集合はディレクトリの実体、突合先は全ゲート run の和（`EMITTED_LINES`）、

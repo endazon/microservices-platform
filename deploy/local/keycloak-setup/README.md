@@ -41,7 +41,14 @@ Job（`node:22-alpine`・`platform-infra`）は **ConfigMap `keycloak-realms`**�
 | 層 | 対象 | 扱い |
 | --- | --- | --- |
 | 宣言（realm JSON が正） | realm の非コレクション設定 / `requiredActions` / realm・client ロール / グループ / client scopes ＋ mappers / clients（属性・redirect・secret・scope 割当 ＋ mappers）/ **seed 利用者の存在** / サービスアカウント利用者のロールと属性 | 差分があれば当てる。集合欄は宣言が全集合、実体は加算的（余剰は消さない） |
-| 実行時（Keycloak / SC-17 / 本人が正） | 既存の人間の利用者の資格情報・属性・ロール・グループ・`requiredActions`・セッション / `smtpServer` | **触らない** |
+| 実行時（Keycloak / SC-17 / 本人が正） | 既存の人間の利用者の資格情報・属性・ロール・グループ・`requiredActions`・セッション | **触らない** |
+| 門（`reset-gate` が正。**条件つき**） | `resetPasswordAllowed` —— ただし除くのは「**宣言 true・稼働 false・`attributes["reset-gate.state"]==="closed"`**」の 1 組だけ | その 1 組のときだけ差分から除く |
+
+> **［2026-09-06 / #1245］`smtpServer` は実行時所有から宣言所有へ移った。** 送出先はクラスタ内の
+> 近接 MTA（`deploy/mail-relay/`）へ固定され、秘匿値は relay 側の Secret にある。`RUNTIME_OWNED_REALM_KEYS`
+> は**空集合**である。宣言に無いキー（`user` / `password`）は消さない。
+> 🔴 `resetPasswordAllowed` を無条件の実行時所有にしてはならない —— 「**宣言 false なのに稼働 true**」
+> （閉じたはずの申請が開いている）という**危険な向きの drift** まで見なくなる。
 
 seed 利用者の宣言（例: `requiredActions`）を変えて既存クラスタへ届けたいときは、破壊経路を使う:
 `kubectl -n platform-infra delete pvc keycloak-data && kubectl -n platform-infra rollout restart deploy/keycloak`
