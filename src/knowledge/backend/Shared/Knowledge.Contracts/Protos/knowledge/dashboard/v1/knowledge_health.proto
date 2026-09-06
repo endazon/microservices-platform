@@ -1,0 +1,87 @@
+// FR-10, FR-17, FR-18, FR-19, NFR-09, NFR-16, NFR-21, UC-05, SC-10, ADR-0002, ADR-0006, ADR-0029,
+// ADR-0065, ADR-0075, ADR-0076, IADR-0256, IADR-0265, IADR-0299, IADR-0353, IADR-0379, IADR-0389,
+// IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408 (#1255):
+// ナレッジ健全性の観測値の受け口（REST `POST /internal/knowledge-health/observations` と同じ意味論）の
+// gRPC 契約。
+//
+// ■ 置き場と所有（IADR-0379 決定 1）: 所有者は DashboardService。置き場は knowledge ユニットの
+//   共有契約プロジェクト `Knowledge.Contracts` の `Protos/knowledge/dashboard/v1/`。
+//   クライアント・サーバ基底の両方をここから生成する（`GrpcServices="Both"`）。
+// ■ versioning（IADR-0379 決定 2）: フィールド番号は不変。削除は reserved に残す。破壊的変更は v2 の並走。
+// ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
+//   利用者トークンは載せない。この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。
+//
+// ■ 🔴 **この面は「一方向の報告」であって問い合わせではない。** 呼び出し元（GraphService の定期処理）は
+//   利用者の要求の外で走り、**利用者の資格情報を 1 バイトも持たない**（IADR-0299 決定 4 が
+//   受け口の認証を外した理由そのもの）。したがって s2s トークンだけで足り、
+//   本文に利用者の文脈を載せる項目も無い。
+//
+// ■ 🔴 **判定の位置を動かさない。** 個人資料（`doc_scope = "private-note"`）を集計から外すのは
+//   **受け手**の責務であり（IADR-0265）、生産者は「対象の集合と各対象の文書スコープを正しく添える」
+//   だけである。移行はその分担を変えない。REST 側の受け口は無認証のまま残す ——
+//   この gRPC 面に `ServiceCaller` を掛けるのは**現状より狭い**向きである
+//   （IADR-0401 決定 1 / IADR-0402 決定 3 と同じ向き）。
+//
+// ■ 🔴 **proto3 に null は無い（IADR-0397 決定 5 / IADR-0400 決定 4 / IADR-0402 決定 4）。**
+//   本面では REST の「項目そのものを出さない」が **3 箇所**あり、すべて presence（`optional`）で運ぶ。
+//   非 `optional` へ落とすと 3 つとも**静かに**壊れる:
+//     - `threshold_days` … 省略が `0` になり、受け口の検証器が
+//       `thresholdDays must be greater than zero` で 400 を返す。**しきい値を持たない 3 指標
+//       （orphan-documents / unresolved-links / edge-type-usage）の報告が全部落ちる**。
+//       仮に検証を抜けても「しきい値 0 日」が画面に出る（Command.cs の 🔴 と同じ事故）。
+//     - `doc_scope` … `null`（個人資料ではない）が `""` になり、台帳の値が `null` と区別できなくなる。
+//     - `dimension` … 軸を持たない指標に `""` という軸が 1 本生まれ、内訳の集計が割れる。
+syntax = "proto3";
+
+package knowledge.dashboard.v1;
+
+option csharp_namespace = "Knowledge.Contracts.Grpc.Dashboard.V1";
+
+// ナレッジ健全性の観測値の報告。ServiceCaller（platform-service）を要求する。
+// **閲覧の口はこの面に存在しない** —— 呼び出し元が要らないものを面へ出さない
+// （IADR-0401 決定 2 と同じ作法。閲覧はロール限定の REST `GET /dashboard/knowledge-health` のままである）。
+service KnowledgeHealthReport {
+  // 指標 1 つ分の観測値を**全量スナップショットとして**置き換える。
+  // REST `POST /internal/knowledge-health/observations` と同値。
+  //
+  // 🔴 **空でも呼ぶこと。** 受け口は当該指標の既存行を落としてから差し替えるため、
+  // 「0 件だから送らない」と最適化すると前回の件数が恒久的に残る（IKnowledgeHealthReporter の 🔴 と同じ）。
+  rpc Report(ReportRequest) returns (ReportResponse);
+}
+
+// 観測値 1 件。REST の `KnowledgeHealthObservationRequest` と同じ形。
+message Observation {
+  // 重複排除のための不透明な鍵（文書 ID・辺の型名など）。**応答には現れない。**
+  string subject_key = 1;
+
+  // 文書スコープ。個人資料は "private-note"、それ以外は**未設定**。
+  // 🔴 未設定（null）と空文字は別物である。presence で運ぶ。
+  optional string doc_scope = 2;
+
+  // 内訳の軸（IADR-0389 決定 1）。軸を持たない指標では**未設定**。
+  // 🔴 基数が有界な語だけを載せる（自由語を入れると内訳が無界に増える）。
+  optional string dimension = 3;
+}
+
+message ReportRequest {
+  // 指標名。受け口は既知の集合（KnowledgeHealthIndicators.All）に限る。
+  // 値域外は INVALID_ARGUMENT（REST の 400 と同値）。
+  string indicator = 1;
+
+  // 当該指標の観測値の**全量**。空でよい（0 件という事実を運ぶ）。
+  repeated Observation observations = 2;
+
+  // 生産者が判定に使った日数のしきい値（planning#494 決定 3 / IADR-0353 決定 4）。
+  // 🔴 **観測値ではなく報告 1 通の属性である**（件数が 0 のとき観測値は 1 行も無い）。
+  // 🔴 **未設定は「しきい値なし」であり、受け口はしきい値の行を削除する。**
+  //    `0` は「しきい値なし」ではない —— 0 以下は INVALID_ARGUMENT である。
+  optional int32 threshold_days = 3;
+}
+
+message ReportResponse {
+  // 正規化後の指標名（REST の 202 本文と同じ）。
+  string indicator = 1;
+
+  // 受理した観測値の件数。**個人資料を含み得る生の値**であり、ここは集計面ではない。
+  int32 accepted = 2;
+}

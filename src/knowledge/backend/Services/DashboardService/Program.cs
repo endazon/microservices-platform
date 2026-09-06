@@ -7,6 +7,7 @@ using DashboardService.Infrastructure.Persistence;
 using FluentValidation;
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Audit;
+using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Observability;
@@ -21,6 +22,10 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);
+// NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 3, [[IADR-0408]] (#1255):
+// east-west gRPC の h2c リスナ（`Grpc:Port`。未設定なら立てない）。
+// HTTP/1.1 のポート（REST・/health/*・introspection）はそのまま残り、readiness も 8080 のままである。
+builder.AddPlatformGrpcListener();
 // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視の標識（受け口側の多層防御）。
 builder.Services.AddSyntheticMonitoring(builder.Configuration);
 // NFR, #1012: 接続先は構成から受け取る。**既定の資格情報を埋め込まない。**
@@ -72,6 +77,9 @@ builder.Services.AddSingleton<IAuditLogger, AuditLogger>();
 // 1 行 1 検証器の明示登録なら、消したときにコンパイルか DI 解決で止まる。
 builder.Services.AddScoped<IValidator<UsageEventRequest>, RecordUsageEventValidator>();
 builder.Services.AddScoped<IValidator<KnowledgeHealthReportRequest>, ReportKnowledgeHealthValidator>();
+// FR-10, FR-17, FR-18, ADR-0065 決定 2, [[IADR-0408]] (#1255): 観測値の受け口の**本体**。
+// 🔴 **REST の端点と gRPC の rpc が同じ関数を通る**（判定器を 2 つにしない）。
+builder.Services.AddScoped<ReportKnowledgeHealthUseCase>();
 
 var app = builder.Build();
 
@@ -90,6 +98,11 @@ app.MapOpenApi();
 
 app.MapDashboardEndpoints();
 app.MapKnowledgeHealthEndpoints();
+// FR-10, FR-17, FR-18, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]], [[IADR-0408]] (#1255):
+// 観測値の受け口の gRPC 面。REST と**同じ本体**（`ReportKnowledgeHealthUseCase`）を呼ぶ。
+// 呼び出し側サービスの資格情報（ServiceCaller ポリシー）を要求する —— 利用者のトークンでは通らない。
+// 🔴 **閲覧の口はこの面に出さない**（呼び出し元が要らないものを面へ出さない）。
+app.MapGrpcService<KnowledgeHealthReportGrpcService>();
 
 app.Run();
 
