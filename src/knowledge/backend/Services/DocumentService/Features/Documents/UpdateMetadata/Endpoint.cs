@@ -32,6 +32,12 @@ internal static class UpdateDocumentMetadataEndpoint
                 is { } metaScopeFixed)
                 return metaScopeFixed;
 
+            // FR-06, FR-16, AST/ADR-0032 決定 2, [[IADR-0405]] 決定 2 (#1233):
+            // 制限 project の値は保存で外せない（`Update` と同じ規則・同じ位置）。
+            if (DocumentEndpoints.RestrictedProjectDroppedProblemOrNull(req.Attributes, doc.Attributes)
+                is { } metaProjectKept)
+                return metaProjectKept;
+
             if (req.ExpectedVersion is { } expected && expected != doc.Version)
                 return Results.Conflict(new
                 {

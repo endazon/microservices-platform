@@ -3359,6 +3359,26 @@
           }
         }
       },
+      "Platform.Shared.Contracts.Dtos.RestrictedProject": {
+        "kind": "class",
+        "members": {
+          "DocumentKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"project\""
+          },
+          "SubjectKey": {
+            "source": "const",
+            "type": "string",
+            "value": "UserAttributeEncoding.ProjectsKey"
+          },
+          "Values": {
+            "source": "property",
+            "type": "IReadOnlySet<string>",
+            "required": false
+          }
+        }
+      },
       "Platform.Shared.Contracts.Dtos.ServiceIntrospectionDto": {
         "kind": "record",
         "members": {

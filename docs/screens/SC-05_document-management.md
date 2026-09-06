@@ -3,15 +3,15 @@ title: 文書管理 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-05
+updated: 2026-09-06
 author: claude
 ---
 <!-- trace:
-ids: [FR-06, FR-09, FR-12, SC-02, SC-03, SC-05, SC-07, UC-03]
-adrs: []
-iadrs: [IADR-0009, IADR-0039, IADR-0041, IADR-0044, IADR-0075, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0135]
-specs: [20260805_issue-503_sc05-08-admin-screens, 20260809_issue-629_document-write-admin-only]
-issues: [#7, #446, #490, #502, #506, #519, #553, #629, #634, #640, planning#197, planning#198, planning#199, planning#299]
+ids: [FR-06, FR-09, FR-12, FR-16, SC-02, SC-03, SC-05, SC-07, UC-03]
+adrs: [AST/ADR-0032]
+iadrs: [IADR-0009, IADR-0039, IADR-0041, IADR-0044, IADR-0075, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0135, IADR-0373, IADR-0405]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260809_issue-629_document-write-admin-only, 20260906_issue-1233_restricted-project-controls]
+issues: [#7, #446, #490, #502, #506, #519, #553, #629, #634, #640, #1233, planning#197, planning#198, planning#199, planning#299]
 -->
 
 # 画面仕様書: 文書管理
@@ -182,6 +182,17 @@ issues: [#7, #446, #490, #502, #506, #519, #553, #629, #634, #640, planning#197,
 | 変更メモ | `Input` | 任意 | 最大 200 文字 | 編集時のみ。版スナップショットに残る |
 | 版 | 表示 | — | `v{version}` | 現行版（計画側の本画面） |
 
+> **［2026-09-06 追記 / #1233］保存で外せない属性が 1 つある。**
+> **文書が現に持つ「制限プロジェクト」の属性値**（外部エージェント経路から当該プロジェクトの
+> 文書を外すための統制。現在の値は `ai-stock-trading` 1 つ）は、**編集フォームからの保存で
+> 削除・変更できない**（400）。属性は**全置換**であり、落とすと外部エージェント側の除外が
+> 効かなくなるためである。
+>
+> **画面の入力項目は増えていない。** 制限プロジェクトを持つ文書は本画面の編集対象として
+> 稀であり、通常の保存は既存属性をそのまま同送するので影響を受けない。
+> 🔴 **これは「プロジェクト属性を必須にした」ことでも「不変にした」ことでもない** ——
+> 属性を持たない文書・制限対象でない値を持つ文書の保存は**従来どおり通る**（1 件も新しく拒否しない）。
+
 ## アクション・イベント
 
 | 操作 | 挙動 | 遷移先 |
@@ -206,7 +217,7 @@ issues: [#7, #446, #490, #502, #506, #519, #553, #629, #634, #640, planning#197,
 | 一覧の取得失敗 | `Alert tone="danger"` `role="alert"` |
 | 成功・0 件 | 「文書はありません。」 |
 | 保存成功 | `Alert tone="success"` `role="status"`（「文書を登録しました。」／「文書を更新しました。」） |
-| 検証エラー（400） | `Alert tone="danger"` `role="alert"` に Problem 本文の詳細を列挙（`toMessages`） |
+| 検証エラー（400） | `Alert tone="danger"` `role="alert"` に Problem 本文の詳細を列挙（`toMessages`）。**制限プロジェクトの値を落とす保存もここに入る**（鍵は `project`。上の追記） |
 | **版競合（409）** | `Alert tone="warning"` `role="alert"`。詳細があればそれを出し、無ければ「他の更新と競合しました（版が変わっています）。最新を再読み込みしてください。」 |
 | 不在・スコープ外（404） | `Alert tone="danger"` `role="alert"`（中立文言。権限の有無を示さない） |
 

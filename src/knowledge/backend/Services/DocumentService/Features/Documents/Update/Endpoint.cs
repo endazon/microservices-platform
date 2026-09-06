@@ -34,6 +34,12 @@ internal static class UpdateDocumentEndpoint
                 is { } updateScopeFixed)
                 return updateScopeFixed;
 
+            // FR-06, FR-16, AST/ADR-0032 決定 2, [[IADR-0405]] 決定 2 (#1233):
+            // 制限 project の値は保存で外せない（属性は全置換であり、落とすと後段の除外が効かなくなる）。
+            if (DocumentEndpoints.RestrictedProjectDroppedProblemOrNull(req.Attributes, doc.Attributes)
+                is { } updateProjectKept)
+                return updateProjectKept;
+
             // FR-06, UC-03: 楽観的並行制御。期待版が現在版と異なれば lost update を防ぐため 409。
             if (req.ExpectedVersion is { } expected && expected != doc.Version)
                 return Results.Conflict(new
