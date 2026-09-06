@@ -60,7 +60,7 @@ internal static partial class DocumentMapper
     // **常に現行版の本文を指す**。載せると 200 の応答に「その版の本文らしい URI」が入り、
     // 呼び出し側が過去版の本文だと読み違えても区別できない。**戻さないこと。**
     //
-    // この省略は 3 層で可視である（IADR-0406 決定 6）——
+    // この省略は 3 層で可視である（IADR-0406 決定 5）——
     //   ① 下の `[MapperIgnoreSource]`。**これが無いと、Mapperly の沈黙（DTO に欄が無いので
     //      診断は 1 件も出ない）は「事故で落ちた」と区別がつかない。**
     //   ② `DocumentVersionDto` に `MarkdownUri` を戻すと **RMG012 でビルドが赤になる**

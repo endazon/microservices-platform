@@ -20,7 +20,7 @@ namespace GraphService.Features.AiSuggestions;
 // 🔴 **認可の「判定」はここに入れない。** 入っているのは判定**結果**の名（`canDecide`）だけであり、
 // これは契約が既に持つ語である（`AiSuggestionDto.CanDecide`。ADR-0063 決定 3〜5 / IADR-0364 決定 4
 // 「資格はサーバが判定し `CanDecide` で行ごとに運ぶ」）。`CanDecideAsync` / `ClaimsPrincipal` /
-// `AccessScopeResponse` / `IsInRole` は登録表（`AiSuggestionEndpoints`）に残る（IADR-0406 決定 3）。
+// `AccessScopeResponse` / `IsInRole` は登録表（`AiSuggestionEndpoints`）に残る（IADR-0406 決定 2）。
 // **既定 `false` は deny 側である** —— 載せ忘れた経路は「できない」と描かれる。
 //
 // **置き場は 2 段目（`Features/AiSuggestions/`）である。** 承認・却下・一覧・生成の

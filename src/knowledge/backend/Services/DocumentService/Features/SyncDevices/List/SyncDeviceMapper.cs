@@ -10,7 +10,7 @@ namespace DocumentService.Features.SyncDevices.List;
 //
 // 従前は `SyncDeviceEndpoints.ToDto(SyncDevice d, DateTimeOffset now)` の手書き詰め替えであった。
 //
-// 🔴 **時計は写像に入れない**（IADR-0406 決定 4）。`Active` は `d.IsActive(now)` という**導出**であり、
+// 🔴 **時計は写像に入れない**（IADR-0406 決定 3）。`Active` は `d.IsActive(now)` という**導出**であり、
 // 「材料」ではない。追加引数は導出**済み**の `bool active` である。呼び出し側（`Endpoint.cs`）が
 // `now` を作って `d.IsActive(now)` を済ませる —— そこは既に時計を持っている端である。
 // 写像へ `DateTimeOffset` や `TimeProvider` を渡す形は、生成マッパをテストから固定しづらくする

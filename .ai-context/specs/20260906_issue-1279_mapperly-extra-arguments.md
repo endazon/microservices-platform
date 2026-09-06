@@ -129,34 +129,38 @@ plan_refs:
 演算子・メソッド呼び出し・`??` を伴わずにコンストラクタ引数として書けるか、が判定である。
 辞書引き・`d.IsActive(now)`・`doc?.Title ?? ""`・2 メンバの合成・キーごとの分岐は**導出の指示**であり、
 **それを今持っている端**（登録表 `<集約>Endpoints.cs`、または 3 段目の `Endpoint.cs`）に残す。
-端のラッパは**1 式**であり、列の詰め替えを含まない。
+端のラッパは**1 式**であり、列の詰め替えを含まない。**`[Mapper]` クラスに置くのは `partial` 宣言と
+`Use=` 変換だけである**（非 `partial` のメソッドを `[Mapper]` へ入れない —— Mapperly は**型の組み合わせだけで**
+ユーザー実装の写像を選ぶため、将来の別の写像に黙って使われる）。
 
 ### 🔴 ライブラリの実測（Riok.Mapperly 4.3.1。本 PR で再検証する）
 
 | 事実 | 帰結 |
 | --- | --- |
-| 追加引数は**名前一致**（大文字小文字を無視）で対象メンバへ写る。`[MapProperty("param", …)]` による**改名は不可**（RMG006）、`"doc.Title"` のような**メンバ取り出しも不可**（RMG006） | **引数名は対象メンバ名にする**（決定 8）。改名したくなる引数（`now` / `names` / `doc`）は**指示である** |
+| 追加引数は**名前一致**（大文字小文字を無視）で対象メンバへ写る。`[MapProperty("param", …)]` による**改名は不可**（RMG006）、`"doc.Title"` のような**メンバ取り出しも不可**（RMG006） | **引数名は対象メンバ名にする**（決定 1 の材料の条件 (c)）。改名したくなる引数（`now` / `names` / `doc`）は**指示である** |
 | 一致しない追加引数は **RMG082 警告**のみ。名前の合わない対象メンバは **RMG012 警告**のみ。`TreatWarningsAsErrors=false` なので**どちらもビルドが通る** | 🔴 最悪ケース: タグ名の辞書を `names` という名前のまま渡すと `Tags = MapToListOfString(d.Tags)`（**GUID 文字列**）が黙って生成される。**緑のビルドで誤った本番データ** |
 | null 許容の引数を非 null のコンストラクタ引数へ渡すと `?? throw new ArgumentNullException` が生成される（`?? string.Empty` にはならない） | `PrivateNoteEndpoints` の `?? string.Empty` / `?? 0` は**端に残す** |
 | `RequiredMappingStrategy.Target` は RMG012 の重大度を上げない | 省略の可視化には使えない（**ただし RMG020 は黙る**。決定 7 で使う） |
 
-→ **`src/Directory.Build.props` に `RMG012;RMG082` の `WarningsAsErrors` を 1 行足す**（決定 7）。
+→ **`src/Directory.Build.props` に `RMG012;RMG082` の `WarningsAsErrors` を 1 行足す**（決定 6）。
 
-### 決定 2〜6（要旨。正本は `IADR-0406`）
+### 決定 2〜8（要旨。正本は `IADR-0406`）
 
-- **決定 2**: 導出は今それを持っている端に残す。`[Mapper]` クラスには `partial` 宣言と `Use=` 変換だけを置く
-  （非 `partial` のメソッドを `[Mapper]` へ入れない —— Mapperly は**型の組み合わせだけで**それを選ぶ）。
-- **決定 3**: 認可の**判定結果の名**（`canDecide`）は写してよい。**判定**（`CanDecideAsync` / `ClaimsPrincipal` /
+- **決定 2**: 認可の**判定結果の名**（`canDecide`）は写してよい。**判定**（`CanDecideAsync` / `ClaimsPrincipal` /
   `AccessScopeResponse` / `IsInRole`）は `[Mapper]` に入れない。
-- **決定 4**: 時計は写像に入れない。`SyncDeviceMapper.ToDto(SyncDevice d, bool active)`、呼び出し側が
+- **決定 3**: 時計は写像に入れない。`SyncDeviceMapper.ToDto(SyncDevice d, bool active)`、呼び出し側が
   `d.IsActive(now)` を済ませる。`Revoked` は 1 メンバの `Use=` 変換（波 1 `McpClientMapper` の型）。
-- **決定 5**: 置き場は `ADR-0068` 決定 2 をファイル単位で当てる。**Infrastructure が使う写像は Infrastructure に置く**
+- **決定 4**: 置き場は `ADR-0068` 決定 2 をファイル単位で当てる。**Infrastructure が使う写像は Infrastructure に置く**
   ——`scripts/check-unit-dependencies.js` 規則 3-③ は `Infrastructure → Features` を禁じる。Domain へも置かない
   （`Riok.Mapperly.Abstractions` の属性を Domain に付けることになる。`IADR-0282` 決定 1）。
   **本 PR では 6・7 を残すので実際の移動は起きない**——これは 8 例目のための規則である。
-- **決定 6**: `MarkdownUri` の省略を 3 層で可視にする ——
+- **決定 5**: `MarkdownUri` の省略を 3 層で可視にする ——
   `[MapperIgnoreSource(nameof(DocumentVersion.MarkdownUri))]` ＋ RMG012 の error 化 ＋ 反射試験
   `Dto_HasNoMarkdownUriMember`（DTO に戻せば**ビルドが赤**になる）。
+- **決定 6**: `RMG012` / `RMG082` を `WarningsAsErrors` にする。**`RMG020` はしない**（🔴 な省略が些事に埋もれる）。
+- **決定 7**: 「部分射影である」ことは `[MapperRequiredMapping(RequiredMappingStrategy.Target)]` で **1 回だけ**宣言する。
+  `[MapperIgnoreSource]` は「これを出さないと決めた」個別の合図に取っておく。
+- **決定 8**: 移した 5 本・残した 2 本と、その理由（E は新設）。**上表 §母集合の判定がこれに当たる。**
 
 ### 母集合の取り方（`traceability.repo.md` 規則 9・10）
 
@@ -187,7 +191,7 @@ plan_refs:
 
 | 試験 | 何を見るか | 赤にする変異 |
 | --- | --- | --- |
-| `<X>MapperTests.ToDto_CopiesEveryProperty`（4 マッパ） | 対象メンバを**1 つずつ**。追加引数の列（`Tags` / `Title`・`Version` / `Active` / 3 つ）も含む | 源メンバの改名・`[MapProperty]` の削除 → RMG012（決定 7 で**エラー**） |
+| `<X>MapperTests.ToDto_CopiesEveryProperty`（4 マッパ） | 対象メンバを**1 つずつ**。追加引数の列（`Tags` / `Title`・`Version` / `Active` / 3 つ）も含む | 源メンバの改名・`[MapProperty]` の削除 → RMG012（決定 6 で**エラー**） |
 | `ToDto_KeepsNullOptionalFields` | `ContentHash` / `DeletedAt` / `PurgeAt` / `LastSyncAt` / `TargetDocumentTitle` / `ChangeNote` が null のまま | `?` 引数を非 null にして `?? ""` を足す |
 | `ToDto_ExtraArgIsCopiedVerbatim`（SyncDevice / AiSuggestion） | `active` / `canDecide` が両方向で写る。3 引数呼び出しで `CanDecide == false` | 追加引数の綴りを変える → RMG082（**エラー**） |
 | `Revoked_IsTrueIffRevokedAtIsSet` | `Revoked` が `RevokedAt` に従う | `Use = nameof(IsRevoked)` を外す → 変換が無く RMG エラー |
@@ -243,3 +247,33 @@ plan_refs:
    を**メソッドに 1 つ**付けて「部分射影である」と宣言し、`[MapperIgnoreSource]` は
    🔴 な省略の合図に取っておく（`IADR-0406` 決定 7）。**新規の警告は 0 件になった。**
    🔴 この属性は**クラスには付かない**（`error CS0592`）。
+
+★［2026-09-06 追記 / #1279］🔴 **改番の一括置換が、無関係な別 ADR への正しい参照を巻き込んで壊した。**
+
+本 PR は採番衝突で `IADR-0405` → `IADR-0406` へ改番した（先着は #1308 の「制限 project」）。
+その置換を**文字列の一括置換で行ったため、#1233 由来の正しい `[[IADR-0405]]` 参照 2 件まで書き換えた**
+（`DocumentEndpoints.cs:110` / `DocumentService.csproj:51`）。**develop 側では正しかったものを、
+本 PR が壊した。** AI レビューが検出した。
+
+**なぜ機械で止まらないか**: `check-adr-numbering.js` は欠番と索引の整合だけを見る。
+`gen-knowledge-graph --check` は**参照先が実在するか**しか見ず、`IADR-0406` は実在するので緑になる。
+**「この文脈で正しい ADR か」を見る機械は無い。**
+
+**是正**（本追記と同じコミット）:
+
+| 種別 | 箇所 | 直した内容 |
+| --- | --- | --- |
+| 🔴 巻き込み | `DocumentEndpoints.cs:110` / `DocumentService.csproj:51` | `[[IADR-0406]]` → `[[IADR-0405]]`（#1233 の主題である制限 project は 0405 が正本） |
+| 🟡 決定番号 | `Directory.Build.props` 7→6 / `DocumentMapper.cs` 6→5 / `DocumentEndpoints.cs` 6→5 / `AiSuggestionMapper.cs` 3→2 / `SyncDeviceMapper.cs`・`SyncDevices/List/Endpoint.cs`・`SyncDeviceMapperTests.cs` 4→3 | `IADR-0406` は起草時に**決定 2（端に残す）を決定 1 へ畳んだ**ため、以降が 1 つずつ繰り上がっている。コード側の引用が旧採番のまま残っていた |
+| 🟡 決定番号 | 本仕様書 §設計 | 同じ理由で `決定 2〜6` と書いていた要旨を `決定 2〜8` へ改め、`決定 7`（`WarningsAsErrors`）→ `決定 6`、`決定 8`（引数名）→ `決定 1 の材料の条件 (c)` へ直した |
+
+**母集合**（規則 1・9。誤りの側から引いた）: `git grep -n "IADR-040[56]"` を追跡下の全ファイルへ当て、
+ADR 本体 2 つ（`IADR-0405_*` / `IADR-0406_*`）を除いた行を 1 行ずつ `IADR-0406` の見出し（決定 1〜8）と
+突き合わせた。**規則 8（自分の記録が母集合を動かす）**: 走査は本追記を書いた後に **67 行**を返すが、
+**本追記自身が足した 8 行**を引いて **59 行**が突合の対象である（内訳: 本仕様書 9 ＋ その他 50）。
+**残る `IADR-0405` 参照 8 件（`DocumentAttributes.cs` ×2・`Update/Endpoint.cs`・`UpdateMetadata/Endpoint.cs`・
+`RestrictedProject.cs` ×2・`DocumentAttributesTests.cs`・`RestrictedProjectRetentionTests.cs`）はすべて #1233 の
+文脈であり、正しい。** `IADR-0373` と `docs/screens/SC-05` の `IADR-0405` も同様に #1233 側で、本 PR は触らない。
+
+**規律**: 🔴 **改番は一括置換でやらない。** 置換前に「その番号を引いている行」を 1 行ずつ読み、
+**自分の PR が起こした参照だけを**直す。同名の別 ADR が同時に存在し得る（先着尊重の帰結）。

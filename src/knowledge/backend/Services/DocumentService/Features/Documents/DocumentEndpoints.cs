@@ -107,7 +107,7 @@ public static class DocumentEndpoints
             });
     }
 
-    // FR-06, FR-16, SC-05, AST/ADR-0032 決定 2, [[IADR-0406]] 決定 2 (#1233):
+    // FR-06, FR-16, SC-05, AST/ADR-0032 決定 2, [[IADR-0405]] 決定 2 (#1233):
     // 制限 project の値を保存で落とすことの拒否。**`doc_scope` の不変性検査と同じ位置**
     // （既存文書の属性が要るため `FindAsync` の後ろ。[[IADR-0398]] 決定 8）で、
     // **その直後**に置く —— 宣言順が応答の契約であり、両方に違反する要求では
@@ -148,7 +148,7 @@ public static class DocumentEndpoints
     // 落としてあるので、ここで写す先も無い。**戻さないこと。**
     // 列の詰め替えは `DocumentMapper.ToVersionDto` が行い、**`MarkdownUri` の省略はそこで
     // `[MapperIgnoreSource]` として可視になっている**（属性 ＋ RMG012 の error 化 ＋ 反射試験の 3 層。
-    // IADR-0406 決定 6）。ここに残るのは辞書引きだけである。
+    // IADR-0406 決定 5）。ここに残るのは辞書引きだけである。
     internal static DocumentVersionDto ToVersionDto(DocumentVersion v, IReadOnlyDictionary<Guid, string> names)
         => DocumentMapper.ToVersionDto(v, TagResolver.ToNames(v.Tags, names));
 
