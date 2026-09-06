@@ -126,6 +126,23 @@ apply_secret "$INFRA_NS" keycloak-smtp \
   "starttls=${SMTP_STARTTLS:-$smtp_starttls_default}" \
   "from=${SMTP_FROM:-}" "user=${SMTP_USER:-}" "password=${SMTP_PASSWORD:-}"
 
+# SC-15, ADR-0078 決定 4, IADR-0404 (#1245 PR-C):
+# 門（deploy/mail-relay/reset-gate.yaml）が Admin REST を叩くための機密クライアントの secret。
+# 🔴 **keycloak-smtp と同じく ESO の有無によらず作る** —— 門は **非 optional** な secretKeyRef で読み、
+#    無いと [4/7] の rollout で止まる。資格情報が無い門は 401 を打ち続けるだけで、
+#    **窓（実在利用者だけ 500）は開いたまま**になる。起動しないほうが気付ける。
+# realm 側の宣言値（deploy/keycloak/microservices-platform-realm.json の reset-gate.secret）と
+# **同じ既定**にする。ズレると Keycloak の token 端点が invalid_client を返す（wikijs-oidc と同じ罠）。
+apply_secret "$INFRA_NS" reset-gate-oidc \
+  "client-secret=${RESET_GATE_CLIENT_SECRET:-reset-gate-dev-secret-change-me}"
+
+# 門のスクリプト本体（deploy/mail-relay/reset-gate.js）。テーマ・realm reconcile と同型で
+# **--from-file の ConfigMap** にする（kustomize は root 外ファイルを参照できないため）。
+# 毎回上書き＝リポジトリの版が正。🔴 [4/7] の apply より**前**に作る（Pod が起動時にマウントする）。
+kubectl create configmap reset-gate-script -n "$INFRA_NS" \
+  --from-file=reset-gate.js=deploy/mail-relay/reset-gate.js \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 # Keycloak realm import 用 ConfigMap（実 realm ファイル＝単一情報源）。
 # AST realm（submodule）が存在すれば同一 Keycloak へ併せて import する（MSP+AST 連結）。
 realm_args=(--from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json)
@@ -192,6 +209,10 @@ kubectl -n "$INFRA_NS" rollout status deploy/mailpit --timeout=120s
 # realm の smtpServer がここを指すので、**Keycloak より後に立つと最初の申請が送出に失敗する**
 # （＝実在する利用者名だけ 500。#1143 の状態 C そのもの）。上の mailpit と同じ理由でここで待ち合わせる。
 kubectl -n "$INFRA_NS" rollout status deploy/mail-relay --timeout=120s
+# SC-15, ADR-0078 決定 4, IADR-0404 (#1245 PR-C): 近接 MTA へ投函できないときに申請を閉じる門。
+# **opt-in ゲートを持たない**（決定 4 も無条件である）。近接 MTA の**後**に待ち合わせる ——
+# 門は relay へ SMTP 取引を打つので、relay が立つ前に測ると 1 周期ぶん誤って閉じる。
+kubectl -n "$INFRA_NS" rollout status deploy/reset-gate --timeout=120s
 
 echo "==> [5/7] MSP namespace & app secrets (dev 既定; fail-safe 空 = no-op)"
 kubectl create namespace "$MSP_NS" --dry-run=client -o yaml | kubectl apply -f -
@@ -546,15 +567,19 @@ if [ "${ESO:-}" = "1" ]; then
   # 既定では `from`/`user`/`password` が空（bootstrap.sh の fail-safe）。relay は空の user/password を
   # 「認証なし」として扱い、空の from では外向きの差出人写像を張らない（どちらも dev の正しい姿である）。
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-smtp.yaml
+  # SC-15, ADR-0078 決定 4, IADR-0404 (#1245 PR-C): 門（reset-gate）の client secret。
+  # **手動 apply は step [3/7] で保持済み**（ESO の有無によらず作る。無いと門が起動しない）。
+  # ここでは creationPolicy: Merge の ExternalSecret を適用し、既存 Secret へ Vault の値をマージするのみ。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-reset-gate-oidc.yaml
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 17 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 へ数え直した）＋有効ゲートの wikijs-oidc（#1127）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
+  # 誤解させない）。MSP ns は常時 17 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 へ数え直した）＋有効ゲートの wikijs-oidc（#1127）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5、#1245 で reset-gate-oidc を追加し 5 → 6 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
   msp_es="llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token"
   [ "${WIKIJS_OIDC:-}" = "1" ] && msp_es="$msp_es wikijs-oidc"
-  infra_es="postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp"
+  infra_es="postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp reset-gate-oidc"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
   echo "    ESO: llm/minio-credentials/postgres-app/rabbitmq-app/wikijs-db/wikijs-sync/minio-oidc（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
-  echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc/keycloak-smtp、および有効ゲートの grafana/headlamp-oidc（infra ns）と wikijs-oidc（MSP ns）を"
+  echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc/keycloak-smtp/reset-gate-oidc、および有効ゲートの grafana/headlamp-oidc（infra ns）と wikijs-oidc（MSP ns）を"
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
   echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret $msp_es"
   echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret $infra_es"
@@ -594,7 +619,9 @@ if [ "${ESO:-}" = "1" ]; then
   # `kubectl -n platform-infra get externalsecret,secret keycloak-smtp` を打ったときに
   # **Secret が「まだ作られていない」状態で NotFound を返さない**ことも担保する。
   # 他と同じく best-effort（warn を出して継続。実値が空でも同期自体は成立する）。
-  infra_sync="keycloak-smtp"
+  # #1245 PR-C: reset-gate-oidc も **rollout のために待つ**（門が env で読む。同期前に restart すると
+  # 新しい門も供給前の値をつかみ、401 を打ち続ける＝**窓が開いたまま**になる。IADR-0103）。
+  infra_sync="keycloak-smtp reset-gate-oidc"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_sync="$infra_sync grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_sync="$infra_sync headlamp-oidc"
   # shellcheck disable=SC2086
@@ -626,6 +653,11 @@ if [ "${ESO:-}" = "1" ]; then
   # 運用者は Vault へ実値を入れたのに 1 通も外へ出ない（静かな縮退）。
   kubectl -n "$INFRA_NS" rollout restart deploy/mail-relay >/dev/null 2>&1 \
     && echo "      restarted $INFRA_NS/mail-relay" || echo "      skip $INFRA_NS/mail-relay（未デプロイ）"
+  # SC-15, ADR-0078 決定 4, IADR-0404 (#1245 PR-C): 門は reset-gate-oidc を env(secretKeyRef) で読む。
+  # 実値が供給された後は必ず作り直す —— 古い secret のままだと門は 401 を打ち続け、
+  # **投函できない状態を検知できない**（窓が開いたままなのに、誰も落ちない）。
+  kubectl -n "$INFRA_NS" rollout restart deploy/reset-gate >/dev/null 2>&1 \
+    && echo "      restarted $INFRA_NS/reset-gate" || echo "      skip $INFRA_NS/reset-gate（未デプロイ）"
   if [ "${OBSERVABILITY:-}" = "1" ]; then
     kubectl -n "$INFRA_NS" rollout restart deploy/grafana >/dev/null 2>&1 \
       && echo "      restarted $INFRA_NS/grafana" || echo "      skip $INFRA_NS/grafana（未デプロイ）"

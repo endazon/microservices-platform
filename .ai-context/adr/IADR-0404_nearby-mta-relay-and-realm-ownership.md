@@ -2,10 +2,10 @@
 title: IADR-0404 Keycloak の送出先はクラスタ内の近接 MTA（キュー付き Postfix）に固定し、smtpServer を宣言所有・resetPasswordAllowed を条件つき門所有へ移す
 type: impl-adr
 status: Proposed
-related_ids: [SC-15, SC-10, FR-05, FR-22, NFR-09, ADR-0026, ADR-0045, ADR-0078, IADR-0261, IADR-0329, IADR-0332, IADR-0344, IADR-0347, IADR-0369]
+related_ids: [SC-15, SC-10, FR-05, FR-22, NFR-09, ADR-0026, ADR-0045, ADR-0078, IADR-0261, IADR-0301, IADR-0329, IADR-0332, IADR-0344, IADR-0347, IADR-0369]
 author: Claude（実装）
 created: 2026-09-06
-updated: 2026-09-06
+updated: 2026-09-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0078_existence-hiding-response-indistinguishability-and-nearby-mta.md
   - planning:projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md
@@ -30,7 +30,8 @@ plan_refs:
   [IADR-0369](./IADR-0369_persist-by-default-and-realm-reconcile-job.md)（宣言／実行時の境界。**所有を改める**）／
   [IADR-0261](./IADR-0261_keycloak-theme-and-smtp-injection.md)（決定 2 の実行時注入を本 ADR が反転させる）／
   [IADR-0329](./IADR-0329_identity-admin-keycloak-provider-and-realm-wiring.md)（最小権限。門が部分的に後退させる）
-- 関連する実装仕様書: `.ai-context/specs/20260906_issue-1245_nearby-mta-relay.md`
+- 関連する実装仕様書: `.ai-context/specs/20260906_issue-1245_nearby-mta-relay.md`（PR-A）／
+  `.ai-context/specs/20260907_issue-1245_reset-gate.md`（PR-C。2026-09-07 の追記が対応する）
 
 ## コンテキストと課題
 
@@ -276,6 +277,115 @@ Keycloak KC-SERVICES0029: Failed to send email: SendFailedException: Invalid Add
 🔴 **C3 の入口は 1 つ減っただけである。** `reject_non_fqdn_recipient`（構文が壊れた宛先）と
 キュー満杯（452）は残る。前者は**利用者データの問題**であり Keycloak 側の登録時に閉じるべきもの、
 後者はキュー容量の設計（フォローアップ (5)）に属する。**「W2 は閉じた」と書かない。**
+
+## ★［2026-09-07 追記 / #1245 PR-C］門 `reset-gate` が着地した。窓 W1 / W1' / W2 は**縮んだ**
+
+本 ADR のフォローアップ (2)（ADR-0078 決定 4）を実装した。**決定 5 で先に入れた条件つき門所有の
+「書き手」がこれで揃う。** 権限の拡張は利用者が 2026-09-05 に承諾済みであり、本追記はその着地の記録と、
+**新たに要った 3 つの裁定**（検知の方式・判定の非対称性・権限の面積）を残す。
+関連する作業仕様書: `.ai-context/specs/20260907_issue-1245_reset-gate.md`
+
+### 決定 10: 検知は **relay へ本物の SMTP 取引を打つ能動プローブ**である
+
+| 案 | 評価 |
+| --- | --- |
+| A. 監査イベント `SEND_RESET_PASSWORD` の error を Admin API で監視する | **不採用**。**反応的である** —— 最初の 1 件は既に 500 を返しており、その 1 件で利用者名が 1 つ漏れる。`view-events` の権限も増える |
+| B. k8s API で relay Pod の Ready を見る | **不採用**。**Ready でも投函は拒まれる** —— #1307 が「relay は生きていて投函だけを拒む」状態を develop の CI で 3 回連続の赤として実測している。RBAC も増える |
+| **C. 門自身が relay へ SMTP 取引を打つ** | **採用**。Keycloak が通るのと**同じ経路・同じ判定**を、利用者の要求より先に受ける |
+
+🔴 **プローブは `MAIL FROM` → `RCPT TO` → `RSET` → `QUIT` で終える。DATA を送らない。**
+設計時は「`DATA` まで送り relay 側の `transport_maps` で捨てる」形を想定していたが、
+**着地した近接 MTA に `transport_maps` は入っていない**（本 ADR の実装 `686d5934` にも #1307 の是正にも無い）。
+relay は `smtpd_relay_restrictions=permit` で**宛先によらず上流へ中継する**（V15）ので、
+`DATA` まで送ると**プローブのメールが捕捉箱へ流れ込み**、`check-password-reset-mail.js` の
+「ちょうど 1 通」（T-17）が壊れる。周期 10 秒なら寿命 30 分の間に 180 通である。
+
+**RCPT で終えても検知能力は落ちない**（むしろ #1307 の実測に照らすと上がる）:
+
+| 捕まえたい状態 | Postfix が返す段 | RCPT 止まりで見えるか |
+| --- | --- | --- |
+| relay が居ない（W1） | TCP 接続拒否 | ○ |
+| SYN が落ちる（W1'） | タイムアウト（Keycloak と同じ 10 000 ms で待つ。V1） | ○ |
+| キュー満杯・容量不足（W2） | `452 4.3.1` は **MAIL FROM** で返る | ○ |
+| 差出人の拒否（W2） | `check_sender_access` は `smtpd_recipient_restrictions` の中＝**RCPT**（V12） | ○ |
+| 宛先 DNS 検証の再混入（#1307 の再発） | `reject_unknown_recipient_domain` は **RCPT**（V14） | ○ |
+| 宛先構文の拒否（W2 の残る入口） | `reject_non_fqdn_recipient` は **RCPT** | ○ |
+
+🔴 **上表は上流ソース（V1〜V15）と Postfix の仕様からの導出であり、稼働クラスタで打っていない**
+（本作業機にクラスタが無い。#1245 PR-D で測る）。
+
+### 決定 11: 判定は非対称である（**失敗 1 回で閉じ、連続 N 回の成功で宣言値へ戻す**）
+
+閉じるのを遅らせた分がそのまま「実在する利用者だけ 500 が返る窓」になる。逆に開けるのを急ぐと、
+復旧の揺らぎで開閉を繰り返し admin event が溢れる。**門が開けないのは次の 2 つ**である。
+
+- **宣言（realm JSON）が `resetPasswordAllowed: false`** —— 門は「開ける主体」ではなく
+  「**宣言どおりに戻す**主体」である。
+- **稼働の属性 `reset-gate.state` が `closed` でない**（＝**人が手で閉じた**）—— 他人の意思を上書きしない。
+  🔴 **これは決定 5 の後追い Job 側の除外条件と対になっている** —— 属性が無い `false` は Job が宣言へ戻し、
+  門は触らない。**役割が重ならないので、両方が「直した」と記録する形にならない。**
+
+**PUT 本文で差し替えるのは 4 つだけ**（`resetPasswordAllowed` と `attributes` の
+`reset-gate.{state,reason,since}`）。`manage-realm` は realm 設定を丸ごと書ける権限なので、
+**本文に入るものを機械で狭めておく** —— `scripts/reset-gate.test.js` が固定する。
+
+### 決定 12: 権限は専用の機密クライアント `reset-gate` の SA に `view-realm` ＋ `manage-realm` **だけ**
+
+| 案 | 権限の面積 | 評価 |
+| --- | --- | --- |
+| A. 後追い Job と同じ master 管理者資格情報 | **全 realm の全操作** | **不採用**。Job は数秒で終わるが門は常駐する。漏れたときの半径が最大になる |
+| B. 合成ロール `realm-admin` | realm 内の全管理操作（利用者・クライアント・認証フロー含む） | **不採用**。`manage-users` を含み、IADR-0301 決定 2 / IADR-0329 決定 1 が分けた「取り込み経路と管理経路は別主体」の区切りを壊す |
+| **C. `view-realm` ＋ `manage-realm`** | realm 設定の読み書きだけ | **採用**。`PUT /admin/realms/{realm}` は `requireManageRealm()` であり、**`resetPasswordAllowed` 1 項目にだけ効く細粒度権限は Keycloak 24 に無い**（fine-grained admin permissions v1 の対象は利用者・クライアント・グループ・ロールであって realm 設定ではない）。**これが下限である** |
+| D. Keycloak の権限ゼロ（エッジで端点を遮断する） | 0 | **不採用**。dev（Traefik）と production（Istio）でエッジが違い**既定の経路が守られない**（IADR-0347 決定 3-B）。ADR-0078 決定 4 が名指したレバーは `resetPasswordAllowed` である |
+
+🔴 **`manage-realm` の危険を薄めない。** 同じ権限で `smtpServer` を外へ向けることも
+`bruteForceProtected` を切ることもできる。緩和は 4 つある。
+
+1. 門のコードが差し替えるのは 4 キーだけ（決定 11）
+2. **宣言の門**（`check-realm-constraints.js` の `collectServiceAccountRoleGaps`）が天井を固定する ——
+   `realm-management` のロールを持つなら `realm-management-roles` スコープを持つこと／
+   **`manage-realm` を持つ SA は 1 つだけ**であり `manage-users` を併せ持たず対話ログインの経路も開いていないこと／
+   `realm-management-roles` を宣言したクライアントには**ロールを担う SA 利用者が `users[]` に居る**こと
+3. `standardFlowEnabled` / `directAccessGrantsEnabled` はどちらも false（MFA 迂回禁止）
+4. secret はリポジトリに置かない（Secret `reset-gate-oidc`。dev 既定は起動器、go-live は Vault → ESO）
+
+**2 は [IADR-0329](./IADR-0329_identity-admin-keycloak-provider-and-realm-wiring.md) §記録に留める が
+「同型の事故の 2 回目が起きたら足せ」と申し送った検査である。本件が 2 つ目の主体であり、条件が満たされた。**
+🔴 **実データへ当てたところ、`synthetic-monitor` が「`serviceAccountsEnabled` なのに `users[]` に居ない」
+形で引っかかった。** 精査すると**あれは意図（ロールを 1 つも持たない主体）であり事故ではない**ため、
+不変条件を「**`realm-management-roles` を宣言したクライアント**にはロールを担う利用者が居ること」へ狭めた
+—— #1301 の形（宣言だけあってロールが誰にも付いていない）はこれで捕まる。
+
+### 変わったこと（窓の上限）
+
+| 窓 | 本 ADR 着地時（PR-A） | 本追記時（PR-C） |
+| --- | --- | --- |
+| W1（relay 停止） | 運用者が気付いて runbook §0 を打つまで（分〜時間） | **プローブ周期 ＋ プローブのタイムアウト ＋ PUT 往復** |
+| W1'（SYN 落ち） | 同上 | 同上（実在側だけ 10 秒かかる性質は変わらない） |
+| W2（投函を拒む） | 同上 | 同上（門は利用者と同じ取引を打つので同じ拒否を受ける） |
+
+🔴 **「窓は閉じた」と書かない。** 加えて**門自身が落ちている間は W1 が開いたまま**である
+（門を監視する門は作らない。不在は観測側＝ PR-B で見せる）。
+
+### 測っていないこと（本追記の時点）
+
+- 🔴 **上の表の値を 1 つも実測していない**（稼働クラスタが要る。#1245 PR-D）。
+  プローブ周期 10 秒・タイムアウト 10 000 ms・連続成功 3 回は**マニフェストが与える初期値**であり、
+  正しさは実測で決めて環流する（ADR-0078 決定 1 §残るもの）。
+- 🔴 **プローブが relay の応答を実際に受けること**を確かめていない（決定 10 の表は導出である）。
+- 🔴 **`check-password-reset-mail.js` の稼働 realm 読み出しは依然 Keycloak pod 内の `kcadm.sh` である。**
+  [IADR-0369](./IADR-0369_persist-by-default-and-realm-reconcile-job.md) の禁則（pod 内で kcadm を exec しない）
+  に対する**残債**であり、門と同じ `view-realm` で Admin REST から読むのが正しい。
+  **経路の付け替えは稼働クラスタでしか確かめられない**ため本 PR では行わず、環流に含める。
+- 🔴 **`probe@probe.invalid` 宛のプローブは、宛先 DNS 検証が再混入したとき go-live では偽陽性になり得る**
+  （実在ドメインは引けるため）。fail-closed 側なので受容するが、環流して判断を仰ぐ。
+
+### フォローアップの更新
+
+- (2)（門を入れる）は**本追記で完了**した。(1) 観測・(3) 4 状態の稼働実測・(4) ログイン経路の実測・
+  (5) キューの容量設計・(6) 平文 1 ホップの受容・(7) イメージの稼働確認は**そのまま残る**。
+- **新規 (8)**: 稼働 realm の読み出しを Admin REST へ移す（IADR-0369 の禁則の残債）。
+- **新規 (9)**: 門の不在（`ResetGateProbeAbsent` 相当）を観測へ載せる（#1245 PR-B と同時が自然）。
 
 ## 関連
 

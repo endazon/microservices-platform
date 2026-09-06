@@ -13,6 +13,7 @@
 [k3d cluster: msp-ast-dev]
   ns platform-infra          postgres / rabbitmq / redis / keycloak / qdrant / otel-collector
                              + mail-relay（近接 MTA。キューを持つ。deploy/mail-relay ＝環境非依存の base）
+                             + reset-gate（SC-15 の門。mail-relay へ投函できないと申請を機械で閉じる）
                              + mailpit（開発環境の捕捉用 MTA。メールはここで止まり外へ出ない）  ← deploy/local/infra
                              送出経路: keycloak → mail-relay → mailpit（go-live は最後だけ外部リレー）
   ns microservices-platform  既存 Helm chart（values-local: mesh/NP/HPA off, registry=local）
@@ -285,6 +286,21 @@ Keycloak → mail-relay（キュー付き。deploy/mail-relay ＝ dev と go-liv
 ```
 
 **パスワードリセットのメールは最終的に mailpit に溜まる**（relay → mailpit は数秒）。
+
+**［2026-09-07 / #1245 PR-C］投函できないときに申請を閉じる門が入った。** 計画 ADR-0078 決定 4 が
+「投函できない状態を検知したら**機械で** `resetPasswordAllowed=false` へ倒す」と定めたため、
+`platform-infra` に `reset-gate` が **dev 既定**で立つ（`deploy/mail-relay/reset-gate.yaml`）。
+門は `mail-relay` へ**本物の SMTP 取引**を周期的に打ち（本文は送らないので 1 通も増えない）、
+**失敗 1 回で閉じ、連続成功で宣言値へ戻す**。🔴 **Pod の Ready は見ない** —— relay が生きていて
+投函だけを拒む状態が実在する（#1307 で実測）。
+
+```bash
+kubectl -n platform-infra logs deploy/reset-gate --tail=20   # close / reopen とその理由
+```
+
+> 🔴 **`check-password-reset-mail.js` は門が閉じていると赤になる。** 存在秘匿としては健全だが、
+> **relay へ投函できていない**という意味だからである。門が閉じることを**期待する**実行だけが
+> `EXPECT_GATE_CLOSED=1` を立てる。
 
 ```bash
 kubectl -n platform-infra port-forward svc/mailpit 8025:8025

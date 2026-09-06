@@ -3,14 +3,14 @@ title: 運用 Runbook — Keycloak smtpServer（SMTP リレー）の設定
 type: runbook
 status: draft
 created: 2026-08-23
-updated: 2026-09-06
+updated: 2026-09-07
 author: claude
 ---
 <!-- trace:
 ids: [SC-10, SC-15, FR-05, FR-09, FR-22]
 adrs: [ADR-0026, ADR-0045, ADR-0078]
-iadrs: [IADR-0197, IADR-0261, IADR-0332, IADR-0344, IADR-0347, IADR-0404]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay]
+iadrs: [IADR-0197, IADR-0261, IADR-0329, IADR-0332, IADR-0344, IADR-0347, IADR-0369, IADR-0404]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate]
 issues: [#438, #578, #600, #1102, #1143, #1144, #1245]
 -->
 
@@ -28,8 +28,10 @@ issues: [#438, #578, #600, #1102, #1143, #1144, #1245]
 > **認証基盤の送出先はバージョン管理下の宣言が正**であり、再起動・再インポート・後追いの差分適用の
 > いずれを経ても近接 MTA を指す。
 >
-> 🔴 **残るのは §0 の「先に申請を閉じる」だけ**である —— そこだけは認証基盤の realm を触る（`kcadm`）。
-> 機械で閉じる門が入るまでの暫定であり、**この 1 箇所を人手に残していること自体が窓である**。
+> ~~🔴 **残るのは §0 の「先に申請を閉じる」だけ**である。~~
+> **［2026-09-07 更新］§0 も人手ではなくなった。** 常駐の門が近接 MTA へ投函できない状態を検知して
+> 申請を自動で閉じ、回復したら宣言どおりに戻す。**運用者が realm を触る場面は、門自身が止まっている
+> ときだけ**になった（§0）。🔴 **窓は縮んだが閉じてはいない** —— 検知して閉じるまでの間は残る。
 
 ## この手順を実行する条件（いつ走らせるか）
 
@@ -83,27 +85,50 @@ node scripts/check-password-reset-mail.js                       # 申請→送�
 
 ## 手順（k8s 経路。`deploy/local/` の dev 環境）
 
-### 0. 🔴 先に申請を閉じる（存在秘匿を割らないため。**省略しないこと**）
+### 0. 申請を閉じるのは**機械**である（人手は門が止まっているときの予備）
 
 **近接 MTA を止める・作り直す間、パスワードリセットの申請を開いたままにしてはならない。**
 認証基盤から見た送出先が使えないと**実在する利用者名のときだけ 500** が返り、実在しない利用者名は 200 を返す ——
 **その差だけで利用者名を 1 リクエストずつ列挙できる**（稼働環境で実測済み）。
-
 閉じてしまえば、実在／非実在のどちらにも**同じ 400 と同じ本文**が返る（実測済み）。
 
-> **［2026-09-06］この手順の適用範囲は狭くなった。** 上流（組織のメールテナント）の停止では、
-> 近接 MTA がキューに受け取って後送するため**申請の応答は変わらない** —— 閉じる必要は無い。
-> **閉じるのは近接 MTA 自身を止めるときだけ**である（§4 の再起動は Recreate で一瞬止まる）。
-> **この手順はまだ人手である。** 機械で閉じる門は別途実装する（それまでの窓は残る）。
+> **［2026-09-07 更新］この手順は人手から機械へ移った。** `platform-infra` の常駐の門（`reset-gate`）が
+> 近接 MTA へ**本物の送信取引**を周期的に打ち、**投函できなければ申請を自動で閉じる**。
+> 回復すると**連続した成功のあとに宣言どおりへ戻す**。
+> **したがって §4 の再起動でも、近接 MTA の停止でも、運用者が手で閉じる必要は無い。**
+>
+> **人手のコマンド（下）を打つのは次の 2 つだけである。**
+>   1. **門自身が動いていない**とき（Pod が居ない・資格情報が失効して 401 を打ち続けている）。
+>   2. **門より早く閉じたい**とき（門の周期を待たずに、その瞬間に閉じたい）。
+>
+> 🔴 **窓は縮んだだけで、閉じてはいない。** 門が検知して閉じるまでの間（プローブの周期 ＋
+> プローブのタイムアウト ＋ 反映の往復）は、実在する利用者名だけが 500 になる。
+> **「窓は無い」と読まないこと。**
+
+門の状態は稼働 realm の属性に残る（`reset-gate.state` が `closed` なら門が閉じている）。
+状態と理由は次で読める。
+
+```sh
+kubectl -n platform-infra get deploy reset-gate                 # 門が居るか
+kubectl -n platform-infra logs deploy/reset-gate --tail=20      # close / reopen とその理由
+```
+
+> 🔴 **`check-password-reset-mail.js` は門が閉じていると赤になる。** 存在秘匿としては健全だが、
+> **近接 MTA へ投函できていない**という意味だからである（門は投函できないときにしか閉じない）。
+> 門が閉じていることを**期待する**実行だけが `EXPECT_GATE_CLOSED=1` を立てる。
+
+**人手で閉じる（上の 1・2 のときだけ）**:
 
 ```sh
 KC_POD=$(kubectl -n platform-infra get pod -l app=keycloak -o jsonpath='{.items[0].metadata.name}')
 kubectl -n platform-infra exec -i "$KC_POD" -- sh -c   '/opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master      --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null    && /opt/keycloak/bin/kcadm.sh update realms/platform -s "resetPasswordAllowed=false"'
 ```
 
-> **同じ理由で、送出経路が落ちたときも閉じる。** 起動器の到達判定（`node scripts/check-stack-ready.js`）が
-> 捕捉用 MTA の停止を検出したら、復旧までの間は上のコマンドで閉じておくこと。
-> **閉じている間はリセットが使えない**が、**利用者名が漏れるよりはよい**（fail-closed）。
+> 🔴 **人手で閉じた状態を門は開け直さない。** 門が開けるのは「**門自身が閉じた**」と記録が残っている
+> ときだけである（realm の属性を見て判断する）。上のコマンドで閉じたら、**開けるのも人手**である
+> （`resetPasswordAllowed=true` を同じ形で打つ）。realm の後追いの差分適用も、門の記録が無い閉鎖は
+> 宣言へ戻す —— つまり**次の後追いで開く**ことがある。意図して閉じたままにしたいなら、
+> **宣言（realm JSON）側を `false` にする**こと（門も後追いも、宣言より開く側へは動かない）。
 
 
 ### 1. Vault へ値を投入する（Secret の値は画面や CLI 履歴に残さない）

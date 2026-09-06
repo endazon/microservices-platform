@@ -22,3 +22,8 @@ kind: Kustomization
 
 resources:
   - mail-relay.yaml
+  # SC-15, ADR-0078 決定 4, IADR-0404 (#1245 PR-C): 近接 MTA へ投函できないときに
+  # パスワードリセットの申請を機械で閉じる門。**近接 MTA と同じ配備単位に置く** ——
+  # 門が測る相手はこの relay であり、片方だけが配備される形を作らないためである。
+  # **opt-in ゲートに載せない**（ADR-0078 決定 4 は無条件。relay と同じ理由）。
+  - reset-gate.yaml

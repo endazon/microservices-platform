@@ -549,6 +549,21 @@
       "defaultClientScopes": ["realm-management-roles"]
     },
     {
+      "clientId": "reset-gate",
+      "name": "SC-15 reset request gate (Admin REST, client_credentials)",
+      "description": "SC-15・ADR-0078 決定 4・IADR-0404 (#1245): 近接 MTA へ投函できないとき resetPasswordAllowed を false へ倒し、回復したら宣言値へ戻す門。realm-management は view-realm/manage-realm のみで、利用者・クライアント・イベント・認証フローには触れない。manage-realm を持つ主体はこれ 1 つだけ（check-realm-constraints.js が固定）。secret は dev 専用。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "reset-gate-dev-secret-change-me",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": ["realm-management-roles"]
+    },
+    {
       "clientId": "ai-stock-trading-kb-writer",
       "name": "AST KB writer (cross-unit s2s, client_credentials)",
       "description": "AST#18/IADR-0075（AST/FR-08＝KB保存, 本レルム FR-06＝文書CRUD）: ai-stock-trading が確定報告書・収集情報を DocumentService へ書き込む機密クライアント（client_credentials, service-account に platform-operator）。AST レルムのトークンは issuer 不一致で通らないため本レルムで発行。本番シークレットは config から供給し dev export 値は使わない。",
@@ -852,6 +867,12 @@
       "enabled": true,
       "serviceAccountClientId": "identity-admin",
       "clientRoles": { "realm-management": ["view-users", "manage-users", "view-realm"] }
+    },
+    {
+      "username": "service-account-reset-gate",
+      "enabled": true,
+      "serviceAccountClientId": "reset-gate",
+      "clientRoles": { "realm-management": ["view-realm", "manage-realm"] }
     },
     {
       "username": "service-account-ai-stock-trading-kb-writer",
