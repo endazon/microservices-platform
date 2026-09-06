@@ -418,6 +418,32 @@ public class KnowledgeHealthEndpointTests
             .Be(ReportKnowledgeHealthValidator.ThresholdInvalidMessage);
     }
 
+    // FR-10, FR-17, FR-18 / IADR-0371 決定 2 / IADR-0393 決定 3 / [[IADR-0409]] (#1230):
+    // 🔴 **規則の宣言順が応答の契約であることを、輸送越しに固定する。**
+    //
+    // 既存の `ReportKnowledgeHealthValidatorTests.MultipleViolations_ReportsIndicatorFirst` は
+    // **検証器を直接呼ぶ**ので、`ReportKnowledgeHealthUseCase.Validate` が `Errors[0]` を採ることは
+    // 通らない。違反が 1 件のときは `Errors[0]` と `Errors[^1]` が同じ要素を指すため、
+    // **単一違反のテストだけでは添字の変更を区別できない** ——
+    // 実測（#1230）: 本テスト新設前は同ファイルの添字を `Errors[^1]` へ変えても全 90 試験が緑だった。
+    //
+    // **指標が未知 ＋ しきい値 0** が両規則に触れる唯一の作り方である。
+    [Fact]
+    public async Task 指標としきい値が同時に不正でも最初の規則の本文が返る()
+    {
+        using var factory = new TestWebApplicationFactory();
+        var client = factory.CreateClient();
+
+        var resp = await client.PostAsJsonAsync(ProducerObservationsPath,
+            new KnowledgeHealthReportRequest("orphan-docs", [], ThresholdDays: 0),
+            TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        body.GetProperty("error").GetString().Should()
+            .Be(ReportKnowledgeHealthValidator.IndicatorInvalidMessage);
+    }
+
     // FR-10 (T-62): 🔴 **生産者が実際に送る JSON がそのまま束縛できる**（T-32 と同じ作法）。
     // 送っているのは匿名オブジェクトであり、`thresholdDays` の綴り違いを C# は何も言わない。
     [Fact]

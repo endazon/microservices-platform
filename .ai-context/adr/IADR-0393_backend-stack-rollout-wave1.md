@@ -13,9 +13,10 @@ related_ids:
   - IADR-0229
   - IADR-0282
   - IADR-0371
+  - IADR-0409
 author: claude
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (Accepted 2026-07-25) 決定・選定基準 3・4
   - planning:projects/microservices-platform/07_adr/ADR-0041_result-type-external-library.md (Accepted 2026-08-22) 決定 2・3
@@ -126,6 +127,29 @@ IngestionService / WikiService / LlmGateway / Platform.Bff）はいずれも波 
 **既存の 400 の試験は状態コードしか見ていないものが多い**（DashboardService の 3 本、
 ConversionService の 1 本）。**400 のままメッセージだけ変わる退行はそこでは捕まらない**ので、
 本文の `error` 文字列まで見るよう拡張した。
+
+★［2026-09-07 追記 / #1230］🔴 **「6 箇所すべてについて宣言順を固定した」は
+`KnowledgeHealth/Report` について成立していなかった。**
+
+宣言順の契約は 2 段ある —— ①検証器の宣言順（どの違反が `Errors[0]` に来るか）と、
+②**呼び出し側が `Errors[0]` を採ること**である。②が無ければ①は応答に効かない。
+`ReportKnowledgeHealthValidatorTests.MultipleViolations_ReportsIndicatorFirst` は
+**検証器を直接呼ぶ**ので①しか通らず、`ReportKnowledgeHealthUseCase.Validate` の添字は通らない。
+🔴 **違反が 1 件のときは `Errors[0]` と `Errors[^1]` が同じ要素を指すため、
+単一違反の試験をいくら足しても②は区別できない。**
+
+実測（基点 `07fc5ec5`。`ReportKnowledgeHealthUseCase.cs:90` の `Errors[0]` を `Errors[^1]` へ変える変異。
+変異がファイルへ入っていることを `grep` で確認したうえで実行）: **DashboardService の全 90 試験が緑**。
+同じ変異を `AiAnalysisService .../Analyze/Endpoint.cs:58` へ当てると
+`AnalyzeResponseContractTests.MultipleViolations_ReturnsFirstRuleBody` の **1 本が赤**になる
+（陽性対照。**`Analyze` には対があり、`KnowledgeHealth/Report` には無かった**）。
+
+本追記の PR で、REST と gRPC の双方に多重違反の試験を足した
+（`KnowledgeHealthEndpointTests.指標としきい値が同時に不正でも最初の規則の本文が返る` /
+`GrpcKnowledgeHealthReportTests.Multiple_violations_report_the_first_rule_in_both_transports`）。
+同じ変異で落ちるのは**この 2 本だけ**であり、90 → 92 で減った試験は無い。
+🔴 **`CorrectFigure` / `RecordEvent` に同じ対は要らない** —— 検証器が 1 規則なので違反は
+構造上最大 1 件であり、この変異は等価変異である。経緯と一般形は [[IADR-0409]] 決定 3。
 
 ### 決定 4: 波 2 へ送るものを、理由つきで列挙する
 
