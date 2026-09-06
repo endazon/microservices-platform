@@ -21,7 +21,7 @@ related_ids:
   - IADR-0393
 author: claude
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-06
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (Accepted 2026-07-25) 決定・選定基準 3・4
   - planning:projects/microservices-platform/07_adr/ADR-0041_result-type-external-library.md (Accepted 2026-08-22) 決定 2・3
@@ -172,6 +172,24 @@ McpServer 14）に **DataSourceService の 2（`OwnerMappingValidation`）と No
   読めない要素は例外＝500 になる）。
 - 🔴 **`parsed.Count > 0` のときだけ絞る**という移送前の縮退を保つ（`types=",,,"` は 400 ではない）。
 
+★［2026-09-06 追記 / #1248］**「区切り文字の指定を検証器の `internal const` に置き、端点がそれを使う」は
+着地時点では成立していなかった。** PR #1280 が共有していたのは `TypesSplitOptions`
+（`StringSplitOptions`）だけで、**区切り文字 `','` は検証器と端点の両側に置かれた重複リテラル**だった
+（`NeighborsQueryValidator.cs:59` と `Endpoint.cs:72`。本追記時点の実測）。
+つまり本決定が「閉じた」と書いた壊れ方は開いたままだった。
+
+実測（基点 `ac2269ec`。端点側の `','` だけを `';'` へ変える変異）: **落ちたのは 2 本**で、
+どちらも `System.FormatException : Unrecognized Guid format.`（＝ 500）である ——
+`EdgeTypeFilterTests.Multiple_types_are_a_union` と
+`GraphValidationResponseContractTests.Neighbors_TypesWithOnlySeparators_IsNotBadRequest`。
+**危険は試験が捕まえていたが、本決定が主張した構造上の保護は無かった。**
+
+🔴 **本追記の PR で `internal const char TypesSeparator = ','` を足し、検証器の規則と端点の解析の
+両方がそれを使うようにした。** 以後「片側だけ変える」編集は**書けない**。同じ変異（共有された
+定数を `';'` へ）を当てると落ちるのは **4 本**（上の 2 本 ＋ `NeighborsQueryValidatorTests` の
+`ValidTypes_Pass` / `TypesWithOnlySeparators_Passes`）で、**いずれも 400 であり 500 は 1 件も出ない**
+—— 決定 5 が引き受けた危うさが、実際に閉じた。
+
 ### 決定 6: 状態に依存する検証は**端点に残す**（DataSourceService は 1 箇所だけ移す）
 
 | 箇所 | 扱い | 理由 |
@@ -228,6 +246,23 @@ McpServer 14）に **DataSourceService の 2（`OwnerMappingValidation`）と No
   - `RenameEdgeType` … 不存在の ID ＋ 空名は **404**（400 ではない）。
   - `Update` … 不存在の ID ＋ 省略は **400**（404 ではない）。
 - **登録は 1 検証器 1 行の明示登録**（`AddValidatorsFromAssembly` を使わない）。
+
+★［2026-09-06 追記 / #1248］**コード注記が指していた試験名が 2 箇所とも誤っていた。**
+
+1. `RenameEdgeTypeValidator.cs:14` は `RenameEdgeTypeOrderTests` を指していたが、
+   **その名前の型はリポジトリ全域に 1 つも無い**（走査で確認）。この帰結を実際に固定していたのは
+   `GraphValidationResponseContractTests.RenameEdgeType_UnknownIdWithEmptyName_Is404NotBadRequest`
+   である（検証を先頭へ上げる変異で、この 1 本だけが落ちることを実測した）。
+2. `Neighbors/Endpoint.cs:15` は `GraphEndpointsSecrecyTests` を指していたが、
+   **同クラスの 3 本はすべて `/graph/{id}`（GetNode）で、neighbors を触るものは 1 本も無かった。**
+   つまり指し先は空で、**壊しても緑のままだった。**
+   neighbors の順序を実際に固定していたのは別の 6 本（本追記の PR で注記へ列挙した）である。
+
+🔴 **neighbors の 404 が本文・ヘッダで区別できないことは、どの試験も見ていなかった。**
+本追記の PR で `GraphEndpointsSecrecyTests.Neighbors_unauthorized_missing_and_nonexistent_are_indistinguishable`
+を新設した（「文書なし」の 404 だけ本文を変える変異で、落ちるのはこの 1 本だけである）。
+**決定 8 の「位置を試験で固定する」は満たされていたが、注記が指す先はそれと別物だった** ——
+指し先の実在は本 ADR では検査していない（機械検査は今も無い）。
 
 ### 決定 9: 残る 2 群は追随 issue へ切り出し、#1248 を親として追跡する
 

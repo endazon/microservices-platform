@@ -12,7 +12,26 @@ namespace GraphService.Features.Graph.Neighbors;
 //
 // 🔴 **本ハンドラの判定順は仕様である。** `hops` / `types` の検証は認可より前に置く
 // （下の注記を参照）。ファイルを移しても順序を組み替えてはならない。
-// `GraphEndpointsSecrecyTests` がこの帰結（本文・ヘッダで区別できないこと）を固定する。
+//
+// **この順序を固定するのは以下の 6 本である**（#1248 追随で数え直した。
+// 従前この位置は `GraphEndpointsSecrecyTests` だけを指していたが、**同クラスに neighbors を
+// 触る試験は 1 本も無かった** —— 指し先が空だった）:
+//
+// 権限の無いスコープでも 400 が返ることで見るもの（認可を先にすると 404 になって落ちる）:
+//   - `GraphValidationResponseContractTests.Neighbors_HopsOutOfRange_Returns400WithBothFields`
+//   - `GraphValidationResponseContractTests.Neighbors_InvalidTypes_Returns400WithBothFields`
+//   - `TwoTierTraversalTests.Hops_out_of_range_is_still_rejected_before_authorization`
+//
+// 不存在の文書 ID でも 400 が返ることで見るもの:
+//   - `EdgeTypeFilterTests.Malformed_types_returns_400_even_for_a_nonexistent_document`
+//   - `GraphTraversalTests.Hops_validation_does_not_leak_document_visibility`（可視と不存在の対）
+//
+// **実在するが不可視**の文書との対で見るもの（上の 5 本はこの腕を持たない）:
+//   - `GraphEndpointsSecrecyTests.Neighbors_validation_runs_before_authorization_for_visible_and_hidden_alike`
+//
+// 検証を通った先の 404 が**本文・ヘッダで区別できない**ことは
+// `GraphEndpointsSecrecyTests.Neighbors_unauthorized_missing_and_nonexistent_are_indistinguishable`
+// が固定する（#1248 追随で新設。それまで neighbors の 404 の区別不能性は無検査だった）。
 internal static class GraphNeighborsEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
@@ -69,7 +88,8 @@ internal static class GraphNeighborsEndpoint
             if (!string.IsNullOrWhiteSpace(types))
             {
                 var parsed = new HashSet<Guid>();
-                foreach (var part in types.Split(',', NeighborsQueryValidator.TypesSplitOptions))
+                foreach (var part in types.Split(
+                    NeighborsQueryValidator.TypesSeparator, NeighborsQueryValidator.TypesSplitOptions))
                     parsed.Add(Guid.Parse(part));
                 if (parsed.Count > 0)
                     edgeTypes = parsed;
