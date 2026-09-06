@@ -219,9 +219,20 @@ AI レビューが検出した失敗と同型）。基点は `origin/develop` @ 
 | `AddScoped<IValidator<` の登録行（全リポジトリ） | 19 | **24** |
 | 同・DocumentService `Program.cs` | 8 | **13** |
 | `Results.ValidationProblem(` —— `Features/{PrivateNotes,ObsidianSync,SyncDevices}` | 8 | **1**（`SetQuota` のみ） |
-| `ValidationProblems.FirstViolation` の呼び出し（DocumentService 非テスト） | 9 | **16** |
+| `return ValidationProblems.FirstViolation(` の**呼び出し**（DocumentService 非テスト） | 9 | **15** |
 | `internal static IResult FirstViolation` の**定義** | 1 | **1**（2 つ目の sink を作っていない） |
 | `AddValidatorsFromAssembly` の呼び出し | 0 | **0** |
+
+★［2026-09-06 追記 / #1278］🔴 **上表の `FirstViolation` の行を 16 → 15 に直した。**
+当初は走査語を `ValidationProblems\.FirstViolation` としていたため、**本 PR で自分が書いた
+`MoveNoteValidator.cs:12` のコメント**（sink の説明で同じ名前を引用している）を呼び出しとして数えていた。
+**同じ表の `AddValidatorsFromAssembly` の行では「語ではなく構文で数える」を明示的にやっているのに、
+この 1 行だけ素朴な行マッチのままだった**（AI レビューが実走して検出。`traceability.repo.md` 規則 10 ——
+**是正のたびに、その変更で新たに誤りになる自分の記述を引き直す**）。走査語を
+`return ValidationProblems\.FirstViolation(` へ絞り直した。
+**「前」の 9 は着手時の実測であり、当時この名前を引くコメントは 1 件も無かったので変わらない。**
+本値は PR 本文には出していないため、追随先は本表 1 箇所だけである（誤りの側の文字列
+`FirstViolation` で追跡下の全ファイルを走査して確認した）。
 
 試験数（`dotnet test`。**削除・skip 化は 0 件**）:
 
