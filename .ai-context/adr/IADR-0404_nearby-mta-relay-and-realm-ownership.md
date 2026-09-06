@@ -61,6 +61,7 @@ IADR-0347 は SC-15 のパスワードリセット申請を 4 状態で実測し
 | V8 | `master.cf` の `submission`（587）は `-o` がすべてコメントアウトされており、**TLS も SASL も強制しない**。`Dockerfile` は `EXPOSE 587` | `configs/master.cf` / `Dockerfile`（同） |
 | V9 | `mynetworks` の既定は RFC1918 全域で、`smtpd_client_restrictions=permit_mynetworks,permit_sasl_authenticated,reject` | `postfix_setup_networks`（同） |
 | V10 | 起動スクリプトは `maillog_file` を設定せず、ログは **rsyslog 経由**である | `rsyslog_log_format`（同） |
+| U11 | 🔴 **`ALLOWED_SENDER_DOMAINS` が `smtpd_sender_restrictions` へ反映され、外れた差出人が 554 で拒まれること**。マニフェストのコメントはそう断定しているが、V4〜V10 と違い**上流ソースで確認していない**。🔴 **W2（relay が投函を拒む）の検知はこの前提に依存する** | 未確認（v5.1.0 のソース未読） |
 
 🔴 **V4〜V10 はイメージの**ソース**から読んだものであり、稼働コンテナで実行して確かめていない**
 （作業機に稼働クラスタが無い）。PR 本文に未検証として明記した。

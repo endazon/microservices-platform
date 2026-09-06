@@ -185,6 +185,7 @@ M-3 陽性対照（deploy/ 配下の qdrant）        : 14 → 14 （不変。�
 | V8 | `master.cf` の `submission`（587）は **`-o` がすべてコメントアウト**されており、TLS も SASL も強制しない。`Dockerfile` は `EXPOSE 587` | `configs/master.cf` / `Dockerfile`（v5.1.0） |
 | V9 | `mynetworks` の既定は `127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`（RFC1918 全域）で、`smtpd_client_restrictions=permit_mynetworks,permit_sasl_authenticated,reject`。**Pod ネットワークから無認証で投函できる** | `postfix_setup_networks`（v5.1.0） |
 | V10 | 起動スクリプトは `maillog_file` を設定せず、ログは **rsyslog 経由**である | `rsyslog_log_format`（v5.1.0） |
+| U11 | 🔴 **`ALLOWED_SENDER_DOMAINS` が `smtpd_sender_restrictions` へ反映され、外れた差出人が 554 で拒まれること**。マニフェストのコメントはそう断定しているが、V4〜V10 と違い**上流ソースで確認していない**。🔴 **W2（relay が投函を拒む）の検知はこの前提に依存する** | 未確認（v5.1.0 のソース未読） |
 
 🔴 **V4〜V10 はイメージの**ソース**から読んだものであり、稼働コンテナで実行して確かめてはいない**
 （本機に k3s クラスタが無い）。PR 本文に**未検証として明記する**。

@@ -125,7 +125,7 @@ CI（`integration-stack.yml`。k3d）も既定＝永続で走る（k3d は local
 | 層 | 対象 | 扱い |
 | --- | --- | --- |
 | 宣言（realm JSON が正） | realm の非コレクション設定（テーマ・ロケール・token/セッション寿命・パスワードポリシー・OTP ポリシー・ブルートフォース・events）／`requiredActions`／realm ロール・client ロール／グループ（属性つき）／client scopes ＋ protocol mappers／clients（属性・redirect・secret・default/optional scope 割当 ＋ mappers）／**seed 利用者の存在**（作成時は資格情報・requiredActions・グループ・ロール割当を運ぶ）／サービスアカウント利用者のロールと属性 | 差分があれば当てる。**集合欄**（redirectUris / webOrigins / scope 割当 / enabledEventTypes …）は宣言が全集合（置換）。**実体**（client / role / group / mapper / user）は加算的（宣言に無い余剰は消さない） |
-| 実行時（Keycloak / SC-17 / 本人が正） | 既存の人間の利用者の資格情報・属性・ロール・グループ・`requiredActions`・セッション／~~`smtpServer`（IADR-0261 決定 2）~~ | **触らない** |
+| 実行時（Keycloak / SC-17 / 本人が正） | 既存の人間の利用者の資格情報・属性・ロール・グループ・`requiredActions`・セッション／`smtpServer`（IADR-0261 決定 2） | **触らない** |
 
   > **［2026-09-06 追記 / #1245 / IADR-0404］境界表の 2 行を改めた（表そのものは上のまま。追記で言い直す）。**
   >
