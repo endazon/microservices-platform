@@ -5,7 +5,7 @@ using DocumentService.Features.PrivateNotes;
 
 namespace DocumentService.Tests.Features.Documents;
 
-// FR-06, FR-09, FR-19, SC-03, SC-09, SC-19, IADR-0153 決定 2 / IADR-0406 決定 1・2:
+// FR-06, FR-09, FR-19, SC-03, SC-09, SC-19, IADR-0153 決定 2 / IADR-0406 決定 1:
 // **生成マッパの外に残した「導出の指示」**を固定する。
 //
 // 🔴 **これらは写像ではない。** 辞書引き（タグ ID → 表示名）と縮退（`?? string.Empty` / `?? 0`）は

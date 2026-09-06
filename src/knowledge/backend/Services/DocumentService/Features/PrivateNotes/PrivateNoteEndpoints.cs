@@ -103,7 +103,7 @@ public static class PrivateNoteEndpoints
         => await db.PrivateNotes.AnyAsync(
             n => n.OwnerId == owner && n.VaultPath == vaultPath && n.DeletedAt == null, ct);
 
-    // FR-19, SC-19 / IADR-0406 決定 1・2: 列の詰め替えは `PrivateNoteMapper` の生成マッパが行う。
+    // FR-19, SC-19 / IADR-0406 決定 1: 列の詰め替えは `PrivateNoteMapper` の生成マッパが行う。
     //
     // 🔴 **ここに残るのは縮退（導出の指示）だけである。** 資料に対応する文書の複製がまだ届いて
     // いなければ題も版も無い —— その場合に `""` と `0` を採るのは**この端の判断**であり、
