@@ -267,6 +267,15 @@ public sealed class KeycloakIdentityAdminClient(
         ];
     }
 
+    // 🔴 **［#1279］ここは Riok.Mapperly へ移さない**（計画 ADR-0030 §決定 / IADR-0406 決定 8 理由 A
+    // ——`IADR-0393` 決定 2 が波 1 で使ったのと同じ物差しである）。
+    // **6 つの対象メンバのうち 4 つが導出**であり、写しなのは `Enabled` と `roles` の 2 つだけである:
+    // 属性はキーごとの分岐（集合値は連結・単一値は先頭。IADR-0385）、表示名は連結と縮退、
+    // `Id` / `Username` は `?? string.Empty`。生成マッパへ持ち込めば、これらの手書きが
+    // `[Mapper]` の中へ戻る（＝波 1 が避けた形）。加えて源の `KeycloakUser` は `private sealed record`
+    // であり、2 列を写すためだけに可視性を広げることになる。
+    // 置き場の規則も先に決めてある: 移すとしても写像は **Infrastructure に置く**
+    //（`check-unit-dependencies.js` 規則 3-③ が Infrastructure → Features を禁じる。Domain へも置かない）。
     private static IdentityUser ToIdentityUser(KeycloakUser user, IReadOnlyList<string> roles)
     {
         var attributes = new Dictionary<string, string>(StringComparer.Ordinal);

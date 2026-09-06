@@ -9,6 +9,34 @@
   </PropertyGroup>
 
   <!--
+    Riok.Mapperly の RMG012 / RMG082（NFR / #1279 / IADR-0406 決定 6）。
+
+    🔴 **どちらも既定は警告であり、TreatWarningsAsErrors=false のもとでは黙って通る。**
+    4.3.1 で実測した中身は次のとおりで、いずれも「緑のビルドで誤った応答」を生む型である。
+      - RMG082「追加引数が写像に使われていない」: 引数名は**対象メンバ名との一致でしか結び付かない**
+        （`[MapProperty]` による改名は RMG006 で不可）。綴りを 1 文字違えると引数は捨てられ、
+        Mapperly は源の同名メンバから**別の値を合成する** —— タグ ID の辞書を渡し損ねた場合、
+        `Tags` に**タグ名ではなく GUID 文字列**が入った応答が警告 1 本で出る。
+      - RMG012「対象メンバに対応する源が無い」: 既定値つきのコンストラクタ引数（`AiSuggestionDto` の
+        `SourceDocumentTitle = ""` など）だと**型でも止まらず**、既定値のまま応答へ出る。
+        あわせて、意図した省略（`DocumentVersion.MarkdownUri`。#1011 / IADR-0290）を DTO 側へ
+        戻した誰かを**ビルドで止める**役目も持つ（`RequiredMappingStrategy.Target` は重大度を上げない）。
+
+    **xUnit1051 と違って許可リストを要らない。** あちらは助言警告で既存 943 件の残件があったため
+    段階採用が要ったが、RMG012 / RMG082 は**本ファイルが届く範囲（AST submodule を含む）に既存の
+    発生が 1 件も無い** —— 波 1 の 4 プロジェクトを `-warnaserror:RMG012;RMG082` で建てて実測した。
+    残件ゼロなので、無条件でも「赤の常態化」は起きない。AST は Riok.Mapperly を参照していないため
+    診断そのものが生じない（参照した時点で同じ保護が効くほうが望ましい）。
+
+    🔴 **抑止は WarningsAsErrors に勝つ**（#882 で実測。下の xUnit1051 の節と同じ罠）。
+    `<NoWarn>RMG012</NoWarn>` や `.editorconfig` の `severity = none` を足すと**黙って無効化される**。
+    足さないこと。
+  -->
+  <PropertyGroup>
+    <WarningsAsErrors>$(WarningsAsErrors);RMG012;RMG082</WarningsAsErrors>
+  </PropertyGroup>
+
+  <!--
     xUnit1051（#455 A-2 で抑止し、#882 で段階採用する）。
 
     v3 のアナライザは「CancellationToken を受ける呼び出しには TestContext.Current.CancellationToken を

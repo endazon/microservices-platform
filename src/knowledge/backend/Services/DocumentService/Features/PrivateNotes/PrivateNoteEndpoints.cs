@@ -103,21 +103,14 @@ public static class PrivateNoteEndpoints
         => await db.PrivateNotes.AnyAsync(
             n => n.OwnerId == owner && n.VaultPath == vaultPath && n.DeletedAt == null, ct);
 
-    internal static PrivateNoteDto ToDto(PrivateNote n, Document? doc) => new(
-        n.DocumentId,
-        doc?.Title ?? string.Empty,
-        n.VaultPath,
-        doc?.Version ?? 0,
-        n.LatestBytes,
-        n.ContentHash,
-        n.IncludeInSearch,
-        n.IncludeInGraph,
-        n.IncludeInAi,
-        n.IsDeleted,
-        n.DeletedAt,
-        n.PurgeAt,
-        n.CreatedAt,
-        n.UpdatedAt);
+    // FR-19, SC-19 / IADR-0406 決定 1: 列の詰め替えは `PrivateNoteMapper` の生成マッパが行う。
+    //
+    // 🔴 **ここに残るのは縮退（導出の指示）だけである。** 資料に対応する文書の複製がまだ届いて
+    // いなければ題も版も無い —— その場合に `""` と `0` を採るのは**この端の判断**であり、
+    // 生成マッパへ持ち込むと `?? throw new ArgumentNullException` に化ける（実測）。
+    // **呼び出し側の署名は変えない**（4 操作の呼び出し行は 1 行も動かない）。
+    internal static PrivateNoteDto ToDto(PrivateNote n, Document? doc)
+        => PrivateNoteMapper.ToDto(n, doc?.Title ?? string.Empty, doc?.Version ?? 0);
 
     // ADR-0037 決定 17: 100% 到達時の新規作成拒否。507 Insufficient Storage（WebDAV 由来の
     // 容量超過の標準コード）。**更新はこの拒否を通らない**ことが決定の要である。

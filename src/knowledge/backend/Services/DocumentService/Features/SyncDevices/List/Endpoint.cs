@@ -16,7 +16,9 @@ internal static class ListSyncDevicesEndpoint
             var now = DateTimeOffset.UtcNow;
             var devices = await db.SyncDevices.Where(d => d.OwnerId == owner)
                 .OrderBy(d => d.IssuedAt).ToListAsync(ct);
-            return Results.Ok(devices.Select(d => SyncDeviceEndpoints.ToDto(d, now)).ToList());
+            // 🔴 **時計はここで畳む**（IADR-0406 決定 3）。`Active` は導出であり、
+            // 生成マッパへ渡すのは導出**済み**の bool である。
+            return Results.Ok(devices.Select(d => SyncDeviceMapper.ToDto(d, d.IsActive(now))).ToList());
         });
     }
 }

@@ -44,7 +44,7 @@ internal static class RejectAiSuggestionEndpoint
                 return Results.Conflict(new { error = "invalid_transition", state = suggestion.State });
 
             await db.SaveChangesAsync(ct);
-            return Results.Ok(AiSuggestionEndpoints.ToDto(
+            return Results.Ok(AiSuggestionMapper.ToDto(
                 suggestion, ends.SourceTitle, ends.TargetTitle, canDecide: true));
         }).WithName("RejectAiSuggestion").Produces<AiSuggestionDto>();
     }

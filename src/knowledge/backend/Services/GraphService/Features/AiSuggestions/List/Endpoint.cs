@@ -80,7 +80,7 @@ internal static class ListAiSuggestionsEndpoint
                     s, writeScope, http.User, db, ct);
                 // SC-21 主要素 1: 一覧は**両端の文書名**を描く（#918）。可視性の判定で既に
                 // 読んでいる複製をそのまま使うので、照会は 1 件も増えない。
-                visible.Add(AiSuggestionEndpoints.ToDto(s, ends.SourceTitle, ends.TargetTitle, canDecide));
+                visible.Add(AiSuggestionMapper.ToDto(s, ends.SourceTitle, ends.TargetTitle, canDecide));
             }
             return Results.Ok(visible);
         }).WithName("ListAiSuggestions").Produces<List<AiSuggestionDto>>();

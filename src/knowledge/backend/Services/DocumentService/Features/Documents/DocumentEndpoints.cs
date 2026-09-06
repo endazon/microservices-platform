@@ -129,21 +129,15 @@ public static class DocumentEndpoints
 
     // FR-09, SC-09, #635: **外へ出す形は表示名である**（正本は識別子。[[IADR-0153]] 決定 2）。
     // 契約（`DocumentDto.Tags`）は `List<string>` のままで、**下流も画面も変わらない**。
-    internal static DocumentDto ToDto(Document d, IReadOnlyDictionary<Guid, string> names) => new()
-    {
-        Id = d.Id,
-        Title = d.Title,
-        Status = d.Status,
-        MarkdownUri = d.MarkdownUri,
-        Version = d.Version,
-        Attributes = d.Attributes,
-        Tags = TagResolver.ToNames(d.Tags, names),
-        CreatedAt = d.CreatedAt,
-        UpdatedAt = d.UpdatedAt,
-        // SC-03, ADR-0070 決定 3 / [[IADR-0388]] 決定 2 (#1254): 本文なしの文書を
-        // 文書詳細が区別できるようにする（表示は SC-02 と同じ「本文なし（原本を参照）」）。
-        HasBody = d.HasBody,
-    };
+    // 列の詰め替えは `DocumentMapper` の生成マッパが行う（IADR-0406 決定 1）。
+    // 🔴 **ここに残るのは辞書引き（導出の指示）だけである。** 辞書をそのまま生成マッパへ渡すと、
+    // 引数は捨てられて `Tags` に**タグ名ではなく GUID 文字列**が入る（実測。RMG082 の error 化で止める）。
+    // **呼び出し側の署名は変えない**（9 操作 10 行の呼び出しは 1 行も動かない）。
+    //
+    // SC-03, ADR-0070 決定 3 / [[IADR-0388]] 決定 2 (#1254): `HasBody` は本文なしの文書を
+    // 文書詳細が区別できるようにする（表示は SC-02 と同じ「本文なし（原本を参照）」）。同名 1:1 で写る。
+    internal static DocumentDto ToDto(Document d, IReadOnlyDictionary<Guid, string> names)
+        => DocumentMapper.ToDto(d, TagResolver.ToNames(d.Tags, names));
 
     // **過去版も現在の表示名で出る**——改名は表示上の変更である（[[IADR-0153]] 決定 4）。
     //
@@ -152,17 +146,11 @@ public static class DocumentEndpoints
     // **常に現行版の本文を指す**。載せると 200 の応答に「その版の本文らしい URI」が入り、
     // 呼び出し側が過去版の本文だと読み違えても区別できない。契約（`DocumentVersionDto`）から
     // 落としてあるので、ここで写す先も無い。**戻さないこと。**
-    internal static DocumentVersionDto ToVersionDto(DocumentVersion v, IReadOnlyDictionary<Guid, string> names) => new()
-    {
-        DocumentId = v.DocumentId,
-        Version = v.Version,
-        Title = v.Title,
-        Status = v.Status,
-        Attributes = v.Attributes,
-        Tags = TagResolver.ToNames(v.Tags, names),
-        ChangeNote = v.ChangeNote,
-        CreatedAt = v.CreatedAt,
-    };
+    // 列の詰め替えは `DocumentMapper.ToVersionDto` が行い、**`MarkdownUri` の省略はそこで
+    // `[MapperIgnoreSource]` として可視になっている**（属性 ＋ RMG012 の error 化 ＋ 反射試験の 3 層。
+    // IADR-0406 決定 5）。ここに残るのは辞書引きだけである。
+    internal static DocumentVersionDto ToVersionDto(DocumentVersion v, IReadOnlyDictionary<Guid, string> names)
+        => DocumentMapper.ToVersionDto(v, TagResolver.ToNames(v.Tags, names));
 
     // FR-06, UC-03 / ADR-0027（E3b）: DocumentUpdated の発行（Wolverine。IDocumentUpdatedPublisher 経由）。
     // **イベントも表示名を運ぶ。** 射影（Qdrant / Wiki.js）は人が読む面であり、
