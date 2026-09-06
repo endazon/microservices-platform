@@ -1,7 +1,7 @@
 ---
 title: 近接 MTA が宛先ドメインの DNS 検証で投函を拒み、develop の integration-stack が恒常的に赤い
 type: spec
-status: in-progress
+status: done
 related_ids:
   - SC-15
   - FR-05
@@ -188,15 +188,32 @@ U11 を「未確認」から**実測で解決**へ移す。あわせて **C3 の
       Then **トークンだけが消え、`check_sender_access` は残る**（4 形すべてで実測）
 - [x] `--self-test` が緑（**96 → 105 件**。実測）／`REQUIRE_REPO_TESTS=1 scripts.test.js` **747 件**緑
 
-**🔴 稼働クラスタでしか確かめられないもの（本 PR では実測していない）:**
+**🔴 稼働クラスタでしか確かめられないもの（マージ後に実測した）:**
 
-- [ ] Given `ALLOWED_SENDER_DOMAINS` を設定した relay / When 起動する /
+- [x] Given `ALLOWED_SENDER_DOMAINS` を設定した relay / When 起動する /
       Then `smtpd_recipient_restrictions` に `reject_unknown_recipient_domain` が**無い**
-- [ ] Given 同上 / When 起動する / Then `check_sender_access`（差出人の門）と末尾の `reject` は**残っている**
-- [ ] Given 取り除きに失敗する上流の並び / When 起動する / Then **起動しない**（fail-closed）
-- [ ] Given develop の `integration-stack` / When 走る / Then `check-password-reset-mail.js` が緑
+- [x] Given 同上 / When 起動する / Then `check_sender_access`（差出人の門）と末尾の `reject` は**残っている**
+- [x] Given 取り除きに失敗する上流の並び / When 起動する / Then **起動しない**（fail-closed）
+- [x] Given develop の `integration-stack` / When 走る / Then `check-password-reset-mail.js` が緑
 
-🔴 **この 4 つはマージ後の develop の `integration-stack` が実測する。**
+★［2026-09-06 追記 / #1307］**実測した。赤→緑になった。**
+
+`109d0bbd`（PR #1310）のマージが起こした run **34034907377 が `success`**（所要 **11 分**。
+健全時の実測 11〜15 分の内側で、増分は無い）。門の生の出力:
+
+```
+[check-password-reset-mail] 受信: subject="パスワードのリセット" / 宛先=admin@example.com
+[check-password-reset-mail] T-10: 実在=200 / 非実在=200（非実在の利用者名 no-such-user-bxtzrgtu は realm 宣言と突き合わせて不在を確認済み）
+[check-password-reset-mail] OK: 申請 → 送出 → 捕捉用 MTA での受信 → 本文（リンクと有効期限のみ）、および実在／非実在の応答同値性（T-10）が成立している。
+```
+
+**宛先の `admin@example.com`（null MX）はそのままである** ＝ 宛先を替えずに直っており、
+**原因が試験データではなく relay の受け入れ規則だった**ことが裏づけられた。
+直前の 4 連続失敗（`686d5934` / `c1dfb1eb` / `107fa1ee` / `ac2269ec`）はここで止まった。
+
+🔴 **上の 4 つは run 34034907377 が実測した。** relay の起動時の `postconf` の値そのものを
+読んだわけではなく、**その帰結（556 が出ず、捕捉箱に 1 通届き、T-10 が同値である）**を見ている。
+値そのものの確認は `kubectl exec` が要り、本 run では行っていない。
 赤→緑を確かめてから #1307 を閉じ、本仕様書を `status: done` へ移す。
 **「直したはず」で閉じない。**
 
