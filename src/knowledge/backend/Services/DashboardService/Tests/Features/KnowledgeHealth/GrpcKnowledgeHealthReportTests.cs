@@ -17,7 +17,7 @@ namespace DashboardService.Tests.Features.KnowledgeHealth;
 
 // FR-10, FR-17, FR-18, FR-19, NFR-09, NFR-16, UC-05, SC-10, ADR-0002, ADR-0006, ADR-0029, ADR-0075,
 // [[IADR-0256]] 決定 3, [[IADR-0265]], [[IADR-0299]], [[IADR-0353]], [[IADR-0379]], [[IADR-0389]],
-// [[IADR-0402]], [[IADR-0407]] (#1255): 観測値の受け口の gRPC 面
+// [[IADR-0402]], [[IADR-0408]] (#1255): 観測値の受け口の gRPC 面
 // （`knowledge.dashboard.v1.KnowledgeHealthReport`）を**実 Kestrel の h2c ポート**で往復し、
 // s2s トークンの検証・REST との同値・proto3 の「未指定」の写しを固定する。
 //

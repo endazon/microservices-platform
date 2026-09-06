@@ -1,5 +1,5 @@
 ---
-title: IADR-0407 east-west gRPC の第 5 スライス（ナレッジ健全性の報告）— 一方向の報告は s2s だけで移せるが、REST の「項目を出さない」を presence で運ばないと静かに壊れる
+title: IADR-0408 east-west gRPC の第 5 スライス（ナレッジ健全性の報告）— 一方向の報告は s2s だけで移せるが、REST の「項目を出さない」を presence で運ばないと静かに壊れる
 type: impl-adr
 status: Proposed
 related_ids:
@@ -43,7 +43,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0030_backend-library-selection.md §決定
 ---
 
-# IADR-0407: east-west gRPC の第 5 スライス — ナレッジ健全性の報告（#1255）
+# IADR-0408: east-west gRPC の第 5 スライス — ナレッジ健全性の報告（#1255）
 
 - 状態: Proposed
 - 日付: 2026-09-06

@@ -34,7 +34,7 @@ public static class ReportKnowledgeHealthEndpoint
             KnowledgeHealthReportRequest req, ReportKnowledgeHealthUseCase reports,
             CancellationToken ct) =>
         {
-            // FR-10, FR-17, FR-18 / IADR-0371 決定 2・4 / IADR-0393 / [[IADR-0407]]:
+            // FR-10, FR-17, FR-18 / IADR-0371 決定 2・4 / IADR-0393 / [[IADR-0408]]:
             // **本体は `ReportKnowledgeHealthUseCase` が持つ**（gRPC の面と同じ関数を通る。
             // [[IADR-0397]] / [[IADR-0400]] / [[IADR-0402]] と同じ形）。ここに残るのは
             // **HTTP への写像だけ**である（計画 ADR-0030 §決定「ProblemDetails 変換は API 層」/

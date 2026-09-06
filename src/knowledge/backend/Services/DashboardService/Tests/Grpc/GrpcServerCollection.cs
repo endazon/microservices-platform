@@ -1,6 +1,6 @@
 namespace DashboardService.Tests.Grpc;
 
-// NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 3, [[IADR-0407]] (#1255):
+// NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 3, [[IADR-0408]] (#1255):
 // gRPC の**実 Kestrel 器**（`GrpcKestrelFactory`）を持つコレクション。
 //
 // 🔴 **器はプロセスで 1 つでなければならない。** `GrpcTestConfiguration` は h2c ポートを

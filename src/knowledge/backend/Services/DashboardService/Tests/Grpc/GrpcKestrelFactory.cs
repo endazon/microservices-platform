@@ -15,7 +15,7 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace DashboardService.Tests.Grpc;
 
-// FR-10, FR-17, FR-18, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]], [[IADR-0407]] (#1255):
+// FR-10, FR-17, FR-18, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]], [[IADR-0408]] (#1255):
 // 観測値の受け口の gRPC 面のための器。**DocumentService / AuthorizationService の同名の器と同型**である。
 //
 // 🔴 **TestServer ではなく実 Kestrel で起こす。** TestServer は in-memory であり、h2c のポートが

@@ -183,7 +183,7 @@ builder.Services.AddHttpClient(HttpKnowledgeHealthReporter.ClientName, c =>
     // 🔴 既定の 100 秒のままにしない —— 受け口が応答しないと定期処理がその間止まる。
     c.Timeout = HttpKnowledgeHealthReporter.SendTimeout;
 });
-// FR-10 / NFR-09 / NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4・5, [[IADR-0407]] (#1255):
+// FR-10 / NFR-09 / NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4・5, [[IADR-0408]] (#1255):
 // 観測値の報告の east-west gRPC 経路。**並走中の正は REST である。**
 // `Services:DashboardServiceGrpc`（h2c のアドレス）が構成されたときだけ生成クライアントが登録され、
 // そのときに限り gRPC 実装を使う。無ければ上の名前つき HttpClient で REST のまま

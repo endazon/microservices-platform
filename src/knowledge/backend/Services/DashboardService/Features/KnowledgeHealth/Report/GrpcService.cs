@@ -8,7 +8,7 @@ namespace DashboardService.Features.KnowledgeHealth.Report;
 
 // FR-10, FR-17, FR-18, FR-19, NFR-09, NFR-16, UC-05, SC-10, ADR-0002, ADR-0006, ADR-0029, ADR-0030,
 // ADR-0065, ADR-0075, [[IADR-0265]], [[IADR-0299]], [[IADR-0353]], [[IADR-0379]], [[IADR-0389]],
-// [[IADR-0402]], [[IADR-0407]] (#1255): ナレッジ健全性の観測値の受け口の **east-west gRPC 面**。
+// [[IADR-0402]], [[IADR-0408]] (#1255): ナレッジ健全性の観測値の受け口の **east-west gRPC 面**。
 //
 // 🔴 **本体は持たない。** `ReportKnowledgeHealthUseCase` を呼ぶだけであり、REST の
 // `POST /internal/knowledge-health/observations` と**同じ関数**を通る（判定器を 2 つにしない。
@@ -52,7 +52,7 @@ public sealed class KnowledgeHealthReportGrpcService(ReportKnowledgeHealthUseCas
         };
     }
 
-    // 🔴 **proto3 の「未指定」を REST の null へ戻す写し**（[[IADR-0407]] 決定 3）。
+    // 🔴 **proto3 の「未指定」を REST の null へ戻す写し**（[[IADR-0408]] 決定 3）。
     // `Has*` を読まずに素の値を読むと、未指定が `""` / `0` になって別の事実に化ける:
     //   - `ThresholdDays` … `0` は検証器が弾く（`thresholdDays must be greater than zero`）ので、
     //     **しきい値を持たない 3 指標の報告が全部 400 になる**。

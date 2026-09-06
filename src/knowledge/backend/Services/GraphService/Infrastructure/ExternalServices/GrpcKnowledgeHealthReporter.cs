@@ -9,7 +9,7 @@ namespace GraphService.Infrastructure.ExternalServices;
 
 // FR-10, FR-17, FR-19, NFR-09, NFR-16, NFR-21, UC-05, SC-10, ADR-0002, ADR-0006, ADR-0029, ADR-0075,
 // ADR-0076, [[IADR-0256]] 決定 3, [[IADR-0265]], [[IADR-0299]], [[IADR-0353]], [[IADR-0379]] 決定 4・5,
-// [[IADR-0389]] 決定 5, [[IADR-0407]] (#1255): ナレッジ健全性の観測値の送出アダプタの **gRPC 版**。
+// [[IADR-0389]] 決定 5, [[IADR-0408]] (#1255): ナレッジ健全性の観測値の送出アダプタの **gRPC 版**。
 //
 // **並走中の正は REST である。** 本実装は `Services:DashboardServiceGrpc` が構成されたときだけ
 // 登録され（`AddKnowledgeHealthGrpcClient`）、無ければ `HttpKnowledgeHealthReporter` のままである。
@@ -103,7 +103,7 @@ public sealed class GrpcKnowledgeHealthReporter(
         => ex is OperationCanceledException && ct.IsCancellationRequested;
 }
 
-// FR-10, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4・5, [[IADR-0407]] (#1255):
+// FR-10, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4・5, [[IADR-0408]] (#1255):
 // DashboardService 宛の生成クライアントの登録。参照実装 `AddAuthzScopeGrpcClient` と同型。
 public static class KnowledgeHealthGrpcClientExtensions
 {

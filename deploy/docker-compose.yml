@@ -651,7 +651,7 @@ services:
       context: ..
       dockerfile: src/knowledge/backend/Services/DashboardService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）
-    # NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 / IADR-0407 (#1255): 8081 は east-west gRPC の
+    # NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 / IADR-0408 (#1255): 8081 は east-west gRPC の
     # h2c ポート（TLS 無し HTTP/2 専用）。helm の grpcPort と同じ値。host へは公開しない。
     expose:
       - "8080"
@@ -701,7 +701,7 @@ services:
       # 探索のスコープ解決が gRPC 経路になる。資格情報は上の ServiceToken を**そのまま使う**
       # （1 サービス 1 主体。呼び出し先ごとに主体を割らない）。
       Services__AuthorizationServiceGrpc: http://authorization-service:8081
-      # FR-10 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0407 (#1255): ナレッジ健全性の
+      # FR-10 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0408 (#1255): ナレッジ健全性の
       # 観測値の報告の gRPC 宛先。**これが在るときだけ**報告が gRPC 経路になる（無ければ REST のまま。
       # 並走中の正は REST であり、戻すのはこの 1 行を消すだけでよい）。資格情報は上の ServiceToken を
       # **そのまま使う**（1 サービス 1 主体。呼び出し先ごとに主体を割らない）。

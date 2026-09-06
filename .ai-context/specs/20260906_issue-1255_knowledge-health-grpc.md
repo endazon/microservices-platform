@@ -30,7 +30,7 @@ related_ids:
   - IADR-0400
   - IADR-0401
   - IADR-0402
-  - IADR-0407
+  - IADR-0408
 author: claude
 created: 2026-09-06
 updated: 2026-09-06
