@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using NotificationService.Features.Notifications;
 using NotificationService.Features.Notifications.Accept;
@@ -55,6 +56,10 @@ builder.Services.AddScoped<NotificationStore>();
 builder.Services.AddScoped<NotificationPublisher>();
 // FR-22, IADR-0270 決定 6: 発火側（DocumentService）からの受け口。検知は向こう・実体はこちら。
 builder.Services.AddScoped<NotificationIngress>();
+// FR-22, 計画 ADR-0030 §決定 / IADR-0371 決定 2 / [[IADR-0398]] 決定 7: 受け口の入力検証。
+// **1 検証器 1 行の明示登録**である（AddValidatorsFromAssembly は使わない —— この行を消したら
+// 起動時ではなく最初の要求で 500 になり、既存の受け口テストが赤くなって気づける）。
+builder.Services.AddScoped<IValidator<NotificationIngressRequest>, NotificationIngressValidator>();
 builder.Services.AddScoped<EmailOutboxDispatcher>();
 builder.Services.AddScoped<NotificationRetention>();
 builder.Services.AddHostedService<NotificationMaintenanceHostedService>();
