@@ -244,12 +244,28 @@ Wiki の器（`AnonymousContractTestFactory`。認可を**全許可に固定**�
 是正は器の側で行う（`AlwaysAuthenticatedTestHandler` を既定で有効にする）。**測りたかったのは
 認証済みの振る舞い**だからである。未認証の契約は専用の器が測る。
 
-### 認可側の「条件なし＝全員にマッチ」は、**どこからも試験で固定されていない**（M-4 の結果）
+### 🔴 ［訂正］認可側の「条件なし＝全員にマッチ」は**試験で固定されている**（M-4 の再実測）
 
-M-4（`AbacEvaluator.MatchesUserConditions` で `conditions is null` を「誰にもマッチしない」へ変える）
-は**赤にならなかった** —— `src/platform/backend` の全試験 **1628 本が緑のまま通った**（後述）。
-本欠陥が成立する前提そのものが無試験である。**本 PR では直さない**（AuthorizationService の
-振る舞いを変える変更であり、欠陥 A の射程ではない）が、**「無かった」で済ませずここに記録する。**
+**本仕様書の初稿は「M-4 は赤にならなかった＝無試験」と書いていた。それは誤りである。**
+
+再実測（`AbacEvaluator.MatchesUserConditions` の先頭へ
+`if (conditions is null || conditions.Count == 0) return false;` を挿入）:
+
+```console
+$ dotnet test .../AuthorizationService.Tests.csproj
+[xUnit.net] AuthorizationService.Tests.Domain.AbacEvaluatorTests
+            .ResolveScope_OwnerOnlyReadPolicy_GrantedWithoutConfidentialityFilter [FAIL]
+  at ...AbacEvaluatorTests.cs:line 372
+失敗!   -失敗: 1、合格: 200、合計: 201
+（変異を戻すと 201 本すべて緑）
+```
+
+**前提は 1 本の試験が固定している** —— 所有者ベースの read（利用者条件を持たないポリシー）が
+`clearance` を持たない利用者にも許可を出すことを表明する試験である。
+
+🔴 **ただし「条件なしは誰にでもマッチする」という汎則を直接主張する試験は無い。**
+固定されているのは**その帰結の 1 例**である。**この区別を残す**（「試験がある」と
+「その規則が試験されている」は別である）。**本 PR では直さない**（欠陥 A の射程外）。
 
 ## 変異試験（実走した。実出力を記録する）
 
@@ -260,9 +276,9 @@ M-4（`AbacEvaluator.MatchesUserConditions` で `conditions is null` を「誰�
 | M-1 | `AnalysisEndpoints.IsAnonymous` を `=> false` にする（AiAnalysis の短絡を外す） | 🔴 **赤 3 本** | `Ask_ReturnsEmptyAnswerForAnonymous_WithoutAskingAuthorization` / `Analyze_ReturnsEmptyAnswerForAnonymous_WithoutAskingAuthorization` / `AskStream_ReturnsNeutralSseForAnonymous_WithoutAskingAuthorization`（`失敗: 3、合格: 4、合計: 7`） |
 | M-2 | `!= true` を `== false` へ（AiAnalysis・Graph の両方） | 🔴 **赤 1 本**（Graph のみ） | `GraphAnonymousAccessContractTests.Null_identity_is_denied_without_calling_authorization`（`失敗: 1、合格: 7、合計: 8`）。**AiAnalysis 側は 136 本すべて緑のまま** |
 | M-3 | 短絡を輸送分岐の後ろへ移す（`authzScopeGrpc is null &&` を足して gRPC だけ外す） | 🔴 **赤 3 本** | `Anonymous_is_denied_without_any_grpc_call(action: "read")` / `(action: "write")` / `Null_identity_is_denied_without_calling_authorization`（`失敗: 3、合格: 5、合計: 8`） |
-| M-4 | 認可側を「条件なしは誰にもマッチしない」へ（`AbacEvaluator`。**直さない。赤を見るだけ**） | ⚪ **緑のまま** | **1 本も落ちない。** `AuthorizationService.Tests` 201 本を含む platform 全 7 アセンブリ（42 / 325 / 175 / 201 / 90 / 275 / 521）が緑。上の §実装中に判明したこと に記録した |
+| M-4 | 認可側を「条件なしは誰にもマッチしない」へ（`AbacEvaluator`。**直さない。赤を見るだけ**） | 🔴 **赤 1 本**（初稿の「緑のまま」は誤り。再実測で訂正した） | `AbacEvaluatorTests.ResolveScope_OwnerOnlyReadPolicy_GrantedWithoutConfidentialityFilter`（`AbacEvaluatorTests.cs:372`。`失敗: 1、合格: 200、合計: 201`） |
 | M-5 | 匿名契約テストの器で `IRagOrchestrator` をスタブへ戻す | 🔴 **赤 4 本** | `AllThreeRoutes_AskAuthorizationForAuthenticatedUser` の 3 ケース（ask / analyze / ask/stream）＋ `Ask_ForAuthenticatedUser_DoesNotReturnTheAnonymousDegradation`（`失敗: 4、合格: 3、合計: 7`）—— **陽性対照が仕事をしている**（器を甘くすると ABAC を踏まなくなり、対照が落ちる） |
-| M-6 | `AskStream` **だけ**短絡を外す（M-1 の部分版。M-4 が緑だったため追加した） | 🔴 **赤 1 本** | `AskStream_ReturnsNeutralSseForAnonymous_WithoutAskingAuthorization`（`失敗: 1、合格: 6、合計: 7`）—— 3 端点が**個別に**測られていることの確認 |
+| M-6 | `AskStream` **だけ**短絡を外す（M-1 の部分版。初稿で M-4 を緑と誤読したため追加した。M-6 自体は有効な変異である） | 🔴 **赤 1 本** | `AskStream_ReturnsNeutralSseForAnonymous_WithoutAskingAuthorization`（`失敗: 1、合格: 6、合計: 7`）—— 3 端点が**個別に**測られていることの確認 |
 
 🔴 **M-2 の非対称は設計どおりである。** `!= true` と `== false` が分かれるのは
 `ClaimsPrincipal.Identity` が **null** のときだけであり、ASP.NET のホストを通る要求は
@@ -286,7 +302,10 @@ Graph 側の単体試験だけであり、そこに `Null_identity_is_denied_wit
   本 PR は先例に揃えた。** 本欠陥（＝**未認証**が通る）とは別の口であり、
   「名前クレームを持たない認証済み主体が在り得るか」は認証基盤側（`AuthExtensions` の
   `NameClaimType` = `preferred_username`）の問いである。**在り得るかを確かめていない。**
-- **認可側の「条件なし＝全員にマッチ」が無試験である**（M-4）。上に記録した。
+- 🔴 **初稿は M-4 を「緑のまま＝無試験」と誤って記録していた。** 再実測して訂正した（上）。
+  **変異試験は当て方を誤ると「捕まえられない」と読める** —— 本作業で 2 度目である
+  （前回は `node -e` の複数行が黙って適用されず、変異が緑に見えた）。**変異を当てた後に
+  「その変異が実際に入っているか」を確かめること。**
 
 ## やらないこと
 

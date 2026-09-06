@@ -185,9 +185,14 @@ Infrastructure/ExternalServices/WikiAccessResolver.cs:15:        var userId = ct
 - **副次的に判ったこと**: `AiAnalysisService.Tests.TestWebApplicationFactory` が認証を構成して
   おらず、**そこを通る既存 8 本が匿名で走っていた**。短絡を入れて初めて可視になった。
   器へ既定の認証を足して是正した（仕様書 §実装中に判明したこと）。
-- 🔴 **未解決として記録する**: 認可側の「利用者条件なし＝全利用者にマッチ」（`AbacEvaluator`）は
-  **どの試験からも固定されていない**（変異 M-4 が platform 全 1628 本を緑のまま通った）。
-  本欠陥が成立する前提そのものが無試験である。**#1318 の射程外なので本 PR では直さない。**
+- **本欠陥が成立する前提（認可側の「利用者条件なし＝全利用者にマッチ」）は試験で固定されている。**
+  変異 M-4（`AbacEvaluator.MatchesUserConditions` を「条件なしは誰にもマッチしない」へ）を当てると
+  `AbacEvaluatorTests.ResolveScope_OwnerOnlyReadPolicy_GrantedWithoutConfidentialityFilter`
+  （`AbacEvaluatorTests.cs:372`）が落ちる（**201 本中 1 本失敗**）。
+  🔴 **本 PR の初稿は「M-4 は platform 全 1628 本を緑のまま通った＝無試験」と書いていたが、
+  それは誤りだった**（変異の当て方の誤りである）。**再実測して取り消した。**
+  固定しているのは**所有者ベースのポリシー 1 本**（利用者条件を持たない read）であり、
+  「条件なしが誰にでもマッチする」という**汎則を直接主張する試験は無い**。それは記録に留める。
 - 🔴 **#1318 欠陥 B（RetrievalService の自称 Scope）は本 PR の射程外である。**
   「Retrieval が自分でスコープを解決するか、経路上のどこかで解決されていればよいと定めるか」は
   **裁定を要する**問いであり、実装側の判断で閉じてよい穴ではない。
