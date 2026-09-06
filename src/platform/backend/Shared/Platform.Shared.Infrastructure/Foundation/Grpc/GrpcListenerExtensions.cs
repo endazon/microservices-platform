@@ -47,12 +47,13 @@ public static class GrpcListenerExtensions
             return builder;
 
         var httpAddresses = ResolveHttpAddresses(builder.Configuration);
+        var grpcHost = ResolveGrpcHost(httpAddresses);
         builder.WebHost.ConfigureKestrel(kestrel =>
         {
             foreach (var address in httpAddresses)
                 Listen(kestrel, address, HttpProtocols.Http1AndHttp2);
 
-            kestrel.ListenAnyIP(grpcPort.Value, o => o.Protocols = HttpProtocols.Http2);
+            Listen(kestrel, BindingAddress.Parse($"http://{grpcHost}:{grpcPort.Value}"), HttpProtocols.Http2);
         });
         return builder;
     }
@@ -83,6 +84,29 @@ public static class GrpcListenerExtensions
             return ports.Select(p => BindingAddress.Parse($"http://*:{p}")).ToList();
 
         return [BindingAddress.Parse(DefaultHttpUrl)];
+    }
+
+    // gRPC の待受ホストは**HTTP 側と同じ意図に従う**。h2c ポートだけが常に全インタフェースへ
+    // 開くのは、運用者が `urls` / `http_ports` で表明した意図を片側だけ無視することになる。
+    //
+    // - コンテナ（`ASPNETCORE_HTTP_PORTS=8080` → `http://*:8080`）… ワイルドカード → 全インタフェース。
+    //   メッシュ内の他 Pod とサイドカーから届く必要があるので**この振る舞いは変えない**。
+    // - 試験（`ASPNETCORE_URLS=http://127.0.0.1:0`）… ループバックのみ。
+    //   🔴 従前はここでも全インタフェースへ開いており、**試験を走らせた端末の外から h2c ポートへ
+    //   到達できた**（HTTP 側は 127.0.0.1 に絞ってあったのに、gRPC 側だけが素通しだった）。
+    //
+    // ホストが複数あって食い違うときは、**広い側（全インタフェース）へ倒す** ——
+    // 狭めると「本番で繋がらない」に化けるが、広げても従前の振る舞いに戻るだけである。
+    internal static string ResolveGrpcHost(IReadOnlyList<BindingAddress> httpAddresses)
+    {
+        if (httpAddresses.Count == 0)
+            return "*";
+
+        var hosts = httpAddresses.Select(a => a.Host).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (hosts.Count != 1)
+            return "*";
+
+        return hosts[0];
     }
 
     private static string[] Split(string? raw) =>
