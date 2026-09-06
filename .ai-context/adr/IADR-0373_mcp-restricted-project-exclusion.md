@@ -14,7 +14,7 @@ related_ids:
   - IADR-0269
 author: claude
 created: 2026-09-04
-updated: 2026-09-04
+updated: 2026-09-06
 plan_refs:
   - planning:projects/ai-stock-trading/07_adr/ADR-0032_mcp-non-exposure-is-enforced-by-attributes-not-the-allowlist.md
   - planning:projects/microservices-platform/06_technical/07_abac-attribute-model.md
@@ -67,6 +67,13 @@ plan_refs:
 あり、付いていない文書のほうが圧倒的に多い。否定で書くと**属性を持たない組織文書が一斉に落ちる**。
 **2 つの書き方は「AST 文書を除外する」点では動作で見分けがつかず、分けられるのは陽性対照テスト
 （`project` を持たない文書が残る／別の `project` 値の文書が残る）だけ**である。
+
+［2026-09-06 追記 / #1233］🔴 **置き場が `McpServer/Domain/RestrictedProject.cs` から
+`Platform.Shared.Contracts/Dtos/RestrictedProject.cs` へ移った**（`IADR-0405` 決定 4）。
+保存時の統制を knowledge ユニットの `DocumentService` へ入れるにあたり、ユニットを跨いで
+同じ語彙が要るようになったためである（`src/README.md` の依存規則ではユニット外参照は
+`Platform.Shared.{Contracts,Infrastructure,Kernel}` の 3 つのみ。`UserAttributeEncoding` と同じ
+理由・同じ置き場）。**本決定の内容は 1 文字も変えていない —— 語彙は 1 箇所のままである。**
 
 ### 決定 2 — 割当の検査は `projects`（複数）と `project`（単数）の**両綴り**を見る
 
@@ -142,6 +149,18 @@ plan_refs:
      が静的に検証しているのは `confidentiality` 1 つだけであり、付与漏れは今も検出されない。
   2. **ABAC の判定軸へ `project` を加えるか**（選択肢 c）。選言・`/authz/scope` の制約と一緒に解く。
   3. **他ユニットへの一般化は計画側の判断**（`AST/ADR-0032` フォローアップ 4）。
+
+［2026-09-06 追記 / #1233］**フォローアップ 1・2 の行き先が決まった**（`IADR-0405`）。
+
+- **1（必須化）**: 🔴 **実装では必須にしない。** 計画は `project` を**任意**と定めており
+  （`07_abac-attribute-model` §文書の基本属性）、必須化の射程を AST ユニットに限っているのは
+  `AST/ADR-0032` 決定 2 (1) 自身である。既定値・予約値の定義も無い。**裁定を環流した
+  （planning#557）。** 実装で閉じたのは**観測できる 1 形だけ** —— 文書が現に持つ制限値を
+  **保存で落とせない**こと（`IADR-0405` 決定 2）。**新規作成時の付与漏れは今も止まっていない。**
+- **2（判定軸）**: 🔴 **加えない。** ただし本 IADR が挙げた理由（選言）は**主たる障害ではなかった**
+  —— 実測では、`project` を allow ポリシーの文書条件へ載せると**属性を持たない文書が全滅する**
+  （必須化が先行条件）ことと、主体ごとの突合に**束縛変数の新設**が要ることが障害である
+  （`IADR-0405` 実測 5）。**同じ planning#557 で問うている。**
 
 ## 関連
 

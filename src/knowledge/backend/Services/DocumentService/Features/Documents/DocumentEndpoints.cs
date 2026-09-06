@@ -15,6 +15,7 @@ using DocumentService.Features.Documents.UpdateMetadata;
 using DocumentService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
+using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace DocumentService.Features.Documents;
@@ -103,6 +104,26 @@ public static class DocumentEndpoints
             : Results.ValidationProblem(new Dictionary<string, string[]>
             {
                 [DocumentAttributes.DocScopeKey] = [error!]
+            });
+    }
+
+    // FR-06, FR-16, SC-05, AST/ADR-0032 決定 2, [[IADR-0405]] 決定 2 (#1233):
+    // 制限 project の値を保存で落とすことの拒否。**`doc_scope` の不変性検査と同じ位置**
+    // （既存文書の属性が要るため `FindAsync` の後ろ。[[IADR-0398]] 決定 8）で、
+    // **その直後**に置く —— 宣言順が応答の契約であり、両方に違反する要求では
+    // 従来どおり `doc_scope` の 400 が出る。
+    //
+    // 🔴 **`project` を持たない文書・制限外の値だけを持つ文書はここで 1 件も落ちない**
+    //   （判定は集合帰属。`DocumentAttributes.ValidateRestrictedProjectRetained` の注記）。
+    internal static IResult? RestrictedProjectDroppedProblemOrNull(
+        Dictionary<string, string>? incoming, IReadOnlyDictionary<string, string> current)
+    {
+        var (ok, error) = DocumentAttributes.ValidateRestrictedProjectRetained(incoming, current);
+        return ok
+            ? null
+            : Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                [RestrictedProject.DocumentKey] = [error!]
             });
     }
 

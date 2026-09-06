@@ -44,6 +44,12 @@
          AuthorizationService / LlmGateway と同じ作法）。版は書かない（CPM）。 -->
     <PackageReference Include="Grpc.AspNetCore" />
     <ProjectReference Include="..\..\Shared\Knowledge.Contracts\Knowledge.Contracts.csproj" />
+    <!-- FR-06, FR-16, SC-05, AST/ADR-0032 決定 2 / [[IADR-0405]] 決定 3 (#1233):
+         制限 project の語彙（`RestrictedProject`）は契約側に 1 つだけ置く。McpServer（platform）と
+         DocumentService（knowledge）は互いを直接参照できないため（src/README.md の依存規則）。
+         推移参照（Platform.Shared.Infrastructure 経由）でも型は届くが、**Domain が直接使う依存は
+         明示する**（AiAnalysisService と同じ作法）。 -->
+    <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

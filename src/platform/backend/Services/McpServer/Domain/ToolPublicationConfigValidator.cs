@@ -1,4 +1,6 @@
 
+using Platform.Shared.Contracts.Dtos;
+
 namespace McpServer.Domain;
 
 // FR-16, ADR-0024 §5: 宣言的公開構成のスキーマ検証。
