@@ -1,7 +1,7 @@
 ---
 title: G12（メッシュ宣言のドリフト門）を実際に評価させる —— 宣言した実行では 0 件走査を緑にせず、統合スタックへ Istio を入れる
 type: spec
-status: in-progress
+status: done
 related_ids:
   - NFR
   - ADR-0005
@@ -79,7 +79,7 @@ $ git grep -n "ISTIO" -- scripts/   → k8s-local-up.sh（導入・エッジ移�
 
 ## 🔴 着手中に判明した事実 —— `ISTIO=1` は入口も動かす
 
-`scripts/k8s-local-up.sh:884-888`:
+`scripts/k8s-local-up.sh:885-889`（`:884` は直前のコメント行）:
 
 ```sh
 if [ "${ISTIO:-}" = "1" ]; then
@@ -116,7 +116,7 @@ if [ "${ISTIO:-}" = "1" ]; then
 **メッシュ無しのローカル起動は正当な構成である**。赤にすべきなのは
 「**入れると宣言したのに入っていない**」という食い違いのほうであり、そこだけを閉じる。
 
-### 変更 2: `integration-stack.yml` で `ISTIO=1` を渡す
+### 変更 2: `integration-stack.yml` で `ISTIO=1` を渡す —— 🔴 **測った結果、本 PR から外した（#1316 へ分離）**
 
 - up のステップ（`LOCALEDGE=1 ABACSEED=1 SEARCHSEED=1 LOCALEMBED=1`）へ足す
 - 🔴 **門のステップ（`node scripts/check-stack-ready.js`）にも渡す。**
@@ -188,3 +188,51 @@ AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal
   「G12 が実際に走ること」と「奪取を検出すること」は**別の主張**であり、前者は統合スタックの緑で、
   後者は自己試験で示す。**両者を混ぜて書かない。**
 - 所要時間の増分が大きすぎる場合、案 2 は利用者へ差し戻す（日次の資源は利用者の裁量である）。
+
+
+★［2026-09-06 追記 / #1304］🔴 **撃って測った。案 2 は入らなかったので分離した。**
+
+`workflow_dispatch` を作業ブランチへ撃った結果（run **34037589847**）は
+**failure / 所要 35 分**（`ISTIO` 無しの健全時 11〜15 分。ジョブ上限 45 分）。
+
+| ステップ | 結果 |
+| --- | --- |
+| Bring up the integration stack（`ISTIO=1` つき） | **success** —— Istio の導入もエッジ移設も通る |
+| **Wait for pods to become Ready** | **failure**（600 秒で **28 Pod** が `timed out waiting for the condition`） |
+| 門以降 | skipped —— **G12 は今回も 1 度も評価されていない** |
+
+### 実測した原因 2 つ
+
+**(1) ExternalName の別名がサイドカー注入より後に当たる。**
+
+```
+14:05:33  ==> [opt-in] Istio sidecar injection (rollout restart)
+14:06:07  error probes  Request to probe app failed: Get ".../health/live": connection refused
+14:18:33  service/rabbitmq created      ← [7/7] の別名。**12 分後**
+```
+
+作り直された Pod は依存の別名が無い状態で起動し、health が 500 を返して**8 回まで再起動**する
+（15 サービス分の `Readiness probe failed: statuscode: 500`）。`rollout status` は
+`|| echo WARN` の best-effort なので **10 分待って先へ進む**。
+🔴 **`ISTIO` 無しでは作り直しが起きないので表面化しない。**
+
+**(2) 旧 ReplicaSet の Pod が待ちの対象に残る。**
+タイムアウトした 28 件は**サービスあたり 2 つ**（例 `bff-service-58fd854cc8-gb5cg` と
+`bff-service-67f96846cf-hgzsm`）で新旧両方。診断ダンプでは新しい側が `2/2 Running` だが、
+**旧側は Ready にならない。** `kubectl wait --for=condition=Ready` は原理的に成立しない。
+**#1055（完了 Job の Pod を待たない）と同型**が別の入口から入っている。
+
+### 判断
+
+🔴 **「`ISTIO=1` を CI へ足す」は env を 1 つ足す作業ではなかった。**
+`ADR-0005` / `ADR-0021` の構成は**これまで CI で一度も起動されたことがなく**、
+実際に起こすと立ち上がらない。**#1316 へ分離した。**
+
+**本 PR に残したのは変更 1（と `IADR-0407`）だけである。CI の挙動は 1 バイトも変わらない。**
+🔴 **#1304 は閉じない。** 門はまだ 1 度も評価されていない。
+
+### 🔴 まだ何も分かっていないこと
+
+**サイドカーが入った状態で後段の門（G4 / パスワードリセット / ABAC / 検索）が通るか**は、
+ステップ 11 以降へ一度も到達していないため**まったく測れていない**。入口が
+Istio Ingress Gateway へ移るので、これらが測っている経路そのものが変わる。
