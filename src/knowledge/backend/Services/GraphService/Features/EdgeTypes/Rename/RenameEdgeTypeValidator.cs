@@ -11,7 +11,10 @@ namespace GraphService.Features.EdgeTypes.Rename;
 // 🔴 **検証を端点の先頭へ上げてはならない。** 移送前は `db.EdgeTypes.FirstOrDefaultAsync` で
 // 型を引いた**後**に空名を弾いていた —— **不存在の型 ID への空名改名は 404 である。**
 // ハンドラ先頭で回すと 404 が 400 に化ける（移送は振る舞いを変えない作業である）。
-// 端点側にも同じ注記を置いた。`RenameEdgeTypeOrderTests` がこの帰結を固定する。
+// 端点側にも同じ注記を置いた。
+// `GraphValidationResponseContractTests.RenameEdgeType_UnknownIdWithEmptyName_Is404NotBadRequest`
+// がこの帰結を固定する（対になる `RenameEdgeType_ExistingIdWithEmptyName_Returns400WithOriginalBody`
+// が「常に 404」の実装を落とす）。
 //
 // **述語は元のまま写す**（`EdgeType.Normalize` を掛けた後の空判定。`NotEmpty()` へ
 // 置き換えない。理由は `CreateEdgeTypeValidator` の注記 2 と同じ）。

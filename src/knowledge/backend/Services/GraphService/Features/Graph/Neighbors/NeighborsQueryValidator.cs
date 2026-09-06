@@ -32,8 +32,14 @@ internal sealed class NeighborsQueryValidator : AbstractValidator<NeighborsQuery
     internal const string EdgeTypeFilterInvalidMessage =
         "types は辺の型 ID（GUID）のカンマ区切りで指定する。";
 
-    // FR-17, SC-18 (#917): `types` の区切り方。**端点の解析と同じ指定を使う**
-    // （片方だけ変えると「検証は通るが解析で落ちる」形になる）。
+    // FR-17, SC-18 (#917): `types` の区切り方。**区切り文字と分割条件の両方**を端点の解析と
+    // 共有する（IADR-0395 決定 5）。
+    //
+    // 🔴 **区切り文字を両側のリテラルで持ってはならない。** 片方だけ変えると
+    // 「検証は通るが解析で落ちる」形になり、解析側は `Guid.Parse` なので **500** になる。
+    // 定数 1 つに寄せてあれば、その形は**書けない**（片側だけ変える編集が存在しない）。
+    internal const char TypesSeparator = ',';
+
     internal const StringSplitOptions TypesSplitOptions =
         StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries;
 
@@ -56,7 +62,7 @@ internal sealed class NeighborsQueryValidator : AbstractValidator<NeighborsQuery
         // 空・空白は「絞らない」であって不正ではない（移送前と同じ）。
         RuleFor(q => q.Types)
             .Must(t => string.IsNullOrWhiteSpace(t)
-                || t.Split(',', TypesSplitOptions).All(part => Guid.TryParse(part, out _)))
+                || t.Split(TypesSeparator, TypesSplitOptions).All(part => Guid.TryParse(part, out _)))
             .WithErrorCode(EdgeTypeFilterInvalidCode)
             .WithMessage(EdgeTypeFilterInvalidMessage);
     }
