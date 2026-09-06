@@ -266,8 +266,10 @@ services:
       context: ..
       dockerfile: src/knowledge/backend/Services/DocumentService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
+    # NFR-16, IADR-0379 決定 3, IADR-0402 (#1255): 8081 は east-west gRPC（h2c）専用。
     expose:
       - "8080"
+      - "8081"
     environment:
       # FR-06, FR-19, FR-21, ADR-0014/ADR-0057, IADR-0296: 本文の格納・取得と、完全削除時の
       # 実体削除に MinIO 接続が要る（helm は services.document.objectStorage: true を持っており、
@@ -275,6 +277,10 @@ services:
       # 欠落は 500 にならず**静かに実体を残す**——だから配備側で塞ぐ。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=document_svc;Username=kp;Password=kp
+      # FR-06 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0402 (#1255):
+      # east-west gRPC の h2c リスナ。**面は読み取り 4 口だけ**（knowledge.document.v1.DocumentRead）で、
+      # 書き込み・本文・共有は出していない。REST（8080）と /health/* はそのまま残る。
+      Grpc__Port: "8081"
     depends_on:
       postgres:
         condition: service_healthy
@@ -828,6 +834,19 @@ services:
       Services__DataSourceService: http://datasource-service:8080
       Services__DocumentService: http://document-service:8080
       Services__AuthorizationService: http://authorization-service:8080
+      # FR-06 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0402 (#1255): east-west gRPC。
+      # **`Services__DocumentServiceGrpc` が在るときだけ**文書の読み取り 4 箇所が gRPC 経路になる
+      # （無ければ上の REST のまま。並走中の正は REST であり、戻すのはこの 1 行を消すだけでよい）。
+      # 🔴 **書き込み経路は移らない** —— 後段が AdminOnly を二重ゲートで強制しており、
+      # 利用者の資格情報を運ぶ必要がある（s2s へ替えると門が 1 枚になる）。
+      Services__DocumentServiceGrpc: http://document-service:8081
+      # NFR-09 / NFR-16, ADR-0029 / ADR-0032 / ADR-0075, IADR-0379 決定 4, IADR-0402 (#1255):
+      # 🔴 **BFF が east-west gRPC の呼び出し元として名乗る資格情報。**
+      # client は BffSession と**同じ `bff`**（ADR-0032 の confidential client をそのまま使う）。
+      # dev の既定値は realm import の置き場（`bff-dev-secret-change-me`）と同値でなければ
+      # client_credentials が 401 になる。**利用者のトークンではない。**
+      ServiceToken__ClientId: bff
+      ServiceToken__ClientSecret: ${BFF_OIDC_CLIENT_SECRET:-bff-dev-secret-change-me}
       # FR-15, IADR-0029, Issue #118 監査: 構成情報 API の自己申告収集先。appsettings 既定は
       # ローカル実行用ポート（5001/5006）のため、コンテナ実態（8080）をここで上書きする。
       # 上書きが無いと実効構成の集約が常に到達失敗し、ドリフト検出が Unverifiable に縮退する。

@@ -1,0 +1,129 @@
+// FR-05, FR-06, FR-09, FR-19, NFR-09, NFR-16, UC-03, SC-03, SC-05, ADR-0002, ADR-0004, ADR-0029,
+// ADR-0036, ADR-0054, ADR-0056, ADR-0065, ADR-0070, ADR-0075, IADR-0012, IADR-0041, IADR-0045,
+// IADR-0290, IADR-0379, IADR-0388, IADR-0397, IADR-0400, IADR-0401, IADR-0402 (#1255):
+// 文書台帳の **読み取り 4 口**（REST `GET /documents`・`/documents/{id}`・`/documents/{id}/versions`・
+// `/documents/{id}/versions/{version}` と同じ意味論）の gRPC 契約。
+//
+// ■ 置き場と所有（IADR-0379 決定 1）: 所有者は DocumentService。置き場は knowledge ユニットの
+//   共有契約プロジェクト `Knowledge.Contracts` の `Protos/knowledge/document/v1/`。
+//   クライアント・サーバ基底の両方をここから生成する（`GrpcServices="Both"`）。
+// ■ versioning（IADR-0379 決定 2）: フィールド番号は不変。削除は reserved に残す。破壊的変更は v2 の並走。
+// ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
+//   利用者トークンは載せない。この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。
+//
+// ■ 🔴 **この面は認可の判定を持たない。** ABAC の実施点は呼び出し元（BFF）の
+//   `BffScopeResolver` ＋ `IsManageable`（属性合致 ∧ 個人資料でない）ただ 1 つであり（IADR-0041 /
+//   IADR-0045、ADR-0036 D-08 / ADR-0054）、**移行で位置を動かさない**。REST の読み取り 4 口も
+//   group に `RequireAuthorization()` を持たず（SC-03 の一般利用者の閲覧のため）、
+//   本 rpc へ移すのは**権限が狭まる向き**である（AuthzScope/Resolve を移したときと同じ向き）。
+//
+// ■ 🔴 「無い」と「引けなかった」を分ける（IADR-0401 決定 5 と同じ作法）
+//   無いのは**応答**（`found=false`）、引けなかったのは **gRPC status**（UNAVAILABLE 等）。
+//   不在で `NOT_FOUND` を投げない —— 呼び出し元は現行 REST の「非 2xx も不達も同じ枝」を保つため、
+//   両方を同じ縮退（404 秘匿 / 空一覧）へ落とす。**新しい枝を作らないことが移行の不変条件**である。
+//
+// ■ 🔴 proto3 に null は無い（IADR-0397 決定 5 / IADR-0400 決定 4）。REST の既定値はサーバ側で明示的に写す:
+//   - `has_body`: DTO の既定は **true**、proto3 の既定は **false** で**向きが逆**である。
+//     サーバは常に明示的に代入する。写し漏れは「全文書が本文なしに見える」形で静かに壊れ、
+//     SC-03 が本文の位置に「本文なし（原本を参照）」を出す（ADR-0070 決定 3 / IADR-0388 決定 2）。
+//   - `markdown_uri` / `change_note`: `null` と `""` が**画面で区別される**（前者は本文プレースホルダの
+//     「(未設定)」、後者は空の変更メモ）ため `optional`（proto3 の field presence）で運ぶ。
+//   - 時刻は `google.protobuf.Timestamp`。線上は UTC へ正規化されるが、台帳は `DateTimeOffset.UtcNow`
+//     で書くのでオフセットは 0 であり、往復で値は変わらない（tick 精度も保たれる）。
+syntax = "proto3";
+
+package knowledge.document.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "Knowledge.Contracts.Grpc.Document.V1";
+
+// 文書台帳の読み取り。ServiceCaller（platform-service）を要求する。
+// **書き込み・本文・共有の口はこの面に存在しない** —— 呼び出し元が要らないものを面へ出さない
+// （IADR-0401 決定 2 と同じ作法）。
+service DocumentRead {
+  // 一覧（更新の新しい順）。REST `GET /documents` と同値。
+  rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
+
+  // 1 件の取得。REST `GET /documents/{id}` と同値。不在は found=false（NOT_FOUND ではない）。
+  rpc GetDocument(GetDocumentRequest) returns (GetDocumentResponse);
+
+  // 版履歴一覧（新しい順）。REST `GET /documents/{id}/versions` と同値。
+  // 文書そのものが不在なら found=false（REST の 404 と同じ意味）。
+  rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
+
+  // 特定版の取得。REST `GET /documents/{id}/versions/{version}` と同値。
+  rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
+}
+
+// REST の DocumentDto と同じ形。
+message DocumentSummary {
+  // Guid の "D" 形式（ハイフン区切りの 36 文字）。
+  string id = 1;
+  string title = 2;
+  // draft / published / archived。台帳は常に値を持つ（既定 "draft"）。
+  string status = 3;
+  // 🔴 未設定（null）と空文字は別物である。presence で運ぶ。
+  optional string markdown_uri = 4;
+  int32 version = 5;
+  map<string, string> attributes = 6;
+  // タグの**表示名**（台帳が持つのは識別子で、解決は DocumentService 側が行う）。
+  repeated string tags = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  // 🔴 原本が本文を持っていたか。DTO の既定は true・proto3 の既定は false で向きが逆。
+  // サーバは常に明示的に設定する（ADR-0070 決定 3 / IADR-0388 決定 2）。
+  bool has_body = 10;
+}
+
+// REST の DocumentVersionDto と同じ形。**本文の参照は持たない**（IADR-0290）。
+message DocumentVersionSnapshot {
+  string document_id = 1;
+  int32 version = 2;
+  string title = 3;
+  string status = 4;
+  map<string, string> attributes = 5;
+  repeated string tags = 6;
+  // 🔴 未設定（null）と空文字は別物である。presence で運ぶ。
+  optional string change_note = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+// 一覧に絞り込みは無い（REST も無い）。将来の絞り込みは番号を足して非破壊で入れる。
+message ListDocumentsRequest {}
+
+message ListDocumentsResponse {
+  repeated DocumentSummary documents = 1;
+}
+
+message GetDocumentRequest {
+  string id = 1;
+}
+
+message GetDocumentResponse {
+  // false は「台帳に無い」（エラーではない）。
+  bool found = 1;
+  DocumentSummary document = 2;
+}
+
+message ListVersionsRequest {
+  string document_id = 1;
+}
+
+message ListVersionsResponse {
+  // false は「文書そのものが台帳に無い」（REST の 404 と同じ意味）。
+  // true で versions が空なのは「文書は在るが版が無い」であり、別の事実である。
+  bool found = 1;
+  repeated DocumentVersionSnapshot versions = 2;
+}
+
+message GetVersionRequest {
+  string document_id = 1;
+  int32 version = 2;
+}
+
+message GetVersionResponse {
+  // false は「その版が無い」（文書の不在と区別しない。REST も両方 404 である）。
+  bool found = 1;
+  DocumentVersionSnapshot snapshot = 2;
+}

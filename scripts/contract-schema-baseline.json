@@ -2541,6 +2541,10 @@
           }
         }
       },
+      "Knowledge.Contracts.Grpc.DocumentReadGrpcMapping": {
+        "kind": "class",
+        "members": {}
+      },
       "Knowledge.Contracts.Indexing.CjkBigramPayload": {
         "kind": "class",
         "members": {

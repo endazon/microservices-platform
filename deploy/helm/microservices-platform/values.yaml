@@ -237,6 +237,12 @@ services:
     # バケットの作成は ConversionService の bootstrap が担う（同じバケットを 2 か所から作らない）。
     objectStorage: true
     port: 8080
+    # FR-06 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0402 (#1255):
+    # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
+    # 面は**読み取り 4 口だけ**（`knowledge.document.v1.DocumentRead`）で、書き込み・本文・共有は
+    # 出していない。呼び出し元は BFF の文書閲覧経路（`Services__DocumentServiceGrpc` を持つときだけ）。
+    # **readiness は 8080 の /health/ready のまま** —— 1 プロセスが両ポートを起動時に bind する。
+    grpcPort: 8081
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
@@ -780,6 +786,21 @@ services:
       clientId: bff
       existingSecret: bff-oidc
       clientSecretKey: client-secret
+    # NFR-09 / NFR-16, ADR-0029 / ADR-0032 / ADR-0075, IADR-0379 決定 4, IADR-0402 (#1255):
+    # 🔴 **BFF が east-west gRPC の「呼び出し元」として名乗るための資格情報。**
+    #
+    # 参照実装（#1201）は BFF → 認可サービスの gRPC 面をコードに入れたが、**この配線が無かった**
+    # ため配備上は 1 度も走っていなかった（realm に `service-account-bff` も無かった。両方をこの
+    # PR で埋める）。[[IADR-0379]] 決定 4 の散文「realm に service account と `platform-service` を
+    # 付けた」は**実際には付いていなかった** —— 散文が事実と食い違っていた形である。
+    #
+    # 🔴 **client は `bff` を使い回す**（`session` と同じ client・同じ Secret）。`ServiceTokenOptions`
+    # の注記どおり、BFF は自分の confidential client でそのまま client credentials を取れる。
+    # 2 つ目の client を作ると secret が 2 本になり、片方だけ回されたときに静かに 401 になる。
+    serviceToken:
+      clientId: bff
+      existingSecret: bff-oidc
+      clientSecretKey: client-secret
     # FR-15, IADR-0029, Issue #118 監査: 構成情報 API の自己申告収集先。appsettings 既定は
     # ローカル実行用ポート（5001/5006）のため、k8s Service の実ポート（8080）を上書き注入する。
     extraEnv:
@@ -843,6 +864,12 @@ services:
       # タイムアウト → /bff/datasources が 502 になる（他 6 downstream と同型の上書き漏れが live で顕在化）。
       - name: Services__DataSourceService
         value: "http://datasource-service:8080"
+      # FR-06 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0402 (#1255): east-west gRPC（h2c）の宛先。
+      # **これが在るときだけ**文書の読み取り 4 箇所が gRPC 経路になる（無ければ上の REST のまま。
+      # 並走中の正は REST）。ポートは document.grpcPort と一致させること（Service の name: grpc /
+      # appProtocol: grpc）。**書き込み経路は移らない** —— 利用者の資格情報を運ぶ必要がある。
+      - name: Services__DocumentServiceGrpc
+        value: "http://document-service:8081"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }

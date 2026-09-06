@@ -1,8 +1,11 @@
+using Grpc.Core;
+using Knowledge.Bff.Endpoints.Documents;
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
@@ -17,6 +20,15 @@ namespace Knowledge.Bff.Endpoints;
 // （deny-by-default・IADR-0009/IADR-0038。「拒否」と「不在」を区別しない）。
 // 本文（正規化 Markdown）は ABAC 判定後にオブジェクトストレージ（storage://）からサーバサイドで取得する
 // （WikiService の読み取り経路と同一。未配備・未設定時はプレースホルダ本文へ縮退）。
+//
+// NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]], [[IADR-0402]] (#1255):
+// 🔴 **後段への読み取り 4 箇所は east-west gRPC でも呼べる**（`Services:DocumentServiceGrpc` が
+// 構成されたときだけ。無ければ従来どおり REST。**並走中の正は REST**）。
+// この 4 箇所が移せるのは、**現状も利用者の資格情報を運んでいない**からである ——
+// ABAC の実施点は下の `BffScopeResolver` ＋ `IsManageable` ただ 1 つであり（[[IADR-0041]] /
+// [[IADR-0045]]）、後段の読み取り group はロールで塞いでいない。**移行で判定の位置を動かさない。**
+// 同じファイルの `Forwarding()`（書き込み経路）は**利用者の資格情報を運ぶので移さない** ——
+// 後段が `AdminOnly` を二重ゲートで強制しており、s2s へ替えると門が 1 枚になる。
 public static class DocumentBffEndpoints
 {
     public static IEndpointRouteBuilder MapDocumentBffEndpoints(this IEndpointRouteBuilder app)
@@ -44,7 +56,7 @@ public static class DocumentBffEndpoints
             if (scope is null)
                 return Results.Ok(new List<DocumentDto>());
 
-            var docs = await FetchListAsync(httpFactory, ct);
+            var docs = await FetchListAsync(httpFactory, http, ct);
             var visible = docs.Where(d => IsManageable(d, scope)).ToList();
             return Results.Ok(visible);
         }).WithName("BffDocumentList").Produces<List<DocumentDto>>()
@@ -67,6 +79,19 @@ public static class DocumentBffEndpoints
             var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, httpFactory, http, ct);
             if (doc is null)
                 return Results.NotFound();
+
+            // NFR-09, ADR-0029, [[IADR-0402]] (#1255): gRPC 経路が登録されていればそちらで引く。
+            // 🔴 **ここには捕捉が無い**（現行どおり）—— 引けなければ 500 になる。
+            // 「版履歴が空」と「引けなかった」を同じ 200 `[]` にしないための現行の判断であり、
+            // 輸送の差し替えで変えない（[[IADR-0256]] 決定 3 と同じ向き）。
+            // `found=false`（文書そのものが無い）は上の ABAC 判定を通った後なので**到達し得ない**が、
+            // 現れたときに空一覧へ化けさせない —— 404 で返す。
+            var grpc = http.RequestServices?.GetService<DocumentReadGrpcClient>();
+            if (grpc is not null)
+            {
+                var viaGrpc = await grpc.ListVersionsAsync(id, ct);
+                return viaGrpc is null ? Results.NotFound() : Results.Ok(viaGrpc);
+            }
 
             var client = httpFactory.CreateClient("DocumentService");
             var versions = await client.GetFromJsonAsync<List<DocumentVersionDto>>(
@@ -96,6 +121,17 @@ public static class DocumentBffEndpoints
             var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, httpFactory, http, ct);
             if (doc is null)
                 return Results.NotFound();
+
+            // NFR-09, ADR-0029, [[IADR-0402]] (#1255): gRPC 経路が登録されていればそちらで引く。
+            // 🔴 **縮退の向きはすぐ上の版履歴と違う** —— こちらは後段の非 2xx（その版が無い）を
+            // **404** へ倒す（不達だけが捕捉なしで 500 になる）。gRPC 側は `found=false` が 404、
+            // `RpcException` は捕捉せず 500 である。**呼び出し元ごとに写す**（一般化しない）。
+            var grpc = http.RequestServices?.GetService<DocumentReadGrpcClient>();
+            if (grpc is not null)
+            {
+                var viaGrpc = await grpc.GetVersionAsync(id, version, ct);
+                return viaGrpc is null ? Results.NotFound() : Results.Ok(viaGrpc);
+            }
 
             var client = httpFactory.CreateClient("DocumentService");
             var resp = await client.GetAsync($"/documents/{id}/versions/{version}", ct);
@@ -274,21 +310,42 @@ public static class DocumentBffEndpoints
         if (scope is null)
             return null;
 
-        var client = httpFactory.CreateClient("DocumentService");
-        HttpResponseMessage resp;
-        try
+        // NFR-09, ADR-0029, [[IADR-0402]] (#1255): gRPC 経路が登録されていればそちらで引く。
+        // 🔴 **現行は「不在」も「引けなかった」も同じ `null`（404 秘匿）である。**
+        // gRPC 側は `found=false`（無い）と `RpcException`（引けなかった）を分けて返すが、
+        // **畳むのはここ**であり、畳み方は現行と 1 バイトも変わらない。
+        var grpc = http.RequestServices?.GetService<DocumentReadGrpcClient>();
+        DocumentDto? doc;
+        if (grpc is not null)
         {
-            resp = await client.GetAsync($"/documents/{id}", ct);
+            try
+            {
+                doc = await grpc.GetAsync(id, ct);
+            }
+            catch (Exception ex) when (IsTransportFailure(ex, grpc: true, ct))
+            {
+                return null;
+            }
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        else
         {
-            return null;
+            var client = httpFactory.CreateClient("DocumentService");
+            HttpResponseMessage resp;
+            try
+            {
+                resp = await client.GetAsync($"/documents/{id}", ct);
+            }
+            catch (Exception ex) when (IsTransportFailure(ex, grpc: false, ct))
+            {
+                return null;
+            }
+
+            if (!resp.IsSuccessStatusCode)
+                return null; // 404 等（不在）は秘匿し区別しない
+
+            doc = await resp.Content.ReadFromJsonAsync<DocumentDto>(ct);
         }
 
-        if (!resp.IsSuccessStatusCode)
-            return null; // 404 等（不在）は秘匿し区別しない
-
-        var doc = await resp.Content.ReadFromJsonAsync<DocumentDto>(ct);
         if (doc is null || !IsManageable(doc, scope))
             return null; // スコープ外・個人資料は不在と同じ 404
 
@@ -296,18 +353,39 @@ public static class DocumentBffEndpoints
     }
 
     private static async Task<List<DocumentDto>> FetchListAsync(
-        IHttpClientFactory httpFactory, CancellationToken ct)
+        IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
     {
-        var client = httpFactory.CreateClient("DocumentService");
+        // NFR-09, ADR-0029, [[IADR-0402]] (#1255): gRPC 経路が登録されていればそちらで引く。
+        // 🔴 **縮退は下の catch を共有する** —— 枝を新設せず、`when` 節の入口を広げるだけにする
+        // （REST も gRPC も「引けなかったら空一覧」という 1 つの判断のままにする）。
+        var grpc = http.RequestServices?.GetService<DocumentReadGrpcClient>();
         try
         {
+            if (grpc is not null)
+                return await grpc.ListAsync(ct);
+
+            var client = httpFactory.CreateClient("DocumentService");
             return await client.GetFromJsonAsync<List<DocumentDto>>("/documents", ct) ?? [];
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        catch (Exception ex) when (IsTransportFailure(ex, grpc is not null, ct))
         {
             return [];
         }
     }
+
+    // NFR-09, ADR-0029, [[IADR-0402]] (#1255): 「後段へ到達できなかった」の判定。
+    //
+    // REST 経路の条件は**現行のまま**（`HttpRequestException` / `TaskCanceledException`）であり、
+    // gRPC 経路のときだけ `RpcException`（全 status）と s2s トークン取得失敗
+    // （`InvalidOperationException`。`ClientCredentialsServiceTokenProvider`）を足す。
+    //
+    // 🔴 **REST 側へ `InvalidOperationException` を足さない。** `GetFromJsonAsync` は content-type の
+    // 不一致等でこれを投げ、現行はそれが 500 になる。輸送の差し替えのついでに広げると、
+    // **後段の契約違反が「文書が 0 件」に化ける**（IADR-0256 決定 3 が禁じた向き）。
+    private static bool IsTransportFailure(Exception ex, bool grpc, CancellationToken ct) =>
+        !ct.IsCancellationRequested
+        && (ex is HttpRequestException or TaskCanceledException
+            || (grpc && ex is RpcException or InvalidOperationException));
 
     // FR-06: 正規化 Markdown をオブジェクトストレージ（storage://）から取得する。ストレージ未配備・
     // URI 未設定時はプレースホルダ本文へ縮退する（WikiService.StorageMarkdownReader と同じ縮退方針）。

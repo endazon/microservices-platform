@@ -7,4 +7,26 @@
          （Platform.Shared.Contracts）を内包するため参照する。knowledge→platform Shared は許可（例外の Shared 参照）。 -->
     <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
   </ItemGroup>
+  <!-- NFR-09 / ADR-0029 / ADR-0075 / IADR-0379 決定 1 / [[IADR-0402]] (#1255): east-west gRPC の proto 契約は
+       **所有サービスが属するユニットの共有契約プロジェクト**に置く。DocumentService は knowledge ユニットなので
+       ここが置き場である（platform 側の Platform.Shared.Contracts へ置いてはならない —— 所有者と置き場が
+       食い違い、check-proto-contracts.js R1 の突合が意味を失う）。
+       `GrpcServices="Both"` でクライアントとサーバ基底の両方を生成し、`*.Client` プロジェクトは作らない
+       （ADR-0029 2026-08-04 追記）。生成物は obj/ に落ち、コミットしない。
+       Grpc.Tools はビルド時専用（PrivateAssets=all）。Grpc.Net.Client は生成クライアント／サーバ基底が要る
+       Grpc.Core.Api を推移的に運ぶ。**4 パッケージとも CPM に版が既に在り、新しいライブラリは足していない**
+       （Platform.Shared.Contracts と同じ 4 つ。scripts/check-backend-libraries.js の ratchet に触れない）。 -->
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Grpc.Tools">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- パス `Protos/<unit>/<service>/v<N>/*.proto` と package `<unit>.<service>.v<N>` の一致は
+         scripts/check-proto-contracts.js が検査する（IADR-0379 決定 2）。 -->
+    <Protobuf Include="Protos/**/*.proto" ProtoRoot="Protos" GrpcServices="Both" />
+  </ItemGroup>
 </Project>

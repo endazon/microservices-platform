@@ -9,6 +9,271 @@
   "$schemaVersion": 1,
   "$acceptedBreakingChanges": [],
   "files": {
+    "src/knowledge/backend/Shared/Knowledge.Contracts/Protos/knowledge/document/v1/document_read.proto": {
+      "syntax": "proto3",
+      "package": "knowledge.document.v1",
+      "csharpNamespace": "Knowledge.Contracts.Grpc.Document.V1",
+      "imports": [
+        "google/protobuf/timestamp.proto"
+      ],
+      "messages": {
+        "DocumentSummary": {
+          "fields": {
+            "attributes": {
+              "number": 6,
+              "type": "map<string,string>",
+              "label": "map"
+            },
+            "created_at": {
+              "number": 8,
+              "type": "google.protobuf.Timestamp",
+              "label": "singular"
+            },
+            "has_body": {
+              "number": 10,
+              "type": "bool",
+              "label": "singular"
+            },
+            "id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "markdown_uri": {
+              "number": 4,
+              "type": "string",
+              "label": "optional"
+            },
+            "status": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            },
+            "tags": {
+              "number": 7,
+              "type": "string",
+              "label": "repeated"
+            },
+            "title": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            },
+            "updated_at": {
+              "number": 9,
+              "type": "google.protobuf.Timestamp",
+              "label": "singular"
+            },
+            "version": {
+              "number": 5,
+              "type": "int32",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "DocumentVersionSnapshot": {
+          "fields": {
+            "attributes": {
+              "number": 5,
+              "type": "map<string,string>",
+              "label": "map"
+            },
+            "change_note": {
+              "number": 7,
+              "type": "string",
+              "label": "optional"
+            },
+            "created_at": {
+              "number": 8,
+              "type": "google.protobuf.Timestamp",
+              "label": "singular"
+            },
+            "document_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "status": {
+              "number": 4,
+              "type": "string",
+              "label": "singular"
+            },
+            "tags": {
+              "number": 6,
+              "type": "string",
+              "label": "repeated"
+            },
+            "title": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            },
+            "version": {
+              "number": 2,
+              "type": "int32",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "GetDocumentRequest": {
+          "fields": {
+            "id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "GetDocumentResponse": {
+          "fields": {
+            "document": {
+              "number": 2,
+              "type": "DocumentSummary",
+              "label": "singular"
+            },
+            "found": {
+              "number": 1,
+              "type": "bool",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "GetVersionRequest": {
+          "fields": {
+            "document_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "version": {
+              "number": 2,
+              "type": "int32",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "GetVersionResponse": {
+          "fields": {
+            "found": {
+              "number": 1,
+              "type": "bool",
+              "label": "singular"
+            },
+            "snapshot": {
+              "number": 2,
+              "type": "DocumentVersionSnapshot",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "ListDocumentsRequest": {
+          "fields": {},
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "ListDocumentsResponse": {
+          "fields": {
+            "documents": {
+              "number": 1,
+              "type": "DocumentSummary",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "ListVersionsRequest": {
+          "fields": {
+            "document_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "ListVersionsResponse": {
+          "fields": {
+            "found": {
+              "number": 1,
+              "type": "bool",
+              "label": "singular"
+            },
+            "versions": {
+              "number": 2,
+              "type": "DocumentVersionSnapshot",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "enums": {},
+      "services": {
+        "DocumentRead": {
+          "rpcs": {
+            "GetDocument": {
+              "request": "GetDocumentRequest",
+              "response": "GetDocumentResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            },
+            "GetVersion": {
+              "request": "GetVersionRequest",
+              "response": "GetVersionResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            },
+            "ListDocuments": {
+              "request": "ListDocumentsRequest",
+              "response": "ListDocumentsResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            },
+            "ListVersions": {
+              "request": "ListVersionsRequest",
+              "response": "ListVersionsResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            }
+          }
+        }
+      }
+    },
     "src/platform/backend/Shared/Platform.Shared.Contracts/Protos/platform/authz/v1/authz_scope.proto": {
       "syntax": "proto3",
       "package": "platform.authz.v1",
