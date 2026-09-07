@@ -236,6 +236,23 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-nul-bytes.js
 
+      # NFR, Issue #1312: コード注記が指す `*Tests` が**実在するか**を検査する。
+      # 「この帰結は <X>Tests が固定する」と書いてあるのに、その名前のクラスが 1 つも無い形は、
+      # **「試験がある」と読ませたまま何も固定していない**。読み手は名前で検索して見つからず、
+      # 「名前が変わったのだろう」と推測して先へ進む —— **主張は検証されないまま残る。**
+      # 同型の事故は 7 回目（#1311 で 1 件 → #1312 起票時に 5 件 → 着手時の引き直しで 7 件）。
+      # 🔴 **機械が言えるのは「名前が実在するか」までである。** 「指し先は実在するが、その帰結を
+      # 固定していない」側は人が読むしかない（射程を広げると誤検出だらけになり無視されるようになる）。
+      # git ls-files を呼ぶため fetch-depth や submodule 取得は要らない。scripts.repo.test.js の
+      # companion 経由でも自己試験・実データ走査・変異試験を回すが、専用ステップにすると失敗が
+      # ジョブ名で見える（check-nul-bytes.js と同じ理由）。
+      - name: Self-test test-name reference checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-test-name-references.js --self-test
+      - name: Check test name references
+        if: ${{ !cancelled() }}
+        run: node scripts/check-test-name-references.js
+
       # NFR, 計画 ADR-0069 決定 5, Issue #1195, IADR-0361:
       # 追跡下に「.gitkeep のみのディレクトリ」（＝空枠）が無いことを検査する。
       # 枠だけの状態は機械にも目視にも「区分が揃っている」と見え、**適合の見え方**を作る

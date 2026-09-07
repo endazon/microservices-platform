@@ -3190,6 +3190,85 @@ ${r.stderr}`);
     });
   }
 
+  // --- check-test-name-references: 注記が指す試験名の実在（#1312） ----------------
+  //
+  // NFR（#1312）: 「この帰結は <X>Tests が固定する」と書いてあるのに、その名前のクラスが無い。
+  // 🔴 **この形は「試験がある」と読ませたまま、実際には何も固定していない。**
+  // 読み手は名前で検索して見つからず、「名前が変わったのだろう」と推測して先へ進む。
+  //
+  // 同型の事故は #1311 で 1 件、#1312 の起票時に 5 件、着手時の引き直しで 7 件だった
+  // （IADR-0141 の「2 回目で機械を置く」条件をとうに満たしている）。
+  //
+  // 🔴 **機械が言えるのは「名前が実在するか」までである。**
+  // 「指し先は実在するが、その帰結を固定していない」側は人が読むしかない。**射程を広げない。**
+  {
+    const { spawnSync: spawnTnr } = require('child_process');
+    const pathTnr = require('path');
+    const fsTnr = require('fs');
+    const tnrScript = pathTnr.join(__dirname, 'check-test-name-references.js');
+    const runTnr = (args, opts) =>
+      spawnTnr(process.execPath, [tnrScript, ...args], { encoding: 'utf8', ...opts });
+
+    ok('check-test-name-references --self-test が通る', () => {
+      const r = runTnr(['--self-test']);
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('check-test-name-references が実データ（src の C#）で違反 0 件', () => {
+      const r = runTnr([]);
+      assert.strictEqual(r.status, 0, `注記が実在しない試験名を指している:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    // 🔴 **実データが clean なので、検出力は変異でしか示せない。**
+    // 追跡下のファイルへ実在しない名前を 1 行入れて、CLI が exit 1 で名指しすることを見る。
+    ok('check-test-name-references: 実在しない名前を注記へ入れると exit 1 で名指しする', () => {
+      const target = pathTnr.join(__dirname, '..', 'src', 'knowledge', 'backend', 'Services',
+        'GraphService', 'Domain', 'AiSuggestion.cs');
+      const orig = fsTnr.readFileSync(target);
+      try {
+        fsTnr.writeFileSync(target,
+          Buffer.concat([orig, Buffer.from('\n// TotallyFakeProbeTests が固定する。\n', 'utf8')]));
+        const r = runTnr([]);
+        assert.notStrictEqual(r.status, 0, '実在しない名前を入れたのに exit 0 だった');
+        assert.match(r.stderr, /TotallyFakeProbeTests/, '名前を名指ししていない');
+        assert.match(r.stderr, /AiSuggestion\.cs:\d+/, '位置（ファイル:行）を出していない');
+      } finally {
+        fsTnr.writeFileSync(target, orig);
+      }
+      assert.strictEqual(runTnr([]).status, 0, '復元後も落ちたままである');
+    });
+
+    // 🔴 コメントだけを見る（文字列リテラルの中の名前は拾わない）。
+    // ここを緩めると、テスト名を配列で持つ実装コードが軒並み誤検出になる。
+    ok('check-test-name-references: 文字列リテラル内の名前は拾わない', () => {
+      const tnr = require('./check-test-name-references.js');
+      const declared = new Set();
+      const referenced = new Map();
+      tnr.collect('var a = "GhostInStringTests";\n', 'x.cs', declared, referenced);
+      assert.strictEqual(referenced.size, 0, `リテラルを拾っている: ${[...referenced.keys()]}`);
+      tnr.collect('// GhostInCommentTests\n', 'y.cs', declared, referenced);
+      assert.deepStrictEqual([...referenced.keys()], ['GhostInCommentTests'], 'コメントを拾えていない');
+    });
+
+    // 0 件走査で静かに緑にしない門（#664 の作法 / IADR-0130）。
+    ok('check-test-name-references: 走査件数の門が 0 件を fail 側に置く', () => {
+      const tnr = require('./check-test-name-references.js');
+      assert.strictEqual(tnr.isScanTooSmall(0), true);
+      assert.strictEqual(tnr.isScanTooSmall(tnr.MIN_SCANNED - 1), true);
+      assert.strictEqual(tnr.isScanTooSmall(tnr.MIN_SCANNED), false);
+    });
+
+    // 🔴 除外はすべて理由つきである。**「直せないから除外」を通さないための形。**
+    ok('check-test-name-references: ALLOWED の全項目に理由が書いてある', () => {
+      const tnr = require('./check-test-name-references.js');
+      assert.ok(tnr.ALLOWED.size >= 3, '除外が空になっている（走査の前提が変わっている）');
+      for (const [name, reason] of tnr.ALLOWED) {
+        assert.ok(typeof reason === 'string' && reason.length > 10,
+          `${name} の除外理由が無い（除外を足すときは理由を書くこと）`);
+      }
+    });
+  }
+
   // --- check-scaffolding-frames: `.gitkeep` のみのディレクトリ（#1195 / ADR-0069 決定 5） -----
   //
   // 述語は 1 つだけである —— **追跡下に `.gitkeep` のみのディレクトリが存在しない**。
@@ -6180,11 +6259,13 @@ ${r.stderr}`);
       'check-nul-bytes.js',
       'check-plan-id-qualification.js',
       'check-scaffolding-frames.js',
+      // #1312: 注記が指す試験名の実在。git ls-files で母集合を引くのでクラス B である。
+      'check-test-name-references.js',
     ];
     const GUARDED = [...HEAD_CHECKERS, ...TRACKED_CHECKERS];
     const readScript = (f) => fs.readFileSync(path.join(REPO, 'scripts', f), 'utf8');
 
-    ok('#683: 偽の緑を返しうる検査器が A=3 / B=4 で宣言されている', () => {
+    ok('#683: 偽の緑を返しうる検査器が A=3 / B=5 で宣言されている', () => {
       const all = fs
         .readdirSync(path.join(REPO, 'scripts'))
         .filter((f) => /\.js$/.test(f) && !/\.test\.js$/.test(f))
@@ -6456,7 +6537,14 @@ ${r.stderr}`);
         //    新設したため 51 → 52（ラチェットが設計どおり発火した）。**`summary` / `description` は
         //    突合しない**（経路 B は意図的に凝縮した文面を持つ。バイト一致を課すと常に赤になる）。
         //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
-        assert.strictEqual(scripts.length, 52, `検査器の母集合が 52 本から変わった（${scripts.length} 件）`);
+        // ★ #1312 の取りこぼしで `check-test-name-references.js`（コード注記が指す `*Tests` が
+        //    **実在するか**。実在しない名前を指す注記は「試験がある」と読ませたまま何も固定しない）を
+        //    新設したため 52 → 53（ラチェットが設計どおり発火した）。**同型の事故は 7 回目**である
+        //    （#1311 で 1 件、#1312 起票時に 5 件、着手時の引き直しで 7 件）。
+        //    🔴 **機械が言えるのは「名前が実在するか」までである** —— 「指し先は実在するが
+        //    その帰結を固定していない」側は人が読むしかない。**射程を広げない**（広げると誤検出だらけになり、
+        //    検査器ごと無視されるようになる）。git ls-files で母集合を引くので TRACKED_CHECKERS に載る。
+        assert.strictEqual(scripts.length, 53, `検査器の母集合が 53 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
