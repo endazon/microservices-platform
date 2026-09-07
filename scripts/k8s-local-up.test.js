@@ -2989,7 +2989,9 @@ ok('#1316: integration-stack の待ちが削除中の Pod を対象へ入れな�
 
 // #1316: メッシュを起こす宣言は **up と門の両方**へ届く。片方だけだと G12 が
 // 「宣言が門へ届いていない」で落ちる（check-stack-ready.js の G12 の文言そのもの）。
-ok('#1316: integration-stack は ISTIO をジョブ環境で 1 度だけ宣言する（up と門の両方へ届く）', () => {
+// #1304: メッシュを起こす宣言は **up と門の両方**へ届き、**既定で入る**。
+// 片方だけだと G12 が「宣言が門へ届いていない」で落ち、入らなければ G12 は恒久的に走査 0 件になる。
+ok('#1304: integration-stack は ISTIO を既定で入れ、ジョブ環境で 1 度だけ宣言する', () => {
   const wf = fs.readFileSync(
     path.join(REPO_ROOT, '.github', 'workflows', 'integration-stack.yml'),
     'utf8',
@@ -2998,18 +3000,29 @@ ok('#1316: integration-stack は ISTIO をジョブ環境で 1 度だけ宣言�
     /^\s{4}env:\s*$/m.test(wf) && /^\s{6}ISTIO:/m.test(wf),
     'ジョブレベルの env に ISTIO の宣言が無い（up と門へ別々に渡すと片方が漏れる）',
   );
+
+  const line = wf.split('\n').find((l) => l.trim().startsWith('ISTIO:'));
+  assert.ok(line, 'ISTIO の宣言行が読めない');
+
+  // 🔴 既定で入ること。schedule / push で空になる式（手動実行に限る形）は #1304 の状態へ戻る。
   assert.ok(
-    wf.includes("github.event_name == 'workflow_dispatch'"),
-    'ISTIO が手動実行に限定されていない（schedule / push の既定が変わる）',
+    line.includes("|| '1'"),
+    `ISTIO が既定で 1 にならない（G12 が恒久的に走査 0 件へ戻る）: ${line.trim()}`,
+  );
+  // 比較のために手動実行でだけ外せること。
+  assert.ok(
+    line.includes("github.event_name == 'workflow_dispatch'") && line.includes('!inputs.istio'),
+    `メッシュ無しで起こす経路（比較用）が塞がっている: ${line.trim()}`,
   );
   assert.ok(
-    /inputs:\s*\n\s+istio:/.test(wf),
-    'workflow_dispatch に istio の入力が無い（実測のたびにワークフローを書き換えることになる）',
+    /inputs:\s*\n\s+istio:[\s\S]{0,300}?default: true/.test(wf),
+    'workflow_dispatch の istio が既定 true でない（手動実行だけ既定が違うと事故る）',
   );
-  // 🔴 常設化はまだしない —— up のコマンド行へ ISTIO=1 を直書きしていないこと。
+
+  // 🔴 up のコマンド行へ直書きしない —— 直書きすると門へ届かず G12 が飛ばされる（#1304 の形）。
   assert.ok(
     !/ISTIO=1 .*k8s-local-up\.sh/.test(wf),
-    'up のコマンド行へ ISTIO=1 を直書きしている（常設化は緑と所要時間を測ってから別 PR で行う）',
+    'up のコマンド行へ ISTIO=1 を直書きしている（門へ届かず G12 が飛ばされる）',
   );
 });
 
