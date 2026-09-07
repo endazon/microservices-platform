@@ -419,4 +419,77 @@ public class AbacEvaluatorTests
         matchesUnion.Should().BeTrue(
             "ここが false になったら AllowedFilters の算出が変わっている——決定 2 の据え置きが破れている合図");
     }
+
+    // ---- #1324: 「利用者条件が空＝全利用者にマッチ」を両方向で固定する ------------------------
+    //
+    // FR-05, ADR-0004, ADR-0036 D-01: `read` 許可は「属性ベース ∨ **所有者ベース** ∨ 共有先ベース」の
+    // 選言であり、所有者ベースのポリシーは利用者条件を持たない。だから
+    // `MatchesUserConditions` の「条件が空なら全利用者にマッチ」は**意図された規則**である。
+    //
+    // 🔴 **この規則は両方向へ壊れ得るので、対で固定する。**
+    //   ・寛容側の反転（「空条件は誰にもマッチしない」）→ 所有者が自分の文書を読めなくなる
+    //   ・制限側の反転（「常に true」）→ deny-by-default（FR-05）が消える
+    //
+    // 🔴 **`conditions is null` を突く変異は等価変異である**（#1324 で実測）。
+    // `AbacEntities.cs:47` が `UserConditions` を**非 null 型**として宣言し、`:64`（Create）と
+    // `:75`（Update）が `userCond ?? []` で正規化するため、**null は保存されない**。
+    // 唯一の呼び出し元（`AbacEvaluator.cs:26`）が渡すのも `policy.UserConditions` である。
+    // よって null 分岐は到達不能であり、**そこを突く変異が緑で通ることは「無試験」を意味しない**。
+    // 到達可能な入力は**空辞書**であり、下の 2 本はその側を固定する。
+    // null → 空辞書の正規化は `AbacValidationTests.AbacPolicy_Create_NullConditions_StoredAsEmpty` が持つ。
+    //
+    // 既存の `ResolveScope_OwnerOnlyReadPolicy_GrantedWithoutConfidentialityFilter`（上）も
+    // 寛容側の変異で落ちるが、**あの試験の主題は #1242 の「不在フィルタ」**であって本規則ではない。
+    // #1242 側の都合で書き換わると本規則の反転が無言で通るため、ここに**直接の主張**を置く。
+
+    // FR-05, ADR-0004, ADR-0036 D-01（寛容側）: 利用者条件が空のポリシーは、
+    // **属性を 1 つも持たない**利用者にもマッチする。
+    [Fact]
+    public void ResolveScope_EmptyUserConditions_GrantsToUserWithNoAttributes()
+    {
+        // 属性ゼロの利用者。階段ポリシーには定義上 1 本もマッチしない。
+        var req = new AccessScopeRequest("u1", new());
+        var policies = new[]
+        {
+            // ADR-0036 D-01/D-02: 所有者ベースの read（利用者条件なし・`${current_user}` 束縛）。
+            NamedReadPolicy("所有者は自分の文書を読める", userCond: [],
+                new() { ["owner"] = ["${current_user}"] }),
+            // 陽性対照: 利用者条件を持つポリシーが同居しているが、この利用者にはマッチしない
+            // （＝「ポリシーが 1 本しか無い作り物」でも「常に true」でもないことの担保）。
+            NamedReadPolicy("internal 取扱者", new() { ["clearance"] = ["internal"] },
+                new() { ["confidentiality"] = ["public", "internal"] }),
+        };
+
+        var result = AbacEvaluator.ResolveScope(req, policies);
+
+        result.Granted.Should().BeTrue(
+            "利用者条件が空のポリシーは全利用者にマッチする——所有者ベース read の前提である");
+        result.Branches.Should().ContainSingle(
+            "条件を持つ側は属性ゼロの利用者にマッチしてはならない")
+            .Which.Name.Should().Be("所有者は自分の文書を読める");
+        result.AllowedFilters.Should().ContainSingle()
+            .Which.Key.Should().Be("owner");
+    }
+
+    // FR-05, ADR-0004（制限側・上の対）: 利用者条件を持つポリシーは、属性が合わない利用者へ許可しない。
+    // キーが無い経路（`AbacEvaluator.cs:78`）と値が合わない経路（`:80`）の**両方**を通す。
+    [Theory]
+    [InlineData("department", "engineering", "キーが無い（clearance を持たない）")]
+    [InlineData("clearance", "public", "キーはあるが値が合わない")]
+    public void ResolveScope_UserConditionsPresent_DoesNotGrantWhenAttributesDiffer(
+        string attrKey, string attrValue, string why)
+    {
+        var req = new AccessScopeRequest("u2", new() { [attrKey] = attrValue });
+        var policies = new[]
+        {
+            NamedReadPolicy("internal 取扱者", new() { ["clearance"] = ["internal"] },
+                new() { ["confidentiality"] = ["public", "internal"] }),
+        };
+
+        var result = AbacEvaluator.ResolveScope(req, policies);
+
+        result.Granted.Should().BeFalse(why + "——FR-05 の deny-by-default");
+        result.Branches.Should().BeEmpty(why);
+        result.AllowedFilters.Should().BeEmpty(why);
+    }
 }
