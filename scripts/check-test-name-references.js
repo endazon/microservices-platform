@@ -189,6 +189,29 @@ function scanSegments(text) {
       push('code', codeFrom, i, line);
       const quote = text[p];
 
+      // 🔴 **verbatim の判定が先である**（PR #1330 レビュー 5 巡目）。
+      // C# の raw string literal は **`@` 接頭辞を取れない** —— `@` が付いていれば常に verbatim であり、
+      // 続く `""` は「raw の開始区切り」ではなく**エスケープされた 1 個の `"`** である。
+      // 順序を逆にすると `@"""a"` を「3 連引用符で開く raw」と読み、閉じが見つからないまま
+      // **ファイルの残り全体を文字列として飲み込む**（当該ファイルの参照も宣言も丸ごと落ちる）。
+      // これまでの 4 巡が 1 行・1 リテラル分の見落としだったのに対し、**発火すると被害がファイル全体**になる。
+      if (hasAt) {
+        // verbatim: バックスラッシュは素の文字。`""` が引用符のエスケープ。行をまたぐ。
+        let j = p + 1;
+        while (j < n) {
+          if (text[j] === '\n') { line += 1; j += 1; continue; }
+          if (text[j] === '"') {
+            if (text[j + 1] === '"') { j += 2; continue; }
+            j += 1;
+            break;
+          }
+          j += 1;
+        }
+        i = j;
+        codeFrom = i;
+        continue;
+      }
+
       // raw string: 開き引用符と**同数以上**の連続引用符で閉じる。行をまたぐ。
       if (quote === '"' && text[p + 1] === '"' && text[p + 2] === '"') {
         let open = 0;
@@ -202,23 +225,6 @@ function scanSegments(text) {
             if (run >= open) { j += run; break; }
             j += run;
             continue;
-          }
-          j += 1;
-        }
-        i = j;
-        codeFrom = i;
-        continue;
-      }
-
-      // verbatim: バックスラッシュは素の文字。`""` が引用符のエスケープ。行をまたぐ。
-      if (hasAt) {
-        let j = p + 1;
-        while (j < n) {
-          if (text[j] === '\n') { line += 1; j += 1; continue; }
-          if (text[j] === '"') {
-            if (text[j + 1] === '"') { j += 2; continue; }
-            j += 1;
-            break;
           }
           j += 1;
         }
@@ -369,6 +375,26 @@ function selfTest() {
   t('scanSegments: 補間 raw string の中身は拾わない',
     commentsOf('var j = $$"""x // InInterpolatedRawTests""";').length === 0,
     commentsOf('var j = $$"""x // InInterpolatedRawTests""";'));
+
+  // 🔴 **verbatim の判定は raw より先である**（5 巡目の指摘）。
+  //   C# の raw string は `@` 接頭辞を取れないので、`@` が付いていれば `""` は
+  //   「raw の開始区切り」ではなく**エスケープされた 1 個の `"`** である。
+  //   逆順だと `@"""a"` を raw と読み、閉じが見つからず**ファイルの残り全体を飲み込む** ——
+  //   1〜4 巡が 1 行分の見落としだったのに対し、**発火すると被害がファイル全体**になる。
+  {
+    const src = 'var s = @"""a"; // AfterAtTripleTests\npublic class LaterDeclTests { }\n';
+    t('scanSegments: @""" を raw と誤読してファイルの残りを飲み込まない',
+      commentsOf(src).join('').includes('AfterAtTripleTests')
+      && codesOf(src).includes('class LaterDeclTests'),
+      { comments: commentsOf(src), codes: codesOf(src) });
+  }
+  for (const pre of ['$@', '@$']) {
+    const src = `var s = ${pre}"""a"; // After${pre === '$@' ? 'DA' : 'AD'}TripleTests\n`
+      + `public class Later${pre === '$@' ? 'DA' : 'AD'}Tests { }\n`;
+    t(`scanSegments: ${pre}""" でも飲み込まない`,
+      commentsOf(src).join('').includes('TripleTests') && codesOf(src).includes('class Later'),
+      { comments: commentsOf(src), codes: codesOf(src) });
+  }
   // 陰性対照: `@` は逐語識別子の接頭辞でもある。文字列でなければコードとして読み進める。
   t('scanSegments: 逐語識別子 @class を文字列と誤らない',
     codesOf('var @class = 1; public class VerbatimIdentTests { }').includes('class VerbatimIdentTests'),
