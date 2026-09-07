@@ -3297,6 +3297,25 @@ ${r.stderr}`);
         ['AfterRawTests'],
         'raw string の中身を拾うか、後続を落としている',
       );
+
+      // 🔴 接頭辞は `$` と `@` が**任意の順序**で並ぶ（C# 8 以降）。
+      // 綴りを 1 つずつ列挙すると必ず漏れる —— `@"` だけを見ていた実装では
+      // `@$"` 順が通常文字列として読まれ、**同じ偽陰性が別の綴りで再現していた**。
+      assert.deepStrictEqual(
+        refsOf('var p = $@"C:\\{d}\\"; // AfterDollarAtTests\n'),
+        ['AfterDollarAtTests'],
+        '$@ 順の補間 verbatim で閉じを読み違えている',
+      );
+      assert.deepStrictEqual(
+        refsOf('var p = @$"C:\\{d}\\"; // AfterAtDollarTests\n'),
+        ['AfterAtDollarTests'],
+        '@$ 順の補間 verbatim で閉じを読み違えている',
+      );
+      // 陰性対照: `@` は逐語識別子の接頭辞でもある（文字列と誤らない）。
+      const declared = new Set();
+      tnr.collect('var @class = 1;\npublic class VerbatimIdentTests { }\n', 'v.cs', declared, new Map());
+      assert.ok(declared.has('VerbatimIdentTests'),
+        '逐語識別子 @class を文字列開始と誤り、後続の宣言を落としている');
     });
 
     // 🔴 **宣言側の逃げ道も塞ぐ**（PR #1330 レビューの 2 つ目の偽陰性）。

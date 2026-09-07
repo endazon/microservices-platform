@@ -167,54 +167,71 @@ function scanSegments(text) {
       continue;
     }
 
-    // --- raw string（開き引用符と同数以上の連続引用符で閉じる） ---
-    if (c === '"' && text[i + 1] === '"' && text[i + 2] === '"') {
-      push('code', codeFrom, i, line);
-      let open = 0;
-      while (text[i + open] === '"') open += 1;
-      let j = i + open;
-      for (;;) {
-        if (j >= n) break;
-        if (text[j] === '\n') { line += 1; j += 1; continue; }
-        if (text[j] === '"') {
-          let run = 0;
-          while (text[j + run] === '"') run += 1;
-          if (run >= open) { j += run; break; }
-          j += run;
-          continue;
-        }
-        j += 1;
+    // --- 文字列リテラル ---
+    //
+    // 🔴 **接頭辞は `$` と `@` が任意の順序・個数で並ぶ**（PR #1330 レビュー 4 巡目）。
+    // C# 8 以降 `$@"…"` と `@$"…"` はどちらも書けるので、**綴りを 1 つずつ列挙すると必ず漏れる**
+    // （3 巡目の是正は `@"` だけを見ており、`@$"` 順が通常文字列として読まれていた ——
+    // **同じ偽陰性が別の綴りで再現していた**）。接頭辞を**まとめて読み飛ばしてから種別を決める。**
+    // raw の補間 `$$"""…"""` も同じ形で入る。
+    if (c === '"' || c === '\'' || c === '$' || c === '@') {
+      let p = i;
+      let hasAt = false;
+      while (p < n && (text[p] === '$' || text[p] === '@')) {
+        if (text[p] === '@') hasAt = true;
+        p += 1;
       }
-      i = j;
-      codeFrom = i;
-      continue;
-    }
-
-    // --- verbatim string（バックスラッシュは素、`""` が引用符のエスケープ、行をまたぐ） ---
-    if (c === '@' && text[i + 1] === '"') {
+      // 接頭辞だけで引用符が来ないなら、ただの識別子（`@class` 等）なのでコードとして読み進める。
+      if (p >= n || (text[p] !== '"' && text[p] !== '\'')) {
+        i = p > i ? p : i + 1;
+        continue;
+      }
       push('code', codeFrom, i, line);
-      let j = i + 2;
-      while (j < n) {
-        if (text[j] === '\n') { line += 1; j += 1; continue; }
-        if (text[j] === '"') {
-          if (text[j + 1] === '"') { j += 2; continue; }
+      const quote = text[p];
+
+      // raw string: 開き引用符と**同数以上**の連続引用符で閉じる。行をまたぐ。
+      if (quote === '"' && text[p + 1] === '"' && text[p + 2] === '"') {
+        let open = 0;
+        while (text[p + open] === '"') open += 1;
+        let j = p + open;
+        while (j < n) {
+          if (text[j] === '\n') { line += 1; j += 1; continue; }
+          if (text[j] === '"') {
+            let run = 0;
+            while (text[j + run] === '"') run += 1;
+            if (run >= open) { j += run; break; }
+            j += run;
+            continue;
+          }
           j += 1;
-          break;
         }
-        j += 1;
+        i = j;
+        codeFrom = i;
+        continue;
       }
-      i = j;
-      codeFrom = i;
-      continue;
-    }
 
-    // --- 通常の文字列 / 文字リテラル（バックスラッシュがエスケープ・行をまたがない） ---
-    if (c === '"' || c === '\'') {
-      push('code', codeFrom, i, line);
-      let j = i + 1;
+      // verbatim: バックスラッシュは素の文字。`""` が引用符のエスケープ。行をまたぐ。
+      if (hasAt) {
+        let j = p + 1;
+        while (j < n) {
+          if (text[j] === '\n') { line += 1; j += 1; continue; }
+          if (text[j] === '"') {
+            if (text[j + 1] === '"') { j += 2; continue; }
+            j += 1;
+            break;
+          }
+          j += 1;
+        }
+        i = j;
+        codeFrom = i;
+        continue;
+      }
+
+      // 通常の文字列 / 文字リテラル: バックスラッシュがエスケープ。行をまたがない。
+      let j = p + 1;
       while (j < n && text[j] !== '\n') {
         if (text[j] === '\\') { j += 2; continue; }
-        if (text[j] === c) { j += 1; break; }
+        if (text[j] === quote) { j += 1; break; }
         j += 1;
       }
       i = j;
@@ -337,6 +354,25 @@ function selfTest() {
   t('scanSegments: verbatim の中身は拾わない',
     commentsOf('var p = @"// InVerbatimTests";').length === 0,
     commentsOf('var p = @"// InVerbatimTests";'));
+
+  // 🔴 接頭辞は `$` と `@` が**任意の順序**で並ぶ（4 巡目の指摘）。
+  //   綴りを 1 つずつ列挙すると必ず漏れる —— まとめて読み飛ばしてから種別を決める。
+  t('scanSegments: $@ 順の補間 verbatim でも閉じを見失わない',
+    commentsOf('var p = $@"C:\\{d}\\"; // AfterDollarAtTests').join('').includes('AfterDollarAtTests'),
+    commentsOf('var p = $@"C:\\{d}\\"; // AfterDollarAtTests'));
+  t('scanSegments: @$ 順の補間 verbatim でも閉じを見失わない',
+    commentsOf('var p = @$"C:\\{d}\\"; // AfterAtDollarTests').join('').includes('AfterAtDollarTests'),
+    commentsOf('var p = @$"C:\\{d}\\"; // AfterAtDollarTests'));
+  t('scanSegments: 補間 verbatim の中身は拾わない（両順）',
+    commentsOf('var a = $@"// InDollarAtTests"; var b = @$"// InAtDollarTests";').length === 0,
+    commentsOf('var a = $@"// InDollarAtTests"; var b = @$"// InAtDollarTests";'));
+  t('scanSegments: 補間 raw string の中身は拾わない',
+    commentsOf('var j = $$"""x // InInterpolatedRawTests""";').length === 0,
+    commentsOf('var j = $$"""x // InInterpolatedRawTests""";'));
+  // 陰性対照: `@` は逐語識別子の接頭辞でもある。文字列でなければコードとして読み進める。
+  t('scanSegments: 逐語識別子 @class を文字列と誤らない',
+    codesOf('var @class = 1; public class VerbatimIdentTests { }').includes('class VerbatimIdentTests'),
+    codesOf('var @class = 1; public class VerbatimIdentTests { }'));
 
   // 🔴 raw string: 開き引用符と同数以上の連続引用符で閉じる。行をまたぐ。
   t('scanSegments: raw string の中身は拾わない',
