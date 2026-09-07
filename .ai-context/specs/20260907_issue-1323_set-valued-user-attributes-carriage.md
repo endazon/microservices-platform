@@ -150,6 +150,8 @@ Keycloak の多値属性マッパー（`multivalued: true`）は **JSON 配列**
 - [x] Given 同じポリシー / When タグを持たない利用者 / Then **許可が出ない**（陰性対照）
 - [x] Given 同じポリシー / When **別のタグだけ**を持つ利用者 / Then 許可が出ない
       （「集合値なら常に true」の縮退実装を落とす）
+- [x] Given `projects` を利用者条件に持つポリシー / When 交差する集合を持つ利用者 / Then **許可が出る**。
+      交差が空／属性そのものが無い場合は出ない（`ResolveScope_EverySetValuedKey_UsesIntersectionSemantics`）
 - [x] Given 単値キー（`clearance`）のポリシー / When 従来どおりの利用者 / Then **従来どおり通る**（回帰なし）
 - [x] Given 多値クレーム（同じ型のクレームが 2 つ）/ When 抽出 / Then **線上表現へ連結される**（先頭 1 値に畳まれない）
 - [x] Given 単値クレーム / When 抽出 / Then **値が 1 文字も変わらない**
@@ -163,13 +165,13 @@ Keycloak の多値属性マッパー（`multivalued: true`）は **JSON 配列**
 🔴 **変異を戻したことは「試験が緑に戻った」で確かめた**（#1324 で mtime の罠を踏んだため
 適用器は `fs.utimesSync` で mtime を明示的に進める）。
 
-**基準（変異なし・実装後）**: platform 失敗 0 / 合格 **1642**（1631 → +11）／
-knowledge 失敗 0 / 合格 **2150**（+5）。
+**基準（変異なし・実装後）**: platform 失敗 0 / 合格 **1644**（1631 → +13）／
+knowledge 失敗 0 / 合格 **2150**（+5）。`AuthorizationService.Tests` は 204 → **213**。
 
 | # | 変異 | 位置 | 赤くなった試験 |
 | --- | --- | --- | --- |
-| **N-1** | 集合値の判定を**常にマッチ**へ | `AbacEvaluator` | **1 本** — `ResolveScope_SetValuedUserAttribute_DoesNotMatchWhenIntersectionIsEmpty` |
-| **N-2** | 集合値の判定を**決してマッチしない**へ（改修前と同値の縮退） | `AbacEvaluator` | **4 本** — `..._MatchesWhenIntersectionIsNotEmpty` ＋ `..._UsesTheContractSplittingRule` の 3 ケース |
+| **N-1** | 集合値の判定を**常にマッチ**へ | `AbacEvaluator` | **3 本** — `..._DoesNotMatchWhenIntersectionIsEmpty` ＋ `..._EverySetValuedKey_UsesIntersectionSemantics` の 2 ケース（`tags` / `projects`） |
+| **N-2** | 集合値の判定を**決してマッチしない**へ（改修前と同値の縮退） | `AbacEvaluator` | **6 本** — `..._MatchesWhenIntersectionIsNotEmpty` ＋ `..._UsesTheContractSplittingRule` 3 ケース ＋ `..._EverySetValuedKey_...` 2 ケース |
 | **N-3** | 抽出を `FindFirst` で**先頭 1 値へ畳む**（#1243 の欠陥の再現） | `BffScopeResolver` | **4 本 / 4 アセンブリ** — `ExtractUserAttributes_MultiValuedTagClaims_AreJoinedNotCollapsed`（Bff）＋ AiAnalysis / Retrieval / Graph の各経路 1 本ずつ |
 | **N-4** | 集合値を**まったく運ばない**（改修前の状態） | `BffScopeResolver` | **5 本 / 4 アセンブリ** — 上記 4 本 ＋ `ExtractUserAttributes_CarriesEverySetValuedKeyDeclaredByTheContract` |
 | **N-5** | **1 経路だけ**共有点から離れ単値 2 つだけを載せる（経路ごとのドリフト） | `GrpcGraphNeighborExpander` | **1 本だけ** — `GrpcGraphNeighborExpanderTests.集合値の利用者属性も本文で運ぶ` |
@@ -201,3 +203,19 @@ knowledge 失敗 0 / 合格 **2150**（+5）。
 - `project` を文書条件の判定軸へ加えること（`ADR-0085` 決定 2）
 - `roles` を ABAC の判定へ用いること（`ADR-0080` 決定 4）
 - 単値キーの読み方・分割規則を変えること（`IADR-0385` の禁則）
+
+## ★［2026-09-07 追記 / #1326 レビュー］`projects` の直接の担保を足した
+
+初稿の交差判定の試験は **`tags` キーでしか組み立てておらず**、issue の受け入れ基準
+「Given `projects` / When 同上 / Then 同上」を**推論で満たしたことにしていた**
+（「`tags` で通るから `projects` も通るはず」）。搬送側には
+`ExtractUserAttributes_CarriesEverySetValuedKeyDeclaredByTheContract` を置いていたのに、
+**評価器側に同じ担保が無かった**。
+
+`ResolveScope_EverySetValuedKey_UsesIntersectionSemantics`（`[Theory]`・`tags` / `projects`）を足し、
+1 ケースの中で**陽性・交差が空・属性が無い**の 3 方向を通す。
+`projects` は dev seed の属性辞書へ入れていないが、**評価器は辞書と独立に動く**ため直接評価できる。
+
+再実測: **N-1 は 1 本 → 3 本**、**N-2 は 4 本 → 6 本**が赤になる（`projects` ケースを含む）。
+`AuthorizationService.Tests` 211 → **213**。
+

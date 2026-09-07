@@ -592,4 +592,40 @@ public class AbacEvaluatorTests
 
         AbacEvaluator.ResolveScope(req, policies).Granted.Should().BeTrue(why);
     }
+
+    // FR-05, FR-09, ADR-0080 決定 2（**`projects` でも同じ意味論であることの直接の担保**）:
+    // 🔴 **`tags` で通っているから `projects` も通るはず、を推論で済ませない。**
+    // 評価器の分岐は `UserAttributeEncoding.IsSetValued(key)` で一般化してあるが、
+    // **一般化されていることそのものを固定する試験が要る**（キーを名指しで並べる実装への退行を止める）。
+    //
+    // `projects` は dev seed の属性辞書へ**入れていない**（ADR-0085 決定 1・2 の保留を辞書で守る。
+    // [[IADR-0411]] 決定 5）が、**評価器は辞書と独立に動く**ため、ここでは直接評価できる。
+    [Theory]
+    [InlineData("tags")]
+    [InlineData("projects")]
+    public void ResolveScope_EverySetValuedKey_UsesIntersectionSemantics(string key)
+    {
+        UserAttributeEncoding.IsSetValued(key).Should().BeTrue("陽性対照: 契約が集合値と宣言している");
+
+        var policies = new[]
+        {
+            NamedReadPolicy("集合条件", new() { [key] = ["alpha"] },
+                new() { ["confidentiality"] = ["internal"] }),
+        };
+
+        // 陽性: 交差が空でない。
+        AbacEvaluator.ResolveScope(
+            new AccessScopeRequest("u1", new() { [key] = "alpha,beta" }), policies)
+            .Granted.Should().BeTrue($"{key} は交差でマッチする");
+
+        // 陰性対照 1: 交差が空。
+        AbacEvaluator.ResolveScope(
+            new AccessScopeRequest("u2", new() { [key] = "beta,gamma" }), policies)
+            .Granted.Should().BeFalse($"{key} の交差が空なら deny");
+
+        // 陰性対照 2: 属性そのものが無い（ADR-0080 決定 3）。
+        AbacEvaluator.ResolveScope(
+            new AccessScopeRequest("u3", new() { ["clearance"] = "internal" }), policies)
+            .Granted.Should().BeFalse($"{key} を持たない利用者はマッチしない");
+    }
 }
