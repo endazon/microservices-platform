@@ -2991,32 +2991,51 @@ ok('#1316: integration-stack の待ちが削除中の Pod を対象へ入れな�
 // 「宣言が門へ届いていない」で落ちる（check-stack-ready.js の G12 の文言そのもの）。
 // #1304: メッシュを起こす宣言は **up と門の両方**へ届き、**既定で入る**。
 // 片方だけだと G12 が「宣言が門へ届いていない」で落ち、入らなければ G12 は恒久的に走査 0 件になる。
-ok('#1304: integration-stack は ISTIO を既定で入れ、ジョブ環境で 1 度だけ宣言する', () => {
+//
+// 🔴 **式のソース文字列を部分一致で見ない。真理値表を計算する。**
+// PR #1328 の初稿は `(A && '') || '1'` と書いており、**`A` が真でも `'1'` になる**
+// （`&&` は最初の falsy をそのまま返し、`''` は falsy なので `|| '1'` が上書きする）。
+// **既定 ON 側は偶然正しかったので、部分一致の検査は 4 本とも緑で通した。**
+// レビューが式を評価して見つけた。**同じ見落としを二度としないため、ここで評価する。**
+//
+// GitHub Actions の `&&` / `||` / `!` / `==` / `!=` は JS と同じ短絡規則で定義されているため
+// （falsy は `false` / `0` / `''` / `null` 等）、式をそのまま JS として評価してよい。
+ok('#1304: integration-stack の ISTIO 宣言が 3 つの契機で意図どおりの値になる（真理値表）', () => {
   const wf = fs.readFileSync(
     path.join(REPO_ROOT, '.github', 'workflows', 'integration-stack.yml'),
     'utf8',
   );
-  assert.ok(
-    /^\s{4}env:\s*$/m.test(wf) && /^\s{6}ISTIO:/m.test(wf),
-    'ジョブレベルの env に ISTIO の宣言が無い（up と門へ別々に渡すと片方が漏れる）',
+
+  // ジョブレベルの env に 1 度だけ在ること（up と門へ別々に渡すと片方が漏れる）。
+  const istioLines = wf.split('\n').filter((l) => /^\s{6}ISTIO:/.test(l));
+  assert.strictEqual(istioLines.length, 1, `ISTIO の宣言が ${istioLines.length} 行ある（1 行であるべき）`);
+
+  const m = istioLines[0].match(/\$\{\{(.+)\}\}/);
+  assert.ok(m, `ISTIO が式で宣言されていない: ${istioLines[0].trim()}`);
+  const expr = m[1].trim();
+
+  // 式を評価する。GitHub の式で使える識別子だけを束縛する。
+  const evaluate = (eventName, istioInput) =>
+    // eslint-disable-next-line no-new-func
+    new Function('github', 'inputs', `return (${expr});`)(
+      { event_name: eventName },
+      istioInput === undefined ? {} : { istio: istioInput },
+    );
+
+  // 🔴 これが本体である。3 つの契機で値を主張する。
+  assert.strictEqual(evaluate('schedule', undefined), '1', '日次でメッシュが入らない（G12 が走査 0 件へ戻る）');
+  assert.strictEqual(evaluate('push', undefined), '1', 'develop への push でメッシュが入らない');
+  assert.strictEqual(evaluate('workflow_dispatch', true), '1', '手動の既定でメッシュが入らない');
+  assert.strictEqual(
+    evaluate('workflow_dispatch', false),
+    '',
+    '🔴 istio=false の退路が死んでいる（`A && "" || "1"` の falsy 罠。PR #1328 の初稿がこれだった）',
   );
 
-  const line = wf.split('\n').find((l) => l.trim().startsWith('ISTIO:'));
-  assert.ok(line, 'ISTIO の宣言行が読めない');
-
-  // 🔴 既定で入ること。schedule / push で空になる式（手動実行に限る形）は #1304 の状態へ戻る。
-  assert.ok(
-    line.includes("|| '1'"),
-    `ISTIO が既定で 1 にならない（G12 が恒久的に走査 0 件へ戻る）: ${line.trim()}`,
-  );
-  // 比較のために手動実行でだけ外せること。
-  assert.ok(
-    line.includes("github.event_name == 'workflow_dispatch'") && line.includes('!inputs.istio'),
-    `メッシュ無しで起こす経路（比較用）が塞がっている: ${line.trim()}`,
-  );
+  // 入力の既定は true（手動実行だけ既定が違うと事故る）。
   assert.ok(
     /inputs:\s*\n\s+istio:[\s\S]{0,300}?default: true/.test(wf),
-    'workflow_dispatch の istio が既定 true でない（手動実行だけ既定が違うと事故る）',
+    'workflow_dispatch の istio が既定 true でない',
   );
 
   // 🔴 up のコマンド行へ直書きしない —— 直書きすると門へ届かず G12 が飛ばされる（#1304 の形）。

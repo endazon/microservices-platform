@@ -80,8 +80,13 @@ jobs:
     # G12 は資材 4 件を突き合わせて通り、後段の門（パスワードリセット / ABAC / 検索）もすべて成立した。
     #
     # `workflow_dispatch` の `istio` を **false** にすると、比較のためにメッシュ無しで起こせる。
+    #
+    # 🔴 **真になる分岐が truthy 値を返すように条件を書く。** `A && '' || '1'` は
+    # **`A` が真でも `'1'` になる** —— `&&` は最初の falsy をそのまま返し、`''` は falsy なので
+    # 続く `|| '1'` がそれを上書きするからである（PR #1328 のレビューが実測して見つけた）。
+    # その形だと **`istio=false` の退路が恒久的に死ぬ**（既定 ON 側は偶然正しいので気づけない）。
     env:
-      ISTIO: ${{ (github.event_name == 'workflow_dispatch' && !inputs.istio) && '' || '1' }}
+      ISTIO: ${{ (github.event_name != 'workflow_dispatch' || inputs.istio) && '1' || '' }}
     steps:
       - uses: actions/checkout@v7
 
