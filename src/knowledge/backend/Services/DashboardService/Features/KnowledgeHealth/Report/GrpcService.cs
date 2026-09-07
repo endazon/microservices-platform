@@ -17,8 +17,9 @@ namespace DashboardService.Features.KnowledgeHealth.Report;
 //
 // 🔴 **ServiceCaller を要求する。** 利用者のトークンは（管理者であっても）通らない ——
 //   通すと呼び出し先が「利用者が直接呼んだ」と区別できず confused deputy が成立する
-//   （[[IADR-0379]] 決定 4）。これを機械で守るのは `KnowledgeHealthReportGrpcTests` の
-//   「管理者トークンでも PERMISSION_DENIED」1 本である。
+//   （[[IADR-0379]] 決定 4）。これを機械で守るのは
+//   `GrpcKnowledgeHealthReportTests.Report_with_forwarded_admin_user_token_is_permission_denied`
+//   （管理者トークンでも PERMISSION_DENIED）である。
 //   REST 側の受け口は**認証を持たない**（[[IADR-0299]] 決定 4・利用者裁定。生産者は利用者 JWT を
 //   持たない定期処理である）ので、この面は現状より**狭い**
 //   （[[IADR-0401]] 決定 1 / [[IADR-0402]] 決定 3 と同じ向き）。**REST 側は変えない。**

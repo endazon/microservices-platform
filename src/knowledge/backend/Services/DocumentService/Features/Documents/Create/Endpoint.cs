@@ -50,7 +50,8 @@ internal static class CreateDocumentEndpoint
             // 後ろに居た —— 前へ動かすと「題名あり・本文 1 MB 超・機密区分なし」が 413 から 400 へ化ける。
             // 🔴 **`Validate(req)` は名前つき集合を走らせない。** この 1 行を消しても
             // コンパイルも起動も通り、属性が**黙って無検証**になる（型では守れていない依存）。
-            // `CreateDocumentAttributeValidationTests` の 413 / 400 の**対**がこれを固定する。
+            // `ValidationProblemContractTests` の 413 / 400 の**対**がこれを固定する
+            // （`Create_OversizedBodyWithMissingConfidentiality_Returns413` ほか D3–D5）。
             var attributeGate = validator.Validate(req,
                 o => o.IncludeRuleSets(CreateDocumentValidator.AttributesRuleSet));
             if (!attributeGate.IsValid) return ValidationProblems.FirstViolation(attributeGate);

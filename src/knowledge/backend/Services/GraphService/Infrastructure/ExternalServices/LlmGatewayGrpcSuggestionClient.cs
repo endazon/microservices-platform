@@ -55,7 +55,8 @@ public sealed class LlmGatewayGrpcSuggestionClient(
         //
         // 🔴 `Sent` は proto3 の既定（false）と DTO の既定（true）で向きが逆であり、
         // ゲートウェイが明示的に書いている（IADR-0400 決定 4）。写し漏れるとここで
-        // **常に `[]` になる**（例外にならない）ため、GrpcSuggestionClientTests が対で固定する。
+        // **常に `[]` になる**（例外にならない）ため、`LlmGatewayGrpcSuggestionClientTests` が対で固定する
+        // （陽性 `ProposeAsync_ゲートウェイ応答の提案を読み取る` / 陰性 `ProposeAsync_縮退した応答では提案を作らない`）。
         if (!body.Sent || CompletionStopReasons.IsRefusal(body.StopReason))
             return [];
 

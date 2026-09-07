@@ -12,8 +12,8 @@ namespace DocumentService.Tests.Features.PrivateNotes;
 // このマッパは `[MapProperty]` を 3 本持つ（`DocumentId → Id` / `LatestBytes → Bytes` /
 // `IsDeleted → Deleted`）—— **名前が違う列こそ黙って落ちる側**である。
 //
-// 端に残した縮退（`doc?.Title ?? ""` / `doc?.Version ?? 0`）は
-// `PrivateNoteEndpointsMappingTests` が見る。
+// 端に残した縮退（`doc?.Title ?? ""` / `doc?.Version ?? 0`）は**本ファイル末尾の対**が見る
+// （#1312。以前は `PrivateNoteEndpointsMappingTests` を指していたが、その名前の試験は存在しなかった）。
 [Trait("TestKind", "Unit")]
 public class PrivateNoteMapperTests
 {
@@ -109,5 +109,44 @@ public class PrivateNoteMapperTests
             "主体は JWT からしか採らない（ADR-0036）");
         typeof(PrivateNoteDto).GetProperty("Owner").Should().BeNull(
             "主体は JWT からしか採らない（ADR-0036）");
+    }
+
+    // ---- #1312: 端に残した縮退（`doc?.Title ?? ""` / `doc?.Version ?? 0`）を固定する ----------
+    //
+    // 🔴 この注記はもともと「`PrivateNoteEndpointsMappingTests` が見る」と書いていたが、
+    // **その名前の試験は存在しなかった**（#1312）。指し先を直すのではなく**試験を足す**。
+    //
+    // 縮退が要るのは、資料に対応する文書の複製がまだ届いていない場合である
+    // （`PrivateNoteEndpoints.cs:112`）。**生成マッパへ持ち込むと `?? throw` に化ける**ため、
+    // ここは端の判断として残してある（`PrivateNoteMapper.cs:14`）。**その端を測る。**
+
+    // 陰性側: 文書がまだ届いていない資料は、題が空・版が 0 で返る（例外にしない）。
+    [Fact]
+    public void ToDto_WhenTheDocumentIsNotYetReplicated_FallsBackToEmptyTitleAndVersionZero()
+    {
+        var n = NewNote();
+
+        var dto = PrivateNoteEndpoints.ToDto(n, doc: null);
+
+        dto.Title.Should().BeEmpty("文書がまだ届いていないだけであり、例外にしない");
+        dto.Version.Should().Be(0, "版が分からないことを 0 で表す");
+        // 陽性対照: 縮退するのは題と版だけで、資料側の列はそのまま写る。
+        dto.Id.Should().Be(n.DocumentId);
+        dto.VaultPath.Should().Be("研究/メモ.md");
+        dto.Bytes.Should().Be(2048);
+    }
+
+    // 陽性側（対）: 文書が届いていれば、その題と版がそのまま載る。
+    // 🔴 これが無いと「常に空と 0 を返す」実装が上の試験を通してしまう。
+    [Fact]
+    public void ToDto_WhenTheDocumentIsPresent_CarriesItsTitleAndVersion()
+    {
+        var n = NewNote();
+        var doc = Document.CreateNormalized(n.DocumentId, "研究メモ", "s3://bucket/note.md");
+
+        var dto = PrivateNoteEndpoints.ToDto(n, doc);
+
+        dto.Title.Should().Be("研究メモ");
+        dto.Version.Should().Be(doc.Version);
     }
 }

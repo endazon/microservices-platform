@@ -53,7 +53,8 @@ internal static partial class DiagramCodingInterpretation
         //
         // 🔴 `Sent` は proto3 の既定（false）と DTO の既定（true）で向きが逆であり、ゲートウェイが
         // 明示的に書いている（IADR-0400 決定 4）。写し漏れると gRPC 経路で**全ての図が
-        // egress-denied として画像保持になる**（例外にならない）。GrpcDiagramCoderTests が対で固定する。
+        // egress-denied として画像保持になる**（例外にならない）。
+        // `LlmGatewayGrpcDiagramCoderTests.Grpc_の帰結は経路ごとに異なる` が経路ごとの対で固定する。
         if (!result.Sent)
         {
             logger.LogInformation("Diagram {FigureId} not sent to LLM (egress denied): {Reason}; retaining as image",

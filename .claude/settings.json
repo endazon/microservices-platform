@@ -21,6 +21,7 @@
       "Bash(git -C src/ai-stock-trading ls-tree:*)",
       "Bash(git -C src/ai-stock-trading grep:*)",
       "Bash(git ls-tree:*)",
+      "Bash(git grep:*)",
       "Bash(git submodule status:*)",
       "Bash(git fetch:*)",
       "Bash(git show:*)",

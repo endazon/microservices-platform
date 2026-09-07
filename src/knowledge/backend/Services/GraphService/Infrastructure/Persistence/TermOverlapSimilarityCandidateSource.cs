@@ -15,7 +15,8 @@ namespace GraphService.Infrastructure.Persistence;
 // 混じる**。絞るのは候補列挙の段（IGraphStore.EnumerateAuthorizedCandidatesAsync）であり、LLM より前である。
 //
 // 🔴 **ログは起点の ID しか出さない。** 候補の件数・ID・存在を出さない（ADR-0051 決定 2）。
-// 差し替え前の既定アダプタが守っていた作法をそのまま引き継ぐ（`SimilaritySourceLoggingTests` が固定する）。
+// 差し替え前の既定アダプタが守っていた作法をそのまま引き継ぐ
+// （`TermOverlapSimilarityCandidateSourceTests.Logs_only_the_origin_id_and_never_candidate_counts_or_ids` が固定する）。
 //
 // 材料は `graph_document_term_profiles`（本文指紋の変化で作り直される）。**行が無い文書は表題から作る**
 // —— 既存文書は初日から候補になり、本文が次に更新された文書から本文入りの出現数へ置き換わる。

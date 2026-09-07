@@ -3190,6 +3190,171 @@ ${r.stderr}`);
     });
   }
 
+  // --- check-test-name-references: 注記が指す試験名の実在（#1312） ----------------
+  //
+  // NFR（#1312）: 「この帰結は <X>Tests が固定する」と書いてあるのに、その名前のクラスが無い。
+  // 🔴 **この形は「試験がある」と読ませたまま、実際には何も固定していない。**
+  // 読み手は名前で検索して見つからず、「名前が変わったのだろう」と推測して先へ進む。
+  //
+  // 同型の事故は #1311 で 1 件、#1312 の起票時に 5 件、着手時の引き直しで 7 件だった
+  // （IADR-0141 の「2 回目で機械を置く」条件をとうに満たしている）。
+  //
+  // 🔴 **機械が言えるのは「名前が実在するか」までである。**
+  // 「指し先は実在するが、その帰結を固定していない」側は人が読むしかない。**射程を広げない。**
+  {
+    const { spawnSync: spawnTnr } = require('child_process');
+    const pathTnr = require('path');
+    const fsTnr = require('fs');
+    const tnrScript = pathTnr.join(__dirname, 'check-test-name-references.js');
+    const runTnr = (args, opts) =>
+      spawnTnr(process.execPath, [tnrScript, ...args], { encoding: 'utf8', ...opts });
+
+    ok('check-test-name-references --self-test が通る', () => {
+      const r = runTnr(['--self-test']);
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('check-test-name-references が実データ（src の C#）で違反 0 件', () => {
+      const r = runTnr([]);
+      assert.strictEqual(r.status, 0, `注記が実在しない試験名を指している:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    // 🔴 **実データが clean なので、検出力は変異でしか示せない。**
+    // 追跡下のファイルへ実在しない名前を 1 行入れて、CLI が exit 1 で名指しすることを見る。
+    ok('check-test-name-references: 実在しない名前を注記へ入れると exit 1 で名指しする', () => {
+      const target = pathTnr.join(__dirname, '..', 'src', 'knowledge', 'backend', 'Services',
+        'GraphService', 'Domain', 'AiSuggestion.cs');
+      const orig = fsTnr.readFileSync(target);
+      try {
+        fsTnr.writeFileSync(target,
+          Buffer.concat([orig, Buffer.from('\n// TotallyFakeProbeTests が固定する。\n', 'utf8')]));
+        const r = runTnr([]);
+        assert.notStrictEqual(r.status, 0, '実在しない名前を入れたのに exit 0 だった');
+        assert.match(r.stderr, /TotallyFakeProbeTests/, '名前を名指ししていない');
+        assert.match(r.stderr, /AiSuggestion\.cs:\d+/, '位置（ファイル:行）を出していない');
+      } finally {
+        fsTnr.writeFileSync(target, orig);
+      }
+      assert.strictEqual(runTnr([]).status, 0, '復元後も落ちたままである');
+    });
+
+    // 🔴 コメントだけを見る（文字列リテラルの中の名前は拾わない）。
+    // ここを緩めると、テスト名を配列で持つ実装コードが軒並み誤検出になる。
+    ok('check-test-name-references: 文字列リテラル内の名前は拾わない', () => {
+      const tnr = require('./check-test-name-references.js');
+      const declared = new Set();
+      const referenced = new Map();
+      tnr.collect('var a = "GhostInStringTests";\n', 'x.cs', declared, referenced);
+      assert.strictEqual(referenced.size, 0, `リテラルを拾っている: ${[...referenced.keys()]}`);
+      tnr.collect('// GhostInCommentTests\n', 'y.cs', declared, referenced);
+      assert.deepStrictEqual([...referenced.keys()], ['GhostInCommentTests'], 'コメントを拾えていない');
+    });
+
+    // 🔴 **ブロックコメントでも逃げられない**（PR #1330 のレビューが指摘した偽陰性）。
+    // 行コメントだけを見ていると、同じ主張をブロックコメントで書くだけで検査を丸ごと逃れられる。
+    ok('check-test-name-references: ブロックコメント内の名前も拾う', () => {
+      const tnr = require('./check-test-name-references.js');
+      const declared = new Set();
+      const referenced = new Map();
+      tnr.collect('/*\n * GhostInBlockTests が固定する。\n */\n', 'z.cs', declared, referenced);
+      assert.deepStrictEqual([...referenced.keys()], ['GhostInBlockTests'],
+        'ブロックコメントを拾えていない（書き方で逃げ道ができている）');
+      assert.deepStrictEqual(referenced.get('GhostInBlockTests'), ['z.cs:2'], '出現行が違う');
+    });
+
+    // 🔴 リテラル内のスラッシュ 2 つ（URL 等）をコメント開始と誤らない（同レビューの偽陽性）。
+    ok('check-test-name-references: リテラル内の URL をコメントと誤らない', () => {
+      const tnr = require('./check-test-name-references.js');
+      const declared = new Set();
+      const referenced = new Map();
+      tnr.collect('var u = "http://example.com/GhostInUrlTests";\n', 'u.cs', declared, referenced);
+      assert.strictEqual(referenced.size, 0, `URL を拾っている: ${[...referenced.keys()]}`);
+    });
+
+    // 🔴 **C# の文字列 3 種を終端規則ごとに区別する**（PR #1330 レビュー 3 巡目）。
+    // 区別しないと、**閉じ位置を読み違えて後続のコメントを丸ごと見落とす**（偽陰性）。
+    // 実測: 本リポジトリの src に verbatim 72 / raw 330 出現するので机上の話ではない。
+    ok('check-test-name-references: verbatim / raw リテラルの終端を読み違えない', () => {
+      const tnr = require('./check-test-name-references.js');
+      const refsOf = (src) => {
+        const declared = new Set();
+        const referenced = new Map();
+        tnr.collect(src, 'x.cs', declared, referenced);
+        return [...referenced.keys()].sort();
+      };
+
+      // verbatim はバックスラッシュがエスケープではない —— 旧実装は閉じを見失い、後続を落としていた。
+      assert.deepStrictEqual(
+        refsOf('var p = @"C:\\dir\\"; // AfterVerbatimTests\n'),
+        ['AfterVerbatimTests'],
+        'verbatim の閉じを読み違えて後続のコメントを落としている',
+      );
+      // verbatim の中身は拾わない。
+      assert.deepStrictEqual(refsOf('var p = @"// InVerbatimTests";\n'), []);
+      // raw string は開き引用符と同数以上で閉じる。中身は拾わず、後続は拾う。
+      assert.deepStrictEqual(
+        refsOf('var j = """\nline // InRawTests\n"""; // AfterRawTests\n'),
+        ['AfterRawTests'],
+        'raw string の中身を拾うか、後続を落としている',
+      );
+
+      // 🔴 接頭辞は `$` と `@` が**任意の順序**で並ぶ（C# 8 以降）。
+      // 綴りを 1 つずつ列挙すると必ず漏れる —— `@"` だけを見ていた実装では
+      // `@$"` 順が通常文字列として読まれ、**同じ偽陰性が別の綴りで再現していた**。
+      assert.deepStrictEqual(
+        refsOf('var p = $@"C:\\{d}\\"; // AfterDollarAtTests\n'),
+        ['AfterDollarAtTests'],
+        '$@ 順の補間 verbatim で閉じを読み違えている',
+      );
+      assert.deepStrictEqual(
+        refsOf('var p = @$"C:\\{d}\\"; // AfterAtDollarTests\n'),
+        ['AfterAtDollarTests'],
+        '@$ 順の補間 verbatim で閉じを読み違えている',
+      );
+      // 陰性対照: `@` は逐語識別子の接頭辞でもある（文字列と誤らない）。
+      const declared = new Set();
+      tnr.collect('var @class = 1;\npublic class VerbatimIdentTests { }\n', 'v.cs', declared, new Map());
+      assert.ok(declared.has('VerbatimIdentTests'),
+        '逐語識別子 @class を文字列開始と誤り、後続の宣言を落としている');
+    });
+
+    // 🔴 **宣言側の逃げ道も塞ぐ**（PR #1330 レビューの 2 つ目の偽陰性）。
+    // 参照側だけ正しく切り出しても、宣言を生の行から拾っていると
+    // `// public class GhostTests { }` が「実在する」と数えられ、**実在しない指し先が黙って通る**。
+    ok('check-test-name-references: コメントアウト / リテラル内の宣言を実在と数えない', () => {
+      const tnr = require('./check-test-name-references.js');
+      const declared = new Set();
+      const referenced = new Map();
+      tnr.collect('// public class CommentedOutTests { }\n', 'a.cs', declared, referenced);
+      tnr.collect('/* public class BlockDeclTests { } */\n', 'b.cs', declared, referenced);
+      tnr.collect('var s = "public class StringDeclTests { }";\n', 'c.cs', declared, referenced);
+      assert.deepStrictEqual([...declared], [],
+        `死んだ宣言を実在と数えている: ${[...declared]}`);
+
+      // 陽性対照: 生きている宣言は当然数える（走査器が死んでいないことの担保）。
+      tnr.collect('public class LiveTests { }\n', 'd.cs', declared, referenced);
+      assert.deepStrictEqual([...declared], ['LiveTests'], '生きている宣言を数えていない');
+    });
+
+    // 0 件走査で静かに緑にしない門（#664 の作法 / IADR-0130）。
+    ok('check-test-name-references: 走査件数の門が 0 件を fail 側に置く', () => {
+      const tnr = require('./check-test-name-references.js');
+      assert.strictEqual(tnr.isScanTooSmall(0), true);
+      assert.strictEqual(tnr.isScanTooSmall(tnr.MIN_SCANNED - 1), true);
+      assert.strictEqual(tnr.isScanTooSmall(tnr.MIN_SCANNED), false);
+    });
+
+    // 🔴 除外はすべて理由つきである。**「直せないから除外」を通さないための形。**
+    ok('check-test-name-references: ALLOWED の全項目に理由が書いてある', () => {
+      const tnr = require('./check-test-name-references.js');
+      assert.ok(tnr.ALLOWED.size >= 3, '除外が空になっている（走査の前提が変わっている）');
+      for (const [name, reason] of tnr.ALLOWED) {
+        assert.ok(typeof reason === 'string' && reason.length > 10,
+          `${name} の除外理由が無い（除外を足すときは理由を書くこと）`);
+      }
+    });
+  }
+
   // --- check-scaffolding-frames: `.gitkeep` のみのディレクトリ（#1195 / ADR-0069 決定 5） -----
   //
   // 述語は 1 つだけである —— **追跡下に `.gitkeep` のみのディレクトリが存在しない**。
@@ -6180,11 +6345,13 @@ ${r.stderr}`);
       'check-nul-bytes.js',
       'check-plan-id-qualification.js',
       'check-scaffolding-frames.js',
+      // #1312: 注記が指す試験名の実在。git ls-files で母集合を引くのでクラス B である。
+      'check-test-name-references.js',
     ];
     const GUARDED = [...HEAD_CHECKERS, ...TRACKED_CHECKERS];
     const readScript = (f) => fs.readFileSync(path.join(REPO, 'scripts', f), 'utf8');
 
-    ok('#683: 偽の緑を返しうる検査器が A=3 / B=4 で宣言されている', () => {
+    ok('#683: 偽の緑を返しうる検査器が A=3 / B=5 で宣言されている', () => {
       const all = fs
         .readdirSync(path.join(REPO, 'scripts'))
         .filter((f) => /\.js$/.test(f) && !/\.test\.js$/.test(f))
@@ -6456,7 +6623,14 @@ ${r.stderr}`);
         //    新設したため 51 → 52（ラチェットが設計どおり発火した）。**`summary` / `description` は
         //    突合しない**（経路 B は意図的に凝縮した文面を持つ。バイト一致を課すと常に赤になる）。
         //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
-        assert.strictEqual(scripts.length, 52, `検査器の母集合が 52 本から変わった（${scripts.length} 件）`);
+        // ★ #1312 の取りこぼしで `check-test-name-references.js`（コード注記が指す `*Tests` が
+        //    **実在するか**。実在しない名前を指す注記は「試験がある」と読ませたまま何も固定しない）を
+        //    新設したため 52 → 53（ラチェットが設計どおり発火した）。**同型の事故は 7 回目**である
+        //    （#1311 で 1 件、#1312 起票時に 5 件、着手時の引き直しで 7 件）。
+        //    🔴 **機械が言えるのは「名前が実在するか」までである** —— 「指し先は実在するが
+        //    その帰結を固定していない」側は人が読むしかない。**射程を広げない**（広げると誤検出だらけになり、
+        //    検査器ごと無視されるようになる）。git ls-files で母集合を引くので TRACKED_CHECKERS に載る。
+        assert.strictEqual(scripts.length, 53, `検査器の母集合が 53 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
