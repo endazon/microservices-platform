@@ -25,6 +25,12 @@ public sealed class RabbitMqFixture : IAsyncLifetime
 
     public bool IsAvailable { get; private set; }
 
+    /// <summary>
+    /// コンテナ起動に失敗したときの原因（成功／未実行なら <c>null</c>）。
+    /// 🔴 **握り潰さずに残す**（#1292）—— 従前は理由がログに 1 行も出ず、原因を特定できなかった。
+    /// </summary>
+    public Exception? StartupError { get; private set; }
+
     public string? ConnectionString => _external ?? _container?.GetConnectionString();
 
     // 外部エンドポイントが設定されているか（空文字は「未設定」として扱う）。
@@ -52,9 +58,17 @@ public sealed class RabbitMqFixture : IAsyncLifetime
             await _container.StartAsync();
             IsAvailable = true;
         }
-        catch
+        catch (Exception ex)
         {
             IsAvailable = false;
+            StartupError = ex;
+
+            // 🔴 **Docker があるのに起動できないのは skip すべき事情ではない**（#1292）。
+            // 判定は `ContainerStartupFailure` が 1 つだけ持つ（理由もそこに書いた）。
+            var fail = ContainerStartupFailure.ToThrow(
+                nameof(RabbitMqFixture), "RabbitMQ", ExternalEndpointVariable,
+                ex, DockerRequired.IsAvailable());
+            if (fail is not null) throw fail;
         }
     }
 
