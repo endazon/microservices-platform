@@ -2,7 +2,7 @@
 title: コード注記が指す試験名が実在しない箇所を直し、機械で止める（#1312）
 type: spec
 status: done
-related_ids: [NFR, ADR-0004, ADR-0051, IADR-0130, IADR-0141, IADR-0377, IADR-0379, IADR-0400, IADR-0406]
+related_ids: [NFR, ADR-0012, ADR-0051, IADR-0115, IADR-0130, IADR-0141, IADR-0188, IADR-0379, IADR-0398, IADR-0400, IADR-0406]
 author: Claude（実装）
 created: 2026-09-08
 updated: 2026-09-08
@@ -38,14 +38,23 @@ issue は 5 件（6 件目 `RenameEdgeTypeOrderTests` は PR #1311 で解消済�
 
 ## 直す対象（6 件）
 
-| # | 参照（実在しない） | 実在する指し先 | 種別 |
-| --- | --- | --- | --- |
-| 1 | `GrpcSuggestionClientTests` | `LlmGatewayGrpcSuggestionClientTests` | 接頭辞の欠落 |
-| 2 | `GrpcDiagramCoderTests` | `LlmGatewayGrpcDiagramCoderTests` | 接頭辞の欠落 |
-| 3 | `SimilaritySourceLoggingTests` | `TermOverlapSimilarityCandidateSourceTests` | 別名 |
-| 4 | `CreateDocumentAttributeValidationTests` | `ValidationProblemContractTests` | 別名 |
-| 5 | `KnowledgeHealthReportGrpcTests` | `GrpcKnowledgeHealthReportTests` | **語順の入れ替え** |
-| 6 | `PrivateNoteEndpointsMappingTests` | 🔴 **無い** | **試験を足す** |
+| # | 参照（実在しない） | 実在する指し先 | 種別 | 注記が守ろうとしている決定 |
+| --- | --- | --- | --- | --- |
+| 1 | `GrpcSuggestionClientTests` | `LlmGatewayGrpcSuggestionClientTests` | 接頭辞の欠落 | [[IADR-0400]] 決定 4（`Sent` の向き） |
+| 2 | `GrpcDiagramCoderTests` | `LlmGatewayGrpcDiagramCoderTests` | 接頭辞の欠落 | 同上 ／ ADR-0012（機密制御） |
+| 3 | `SimilaritySourceLoggingTests` | `TermOverlapSimilarityCandidateSourceTests` | 別名 | ADR-0051 決定 2（ログは起点 ID だけ） |
+| 4 | `CreateDocumentAttributeValidationTests` | `ValidationProblemContractTests` | 別名 | [[IADR-0398]] 決定 3（属性の 3 規則）／FR-21 受け入れ基準 ⑥（413） |
+| 5 | `KnowledgeHealthReportGrpcTests` | `GrpcKnowledgeHealthReportTests` | **語順の入れ替え** | [[IADR-0379]] 決定 4（confused deputy の防止） |
+| 6 | `PrivateNoteEndpointsMappingTests` | 🔴 **無い** | **試験を足す** | [[IADR-0406]] 決定 1（生成マッパへ縮退を持ち込まない） |
+
+🔴 **この列は `related_ids` の裏づけである。** frontmatter に挙げる ID は
+**本文のどこかで実際に理由づけに使われていること**を条件にする ——
+別の作業仕様書の frontmatter を下敷きにすると、**無関係な ID が黙って残る**
+（PR #1330 のレビュー 6 巡目が実測して指摘した。`ADR-0004` を含む 6 件が無関係だった）。
+
+🔴 **上の行の `ADR-0004` は「無関係な例」として挙げているだけである。`related_ids` へ足さないこと。**
+—— **是正の記録を書く行為が、是正の対象と同じ文字列を本文へ持ち込む**（母集合の規則 8）。
+本仕様書では検査器の allowlist でも同じことが起きている（`PrivateNoteEndpointsMappingTests`）。
 
 🔴 **指し先を直すだけで済ませない。** issue の手順 2 のとおり、
 **「その試験が本当にその帰結を固定しているか」を変異試験で実測してから**直す。
