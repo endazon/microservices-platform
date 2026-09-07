@@ -1,7 +1,7 @@
 ---
 title: 統合スタックへメッシュを既定で入れ、G12 を実際に評価させる（#1304）
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR, ADR-0005, ADR-0021, IADR-0130, IADR-0248, IADR-0307, IADR-0317, IADR-0377, IADR-0407]
 author: Claude（実装）
 created: 2026-09-08
@@ -84,16 +84,78 @@ env:
 
 ## テスト（受け入れ基準）
 
-- [ ] Given 統合スタック / When G12 が走る / Then **走査対象 0 件で緑を返さない**（[[IADR-0407]] 決定 1・実装済み）
-- [ ] Given メッシュを入れた統合スタック / When 何も patch しない / Then **緑**（陰性対照・run 34138046452 で実測済み）
-- [ ] Given 同じスタック / When `kubectl patch` で `PeerAuthentication` の `spec` を書く /
+- [x] Given 統合スタック / When G12 が走る / Then **走査対象 0 件で緑を返さない**（[[IADR-0407]] 決定 1・実装済み）
+- [x] Given メッシュを入れた統合スタック / When 何も patch しない / Then **緑**（陰性対照・run 34138046452 で実測済み）
+- [x] Given 同じスタック / When `kubectl patch` で `PeerAuthentication` の `spec` を書く /
       Then **G12 が赤になる**（🔴 本体。稼働クラスタで実測する）
-- [ ] Given 採らなかった案 3 / When 記録を読む / Then **理由が [[IADR-0407]] 決定 5 に在る**
-- [ ] `ISTIO` の宣言がジョブレベルの `env` に 1 度だけ在り、**既定で `1`** である（自己診断で固定）
-- [ ] **手動で `false` にすればメッシュ無しで起こせる**（比較の退路。自己診断で固定）
-- [ ] up のコマンド行へ `ISTIO=1` を直書きしていない（門へ届かない形の再発防止）
+- [x] Given 採らなかった案 3 / When 記録を読む / Then **理由が [[IADR-0407]] 決定 5 に在る**
+- [x] `ISTIO` の宣言がジョブレベルの `env` に 1 度だけ在り、**既定で `1`** である（自己診断で固定）
+- [x] **手動で `false` にすればメッシュ無しで起こせる**（比較の退路。自己診断で固定）
+- [x] up のコマンド行へ `ISTIO=1` を直書きしていない（門へ届かない形の再発防止）
 
-## 変異試験（実装後に実出力で埋める）
+## 変異試験（稼働クラスタで実走した。実出力を記録する）
+
+使い捨てブランチ `tmp/1304-g12-mutation` へ `kubectl` の段を足して `workflow_dispatch` を撃った。
+**段は本流へ残していない**（決定 3）。
+
+### 🔴 1 回目は**変異が着地しなかった**（run 34140381183 の緑は証拠にならない）
+
+`kubectl patch --type=merge` を**同じ値**（`PERMISSIVE`）へ当てた。
+
+```
+helm (patch 前の書き手)
+peerauthentication.security.istio.io/microservices-platform-mtls patched (no change)
+helm (patch 後の書き手)
+```
+
+kubectl が差分なしと判断し、**field manager を記録し直さなかった。**
+run は `success` だが、これは **「G12 が見逃した」ではなく「変異が無かった」**である。
+
+**規律**: 🔴 **変異が着地したことを段の中で確かめ、着地していなければその段で落とす。**
+2 回目では `managedFields` に `drift-probe` が居ることを `grep -q` し、居なければ `exit 1` するようにした。
+（#1320 で同型の事故を踏んでおり、**2 回目**である。ただし再発防止は作法で足りるので規約は増やさない。）
+
+### ✅ 2 回目 —— 値を 1 文字も変えずに所有権だけ奪う
+
+サーバサイド apply を別の field manager（`drift-probe`）で当てる。
+G12 の **(c)「`spec` を書いている field manager が `helm` ただ 1 つ」だけ**を突く形であり、
+**(b) の値の突合では捕まらない。これが受け入れ基準 2 の本体である。**
+
+[run 34141507900](https://github.com/endazon/microservices-platform/actions/runs/34141507900) — **failure**
+
+```
+--- patch 前 ---
+helm
+PERMISSIVE (mode)
+peerauthentication.security.istio.io/microservices-platform-mtls serverside-applied
+--- patch 後 ---
+drift-probe helm
+PERMISSIVE (mode)          ← 値は変わっていない
+MUTATION LANDED
+```
+
+門の出力:
+
+```
+[check-stack-ready] 1 件の失敗:
+  - [G12] PeerAuthentication/microservices-platform-mtls の spec を helm 以外が書いている（drift-probe）。
+    Helm 4 はサーバサイド apply なので、**以後の `helm upgrade` は conflict で恒久的に失敗する**
+    （`--take-ownership` も `--force` も効かない）。復旧手順は docs/operations/operations.md。
+    モードの変更は `scripts/lib/mesh-mtls-mode.sh` の `set_mesh_mtls_mode`（helm 経由）で行うこと（#1159）。
+```
+
+| 観点 | 結果 |
+| --- | --- |
+| 失敗の件数 | **1 件だけ**（G12 のみ。値・資材数は一致したまま） |
+| 落ちた段 | `🔴 Gate — the stack is actually up` |
+| 後段 | すべて skipped（門が先に倒した） |
+| G1 | `Deployment 18/18 が available、Pod 19 件を判定した` —— **スタックは健全**。落ちたのは所有権だけ |
+
+**陰性対照**は [run 34138046452](https://github.com/endazon/microservices-platform/actions/runs/34138046452)
+（何も patch しない同じ構成）で **success / 13 分 23 秒**である。
+
+⇒ **受け入れ基準 2（本体）が稼働クラスタで満たされた。**
+`--self-test` のスタブは「判定器が正しい」までしか言わないが、**これは実際のクラスタで赤くなることを示している。**
 
 ## やらないこと
 
