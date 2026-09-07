@@ -70,9 +70,10 @@ message UserContext {
 
   // ABAC 判定に用いる利用者属性。線上表現は REST の `AccessScopeRequest.UserAttributes` と同じ
   // （1 キー 1 値・集合値キーはカンマ連結。`UserAttributeEncoding`）。
-  // 🔴 **現に載るのは clearance / department の 2 つだけである**（プラットフォーム全体の現状。
-  // 計画 `07_abac-attribute-model` は projects / tags も定めるが、どの呼び出し元も送っていない）。
-  // **運ばれない属性は判定に効かない。**
+  // 載るのは単値キー（clearance / department）と、契約が集合値と宣言したキー
+  // （`UserAttributeEncoding.SetValuedKeys` = tags / projects）である（ADR-0080 決定 1・2 / #1323）。
+  // 🔴 **抽出点は `BffScopeResolver.ExtractUserAttributes` 1 つである**（[[IADR-0411]]）——
+  // 呼び出し元ごとにキーを列挙すると、その経路だけ運ばない属性ができ、判定に効かなくなる。
   map<string, string> user_attributes = 2;
 
   // read / analyze / manage / write。🔴 **空文字は read へ丸めない** ——

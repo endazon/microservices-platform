@@ -492,4 +492,104 @@ public class AbacEvaluatorTests
         result.Branches.Should().BeEmpty(why);
         result.AllowedFilters.Should().BeEmpty(why);
     }
+
+    // ---- #1323 / ADR-0080 決定 2: 集合値の利用者属性は「交差が空でないこと」でマッチする ------
+    //
+    // 計画の裁定（ADR-0080 決定 2）は **交差**であって部分集合ではない。
+    // 「タグを 1 つ足しただけで既存のアクセスが失われる」振る舞いを明示的に退けている。
+    // 🔴 ADR-0062 決定 2 の**部分集合**判定と混同しない —— あちらは**属性割当の統制**であり、
+    // 向きが逆（狭める）である。ここはアクセス判定（広げる・OR）である。
+    //
+    // 🔴 **4 本は対で読む。** 陽性 1 本だけだと「集合値キーは常に true」で通ってしまい、
+    // 陰性だけだと「常に false」で通ってしまう。単値の回帰も併せて置く
+    // （一律に分割する実装は `clearance` の階段を静かに壊す。IADR-0385 の禁則）。
+
+    // FR-05, FR-09, ADR-0080 決定 2（陽性）: 利用者のタグ集合と許容値集合の交差が 1 つでもあれば通る。
+    [Fact]
+    public void ResolveScope_SetValuedUserAttribute_MatchesWhenIntersectionIsNotEmpty()
+    {
+        // 線上表現（UserAttributeEncoding.Separator）で運ばれてくる。
+        var req = new AccessScopeRequest("u1", new() { ["tags"] = "sales,hr" });
+        var policies = new[]
+        {
+            NamedReadPolicy("営業資料", new() { ["tags"] = ["sales"] },
+                new() { ["confidentiality"] = ["internal"] }),
+        };
+
+        var result = AbacEvaluator.ResolveScope(req, policies);
+
+        result.Granted.Should().BeTrue("sales は交差する（部分集合であることは要求しない）");
+        result.Branches.Should().ContainSingle().Which.Name.Should().Be("営業資料");
+    }
+
+    // FR-05, ADR-0080 決定 2（陰性対照 1）: 交差が空なら通らない。
+    // 🔴 これが無いと「集合値キーは常に true」という縮退実装が陽性テストを通してしまう。
+    [Fact]
+    public void ResolveScope_SetValuedUserAttribute_DoesNotMatchWhenIntersectionIsEmpty()
+    {
+        var req = new AccessScopeRequest("u2", new() { ["tags"] = "legal,finance" });
+        var policies = new[]
+        {
+            NamedReadPolicy("営業資料", new() { ["tags"] = ["sales"] },
+                new() { ["confidentiality"] = ["internal"] }),
+        };
+
+        var result = AbacEvaluator.ResolveScope(req, policies);
+
+        result.Granted.Should().BeFalse("交差が空である——FR-05 の deny-by-default");
+        result.Branches.Should().BeEmpty();
+    }
+
+    // FR-05, ADR-0080 決定 3（陰性対照 2）: 集合値キーでも「属性を持たない」はマッチしない。
+    [Fact]
+    public void ResolveScope_SetValuedUserAttribute_DoesNotMatchWhenTheAttributeIsAbsent()
+    {
+        var req = new AccessScopeRequest("u3", new() { ["clearance"] = "internal" });
+        var policies = new[]
+        {
+            NamedReadPolicy("営業資料", new() { ["tags"] = ["sales"] },
+                new() { ["confidentiality"] = ["internal"] }),
+        };
+
+        var result = AbacEvaluator.ResolveScope(req, policies);
+
+        result.Granted.Should().BeFalse("tags を持たない利用者はマッチしない（ADR-0080 決定 3）");
+    }
+
+    // FR-05, IADR-0385 の禁則（回帰の担保）: 単値キーは分割しない。
+    // 🔴 一律に分割すると `clearance: "internal"` が要素として扱われるだけでは済まず、
+    // 区切り文字を含む値が**辞書外の要素**として通り得る。**階段ポリシーが静かに壊れる。**
+    [Fact]
+    public void ResolveScope_SingleValuedUserAttribute_IsNotSplitIntoASet()
+    {
+        // 「internal,restricted」という 1 つの値（そんな clearance は辞書に無い）。
+        var req = new AccessScopeRequest("u4", new() { ["clearance"] = "internal,restricted" });
+        var policies = new[]
+        {
+            NamedReadPolicy("internal 取扱者", new() { ["clearance"] = ["internal"] },
+                new() { ["confidentiality"] = ["public", "internal"] }),
+        };
+
+        var result = AbacEvaluator.ResolveScope(req, policies);
+
+        result.Granted.Should().BeFalse(
+            "単値キーを分割すると、辞書に無い合成値が『internal を含む』として通ってしまう");
+    }
+
+    // FR-05, ADR-0080 決定 2（大文字小文字・区切りの揺れ）: 分割規則は契約 1 か所に従う。
+    [Theory]
+    [InlineData("SALES,hr", "大文字小文字は区別しない")]
+    [InlineData("sales hr", "空白でも切る（UserAttributeEncoding.SplitOrdered の規則）")]
+    [InlineData(" sales , hr ", "前後の空白は落とす")]
+    public void ResolveScope_SetValuedUserAttribute_UsesTheContractSplittingRule(string carried, string why)
+    {
+        var req = new AccessScopeRequest("u5", new() { ["tags"] = carried });
+        var policies = new[]
+        {
+            NamedReadPolicy("営業資料", new() { ["tags"] = ["sales"] },
+                new() { ["confidentiality"] = ["internal"] }),
+        };
+
+        AbacEvaluator.ResolveScope(req, policies).Granted.Should().BeTrue(why);
+    }
 }

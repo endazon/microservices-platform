@@ -188,6 +188,13 @@ plan_refs:
 🔴 **`AbacEvaluator.MatchesUserConditions`（`AbacEvaluator.cs:72-78`）はキーを固定していない** ——
 `userAttrs.TryGetValue(key, …)` が失敗した条件は**マッチしない**。すなわち
 **`tags` / `projects` を利用者条件に持つポリシーは、配備されても 1 度もマッチしない。**
+
+★［2026-09-07 追記 / #1323］**この状態は解消した。** `ADR-0080`（2026-09-05・決定 1・2 と
+フォローアップ 1・2）の裁定に従い、realm の `abac-attributes` へ `tags` / `projects` の多値マッパーを
+足し、**抽出点を 1 つへ集約**し（[[IADR-0411]] 決定 1）、`AbacEvaluator.MatchesUserConditions` を
+**交差意味論**へ合わせた（同 決定 3）。**本 IADR の当時の記述は当時の事実として残す。**
+なお本 IADR で足した `GrpcDocumentTagWriter` の抽出は**同じ論理の 6 つ目の複製**であり、
+#1323 の起票時の走査（4 箇所）から漏れていた —— **移送のたびに複製が 1 つ増える構造だった。**
 倒れる向きは deny（fail-closed）なので情報は漏れないが、
 **SC-17 で割り当てたタグは文書単位の判定に一切効かない。**
 これは `ADR-0086` フォローアップ 2 の報告事項であり、**本 PR では直さない。**

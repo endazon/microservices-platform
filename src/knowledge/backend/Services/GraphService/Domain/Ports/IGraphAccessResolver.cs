@@ -1,4 +1,5 @@
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 
 namespace GraphService.Domain.Ports;
 
@@ -61,24 +62,12 @@ public sealed record GraphUserContext(
             ctx.User.Identity.Name ?? AnonymousUserId, ExtractUserAttributes(ctx), true);
     }
 
-    // JWT クレームから ABAC 判定に用いる利用者属性を取り出す（WikiAccessResolver と同一）。
-    //
-    // 🔴 **読むのは clearance と department の 2 つだけである。** これはプラットフォーム全体の
-    // 現状であり（`BffScopeResolver` / `WikiAccessResolver` / `AnalysisEndpoints` も同じ 2 つ）、
-    // 本サービスが絞っているのではない。計画 `07_abac-attribute-model` §利用者属性 は
-    // `projects` / `tags` も定めるが、**どの呼び出し元も送っていない**。
-    // 🔴 **運ばれない属性は判定に効かない**（`AbacEvaluator.MatchesUserConditions` は
-    // 引けなかったキーの条件を「マッチしない」として扱う。倒れる向きは deny である）。
-    // 広げるのは `ADR-0086` フォローアップ 2 の裁定を待つ。
+    // FR-05, ADR-0080, IADR-0411 (#1323): 抽出はプラットフォーム唯一の点へ委譲する。
+    // 🔴 **ここで読むキーを列挙しない。** 同じ列挙が 6 か所に散っていたことが #1323 の欠陥であり、
+    // 1 か所でも取り残すとその経路だけ判定が変わる。集合値（`tags` / `projects`）の符号化も
+    // 共有点が持つ（`UserAttributeEncoding`）。
     private static Dictionary<string, string> ExtractUserAttributes(HttpContext ctx)
-    {
-        var attrs = new Dictionary<string, string>();
-        var clearance = ctx.User.FindFirst("clearance")?.Value;
-        var department = ctx.User.FindFirst("department")?.Value;
-        if (clearance is not null) attrs["clearance"] = clearance;
-        if (department is not null) attrs["department"] = department;
-        return attrs;
-    }
+        => BffScopeResolver.ExtractUserAttributes(ctx);
 }
 
 // FR-05, FR-21, IADR-0272 決定 4: 本サービスが解決するアクションの語彙。
