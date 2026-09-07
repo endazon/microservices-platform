@@ -3250,6 +3250,28 @@ ${r.stderr}`);
       assert.deepStrictEqual([...referenced.keys()], ['GhostInCommentTests'], 'コメントを拾えていない');
     });
 
+    // 🔴 **ブロックコメントでも逃げられない**（PR #1330 のレビューが指摘した偽陰性）。
+    // 行コメントだけを見ていると、同じ主張をブロックコメントで書くだけで検査を丸ごと逃れられる。
+    ok('check-test-name-references: ブロックコメント内の名前も拾う', () => {
+      const tnr = require('./check-test-name-references.js');
+      const declared = new Set();
+      const referenced = new Map();
+      tnr.collect('/*\n * GhostInBlockTests が固定する。\n */\n', 'z.cs', declared, referenced);
+      assert.deepStrictEqual([...referenced.keys()], ['GhostInBlockTests'],
+        'ブロックコメントを拾えていない（書き方で逃げ道ができている）');
+      assert.deepStrictEqual(referenced.get('GhostInBlockTests'), ['z.cs:2'], '出現行が違う');
+    });
+
+    // 🔴 リテラル内のスラッシュ 2 つ（URL 等）をコメント開始と誤らない（同レビューの偽陽性）。
+    ok('check-test-name-references: リテラル内の URL をコメントと誤らない', () => {
+      const tnr = require('./check-test-name-references.js');
+      const declared = new Set();
+      const referenced = new Map();
+      tnr.collect('var u = "http://example.com/GhostInUrlTests";\n', 'u.cs', declared, referenced);
+      assert.strictEqual(referenced.size, 0, `URL を拾っている: ${[...referenced.keys()]}`);
+      assert.strictEqual(tnr.stripStringLiterals('var u = "http://x";').includes('//'), false);
+    });
+
     // 0 件走査で静かに緑にしない門（#664 の作法 / IADR-0130）。
     ok('check-test-name-references: 走査件数の門が 0 件を fail 側に置く', () => {
       const tnr = require('./check-test-name-references.js');

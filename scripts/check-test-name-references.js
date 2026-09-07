@@ -21,8 +21,11 @@
  *
  * 走査:
  *   git ls-files で引いた src 配下の C#（submodule は git ls-files に出ないので自然に対象外）の
- *   **コメント部分**（スラッシュ 2 つ以降）から *Tests を集め、同じ母集合の型宣言と突き合わせる。
- *   文字列リテラル内は拾わない（コメントだけを見る）。
+ *   **コメント部分**から *Tests を集め、同じ母集合の型宣言と突き合わせる。
+ *   🔴 **行コメントとブロックコメントの両方を見る** —— 片方だけだと、同じ主張をもう一方で
+ *   書くだけで検査を逃れられる（PR #1330 のレビューが指摘した偽陰性）。
+ *   🔴 **文字列リテラルの中は拾わない** —— 拾うと試験名を配列で持つ実装コードが軒並み誤検出になる。
+ *   リテラル内のスラッシュ 2 つ（URL 等）をコメント開始と誤らないよう、**先にリテラルを伏せてから**探す。
  *
  * 外部依存ゼロ（Node 標準モジュールのみ）。違反があれば終了コード 1。
  *
@@ -84,24 +87,91 @@ function trackedCsFiles(root = REPO_ROOT) {
     .filter((f) => f.startsWith('src/'));
 }
 
-/** 1 行のコメント部分だけを返す（スラッシュ 2 つ以降。無ければ null）。 */
+/**
+ * 1 行のコメント部分だけを返す（無ければ null）。
+ *
+ * 🔴 **文字列リテラルを先に落としてから探す。** 素朴に最初のスラッシュ 2 つを探すと、
+ * `var url = "http://example.com/FooTests";` の `//` をコメント開始と誤り、
+ * **文字列の中身をコメントとして走査してしまう**（PR #1330 のレビューが指摘した偽陽性）。
+ * 実測では現状 0 件だが、URL を持つ行が増えれば顕在化する。
+ *
+ * ここでやるのは**リテラルの中身を伏せること**だけで、字句解析はしない ——
+ * 伏せた結果は「コメントの開始位置を決める」ためにしか使わないので、これで足りる。
+ */
+function stripStringLiterals(line) {
+  let out = '';
+  let i = 0;
+  while (i < line.length) {
+    const c = line[i];
+    if (c === '"' || c === '\'') {
+      out += ' ';
+      i += 1;
+      while (i < line.length) {
+        if (line[i] === '\\') { i += 2; out += '  '; continue; }
+        if (line[i] === c) { out += ' '; i += 1; break; }
+        out += ' ';
+        i += 1;
+      }
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
+
 function commentOf(line) {
-  const i = line.indexOf('//');
+  const i = stripStringLiterals(line).indexOf('//');
   return i < 0 ? null : line.slice(i);
 }
 
 const NAME_RE = /\b([A-Za-z0-9_]*[A-Za-z0-9_]Tests)\b/g;
 const DECL_RE = /\b(?:class|record|struct|interface)\s+([A-Za-z0-9_]*Tests)\b/g;
 
-/** 1 ファイルから「宣言された試験型」と「コメントが指す試験名」を集める。 */
+/**
+ * 1 ファイルから「宣言された試験型」と「コメントが指す試験名」を集める。
+ *
+ * 🔴 **ブロックコメントも見る。** 行コメントだけを見ていると、同じ主張をブロックコメントで
+ * 書いた瞬間に**検査を丸ごと逃れられる**（PR #1330 のレビューが指摘した偽陰性）。
+ * 実測では現状 0 件だが、**検査器の目的は「同じ事故を止めること」なので、書き方で逃げ道ができる形は塞ぐ。**
+ * 判定に使うのはコメントの中身だけなので、入れ子の扱い（C# はブロックを入れ子にできない）や
+ * リテラル内の記号を厳密に追う必要は無い。
+ */
 function collect(text, rel, declared, referenced) {
+  const add = (name, lineNo) => {
+    if (!referenced.has(name)) referenced.set(name, []);
+    const site = `${rel}:${lineNo}`;
+    if (!referenced.get(name).includes(site)) referenced.get(name).push(site);
+  };
+
+  let inBlock = false;
   text.split('\n').forEach((line, i) => {
     for (const m of line.matchAll(DECL_RE)) declared.add(m[1]);
-    const c = commentOf(line);
-    if (c === null) return;
-    for (const m of c.matchAll(NAME_RE)) {
-      if (!referenced.has(m[1])) referenced.set(m[1], []);
-      referenced.get(m[1]).push(`${rel}:${i + 1}`);
+
+    let rest = line;
+    while (rest.length > 0) {
+      if (inBlock) {
+        const end = rest.indexOf('*/');
+        const chunk = end < 0 ? rest : rest.slice(0, end);
+        for (const m of chunk.matchAll(NAME_RE)) add(m[1], i + 1);
+        if (end < 0) return;
+        rest = rest.slice(end + 2);
+        inBlock = false;
+        continue;
+      }
+      const stripped = stripStringLiterals(rest);
+      const lineAt = stripped.indexOf('//');
+      const blockAt = stripped.indexOf('/*');
+      if (lineAt >= 0 && (blockAt < 0 || lineAt < blockAt)) {
+        for (const m of rest.slice(lineAt).matchAll(NAME_RE)) add(m[1], i + 1);
+        return;
+      }
+      if (blockAt >= 0) {
+        inBlock = true;
+        rest = rest.slice(blockAt + 2);
+        continue;
+      }
+      return;
     }
   });
 }
@@ -167,6 +237,40 @@ function selfTest() {
     const lit = write('a/Literal.cs', 'var s = "GhostInStringTests";\n');
     const r = scan(dir, [lit]);
     t('scan: 文字列リテラル内の名前は拾わない', r.violations.length === 0, r.violations);
+  }
+  {
+    // 🔴 陰性対照（PR #1330 のレビュー）: リテラル内のスラッシュ 2 つをコメント開始と誤らない。
+    const url = write('a/Url.cs', 'var u = "http://example.com/GhostInUrlTests";\n');
+    const r = scan(dir, [url]);
+    t('scan: リテラル内の URL をコメントと誤らない', r.violations.length === 0, r.violations);
+  }
+  t('stripStringLiterals: リテラルの中身を伏せる',
+    stripStringLiterals('var u = "http://x"; // A').includes('//') === true);
+  t('stripStringLiterals: 伏せた後にリテラル内のスラッシュ 2 つが残らない',
+    stripStringLiterals('var u = "http://x";').includes('//') === false);
+  t('stripStringLiterals: エスケープされた引用符でリテラルが閉じない',
+    stripStringLiterals('var u = "a\\"//b"; // C').indexOf('//') === 'var u = "a\\"//b"; '.length,
+    stripStringLiterals('var u = "a\\"//b"; // C'));
+  {
+    // 🔴 陽性（PR #1330 のレビュー）: ブロックコメントの中の名前も拾う。
+    // ここを拾わないと、同じ主張をブロックコメントで書くだけで検査を逃れられる。
+    const blk = write('a/Block.cs', '/* この帰結は GhostInBlockTests が固定する。 */\npublic class Blk { }\n');
+    const r = scan(dir, [blk]);
+    t('scan: ブロックコメント内の名前を拾う', r.violations.length === 1
+      && r.violations[0].name === 'GhostInBlockTests', r.violations);
+  }
+  {
+    // 複数行にまたがるブロックコメントも拾う（行番号は出現行）。
+    const blk2 = write('a/Block2.cs', '/*\n * GhostMultilineTests が固定する。\n */\n');
+    const r = scan(dir, [blk2]);
+    t('scan: 複数行のブロックコメント内も拾い、出現行を返す',
+      r.violations.length === 1 && r.violations[0].sites[0] === `${blk2}:2`, r.violations);
+  }
+  {
+    // ブロックが閉じた後のコードは走査しない（対照）。
+    const blk3 = write('a/Block3.cs', '/* x */ var s = "GhostAfterBlockTests";\n');
+    const r = scan(dir, [blk3]);
+    t('scan: ブロックが閉じた後のリテラルは拾わない', r.violations.length === 0, r.violations);
   }
   {
     // 🔴 陰性対照: allowlist の名前は違反にしない。
@@ -245,4 +349,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { commentOf, collect, scan, isScanTooSmall, ALLOWED, MIN_SCANNED };
+module.exports = { commentOf, stripStringLiterals, collect, scan, isScanTooSmall, ALLOWED, MIN_SCANNED };
