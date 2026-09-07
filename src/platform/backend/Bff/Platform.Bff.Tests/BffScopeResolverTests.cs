@@ -283,4 +283,85 @@ public class BffScopeResolverTests
 
         attrs.Should().ContainKey("department").And.NotContainKey("clearance");
     }
+
+    // ---- #1323 / ADR-0080 決定 1・2, IADR-0411: 集合値の利用者属性を運ぶ ----------------------
+    //
+    // 🔴 **Keycloak の多値属性マッパーは同じ型のクレームを複数発行する。** `FindFirst` で読むと
+    // **先頭 1 値へ畳まれる**（#1243 で実測した欠陥そのもの）。ここが畳むと、下流の交差判定
+    // （`AbacEvaluator.MatchesUserConditions`）は正しくても**入力が痩せているせいで**
+    // マッチしなくなる。**倒れる向きは deny だが、効かせたい統制が黙って効かない。**
+
+    // FR-05, FR-09, ADR-0080 決定 1（陽性）: 多値クレームは線上表現へ連結する。
+    [Fact]
+    public void ExtractUserAttributes_MultiValuedTagClaims_AreJoinedNotCollapsed()
+    {
+        var ctx = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim("clearance", "internal"),
+                new Claim("tags", "sales"),
+                new Claim("tags", "hr"),
+            ], authenticationType: "test")),
+        };
+
+        var attrs = BffScopeResolver.ExtractUserAttributes(ctx);
+
+        UserAttributeEncoding.Split(attrs["tags"]).Should().BeEquivalentTo(["sales", "hr"],
+            "先頭 1 値へ畳むと 2 つ目のタグを条件に持つポリシーが黙ってマッチしなくなる");
+        // 陽性対照: 単値キーの読み方は 1 文字も変わっていない。
+        attrs["clearance"].Should().Be("internal");
+    }
+
+    // FR-05, ADR-0080（陰性対照・IADR-0385 の禁則）: 単値キーは連結・分割の対象にしない。
+    [Fact]
+    public void ExtractUserAttributes_SingleValuedKeys_AreNotTreatedAsSets()
+    {
+        // 区切り文字を含む単値。**分割してはならない**（辞書外の値が要素として通る）。
+        var ctx = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim("clearance", "internal,restricted")], authenticationType: "test")),
+        };
+
+        var attrs = BffScopeResolver.ExtractUserAttributes(ctx);
+
+        attrs["clearance"].Should().Be("internal,restricted",
+            "単値キーへ集合の規則を適用すると clearance の値域へ区切り文字が侵食する");
+        UserAttributeEncoding.IsSetValued("clearance").Should().BeFalse("陽性対照: 集合値キーではない");
+    }
+
+    // FR-05（陰性対照）: 集合値クレームが無ければキー自体を載せない。
+    // 空文字を載せると「属性は持つが空」となり、単値キーの欠落と扱いがずれる。
+    [Fact]
+    public void ExtractUserAttributes_NoSetValuedClaims_OmitsTheKeysEntirely()
+    {
+        var ctx = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim("clearance", "public")], authenticationType: "test")),
+        };
+
+        var attrs = BffScopeResolver.ExtractUserAttributes(ctx);
+
+        attrs.Should().NotContainKey("tags").And.NotContainKey("projects");
+    }
+
+    // FR-05, ADR-0080（回帰の担保）: 集合値キーの列挙は契約 1 か所（UserAttributeEncoding）に従う。
+    // 🔴 抽出点が独自にキーを列挙し始めると #1323 が再発する。
+    [Fact]
+    public void ExtractUserAttributes_CarriesEverySetValuedKeyDeclaredByTheContract()
+    {
+        var claims = UserAttributeEncoding.SetValuedKeys
+            .Select(k => new Claim(k, "v-" + k)).ToArray();
+        var ctx = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationType: "test")),
+        };
+
+        var attrs = BffScopeResolver.ExtractUserAttributes(ctx);
+
+        foreach (var key in UserAttributeEncoding.SetValuedKeys)
+            attrs.Should().ContainKey(key, "契約が集合値と宣言したキーは 1 つ残らず運ぶ");
+    }
 }

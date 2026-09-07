@@ -43,6 +43,25 @@ public class GrpcGraphNeighborExpanderTests
         fake.LastRequest.DocumentId.Should().Be(Seed.ToString());
     }
 
+    // 🔴 T-01b（#1323 / ADR-0080 決定 1）: **集合値の利用者属性も本文で運ぶ。**
+    // この経路だけ載せ忘れると、近傍展開の ABAC だけが`tags`を条件に持つポリシーへマッチしなくなる。
+    // 属性の抽出は共有点（`BffScopeResolver.ExtractUserAttributes`）1 つに集約してある（[[IADR-0411]]）。
+    [Fact]
+    public async Task 集合値の利用者属性も本文で運ぶ()
+    {
+        var fake = new FakeClient(Neighborhood(), Weights());
+
+        await Expander(fake, Authenticated("alice", clearance: "internal", tags: ["sales", "hr"]))
+            .ExpandAsync([Seed], 1, TestContext.Current.CancellationToken);
+
+        var carried = fake.LastRequest!.User.UserAttributes;
+        carried.Should().ContainKey("tags");
+        Platform.Shared.Contracts.Dtos.UserAttributeEncoding.Split(carried["tags"])
+            .Should().BeEquivalentTo(["sales", "hr"], "先頭 1 値へ畳むと 2 つ目のタグが効かない");
+        // 陽性対照: 単値キーは従来どおり運ばれている（「集合値だけ運ぶ」実装を落とす）。
+        carried.Should().Contain(new KeyValuePair<string, string>("clearance", "internal"));
+    }
+
     // 🔴 T-02: **利用者の JWT をメタデータへ載せない**（confused deputy の防止。
     // 計画 `ADR-0086` 決定 1 / [[IADR-0379]] 決定 4）。載るのは**チャネルに付いた s2s だけ**であり、
     // 呼び出しごとのヘッダは 1 本も足さない。
@@ -204,11 +223,13 @@ public class GrpcGraphNeighborExpanderTests
         new StubAccessor(new DefaultHttpContext());
 
     private static IHttpContextAccessor Authenticated(
-        string name, string? clearance = null, string? department = null)
+        string name, string? clearance = null, string? department = null, string[]? tags = null)
     {
         var claims = new List<Claim> { new(ClaimTypes.Name, name) };
         if (clearance is not null) claims.Add(new Claim("clearance", clearance));
         if (department is not null) claims.Add(new Claim("department", department));
+        // ADR-0080 決定 1 (#1323): 集合値は**多値クレーム**として届く（Keycloak の multivalued マッパー）。
+        foreach (var tag in tags ?? []) claims.Add(new Claim("tags", tag));
         var ctx = new DefaultHttpContext
         {
             User = new ClaimsPrincipal(new ClaimsIdentity(claims, "test")),

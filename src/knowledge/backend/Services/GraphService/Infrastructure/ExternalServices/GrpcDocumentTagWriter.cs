@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 using GraphService.Domain.Ports;
 using Grpc.Core;
 using Grpc.Net.Client;
@@ -115,19 +116,14 @@ public sealed class GrpcDocumentTagWriter(
         return TagWriteOutcome.Unavailable;
     }
 
-    // 🔴 **読むのは clearance と department の 2 つだけである**（`GraphUserContext` と同じ 2 つ。
-    // プラットフォーム全体の現状であり、本経路が絞っているのではない）。
+    // FR-05, ADR-0080, IADR-0411 (#1323): 抽出はプラットフォーム唯一の点へ委譲する。
+    // 🔴 **ここで読むキーを列挙しない。** 同じ列挙が 6 か所に散っていたことが #1323 の欠陥であり、
+    // 1 か所でも取り残すとその経路だけ判定が変わる。集合値（`tags` / `projects`）の符号化も
+    // 共有点が持つ（`UserAttributeEncoding`）。
     // **この口では現に判定に使われない**（後段は所有者束縛とロールの選言である）が、
     // 利用者文脈の 3 項目を欠かさずに運ぶ（計画 `ADR-0086` 決定 1 の形）。
     private static Dictionary<string, string> ExtractUserAttributes(HttpContext ctx)
-    {
-        var attrs = new Dictionary<string, string>();
-        var clearance = ctx.User.FindFirst("clearance")?.Value;
-        var department = ctx.User.FindFirst("department")?.Value;
-        if (clearance is not null) attrs["clearance"] = clearance;
-        if (department is not null) attrs["department"] = department;
-        return attrs;
-    }
+        => BffScopeResolver.ExtractUserAttributes(ctx);
 }
 
 // FR-18, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4・5, [[IADR-0410]] (#1255):

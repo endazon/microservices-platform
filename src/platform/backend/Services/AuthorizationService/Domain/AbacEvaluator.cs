@@ -73,11 +73,26 @@ public class AbacEvaluator
         Dictionary<string, string> userAttrs, Dictionary<string, List<string>>? conditions)
     {
         // FR-05: 条件 null（＝条件なし）は全利用者にマッチ。null を foreach して落ちないよう防御する。
+        // **この規則は #1324 が両方向の変異で固定している**（AbacEvaluatorTests の対）。
         foreach (var (key, allowedValues) in conditions ?? [])
         {
+            // ADR-0080 決定 3: **属性を持たない場合はマッチしない**（フィルタ間は AND）。
             if (!userAttrs.TryGetValue(key, out var userValue))
                 return false;
-            if (!allowedValues.Contains(userValue, StringComparer.OrdinalIgnoreCase))
+
+            // ADR-0080 決定 2 (#1323): **集合値の利用者属性は「交差が空でないこと」でマッチする。**
+            // 単値キーは従来どおり値そのものの一致である —— 🔴 **一律に分割してはならない**。
+            // `clearance` を区切り文字で割ると辞書外の値が「要素」として通り得る（IADR-0385 の禁則）。
+            // 集合値キーの判定は `UserAttributeEncoding` が持つ分割規則へ委ねる（唯一の規則）。
+            //
+            // 🔴 部分集合ではなく交差である。ADR-0080 決定 2 は「タグを 1 つ足しただけで既存の
+            // アクセスが失われる」振る舞いを明示的に退けている。ADR-0062 決定 2 の部分集合判定は
+            // **属性割当の統制**であってアクセス判定ではない（向きが逆である）。
+            var matched = UserAttributeEncoding.IsSetValued(key)
+                ? UserAttributeEncoding.Split(userValue).Overlaps(allowedValues)
+                : allowedValues.Contains(userValue, StringComparer.OrdinalIgnoreCase);
+
+            if (!matched)
                 return false;
         }
         return true;

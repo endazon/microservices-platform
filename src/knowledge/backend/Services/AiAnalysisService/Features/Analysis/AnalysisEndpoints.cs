@@ -1,4 +1,5 @@
 using AiAnalysisService.Features.Analysis.Analyze;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 using AiAnalysisService.Features.Analysis.Ask;
 using AiAnalysisService.Features.Analysis.AskStream;
 
@@ -46,16 +47,13 @@ public static class AnalysisEndpoints
     internal static bool IsAnonymous(HttpContext ctx)
         => ctx.User.Identity?.IsAuthenticated != true;
 
+    // FR-05, ADR-0080, IADR-0411 (#1323): 抽出はプラットフォーム唯一の点へ委譲する。
+    // 🔴 **ここで読むキーを列挙しない。** 同じ列挙が 6 か所に散っていたことが #1323 の欠陥であり、
+    // 1 か所でも取り残すとその経路だけ判定が変わる。集合値（`tags` / `projects`）の符号化も
+    // 共有点が持つ（`UserAttributeEncoding`）。
     // **3 操作すべてが使う**ため 2 段目に残る（ADR-0068 決定 2）。
     internal static Dictionary<string, string> ExtractUserAttributes(HttpContext ctx)
-    {
-        var attrs = new Dictionary<string, string>();
-        var clearance = ctx.User.FindFirst("clearance")?.Value;
-        var department = ctx.User.FindFirst("department")?.Value;
-        if (clearance is not null) attrs["clearance"] = clearance;
-        if (department is not null) attrs["department"] = department;
-        return attrs;
-    }
+        => BffScopeResolver.ExtractUserAttributes(ctx);
 }
 
 // FR-04, FR-05, SC-01, SC-08, #539: 対象範囲（属性フィルタ）。

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Platform.Shared.Contracts.Dtos;
 using System.Net.Http.Json;
+using System.Security.Claims;
 
 namespace Platform.Shared.Infrastructure.Foundation.Authz;
 
@@ -60,14 +61,44 @@ public static class BffScopeResolver
         }
     }
 
-    // FR-05: JWT から ABAC 判定に用いる利用者属性を取り出す（検索・分析と同一の属性キー）。
+    // FR-05, FR-09, ADR-0080 決定 1・2, IADR-0385, IADR-0411 (#1323):
+    // JWT から ABAC 判定に用いる利用者属性を取り出す。**プラットフォーム唯一の抽出点である。**
+    //
+    // ■ 🔴 なぜ 1 か所なのか
+    //   従前、同じ論理が **6 か所**に複製されていた（BFF・AiAnalysis・Graph×2・Retrieval・Wiki）。
+    //   6 つとも `clearance` / `department` の 2 つしか読まず、`ADR-0080` が定めた集合値属性
+    //   （`tags` / `projects`）を**どこも運んでいなかった**（#1323）。**同じ形が散っていること自体が
+    //   欠陥の温床である** —— 次に起きるのは「6 か所のうち 5 か所だけ直した」事故であり、
+    //   その経路だけ判定が変わる。**構造で消す。**
+    //
+    // ■ 🔴 集合値キーは FindFirst では読めない
+    //   Keycloak の多値属性マッパー（`multivalued: true`）は JSON 配列を発行し、.NET は
+    //   **同じ型の複数クレーム**へ写す。`FindFirst` は先頭 1 値へ畳む（#1243 で実測した欠陥）。
+    //   `FindAll` で集め、符号化は `UserAttributeEncoding.Join`（唯一の規則）へ委ねる。
+    //   **単値キー（`clearance` / `department`）の読み方は 1 文字も変えない** ——
+    //   一律に連結すると `clearance` の値域へ区切り文字が侵食する（IADR-0385 の禁則）。
     public static Dictionary<string, string> ExtractUserAttributes(HttpContext ctx)
+        => ExtractUserAttributes(ctx.User);
+
+    /// <inheritdoc cref="ExtractUserAttributes(HttpContext)"/>
+    public static Dictionary<string, string> ExtractUserAttributes(ClaimsPrincipal user)
     {
         var attrs = new Dictionary<string, string>();
-        var clearance = ctx.User.FindFirst("clearance")?.Value;
-        var department = ctx.User.FindFirst("department")?.Value;
+
+        // 単値キー: 従来どおり先頭 1 値。
+        var clearance = user.FindFirst("clearance")?.Value;
+        var department = user.FindFirst("department")?.Value;
         if (clearance is not null) attrs["clearance"] = clearance;
         if (department is not null) attrs["department"] = department;
+
+        // 集合値キー: 多値クレームを線上表現へ連結する。**空集合は載せない**
+        // （載せると「属性は持つが空」となり、条件つきポリシーの扱いが単値キーとずれる）。
+        foreach (var key in UserAttributeEncoding.SetValuedKeys)
+        {
+            var joined = UserAttributeEncoding.Join(user.FindAll(key).Select(c => c.Value));
+            if (joined.Length > 0) attrs[key] = joined;
+        }
+
         return attrs;
     }
 

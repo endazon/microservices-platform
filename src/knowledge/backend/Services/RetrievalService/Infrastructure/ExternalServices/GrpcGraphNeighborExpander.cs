@@ -1,4 +1,5 @@
 using Grpc.Core;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 using Grpc.Net.Client;
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
@@ -161,10 +162,9 @@ public sealed class GrpcGraphNeighborExpander(
     }
 
     // 🔴 **載せるのは判定の入力であって判定結果ではない**（計画 `ADR-0086` 決定 1）。
-    // 🔴 **読むのは clearance と department の 2 つだけである** —— REST 経路で転送していた
-    // トークンから GraphService が取り出していた属性と**同じ 2 つ**である
-    // （`GraphAccessResolver.ExtractUserAttributes`。プラットフォーム全体の現状）。
-    // **運ばれない属性は判定に効かない**（広げるのは `ADR-0086` フォローアップ 2 の裁定を待つ）。
+    // FR-05, ADR-0080, IADR-0411 (#1323): 属性の抽出はプラットフォーム唯一の点へ委譲する
+    // （`BffScopeResolver.ExtractUserAttributes`）。**ここでキーを列挙しない** ——
+    // REST 経路で転送していたトークンから GraphService が取り出す属性と**同じ集合**になる。
     internal static Pb.UserContext ToUserContext(System.Security.Claims.ClaimsPrincipal user)
     {
         var context = new Pb.UserContext
@@ -174,10 +174,8 @@ public sealed class GrpcGraphNeighborExpander(
             // （[[IADR-0272]] 決定 4 / [[IADR-0401]] と同じ作法）。
             Action = "read",
         };
-        var clearance = user.FindFirst("clearance")?.Value;
-        var department = user.FindFirst("department")?.Value;
-        if (clearance is not null) context.UserAttributes["clearance"] = clearance;
-        if (department is not null) context.UserAttributes["department"] = department;
+        foreach (var (key, value) in BffScopeResolver.ExtractUserAttributes(user))
+            context.UserAttributes[key] = value;
         return context;
     }
 

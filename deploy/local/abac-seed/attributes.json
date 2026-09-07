@@ -6,7 +6,10 @@
     "required は **すべて false** にしてある。/authz/attributes/validate を呼ぶ取り込み経路は現時点で存在しないが、",
     "将来 required=true を入れると既存の取り込み（属性を 1 つしか付けない）を落としうるため、",
     "必須化は実データ側が属性を備えてから行う（#516）。",
-    "本ファイルは dev の初期値であり、実運用の属性辞書は SC-09（管理者設定）から編集する。"
+    "本ファイルは dev の初期値であり、実運用の属性辞書は SC-09（管理者設定）から編集する。",
+    "ADR-0080 決定 1 / フォローアップ 1（#1323）: 利用者の tags は集合値である。値は交差判定でマッチする（決定 2）。",
+    "projects は意図的に入れていない —— ADR-0085 決定 1・2 が必須化と判定軸をいずれも保留しており、",
+    "辞書に無ければ ValidatePolicy が projects を条件に持つポリシーを作らせない（保留を機械で守る）。"
   ],
   "attributes": [
     {
@@ -43,6 +46,13 @@
       "scope": "user",
       "required": false,
       "allowedValues": ["engineering", "sales", "hr", "finance", "legal"]
+    },
+    {
+      "key": "tags",
+      "label": "業務タグ",
+      "scope": "user",
+      "required": false,
+      "allowedValues": ["engineering", "sales", "hr", "finance", "legal", "security", "support"]
     }
   ]
 }
