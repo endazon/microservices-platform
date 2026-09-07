@@ -53,19 +53,28 @@ Error Message: System.ArgumentNullException : Value cannot be null. (Parameter '
 | 軸 | 検索語 | 件数 | 内訳 |
 | --- | --- | --- | --- |
 | 1 | `IsAvailable` | 21 ファイル | fixture 4 / 試験クラス 17 |
-| 2 | `catch`（`Fixtures/` 配下） | 12 箇所 | **起動の握り潰しは 2 箇所**（Postgres / RabbitMq）／片付け・到達性判定 10 箇所 |
+| 2 | `catch`（`Fixtures/` 配下） | **13 箇所** | **起動の握り潰しは 2 箇所**（Postgres / RabbitMq）／**除外 11 箇所** |
 | 3 | `if (!…IsAvailable…) return` | 20 箇所 | 試験クラスの早期 return |
 
-**除外（理由つき）**:
+**除外（理由つき。合計 11 箇所）**:
 
-- `BrokerTcpGate.cs` の 4 箇所 —— **片付け（`Stop` / `Close`）と到達性の判定**であり、
+- `BrokerTcpGate.cs` の **4 箇所** —— **片付け（`Stop` / `Close`）と到達性の判定**であり、
   握り潰しが正しい（「既に停止していてよい」と注記済み）
-- `RawDocumentFetchedEdge.cs` / `WolverineBrokerEdge.cs` の 6 箇所 ——
+- `RawDocumentFetchedEdge.cs` の **2 箇所** ＋ `WolverineBrokerEdge.cs` の **4 箇所** ——
   **メッセージ受信の待ち合わせ**であり、起動の成否ではない
-- `DockerRequired.cs:41` の 1 箇所 —— **名前付きパイプへの接続可否そのもの**が判定であり、
+- `DockerRequired.cs:41` の **1 箇所** —— **名前付きパイプへの接続可否そのもの**が判定であり、
   例外＝「Docker が無い」という情報を持っている（握り潰しではない）
 
 ⇒ **直すのは 2 箇所だけ**である。
+
+★［2026-09-08 追記 / #1331 レビュー］🔴 **初稿の表は「12 箇所 / 除外 10」と書いていた。誤りである。**
+数え直すと `\bcatch\b` に当たる行は **15** で、うち **2 行はコメント**
+（`IntegrationTestFactory.cs:127` と、**本 PR が新設した `ContainerStartupFailure.cs:11`**）。
+差し引き **13 箇所 / 除外 11**。判断（直すのは 2 箇所）は変わらないが、**数が違っていた** ——
+`traceability.repo.md` 規則 7（導出値は走査ではなく数え直す）を破っていた。
+
+🔴 **ここでも「記録が母集合を動かす」**（規則 8）——
+**是正の理由を書いた私のコメントが走査に出る**。#1312 の allowlist とまったく同じ形である。
 
 ## 決定（実装方針）
 
@@ -143,6 +152,25 @@ CI は Docker がある前提で回っており（実測: 同 run で 84 件中 
 
 `Knowledge.IntegrationTests` **85 → 90**（合格 41 → 46 / スキップ 44 は不変）。
 knowledge ユニット全体は**失敗 0**、`dotnet format --verify-no-changes` 差分なし。
+
+★［2026-09-08 追記 / #1331 レビュー］🔴 **「0 警告」は誤りだった。正しくは 4 件である。**
+
+```console
+$ dotnet build backend.slnx --no-incremental
+  ObjectStorageRoundTripTests.cs(55,21|87,21|122,21): warning CS0618 'MinioBuilder.MinioBuilder()' は旧形式です
+  IngestToSearchQdrantTests.cs(52,19):               warning CS0618 'QdrantBuilder.QdrantBuilder()' は旧形式です
+    4 個の警告
+```
+
+**4 件とも本 PR が触っていないファイルの既存警告**であり、持ち込んだものではない。
+しかし**「0 警告」と書いたのは私の測り方の誤り**である ——
+🔴 **増分ビルドは警告を再出力しない。** 直前に同じ試験プロジェクトを個別ビルドしていたため、
+続く `dotnet build backend.slnx` はその射影を再コンパイルせず、**サマリが `0 個の警告` になった**。
+
+**規律**: **警告の件数を主張するときは `--no-incremental` で測る。**
+温まったビルドの `0 個の警告` は「警告が無い」ではなく「**その射影を今回コンパイルしていない**」である。
+#1324 の mtime の罠（変異を戻したのに古いバイナリが走っていた）と**同じ family** ——
+**ビルドが「何もしなかった」ことを「問題が無かった」と読まない。**
 
 🔴 **スキップ 44 件が動いていないことが重要である。** 本 PR は
 「Docker が無い環境で skip される試験」を 1 件も増減させていない ——
