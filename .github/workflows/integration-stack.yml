@@ -139,9 +139,27 @@ jobs:
           #
           # ラベルは新旧どちらも外す。**フェイルセーフである** —— どの Pod にもラベルが無い環境では
           # 「存在しない」が全 Pod に真となり、**現状と同じ対象集合**になる。
+          #
+          # 🔴 **削除中の Pod も待ちの対象へ入れない**（#1316。**#1055 と同型の 2 回目**）。
+          # `kubectl wait` は開始時に対象集合を確定するため、そのとき `deletionTimestamp` が
+          # 立っている Pod は**二度と Ready にならない**。実測（run 34037589847・ISTIO=1）:
+          # サイドカー注入の rollout restart で旧 ReplicaSet の Pod が残り、
+          # **サービスあたり 2 つ（新旧両方）**の計 28 件が期限切れになった。
+          # 🔴 ラベルセレクタでは `deletionTimestamp` を表現できないので、名指しで渡す。
+          #
+          # **対象 0 件なら飛ばす。ここは待ちであって判定ではない**（#1055 の結論）——
+          # 判定は `check-stack-ready.js` の G1 が fail-closed で行う。
+          # **フェイルセーフの向きは変わらない** —— 終了中の Pod がどれも無い環境では
+          # **現状と同じ対象集合**になる。
           for ns in platform-infra microservices-platform; do
-            kubectl -n "$ns" wait --for=condition=Ready pods \
-              -l '!job-name,!batch.kubernetes.io/job-name' --timeout=600s
+            tmpl='{{range .items}}{{if not .metadata.deletionTimestamp}}pod/{{.metadata.name}} {{end}}{{end}}'
+            pods="$(kubectl -n "$ns" get pods -l '!job-name,!batch.kubernetes.io/job-name' -o go-template="$tmpl")"
+            if [ -z "$pods" ]; then
+              echo "    (skip) $ns: 終了中でない Pod が 0 件。判定は check-stack-ready.js の G1 が行う"
+              continue
+            fi
+            # shellcheck disable=SC2086  # 名前は k8s の DNS-1123 に限られ、意図的に分割する。
+            kubectl -n "$ns" wait --for=condition=Ready $pods --timeout=600s
           done
 
       # 🔴 ここが門である。G1（readiness）/ G2（0 件で緑にしない）/ G3（ツール不在は失敗）/

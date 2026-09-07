@@ -398,6 +398,18 @@ helm upgrade --install msp deploy/helm/microservices-platform \
 # #782: サイドカーは**既存 Pod には後から入らない**。注入ラベルを付けたあとに作り直す。
 # helm upgrade だけでは Pod テンプレートが変わらないサービスが残るため、明示的に restart する。
 if [ "${ISTIO:-}" = "1" ]; then
+  # #1316: **別名を注入の前に当てる。** 注入の rollout restart で作り直された Pod は、
+  # 依存（postgres / rabbitmq / redis …）の ExternalName 別名がまだ無い状態で起動する。
+  # 実測（run 34037589847）: 14:05:33 注入 → 14:06:07 `connection refused` → 14:18:33 別名（**12 分後**）。
+  # health が 500 を返して probe が落ち、**8 回まで再起動**し、rollout status は 10 分の空待ちで WARN を出す。
+  # 🔴 **ISTIO 無しでは表面化しない** —— 作り直しが起きないので、別名が [7/7] で当たるまで Pod は待てる。
+  # 下の [7/7] は**残す**（kubectl apply は冪等であり、二重適用は no-op である）。
+  # 🔴 **[7/7] を前倒ししない** —— 段番号の echo は既定経路の出力に含まれており、
+  # 動かすと k8s-local-up.test.js の「既定バイト等価」が崩れる。**opt-in の側だけを足す。**
+  echo "==> [opt-in] ExternalName aliases（サイドカー注入の前に当てる / #1316）"
+  kubectl apply -f deploy/local/aliases/microservices-platform-externalnames.yaml
+  kubectl apply -f deploy/local/aliases/platform-infra-externalnames.yaml
+
   echo "==> [opt-in] Istio sidecar injection (rollout restart)"
   kubectl -n "$MSP_NS" rollout restart deployment
   # #1088 実測（空の namespace から ISTIO=1 ＋ ESO=1 で立てたとき）: ESO が供給する Secret（postgres-app /
