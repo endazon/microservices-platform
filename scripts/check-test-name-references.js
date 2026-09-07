@@ -20,10 +20,15 @@
  *   広げようとすると誤検出だらけになり、検査器ごと無視されるようになる。
  *
  * 走査:
- *   git ls-files で引いた src 配下の C#（submodule は git ls-files に出ないので自然に対象外）の
- *   **コメント部分**から *Tests を集め、同じ母集合の型宣言と突き合わせる。
- *   🔴 **行コメントとブロックコメントの両方を見る** —— 片方だけだと、同じ主張をもう一方で
- *   書くだけで検査を逃れられる（PR #1330 のレビューが指摘した偽陰性）。
+ *   git ls-files で引いた src 配下の C#（submodule は git ls-files に出ないので自然に対象外）を
+ *   **コード部分とコメント部分へ切り分け**、**参照はコメントからだけ / 宣言はコードからだけ**集めて
+ *   突き合わせる。
+ *
+ *   🔴 **切り分けは両側へ効かせる。** 片側だけだと書き方で逃げ道ができる ——
+ *   実測した 2 つの偽陰性（PR #1330 のレビュー）:
+ *     - **ブロックコメント内の参照**を拾わない（同じ主張をブロックで書けば逃れられる）
+ *     - **コメントアウトされた宣言**を「実在する」と数える
+ *       （`// public class GhostTests { }` で、実在しない指し先が黙って通る）
  *   🔴 **文字列リテラルの中は拾わない** —— 拾うと試験名を配列で持つ実装コードが軒並み誤検出になる。
  *   リテラル内のスラッシュ 2 つ（URL 等）をコメント開始と誤らないよう、**先にリテラルを伏せてから**探す。
  *
@@ -129,13 +134,62 @@ const NAME_RE = /\b([A-Za-z0-9_]*[A-Za-z0-9_]Tests)\b/g;
 const DECL_RE = /\b(?:class|record|struct|interface)\s+([A-Za-z0-9_]*Tests)\b/g;
 
 /**
+ * 1 行を「コード部分」と「コメント部分」へ切り分ける。`inBlock` は行をまたぐ状態である。
+ *
+ * 🔴 **両側が要る。** 参照（コメント）だけを正しく切り出しても、**宣言（コード）を生の行から
+ * 拾っていると逃げ道が残る** —— `// public class GhostTests { }` のようにコメントアウトされた
+ * 宣言が「実在する」と数えられ、**実在しない指し先が黙って通る**（PR #1330 のレビューが指摘した
+ * 2 つ目の偽陰性）。**同じ切り分けを両側へ使う。**
+ *
+ * C# のブロックコメントは入れ子にできないので、状態は真偽 1 つで足りる。
+ */
+function splitLine(line, inBlock) {
+  const codes = [];
+  const comments = [];
+  let rest = line;
+  let state = inBlock;
+  while (rest.length > 0) {
+    if (state) {
+      const end = rest.indexOf('*/');
+      if (end < 0) {
+        comments.push(rest);
+        return { codes, comments, inBlock: true };
+      }
+      comments.push(rest.slice(0, end));
+      rest = rest.slice(end + 2);
+      state = false;
+      continue;
+    }
+    const stripped = stripStringLiterals(rest);
+    const lineAt = stripped.indexOf('//');
+    const blockAt = stripped.indexOf('/*');
+    if (lineAt >= 0 && (blockAt < 0 || lineAt < blockAt)) {
+      codes.push(rest.slice(0, lineAt));
+      comments.push(rest.slice(lineAt));
+      return { codes, comments, inBlock: false };
+    }
+    if (blockAt >= 0) {
+      codes.push(rest.slice(0, blockAt));
+      rest = rest.slice(blockAt + 2);
+      state = true;
+      continue;
+    }
+    codes.push(rest);
+    return { codes, comments, inBlock: false };
+  }
+  return { codes, comments, inBlock: state };
+}
+
+/**
  * 1 ファイルから「宣言された試験型」と「コメントが指す試験名」を集める。
  *
- * 🔴 **ブロックコメントも見る。** 行コメントだけを見ていると、同じ主張をブロックコメントで
- * 書いた瞬間に**検査を丸ごと逃れられる**（PR #1330 のレビューが指摘した偽陰性）。
- * 実測では現状 0 件だが、**検査器の目的は「同じ事故を止めること」なので、書き方で逃げ道ができる形は塞ぐ。**
- * 判定に使うのはコメントの中身だけなので、入れ子の扱い（C# はブロックを入れ子にできない）や
- * リテラル内の記号を厳密に追う必要は無い。
+ * 🔴 **参照はコメントからだけ、宣言はコードからだけ集める。** どちらか一方でも生の行を見ていると
+ * 書き方で逃げ道ができる（実測した 2 つの偽陰性: ブロックコメント内の参照を拾わない／
+ * コメントアウトされた宣言を「実在する」と数える）。
+ * **検査器の目的は「同じ事故を止めること」なので、実データが 0 件でも逃げ道は塞ぐ。**
+ *
+ * 🔴 宣言側も**文字列リテラルを伏せてから**見る（`"public class StringDeclTests { }"` を
+ * 宣言と数えないため）。
  */
 function collect(text, rel, declared, referenced) {
   const add = (name, lineNo) => {
@@ -146,32 +200,13 @@ function collect(text, rel, declared, referenced) {
 
   let inBlock = false;
   text.split('\n').forEach((line, i) => {
-    for (const m of line.matchAll(DECL_RE)) declared.add(m[1]);
-
-    let rest = line;
-    while (rest.length > 0) {
-      if (inBlock) {
-        const end = rest.indexOf('*/');
-        const chunk = end < 0 ? rest : rest.slice(0, end);
-        for (const m of chunk.matchAll(NAME_RE)) add(m[1], i + 1);
-        if (end < 0) return;
-        rest = rest.slice(end + 2);
-        inBlock = false;
-        continue;
-      }
-      const stripped = stripStringLiterals(rest);
-      const lineAt = stripped.indexOf('//');
-      const blockAt = stripped.indexOf('/*');
-      if (lineAt >= 0 && (blockAt < 0 || lineAt < blockAt)) {
-        for (const m of rest.slice(lineAt).matchAll(NAME_RE)) add(m[1], i + 1);
-        return;
-      }
-      if (blockAt >= 0) {
-        inBlock = true;
-        rest = rest.slice(blockAt + 2);
-        continue;
-      }
-      return;
+    const r = splitLine(line, inBlock);
+    inBlock = r.inBlock;
+    for (const code of r.codes) {
+      for (const m of stripStringLiterals(code).matchAll(DECL_RE)) declared.add(m[1]);
+    }
+    for (const c of r.comments) {
+      for (const m of c.matchAll(NAME_RE)) add(m[1], i + 1);
     }
   });
 }
@@ -273,6 +308,51 @@ function selfTest() {
     t('scan: ブロックが閉じた後のリテラルは拾わない', r.violations.length === 0, r.violations);
   }
   {
+    // 🔴 宣言側の逃げ道を塞ぐ（PR #1330 レビューの 2 つ目の偽陰性）。
+    // コメントアウトされた宣言・ブロックコメント内の宣言・リテラル内の宣言はいずれも
+    // 「実在する」と数えない —— 数えると、実在しない指し先が黙って通る。
+    const commented = write('b/Commented.cs', [
+      '// public class CommentedOutTests { }',
+      '/* public class BlockDeclTests { } */',
+      'var s = "public class StringDeclTests { }";',
+    ].join('\n') + '\n');
+    const usesThem = write('b/UsesThem.cs', [
+      '// CommentedOutTests が固定する。',
+      '// BlockDeclTests が固定する。',
+      '// StringDeclTests が固定する。',
+    ].join('\n') + '\n');
+    const r = scan(dir, [commented, usesThem]);
+    const names = r.violations.map((v) => v.name).sort();
+    t('scan: コメントアウト / リテラル内の宣言は「実在する」と数えない',
+      names.join(',') === 'BlockDeclTests,CommentedOutTests,StringDeclTests', r.violations);
+  }
+  {
+    // 陽性対照: 生きている宣言は当然「実在する」と数える。
+    const live = write('b/LiveTests.cs', 'namespace N;\npublic class LiveTests { }\n');
+    const usesLive = write('b/UsesLive.cs', '// LiveTests が固定する。\n');
+    const r = scan(dir, [live, usesLive]);
+    t('scan: 生きている宣言は実在すると数える（陽性対照）', r.violations.length === 0, r.violations);
+  }
+  {
+    // 行の途中でブロックが開いて閉じる形でも、コードとコメントを取り違えない。
+    const mixed = write('b/Mixed.cs', 'public class MixedTests { } /* GhostInTailTests */\n');
+    const usesMixed = write('b/UsesMixed.cs', '// MixedTests が固定する。\n');
+    const r = scan(dir, [mixed, usesMixed]);
+    t('scan: 同一行のコードとブロックコメントを切り分ける',
+      r.violations.length === 1 && r.violations[0].name === 'GhostInTailTests', r.violations);
+  }
+  {
+    const s1 = splitLine('public class A { } // B', false);
+    t('splitLine: コードとコメントを切り分ける',
+      s1.codes.join('').includes('public class A') && s1.comments.join('') === '// B'
+      && s1.inBlock === false, s1);
+    const s2 = splitLine('/* open', false);
+    t('splitLine: 閉じていないブロックは状態を持ち越す', s2.inBlock === true, s2);
+    const s3 = splitLine(' still comment */ var x = 1;', true);
+    t('splitLine: 持ち越した状態を閉じ、以降をコードとして返す',
+      s3.inBlock === false && s3.codes.join('').includes('var x = 1;'), s3);
+  }
+  {
     // 🔴 陰性対照: allowlist の名前は違反にしない。
     const al = write('a/Allowed.cs', '// これは AiSuggestionWiringTests について述べている。\n');
     const r = scan(dir, [al]);
@@ -349,4 +429,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { commentOf, stripStringLiterals, collect, scan, isScanTooSmall, ALLOWED, MIN_SCANNED };
+module.exports = { commentOf, stripStringLiterals, splitLine, collect, scan, isScanTooSmall, ALLOWED, MIN_SCANNED };

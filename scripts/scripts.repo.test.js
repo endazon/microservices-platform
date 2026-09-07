@@ -3272,6 +3272,24 @@ ${r.stderr}`);
       assert.strictEqual(tnr.stripStringLiterals('var u = "http://x";').includes('//'), false);
     });
 
+    // 🔴 **宣言側の逃げ道も塞ぐ**（PR #1330 レビューの 2 つ目の偽陰性）。
+    // 参照側だけ正しく切り出しても、宣言を生の行から拾っていると
+    // `// public class GhostTests { }` が「実在する」と数えられ、**実在しない指し先が黙って通る**。
+    ok('check-test-name-references: コメントアウト / リテラル内の宣言を実在と数えない', () => {
+      const tnr = require('./check-test-name-references.js');
+      const declared = new Set();
+      const referenced = new Map();
+      tnr.collect('// public class CommentedOutTests { }\n', 'a.cs', declared, referenced);
+      tnr.collect('/* public class BlockDeclTests { } */\n', 'b.cs', declared, referenced);
+      tnr.collect('var s = "public class StringDeclTests { }";\n', 'c.cs', declared, referenced);
+      assert.deepStrictEqual([...declared], [],
+        `死んだ宣言を実在と数えている: ${[...declared]}`);
+
+      // 陽性対照: 生きている宣言は当然数える（走査器が死んでいないことの担保）。
+      tnr.collect('public class LiveTests { }\n', 'd.cs', declared, referenced);
+      assert.deepStrictEqual([...declared], ['LiveTests'], '生きている宣言を数えていない');
+    });
+
     // 0 件走査で静かに緑にしない門（#664 の作法 / IADR-0130）。
     ok('check-test-name-references: 走査件数の門が 0 件を fail 側に置く', () => {
       const tnr = require('./check-test-name-references.js');
