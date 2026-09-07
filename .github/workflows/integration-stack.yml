@@ -37,6 +37,11 @@ on:
   push:
     branches: [develop]
   workflow_dispatch:
+    inputs:
+      istio:
+        description: "メッシュ（ADR-0005 / ADR-0021）を入れて起こす。#1316 の実測用で、既定は従来どおり入れない"
+        type: boolean
+        default: false
 
 # 同時実行は 1 本。cancel-in-progress: false —— 走査結果は「その時点で走った」ことに意味がある。
 concurrency:
@@ -63,6 +68,13 @@ jobs:
     name: integration-stack
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # #1316: 🔴 **up と門の両方へ同じ宣言を渡す**（別々に渡すと G12 が「宣言が門へ届いていない」で落ちる）。
+    # 手動実行で `istio` を立てたときだけ `1` になる。schedule / push では空であり、
+    # `scripts/k8s-local-up.sh` の `[ "${ISTIO:-}" = "1" ]` はどちらの綴りでも偽になる
+    # ＝**既定の挙動は 1 バイトも変わらない**。
+    # 常設化（schedule / push でも入れる）は、緑と所要時間を測ってから別 PR で行う。
+    env:
+      ISTIO: ${{ (github.event_name == 'workflow_dispatch' && inputs.istio) && '1' || '' }}
     steps:
       - uses: actions/checkout@v7
 

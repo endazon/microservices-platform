@@ -2987,4 +2987,30 @@ ok('#1316: integration-stack の待ちが削除中の Pod を対象へ入れな�
   assert.ok(/if \[ -z "\$pods" \]/.test(body), '対象 0 件のときの分岐が無い（待ちは判定ではない）');
 });
 
+// #1316: メッシュを起こす宣言は **up と門の両方**へ届く。片方だけだと G12 が
+// 「宣言が門へ届いていない」で落ちる（check-stack-ready.js の G12 の文言そのもの）。
+ok('#1316: integration-stack は ISTIO をジョブ環境で 1 度だけ宣言する（up と門の両方へ届く）', () => {
+  const wf = fs.readFileSync(
+    path.join(REPO_ROOT, '.github', 'workflows', 'integration-stack.yml'),
+    'utf8',
+  );
+  assert.ok(
+    /^\s{4}env:\s*$/m.test(wf) && /^\s{6}ISTIO:/m.test(wf),
+    'ジョブレベルの env に ISTIO の宣言が無い（up と門へ別々に渡すと片方が漏れる）',
+  );
+  assert.ok(
+    wf.includes("github.event_name == 'workflow_dispatch'"),
+    'ISTIO が手動実行に限定されていない（schedule / push の既定が変わる）',
+  );
+  assert.ok(
+    /inputs:\s*\n\s+istio:/.test(wf),
+    'workflow_dispatch に istio の入力が無い（実測のたびにワークフローを書き換えることになる）',
+  );
+  // 🔴 常設化はまだしない —— up のコマンド行へ ISTIO=1 を直書きしていないこと。
+  assert.ok(
+    !/ISTIO=1 .*k8s-local-up\.sh/.test(wf),
+    'up のコマンド行へ ISTIO=1 を直書きしている（常設化は緑と所要時間を測ってから別 PR で行う）',
+  );
+});
+
 process.stdout.write(`\n✓ ${passed} tests passed\n`);
