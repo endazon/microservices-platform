@@ -2890,4 +2890,127 @@ ok('#1159: ISTIO 未設定なら mesh.* の --set が 1 つも足されない（
   assert.ok(!line.includes('mesh.'), `既定なのに mesh.* が付いている: ${line}`);
 });
 
+// ---- #1316: ISTIO=1 の別名はサイドカー注入より前に当たる ----------------------------------
+//
+// 🔴 実測（run 34037589847 / #1304 の作業中）: 注入の rollout restart で作り直された Pod は、
+// 依存の ExternalName 別名が [7/7] で当たるまでの 12 分間、health が 500 を返して 8 回再起動した。
+// **ISTIO 無しでは表面化しない**（作り直しが起きないので Pod は別名を待てる）。
+//
+// 対で置く 3 本: 前倒しが起きること / [7/7] を消していないこと / **既定には一切現れないこと**。
+
+ok('#1316: ISTIO=1 は ExternalName 別名をサイドカー注入の rollout restart より前に当てる', () => {
+  const res = runUp({ ISTIO: '1' });
+  const idx = (needle) => res.lines.findIndex((l) => l.includes(needle));
+
+  const aliasAt = idx('microservices-platform-externalnames.yaml');
+  const restartAt = idx('rollout restart deployment');
+  assert.ok(aliasAt >= 0, 'ExternalName 別名の apply が 1 つも無い');
+  assert.ok(restartAt >= 0, 'サイドカー注入の rollout restart が無い');
+  assert.ok(
+    aliasAt < restartAt,
+    `別名が注入より後に当たっている（#1316 の原因 1 が戻っている）: alias=${aliasAt} restart=${restartAt}`,
+  );
+
+  const reverseAt = idx('platform-infra-externalnames.yaml');
+  assert.ok(reverseAt >= 0 && reverseAt < restartAt, '逆向きの別名が注入より後に当たっている');
+});
+
+ok('#1316: [7/7] の別名 apply は残る（冪等な二重適用であることの固定）', () => {
+  const count = (lines, needle) => lines.filter((l) => l.includes(needle)).length;
+
+  assert.strictEqual(
+    count(runUp({ ISTIO: '1' }).lines, 'microservices-platform-externalnames.yaml'),
+    2,
+    'ISTIO=1 の別名 apply が 2 回でない（前倒しだけにして [7/7] を消すと既定経路の出力が変わる）',
+  );
+  assert.strictEqual(
+    count(DEFAULT.lines, 'microservices-platform-externalnames.yaml'),
+    1,
+    '既定の別名 apply が 1 回でない（既定のバイト等価が崩れている）',
+  );
+});
+
+ok('#1316: 前倒しは ISTIO の分岐の中にだけ在る（既定経路のバイト等価）', () => {
+  // ハーネスは kubectl の呼び出しを見るので echo は出力に現れない。**テキストで固定する。**
+  const guard = UP_SH.indexOf('if [ "${ISTIO:-}" = "1" ]; then');
+  assert.ok(guard > 0, 'ISTIO の分岐が見つからない');
+  const block = UP_SH.slice(guard, UP_SH.indexOf('[7/7] ExternalName aliases', guard));
+  assert.ok(block.includes('#1316'), '#1316 の前倒しブロックが ISTIO の分岐の中に無い');
+  assert.ok(
+    block.includes('microservices-platform-externalnames.yaml'),
+    '前倒しの apply が ISTIO の分岐の中に無い',
+  );
+  assert.ok(
+    block.includes('rollout restart deployment'),
+    '前倒しと注入が同じ分岐の中に無い（別の if へ割れている）',
+  );
+  assert.ok(
+    block.indexOf('externalnames.yaml') < block.indexOf('rollout restart deployment'),
+    'ISTIO の分岐の中で別名が注入より後に来ている',
+  );
+
+  // 陰性対照: 既定では別名の apply は [7/7] の 1 巡（正 / 逆の 2 本）だけである。
+  const defaultAliases = DEFAULT.lines.filter((l) => l.includes('externalnames.yaml'));
+  assert.strictEqual(
+    defaultAliases.length,
+    2,
+    `既定の別名 apply が 2 本（正/逆）でない: ${JSON.stringify(defaultAliases)}`,
+  );
+});
+
+// ---- #1316: 統合スタックの待ちは、原理的に Ready にならない Pod を対象へ入れない ------------
+//
+// 🔴 **#1055 と同型の 2 回目である。** 当時の入口は「完了した Job の Pod」、今回は
+// 「削除中（deletionTimestamp が立った）Pod」。[[IADR-0141]] の条件を満たすので機械で止める。
+// **待ちは判定ではない**（判定は check-stack-ready.js の G1）ので、対象 0 件は飛ばす。
+ok('#1316: integration-stack の待ちが削除中の Pod を対象へ入れない', () => {
+  const wf = fs.readFileSync(
+    path.join(REPO_ROOT, '.github', 'workflows', 'integration-stack.yml'),
+    'utf8',
+  );
+  const step = wf.slice(wf.indexOf('Wait for pods to become Ready'));
+  const body = step.slice(0, step.indexOf('- name: ', 1));
+
+  assert.ok(
+    body.includes('deletionTimestamp'),
+    '待ちが deletionTimestamp を見ていない（削除中の Pod が対象に混ざる）',
+  );
+  assert.ok(
+    !/wait --for=condition=Ready pods/.test(body),
+    'セレクタ形の wait が残っている（対象集合を確定させる形では削除中の Pod を外せない）',
+  );
+  // #1055 の除外は**外さない**（両方が要る）。
+  assert.ok(
+    body.includes('!job-name') && body.includes('!batch.kubernetes.io/job-name'),
+    '#1055 の Job Pod 除外が消えている',
+  );
+  assert.ok(/if \[ -z "\$pods" \]/.test(body), '対象 0 件のときの分岐が無い（待ちは判定ではない）');
+});
+
+// #1316: メッシュを起こす宣言は **up と門の両方**へ届く。片方だけだと G12 が
+// 「宣言が門へ届いていない」で落ちる（check-stack-ready.js の G12 の文言そのもの）。
+ok('#1316: integration-stack は ISTIO をジョブ環境で 1 度だけ宣言する（up と門の両方へ届く）', () => {
+  const wf = fs.readFileSync(
+    path.join(REPO_ROOT, '.github', 'workflows', 'integration-stack.yml'),
+    'utf8',
+  );
+  assert.ok(
+    /^\s{4}env:\s*$/m.test(wf) && /^\s{6}ISTIO:/m.test(wf),
+    'ジョブレベルの env に ISTIO の宣言が無い（up と門へ別々に渡すと片方が漏れる）',
+  );
+  assert.ok(
+    wf.includes("github.event_name == 'workflow_dispatch'"),
+    'ISTIO が手動実行に限定されていない（schedule / push の既定が変わる）',
+  );
+  assert.ok(
+    /inputs:\s*\n\s+istio:/.test(wf),
+    'workflow_dispatch に istio の入力が無い（実測のたびにワークフローを書き換えることになる）',
+  );
+  // 🔴 常設化はまだしない —— up のコマンド行へ ISTIO=1 を直書きしていないこと。
+  assert.ok(
+    !/ISTIO=1 .*k8s-local-up\.sh/.test(wf),
+    'up のコマンド行へ ISTIO=1 を直書きしている（常設化は緑と所要時間を測ってから別 PR で行う）',
+  );
+});
+
 process.stdout.write(`\n✓ ${passed} tests passed\n`);
