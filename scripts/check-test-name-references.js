@@ -24,13 +24,15 @@
  *   **コード部分とコメント部分へ切り分け**、**参照はコメントからだけ / 宣言はコードからだけ**集めて
  *   突き合わせる。
  *
- *   🔴 **切り分けは両側へ効かせる。** 片側だけだと書き方で逃げ道ができる ——
- *   実測した 2 つの偽陰性（PR #1330 のレビュー）:
- *     - **ブロックコメント内の参照**を拾わない（同じ主張をブロックで書けば逃れられる）
- *     - **コメントアウトされた宣言**を「実在する」と数える
- *       （`// public class GhostTests { }` で、実在しない指し先が黙って通る）
+ *   🔴 **切り分けは 1 か所（`scanSegments`）に持ち、両側へ効かせる。**
+ *   PR #1330 のレビューが 3 巡かけて見つけた穴は、すべて**境界を決める規則が場所ごとに違う**ことに
+ *   由来していた:
+ *     1 巡目 **ブロックコメント内の参照**を拾わない（同じ主張をブロックで書けば逃れられる）／
+ *            リテラル内の URL をコメント開始と誤る
+ *     2 巡目 **コメントアウトされた宣言**を「実在する」と数える
+ *            （`// public class GhostTests { }` で、実在しない指し先が黙って通る）
+ *     3 巡目 **C# の文字列 3 種（通常 / verbatim / raw）の終端規則を区別していない**
  *   🔴 **文字列リテラルの中は拾わない** —— 拾うと試験名を配列で持つ実装コードが軒並み誤検出になる。
- *   リテラル内のスラッシュ 2 つ（URL 等）をコメント開始と誤らないよう、**先にリテラルを伏せてから**探す。
  *
  * 外部依存ゼロ（Node 標準モジュールのみ）。違反があれば終了コード 1。
  *
@@ -92,104 +94,144 @@ function trackedCsFiles(root = REPO_ROOT) {
     .filter((f) => f.startsWith('src/'));
 }
 
-/**
- * 1 行のコメント部分だけを返す（無ければ null）。
- *
- * 🔴 **文字列リテラルを先に落としてから探す。** 素朴に最初のスラッシュ 2 つを探すと、
- * `var url = "http://example.com/FooTests";` の `//` をコメント開始と誤り、
- * **文字列の中身をコメントとして走査してしまう**（PR #1330 のレビューが指摘した偽陽性）。
- * 実測では現状 0 件だが、URL を持つ行が増えれば顕在化する。
- *
- * ここでやるのは**リテラルの中身を伏せること**だけで、字句解析はしない ——
- * 伏せた結果は「コメントの開始位置を決める」ためにしか使わないので、これで足りる。
- */
-function stripStringLiterals(line) {
-  let out = '';
-  let i = 0;
-  while (i < line.length) {
-    const c = line[i];
-    if (c === '"' || c === '\'') {
-      out += ' ';
-      i += 1;
-      while (i < line.length) {
-        if (line[i] === '\\') { i += 2; out += '  '; continue; }
-        if (line[i] === c) { out += ' '; i += 1; break; }
-        out += ' ';
-        i += 1;
-      }
-      continue;
-    }
-    out += c;
-    i += 1;
-  }
-  return out;
-}
-
-function commentOf(line) {
-  const i = stripStringLiterals(line).indexOf('//');
-  return i < 0 ? null : line.slice(i);
-}
-
 const NAME_RE = /\b([A-Za-z0-9_]*[A-Za-z0-9_]Tests)\b/g;
 const DECL_RE = /\b(?:class|record|struct|interface)\s+([A-Za-z0-9_]*Tests)\b/g;
 
 /**
- * 1 行を「コード部分」と「コメント部分」へ切り分ける。`inBlock` は行をまたぐ状態である。
+ * ファイル全体を「コード」「コメント」の区間へ切り分ける。**走査器はこれ 1 つである。**
  *
- * 🔴 **両側が要る。** 参照（コメント）だけを正しく切り出しても、**宣言（コード）を生の行から
- * 拾っていると逃げ道が残る** —— `// public class GhostTests { }` のようにコメントアウトされた
- * 宣言が「実在する」と数えられ、**実在しない指し先が黙って通る**（PR #1330 のレビューが指摘した
- * 2 つ目の偽陰性）。**同じ切り分けを両側へ使う。**
+ * 🔴 **なぜ 1 つにするか。** PR #1330 のレビューが 3 巡かけて見つけた穴は、すべて
+ * **「境界を決める規則が場所ごとに違う」**ことに由来していた ——
+ *   1 巡目: 参照側がブロックコメントを見ていない（偽陰性）／リテラル内の URL をコメント開始と誤る（偽陽性）
+ *   2 巡目: **宣言側だけ生の行**を見ており、コメントアウトされた宣言を「実在する」と数える（偽陰性）
+ *   3 巡目: 境界を決める当の関数が **C# の文字列 3 種の終端規則を区別していない**（偽陰性・偽陽性）
+ * **片側だけ直せる形をやめる。** 区間の切り分けをここ 1 か所に持ち、
+ * 参照（コメント）も宣言（コード）も**同じ切り分けの結果**から取る。
  *
- * C# のブロックコメントは入れ子にできないので、状態は真偽 1 つで足りる。
+ * 🔴 **C# の文字列は 3 種あり、終端規則が違う**（3 巡目の指摘。実測: 本リポジトリの src に
+ * verbatim 72 / raw 330 出現するので、これは机上の話ではない）:
+ *   - 通常  `"…"`      … バックスラッシュがエスケープ。行をまたがない
+ *   - verbatim `@"…"`  … **バックスラッシュはただの文字**。`""` だけが引用符のエスケープ。**行をまたぐ**
+ *   - raw   `"""…"""`  … 開き引用符と同数以上の連続引用符で閉じる。**行をまたぐ**
+ * 区別しないと、**閉じ位置を読み違えて後続の `//` を丸ごと見落とす**（偽陰性）か、
+ * **文字列の中身をコメントとして拾う**（偽陽性）。
+ *
+ * 文字リテラル `'x'` も通常文字列と同じ規則で読み飛ばす（`'"'` で誤らないため）。
  */
-function splitLine(line, inBlock) {
-  const codes = [];
-  const comments = [];
-  let rest = line;
-  let state = inBlock;
-  while (rest.length > 0) {
-    if (state) {
-      const end = rest.indexOf('*/');
-      if (end < 0) {
-        comments.push(rest);
-        return { codes, comments, inBlock: true };
+function scanSegments(text) {
+  const segments = [];
+  let line = 1;
+  let i = 0;
+  const n = text.length;
+  const push = (kind, from, to, at) => {
+    if (to > from) segments.push({ kind, text: text.slice(from, to), line: at });
+  };
+
+  let codeFrom = 0;
+  while (i < n) {
+    const c = text[i];
+
+    if (c === '\n') { line += 1; i += 1; continue; }
+
+    // --- コメント ---
+    if (c === '/' && text[i + 1] === '/') {
+      push('code', codeFrom, i, line);
+      const end = text.indexOf('\n', i);
+      const stop = end < 0 ? n : end;
+      push('comment', i, stop, line);
+      i = stop;
+      codeFrom = i;
+      continue;
+    }
+    if (c === '/' && text[i + 1] === '*') {
+      push('code', codeFrom, i, line);
+      const startLine = line;
+      let j = i + 2;
+      while (j < n && !(text[j] === '*' && text[j + 1] === '/')) {
+        if (text[j] === '\n') line += 1;
+        j += 1;
       }
-      comments.push(rest.slice(0, end));
-      rest = rest.slice(end + 2);
-      state = false;
+      // ブロックの中は行ごとに区間を分ける（違反の位置を出現行で報告するため）。
+      let segLine = startLine;
+      let from = i;
+      for (let k = i; k < Math.min(j, n); k += 1) {
+        if (text[k] === '\n') {
+          push('comment', from, k, segLine);
+          segLine += 1;
+          from = k + 1;
+        }
+      }
+      push('comment', from, Math.min(j, n), segLine);
+      i = Math.min(j + 2, n);
+      codeFrom = i;
       continue;
     }
-    const stripped = stripStringLiterals(rest);
-    const lineAt = stripped.indexOf('//');
-    const blockAt = stripped.indexOf('/*');
-    if (lineAt >= 0 && (blockAt < 0 || lineAt < blockAt)) {
-      codes.push(rest.slice(0, lineAt));
-      comments.push(rest.slice(lineAt));
-      return { codes, comments, inBlock: false };
-    }
-    if (blockAt >= 0) {
-      codes.push(rest.slice(0, blockAt));
-      rest = rest.slice(blockAt + 2);
-      state = true;
+
+    // --- raw string（開き引用符と同数以上の連続引用符で閉じる） ---
+    if (c === '"' && text[i + 1] === '"' && text[i + 2] === '"') {
+      push('code', codeFrom, i, line);
+      let open = 0;
+      while (text[i + open] === '"') open += 1;
+      let j = i + open;
+      for (;;) {
+        if (j >= n) break;
+        if (text[j] === '\n') { line += 1; j += 1; continue; }
+        if (text[j] === '"') {
+          let run = 0;
+          while (text[j + run] === '"') run += 1;
+          if (run >= open) { j += run; break; }
+          j += run;
+          continue;
+        }
+        j += 1;
+      }
+      i = j;
+      codeFrom = i;
       continue;
     }
-    codes.push(rest);
-    return { codes, comments, inBlock: false };
+
+    // --- verbatim string（バックスラッシュは素、`""` が引用符のエスケープ、行をまたぐ） ---
+    if (c === '@' && text[i + 1] === '"') {
+      push('code', codeFrom, i, line);
+      let j = i + 2;
+      while (j < n) {
+        if (text[j] === '\n') { line += 1; j += 1; continue; }
+        if (text[j] === '"') {
+          if (text[j + 1] === '"') { j += 2; continue; }
+          j += 1;
+          break;
+        }
+        j += 1;
+      }
+      i = j;
+      codeFrom = i;
+      continue;
+    }
+
+    // --- 通常の文字列 / 文字リテラル（バックスラッシュがエスケープ・行をまたがない） ---
+    if (c === '"' || c === '\'') {
+      push('code', codeFrom, i, line);
+      let j = i + 1;
+      while (j < n && text[j] !== '\n') {
+        if (text[j] === '\\') { j += 2; continue; }
+        if (text[j] === c) { j += 1; break; }
+        j += 1;
+      }
+      i = j;
+      codeFrom = i;
+      continue;
+    }
+
+    i += 1;
   }
-  return { codes, comments, inBlock: state };
+  push('code', codeFrom, n, line);
+  return segments;
 }
 
 /**
  * 1 ファイルから「宣言された試験型」と「コメントが指す試験名」を集める。
  *
- * 🔴 **参照はコメントからだけ、宣言はコードからだけ集める。** どちらか一方でも生の行を見ていると
- * 書き方で逃げ道ができる（実測した 2 つの偽陰性: ブロックコメント内の参照を拾わない／
- * コメントアウトされた宣言を「実在する」と数える）。
- * **検査器の目的は「同じ事故を止めること」なので、実データが 0 件でも逃げ道は塞ぐ。**
- *
- * 🔴 宣言側も**文字列リテラルを伏せてから**見る（`"public class StringDeclTests { }"` を
- * 宣言と数えないため）。
+ * **参照はコメント区間からだけ、宣言はコード区間からだけ**取る（切り分けは `scanSegments` 1 か所）。
  */
 function collect(text, rel, declared, referenced) {
   const add = (name, lineNo) => {
@@ -198,17 +240,13 @@ function collect(text, rel, declared, referenced) {
     if (!referenced.get(name).includes(site)) referenced.get(name).push(site);
   };
 
-  let inBlock = false;
-  text.split('\n').forEach((line, i) => {
-    const r = splitLine(line, inBlock);
-    inBlock = r.inBlock;
-    for (const code of r.codes) {
-      for (const m of stripStringLiterals(code).matchAll(DECL_RE)) declared.add(m[1]);
+  for (const s of scanSegments(text)) {
+    if (s.kind === 'code') {
+      for (const m of s.text.matchAll(DECL_RE)) declared.add(m[1]);
+    } else {
+      for (const m of s.text.matchAll(NAME_RE)) add(m[1], s.line);
     }
-    for (const c of r.comments) {
-      for (const m of c.matchAll(NAME_RE)) add(m[1], i + 1);
-    }
-  });
+  }
 }
 
 function scan(root = REPO_ROOT, files = null) {
@@ -255,10 +293,6 @@ function selfTest() {
   write('a/RealTests.cs', 'public class RealTests { }\n');
   const bad = write('a/Bad.cs', '// FR-02: この帰結は GhostTests が固定する。\npublic class Bad { }\n');
 
-  t('commentOf: コメントが無い行は null', commentOf('var x = 1;') === null);
-  t('commentOf: コメント以降だけを返す', commentOf('var x = 1; // FooTests') === '// FooTests');
-  t('commentOf: 行頭コメントも取れる', commentOf('  // BarTests') === '// BarTests');
-
   {
     const r = scan(dir, [good, 'a/RealTests.cs', bad]);
     t('scan: 実在しない指し先を 1 件検出する', r.violations.length === 1, r.violations);
@@ -279,13 +313,48 @@ function selfTest() {
     const r = scan(dir, [url]);
     t('scan: リテラル内の URL をコメントと誤らない', r.violations.length === 0, r.violations);
   }
-  t('stripStringLiterals: リテラルの中身を伏せる',
-    stripStringLiterals('var u = "http://x"; // A').includes('//') === true);
-  t('stripStringLiterals: 伏せた後にリテラル内のスラッシュ 2 つが残らない',
-    stripStringLiterals('var u = "http://x";').includes('//') === false);
-  t('stripStringLiterals: エスケープされた引用符でリテラルが閉じない',
-    stripStringLiterals('var u = "a\\"//b"; // C').indexOf('//') === 'var u = "a\\"//b"; '.length,
-    stripStringLiterals('var u = "a\\"//b"; // C'));
+  // --- C# の文字列 3 種（PR #1330 レビュー 3 巡目）。終端規則が違うので区別する ---
+  const commentsOf = (src) => scanSegments(src).filter((s) => s.kind === 'comment').map((s) => s.text);
+  const codesOf = (src) => scanSegments(src).filter((s) => s.kind === 'code').map((s) => s.text).join('');
+
+  t('scanSegments: 通常文字列の後ろのコメントを拾う',
+    commentsOf('var u = "http://x"; // AfterNormalTests').join('').includes('AfterNormalTests'),
+    commentsOf('var u = "http://x"; // AfterNormalTests'));
+  t('scanSegments: 通常文字列の中は拾わない',
+    commentsOf('var u = "http://x/InStringTests";').length === 0);
+  t('scanSegments: エスケープされた引用符でリテラルが閉じない',
+    commentsOf('var u = "a\\"//b"; // AfterEscapeTests').join('').includes('AfterEscapeTests'),
+    commentsOf('var u = "a\\"//b"; // AfterEscapeTests'));
+
+  // 🔴 verbatim: バックスラッシュはエスケープではない。
+  //   旧実装はここで閉じ引用符を読み飛ばし、**後続のコメントを丸ごと見落としていた**（偽陰性）。
+  t('scanSegments: verbatim がバックスラッシュで終わっても閉じを見失わない',
+    commentsOf('var p = @"C:\\dir\\"; // AfterVerbatimTests').join('').includes('AfterVerbatimTests'),
+    commentsOf('var p = @"C:\\dir\\"; // AfterVerbatimTests'));
+  t('scanSegments: verbatim の中の二重引用符では閉じない',
+    commentsOf('var p = @"a""b"; // AfterVerbatimEscapeTests').join('').includes('AfterVerbatimEscapeTests'),
+    commentsOf('var p = @"a""b"; // AfterVerbatimEscapeTests'));
+  t('scanSegments: verbatim の中身は拾わない',
+    commentsOf('var p = @"// InVerbatimTests";').length === 0,
+    commentsOf('var p = @"// InVerbatimTests";'));
+
+  // 🔴 raw string: 開き引用符と同数以上の連続引用符で閉じる。行をまたぐ。
+  t('scanSegments: raw string の中身は拾わない',
+    commentsOf('var j = """{"a": "// InRawTests"}""";').length === 0,
+    commentsOf('var j = """{"a": "// InRawTests"}""";'));
+  t('scanSegments: raw string の後ろのコメントを拾う',
+    commentsOf('var j = """x"""; // AfterRawTests').join('').includes('AfterRawTests'),
+    commentsOf('var j = """x"""; // AfterRawTests'));
+  t('scanSegments: 複数行の raw string を閉じてから続きを読む',
+    commentsOf('var j = """\nline // InRawMultilineTests\n"""; // AfterRawMultilineTests')
+      .join('') === '// AfterRawMultilineTests',
+    commentsOf('var j = """\nline // InRawMultilineTests\n"""; // AfterRawMultilineTests'));
+
+  // コード区間の側も同じ切り分けから取る（宣言の取りこぼし・拾いすぎが無いこと）。
+  t('scanSegments: コード区間に宣言が残る',
+    codesOf('public class LiveDeclTests { } // x').includes('class LiveDeclTests'));
+  t('scanSegments: コメント区間の宣言はコードに出ない',
+    !codesOf('// public class DeadDeclTests { }').includes('DeadDeclTests'));
   {
     // 🔴 陽性（PR #1330 のレビュー）: ブロックコメントの中の名前も拾う。
     // ここを拾わないと、同じ主張をブロックコメントで書くだけで検査を逃れられる。
@@ -341,31 +410,6 @@ function selfTest() {
     t('scan: 同一行のコードとブロックコメントを切り分ける',
       r.violations.length === 1 && r.violations[0].name === 'GhostInTailTests', r.violations);
   }
-  {
-    const s1 = splitLine('public class A { } // B', false);
-    t('splitLine: コードとコメントを切り分ける',
-      s1.codes.join('').includes('public class A') && s1.comments.join('') === '// B'
-      && s1.inBlock === false, s1);
-    const s2 = splitLine('/* open', false);
-    t('splitLine: 閉じていないブロックは状態を持ち越す', s2.inBlock === true, s2);
-    const s3 = splitLine(' still comment */ var x = 1;', true);
-    t('splitLine: 持ち越した状態を閉じ、以降をコードとして返す',
-      s3.inBlock === false && s3.codes.join('').includes('var x = 1;'), s3);
-  }
-  {
-    // 🔴 陰性対照: allowlist の名前は違反にしない。
-    const al = write('a/Allowed.cs', '// これは AiSuggestionWiringTests について述べている。\n');
-    const r = scan(dir, [al]);
-    t('scan: allowlist の名前は違反にしない', r.violations.length === 0, r.violations);
-  }
-  {
-    // 宣言の種別（class 以外）も拾う。
-    const rec = write('a/RecTests.cs', 'public sealed record RecTests { }\n');
-    const ref2 = write('a/UsesRec.cs', '// RecTests が固定する。\n');
-    const r = scan(dir, [rec, ref2]);
-    t('scan: record 宣言も「実在する」と数える', r.violations.length === 0, r.violations);
-  }
-
   t('isScanTooSmall: 下限未満は真', isScanTooSmall(1, 300) === true);
   t('isScanTooSmall: 下限以上は偽', isScanTooSmall(300, 300) === false);
   t('ALLOWED: すべての除外に理由が書いてある',
@@ -429,4 +473,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { commentOf, stripStringLiterals, splitLine, collect, scan, isScanTooSmall, ALLOWED, MIN_SCANNED };
+module.exports = { scanSegments, collect, scan, isScanTooSmall, ALLOWED, MIN_SCANNED };

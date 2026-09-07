@@ -3269,7 +3269,34 @@ ${r.stderr}`);
       const referenced = new Map();
       tnr.collect('var u = "http://example.com/GhostInUrlTests";\n', 'u.cs', declared, referenced);
       assert.strictEqual(referenced.size, 0, `URL を拾っている: ${[...referenced.keys()]}`);
-      assert.strictEqual(tnr.stripStringLiterals('var u = "http://x";').includes('//'), false);
+    });
+
+    // 🔴 **C# の文字列 3 種を終端規則ごとに区別する**（PR #1330 レビュー 3 巡目）。
+    // 区別しないと、**閉じ位置を読み違えて後続のコメントを丸ごと見落とす**（偽陰性）。
+    // 実測: 本リポジトリの src に verbatim 72 / raw 330 出現するので机上の話ではない。
+    ok('check-test-name-references: verbatim / raw リテラルの終端を読み違えない', () => {
+      const tnr = require('./check-test-name-references.js');
+      const refsOf = (src) => {
+        const declared = new Set();
+        const referenced = new Map();
+        tnr.collect(src, 'x.cs', declared, referenced);
+        return [...referenced.keys()].sort();
+      };
+
+      // verbatim はバックスラッシュがエスケープではない —— 旧実装は閉じを見失い、後続を落としていた。
+      assert.deepStrictEqual(
+        refsOf('var p = @"C:\\dir\\"; // AfterVerbatimTests\n'),
+        ['AfterVerbatimTests'],
+        'verbatim の閉じを読み違えて後続のコメントを落としている',
+      );
+      // verbatim の中身は拾わない。
+      assert.deepStrictEqual(refsOf('var p = @"// InVerbatimTests";\n'), []);
+      // raw string は開き引用符と同数以上で閉じる。中身は拾わず、後続は拾う。
+      assert.deepStrictEqual(
+        refsOf('var j = """\nline // InRawTests\n"""; // AfterRawTests\n'),
+        ['AfterRawTests'],
+        'raw string の中身を拾うか、後続を落としている',
+      );
     });
 
     // 🔴 **宣言側の逃げ道も塞ぐ**（PR #1330 レビューの 2 つ目の偽陰性）。
