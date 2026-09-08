@@ -41,10 +41,19 @@ public sealed class SearchAccessResolver(
         if (ctx.User.Identity?.IsAuthenticated != true)
             return new AccessScopeResponse(AnonymousUserId, [], false);
 
-        var userId = ctx.User.Identity.Name ?? AnonymousUserId;
-        var userAttrs = ExtractUserAttributes(ctx);
+        return await ResolveForUserAsync(
+            ctx.User.Identity.Name ?? AnonymousUserId, ExtractUserAttributes(ctx), ct);
+    }
 
-        // 🔴 gRPC 経路も**この短絡の後**にある。**並走中の正は REST** である（[[IADR-0379]] 決定 5）。
+    // FR-05, NFR-16, ADR-0086 決定 1, [[IADR-0410]], [[IADR-0417]] (#1255):
+    // 🔴 **入口は 2 つ・本体はこの 1 つである。** REST は検証済みの `User` から、
+    // gRPC は**本文で運ばれた利用者文脈**から入る —— どちらも同じ後段を通る。
+    public async Task<AccessScopeResponse> ResolveForUserAsync(
+        string userId, IReadOnlyDictionary<string, string> attributes, CancellationToken ct = default)
+    {
+        var userAttrs = attributes as Dictionary<string, string> ?? new Dictionary<string, string>(attributes);
+
+        // 🔴 **並走中の正は REST** である（[[IADR-0379]] 決定 5）。
         if (authzScopeGrpc is not null)
             return await authzScopeGrpc.ResolveScopeAsync(userId, userAttrs, ScopeAction, ct);
 

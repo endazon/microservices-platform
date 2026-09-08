@@ -28,6 +28,15 @@ public class TestAuthHandler(
     // 「合成である／ない」を作り分けられず、陽性・陰性・偽装の 3 本を書けない。
     public const string ClientIdHeader = "X-Test-Client-Id";
 
+    // FR-05, ADR-0080, [[IADR-0411]], [[IADR-0417]] (#1255): ABAC 利用者属性のクレームを足す。
+    // 書式は `clearance=secret;department=sales`（`;` 区切り。多値は同じキーを 2 回書く）。
+    //
+    // 🔴 **これが無いと、属性を 1 つも運ばない実装が緑のままになる。**
+    // 既定の主体は `clearance` / `department` / 集合値キーのクレームを 1 つも持たないため、
+    // `BffScopeResolver.ExtractUserAttributes` は**常に空**を返す ——
+    // 「利用者文脈を運ぶ」ことを測る試験が、**空を運んでも成立してしまう**（実測で確認した）。
+    public const string AttributesHeader = "X-Test-Attributes";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         // FR-15: 無認証ケースは認証結果なし（NoResult）とし、http.User を未認証のまま通す。
@@ -45,6 +54,18 @@ public class TestAuthHandler(
             && !string.IsNullOrWhiteSpace(clientId.ToString()))
         {
             claims.Add(new Claim("azp", clientId.ToString()));
+        }
+
+        // #1255: ABAC 利用者属性（`clearance=secret;department=sales`）。同じキーを 2 回書けば多値になる。
+        if (Request.Headers.TryGetValue(AttributesHeader, out var attributes))
+        {
+            foreach (var pair in attributes.ToString()
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var parts = pair.Split('=', 2);
+                if (parts.Length == 2 && parts[0].Length > 0)
+                    claims.Add(new Claim(parts[0], parts[1]));
+            }
         }
 
         var identity = new ClaimsIdentity(claims, SchemeName);

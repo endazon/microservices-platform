@@ -490,3 +490,4 @@
 | [IADR-0414](./IADR-0414_integration-gate-asks-for-services-not-docker.md) | **統合テストの門は「要るサービスを得られるか」を依存ごとに訊く**（#1336）。「Docker が入っているか」ではない。🔴 外部供給の口は #455 W3 / #1073 から在ったのに門が見ていなかった。🔴 skip の理由に「どうすれば走るか」を書く。 | Accepted |
 | [IADR-0415](./IADR-0415_caller-filters-narrow-only-and-one-narrowing-rule.md) | 🔴 **呼び出し元の指定は絞るだけで広げない**（#1340）。検索の絞り込み指定が ABAC の許可値集合を union で広げており、認証済み利用者が権限外の文書を読めた。narrowing の規則を共有点（`ScopeNarrowing`）へ 1 つだけ置く。🔴 積が空なら deny —— 「制約なし」へ倒すと全件開放になる。 | Accepted |
 | [IADR-0416](./IADR-0416_retrieval-resolves-scope-and-claims-only-narrow.md) | 🔴 **RetrievalService が ABAC スコープを自分で解決し、呼び出し元の `Scope` は絞り込みにしか効かない**（#1339 / IADR-0410 が gRPC 面で拒んだ形を REST 面へ）。契約は変えない。🔴 分岐は名前で対応づける（キー単位 union へ畳まない）。 | Accepted |
+| [IADR-0417](./IADR-0417_retrieval-grpc-face-and-attribute-values.md) | **RetrievalService に east-west gRPC の受け口を開き、権限内属性値の照会を利用者文脈だけで運ぶ**（#1255 スライス A）。🔴 解決済み scope を受ける口は開かず、絞り込みは別項目・面は ServiceCaller・REST は残す。🔴 検索は近傍展開が絡むので分ける。 | Accepted |

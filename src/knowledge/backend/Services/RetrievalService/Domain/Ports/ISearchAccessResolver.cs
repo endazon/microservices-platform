@@ -19,8 +19,19 @@ namespace RetrievalService.Domain.Ports;
 public interface ISearchAccessResolver
 {
     /// <summary>
-    /// 要求の利用者から許可スコープを解決する。
+    /// 要求の利用者から許可スコープを解決する（**north-south 由来**の検証済み `User`）。
     /// **未認証・認可サービス不調はいずれも `Granted=false`** へ縮退する（fail-closed）。
     /// </summary>
     Task<AccessScopeResponse> ResolveAsync(HttpContext ctx, CancellationToken ct = default);
+
+    /// <summary>
+    /// FR-05, NFR-16, ADR-0086 決定 1, [[IADR-0410]], [[IADR-0417]] (#1255):
+    /// **本文で運ばれた利用者文脈**から許可スコープを解決する（east-west gRPC 由来）。
+    ///
+    /// 🔴 **入口は 2 つ・本体は 1 つである。** どちらも同じ後段（`AuthzScope/Resolve`）を通り、
+    /// **判定の位置は本サービスのままである** —— 移行で変わるのは文脈の運び方だけである
+    /// （`GraphAccessResolver` が同じ形を採っている）。
+    /// </summary>
+    Task<AccessScopeResponse> ResolveForUserAsync(
+        string userId, IReadOnlyDictionary<string, string> attributes, CancellationToken ct = default);
 }

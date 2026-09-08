@@ -642,6 +642,99 @@
         }
       }
     },
+    "src/knowledge/backend/Shared/Knowledge.Contracts/Protos/knowledge/retrieval/v1/attribute_values.proto": {
+      "syntax": "proto3",
+      "package": "knowledge.retrieval.v1",
+      "csharpNamespace": "Knowledge.Contracts.Grpc.Retrieval.V1",
+      "imports": [],
+      "messages": {
+        "ListValuesRequest": {
+          "fields": {
+            "key": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "narrow_to": {
+              "number": 3,
+              "type": "map<string,NarrowTo>",
+              "label": "map"
+            },
+            "user": {
+              "number": 2,
+              "type": "UserContext",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "ListValuesResponse": {
+          "fields": {
+            "values": {
+              "number": 1,
+              "type": "string",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "NarrowTo": {
+          "fields": {
+            "values": {
+              "number": 1,
+              "type": "string",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "UserContext": {
+          "fields": {
+            "action": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            },
+            "user_attributes": {
+              "number": 2,
+              "type": "map<string,string>",
+              "label": "map"
+            },
+            "user_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "enums": {},
+      "services": {
+        "AttributeValues": {
+          "rpcs": {
+            "ListValues": {
+              "request": "ListValuesRequest",
+              "response": "ListValuesResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            }
+          }
+        }
+      }
+    },
     "src/platform/backend/Shared/Platform.Shared.Contracts/Protos/platform/authz/v1/authz_scope.proto": {
       "syntax": "proto3",
       "package": "platform.authz.v1",
