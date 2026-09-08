@@ -656,6 +656,14 @@ function selfTest() {
     ['action pin: 末尾コメントを SHA の一部と読まない', [
       { file: 'review.yml', text: `        uses: anthropics/claude-code-action@${SHA_A}  # v1（実測で緑）\n` },
     ], false],
+    // 🔴 コメント行を拾うと、**この検査器自身が PR の内容と無関係に落ちる**（移行途中の
+    // 「旧版をコメントで残す」編集はありふれている）。陽性・陰性の対で固定する。
+    ['action pin: 🔴 コメントアウトされた旧参照は拾わない（陰性）', [
+      { file: 'review.yml', text: `        # uses: anthropics/claude-code-action@v1\n        uses: anthropics/claude-code-action@${SHA_A}\n` },
+    ], false],
+    ['action pin: ★ 陽性対照 —— コメントを外せば拾う（無条件に無視していない）', [
+      { file: 'review.yml', text: `        uses: anthropics/claude-code-action@v1\n        uses: anthropics/claude-code-action@${SHA_A}\n` },
+    ], true],
   ];
   for (const [label, files, expectError] of pinCases) {
     const got = claudeActionPinErrors(files).length > 0;
@@ -694,13 +702,31 @@ function selfTest() {
  * @param {{file: string, text: string}[]} files 走査済みのワークフロー
  * @returns {string[]} 違反メッセージ（空なら適合）
  */
-const ACTION_REF_RE = /uses:\s*anthropics\/claude-code-action@([^\s#]+)/g;
+const ACTION_REF_RE = /^uses:\s*anthropics\/claude-code-action@([^\s#]+)/;
+
+/**
+ * 🔴 **行単位で走査し、コメント行を除外する。**
+ * 全文へ `matchAll` を掛けると `# uses: anthropics/claude-code-action@v1`（旧版を残した移行途中の形）を
+ * 有効な参照として拾い、**PR の内容と無関係にこの検査器が落ちる** ——
+ * まさに本検査器が防いでいる事故を、検査器自身が起こすことになる。
+ * 判定は「行頭（インデントを除く）が `#`」であり、`@SHA # v1（…）` の**末尾コメントは参照として拾う**。
+ */
+function actionRefsIn(text) {
+  const refs = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trimStart();
+    if (line.startsWith('#')) continue;
+    const m = ACTION_REF_RE.exec(line);
+    if (m) refs.push(m[1]);
+  }
+  return refs;
+}
 
 function claudeActionPinErrors(files) {
   const refs = [];
   for (const { file, text } of files) {
-    for (const m of text.matchAll(ACTION_REF_RE)) {
-      refs.push({ file: path.basename(file), ref: m[1] });
+    for (const ref of actionRefsIn(text)) {
+      refs.push({ file: path.basename(file), ref });
     }
   }
   if (refs.length === 0) return [];
