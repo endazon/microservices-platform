@@ -272,6 +272,11 @@ gRPC の手書き検証）へ要ることになり、引き直しの点を 1 つ
 
 `ScopeUserAttributeLogSafetyTests` 11 本を追加（陽性対照つき）。`AuthorizationService.Tests` 230 → **241**。
 
+★［2026-09-08 追記 / #1333］**レビュー 2 巡目の 🟢 も直した。** `exact=true` の候補が 2 人以上のとき
+`FirstOrDefault` で先頭を採っており、**どちらの属性で判定したかが応答順しだい**だった
+（同じ要求が日によって違う判定を返す）。**選ばずに落とす**形へ変えた（deny へ倒れる）。
+`FindByUsername_refuses_to_choose_when_the_name_is_not_unique` が固定する。**242 本**。
+
 ## 実測（数字）
 
 | | 前 | 後 |

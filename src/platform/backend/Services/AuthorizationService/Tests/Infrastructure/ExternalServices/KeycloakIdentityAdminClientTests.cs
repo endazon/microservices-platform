@@ -428,6 +428,27 @@ public class KeycloakIdentityAdminClientTests
         (await Client(handler).FindByUsernameAsync("ghost", Ct)).Should().BeNull();
     }
 
+    // 🔴 **一意でなければ「引けなかった」へ倒す**（PR #1334 のレビュー指摘）。
+    // `exact=true` でも realm の設定しだいで大小文字違いの 2 人が返り得る。
+    // **先頭を採ると、どちらの属性で判定したかが応答順しだいになる** ——
+    // 同じ要求が日によって違う判定を返す。**選ばずに落とす**（呼び出し元は deny へ倒れる）。
+    [Fact]
+    public async Task FindByUsername_refuses_to_choose_when_the_name_is_not_unique()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users?username=alice&exact=true&briefRepresentation=false&max=2",
+                """
+                [{"id":"u1","username":"alice","enabled":true,"attributes":{"clearance":["public"]}},
+                 {"id":"u2","username":"Alice","enabled":true,"attributes":{"clearance":["secret"]}}]
+                """);
+
+        var act = async () => await Client(handler).FindByUsernameAsync("alice", Ct);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*一意でない*", "どちらの属性で ABAC を判定するかを応答順に委ねない");
+    }
+
     // 🔴 集合値属性は線上表現のまま返る（[[IADR-0385]] 決定 2）——
     // 分解も再符号化もここではしない（評価器が交差判定を行う。[[IADR-0411]]）。
     [Fact]
