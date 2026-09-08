@@ -1119,6 +1119,57 @@ function findReports() {
   return findReportsDetailed().included;
 }
 
+/**
+ * NFR, IADR-0236, Issue #1346: 集計対象の**テストプロジェクト**を数える。
+ *
+ * 🔴 **これは「レポートが何件出るはずか」の唯一の導出点である。**
+ * #900 の重複排除以降、**同じテストプロジェクトを 2 回実行しても分母は倍にならず床は割れない** ——
+ * 二重実行は fail ではなく**無音**になった。残る唯一の手掛かりが「レポート件数」であり、
+ * 従前それは `integration.yml` と `src/coverage-floor.json` の**コメントに書かれた固定値**だった。
+ *
+ * 🔴 **その固定値は 2 か所とも実物とずれていた**（16 件 / 17 件 に対し実物 19 件。#1346）。
+ * **検知手段そのものが陳腐化していた** —— 2 つの独立した写しが同時に腐った以上、
+ * 写しを直すのではなく**数えて比べる**形へ変える（[[IADR-0141]] の「2 回目」）。
+ *
+ * 除外は `isExcludedPath` を**レポートと共有する**（別々に持つと、除外ユニットを増やしたときに
+ * 片方だけが追随して常時ミスマッチになる）。探索起点も `SEARCH_ROOT` を共有するので、
+ * `templates/` の雛形テストは初めから範囲外である。
+ */
+function findTestProjects() {
+  return walk(SEARCH_ROOT, (p) => /Tests\.csproj$/i.test(p)).filter((p) => !isExcludedPath(p));
+}
+
+/**
+ * レポート件数と、テストプロジェクト数から導いた期待件数を突き合わせる。
+ * 返すのは `{ level, text }`（`null` なら一致）。
+ *
+ * 🔴 **多いほうだけを error にする。**
+ *   多い = 同じプロジェクトを 2 回実行した疑い。**床では検知できない**（重複排除で畳まれる）。
+ *   少ない = どれかがレポートを出していない。こちらは**床が下がる向き**なので床自身が捕まえる。
+ *     加えて「そのユニットだけを走らせた」等の正当な部分実行があり得るので warn に留める。
+ */
+function compareReportCount(reportCount, projects) {
+  const expected = projects.length;
+  if (reportCount === expected) return null;
+  const shared = `レポート ${reportCount} 件に対し、集計対象のテストプロジェクトは ${expected} 件である`
+    + `（探索起点 ${SEARCH_ROOT}/ ・除外ユニット: ${[...EXCLUDED_UNITS].join(', ') || 'なし'}）。`;
+  if (reportCount > expected) {
+    return {
+      level: 'error',
+      text: `[check-coverage-floor] ${shared}`
+        + ' 🔴 **同じテストプロジェクトを 2 回以上実行している疑いがある**'
+        + '（#900 の重複排除以降、二重実行は分母を倍にしないので床では検知できない）。'
+        + ' `--filter` を足した / ループが二重になった / 別ジョブの成果物が混ざった、のいずれかを疑うこと。',
+    };
+  }
+  return {
+    level: 'warn',
+    text: `[check-coverage-floor] ${shared}`
+      + ' 一部のテストプロジェクトがレポートを出していない（部分実行なら想定どおり。'
+      + ' 全量実行のはずなら、そのプロジェクトのテストが 1 件も走っていない可能性がある）。',
+  };
+}
+
 function readFloor() {
   try {
     return JSON.parse(fs.readFileSync(FLOOR_FILE, 'utf8')).backend || {};
@@ -1183,6 +1234,24 @@ function selfTest() {
 
   t('rate: 3/4 は 75', rate(3, 4) === 75);
   t('rate: 分母 0 は null（未計測を 100% と誤らせない）', rate(0, 0) === null);
+
+  // NFR, Issue #1346: レポート件数の期待値は**数えて導く**（コメントの固定値ではない）。
+  const threeProjects = ['src/a/A.Tests.csproj', 'src/b/B.Tests.csproj', 'src/c/C.Tests.csproj'];
+  t('compareReportCount: 一致なら指摘なし', compareReportCount(3, threeProjects) === null);
+  t('compareReportCount: 🔴 多いのは error（二重実行。床では検知できない）',
+    compareReportCount(6, threeProjects)?.level === 'error');
+  t('compareReportCount: 少ないのは warn（床が下がる向きなので床自身が捕まえる）',
+    compareReportCount(2, threeProjects)?.level === 'warn');
+  t('compareReportCount: 指摘文に実数と期待数の両方が出る',
+    /6 件/.test(compareReportCount(6, threeProjects).text)
+    && /3 件/.test(compareReportCount(6, threeProjects).text));
+
+  // ★ 陽性対照 —— 実リポジトリでも 1 件以上のテストプロジェクトを見つけられる
+  //   （数え方が壊れて 0 件になると、上の比較が「常に少ない＝warn」へ倒れて無力化する）。
+  t('findTestProjects: 実リポジトリで 1 件以上を数える', findTestProjects().length > 0,
+    findTestProjects().length);
+  t('findTestProjects: 除外ユニット配下は数えない',
+    findTestProjects().every((p) => !isExcludedPath(p)));
 
   t('mergeTotals: 合算する',
     mergeTotals([totals, totals]).lines === 8 && mergeTotals([totals, totals]).covered === 6);
@@ -1806,6 +1875,16 @@ function main() {
     else notice(m.text);
   }
 
+  // NFR, IADR-0236, Issue #1346: 🔴 **二重実行の唯一の検知点**（上の `compareReportCount` を参照）。
+  // 件数はコメントの固定値ではなく**テストプロジェクトを数えて**導く。
+  const projects = findTestProjects();
+  const countIssue = compareReportCount(reports.length, projects);
+  if (countIssue === null) {
+    console.log(`[check-coverage-floor] レポート件数はテストプロジェクト数（${projects.length} 件）と一致している。`);
+  } else if (countIssue.level === 'warn') {
+    warn(countIssue.text);
+  }
+
   const summary = process.env.GITHUB_STEP_SUMMARY;
   if (summary) {
     const before = agg.beforeExclusion;
@@ -1830,6 +1909,19 @@ function main() {
       `いずれの除外もかける前は ${formatTotals(before)}。`,
     ];
     try { fs.appendFileSync(summary, lines.join('\n') + '\n'); } catch { /* サマリ不可でも検査は続ける */ }
+  }
+
+  // 🔴 **二重実行は床とは別の門である。** 床が緑でも（重複排除で畳まれるので緑になる）落とす。
+  // `--report-only` のときは床と同じく報告に留める —— PR 側で門を 2 つ持たないため
+  // （門は回収先 `integration.yml` に 1 つだけ置く。IADR-0232 改定 3）。
+  if (countIssue !== null && countIssue.level === 'error') {
+    if (reportOnly) {
+      warn(`${countIssue.text}（--report-only のため exit 0）`);
+    } else {
+      console.error(countIssue.text);
+      console.error('集計対象のテストプロジェクト:\n' + projects.map((p) => `    ${p}`).join('\n'));
+      process.exit(1);
+    }
   }
 
   if (floor.line == null && floor.branch == null) {
