@@ -40,6 +40,14 @@ public class GrpcResolveScopeTests
         _factory = factory;
         _factory.StartServer();
         SeedPolicyOnce();
+        // 🔴 **属性は IdP 側にある**（計画 ADR-0088 決定 1 / [[IADR-0413]] / #1333）——
+        // 要求本文の `user_attributes` は評価に用いられない。本文にも同じ値を載せているのは、
+        // **載せても結果が変わらない**（＝主張が効いていない）ことを T-07 の同値で示すためである。
+        _factory.Identity.Attributes["alice"] = new Dictionary<string, string>
+        {
+            ["department"] = "engineering",
+            ["clearance"] = "internal",
+        };
     }
 
     // department=engineering の利用者に confidentiality ∈ {internal, public} を許すポリシー 1 件。
@@ -68,6 +76,70 @@ public class GrpcResolveScopeTests
 
     private AuthzScope.AuthzScopeClient PlainClient() =>
         new(GrpcChannel.ForAddress(_factory.GrpcAddress));
+
+    // ── FR-05, NFR-09, 計画 ADR-0088 決定 1, [[IADR-0413]] (#1333) ──
+    // 🔴 **gRPC 面でも本文の `user_attributes` は評価に用いられない。**
+    // REST 面（`ClaimedUserAttributesAreIgnoredTests`）と**同じ 1 つの点**を通ることの確認である。
+
+    // 🔴 T-1333-a: 偽の属性を主張しても通らない。
+    [Fact]
+    public async Task Claimed_user_attributes_do_not_grant_anything_over_grpc()
+    {
+        var token = GrpcKestrelFactory.IssueToken(ServiceSubject, [PlatformAuthPolicies.ServiceRole]);
+        var liar = $"liar-{Guid.NewGuid():N}"[..20];
+        // IdP 側は sales。**ポリシーが要求するのは engineering である。**
+        _factory.Identity.Attributes[liar] = new Dictionary<string, string> { ["department"] = "sales" };
+
+        var request = new ResolveScopeRequest
+        {
+            UserId = liar,
+            UserAttributes = { ["department"] = "engineering" },
+        };
+        var resp = await PlainClient().ResolveAsync(
+            request, headers: Bearer(token), cancellationToken: TestContext.Current.CancellationToken);
+
+        resp.Granted.Should().BeFalse(
+            "主張が評価に使われていたら engineering のポリシーにマッチしてしまう");
+        _factory.Identity.LookedUp.Should().Contain(liar, "引き直しが実際に走っている");
+    }
+
+    // 🔴 T-1333-b: 「居ない」は**応答**である（`granted=false`。status にしない）。
+    [Fact]
+    public async Task An_unknown_user_is_denied_by_a_normal_response_over_grpc()
+    {
+        var token = GrpcKestrelFactory.IssueToken(ServiceSubject, [PlatformAuthPolicies.ServiceRole]);
+        var ghost = $"ghost-{Guid.NewGuid():N}"[..20];
+        _factory.Identity.Unknown.Add(ghost);
+
+        var resp = await PlainClient().ResolveAsync(
+            new ResolveScopeRequest { UserId = ghost, UserAttributes = { ["department"] = "engineering" } },
+            headers: Bearer(token), cancellationToken: TestContext.Current.CancellationToken);
+
+        resp.Granted.Should().BeFalse();
+    }
+
+    // 🔴 T-1333-c: 「引けなかった」は **status**（`UNAVAILABLE`）である。
+    // 呼び出し元は `RpcException` を deny へ縮退するので **fail-closed は保たれる**が、
+    // **後段の停止を「権限が無い」として記録しない**。
+    [Fact]
+    public async Task An_identity_provider_outage_is_unavailable_not_a_denial()
+    {
+        var token = GrpcKestrelFactory.IssueToken(ServiceSubject, [PlatformAuthPolicies.ServiceRole]);
+        _factory.Identity.Failure = new HttpRequestException("Keycloak へ届かない");
+        try
+        {
+            var act = async () => await PlainClient().ResolveAsync(
+                EngineeringRequest(), headers: Bearer(token),
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode
+                .Should().Be(StatusCode.Unavailable);
+        }
+        finally
+        {
+            _factory.Identity.Failure = null;
+        }
+    }
 
     // 呼び出し側の共通部品（CreatePlatformChannel = 平文 h2c ＋ s2s CallCredentials）を実際に通す。
     private sealed class FixedTokenProvider(string token) : IServiceTokenProvider
@@ -186,7 +258,10 @@ public class GrpcResolveScopeTests
         var grpc = await PlainClient().ResolveAsync(
             EngineeringRequest(), headers: Bearer(token), cancellationToken: TestContext.Current.CancellationToken);
 
+        // 🔴 **REST 面も `ServiceCaller` を要る**（計画 ADR-0088 決定 2 / #1333）——
+        // 従前この端点は認可を 1 つも掛けていなかった。gRPC と**同じ 1 つのポリシー**である。
         using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
+        http.DefaultRequestHeaders.Authorization = new("Bearer", token);
         var restResp = await http.PostAsJsonAsync("/authz/scope",
             new AccessScopeRequest("alice", new Dictionary<string, string>
             {

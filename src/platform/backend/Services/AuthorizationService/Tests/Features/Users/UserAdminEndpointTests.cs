@@ -174,8 +174,10 @@ public class UserAdminEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task Disable_also_revokes_every_session_of_that_user()
     {
-        var identity = (InMemoryIdentityAdminClient)factory.Services
-            .GetRequiredService<IIdentityAdminClient>();
+        // #1333: 引き直しの装飾を挟んだので、DI から取れるのは装飾のほうである。
+        // **観測点は包まれた本物の偽物のほうが持つ。**
+        _ = factory.Services.GetRequiredService<IIdentityAdminClient>();
+        var identity = (InMemoryIdentityAdminClient)factory.Identity.Inner;
         var before = identity.RevokedSessionRequests.Count;
 
         (await Client.PostAsync("/authz/users/u-sato/disable", null, Ct))
@@ -189,8 +191,10 @@ public class UserAdminEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task Enable_does_not_revoke_anything()
     {
-        var identity = (InMemoryIdentityAdminClient)factory.Services
-            .GetRequiredService<IIdentityAdminClient>();
+        // #1333: 引き直しの装飾を挟んだので、DI から取れるのは装飾のほうである。
+        // **観測点は包まれた本物の偽物のほうが持つ。**
+        _ = factory.Services.GetRequiredService<IIdentityAdminClient>();
+        var identity = (InMemoryIdentityAdminClient)factory.Identity.Inner;
         var before = identity.RevokedSessionRequests.Count;
 
         (await Client.PostAsync("/authz/users/u-suzuki/enable", null, Ct))

@@ -62,6 +62,37 @@ public sealed class KeycloakIdentityAdminClient(
         return result;
     }
 
+    // FR-05, FR-16, NFR-09, SC-12, 計画 ADR-0088 決定 1・3, [[IADR-0413]] (#1333):
+    // 名指しの 1 人を **1 往復**で引く。
+    //
+    // 🔴 **`exact=true` が要る。** 既定の `username=` は**前方一致**であり、`alice` を引くと
+    // `alice2` も返る。返り値の先頭を採る形にすると**別人の属性で ABAC を判定しうる**。
+    //
+    // 🔴 **ロールは引かない。** 呼び出し元（属性の引き直し・`GetUserAttributes`）はロールを読まず、
+    // 引くと 1 人あたり往復が 1 つ増える（列挙版が人数分やっていたのがこれである）。
+    // **`Roles` が空なのは「ロールが無い」ではなく「この口では引いていない」である** ——
+    // ロールが要る経路は `ListUsersAsync` を使う。
+    //
+    // 🔴 **照合は呼び出し元と揃えて大小文字無視で確かめ直す。** Keycloak の `exact` は
+    // realm の設定（`login.username` の大小文字扱い）に依存するため、**返ってきた候補を
+    // こちらでも絞る** —— 依存先の設定で照合規則が変わらないようにする。
+    public async Task<IdentityUser?> FindByUsernameAsync(string username, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return null;
+
+        var client = await AuthorizedClientAsync(ct);
+        // briefRepresentation=false でないと attributes が返らない（ListUsersAsync と同じ罠）。
+        var users = await client.GetFromJsonAsync<List<KeycloakUser>>(
+            $"admin/realms/{Realm}/users?username={Uri.EscapeDataString(username)}"
+            + "&exact=true&briefRepresentation=false&max=2", Json, ct) ?? [];
+
+        var user = users.FirstOrDefault(u =>
+            !string.IsNullOrEmpty(u.Id)
+            && string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase));
+
+        return user is null ? null : ToIdentityUser(user, []);
+    }
+
     public async Task<IReadOnlyList<string>> ListAssignableRolesAsync(CancellationToken ct)
     {
         var client = await AuthorizedClientAsync(ct);

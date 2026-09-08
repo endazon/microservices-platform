@@ -20,7 +20,7 @@ public class HealthEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task PostAuthzScope_Returns200()
     {
-        var response = await factory.CreateClient()
+        var response = await factory.CreateServiceCallerClient()
             .PostAsJsonAsync("/authz/scope",
                 new { UserId = "u1", UserAttributes = new { department = "engineering" } }, TestContext.Current.CancellationToken);
         response.StatusCode.Should().Be(HttpStatusCode.OK);

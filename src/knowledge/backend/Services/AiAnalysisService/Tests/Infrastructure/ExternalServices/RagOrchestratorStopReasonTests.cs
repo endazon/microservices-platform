@@ -5,6 +5,7 @@ using AiAnalysisService.Infrastructure.ExternalServices;
 using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 
 namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 
@@ -143,7 +144,7 @@ public class RagOrchestratorStopReasonTests
         {
             var (body, mediaType) = name switch
             {
-                "AuthorizationService" => ("""{"userId":"user-1","allowedFilters":[],"granted":true}""",
+                AuthzScopeHttpClient.ClientName => ("""{"userId":"user-1","allowedFilters":[],"granted":true}""",
                     "application/json"),
                 "RetrievalService" => ("""{"results":[],"total":0,"tookMs":0}""", "application/json"),
                 _ => (llmBody, llmMediaType),

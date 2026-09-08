@@ -39,7 +39,7 @@ public static class BffScopeResolver
         if (http.RequestServices?.GetService<AuthzScopeGrpcClient>() is { } grpc)
             return await grpc.ResolveAsync(userId, userAttrs, action, ct);
 
-        var authzClient = httpFactory.CreateClient("AuthorizationService");
+        var authzClient = httpFactory.CreateClient(AuthzScopeHttpClient.ClientName);
         try
         {
             var scopeResp = await authzClient.PostAsJsonAsync("/authz/scope",

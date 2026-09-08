@@ -26,6 +26,24 @@ public interface IIdentityAdminClient
     Task<IReadOnlyList<IdentityUser>> ListUsersAsync(CancellationToken ct);
 
     /// <summary>
+    /// FR-05, FR-16, NFR-09, UC-09, SC-12, 計画 ADR-0088 決定 1・3, ADR-0062 決定 3,
+    /// [[IADR-0413]] (#1333): **利用者名で 1 人だけを引く。** 居なければ null。
+    ///
+    /// 🔴 **列挙の上で絞る形を置き換えるためにある。** 従前、名指しの 1 人が要る経路
+    /// （ABAC 判定の属性の引き直し・`UserDirectory/GetUserAttributes`）は
+    /// <see cref="ListUsersAsync"/> の結果を絞っていた。それには 2 つの欠陥があった ——
+    /// <list type="number">
+    /// <item>判定 1 回ごとに**全利用者の列挙 ＋ 人数分のロール照会**が走る</item>
+    /// <item>🔴 列挙は **1000 件で打ち切られる**ので、**1001 人目以降は「居ない」に見える**。
+    /// `ADR-0088` 決定 1 の下でそれは deny であり、**実在する利用者が人数の増加だけで締め出される**</item>
+    /// </list>
+    /// 🔴 **したがって「1 人だけ要るときは列挙しない」は最適化ではなく正しさである。**
+    ///
+    /// 🔴 **これは新規作成の口ではない**（`IdentityAdminContractTests` の禁止語に触れない読み取りである）。
+    /// </summary>
+    Task<IdentityUser?> FindByUsernameAsync(string username, CancellationToken ct);
+
+    /// <summary>
     /// SC-17 入力規則「定義済みロールのみ」の**値域の正**。IdP が持つ割当可能な realm ロールを返す。
     /// **画面にも後段にも焼き込まない** —— 焼き込むと realm を増やしても選べず、
     /// 消えたロールを選べてしまう。

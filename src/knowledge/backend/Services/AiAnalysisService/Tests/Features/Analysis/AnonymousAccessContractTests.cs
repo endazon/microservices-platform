@@ -13,6 +13,9 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
+using Platform.Shared.Infrastructure.Foundation.Authz;
+using Platform.Shared.Infrastructure.Foundation.Grpc;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace AiAnalysisService.Tests.Features.Analysis;
 
@@ -163,7 +166,9 @@ public class AnalysisAnonymousContractTestFactory : WebApplicationFactory<Progra
         builder.ConfigureServices(services =>
         {
             // 🔴 `IRagOrchestrator` は**差し替えない**。実物の経路を測るのが目的である。
-            services.AddHttpClient("AuthorizationService")
+            services.RemoveAll<IServiceTokenProvider>();
+            services.AddSingleton<IServiceTokenProvider>(new FixedServiceTokenProvider());
+            services.AddHttpClient(AuthzScopeHttpClient.ClientName)
                 .ConfigurePrimaryHttpMessageHandler(() => Authz);
 
             // 後段は本テストの対象ではない。**到達不能を返す**（`RagOrchestrator` は検索失敗を
@@ -227,4 +232,12 @@ public class AnalysisTestUserAuthHandler(
         return Task.FromResult(AuthenticateResult.Success(
             new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName)));
     }
+
+}
+
+// #1333: 実 IdP を持たないテストで s2s トークンの**発行だけ**を固定する。
+// 🔴 `ServiceTokenHandler` は本物が走る —— スコープ解決の要求に Bearer が載ることは変えない。
+internal sealed class FixedServiceTokenProvider : IServiceTokenProvider
+{
+    public ValueTask<string> GetTokenAsync(CancellationToken ct) => ValueTask.FromResult("test-service-token");
 }

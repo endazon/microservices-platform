@@ -3,6 +3,7 @@ using System.Text;
 using AiAnalysisService.Domain.Ports;
 using AiAnalysisService.Infrastructure.ExternalServices;
 using AwesomeAssertions;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 
 namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 
@@ -222,7 +223,7 @@ public class RagOrchestratorDegradedModelTests
         {
             var (body, mediaType, status) = name switch
             {
-                "AuthorizationService" => (
+                AuthzScopeHttpClient.ClientName => (
                     $$"""{"userId":"user-1","allowedFilters":[],"granted":{{(granted ? "true" : "false")}}}""",
                     "application/json", HttpStatusCode.OK),
                 "RetrievalService" => ("""{"results":[],"total":0,"tookMs":0}""",

@@ -6,6 +6,7 @@ using AiAnalysisService.Infrastructure.ExternalServices;
 using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 
 namespace AiAnalysisService.Tests.Domain.Ports;
 
@@ -237,7 +238,7 @@ public class RagAnswerContractTests
 
             switch (name)
             {
-                case "AuthorizationService":
+                case AuthzScopeHttpClient.ClientName:
                     return Ok(JsonSerializer.Serialize(abac, Json));
 
                 case "RetrievalService":

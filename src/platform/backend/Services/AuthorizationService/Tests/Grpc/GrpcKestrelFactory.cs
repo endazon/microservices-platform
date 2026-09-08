@@ -37,6 +37,9 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
 
     private readonly string _dbName = $"AuthzGrpc_{Guid.NewGuid()}";
 
+    // #1333: 利用者属性の出所（要求本文ではない）。規則は `TestIdentityDirectory` が 1 つだけ持つ。
+    public TestIdentityDirectory Identity { get; } = new();
+
     // ポートは GrpcTestConfiguration（環境変数）が決める。ConfigureAppConfiguration では間に合わない。
     public int GrpcPort => GrpcTestConfiguration.GrpcPort;
 
@@ -72,6 +75,10 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
         builder.ConfigureServices(services =>
         {
             TestWebApplicationFactory.ReplaceDbContext<AuthorizationDbContext>(services, _dbName);
+
+            // FR-05, NFR-09, 計画 ADR-0088 決定 1, [[IADR-0413]] (#1333): ABAC 判定に使う属性は
+            // IdP から引き直される。**器が 2 つあるので差し替えの規則は共有点が持つ。**
+            TestIdentityDirectory.Replace(services, Identity);
 
             services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, o =>
             {

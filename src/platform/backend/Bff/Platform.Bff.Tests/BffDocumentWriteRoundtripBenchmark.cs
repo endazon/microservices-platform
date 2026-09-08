@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 
 namespace Platform.Bff.Tests;
 
@@ -54,6 +55,9 @@ public sealed class MeasuringBffFactory : BffTestFactory
         // 後から登録した ConfigurePrimaryHttpMessageHandler が最終的な PrimaryHandler を上書きする。
         builder.ConfigureServices(services =>
         {
+            // #1333: スコープ解決は専用クライアントを通る（計画 ADR-0088 決定 2）。
+            services.AddHttpClient(AuthzScopeHttpClient.ClientName)
+                .ConfigurePrimaryHttpMessageHandler(() => new MeasuringHandler(this, "authz"));
             services.AddHttpClient("AuthorizationService")
                 .ConfigurePrimaryHttpMessageHandler(() => new MeasuringHandler(this, "authz"));
             services.AddHttpClient("DocumentService")
