@@ -444,6 +444,47 @@
         }
       }
     },
+    "src/knowledge/backend/Shared/Knowledge.Contracts/Protos/knowledge/document/v1/tag_dictionary.proto": {
+      "syntax": "proto3",
+      "package": "knowledge.document.v1",
+      "csharpNamespace": "Knowledge.Contracts.Grpc.Document.V1",
+      "imports": [],
+      "messages": {
+        "ListNamesRequest": {
+          "fields": {},
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "ListNamesResponse": {
+          "fields": {
+            "names": {
+              "number": 1,
+              "type": "string",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "enums": {},
+      "services": {
+        "TagDictionary": {
+          "rpcs": {
+            "ListNames": {
+              "request": "ListNamesRequest",
+              "response": "ListNamesResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            }
+          }
+        }
+      }
+    },
     "src/knowledge/backend/Shared/Knowledge.Contracts/Protos/knowledge/graph/v1/graph_neighbors.proto": {
       "syntax": "proto3",
       "package": "knowledge.graph.v1",

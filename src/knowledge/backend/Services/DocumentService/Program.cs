@@ -20,6 +20,7 @@ using DocumentService.Features.PrivateNotes.Purge;
 using DocumentService.Features.SyncDevices;
 using DocumentService.Features.SyncDevices.Issue;
 using DocumentService.Features.Tags;
+using DocumentService.Features.Tags.Names;
 using DocumentService.Features.Tags.Create;
 using DocumentService.Features.Tags.Rename;
 using DocumentService.Infrastructure.Persistence;
@@ -227,6 +228,12 @@ app.MapGrpcService<DocumentReadGrpcService>();
 // 要求する —— 承認者本人のトークンでは通らない（利用者文脈は本文で運ぶ）。
 // 🔴 **書き込みの面は読み取りの面と別である**（`document_read.proto` は「書き込みの口は無い」と宣言している）。
 app.MapGrpcService<DocumentTagWriteGrpcService>();
+// FR-18, NFR-09, NFR-16, SC-09, ADR-0029, ADR-0043, ADR-0063 決定 2, ADR-0075,
+// [[IADR-0364]] 決定 2, [[IADR-0379]], [[IADR-0412]] (#1255): タグ辞書読み取りの gRPC 面。
+// REST `GET /internal/tags/names` と**同じ問い合わせ**（`TagNamesEndpoint.ReadNamesAsync`）を通る。
+// 🔴 REST の受け口は認証を持たないが、gRPC 面は ServiceCaller を要求する（**狭まる向き**）。
+// 🔴 **書き込み・使用件数・文書の口はこの面に出さない**（呼び出し元が要らないものを面へ出さない）。
+app.MapGrpcService<TagDictionaryGrpcService>();
 // FR-09, SC-05, SC-09, #634: タグ辞書（IADR-0152 決定 1）。
 app.MapTagDictionaryEndpoints();
 // FR-19, FR-20, ADR-0036 D-06, IADR-0253 決定 4（段 4）: 文書の共有先（所有者のみ変更可）。

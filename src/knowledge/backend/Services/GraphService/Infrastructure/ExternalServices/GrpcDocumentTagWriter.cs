@@ -3,6 +3,7 @@ using Platform.Shared.Infrastructure.Foundation.Authz;
 using GraphService.Domain.Ports;
 using Grpc.Core;
 using Grpc.Net.Client;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Pb = Knowledge.Contracts.Grpc.Document.V1;
@@ -149,7 +150,13 @@ public static class DocumentTagWriteGrpcClientExtensions
         // 認可サービス宛（`AddAuthzScopeGrpcClient`。**キー無し**）・LlmGateway 宛・
         // ダッシュボード宛（いずれもキー付き）。4 つ目をキー無しで足すと、
         // タグの反映が**認可サービスへ繋がる**（あるいはその逆）。
-        services.AddKeyedSingleton(ChannelKey, (sp, _) =>
+        //
+        // 🔴 **`TryAdd` である**（[[IADR-0412]] / #1255）。同じ宛先 DocumentService へは
+        // タグ辞書の**読み取り側**（`AddTagDictionaryGrpcClient`）も同じキーで登録するため、
+        // `Add` のままだと**登録順しだいでチャネルが 2 本**になる（`GetRequiredKeyedService` は
+        // 最後の登録を返すので障害としては現れず、**宛先ごと 1 本という決定だけが静かに破れる**。
+        // [[IADR-0402]] 決定 6）。**どちらが先でも 1 本**にするのが `TryAdd` の役目である。
+        services.TryAddKeyedSingleton<GrpcChannel>(ChannelKey, (sp, _) =>
             GrpcClientExtensions.CreatePlatformChannel(address, sp.GetRequiredService<IServiceTokenProvider>()));
         services.AddSingleton(sp => new Pb.DocumentTagWrite.DocumentTagWriteClient(
             sp.GetRequiredKeyedService<GrpcChannel>(ChannelKey)));

@@ -1,0 +1,61 @@
+// FR-18, NFR-09, NFR-16, SC-09, ADR-0029, ADR-0043, ADR-0063, ADR-0075, IADR-0299, IADR-0364,
+// IADR-0379, IADR-0401, IADR-0402, IADR-0410, IADR-0412 (#1255):
+// タグ辞書の**名前集合**を読む 1 口（REST `GET /internal/tags/names` と同じ意味論）の gRPC 契約。
+//
+// ■ 置き場と所有（IADR-0379 決定 1）: 所有者は DocumentService。置き場は knowledge ユニットの
+//   共有契約プロジェクト `Knowledge.Contracts` の `Protos/knowledge/document/v1/`。
+//   クライアント・サーバ基底の両方をここから生成する（`GrpcServices="Both"`）。
+//
+// ■ 🔴 **既存 2 本のどちらへも足さない。面を分ける。**
+//   - `document_read.proto` は「書き込み・本文・共有の口はこの面に存在しない」と宣言している。
+//     あれは **BFF の文書台帳の面**であり、Graph のタグ辞書を混ぜると宣言が嘘になる。
+//   - `document_tag_write.proto` は「**一覧・本文・共有・タグ辞書の口はこの面に存在しない**」と
+//     自ら書いている。加えて `service DocumentTagWrite` は書き込みの面であり、改名は破壊的変更である。
+//   いずれも [[IADR-0401]] 決定 2 の作法 —— **呼び出し元が要らないものを面へ出さない**。
+//
+// ■ versioning（IADR-0379 決定 2）: フィールド番号は不変。削除は reserved に残す。破壊的変更は v2 の並走。
+//
+// ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
+//   この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。
+//
+// ■ 🔴 **この面は利用者の権限で動かない。** 読む主体は GraphService 自身である（IADR-0364 決定 2）——
+//   辞書は**提案の生成段で LLM に選ばせる値集合**として引くものであり、利用者へ返すものではない。
+//   利用者の資格情報で引くと、`/tags`（管理者・運用者限定）と同じ 403 で一般利用者の提案が 0 件になる。
+//   したがって **`user_id` も `user_attributes` も本文に無い**（要らないものを面へ出さない）。
+//
+// ■ 🔴 **使用件数を返さない。** 管理側の集計（`TagDto.UsageCount`）であり、生成に要らない。
+//   加えて ABAC で絞っていない値を外へ出すことになる（ADR-0043 決定 2 / IADR-0364 決定 2）。
+//   REST 側は「本文に `usageCount` が現れないこと」を試験で固定しており、本面も同じ形で固定する。
+//
+// ■ 🔴 **「引けなかった」と「空」を分ける**（IADR-0401 決定 5 と同じ作法）。
+//   辞書が空なのは**応答**（`names` が空）、引けなかったのは **gRPC status**（UNAVAILABLE 等）である。
+//   呼び出し元は前者を**空集合**、後者を **`null`** へ落とす —— この区別が壊れると
+//   「辞書が空だからタグを付けない」と「引けなかったからタグを付けない」が混ざり、
+//   **fail-closed の理由が追えなくなる**（`ITagDictionaryReader` の注記が同じことを言っている）。
+//
+// ■ 🔴 **順序は契約である。** REST 側は `OrderBy(t => t.Name)` で名前順に返しており、
+//   本面も同じ順序で返す。呼び出し元は集合へ落とすので順序を使わないが、
+//   **面の側で決めておかないと、後から順序に依存する消費者が現れたときに壊れる**。
+syntax = "proto3";
+
+package knowledge.document.v1;
+
+option csharp_namespace = "Knowledge.Contracts.Grpc.Document.V1";
+
+// タグ辞書の読み取り。ServiceCaller（platform-service）を要求する。
+// **書き込み・使用件数・文書の口はこの面に存在しない**（呼び出し元が要らないものを面へ出さない）。
+service TagDictionary {
+  // 辞書に定義済みのタグ名を**すべて**返す。REST `GET /internal/tags/names` と同値。
+  // 引数を取らない —— 呼び出し元（提案の生成段）が要るのは「選んでよい値の全体」だけである。
+  rpc ListNames(ListNamesRequest) returns (ListNamesResponse);
+}
+
+// 空の要求。**将来の絞り込みのために message を置いておく**
+// （`ListDocumentsRequest` と同じ形。引数を足すときに rpc の型を変えずに済む）。
+message ListNamesRequest {}
+
+message ListNamesResponse {
+  // 辞書に定義済みのタグ名。**名前順**。
+  // 🔴 空は「辞書が空」であって「引けなかった」ではない（後者は gRPC status で表す）。
+  repeated string names = 1;
+}

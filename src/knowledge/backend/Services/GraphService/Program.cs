@@ -170,7 +170,20 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration[DocumentTagWriteGrpcClientE
     builder.Services.AddScoped<IDocumentTagWriter, GrpcDocumentTagWriter>();
 else
     builder.Services.AddScoped<IDocumentTagWriter, HttpDocumentTagWriter>();
-builder.Services.AddScoped<ITagDictionaryReader, HttpTagDictionaryReader>();
+// FR-18 / NFR-09 / NFR-16, ADR-0029, ADR-0075, ADR-0063 決定 2,
+// [[IADR-0364]] 決定 2, [[IADR-0379]] 決定 4・5, [[IADR-0402]] 決定 6, [[IADR-0412]] (#1255):
+// タグ辞書の読み取りの east-west gRPC 経路。**切替は上の書き込み側と同じ 1 本の鍵**
+// （`Services:DocumentServiceGrpc`）—— 宛先は同じ DocumentService であり、
+// 🔴 **1 つの宛先を 2 つの鍵で切り替えない**（片方だけ gRPC へ倒れる状態を作らないため）。
+//
+// 🔴 これで**名前つきクライアント `"DocumentService"` の共有が実際に解ける**。読み取りは
+// 資格情報を付けず、書き込みは承認者の文脈を運ぶ —— **意味論が逆のまま同じ HttpClient を
+// 共有していた**のが #1321 でこの経路を見送った理由であり、その危険はここで消える。
+builder.Services.AddTagDictionaryGrpcClient(builder.Configuration);
+if (!string.IsNullOrWhiteSpace(builder.Configuration[TagDictionaryGrpcClientExtensions.AddressKey]))
+    builder.Services.AddScoped<ITagDictionaryReader, GrpcTagDictionaryReader>();
+else
+    builder.Services.AddScoped<ITagDictionaryReader, HttpTagDictionaryReader>();
 // 生成段で辞書外として落としたタグ提案の件数（0 が正常）。Meter は EdgeTypeFallbackMetrics と同じ。
 builder.Services.AddSingleton<TagSuggestionDropMetrics>();
 
