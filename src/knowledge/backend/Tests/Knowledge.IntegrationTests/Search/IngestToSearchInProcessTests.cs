@@ -14,6 +14,7 @@ using Platform.Shared.Contracts.Dtos;
 using Qdrant.Client;
 using RetrievalService.Infrastructure.ExternalServices;
 using Wolverine;
+using Microsoft.AspNetCore.Http;
 
 namespace Knowledge.IntegrationTests.Search;
 
@@ -251,6 +252,14 @@ internal sealed class RetrievalHost(InMemoryVectorStore index)
 
             // 🔴 これが無いとホストの起動が実ブローカへ接続を試みてハングする。
             services.DisableAllExternalWolverineTransports();
+
+            // FR-05, NFR-09, [[IADR-0416]] (#1339): 🔴 **権限の根拠は受け口が自分で引く。**
+            // 本器は実 IdP も認可サービスも持たないので、**引く先だけ**を差し替える。
+            // 既定は全許可 —— 本試験が測るのは「取り込んだ文書が検索で見つかるか」であり、
+            // ABAC の絞り込みではない（それは `RetrievalService.Tests` が測る）。
+            services.RemoveAll<global::RetrievalService.Domain.Ports.ISearchAccessResolver>();
+            services.AddSingleton<global::RetrievalService.Domain.Ports.ISearchAccessResolver>(
+                new AllowAllSearchAccess());
         });
     }
 }
@@ -261,4 +270,11 @@ internal sealed class QueryEmbeddingService : global::RetrievalService.Domain.Po
 {
     public Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
         => Task.FromResult(DeterministicEmbeddingService.Vectorize(text));
+}
+
+// #1339: 権威スコープを全許可で返す器（本試験は ABAC の絞り込みを測らない）。
+internal sealed class AllowAllSearchAccess : global::RetrievalService.Domain.Ports.ISearchAccessResolver
+{
+    public Task<AccessScopeResponse> ResolveAsync(HttpContext ctx, CancellationToken ct = default)
+        => Task.FromResult(new AccessScopeResponse("integration-user", [], Granted: true));
 }

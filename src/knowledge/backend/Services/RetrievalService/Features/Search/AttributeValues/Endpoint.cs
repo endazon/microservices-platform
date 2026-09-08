@@ -18,10 +18,21 @@ internal static class AttributeValuesEndpoint
     internal static void Map(RouteGroupBuilder g)
     {
         g.MapPost("/attribute-values", async (
-            AttributeValuesRequest req, IVectorStore store, CancellationToken ct) =>
+            AttributeValuesRequest req, IVectorStore store,
+            ISearchAccessResolver access, HttpContext http, CancellationToken ct) =>
         {
-            // deny-by-default: BFF が解決できなかった（null）／許可なしのスコープでは何も返さない。
-            if (req.Scope is not { GrantsAccess: true } scope || string.IsNullOrWhiteSpace(req.Key))
+            // deny-by-default: 呼び出し元が解決できなかった（null）／許可なしのスコープでは何も返さない。
+            // 🔴 **これは従来どおりである**（[[IADR-0151]] 決定 5）——
+            // 本 PR が変えるのは「主張を信じるか」だけであり、「主張が要るか」ではない。
+            if (req.Scope is not { GrantsAccess: true } || string.IsNullOrWhiteSpace(req.Key))
+                return Results.Ok(new AttributeValuesResponse([]));
+
+            // 🔴 FR-05, NFR-09, [[IADR-0410]], [[IADR-0416]] (#1339): **権限の根拠は自分で引く。**
+            // 本文の `Scope` は呼び出し元の主張であり、**絞り込みとしてしか効かない**。
+            // deny-by-default: 自分で引いた許可が無ければ何も返さない（存在秘匿は現行のまま）。
+            var narrowed = ScopeNarrowing.Apply(
+                await access.ResolveAsync(http, ct), req.Scope);
+            if (narrowed is not { GrantsAccess: true } scope)
                 return Results.Ok(new AttributeValuesResponse([]));
 
             // FR-19, IADR-0253 決定 1（段 3 / #989）: 分岐があれば選言で絞る。

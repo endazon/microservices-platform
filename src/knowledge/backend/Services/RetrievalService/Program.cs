@@ -15,6 +15,7 @@ using Wolverine;
 using Wolverine.RabbitMQ;
 using RetrievalService.Domain.Ports;
 using RetrievalService.Infrastructure.ExternalServices;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 
 const string ServiceName = "microservices-platform.retrieval-service";
 
@@ -85,12 +86,33 @@ var graphExpansion = builder.Configuration
     ?? new GraphExpansionOptions();
 builder.Services.AddSingleton(graphExpansion.Normalize());
 
+// FR-03, FR-04, FR-05, NFR-09, UC-01, SC-01, SC-08, ADR-0004, ADR-0029, ADR-0034 決定 1,
+// ADR-0075, [[IADR-0044]], [[IADR-0379]] 決定 5, [[IADR-0410]], [[IADR-0416]] (#1339):
+// 🔴 **本サービスが自分で ABAC 許可スコープを解決する。**
+//
+// 従前、権限の根拠は「呼び出し元が本文で送ってきた `Scope`」だった ——
+// **ネットワーク到達可能な相手が任意の scope を主張できた**（[[IADR-0410]] が gRPC 面について
+// 明示的に拒んだ形が、REST 面には入っていなかった）。
+//
+// 🔴 **`IHttpContextAccessor` は無条件で要る。** 従前は二段検索（`graphExpansion.Enabled`）の
+// ときだけ登録していたが、**利用者を読むのは検索そのものになった** ——
+// 段の有無で権限の根拠が変わってはならない。
+//
+// **並走中の正は REST**（[[IADR-0379]] 決定 5）。`Services:AuthorizationServiceGrpc` が
+// 構成されたときだけ gRPC で解決する（`WikiService` / `GraphService` と同型）。
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddPlatformAuthzScopeHttpClient(builder.Configuration);
+builder.Services.AddAuthzScopeGrpcClient(builder.Configuration);
+builder.Services.AddScoped<ISearchAccessResolver, SearchAccessResolver>();
+
 var graphServiceUrl = builder.Configuration["Services:GraphService"] ?? "http://graph-service:8080";
 
 if (graphExpansion.Enabled)
 {
     // ADR-0034: 権限伝播は `Authorization` ヘッダ（方式 A）。呼び出し元の JWT を下流へ運ぶため、
     // 要求文脈へ触れる必要がある。
+    // ★［#1339］上で**無条件に**登録済みである（検索そのものが利用者を読むようになったため）。
+    // ここは冪等なので残す —— 段の側の要求が消えたわけではない。
     builder.Services.AddHttpContextAccessor();
     // 🔴 **名前リテラル＋インライン既定値の確立形で書く**（Platform.Bff / AiAnalysisService と同形）。
     // `scripts/check-bff-downstreams.js` の parseProgramDefaults がこの形から既定 URL を導出して
