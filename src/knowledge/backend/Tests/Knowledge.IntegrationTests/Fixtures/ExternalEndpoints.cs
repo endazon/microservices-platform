@@ -6,8 +6,10 @@ namespace Knowledge.IntegrationTests.Fixtures;
 // **Qdrant と MinIO は持っていなかった**。そのため Docker Engine API を持たない環境では、
 // この 2 つを使う 6 件が**外から与えても走らせようが無かった**。
 //
-// 🔴 **読み方の規則は 1 か所に置く**（空文字は「未設定」）—— 3 つ目・4 つ目を足すときに
-// 判定が写ると、片方だけ空文字を通す状態が作れる。
+// 🔴 **読み方の規則は 1 か所に置く**（空文字は「未設定」）—— 判定が写ると、
+// 片方だけ空文字を通す状態が作れる。
+// **4 つの供給口すべてがここを通る**（Postgres / ブローカ / Qdrant / MinIO）——
+// 新設の 2 口だけを通すと、「1 か所」と書いてあるのに実装は 3 か所、という状態になる。
 
 /// <summary>Qdrant の外部端点（gRPC の <c>host:port</c>）。</summary>
 public static class QdrantEndpoint
@@ -35,9 +37,9 @@ public static class MinioEndpoint
     public static string? External => ExternalEndpoints.Read(ExternalEndpointVariable);
 }
 
-internal static class ExternalEndpoints
+public static class ExternalEndpoints
 {
     /// <summary>空文字は「未設定」として扱う（4 つの口で同じ規則を使う）。</summary>
-    internal static string? Read(string variable) =>
+    public static string? Read(string variable) =>
         Environment.GetEnvironmentVariable(variable) is { Length: > 0 } value ? value : null;
 }

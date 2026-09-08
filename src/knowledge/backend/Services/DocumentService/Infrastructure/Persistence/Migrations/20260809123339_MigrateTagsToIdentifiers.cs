@@ -19,7 +19,7 @@ namespace DocumentService.Infrastructure.Migrations
     ///
     /// **検証は実 PostgreSQL でしか行えない** —— EF InMemory は SQL を実行しないため、
     /// 単体テストではこのコードが 1 行も走らない。統合テスト（<c>Knowledge.IntegrationTests</c>、
-    /// <c>DockerRequired.SkipUnlessAvailable()</c> でガードする <c>[Fact]</c>）に置く。
+    /// <c>RequiredServices.SkipUnlessObtainable(...)</c> でガードする <c>[Fact]</c>）に置く。
     /// #636 の一意制約（InMemory が強制しない）と同じ理由である。
     /// </summary>
     public partial class MigrateTagsToIdentifiers : Migration

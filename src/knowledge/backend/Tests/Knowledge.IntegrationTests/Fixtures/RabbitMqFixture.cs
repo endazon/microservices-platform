@@ -33,11 +33,10 @@ public sealed class RabbitMqFixture : IAsyncLifetime
 
     public string? ConnectionString => _external ?? _container?.GetConnectionString();
 
-    // 外部エンドポイントが設定されているか（空文字は「未設定」として扱う）。
-    public static string? ExternalEndpoint =>
-        Environment.GetEnvironmentVariable(ExternalEndpointVariable) is { Length: > 0 } value
-            ? value
-            : null;
+    // 外部エンドポイントが設定されているか。
+    // 🔴 **読み方（空文字は「未設定」）は `ExternalEndpoints` 1 か所が持つ**（[[IADR-0414]] 決定 4 / #1336）。
+    // 従前は 4 つの供給口が同じ判定を各自で持っており、**片方だけ空文字を通す状態が作れた。**
+    public static string? ExternalEndpoint => ExternalEndpoints.Read(ExternalEndpointVariable);
 
     public async ValueTask InitializeAsync()
     {

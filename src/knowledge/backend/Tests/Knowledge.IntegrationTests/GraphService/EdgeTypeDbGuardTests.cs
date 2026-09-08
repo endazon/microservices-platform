@@ -34,7 +34,7 @@ namespace Knowledge.IntegrationTests.GraphService;
 // （graph-delete 段 = #1016 / graph-sync 段 = #911）。**防壁を測る前にホストが起きなければ、
 // この 6 件は 1 件も何も測らない。**
 //
-// 🔴 **可用性の門は `InitializeAsync` にも要る。** `DockerRequired.SkipUnlessAvailable()` は
+// 🔴 **可用性の門は `InitializeAsync` にも要る。** `RequiredServices.SkipUnlessObtainable(...)` は
 // テスト本体の先頭にあり、**`InitializeAsync` の後に走る** —— ここで門を置かないと
 // コンテナの無い環境で skip へ到達する前にホストを起こしに行く。
 [Trait("Category", "Integration")]
