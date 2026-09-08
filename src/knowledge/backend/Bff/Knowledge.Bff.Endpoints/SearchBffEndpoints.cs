@@ -141,6 +141,21 @@ public static class SearchBffEndpoints
                 return Results.Ok(new AttributeValuesResponse([], dictionary));
 
             var retrievalClient = httpFactory.CreateClient("RetrievalService");
+
+            // 🔴 FR-04, FR-05, NFR-09, SC-01, SC-08, ADR-0034, [[IADR-0416]] (#1343):
+            // **利用者の `Authorization` を後段へ伝播する**（検索と同じ方式 A）。
+            // 受け口（RetrievalService）は #1342 から**自分で** ABAC スコープを解決し、
+            // **未認証は認可サービスへ問い合わせずに deny する**。伝播しないと、
+            // 本文の `Scope` が何であれ**候補は全利用者で常に空**になる（SC-01 / SC-08 の
+            // 対象範囲フィルタに選択肢が 1 つも出ない）。**無ければ付けない** ——
+            // BFF がトークンを捏造せず、縮退の判断と警告は受け口側が一元で持つ。
+            //
+            // 🔴 **`CreateClient` は毎回新しい `HttpClient` を返す。** 上の検索の枝で付けた
+            // ヘッダはここへは来ない —— **同じ後段でも口ごとに付ける必要がある**。
+            var valuesAuth = http.Request.Headers.Authorization.ToString();
+            if (!string.IsNullOrEmpty(valuesAuth))
+                retrievalClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", valuesAuth);
+
             try
             {
                 // **クライアントが送ってきた Scope は使わない**（解決済みで置き換える）。

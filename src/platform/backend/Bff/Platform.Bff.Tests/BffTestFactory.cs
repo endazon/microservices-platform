@@ -116,6 +116,11 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public List<string> StubAttributeValues { get; set; } = ["社内", "規程"];
     // **テスト間で共有される**（IClassFixture）ため、観測する側が呼ぶ前に null へ戻すこと。
     public string? LastAttributeValuesBody { get; set; }
+    // FR-04, FR-05, NFR-09, SC-01, SC-08, [[IADR-0416]]: 属性値照会が後段へ伝播した Authorization。
+    // 🔴 **検索の観測点（`LastSearchForwardedAuthorization`）とは別に要る** —— 同じ後段の別の口であり、
+    // スタブは属性値の枝で早期に返る（検索側の記録行を通らない）。
+    // 受け口が自分で ABAC を解決する以上、**ここが空なら候補は必ず空になる**。
+    public string? LastAttributeValuesForwardedAuthorization { get; set; }
     // AttributeValuesStatusCode を 500/400 に差し替えると、後段の非 2xx 透過を検証できる。
     // **縮退（空配列）で潰さないことを固定するために要る** —— 潰すと運用側が後段の不調に気づけない。
     public HttpStatusCode AttributeValuesStatusCode { get; set; } = HttpStatusCode.OK;
@@ -226,6 +231,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public string? LastNotificationForwardedAuthorization { get; private set; }
 
     public bool TagDictionaryFetched { get; set; }
+    // FR-09, SC-05, SC-09 (#1343): 辞書の取得へ伝播した Authorization。後段はロールを最終防衛線として
+    // 検査するため、**伝播が切れれば辞書は取れない**。**テスト間で共有される**（IClassFixture）ため、
+    // 観測する側が呼ぶ前に戻すこと。
+    public string? LastTagDictionaryForwardedAuthorization { get; set; }
     public HttpStatusCode TagDictionaryStatusCode { get; set; } = HttpStatusCode.OK;
 
     // FR-09, SC-09, #640: 辞書の書き込み（追加・改名・削除）。
@@ -840,6 +849,14 @@ public class BffTestFactory : WebApplicationFactory<Program>
                         : Json(HttpStatusCode.Created, new TagDto(BffTestFactory.StubCreatedTagId, "新規タグ", 0));
 
                 owner.TagDictionaryFetched = true;
+                // FR-09, SC-05, SC-09, [[IADR-0044]] (#1343): **伝播した Authorization を観測する。**
+                // 後段の `/tags` は管理者・運用者のロールを最終防衛線として検査する ——
+                // ここを観測しないと、BFF が伝播を落としても**スタブが 200 を返して緑のまま**になる
+                // （属性値照会で実際に起きた形である）。
+                owner.LastTagDictionaryForwardedAuthorization =
+                    request.Headers.TryGetValues("Authorization", out var tagAuth)
+                        ? string.Join(' ', tagAuth)
+                        : null;
                 if (owner.TagDictionaryStatusCode != HttpStatusCode.OK)
                     return Task.FromResult(new HttpResponseMessage(owner.TagDictionaryStatusCode));
                 return Ok(new TagDictionaryResponse(owner.StubTagDictionary));
@@ -1275,6 +1292,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
             if (request.RequestUri?.AbsolutePath.EndsWith("/attribute-values", StringComparison.Ordinal) == true)
             {
                 owner.LastAttributeValuesBody = body;
+                owner.LastAttributeValuesForwardedAuthorization =
+                    request.Headers.TryGetValues("Authorization", out var valuesAuth)
+                        ? string.Join(' ', valuesAuth)
+                        : null;
                 if (owner.AttributeValuesStatusCode != HttpStatusCode.OK)
                     return new HttpResponseMessage(owner.AttributeValuesStatusCode);
 
