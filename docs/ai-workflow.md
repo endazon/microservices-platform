@@ -1,7 +1,7 @@
 <!-- trace:
 adrs: [ADR-0048]
 iadrs: [IADR-0067, IADR-0180, IADR-0240]
-issues: [#268, #719, #783, #1019, planning#286]
+issues: [#268, #719, #783, #1019, #1352, planning#286]
 -->
 
 # AI 駆動の実装ワークフロー（Runbook）
@@ -99,7 +99,7 @@ bash scripts/apply-profile.sh copilot
 
 | 目的 | ツール / 設定 | 備考 |
 | --- | --- | --- |
-| AI 実装の起動（Claude） | `anthropics/claude-code-action@v1`（`claude-coding.yml` / `claude-code-review.yml`） | サブスク=`CLAUDE_CODE_OAUTH_TOKEN` / API=`ANTHROPIC_API_KEY` のいずれか |
+| AI 実装の起動（Claude） | `anthropics/claude-code-action`（`claude-coding.yml` / `claude-code-review.yml`） | サブスク=`CLAUDE_CODE_OAUTH_TOKEN` / API=`ANTHROPIC_API_KEY` のいずれか。🔴 **40 桁の commit SHA で固定する。浮動タグへ戻さない**（上流が壊れた版を指した瞬間に必須チェックが全 PR で落ちる。固定と 2 か所の一致は `check-ai-workflow-config.js` が検査する） |
 | AI 実装の起動（Copilot） | Copilot coding agent（Issue 割当）＋ `copilot-setup-steps.yml` | リポジトリで Copilot を有効化 |
 | 対話的に AI 実装 | Claude Code（CLI / Web / IDE）/ Copilot（IDE） | Web は SessionStart hook（`scripts/setup.sh`）で環境準備 |
 | 再現可能な環境 | devcontainer / GitHub Codespaces（`.devcontainer/`） | AI がビルド・テストを実走できる |
