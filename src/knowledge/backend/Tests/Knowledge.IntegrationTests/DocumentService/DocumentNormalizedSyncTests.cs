@@ -35,7 +35,7 @@ public sealed class DocumentNormalizedSyncTests(PostgresFixture postgres, Rabbit
     [Fact]
     public async Task PublishDocumentNormalized_CatalogsDocument()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var docId = Guid.NewGuid();
         var evt = new DocumentNormalized(
             DocumentId: docId,
@@ -60,7 +60,7 @@ public sealed class DocumentNormalizedSyncTests(PostgresFixture postgres, Rabbit
     [Fact]
     public async Task PublishDocumentNormalized_Twice_IsIdempotent()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var docId = Guid.NewGuid();
         DocumentNormalized Make(string title) => new(
             DocumentId: docId,

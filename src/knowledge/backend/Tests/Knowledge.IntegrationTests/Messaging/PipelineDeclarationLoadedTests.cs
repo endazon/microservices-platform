@@ -43,7 +43,7 @@ public sealed class PipelineDeclarationLoadedTests(PostgresFixture postgres, Rab
     [Fact]
     public void PipelineDeclaration_IsActuallyLoaded()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var cfg = _factory.Services.GetRequiredService<IConfiguration>();
         var pipeline = cfg.GetPlatformPipeline();
 
@@ -63,7 +63,7 @@ public sealed class PipelineDeclarationLoadedTests(PostgresFixture postgres, Rab
     [Fact]
     public void DeclaredConsumerAndInput_MatchImplementation_OtherwiseHostWouldNotStart()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var cfg = _factory.Services.GetRequiredService<IConfiguration>();
         var wikiSync = cfg.GetPlatformPipeline().FindStep("wiki-sync");
 

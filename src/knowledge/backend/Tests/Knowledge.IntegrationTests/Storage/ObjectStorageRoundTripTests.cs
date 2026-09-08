@@ -20,14 +20,28 @@ namespace Knowledge.IntegrationTests.Storage;
 [Trait("Category", "Integration")]
 public sealed class ObjectStorageRoundTripTests
 {
-    private const string AccessKey = "minioadmin";
-    private const string SecretKey = "minioadmin";
+    // [[IADR-0414]] (#1336): 資格情報は外部供給でも同じ値を使う（共有点が持つ）。
+    private const string AccessKey = MinioEndpoint.AccessKey;
+    private const string SecretKey = MinioEndpoint.SecretKey;
 
-    private static async Task<(IAmazonS3 S3, ObjectStorageOptions Options)> ConnectAsync(MinioContainer minio)
+    // [[IADR-0414]] (#1336): 外部の MinIO が与えられていればコンテナは起こさない。
+    // 🔴 **端点の決め方をここ 1 か所に置く** —— 3 つの試験が同じ判断を写すと、
+    // 片方だけ外部を見ない状態が作れる。
+    private static async Task<MinioContainer?> StartUnlessSuppliedAsync()
+    {
+        if (RequiredServices.ObjectStorage.External is not null) return null;
+
+        var minio = new MinioBuilder().WithImage("minio/minio:RELEASE.2025-04-08T15-41-24Z")
+            .WithUsername(AccessKey).WithPassword(SecretKey).Build();
+        await minio.StartAsync(TestContext.Current.CancellationToken);
+        return minio;
+    }
+
+    private static async Task<(IAmazonS3 S3, ObjectStorageOptions Options)> ConnectAsync(MinioContainer? minio)
     {
         var options = new ObjectStorageOptions
         {
-            Endpoint = minio.GetConnectionString(),
+            Endpoint = RequiredServices.ObjectStorage.External ?? minio!.GetConnectionString(),
             AccessKey = AccessKey,
             SecretKey = SecretKey,
             Bucket = "test-normalized",
@@ -51,10 +65,8 @@ public sealed class ObjectStorageRoundTripTests
     [Fact]
     public async Task Persists_and_reads_markdown_and_asset()
     {
-        DockerRequired.SkipUnlessAvailable();
-        var minio = new MinioBuilder().WithImage("minio/minio:RELEASE.2025-04-08T15-41-24Z")
-            .WithUsername(AccessKey).WithPassword(SecretKey).Build();
-        await minio.StartAsync(TestContext.Current.CancellationToken);
+        RequiredServices.SkipUnlessObtainable(RequiredServices.ObjectStorage);
+        var minio = await StartUnlessSuppliedAsync();
         try
         {
             var (s3, options) = await ConnectAsync(minio);
@@ -72,7 +84,7 @@ public sealed class ObjectStorageRoundTripTests
         }
         finally
         {
-            await minio.DisposeAsync();
+            if (minio is not null) await minio.DisposeAsync();
         }
     }
 
@@ -83,10 +95,8 @@ public sealed class ObjectStorageRoundTripTests
     [Fact]
     public async Task Delete_removes_every_version()
     {
-        DockerRequired.SkipUnlessAvailable();
-        var minio = new MinioBuilder().WithImage("minio/minio:RELEASE.2025-04-08T15-41-24Z")
-            .WithUsername(AccessKey).WithPassword(SecretKey).Build();
-        await minio.StartAsync(TestContext.Current.CancellationToken);
+        RequiredServices.SkipUnlessObtainable(RequiredServices.ObjectStorage);
+        var minio = await StartUnlessSuppliedAsync();
         try
         {
             var (s3, options) = await ConnectAsync(minio);
@@ -110,7 +120,7 @@ public sealed class ObjectStorageRoundTripTests
         }
         finally
         {
-            await minio.DisposeAsync();
+            if (minio is not null) await minio.DisposeAsync();
         }
     }
 
@@ -118,10 +128,8 @@ public sealed class ObjectStorageRoundTripTests
     [Fact]
     public async Task Reconversion_overwrites_same_key_idempotently()
     {
-        DockerRequired.SkipUnlessAvailable();
-        var minio = new MinioBuilder().WithImage("minio/minio:RELEASE.2025-04-08T15-41-24Z")
-            .WithUsername(AccessKey).WithPassword(SecretKey).Build();
-        await minio.StartAsync(TestContext.Current.CancellationToken);
+        RequiredServices.SkipUnlessObtainable(RequiredServices.ObjectStorage);
+        var minio = await StartUnlessSuppliedAsync();
         try
         {
             var (s3, options) = await ConnectAsync(minio);
@@ -138,7 +146,7 @@ public sealed class ObjectStorageRoundTripTests
         }
         finally
         {
-            await minio.DisposeAsync();
+            if (minio is not null) await minio.DisposeAsync();
         }
     }
 }

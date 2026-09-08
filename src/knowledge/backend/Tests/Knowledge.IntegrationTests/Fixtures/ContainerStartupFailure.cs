@@ -11,7 +11,7 @@ namespace Knowledge.IntegrationTests.Fixtures;
 //   両 fixture は `catch { IsAvailable = false; }` で**例外を握り潰し、理由を 1 行も残さなかった**。
 //   その結果:
 //     1. 試験クラスが `if (!postgres.IsAvailable) return;` で早期 return し `_client` は `null!` のまま
-//     2. 試験本体のガード `DockerRequired.SkipUnlessAvailable()` は **CI では無条件に真**を返す
+//     2. 試験本体のガード `RequiredServices.SkipUnlessObtainable(...)` は **CI では無条件に真**を返す
 //     3. ⇒ skip されず、null の `_client` に触って
 //        `ArgumentNullException: Value cannot be null. (Parameter 'client')` で落ちる
 //     4. しかも**なぜ起動に失敗したかはログに 1 行も無い**

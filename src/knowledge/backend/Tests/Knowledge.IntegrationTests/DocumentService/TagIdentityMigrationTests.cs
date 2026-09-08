@@ -53,7 +53,7 @@ public sealed class TagIdentityMigrationTests(PostgresFixture postgres)
     [Fact]
     public async Task Migration_RewritesDisplayNamesToIdentifiers()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres);
         if (!postgres.IsAvailable) return;
 
         var cs = await CreateDatabaseAsync(postgres.ConnectionString!,
@@ -166,7 +166,7 @@ public sealed class TagIdentityMigrationTests(PostgresFixture postgres)
     [Fact]
     public async Task Migration_Down_RestoresDisplayNames()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres);
         if (!postgres.IsAvailable) return;
 
         var cs = await CreateDatabaseAsync(postgres.ConnectionString!,

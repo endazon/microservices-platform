@@ -161,7 +161,7 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
     [Fact]
     public async Task PublishOnce_BothSubscribersReceive()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var docId = Guid.NewGuid();
         var evt = new DocumentUpdated(
             DocumentId: docId,

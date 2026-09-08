@@ -41,7 +41,7 @@ public sealed class DocumentCrudTests(PostgresFixture postgres, RabbitMqFixture 
     [Fact]
     public async Task CreateDocument_ThenGet_ReturnsDocument()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         // Arrange
         await RegisterTagsAsync("test", "integration");
         var req = new
@@ -73,7 +73,7 @@ public sealed class DocumentCrudTests(PostgresFixture postgres, RabbitMqFixture 
     [Fact]
     public async Task ListDocuments_ReturnsAll()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         await _client.PostAsJsonAsync("/documents", new { title = "文書 A", attributes = new { confidentiality = "internal" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
         await _client.PostAsJsonAsync("/documents", new { title = "文書 B", attributes = new { confidentiality = "internal" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
 
@@ -90,7 +90,7 @@ public sealed class DocumentCrudTests(PostgresFixture postgres, RabbitMqFixture 
     [Fact]
     public async Task UpdateDocument_ChangesTitle()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var createResp = await _client.PostAsJsonAsync("/documents",
             new { title = "元タイトル", attributes = new { confidentiality = "internal" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
         var doc = await createResp.Content.ReadFromJsonAsync<DocumentResponse>(TestContext.Current.CancellationToken);
