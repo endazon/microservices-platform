@@ -27,9 +27,17 @@ public static class TagNamesEndpoint
     internal static void Map(IEndpointRouteBuilder app)
     {
         app.MapGet(NamesPath, async (DocumentDbContext db, CancellationToken ct) =>
-            Results.Ok(new TagNamesResponse(
-                await db.Tags.OrderBy(t => t.Name).Select(t => t.Name).ToListAsync(ct))))
+            Results.Ok(new TagNamesResponse(await ReadNamesAsync(db, ct))))
             .WithName("InternalTagNames")
             .ExcludeFromDescription();
     }
+
+    // FR-18, ADR-0063 決定 2, [[IADR-0412]] (#1255): REST と gRPC が通る**唯一の問い合わせ**。
+    //
+    // 🔴 **2 つの輸送で同じ関数を通す。** 写すと、片方だけ順序や射影が変わった状態が作れる ——
+    // 本リポジトリが繰り返し踏んでいる形である（直近では #1330 が 5 巡かけて潰した）。
+    // 🔴 **名前順は契約である**（呼び出し元は集合へ落とすので順序を使わないが、面の側で決めておく）。
+    // 🔴 **使用件数を射影しない**（管理面の集計であり生成に要らない。ADR-0043 決定 1 / IADR-0364 決定 2）。
+    internal static Task<List<string>> ReadNamesAsync(DocumentDbContext db, CancellationToken ct) =>
+        db.Tags.OrderBy(t => t.Name).Select(t => t.Name).ToListAsync(ct);
 }
