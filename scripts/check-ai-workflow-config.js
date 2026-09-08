@@ -634,14 +634,96 @@ function selfTest() {
       process.stderr.write(`  NG  ${c.name}\n      errors=${JSON.stringify(r.errors)}\n`);
     }
   }
+
+  // #1352: action の参照（浮動タグ禁止・2 か所の一致）。
+  const SHA_A = 'a'.repeat(40);
+  const SHA_B = 'b'.repeat(40);
+  const pinCases = [
+    ['action pin: 同じ SHA で 2 か所を固定していれば OK', [
+      { file: 'review.yml', text: `        uses: anthropics/claude-code-action@${SHA_A}\n` },
+      { file: 'coding.yml', text: `        uses: anthropics/claude-code-action@${SHA_A} # v1\n` },
+    ], false],
+    ['action pin: 🔴 浮動タグ @v1 は違反', [
+      { file: 'review.yml', text: '        uses: anthropics/claude-code-action@v1\n' },
+    ], true],
+    ['action pin: 🔴 版が割れているのは違反（片方だけ動かした形）', [
+      { file: 'review.yml', text: `        uses: anthropics/claude-code-action@${SHA_A}\n` },
+      { file: 'coding.yml', text: `        uses: anthropics/claude-code-action@${SHA_B}\n` },
+    ], true],
+    ['action pin: 参照が無いリポジトリでは何も言わない（fail-open）', [
+      { file: 'ci.yml', text: '        uses: actions/checkout@v7\n' },
+    ], false],
+    ['action pin: 末尾コメントを SHA の一部と読まない', [
+      { file: 'review.yml', text: `        uses: anthropics/claude-code-action@${SHA_A}  # v1（実測で緑）\n` },
+    ], false],
+  ];
+  for (const [label, files, expectError] of pinCases) {
+    const got = claudeActionPinErrors(files).length > 0;
+    if (got === expectError) {
+      process.stdout.write(`  ok  ${label}\n`);
+    } else {
+      failed++;
+      process.stderr.write(`  NG  ${label}（期待 ${expectError} / 実際 ${got}）\n`);
+    }
+  }
+
   if (failed) {
     process.stderr.write(`\n✗ 検証器の自己試験が ${failed} 件失敗した\n`);
     return 1;
   }
   process.stdout.write(
-    `✓ 検証器の自己試験 ${cases.length + driftCases.length + genericCases.length + scopeCases.length} 件すべて合格\n`
+    '✓ 検証器の自己試験 '
+      + (cases.length + driftCases.length + genericCases.length + scopeCases.length + pinCases.length)
+      + ' 件すべて合格\n'
   );
   return 0;
+}
+
+/**
+ * NFR, ADR-0007, Issue #1352: `anthropics/claude-code-action` の参照を検査する。
+ *
+ * 🔴 **浮動タグ（`@v1`）は必須チェックを他人の都合で落とす。**
+ * 2026-09-08、`@v1` の指す先が動いた版が「Claude Code native binary not found」で落ち、
+ * **その瞬間から全 PR がマージ不能になった**（#1350 / #1351 で実測）。
+ * PR の内容とは無関係に落ちるので、直せるのは配線側だけである。
+ *
+ * 🔴 **2 か所が同じ SHA を指すことも検査する。** 片方だけ動かすと
+ * 「レビューは通るのに `@claude` は動かない」という、切り分けの難しい状態になる。
+ * `toolchainDrift` / `genericBashDrift` と同じ「2 ファイル間の突き合わせ」である。
+ *
+ * @param {{file: string, text: string}[]} files 走査済みのワークフロー
+ * @returns {string[]} 違反メッセージ（空なら適合）
+ */
+const ACTION_REF_RE = /uses:\s*anthropics\/claude-code-action@([^\s#]+)/g;
+
+function claudeActionPinErrors(files) {
+  const refs = [];
+  for (const { file, text } of files) {
+    for (const m of text.matchAll(ACTION_REF_RE)) {
+      refs.push({ file: path.basename(file), ref: m[1] });
+    }
+  }
+  if (refs.length === 0) return [];
+
+  const errors = [];
+  for (const { file, ref } of refs) {
+    if (!/^[0-9a-f]{40}$/.test(ref)) {
+      errors.push(
+        `${file}: anthropics/claude-code-action を浮動参照 "${ref}" で使っている。`
+        + ' 40 桁の commit SHA で固定すること（#1352。浮動タグが動いた版は必須チェックを'
+        + ' 全 PR で落とし、PR 側では直せない）。'
+      );
+    }
+  }
+  const distinct = [...new Set(refs.map((r) => r.ref))];
+  if (distinct.length > 1) {
+    errors.push(
+      `anthropics/claude-code-action の参照が ${distinct.length} 種類ある（${distinct.join(' / ')}）。`
+      + ' レビューと実装で同じ版を指すこと（#1352。片方だけ動かすと'
+      + '「レビューは通るのに @claude は動かない」状態になる）。'
+    );
+  }
+  return errors;
 }
 
 function main(argv) {
@@ -676,6 +758,11 @@ function main(argv) {
   allErrors.push(...toolchainDrift(forDrift));
   // スタック別以外の Bash 指定（読み取り専用の汎用コマンド等）も突き合わせる（issue planning#163）。
   allErrors.push(...genericBashDrift(forDrift));
+  // #1352: action の参照は**全ワークフロー**から引く（`applicable` で絞ると、
+  // claude_args を持たない配線が将来足されたときに黙って射程から外れる）。
+  allErrors.push(...claudeActionPinErrors(
+    files.map((file) => ({ file, text: fs.readFileSync(file, 'utf8') }))
+  ));
 
   process.stdout.write(`AI ワークフロー設定チェック: ${checked} 件を検査\n`);
   // 第 2 引数（ディスク上の全ワークフロー）を渡さないと、issue planning#134 の検査は黙って
