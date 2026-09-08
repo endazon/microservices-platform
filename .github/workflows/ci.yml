@@ -446,6 +446,16 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/k8s-local-up.test.js
 
+      # NFR（運用保守）, IADR-0087 / IADR-0180, Issue #1349: scripts/setup.sh が
+      # 「ビルド・テストを実走できる状態」を用意していることを、発行コマンド列で固定する。
+      # 🔴 **順序が本質である** —— submodule の初期化が restore より後ろだと、その回の restore は
+      # 失敗したままになる（`Platform.Bff.csproj` が submodule 内を ProjectReference する）。
+      # k8s-local-up.test.js と同じ bash stub-on-PATH 方式で、実際には何も取得・導入しない。
+      # 外部依存ゼロ（Node ＋ bash ＋ git）。submodule の取得は不要（雛形の .gitmodules を使う）。
+      - name: Smoke-test setup.sh dependency provisioning (stub-on-PATH)
+        if: ${{ !cancelled() }}
+        run: node scripts/setup-sh.test.js
+
       # FR-05 / NFR-09, IADR-0369, Issue #1088: realm JSON（宣言）と稼働 realm の差分を当てる計画器
       # （deploy/local/keycloak-setup/reconcile-realm.js）の純粋関数を、実物の realm JSON から切り出した
       # fixture で固定する。「一致なら 0 件」「実行時層（既存利用者・smtpServer）には触れない」が肝。

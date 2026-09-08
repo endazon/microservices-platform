@@ -73,6 +73,31 @@ if ! command -v dotnet >/dev/null 2>&1; then
   fi
 fi
 
+# --- ユニット submodule（#1349） ---
+# NFR, IADR-0056 / IADR-0058 / IADR-0117: `src/<unit>` は submodule で入る。
+# **これは restore の前提である** —— `Platform.Bff.csproj` が submodule 内の
+# `AiStockTrading.Bff.Endpoints` を ProjectReference するため、未取得だと
+# **platform の slnx は restore もビルドもできない**（#1349 / planning#574 監査 B-7）。
+#
+# 🔴 **restore ループより前に置く。** 後ろに置くと、その回の restore は失敗したままである。
+#
+# 🔴 **パスを直書きしない。** `.gitmodules` から導出する —— 直書きするとそれ自体が次の
+# 追随漏れ点になる（.claude/rules/traceability.repo.md 規則 10。上の「版を直書きしない」と同じ理由）。
+# 導出は CI の `Fetch unit submodules (src/*, public, non-recursive)` step と**同じ式**である
+# （`src/` で始まる path だけ・再帰しない）。
+#
+# 【fail-open】ネットワーク不通・認証不足でも止めない。取れなければ従来どおり
+# 「submodule 参照のプロジェクトが restore で落ちる」に戻るだけで、退行はしない。
+if command -v git >/dev/null 2>&1 && [ -f .gitmodules ]; then
+  git config --file .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null \
+    | awk '$2 ~ /^src\// { print $2 }' \
+    | while read -r sub_path; do
+        log "git submodule update --init $sub_path を実行します"
+        git submodule update --init "$sub_path" 2>&1 | sed 's/^/[setup] /' \
+          || log "submodule $sub_path の取得でエラー（継続）"
+      done
+fi
+
 # ソリューションを自動発見して復元する（ルート単一 .sln/.slnx でも、ユニット第一構成
 # `src/<unit>/backend/backend.slnx` でも編集不要で動く）。
 #
@@ -92,11 +117,25 @@ if command -v dotnet >/dev/null 2>&1; then
   [ "$restored" -eq 1 ] || log ".sln/.slnx が無いため dotnet セットアップをスキップ"
 fi
 
-# --- Node.js（例。使う場合はコメント解除） ---
-# if command -v npm >/dev/null 2>&1 && [ -f package.json ]; then
-#   log "npm ci を実行します"
-#   npm ci || npm install || log "npm セットアップでエラー（継続）"
-# fi
+# --- Node.js / pnpm workspace（#1349） ---
+# IADR-0121 決定 2: パッケージ管理は **pnpm workspace で、ルートは `src/`** である
+# （リポジトリ直下に package.json は無い）。導入が無いと `pnpm run lint` / `typecheck` /
+# `test:coverage` が一切走らない（planning#574 監査 B-7）。
+#
+# 🔴 **`--frozen-lockfile` を使う**（CI と同じ）—— ロックを更新すると
+# **セットアップが差分を作る**という別の事故になる。
+#
+# 🔴 **pnpm 本体は入れない。** corepack が動かない環境が実測で在り、
+# 「在れば使う → 無ければ入れる」（IADR-0180）は .NET SDK について採った判断である。
+# **無ければスキップして継続する** —— Node 自体も、本スクリプトを起動する SessionStart hook が
+# Node で書かれている以上、無ければそもそもここへ到達しない。
+if command -v pnpm >/dev/null 2>&1 && [ -f src/pnpm-workspace.yaml ]; then
+  log "pnpm install --frozen-lockfile（src/）を実行します"
+  (cd src && pnpm install --frozen-lockfile 2>&1 | sed 's/^/[setup] /') \
+    || log "pnpm セットアップでエラー（継続）"
+elif [ -f src/pnpm-workspace.yaml ]; then
+  log "pnpm が無いため Node 依存の導入をスキップ（継続。frontend の検査は走らない）"
+fi
 
 # --- Python（例。使う場合はコメント解除） ---
 # if command -v python3 >/dev/null 2>&1 && { [ -f pyproject.toml ] || [ -f requirements.txt ]; }; then
