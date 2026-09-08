@@ -16,12 +16,12 @@
     "peter-evans/create-pull-request": 8,
     "softprops/action-gh-release": 3,
     "gitleaks/gitleaks-action": 3,
-    "anthropics/claude-code-action": 1,
     "actions/cache": 6,
     "actions/download-artifact": 7,
     "actions/github-script": 8
   },
   "$exempt": {
-    "github/codeql-action": "リリースタグが codeql-bundle-vX.Y.Z 形式でメジャー番号を引けない。実装リポ側の Dependabot が個別に pin する運用のため、テンプレート既定は v4 のままでよい。"
+    "github/codeql-action": "リリースタグが codeql-bundle-vX.Y.Z 形式でメジャー番号を引けない。実装リポ側の Dependabot が個別に pin する運用のため、テンプレート既定は v4 のままでよい。",
+    "anthropics/claude-code-action": "🔴 40 桁の commit SHA で固定しているためメジャー番号を引けない（#1352）。浮動タグ @v1 の指す先が動いた版が Claude Code の CLI を導入できずに落ち、必須チェック claude-review が全 PR で落ちてマージ不能になった実測がある。固定と 2 か所の版の一致は scripts/check-ai-workflow-config.js が検査する（本表ではない）。"
   }
 }

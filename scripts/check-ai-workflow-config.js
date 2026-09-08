@@ -743,9 +743,13 @@ function main(argv) {
   const allErrors = [];
   const perFile = [];
   const forDrift = [];
+  // #1352: action の参照検査は**全ワークフロー**を見る（`applicable` で絞らない）ので、
+  // 読み込んだ本文をここで溜める（同じファイルを 2 度読まない）。
+  const allTexts = [];
   let checked = 0;
   for (const file of files) {
     const text = fs.readFileSync(file, 'utf8');
+    allTexts.push({ file, text });
     const r = checkWorkflow(file, text);
     if (!r.applicable) continue;
     checked++;
@@ -760,9 +764,7 @@ function main(argv) {
   allErrors.push(...genericBashDrift(forDrift));
   // #1352: action の参照は**全ワークフロー**から引く（`applicable` で絞ると、
   // claude_args を持たない配線が将来足されたときに黙って射程から外れる）。
-  allErrors.push(...claudeActionPinErrors(
-    files.map((file) => ({ file, text: fs.readFileSync(file, 'utf8') }))
-  ));
+  allErrors.push(...claudeActionPinErrors(allTexts));
 
   process.stdout.write(`AI ワークフロー設定チェック: ${checked} 件を検査\n`);
   // 第 2 引数（ディスク上の全ワークフロー）を渡さないと、issue planning#134 の検査は黙って
