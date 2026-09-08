@@ -115,6 +115,7 @@ node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in 
 node scripts/keycloak-realm-reconcile.test.js      # realm の後追い（deploy/local/keycloak-setup/reconcile-realm.js）の計画器の単体試験（#1088）
 node deploy/mail-relay/reset-gate.js --self-test   # SC-15 の門（投函できないとき申請を閉じる）の純粋関数の自己試験（#1245）
 node scripts/reset-gate.test.js                    # 門と realm の後追いが競合しないことの試験（#1245。両モジュールを同時に読む）
+node scripts/setup-sh.test.js                      # setup.sh が submodule 初期化と Node 依存導入を restore の前に行うことの smoke test（#1349・要 bash / git）
 ```
 
 > `check-ai-workflow-config.js` は、AI レビュー / 実装が「ジョブは成功するのに検証を実行できない」
@@ -168,6 +169,7 @@ node scripts/reset-gate.test.js                    # 門と realm の後追い�
 | `frontend.yml` の `build-test`（再掲） | `check-knip.js --require`（#493 / IADR-0211）。**Knip 本体は `src/` の devDependency** なので、`pnpm install` 済みのジョブでなければ走らない。`ci.yml` の `scripts-tests` は `--self-test` を `scripts.repo.test.js` 経由で走らせる（実データ走査はしない） |
 | `frontend.yml` の `build-test`（再掲） | `check-chunk-budget.js --require`（#556 / IADR-0147）。**`dist` が在る唯一のジョブ**なのでここに置く。`ci.yml` の `scripts-tests` は `--self-test` と変異試験（M6 / M7）を `scripts.repo.test.js` 経由で走らせる |
 | `static-checks`（再掲） | `k8s-local-up.test.js`（#334 / IADR-0087・要 bash） |
+| `static-checks`（再掲） | `setup-sh.test.js`（#1349 / IADR-0087・IADR-0180・要 bash / git）。`setup.sh` が **submodule 初期化 → dotnet restore → pnpm install** の順で依存を用意することを、発行コマンド列で固定する。🔴 **順序が本質**である —— 初期化が restore より後ろだと、`Platform.Bff.csproj` が submodule 内を ProjectReference するため**その回の restore は失敗したままになる**。k8s-local-up と同じ stub-on-PATH で、実際には何も取得・導入しない |
 | `static-checks`（再掲） | `reset-gate.js --self-test` と `reset-gate.test.js`（#1245 / ADR-0078 決定 4 / IADR-0404）。門は近接 MTA へ**本物の SMTP 取引**を周期的に打ち、投函できなければ `resetPasswordAllowed` を false へ倒す（**Pod の Ready では見えない** —— relay は生きていて投函だけを拒む状態が実在する。#1307 の実測）。🔴 **門が閉じたことと、後追い Job が開き直すことが競合してはならない** —— `reset-gate.test.js` が両モジュールを同時に読み込んで、属性の綴りと「閉じた realm を Job に見せて drift 0 件」を固定する |
 | `integration-stack.yml` の `stack` | `check-stack-ready.js` と `check-password-reset-mail.js` の `--self-test`（高価な起動の**前**に門自身を確かめる）と**本走査**（#783 後半 / #442 子 5 / #1144）。**nightly ＋ develop への push ＋ 手動**で走り、**PR では起動しない**——8〜10 分かかるため必須チェックにできない（起動しないチェックを必須にすると恒久 pending になる）。失敗は `ci-failure-issue.yml` が issue にする（`integration.yml` と同型・IADR-0232 決定 1） |
 | `scripts-tests`（再掲） | `check-test-spec-coverage.js` の `--self-test` と**実データの本走**（#510 / IADR-0130）。上の `test-traceability` の専用ステップと**二重に走る**——専用ステップは失敗をジョブ名で見せ、companion 側は `.github/workflows/` が編集できない環境（GitHub App 権限）でも検査が外れないことを担保する（`check-i18n-catalogs.js` の実データ検査と同じ結線） |
