@@ -121,6 +121,46 @@ function parseProgramDefaults(csText, constants = new Map()) {
   return map;
 }
 
+// #1333: **共有の拡張メソッドで登録される downstream** を読む。
+//
+// 🔴 **名前つきクライアントの登録が呼び出し元の Program.cs から消えることがある。**
+// ABAC スコープ解決は `AddPlatformAuthzScopeHttpClient` へ集約された（[[IADR-0413]] 決定 4）——
+// アドレスの既定と資格情報の付け方を呼び出し元ごとに散らさないためである。
+// リテラルの `AddHttpClient` しか読まないと、**登録が在るのに 0 件**になって
+// 「パーサの破綻」で落ちる（WikiService で実際に落ちた）。
+//
+// 🔴 **突合の鍵は「構成キー」であってクライアント名ではない。** manifest が上書きするのは
+// `Services__<キー>` であり、専用クライアントの名前（`AuthorizationServiceScope`）ではない。
+// **キーと名前が一致しなくなったのが #1333 の変更点である**ので、ここでは
+// 共有クラスの `AddressKey` から `Services:` を剥がした値を名前として使う。
+const SHARED_REGISTRATIONS = [
+  {
+    call: 'AddPlatformAuthzScopeHttpClient',
+    source: 'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Authz/AuthzScopeHttpClient.cs',
+    addressKeyConst: 'AuthzScopeHttpClient.AddressKey',
+    defaultConst: 'AuthzScopeHttpClient.DefaultAddress',
+  },
+];
+
+// 共有登録の呼び出しを Program.cs から拾い、{ 構成キー -> 既定 URL } を返す。
+// `constants` は共有クラスのソースから集めた { "<型>.<定数>" -> 値 }。
+function parseSharedRegistrations(csText, constantsBySource) {
+  const map = new Map();
+  for (const reg of SHARED_REGISTRATIONS) {
+    if (!String(csText).includes(`${reg.call}(`)) continue;
+    const constants = constantsBySource.get(reg.source) ?? new Map();
+    const addressKey = constants.get(reg.addressKeyConst);
+    const defaultUrl = constants.get(reg.defaultConst);
+    // 🔴 解決できないものを**黙って捨てない**（捨てると downstream が 1 つ消えて誰も見なくなる）。
+    if (addressKey === undefined || defaultUrl === undefined) {
+      map.set(`${UNRESOLVED_PREFIX}${reg.call}`, 'unresolved://');
+      continue;
+    }
+    map.set(addressKey.replace(/^Services:/, ''), defaultUrl);
+  }
+  return map;
+}
+
 // 未解決の定数参照であることを示す前置き（`computeViolations` が違反として扱う）。
 const UNRESOLVED_PREFIX = '\u0000unresolved:';
 
@@ -282,12 +322,19 @@ function readSiblingSources(programRelPath) {
 function checkTree() {
   const valuesText = readRepoFile(VALUES_PATH);
   const composeText = readRepoFile(COMPOSE_PATH);
+  // #1333: 共有登録が持つ定数（構成キー・既定 URL）を、共有クラスのソースから 1 度だけ読む。
+  const sharedConstants = new Map(
+    SHARED_REGISTRATIONS.map(r => [r.source, parseClientNameConstants([{ text: readRepoFile(r.source) }])]));
   const violations = [];
   let totalDownstreams = 0;
 
   for (const caller of CALLERS) {
     const constants = parseClientNameConstants(readSiblingSources(caller.program));
-    const defaults = parseProgramDefaults(readRepoFile(caller.program), constants);
+    const programText = readRepoFile(caller.program);
+    const defaults = parseProgramDefaults(programText, constants);
+    // #1333: 共有の拡張メソッドで登録される downstream を足す（上の SHARED_REGISTRATIONS）。
+    for (const [name, url] of parseSharedRegistrations(programText, sharedConstants))
+      if (!defaults.has(name)) defaults.set(name, url);
     if (defaults.size === 0) {
       violations.push({
         env: '-', name: '-',
@@ -340,6 +387,37 @@ function selfTest() {
   const defs = parseProgramDefaults(csFixture);
   expect('program: 名前付き 3 件を抽出（無名は除外）', defs.size === 3, [...defs.keys()]);
   expect('program: DataSource の既定 URL を抽出', defs.get('DataSourceService') === 'http://datasource-service:5002', defs.get('DataSourceService'));
+
+  // #1333: 共有の拡張メソッドで登録される downstream を読む。
+  const sharedSource = SHARED_REGISTRATIONS[0].source;
+  const sharedConsts = new Map([[sharedSource, new Map([
+    ['AuthzScopeHttpClient.AddressKey', 'Services:AuthorizationService'],
+    ['AuthzScopeHttpClient.DefaultAddress', 'http://authorization-service:5005'],
+  ])]]);
+  const sharedCall = 'builder.Services.AddPlatformAuthzScopeHttpClient(builder.Configuration);';
+
+  const shared = parseSharedRegistrations(sharedCall, sharedConsts);
+  expect('shared: 構成キーを名前として引く（クライアント名ではない）',
+    shared.size === 1 && shared.has('AuthorizationService'), [...shared.keys()]);
+  expect('shared: 既定 URL は共有クラスの定数から引く',
+    shared.get('AuthorizationService') === 'http://authorization-service:5005',
+    shared.get('AuthorizationService'));
+
+  // 🔴 陰性対照: 呼んでいない Program.cs からは 1 件も出ない
+  //（出ると、その downstream を持たないサービスにまで上書きを要求してしまう）。
+  expect('shared: 呼び出しが無ければ 0 件',
+    parseSharedRegistrations('builder.Services.AddHttpClient();', sharedConsts).size === 0, null);
+
+  // 🔴 定数を解決できないときは**黙って捨てない**（捨てると downstream が 1 つ消えて誰も見なくなる）。
+  const unresolvedShared = parseSharedRegistrations(sharedCall, new Map());
+  expect('shared: 定数未解決は未解決マーカーを残す（黙って捨てない）',
+    unresolvedShared.size === 1 && [...unresolvedShared.keys()][0].startsWith(UNRESOLVED_PREFIX),
+    [...unresolvedShared.keys()]);
+  expect('shared: 未解決マーカーは computeViolations が違反にする',
+    computeViolations({
+      defaults: unresolvedShared,
+      overridesByEnv: { helm: new Map() },
+    }).length === 1, null);
 
   // #1025: 名前を定数で渡す形（`<型>.ClientName`）も読む。リテラルしか読まないと
   // 登録が在るのに 0 件になり「パーサの破綻」で落ちる。
@@ -467,6 +545,7 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
+  parseSharedRegistrations,
   EXPECTED_PORT,
   parseProgramDefaults,
   extractServiceBlock,
