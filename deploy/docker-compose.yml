@@ -388,12 +388,18 @@ services:
       context: ..
       dockerfile: src/knowledge/backend/Services/RetrievalService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（/search の ABAC は #55 で別管理）
+    # FR-04 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0417 (#1255): 8081 は
+    # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用）。helm の grpcPort と同じ値。host へは公開しない。
     expose:
       - "8080"
+      - "8081"
     environment:
       # ADR-0027 / #1016: DocumentDeleted 購読（retrieval-delete 段）のため RabbitMQ 接続が要る
       # （無いと Wolverine ホストが起動時に BrokerInitializationException）。
       <<: [*common-env, *rabbit-env]
+      # NFR-16, IADR-0379 決定 3, IADR-0417 (#1255): h2c リスナ。未設定ならリスナを立てない。
+      # readiness は 8080 のまま（1 プロセスが両ポートを起動時に bind する）。
+      Grpc__Port: "8081"
       Qdrant__Host: qdrant
       Qdrant__Port: 6334
       Services__LlmGateway: http://llm-gateway:8080
@@ -858,6 +864,15 @@ services:
       Config__AppliedAt: ${GIT_COMMIT_DATE:-}
       Config__AppliedBy: ${GIT_COMMIT_BY:-compose}
       Services__RetrievalService: http://retrieval-service:8080
+      # FR-04 / FR-05 / NFR-09 / NFR-16, ADR-0029 / ADR-0075 / 計画 ADR-0086 決定 1,
+      # IADR-0379, IADR-0410, IADR-0417 (#1255): east-west gRPC。**`Services__RetrievalServiceGrpc`
+      # が在るときだけ**権限内属性値の照会が gRPC 経路になる（無ければ上の REST のまま。
+      # 並走中の正は REST であり、戻すのはこの 1 行を消すだけでよい）。
+      # 🔴 **検索（`/search`）は移らない** —— 近傍展開が利用者の転送トークンで動いており、
+      # 文脈の受け渡しを直してからでないと展開が静かに空になる（スライス B）。
+      # 🔴 利用者の JWT は面を通らない —— 利用者文脈（user_id / 属性 / action）を要求本文で運び、
+      # RetrievalService が受け取った文脈で**自分で** ABAC を解決する（判定の位置は動かない）。
+      Services__RetrievalServiceGrpc: http://retrieval-service:8081
       Services__AiAnalysisService: http://aianalysis-service:8080
       Services__FeedbackService: http://feedback-service:8080
       Services__DashboardService: http://dashboard-service:8080

@@ -383,6 +383,12 @@ services:
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
     messaging: true
     port: 8080
+    # FR-04 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0417 (#1255):
+    # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用）。Service に name: grpc /
+    # appProtocol: grpc として出る。**受け口として出す**のはこの PR が最初である
+    # （従前は呼び出し元としてしか gRPC に関わっていなかった）。
+    # 呼び出し元は BFF の属性値照会（`Services__RetrievalServiceGrpc` を持つときだけ）。
+    grpcPort: 8081
     # FR-03 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0397 (#1255): east-west gRPC の
     # 呼び出し側資格情報。realm の confidential client `retrieval-service`（service account ＋
     # realm ロール platform-service のみ。ABAC ポリシーは持たない）。
@@ -920,6 +926,15 @@ services:
       # appProtocol: grpc）。**書き込み経路は移らない** —— 利用者の資格情報を運ぶ必要がある。
       - name: Services__DocumentServiceGrpc
         value: "http://document-service:8081"
+      # FR-04 / FR-05 / NFR-09 / NFR-16, ADR-0029 / ADR-0075 / 計画 ADR-0086 決定 1,
+      # IADR-0410, IADR-0417 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
+      # 権限内属性値の照会が gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # ポートは retrieval.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
+      # 🔴 **検索（`/search`）は移らない** —— 近傍展開が利用者の転送トークンで動いており、
+      # 文脈の受け渡しを直してからでないと展開が静かに空になる（スライス B）。
+      # 🔴 利用者の JWT は面を通らず、利用者文脈は要求本文で運ぶ（判定の位置は動かない）。
+      - name: Services__RetrievalServiceGrpc
+        value: "http://retrieval-service:8081"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }

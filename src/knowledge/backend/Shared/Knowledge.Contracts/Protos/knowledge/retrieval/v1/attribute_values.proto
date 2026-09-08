@@ -1,0 +1,86 @@
+// FR-04, FR-05, NFR-09, NFR-16, SC-01, SC-08, ADR-0004, ADR-0029, ADR-0043, ADR-0075,
+// ADR-0086 決定 1, IADR-0151, IADR-0253, IADR-0379, IADR-0401, IADR-0410, IADR-0415,
+// IADR-0416, IADR-0417 (#1255):
+// 権限内属性値の照会（REST `POST /search/attribute-values` と同じ意味論）の gRPC 契約。
+//
+// ■ 置き場と所有（IADR-0379 決定 1）: 所有者は RetrievalService。置き場は knowledge ユニットの
+//   共有契約プロジェクト `Knowledge.Contracts` の `Protos/knowledge/retrieval/v1/`。
+//   クライアント・サーバ基底の両方をここから生成する（`GrpcServices="Both"`）。
+//
+// ■ 🔴 **利用者文脈を運ぶ。スコープは運ばない**（ADR-0086 決定 1 / IADR-0410 / IADR-0416）。
+//   呼び出し先が受け取った文脈で **`AuthzScope/Resolve` を自分で呼び**、自分のスコープを解決する。
+//   **呼び出し元が解決したスコープを信じる口は開かない** —— 開くと、そこへ到達できる誰もが
+//   任意の scope を主張できる。**#1339 で REST 面の同じ穴を塞いだうえで、この面を作る。**
+//
+// ■ 🔴 **絞り込みは別項目で運ぶ**（`narrow_to`）。権限の根拠（利用者文脈）と、
+//   利用者が指定した絞り込みを**同じ項目に混ぜない** —— 混ぜたものが REST 面の
+//   `Scope` であり、それが信じられてしまった原因である。
+//
+// ■ versioning（IADR-0379 決定 2）: フィールド番号は不変。削除は reserved に残す。破壊的変更は v2 の並走。
+//
+// ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
+//   この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。
+//   REST の受け口は認可を持たない（#1318 欠陥 B）ので、**権限が狭まる向き**である。
+//
+// ■ 🔴 **辞書は運ばない。** REST の `AttributeValuesResponse` は管理者向けの `Dictionary` 欄を持つが、
+//   それを**足すのは BFF であり後段ではない**（IADR-0152 決定 3）。呼び出し元が要らないものを
+//   面へ出さない（IADR-0401 決定 2）。
+//
+// ■ 🔴 **「候補が無い」と「権限が無い」を区別させない**（IADR-0151 決定 5）。
+//   どちらも**空の配列**で返る。404 にも 403 にもしない —— 区別できると、権限外の値の存在が漏れる。
+//   引けなかったのは gRPC status である。
+syntax = "proto3";
+
+package knowledge.retrieval.v1;
+
+option csharp_namespace = "Knowledge.Contracts.Grpc.Retrieval.V1";
+
+// 権限内属性値の照会。ServiceCaller（platform-service）を要求する。
+// **検索そのもの・辞書・使用件数の口はこの面に存在しない。**
+service AttributeValues {
+  // 到達できる文書に実際に付与された値だけを返す。REST `POST /search/attribute-values` と同値。
+  rpc ListValues(ListValuesRequest) returns (ListValuesResponse);
+}
+
+// ABAC 判定に用いる利用者文脈。**判定結果ではなく判定の入力である**（ADR-0086 決定 1）。
+// 🔴 `knowledge.graph.v1.UserContext` と**同じ 3 項目**である。
+//   proto は package をまたいで共有しない（IADR-0379 決定 1 の置き場の規約）ので写しになるが、
+//   **意味は 1 つ**であり、線上表現の規則は `UserAttributeEncoding` が持つ。
+message UserContext {
+  // 利用者識別子（preferred_username）。**空文字は INVALID_ARGUMENT** ——
+  // 「利用者が分からない」を deny へ畳むと、呼び出し元の配線誤りが
+  // 「候補が 1 件も無い」と見分けられなくなる（呼び出し元は資格情報が無ければ**呼ばない**）。
+  string user_id = 1;
+
+  // ABAC 判定に用いる利用者属性。線上表現は REST の `AccessScopeRequest.UserAttributes` と同じ
+  // （1 キー 1 値・集合値キーはカンマ連結）。
+  // 🔴 **抽出点は `BffScopeResolver.ExtractUserAttributes` 1 つである**（IADR-0411）。
+  map<string, string> user_attributes = 2;
+
+  // read / analyze / manage / write。🔴 **空文字は read へ丸めない**（IADR-0272 決定 4）。
+  string action = 3;
+}
+
+// 利用者が指定した絞り込み（1 キー → 許可したい値の集合）。
+// 🔴 **これは権限ではない。** 呼び出し先は自分で引いた許可へ**交差**させるだけであり、
+//   ここに何を書いても許可は広がらない（IADR-0415 の narrowing-only）。
+message NarrowTo {
+  repeated string values = 1;
+}
+
+message ListValuesRequest {
+  // 引きたい属性の種別（`tags` または ABAC 属性キー）。未知・空は空集合へ縮退する。
+  string key = 1;
+
+  // 🔴 **権限の根拠。** 呼び出し先はこれで自分のスコープを解決する。
+  UserContext user = 2;
+
+  // 🔴 **絞り込み。** 権限とは別項目で運ぶ（混ぜない）。省略可。
+  map<string, NarrowTo> narrow_to = 3;
+}
+
+message ListValuesResponse {
+  // 到達できる文書に実際に付与された値。
+  // 🔴 空は「候補が無い」であって「権限が無い」ではない —— **区別させない**（IADR-0151 決定 5）。
+  repeated string values = 1;
+}

@@ -277,4 +277,8 @@ internal sealed class AllowAllSearchAccess : global::RetrievalService.Domain.Por
 {
     public Task<AccessScopeResponse> ResolveAsync(HttpContext ctx, CancellationToken ct = default)
         => Task.FromResult(new AccessScopeResponse("integration-user", [], Granted: true));
+
+    public Task<AccessScopeResponse> ResolveForUserAsync(
+        string userId, IReadOnlyDictionary<string, string> attributes, CancellationToken ct = default)
+        => Task.FromResult(new AccessScopeResponse("integration-user", [], Granted: true));
 }

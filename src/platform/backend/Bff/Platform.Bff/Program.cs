@@ -1,4 +1,5 @@
 using Knowledge.Bff.Endpoints.Documents;
+using Knowledge.Bff.Endpoints.Search;
 using Knowledge.Bff.Endpoints.Usage;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Authz;
@@ -157,6 +158,17 @@ builder.Services.AddHttpClient("DocumentService", c =>
 // アーカイブ・削除・個人資料・タグ辞書）は**利用者の資格情報を後段へ運び**、後段が
 // `AdminOnly` を二重ゲートで強制している（IADR-0044）。s2s へ替えると門が 1 枚になる。
 builder.Services.AddDocumentReadGrpcClient(builder.Configuration);
+
+// FR-04, FR-05, NFR-09, NFR-16, ADR-0029, ADR-0075, 計画 ADR-0086 決定 1,
+// IADR-0379, IADR-0410, IADR-0416, IADR-0417 (#1255):
+// 権限内属性値の照会（SC-01 / SC-08 の対象範囲フィルタの供給源）を gRPC でも呼べるようにする（opt-in）。
+// `Services:RetrievalServiceGrpc`（h2c アドレス）が在るときだけ登録され、SearchBffEndpoints が使う。
+// 資格情報は BFF 自身の s2s トークン（利用者の JWT ではない）。並走中の正は REST。
+//
+// 🔴 **検索（`/bff/search`）は移らない。** 二段検索の近傍展開が利用者の転送トークンで動いており
+// （ADR-0087 決定 1 の「経路 1 は利用者の同一性の唯一の供給路」）、文脈の受け渡しを直す前に
+// s2s へ替えると**展開が黙って空になる**。属性値の照会には近傍展開が無い。
+builder.Services.AddAttributeValuesGrpcClient(builder.Configuration);
 
 // FR-12, UC-06, SC-07: 変換ジョブ管理の集約用（管理者・運用者限定）。ワーカーの HTTP サーフェスは 8080。
 builder.Services.AddHttpClient("ConversionService", c =>

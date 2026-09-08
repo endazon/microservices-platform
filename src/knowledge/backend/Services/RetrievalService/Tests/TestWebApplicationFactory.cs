@@ -69,6 +69,12 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     {
         public Task<AccessScopeResponse> ResolveAsync(HttpContext ctx, CancellationToken ct = default)
             => Task.FromResult(owner.Authoritative);
+
+        // #1255: gRPC 面は本文の利用者文脈から入る。**器の答えは入口によらず同じ**である
+        // —— 入口で答えが変わる器を作ると、輸送を替えたときの同値試験が意味を失う。
+        public Task<AccessScopeResponse> ResolveForUserAsync(
+            string userId, IReadOnlyDictionary<string, string> attributes, CancellationToken ct = default)
+            => Task.FromResult(owner.Authoritative);
     }
 }
 

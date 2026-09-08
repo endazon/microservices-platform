@@ -16,6 +16,8 @@ using Wolverine.RabbitMQ;
 using RetrievalService.Domain.Ports;
 using RetrievalService.Infrastructure.ExternalServices;
 using Platform.Shared.Infrastructure.Foundation.Authz;
+using RetrievalService.Features.Search.AttributeValues;
+using Platform.Shared.Infrastructure.Foundation.Grpc;
 
 const string ServiceName = "microservices-platform.retrieval-service";
 
@@ -104,6 +106,11 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddPlatformAuthzScopeHttpClient(builder.Configuration);
 builder.Services.AddAuthzScopeGrpcClient(builder.Configuration);
 builder.Services.AddScoped<ISearchAccessResolver, SearchAccessResolver>();
+
+// FR-04, FR-05, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 3, [[IADR-0417]] (#1255):
+// east-west gRPC の h2c リスナ（`Grpc:Port`。**未設定なら立てない**）。
+// HTTP/1.1 のポート（REST・/health/*・introspection）はそのまま残り、readiness も 8080 のままである。
+builder.AddPlatformGrpcListener();
 
 var graphServiceUrl = builder.Configuration["Services:GraphService"] ?? "http://graph-service:8080";
 
@@ -206,6 +213,13 @@ app.MapOpenApi();
 app.MapSearchEndpoints();
 // FR-16, ADR-0024 §2: MCP ツール定義の自己申告（メッシュ内部限定。#1020）。
 app.MapMcpToolEndpoints();
+
+// FR-04, FR-05, NFR-09, NFR-16, ADR-0029, ADR-0075, 計画 ADR-0086 決定 1,
+// [[IADR-0379]], [[IADR-0410]], [[IADR-0416]], [[IADR-0417]] (#1255):
+// 権限内属性値の照会の east-west gRPC 面。
+// 🔴 **REST の口は残す**（並走中の正は REST。切替も戻しも呼び出し元の構成だけで行う）。
+// 🔴 **本体は REST と同じ関数を通る**（`AttributeValuesEndpoint.ListAsync`）。
+app.MapGrpcService<AttributeValuesGrpcService>();
 
 app.Run();
 

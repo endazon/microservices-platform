@@ -1,3 +1,6 @@
+using Grpc.Core;
+using Microsoft.Extensions.DependencyInjection;
+using Knowledge.Bff.Endpoints.Search;
 using Knowledge.Bff.Endpoints.Usage;
 using Knowledge.Contracts.Dtos;
 using Microsoft.AspNetCore.Builder;
@@ -140,6 +143,48 @@ public static class SearchBffEndpoints
             if (scope is null)
                 return Results.Ok(new AttributeValuesResponse([], dictionary));
 
+            // FR-04, FR-05, NFR-09, NFR-16, ADR-0029, ADR-0075, 計画 ADR-0086 決定 1,
+            // [[IADR-0379]] 決定 5, [[IADR-0410]], [[IADR-0416]], [[IADR-0417]] (#1255):
+            // **gRPC 経路が登録されていればそちらで引く**（`Services:RetrievalServiceGrpc` の有無だけで
+            // 決まる。**並走中の正は REST** であり、戻すのは構成を外すだけでよい）。
+            //
+            // 🔴 **運ぶのは利用者文脈だけであり、上で解決した `scope` は運ばない**
+            // （[[IADR-0410]] / [[IADR-0417]] 決定 2）。受け口は受け取った文脈で**自分で**
+            // ABAC を解決する —— 同じ認可サービスへ同じ利用者で問い合わせる以上、**答えは変わらない**。
+            // 🔴 `scope` を `narrow_to` へ写さない（[[IADR-0417]] 決定 3）——
+            // **分岐をキー単位の集合へ潰す**ことになり、[[IADR-0253]] 決定 2 の非包含により
+            // 分岐単独で到達できる文書の値が候補から落ちる。
+            //
+            // 🔴 **上の `scope is null` の早期 return は残す。** 判定の位置を動かさないためではなく、
+            // **認可サービスが不調なときに後段を呼ばない**という現行の振る舞いを変えないためである。
+            var grpc = http.RequestServices?.GetService<AttributeValuesGrpcClient>();
+            if (grpc is not null)
+            {
+                try
+                {
+                    var viaGrpc = await grpc.ListValuesAsync(req.Key, http.User, ct);
+                    // 後段は辞書を知らない。**辞書は BFF がここで添える**（IADR-0152 決定 3）。
+                    return Results.Ok(new AttributeValuesResponse(viaGrpc, dictionary));
+                }
+                // 🔴 **REST が持っている 2 つの枝を潰さない**（[[IADR-0417]] 決定 9）。
+                // REST は「後段が返した非 2xx」を**透過**し、「後段へ到達できない」ときだけ
+                // 空配列へ縮退する —— **障害を 200 空応答で隠さない**という判断であり、
+                // 輸送を替えたついでに畳むと運用側が後段の不調に気づけなくなる。
+                // gRPC はどちらも `RpcException` に畳むので、**status で分け直す。**
+                catch (Exception ex) when (IsRetrievalUnreachable(ex, ct))
+                {
+                    // 不達（`UNAVAILABLE` / `DEADLINE_EXCEEDED`）と s2s トークンの取得失敗。
+                    return Results.Ok(new AttributeValuesResponse([], dictionary));
+                }
+                catch (RpcException)
+                {
+                    // 後段が**答えた上での**失敗（`INTERNAL` / `PERMISSION_DENIED` / `INVALID_ARGUMENT` 等）。
+                    // 🔴 元の HTTP 状態番号は輸送を跨いで再現できない ——
+                    // 守るのは「200 空応答にしない」ことである。
+                    return Results.StatusCode(StatusCodes.Status502BadGateway);
+                }
+            }
+
             var retrievalClient = httpFactory.CreateClient("RetrievalService");
 
             // 🔴 FR-04, FR-05, NFR-09, SC-01, SC-08, ADR-0034, [[IADR-0416]] (#1343):
@@ -180,6 +225,20 @@ public static class SearchBffEndpoints
 
         return app;
     }
+
+    // FR-04, NFR-09, NFR-16, ADR-0029, [[IADR-0402]], [[IADR-0417]] 決定 9 (#1255):
+    // gRPC 経路の「**後段へ到達できなかった**」の判定。REST 経路の
+    // `HttpRequestException` / `TaskCanceledException` に対応する範囲だけを拾う。
+    //
+    // 🔴 **全 status を拾わない。** 拾うと、後段が答えた上での失敗（`INTERNAL` 等）が
+    // 「候補が 0 件」に化ける —— REST 側が透過している枝を、輸送の差し替えのついでに潰すことになる。
+    // s2s トークンの取得失敗（`InvalidOperationException`。`ClientCredentialsServiceTokenProvider`）は
+    // **後段へ 1 バイトも届いていない**ので不達側である。
+    private static bool IsRetrievalUnreachable(Exception ex, CancellationToken ct) =>
+        !ct.IsCancellationRequested
+        && (ex is InvalidOperationException
+            || (ex is RpcException rpc
+                && rpc.StatusCode is StatusCode.Unavailable or StatusCode.DeadlineExceeded));
 
     // FR-09, SC-05, SC-09, #634: 辞書が在るのは `tags` だけである。
     // ABAC 属性（`department` 等）の許可値は `AttributeDefinition.AllowedValues` が持っており、
