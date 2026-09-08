@@ -34,7 +34,7 @@ public sealed class WikiSyncTests(PostgresFixture postgres, RabbitMqFixture rabb
     [Fact]
     public async Task GetWikiPages_ReturnsOk()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var resp = await _client.GetAsync("/wiki/pages", TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
@@ -42,7 +42,7 @@ public sealed class WikiSyncTests(PostgresFixture postgres, RabbitMqFixture rabb
     [Fact]
     public async Task GetWikiPageBySlug_NotFound_Returns404()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var resp = await _client.GetAsync("/wiki/pages/nonexistent-slug", TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -50,7 +50,7 @@ public sealed class WikiSyncTests(PostgresFixture postgres, RabbitMqFixture rabb
     [Fact]
     public async Task PublishDocumentUpdated_BusReceivesEvent()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var docId = Guid.NewGuid();
         var evt = new DocumentUpdated(
             DocumentId: docId,

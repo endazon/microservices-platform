@@ -177,7 +177,7 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
     [Fact]
     public async Task SharedQueueDeclaration_KeepsFanOut_ServicePrefixSeparatesQueues()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var docId = Guid.NewGuid();
         var evt = new DocumentUpdated(
             DocumentId: docId,

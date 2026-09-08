@@ -81,7 +81,7 @@ public sealed class EdgeTypeDbGuardTests(PostgresFixture postgres, RabbitMqFixtu
     [Fact]
     public async Task 参照中の辺の型は削除がDBのRESTRICTで拒まれる()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var ct = TestContext.Current.CancellationToken;
 
         // (1) 型と、それを参照する辺を作る。ここで作った DbContext は捨てる。
@@ -135,7 +135,7 @@ public sealed class EdgeTypeDbGuardTests(PostgresFixture postgres, RabbitMqFixtu
     [Fact]
     public async Task 同名の辺の型は一意索引で2件目が拒まれる()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var ct = TestContext.Current.CancellationToken;
         var name = $"dup-{Guid.NewGuid():N}";
 
@@ -160,7 +160,7 @@ public sealed class EdgeTypeDbGuardTests(PostgresFixture postgres, RabbitMqFixtu
     [Fact]
     public async Task 同一の関係を表す辺は一意索引で2行目が拒まれる()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var ct = TestContext.Current.CancellationToken;
 
         await using var scope = _factory.Services.CreateAsyncScope();
@@ -197,7 +197,7 @@ public sealed class EdgeTypeDbGuardTests(PostgresFixture postgres, RabbitMqFixtu
     [Fact]
     public async Task 同名を同時に登録しても1件だけ成功し500にならない()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         // ラムダの中で TestContext.Current を引かない（並列タスクでは AsyncLocal の値が保証されない）。
         var ct = TestContext.Current.CancellationToken;
         var name = $"競合-{Guid.NewGuid():N}";
@@ -230,7 +230,7 @@ public sealed class EdgeTypeDbGuardTests(PostgresFixture postgres, RabbitMqFixtu
     [Fact]
     public async Task RESTRICTに弾かれた削除は409になる()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var ct = TestContext.Current.CancellationToken;
 
         Guid typeId;
@@ -291,7 +291,7 @@ public sealed class EdgeTypeDbGuardTests(PostgresFixture postgres, RabbitMqFixtu
     [Fact]
     public async Task マイグレーションが出力したスキーマがカタログと一致する()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var ct = TestContext.Current.CancellationToken;
 
         await using var conn = new NpgsqlConnection(postgres.ConnectionString);

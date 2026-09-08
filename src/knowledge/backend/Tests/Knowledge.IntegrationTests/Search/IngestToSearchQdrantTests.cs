@@ -47,6 +47,17 @@ public sealed class IngestToSearchQdrantTests : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
+        // [[IADR-0414]] (#1336): 外部の Qdrant が与えられていればコンテナは起こさない
+        // （Docker Engine API を持たないランタイムでも走らせられるようにする）。
+        var external = RequiredServices.Qdrant.External;
+        if (external is not null)
+        {
+            // 値は gRPC の `host:port`。到達性は本体の呼び出しで確かめる（fail-closed）。
+            var parts = external.Split(':', 2);
+            _client = new QdrantClient(parts[0], parts.Length > 1 ? int.Parse(parts[1]) : 6334);
+            return;
+        }
+
         if (!DockerRequired.IsAvailable()) return;
 
         _qdrant = new QdrantBuilder().Build();
@@ -68,7 +79,7 @@ public sealed class IngestToSearchQdrantTests : IAsyncLifetime
     [Fact]
     public async Task ChunkWrittenByIngestion_IsFoundByRetrieval()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Qdrant);
 
         var ct = TestContext.Current.CancellationToken;
         var documentId = Guid.NewGuid();
@@ -111,7 +122,7 @@ public sealed class IngestToSearchQdrantTests : IAsyncLifetime
     [Fact]
     public async Task UnrelatedTerm_DoesNotHit()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Qdrant);
 
         var ct = TestContext.Current.CancellationToken;
         var documentId = Guid.NewGuid();
@@ -139,7 +150,7 @@ public sealed class IngestToSearchQdrantTests : IAsyncLifetime
     [Fact]
     public async Task DeletedDocument_DisappearsFromSearch()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Qdrant);
 
         var ct = TestContext.Current.CancellationToken;
         var documentId = Guid.NewGuid();

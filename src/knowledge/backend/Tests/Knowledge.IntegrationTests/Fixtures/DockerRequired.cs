@@ -15,19 +15,24 @@ namespace Knowledge.IntegrationTests.Fixtures;
 // 在ったので、派生をやめると問題ごと消える。
 public static class DockerRequired
 {
-    /// <summary>Docker が使えないならテストを**真の Skipped**にする。</summary>
-    /// <remarks>
-    /// 🔴 `if (!IsAvailable()) return;` のソフトスキップにしないこと。
-    /// `IADR-0231` 決定 3 が撲滅した「走っていないのに Passed」へ退化する。
-    /// </remarks>
-    public static void SkipUnlessAvailable() =>
-        Assert.SkipUnless(
-            IsAvailable(),
-            "Docker is not available – start Docker Desktop to run integration tests");
+    // 🔴 **本クラスが答えるのは「Docker Engine API へ届くか」だけである**（[[IADR-0414]] / #1336）。
+    // 「この試験を走らせてよいか」を訊くのは `RequiredServices` のほうである ——
+    // **依存は外から与えることもできる**ので、Docker の有無は答えの半分でしかない。
+    // ここを門として直接使ってよいのは、`ContainerStartupFailure`（Docker があるのに
+    // 起動できなかったのかを見分ける）だけである。
 
     internal static bool IsAvailable()
     {
         if (Environment.GetEnvironmentVariable("CI") == "true")
+            return true;
+
+        // 🔴 **`DOCKER_HOST` を尊重する**（#1336）。Testcontainers はこの変数を見るのに、
+        // 従前の判定は**既定のパイプ／ソケットしか見ていなかった** ——
+        // 別の場所へ Docker API を公開している環境（リモートの daemon・
+        // 互換ソケットを別パスへ出すランタイム）で、**使えるのに「無い」と答えていた。**
+        // 値の妥当性までは確かめない（確かめるのは Testcontainers の仕事であり、
+        // 起動に失敗したら `ContainerStartupFailure` が原因を添えて落とす）。
+        if (Environment.GetEnvironmentVariable("DOCKER_HOST") is { Length: > 0 })
             return true;
 
         if (OperatingSystem.IsWindows())

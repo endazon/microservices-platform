@@ -17,16 +17,26 @@ public sealed class DataSourceSyncSingleWriterTests
     [Fact]
     public async Task TwoCoordinators_ContendForSameLease_OnlyOneAcquires_ReleasesForNextCycle()
     {
-        DockerRequired.SkipUnlessAvailable();
-        var pg = new PostgreSqlBuilder("postgres:16-alpine")
-            .WithDatabase("single_writer_test")
-            .WithUsername("kp")
-            .WithPassword("kp")
-            .Build();
-        await pg.StartAsync(TestContext.Current.CancellationToken);
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres);
+
+        // [[IADR-0414]] (#1336): 外部の PostgreSQL が与えられていればコンテナは起こさない。
+        // 🔴 **`PostgresFixture` と同じ変数を使う**（DB を 2 つの鍵で切り替えない）。
+        // 本試験は advisory lock の競合を測るので、**専用の DB 名は要らない** ——
+        // 使うのはセッション単位のロックであり、他の試験の表とは干渉しない。
+        var external = RequiredServices.Postgres.External;
+        PostgreSqlContainer? pg = null;
+        if (external is null)
+        {
+            pg = new PostgreSqlBuilder("postgres:16-alpine")
+                .WithDatabase("single_writer_test")
+                .WithUsername("kp")
+                .WithPassword("kp")
+                .Build();
+            await pg.StartAsync(TestContext.Current.CancellationToken);
+        }
         try
         {
-            var cs = pg.GetConnectionString();
+            var cs = external ?? pg!.GetConnectionString();
             // 2 レプリカを模す独立したコーディネータ（各々が専用接続＝別セッションを張る）。
             var replicaA = new PostgresAdvisoryLockLeaseCoordinator(
                 cs, NullLogger<PostgresAdvisoryLockLeaseCoordinator>.Instance);
@@ -49,7 +59,7 @@ public sealed class DataSourceSyncSingleWriterTests
         }
         finally
         {
-            await pg.DisposeAsync();
+            if (pg is not null) await pg.DisposeAsync();
         }
     }
 }

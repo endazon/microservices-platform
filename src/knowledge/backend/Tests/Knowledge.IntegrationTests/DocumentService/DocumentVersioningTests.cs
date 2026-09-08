@@ -32,7 +32,7 @@ public sealed class DocumentVersioningTests(PostgresFixture postgres, RabbitMqFi
     [Fact]
     public async Task CreateUpdate_BuildsVersionHistory()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         // SC-05, #635: **タグは辞書に在る名前しか付けられない**（手入力は自動登録しない。
         // [[IADR-0153]] 決定 5）。辞書へ先に登録する。
         foreach (var name in new[] { "v1", "v2", "v3" })
@@ -77,7 +77,7 @@ public sealed class DocumentVersioningTests(PostgresFixture postgres, RabbitMqFi
     [Fact]
     public async Task Update_WithStaleVersion_Returns409()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var create = await _client.PostAsJsonAsync("/documents",
             new { title = "並行制御", attributes = new { confidentiality = "internal" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
         var doc = await create.Content.ReadFromJsonAsync<DocResponse>(TestContext.Current.CancellationToken);

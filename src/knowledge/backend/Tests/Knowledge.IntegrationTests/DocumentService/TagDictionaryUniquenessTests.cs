@@ -40,7 +40,7 @@ public sealed class TagDictionaryUniquenessTests(PostgresFixture postgres, Rabbi
     [Fact]
     public async Task CreateTag_Duplicate_Returns409()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var name = $"重複-{Guid.NewGuid():N}";
 
         (await _client.PostAsJsonAsync("/tags", new { name }, TestContext.Current.CancellationToken)).StatusCode
@@ -55,7 +55,7 @@ public sealed class TagDictionaryUniquenessTests(PostgresFixture postgres, Rabbi
     [Fact]
     public async Task CreateTag_Concurrently_ExactlyOneSucceeds_AndNoServerError()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var name = $"競合-{Guid.NewGuid():N}";
 
         var responses = await Task.WhenAll(

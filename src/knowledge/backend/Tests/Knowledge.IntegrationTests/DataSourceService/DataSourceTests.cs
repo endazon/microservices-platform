@@ -32,7 +32,7 @@ public sealed class DataSourceTests(PostgresFixture postgres, RabbitMqFixture ra
     [Fact]
     public async Task CreateDataSource_ThenList_ContainsNew()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var req = new
         {
             name = "社内 Confluence",
@@ -57,7 +57,7 @@ public sealed class DataSourceTests(PostgresFixture postgres, RabbitMqFixture ra
     [Fact]
     public async Task TriggerSync_KnownDataSource_Returns202()
     {
-        DockerRequired.SkipUnlessAvailable();
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var createResp = await _client.PostAsJsonAsync("/datasources", new
         {
             name = "Sync テスト",
