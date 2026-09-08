@@ -177,45 +177,44 @@ public class HybridSearchService(
     // 利用者指定の AttributeFilters は**分岐の選言全体と AND** で重ねる（絞り込みは narrowing であり
     // 権限を広げない）。**分岐が無いときは従来の算出（キー単位の結合）をそのまま使う**——
     // 未移行の発行者から来た応答の互換のためであり、値も意味も変えない。
+    // FR-03, FR-05, NFR-09, SC-01, SC-08, ADR-0004, [[IADR-0151]], [[IADR-0253]] 決定 1・2,
+    // [[IADR-0415]] (#1340): 利用者指定と ABAC 許可スコープを 1 本の allow-list へ正規化する。
+    //
+    // 🔴 **利用者指定は絞るだけで広げない。** 従前ここは非分岐経路で利用者指定と ABAC 許可を
+    // **同じキーの下へ union して**おり、**指定するだけで許可値集合が広がっていた** ——
+    // 許可 `dept ∈ {sales}` に指定 `dept=hr` を送ると `{sales, hr}` になり、
+    // **認証済み利用者が権限外の文書を読めた**（#1340 で実測）。しかも絞り込みとしても
+    // 効いていなかった（許可 `{sales, eng}` ＋ 指定 `sales` で eng が残った）。
+    //
+    // 🔴 **規則は共有点が 1 つだけ持つ**（`ScopeNarrowing`）—— 呼び出し元側（AiAnalysis の
+    // データ範囲）と**同じ関数**を通る。規則が片方にしか無かったことが欠陥の正体だった。
     private static ScopeFilter BuildFilters(SearchRequest request)
     {
-        if (request.Scope is { Branches.Count: > 0 } scoped)
+        // 🔴 **交差を先に済ませる。** 実効スコープは ABAC 許可の部分集合であり、
+        // 積が空のキーがあれば `ScopeNarrowing` が全体 deny（`GrantsAccess=false`）を返す。
+        var effective = ScopeNarrowing.Apply(request.Scope, request.AttributeFilters);
+
+        // 全体 deny は「1 件も選ばない」フィルタでなければならない。
+        // 🔴 **`ScopeFilter.Empty`（＝制約なし）へ倒してはならない** —— 全件開放になる。
+        if (!effective.GrantsAccess)
+            return DenyEverything;
+
+        if (effective is { Branches.Count: > 0 } scoped)
+            // 🔴 **分岐経路では利用者指定を選言全体と AND で重ねる**（従前どおり。元から正しい）。
+            // `ScopeNarrowing` は分岐ごとに独立して交差させ、積が空の分岐だけを捨てている。
             return new ScopeFilter(
-                BuildUserFilters(request.AttributeFilters),
+                [],
                 [.. scoped.Branches.Select(b => (IReadOnlyList<AttributeFilter>)b.Filters)]);
 
-        // 後方互換: 分岐が無ければ従来どおり 1 本の連言へ統合する（同一キーは値集合を結合）。
-        var byKey = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-
-        if (request.AttributeFilters is { Count: > 0 })
-            foreach (var (key, value) in request.AttributeFilters)
-                Add(key, [value]);
-
-        if (request.Scope is { Filters.Count: > 0 } scope)
-            foreach (var f in scope.Filters)
-                Add(f.Key, f.AllowedValues);
-
-        if (byKey.Count == 0)
-            return ScopeFilter.Empty;
-
-        return new ScopeFilter([.. byKey.Select(kv => new AttributeFilter(kv.Key, kv.Value))]);
-
-        void Add(string key, IEnumerable<string> values)
-        {
-            if (!byKey.TryGetValue(key, out var list))
-                byKey[key] = list = [];
-            foreach (var v in values)
-                if (!list.Contains(v, StringComparer.OrdinalIgnoreCase))
-                    list.Add(v);
-        }
+        return effective.Filters.Count == 0
+            ? ScopeFilter.Empty
+            : new ScopeFilter([.. effective.Filters]);
     }
 
-    // FR-03: 利用者が指定した単値フィルタ（後方互換）。分岐経路では選言全体と AND で重ねる。
-    private static List<AttributeFilter> BuildUserFilters(
-        IReadOnlyDictionary<string, string>? attributeFilters) =>
-        attributeFilters is { Count: > 0 }
-            ? [.. attributeFilters.Select(kv => new AttributeFilter(kv.Key, [kv.Value]))]
-            : [];
+    // 🔴 **1 件も選ばないフィルタ。** 「制約なし」と取り違えると全件開放になる。
+    // 実在しないキーの実在しない値を要求する（どの文書にも一致しない）。
+    private static readonly ScopeFilter DenyEverything =
+        new([new AttributeFilter("__deny__", ["__none__"])]);
 
     // FR-03: Reciprocal Rank Fusion。両リストに現れる文書ほど上位になる。
     internal static List<SearchResultDto> ReciprocalRankFusion(
