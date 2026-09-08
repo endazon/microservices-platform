@@ -664,6 +664,18 @@ function selfTest() {
     ['action pin: ★ 陽性対照 —— コメントを外せば拾う（無条件に無視していない）', [
       { file: 'review.yml', text: `        uses: anthropics/claude-code-action@v1\n        uses: anthropics/claude-code-action@${SHA_A}\n` },
     ], true],
+    // 🔴 `- uses:`（steps のハイフン記法）を見落とすと、**参照が 0 件に見えて fail-open へ落ちる**。
+    // 「見落とし」が「違反なし」と区別できない形なので、陽性・陰性の対で固定する。
+    ['action pin: 🔴 `- uses:` 記法の浮動参照も拾う', [
+      { file: 'review.yml', text: '      - uses: anthropics/claude-code-action@v1\n' },
+    ], true],
+    ['action pin: `- uses:` 記法で SHA 固定なら通す（記法だけで落とさない）', [
+      { file: 'review.yml', text: `      - uses: anthropics/claude-code-action@${SHA_A}\n` },
+    ], false],
+    ['action pin: 記法が混在していても版の不一致を見つける', [
+      { file: 'review.yml', text: `      - uses: anthropics/claude-code-action@${SHA_A}\n` },
+      { file: 'coding.yml', text: `        uses: anthropics/claude-code-action@${SHA_B}\n` },
+    ], true],
   ];
   for (const [label, files, expectError] of pinCases) {
     const got = claudeActionPinErrors(files).length > 0;
@@ -702,7 +714,11 @@ function selfTest() {
  * @param {{file: string, text: string}[]} files 走査済みのワークフロー
  * @returns {string[]} 違反メッセージ（空なら適合）
  */
-const ACTION_REF_RE = /^uses:\s*anthropics\/claude-code-action@([^\s#]+)/;
+// 🔴 **`- uses:`（steps のハイフン記法）も拾う。** 本リポジトリの他 8 ワークフローは
+// この書き方を使っており、`^uses:` だけで見ると**将来この記法へ書き換わった瞬間に
+// 参照が 1 件も見つからず、fail-open の「参照が無ければ何も言わない」分岐へ静かに落ちる**
+// —— 射程外になったことが誰にも見えない、最も悪い壊れ方である。
+const ACTION_REF_RE = /^(?:-\s*)?uses:\s*anthropics\/claude-code-action@([^\s#]+)/;
 
 /**
  * 🔴 **行単位で走査し、コメント行を除外する。**
