@@ -137,6 +137,45 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
         body!.Values.Should().Equal(["社内", "規程"]);
     }
 
+    // 🔴 FR-04, FR-05, NFR-09, SC-01, SC-08, ADR-0034, [[IADR-0416]]: **利用者の Authorization を
+    // 後段へ伝播する。** 受け口（RetrievalService）は**自分で** ABAC スコープを解決する型へ変わっており
+    // （呼び出し元の自称 `Scope` は絞り込みにしか効かない）、資格情報が届かない要求は
+    // **未認証として deny へ倒れ、候補は必ず空になる**。検索（`/bff/search`）は同じ理由で既に伝播している。
+    //
+    // ★ 陽性対照は「本文に scope が載っていること」ではなく**ヘッダが届くこと**である ——
+    // 本文だけでは受け口は何も許可しない。
+    [Fact]
+    public async Task PostAttributeValues_ForwardsTheCallersAuthorizationToRetrieval()
+    {
+        factory.SearchScopeGranted = true;
+        factory.LastAttributeValuesForwardedAuthorization = null;
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer user-jwt");
+
+        var resp = await client.PostAsJsonAsync("/bff/attribute-values", new { key = "tags" },
+            TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        factory.LastAttributeValuesForwardedAuthorization.Should().Be("Bearer user-jwt",
+            "受け口が自分で解決する以上、資格情報が届かなければ候補は常に空になる");
+    }
+
+    // 同（否定形）: 受信要求にヘッダが無ければ**付けない**（BFF がトークンを捏造しない）。
+    // 検索側 `PostSearch_DoesNotInventAnAuthorizationHeader` と対である。
+    [Fact]
+    public async Task PostAttributeValues_DoesNotInventAnAuthorizationHeader()
+    {
+        factory.SearchScopeGranted = true;
+        factory.LastAttributeValuesForwardedAuthorization = "sentinel";
+
+        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/attribute-values",
+            new { key = "tags" }, TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        factory.LastAttributeValuesForwardedAuthorization.Should().BeNull(
+            "無ければ付けない（縮退の判断と警告は RetrievalService 側が一元で持つ）");
+    }
+
     // **[[IADR-0151]] 決定 5**: スコープが解決できない（deny-by-default）ときは**空配列**。
     // **404 にも 403 にもしない** —— 候補が無いことと権限が無いことを利用者へ区別させない
     // （区別を与えると、試行錯誤で値の存在を探れてしまう）。
@@ -206,6 +245,29 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
         body.Dictionary.Should().NotBeNull();
         body.Dictionary!.Tags.Should().NotBeEmpty();
         factory.TagDictionaryFetched.Should().BeTrue();
+    }
+
+    // 🔴 FR-09, SC-05, SC-09, [[IADR-0044]] (#1343): 辞書の取得にも**利用者の資格情報が届く**。
+    // 後段の `/tags` は管理者・運用者のロールを最終防衛線として検査する（BFF の `IsDictionaryReader`
+    // は早期の門にすぎない）ので、伝播が切れれば辞書は取れない。
+    //
+    // ★ **この対がここに要るのは、属性値照会で同じ穴が実際に開いていたから**である ——
+    // スタブが資格情報を見ずに 200 を返す限り、伝播を落としても試験は緑のままだった。
+    [Fact]
+    public async Task PostAttributeValues_ForwardsTheCallersAuthorizationToTheTagDictionary()
+    {
+        factory.SearchScopeGranted = true;
+        factory.LastTagDictionaryForwardedAuthorization = null;
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-admin");
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer admin-jwt");
+
+        var resp = await client.PostAsJsonAsync("/bff/attribute-values", new { key = "tags" },
+            TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        factory.LastTagDictionaryForwardedAuthorization.Should().Be("Bearer admin-jwt",
+            "後段が最終防衛線として同じロールを検査する（BFF の門は早期の門である）");
     }
 
     // **一般利用者には辞書が出ない。** 辞書を丸ごと返すと権限外の文書に固有の値から
