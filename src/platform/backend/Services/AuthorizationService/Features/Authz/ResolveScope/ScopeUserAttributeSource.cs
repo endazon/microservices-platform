@@ -62,7 +62,7 @@ public sealed class ScopeUserAttributeSource(
                 // 見せることにはなるが、それは `ADR-0088` 決定 1 が明示的に選んだ形である
                 // （後段の不調を権限の不在として記録しないことのほうを重く見る）。
                 logger.LogInformation(
-                    "ABAC 判定: 利用者が名簿に居ないため deny とする。userId={UserId}", userId);
+                    "ABAC 判定: 利用者が名簿に居ないため deny とする。userId={UserId}", ForLog(userId));
                 return new Result(Outcome.NotFound, []);
             }
 
@@ -75,8 +75,37 @@ public sealed class ScopeUserAttributeSource(
             // 呼び出し元はいずれも非 2xx / `RpcException` を deny へ縮退するので、
             // **status で返しても fail-closed は保たれる**（作業仕様書 §実測 2）。
             logger.LogError(ex,
-                "ABAC 判定: 利用者属性を IdP から引けなかった。userId={UserId}", userId);
+                "ABAC 判定: 利用者属性を IdP から引けなかった。userId={UserId}", ForLog(userId));
             return new Result(Outcome.Unavailable, []);
         }
     }
+
+    /// <summary>
+    /// FR-05, NFR-09, [[IADR-0413]] (#1333): 🔴 **ログへ出す前に制御文字を落とす。**
+    ///
+    /// `userId` は**呼び出し元が本文で渡す検証されていない値**である。
+    /// `ResolveScopeValidator` は `action` の値域しか持たず、`user_id` には文字種の制約が無い
+    /// （gRPC 面はそもそも validator を通らない）。
+    ///
+    /// 🔴 **本 PR の前提そのものが「呼び出し元の本文を信じない」である。**
+    /// その値を改行ごとログへ流すと、**この PR が強化しようとしている deny の監査ログへ
+    /// 偽の行を混ぜられる**（CR/LF のログフォージング）。判定に使う値は生のまま
+    /// （IdP へ問い合わせる鍵であり、妙な値なら「居ない」で deny へ倒れる）、
+    /// **ログへ出す表現だけを削る。**
+    ///
+    /// 🔴 **値域を validator へ足す形は採らない。** 制約を足すと**面ごとに 2 か所**へ要る
+    /// （REST の validator と gRPC の手書き検証）——
+    /// 引き直しの点を 1 つにした決定 1 と逆向きになる。**ここは両面が通る唯一の点である。**
+    /// </summary>
+    internal static string ForLog(string? userId)
+    {
+        if (string.IsNullOrEmpty(userId)) return "(空)";
+
+        // 制御文字（CR / LF / TAB / NUL ほか）を落とし、長さを上限で切る
+        // （長大な値でログ 1 行を埋めるのも同じ系統の妨害である）。
+        var cleaned = new string([.. userId.Where(c => !char.IsControl(c)).Take(LogValueLimit)]);
+        return cleaned.Length == 0 ? "(空)" : cleaned;
+    }
+
+    private const int LogValueLimit = 256;
 }
