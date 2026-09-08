@@ -319,7 +319,7 @@ public class RagOrchestrator(
         if (authzScopeGrpc is not null)
             return await authzScopeGrpc.ResolveScopeAsync(userId, userAttributes, ScopeAction, ct);
 
-        var authzClient = httpFactory.CreateClient("AuthorizationService");
+        var authzClient = httpFactory.CreateClient(AuthzScopeHttpClient.ClientName);
         try
         {
             var scopeResp = await authzClient.PostAsJsonAsync("/authz/scope",

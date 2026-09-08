@@ -40,7 +40,7 @@ public class AuthzValidationProblemContractTests(TestWebApplicationFactory facto
     }
 
     private Task<HttpResponseMessage> ResolveAsync(string action)
-        => factory.CreateClient().PostAsJsonAsync("/authz/scope",
+        => factory.CreateServiceCallerClient().PostAsJsonAsync("/authz/scope",
             new AccessScopeRequest($"contract-{Guid.NewGuid():N}"[..24], new Dictionary<string, string>(), action),
             TestContext.Current.CancellationToken);
 

@@ -69,6 +69,17 @@ builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddMeter(UsageEventMetrics.MeterName));
 
 // FR-03, UC-01, SC-01: 横断検索の集約用。ABAC スコープ解決（AuthorizationService）→ 検索（RetrievalService）。
+//
+// 🔴 **クライアントは 2 本ある。混ぜてはならない**（計画 ADR-0088 決定 2 / [[IADR-0413]] / #1333）。
+//
+// | 用途 | クライアント | 資格情報 | 呼び出し先 |
+// | --- | --- | --- | --- |
+// | ABAC スコープ解決 | `AuthzScopeHttpClient.ClientName` | **BFF 自身の s2s** | `/authz/scope`（`ServiceCaller`） |
+// | 管理面の代理（属性辞書・利用者管理） | `"AuthorizationService"` | **利用者の `Authorization` を転送** | `/authz/*`（`AdminOnly`） |
+//
+// 意味論が逆なので、**1 本にまとめると管理面へ s2s が乗るか、スコープ解決へ利用者の資格が乗る**。
+// PR #1332（[[IADR-0412]]）が解いたのと同型の危険であり、これで 2 回目である（[[IADR-0141]]）。
+builder.Services.AddPlatformAuthzScopeHttpClient(builder.Configuration);
 builder.Services.AddHttpClient("AuthorizationService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
         ?? "http://authorization-service:5005"));

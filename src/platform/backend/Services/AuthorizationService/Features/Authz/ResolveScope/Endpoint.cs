@@ -20,7 +20,8 @@ public static class ResolveScopeEndpoint
     public static IEndpointRouteBuilder MapResolveScope(this IEndpointRouteBuilder app)
     {
         app.MapPost("/scope", async (AccessScopeRequest req,
-            IValidator<AccessScopeRequest> validator, AuthorizationDbContext db) =>
+            IValidator<AccessScopeRequest> validator, AuthorizationDbContext db,
+            ScopeUserAttributeSource users, CancellationToken ct) =>
         {
             // FR-05, FR-21 / 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 /
             // [[IADR-0398]] 決定 1 (b): 値域は `ResolveScopeValidator` が持つ。
@@ -30,8 +31,23 @@ public static class ResolveScopeEndpoint
             var gate = validator.Validate(req);
             if (!gate.IsValid) return AuthzEndpoints.ValidationProblem([gate.Errors[0].ErrorMessage]);
 
-            var policies = await db.Policies.Where(p => p.IsActive).ToListAsync();
-            var scope = AbacEvaluator.ResolveScope(req, policies, req.Action);
+            // 🔴 **計画 ADR-0088 決定 1 / [[IADR-0413]] (#1333): 属性は IdP から引き直す。**
+            // 本文の `req.UserAttributes` は評価に用いない —— gRPC 面と**同じ 1 つの点**を通る。
+            var lookup = await users.ResolveAsync(req.UserId, ct);
+            if (lookup.Outcome == ScopeUserAttributeSource.Outcome.Unavailable)
+                // 🔴 **「引けなかった」は status である**（`ADR-0088` 決定 1）。
+                // 200 + `granted=false` にすると、後段の停止が「権限が無い」として記録される。
+                // 既知の 4 呼び出し元は非 2xx を deny へ縮退するので **fail-closed は保たれる**。
+                return Results.Problem(
+                    detail: "利用者属性を身元プロバイダから取得できませんでした。",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+
+            // 「居ない」は**応答**である（deny を 200 で返す。エラーにしない）。
+            var policies = await db.Policies.Where(p => p.IsActive).ToListAsync(ct);
+            var scope = lookup.Outcome == ScopeUserAttributeSource.Outcome.Found
+                ? AbacEvaluator.ResolveScope(
+                    req with { UserAttributes = lookup.Attributes }, policies, req.Action)
+                : new AccessScopeResponse(req.UserId, [], false);
             return Results.Ok(scope);
         });
 

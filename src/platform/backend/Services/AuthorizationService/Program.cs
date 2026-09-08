@@ -57,6 +57,10 @@ builder.Services.AddIdentityAdminClient(builder.Configuration, builder.Environme
 // 起動が通ってしまう（明示登録なら `IValidator<T>` の解決に失敗して止まる）。
 builder.Services.AddScoped<IValidator<AccessScopeRequest>, ResolveScopeValidator>();
 
+// FR-05, NFR-09, 計画 ADR-0088 決定 1・2, [[IADR-0413]] (#1333): ABAC 判定に使う利用者属性を
+// IdP から引き直す唯一の点。**REST 端点と gRPC 面の両方がこれを取る**（面ごとに書かない）。
+builder.Services.AddScoped<ScopeUserAttributeSource>();
+
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段・合成可能ポートは
 // ホストしないが、到達可能性とトポロジ（段なし）を実効構成へ与えるため存在申告する。
 builder.Services.AddPlatformIntrospection("authorization-service", new PipelineOptions());

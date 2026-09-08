@@ -69,6 +69,15 @@ public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
         => Task.FromResult<IReadOnlyList<IdentityUser>>(
             [.. _users.Values.OrderBy(u => u.Username, StringComparer.Ordinal).Select(u => u.ToIdentityUser())]);
 
+    // FR-05, FR-16, NFR-09, SC-12, 計画 ADR-0088 決定 1, [[IADR-0413]] (#1333): 名指しの 1 人。
+    // 🔴 **照合は大小文字無視**（Keycloak 実装・`GetUserAttributes` の現行と同じ規則）。
+    // 🔴 **ロールも返す** —— 偽物には往復の費用が無く、**本物より狭い像を返す理由が無い**
+    // （呼び出し元はロールを読まないので、どちらでも判定は変わらない）。
+    public Task<IdentityUser?> FindByUsernameAsync(string username, CancellationToken ct)
+        => Task.FromResult(_users.Values
+            .FirstOrDefault(u => string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase))
+            ?.ToIdentityUser());
+
     public Task<IReadOnlyList<string>> ListAssignableRolesAsync(CancellationToken ct)
         => Task.FromResult<IReadOnlyList<string>>([.. AssignableRoles]);
 

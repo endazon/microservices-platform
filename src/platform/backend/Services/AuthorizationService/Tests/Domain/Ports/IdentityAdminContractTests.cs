@@ -32,10 +32,13 @@ public class IdentityAdminContractTests
 
     // 陽性対照。上の否定形だけだと、**メソッドが 1 つも無い空のインターフェイス**でも緑になる。
     [Fact]
-    public void The_port_exposes_the_five_operations_the_screen_needs()
+    public void The_port_exposes_the_operations_the_screen_and_abac_need()
         => typeof(IIdentityAdminClient).GetMethods().Select(m => m.Name)
             .Should().BeEquivalentTo(
                 nameof(IIdentityAdminClient.ListUsersAsync),
+                // #1333: 名指しの 1 人を引く読み取りの口（計画 ADR-0088 決定 1）。
+                // 🔴 **列挙の上で絞る形の置き換えであって、新規作成の口ではない。**
+                nameof(IIdentityAdminClient.FindByUsernameAsync),
                 nameof(IIdentityAdminClient.ListAssignableRolesAsync),
                 nameof(IIdentityAdminClient.ReplaceAttributesAsync),
                 nameof(IIdentityAdminClient.ReplaceRealmRolesAsync),

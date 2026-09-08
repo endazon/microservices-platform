@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11, FR-12, FR-13, FR-16, FR-17, FR-18, FR-19, NFR-02, NFR-09, NFR-16, NFR-21, SC-03, SC-05, SC-06, SC-10, SC-12, SC-17, SC-18, UC-01, UC-02, UC-03, UC-04, UC-05, UC-07, UC-09, UC-10]
 adrs: [ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0038, ADR-0044, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086]
-iadrs: [IADR-0009, IADR-0012, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412]
-specs: [20260905_issue-1201_east-west-grpc-preconditions, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1255_east-west-grpc-llm-completion, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260906_issue-1255_knowledge-health-grpc, 20260907_issue-1255_user-context-in-body, 20260908_issue-1255_tag-dictionary-grpc]
-issues: [#1201, #1255]
+iadrs: [IADR-0009, IADR-0012, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413]
+specs: [20260905_issue-1201_east-west-grpc-preconditions, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1255_east-west-grpc-llm-completion, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260906_issue-1255_knowledge-health-grpc, 20260907_issue-1255_user-context-in-body, 20260908_issue-1255_tag-dictionary-grpc, 20260908_issue-1333_authz-resolves-user-attributes]
+issues: [#1201, #1255, #1333]
 -->
 
 # 通信仕様書: east-west gRPC（サービス間の同期呼び出し）
@@ -94,11 +94,11 @@ C# 契約（DTO・イベント）の検査器とは母集合を共有しない�
 | 呼び出し先の検証 | 既存の JwtBearer（`AddPlatformAuth`。同じ issuer・同じ JWKS）で検証し、gRPC サービス型に **`ServiceCaller` ポリシー**（realm ロール `platform-service`）を掛ける |
 | 拒否 | トークン無し → `UNAUTHENTICATED`、`platform-service` 無し → `PERMISSION_DENIED` |
 | 🔴 利用者トークン | **メタデータへ載せない。** 利用者のトークン（管理者であっても）はサービス間の面を通らない —— 通すと呼び出し先が「利用者が直接呼んだ」と「サービスが利用者のために呼んだ」を区別できず、利用者ロールがサービス間の面へ漏れる（confused deputy） |
-| 利用者の文脈 | **本文で運ぶ**（`user_id` / `user_attributes` / `action`。REST の要求本文と同じ形）。移行は本文を変えないトランスポートの差し替えになる |
+| 利用者の文脈 | **本文で運ぶ**（`user_id` / `user_attributes` / `action`。REST の要求本文と同じ形）。移行は本文を変えないトランスポートの差し替えになる。［2026-09-08 追記］🔴 **ただし `user_attributes` は権限スコープ解決では評価に用いられなくなった**（下の「利用者の権限で動く呼び出し先」の行を参照）。契約からは消していない |
 | deny-by-default | 該当ポリシーが無ければ `granted=false` を**応答で**返す（エラーではない）。呼び出し側は `UNAUTHENTICATED` / `PERMISSION_DENIED` / `UNAVAILABLE` / トークン取得失敗をすべて「閲覧可能なし」へ縮退する |
 | BFF セッション方式との分け方 | セッション Cookie ↔ 利用者トークンは **north-south**、s2s トークンは **east-west**。BFF は自分の confidential client（`bff`）で client credentials を取る（realm の `bff` に service account と `platform-service` を付けてある） |
-| 利用者の権限で動く呼び出し先 | **利用者文脈を本文で運ぶ**（上の行と同じ形）。呼び出し先は受け取った文脈で**自分の判定を行う**ので、ホップごと ABAC は満たされる |
-| RFC 8693 token exchange | 🔴 **採らない。** 理由は preview だからではなく、**入れても閉じないから**である —— 認可サービスは呼び出し元の主張する `user_id` / `user_attributes` をそのまま評価するので、交換トークンを入れてもサービスはその隣で任意の利用者を主張できる。覆るには 2 条件が**ともに**要る |
+| 利用者の権限で動く呼び出し先 | **利用者文脈を本文で運ぶ**（上の行と同じ形）。呼び出し先は受け取った文脈で**自分の判定を行う**ので、ホップごと ABAC は満たされる。［2026-09-08 追記］🔴 **権限スコープ解決だけは「主張された属性」を使わない** —— 認可サービスが `user_id` から IdP へ引き直す。運ぶのは**引き直しの鍵**としての `user_id` であり、属性は根拠ではなくなった |
+| RFC 8693 token exchange | 🔴 **今は採らない。**［2026-09-08 更新］従前ここは「入れても閉じないから」と書いていた —— 認可サービスが主張された属性をそのまま評価していたためである。**その半分は閉じた**（属性は IdP から引き直す）。**残るのは `user_id` の詐称であり、それを閉じる手段は token exchange しかない。** 採らない理由は変わったが結論は変わらない（着手可否の 2 条件のうち①は動いていない） |
 
 呼び出し側の共通部品: `AddPlatformServiceToken`（発行側の登録）と `GrpcClientExtensions.CreatePlatformChannel`（平文 h2c チャネルに
 s2s の `CallCredentials` を付ける。平文でトークンを送るには `UnsafeUseInsecureChannelCallCredentials` が要る —— 線上は mTLS である）。
@@ -116,7 +116,7 @@ s2s の `CallCredentials` を付ける。平文でトークンを送るには `U
 | 名前 | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
 | `user_id` | string | ○ | 利用者識別子（preferred_username） |
-| `user_attributes` | map<string,string> | ○ | ABAC 判定に用いる利用者属性（clearance / department ほか） |
+| `user_attributes` | map<string,string> | ○ | ［2026-09-08 更新］🔴 **評価に用いられない。** 認可サービスが `user_id` から IdP へ引き直す。**契約からは消していない**（フィールド削除は破壊的変更であり、撤去は並走が終わった段の判断である）|
 | `action` | string | — | read / analyze / manage / write。空文字は read |
 
 レスポンス（`ResolveScopeResponse`）:
@@ -251,8 +251,11 @@ REST 実装がそれぞれ「出典のみ返す」「提案 0 件」「画像と
 呼び出し元の端点に残る。
 
 🔴 **残余リスク（受容済み）**: `platform-service` を持つサービスは「名指しした 1 人の**真の**属性」を
-読める。これは `AuthzScope/Resolve` が呼び出し元の**主張する**属性をそのまま評価に使うのと同じ信頼であり
-（偽の属性を主張できる方が強い）、境界も同じ内周である。判断の記録は trace ブロックの実装 ADR にある。
+読める。判断の記録は trace ブロックの実装 ADR にある。
+［2026-09-08 更新］🔴 **従前ここは「`AuthzScope/Resolve` が主張された属性をそのまま評価するのと同じ信頼である」
+と書いていたが、その比較対象のほうが解消された。** スコープ解決は IdP から引き直すようになったので、
+**いま残っているのはこちらの読み口だけである** —— `platform-service` を持つサービスは
+名指しした 1 人の真の属性を読める。境界は同じ内周であり、受容は続く。
 
 🔴 **「居ない」と「引けなかった」を分ける。** 居ないのは応答（`exists=false` / `found=false`）、
 引けなかったのは gRPC status である。呼び出し側は**後者だけ**を自分の「Unavailable」へ倒す ——

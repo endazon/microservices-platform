@@ -3,15 +3,15 @@ title: 別紙 — 計画 ID レンジの追随記録と、計画 ADR の状態�
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-09-05
+updated: 2026-09-08
 author: claude
 ---
 <!-- trace:
 ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-06, SC-17, SC-18, SC-19, SC-20]
-adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081]
+adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228]
 specs: []
-issues: [#1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553]
+issues: [#1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -372,6 +372,17 @@ ABAC の `owner` が実データ 0 件である件と、Wiki.js の個人スコ�
 **世代数は書かない**——本節へ 1 世代足すたびに腐る導出値であり、実際に入口と本紙が
 「5 世代」で揃ったまま実体（`X → Y` の記録）だけが増えていた（#793 で是正。母集合の規則 10）。
 **「動かなかった」ことも実測の結果**であり、引き直しを省いてよい根拠にはならない。
+
+［2026-09-08 / #1333］**`ADR` レンジが `ADR-0001..0086` → `ADR-0001..0088` へ動いた。**
+隣接クローンの `origin/main` を直接確認した（`git ls-tree origin/main projects/microservices-platform/07_adr/`）。
+新設は **`ADR-0087`**（経路 1 は利用者の同一性の唯一の供給路）と
+**`ADR-0088`**（認可サービスは利用者属性を自ら引き直す）で、**ともに `Accepted`・欠番なし**。
+どちらも実装側からの環流に対する裁定である（起票番号は trace ブロック）。
+🔴 **引き直しの契機は「pin の前進」ではなく「自分の作業が新しい ADR を引いたこと」である** ——
+`ADR-0088` を trace ブロックへ書いた時点で `check-trace-blocks` が
+「計画 ADR レンジ外です」と止めた。**レンジの追随を忘れても機械が止める形になっている**
+（`FR` / `UC` / `SC` は `readPlanIds()`、計画 ADR は本節の宣言が一次情報）。
+**`FR` / `UC` / `SC` は引き直したが動いていない**（`FR-01..22` / `UC-01..11` / `SC-01..21`）。
 
 （**以下は前回の追随記録である。**［2026-08-09 / 計画側の裁定］pin が `31a69c9` → `2cf0795`へ進んだときも 4 種を引き直したが、4 種とも動いていなかった——`FR-01..22`（22 件）／`UC-01..11`（11 件）／`SC-01..21`（21 件）／`ADR` 45 件で欠番なし、`Proposed` な 6 件と `Superseded` な `ADR-0003` も同一である。
 **その 1 つ前**——［2026-08-09 / #628］pin が `90f5251` → `31a69c9`へ進んだときも 4 種を引き直したが、4 種とも動いていなかった——`FR-01..22`（22 件）／`UC-01..11`（11 件）／`SC-01..21`（21 件）／`ADR` 45 件で欠番なし、`Proposed` な 6 件（下記の列挙）も同一である。**不変であることも実測の結果である。**

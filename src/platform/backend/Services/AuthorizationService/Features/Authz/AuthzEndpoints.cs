@@ -30,8 +30,24 @@ public static class AuthzEndpoints
     {
         var g = app.MapGroup("/authz").WithTags("Authorization");
 
-        // FR-05: 権限スコープ解決（検索・RAG の前に呼び出される）。**サービス間呼び出しのため管理者限定にしない。**
-        g.MapResolveScope();
+        // FR-05, NFR-09, 計画 ADR-0088 決定 2, [[IADR-0379]] 決定 4, [[IADR-0413]] (#1333):
+        // 権限スコープ解決（検索・RAG の前に呼び出される）。
+        //
+        // 🔴 **`ServiceCaller` を要求する。gRPC 面と同じ 1 つのポリシーである。**
+        // 従前ここは**認可を 1 つも掛けていなかった**（「サービス間呼び出しのため管理者限定にしない」
+        // と書いてあったが、**管理者限定にしない**ことと**誰でも通す**ことは同じではない）。
+        // 🔴 **管理者限定にはしない** —— これはサービスが呼ぶ面であり、利用者のトークンでは通さない
+        // （通すと呼び出し先が「利用者が直接呼んだ」と区別できず confused deputy になる）。
+        //
+        // 🔴 **これは `ADR-0088` 決定 1（属性の引き直し）の着地の条件である。**
+        // 引き直しだけを入れて無認可のまま残すと、この端点は**今より危険になる** ——
+        // `user_id` を渡すだけで**その利用者の真の属性に基づく判定**が引け、
+        // **任意利用者の ABAC 属性のオラクル**になる（同 実測 6）。**2 つは同じ着地に含める。**
+        //
+        // 呼び出し元 4 つ（BFF / AiAnalysis / Graph / Wiki）は s2s の資格情報を
+        // **compose・helm・realm のいずれにも既に持っている**（作業仕様書 §実測 4）。
+        var services = g.MapGroup("").RequireAuthorization(PlatformAuthPolicies.ServiceCaller);
+        services.MapResolveScope();
 
         // ---- FR-09, UC-05: ABAC ポリシー・属性辞書管理（管理者のみ） ----
         // FR-09: 管理系 CRUD は管理者ロールを要求する。deny-by-default のポリシー削除・無効化を

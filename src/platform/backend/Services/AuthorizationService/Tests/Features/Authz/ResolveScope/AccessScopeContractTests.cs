@@ -61,7 +61,7 @@ public class AccessScopeContractTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task ResolveScopeEndpoint_ResponseBodyContainsGranted()
     {
-        var res = await factory.CreateClient().PostAsJsonAsync("/authz/scope",
+        var res = await factory.CreateServiceCallerClient().PostAsJsonAsync("/authz/scope",
             new AccessScopeRequest("contract-probe", new Dictionary<string, string>()), TestContext.Current.CancellationToken);
 
         res.EnsureSuccessStatusCode();
@@ -171,7 +171,7 @@ public class AccessScopeContractTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task ResolveScopeEndpoint_UnknownAction_Returns400()
     {
-        var res = await factory.CreateClient().PostAsJsonAsync("/authz/scope",
+        var res = await factory.CreateServiceCallerClient().PostAsJsonAsync("/authz/scope",
             new AccessScopeRequest("contract-probe", new Dictionary<string, string>(), "delete"),
             TestContext.Current.CancellationToken);
 
@@ -183,7 +183,7 @@ public class AccessScopeContractTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task ResolveScopeEndpoint_WriteAction_IsAccepted()
     {
-        var res = await factory.CreateClient().PostAsJsonAsync("/authz/scope",
+        var res = await factory.CreateServiceCallerClient().PostAsJsonAsync("/authz/scope",
             new AccessScopeRequest("contract-probe", new Dictionary<string, string>(), "write"),
             TestContext.Current.CancellationToken);
 
@@ -202,11 +202,14 @@ public class AccessScopeContractTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task ResolveScopeEndpoint_RoutesActionToEvaluator()
     {
-        var client = factory.CreateClient();
+        // 🔴 **面ごとに資格が違う**（計画 ADR-0088 決定 2 / [[IADR-0413]] / #1333）——
+        // 管理 API は `AdminOnly`、スコープ解決は `ServiceCaller` である。
+        var admin = factory.CreateClient();
+        var client = factory.CreateServiceCallerClient();
         var policyName = $"write-probe-{Guid.NewGuid():N}";
 
         // 管理 API で write ポリシーを登録する（値域拡張が保存経路でも通ることの検証を兼ねる）。
-        var created = await client.PostAsJsonAsync("/authz/policies", new
+        var created = await admin.PostAsJsonAsync("/authz/policies", new
         {
             name = policyName,
             action = "write",
@@ -215,7 +218,11 @@ public class AccessScopeContractTests(TestWebApplicationFactory factory)
         }, TestContext.Current.CancellationToken);
         created.EnsureSuccessStatusCode();
 
-        var attrs = new Dictionary<string, string> { ["probe-989"] = "yes" };
+        // 🔴 **属性は IdP 側へ置く**（計画 ADR-0088 決定 1）——
+        // 本文へ載せても評価には用いられない。それを固定するのが
+        // `ClaimedUserAttributesAreIgnoredTests` である。
+        factory.Identity.Attributes["alice-989"] = new Dictionary<string, string> { ["probe-989"] = "yes" };
+        var attrs = new Dictionary<string, string>();
 
         // 陽性対照: write スコープに自分の write ポリシーの分岐が含まれ、束縛済みである。
         var writeRes = await client.PostAsJsonAsync("/authz/scope",

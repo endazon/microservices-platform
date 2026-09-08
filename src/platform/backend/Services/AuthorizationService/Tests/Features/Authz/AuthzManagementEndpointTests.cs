@@ -167,7 +167,8 @@ public class AuthzManagementEndpointTests(TestWebApplicationFactory factory)
         }, TestContext.Current.CancellationToken);
         create.StatusCode.Should().Be(HttpStatusCode.Created);
 
-        var scope = await Client.PostAsJsonAsync("/authz/scope", new
+        // 🔴 スコープ解決は `ServiceCaller` を要る（計画 ADR-0088 決定 2 / #1333）。管理 API とは面が違う。
+        var scope = await factory.CreateServiceCallerClient().PostAsJsonAsync("/authz/scope", new
         {
             UserId = "u-omit",
             UserAttributes = new Dictionary<string, string> { ["role"] = "member" }

@@ -62,6 +62,59 @@ public sealed class KeycloakIdentityAdminClient(
         return result;
     }
 
+    // FR-05, FR-16, NFR-09, SC-12, 計画 ADR-0088 決定 1・3, [[IADR-0413]] (#1333):
+    // 名指しの 1 人を **1 往復**で引く。
+    //
+    // 🔴 **`exact=true` が要る。** 既定の `username=` は**前方一致**であり、`alice` を引くと
+    // `alice2` も返る。返り値の先頭を採る形にすると**別人の属性で ABAC を判定しうる**。
+    //
+    // 🔴 **ロールは引かない。** 呼び出し元（属性の引き直し・`GetUserAttributes`）はロールを読まず、
+    // 引くと 1 人あたり往復が 1 つ増える（列挙版が人数分やっていたのがこれである）。
+    // **`Roles` が空なのは「ロールが無い」ではなく「この口では引いていない」である** ——
+    // ロールが要る経路は `ListUsersAsync` を使う。
+    //
+    // 🔴 **照合は呼び出し元と揃えて大小文字無視で確かめ直す。** Keycloak の `exact` は
+    // realm の設定（`login.username` の大小文字扱い）に依存するため、**返ってきた候補を
+    // こちらでも絞る** —— 依存先の設定で照合規則が変わらないようにする。
+    //
+    // 🔴 **一意でなければ引けなかったことにする**（下の 🔴 を参照）。**選ばない。**
+    public async Task<IdentityUser?> FindByUsernameAsync(string username, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return null;
+
+        var client = await AuthorizedClientAsync(ct);
+        // briefRepresentation=false でないと attributes が返らない（ListUsersAsync と同じ罠）。
+        var users = await client.GetFromJsonAsync<List<KeycloakUser>>(
+            $"admin/realms/{Realm}/users?username={Uri.EscapeDataString(username)}"
+            + "&exact=true&briefRepresentation=false&max=2", Json, ct) ?? [];
+
+        var matched = users
+            .Where(u => !string.IsNullOrEmpty(u.Id)
+                        && string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        // 🔴 **曖昧なら引けなかったことにする**（PR #1334 のレビュー指摘）。
+        // `exact=true` なら候補は 1 人のはずだが、realm の設定しだいで大小文字違いの
+        // 2 人が返り得る。**先頭を採ると、どちらの属性で ABAC を判定したかが応答順しだいになる**
+        // —— 同じ要求が日によって違う判定を返す。`max=2` を取っているのはこれを**見える**ようにするためで、
+        // 見えたら**選ばずに落とす**（利用者は deny へ倒れる。fail-closed）。
+        if (matched.Count > 1)
+        {
+            // 🔴 **利用者名そのものを載せない。** 呼び出し元が渡す検証されていない値であり、
+            // ログ行にも例外メッセージにも生では出さない（ログフォージング。決定 8 と同じ理由）。
+            // **名前は呼び出し元が sanitize して出す**ので、ここは件数だけで足りる ——
+            // 消毒の規則を Infrastructure へ複製しない（VSA の層方向。[[IADR-0282]] 決定 2）。
+            logger.LogError(
+                "利用者名に一致する利用者が {Count} 人居る。"
+                + "どちらの属性で判定すべきか決められないため、引けなかったものとして扱う。",
+                matched.Count);
+            throw new InvalidOperationException(
+                $"利用者名が一意でない（{matched.Count} 件）。realm の利用者名の一意性設定を確認すること。");
+        }
+
+        return matched.Count == 0 ? null : ToIdentityUser(matched[0], []);
+    }
+
     public async Task<IReadOnlyList<string>> ListAssignableRolesAsync(CancellationToken ct)
     {
         var client = await AuthorizedClientAsync(ct);

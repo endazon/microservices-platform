@@ -10,6 +10,9 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using System.Text.Json;
 using System.Net.Http.Json;
+using Platform.Shared.Infrastructure.Foundation.Authz;
+using Platform.Shared.Infrastructure.Foundation.Grpc;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Platform.Bff.Tests;
 
@@ -501,6 +504,18 @@ public class BffTestFactory : WebApplicationFactory<Program>
             services.AddHttpClient("DashboardService")
                 .ConfigurePrimaryHttpMessageHandler(() => new DashboardStubHandler(this));
             // FR-03/FR-05 (SC-01 横断検索): AuthorizationService / RetrievalService をスタブ化する。
+            //
+            // 🔴 **認可サービス宛のクライアントは 2 本ある**（計画 ADR-0088 決定 2 / [[IADR-0413]] / #1333）。
+            // スコープ解決は s2s トークンを付ける専用クライアント、管理面の代理は利用者の資格を
+            // 転送する既存クライアントであり、**意味論が逆なので分けてある**。
+            // **両方を差し替える** —— 片方だけだと、その経路だけが実ネットワークへ出ようとする。
+            // 🔴 **s2s トークンの発行側を固定値へ差し替える**（実 IdP を持たないため。#1333）。
+            // 差し替えるのは**発行だけ**であり、`ServiceTokenHandler` は本物が走る ——
+            // 「スコープ解決の要求に Bearer が実際に載る」ことを試験から観測できる状態を保つ。
+            services.RemoveAll<IServiceTokenProvider>();
+            services.AddSingleton<IServiceTokenProvider>(new FixedServiceTokenProvider());
+            services.AddHttpClient(AuthzScopeHttpClient.ClientName)
+                .ConfigurePrimaryHttpMessageHandler(() => new AuthzStubHandler(this));
             services.AddHttpClient("AuthorizationService")
                 .ConfigurePrimaryHttpMessageHandler(() => new AuthzStubHandler(this));
             services.AddHttpClient("RetrievalService")
@@ -693,6 +708,13 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-05 (SC-01/SC-03): AuthorizationService /authz/scope をスタブ化する。Granted は SearchScopeGranted、
     // 許可フィルタは ScopeFilters（既定は空＝全件許可）で制御する。
     // FR-09 (SC-09): 管理 API（/authz/policies・/authz/attributes）もパスで振り分けてスタブ化する。
+    // #1333: 実 IdP を持たないテストで s2s トークンの発行側だけを固定する。
+    internal sealed class FixedServiceTokenProvider : IServiceTokenProvider
+    {
+        public const string Token = "test-service-token";
+        public ValueTask<string> GetTokenAsync(CancellationToken ct) => ValueTask.FromResult(Token);
+    }
+
     private sealed class AuthzStubHandler(BffTestFactory owner) : HttpMessageHandler
     {
         // 実サービス（AuthzEndpoints + AbacValidation）が受理する action の値域の写し（#1010）。

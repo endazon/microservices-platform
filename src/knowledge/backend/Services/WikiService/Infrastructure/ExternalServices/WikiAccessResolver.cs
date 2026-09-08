@@ -53,7 +53,7 @@ public class WikiAccessResolver(
         if (authzScopeGrpc is not null)
             return await authzScopeGrpc.ResolveScopeAsync(userId, userAttrs, ScopeAction, ct);
 
-        var authzClient = httpFactory.CreateClient("AuthorizationService");
+        var authzClient = httpFactory.CreateClient(AuthzScopeHttpClient.ClientName);
         try
         {
             var resp = await authzClient.PostAsJsonAsync("/authz/scope",

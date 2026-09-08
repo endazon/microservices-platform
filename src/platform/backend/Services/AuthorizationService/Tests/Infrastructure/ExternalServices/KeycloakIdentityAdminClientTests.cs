@@ -349,6 +349,119 @@ public class KeycloakIdentityAdminClientTests
 
     private sealed record Recorded(string Method, string Path, string? Body, string? Authorization);
 
+    // ── FR-05, FR-16, NFR-09, SC-12, 計画 ADR-0088 決定 1・3, [[IADR-0413]] (#1333) ──
+    // 名指しの 1 人を引く口。**列挙の上で絞る形の置き換えである。**
+
+    // 🔴 T-1333-a: **`exact=true` が要る。** 既定の `username=` は前方一致であり、
+    // `alice` を引くと `alice2` も返る。**別人の属性で ABAC を判定しうる。**
+    [Fact]
+    public async Task FindByUsername_asks_keycloak_for_an_exact_match_and_full_attributes()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users?username=alice&exact=true&briefRepresentation=false&max=2",
+                """[{"id":"u1","username":"alice","enabled":true,"attributes":{"clearance":["internal"]}}]""");
+
+        var user = await Client(handler).FindByUsernameAsync("alice", Ct);
+
+        user!.Username.Should().Be("alice");
+        user.Attributes["clearance"].Should().Be("internal");
+        var asked = handler.Requests.Single(r => r.Path.Contains("/users?"));
+        asked.Path.Should().Contain("exact=true", "前方一致だと別人が返り得る");
+        asked.Path.Should().Contain("briefRepresentation=false", "false でないと attributes が返らない");
+        asked.Authorization.Should().Be("Bearer admin-token");
+    }
+
+    // 🔴 T-1333-b: **列挙しない。** 従前の形（`ListUsersAsync` の上で絞る）は
+    // ①判定ごとに全件列挙 ②`max=1000` の打ち切りで 1001 人目以降が「居ない」に見える、
+    // という 2 つの欠陥を持っていた。**打ち切りのある口を引かないことをここで固定する。**
+    [Fact]
+    public async Task FindByUsername_never_enumerates_the_whole_directory()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users?username=alice&exact=true&briefRepresentation=false&max=2",
+                """[{"id":"u1","username":"alice","enabled":true,"attributes":{}}]""");
+
+        await Client(handler).FindByUsernameAsync("alice", Ct);
+
+        handler.Requests.Should().NotContain(r => r.Path.Contains("max=1000"),
+            "1000 件で打ち切られる列挙を引くと、1001 人目以降が deny になる");
+        handler.Requests.Should().NotContain(r => r.Path.Contains("/role-mappings/"),
+            "ロールは呼び出し元が読まない —— 引くと 1 人あたりの往復が増える");
+    }
+
+    // 🔴 T-1333-c: **候補はこちらでも絞る。** Keycloak の `exact` は realm の設定に依存するので、
+    // 依存先の設定で照合規則が変わらないようにする（呼び出し元と同じ大小文字無視）。
+    [Fact]
+    public async Task FindByUsername_rejects_a_candidate_whose_name_is_not_the_one_asked_for()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users?username=alice&exact=true&briefRepresentation=false&max=2",
+                """[{"id":"u2","username":"alice2","enabled":true,"attributes":{"clearance":["secret"]}}]""");
+
+        (await Client(handler).FindByUsernameAsync("alice", Ct))
+            .Should().BeNull("前方一致で紛れ込んだ別人を採ると、その人の属性で判定してしまう");
+    }
+
+    // 陽性対照（上の否定形と対）: 大小文字だけが違う候補は**同一人物として採る**（現行の照合規則）。
+    [Fact]
+    public async Task FindByUsername_matches_case_insensitively_like_the_existing_lookup()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users?username=Alice&exact=true&briefRepresentation=false&max=2",
+                """[{"id":"u1","username":"alice","enabled":true,"attributes":{}}]""");
+
+        (await Client(handler).FindByUsernameAsync("Alice", Ct))!.Username.Should().Be("alice");
+    }
+
+    // 「居ない」は null（応答）。**例外にしない** —— 呼び出し元が「引けなかった」と分けられなくなる。
+    [Fact]
+    public async Task FindByUsername_returns_null_when_nobody_matches()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users?username=ghost&exact=true&briefRepresentation=false&max=2", "[]");
+
+        (await Client(handler).FindByUsernameAsync("ghost", Ct)).Should().BeNull();
+    }
+
+    // 🔴 **一意でなければ「引けなかった」へ倒す**（PR #1334 のレビュー指摘）。
+    // `exact=true` でも realm の設定しだいで大小文字違いの 2 人が返り得る。
+    // **先頭を採ると、どちらの属性で判定したかが応答順しだいになる** ——
+    // 同じ要求が日によって違う判定を返す。**選ばずに落とす**（呼び出し元は deny へ倒れる）。
+    [Fact]
+    public async Task FindByUsername_refuses_to_choose_when_the_name_is_not_unique()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users?username=alice&exact=true&briefRepresentation=false&max=2",
+                """
+                [{"id":"u1","username":"alice","enabled":true,"attributes":{"clearance":["public"]}},
+                 {"id":"u2","username":"Alice","enabled":true,"attributes":{"clearance":["secret"]}}]
+                """);
+
+        var act = async () => await Client(handler).FindByUsernameAsync("alice", Ct);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*一意でない*", "どちらの属性で ABAC を判定するかを応答順に委ねない");
+    }
+
+    // 🔴 集合値属性は線上表現のまま返る（[[IADR-0385]] 決定 2）——
+    // 分解も再符号化もここではしない（評価器が交差判定を行う。[[IADR-0411]]）。
+    [Fact]
+    public async Task FindByUsername_joins_set_valued_attributes_like_the_listing_does()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users?username=alice&exact=true&briefRepresentation=false&max=2",
+                """[{"id":"u1","username":"alice","enabled":true,"attributes":{"tags":["sales","hr"]}}]""");
+
+        (await Client(handler).FindByUsernameAsync("alice", Ct))!.Attributes["tags"].Should().Be("sales,hr");
+    }
+
     private sealed class StubHandler : HttpMessageHandler
     {
         private readonly Dictionary<string, (HttpStatusCode Status, string Body)> _responses = new(StringComparer.Ordinal);

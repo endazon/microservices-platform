@@ -78,9 +78,12 @@ public sealed class UserDirectoryGrpcService(IIdentityAdminClient identity)
     public override async Task<GetUserAttributesResponse> GetUserAttributes(
         GetUserAttributesRequest request, ServerCallContext context)
     {
-        var users = await identity.ListUsersAsync(context.CancellationToken);
-        var user = users.FirstOrDefault(
-            u => string.Equals(u.Username, request.Username, StringComparison.OrdinalIgnoreCase));
+        // ★［2026-09-08 / #1333・[[IADR-0413]] 決定 5］🔴 **全件列挙の上で絞る形をやめた。**
+        // 従前は `ListUsersAsync` の結果から 1 人を選んでいたが、その列挙は
+        // `max=1000` で**黙って打ち切られる**ため、**1001 人目以降が「居ない」に見えた**
+        // （加えて 1 人ごとに realm ロールの往復が 1 つ増えていた）。
+        // 🔴 **照合規則は変えていない**（`OrdinalIgnoreCase`。`FindByUsernameAsync` が同じ規則で絞る）。
+        var user = await identity.FindByUsernameAsync(request.Username, context.CancellationToken);
 
         // 🔴 「名簿に居ない」は**応答**である（エラーではない）。呼び出し元がこれを
         // 「引けなかった」へ倒すかどうかは呼び出し元の判断であり、輸送の側では決めない。

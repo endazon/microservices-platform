@@ -17,6 +17,8 @@ using WikiService.Domain;
 using WikiService.Domain.Ports;
 using WikiService.Infrastructure.Persistence;
 using Wolverine;
+using Platform.Shared.Infrastructure.Foundation.Authz;
+using Platform.Shared.Infrastructure.Foundation.Grpc;
 
 namespace WikiService.Tests.Features.Wiki;
 
@@ -168,8 +170,10 @@ public class AnonymousContractTestFactory : WebApplicationFactory<Program>
             foreach (var d in toRemove) services.Remove(d);
             services.AddDbContext<WikiDbContext>(opt => opt.UseInMemoryDatabase(_dbName));
 
+            services.RemoveAll<IServiceTokenProvider>();
+            services.AddSingleton<IServiceTokenProvider>(new FixedServiceTokenProvider());
             // 🔴 `IWikiAccessResolver` は**差し替えない**。実物の短絡を測るのが目的である。
-            services.AddHttpClient("AuthorizationService")
+            services.AddHttpClient(AuthzScopeHttpClient.ClientName)
                 .ConfigurePrimaryHttpMessageHandler(() => Authz);
 
             services.RemoveAll<IWikiJsClient>();
@@ -239,4 +243,12 @@ public class TestUserAuthHandler(
         return Task.FromResult(AuthenticateResult.Success(
             new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName)));
     }
+
+}
+
+// #1333: 実 IdP を持たないテストで s2s トークンの**発行だけ**を固定する。
+// 🔴 `ServiceTokenHandler` は本物が走る —— スコープ解決の要求に Bearer が載ることは変えない。
+internal sealed class FixedServiceTokenProvider : IServiceTokenProvider
+{
+    public ValueTask<string> GetTokenAsync(CancellationToken ct) => ValueTask.FromResult("test-service-token");
 }

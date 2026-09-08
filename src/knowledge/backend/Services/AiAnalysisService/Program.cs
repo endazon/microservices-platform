@@ -44,9 +44,7 @@ builder.Services.AddPlatformHealthChecks()
 builder.Services.AddOpenApi();
 
 // FR-04: HTTP クライアント設定（サービス間通信）
-builder.Services.AddHttpClient("AuthorizationService", c =>
-    c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
-        ?? "http://authorization-service:5005"));
+builder.Services.AddPlatformAuthzScopeHttpClient(builder.Configuration);
 builder.Services.AddHttpClient("RetrievalService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:RetrievalService"]
         ?? "http://retrieval-service:5003"));

@@ -70,11 +70,11 @@ builder.Services.AddOpenApi();
 // FR-17, ADR-0002, ADR-0033 決定 1: GraphService 専用 DbContext（DB-per-service）
 builder.Services.AddDbContext<GraphDbContext>(opt => opt.UseNpgsql(connStr));
 
-// FR-17, FR-05, ADR-0004, ADR-0034: ABAC 許可スコープの解決先。
-// WikiService / AiAnalysisService / Platform.Bff と同じ名前付き HttpClient を使う。
-builder.Services.AddHttpClient("AuthorizationService", c =>
-    c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
-        ?? "http://authorization-service:5005"));
+// FR-17, FR-05, NFR-09, ADR-0004, ADR-0034, 計画 ADR-0088 決定 2, [[IADR-0413]] (#1333):
+// ABAC 許可スコープの解決先（REST）。**登録は共有の 1 つの拡張が持つ** ——
+// WikiService / AiAnalysisService / Platform.Bff も同じものを呼ぶ。
+// 🔴 **スコープ解決専用のクライアントであり、s2s トークンが付く**（受け口が `ServiceCaller` を要る）。
+builder.Services.AddPlatformAuthzScopeHttpClient(builder.Configuration);
 // FR-05, NFR-09, NFR-16, ADR-0004, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0401 決定 1 (#1255):
 // ABAC スコープ解決の gRPC 経路。**並走中の正は REST である。**
 // `Services:AuthorizationServiceGrpc`（h2c のアドレス）が構成されたときだけ `AuthzScopeGrpcClient` が

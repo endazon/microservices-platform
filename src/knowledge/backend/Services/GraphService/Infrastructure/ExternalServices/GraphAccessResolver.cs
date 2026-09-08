@@ -90,7 +90,7 @@ public class GraphAccessResolver(
         if (authzScopeGrpc is not null)
             return await authzScopeGrpc.ResolveScopeAsync(userId, userAttrs, action, ct);
 
-        var authzClient = httpFactory.CreateClient("AuthorizationService");
+        var authzClient = httpFactory.CreateClient(AuthzScopeHttpClient.ClientName);
         try
         {
             var resp = await authzClient.PostAsJsonAsync("/authz/scope",

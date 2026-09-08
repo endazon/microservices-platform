@@ -20,7 +20,8 @@ namespace AuthorizationService.Features.Authz.ResolveScope;
 // 利用者の文脈（user_id / 属性 / action）は本文で運ぶ。deny-by-default は変わらない ——
 // 該当ポリシーが無ければ granted=false を**応答で**返す（エラーにしない）。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
-public sealed class AuthzScopeGrpcService(AuthorizationDbContext db) : AuthzScope.AuthzScopeBase
+public sealed class AuthzScopeGrpcService(
+    AuthorizationDbContext db, ScopeUserAttributeSource users) : AuthzScope.AuthzScopeBase
 {
     public override async Task<ResolveScopeResponse> Resolve(ResolveScopeRequest request, ServerCallContext context)
     {
@@ -31,10 +32,23 @@ public sealed class AuthzScopeGrpcService(AuthorizationDbContext db) : AuthzScop
                 StatusCode.InvalidArgument,
                 $"action は {string.Join(" / ", PolicyAction.All)} のいずれかである必要があります。"));
 
-        var req = new AccessScopeRequest(
-            request.UserId, new Dictionary<string, string>(request.UserAttributes), action);
+        // 🔴 **計画 ADR-0088 決定 1 / [[IADR-0413]] (#1333): 属性は IdP から引き直す。**
+        // 本文の `request.UserAttributes` は評価に用いない —— REST 面と**同じ 1 つの点**を通る。
+        // **契約からフィールドを消してはいない**（[[IADR-0379]] 決定 2 が削除を破壊的変更と定める）。
+        // 保証するのは「評価に用いないこと」である。
+        var lookup = await users.ResolveAsync(request.UserId, context.CancellationToken);
+        if (lookup.Outcome == ScopeUserAttributeSource.Outcome.Unavailable)
+            // 🔴 **「引けなかった」は status である**（REST 面の 503 と同値）。
+            // 呼び出し元は `RpcException` を deny へ縮退するので fail-closed は保たれる。
+            throw new RpcException(new Status(
+                StatusCode.Unavailable, "利用者属性を身元プロバイダから取得できませんでした。"));
+
+        var req = new AccessScopeRequest(request.UserId, lookup.Attributes, action);
         var policies = await db.Policies.Where(p => p.IsActive).ToListAsync(context.CancellationToken);
-        var scope = AbacEvaluator.ResolveScope(req, policies, action);
+        // 「居ない」は**応答**である（deny を応答で返す。status にしない）。
+        var scope = lookup.Outcome == ScopeUserAttributeSource.Outcome.Found
+            ? AbacEvaluator.ResolveScope(req, policies, action)
+            : new AccessScopeResponse(request.UserId, [], false);
 
         var resp = new ResolveScopeResponse { UserId = scope.UserId, Granted = scope.Granted };
         resp.AllowedFilters.AddRange(scope.AllowedFilters.Select(ToProto));
