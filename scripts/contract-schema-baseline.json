@@ -1844,6 +1844,10 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.ScopeNarrowing": {
+        "kind": "class",
+        "members": {}
+      },
       "Knowledge.Contracts.Dtos.SearchModes": {
         "kind": "class",
         "members": {
