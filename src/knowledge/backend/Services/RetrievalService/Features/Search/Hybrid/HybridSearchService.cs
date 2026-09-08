@@ -216,13 +216,6 @@ public class HybridSearchService(
     private static readonly ScopeFilter DenyEverything =
         new([new AttributeFilter("__deny__", ["__none__"])]);
 
-    // FR-03: 利用者が指定した単値フィルタ（後方互換）。分岐経路では選言全体と AND で重ねる。
-    private static List<AttributeFilter> BuildUserFilters(
-        IReadOnlyDictionary<string, string>? attributeFilters) =>
-        attributeFilters is { Count: > 0 }
-            ? [.. attributeFilters.Select(kv => new AttributeFilter(kv.Key, [kv.Value]))]
-            : [];
-
     // FR-03: Reciprocal Rank Fusion。両リストに現れる文書ほど上位になる。
     internal static List<SearchResultDto> ReciprocalRankFusion(
         params IReadOnlyList<SearchResultDto>[] rankings)
