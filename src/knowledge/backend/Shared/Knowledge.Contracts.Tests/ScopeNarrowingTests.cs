@@ -150,4 +150,97 @@ public class ScopeNarrowingTests
         narrow.Filters.Should().ContainSingle()
             .Which.AllowedValues.Should().BeEquivalentTo(["sales"], "★ 陽性対照 —— 絞り込みは効く");
     }
+
+    // ── 権威 × 主張（`Apply(AccessScope, AccessScope)`。#1339 の受け口が使う面）──
+    //
+    // 🔴 **呼び出し元の主張は権限の根拠ではない。狭める方向にしか効かない。**
+
+    // 🔴 T-06: **主張は権威を超えられない。**
+    [Fact]
+    public void A_claim_cannot_exceed_what_the_authority_allows()
+    {
+        var result = ScopeNarrowing.Apply(
+            Allow(new AttributeFilter("dept", ["sales"])),
+            new AccessScope([], true));   // 「制約なしで全部見てよい」と主張する
+
+        result.GrantsAccess.Should().BeTrue();
+        result.Filters.Should().ContainSingle()
+            .Which.AllowedValues.Should().BeEquivalentTo(["sales"], "権威の制約が残る");
+    }
+
+    // 陽性対照: 主張は絞り込みとしては効く。
+    [Fact]
+    public void A_claim_still_narrows_within_the_authority()
+    {
+        var result = ScopeNarrowing.Apply(
+            Allow(new AttributeFilter("dept", ["sales", "eng"])),
+            new AccessScope([new AttributeFilter("dept", ["sales"])], true));
+
+        result.Filters.Should().ContainSingle()
+            .Which.AllowedValues.Should().BeEquivalentTo(["sales"]);
+    }
+
+    // 主張が無い（未指定・deny）＝絞り込みが無い。**権威をそのまま使う。**
+    [Fact]
+    public void No_claim_means_no_narrowing()
+    {
+        var authority = Allow(new AttributeFilter("dept", ["sales"]));
+
+        ScopeNarrowing.Apply(authority, (AccessScope?)null).Should().BeEquivalentTo(authority);
+        ScopeNarrowing.Apply(authority, new AccessScope([], false)).Should().BeEquivalentTo(authority);
+    }
+
+    // 🔴 T-07: **呼び出し元が落とした分岐は落ちる**（narrowing として正当）。
+    [Fact]
+    public void A_branch_the_claim_omits_is_dropped()
+    {
+        var authority = new AccessScope([], true,
+        [
+            new AccessScopeBranch("attribute", [new AttributeFilter("dept", ["sales"])]),
+            new AccessScopeBranch("owner", [new AttributeFilter("dept", ["eng"])]),
+        ]);
+        var claim = new AccessScope([], true,
+            [new AccessScopeBranch("owner", [new AttributeFilter("dept", ["eng"])])]);
+
+        var result = ScopeNarrowing.Apply(authority, claim);
+
+        result.Branches.Should().ContainSingle("主張しなかった分岐は絞り込みとして落ちる")
+            .Which.Name.Should().Be("owner");
+    }
+
+    // 🔴 T-08: **主張にしか無い分岐は無視する**（広げられない）。
+    [Fact]
+    public void A_branch_that_only_the_claim_has_is_ignored()
+    {
+        var authority = new AccessScope([], true,
+            [new AccessScopeBranch("attribute", [new AttributeFilter("dept", ["sales"])])]);
+        var claim = new AccessScope([], true,
+        [
+            new AccessScopeBranch("attribute", [new AttributeFilter("dept", ["sales"])]),
+            new AccessScopeBranch("forged", [new AttributeFilter("dept", ["hr"])]),
+        ]);
+
+        var result = ScopeNarrowing.Apply(authority, claim);
+
+        result.Branches.Should().ContainSingle("権威に無い分岐は足せない").Which.Name.Should().Be("attribute");
+    }
+
+    // 🔴 T-09: **権威が平坦で主張が分岐なら、分岐のまま残す**（[[IADR-0253]] 決定 2）。
+    // ここで主張のキー単位 union へ畳むと、**どちらのポリシー単独も許可しない混成を許す。**
+    [Fact]
+    public void A_branched_claim_against_a_flat_authority_keeps_its_disjunction()
+    {
+        var authority = Allow(new AttributeFilter("confidentiality", ["internal", "public"]));
+        var claim = new AccessScope([], true,
+        [
+            new AccessScopeBranch("A",
+                [new AttributeFilter("confidentiality", ["internal"]), new AttributeFilter("dept", ["hr"])]),
+            new AccessScopeBranch("B",
+                [new AttributeFilter("confidentiality", ["public"]), new AttributeFilter("dept", ["sales"])]),
+        ]);
+
+        var result = ScopeNarrowing.Apply(authority, claim);
+
+        result.Branches.Should().HaveCount(2, "選言は選言のまま運ぶ —— 畳むと混成 (internal, sales) を許す");
+    }
 }

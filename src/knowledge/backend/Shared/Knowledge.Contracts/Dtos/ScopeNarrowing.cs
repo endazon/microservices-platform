@@ -39,6 +39,106 @@ public static class ScopeNarrowing
     }
 
     /// <summary>
+    /// FR-05, NFR-09, ADR-0034 決定 1, [[IADR-0410]], [[IADR-0416]] (#1339):
+    /// **権威側のスコープへ、呼び出し元が主張したスコープを絞り込みとして交差させる。**
+    ///
+    /// 🔴 **呼び出し元の主張は権限の根拠ではない。** 受け口が自分で引いた許可が権威であり、
+    /// 主張は**そこから狭める方向にしか効かない**。正直な呼び出し元にとって結果は変わらない
+    /// （送ってくるのは同じ許可、あるいはそれを絞ったものだからである）。
+    ///
+    /// 🔴 **分岐は名前で対応づける。キー単位 union へ畳まない**（[[IADR-0253]] 決定 2 の反例）。
+    /// 分岐は同じ許可から導かれているので**名前が一致する** ——
+    /// 呼び出し元が落とした分岐は落とし、呼び出し元にしか無い分岐は無視する（広げられない）。
+    /// </summary>
+    /// <summary>
+    /// 認可サービスの応答を権威として、呼び出し元の主張を絞り込みとして交差させる。
+    /// 🔴 **受け口はこれを使う** —— 解決したての応答をそのまま渡せる（変換の口を増やさない）。
+    /// </summary>
+    public static AccessScope Apply(AccessScopeResponse allowed, AccessScope? requested)
+        => Apply(
+            new AccessScope(allowed.AllowedFilters, allowed.Granted, allowed.Branches),
+            requested);
+
+    public static AccessScope Apply(AccessScope? allowed, AccessScope? requested)
+    {
+        if (allowed is not { GrantsAccess: true })
+            return new AccessScope([], false);
+
+        // 主張が無い（未指定・deny）＝絞り込みが無い。**権威をそのまま使う**
+        // —— 🔴 ここを deny にすると、主張を送らない呼び出し元が何も引けなくなる。
+        if (requested is not { GrantsAccess: true })
+            return allowed;
+
+        // 権威側に分岐が無い場合。
+        if (allowed.Branches is not { Count: > 0 })
+        {
+            // 🔴 **主張が分岐を持つなら、分岐のまま残す**（[[IADR-0253]] 決定 2）。
+            // ここで主張の平坦な `Filters`（＝分岐のキー単位 union）へ畳むと、
+            // **どちらのポリシー単独も許可しない混成を許してしまう** ——
+            // A={confidentiality:internal, dept:hr} と B={confidentiality:public, dept:sales} を
+            // union すると (internal, sales) が通る。**選言は選言のまま運ぶ。**
+            if (requested.Branches is { Count: > 0 })
+            {
+                var narrowedBranches = new List<AccessScopeBranch>();
+                foreach (var branch in requested.Branches)
+                {
+                    // 各分岐を権威側の平坦な許可で絞る（権威が制約するキーだけが効く）。
+                    var narrowed = Apply(
+                        new AccessScope(branch.Filters, true), ToRequest(allowed.Filters));
+                    if (narrowed.GrantsAccess)
+                        narrowedBranches.Add(new AccessScopeBranch(branch.Name, narrowed.Filters));
+                }
+
+                if (narrowedBranches.Count == 0)
+                    return new AccessScope([], false);
+
+                return new AccessScope(
+                    UnionByKey([.. narrowedBranches.Select(b => (b.Name, b.Filters))]),
+                    true, narrowedBranches);
+            }
+
+            return Apply(allowed, ToRequest(requested.Filters));
+        }
+
+        // 権威側に分岐がある。主張にも分岐があれば**名前で対応づけて**交差させる。
+        if (requested.Branches is not { Count: > 0 })
+            // 主張が平坦（旧算出値だけ）なら、各分岐へ同じ narrowing を当てる。
+            return Apply(allowed, ToRequest(requested.Filters));
+
+        var byName = requested.Branches
+            .GroupBy(b => b.Name, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+
+        var survivors = new List<AccessScopeBranch>();
+        foreach (var branch in allowed.Branches)
+        {
+            // 🔴 呼び出し元が落とした分岐は落とす（narrowing として正当）。
+            if (!byName.TryGetValue(branch.Name, out var asked)) continue;
+
+            var narrowed = Apply(
+                new AccessScope(branch.Filters, true), ToRequest(asked.Filters));
+
+            // 積が空の分岐だけを捨てる（他の根拠は生きている）。
+            if (narrowed.GrantsAccess)
+                survivors.Add(new AccessScopeBranch(branch.Name, narrowed.Filters));
+        }
+
+        // 全分岐が消えた = どの許可根拠でも主張の外。安全側に倒し全体 deny。
+        if (survivors.Count == 0)
+            return new AccessScope([], false);
+
+        return new AccessScope(UnionByKey([.. survivors.Select(b => (b.Name, b.Filters))]), true, survivors);
+    }
+
+    // 主張のフィルタ列を narrowing の指定（キー → 値集合）へ写す。
+    private static Dictionary<string, List<string>>? ToRequest(IReadOnlyList<AttributeFilter>? filters)
+        => filters is { Count: > 0 }
+            ? filters.GroupBy(f => f.Key, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.SelectMany(f => f.AllowedValues).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                    StringComparer.OrdinalIgnoreCase)
+            : null;
+
+    /// <summary>
     /// 単値の指定（FR-03 後方互換の `AttributeFilters`）を交差させる。
     /// 🔴 **単値でも規則は同じである** —— 1 要素の値集合として扱うだけで、
     /// 「単値だから素通し」という別の枝を作らない。

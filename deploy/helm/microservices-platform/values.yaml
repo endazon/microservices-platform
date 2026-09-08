@@ -409,6 +409,17 @@ services:
       # GraphService が受け取った文脈で**自分で** ABAC を解決する（判定の位置は動かない）。
       - name: Services__GraphServiceGrpc
         value: "http://graph-service:8081"
+      # FR-05 / NFR-09, ADR-0004, ADR-0034 決定 1, IADR-0416 (#1339): ABAC 許可スコープの解決先。
+      # 🔴 **本サービスが自分で引くようになった** —— 従前は呼び出し元が本文で送ってきた
+      # `Scope` を信じており、到達できる相手が任意の scope を主張できた。
+      # コード既定は :5005（compose の旧ポート）なので、k8s では実 Service ポートへ上書きする。
+      - name: Services__AuthorizationService
+        value: "http://authorization-service:8080"
+      # NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5 (#1339): 同じ解決の gRPC 宛先。
+      # **これが在るときだけ** gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # 資格情報は上の serviceToken を**そのまま使う**（1 サービス 1 主体）。
+      - name: Services__AuthorizationServiceGrpc
+        value: "http://authorization-service:8081"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }

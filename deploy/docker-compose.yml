@@ -410,6 +410,12 @@ services:
       # 🔴 利用者の JWT は面を通らず、利用者文脈（user_id / 属性 / action）は要求本文で運ぶ ——
       # GraphService は受け取った文脈で**自分で** ABAC を解決する（判定の位置は動かない）。
       Services__GraphServiceGrpc: http://graph-service:8081
+      # FR-05 / NFR-09, ADR-0004, ADR-0034 決定 1, IADR-0416 (#1339): ABAC 許可スコープの解決先。
+      # 🔴 **本サービスが自分で引くようになった**（従前は呼び出し元の主張を信じていた）。
+      Services__AuthorizationService: http://authorization-service:8080
+      # NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5 (#1339): 同じ解決の gRPC 宛先。
+      # **これが在るときだけ** gRPC 経路になる（無ければ上の REST のまま）。
+      Services__AuthorizationServiceGrpc: http://authorization-service:8081
     depends_on:
       qdrant:
         condition: service_healthy
