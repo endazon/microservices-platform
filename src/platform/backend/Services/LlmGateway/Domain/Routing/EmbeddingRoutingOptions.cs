@@ -8,6 +8,24 @@ public sealed class EmbeddingRoutingOptions
 
     // 埋め込み送信先エンドポイント一覧。
     public List<EmbeddingEndpointOptions> Endpoints { get; set; } = [];
+
+    // FR-02, FR-03, ADR-0016, ADR-0017, IADR-0422 (#336): **検索クエリ専用**の送信先固定（測定用の切替口）。
+    //
+    // 空（既定）なら従来どおり優先度順で選ぶ。エンドポイント名を与えると `Purpose=Query` のときだけ
+    // 候補を**その 1 つに絞る**。ADR-0017 が求める nDCG@10 の A/B（voyage 比でセルフホストが劣化しないか）は、
+    // **クエリの埋め込みを検索対象コレクションと同じモデルへ寄せられないと成立しない**（#336 の棚卸しが
+    // 3 度続けて挙げた障害）。
+    //
+    // 🔴 **これは越境の穴ではない。** 絞り込みは `EmbeddingEgress.AllowedTiers` と `Enabled` の篩を
+    // **通った後**に効く（EmbeddingRouter.Route）。機密区分が許さないティアをここで開くことはできない。
+    //
+    // 🔴 **不在・無効なエンドポイント名は起動時に落とす**（EmbeddingRoutingOptionsValidator）。
+    // 黙って既定（voyage）へ落とすと、**Ruri を測ったつもりで voyage を測る**という最悪の測定事故になる。
+    //
+    // 🔴 **検索対象コレクション（RetrievalService の `Qdrant:CollectionName`）と対で切り替えること。**
+    // 片方だけ動かすと別モデルの空間へ問い合わせることになる。食い違いは RetrievalService 側が
+    // 応答の `Collection` と突き合わせて空ベクトルへ降ろす（IADR-0422 決定 3）。
+    public string? QueryProfile { get; set; }
 }
 
 public sealed class EmbeddingEndpointOptions

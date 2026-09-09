@@ -74,6 +74,30 @@ public sealed class EmbeddingRoutingOptionsValidator : IValidateOptions<Embeddin
                 "インデックス依存の Enabled 上書きで既定（Voyage）を誤って無効化していないか確認してください。");
         }
 
+        // FR-03, ADR-0016, ADR-0017, IADR-0422 決定 2 (#336): 検索クエリ送信先の固定（測定用の切替口）。
+        //
+        // 🔴 **不在・無効なエンドポイント名は起動時に落とす。** ルーターは候補が消えたとき
+        // fail-closed で拒否する（既定へ落とさない）が、それは**全検索のクエリ埋め込みが静かに
+        // 空ベクトルになる**ということでもある —— ハイブリッド検索はキーワード系統だけで応答を返すので、
+        // **測定は成立したように見えたまま、意味検索の寄与だけが 0 になる。**
+        // Ruri を測ったつもりで別のものを測る事故は、ここで止める。
+        if (!string.IsNullOrWhiteSpace(options.QueryProfile))
+        {
+            var target = options.Endpoints.FirstOrDefault(e => e.Name == options.QueryProfile);
+            if (target is null)
+            {
+                errors.Add(
+                    $"Embedding:Routing:QueryProfile '{options.QueryProfile}' に該当するエンドポイントがありません" +
+                    $"（定義済み: {string.Join(" / ", options.Endpoints.Select(e => e.Name))}）。");
+            }
+            else if (!target.Enabled)
+            {
+                errors.Add(
+                    $"Embedding:Routing:QueryProfile '{options.QueryProfile}' は Enabled=false です。" +
+                    "検索クエリの埋め込みが全件 fail-closed になるため、送信先を有効化するか固定を外してください。");
+            }
+        }
+
         return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
     }
 }

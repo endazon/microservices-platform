@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-09, NFR-21, SC-01, SC-02, SC-10, UC-01, UC-04, UC-05, UC-07]
 adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420]
-specs: [20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay]
-issues: [#1088, #1108, #1110, #1159, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422]
+specs: [20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-336_ndcg-harness-and-query-embedding-profile]
+issues: [#1088, #1108, #1110, #1159, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #336, planning#196, planning#524, planning#538]
 -->
 
 # 運用仕様書
@@ -525,6 +525,22 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
       稼働環境で行う。既定の image tag / モデル ID はプレースホルダであり、実運用前に稼働環境で固定する。
   - 有効化後、社内文書サンプルで検索精度（nDCG@10）を実測し、voyage-3.5 比で大幅劣化しないことを確認する
     （セルフホスト埋め込みの計画 ADR が求める事前 PoC の代替）。劣る場合は BGE-M3 へ切替（モデル別コレクション分離のため影響は局所）。
+    - **測定の道具と手順は `perf/ndcg/README.md`**（実体は `scripts/measure-search-ndcg.js`）。正解ラベル（qrels）の
+      雛形・実行例・結果の読み方はそちらにある。**収集と集計が分かれており、保存した順位から集計だけを追試できる。**
+  - **A/B のときは 2 つの設定を必ず対で切り替える**（片方だけ動かすと、**別モデルの空間へ問い合わせる**ことになる）。
+
+    | 何を | どこで | 値の例 |
+    | --- | --- | --- |
+    | 検索クエリの埋め込み先 | LlmGateway `Embedding__Routing__QueryProfile`（既定は空＝優先度順） | `selfhosted-ruri` |
+    | 検索が読むコレクション | RetrievalService `Qdrant__CollectionName` | `knowledge_chunks_ruri_v3` |
+
+    - 綴り間違い・無効なエンドポイントの指定は**起動時に失敗する**（黙って既定へ落とすと、
+      別のモデルを測ったまま数字だけが出るため）。
+    - 2 つが食い違ったまま検索した場合、RetrievalService は**クエリのベクトルを捨てて全文検索だけで応答する**
+      （ゲートウェイが答えたコレクション名と、自分が読むコレクション名を突き合わせている）。
+      **測定が壊れたまま成立しないための歯止め**であり、この縮退はログ（`collection mismatch`）に出る。
+    - 🔴 **`QueryProfile` は検索クエリにだけ効く。** 取り込み（文書本文）の送信先は従来どおり
+      機密区分が決めるものであり、この設定では動かない（越境統制は 1 バイトも緩んでいない）。
   - **⚠️ 配列インデックス依存の環境変数に注意（Issue #98）**: 上記 `Endpoints__0__Enabled`（Voyage）/
     `Endpoints__1__Enabled`（セルフホスト）/ `Endpoints__2__Enabled`（決定的ローカル・検証スタック専用）は
     `appsettings.json` の `Embedding:Routing:Endpoints` 配列の並び順に依存する。エンドポイントの追加・並び替え時はインデックスを必ず見直すこと。取り違え

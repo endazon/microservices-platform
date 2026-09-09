@@ -7,7 +7,9 @@ public interface IEmbeddingRouter
 }
 
 // Purpose=Index は取り込み（文書本文）で機密区分により越境判定・fail-closed。
-// Purpose=Query は検索クエリで、検索対象コレクション（既定 voyage/1024）へ整合させるため既定外部経路へ固定する。
+// Purpose=Query は検索クエリで、検索対象コレクション（既定 voyage/1024）へ整合させるため、
+// **既定では**既定外部経路へ固定する。`Embedding:Routing:QueryProfile` を設定した場合だけ、
+// 名指ししたエンドポイント（＝そのコレクション）へ固定する（測定用の切替口。IADR-0422 決定 2）。
 public enum EmbeddingRoutePurpose
 {
     Index = 0,

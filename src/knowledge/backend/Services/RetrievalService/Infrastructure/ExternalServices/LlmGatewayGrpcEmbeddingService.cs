@@ -19,7 +19,10 @@ namespace RetrievalService.Infrastructure.ExternalServices;
 //
 // `Embedded=false`（越境拒否・次元不整合・上流不調）だけは REST と同じく空ベクトルを返す ——
 // これはゲートウェイが 200 で明示的に「使えない」と答えた**設計上の縮退**であって故障ではない。
-public class LlmGatewayGrpcEmbeddingService(Pb.LlmEmbedding.LlmEmbeddingClient client) : IEmbeddingService
+public class LlmGatewayGrpcEmbeddingService(
+    Pb.LlmEmbedding.LlmEmbeddingClient client,
+    QueryEmbeddingTarget? target = null,
+    ILogger<LlmGatewayGrpcEmbeddingService>? logger = null) : IEmbeddingService
 {
     public async Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
     {
@@ -31,6 +34,18 @@ public class LlmGatewayGrpcEmbeddingService(Pb.LlmEmbedding.LlmEmbeddingClient c
         // FR-02, FR-03, ADR-0016, #995: **`Embedded` を読む。** REST 実装（#995）と同じ判断である。
         if (!resp.Embedded)
             return [];
+
+        // FR-02, FR-03, ADR-0016, IADR-0422 決定 3 (#336): **答えたコレクションと読むコレクションを照合する。**
+        // REST 実装と**同じ判定器**（QueryEmbeddingCollection.Matches）を通す —— 輸送ごとに照合が
+        // 分かれると、片方の経路だけが守る食い違いが起こる。
+        if (!QueryEmbeddingCollection.Matches(resp.Collection, target))
+        {
+            logger?.LogError(
+                "Query embedding collection mismatch: gateway answered {Answered} but search reads {Target} (endpoint {Endpoint}). "
+                + "Falling back to keyword-only search.",
+                resp.Collection, target!.Collection, resp.Endpoint);
+            return [];
+        }
 
         return [.. resp.Vector];
     }

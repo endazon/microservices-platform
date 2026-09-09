@@ -24,8 +24,18 @@ public sealed class EmbeddingRouter(IOptions<EmbeddingRoutingOptions> options, I
 
         var allowedTiers = EmbeddingEgress.AllowedTiers(sensitivity);
 
+        // FR-03, ADR-0016, ADR-0017, IADR-0422 (#336): 検索クエリ専用の送信先固定（測定用の切替口）。
+        //
+        // 🔴 **絞り込みは越境判定の「後」に効く。** 候補は既に `allowedTiers` と `Enabled` の篩を
+        // 通っているので、プロファイルは候補を**狭めることしかできない** —— 機密区分が許さない
+        // ティアをここで開くことはできない。**前へ移すと越境の穴になる**（変異試験 M-4）。
+        var profile = request.Purpose == EmbeddingRoutePurpose.Query
+            ? _options.QueryProfile
+            : null;
+
         var endpoint = _options.Endpoints
             .Where(e => e.Enabled && allowedTiers.Contains(e.Tier))
+            .Where(e => string.IsNullOrWhiteSpace(profile) || e.Name == profile)
             .OrderBy(e => e.Priority)   // 優先度（小さいほど優先）
             .ThenBy(e => e.Tier)        // 同順位はより保護の強いティアを優先（A<B<C）
             .FirstOrDefault();
@@ -33,9 +43,17 @@ public sealed class EmbeddingRouter(IOptions<EmbeddingRoutingOptions> options, I
         if (endpoint is null)
         {
             // 08_data-egress-policy: 許容ティアに送信可能なエンドポイントが無い場合は送信しない（fail-closed）。
+            //
+            // 🔴 プロファイル指定で候補が消えたときも**既定へ落とさない**（拒否する）。黙って voyage へ
+            // 落ちると、Ruri を測ったつもりで voyage を測ることになる。通常の構成では
+            // `EmbeddingRoutingOptionsValidator` が起動時に落とすので、ここへ来るのは
+            // 「指定したエンドポイントが機密区分で許されない」場合だけである。
+            var profileNote = string.IsNullOrWhiteSpace(profile)
+                ? string.Empty
+                : $"（クエリ送信先の固定 '{profile}' に該当する候補が無い）";
             var denyReason =
                 $"機密区分 {request.Sensitivity}（用途 {request.Purpose}）は許容ティア {Format(allowedTiers)} に" +
-                "送信可能な埋め込みエンドポイントが無いため送信を拒否（fail-closed）";
+                $"送信可能な埋め込みエンドポイントが無いため送信を拒否（fail-closed）{profileNote}";
             logger.LogWarning(
                 "Embedding routing denied: sensitivity={Sensitivity} purpose={Purpose} allowedTiers={AllowedTiers}",
                 request.Sensitivity, request.Purpose, Format(allowedTiers));

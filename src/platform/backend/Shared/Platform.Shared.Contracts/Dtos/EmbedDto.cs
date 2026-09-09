@@ -5,7 +5,9 @@ namespace Platform.Shared.Contracts.Dtos;
 // 契約変更時の追従漏れ（ドリフト）を防ぐため共有コントラクトに一元化する（/complete と同方針）。
 
 // 埋め込み生成の用途。取り込み（index）は文書本文を送るため機密区分で越境判定・fail-closed。
-// 検索クエリ（query）は検索対象コレクション（既定 voyage/1024）へ整合させるため既定外部経路へ固定する。
+// 検索クエリ（query）は検索対象コレクション（既定 voyage/1024）へ整合させるため、**既定では**既定外部経路へ固定する
+// （送信先はゲートウェイ側の構成 `Embedding:Routing:QueryProfile` で名指しできる。IADR-0422 決定 2。
+//  **要求の項目ではない** —— どのコレクションを測るかは運用者が系全体で決めるものであり、要求ごとに混ぜない）。
 public enum EmbedPurpose
 {
     Index = 0,
@@ -15,6 +17,7 @@ public enum EmbedPurpose
 // FR-05, ADR-0016: Confidentiality（文書/入力の機密区分）で送信先ティア・モデル・コレクションを切り替える。
 //   埋め込みは本文全量を送信するため、confidential/restricted はティアA（セルフホスト）固定で外部送信しない。
 //   Purpose=Query の検索クエリは既定外部経路（voyage）へ固定する（検索対象コレクションと次元を一致させる）。
+//   固定先はゲートウェイの構成で名指しできる（測定用。上の EmbedPurpose の注記）。
 public record EmbedApiRequest(
     string Text,
     string? Confidentiality = null,

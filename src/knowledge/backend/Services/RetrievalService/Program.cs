@@ -64,6 +64,13 @@ builder.Services.AddSingleton<KeywordSearchMetrics>();
 // **並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス）が構成されたときだけ
 // 生成クライアントが登録され、そのときに限り gRPC 実装を使う。無ければ従来の HTTP 実装のまま
 // （戻すのは構成を外すだけ。コードは変えない）。
+// FR-02, FR-03, ADR-0016, [[IADR-0422]] 決定 3 (#336): **クエリ埋め込みの照合先。**
+// 埋め込みの客体（REST / gRPC）が、ゲートウェイの答えたコレクションと**この値**を突き合わせ、
+// 食い違えば空ベクトルへ降りる。**値はベクトルストアと同じ関数から引く**（別の規則で読み直すと、
+// 照合しているつもりで別のものを比べることになる）。
+builder.Services.AddSingleton(
+    new QueryEmbeddingTarget(QdrantVectorStore.ResolveCollectionName(builder.Configuration)));
+
 builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
 if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
     builder.Services.AddSingleton<IEmbeddingService, LlmGatewayGrpcEmbeddingService>();

@@ -3,15 +3,15 @@ title: セキュリティ仕様書
 type: security-spec
 status: in-progress
 created: 2026-07-02
-updated: 2026-09-05
+updated: 2026-09-09
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-20, NFR-11, SC-05, SC-11, SC-17, SC-20, UC-07]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0037, ADR-0045]
-iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352]
-specs: [20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route]
-issues: [#55, #100, #198, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, AST#18, AST#24, planning#383]
+iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0422]
+specs: [20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile]
+issues: [#55, #100, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, AST#18, AST#24, planning#383]
 -->
 
 # セキュリティ仕様書
@@ -271,7 +271,7 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
 | 高機密文書本文の外部埋め込み API への送信 | 取り込み時は本文全量を送るため露出が最大。confidential/restricted が外部（Voyage）へ出ると越境統制を破る | 埋め込み専用の越境ポリシー `EmbeddingEgress` で confidential/restricted を**ティアA（セルフホスト）固定**とし、外部（ティアB）を候補から除外。セルフホスト未有効なら**送信せず索引もしない（fail-closed）**。回帰は `EmbeddingEndpointTests`（外部プロバイダ未呼び出し）/ `DocumentUpdatedConsumerTests`（索引スキップ）で担保 |
 | 機密区分変更時の旧コレクション残存（ABAC バイパス） | 例 public→confidential 変更後、旧 voyage コレクションに本文が残り機密扱いの文書が低区分コレクションで検索ヒット | 取り込み冒頭で全モデル別コレクションから当該文書を削除してから再索引する（`DeleteByDocumentFromAllAsync`）。回帰は `DocumentUpdatedConsumerTests` で担保 |
 | Voyage AI のデータ保持・学習利用 | 送信本文が外部で保持・学習に利用される | 契約でゼロ保持（学習利用オプトアウト）を設定・確認してから本番データを流す（運用仕様書に記録）。未認定の間は Voyage 経路を無効化できる |
-| 検索クエリ文の外部埋め込み API への送信 | 検索クエリの埋め込みは機密区分に依らず既定外部経路（Voyage/1024次元）へ固定される（`Purpose=Query`）。検索対象コレクション（voyage/1024）と整合させるための意図的設計だが、利用者が入力するクエリ文自体に機密情報が含まれ得る | クエリ文は本文全量ではなく利用者入力の短文に限られ、Voyage 側のゼロ保持（学習利用オプトアウト）契約が本文と同じく適用される。高機密（ruri/768）コレクションの横断検索はハイブリッド検索側の後続課題であり、その設計時にクエリ側の機密区分ルーティング要否を再評価する（下記「未決事項」）。ゼロ保持未認定の間は Voyage 経路自体を無効化して受容する |
+| 検索クエリ文の外部埋め込み API への送信 | 検索クエリの埋め込みは機密区分に依らず、**既定では**既定外部経路（Voyage/1024次元）へ固定される（`Purpose=Query`。送信先はゲートウェイの構成 `Embedding:Routing:QueryProfile` で名指しでき、**指定できるのは越境ポリシーが既に許したエンドポイントだけ**である）。検索対象コレクション（voyage/1024）と整合させるための意図的設計だが、利用者が入力するクエリ文自体に機密情報が含まれ得る | クエリ文は本文全量ではなく利用者入力の短文に限られ、Voyage 側のゼロ保持（学習利用オプトアウト）契約が本文と同じく適用される。高機密（ruri/768）コレクションの横断検索はハイブリッド検索側の後続課題であり、その設計時にクエリ側の機密区分ルーティング要否を再評価する（下記「未決事項」）。ゼロ保持未認定の間は Voyage 経路自体を無効化して受容する |
 
 ## 未決事項
 
