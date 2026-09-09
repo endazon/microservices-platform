@@ -73,6 +73,18 @@ if ! command -v dotnet >/dev/null 2>&1; then
   fi
 fi
 
+# --- submodule（例・既定） ---
+# NFR（運用保守）・issue #1349: `src/platform/backend/Bff/Platform.Bff/Platform.Bff.csproj` が
+# submodule `src/ai-stock-trading` 配下を ProjectReference するため、**下の dotnet restore より前**に
+# submodule を取得しておかないと platform slnx が restore 不能になる（#824 の SDK 自己修復と同じ
+# 「素のクローンでも実走できる状態を用意する」目的）。
+#
+# 【パスを絞る】`.gitmodules` の全 submodule を一括更新せず、restore が要る 1 本だけを指定する。
+# 【冪等・fail-open】populate 済みのワークツリーで再実行しても無害。取得できなくても後続
+# （.NET restore・pnpm install）は止めない —— 従来どおり「submodule 未取得なので restore はスキップ
+# されるかエラーになる」に落ちるだけで、退行はしない。
+git submodule update --init src/ai-stock-trading || log "submodule 初期化に失敗しました（継続）"
+
 # ソリューションを自動発見して復元する（ルート単一 .sln/.slnx でも、ユニット第一構成
 # `src/<unit>/backend/backend.slnx` でも編集不要で動く）。
 #
@@ -92,11 +104,18 @@ if command -v dotnet >/dev/null 2>&1; then
   [ "$restored" -eq 1 ] || log ".sln/.slnx が無いため dotnet セットアップをスキップ"
 fi
 
-# --- Node.js（例。使う場合はコメント解除） ---
-# if command -v npm >/dev/null 2>&1 && [ -f package.json ]; then
-#   log "npm ci を実行します"
-#   npm ci || npm install || log "npm セットアップでエラー（継続）"
-# fi
+# --- Node.js / pnpm（本リポジトリの実ツールチェーン） ---
+# NFR（運用保守）・issue #1349: フロントエンドは pnpm workspace（ルート = src/。
+# CLAUDE.md 技術スタック節・src/package.json の packageManager）。**npm は使わない。**
+# 【在れば使う → 無ければ何もしない】pnpm の自動導入（corepack 等）はここでは行わない
+# （devcontainer の node feature は pnpm を同梱しないため、無い環境ではスキップに落ちるだけで良い）。
+# 【冪等・fail-open】`--frozen-lockfile` は CI と同じ再現性の保証。失敗してもセットアップ全体は止めない。
+if command -v pnpm >/dev/null 2>&1 && [ -f src/package.json ]; then
+  log "pnpm install --frozen-lockfile（src/）を実行します"
+  (cd src && pnpm install --frozen-lockfile) || log "pnpm install でエラー（継続）"
+else
+  log "pnpm または src/package.json が無いため pnpm セットアップをスキップ"
+fi
 
 # --- Python（例。使う場合はコメント解除） ---
 # if command -v python3 >/dev/null 2>&1 && { [ -f pyproject.toml ] || [ -f requirements.txt ]; }; then
