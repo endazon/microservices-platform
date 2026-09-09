@@ -1,0 +1,114 @@
+// FR-19, FR-20, FR-21, FR-22, NFR-09, NFR-16, NFR-19, UC-11, ADR-0004, ADR-0029, ADR-0037 決定 6・17・18,
+// ADR-0045 決定 8, ADR-0075, IADR-0215, IADR-0270 決定 6, IADR-0371, IADR-0379, IADR-0398, IADR-0401,
+// IADR-0408, IADR-0417, IADR-0419 (#1255):
+// 個人資料まわりの通知の受け口（REST `POST /internal/notifications` と同じ意味論）の gRPC 契約。
+//
+// ■ 置き場と所有（IADR-0379 決定 1）: 所有者は NotificationService。置き場は platform ユニットの
+//   共有契約プロジェクト `Platform.Shared.Contracts` の `Protos/platform/notification/v1/`。
+//   クライアント・サーバ基底の両方をここから生成する（`GrpcServices="Both"`）。
+//   🔴 呼び出し元は knowledge ユニットの DocumentService である —— platform → knowledge の参照は
+//   禁止だが **knowledge → platform の Shared/ 3 プロジェクトは許可**（IADR-0117）なので、
+//   契約の共有はこの proto 1 本で足りる。**従前は型を共有できず DTO を複製して一致をテストで
+//   固定していた**（NotificationIngressDtos の ★）。この面ではその複製が要らない。
+//
+// ■ versioning（IADR-0379 決定 2）: フィールド番号は不変。削除は reserved に残す。破壊的変更は v2 の並走。
+//
+// ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
+//   この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。
+//   REST の受け口は**認証を課していない**（IADR-0017 / IADR-0026 の内部 API 扱い。呼び出し元は
+//   利用者文脈を持たない定期処理である）ので、**この面は現状より狭い**
+//   （IADR-0401 決定 1 / IADR-0402 決定 3 / IADR-0417 決定 4 と同じ向き）。**REST 側は変えない。**
+//
+// ■ 🔴 **この面は「一方向の報告」であって問い合わせではない**（IADR-0408 と同じ性質）。
+//   発火の**検知**はデータの在る側（DocumentService）が行い、通知の**実体**はこちらが持つ
+//   （IADR-0270 決定 6。DB per Service のため越境読みができない）。
+//   3 契機（週次 purge 予告・完全削除の 7 日前と事後・容量警告・同期トークン期限）はいずれも
+//   利用者の要求の外で走り、**利用者の資格情報を 1 バイトも持たない**。
+//
+// ■ 🔴 **この面は書き込み専用である。** 既存の通知を読み出す rpc を置かない ——
+//   読み出しは認証必須の REST `GET /notifications`（主体で絞る）だけであり、
+//   s2s の面から他人の通知を覗く経路を作らない（受け口の設計そのもの。NotificationIngress の ★）。
+//   同じ理由で応答に**通知の識別子を出さない**（IADR-0419 決定 3）。
+//
+// ■ 🔴 **自由文の項目は 1 つも無い。** 計画 FR-22「本文が件数と期限のみで構成される。資料のタイトル・
+//   本文・検索語・回答内容を含まない」を、呼び出し規約ではなく**型の形**で守る
+//   （REST の DTO・`IPrivateNoteNotifier` の引数と同じ規律）。ここに自由文の口を開けると、
+//   送信側がどれだけ規律を守っても、いつか別の呼び出し元がそこへ資料のタイトルを入れる。
+//
+// ■ 🔴 **proto3 に null は無い（IADR-0397 決定 5 / IADR-0400 決定 4 / IADR-0402 決定 4 /
+//   IADR-0408 決定 3）。** REST の DTO は**6 項目すべてが null 許容**であり、「欠落」と「値」は
+//   受け口の検証と重複判定の**両方**で意味が違う。したがって:
+//     - `count` / `threshold_percent` … `optional`（field presence）。素の `int32` にすると
+//       **未設定が `0` に化ける**。検証は通る（`is not < 0` は null にも 0 にも真）ので**例外は 1 つも
+//       起きず**、重複判定 `n.Count == request.Count` だけが静かに割れて
+//       **「件数 0 件」の通知が新規として積まれる**。
+//     - `occurred_at` / `deadline` … `google.protobuf.Timestamp`（message は既定で presence を持つ）。
+//       未設定は C# 側で `null` に読める。`occurred_at` の欠落は検証器が
+//       「occurredAt は必須である。」で 400 相当へ落とす —— **既定値（0001-01-01）を黙って採らない**。
+//     - `subject` / `kind` … 素の `string` でよい。受け口は `IsNullOrWhiteSpace` で判定するので、
+//       `null` と `""` は**同じ 1 件の違反**になる（枝が増えない）。
+//
+// ■ 🔴 **時刻はオフセットを運ばない。** `Timestamp` は UTC へ正規化されるが、
+//   重複判定の `DateTimeOffset` 比較は**瞬間**で行われる（`==` は UtcDateTime を比べる）ため、
+//   REST 経路と gRPC 経路で同じ事象が同じ 1 件に畳まれる。tick（100ns）は Timestamp の nanos に
+//   収まるので往復で値は変わらない。
+syntax = "proto3";
+
+package platform.notification.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option csharp_namespace = "Platform.Shared.Contracts.Grpc.Notification.V1";
+
+// 通知の受け付け。ServiceCaller（platform-service）を要求する。
+// **閲覧・既読・削除の口はこの面に存在しない** —— 呼び出し元が要らないものを面へ出さない
+// （IADR-0401 決定 2 と同じ作法）。
+service NotificationIngress {
+  // 通知 1 件を受け付ける。REST `POST /internal/notifications` と同値。
+  //
+  // 🔴 **同一事象の再送は畳まれる**（ペイロード 6 項目の完全一致）。畳んだことは応答の
+  // `duplicate` に出る —— REST が 200 と 201 で区別しているのと同じ事実であり、
+  // 「届いていない」と「二重送信を止めた」を後から区別するために要る。
+  //
+  // 🔴 **`(subject, kind, occurred_at)` の 3 項目では畳まない**（受け口の実装が守る）。
+  // 容量警告は 80% と 95% を同一の検知時刻で同時に発火し得るため、3 項目で畳むと
+  // **95% の警告が 80% の重複として消える**。
+  rpc Accept(AcceptRequest) returns (AcceptResponse);
+}
+
+// 受け付ける通知 1 件。REST の `NotificationIngressRequest` と**同じ 6 項目**である。
+message AcceptRequest {
+  // 宛先（所有者本人のみ）。空白のみは「必須である」違反（誰にも届かない通知を作らない）。
+  // 長さの上限は受け口が持つ（DB 列長。値をここへ書き写さない）。
+  string subject = 1;
+
+  // 通知種別（`PrivateNoteNotificationKinds` の 5 値）。
+  // 🔴 **値そのものは検証されない** —— 値集合は開いている（IADR-0215 決定 2）。
+  string kind = 2;
+
+  // 検知時刻。**必須**（未設定は「occurredAt は必須である。」）。
+  // 既定値（0001-01-01）を黙って採ると、一覧の並びと保持期間（90 日）の両方が壊れる。
+  google.protobuf.Timestamp occurred_at = 3;
+
+  // 件数（週次 purge 予告・完全削除・同期トークン期限）。0 以上。
+  // 🔴 **未設定と 0 は別物である**（上の 🔴 を参照）。presence で運ぶ。
+  optional int32 count = 4;
+
+  // 容量警告の閾値（0〜100）。同上。
+  optional int32 threshold_percent = 5;
+
+  // 期限（完全削除・同期トークン）。**過去の期限も正当である**（IADR-0215 決定 4）ので
+  // 受け口は規則を置かない。未設定は「期限なし」。
+  google.protobuf.Timestamp deadline = 6;
+}
+
+// 受け付けの結末。**2 項目ではなく 1 項目である。**
+//
+// 🔴 **通知の識別子（REST の `id`）は出さない**（IADR-0419 決定 3）——
+// `id` は受け手が保持する実体への handle であり、書き込み専用の面がそれを配ると
+// 「作った通知を後から指す」経路が s2s 側に生まれる。`duplicate` は**この呼び出しの結末**であって
+// 実体への handle ではない。
+message AcceptResponse {
+  // true = 同一ペイロードの再送を畳んだ（REST の 200）／false = 新規に受理した（REST の 201）。
+  bool duplicate = 1;
+}

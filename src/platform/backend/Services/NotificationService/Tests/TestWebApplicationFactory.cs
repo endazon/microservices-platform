@@ -41,7 +41,10 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         return scope.ServiceProvider.GetRequiredService<NotificationDbContext>();
     }
 
-    private static void ReplaceDbContext<TContext>(IServiceCollection services, string dbName)
+    // NFR-16, [[IADR-0419]] (#1255): gRPC の器（`Grpc/GrpcKestrelFactory`）も同じ差し替えを要るので
+    // **共有点をここ 1 つに保つ**（AuthorizationService の器 2 つと同じ形）。写すと片方だけ
+    // DB 名が固定のままになり、クラス間で書き込みが見えてしまう。
+    internal static void ReplaceDbContext<TContext>(IServiceCollection services, string dbName)
         where TContext : DbContext
     {
         var toRemove = services

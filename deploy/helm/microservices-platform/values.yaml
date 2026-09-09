@@ -243,6 +243,28 @@ services:
     # 出していない。呼び出し元は BFF の文書閲覧経路（`Services__DocumentServiceGrpc` を持つときだけ）。
     # **readiness は 8080 の /health/ready のまま** —— 1 プロセスが両ポートを起動時に bind する。
     grpcPort: 8081
+    # FR-22 / NFR-09 / NFR-16, ADR-0004 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0419 (#1255):
+    # east-west gRPC の**呼び出し側**資格情報。realm の confidential client `document-service`
+    # （service account ＋ realm ロール platform-service のみ。ABAC ポリシー・属性は与えない ——
+    # 文書を読む主体ではなく、**通知を送る主体**である）。
+    # 🔴 **DocumentService が呼び出し元になるのはこの PR が最初である**（従前は受け口だけだった）。
+    # したがって realm の client と Secret も**同じ変更で新設している** ——
+    # 片方だけだと Pod が起動しない（非 optional な secretKeyRef）か、面が常に PERMISSION_DENIED を
+    # 返して**送出は fail-open なのでエラーログにしか出ない**（#1301 と同型の穴）。
+    serviceToken:
+      clientId: document-service
+      existingSecret: document-service-token
+      clientSecretKey: client-secret
+    extraEnv:
+      # FR-22 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0419 (#1255):
+      # east-west gRPC（h2c）の宛先。**これが在るときだけ**個人資料の通知の送出が gRPC 経路になる
+      # （無ければ REST `POST /internal/notifications` のまま。並走中の正は REST であり、
+      # 戻すのはこの 2 行を消すだけでよい）。
+      # ポートは notification.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
+      # 🔴 利用者の JWT は面を通らない —— 3 契機はいずれも利用者文脈を持たない検知であり、
+      # 宛先は本文の subject が運ぶ（判定の位置は動かない）。
+      - name: Services__NotificationServiceGrpc
+        value: "http://notification-service:8081"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
@@ -710,6 +732,14 @@ services:
     image: microservices-platform/notification-service
     tag: latest
     port: 8080
+    # FR-22 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0419 (#1255):
+    # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用）。Service に name: grpc /
+    # appProtocol: grpc として出る。面は**受け付け 1 口だけ**
+    # （`platform.notification.v1.NotificationIngress`）で、閲覧・既読・削除は出していない
+    # —— s2s の面から他人の通知を覗く経路を作らない（受け口は書き込み専用である）。
+    # 呼び出し元は DocumentService の通知の送出（`Services__NotificationServiceGrpc` を持つときだけ）。
+    # **readiness は 8080 の /health/ready のまま** —— 1 プロセスが両ポートを起動時に bind する。
+    grpcPort: 8081
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }

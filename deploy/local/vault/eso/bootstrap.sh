@@ -72,6 +72,12 @@ vexec "vault kv put secret/msp/conversion-service-token client-secret='${CONVERS
 vexec "vault kv put secret/msp/wiki-service-token client-secret='${WIKI_SERVICE_CLIENT_SECRET:-wiki-service-dev-secret-change-me}'"
 vexec "vault kv put secret/msp/datasource-service-token client-secret='${DATASOURCE_SERVICE_CLIENT_SECRET:-datasource-service-dev-secret-change-me}'"
 vexec "vault kv put secret/msp/mcp-server-token client-secret='${MCP_SERVER_CLIENT_SECRET:-mcp-server-dev-secret-change-me}'"
+# FR-19, FR-20, FR-21, FR-22, NFR-09, NFR-16, ADR-0004/ADR-0029/ADR-0075,
+# IADR-0379 決定 4 / IADR-0419 (#1255): 通知の受け付け（NotificationService）の呼び出し側。
+# 🔴 **DocumentService が east-west gRPC の呼び出し元になるのはここが最初である**
+# （従前は受け口だけを持っていた）。空だと Pod が起動しない —— 送出は fail-open なので、
+# 資格情報だけが欠けた状態で起動できると**個人資料の通知が静かに 1 件も届かなくなる**。
+vexec "vault kv put secret/msp/document-service-token client-secret='${DOCUMENT_SERVICE_CLIENT_SECRET:-document-service-dev-secret-change-me}'"
 # NFR-09, IADR-0095/IADR-0342 (#1127): Wiki.js の OIDC ストラテジ（DB 保持・manifest 化できない runtime 状態）
 # を冪等に再適用する `deploy/local/wikijs-setup/bootstrap.sh` 段 8 が読む client secret。
 # **Pod は誰も env で読まない**（読み手は bootstrap）。既定は realm import の置き場と同値 ——
@@ -123,13 +129,13 @@ echo "  PR-3: minio-oidc (MSP ns) / grafana-oidc, vault-oidc, headlamp-oidc (pla
 echo "  #1107: bff-oidc (MSP ns。BFF セッションの client secret。空だと /bff/auth/login が 500)"
 echo "  #1101: identity-admin-oidc (MSP ns。SC-17 の Keycloak Admin REST 反映。空だと authorization-service が起動しない)"
 echo "  #1245: reset-gate-oidc (platform-infra ns。SC-15 の申請を閉じる門。空だと門が起動しない＝窓が開いたままになる)"
-echo "  #1255: retrieval-service-token, ingestion-service-token, aianalysis-service-token, graph-service-token, conversion-service-token, wiki-service-token, datasource-service-token, mcp-server-token (MSP ns。east-west gRPC の s2s 資格情報。空だと当該 Pod が起動しない)"
+echo "  #1255: retrieval-service-token, ingestion-service-token, aianalysis-service-token, graph-service-token, conversion-service-token, wiki-service-token, datasource-service-token, mcp-server-token, document-service-token (MSP ns。east-west gRPC の s2s 資格情報。空だと当該 Pod が起動しない)"
 echo "  PR-4: postgres, rabbitmq, keycloak-admin (platform-infra ns・creationPolicy: Merge・手動 apply は保持)"
 echo "  #438/#1102/#1144: keycloak-smtp (platform-infra ns。from/user/password は空＝実値未供給。宛先の既定はクラスタ内の捕捉用 MTA。k8s-local-up.sh の ESO=1 が常時 apply する。docs/operations/keycloak-smtp-relay-setup-runbook.md 参照)"
 echo "  #1127: wikijs-oidc (MSP ns。Wiki.js の OIDC ストラテジ seed が読む。WIKIJS_OIDC=1 のときだけ apply される)"
 # 🔴 案内は **実際に apply される名前だけ**を挙げる（#1102: 挙げた名前が作られないと、手順どおり
 #    打った人が必ず NotFound を踏む）。grafana-oidc / headlamp-oidc は OBSERVABILITY=1 / HEADLAMP=1 の、
 #    wikijs-oidc は WIKIJS_OIDC=1 のときだけ apply されるため、無条件の並びからは外して注記に回す。
-echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token"
+echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
 echo "  確認(infra): kubectl -n platform-infra get externalsecret,secret postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp"
 echo "             （grafana-oidc は OBSERVABILITY=1、headlamp-oidc は HEADLAMP=1 のときだけ apply される）"

@@ -7,11 +7,11 @@ updated: 2026-09-09
 author: Claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11, FR-12, FR-13, FR-16, FR-17, FR-18, FR-19, NFR-02, NFR-09, NFR-16, NFR-21, SC-03, SC-05, SC-06, SC-10, SC-12, SC-17, SC-18, UC-01, UC-02, UC-03, UC-04, UC-05, UC-07, UC-09, UC-10]
-adrs: [ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0038, ADR-0044, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088]
-iadrs: [IADR-0009, IADR-0012, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418]
-specs: [20260905_issue-1201_east-west-grpc-preconditions, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1255_east-west-grpc-llm-completion, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260906_issue-1255_knowledge-health-grpc, 20260907_issue-1255_user-context-in-body, 20260908_issue-1255_tag-dictionary-grpc, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization]
-issues: [#1201, #1255, #1318, #1333]
+ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11, FR-12, FR-13, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, NFR-02, NFR-09, NFR-16, NFR-19, NFR-21, SC-03, SC-05, SC-06, SC-10, SC-12, SC-17, SC-18, UC-01, UC-02, UC-03, UC-04, UC-05, UC-07, UC-09, UC-10, UC-11]
+adrs: [ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0037, ADR-0038, ADR-0044, ADR-0045, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088]
+iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419]
+specs: [20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body]
+issues: [#1201, #1255, #1333, #1318]
 -->
 
 # 通信仕様書: east-west gRPC（サービス間の同期呼び出し）
@@ -27,7 +27,7 @@ issues: [#1201, #1255, #1318, #1333]
 - **プロトコル**: gRPC（HTTP/2）+ Protobuf 3。メッシュ内は **h2c（TLS 無し HTTP/2）** で、mTLS はサイドカーが終端する。
 - **対象**: メッシュ内のサービスどうしの**同期**呼び出し。候補／非候補の基準は「同期 ∧ east-west ∧ 応答を待つ」であり、
   呼び出しの頻度やレイテンシ要求では判定しない。外部 SaaS・IdP・オブジェクトストレージ・非同期イベント・SSE は対象外。
-- **状態**: gRPC 面を持つのは **9 経路** —— 参照実装（BFF → 認可サービスの権限スコープ解決）、
+- **状態**: gRPC 面を持つのは **10 経路** —— 参照実装（BFF → 認可サービスの権限スコープ解決）、
   埋め込み生成（取り込み・検索 → LLM ゲートウェイ）、テキスト生成（AI 分析・グラフ・変換 →
   LLM ゲートウェイ。一括と**逐次**）、**認可サービスの 5 呼び出し元**
   （AI 分析・グラフ・Wiki のスコープ解決＋データソース・MCP の利用者名簿）、そして
@@ -35,7 +35,7 @@ issues: [#1201, #1255, #1318, #1333]
   **ナレッジ健全性の観測値の報告**（グラフ → ダッシュボード）、そして
   ［2026-09-07 追記］**利用者の権限で動く 2 経路**（検索 → グラフの近傍展開・グラフ → 文書のタグ反映）、
   そして［2026-09-08 追記］**タグ辞書の読み取り**（グラフ → 文書）、
-  そして［2026-09-09 追記］**権限内属性値の照会**（BFF → 検索）である。
+  そして［2026-09-09 追記］**権限内属性値の照会**（BFF → 検索）、そして［2026-09-09 追記］**個人資料の通知の受け付け**（文書 → 通知）である。
   **並走中の正は REST** であり、gRPC は構成で opt-in する。残りの経路の移行は別 issue で展開する。
   ［2026-09-06 追記］🔴 **BFF の s2s 資格情報の未配線は閉じた。** realm に BFF の service account が
   無く、`ServiceToken` が helm・compose のどちらにも無かったため、参照実装（BFF → 認可サービス）は
@@ -487,6 +487,57 @@ status で割ると、**割り方そのものが存在を漏らす**（1 種類�
 **展開が黙って空になる**。`Search` rpc は**別の proto**で新設する ——
 ここへ足すと「この面に無い」という宣言が嘘になる（タグ辞書のときと同じ判断である）。
 
+## 10 つ目の面: 個人資料の通知の受け付け（`platform.notification.v1.NotificationIngress/Accept`）
+
+- 呼び出し元と呼び出し先: **文書 → 通知**（論理削除の予告・完全削除・容量警告・同期トークン期限の 4 契機）。
+- 切替の構成キー: `Services:NotificationServiceGrpc`。**未設定なら REST のまま。**
+- 認証・認可: `ServiceCaller`。REST の受け口は**認証を課していない**（内部 API の既存の扱い）ので、**狭まる向き**である。
+- 置き場: `Platform.Shared.Contracts` の `Protos/platform/notification/v1/notification_ingress.proto`。
+
+🔴 **この面が持ち込むのは輸送ではなく資格情報である。** 先行 9 面はすべて呼び出し元が
+既に s2s の資格情報を持っていたが、**文書サービスは呼び出し元として 1 度も立っていない**
+（受け口を 3 つ持ちながら、realm に機密クライアントが無かった）。したがってこの面は
+**新しい主体を 1 つ増やす**作業を伴う —— realm の `clients[]` **と `users[]`**、helm の
+`serviceToken`、compose の `ServiceToken__*`、ローカル供給元（Vault seed ＋ ExternalSecret ＋
+素の Secret）を**同じ変更で揃える**。🔴 **`users[]` を落とすと service account に
+サービス用ロールが付かず、面は常に拒否を返す** —— 送出は fail-open なので**エラーログと計器に
+しか出ない**（同型の穴を過去に踏んでいる）。
+
+🔴 **この面は書き込み専用である。** 閲覧・既読・削除の口を置かない ——
+読み出しは認証必須の `GET /notifications`（主体で絞る）だけであり、s2s の面から他人の通知を
+覗く経路を作らない。**同じ理由で応答に通知の識別子を出さない** ——
+識別子は受け手が保持する実体への handle であり、配ると「作った通知を後から指す」経路が生まれる。
+応答が持つのは `duplicate`（同一事象の再送を畳んだか）**だけ**である。
+
+🔴 **自由文の項目は 1 つも無い。** 計画は「本文が件数と期限のみで構成される。資料のタイトル・
+本文・検索語・回答内容を含まない」と定めており、それを**型の形**で守る
+（要求は宛先・種別・検知時刻・件数・閾値・期限の 6 項目ちょうど）。
+
+🔴 **null は presence で運ぶ。** 件数と閾値は `optional`（field presence）である ——
+素の整数にすると未設定が `0` に化けるが、**受け口の検証は通る**（0 以上という規則は
+未設定にも 0 にも真）ので**例外は 1 つも起きない**。割れるのは重複判定だけであり、
+**同じ事象が新規として二重に積まれる**（最も分かりにくい壊れ方である）。
+時刻は `google.protobuf.Timestamp` で、未設定は必須検査へそのまま落ちる。
+
+🔴 **REST と gRPC は同じ受理関数を通る**（検証器も重複判定も 2 つにしない）。
+面の試験は「呼び出しが返ったこと」ではなく**台帳に 1 件積まれたこと**を見る ——
+返り値だけを見る器では、本体を通らない実装でも緑になる。
+**鍵ごとの検証本文は輸送を跨いで再現しない** —— REST は鍵の辞書を返し得るが gRPC に対応する
+構造は無いので、鍵と本文を status の detail へ連結して載せる（検証メッセージは静的な文字列だけで、
+利用者の資料名も本文も混ざらない）。
+
+🔴 **呼び出し元の 3 つの結末を status で分け直す。** 送出側は結末（`sent` / `rejected` /
+`unreachable`）を計器の属性に載せている。gRPC では非 2xx も不達も同じ例外に畳まれるので、
+`UNAVAILABLE` / `DEADLINE_EXCEEDED` と s2s トークン取得失敗だけを `unreachable`、
+それ以外の status を `rejected` とした。**全 status を「不達」へ畳まない** ——
+畳むとペイロード・配備の不整合が「届かなかった」に見え、**打つ手が違う 2 つが混ざる**。
+🔴 とりわけ `UNAUTHENTICATED` / `PERMISSION_DENIED` を不達に入れない ——
+**service account の配線漏れはまさにこの枝に出る。**
+
+🔴 **送出の期限は REST と同じ 5 秒**であり、REST 側の定数を**そのまま引く**（値を書き写さない）。
+既定の 100 秒のままだと、受け口が応答しない間に同期 push や完全削除の要求が止まる ——
+fail-open は「落ちない」だけでなく「待たせない」ことも要る。
+
 ## シーケンス
 
 ```mermaid
@@ -567,6 +618,11 @@ sequenceDiagram
   （①検索サービスの属性値照会 ②文書 → 通知の送出 ④MCP のツール申告の収集 ⑤実効構成の収集）。
   ［2026-09-09 追記］🔴 **①（検索サービスの属性値照会）が移った。残 3 である**
   （②文書 → 通知の送出 ④MCP のツール申告の収集 ⑤実効構成の収集）。
+  ［2026-09-09 追記］🔴 **②（文書 → 通知の送出）が移った。残 2 である**
+  （④MCP のツール申告の収集 ⑤実効構成の収集）。**残る 2 つはどちらも扇形であり、
+  宛先集合が公開構成（`Introspection__Services__*` / MCP のツール公開構成）で開く** ——
+  したがって**本リポジトリだけでは完結しない**（宛先の側が同じ面を実装しないと 1 経路も移らない）。
+  この 2 つを閉じるまでは、`AddHttpClient` を全走査して数え直すのが**移行の残りを測る唯一の手**である。
   🔴 **AI 分析 → 検索（`/search`）はこの 3 に含まれない** —— 上の「利用者の資格情報を運ぶ 27」の側であり、
   **近傍展開が転送トークンで動いている**ため、文脈の受け渡しを直してからでないと移せない（§9 つ目の面）。
   **上の 49 / 17 / 27 / 5 は 2026-09-06 時点の実測であり、書き換えない** —— 数え直しは基点ごとに行う。

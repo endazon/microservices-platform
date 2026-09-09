@@ -459,6 +459,21 @@
       "defaultClientScopes": ["roles"]
     },
     {
+      "clientId": "document-service",
+      "name": "DocumentService east-west gRPC caller (client_credentials)",
+      "description": "FR-22 / NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0419 (#1255): east-west gRPC で NotificationService の通知受け付けを呼ぶ主体。service-account に realm ロール platform-service のみを与え、ABAC ポリシー・属性は与えない（通知を送る主体であり、文書を読む主体ではない）。secret は dev 専用。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "document-service-dev-secret-change-me",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": ["roles"]
+    },
+    {
       "clientId": "ingestion-service",
       "name": "IngestionService east-west gRPC caller (client_credentials)",
       "description": "NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0397 (#1255): east-west gRPC で LlmGateway の取り込み埋め込みを呼ぶ主体。service-account に realm ロール platform-service のみを与え、ABAC ポリシー・属性は与えない。secret は dev 専用で本番は config から供給する。",
@@ -956,6 +971,12 @@
       "username": "service-account-mcp-server",
       "enabled": true,
       "serviceAccountClientId": "mcp-server",
+      "realmRoles": ["platform-service"]
+    },
+    {
+      "username": "service-account-document-service",
+      "enabled": true,
+      "serviceAccountClientId": "document-service",
       "realmRoles": ["platform-service"]
     }
   ]

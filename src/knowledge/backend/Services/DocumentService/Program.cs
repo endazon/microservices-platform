@@ -2,6 +2,7 @@ using DocumentService.Common.Observability;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
+using DocumentService.Infrastructure.ExternalServices;
 using DocumentService.Infrastructure.Messaging;
 using DocumentService.Features.Documents;
 using DocumentService.Features.Documents.AddTag;
@@ -123,8 +124,26 @@ builder.Services.AddHttpClient(
         // 要求がその間止まる（fail-open は「落ちない」だけでなく「待たせない」ことも要る）。
         c.Timeout = DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier.SendTimeout;
     });
-builder.Services.AddScoped<DocumentService.Domain.Ports.IPrivateNoteNotifier,
-    DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier>();
+// FR-22, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4・5, [[IADR-0412]] 決定 5,
+// [[IADR-0419]] (#1255): 通知の送出の east-west gRPC 版。
+// **並走中の正は REST である。** `Services:NotificationServiceGrpc`（h2c のアドレス。例:
+// http://notification-service:8081）が構成されたときだけ生成クライアントが登録され、
+// そのときだけ `GrpcPrivateNoteNotifier` を選ぶ（無ければ上の HTTP 版のまま。
+// 戻すのは構成を外すだけでよく、コードは変えない）。
+// 🔴 **REST の名前付きクライアントは常に登録したままにする** —— 切替は「どちらの
+// `IPrivateNoteNotifier` を採るか」だけであり、片方の配線を消すと戻せなくなる。
+builder.Services.AddNotificationIngressGrpcClient(builder.Configuration);
+if (!string.IsNullOrWhiteSpace(
+        builder.Configuration[NotificationIngressGrpcClientExtensions.AddressKey]))
+{
+    builder.Services.AddScoped<DocumentService.Domain.Ports.IPrivateNoteNotifier,
+        DocumentService.Infrastructure.ExternalServices.GrpcPrivateNoteNotifier>();
+}
+else
+{
+    builder.Services.AddScoped<DocumentService.Domain.Ports.IPrivateNoteNotifier,
+        DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier>();
+}
 // FR-06, FR-19, ADR-0057 決定 1, IADR-0296: 削除の伝播先①（オブジェクトストレージの本文・資産）。
 // 台帳から逆引きして消すため DbContext と同じ scoped にする。
 builder.Services.AddScoped<DocumentService.Features.Documents.DocumentObjectPurger>();

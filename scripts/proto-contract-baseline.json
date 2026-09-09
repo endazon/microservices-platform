@@ -1214,6 +1214,80 @@
           }
         }
       }
+    },
+    "src/platform/backend/Shared/Platform.Shared.Contracts/Protos/platform/notification/v1/notification_ingress.proto": {
+      "syntax": "proto3",
+      "package": "platform.notification.v1",
+      "csharpNamespace": "Platform.Shared.Contracts.Grpc.Notification.V1",
+      "imports": [
+        "google/protobuf/timestamp.proto"
+      ],
+      "messages": {
+        "AcceptRequest": {
+          "fields": {
+            "count": {
+              "number": 4,
+              "type": "int32",
+              "label": "optional"
+            },
+            "deadline": {
+              "number": 6,
+              "type": "google.protobuf.Timestamp",
+              "label": "singular"
+            },
+            "kind": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            },
+            "occurred_at": {
+              "number": 3,
+              "type": "google.protobuf.Timestamp",
+              "label": "singular"
+            },
+            "subject": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "threshold_percent": {
+              "number": 5,
+              "type": "int32",
+              "label": "optional"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "AcceptResponse": {
+          "fields": {
+            "duplicate": {
+              "number": 1,
+              "type": "bool",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "enums": {},
+      "services": {
+        "NotificationIngress": {
+          "rpcs": {
+            "Accept": {
+              "request": "AcceptRequest",
+              "response": "AcceptResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            }
+          }
+        }
+      }
     }
   }
 }
