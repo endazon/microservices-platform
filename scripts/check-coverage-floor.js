@@ -55,15 +55,15 @@
  *   「同じテストプロジェクトが 2 回実行される」型の事故は、#900 の重複排除により床では**検出できない**
  *   （分母が倍にならない）。唯一の検知手段は「レポート件数が期待値と一致するか」であり、従前はその
  *   期待値をワークフローのコメントへ**手で写していた**（16 件 / 17 件と書かれたまま実物は 19 件になり、
- *   検知手段そのものが腐っていた）。本検査器は期待値を**追跡下の `*Tests.csproj` の数から導出する**
- *   （`git ls-files`。submodule 配下は列挙されず、除外ユニットは `isExcludedPath` で落とす）。
+ *   検知手段そのものが腐っていた）。本検査器は期待値を**`src/` 配下の `*Tests.csproj` の数から導出する**
+ *   （レポートと同じ fs 走査。除外ユニット（submodule）は `isExcludedPath` で落とす。git は呼ばない ——
+ *   呼ぶとクラス B（走査母集合を git ls-files から引く）の検査器になり、#683 の警告機構が要る）。
  *   実物より**多い**ときは二重実行の疑いとして fail（`--report-only` では warn）、**少ない**ときは
  *   フィルタで 0 件になったプロジェクトが出力を残さない場合があるため warn に留める（fail-open）。
- *   `git` が使えない環境は導出できないので突合を skip し、その旨を notice で出す。
+ *   `src/` に 1 件も無ければ導出できないので突合を skip し、その旨を notice で出す。
  */
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
 const { notice, warn } = require('./lib/ci-annotate');
 const { excludedUnits, makeIsExcludedPath } = require('./lib/excluded-units.js');
 
@@ -1131,18 +1131,13 @@ function findReports() {
 }
 
 /**
- * 追跡下のテストプロジェクト（`src/**\/*Tests.csproj`）を数える（#1346）。
- * 母集合は `git ls-files` から引く（クラス B: untracked は対象外）。submodule 配下は gitlink としてしか
- * 現れないので列挙されず、念のため除外ユニットの判定も通す。git が無ければ null（導出不能）。
+ * テストプロジェクト（`src/**\/*Tests.csproj`）を数える（#1346）。
+ * レポート探索と同じ fs 走査（`walk`）で引く。submodule ユニットは populate 済みでも `isExcludedPath` で落とす。
+ * 1 件も無ければ null（導出不能。`src/` を読めない文脈）。
  */
-function countTrackedTestProjects() {
-  let out;
-  try {
-    out = execFileSync('git', ['ls-files', '--', 'src'], { cwd: REPO_ROOT, encoding: 'utf8' });
-  } catch {
-    return null;
-  }
-  return out.split('\n').map(toPosix).filter((p) => /Tests\.csproj$/.test(p) && !isExcludedPath(p)).length;
+function countTestProjects() {
+  const n = walk(SEARCH_ROOT, (p) => /(^|\/)[^/]*Tests\.csproj$/.test(p) && !isExcludedPath(p)).length;
+  return n === 0 ? null : n;
 }
 
 /**
@@ -1154,9 +1149,9 @@ function countTrackedTestProjects() {
  */
 function compareReportCount(actual, expected) {
   if (expected == null) {
-    return { level: 'skip', text: '期待レポート件数を導出できなかった（git ls-files が使えない）ため件数の突合を skip した。' };
+    return { level: 'skip', text: '期待レポート件数を導出できなかった（src/ 配下に *Tests.csproj が見つからない）ため件数の突合を skip した。' };
   }
-  const base = `レポート ${actual} 件 / 期待 ${expected} 件（追跡下の *Tests.csproj。除外ユニットを除く）`;
+  const base = `レポート ${actual} 件 / 期待 ${expected} 件（src/ 配下の *Tests.csproj。除外ユニットを除く）`;
   if (actual > expected) {
     return { level: 'fail', text: `${base}。期待より多い —— 同じテストプロジェクトが 2 回実行された疑い（--filter の二重適用等）。`
       + ' 重複排除により床では検出できない型なので、件数で止める（#1346）。' };
@@ -1264,9 +1259,9 @@ function selfTest() {
   t('compareReportCount: 本文に実測と期待の両方の数を出す',
     /38 件/.test(compareReportCount(38, 19).text) && /19 件/.test(compareReportCount(38, 19).text));
   {
-    const n = countTrackedTestProjects();
-    t('countTrackedTestProjects: 追跡下の *Tests.csproj を数える（git が無ければ null）',
-      n === null || (Number.isInteger(n) && n > 0), n);
+    const n = countTestProjects();
+    t('countTestProjects: src/ 配下の *Tests.csproj を数える（obj/ の *.csproj.nuget.* や submodule は数えない）',
+      Number.isInteger(n) && n > 0, n);
   }
 
   // 集計対象ユニットの切り分け（別プロジェクトの submodule は合算しない。PR #464 レビュー指摘）。
@@ -1855,8 +1850,8 @@ function main() {
   console.log(`[check-coverage-floor] レポート ${reports.length} 件を集計: line ${fmtRate(line)}（${totals.covered}/${totals.lines}） / ` +
     `branch ${fmtRate(branch)}（${totals.coveredBranches}/${totals.branches}）。床: line ${floor.line ?? '未設定'} / branch ${floor.branch ?? '未設定'}`);
 
-  // #1346: 期待レポート件数（追跡下の *Tests.csproj）との突合。二重実行は床では見えない。
-  const countCheck = compareReportCount(reports.length, countTrackedTestProjects());
+  // #1346: 期待レポート件数（src/ 配下の *Tests.csproj）との突合。二重実行は床では見えない。
+  const countCheck = compareReportCount(reports.length, countTestProjects());
   if (countCheck.level === 'fail' && !reportOnly) {
     console.error(`[check-coverage-floor] ${countCheck.text}`);
   } else if (countCheck.level === 'fail' || countCheck.level === 'warn') {
@@ -1959,6 +1954,6 @@ module.exports = {
   formatDiagnostics,
   rate,
   compareToFloor,
-  countTrackedTestProjects,
+  countTestProjects,
   compareReportCount,
 };

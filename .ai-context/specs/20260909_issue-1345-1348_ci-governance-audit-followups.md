@@ -61,12 +61,15 @@ $ grep -n "88\|68\|16 件\|17 件" .github/workflows/integration.yml .github/wor
 ### 決定 1（#1346）: 🔴 **写しを消し、導出へ寄せる。数値を直さない**
 
 床値のコメント 3 箇所は「90 / 75」へ書き換えるのではなく **「正本は `src/coverage-floor.json`。ここへ写さない」** に改めた。
-期待レポート件数は **`check-coverage-floor.js` が追跡下の `*Tests.csproj`（`git ls-files`。除外ユニットは `isExcludedPath`）から
-毎回導出して突き合わせる**（`countTrackedTestProjects` / `compareReportCount`）。
+期待レポート件数は **`check-coverage-floor.js` が `src/` 配下の `*Tests.csproj`（レポートと同じ fs 走査。除外ユニットは `isExcludedPath`）から
+毎回導出して突き合わせる**（`countTestProjects` / `compareReportCount`）。
+🔴 初稿は `git ls-files` で引いていたが、それはこの検査器を**クラス B**（走査母集合を git から引く。#683 の警告機構が要る）へ変える。
+レポート自体を fs で探している検査器なので、期待値も同じ fs 走査で引くのが一貫している（CI の `scripts.repo.test.js` の
+両方向分類が実挙動で捕まえた —— **母集合 53 → 55 のラチェットと同時に発火した**）。
 
 - 実物より**多い** → 二重実行の疑い → **fail**（`--report-only` では warn）。床では見えない型（#900 の重複排除で分母が倍にならない）なので件数で止める
 - 実物より**少ない** → 出力を残さないプロジェクト（フィルタで 0 件・ビルド失敗）→ **warn**（fail-open。PR 側の `Category!=Integration` で正当に起きる）
-- `git` が無い → skip を notice で明示
+- `src/` に 1 件も無い → skip を notice で明示
 
 「19 件へ更新する」を採らなかったのは、次に 20 件になったとき同じ issue が立つからである（規則 10: 導出値は写さない）。
 2026-09-09 の実測は 19 件（knowledge 12 ＋ platform 7）で、`coverage-floor.json` の注記にはこの実測を**数え方つきで**残した。

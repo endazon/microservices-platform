@@ -6630,7 +6630,19 @@ ${r.stderr}`);
         //    🔴 **機械が言えるのは「名前が実在するか」までである** —— 「指し先は実在するが
         //    その帰結を固定していない」側は人が読むしかない。**射程を広げない**（広げると誤検出だらけになり、
         //    検査器ごと無視されるようになる）。git ls-files で母集合を引くので TRACKED_CHECKERS に載る。
-        assert.strictEqual(scripts.length, 53, `検査器の母集合が 53 本から変わった（${scripts.length} 件）`);
+        // ★ #1348 で `check-workflow-job-refs.js`（文書が名指しする CI ジョブ名が jobs: に実在すること・
+        //    必須チェック表の「下表の N 件」が行数と一致すること。**同型の事故 2 回目** —— 1 回目は
+        //    scripts/README.md:147 自身が「追随漏れが 1 度起きている」と記録、2 回目は廃止名 `doc-links` が
+        //    3 文書 4 箇所に残った）を新設したため 53 → 54（ラチェットが設計どおり発火した）。
+        //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        // ★ #1347 で `backlog-audit.js`（定期棚卸し。Proposed のまま止まった IADR・動いていない仕様書・
+        //    blocked 系ラベルで更新の止まった issue 等を**列挙するだけで状態は書き換えない**。
+        //    「success だが無産出」を作らないため、指摘 0 件でも「指摘なし」の節を必ず産出する）を
+        //    新設したため 54 → 55（同上）。GitHub API を叩くが git は一切呼ばないため、
+        //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-ci-latency.js` と同じ扱い）。
+        //    🔴 同じ PR で `check-coverage-floor.js` へ足した期待件数の導出は、初稿の `git ls-files` を
+        //    fs 走査へ改めた —— git で引くとクラス B になり、本テストの両方向分類が実挙動で捕まえた。
+        assert.strictEqual(scripts.length, 55, `検査器の母集合が 55 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
