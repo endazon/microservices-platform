@@ -91,6 +91,12 @@ public static class BffEndpointComposition
         // Issue #288/#286, FR-14, IADR-0072/0073: AST 監視銘柄（AST/SC-02 watchlist）の BFF 集約
         // （MarketMonitorService /monitor/* へ pass-through）。AiStockTrading.Bff.Endpoints（例外3）を参照。
         new DelegateBffEndpointModule(a => a.MapMonitorBffEndpoints()),
+        // AST#722/AST#723, AST/SC-04, AST/FR-09, AST/FR-11, AST/UC-06, IADR-0321: AST の OpenD 認証操作画面の
+        // BFF 集約（OpenD 認証サイドカーへ pass-through）。AiStockTrading.Bff.Endpoints（AST unit-owned Bff・例外3）を参照。
+        //
+        // 🔴 他の 3 モジュールと違い、**この BFF 自身が唯一の認可点**である（`trading-owner` 限定・権限外は 404）。
+        // 後段のサイドカーは Pod 網にしか bind せず**認証をまったく持たない**ため、委譲先が存在しない。
+        new DelegateBffEndpointModule(a => a.MapOpendAuthBffEndpoints()),
     ];
 
     // 合成点の全モジュールを Map する（Program.cs はこの 1 行を呼ぶ）。
