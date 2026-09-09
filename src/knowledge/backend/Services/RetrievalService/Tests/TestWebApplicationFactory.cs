@@ -1,11 +1,16 @@
 using RetrievalService.Infrastructure.ExternalServices;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Qdrant.Client;
 using RetrievalService.Domain.Ports;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
 using Wolverine;
 using Platform.Shared.Contracts.Dtos;
 using Microsoft.AspNetCore.Http;
@@ -55,7 +60,43 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // **権威が効いていることを測る試験は `Authoritative` を狭めて書く。**
             services.RemoveAll<ISearchAccessResolver>();
             services.AddSingleton<ISearchAccessResolver>(new StubSearchAccessResolver(this));
+
+            // FR-05, NFR-09, ADR-0004, ADR-0084, [[IADR-0418]] (#1318 欠陥 B):
+            // 🔴 **`/search` 群は認証を要するようになった。** 実 IdP を持たないので、
+            // ヘッダ `X-Test-User` の有無で「未認証／認証済み」を切り替える器を置く
+            // （`AiAnalysisService.Tests` の `AnalysisTestUserAuthHandler` と同型）。
+            //
+            // 🔴 **「常に認証済み」にはしない。** そうすると未認証の契約（401）が測れず、
+            // 門を外す変異が生き残る —— 本器を作った理由そのものが失われる。
+            services.AddAuthentication(RetrievalTestUserAuthHandler.SchemeName)
+                .AddScheme<AuthenticationSchemeOptions, RetrievalTestUserAuthHandler>(
+                    RetrievalTestUserAuthHandler.SchemeName, _ => { });
         });
+    }
+
+    /// <summary>既定のクライアントが名乗る利用者。</summary>
+    public const string DefaultUser = "test-user";
+
+    // 🔴 **既定のクライアントは認証済みである。** 既存の端点試験はいずれも
+    // 「認証済みの利用者が検索する」ことを書いており、認証の有無は主題ではない ——
+    // ここで載せることで**既存 25 箇所を 1 行も書き換えずに済む**（#1318）。
+    // 未認証を測る試験は下の <see cref="CreateAnonymousClient"/> を使う。
+    protected override void ConfigureClient(HttpClient client)
+    {
+        base.ConfigureClient(client);
+        client.DefaultRequestHeaders.TryAddWithoutValidation(
+            RetrievalTestUserAuthHandler.UserHeader, DefaultUser);
+    }
+
+    /// <summary>
+    /// FR-05, NFR-09, [[IADR-0418]] (#1318): **未認証**のクライアント。
+    /// 認証ヘッダを載せないので `/search` 群は 401 になる。
+    /// </summary>
+    public HttpClient CreateAnonymousClient()
+    {
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Remove(RetrievalTestUserAuthHandler.UserHeader);
+        return client;
     }
 
     /// <summary>
@@ -75,6 +116,27 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         public Task<AccessScopeResponse> ResolveForUserAsync(
             string userId, IReadOnlyDictionary<string, string> attributes, CancellationToken ct = default)
             => Task.FromResult(owner.Authoritative);
+    }
+}
+
+// FR-05, NFR-09, ADR-0004, ADR-0084, [[IADR-0418]] (#1318): ヘッダ `X-Test-User` が在るときだけ
+// 認証済みにする。無いときは `NoResult()`（＝未認証 → `RequireAuthorization()` が 401 を返す）。
+public sealed class RetrievalTestUserAuthHandler(
+    IOptionsMonitor<AuthenticationSchemeOptions> options,
+    ILoggerFactory logger,
+    UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+{
+    public const string SchemeName = "TestUser";
+    public const string UserHeader = "X-Test-User";
+
+    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    {
+        if (!Request.Headers.TryGetValue(UserHeader, out var user) || string.IsNullOrWhiteSpace(user))
+            return Task.FromResult(AuthenticateResult.NoResult());
+
+        var identity = new ClaimsIdentity([new Claim(ClaimTypes.Name, user.ToString())], SchemeName);
+        return Task.FromResult(AuthenticateResult.Success(
+            new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName)));
     }
 }
 
