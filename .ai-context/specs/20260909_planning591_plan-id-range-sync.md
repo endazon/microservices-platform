@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 計画 ID レンジを ADR-0001..0093 へ前進させ、公開 kg-ranges.json との突合を新設する
 type: spec
-status: draft
+status: done
 related_ids: [NFR, ADR-0048, ADR-0093, IADR-0228, IADR-0200]
 author: endazon (with Claude Code)
 created: 2026-09-09
@@ -104,20 +104,26 @@ compareRanges()         種別ごとに ok / behind / ahead ＋ scanned（比較
 
 ## 受け入れ基準
 
-- [ ] `.claude/rules/traceability.repo.md:7` の計画 ADR レンジが `ADR-0001..0093` になっている
-- [ ] 別紙に本世代（`0088 → 0093`）の引き直し記録がある
-- [ ] `node scripts/check-planning-adr-range.js --self-test` が全件 pass（陽性対照を含む）
-- [ ] secret 不在で `--out` を実行すると exit 0・`status: "unverified"`・`scanned: 0`・理由つき JSON
-- [ ] `ci.yml` の `static-checks` に自己試験と本検査が配線されている
-- [ ] `node scripts/check-trace-blocks.js` / `check-commit-messages.js` が通る
-- [ ] `node scripts/check-reading-budget.js` が **warn を増やさない**（純増 0 バイト。実測 `46,076`）
-- [ ] `node scripts/scripts.test.js` が通る
+- [x] `.claude/rules/traceability.repo.md:7` の計画 ADR レンジが `ADR-0001..0093` になっている
+- [x] 別紙に本世代（`0088 → 0093`）の引き直し記録がある
+- [x] `node scripts/check-planning-adr-range.js --self-test` が全件 pass（陽性対照を含む）
+- [x] secret 不在で `--out` を実行すると exit 0・`status: "unverified"`・`scanned: 0`・理由つき JSON
+- [x] `ci.yml` の `static-checks` に自己試験と本検査が配線されている
+- [x] `node scripts/check-trace-blocks.js` / `check-commit-messages.js` が通る
+- [x] `node scripts/check-reading-budget.js` が **warn を増やさない**（純増 0 バイト。実測 `46,076`）
+- [x] `node scripts/scripts.test.js` が通る
+
+**実測（2026-09-09。すべてこのブランチで実走）**: 自己試験 14 件合格 / `scripts.test.js` **769 件合格** / `check-trace-blocks` 173 件・違反 0 / `check-doc-links` 1,285 件・破損 0 / `check-reading-budget` 46,076 バイト・**純増 0**（warn なし）/ `check-adr-numbering` 重複欠番なし / `check-cross-repo-refs` 3,416 件・違反 0 / `check-plan-id-qualification` 2,839 件・違反 0 / `check-workflow-job-refs` 一致 / `gen-knowledge-graph --check` 違反 0 / `check-commit-messages --range origin/develop..HEAD` 適合。
 
 ## テスト方針
 
 - 自己試験に**陽性対照**（ずらしたら落ちる）を必ず置く。「一致なら ok」だけでは比較が空振りでも緑になる。
 - **本番の抽出関数そのものを呼ぶ。** パーサを試験側へ書き写さない。
 - ネットワークは叩かない（`execFn` / `fetchFn` を差し替える）。
+- 🔴 **自己試験に「現在の宣言値」をリテラルで書かない。** 書くと、次にレンジを前進させる PR で
+  自己試験まで同時に直さないと `ahead` で落ちる —— **本検査器が塞ごうとしている「導出値の書き写し」
+  そのものである**（母集合の規則 10）。実物の宣言を使う 2 件は**配線が通ること**だけを固定し、
+  **ずれの検出はフィクスチャによる陽性対照が持つ。** 実際のずれは CI の本走が公開ファイルと突き合わせる。
 
 ## 計画書との差異
 
