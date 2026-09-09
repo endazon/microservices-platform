@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-09, NFR-21, SC-01, SC-02, SC-10, UC-01, UC-04, UC-05, UC-07]
-adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404]
+adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420]
 specs: [20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay]
-issues: [#1088, #1108, #1110, #1159, #1198, #1202, #1203, #1204, #1215, #1245, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538]
+issues: [#1088, #1108, #1110, #1159, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538]
 -->
 
 # 運用仕様書
@@ -618,7 +618,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   運用環境ごとに設定するもので、既定は `default-null`＝どこへも送らない**（設定漏れではなく既定）。
 - **暫定のアラート（Grafana 統合アラート。#665 / 計画 決定 42）**:
   [`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)
-  が同じ 12 ルールを Grafana 側でも評価し、**Alerting 画面に発火を表示する**。**通知は送らない**（下記★）。
+  が同じ 13 ルールを Grafana 側でも評価し、**Alerting 画面に発火を表示する**。**通知は送らない**（下記★）。
   `alerts.yml` との対応は `node scripts/check-grafana-alerting.js` が CI で突合する。
 - **★ 経路間のパリティ（#674。Grafana provisioning は経路間で同内容とする実装 ADR）**: provisioning（datasources / dashboards / alerting）は
   **compose と k8s の両方に同内容で置く**。`node scripts/check-grafana-provisioning-parity.js` が突合する。
@@ -647,9 +647,10 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   **dev の 2 経路（docker-compose と、ローカル k8s の可観測性オーバーレイ）に配線**されている。
   **［2026-08-30 更新 / #546］経路B（ローカル k8s）にも Alertmanager を配備し、両経路のルールが
   同じ受け手へ届くようにした**（それ以前は compose だけだった）。
-  🔴 **［2026-09-05 追記］ただし経路B の Prometheus に inline されているルールは compose と同数ではない**
-  —— ナレッジ健全性の生産者を見る 2 件が経路B へ写されないまま残っている（**バイト一致を強制する検査器は
-  Grafana 側の inline にしか無い**）。**件数は導出値なので、数えるのは実体である。****stg/prod は依然として対象外**である
+  🔵 **［2026-09-09 更新］経路B の Prometheus の inline は compose と同数である**（両経路とも 13 件。
+  `node scripts/check-prometheus-alerts-parity.js` が群名・ルール名・`expr`・`for`・`severity` で 1 対 1 を
+  確かめる）。**2026-09-05 時点の「2 件が写されていない」はその後の是正で解消しており、本追記はその訂正である。**
+  **件数は導出値なので、数えるのは実体である。****stg/prod は依然として対象外**である
   （`deploy/helm/microservices-platform/` 配下に Prometheus / Alertmanager リソースは無い）。
   展開は follow-up（下記「未決事項」）。本節のアラート定義・閾値は環境非依存に流用できる。
 
@@ -665,7 +666,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 >
 > 計画が定めた**暫定の通知先＝ Grafana の内蔵アラート**（決定 42）は、**#665 で provisioning を配線した**
 > （[`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)。
-> compose・k8s の 2 か所。12 ルールは `alerts.yml` と 1 対 1）。**ただし、配線したのは検知と可視化までである。**
+> compose・k8s の 2 か所。13 ルールは `alerts.yml` と 1 対 1）。**ただし、配線したのは検知と可視化までである。**
 >
 > - **push 配信の宛先（contactPoints / policies）は設定していない。** 届かない宛先を書くと「配線した」と
 >   読めてしまうため、**意図的に書いていない**（SLO の暫定通知先を Grafana 統合アラートへ配線する実装 ADR の決定 3）。
@@ -674,7 +675,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 >   **人が気づくまでの時間は見に行く間隔に等しい。**
 > - **Grafana が provisioning を受理するかは、CI では見ていない。** 機械で確かめているのは
 >   `node scripts/check-grafana-alerting.js` の範囲（ルール数・名前の 1 対 1・`datasourceUid` の実在・
->   compose と k8s の同内容・必須キー）まで。**配備時に `/api/v1/provisioning/alert-rules` が 12 件返すことを確かめる。**
+>   compose と k8s の同内容・必須キー）まで。**配備時に `/api/v1/provisioning/alert-rules` が 13 件返すことを確かめる。**
 >   🔵 **［2026-09-04 更新］稼働クラスタでは受理された** —— `reload` の後に当時の 9 件が返ることを実測した
 >   （「実装環境で Grafana を起動できない」という以前の記述は、もう当てはまらない）。
 >   **ルールを増減させたら毎回確かめること**（件数は導出値である）。

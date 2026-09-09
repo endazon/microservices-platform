@@ -1,3 +1,4 @@
+using DocumentService.Common.Observability;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
 using FluentValidation;
@@ -12,7 +13,8 @@ internal static class UpdateDocumentEndpoint
     {
         write.MapPut("/{id:guid}", async (Guid id, UpdateDocumentRequest req,
             IValidator<UpdateDocumentRequest> validator,
-            DocumentDbContext db, IDocumentUpdatedPublisher bus, CancellationToken ct) =>
+            DocumentDbContext db, IDocumentUpdatedPublisher bus, HttpContext http,
+            UnitProjectMetrics unitProject, CancellationToken ct) =>
         {
             // FR-05, FR-06, FR-19, UC-03, SC-05 / 計画 ADR-0030 §決定 / IADR-0371 決定 2 /
             // [[IADR-0398]] 決定 1: 入力検証（title → confidentiality → doc_scope の値域）。
@@ -54,6 +56,11 @@ internal static class UpdateDocumentEndpoint
 
             doc.Update(req.Title, req.Attributes ?? [], updateTagIds, req.ChangeNote);
             await db.SaveChangesAsync();
+            // FR-05, FR-16, SC-10, SC-12, ADR-0085 決定 4, [[IADR-0420]] (#1233):
+            // **編集も保存である。** 属性は全置換なので、`project` を落とした保存もここで数える
+            // （落とせないのは**制限**プロジェクトの値だけ。上の統制と母集合が違う）。
+            unitProject.RecordIfUnitSubjectSavedWithoutProject(
+                http.User, doc.Attributes, UnitProjectMetrics.OperationUpdate);
             var updateNames = await TagResolver.NamesAsync(db);
             await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, updateNames, ct);
             return Results.Ok(DocumentEndpoints.ToDto(doc, updateNames));

@@ -1,3 +1,4 @@
+using DocumentService.Common.Observability;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
 using FluentValidation;
@@ -14,7 +15,8 @@ internal static class UpdateDocumentMetadataEndpoint
     {
         write.MapPatch("/{id:guid}/metadata", async (Guid id, UpdateMetadataRequest req,
             IValidator<UpdateMetadataRequest> validator,
-            DocumentDbContext db, IDocumentUpdatedPublisher bus, CancellationToken ct) =>
+            DocumentDbContext db, IDocumentUpdatedPublisher bus, HttpContext http,
+            UnitProjectMetrics unitProject, CancellationToken ct) =>
         {
             // FR-05, FR-19, UC-03, SC-05, ADR-0054, IADR-0047 / 計画 ADR-0030 §決定 /
             // IADR-0371 決定 2 / [[IADR-0398]] 決定 1: 入力検証（confidentiality → doc_scope の値域）。
@@ -51,6 +53,10 @@ internal static class UpdateDocumentMetadataEndpoint
 
             doc.UpdateMetadata(req.Attributes ?? [], metaTagIds, req.ChangeNote);
             await db.SaveChangesAsync();
+            // FR-05, FR-16, SC-10, SC-12, ADR-0085 決定 4, [[IADR-0420]] (#1233):
+            // メタデータ更新も属性を全置換する（`Update` と同じ理由・同じ位置）。
+            unitProject.RecordIfUnitSubjectSavedWithoutProject(
+                http.User, doc.Attributes, UnitProjectMetrics.OperationUpdateMetadata);
             var metaNames = await TagResolver.NamesAsync(db);
             await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, metaNames, ct);
             return Results.Ok(DocumentEndpoints.ToDto(doc, metaNames));

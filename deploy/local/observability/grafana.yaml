@@ -395,6 +395,18 @@ data:
             "expr": "histogram_quantile(0.95, sum by (le) (rate(rag_answer_first_token_duration_seconds_bucket{job='microservices-platform.aianalysis-service'}[5m])))",
             "legendFormat": "p95 TTFT /analysis/ask/stream"
           }]
+        },
+        {
+          "id": 8,
+          "title": "ユニットの主体が project 無しで保存 / Unit-subject saves missing project (MUST be 0)",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+          "description": "**ナレッジ健全性の 8 指標目（#1233 / 計画 ADR-0085 決定 4。2026-09-06 確定）。0 が正常である。** 左隣のパネル 6（未知タグ）と同じ読み方であり、**発生してはならない事象**を数える —— ユニット（サービスアカウント）の保存経路は `project` を無条件で付与するため、**非ゼロはその経路を通らない書き込みが起きたことの検出**である。`documents_client_id` は書き手のクライアント、`documents_operation` は create / update / update_metadata。\n\n🔴 **鳴っても保存は止まっていない。これは統制ではなく計器である**（同決定 4）。止めるには基盤側の必須化が要り、計画は決定 1 でそれをしないと定めた。**「0 である」を「穴が塞がっている」と読まない。**\n\n**この指標も SC-10 の画面には出していない**（同節は着手保留。「Grafana で観測できれば成立する」が根拠であり、このパネルがその実体である）。",
+          "targets": [{
+            "datasource": "Prometheus",
+            "expr": "sum by (documents_client_id, documents_operation) (increase(documents_unit_project_missing_total[$__range]))",
+            "legendFormat": "{{documents_client_id}} / {{documents_operation}}"
+          }]
         }
       ]
     }
@@ -432,7 +444,7 @@ data:
     #      機械で確かめたのは **`scripts/check-grafana-alerting.js`** の範囲
     #      —— ルール数と名前が `deploy/prometheus/alerts.yml` と 1 対 1、参照する
     #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、まで。
-    #      **配備時に `/api/v1/provisioning/alert-rules` が 12 件返すことを確かめること。**
+    #      **配備時に `/api/v1/provisioning/alert-rules` が 13 件返すことを確かめること。**
     #      🔴 **件数は導出値である。ここの数字を信用せず、着手のたびに数え直すこと**（IADR-0383）——
     #      本行は #1246 が 2 件足した後も「9 件」のままであり、**2 世代ぶん腐っていた**（#1203 で是正）。
     #      現在の内訳: platform-availability 2 ／ platform-slo 4 ／ platform-slo-evaluation-target 4
@@ -824,6 +836,45 @@ data:
                   refId: A
                   instant: true
                   expr: 'absent_over_time(knowledge_health_report_total{knowledge_indicator="edge-type-usage"}[2h])'
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+
+      # FR-05, FR-16, SC-10, SC-12, ADR-0085 決定 4, IADR-0420 (#1233):
+      # ユニットの主体が `project` を付けずに保存したこと（**0 が正常**）。
+      #
+      # 🔴 **`noDataState: OK` である。** 違反が 1 件も無ければカウンタの系列そのものが存在せず
+      #   （＝正常時が「データ無し」）、`NoData` にすると平常時に恒常発火する。上の 2 群と同じ理由。
+      #   理由の正本は `deploy/prometheus/alerts.yml` の同名グループの前書きである。
+      - orgId: 1
+        name: knowledge-health-violations
+        folder: SLO
+        interval: 1m
+        rules:
+          - uid: unit-documents-missing-project-attribute
+            title: UnitDocumentsMissingProjectAttribute
+            condition: C
+            for: 5m
+            noDataState: OK
+            execErrState: Error
+            labels:
+              severity: warning
+            annotations:
+              summary: "ユニットの主体が project を付けずに文書を保存した（0 が正常）"
+              description: "DocumentService の documents_unit_project_missing_total が直近 1 時間で前進した。ユニット（サービスアカウント）の保存経路は project を無条件で付与するため、非ゼロはその経路を通らない書き込みが起きたことを意味する。documents_client_id / documents_operation で書き手と操作を特定する。保存は止まっていない（計器であって統制ではない。ADR-0085 決定 4）。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: 'increase(documents_unit_project_missing_total[1h]) > 0'
               - refId: C
                 datasourceUid: __expr__
                 model:

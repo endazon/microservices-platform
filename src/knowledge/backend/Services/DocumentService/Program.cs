@@ -50,10 +50,15 @@ builder.Services.AddSingleton<IngestTagMetrics>();
 // FR-22, NFR-19, IADR-0215 決定 5-b (#600): 通知の送出結果（sent / rejected / unreachable）。
 // **Meter 名は IngestTagMetrics と同じサービス名**なので収集対象は増えない。
 builder.Services.AddSingleton<PrivateNoteNotificationMetrics>();
+// FR-05, FR-16, SC-10, SC-12, ADR-0085 決定 4, [[IADR-0420]] (#1233):
+// ユニットの主体が保存した文書のうち `project` を持たない件数（**0 が正常**）。
+// **Meter 名は上の 2 つと同じサービス名**なので収集対象は増えない。
+builder.Services.AddSingleton<UnitProjectMetrics>();
 builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics
         .AddMeter(IngestTagMetrics.MeterName)
-        .AddMeter(PrivateNoteNotificationMetrics.MeterName));
+        .AddMeter(PrivateNoteNotificationMetrics.MeterName)
+        .AddMeter(UnitProjectMetrics.MeterName));
 builder.Services.AddPlatformAuth(builder.Configuration);
 // NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 3, [[IADR-0402]] (#1255):
 // east-west gRPC の h2c リスナ（`Grpc:Port`。未設定なら立てない）。

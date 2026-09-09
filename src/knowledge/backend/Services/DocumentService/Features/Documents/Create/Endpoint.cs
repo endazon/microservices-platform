@@ -1,3 +1,4 @@
+using DocumentService.Common.Observability;
 using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
@@ -30,7 +31,7 @@ internal static class CreateDocumentEndpoint
         write.MapPost("/", async (CreateDocumentRequest req,
             IValidator<CreateDocumentRequest> validator, DocumentDbContext db,
             IObjectStorageClient storage, IDocumentUpdatedPublisher bus, HttpContext http,
-            CancellationToken ct) =>
+            UnitProjectMetrics unitProject, CancellationToken ct) =>
         {
             // FR-06, UC-03 / 計画 ADR-0030 §決定 / IADR-0371 決定 2 / [[IADR-0398]] 決定 1・3:
             // タイトルは必須。規則は `CreateDocumentValidator` が持つ（既定の規則集合 = title だけ）。
@@ -88,6 +89,12 @@ internal static class CreateDocumentEndpoint
             }
             db.Documents.Add(doc);
             await db.SaveChangesAsync();
+            // FR-05, FR-16, SC-10, SC-12, ADR-0085 決定 4, [[IADR-0420]] (#1233):
+            // **保存が成立した後にだけ数える**（0 が正常の違反検出。計器であって統制ではない）。
+            // 🔴 **この位置より前へ動かさない** —— 400 / 413 / 409 で戻った要求は
+            // 「保存されていない文書」であり、母集合（保存した文書）に入らない。
+            unitProject.RecordIfUnitSubjectSavedWithoutProject(
+                http.User, doc.Attributes, UnitProjectMetrics.OperationCreate);
             var createNames = await TagResolver.NamesAsync(db);
             await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, createNames, ct);
             return Results.Created($"/documents/{doc.Id}",

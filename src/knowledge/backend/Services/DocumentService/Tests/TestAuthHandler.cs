@@ -37,6 +37,16 @@ public class TestAuthHandler(
     // これに当たる。`AnonymousHeader`（無認証＝401）とは別物である —— **こちらは認証は通る。**
     public const string NoNameHeader = "X-Test-No-Name";
 
+    // FR-05, FR-16, SC-10, SC-12, ADR-0085 決定 4, [[IADR-0420]] (#1233):
+    // **クライアント識別クレーム（`azp`）を載せるヘッダ。** 無人主体（サービスアカウント）の
+    // 判定と計器の属性がこれを読む。
+    //
+    // 🔴 **`azp` は人間のトークンにも付く**（SPA の clientId）。したがって本ヘッダ単独では
+    // 無人主体にならない —— **`X-Test-User: service-account-…`（腕 A）か
+    // `X-Test-No-Name`（腕 B）と組み合わせて初めて無人主体になる。**
+    // この組み合わせでしか無人にならないこと自体が、`MachinePrincipal` の陽性対照である。
+    public const string ClientIdHeader = "X-Test-Client-Id";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var roles = Request.Headers.TryGetValue(RolesHeader, out var header)
@@ -53,6 +63,10 @@ public class TestAuthHandler(
 
         var claims = noName ? new List<Claim>() : [new Claim(ClaimTypes.Name, user)];
         claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
+
+        if (Request.Headers.TryGetValue(ClientIdHeader, out var clientId)
+            && !string.IsNullOrWhiteSpace(clientId.ToString()))
+            claims.Add(new Claim("azp", clientId.ToString()));
 
         var identity = new ClaimsIdentity(claims, SchemeName);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName);

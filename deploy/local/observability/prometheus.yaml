@@ -155,6 +155,19 @@ data:
             annotations:
               summary: "ナレッジ健全性の生産者が居ない: edge-type-usage の報告が 2 時間届いていない"
               description: "GraphService の定期収集が edge-type-usage を DashboardService へ届けていない（周期は 1 時間）。受け口の件数は最後の値で凍るため画面は正常に見える。収集の失敗・リースの停滞・受け口への到達不能を疑う。"
+      # FR-05, FR-16, SC-10, SC-12, ADR-0085 決定 4, IADR-0420 (#1233):
+      #   ユニットの主体が `project` を付けずに保存したこと（**0 が正常**）。上の群とは逆向きで、
+      #   沈黙ではなく**起きてはならない事象の発生**を鳴らす。`absent()` 系は使えない
+      #   （平常時は系列が立たないため恒常発火する）。理由の正本は compose 側の同名グループ。
+      - name: knowledge-health-violations
+        rules:
+          - alert: UnitDocumentsMissingProjectAttribute
+            expr: increase(documents_unit_project_missing_total[1h]) > 0
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "ユニットの主体が project を付けずに文書を保存した（0 が正常）"
+              description: "DocumentService の該当カウンタが直近 1 時間で前進した。ユニットの保存経路は project を無条件で付与するため、非ゼロはその経路を通らない書き込みの検出である。保存は止まっていない（計器であって統制ではない）。"
 ---
 apiVersion: apps/v1
 kind: Deployment

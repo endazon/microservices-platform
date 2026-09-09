@@ -237,6 +237,32 @@ groups:
           summary: "ナレッジ健全性の生産者が居ない: edge-type-usage の報告が 2 時間届いていない"
           description: "GraphService の定期収集が edge-type-usage を DashboardService へ届けていない（周期は 1 時間）。受け口の件数は最後の値で凍るため、画面は正常に見える。収集の失敗・リースの停滞・受け口への到達不能を疑う（ADR-0076 決定 3）。"
 
+  # FR-05, FR-16, SC-10, SC-12, ADR-0085 決定 4, IADR-0420 (#1233):
+  # **ユニットの主体が `project` を付けずに文書を保存した**ことを warning とする。
+  #
+  # 🔴 **これは「生産者が居ない」群とは逆向きの器である。** 上の群は**沈黙**を鳴らすが、
+  #   こちらは**発生してはならない事象が 1 件でも起きた**ことを鳴らす。計画は本指標を
+  #   「0 が正常」と定めており、ユニット側の保存経路は `project` を無条件で付与する。
+  #   **したがって非ゼロは、その経路を通らない書き込みが起きたことの検出である。**
+  #
+  # 🔴 **鳴っても保存は止まっていない。これは統制ではなく計器である**（ADR-0085 決定 4）。
+  #   止めるには基盤側の必須化が要り、計画は決定 1 でそれをしないと定めた。
+  #   **「鳴らないこと」を「穴が塞がっていること」と読まない。**
+  #
+  # 🔴 **`absent()` 系ではなく `increase(...[1h]) > 0` である。** カウンタは違反が起きたときだけ
+  #   前進するため、平常時は系列が立たない（＝ `absent` を置くと恒常発火する）。窓を 1 時間に
+  #   採るのは、単発の違反を取りこぼさず、かつ再起動でカウンタが 0 へ戻っても検出が残るためである。
+  #   `for` は 5 分（窓の側が既に均しており、ここは scrape の欠けだけを吸収する）。
+  - name: knowledge-health-violations
+    rules:
+      - alert: UnitDocumentsMissingProjectAttribute
+        expr: increase(documents_unit_project_missing_total[1h]) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "ユニットの主体が project を付けずに文書を保存した（0 が正常）"
+          description: "DocumentService の documents_unit_project_missing_total が直近 1 時間で前進した。ユニット（サービスアカウント）の保存経路は project を無条件で付与するため、非ゼロはその経路を通らない書き込みが起きたことを意味する。documents_client_id / documents_operation で書き手と操作を特定する。保存は止まっていない（計器であって統制ではない。ADR-0085 決定 4）。"
+
   # --- follow-up: exporter/カスタムメトリクス配線後に有効化する（#198 注意参照） ---
   # - name: platform-messaging
   #   rules:
