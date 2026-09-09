@@ -6804,7 +6804,16 @@ ${r.stderr}`);
         //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-ci-latency.js` と同じ扱い）。
         //    🔴 同じ PR で `check-coverage-floor.js` へ足した期待件数の導出は、初稿の `git ls-files` を
         //    fs 走査へ改めた —— git で引くとクラス B になり、本テストの両方向分類が実挙動で捕まえた。
-        assert.strictEqual(scripts.length, 55, `検査器の母集合が 55 本から変わった（${scripts.length} 件）`);
+        // ★ planning#591 Q2 / IADR-0423 で `check-planning-adr-range.js`（本リポの計画 ID レンジ宣言が
+        //    計画リポジトリの公開する導出結果 `tools/doc-checks/kg-ranges.json` と一致しているか。
+        //    FR / UC / SC / ADR の 4 種を突合し、**scanned（突合できた種別数）を必ず併記する** ——
+        //    `scanned: 0` は「ずれが無い」ではなく「検査が動いていない」である）を新設したため 55 → 56。
+        //    🔴 **これは「同型の事故が 2 回」ではなく計画側の裁定に基づく新設である**（計画 ADR-0093
+        //    決定 3 が実装リポへ追随を求めた）。なお事故そのものは 2026-09-08（#1333）と 2026-09-09 の
+        //    2 回起きている。**常に exit 0**（警告のみ。ビルドの前提にしない＝同決定 3）。
+        //    `gh` で GitHub API を叩くが git は一切呼ばないため、TRACKED_CHECKERS / HEAD_CHECKERS の
+        //    どちらにも載らない（`backlog-audit.js` / `check-ci-latency.js` と同じ扱い）。
+        assert.strictEqual(scripts.length, 56, `検査器の母集合が 56 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
