@@ -1,6 +1,7 @@
 <!-- trace:
 adrs: [ADR-0048]
 iadrs: [IADR-0067, IADR-0180, IADR-0240]
+specs: [20260909_issue-1345-1348_ci-governance-audit-followups]
 issues: [#268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
 -->
 

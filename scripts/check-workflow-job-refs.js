@@ -106,7 +106,7 @@ function parseRequiredCheckTable(md) {
 /** 面 A: 「下表の N 件」「必須チェック | 下表の N 件」の N を全部抜く（純関数）。 */
 function parseCountClaims(md) {
   const out = [];
-  const re = /下表の\s*\**(\d+)\s*件/g;
+  const re = /下表の\s*\**(\d+)\**\s*件/g;
   let m;
   while ((m = re.exec(String(md)))) out.push(Number(m[1]));
   return out;
