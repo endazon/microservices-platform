@@ -1,6 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Observability;
 
 namespace LlmGateway.Features.Completions.CompleteStream;
@@ -48,7 +49,14 @@ public static class CompleteStreamEndpoint
                 await http.Response.WriteAsync($"data: {JsonSerializer.Serialize(ev, SseJson)}\n\n", ct);
                 await http.Response.Body.FlushAsync(ct);
             }
-        }).WithName("CompleteStream");
+        })
+            .WithName("CompleteStream")
+            // 🔴 NFR-09, ADR-0004, ADR-0084 決定 1, [[IADR-0379]] 決定 4, [[IADR-0424]] (#1364):
+            // **この端点も `ServiceCaller` を要する。** `/complete` と同じ判定器を呼ぶ以上、
+            // 門を片方だけに掛けると**輸送を変えるだけで迂回できる**。
+            // 🔴 **端点ごとに掛ける**（`ADR-0084` 決定 1）—— 群（`MapGroup("")`）へまとめて掛けないのは、
+            // 判定の単位を端点に残すためである。
+            .RequireAuthorization(PlatformAuthPolicies.ServiceCaller);
 
         return app;
     }

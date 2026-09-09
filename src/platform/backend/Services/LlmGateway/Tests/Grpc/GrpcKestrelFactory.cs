@@ -1,9 +1,8 @@
+using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
-using System.Text;
 using Anthropic.SDK;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Domain.Routing;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -11,11 +10,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.IdentityModel.JsonWebTokens;
-using Microsoft.IdentityModel.Protocols;
-using Microsoft.IdentityModel.Protocols.OpenIdConnect;
-using Microsoft.IdentityModel.Tokens;
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace LlmGateway.Tests.Grpc;
 
@@ -39,10 +35,9 @@ namespace LlmGateway.Tests.Grpc;
 // だから各テストクラスの `IClassFixture` ではなく **`GrpcServerCollection` の共有器**にしてある。
 public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
 {
-    public const string Issuer = "https://test-issuer/realms/platform";
-
-    private static readonly SymmetricSecurityKey SigningKey =
-        new(Encoding.UTF8.GetBytes("grpc-s2s-test-signing-key-0123456789abcdef-0123456789"));
+    // #1364: 発行器と検証鍵の実体は `TestServiceTokens` にある（REST の器と共有する）。
+    // **綴りと値はここへ複写しない** —— 2 つの器が別々の鍵を持つと、片方だけが古くなる。
+    public const string Issuer = TestServiceTokens.Issuer;
 
     // ポートは GrpcTestConfiguration（環境変数）が決める。ConfigureAppConfiguration では間に合わない。
     public static int GrpcPort => GrpcTestConfiguration.GrpcPort;
@@ -99,36 +94,29 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
             services.AddKeyedSingleton<IEmbeddingProvider, StubEmbeddingProvider>("selfhosted-embedding");
             services.AddKeyedSingleton<IEmbeddingProvider, StubEmbeddingProvider>("deterministic-embedding");
 
-            services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, o =>
-            {
-                o.ConfigurationManager = new StaticConfigurationManager<OpenIdConnectConfiguration>(
-                    new OpenIdConnectConfiguration { Issuer = Issuer });
-                o.TokenValidationParameters.IssuerSigningKey = SigningKey;
-                o.TokenValidationParameters.ValidIssuer = Issuer;
-            });
+            TestServiceTokens.UseStaticJwtBearer(services);
         });
     }
 
-    // テスト用 IdP の代わりに JWT を発行する。realm_access.roles は KeycloakRolesClaimsTransformation が
-    // ClaimTypes.Role へ展開する（実 Keycloak トークンと同じ形）。
-    public static string IssueToken(string subject, IEnumerable<string> realmRoles)
+    /// <summary>
+    /// NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): 同じプロセスの **HTTP/1.1 側（REST）** を叩く
+    /// クライアント。**s2s トークンを載せる** —— REST 3 口が `ServiceCaller` を要するようになったため、
+    /// 素の `HttpClient` では 401 になる（従前は資格情報なしで通っていた）。
+    /// </summary>
+    public HttpClient CreateRestClient() => new()
     {
-        var descriptor = new SecurityTokenDescriptor
+        BaseAddress = new Uri(HttpAddress),
+        DefaultRequestHeaders =
         {
-            Issuer = Issuer,
-            IssuedAt = DateTime.UtcNow,
-            NotBefore = DateTime.UtcNow.AddMinutes(-1),
-            Expires = DateTime.UtcNow.AddMinutes(5),
-            SigningCredentials = new SigningCredentials(SigningKey, SecurityAlgorithms.HmacSha256),
-            Claims = new Dictionary<string, object>
-            {
-                ["sub"] = subject,
-                ["preferred_username"] = subject,
-                ["realm_access"] = new Dictionary<string, object> { ["roles"] = realmRoles.ToArray() },
-            },
-        };
-        return new JsonWebTokenHandler().CreateToken(descriptor);
-    }
+            Authorization = new AuthenticationHeaderValue(
+                "Bearer", TestServiceTokens.IssueToken(
+                    "service-account-retrieval-service", [PlatformAuthPolicies.ServiceRole])),
+        },
+    };
+
+    // テスト用 IdP の代わりに JWT を発行する（実体は TestServiceTokens。#1364 で REST の器と共有した）。
+    public static string IssueToken(string subject, IEnumerable<string> realmRoles) =>
+        TestServiceTokens.IssueToken(subject, realmRoles);
 }
 
 // IADR-0400 (#1255): テキスト生成の台本つきスタブ。

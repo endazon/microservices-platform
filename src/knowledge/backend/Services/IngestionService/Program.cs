@@ -58,8 +58,10 @@ builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
 if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
     builder.Services.AddSingleton<IEmbeddingService, LlmGatewayGrpcEmbeddingService>();
 else
+    // 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): **REST 面は `ServiceCaller` を要する。**
     builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(c =>
-        c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"));
+        c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"))
+        .AddLlmGatewayServiceToken(builder.Configuration);
 
 // ADR-0003（Superseded by ADR-0027・注記は #580）: MassTransit
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。

@@ -13,11 +13,14 @@ namespace LlmGateway.Features.Completions;
 // REST の `POST /complete` / `POST /complete/stream` と**同じ判定器**（CompletionUseCase）を呼ぶ ——
 // 判定器を 2 つにしない。REST と gRPC は並走し、**並走中の正は REST** である（IADR-0379 決定 5）。
 //
-// 🔴 **ServiceCaller を要求する。** REST の `/complete` 系はサービス間呼び出し専用として認可を掛けて
-// いない（メッシュの mTLS が第一防御）。gRPC の面では**呼び出し側サービス自身の資格情報**
+// 🔴 **ServiceCaller を要求する。** **呼び出し側サービス自身の資格情報**
 // （client credentials の JWT・`platform-service` ロール）を要求し、**利用者のトークンでは通さない**
 // —— 通すと「利用者が直接呼んだ」と区別できず confused deputy になる（IADR-0379 決定 4）。
-// この面は現行の REST より**強い**（緩めていない）。
+//
+// 🔴 **［2026-09-09 是正 / #1364・[[IADR-0424]]］REST の `/complete` 系も同じポリシーを要する。**
+// 従前ここには「REST はサービス間呼び出し専用として認可を掛けていない（メッシュの mTLS が第一防御）」
+// 「この面は現行の REST より**強い**」と書いてあった。**その非対称は解消した** ——
+// 2 つの面は同じ 1 つのポリシーで判定される（`ADR-0084` 決定 1 は端点単位で判定することを求める）。
 //
 // 🔴 **縮退は RpcException にしない**（IADR-0400 決定 5。埋め込みの呼び出し元側とは向きが逆である）。
 // 越境拒否・プロバイダ未登録・上流不調はすべて `sent=false` の**応答**（一括）または

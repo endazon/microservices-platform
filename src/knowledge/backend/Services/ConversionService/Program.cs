@@ -82,8 +82,10 @@ builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
 if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
     builder.Services.AddSingleton<IDiagramCoder, LlmGatewayGrpcDiagramCoder>();
 else
+    // 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): **REST 面は `ServiceCaller` を要する。**
     builder.Services.AddHttpClient<IDiagramCoder, LlmGatewayDiagramCoder>(c =>
-        c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"));
+        c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"))
+        .AddLlmGatewayServiceToken(builder.Configuration);
 
 // FR-12, UC-06: 正規化オーケストレータ（本文＋図＋保管を束ねる）。
 builder.Services.AddScoped<INormalizationService, NormalizationService>();

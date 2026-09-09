@@ -113,9 +113,11 @@ builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
 if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
     builder.Services.AddSingleton<ISuggestionLlmClient, LlmGatewayGrpcSuggestionClient>();
 else
+    // 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): **REST 面は `ServiceCaller` を要する。**
     builder.Services.AddHttpClient<ISuggestionLlmClient, LlmGatewaySuggestionClient>(c =>
         c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"]
-            ?? "http://llm-gateway:5010"));
+            ?? "http://llm-gateway:5010"))
+        .AddLlmGatewayServiceToken(builder.Configuration);
 // FR-18, ADR-0051 決定 1, IADR-0380 (#1244): 類似度候補の供給元。
 //
 // 🔴 **既定は語の共起（TermOverlapSimilarityCandidateSource）である。** #1244 の実測で、供給元が

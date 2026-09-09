@@ -1,4 +1,5 @@
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace LlmGateway.Features.Embeddings.Embed;
 
@@ -20,7 +21,17 @@ public static class EmbeddingEndpoints
             EmbedApiRequest req,
             EmbedUseCase useCase,
             CancellationToken ct) => Results.Ok(await useCase.ExecuteAsync(req, ct)))
-            .WithName("Embed").Produces<EmbedApiResponse>();
+            .WithName("Embed")
+            .Produces<EmbedApiResponse>()
+            // 🔴 NFR-09, ADR-0004, ADR-0084 決定 1, [[IADR-0379]] 決定 4, [[IADR-0424]] (#1364):
+            // **この端点は `ServiceCaller` を要する。** 従前は「サービス間呼び出し専用だから」という
+            // 理由で認可を掛けていなかったが、**専用であることと誰でも通すことは同じではない**
+            // （`AuthzEndpoints` が #1333 で同じ誤りを正した形と同型である）。
+            // メッシュの mTLS は相手の身元を保証するだけで、身元を見る処理はここに無かった。
+            //
+            // 🔴 **群ではなく端点へ掛ける**（`ADR-0084` 決定 1）。群 `MapGroup("")` はタグ付けのためにあり、
+            // 端点が増えたときに**新しい端点が黙って門を継承する**形にしない。
+            .RequireAuthorization(PlatformAuthPolicies.ServiceCaller);
 
         return app;
     }
