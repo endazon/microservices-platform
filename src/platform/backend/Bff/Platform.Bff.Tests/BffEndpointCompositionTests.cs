@@ -51,6 +51,8 @@ public class BffEndpointCompositionTests
             app.MapAssumptionsBffEndpoints();
             app.MapRiskControlsBffEndpoints();
             app.MapMonitorBffEndpoints();
+            // AST#722/AST#723, AST/SC-04, AST/FR-09, AST/FR-11: OpenD 認証操作（後段は OpenD 同居のサイドカー）。
+            app.MapOpendAuthBffEndpoints();
             // #452, FR-16, UC-09, SC-12: MCP クライアント登録管理（後段は McpServer）。
             app.MapMcpClientBffEndpoints();
             // #452, FR-05, FR-09, UC-05, SC-17: 利用者アカウント管理（後段は AuthorizationService）。
@@ -82,7 +84,7 @@ public class BffEndpointCompositionTests
         // 後段の NotificationService が platform ユニットのサービスであるため。IADR-0346 決定 1）。
         // #1199, FR-13, UC-07, SC-04: Wiki 前段の 4 経路（Wiki）を追加した（Knowledge.Bff.Endpoints。
         // 後段の WikiService が knowledge ユニットのサービスであるため。IADR-0355 決定 1）。
-        BffEndpointComposition.Modules.Should().HaveCount(21);
+        BffEndpointComposition.Modules.Should().HaveCount(22);
     }
 
     // 内容一致の検証（claude-review 指摘対応）: 合成点経由でビルドした実アプリ（全 DI 込み）の実体化ルートが、
@@ -91,7 +93,7 @@ public class BffEndpointCompositionTests
     [Fact]
     public void Composition_maps_exactly_the_expected_bff_route_groups()
     {
-        // 期待する 20 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
+        // 期待する 21 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
         string[] expectedGroups =
         [
             // #451, FR-19, FR-20, SC-19, SC-20: 個人資料と同期端末（後段は DocumentService の
@@ -125,6 +127,10 @@ public class BffEndpointCompositionTests
             "/bff/documents",
             "/bff/feedback",
             "/bff/monitor",
+            // AST#722/AST#723, AST/SC-04, AST/FR-09, AST/FR-11: OpenD 認証操作（後段は OpenD Pod へ
+            // 同居するサイドカー）。🔴 **この BFF 自身が唯一の認可点**である（`trading-owner` 限定・
+            // 権限外は 404）—— 後段は Pod 網にしか bind せず認証をまったく持たないため、委譲先が無い。
+            "/bff/opend-auth",
             "/bff/risk-controls",
             "/bff/search",
             // FR-09, SC-09, #640: タグ辞書の管理（追加・改名・削除）。後段は DocumentService
