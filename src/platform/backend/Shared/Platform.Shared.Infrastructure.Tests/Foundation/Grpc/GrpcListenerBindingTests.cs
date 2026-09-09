@@ -34,13 +34,36 @@ public sealed class GrpcListenerBindingTests
             .Select(a => a.Address)
             .FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a));
 
+    // 🔴 空きポートは **OS の動的（ephemeral）範囲の外**から選ぶ（PR #1355 の CI で実測した flake）。
+    // 従前は `TcpListener(…, 0)` で OS に選ばせて解放し、その番号を後で Kestrel が bind していた。
+    // 解放から bind までの間に、並列に走る他のテストプロセスの**送信側ソケット**が同じ番号を取り得る ——
+    // 動的範囲（Linux の既定 32768〜60999）は送信側の割当にも使われるからである。CI では gRPC の
+    // 試験 25 件が「address already in use」で一斉に落ちた（本番コードは無変更の push で）。
+    // 動的範囲の外（20000〜29999）から候補を引き、bind できることを確かめてから返す。残る衝突は
+    // 「別プロセスが同時に同じ候補を引く」ときだけである。`Grpc:Port` に 0 は使えない（0 は「立てない」）。
     private static int FreeTcpPort()
     {
-        var l = new TcpListener(IPAddress.Loopback, 0);
-        l.Start();
-        var port = ((IPEndPoint)l.LocalEndpoint).Port;
-        l.Stop();
-        return port;
+        var random = new Random();
+        for (var attempt = 0; attempt < 50; attempt++)
+        {
+            var candidate = random.Next(20000, 30000);
+            var listener = new TcpListener(IPAddress.Loopback, candidate);
+            try
+            {
+                listener.Start();
+                return candidate;
+            }
+            catch (SocketException)
+            {
+                // 使用中。次の候補へ。
+            }
+            finally
+            {
+                listener.Stop();
+            }
+        }
+
+        throw new InvalidOperationException("20000〜29999 に空きポートが見つからなかった。");
     }
 
     private static async Task<WebApplication> StartAsync(string httpUrls, int grpcPort)

@@ -2,89 +2,197 @@
   "title": "Platform Overview",
   "uid": "microservices-platform-overview",
   "schemaVersion": 38,
-  "version": 4,
+  "version": 5,
   "refresh": "30s",
-  "tags": ["microservices-platform"],
+  "tags": [
+    "microservices-platform"
+  ],
   "panels": [
     {
       "id": 1,
       "title": "HTTP Request Rate (RPS)",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
-      "targets": [{
-        "datasource": "Prometheus",
-        "expr": "sum by (job) (rate(http_server_request_duration_seconds_count[1m]))",
-        "legendFormat": "{{job}}"
-      }]
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum by (job) (rate(http_server_request_duration_seconds_count[1m]))",
+          "legendFormat": "{{job}}"
+        }
+      ]
     },
     {
       "id": 2,
       "title": "HTTP Error Rate (%)",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
-      "targets": [{
-        "datasource": "Prometheus",
-        "expr": "sum by (job) (rate(http_server_request_duration_seconds_count{http_response_status_code=~'5..'}[1m])) / sum by (job) (rate(http_server_request_duration_seconds_count[1m])) * 100",
-        "legendFormat": "{{job}}"
-      }]
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum by (job) (rate(http_server_request_duration_seconds_count{http_response_status_code=~'5..'}[1m])) / sum by (job) (rate(http_server_request_duration_seconds_count[1m])) * 100",
+          "legendFormat": "{{job}}"
+        }
+      ]
     },
     {
       "id": 3,
       "title": "HTTP P99 Latency (s)",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
-      "targets": [{
-        "datasource": "Prometheus",
-        "expr": "histogram_quantile(0.99, sum by (le, job) (rate(http_server_request_duration_seconds_bucket[5m])))",
-        "legendFormat": "p99 {{job}}"
-      }]
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.99, sum by (le, job) (rate(http_server_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p99 {{job}}"
+        }
+      ]
     },
     {
       "id": 4,
       "title": "RAG Ask Latency P99 (s)",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
-      "targets": [{
-        "datasource": "Prometheus",
-        "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{job='microservices-platform.aianalysis-service', http_route='/analysis/ask'}[5m])))",
-        "legendFormat": "p99 /analysis/ask"
-      }]
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{job='microservices-platform.aianalysis-service', http_route='/analysis/ask'}[5m])))",
+          "legendFormat": "p99 /analysis/ask"
+        }
+      ]
     },
     {
       "id": 5,
       "title": "未定義の辺の型のフォールバック / Undefined edge-type fallbacks (MUST be 0)",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
       "description": "**ナレッジ健全性の指標（#443）。0 が正常である。** リンク抽出で辞書に無い辺の型が現れ `related` へ丸められた件数（ADR-0033 決定 3）。0 でない間は**型定義が不足している**。`explicit` = フロントマターの明示指定、`contextual` = 構文の文脈既定。**型名はここに出ない** —— 書き手が自由に書けるキー名で基数が無界なため、型名はログ（graph-service）へ回している。\n\n**この指標は SC-10 の画面に出していない。** 出さない根拠が「Grafana で観測できれば成立する」であり、**このパネルがその根拠の実体である**（#443 まで描くパネルが存在せず、根拠が成立していなかった）。",
-      "targets": [{
-        "datasource": "Prometheus",
-        "expr": "sum by (graph_fallback_layer) (increase(graph_edge_type_fallback_total[$__range]))",
-        "legendFormat": "{{graph_fallback_layer}}"
-      }]
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum by (graph_fallback_layer) (increase(graph_edge_type_fallback_total[$__range]))",
+          "legendFormat": "{{graph_fallback_layer}}"
+        }
+      ]
     },
     {
       "id": 6,
       "title": "取り込み経路で辞書に無いタグ / Ingest unknown tags (MUST be 0)",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
       "description": "**ナレッジ健全性の指標（#443）。0 が正常である —— しかも他の指標と読み方が違う。** 他は「発生してよい事象の量」だが、**取り込み経路はタグを生成しないと計画が確定している**（利用者裁定 2026-08-09）。よって 0 でない値は「量が多い」ではなく**規定違反の検出**である。`ingest_source` は現れた経路。\n\n**この指標も SC-10 の画面に出していない。**「Grafana で観測できれば成立する」が根拠であり、**このパネルがその実体である**。",
-      "targets": [{
-        "datasource": "Prometheus",
-        "expr": "sum by (ingest_source) (increase(ingest_unknown_tag_total[$__range]))",
-        "legendFormat": "{{ingest_source}}"
-      }]
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum by (ingest_source) (increase(ingest_unknown_tag_total[$__range]))",
+          "legendFormat": "{{ingest_source}}"
+        }
+      ]
     },
     {
       "id": 7,
       "title": "RAG 初回応答 P95 / RAG first-token (TTFT) P95 (s)",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
       "description": "**NFR-02 の SLI そのものである（初回応答 p95 5 秒以下）。** `/analysis/ask/stream` の要求受領から最初の `token` イベントを書き出すまでの秒数（ADR-0076 決定 5 / #1204）。\n\n🔴 **上のパネル 4（RAG Ask Latency P99）と混同しない** —— あちらは一括経路 `/analysis/ask` の**応答完了**であり、長い回答ほど悪化する。**SLO の判定はこのパネルの指標で行う。**\n\n🔴 **空なら「速い」ではなく「呼ばれていない」である。** 本計器は `/analysis/ask/stream` が呼ばれた分しか系列を持たない。",
-      "targets": [{
-        "datasource": "Prometheus",
-        "expr": "histogram_quantile(0.95, sum by (le) (rate(rag_answer_first_token_duration_seconds_bucket{job='microservices-platform.aianalysis-service'}[5m])))",
-        "legendFormat": "p95 TTFT /analysis/ask/stream"
-      }]
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(rag_answer_first_token_duration_seconds_bucket{job='microservices-platform.aianalysis-service'}[5m])))",
+          "legendFormat": "p95 TTFT /analysis/ask/stream"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "ユニットの主体が project 無しで保存 / Unit-subject saves missing project (MUST be 0)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "description": "**ナレッジ健全性の 8 指標目（#1233 / 計画 ADR-0085 決定 4。2026-09-06 確定）。0 が正常である。** 左隣のパネル 6（未知タグ）と同じ読み方であり、**発生してはならない事象**を数える —— ユニット（サービスアカウント）の保存経路は `project` を無条件で付与するため、**非ゼロはその経路を通らない書き込みが起きたことの検出**である。`documents_client_id` は書き手のクライアント、`documents_operation` は create / update / update_metadata。\n\n🔴 **鳴っても保存は止まっていない。これは統制ではなく計器である**（同決定 4）。止めるには基盤側の必須化が要り、計画は決定 1 でそれをしないと定めた。**「0 である」を「穴が塞がっている」と読まない。**\n\n**この指標も SC-10 の画面には出していない**（同節は着手保留。「Grafana で観測できれば成立する」が根拠であり、このパネルがその実体である）。",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum by (documents_client_id, documents_operation) (increase(documents_unit_project_missing_total[$__range]))",
+          "legendFormat": "{{documents_client_id}} / {{documents_operation}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "近接 MTA のキュー長 / Mail relay queue size (messages)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "description": "**SC-15 のパスワードリセットが通る近接 MTA（mail-relay）のキュー長。**上流（組織のメールテナント）が停止しているかを見る唯一の窓である（ADR-0078 決定 3 が観測点をここへ移した）。\n\n🔴 **`deferred` が 0 でない間、メールは届いていない。** 近接 MTA を挟んだので上流が止まっていても認証基盤の応答は 200 であり、**利用者にも監査ログにも現れない**。キュー寿命は 30 分で、超えたメールは黙って破棄される。\n\n🔴 **系列が消えたら 0 ではなく「測っていない」である。** exporter は読めなかったキューに 0 を出さず系列ごと欠かす。不在は `MailRelayQueueSeriesAbsent` が鳴らす。\n\n経路: mail-relay のサイドカー exporter(:9154) → otel-collector の prometheus receiver → remote write。**Prometheus の直 scrape 対象は otel-collector のままである。**",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum by (queue) (postfix_queue_size)",
+          "legendFormat": "{{queue}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "近接 MTA の最古メッセージの齢 / Mail relay oldest message age (s)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "description": "**後送の滞留時間。**到着からの経過秒であり、キューファイルの更新時刻ではない（Postfix は deferred の更新時刻を**次回配送予定時刻**へ書き換えるため、そこから齢は採れない）。値はキュー ID に埋まった到着時刻から復号している。\n\n🔴 **1800 秒（30 分）でメールは破棄される**（`POSTFIX_maximal_queue_lifetime`。realm のリセットリンク寿命に合わせた値）。破棄は事後に数えられない —— spool から消えるだけである。だから**破棄される前**に鳴らす（`MailRelayDeferredMessageNearExpiry`・暫定 1200 秒）。\n\n🔴 **空のキューは 0 を出す**（読めている）。系列そのものの不在とは意味が違う。",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "max by (queue) (postfix_queue_oldest_message_age_seconds)",
+          "legendFormat": "{{queue}}"
+        }
+      ]
     }
   ]
 }

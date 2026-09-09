@@ -113,4 +113,47 @@ public class EmbeddingRoutingOptionsValidatorTests
     public void Validate_OnlyDeterministicEnabled_Succeeds()
         => Validate(Voyage(enabled: false), SelfHosted(), Deterministic(enabled: true))
             .Succeeded.Should().BeTrue();
+
+    // ---- FR-03, ADR-0016, ADR-0017, [[IADR-0422]] 決定 2 (#336): 検索クエリ送信先の固定 ----
+
+    private static ValidateOptionsResultAssertion ValidateWithProfile(
+        string? queryProfile, params EmbeddingEndpointOptions[] endpoints)
+    {
+        var result = new EmbeddingRoutingOptionsValidator()
+            .Validate(null, new EmbeddingRoutingOptions { QueryProfile = queryProfile, Endpoints = [.. endpoints] });
+        return new ValidateOptionsResultAssertion(result.Succeeded, result.FailureMessage);
+    }
+
+    // 未設定なら従来どおり通る（既定の挙動は動かない）。
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void Validate_QueryProfile未設定なら通る(string? profile)
+        => ValidateWithProfile(profile, Voyage(), SelfHosted()).Succeeded.Should().BeTrue();
+
+    // 有効なエンドポイントを名指しすれば通る（陽性対照）。
+    [Fact]
+    public void Validate_有効なQueryProfileは通る()
+        => ValidateWithProfile("selfhosted-ruri", Voyage(), SelfHosted(enabled: true))
+            .Succeeded.Should().BeTrue();
+
+    // 🔴 実在しない名前は**起動時に落とす**。綴り間違いのまま起動すると、全検索のクエリ埋め込みが
+    // 静かに空ベクトルになり、キーワード系統だけで応答が返る（測定は成立したように見える）。
+    [Fact]
+    public void Validate_実在しないQueryProfileは落ちる()
+    {
+        var result = ValidateWithProfile("selfhosted-rurii", Voyage(), SelfHosted());
+        result.Succeeded.Should().BeFalse();
+        result.FailureMessage.Should().Contain("selfhosted-rurii");
+    }
+
+    // 🔴 無効（Enabled=false）なエンドポイントの名指しも落とす。TEI を配備する前に固定だけ入れた
+    // 状態がこれであり、**そのまま起動すると「Ruri で測っている」と誤認する**。
+    [Fact]
+    public void Validate_無効なQueryProfileは落ちる()
+    {
+        var result = ValidateWithProfile("selfhosted-ruri", Voyage(), SelfHosted(enabled: false));
+        result.Succeeded.Should().BeFalse();
+        result.FailureMessage.Should().Contain("Enabled=false");
+    }
 }

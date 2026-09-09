@@ -5,9 +5,13 @@ using Platform.Shared.Contracts.Dtos;
 namespace RetrievalService.Infrastructure.ExternalServices;
 
 // ADR-0013, ADR-0016: LLM ゲートウェイ経由でクエリ埋め込みを生成する（検索経路 = Purpose=Query）。
-// クエリは検索対象コレクション（既定 voyage / 1024 次元）へ整合させるため、ゲートウェイは既定外部経路へ固定する。
+// クエリは検索対象コレクションへ整合させるため、ゲートウェイが送信先を決める（**既定では**外部経路
+// ＝ voyage / 1024 次元。測定時は `Embedding:Routing:QueryProfile` で名指しできる。IADR-0422 決定 2）。
 // 高機密（ruri / 768 次元）コレクションの横断検索は FR-03 の後続課題。
-public class LlmGatewayEmbeddingService(HttpClient http) : IEmbeddingService
+public class LlmGatewayEmbeddingService(
+    HttpClient http,
+    QueryEmbeddingTarget? target = null,
+    ILogger<LlmGatewayEmbeddingService>? logger = null) : IEmbeddingService
 {
     public async Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
     {
@@ -27,6 +31,18 @@ public class LlmGatewayEmbeddingService(HttpClient http) : IEmbeddingService
         // 空ベクトルは「意味検索の系統が使えない」の合図であり、呼び出し側（HybridSearchService）が読む。
         if (result is not { Embedded: true })
             return [];
+
+        // FR-02, FR-03, ADR-0016, IADR-0422 決定 3 (#336): **答えたコレクションと読むコレクションを照合する。**
+        // 食い違ったベクトルで検索すると**別モデルの空間へ問い合わせて順位が返る** —— 0 件にすらならず、
+        // 壊れた結果が正常に見える。gRPC 実装と**同じ判定**を通す。
+        if (!QueryEmbeddingCollection.Matches(result.Collection, target))
+        {
+            logger?.LogError(
+                "Query embedding collection mismatch: gateway answered {Answered} but search reads {Target} (endpoint {Endpoint}). "
+                + "Falling back to keyword-only search.",
+                result.Collection, target!.Collection, result.Endpoint);
+            return [];
+        }
 
         return result.Vector;
     }

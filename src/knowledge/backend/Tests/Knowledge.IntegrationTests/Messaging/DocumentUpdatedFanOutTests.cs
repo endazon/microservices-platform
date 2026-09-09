@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using IngestionService.Domain.Ports;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using WikiService.Infrastructure.Persistence;
@@ -43,6 +44,13 @@ namespace Knowledge.IntegrationTests.Messaging;
 // 受信すると依存未解決で `NotSupportedException` になり、Wolverine はログ 1 行を出して
 // **ack し捨てる**（例外も再配信も DLQ も残らない）。当チェーンに居る**正しいハンドラも道連れで走らない**。
 // 対処は共通ヘルパ（`AddPlatformWolverineStep`）での明示固定であり、**待ち時間は 1 秒も伸ばしていない**。
+//
+// 🔴 ［2026-09-09 追記 / #1337］**購読キューと文書 Title を実行ごとに一意化した。**
+// 外部から与えたブローカ／DB（`PLATFORM_TEST_RABBITMQ` / `PLATFORM_TEST_POSTGRES`）では
+// **全クラスが 1 台を共有する**ため、固定名の購読キューには他クラスが発行した本物の
+// `DocumentUpdated` が滞留し、固定 Title は共有 DB の `Pages.Slug` 一意索引と衝突していた。
+// どちらも Testcontainers（クラスごとに新品）では起こらない。理由と作法は
+// `Fixtures/PipelineQueueOverride.cs` にある。**待ち時間は 1 秒も伸ばしていない。**
 [Collection(FanOutTestCollection.Name)]
 [Trait("Category", "Integration")]
 public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitMqFixture rabbit)
@@ -51,6 +59,23 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
     // 両ホストが受信を報告する先。ホストは別々の DI コンテナを持つので、テスト側の
     // シングルトンを両方へ注入して待ち合わせる。
     private readonly RecordingProbe _probe = new();
+
+    // ［2026-09-09 / #1337］🔴 **実行ごとに一意な識別子。購読キュー名の第 2 要素に入れる。**
+    // 前置（`<service>.<queue>`）の形は変えない —— 変えるのは第 2 要素だけである。
+    private readonly string _runId = Guid.NewGuid().ToString("N")[..8];
+
+    // 派生させた宣言（pipeline.json）の一時ファイル。破棄時に消す。
+    private string _fixturePath = "";
+
+    // `ingest`（IngestionService）と `wiki-sync`（WikiService）へ宣言するキュー名。
+    // **両段へ同じ値を宣言する** —— 既定（`<svc>.DocumentUpdated`）と同じ形であり、
+    // 「キューを分けるのは前置である」という検査対象の性質をそのまま保つ。
+    private string SyncQueue => $"docupd-{_runId}";
+
+    // `wiki-delete` は**別の値**にする。同一サービスの 2 段へ同じ値を宣言すると
+    // 前置後のキュー名が衝突し、2 つの購読が 1 本へ潰れる（器がその状態を作らないよう
+    // `PipelineQueueOverride` が派生の時点で止める）。
+    private string DeleteQueue => $"docdel-{_runId}";
 
     private IngestionServiceFactory _ingestionRoot = null!;
     private WikiServiceFactory _wikiRoot = null!;
@@ -68,6 +93,17 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
     {
         if (!postgres.IsAvailable || !rabbit.IsAvailable) return;
 
+        // ［2026-09-09 / #1337］正本 pipeline.json から**実行ごとに一意な購読キュー**を派生させる。
+        // 共有ブローカでは固定名のキューに他クラスの本物のイベントが滞留する（理由は器の側にある）。
+        _fixturePath = PipelineQueueOverride.WriteDerivedFixture(
+            new Dictionary<string, string>
+            {
+                ["ingest"] = SyncQueue,
+                ["wiki-sync"] = SyncQueue,
+                ["wiki-delete"] = DeleteQueue,
+            },
+            "e3b-fanout-pipeline");
+
         _ingestionRoot = new IngestionServiceFactory(postgres, rabbit);
         _wikiRoot = new WikiServiceFactory(postgres, rabbit);
 
@@ -78,26 +114,39 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
         // メッセージングの配線（UseWolverine / AddPlatformWolverineStep / ListenToPlatformQueue /
         // UsePlatformMessagingDefaults）は 1 行も差し替えない —— 本テストが試験したいのは**トポロジ**であり、
         // 取り込み・同期の業務ロジックはユニットテストが担う。
-        _ingestion = _ingestionRoot.WithWebHostBuilder(b => b.ConfigureServices(services =>
+        _ingestion = _ingestionRoot.WithWebHostBuilder(b =>
         {
-            services.AddSingleton(_probe);
-            services.RemoveAll<IIngestionVectorStore>();
-            services.AddSingleton<IIngestionVectorStore>(sp =>
-                new RecordingVectorStore(sp.GetRequiredService<RecordingProbe>()));
-            services.RemoveAll<IDocumentContentReader>();
-            services.AddSingleton<IDocumentContentReader, StubContentReader>();
-            services.RemoveAll<IEmbeddingService>();
-            services.AddSingleton<IEmbeddingService, StubEmbeddingService>();
-        }));
+            b.UseSetting("Pipeline:ConfigPath", _fixturePath);
+            b.ConfigureServices(services =>
+            {
+                services.AddSingleton(_probe);
+                // ［2026-09-09 / #1337］ホストの Warning 以上をテスト側へ写す（診断のみ・判定は変えない）。
+                services.AddSingleton<ILoggerProvider>(
+                    new HostFailureLoggerProvider(_probe.Failures, FanOutHosts.Ingestion));
+                services.RemoveAll<IIngestionVectorStore>();
+                services.AddSingleton<IIngestionVectorStore>(sp =>
+                    new RecordingVectorStore(sp.GetRequiredService<RecordingProbe>()));
+                services.RemoveAll<IDocumentContentReader>();
+                services.AddSingleton<IDocumentContentReader, StubContentReader>();
+                services.RemoveAll<IEmbeddingService>();
+                services.AddSingleton<IEmbeddingService, StubEmbeddingService>();
+            });
+        });
 
-        _wiki = _wikiRoot.WithWebHostBuilder(b => b.ConfigureServices(services =>
+        _wiki = _wikiRoot.WithWebHostBuilder(b =>
         {
-            services.AddSingleton(_probe);
-            services.RemoveAll<IWikiJsClient>();
-            services.AddSingleton<IWikiJsClient, StubWikiJsClient>();
-            services.RemoveAll<IWikiContentReader>();
-            services.AddSingleton<IWikiContentReader, StubWikiContentReader>();
-        }));
+            b.UseSetting("Pipeline:ConfigPath", _fixturePath);
+            b.ConfigureServices(services =>
+            {
+                services.AddSingleton(_probe);
+                services.AddSingleton<ILoggerProvider>(
+                    new HostFailureLoggerProvider(_probe.Failures, FanOutHosts.Wiki));
+                services.RemoveAll<IWikiJsClient>();
+                services.AddSingleton<IWikiJsClient, StubWikiJsClient>();
+                services.RemoveAll<IWikiContentReader>();
+                services.AddSingleton<IWikiContentReader, StubWikiContentReader>();
+            });
+        });
 
         // #887 設計判断 4: WebApplicationFactory はホストを遅延起動する。**publish の前に両ホストを
         // 明示的に起こす。** ここを省くと片方がまだキュー（AutoProvision）を作っておらず、
@@ -115,8 +164,8 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
         // exchange は実行ごとに一意（固定名だと前回の束縛が残り、誤配線が「前回の状態に助けられて」
         // 緑になる —— W3 変異 M4 の実測）。キュー名は必ず手順 3 の適用点（共通ヘルパ）から導く。
         var exchange = $"e3b-fanout-{Guid.NewGuid():N}";
-        var ingestionQueue = WolverineExtensions.PlatformQueueName("ingestion-service", nameof(DocumentUpdated));
-        var wikiQueue = WolverineExtensions.PlatformQueueName("wiki-service", nameof(DocumentUpdated));
+        var ingestionQueue = WolverineExtensions.PlatformQueueName("ingestion-service", SyncQueue);
+        var wikiQueue = WolverineExtensions.PlatformQueueName("wiki-service", SyncQueue);
 
         // #1038: **購読が Accepting になるまで待ってから発行へ進む。**
         // ここを待たないと、テスト本体の 30 秒が「購読開始待ち ＋ 実処理」の両方を覆ってしまい、
@@ -154,6 +203,8 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
         if (_wiki is not null) await _wiki.DisposeAsync();
         if (_ingestionRoot is not null) await _ingestionRoot.DisposeAsync();
         if (_wikiRoot is not null) await _wikiRoot.DisposeAsync();
+        // 一時ファイルを残さない（消し忘れると次回以降の実行が古い宣言を拾い得る）。
+        if (_fixturePath.Length > 0 && File.Exists(_fixturePath)) File.Delete(_fixturePath);
     }
 
     // ADR-0027 手順 3: 1 回の発行で **両方の購読者**が受信することを固定する。
@@ -165,7 +216,13 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
         var docId = Guid.NewGuid();
         var evt = new DocumentUpdated(
             DocumentId: docId,
-            Title: "fan-out 統合テスト文書",
+            // ［2026-09-09 / #1337］🔴 **Title は実行ごとに一意にする。**
+            // WikiPage.Slug は Title だけから導かれ、`Pages.Slug` には一意索引がある。
+            // 共有 DB（PLATFORM_TEST_POSTGRES）では前回の実行が残した行と衝突し、
+            // SaveChanges が 23505 で落ちて再試行 → デッドレターへ行く。そのとき購読側は
+            // **受信しているのに終端の副作用が現れない**ため、テストからは「受信しなかった」と
+            // 見分けが付かない（診断は Measured() が載せる）。
+            Title: $"fan-out 統合テスト文書 {docId:N}",
             // WikiService の DocumentSyncConsumer は published / normalized 以外を早期 return する。
             // IngestionService は MarkdownUri が null なら早期 return する。**両方が実際に仕事をする
             // 入力**でなければ、受信していないのか黙って捨てたのかを区別できない。
@@ -224,7 +281,11 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
         + $"。ハンドラ探索アセンブリ: ingestion={ListenerReadiness.DescribeHandlerDiscovery(_ingestion.Services)}"
         + $" / wiki={ListenerReadiness.DescribeHandlerDiscovery(_wiki.Services)}"
         + "（サービス名と食い違っていれば、そのホストは**相手のハンドラ**を拾っており、"
-        + "受信したメッセージを例外も残さず ack して捨てている。#1073）";
+        + "受信したメッセージを例外も残さず ack して捨てている。#1073）"
+        // ［2026-09-09 / #1337］**購読ホスト側の警告・例外**。「受信していない」と
+        // 「受信したが落ちた（一意制約違反・デッドレター）」をここで読み分ける。
+        + $"。ホストの直近の警告/例外: ingestion={_probe.Failures.Describe(FanOutHosts.Ingestion)}"
+        + $" / wiki={_probe.Failures.Describe(FanOutHosts.Wiki)}";
 
     private async Task<bool> WaitForWikiPageAsync(Guid documentId, TimeSpan timeout)
     {
@@ -248,6 +309,9 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
 public sealed class RecordingProbe
 {
     public DocumentSignal IngestionUpserts { get; } = new();
+
+    // ［2026-09-09 / #1337］購読ホストの Warning 以上のログ。**診断専用**で判定には使わない。
+    internal HostFailureLog Failures { get; } = new();
 }
 
 // 特定の DocumentId が記録されるまで待つ。ポーリングではなく TaskCompletionSource で待つ。

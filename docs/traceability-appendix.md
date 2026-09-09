@@ -25,7 +25,7 @@ issues: [#1047, planning#202, planning#354, planning#395, planning#415]
 
 **規約の本文は資料再編の計画 ADR 決定 4 が持つ**（本書冒頭の trace ブロックの `adrs` キーを参照）。
 ここに置くのは書くときの実務だけである。**機械検査は `scripts/check-trace-blocks.js`**
-（CI の `doc-links` ジョブが `--self-test` と本走を続けて実行する）。参照グラフの生成は
+（CI の `static-checks` ジョブが `--self-test` と本走を続けて実行する）。参照グラフの生成は
 `scripts/gen-knowledge-graph.js`。
 
 - **置き場所**: frontmatter 終端の直後・最初の H1 見出しの直前。**1 文書 1 ブロック**。frontmatter が

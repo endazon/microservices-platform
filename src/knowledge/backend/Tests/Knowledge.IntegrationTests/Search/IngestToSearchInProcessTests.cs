@@ -5,14 +5,20 @@ using IngestionService.Domain.Ports;
 using IngestionService.Features.Ingestion.Ingest;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Platform.Shared.Contracts.Dtos;
 using Qdrant.Client;
 using RetrievalService.Infrastructure.ExternalServices;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
 using Wolverine;
 using Microsoft.AspNetCore.Http;
 
@@ -260,7 +266,33 @@ internal sealed class RetrievalHost(InMemoryVectorStore index)
             services.RemoveAll<global::RetrievalService.Domain.Ports.ISearchAccessResolver>();
             services.AddSingleton<global::RetrievalService.Domain.Ports.ISearchAccessResolver>(
                 new AllowAllSearchAccess());
+
+            // FR-05, NFR-09, ADR-0084, [[IADR-0418]] (#1318): 🔴 **`/search` 群は認証を要する。**
+            // 本試験が測るのは「取り込んだ文書が検索で見つかるか」であり認証の門ではないので、
+            // 実 IdP の代わりに**常に認証済み**の器を置く（未認証の契約は
+            // `RetrievalService.Tests.SearchEndpointsAuthorizationTests` が測る）。
+            // これが無いと本試験は 401 で落ち、**「索引が繋がっていない」と区別できなくなる。**
+            services.AddAuthentication(AlwaysAuthenticatedHandler.SchemeName)
+                .AddScheme<AuthenticationSchemeOptions, AlwaysAuthenticatedHandler>(
+                    AlwaysAuthenticatedHandler.SchemeName, _ => { });
         });
+    }
+}
+
+// #1318: 本試験専用の「常に認証済み」ハンドラ。**未認証の契約はここでは測らない。**
+internal sealed class AlwaysAuthenticatedHandler(
+    IOptionsMonitor<AuthenticationSchemeOptions> options,
+    ILoggerFactory logger,
+    UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+{
+    public const string SchemeName = "IntegrationTestUser";
+
+    protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+    {
+        var identity = new ClaimsIdentity(
+            [new Claim(ClaimTypes.Name, "integration-user")], SchemeName);
+        return Task.FromResult(AuthenticateResult.Success(
+            new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName)));
     }
 }
 

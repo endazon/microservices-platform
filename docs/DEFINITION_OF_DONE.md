@@ -15,7 +15,8 @@ issues: [#683]
 - [ ] 重要な実装判断を実装ADR（`.ai-context/adr/`、`IADR-XXXX`）に記録した
 - [ ] 起点 ID（FR/UC/SC/ADR）をブランチ名・コミット・コード・PR に残した
 - [ ] **`docs/` に文書を追加・更新した場合、計画 ID・実装ADR・仕様書・他リポジトリの issue 番号を表示テキストへ
-      書かず trace ブロックへ入れた**（`scripts/check-trace-blocks.js` が CI の `doc-links` ジョブで検査する。
+      書かず trace ブロックへ入れた**（`scripts/check-trace-blocks.js` が CI の `static-checks` ジョブの
+      同名 step で検査する。
       `.ai-context/` の凍結記録は本文にそのまま書く）
 - [ ] 計画書（fixed/Accepted）に反していない。差異があれば計画リポジトリの GitHub issue
       （`feedback.yml` テンプレート・`decision-needed` ラベル）で環流した

@@ -15,6 +15,22 @@ data:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
+      # SC-10, ADR-0078 決定 3, IADR-0421 (#1245 PR-B): 近接 MTA のキューを collector が取りに行く。
+      # 🔴 **Prometheus の scrape 対象を増やさない。** 「otel-collector が唯一の scrape 対象」は
+      #    #546 / #1090 が守っている不変条件であり、直 scrape を足すとそれが崩れる。
+      #    取り手を collector 側に置けば、既存の経路（remote write / debug）へそのまま乗る。
+      # 🔴 **転送構成（deploy/local/observability/otel-collector-forward.yaml）にも同じ宣言を置く。**
+      #    片方だけに置くと、opt-in の apply で collector を差し替えた瞬間に観測が消える（#1090 の形）。
+      # 🔴 **compose の設定（deploy/otel-collector-config.yaml）には置かない** —— compose スタックに
+      #    近接 MTA は居ない（メールの検証経路は k8s だけである。運用 Runbook が compose 経路を退役させた）。
+      #    **宛先の無い scrape を足すと恒常的に失敗し続ける。** 乖離は受容であり、同ファイルにも明記した。
+      prometheus/mail-relay:
+        config:
+          scrape_configs:
+            - job_name: mail-relay
+              scrape_interval: 30s
+              static_configs:
+                - targets: ['mail-relay:9154']
     processors:
       batch:
         timeout: 5s
@@ -37,7 +53,9 @@ data:
           processors: [memory_limiter, batch]
           exporters: [debug]
         metrics:
-          receivers: [otlp]
+          # 🔴 近接 MTA のキューは**既定構成でも受ける**（転送構成と同じ受け口を持たせる）。
+          #   既定は debug エクスポータだけなので外へは出ない —— 見えるのは collector のログである。
+          receivers: [otlp, prometheus/mail-relay]
           processors: [memory_limiter, batch]
           exporters: [debug]
         logs:

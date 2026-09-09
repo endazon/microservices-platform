@@ -312,7 +312,7 @@ data:
       "title": "Platform Overview",
       "uid": "microservices-platform-overview",
       "schemaVersion": 38,
-      "version": 4,
+      "version": 5,
       "refresh": "30s",
       "tags": ["microservices-platform"],
       "panels": [
@@ -395,6 +395,42 @@ data:
             "expr": "histogram_quantile(0.95, sum by (le) (rate(rag_answer_first_token_duration_seconds_bucket{job='microservices-platform.aianalysis-service'}[5m])))",
             "legendFormat": "p95 TTFT /analysis/ask/stream"
           }]
+        },
+        {
+          "id": 8,
+          "title": "ユニットの主体が project 無しで保存 / Unit-subject saves missing project (MUST be 0)",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+          "description": "**ナレッジ健全性の 8 指標目（#1233 / 計画 ADR-0085 決定 4。2026-09-06 確定）。0 が正常である。** 左隣のパネル 6（未知タグ）と同じ読み方であり、**発生してはならない事象**を数える —— ユニット（サービスアカウント）の保存経路は `project` を無条件で付与するため、**非ゼロはその経路を通らない書き込みが起きたことの検出**である。`documents_client_id` は書き手のクライアント、`documents_operation` は create / update / update_metadata。\n\n🔴 **鳴っても保存は止まっていない。これは統制ではなく計器である**（同決定 4）。止めるには基盤側の必須化が要り、計画は決定 1 でそれをしないと定めた。**「0 である」を「穴が塞がっている」と読まない。**\n\n**この指標も SC-10 の画面には出していない**（同節は着手保留。「Grafana で観測できれば成立する」が根拠であり、このパネルがその実体である）。",
+          "targets": [{
+            "datasource": "Prometheus",
+            "expr": "sum by (documents_client_id, documents_operation) (increase(documents_unit_project_missing_total[$__range]))",
+            "legendFormat": "{{documents_client_id}} / {{documents_operation}}"
+          }]
+        },
+        {
+          "id": 9,
+          "title": "近接 MTA のキュー長 / Mail relay queue size (messages)",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 32, "w": 12, "h": 8 },
+          "description": "**SC-15 のパスワードリセットが通る近接 MTA（mail-relay）のキュー長。**上流（組織のメールテナント）が停止しているかを見る唯一の窓である（ADR-0078 決定 3 が観測点をここへ移した）。\n\n🔴 **`deferred` が 0 でない間、メールは届いていない。** 近接 MTA を挟んだので上流が止まっていても認証基盤の応答は 200 であり、**利用者にも監査ログにも現れない**。キュー寿命は 30 分で、超えたメールは黙って破棄される。\n\n🔴 **系列が消えたら 0 ではなく「測っていない」である。** exporter は読めなかったキューに 0 を出さず系列ごと欠かす。不在は `MailRelayQueueSeriesAbsent` が鳴らす。\n\n経路: mail-relay のサイドカー exporter(:9154) → otel-collector の prometheus receiver → remote write。**Prometheus の直 scrape 対象は otel-collector のままである。**",
+          "targets": [{
+            "datasource": "Prometheus",
+            "expr": "sum by (queue) (postfix_queue_size)",
+            "legendFormat": "{{queue}}"
+          }]
+        },
+        {
+          "id": 10,
+          "title": "近接 MTA の最古メッセージの齢 / Mail relay oldest message age (s)",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 32, "w": 12, "h": 8 },
+          "description": "**後送の滞留時間。**到着からの経過秒であり、キューファイルの更新時刻ではない（Postfix は deferred の更新時刻を**次回配送予定時刻**へ書き換えるため、そこから齢は採れない）。値はキュー ID に埋まった到着時刻から復号している。\n\n🔴 **1800 秒（30 分）でメールは破棄される**（`POSTFIX_maximal_queue_lifetime`。realm のリセットリンク寿命に合わせた値）。破棄は事後に数えられない —— spool から消えるだけである。だから**破棄される前**に鳴らす（`MailRelayDeferredMessageNearExpiry`・暫定 1200 秒）。\n\n🔴 **空のキューは 0 を出す**（読めている）。系列そのものの不在とは意味が違う。",
+          "targets": [{
+            "datasource": "Prometheus",
+            "expr": "max by (queue) (postfix_queue_oldest_message_age_seconds)",
+            "legendFormat": "{{queue}}"
+          }]
         }
       ]
     }
@@ -432,11 +468,11 @@ data:
     #      機械で確かめたのは **`scripts/check-grafana-alerting.js`** の範囲
     #      —— ルール数と名前が `deploy/prometheus/alerts.yml` と 1 対 1、参照する
     #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、まで。
-    #      **配備時に `/api/v1/provisioning/alert-rules` が 12 件返すことを確かめること。**
+    #      **配備時に `/api/v1/provisioning/alert-rules` が 16 件返すことを確かめること。**
     #      🔴 **件数は導出値である。ここの数字を信用せず、着手のたびに数え直すこと**（IADR-0383）——
     #      本行は #1246 が 2 件足した後も「9 件」のままであり、**2 世代ぶん腐っていた**（#1203 で是正）。
-    #      現在の内訳: platform-availability 2 ／ platform-slo 4 ／ platform-slo-evaluation-target 4
-    #      ／ knowledge-health-producers 2 ＝ **12**。
+    #      現在の内訳: platform-availability 2 ／ platform-slo 4 ／ platform-slo-evaluation-target 5
+    #      ／ knowledge-health-producers 2 ／ knowledge-health-violations 1 ／ mail-relay-queue 2 ＝ **16**（#1233 で 12 → 13、#1245 PR-B で 13 → 16 へ数え直した）。
     #
     # 式は `deploy/prometheus/alerts.yml` と**同じもの**を使う（二重管理だが、暫定期間だけである）。
     #
@@ -767,6 +803,37 @@ data:
                   conditions:
                     - evaluator: { type: gt, params: [0] }
 
+          # SC-10 / SC-15, ADR-0078 決定 3, IADR-0421 (#1245 PR-B): 下の mail-relay-queue 群の評価対象。
+          # 🔴 **0 は「滞留なし」・不在は「測っていない」である。** exporter は読めなかったキューに
+          #   0 を出さず系列ごと欠かす（#1110 / #1246 の「沈黙が正常に見える」形を作らないため）。
+          - uid: slo-mail-relay-queue-series-absent
+            title: MailRelayQueueSeriesAbsent
+            condition: C
+            for: 5m
+            noDataState: OK
+            execErrState: Error
+            labels:
+              severity: warning
+            annotations:
+              summary: "SLO の評価対象が無い: 近接 MTA のキュー長の系列が存在しない"
+              description: "mail-relay の postfix_queue_size{queue=\"deferred\"} が無い。MailRelayDeferredBacklog / MailRelayDeferredMessageNearExpiry は空ベクタになり発火せず、上流停止が無監視になる（ADR-0078 決定 3 の観測点が消えた状態）。exporter サイドカーの不在・spool の読み取り失敗・otel-collector の prometheus receiver の欠落・NetworkPolicy による遮断を疑う。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: 'absent(postfix_queue_size{queue="deferred"})'
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+
       # FR-10, SC-10, ADR-0076 決定 3, IADR-0389 決定 5 (#1246): ナレッジ健全性の生産者の不在。
       #
       # 🔴 **上の群と式が違う（`absent_over_time` である）。** 生産は周期駆動（1 時間）であり、
@@ -833,6 +900,117 @@ data:
                   conditions:
                     - evaluator: { type: gt, params: [0] }
 
+      # FR-05, FR-16, SC-10, SC-12, ADR-0085 決定 4, IADR-0420 (#1233):
+      # ユニットの主体が `project` を付けずに保存したこと（**0 が正常**）。
+      #
+      # 🔴 **`noDataState: OK` である。** 違反が 1 件も無ければカウンタの系列そのものが存在せず
+      #   （＝正常時が「データ無し」）、`NoData` にすると平常時に恒常発火する。上の 2 群と同じ理由。
+      #   理由の正本は `deploy/prometheus/alerts.yml` の同名グループの前書きである。
+      - orgId: 1
+        name: knowledge-health-violations
+        folder: SLO
+        interval: 1m
+        rules:
+          - uid: unit-documents-missing-project-attribute
+            title: UnitDocumentsMissingProjectAttribute
+            condition: C
+            for: 5m
+            noDataState: OK
+            execErrState: Error
+            labels:
+              severity: warning
+            annotations:
+              summary: "ユニットの主体が project を付けずに文書を保存した（0 が正常）"
+              description: "DocumentService の documents_unit_project_missing_total が直近 1 時間で前進した。ユニット（サービスアカウント）の保存経路は project を無条件で付与するため、非ゼロはその経路を通らない書き込みが起きたことを意味する。documents_client_id / documents_operation で書き手と操作を特定する。保存は止まっていない（計器であって統制ではない。ADR-0085 決定 4）。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: 'increase(documents_unit_project_missing_total[1h]) > 0'
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+
+      # SC-10 / SC-15, FR-05, ADR-0045 決定 8 → ADR-0078 決定 3, IADR-0404 / IADR-0421 (#1245 PR-B):
+      # **近接 MTA（mail-relay）のキュー** —— 上流の停止を見る唯一の窓である。
+      #
+      # 🔴 **観測点が移った。** 近接 MTA を挟んだ以後、上流が止まっていても認証基盤から見た送出は成功する
+      #   （キューへ入る）。監査ログだけを見ていると上流停止を見逃す。
+      # 🔴 **系列は Prometheus の直 scrape ではない。** mail-relay のサイドカー exporter（:9154）を
+      #   otel-collector の prometheus receiver が取り、remote write で入る（job は `mail-relay`）。
+      # 🔴 **しきい値と for は実測前の暫定値である**（#1245 PR-D で測る）。理由の正本は
+      #   `deploy/prometheus/alerts.yml` の同名グループの前書きである。
+      # 🔴 **しきい値の置き場所が Prometheus 版と違う**（このファイル冒頭の注意）。expr は閾値を持たず、
+      #   `conditions[].evaluator.params` が持つ。**両方を直すこと。**
+      - orgId: 1
+        name: mail-relay-queue
+        folder: SLO
+        interval: 1m
+        rules:
+          - uid: mail-relay-deferred-backlog
+            title: MailRelayDeferredBacklog
+            condition: C
+            for: 5m
+            noDataState: NoData
+            execErrState: Error
+            labels:
+              severity: warning
+            annotations:
+              summary: "近接 MTA の後送が滞留している（deferred > 0 が 5 分継続）"
+              description: "mail-relay が上流へ後送できずメールが deferred キューに残っている。上流（組織のメールテナント）の停止・認証失敗・宛先拒否を疑う。🔴 Keycloak 側の応答は 200 のままであり、利用者にも監査ログにも現れない（ADR-0078 決定 3 が観測点をここへ移した理由）。しきい値と for は実測前の暫定値である（#1245 PR-D）。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: 'postfix_queue_size{queue="deferred"}'
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+
+          - uid: mail-relay-deferred-message-near-expiry
+            title: MailRelayDeferredMessageNearExpiry
+            condition: C
+            for: 5m
+            noDataState: NoData
+            execErrState: Error
+            labels:
+              severity: critical
+            annotations:
+              summary: "近接 MTA の後送がキュー寿命に達しつつある（最古 20 分超）"
+              description: "deferred の最古メッセージが到着から 20 分を超えた。キュー寿命は 30 分であり、これを超えたメールは破棄される（バウンスも溜めない設定）。破棄されたパスワードリセットは利用者からは「メールが来ない」としか見えない。上流を復旧するか、リセットの申請を閉じること。しきい値は実測前の暫定値である（#1245 PR-D）。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: 'postfix_queue_oldest_message_age_seconds{queue="deferred"}'
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    # 単位は**秒**（1200 = 20 分）。キュー寿命 1800 秒（30 分）の内側で鳴らす。
+                    - evaluator: { type: gt, params: [1200] }
 ---
 apiVersion: apps/v1
 kind: Deployment

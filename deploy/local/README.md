@@ -69,12 +69,14 @@ ARGOCD=1        bash scripts/k8s-local-up.sh   # ArgoCD install + Application �
 PERSIST=0       bash scripts/k8s-local-up.sh   # 【opt-out】永続化を外す（使い捨てスタック専用）。永続化は既定オン（下記「永続化」節・IADR-0369）
 LOCALEDGE=1     bash scripts/k8s-local-up.sh   # ローカルエッジ集約: platform フロント 80/443 ＋ 管理ツール 50000（下記 edge 節）
 ESO=1           bash scripts/k8s-local-up.sh   # Vault＋ESO で secret 自動供給（要 VAULT=1・本番同等 k8s auth・IADR-0096・#310）
+SYNTHETIC=1     bash scripts/k8s-local-up.sh   # 合成監視の常駐プローブ（60 秒・LLM を呼ばない。ADR-0079 決定 1・#1287。下記「合成監視」節）
 ```
 
 - [`deploy/local/observability/README.md`](observability/README.md) — 可観測性スタック（既定 debug-only を維持）
 - [`deploy/local/vault/README.md`](vault/README.md) — Vault dev + External Secrets（**dev 専用・平文秘密なし**）。`ESO=1` で secret 自動供給（[eso/README](vault/eso/README.md)・IADR-0096）
 - [`deploy/local/argocd/README.md`](argocd/README.md) — GitOps ブートストラップ
 - [`deploy/local/edge/README.md`](edge/README.md) — **ローカルエッジ集約**（platform 80/443 ＋ 管理ツール 50000・ホスト名ベース・IADR-0091）。**k3d はポート再作成が必要**（同 README のユーザー手順）
+- [`deploy/local/synthetic-monitor/README.md`](synthetic-monitor/README.md) — **合成監視**（`SYNTHETIC=1`。#1287）。標識（`SyntheticMonitoring__Subjects__0`）を BFF / dashboard / aianalysis へ与え、**除外の 3 サービスが揃ってからプローブを配備する**（揃わなければ配備せずに落ちる。ADR-0076 決定 4）。**LLM は呼ばない＝費用は 0**（60 分側は別の配備単位で未着手）
 - Hetzner 実 stand-up・本番 NFR は **Tier 3**（対象外）。
 
 ### 永続化（**既定オン**・opt-out は `PERSIST=0`・Issue #324 / IADR-0082、#787 / IADR-0210、#1088 / IADR-0369）
@@ -111,13 +113,13 @@ PERSIST=0 bash scripts/k8s-local-up.sh
 | Keycloak | `keycloak-data`（1Gi・local-path） | `/opt/keycloak/data`（`start-dev` の file H2） | realm ＋ runtime state（追加ユーザー・シークレット・セッション） | `PERSIST=1` |
 | Postgres | `postgres-data`（2Gi・local-path） | `/var/lib/postgresql/data` | 全アプリ DB（MSP + AST） | `PERSIST=1` |
 | Qdrant | `qdrant-storage`（2Gi・local-path） | `/qdrant/storage` | コレクションとベクトル（再 ingest なしで検索を続けられる） | `PERSIST=1` |
-| Prometheus | `prometheus-data`（5Gi・local-path） | `/prometheus`（TSDB） | メトリクス（保持期間は下記 args で 7d / 4GB） | `PERSIST=1` ＋ `OBSERVABILITY=1` |
+| Prometheus | `prometheus-data`（5Gi・local-path） | `/prometheus`（TSDB） | メトリクス（保持期間は下記 args で 35d / 4GB） | `PERSIST=1` ＋ `OBSERVABILITY=1` |
 | Loki | `loki-data`（2Gi・local-path） | `/tmp/loki`（config の `path_prefix`） | ログ（index / chunks） | `PERSIST=1` ＋ `OBSERVABILITY=1` |
 | Tempo | `tempo-data`（2Gi・local-path） | `/tmp/tempo`（`local.path` / `wal.path` の親） | トレース（blocks / wal） | `PERSIST=1` ＋ `OBSERVABILITY=1` |
 | Grafana | `grafana-data`（1Gi・local-path） | `/var/lib/grafana` | UI から import したダッシュボード・silences・ユーザー設定 | `PERSIST=1` ＋ `OBSERVABILITY=1` |
 
 - **Prometheus の保持期間**は base（[`observability/prometheus.yaml`](observability/prometheus.yaml)）の args
-  `--storage.tsdb.retention.time=7d` / `--storage.tsdb.retention.size=4GB` で明示する。**`size` を PVC 容量（5Gi）
+  `--storage.tsdb.retention.time=35d` / `--storage.tsdb.retention.size=4GB` で明示する（35d は月次規則の `[30d]` 窓を評価できる最小の保持 ＋ 余裕）。**`size` を PVC 容量（5Gi）
   未満に置いてあるので、流入が増えても PVC が満杯になって書き込み不能になることはない**（IADR-0210 決定 3）。
   compose（`deploy/docker-compose.yml`）にも同じ 2 引数がある（パリティ）。
 - **Pod は root へ落とさない**（`securityContext` は 4 種とも付けない）。compose の `user: "0:0"`（IADR-0079 §3）は
@@ -308,6 +310,28 @@ kubectl -n platform-infra port-forward svc/mailpit 8025:8025
 node scripts/check-password-reset-mail.js
 #   → 申請 → 送出 → 受信 → 本文（リンクと有効期限のみ）を機械で確かめる
 ```
+
+**［2026-09-09 / #1245 PR-B］キューの観測が入った。** 計画 ADR-0078 決定 3 が「上流停止の観測点を
+**近接 MTA のキュー**へ移す」と定めたためである。🔴 **移さないと、近接 MTA を挟んだこと自体が観測を消す**
+—— 上流が止まっていても Keycloak から見た送出は成功する（キューへ入る）。
+`mail-relay` Pod にサイドカー（`queue-exporter`）が同居し、`:9154/metrics` へキュー長と滞留時間を出す。
+
+```
+mail-relay ┬ postfix        （spool へ書く）
+           └ queue-exporter （spool を読み :9154 へ出す）  → otel-collector の prometheus receiver
+                                                          → remote write → Prometheus / Grafana
+```
+
+🔴 **Prometheus の scrape 対象は増やしていない**（`otel-collector:8888` が唯一のまま。#546 / #1090）。
+🔴 **compose 経路には無い**（compose に mail-relay が居ないため。`deploy/otel-collector-config.yaml` に理由を書いた）。
+
+```bash
+kubectl -n platform-infra port-forward deploy/mail-relay 9154:9154   # → http://localhost:9154/metrics
+```
+
+> 指標・アラート・限界（**後送の失敗率は率として測れていない**・**しきい値は実測前の暫定値**）は
+> [`docs/observability/mail-relay-queue-metrics.md`](../../docs/observability/mail-relay-queue-metrics.md)、
+> 見方は [運用 Runbook](../../docs/operations/keycloak-smtp-relay-setup-runbook.md) §キューの観測。
 
 > **エッジ（50000）には出していない。** 受信箱の中身は**パスワードリセットリンク＝認証資格**であり、
 > UI は認証を持たない。見るときは上のように**運用者が明示的に開く**。

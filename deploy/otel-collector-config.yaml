@@ -1,4 +1,11 @@
 # ADR-0006: OpenTelemetry Collector — receives OTLP, exports to Prometheus/Loki/Tempo
+#
+# 🔴 SC-10, ADR-0078 決定 3, IADR-0421 (#1245 PR-B): **経路 B（k8s）の 2 つの collector 設定は
+#    `prometheus/mail-relay` receiver を持つが、本ファイルは持たない。乖離は意図である。**
+#    compose スタックに近接 MTA（mail-relay）は居らず、メールの検証経路は k8s だけである
+#    （運用 Runbook が compose 経路の SMTP 手順を退役させた）。**宛先の無い scrape を足すと
+#    恒常的に失敗し続ける** ——「配線してあるが届かない」を作らないため、ここには置かない。
+#    近接 MTA を compose へ載せるときは、本ファイルにも同じ receiver を足すこと。
 receivers:
   otlp:
     protocols:

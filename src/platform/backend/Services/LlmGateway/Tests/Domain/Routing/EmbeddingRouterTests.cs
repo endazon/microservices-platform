@@ -139,6 +139,109 @@ public class EmbeddingRouterTests
         decision.Dimensions.Should().Be(1024);
     }
 
+    // ---- FR-03, ADR-0016, ADR-0017, [[IADR-0422]] 決定 2 (#336): 検索クエリ送信先の固定（測定用） ----
+    //
+    // ADR-0017 の nDCG@10 の A/B は、**クエリの埋め込みを検索対象コレクションと同じモデルへ寄せられないと
+    // 成立しない**。ここで固定するのは「寄せられること」と「寄せても越境が広がらないこと」の 2 つである。
+
+    private static EmbeddingRouter BuildWithProfile(string? queryProfile, bool selfHostedEnabled = true)
+    {
+        var options = Options.Create(new EmbeddingRoutingOptions
+        {
+            QueryProfile = queryProfile,
+            Endpoints =
+            [
+                new EmbeddingEndpointOptions
+                {
+                    Name = "voyage-managed", Tier = ProtectionTier.B, Provider = "voyage",
+                    Model = "voyage-3.5", Dimensions = 1024, Collection = "knowledge_chunks_voyage_3_5",
+                    Enabled = true, Priority = 10
+                },
+                new EmbeddingEndpointOptions
+                {
+                    Name = "selfhosted-ruri", Tier = ProtectionTier.A, Provider = "selfhosted-embedding",
+                    Model = "ruri-v3", Dimensions = 768, Collection = "knowledge_chunks_ruri_v3",
+                    Enabled = selfHostedEnabled, Priority = 20
+                }
+            ]
+        });
+        return new EmbeddingRouter(options, NullLogger<EmbeddingRouter>.Instance);
+    }
+
+    // FR-03, ADR-0016, IADR-0422: 未設定（空文字・null）なら現行と同一の決定になる（既定の挙動は動かない）。
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Route_QueryProfile未設定なら既定の送信先が変わらない(string? profile)
+    {
+        var decision = BuildWithProfile(profile)
+            .Route(new EmbeddingRoutingRequest(SensitivityClass.Public, EmbeddingRoutePurpose.Query));
+
+        decision.Allowed.Should().BeTrue();
+        decision.EndpointName.Should().Be("voyage-managed");
+        decision.Collection.Should().Be("knowledge_chunks_voyage_3_5");
+        decision.Dimensions.Should().Be(1024);
+    }
+
+    // FR-03, ADR-0016, ADR-0017, IADR-0422: 名指しすると、そのエンドポイントのモデル・次元・
+    // コレクションが選ばれる（＝Ruri コレクションを Ruri のクエリ埋め込みで検索できる）。
+    [Fact]
+    public void Route_QueryProfileを指定するとそのエンドポイントが選ばれる()
+    {
+        var decision = BuildWithProfile("selfhosted-ruri")
+            .Route(new EmbeddingRoutingRequest(SensitivityClass.Public, EmbeddingRoutePurpose.Query));
+
+        decision.Allowed.Should().BeTrue();
+        decision.EndpointName.Should().Be("selfhosted-ruri");
+        decision.Provider.Should().Be("selfhosted-embedding");
+        decision.Model.Should().Be("ruri-v3");
+        decision.Dimensions.Should().Be(768);
+        decision.Collection.Should().Be("knowledge_chunks_ruri_v3");
+    }
+
+    // FR-02, FR-05, ADR-0016, IADR-0422: 🔴 **取り込み（Index）には効かない。**
+    // 文書側の送信先は機密区分が決めるものであり、測定用の切替口で動かしてはならない。
+    [Fact]
+    public void Route_QueryProfileはIndexに効かない()
+    {
+        var decision = BuildWithProfile("selfhosted-ruri")
+            .Route(new EmbeddingRoutingRequest(SensitivityClass.Public, EmbeddingRoutePurpose.Index));
+
+        decision.EndpointName.Should().Be("voyage-managed");
+    }
+
+    // FR-05, ADR-0016, IADR-0422: 🔴 **プロファイルは越境を広げられない。**
+    // 絞り込みは `EmbeddingEgress.AllowedTiers` と `Enabled` の篩を**通った後**に効くので、
+    // 高機密の取り込みで外部（ティアB）を名指ししても deny（fail-closed）のままである。
+    // **これが変異試験 M-4（適用点を篩の前へ移す）で赤になる試験である。**
+    [Theory]
+    [InlineData(SensitivityClass.Confidential)]
+    [InlineData(SensitivityClass.Restricted)]
+    public void Route_QueryProfileは高機密の越境を開かない(SensitivityClass sensitivity)
+    {
+        var router = BuildWithProfile("voyage-managed", selfHostedEnabled: false);
+
+        // 取り込み: 高機密はティアA のみ。プロファイルの有無に関係なく拒否される。
+        var index = router.Route(new EmbeddingRoutingRequest(sensitivity, EmbeddingRoutePurpose.Index));
+        index.Allowed.Should().BeFalse();
+        index.Reason.Should().Contain("fail-closed");
+    }
+
+    // FR-03, ADR-0016, IADR-0422: 無効なエンドポイントを名指ししたときは**既定へ落とさず拒否する**。
+    // 黙って voyage へ落ちると、Ruri を測ったつもりで voyage を測ることになる
+    // （通常の構成では EmbeddingRoutingOptionsValidator が起動時に落とす）。
+    [Fact]
+    public void Route_無効なQueryProfileは既定へ落ちずに拒否される()
+    {
+        var decision = BuildWithProfile("selfhosted-ruri", selfHostedEnabled: false)
+            .Route(new EmbeddingRoutingRequest(SensitivityClass.Public, EmbeddingRoutePurpose.Query));
+
+        decision.Allowed.Should().BeFalse();
+        decision.EndpointName.Should().BeNull();
+        decision.Reason.Should().Contain("selfhosted-ruri");
+    }
+
     // 🔴 **越境の既定値そのものは動いていない。** 機密区分 × 許容ティアの表を固定する
     // （受け入れ基準 8。ここが変わっていたら、本作業は「CI のために fail-closed を緩めた」ことになる）。
     [Theory]

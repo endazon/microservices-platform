@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using AwesomeAssertions;
 using Knowledge.Contracts.Events;
 using Knowledge.IntegrationTests.Fixtures;
@@ -7,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using IngestionService.Domain.Ports;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using WikiService.Infrastructure.Persistence;
@@ -43,13 +42,31 @@ namespace Knowledge.IntegrationTests.Messaging;
 // 受信すると依存未解決で `NotSupportedException` になり、Wolverine はログ 1 行を出して
 // **ack し捨てる**（例外も再配信も DLQ も残らない）。当チェーンに居る**正しいハンドラも道連れで走らない**。
 // 対処は共通ヘルパ（`AddPlatformWolverineStep`）での明示固定であり、**待ち時間は 1 秒も伸ばしていない**。
+//
+// 🔴 ［2026-09-09 追記 / #1337］**宣言する queue と文書 Title を実行ごとに一意化した。**
+// 従前の `SharedQueue` は const であり、外部から与えたブローカ（全クラスで 1 台を共有）では
+// 前置後のキューが実行を跨いで生き残る。そのキューは本番の Program 配線によって
+// `DocumentUpdated` exchange へ恒久的に束縛されるため、**他クラスが発行した本物のイベントが
+// 滞留する**。理由と派生の作法は `Fixtures/PipelineQueueOverride.cs` にある。
+// 🔴 **主張は 1 ミリも変わらない** —— 「**両段へ同一値を宣言しても**前置がキューを分ける」ことを
+// 見る試験であり、その同一値が実行ごとに変わるだけである。**待ち時間は伸ばしていない。**
 [Collection(FanOutTestCollection.Name)]
 [Trait("Category", "Integration")]
 public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqFixture rabbit)
     : IClassFixture<PostgresFixture>, IClassFixture<RabbitMqFixture>, IAsyncLifetime
 {
+    // ［2026-09-09 / #1337］🔴 **実行ごとに一意な識別子。** 前置（`<service>.<queue>`）の形も、
+    // 「両段へ同一値を宣言する」という本試験の骨も変えない —— 変えるのは値だけである。
+    private readonly string _runId = Guid.NewGuid().ToString("N")[..8];
+
     // ingest（IngestionService）と wiki-sync（WikiService）へ宣言する**同一**のキュー名。
-    private const string SharedQueue = "u0e-shared-document-updated";
+    private string SharedQueue => $"u0e-shared-document-updated-{_runId}";
+
+    // wiki-delete（同じ WikiService の別の段）へ宣言するキュー名。**共有しない** ——
+    // 同一サービスの 2 段へ同じ値を宣言すると前置後のキュー名が衝突し、2 つの購読が 1 本へ潰れる。
+    // 従前ここは差し替えていなかったため、`wiki-service.DocumentDeleted`（固定名）が
+    // 共有ブローカ上に残り続けていた。
+    private string DeleteQueue => $"u0e-shared-document-deleted-{_runId}";
 
     private readonly RecordingProbe _probe = new();
     private string _fixturePath = "";
@@ -70,7 +87,14 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
     {
         if (!postgres.IsAvailable || !rabbit.IsAvailable) return;
 
-        _fixturePath = WriteSharedQueueFixture();
+        _fixturePath = PipelineQueueOverride.WriteDerivedFixture(
+            new Dictionary<string, string>
+            {
+                ["ingest"] = SharedQueue,
+                ["wiki-sync"] = SharedQueue,
+                ["wiki-delete"] = DeleteQueue,
+            },
+            "u0e-pipeline");
 
         _ingestionRoot = new IngestionServiceFactory(postgres, rabbit);
         _wikiRoot = new WikiServiceFactory(postgres, rabbit);
@@ -84,6 +108,9 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
             b.ConfigureServices(services =>
             {
                 services.AddSingleton(_probe);
+                // ［2026-09-09 / #1337］ホストの Warning 以上をテスト側へ写す（診断のみ・判定は変えない）。
+                services.AddSingleton<ILoggerProvider>(
+                    new HostFailureLoggerProvider(_probe.Failures, FanOutHosts.Ingestion));
                 services.RemoveAll<IIngestionVectorStore>();
                 services.AddSingleton<IIngestionVectorStore>(sp =>
                     new RecordingVectorStore(sp.GetRequiredService<RecordingProbe>()));
@@ -100,6 +127,8 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
             b.ConfigureServices(services =>
             {
                 services.AddSingleton(_probe);
+                services.AddSingleton<ILoggerProvider>(
+                    new HostFailureLoggerProvider(_probe.Failures, FanOutHosts.Wiki));
                 services.RemoveAll<IWikiJsClient>();
                 services.AddSingleton<IWikiJsClient, StubWikiJsClient>();
                 services.RemoveAll<IWikiContentReader>();
@@ -181,7 +210,10 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
         var docId = Guid.NewGuid();
         var evt = new DocumentUpdated(
             DocumentId: docId,
-            Title: "u0e キュー宣言の統合テスト文書",
+            // ［2026-09-09 / #1337］🔴 **Title は実行ごとに一意にする**（Slug は Title だけから
+            // 導かれ、`Pages.Slug` には一意索引がある）。共有 DB では前回の実行が残した行と
+            // 衝突し、受信しているのに終端の副作用が現れない形になる（診断は Measured() が載せる）。
+            Title: $"u0e キュー宣言の統合テスト文書 {docId:N}",
             Status: "published",
             MarkdownUri: $"storage://knowledge/{docId}.md",
             Attributes: new Dictionary<string, string> { ["confidentiality"] = "public" },
@@ -228,43 +260,11 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
         + $"。ハンドラ探索アセンブリ: ingestion={ListenerReadiness.DescribeHandlerDiscovery(_ingestion.Services)}"
         + $" / wiki={ListenerReadiness.DescribeHandlerDiscovery(_wiki.Services)}"
         + "（サービス名と食い違っていれば、そのホストは**相手のハンドラ**を拾っており、"
-        + "受信したメッセージを例外も残さず ack して捨てている。#1073）";
-
-    // 本番 pipeline.json から**実行時に派生**させ、ingest と wiki-sync に同一の queue を入れる。
-    //
-    // 🔴 **手で書き写さない。** 規則 2 が登録される全段の宣言を要求するため 5 段すべてが要り、
-    // 書き写せば本番の宣言が変わったときに腐る（U0d で確立した原則）。
-    private static string WriteSharedQueueFixture()
-    {
-        var source = RepoFile.Find(Path.Combine(
-            "deploy", "helm", "microservices-platform", "files", "pipeline.json"));
-
-        var root = JsonNode.Parse(File.ReadAllText(source))!.AsObject();
-        var steps = root["steps"]!.AsArray();
-        var patched = 0;
-        foreach (var step in steps)
-        {
-            var name = step!["name"]!.GetValue<string>();
-            if (name is "ingest" or "wiki-sync")
-            {
-                step["queue"] = SharedQueue;
-                patched++;
-            }
-        }
-
-        // 🔴 派生に失敗したら止める。段名が変わっていた場合、上書きが 1 件も当たらないまま
-        // 「別々の既定キュー → 両方受信」になり、**テストが落ちた理由を取り違える**。
-        if (patched != 2)
-        {
-            throw new InvalidOperationException(
-                $"pipeline.json の ingest / wiki-sync に queue を入れられなかった（当たり {patched} 件）。"
-                + " 段名が変わった可能性がある。派生元: " + source);
-        }
-
-        var path = Path.Combine(Path.GetTempPath(), $"u0e-pipeline-{Guid.NewGuid():N}.json");
-        File.WriteAllText(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        return path;
-    }
+        + "受信したメッセージを例外も残さず ack して捨てている。#1073）"
+        // ［2026-09-09 / #1337］**購読ホスト側の警告・例外**。「受信していない」と
+        // 「受信したが落ちた（一意制約違反・デッドレター）」をここで読み分ける。
+        + $"。ホストの直近の警告/例外: ingestion={_probe.Failures.Describe(FanOutHosts.Ingestion)}"
+        + $" / wiki={_probe.Failures.Describe(FanOutHosts.Wiki)}";
 
     private async Task<bool> WikiPageExistsAsync(Guid documentId)
     {

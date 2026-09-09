@@ -187,11 +187,14 @@ services:
     # IADR-0210 (#787): 保持期間を args で明示する。経路B（deploy/local/observability/prometheus.yaml）と
     # **同じ 2 引数**を置く —— 現状は両方とも retention 無指定で対称であり、片方だけ入れると新たな
     # パリティ差を作るため。size(4GB) は経路B の PVC 容量(5Gi) 未満に取り、満杯→書き込み不能を形で塞ぐ。
+    # #1111 前提 3: 月次規則（[30d] 窓）を評価できる保持が要る。7d では窓が常に空になるため 35d へ
+    # （30 日 ＋ 評価の余裕 5 日）。size は据え置き —— 流入が多いと size の上限が先に効き、窓の先頭が
+    # 欠けることはあり得る（そのときは PVC と size を対で上げる。IADR-0210 決定 3 の形を保つ）。
     command:
       [
         "--config.file=/etc/prometheus/prometheus.yml",
         "--web.enable-remote-write-receiver",
-        "--storage.tsdb.retention.time=7d",
+        "--storage.tsdb.retention.time=35d",
         "--storage.tsdb.retention.size=4GB",
       ]
     volumes:
@@ -281,6 +284,18 @@ services:
       # east-west gRPC の h2c リスナ。**面は読み取り 4 口だけ**（knowledge.document.v1.DocumentRead）で、
       # 書き込み・本文・共有は出していない。REST（8080）と /health/* はそのまま残る。
       Grpc__Port: "8081"
+      # FR-22 / NFR-09 / NFR-16, ADR-0004 / ADR-0029 / ADR-0075, IADR-0379, IADR-0419 (#1255):
+      # east-west gRPC。**`Services__NotificationServiceGrpc` が在るときだけ**個人資料の通知の
+      # 送出が gRPC 経路になる（無ければ REST `POST /internal/notifications` のまま。
+      # 並走中の正は REST であり、戻すのはこの 1 行を消すだけでよい）。
+      # 🔴 利用者の JWT は面を通らない —— 3 契機（同期 push・完全削除・定期処理）はいずれも
+      # 利用者文脈を持たない検知であり、宛先は本文の subject が運ぶ（判定の位置は動かない）。
+      Services__NotificationServiceGrpc: http://notification-service:8081
+      # s2s トークン（呼び出し側サービス自身の資格情報）。dev の値は realm import の置き場と同値
+      # （ズレると client_credentials が 401）。本番は Secret / Vault から注入し既定値は使わない。
+      # 🔴 **DocumentService が呼び出し元になるのはこの PR が最初である**（従前は受け口だけ）。
+      ServiceToken__ClientId: document-service
+      ServiceToken__ClientSecret: ${DOCUMENT_SERVICE_CLIENT_SECRET:-document-service-dev-secret-change-me}
     depends_on:
       postgres:
         condition: service_healthy
@@ -511,13 +526,19 @@ services:
       context: ..
       dockerfile: src/platform/backend/Services/NotificationService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（受け口 /internal/notifications はメッシュ内部限定）
+    # FR-22 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0419 (#1255): 8081 は
+    # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用）。helm の grpcPort と同じ値。host へは公開しない。
     expose:
       - "8080"
+      - "8081"
     environment:
       <<: [*common-env, *db-env]
       # ADR-0002 / #1012: 専用 DB。deploy/create-multiple-dbs.sh が `notification_svc` を作る。
       # 起動時に MigrateAsync が走るため、DB が無いとクラッシュループする（graph_svc の先例と同型）。
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=notification_svc;Username=kp;Password=kp
+      # NFR-16, IADR-0379 決定 3, IADR-0419 (#1255): h2c リスナ。未設定ならリスナを立てない。
+      # 面は受け付け 1 口だけで、REST（8080）の受け口・/notifications・/health/* はそのまま残る。
+      Grpc__Port: "8081"
     depends_on:
       postgres:
         condition: service_healthy

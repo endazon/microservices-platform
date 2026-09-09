@@ -207,6 +207,11 @@ public class GrpcAttributeValuesTests
         await SeedAsync((tag, tag));
 
         using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
+        // FR-05, NFR-09, ADR-0084, [[IADR-0418]] (#1318): 🔴 **REST 面も認証を要する。**
+        // 本器は**本物の JwtBearer パイプライン**を通すので、利用者のトークンを実際に発行して載せる
+        // （`ServiceCaller` ではない —— REST 面が要求するのは realm の認証済み主体だけである）。
+        http.DefaultRequestHeaders.TryAddWithoutValidation(
+            "Authorization", $"Bearer {GrpcKestrelFactory.IssueToken("alice", [])}");
         var restResp = await http.PostAsJsonAsync("/search/attribute-values",
             new AttributeValuesRequest("dept", new AccessScope([], GrantsAccess: true)),
             TestContext.Current.CancellationToken);

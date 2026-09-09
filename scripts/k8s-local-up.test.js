@@ -70,6 +70,9 @@ const OPTIN_TOKENS = [
   'certificate/edge-tls', //           LOCALEDGE (証明書 Ready 待ち, IADR-0206)
   'coredns-edge-hosts.yaml', //        LOCALEDGE (エッジ host の pod 側名前解決, IADR-0227)
   'deploy/coredns', //                 LOCALEDGE (coredns の rollout restart/status, IADR-0227)
+  'deploy/local/synthetic-monitor', // SYNTHETIC (合成監視の overlay, ADR-0079 決定 1 / #1287)
+  'synthetic-monitor-oidc', //         SYNTHETIC (プローブの client secret / ESO=1 では ExternalSecret)
+  'SyntheticMonitoring__Subjects__0', // SYNTHETIC (標識の許可集合。空だと除外が fail-closed で 0 件)
 ];
 
 // どのゲートも発行しない「負のトークン」＝ 実行ログからは検出力を測れないもの。
@@ -197,6 +200,10 @@ const KUBECTL_STUB = [
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
   'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
   'if [ "${STUB_TRAEFIK_ADMIN_MISSING:-}" = "1" ]; then case "$*" in *--for=jsonpath*svc/traefik*) exit 1;; esac; fi',
+  // #1287: 除外を持つ 3 サービスの rollout が揃わない世界（イメージが古い・Secret 待ち等）を作る。
+  // ADR-0076 決定 4「除外できない構成では配備しない」の**陽性対照**である —— これが無いと
+  // 「配備しない」側は一度も実行されず、門は「在るが測っていない」ままになる。
+  'if [ "${STUB_EXCLUSION_ROLLOUT_STALLS:-}" = "1" ]; then case "$*" in *"rollout status"*bff-service*) exit 1;; esac; fi',
   // IADR-0369 (#1088): STUB_SC_ABSENT=1 で `kubectl get storageclass local-path` を非0（provisioner 不在）に返させ、
   // 既定（永続化）が黙って emptyDir へ落ちずに止まることを検証できるようにする。
   'if [ "${STUB_SC_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "storageclass" ]; then exit 1; fi',
@@ -255,6 +262,8 @@ function runUp(extraEnv) {
     'ABACSEED',
     'SEARCHSEED',
     'LOCALEMBED',
+    'SYNTHETIC', // #1287: 合成監視の門。漏れていると既定のバイト等価が崩れる
+    'SYNTHETIC_ROLLOUT_TIMEOUT',
     'HEADLAMP_OIDC_ISSUER_URL',
     'HEADLAMP_OIDC_CLIENT_ID',
     'K3S_IMAGE', // #783: k3s イメージの pin。実行環境に漏れていると既定のバイト等価が崩れる
@@ -362,6 +371,7 @@ const GATES_ALL = {
   LOCALEMBED: '1',
   HEADLAMP: '1',
   WIKIJS_OIDC: '1',
+  SYNTHETIC: '1', // #1287: 合成監視（60 秒・LLM を呼ばない）
 };
 const { ESO: _e, ...GATES_NO_REPLACEMENT_BASE } = GATES_ALL;
 const GATES_NO_REPLACEMENT = { ...GATES_NO_REPLACEMENT_BASE, PERSIST: '0' };
@@ -3042,6 +3052,133 @@ ok('#1304: integration-stack の ISTIO 宣言が 3 つの契機で意図どお�
   assert.ok(
     !/ISTIO=1 .*k8s-local-up\.sh/.test(wf),
     'up のコマンド行へ ISTIO=1 を直書きしている（門へ届かず G12 が飛ばされる）',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// NFR-02, NFR-21, ADR-0076 決定 3・4, ADR-0079 決定 1, IADR-0378 (#1287):
+// 合成監視（synthetic）を既定の起動器へ入れる差分 —— `SYNTHETIC=1` の opt-in 門。
+//
+// 🔴 **この門が守るのは指標の信頼性である。** 標識（`SyntheticMonitoring__Subjects__0`）が
+// 3 サービスへ届かないままプローブだけが立つと、合成のリクエストが利用実績・LLM 費用・検索傾向へ
+// 混ざり、**それらが「人が使った量」を表さなくなる**（ADR-0076 決定 4）。しかも表示は正常なので、
+// 壊れていることが誰にも見えない。だから「配備される順序」と「揃わなければ配備しない」を機械が持つ。
+// ---------------------------------------------------------------------------
+const SYNTHETIC_SUBJECT_ENV = 'SyntheticMonitoring__Subjects__0=synthetic-monitor';
+const SYNTHETIC_APPLY = 'kubectl apply -k deploy/local/synthetic-monitor';
+const SYNTHETIC_EXCLUSION_DEPLOYS = ['bff-service', 'dashboard-service', 'aianalysis-service'];
+
+ok('SYNTHETIC 未設定: 合成監視が 1 バイトも現れない（既定オフ・fail-safe）', () => {
+  for (const needle of [SYNTHETIC_APPLY, SYNTHETIC_SUBJECT_ENV, 'synthetic-monitor-oidc']) {
+    const hit = DEFAULT.lines.find((l) => l.includes(needle));
+    assert.ok(!hit, `既定オフなのに合成監視の "${needle}" が現れた: ${hit}`);
+  }
+});
+
+const SYNTHETIC_ON = runUp({ SYNTHETIC: '1' });
+
+ok('SYNTHETIC=1: 標識の許可集合が除外の 3 サービスすべてへ与えられる', () => {
+  assert.strictEqual(SYNTHETIC_ON.status, 0, `非0終了: ${SYNTHETIC_ON.stderr}`);
+  for (const d of SYNTHETIC_EXCLUSION_DEPLOYS) {
+    assert.ok(
+      SYNTHETIC_ON.lines.some(
+        (l) => l.includes(`set env deploy/${d}`) && l.includes(SYNTHETIC_SUBJECT_ENV),
+      ),
+      // 1 つでも欠けると、その面だけが合成を実利用として数える（部分的に汚れる方が始末が悪い）。
+      `${d} へ ${SYNTHETIC_SUBJECT_ENV} が与えられていない`,
+    );
+  }
+});
+
+ok('SYNTHETIC=1: プローブの Secret は dev 既定（realm の置き値）で作られる（ESO 未設定）', () => {
+  assert.ok(
+    SYNTHETIC_ON.lines.some(
+      (l) =>
+        l.includes('create secret generic synthetic-monitor-oidc') &&
+        l.includes('client-secret=synthetic-monitor-dev-secret-change-me'),
+    ),
+    'synthetic-monitor-oidc の手動 apply_secret が無い（プローブは 401 を打ち続ける）',
+  );
+});
+
+ok('SYNTHETIC=1: overlay の apply と rollout 待ちが出る', () => {
+  assert.ok(SYNTHETIC_ON.lines.some((l) => l === SYNTHETIC_APPLY), 'overlay が apply されていない');
+  assert.ok(
+    SYNTHETIC_ON.lines.some((l) => l.includes('rollout status deploy/synthetic-monitor')),
+    'プローブの rollout を待っていない（Pod が立たなくても緑で終わる）',
+  );
+});
+
+ok('SYNTHETIC=1: 順序 —— realm 追随 → 標識の env → 除外 3 サービスの rollout → overlay', () => {
+  const at = (pred) => SYNTHETIC_ON.lines.findIndex(pred);
+  // realm 後追い Job（synthetic-monitor client を稼働 realm へ入れる）は先に走っていること。
+  const realm = at((l) => l.includes('keycloak-realm-reconcile'));
+  const setEnv = at((l) => l.includes(SYNTHETIC_SUBJECT_ENV));
+  const wait = at((l) => l.includes('rollout status deploy/bff-service'));
+  const apply = at((l) => l === SYNTHETIC_APPLY);
+  assert.ok(realm !== -1 && setEnv !== -1 && wait !== -1 && apply !== -1,
+    `いずれかの段が無い: realm=${realm} setEnv=${setEnv} wait=${wait} apply=${apply}`);
+  assert.ok(realm < setEnv, 'realm の追随より前に標識を与えている（client が稼働 realm に無い）');
+  assert.ok(setEnv < wait, '標識を与える前に rollout を待っている（古い env の Pod で緑になる）');
+  assert.ok(wait < apply, '🔴 除外が揃う前にプローブを配備している（ADR-0076 決定 4 違反）');
+});
+
+ok('SYNTHETIC=1 ＋ ESO=1: Secret は ExternalSecret へ委譲し、同期を待ってから配備する', () => {
+  const r = runUp({ SYNTHETIC: '1', ESO: '1', VAULT: '1' });
+  assert.strictEqual(r.status, 0, `非0終了: ${r.stderr}`);
+  assert.ok(
+    !r.lines.some((l) => l.includes('create secret generic synthetic-monitor-oidc')),
+    '🔴 ESO=1 なのに手動 apply_secret も走っている（二重所有）',
+  );
+  const es = r.lines.findIndex((l) =>
+    l.includes('apply -f deploy/local/vault/eso/externalsecret-synthetic-monitor-oidc.yaml'));
+  const sync = r.lines.findIndex((l) =>
+    l.includes('wait --for=condition=Ready externalsecret/synthetic-monitor-oidc'));
+  const apply = r.lines.findIndex((l) => l === SYNTHETIC_APPLY);
+  assert.ok(es !== -1, 'ExternalSecret が apply されていない');
+  assert.ok(sync !== -1, 'SecretSynced を待っていない（プローブが空の secret を掴んで固定される）');
+  assert.ok(es < sync && sync < apply, `順序が違う: es=${es} sync=${sync} apply=${apply}`);
+});
+
+ok('ESO=1 単独（SYNTHETIC 未設定）: 合成監視の ExternalSecret は apply されない', () => {
+  // 立てていないゲートの ExternalSecret を作ると、案内どおり打った運用者が NotFound を踏む（#1102 の形）。
+  const r = runUp({ ESO: '1', VAULT: '1' });
+  assert.ok(
+    !r.lines.some((l) => l.includes('externalsecret-synthetic-monitor-oidc.yaml')),
+    'SYNTHETIC 未設定なのに合成監視の ExternalSecret が apply された',
+  );
+});
+
+ok('🔴 SYNTHETIC=1: 除外の 3 サービスが揃わなければプローブを配備せず落ちる（ADR-0076 決定 4）', () => {
+  const r = runUp({ SYNTHETIC: '1', STUB_EXCLUSION_ROLLOUT_STALLS: '1' });
+  assert.notStrictEqual(r.status, 0, '除外が揃わないのに exit 0 で終わった（警告して続行は不可）');
+  assert.ok(
+    !r.lines.some((l) => l === SYNTHETIC_APPLY),
+    '🔴 除外が揃っていないのにプローブを配備した（指標が静かに汚れる）',
+  );
+});
+
+ok('#1287: 既定 ON へ切り替える口が 1 行で読める位置に在る', () => {
+  // 利用者が「既定 ON にしたい」と言ったときに、探し回らずに 1 行で変えられること（issue の要件）。
+  assert.match(
+    UP_SH,
+    /SYNTHETIC_DEFAULT="0"/,
+    '既定値が 1 か所の変数に集まっていない（既定 ON への切り替えが 1 行で済まない）',
+  );
+  assert.match(UP_SH, /\$\{SYNTHETIC:-\$SYNTHETIC_DEFAULT\}/, '門が SYNTHETIC_DEFAULT を読んでいない');
+});
+
+ok('#1287: overlay は AllowLlmEgress を設定しない（60 秒側は LLM を呼ばない / ADR-0079 決定 1）', () => {
+  const manifest = readAt(REPO_ROOT, 'deploy', 'local', 'synthetic-monitor', 'synthetic-monitor.yaml');
+  assert.ok(
+    !/name:\s*SyntheticMonitoring__AllowLlmEgress/.test(manifest),
+    '🔴 60 秒側の overlay が AllowLlmEgress を設定している（費用が出る。60 分側は別の配備単位）',
+  );
+  // 起動器の門も同じ —— ゲートの中で有効化してはならない。**注記は数えない**（本文が禁止を説明する）。
+  const upCode = UP_SH.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.ok(
+    !/AllowLlmEgress/.test(upCode),
+    '🔴 起動器が AllowLlmEgress を設定している（課金の承認は利用者の判断・ADR-0079 決定 2）',
   );
 });
 

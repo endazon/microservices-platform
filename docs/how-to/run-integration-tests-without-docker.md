@@ -3,14 +3,14 @@ title: Docker Engine API が無い環境（containerd 等）で統合テスト�
 type: how-to
 status: fixed
 created: 2026-09-08
-updated: 2026-09-08
+updated: 2026-09-09
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, NFR-09, UC-03, UC-05]
 adrs: [ADR-0004, ADR-0027]
 iadrs: [IADR-0130, IADR-0231, IADR-0232, IADR-0414]
-specs: [20260908_issue-1336_integration-gate-asks-for-services]
+specs: [20260908_issue-1336_integration-gate-asks-for-services, 20260909_issue-1337_fanout-tests-on-shared-broker]
 issues: [#455, #1073, #1336, #1337]
 -->
 
@@ -82,19 +82,49 @@ dotnet test src/knowledge/backend/Tests/Knowledge.IntegrationTests/Knowledge.Int
 | 何も渡さない（Docker も無い） | 46 passed / **44 skipped** |
 | PostgreSQL ＋ RabbitMQ を渡す | **82 passed** / 2 failed / 6 skipped |
 
-## 🔴 既知の限界
+## 是正済み（実機での再実測待ち）
 
-**外部から渡したブローカでは、fan-out の 2 件が通らない**（Testcontainers 経路では緑）。
+**外部から渡したブローカで fan-out の 2 件が落ちていた**（Testcontainers 経路では緑）。
 
 - `Messaging.DocumentUpdatedFanOutTests.PublishOnce_BothSubscribersReceive`
 - `Messaging.QueueOverrideFanOutTests.SharedQueueDeclaration_KeepsFanOut_ServicePrefixSeparatesQueues`
 
-**原因は未特定である**（ブローカの残留状態でも待ち時間不足でもないことは切り分け済み）。
-切り出した issue は trace ブロックにある。**この 2 件を緑にするために主張を緩めてはならない** ——
-1 発行 → 2 購読が競合コンシューマ化していないことを守る要である。
+原因は**共有した資源に前の実行・他クラスの残りが載ること**であり、2 つ重なっていた。
+
+| # | 共有していたもの | 起きていたこと |
+| --- | --- | --- |
+| 1 | ブローカ（全クラスで 1 台） | 購読キュー名が固定で、他クラスが発行した本物のイベントが同じキューへ溜まる（束縛はホストを破棄しても残る） |
+| 2 | データベース（全クラスで 1 つ） | 文書 Title が固定で、同期先の slug 一意索引と衝突する。受信しているのに終端の副作用が現れず、「受信しなかった」と見分けが付かない |
+
+**どちらもコンテナを毎回起こす経路では起こらない**（クラスごとに新品のため）。
+
+是正は 2 つとも「**実行ごとに一意にする**」であり、**主張は緩めていない**（1 発行 → 2 購読が
+競合コンシューマ化していないことを守る要である。待ち時間も 1 秒も伸ばしていない）。
+併せて、待ち合わせが切れたときの失敗メッセージへ**購読ホスト側の警告・例外**を載せた ——
+「受信していない」と「受信したが落ちた」がその場で読み分けられる。
+
+🔴 **実機での再実測はまだである**（この作業を行った環境にブローカと DB が無い）。
+確かめ方は下の「実機で確かめること」を参照。
 
 なお残る 6 skip のうち、`ConversionService` の分は `pandoc` / `pdftotext` の有無であって
 コンテナとは関係が無い。
+
+## 実機で確かめること（利用者の手が要る）
+
+1. 上の手順どおりブローカと DB を渡して**全件を 2 回続けて**走らせる。
+   **2 回目も緑であること**が要点である（1 回目の残りが 2 回目を汚さない）。
+2. 1 回目と 2 回目の間に購読キューを見る。
+
+   ```bash
+   nerdctl exec msp-test-mq rabbitmqctl list_queues name messages
+   ```
+
+   - fan-out の購読キューは**実行ごとに名前が変わる**（末尾の識別子が違う）
+   - 実行を跨いで残る固定名のキューに**メッセージが積み上がっていない**こと
+3. 落ちた場合は、失敗メッセージ末尾の「ホストの直近の警告/例外」を読む。
+   一意制約違反が出ていれば**受信はしている**（配送ではなく書き込み側の問題である）。
+
+後始末でコンテナごと破棄すれば、実行ごとに作られたキューも一緒に消える。
 
 ## 後片付け
 

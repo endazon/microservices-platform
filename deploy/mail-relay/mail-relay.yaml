@@ -109,15 +109,71 @@ spec:
           volumeMounts:
             # イメージの起動スクリプトが `exec supervisord` の直前に走らせる init hook。
             - { name: init, mountPath: /docker-init.d, readOnly: true }
+            # SC-10, ADR-0078 決定 3, IADR-0421 (#1245 PR-B): spool を exporter と共有する。
+            - { name: spool, mountPath: /var/spool/postfix }
           resources:
             requests: { cpu: 25m, memory: 64Mi }
             limits: { cpu: 500m, memory: 256Mi }
+        # SC-10, FR-05, NFR-09, ADR-0006 / ADR-0045 決定 8 → ADR-0078 決定 3, IADR-0421 (#1245 PR-B):
+        # **キュー長・滞留時間を Prometheus 形式で出すサイドカー。**
+        #
+        # 🔴 **近接 MTA を挟んだ時点で Keycloak 側の観測は上流停止を見なくなった。** relay が 250 を
+        #    返した以後の失敗は Keycloak に戻らないため、監査ログだけを見ると上流の停止を見逃す。
+        #    ADR-0078 決定 3 が観測点をここへ移した。**移さなければ統制を足したことで観測が失われる。**
+        # 🔴 **経路は otel-collector の prometheus receiver である**（deploy/local/infra/otel-collector.yaml /
+        #    deploy/local/observability/otel-collector-forward.yaml）。**Prometheus の scrape 対象は
+        #    増やさない** —— 「otel-collector が唯一の scrape 対象」は #546 / #1090 が守っている不変条件である。
+        # 🔴 **既製の exporter イメージを増やしていない**（IADR-0421 決定 1）。kumina 系はキュー長を
+        #    showq ソケット、失敗率を**ログファイル**から採るが、この image はログを rsyslog 経由で
+        #    stdout へ出すため後者が読めず、前者は本 exporter と同じ spool 共有が要る。
+        #    得る面が同じで**供給網へイメージが 1 つ増える**ので採らない（08_data-egress-policy）。
+        - name: queue-exporter
+          # 門（reset-gate）と同じイメージ。CI（Node 22）と同じメジャー版・外部依存ゼロ。
+          image: node:22-alpine
+          command: ["node", "/exporter/mail-queue-exporter.js"]
+          env:
+            # 🔴 値は**マニフェストが与える**（コードは既定を持たない。reset-gate と同じ作法）。
+            - { name: SPOOL_DIR, value: /var/spool/postfix }
+            # 9154 は Prometheus の慣行で Postfix exporter に割り当てられている番号である。
+            # 🔴 **この 1 行が collector の scrape 先（mail-relay:9154）と Service の単一情報源**である。
+            - { name: LISTEN_PORT, value: "9154" }
+            # 🔴 `defer` と `bounce` は**メッセージではなく理由ログ**なので数えない。`corrupt` も
+            #    上流停止の指標ではないので入れない（増やすなら観測仕様書と同時に増やすこと）。
+            - { name: QUEUE_NAMES, value: "incoming,active,deferred,hold,maildrop" }
+          ports:
+            - { containerPort: 9154, name: metrics }
+          volumeMounts:
+            # 🔴 **読み取り専用**で同じ spool を見る。exporter は 1 バイトも書かない。
+            - { name: spool, mountPath: /var/spool/postfix, readOnly: true }
+            - { name: exporter, mountPath: /exporter, readOnly: true }
+          # 🔴 **probe を置かない。観測がメールを止めてはならない。**
+          #   Pod の Ready は**全コンテナ**の Ready を要求するので、ここに readiness / liveness を置くと
+          #   **exporter の不調が Service の endpoint を落とし、Keycloak が投函できなくなる**
+          #   ＝ 実在する利用者名だけ 500 になる窓（IADR-0404 の W1）を、観測の都合で開けることになる。
+          #   exporter が居ない・答えないことは **MailRelayQueueSeriesAbsent**（系列の不在）が拾う。
+          # 🔴 **それでも同居の宿命は残る。** スクリプトの ConfigMap が欠けるなどで**コンテナが起動できない**
+          #   場合は CrashLoopBackOff になり、Pod ごと NotReady になる（＝ relay も止まる）。
+          #   **静かには壊れない** —— 門（reset-gate）が投函不能を検知して申請を閉じ、存在秘匿は保たれる。
+          #   ConfigMap は起動器が apply より前に必ず作る（scripts/k8s-local-up.sh）。
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 128Mi }
       volumes:
         - { name: init, configMap: { name: mail-relay-init, defaultMode: 0755 } }
-      # 🔴 spool（/var/spool/postfix）に volume を張っていない。キューはコンテナの書き込み層にあり、
-      #    **Pod の再作成で失われる**（載るのは寿命 30 分のメールだけなので受容する）。
-      #    観測（#1245 PR-B）が showq を読む exporter を同居させるときに、共有の emptyDir を張る
-      #    —— そのときイメージのフォルダ初期化と両立することを**稼働で確かめてから**入れる。
+        # exporter 本体は ConfigMap 化する（kustomize は root 外ファイルを参照できないため、
+        # 門のスクリプトと同型で起動器が --from-file で作る）。
+        - { name: exporter, configMap: { name: mail-queue-exporter-script } }
+        # 🔴 **spool（/var/spool/postfix）を emptyDir で共有する。永続性は変わらない** ——
+        #    emptyDir の寿命は Pod の寿命であり、従前のコンテナ書き込み層と同じである
+        #    （キューは Pod の再作成で失われる。載るのは寿命 30 分のメールだけなので受容する）。
+        #    変わるのは**サイドカーから同じ spool を読めること**だけである。
+        # 🔴 **空の spool を被せてもイメージが起動時に作り直す**（上流ソースで確認・IADR-0421 V16〜V19）:
+        #      run.sh の `reown_folders` が pid/dev/private/public を mkdir し `postfix set-permissions` を打つ
+        #      → `postfix_enable_chroot` が etc/ と zoneinfo を毎回コピーする
+        #      → supervisord が `postfix start-fg` を起動し、その中の `check-fatal` が欠けたキューを作る
+        #    いずれも `execute_post_init_scripts`（= mail-relay-init）**より前**に走る。
+        #    🔴 **稼働クラスタでは確かめていない**（本作業機にクラスタが無い。#1245 PR-D で確かめる）。
+        - { name: spool, emptyDir: {} }
 ---
 apiVersion: v1
 kind: Service
@@ -130,6 +186,9 @@ spec:
   ports:
     # 🔴 **realm の smtpServer と静的検査の期待値はこの 1 行から導かれる**（書き写さない）。
     - { name: smtp, port: 587, targetPort: 587 }
+    # SC-10, ADR-0078 決定 3, IADR-0421 (#1245 PR-B): キューの観測。
+    # 🔴 **otel-collector の prometheus receiver がここを取りに来る**（Prometheus は来ない）。
+    - { name: metrics, port: 9154, targetPort: 9154 }
 ---
 # 投函できる主体を Keycloak に限る。**egress は縛らない**（上流へ出る経路が relay の役目である）。
 # 🔴 NetworkPolicy を強制しないクラスタでは無害な宣言として残るだけである。強制するクラスタでは、
@@ -149,6 +208,29 @@ spec:
         - podSelector: { matchLabels: { app: keycloak } }
       ports:
         - { protocol: TCP, port: 587 }
+---
+# SC-10, ADR-0078 決定 3, IADR-0421 (#1245 PR-B): 観測の取り手（otel-collector）へ :9154 を開く**別宣言**。
+#
+# 🔴 上の `mail-relay-ingress` を書き換えていない —— NetworkPolicy は**加算的**であり、同じ Pod を
+#    選ぶ複数の宣言の ingress は和になる。門（reset-gate.yaml）が :587 を足したのと同じ形である
+#    （同ファイルの注記が「PR-B と PR-C がそれぞれの規則を足す」と定めている）。
+# 🔴 NetworkPolicy を強制しないクラスタ（dev の k3d 既定）では無害な宣言として残るだけである。
+#    強制するクラスタでこれが無いと、**collector は静かに scrape できなくなり、系列が消える**
+#    （そのときは MailRelayQueueSeriesAbsent が鳴る ＝ 沈黙にはならない）。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mail-relay-ingress-otel-collector
+  namespace: platform-infra
+  labels: { app: mail-relay }
+spec:
+  podSelector: { matchLabels: { app: mail-relay } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: otel-collector } }
+      ports:
+        - { protocol: TCP, port: 9154 }
 ---
 apiVersion: v1
 kind: ConfigMap

@@ -50,6 +50,17 @@
  *   node scripts/check-coverage-floor.js --report-only   # 集計だけ行い、床未達でも exit 0
  *   node scripts/check-coverage-floor.js --self-test
  *   COVERAGE_FLOOR_DEBUG=1 node scripts/check-coverage-floor.js   # レポート単位の診断も出す
+ *
+ * 期待レポート件数の突合（#1346）:
+ *   「同じテストプロジェクトが 2 回実行される」型の事故は、#900 の重複排除により床では**検出できない**
+ *   （分母が倍にならない）。唯一の検知手段は「レポート件数が期待値と一致するか」であり、従前はその
+ *   期待値をワークフローのコメントへ**手で写していた**（16 件 / 17 件と書かれたまま実物は 19 件になり、
+ *   検知手段そのものが腐っていた）。本検査器は期待値を**`src/` 配下の `*Tests.csproj` の数から導出する**
+ *   （レポートと同じ fs 走査。除外ユニット（submodule）は `isExcludedPath` で落とす。git は呼ばない ——
+ *   呼ぶとクラス B（走査母集合を git ls-files から引く）の検査器になり、#683 の警告機構が要る）。
+ *   実物より**多い**ときは二重実行の疑いとして fail（`--report-only` では warn）、**少ない**ときは
+ *   フィルタで 0 件になったプロジェクトが出力を残さない場合があるため warn に留める（fail-open）。
+ *   `src/` に 1 件も無ければ導出できないので突合を skip し、その旨を notice で出す。
  */
 const fs = require('fs');
 const path = require('path');
@@ -1119,6 +1130,39 @@ function findReports() {
   return findReportsDetailed().included;
 }
 
+/**
+ * テストプロジェクト（`src/**\/*Tests.csproj`）を数える（#1346）。
+ * レポート探索と同じ fs 走査（`walk`）で引く。submodule ユニットは populate 済みでも `isExcludedPath` で落とす。
+ * 1 件も無ければ null（導出不能。`src/` を読めない文脈）。
+ */
+function countTestProjects() {
+  const n = walk(SEARCH_ROOT, (p) => /(^|\/)[^/]*Tests\.csproj$/.test(p) && !isExcludedPath(p)).length;
+  return n === 0 ? null : n;
+}
+
+/**
+ * 実際に見つかったレポート数と期待値（テストプロジェクト数）を突き合わせる（純関数。#1346）。
+ *   - expected が null: 導出できなかった → 'skip'
+ *   - actual > expected: 同じプロジェクトが 2 回実行された疑い → 'fail'（床では見えない事故）
+ *   - actual < expected: 出力を残さなかったプロジェクトがある → 'warn'（フィルタで 0 件のとき正当に起きる）
+ *   - 一致: 'ok'
+ */
+function compareReportCount(actual, expected) {
+  if (expected == null) {
+    return { level: 'skip', text: '期待レポート件数を導出できなかった（src/ 配下に *Tests.csproj が見つからない）ため件数の突合を skip した。' };
+  }
+  const base = `レポート ${actual} 件 / 期待 ${expected} 件（src/ 配下の *Tests.csproj。除外ユニットを除く）`;
+  if (actual > expected) {
+    return { level: 'fail', text: `${base}。期待より多い —— 同じテストプロジェクトが 2 回実行された疑い（--filter の二重適用等）。`
+      + ' 重複排除により床では検出できない型なので、件数で止める（#1346）。' };
+  }
+  if (actual < expected) {
+    return { level: 'warn', text: `${base}。期待より少ない —— レポートを残さなかったテストプロジェクトがある`
+      + '（フィルタで実行 0 件・ビルド失敗等）。床の分母から当該プロジェクトが抜けている可能性を疑うこと。' };
+  }
+  return { level: 'ok', text: `${base}。一致。` };
+}
+
 function readFloor() {
   try {
     return JSON.parse(fs.readFileSync(FLOOR_FILE, 'utf8')).backend || {};
@@ -1204,6 +1248,20 @@ function selfTest() {
   {
     const r = compareToFloor({ lines: 0, covered: 0, branches: 0, coveredBranches: 0 }, { line: 80, branch: 70 });
     t('compareToFloor: 未計測（分母 0）は判定しない', r.violations.length === 0 && r.line === null, r);
+  }
+
+  // #1346: 期待レポート件数の突合（純関数）。
+  t('compareReportCount: 一致は ok', compareReportCount(19, 19).level === 'ok');
+  t('compareReportCount: 期待より多い（二重実行の疑い）は fail', compareReportCount(38, 19).level === 'fail');
+  t('compareReportCount: 期待より少ない（出力を残さないプロジェクト）は warn（fail-open）', compareReportCount(18, 19).level === 'warn');
+  t('compareReportCount: 導出不能（null）は skip で、その旨を言う',
+    compareReportCount(19, null).level === 'skip' && /skip/.test(compareReportCount(19, null).text));
+  t('compareReportCount: 本文に実測と期待の両方の数を出す',
+    /38 件/.test(compareReportCount(38, 19).text) && /19 件/.test(compareReportCount(38, 19).text));
+  {
+    const n = countTestProjects();
+    t('countTestProjects: src/ 配下の *Tests.csproj を数える（obj/ の *.csproj.nuget.* や submodule は数えない）',
+      Number.isInteger(n) && n > 0, n);
   }
 
   // 集計対象ユニットの切り分け（別プロジェクトの submodule は合算しない。PR #464 レビュー指摘）。
@@ -1792,6 +1850,18 @@ function main() {
   console.log(`[check-coverage-floor] レポート ${reports.length} 件を集計: line ${fmtRate(line)}（${totals.covered}/${totals.lines}） / ` +
     `branch ${fmtRate(branch)}（${totals.coveredBranches}/${totals.branches}）。床: line ${floor.line ?? '未設定'} / branch ${floor.branch ?? '未設定'}`);
 
+  // #1346: 期待レポート件数（src/ 配下の *Tests.csproj）との突合。二重実行は床では見えない。
+  const countCheck = compareReportCount(reports.length, countTestProjects());
+  if (countCheck.level === 'fail' && !reportOnly) {
+    console.error(`[check-coverage-floor] ${countCheck.text}`);
+  } else if (countCheck.level === 'fail' || countCheck.level === 'warn') {
+    warn(`[check-coverage-floor] ${countCheck.text}`);
+  } else if (countCheck.level === 'skip') {
+    notice(`[check-coverage-floor] ${countCheck.text}`);
+  } else {
+    console.log(`[check-coverage-floor] ${countCheck.text}`);
+  }
+
   // NFR（#468 / IADR-0123 決定 6）: 診断は既定で出す。ci.yml にフラグを足さずに、CI ログから
   // 「混入行数」「除外前後の実測値」「filename の解釈」を読み取れるようにするためである。
   for (const d of formatDiagnostics(agg, floor)) console.log(`[check-coverage-floor] ${d}`);
@@ -1835,6 +1905,10 @@ function main() {
   if (floor.line == null && floor.branch == null) {
     notice('[check-coverage-floor] 床が未設定です（src/coverage-floor.json）。実測値をもとに設定してください。');
     process.exit(0);
+  }
+  if (countCheck.level === 'fail' && !reportOnly) {
+    console.error('[check-coverage-floor] レポート件数が期待値を超えている。床の判定より先に、二重実行の有無を確かめること。');
+    process.exit(1);
   }
   if (violations.length === 0) {
     console.log('[check-coverage-floor] OK: 床を下回っていません。');
@@ -1880,4 +1954,6 @@ module.exports = {
   formatDiagnostics,
   rate,
   compareToFloor,
+  countTestProjects,
+  compareReportCount,
 };

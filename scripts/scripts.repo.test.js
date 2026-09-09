@@ -3108,6 +3108,164 @@ module.exports = ({ ok, assert }) => {
     assert.match(abac.renderText(r), /粒度 3: 機密区分単位/);
   });
 
+  // --- measure-search-ndcg: 検索の関連性（nDCG@10）の実測（FR-02 / FR-03・issue #336） ---
+  //
+  // 🔴 **測定そのものは稼働環境が要るが、集計は純関数なのでここで全部固定できる。**
+  // #336 の受け入れ基準 ④「nDCG@10 実測」は、道具が無いまま 3 度の棚卸しを跨いだ。
+  // ここが**道具の正しさを担保する唯一の場所**である（実データが無い間、他に検算する手段が無い）。
+
+  const ndcg = require('./measure-search-ndcg.js');
+
+  // 固定の qrels。関連度は graded（0..3）で、文書単位である。
+  const NDCG_QRELS = {
+    version: 1,
+    k: 10,
+    queries: [
+      { id: 'q1', text: '就業規則 休暇', relevance: { d3: 3, d2: 2, d1: 1 } },
+      { id: 'q2', text: '経費精算 フロー', relevance: {} }, // 正解ラベル無し（除外される側）
+    ],
+  };
+
+  ok('nDCG: 理想順位は 1.0 になる', () => {
+    const r = ndcg.ndcgAtK(['d3', 'd2', 'd1'], NDCG_QRELS.queries[0].relevance, 10);
+    assert.strictEqual(r.evaluable, true);
+    assert.strictEqual(r.ndcg, 1);
+  });
+
+  // 逆順の既知値。手計算: DCG = 1/log2(2) + 2/log2(3) + 3/log2(4) = 3.7618595071429148、
+  // IDCG = 3/log2(2) + 2/log2(3) + 1/log2(4) = 4.761859507142915。比は 0.7899980042460358。
+  //
+  // 🔴 **この 1 件が割引の式を固定している。** `log2(i+1)` を `log2(i+2)` にすると
+  // 順位 1 に割引が掛かり、値がずれる（変異試験 M-1）。
+  ok('nDCG: 逆順は既知値（0.78999800…）になる', () => {
+    const r = ndcg.ndcgAtK(['d1', 'd2', 'd3'], NDCG_QRELS.queries[0].relevance, 10);
+    assert.ok(
+      Math.abs(r.ndcg - 0.7899980042460358) < 1e-12,
+      `逆順の nDCG が既知値と違う: ${r.ndcg}`
+    );
+    // 内訳も固定する（比だけ合っていて分子・分母が両方ずれている状態を通さない）。
+    assert.ok(Math.abs(r.dcg - 3.7618595071429148) < 1e-12, `DCG が違う: ${r.dcg}`);
+    assert.ok(Math.abs(r.idcg - 4.761859507142915) < 1e-12, `IDCG が違う: ${r.idcg}`);
+  });
+
+  // 🔴 同一文書の重複（チャンク由来）は先頭だけを採る。落とさないと同じ文書で二度加点され、
+  // **nDCG が 1.0 を超え得る**（＝正規化が壊れる。変異試験 M-3）。
+  ok('nDCG: 同一文書の重複は先頭だけを採る（1.0 を超えない）', () => {
+    const r = ndcg.ndcgAtK(['d3', 'd3', 'd3', 'd2', 'd1'], NDCG_QRELS.queries[0].relevance, 10);
+    assert.strictEqual(r.ndcg, 1);
+    assert.strictEqual(r.returned, 3, '重複を落としていない');
+    assert.deepStrictEqual(ndcg.dedupeDocuments(['a', 'b', 'a', 'c', 'b']), ['a', 'b', 'c']);
+  });
+
+  ok('nDCG: qrels に無い文書 ID は関連度 0 として扱う', () => {
+    const r = ndcg.ndcgAtK(['zzz', 'd3', 'd2', 'd1'], NDCG_QRELS.queries[0].relevance, 10);
+    assert.strictEqual(r.hits, 3, '未ラベルの文書を当たりに数えている');
+    assert.ok(r.ndcg < 1, '未ラベルの文書が先頭に来ても満点になっている');
+  });
+
+  ok('nDCG: 結果が k より少なくても落ちない', () => {
+    const r = ndcg.ndcgAtK(['d3'], NDCG_QRELS.queries[0].relevance, 10);
+    assert.strictEqual(r.returned, 1);
+    // 3/1 ÷ 4.761859507142915
+    assert.ok(Math.abs(r.ndcg - 3 / 4.761859507142915) < 1e-12, `k 未満の nDCG が違う: ${r.ndcg}`);
+    // 空の結果も 0 として成立する（除外ではない。検索が何も返さなかったのは測定結果である）。
+    assert.strictEqual(ndcg.ndcgAtK([], NDCG_QRELS.queries[0].relevance, 10).ndcg, 0);
+  });
+
+  ok('nDCG: k で打ち切る（k=1 は先頭だけを見る）', () => {
+    const rel = NDCG_QRELS.queries[0].relevance;
+    // k=1 の IDCG は 3/1。先頭が d3 なら満点、d1 なら 1/3。
+    assert.strictEqual(ndcg.ndcgAtK(['d3', 'd2', 'd1'], rel, 1).ndcg, 1);
+    assert.ok(Math.abs(ndcg.ndcgAtK(['d1', 'd3'], rel, 1).ndcg - 1 / 3) < 1e-12);
+  });
+
+  // 🔴 正解が 1 件も無いクエリは**除外して件数を報告する**。0.0 として混ぜると
+  // 「ラベルを付けていない」が「精度が低い」に化ける（変異試験 M-2）。
+  ok('nDCG: 正解ラベルが無いクエリは平均から除外し、ID を報告する', () => {
+    const run = { label: 'voyage-3.5', mode: 'hybrid', results: { q1: ['d3', 'd2', 'd1'], q2: ['x'] } };
+    const r = ndcg.summarizeRun(NDCG_QRELS, run, 10);
+    assert.strictEqual(r.mean, 1, '除外されず平均が下がっている');
+    assert.strictEqual(r.evaluated, 1);
+    assert.deepStrictEqual(r.skippedNoRelevant, ['q2']);
+    assert.deepStrictEqual(r.missingResults, []);
+  });
+
+  // 収集されていないクエリは「0 点」ではなく「測っていない」として別に報告する。
+  ok('nDCG: 収集されていないクエリは missingResults に出る', () => {
+    const r = ndcg.summarizeRun(NDCG_QRELS, { label: 'a', mode: 'hybrid', results: {} }, 10);
+    // 収集の有無を先に見る（ラベルの有無より前）。**測っていないものを「除外」と言わない。**
+    assert.deepStrictEqual(r.missingResults, ['q1', 'q2']);
+    assert.deepStrictEqual(r.skippedNoRelevant, []);
+    assert.strictEqual(r.mean, null, '1 件も評価できないのに平均が出ている');
+  });
+
+  ok('nDCG: モードごとに測り、先頭 run を基準に差分を出す', () => {
+    const data = {
+      qrels: NDCG_QRELS,
+      runs: [
+        { label: 'voyage-3.5', mode: 'hybrid', results: { q1: ['d3', 'd2', 'd1'] } },
+        { label: 'voyage-3.5', mode: 'keyword', results: { q1: ['d1', 'd2', 'd3'] } },
+        { label: 'ruri-v3', mode: 'hybrid', results: { q1: ['d1', 'd2', 'd3'] } },
+      ],
+    };
+    const r = ndcg.summarize(data);
+    assert.strictEqual(r.runs.length, 3);
+    assert.strictEqual(r.comparison[0].delta, null, '基準自身に差分が出ている');
+    assert.ok(Math.abs(r.comparison[2].delta - (0.7899980042460358 - 1)) < 1e-12);
+    assert.strictEqual(r.qrels.unlabeled, 1, '未ラベルのクエリ数を報告していない');
+    // 再現性: 同一入力なら同一出力（乱数・現在時刻に依存しない）。
+    assert.deepStrictEqual(ndcg.summarize(data), r);
+    assert.match(ndcg.renderText(r), /nDCG@10/);
+  });
+
+  // 🔴 違う正解ラベルで測った結果を並べさせない。並べると
+  // **モデルの差に見えるものが実はラベルの差**になる。
+  ok('nDCG: qrels の指紋が違う入力は比較できない（落とす）', () => {
+    const other = {
+      qrels: { version: 1, queries: [{ id: 'q1', text: '就業規則 休暇', relevance: { d3: 1 } }] },
+      runs: [{ label: 'ruri-v3', mode: 'hybrid', results: { q1: ['d3'] } }],
+    };
+    const same = { qrels: NDCG_QRELS, runs: [{ label: 'voyage-3.5', mode: 'hybrid', results: {} }] };
+    assert.throws(() => ndcg.mergeDatasets([same, other]), /qrels が一致しません/);
+    // 同じ qrels なら束ねられる（並び・空白の違いでは指紋が動かない）。
+    const reordered = {
+      qrels: { version: 1, k: 10, queries: [NDCG_QRELS.queries[1], NDCG_QRELS.queries[0]] },
+      runs: [{ label: 'ruri-v3', mode: 'hybrid', results: {} }],
+    };
+    assert.strictEqual(ndcg.mergeDatasets([same, reordered]).runs.length, 2);
+  });
+
+  ok('nDCG: 壊れた qrels は黙って受けない', () => {
+    assert.ok(ndcg.validateQrels({ queries: [] }).length > 0, '空の queries を通している');
+    assert.ok(
+      ndcg.validateQrels({ queries: [{ id: 'q1', text: 'a' }, { id: 'q1', text: 'b' }] }).some((e) => /重複/.test(e)),
+      'id の重複を通している'
+    );
+    assert.ok(
+      ndcg.validateQrels({ queries: [{ id: 'q1', text: 'a', relevance: { d: 7 } }] }).some((e) => /0\.\.3/.test(e)),
+      '値域外の関連度を通している'
+    );
+  });
+
+  // 雛形のクエリが負荷試験ハーネスの種と一致すること。**ずれると 2 つのハーネスが別の
+  // クエリを測り、レイテンシと関連性を同じ土俵で語れなくなる。**
+  ok('nDCG: qrels の雛形は perf/k6 の SEARCH_QUERIES を種にしている', () => {
+    const example = JSON.parse(
+      fs.readFileSync(path.join(__dirname, '..', 'perf/ndcg/qrels.example.json'), 'utf8')
+    );
+    const config = fs.readFileSync(path.join(__dirname, '..', 'perf/k6/lib/config.js'), 'utf8');
+    const block = /export const SEARCH_QUERIES = \[([\s\S]*?)\];/.exec(config);
+    assert.ok(block, 'perf/k6/lib/config.js から SEARCH_QUERIES を読めない');
+    const seeds = [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    assert.deepStrictEqual(example.queries.map((q) => q.text), seeds);
+    // 🔴 雛形の正解ラベルは空である（利用者が埋めるまで測れないことを、雛形自身が示す）。
+    assert.deepStrictEqual(
+      example.queries.filter((q) => Object.keys(q.relevance || {}).length > 0),
+      []
+    );
+    assert.deepStrictEqual(ndcg.validateQrels(example), []);
+  });
+
   // --- NFR / #581 / IADR-0144: IADR 採番の機械検査 ---------------------------------
   // 採番の一意性・連続性（`0000` 起点）・索引との双方向一致・索引行の「形」（#580 から統合）。
   // --- check-nul-bytes: 生の NUL バイトの混入（#956） --------------------------
@@ -6523,6 +6681,10 @@ ${r.stderr}`);
           'gen-openapi-skeleton.js',
           'gen-knowledge-graph.js',
           'measure-abac-combinations.js',
+          // #336 / IADR-0422: 検索の関連性（nDCG@10）の**測定器**。`measure-abac-combinations.js` と
+          // 同じ扱いで、判定を返さない（数字を出す）。走らせると検索 API を叩きに行くので、
+          // 検査器として spawn される母集合に入れてはならない。
+          'measure-search-ndcg.js',
           'seed-abac-policies.js',
           // #992 / IADR-0284: 検索検証用文書の初期投入器。`seed-abac-policies.js` と同じ
           // **投入器**であり検査器ではない（副作用を持ち、判定を返さない）。母集合に数えない。
@@ -6630,7 +6792,19 @@ ${r.stderr}`);
         //    🔴 **機械が言えるのは「名前が実在するか」までである** —— 「指し先は実在するが
         //    その帰結を固定していない」側は人が読むしかない。**射程を広げない**（広げると誤検出だらけになり、
         //    検査器ごと無視されるようになる）。git ls-files で母集合を引くので TRACKED_CHECKERS に載る。
-        assert.strictEqual(scripts.length, 53, `検査器の母集合が 53 本から変わった（${scripts.length} 件）`);
+        // ★ #1348 で `check-workflow-job-refs.js`（文書が名指しする CI ジョブ名が jobs: に実在すること・
+        //    必須チェック表の「下表の N 件」が行数と一致すること。**同型の事故 2 回目** —— 1 回目は
+        //    scripts/README.md:147 自身が「追随漏れが 1 度起きている」と記録、2 回目は廃止名 `doc-links` が
+        //    3 文書 4 箇所に残った）を新設したため 53 → 54（ラチェットが設計どおり発火した）。
+        //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        // ★ #1347 で `backlog-audit.js`（定期棚卸し。Proposed のまま止まった IADR・動いていない仕様書・
+        //    blocked 系ラベルで更新の止まった issue 等を**列挙するだけで状態は書き換えない**。
+        //    「success だが無産出」を作らないため、指摘 0 件でも「指摘なし」の節を必ず産出する）を
+        //    新設したため 54 → 55（同上）。GitHub API を叩くが git は一切呼ばないため、
+        //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-ci-latency.js` と同じ扱い）。
+        //    🔴 同じ PR で `check-coverage-floor.js` へ足した期待件数の導出は、初稿の `git ls-files` を
+        //    fs 走査へ改めた —— git で引くとクラス B になり、本テストの両方向分類が実挙動で捕まえた。
+        assert.strictEqual(scripts.length, 55, `検査器の母集合が 55 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],

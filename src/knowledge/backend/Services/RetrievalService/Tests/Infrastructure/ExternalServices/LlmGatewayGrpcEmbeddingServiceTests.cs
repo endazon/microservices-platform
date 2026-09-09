@@ -125,6 +125,95 @@ public class LlmGatewayGrpcEmbeddingServiceTests
         await act.Should().ThrowAsync<InvalidOperationException>();
     }
 
+    // ---- FR-02, FR-03, ADR-0016, [[IADR-0422]] 決定 3 (#336): 埋め込み先と検索先の照合 ----
+    //
+    // 🔴 ここが本節の本丸である。**クエリの埋め込みは、検索するコレクションと同じモデルで
+    // 作られていなければ意味が無い**（ADR-0016 がモデル別にコレクションを分けた理由）。
+    // 食い違ったまま検索すると **0 件にすらならず、別モデルの空間の順位が返る** ——
+    // nDCG はその順位を採点するので、**壊れた測定が数字として成立する。**
+
+    private static Pb.EmbedResponse GatewayResponseFrom(string collection, string endpoint, params float[] vector)
+    {
+        var resp = new Pb.EmbedResponse
+        {
+            Dimensions = vector.Length,
+            Model = "ruri-v3",
+            Collection = collection,
+            Embedded = true,
+            Endpoint = endpoint,
+            RoutingReason = "機密区分 Public / 用途 Query",
+            Retryable = false,
+        };
+        resp.Vector.AddRange(vector);
+        return resp;
+    }
+
+    // 陽性対照: 答えたコレクションと読むコレクションが一致すれば、従来どおりベクトルを運ぶ。
+    [Fact]
+    public async Task EmbedAsync_コレクションが一致すればベクトルを運ぶ()
+    {
+        var service = new LlmGatewayGrpcEmbeddingService(
+            new FakeClient(GatewayResponseFrom("knowledge_chunks_ruri_v3", "selfhosted-ruri", 0.5f, 0.5f)),
+            new QueryEmbeddingTarget("knowledge_chunks_ruri_v3"));
+
+        var vector = await service.EmbedAsync("問い", TestContext.Current.CancellationToken);
+
+        vector.Should().Equal(0.5f, 0.5f);
+    }
+
+    // 🔴 陰性: 食い違えば空ベクトルへ降りる（＝意味検索の系統を使わない。キーワード系統は生きる）。
+    // **次元が一致していても降りる** —— voyage(1024) と deterministic(1024) の取り違えは
+    // 次元では捕まらず、#1215 の稼働クラスタで実際に起きた形である。
+    [Fact]
+    public async Task EmbedAsync_コレクションが食い違えば空ベクトルへ降りる()
+    {
+        var service = new LlmGatewayGrpcEmbeddingService(
+            new FakeClient(GatewayResponseFrom("knowledge_chunks_deterministic_v1", "deterministic-local", 0.1f, 0.2f)),
+            new QueryEmbeddingTarget("knowledge_chunks_voyage_3_5"));
+
+        var vector = await service.EmbedAsync("問い", TestContext.Current.CancellationToken);
+
+        vector.Should().BeEmpty();
+    }
+
+    // REST 実装と gRPC 実装が**同じ判定**を通ることを、同じ食い違いで固定する
+    // （輸送ごとに照合が分かれると、片方の経路だけが守る食い違いが起こる）。
+    [Fact]
+    public async Task Rest_と_grpc_はコレクションの食い違いに同じ答えを返す()
+    {
+        var target = new QueryEmbeddingTarget("knowledge_chunks_voyage_3_5");
+        var grpc = await new LlmGatewayGrpcEmbeddingService(
+                new FakeClient(GatewayResponseFrom("knowledge_chunks_ruri_v3", "selfhosted-ruri", 0.5f, 0.25f)), target)
+            .EmbedAsync("問い", TestContext.Current.CancellationToken);
+
+        const string json = """
+            {"vector":[0.5,0.25],"dimensions":2,"model":"ruri-v3",
+             "collection":"knowledge_chunks_ruri_v3","embedded":true,
+             "endpoint":"selfhosted-ruri","routingReason":"機密区分 Public / 用途 Query","retryable":false}
+            """;
+        var rest = await new LlmGatewayEmbeddingService(
+                new HttpClient(new StubHandler(json)) { BaseAddress = new Uri("http://llm-gateway") }, target)
+            .EmbedAsync("問い", TestContext.Current.CancellationToken);
+
+        grpc.Should().BeEmpty();
+        rest.Should().Equal(grpc);
+    }
+
+    // 判定そのもの（純関数）。**空は「情報が無い」であって「不一致」ではない。**
+    [Theory]
+    [InlineData("knowledge_chunks_voyage_3_5", true)]   // 一致
+    [InlineData("knowledge_chunks_ruri_v3", false)]     // 不一致
+    [InlineData("", true)]                              // 情報が無い（拒否時の応答。既に Embedded=false で降りている）
+    [InlineData("   ", true)]
+    public void Matches_は一致と不一致だけを見分ける(string answered, bool expected)
+        => QueryEmbeddingCollection.Matches(answered, new QueryEmbeddingTarget("knowledge_chunks_voyage_3_5"))
+            .Should().Be(expected);
+
+    // 照合先が与えられていない構成（合成点が渡していない）は照合しない＝従来どおり運ぶ。
+    [Fact]
+    public void Matches_照合先が無ければ照合しない()
+        => QueryEmbeddingCollection.Matches("knowledge_chunks_ruri_v3", null).Should().BeTrue();
+
     private sealed class FakeClient(Pb.EmbedResponse response) : Pb.LlmEmbedding.LlmEmbeddingClient
     {
         public override AsyncUnaryCall<Pb.EmbedResponse> EmbedAsync(

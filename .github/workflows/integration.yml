@@ -8,7 +8,7 @@
 #
 # ■ 🔴 --filter を付けずに全量で回す
 # 統合テストだけを選ぶのではなく**全テストを 1 回**走らせる。理由は 3 つある（下の run ステップに詳述）。
-#   1. カバレッジ床（line 88 / branch 68）は全量の実測から置かれているので置き直さずに済む
+#   1. カバレッジ床（値の正本は src/coverage-floor.json。ここへ写さない）は全量の実測から置かれているので置き直さずに済む
 #   2. 同じテストプロジェクトを 2 回実行しないので二重集計が起きない
 #   3. フィルタに依存しないので fail-closed の門が要らない
 #
@@ -86,13 +86,13 @@ jobs:
       # 🔴 **--filter を付けない。全テストを 1 回だけ走らせる**（IADR-0232 改定 3）。
       # ここが本ワークフローの設計の要であり、3 つの問題が同時に消える。
       #
-      #   1. **カバレッジ床を置き直さずに済む。** 床 line 88 / branch 68 は
-      #      **統合テストを含む全量 43/43 の実測**から置かれている（src/coverage-floor.json）。
-      #      全量で回すなら床はそのまま使える。
+      #   1. **カバレッジ床を置き直さずに済む。** 床は**統合テストを含む全量の実測**から置かれている
+      #      （値の正本は src/coverage-floor.json の `backend`。🔴 ここへ数値を写さない —— #1346 で
+      #      写した 88/68 が引き上げ後も残り、正本と食い違った）。全量で回すなら床はそのまま使える。
       #   2. **二重集計が起きない。** 同じテストプロジェクトを 1 回しか実行しないため
-      #      Cobertura は 15 件のまま。**2 回実行すると行の分母が 2 倍になり床が割れる**
-      #      —— 実測 レポート 30 件 / 49894 行 / line 20.22%（当時の本来は 15 件 / 24947 行 / 39.92%。
-      #      **件数は #897 で 16 件になった**——下の「期待値」を参照）。
+      #      Cobertura の件数はテストプロジェクト数と一致する。**2 回実行すると当時は行の分母が
+      #      2 倍になり床が割れた** —— 実測 レポート 30 件 / 49894 行 / line 20.22%
+      #      （当時の本来は 15 件 / 24947 行 / 39.92%）。
       #      **割れ方は fail なので気付けるが「テストが減った」と取り違えやすい。**
       #   3. **fail-closed の門が要らなくなる。** フィルタが無いので「Trait の付け忘れで
       #      0 件実行のまま緑」が起こり得ない。**門は「フィルタに依存するなら併設する」もの**
@@ -101,54 +101,77 @@ jobs:
       # 🔴 **ここに --filter を足すなら、fail-closed の門を必ず併設すること。**
       # 足すと ci.yml 側（Category!=Integration）と対になり、**Trait を付け忘れたテストが
       # どこでも走らない**形に倒れる。現在は付け忘れても ci.yml 側に残る（fail-safe）。
+      #
+      # 🔴 **ユニットが 1 つ落ちても残りのユニットを走らせ切る**（#1345）。
+      # `set -e` のまま最初の失敗で抜けると、後続ユニットのテストが走らず Cobertura も残らない。
+      # 下の床の評価は「全ユニットのレポートが揃っていること」を前提にしているので、
+      # ここで抜けると床が**部分集合**で測られる（あるいは件数不一致で warn になる）。
+      # 失敗は記録して最後に exit 1 にする —— ジョブの赤は変わらず、床の評価だけが完走する。
       - name: All tests including real containers (all units, with coverage)
+        id: tests
         run: |
-          set -euo pipefail
+          set -uo pipefail
           shopt -s nullglob
           found=0
+          failed=""
           for slnx in src/*/backend/backend.slnx; do
             found=$((found + 1))
             echo "::group::$slnx"
-            dotnet restore "$slnx"
-            dotnet build "$slnx" --no-restore --configuration Release
-            dotnet test "$slnx" --no-build --configuration Release \
-              --collect:"XPlat Code Coverage" --verbosity normal
+            if dotnet restore "$slnx" \
+              && dotnet build "$slnx" --no-restore --configuration Release \
+              && dotnet test "$slnx" --no-build --configuration Release \
+                   --collect:"XPlat Code Coverage" --verbosity normal; then
+              echo "OK: $slnx"
+            else
+              echo "::error::$slnx のテストが失敗した（残りのユニットは続けて走らせる）。"
+              failed="$failed $slnx"
+            fi
             echo "::endgroup::"
           done
           if [ "$found" -eq 0 ]; then
             echo "::error::src/*/backend/backend.slnx が 1 件も無い。glob が空振りしている。"
             exit 1
           fi
+          if [ -n "$failed" ]; then
+            echo "::error::失敗したユニット:$failed"
+            exit 1
+          fi
       # 🔴 カバレッジ床を強制するのはここだけである（IADR-0232 改定 3）。
       # PR 側（ci.yml）は統合テストぶんが無いため --report-only で報告のみ行う。
       # **門を 2 つ置かない** —— 床が 2 つ並ぶとどちらが本物か分からなくなる。
       #
-      # 期待値: レポート **16 件** / line 88.99%（6489 / 7292） / branch 68.66%（1433 / 2087）。
-      # （#900 で更新。集計がレポートを跨いで行を重複排除するようになった。
-      #   従前は「16 件 / line 38.49%（9967 / 25896） / branch 27.32%」、その前は
-      #   「15 件 / line 39.92%（9958〜9960 / 24947） / branch 28.36%」だった。
-      #   🔴 **被覆の実態は変わっていない** —— 重複排除前で測れば line 38.5%（9969 / 25896） で従前と同じであり、
-      #   分母から水増し 18604 行が取れただけである。）
+      # 🔴 **レポートの期待件数はここに書かない。** check-coverage-floor.js が追跡下の
+      # `*Tests.csproj`（`src/` を fs 走査。除外ユニットを除く）の数から**毎回導出して突き合わせる**（#1346）。
+      # 従前はここに「16 件」、src/coverage-floor.json に「17 件」と手で写してあり、実物が 19 件に
+      # なっても誰も更新せず、**二重実行の唯一の検知手段が腐っていた**。導出値は写さない（規則 10）。
+      # 数え方を確かめたいときは `find src -name '*Tests.csproj' -not -path '*/ai-stock-trading/*'`。
       #
-      # 🔴 **件数が増えた原因は 2 つあり、取り違えないこと。**
-      #   (a) **同じテストプロジェクトが 2 回実行されている**（--filter を足した等）
-      #   (b) **テストプロジェクトが増えた**（正当）
+      # 🔴 **件数が期待と違う原因は 2 つあり、取り違えないこと。**
+      #   (a) **同じテストプロジェクトが 2 回実行されている**（--filter を足した等）→ 期待より**多い** → fail
+      #   (b) **テストプロジェクトが出力を残さなかった**（実行 0 件・ビルド失敗）→ 期待より**少ない** → warn
       #
-      # 🔴 **［#900］(b) で床が割れる弱点は解消した。** 集計がレポートを跨いで行を重複排除する
-      # ようになったため、テストプロジェクトを増やしても共有ライブラリの行が重ねて分母に載ることはない
-      # （#897 が (b) で 15 → 16 になり床が割れたのが #899 であり、その根本原因を塞いだ）。
+      # 🔴 **［#900］テストプロジェクトが増えて床が割れる弱点は解消した。** 集計がレポートを跨いで
+      # 行を重複排除するようになったため、共有ライブラリの行が重ねて分母に載ることはない
+      # （#897 が 15 → 16 で床を割ったのが #899 であり、その根本原因を塞いだ）。
       #
-      # 🔴 **代わりに (a) の検知が弱くなった。取り違えないこと。**
-      # 2 回実行しても重複が畳まれるため **分母は倍にならず、床は割れない**。
-      # つまり (a) の事故は fail ではなく **無音** になった。**上の「レポート 16 件」の期待値と、
-      # check-coverage-floor が毎回出す「出現レポート数の内訳」で見ること**
-      # （2 回実行すると全キーの出現部数が一斉に倍化するので、内訳を見れば分かる）。
+      # 🔴 **代わりに (a) の検知が弱くなった。** 2 回実行しても重複が畳まれるため
+      # **分母は倍にならず、床は割れない** —— (a) の事故は fail ではなく**無音**になった。
+      # だから件数の突合を検査器に持たせた（上記）。「出現レポート数の内訳」も毎回出る
+      # （2 回実行すると全キーの出現部数が一斉に倍化する）。
+      #
+      # 🔴 **テストが赤くても床は評価する**（#1345）。従前は前段が落ちると本 step が skipped になり、
+      # そのコミットでは床が 1 度も測られないまま次へ進んだ（run 34233308468 で実測）。
+      # 床の評価はテストの合否と独立した観測であり、赤の中でも「被覆が落ちたか」は読めなければならない。
+      # `!cancelled()` で走らせ、テスト step 自体が走らなかったとき（force_failure）だけ skip する。
       - uses: actions/setup-node@v7
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         with:
           node-version: "20"
       - name: Self-test coverage floor checker
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         run: node scripts/check-coverage-floor.js --self-test
-      - name: Check backend coverage floor (床の強制はここだけ)
+      - name: Check backend coverage floor (床の強制はここだけ。テストが赤くても評価する)
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         run: node scripts/check-coverage-floor.js
 
   # 🔴 PR から外した分の担保が落ちたことを issue として残す（IADR-0232 決定 1）。

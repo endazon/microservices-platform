@@ -24,7 +24,7 @@ related_ids:
   - IADR-0395
 author: claude
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-09
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (Accepted 2026-07-25) 決定・選定基準 3・4
   - planning:projects/microservices-platform/07_adr/ADR-0041_result-type-external-library.md (Accepted 2026-08-22) 決定 2・3
@@ -304,6 +304,7 @@ DocumentService の全 21 ガードを 1 本にすると 13 検証器・13 登�
   - タグ名の規則が 3 複製のまま残る（決定 4。移送前と同じ状態を保つための意図的な選択）。
 - フォローアップ:
   - PR-B / PR-C / PR-D（決定 10）。**#1278 を閉じるのは PR-D。**
+    - ［2026-09-09 追記 / #1230］PR-B（`ObsidianSync/Push` の `RuleSet`。`PushNoteValidator`）・PR-C（McpServer の `kind` / `egressTier`。`RegisterMcpClientValidator`）・PR-D（NotificationService。`NotificationIngressValidator`）は**すべて着地済み**であることを作業ツリーで確かめた（登録行はいずれも 1 検証器 1 行の明示登録。`AddValidatorsFromAssembly` は 0 件）。#1230 の「群 3」に未着手のものは無い。
   - `Error` → ProblemDetails の共通変換は #1230 が射程外と明記している。Kernel の `Error` に
     複数件を持たせるかは `ADR-0041` の裁定事項である。
   - #1279（写像 7 本）は DocumentService の `DocumentEndpoints.cs` / `PrivateNoteEndpoints.cs` に

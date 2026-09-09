@@ -9,6 +9,7 @@ using NotificationService.Common.Options;
 using NotificationService.Infrastructure.Persistence;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 
@@ -25,6 +26,10 @@ builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddMeter(NotificationDeliveryMetrics.MeterName));
 builder.Services.AddPlatformAuth(builder.Configuration);
+// NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 3, [[IADR-0419]] (#1255):
+// east-west gRPC の h2c リスナ（`Grpc:Port`。**未設定なら立てない**）。
+// HTTP/1.1 のポート（REST の /notifications・受け口・/health/*・introspection）はそのまま残る。
+builder.AddPlatformGrpcListener();
 
 // NFR: 接続先は構成から受け取る。**既定の資格情報を埋め込まない。**
 // 埋め込むと、構成の注入漏れが「起動失敗」ではなく「既定の資格情報で接続成功」へ倒れ、
@@ -85,6 +90,11 @@ app.MapOpenApi();
 app.MapNotificationEndpoints();
 // FR-22: メッシュ内部限定の受け口（認証は課さない。OpenAPI には載せない）。
 app.MapNotificationIngressEndpoints();
+// FR-22, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4・5, [[IADR-0419]] (#1255):
+// 同じ受け口の east-west gRPC 面。**本体（NotificationIngress.AcceptAsync）は上の REST と共有**し、
+// 面は `ServiceCaller`（realm ロール platform-service）を要求する ——
+// **REST の無認証の口はそのまま残す**（並走中の正は REST。切替は呼び出し元の構成 1 つで行う）。
+app.MapGrpcService<NotificationIngressGrpcService>();
 
 app.Run();
 
