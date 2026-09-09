@@ -3,7 +3,7 @@ title: Docker Engine API が無い環境（containerd 等）で統合テスト�
 type: how-to
 status: fixed
 created: 2026-09-08
-updated: 2026-09-09
+updated: 2026-09-10
 author: claude
 ---
 <!-- trace:
@@ -68,6 +68,40 @@ export PLATFORM_TEST_MINIO="http://127.0.0.1:59000"
 
 **要る分だけ渡せばよい。** 渡さなかった依存を要するテストは、理由と渡すべき変数名を添えて
 **真の Skipped** になる（黙って通ることはない）。
+
+## 2.5 稼働中のクラスタを端点として使うときの前提（2026-09-10 追記）
+
+稼働している k3s の Postgres / RabbitMQ を `kubectl port-forward` で借りて走らせる場合、
+**次の 2 つを先に満たさないと、product の不具合と紛らわしい形で落ちる。**
+
+### `port-forward` は試験と同じシェルの中で張る
+
+別のコマンドで張ると、試験が走る頃には落ちている。そのときの症状は
+`MassTransit.RabbitMqConnectionException : Broker unreachable` で、**あたかも fan-out の是正が
+効いていないかのように 2 件とも落ちる**（実測で一度これに引っかかった）。
+
+```bash
+kubectl -n platform-infra port-forward svc/rabbitmq 15672:5672 >/dev/null 2>&1 &
+kubectl -n platform-infra port-forward svc/postgres 15433:5432 >/dev/null 2>&1 &
+sleep 8
+export PLATFORM_TEST_RABBITMQ="amqp://guest:guest@127.0.0.1:15672"
+export PLATFORM_TEST_POSTGRES="Host=127.0.0.1;Port=15433;Database=integration_test;Username=kp;Password=kp"
+dotnet test src/knowledge/backend/Tests/Knowledge.IntegrationTests/Knowledge.IntegrationTests.csproj
+```
+
+### 接続する役割に `CREATEDB` が要る
+
+試験は**実行ごとにデータベースを作る**。稼働クラスタの `kp` は `CREATEDB` を持たないため、
+`42501: permission denied to create database` で **1〜2 秒で**落ちる。
+🔴 **ブローカへ触る前に落ちるので、メッセージングの失敗と見分けが付きにくい。**
+
+付与はスーパーユーザーで行う（`kp` 自身では `Only roles with the CREATEROLE attribute … may alter this role` になる）。
+
+```bash
+kubectl -n platform-infra exec deploy/postgres --   sh -c 'psql -U "$POSTGRES_USER" -d postgres -c "ALTER ROLE kp CREATEDB;"'
+```
+
+> **使い捨てのクラスタでのみ行うこと。** 恒久的な環境の役割へ `CREATEDB` を足す判断は別である。
 
 ## 3. 走らせる
 
