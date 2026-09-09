@@ -456,6 +456,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/k8s-local-up.test.js
 
+      # NFR（運用保守）, Issue #1349: scripts/setup.sh の submodule 初期化（Platform.Bff.csproj の
+      # ProjectReference が要る。dotnet restore より前）と pnpm install（src/・在れば使う・fail-open）を
+      # 上と同じ stub-on-PATH 方式（git/dotnet/pnpm を記録スタブへ差し替え）で固定する。
+      - name: Smoke-test setup.sh submodule init / pnpm install (stub-on-PATH)
+        if: ${{ !cancelled() }}
+        run: node scripts/setup.test.js
+
       # FR-05 / NFR-09, IADR-0369, Issue #1088: realm JSON（宣言）と稼働 realm の差分を当てる計画器
       # （deploy/local/keycloak-setup/reconcile-realm.js）の純粋関数を、実物の realm JSON から切り出した
       # fixture で固定する。「一致なら 0 件」「実行時層（既存利用者・smtpServer）には触れない」が肝。
