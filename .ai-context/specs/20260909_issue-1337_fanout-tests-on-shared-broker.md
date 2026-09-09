@@ -196,3 +196,28 @@ Title に `docId` を混ぜる（slug が実行ごとに変わる）。併せて
 - 判断が要る点: slug を `DocumentId` で一意化するのか、衝突時に接尾辞を付けるのか、
   そもそも slug の一意性を要件として保つのか（Wiki.js 側のパスは既に `DocumentId` 由来である）
 - **これは計画側の裁定が要る別件であり、本 PR の射程外**である
+
+## ［2026-09-09 追記 / PR #1355］同じ CI run で見つかった別の flake —— gRPC 試験の空きポート選択
+
+本仕様書のコミット（テスト基盤のみ・本番コード無変更）を push した run で、**DocumentService.Tests の gRPC 試験 25 件**が
+`Failed to bind to address http://127.0.0.1:33401: address already in use` で一斉に落ちた。直前の head では緑であり、
+差分は `Knowledge.IntegrationTests` だけである。
+
+**原因**: 各テストプロジェクトの `GrpcTestConfiguration.FreeTcpPort()` が `TcpListener(…, 0)` で OS に番号を選ばせて
+**解放し**、その番号を後で Kestrel が bind する。解放から bind までの間に、並列に走る他のテストプロセスの**送信側ソケット**
+（HttpClient 等）が同じ番号を取り得る —— 動的範囲（Linux の既定 32768〜60999）は送信側の割当にも使われるからである。
+`33401` はその範囲内にある。**再現は確率的で、テストプロセスが増えるほど当たりやすい**（本 PR で Knowledge.IntegrationTests の
+試験が 45 → 54 件に増え、同時に走る接続が増えた）。
+
+**是正**: 候補を**動的範囲の外（20000〜29999）**から引き、bind できることを確かめてから返す（7 箇所。`Grpc:Port` に 0 は
+「リスナを立てない」の意味なので Kestrel 側の動的割当は使えない）。残る衝突は「別プロセスが同時に同じ候補を引く」ときだけ
+（候補 1 万個）。**主張（h2c が実 Kestrel に bind される）は変えていない。**
+
+| 箇所 | |
+| --- | --- |
+| `{Document,Retrieval,Graph,Dashboard}Service/Tests/Grpc/GrpcTestConfiguration.cs` | knowledge 4 |
+| `{LlmGateway,AuthorizationService}/Tests/Grpc/GrpcTestConfiguration.cs` | platform 2 |
+| `Platform.Shared.Infrastructure.Tests/Foundation/Grpc/GrpcListenerBindingTests.cs` | 同型の選び方 |
+
+🔴 **同型の写しが 7 箇所にある**ことは本追記で初めて数えた。共有の試験支援へ寄せるかは、IADR-0416 が記録した
+「`FakeAuthzScopeClient` が 3 本目 —— 4 本目を作る前に共有の試験支援プロジェクトを立てる」と同じ判断に乗る（本 PR では広げない）。
