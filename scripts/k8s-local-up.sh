@@ -143,6 +143,14 @@ kubectl create configmap reset-gate-script -n "$INFRA_NS" \
   --from-file=reset-gate.js=deploy/mail-relay/reset-gate.js \
   --dry-run=client -o yaml | kubectl apply -f -
 
+# SC-10, ADR-0078 決定 3, IADR-0421 (#1245 PR-B): 近接 MTA のキューを Prometheus 形式で出す
+# サイドカー exporter の本体（deploy/mail-relay/mail-queue-exporter.js）。門と同型で --from-file にする。
+# 🔴 [4/7] の apply より**前**に作る（mail-relay Pod が起動時にマウントする。無いと Pod が起動せず
+#    rollout で止まる）。
+kubectl create configmap mail-queue-exporter-script -n "$INFRA_NS" \
+  --from-file=mail-queue-exporter.js=deploy/mail-relay/mail-queue-exporter.js \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 # Keycloak realm import 用 ConfigMap（実 realm ファイル＝単一情報源）。
 # AST realm（submodule）が存在すれば同一 Keycloak へ併せて import する（MSP+AST 連結）。
 realm_args=(--from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json)

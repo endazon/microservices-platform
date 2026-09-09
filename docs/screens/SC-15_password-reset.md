@@ -3,14 +3,14 @@ title: パスワードリセット 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-08-15
-updated: 2026-09-07
+updated: 2026-09-09
 author: claude
 ---
 <!-- trace:
 ids: [SC-10, SC-13, SC-14, SC-15, FR-05, UC-05]
-adrs: [ADR-0026, ADR-0045, ADR-0078]
-iadrs: [IADR-0197, IADR-0261, IADR-0329, IADR-0332, IADR-0344, IADR-0347, IADR-0369, IADR-0404]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate]
+adrs: [ADR-0006, ADR-0026, ADR-0045, ADR-0078]
+iadrs: [IADR-0197, IADR-0261, IADR-0329, IADR-0332, IADR-0344, IADR-0347, IADR-0369, IADR-0404, IADR-0421]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation]
 issues: [#438, #1102, #1143, #1144, #1245, #1301, #1307]
 -->
 
@@ -239,7 +239,8 @@ go-live は組織のメールテナント）である。**認証基盤の送出�
 | W2（投函を拒む） | 同上 | 同上（門は利用者と**同じ取引**を打つので、同じ拒否を受ける） |
 
 🔴 **窓は縮んだだけで、閉じてはいない。** 加えて**門自身が落ちている間は W1 が開いたまま**になる
-（門を監視する門は作らない —— 不在は観測側で見せる。その配線はまだ無い）。
+（門を監視する門は作らない —— 不在は観測側で見せる）。
+🔴 **［2026-09-09］中継のキューの観測は入ったが、門の不在はまだ観測に載っていない**（残件）。
 
 🔴 **この節の値は 1 つも実測していない**（稼働クラスタが要る）。プローブ周期・タイムアウト・
 連続成功の回数はいずれも配備の宣言が与える初期値であり、**正しさは実測で決めて計画へ返す**。
@@ -249,8 +250,16 @@ C1 は認証基盤の送出が同期でありタイムアウトが固定値で�
 **実測とその結果の環流は別途行う。**
 
 🔴 **観測点が移ったことに注意。** 中継を挟んだので、**上流が止まっていても認証基盤から見た送出は成功する**。
-認証基盤の監査ログだけを見ていると**上流の停止を見逃す**。見るべきはキューの長さ・滞留時間・後送の失敗率であり、
-**その配線はまだ無い**（計画はそれを求めている）。
+認証基盤の監査ログだけを見ていると**上流の停止を見逃す**。見るべきはキューの長さ・滞留時間・後送の失敗率である。
+
+**［2026-09-09 更新］その配線が入った。** 中継のキュー長と滞留時間を可観測性基盤へ流し、
+滞留が続いたときと**メールが破棄される直前**にアラートが鳴る。指標・アラート・限界は
+[近接 MTA のキューの可観測性仕様書](../observability/mail-relay-queue-metrics.md)が正本であり、
+見方は[運用 Runbook](../operations/keycloak-smtp-relay-setup-runbook.md) §キューの観測 にある。
+
+🔴 **「後送の失敗率」は率として測れていない。** 寿命（30 分）を超えたメールはキューから消え、
+**届いたものと区別が付かない**ため事後に数えられない。代わりに**破棄される前**に鳴らしている。
+🔴 **しきい値は実測前の暫定値である**（計画が「実測してから定める」と定めている）。
 
 **送出失敗そのものは隠さない。** realm は送出成功／失敗の監査イベントを記録する設定になっており、
 運用側は[運用ダッシュボード](./SC-10_operations-dashboard.md)で観測できる。**利用者向けの応答には出さない。**

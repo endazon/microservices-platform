@@ -135,6 +135,15 @@ data:
             annotations:
               summary: "SLO の評価対象が無い: aianalysis-service /analysis/ask のレイテンシ分布が存在しない"
               description: "AiAnalysisService の /analysis/ask のレイテンシ分布が無い。RagLatencyP95High は空ベクタになり発火しない。合成監視のプローブ（60 秒間隔）が止まっている疑い。"
+          # SC-10 / SC-15, ADR-0078 決定 3, IADR-0421 (#1245 PR-B): 下の mail-relay-queue 群の評価対象。
+          # 🔴 0 は「滞留なし」、不在は「測っていない」。exporter は読めなかったキューに 0 を出さない。
+          - alert: MailRelayQueueSeriesAbsent
+            expr: absent(postfix_queue_size{queue="deferred"})
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "SLO の評価対象が無い: 近接 MTA のキュー長の系列が存在しない"
+              description: "mail-relay のキュー長が無い。滞留のアラートは空ベクタになり発火せず、上流停止が無監視になる。exporter サイドカーの不在・spool の読み取り失敗・collector の prometheus receiver の欠落・NetworkPolicy による遮断を疑う。"
       # FR-10, SC-10, ADR-0006, ADR-0076 決定 3 (#1246): ナレッジ健全性の**生産者**が居ないことを見る。
       # 🔴 上の群と式が違う（`absent()` ではなく `absent_over_time(...[2h])`）。生産は周期駆動で
       #   周期は 1 時間であり、`absent()` の既定 5 分 lookback では平常時も鳴り続ける。2 周期ぶんで見る。
@@ -168,6 +177,29 @@ data:
             annotations:
               summary: "ユニットの主体が project を付けずに文書を保存した（0 が正常）"
               description: "DocumentService の該当カウンタが直近 1 時間で前進した。ユニットの保存経路は project を無条件で付与するため、非ゼロはその経路を通らない書き込みの検出である。保存は止まっていない（計器であって統制ではない）。"
+      # SC-10 / SC-15, ADR-0045 決定 8 → ADR-0078 決定 3, IADR-0421 (#1245 PR-B): 近接 MTA のキュー。
+      # 🔴 **観測点が移った。** 近接 MTA を挟んだ以後、上流が止まっていても Keycloak の送出は成功する。
+      #   監査ログだけを見ていると上流停止を見逃す。系列は mail-relay:9154 の exporter を
+      #   **otel-collector の prometheus receiver** が取り、remote write で入る（job は `mail-relay`）。
+      #   Prometheus の直 scrape 対象は otel-collector 1 つのままである。
+      # 🔴 **しきい値と for は実測前の暫定値である**（#1245 PR-D で測る）。理由の正本は compose 側
+      #   （deploy/prometheus/alerts.yml）の同名グループの前書きである。
+      - name: mail-relay-queue
+        rules:
+          - alert: MailRelayDeferredBacklog
+            expr: postfix_queue_size{queue="deferred"} > 0
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "近接 MTA の後送が滞留している（deferred > 0 が 5 分継続）"
+              description: "mail-relay が上流へ後送できずメールが deferred キューに残っている。上流の停止・認証失敗・宛先拒否を疑う。Keycloak 側の応答は 200 のままで利用者にも監査ログにも現れない。しきい値は暫定値である。"
+          - alert: MailRelayDeferredMessageNearExpiry
+            expr: postfix_queue_oldest_message_age_seconds{queue="deferred"} > 1200
+            for: 5m
+            labels: { severity: critical }
+            annotations:
+              summary: "近接 MTA の後送がキュー寿命に達しつつある（最古 20 分超）"
+              description: "deferred の最古メッセージが到着から 20 分を超えた。キュー寿命は 30 分であり、超えたメールは破棄される。破棄されたパスワードリセットは利用者からは「メールが来ない」としか見えない。しきい値は暫定値である。"
 ---
 apiVersion: apps/v1
 kind: Deployment

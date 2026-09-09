@@ -309,6 +309,28 @@ node scripts/check-password-reset-mail.js
 #   → 申請 → 送出 → 受信 → 本文（リンクと有効期限のみ）を機械で確かめる
 ```
 
+**［2026-09-09 / #1245 PR-B］キューの観測が入った。** 計画 ADR-0078 決定 3 が「上流停止の観測点を
+**近接 MTA のキュー**へ移す」と定めたためである。🔴 **移さないと、近接 MTA を挟んだこと自体が観測を消す**
+—— 上流が止まっていても Keycloak から見た送出は成功する（キューへ入る）。
+`mail-relay` Pod にサイドカー（`queue-exporter`）が同居し、`:9154/metrics` へキュー長と滞留時間を出す。
+
+```
+mail-relay ┬ postfix        （spool へ書く）
+           └ queue-exporter （spool を読み :9154 へ出す）  → otel-collector の prometheus receiver
+                                                          → remote write → Prometheus / Grafana
+```
+
+🔴 **Prometheus の scrape 対象は増やしていない**（`otel-collector:8888` が唯一のまま。#546 / #1090）。
+🔴 **compose 経路には無い**（compose に mail-relay が居ないため。`deploy/otel-collector-config.yaml` に理由を書いた）。
+
+```bash
+kubectl -n platform-infra port-forward deploy/mail-relay 9154:9154   # → http://localhost:9154/metrics
+```
+
+> 指標・アラート・限界（**後送の失敗率は率として測れていない**・**しきい値は実測前の暫定値**）は
+> [`docs/observability/mail-relay-queue-metrics.md`](../../docs/observability/mail-relay-queue-metrics.md)、
+> 見方は [運用 Runbook](../../docs/operations/keycloak-smtp-relay-setup-runbook.md) §キューの観測。
+
 > **エッジ（50000）には出していない。** 受信箱の中身は**パスワードリセットリンク＝認証資格**であり、
 > UI は認証を持たない。見るときは上のように**運用者が明示的に開く**。
 >

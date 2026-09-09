@@ -199,6 +199,20 @@ groups:
           summary: "SLO の評価対象が無い: aianalysis-service /analysis/ask のレイテンシ分布が存在しない"
           description: "AiAnalysisService の http_server_request_duration_seconds_bucket{http_route=\"/analysis/ask\"} が無い。RagLatencyP95High は空ベクタになり発火しない。合成監視のプローブ（60 秒間隔）が止まっているか、AiAnalysisService が /analysis/ask を処理できていない疑い（ADR-0076 決定 3 / ADR-0079 決定 1）。"
 
+      # SC-10, SC-15, ADR-0078 決定 3, IADR-0421 (#1245 PR-B): 下の mail-relay-queue 群の評価対象。
+      # 🔴 **この 1 件が本群の中で唯一「常時トラフィックが要らない」対象である** —— exporter は
+      #   30 秒ごとに必ず値を出す（空のキューも 0 として出す）ので、系列が消えるのは
+      #   **exporter が居ない・spool を読めない・collector が取りに行けていない**のいずれかだけである。
+      # 🔴 **`postfix_queue_size{queue="deferred"} == 0` と読み分けること。** 0 は「滞留なし」、
+      #   不在は「測っていない」である。exporter は読めなかったキューに 0 を出さず系列ごと欠かす。
+      - alert: MailRelayQueueSeriesAbsent
+        expr: absent(postfix_queue_size{queue="deferred"})
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "SLO の評価対象が無い: 近接 MTA のキュー長の系列が存在しない"
+          description: "mail-relay の postfix_queue_size{queue=\"deferred\"} が無い。MailRelayDeferredBacklog / MailRelayDeferredMessageNearExpiry は空ベクタになり発火せず、上流停止が無監視になる（ADR-0078 決定 3 の観測点が消えた状態）。exporter サイドカーの不在・spool の読み取り失敗・otel-collector の prometheus receiver の欠落・NetworkPolicy による遮断を疑う。"
+
   # FR-10, SC-10, ADR-0076 決定 3, IADR-0389 決定 5 (#1246):
   # **ナレッジ健全性の生産者が居なくなったこと**を warning とする。
   #
@@ -262,6 +276,47 @@ groups:
         annotations:
           summary: "ユニットの主体が project を付けずに文書を保存した（0 が正常）"
           description: "DocumentService の documents_unit_project_missing_total が直近 1 時間で前進した。ユニット（サービスアカウント）の保存経路は project を無条件で付与するため、非ゼロはその経路を通らない書き込みが起きたことを意味する。documents_client_id / documents_operation で書き手と操作を特定する。保存は止まっていない（計器であって統制ではない。ADR-0085 決定 4）。"
+
+  # SC-10, SC-15, FR-05, ADR-0045 決定 8（ADR-0078 決定 3 による部分改定）, IADR-0404 / IADR-0421 (#1245 PR-B):
+  # **近接 MTA（mail-relay）のキュー** —— 上流（組織のメールテナント）の停止を見る唯一の窓である。
+  #
+  # 🔴 **観測点が移った。** 近接 MTA を挟んだ以後、Keycloak から見た送出は上流が止まっていても成功する
+  #   （キューへ入る）。**決定 8 のまま Keycloak の監査ログだけを見ると上流停止を見逃す。**
+  #   ここが見えないと、パスワードリセットのメールが 30 分後に黙って捨てられていても誰も気付かない。
+  #
+  # 🔴 **系列は Prometheus が直に scrape していない。** mail-relay のサイドカー exporter（:9154）を
+  #   **otel-collector の prometheus receiver** が取り、remote write で入る（job ラベルは `mail-relay`）。
+  #   「otel-collector が唯一の scrape 対象」という不変条件（#546 / #1090）はそのままである。
+  #
+  # 🔴 **しきい値と for は暫定である。実測が 1 つも無い。** ADR-0078 決定 1 は所要時間の閾値を
+  #   「実測してから定める」と述べ、§残るものでキューの容量設計も未了としている。**確定は #1245 PR-D
+  #   （稼働クラスタでの実測）を待つ。** ここの数字は**キュー寿命 30 分**（deploy/mail-relay/mail-relay.yaml の
+  #   POSTFIX_maximal_queue_lifetime。realm のリセットリンク寿命に合わせた値）から導いた初期値であり、
+  #   「よく効く値」として測ったものではない。
+  - name: mail-relay-queue
+    rules:
+      # 上流停止の一次シグナル。deferred は「1 度以上配送に失敗して再送待ち」である ——
+      # 平常時は 0 が続くので、0 でない状態が続くこと自体が異常である。
+      # 🔴 for: 5m は**再送の最小間隔 60s**（POSTFIX_minimal_backoff_time）の 5 周期ぶんで、
+      #   一過性の 1 回失敗では鳴らない、を狙った暫定値である。
+      - alert: MailRelayDeferredBacklog
+        expr: postfix_queue_size{queue="deferred"} > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "近接 MTA の後送が滞留している（deferred > 0 が 5 分継続）"
+          description: "mail-relay が上流へ後送できずメールが deferred キューに残っている。上流（組織のメールテナント）の停止・認証失敗・宛先拒否を疑う。🔴 Keycloak 側の応答は 200 のままであり、利用者にも監査ログにも現れない（ADR-0078 決定 3 が観測点をここへ移した理由）。しきい値と for は実測前の暫定値である（#1245 PR-D）。"
+
+      # 後送の**失敗率**の代理値。キュー寿命（30 分）を超えたメッセージは黙って捨てられ、
+      # 捨てられた後は spool から消えるので**事後には数えられない**。捨てられる前に鳴らす。
+      # 🔴 1200 秒 ＋ for: 5m ＝ 破棄のおよそ 5 分前に鳴る（寿命 1800 秒に対して）。暫定値である。
+      - alert: MailRelayDeferredMessageNearExpiry
+        expr: postfix_queue_oldest_message_age_seconds{queue="deferred"} > 1200
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "近接 MTA の後送がキュー寿命に達しつつある（最古 20 分超）"
+          description: "deferred の最古メッセージが到着から 20 分を超えた。キュー寿命は 30 分であり、これを超えたメールは破棄される（バウンスも溜めない設定）。破棄されたパスワードリセットは利用者からは「メールが来ない」としか見えない。上流を復旧するか、リセットの申請を閉じること。しきい値は実測前の暫定値である（#1245 PR-D）。"
 
   # --- follow-up: exporter/カスタムメトリクス配線後に有効化する（#198 注意参照） ---
   # - name: platform-messaging

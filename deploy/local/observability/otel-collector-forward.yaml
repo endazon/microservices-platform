@@ -17,6 +17,18 @@ data:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
+      # SC-10, ADR-0078 決定 3, IADR-0421 (#1245 PR-B): 近接 MTA のキュー（キュー長・滞留時間）。
+      # 🔴 **既定構成（deploy/local/infra/otel-collector.yaml）と同じ宣言を持つ。** 本 ConfigMap は
+      #    同名で既定を**上書きする**ので、ここに無いと転送を有効にした瞬間に観測が消える（#1090 の形）。
+      # 🔴 Prometheus の scrape 対象は増やさない（唯一の scrape 対象は otel-collector:8888 のまま）。
+      #    ここで受けた系列は下の prometheusremotewrite で Prometheus へ入る。
+      prometheus/mail-relay:
+        config:
+          scrape_configs:
+            - job_name: mail-relay
+              scrape_interval: 30s
+              static_configs:
+                - targets: ['mail-relay:9154']
     processors:
       batch:
         timeout: 5s
@@ -50,7 +62,9 @@ data:
           processors: [memory_limiter, batch]
           exporters: [otlp/tempo, debug]
         metrics:
-          receivers: [otlp]
+          # 🔴 近接 MTA のキューはここから Prometheus（remote write）へ入る。job ラベルは
+          #   `mail-relay`（receiver の job_name 由来）になる ——アラートの式はこの名前を使う。
+          receivers: [otlp, prometheus/mail-relay]
           processors: [memory_limiter, batch]
           exporters: [prometheusremotewrite, debug]
         logs:
