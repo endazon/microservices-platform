@@ -5,7 +5,10 @@
   "loginTheme": "platform",
   "accountTheme": "platform",
   "internationalizationEnabled": true,
-  "supportedLocales": ["ja", "en"],
+  "supportedLocales": [
+    "ja",
+    "en"
+  ],
   "defaultLocale": "ja",
   "sslRequired": "external",
   "registrationAllowed": false,
@@ -41,51 +44,194 @@
   "ssoSessionMaxLifespanRememberMe": 2592000,
   "eventsEnabled": true,
   "eventsExpiration": 2592000,
-  "eventsListeners": ["jboss-logging"],
+  "eventsListeners": [
+    "jboss-logging"
+  ],
   "enabledEventTypes": [
-    "LOGIN", "LOGIN_ERROR", "LOGOUT", "LOGOUT_ERROR",
-    "CODE_TO_TOKEN", "CODE_TO_TOKEN_ERROR",
-    "REFRESH_TOKEN", "REFRESH_TOKEN_ERROR",
-    "CLIENT_LOGIN", "CLIENT_LOGIN_ERROR",
-    "UPDATE_PASSWORD", "UPDATE_PASSWORD_ERROR",
-    "UPDATE_TOTP", "UPDATE_TOTP_ERROR",
-    "REMOVE_TOTP", "REMOVE_TOTP_ERROR",
-    "RESET_PASSWORD", "RESET_PASSWORD_ERROR",
-    "SEND_RESET_PASSWORD", "SEND_RESET_PASSWORD_ERROR",
-    "REMOVE_CREDENTIAL", "REMOVE_CREDENTIAL_ERROR",
-    "PERMISSION_TOKEN", "IMPERSONATE", "IMPERSONATE_ERROR",
-    "DELETE_ACCOUNT", "DELETE_ACCOUNT_ERROR",
-    "REVOKE_GRANT", "REVOKE_GRANT_ERROR"
+    "LOGIN",
+    "LOGIN_ERROR",
+    "LOGOUT",
+    "LOGOUT_ERROR",
+    "CODE_TO_TOKEN",
+    "CODE_TO_TOKEN_ERROR",
+    "REFRESH_TOKEN",
+    "REFRESH_TOKEN_ERROR",
+    "CLIENT_LOGIN",
+    "CLIENT_LOGIN_ERROR",
+    "UPDATE_PASSWORD",
+    "UPDATE_PASSWORD_ERROR",
+    "UPDATE_TOTP",
+    "UPDATE_TOTP_ERROR",
+    "REMOVE_TOTP",
+    "REMOVE_TOTP_ERROR",
+    "RESET_PASSWORD",
+    "RESET_PASSWORD_ERROR",
+    "SEND_RESET_PASSWORD",
+    "SEND_RESET_PASSWORD_ERROR",
+    "REMOVE_CREDENTIAL",
+    "REMOVE_CREDENTIAL_ERROR",
+    "PERMISSION_TOKEN",
+    "IMPERSONATE",
+    "IMPERSONATE_ERROR",
+    "DELETE_ACCOUNT",
+    "DELETE_ACCOUNT_ERROR",
+    "REVOKE_GRANT",
+    "REVOKE_GRANT_ERROR"
   ],
   "adminEventsEnabled": true,
   "adminEventsDetailsEnabled": true,
   "requiredActions": [
-    { "alias": "CONFIGURE_TOTP", "name": "Configure OTP", "providerId": "CONFIGURE_TOTP", "enabled": true, "defaultAction": true, "priority": 10, "config": {} },
-    { "alias": "TERMS_AND_CONDITIONS", "name": "Terms and Conditions", "providerId": "TERMS_AND_CONDITIONS", "enabled": false, "defaultAction": false, "priority": 20, "config": {} },
-    { "alias": "UPDATE_PASSWORD", "name": "Update Password", "providerId": "UPDATE_PASSWORD", "enabled": true, "defaultAction": false, "priority": 30, "config": {} },
-    { "alias": "UPDATE_PROFILE", "name": "Update Profile", "providerId": "UPDATE_PROFILE", "enabled": true, "defaultAction": false, "priority": 40, "config": {} },
-    { "alias": "VERIFY_EMAIL", "name": "Verify Email", "providerId": "VERIFY_EMAIL", "enabled": true, "defaultAction": false, "priority": 50, "config": {} },
-    { "alias": "delete_account", "name": "Delete Account", "providerId": "delete_account", "enabled": false, "defaultAction": false, "priority": 60, "config": {} },
-    { "alias": "webauthn-register", "name": "Webauthn Register", "providerId": "webauthn-register", "enabled": false, "defaultAction": false, "priority": 70, "config": {} },
-    { "alias": "webauthn-register-passwordless", "name": "Webauthn Register Passwordless", "providerId": "webauthn-register-passwordless", "enabled": false, "defaultAction": false, "priority": 80, "config": {} },
-    { "alias": "VERIFY_PROFILE", "name": "Verify Profile", "providerId": "VERIFY_PROFILE", "enabled": true, "defaultAction": false, "priority": 90, "config": {} },
-    { "alias": "delete_credential", "name": "Delete Credential", "providerId": "delete_credential", "enabled": false, "defaultAction": false, "priority": 100, "config": {} },
-    { "alias": "idp_link", "name": "Linking Identity Provider", "providerId": "idp_link", "enabled": true, "defaultAction": false, "priority": 110, "config": {} },
-    { "alias": "CONFIGURE_RECOVERY_AUTHN_CODES", "name": "Recovery Authentication Codes", "providerId": "CONFIGURE_RECOVERY_AUTHN_CODES", "enabled": true, "defaultAction": false, "priority": 120, "config": {} },
-    { "alias": "update_user_locale", "name": "Update User Locale", "providerId": "update_user_locale", "enabled": true, "defaultAction": false, "priority": 1000, "config": {} }
+    {
+      "alias": "CONFIGURE_TOTP",
+      "name": "Configure OTP",
+      "providerId": "CONFIGURE_TOTP",
+      "enabled": true,
+      "defaultAction": true,
+      "priority": 10,
+      "config": {}
+    },
+    {
+      "alias": "TERMS_AND_CONDITIONS",
+      "name": "Terms and Conditions",
+      "providerId": "TERMS_AND_CONDITIONS",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 20,
+      "config": {}
+    },
+    {
+      "alias": "UPDATE_PASSWORD",
+      "name": "Update Password",
+      "providerId": "UPDATE_PASSWORD",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 30,
+      "config": {}
+    },
+    {
+      "alias": "UPDATE_PROFILE",
+      "name": "Update Profile",
+      "providerId": "UPDATE_PROFILE",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 40,
+      "config": {}
+    },
+    {
+      "alias": "VERIFY_EMAIL",
+      "name": "Verify Email",
+      "providerId": "VERIFY_EMAIL",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 50,
+      "config": {}
+    },
+    {
+      "alias": "delete_account",
+      "name": "Delete Account",
+      "providerId": "delete_account",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 60,
+      "config": {}
+    },
+    {
+      "alias": "webauthn-register",
+      "name": "Webauthn Register",
+      "providerId": "webauthn-register",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 70,
+      "config": {}
+    },
+    {
+      "alias": "webauthn-register-passwordless",
+      "name": "Webauthn Register Passwordless",
+      "providerId": "webauthn-register-passwordless",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 80,
+      "config": {}
+    },
+    {
+      "alias": "VERIFY_PROFILE",
+      "name": "Verify Profile",
+      "providerId": "VERIFY_PROFILE",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 90,
+      "config": {}
+    },
+    {
+      "alias": "delete_credential",
+      "name": "Delete Credential",
+      "providerId": "delete_credential",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 100,
+      "config": {}
+    },
+    {
+      "alias": "idp_link",
+      "name": "Linking Identity Provider",
+      "providerId": "idp_link",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 110,
+      "config": {}
+    },
+    {
+      "alias": "CONFIGURE_RECOVERY_AUTHN_CODES",
+      "name": "Recovery Authentication Codes",
+      "providerId": "CONFIGURE_RECOVERY_AUTHN_CODES",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 120,
+      "config": {}
+    },
+    {
+      "alias": "update_user_locale",
+      "name": "Update User Locale",
+      "providerId": "update_user_locale",
+      "enabled": true,
+      "defaultAction": false,
+      "priority": 1000,
+      "config": {}
+    }
   ],
   "roles": {
     "realm": [
-      { "name": "platform-admin", "description": "FR-09: 属性辞書・ABAC ポリシー管理者（AdminOnly ポリシー）" },
-      { "name": "platform-operator", "description": "FR-15, IADR-0030: 運用者。構成情報の閲覧（ConfigViewer ポリシー）のみ可。管理系操作（AdminOnly）は不可" },
-      { "name": "platform-service", "description": "NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4 (#1201): east-west gRPC の呼び出し側サービス（service account）に付ける。ServiceCaller ポリシーがこのロールだけを通す。利用者には付けない（利用者トークンでサービス間の面を開けない）。" },
-      { "name": "wiki-editor", "description": "Wiki.js での編集権限（表示制御の補助。ABAC 判定は本システムが真実源）" },
-      { "name": "trading-owner", "description": "Issue #283, AST/FR-17・AST/UC-06, IADR-0070: AST 設定画面（全体前提条件の閲覧/変更）の利用者。ConfigurationService の OwnerOnly/OwnerOrService と同一ソース。owner ユーザーへの付与＋OIDC ログイン実疎通は後続 live issue。" },
-      { "name": "Administrators", "description": "IADR-0103: Wiki.js の管理者グループ名に文字列一致させる dev ロール。wiki-js の groups claim 経由で Map Groups が Administrators へ対応づける（Wiki.js 側は自前グループ管理のため名前一致が唯一の接点）。" }
+      {
+        "name": "platform-admin",
+        "description": "FR-09: 属性辞書・ABAC ポリシー管理者（AdminOnly ポリシー）"
+      },
+      {
+        "name": "platform-operator",
+        "description": "FR-15, IADR-0030: 運用者。構成情報の閲覧（ConfigViewer ポリシー）のみ可。管理系操作（AdminOnly）は不可"
+      },
+      {
+        "name": "platform-service",
+        "description": "NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4 (#1201): east-west gRPC の呼び出し側サービス（service account）に付ける。ServiceCaller ポリシーがこのロールだけを通す。利用者には付けない（利用者トークンでサービス間の面を開けない）。"
+      },
+      {
+        "name": "wiki-editor",
+        "description": "Wiki.js での編集権限（表示制御の補助。ABAC 判定は本システムが真実源）"
+      },
+      {
+        "name": "trading-owner",
+        "description": "Issue #283, AST/FR-17・AST/UC-06, IADR-0070: AST 設定画面（全体前提条件の閲覧/変更）の利用者。ConfigurationService の OwnerOnly/OwnerOrService と同一ソース。owner ユーザーへの付与＋OIDC ログイン実疎通は後続 live issue。"
+      },
+      {
+        "name": "Administrators",
+        "description": "IADR-0103: Wiki.js の管理者グループ名に文字列一致させる dev ロール。wiki-js の groups claim 経由で Map Groups が Administrators へ対応づける（Wiki.js 側は自前グループ管理のため名前一致が唯一の接点）。"
+      }
     ],
     "client": {
       "minio": [
-        { "name": "consoleAdmin", "description": "IADR-0103: MinIO 組込ポリシー名。minio client の policy claim を client ロール由来の単一値に保つための dev ロール（realm ロールを流すと多値になり MinIO がポリシー解決に失敗する）。" }
+        {
+          "name": "consoleAdmin",
+          "description": "IADR-0103: MinIO 組込ポリシー名。minio client の policy claim を client ロール由来の単一値に保つための dev ロール（realm ロールを流すと多値になり MinIO がポリシー解決に失敗する）。"
+        }
       ]
     }
   },
@@ -93,18 +239,67 @@
     {
       "name": "clearance",
       "subGroups": [
-        { "name": "public", "attributes": { "clearance": ["public"] } },
-        { "name": "internal", "attributes": { "clearance": ["internal"] } },
-        { "name": "confidential", "attributes": { "clearance": ["confidential"] } },
-        { "name": "restricted", "attributes": { "clearance": ["restricted"] } }
+        {
+          "name": "public",
+          "attributes": {
+            "clearance": [
+              "public"
+            ]
+          }
+        },
+        {
+          "name": "internal",
+          "attributes": {
+            "clearance": [
+              "internal"
+            ]
+          }
+        },
+        {
+          "name": "confidential",
+          "attributes": {
+            "clearance": [
+              "confidential"
+            ]
+          }
+        },
+        {
+          "name": "restricted",
+          "attributes": {
+            "clearance": [
+              "restricted"
+            ]
+          }
+        }
       ]
     },
     {
       "name": "department",
       "subGroups": [
-        { "name": "engineering", "attributes": { "department": ["engineering"] } },
-        { "name": "sales", "attributes": { "department": ["sales"] } },
-        { "name": "hr", "attributes": { "department": ["hr"] } }
+        {
+          "name": "engineering",
+          "attributes": {
+            "department": [
+              "engineering"
+            ]
+          }
+        },
+        {
+          "name": "sales",
+          "attributes": {
+            "department": [
+              "sales"
+            ]
+          }
+        },
+        {
+          "name": "hr",
+          "attributes": {
+            "department": [
+              "hr"
+            ]
+          }
+        }
       ]
     }
   ],
@@ -127,7 +322,10 @@
       "name": "profile",
       "description": "OIDC 標準 profile スコープ（realm import で clientScopes を明示すると組み込みスコープが生成されないため定義する。Issue #88 稼働 PoC で実測）",
       "protocol": "openid-connect",
-      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" },
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
       "protocolMappers": [
         {
           "name": "full name",
@@ -160,7 +358,10 @@
       "name": "email",
       "description": "OIDC 標準 email スコープ（同上。Wiki.js はユーザー同定に email クレームを必須とする）",
       "protocol": "openid-connect",
-      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" },
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
       "protocolMappers": [
         {
           "name": "email",
@@ -182,7 +383,10 @@
       "name": "roles",
       "description": "レルムロールを realm_access.roles として発行する（KeycloakRolesClaimsTransformation が ClaimTypes.Role へ展開し、FR-09 の AdminOnly=platform-admin 判定に用いる。組み込みスコープが生成されないため定義する）",
       "protocol": "openid-connect",
-      "attributes": { "include.in.token.scope": "false", "display.on.consent.screen": "false" },
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
       "protocolMappers": [
         {
           "name": "realm roles",
@@ -204,7 +408,10 @@
       "name": "realm-management-roles",
       "description": "SC-17・IADR-0329 (#1101): realm-management のクライアントロールを resource_access へ載せる。本 realm は clientScopes を明示するため組み込みが生成されず、roles スコープは realm ロールしか載せない。Admin API は resource_access で認可するので、無いと role-mappings を持つ service account でも 403 になる（実測）。",
       "protocol": "openid-connect",
-      "attributes": { "include.in.token.scope": "false", "display.on.consent.screen": "false" },
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
       "protocolMappers": [
         {
           "name": "realm-management client roles",
@@ -227,7 +434,10 @@
       "name": "abac-attributes",
       "description": "ABAC 属性（clearance / department の単値、tags / projects の集合値）とグループを JWT に載せる。ADR-0080 決定 1・2。WikiService ゲートウェイと Wiki.js 表示制御が参照する。",
       "protocol": "openid-connect",
-      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" },
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
       "protocolMappers": [
         {
           "name": "clearance",
@@ -426,7 +636,10 @@
       "secret": "abac-seeder-dev-secret-change-me",
       "redirectUris": [],
       "webOrigins": [],
-      "defaultClientScopes": ["roles", "abac-attributes"]
+      "defaultClientScopes": [
+        "roles",
+        "abac-attributes"
+      ]
     },
     {
       "clientId": "synthetic-monitor",
@@ -441,7 +654,9 @@
       "secret": "synthetic-monitor-dev-secret-change-me",
       "redirectUris": [],
       "webOrigins": [],
-      "defaultClientScopes": ["roles"]
+      "defaultClientScopes": [
+        "roles"
+      ]
     },
     {
       "clientId": "retrieval-service",
@@ -456,7 +671,9 @@
       "secret": "retrieval-service-dev-secret-change-me",
       "redirectUris": [],
       "webOrigins": [],
-      "defaultClientScopes": ["roles"]
+      "defaultClientScopes": [
+        "roles"
+      ]
     },
     {
       "clientId": "document-service",
@@ -471,7 +688,9 @@
       "secret": "document-service-dev-secret-change-me",
       "redirectUris": [],
       "webOrigins": [],
-      "defaultClientScopes": ["roles"]
+      "defaultClientScopes": [
+        "roles"
+      ]
     },
     {
       "clientId": "ingestion-service",
@@ -486,7 +705,9 @@
       "secret": "ingestion-service-dev-secret-change-me",
       "redirectUris": [],
       "webOrigins": [],
-      "defaultClientScopes": ["roles"]
+      "defaultClientScopes": [
+        "roles"
+      ]
     },
     {
       "clientId": "aianalysis-service",
@@ -501,7 +722,9 @@
       "secret": "aianalysis-service-dev-secret-change-me",
       "redirectUris": [],
       "webOrigins": [],
-      "defaultClientScopes": ["roles"]
+      "defaultClientScopes": [
+        "roles"
+      ]
     },
     {
       "clientId": "graph-service",
@@ -516,7 +739,9 @@
       "secret": "graph-service-dev-secret-change-me",
       "redirectUris": [],
       "webOrigins": [],
-      "defaultClientScopes": ["roles"]
+      "defaultClientScopes": [
+        "roles"
+      ]
     },
     {
       "clientId": "conversion-service",
@@ -531,7 +756,9 @@
       "secret": "conversion-service-dev-secret-change-me",
       "redirectUris": [],
       "webOrigins": [],
-      "defaultClientScopes": ["roles"]
+      "defaultClientScopes": [
+        "roles"
+      ]
     },
     {
       "clientId": "wiki-service",
@@ -546,7 +773,9 @@
       "secret": "wiki-service-dev-secret-change-me",
       "redirectUris": [],
       "webOrigins": [],
-      "defaultClientScopes": ["roles"]
+      "defaultClientScopes": [
+        "roles"
+      ]
     },
     {
       "clientId": "datasource-service",
@@ -561,7 +790,9 @@
       "secret": "datasource-service-dev-secret-change-me",
       "redirectUris": [],
       "webOrigins": [],
-      "defaultClientScopes": ["roles"]
+      "defaultClientScopes": [
+        "roles"
+      ]
     },
     {
       "clientId": "mcp-server",
@@ -576,7 +807,9 @@
       "secret": "mcp-server-dev-secret-change-me",
       "redirectUris": [],
       "webOrigins": [],
-      "defaultClientScopes": ["roles"]
+      "defaultClientScopes": [
+        "roles"
+      ]
     },
     {
       "clientId": "identity-admin",
@@ -591,7 +824,9 @@
       "secret": "identity-admin-dev-secret-change-me",
       "redirectUris": [],
       "webOrigins": [],
-      "defaultClientScopes": ["realm-management-roles"]
+      "defaultClientScopes": [
+        "realm-management-roles"
+      ]
     },
     {
       "clientId": "reset-gate",
@@ -606,7 +841,9 @@
       "secret": "reset-gate-dev-secret-change-me",
       "redirectUris": [],
       "webOrigins": [],
-      "defaultClientScopes": ["realm-management-roles"]
+      "defaultClientScopes": [
+        "realm-management-roles"
+      ]
     },
     {
       "clientId": "ai-stock-trading-kb-writer",
@@ -619,6 +856,23 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
       "secret": "ai-stock-trading-kb-writer-dev-secret-change-me",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": [
+        "roles"
+      ]
+    },
+    {
+      "clientId": "ai-stock-trading-llm-caller",
+      "name": "AST LLM caller (cross-unit s2s, client_credentials)",
+      "description": "AST#724 / MSP#1364: ai-stock-trading が LlmGateway の /complete を呼ぶ機密クライアント（client_credentials・service-account に platform-service）。KB 書き込み用とは別主体にする（あちらへ platform-service を足すと東西端点すべてへ届く）。本番 secret は config から供給する。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "ai-stock-trading-llm-caller-dev-secret-change-me",
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
@@ -841,15 +1095,31 @@
       "enabled": true,
       "emailVerified": true,
       "attributes": {
-        "clearance": ["restricted"],
-        "department": ["engineering"]
+        "clearance": [
+          "restricted"
+        ],
+        "department": [
+          "engineering"
+        ]
       },
-      "groups": ["/clearance/restricted", "/department/engineering"],
-      "realmRoles": ["platform-admin", "platform-operator", "wiki-editor", "Administrators"],
+      "groups": [
+        "/clearance/restricted",
+        "/department/engineering"
+      ],
+      "realmRoles": [
+        "platform-admin",
+        "platform-operator",
+        "wiki-editor",
+        "Administrators"
+      ],
       "clientRoles": {
-        "minio": ["consoleAdmin"]
+        "minio": [
+          "consoleAdmin"
+        ]
       },
-      "requiredActions": ["CONFIGURE_TOTP"],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ],
       "credentials": [
         {
           "type": "password",
@@ -865,10 +1135,28 @@
       "lastName": "User",
       "enabled": true,
       "emailVerified": true,
-      "attributes": { "clearance": ["internal"], "department": ["engineering"] },
-      "groups": ["/clearance/internal", "/department/engineering"],
-      "requiredActions": ["CONFIGURE_TOTP"],
-      "credentials": [{ "type": "password", "value": "Poc-Passwd2026", "temporary": false }]
+      "attributes": {
+        "clearance": [
+          "internal"
+        ],
+        "department": [
+          "engineering"
+        ]
+      },
+      "groups": [
+        "/clearance/internal",
+        "/department/engineering"
+      ],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Poc-Passwd2026",
+          "temporary": false
+        }
+      ]
     },
     {
       "username": "poc-operator",
@@ -877,9 +1165,19 @@
       "lastName": "Operator",
       "enabled": true,
       "emailVerified": true,
-      "realmRoles": ["platform-operator"],
-      "requiredActions": ["CONFIGURE_TOTP"],
-      "credentials": [{ "type": "password", "value": "PocOperator-2026", "temporary": false }]
+      "realmRoles": [
+        "platform-operator"
+      ],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "PocOperator-2026",
+          "temporary": false
+        }
+      ]
     },
     {
       "username": "developer",
@@ -888,96 +1186,169 @@
       "lastName": "Developer",
       "enabled": true,
       "emailVerified": true,
-      "attributes": { "clearance": ["restricted"], "department": ["engineering"] },
-      "groups": ["/clearance/restricted", "/department/engineering"],
-      "realmRoles": ["platform-admin", "platform-operator", "wiki-editor", "trading-owner"],
-      "requiredActions": ["CONFIGURE_TOTP"],
-      "credentials": [{ "type": "password", "value": "Developer-2026", "temporary": false }]
+      "attributes": {
+        "clearance": [
+          "restricted"
+        ],
+        "department": [
+          "engineering"
+        ]
+      },
+      "groups": [
+        "/clearance/restricted",
+        "/department/engineering"
+      ],
+      "realmRoles": [
+        "platform-admin",
+        "platform-operator",
+        "wiki-editor",
+        "trading-owner"
+      ],
+      "requiredActions": [
+        "CONFIGURE_TOTP"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Developer-2026",
+          "temporary": false
+        }
+      ]
     },
     {
       "username": "service-account-bff",
       "enabled": true,
       "serviceAccountClientId": "bff",
-      "realmRoles": ["platform-service"]
+      "realmRoles": [
+        "platform-service"
+      ]
     },
     {
       "username": "service-account-abac-seeder",
       "enabled": true,
       "serviceAccountClientId": "abac-seeder",
-      "attributes": { "clearance": ["restricted"], "department": ["engineering"] },
-      "realmRoles": ["platform-admin"]
+      "attributes": {
+        "clearance": [
+          "restricted"
+        ],
+        "department": [
+          "engineering"
+        ]
+      },
+      "realmRoles": [
+        "platform-admin"
+      ]
     },
     {
       "username": "service-account-identity-admin",
       "enabled": true,
       "serviceAccountClientId": "identity-admin",
-      "clientRoles": { "realm-management": ["view-users", "manage-users", "view-realm"] }
+      "clientRoles": {
+        "realm-management": [
+          "view-users",
+          "manage-users",
+          "view-realm"
+        ]
+      }
     },
     {
       "username": "service-account-reset-gate",
       "enabled": true,
       "serviceAccountClientId": "reset-gate",
-      "clientRoles": { "realm-management": ["view-realm", "manage-realm"] }
+      "clientRoles": {
+        "realm-management": [
+          "view-realm",
+          "manage-realm"
+        ]
+      }
     },
     {
       "username": "service-account-ai-stock-trading-kb-writer",
       "enabled": true,
       "serviceAccountClientId": "ai-stock-trading-kb-writer",
-      "realmRoles": ["platform-operator"]
+      "realmRoles": [
+        "platform-operator"
+      ]
+    },
+    {
+      "username": "service-account-ai-stock-trading-llm-caller",
+      "enabled": true,
+      "serviceAccountClientId": "ai-stock-trading-llm-caller",
+      "realmRoles": [
+        "platform-service"
+      ]
     },
     {
       "username": "service-account-aianalysis-service",
       "enabled": true,
       "serviceAccountClientId": "aianalysis-service",
-      "realmRoles": ["platform-service"]
+      "realmRoles": [
+        "platform-service"
+      ]
     },
     {
       "username": "service-account-graph-service",
       "enabled": true,
       "serviceAccountClientId": "graph-service",
-      "realmRoles": ["platform-service"]
+      "realmRoles": [
+        "platform-service"
+      ]
     },
     {
       "username": "service-account-conversion-service",
       "enabled": true,
       "serviceAccountClientId": "conversion-service",
-      "realmRoles": ["platform-service"]
+      "realmRoles": [
+        "platform-service"
+      ]
     },
     {
       "username": "service-account-retrieval-service",
       "enabled": true,
       "serviceAccountClientId": "retrieval-service",
-      "realmRoles": ["platform-service"]
+      "realmRoles": [
+        "platform-service"
+      ]
     },
     {
       "username": "service-account-ingestion-service",
       "enabled": true,
       "serviceAccountClientId": "ingestion-service",
-      "realmRoles": ["platform-service"]
+      "realmRoles": [
+        "platform-service"
+      ]
     },
     {
       "username": "service-account-wiki-service",
       "enabled": true,
       "serviceAccountClientId": "wiki-service",
-      "realmRoles": ["platform-service"]
+      "realmRoles": [
+        "platform-service"
+      ]
     },
     {
       "username": "service-account-datasource-service",
       "enabled": true,
       "serviceAccountClientId": "datasource-service",
-      "realmRoles": ["platform-service"]
+      "realmRoles": [
+        "platform-service"
+      ]
     },
     {
       "username": "service-account-mcp-server",
       "enabled": true,
       "serviceAccountClientId": "mcp-server",
-      "realmRoles": ["platform-service"]
+      "realmRoles": [
+        "platform-service"
+      ]
     },
     {
       "username": "service-account-document-service",
       "enabled": true,
       "serviceAccountClientId": "document-service",
-      "realmRoles": ["platform-service"]
+      "realmRoles": [
+        "platform-service"
+      ]
     }
   ]
 }
