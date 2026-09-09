@@ -1,0 +1,46 @@
+{
+  "_comment": [
+    "FR-06, FR-09, SC-05, SC-09 / AST#705: 外部ユニットが `POST /documents` で送ってくる",
+    "**静的タグ**を、辞書（IADR-0152）へ初期投入するためのデータ。",
+    "投入は scripts/seed-tag-dictionary.js が DocumentService の POST /tags 経由で行う（直 DB 書き込みはしない）。",
+    "",
+    "なぜ受け手側が入れるのか: `POST /tags` は AdminOnly である。送り手（ai-stock-trading）の",
+    "サービスアカウントは platform-operator しか持たず、IADR-0075 が platform-admin の付与を断っている。",
+    "したがって送り手は自分のタグを登録できない。**登録は基盤側の初期投入として行う。**",
+    "",
+    "🔴 名前は `Tag.Normalize`（= Trim のみ・**大文字小文字を区別する**）で突き合わされる。",
+    "  送り手が送る綴りと 1 文字でも違えば、辞書に在っても 400 に戻る。大小を勝手に直さないこと。",
+    "",
+    "🔴 この一覧は ai-stock-trading の `KnowledgeTagVocabulary`（backend/Shared/",
+    "  AiStockTrading.Shared.KnowledgeBase/KnowledgeTagVocabulary.cs）の**複製**である。",
+    "  向こう側は `KnowledgeTagVocabularyTests` が実体との一致を機械で固定しているが、",
+    "  **リポジトリを跨ぐこの複製を固定する検査は無い**（本リポジトリは planning にも AST にも依存しない）。",
+    "  送り手が語彙を増やしたら 400 が再発する。増えたことは `KB 保存: N/M 件` の縮退で表面化する。",
+    "  取り出し手順は ai-stock-trading の docs/operations/kb-tag-dictionary-runbook.md にある。",
+    "",
+    "内訳（19 件）: 収集の種別 6 ＋ 収集の出所 9 ＋ 報告書 4。"
+  ],
+  "tags": [
+    "Quote",
+    "News",
+    "Disclosure",
+    "MacroIndicator",
+    "SupplyDemand",
+    "SourceStatus",
+
+    "finnhub",
+    "finnhub-news",
+    "google-news",
+    "sec-edgar",
+    "edinet",
+    "boj",
+    "fred",
+    "moomoo",
+    "finra-short",
+
+    "report",
+    "daily",
+    "weekly",
+    "monthly"
+  ]
+}

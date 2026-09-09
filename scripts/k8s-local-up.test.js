@@ -64,6 +64,7 @@ const OPTIN_TOKENS = [
   'deploy/local/vault/eso/', //        ESO (bootstrap/externalsecret, IADR-0096。配下のみが apply される)
   'seed-abac-policies.js', //          ABACSEED (ABAC 初期投入, IADR-0133)
   'seed-search-documents.js', //       SEARCHSEED (検索検証用文書の初期投入, IADR-0284)
+  'seed-tag-dictionary.js', //         TAGSEED (タグ辞書の初期投入, #1359)
   'embedding.deterministicLocal.enabled', // LOCALEMBED (決定的ローカル埋め込み, IADR-0313)
   'cert-manager', //                   LOCALEDGE (エッジ TLS 終端, IADR-0206)
   'deploy/local/edge/tls', //          LOCALEDGE (TLS overlay, IADR-0206)
@@ -261,6 +262,7 @@ function runUp(extraEnv) {
     'ESO',
     'ABACSEED',
     'SEARCHSEED',
+    'TAGSEED', // #1359: タグ辞書の門。漏れていると既定のバイト等価が崩れる
     'LOCALEMBED',
     'SYNTHETIC', // #1287: 合成監視の門。漏れていると既定のバイト等価が崩れる
     'SYNTHETIC_ROLLOUT_TIMEOUT',
@@ -368,6 +370,7 @@ const GATES_ALL = {
   ESO: '1',
   ABACSEED: '1',
   SEARCHSEED: '1',
+  TAGSEED: '1', // #1359: タグ辞書の初期投入
   LOCALEMBED: '1',
   HEADLAMP: '1',
   WIKIJS_OIDC: '1',
@@ -902,6 +905,29 @@ ok('SEARCHSEED=1: seed-search-documents.js を実行する', () => {
   assert.ok(anyLineHas(res.lines, 'seed-search-documents.js'), '投入スクリプトが実行されない');
   // ABAC 投入と同じく、シードは chart/manifest ではなく稼働サービスへ入れる。
   assert.ok(!anyLineHas(res.lines, 'deploy/local/search-seed'), 'シードを kubectl apply してはいけない');
+});
+
+// TAGSEED=1: タグ辞書の初期値を投入する（#1359）。
+// 辞書が空のままだと POST /documents が未登録タグを 400 で弾き、外部ユニットの文書が 1 件も入らない
+// —— 実測で `KB 保存: 0/3 件` に縮退していた。辞書へ行を入れる口は POST /tags だけで、
+// 送り手は AdminOnly のため自分では登録できない（受け手側の初期投入として行う）。
+ok('TAGSEED=1: seed-tag-dictionary.js を実行する', () => {
+  const res = runUp({ TAGSEED: '1' });
+  assert.strictEqual(res.status, 0, 'TAGSEED=1 で異常終了した');
+  assert.ok(anyLineHas(res.lines, 'seed-tag-dictionary.js'), '投入スクリプトが実行されない');
+  // 他の 2 器と同じく、シードは chart/manifest ではなく稼働サービスへ入れる。
+  assert.ok(!anyLineHas(res.lines, 'deploy/local/tag-seed'), 'シードを kubectl apply してはいけない');
+});
+
+ok('TAGSEED=1: 既定オフである（他の seed の門で道連れに走らない）', () => {
+  // 🔴 3 つの投入器を 1 つのフラグへ畳まないことを固定する。畳むと「ABAC は要るが辞書は要らない」
+  //    使い方ができなくなる。
+  assert.ok(!anyLineHas(runUp({}).lines, 'seed-tag-dictionary.js'),
+    '既定（env 未設定）でタグ辞書 seed が走っている');
+  assert.ok(!anyLineHas(runUp({ ABACSEED: '1' }).lines, 'seed-tag-dictionary.js'),
+    'ABACSEED=1 だけでタグ辞書 seed が走っている');
+  assert.ok(!anyLineHas(runUp({ SEARCHSEED: '1' }).lines, 'seed-tag-dictionary.js'),
+    'SEARCHSEED=1 だけでタグ辞書 seed が走っている');
 });
 
 ok('SEARCHSEED=1: ABAC 投入とは独立に効く（片方だけ立てても他方は走らない）', () => {

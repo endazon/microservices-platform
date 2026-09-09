@@ -1021,6 +1021,20 @@ if [ "${SEARCHSEED:-}" = "1" ]; then
     || echo "    WARN: 検索用文書の投入に失敗（best-effort）。node scripts/seed-search-documents.js で再実行できる" >&2
 fi
 
+# FR-06, FR-09, SC-05, SC-09 (#1359): タグ辞書へ**外部ユニットが送ってくる静的タグ**を初期投入する。
+# 辞書に無いタグは POST /documents が 400 で弾く（#635）。一方で辞書へ行を入れる口は POST /tags だけで、
+# **初期投入の仕組みが無かった**。結果として外部ユニットの文書は 100% 失敗していた（実測 既存 0 件）。
+# 送り手は自分では登録できない —— POST /tags は AdminOnly で、送り手の service account は
+# platform-operator しか持たない（IADR-0075 が platform-admin の付与を断っている）。
+#
+# 既定（env 未設定）は投入せず挙動不変。ABACSEED / SEARCHSEED とまったく同じ形である。
+# **文書を作らない**（辞書へ値を足すだけ）ので、SEARCHSEED の「使い捨てスタック専用」の但し書きは付けない。
+# best-effort: 投入の失敗で up 全体を止めない（再実行は冪等）。
+if [ "${TAGSEED:-}" = "1" ]; then
+  echo "==> [opt-in] タグ辞書の初期投入（外部ユニットの静的タグ / #1359）"
+  node "$ROOT/scripts/seed-tag-dictionary.js"     || echo "    WARN: タグ辞書の投入に失敗（best-effort）。node scripts/seed-tag-dictionary.js で再実行できる" >&2
+fi
+
 # NFR-02, NFR-21, ADR-0076 決定 3・4, ADR-0079 決定 1, IADR-0378 (#1287): 合成監視（synthetic）の常駐プローブ。
 # **60 秒間隔・LLM を呼ばない**（ADR-0079 決定 1 の確定値。`AllowLlmEgress` はここでも設定しない）。
 #
