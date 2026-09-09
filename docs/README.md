@@ -103,7 +103,7 @@ docs/
 4. 🔴 **`docs/` 配下の資料は、計画 ID・実装ADR・仕様書・他リポジトリの issue 番号を表示テキストへ書かない。**
    frontmatter 終端直後・最初の H1 の直前に置く **trace ブロック**（HTML コメント。1 文書 1 個）へ、
    非表示メタデータとして持つ（資料再編の計画 ADR 決定 4。機械検査は `scripts/check-trace-blocks.js`、
-   CI の `doc-links` ジョブが走らせる）。
+   CI の `static-checks` ジョブが走らせる）。
    - キーは `ids` / `adrs` / `iadrs` / `specs` / `issues`。裸の ID は本リポジトリの計画プロジェクトを指し、
      他プロジェクト・他リポジトリは短縮名で修飾する。表の ID は表の直後の **trace-table ブロック**へ置く。
    - **可視のリンクとして張ってよいのは、同一リポジトリの `docs/` 配下だけである。**

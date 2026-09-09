@@ -270,6 +270,16 @@ jobs:
       - name: Check for .gitkeep-only directories (ADR-0069 決定 5)
         if: ${{ !cancelled() }}
         run: node scripts/check-scaffolding-frames.js
+      # NFR / #1348: 文書が名指しする CI ジョブ名（必須チェック表・scripts/README のジョブ表・「〜ジョブ」の
+      # 言及）が jobs: に実在すること、表の件数と本文の「下表の N 件」が一致することを突合する。
+      # ジョブを束ねた（IADR-0232 決定 6）あとに廃止名が 3 文書 4 箇所へ残り、必須チェック表の件数も
+      # 1 つ古いままだった —— 同型 2 回目なので検査器にした。
+      - name: Self-test workflow job reference checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-workflow-job-refs.js --self-test
+      - name: Check documents reference existing workflow jobs (#1348)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-workflow-job-refs.js
 
       # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成のスキーマ検証（安全弁）。
       # 本リポジトリはこの任意コンポーネントを**採用する**（ADR-0018 で確定）。
@@ -750,15 +760,19 @@ jobs:
         run: node scripts/check-coverage-floor.js --self-test
       # 🔴 PR では床を強制しない（--report-only。IADR-0232 改定 3）。
       #
-      # 床 line 88 / branch 68 は**統合テストを含む全量の実測**から置かれている
-      # （src/coverage-floor.json の根拠欄）。統合テストを PR から外した以上、この床を PR へ
-      # 当てると**必ず割れる**。かといって PR 用に低い床を別に置くと、床が 2 つ並んで
+      # 床（値の正本は src/coverage-floor.json。🔴 ここへ写さない —— #1346 で写しが腐った）は
+      # **統合テストを含む全量の実測**から置かれている（同ファイルの根拠欄）。統合テストを PR から
+      # 外した以上、この床を PR へ当てると**必ず割れる**。かといって PR 用に低い床を別に置くと、床が 2 つ並んで
       # **どちらが本物か分からなくなる**。
       #
       # したがって PR は**数値を報告するだけ**にし、**門は回収先（integration.yml）に 1 つだけ置く**。
       # 集計値はログに出るので、退行の傾向は PR でも読める。
       #
       # 🔴 --report-only を外すな。外すと PR が床割れで恒久的に赤くなる。
+      #
+      # 🔴 **PR をマージ前に止める床の経路は 0 本である**（#1345）。統制としての床は post-merge
+      # （integration.yml）でのみ働く。政策（integration を必須 check にする等）は利用者の裁定事項で、
+      # 現在の実現手段と暫定手段は docs/ai-workflow.md「バックエンドのカバレッジ床の強制点」が正本。
       - name: Report backend coverage (床の強制は integration.yml が行う)
         run: node scripts/check-coverage-floor.js --report-only
 

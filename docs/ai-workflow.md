@@ -1,7 +1,7 @@
 <!-- trace:
 adrs: [ADR-0048]
 iadrs: [IADR-0067, IADR-0180, IADR-0240]
-issues: [#268, #719, #783, #1019, #1352, planning#286]
+issues: [#268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
 -->
 
 # AI 駆動の実装ワークフロー（Runbook）
@@ -109,18 +109,20 @@ bash scripts/apply-profile.sh copilot
 | 脆弱性 | dependency-review（`security.yml`）＋ CodeQL ＋ Dependabot | 供給網・SAST |
 | 完了の定義 | `docs/DEFINITION_OF_DONE.md` ＋ `/verify` | AI 自身の完了前検証 |
 | トレーサビリティ | `/trace-check`・`/adr-check`・`.claude/rules/traceability.md` | 計画と実装の整合 |
-| `docs/` の非表示メタデータ | `scripts/check-trace-blocks.js`・`scripts/gen-knowledge-graph.js` | trace ブロックの文法・値域・可視本文への ID 残存（CI の `doc-links` ジョブ） |
+| `docs/` の非表示メタデータ | `scripts/check-trace-blocks.js`・`scripts/gen-knowledge-graph.js` | trace ブロックの文法・値域・可視本文への ID 残存（CI の `static-checks` ジョブ） |
 | 計画への環流 | `/plan-feedback`（実装→計画） | 計画リポジトリへ GitHub issue で起票する（本リポジトリに記録ファイルは残さない） |
 
 ### 必須チェックの有効化（人手の検証を最小化する要）
 
 > **★［2026-08-30 更新 / #936］配備した。** 本節は「推奨設定」ではなく**現在の設定**である。
-> 下表の 7 件を必須チェックにし、`enforce_admins` を有効にした（**管理者も迂回できない**）。
+> 下表の 8 件を必須チェックにし、`enforce_admins` を有効にした（**管理者も迂回できない**）。
+> **件数は表から数え直す**（#936 で `scripts-tests` を足したのに「7 件」が残った。#1348。
+> 表の行数と本文の件数、表のジョブ名と実物は `scripts/check-workflow-job-refs.js` が突合する）。
 > 直前まで、この節は「推奨設定であって現在そうなっているではない」と断っていた。
 >
 > | 設定 | 値 | 理由 |
 > | --- | --- | --- |
-> | 必須チェック | 下表の 7 件 | いずれも `paths:` を持たず `reopened` を含む＝**全 PR で起動する**ことを実測で確認した |
+> | 必須チェック | 下表の 8 件 | いずれも `paths:` を持たず `reopened` を含む＝**全 PR で起動する**ことを実測で確認した |
 > | `enforce_admins` | **`true`** | `false` だと「赤いままマージを打てば通る」が残る。このリポジトリの操作主体は管理者権限を持つため、**`false` では統制にならない** |
 > | `required_pull_request_reviews` | **`null`**（承認必須にしない） | 🔴 **下の推奨（Code Owners レビュー必須）から意図的に外れる。** 人間が 1 人であり、承認必須にすると**全 PR がその人の手作業待ち**になって流れが止まる。#936 の主題は「CI が機械的に強制されていない」ことであり、レビュー要件は別の政策判断である |
 > | `strict` | `false` | 強制すると、待ち行列の全 PR が 1 本着地するたびに base 取り込みと CI 再走を強いられる。FIFO の規律は運用側が持つ |
@@ -185,6 +187,29 @@ GitHub Actions が report する status check の context は**ジョブ側の�
   集約ジョブ（`image-build`）を指定する。
 - **bot 作成 PR で `if:` によりジョブごとスキップされたチェックは、必須チェック上「合格」として扱われる**
   ためマージは止まらない。bot を除外する条件を書いてもブランチ保護と矛盾しない。
+
+#### バックエンドのカバレッジ床の強制点（統制と、現在の実現手段）
+
+**床の正本は `src/coverage-floor.json` の `backend`**（値をここへ写さない）。判定器は `scripts/check-coverage-floor.js`。
+
+| 経路 | 契機 | 床の扱い | 備考 |
+| --- | --- | --- | --- |
+| `ci.yml` `build-and-test` | 全 PR | **報告のみ**（`--report-only`） | 統合テストを PR から外しているため、全量実測から置いた床を当てると必ず割れる |
+| `integration.yml` `integration` | `develop` への push・日次 | **強制**（床割れは失敗） | 🔴 **post-merge であり、PR をマージ前に止める経路ではない** |
+
+**統制の現状を正直に書く**: **PR をマージ前に止める床の経路は 0 本である**。床は「マージ後に検知して issue を立てる」統制であって、
+「割れた PR を止める」統制ではない。**PR 段階で強制する政策**（`integration` を必須 check にする——所要 8〜9 分がマージ待ちに乗る／
+PR 側に床相当の step を置く——床が 2 つ並ぶ）は**利用者の裁定事項**であり、裁定が降りるまで本節の形を維持する。
+
+**配備済みの手段と暫定手段**:
+
+- **integration が赤くても床は評価する**（`integration.yml` の床 step は `!cancelled()` で走る。テストが落ちたユニットが
+  あっても残りのユニットを走らせ切る）。従前は前段が落ちるとそのコミットでは床が 1 度も測られなかった。
+- **レポート件数を期待値（追跡下の `*Tests.csproj` 数）と突き合わせる**。同じテストプロジェクトの二重実行は床では
+  見えない（重複排除で分母が倍にならない）ため、件数で止める。期待値は手で写さず判定器が導出する。
+- **床割れ・テスト失敗は `ci-failure` issue に残る**（`ci-failure-issue.yml`）。放置は週次の定期棚卸し（`backlog-audit.yml`）が列挙する。
+- **暫定手段（PR 段階）**: レビュー時に `build-and-test` の Step Summary「バックエンドのカバレッジ」を目視し、実測が床を下回る
+  PR は理由（統合テストぶんの不足か、被覆の実減か）を PR 本文に書く。
 
 #### API から設定する場合
 

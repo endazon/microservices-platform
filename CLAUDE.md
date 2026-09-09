@@ -81,7 +81,7 @@
 - **完了前検証**: 上の手順 7（`/verify`）を**PR を出す前に**通す。
 - **再現可能な環境**: `.devcontainer/` と `scripts/setup.sh`（SessionStart hook が実行）で、AI がビルド・テストを実走できる環境を用意する。
 - **CI ゲート**: `develop` はブランチ保護済み（`enforce_admins` 有効）。**必須 check 名の正は `docs/ai-workflow.md` の表**（**ジョブ名**を書く。ワークフロー名だと恒久 pending）。
-- **文書・トレーサビリティの機械検査**（一覧と挙動は [`scripts/README.md`](scripts/README.md)）: 資料再編で **`check-trace-blocks`**（trace ブロック規約）と **`gen-knowledge-graph --check`**（参照の in-repo 実在）を新設し、🔴 **planning 依存の検査器（pin 鮮度・kit 同期のバイト一致・環流の未送付／status 突合）は退役させた。復活させない**（ADR-0048 決定 2・5・6 / IADR-0228）。乖離の検知は issue 運用と定期棚卸しに委ねる。
+- **文書・トレーサビリティの機械検査**（一覧と挙動は [`scripts/README.md`](scripts/README.md)）: 資料再編で **`check-trace-blocks`**（trace ブロック規約）と **`gen-knowledge-graph --check`**（参照の in-repo 実在）を新設し、🔴 **planning 依存の検査器（pin 鮮度・kit 同期のバイト一致・環流の未送付／status 突合）は退役させた。復活させない**（ADR-0048 決定 2・5・6 / IADR-0228）。乖離の検知は issue 運用と定期棚卸し（週次 `backlog-audit.yml`）に委ねる。
 
 ## Git 運用
 

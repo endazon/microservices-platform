@@ -3,7 +3,7 @@ title: ワンタイムコード（OTP／多要素認証） テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-08-15
-updated: 2026-08-28
+updated: 2026-09-09
 author: claude
 ---
 <!-- trace:
@@ -28,7 +28,7 @@ issues: [#438]
 
 **対象外（実環境が要る）**: 実際の TOTP 検証・初回セットアップ画面・リカバリーコード表示。
 **Keycloak を起動しないと検証できない**（CI は Keycloak を起動しない。実測: `.github/workflows/` に Keycloak を
-起動するジョブは無く、`ci.yml` の `realm-constraints` ジョブ〔343〜353 行〕は静的検査のみ）。**これらは #438 の射程である。**
+起動するジョブは無く、`ci.yml` の `static-checks` ジョブの realm 制約 step は静的検査のみ）。**これらは #438 の射程である。**
 
 ## テスト観点
 
