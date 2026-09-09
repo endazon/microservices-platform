@@ -3,7 +3,7 @@ title: Docker Engine API が無い環境（containerd 等）で統合テスト�
 type: how-to
 status: fixed
 created: 2026-09-08
-updated: 2026-09-09
+updated: 2026-09-10
 author: claude
 ---
 <!-- trace:
