@@ -69,12 +69,14 @@ ARGOCD=1        bash scripts/k8s-local-up.sh   # ArgoCD install + Application �
 PERSIST=0       bash scripts/k8s-local-up.sh   # 【opt-out】永続化を外す（使い捨てスタック専用）。永続化は既定オン（下記「永続化」節・IADR-0369）
 LOCALEDGE=1     bash scripts/k8s-local-up.sh   # ローカルエッジ集約: platform フロント 80/443 ＋ 管理ツール 50000（下記 edge 節）
 ESO=1           bash scripts/k8s-local-up.sh   # Vault＋ESO で secret 自動供給（要 VAULT=1・本番同等 k8s auth・IADR-0096・#310）
+SYNTHETIC=1     bash scripts/k8s-local-up.sh   # 合成監視の常駐プローブ（60 秒・LLM を呼ばない。ADR-0079 決定 1・#1287。下記「合成監視」節）
 ```
 
 - [`deploy/local/observability/README.md`](observability/README.md) — 可観測性スタック（既定 debug-only を維持）
 - [`deploy/local/vault/README.md`](vault/README.md) — Vault dev + External Secrets（**dev 専用・平文秘密なし**）。`ESO=1` で secret 自動供給（[eso/README](vault/eso/README.md)・IADR-0096）
 - [`deploy/local/argocd/README.md`](argocd/README.md) — GitOps ブートストラップ
 - [`deploy/local/edge/README.md`](edge/README.md) — **ローカルエッジ集約**（platform 80/443 ＋ 管理ツール 50000・ホスト名ベース・IADR-0091）。**k3d はポート再作成が必要**（同 README のユーザー手順）
+- [`deploy/local/synthetic-monitor/README.md`](synthetic-monitor/README.md) — **合成監視**（`SYNTHETIC=1`。#1287）。標識（`SyntheticMonitoring__Subjects__0`）を BFF / dashboard / aianalysis へ与え、**除外の 3 サービスが揃ってからプローブを配備する**（揃わなければ配備せずに落ちる。ADR-0076 決定 4）。**LLM は呼ばない＝費用は 0**（60 分側は別の配備単位で未着手）
 - Hetzner 実 stand-up・本番 NFR は **Tier 3**（対象外）。
 
 ### 永続化（**既定オン**・opt-out は `PERSIST=0`・Issue #324 / IADR-0082、#787 / IADR-0210、#1088 / IADR-0369）

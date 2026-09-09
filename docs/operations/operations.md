@@ -10,8 +10,8 @@ author: claude
 ids: [FR-01, FR-02, FR-03, FR-04, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-09, NFR-21, SC-01, SC-02, SC-10, UC-01, UC-04, UC-05, UC-07]
 adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085]
 iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422]
-specs: [20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-336_ndcg-harness-and-query-embedding-profile]
-issues: [#1088, #1108, #1110, #1159, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #336, planning#196, planning#524, planning#538]
+specs: [20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile]
+issues: [#1088, #1108, #1110, #1159, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538]
 -->
 
 # 運用仕様書
@@ -857,7 +857,13 @@ LlmGateway は補完 1 回ごとに `llm.completion.total`（Prometheus では `
 存在させる常駐プローブである。**クラスタ内で完結し、外部の監視 SaaS は使わない。**
 
 配備物と手順は `deploy/local/synthetic-monitor/README.md` に置く（`docs/` の外なのでリンクは張らない）。
-**既定の起動器には入っていない（opt-in）。**
+**既定ではプローブは立たない（opt-in）。**
+🔵 **［2026-09-09 更新］ローカル起動器（`scripts/k8s-local-up.sh`）に `SYNTHETIC=1` の門を用意した。**
+門は「標識を除外の 3 サービスへ与える → 3 サービスが揃うのを待つ → プローブを配備する」の順で動き、
+**揃わなければプローブを配備せずに起動器ごと落ちる**（「除外できない構成では配備しない」の機械化）。
+既定をオンにする切り替えは同スクリプトの 1 行（`SYNTHETIC_DEFAULT`）に集めてある。
+🔴 **本番構成（helm チャート）にはまだ入っていない。** そこへの投入は**イメージの再ビルドと稼働クラスタ**が
+要るため、実装側だけでは完了できない。
 
 🔴 **標識と除外が揃っていない構成では配備しない。** 合成トラフィックが利用実績・費用・検索傾向へ
 混ざると、**それらの指標が「人が使った量」を表さなくなる。** 除外はコード側（BFF・DashboardService・
@@ -870,6 +876,7 @@ LlmGateway）に在るため、**当該イメージが更新済みであるこ�
 | **除外の可視化** | `usage_event_dispatch_total{usage_event_outcome="excluded_synthetic"}` と `llm_usage_synthetic_excluded_total` |
 | **実行頻度** | 🔵 **［2026-09-05 更新］計画が確定させた（従前は「未確定」）。2 段である** —— **常時トラフィックの生成＝60 秒**（LLM を呼ばない）／ **SLO 評価用＝60 分**（LLM を呼ぶ）。**配備済みなのは 60 秒側だけである。** 配備時に `PROBE_INTERVAL_SECONDS` で与える点は変えない（**実装は既定値を持たない**。未設定ならプローブは起動しない） |
 | **費用の上限** | 🔵 **［2026-09-05 更新］計画が確定させた（従前は「未確定」）。絶対額のしきい値は置かず、間隔で実質的に固定する** —— 60 分間隔＝月 720 回であり、費用は事前に計算できる（概算 月約 4,400 円）。**ただし現状の配備では 60 分側が未着手であり、`AllowLlmEgress` の既定は `false` のままなので、恒常的に発生する費用は依然として 0 である** |
+| **配備の口** | 🔵 **［2026-09-09 追加］ローカル起動器の `SYNTHETIC=1`**（既定はオフ）。前提の投入（realm クライアントの追随・標識の env・プローブの資格情報）と順序を門が持つ。手で当てる手順も従来どおり残っている |
 | **停止手順** | `kubectl -n microservices-platform scale deploy/synthetic-monitor --replicas=0`（次の間隔を待たずに止まる）。恒久的に外すなら `kubectl delete -k deploy/local/synthetic-monitor` ＋ Secret の削除 |
 
 🔴 **除外は指標を守るためのものであり、費用そのものを減らさない。**
@@ -1056,6 +1063,10 @@ QDRANT_URL=http://localhost:6333 bash scripts/verify-qdrant-fulltext-index.sh
   ② **道筋が付いた** —— **ただし 60 分側の配備は未着手であり、初回応答の評価対象は依然として無い。**
   あわせて**判定窓を標本量に合わせて広げる**ことが実装に課された（検知遅延の許容上限は 8 時間。
   具体値は実測で定めて環流する）。③ **置かないことで確定した**（製品の振る舞いを変えないため）。
+  🔵 **［2026-09-09 追記 / #1287］残る実装作業のうち、AI 側で先行できる分は着地した** ——
+  ローカル起動器に `SYNTHETIC=1` の門（標識の投入・順序・「揃わなければ配備しない」の fail-closed）を
+  用意した。**残りは利用者の手が要る**: 本番像イメージの再ビルドと稼働クラスタへの適用、
+  60 分側（LLM を呼ぶ）の**課金の承認**、およびそれに従属する判定窓と費用の実測・環流である。
 - **`absent` の対象拡大**: 🔵 **［2026-09-05 更新 / #1203］半分だけ済んだ。**
   **RAG 応答完了（一括経路）の行を「評価対象の不在」へ入れた**（本書の表は 4 行になった）。
   **RAG 初回応答の行は入っていない** —— 上記②の 60 分側が配備されるまで系列が立たず、

@@ -91,6 +91,12 @@ vexec "vault kv put secret/msp/headlamp-oidc client-secret='${HEADLAMP_OIDC_CLIE
 # **既定は realm import の置き場と同値**にする —— ズレると Keycloak の token 端点が invalid_client を返し、
 # 門は 401 を打ち続けるだけになる（窓は開いたまま。wikijs-oidc と同じ罠）。
 vexec "vault kv put secret/msp/reset-gate-oidc client-secret='${RESET_GATE_CLIENT_SECRET:-reset-gate-dev-secret-change-me}'"
+# NFR-02, NFR-21, ADR-0076 決定 4, ADR-0079 決定 1, IADR-0378 (#1287): 合成監視のプローブが
+# client_credentials で名乗る機密クライアントの secret。**既定は realm import の置き場と同値**にする ——
+# ズレると token 端点が invalid_client を返し、プローブは 1 度も BFF へ到達しないまま
+# `RagLatencySeriesAbsent` を鳴らす（原因が「評価対象が本当に無い」と区別できない。wikijs-oidc と同じ罠）。
+# 種は無条件に入れる。ExternalSecret を apply するのは SYNTHETIC=1 のときだけである（k8s-local-up.sh）。
+vexec "vault kv put secret/msp/synthetic-monitor-oidc client-secret='${SYNTHETIC_MONITOR_CLIENT_SECRET:-synthetic-monitor-dev-secret-change-me}'"
 # IADR-0099 (#310) PR-4: 基盤 secret（postgres/rabbitmq/keycloak-admin）。★値は k8s-local-up.sh step 3 の手動 apply と
 # **完全一致**させること（env 由来 or 同じ既定 postgres/guest/admin）。DB/broker/keycloak は既存パスワードで初期化済みのため、
 # 値がズレると認証破壊。ExternalSecret は creationPolicy: Merge で同一値を上書きするのみ（値不変＝無害）。
@@ -133,9 +139,11 @@ echo "  #1255: retrieval-service-token, ingestion-service-token, aianalysis-serv
 echo "  PR-4: postgres, rabbitmq, keycloak-admin (platform-infra ns・creationPolicy: Merge・手動 apply は保持)"
 echo "  #438/#1102/#1144: keycloak-smtp (platform-infra ns。from/user/password は空＝実値未供給。宛先の既定はクラスタ内の捕捉用 MTA。k8s-local-up.sh の ESO=1 が常時 apply する。docs/operations/keycloak-smtp-relay-setup-runbook.md 参照)"
 echo "  #1127: wikijs-oidc (MSP ns。Wiki.js の OIDC ストラテジ seed が読む。WIKIJS_OIDC=1 のときだけ apply される)"
+echo "  #1287: synthetic-monitor-oidc (MSP ns。合成監視のプローブが env で読む。SYNTHETIC=1 のときだけ apply される)"
 # 🔴 案内は **実際に apply される名前だけ**を挙げる（#1102: 挙げた名前が作られないと、手順どおり
 #    打った人が必ず NotFound を踏む）。grafana-oidc / headlamp-oidc は OBSERVABILITY=1 / HEADLAMP=1 の、
-#    wikijs-oidc は WIKIJS_OIDC=1 のときだけ apply されるため、無条件の並びからは外して注記に回す。
+#    wikijs-oidc は WIKIJS_OIDC=1 の、synthetic-monitor-oidc は SYNTHETIC=1 のときだけ apply されるため、
+#    無条件の並びからは外して注記に回す。
 echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
 echo "  確認(infra): kubectl -n platform-infra get externalsecret,secret postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp"
 echo "             （grafana-oidc は OBSERVABILITY=1、headlamp-oidc は HEADLAMP=1 のときだけ apply される）"

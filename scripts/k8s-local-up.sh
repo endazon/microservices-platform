@@ -9,7 +9,8 @@
 #   MINIO_ACCESS_KEY / MINIO_SECRET_KEY / WIKIJS_DB_PASSWORD / WIKIJS_SYNC_APIKEY / ANTHROPIC_API_KEY /
 #   RABBITMQ_USER（#1022。helm の global.messaging.user と揃えること）/
 #   WIKIJS_OIDC_CLIENT_SECRET（#1127。WIKIJS_OIDC=1 のときだけ使う。realm の wiki-js client と揃えること）/
-#   KEYCLOAK_ADMIN_USER（IADR-0369。既定 admin。Keycloak と realm 後追い Job が同じ Secret から読む）
+#   KEYCLOAK_ADMIN_USER（IADR-0369。既定 admin。Keycloak と realm 後追い Job が同じ Secret から読む）/
+#   SYNTHETIC_MONITOR_CLIENT_SECRET（#1287。SYNTHETIC=1 のときだけ使う。realm の synthetic-monitor client と揃えること）
 # 永続化（Keycloak/Postgres/Qdrant ＋ OBSERVABILITY=1 の可観測性 4 種の PVC）は **既定オン**（IADR-0369 / #1088）。
 #   使い捨てスタックでだけ PERSIST=0 で外す。
 set -euo pipefail
@@ -599,10 +600,18 @@ if [ "${ESO:-}" = "1" ]; then
   # **手動 apply は step [3/7] で保持済み**（ESO の有無によらず作る。無いと門が起動しない）。
   # ここでは creationPolicy: Merge の ExternalSecret を適用し、既存 Secret へ Vault の値をマージするのみ。
   kubectl apply -f deploy/local/vault/eso/externalsecret-reset-gate-oidc.yaml
+  # NFR-02, NFR-21, ADR-0076 決定 4, ADR-0079 決定 1 (#1287): 合成監視のプローブが client_credentials で
+  # 名乗るための client secret。**SYNTHETIC=1 のときだけ apply する**（wikijs-oidc と同じ形。
+  # 立てていないゲートの ExternalSecret を作ると `get secret` が NotFound を返して運用者を惑わす）。
+  # 種は bootstrap.sh が**無条件に**入れてある（他の secret と同じ。立て直しの順序に依存させない）。
+  if [ "${SYNTHETIC:-}" = "1" ]; then
+    kubectl apply -f deploy/local/vault/eso/externalsecret-synthetic-monitor-oidc.yaml
+  fi
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 18 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本、通知の面（IADR-0419）で document-service-token の 1 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 → 18 へ数え直した。**値は上の msp_es を数え直して出す** —— 継ぎ足すと必ずずれる）＋有効ゲートの wikijs-oidc（#1127）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5、#1245 で reset-gate-oidc を追加し 5 → 6 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
+  # 誤解させない）。MSP ns は常時 18 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本、通知の面（IADR-0419）で document-service-token の 1 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 → 18 へ数え直した。**値は上の msp_es を数え直して出す** —— 継ぎ足すと必ずずれる）＋有効ゲートの wikijs-oidc（#1127）と synthetic-monitor-oidc（#1287）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5、#1245 で reset-gate-oidc を追加し 5 → 6 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
   msp_es="llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
   [ "${WIKIJS_OIDC:-}" = "1" ] && msp_es="$msp_es wikijs-oidc"
+  [ "${SYNTHETIC:-}" = "1" ] && msp_es="$msp_es synthetic-monitor-oidc"
   infra_es="postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp reset-gate-oidc"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
@@ -639,6 +648,10 @@ if [ "${ESO:-}" = "1" ]; then
   # deploy/local/wikijs-setup/bootstrap.sh の段 8 がこの Secret を読むためである。同期前だと段 8 は
   # 「client secret を取得できない」で何もせずに終わり、**OIDC ログインが入らないまま up は緑で終わる。**
   [ "${WIKIJS_OIDC:-}" = "1" ] && msp_sync="$msp_sync wikijs-oidc"
+  # #1287: synthetic-monitor-oidc は **プローブの rollout のために待つ**。プローブ Deployment は
+  # 本スクリプトの最後（SYNTHETIC ゲート）で作られるので、ここで同期を終えていないと
+  # **最初の Pod が空の client secret を掴んで 401 を打ち続ける**（IADR-0103）。
+  [ "${SYNTHETIC:-}" = "1" ] && msp_sync="$msp_sync synthetic-monitor-oidc"
   # shellcheck disable=SC2086
   eso_wait "$MSP_NS" $msp_sync
   # #1102 → #1245: keycloak-smtp は **rollout のために待つ**（近接 MTA が env で読む。上の apply の注記参照）。
@@ -1006,6 +1019,66 @@ if [ "${SEARCHSEED:-}" = "1" ]; then
   echo "==> [opt-in] 検索検証用文書の初期投入（本文つき / IADR-0284）"
   node "$ROOT/scripts/seed-search-documents.js" \
     || echo "    WARN: 検索用文書の投入に失敗（best-effort）。node scripts/seed-search-documents.js で再実行できる" >&2
+fi
+
+# NFR-02, NFR-21, ADR-0076 決定 3・4, ADR-0079 決定 1, IADR-0378 (#1287): 合成監視（synthetic）の常駐プローブ。
+# **60 秒間隔・LLM を呼ばない**（ADR-0079 決定 1 の確定値。`AllowLlmEgress` はここでも設定しない）。
+#
+# 🔴 **既定はオフである。既定 ON を採らなかった理由をここに置く**（ADR-0079 §フォローアップ 1 は
+#   「常駐プローブを**本番構成へ**投入する」と課しており、本番像は `deploy/helm/microservices-platform`
+#   である。そこには合成監視が無い ——「既定の起動器」は本番像を指す語であって、ローカルの
+#   `k8s-local-up.sh` のことではない）。加えてローカルで既定 ON にすると、**捨てるつもりの dev クラスタが
+#   常に `/analysis/ask` 系を叩き続ける**（検索までは走るので Qdrant / Postgres への負荷と利用イベントが
+#   常時立つ）。**利用者が既定 ON を望むなら、下の 1 行の既定値を `1` にするだけで足りる。**
+SYNTHETIC_DEFAULT="0" # ← 既定 ON にするならここを "1" にする（#1287。他は 1 行も変えなくてよい）
+if [ "${SYNTHETIC:-$SYNTHETIC_DEFAULT}" = "1" ]; then
+  echo "==> [opt-in] 合成監視（synthetic・60 秒・LLM を呼ばない / ADR-0079 決定 1 / #1287）"
+  # 🔴 **ADR-0076 決定 4「標識と除外は同時に入れる。除外できない構成では配備しない」を満たす順で行う。**
+  #   ローカルはイメージを `scripts/k8s-local-images.sh` が**この作業ツリーのソースから**作る（[2/7]）ため、
+  #   「除外規則が入ったイメージであること」は構造的に満たされる —— ADR-0079 §フォローアップ 1 が
+  #   🔴 と付けた「イメージの再ビルド」の依存は、**ローカルに限っては起動器の内側で解決している。**
+  #   稼働クラスタ（本番像）はレジストリのタグを引くので、この根拠は移せない。
+
+  # (a) 標識の許可集合を除外する 3 サービスへ与える。**空だと fail-closed で除外が 1 件も効かない**
+  #     （SyntheticTraffic.IsSyntheticPrincipal は Subjects が空なら常に false を返す）。
+  #     🔴 helm の values ではなく live の Deployment を触るのは、`services.<name>.extraEnv` が**リストで
+  #     あり `--set` で足すと既存要素ごと置き換わる**ためである（BFF の Services__* が消える）。
+  #     結果として helm の再実行はこの env を戻すが、**本ゲートは毎回 up の後段で当て直す**ので収束する。
+  #     （ARGOCD=1 で ArgoCD に同期させている場合は、ArgoCD が chart の姿へ戻す。README に明記。）
+  for d in bff dashboard aianalysis; do
+    kubectl -n "$MSP_NS" set env "deploy/$d-service" SyntheticMonitoring__Subjects__0=synthetic-monitor
+  done
+
+  # (b) プローブの client secret。ESO=1 のときは Vault→ExternalSecret 供給へ委譲する（二重所有回避）。
+  #     dev 既定は realm JSON の置き値（他の OIDC client secret と同じ扱い・env で上書き可）。
+  if [ "${ESO:-}" != "1" ]; then
+    apply_secret "$MSP_NS" synthetic-monitor-oidc \
+      "client-secret=${SYNTHETIC_MONITOR_CLIENT_SECRET:-synthetic-monitor-dev-secret-change-me}"
+  fi
+
+  # (c) **除外が効く Pod が揃うまでプローブを配備しない**（ADR-0076 決定 4 の fail-closed）。
+  #     (a) の env は Pod を作り直させるので、ここで揃うのは「新しい env を持つ Pod」である。
+  #     🔴 **警告を出して続行してはならない** —— それは「除外できない構成へ合成を配備した」ことと同じであり、
+  #     利用実績・費用・検索傾向が静かに汚れる。LOCALEDGE の HelmChartConfig の門（#953）と同じ形で落とす。
+  synthetic_exclusion_ready=1
+  for d in bff dashboard aianalysis; do
+    kubectl -n "$MSP_NS" rollout status "deploy/$d-service" \
+      --timeout="${SYNTHETIC_ROLLOUT_TIMEOUT:-180s}" || synthetic_exclusion_ready=0
+  done
+  if [ "$synthetic_exclusion_ready" != "1" ]; then
+    echo "ERROR: 除外の 3 サービス（bff / dashboard / aianalysis）が新しい env で揃いません。" >&2
+    echo "       **合成監視は配備しません**（ADR-0076 決定 4「除外できない構成では配備しない」）。" >&2
+    echo "       kubectl -n $MSP_NS get pods / describe deploy で原因を見てから再実行してください。" >&2
+    exit 1
+  fi
+
+  # (d) プローブ本体。README の手順 4 と同じ overlay を当てる（手で当てるのと同じ 1 コマンド）。
+  kubectl apply -k deploy/local/synthetic-monitor
+  kubectl -n "$MSP_NS" rollout status deploy/synthetic-monitor \
+    --timeout="${SYNTHETIC_ROLLOUT_TIMEOUT:-180s}"
+  echo "    プローブのログ: kubectl -n $MSP_NS logs deploy/synthetic-monitor --tail=20"
+  echo "    停止（次の間隔を待たない）: kubectl -n $MSP_NS scale deploy/synthetic-monitor --replicas=0"
+  echo "    🔴 LLM を呼ぶ 60 分側（ADR-0079 決定 2・課金の承認が要る）は**別の配備単位**であり、ここには無い。"
 fi
 
 echo ""

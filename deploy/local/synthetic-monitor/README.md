@@ -7,7 +7,37 @@
 混ざると、それらの指標が「人が使った量」を表さなくなる。除外は BFF・DashboardService・LlmGateway に
 入っており、**この overlay を当てる前にそれらのイメージが更新されていること**を確かめること。
 
-## 前提と手順
+## 起動器から当てる（`SYNTHETIC=1`・#1287）
+
+🔵 **［2026-09-09 追加 / #1287］下の「前提と手順」を 1 コマンドにまとめた口が起動器に在る。**
+
+```console
+SYNTHETIC=1 bash scripts/k8s-local-up.sh
+```
+
+門は手順 1〜4 と**同じことを同じ順で**行う（realm 追随 → 標識の env → 除外 3 サービスの rollout →
+overlay の apply → プローブの rollout 待ち）。差分は 2 点だけである。
+
+- **Secret は dev の置き値で作る**（`synthetic-monitor-dev-secret-change-me`。他の dev クライアントと同じ扱い）。
+  `SYNTHETIC_MONITOR_CLIENT_SECRET=... SYNTHETIC=1 bash scripts/k8s-local-up.sh` で上書きできる。
+  **`ESO=1` を併用すると Vault → ExternalSecret 供給へ委譲する**（手動 apply はしない。二重所有回避）。
+- 🔴 **除外の 3 サービスが揃わなければ、プローブを配備せずに `up` が落ちる**
+  （ADR-0076 決定 4「除外できない構成では配備しない」。警告して続行はしない）。
+
+🔴 **既定はオフのままである。** ADR-0079 §フォローアップ 1 の「既定の起動器へ入れる」は**本番構成**
+（`deploy/helm/microservices-platform`）を指しており、そちらには合成監視が無い。加えてローカルで既定 ON に
+すると、捨てるつもりの dev クラスタが常に `/analysis/ask` 系を叩き続ける。**既定 ON を望むなら
+`scripts/k8s-local-up.sh` の `SYNTHETIC_DEFAULT` を `"1"` にするだけでよい**（他は 1 行も変えなくてよい）。
+
+🔴 **ローカルでは「除外規則が入ったイメージであること」が構造的に満たされる** ——
+`scripts/k8s-local-images.sh` が**この作業ツリーのソースから**イメージを作るためである。
+**稼働クラスタ（レジストリのタグを引く）へこの根拠は移せない。**
+
+⚠️ **`ARGOCD=1` で同期させているクラスタでは、標識の env が ArgoCD に巻き戻される**
+（門は live の Deployment を触るが、chart には無い設定であるため）。その構成では `up` を打ち直すか、
+標識を chart 側へ入れる別の手当てが要る。
+
+## 前提と手順（手で当てる場合）
 
 1. **realm クライアントを反映する。** `deploy/keycloak/microservices-platform-realm.json` に
    `synthetic-monitor`（`client_credentials`・ロール無し・ABAC ポリシー無し）を宣言済み。
@@ -21,8 +51,11 @@
      --from-literal=client-secret='<Keycloak が発行した値>'
    ```
 
-   realm JSON の `synthetic-monitor-dev-secret-change-me` は**開発用の置き値**であり、そのまま使わない
-   （`abac-seeder` / `ai-stock-trading-kb-writer` と同じ扱い）。
+   realm JSON の `synthetic-monitor-dev-secret-change-me` は**開発用の置き値**であり、
+   **本番ではそのまま使わない**（`abac-seeder` / `ai-stock-trading-kb-writer` と同じ扱い）。
+   🔵 ［2026-09-09 補足 / #1287］**ローカルの dev クラスタでは置き値をそのまま使う** ——
+   起動器の `SYNTHETIC=1` は他の dev OIDC クライアント（`bff-oidc` / `headlamp-oidc` …）と同じく
+   この値で Secret を作る。**実 realm の値を再生成した環境ではズレるので、上の手順で作り直すこと。**
 
 3. **BFF・DashboardService・AiAnalysisService へ標識の許可集合を渡す。** 空だと
    **何も合成と見なさない**（fail-closed）ため、除外は 1 件も効かない。
@@ -94,3 +127,5 @@ kubectl -n microservices-platform scale deploy/synthetic-monitor --replicas=0
 🔴 **当てていないクラスタでは `RagLatencySeriesAbsent` は真になる。** これは誤報ではなく
 **「SLO の評価対象が本当に無い」状態**である（クラスタ再作成中に鳴るのと同じ扱い）。
 **既定の起動器へ入れる条件は「除外を含むイメージが配備されていること」である**（`ADR-0079` §フォローアップ 1）。
+🔵 ［2026-09-09 追加 / #1287］**ローカル起動器には `SYNTHETIC=1` の口を用意した**（上節）。
+**本番構成（helm）への投入・稼働クラスタでの実測は利用者の手が要るため未着手である。**
