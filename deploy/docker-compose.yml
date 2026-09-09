@@ -187,11 +187,14 @@ services:
     # IADR-0210 (#787): 保持期間を args で明示する。経路B（deploy/local/observability/prometheus.yaml）と
     # **同じ 2 引数**を置く —— 現状は両方とも retention 無指定で対称であり、片方だけ入れると新たな
     # パリティ差を作るため。size(4GB) は経路B の PVC 容量(5Gi) 未満に取り、満杯→書き込み不能を形で塞ぐ。
+    # #1111 前提 3: 月次規則（[30d] 窓）を評価できる保持が要る。7d では窓が常に空になるため 35d へ
+    # （30 日 ＋ 評価の余裕 5 日）。size は据え置き —— 流入が多いと size の上限が先に効き、窓の先頭が
+    # 欠けることはあり得る（そのときは PVC と size を対で上げる。IADR-0210 決定 3 の形を保つ）。
     command:
       [
         "--config.file=/etc/prometheus/prometheus.yml",
         "--web.enable-remote-write-receiver",
-        "--storage.tsdb.retention.time=7d",
+        "--storage.tsdb.retention.time=35d",
         "--storage.tsdb.retention.size=4GB",
       ]
     volumes:

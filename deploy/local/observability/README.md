@@ -98,7 +98,7 @@ rollout restart で debug-only（既定）へ戻す（永続化版を当てて�
 **Tier 3**（対象外）。
 
 > ★ 混同しないこと（#787 / [IADR-0210](../../../.ai-context/adr/IADR-0210_local-k8s-observability-persistence.md)）:
-> `prometheus.yaml` の `--storage.tsdb.retention.time=7d` / `--storage.tsdb.retention.size=4GB` は
+> `prometheus.yaml` の `--storage.tsdb.retention.time=35d` / `--storage.tsdb.retention.size=4GB` は
 > **dev ローカルの保持期間**であり、上の「本番相当のリテンション」ではない。本番像
 > （`deploy/helm/microservices-platform/templates/`）には Prometheus / Loki / Tempo / Grafana が
 > **1 つも存在せず**、本 overlay の設定はそこへ波及しない。**Tier 3 の対象外宣言はそのまま生きている。**

@@ -3,7 +3,7 @@ title: 運用仕様書
 type: operations-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-06
+updated: 2026-09-09
 author: claude
 ---
 <!-- trace:
@@ -204,7 +204,7 @@ Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 c
 落とさない —— 稼働 dev クラスタが誰にも気付かれず非永続で立っていたのが #1088 である）。
 **rabbitmq/redis/otel は emptyDir 継続**（queue/cache は揮発前提・otel は stateless。**qdrant は #787 で永続化対象へ移った**）。
 
-- **Prometheus の保持期間**は `--storage.tsdb.retention.time=7d` / `--storage.tsdb.retention.size=4GB` を
+- **Prometheus の保持期間**は `--storage.tsdb.retention.time=35d` / `--storage.tsdb.retention.size=4GB` を
   args で明示する（[`deploy/local/observability/prometheus.yaml`](../../deploy/local/observability/prometheus.yaml) の base
   ＝ `PERSIST` の有無に関わらず効く）。**`size` を PVC 容量（5Gi）未満に置いてあるため、流入が増えても
   PVC 満杯で書き込み不能になることはない**（経路 B の永続化の実装 ADR の決定 3）。compose にも同じ 2 引数がある（パリティ）。
