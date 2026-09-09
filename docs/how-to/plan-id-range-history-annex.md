@@ -3,15 +3,15 @@ title: 別紙 — 計画 ID レンジの追随記録と、計画 ADR の状態�
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-09-08
+updated: 2026-09-09
 author: claude
 ---
 <!-- trace:
 ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-06, SC-17, SC-18, SC-19, SC-20]
-adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088]
-iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228]
+adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093]
+iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228, IADR-0423]
 specs: []
-issues: [#1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567]
+issues: [#1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#591]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -372,6 +372,20 @@ ABAC の `owner` が実データ 0 件である件と、Wiki.js の個人スコ�
 **世代数は書かない**——本節へ 1 世代足すたびに腐る導出値であり、実際に入口と本紙が
 「5 世代」で揃ったまま実体（`X → Y` の記録）だけが増えていた（#793 で是正。母集合の規則 10）。
 **「動かなかった」ことも実測の結果**であり、引き直しを省いてよい根拠にはならない。
+
+［2026-09-09 / 計画側の裁定］**`ADR` レンジが `ADR-0001..0088` → `ADR-0001..0093` へ動いた。**
+**1 日で 5 件動いた**（前世代は 2026-09-08）。計画側は同日、環流の裁定を複数着地させている。
+🔴 **本世代から、引き直しの出典が変わった。** 従前は隣接クローンを直接数えていたが、計画側が
+`tools/doc-checks/kg-ranges.json` を**実物からの導出結果を公開する成果物**へ格上げした
+（計画 `ADR-0093` 決定 1。手で書かず `gen-plan-ranges.js --write` で揃え、`--check` を CI の必須チェックに置いた）。
+**本世代の値は `node tools/doc-checks/gen-plan-ranges.js --check` の実測である**
+（`FR [1,22]` / `UC [1,11]` / `SC [1,21]` / `ADR [1,93]`。**`FR` / `UC` / `SC` は引き直したが動いていない**）。
+🔴 **計画 ADR の本文を転記元にしない。** 同じ `ADR-0093` のフォローアップは MSP を `..0092` と書くが、
+**その `ADR-0093` 自身が加わって実物は `0093` である** —— **ADR 本文の数値は、その ADR が着地した時点で古くなる。**
+🔴 **検知が事後から事前へ変わった。** 前世代までの契機は「自分の作業が新しい ADR を引いて
+`check-trace-blocks` に止められたとき」であり、**止まった PR の作業者がその場で追随させる形**だった。
+本世代で `scripts/check-planning-adr-range.js` を新設し、公開ファイルとの突合を `static-checks` へ配線した
+（`IADR-0423`）。**ただし突合は警告のみで、前進させるのは依然として人（または後続 PR）である。**
 
 ［2026-09-08 / #1333］**`ADR` レンジが `ADR-0001..0086` → `ADR-0001..0088` へ動いた。**
 隣接クローンの `origin/main` を直接確認した（`git ls-tree origin/main projects/microservices-platform/07_adr/`）。

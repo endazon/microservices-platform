@@ -4,7 +4,7 @@
 
 ## 起点 ID の種別（固有）
 
-- 裸の ID は **MSP** を指す。レンジは `FR-01..22` / `UC-01..11` / `SC-01..21` / `ADR-0001..0088`（**欠番なし**。引き直しの記録は別紙 [`plan-id-range-history-annex.md`](../../docs/how-to/plan-id-range-history-annex.md)。**世代数は書かない**——別紙が増えるたびに腐る導出値である）。
+- 裸の ID は **MSP** を指す。レンジは `FR-01..22` / `UC-01..11` / `SC-01..21` / `ADR-0001..0093`（**欠番なし**。引き直しの記録は別紙 [`plan-id-range-history-annex.md`](../../docs/how-to/plan-id-range-history-annex.md)。**世代数は書かない**——別紙が増えるたびに腐る導出値である）。
 - **`Proposed` でも ID としては実在する**（[[IADR-0119]] 決定 2）。
 - **着手条件は FR 単位で読む。** 範囲の正は計画 `ADR-0037` の「着手可否の注記」であり**ここへ転記しない**（[[IADR-0142]]）。
 - **計画 ADR の実在性は本節の宣言レンジで検査する**（`check-commit-messages.js`・`check-trace-blocks.js` とも本節が一次情報。ファイル有無の突合は submodule 撤去により不可。CI が守れていなかった経緯は別紙 §3）。
@@ -12,7 +12,7 @@
 
 ## 複数プロジェクトを跨ぐ場合の ID 修飾（固有設定）
 
-- **計画 ID の `<PROJ>`**: ai-stock-trading = `AST`（`AST/FR-17`）。AST の採番は `FR-01..21` / `UC-01..07` / `SC-01..03`。
+- **計画 ID の `<PROJ>`**: ai-stock-trading = `AST`（`AST/FR-17`）。AST の採番は `FR-01..21` / `UC-01..07` / `SC-01..04`。
 - `check-plan-id-qualification.js`（#576）の対象は追跡下の全ファイル（submodule（`src/ai-stock-trading`）・`CHANGELOG.md`・`.ai-context/specs/`・`.ai-context/superpowers/` を除く）。「AST 文脈で裸の ID」と列挙の後続 ID は検出しない（人と AI が守る）。
 - **issue / PR 番号は短縮形に寄せる**: `AST#NNN` / `planning#NNN`。フルパス形式は自動リンクが要る箇所だけ。**列挙形でも各番号を修飾する**。**Markdown の明示リンクもテキストは短縮形**（#507）。**修飾語と番号の間に空白を入れない**（誤: `AST #24`。自リポを指す `MSP #266` は裸でよい）。**フルパス形式の owner は `endazon` ただ 1 つ**（#590。第三者リポは除く）。経緯は別紙 [`cross-project-id-refs-annex.md`](../../docs/how-to/cross-project-id-refs-annex.md)。
 

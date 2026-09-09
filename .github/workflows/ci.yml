@@ -221,6 +221,22 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-reading-budget.js
 
+      # NFR / planning#591 Q2 / IADR-0423: 計画 ID レンジ宣言（.claude/rules/traceability.repo.md の
+      # 「起点 ID の種別（固有）」節）が、計画リポジトリの公開する導出結果と一致しているかを突き合わせる。
+      # 宣言が遅れている間、そのレンジ外の ID を引く PR は check-trace-blocks / check-commit-messages が
+      # 落として通らない。従来の契機は「自分の作業が止められたとき」という事後検知だった。
+      # 🔴 常に exit 0（警告のみ。計画 ADR-0093 決定 3「落とし方は警告に限り、ビルドの前提にしない」）。
+      #    PLANNING_REPO_TOKEN が無ければ status: unverified・scanned: 0 になる —— それは
+      #    「ずれが無い」ではなく「検査が動いていない」であり、出力の scanned で区別できる。
+      - name: Self-test planning ID range checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-planning-adr-range.js --self-test
+      - name: Check planning ID range freshness
+        if: ${{ !cancelled() }}
+        env:
+          PLANNING_REPO_TOKEN: ${{ secrets.PLANNING_REPO_TOKEN }}
+        run: node scripts/check-planning-adr-range.js --out "$RUNNER_TEMP/planning-id-range.json"
+
       # NFR, Issue #956, IADR-0247: 追跡下ファイルへの生の NUL バイト混入を検査する。
       # 生の NUL が入ると git と grep がファイルをバイナリ扱いする（git diff が中身を出さず、
       # grep が行番号を出さない）ため、混入したまま気付かずマージされ得る（実際に 4 回起きた）。
@@ -455,6 +471,13 @@ jobs:
       - name: Smoke-test k8s-local-up opt-in gates (stub-on-PATH, no cluster)
         if: ${{ !cancelled() }}
         run: node scripts/k8s-local-up.test.js
+
+      # NFR（運用保守）, Issue #1349: scripts/setup.sh の submodule 初期化（Platform.Bff.csproj の
+      # ProjectReference が要る。dotnet restore より前）と pnpm install（src/・在れば使う・fail-open）を
+      # 上と同じ stub-on-PATH 方式（git/dotnet/pnpm を記録スタブへ差し替え）で固定する。
+      - name: Smoke-test setup.sh submodule init / pnpm install (stub-on-PATH)
+        if: ${{ !cancelled() }}
+        run: node scripts/setup.test.js
 
       # FR-05 / NFR-09, IADR-0369, Issue #1088: realm JSON（宣言）と稼働 realm の差分を当てる計画器
       # （deploy/local/keycloak-setup/reconcile-realm.js）の純粋関数を、実物の realm JSON から切り出した
