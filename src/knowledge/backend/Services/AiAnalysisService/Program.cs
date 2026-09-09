@@ -48,9 +48,12 @@ builder.Services.AddPlatformAuthzScopeHttpClient(builder.Configuration);
 builder.Services.AddHttpClient("RetrievalService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:RetrievalService"]
         ?? "http://retrieval-service:5003"));
+// 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): **REST 面は `ServiceCaller` を要する。**
+// 呼び出し側サービス自身の s2s トークンを載せる（利用者のトークンは載せない）。
 builder.Services.AddHttpClient("LlmGateway", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"]
-        ?? "http://llm-gateway:5007"));
+        ?? "http://llm-gateway:5007"))
+    .AddLlmGatewayServiceToken(builder.Configuration);
 
 // FR-04, FR-11, NFR-02, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0400 (#1255):
 // テキスト生成の輸送。**並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス）が

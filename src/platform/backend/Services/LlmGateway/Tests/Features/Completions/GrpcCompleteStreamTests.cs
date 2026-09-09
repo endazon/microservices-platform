@@ -127,7 +127,7 @@ public class GrpcCompleteStreamTests
     {
         var grpc = await CollectAsync(Request("本文"));
 
-        using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
+        using var http = _factory.CreateRestClient();
         var restEvents = await ReadSseAsync(http,
             new CompletionApiRequest("本文", MaxTokens: 100, Model: null,
                 Confidentiality: "public", Purpose: "default"));
@@ -153,7 +153,7 @@ public class GrpcCompleteStreamTests
     {
         var grpc = await CollectAsync(Request(ScriptedLlmProvider.RefusalMarker + " 本文"));
 
-        using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
+        using var http = _factory.CreateRestClient();
         var rest = await ReadSseAsync(http,
             new CompletionApiRequest(ScriptedLlmProvider.RefusalMarker + " 本文", MaxTokens: 100,
                 Model: null, Confidentiality: "public", Purpose: "default"));

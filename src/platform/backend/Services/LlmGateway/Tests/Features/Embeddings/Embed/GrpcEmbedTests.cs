@@ -112,7 +112,7 @@ public class GrpcEmbedTests
             new Pb.EmbedRequest { Text = "本文", Confidentiality = "public", Purpose = Pb.EmbedPurpose.Index },
             headers: Bearer(ServiceToken()), cancellationToken: TestContext.Current.CancellationToken);
 
-        using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
+        using var http = _factory.CreateRestClient();
         var restResp = await http.PostAsJsonAsync("/embed",
             new EmbedApiRequest("本文", "public", Platform.Shared.Contracts.Dtos.EmbedPurpose.Index),
             TestContext.Current.CancellationToken);

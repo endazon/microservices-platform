@@ -109,7 +109,7 @@ public class GrpcCompleteTests
             Request(), headers: Bearer(ServiceToken()),
             cancellationToken: TestContext.Current.CancellationToken);
 
-        using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
+        using var http = _factory.CreateRestClient();
         var restResp = await http.PostAsJsonAsync("/complete",
             new CompletionApiRequest("本文", MaxTokens: 100, Model: null,
                 Confidentiality: "public", Purpose: "default"),
@@ -211,7 +211,7 @@ public class GrpcCompleteTests
         resp.RoutingReason.Should().NotBeEmpty();
 
         // REST も同じ形で縮退する（判定器が 1 つであることの証明）。
-        using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
+        using var http = _factory.CreateRestClient();
         var restResp = await http.PostAsJsonAsync("/complete",
             new CompletionApiRequest(ScriptedLlmProvider.UpstreamFailureMarker + " 本文",
                 MaxTokens: 100, Model: null, Confidentiality: "public", Purpose: "default"),

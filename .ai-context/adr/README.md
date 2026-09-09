@@ -497,3 +497,4 @@
 | [IADR-0421](./IADR-0421_mail-relay-queue-observation-via-collector.md) | **近接 MTA の観測は relay の指標を otel-collector 経由で既存経路へ流し、SC-10 のアラートは実測待ちの暫定閾値で置く**（#1245 PR-B / ADR-0078 決定 3）。🔴 既製 exporter も直 scrape も増やさない。🔴 滞留はキュー ID から復号する。🔴 「測っていない」を 0 で出さない。 | Accepted |
 | [IADR-0422](./IADR-0422_ndcg-harness-and-query-embedding-profile.md) | **nDCG@10 のハーネスは収集と集計を分けて先行させ、クエリの埋め込み経路は既定を変えずに測定用の切替口を持つ**（#336 / ADR-0016・ADR-0017・IADR-0085）。🔴 プロファイルは `Index` に効かない。🔴 答えたコレクションと読むコレクションを照合し、食い違えば降りる。 | Accepted |
 | [IADR-0423](./IADR-0423_plan-id-range-sync-via-published-ranges.md) | **計画 ID レンジの突合を新設し、出典を計画側が公開する `kg-ranges.json` に置く** | Accepted |
+| [IADR-0424](./IADR-0424_llmgateway-rest-face-service-caller.md) | 🔴 **LlmGateway の REST 3 口（`/complete`・`/complete/stream`・`/embed`）は gRPC 面と同じ 1 つの `ServiceCaller` を端点ごとに要求する**（#1364 / NFR-09・ADR-0084 決定 1・4）。呼び出し側 5 つは共通の 1 か所で s2s を載せる（配備の変更は不要）。🔴 陰性対照は 401 と 403 の 2 種類を 3 口それぞれに置く。🔴 AST の 2 呼び出し元は壊れるが門は緩めない。 | Accepted |

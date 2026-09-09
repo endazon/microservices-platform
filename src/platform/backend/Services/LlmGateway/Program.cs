@@ -152,7 +152,11 @@ app.MapGrpcService<LlmEmbeddingGrpcService>();
 
 // FR-04, FR-11, NFR-02, NFR-09, ADR-0029, ADR-0075, ADR-0076, IADR-0379, IADR-0400 (#1255):
 // テキスト生成の gRPC 面（Complete ＝ 一括 ／ CompleteStream ＝ **サーバストリーミング**）。
-// 認可は埋め込みと同じ ServiceCaller。REST（/complete・/complete/stream）は並走したまま残る。
+// 認可は埋め込みと同じ ServiceCaller。
+// 🔴 **［2026-09-09 是正 / #1364］REST（/complete・/complete/stream・/embed）も同じ `ServiceCaller` を要する。**
+// 従前ここには「REST は並走したまま残る」と書いてあり、それは**輸送の並走**を述べたつもりで
+// **認可の不在**まで書いてしまっていた（`ADR-0084` 決定 1 に照らして未達だった）。
+// 並走しているのは輸送だけであり、**門は 2 つの面で同じ 1 つのポリシーである**（[[IADR-0424]]）。
 app.MapGrpcService<LlmCompletionGrpcService>();
 
 app.Run();

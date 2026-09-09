@@ -42,9 +42,9 @@ tags:
   - name: Dashboard
     description: "FR-10, UC-05: 利用状況・検索傾向・回答品質の可視化。IADR-0017: 内部 API（BFF 経由で到達）"
   - name: Completions
-    description: "FR-04, FR-11, ADR-0010: LLM テキスト生成ゲートウェイ。機密区分・用途で呼び出し先を切替。IADR-0017: サービス間呼び出し専用"
+    description: "FR-04, FR-11, ADR-0010: LLM テキスト生成ゲートウェイ。機密区分・用途で呼び出し先を切替。IADR-0017: サービス間呼び出し専用（呼び出し側サービス自身の s2s トークン＝realm ロール platform-service を要求する。#1364）"
   - name: Embeddings
-    description: "FR-02, FR-05, ADR-0016, ADR-0017, IADR-0025: 埋め込み生成ゲートウェイ。機密区分でティア（セルフホスト/外部）を切替、高機密は fail-closed。IADR-0017: サービス間呼び出し専用"
+    description: "FR-02, FR-05, ADR-0016, ADR-0017, IADR-0025: 埋め込み生成ゲートウェイ。機密区分でティア（セルフホスト/外部）を切替、高機密は fail-closed。IADR-0017: サービス間呼び出し専用（呼び出し側サービス自身の s2s トークン＝realm ロール platform-service を要求する。#1364）"
   - name: Config
     description: "FR-15, SC-11, ADR-0018, IADR-0029/IADR-0030: 構成情報 API（読み取り専用）。実効構成とドリフトを管理者・運用者（ConfigViewer ポリシー）へ返す"
   - name: Auth
@@ -2499,6 +2499,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CompletionApiResponse"
+        "401":
+          description: 未認証（サービス間トークンが無い。#1364）
+        "403":
+          description: platform-service ロールを持たない主体（利用者トークンは管理者でも拒否。#1364）
 
   /embed:
     post:
@@ -2526,6 +2530,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EmbedApiResponse"
+        "401":
+          description: 未認証（サービス間トークンが無い。#1364）
+        "403":
+          description: platform-service ロールを持たない主体（利用者トークンは管理者でも拒否。#1364）
 
   /bff/graph/edge-types:
     get:

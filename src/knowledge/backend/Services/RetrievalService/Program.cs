@@ -75,8 +75,10 @@ builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
 if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
     builder.Services.AddSingleton<IEmbeddingService, LlmGatewayGrpcEmbeddingService>();
 else
+    // 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): **REST 面は `ServiceCaller` を要する。**
     builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(c =>
-        c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"));
+        c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"))
+        .AddLlmGatewayServiceToken(builder.Configuration);
 
 // FR-03, UC-01: ハイブリッド検索（ベクトル＋全文 RRF 統合）
 builder.Services.AddScoped<HybridSearchService>();
