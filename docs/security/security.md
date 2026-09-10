@@ -3,15 +3,15 @@ title: セキュリティ仕様書
 type: security-spec
 status: in-progress
 created: 2026-07-02
-updated: 2026-09-09
+updated: 2026-09-10
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-20, NFR-11, SC-05, SC-11, SC-17, SC-20, UC-07]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0037, ADR-0045]
 iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0422]
-specs: [20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile]
-issues: [#55, #100, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, AST#18, AST#24, planning#383]
+specs: [20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile]
+issues: [#55, #100, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, AST#18, AST#24, AST#727, planning#383]
 -->
 
 # セキュリティ仕様書
@@ -186,6 +186,15 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
   `platform-operator`・client_credentials のみ）。realm import 内の `ai-stock-trading-kb-writer-dev-secret-change-me`
   は **dev 専用**で、本番シークレットは環境変数／Secret（Vault）経由で AST 環境へ注入し、realm import へは
   コミットしない。AST 側は空既定なら no-op（トークンを付けない）。
+- **`ai-stock-trading-svc`／`ai-stock-trading-owner`（ai-stock-trading のユニット内 s2s と Discord Bot 制御の owner 認証）**:
+  基盤連結の k8s では AST サービスが**本レルム**で JWT を検証する（統合 SPA の身元は本レルムでしか成立しないため。
+  AST 側の `values-local.yaml` が `global.authAuthority` を本レルムへ向ける）。その配備で AST の s2s
+  （サービス間の同期照会・run-once・Discord Bot 制御）も本レルムで発行されるので、AST レルムと同名の
+  機密クライアント 2 つと realm ロール `trading-service`（読み取り専用 s2s）をここへ写す。いずれも
+  client_credentials のみ（standard flow と直接付与は無効）で、service-account に与えるのは
+  `trading-service`（svc）／`trading-owner`（owner）の 1 つずつ。realm import 内の dev secret は AST レルムの
+  dev export と**同値**（稼働中の `ast-secrets` を変えずに移すため）で **dev 専用**。本番シークレットは
+  Vault 経由で AST 環境へ注入し、realm import へはコミットしない。
 - **`identity-admin`（利用者アカウント管理の反映先）**: 管理画面の「ロール割当・ABAC 属性割当・
   無効化」を認可基盤の管理 API へ反映するための機密クライアント（client_credentials のみ・
   standard flow と直接付与は無効）。**service-account へ与えるのはレルム管理の 3 つだけ**
