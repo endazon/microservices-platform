@@ -22,7 +22,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const {
-  plan, contains, merge, gateHoldsClosed,
+  plan, contains, merge, gateHoldsClosed, collectLive,
   RUNTIME_OWNED_REALM_KEYS, GATE_OWNED_REALM_KEYS, GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED,
 } = require('../deploy/local/keycloak-setup/reconcile-realm.js');
 
@@ -433,4 +433,43 @@ ok('merge: オブジェクトは再帰、配列とスカラーは置換、宣言
   assert.deepStrictEqual(out, { a: { p: 9, q: 2 }, b: [3], c: 'x' });
 });
 
-console.log(`\n${passed} tests passed.`);
+// #1373: 稼働側のクライアントが在って service account が無効なとき、collectLive は SA 利用者を「未存在」として
+// 返し、plan は client.update（SA 有効化）＋ deferred を出す。Keycloak はこの状態の service-account-user に
+// 400 を返す（404 ではない）ため、以前はここで例外になり realm 全体の追随が止まっていた（2026-09-10 実測: `bff`）。
+function fakeKc({ saEnabled, saUser }) {
+  const R = `/admin/realms/${encodeURIComponent(REALM.realm)}`;
+  const bff = { id: 'c-bff', clientId: 'bff', serviceAccountsEnabled: saEnabled };
+  return {
+    call: async () => { throw new Error('collectLive は call を使わない'); },
+    get: async (p) => {
+      if (p === R) return { realm: REALM.realm };
+      if (p === `${R}/clients?max=1000`) return [bff];
+      if (p === `${R}/clients/c-bff/service-account-user`) {
+        if (!saEnabled) throw new Error(`GET ${p} -> 400 {"error":"unknown_error"}`);
+        return saUser;
+      }
+      if (p === `${R}/users/${saUser.id}/role-mappings/realm`) return [{ name: 'platform-service' }];
+      if (p === `${R}/clients/c-bff/client-secret`) return { value: 'live-secret' };
+      return [];
+    },
+  };
+}
+(async () => {
+  {
+    const live = await collectLive(fakeKc({ saEnabled: false, saUser: { id: 'u-bff' } }), REALM);
+    assert.ok(!('bff' in live.serviceAccounts), '稼働 SA 無効なら serviceAccounts に bff を持たない');
+    const ops = plan(REALM, live);
+    assert.ok(ops.some((o) => o.op === 'client.update' && o.target === 'bff'), 'bff の client.update（SA 有効化）が要る');
+    assert.ok(ops.some((o) => o.op === 'deferred' && /service-account-bff/.test(o.target)), 'bff の SA ロールは deferred');
+    passed++;
+    process.stdout.write('  ok  #1373: 稼働に在って SA 無効のクライアントでは collectLive が落ちず、plan が client.update ＋ deferred を出す\n');
+  }
+  {
+    // 陰性対照: SA 有効なら従来どおり SA 利用者とロールを読む。
+    const live = await collectLive(fakeKc({ saEnabled: true, saUser: { id: 'u-bff', username: 'service-account-bff' } }), REALM);
+    assert.deepStrictEqual(live.serviceAccounts.bff.realmRoles, ['platform-service']);
+    passed++;
+    process.stdout.write('  ok  #1373 陰性対照: SA 有効なら service-account-user とロールを読む\n');
+  }
+  console.log(`\n${passed} tests passed.`);
+})().catch((e) => { console.error(e); process.exit(1); });
