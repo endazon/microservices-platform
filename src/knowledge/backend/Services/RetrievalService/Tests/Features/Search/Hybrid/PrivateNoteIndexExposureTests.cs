@@ -56,7 +56,7 @@ public class PrivateNoteIndexExposureTests
             NullLogger<HybridSearchService>.Instance);
         return search.SearchAsync(
             new SearchRequest(Query, 10, null, new AccessScope([], GrantsAccess: true, [.. branches])),
-            TestContext.Current.CancellationToken);
+            TestSearchUser.Any, TestContext.Current.CancellationToken);
     }
 
     // ADR-0036 read 規則の 3 節。分岐名はポリシー名（`AbacEvaluator` が付ける）に相当する。

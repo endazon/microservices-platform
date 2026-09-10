@@ -147,7 +147,7 @@ public class SearchModeNormalizationTaintTests
             new EmptyVectorStore(), new EmptyVectorEmbedding(), logger);
 
         await svc.SearchAsync(
-            new SearchRequest("q", 10, null, Granted, mode), TestContext.Current.CancellationToken);
+            new SearchRequest("q", 10, null, Granted, mode), TestSearchUser.Any, TestContext.Current.CancellationToken);
 
         var message = logger.Messages.Should().ContainSingle().Which;
         message.Should().Contain(mode);

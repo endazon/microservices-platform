@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using RetrievalService.Domain;
 using RetrievalService.Infrastructure.ExternalServices;
 using Pb = Knowledge.Contracts.Grpc.Graph.V1;
 
@@ -30,8 +31,8 @@ public class GrpcGraphNeighborExpanderTests
     {
         var fake = new FakeClient(Neighborhood(), Weights());
 
-        await Expander(fake, Authenticated("alice", clearance: "internal", department: "hr"))
-            .ExpandAsync([Seed], 1, TestContext.Current.CancellationToken);
+        await Expander(fake)
+            .ExpandAsync([Seed], 1, Authenticated("alice", clearance: "internal", department: "hr"), TestContext.Current.CancellationToken);
 
         fake.LastRequest.Should().NotBeNull();
         fake.LastRequest!.User.UserId.Should().Be("alice");
@@ -51,8 +52,8 @@ public class GrpcGraphNeighborExpanderTests
     {
         var fake = new FakeClient(Neighborhood(), Weights());
 
-        await Expander(fake, Authenticated("alice", clearance: "internal", tags: ["sales", "hr"]))
-            .ExpandAsync([Seed], 1, TestContext.Current.CancellationToken);
+        await Expander(fake)
+            .ExpandAsync([Seed], 1, Authenticated("alice", clearance: "internal", tags: ["sales", "hr"]), TestContext.Current.CancellationToken);
 
         var carried = fake.LastRequest!.User.UserAttributes;
         carried.Should().ContainKey("tags");
@@ -69,10 +70,10 @@ public class GrpcGraphNeighborExpanderTests
     public async Task 利用者のトークンをメタデータへ載せない()
     {
         var fake = new FakeClient(Neighborhood(), Weights());
-        var ctx = Authenticated("alice");
-        ctx.HttpContext!.Request.Headers.Authorization = "Bearer 利用者のトークン";
+        // 🔴 入口が利用者のトークンを**持っている**状態で測る（持っていなければ自明に緑になる）。
+        var user = Authenticated("alice", authorization: "Bearer 利用者のトークン");
 
-        await Expander(fake, ctx).ExpandAsync([Seed], 1, TestContext.Current.CancellationToken);
+        await Expander(fake).ExpandAsync([Seed], 1, user, TestContext.Current.CancellationToken);
 
         (fake.LastOptions.Headers ?? []).Should().BeEmpty(
             "利用者の資格情報は面を通らない —— 通ると呼び出し先が「利用者が直接呼んだ」と区別できない");
@@ -86,8 +87,8 @@ public class GrpcGraphNeighborExpanderTests
     {
         var fake = new FakeClient(Neighborhood(), Weights());
 
-        var result = await Expander(fake, Anonymous())
-            .ExpandAsync([Seed], 1, TestContext.Current.CancellationToken);
+        var result = await Expander(fake)
+            .ExpandAsync([Seed], 1, Anonymous(), TestContext.Current.CancellationToken);
 
         fake.LastRequest.Should().BeNull();
         result.Edges.Should().BeEmpty();
@@ -99,8 +100,8 @@ public class GrpcGraphNeighborExpanderTests
     {
         var fake = new FakeClient(new Pb.ExpandNeighborsResponse { Found = false }, Weights());
 
-        var result = await Expander(fake, Authenticated("alice"))
-            .ExpandAsync([Seed], 1, TestContext.Current.CancellationToken);
+        var result = await Expander(fake)
+            .ExpandAsync([Seed], 1, Authenticated("alice"), TestContext.Current.CancellationToken);
 
         result.Edges.Should().BeEmpty();
     }
@@ -119,8 +120,8 @@ public class GrpcGraphNeighborExpanderTests
             NeighborsException = new RpcException(new Status(status, "失敗")),
         };
 
-        var act = async () => await Expander(fake, Authenticated("alice"))
-            .ExpandAsync([Seed], 1, TestContext.Current.CancellationToken);
+        var act = async () => await Expander(fake)
+            .ExpandAsync([Seed], 1, Authenticated("alice"), TestContext.Current.CancellationToken);
 
         var result = await act.Should().NotThrowAsync();
         result.Subject.Edges.Should().BeEmpty();
@@ -136,8 +137,8 @@ public class GrpcGraphNeighborExpanderTests
             WeightsException = new InvalidOperationException("ServiceToken:ClientId が未設定です。"),
         };
 
-        var act = async () => await Expander(fake, Authenticated("alice"))
-            .ExpandAsync([Seed], 1, TestContext.Current.CancellationToken);
+        var act = async () => await Expander(fake)
+            .ExpandAsync([Seed], 1, Authenticated("alice"), TestContext.Current.CancellationToken);
 
         (await act.Should().NotThrowAsync()).Subject.Edges.Should().BeEmpty();
     }
@@ -155,10 +156,10 @@ public class GrpcGraphNeighborExpanderTests
             WeightsException = new RpcException(new Status(StatusCode.Unavailable, "不達")),
         };
 
-        var real = await Expander(withCatalog, Authenticated("alice"))
-            .ExpandAsync([Seed], 1, TestContext.Current.CancellationToken);
-        var fallback = await Expander(withoutCatalog, Authenticated("alice"))
-            .ExpandAsync([Seed], 1, TestContext.Current.CancellationToken);
+        var real = await Expander(withCatalog)
+            .ExpandAsync([Seed], 1, Authenticated("alice"), TestContext.Current.CancellationToken);
+        var fallback = await Expander(withoutCatalog)
+            .ExpandAsync([Seed], 1, Authenticated("alice"), TestContext.Current.CancellationToken);
 
         real.Edges.Should().ContainSingle().Which.Weight.Should().Be(0.9, "★ 陽性対照");
         fallback.Edges.Should().ContainSingle().Which.Weight
@@ -173,8 +174,8 @@ public class GrpcGraphNeighborExpanderTests
         var unknown = Guid.NewGuid();
         var fake = new FakeClient(Neighborhood(unknown), Weights((known, 0.9)));
 
-        var result = await Expander(fake, Authenticated("alice"))
-            .ExpandAsync([Seed], 1, TestContext.Current.CancellationToken);
+        var result = await Expander(fake)
+            .ExpandAsync([Seed], 1, Authenticated("alice"), TestContext.Current.CancellationToken);
 
         result.Edges.Should().ContainSingle().Which.Weight
             .Should().Be(GraphServiceNeighborExpander.FallbackEdgeWeight);
@@ -216,14 +217,18 @@ public class GrpcGraphNeighborExpanderTests
     // ── 器 ────────────────────────────────────────────────────────
 
     private static GrpcGraphNeighborExpander Expander(
-        Pb.GraphNeighbors.GraphNeighborsClient client, IHttpContextAccessor accessor) =>
-        new(client, accessor, NullLogger<GrpcGraphNeighborExpander>.Instance);
+        Pb.GraphNeighbors.GraphNeighborsClient client) =>
+        new(client, NullLogger<GrpcGraphNeighborExpander>.Instance);
 
-    private static IHttpContextAccessor Anonymous() =>
-        new StubAccessor(new DefaultHttpContext());
+    // 🔴 [[IADR-0426]] 決定 2 (#1255): 利用者文脈は**引数で**渡る。器（`IHttpContextAccessor`）は
+    // 実装から外れたが、**属性の抽出は入口の実物を通す** —— `SearchUserContext.FromRequest` は
+    // `BffScopeResolver.ExtractUserAttributes` を呼ぶので、集合値の扱い（T-01b）は本物のままである。
+    private static SearchUserContext Anonymous() =>
+        SearchUserContext.FromRequest(new DefaultHttpContext());
 
-    private static IHttpContextAccessor Authenticated(
-        string name, string? clearance = null, string? department = null, string[]? tags = null)
+    private static SearchUserContext Authenticated(
+        string name, string? clearance = null, string? department = null, string[]? tags = null,
+        string? authorization = null)
     {
         var claims = new List<Claim> { new(ClaimTypes.Name, name) };
         if (clearance is not null) claims.Add(new Claim("clearance", clearance));
@@ -234,7 +239,8 @@ public class GrpcGraphNeighborExpanderTests
         {
             User = new ClaimsPrincipal(new ClaimsIdentity(claims, "test")),
         };
-        return new StubAccessor(ctx);
+        if (authorization is not null) ctx.Request.Headers.Authorization = authorization;
+        return SearchUserContext.FromRequest(ctx);
     }
 
     private static Pb.ExpandNeighborsResponse Neighborhood(Guid? edgeTypeId = null) =>
@@ -259,11 +265,6 @@ public class GrpcGraphNeighborExpanderTests
         foreach (var (id, weight) in items)
             resp.Weights.Add(new Pb.EdgeTypeWeight { EdgeTypeId = id.ToString(), Weight = weight });
         return resp;
-    }
-
-    private sealed class StubAccessor(HttpContext ctx) : IHttpContextAccessor
-    {
-        public HttpContext? HttpContext { get => ctx; set => throw new NotSupportedException(); }
     }
 
     private sealed class FakeClient(

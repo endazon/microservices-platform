@@ -3,14 +3,14 @@ title: east-west gRPC 通信仕様書（proto の置き場・versioning・h2c・
 type: api-spec
 status: completed
 created: 2026-09-05
-updated: 2026-09-10
+updated: 2026-09-11
 author: Claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11, FR-12, FR-13, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, NFR-02, NFR-09, NFR-16, NFR-19, NFR-21, SC-03, SC-05, SC-06, SC-10, SC-12, SC-17, SC-18, UC-01, UC-02, UC-03, UC-04, UC-05, UC-07, UC-09, UC-10, UC-11]
-adrs: [ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0037, ADR-0038, ADR-0044, ADR-0045, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088]
-iadrs: [IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419]
-specs: [20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body]
+adrs: [ADR-0089, ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0037, ADR-0038, ADR-0044, ADR-0045, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088]
+iadrs: [IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419]
+specs: [20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body]
 issues: [#1201, #1255, #1333, #1318, #1364]
 -->
 
@@ -27,7 +27,7 @@ issues: [#1201, #1255, #1333, #1318, #1364]
 - **プロトコル**: gRPC（HTTP/2）+ Protobuf 3。メッシュ内は **h2c（TLS 無し HTTP/2）** で、mTLS はサイドカーが終端する。
 - **対象**: メッシュ内のサービスどうしの**同期**呼び出し。候補／非候補の基準は「同期 ∧ east-west ∧ 応答を待つ」であり、
   呼び出しの頻度やレイテンシ要求では判定しない。外部 SaaS・IdP・オブジェクトストレージ・非同期イベント・SSE は対象外。
-- **状態**: gRPC 面を持つのは **10 経路** —— 参照実装（BFF → 認可サービスの権限スコープ解決）、
+- **状態**: gRPC 面を持つのは **11 経路** —— 参照実装（BFF → 認可サービスの権限スコープ解決）、
   埋め込み生成（取り込み・検索 → LLM ゲートウェイ）、テキスト生成（AI 分析・グラフ・変換 →
   LLM ゲートウェイ。一括と**逐次**）、**認可サービスの 5 呼び出し元**
   （AI 分析・グラフ・Wiki のスコープ解決＋データソース・MCP の利用者名簿）、そして
@@ -35,7 +35,8 @@ issues: [#1201, #1255, #1333, #1318, #1364]
   **ナレッジ健全性の観測値の報告**（グラフ → ダッシュボード）、そして
   ［2026-09-07 追記］**利用者の権限で動く 2 経路**（検索 → グラフの近傍展開・グラフ → 文書のタグ反映）、
   そして［2026-09-08 追記］**タグ辞書の読み取り**（グラフ → 文書）、
-  そして［2026-09-09 追記］**権限内属性値の照会**（BFF → 検索）、そして［2026-09-09 追記］**個人資料の通知の受け付け**（文書 → 通知）である。
+  そして［2026-09-09 追記］**権限内属性値の照会**（BFF → 検索）、そして［2026-09-09 追記］**個人資料の通知の受け付け**（文書 → 通知）、
+  そして［2026-09-11 追記］**RAG の文脈収集の検索**（AI 分析 → 検索）である。
   **並走中の正は REST** であり、gRPC は構成で opt-in する。残りの経路の移行は別 issue で展開する。
   ［2026-09-06 追記］🔴 **BFF の s2s 資格情報の未配線は閉じた。** realm に BFF の service account が
   無く、`ServiceToken` が helm・compose のどちらにも無かったため、参照実装（BFF → 認可サービス）は
@@ -542,6 +543,40 @@ status で割ると、**割り方そのものが存在を漏らす**（1 種類�
 既定の 100 秒のままだと、受け口が応答しない間に同期 push や完全削除の要求が止まる ——
 fail-open は「落ちない」だけでなく「待たせない」ことも要る。
 
+## 11 つ目の面: RAG の文脈収集の検索（`knowledge.retrieval.v1.DocumentSearch/Search`）
+
+- 呼び出し元と呼び出し先: **AI 分析 → 検索**（`RagOrchestrator` の文脈収集。質問回答・分析・逐次回答の 3 経路が通る）。
+- 切替の構成キー: `Services:RetrievalServiceGrpc`。**未設定なら REST のまま。**
+- 認証・認可: `ServiceCaller`。REST の受け口は realm の認証済み主体を要する（利用者トークンの転送）ので、**狭まる向き**である。
+- 置き場: `Knowledge.Contracts` の `Protos/knowledge/retrieval/v1/document_search.proto`
+  （`attribute_values.proto` と同じ package の別ファイル。`UserContext` / `NarrowTo` は import して共有する）。
+
+🔴 **この面が持ち込むのは輸送ではなく「利用者の在り処」である。** 検索の受け口は、
+二段検索の近傍展開のために利用者を**周辺の器（`IHttpContextAccessor`）から拾っていた**。
+REST の入口ではそれで正しいが、**この面を足した瞬間に同じコードが別の意味になる** ——
+器に居るのは**呼び出し元サービスの s2s 主体**だからである。
+
+| 実装 | 器から拾っていたもの | この面の入口では |
+| --- | --- | --- |
+| REST の近傍展開 | `Authorization` ヘッダ | **s2s トークンを下流へ転送する**（confused deputy） |
+| gRPC の近傍展開 | `HttpContext.User` | **サービスアカウントが ABAC の主体に化ける** |
+
+🔴 **どちらも例外にならない。** 見えるのは「グラフ展開が常に空」という静かな故障だけである。
+したがって利用者文脈は**入口が決め、既定値の無い必須引数で段まで運ぶ** ——
+渡し忘れがコンパイルで止まる形にしてある。**転送できる利用者の資格情報は
+REST の入口でだけ非 null** であり、この面から入った検索で REST の近傍展開が選ばれていると
+**呼ばずに警告する**（手元の s2s で代用しない）。
+
+🔴 **絞り込みは交差前の値で運ぶ。** 呼び出し元が交差した実効スコープは送らない ——
+送ると分岐を平坦化して運ぶことになり、分岐の混成（キー単位 union）を許す。
+交差は呼び出し先が REST と同じ `ScopeNarrowing` で行う。
+
+🔴 **面に出さないもの**: 検索モード・並び順・総ヒット数・所要時間。呼び出し元（RAG の文脈収集）が
+1 つも使っていない。後から足すのは非破壊の追加である。
+
+🔴 **REST と gRPC は同じ検索を通る**（`SearchEndpoint.ExecuteAsync`）。**REST の口は残す** ——
+並走中の正は REST であり、経路が「解けた」と数えられるのは REST 実装の退役をもってである。
+
 ## シーケンス
 
 ```mermaid
@@ -629,6 +664,11 @@ sequenceDiagram
   この 2 つを閉じるまでは、`AddHttpClient` を全走査して数え直すのが**移行の残りを測る唯一の手**である。
   🔴 **AI 分析 → 検索（`/search`）はこの 3 に含まれない** —— 上の「利用者の資格情報を運ぶ 27」の側であり、
   **近傍展開が転送トークンで動いている**ため、文脈の受け渡しを直してからでないと移せない（§9 つ目の面）。
+  ［2026-09-11 追記］🔴 **その AI 分析 → 検索が移った**（§11 つ目の面）。**文脈の受け渡しを
+  「器から拾う」から「引数で運ぶ」へ変えたことで移せるようになった**（近傍展開の主体が
+  入口によって変わらなくなった）。**扇形の 2 つ（④⑤）は依然として残る。**
+  🔴 **BFF → 各サービスの利用者資格情報を運ぶ経路は、この数え直しでも残っている** ——
+  計画 `ADR-0086` 決定 3 の対象 2 経路に含まれず、扱いは未定である。
   **上の 49 / 17 / 27 / 5 は 2026-09-06 時点の実測であり、書き換えない** —— 数え直しは基点ごとに行う。
 - ［2026-09-07 更新］🔴 **利用者の権限で動く呼び出し先（ホップごと ABAC）の扱いは裁定された。**
   計画がその手段を「**利用者文脈を本文で運ぶ**」と定め（§7 つ目の面を参照）、
