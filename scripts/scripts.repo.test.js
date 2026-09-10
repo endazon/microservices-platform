@@ -6817,7 +6817,17 @@ ${r.stderr}`);
         //    2 回起きている。**常に exit 0**（警告のみ。ビルドの前提にしない＝同決定 3）。
         //    `gh` で GitHub API を叩くが git は一切呼ばないため、TRACKED_CHECKERS / HEAD_CHECKERS の
         //    どちらにも載らない（`backlog-audit.js` / `check-ci-latency.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 56, `検査器の母集合が 56 本から変わった（${scripts.length} 件）`);
+        // ★ #1245 PR-0 / ADR-0078 決定 1 / IADR-0427 で `check-login-existence-disclosure.js`
+        //    （ログイン経路の応答が利用者名の実在で区別できないこと ——
+        //    ステータス・リダイレクト先・正規化した応答本文の 3 面を、実在する利用者名と
+        //    **同じバイト長の**非実在の利用者名で対にして測る。所要時間は出すだけで判定しない）を
+        //    新設したため 56 → 57（ラチェットが設計どおり発火した）。
+        //    🔴 **これは「同型の事故が 2 回」ではなく計画側の名指しに基づく新設である**
+        //    （計画 ADR-0078 §残るもの が「ログインのステータスコードは実測していない。実装が実測して
+        //    環流する」と指名した）。git を一切呼ばず kubectl を外部コマンドとして叩くため、
+        //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない
+        //    （`check-password-reset-mail.js` / `check-stack-ready.js` と同じ扱い）。
+        assert.strictEqual(scripts.length, 57, `検査器の母集合が 57 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
