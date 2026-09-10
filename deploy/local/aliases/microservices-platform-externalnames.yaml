@@ -98,3 +98,15 @@ metadata:
 spec:
   type: ExternalName
   externalName: market-monitor-service.ai-stock-trading.svc.cluster.local
+---
+# #1376, AST/SC-04, AST/IADR-0321: OpenD 認証ゲートウェイ（AST の opend Pod のサイドカー。Service `opend` の
+# port auth:8080）。BFF の `OpendAuth__BaseUrl`（values-local.yaml の services.bff.extraEnv）が `http://opend:8080`
+# で参照する。上の 3 サービスと同じ型（namespace 部は AST chart の namespace.name に追随させる）。
+apiVersion: v1
+kind: Service
+metadata:
+  name: opend
+  namespace: microservices-platform
+spec:
+  type: ExternalName
+  externalName: opend.ai-stock-trading.svc.cluster.local
