@@ -1,4 +1,5 @@
 using GraphService.Domain;
+using GraphService.Domain.Clustering;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 
@@ -19,8 +20,56 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
     // 未解決リンク数はここから**集計のたびに解決し直して**数える（失敗を保存しない）。
     public DbSet<DocumentLinkTarget> DocumentLinkTargets => Set<DocumentLinkTarget>();
 
+    // FR-17, FR-18, SC-10, SC-18, ADR-0035 決定 3・6, ADR-0083, [[IADR-0425]] (#1363):
+    // 日次バッチが検出したクラスタ（コミュニティ）と、その所属・要約の生成時刻。
+    public DbSet<GraphCluster> Clusters => Set<GraphCluster>();
+    public DbSet<GraphClusterMember> ClusterMembers => Set<GraphClusterMember>();
+    public DbSet<GraphClusterSummary> ClusterSummaries => Set<GraphClusterSummary>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
+        // FR-17, FR-18, SC-10, SC-18, ADR-0035 決定 3・5・6, ADR-0083 決定 1〜3,
+        // [[IADR-0425]] (#1363): クラスタ（Leiden 法の検出結果）。
+        mb.Entity<GraphCluster>(e =>
+        {
+            e.ToTable("graph_clusters");
+            e.HasKey(c => c.ClusterId);
+            e.Property(c => c.DetectedAt).IsRequired();
+            e.Property(c => c.CompositionChangedAt).IsRequired();
+            e.Property(c => c.MemberCount).IsRequired();
+        });
+
+        mb.Entity<GraphClusterMember>(e =>
+        {
+            e.ToTable("graph_cluster_members");
+            e.HasKey(m => new { m.ClusterId, m.DocumentId });
+
+            // クラスタを消すと所属も消える（検出結果は毎日の全量置換であり、孤児を残さない）。
+            e.HasOne<GraphCluster>()
+                .WithMany()
+                .HasForeignKey(m => m.ClusterId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // 🔴 **graph_documents への外部キーは張らない**（edges・document_link_targets と同じ理由。
+            // ノード同期の到着順に人工的な依存を作らない）。
+            // 文書側から所属を引く索引だけ置く（SC-18 が「この文書のクラスタ」を引く経路）。
+            e.HasIndex(m => m.DocumentId).HasDatabaseName("ix_graph_cluster_members_document");
+        });
+
+        // ADR-0035 決定 5: 要約**本文**はここに持たない（別系統）。持つのは生成時刻だけである。
+        mb.Entity<GraphClusterSummary>(e =>
+        {
+            e.ToTable("graph_cluster_summaries");
+            e.HasKey(s => new { s.ClusterId, s.Confidentiality });
+            e.Property(s => s.Confidentiality).HasMaxLength(20).IsRequired();
+            e.Property(s => s.GeneratedAt).IsRequired();
+
+            e.HasOne<GraphCluster>()
+                .WithMany()
+                .HasForeignKey(s => s.ClusterId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // FR-18, ADR-0051 決定 1, IADR-0380 (#1244): 文書ごとの語の出現数。
         //
         // graph_documents と 1:1 だが**別表に置く** —— 探索・一覧はノードを頻繁に読み、出現数（≤128 語の

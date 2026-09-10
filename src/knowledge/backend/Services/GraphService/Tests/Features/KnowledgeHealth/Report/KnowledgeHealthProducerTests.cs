@@ -179,7 +179,7 @@ public sealed class KnowledgeHealthProducerTests
         var ran = await worker.TryRunCycleAsync(TestContext.Current.CancellationToken);
 
         ran.Should().BeTrue();
-        // ★［#1186 → #1246］1 周期で **4 指標**を報告する。
+        // ★［#1186 → #1246 → #1363］1 周期で **5 指標**を報告する。
         // 🔴 **ここが「生産者が居る」の唯一の証拠である。** 収集の実装があっても
         // RunAsync が呼んでいなければ指標は永久に 0 のままであり、#1246 が名指しした
         // 「受け口はあるのに生産者が居ない」状態と区別がつかない。
@@ -188,6 +188,7 @@ public sealed class KnowledgeHealthProducerTests
             KnowledgeHealthIndicators.StaleDocuments,
             KnowledgeHealthIndicators.UnresolvedLinks,
             KnowledgeHealthIndicators.EdgeTypeUsage,
+            KnowledgeHealthIndicators.UnsummarizedClusters,
         ]);
         lease.Disposed.Should().BeTrue("報告後にリースを解放する（次周期で他レプリカも取得できる）");
     }

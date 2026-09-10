@@ -8,6 +8,7 @@ using GraphService.Features.Graph.CreateEdge;
 using GraphService.Features.Graph.Neighbors;
 using GraphService.Features.GraphDocuments.Delete;
 using GraphService.Features.GraphDocuments.Sync;
+using GraphService.Features.Clustering.Detect;
 using GraphService.Features.KnowledgeHealth.Report;
 using GraphService.Features.AiSuggestions;
 using GraphService.Features.AiSuggestions.Generate;
@@ -252,6 +253,23 @@ builder.Services.AddSingleton<IKnowledgeHealthLeaseCoordinator>(sp =>
         connStr, sp.GetRequiredService<ILogger<PostgresKnowledgeHealthLeaseCoordinator>>());
 });
 builder.Services.AddHostedService<KnowledgeHealthHostedService>();
+
+// FR-17, FR-18, SC-10, SC-18, ADR-0035 決定 3・6・8, ADR-0083 決定 1〜3, [[IADR-0425]] (#1363):
+// 知識グラフのクラスタ検出（**Leiden 法・日次バッチ**）。
+// これが `unsummarized-clusters` の分母であり、SC-18 が表示する単位でもある（ADR-0083 決定 1）。
+builder.Services.AddScoped<ClusterDetectionJob>();
+// 🔴 単一書き手化。ナレッジ健全性とは**別の口**である —— 同じ口を共有すると、日次の検出（長い）が
+// 毎時の指標報告（短い）を塞ぎ、指標が丸ごと止まる（[[IADR-0425]] 決定 6）。
+builder.Services.AddSingleton<IClusterDetectionLeaseCoordinator>(sp =>
+{
+    using var scope = sp.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<GraphDbContext>();
+    if (!db.Database.IsRelational())
+        return new NoOpClusterDetectionLeaseCoordinator();
+    return new PostgresClusterDetectionLeaseCoordinator(
+        connStr, sp.GetRequiredService<ILogger<PostgresClusterDetectionLeaseCoordinator>>());
+});
+builder.Services.AddHostedService<ClusterDetectionHostedService>();
 
 // FR-14, ADR-0018 / #1016: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
 builder.AddPlatformPipelineConfig();

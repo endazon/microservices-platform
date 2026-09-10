@@ -3,15 +3,15 @@ title: 運用ダッシュボード 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-09-05
+updated: 2026-09-11
 author: claude
 ---
 <!-- trace:
 ids: [FR-08, FR-10, FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-05, SC-06, SC-07, SC-10, SC-11, UC-05, UC-07]
-adrs: [ADR-0006, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0037, ADR-0050, ADR-0071, ADR-0072]
-iadrs: [IADR-0009, IADR-0011, IADR-0035, IADR-0036, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0135, IADR-0142, IADR-0265, IADR-0299, IADR-0343, IADR-0353, IADR-0357, IADR-0367]
+adrs: [ADR-0006, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0083, ADR-0037, ADR-0050, ADR-0071, ADR-0072]
+iadrs: [IADR-0009, IADR-0011, IADR-0035, IADR-0036, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0135, IADR-0142, IADR-0265, IADR-0299, IADR-0343, IADR-0353, IADR-0357, IADR-0367, IADR-0389, IADR-0425]
 specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260807_issue-586_planning-pin-adr-accepted, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count, 20260904_issue-1198_usage-event-subject-and-retention]
-issues: [#3, #5, #10, #17, #443, #446, #452, #503, #504, #519, #544, #586, #599, #1186, #1197, #1198, planning#198, planning#237, planning#244, planning#494, planning#514, planning#515, planning#525, planning#526]
+issues: [#3, #5, #10, #17, #443, #446, #452, #503, #504, #519, #544, #586, #599, #1186, #1197, #1198, #1246, #1363, planning#198, planning#237, planning#244, planning#494, planning#514, planning#515, planning#525, planning#526]
 -->
 
 # 画面仕様書: 運用ダッシュボード
@@ -287,6 +287,16 @@ flowchart LR
 > 明記しており、**本作業では節を開かない**。
 > ⚠️ 併せて実測した事実: **BFF に健全性の口が無い**（あるのは `/bff/dashboard/summary` の 1 本だけ）。
 > 節を開くには BFF の口と契約の昇格が要る。**使う側が居ない契約は先に固定しない。**
+
+> **［2026-09-11 追記 / #1363］未要約クラスタ数の生産者ができた。それでも節は開かない。**
+> 🔴 **上の 2026-09-03 追記の「生産者の無い指標がなお 3 件」は、書かれた 2 日後には古くなっていた** ——
+> 2026-09-05 に解決できないリンク数と辺の型ごとの使用件数の生産者ができ、残りは 1 件だった。
+> **その 1 件（未要約クラスタ数）を本作業で塞いだ。** 知識グラフのクラスタ（コミュニティ）を
+> 日次バッチで検出し、要約が揃っていないクラスタを数える。
+> **観測値として生産される指標は 5 件**になり、残る 2 件は**別経路**（可観測性スタックのカウンタ）で
+> 測れている —— ただし**集計 API から見ればその 2 件は 0 件で並ぶ**。
+> 「**生産者の無い指標を 0 件として並べてはならない**」「**節を開く条件は別の判断である**」は
+> そのまま生きており、**本作業でも節を開かない**。⚠️ **BFF に健全性の口が無い**ことも変わっていない。
 
 **(b) 契約の不在 — SLO・LLM コスト・一意利用者数（#4 の部分）**
 
