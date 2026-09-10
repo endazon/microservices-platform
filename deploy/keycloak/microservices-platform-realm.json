@@ -222,6 +222,10 @@
         "description": "Issue #283, AST/FR-17・AST/UC-06, IADR-0070: AST 設定画面（全体前提条件の閲覧/変更）の利用者。ConfigurationService の OwnerOnly/OwnerOrService と同一ソース。owner ユーザーへの付与＋OIDC ログイン実疎通は後続 live issue。"
       },
       {
+        "name": "trading-service",
+        "description": "Issue #1372 / AST#727, AST/IADR-0051・AST/IADR-0324: AST の読み取り専用 s2s ロール（OwnerOrService）。MSP 連結配備では AST サービスが本レルムで検証するため、AST レルムの同名ロールをここへ写す。kill switch・設定変更は持たない。"
+      },
+      {
         "name": "Administrators",
         "description": "IADR-0103: Wiki.js の管理者グループ名に文字列一致させる dev ロール。wiki-js の groups claim 経由で Map Groups が Administrators へ対応づける（Wiki.js 側は自前グループ管理のため名前一致が唯一の接点）。"
       }
@@ -880,6 +884,40 @@
       ]
     },
     {
+      "clientId": "ai-stock-trading-svc",
+      "name": "AST service client (intra-unit s2s, client_credentials)",
+      "description": "Issue #1372 / AST#727, AST/IADR-0051・AST/IADR-0324: AST サービス間の同期照会（sizing-context 等）用の機密クライアント（client_credentials・service-account に trading-service）。MSP 連結配備では AST が本レルムで検証するため AST レルムから写す。本番 secret は config から供給する。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "dev-only-service-secret",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": [
+        "roles"
+      ]
+    },
+    {
+      "clientId": "ai-stock-trading-owner",
+      "name": "AST owner client (Discord bot control, client_credentials)",
+      "description": "Issue #1372 / AST#727, AST/IADR-0098・AST/IADR-0324: Discord Bot 制御コマンドの owner 認証用の機密クライアント（client_credentials・service-account に trading-owner 単独）。MSP 連結配備では AST が本レルムで検証するため AST レルムから写す。本番 secret は config から供給する。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "dev-only-owner-secret",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": [
+        "roles"
+      ]
+    },
+    {
       "clientId": "headlamp",
       "name": "Headlamp (k8s management UI, dev-only OIDC)",
       "description": "IADR-0080/#271: dev の Headlamp（k8s 管理 UI）の Keycloak OIDC ログイン用 confidential client。id_token を API server へ委譲（token passthrough）。dev 専用・本番流用禁止・secret は環境ごとに変更。",
@@ -1276,6 +1314,22 @@
       "serviceAccountClientId": "ai-stock-trading-llm-caller",
       "realmRoles": [
         "platform-service"
+      ]
+    },
+    {
+      "username": "service-account-ai-stock-trading-svc",
+      "enabled": true,
+      "serviceAccountClientId": "ai-stock-trading-svc",
+      "realmRoles": [
+        "trading-service"
+      ]
+    },
+    {
+      "username": "service-account-ai-stock-trading-owner",
+      "enabled": true,
+      "serviceAccountClientId": "ai-stock-trading-owner",
+      "realmRoles": [
+        "trading-owner"
       ]
     },
     {
