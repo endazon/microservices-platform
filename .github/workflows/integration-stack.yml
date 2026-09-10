@@ -113,6 +113,10 @@ jobs:
       - name: Self-test the password-reset mail gate
         run: node scripts/check-password-reset-mail.js --self-test
 
+      # SC-13 / ADR-0078 決定 1 / #1245 PR-0: ログイン経路の存在秘匿を測る器も、**起動の前に**確かめる。
+      - name: Self-test the login existence-disclosure probe
+        run: node scripts/check-login-existence-disclosure.js --self-test
+
       - name: Install k3d (pinned)
         run: |
           set -euo pipefail
@@ -274,6 +278,21 @@ jobs:
       # ABAC_POSITIVE=1 / SEARCH_SEEDED=1 は **文書を作る**。このクラスタは次のステップで破棄される。
       - name: 🔴 Gate — ABAC の正常系と検索の命中が観測できる（#972 / #992）
         run: ABAC_POSITIVE=1 SEARCH_HITS=1 bash scripts/verify-oidc-edge-flow.sh
+
+      # 🔴 ここが 4 つめの門である（#1245 PR-0 / SC-13・ADR-0078 決定 1）。
+      # 計画 ADR は存在秘匿の統制を「**応答の区別不能性**（ステータス・本文・所要時間）」と定め、
+      # **射程に認証系の経路（ログイン）を含める**と明文化したが、**ログイン側は実測されていなかった**
+      # （同 ADR §残るもの が「実装が実測して環流する」と名指ししている）。
+      # 実在する利用者名と**同じバイト長の**非実在の利用者名で、**同じ誤った資格情報**を対で投げ、
+      # ステータス・リダイレクト先・正規化した本文が分かれないことを測る。
+      # 🔴 **所要時間は出すだけで判定しない**（同 ADR が「本 ADR は閾値を定めない」と明記している）。
+      #
+      # 🔴 **最後に置く。** 本門は**意図的に認証を失敗させる**ので brute-force の計数を消費する
+      # （回数は realm の failureFactor 未満に抑えてあり、一時ロックには到達しない）。
+      # 後段に「その利用者で成功するログインを通す門」を置くと、計数が積み上がって一時ロックに触れ得る。
+      # **測定の副作用を他の門へ波及させない**ため、順序そのものを統制にしている。
+      - name: 🔴 Gate — ログイン経路の存在秘匿（#1245 PR-0）
+        run: node scripts/check-login-existence-disclosure.js
 
       # 失敗したときに原因を名指しできる情報を残す（#466 のスコープ「失敗時に原因が特定できる出力」）。
       - name: Dump cluster state (診断用・失敗時のみ)

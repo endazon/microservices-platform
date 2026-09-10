@@ -928,10 +928,22 @@ if (require.main === module) {
   });
 }
 
+/*
+ * ［2026-09-11 / #1245 PR-0］**ログイン経路の測定器（check-login-existence-disclosure.js）が
+ * 借りる面をここへ足した。** 同じ統制（ADR-0078 決定 1 の応答の区別不能性）を隣の経路で測るため、
+ * **本文の正規化規則・cookie の扱い・エッジ URL / ローカル CA の取得を複製しない。**
+ * 🔴 **判定ロジック（evaluate*）は 1 行も変えていない。** 足したのは export だけである。
+ */
 module.exports = {
   pickTargetUser,
   pickPublicClient,
   linkLifetimeMinutes,
+  hasTool,
+  keycloakBaseUrl,
+  edgeCa,
+  createJar,
+  request,
+  decodeEntities,
   extractUrls,
   evaluateResetMail,
   normalizeConcealmentBody,
