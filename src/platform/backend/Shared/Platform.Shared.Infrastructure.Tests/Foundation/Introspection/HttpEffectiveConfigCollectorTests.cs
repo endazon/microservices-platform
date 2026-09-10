@@ -149,6 +149,51 @@ public class HttpEffectiveConfigCollectorTests
     // 例外は「そのサービスだけ UnreachableServices」へ変換し、残りは収集を続ける。
     // ここが壊れると、1 サービスが落ちただけで実効構成が丸ごと空になり、ドリフト検出が
     // 「全段が消えた」と誤警告する（あるいは例外で検出そのものが止まる）。
+    // 🔴 FR-15 (#1382): **HttpClient.Timeout は TaskCanceledException で表れる**（OperationCanceledException の派生）。
+    // 呼び出し側の ct が取り消していないのに型だけで素通しすると、応答の遅い 1 サービスの timeout が
+    // 収集全体を落とし、BackgroundService（StopHost）を経て BFF のプロセスが落ちる（integration-stack で実測）。
+    // 期限切れは「到達不能」として隔離し、他サービスの収集は続く。
+    [Fact]
+    public async Task 応答期限切れは取り消しではなく到達不能として隔離される()
+    {
+        var handler = new RoutingHandler(uri => uri.Host == "slow-service"
+            ? throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 5 seconds elapsing.",
+                new TimeoutException())
+            : Ok(ReportJson(uri.Host)));
+        var (collector, _, _) = Build(
+            Options(new()
+            {
+                ["slow-service"] = "http://slow-service:5001",
+                ["document-service"] = "http://document-service:5002",
+            }),
+            handler);
+
+        var result = await collector.CollectAsync(TestContext.Current.CancellationToken);
+
+        result.UnreachableServices.Should().BeEquivalentTo(["slow-service"]);
+        result.ReachableServices.Should().BeEquivalentTo(["document-service"]);
+    }
+
+    // 陰性対照 (#1382): 呼び出し側の ct による取り消しは握らず外へ出す（停止要求を「到達不能」に化けさせない）。
+    [Fact]
+    public async Task 呼び出し側の取り消しは到達不能へ化けずに外へ出る()
+    {
+        using var cts = new CancellationTokenSource();
+        var handler = new RoutingHandler(_ =>
+        {
+            cts.Cancel();
+            throw new OperationCanceledException(cts.Token);
+        });
+        var (collector, _, _) = Build(
+            Options(new() { ["document-service"] = "http://document-service:5001" }),
+            handler);
+
+        var act = async () => await collector.CollectAsync(cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>(
+            "停止要求由来の取り消しは収集失敗ではない");
+    }
+
     [Fact]
     public async Task 一つのサービスの通信失敗は他の収集を止めず到達不能へ隔離される()
     {
