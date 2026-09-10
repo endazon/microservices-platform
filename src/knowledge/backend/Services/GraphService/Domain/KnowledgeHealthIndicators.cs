@@ -26,6 +26,13 @@ internal static class KnowledgeHealthIndicators
     // 利用者から見れば同じ「繋がっていないリンク」である。内訳の軸で理由を分ける。
     public const string UnresolvedLinks = "unresolved-links";
 
+    // FR-17, FR-18, SC-10, SC-18, ADR-0035 決定 3・6, ADR-0083 決定 1〜3, [[IADR-0425]] (#1363):
+    // 未要約クラスタ数。**クラスタ ＝ ADR-0035 決定 3 の Leiden 法による検出結果**であり、
+    // SC-18 の表示単位も本指標の計数単位も同じものである（ADR-0083 決定 1）。
+    // 🔴 **しきい値は持たない**（ADR-0083 決定 3。件数をそのまま出す）。
+    // 内訳の軸は未要約の理由（`UnsummarizedClusterRule` の 3 語で閉じている）。
+    public const string UnsummarizedClusters = "unsummarized-clusters";
+
     // FR-17, SC-10, ADR-0033 決定 9, [[IADR-0389]] (#1246):
     // 辺の型ごとの使用件数。**内訳の軸に型名を載せる**（軸は実行時辞書 `edge_types` の語彙で有界）。
     public const string EdgeTypeUsage = "edge-type-usage";
