@@ -532,7 +532,11 @@ async function collectLive(kc, desired) {
   for (const u of desired.users || []) {
     if (u.serviceAccountClientId) {
       const cur = clientByClientId.get(u.serviceAccountClientId);
-      if (!cur) continue;
+      // #1373: 稼働側のクライアントが無い、または **service account が無効**なら SA 利用者は「未存在」。
+      // Keycloak は SA 無効クライアントの service-account-user に 400 を返す（404 ではない）ので、ここで
+      // 読みに行くと計画に入る前に落ちる。未存在として返せば、plan が client.update（SA 有効化）＋ deferred を
+      // 出し、次の周で SA 利用者へロールを当てる（クライアント不在のときと同じ経路）。
+      if (!cur || !cur.serviceAccountsEnabled) continue;
       const user = await kc.get(`${R}/clients/${cur.id}/service-account-user`);
       if (!user) continue;
       const realmMappings = (await kc.get(`${R}/users/${user.id}/role-mappings/realm`)) || [];
@@ -629,7 +633,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  plan, planMappers, contains, merge, describe, gateHoldsClosed,
+  plan, planMappers, collectLive, contains, merge, describe, gateHoldsClosed,
   REALM_COLLECTION_KEYS, RUNTIME_OWNED_REALM_KEYS, GATE_OWNED_REALM_KEYS, CLIENT_SKIP_KEYS, MAX_PASSES,
   GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED,
 };
