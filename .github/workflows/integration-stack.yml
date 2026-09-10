@@ -183,7 +183,17 @@ jobs:
               continue
             fi
             # shellcheck disable=SC2086  # 名前は k8s の DNS-1123 に限られ、意図的に分割する。
-            kubectl -n "$ns" wait --for=condition=Ready $pods --timeout=600s
+            #
+            # 🔴 **待ちの期限切れでジョブを止めない**（#1371。**#1055・#1316 と同型の 3 回目**）。
+            # `kubectl wait` は開始時に対象集合を固定するため、待ち開始後の rollout で入れ替わった Pod
+            # （実測 run 34484578461: `bff-service` が新旧 2 つ）は期限まで Ready にならず、
+            # **全アプリ Pod が 1/1 Running なのに**ジョブが落ちる。対象集合の取り方を精密にしても
+            # この競合は残る。ここは待ちであって判定ではない —— 判定は直後の
+            # `check-stack-ready.js` の G1 が fail-closed で行う。**Ready でない Pod があれば G1 が落とす**
+            # ので、フェイルセーフの向きは変わらない。
+            if ! kubectl -n "$ns" wait --for=condition=Ready $pods --timeout=600s; then
+              echo "::warning::$ns: 期限内に Ready にならない Pod がある。判定は check-stack-ready.js の G1 に委ねる"
+            fi
           done
 
       # 🔴 ここが門である。G1（readiness）/ G2（0 件で緑にしない）/ G3（ツール不在は失敗）/
