@@ -1,4 +1,5 @@
 using GraphService.Domain;
+using GraphService.Domain.Clustering;
 using GraphService.Domain.Ports;
 using GraphService.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -31,10 +32,19 @@ namespace GraphService.Features.KnowledgeHealth.Report;
 //                           （決定 3。失敗を保存すると相手の改名・削除を取りこぼす）。
 //   - `edge-type-usage`   … 観測値モデルに**内訳の軸**を足した（決定 1。IADR-0265 の先送りを解いた）。
 //
-// 生産するのは **4 指標**である。残り 3 指標を**ここに足さない**理由は指標ごとに違う：
+// ★［2026-09-11 追記 / #1363］**`unsummarized-clusters` を足した。**
+// 従前ここには「クラスタリング・要約の実装がリポジトリ全体で 0 件。生産不能。**計画の裁定待ち**」と
+// 書いてあったが、🔴 **この記述はもう古い**（#1363 が名指しした行である）:
+//   1. **裁定は既に降りていた。** 計画 `ADR-0035` 決定 3 が 2026-08-07 の時点で
+//      **Leiden 法・日次バッチ**と方式を定めており、`ADR-0083`（2026-09-06）が
+//      「クラスタ ＝ その検出結果。**SC-18 の表示単位も健全性の計数単位も同じもの**」と射程を確定、
+//      決定 3 が `unsummarized-clusters` の定義（3 条件）を与えた。**止めていたのは裁定ではなく実装である。**
+//   2. **クラスタリングを自前で実装した**（[[IADR-0425]]。`LeidenCommunityDetector` ＋ 日次バッチ）。
+//      要約そのものは未生成であり、**現況では全クラスタが「要約が 1 つも無い」に当たる** ——
+//      これは 0 件ではなく**実測された件数**である。
 //
-// - `unsummarized-clusters` … クラスタリング・要約の実装が**リポジトリ全体で 0 件**。生産不能。
-//                         **計画の裁定待ち**であり、実装側で先取りしない（#1246 が射程外と明記）。
+// 生産するのは **5 指標**である。残り 2 指標を**ここに足さない**理由は共通である：
+//
 // - `undefined-type-fallbacks` / `ingest-unknown-tags`
 //                       … **既に生産されている**。宛先が観測値ではなく OTel カウンタであり、
 //                         Grafana のパネルで観測する。
@@ -91,6 +101,86 @@ public sealed class KnowledgeHealthCollector(
             "ナレッジ健全性の観測値を報告した（indicator={Indicator} count={Count}）。"
             + "**件数には個人資料を含む** —— 除外は受け口が行う。",
             KnowledgeHealthIndicators.EdgeTypeUsage, edgeTypeUsage.Count);
+
+        // ★［2026-09-11 / #1363・[[IADR-0425]]］未要約クラスタ数。しきい値は持たない
+        // （ADR-0083 決定 3 が「置かない」と明記）。
+        var unsummarized = await CollectUnsummarizedClustersAsync(ct);
+        await reporter.ReportAsync(
+            KnowledgeHealthIndicators.UnsummarizedClusters, unsummarized, ct: ct);
+
+        logger.LogInformation(
+            "ナレッジ健全性の観測値を報告した（indicator={Indicator} count={Count}）。"
+            + "**クラスタに個人資料は含まれない**（ADR-0035 決定 8 が入力から除いている）。",
+            KnowledgeHealthIndicators.UnsummarizedClusters, unsummarized.Count);
+    }
+
+    // ★［2026-09-11 / #1363・ADR-0083 決定 2・3・[[IADR-0425]]］未要約クラスタ。
+    //
+    // 観測値 1 件 ＝ **クラスタ 1 個**。数え方は `ADR-0083` 決定 3 の 3 条件であり、
+    // 判定そのものは `UnsummarizedClusterRule`（ドメイン）が持つ ——
+    // ここに条件を書き写すと、要約生成バッチが来たときに再生成側と判定側が割れる。
+    //
+    // 🔴 **`DocScope` は常に null である。** クラスタリングの入力から個人資料を除いてあるため
+    // （ADR-0035 決定 8）、クラスタに個人資料は 1 件も含まれない。**「個人資料が混ざり得るのに
+    // 添えていない」ではなく、「構造的に混ざらない」**である。受け手の除外対象にならない。
+    //
+    // 軸（`Dimension`）は**未要約の理由** 3 語。閉じた語彙であり、内訳が無界に増えることはない。
+    internal async Task<IReadOnlyList<KnowledgeHealthObservation>> CollectUnsummarizedClustersAsync(
+        CancellationToken ct = default)
+    {
+        var clusters = await db.Clusters.AsNoTracking()
+            .Select(c => new { c.ClusterId, c.CompositionChangedAt })
+            .ToListAsync(ct);
+        if (clusters.Count == 0)
+            return [];
+
+        var members = await db.ClusterMembers.AsNoTracking()
+            .Select(m => new { m.ClusterId, m.DocumentId })
+            .ToListAsync(ct);
+        var summaries = await db.ClusterSummaries.AsNoTracking()
+            .Select(s => new { s.ClusterId, s.Confidentiality, s.GeneratedAt })
+            .ToListAsync(ct);
+
+        // 所属文書の**最終更新時刻**（条件 3 の材料）。
+        // 🔴 `UpdatedAt` で測る理由は `UnsummarizedClusterRule` の注記にある。
+        var updatedAtOf = await db.Documents.AsNoTracking()
+            .Select(d => new { d.DocumentId, d.UpdatedAt })
+            .ToDictionaryAsync(d => d.DocumentId, d => d.UpdatedAt, ct);
+
+        var latestMemberUpdate = members
+            .GroupBy(m => m.ClusterId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(m => updatedAtOf.TryGetValue(m.DocumentId, out var at)
+                        ? (DateTimeOffset?)at
+                        : null)
+                    .Max());
+
+        var summaryOf = summaries
+            .GroupBy(s => s.ClusterId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyDictionary<string, DateTimeOffset>)g.ToDictionary(
+                    s => s.Confidentiality, s => s.GeneratedAt, StringComparer.OrdinalIgnoreCase));
+
+        var empty = (IReadOnlyDictionary<string, DateTimeOffset>)
+            new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
+
+        var observations = new List<KnowledgeHealthObservation>();
+        foreach (var cluster in clusters)
+        {
+            var reason = UnsummarizedClusterRule.Evaluate(
+                cluster.CompositionChangedAt,
+                latestMemberUpdate.GetValueOrDefault(cluster.ClusterId),
+                summaryOf.GetValueOrDefault(cluster.ClusterId, empty));
+            if (reason is null)
+                continue;
+
+            observations.Add(new KnowledgeHealthObservation(
+                cluster.ClusterId.ToString(), null, reason));
+        }
+
+        return observations;
     }
 
     // 実際に使うしきい値。不正な構成では既定へ倒し、**倒したことを警告として残す**
