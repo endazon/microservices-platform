@@ -499,3 +499,4 @@
 | [IADR-0423](./IADR-0423_plan-id-range-sync-via-published-ranges.md) | **計画 ID レンジの突合を新設し、出典を計画側が公開する `kg-ranges.json` に置く** | Accepted |
 | [IADR-0424](./IADR-0424_llmgateway-rest-face-service-caller.md) | 🔴 **LlmGateway の REST 3 口が無認可で並走していた。gRPC 面と同じ `ServiceCaller` を端点ごとに要求する**（#1364・ADR-0084 決定 1）。門を外すと陰性対照 6 件が落ちる —— 既存の正常系 30 件超は 1 件も捕まえていない。AST の 2 サービスは匿名で呼ぶため 403 になるが、認可は緩めず AST#724 で受ける | Accepted |
 | [IADR-0425](./IADR-0425_leiden-clustering-in-house-and-unsummarized-producer.md) | **クラスタ検出（Leiden 法）は依存を足さず自前で実装し、乱択を外して決定的にする。未要約クラスタ数はクラスタ同一性の追跡の上で 3 条件で数える**（#1363・ADR-0035 決定 3・ADR-0083 決定 1〜3） | Accepted |
+| [IADR-0427](./IADR-0427_login-existence-disclosure-probe.md) | **ログイン経路の存在秘匿は「同じ長さの対」で測り、ステータス・本文・リダイレクト先だけを判定し、所要時間は出すだけにする**（#1245 PR-0 / ADR-0078 決定 1）。🔴 長さの違う名前を比べれば本文長は必ず違う（測り方の誤り）。🔴 標本数は failureFactor から導きロックの手前で止め、CI では最後に置く | Accepted |
