@@ -264,27 +264,54 @@ const PLAN_PROJECT = process.env.PLAN_PROJECT || 'microservices-platform';
  */
 const DEFAULT_PLAN_PROJECTS_DIR = path.join(__dirname, '..', 'planning', 'projects');
 
+/**
+ * 宣言レンジ（`traceability.repo.md`）から実在集合を作る。**これが一次情報である。**
+ * @returns {Set<string>|null}
+ */
+function planAdrIdsFromDeclaredRange() {
+  try {
+    const { planAdrRange } = require('./check-trace-blocks.js');
+    const range = planAdrRange();
+    if (!range) return null;
+    const set = new Set();
+    for (let n = range.from; n <= range.to; n++) set.add(`ADR-${String(n).padStart(4, '0')}`);
+    return set;
+  } catch (e) {
+    return null;
+  }
+}
+
 function loadExistingPlanAdrIds(
   projectsDir = DEFAULT_PLAN_PROJECTS_DIR,
   project = PLAN_PROJECT
 ) {
+  // 🔴 **既定パスでは走査しない。宣言レンジへ直行する**（#1369）。
+  //
+  // 従来は既定パスを `readdirSync` し、**読めたらそれを実在集合にしていた**。
+  // 「既定パス（旧 submodule）は資料再編で実在しない」という前提に立った実装だったが、
+  // **隣接クローンをリポジトリ内へ置いた環境では実在する**。そこが古い・部分的だと、
+  // **宣言レンジに在る正しい ID が「実在しない」と判定される**（実測: 複製は 48 件・ADR-0047 まで）。
+  //
+  // 偽の不合格は本物より質が悪い —— 正しい ID を「誤記の可能性」と言われた側は、規約を疑うか
+  // 検査器を疑うかの二択になる。しかも**ローカルと CI で判定が逆になり、複製の版が人によって
+  // 違うので再現しない**。規約（`traceability.repo.md`）も「計画 ADR の実在性は宣言レンジで
+  // 検査する」「ファイル有無の突合は submodule 撤去により不可」と書いており、走査が宣言より
+  // 優先されるのは規約と反対であった。
+  //
+  // 明示パス指定（テスト・別構成）は従来どおり走査する —— そこは呼び出し側が
+  // 「このディレクトリを実在集合とみなす」と宣言している場合であり、意図が違う。
+  if (projectsDir === DEFAULT_PLAN_PROJECTS_DIR) {
+    const declared = planAdrIdsFromDeclaredRange();
+    if (declared) notice(`計画 ADR の実在性は宣言レンジで検査する（${declared.size} 件）。`);
+    return declared;
+  }
+
   let entries;
   try {
     entries = fs.readdirSync(projectsDir);
   } catch (e) {
-    // 明示パス指定（テスト・別構成）で読めない場合は従来どおり null（skip）。
-    if (projectsDir !== DEFAULT_PLAN_PROJECTS_DIR) return null;
-    // 既定パス（旧 submodule）は資料再編で実在しない。宣言レンジから実在集合を構築する。
-    try {
-      const { planAdrRange } = require('./check-trace-blocks.js');
-      const range = planAdrRange();
-      if (!range) return null;
-      const set = new Set();
-      for (let n = range.from; n <= range.to; n++) set.add(`ADR-${String(n).padStart(4, '0')}`);
-      return set;
-    } catch (e2) {
-      return null;
-    }
+    // 明示パスで読めない場合は従来どおり null（skip）。
+    return null;
   }
   // 自プロジェクトの名前空間だけを実在集合とする（規約どおりの厳密な検査）。
   const own = loadExistingAdrIds('ADR', path.join(projectsDir, project, '07_adr'));

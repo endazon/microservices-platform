@@ -1013,6 +1013,24 @@ ok('gen-changelog: 実行して CHANGELOG を生成できる（呼び出し側�
     assert.match(output, /全プロジェクト走査へ退避/);
   });
 
+  // #1369: **既定パスでは走査せず、宣言レンジ（traceability.repo.md）を一次情報にする。**
+  // 隣接クローンの複製を `<repo>/planning/projects` に置いた環境では、従来の実装が**古い・部分的な複製**を
+  // 実在集合にしてしまい、宣言レンジ内の正しい ID（実測: ADR-0084）を「実在しない」と誤判定した。
+  // ローカルと CI で判定が逆になり再現しない、という偽の不合格だった。
+  // 期待値は宣言レンジ自身から導く（レンジが前進しても試験が腐らない）。
+  ok('#1369: 既定パスは走査せず宣言レンジを一次情報にする（複製が在っても正しい ID を落とさない）', () => {
+    const { planAdrRange } = require('./check-trace-blocks.js');
+    const range = planAdrRange();
+    assert.ok(range && range.to >= range.from, '宣言レンジを読めること（traceability.repo.md）');
+    const pad = (n) => `ADR-${String(n).padStart(4, '0')}`;
+    const { value: ids, output } = captureOutput(() => loadExistingPlanAdrIds());
+    assert.ok(ids instanceof Set, '既定パスでは常に集合を返す（複製の有無に依らない）');
+    assert.strictEqual(ids.size, range.to - range.from + 1, '集合の大きさは宣言レンジそのもの');
+    assert.ok(ids.has(pad(range.from)) && ids.has(pad(range.to)), 'レンジの両端を含む');
+    assert.ok(!ids.has(pad(range.to + 1)), '陰性対照: レンジ外は含まない');
+    assert.match(output, /宣言レンジ/, 'どちらの情報源で判定したかを出力に出す');
+  });
+
   ok('単一プロジェクト構成では退避しても警告を出さない（実害が無いケースを騒がせない）', () => {
     const fsy = require('fs');
     const paty = require('path');
