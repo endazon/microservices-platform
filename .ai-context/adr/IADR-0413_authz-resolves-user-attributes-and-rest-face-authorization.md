@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-05, FR-09, FR-16, NFR-09, UC-05, UC-09, SC-12, SC-17, ADR-0004, ADR-0062, ADR-0080, ADR-0084, ADR-0086, ADR-0087, ADR-0088, IADR-0141, IADR-0301, IADR-0329, IADR-0379, IADR-0385, IADR-0401, IADR-0411, IADR-0412]
 author: claude
 created: 2026-09-08
-updated: 2026-09-08
+updated: 2026-09-11
 ---
 
 # IADR-0413: 利用者属性の引き直しと、REST 面の認可
@@ -213,3 +213,11 @@ gRPC 面と同じ水準に揃う。** それ以上は閉じていない。
 
 🔴 **M-1 が 4 本を殺すのは、陽性（IdP の属性なら通る）と陰性（主張しても通らない）を対で置いたからである。**
 陰性だけでは「評価器が常に deny を返す実装」でも緑になる。
+
+> ［2026-09-11 追記 / 計画 ADR-0089 決定 2］**`POST /authz/attributes/validate` にも `ServiceCaller` を掛けた。** 本 ADR は
+> `/scope` にだけ掛け、`/attributes/validate` は `/authz` グループ直下（認可なし）に残っていた（ADR-0089 実測 5: サービス面で
+> 唯一の素通し。返すのは辞書整合の可否だけだが、値域を総当たりで推測できる）。ADR-0089 決定 2 は `/authz` のサービス面
+> **すべて**に呼び出し元サービスの資格を要求し、形は問わないが `/scope` と揃えるのが素直としたため、同じ `services`
+> サブグループ（`ServiceCaller`）へ移した。**呼び出し元の追随は不要**——現時点で呼ぶ取り込み経路は無い（`deploy/local/abac-seed/README.md`）。
+> 陰性対照 2 件（platform-service を持たない主体 / 管理者の利用者トークン → 403）を足し、門を外すと 2 件が赤になる。
+> `docs/security/security.md` は以前から本端点を ServiceCaller と記していたので、文書が実装に先行していた形になる。
