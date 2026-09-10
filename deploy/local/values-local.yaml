@@ -92,6 +92,18 @@ services:
           name: llm-provider-credentials
           key: anthropic-api-key
 
+  # #1376, AST/SC-04, AST/IADR-0321 決定 6: OpenD 認証ゲートウェイ（AST の opend Pod のサイドカー）の上流。
+  # BaseUrl の既定は空＝「未構成 → 供給が無い」（fail-safe）なので、MSP 連結ローカルではここで所在を与える。
+  # 到達は aliases/microservices-platform-externalnames.yaml の ExternalName `opend`（AST ns の Service opend:8080）。
+  # DeviceTrustPersisted は PVC opend-persist を持つ配備構成の事実（配備構成から静的に決まる）。EgressStable は
+  # ローカルが固定 NAT ではないため与えない（未設定＝供給なし）。本番 chart は触らない。
+  bff:
+    extraEnv:
+      - name: OpendAuth__BaseUrl
+        value: "http://opend:8080"
+      - name: OpendAuth__DeviceTrustPersisted
+        value: "true"
+
 # Issue #313, IADR-0078: SPA(frontend) を経路B(ローカル k8s / k3d) で配信する。image は
 # global.image.registry=k3d-local を接頭辞に使う（k8s-local-images.sh が同接頭辞・タグで build/import）。
 # 経路B は edge.enabled=false（Istio 未導入）のため SPA へのブラウザ到達は frontend-service の port-forward
