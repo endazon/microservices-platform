@@ -1,5 +1,5 @@
 ---
-title: IADR-0425 east-west gRPC 第 11 面: RAG の検索を s2s へ移し、利用者文脈を器から拾わず引数で段まで運ぶ
+title: IADR-0426 east-west gRPC 第 11 面: RAG の検索を s2s へ移し、利用者文脈を器から拾わず引数で段まで運ぶ
 type: impl-adr
 status: Accepted
 related_ids: [FR-03, FR-04, FR-05, FR-07, FR-17, NFR-02, NFR-09, NFR-16, UC-01, UC-02, UC-10, SC-01, SC-08, ADR-0004, ADR-0029, ADR-0034, ADR-0035, ADR-0036, ADR-0043, ADR-0075, ADR-0086, ADR-0087, ADR-0088, ADR-0089, IADR-0009, IADR-0012, IADR-0044, IADR-0149, IADR-0151, IADR-0242, IADR-0253, IADR-0259, IADR-0263, IADR-0272, IADR-0283, IADR-0358, IADR-0379, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0411, IADR-0412, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419]
@@ -8,7 +8,7 @@ created: 2026-09-11
 updated: 2026-09-11
 ---
 
-# IADR-0425: 利用者を「その場に在るもの」から拾うのをやめる
+# IADR-0426: 利用者を「その場に在るもの」から拾うのをやめる
 
 ## 状況
 

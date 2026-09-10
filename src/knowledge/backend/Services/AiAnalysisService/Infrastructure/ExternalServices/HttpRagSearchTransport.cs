@@ -5,7 +5,7 @@ using Knowledge.Contracts.Dtos;
 namespace AiAnalysisService.Infrastructure.ExternalServices;
 
 // FR-03, FR-04, FR-05, FR-17, UC-01, UC-02, ADR-0034, ADR-0035, [[IADR-0263]] 残件 2,
-// [[IADR-0418]], [[IADR-0425]] (#970 / #1255): RAG の検索呼び出しの **REST 輸送**。
+// [[IADR-0418]], [[IADR-0426]] (#970 / #1255): RAG の検索呼び出しの **REST 輸送**。
 //
 // **並走中の正はこちらである**（[[IADR-0379]] 決定 5 / `ADR-0089` 決定 1）。
 // `Services:RetrievalServiceGrpc` が構成されていなければ、`Program.cs` はこの実装を登録する。
@@ -15,7 +15,7 @@ namespace AiAnalysisService.Infrastructure.ExternalServices;
 // 効かせる —— 伝播しないと、段を有効化しても RAG 経路の展開は常に 0 件だった（[[IADR-0263]] 残件 2）。
 // **無ければ付けない**（縮退の判断とその警告は RetrievalService 側が一元で持つ。二重に持たない）。
 //
-// 🔴 **この転送は REST 輸送でしか落とせない**（[[IADR-0425]] 決定 5）。
+// 🔴 **この転送は REST 輸送でしか落とせない**（[[IADR-0426]] 決定 5）。
 // `POST /search` は `RequireAuthorization()` を持つ（[[IADR-0418]]）ので、落とすと 401 になる。
 // **転送が消えるのは gRPC 輸送を選んだときだけ**であり、REST 実装の退役をもって
 // 「経路 1 が解けた」と数える（`ADR-0089` 決定 1）。

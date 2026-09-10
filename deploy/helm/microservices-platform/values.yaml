@@ -487,7 +487,7 @@ services:
       - name: Services__AuthorizationServiceGrpc
         value: "http://authorization-service:8081"
       # FR-03 / FR-04 / FR-05 / NFR-09 / NFR-16, ADR-0029 / ADR-0075 / 計画 ADR-0086 決定 1 /
-      # ADR-0087 決定 2 / ADR-0089 決定 1, IADR-0379, IADR-0410, IADR-0425 (#1255):
+      # ADR-0087 決定 2 / ADR-0089 決定 1, IADR-0379, IADR-0410, IADR-0426 (#1255):
       # RAG の検索の gRPC 宛先。**これが在るときだけ**検索が gRPC 経路になる（無ければ上の REST の
       # まま。並走中の正は REST であり、戻すのはこの 1 行を消すだけでよい）。
       # ポートは retrieval.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
@@ -973,7 +973,7 @@ services:
       # 権限内属性値の照会が gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
       # ポートは retrieval.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
       # 🔴 **BFF の検索（`/search`）は移らない** —— [2026-09-11 / #1255] 近傍展開の文脈受け渡しは
-      # IADR-0410 / IADR-0425 で解けた（AI 分析 → 検索は gRPC へ移った）が、**BFF は利用者の
+      # IADR-0410 / IADR-0426 で解けた（AI 分析 → 検索は gRPC へ移った）が、**BFF は利用者の
       # 資格情報を運ぶ側**であり、その扱いは計画 ADR-0086 決定 3 の対象 2 経路に含まれない。
       # 🔴 利用者の JWT は面を通らず、利用者文脈は要求本文で運ぶ（判定の位置は動かない）。
       - name: Services__RetrievalServiceGrpc

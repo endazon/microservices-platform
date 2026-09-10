@@ -220,7 +220,7 @@ public class GrpcGraphNeighborExpanderTests
         Pb.GraphNeighbors.GraphNeighborsClient client) =>
         new(client, NullLogger<GrpcGraphNeighborExpander>.Instance);
 
-    // 🔴 [[IADR-0425]] 決定 2 (#1255): 利用者文脈は**引数で**渡る。器（`IHttpContextAccessor`）は
+    // 🔴 [[IADR-0426]] 決定 2 (#1255): 利用者文脈は**引数で**渡る。器（`IHttpContextAccessor`）は
     // 実装から外れたが、**属性の抽出は入口の実物を通す** —— `SearchUserContext.FromRequest` は
     // `BffScopeResolver.ExtractUserAttributes` を呼ぶので、集合値の扱い（T-01b）は本物のままである。
     private static SearchUserContext Anonymous() =>

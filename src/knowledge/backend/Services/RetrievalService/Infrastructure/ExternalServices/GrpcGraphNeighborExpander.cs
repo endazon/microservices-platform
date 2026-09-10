@@ -58,7 +58,7 @@ public sealed class GrpcGraphNeighborExpander(
         // （REST 版が資格情報の不在で同じ判断をしているのと**同じ値・同じ副作用**）。
         // **呼ばずに警告する** ——「効いていない」ことを運用が読める唯一の手掛かりである。
         //
-        // 🔴 **利用者は引数で受け取る**（[[IADR-0425]] 決定 2）。従前は `IHttpContextAccessor`
+        // 🔴 **利用者は引数で受け取る**（[[IADR-0426]] 決定 2）。従前は `IHttpContextAccessor`
         // から拾っていたが、east-west gRPC の入口では器に居るのは**呼び出し元サービスの
         // s2s 主体**であり、拾うと `service-account-…` が ABAC の主体として本文に載る ——
         // 例外は 1 つも起きず、グラフ展開だけが静かに空になる。

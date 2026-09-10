@@ -445,7 +445,7 @@ public class GraphExpansionTwoStageSearchTests
         store.VectorSideDocuments.Add(graph.SeedDocumentId);
     }
 
-    // ── U-01〜U-03: 利用者文脈は入口が決めて段まで引数で運ぶ（[[IADR-0425]] 決定 2 / #1255） ──
+    // ── U-01〜U-03: 利用者文脈は入口が決めて段まで引数で運ぶ（[[IADR-0426]] 決定 2 / #1255） ──
 
     // 🔴 U-01（本スライスの核心）: **入口が決めた利用者文脈が、そのまま近傍展開へ渡る。**
     // 段が器（`IHttpContextAccessor`）から拾い直していると、east-west gRPC の入口では
@@ -518,7 +518,7 @@ public class GraphExpansionTwoStageSearchTests
         graph.Requests.Should().NotBeEmpty();
     }
 
-    // 🔴 [[IADR-0425]] 決定 2 (#1255): 方式 A の転送は**入口が決めた利用者文脈**が運ぶ。
+    // 🔴 [[IADR-0426]] 決定 2 (#1255): 方式 A の転送は**入口が決めた利用者文脈**が運ぶ。
     // 従前は `IHttpContextAccessor` から `Authorization` を拾っていたが、その形のままだと
     // east-west gRPC の入口で**呼び出し元サービスの s2s トークン**を転送してしまう。
     private static SearchUserContext UserWithCredential(
@@ -603,7 +603,7 @@ internal sealed class CountingFixedEmbeddingService(float[] vector) : IEmbedding
 }
 
 // 近傍展開ポートの記録用スタブ（起点・ホップ数・**受け取った利用者文脈**を観測する）。
-// 🔴 利用者文脈を記録するのは [[IADR-0425]] 決定 2 のためである ——
+// 🔴 利用者文脈を記録するのは [[IADR-0426]] 決定 2 のためである ——
 // 段が器から拾い直していないこと（入口が決めた主体がそのまま届くこと）を測る。
 internal sealed class FakeGraphExpander(IReadOnlyList<GraphNeighborEdge> edges) : IGraphNeighborExpander
 {

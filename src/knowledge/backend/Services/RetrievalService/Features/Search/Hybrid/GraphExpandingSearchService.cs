@@ -46,7 +46,7 @@ public sealed class GraphExpandingSearchService(
         if (seeds.Count == 0 || outcome.QueryVector.Length == 0)
             return HybridSearchService.Finish(outcome.Fused, outcome.Sort, outcome.TopK);
 
-        // 🔴 **利用者文脈はここを素通りする**（[[IADR-0425]] 決定 2）—— 段が器から拾い直すと、
+        // 🔴 **利用者文脈はここを素通りする**（[[IADR-0426]] 決定 2）—— 段が器から拾い直すと、
         //    east-west gRPC の入口で呼び出し元サービスの s2s 主体が利用者に化ける。
         var neighborhood = await expander.ExpandAsync(seeds, options.Hops, user, ct);
         var proximity = GraphProximity.From(seeds, neighborhood.Edges, options.Hops);

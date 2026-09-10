@@ -14,7 +14,7 @@ namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 // FR-03, FR-04, FR-05, FR-07, NFR-09, NFR-16, UC-01, UC-02, SC-01, SC-08, ADR-0004, ADR-0029,
 // ADR-0034 決定 1, ADR-0075, 計画 ADR-0086 決定 1, ADR-0087 決定 2, ADR-0089 決定 1,
 // [[IADR-0253]] 決定 2, [[IADR-0379]] 決定 4・5, [[IADR-0410]], [[IADR-0415]], [[IADR-0416]],
-// [[IADR-0425]] (#1255):
+// [[IADR-0426]] (#1255):
 // RAG の検索の gRPC 輸送が、**REST 輸送と同じ枝・同じ副作用**であり、
 // **利用者の資格情報を面へ載せず本文で運ぶ**ことを固定する。
 //

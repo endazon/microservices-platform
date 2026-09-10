@@ -6,7 +6,7 @@ using System.Net.Http.Json;
 
 namespace RetrievalService.Infrastructure.ExternalServices;
 
-// FR-04, FR-17, UC-10, ADR-0034, ADR-0035 決定 2 (#970), [[IADR-0425]] (#1255):
+// FR-04, FR-17, UC-10, ADR-0034, ADR-0035 決定 2 (#970), [[IADR-0426]] (#1255):
 // 近傍展開ポートの GraphService 実装。
 //
 // 🔴 **権限伝播は `Authorization` ヘッダの伝播（方式 A）である**（#916a で確立した規則
@@ -15,7 +15,7 @@ namespace RetrievalService.Infrastructure.ExternalServices;
 // **解決済み scope を本文で渡す方式 B を採ってはならない** —— 採ると GraphService に
 // 「本文で渡された scope を信じる」口が開き、そこへ到達できる誰もが任意の scope を主張できる。
 //
-// 🔴 **転送するのは `SearchUserContext.ForwardableCredential` だけである**（[[IADR-0425]] 決定 2）。
+// 🔴 **転送するのは `SearchUserContext.ForwardableCredential` だけである**（[[IADR-0426]] 決定 2）。
 // 従前は `IHttpContextAccessor` から `Authorization` ヘッダを読んでいた —— その形のまま
 // east-west gRPC の入口（`DocumentSearchGrpcService`）を足すと、器に居るのは
 // **呼び出し元サービスの s2s トークン**なので、それを GraphService へ転送してしまう
@@ -48,7 +48,7 @@ public sealed class GraphServiceNeighborExpander(
         // それは「グラフには何も無い」と読める形の静かな故障である（#916a 仕様書 §繋ぎ方の帰結）。
         // **呼ばずに警告する** ——「効いていない」ことを運用が読める唯一の手掛かりである。
         //
-        // 🔴 **east-west gRPC の入口はここへ来る**（[[IADR-0425]] 決定 2）。利用者の JWT は
+        // 🔴 **east-west gRPC の入口はここへ来る**（[[IADR-0426]] 決定 2）。利用者の JWT は
         // その面を通らないので転送できるものが無い —— **手元の s2s トークンで代用しない。**
         // 代用すると GraphService は「そのサービスが読めるもの」を返し、利用者の権限で
         // 絞られていない近傍が再ランクへ混ざる。gRPC 経路で段を効かせるには、

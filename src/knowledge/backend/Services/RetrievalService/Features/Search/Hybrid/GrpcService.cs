@@ -12,7 +12,7 @@ namespace RetrievalService.Features.Search.Hybrid;
 // FR-03, FR-04, FR-05, FR-07, FR-17, NFR-02, NFR-09, NFR-16, UC-01, UC-02, UC-10, SC-01, SC-08,
 // ADR-0004, ADR-0029, ADR-0034 決定 1, ADR-0035 決定 2, ADR-0075, 計画 ADR-0086 決定 1,
 // ADR-0087 決定 2, ADR-0089 決定 1, [[IADR-0009]], [[IADR-0151]], [[IADR-0379]], [[IADR-0401]],
-// [[IADR-0410]], [[IADR-0415]], [[IADR-0416]], [[IADR-0417]], [[IADR-0425]] (#1255):
+// [[IADR-0410]], [[IADR-0415]], [[IADR-0416]], [[IADR-0417]], [[IADR-0426]] (#1255):
 // ハイブリッド検索の **east-west gRPC 面**。
 //
 // 🔴 **本体は持たない。** `SearchEndpoint.ExecuteAsync` を呼ぶだけであり、
@@ -22,7 +22,7 @@ namespace RetrievalService.Features.Search.Hybrid;
 // **呼び出し元が解決したスコープを受ける口は開かない**（[[IADR-0410]]）——
 // 開くと、そこへ到達できる誰もが任意の scope を主張できる。
 //
-// 🔴 **受け取った利用者文脈は段まで引数で運ぶ**（[[IADR-0425]] 決定 2）。
+// 🔴 **受け取った利用者文脈は段まで引数で運ぶ**（[[IADR-0426]] 決定 2）。
 // 二段検索の近傍展開が器（`IHttpContextAccessor`）から拾うと、この面では
 // **呼び出し元サービスの s2s 主体**が ABAC の主体に化ける —— 例外は 1 つも起きない。
 //

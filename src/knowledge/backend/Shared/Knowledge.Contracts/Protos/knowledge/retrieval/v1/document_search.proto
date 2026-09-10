@@ -1,7 +1,7 @@
 // FR-03, FR-04, FR-05, FR-07, FR-17, NFR-02, NFR-09, NFR-16, UC-01, UC-02, UC-10, SC-01, SC-08,
 // ADR-0004, ADR-0029, ADR-0034 決定 1, ADR-0035 決定 2, ADR-0075, ADR-0086 決定 1, ADR-0087 決定 2,
 // IADR-0009, IADR-0151, IADR-0253, IADR-0272, IADR-0379, IADR-0401, IADR-0410, IADR-0415,
-// IADR-0416, IADR-0417, IADR-0418, IADR-0425 (#1255):
+// IADR-0416, IADR-0417, IADR-0418, IADR-0426 (#1255):
 // ハイブリッド検索（REST `POST /search` と同じ意味論）の gRPC 契約。
 //
 // ■ 置き場と所有（IADR-0379 決定 1）: 所有者は RetrievalService。置き場は knowledge ユニットの
@@ -19,7 +19,7 @@
 //   あって、交差済みのスコープではない（交差は呼び出し先が `ScopeNarrowing` で行う）。
 //
 // ■ 🔴 **二段検索（ADR-0035）の近傍展開もこの文脈で動く。** 呼び出し先は受け取った利用者文脈を
-//   GraphService まで**引数で**運ぶ（IADR-0425 決定 2）—— 周辺の器（HttpContext）から拾うと、
+//   GraphService まで**引数で**運ぶ（IADR-0426 決定 2）—— 周辺の器（HttpContext）から拾うと、
 //   この面の入口では**呼び出し元サービスの s2s 主体**が ABAC の主体に化ける。
 //
 // ■ versioning（IADR-0379 決定 2）: フィールド番号は不変。削除は reserved に残す。破壊的変更は v2 の並走。

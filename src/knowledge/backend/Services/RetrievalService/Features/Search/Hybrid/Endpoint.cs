@@ -30,7 +30,7 @@ internal static class SearchEndpoint
             // —— 信頼を外す変更が、緩む向きの変更を連れてきてはならない。
             // **変えるのは「主張を信じるか」だけであり、「主張が要るか」ではない。**
             //
-            // 🔴 **この短絡は REST 面だけのものである**（[[IADR-0425]] 決定 3）。gRPC 面は
+            // 🔴 **この短絡は REST 面だけのものである**（[[IADR-0426]] 決定 3）。gRPC 面は
             // 「主張が要る」形にしない —— 面が運ぶのは利用者文脈と絞り込みだけであり、
             // **絞り込みの不在は「絞らない」であって「解決していない」ではない**。
             if (req.Scope is not { GrantsAccess: true })
@@ -40,7 +40,7 @@ internal static class SearchEndpoint
                 await access.ResolveAsync(http, ct), req.Scope);
 
             var sw = Stopwatch.StartNew();
-            // 🔴 [[IADR-0425]] 決定 2: 利用者文脈は**入口が決めて**段まで引数で運ぶ。
+            // 🔴 [[IADR-0426]] 決定 2: 利用者文脈は**入口が決めて**段まで引数で運ぶ。
             // 段が器（`IHttpContextAccessor`）から拾い直すと、east-west gRPC の入口で
             // 呼び出し元サービスの s2s 主体が利用者に化ける。
             var results = await ExecuteAsync(
@@ -51,7 +51,7 @@ internal static class SearchEndpoint
     }
 
     // FR-03, FR-04, FR-05, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0412]] 決定 6,
-    // [[IADR-0417]], [[IADR-0425]] 決定 3 (#1255):
+    // [[IADR-0417]], [[IADR-0426]] 決定 3 (#1255):
     // 🔴 **REST と gRPC が通る唯一の検索。**
     //
     // 写すと、片方だけ deny の扱いが変わった状態が作れる —— 本リポジトリが繰り返し踏んでいる形である。

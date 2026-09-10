@@ -2,7 +2,7 @@
 title: AI 分析 → 検索の RAG 検索を east-west gRPC へ移し、利用者トークンの転送を落とす（#1255 経路 1）
 type: spec
 status: draft
-related_ids: [FR-03, FR-04, FR-05, FR-07, FR-17, NFR-02, NFR-09, NFR-16, UC-01, UC-02, UC-10, SC-01, SC-08, ADR-0004, ADR-0029, ADR-0034, ADR-0035, ADR-0036, ADR-0043, ADR-0075, ADR-0086, ADR-0087, ADR-0088, ADR-0089, IADR-0009, IADR-0012, IADR-0044, IADR-0151, IADR-0242, IADR-0253, IADR-0259, IADR-0272, IADR-0283, IADR-0379, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0411, IADR-0412, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0425]
+related_ids: [FR-03, FR-04, FR-05, FR-07, FR-17, NFR-02, NFR-09, NFR-16, UC-01, UC-02, UC-10, SC-01, SC-08, ADR-0004, ADR-0029, ADR-0034, ADR-0035, ADR-0036, ADR-0043, ADR-0075, ADR-0086, ADR-0087, ADR-0088, ADR-0089, IADR-0009, IADR-0012, IADR-0044, IADR-0151, IADR-0242, IADR-0253, IADR-0259, IADR-0272, IADR-0283, IADR-0379, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0411, IADR-0412, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0426]
 author: Claude（実装）
 created: 2026-09-11
 updated: 2026-09-11
@@ -25,7 +25,7 @@ plan_refs: []
 - 実装 ADR: [[IADR-0379]]（proto の置き場・versioning・h2c・s2s・並走）／[[IADR-0410]]（利用者文脈を
   本文で運ぶ 2 経路）／[[IADR-0415]]（narrowing-only）／[[IADR-0416]]（検索が自分でスコープを解決する）／
   [[IADR-0417]]（検索の gRPC 受け口と属性値照会）／[[IADR-0418]]（REST 面の認証）／
-  [[IADR-0425]]（**本 PR で新設**）
+  [[IADR-0426]]（**本 PR で新設**）
 - issue: #1255（**閉じない**。残り ④⑤ は扇形）
 
 ## 起点の確認（`git rev-parse --is-shallow-repository` = `false`）

@@ -31,7 +31,7 @@ namespace AiAnalysisService.Infrastructure.ExternalServices;
 // （`new RagOrchestrator(factory)`）は 1 つも変わらない —— DI 経由では Program.cs が
 // `Services:LlmGatewayGrpc` の有無で gRPC 実装を差し込む。**並走中の正は REST である。**
 // FR-03, FR-05, NFR-09, NFR-16, ADR-0029, ADR-0075, 計画 ADR-0086 決定 1, ADR-0087 決定 2,
-// [[IADR-0425]] (#1255): `searchTransport` は RetrievalService のハイブリッド検索を呼ぶ輸送
+// [[IADR-0426]] (#1255): `searchTransport` は RetrievalService のハイブリッド検索を呼ぶ輸送
 // （REST の `POST /search` ／ east-west gRPC の `DocumentSearch/Search`）。
 // **既定 null は REST 輸送**（`httpFactory` ＋ `httpContextAccessor` から組む）であり、
 // 既存テストの直接構築（`new RagOrchestrator(factory)`）は 1 つも変わらない ——
@@ -56,7 +56,7 @@ public class RagOrchestrator(
     private readonly ILlmCompletionTransport _llm =
         completionTransport ?? new HttpLlmCompletionTransport(httpFactory);
 
-    // [[IADR-0425]] (#1255): 既定は REST 輸送（現行の挙動そのもの。利用者トークンの転送を含む）。
+    // [[IADR-0426]] (#1255): 既定は REST 輸送（現行の挙動そのもの。利用者トークンの転送を含む）。
     private readonly IRagSearchTransport _search =
         searchTransport ?? new HttpRagSearchTransport(httpFactory, httpContextAccessor);
 
@@ -242,7 +242,7 @@ public class RagOrchestrator(
                 principal.NarrowTo),
             ct));
 
-    // FR-05, FR-07, 計画 ADR-0086 決定 1, [[IADR-0415]], [[IADR-0425]] 決定 1 (#1255):
+    // FR-05, FR-07, 計画 ADR-0086 決定 1, [[IADR-0415]], [[IADR-0426]] 決定 1 (#1255):
     // 🔴 **権限の根拠（利用者文脈）と、利用者が指定した絞り込みを別々に運ぶ。**
     // REST 輸送は交差済みの実効スコープを送り、gRPC 輸送は**利用者文脈と交差前の絞り込み**を送る
     // —— 受け口は同じ `ScopeNarrowing` を通るので、どちらの輸送でも実効スコープは一致する。

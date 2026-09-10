@@ -10,7 +10,7 @@ namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 
 // FR-03, FR-04, FR-05, FR-07, NFR-09, NFR-16, UC-01, UC-02, ADR-0004, ADR-0029, ADR-0034 決定 1,
 // ADR-0075, 計画 ADR-0086 決定 1, ADR-0087 決定 2, [[IADR-0009]], [[IADR-0379]] 決定 5,
-// [[IADR-0400]], [[IADR-0415]], [[IADR-0425]] (#1255):
+// [[IADR-0400]], [[IADR-0415]], [[IADR-0426]] (#1255):
 // RAG の検索が**輸送のポート越し**に走り、そこへ**利用者文脈と交差前の絞り込み**が
 // 渡ることを固定する。
 //

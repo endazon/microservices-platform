@@ -10,7 +10,7 @@ namespace AiAnalysisService.Infrastructure.ExternalServices;
 // FR-03, FR-04, FR-05, FR-07, FR-17, NFR-09, NFR-16, UC-01, UC-02, UC-10, SC-01, SC-08,
 // ADR-0004, ADR-0029, ADR-0034 決定 1, ADR-0035 決定 2, ADR-0075, 計画 ADR-0086 決定 1,
 // ADR-0087 決定 2, ADR-0089 決定 1, [[IADR-0379]] 決定 4・5, [[IADR-0400]], [[IADR-0410]],
-// [[IADR-0415]], [[IADR-0416]], [[IADR-0425]] (#1255):
+// [[IADR-0415]], [[IADR-0416]], [[IADR-0426]] (#1255):
 // RAG の検索呼び出しの **east-west gRPC 輸送**。
 //
 // **並走中の正は REST である。** 本実装は `Services:RetrievalServiceGrpc` が構成されたときだけ
@@ -55,7 +55,7 @@ public sealed class GrpcRagSearchTransport(
         }
         catch (Exception ex) when (IsTransportFailure(ex, ct))
         {
-            // 🔴 REST の「非 2xx」「不達」と**同じ枝**へ落とす（[[IADR-0425]] 決定 4）。
+            // 🔴 REST の「非 2xx」「不達」と**同じ枝**へ落とす（[[IADR-0426]] 決定 4）。
             // gRPC には「非 2xx」に相当する概念が無く、到達失敗も応答の失敗も等しく
             // `RpcException` になる。s2s トークン取得失敗（`InvalidOperationException`）も同じ枝である
             // —— **配線漏れが「該当が無い」に見えるのは避けられないので、必ず警告を出す。**
@@ -120,7 +120,7 @@ public sealed class GrpcRagSearchTransport(
         ex is RpcException or InvalidOperationException && !ct.IsCancellationRequested;
 }
 
-// FR-03, FR-04, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4・5, [[IADR-0425]] (#1255):
+// FR-03, FR-04, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4・5, [[IADR-0426]] (#1255):
 // RetrievalService 宛の生成クライアントの登録。`AddGraphNeighborsGrpcClient` と同型。
 public static class RetrievalSearchGrpcClientExtensions
 {

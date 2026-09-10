@@ -49,7 +49,7 @@ builder.Services.AddHttpClient("RetrievalService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:RetrievalService"]
         ?? "http://retrieval-service:5003"));
 // FR-03, FR-04, FR-05, NFR-09, NFR-16, ADR-0029, ADR-0034 決定 1, ADR-0075, 計画 ADR-0086 決定 1,
-// ADR-0087 決定 2, ADR-0089 決定 1, [[IADR-0379]] 決定 4・5, [[IADR-0425]] (#1255):
+// ADR-0087 決定 2, ADR-0089 決定 1, [[IADR-0379]] 決定 4・5, [[IADR-0426]] (#1255):
 // RAG の検索の輸送。**並走中の正は REST である。** `Services:RetrievalServiceGrpc`（h2c の
 // アドレス）が構成されたときだけ生成クライアントが登録され、そのときに限り gRPC 輸送を使う。
 // 無ければ上の名前つき HttpClient で REST のまま（戻すのは構成を外すだけ。コードは変えない）。
