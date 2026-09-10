@@ -1,8 +1,8 @@
 using Grpc.Core;
-using Platform.Shared.Infrastructure.Foundation.Authz;
 using Grpc.Net.Client;
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
+using RetrievalService.Domain;
 using RetrievalService.Domain.Ports;
 using Pb = Knowledge.Contracts.Grpc.Graph.V1;
 
@@ -42,12 +42,12 @@ namespace RetrievalService.Infrastructure.ExternalServices;
 // 「グラフが不調なら検索が死ぬ」ことになる。**ただし静かに無差別へ落ちない**（必ず警告する）。
 public sealed class GrpcGraphNeighborExpander(
     Pb.GraphNeighbors.GraphNeighborsClient client,
-    IHttpContextAccessor accessor,
     ILogger<GrpcGraphNeighborExpander> logger)
     : IGraphNeighborExpander
 {
     public async Task<GraphNeighborhood> ExpandAsync(
-        IReadOnlyList<Guid> seedDocumentIds, int hops, CancellationToken ct = default)
+        IReadOnlyList<Guid> seedDocumentIds, int hops, SearchUserContext user,
+        CancellationToken ct = default)
     {
         if (seedDocumentIds.Count == 0)
             return GraphNeighborhood.Empty;
@@ -57,11 +57,15 @@ public sealed class GrpcGraphNeighborExpander(
         // **全部空**になる。それは「グラフには何も無い」と読める形の静かな故障である
         // （REST 版が資格情報の不在で同じ判断をしているのと**同じ値・同じ副作用**）。
         // **呼ばずに警告する** ——「効いていない」ことを運用が読める唯一の手掛かりである。
-        var user = accessor.HttpContext?.User;
-        if (user?.Identity?.IsAuthenticated != true)
+        //
+        // 🔴 **利用者は引数で受け取る**（[[IADR-0425]] 決定 2）。従前は `IHttpContextAccessor`
+        // から拾っていたが、east-west gRPC の入口では器に居るのは**呼び出し元サービスの
+        // s2s 主体**であり、拾うと `service-account-…` が ABAC の主体として本文に載る ——
+        // 例外は 1 つも起きず、グラフ展開だけが静かに空になる。
+        if (!user.IsAuthenticated || string.IsNullOrWhiteSpace(user.UserId))
         {
             logger.LogWarning(
-                "Graph expansion skipped: the incoming request carries no authenticated user to "
+                "Graph expansion skipped: this search carries no authenticated user to "
                 + "pass to GraphService as request-body context (a graph call without a user "
                 + "degrades to an empty result for every hop, which is indistinguishable from an "
                 + "empty graph)");
@@ -162,19 +166,19 @@ public sealed class GrpcGraphNeighborExpander(
     }
 
     // 🔴 **載せるのは判定の入力であって判定結果ではない**（計画 `ADR-0086` 決定 1）。
-    // FR-05, ADR-0080, IADR-0411 (#1323): 属性の抽出はプラットフォーム唯一の点へ委譲する
-    // （`BffScopeResolver.ExtractUserAttributes`）。**ここでキーを列挙しない** ——
-    // REST 経路で転送していたトークンから GraphService が取り出す属性と**同じ集合**になる。
-    internal static Pb.UserContext ToUserContext(System.Security.Claims.ClaimsPrincipal user)
+    // FR-05, ADR-0080, IADR-0411 (#1323): 属性の抽出はプラットフォーム唯一の点
+    // （`BffScopeResolver.ExtractUserAttributes`）で既に済んでいる —— `SearchUserContext` が
+    // それを運ぶ。**ここでキーを列挙しない。**
+    internal static Pb.UserContext ToUserContext(SearchUserContext user)
     {
         var context = new Pb.UserContext
         {
-            UserId = user.Identity?.Name ?? string.Empty,
+            UserId = user.UserId,
             // 🔴 **`action` は既定へ丸めない。** 読み取り経路も `read` を明示して送る
             // （[[IADR-0272]] 決定 4 / [[IADR-0401]] と同じ作法）。
-            Action = "read",
+            Action = SearchUserContext.ReadAction,
         };
-        foreach (var (key, value) in BffScopeResolver.ExtractUserAttributes(user))
+        foreach (var (key, value) in user.Attributes)
             context.UserAttributes[key] = value;
         return context;
     }

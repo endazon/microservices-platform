@@ -230,6 +230,15 @@ app.MapMcpToolEndpoints();
 // 🔴 **本体は REST と同じ関数を通る**（`AttributeValuesEndpoint.ListAsync`）。
 app.MapGrpcService<AttributeValuesGrpcService>();
 
+// FR-03, FR-04, FR-05, FR-07, FR-17, NFR-09, NFR-16, ADR-0029, ADR-0034 決定 1, ADR-0035 決定 2,
+// ADR-0075, 計画 ADR-0086 決定 1, ADR-0087 決定 2, ADR-0089 決定 1,
+// [[IADR-0379]], [[IADR-0410]], [[IADR-0416]], [[IADR-0425]] (#1255):
+// ハイブリッド検索の east-west gRPC 面（呼び出し元は AI 分析の RAG 文脈収集）。
+// 🔴 **REST の口は残す**（並走中の正は REST。切替も戻しも呼び出し元の構成だけで行う）。
+// 🔴 **本体は REST と同じ関数を通る**（`SearchEndpoint.ExecuteAsync`）。
+// 🔴 **利用者の JWT はこの面を通らない** —— 利用者文脈は本文で運ばれ、受け口が自分で解決する。
+app.MapGrpcService<DocumentSearchGrpcService>();
+
 app.Run();
 
 public partial class Program { }

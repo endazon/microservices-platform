@@ -1,0 +1,109 @@
+// FR-03, FR-04, FR-05, FR-07, FR-17, NFR-02, NFR-09, NFR-16, UC-01, UC-02, UC-10, SC-01, SC-08,
+// ADR-0004, ADR-0029, ADR-0034 決定 1, ADR-0035 決定 2, ADR-0075, ADR-0086 決定 1, ADR-0087 決定 2,
+// IADR-0009, IADR-0151, IADR-0253, IADR-0272, IADR-0379, IADR-0401, IADR-0410, IADR-0415,
+// IADR-0416, IADR-0417, IADR-0418, IADR-0425 (#1255):
+// ハイブリッド検索（REST `POST /search` と同じ意味論）の gRPC 契約。
+//
+// ■ 置き場と所有（IADR-0379 決定 1）: 所有者は RetrievalService。置き場は knowledge ユニットの
+//   共有契約プロジェクト `Knowledge.Contracts` の `Protos/knowledge/retrieval/v1/`。
+//   `attribute_values.proto` と同じ package の**別ファイル**である（1 service 1 ファイル）。
+//
+// ■ 🔴 **利用者文脈を運ぶ。スコープは運ばない**（ADR-0086 決定 1 / IADR-0410 / IADR-0416）。
+//   呼び出し先が受け取った文脈で `AuthzScope/Resolve` を自分で呼び、自分のスコープを解決する。
+//   **呼び出し元が解決したスコープを信じる口は開かない** —— 開くと、そこへ到達できる誰もが
+//   任意の scope を主張できる。REST 面の同じ穴は #1339（IADR-0416）で塞いである。
+//
+// ■ 🔴 **絞り込みは別項目で運ぶ**（`narrow_to`）。権限の根拠（利用者文脈）と、利用者が指定した
+//   データ範囲を**同じ項目に混ぜない** —— 混ぜたものが REST 面の `Scope` であり、
+//   それが信じられてしまった原因である。呼び出し元が送るのは**利用者が指定した範囲そのもの**で
+//   あって、交差済みのスコープではない（交差は呼び出し先が `ScopeNarrowing` で行う）。
+//
+// ■ 🔴 **二段検索（ADR-0035）の近傍展開もこの文脈で動く。** 呼び出し先は受け取った利用者文脈を
+//   GraphService まで**引数で**運ぶ（IADR-0425 決定 2）—— 周辺の器（HttpContext）から拾うと、
+//   この面の入口では**呼び出し元サービスの s2s 主体**が ABAC の主体に化ける。
+//
+// ■ versioning（IADR-0379 決定 2）: フィールド番号は不変。削除は reserved に残す。破壊的変更は v2 の並走。
+//
+// ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
+//   この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。
+//   **利用者の JWT は面を通らない**（REST 経路の方式 A 転送はこの面には無い）。
+//
+// ■ 🔴 **面に出さないもの**: 検索モード（`mode`）・並び順（`sort_by`）・総ヒット数・所要時間。
+//   呼び出し元（RAG の文脈収集）が 1 つも使っていない（IADR-0401 決定 2）。
+//   後から足すのは非破壊の追加である。
+//
+// ■ 🔴 **「該当が無い」と「権限が無い」を区別させない**（IADR-0009 / IADR-0151 決定 5）。
+//   どちらも**空の並び**で返る。404 にも 403 にもしない。引けなかったのは gRPC status である。
+syntax = "proto3";
+
+package knowledge.retrieval.v1;
+
+import "google/protobuf/timestamp.proto";
+// 🔴 `UserContext` / `NarrowTo` は同じ package の `attribute_values.proto` が持つ。
+// **写しを作らない** —— 同じ意味の型が 2 つあると、片方だけが直る事故の口になる。
+import "knowledge/retrieval/v1/attribute_values.proto";
+
+option csharp_namespace = "Knowledge.Contracts.Grpc.Retrieval.V1";
+
+// ハイブリッド検索（ベクトル＋全文 ＋ ABAC フィルタ ＋ 任意の二段検索）。
+// ServiceCaller（platform-service）を要求する。
+service DocumentSearch {
+  // REST `POST /search` と同値。**該当なしは空の並び**（エラーではない）。
+  rpc Search(SearchRequest) returns (SearchResponse);
+}
+
+message SearchRequest {
+  // 検索語。空文字は空の並びへ縮退する（REST と同じ）。
+  string query = 1;
+
+  // 返す件数の上限。0 以下は REST の既定（10）へ写す。
+  // 🔴 proto3 の未指定は `0` であり、DTO の既定は `10` である。**サーバで明示的に写す。**
+  int32 top_k = 2;
+
+  // 🔴 **権限の根拠。** 呼び出し先はこれで自分のスコープを解決する。
+  // `knowledge.retrieval.v1.AttributeValues` の `UserContext` を**そのまま共有する**
+  // （同じ package・同じ 3 項目。写しを作らない）。
+  UserContext user = 3;
+
+  // 🔴 **絞り込み。** 権限とは別項目で運ぶ（混ぜない）。省略可。
+  // `NarrowTo` も `attribute_values.proto` の定義を共有する。
+  map<string, NarrowTo> narrow_to = 4;
+}
+
+message SearchResponse {
+  // 関連度順（REST の既定 `relevance`）。空は「該当が無い」であって「権限が無い」ではない。
+  repeated SearchResult results = 1;
+}
+
+// REST の `SearchResultDto` と同じ形（チャンク単位）。
+message SearchResult {
+  // Guid の "D" 形式（ハイフン区切りの 36 文字）。
+  string chunk_id = 1;
+  string document_id = 2;
+  string document_title = 3;
+
+  // 抜粋。**本文を持たない文書は空文字**である（`has_body=false` と対で読む）。
+  string text = 4;
+
+  float score = 5;
+
+  // 🔴 未設定（null）と空文字は別物である。presence で運ぶ。
+  optional string markdown_uri = 6;
+
+  // ABAC 文書属性（`confidentiality` を含む）。越境判定と出典表示の根拠になる。
+  map<string, string> attributes = 7;
+
+  repeated string tags = 8;
+
+  // 🔴 **未設定は「まだ索引に無い」である**（DTO は `DateTimeOffset?`）。
+  // 既定値で埋めると「知らない」が「とても古い」に化け、並び順が嘘をつく（IADR-0149 決定 3）。
+  // message 型なので presence は型に備わっている（`optional` は要らない）。
+  google.protobuf.Timestamp updated_at = 9;
+
+  // 🔴 **本文由来か**（ADR-0070 決定 4 / IADR-0358 決定 4）。
+  // DTO の既定は `true`・proto3 の既定は `false` で**向きが逆である**。
+  // 写し忘れは例外を 1 つも起こさず、**全件が「本文なし」に見える**
+  // （`docs/api/east-west-grpc.md` §proto3 の「未指定」を写す の `sent` と同型）。
+  // **サーバは常に明示的に設定する。**
+  bool has_body = 10;
+}

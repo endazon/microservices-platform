@@ -1,5 +1,6 @@
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
+using RetrievalService.Domain;
 using RetrievalService.Domain.Ports;
 
 namespace RetrievalService.Features.Search.Hybrid;
@@ -13,8 +14,12 @@ public class HybridSearchService(
     internal const int RrfK = 60;
 
     // FR-03, UC-01: 既存の呼び出し面。**振る舞いは従前と 1 バイトも変わらない。**
+    //
+    // 🔴 `user` は**段が無いこの実装では使わない**（[[IADR-0425]] 決定 2）。
+    // それでもポートが必須引数で受けるのは、**段を挟んだ瞬間に必要になるもの**を
+    // 呼び出し側へ先に要求しておくためである —— 器から拾わせると入口ごとに主体が変わる。
     public async Task<List<SearchResultDto>> SearchAsync(
-        SearchRequest request, CancellationToken ct = default)
+        SearchRequest request, SearchUserContext user, CancellationToken ct = default)
     {
         var outcome = await SearchDetailedAsync(request, ct);
         return Finish(outcome.Fused, outcome.Sort, outcome.TopK);

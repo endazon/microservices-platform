@@ -30,6 +30,13 @@ namespace AiAnalysisService.Infrastructure.ExternalServices;
 // **既定 null は REST 輸送**（`httpFactory` から組む）であり、既存テストの直接構築
 // （`new RagOrchestrator(factory)`）は 1 つも変わらない —— DI 経由では Program.cs が
 // `Services:LlmGatewayGrpc` の有無で gRPC 実装を差し込む。**並走中の正は REST である。**
+// FR-03, FR-05, NFR-09, NFR-16, ADR-0029, ADR-0075, 計画 ADR-0086 決定 1, ADR-0087 決定 2,
+// [[IADR-0425]] (#1255): `searchTransport` は RetrievalService のハイブリッド検索を呼ぶ輸送
+// （REST の `POST /search` ／ east-west gRPC の `DocumentSearch/Search`）。
+// **既定 null は REST 輸送**（`httpFactory` ＋ `httpContextAccessor` から組む）であり、
+// 既存テストの直接構築（`new RagOrchestrator(factory)`）は 1 つも変わらない ——
+// DI 経由では Program.cs が `Services:RetrievalServiceGrpc` の有無で gRPC 実装を差し込む。
+// 🔴 **利用者トークンの転送が消えるのは gRPC 輸送だけである**（REST の受け口は認証を要する）。
 // FR-05, NFR-09, ADR-0029, ADR-0075, [[IADR-0379]], [[IADR-0401]] (#1255): `authzScopeGrpc` は
 // ABAC スコープ解決の east-west gRPC 経路。**既定 null は REST 経路**であり、既存テストの直接構築
 // （`new RagOrchestrator(factory)`）は 1 つも変わらない —— DI 経由では
@@ -43,10 +50,15 @@ public class RagOrchestrator(
     ILogger<RagOrchestrator>? logger = null,
     IOptions<SyntheticMonitoringOptions>? syntheticOptions = null,
     ILlmCompletionTransport? completionTransport = null,
-    AuthzScopeGrpcClient? authzScopeGrpc = null) : IRagOrchestrator
+    AuthzScopeGrpcClient? authzScopeGrpc = null,
+    IRagSearchTransport? searchTransport = null) : IRagOrchestrator
 {
     private readonly ILlmCompletionTransport _llm =
         completionTransport ?? new HttpLlmCompletionTransport(httpFactory);
+
+    // [[IADR-0425]] (#1255): 既定は REST 輸送（現行の挙動そのもの。利用者トークンの転送を含む）。
+    private readonly IRagSearchTransport _search =
+        searchTransport ?? new HttpRagSearchTransport(httpFactory, httpContextAccessor);
 
     // FR-04: 質問回答で文脈に取り込む既定チャンク数。
     private const int DefaultAskTopK = 5;
@@ -90,6 +102,7 @@ public class RagOrchestrator(
             return EmptyAnswer();
         // FR-11, UC-01: 用途は rag-answer。呼び出し先は LlmGateway が機密区分に応じて切り替える。
         return await GenerateAsync(question, scope, DefaultAskTopK,
+            new SearchPrincipal(userId, userAttributes, attributeFilters),
             context => BuildAskPrompt(question, context), "rag-answer", ct);
     }
 
@@ -113,6 +126,7 @@ public class RagOrchestrator(
 
         // FR-11, UC-02: 用途は analysis。機密区分の高いデータは LlmGateway が外部送信を抑止する。
         return await GenerateAsync(query, scope, topK,
+            new SearchPrincipal(userId, userAttributes, request.Range?.AttributeFilters),
             context => AnalysisPromptBuilder.Build(request, context), "analysis", ct);
     }
 
@@ -150,7 +164,8 @@ public class RagOrchestrator(
         // 検索 → 出典（本文より先に送出）。
         // FR-21 ⑨: 🔴 **出典も文脈も `ContextChunks` から作る。** 出典は「回答の根拠」であり、
         // AI の入力から外したチャンクをそこへ載せると、**使っていない資料を使ったかのように見せる**。
-        var selection = await SearchAsync(question, scope, DefaultAskTopK, ct);
+        var selection = await SearchAsync(question, scope, DefaultAskTopK,
+            new SearchPrincipal(userId, userAttributes, attributeFilters), ct);
         var citations = CitationMapper.ToCitations(selection.ContextChunks);
         yield return new AskCitationsEvent(citations);
 
@@ -221,26 +236,20 @@ public class RagOrchestrator(
     //   `RagContextPolicy.Select` は述語を**必須引数**で受けるため、渡し忘れは黙って全件許可へ
     //   倒れずコンパイルで止まる。
     private async Task<RagContextSelection> SearchAsync(
-        string query, AccessScope scope, int topK, CancellationToken ct)
-    {
-        var retrievalClient = httpFactory.CreateClient("RetrievalService");
-        var auth = httpContextAccessor?.HttpContext?.Request.Headers.Authorization.ToString();
-        if (!string.IsNullOrEmpty(auth))
-            retrievalClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
-        try
-        {
-            var searchResp = await retrievalClient.PostAsJsonAsync("/search",
-                new SearchRequest(query, topK, null, scope), ct);
-            var searchResult = searchResp.IsSuccessStatusCode
-                ? await searchResp.Content.ReadFromJsonAsync<SearchResponse>(ct)
-                : new SearchResponse([], 0, 0);
-            return SelectContext(searchResult?.Results ?? []);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
-        {
-            return SelectContext([]);
-        }
-    }
+        string query, AccessScope scope, int topK, SearchPrincipal principal, CancellationToken ct)
+        => SelectContext(await _search.SearchAsync(
+            new RagSearchQuery(query, topK, scope, principal.UserId, principal.UserAttributes,
+                principal.NarrowTo),
+            ct));
+
+    // FR-05, FR-07, 計画 ADR-0086 決定 1, [[IADR-0415]], [[IADR-0425]] 決定 1 (#1255):
+    // 🔴 **権限の根拠（利用者文脈）と、利用者が指定した絞り込みを別々に運ぶ。**
+    // REST 輸送は交差済みの実効スコープを送り、gRPC 輸送は**利用者文脈と交差前の絞り込み**を送る
+    // —— 受け口は同じ `ScopeNarrowing` を通るので、どちらの輸送でも実効スコープは一致する。
+    private readonly record struct SearchPrincipal(
+        string UserId,
+        IReadOnlyDictionary<string, string> UserAttributes,
+        IReadOnlyDictionary<string, List<string>>? NarrowTo);
 
     // FR-19, FR-21 ⑨: 検索結果から RAG 文脈を導く唯一の点。
     //
@@ -342,11 +351,12 @@ public class RagOrchestrator(
     // 応じて選択する（Llm:Routing:PurposeModels）。IADR-0111 (#403): 応答が名乗るモデル名はゲートウェイの
     // 報告値のみを根拠とし、呼び出し側では決めない（未送信・未到達は NoModel）。
     private async Task<AiAnswerDto> GenerateAsync(string query, AccessScope scope, int topK,
-        Func<string, string> buildPrompt, string purpose, CancellationToken ct)
+        SearchPrincipal principal, Func<string, string> buildPrompt, string purpose,
+        CancellationToken ct)
     {
         // FR-03: 実効スコープでハイブリッド検索（ストリーミング版と同じ SearchAsync に集約。失敗時は空へ縮退）。
         // FR-21 ⑨: 戻りは `RagContextSelection`。**以降は `ContextChunks` しか使わない。**
-        var selection = await SearchAsync(query, scope, topK, ct);
+        var selection = await SearchAsync(query, scope, topK, principal, ct);
 
         // FR-04: 検索結果を番号付き出典へ写像（回答本文の [1][2] と一致させる）
         var citations = CitationMapper.ToCitations(selection.ContextChunks);

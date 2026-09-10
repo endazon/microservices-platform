@@ -29,7 +29,7 @@ public sealed class GraphExpandingSearchService(
     : IHybridSearchService
 {
     public async Task<List<SearchResultDto>> SearchAsync(
-        SearchRequest request, CancellationToken ct = default)
+        SearchRequest request, SearchUserContext user, CancellationToken ct = default)
     {
         // ① 既存のハイブリッド検索。**ここまでは段が無いときと完全に同じ。**
         var outcome = await inner.SearchDetailedAsync(request, ct);
@@ -46,7 +46,9 @@ public sealed class GraphExpandingSearchService(
         if (seeds.Count == 0 || outcome.QueryVector.Length == 0)
             return HybridSearchService.Finish(outcome.Fused, outcome.Sort, outcome.TopK);
 
-        var neighborhood = await expander.ExpandAsync(seeds, options.Hops, ct);
+        // 🔴 **利用者文脈はここを素通りする**（[[IADR-0425]] 決定 2）—— 段が器から拾い直すと、
+        //    east-west gRPC の入口で呼び出し元サービスの s2s 主体が利用者に化ける。
+        var neighborhood = await expander.ExpandAsync(seeds, options.Hops, user, ct);
         var proximity = GraphProximity.From(seeds, neighborhood.Edges, options.Hops);
 
         // 🔴 **グラフが 0 件なら段③を呼ばない。** 呼んでも #969 の口は「空集合＝該当なし」で

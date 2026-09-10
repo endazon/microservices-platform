@@ -7,9 +7,16 @@ namespace RetrievalService.Domain.Ports;
 // IADR-0259）であり、本ポートは**スコープもスニペットも扱わない**。
 //
 // 🔴 **本ポートは ABAC を判定しない。** 判定するのは GraphService 側であり（ホップごと ABAC・
-// IADR-0242）、実装（HTTP アダプタ）は**呼び出し元の `Authorization` ヘッダを伝播する**ことで
-// それを効かせる（方式 A。#916a の判断規則「下流が自分で解決する型なら A」）。
+// IADR-0242）、実装は**利用者の文脈を下流へ運ぶ**ことでそれを効かせる ——
+// REST 実装は利用者の `Authorization` ヘッダを転送し（方式 A。#916a の判断規則
+// 「下流が自分で解決する型なら A」）、gRPC 実装は利用者文脈を**要求本文で**運ぶ
+// （計画 `ADR-0086` 決定 1 / [[IADR-0410]]）。
 // **解決済み scope を本文で渡す方式 B は採らない** —— 下流に権限昇格の口を開けるためである。
+//
+// 🔴 **利用者文脈は引数で受け取る**（[[IADR-0425]] 決定 2）。**既定値を置かない。**
+// 従前は実装が `IHttpContextAccessor` から拾っていたが、east-west gRPC の入口では
+// 周辺の器に居るのは**呼び出し元サービスの s2s 主体**であり、拾うと主体がすり替わる
+// （`SearchUserContext` の表を参照）。渡し忘れをコンパイルで止めるために必須引数にしてある。
 public interface IGraphNeighborExpander
 {
     // 起点集合から hops ホップの近傍を取り、**辺の集合**として返す。
@@ -17,6 +24,7 @@ public interface IGraphNeighborExpander
     Task<GraphNeighborhood> ExpandAsync(
         IReadOnlyList<Guid> seedDocumentIds,
         int hops,
+        SearchUserContext user,
         CancellationToken ct = default);
 }
 
