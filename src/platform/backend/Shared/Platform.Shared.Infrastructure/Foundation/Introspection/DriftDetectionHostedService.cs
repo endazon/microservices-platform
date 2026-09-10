@@ -35,13 +35,16 @@ public sealed class DriftDetectionHostedService(
     }
 
     // 定期ループでは 1 回の検出失敗でループを止めないよう例外を握る（即時検出の即応性を保つ）。
+    // #1382: 握らないのは **停止要求（ct）由来の取り消しだけ**。HttpClient.Timeout などの
+    // TaskCanceledException は ct が要求していない取り消しであり、検出失敗として記録して続行する。
+    // 型だけで OperationCanceledException を素通しすると、既定ホスト（StopHost）ではプロセスが落ちる。
     private async Task SafeRunOnceAsync(CancellationToken ct)
     {
         try
         {
             await runner.RunOnceAsync(ct);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             logger.LogError(ex, "Drift detection run failed");
         }

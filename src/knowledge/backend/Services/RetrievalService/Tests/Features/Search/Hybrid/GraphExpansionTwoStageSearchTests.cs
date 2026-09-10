@@ -108,7 +108,7 @@ public class GraphExpansionTwoStageSearchTests
 
         var results = await Expanding(store, inner,
                 new FakeGraphExpander([Edge(seedDoc, neighborDoc, 1.0)]))
-            .SearchAsync(Request(), TestContext.Current.CancellationToken);
+            .SearchAsync(Request(), TestSearchUser.Any, TestContext.Current.CancellationToken);
 
         var hit = results.Single(r => r.DocumentId == neighborDoc);
         hit.ChunkId.Should().Be(neighborChunk.ChunkId);
@@ -130,7 +130,7 @@ public class GraphExpansionTwoStageSearchTests
 
         var results = await Expanding(store, inner,
                 new FakeGraphExpander([Edge(seedDoc, neighborDoc, 1.0)]))
-            .SearchAsync(Request(), TestContext.Current.CancellationToken);
+            .SearchAsync(Request(), TestSearchUser.Any, TestContext.Current.CancellationToken);
 
         var hit = results.Single(r => r.DocumentId == neighborDoc);
         var storeScore = store.LastWithinDocumentsResults.Single(r => r.DocumentId == neighborDoc).Score;
@@ -160,7 +160,7 @@ public class GraphExpansionTwoStageSearchTests
         var scope = new AccessScope([new AttributeFilter("confidentiality", ["internal"])], GrantsAccess: true);
         var results = await Expanding(store, inner, new FakeGraphExpander(
                 [Edge(seedDoc, allowedDoc, 1.0), Edge(seedDoc, forbiddenDoc, 1.0)]))
-            .SearchAsync(Request(scope: scope), TestContext.Current.CancellationToken);
+            .SearchAsync(Request(scope: scope), TestSearchUser.Any, TestContext.Current.CancellationToken);
 
         results.Select(r => r.DocumentId).Should().Contain(allowedDoc, "陽性対照（権限内は現れる）");
         results.Select(r => r.DocumentId).Should().NotContain(forbiddenDoc, "権限外はグラフ経由でも現れない");
@@ -182,7 +182,7 @@ public class GraphExpansionTwoStageSearchTests
 
         var expander = new FakeGraphExpander([]);
         await Expanding(store, inner, expander).SearchAsync(
-            Request(), TestContext.Current.CancellationToken);
+            Request(), TestSearchUser.Any, TestContext.Current.CancellationToken);
 
         expander.Seeds.Should().Equal([vectorDoc]);
         expander.Hops.Should().Be(GraphExpansionOptions.DefaultHops, "既定 2・上限 3（ADR-0034 決定 3）");
@@ -197,9 +197,9 @@ public class GraphExpansionTwoStageSearchTests
         var (store, inner) = Stage(Chunk(seedDoc, "起点 文書", [1f, 0f]), Chunk(Guid.NewGuid(), "無関係", [1f, 0f]));
         store.VectorSideDocuments.Add(seedDoc);
 
-        var baseline = await inner.SearchAsync(Request(), TestContext.Current.CancellationToken);
+        var baseline = await inner.SearchAsync(Request(), TestSearchUser.Any, TestContext.Current.CancellationToken);
         var expanded = await Expanding(store, inner, new FakeGraphExpander([]))
-            .SearchAsync(Request(), TestContext.Current.CancellationToken);
+            .SearchAsync(Request(), TestSearchUser.Any, TestContext.Current.CancellationToken);
 
         store.WithinDocumentsCalls.Should().Be(0);
         expanded.Select(r => r.ChunkId).Should().Equal(baseline.Select(r => r.ChunkId));
@@ -220,7 +220,7 @@ public class GraphExpansionTwoStageSearchTests
         var inner = new HybridSearchService(store, embedding, NullLogger<HybridSearchService>.Instance);
 
         await Expanding(store, inner, new FakeGraphExpander([Edge(seedDoc, neighborDoc, 1.0)]))
-            .SearchAsync(Request(), TestContext.Current.CancellationToken);
+            .SearchAsync(Request(), TestSearchUser.Any, TestContext.Current.CancellationToken);
 
         embedding.Calls.Should().Be(1);
     }
@@ -340,10 +340,10 @@ public class GraphExpansionTwoStageSearchTests
 
         var expander = new GraphServiceNeighborExpander(
             new SingleClientFactory(graph, GraphExpansionFactory.GraphBaseAddress),
-            AccessorWith(FakeGraphHandler.AllowedToken),
             NullLogger<GraphServiceNeighborExpander>.Instance);
 
-        var neighborhood = await expander.ExpandAsync([seed], 2, TestContext.Current.CancellationToken);
+        var neighborhood = await expander.ExpandAsync(
+            [seed], 2, UserWithCredential(), TestContext.Current.CancellationToken);
 
         neighborhood.Edges.Should().BeEmpty();
         GraphProximity.From([seed], neighborhood.Edges, 2).Should().NotContainKey(suggested);
@@ -353,7 +353,6 @@ public class GraphExpansionTwoStageSearchTests
 
     private GraphServiceNeighborExpander ExpanderOver(FakeGraphHandler graph) => new(
         new SingleClientFactory(graph, GraphExpansionFactory.GraphBaseAddress),
-        AccessorWith(FakeGraphHandler.AllowedToken),
         NullLogger<GraphServiceNeighborExpander>.Instance);
 
     // FR-04, FR-17, ADR-0035 決定 2: R-01 辞書（`/graph/edge-types/catalog`）の**実重み**が辺に載り、
@@ -381,7 +380,7 @@ public class GraphExpansionTwoStageSearchTests
         };
 
         var neighborhood = await ExpanderOver(graph)
-            .ExpandAsync([seed], 2, TestContext.Current.CancellationToken);
+            .ExpandAsync([seed], 2, UserWithCredential(), TestContext.Current.CancellationToken);
 
         neighborhood.Edges.Should().ContainSingle(e => e.TargetDocumentId == strongDoc)
             .Which.Weight.Should().Be(1.0, "supersedes は辞書の実重みで運ばれる");
@@ -411,7 +410,7 @@ public class GraphExpansionTwoStageSearchTests
         };
 
         var neighborhood = await ExpanderOver(graph)
-            .ExpandAsync([seed], 2, TestContext.Current.CancellationToken);
+            .ExpandAsync([seed], 2, UserWithCredential(), TestContext.Current.CancellationToken);
 
         neighborhood.Edges.Should().ContainSingle()
             .Which.Weight.Should().Be(GraphServiceNeighborExpander.FallbackEdgeWeight,
@@ -425,7 +424,8 @@ public class GraphExpansionTwoStageSearchTests
         var graph = new FakeGraphHandler { CatalogStatusCode = HttpStatusCode.InternalServerError };
 
         var neighborhood = await ExpanderOver(graph)
-            .ExpandAsync([graph.SeedDocumentId], 2, TestContext.Current.CancellationToken);
+            .ExpandAsync([graph.SeedDocumentId], 2, UserWithCredential(),
+                TestContext.Current.CancellationToken);
 
         // 既定 Body の辺は強い型（1.0）だが、辞書が引けないので 0.5 へ縮退する。
         neighborhood.Edges.Should().ContainSingle()
@@ -445,11 +445,92 @@ public class GraphExpansionTwoStageSearchTests
         store.VectorSideDocuments.Add(graph.SeedDocumentId);
     }
 
-    private static IHttpContextAccessor AccessorWith(string authorization)
+    // ── U-01〜U-03: 利用者文脈は入口が決めて段まで引数で運ぶ（[[IADR-0426]] 決定 2 / #1255） ──
+
+    // 🔴 U-01（本スライスの核心）: **入口が決めた利用者文脈が、そのまま近傍展開へ渡る。**
+    // 段が器（`IHttpContextAccessor`）から拾い直していると、east-west gRPC の入口では
+    // **呼び出し元サービスの s2s 主体**が ABAC の主体に化ける —— 例外は 1 つも起きず、
+    // グラフ展開だけが静かに空になる（あるいは他人の権限で広がる）。
+    [Fact]
+    public async Task 入口が決めた利用者文脈がそのまま近傍展開へ渡る()
+    {
+        var seedDoc = Guid.NewGuid();
+        var (store, inner) = Stage(Chunk(seedDoc, "起点 文書", [1f, 0f]));
+        store.VectorSideDocuments.Add(seedDoc);
+        var expander = new FakeGraphExpander([]);
+        var user = SearchUserContext.FromBody(
+            "alice", new Dictionary<string, string> { ["department"] = "hr" });
+
+        await Expanding(store, inner, expander)
+            .SearchAsync(Request(), user, TestContext.Current.CancellationToken);
+
+        expander.User.Should().NotBeNull("段は利用者文脈を受け取っている");
+        expander.User!.UserId.Should().Be("alice");
+        expander.User.Attributes.Should().Contain(
+            new KeyValuePair<string, string>("department", "hr"));
+        expander.User.ForwardableCredential.Should().BeNull(
+            "east-west gRPC の入口には転送できる利用者の資格情報が無い");
+    }
+
+    // ★ U-01 の陽性対照。REST の入口では**転送できる資格情報が付いて**運ばれる
+    //（「常に null」の実装を落とす）。
+    [Fact]
+    public async Task REST入口では転送できる資格情報が付いて運ばれる()
+    {
+        var seedDoc = Guid.NewGuid();
+        var (store, inner) = Stage(Chunk(seedDoc, "起点 文書", [1f, 0f]));
+        store.VectorSideDocuments.Add(seedDoc);
+        var expander = new FakeGraphExpander([]);
+
+        await Expanding(store, inner, expander)
+            .SearchAsync(Request(), UserWithCredential(), TestContext.Current.CancellationToken);
+
+        expander.User!.ForwardableCredential.Should().Be(FakeGraphHandler.AllowedToken);
+    }
+
+    // 🔴 U-02: **転送できる利用者の資格情報が無ければ GraphService を呼ばない。**
+    // 呼ぶと手元の s2s トークンが利用者の代わりに使われる（confused deputy）か、
+    // 全ホップが 404 になって「グラフには何も無い」と読める静かな故障になる。
+    // **呼ばずに警告する**のが現行の判断であり、輸送を足しても変えない。
+    [Fact]
+    public async Task 転送できる資格情報が無ければ近傍展開を呼ばない()
+    {
+        var graph = new FakeGraphHandler();
+        var noCredential = SearchUserContext.FromBody("alice", new Dictionary<string, string>());
+
+        var neighborhood = await ExpanderOver(graph).ExpandAsync(
+            [graph.SeedDocumentId], 2, noCredential, TestContext.Current.CancellationToken);
+
+        neighborhood.Edges.Should().BeEmpty();
+        graph.Requests.Should().BeEmpty("1 度も呼んでいない（s2s で代用していない）");
+    }
+
+    // ★ U-02 の陽性対照。資格情報が在れば**実際に呼ぶ**（「常に呼ばない」実装を落とす）。
+    [Fact]
+    public async Task 転送できる資格情報が在れば近傍展開を呼ぶ()
+    {
+        var graph = new FakeGraphHandler();
+
+        var neighborhood = await ExpanderOver(graph).ExpandAsync(
+            [graph.SeedDocumentId], 2, UserWithCredential(), TestContext.Current.CancellationToken);
+
+        neighborhood.Edges.Should().NotBeEmpty();
+        graph.Requests.Should().NotBeEmpty();
+    }
+
+    // 🔴 [[IADR-0426]] 決定 2 (#1255): 方式 A の転送は**入口が決めた利用者文脈**が運ぶ。
+    // 従前は `IHttpContextAccessor` から `Authorization` を拾っていたが、その形のままだと
+    // east-west gRPC の入口で**呼び出し元サービスの s2s トークン**を転送してしまう。
+    private static SearchUserContext UserWithCredential(
+        string authorization = FakeGraphHandler.AllowedToken)
     {
         var ctx = new DefaultHttpContext();
         ctx.Request.Headers.Authorization = authorization;
-        return new HttpContextAccessor { HttpContext = ctx };
+        ctx.User = new System.Security.Claims.ClaimsPrincipal(
+            new System.Security.Claims.ClaimsIdentity(
+                [new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, "alice")],
+                "test"));
+        return SearchUserContext.FromRequest(ctx);
     }
 }
 
@@ -521,17 +602,22 @@ internal sealed class CountingFixedEmbeddingService(float[] vector) : IEmbedding
     }
 }
 
-// 近傍展開ポートの記録用スタブ（起点・ホップ数を観測する）。
+// 近傍展開ポートの記録用スタブ（起点・ホップ数・**受け取った利用者文脈**を観測する）。
+// 🔴 利用者文脈を記録するのは [[IADR-0426]] 決定 2 のためである ——
+// 段が器から拾い直していないこと（入口が決めた主体がそのまま届くこと）を測る。
 internal sealed class FakeGraphExpander(IReadOnlyList<GraphNeighborEdge> edges) : IGraphNeighborExpander
 {
     public List<Guid> Seeds { get; } = [];
     public int Hops { get; private set; }
+    public SearchUserContext? User { get; private set; }
 
     public Task<GraphNeighborhood> ExpandAsync(
-        IReadOnlyList<Guid> seedDocumentIds, int hops, CancellationToken ct = default)
+        IReadOnlyList<Guid> seedDocumentIds, int hops, SearchUserContext user,
+        CancellationToken ct = default)
     {
         Seeds.AddRange(seedDocumentIds);
         Hops = hops;
+        User = user;
         return Task.FromResult(new GraphNeighborhood(edges));
     }
 }

@@ -60,7 +60,11 @@ public sealed class HttpEffectiveConfigCollector(
                     "Introspection for {Service} at {Url} returned empty body", service, url);
             return (service, report);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        // #1382: HttpClient.Timeout は TaskCanceledException（OperationCanceledException の派生）で表れる。
+        // 呼び出し側の ct が要求していない取り消しは「そのサービスが期限内に応答しなかった」であり、
+        // 到達不能として隔離する。ct 由来の取り消し（停止要求）だけを外へ出す。ここで区別しないと、
+        // 起動直後に応答が遅い 1 サービスの timeout が BackgroundService まで抜け、StopHost で BFF が落ちる。
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             logger.LogWarning(ex,
                 "Failed to collect introspection for {Service} at {Url}", service, url);

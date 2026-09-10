@@ -48,6 +48,20 @@ builder.Services.AddPlatformAuthzScopeHttpClient(builder.Configuration);
 builder.Services.AddHttpClient("RetrievalService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:RetrievalService"]
         ?? "http://retrieval-service:5003"));
+// FR-03, FR-04, FR-05, NFR-09, NFR-16, ADR-0029, ADR-0034 決定 1, ADR-0075, 計画 ADR-0086 決定 1,
+// ADR-0087 決定 2, ADR-0089 決定 1, [[IADR-0379]] 決定 4・5, [[IADR-0426]] (#1255):
+// RAG の検索の輸送。**並走中の正は REST である。** `Services:RetrievalServiceGrpc`（h2c の
+// アドレス）が構成されたときだけ生成クライアントが登録され、そのときに限り gRPC 輸送を使う。
+// 無ければ上の名前つき HttpClient で REST のまま（戻すのは構成を外すだけ。コードは変えない）。
+// 🔴 **gRPC 輸送は利用者のトークンを転送しない** —— 利用者文脈（user_id / 属性 / action）を
+// 要求本文で運び、RetrievalService が受け取った文脈で**自分で** ABAC を解決する
+// （判定の位置は動かない。`ADR-0086` 実装側残作業 2 の実体）。
+// 🔴 **前提**: 呼び出し先に `Services:GraphServiceGrpc` が在ること。無いと二段検索の近傍展開は
+// REST 実装のままであり、転送できる利用者の資格情報が無いので**呼ばずに警告**する
+// （グラフ再ランクが効かない。helm・compose のどちらにも既に在る）。
+builder.Services.AddRetrievalSearchGrpcClient(builder.Configuration);
+if (!string.IsNullOrWhiteSpace(builder.Configuration[RetrievalSearchGrpcClientExtensions.AddressKey]))
+    builder.Services.AddSingleton<IRagSearchTransport, GrpcRagSearchTransport>();
 // 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): **REST 面は `ServiceCaller` を要する。**
 // 呼び出し側サービス自身の s2s トークンを載せる（利用者のトークンは載せない）。
 builder.Services.AddHttpClient("LlmGateway", c =>

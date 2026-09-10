@@ -251,6 +251,32 @@ public class AuthzManagementEndpointTests(TestWebApplicationFactory factory)
 
     // ---- 文書属性検証 ----
 
+    // 🔴 計画 ADR-0089 決定 2: `/authz` の**サービス面はすべて**呼び出し元サービスの資格を要求する。
+    // `/attributes/validate` は従前この面で**唯一の素通し**だった（同 ADR 実測 5。値域を総当たりで推測できる口）。
+    // TestAuthHandler はヘッダが無いと管理者を名乗るので、「資格なし」は platform-service を持たない主体として作る。
+    [Fact]
+    public async Task ValidateDocumentAttributes_WithoutServiceRole_Returns403()
+    {
+        var req = new HttpRequestMessage(HttpMethod.Post, "/authz/attributes/validate")
+        {
+            Content = JsonContent.Create(new { Attributes = new Dictionary<string, string>() })
+        };
+        req.Headers.Add(TestAuthHandler.RolesHeader, "viewer");
+        var res = await Client.SendAsync(req, TestContext.Current.CancellationToken);
+        res.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    // 🔴 管理者の利用者トークンでも通らない（サービスが呼ぶ面は利用者の資格では開かない。/scope と同じ水準）。
+    [Fact]
+    public async Task ValidateDocumentAttributes_WithAdminUserToken_Returns403()
+    {
+        var res = await Client.PostAsJsonAsync("/authz/attributes/validate", new
+        {
+            Attributes = new Dictionary<string, string>()
+        }, TestContext.Current.CancellationToken);
+        res.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     // FR-09: 文書属性が辞書に整合すれば valid=true
     //   ※ InMemory DB は本クラス内で共有されるため、必須属性の累積で結果が揺れないよう
     //     許可値整合（required=false）で検証する。必須欠落の網羅は AbacValidationTests が担う。
@@ -260,7 +286,7 @@ public class AuthzManagementEndpointTests(TestWebApplicationFactory factory)
         await Client.PostAsJsonAsync("/authz/attributes",
             AttributeBody("conf_validate_ok", ["public", "internal"], required: false), TestContext.Current.CancellationToken);
 
-        var res = await Client.PostAsJsonAsync("/authz/attributes/validate", new
+        var res = await factory.CreateServiceCallerClient().PostAsJsonAsync("/authz/attributes/validate", new
         {
             Attributes = new Dictionary<string, string> { ["conf_validate_ok"] = "internal" }
         }, TestContext.Current.CancellationToken);
@@ -276,7 +302,7 @@ public class AuthzManagementEndpointTests(TestWebApplicationFactory factory)
         await Client.PostAsJsonAsync("/authz/attributes",
             AttributeBody("conf_validate_ng", ["public", "internal"], required: false), TestContext.Current.CancellationToken);
 
-        var res = await Client.PostAsJsonAsync("/authz/attributes/validate", new
+        var res = await factory.CreateServiceCallerClient().PostAsJsonAsync("/authz/attributes/validate", new
         {
             Attributes = new Dictionary<string, string> { ["conf_validate_ng"] = "secret" }
         }, TestContext.Current.CancellationToken);

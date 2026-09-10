@@ -735,6 +735,129 @@
         }
       }
     },
+    "src/knowledge/backend/Shared/Knowledge.Contracts/Protos/knowledge/retrieval/v1/document_search.proto": {
+      "syntax": "proto3",
+      "package": "knowledge.retrieval.v1",
+      "csharpNamespace": "Knowledge.Contracts.Grpc.Retrieval.V1",
+      "imports": [
+        "google/protobuf/timestamp.proto",
+        "knowledge/retrieval/v1/attribute_values.proto"
+      ],
+      "messages": {
+        "SearchRequest": {
+          "fields": {
+            "narrow_to": {
+              "number": 4,
+              "type": "map<string,NarrowTo>",
+              "label": "map"
+            },
+            "query": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "top_k": {
+              "number": 2,
+              "type": "int32",
+              "label": "singular"
+            },
+            "user": {
+              "number": 3,
+              "type": "UserContext",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "SearchResponse": {
+          "fields": {
+            "results": {
+              "number": 1,
+              "type": "SearchResult",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "SearchResult": {
+          "fields": {
+            "attributes": {
+              "number": 7,
+              "type": "map<string,string>",
+              "label": "map"
+            },
+            "chunk_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "document_id": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            },
+            "document_title": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            },
+            "has_body": {
+              "number": 10,
+              "type": "bool",
+              "label": "singular"
+            },
+            "markdown_uri": {
+              "number": 6,
+              "type": "string",
+              "label": "optional"
+            },
+            "score": {
+              "number": 5,
+              "type": "float",
+              "label": "singular"
+            },
+            "tags": {
+              "number": 8,
+              "type": "string",
+              "label": "repeated"
+            },
+            "text": {
+              "number": 4,
+              "type": "string",
+              "label": "singular"
+            },
+            "updated_at": {
+              "number": 9,
+              "type": "google.protobuf.Timestamp",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "enums": {},
+      "services": {
+        "DocumentSearch": {
+          "rpcs": {
+            "Search": {
+              "request": "SearchRequest",
+              "response": "SearchResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            }
+          }
+        }
+      }
+    },
     "src/platform/backend/Shared/Platform.Shared.Contracts/Protos/platform/authz/v1/authz_scope.proto": {
       "syntax": "proto3",
       "package": "platform.authz.v1",

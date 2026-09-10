@@ -141,7 +141,7 @@ public class DriftDetectionChainTests
     // 初回実行・例外耐性・停止の 3 点で固定する。
 
     // 記録用 runner。所定回数まで例外を投げてから正常応答へ切り替えられる。
-    private sealed class SignallingRunner(int throwFirstN = 0) : IDriftRunner
+    private sealed class SignallingRunner(int throwFirstN = 0, Exception? throwWith = null) : IDriftRunner
     {
         private readonly TaskCompletionSource _firstCall = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _calls;
@@ -155,7 +155,7 @@ public class DriftDetectionChainTests
             var n = Interlocked.Increment(ref _calls);
             _firstCall.TrySetResult();
             if (n <= throwFirstN)
-                throw new InvalidOperationException("検出に失敗した");
+                throw throwWith ?? new InvalidOperationException("検出に失敗した");
             return Task.FromResult(Report(false));
         }
     }
@@ -223,6 +223,29 @@ public class DriftDetectionChainTests
         service.ExecuteTask!.IsCompleted.Should().BeFalse(
             "検出の失敗が ExecuteAsync を抜けると、以後ドリフト検出は二度と走らない");
         service.ExecuteTask.IsFaulted.Should().BeFalse();
+
+        await service.StopAsync(TestContext.Current.CancellationToken);
+    }
+
+    // 🔴 FR-15 (#1382): **HttpClient.Timeout の TaskCanceledException でもループは死なない。**
+    // 型は OperationCanceledException の派生だが、停止要求（stoppingToken）由来ではない。型だけで素通しすると
+    // 既定ホスト（BackgroundServiceExceptionBehavior=StopHost）は **プロセスごと停止**する——integration-stack で
+    // BFF が起動直後に落ち続けた原因（応答の遅いサービスの収集が 5 秒で期限切れ）。
+    [Fact]
+    public async Task 検出が応答期限切れで失敗してもループは死なずホストも止めない()
+    {
+        var runner = new SignallingRunner(throwFirstN: 1,
+            throwWith: new TaskCanceledException("HttpClient.Timeout of 5 seconds elapsing", new TimeoutException()));
+        var service = Service(runner, new DriftDetectionOptions { Enabled = true, IntervalSeconds = 300 });
+
+        await service.StartAsync(TestContext.Current.CancellationToken);
+        await runner.FirstCall.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        // 例外は同期的に投げられているので、握られたか抜けたかは ExecuteTask の状態で判る。
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+
+        service.ExecuteTask!.IsFaulted.Should().BeFalse(
+            "期限切れの取り消しが ExecuteAsync を抜けると StopHost でプロセスが落ちる");
+        service.ExecuteTask.IsCompleted.Should().BeFalse("ループは次のティック待ちへ入っている");
 
         await service.StopAsync(TestContext.Current.CancellationToken);
     }

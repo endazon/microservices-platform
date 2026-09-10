@@ -48,10 +48,14 @@ public static class AuthzEndpoints
         // **compose・helm・realm のいずれにも既に持っている**（作業仕様書 §実測 4）。
         var services = g.MapGroup("").RequireAuthorization(PlatformAuthPolicies.ServiceCaller);
         services.MapResolveScope();
+        // 計画 ADR-0089 決定 2 / IADR-0413 追記: `/authz` の**サービス面はすべて**呼び出し元サービスの資格を要求する。
+        // 文書属性の辞書整合バリデーションは副作用が無く返すのは可否だけだが、値域を総当たりで推測できる口であり、
+        // 「小さいから素通しでよい」を面の既定にしない（同 ADR §理由）。呼び出し元は現時点で無い（abac-seed README）。
+        services.MapValidateDocumentAttributes();
 
         // ---- FR-09, UC-05: ABAC ポリシー・属性辞書管理（管理者のみ） ----
         // FR-09: 管理系 CRUD は管理者ロールを要求する。deny-by-default のポリシー削除・無効化を
-        // 匿名で実行できないようにする。/scope・/attributes/validate はサービス間呼び出しのため対象外。
+        // 匿名で実行できないようにする。/scope・/attributes/validate はサービス間呼び出し（上の `services`）で守る。
         var admin = g.MapGroup("").RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
         admin.MapListPolicies();
@@ -70,9 +74,6 @@ public static class AuthzEndpoints
         // FR-05, FR-09, SC-09, #535: ポリシーの dry-run 検証。**管理者限定**は `admin` グループが担う
         // （[[IADR-0040]] 決定 2）。
         admin.MapValidatePolicy();
-
-        // 文書属性の辞書整合バリデーション（保存前チェック用。副作用なし）。
-        g.MapValidateDocumentAttributes();
 
         return app;
     }

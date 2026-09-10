@@ -97,7 +97,7 @@ public class PrivateNoteSearchExposureTests
         var scope = new AccessScope([], GrantsAccess: true,
             [new AccessScopeBranch("所有者ベース", [new AttributeFilter("owner", ["alice"])])]);
         var results = await search.SearchAsync(
-            new SearchRequest("個人資料", 10, null, scope), TestContext.Current.CancellationToken);
+            new SearchRequest("個人資料", 10, null, scope), TestSearchUser.Any, TestContext.Current.CancellationToken);
 
         results.Should().ContainSingle("検索側は AI 入力トグルで絞らない");
         results[0].Attributes.Should()
