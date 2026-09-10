@@ -11,7 +11,7 @@ adr_refs:
   - IADR-0133
   - IADR-0152
   - IADR-0284
-status: in-progress
+status: done
 created: 2026-09-09
 ---
 
@@ -87,9 +87,22 @@ EF の `HasData`・起動時シーダ・helm 値・シード JSON はいずれ�
 - [x] 直 DB 書き込みをしていない（`POST /tags` 経由）
 - [x] 資格情報を写し取っていない（`seed-abac-policies.js` を `require`）
 - [x] 稼働クラスタで送り手の 400 が消えた
-- [ ] `TAGSEED=1` が `k8s-local-up.sh` に配線されている
-- [ ] 回帰テストがある
-- [ ] `scripts/README.md` の一覧に載っている
+- [x] `TAGSEED=1` が `k8s-local-up.sh` に配線されている
+- [x] 回帰テストがある
+- [x] `scripts/README.md` の一覧に載っている
+
+## ［2026-09-10 追記 / #1359］残り 3 項目の着地を確認した
+
+着手時に未了だった 3 項目は、PR #1361 で着地している。作業ツリーで実物を確認した。
+
+| 項目 | 確認 |
+| --- | --- |
+| `TAGSEED=1` の配線 | `scripts/k8s-local-up.sh:1033` |
+| 回帰テスト | `scripts/k8s-local-up.test.js` に 8 箇所（門の登録・既定オフ・他の seed で道連れに走らないこと） |
+| `scripts/README.md` の一覧 | 1 行を追加済み |
+
+あわせて、投入器が**検査器の母集合**へ数えられていたのを除外リストへ移した（投入器であって検査器ではない。
+既存の ABAC・検索文書の 2 器と同じ扱い）。**件数を動かすのではなく分類を直すのが正しい**。
 
 ## 計画書との差異
 
