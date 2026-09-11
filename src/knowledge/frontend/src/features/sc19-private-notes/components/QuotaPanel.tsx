@@ -1,5 +1,5 @@
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Alert } from '@platform/ui';
+import { Alert, Note, ProgressBar } from '@platform/ui';
 import type { PrivateNoteUsageDto } from '@foundation/api/generated/bff.schemas';
 import { quotaLevel, toGb } from '../types/quota';
 
@@ -11,6 +11,9 @@ import { quotaLevel, toGb } from '../types/quota';
 //   🔴 **同時に 2 段を出さない**（強い警告が弱い警告に埋もれる）。
 // ■ 版履歴が容量に算入されないことを明示する。
 //   明示しないと、利用者は編集のたびに容量が減ると誤解し、編集を控える（計画の明記）。
+// ■ モックの `.bar`（`ProgressBar`）を添える —— 使用率は数字だけだと「どれくらい逼迫しているか」が
+//   読み取りにくい。🔴 **棒は補助であり、意味は文言が担う**（段階の警告文は棒とは独立に出る。
+//   `ProgressBar` 自身も割合を数字で併記する）。
 
 export interface QuotaPanelProps {
   usage: PrivateNoteUsageDto | undefined;
@@ -27,17 +30,26 @@ export function QuotaPanel({ usage, deletedBytes }: QuotaPanelProps) {
   const limit = toGb(usage.limitBytes);
   const deleted = toGb(deletedBytes);
 
+  // 棒の tone は段階と一致させる（80% で警告色・95% 以上で危険色）。
+  const barTone = level === 'normal' ? 'default' : level === 'notice' ? 'warn' : 'err';
+
   return (
     <section aria-label={t`保存容量`} className="flex flex-col gap-2">
-      <p className="text-sm text-[--color-fg]">
+      <p className="text-sm text-fg">
         {/* 使用量・上限・内訳を 1 文に収める（例: 0.80 / 1.00 GB（うち削除済み 0.20 GB））。 */}
         <Trans>
           保存容量: {used} / {limit} GB（うち削除済み {deleted} GB）
         </Trans>
       </p>
-      <p className="text-xs text-[--color-fg-muted]">
+      <ProgressBar
+        className="max-w-sm"
+        label={t`保存容量の使用率`}
+        value={usage.percent}
+        tone={barTone}
+      />
+      <Note>
         <Trans>過去の版（版履歴）は保存容量に含まれません。</Trans>
-      </p>
+      </Note>
 
       {level === 'notice' && (
         <Alert tone="info" label={t`お知らせ`} role="status">

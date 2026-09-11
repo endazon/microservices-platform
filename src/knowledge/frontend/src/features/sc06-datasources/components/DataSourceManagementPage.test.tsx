@@ -465,18 +465,46 @@ describe('DataSourceManagementPage (SC-06)', () => {
     );
   });
 
-  // **実装しない要素**（画面仕様書 §hi-fi モックアップとの対応 #6・#7・#9）。
+  // **実装しない要素**（画面仕様書 §hi-fi モックアップとの対応 #7・#9）。
   // まず「見えるはずの条件」——一覧が描画され、手動同期の操作が出ている状態——を確かめてから、
-  // 契約に無い列・操作が無いことを見る。**接続先・認証情報の「設定」編集は依然として未実装**である
+  // 契約に無い操作が無いことを見る。**接続先・認証情報の「設定」編集は依然として未実装**である
   // （#534 の射程のまま。#754 で足したのは既定属性の編集だけであり、別のボタンである）。
-  it('does not render the next-sync column, the retry state, or a connection settings action', async () => {
+  //
+  // 🔴 **［2026-09-12］「次回同期」列の不在はここから外した。** 契約（`nextSyncAt`）は #538 で
+  // 揃っており、残っていたのは列の側だけだった。**「契約が無い」ことの固定と「まだ作っていない」
+  // ことの固定は別物**であり、後者を残したままにすると実装した瞬間に正しい実装が落ちる。
+  it('does not render the retry state or a connection settings action', async () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse([ACTIVE_SOURCE, DISABLED_SOURCE]));
     await renderPage();
 
     expect(await screen.findAllByRole('button', { name: '手動同期' })).toHaveLength(2);
-    expect(screen.queryByRole('columnheader', { name: '次回同期' })).not.toBeInTheDocument();
     expect(screen.queryByText(/再試行中/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '設定' })).not.toBeInTheDocument();
+  });
+
+  // SC-06（裁定 Q15 / #538 / IADR-0136）: **次回同期は全ソースで同じ値**である（共通間隔）。
+  // ソース別スケジュールと読み違えないよう、表の下に共通間隔である旨の注記を置く。
+  // 契約が値を返さない（定期同期が無効）ときは `—` になる。
+  it('lists the next sync time and states that the interval is shared by every source', async () => {
+    const scheduled = { ...ACTIVE_SOURCE, nextSyncAt: '2026-07-24T14:00:00Z' };
+    const other = { ...DISABLED_SOURCE, nextSyncAt: '2026-07-24T14:00:00Z' };
+    mocks.apiRequest.mockResolvedValue(jsonResponse([scheduled, other]));
+    await renderPage();
+
+    expect(await screen.findByRole('columnheader', { name: '次回同期' })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        '同期は全ソース共通の間隔で実行します。ソースごとに時刻を設定することはできません。',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('renders an em dash when the periodic sync is disabled (no next sync time)', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse([{ ...ACTIVE_SOURCE, nextSyncAt: null }]));
+    await renderPage();
+
+    const row = (await screen.findByText('規程集')).closest('tr')!;
+    expect(within(row).getByText('—')).toBeInTheDocument();
   });
 
   it('renders in English when the en locale is active', async () => {

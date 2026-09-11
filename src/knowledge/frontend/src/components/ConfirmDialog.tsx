@@ -1,16 +1,32 @@
-import { useEffect, useId } from 'react';
+import { useRef } from 'react';
 import type { ReactNode } from 'react';
-import { Button, Card, CardContent, CardHeader, CardTitle } from '@platform/ui';
+import {
+  Button,
+  Dialog,
+  DialogActions,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@platform/ui';
 
 // SC-19, SC-20, FR-19/FR-20: 取り返しのつかない操作の手前に置く確認ダイアログ。
 //
 // ■ ここに置く理由（作業仕様書 §判断 3）
-//   計画が確認ダイアログを要求するのは SC-19 / SC-20 の 2 画面である。`@platform/ui` には
-//   `Dialog` がまだ無く、その移植は別の作業単位（#452）の射程であって、本作業で先に入れると
-//   **他人の射程を黙って動かす**ことになる。一方 2 画面が同じ部品を要るので、片方の feature へ
-//   置いて他方から引くこともできない（feature の公開面は index のみ。IADR-0262 決定 4）。
-//   よってユニット内の共有部品の置き場（DataTable / EChart が居る `components/`）に置く。
-//   **昇格の可否は #452 が決める。**
+//   計画が確認ダイアログを要求するのは SC-19 / SC-20 の 2 画面である。2 画面が同じ部品を要るので、
+//   片方の feature へ置いて他方から引くこともできない（feature の公開面は index のみ。
+//   IADR-0262 決定 4）。よってユニット内の共有部品の置き場（DataTable / EChart が居る
+//   `components/`）に置く。
+//
+// ■ 土台は `@platform/ui` の `Dialog`（Base UI。#452 で移植済み）である
+//   ——本部品は**それを確認ダイアログの形に束ねるだけ**になった。
+//   フォーカストラップ・Esc・背景クリック・フォーカスの復帰は Base UI が担う。
+//   自前の `document.addEventListener('keydown')` と素の `<div className="fixed inset-0">` は撤去した
+//   （前者はダイアログが閉じた後も残りうる購読であり、後者はトラップも復帰も持たない）。
+//
+// ■ 🔴 初期フォーカスは**取消**へ置く（`DialogContent` の `initialFocus`）
+//   —— 開いた瞬間に Enter を押しても破壊的操作が走らないようにする既存の規律である。
+//   Base UI の既定（最初のタブ可能要素）に任せると実行側へ載る場合があるため、明示して固定する。
 //
 // ■ 文言を持たない（IADR-0125 決定 1 と同じ規律）
 //   見出し・本文・ボタンのラベルはすべて呼び出し側が**翻訳済みの値**として渡す。
@@ -21,8 +37,9 @@ import { Button, Card, CardContent, CardHeader, CardTitle } from '@platform/ui';
 //   「完全に削除する」「すべて失効する」という語が残る。
 //
 // ■ 開いている間だけ描く
-//   閉じているときは何も描かない（`null` を返す）。DOM に隠して置くと、
-//   支援技術と検査の双方から「存在するが見えないボタン」に見える。
+//   本部品は呼び出し側が**開いているときだけマウントする**（閉じているときは描かれない）。
+//   そのため `open` は常に真で、閉じる要求（取消・Esc・背景クリック）は `onOpenChange` を
+//   通って `onCancel` へ出る —— 閉じる判断は呼び出し側だけが持つ。
 
 export interface ConfirmDialogProps {
   /** ダイアログの見出し（翻訳済み）。 */
@@ -44,8 +61,8 @@ export interface ConfirmDialogProps {
 /**
  * 確認ダイアログ。**開いているときだけ**描画される。
  *
- * Escape で取消できる（取り返しのつかない操作から、キーボードだけで確実に降りられるようにする）。
- * 初期フォーカスは**取消**へ置く —— 開いた瞬間に Enter を押しても破壊的操作が走らないようにする。
+ * Escape・背景クリック・取消のいずれでも `onCancel` が呼ばれる（取り返しのつかない操作から、
+ * キーボードだけで確実に降りられるようにする）。初期フォーカスは**取消**へ置く。
  */
 export function ConfirmDialog({
   title,
@@ -57,45 +74,38 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  const titleId = useId();
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onCancel();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onCancel]);
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <Card
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="w-full max-w-lg bg-[--color-surface]"
-      >
-        <CardHeader>
-          <CardTitle id={titleId}>{title}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2 text-sm">{children}</div>
-          <div className="flex justify-end gap-2">
-            {/* 初期フォーカスは取消側。`@platform/ui` の Button は ref を受けないので
-                宣言的な autoFocus で置く（ref の受け口を足すのは #452 の射程である）。 */}
-            <Button autoFocus variant="secondary" disabled={pending} onClick={onCancel}>
-              {cancelLabel}
-            </Button>
-            <Button
-              variant={destructive ? 'danger' : 'primary'}
-              disabled={pending}
-              onClick={onConfirm}
-            >
-              {confirmLabel}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onCancel();
+      }}
+    >
+      <DialogContent initialFocus={cancelRef}>
+        <DialogTitle>{title}</DialogTitle>
+        {/*
+          本文は段落を複数含みうるので `<div>` へ描き替える（`<p>` の入れ子は不正な DOM になる）。
+          `aria-describedby` の結び付けは Base UI が担うので、器を変えても読み上げは保たれる。
+        */}
+        <DialogDescription render={<div className="flex flex-col gap-2 text-sm text-fg-muted" />}>
+          {children}
+        </DialogDescription>
+        <DialogActions>
+          {/* 🔴 初期フォーカスはこちら（上の注記）。閉じる要求は onOpenChange → onCancel へ出る。 */}
+          <DialogClose render={<Button ref={cancelRef} variant="secondary" disabled={pending} />}>
+            {cancelLabel}
+          </DialogClose>
+          <Button
+            variant={destructive ? 'danger' : 'primary'}
+            disabled={pending}
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </Button>
+        </DialogActions>
+      </DialogContent>
+    </Dialog>
   );
 }

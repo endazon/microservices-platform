@@ -19,16 +19,20 @@ import { cn } from '../lib/cn';
 //
 // **文言は持たない**（IADR-0125 決定 1）。呼び出し側が翻訳済みの文字列を children で渡す。
 export const tagVariants = cva(
-  'inline-flex items-center rounded-[--radius-control] px-2 py-0.5 text-xs whitespace-nowrap',
+  'inline-flex items-center rounded-[6px] px-2.5 py-[3px] text-[11px] tracking-[0.02em] whitespace-nowrap',
   {
     variants: {
       tone: {
         // モックの tag-accent: 強調（主要な分類）。
-        accent: 'bg-[--color-brand] text-[--color-brand-fg]',
+        // 🔴 モックは `accent-800` の面へ `accent-100` の文字を置くが、**ライトテーマでは
+        // 濃紫のチップが白い紙面から浮く**。accent の面（accent-soft）＋ 既定の文字色にすると、
+        // accent の identity を地の色で保ったまま両テーマで読める（実測: ダーク 11.7:1 / ライト 14.1:1。
+        // なお `accent-soft` の面へ `brand` の文字を置く案はダークで 4.43:1 と AA を割る）。
+        accent: 'bg-accent-soft text-fg',
         // モックの tag-neutral: 既定（一般のタグ）。
-        neutral: 'bg-[--color-surface-muted] text-[--color-fg-muted]',
+        neutral: 'bg-surface-muted text-fg-muted',
         // モックの tag-outline: 枠線のみ（種別の注記）。
-        outline: 'border border-[--color-border] text-[--color-fg-muted]',
+        outline: 'border border-accent text-accent',
       },
     },
     defaultVariants: { tone: 'neutral' },

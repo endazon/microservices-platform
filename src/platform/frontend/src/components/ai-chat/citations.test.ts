@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { citationKind } from './citations';
+import { citationAnchorId, citationKind } from './citations';
 
 // SC-01, UC-01 基本フロー 5: 出典（Wiki／原本リンク）付きで結果を返す。
+// ［2026-09-12 / A-8］knowledge の sc01-search/types から foundation（@foundation/ai-chat）へ移動した。
 // 出典の種別は**権限内の Wiki 台帳に文書 ID が載っているか**で判定する（画面仕様書 SC-01 §出典の種別判定。
 // #1200 / IADR-0365 決定 1）。`sourceUri` や実行時 config は見ない。
 describe('citationKind (SC-01)', () => {
@@ -23,5 +24,19 @@ describe('citationKind (SC-01)', () => {
   // P-3: 台帳が未取得・取得失敗なら Wiki 由来を推測しない（到達できない導線へ送らない）。
   it('never infers a wiki citation while the ledger is unavailable', () => {
     expect(citationKind(WIKI_DOC, undefined)).toBe('document');
+  });
+});
+
+// 裁定 6（出典と本文の対応印・脚注方式）: 本文の `[n]` と出典の行を結ぶアンカー ID。
+describe('citationAnchorId', () => {
+  // 回答ごとに接頭辞を変えるため、同じ番号でも別の回答なら衝突しない。
+  it('prefixes the anchor so that two answers on one page never share an id', () => {
+    expect(citationAnchorId('ask-current', 1)).toBe('ask-current-cite-1');
+    expect(citationAnchorId('turn-2', 1)).toBe('turn-2-cite-1');
+  });
+
+  // 接頭辞にルートの pathname 等が混ざっても、ID に使えない文字は丸める。
+  it('normalises characters that are not valid in an id', () => {
+    expect(citationAnchorId('/docs/x y', 3)).toBe('_docs_x_y-cite-3');
   });
 });

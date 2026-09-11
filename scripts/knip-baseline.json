@@ -40,7 +40,7 @@
   "counts": {
     "devDependencies": 4,
     "exports": 16,
-    "types": 16,
+    "types": 15,
     "unlisted": 1
   }
 }

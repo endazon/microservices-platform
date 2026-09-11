@@ -15,7 +15,7 @@ describe('Tag（分類の名前）', () => {
 
   it('defaults to the neutral tone', () => {
     const { container } = render(<Tag>規程</Tag>);
-    expect(container.firstElementChild?.className).toContain('bg-[--color-surface-muted]');
+    expect(container.firstElementChild?.className).toContain('bg-surface-muted');
   });
 
   // 呼び出し側の className が勝つ（cn() 経由）。

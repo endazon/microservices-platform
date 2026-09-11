@@ -17,10 +17,7 @@ import { cn } from '../lib/cn';
 export function Table({ className, ...props }: TableHTMLAttributes<HTMLTableElement>) {
   return (
     <div className="w-full overflow-x-auto">
-      <table
-        className={cn('w-full border-collapse text-sm text-[--color-fg]', className)}
-        {...props}
-      />
+      <table className={cn('w-full border-collapse text-sm text-fg', className)} {...props} />
     </div>
   );
 }
@@ -34,7 +31,9 @@ export function TableCaption({ className, ...props }: HTMLAttributes<HTMLTableCa
 }
 
 export function TableHead({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn('border-b border-[--color-border]', className)} {...props} />;
+  // 罫線は **行（TableRow）が背景として描く**（両端フェードを行幅いっぱいに通すため。
+  // セルごとの border-bottom だと、セル境界でフェードが切れる）。ここでは引かない。
+  return <thead className={className} {...props} />;
 }
 
 export function TableBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
@@ -45,7 +44,11 @@ export function TableRow({ className, ...props }: HTMLAttributes<HTMLTableRowEle
   return (
     <tr
       className={cn(
-        'border-b border-[--color-border] last:border-0 hover:bg-[--color-surface-muted]',
+        // hi-fi モック `.table thead tr` / `.table tbody tr`: 行の下端に 1px の罫を**背景で**敷き、
+        // 両端 48px で透明へ抜く（Nocturne の署名。`Rule` と同じランプ）。
+        'bg-[linear-gradient(to_right,transparent,var(--color-divider)_48px,var(--color-divider)_calc(100%-48px),transparent)]',
+        'bg-[length:100%_1px] bg-bottom bg-no-repeat',
+        'hover:bg-surface-muted',
         className,
       )}
       {...props}
@@ -65,12 +68,15 @@ export function TableHeaderCell({
   return (
     <th
       scope={scope ?? 'col'}
-      className={cn('px-3 py-2 text-left font-medium text-[--color-fg-muted]', className)}
+      className={cn(
+        'px-n2 py-n2 text-left text-[10.5px] font-medium tracking-[0.08em] text-fg-muted uppercase',
+        className,
+      )}
       {...props}
     />
   );
 }
 
 export function TableCell({ className, ...props }: TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn('px-3 py-2 align-top', className)} {...props} />;
+  return <td className={cn('px-n2 py-n2 align-top', className)} {...props} />;
 }

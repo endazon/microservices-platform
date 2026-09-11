@@ -4,6 +4,7 @@ import path from 'node:path';
 import js from '@eslint/js';
 import globals from 'globals';
 import importPlugin from 'eslint-plugin-import';
+import jsxA11y from 'eslint-plugin-jsx-a11y';
 import lingui from 'eslint-plugin-lingui';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
@@ -634,6 +635,58 @@ export default tseslint.config(
       'lingui/no-single-variables-to-translate': 'error',
       'lingui/t-call-in-function': 'error',
     },
+  },
+  // NFR-12（アクセシビリティ）/ ADR-0031 13_frontend-stack §採用技術一覧: JSX のアクセシビリティ規約を
+  // 機械強制する（`eslint-plugin-jsx-a11y` の `recommended` を **error** で採る。利用者裁定 2026-09-12）。
+  //
+  // **独立したブロックに置く。** 各ユニットのブロック（`platform/frontend/src/**` ほか）へ相乗りさせると、
+  // flat config の同名ルール後勝ち置換で `no-restricted-imports` を落とす事故が起きる
+  // （本ファイル冒頭の `BANNED_IMPORT_PATTERNS` の注記が扱っている問題そのもの）。jsx-a11y は
+  // 独自の名前空間の規則しか足さないため、別ブロックにしておけば他のどのブロックとも衝突しない。
+  //
+  // **既存違反は `eslint-suppressions.json` へ逃がさない**（同裁定）。抑制ファイルは grandfather の器で
+  // あって、「アクセシビリティの欠陥を抱えたまま緑にする」ための器ではない。
+  //
+  // 対象は `.tsx` だけでよい —— TypeScript は `.ts` で JSX を許さないため、JSX は `.tsx` にしか無い。
+  // **テストと stories も含める**（役割・ラベルの誤りはテスト側の期待にも現れる）。
+  //
+  // **`ai-stock-trading/**` も含める。** TanStack / Testing Library の各ブロックが AST を外しているのは
+  // 「本リポの技術選定を他リポジトリへ及ぼさない」ためだが（IADR-0120）、**アクセシビリティは技術選定では
+  // なく、合成した SPA が利用者へ出す品質そのもの**である（AST の画面は platform のシェルの中で描画される）。
+  // 実測（2026-09-12）: AST の `.tsx` 34 ファイルで違反 0 件——含めても現に落ちない。
+  // **落ちるようになったら、その時点で外すのではなく AST 側へ環流する。**
+  {
+    files: [
+      'platform/frontend/src/**/*.tsx',
+      'knowledge/frontend/src/**/*.tsx',
+      'packages/ui/src/**/*.tsx',
+      'ai-stock-trading/frontend/src/**/*.tsx',
+    ],
+    // 🔴 **この `settings` が無いと、規則はほぼ何も守らない。** jsx-a11y は JSX の要素名しか見ないため、
+    // 画面が `<Input>` / `<Label>` / `<Button>`（＝ `@platform/ui` のプリミティブ）で書かれている本リポでは
+    // `label-has-associated-control` も `alt-text` も**素通りする**（実測: 対応表なしでは全 182 ファイルで 0 件）。
+    // プリミティブ → 実際に描画されるネイティブ要素の対応を与えて初めて検査が効く。
+    // **`@platform/ui` にプリミティブを足したら、ネイティブ要素を包むものはここへも足す。**
+    settings: {
+      'jsx-a11y': {
+        components: {
+          Button: 'button',
+          Input: 'input',
+          Textarea: 'textarea',
+          Select: 'select',
+          Label: 'label',
+          Table: 'table',
+          TableCaption: 'caption',
+          TableHead: 'thead',
+          TableBody: 'tbody',
+          TableRow: 'tr',
+          TableHeaderCell: 'th',
+          TableCell: 'td',
+        },
+      },
+    },
+    plugins: { 'jsx-a11y': jsxA11y },
+    rules: { ...jsxA11y.flatConfigs.recommended.rules },
   },
   // ADR-0031 / IADR-0275: 13_frontend-stack §採用技術一覧 の Linter 欄
   // 「**TanStack** / **Testing Library** / Storybook / Lingui のプラグインを併用」のうち、

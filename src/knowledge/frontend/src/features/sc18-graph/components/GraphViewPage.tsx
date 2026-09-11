@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
+import type { ReactNode } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Alert, Button, Input, Label, Select } from '@platform/ui';
+import { Button, EmptyState, Input, Label, Note, Select, Tag } from '@platform/ui';
+import { QueryState } from '@foundation/ui/QueryState';
 import { ApiError } from '@foundation/api/ApiError';
 import type { GraphNodeItem } from '@foundation/api/generated/bff.schemas';
 import { useEdgeTypeCatalog, useGraphNeighbors } from '../api/useGraphView';
@@ -54,8 +56,6 @@ export function GraphViewPage() {
   // 権限外・不在は同じ 404 で秘匿される（ADR-0034 決定 2）。どちらかは区別できない。
   const deniedOrMissing =
     neighbors.error instanceof ApiError && neighbors.error.kind === 'notFound';
-  const hasGraph = !!view && nodes.length > 0 && edges.length > 0;
-  const noRelations = !!view && edges.length === 0;
 
   const option = useMemo(
     () =>
@@ -75,23 +75,130 @@ export function GraphViewPage() {
   );
 
   const selectedNode: GraphNodeItem | undefined = nodes.find((n) => n.documentId === selectedId);
+  const originTitle = nodes.find((n) => n.documentId === search.root)?.title;
+
+  /** グラフ本体（打ち切りの注記・描画領域・凡例・選択パネル）。 */
+  function graphBody(): ReactNode {
+    return (
+      <div className="space-y-3">
+        {/* 表示上限と間引きの表示（SC-18 主要素 6 / ADR-0049）。モックは `.note`（警告色）で出す。
+            「もっと読み込む」は置かない —— フィルタを絞ることを促す（無制限展開は許さない）。 */}
+        {view?.truncated && (
+          <Note tone="warn" data-testid="truncation-banner">
+            {view.totalIsLowerBound ? (
+              <Trans>
+                上位 {shownCount} 件を表示（全 {totalCount} 件以上）。総数の探索も上限に達した
+                ため、「更新日が新しい順」「次数が大きい順」は厳密な上位 {shownCount}{' '}
+                件ではありません。 探索深さを浅くするか、辺の型を絞ってください。
+              </Trans>
+            ) : (
+              <Trans>
+                上位 {shownCount} 件を表示（全 {totalCount} 件）。すべては表示していません。
+                探索深さを浅くするか、辺の型を絞ってください。
+              </Trans>
+            )}
+          </Note>
+        )}
+
+        <div className="flex flex-col gap-3 lg:flex-row">
+          {/*
+            🔴 グラフ描画領域が主役である（画面の 7 割以上。SC-18 主要素 1）。
+            **`Panel` で囲まない** —— 面と余白が入ると図が縮み、主役が脇へ退く。
+            高さは `min-h` で床を作る（内容の少ない探索でも図の場所が痩せない）。
+          */}
+          <div className="flex min-h-[70vh] min-w-0 flex-[3] flex-col gap-2">
+            <GraphCanvas
+              className="min-h-[calc(70vh-9rem)] w-full flex-1 rounded-md border border-divider bg-bg"
+              option={option}
+              ariaLabel={t`ナレッジグラフ（ノード ${shownCount} 件・辺 ${edgeCount} 本）。詳細は凡例と選択パネルを参照`}
+              onNodeClick={setSelectedId}
+            />
+            {/* 凡例は**常時**出す（折りたたまない。利用者裁定・質問票 第11回 Q3）。 */}
+            <GraphLegend />
+          </div>
+          {selectedNode && (
+            <div className="w-full lg:w-72 lg:shrink-0">
+              <NodeSidePanel
+                node={selectedNode}
+                edges={edges}
+                edgeTypes={catalog}
+                onClose={() => setSelectedId(null)}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  /** 起点未指定 → 404（空） → 三部品（QueryState）の順に描き分ける。 */
+  function renderResult(): ReactNode {
+    if (search.root === '') {
+      return (
+        <EmptyState
+          title={t`起点が未指定です`}
+          description={t`検索結果や文書詳細から「ナレッジグラフで表示」を選ぶか、URL の root パラメータで起点を指定してください。`}
+        />
+      );
+    }
+    if (deniedOrMissing) {
+      return (
+        <div data-testid="empty-denied">
+          <EmptyState
+            title={t`権限のある文書がありません`}
+            description={t`指定された起点の文書は表示できません。文書が存在しないのか、閲覧権限がないのかは区別できません。`}
+          />
+        </div>
+      );
+    }
+    return (
+      <QueryState
+        query={neighbors}
+        isEmpty={(data) => data.edges.length === 0}
+        loadingLabel={t`グラフを読み込み中…`}
+        errorTitle={t`グラフを読み込めませんでした。`}
+        empty={
+          <div data-testid="empty-no-relations">
+            <EmptyState
+              title={t`関係する文書がありません`}
+              description={t`この文書には表示できる関係がありません。辺の型の絞り込みを緩めるか、探索深さを深くしてください。`}
+            />
+          </div>
+        }
+      >
+        {() => graphBody()}
+      </QueryState>
+    );
+  }
 
   return (
     <section className="space-y-3">
-      <div>
-        <h1 className="text-lg font-semibold text-[--color-fg]">
+      <div className="flex flex-wrap items-center gap-n2">
+        <h1 className="flex-1 text-[17px] font-medium text-fg">
           <Trans>ナレッジグラフ</Trans>
         </h1>
-        {/* ヘルプ固定文言: 0 件でないときにも常に出す（上の冒頭注記）。 */}
-        <p className="text-xs text-[--color-fg-muted]" data-testid="graph-help">
-          <Trans>
-            関係が表示されない場合、関係が存在しないのか、閲覧権限がないのかは区別できません。
-            これは、閲覧権限のない文書の存在を知られないようにするための仕様です。
-            個人資料が表示されるのは、所有者が「ナレッジグラフに表示する」を ON
-            にした資料のみです（既定 OFF）。AI 提案の辺は承認済みのみ表示されます。
-          </Trans>
-        </p>
+        {/* 起点の強調（モック上部の「起点: … ✕」）。解除すると探索前の案内へ戻る。 */}
+        {search.root !== '' && (
+          <>
+            <Tag tone="accent">
+              {originTitle === undefined ? t`起点: 指定あり` : t`起点: ${originTitle}`}
+            </Tag>
+            <Button variant="ghost" size="sm" onClick={() => setParams({ root: '' })}>
+              <Trans>起点を解除する</Trans>
+            </Button>
+          </>
+        )}
       </div>
+
+      {/* ヘルプ固定文言: 0 件でないときにも常に出す（上の冒頭注記）。 */}
+      <Note data-testid="graph-help">
+        <Trans>
+          関係が表示されない場合、関係が存在しないのか、閲覧権限がないのかは区別できません。
+          これは、閲覧権限のない文書の存在を知られないようにするための仕様です。
+          個人資料が表示されるのは、所有者が「ナレッジグラフに表示する」を ON
+          にした資料のみです（既定 OFF）。AI 提案の辺は承認済みのみ表示されます。
+        </Trans>
+      </Note>
 
       <div className="flex flex-wrap items-end gap-4">
         <div>
@@ -153,7 +260,7 @@ export function GraphViewPage() {
           className="flex flex-wrap items-center gap-3 text-sm"
           data-testid="edge-type-filter"
         >
-          <legend className="float-left mr-2 text-xs text-[--color-fg-muted]">
+          <legend className="float-left mr-2 text-xs text-fg-muted">
             <Trans>辺の型:</Trans>
           </legend>
           {catalog.map((tp) => {
@@ -176,9 +283,12 @@ export function GraphViewPage() {
       {nodeQuery.trim() !== '' && (
         <div className="text-sm" data-testid="node-search-results">
           {matches.length === 0 ? (
-            <p role="status">
-              <Trans>該当するノードがありません。</Trans>
-            </p>
+            // 🔴 `role="status"` の直書きをやめ、空は空の部品で描く（失敗と同じ見た目にしない）。
+            <EmptyState
+              className="py-n3"
+              title={t`該当するノードがありません。`}
+              description={t`検索語を短くするか、辺の型の絞り込みを緩めてください。`}
+            />
           ) : (
             <ul className="flex flex-wrap gap-2">
               {matches.map((n) => (
@@ -193,84 +303,15 @@ export function GraphViewPage() {
         </div>
       )}
 
-      {/* 表示上限と間引きの表示（SC-18 主要素 6 / ADR-0049）。
-          「もっと読み込む」は置かない —— フィルタを絞ることを促す（無制限展開は許さない）。 */}
-      {view?.truncated && (
-        <Alert tone="warning" label={t`表示上限`} data-testid="truncation-banner">
-          {view.totalIsLowerBound ? (
-            <Trans>
-              上位 {shownCount} 件を表示（全 {totalCount} 件以上）。総数の探索も上限に達した
-              ため、「更新日が新しい順」「次数が大きい順」は厳密な上位 {shownCount}{' '}
-              件ではありません。 探索深さを浅くするか、辺の型を絞ってください。
-            </Trans>
-          ) : (
-            <Trans>
-              上位 {shownCount} 件を表示（全 {totalCount} 件）。すべては表示していません。
-              探索深さを浅くするか、辺の型を絞ってください。
-            </Trans>
-          )}
-        </Alert>
-      )}
-
-      {search.root === '' && (
-        <Alert tone="info" label={t`起点が未指定です`}>
-          <Trans>
-            ナレッジグラフは起点となる文書から関係をたどります。検索結果や文書詳細から
-            「ナレッジグラフで表示」を選ぶか、URL の root パラメータで起点を指定してください。
-          </Trans>
-        </Alert>
-      )}
-
-      {deniedOrMissing && (
-        <Alert tone="info" label={t`権限のある文書がありません`} data-testid="empty-denied">
-          <Trans>
-            指定された起点の文書は表示できません。文書が存在しないのか、閲覧権限がないのかは
-            区別できません。
-          </Trans>
-        </Alert>
-      )}
-
-      {noRelations && !deniedOrMissing && (
-        <Alert tone="info" label={t`関係する文書がありません`} data-testid="empty-no-relations">
-          <Trans>この文書には表示できる関係がありません。</Trans>
-        </Alert>
-      )}
-
-      {neighbors.isError && !deniedOrMissing && (
-        <Alert tone="danger" label={t`読み込みエラー`}>
-          <Trans>グラフを読み込めませんでした。時間をおいて再試行してください。</Trans>
-        </Alert>
-      )}
-
-      {neighbors.isPending && search.root !== '' && (
-        <p role="status" className="text-sm text-[--color-fg-muted]">
-          <Trans>読み込み中…</Trans>
-        </p>
-      )}
-
-      {hasGraph && (
-        <div className="flex flex-col gap-3 lg:flex-row">
-          {/* グラフ描画領域が主役（画面の 7 割以上。SC-18 主要素 1）。 */}
-          <div className="min-w-0 flex-[3] space-y-2">
-            <GraphCanvas
-              option={option}
-              ariaLabel={t`ナレッジグラフ（ノード ${shownCount} 件・辺 ${edgeCount} 本）。詳細は凡例と選択パネルを参照`}
-              onNodeClick={setSelectedId}
-            />
-            <GraphLegend />
-          </div>
-          {selectedNode && (
-            <div className="flex-1">
-              <NodeSidePanel
-                node={selectedNode}
-                edges={edges}
-                edgeTypes={catalog}
-                onClose={() => setSelectedId(null)}
-              />
-            </div>
-          )}
-        </div>
-      )}
+      {/*
+        待ち・失敗・空・本体の描き分けは `QueryState` に一本化した（判定順は失敗 → 待ち → 空 → 本体）。
+        ただし**この画面には QueryState の手前に 2 つの状態が在る**:
+          1. 起点が未指定（探索をまだ始めていない。照会も送っていない ＝「待ち」ではない）
+          2. 404（不在と権限は区別されない。ADR-0034 決定 2）——これは**失敗ではなく空**であり、
+             再試行ボタンを出してはならない（押しても権限は生えない）。
+        どちらも QueryState の内側では表せないので、手前で分岐する。
+      */}
+      {renderResult()}
     </section>
   );
 }

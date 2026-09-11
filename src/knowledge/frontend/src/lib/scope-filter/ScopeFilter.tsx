@@ -46,18 +46,18 @@ export function ScopeFilter({ selection, onChange, disabled = false }: ScopeFilt
           <Trans>対象範囲</Trans>
         </h2>
         {/* 件数を文字で出す。**選択状態を色だけで表さない**（INDEX 決定 21）。 */}
-        <p className="text-xs text-[--color-fg-muted]">
+        <p className="text-xs text-fg-muted">
           {count > 0 ? <Trans>{count} 件で絞り込み中</Trans> : <Trans>すべてが対象</Trans>}
         </p>
       </div>
 
       {loading ? (
-        <p className="text-xs text-[--color-fg-muted]">
+        <p className="text-xs text-fg-muted">
           <Trans>候補を読み込み中…</Trans>
         </p>
       ) : !hasAnyCandidate ? (
         // **「候補が無い」と「権限が無い」を区別しない中立文言**（存在秘匿。IADR-0009）。
-        <p className="text-xs text-[--color-fg-muted]">
+        <p className="text-xs text-fg-muted">
           <Trans>絞り込める候補はありません。</Trans>
         </p>
       ) : (
@@ -92,7 +92,7 @@ function ScopeAxisRow({
   const label = i18n._(scopeAxisLabel(axis));
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <span className="text-xs text-[--color-fg-muted] min-w-16">{label}</span>
+      <span className="text-xs text-fg-muted min-w-16">{label}</span>
       {values.map((value) => {
         const isSelected = selected.includes(value);
         return (
@@ -104,11 +104,9 @@ function ScopeAxisRow({
             disabled={disabled}
             onClick={() => onToggle(value)}
             className={cn(
-              'inline-flex items-center gap-1 rounded-[--radius-control] px-2 py-0.5 text-xs',
+              'inline-flex items-center gap-1 rounded-control px-2 py-0.5 text-xs',
               'disabled:opacity-50',
-              isSelected
-                ? 'bg-[--color-brand] text-[--color-brand-fg]'
-                : 'border border-[--color-border] text-[--color-fg-muted]',
+              isSelected ? 'bg-brand text-brand-fg' : 'border border-border text-fg-muted',
             )}
           >
             {/* **選択を文字（✓）でも示す。** 色を除いても選択中だと分かること（INDEX 決定 21）。 */}

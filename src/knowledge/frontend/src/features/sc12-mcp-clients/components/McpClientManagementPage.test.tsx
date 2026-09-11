@@ -280,12 +280,20 @@ describe('McpClientManagementPage (SC-12)', () => {
   });
 
   // 🔴 取得失敗を空の一覧へ潰さない（「1 件も無い」と「引けない」は別の意味である）。
+  // ★［UI/UX 改善 2026-09-12］三部品（NFR / ADR-0031）へ寄せたので、失敗は `QueryState` →
+  // `ErrorState`（`role="alert"`）が描く。**testid ではなく役割と文言で引く**
+  // （一覧と公開ツールの 2 本が同時に落ちるため `findAllByRole` を使う）。
   it('surfaces a fetch failure instead of degrading to an empty list', async () => {
     mocks.apiRequest.mockRejectedValue(new ApiError('server', 'failed', 500, []));
     await renderPage();
 
-    expect(await screen.findByTestId('clients-error')).toBeInTheDocument();
+    const alerts = await screen.findAllByRole('alert');
+    expect(
+      alerts.some((a) => a.textContent?.includes('登録クライアントを取得できませんでした。')),
+    ).toBe(true);
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    // 0 件の文言へ縮退していない（「1 件も登録が無い」と読ませない）。
+    expect(screen.queryByText('登録されたクライアントはありません。')).not.toBeInTheDocument();
   });
 
   // 後段の拒否理由（RFC7807）をそのまま出す。中立化すると管理者が直せなくなる。

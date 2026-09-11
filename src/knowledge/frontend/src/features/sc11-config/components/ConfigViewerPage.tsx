@@ -4,6 +4,9 @@ import type { MessageDescriptor } from '@lingui/core';
 import {
   Alert,
   Button,
+  EmptyState,
+  Note,
+  Panel,
   StatusBadge,
   Table,
   TableBody,
@@ -15,6 +18,7 @@ import {
   Tag,
 } from '@platform/ui';
 import { ApiError } from '@foundation/api/ApiError';
+import { QueryState } from '@foundation/ui/QueryState';
 import { i18n } from '@foundation/i18n';
 import { toMessages } from '@foundation/utils/apiErrors';
 // ADR-0031 §採用技術一覧（日付 = dayjs）/ #788: 同名のローカル実装を持っていたが、
@@ -86,7 +90,9 @@ export function ConfigViewerPage() {
   return (
     <section>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <h1 className="mr-auto text-lg font-semibold text-[--color-fg]">
+        {/* モックの `.ttl`。**「再取得」はヘッダ行に据え置く** ——
+            失敗時の再試行（`QueryState`）とは別物である（こちらは成功していても押せる更新）。 */}
+        <h1 className="mr-auto text-[17px] font-medium text-fg">
           <Trans>実効構成</Trans>
         </h1>
         {/* ヘッダの表示は**実効構成が取れたときだけ**である。ドリフトのバッジも例外ではない
@@ -105,81 +111,94 @@ export function ConfigViewerPage() {
         </Button>
       </div>
 
-      {config.isPending && (
-        <p role="status" className="text-sm text-[--color-fg-muted]">
-          <Trans>読み込み中…</Trans>
-        </p>
-      )}
+      {/* 🔴 3 本の問い合わせは**独立に** `QueryState` で描き分ける（IADR-0129 決定 5）。
+          判定順は isError → isPending → isEmpty → 本体で固定され、**失敗と 0 件を混同しない**。
+          中立の文言（404 秘匿）は `errorTitle` へ渡し、**再試行は出さない** ——
+          押しても権限は増えず、不在の資源も現れない。
+          🔴 **中立の側で後段の文言へフォールバックさせない**（`undefined` を渡すと
+          403 と 404 で文言が割れ、IADR-0129 決定 3 が塞いだ穴が開く）。 */}
+      <QueryState
+        query={config}
+        errorTitle={
+          configHidden ? t`構成情報は利用できません。` : t`構成情報を取得できませんでした。`
+        }
+        errorDescription={
+          configHidden
+            ? t`構成の正本は Git（GitOps）の宣言です。リポジトリ側で確認してください。`
+            : toMessages(config.error, '').join(' / ') || undefined
+        }
+        canRetry={!configHidden}
+      >
+        {(effective) => (
+          <>
+            <Fold summary={t`(1) 実効構成 — パイプライン段・接続`} defaultOpen>
+              <PipelineChain
+                stages={effective.pipeline}
+                drifted={driftTargets(drift.data?.findings ?? [])}
+              />
+              <EventBindingsTable bindings={effective.eventBindings} />
+              <PortsTable ports={effective.ports} />
+              <ConnectorsTable connectors={effective.connectors} />
+            </Fold>
 
-      {config.isError && configHidden && (
-        <p className="text-sm">
-          <Trans>構成情報は利用できません。</Trans>
-        </p>
-      )}
-      {config.isError && !configHidden && (
-        <Alert tone="danger" role="alert" label={t`エラー`}>
-          {toMessages(config.error, t`構成情報を取得できませんでした。`).join(' / ')}
-        </Alert>
-      )}
+            <Fold summary={t`(2) 宣言（Git）との差分 — ドリフト`} defaultOpen id={DRIFT_SECTION_ID}>
+              <QueryState
+                query={drift}
+                loadingLabel={t`ドリフトを確認中…`}
+                errorTitle={
+                  driftHidden
+                    ? t`ドリフト情報は利用できません。`
+                    : t`ドリフト情報を取得できませんでした。`
+                }
+                errorDescription={
+                  driftHidden
+                    ? t`差分の有無は GitOps（Git と ArgoCD）の同期状況からも確認できます。`
+                    : toMessages(drift.error, '').join(' / ') || undefined
+                }
+                canRetry={!driftHidden}
+              >
+                {(report) => <DriftTable report={report} />}
+              </QueryState>
+            </Fold>
 
-      {config.isSuccess && config.data && (
-        <>
-          <Fold summary={t`(1) 実効構成 — パイプライン段・接続`} defaultOpen>
-            <PipelineChain
-              stages={config.data.pipeline}
-              drifted={driftTargets(drift.data?.findings ?? [])}
-            />
-            <EventBindingsTable bindings={config.data.eventBindings} />
-            <PortsTable ports={config.data.ports} />
-            <ConnectorsTable connectors={config.data.connectors} />
-          </Fold>
+            <Fold summary={t`(3) 構成バージョン履歴（新しい順）`}>
+              <QueryState
+                query={history}
+                loadingLabel={t`履歴を確認中…`}
+                isEmpty={(entries) => entries.length === 0}
+                empty={
+                  <EmptyState
+                    title={t`適用履歴はありません。`}
+                    description={t`保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い適用は Git の履歴を参照してください。`}
+                  />
+                }
+                errorTitle={
+                  historyHidden
+                    ? t`バージョン履歴は利用できません。`
+                    : t`バージョン履歴を取得できませんでした。`
+                }
+                errorDescription={
+                  historyHidden
+                    ? t`適用履歴の正本は GitOps（Git と ArgoCD）にあります。`
+                    : toMessages(history.error, '').join(' / ') || undefined
+                }
+                canRetry={!historyHidden}
+              >
+                {(entries) => <HistoryTable entries={entries} />}
+              </QueryState>
+            </Fold>
 
-          <Fold summary={t`(2) 宣言（Git）との差分 — ドリフト`} defaultOpen id={DRIFT_SECTION_ID}>
-            {drift.isPending && (
-              <p role="status" className="text-sm text-[--color-fg-muted]">
-                <Trans>ドリフトを確認中…</Trans>
-              </p>
-            )}
-            {drift.isError && driftHidden && (
-              <p className="text-sm">
-                <Trans>ドリフト情報は利用できません。</Trans>
-              </p>
-            )}
-            {drift.isError && !driftHidden && (
-              <Alert tone="danger" role="alert" label={t`エラー`}>
-                {toMessages(drift.error, t`ドリフト情報を取得できませんでした。`).join(' / ')}
-              </Alert>
-            )}
-            {drift.isSuccess && drift.data && <DriftTable report={drift.data} />}
-          </Fold>
-
-          <Fold summary={t`(3) 構成バージョン履歴（新しい順）`}>
-            {history.isPending && (
-              <p role="status" className="text-sm text-[--color-fg-muted]">
-                <Trans>履歴を確認中…</Trans>
-              </p>
-            )}
-            {history.isError && historyHidden && (
-              <p className="text-sm">
-                <Trans>バージョン履歴は利用できません。</Trans>
-              </p>
-            )}
-            {history.isError && !historyHidden && (
-              <Alert tone="danger" role="alert" label={t`エラー`}>
-                {toMessages(history.error, t`バージョン履歴を取得できませんでした。`).join(' / ')}
-              </Alert>
-            )}
-            {history.isSuccess && <HistoryTable entries={history.data} />}
-          </Fold>
-
-          <Alert tone="info" className="mt-3" label={t`参照のみ`}>
-            <Trans>
-              構成の変更は Git
-              経由（GitOps）に限ります。本画面から構成は変更できません。閲覧は監査ログに記録されます。
-            </Trans>
-          </Alert>
-        </>
-      )}
+            {/* モックの `.note`（参照のみの注記）。**割り込んで知らせる事象ではない**ので
+                `Alert`（role なし）ではなく静的な注記部品へ寄せる。 */}
+            <Note>
+              <Trans>
+                参照のみ — 構成の変更は Git
+                経由（GitOps）に限ります。本画面から構成は変更できません。閲覧は監査ログに記録されます。
+              </Trans>
+            </Note>
+          </>
+        )}
+      </QueryState>
     </section>
   );
 }
@@ -228,9 +247,9 @@ function Fold({
     <details
       id={id}
       open={defaultOpen}
-      className="mb-3 rounded-[--radius-control] border border-[--color-border] bg-[--color-surface]"
+      className="mb-n3 rounded-md border border-border bg-surface"
     >
-      <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-[--color-fg]">
+      <summary className="cursor-pointer px-n3 py-n2 text-sm font-medium text-fg">
         {summary}
       </summary>
       <div className="flex flex-col gap-3 px-3 pb-3">{children}</div>
@@ -243,9 +262,10 @@ function PipelineChain({ stages, drifted }: { stages: PipelineStageDto[]; drifte
   const { t } = useLingui();
   if (stages.length === 0) {
     return (
-      <p className="text-sm">
-        <Trans>段は登録されていません。</Trans>
-      </p>
+      <EmptyState
+        title={t`段は登録されていません。`}
+        description={t`パイプラインの段は Git（GitOps）の宣言で定義します。`}
+      />
     );
   }
   return (
@@ -256,26 +276,23 @@ function PipelineChain({ stages, drifted }: { stages: PipelineStageDto[]; drifte
           <li
             key={stage.name}
             className={[
-              'rounded-[--radius-control] border px-3 py-2 text-sm',
-              isDrifted ? 'border-[--color-warning]' : 'border-[--color-border]',
+              'rounded-md border px-n3 py-n2 text-sm',
+              isDrifted ? 'border-warning' : 'border-border',
               stage.enabled ? '' : 'opacity-60',
             ].join(' ')}
           >
             <div className="flex flex-wrap items-center gap-2">
-              <strong className="text-[--color-fg]">{stage.name}</strong>
-              <span className="text-xs text-[--color-fg-muted]">（{stage.service}）</span>
+              <strong className="text-fg">{stage.name}</strong>
+              <span className="text-xs text-fg-muted">（{stage.service}）</span>
               {/* 無効は淡色だけで示さない（INDEX 決定 21）。 */}
               {!stage.enabled && <StatusBadge tone="neutral">{t`無効`}</StatusBadge>}
               {isDrifted && (
-                <a
-                  href={`#${DRIFT_SECTION_ID}`}
-                  className="text-xs text-[--color-warning] hover:underline"
-                >
+                <a href={`#${DRIFT_SECTION_ID}`} className="text-xs text-warning hover:underline">
                   <Trans>⚠ ドリフト（明細へ）</Trans>
                 </a>
               )}
             </div>
-            <div className="text-xs text-[--color-fg-muted]">
+            <div className="text-xs text-fg-muted">
               {t`consumer`}: {stage.consumer}｜{stage.input} →{' '}
               {stage.outputs.length > 0 ? stage.outputs.join(', ') : t`（終端）`}
             </div>
@@ -289,14 +306,12 @@ function PipelineChain({ stages, drifted }: { stages: PipelineStageDto[]; drifte
 function EventBindingsTable({ bindings }: { bindings: EventBindingDto[] }) {
   const { t } = useLingui();
   return (
-    <div>
-      <h2 className="mb-1 text-sm font-medium text-[--color-fg-muted]">
-        <Trans>イベント接続</Trans>
-      </h2>
+    <Panel heading={t`イベント接続`} className="mb-0">
       {bindings.length === 0 ? (
-        <p className="text-sm">
-          <Trans>イベント接続はありません。</Trans>
-        </p>
+        <EmptyState
+          title={t`イベント接続はありません。`}
+          description={t`購読・発行の接続は Git（GitOps）の宣言で定義します。`}
+        />
       ) : (
         <Table>
           <TableCaption>{t`イベント接続の一覧`}</TableCaption>
@@ -324,21 +339,19 @@ function EventBindingsTable({ bindings }: { bindings: EventBindingDto[] }) {
           </TableBody>
         </Table>
       )}
-    </div>
+    </Panel>
   );
 }
 
 function PortsTable({ ports }: { ports: PortSelectionDto[] }) {
   const { t } = useLingui();
   return (
-    <div>
-      <h2 className="mb-1 text-sm font-medium text-[--color-fg-muted]">
-        <Trans>ポート実装の選択</Trans>
-      </h2>
+    <Panel heading={t`ポート実装の選択`} className="mb-0">
       {ports.length === 0 ? (
-        <p className="text-sm">
-          <Trans>ポートはありません。</Trans>
-        </p>
+        <EmptyState
+          title={t`ポートはありません。`}
+          description={t`ポート実装の選択は Git（GitOps）の宣言で定義します。`}
+        />
       ) : (
         <Table>
           <TableCaption>{t`ポート実装の選択の一覧`}</TableCaption>
@@ -366,21 +379,19 @@ function PortsTable({ ports }: { ports: PortSelectionDto[] }) {
           </TableBody>
         </Table>
       )}
-    </div>
+    </Panel>
   );
 }
 
 function ConnectorsTable({ connectors }: { connectors: ConnectorDto[] }) {
   const { t } = useLingui();
   return (
-    <div>
-      <h2 className="mb-1 text-sm font-medium text-[--color-fg-muted]">
-        <Trans>コネクタ</Trans>
-      </h2>
+    <Panel heading={t`コネクタ`} className="mb-0">
       {connectors.length === 0 ? (
-        <p className="text-sm">
-          <Trans>コネクタはありません。</Trans>
-        </p>
+        <EmptyState
+          title={t`コネクタはありません。`}
+          description={t`コネクタは Git（GitOps）の宣言で定義します。`}
+        />
       ) : (
         <Table>
           <TableCaption>{t`コネクタの一覧`}</TableCaption>
@@ -408,7 +419,7 @@ function ConnectorsTable({ connectors }: { connectors: ConnectorDto[] }) {
           </TableBody>
         </Table>
       )}
-    </div>
+    </Panel>
   );
 }
 
@@ -419,15 +430,22 @@ function DriftTable({ report }: { report: DriftReportDto }) {
     return (
       <p className="text-sm">
         <Trans>ドリフトなし（OK）。</Trans>{' '}
-        <span className="text-xs text-[--color-fg-muted]">
+        <span className="text-xs text-fg-muted">
           {t`確認時刻`}: {formatDateTime(report.checkedAt)}
         </span>
       </p>
     );
   }
+  const count = report.findings.length;
   return (
     <>
-      <p className="text-xs text-[--color-fg-muted]">
+      {/* 宣言との差分は**警告として名指しする**（色だけに意味を載せない。INDEX 決定 21:
+          tone の色 ＋ 固定アイコン ＋ ラベルの文言の 3 点セット）。
+          `role` は付けない —— 表と同時に描かれる静的な注記であり、割り込みではない。 */}
+      <Alert tone="warning" label={t`ドリフト`}>
+        <Trans>宣言（Git）と実効構成に {count} 件の差分があります。</Trans>
+      </Alert>
+      <p className="text-xs text-fg-muted">
         {t`確認時刻`}: {formatDateTime(report.checkedAt)}
       </p>
       <Table>
@@ -472,13 +490,6 @@ function DriftTable({ report }: { report: DriftReportDto }) {
 /** 構成バージョン履歴（新しい順）。並び順とデータ源は API が担い、画面は表示のみ。 */
 function HistoryTable({ entries }: { entries: ConfigVersionEntryDto[] }) {
   const { t } = useLingui();
-  if (entries.length === 0) {
-    return (
-      <p className="text-sm">
-        <Trans>適用履歴はありません。</Trans>
-      </p>
-    );
-  }
   return (
     <Table>
       <TableCaption>{t`構成バージョン履歴の一覧`}</TableCaption>

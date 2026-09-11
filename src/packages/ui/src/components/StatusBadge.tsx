@@ -14,10 +14,10 @@ const badgeVariants = cva(
   {
     variants: {
       tone: {
-        neutral: 'border-[--color-border] bg-[--color-surface-muted] text-[--color-fg-muted]',
-        success: 'border-[--color-success] text-[--color-success]',
-        warning: 'border-[--color-warning] text-[--color-warning]',
-        danger: 'border-[--color-danger] text-[--color-danger]',
+        neutral: 'border-border bg-surface-muted text-fg-muted',
+        success: 'border-success text-success',
+        warning: 'border-warning text-warning',
+        danger: 'border-danger text-danger',
       },
     },
     defaultVariants: { tone: 'neutral' },

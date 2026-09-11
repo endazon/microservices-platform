@@ -115,7 +115,12 @@ describe('WikiBrowsePage (SC-04) — page tree', () => {
     expect(links.map((l) => l.textContent)).toEqual(['経費精算規程', '旅費規程']);
     expect(links[0]).toHaveAttribute('href', '/wiki?page=keihi-seisan');
     // 何も選んでいないので本文は取りに行かない。
-    expect(screen.getByRole('note')).toHaveTextContent('ページを選んでください');
+    // **［2026-09-12］`role="note"` の `<p>` から `EmptyState` へ寄せた**（三部品への統一。
+    // 空は割り込んで知らせる事象ではないので `role` を持たない）。実装が正・テストを追随。
+    expect(screen.getByText('ページが選ばれていません。')).toBeInTheDocument();
+    expect(
+      screen.getByText('ページツリーまたは検索結果からページを選んでください。'),
+    ).toBeInTheDocument();
     expect(calledPaths().filter((p) => p.startsWith('/wiki/pages/'))).toEqual([]);
     // 見出しは静的な画面名（パンくずの葉はまだ無い）。
     expect(screen.getByRole('heading', { name: 'Wiki 閲覧', level: 1 })).toBeInTheDocument();
@@ -168,7 +173,9 @@ describe('WikiBrowsePage (SC-04) — page body', () => {
     expect(calledPaths().filter((p) => p.includes('/by-doc/'))).toEqual([]);
     // 題名・最終同期・SC-03 への復帰リンク（05_screens §SC-04 §主要素）。
     expect(screen.getByRole('heading', { name: '経費精算規程', level: 2 })).toBeInTheDocument();
-    expect(screen.getByText(/最終同期:/)).toBeInTheDocument();
+    // **［2026-09-12］最終同期は `Kv` の項目名と値の対になった**（hi-fi の `.sub` 相当）。
+    // 項目名に「:」は付かない（`dt` / `dd` の対が区切りを担う）。
+    expect(screen.getByText('最終同期')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '文書詳細へ戻る' })).toHaveAttribute(
       'href',
       `/docs/${DOC_A}`,

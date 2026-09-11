@@ -28,7 +28,7 @@ import type { DataSourceDto } from '@foundation/api/generated/bff.schemas';
 /** 値が無いことの表示。**空欄にしない** —— 空欄は「取得できていない」とも読めるため。 */
 function Unset() {
   return (
-    <span className="text-[--color-fg-muted]">
+    <span className="text-fg-muted">
       <Trans>未設定</Trans>
     </span>
   );
@@ -46,7 +46,7 @@ export function DataSourceAttributesView({ source }: { source: DataSourceDto }) 
   const lifecycle = attributes[LIFECYCLE_KEY] ?? '';
 
   return (
-    <div className="mt-1 text-xs text-[--color-fg-muted]">
+    <div className="mt-1 text-xs text-fg-muted">
       <dl aria-label={t`既定属性と所有者の写像`} className="flex flex-wrap gap-x-3 gap-y-0.5">
         <div className="flex gap-1">
           <dt>

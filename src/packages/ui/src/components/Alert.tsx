@@ -10,14 +10,14 @@ import { cn } from '../lib/cn';
 // INDEX 決定 21「色だけで意味を持たせない」を **API の形**で強制する（`StatusBadge`・`notify` と同じ作法）。
 // tone ごとにアイコンが固定で付き、**テキストのラベルは必須**である。省略できる API にすると
 // 必ず省略されるため、選択肢を作らない。
-const alertVariants = cva('flex gap-2 rounded-[--radius-control] border p-3 text-sm', {
+const alertVariants = cva('flex gap-2 rounded-md border p-3 text-sm', {
   variants: {
     tone: {
-      info: 'border-[--color-border] bg-[--color-surface-muted] text-[--color-fg]',
-      success: 'border-[--color-success] text-[--color-fg]',
+      info: 'border-border bg-surface-muted text-fg',
+      success: 'border-success text-fg',
       // 05_screens: 警告色は琥珀（hi-fi 正）。--color-warning が該当色である。
-      warning: 'border-[--color-warning] text-[--color-fg]',
-      danger: 'border-[--color-danger] text-[--color-fg]',
+      warning: 'border-warning text-fg',
+      danger: 'border-danger text-fg',
     },
   },
   defaultVariants: { tone: 'info' },
@@ -34,10 +34,10 @@ const TONE_ICONS: Record<Tone, ComponentType<{ className?: string; 'aria-hidden'
 };
 
 const TONE_ICON_COLORS: Record<Tone, string> = {
-  info: 'text-[--color-fg-muted]',
-  success: 'text-[--color-success]',
-  warning: 'text-[--color-warning]',
-  danger: 'text-[--color-danger]',
+  info: 'text-fg-muted',
+  success: 'text-success',
+  warning: 'text-warning',
+  danger: 'text-danger',
 };
 
 export interface AlertProps

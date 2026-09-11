@@ -8,7 +8,7 @@ import { AuthContext } from '@foundation/auth/AuthContext';
 import type { AuthState } from '@foundation/auth/AuthContext';
 // 実アプリのルータを使う（合成点のナビ登録もこの import の副作用で行われる）。
 import { router } from '@foundation/routing/router';
-import { accountConsoleUrl } from './Layout';
+import { accountConsoleUrl, representativeRoleLabel } from './Layout';
 import { resetAppConfigCache } from '@foundation/config/runtimeConfig';
 
 // Issue #136 / IADR-0035: ナビはユニットの登録から導出し、権限外の項目は描画しない（存在秘匿）。
@@ -335,5 +335,95 @@ describe('existence hiding: unknown path and forbidden path render alike (IADR-0
 
     expect(unknownHtml).toBeTruthy();
     expect(forbiddenHtml).toBe(unknownHtml);
+  });
+});
+
+// ［2026-09-12 / UI/UX 改善］共通シェルの骨格を hi-fi モックの 3 カラム（`.hf`）へ合わせた。
+// ここで固定するのは**見た目の寸法ではなく、構造とキーボード導線の契約**である
+// （クラス名を書き写すと、同じ見た目の別実装で落ちるだけのテストになる）。
+describe('Layout shell skeleton (hi-fi モック .hf / WCAG 2.4.1)', () => {
+  it('puts a skip link to the main content first in the DOM', async () => {
+    await renderLayout([]);
+    const skip = screen.getByRole('link', { name: '本文へ移動' });
+    expect(skip).toHaveAttribute('href', '#main-content');
+    // 🔴 **「先頭」であることが要件そのものである。** 左レールは常時 10 数本のリンクを持ち、
+    // スキップリンクが後ろにあると、そこへ辿り着く前に本文を通り過ぎる。
+    const focusable = Array.from(document.body.querySelectorAll('a[href], button'));
+    expect(focusable[0]).toBe(skip);
+  });
+
+  it('gives the skip link an existing landing point (id ＋ tabIndex)', async () => {
+    await renderLayout([]);
+    // 共通シェルの本文領域（Outlet の器）。DOM 順で外側が先（既存の outletContainer と同じ）。
+    const main = screen.getAllByRole('main')[0];
+    expect(main).toHaveAttribute('id', 'main-content');
+    // フラグメント遷移でフォーカスを受け取れること（受け取れないと「跳んだのに Tab が元へ戻る」）。
+    expect(main).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('keeps the breadcrumb band out of the DOM when there is no trail', async () => {
+    // 未知パス＝パンくず無し（存在秘匿）。**空の帯を残さない**（上の describe と同じ規律）。
+    await renderLayout(['user'], '/no-such-screen');
+    await screen.findByRole('heading', { name: '見つかりませんでした' });
+    expect(screen.queryByRole('navigation', { name: 'パンくず' })).not.toBeInTheDocument();
+    // 骨格そのものは残る（ヘッダ・左レール・本文）。
+    expect(nav()).toBeInTheDocument();
+    expect(screen.getAllByRole('main')[0]).toHaveAttribute('id', 'main-content');
+  });
+});
+
+// 左レールの活性表示。**色だけで意味を持たせない**（INDEX 決定 21）ため、
+// `aria-current="page"` が付くことを実測で固定する（付けるのは TanStack の Link である）。
+describe('Layout nav active state', () => {
+  it('marks the open screen with aria-current="page"', async () => {
+    await renderLayout([], '/wiki');
+    const link = await within(nav()).findByRole('link', { name: 'Wiki' });
+    expect(link).toHaveAttribute('aria-current', 'page');
+    // 現在地は 1 つだけ（パンくずと同じ規律）。
+    expect(nav().querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+  });
+
+  // 🔴 TanStack の既定（前方一致）だと `/settings/risk` で「設定」（`/settings`）も活性になり、
+  // `aria-current="page"` が 2 つ立つ。左レールは**パスの厳密一致**で判定する。
+  it('does not light up a parent path while a child screen is open', async () => {
+    await renderLayout(['trading-owner'], '/settings/risk');
+    const child = await within(nav()).findByRole('link', { name: 'リスク設定' });
+    expect(child).toHaveAttribute('aria-current', 'page');
+    expect(within(nav()).getByRole('link', { name: '設定' })).not.toHaveAttribute('aria-current');
+    expect(nav().querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+  });
+});
+
+// ヘッダのロールタグ（hi-fi モック `.hf-nav` の `tag-outline`）。
+describe('Layout role tag', () => {
+  it('shows システム管理 for an administrator', async () => {
+    await renderLayout(['platform-admin']);
+    expect(await screen.findByText('システム管理')).toBeInTheDocument();
+  });
+
+  it('shows 運用 for an operator', async () => {
+    await renderLayout(['platform-operator']);
+    expect(await screen.findByText('運用', { selector: 'span' })).toBeInTheDocument();
+  });
+
+  // モックは素の利用者の画面にタグを描かない（実測）。全員に「利用者」と出すのは
+  // 情報量ゼロの装飾であり、権限の手掛かりとしても機能しない。
+  it('renders no tag for a user without a platform role', async () => {
+    await renderLayout(['user']);
+    await screen.findByText('汎用プラットフォーム');
+    expect(screen.queryByText('システム管理')).not.toBeInTheDocument();
+  });
+
+  it('prefers the stronger role when the user holds both (代表ロールは 1 つ)', () => {
+    // 文言は MessageDescriptor で持つので、**描画と同じ経路（i18n._）で解決してから**比べる
+    // （`descriptor.message` は本番ビルドで落ちる。テストだけが通る比較にしない）。
+    const label = (roles: string[]) => {
+      const descriptor = representativeRoleLabel(roles);
+      return descriptor === undefined ? undefined : i18n._(descriptor);
+    };
+    expect(label(['platform-operator', 'platform-admin'])).toBe('システム管理');
+    expect(label(['platform-operator'])).toBe('運用');
+    expect(label(['user'])).toBeUndefined();
+    expect(label([])).toBeUndefined();
   });
 });

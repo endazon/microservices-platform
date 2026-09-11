@@ -1,17 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import {
-  Alert,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
+  EmptyState,
   Label,
+  LoadingState,
+  Panel,
   Select,
   StatusBadge,
   Textarea,
 } from '@platform/ui';
+import { QueryState } from '@foundation/ui/QueryState';
 import type { ConversionFigureDto } from '@foundation/api/generated/bff.schemas';
 import { useFigureImageUrl, useJobFigures } from '../api/useConversionJobs';
 
@@ -40,27 +39,24 @@ function FigureImagePane({ jobId, figureId }: { jobId: string; figureId: string 
   const { t } = useLingui();
   const image = useFigureImageUrl(jobId, figureId);
 
+  // 🔴 **`QueryState` は使えない。** `useFigureImageUrl` が返すのは `UseQueryResult` ではなく
+  // `{ url, isPending, isError }` である（Blob をオブジェクト URL へ変える段が挟まる）。
+  // **形の合わないものを無理に通さず、同じ 3 部品を直接使って語彙と見た目だけを揃える。**
   if (image.isPending) {
-    return (
-      <p role="status" className="text-sm text-[--color-fg-muted]">
-        <Trans>画像を読み込み中…</Trans>
-      </p>
-    );
+    return <LoadingState label={t`画像を読み込み中…`} />;
   }
   // 404（コード化済み・未知の図・ストレージ未解決）は区別しない（[[IADR-0009]]）。
   // **空白にしない**——「読み込み中のまま止まった」と見分けが付かなくなる。
+  // **`ErrorState` にはしない** —— 右ペインは補正作業の補助であり、左ペイン（コード編集）の
+  // 妨げになる `role="alert"` を割り込ませる相手ではない（画像が無くてもコードは書ける）。
   if (image.isError || !image.url) {
-    return (
-      <p className="text-sm text-[--color-fg-muted]">
-        <Trans>元の画像を表示できません。</Trans>
-      </p>
-    );
+    return <EmptyState title={t`元の画像を表示できません。`} />;
   }
   return (
     <img
       src={image.url}
       alt={t`補正対象の図の元画像`}
-      className="max-w-full rounded border border-[--color-border]"
+      className="max-w-full rounded border border-border"
     />
   );
 }
@@ -135,11 +131,11 @@ function FigureEditor({
 
       {/* 右＝元の図画像 */}
       <div className="flex flex-col gap-2">
-        <span className="text-xs text-[--color-fg-muted]">
+        <span className="text-xs text-fg-muted">
           <Trans>元の図</Trans>
         </span>
         <FigureImagePane jobId={jobId} figureId={figureId} />
-        {caption && <p className="text-xs text-[--color-fg-muted]">{caption}</p>}
+        {caption && <p className="text-xs text-fg-muted">{caption}</p>}
       </div>
     </div>
   );
@@ -164,33 +160,29 @@ export function FigureCorrectionPanel({
   const targets = (figures.data ?? []).filter((f) => !f.coded);
 
   return (
-    <Card className="mb-3">
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle>
-          <Trans>人手補正（図のコード化）</Trans>
-        </CardTitle>
+    <Panel heading={<Trans>人手補正（図のコード化）</Trans>}>
+      <div className="mb-n2 flex justify-end">
         <Button type="button" size="sm" variant="secondary" onClick={onClose}>
           <Trans>閉じる</Trans>
         </Button>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {figures.isPending && (
-          <p role="status" className="text-sm text-[--color-fg-muted]">
-            <Trans>図を読み込み中…</Trans>
-          </p>
-        )}
-        {figures.isError && (
-          <Alert tone="danger" role="alert" label={t`エラー`}>
-            <Trans>図の一覧を取得できませんでした。</Trans>
-          </Alert>
-        )}
-        {figures.isSuccess &&
-          (targets.length === 0 ? (
-            <p className="text-sm">
-              <Trans>補正が必要な図はありません。</Trans>
-            </p>
-          ) : (
-            targets.map((figure) => (
+      </div>
+      {/* 待ち・空・失敗は `QueryState` の 1 本に統一する。**空は「補正の対象が無い」**であって
+          失敗ではないので、再試行ではなく閉じる導線へ委ねる。 */}
+      <QueryState
+        query={figures}
+        loadingLabel={t`図を読み込み中…`}
+        errorTitle={t`図の一覧を取得できませんでした。`}
+        isEmpty={() => targets.length === 0}
+        empty={
+          <EmptyState
+            title={t`補正が必要な図はありません。`}
+            description={t`このジョブの図はすべてコード化済みです。`}
+          />
+        }
+      >
+        {() => (
+          <div className="flex flex-col gap-n4">
+            {targets.map((figure) => (
               <FigureEditor
                 key={figure.figureId}
                 jobId={jobId}
@@ -198,9 +190,10 @@ export function FigureCorrectionPanel({
                 submitting={submitting}
                 onSubmit={(input) => onSubmit(figure.figureId, input)}
               />
-            ))
-          ))}
-      </CardContent>
-    </Card>
+            ))}
+          </div>
+        )}
+      </QueryState>
+    </Panel>
   );
 }

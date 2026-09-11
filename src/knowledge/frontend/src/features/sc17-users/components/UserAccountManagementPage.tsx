@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Alert, Button, Label, Select, StatusBadge } from '@platform/ui';
+import { Alert, Button, EmptyState, Label, Note, Panel, Select, StatusBadge } from '@platform/ui';
 import { appConfig } from '@foundation/config/runtimeConfig';
+import { QueryState } from '@foundation/ui/QueryState';
 import { toMessages } from '@foundation/utils/apiErrors';
 import type { PlatformUserDto } from '@foundation/api/generated/bff.schemas';
+import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { DataTable } from '../../../components/DataTable';
 import type { DataTableColumns } from '../../../components/DataTable';
 import {
@@ -65,6 +67,11 @@ export function UserAccountManagementPage() {
   // 呼び出し元が 1 つしかない間接層が増えるだけになる。
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  // 🔴 **無効化は取り返しがつかない**（全セッションが即座に失効し、作業中の利用者が落ちる）。
+  // 押した瞬間に走らせず、確認ダイアログを 1 枚挟む（SC-19 / SC-20 と同じ `ConfirmDialog`。
+  // 初期フォーカスは取消側で、Escape で降りられる）。**再有効化には挟まない** ——
+  // 失効しているものを戻す操作であり、取り返しがつく。
+  const [confirmingDisable, setConfirmingDisable] = useState(false);
 
   const rows = useMemo(() => users.data ?? [], [users.data]);
   // SC-17 / IADR-0341: 権限編集の下書き（クライアント状態）は `hooks/` に在る。
@@ -103,7 +110,7 @@ export function UserAccountManagementPage() {
         cell: ({ row }) => (
           <div>
             <span>{row.original.displayName}</span>
-            <p className="text-xs text-[--color-fg-muted]">{row.original.username}</p>
+            <p className="text-xs text-fg-muted">{row.original.username}</p>
           </div>
         ),
       },
@@ -178,10 +185,13 @@ export function UserAccountManagementPage() {
   return (
     <section className="space-y-6">
       <div>
-        <h1 className="text-lg font-semibold text-[--color-fg]">
+        {/* モックの `.ttl` / `.sub`。副題がモックの「プロビジョニング・監査」区画の内容
+            （自動作成・定義済み値のみ・即時反映・退職者の自動無効化）を兼ねる ——
+            同じ断りを 1 画面に 2 度置かない。 */}
+        <h1 className="text-[17px] font-medium text-fg">
           <Trans>ユーザーアカウント管理</Trans>
         </h1>
-        <p className="text-xs text-[--color-fg-muted]" data-testid="users-help">
+        <p className="text-xs text-fg-muted" data-testid="users-help">
           <Trans>
             利用者のロール割当・ABAC
             属性割当・アカウントの無効化を行います。アカウントは人事システム
@@ -191,36 +201,29 @@ export function UserAccountManagementPage() {
         </p>
       </div>
 
-      <div>
-        <h2 className="mb-2 text-sm font-medium text-[--color-fg-muted]">
-          <Trans>監査ログ</Trans>
-        </h2>
+      <Panel heading={t`監査ログ`}>
         {auditLogUrl ? (
           <a
             href={auditLogUrl}
             target="_blank"
             rel="noreferrer"
-            className="text-sm text-[--color-brand] hover:underline"
+            className="text-sm text-brand hover:underline"
             data-testid="audit-log-link"
           >
             <Trans>ログ基盤で権限変更の監査ログを見る ↗</Trans>
           </a>
         ) : (
           // 🔴 **無いリンクを描かない。** 導線が未設定であることと、記録の所在は書く。
-          <p className="text-sm text-[--color-fg-muted]" data-testid="audit-log-unavailable">
+          <p className="text-sm text-fg-muted" data-testid="audit-log-unavailable">
             <Trans>
               監査ログの参照先が未設定です。権限変更とアカウント無効化は認可基盤の管理イベントとして
               記録されています。
             </Trans>
           </p>
         )}
-      </div>
+      </Panel>
 
-      <div>
-        <h2 className="mb-2 text-sm font-medium text-[--color-fg-muted]">
-          <Trans>ユーザーアカウント</Trans>
-        </h2>
-
+      <Panel heading={t`ユーザーアカウント`}>
         <div className="mb-3 flex flex-wrap items-end gap-4" data-testid="user-filters">
           <div>
             <Label htmlFor="user-filter-department">
@@ -260,35 +263,47 @@ export function UserAccountManagementPage() {
           </div>
         </div>
 
-        {users.isError ? (
-          // 🔴 **空の一覧へ縮退しない。**「1 件も居ない」と「一覧が引けない」は別の意味である。
-          <Alert tone="danger" role="alert" label={t`エラー`} data-testid="users-error">
-            {toMessages(users.error, t`利用者一覧を取得できませんでした。`).join(' / ')}
-          </Alert>
-        ) : users.isPending ? (
-          <p className="text-sm text-[--color-fg-muted]" data-testid="users-loading">
-            <Trans>読み込み中です。</Trans>
-          </p>
-        ) : visible.length === 0 ? (
-          <p className="text-sm text-[--color-fg-muted]" data-testid="users-empty">
-            <Trans>該当する利用者はいません。</Trans>
-          </p>
-        ) : (
-          <DataTable
-            caption={t`利用者アカウントの一覧`}
-            sortHint={t`並べ替え`}
-            columns={columns}
-            data={visible}
-          />
-        )}
-      </div>
+        {/* 🔴 待ち・失敗・空・本体は `QueryState` が 1 か所で描き分ける（判定順 isError → isPending →
+            isEmpty → 本体）。**空の一覧へ縮退しない** ——「1 人も居ない」と「一覧が引けない」は
+            別の意味である。
+            🔴 **空の判定は絞り込み後で行う**（絞り込みが全部を落としても 0 件として正しく描く）。
+            **ただし文言は分ける** —— 「1 人も居ない」と「絞り込みに一致しない」では次の一手が違う。 */}
+        <QueryState
+          query={users}
+          isEmpty={(list) =>
+            filterUsers(list, { department: departmentFilter, role: roleFilter }).length === 0
+          }
+          empty={
+            rows.length === 0 ? (
+              <EmptyState
+                title={t`利用者はまだ登録されていません。`}
+                description={t`アカウントは人事システム連携で自動的に作成されます。連携の稼働を確認してください。`}
+              />
+            ) : (
+              <EmptyState
+                title={t`該当する利用者はいません。`}
+                description={t`部門・ロールの絞り込みを「すべて」に戻すと全件が出ます。`}
+              />
+            )
+          }
+          errorTitle={t`利用者一覧を取得できませんでした。`}
+          errorDescription={toMessages(users.error, '').join(' / ') || undefined}
+        >
+          {() => (
+            <DataTable
+              caption={t`利用者アカウントの一覧`}
+              sortHint={t`並べ替え`}
+              columns={columns}
+              data={visible}
+            />
+          )}
+        </QueryState>
+      </Panel>
 
       {editing && (
-        <div data-testid="permission-editor">
-          <h2 className="mb-2 text-sm font-medium text-[--color-fg-muted]">{editorHeading}</h2>
-
-          <fieldset className="mb-3">
-            <legend className="text-xs text-[--color-fg-muted]">
+        <Panel heading={editorHeading} data-testid="permission-editor">
+          <fieldset className="mb-n3">
+            <legend className="text-xs text-fg-muted">
               <Trans>ロール割当（必須・複数選択可）</Trans>
             </legend>
             {assignableRoles.map((role) => (
@@ -379,10 +394,8 @@ export function UserAccountManagementPage() {
               <Trans>保存</Trans>
             </Button>
             {editing.enabled ? (
-              <Button
-                variant="danger"
-                onClick={() => actions.disable.mutate({ userId: editing.id })}
-              >
+              // 押した瞬間には走らせない。下の ConfirmDialog で 1 度受ける。
+              <Button variant="danger" onClick={() => setConfirmingDisable(true)}>
                 <Trans>無効化（全セッション失効）</Trans>
               </Button>
             ) : (
@@ -395,13 +408,41 @@ export function UserAccountManagementPage() {
             </Button>
           </div>
 
-          <p className="mt-2 text-xs text-[--color-fg-muted]" data-testid="editor-notes">
+          <Note data-testid="editor-notes">
             <Trans>
               保存すると認可基盤へ反映され、認可判定に即座に効きます。属性に選べるのは定義済みの値
               だけです。無効化すると、その利用者の全セッションが即座に失効します。
             </Trans>
+          </Note>
+        </Panel>
+      )}
+
+      {/* 05_screens §SC-17: 無効化は**全セッションの即時失効**を伴う。取り返しがつかないので、
+          実行の手前に確認を 1 枚挟む（`destructive` で実行ボタンを danger にし、
+          文言でも何が起きるかを書く。色だけに意味を載せない）。 */}
+      {editing && confirmingDisable && (
+        <ConfirmDialog
+          title={t`このアカウントを無効化しますか？`}
+          confirmLabel={t`無効化する`}
+          cancelLabel={t`やめる`}
+          destructive
+          pending={actions.disable.isPending}
+          onConfirm={() => {
+            actions.disable.mutate({ userId: editing.id });
+            setConfirmingDisable(false);
+          }}
+          onCancel={() => setConfirmingDisable(false)}
+        >
+          <p>
+            <Trans>
+              「{editingName}
+              」のアカウントを無効化します。その利用者の全セッションが即座に失効し、作業中の画面もその場で使えなくなります。
+            </Trans>
           </p>
-        </div>
+          <p>
+            <Trans>再有効化はこの画面から行えます（ロールと属性の割当は保持されます）。</Trans>
+          </p>
+        </ConfirmDialog>
       )}
     </section>
   );

@@ -39,7 +39,10 @@ test('SC-02: an authenticated user sees the neutral empty answer, not a permissi
   expect(traffic.calls.map((c) => c.key)).toContain('POST /search');
 
   // ★ 陽性対照: 0 件のときの固定文言（deny-by-default。IADR-0009）。
-  await expect(page.getByText('該当する文書が見つかりませんでした。')).toBeVisible();
+  // **［2026-09-12］`QueryState` ＋ `EmptyState` への統一で文言が変わった**
+  // （空は失敗ではないので、再試行ではなく**条件の変更**を促す）。
+  await expect(page.getByText('該当する文書はありません。')).toBeVisible();
+  await expect(page.getByText('条件を変えて再検索してください。')).toBeVisible();
 
   // ★ 陰性対照: **権限外であることを匂わせない**（存在秘匿）。「権限」「閲覧できません」と
   // 書いた瞬間に「在るが見せない」が漏れる —— 0 件と権限外は同じ文言で応答する。

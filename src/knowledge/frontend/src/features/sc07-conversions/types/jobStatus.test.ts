@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { i18n } from '@foundation/i18n';
 import {
+  attemptRatio,
   hasRetainedFigures,
   isBodyAbsent,
   isCorrectable,
+  isDeadLettered,
   isRetryable,
   jobStatusView,
   JOB_STATUSES,
@@ -74,5 +76,22 @@ describe('jobStatus (SC-07)', () => {
     expect(isRetryable('processing')).toBe(false);
     expect(isRetryable('queued')).toBe(false);
     expect(isRetryable('succeeded')).toBe(false);
+  });
+});
+
+// SC-07, FR-12, UC-06（裁定 Q13 / #533）: デッドレターは **failed の内訳**であって 5 値目ではない。
+describe('isDeadLettered / attemptRatio (SC-07)', () => {
+  it('reports the dead-letter marker only when the contract says so', () => {
+    expect(isDeadLettered({ deadLettered: true })).toBe(true);
+    expect(isDeadLettered({ deadLettered: false })).toBe(false);
+    // 古い応答（項目なし）は「落ちていない」へ倒す（`undefined` は「知らない」である）。
+    expect(isDeadLettered({})).toBe(false);
+  });
+
+  it('formats the attempt ratio from the contract and never renders half of a fraction', () => {
+    expect(attemptRatio({ attempts: 3, maxAttempts: 5 })).toBe('3/5');
+    expect(attemptRatio({ attempts: 3 })).toBeNull();
+    expect(attemptRatio({ maxAttempts: 5 })).toBeNull();
+    expect(attemptRatio({ attempts: 3, maxAttempts: 0 })).toBeNull();
   });
 });

@@ -38,7 +38,8 @@ export function AdminAbacSettingsPage() {
 
   return (
     <section>
-      <h1 className="mb-3 text-lg font-semibold text-[--color-fg]">
+      {/* モックの `.ttl`（17px / medium）。区画の切替は下の Tabs が担う。 */}
+      <h1 className="mb-n3 text-[17px] font-medium text-fg">
         <Trans>管理者設定（ABAC）</Trans>
       </h1>
 
@@ -59,13 +60,11 @@ export function AdminAbacSettingsPage() {
           </TabsTrigger>
         </TabsList>
 
+        {/* 🔴 **クエリをそのまま渡す。** 旗（`isPending` / `isError`）を個別の props へ
+            ほどくと、受け手は三状態を自分で組み立てるほかなくなる ——
+            `QueryState` は `UseQueryResult` 1 本を受け取って判定順を固定する部品である。 */}
         <TabsContent value="attributes">
-          <AttributeDictionaryPanel
-            attributes={attributes.data ?? []}
-            isPending={attributes.isPending}
-            isError={attributes.isError}
-            error={attributes.error}
-          />
+          <AttributeDictionaryPanel query={attributes} />
         </TabsContent>
 
         {/* FR-09, SC-09, #640: タグ辞書。自前でデータを取るので props を持たない
@@ -81,13 +80,9 @@ export function AdminAbacSettingsPage() {
           <EdgeTypeDictionaryPanel />
         </TabsContent>
         <TabsContent value="policies">
-          <PolicyEditorPanel
-            policies={policies.data ?? []}
-            attributes={attributes.data ?? []}
-            isPending={policies.isPending}
-            isError={policies.isError}
-            error={policies.error}
-          />
+          {/* 属性は**フォームの値域**として渡す（一覧の三状態は持たない）。
+              ポリシー一覧の三状態は `QueryState` が受け持つ。 */}
+          <PolicyEditorPanel query={policies} attributes={attributes.data ?? []} />
         </TabsContent>
       </Tabs>
     </section>

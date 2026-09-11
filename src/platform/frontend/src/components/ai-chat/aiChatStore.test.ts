@@ -5,7 +5,14 @@ import { useAiChatStore, selectHistory } from './aiChatStore';
 // IADR-0121 決定 1 の第 4 段（#788）。**ストアは純ロジックとして固定する**——描画を通すと
 // 「画面ごとに分かれているか」の判定がレイアウトの都合に紛れる。
 
-const turn = (id: string) => ({ id, question: `q-${id}`, answer: `a-${id}`, answerId: null });
+const turn = (id: string) => ({
+  id,
+  question: `q-${id}`,
+  answer: `a-${id}`,
+  answerId: null,
+  citations: [],
+  stopped: false,
+});
 
 beforeEach(() => {
   useAiChatStore.setState({ open: false, historyByScreen: {} });

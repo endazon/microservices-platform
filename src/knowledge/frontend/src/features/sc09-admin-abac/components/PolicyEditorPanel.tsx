@@ -1,10 +1,13 @@
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { MessageDescriptor } from '@lingui/core';
+import type { UseQueryResult } from '@tanstack/react-query';
 import {
   Alert,
   Button,
+  EmptyState,
   Input,
   Label,
+  Panel,
   Select,
   StatusBadge,
   Table,
@@ -17,6 +20,7 @@ import {
   Tag,
 } from '@platform/ui';
 import { i18n } from '@foundation/i18n';
+import { QueryState } from '@foundation/ui/QueryState';
 import { toMessages } from '@foundation/utils/apiErrors';
 import {
   attributeScopeLabel,
@@ -71,11 +75,11 @@ function PolicyRow({
   return (
     <TableRow>
       <TableCell>
-        <div className="text-[--color-fg]">{policyName}</div>
+        <div className="text-fg">{policyName}</div>
         {/* アクションは**分類の名前**であり状態ではない（Tag / StatusBadge の使い分け）。 */}
         <Tag>{labelOf(policyActionLabel(policy.action))}</Tag>
       </TableCell>
-      <TableCell className="text-xs text-[--color-fg-muted]">
+      <TableCell className="text-xs text-fg-muted">
         <ConditionSummary policy={policy} />
       </TableCell>
       <TableCell>
@@ -115,17 +119,11 @@ function PolicyRow({
 }
 
 export function PolicyEditorPanel({
-  policies,
+  query,
   attributes,
-  isPending,
-  isError,
-  error,
 }: {
-  policies: AbacPolicyDto[];
+  query: UseQueryResult<AbacPolicyDto[], unknown>;
   attributes: AttributeDefinitionDto[];
-  isPending: boolean;
-  isError: boolean;
-  error: unknown;
 }) {
   const { t } = useLingui();
   const actions = usePolicyActions();
@@ -153,30 +151,26 @@ export function PolicyEditorPanel({
   }
 
   return (
-    <div className="grid gap-3 lg:grid-cols-2">
-      <section aria-label={t`アクセスポリシー`}>
-        <h2 className="mb-2 text-base font-semibold text-[--color-fg]">
-          <Trans>ポリシー（利用者属性 × 文書属性）</Trans>
-        </h2>
-
-        {isPending && (
-          <p role="status" className="text-sm text-[--color-fg-muted]">
-            <Trans>読み込み中…</Trans>
-          </p>
-        )}
-        {isError && (
-          <Alert tone="danger" role="alert" label={t`エラー`}>
-            {toMessages(error, t`ポリシーを取得できませんでした。`).join(' / ')}
-          </Alert>
-        )}
-
-        {!isPending &&
-          !isError &&
-          (policies.length === 0 ? (
-            <p className="text-sm">
-              <Trans>ポリシーは登録されていません。</Trans>
-            </p>
-          ) : (
+    // モックの `.g2`（2 段組）。左が一覧 ＋ 起票、右が検証結果。
+    <div className="grid gap-n3 lg:grid-cols-2">
+      <Panel heading={t`ポリシー（利用者属性 × 文書属性）`} aria-label={t`アクセスポリシー`}>
+        {/* 🔴 待ち・失敗・空・本体は `QueryState` が 1 か所で描き分ける。
+            **失敗を「ポリシーは登録されていません」へ縮退させない** ——
+            認可の設定画面で 0 件と取得失敗を取り違えると、
+            「誰も通らない設定になっている」と誤読する。 */}
+        <QueryState
+          query={query}
+          isEmpty={(rows) => rows.length === 0}
+          empty={
+            <EmptyState
+              title={t`ポリシーは登録されていません。`}
+              description={t`下の「ポリシーを追加」から、利用者属性と文書属性の組み合わせを 1 件登録してください。`}
+            />
+          }
+          errorTitle={t`ポリシーを取得できませんでした。`}
+          errorDescription={toMessages(query.error, '').join(' / ') || undefined}
+        >
+          {(policies) => (
             <Table>
               <TableCaption>{t`アクセスポリシーの一覧`}</TableCaption>
               <TableHead>
@@ -212,7 +206,8 @@ export function PolicyEditorPanel({
                 ))}
               </TableBody>
             </Table>
-          ))}
+          )}
+        </QueryState>
 
         <form
           aria-label={t`ポリシー登録`}
@@ -223,7 +218,7 @@ export function PolicyEditorPanel({
             create.mutate({ data: draft.body() }, { onSuccess: draft.resetAfterSave });
           }}
         >
-          <h3 className="text-sm font-medium text-[--color-fg-muted]">
+          <h3 className="text-sm font-medium text-fg-muted">
             <Trans>ポリシーを追加</Trans>
           </h3>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -335,32 +330,37 @@ export function PolicyEditorPanel({
             </Button>
           </div>
         </form>
-      </section>
+      </Panel>
 
-      <section aria-label={t`検証結果`}>
-        <h2 className="mb-2 text-base font-semibold text-[--color-fg]">
-          <Trans>検証結果</Trans>
-        </h2>
+      <Panel heading={t`検証結果`} aria-label={t`検証結果`}>
         {saved && !failed && (
           <Alert tone="success" role="status" label={t`完了`}>
             <Trans>ポリシーを保存しました。認可判定へ即時反映されます。</Trans>
           </Alert>
         )}
         {/* #535: dry-run の結果。**保存していないことを文言で明示する**——
-            「検証した」と「保存した」を取り違えると、直したつもりで直っていない状態になる。 */}
-        {validated?.valid === true && (
-          <Alert tone="success" role="status" label={t`検証`}>
-            <Trans>矛盾はありません。まだ保存していません。</Trans>
-          </Alert>
-        )}
-        {validated?.valid === false && (
-          <Alert tone="danger" role="alert" label={t`検証`}>
-            <ul>
-              {validated.errors.map((m) => (
-                <li key={m}>{m}</li>
-              ))}
-            </ul>
-          </Alert>
+            「検証した」と「保存した」を取り違えると、直したつもりで直っていない状態になる。
+            hi-fi 434 は判定を**短い語 ＋ 説明文**で描く（区画まるごとの帯ではない）ので、
+            `StatusBadge`（色 ＋ 固定アイコン ＋ テキスト。INDEX 決定 21）＋ 本文へ寄せる。
+            🔴 **`role="alert"` は使わない** —— 矛盾は系の失敗ではなく**求めた判定の答え**であり、
+            割り込みではない。利用者が押した結果なので `role="status"` で穏やかに知らせる。 */}
+        {validated !== undefined && (
+          <div role="status" className="mb-n2 flex flex-col items-start gap-n2">
+            <StatusBadge tone={validated.valid ? 'success' : 'danger'}>
+              {validated.valid ? t`矛盾なし` : t`矛盾あり`}
+            </StatusBadge>
+            {validated.valid ? (
+              <p className="text-sm text-fg-muted">
+                <Trans>矛盾はありません。まだ保存していません。</Trans>
+              </p>
+            ) : (
+              <ul className="text-sm text-danger">
+                {validated.errors.map((m) => (
+                  <li key={m}>{m}</li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
         {failed && (
           <Alert tone="danger" role="alert" label={t`エラー`}>
@@ -372,13 +372,13 @@ export function PolicyEditorPanel({
           </Alert>
         )}
         {!saved && !failed && !validated && (
-          <p className="text-sm text-[--color-fg-muted]">
+          <p className="text-sm text-fg-muted">
             <Trans>
               保存前に構文・矛盾を検証します。矛盾があれば保存できません。保存すると認可判定へ即時反映されます。
             </Trans>
           </p>
         )}
-      </section>
+      </Panel>
     </div>
   );
 }

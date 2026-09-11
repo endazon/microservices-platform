@@ -277,6 +277,11 @@ describe('UserAccountManagementPage (SC-17)', () => {
   });
 
   // 05_screens §SC-17 アクション: 無効化→全セッション即時失効。無効な利用者には再有効化を出す。
+  //
+  // ★［UI/UX 改善 2026-09-12］🔴 **無効化の手前に確認ダイアログが入った。**
+  // 全セッションの即時失効は取り返しがつかないため、押した瞬間には走らせない
+  // （SC-19 / SC-20 と同じ `ConfirmDialog`）。**再有効化には挟まない**（取り返しがつく）ので、
+  // 下半分は従前どおり 1 クリックで飛ぶ —— その非対称もここで固定される。
   it('sends a disable request for an enabled user and an enable request for a disabled one', async () => {
     mockApi();
     const user = userEvent.setup();
@@ -284,6 +289,13 @@ describe('UserAccountManagementPage (SC-17)', () => {
 
     await openEditor(user, '田中 太郎');
     await user.click(screen.getByRole('button', { name: '無効化（全セッション失効）' }));
+    // 確認の手前では 1 件も飛ばない（押しただけで失効すると取り返しがつかない）。
+    expect(mocks.apiRequest.mock.calls.some(([path]) => String(path).includes('/disable'))).toBe(
+      false,
+    );
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByText(/全セッションが即座に失効/)).toBeInTheDocument();
+    await user.click(dialog.getByRole('button', { name: '無効化する' }));
     await waitFor(() =>
       expect(
         mocks.apiRequest.mock.calls.some(
@@ -342,11 +354,17 @@ describe('UserAccountManagementPage (SC-17)', () => {
   });
 
   // 🔴 取得失敗を空の一覧へ潰さない（「1 人も居ない」と「引けない」は別の意味である）。
+  // ★［UI/UX 改善 2026-09-12］三部品（NFR / ADR-0031）へ寄せたので、失敗は `QueryState` →
+  // `ErrorState`（`role="alert"`）が描く。**testid ではなく役割と文言で引く。**
   it('surfaces a fetch failure instead of degrading to an empty list', async () => {
     mocks.apiRequest.mockRejectedValue(new ApiError('server', 'failed', 500, []));
     await renderPage();
 
-    expect(await screen.findByTestId('users-error')).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '利用者一覧を取得できませんでした。',
+    );
+    // 0 件の文言へ縮退していない（「1 人も居ない」と読ませない）。
+    expect(screen.queryByText('該当する利用者はいません。')).not.toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 

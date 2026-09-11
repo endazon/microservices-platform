@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Link } from '@tanstack/react-router';
 import { RotateCcw } from 'lucide-react';
-import { Alert, Label, Select, StatusBadge } from '@platform/ui';
+import { EmptyState, Label, Note, Select, StatusBadge } from '@platform/ui';
+import { QueryState } from '@foundation/ui/QueryState';
 import type { AiSuggestion } from '@foundation/api/generated/bff.schemas';
 import { DataTable } from '../../../components/DataTable';
 import type { DataTableColumns } from '../../../components/DataTable';
@@ -40,13 +41,10 @@ import type { KindOption, StateOption } from '../types/suggestionVocabulary';
  */
 function ReinstatedNotice() {
   return (
-    <p
-      className="mt-1 flex items-start gap-1 text-xs text-[--color-fg-muted]"
-      data-testid="reinstated-notice"
-    >
+    <Note tone="warn" className="flex items-start gap-1" data-testid="reinstated-notice">
       <RotateCcw className="mt-0.5 size-3.5 shrink-0" aria-hidden />
       <Trans>この提案は一度却下されましたが、文書が更新されたため再度提示しています。</Trans>
-    </p>
+    </Note>
   );
 }
 
@@ -57,8 +55,6 @@ export function AiSuggestionListPage() {
 
   const suggestions = useAiSuggestions(search);
   const edgeTypes = useEdgeTypeCatalog();
-
-  const rows = useMemo(() => suggestions.data ?? [], [suggestions.data]);
 
   // 型 ID → 表示名。辞書が引けないときは ID を出さず「型不明」に倒す
   //（GUID を利用者へ見せても判断の役に立たない）。写像そのものは types/ の純関数が持つ。
@@ -107,10 +103,8 @@ export function AiSuggestionListPage() {
         cell: ({ row }) => (
           <div>
             <span>{describe(row.original)}</span>
-            {/* SC-21 主要素 6: 提案の根拠（なぜ関連と判断したか）。 */}
-            <p className="text-xs text-[--color-fg-muted]" data-testid="rationale">
-              {row.original.rationale}
-            </p>
+            {/* SC-21 主要素 6: 提案の根拠（なぜ関連と判断したか）。モックの `.note`（Note）で出す。 */}
+            <Note data-testid="rationale">{row.original.rationale}</Note>
             {row.original.reinstatedReason ? <ReinstatedNotice /> : null}
           </div>
         ),
@@ -143,7 +137,7 @@ export function AiSuggestionListPage() {
           <Link
             to="/docs/$id"
             params={{ id: row.original.sourceDocumentId }}
-            className="text-[--color-accent] underline"
+            className="text-accent underline"
           >
             <Trans>文書詳細で確認</Trans>
           </Link>
@@ -157,18 +151,18 @@ export function AiSuggestionListPage() {
   return (
     <section className="space-y-3">
       <div>
-        <h1 className="text-lg font-semibold text-[--color-fg]">
+        <h1 className="text-[17px] font-medium text-fg">
           <Trans>AI 提案一覧</Trans>
         </h1>
         {/* 位置づけの固定文言。**なぜ一覧で承認できないのか**を必ず示す（05_screens §SC-21）。 */}
-        <p className="text-xs text-[--color-fg-muted]" data-testid="suggestions-help">
+        <Note data-testid="suggestions-help">
           <Trans>
             AI が提案したリンク候補・タグ候補を棚卸しするための一覧です。
             承認・却下はこの画面では行いません。各行の「文書詳細で確認」から文書詳細へ移動し、
             両端の文書の内容を見たうえで判断してください。まとめて承認する操作は提供していません。
             閲覧権限のない文書に関する提案は、件数を含め表示されません。
           </Trans>
-        </p>
+        </Note>
       </div>
 
       <div className="flex flex-wrap items-end gap-4">
@@ -209,27 +203,34 @@ export function AiSuggestionListPage() {
         </div>
       </div>
 
-      {suggestions.isError ? (
-        // 🔴 **空の一覧へ縮退しない。**「提案が 1 件も無い」と「一覧が引けない」は別の意味である。
-        <Alert tone="danger" label={t`エラー`} data-testid="suggestions-error">
-          <Trans>提案の一覧を取得できませんでした。時間をおいて再度お試しください。</Trans>
-        </Alert>
-      ) : suggestions.isPending ? (
-        <p className="text-sm text-[--color-fg-muted]" data-testid="suggestions-loading">
-          <Trans>読み込み中です。</Trans>
-        </p>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-[--color-fg-muted]" data-testid="suggestions-empty">
-          <Trans>該当する提案はありません。</Trans>
-        </p>
-      ) : (
-        <DataTable
-          caption={t`AI 提案の一覧`}
-          sortHint={t`並べ替え`}
-          columns={columns}
-          data={rows}
-        />
-      )}
+      {/*
+        🔴 **空の一覧へ縮退しない。**「提案が 1 件も無い」と「一覧が引けない」は別の意味である。
+        待ち・失敗・空・本体の描き分けは `QueryState` に一本化した（判定順は失敗 → 待ち → 空 → 本体）。
+        失敗には**再試行の導線**が付く（以前は「時間をおいて再度お試しください」と書くだけで、
+        利用者は再読込しか手が無かった）。
+      */}
+      <QueryState
+        query={suggestions}
+        isEmpty={(data) => data.length === 0}
+        loadingLabel={t`提案の一覧を読み込み中…`}
+        errorTitle={t`提案の一覧を取得できませんでした。`}
+        errorDescription={t`棚卸しの残量は判断できません。空の一覧ではありません。`}
+        empty={
+          <EmptyState
+            title={t`該当する提案はありません。`}
+            description={t`状態や種類の絞り込みを変えると、ほかの提案が見つかることがあります。`}
+          />
+        }
+      >
+        {(rows) => (
+          <DataTable
+            caption={t`AI 提案の一覧`}
+            sortHint={t`並べ替え`}
+            columns={columns}
+            data={rows}
+          />
+        )}
+      </QueryState>
     </section>
   );
 }

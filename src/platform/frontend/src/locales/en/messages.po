@@ -28,6 +28,11 @@ msgstr "(2) Difference from the declaration (Git) — drift"
 msgid "(3) 構成バージョン履歴（新しい順）"
 msgstr "(3) Configuration version history (newest first)"
 
+#: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+msgid "（停止）"
+msgstr "(stopped)"
+
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
@@ -86,6 +91,10 @@ msgstr "Select {title}"
 msgid "{totalHits} 件（権限内のみ表示）"
 msgstr "{totalHits} result(s) (only documents you may access)"
 
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "「{editingName}」のアカウントを無効化します。その利用者の全セッションが即座に失効し、作業中の画面もその場で使えなくなります。"
+msgstr "This disables the account of “{editingName}”. All of that user's sessions expire immediately, and any screen they are working on stops working at once."
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "「{revokeTargetName}」のトークンを無効にします。この端末からの同期はすぐに停止します。再び同期するには、トークンを再発行してプラグインへ入れ直してください。"
 msgstr "This revokes the token for \"{revokeTargetName}\". Syncing from this device stops immediately. To sync again, reissue a token and paste it into the plugin settings."
@@ -97,6 +106,14 @@ msgstr "This deletes \"{softDeleteTitle}\". Deleting does not free up storage (t
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "「{tagValue}」を付与"
 msgstr "Add the tag “{tagValue}”"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
+msgid "「＋ ソース登録」から取り込み元を登録してください。"
+msgstr "Use “+ Add source” to register an ingestion source."
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "「＋ 新規登録」から最初の文書を登録してください。"
+msgstr "Use “+ New” to register the first document."
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "← チャットに戻る"
@@ -168,10 +185,6 @@ msgid "AI が提案したリンク候補・タグ候補を棚卸しするため�
 msgstr "A working list of the link and tag candidates suggested by AI. Approval and rejection are not performed on this screen. Open the document detail from each row and decide after reading both documents. There is no way to approve suggestions in bulk. Suggestions about documents you may not view are never shown, not even as a count."
 
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
-msgid "AI チャット"
-msgstr "AI chat"
-
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "AI チャットパネル"
 msgstr "AI chat panel"
 
@@ -219,6 +232,10 @@ msgstr "AI suggestions"
 msgid "AI 提案由来の辺は破線（承認済みのみ表示）"
 msgstr "Edges from AI suggestions are dashed (approved only)"
 
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+msgid "AIチャット"
+msgstr "AI chat"
+
 #: knowledge/frontend/src/features/sc08-analysis/routes/sc08AnalysisRoute.ts
 msgid "AI分析"
 msgstr "AI analysis"
@@ -262,6 +279,10 @@ msgstr "embeds: dotted line with arrow"
 #: platform/frontend/src/lib/auth/LoginPage.tsx
 msgid "Keycloak でサインイン"
 msgstr "Sign in with Keycloak"
+
+#: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
+msgid "LLM不調時は検索結果のみ返す縮退運転（UC-01 例外フロー）。フィルタ候補は権限内のタグ／部門／プロジェクトのみ提示。"
+msgstr "When the LLM is unavailable, only search results are returned (degraded mode, UC-01 exception flow). Filter candidates are limited to the tags, departments and projects within your permissions."
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "MCP クライアント登録管理"
@@ -316,13 +337,21 @@ msgstr "SaaS"
 msgid "supersedes: 太実線・矢印（旧→新）"
 msgstr "supersedes: thick solid line with arrow (old to new)"
 
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "URL を確かめるか、検索から辿り直してください。"
+msgstr "Check the URL, or find the document again from search."
+
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
 msgid "Wiki"
 msgstr "Wiki"
 
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
-msgid "Wiki の検索に失敗しました。Wiki に到達できない可能性があります。"
-msgstr "The wiki search failed. The wiki may be unreachable."
+msgid "Wiki に到達できない可能性があります。"
+msgstr "The wiki may be unreachable."
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "Wiki の検索に失敗しました。"
+msgstr "The wiki search failed."
 
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "Wiki を検索"
@@ -339,6 +368,14 @@ msgstr "View in Wiki"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "アーカイブ"
 msgstr "Archive"
+
+#: knowledge/frontend/src/features/sc05-documents/types/documentStatus.ts
+msgid "アーカイブ済み"
+msgstr "Archived"
+
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "アカウントは人事システム連携で自動的に作成されます。連携の稼働を確認してください。"
+msgstr "Accounts are created automatically through the HR system integration. Check that the integration is running."
 
 #: platform/frontend/src/app/Layout.tsx
 msgid "アカウント設定（{name}）"
@@ -373,26 +410,19 @@ msgid "イベント接続はありません。"
 msgstr "There are no event bindings."
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
-#: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
-#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
-#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
-#: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
-#: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
-#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
-#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
-#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+#: platform/frontend/src/app/routing/routeStates.tsx
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 #: platform/frontend/src/components/notifications/NotificationBell.tsx
 #: platform/frontend/src/components/ui/ErrorBoundary.tsx
@@ -417,9 +447,21 @@ msgstr "Key"
 msgid "キー（必須）"
 msgstr "Key (required)"
 
+#: knowledge/frontend/src/features/sc02-results/types/searchOptions.ts
+msgid "キーワード"
+msgstr "Keyword"
+
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "キーワード・意味検索"
 msgstr "Keyword / semantic search"
+
+#: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+msgid "キーワード、または探している内容を文で入力する。"
+msgstr "Enter a keyword, or describe what you are looking for."
+
+#: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+msgid "キーワードと文意の両方で探した結果である。"
+msgstr "Results matched by both keyword and meaning."
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "キーワード検索のみ →"
@@ -458,8 +500,12 @@ msgid "クライアント種別"
 msgstr "Client type"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
-msgid "グラフを読み込めませんでした。時間をおいて再試行してください。"
-msgstr "Failed to load the graph. Please try again later."
+msgid "グラフを読み込み中…"
+msgstr "Loading the graph…"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "グラフを読み込めませんでした。"
+msgstr "The graph could not be loaded."
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "グラフ内検索"
@@ -474,12 +520,24 @@ msgid "コネクタの一覧"
 msgstr "List of connectors"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "コネクタは Git（GitOps）の宣言で定義します。"
+msgstr "Connectors are defined in the Git (GitOps) declaration."
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "コネクタはありません。"
 msgstr "There are no connectors."
+
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "このアカウントを無効化しますか？"
+msgstr "Disable this account?"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "このジョブには人手補正が {pendingDiscard} 件あります。再変換すると補正は失われます。"
 msgstr "This job has {pendingDiscard} manual correction(s). Re-converting will discard them."
+
+#: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
+msgid "このジョブの図はすべてコード化済みです。"
+msgstr "Every figure in this job has already been converted to code."
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "このジョブは再変換できません（実行中、または失敗以外の状態です）。"
@@ -511,8 +569,8 @@ msgid "この操作は元に戻せません。削除後はいかなる方法で�
 msgstr "This action cannot be undone. After deletion the note cannot be restored by any means. (Deletion may take some time to propagate.)"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
-msgid "この文書には表示できる関係がありません。"
-msgstr "This document has no relations to display."
+msgid "この文書には表示できる関係がありません。辺の型の絞り込みを緩めるか、探索深さを深くしてください。"
+msgstr "This document has no relationships to show. Loosen the edge type filter, or increase the exploration depth."
 
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "この文書に対するリンク候補・タグ候補です。両端の文書の内容を確かめたうえで、 1 件ずつ承認または却下してください。"
@@ -546,6 +604,14 @@ msgstr "Revoke this device"
 msgid "この辺の型は {inUseCount} 本の辺で使われているため削除できません。"
 msgstr "This edge type is used by {inUseCount} edges and cannot be deleted."
 
+#: platform/frontend/src/components/ai-chat/CopyButton.tsx
+msgid "コピーしました"
+msgstr "Copied."
+
+#: platform/frontend/src/components/ai-chat/CopyButton.tsx
+msgid "コピーできませんでした"
+msgstr "Could not copy."
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "コミット"
 msgstr "Commit"
@@ -569,6 +635,14 @@ msgstr "Service mesh"
 #: platform/frontend/src/app/Layout.tsx
 msgid "サインアウト"
 msgstr "Sign out"
+
+#: platform/frontend/src/components/theme/ThemeToggle.tsx
+msgid "システム"
+msgstr "System"
+
+#: platform/frontend/src/app/Layout.tsx
+msgid "システム管理"
+msgstr "System administration"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "ジョブ"
@@ -615,6 +689,10 @@ msgstr "Source-side user {rowNumber}"
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "その他の型（implements / refines / depends-on / part-of）は細い実線で表示"
 msgstr "Other types (implements / refines / depends-on / part-of) are drawn as thin solid lines"
+
+#: platform/frontend/src/components/theme/ThemeToggle.tsx
+msgid "ダーク"
+msgstr "Dark"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
@@ -698,10 +776,22 @@ msgstr "Task type"
 msgid "ダッシュボード"
 msgstr "Dashboard"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "ツール"
+msgstr "Tool"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/routes/sc06DataSourcesRoute.tsx
 msgid "データソース"
 msgstr "Data sources"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "データソースからの取り込みが済むとここに並びます。"
+msgstr "Documents appear here once they are ingested from a data source."
+
+#: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
+msgid "データソースから取り込むとジョブが並びます。"
+msgstr "Jobs appear here once content is ingested from a data source."
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "データソースは登録されていません。"
@@ -723,6 +813,10 @@ msgstr "Register a data source"
 msgid "データソースを登録しました。"
 msgstr "The data source has been registered."
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
+msgid "データソースを読み込み中…"
+msgstr "Loading data sources…"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "データソース登録"
 msgstr "Data source registration"
@@ -735,6 +829,14 @@ msgstr "Data source management"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "テキスト層が無いため本文を抽出できませんでした（原本を参照）"
 msgstr "The body could not be extracted because the PDF has no text layer (see the original)"
+
+#: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
+msgid "デッドレター"
+msgstr "Dead-lettered"
+
+#: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
+msgid "デッドレター（試行 {attempts}）"
+msgstr "Dead-lettered (attempts {attempts})"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "トークンを発行する"
@@ -793,10 +895,6 @@ msgstr "View in the knowledge graph"
 msgid "ナレッジグラフに表示する"
 msgstr "Show in the knowledge graph"
 
-#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
-msgid "ナレッジグラフは起点となる文書から関係をたどります。検索結果や文書詳細から 「ナレッジグラフで表示」を選ぶか、URL の root パラメータで起点を指定してください。"
-msgstr "The knowledge graph explores relations from a root document. Choose \"Show in knowledge graph\" from search results or a document page, or set the root parameter in the URL."
-
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "ナレッジ検索・AI質問"
 msgstr "Knowledge search / AI question"
@@ -818,8 +916,16 @@ msgid "バージョン履歴を取得できませんでした。"
 msgstr "The version history could not be loaded."
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "パイプラインの段は Git（GitOps）の宣言で定義します。"
+msgstr "Pipeline stages are defined in the Git (GitOps) declaration."
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "パイプライン段"
 msgstr "Pipeline stages"
+
+#: knowledge/frontend/src/features/sc02-results/types/searchOptions.ts
+msgid "ハイブリッド"
+msgstr "Hybrid"
 
 #: platform/frontend/src/app/routing/breadcrumbs.ts
 msgid "パンくず"
@@ -850,8 +956,16 @@ msgid "ページが見つかりませんでした。"
 msgstr "The page was not found."
 
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "ページが選ばれていません。"
+msgstr "No page is selected."
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "ページツリー"
 msgstr "Page tree"
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "ページツリーまたは検索から辿り直してください。"
+msgstr "Pick a page again from the page tree or from search."
 
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "ページツリーまたは検索結果からページを選んでください。"
@@ -881,9 +995,18 @@ msgstr "Selected port implementations"
 msgid "ポート実装の選択の一覧"
 msgstr "List of selected port implementations"
 
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "ポート実装の選択は Git（GitOps）の宣言で定義します。"
+msgstr "Port implementation choices are defined in the Git (GitOps) declaration."
+
 #: platform/frontend/src/app/routing/breadcrumbs.ts
 msgid "ホーム"
 msgstr "Home"
+
+#: platform/frontend/src/app/routing/routeStates.tsx
+#: platform/frontend/src/components/ui/ErrorBoundary.tsx
+msgid "ホームへ戻る"
+msgstr "Back to home"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "ポリシー"
@@ -949,6 +1072,7 @@ msgstr "Model: {model}"
 msgid "モデル: 未使用（AI へ送信なし）"
 msgstr "Model: none (nothing was sent to the AI)"
 
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "やめる"
@@ -970,6 +1094,10 @@ msgstr "User account management"
 #: knowledge/frontend/src/features/sc17-users/routes/sc17UsersRoute.tsx
 msgid "ユーザー管理"
 msgstr "Users"
+
+#: platform/frontend/src/components/theme/ThemeToggle.tsx
+msgid "ライト"
+msgstr "Light"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "ラベル"
@@ -1005,8 +1133,12 @@ msgid "ログ基盤で権限変更の監査ログを見る ↗"
 msgstr "Open the permission-change audit log in the logging stack ↗"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "一覧"
-msgstr "List"
+msgid "上の入力欄からタイトルを付けて作成し、本文は Obsidian 連携で書きます。"
+msgstr "Create one with a title in the field above; the body is written through the Obsidian integration."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "上の入力欄に端末名を入れてトークンを発行し、Obsidian プラグインへ貼り付けてください。"
+msgstr "Enter a device name in the field above, issue a token, and paste it into the Obsidian plugin."
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "上位 {shownCount} 件を表示（全 {totalCount} 件）。すべては表示していません。 探索深さを浅くするか、辺の型を絞ってください。"
@@ -1015,6 +1147,34 @@ msgstr "Showing the top {shownCount} items (of {totalCount} in total). Not every
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "上位 {shownCount} 件を表示（全 {totalCount} 件以上）。総数の探索も上限に達した ため、「更新日が新しい順」「次数が大きい順」は厳密な上位 {shownCount} 件ではありません。 探索深さを浅くするか、辺の型を絞ってください。"
 msgstr "Showing the top {shownCount} items (of {totalCount} or more in total). The counting exploration also hit its limit, so \"recently updated\" and \"highest degree\" are not the exact top {shownCount}. Reduce the exploration depth or narrow the edge types."
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "下の「クライアント登録」から、接続する外部 AI エージェントを登録してください。"
+msgstr "Use “Register a client” below to register the external AI agent that will connect."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
+msgid "下の「タグ名（必須）」から最初のタグを登録してください。"
+msgstr "Register the first tag from the “Tag name (required)” field below."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
+msgid "下の「ポリシーを追加」から、利用者属性と文書属性の組み合わせを 1 件登録してください。"
+msgstr "Use “Add a policy” below to register one combination of user and document attributes."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+msgid "下の「型名（必須）」から最初の型を登録してください。登録が無い間、自動抽出の辺はすべて related へ丸められます。"
+msgstr "Register the first type from the “Type name (required)” field below. While the dictionary is empty, every automatically extracted edge falls back to related."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
+msgid "下の「属性を追加」から、利用者属性・文書属性の最初の定義を登録してください。"
+msgstr "Use “Add an attribute” below to register the first user or document attribute definition."
+
+#: knowledge/frontend/src/features/sc05-documents/types/documentStatus.ts
+msgid "下書き"
+msgstr "Draft"
+
+#: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+msgid "並び"
+msgstr "Sort"
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
@@ -1031,6 +1191,7 @@ msgstr "Core"
 msgid "主要ナビゲーション"
 msgstr "Main navigation"
 
+#: platform/frontend/src/app/routing/routeStates.tsx
 #: platform/frontend/src/components/ui/ErrorBoundary.tsx
 msgid "予期しないエラーが発生しました。時間をおいて再度お試しください。"
 msgstr "An unexpected error occurred. Please wait a moment and try again."
@@ -1143,6 +1304,10 @@ msgid "保存容量の上限に達しました。新しい資料は作成でき�
 msgstr "You have reached the storage limit. You cannot create new notes, but you can still save the notes you are editing. To free up storage, run \"Delete permanently (immediate)\" from the deleted list (ordinary deletion does not free up storage). You can also ask an administrator to raise the limit."
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
+msgid "保存容量の使用率"
+msgstr "Storage usage"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
 msgid "保存容量の使用量が 80% を超えました。不要な資料を整理しておくことをおすすめします。"
 msgstr "Storage usage has passed 80%. We recommend cleaning up notes you no longer need."
 
@@ -1150,12 +1315,17 @@ msgstr "Storage usage has passed 80%. We recommend cleaning up notes you no long
 msgid "保存容量の使用量が 95% を超えました。上限に達すると新しい資料を作成できなくなります。"
 msgstr "Storage usage has passed 95%. Once the limit is reached you can no longer create new notes."
 
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い適用は Git の履歴を参照してください。"
+msgstr "The retention range is decided by GitOps (Git and ArgoCD). See the Git history for older applications."
+
 #: platform/frontend/src/app/routing/nav.ts
 msgid "個人"
 msgstr "Personal"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/routes/sc19PrivateNotesRoute.ts
+#: platform/frontend/src/components/ai-chat/CitationList.tsx
 msgid "個人資料"
 msgstr "Private notes"
 
@@ -1173,8 +1343,8 @@ msgid "個人資料（自分のみ）"
 msgstr "Private note (only you)"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "個人資料がまだありません。上の入力欄から作成してください。"
-msgstr "You do not have any private notes yet. Create one using the form above."
+msgid "個人資料がまだありません。"
+msgstr "You have no private notes yet."
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人資料の一覧"
@@ -1185,8 +1355,12 @@ msgid "個人資料の一覧へ"
 msgstr "Go to the private note list"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "個人資料の一覧を取得できませんでした。時間をおいて再度お試しください。"
-msgstr "Could not load the list of private notes. Please try again later."
+msgid "個人資料の一覧を取得できませんでした。"
+msgstr "The list of private notes could not be loaded."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人資料の一覧を読み込み中…"
+msgstr "Loading the list of private notes…"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人資料の新規作成"
@@ -1219,6 +1393,11 @@ msgstr "Loading options…"
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "値"
 msgstr "Value"
+
+#: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+msgid "停止"
+msgstr "Stop"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "備考"
@@ -1258,6 +1437,14 @@ msgid "公開"
 msgstr "Publish"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "公開されているツールはありません。"
+msgstr "No tools are published."
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "公開ツールの一覧"
+msgstr "List of published tools"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "公開ツールはこの画面からは変更できません。公開範囲は許可リスト方式で管理しており、 変更は Git 上の公開構成を更新して反映します。"
 msgstr "Published tools cannot be changed from this screen. The published scope is managed as an allow list, and changes are applied by updating the publication configuration in Git."
 
@@ -1268,6 +1455,14 @@ msgstr "Published tools (effective configuration, read-only)"
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "公開ツール一覧を取得できませんでした。"
 msgstr "Could not load the published tools."
+
+#: knowledge/frontend/src/features/sc05-documents/types/documentStatus.ts
+msgid "公開中"
+msgstr "Published"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "公開範囲は Git 上の公開構成で定義します。許可リストへ追加してください。"
+msgstr "The published scope is defined by the publication configuration in Git. Add the tool to the allow list."
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "円 = 組織文書"
@@ -1294,6 +1489,15 @@ msgstr "The reconversion has been accepted."
 msgid "再有効化"
 msgstr "Re-enable"
 
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "再有効化はこの画面から行えます（ロールと属性の割当は保持されます）。"
+msgstr "You can re-enable the account from this screen; role and attribute assignments are kept."
+
+#: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+msgid "再生成"
+msgstr "Regenerate"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "再発行したときの注意"
 msgstr "Before you reissue"
@@ -1302,17 +1506,27 @@ msgstr "Before you reissue"
 msgid "再発行する"
 msgstr "Reissue"
 
+#: platform/frontend/src/components/ui/QueryState.tsx
+msgid "再試行"
+msgstr "Retry"
+
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
 msgid "再試行中（{failures}/{limit}）"
 msgstr "Retrying ({failures}/{limit})"
 
+#: platform/frontend/src/app/routing/routeStates.tsx
+#: platform/frontend/src/components/ui/ErrorBoundary.tsx
+msgid "再読み込み"
+msgstr "Reload"
+
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+msgid "最新へ"
+msgstr "Latest"
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "最終同期"
 msgstr "Last sync"
-
-#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
-msgid "最終同期: {syncedAt}"
-msgstr "Last synced: {syncedAt}"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 msgid "写像に無いソース側の利用者は、予約値 {UNRESOLVED_OWNER} になります。基盤の利用者は ログイン名で指定してください（存在しない利用者は保存できません）。"
@@ -1367,6 +1581,10 @@ msgstr "Run analysis"
 msgid "分析対象（権限内に限定）"
 msgstr "Analysis scope (limited to what you may access)"
 
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "別の語で検索してください。"
+msgstr "Try a different search term."
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "利用中（{liveCount}）"
 msgstr "In use ({liveCount})"
@@ -1405,6 +1623,10 @@ msgid "利用者の属性で解決"
 msgstr "Resolved from the user's attributes"
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "利用者はまだ登録されていません。"
+msgstr "No users are registered yet."
+
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "利用者一覧を取得できませんでした。"
 msgstr "Could not load the user list."
 
@@ -1417,6 +1639,10 @@ msgstr "Could not load the user list."
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "削除"
 msgstr "Delete"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "削除した資料は 90 日間ここに残ります。"
+msgstr "Deleted notes stay here for 90 days."
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "削除する"
@@ -1464,8 +1690,8 @@ msgid "原本"
 msgstr "Original"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
-msgid "参照のみ"
-msgstr "Read-only"
+msgid "参照のみ — 構成の変更は Git 経由（GitOps）に限ります。本画面から構成は変更できません。閲覧は監査ログに記録されます。"
+msgstr "Read-only — configuration changes are made through Git (GitOps) only. This screen cannot change the configuration, and viewing it is recorded in the audit log."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "参照元は特定できませんでした。"
@@ -1479,6 +1705,14 @@ msgstr "Handling"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "取り消す"
 msgstr "Cancel"
+
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "取り込みが済むとここに並びます。"
+msgstr "Pages appear here once the sync has run."
+
+#: platform/frontend/src/components/ui/QueryState.tsx
+msgid "取得に失敗しました。"
+msgstr "Could not load the data."
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "取消"
@@ -1503,6 +1737,10 @@ msgstr "{count} sync token(s) will expire on {deadline} (7-day notice)"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "同期の範囲"
 msgstr "What is synced"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
+msgid "同期は全ソース共通の間隔で実行します。ソースごとに時刻を設定することはできません。"
+msgstr "Synchronisation runs on a single interval shared by every source. A per-source schedule cannot be set."
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "同期をトリガしました。"
@@ -1531,6 +1769,10 @@ msgstr "Name (required)"
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "呼び出し監査ログ"
 msgstr "Invocation audit log"
+
+#: platform/frontend/src/components/ai-chat/CopyButton.tsx
+msgid "回答をコピー"
+msgstr "Copy answer"
 
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "回答を生成できませんでした。時間をおいて再度お試しください。"
@@ -1602,6 +1844,10 @@ msgstr "View conversion job status →"
 msgid "変換ジョブを取得できませんでした。"
 msgstr "Could not load the conversion jobs."
 
+#: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
+msgid "変換ジョブを読み込み中…"
+msgstr "Loading conversion jobs…"
+
 #: knowledge/frontend/src/features/sc07-conversions/types/jobStatus.ts
 msgid "変換中"
 msgstr "Converting"
@@ -1667,6 +1913,10 @@ msgstr "Effective configuration"
 msgid "実装"
 msgstr "Implementation"
 
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "宣言（Git）と実効構成に {count} 件の差分があります。"
+msgstr "The declaration (Git) and the effective configuration differ in {count} place(s)."
+
 #: knowledge/frontend/src/features/sc11-config/types/driftView.ts
 msgid "宣言に無い購読"
 msgstr "Undeclared subscription"
@@ -1702,6 +1952,14 @@ msgstr "Scope"
 #: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "対象範囲フィルタ"
 msgstr "Scope filter"
+
+#: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
+msgid "対象範囲を広げるか、分析内容を書き換えて実行してください。"
+msgstr "Widen the target scope, or rewrite the request and run the analysis again."
+
+#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+msgid "専用ツール"
+msgstr "Dedicated tools"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 msgid "将来検討"
@@ -1765,9 +2023,25 @@ msgstr "Attribute registration"
 msgid "層"
 msgstr "Layer"
 
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+msgid "履歴（{screenKey}） {turnCount}件"
+msgstr "History ({screenKey}): {turnCount}"
+
+#: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
+msgid "履歴（直近{limit}件）"
+msgstr "History (last {limit})"
+
+#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+msgid "履歴は画面単位。リロードで消えます"
+msgstr "History is kept per screen and cleared on reload"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "履歴を確認中…"
 msgstr "Loading the history…"
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "差分の有無は GitOps（Git と ArgoCD）の同期状況からも確認できます。"
+msgstr "Whether a difference exists can also be checked from the GitOps (Git and ArgoCD) sync status."
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "役に立たなかった"
@@ -1803,6 +2077,10 @@ msgstr "Make this attribute required"
 msgid "情報"
 msgstr "Info"
 
+#: knowledge/frontend/src/features/sc02-results/types/searchOptions.ts
+msgid "意味"
+msgstr "Semantic"
+
 #: platform/frontend/src/components/ui/notifications.tsx
 msgid "成功"
 msgstr "Success"
@@ -1836,8 +2114,8 @@ msgid "抽出"
 msgstr "Extract"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
-msgid "指定された起点の文書は表示できません。文書が存在しないのか、閲覧権限がないのかは 区別できません。"
-msgstr "The requested root document cannot be displayed. Whether it does not exist or you lack permission cannot be distinguished."
+msgid "指定された起点の文書は表示できません。文書が存在しないのか、閲覧権限がないのかは区別できません。"
+msgstr "The starting document cannot be shown. Whether it does not exist or you lack permission to view it cannot be distinguished."
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "指定しない"
@@ -1848,8 +2126,8 @@ msgid "探索深さ（hops）"
 msgstr "Exploration depth (hops)"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
-msgid "接続している端末はまだありません。上の入力欄から追加してください。"
-msgstr "No devices are connected yet. Add one using the form above."
+msgid "接続している端末はまだありません。"
+msgstr "No device is connected yet."
 
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "接続している辺:"
@@ -1867,6 +2145,10 @@ msgstr "Target"
 msgid "接続先 URI"
 msgstr "Connection URI"
 
+#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+msgid "接続先は実行時 config（opsLinks）で注入します。配備済みのツールの URL を設定してください。"
+msgstr "Endpoints are injected through the runtime config (opsLinks). Set the URL of each deployed tool."
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "接続情報（認証情報）は Vault 管理です。接続の継続失敗はアラートで通知されます。"
 msgstr "Connection credentials are managed in Vault. Repeated connection failures raise an alert."
@@ -1880,20 +2162,32 @@ msgid "接続端末の一覧"
 msgstr "List of connected devices"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
-msgid "接続端末の一覧を取得できませんでした。時間をおいて再度お試しください。"
-msgstr "Could not load the list of connected devices. Please try again later."
+msgid "接続端末の一覧を取得できませんでした。"
+msgstr "The list of connected devices could not be loaded."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+msgid "接続端末の一覧を読み込み中…"
+msgstr "Loading the list of connected devices…"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 msgid "推奨追加"
 msgstr "Recommended"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "提供サービス"
+msgstr "Providing service"
 
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "提案"
 msgstr "Suggestion"
 
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
-msgid "提案の一覧を取得できませんでした。時間をおいて再度お試しください。"
-msgstr "The list of suggestions could not be retrieved. Please try again later."
+msgid "提案の一覧を取得できませんでした。"
+msgstr "The list of suggestions could not be loaded."
+
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "提案の一覧を読み込み中…"
+msgstr "Loading the list of suggestions…"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
@@ -1958,8 +2252,8 @@ msgid "文書の詳細は表示できません。"
 msgstr "Document details are not available."
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
-msgid "文書はありません。"
-msgstr "There is no document."
+msgid "文書はまだありません。"
+msgstr "There are no documents yet."
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "文書をアーカイブしました。"
@@ -1981,17 +2275,13 @@ msgstr "Could not load the documents."
 msgid "文書を更新しました。"
 msgstr "The document has been updated."
 
-#: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
-msgid "文書を登録"
-msgstr "Register a document"
-
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "文書を登録しました。"
 msgstr "The document has been registered."
 
-#: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
-msgid "文書を編集（v{version}）"
-msgstr "Edit document (v{version})"
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "文書を読み込み中…"
+msgstr "Loading documents…"
 
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "文書を開く"
@@ -2032,6 +2322,10 @@ msgstr "You have {count} new notice(s)"
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "新しい個人資料を作成する"
 msgstr "Create a new private note"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
+msgid "新規登録"
+msgstr "New document"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 msgid "方向"
@@ -2111,6 +2405,10 @@ msgstr "Recently updated first"
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "更新日時"
 msgstr "Updated"
+
+#: knowledge/frontend/src/features/sc02-results/types/searchOptions.ts
+msgid "更新日時の新しい順"
+msgstr "Most recently updated"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/types/mcpClientVocabulary.ts
 msgid "有人"
@@ -2203,6 +2501,10 @@ msgstr "You cannot edit note bodies on this screen. To write a body, set up the 
 msgid "本文は利用できません。"
 msgstr "The body is unavailable."
 
+#: platform/frontend/src/app/Layout.tsx
+msgid "本文へ移動"
+msgstr "Skip to main content"
+
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "本文を取得できませんでした。"
 msgstr "Could not load the page body."
@@ -2220,9 +2522,17 @@ msgstr "Conditions"
 msgid "条件なし（すべてに一致）"
 msgstr "No conditions (matches everything)"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "条件に一致する個人資料がありません。"
+msgstr "No private note matches the current filter."
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "条件の値"
 msgstr "Value"
+
+#: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+msgid "条件を変えて再検索してください。"
+msgstr "Change the conditions and search again."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "条件を外す: {conditionKey} = {conditionValue}"
@@ -2235,6 +2545,10 @@ msgstr "Add condition"
 #: platform/frontend/src/features/index.ts
 msgid "株式自動売買"
 msgstr "Automated stock trading"
+
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "棚卸しの残量は判断できません。空の一覧ではありません。"
+msgstr "How much is left to triage cannot be determined. This is not an empty listing."
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
@@ -2254,6 +2568,10 @@ msgstr "Search / ask"
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "検索に失敗しました。"
 msgstr "The search failed."
+
+#: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+msgid "検索モード"
+msgstr "Search mode"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
@@ -2281,11 +2599,19 @@ msgid "検索条件で追加"
 msgstr "Add by search condition"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+msgid "検索条件を変える"
+msgstr "Change the search conditions"
+
+#: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc02-results/routes/sc02ResultsRoute.tsx
 #: knowledge/frontend/src/features/sc03-document/routes/sc03DocumentRoute.ts
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "検索結果"
 msgstr "Search results"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "検索結果や文書詳細から「ナレッジグラフで表示」を選ぶか、URL の root パラメータで起点を指定してください。"
+msgstr "Choose \"Show in knowledge graph\" from a search result or a document detail screen, or set the starting point with the root parameter in the URL."
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "検索結果一覧"
@@ -2306,6 +2632,14 @@ msgstr "Term"
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "検索語を入力…"
 msgstr "Enter a search term…"
+
+#: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+msgid "検索語を入力してください。"
+msgstr "Enter a search term."
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "検索語を短くするか、辺の型の絞り込みを緩めてください。"
+msgstr "Shorten the search term, or loosen the edge type filter."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "検証"
@@ -2328,8 +2662,8 @@ msgid "構成のずれ"
 msgstr "Configuration drift"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
-msgid "構成の変更は Git 経由（GitOps）に限ります。本画面から構成は変更できません。閲覧は監査ログに記録されます。"
-msgstr "Configuration changes are made through Git (GitOps) only. This screen cannot change the configuration. Viewing it is recorded in the audit log."
+msgid "構成の正本は Git（GitOps）の宣言です。リポジトリ側で確認してください。"
+msgstr "The source of truth for the configuration is the Git (GitOps) declaration. Check it in the repository."
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "構成バージョン履歴の一覧"
@@ -2375,6 +2709,7 @@ msgstr "Cross-source search and grounded AI answers (streaming, with sources)"
 msgid "横断検索に含める"
 msgstr "Include in cross-search"
 
+#: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc03-document/types/attributes.ts
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "機密区分"
@@ -2388,13 +2723,25 @@ msgstr "Confidentiality (ABAC attribute)"
 msgid "機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します（UC-02 代替フロー・ データ越境ポリシー）。権限外のデータは黙って対象外になります（存在秘匿）。"
 msgstr "Highly confidential data is processed by the self-hosted LLM and is never sent to an external API (UC-02 alternative flow, data egress policy). Data you may not access is silently excluded (existence is hidden)."
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
+msgid "次回同期"
+msgstr "Next sync"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "次数が大きい順"
 msgstr "Highest degree first"
 
+#: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+msgid "正規化文書"
+msgstr "Normalized document"
+
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "正規化文書（Markdown）プレビュー"
 msgstr "Normalized document (Markdown) preview"
+
+#: knowledge/frontend/src/features/sc05-documents/types/documentStatus.ts
+msgid "正規化済み"
+msgstr "Normalized"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "残り {days} 日"
@@ -2418,12 +2765,6 @@ msgstr "Compare"
 #: platform/frontend/src/components/ui/notifications.tsx
 msgid "注意"
 msgstr "Warning"
-
-#: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
-#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
-#: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
-msgid "注記"
-msgstr "Note"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "深刻度"
@@ -2473,11 +2814,16 @@ msgstr "Disable"
 msgid "無効化（全セッション失効）"
 msgstr "Disable (revoke all sessions)"
 
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "無効化する"
+msgstr "Disable"
+
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "版"
 msgstr "Version"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
@@ -2495,6 +2841,10 @@ msgstr "Status: {status} | Version: v{version} | Updated: {updatedAt}"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "状態で絞り込み"
 msgstr "Filter by status"
+
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "状態や種類の絞り込みを変えると、ほかの提案が見つかることがあります。"
+msgstr "Changing the state or kind filter may reveal other suggestions."
 
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 msgid "画像を読み込み中…"
@@ -2537,6 +2887,10 @@ msgid "登録する"
 msgstr "Register"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
+msgid "登録は管理者が行います。"
+msgstr "Sources are registered by an administrator."
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "登録済みデータソースの一覧"
 msgstr "List of registered data sources"
 
@@ -2559,6 +2913,14 @@ msgstr "Last {d} days"
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "省略時は分析内容を流用します"
 msgstr "Left blank, the analysis request itself is used"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
+msgid "矛盾あり"
+msgstr "Contradictions found"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
+msgid "矛盾なし"
+msgstr "No contradictions"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "矛盾はありません。まだ保存していません。"
@@ -2634,11 +2996,15 @@ msgstr "Request an AI analysis over a scope →"
 msgid "範囲指定の分析依頼・結果・出典"
 msgstr "Scoped analysis requests, results and sources"
 
-#: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
+#: platform/frontend/src/components/ai-chat/CitationList.tsx
 msgid "組織文書"
 msgstr "Organization document"
+
+#: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
+msgid "組織文書と個人資料はアイコン＋ラベルで区別する（色だけで意味を持たせない）。"
+msgstr "Organisational documents and personal materials are distinguished by icon and label (never by colour alone)."
 
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "結果"
@@ -2652,6 +3018,14 @@ msgstr "Result →"
 msgid "結果一覧"
 msgstr "Results"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "絞り込みの語を短くするか、空にしてください。"
+msgstr "Shorten the filter text, or clear it."
+
+#: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
+msgid "絞り込みを「すべて」に戻すと他のジョブが見えます。"
+msgstr "Set the filter back to “All” to see the other jobs."
+
 #: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "絞り込める候補はありません。"
 msgstr "No options available to narrow by."
@@ -2661,9 +3035,29 @@ msgstr "No options available to narrow by."
 msgid "編集"
 msgstr "Edit"
 
-#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
-msgid "表示上限"
-msgstr "Display limit"
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
+msgid "編集フォーム"
+msgstr "Edit form"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
+msgid "編集中の文書: v{version}"
+msgstr "Editing document: v{version}"
+
+#: platform/frontend/src/components/theme/ThemeToggle.tsx
+msgid "表示: システム"
+msgstr "Theme: System"
+
+#: platform/frontend/src/components/theme/ThemeToggle.tsx
+msgid "表示: ダーク"
+msgstr "Theme: Dark"
+
+#: platform/frontend/src/components/theme/ThemeToggle.tsx
+msgid "表示: ライト"
+msgstr "Theme: Light"
+
+#: platform/frontend/src/components/theme/ThemeToggle.tsx
+msgid "表示テーマの切替。現在は {currentName}、押すと {upcomingName} になります"
+msgstr "Switch the display theme. Currently {currentName}; press to change it to {upcomingName}"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "表示中のノードをタイトルで絞り込む"
@@ -2693,6 +3087,10 @@ msgstr "No diagrams need correction."
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 msgid "補正して再登録"
 msgstr "Correct and re-register"
+
+#: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
+msgid "補正のあるジョブを再実行すると、補正は失われます。実行前に確認を求めます（補正版が正）。"
+msgstr "Re-running a job that has manual corrections discards those corrections. You are asked to confirm first (the corrected version is authoritative)."
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "補正を破棄して再変換"
@@ -2742,6 +3140,10 @@ msgstr "No matching nodes."
 msgid "該当するページはありません。"
 msgstr "No pages matched."
 
+#: platform/frontend/src/components/ui/QueryState.tsx
+msgid "該当するものはありません。"
+msgstr "Nothing to show."
+
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "該当する利用者はいません。"
 msgstr "No users match the current filters."
@@ -2759,12 +3161,8 @@ msgid "該当する提案はありません。"
 msgstr "There are no matching suggestions."
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
-msgid "該当する文書が見つかりませんでした。"
-msgstr "No matching document was found."
-
-#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
-msgid "詳細ツール"
-msgstr "Detailed tools"
+msgid "該当する文書はありません。"
+msgstr "No documents match."
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "認証"
@@ -2778,30 +3176,11 @@ msgstr "You need to sign in."
 msgid "説明"
 msgstr "Detail"
 
-#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
-msgid "読み込みエラー"
-msgstr "Loading error"
-
-#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
-#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
-#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
-#: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
-#: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
-#: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
-#: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
-#: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
-#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
-#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
-#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+#: platform/frontend/src/app/routing/routeStates.tsx
+#: platform/frontend/src/components/ui/QueryState.tsx
 #: platform/frontend/src/lib/auth/RequireAuth.tsx
 #: platform/frontend/src/lib/auth/RequireRole.tsx
 msgid "読み込み中…"
-msgstr "Loading…"
-
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
-#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
-#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
-msgid "読み込み中です。"
 msgstr "Loading…"
 
 #: knowledge/frontend/src/features/sc11-config/types/driftView.ts
@@ -2822,8 +3201,20 @@ msgid "質問またはキーワードを入力…（例: 経費精算の締め�
 msgstr "Enter a question or keyword… (e.g. When is the expense reimbursement cutoff?)"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "購読・発行の接続は Git（GitOps）の宣言で定義します。"
+msgstr "Publish and subscribe bindings are defined in the Git (GitOps) declaration."
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "購読者"
 msgstr "Subscribers"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "起点: {originTitle}"
+msgstr "Starting point: {originTitle}"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "起点: 指定あり"
+msgstr "Starting point: set"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "起点からの距離が近い順"
@@ -2832,6 +3223,10 @@ msgstr "Closest to the root first"
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "起点が未指定です"
 msgstr "No root specified"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "起点を解除する"
+msgstr "Clear the starting point"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 msgid "辞書に候補がありません"
@@ -2913,6 +3308,7 @@ msgstr "Could not load notifications"
 msgid "通知一覧"
 msgstr "Notification list"
 
+#: platform/frontend/src/app/Layout.tsx
 #: platform/frontend/src/app/routing/nav.ts
 msgid "運用"
 msgstr "Operations"
@@ -2930,12 +3326,12 @@ msgid "運用ダッシュボードは利用できません。"
 msgstr "The operations dashboard is unavailable."
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
-msgid "運用ツール"
-msgstr "Operations tools"
+msgid "運用状況は下の専用ツール（Grafana など）でも確認できます。"
+msgstr "Operational status is also available through the dedicated tools below, such as Grafana."
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
-msgid "運用面は専用ツールで提供します: Grafana（メトリクス・コスト）・Kiali（サービスメッシュ）・Jaeger / Tempo（分散トレース）。本画面はこれらへの入口です。"
-msgstr "Operations are covered by dedicated tools: Grafana (metrics and cost), Kiali (service mesh) and Jaeger / Tempo (distributed tracing). This screen is the entry point to them."
+msgid "運用面は専用ツールで提供します。本画面はこれらへの入口です。"
+msgstr "Operations are covered by dedicated tools; this screen is the entry point to them."
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
 msgid "過去の版（版履歴）は保存容量に含まれません。"
@@ -2948,6 +3344,10 @@ msgstr "Past versions (version history) do not count toward storage, but deleted
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "適用 {appliedAt}"
 msgstr "Applied {appliedAt}"
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "適用履歴の正本は GitOps（Git と ArgoCD）にあります。"
+msgstr "The source of truth for the application history is GitOps (Git and ArgoCD)."
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "適用履歴はありません。"
@@ -3006,6 +3406,10 @@ msgid "部門"
 msgstr "Department"
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "部門・ロールの絞り込みを「すべて」に戻すと全件が出ます。"
+msgstr "Set the department and role filters back to “All” to see every user."
+
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "部門と機密区分上限は必須です。"
 msgstr "Department and clearance ceiling are required."
 
@@ -3016,7 +3420,6 @@ msgstr "Important"
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "閉じる"
 msgstr "Close"
 
@@ -3031,6 +3434,10 @@ msgstr "When relations are not shown, you cannot tell whether they do not exist 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "関係する文書がありません"
 msgstr "No related documents"
+
+#: knowledge/frontend/src/features/sc02-results/types/searchOptions.ts
+msgid "関連度"
+msgstr "Relevance"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 msgid "閲覧"
@@ -3047,6 +3454,14 @@ msgstr "Only the wiki pages you are allowed to read are listed. Select a page to
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "集計期間"
 msgstr "Period"
+
+#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+msgid "集計期間を広げると、より古い利用が含まれます。"
+msgstr "Widen the aggregation period to include older usage."
+
+#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+msgid "集計期間を広げると、下限を満たす語が現れることがあります。"
+msgstr "Widen the aggregation period and terms that meet the threshold may appear."
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "露出"

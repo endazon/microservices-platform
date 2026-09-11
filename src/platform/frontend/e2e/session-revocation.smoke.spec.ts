@@ -114,6 +114,9 @@ test('a disabled account is refused on the very next request through the BFF', a
   await page.getByRole('button', { name: '編集' }).click();
   await expect(page.getByRole('heading', { name: /権限編集/ })).toBeVisible();
   await page.getByRole('button', { name: '無効化（全セッション失効）' }).click();
+  // ［UI/UX 改善 2026-09-12］無効化の手前に確認ダイアログが入った（全セッション即時失効は取り返しがつかない）。
+  // 確認するまで `/bff/*` は 1 つも飛ばない——飛ぶのは確認したあとである。
+  await page.getByRole('dialog').getByRole('button', { name: '無効化する' }).click();
 
   // 🔴 **これが本 spec の芯である。** 無効化のあと最初に出た保護要求が 401 になり、
   // **その 401 で**再認証への遷移が起きる。並びを完全一致で主張するのは、
@@ -146,7 +149,12 @@ test('after revocation a reload is treated as unauthenticated and shows no prote
 
   await page.getByRole('button', { name: '編集' }).click();
   await page.getByRole('button', { name: '無効化（全セッション失効）' }).click();
+  // ［UI/UX 改善 2026-09-12］確認ダイアログを経てから失効が飛ぶ。
+  await page.getByRole('dialog').getByRole('button', { name: '無効化する' }).click();
   await expect.poll(() => session.isRevoked()).toBe(true);
+  // 失効直後の 401 でアプリ自身が再認証へ遷移する。その遷移と下の `goto` を競合させない
+  // （競合すると `net::ERR_ABORTED` で読み込み直し自体が成立しない）。
+  await expect.poll(() => traffic.calls.some((c) => c.key === 'GET /auth/login')).toBe(true);
 
   // 読み込み直し。**身元の問い合わせからやり直す**ので、Cookie が honour されるかどうかだけが効く。
   await page.goto('/admin/users');

@@ -21,11 +21,11 @@ export interface LabelProps extends LabelHTMLAttributes<HTMLLabelElement> {
 
 export function Label({ className, requiredHint, children, ...props }: LabelProps) {
   return (
-    <label className={cn('block text-sm font-medium text-[--color-fg]', className)} {...props}>
+    <label className={cn('block text-xs font-medium text-fg-muted', className)} {...props}>
       {children}
       {requiredHint === undefined ? null : (
         <>
-          <span aria-hidden className="ml-0.5 text-[--color-danger]">
+          <span aria-hidden className="ml-0.5 text-danger">
             *
           </span>
           <span className="sr-only">{requiredHint}</span>

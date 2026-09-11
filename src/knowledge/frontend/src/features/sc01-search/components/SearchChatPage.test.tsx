@@ -82,6 +82,20 @@ function streamEvents(events: SseEvent[]) {
   );
 }
 
+/**
+ * 途中で止められるストリーム: 最初のイベント列を流したあと、`signal` が abort されるまで待つ
+ * （実際の `apiStream` は `reader.read()` が AbortError で reject する）。
+ */
+function streamThenHang(events: SseEvent[]) {
+  mocks.apiStream.mockImplementation(
+    (_path: string, _req: unknown, onEvent: (e: SseEvent) => void, signal?: AbortSignal) =>
+      new Promise<void>((_resolve, reject) => {
+        for (const ev of events) onEvent(ev);
+        signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      }),
+  );
+}
+
 const CITATIONS_EVENT: SseEvent = {
   event: 'citations',
   data: JSON.stringify({ citations: [DOCUMENT_CITATION, WIKI_CITATION] }),
@@ -351,6 +365,119 @@ describe('SearchChatPage (SC-01)', () => {
 
     await waitFor(() => expect(screen.queryByText('古い回答')).not.toBeInTheDocument());
     expect(screen.queryByText('出典（クリックで文書詳細／Wikiへ）')).not.toBeInTheDocument();
+  });
+
+  // ［A-8］第 4 弾「体験の穴」(3) 停止: 進行中は「停止」で中断し、部分回答を「（停止）」付きで残す。中断は失敗ではない。
+  it('stops the stream and keeps the partial answer marked as stopped', async () => {
+    streamThenHang([
+      CITATIONS_EVENT,
+      { event: 'token', data: JSON.stringify({ text: '締め日は' }) },
+    ]);
+    await renderPage();
+    const user = await ask('締め日は？');
+
+    await user.click(await screen.findByRole('button', { name: '停止' }));
+    expect(await screen.findByText('（停止）')).toBeInTheDocument();
+    expect(screen.getByText('締め日は')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '停止' })).not.toBeInTheDocument();
+    // 停止した回答には answerId が無いのでフィードバックは出ない（紐付け先が無い）。
+    expect(screen.queryByRole('button', { name: '役に立った' })).not.toBeInTheDocument();
+  });
+
+  // ［A-8］再生成: 直前の入力（質問 ＋ 対象範囲）を同じ内容で再送する。
+  it('regenerates by re-sending the previous question with the same scope', async () => {
+    mocks.apiRequest.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/attribute-values') {
+        const key = (JSON.parse(String(init?.body)) as { key: string }).key;
+        return Promise.resolve(jsonResponse({ values: key === 'tags' ? ['経理'] : [] }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    streamEvents([{ event: 'token', data: JSON.stringify({ text: '一回目' }) }, DONE_EVENT]);
+    await renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /経理/ }));
+    await user.type(screen.getByLabelText('質問・キーワード'), '締め日は？');
+    await user.click(screen.getByRole('button', { name: '送信' }));
+    expect(await screen.findByText('一回目')).toBeInTheDocument();
+
+    streamEvents([{ event: 'token', data: JSON.stringify({ text: '二回目' }) }, DONE_EVENT]);
+    await user.click(screen.getByRole('button', { name: '再生成' }));
+    expect(await screen.findByText('二回目')).toBeInTheDocument();
+    expect(mocks.apiStream).toHaveBeenCalledTimes(2);
+    const [, second] = mocks.apiStream.mock.calls[1] as [string, { json: unknown }];
+    expect(second.json).toEqual({ question: '締め日は？', attributeFilters: { tags: ['経理'] } });
+  });
+
+  // ［A-8］縮退（error）からも再生成で復帰できる。「検索結果一覧へ」の代替導線は維持する。
+  it('offers regenerate next to the degraded notice', async () => {
+    streamEvents([{ event: 'error', data: JSON.stringify({ message: 'x' }) }]);
+    await renderPage();
+    await ask('締め日は？');
+    await screen.findByRole('alert');
+    expect(screen.getByRole('button', { name: '再生成' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '検索結果一覧を開く →' })).toBeInTheDocument();
+  });
+
+  // ［A-8 / 裁定 6］出典と本文の対応印（脚注方式）: 本文の [n] が出典の行へ結ぶ。行にも [n] を出す。
+  it('links [n] in the answer to the numbered citation row', async () => {
+    streamEvents([
+      CITATIONS_EVENT,
+      { event: 'token', data: JSON.stringify({ text: '締め日は毎月25日です[1]。' }) },
+      DONE_EVENT,
+    ]);
+    await renderPage();
+    await ask('締め日は？');
+
+    const footnote = await screen.findByRole('link', { name: '[1]' });
+    const row = document.getElementById(footnote.getAttribute('href')!.slice(1));
+    expect(row).toHaveTextContent('[1]');
+    expect(row).toHaveTextContent('経費精算規程 v3.2');
+    // 出典の件数を超える番号は結ばない（DOCUMENT + WIKI の 2 件。[3] は無い）。
+    expect(screen.queryByRole('link', { name: '[3]' })).not.toBeInTheDocument();
+  });
+
+  // ［A-8］履歴: 直近の Q&A を保つ。畳んでいる間は本文を DOM に置かず、開いたときだけ描く。
+  it('keeps the previous Q&A in a collapsed history and shows it on demand', async () => {
+    streamEvents([
+      CITATIONS_EVENT,
+      { event: 'token', data: JSON.stringify({ text: '古い回答' }) },
+      DONE_EVENT,
+    ]);
+    await renderPage();
+    const user = await ask('1回目');
+    expect(await screen.findByText('古い回答')).toBeInTheDocument();
+
+    streamEvents([{ event: 'token', data: JSON.stringify({ text: '新しい回答' }) }, DONE_EVENT]);
+    await user.clear(screen.getByLabelText('質問・キーワード'));
+    await user.type(screen.getByLabelText('質問・キーワード'), '2回目');
+    await user.click(screen.getByRole('button', { name: '送信' }));
+    expect(await screen.findByText('新しい回答')).toBeInTheDocument();
+
+    expect(screen.getByRole('heading', { name: '履歴（直近10件）' })).toBeInTheDocument();
+    const entry = screen.getByRole('button', { name: '1回目', expanded: false });
+    expect(screen.queryByText('古い回答')).not.toBeInTheDocument();
+
+    await user.click(entry);
+    expect(await screen.findByText('古い回答')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '1回目', expanded: true })).toBeInTheDocument();
+    // 履歴の出典もその回答の行き先へ結ぶ。
+    expect(screen.getAllByRole('link', { name: '経費精算規程 v3.2' }).length).toBeGreaterThan(0);
+  });
+
+  // ［A-8 / 裁定 6］コピー: 回答本文（Markdown の原文）をクリップボードへ写す。
+  it('copies the answer text to the clipboard', async () => {
+    streamEvents([
+      { event: 'token', data: JSON.stringify({ text: '締め日は **25日**' }) },
+      DONE_EVENT,
+    ]);
+    await renderPage();
+    const user = await ask('締め日は？');
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText');
+
+    await user.click(await screen.findByRole('button', { name: '回答をコピー' }));
+    expect(writeText).toHaveBeenCalledWith('締め日は **25日**');
   });
 
   // ADR-0031（i18n = Lingui〔ja / en〕）: 同じ画面がロケールで描き分けられる。

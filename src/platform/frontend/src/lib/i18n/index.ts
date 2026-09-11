@@ -1,4 +1,4 @@
-import { i18n } from '@lingui/core';
+import { i18n, type Messages } from '@lingui/core';
 // ADR-0031（13_frontend-stack §ディレクトリ構成）/ IADR-0262 第 2 段 / ADR-0067 決定 2:
 // カタログは計画のツリーがユニット直下に置く区分（`locales/  # ja / en（Lingui）`）に在る。
 // **i18n の実行時部分（本モジュール）は `lib/` 側**であり（設定済みの再利用可能ライブラリ＝原典の `lib`）、
@@ -21,7 +21,11 @@ export type Locale = (typeof SUPPORTED_LOCALES)[number];
 /** 既定ロケール。既存文言が日本語であり、lingui.config.ts の sourceLocale と揃える。 */
 export const DEFAULT_LOCALE: Locale = 'ja';
 
-const CATALOGS: Record<Locale, typeof ja> = { ja, en };
+/**
+ * 読み込み済みカタログ（ロケールごと）。基盤自身のカタログを起点に、`registerUnitMessages` で
+ * 可変ユニットのカタログが**追加**されていく。`catalogFor()` はこれを返す。
+ */
+const CATALOGS: Record<Locale, Messages> = { ja: { ...ja }, en: { ...en } };
 
 i18n.load({ ja, en });
 // 既定ロケールをモジュール読み込み時に活性化する。**ブラウザ設定は見ない**——ここで
@@ -63,9 +67,48 @@ export function initI18n(languages?: readonly string[]): Locale {
   return activate(detectLocale(languages));
 }
 
-/** テスト・診断用: 読み込まれているカタログ（ロケールごとのメッセージ表）。 */
-export function catalogFor(locale: Locale): typeof ja {
+/** テスト・診断用: 読み込まれているカタログ（ロケールごとのメッセージ表。ユニットの追加分を含む）。 */
+export function catalogFor(locale: Locale): Messages {
   return CATALOGS[locale];
+}
+
+/**
+ * 可変機能ユニットのカタログを**追加ロード**する（UI/UX 改善 2026-09-12・利用者裁定 #3）。
+ *
+ * 呼ぶのは**合成点（`features/index.ts`）だけ**である。合成点はルート・ナビ・パンくずと同様に
+ * 「ユニットを知る唯一の場所」であり（IADR-0124 決定 1）、本モジュール（`lib/i18n`）が
+ * `@ai-stock-trading` を import する形は ESLint（`no-restricted-imports`）が禁じている——
+ * foundation が可変ユニットを知ってはならない。
+ *
+ * - 与えられたロケールは `i18n.load(locale, messages)` で**追加**する。`@lingui/core` の `load` は
+ *   既存カタログへ `Object.assign` でマージする（実測: `_load` は `Object.assign(maybeMessages, messages)`）
+ *   ので、基盤のカタログは消えない。ID はメッセージ本文のハッシュ（`msg` マクロが両者で同じ算法）
+ *   なので、同じ本文は同じ ID になり、衝突しても同じ訳文である。
+ * - **与えられていないロケール（例: en）には、ユニットの最初のロケールの文言を流す。**
+ *   AST は「Lingui を導入するが英訳はしない」裁定（2026-09-12）で ja カタログしか持たない。
+ *   何も流さないと、本番ビルド（`msg` マクロが `message` を落とし ID だけを残す）で
+ *   en ロケールの AST 画面に**ハッシュがそのまま出る**。ja を流せば「AST の画面は en でも日本語で出る」
+ *   という裁定どおりの見え方になる。
+ *   🔴 **流すのは、そのロケールに未登録の ID だけである。** ユニットの ja と基盤の en が同じ本文
+ *   （例: 「保存」）を持つとき、ID が一致するため無条件に流すと**基盤の英訳が日本語で上書きされる**。
+ *
+ * ロード後に `activate` し直す必要は無い（`i18n._` は呼び出し時点の表を引く）。
+ */
+export function registerUnitMessages(messagesByLocale: Partial<Record<Locale, Messages>>): void {
+  const provided = SUPPORTED_LOCALES.filter((locale) => messagesByLocale[locale] !== undefined);
+  const fallback = provided.length > 0 ? messagesByLocale[provided[0]] : undefined;
+
+  for (const locale of SUPPORTED_LOCALES) {
+    const own = messagesByLocale[locale];
+    const source = own ?? fallback;
+    if (source === undefined) continue;
+    const additions: Messages = own
+      ? { ...own }
+      : Object.fromEntries(Object.entries(source).filter(([id]) => !(id in CATALOGS[locale])));
+    if (Object.keys(additions).length === 0) continue;
+    i18n.load(locale, additions);
+    Object.assign(CATALOGS[locale], additions);
+  }
 }
 
 export { i18n };

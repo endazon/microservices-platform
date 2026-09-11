@@ -400,11 +400,32 @@ describe('DocumentManagementPage (SC-05)', () => {
     );
   });
 
-  it('shows a neutral message when there is no document', async () => {
+  // **［2026-09-12］文言が変わった**（`QueryState` ＋ `EmptyState` への統一）。
+  // 空は失敗ではないので再試行を促さず、**次の一手**（新規登録）を示す。実装が正・テストを追随。
+  it('shows a neutral message with a next step when there is no document', async () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse([]));
     await renderPage();
 
-    expect(await screen.findByText('文書はありません。')).toBeInTheDocument();
+    expect(await screen.findByText('文書はまだありません。')).toBeInTheDocument();
+    expect(
+      screen.getByText('「＋ 新規登録」から最初の文書を登録してください。'),
+    ).toBeInTheDocument();
+    // 0 件は失敗ではない（再試行ボタンも role="alert" も出さない）。
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  // SC-05（hi-fi モック / 2026-09-12）: **公開ライフサイクルの列。** 行に「公開」「アーカイブ」の
+  // ボタンが並ぶだけでは、いまどの状態なのかが読めない。色だけで意味を持たせない
+  // （`StatusBadge` がアイコン ＋ テキストを強制する）。
+  it('shows the lifecycle state of each document as a badge', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC, ARCHIVED_DOC]));
+    await renderPage();
+
+    expect(await screen.findByRole('columnheader', { name: '状態' })).toBeInTheDocument();
+    const draftRow = screen.getByRole('link', { name: DRAFT_DOC.title }).closest('tr')!;
+    expect(within(draftRow).getByText('下書き')).toBeInTheDocument();
+    const archivedRow = screen.getByRole('link', { name: ARCHIVED_DOC.title }).closest('tr')!;
+    expect(within(archivedRow).getByText('アーカイブ済み')).toBeInTheDocument();
   });
 
   // 存在秘匿（IADR-0009 / IADR-0035）: ロールを持たない利用者へ画面の存在を示さない。
@@ -499,7 +520,7 @@ describe('DocumentManagementPage (SC-05)', () => {
     });
     await renderPage();
 
-    expect(await screen.findByText('文書はありません。')).toBeInTheDocument();
+    expect(await screen.findByText('文書はまだありません。')).toBeInTheDocument();
   });
 
   // SC-05, ADR-0058 決定 3, [[IADR-0278]]: 文書スコープ（doc_scope）は編集不可である。

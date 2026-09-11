@@ -17,3 +17,10 @@ packages:
   #   横断ゲート（frontend.yml / frontend-tests.yml）に乗せるためで、SPA には import されない
   #   （BFF も経由せず、DocumentService の同期プロトコルを同期トークンで直接呼ぶ）。
   - 'obsidian-plugin'
+
+# UI/UX 改善 2026-09-12（AST が @platform/ui を使う）: pnpm は workspace パッケージを**宣言した importer**にしか
+# link しない。AST（submodule・別リポ）は `workspace:*` を宣言できない（npm が EUNSUPPORTEDPROTOCOL で拒否。実測）
+# ため、合成時に `ai-stock-trading/frontend` から `@platform/ui` が解決できない。ルート node_modules へ公開 hoist して
+# knowledge と同じ経路で解決させる。対象は共有 UI パッケージただ 1 つ（他を広げると knip / 依存方向の検査が緩む）。
+publicHoistPattern:
+  - '@platform/ui'

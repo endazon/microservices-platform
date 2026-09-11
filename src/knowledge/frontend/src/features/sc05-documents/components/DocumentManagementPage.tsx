@@ -4,6 +4,8 @@ import { Link } from '@tanstack/react-router';
 import {
   Alert,
   Button,
+  EmptyState,
+  StatusBadge,
   Table,
   TableBody,
   TableCaption,
@@ -13,6 +15,8 @@ import {
   TableRow,
   Tag,
 } from '@platform/ui';
+import { QueryState } from '@foundation/ui/QueryState';
+import { i18n } from '@foundation/i18n';
 import { ApiError } from '@foundation/api/ApiError';
 import { PlatformRole, useHasAnyRole } from '@foundation/auth/roles';
 import { toMessages } from '@foundation/utils/apiErrors';
@@ -22,9 +26,18 @@ import type { DocumentFormValues } from './DocumentForm';
 import { useAdminDocuments, useDocumentActions } from '../api/useDocumentAdmin';
 import type { DocumentCommand } from '../api/useDocumentAdmin';
 import { useTagOptions } from '../api/useTagOptions';
+import { canPublish, documentStatusView } from '../types/documentStatus';
 // SC-05, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 
+// **［2026-09-12 / UI/UX 改善］hi-fi モック（sc-05）の 2 カラム構造へ寄せた。**
+//   左（`flex-[1.5]`）= `.ttl`「文書一覧」＋「＋ 新規登録」＋ 表、右（`flex-1`）= `Panel`「編集フォーム」。
+//   表へ **lifecycle（公開ライフサイクル）の `StatusBadge` 列**を足した（`types/documentStatus.ts`）——
+//   従前は `status` を操作ボタンの出し分けにしか使っておらず、**同じ行に「公開」と「アーカイブ」が
+//   並ぶだけで、いまどの状態なのかは読み取れなかった**。
+//   一覧の待ち・空・失敗は `QueryState` へ統一した（更新系の結果通知は従来どおり `Alert` である
+//   ——あちらは「取得の状態」ではなく「直前の操作の結果」であり、別の軸である）。
+//
 // SC-05, UC-03, FR-06/FR-09: 文書管理画面（05_screens: ルート /admin/documents）。
 // 正規化文書の一覧・登録・編集（属性／タグ設定）を行う。詳細と版履歴は SC-03（/docs/$id）が持つ
 // （05_screens §SC-05「版ごとの履歴パネルは SC-03 側に置く。本画面は一覧の版列で現行版を示す」）。
@@ -46,11 +59,6 @@ import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 //   （Q7・Q8・派生 Q30）で確定し、正は計画リポジトリ project-planning の docs/glossary.md
 //   （restricted＝**取扱制限**）。
 //   **写像の実装先は #541 であり、それまでは生値を出す。**
-
-/** 未公開状態のみ公開できる（アーカイブ済みの誤再公開を防ぐ。サーバも 409 で拒否する）。 */
-function canPublish(status: string): boolean {
-  return status === 'draft' || status === 'normalized';
-}
 
 /**
  * 409 の詳細（Problem 本文の errors / detail / title 由来）。
@@ -89,7 +97,6 @@ export function DocumentManagementPage() {
   // （[[IADR-0039]] 決定 2）。**閲覧（一覧・SC-03 への詳細リンク）は運用者にも残す。**
   const canWrite = useHasAnyRole(PlatformRole.Admin);
 
-  const items = documents.data ?? [];
   // IADR-0127 決定 7: 画面は**直近の操作の結果だけ**を出す。列挙は `useDocumentActions()` の
   // 戻り値から導く——手書きの配列にすると、次のミューテーションを足したときに
   // 「一覧には出るが読まれない失敗」「消し忘れる古い失敗」が静かに生まれる。
@@ -138,10 +145,11 @@ export function DocumentManagementPage() {
   }
 
   return (
-    <section className="flex flex-col gap-4 lg:flex-row">
-      <div className="min-w-0 grow">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-lg font-semibold text-[--color-fg]">
+    <section className="flex flex-col gap-n4 lg:flex-row">
+      <div className="min-w-0 lg:flex-[1.5]">
+        <div className="mb-n3 flex flex-wrap items-center justify-between gap-n2">
+          {/* hi-fi `.ttl`。 */}
+          <h1 className="text-[17px] font-medium text-fg">
             <Trans>文書一覧</Trans>
           </h1>
           {/* 押しても 403 になるボタンを置かない（#502 が確立した規則・[[IADR-0127]] 決定 1）。
@@ -158,7 +166,7 @@ export function DocumentManagementPage() {
               <Trans>＋ 新規登録</Trans>
             </Button>
           ) : (
-            <span className="text-xs text-[--color-fg-muted]">
+            <span className="text-xs text-fg-muted">
               <Trans>文書の登録・編集・公開・アーカイブ・削除は管理者のみ実行できます</Trans>
             </span>
           )}
@@ -185,23 +193,25 @@ export function DocumentManagementPage() {
           </Alert>
         )}
 
-        {documents.isPending && (
-          <p role="status" className="text-sm text-[--color-fg-muted]">
-            <Trans>読み込み中…</Trans>
-          </p>
-        )}
-        {documents.isError && (
-          <Alert tone="danger" role="alert" label={t`エラー`}>
-            {toMessages(documents.error, t`文書を取得できませんでした。`).join(' / ')}
-          </Alert>
-        )}
-
-        {documents.isSuccess &&
-          (items.length === 0 ? (
-            <p className="text-sm">
-              <Trans>文書はありません。</Trans>
-            </p>
-          ) : (
+        {/* 一覧の待ち・空・失敗は `QueryState` の 1 本に統一する（判定順は失敗 → 待ち → 空 → 本体）。
+         **取得前に表の器を描かない** —— 空の見出し行は「0 件」と読めてしまう。 */}
+        <QueryState
+          query={documents}
+          loadingLabel={t`文書を読み込み中…`}
+          errorTitle={t`文書を取得できませんでした。`}
+          isEmpty={(data) => data.length === 0}
+          empty={
+            <EmptyState
+              title={t`文書はまだありません。`}
+              description={
+                canWrite
+                  ? t`「＋ 新規登録」から最初の文書を登録してください。`
+                  : t`データソースからの取り込みが済むとここに並びます。`
+              }
+            />
+          }
+        >
+          {(rows) => (
             <Table>
               <TableCaption>
                 <Trans>文書の一覧</Trans>
@@ -217,6 +227,9 @@ export function DocumentManagementPage() {
                   <TableHeaderCell>
                     <Trans>版</Trans>
                   </TableHeaderCell>
+                  <TableHeaderCell>
+                    <Trans>状態</Trans>
+                  </TableHeaderCell>
                   {/* #629: 運用者には操作が 1 つも無いので、列ごと出さない
                       （空の「操作」列が並ぶと、押せる何かがあるように読める）。 */}
                   {canWrite && (
@@ -227,7 +240,7 @@ export function DocumentManagementPage() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {items.map((doc) => (
+                {rows.map((doc) => (
                   <DocumentRow
                     key={doc.id}
                     doc={doc}
@@ -242,12 +255,13 @@ export function DocumentManagementPage() {
                 ))}
               </TableBody>
             </Table>
-          ))}
+          )}
+        </QueryState>
       </div>
 
       {/* #629: 入力フォームそのものが登録・編集の口なので、運用者には出さない。 */}
       {canWrite && (
-        <div className="w-full lg:max-w-md">
+        <div className="w-full min-w-0 lg:flex-1">
           {/* 編集対象が変わったらフォームを作り直す（前の文書の入力値を持ち越さない）。 */}
           <DocumentForm
             key={editing?.id ?? 'new'}
@@ -278,6 +292,7 @@ function DocumentRow({
 }) {
   const { t } = useLingui();
   const confidentiality = doc.attributes?.[CONFIDENTIALITY_KEY];
+  const statusView = documentStatusView(doc.status);
 
   return (
     <TableRow>
@@ -286,13 +301,24 @@ function DocumentRow({
         <Link
           to="/docs/$id"
           params={{ id: doc.id }}
-          className="font-medium text-[--color-brand] hover:underline"
+          className="font-medium text-brand hover:underline"
         >
           {doc.title}
         </Link>
       </TableCell>
-      <TableCell>{confidentiality ? <Tag tone="neutral">{confidentiality}</Tag> : '—'}</TableCell>
+      {/* hi-fi は機密区分を accent のチップで描く（`.tag-accent` 社内限 / `.tag-outline` 秘）。
+          値そのものは訳さない（lib/abac/confidentiality.ts 参照）。 */}
+      <TableCell>
+        {confidentiality ? <Tag tone="accent">{confidentiality}</Tag> : <span aria-hidden>—</span>}
+      </TableCell>
       <TableCell>v{doc.version}</TableCell>
+      {/* 公開ライフサイクル。INDEX 決定 21: 色だけで意味を持たせない —— `StatusBadge` が
+          tone ごとの固定アイコンとテキストを型で強制する。 */}
+      <TableCell>
+        <StatusBadge tone={statusView.tone}>
+          {typeof statusView.label === 'string' ? statusView.label : i18n._(statusView.label)}
+        </StatusBadge>
+      </TableCell>
       {/* #629: 見出しと同じ条件で列ごと落とす（列数がずれると表が壊れる）。 */}
       {!canWrite ? null : (
         <TableCell>

@@ -3,8 +3,10 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import {
   Alert,
   Button,
+  EmptyState,
   Input,
   Label,
+  Panel,
   Select,
   Table,
   TableBody,
@@ -14,6 +16,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from '@platform/ui';
+import { QueryState } from '@foundation/ui/QueryState';
 import { toMessages } from '@foundation/utils/apiErrors';
 import {
   edgeTypeInUseCount,
@@ -150,7 +153,7 @@ function LayerLabel({ layer }: { layer: string }) {
 
 export function EdgeTypeDictionaryPanel() {
   const { t } = useLingui();
-  const { data, isPending, isError } = useEdgeTypeDictionary();
+  const query = useEdgeTypeDictionary();
   const actions = useEdgeTypeActions();
   const { create, rename, remove } = actions;
   const [name, setName] = useState('');
@@ -165,24 +168,13 @@ export function EdgeTypeDictionaryPanel() {
   const inUseCount = failed ? edgeTypeInUseCount(failed.error) : null;
   const renamed = rename.isSuccess && !failed;
 
-  const edgeTypes = data ?? [];
-
   function beginOperation() {
     for (const mutation of mutations) mutation.reset();
   }
 
   return (
-    <section className="mt-3">
-      <h2 className="mb-2 text-base font-semibold text-[--color-fg]">
-        <Trans>辺の型</Trans>
-      </h2>
-
-      {isError && (
-        <Alert tone="danger" role="alert" label={t`エラー`}>
-          <Trans>辺の型辞書を読み込めませんでした。</Trans>
-        </Alert>
-      )}
-
+    // モックの `.panel`（区画）。見出しは区画のラベルとして Panel が描く。
+    <Panel heading={t`辺の型`} aria-label={t`辺の型`} className="mt-n3">
       {/* ADR-0033 決定 9: 改名は**辺を 1 本も書き換えない**（辺は型 ID を参照している）。
           タグ辞書は再発行件数を出すが、**こちらに対応する数は無い** ——
           非同期の波及が無いからである。「何件へ反映しているか」を出すと、
@@ -208,66 +200,69 @@ export function EdgeTypeDictionaryPanel() {
         </Alert>
       )}
 
-      <Table>
-        <TableCaption>
-          <Trans>辺の型辞書の一覧</Trans>
-        </TableCaption>
-        <TableHead>
-          <TableRow>
-            <TableHeaderCell>
-              <Trans>型名</Trans>
-            </TableHeaderCell>
-            <TableHeaderCell>
-              <Trans>層</Trans>
-            </TableHeaderCell>
-            <TableHeaderCell>
-              <Trans>方向</Trans>
-            </TableHeaderCell>
-            <TableHeaderCell>
-              <Trans>使用件数</Trans>
-            </TableHeaderCell>
-            <TableHeaderCell>
-              <Trans>操作</Trans>
-            </TableHeaderCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {isPending ? (
-            <TableRow>
-              <TableCell colSpan={5}>
-                <Trans>読み込み中…</Trans>
-              </TableCell>
-            </TableRow>
-          ) : edgeTypes.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={5}>
-                <Trans>辺の型は登録されていません。</Trans>
-              </TableCell>
-            </TableRow>
-          ) : (
-            edgeTypes.map((edgeType) => (
-              <EdgeTypeRow
-                key={edgeType.id}
-                edgeType={edgeType}
-                onRename={(next) => {
-                  beginOperation();
-                  rename.mutate({ id: edgeType.id, data: { name: next } });
-                }}
-                onDelete={() => {
-                  beginOperation();
-                  remove.mutate({ id: edgeType.id });
-                }}
-              />
-            ))
-          )}
-        </TableBody>
-      </Table>
+      {/* 🔴 三状態は `QueryState` へ寄せ、**表の器の中では描かない**（タグ辞書と同型）。
+          判定順は isError → isPending → isEmpty → 本体で、**失敗と 0 件を混同しない**。 */}
+      <QueryState
+        query={query}
+        isEmpty={(rows) => rows.length === 0}
+        empty={
+          <EmptyState
+            title={t`辺の型は登録されていません。`}
+            description={t`下の「型名（必須）」から最初の型を登録してください。登録が無い間、自動抽出の辺はすべて related へ丸められます。`}
+          />
+        }
+        errorTitle={t`辺の型辞書を読み込めませんでした。`}
+        errorDescription={toMessages(query.error, '').join(' / ') || undefined}
+      >
+        {(edgeTypes) => (
+          <Table>
+            <TableCaption>
+              <Trans>辺の型辞書の一覧</Trans>
+            </TableCaption>
+            <TableHead>
+              <TableRow>
+                <TableHeaderCell>
+                  <Trans>型名</Trans>
+                </TableHeaderCell>
+                <TableHeaderCell>
+                  <Trans>層</Trans>
+                </TableHeaderCell>
+                <TableHeaderCell>
+                  <Trans>方向</Trans>
+                </TableHeaderCell>
+                <TableHeaderCell>
+                  <Trans>使用件数</Trans>
+                </TableHeaderCell>
+                <TableHeaderCell>
+                  <Trans>操作</Trans>
+                </TableHeaderCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {edgeTypes.map((edgeType) => (
+                <EdgeTypeRow
+                  key={edgeType.id}
+                  edgeType={edgeType}
+                  onRename={(next) => {
+                    beginOperation();
+                    rename.mutate({ id: edgeType.id, data: { name: next } });
+                  }}
+                  onDelete={() => {
+                    beginOperation();
+                    remove.mutate({ id: edgeType.id });
+                  }}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </QueryState>
 
       {/* ADR-0033 決定 3: **自動抽出の既定型は `related` であり、辞書に無い型は `related` へ丸めて
           警告として記録する**（拒否も破棄もしない —— 拒否すると取り込み全体が落ち、
           破棄すると辺そのものが失われる）。**丸めは後段が行う**ので画面は何もしないが、
           管理者は「型を消すと以後の抽出が `related` に寄る」ことを知って判断する必要がある。 */}
-      <p className="mt-2 text-xs text-[--color-fg-muted]">
+      <p className="mt-2 text-xs text-fg-muted">
         <Trans>
           辞書に無い型は自動抽出のときに related
           へ丸められ、警告として記録されます。改名しても既存の辺はそのまま追随します。
@@ -315,6 +310,6 @@ export function EdgeTypeDictionaryPanel() {
           <Trans>追加</Trans>
         </Button>
       </form>
-    </section>
+    </Panel>
   );
 }

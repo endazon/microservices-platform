@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { AskCitation } from './citations';
 
 // 05_screens §共通シェル「AIチャットパネル（右レール）… **画面別履歴（画面ごとの保持／全消去）**」/
 // ADR-0031 §採用技術一覧「クライアント状態 = Zustand」/ IADR-0121 決定 1 の第 4 段（#788）。
@@ -22,6 +23,13 @@ export interface AiChatTurn {
   answer: string;
   /** BFF が `done` で返す回答 ID。フィードバック（FR-08）の紐付け先。未返却なら null。 */
   answerId: string | null;
+  /** SSE の `citations`（本文より先に届く）。回答の根拠として往復に紐付けて保つ。 */
+  citations: AskCitation[];
+  /**
+   * 利用者が「停止」した往復か。停止時点の部分回答を履歴に残し、表示側が「（停止）」の注記を付ける
+   * （第 4 弾「体験の穴」(3)。途中で止めた回答を黙って完成品のように見せない）。
+   */
+  stopped: boolean;
 }
 
 interface AiChatState {

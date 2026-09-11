@@ -2,16 +2,8 @@ import { useMemo, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import type { UseQueryResult } from '@tanstack/react-query';
-import {
-  Alert,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Input,
-  Label,
-} from '@platform/ui';
+import { Button, EmptyState, Input, Kv, KvItem, Label, Panel } from '@platform/ui';
+import { QueryState } from '@foundation/ui/QueryState';
 import { useBreadcrumbLeaf } from '@foundation/routing/breadcrumbLeaf';
 import { formatDateTime } from '@foundation/utils/formatDateTime';
 import type {
@@ -34,6 +26,13 @@ import type { WikiSearch } from '../types/wikiSearch';
 // 前段を迂回して読めた）。いまは外部リンクが無く、画面が読む口は BFF だけなので、上の文が初めて真になる。
 // **「dev では ABAC の統制が働かない」**（Wiki.js の直接露出は管理 UI のために残る。ADR-0073 決定 5）ことは
 // `deploy/local/README.md` §Wiki 閲覧の到達 が持つ。
+//
+// **［2026-09-12 / UI/UX 改善］hi-fi モック（sc-04）の構造へ寄せた。**
+//   本文の区画は `.panel`＝`Panel`、最終同期日時は `.sub` に代えて `Kv`（項目名と値の対）である。
+//   待ち・空・失敗は **`QueryState` の 1 本**へ統一した（ツリー・検索・本文の 3 か所それぞれ）。
+//   🔴 **404 だけは `QueryState` の手前で分ける** —— 404 は「無い」であって「失敗」ではない。
+//   `ErrorState`（`role="alert"` ＋ 再試行）で出すと**存在秘匿が壊れ**、押しても必ず同じ 404 になる
+//   再試行を押させることになる（SC-03 / SC-18 と同じ作法。E2E の陰性対照が固定している）。
 //
 // ■ 描くもの（05_screens §SC-04 §主要素）
 //   - ページツリー（権限内のみ）: `GET /bff/wiki/pages` の 1 回。台帳は平坦（`wikiPath` = `doc/<id>`）で
@@ -73,63 +72,53 @@ export function WikiBrowsePage() {
 
   return (
     <section>
-      <h1 className="text-lg font-semibold text-[--color-fg]">
+      {/* hi-fi `.ttl` / `.sub`。見出しの文言は変えない（単体テストと E2E が画面を特定している）。 */}
+      <h1 className="text-[17px] font-medium text-fg">
         <Trans>Wiki 閲覧</Trans>
       </h1>
-      <p className="mb-4 text-sm text-[--color-fg-muted]">
+      <p className="mb-n4 text-xs text-fg-muted">
         <Trans>閲覧権限のある Wiki ページだけが並びます。ページを選ぶと本文を表示します。</Trans>
       </p>
 
-      <div className="flex flex-col gap-4 lg:flex-row">
-        <div className="flex min-w-0 flex-col gap-3 lg:w-80">
-          <Card>
-            <CardHeader>
-              <CardTitle as="h2">
+      <div className="flex flex-col gap-n4 lg:flex-row">
+        <div className="flex min-w-0 flex-col lg:w-80">
+          <Panel heading={<Trans>検索</Trans>}>
+            <form onSubmit={onSearch} className="flex items-end gap-n2">
+              <div className="grow">
+                <Label htmlFor="wiki-search" className="sr-only">
+                  <Trans>Wiki を検索</Trans>
+                </Label>
+                <Input
+                  id="wiki-search"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder={t`検索語を入力…`}
+                />
+              </div>
+              <Button type="submit" variant="primary">
                 <Trans>検索</Trans>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={onSearch} className="flex items-end gap-2">
-                <div className="grow">
-                  <Label htmlFor="wiki-search" className="sr-only">
-                    <Trans>Wiki を検索</Trans>
-                  </Label>
-                  <Input
-                    id="wiki-search"
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    placeholder={t`検索語を入力…`}
-                  />
-                </div>
-                <Button type="submit" variant="primary">
-                  <Trans>検索</Trans>
-                </Button>
-              </form>
-              {search.q !== undefined && (
-                <SearchResults hits={hits} q={search.q} current={search.page} />
-              )}
-            </CardContent>
-          </Card>
+              </Button>
+            </form>
+            {/* 検索していないときは照会そのものが無効（`enabled: false`）なので `QueryState` へ渡さない
+                ——無効な照会は TanStack Query では永遠に待ちである。 */}
+            {search.q === undefined ? null : (
+              <SearchResults hits={hits} q={search.q} current={search.page} />
+            )}
+          </Panel>
 
-          <Card>
-            <CardHeader>
-              <CardTitle as="h2">
-                <Trans>ページツリー</Trans>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <PageTree pages={pages} q={search.q} current={search.page} />
-            </CardContent>
-          </Card>
+          <Panel heading={<Trans>ページツリー</Trans>}>
+            <PageTree pages={pages} q={search.q} current={search.page} />
+          </Panel>
         </div>
 
         <div className="min-w-0 grow">
           {hasSelection ? (
             <PageBody page={page} />
           ) : (
-            <p role="note" className="text-sm text-[--color-fg-muted]">
-              <Trans>ページツリーまたは検索結果からページを選んでください。</Trans>
-            </p>
+            <EmptyState
+              title={t`ページが選ばれていません。`}
+              description={t`ページツリーまたは検索結果からページを選んでください。`}
+            />
           )}
         </div>
       </div>
@@ -151,44 +140,38 @@ function PageTree({
   current: string | undefined;
 }) {
   const { t } = useLingui();
-  if (pages.isPending) {
-    return (
-      <p role="status" className="text-sm text-[--color-fg-muted]">
-        <Trans>ページツリーを読み込み中…</Trans>
-      </p>
-    );
-  }
-  if (pages.isError) {
-    return (
-      <Alert tone="danger" role="alert" label={t`エラー`}>
-        <Trans>ページツリーを取得できませんでした。</Trans>
-      </Alert>
-    );
-  }
-  if (pages.data.length === 0) {
-    return (
-      <p className="text-sm text-[--color-fg-muted]">
-        <Trans>閲覧できる Wiki ページはありません。</Trans>
-      </p>
-    );
-  }
   return (
-    <nav aria-label={t`ページツリー`}>
-      <ul className="flex flex-col gap-1 text-sm">
-        {pages.data.map((p) => (
-          <li key={p.id}>
-            <Link
-              to="/wiki"
-              search={{ q, page: p.slug }}
-              aria-current={p.slug === current ? 'page' : undefined}
-              className="text-[--color-brand] hover:underline aria-[current=page]:font-semibold"
-            >
-              {p.title}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </nav>
+    <QueryState
+      query={pages}
+      loadingLabel={t`ページツリーを読み込み中…`}
+      errorTitle={t`ページツリーを取得できませんでした。`}
+      isEmpty={(data) => data.length === 0}
+      empty={
+        <EmptyState
+          title={t`閲覧できる Wiki ページはありません。`}
+          description={t`取り込みが済むとここに並びます。`}
+        />
+      }
+    >
+      {(data) => (
+        <nav aria-label={t`ページツリー`}>
+          <ul className="flex flex-col gap-1 text-sm">
+            {data.map((p) => (
+              <li key={p.id}>
+                <Link
+                  to="/wiki"
+                  search={{ q, page: p.slug }}
+                  aria-current={p.slug === current ? 'page' : undefined}
+                  className="text-brand hover:underline aria-[current=page]:font-semibold"
+                >
+                  {p.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
+    </QueryState>
   );
 }
 
@@ -203,101 +186,92 @@ function SearchResults({
   current: string | undefined;
 }) {
   const { t } = useLingui();
-  if (hits.isPending) {
-    return (
-      <p role="status" className="mt-3 text-sm text-[--color-fg-muted]">
-        <Trans>検索中…</Trans>
-      </p>
-    );
-  }
-  if (hits.isError) {
-    return (
-      <Alert tone="danger" role="alert" className="mt-3" label={t`エラー`}>
-        <Trans>Wiki の検索に失敗しました。Wiki に到達できない可能性があります。</Trans>
-      </Alert>
-    );
-  }
-  if (hits.data.length === 0) {
-    return (
-      <p className="mt-3 text-sm text-[--color-fg-muted]">
-        <Trans>該当するページはありません。</Trans>
-      </p>
-    );
-  }
   return (
-    <ul aria-label={t`検索結果`} className="mt-3 flex flex-col gap-1 text-sm">
-      {hits.data.map((h) => (
-        <li key={h.id}>
-          <Link
-            to="/wiki"
-            search={{ q, page: h.slug }}
-            aria-current={h.slug === current ? 'page' : undefined}
-            className="text-[--color-brand] hover:underline aria-[current=page]:font-semibold"
-          >
-            {h.title}
-          </Link>
-        </li>
-      ))}
-    </ul>
+    <div className="mt-n3">
+      <QueryState
+        query={hits}
+        loadingLabel={t`検索中…`}
+        errorTitle={t`Wiki の検索に失敗しました。`}
+        errorDescription={t`Wiki に到達できない可能性があります。`}
+        isEmpty={(data) => data.length === 0}
+        empty={
+          <EmptyState
+            title={t`該当するページはありません。`}
+            description={t`別の語で検索してください。`}
+          />
+        }
+      >
+        {(data) => (
+          <ul aria-label={t`検索結果`} className="flex flex-col gap-1 text-sm">
+            {data.map((h) => (
+              <li key={h.id}>
+                <Link
+                  to="/wiki"
+                  search={{ q, page: h.slug }}
+                  aria-current={h.slug === current ? 'page' : undefined}
+                  className="text-brand hover:underline aria-[current=page]:font-semibold"
+                >
+                  {h.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </QueryState>
+    </div>
   );
 }
 
 /**
  * 本文。**Wiki.js が描画した HTML** を sanitize して描く。
- * 404 は中立（権限外・不存在・アーカイブ済みを区別しない）。それ以外の失敗はサーバの状態として `Alert`。
+ * 404 は中立（権限外・不存在・アーカイブ済みを区別しない）。それ以外の失敗はサーバの状態である。
  */
 function PageBody({ page }: { page: UseQueryResult<WikiPageView, unknown> }) {
   const { t } = useLingui();
   const html = useMemo(() => (page.data ? sanitizeWikiHtml(page.data.content) : ''), [page.data]);
 
-  if (page.isPending) {
+  // 🔴 404 は「無い」であって「失敗」ではない（存在秘匿）。**`role="alert"` も再試行も付けない。**
+  if (isNotFound(page.error)) {
     return (
-      <p role="status" className="text-sm text-[--color-fg-muted]">
-        <Trans>本文を読み込み中…</Trans>
-      </p>
-    );
-  }
-  if (page.isError) {
-    return isNotFound(page.error) ? (
-      <p className="text-sm">
-        <Trans>ページが見つかりませんでした。</Trans>
-      </p>
-    ) : (
-      <Alert tone="danger" role="alert" label={t`エラー`}>
-        <Trans>本文を取得できませんでした。</Trans>
-      </Alert>
+      <EmptyState
+        title={t`ページが見つかりませんでした。`}
+        description={t`ページツリーまたは検索から辿り直してください。`}
+      />
     );
   }
 
-  const view = page.data;
-  const syncedAt = formatDateTime(view.syncedAt);
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle as="h2">{view.title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {/* IADR-0365 決定 3: sanitize 済み。生の `content` をここへ渡さない。 */}
-        <article
-          className="prose max-w-none text-sm"
-          data-testid="wiki-page-content"
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-        <p className="mt-4 flex flex-wrap items-center gap-2 border-t border-[--color-border] pt-3 text-xs text-[--color-fg-muted]">
-          <span>
-            <Trans>最終同期: {syncedAt}</Trans>
-          </span>
-          <span aria-hidden>｜</span>
-          <span aria-hidden>📄</span>
-          <Link
-            to="/docs/$id"
-            params={{ id: view.documentId }}
-            className="text-[--color-brand] hover:underline"
-          >
-            <Trans>文書詳細へ戻る</Trans>
-          </Link>
-        </p>
-      </CardContent>
-    </Card>
+    <QueryState
+      query={page}
+      loadingLabel={t`本文を読み込み中…`}
+      errorTitle={t`本文を取得できませんでした。`}
+    >
+      {(view) => (
+        <>
+          {/* hi-fi `.ttl`: ページの題名。**`h2`** である（画面の `h1` は「Wiki 閲覧」）。 */}
+          <h2 className="text-[17px] font-medium text-fg">{view.title}</h2>
+          <Kv columns={2} className="mb-n3 mt-n2">
+            <KvItem label={t`最終同期`}>{formatDateTime(view.syncedAt)}</KvItem>
+            <KvItem label={t`正規化文書`}>
+              <Link
+                to="/docs/$id"
+                params={{ id: view.documentId }}
+                className="text-brand hover:underline"
+              >
+                <Trans>文書詳細へ戻る</Trans>
+              </Link>
+            </KvItem>
+          </Kv>
+          <Panel>
+            {/* IADR-0365 決定 3: sanitize 済み。生の `content` をここへ渡さない。 */}
+            <article
+              className="prose max-w-none text-sm"
+              data-testid="wiki-page-content"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          </Panel>
+        </>
+      )}
+    </QueryState>
   );
 }

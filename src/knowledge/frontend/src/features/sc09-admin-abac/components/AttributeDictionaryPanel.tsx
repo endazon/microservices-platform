@@ -1,10 +1,13 @@
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { MessageDescriptor } from '@lingui/core';
+import type { UseQueryResult } from '@tanstack/react-query';
 import {
   Alert,
   Button,
+  EmptyState,
   Input,
   Label,
+  Panel,
   Select,
   Table,
   TableBody,
@@ -16,6 +19,7 @@ import {
   Tag,
 } from '@platform/ui';
 import { ApiError } from '@foundation/api/ApiError';
+import { QueryState } from '@foundation/ui/QueryState';
 import { i18n } from '@foundation/i18n';
 import { toMessages } from '@foundation/utils/apiErrors';
 import { ATTRIBUTE_SCOPES, attributeScopeLabel } from '../types/abacVocabulary';
@@ -76,15 +80,9 @@ function AttributeRow({
 }
 
 export function AttributeDictionaryPanel({
-  attributes,
-  isPending,
-  isError,
-  error,
+  query,
 }: {
-  attributes: AttributeDefinitionDto[];
-  isPending: boolean;
-  isError: boolean;
-  error: unknown;
+  query: UseQueryResult<AttributeDefinitionDto[], unknown>;
 }) {
   const { t } = useLingui();
   const actions = useAttributeActions();
@@ -110,11 +108,8 @@ export function AttributeDictionaryPanel({
   }
 
   return (
-    <section aria-label={t`属性体系`}>
-      <h2 className="mb-2 text-base font-semibold text-[--color-fg]">
-        <Trans>属性辞書（利用者属性・文書属性）</Trans>
-      </h2>
-
+    // モックの `.panel`（区画）。読み上げ名は aria-label が与えるので role=region のまま残る。
+    <Panel heading={t`属性辞書（利用者属性・文書属性）`} aria-label={t`属性体系`} className="mt-n3">
       {succeeded && !failed && (
         <Alert tone="success" role="status" className="mb-2" label={t`完了`}>
           <Trans>属性辞書を更新しました。</Trans>
@@ -146,24 +141,23 @@ export function AttributeDictionaryPanel({
         </Alert>
       )}
 
-      {isPending && (
-        <p role="status" className="text-sm text-[--color-fg-muted]">
-          <Trans>読み込み中…</Trans>
-        </p>
-      )}
-      {isError && (
-        <Alert tone="danger" role="alert" label={t`エラー`}>
-          {toMessages(error, t`属性辞書を取得できませんでした。`).join(' / ')}
-        </Alert>
-      )}
-
-      {!isPending &&
-        !isError &&
-        (attributes.length === 0 ? (
-          <p className="text-sm">
-            <Trans>属性は登録されていません。</Trans>
-          </p>
-        ) : (
+      {/* 🔴 待ち・失敗・空・本体は `QueryState` が 1 か所で描き分ける（判定順 isError → isPending →
+          isEmpty → 本体）。**失敗と 0 件を混同しない** —— 取得に失敗したのに
+          「登録されていません」と描くと、管理者は「本当に無い」と読んで重複登録へ進む。
+          更新操作の結果（上の Alert）は別物なので残す。 */}
+      <QueryState
+        query={query}
+        isEmpty={(rows) => rows.length === 0}
+        empty={
+          <EmptyState
+            title={t`属性は登録されていません。`}
+            description={t`下の「属性を追加」から、利用者属性・文書属性の最初の定義を登録してください。`}
+          />
+        }
+        errorTitle={t`属性辞書を取得できませんでした。`}
+        errorDescription={toMessages(query.error, '').join(' / ') || undefined}
+      >
+        {(attributes) => (
           <Table>
             <TableCaption>{t`属性辞書の一覧`}</TableCaption>
             <TableHead>
@@ -201,7 +195,8 @@ export function AttributeDictionaryPanel({
               ))}
             </TableBody>
           </Table>
-        ))}
+        )}
+      </QueryState>
 
       <form
         aria-label={t`属性辞書登録`}
@@ -212,7 +207,7 @@ export function AttributeDictionaryPanel({
           create.mutate({ data: draft.body() }, { onSuccess: draft.resetAfterCreate });
         }}
       >
-        <h3 className="text-sm font-medium text-[--color-fg-muted]">
+        <h3 className="text-sm font-medium text-fg-muted">
           <Trans>属性を追加</Trans>
         </h3>
         <div className="grid gap-2 sm:grid-cols-2">
@@ -273,6 +268,6 @@ export function AttributeDictionaryPanel({
           </Button>
         </div>
       </form>
-    </section>
+    </Panel>
   );
 }
