@@ -16,6 +16,30 @@ import {
 // AST は本リポジトリから変更できない別プロジェクト（IADR-0120）だが、**AST#414 で型付きルート契約へ移った**
 // ため、旧契約の互換ブリッジ（`createLegacyRoutes`。IADR-0124 決定 2）を経由しなくなった。
 import { createAiStockTradingRoutes, aiStockTradingNavItems } from '@ai-stock-trading/features';
+import * as aiStockTradingUnit from '@ai-stock-trading/features';
+import { registerUnitMessages } from '@foundation/i18n';
+import type { Locale } from '@foundation/i18n';
+import type { Messages } from '@lingui/core';
+
+// AST の文言カタログ（UI/UX 改善 2026-09-12・利用者裁定 #3「Lingui を導入するが英訳はしない」）。
+// ルート・ナビ・パンくずと同じく、**ユニットを知る唯一の場所**であるここで基盤の i18n へ束ねる
+// （`lib/i18n` が `@ai-stock-trading` を import する形は ESLint が禁じており、foundation は
+// 可変ユニットを知らない）。AST は ja しか持たないので、en には ja が流れる（理由は `registerUnitMessages`）。
+// 順序: `@foundation/i18n` はモジュール読み込み時に基盤のカタログを load / activate 済みであり、
+// ここでの追加ロードはその後に走る（`main.tsx` の `initI18n()` はさらに後。load はいつ行っても効く）。
+//
+// 🔴 **submodule の前進より先に本合成点が develop へ入る**ため、AST 側の新しい公開面
+// （`aiStockTradingMessages` / `aiStockTradingBreadcrumbs`。AST の UI/UX 改善 PR で追加）は
+// **無いかもしれない前提で読む**。名前付き import にすると旧 AST で tsc が落ち、AST の bump PR と
+// 本 PR のどちらを先にマージしても赤になる（順序依存）。名前空間 import から任意項目として取り出せば
+// どちらの順でも緑で、bump が来た時点で自然に有効になる。**bump 後に名前付き import へ戻してよい**。
+const astOptionalSurface = aiStockTradingUnit as unknown as {
+  aiStockTradingMessages?: Partial<Record<Locale, Messages>>;
+  aiStockTradingBreadcrumbs?: readonly FeatureBreadcrumb[];
+};
+if (astOptionalSurface.aiStockTradingMessages) {
+  registerUnitMessages(astOptionalSurface.aiStockTradingMessages);
+}
 
 /**
  * 型付きルートを持つユニットの合成（IADR-0124 決定 1）。
@@ -46,7 +70,11 @@ export const planNavItems: readonly PlanNavItem[] = [...knowledgeNavItems];
  * 宣言する用意ができれば、AST が `xxxBreadcrumbs` を公開してここへ 1 行足すだけで載る
  * （旧契約の時代と違い、**宣言面が無いという構造的な制約は無くなった**）。
  */
-export const planBreadcrumbs: readonly FeatureBreadcrumb[] = [...knowledgeBreadcrumbs];
+export const planBreadcrumbs: readonly FeatureBreadcrumb[] = [
+  ...knowledgeBreadcrumbs,
+  // AST のパンくず（「取引 / 設定」等）。AST が宣言を公開した時点で載る（上の任意項目の読み方と同じ）。
+  ...(astOptionalSurface.aiStockTradingBreadcrumbs ?? []),
+];
 
 /**
  * 本計画に属さない可変機能ユニットの左ナビグループ
