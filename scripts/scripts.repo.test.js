@@ -6853,7 +6853,19 @@ ${r.stderr}`);
         //    環流する」と指名した）。git を一切呼ばず kubectl を外部コマンドとして叩くため、
         //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない
         //    （`check-password-reset-mail.js` / `check-stack-ready.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 57, `検査器の母集合が 57 本から変わった（${scripts.length} 件）`);
+        // ★ #1412 / 計画 AST/ADR-0038 決定 3・フォローアップ 2 / IADR-0434 で
+        //    `check-realm-copy-drift.js`（基盤レルムの宣言＝正本と、AST 専用レルムの宣言＝写しの
+        //    ずれ。同名の realm ロールと AST 所有クライアントを**接頭辞で導出した和集合**で突き合わせる。
+        //    🔴 交差集合で取ると「写しから 1 つ落とす」事故が交差の縮小になって素通りする）を
+        //    新設したため 57 → 58（ラチェットが設計どおり発火した）。
+        //    🔴 **これは「同型の事故が 2 回」ではなく計画側の名指しに基づく新設である**
+        //    （計画 AST/ADR-0038 は決定 3 の統制について実現手段も暫定手段も「無い」と書き、
+        //    フォローアップ 2 が実装側へ検知手段を求めた）。git を一切呼ばず fs のみで走査するため、
+        //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない
+        //    （`check-unit-service-ownership.js` と同じ扱い。submodule 未取得なら縮退する点も同じだが、
+        //    縮退の形は**既知の一覧へのフォールバックではなく明示的な skip** である ——
+        //    写しの内容は「既知の一覧」として持てないからである）。
+        assert.strictEqual(scripts.length, 58, `検査器の母集合が 58 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
