@@ -49,8 +49,6 @@ spec:
               value: {{ $f.bffBaseUrl | quote }}
             - name: OIDC_AUTHORITY
               value: {{ $f.oidc.authority | quote }}
-            - name: OIDC_CLIENT_ID
-              value: {{ $f.oidc.clientId | quote }}
             {{- range $f.extraEnv }}
             - name: {{ .name }}
               value: {{ .value | quote }}

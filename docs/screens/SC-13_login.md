@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [SC-01, SC-13, SC-14, SC-15, SC-16, UC-05, FR-05]
-adrs: [ADR-0026, ADR-0078]
-iadrs: [IADR-0197, IADR-0261, IADR-0347, IADR-0427]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20260911_issue-1245_login-existence-disclosure]
-issues: [#438, #1245]
+adrs: [ADR-0026, ADR-0032, ADR-0078]
+iadrs: [IADR-0197, IADR-0251, IADR-0261, IADR-0273, IADR-0347, IADR-0427, IADR-0429]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20260911_issue-1245_login-existence-disclosure, 20260911_issue-1393_remove-platform-spa-public-client]
+issues: [#438, #1245, #1393]
 -->
 
 # 画面仕様書: ログイン（Keycloak 統合認証）
@@ -102,7 +102,7 @@ flowchart LR
 
 | 用途 | ルート |
 | --- | --- |
-| ログイン | `auth.example.co.jp` の `/realms/platform/protocol/openid-connect/auth?client_id=platform-spa`（Keycloak 標準） |
+| ログイン | `auth.example.co.jp` の `/realms/platform/protocol/openid-connect/auth?client_id=bff`（Keycloak 標準）。**開始するのはブラウザではなく BFF である** —— 画面からは `/bff/auth/login` へ遷移し、BFF が機密クライアント `bff` として認可要求を組む |
 
 ## 計画（モックアップ・画面設計）との対応
 
@@ -110,7 +110,7 @@ flowchart LR
 
 | 計画側の要素 | 実装 | 満たしていない条件 / 理由 | 計画側の該当箇所 |
 | --- | --- | --- | --- |
-| 全コンポーネント共通の OIDC 認証入口 | **する** | レルム `platform`／クライアント `platform-spa` へ改名済み（レルム改名の実装 ADR） | 計画側の画面設計 §ログイン |
+| 全コンポーネント共通の OIDC 認証入口 | **する** | レルムは `platform`（レルム改名の実装 ADR）。SPA 用の公開クライアントは撤去済みで、認可コードフローを行うのは BFF の機密クライアント `bff` だけである（BFF セッション方式） | 計画側の画面設計 §ログイン |
 | 存在秘匿（応答の区別不能性） | **する（3 面を機械で測る）** | 🔴 **「Keycloak 既定挙動だから成立している」ではない。** ステータス・リダイレクト先・応答本文の 3 面を、実在する利用者名と**同じバイト長の**非実在の利用者名で対にして稼働クラスタで測る（下記「存在秘匿の測り方」）。**所要時間は測って出すが、判定はしていない**（計画側が閾値を実測待ちとしているため） | 同上 |
 | 5 回失敗で 15 分ロック | **する** | `bruteForceProtected` 等 | `ADR-0026` §パスワード・ロックアウト |
 | 「このデバイスを記憶（30 日）」 | **する** | `rememberMe` / セッション有効期間 | 同上 |

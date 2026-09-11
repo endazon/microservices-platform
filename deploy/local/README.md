@@ -351,13 +351,20 @@ kubectl -n microservices-platform port-forward svc/frontend-service 8081:8080
 #   → http://localhost:8081/bff/...     （Caddy が in-cluster bff-service:8080 へプロキシ。BFF port-forward 不要）
 ```
 
-> **ローカル port-forward のポートは realm の `platform-spa` に恒久登録済みの `8081` または `3100` を使う**（`redirectUris`=
-> `http://localhost:{8081,3100}/*`・`webOrigins` 同左。ログアウト後リダイレクト `post.logout.redirect.uris` も両ポートを
-> 登録済みで、値は Keycloak の複数値区切り `##` で連結する〔`http://localhost:3100/*##http://localhost:8081/*`〕・Issue #340）。
-> SPA は `redirect_uri=<origin>/callback` を送るため、
-> ブラウザで開く origin（＝上の port-forward のローカルポート）が `platform-spa` に登録されている必要がある。両ポートとも
-> 登録済みのため、**ブラウザ OIDC で Keycloak 管理コンソールへの redirect URI 手動追加は不要**。別のローカルポートを
-> 使いたい場合は、そのポートを `deploy/keycloak/microservices-platform-realm.json` の `platform-spa` に追記する（realm.json の
+> 🔴 **［2026-09-11 更新 / #1393］OIDC の登録先は `platform-spa` ではなく `bff` client である。**
+> BFF セッション方式（ADR-0032 / IADR-0273）で**認可コードフローを行うのは BFF** であり、
+> ブラウザは `/bff/auth/login` へ遷移して `/bff/auth/callback` へ戻る。SPA 用の public client
+> （`platform-spa`）は realm から撤去した（IADR-0429）。
+>
+> `bff` client に恒久登録済みの redirect は
+> `https://localhost/bff/auth/callback`（エッジ）/ `http://localhost:3100/bff/auth/callback`（compose・
+> `frontend-service` の port-forward を 3100 で立てた場合）/ `http://localhost:5000/bff/auth/callback`
+> （BFF 直の port-forward）の 3 つである。**OIDC ログインまで通したい port-forward は `3100` を使う。**
+> 🔴 **`8081` は SPA の閲覧には使えるが、`bff` の redirect には登録されていない** ——
+> 8081 で開くと BFF が `http://localhost:8081/bff/auth/callback` を要求して
+> `invalid_redirect_uri` になる（`platform-spa` 時代の 8081 登録は SPA 自身の redirect のためだった）。
+> 別のローカルポートで OIDC まで通したい場合は、そのポートの `/bff/auth/callback` を
+> `deploy/keycloak/microservices-platform-realm.json` の **`bff`** client へ追記する（realm.json の
 > 変更は **`k8s-local-up.sh` の再実行で稼働 realm へ届く** —— 後段の realm の後追い Job が client の差分として当てる。
 > 上記「realm を更新したときの反映」を参照）。
 
@@ -446,15 +453,16 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
   1. hosts に `127.0.0.1 keycloak` を追記（Windows: `C:\Windows\System32\drivers\etc\hosts`）。
   2. `kubectl -n platform-infra port-forward svc/keycloak 8080:8080`。
   3. これで browser も cluster も `http://keycloak:8080` を issuer として共有する。SPA は compose の frontend
-     （`http://localhost:3100`・既存 `platform-spa` origin）を使い、その `BFF_UPSTREAM` を上記 BFF port-forward
+     （`http://localhost:3100`・`bff` client に登録済みの origin）を使い、その `BFF_UPSTREAM` を上記 BFF port-forward
      （`http://localhost:5080`）へ、`OIDC_AUTHORITY` を `http://keycloak:8080/realms/platform` へ向ける。
-     k8s 配信（#313）で確認する場合は上記「SPA(/settings) 到達」の `frontend-service` port-forward（`8081` または
-     `3100`）を使う。**いずれのポートも `platform-spa` に恒久登録済み**（`http://localhost:{8081,3100}/*`・#340）のため、
-     ブラウザ OIDC で管理コンソールへの redirect URI 手動追加は不要（手順A は per-session の realm 改変なしで成立する）。
+     k8s 配信（#313）で確認する場合は上記「SPA(/settings) 到達」の `frontend-service` port-forward を使う。
+     **OIDC ログインまで通すなら `3100`**（`bff` の redirect が登録済み。#1393 で登録先が `platform-spa` から
+     `bff` へ移った）。手順A は per-session の realm 改変なしで成立する。
   4. token 検証: 取得した access_token を base64url デコードし `iss` と `realm_access.roles`（`trading-owner`）を確認する。
 - **手順B（単一エッジ host に集約する場合・任意）**: chart の `edge.oidc.enabled=true` で SPA/`/bff`/`/realms` を
   同一エッジ host に集約できる（`edge.oidc.host/port` で Keycloak を指す）。この場合のみ運用者が (i) その host を
-  `platform-spa` の redirectUris/webOrigins へ追記、(ii) `global.auth.authority` を同 host へ上書き、(iii) in-cluster から
+  `bff` の redirectUris/webOrigins へ追記（`<host>/bff/auth/callback`。#1393 で `platform-spa` から移った）、
+  (ii) `global.auth.authority` を同 host へ上書き、(iii) in-cluster から
   同 host を解決させる。(iii) は稼働環境依存＝live。(iii) には次の 2 択がある。
   - **(iii-a) backend の metadata/issuer 分離（推奨・Issue #314 / [IADR-0086](../../.ai-context/adr/IADR-0086_oidc-issuer-metadata-split.md)）**:
     CoreDNS を触らず、backend の OIDC 検証で metadata 取得先（in-cluster）と issuer 検証値（エッジ host）を分離する。
@@ -472,7 +480,7 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
     環境ごとに壊れやすいため、(iii-a) が使えない構成向けの代替とする。
 
 > 実ブラウザログイン end-to-end・Playwright E2E・Pod 実起動ヘルス緑は稼働 k3d 依存（本 issue の live 分・#284）。
-> 手順B の単一エッジ host OIDC 実ログインも稼働環境（エッジ host 到達・`platform-spa` redirectUris 追記）依存＝live（#314）。
+> 手順B の単一エッジ host OIDC 実ログインも稼働環境（エッジ host 到達・`bff` redirectUris 追記）依存＝live（#314）。
 
 ## Headlamp（k8s 管理 UI・Keycloak OIDC・Issue #271）
 

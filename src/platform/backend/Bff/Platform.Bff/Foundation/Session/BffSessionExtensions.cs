@@ -24,6 +24,8 @@ public static class BffSessionExtensions
     /// <summary>
     /// 既定の振り分けスキーム。`Authorization: Bearer` が在れば JwtBearer、無ければ
     /// セッション Cookie へ委ねる。**両方を受理する**ための入口（IADR-0251 決定 9）。
+    /// 🔴 ただし Bearer 腕は**誰の名義でも通るわけではない** ——
+    /// <see cref="BearerCallerPolicy"/> が「ブラウザが取得し得ないトークン」に絞る（[[IADR-0429]]）。
     /// </summary>
     public const string SmartScheme = "BffSmart";
 
@@ -225,6 +227,29 @@ public static class BffSessionExtensions
                     ctx.Response.Headers.CacheControl = "no-store";
                 };
             });
+
+        // 🔴 NFR, SC-13, ADR-0032, IADR-0251 決定 9, [[IADR-0429]] (#1393):
+        // **Bearer 腕に門を掛ける。** 上の振り分けは「Bearer が在れば JwtBearer」までしか決めず、
+        // **realm が発行した有効な JWT なら誰の名義でも通る**ままだった。#1393 で realm から
+        // `platform-spa`（public client）を撤去したが、**口を閉じるだけでは足りない** ——
+        // 同型の public client が足された瞬間に「ブラウザが利用者トークンを取り、`/bff/*` を
+        // Bearer で直接叩く」経路（＝セッション Cookie と CSRF ヘッダの迂回）が復活する。
+        //
+        // `AddPlatformAuth` が登録した JwtBearer を**後から**構成する（`AddJwtBearer` を二重に
+        // 呼ぶと既定値の上書き順に依存する形になる）。判定は `BearerCallerPolicy` の純粋関数に
+        // 置き、テストが変異試験で固定する —— 配線の grep は「文字列が在ること」しか見ないので、
+        // 判定が逆になっても緑のまま通る（#992 / #1124 と同型）。
+        services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, o =>
+        {
+            var inner = o.Events?.OnTokenValidated;
+            o.Events ??= new JwtBearerEvents();
+            o.Events.OnTokenValidated = async ctx =>
+            {
+                if (inner is not null) await inner(ctx);
+                if (BearerCallerPolicy.IsAcceptedCaller(ctx.Principal, options.ClientId)) return;
+                ctx.Fail(BearerCallerPolicy.RejectionReason(ctx.Principal));
+            };
+        });
 
         // 🔴 IADR-0251 決定 4: `SessionStore` を DI 経由で差し込む。
         // これが無いとチケットは Cookie 本体に載り（実測した既定）、**サーバ側に消す対象が無いため

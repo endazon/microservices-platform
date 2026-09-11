@@ -328,7 +328,9 @@ async function obtainToken() {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       grant_type: 'password',
-      client_id: env('NDCG_KC_CLIENT_ID', 'platform-spa'),
+      // 🔴 既定を持たない。#1393 まで既定は `platform-spa` だったが、同 client は
+      // direct access grants が無効で**一度も動いていなかった**（realm からも撤去済み）。
+      client_id: env('NDCG_KC_CLIENT_ID', ''),
       username: env('NDCG_KC_USERNAME', 'poc-user'),
       password: env('NDCG_KC_PASSWORD', ''),
     }),

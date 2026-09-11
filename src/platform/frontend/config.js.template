@@ -4,8 +4,7 @@
 window.__APP_CONFIG__ = {
   bffBaseUrl: "${BFF_BASE_URL}",
   oidc: {
-    authority: "${OIDC_AUTHORITY}",
-    clientId: "${OIDC_CLIENT_ID}"
+    authority: "${OIDC_AUTHORITY}"
   },
   opsLinks: {
     grafanaUrl: "${GRAFANA_URL}",

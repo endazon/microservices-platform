@@ -3,9 +3,9 @@
 window.__APP_CONFIG__ = {
   // BFF の基点。dev は Vite proxy 経由の相対パス（/bff）。本番はエッジの BFF URL。
   bffBaseUrl: '/bff',
-  // Keycloak OIDC（SPA public client + Authorization Code + PKCE）。
+  // Keycloak の issuer。**SPA は OIDC を実施しない**（BFF セッション方式・ADR-0032）。
+  // この値はアカウント設定画面への導線（Keycloak のアカウントコンソール）にだけ使う。
   oidc: {
     authority: 'http://localhost:8080/realms/platform',
-    clientId: 'platform-spa',
   },
 };

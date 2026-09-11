@@ -191,10 +191,36 @@ module.exports = ({ ok, assert }) => {
     });
 
     ok('seed: secret を解決できないときは client_secret を載せない', () => {
-      const form = seed.buildTokenForm({ clientId: 'platform-spa', clientSecret: '' });
+      const form = seed.buildTokenForm({ clientId: 'no-such-client', clientSecret: '' });
       assert.strictEqual(form.get('client_secret'), null);
       // 種別を判定できないとき（realm に無い client）は null（＝分からない）を返す。
       assert.strictEqual(seed.isConfidentialInRealm('no-such-client'), null);
+    });
+
+    // 🔴 #1393: **realm に public client を作らない**（ADR-0032 / [[IADR-0429]]）。
+    //
+    // public client が 1 つでも在ると、**ブラウザが利用者トークンを取得して `/bff/*` を
+    // Bearer で直接叩ける** —— HttpOnly セッション Cookie と CSRF ヘッダ（2 枚の壁）を
+    // 丸ごと迂回できる。`platform-spa` は BFF セッション移行後も 8 か月残っていたので、
+    // **「うっかり戻る」を機械で止める**。
+    //
+    // BFF 側にも門はある（`BearerCallerPolicy`）が、**口と受理の両方を閉じる** ——
+    // 片方だけだと、もう片方の変更で静かに開く。
+    ok('★ #1393: realm に public client が 1 つも無い（ブラウザにトークンの口を開けない）', () => {
+      const realm = JSON.parse(fsSeed.readFileSync(seed.REALM_FILE, 'utf8'));
+      const clients = realm.clients || [];
+      // 陽性対照: 走査が空振りしていない（confidential client は在る）。
+      assert.ok(clients.length > 0, 'realm に client が 1 つも無い（前提が変わった）');
+      assert.ok(
+        clients.some((c) => c.publicClient === false),
+        'confidential client が 1 つも無い（走査が空振りしている）',
+      );
+      const pub = clients.filter((c) => c.publicClient === true).map((c) => c.clientId);
+      assert.deepStrictEqual(
+        pub, [],
+        `public client が復活している: ${pub.join(', ')}。`
+          + 'ブラウザが利用者トークンを取れる口になるので、足すなら IADR-0429 の改定が要る',
+      );
     });
 
     ok('★ seed: realm の client secret がスクリプトへ直書きされていない', () => {
@@ -9900,7 +9926,9 @@ ${r.stderr}`);
 
     // ---- 母集合 -------------------------------------------------------------------
     ok('#1163: 母集合はブラウザ OIDC を持つ 7 クライアントである', () => {
-      // 走査の出所は作業仕様書 §母集合（realm JSON の standardFlowEnabled 8 件 − platform-spa）。
+      // 走査の出所は作業仕様書 §母集合。#1163 当時は realm JSON の standardFlowEnabled が 8 件で
+      // そこから platform-spa を除いて 7 件だったが、#1393 で同 client を realm ごと撤去したので
+      // **いまは走査結果がそのまま 7 件**である（母集合そのものは変わっていない）。
       // 🔴 件数が変わったら**作業仕様書の走査をやり直す**（issue の数えを写さない）。
       assert.strictEqual(tol.TOOLS.length, 7, `母集合が ${tol.TOOLS.length} 件（7 件のはず）`);
       const keys = tol.TOOLS.map((t) => t.key);
