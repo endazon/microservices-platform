@@ -259,6 +259,140 @@ public class KeycloakIdentityAdminClientTests
             .EnumerateArray().Select(e => e.GetString()).Should().BeEquivalentTo(["hr"]);
     }
 
+    // ---- 退職時の保持起点（FR-19, SC-19, 計画 ADR-0036 D-09, ADR-0082 決定 5, [[IADR-0428]] / #1392） ----
+
+    // FR-19, SC-17, [[IADR-0428]]: 🔴 **ABAC 属性の差し替えで予約キー（保持起点）が消えない。**
+    // `PUT /users/{id}` は送った表現で置き換えるので、**現在の表現から持ち越さないと消える** ——
+    // 部門を 1 つ直しただけで退職時の窓の起点が失われる。
+    // 陽性対照（差し替えたい ABAC 属性は要求どおりに載る）を同じ本文に置く。
+    [Fact]
+    public async Task Replacing_attributes_preserves_the_retention_anchor()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Put("admin/realms/platform/users/u1", "")
+            .Get("admin/realms/platform/users/u1", """
+                {"id":"u1","username":"tanaka.taro","enabled":true,
+                 "attributes":{"department":["hr"],
+                               "account_disabled_at":["2026-08-01T03:00:00Z"]}}
+                """)
+            .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
+
+        await Client(handler).ReplaceAttributesAsync(
+            "u1", new Dictionary<string, string> { ["department"] = "hr" }, Ct);
+
+        var put = handler.Requests.Single(r => r.Method == "PUT");
+        using var body = JsonDocument.Parse(put.Body!);
+        var attrs = body.RootElement.GetProperty("attributes");
+        attrs.GetProperty("department").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo(["hr"], "陽性対照: 差し替えたい属性は要求どおり載る");
+        attrs.GetProperty("account_disabled_at").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo(["2026-08-01T03:00:00Z"]);
+    }
+
+    // FR-19, [[IADR-0428]]: 🔴 **要求側が予約キーを混ぜても採らない**（書き手は 1 つだけ）。
+    // 採ると、SC-17 の差し替えから退職の起点を書き換えられる経路ができる。
+    [Fact]
+    public async Task Replacing_attributes_ignores_a_retention_anchor_sent_by_the_caller()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Put("admin/realms/platform/users/u1", "")
+            .Get("admin/realms/platform/users/u1", """
+                {"id":"u1","username":"tanaka.taro","enabled":true,
+                 "attributes":{"department":["hr"],
+                               "account_disabled_at":["2026-08-01T03:00:00Z"]}}
+                """)
+            .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
+
+        await Client(handler).ReplaceAttributesAsync("u1", new Dictionary<string, string>
+        {
+            ["department"] = "hr",
+            ["account_disabled_at"] = "1999-01-01T00:00:00Z",
+        }, Ct);
+
+        var put = handler.Requests.Single(r => r.Method == "PUT");
+        using var body = JsonDocument.Parse(put.Body!);
+        body.RootElement.GetProperty("attributes").GetProperty("account_disabled_at")
+            .EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo(["2026-08-01T03:00:00Z"]);
+    }
+
+    // FR-19, SC-19, ADR-0082 決定 5, [[IADR-0428]]: 起点の書き込み。**他の属性を巻き添えにしない**
+    //（`PUT` は置き換えなので、現在の表現から持ち越す）。
+    [Fact]
+    public async Task Setting_the_retention_anchor_writes_it_without_dropping_other_attributes()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Put("admin/realms/platform/users/u1", "")
+            .Get("admin/realms/platform/users/u1", """
+                {"id":"u1","username":"tanaka.taro","enabled":false,
+                 "attributes":{"department":["hr"],"tags":["sales","hr"],
+                               "account_disabled_at":["2026-08-01T03:00:00Z"]}}
+                """)
+            .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
+
+        var updated = await Client(handler).SetRetentionAnchorAsync(
+            "u1", "account_disabled_at", new DateTimeOffset(2026, 8, 1, 3, 0, 0, TimeSpan.Zero), Ct);
+
+        updated.Should().NotBeNull();
+        var put = handler.Requests.Single(r => r.Method == "PUT");
+        using var body = JsonDocument.Parse(put.Body!);
+        var attrs = body.RootElement.GetProperty("attributes");
+        attrs.GetProperty("account_disabled_at").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo(["2026-08-01T03:00:00Z"]);
+        attrs.GetProperty("department").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo(["hr"]);
+        // 集合値キーは多値のまま持ち越す（単一値へ畳むと要素が落ちる）。
+        attrs.GetProperty("tags").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo(["sales", "hr"]);
+    }
+
+    // FR-19, [[IADR-0428]]: 起点の消去（再有効化＝退職の取り消し）。
+    // 🔴 **消えたことを読み直して確かめる。** 残ると復職者の資料が退職者と同じ期限で扱われる ——
+    // 「書けなかった」より危険な向きなので、ここは fail-closed にする。
+    // 本テストのスタブは読み直しでも同じ表現を返す（＝消えていない）ので、**例外になるのが正しい。**
+    [Fact]
+    public async Task Clearing_the_retention_anchor_omits_it_and_fails_closed_when_it_survives()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Put("admin/realms/platform/users/u1", "")
+            .Get("admin/realms/platform/users/u1", """
+                {"id":"u1","username":"tanaka.taro","enabled":true,
+                 "attributes":{"department":["hr"],
+                               "account_disabled_at":["2026-08-01T03:00:00Z"]}}
+                """)
+            .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
+
+        var act = async () => await Client(handler).SetRetentionAnchorAsync(
+            "u1", "account_disabled_at", null, Ct);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>())
+            .Which.Message.Should().Contain("account_disabled_at");
+
+        // 送った表現からは確かに落ちている（消去の要求そのものは正しく組めている）。
+        var put = handler.Requests.Single(r => r.Method == "PUT");
+        using var body = JsonDocument.Parse(put.Body!);
+        var attrs = body.RootElement.GetProperty("attributes");
+        attrs.TryGetProperty("account_disabled_at", out _).Should().BeFalse();
+        attrs.GetProperty("department").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo(["hr"], "陽性対照: 消すのは起点だけである");
+    }
+
+    // 陰性対照: 居ない利用者への起点の書き込みは 404（例外にしない）。
+    [Fact]
+    public async Task Setting_the_retention_anchor_on_an_unknown_user_returns_null()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Status("admin/realms/platform/users/ghost", HttpStatusCode.NotFound);
+
+        (await Client(handler).SetRetentionAnchorAsync("ghost", "account_disabled_at", null, Ct))
+            .Should().BeNull();
+    }
+
     // 「無効化→全セッション即時失効」の後半。Keycloak 側の失効がバックチャネルログアウトを起こす。
     [Fact]
     public async Task Revoking_sessions_posts_to_the_user_logout_endpoint()

@@ -3,15 +3,15 @@ title: セキュリティ仕様書
 type: security-spec
 status: in-progress
 created: 2026-07-02
-updated: 2026-09-10
+updated: 2026-09-11
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-20, NFR-11, SC-05, SC-11, SC-17, SC-20, UC-07]
-adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0037, ADR-0045]
-iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0422]
-specs: [20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile]
-issues: [#55, #100, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, AST#18, AST#24, AST#727, planning#383]
+ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, NFR-11, SC-05, SC-11, SC-17, SC-19, SC-20, UC-07]
+adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0082]
+iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0422, IADR-0428]
+specs: [20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile]
+issues: [#55, #100, #1392, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, AST#18, AST#24, AST#727, planning#383]
 -->
 
 # セキュリティ仕様書
@@ -143,6 +143,24 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 > **注（実装 ADR の参照）**: 上表が参照する**文書の機密区分のサーバー側検証は PR #211（Issue #199）で新設され
 > develop へマージ済み**（本ブランチも develop を取り込み済み）。本仕様書群は他に、.NET 10 採用と
 > コンポーザビリティ標準の段階適用（PR #212、未マージ）を参照する箇所があり、これは #212 マージ後に実体が揃う。
+
+### 退職時の個人資料の保持起点 — 未供給なら数えない（fail-safe）
+
+退職・アカウント無効化のあと、個人資料に対する管理者閲覧の窓は**起点から 30 日間**である。
+🔴 **その起点となる日付を、実装は自分で持つ必要がある** —— 退職日を持つのは人事システムだけであり、
+人事連携は未実装で、IdP の無効化フラグ（`enabled`）に日付は無い。
+
+| 項目 | 決めごと |
+| --- | --- |
+| 起点の置き場 | **IdP の利用者属性（予約キー）**。`account_disabled_at`（暫定）/ `hr_leave_date`（恒久・人事連携。**書き手は未実装**） |
+| 出所の切替え | 構成 `RetentionAnchor:Source`（`account-disabled-at` 既定 / `hr-leave-date`）。**値域外の宣言は起動時に落ちる** |
+| 期間 | **30 日。構成にしない**（計画の決定であり、配備が弱められてはならない） |
+| 書き手 | 利用者アカウント管理の**無効化端点だけ**（既にある起点は上書きしない／再有効化で消す） |
+| 起点が無い・読めないとき | 🔴 **「数えていない」を返し、削除の対象にしない。**「該当 0 件」と「起点が未供給」を型で分ける（`"0"` はエポックではない） |
+| 予約キーの扱い | 利用者アカウント管理の応答へ**出さない**（画面が属性辞書に無いキーを送り返して 400 になるため）。ABAC 属性の差し替えでも**消えない** |
+
+**窓が閉じた後に資料をどう扱うか（削除／保持したまま閲覧不可／残置）は計画側で未決**であり、
+実装は起点と判定だけを持つ（判定の呼び出し元はまだ無い）。実 IdP への書き込みは稼働クラスタで未実測である。
 
 ## 秘密情報管理
 
