@@ -9,6 +9,7 @@ using GraphService.Features.Graph.Neighbors;
 using GraphService.Features.GraphDocuments.Delete;
 using GraphService.Features.GraphDocuments.Sync;
 using GraphService.Features.Clustering.Detect;
+using GraphService.Features.Clustering.Summarize;
 using GraphService.Features.KnowledgeHealth.Report;
 using GraphService.Features.AiSuggestions;
 using GraphService.Features.AiSuggestions.Generate;
@@ -270,6 +271,38 @@ builder.Services.AddSingleton<IClusterDetectionLeaseCoordinator>(sp =>
         connStr, sp.GetRequiredService<ILogger<PostgresClusterDetectionLeaseCoordinator>>());
 });
 builder.Services.AddHostedService<ClusterDetectionHostedService>();
+
+// FR-17, FR-18, SC-10, ADR-0035 決定 3・5・6, ADR-0051 決定 4, ADR-0083 決定 2・3,
+// [[IADR-0430]] (#1395): クラスタ要約の**生成バッチ**（`graph_cluster_summaries` の書き手）。
+//
+// 🔴 **既定はオフである**（[[IADR-0430]] 決定 6）。`ClusterSummary:Enabled=true` を注入するまで
+// ホストは**タイマーすら作らず即座に降り**、LLM の呼び出しは 1 回も起きない。
+// **ゲートは登録側ではなくホストの中にある** —— 構成による分岐を DI の登録へ出すと、
+// 効き方が「組み立て時に構成を読めたかどうか」に依存し、試験から確かめられない。
+// **ValidateOnStart は付けない**（不正値で起動を落とすと DocumentUpdated / DocumentDeleted の
+// 購読ごと止まる。`KnowledgeHealthOptions` と同じ向き）。
+builder.Services.Configure<ClusterSummaryOptions>(
+    builder.Configuration.GetSection(ClusterSummaryOptions.SectionName));
+// 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]]: **REST 面は `ServiceCaller` を要する。**
+// 用途名は `graph-cluster-summary`（AI 提案の `graph-suggestion` と**別の値**にして、
+// 用途別の費用集計で 2 経路を区別できるようにする）。
+builder.Services.AddHttpClient<IClusterSummaryLlmClient, LlmGatewayClusterSummaryClient>(c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"]
+        ?? "http://llm-gateway:5010"))
+    .AddLlmGatewayServiceToken(builder.Configuration);
+builder.Services.AddScoped<ClusterSummaryJob>();
+// 🔴 単一書き手化。検出（"GCLD"）とも健全性（"GKHP"）とも**別の口**である ——
+// LLM の応答を待つ長い処理が、他の定期処理を塞がないようにする（[[IADR-0430]] 決定 5）。
+builder.Services.AddSingleton<IClusterSummaryLeaseCoordinator>(sp =>
+{
+    using var scope = sp.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<GraphDbContext>();
+    if (!db.Database.IsRelational())
+        return new NoOpClusterSummaryLeaseCoordinator();
+    return new PostgresClusterSummaryLeaseCoordinator(
+        connStr, sp.GetRequiredService<ILogger<PostgresClusterSummaryLeaseCoordinator>>());
+});
+builder.Services.AddHostedService<ClusterSummaryHostedService>();
 
 // FR-14, ADR-0018 / #1016: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
 builder.AddPlatformPipelineConfig();
