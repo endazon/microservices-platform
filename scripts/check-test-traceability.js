@@ -534,9 +534,10 @@ function selfTest() {
   {
     const ids = readPlanIds();
     // #599: planning 891b199 で FR-22（通知）が新設され 53 → 54 になった。
+    // #1411: 秘密情報の投入面として SC-22 が新設され 54 → 55 になった（**SC が動いた初回**）。
     // この数は .claude/rules/traceability.md の ID レンジと 1:1 で連動する。
-    t('実ファイル: .claude/rules/traceability.repo.md から計画 ID 54 件を読める',
-      ids.length === 54 && ids.includes('FR-22') && ids.includes('UC-11') && ids.includes('SC-21'), ids.length);
+    t('実ファイル: .claude/rules/traceability.repo.md から計画 ID 55 件を読める',
+      ids.length === 55 && ids.includes('FR-22') && ids.includes('UC-11') && ids.includes('SC-22'), ids.length);
   }
 
   let failed = 0;
