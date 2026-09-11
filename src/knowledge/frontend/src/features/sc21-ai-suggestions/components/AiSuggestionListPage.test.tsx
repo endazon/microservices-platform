@@ -270,22 +270,31 @@ describe('AiSuggestionListPage (SC-21)', () => {
   });
 
   // A-12: 後段が引けないときに**空の一覧へ縮退しない**。
+  //
+  // 三部品（QueryState）へ寄せたので、失敗は `role="alert"` の器で出る（testid ではなく役割で引く）。
+  // **再試行の導線が在ること**まで測る —— 「時間をおいて再度お試しください」とだけ書いて
+  // 利用者に再読込させる形へ戻さないため。
   it('does not degrade a backend failure into an empty listing', async () => {
     respond({ suggestions: new ApiError('server', 'boom', 500) });
     await renderPage();
 
-    expect(await screen.findByTestId('suggestions-error')).toBeInTheDocument();
-    expect(screen.queryByTestId('suggestions-empty')).toBeNull();
+    const failure = await screen.findByRole('alert');
+    expect(failure).toHaveTextContent('提案の一覧を取得できませんでした。');
+    expect(within(failure).getByRole('button', { name: '再試行' })).toBeInTheDocument();
+    expect(screen.queryByText('該当する提案はありません。')).toBeNull();
     expect(screen.queryByRole('table')).toBeNull();
   });
 
   // 0 件は 0 件として描く（「引けない」とは別の状態である）。
+  // 🔴 空は**再試行を促さない**（正常な結果である）。次の一手は絞り込みの変更である。
   it('shows an empty state when there is nothing to triage', async () => {
     respond({ suggestions: [] });
     await renderPage();
 
-    expect(await screen.findByTestId('suggestions-empty')).toBeInTheDocument();
-    expect(screen.queryByTestId('suggestions-error')).toBeNull();
+    expect(await screen.findByText('該当する提案はありません。')).toBeInTheDocument();
+    expect(screen.getByText(/絞り込みを変えると/)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('button', { name: '再試行' })).toBeNull();
   });
 
   // 位置づけの固定文言: **なぜ一覧で承認できないのか**を必ず示す（05_screens §SC-21）。

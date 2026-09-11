@@ -1,6 +1,11 @@
 import { Trans } from '@lingui/react/macro';
+import { Panel } from '@platform/ui';
 
 // SC-18 (#917): 凡例。**グラフ領域の近傍に常時置く**（利用者裁定・質問票 第11回 Q3）。
+//
+// 🔴 **折りたためない形にしてある。** 以前は `<details open>` で描いていたが、
+// 「常時置く」という裁定に対して**閉じられる器は仕様の裏口**になる（1 度閉じた利用者には
+// 以後ずっと凡例が無い）。モックも `.panel` の区画として常に描いている。
 //
 // 🔴 区別はアイコン・形・線種のテキスト説明が担い、**色だけで意味を持たせない**。
 // 中核 5 種は描き分けを説明し、推奨追加の 4 種は**凡例のみ**でよい（05_screens §SC-18。
@@ -19,11 +24,12 @@ function LineSample({ style, width }: { style: 'solid' | 'dashed' | 'dotted'; wi
 
 export function GraphLegend() {
   return (
-    <details open className="rounded border border-[--color-border] p-2 text-xs">
-      <summary className="cursor-pointer font-semibold">
-        <Trans>凡例（アイコンと形で区別・色は補助）</Trans>
-      </summary>
-      <div className="mt-2 grid gap-3 sm:grid-cols-2">
+    <Panel
+      heading={<Trans>凡例（アイコンと形で区別・色は補助）</Trans>}
+      headingAs="h3"
+      className="mb-0 text-xs"
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
         <ul className="space-y-1" data-testid="legend-nodes">
           <li>
             <span
@@ -83,11 +89,11 @@ export function GraphLegend() {
             <LineSample style="dashed" width={2} />{' '}
             <Trans>AI 提案由来の辺は破線（承認済みのみ表示）</Trans>
           </li>
-          <li className="text-[--color-fg-muted]">
+          <li className="text-fg-muted">
             <Trans>その他の型（implements / refines / depends-on / part-of）は細い実線で表示</Trans>
           </li>
         </ul>
       </div>
-    </details>
+    </Panel>
   );
 }

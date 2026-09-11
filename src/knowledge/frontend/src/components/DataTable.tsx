@@ -126,5 +126,5 @@ export function DataTable<TData extends RowData>({
 function SortIcon({ direction }: { direction: false | 'asc' | 'desc' }) {
   if (direction === 'asc') return <ArrowUp className="size-3.5" aria-hidden />;
   if (direction === 'desc') return <ArrowDown className="size-3.5" aria-hidden />;
-  return <ArrowUpDown className="size-3.5 text-[--color-fg-muted]" aria-hidden />;
+  return <ArrowUpDown className="size-3.5 text-fg-muted" aria-hidden />;
 }

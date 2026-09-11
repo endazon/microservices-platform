@@ -1,6 +1,6 @@
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Link } from '@tanstack/react-router';
-import { Button, Card, CardContent, CardHeader, CardTitle, Tag } from '@platform/ui';
+import { Button, Panel, Tag } from '@platform/ui';
 import {
   getBffDocumentDetailQueryKey,
   useBffDocumentDetail,
@@ -21,6 +21,8 @@ import type {
 //   選択された 1 件だけ既存の /bff/documents/{id} から引く。404（不在・権限による秘匿は
 //   区別されない。IADR-0009）はパネルを壊さず、グラフ応答が持つ情報だけで表示する。
 // ■ 「文書を開く」は SC-03（/docs/:id）へ遷移する（05_screens §SC-18 アクション）。
+// ■ 器はモックの `.panel`（`Panel`）である —— 右側の側パネルは一覧に並ぶ独立した単位（`Card`）ではなく、
+//   本文の**区画**である（Panel.tsx 冒頭の描き分け）。
 
 export interface NodeSidePanelProps {
   node: GraphNodeItem;
@@ -52,23 +54,28 @@ export function NodeSidePanel({ node, edges, edgeTypes, onClose }: NodeSidePanel
   ].sort(([a], [b]) => a.localeCompare(b));
 
   return (
-    <Card data-testid="node-side-panel" aria-label={t`選択中の文書`}>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-2">
-          <CardTitle>
+    <Panel
+      data-testid="node-side-panel"
+      aria-label={t`選択中の文書`}
+      className="mb-0"
+      heading={
+        <span className="flex items-start justify-between gap-2">
+          <span className="text-sm font-medium text-fg">
             <span aria-hidden="true" className="mr-1">
               {node.isPrivateNote ? '👤' : '📄'}
             </span>
             {node.title}
-          </CardTitle>
+          </span>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label={t`閉じる`}>
             ✕
           </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-2 text-sm">
+        </span>
+      }
+      headingAs="h2"
+    >
+      <div className="space-y-2 text-sm">
         <p>
-          <span className="text-[--color-fg-muted]">
+          <span className="text-fg-muted">
             <Trans>種別:</Trans>
           </span>{' '}
           {node.isPrivateNote ? <Trans>個人資料（自分のみ）</Trans> : <Trans>組織文書</Trans>}
@@ -76,14 +83,14 @@ export function NodeSidePanel({ node, edges, edgeTypes, onClose }: NodeSidePanel
         {detail.data && (
           <>
             <p>
-              <span className="text-[--color-fg-muted]">
+              <span className="text-fg-muted">
                 <Trans>更新日:</Trans>
               </span>{' '}
               {formatDateTime(detail.data.updatedAt)}
             </p>
             {detail.data.tags.length > 0 && (
               <p className="flex flex-wrap items-center gap-1">
-                <span className="text-[--color-fg-muted]">
+                <span className="text-fg-muted">
                   <Trans>タグ:</Trans>
                 </span>
                 {detail.data.tags.map((tag) => (
@@ -94,12 +101,12 @@ export function NodeSidePanel({ node, edges, edgeTypes, onClose }: NodeSidePanel
           </>
         )}
         {detail.isError && (
-          <p className="text-[--color-fg-muted]">
+          <p className="text-fg-muted">
             <Trans>文書の詳細は表示できません。</Trans>
           </p>
         )}
         <div>
-          <p className="text-[--color-fg-muted]">
+          <p className="text-fg-muted">
             <Trans>接続している辺:</Trans>
           </p>
           {byType.length === 0 ? (
@@ -117,15 +124,11 @@ export function NodeSidePanel({ node, edges, edgeTypes, onClose }: NodeSidePanel
           )}
         </div>
         <p>
-          <Link
-            to="/docs/$id"
-            params={{ id: node.documentId }}
-            className="text-[--color-accent] underline"
-          >
+          <Link to="/docs/$id" params={{ id: node.documentId }} className="text-accent underline">
             <Trans>文書を開く</Trans>
           </Link>
         </p>
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

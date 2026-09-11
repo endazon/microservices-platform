@@ -29,9 +29,14 @@ function neighborsParams(search: GraphSearch): BffGraphNeighborsParams {
   };
 }
 
+// 🔴 **取得系の `TError` は `unknown` ではなく `Error` で束ねる**（三部品 `QueryState` へ渡すため）。
+// `QueryState` は `UseQueryResult<T>`（＝ `TError = Error`）を受ける。実際に投げられるのは
+// `ApiError extends Error` なので、`Error` と書くほうが実態に合う（`unknown` は「何が飛ぶか
+// 分からない」という主張であり、この経路では偽である）。更新系（mutation）は QueryState を
+// 通らないので `unknown` のままでよい。
 export function useGraphNeighbors(search: GraphSearch) {
   const params = neighborsParams(search);
-  return useBffGraphNeighbors<GraphView, unknown>(search.root, params, {
+  return useBffGraphNeighbors<GraphView, Error>(search.root, params, {
     query: {
       queryKey: getBffGraphNeighborsQueryKey(search.root, params),
       select: okData,

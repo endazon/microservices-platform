@@ -4,12 +4,11 @@ import { Link } from '@tanstack/react-router';
 import {
   Alert,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
+  EmptyState,
   Input,
   Label,
+  Note,
+  Panel,
   StatusBadge,
   Table,
   TableBody,
@@ -19,6 +18,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from '@platform/ui';
+import { QueryState } from '@foundation/ui/QueryState';
 import { formatDateTime } from '@foundation/utils/formatDateTime';
 import { toMessages } from '@foundation/utils/apiErrors';
 import type { SyncDeviceDto } from '@foundation/api/generated/bff.schemas';
@@ -126,7 +126,7 @@ export function ObsidianSettingsPage() {
 
   return (
     <section className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">
+      <h1 className="text-[17px] font-medium text-fg">
         <Trans>Obsidian 連携設定</Trans>
       </h1>
 
@@ -159,13 +159,8 @@ export function ObsidianSettingsPage() {
       </Alert>
 
       {/* 接続手順とトークンの発行（05_screens §SC-20 主要素 2）。管理者承認のステップは無い。 */}
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            <Trans>端末を接続する</Trans>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
+      <Panel heading={<Trans>端末を接続する</Trans>} headingAs="h2">
+        <div className="flex flex-col gap-2">
           <p className="text-sm">
             <Trans>
               端末名を入力してトークンを発行し、Obsidian
@@ -198,7 +193,7 @@ export function ObsidianSettingsPage() {
                     このトークンを表示できるのは今回だけです。閉じると再表示できません（再発行のみ可能です）。
                   </Trans>
                 </span>
-                <code className="break-all rounded bg-[--color-surface-muted] p-2 text-xs">
+                <code className="break-all rounded bg-surface-muted p-2 text-xs">
                   {issued.token}
                 </code>
                 <span>
@@ -209,8 +204,8 @@ export function ObsidianSettingsPage() {
               </span>
             </Alert>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </Panel>
 
       {failed && (
         <Alert tone="danger" label={t`エラー`} role="alert">
@@ -219,12 +214,6 @@ export function ObsidianSettingsPage() {
           )}
         </Alert>
       )}
-      {devices.isError && (
-        <Alert tone="danger" label={t`エラー`} role="alert">
-          <Trans>接続端末の一覧を取得できませんでした。時間をおいて再度お試しください。</Trans>
-        </Alert>
-      )}
-
       <section aria-label={t`接続端末`} className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">
@@ -251,80 +240,94 @@ export function ObsidianSettingsPage() {
           </Trans>
         </Alert>
 
-        {rows.length === 0 ? (
-          <Alert tone="info" label={t`接続端末`} role="status">
-            <Trans>接続している端末はまだありません。上の入力欄から追加してください。</Trans>
-          </Alert>
-        ) : (
-          <Table>
-            <TableCaption>{t`接続端末の一覧`}</TableCaption>
-            <TableHead>
-              <TableRow>
-                <TableHeaderCell scope="col">
-                  <Trans>端末名</Trans>
-                </TableHeaderCell>
-                <TableHeaderCell scope="col">
-                  <Trans>最終同期</Trans>
-                </TableHeaderCell>
-                <TableHeaderCell scope="col">
-                  <Trans>有効期限</Trans>
-                </TableHeaderCell>
-                <TableHeaderCell scope="col">
-                  <Trans>状態</Trans>
-                </TableHeaderCell>
-                <TableHeaderCell scope="col">
-                  <Trans>操作</Trans>
-                </TableHeaderCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {rows.map((device) => {
-                const view = deviceView(device, now);
-                return (
-                  <TableRow key={device.id}>
-                    <TableCell>{device.deviceName}</TableCell>
-                    <TableCell>{formatDateTime(device.lastSyncAt)}</TableCell>
-                    <TableCell>{formatDateTime(device.expiresAt)}</TableCell>
-                    <TableCell>{stateBadge(view.state, view.daysLeft)}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        {/* 期限切れの行には再発行を同じ行に置く（05_screens §SC-20）。 */}
-                        {view.state !== 'revoked' && (
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={pending}
-                            onClick={() => submitReissue(device)}
-                          >
-                            <Trans>再発行する</Trans>
-                          </Button>
-                        )}
-                        {/*
+        {/*
+          待ち・失敗・空・本体の描き分けは `QueryState` に一本化した（判定順は失敗 → 待ち → 空 → 本体）。
+          🔴 **0 件と失敗を混同しない** ——「端末が 1 台も無い」は正常な初期状態であり、
+          「一覧が引けない」は同期の状況がまったく読めない状態である。失敗にだけ再試行を出す。
+        */}
+        <QueryState
+          query={devices}
+          isEmpty={(list: SyncDeviceDto[]) => list.length === 0}
+          loadingLabel={t`接続端末の一覧を読み込み中…`}
+          errorTitle={t`接続端末の一覧を取得できませんでした。`}
+          empty={
+            <EmptyState
+              title={t`接続している端末はまだありません。`}
+              description={t`上の入力欄に端末名を入れてトークンを発行し、Obsidian プラグインへ貼り付けてください。`}
+            />
+          }
+        >
+          {() => (
+            <Table>
+              <TableCaption>{t`接続端末の一覧`}</TableCaption>
+              <TableHead>
+                <TableRow>
+                  <TableHeaderCell scope="col">
+                    <Trans>端末名</Trans>
+                  </TableHeaderCell>
+                  <TableHeaderCell scope="col">
+                    <Trans>最終同期</Trans>
+                  </TableHeaderCell>
+                  <TableHeaderCell scope="col">
+                    <Trans>有効期限</Trans>
+                  </TableHeaderCell>
+                  <TableHeaderCell scope="col">
+                    <Trans>状態</Trans>
+                  </TableHeaderCell>
+                  <TableHeaderCell scope="col">
+                    <Trans>操作</Trans>
+                  </TableHeaderCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {rows.map((device) => {
+                  const view = deviceView(device, now);
+                  return (
+                    <TableRow key={device.id}>
+                      <TableCell>{device.deviceName}</TableCell>
+                      <TableCell>{formatDateTime(device.lastSyncAt)}</TableCell>
+                      <TableCell>{formatDateTime(device.expiresAt)}</TableCell>
+                      <TableCell>{stateBadge(view.state, view.daysLeft)}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          {/* 期限切れの行には再発行を同じ行に置く（05_screens §SC-20）。 */}
+                          {view.state !== 'revoked' && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={pending}
+                              onClick={() => submitReissue(device)}
+                            >
+                              <Trans>再発行する</Trans>
+                            </Button>
+                          )}
+                          {/*
                           🔴 個別失効は端末紛失時の唯一の防御線であり、**失効済み以外の全行に置く**。
                           期限切れの端末も、紛失していれば利用者は失効させたい。
                         */}
-                        {view.state !== 'revoked' && (
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            disabled={pending}
-                            onClick={() => setConfirming({ kind: 'revoke', device })}
-                          >
-                            <Trans>この端末を失効する</Trans>
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
+                          {view.state !== 'revoked' && (
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              disabled={pending}
+                              onClick={() => setConfirming({ kind: 'revoke', device })}
+                            >
+                              <Trans>この端末を失効する</Trans>
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </QueryState>
       </section>
 
       {/* 露出設定は資料単位で個人資料管理画面が持つ（作業仕様書 §計画との差異 を参照）。 */}
-      <p className="text-xs text-[--color-fg-muted]">
+      <Note>
         <Trans>
           横断検索・ナレッジグラフ・AI
           の入力に含めるかどうかは、資料ごとに個人資料の一覧から設定します。既定はいずれもオフです。
@@ -332,7 +335,7 @@ export function ObsidianSettingsPage() {
         <Link to="/my/notes" search={{ tab: 'active', q: '' }} className="underline">
           <Trans>個人資料の一覧へ</Trans>
         </Link>
-      </p>
+      </Note>
 
       {confirming?.kind === 'revoke' && (
         <ConfirmDialog
