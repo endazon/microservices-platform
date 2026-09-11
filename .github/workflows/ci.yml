@@ -443,6 +443,21 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-realm-constraints.js
 
+      # NFR, 計画 AST/ADR-0038 決定 3・フォローアップ 2, IADR-0434, Issue #1412:
+      # 基盤レルムの宣言（正本）と AST 専用レルムの宣言（写し）のずれを突き合わせる。
+      # 🔴 **このジョブは submodule を取得しない**（checkout に submodule 指定が無い）。したがって
+      # ここでの本走査は必ず「突合していない（skip）」の ::warning:: になる —— **skip であることを
+      # 毎回見せるためにあえて置いている**（差分 0 件と取り違えさせない）。**実際に突合が走るのは
+      # static-checks-units** であり、あちらは src/* の submodule を取得している。
+      # static-checks の checkout へ submodule 取得を足す案は採らない —— 同ジョブには submodule 未取得を
+      # 前提に射程を決めている検査器（check-doc-links.js 等）が並んでおり、射程が黙って変わる。
+      - name: Self-test realm copy drift checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-realm-copy-drift.js --self-test
+      - name: Check realm copy drift (platform realm is the source of truth)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-realm-copy-drift.js
+
       # NFR, ADR-0027 / ADR-0030, Issue #455（子 C・Wolverine 移行 手順 1。手順 6 は check-backend-libraries の規則 4）:
       # イベント型 → 発行元 / 購読先の対応表を baseline と突き合わせる。
       #
@@ -642,6 +657,15 @@ jobs:
       - name: Check unit service ownership (no duplicate deployment)
         if: ${{ !cancelled() }}
         run: node scripts/check-unit-service-ownership.js
+
+      # NFR, 計画 AST/ADR-0038 決定 3・フォローアップ 2, IADR-0434, Issue #1412:
+      # **ここが突合の実走点である。** 上の submodule 取得ステップで AST 専用レルムの宣言が読めるため、
+      # 基盤レルム（正本）と写しの同名ロール・AST 所有クライアントを実際に突き合わせられる
+      # （static-checks 側の同名ステップは submodule 未取得で skip になる）。
+      # 自己試験は static-checks で毎回走っているため、ここでは本走査だけを置く。
+      - name: Check realm copy drift against the AST realm export
+        if: ${{ !cancelled() }}
+        run: node scripts/check-realm-copy-drift.js
 
 
   # ───────────────────────────────────────────────────────────────────────────────
