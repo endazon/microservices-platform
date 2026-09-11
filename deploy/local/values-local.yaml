@@ -97,8 +97,10 @@ services:
   # 到達は aliases/microservices-platform-externalnames.yaml の ExternalName `opend`（AST ns の Service opend:8080）。
   # DeviceTrustPersisted は PVC opend-persist を持つ配備構成の事実（配備構成から静的に決まる）。EgressStable は
   # ローカルが固定 NAT ではないため与えない（未設定＝供給なし）。本番 chart は触らない。
+  # 🔴 #1389: ここは extraEnv ではなく **extraEnvAppend**。extraEnv だと Helm のリスト置換で本番既定の
+  # Services__* 23 件が消え、BFF の readiness（下流 4 サービスの URL 検査）が落ちる（integration-stack で実測）。
   bff:
-    extraEnv:
+    extraEnvAppend:
       - name: OpendAuth__BaseUrl
         value: "http://opend:8080"
       - name: OpendAuth__DeviceTrustPersisted
