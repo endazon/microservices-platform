@@ -209,6 +209,21 @@ spec:
                   key: {{ .secretKeyRef.key }}
               {{- end }}
           {{- end }}
+          {{- /* #1389: 上書きファイル（values-local 等）が env を**足す**ための鍵。Helm はリストを置換するため、
+                 extraEnv を上書き側に書くと本番既定の env（Services__* 23 件）が丸ごと消える——#1377 で BFF が
+                 それを踏み、integration-stack が develop で赤になった。足すだけなら extraEnvAppend に書く。
+                 同名の env を両方に置かないこと（後勝ちにならず Kubernetes が拒否する）。 */}}
+          {{- range $svc.extraEnvAppend }}
+            - name: {{ .name }}
+              {{- if .value }}
+              value: {{ .value | quote }}
+              {{- else if .secretKeyRef }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretKeyRef.name }}
+                  key: {{ .secretKeyRef.key }}
+              {{- end }}
+          {{- end }}
           {{- if and $svc.selfHostedEmbedding $.Values.embedding.enabled }}
             # FR-02, FR-03, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み（Ruri v3）の配線。
             # embedding.enabled=true のときのみ描画し、llmgateway を templates/embedding.yaml（TEI・OpenAI 互換
