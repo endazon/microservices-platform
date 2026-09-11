@@ -2,10 +2,10 @@
 title: IADR-0125 共有 UI プリミティブの移植範囲・Lingui カタログの検査方式・Storybook の egress 遮断
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0031, SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-13, IADR-0033, IADR-0034, IADR-0116, IADR-0118, IADR-0119, IADR-0142, IADR-0120, IADR-0121, IADR-0124]
+related_ids: [NFR, ADR-0031, SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-13, IADR-0033, IADR-0034, IADR-0116, IADR-0118, IADR-0119, IADR-0142, IADR-0120, IADR-0121, IADR-0124, IADR-0436]
 author: Claude
 created: 2026-08-04
-updated: 2026-08-07
+updated: 2026-09-12
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md
   - planning:projects/microservices-platform/06_technical/13_frontend-stack.md
@@ -505,3 +505,9 @@ SPA 本体（`platform/frontend/dist`・**4 ファイル**）も同様に 0 件�
   1. [IADR-0126](IADR-0126_sse-answer-state-and-search-url-state.md) を伴う #502 の作業:
      §決定 1 の実値「移植は 8 件」を **9 件（`Tag` を追加）** へ更新し、現行値の所在を
      `src/packages/ui/README.md` / `src/index.ts` へ移した。選定の 3 情報源という**規則は不変**である
+- **補完される**: [IADR-0436](IADR-0436_shared-ui-states-panels-and-base-ui-adoption.md)
+  （UI/UX 改善 2026-09-12）。決定 2「Dialog は移植しない」の**前提**が変わった —— 当時それを
+  要求していた画面は着手保留にあったが、保留は解け、確認ダイアログと右レールが現に要求している。
+  同 IADR は `@platform/ui` へ三部品・区画部品・`Dialog` / `Tooltip`（土台は Base UI）を足す。
+  **本 IADR の規則（決定 1 の 3 情報源・公開面 1 ファイル・共有 UI は表示文言を持たない）は不変**であり、
+  動いたのは実値だけなので `Accepted` を維持する（**本文プロズは書き換えていない**）。
