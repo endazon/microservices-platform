@@ -84,12 +84,53 @@ public sealed class UserDirectoryGrpcClient(
             return null;
         }
     }
+
+    /// <summary>
+    /// FR-19, SC-19, 計画 ADR-0036 D-09 / ADR-0096 決定 1, IADR-0428 決定 3, IADR-0431 (#1409):
+    /// 名指しした 1 人の**退職の窓の状態**（有効か・起点から 30 日が経ったか）。
+    /// <para>
+    /// 🔴 **同じ rpc（<c>GetUserAttributes</c>）を読む。新しい面は作らない** ——
+    /// 応答へ 2 項目が足されたので、属性を要らない呼び出し元のために読み口だけを分ける。
+    /// </para>
+    /// <para>
+    /// 🔴 **引けなかったときは <c>null</c>**（「有効な利用者」ではない）。呼び出し元は
+    /// <c>null</c> を削除しない側へ倒すこと —— 認可サービスの障害を「窓が閉じた」と読むと**資料が消える**。
+    /// </para>
+    /// </summary>
+    public async Task<PlatformUserRetentionStatus?> GetRetentionStatusAsync(
+        string username, CancellationToken ct)
+    {
+        try
+        {
+            var resp = await client.GetUserAttributesAsync(
+                new Pb.GetUserAttributesRequest { Username = username }, cancellationToken: ct);
+            return new PlatformUserRetentionStatus(resp.Found, resp.Enabled, resp.RetentionEligibility);
+        }
+        catch (RpcException ex)
+        {
+            logger.LogWarning(
+                "退職の窓の gRPC 照会に失敗しました（{Status}）。窓は判定できません（削除しません）。",
+                ex.StatusCode);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(ex, "s2s トークンが取得できないため退職の窓を照会できません（削除しません）。");
+            return null;
+        }
+    }
 }
 
 // FR-16, SC-12, IADR-0385 決定 2, IADR-0401 (#1255): 名簿から読んだ 1 人の像。
-// **ロール・有効状態・内部 ID は運ばない** —— 呼び出し元が使わないものを面へ出さない。
+// **ロール・有効状態・内部 ID は運ばない** —— 呼び出し元が使わないものを面へ出さない
+// （有効状態を要る呼び出し元は下の `PlatformUserRetentionStatus` を読む。IADR-0431）。
 public sealed record PlatformUserAttributes(
     bool Found, string Username, IReadOnlyDictionary<string, string> Attributes);
+
+// FR-19, SC-19, ADR-0096 決定 1, IADR-0428 決定 3, IADR-0431 (#1409): 名簿から読んだ 1 人の退職の窓。
+// 🔴 `Found=false`（居ない）と戻り値 `null`（引けなかった）は**別である**。どちらも削除しない。
+public sealed record PlatformUserRetentionStatus(
+    bool Found, bool Enabled, Pb.RetentionEligibility Eligibility);
 
 public static class UserDirectoryGrpcClientExtensions
 {

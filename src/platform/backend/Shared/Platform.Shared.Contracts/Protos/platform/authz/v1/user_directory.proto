@@ -49,6 +49,23 @@ message GetUserAttributesRequest {
   string username = 1;
 }
 
+// FR-19, SC-19, ADR-0036 D-09, ADR-0096 決定 1, IADR-0428 決定 3, IADR-0431 (#1409):
+// 退職の保持起点から 30 日の窓を判定した結果。**解決と判定は認可サービスが行う** ——
+// 起点の書式（ISO-8601 固定）・期間（30 日）・fail-safe の向きは AuthorizationService.Domain の
+// RetentionAnchorPolicy が単一情報源であり、消費側（knowledge ユニット）へ複写しない。
+//
+// 🔴 **0（UNSPECIFIED）を「経過した」へ写してはならない。** proto3 の既定値であり、
+// 古い呼び出し先と喋ったときにここへ落ちる。**既定値が削除を発火させない**ことが本 enum の要である。
+enum RetentionEligibility {
+  RETENTION_ELIGIBILITY_UNSPECIFIED = 0;
+  // 起点から 30 日が経過した。**削除してよい唯一の値**である。
+  RETENTION_ELIGIBILITY_ELAPSED = 1;
+  // 起点はあるが 30 日はまだ経っていない。
+  RETENTION_ELIGIBILITY_WITHIN_WINDOW = 2;
+  // 🔴 起点が無い／読めない。**数えていない**（削除の対象にしてはならない）。
+  RETENTION_ELIGIBILITY_NOT_EVALUABLE = 3;
+}
+
 message GetUserAttributesResponse {
   // false は「名簿に居ない」（エラーではない）。
   bool found = 1;
@@ -56,4 +73,13 @@ message GetUserAttributesResponse {
   string username = 2;
   // ABAC 属性（clearance / department / tags ほか）。集合値キーはカンマ連結（UserAttributeEncoding）。
   map<string, string> attributes = 3;
+
+  // FR-19, ADR-0096 決定 1, IADR-0431 (#1409): 利用者が有効か。
+  // 🔴 かつては「呼び出し元が使わないものを面へ出さない」として出していなかったが、
+  // **使う呼び出し元ができた** —— 退職者の個人資料の完全削除は「無効化済みであること」を
+  // 述語の半分に持つ（もう半分が retention_eligibility）。ロールと内部 ID は依然として出さない。
+  bool enabled = 4;
+
+  // FR-19, ADR-0096 決定 1, IADR-0428 決定 3, IADR-0431 (#1409): 退職の窓の判定。
+  RetentionEligibility retention_eligibility = 5;
 }
