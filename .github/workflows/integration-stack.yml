@@ -87,6 +87,9 @@ jobs:
     # その形だと **`istio=false` の退路が恒久的に死ぬ**（既定 ON 側は偶然正しいので気づけない）。
     env:
       ISTIO: ${{ (github.event_name != 'workflow_dispatch' || inputs.istio) && '1' || '' }}
+      # ADR-0094 フォローアップ 3 / IADR-0432 決定 4: リセット申請の床（#1410）を入れた構成で T-10 の所要時間を再測定する。
+      # istio-edge-up.sh が RESET_FLOOR=1 のときだけ deploy/local/edge-istio-reset-floor を当てる（ISTIO='' なら呼ばれない）。
+      RESET_FLOOR: '1'
     steps:
       - uses: actions/checkout@v7
 
@@ -233,7 +236,8 @@ jobs:
       # 🔴 **［2026-09-11 / #1410］所要時間（T-25）はここで赤になる。** ADR-0094 決定 4 が
       # **床を配備するまで赤が続くことを明示的に受け入れている** —— 差は構造由来（Keycloak の送出は同期で、
       # 非実在の利用者名はメールを作らず送らない）であり、緩めれば「反復で判別できる状態」を緑にすることになる。
-      # **床を入れて測るには `RESET_FLOOR=1 bash scripts/istio-edge-up.sh` が要る**（IADR-0432 決定 4）。
+      # **床を入れて測るには `RESET_FLOOR=1 bash scripts/istio-edge-up.sh` が要る**（IADR-0432 決定 4）——
+      # 本ワークフローは job env の `RESET_FLOOR: '1'` で床を入れて測る（ADR-0094 フォローアップ 3 の再測定）。
       # 本ワークフローは**必須チェックではない**（schedule / push(develop) / dispatch のみ）ので、
       # この赤が PR のマージを止めることはない。
       - name: 🔴 Gate — パスワードリセットの送出とメール本文（#1144）
