@@ -1,4 +1,5 @@
 using DocumentService.Common.Observability;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
@@ -159,6 +160,23 @@ builder.Services.AddScoped<DocumentReadUseCase>();
 // FR-05, FR-18, SC-05, ADR-0063 決定 1〜3, ADR-0065 決定 2, 計画 ADR-0086 決定 1, [[IADR-0410]] (#1255):
 // タグ反映の**本体**。🔴 **REST の端点と east-west gRPC の rpc が同じ関数を通る**（判定器を 2 つにしない）。
 builder.Services.AddScoped<AddDocumentTagUseCase>();
+// FR-19, SC-19, NFR-09, ADR-0029, ADR-0075, ADR-0096 決定 1・2, [[IADR-0401]] 決定 2,
+// [[IADR-0428]] 決定 3, [[IADR-0431]] (#1409): 退職の窓の照会。
+// `Services:AuthorizationServiceGrpc`（`AuthzScopeGrpcClient.AddressKey`）が構成された配備でだけ
+// 生成クライアントが登録され、そのときだけ gRPC 実装を選ぶ。
+// 🔴 **未構成なら「引けなかった」を返す縮退を登録する** —— 口の不在を「窓が閉じた」へ倒さない
+// （既定で 1 件も削除しない。ADR-0057 決定 2 により誤削除は取り返せない）。
+builder.Services.AddUserDirectoryGrpcClient(builder.Configuration);
+if (!string.IsNullOrWhiteSpace(builder.Configuration[AuthzScopeGrpcClient.AddressKey]))
+{
+    builder.Services.AddScoped<DocumentService.Domain.Ports.IOwnerRetentionDirectory,
+        DocumentService.Infrastructure.ExternalServices.GrpcOwnerRetentionDirectory>();
+}
+else
+{
+    builder.Services.AddScoped<DocumentService.Domain.Ports.IOwnerRetentionDirectory,
+        DocumentService.Infrastructure.ExternalServices.UnavailableOwnerRetentionDirectory>();
+}
 builder.Services.AddScoped<DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceService>();
 builder.Services.AddHostedService<
     DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceHostedService>();

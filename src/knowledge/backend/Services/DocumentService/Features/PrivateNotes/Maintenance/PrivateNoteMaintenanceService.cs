@@ -8,10 +8,14 @@ using DocumentService.Features.PrivateNotes;
 
 namespace DocumentService.Features.PrivateNotes.Maintenance;
 
-// FR-19, FR-20, FR-22, ADR-0037 決定 5・6・16・18, IADR-0215 決定 5, [[IADR-0270]] 決定 6:
+// FR-19, FR-20, FR-22, ADR-0037 決定 5・6・16・18, ADR-0096 決定 1・2, IADR-0215 決定 5,
+// [[IADR-0270]] 決定 6, [[IADR-0431]]:
 // 個人資料の定期処理。①90 日経過の自動物理削除（＋事後通知 ①-c）②版履歴の刈り取り
 // （直近 50 版かつ 90 日）③完全削除 7 日前通知（①-b）④週次の削除通知（①-a）
-// ⑤同期トークンの期限 7 日前通知（③）。
+// ⑤同期トークンの期限 7 日前通知（③）⑥**退職 30 日後の完全削除**（通知なし。#1409）。
+//
+// 🔴 **⑥と①は別の時計である。** ①は ADR-0037 決定 5 の「論理削除から 90 日」、
+// ⑥は ADR-0036 D-09 の「退職から 30 日」であり、起点も対象も違う（⑥は論理削除の有無を見ない）。
 //
 // **検知はデータの在る側（本サービス）で行う**（IADR-0215 決定 5 の表は NotificationService の
 // スケジューラとしたが、判定に要るデータは本サービスの DB にあり DB per Service の下で越境
@@ -36,15 +40,96 @@ public sealed class PrivateNoteMaintenanceService(
     IDocumentDeletedPublisher deletedBus,
     IAuditLogger audit,
     DocumentService.Features.Documents.DocumentObjectPurger purger,
+    IOwnerRetentionDirectory ownerRetention,
     ILogger<PrivateNoteMaintenanceService> logger)
 {
     public async Task RunAsync(DateTimeOffset now, CancellationToken ct = default)
     {
+        // ★［2026-09-11 追加 / #1409・ADR-0096 決定 1・2・[[IADR-0431]]］⑥退職 30 日後の完全削除。
+        // 🔴 **90 日の器（`PurgeExpiredAsync`）より先に走らせる。** 退職者の論理削除済み資料が
+        // 90 日側で拾われると、FR-22 ①-c の事後通知が**無効化済みの宛先へ**飛ぶ
+        // （ADR-0096 決定 1「届かない通知を送る設計にしない」）。順序がこの性質を担っている。
+        await PurgeDepartedOwnersAsync(now, ct);
         await PurgeExpiredAsync(now, ct);
         await PruneVersionsAsync(now, ct);
         await NotifyPurgeImminentAsync(now, ct);
         await NotifyWeeklyDigestAsync(now, ct);
         await NotifyTokenExpiryAsync(now, ct);
+    }
+
+    // FR-19, UC-11, SC-19, SC-10, 計画 ADR-0036 D-09, ADR-0057 決定 1・2, ADR-0096 決定 1・2,
+    // [[IADR-0296]] 決定 3, [[IADR-0428]] 決定 3, [[IADR-0431]] (#1409):
+    // **退職して 30 日の閲覧窓が閉じた利用者の個人資料を完全削除する。**
+    //
+    // ■ 述語は 1 つだけである（ADR-0096 決定 2「述語を 1 つ足す形であり、新しい定期処理を起こさない」）
+    //   `Found && !Enabled && Elapsed`（`OwnerRetentionStatus.IsPurgeable`）。
+    //   🔴 **`WithinWindow` / `NotEvaluable` / 有効な所有者 / 引けなかった（`null`）は 1 件も消さない。**
+    //   ADR-0057 決定 2 により残余を置かないため、**誤削除は取り返せない**（ADR-0096 §結果）。
+    //   人事連携が未配備の間は起点が未供給の利用者が居り、その資料は残る —— **fail-safe の裏面である。**
+    //
+    // ■ 🔴 論理削除の有無を見ない
+    //   窓が閉じた時点で ADR-0096 決定 1 の対象であり、生きている資料も消える。
+    //   ここが 90 日の器（`PurgeAt <= now`）と違う唯一の点である。
+    //
+    // ■ 🔴 通知を送らない（ADR-0096 決定 1）
+    //   FR-22 ① の宛先は「所有者本人のみ」と定まっており、本経路の所有者は**無効化済み**である。
+    //   `PrivateNoteUsage.RecordUsageAndWarnAsync` も呼ばない（容量警告が同じ宛先へ飛ぶ）。
+    //   削除の事実は監査ログと SC-10 の側で見る。
+    //
+    // ■ 🔴 監査に載せるのは「いつ・誰の・何件」だけである（ADR-0096 決定 1）
+    //   **タイトル・本文・資料 ID を載せない** —— 残余を置かないという決定を、ログ経由で破らない。
+    //   時刻は監査ログの行そのものが持つ。
+    //
+    // ■ 失敗は行を残す（ADR-0096 決定 2 / [[IADR-0296]] 決定 3）
+    //   `PurgeIsolatedAsync` が文書ごとに隔離し、消せたものだけを今周期の対象にする。
+    //   消せなかった資料は行が残り、**所有者の状態が変わらない限り次周期で再入する。**
+    //
+    // ■ 受容するトレードオフ: **所有者 1 人につき 1 往復**である（日次粒度）。
+    //   個人資料を持つ所有者の数だけ認可サービスを呼ぶ。名簿の一括照会の口は s2s の面に無く
+    //   （[[IADR-0401]] 決定 2 が列挙を出さないと決めた）、**面を広げるより往復を受ける**。
+    private async Task PurgeDepartedOwnersAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        var owners = await db.PrivateNotes.Select(n => n.OwnerId).Distinct().ToListAsync(ct);
+        if (owners.Count == 0) return;
+
+        foreach (var owner in owners)
+        {
+            var status = await ownerRetention.GetAsync(owner, ct);
+            // 🔴 `null`（引けなかった）はここで落ちる。**「窓が閉じた」へ倒さない。**
+            if (status is null || !status.IsPurgeable) continue;
+
+            await PurgeAllOwnedAsync(owner, now, ct);
+        }
+    }
+
+    // ADR-0096 決定 1: 1 人分の完全削除。射程は ADR-0057 決定 1 と同じ
+    // （DB 記録・本文の実体・索引）。索引はこの 3 つ目であり `DocumentDeleted` が運ぶ。
+    private async Task PurgeAllOwnedAsync(string owner, DateTimeOffset now, CancellationToken ct)
+    {
+        var owned = await db.PrivateNotes.Where(n => n.OwnerId == owner).ToListAsync(ct);
+        if (owned.Count == 0) return;
+
+        // 実体を先に消し、**消せたものだけ**を今周期の削除対象にする（行だけ消してオブジェクトを
+        // 残すことは絶対にしない —— 参照が失われ回復不能になる）。
+        var ids = await purger.PurgeIsolatedAsync(owned.Select(n => n.DocumentId).ToList(), ct);
+        if (ids.Count == 0) return;
+
+        var due = owned.Where(n => ids.Contains(n.DocumentId)).ToList();
+        var docs = await db.Documents.Where(d => ids.Contains(d.Id)).ToListAsync(ct);
+        db.Documents.RemoveRange(docs);
+        db.PrivateNotes.RemoveRange(due);
+        await db.SaveChangesAsync(ct);
+
+        // 🔴 件数と所有者だけ。**タイトルは載せない。**
+        audit.Record("private-note.purge.departed", owner, "granted", $"count={due.Count}");
+
+        // ADR-0027 / E3a: DocumentDeleted の発行は Wolverine（IDocumentDeletedPublisher 経由）。
+        foreach (var id in ids)
+            await deletedBus.PublishDeletedAsync(id, now, ct);
+
+        // 🔴 所有者 ID を構造化プロパティへ出さない（監査ログ側に既にある。二重に散らさない）。
+        logger.LogInformation(
+            "閲覧窓の閉じた個人資料を完全削除した（{Count} 件）", due.Count);
     }
 
     // ADR-0037 決定 5: 論理削除から 90 日（PurgeAt）を経過した資料を自動的に物理削除する（復元不可）。
