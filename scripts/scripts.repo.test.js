@@ -1544,14 +1544,15 @@ module.exports = ({ ok, assert }) => {
     assert.deepStrictEqual(trace.implementedWithoutSpec(missing, new Set(['FR-01'])), []);
   });
 
-  // NFR: 件数は .claude/rules/traceability.md の ID レンジと 1:1 で連動する（#599 で 53 → 54）。
-  // 変えるときは「計画側で ID が増減した」ことを実測してから同ファイルと同時に動かす——
+  // NFR: 件数は .claude/rules/traceability.md の ID レンジと 1:1 で連動する（#599 で 53 → 54、
+  // #1411 で 54 → 55）。変えるときは「計画側で ID が増減した」ことを実測してから同ファイルと同時に動かす——
   // 先にこの数だけ合わせると、レンジの追随漏れを検出する唯一の網が消える。
-  ok('実ファイル: 計画レンジ 54 件を読み、実装先行はすべて allowlist 済み（specMissing の残置も無い）', () => {
+  // 🔴 #1411 は **記録開始以来はじめて SC が動いた回**である（それまでの 7 世代は ADR だけが増えた）。
+  ok('実ファイル: 計画レンジ 55 件を読み、実装先行はすべて allowlist 済み（specMissing の残置も無い）', () => {
     const planIds = trace.readPlanIds();
-    assert.strictEqual(planIds.length, 54, `計画レンジの件数が変わった: ${planIds.length}`);
-    // FR-22（通知・#599 で planning 891b199 から取り込み）を含む上端を固定する。
-    for (const id of ['FR-22', 'UC-11', 'SC-21']) assert.ok(planIds.includes(id), `${id} が欠けている`);
+    assert.strictEqual(planIds.length, 55, `計画レンジの件数が変わった: ${planIds.length}`);
+    // FR-22（通知・#599 で planning 891b199 から取り込み）と SC-22（秘密情報の投入面・#1411）を含む上端を固定する。
+    for (const id of ['FR-22', 'UC-11', 'SC-22']) assert.ok(planIds.includes(id), `${id} が欠けている`);
     const missing = trace.missingSpecIds(planIds, trace.collectSpecIds());
     const implFirst = trace.implementedWithoutSpec(missing, trace.collectTestIds());
     const { blocked, stale } = trace.classifyAgainstAllowlist(implFirst, trace.readSpecMissingAllowlist());
@@ -1568,6 +1569,9 @@ module.exports = ({ ok, assert }) => {
     { number: 438, text: 'スコープ: Keycloak 統合: 認証画面テーマ（SC-13〜16）／起点 ID: SC-09, SC-13〜17' },
     { number: 445, text: 'スコープ: MCP クライアント登録管理（SC-12 / UC-09）／起点 ID: FR-16 / UC-08, UC-09 / SC-12' },
     { number: 450, text: '起点 ID: FR-17, FR-18 / UC-10 / SC-03, SC-09, SC-10, SC-18, SC-21' },
+    // #1411: 秘密情報の投入面。**画面はモックアップ受領まで着手できない（blocked:human）**が、
+    // 引受先は決まっている —— 無主ではない。計画レンジが SC-22 まで伸びた回（#1411）で追加した。
+    { number: 1411, text: '起点 ID: SC-22 / FR-05（秘密情報・接続設定の管理。画面はモックアップ受領待ち）' },
   ];
 
   ok('claimedIds: 範囲表記（〜 / ～ / .. / -）を展開し、根拠の表記を保つ（NFR, #748）', () => {

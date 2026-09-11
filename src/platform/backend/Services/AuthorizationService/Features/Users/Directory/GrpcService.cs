@@ -1,8 +1,12 @@
+using AuthorizationService.Domain;
 using AuthorizationService.Domain.Ports;
 using Grpc.Core;
 using Microsoft.AspNetCore.Authorization;
 using Platform.Shared.Contracts.Grpc.Authz.V1;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+// 🔴 `RetentionEligibility` は**ドメイン側と契約側の両方に在る**（意味は同じで表現が違う）。
+// 別名を張って、どちらを指しているかを読む側が 1 文字で判別できるようにする。
+using Pb = Platform.Shared.Contracts.Grpc.Authz.V1;
 
 namespace AuthorizationService.Features.Users.Directory;
 
@@ -35,8 +39,16 @@ namespace AuthorizationService.Features.Users.Directory;
 // ■ 🔴「居ない」と「引けなかった」を分ける
 //   居ないのは**応答**（`exists=false` / `found=false`）、引けなかったのは **gRPC status**。
 //   後段が落ちていることを「その利用者は存在しません」と報告するのは嘘である。
+//
+// ■［2026-09-11 / #1409・[[IADR-0431]]］**`enabled` と退職の窓の判定を `GetUserAttributes` へ足した。**
+//   下の「ロール・有効状態・内部 ID は返さない」は「**呼び出し元が使わないものを面へ出さない**」が
+//   理由であり、`ADR-0096` 決定 1 が**使う呼び出し元を作った** —— 退職者の個人資料の完全削除は
+//   「無効化済みである」と「起点から 30 日が経った」の積である。**ロールと内部 ID は依然として出さない。**
+//   🔴 **判定はここで行う**（起点の書式・30 日・fail-safe の向きは `RetentionAnchorPolicy` が単一情報源。
+//   消費側の knowledge ユニットは `AuthorizationService.Domain` を参照できないので、複写ではなく答えを運ぶ）。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
-public sealed class UserDirectoryGrpcService(IIdentityAdminClient identity)
+public sealed class UserDirectoryGrpcService(
+    IIdentityAdminClient identity, RetentionAnchorOptions anchorOptions, TimeProvider clock)
     : UserDirectory.UserDirectoryBase
 {
     // FR-05, UC-04, SC-06, ADR-0074 決定 4: 利用者名の実在検証。
@@ -90,7 +102,25 @@ public sealed class UserDirectoryGrpcService(IIdentityAdminClient identity)
         if (user is null)
             return new GetUserAttributesResponse { Found = false };
 
-        var resp = new GetUserAttributesResponse { Found = true, Username = user.Username };
+        // FR-19, ADR-0096 決定 1, [[IADR-0428]] 決定 3, [[IADR-0431]] (#1409):
+        // 🔴 **窓の判定はここで解く。** 起点が未供給／読めなければ `NotEvaluable` であり、
+        // 呼び出し元はそれを削除の対象にしてはならない（fail-safe の向きは `RetentionAnchorPolicy` のまま）。
+        var anchor = RetentionAnchorPolicy.Resolve(user.Attributes, anchorOptions);
+        var eligibility = RetentionAnchorPolicy.Evaluate(anchor, clock.GetUtcNow()) switch
+        {
+            AuthorizationService.Domain.RetentionEligibility.Elapsed => Pb.RetentionEligibility.Elapsed,
+            AuthorizationService.Domain.RetentionEligibility.WithinWindow => Pb.RetentionEligibility.WithinWindow,
+            // 🔴 既定は「数えていない」である（新しい値が増えても削除側へ倒れない）。
+            _ => Pb.RetentionEligibility.NotEvaluable,
+        };
+
+        var resp = new GetUserAttributesResponse
+        {
+            Found = true,
+            Username = user.Username,
+            Enabled = user.Enabled,
+            RetentionEligibility = eligibility,
+        };
         foreach (var (key, value) in user.Attributes)
             resp.Attributes[key] = value;
         return resp;

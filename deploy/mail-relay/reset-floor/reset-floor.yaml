@@ -1,0 +1,97 @@
+# SC-15, FR-05, NFR-09, ADR-0026 / ADR-0078 決定 1, ADR-0094 決定 2, IADR-0432 (#1410):
+# **パスワードリセットの申請を、床（最小応答時間）に達するまで返さない前段。**
+#
+# ## 🔴 opt-in である（既定では描画されない）
+#
+# `deploy/mail-relay/kustomization.yaml` は本ディレクトリを**参照しない**。既定の描画は
+# 本 PR の前後で**バイト等価**である。取り込むのは opt-in の overlay
+# `deploy/local/edge-istio-reset-floor/` だけであり、`scripts/k8s-local-up.sh` は
+# `RESET_FLOOR=1` のときにしかそれを適用しない。
+#
+# 🔴 **近接 MTA（決定 2）や門（決定 4）と違い、床は opt-in にしてよい。** 前二者は計画が
+# **無条件**と定めた統制だが、床は **ADR-0094 の着手可否の注記が「覆り得る」と名指しした決定**である
+# —— 床を入れた構成で中央値の比が許容内に収まることを稼働クラスタで実測するまで、
+# 「これで塞がる」と決めきれていない。**既定へ入れるのは実測の後**である。
+#
+# ## なぜ Deployment（逆プロキシ）なのか
+#
+# Envoy の Lua フィルタには**待機（sleep / timer）が無い**ため、Lua だけでは床を作れない
+# （待てるのは httpCall の応答待ちだけ ＝ 待たせる相手が別に要る）。門（reset-gate）は
+# **要求経路に居ない制御ループ**であり、要求を握って待たせられない。詳細は IADR-0432。
+#
+# ## 🔴 床の値をここが持ち、コードは既定を持たない
+#
+# RESET_FLOOR_MS / UPSTREAM_URL / LISTEN_PORT は**本ファイルが与える**。未設定なら器は起動しない
+# （reset-gate.yaml / probe.js と同じ作法）。床の値の導出は IADR-0432 §床の値 が持つ。
+#   - RESET_FLOOR_MS=150 は、計画 ADR-0094 §コンテキストと課題 が稼働 k3s で記録した
+#     **暖機（反復 1）を捨てた実在側の max の最大値 126 ms** を覆う値である（50 ms 刻みで上へ丸めた）。
+#     🔴 **覆えない床は差を残す**（床より遅い応答はそのまま出る）。
+# 🔴 **ここに書いた値は床を入れた構成で実測して確かめていない**（#1410 の作業機にクラスタが無い）。
+#   再実測は integration-stack が `RESET_FLOOR=1` で行い、計画へ環流する（ADR-0094 フォローアップ 3）。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reset-floor
+  namespace: platform-infra
+  labels: { app: reset-floor }
+spec:
+  # 🔴 複数レプリカでよい（門と違い、床は状態を持たない —— 要求ごとに時刻を測って待つだけである）。
+  # ここを 1 にしているのは dev の資源都合であり、競合の回避ではない。
+  replicas: 1
+  selector:
+    matchLabels: { app: reset-floor }
+  template:
+    metadata:
+      labels: { app: reset-floor }
+    spec:
+      containers:
+        - name: floor
+          # CI（Node 22）と同じメジャー版。外部依存ゼロ（Node 標準の http / url のみ）。
+          image: node:22-alpine
+          command: ["node", "/floor/reset-floor.js"]
+          env:
+            # 上流は同じ namespace の Keycloak（メッシュ外・平文）。エッジ・TLS・メッシュに依存しない。
+            - name: UPSTREAM_URL
+              value: http://keycloak:8080
+            - name: LISTEN_PORT
+              value: "8080"
+            - name: RESET_FLOOR_MS
+              value: "150"
+          ports:
+            - { name: http, containerPort: 8080 }
+          readinessProbe:
+            # 🔴 上流（Keycloak）の健康を映さない口を叩く。ここで Keycloak を叩くと、
+            #   Keycloak が落ちた瞬間に床ごと経路から外れ、**床の無い経路へ戻ってしまう**。
+            tcpSocket: { port: 8080 }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - name: floor
+              mountPath: /floor
+              readOnly: true
+      volumes:
+        # スクリプト本体は ConfigMap 化する（kustomize は root 外ファイルを参照できないため、
+        # 門・テーマ・realm reconcile と同じく起動器が --from-file で作る）。
+        - name: floor
+          configMap:
+            name: reset-floor-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reset-floor
+  namespace: platform-infra
+  labels: { app: reset-floor }
+spec:
+  selector: { app: reset-floor }
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

@@ -33,6 +33,11 @@ set_mesh_mtls_mode "PERMISSIVE"
 
 echo "==> [2/4] Istio エッジ資材の撤去（hostPort を空ける）"
 kubectl delete -k deploy/local/edge-istio --ignore-not-found=true || true
+# SC-15 / IADR-0432 (#1410): 床（RESET_FLOOR=1 で入れたときだけ居る）。
+# 🔴 **無条件に消してよい。** 居なければ --ignore-not-found が黙って通る。逆に残すと、
+#   エッジを戻したあと誰も通らないポートで待つ Pod だけが残る。
+kubectl delete -k deploy/mail-relay/reset-floor --ignore-not-found=true || true
+kubectl delete configmap reset-floor-script -n platform-infra --ignore-not-found=true || true
 kubectl delete -f deploy/local/edge-istio/tls/edge-certificate-istio.yaml --ignore-not-found=true || true
 helm uninstall istio-ingressgateway -n istio-system >/dev/null 2>&1 || true
 # svclb の DaemonSet が消えるまで待つ。消えないうちに Traefik を戻すと bind が衝突する。

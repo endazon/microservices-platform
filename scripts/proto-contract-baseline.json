@@ -1018,9 +1018,19 @@
               "type": "map<string,string>",
               "label": "map"
             },
+            "enabled": {
+              "number": 4,
+              "type": "bool",
+              "label": "singular"
+            },
             "found": {
               "number": 1,
               "type": "bool",
+              "label": "singular"
+            },
+            "retention_eligibility": {
+              "number": 5,
+              "type": "RetentionEligibility",
               "label": "singular"
             },
             "username": {
@@ -1053,7 +1063,20 @@
           }
         }
       },
-      "enums": {},
+      "enums": {
+        "RetentionEligibility": {
+          "values": {
+            "RETENTION_ELIGIBILITY_ELAPSED": 1,
+            "RETENTION_ELIGIBILITY_NOT_EVALUABLE": 3,
+            "RETENTION_ELIGIBILITY_UNSPECIFIED": 0,
+            "RETENTION_ELIGIBILITY_WITHIN_WINDOW": 2
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
       "services": {
         "UserDirectory": {
           "rpcs": {

@@ -53,7 +53,7 @@
  *
  * ## 値を書き写さない
  *
- * realm 名・対象利用者・public client・エッジ URL・ローカル CA は**すべて走査して得る**
+ * realm 名・対象利用者・標準フローのクライアント（#1413: public でなくてよい）・エッジ URL・ローカル CA は**すべて走査して得る**
  * （`check-password-reset-mail.js` と同じ作法）。持っている定数は**上流の既定値**と
  * **プロトコル上の固定文字列**だけである。
  *
@@ -70,7 +70,7 @@
 const {
   loadRealm,
   pickTargetUser,
-  pickPublicClient,
+  pickBrowserFlowClient,
   hasTool,
   keycloakBaseUrl,
   edgeCa,
@@ -329,8 +329,8 @@ async function run() {
 
   const user = pickTargetUser(realm);
   if (!user) return { failures: [`${TAG} [前提] realm 宣言に対話利用者が居ない（0 件走査を緑にしない）。`], notices };
-  const client = pickPublicClient(realm);
-  if (!client) return { failures: [`${TAG} [前提] realm 宣言に public client（standard flow）が無い。ログイン画面へ到達できない。`], notices };
+  const client = pickBrowserFlowClient(realm);
+  if (!client) return { failures: [`${TAG} [前提] realm 宣言に標準フローのクライアント（redirectUri あり・bearer-only でない）が無い。ログイン画面へ到達できない。`], notices };
 
   const baseRes = keycloakBaseUrl();
   if (!baseRes.ok) return { failures: [`${TAG} [前提] ${baseRes.error}`], notices };
