@@ -1,3 +1,4 @@
+using AuthorizationService.Domain;
 using AuthorizationService.Features.Authz;
 using AuthorizationService.Features.Authz.ResolveScope;
 using AuthorizationService.Features.Users;
@@ -50,6 +51,13 @@ builder.Services.AddDbContext<AuthorizationDbContext>(opt => opt.UseNpgsql(connS
 // そのためである（Development 以外で偽物を宣言したらここで落ちる）。
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddIdentityAdminClient(builder.Configuration, builder.Environment);
+
+// FR-19, SC-17, SC-19, 計画 ADR-0036 D-09, ADR-0082 決定 5・フォローアップ 3, [[IADR-0428]] (#1392):
+// 退職時に個人資料へ掛かる 30 日窓の**起点の出所**。既定は暫定側（アカウント無効化日）で、
+// 人事連携が配備されたら `RetentionAnchor__Source=hr-leave-date` へ持ち替える。
+// **期間（30 日）は構成にしない** —— 計画の決定であり、配備が弱められてはならない。
+// 値域外の宣言はここで落ちる（`IdentityAdmin:Provider` と同じ deny-by-default）。
+builder.Services.AddSingleton(RetentionAnchorOptions.FromConfiguration(builder.Configuration));
 
 // FR-05, FR-21, UC-05 / 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 /
 // [[IADR-0398]] 決定 1 (b)（#1278 PR-C）: 端点の入力検証。

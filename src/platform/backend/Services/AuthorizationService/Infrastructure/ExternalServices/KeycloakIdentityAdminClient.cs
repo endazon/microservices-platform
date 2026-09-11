@@ -1,3 +1,4 @@
+using AuthorizationService.Domain;
 using AuthorizationService.Domain.Ports;
 using Platform.Shared.Contracts.Dtos;
 using System.Net;
@@ -136,24 +137,108 @@ public sealed class KeycloakIdentityAdminClient(
         string userId, IReadOnlyDictionary<string, string> attributes, CancellationToken ct)
     {
         var client = await AuthorizedClientAsync(ct);
-        // Keycloak のユーザー属性は多値（キー → 値の配列）である。契約側は 1 キー 1 値なので
-        // 単一要素の配列へ写す。**判定側（BffScopeResolver）も 1 値しか読まない**ので、
-        // ここで多値を作ると読まれない値が静かに増える。
-        //
-        // IADR-0385 (#1243): **ただし集合値キー（tags / projects）は分割して多値で書く**（正準形）。
-        // 読み戻しは同じ線上表現へ連結されるので `EnsureAttributesWereApplied` の突合は保たれる。
-        var payload = new Dictionary<string, object?>
+
+        // FR-19, SC-17, ADR-0082 決定 5, [[IADR-0428]] (#1392): **予約キー（保持起点）は差し替えの
+        // 対象外である。** 要求に混ざっていても採らず、現在の表現から持ち越す ——
+        // 画面が送る差し替えは ABAC 属性だけであり、**持ち越さないと部門を 1 つ直しただけで
+        // 退職時の窓の起点が黙って消える**。書き手は `SetRetentionAnchorAsync` ただ 1 つである。
+        var abac = attributes
+            .Where(kv => !RetentionAnchorAttributes.IsReserved(kv.Key))
+            .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+
+        var updated = await UpdateAndReloadAsync(client, userId, current => new Dictionary<string, object?>
         {
-            ["attributes"] = attributes.ToDictionary(
-                kv => kv.Key,
-                kv => UserAttributeEncoding.IsSetValued(kv.Key)
-                    ? UserAttributeEncoding.SplitOrdered(kv.Value).ToArray()
-                    : new[] { kv.Value }),
-        };
-        var updated = await UpdateAndReloadAsync(client, userId, payload, ct);
-        if (updated is not null) EnsureAttributesWereApplied(attributes, updated);
+            // Keycloak のユーザー属性は多値（キー → 値の配列）である。契約側は 1 キー 1 値なので
+            // 単一要素の配列へ写す。**判定側（BffScopeResolver）も 1 値しか読まない**ので、
+            // ここで多値を作ると読まれない値が静かに増える。
+            //
+            // IADR-0385 (#1243): **ただし集合値キー（tags / projects）は分割して多値で書く**（正準形）。
+            // 読み戻しは同じ線上表現へ連結されるので `EnsureAttributesWereApplied` の突合は保たれる。
+            ["attributes"] = WithPreservedReserved(
+                abac.ToDictionary(
+                    kv => kv.Key,
+                    kv => UserAttributeEncoding.IsSetValued(kv.Key)
+                        ? UserAttributeEncoding.SplitOrdered(kv.Value).ToArray()
+                        : [kv.Value],
+                    StringComparer.Ordinal),
+                current),
+        }, ct);
+        if (updated is not null) EnsureAttributesWereApplied(abac, updated);
         return updated;
     }
+
+    // FR-19, SC-17, SC-19, 計画 ADR-0036 D-09, ADR-0082 決定 5, [[IADR-0428]] (#1392):
+    // 保持起点（退職時の 30 日窓の起点）の書き込み・消去。**起点を書く唯一の口**である。
+    //
+    // 🔴 **消去も突合する。** 書けたことだけを確かめて消せたことを確かめないと、
+    // 再有効化（＝退職の取り消し）で起点が残り、**復職者の資料が期限つきのまま扱われる** ——
+    // 「書けなかった」より危険な向きである。
+    public async Task<IdentityUser?> SetRetentionAnchorAsync(
+        string userId, string attributeKey, DateTimeOffset? anchorAt, CancellationToken ct)
+    {
+        var client = await AuthorizedClientAsync(ct);
+        var value = anchorAt is { } at ? RetentionAnchorPolicy.Format(at) : null;
+
+        var updated = await UpdateAndReloadAsync(client, userId, current =>
+        {
+            var attributes = CurrentAttributes(current);
+            if (value is null) attributes.Remove(attributeKey);
+            else attributes[attributeKey] = [value];
+            return new Dictionary<string, object?> { ["attributes"] = attributes };
+        }, ct);
+
+        if (updated is null) return null;
+
+        if (value is not null)
+        {
+            EnsureAttributesWereApplied(
+                new Dictionary<string, string>(StringComparer.Ordinal) { [attributeKey] = value }, updated);
+        }
+        else if (updated.Attributes.ContainsKey(attributeKey))
+        {
+            throw new InvalidOperationException(
+                $"Keycloak が利用者 '{updated.Username}' の保持起点 {attributeKey} を消さなかった"
+                + "（更新要求は成功を返したが、読み直すと残っている）。"
+                + " 起点が残ると、再有効化した利用者の個人資料が退職者と同じ期限で扱われる。");
+        }
+
+        return updated;
+    }
+
+    // 現在の表現から属性を取り出す（キー → 値の配列）。**多値のまま写す** ——
+    // 集合値キー（tags / projects）を単一値へ畳むと、書き戻しで要素が落ちる。
+    private static Dictionary<string, string[]> CurrentAttributes(JsonObject representation)
+    {
+        var attributes = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        if (representation["attributes"] is not JsonObject current) return attributes;
+
+        foreach (var (key, node) in current)
+        {
+            var values = node switch
+            {
+                JsonArray array => array.Select(ValueOf).Where(v => v is not null).Select(v => v!).ToArray(),
+                JsonNode single => ValueOf(single) is { } only ? new[] { only } : [],
+                _ => [],
+            };
+            attributes[key] = values;
+        }
+        return attributes;
+    }
+
+    // 予約キー（保持起点）だけを現在の表現から持ち越す。
+    private static Dictionary<string, string[]> WithPreservedReserved(
+        Dictionary<string, string[]> payload, JsonObject representation)
+    {
+        var current = CurrentAttributes(representation);
+        foreach (var key in RetentionAnchorAttributes.ReservedKeys)
+        {
+            if (current.TryGetValue(key, out var values) && values.Length > 0) payload[key] = values;
+        }
+        return payload;
+    }
+
+    private static string? ValueOf(JsonNode? node)
+        => node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 
     // 🔴 **書けたことを確かめる（#1101 で実測した静かな縮退への fail-closed）。**
     //
@@ -271,8 +356,17 @@ public sealed class KeycloakIdentityAdminClient(
     //
     // サーバ計算のフィールド（`access` / `disableableCredentialTypes` / `userProfileMetadata`）は
     // 送り返さない（読み取り専用の派生値であり、送っても意味が無い）。
-    private async Task<IdentityUser?> UpdateAndReloadAsync(
+    private Task<IdentityUser?> UpdateAndReloadAsync(
         HttpClient client, string userId, Dictionary<string, object?> payload, CancellationToken ct)
+        => UpdateAndReloadAsync(client, userId, _ => payload, ct);
+
+    // 🔴 **上書きの中身が現在の表現に依存する場合のための形**（[[IADR-0428]] / #1392）。
+    // 予約キー（保持起点）の持ち越しは「今どうなっているか」を見ないと作れないが、
+    // **read-modify-write の GET は既にここで 1 回起きている** —— 呼び出し側で GET を足すと
+    // 同じ表現を 2 回引くことになる。**引いた表現をそのまま渡す。**
+    private async Task<IdentityUser?> UpdateAndReloadAsync(
+        HttpClient client, string userId,
+        Func<JsonObject, Dictionary<string, object?>> payloadFactory, CancellationToken ct)
     {
         var path = $"admin/realms/{Realm}/users/{Uri.EscapeDataString(userId)}";
         var current = await client.GetAsync(path, ct);
@@ -282,7 +376,7 @@ public sealed class KeycloakIdentityAdminClient(
         if (representation is null) return null;
 
         foreach (var computed in ServerComputedFields) representation.Remove(computed);
-        foreach (var (key, value) in payload)
+        foreach (var (key, value) in payloadFactory(representation))
             representation[key] = JsonSerializer.SerializeToNode(value, Json);
 
         var response = await client.PutAsJsonAsync(path, representation, Json, ct);

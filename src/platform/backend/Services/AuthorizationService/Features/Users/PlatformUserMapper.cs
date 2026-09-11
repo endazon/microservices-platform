@@ -1,3 +1,4 @@
+using AuthorizationService.Domain;
 using AuthorizationService.Domain.Ports;
 using Platform.Shared.Contracts.Dtos;
 using Riok.Mapperly.Abstractions;
@@ -20,9 +21,21 @@ namespace AuthorizationService.Features.Users;
 //
 // 生成コードは `obj/` 配下に出るため、カバレッジ集計からは既に落ちている（IADR-0195 決定 1）。
 // **床は動かない。**
+//
+// ★ FR-19, SC-17, SC-19, ADR-0082 決定 5, [[IADR-0428]] (#1392):
+//   🔴 **予約キー（保持起点）は応答へ出さない。** SC-17 の権限編集ダイアログは行の属性を
+//   そのまま下書きへ写して（`useUserPermissionEditor` の `{...editing.attributes}`）差し替え要求へ
+//   送り返す。予約キーは ABAC 属性辞書に無いため、`UserAssignmentValidation.ValidateAttributes` が
+//   「辞書に定義されていない」と **400** を返す —— **無効化済み利用者の属性編集が壊れる。**
+//   落とす場所を写像の 1 か所に閉じるのは、5 つの端点すべてがここを通るからである
+//   （端点ごとに落とすと、次に足した端点だけが漏らす）。
 [Mapper]
 internal static partial class PlatformUserMapper
 {
-    // SC-17: 認可基盤の利用者 → 応答 DTO。実体は source generator が生成する。
-    internal static partial PlatformUserDto ToDto(IdentityUser user);
+    // SC-17: 認可基盤の利用者 → 応答 DTO。**予約キーを落としてから**生成した写像へ渡す。
+    internal static PlatformUserDto ToDto(IdentityUser user)
+        => ToDtoCore(user with { Attributes = RetentionAnchorAttributes.WithoutReserved(user.Attributes) });
+
+    // 実体は source generator が生成する（6 プロパティすべて同名の 1:1）。
+    private static partial PlatformUserDto ToDtoCore(IdentityUser user);
 }

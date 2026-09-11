@@ -52,9 +52,29 @@ public interface IIdentityAdminClient
 
     /// <summary>
     /// SC-17: ABAC 属性の差し替え（部分更新ではない）。該当利用者が居なければ null。
+    ///
+    /// 🔴 **予約キー（保持起点。<see cref="AuthorizationService.Domain.RetentionAnchorAttributes"/>）だけは
+    /// 差し替えの対象外であり、現在値を持ち越す**（[[IADR-0428]] / #1392）。予約キーは ABAC 属性では
+    /// なく、画面が送る差し替え要求にも含まれない —— **持ち越さないと、部門を 1 つ直しただけで
+    /// 退職時の窓の起点が黙って消える。** 要求側に予約キーが混ざっていても採らない。
     /// </summary>
     Task<IdentityUser?> ReplaceAttributesAsync(
         string userId, IReadOnlyDictionary<string, string> attributes, CancellationToken ct);
+
+    /// <summary>
+    /// FR-19, SC-17, SC-19, 計画 ADR-0036 D-09, ADR-0082 決定 5, [[IADR-0428]] (#1392):
+    /// **退職時の 30 日窓の起点（保持起点）を書く唯一の口。** 該当利用者が居なければ null。
+    ///
+    /// <paramref name="anchorAt"/> が null なら起点を**消す**（再有効化＝退職の取り消し）。
+    ///
+    /// 🔴 **差し替え（<see cref="ReplaceAttributesAsync"/>）と兼用にできない。** あちらは予約キーを
+    /// **保存する**意味論であり、消去を表せない。**起点の書き手を 1 つに閉じる**ことで、
+    /// 「誰がいつ起点を動かしたか」が型のうえで 1 か所に収まる。
+    ///
+    /// 🔴 **これは新規作成の口ではない**（`IdentityAdminContractTests` の禁止語に触れない属性の書き込みである）。
+    /// </summary>
+    Task<IdentityUser?> SetRetentionAnchorAsync(
+        string userId, string attributeKey, DateTimeOffset? anchorAt, CancellationToken ct);
 
     /// <summary>
     /// SC-17: realm ロール割当の差し替え（併任可）。該当利用者が居なければ null。
