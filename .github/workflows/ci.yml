@@ -499,6 +499,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/reset-gate.test.js
 
+      # SC-15 / FR-05, ADR-0094 決定 2, IADR-0432, Issue #1410: リセット申請の**床**
+      # （deploy/mail-relay/reset-floor.js）の純粋関数と、**床が 3 つの宣言に分かれて生きていること**
+      # （器のコード・マニフェストの env・経路の route）が食い違わないことを固定する。
+      # 🔴 どれか 1 つがズレると床は静かに効かなくなる（器が起動しない／誰も通らない／上流を向いている）。
+      # 🔴 **既定の描画に床が出ないこと**（opt-in）もここで機械的に押さえる。
+      - name: Unit-test the SC-15 reset response floor
+        if: ${{ !cancelled() }}
+        run: node deploy/mail-relay/reset-floor.js --self-test
+      - name: Check the floor, its manifest and its route agree
+        if: ${{ !cancelled() }}
+        run: node scripts/reset-floor.test.js
+
       # SC-10 / SC-15, ADR-0078 決定 3, IADR-0421, Issue #1245 PR-B: 近接 MTA のキュー長・滞留時間を
       # spool から採るサイドカー exporter（deploy/mail-relay/mail-queue-exporter.js）の純粋関数を固定する。
       # 🔴 **滞留時間をファイルの更新時刻から採らない** —— Postfix は deferred の更新時刻を

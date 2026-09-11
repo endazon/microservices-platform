@@ -1,0 +1,59 @@
+# SC-15, FR-05, ADR-0078 決定 1, ADR-0094 決定 2, IADR-0432 (#1410):
+# **エッジ（edge-istio）＋ リセット申請の床**。opt-in の overlay。
+#
+# 適用: kubectl apply -k deploy/local/edge-istio-reset-floor
+#       （`scripts/k8s-local-up.sh` は `RESET_FLOOR=1` のときだけこちらを適用する。既定は
+#        `deploy/local/edge-istio` のままであり、**既定の描画はバイト等価**である）
+#
+# ## 何を足すか（2 つで 1 組）
+#
+#   1. 床の器（`../../mail-relay/reset-floor`）
+#   2. `msp-keycloak-edge` の**先頭**へ、**リセット申請の POST だけ**を床へ向ける route
+#
+# 🔴 **片方だけでは効かない。** 器だけなら誰も通らず、route だけなら 404 になる。
+#
+# ## 🔴 なぜ POST だけで、なぜ先頭なのか
+#
+# - **POST だけ**: 所要時間が実在／非実在で分かれるのは**申請の POST** である（Keycloak の送出は
+#   同期であり、非実在側はメールを作らず送らない。IADR-0404 の V1 / V2）。認可要求と申請画面の GET は
+#   **利用者名を知らない段階**であり差が出ようがない。**差の無い経路まで遅くしない。**
+# - **先頭**: Istio の HTTP route は**先勝ち**である。`edge-istio` 側の `prefix: /` の catch-all より
+#   後ろに置くと、Keycloak へ直接吸われて床を通らない（private-notes の同期経路と同じ罠）。
+#
+# ## 🔴 ログイン経路は触らない
+#
+# ADR-0094 決定 4 は**ログイン経路を本判定の対象外**とした（`failureFactor=5` のロックがあり
+# 標本を増やせないため、反復を前提とする決定 1 が成立しない）。したがって `login-actions/authenticate`
+# には床を掛けない —— **裁定の無い経路へ統制を広げない。**
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../edge-istio
+  - ../../mail-relay/reset-floor
+
+patches:
+  # 🔴 realm 名を書かない（`[^/]+`）。realm 宣言の単一情報源は deploy/keycloak/*-realm.json であり、
+  #   ここへ書き写すと realm を改名したとき静かに床を外れる。
+  #   Envoy の path 照合は**クエリ文字列を含まない**ので、`?session_code=…` は正規表現に影響しない。
+  - target:
+      group: networking.istio.io
+      version: v1
+      kind: VirtualService
+      name: msp-keycloak-edge
+      namespace: istio-system
+    patch: |-
+      - op: add
+        path: /spec/http/0
+        value:
+          name: reset-credentials-floor
+          match:
+            - method:
+                exact: POST
+              uri:
+                regex: "^/realms/[^/]+/login-actions/reset-credentials.*"
+          route:
+            - destination:
+                host: reset-floor.platform-infra.svc.cluster.local
+                port:
+                  number: 8080

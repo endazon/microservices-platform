@@ -59,7 +59,22 @@ helm upgrade --install istio-ingressgateway istio/gateway \
   -f deploy/istio/ingressgateway-values-local.yaml --wait --timeout 5m
 
 echo "==> [4/5] Gateway / VirtualService と CoreDNS の転送先を当てる"
-kubectl apply -k deploy/local/edge-istio
+# SC-15 / ADR-0094 決定 2 / IADR-0432 (#1410): リセット申請の**床**（最小応答時間）。
+# 🔴 **既定は 0（入れない）。** 床は ADR-0094 の着手可否の注記が「覆り得る」と名指しした決定であり、
+#   床を入れた構成で中央値の比が許容内に収まることを稼働クラスタで実測するまで既定へ入れない
+#   （近接 MTA・門と違い、計画が無条件と定めた統制ではない）。RESET_FLOOR=0 のときの
+#   適用対象は本 PR の前と**同じ overlay・同じ描画**である。
+if [ "${RESET_FLOOR:-0}" = "1" ]; then
+  echo "    RESET_FLOOR=1: リセット申請の床を入れる（POST の応答を床まで返さない）"
+  # 器の本体は ConfigMap 化する（kustomize は root 外ファイルを参照できない。門と同型）。
+  # 🔴 overlay の apply より**前**に作る（Pod が起動時にマウントする）。
+  kubectl create configmap reset-floor-script -n platform-infra \
+    --from-file=reset-floor.js=deploy/mail-relay/reset-floor.js \
+    --dry-run=client -o yaml | kubectl apply -f -
+  kubectl apply -k deploy/local/edge-istio-reset-floor
+else
+  kubectl apply -k deploy/local/edge-istio
+fi
 # import 先の追加は Corefile 自体の変更ではないため reload プラグインが拾わない（IADR-0227 と同じ）。
 kubectl -n kube-system rollout restart deploy/coredns
 kubectl -n kube-system rollout status deploy/coredns --timeout=120s
