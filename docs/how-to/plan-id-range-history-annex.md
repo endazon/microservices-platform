@@ -11,7 +11,7 @@ ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-06, SC-17, SC-18, SC-19, SC-2
 adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093, ADR-0094, ADR-0095, ADR-0096]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228, IADR-0423]
 specs: []
-issues: [#1411, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#591]
+issues: [#1411, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#591, #1409]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -24,7 +24,7 @@ issues: [#1411, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #
 > **本別紙が持つのは「レンジをいつどう引き直したか」（pin 時代の記録を含む）「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れなかったか」の記録だけ**である（必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
 
-### ［2026-09-11・8 回目］ADR `0001..0093` → `0001..0096`（3 件）＋ **SC `01..21` → `01..22`（1 件。記録開始以来、画面の採番が動いた初回である）**
+### ［2026-09-11・8 回目］ADR `0001..0093` → `0001..0096`（3 件。#1409 / #1417 と同日に同じ前進を引いた）＋ **SC `01..21` → `01..22`（1 件。記録開始以来、画面の採番が動いた初回である）**
 
 **動いたのは 2 種である。** `FR-01..22`（22 件）／`NFR-01..27`（27 件）／`UC-01..11`（11 件）は不動。
 
@@ -407,6 +407,19 @@ ABAC の `owner` が実データ 0 件である件と、Wiki.js の個人スコ�
 **世代数は書かない**——本節へ 1 世代足すたびに腐る導出値であり、実際に入口と本紙が
 「5 世代」で揃ったまま実体（`X → Y` の記録）だけが増えていた（#793 で是正。母集合の規則 10）。
 **「動かなかった」ことも実測の結果**であり、引き直しを省いてよい根拠にはならない。
+
+［2026-09-11 / #1409］**`ADR` レンジが `ADR-0001..0093` → `ADR-0001..0096` へ動いた。**
+契機は前々世代と同じ「自分の作業が新しい計画 ADR を引いて `check-trace-blocks` に止められたこと」である
+（trace ブロックへ書いた計画 ADR がレンジ外だと機械が止める）。
+🔴 **公開ファイルの導出結果（`gen-plan-ranges.js --check`）をそのまま採らなかった。**
+隣接クローンの**作業ツリーの `main` が `origin/main` より古く**、生成器は `[1, 93]` と答えた
+（作業ツリーは読み取り専用であり、こちらから前進させない）。
+**`git ls-tree --name-only origin/main projects/microservices-platform/07_adr/` を直接数え、
+一意な `ADR-XXXX` が 96 件・最大 `ADR-0096`・したがって欠番なし**であることを実測して採った
+（`origin/main` の先頭は `78b813f`）。🔴 **導出結果も、それを作った側のチェックアウトより新しくはならない。**
+新設は `ADR-0094` / `ADR-0095` / `ADR-0096`（うち本 PR が引くのは
+`ADR-0096` ＝ 退職後 30 日が過ぎた個人資料は完全削除する）。
+**`FR` / `UC` / `SC` は引き直したが動いていない**（`FR-01..22` / `UC-01..11` / `SC-01..21`）。
 
 ［2026-09-09 / 計画側の裁定］**`ADR` レンジが `ADR-0001..0088` → `ADR-0001..0093` へ動いた。**
 **1 日で 5 件動いた**（前世代は 2026-09-08）。計画側は同日、環流の裁定を複数着地させている。

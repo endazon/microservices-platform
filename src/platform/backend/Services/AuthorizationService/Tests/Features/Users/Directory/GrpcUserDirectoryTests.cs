@@ -247,6 +247,85 @@ public class GrpcUserDirectoryTests
         resp.Attributes["tags"].Should().Be("sales,hr");
     }
 
+    // ── #1409 / [[IADR-0431]]: 退職の窓の判定を面へ載せた分 ──────────────────
+
+    // FR-19, ADR-0096 決定 1, [[IADR-0428]] 決定 3, [[IADR-0431]] (#1409):
+    // 🔴 **陰性対照。無効化されているだけでは削除の条件を満たさない。**
+    // 起点（予約属性）が未供給なら `NOT_EVALUABLE` である ——
+    // **人事連携が未配備の間はこれが通常の状態**であり、ここが `ELAPSED` へ倒れると
+    // 全退職者の個人資料がいきなり消える。
+    [Fact]
+    public async Task GetUserAttributes_reports_not_evaluable_when_anchor_is_absent()
+    {
+        var resp = await PlainClient().GetUserAttributesAsync(
+            new GetUserAttributesRequest { Username = DisabledUser },
+            headers: Bearer(ServiceToken()), cancellationToken: TestContext.Current.CancellationToken);
+
+        resp.Found.Should().BeTrue();
+        resp.Enabled.Should().BeFalse("`takahashi.jiro` は無効化済みである");
+        resp.RetentionEligibility.Should().Be(RetentionEligibility.NotEvaluable,
+            "起点が未供給なら数えない（削除の対象にしない）");
+    }
+
+    // FR-19, ADR-0096 決定 1 (#1409): 在籍中の利用者は `enabled=true` で運ばれる。
+    // 消費側の述語は `!Enabled` を含むので、ここが常に false になる変異は削除を全面的に止め、
+    // 常に true になる変異は在籍者の資料を消す。**両方向の意味があるので陽性側も固定する。**
+    [Fact]
+    public async Task GetUserAttributes_reports_enabled_for_active_user()
+    {
+        var resp = await PlainClient().GetUserAttributesAsync(
+            new GetUserAttributesRequest { Username = EnabledUser },
+            headers: Bearer(ServiceToken()), cancellationToken: TestContext.Current.CancellationToken);
+
+        resp.Enabled.Should().BeTrue();
+        resp.RetentionEligibility.Should().Be(RetentionEligibility.NotEvaluable);
+    }
+
+    // FR-19, ADR-0036 D-09, ADR-0096 決定 1, [[IADR-0428]] 決定 2 (#1409):
+    // 陽性と陰性を**同じ器で対にする**。30 日は構成に出していないので、
+    // 動かすのは起点だけである（31 日前 → `ELAPSED` ／ 3 日前 → `WITHIN_WINDOW`）。
+    [Theory]
+    [InlineData(31, RetentionEligibility.Elapsed)]
+    [InlineData(3, RetentionEligibility.WithinWindow)]
+    public async Task GetUserAttributes_evaluates_the_thirty_day_window_from_the_anchor(
+        int daysAgo, RetentionEligibility expected)
+    {
+        var key = AuthorizationService.Domain.RetentionAnchorAttributes.AccountDisabledAtKey;
+        string userId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var identity = scope.ServiceProvider.GetRequiredService<IIdentityAdminClient>();
+            var users = await identity.ListUsersAsync(TestContext.Current.CancellationToken);
+            userId = users.First(u => u.Username == DisabledUser).Id;
+            await identity.SetRetentionAnchorAsync(userId, key,
+                DateTimeOffset.UtcNow.AddDays(-daysAgo), TestContext.Current.CancellationToken);
+        }
+
+        try
+        {
+            var resp = await PlainClient().GetUserAttributesAsync(
+                new GetUserAttributesRequest { Username = DisabledUser },
+                headers: Bearer(ServiceToken()), cancellationToken: TestContext.Current.CancellationToken);
+
+            resp.Enabled.Should().BeFalse();
+            resp.RetentionEligibility.Should().Be(expected);
+        }
+        finally
+        {
+            // 器は collection 共有である。起点を残すと他の試験の前提が動く。
+            using var scope = _factory.Services.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<IIdentityAdminClient>()
+                .SetRetentionAnchorAsync(userId, key, null, TestContext.Current.CancellationToken);
+        }
+    }
+
+    // 🔴 **契約の門。** proto3 の既定値 0 は `UNSPECIFIED` でなければならない ——
+    // `ELAPSED` を 0 に置くと、本項目を知らない古い配備の応答が**そのまま削除の合図**になる
+    // （[[IADR-0431]]。消費側の `_ => NotEvaluable` と対で効く）。
+    [Fact]
+    public void Retention_eligibility_zero_value_is_unspecified()
+        => ((int)RetentionEligibility.Unspecified).Should().Be(0);
+
     // T-S-08: 構造の門。gRPC サービス型が ServiceCaller ポリシーを宣言していること
     // （属性が外れると T-S-02 / T-S-03 が落ちるが、どの層で外れたかを名指しするためにここでも固定する）。
     [Fact]

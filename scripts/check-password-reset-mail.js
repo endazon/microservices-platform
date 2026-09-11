@@ -88,6 +88,52 @@ const GATE_STATE_CLOSED = 'closed';
  */
 const EXPECT_GATE_CLOSED_ENV = 'EXPECT_GATE_CLOSED';
 
+/*
+ * ===== T-10 の所要時間の軸（SC-15 / 計画 ADR-0094 決定 1・4 / #1410）=====
+ *
+ * 計画 ADR-0094 は ADR-0078 決定 1 の**所要時間の行**を部分改定し、判定条件をこう定めた ——
+ * 「**測定条件を揃えた反復を 3 回以上行い、各反復で実在・非実在の中央値の比が許容内**」。
+ * 許容比は**計画が発明せず、環境自身に測らせる**（自己対照＝実在側を 2 群に分けた中央値の比）。
+ *
+ * 🔴 **なぜ「単発の分布の重なり」ではないのか。** 同 ADR の実測 3 が確かめたとおり、
+ * **リセット申請には回数制限が 1 件も無い**（`NFR-13` のロックはログインの失敗回数にしか効かず、
+ * 申請は資格情報を出さないので計上されない）。攻撃者は同じ名前を何度でも投げて中央値を取れる。
+ * **単発で重なることを合格にすると、反復で判別できる状態を合格として記録することになる。**
+ *
+ * 🔴 **なぜ最初の反復を捨てるのか。** 同 ADR の実測 2 が名指ししたとおり、暖機の反復は
+ * **両側を同じ向きに膨らませる**（環流の反復 1 は実在 4.2 倍・非実在 2.6 倍）。
+ * 暖機を含めれば「差が大きい」と読め、除けば「差が小さい」と読める。**判定に使う状態を
+ * 固定しなければ、測るたびに結論が変わる。**
+ *
+ * 🔴 **ログイン経路（IADR-0427 / 環流 #602）は本判定の対象外である**（ADR-0094 決定 4）。
+ * 同経路は `failureFactor=5` のロックがあり標本を増やせない —— 増やすと実在側だけロックされ、
+ * それ自体が存在オラクルになる。**決定 1 は反復を前提とするため、あちらでは成立しない。**
+ */
+
+/** 反復数。ADR-0094 決定 1 の下限（3 回以上）。**1 回目は暖機として捨てる**ので判定に使うのは 2 反復。 */
+const TIMING_REPETITIONS = 3;
+/**
+ * 1 反復・片側あたりの標本数。**自己対照は実在側を 2 群へ分けて取る**ので、
+ * 各群が中央値を持てる下限（2 標本）の 3 倍を置く。実在側の 1 標本 = 申請 1 件 = メール 1 通であり、
+ * 捕捉用 MTA へ溜まるが、**T-16 / T-17（ちょうど 1 通）は本相の前に測り終えている**。
+ */
+const TIMING_SAMPLES_PER_SIDE = 6;
+/**
+ * 🔴 **「自己対照が広い」の境界。計画は値を与えていない**（ADR-0094 決定 1 は
+ * 「自己対照の側が広いときは判定できない」としか書いていない）。**実装が決め、導出を IADR-0432 に残す。**
+ *
+ * 導出: 計画 ADR-0094 §コンテキストと課題 が稼働 k3s で記録した本経路の比は **1.9〜3.1 倍**である。
+ * **ノイズ帯がその最小値 1.9 倍以上に広い測定は、計画が既に見つけた最小の差すら再現できない** ——
+ * そのとき「比が自己対照を超えなかった」は「差が無い」ではなく「**ノイズに埋もれて見えない**」である。
+ * 1.9 を上へ丸めて **2 倍**とする（小数を書くと実測に無い精度を主張することになる）。
+ *
+ * 🔴 これは**許容比（閾値）ではなく可検出性の下限**である。許容比は依然として自己対照そのものであり、
+ * 環境ごとに違ってよい。ここが止めるのは「**測れていないのに緑**」だけである。
+ */
+const SELF_CONTROL_WIDE_RATIO = 2;
+/** 所要時間の判定の 3 値。🔴 `評価不能` は**緑ではない**（ADR-0094 決定 4）。 */
+const TIMING_VERDICT = { PASS: '合格', INCONCLUSIVE: '評価不能', FAIL: '不合格' };
+
 // ---------------------------------------------------------------- 収集（外部依存）
 
 function kubectl(args, opts = {}) {
@@ -287,15 +333,30 @@ function pickTargetUser(realm) {
   return u ? { username: u.username, email: u.email } : null;
 }
 
-/** 認可要求に使う public client を realm 宣言から選ぶ（PKCE は常に付ける）。 */
-function pickPublicClient(realm) {
+/**
+ * 認可要求（ブラウザの標準フロー）に使うクライアントを realm 宣言から選ぶ（PKCE は常に付ける）。
+ *
+ * 🔴 **public client を要求しない**（#1413）。本検査器はトークン交換を行わず、認可エンドポイント →
+ * ログイン画面 → `login-actions/reset-credentials` のフォームを叩くだけである。Keycloak 24 では
+ * confidential client でも認可エンドポイントは client secret なしで到達でき、リセットフォームまで進める
+ * （稼働 Keycloak で `bff` の `/auth` が 200 でリセットリンクを含むことを実測・2026-09-11）。
+ * `platform-spa`（唯一の public client）は IADR-0429 / #1402 で撤去されており、public を要求すると
+ * 検査が「前提なし」で止まって何も測らなくなる。
+ *
+ * 選び方: standard flow が有効・bearer-only でない・redirectUri を 1 つ以上持つクライアントのうち、
+ * public client があればそれ、無ければ製品自身の `bff`、それも無ければ最初の候補（決定的）。
+ */
+function pickBrowserFlowClient(realm) {
   const clients = Array.isArray(realm && realm.clients) ? realm.clients : [];
-  const c = clients.find((x) => x && x.publicClient === true && x.standardFlowEnabled !== false
+  const candidates = clients.filter((x) => x && x.bearerOnly !== true && x.standardFlowEnabled !== false
     && Array.isArray(x.redirectUris) && x.redirectUris.length > 0);
+  const c = candidates.find((x) => x.publicClient === true)
+    || candidates.find((x) => x.clientId === 'bff')
+    || candidates[0];
   if (!c) return null;
   // `https://localhost/*` のようなワイルドカードから具体の URI を作る。
   const redirectUri = String(c.redirectUris[0]).replace(/\*+$/, '');
-  return { clientId: c.clientId, redirectUri };
+  return { clientId: c.clientId, redirectUri, publicClient: c.publicClient === true };
 }
 
 /** リセットリンクの有効期限（分）。realm から導く（値を書き写さない）。 */
@@ -354,6 +415,149 @@ function evaluateConcealment(input) {
     failures.push(`[T-10] 非実在の利用者名の申請で ${input.absentDelivered} 通が送出された（期待 0 通）。`);
   }
   return failures;
+}
+
+/**
+ * 中央値。**偶数個は中点**（login 側の summarizeTimings と同じ規約）。**純関数**。
+ * @param {number[]} samples
+ * @returns {number|null} 有限な標本が 0 件なら null（0 件を 0 ms と言わない）
+ */
+function median(samples) {
+  const xs = (samples || []).filter((x) => typeof x === 'number' && Number.isFinite(x))
+    .slice().sort((a, b) => a - b);
+  if (xs.length === 0) return null;
+  const mid = Math.floor(xs.length / 2);
+  return xs.length % 2 === 1 ? xs[mid] : (xs[mid - 1] + xs[mid]) / 2;
+}
+
+/**
+ * 取得順の**交互**で 2 群へ分ける（自己対照の作り方）。**純関数**。
+ *
+ * 🔴 **前半／後半で分けない。** 反復の中で環境がドリフトすると、前半後半の分割は
+ * **ドリフトを丸ごと「ノイズ」に数えて**自己対照を不当に広げる（＝許容が緩くなる）。
+ * 交互なら両群が反復の全体にまたがり、ドリフトは両群へ等しく乗る。
+ * 実在／非実在を交互に打つ取得の形と同じ理由である。
+ *
+ * @param {number[]} xs 取得順の標本
+ * @returns {{a:number[], b:number[]}}
+ */
+function splitAlternating(xs) {
+  const a = []; const b = [];
+  (xs || []).forEach((x, i) => ((i % 2 === 0) ? a : b).push(x));
+  return { a, b };
+}
+
+/** 向きを問わない中央値の比（常に 1 以上）。どちらが速いかは別に出す。**純関数**。 */
+function medianRatio(m1, m2) {
+  if (!(typeof m1 === 'number' && typeof m2 === 'number') || m1 <= 0 || m2 <= 0) return null;
+  return Math.max(m1, m2) / Math.min(m1, m2);
+}
+
+/**
+ * T-10 の所要時間の軸（計画 ADR-0094 決定 1・4 / #1410）。**純関数**。
+ *
+ * **反復の配列**（取得順）を受け、**先頭 1 反復を暖機として捨て**、残りで判定する。
+ * 各反復について:
+ *   - `cross` = 実在／非実在の中央値の比（向きを問わない。1 以上）
+ *   - `self`  = **自己対照** = 実在側を交互に 2 群へ分けた中央値の比（＝その環境の測定ノイズ）
+ *   - 🔴 **`cross > self` なら不合格**（ADR-0094 決定 1 そのもの）
+ *   - 🔴 **不合格でなく、かつ `self >= SELF_CONTROL_WIDE_RATIO` なら `評価不能`**（合格にしない）
+ *
+ * 前提が崩れていれば**判定へ進まず不合格にする**（0 件走査・標本数の不揃いを緑にしない）。
+ *
+ * @param {{repetitions: Array<{existing:number[], absent:number[]}>}} input
+ * @returns {{verdict:string, failures:string[], lines:string[],
+ *            perRepetition:Array<{index:number, warmup:boolean, n:number,
+ *              existingMedian:?number, absentMedian:?number, cross:?number, self:?number,
+ *              slower:?string}>}}
+ */
+function evaluateTimingConsistency(input) {
+  const reps = (input && input.repetitions) || [];
+  const failures = [];
+  const lines = [];
+  const perRepetition = [];
+
+  if (reps.length < TIMING_REPETITIONS) {
+    failures.push(`[T-10][所要時間] 反復が ${reps.length} 回しかない（必要 ${TIMING_REPETITIONS} 回以上）。`
+      + ' 🔴 **1 回目は暖機として捨てる**ので、判定に使えるのは 2 回目以降である。'
+      + ' 反復せずに測ると、暖機の膨らみを定常状態と取り違える。');
+    return { verdict: TIMING_VERDICT.FAIL, failures, lines, perRepetition };
+  }
+
+  // 標本数は**反復間で揃っていること**（揃わないと中央値が比較できない。ADR-0094 決定 1）。
+  const counts = reps.map((r) => [((r.existing || []).length), ((r.absent || []).length)]);
+  const flat = counts.flat();
+  if (flat.some((c) => c === 0)) {
+    failures.push(`[T-10][所要時間] 標本が 0 件の側がある（反復ごとの [実在, 非実在] = ${JSON.stringify(counts)}）。`
+      + ' 0 件走査を緑にしない。');
+    return { verdict: TIMING_VERDICT.FAIL, failures, lines, perRepetition };
+  }
+  if (new Set(flat).size !== 1) {
+    failures.push(`[T-10][所要時間] 標本数が揃っていない（反復ごとの [実在, 非実在] = ${JSON.stringify(counts)}）。`
+      + ' 揃えないと中央値が比較できない（ADR-0094 決定 1 の測り方）。');
+    return { verdict: TIMING_VERDICT.FAIL, failures, lines, perRepetition };
+  }
+
+  let inconclusive = false;
+  reps.forEach((rep, index) => {
+    const warmup = index === 0;
+    const existingMedian = median(rep.existing);
+    const absentMedian = median(rep.absent);
+    const halves = splitAlternating(rep.existing);
+    const self = medianRatio(median(halves.a), median(halves.b));
+    const cross = medianRatio(existingMedian, absentMedian);
+    const slower = (existingMedian === null || absentMedian === null) ? null
+      : (existingMedian === absentMedian ? '同じ' : (existingMedian > absentMedian ? '実在' : '非実在'));
+    perRepetition.push({ index, warmup, n: (rep.existing || []).length, existingMedian, absentMedian, cross, self, slower });
+
+    const fmt = (x) => (typeof x === 'number' ? x.toFixed(1) : '—');
+    const ratio = (x) => (typeof x === 'number' ? `${x.toFixed(2)} 倍` : '—');
+    lines.push(`  反復 ${index + 1}${warmup ? '（暖機・**判定に使わない**）' : ''}:`
+      + ` n=${(rep.existing || []).length}/${(rep.absent || []).length}`
+      + ` 実在 中央=${fmt(existingMedian)} ms / 非実在 中央=${fmt(absentMedian)} ms`
+      + ` / 比=${ratio(cross)}（遅い側 ${slower || '—'}）/ 自己対照=${ratio(self)}`);
+
+    if (warmup) return;
+    if (halves.a.length < 2 || halves.b.length < 2 || self === null) {
+      inconclusive = true;
+      lines.push(`    → ${TIMING_VERDICT.INCONCLUSIVE}: 自己対照の 2 群が中央値を持てない`
+        + `（${halves.a.length} / ${halves.b.length} 標本）。標本数を増やして測り直す。`);
+      return;
+    }
+    if (cross === null) {
+      inconclusive = true;
+      lines.push(`    → ${TIMING_VERDICT.INCONCLUSIVE}: 中央値を取れない標本がある。`);
+      return;
+    }
+    if (cross > self) {
+      failures.push(`[T-10][所要時間] 反復 ${index + 1}: 実在／非実在の中央値の比 ${cross.toFixed(2)} 倍が`
+        + ` 自己対照 ${self.toFixed(2)} 倍を超えている（遅い側は ${slower}）。`
+        + ' 🔴 **同じ名前を数回投げて中央値を取れば利用者名を判別できる。**'
+        + ' リセット申請には回数制限が無いので、この反復は攻撃者にも行える'
+        + '（差を均すには Keycloak 前段の床が要る。ADR-0094 決定 2 / IADR-0432）。');
+      return;
+    }
+    if (self >= SELF_CONTROL_WIDE_RATIO) {
+      inconclusive = true;
+      lines.push(`    → ${TIMING_VERDICT.INCONCLUSIVE}: 自己対照が ${self.toFixed(2)} 倍と広い`
+        + `（可検出性の下限 ${SELF_CONTROL_WIDE_RATIO} 倍以上）。`
+        + ' 🔴 **「ノイズに埋もれて見えない」を「差が無い」と読まない。** 標本数を増やして測り直す。');
+      return;
+    }
+    lines.push(`    → ${TIMING_VERDICT.PASS}: 比 ${cross.toFixed(2)} 倍 ≦ 自己対照 ${self.toFixed(2)} 倍。`);
+  });
+
+  if (failures.length > 0) return { verdict: TIMING_VERDICT.FAIL, failures, lines, perRepetition };
+  if (inconclusive) {
+    // 🔴 `評価不能` は**緑にしない**（ADR-0094 決定 4）。標本が足りないことを合格として記録すると、
+    //    以後だれも測り直さない。
+    failures.push(`[T-10][${TIMING_VERDICT.INCONCLUSIVE}] 所要時間は**判定できなかった**（合格ではない）。`
+      + ' 自己対照（環境の測定ノイズ）が広く、この測定では差の有無を言えない。'
+      + ' 🔴 **これを緑にすると「測れていない」が「差が無い」として記録される。**'
+      + ' 標本数を増やすか、測定条件（負荷・並走するジョブ）を揃えて測り直す。');
+    return { verdict: TIMING_VERDICT.INCONCLUSIVE, failures, lines, perRepetition };
+  }
+  return { verdict: TIMING_VERDICT.PASS, failures, lines, perRepetition };
 }
 
 /** 本文に現れる URL をすべて拾う（末尾の句読点は落とす）。 */
@@ -523,9 +727,17 @@ async function submitResetRequest({ base, realmName, client, ca, username }) {
   const resetPage = await request(resetUrl, { jar, ca });
   const action = /action="([^"]*login-actions\/reset-credentials[^"]*)"/.exec(resetPage.body);
   if (!action) return { error: `申請フォームの action を読めなかった（reset ページ status=${resetPage.status}）。` };
-  return request(decodeEntities(action[1]), {
+  /*
+   * 🔴 **計るのは POST だけである**（計画 ADR-0094 決定 1 / #1410）。
+   * 認可要求と申請画面の GET は**利用者名を知らない段階**であり、実在／非実在で差が出ようがない。
+   * フロー全体を計ると、差の出ない 2 往復が分母に入って**比が薄まる** ——
+   * 「差が小さくなった」のか「測り方で薄めた」のかを区別できなくなる。
+   */
+  const startedAt = Date.now();
+  const res = await request(decodeEntities(action[1]), {
     method: 'POST', jar, ca, body: `username=${encodeURIComponent(username)}`,
   });
+  return { ...res, elapsedMs: Date.now() - startedAt };
 }
 
 /**
@@ -539,6 +751,64 @@ function makeAbsentUsername(realm) {
     if (!taken.has(candidate)) return candidate;
   }
   return null;
+}
+
+/** 非実在名に使う文字（1 文字 1 バイト。多バイト文字を混ぜるとバイト長を狙って作れない）。 */
+const ABSENT_NAME_ALPHABET = 'abcdefghijklmnopqrstuvwxyz';
+
+/**
+ * realm に**実在せず、指定のバイト長**の利用者名を作る（計画 ADR-0094 決定 1 /
+ * IADR-0427 が login 経路で採ったのと同じ形）。
+ *
+ * 🔴 **なぜ長さを揃えるのか。** 申請した利用者名は**応答へ反映される**ため、長さが違えば
+ * **本文長が必ず違う**。環流 planning#596 は 1 度目にこれを踏み、「本文長が 16 バイト違う」という
+ * 結果を得た —— **16 は名前の長さの差そのものであり、存在の漏れではなく測り方の誤りである。**
+ * 所要時間の軸でも同じで、長さの違う名前は入力の検証・描画の量が違う。
+ *
+ * @param {object} realm realm 宣言（不在の突合に使う。**偶然の一致で「非実在のつもりが実在」を防ぐ**）
+ * @param {number} length 作りたいバイト長
+ * @param {() => number} [rng] 乱数（自己試験が決定化するために差し替える）
+ * @returns {string|null}
+ */
+function makeAbsentUsernameOfLength(realm, length, rng = Math.random) {
+  if (!Number.isInteger(length) || length < 1) return null;
+  const taken = new Set(((realm && realm.users) || []).map((u) => String(u.username || '')));
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    let candidate = '';
+    for (let i = 0; i < length; i += 1) {
+      candidate += ABSENT_NAME_ALPHABET[Math.floor(rng() * ABSENT_NAME_ALPHABET.length) % ABSENT_NAME_ALPHABET.length];
+    }
+    if (!taken.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * 対の前提（計画 ADR-0094 決定 1）: **バイト長が一致**し、**非実在側が realm 宣言に居ない**こと。**純関数**。
+ * @param {{existingUsername:string, absentUsername:string, realmUsernames:string[]}} input
+ * @returns {string[]}
+ */
+function evaluateTimingPair(input) {
+  const failures = [];
+  const existing = String((input && input.existingUsername) || '');
+  const absent = String((input && input.absentUsername) || '');
+  if (existing === '' || absent === '') {
+    failures.push('[T-10][所要時間] 対の利用者名を作れなかった（実在／非実在のどちらかが空）。'
+      + ' 陰性対照を置けないので緑にしない。');
+    return failures;
+  }
+  const existingBytes = Buffer.byteLength(existing);
+  const absentBytes = Buffer.byteLength(absent);
+  if (existingBytes !== absentBytes) {
+    failures.push(`[T-10][所要時間] 対の利用者名のバイト長が違う（実在 ${existingBytes} / 非実在 ${absentBytes}）。`
+      + ' 🔴 **申請した名前は応答へ反映されるため、長さが違えば本文長は必ず違う。**'
+      + ' これは存在の漏れではなく測り方の誤りである（環流 planning#596 が 1 度目に踏んだ罠）。');
+  }
+  if (((input && input.realmUsernames) || []).includes(absent)) {
+    failures.push(`[T-10][所要時間] 陰性対照に選んだ利用者名 ${absent} が realm 宣言に実在する。`
+      + ' 「非実在のつもりが実在していた」測定を緑にしない。');
+  }
+  return failures;
 }
 
 // ---------------------------------------------------------------- 実行
@@ -556,10 +826,10 @@ async function run() {
   const realm = realmRes.value;
   const realmName = realm.realm;
   const user = pickTargetUser(realm);
-  const client = pickPublicClient(realm);
+  const client = pickBrowserFlowClient(realm);
   const lifetimeMinutes = linkLifetimeMinutes(realm);
   if (!user) return { failures: ['[前提] realm 宣言に、メールアドレスを持つ対話利用者が居ない（0 件走査を緑にしない）。'], notices };
-  if (!client) return { failures: ['[前提] realm 宣言に public client（standard flow）が無い。申請画面へ到達できない。'], notices };
+  if (!client) return { failures: ['[前提] realm 宣言に標準フローのクライアント（redirectUri あり・bearer-only でない）が無い。申請画面へ到達できない。'], notices };
 
   const target = mailCaptureTarget();
   if (!target) return { failures: [`[前提] ${MAIL_CAPTURE_MANIFEST} から捕捉用 MTA の Service を読めない。`], notices };
@@ -663,10 +933,17 @@ async function run() {
   //    🔴 本 PR が固定するのは**送出経路が生きているとき**だけである（#1144 の射程）。
   //    送出が死んでいるときの同値性 —— 実在する利用者だけ 500 になる形 —— は **#1143** が
   //    同じ比較器（normalizeConcealmentBody / evaluateConcealment）を使って足す。
-  const absentUsername = makeAbsentUsername(realm);
+  //    🔴 **非実在名は実在名とバイト長を揃える**（計画 ADR-0094 決定 1 / #1410）。申請した名前は
+  //    応答へ反映されるため、長さが違えば本文長が必ず違う —— 環流 planning#596 が 1 度目に踏んだ罠である。
+  const absentUsername = makeAbsentUsernameOfLength(realm, Buffer.byteLength(user.username));
   if (!absentUsername) {
     failures.push('[T-10] realm に実在しない利用者名を作れなかった（陰性対照を置けないので緑にしない）。');
   } else {
+    failures.push(...evaluateTimingPair({
+      existingUsername: user.username,
+      absentUsername,
+      realmUsernames: (realm.users || []).map((u) => String(u.username || '')),
+    }));
     const beforeAbsent = mailApi(target, '/api/v1/info');
     if (!beforeAbsent.ok) return { failures: [...failures, `[前提] ${beforeAbsent.error}`], notices };
     const absent = await submitReset(absentUsername);
@@ -685,8 +962,45 @@ async function run() {
         absentDelivered: (Number(afterAbsent.value.Messages) || 0) - (Number(beforeAbsent.value.Messages) || 0),
       }));
       notices.push(`[check-password-reset-mail] T-10: 実在=${submit.status} / 非実在=${absent.status}`
-        + `（非実在の利用者名 ${absentUsername} は realm 宣言と突き合わせて不在を確認済み）`);
+        + `（非実在の利用者名 ${absentUsername} は realm 宣言と突き合わせて不在を確認済み・`
+        + `バイト長 ${Buffer.byteLength(absentUsername)} で実在名と一致）`);
     }
+
+    // 6) T-10 の**所要時間の軸**（計画 ADR-0094 決定 1・4 / #1410）。
+    //    **測定条件を揃えた反復 ≥3・1 回目は暖機として捨てる・標本数は反復間で揃える**。
+    //    🔴 **床（ADR-0094 決定 2 / IADR-0432）が入るまで、ここは赤で居続ける**（差は構造由来である ——
+    //    非実在側はメールを作らず送らないので、SMTP 取引 1 往復ぶんだけ実在側が遅い）。
+    //    **赤は「まだ塞いでいない」ことの正しい表示である**（同決定 4）。
+    const repetitions = [];
+    /* eslint-disable no-await-in-loop */
+    for (let rep = 0; rep < TIMING_REPETITIONS; rep += 1) {
+      const existingTimings = [];
+      const absentTimings = [];
+      for (let i = 0; i < TIMING_SAMPLES_PER_SIDE; i += 1) {
+        // 🔴 **実在／非実在を交互に打つ。** まとめて打つと、反復内のドリフト（他ジョブの負荷・GC）が
+        //    片側だけに乗り、それが「差」として出る。交互なら両側へ等しく乗る。
+        const e = await submitReset(user.username);
+        const a = await submitReset(absentUsername);
+        if (e.error || a.error) {
+          failures.push(`[T-10][所要時間] 反復 ${rep + 1} の ${i + 1} 標本目で申請を通せなかった: `
+            + `${e.error || a.error}`);
+          break;
+        }
+        existingTimings.push(e.elapsedMs);
+        absentTimings.push(a.elapsedMs);
+      }
+      repetitions.push({ existing: existingTimings, absent: absentTimings });
+    }
+    /* eslint-enable no-await-in-loop */
+
+    const timing = evaluateTimingConsistency({ repetitions });
+    // 🔴 **走査件数と各反復の中央値を必ず併記する**（ADR-0094 決定 4）——
+    //    「判定しなかった」と「差が無かった」を区別できる形にするためである。
+    notices.push(`[check-password-reset-mail] T-10 所要時間（判定: ${timing.verdict}）:`
+      + ` 反復 ${repetitions.length} 回 × 片側 ${TIMING_SAMPLES_PER_SIDE} 標本`
+      + `（**1 回目は暖機として捨てる**。許容比は自己対照＝実在側を交互に 2 群へ分けた中央値の比）`);
+    for (const line of timing.lines) notices.push(line);
+    failures.push(...timing.failures);
   }
   return { failures, notices, verified: 'open' };
 }
@@ -883,13 +1197,168 @@ function selfTest() {
     assert.ok(!(r.value.users || []).some((u) => u.username === name), '作った名前が実在している');
   });
 
+  // ---- T-10 の所要時間の軸（計画 ADR-0094 決定 1・4 / #1410）----------------------
+  //
+  // 🔴 **合成した時系列で撃つ。** 稼働クラスタは要らない（判定は純関数に閉じている）。
+  //    陽性対照＝計画が実測した「床の無い」形、陰性対照＝床が効いた形である。
+
+  ok('中央値は奇数個・偶数個とも正しい（0 件は null。0 件を 0 ms と言わない）', () => {
+    assert.strictEqual(median([30, 10, 20]), 20);
+    assert.strictEqual(median([40, 10, 20, 30]), 25);
+    assert.strictEqual(median([]), null);
+    assert.strictEqual(median([NaN, Infinity]), null);
+  });
+
+  ok('自己対照の分割は取得順の交互である（前半／後半ではない）', () => {
+    assert.deepStrictEqual(splitAlternating([1, 2, 3, 4, 5, 6]), { a: [1, 3, 5], b: [2, 4, 6] });
+  });
+
+  ok('🔴 T-10 陽性対照: 床の無い形（計画の実測 反復 2）は不合格', () => {
+    // 実在 中央 37 ms / 非実在 中央 19 ms ＝ 1.95 倍。自己対照は 1.00 倍。
+    const rep = () => ({ existing: [35, 36, 37, 37, 38, 39], absent: [18, 19, 19, 19, 20, 21] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    assert.strictEqual(r.verdict, TIMING_VERDICT.FAIL);
+    assert.ok(r.failures.length >= 1, '不合格なのに失敗が 0 件');
+    assert.ok(r.failures.join('\n').includes('自己対照'), '自己対照を超えたことを言っていない');
+  });
+
+  ok('T-10 陰性対照: 床が効いた形（両側が床で揃う）は合格', () => {
+    const rep = () => ({ existing: [150, 152, 150, 152, 150, 152], absent: [151, 151, 151, 151, 151, 151] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    assert.strictEqual(r.verdict, TIMING_VERDICT.PASS);
+    assert.deepStrictEqual(r.failures, []);
+  });
+
+  ok(`🔴 T-10: 自己対照が広ければ ${TIMING_VERDICT.INCONCLUSIVE} であり、**緑にしない**`, () => {
+    // 比は 1.00 倍（重なっている）が、自己対照が 4 倍＝ノイズに埋もれている。
+    const rep = () => ({ existing: [10, 40, 10, 40, 10, 40], absent: [10, 40, 10, 40, 10, 40] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    assert.strictEqual(r.verdict, TIMING_VERDICT.INCONCLUSIVE);
+    assert.ok(r.failures.length >= 1, `${TIMING_VERDICT.INCONCLUSIVE} なのに失敗が 0 件＝緑になっている`);
+    assert.ok(r.failures.join('\n').includes(TIMING_VERDICT.INCONCLUSIVE));
+  });
+
+  ok('🔴 T-10: 不合格は評価不能より優先する（差が見えているなら「測れない」で流さない）', () => {
+    const wide = { existing: [10, 40, 10, 40, 10, 40], absent: [10, 40, 10, 40, 10, 40] };
+    const red = { existing: [35, 36, 37, 37, 38, 39], absent: [18, 19, 19, 19, 20, 21] };
+    const r = evaluateTimingConsistency({ repetitions: [wide, wide, red] });
+    assert.strictEqual(r.verdict, TIMING_VERDICT.FAIL);
+  });
+
+  ok('🔴 T-10: 1 回目の反復は暖機として捨てる（暖機だけが分かれていても合格）', () => {
+    // 計画の実測 2: 暖機は**両側を同じ向きに**膨らませる（実在 4.2 倍・非実在 2.6 倍）。
+    const warmup = { existing: [150, 152, 150, 152, 150, 152], absent: [48, 49, 49, 49, 50, 51] };
+    const steady = { existing: [150, 152, 150, 152, 150, 152], absent: [151, 151, 151, 151, 151, 151] };
+    const r = evaluateTimingConsistency({ repetitions: [warmup, steady, steady] });
+    assert.strictEqual(r.verdict, TIMING_VERDICT.PASS);
+    assert.ok(r.lines.join('\n').includes('暖機'), '暖機の反復を出力で区別していない');
+  });
+
+  ok('T-10: 反復が足りなければ不合格（2 回では判定に使えるのが 1 回しかない）', () => {
+    const rep = () => ({ existing: [150, 152, 150, 152, 150, 152], absent: [151, 151, 151, 151, 151, 151] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep()] });
+    assert.strictEqual(r.verdict, TIMING_VERDICT.FAIL);
+    assert.ok(r.failures.join('\n').includes('反復'));
+  });
+
+  ok('T-10: 標本数が反復間で揃っていなければ不合格（中央値が比較できない）', () => {
+    const six = { existing: [150, 152, 150, 152, 150, 152], absent: [151, 151, 151, 151, 151, 151] };
+    const four = { existing: [150, 152, 150, 152], absent: [151, 151, 151, 151] };
+    const r = evaluateTimingConsistency({ repetitions: [six, six, four] });
+    assert.strictEqual(r.verdict, TIMING_VERDICT.FAIL);
+    assert.ok(r.failures.join('\n').includes('標本数'));
+  });
+
+  ok('T-10: 片側 0 件は不合格（0 件走査を緑にしない）', () => {
+    const rep = () => ({ existing: [150, 152, 150, 152, 150, 152], absent: [] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    assert.strictEqual(r.verdict, TIMING_VERDICT.FAIL);
+    assert.ok(r.failures.join('\n').includes('0 件'));
+  });
+
+  ok('T-10: 走査件数と各反復の中央値を必ず出す（判定しなかったと差が無かったを混ぜない）', () => {
+    const rep = () => ({ existing: [150, 152, 150, 152, 150, 152], absent: [151, 151, 151, 151, 151, 151] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    assert.strictEqual(r.perRepetition.length, 3);
+    assert.strictEqual(r.perRepetition[0].warmup, true);
+    assert.strictEqual(r.perRepetition[1].warmup, false);
+    for (const line of r.lines.filter((l) => l.startsWith('  反復'))) {
+      assert.ok(/n=\d+\/\d+/.test(line), `走査件数が出ていない: ${line}`);
+      assert.ok(line.includes('実在 中央=') && line.includes('非実在 中央='), `中央値が出ていない: ${line}`);
+    }
+  });
+
+  ok('🔴 T-10: 非実在名は実在名と**バイト長が一致**する（長さが違えば本文長は必ず違う）', () => {
+    const r = loadRealm();
+    assert.ok(r.ok, '実データの realm を読めない');
+    const user = pickTargetUser(r.value);
+    const name = makeAbsentUsernameOfLength(r.value, Buffer.byteLength(user.username));
+    assert.ok(name, '長さを揃えた非実在名を作れない');
+    assert.strictEqual(Buffer.byteLength(name), Buffer.byteLength(user.username));
+    assert.ok(!(r.value.users || []).some((u) => u.username === name), '作った名前が実在している');
+    assert.deepStrictEqual(evaluateTimingPair({
+      existingUsername: user.username,
+      absentUsername: name,
+      realmUsernames: (r.value.users || []).map((u) => String(u.username || '')),
+    }), []);
+  });
+
+  ok('T-10: 長さの違う対・実在する陰性対照はどちらも落ちる', () => {
+    const mismatched = evaluateTimingPair({
+      existingUsername: 'admin', absentUsername: 'no-such-user-abcdefgh', realmUsernames: ['admin'],
+    });
+    assert.ok(mismatched.join('\n').includes('バイト長'), '長さの不一致を落としていない');
+    const taken = evaluateTimingPair({
+      existingUsername: 'admin', absentUsername: 'adman', realmUsernames: ['admin', 'adman'],
+    });
+    assert.ok(taken.join('\n').includes('実在する'), '実在する陰性対照を落としていない');
+  });
+
   ok('宣言から対象を選べる（実データ・ラチェット）', () => {
     const r = loadRealm();
     assert.ok(r.ok, `realm 宣言を読めない: ${r.error || ''}`);
     assert.ok(pickTargetUser(r.value), '対象利用者を選べない');
-    assert.ok(pickPublicClient(r.value), 'public client を選べない');
+    assert.ok(pickBrowserFlowClient(r.value), '標準フローのクライアントを選べない');
     assert.ok(linkLifetimeMinutes(r.value) > 0, '有効期限を realm から導けない');
     assert.ok(mailCaptureTarget(), `捕捉用 MTA の宣言を読めない（${MAIL_CAPTURE_MANIFEST}）`);
+  });
+
+  // #1413: public client が無い realm（IADR-0429 で platform-spa 撤去後の実データ）でも confidential の
+  // 標準フロークライアントを選べる。陰性対照: bearer-only / standard flow 無効 / redirectUri なしは選ばれない。
+  ok('#1413: public client が無くても confidential の標準フロークライアント（bff 優先）を選ぶ', () => {
+    const realm = { clients: [
+      { clientId: 'svc-only', publicClient: false, bearerOnly: true, standardFlowEnabled: true, redirectUris: ['https://x/*'] },
+      { clientId: 'grafana', publicClient: false, standardFlowEnabled: true, redirectUris: ['https://g/cb'] },
+      { clientId: 'bff', publicClient: false, standardFlowEnabled: true, redirectUris: ['https://localhost/bff/auth/callback'] },
+    ] };
+    const c = pickBrowserFlowClient(realm);
+    assert.ok(c, '選べない');
+    assert.strictEqual(c.clientId, 'bff');
+    assert.strictEqual(c.publicClient, false);
+    assert.strictEqual(c.redirectUri, 'https://localhost/bff/auth/callback');
+  });
+  ok('#1413: public client があればそれを優先する', () => {
+    const realm = { clients: [
+      { clientId: 'bff', publicClient: false, standardFlowEnabled: true, redirectUris: ['https://localhost/bff/auth/callback'] },
+      { clientId: 'spa', publicClient: true, standardFlowEnabled: true, redirectUris: ['https://localhost/*'] },
+    ] };
+    assert.strictEqual(pickBrowserFlowClient(realm).clientId, 'spa');
+  });
+  ok('#1413 陰性対照: bearer-only・standard flow 無効・redirectUri なしは選ばれない', () => {
+    const realm = { clients: [
+      { clientId: 'a', bearerOnly: true, standardFlowEnabled: true, redirectUris: ['https://a/*'] },
+      { clientId: 'b', publicClient: false, standardFlowEnabled: false, redirectUris: ['https://b/*'] },
+      { clientId: 'c', publicClient: false, standardFlowEnabled: true, redirectUris: [] },
+    ] };
+    assert.strictEqual(pickBrowserFlowClient(realm), null);
+  });
+  ok('#1413 ラチェット: 実データの realm に public client は無く、それでも選べる', () => {
+    const r = loadRealm();
+    assert.ok(r.ok);
+    const hasPublic = (r.value.clients || []).some((x) => x && x.publicClient === true && x.standardFlowEnabled !== false);
+    assert.strictEqual(hasPublic, false, 'public client が復活している（IADR-0429 に反する。戻すなら新 IADR）');
+    const c = pickBrowserFlowClient(r.value);
+    assert.ok(c && c.publicClient === false, '確認: confidential の標準フロークライアントが選ばれる');
   });
 
   console.log(`[check-password-reset-mail] self-test OK: ${n} 件`);
@@ -936,7 +1405,7 @@ if (require.main === module) {
  */
 module.exports = {
   pickTargetUser,
-  pickPublicClient,
+  pickBrowserFlowClient,
   linkLifetimeMinutes,
   hasTool,
   keycloakBaseUrl,
@@ -950,6 +1419,12 @@ module.exports = {
   evaluateConcealment,
   evaluateRuntimeConcealment,
   makeAbsentUsername,
+  makeAbsentUsernameOfLength,
+  evaluateTimingPair,
+  evaluateTimingConsistency,
+  median,
+  splitAlternating,
+  medianRatio,
   submitResetRequest,
   mailCaptureTarget,
   loadRealm,
@@ -958,4 +1433,8 @@ module.exports = {
   GATE_REASON_ATTRIBUTE,
   GATE_STATE_CLOSED,
   EXPECT_GATE_CLOSED_ENV,
+  TIMING_REPETITIONS,
+  TIMING_SAMPLES_PER_SIDE,
+  SELF_CONTROL_WIDE_RATIO,
+  TIMING_VERDICT,
 };
