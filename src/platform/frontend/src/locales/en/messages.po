@@ -570,6 +570,10 @@ msgstr "Service mesh"
 msgid "サインアウト"
 msgstr "Sign out"
 
+#: platform/frontend/src/components/theme/ThemeToggle.tsx
+msgid "システム"
+msgstr "System"
+
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "ジョブ"
 msgstr "Job"
@@ -615,6 +619,10 @@ msgstr "Source-side user {rowNumber}"
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "その他の型（implements / refines / depends-on / part-of）は細い実線で表示"
 msgstr "Other types (implements / refines / depends-on / part-of) are drawn as thin solid lines"
+
+#: platform/frontend/src/components/theme/ThemeToggle.tsx
+msgid "ダーク"
+msgstr "Dark"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
@@ -970,6 +978,10 @@ msgstr "User account management"
 #: knowledge/frontend/src/features/sc17-users/routes/sc17UsersRoute.tsx
 msgid "ユーザー管理"
 msgstr "Users"
+
+#: platform/frontend/src/components/theme/ThemeToggle.tsx
+msgid "ライト"
+msgstr "Light"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "ラベル"
@@ -2660,6 +2672,22 @@ msgstr "No options available to narrow by."
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "編集"
 msgstr "Edit"
+
+#: platform/frontend/src/components/theme/ThemeToggle.tsx
+msgid "表示: システム"
+msgstr "Theme: System"
+
+#: platform/frontend/src/components/theme/ThemeToggle.tsx
+msgid "表示: ダーク"
+msgstr "Theme: Dark"
+
+#: platform/frontend/src/components/theme/ThemeToggle.tsx
+msgid "表示: ライト"
+msgstr "Theme: Light"
+
+#: platform/frontend/src/components/theme/ThemeToggle.tsx
+msgid "表示テーマの切替。現在は {currentName}、押すと {upcomingName} になります"
+msgstr "Switch the display theme. Currently {currentName}; press to change it to {upcomingName}"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "表示上限"
