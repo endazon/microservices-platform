@@ -22,7 +22,7 @@ import { ApiError } from '@foundation/api/ApiError';
 // 再試行の可否は本部品が判断しない——`canRetry` で受ける（既定は可）。自動再試行の判定
 // （4xx は再試行せず 408/429 のみ例外。`lib/api/queryClient.ts`）とは別物で、これは**利用者が押す**再試行である。
 export interface QueryStateProps<T> {
-  query: UseQueryResult<T>;
+  query: UseQueryResult<T, unknown>;
   /** 成功したデータが「空」か。省略時は空判定をしない（常に本体を描く）。 */
   isEmpty?: (data: T) => boolean;
   /** 空のときに描くもの。省略時は既定の EmptyState。 */
