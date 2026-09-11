@@ -30,6 +30,10 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     // FR-20, ADR-0037 決定 9: 監査ログの記録スタブ（「誰が・いつ・何件」とタイトル不記載の検証用）。
     public RecordingAuditLogger Audit { get; } = new();
 
+    // FR-19, ADR-0096 決定 1・2, [[IADR-0431]] (#1409): 退職の窓のスタブ。
+    // 🔴 **既定は「引けなかった」**（宣言しない所有者の資料は消えない）。
+    public StubOwnerRetentionDirectory OwnerRetention { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -62,6 +66,10 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // FR-20: 監査ログを記録用スタブへ差し替える。
             services.RemoveAll<Platform.Shared.Infrastructure.Foundation.Audit.IAuditLogger>();
             services.AddSingleton<Platform.Shared.Infrastructure.Foundation.Audit.IAuditLogger>(Audit);
+
+            // FR-19, #1409: 退職の窓の照会をスタブへ差し替える（認可サービスへ繋がずに述語を測る）。
+            services.RemoveAll<DocumentService.Domain.Ports.IOwnerRetentionDirectory>();
+            services.AddSingleton<DocumentService.Domain.Ports.IOwnerRetentionDirectory>(OwnerRetention);
 
             // MassTransit をテストハーネスへ差し替え
             services.RemoveAll<IBusControl>();

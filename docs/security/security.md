@@ -7,11 +7,11 @@ updated: 2026-09-11
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, NFR-11, SC-05, SC-11, SC-17, SC-19, SC-20, UC-07]
-adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0082]
-iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0422, IADR-0428]
-specs: [20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile]
-issues: [#55, #100, #1392, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, AST#18, AST#24, AST#727, planning#383]
+ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, UC-07, UC-11]
+adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0096]
+iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431]
+specs: [20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile]
+issues: [#55, #100, #1392, #1409, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, AST#18, AST#24, AST#727, planning#383]
 -->
 
 # セキュリティ仕様書
@@ -159,8 +159,26 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 | 起点が無い・読めないとき | 🔴 **「数えていない」を返し、削除の対象にしない。**「該当 0 件」と「起点が未供給」を型で分ける（`"0"` はエポックではない） |
 | 予約キーの扱い | 利用者アカウント管理の応答へ**出さない**（画面が属性辞書に無いキーを送り返して 400 になるため）。ABAC 属性の差し替えでも**消えない** |
 
-**窓が閉じた後に資料をどう扱うか（削除／保持したまま閲覧不可／残置）は計画側で未決**であり、
-実装は起点と判定だけを持つ（判定の呼び出し元はまだ無い）。実 IdP への書き込みは稼働クラスタで未実測である。
+### 窓が閉じた後 — 定期処理が完全削除し、曖昧なものは消さない
+
+**窓が閉じた（起点から 30 日が過ぎた）個人資料は完全削除する。**削除は日次の定期処理が行い、
+**管理者の明示操作による削除経路は設けない**（押されないまま残る形にしないため）。
+
+| 項目 | 決めごと |
+| --- | --- |
+| 削除の条件 | **所有者が無効化済み** ∧ **起点から 30 日が経過**。**この 1 通りだけ**が削除される |
+| 🔴 削除しないもの | 窓の中・**起点が無い／読めない**・所有者が有効・名簿に居ない・**名簿を引けなかった**。曖昧さは常に「消さない」へ倒す（残余を置かないため**誤削除は取り返せない**） |
+| 削除の射程 | DB 上の記録・本文の実体（オブジェクトストレージ）・索引（ベクトルストアのチャンク）。**新しい削除の意味論を作らない** |
+| 判定の場所 | **認可サービスが解き、線に載せるのは 3 値の答えだけ**。期間・書式・構成キーはサービス間の面に出さない |
+| 通知 | 🔴 **送らない。**完全削除の通知は宛先が「所有者本人のみ」と定まっており、本経路の所有者は無効化済みである。**届かない通知を送る設計にしない** |
+| 監査 | 🔴 **「いつ・誰の資料を・何件」だけ。**資料のタイトル・本文は残さない —— 残余を置かないという決定を、ログ経由で破らない |
+| 失敗したとき | 行を残して次周期で再入する。**「消したことにして実体を残す」形にしない** |
+| 口が構成されていない配備 | **1 件も削除しない**（口の不在を「窓が閉じた」へ倒さない） |
+
+**窓の間、管理者の権能は閲覧に限る**（持ち出し・移管の経路は無い）。
+🔴 **ただし退職する本人の側の同期トークンが無効化で確実に失効するかは未解決である** ——
+失効しないなら、本人は管理者が閲覧できるのとちょうど同じ期間、資料を同期し続けられる。
+実 IdP への書き込みと本経路の発火は稼働クラスタで未実測である。
 
 ## 秘密情報管理
 
