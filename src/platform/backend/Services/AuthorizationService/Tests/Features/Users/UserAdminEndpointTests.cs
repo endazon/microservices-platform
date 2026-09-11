@@ -1,3 +1,4 @@
+using AuthorizationService.Domain;
 using AuthorizationService.Domain.Ports;
 using AuthorizationService.Infrastructure.ExternalServices;
 using AwesomeAssertions;
@@ -207,6 +208,89 @@ public class UserAdminEndpointTests(TestWebApplicationFactory factory)
     public async Task Disable_on_an_unknown_user_is_404()
         => (await Client.PostAsync("/authz/users/u-nobody/disable", null, Ct))
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+    // ---- 退職時の保持起点（FR-19, SC-19, 計画 ADR-0036 D-09, ADR-0082 決定 5, [[IADR-0428]] / #1392） ----
+
+    // FR-19, SC-19, ADR-0082 決定 5: 🔴 **無効化した日を起点として刻む。**
+    // D-09 の「退職日から 30 日間」の退職日を持つ経路は他に無い（Keycloak の `enabled` に日付は無い）。
+    //
+    // 🔴 **再無効化で起点は動かない**（冪等）。動くと、失効を確実にするために押し直すたびに窓が延びる。
+    // 🔴 **再有効化で起点は消える** —— 残ると復職者の資料が退職者と同じ期限で扱われる。
+    [Fact]
+    public async Task Disable_stamps_the_retention_anchor_idempotently_and_enable_clears_it()
+    {
+        var identity = Identity();
+
+        (await Client.PostAsync("/authz/users/u-tanaka/disable", null, Ct))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        var stamped = await AnchorOfAsync(identity, "u-tanaka");
+        stamped.Should().NotBeNull("無効化日を刻まなければ、窓の起点はどこにも残らない");
+        RetentionAnchorPolicy
+            .Resolve(new Dictionary<string, string>
+            {
+                [RetentionAnchorAttributes.AccountDisabledAtKey] = stamped!,
+            }, new RetentionAnchorOptions())
+            .State.Should().Be(RetentionAnchorState.Supplied, "刻んだ値は起点として読めなければならない");
+
+        (await Client.PostAsync("/authz/users/u-tanaka/disable", null, Ct))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await AnchorOfAsync(identity, "u-tanaka")).Should().Be(stamped, "再無効化で窓を延ばさない");
+
+        (await Client.PostAsync("/authz/users/u-tanaka/enable", null, Ct))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await AnchorOfAsync(identity, "u-tanaka")).Should().BeNull("再有効化は退職の取り消しである");
+    }
+
+    // FR-19, SC-17, [[IADR-0428]]: 🔴 **起点は SC-17 の応答へ出さない。**
+    // 出すと画面が下書きへ写して差し替え要求へ送り返し、辞書に無いキーとして 400 になる
+    // （＝無効化済み利用者の属性編集が壊れる）。**「持っていない」ではなく「出していない」ことを測る**
+    // ので、生の身元（偽の IdP）と応答 DTO の両方を見る。
+    [Fact]
+    public async Task The_retention_anchor_is_never_exposed_on_the_screen_contract()
+    {
+        await SeedUserDictionaryAsync();
+        var identity = Identity();
+
+        var disabled = await Client.PostAsync("/authz/users/u-suzuki/disable", null, Ct);
+        var dto = await disabled.Content.ReadFromJsonAsync<UserDto>(Ct);
+
+        (await AnchorOfAsync(identity, "u-suzuki")).Should().NotBeNull("陽性対照: 起点は身元の側に在る");
+        dto!.Attributes.Should().NotContainKey(RetentionAnchorAttributes.AccountDisabledAtKey);
+        dto.Attributes.Should().ContainKey("department", "ABAC 属性まで落としたら出しすぎである");
+
+        // 画面が実際に送る形（辞書に定義された 2 キーだけ）で差し替えても通り、**起点は消えない。**
+        var replaced = await Client.PutAsJsonAsync("/authz/users/u-suzuki/attributes",
+            new
+            {
+                Attributes = new Dictionary<string, string>
+                {
+                    ["department"] = "finance",
+                    ["clearance"] = "confidential",
+                }
+            }, Ct);
+        replaced.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await AnchorOfAsync(identity, "u-suzuki"))
+            .Should().NotBeNull("部門を 1 つ直しただけで退職時の窓の起点が消えてはならない");
+
+        // 後片付け（本クラスは器を共有する）。再有効化で起点も消える。
+        (await Client.PostAsync("/authz/users/u-suzuki/enable", null, Ct))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // 包まれた本物の偽物（観測点）。#1333 で引き直しの装飾が挟まったので DI からは取れない。
+    private IIdentityAdminClient Identity()
+    {
+        _ = factory.Services.GetRequiredService<IIdentityAdminClient>();
+        return factory.Identity.Inner;
+    }
+
+    private static async Task<string?> AnchorOfAsync(IIdentityAdminClient identity, string userId)
+    {
+        var user = (await identity.ListUsersAsync(Ct)).Single(u => u.Id == userId);
+        return user.Attributes.TryGetValue(RetentionAnchorAttributes.AccountDisabledAtKey, out var value)
+            ? value
+            : null;
+    }
 
     // ---- アクセス制御（システム管理者ロール限定） ----
 

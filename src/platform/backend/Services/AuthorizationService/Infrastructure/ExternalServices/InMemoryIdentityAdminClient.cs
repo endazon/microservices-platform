@@ -1,3 +1,4 @@
+using AuthorizationService.Domain;
 using AuthorizationService.Domain.Ports;
 using System.Collections.Concurrent;
 
@@ -81,9 +82,24 @@ public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
     public Task<IReadOnlyList<string>> ListAssignableRolesAsync(CancellationToken ct)
         => Task.FromResult<IReadOnlyList<string>>([.. AssignableRoles]);
 
+    // 🔴 **予約キー（保持起点）は差し替えで消さない**（[[IADR-0428]] / #1392）。
+    // 本物（Keycloak 実装）と**同じ意味論**にしておく —— ここだけ素朴に置き換えると、
+    // 偽物で緑になる試験が本物では別の答えを返す。
     public Task<IdentityUser?> ReplaceAttributesAsync(
         string userId, IReadOnlyDictionary<string, string> attributes, CancellationToken ct)
-        => Task.FromResult(Mutate(userId, u => u.Attributes = new Dictionary<string, string>(attributes)));
+        => Task.FromResult(Mutate(userId, u => u.Attributes =
+            new Dictionary<string, string>(
+                RetentionAnchorAttributes.PreserveReserved(u.Attributes, attributes),
+                StringComparer.Ordinal)));
+
+    // FR-19, SC-17, ADR-0082 決定 5, [[IADR-0428]] (#1392): 保持起点の書き込み・消去。
+    public Task<IdentityUser?> SetRetentionAnchorAsync(
+        string userId, string attributeKey, DateTimeOffset? anchorAt, CancellationToken ct)
+        => Task.FromResult(Mutate(userId, u =>
+        {
+            if (anchorAt is { } at) u.Attributes[attributeKey] = RetentionAnchorPolicy.Format(at);
+            else u.Attributes.Remove(attributeKey);
+        }));
 
     public Task<IdentityUser?> ReplaceRealmRolesAsync(
         string userId, IReadOnlyList<string> roles, CancellationToken ct)

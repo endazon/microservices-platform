@@ -85,6 +85,11 @@ public sealed class TestIdentityDirectory
         public Task<IdentityUser?> ReplaceAttributesAsync(
             string userId, IReadOnlyDictionary<string, string> attributes, CancellationToken ct)
             => inner.ReplaceAttributesAsync(userId, attributes, ct);
+        // FR-19, SC-17, ADR-0082 決定 5, [[IADR-0428]] (#1392): 保持起点の書き込みも素通しする
+        // （SC-17 の試験は本物の偽物が持つ属性を見る）。
+        public Task<IdentityUser?> SetRetentionAnchorAsync(
+            string userId, string attributeKey, DateTimeOffset? anchorAt, CancellationToken ct)
+            => inner.SetRetentionAnchorAsync(userId, attributeKey, anchorAt, ct);
         public Task<IdentityUser?> ReplaceRealmRolesAsync(string userId, IReadOnlyList<string> roles, CancellationToken ct)
             => inner.ReplaceRealmRolesAsync(userId, roles, ct);
         public Task<IdentityUser?> SetEnabledAsync(string userId, bool enabled, CancellationToken ct)
