@@ -3,15 +3,15 @@ title: how-to — ローカル開発フロー
 type: how-to
 status: published
 created: 2026-07-09
-updated: 2026-09-03
+updated: 2026-09-11
 author: claude
 ---
 <!-- trace:
 ids: [FR-13, FR-14, UC-07]
-adrs: [ADR-0048]
-iadrs: [IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056, IADR-0228, IADR-0331]
-specs: [20260831_issue-1092_planning-submodule-residual-refs]
-issues: [#1092]
+adrs: [ADR-0032, ADR-0048]
+iadrs: [IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056, IADR-0228, IADR-0273, IADR-0331, IADR-0429]
+specs: [20260831_issue-1092_planning-submodule-residual-refs, 20260911_issue-1393_remove-platform-spa-public-client]
+issues: [#1092, #1393]
 -->
 
 # how-to: ローカル開発フロー
@@ -74,7 +74,9 @@ pnpm run test:e2e     # Playwright（ブラウザ未取得なら pnpm exec playw
 ```
 
 Keycloak ログインを伴う開発には、dev スタック（`docker compose -f deploy/docker-compose.yml up -d keycloak bff`）
-と realm の public client `platform-spa`（redirect `http://localhost:3100/*`。realm import 済み）が必要。
+が必要。ログインは **BFF が機密クライアント `bff` として実施する**（BFF セッション方式。SPA はトークンを扱わない）ため、
+ブラウザは `/bff/auth/login` へ遷移するだけであり、**SPA 用のクライアント登録は要らない**
+（`bff` の redirect は realm へ import 済み）。
 詳細は [`src/platform/frontend/README.md`](../../src/platform/frontend/README.md)。
 
 ## 5. インフラ + 全サービスの起動（dev）

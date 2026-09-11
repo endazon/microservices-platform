@@ -21,20 +21,21 @@ describe('loadAppConfig', () => {
     const cfg = loadAppConfig(
       fakeWindow({
         bffBaseUrl: `${PAGE_ORIGIN}/bff`,
-        oidc: { authority: 'https://kc.example/realms/kp', clientId: 'platform-spa' },
+        oidc: { authority: 'https://kc.example/realms/kp' },
       }),
     );
 
     expect(cfg.bffBaseUrl).toBe(`${PAGE_ORIGIN}/bff`);
     expect(cfg.oidc.authority).toBe('https://kc.example/realms/kp');
-    expect(cfg.oidc.clientId).toBe('platform-spa');
+    // #1393: `clientId` は型ごと撤去した（読み手が 0 件の死んだ層）。
+    expect(cfg.oidc).not.toHaveProperty('clientId');
   });
 
   it('falls back to env defaults when nothing is injected', () => {
     const cfg = loadAppConfig(fakeWindow());
 
     expect(cfg.bffBaseUrl).toBe('/bff');
-    expect(cfg.oidc.clientId).toBe('platform-spa');
+    expect(cfg.oidc.authority).toBe('http://localhost:8080/realms/platform');
   });
 
   it('fills missing injected fields from env (partial injection)', () => {
@@ -42,7 +43,7 @@ describe('loadAppConfig', () => {
 
     expect(cfg.bffBaseUrl).toBe(`${PAGE_ORIGIN}/bff`);
     // oidc は env 既定で補完される。
-    expect(cfg.oidc.clientId).toBe('platform-spa');
+    expect(cfg.oidc.authority).toBe('http://localhost:8080/realms/platform');
   });
 
   // Issue #136 / SC-10: 外部ツール導線 URL は実行時 config から注入する。

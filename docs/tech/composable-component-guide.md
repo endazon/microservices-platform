@@ -3,15 +3,15 @@ title: 可変部品（Composable コンポーネント）共通実装ガイド �
 type: tech
 status: completed
 created: 2026-07-09
-updated: 2026-09-05
+updated: 2026-09-11
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, FR-14, FR-15]
-adrs: [ADR-0002, ADR-0018]
-iadrs: [IADR-0007, IADR-0022, IADR-0024, IADR-0025, IADR-0027, IADR-0028, IADR-0033, IADR-0034, IADR-0035, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0056, IADR-0121, IADR-0131, IADR-0135]
-specs: [20260709_composable-component-implementation-guide]
-issues: [#195, #206, #217, #218, #219, #519]
+adrs: [ADR-0002, ADR-0018, ADR-0032]
+iadrs: [IADR-0007, IADR-0022, IADR-0024, IADR-0025, IADR-0027, IADR-0028, IADR-0033, IADR-0034, IADR-0035, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0056, IADR-0121, IADR-0131, IADR-0135, IADR-0273, IADR-0429]
+specs: [20260709_composable-component-implementation-guide, 20260911_issue-1393_remove-platform-spa-public-client]
+issues: [#195, #206, #217, #218, #219, #519, #1393]
 -->
 
 # 可変部品（Composable コンポーネント）共通実装ガイド
@@ -173,8 +173,9 @@ issues: [#195, #206, #217, #218, #219, #519]
    >
    > 本節の原典であるフロントエンド SPA 基盤の実装 ADR は、SPA 新スタック移行の実装 ADR に Superseded 済みであり、本文書（`status: fixed`）の
    > 全面改訂はこの追記の射程外である。ここでは**成果を次の実装者が壊す入口だけを塞ぐ**。
-4. 認証・ロールは foundation の OIDC（Keycloak `platform-spa`）とロールベースナビゲーション
-   に従う。トークン・シークレットをコードに置かない。
+4. 認証・ロールは foundation の身元取得（`/bff/auth/me`）とロールベースナビゲーションに従う。
+   **フロントエンドはトークンを扱わない**（BFF セッション方式。資格情報は HttpOnly セッション Cookie で、
+   OIDC は BFF が機密クライアントとして実施する）。トークン・シークレットをコードに置かない。
 5. テスト（Vitest + Testing Library）を実装と同居させ、カバレッジのラチェット
    （`src/vitest.config.ts` の thresholds。全ユニット横断で計測）を割らないこと。
 

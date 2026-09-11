@@ -1122,8 +1122,11 @@ frontend:
     # ブラウザが到達する OIDC issuer。本番は外部公開する Keycloak の URL（エッジ host 経由なら IADR-0076
     # 決定3 の /realms パススルー）を per-env で上書きする。既定はサービス間と同じ in-cluster 値だが、
     # ブラウザ到達性のため実運用では必ず外部到達可能な URL へ上書きすること（config.gitCommit 等と同じ placeholder）。
+    # 🔴 #1393: `clientId` は撤去した。BFF セッション方式（ADR-0032）で SPA は OIDC を実施せず、
+    # この値を読む製品コードが 1 つも無かった（config → 型 → env → helm → compose の 5 層が死んでいた）。
+    # 認可コードフローを行う client は BFF（`bff`。confidential）であり、その ID は BFF 側の
+    # `BffSession__ClientId` が持つ。**ここへ足し直さない。**
     authority: http://keycloak:8080/realms/platform
-    clientId: platform-spa
   # 任意の追加 env（config.js の GRAFANA_URL / JAEGER_URL / KIALI_URL 等）。既定は空で、
   # docker-entrypoint.sh が未設定を空文字にフォールバックし SC-10 の外部ツール導線を画面に出さない。compose は
   # dev の Grafana(3000) を直挿しするが、k8s は可観測性/外部 UI を経路B の opt-in オーバーレイ（ADR-0006・

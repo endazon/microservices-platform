@@ -11,19 +11,20 @@ set -eu
 
 : "${BFF_BASE_URL:=/bff}"
 : "${OIDC_AUTHORITY:=http://localhost:8080/realms/platform}"
-: "${OIDC_CLIENT_ID:=platform-spa}"
+# #1393: OIDC_CLIENT_ID は撤去した。BFF セッション方式（ADR-0032）で SPA は OIDC を実施せず、
+# 実行時 config の clientId を読む製品コードが 1 つも無かった（死んだ層を残さない）。
 # Issue #136 / SC-10: 外部ツール導線 URL（未設定は空文字＝画面に導線を出さない）。
 : "${GRAFANA_URL:=}"
 : "${JAEGER_URL:=}"
 : "${KIALI_URL:=}"
 # Issue #130 / SC-04: Wiki.js 基点 URL（未設定は空文字＝導線を出さない）。
 : "${WIKI_BASE_URL:=}"
-export BFF_BASE_URL OIDC_AUTHORITY OIDC_CLIENT_ID GRAFANA_URL JAEGER_URL KIALI_URL WIKI_BASE_URL
+export BFF_BASE_URL OIDC_AUTHORITY GRAFANA_URL JAEGER_URL KIALI_URL WIKI_BASE_URL
 
 # envsubst に置換対象を明示列挙する（列挙外の ${...} はテンプレートに literal で残る）。
 # 意味論を nginx 時代とバイト等価に保つためで、sed で書き直すと値に含まれる & / \ の
 # エスケープという新しい壊れ方を持ち込む。
-envsubst '${BFF_BASE_URL} ${OIDC_AUTHORITY} ${OIDC_CLIENT_ID} ${GRAFANA_URL} ${JAEGER_URL} ${KIALI_URL} ${WIKI_BASE_URL}' \
+envsubst '${BFF_BASE_URL} ${OIDC_AUTHORITY} ${GRAFANA_URL} ${JAEGER_URL} ${KIALI_URL} ${WIKI_BASE_URL}' \
   < /etc/microservices-platform/config.js.template \
   > /usr/share/caddy/config.js
 

@@ -27,10 +27,17 @@
     "    受信 → 本文までを scripts/check-password-reset-mail.js が測る（integration-stack.yml の門）。",
     "    **SC-15 はここに残す** —— 本検査の collectTestIds は src/ のテストだけを走査し、この検査器は",
     "    scripts/ に在るためである（SC-13 / SC-14 と同じ理由であって、検証できないからではない）。",
-    "    SC-15 の削除条件も同じく『実環境での E2E（Playwright）を src/ 配下へ置いた時点』である。"
+    "    SC-15 の削除条件も同じく『実環境での E2E（Playwright）を src/ 配下へ置いた時点』である。",
+    "［2026-09-11 / #1393］SC-13 を削除した。**ratchet が要求した削除**である（写像済みになった ID を",
+    "    allowlist に残すと fail する）。src/ 側に SC-13 を起点 ID とするテストが初めて置かれた ——",
+    "    Platform.Bff.Tests/BearerCallerPolicyTests.cs（BFF の Bearer 受理を絞る門の陰性対照 11 件＋陽性 4 件）。",
+    "    SC-13 は『全コンポーネント共通の OIDC 認証入口』であり、**ブラウザ由来のトークンで入口を",
+    "    迂回できないこと**はその受け入れ基準の一部である。上記 2026-08-23 の注記が挙げた",
+    "    『実際のログイン試行・ロックアウトの発火・見た目の視覚的検証』は依然 Keycloak の稼働が要り、",
+    "    src/ 配下には無い（そちらは integration-stack の門が測る）。**写像が部分的であることは",
+    "    本 ratchet の判定軸ではない** —— 判定は『src/ のテストが起点 ID を参照しているか』だけである。"
   ],
   "pending": [
-    "SC-13",
     "SC-14",
     "SC-15"
   ],

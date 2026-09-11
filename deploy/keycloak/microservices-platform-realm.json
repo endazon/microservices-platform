@@ -598,36 +598,6 @@
       ]
     },
     {
-      "clientId": "platform-spa",
-      "name": "SPA Web (SC-01..11 frontend, public client + PKCE)",
-      "description": "Issue #126 / IADR-0033: フロントエンド SPA。Authorization Code + PKCE(S256) の public client。取得した JWT を BFF へ Bearer 送信する。",
-      "enabled": true,
-      "protocol": "openid-connect",
-      "publicClient": true,
-      "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": false,
-      "redirectUris": [
-        "http://localhost:3100/*",
-        "http://localhost:8081/*",
-        "https://localhost/*"
-      ],
-      "webOrigins": [
-        "http://localhost:3100",
-        "http://localhost:8081",
-        "https://localhost"
-      ],
-      "attributes": {
-        "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:3100/*##http://localhost:8081/*##https://localhost/*##https://localhost"
-      },
-      "defaultClientScopes": [
-        "profile",
-        "email",
-        "roles",
-        "abac-attributes"
-      ]
-    },
-    {
       "clientId": "abac-seeder",
       "name": "ABAC dev seeder (client_credentials)",
       "description": "IADR-0294/#438: ABAC 初期投入器（scripts/seed-abac-policies.js・ABACSEED=1）の機密クライアント。MFA 必須化で人の password grant は成立しないため、機械の主体として client_credentials で発行する。service-account に platform-admin（投入先が AdminOnly のため）。本番シークレットは config から供給する。",

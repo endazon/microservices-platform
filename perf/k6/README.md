@@ -20,8 +20,9 @@ k6 は threshold 未達で**非ゼロ終了**するため、そのままゲー�
 - 実行対象の稼働環境（BFF エッジに到達可能）。**本番相当のデータ量**（検索は 1 万件規模のカタログ）を投入しておく。
 - 認証: BFF は Keycloak JWT を要求する。以下のいずれか。
   - `TOKEN=<事前取得済みアクセストークン>`（最優先）。
-  - Keycloak パスワードグラント: `KC_TOKEN_URL` / `KC_CLIENT_ID`（既定 `platform-spa`）/ `KC_USERNAME` / `KC_PASSWORD`。
-    dev realm の `poc-user` を使う場合は、`platform-spa` の direct access grants 有効化が前提。
+  - Keycloak パスワードグラント: `KC_TOKEN_URL` / `KC_CLIENT_ID`（**既定なし**）/ `KC_USERNAME` / `KC_PASSWORD`。
+    direct access grants を有効にした計測専用クライアントが要る（realm の対話用クライアントは
+    MFA 必須化により通らない）。
   - 秘密情報はスクリプトに埋め込まない（env 経由・コミット禁止。`docs/security/security.md`）。
 
 ## 実行

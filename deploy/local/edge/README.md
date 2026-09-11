@@ -155,11 +155,13 @@ issuer は **`https://keycloak.localhost/realms/platform`（エッジ host）**�
     **fail-safe の local admin（`admin`/`admin`）でログインする**（機密露出等のリスクは無い）。port-forward で OIDC を
     使いたい場合は `GF_SERVER_ROOT_URL` を `http://localhost:3000/` に戻す（realm の port-forward redirect は登録済み）。
 - **ArgoCD（#359 適用済み）** / これから足す **Vault** 等の OIDC client は最初から 50000 URL で登録する。
-- **platform フロント（SPA）/ Headlamp（#353 適用済み）**: realm `platform-spa` client に集約後 origin
-  `https://localhost/*`（SPA は `redirect_uri=<origin>/callback` を送る。callback パス＝`/callback`。
-  **80 は https へ恒久リダイレクトするため origin は https である**・IADR-0220 / #841）を
-  `redirectUris`/`webOrigins`/`post.logout.redirect.uris` へ、`headlamp` client に `https://headlamp.localhost:50000/*`
-  を `redirectUris`/`webOrigins` へ追加済み（IADR-0091/0033/0080 のフォローアップ。port-forward 用 URL は後方互換で残す）。
+- **platform フロント（SPA）/ Headlamp（#353 適用済み）**: 集約後 origin `https://localhost` の OIDC は
+  **`bff` client が受ける**（`redirect_uri=https://localhost/bff/auth/callback`。BFF セッション方式・
+  ADR-0032 / IADR-0273。**80 は https へ恒久リダイレクトするため origin は https である**・IADR-0220 / #841）。
+  🔴 **［2026-09-11 更新 / #1393］従前ここは `platform-spa` client（SPA が `redirect_uri=<origin>/callback` を
+  自分で送る形）だった。同 client は realm から撤去した**（IADR-0429）。`headlamp` client には
+  `https://headlamp.localhost:50000/*` を `redirectUris`/`webOrigins` へ追加済み
+  （IADR-0091/0033/0080 のフォローアップ。port-forward 用 URL は後方互換で残す）。
 
 ## 切り戻し
 
