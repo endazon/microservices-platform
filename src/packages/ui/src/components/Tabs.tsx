@@ -17,7 +17,7 @@ export function TabsList({ className, ...props }: ComponentProps<typeof TabsPrim
   return (
     <TabsPrimitive.List
       className={cn(
-        'inline-flex items-center gap-1 rounded-[--radius-control] border border-[--color-border] bg-[--color-surface-muted] p-1',
+        'inline-flex items-center gap-1 rounded-md border border-divider bg-surface-muted p-1',
         className,
       )}
       {...props}
@@ -29,10 +29,13 @@ export function TabsTrigger({ className, ...props }: ComponentProps<typeof TabsP
   return (
     <TabsPrimitive.Trigger
       className={cn(
-        'rounded-[--radius-control] px-3 py-1 text-sm text-[--color-fg-muted] transition-colors',
+        'rounded-md px-3 py-1 text-sm text-fg-muted transition-colors',
         // 選択状態は **色だけで示さない**（INDEX 決定 21）。Radix が付ける aria-selected により
         // 支援技術には状態が伝わり、視覚的には面（背景）と太字の 2 つの手掛かりを重ねる。
-        'data-[state=active]:bg-[--color-surface] data-[state=active]:font-semibold data-[state=active]:text-[--color-fg]',
+        // hi-fi モック `.seg-opt:has(input:checked)`: accent の文字 ＋ 内側 1px の accent 罫。
+        // **色以外の手掛かり（罫・太字・aria-selected）を必ず重ねる**（INDEX 決定 21）。
+        'data-[state=active]:font-semibold data-[state=active]:text-accent ' +
+          'data-[state=active]:shadow-[inset_0_0_0_1px_var(--color-accent)]',
         'disabled:cursor-not-allowed disabled:opacity-50',
         className,
       )}

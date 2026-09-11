@@ -9,7 +9,7 @@ export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(
-        'rounded-[--radius-control] border border-[--color-border] bg-[--color-surface] p-4',
+        'flex flex-col gap-n2 rounded-md border border-border bg-surface p-n3',
         className,
       )}
       {...props}
@@ -18,9 +18,7 @@ export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
 }
 
 export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div className={cn('mb-3 flex items-center justify-between gap-2', className)} {...props} />
-  );
+  return <div className={cn('flex items-center justify-between gap-2', className)} {...props} />;
 }
 
 /**
@@ -32,9 +30,9 @@ export function CardTitle({
   as: Tag = 'h2',
   ...props
 }: HTMLAttributes<HTMLHeadingElement> & { as?: 'h2' | 'h3' | 'h4' }) {
-  return <Tag className={cn('text-sm font-semibold text-[--color-fg]', className)} {...props} />;
+  return <Tag className={cn('text-sm font-medium text-fg', className)} {...props} />;
 }
 
 export function CardContent({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('text-sm text-[--color-fg]', className)} {...props} />;
+  return <div className={cn('text-sm text-fg', className)} {...props} />;
 }

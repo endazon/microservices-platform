@@ -11,8 +11,8 @@ import { cn } from '../lib/cn';
 // shadcn/ui の Radix Select はポータル描画のカスタムリストボックスで、得られる意味の割に
 // テストの足場と実行時依存が増える。
 export const selectVariants = cva(
-  'block w-full appearance-none rounded-[--radius-control] border bg-[--color-surface] px-3 pr-8 text-sm ' +
-    'text-[--color-fg] disabled:cursor-not-allowed disabled:opacity-50',
+  'block w-full appearance-none rounded-md border bg-surface px-3 pr-8 text-sm ' +
+    'text-fg focus-visible:border-accent disabled:cursor-not-allowed disabled:opacity-50',
   {
     variants: {
       selectSize: {
@@ -21,8 +21,8 @@ export const selectVariants = cva(
         lg: 'h-10',
       },
       invalid: {
-        true: 'border-[--color-danger]',
-        false: 'border-[--color-border]',
+        true: 'border-danger',
+        false: 'border-divider',
       },
     },
     defaultVariants: { selectSize: 'md', invalid: false },

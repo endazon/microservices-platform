@@ -1,49 +1,265 @@
 /*
  * ADR-0031 / IADR-0121 決定 4: 2 ユニット共用のデザイントークンと base スタイル。
- * Tailwind CSS v4 は CSS ファースト（tailwind.config.js を持たない）。トークンは @theme に置く。
+ * Tailwind CSS v4 は CSS ファースト（tailwind.config.js を持たない）。
  *
- * 08_data-egress-policy（外部 CDN・Web フォント・analytics の利用禁止）:
+ * ■ トークンの二層構造（Nocturne / ライト・ダーク両対応）
+ *   第 1 層（`@theme`）= **テーマ非依存**の素材。色の ramp（neutral / accent / accent-2）・
+ *     意味色の原色（ok / warn / err）・フォント・角丸・影・間隔。**テーマを切り替えても動かない。**
+ *   第 2 層（`:root` の素の CSS 変数）= **意味トークン**。surface / bg / fg / border / brand 等。
+ *     **テーマごとに値が入れ替わる。**
+ *
+ *   なぜ第 2 層を `@theme` に置かないか: 素の `@theme` はユーティリティへ**値を焼き込む**ため、
+ *   `[data-theme]` や `prefers-color-scheme` で `:root` の変数を差し替えても
+ *   `bg-surface` の色は変わらない（切替が効かない）。よって第 2 層は
+ *   **`@theme inline` で var 参照のまま写す**——`inline` は変数を `:root` へ出力せず、
+ *   ユーティリティ側に `var(--color-surface)` をそのまま置く。値の供給は下の `:root` が行う。
+ *   実測: `@theme inline { --color-surface: var(--color-surface) }` は循環しない
+ *   （`inline` 側は出力されないため、同名でも自己参照にならない）。
+ *
+ * ■ テーマの決まり方（3 状態）
+ *   既定は **system**（`prefers-color-scheme`）。利用者が明示したときだけ
+ *   `<html data-theme="light|dark">` が付く（`platform/frontend/src/lib/theme/`）。
+ *   1. `:root`                                  … ダーク（既定値）
+ *   2. `@media (prefers-color-scheme: light)` の `:root:not([data-theme='dark'])` … system がライト
+ *   3. `:root[data-theme='light']`               … 明示ライト
+ *   4. `:root[data-theme='dark']`                … 明示ダーク
+ *   3・4 は 2 より後に書く（同じ詳細度 0,2,0 なので**順序で決まる**）。
+ *
+ * ■ 08_data-egress-policy（外部 CDN・Web フォント・analytics の利用禁止）:
  *   - @import は tailwindcss（npm パッケージ＝自己ホスト）のみ。外部 URL からは何も読み込まない。
- *   - Web フォントを一切読み込まず、OS のシステムフォントスタックを使う。日本語は各 OS 同梱の
+ *   - **hi-fi モックの `@import url('https://fonts.googleapis.com/...Inter...')` は写さない。**
+ *     Web フォントを一切読み込まず、OS のシステムフォントスタックを使う。日本語は各 OS 同梱の
  *     ゴシック体（Hiragino / Yu Gothic / Noto Sans CJK）へフォールバックする。
+ *     退行は `node scripts/check-static-egress.js --require <dist>` が成果物を走査して止める。
  *   - アイコンは lucide-react（npm パッケージ＝バンドルに同梱）。アイコン用 Web フォントは使わない。
  */
 @import 'tailwindcss';
 
+/*
+ * 走査対象（Tailwind はソースを**文字列として**走査し、見つけたクラスだけを生成する）。
+ *
+ * 🔴 **`@source '.'`（このパッケージ自身）を忘れない。** 自動ソース検出はビルドのルート
+ * （`platform/frontend`）から辿るため、**`packages/ui/src` は入っていなかった**。
+ * 実測（2026-09-12 / tailwindcss 4.3.3・`pnpm run build`）: `@source '.'` の有無で
+ * 出力 CSS は 19,887 → 30,255 バイトになり、`bg-surface` / `text-fg-muted` / `p-n3` の
+ * ような**本パッケージにしか現れないクラスは、無しでは 1 つも生成されていなかった**。
+ * これまで気付かれなかったのは、旧実装が使っていたクラス文字列（`rounded-[--radius-control]`
+ * 等）が platform / knowledge 側にも同じ綴りで存在し、そちら経由で生成されていたためである。
+ *
+ * 実測（同）: `@source` の指す**ディレクトリが存在しなくてもビルドは落ちない**
+ * （存在しないパスを 1 本足して `pnpm run build` を通し、エラーも警告も出ず出力も
+ * 1 バイト変わらないことを確認した）。よって `ai-stock-trading`（submodule。未取得の
+ * ことがある）をここへ書いてよい。
+ */
+@source '.';
+@source '../../../platform/frontend/src';
+@source '../../../knowledge/frontend/src';
+@source '../../../ai-stock-trading/frontend/src';
+
+/* ────────────────────────────────────────────────────────────────────────────
+   第 1 層: テーマ非依存の素材（Nocturne。hi-fi モック `mockups/hi-fi/index.html` が正）
+   ──────────────────────────────────────────────────────────────────────── */
 @theme {
-  /* 面と文字。まずは明色のみを定義する（ダークテーマは画面確定後に第 2 段で追加する）。 */
-  --color-surface: #ffffff;
-  --color-surface-muted: #f6f7f9;
-  --color-border: #dcdfe4;
-  --color-fg: #1c1f23;
-  --color-fg-muted: #5a626c;
+  /* 色調 ramp。OKLCH の共通明度スケール上で生成されており、同じ段は役割が違っても
+     視覚的な明るさが揃う。**意味トークン（第 2 層）の素材**であり、画面から直接使うのは
+     モックが ramp を名指ししている箇所（tag / note / rail の面）に限る。 */
+  --color-neutral-100: #f3f5fe;
+  --color-neutral-200: #e4e7f5;
+  --color-neutral-300: #cfd3e5;
+  --color-neutral-400: #b2b6ca;
+  --color-neutral-500: #9397ab;
+  --color-neutral-600: #75798c;
+  --color-neutral-700: #595d6c;
+  --color-neutral-800: #3f424d;
+  --color-neutral-900: #292b31;
 
-  /* 意味色。INDEX 決定 21「色だけで意味を持たせない」ため、これらは必ずアイコン＋文言と併用する。 */
-  --color-brand: #1f5fbf;
-  --color-brand-fg: #ffffff;
-  --color-success: #1a7f4b;
-  --color-warning: #8a5a00;
-  --color-danger: #b3261e;
+  --color-accent-100: #f5f4ff;
+  --color-accent-200: #e7e5fe;
+  --color-accent-300: #d2cefd;
+  --color-accent-400: #b5abfc;
+  --color-accent-500: #968ae0;
+  --color-accent-600: #796cbf;
+  --color-accent-700: #5d5294;
+  --color-accent-800: #423a6a;
+  --color-accent-900: #2b2741;
 
-  /* フォント: 自己ホスト＝システムフォントのみ（Web フォントの読み込みを行わない）。 */
+  --color-accent-2-100: #f5f4ff;
+  --color-accent-2-200: #e7e5fe;
+  --color-accent-2-300: #d2cefd;
+  --color-accent-2-400: #b5afe8;
+  --color-accent-2-500: #9690c9;
+  --color-accent-2-600: #7972a9;
+  --color-accent-2-700: #5c5783;
+  --color-accent-2-800: #423e5d;
+  --color-accent-2-900: #2b293a;
+
+  /* 意味色の原色（モックの `--ok` / `--warn` / `--err`）。ダークテーマの
+     success / warning / danger はこの 3 色を指す。**色だけで意味を持たせない**
+     （INDEX 決定 21）ため、これらは必ずアイコン＋文言と併用する。 */
+  --color-ok: oklch(0.74 0.09 152);
+  --color-warn: oklch(0.79 0.1 85);
+  --color-err: oklch(0.7 0.13 20);
+
+  /* フォント: 自己ホスト＝システムフォントのみ（Web フォントの読み込みを行わない）。
+     モックは Inter を指定するが、**Web フォントの読み込みは写さない**（上記ポリシー）。 */
   --font-sans:
     system-ui, -apple-system, 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Yu Gothic',
     'Noto Sans CJK JP', 'Meiryo', sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 
+  /* 角丸（モック 4 / 8 / 14px）。`--radius-control` は既存部品が使っているので残す。 */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
   --radius-control: 0.375rem;
+
+  /* 高さ（モック）。地の色から導いた「ヘアライン ＋ 環境光の影」である。
+     **暗い面を前提にした値**なので、常設の面（Panel / Card）には使わず、
+     重なりの部品（Dialog / Tooltip）に限って使う。常設の面は border で縁取る。 */
+  --shadow-sm: 0 0 0 1px #3f424d;
+  --shadow-md: 0 0 0 1px #595d6c, 0 6px 18px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 0 0 1px #9397ab, 0 16px 40px rgba(0, 0, 0, 0.65);
+
+  /*
+   * 間隔（モックの `--space-1..8`）。
+   * 🔴 **`--spacing-1` という名前は使えない。** Tailwind v4 の既定は乗算器 1 本
+   * （`--spacing: 0.25rem`）で `p-1` = `calc(var(--spacing) * 1)` を作る。そこへ
+   * `--spacing-1` を定義すると **`p-1` だけが 2.8px に乗っ取られ、`p-2` は 8px のまま**という
+   * 不揃いが生まれる（実測: `.p-1{padding:var(--spacing-1)}` / `.p-2{padding:calc(var(--spacing)*2)}`）。
+   * よって Nocturne の目盛りは `n` を付けた別名で持ち、`p-n1` / `gap-n3` の形で使う。
+   * Tailwind 既定の `p-1` / `p-2` はそのまま 4px 刻みとして残る。
+   */
+  --spacing-n1: 2.8px;
+  --spacing-n2: 5.6px;
+  --spacing-n3: 8.4px;
+  --spacing-n4: 11.2px;
+  --spacing-n6: 16.8px;
+  --spacing-n8: 22.4px;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   第 2 層: 意味トークン。`@theme inline` で var 参照のままユーティリティへ写す。
+   **値は下の `:root` 群が供給する**（この宣言は出力されない）。
+   ──────────────────────────────────────────────────────────────────────── */
+@theme inline {
+  --color-bg: var(--color-bg);
+  --color-surface: var(--color-surface);
+  --color-surface-muted: var(--color-surface-muted);
+  --color-border: var(--color-border);
+  --color-divider: var(--color-divider);
+  --color-fg: var(--color-fg);
+  --color-fg-muted: var(--color-fg-muted);
+  --color-brand: var(--color-brand);
+  --color-brand-fg: var(--color-brand-fg);
+  --color-accent: var(--color-accent);
+  --color-accent-soft: var(--color-accent-soft);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-danger: var(--color-danger);
+}
+
+/* 既定 = Nocturne ダーク。`color-scheme` はブラウザ既定 UI（スクロールバー・フォーム）へ伝える。 */
+:root {
+  color-scheme: dark light;
+
+  --color-bg: #161826;
+  --color-surface: #232532;
+  --color-surface-muted: #292b31;
+  --color-border: #3f424d;
+  --color-divider: color-mix(in srgb, #e9e9ed 16%, transparent);
+  --color-fg: #e9e9ed;
+  --color-fg-muted: #9397ab;
+  /* brand と accent は同値である（モックの `--color-accent`）。名前を 2 つ持つのは
+     既存コード（brand）とモックの語彙（accent）の双方から引けるようにするためで、
+     **値をずらさない**。 */
+  --color-brand: #9184d9;
+  --color-accent: #9184d9;
+  --color-brand-fg: #161826;
+  --color-accent-soft: #2b2741;
+  --color-success: oklch(0.74 0.09 152);
+  --color-warning: oklch(0.79 0.1 85);
+  --color-danger: oklch(0.7 0.13 20);
+}
+
+/*
+ * system がライトのとき。`:root:not([data-theme='dark'])` にするのは、
+ * **明示ダークを選んだ利用者の指定を OS 設定で覆さない**ためである。
+ * ライト値はモックに無いため、Nocturne の ramp を反転して定義した（本文は実測で
+ * コントラスト 4.5:1 以上を満たす: brand #5d5294 は白面で 6.77:1 / 地色 #f3f5fe で 6.23:1、
+ * fg-muted #595d6c は白面で 6.55:1、success 6.31:1 / warning 5.48:1 / danger 6.18:1）。
+ */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    color-scheme: light;
+
+    --color-bg: #f3f5fe;
+    --color-surface: #ffffff;
+    --color-surface-muted: #e4e7f5;
+    --color-border: #cfd3e5;
+    --color-divider: color-mix(in srgb, #1b1a17 14%, transparent);
+    --color-fg: #1b1a17;
+    --color-fg-muted: #595d6c;
+    --color-brand: #5d5294;
+    --color-accent: #5d5294;
+    --color-brand-fg: #ffffff;
+    --color-accent-soft: #e7e5fe;
+    --color-success: #2e6b4e;
+    --color-warning: #8a6210;
+    --color-danger: #a3432e;
+  }
+}
+
+/* 明示ライト。上の @media と**同じ詳細度**なので、後ろに置いて勝たせる。 */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --color-bg: #f3f5fe;
+  --color-surface: #ffffff;
+  --color-surface-muted: #e4e7f5;
+  --color-border: #cfd3e5;
+  --color-divider: color-mix(in srgb, #1b1a17 14%, transparent);
+  --color-fg: #1b1a17;
+  --color-fg-muted: #595d6c;
+  --color-brand: #5d5294;
+  --color-accent: #5d5294;
+  --color-brand-fg: #ffffff;
+  --color-accent-soft: #e7e5fe;
+  --color-success: #2e6b4e;
+  --color-warning: #8a6210;
+  --color-danger: #a3432e;
+}
+
+/* 明示ダーク（`:root` の既定値と同じだが、OS がライトのときに**戻す**ために要る）。 */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-bg: #161826;
+  --color-surface: #232532;
+  --color-surface-muted: #292b31;
+  --color-border: #3f424d;
+  --color-divider: color-mix(in srgb, #e9e9ed 16%, transparent);
+  --color-fg: #e9e9ed;
+  --color-fg-muted: #9397ab;
+  --color-brand: #9184d9;
+  --color-accent: #9184d9;
+  --color-brand-fg: #161826;
+  --color-accent-soft: #2b2741;
+  --color-success: oklch(0.74 0.09 152);
+  --color-warning: oklch(0.79 0.1 85);
+  --color-danger: oklch(0.7 0.13 20);
 }
 
 @layer base {
   body {
-    background-color: var(--color-surface);
+    /* モックの地は `--color-bg`（面 `--color-surface` より暗い／明るい 1 段下）。 */
+    background-color: var(--color-bg);
     color: var(--color-fg);
     font-family: var(--font-sans);
   }
 
-  /* キーボード操作の可視性（アクセシビリティの最低線）。 */
+  /* キーボード操作の可視性（アクセシビリティの最低線）。モックの `:focus-visible` と同じく accent。 */
   :focus-visible {
-    outline: 2px solid var(--color-brand);
+    outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
 }
