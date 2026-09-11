@@ -62,6 +62,14 @@ export default defineConfig({
           // 🔴 **規則を足したら `scripts/chunk-budget-baseline.json` の `requiredChunks` にも足す**
           // （自己試験が両者の完全一致を突き合わせる）。
           if (/^@base-ui\//.test(pkg)) return 'vendor-baseui';
+          // 裁定 6（2026-09-12「Markdown 描画＋コピー」）/ A-8: AI 回答の Markdown 処理系（`marked`）。
+          // `components/ai-chat/markdown.ts` が**動的 import** で読むため初期ロードには乗らない。
+          // この規則は遅延チャンクを 1 本に束ねて意図を固定するためのもの（vendor-echarts と同じ型）。
+          // `dompurify` は入れない —— SC-04 の Wiki 本文 sanitize と共有される遅延チャンクのままにする
+          // （入れると Wiki 閲覧だけの利用者にも `marked` が届く）。
+          //
+          // 🔴 **規則を足したら `scripts/chunk-budget-baseline.json` の `requiredChunks` にも足す。**
+          if (/^marked\//.test(pkg)) return 'vendor-markdown';
           // ADR-0031 §採用技術一覧（チャート = Apache ECharts・自己ホスト）/ #788:
           // ECharts と zrender は本リポジトリで最大級の依存である。**初期ロードへ入れない**
           // （IADR-0134 の初期ロード ratchet に直撃する）。実際の遅延は

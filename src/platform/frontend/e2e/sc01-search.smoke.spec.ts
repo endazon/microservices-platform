@@ -42,8 +42,14 @@ test('SC-01: renders for any authenticated user and streams no answer before it 
   // ★ 陽性対照: 左ナビ「検索・質問」も出る（05_screens §共通シェル）。
   await expect(page.getByRole('link', { name: '検索・質問' })).toBeVisible();
 
-  // ★ 陰性対照: **問う前に回答の口を開けない。** 初期表示で `POST /search` も回答ストリームも
-  // 走らないこと（走る実装は「開いただけで LLM を叩く」——ADR-0032 の趣旨に反する）。
+  // ★ 陽性対照（A-8）: 右レールの AI チャットは閉じた列にランチャーだけを出し、開くと補完領域になる。
+  // 開いただけでは何も送らない（下の陰性対照が「ask」の往復を数える）。
+  await page.getByRole('button', { name: 'AI チャットを開く' }).click();
+  await expect(page.getByRole('complementary', { name: 'AI チャットパネル' })).toBeVisible();
+  await expect(page.getByText('履歴（/ask） 0件')).toBeVisible();
+
+  // ★ 陰性対照: **問う前に回答の口を開けない。** 初期表示でも右レールを開いても `POST /search` も
+  // 回答ストリームも走らないこと（走る実装は「開いただけで LLM を叩く」——ADR-0032 の趣旨に反する）。
   // 「何も出ない」だけでは実装が壊れている場合と区別できないため、**上の陽性対照と対で**読むこと。
   const keys = traffic.calls.map((c) => c.key);
   expect(keys).not.toContain('POST /search');

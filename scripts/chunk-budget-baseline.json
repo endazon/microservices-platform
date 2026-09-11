@@ -6,7 +6,8 @@
     "vendor-query",
     "vendor-echarts",
     "vendor-echarts-graph",
-    "vendor-baseui"
+    "vendor-baseui",
+    "vendor-markdown"
   ],
   "$comment_requiredChunks": [
     "［2026-08-23 / #788］vendor-echarts を足した。vite.config.ts へ manualChunks の規則を足したら、",
@@ -264,7 +265,28 @@
     "**A0 と B のどちらにも AST のカタログは入っていない**ので差分の比較は成立するが、",
     "+0.85 kB のうち数十バイトは並行作業の混入であり得る。"
   ],
-  "initialTotalBytes": 617157,
+  "$comment_initialTotalBytes_20260912_ai_chat": [
+    "［2026-09-12 / UI/UX 改善 A-8（AI 対話の作り直し: 右レール＋SC-01）］617,157 → 656,554（+39,397 B）へ引き上げた。",
+    "🔴 **A/B で切り分けてから上げた。** 他タスクが同じ作業ツリーを並行編集中のため、HEAD を別の worktree に取り、",
+    "node_modules を共有して同一環境で 2 回ビルドした（`vite build` → `node scripts/check-chunk-budget.js --dist <dir>`）:",
+    "  - A  HEAD（T1 の Nocturne 化まで）      = 初期ロード **556,454 B**（index 246,271 / vendor-react 196,828 / ui 67,753 / vendor-query 45,602）",
+    "  - B  HEAD ＋ 本タスクの領域だけを写す = 初期ロード **656,554 B**（index 255,685 / vendor-react 196,828 / **vendor-baseui 85,457** / ui 72,982 / vendor-query 45,602）",
+    "  差 **+100,100 B**。内訳:",
+    "  - **vendor-baseui +85,457 B（差の 85%）**: 右レールのアイコンボタン（履歴の消去・全消去・閉じる・コピー）に `Tooltip` を",
+    "    初めて使った。直前の項（20260912_nocturne）が予告したとおり、`@platform/ui` の公開面が `ui` チャンク（初期ロード）に在るため、",
+    "    **どこか 1 箇所で Tooltip / Dialog を使った時点で `ui` → `vendor-baseui` の静的辺ができて初期ロードへ入る**。",
+    "    `React.lazy` 越しに読んでも消えない辺であり、利用者裁定 5（Base UI 採用）の代償として受け入れる。",
+    "    同じ PR の他タスク（Dialog への載せ替え）が無くても本タスク単独で発生する。",
+    "  - index +9,414 B: 右レール本体（Markdown 部品の器・出典リスト・追従スクロール・停止／再生成）＋ Lingui カタログ 13 文言 × 2 ロケール。",
+    "  - ui +5,229 B: `Tooltip` / `Spinner` の実体（初めて使われて Rollup が落とさなくなった分）。",
+    "  **初期ロードに乗らなかったもの**（動的 import の遅延チャンク）: vendor-markdown 44,545 B（`marked`）/ purify.es 28,930 B（`dompurify`。",
+    "  SC-04 と共有）/ SearchChatPage 7,772 B（5,700 → 7,772。履歴・脚注・コピーの分）。**Markdown 処理系は初回描画まで届かない。**",
+    "",
+    "床の値は B（本タスク単独）の実測である。**同じ PR の他タスク（17 画面の適合・シェル・a11y）の増分は含まない**ので、",
+    "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
+    "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
+  ],
+  "initialTotalBytes": 656554,
   "$comment_initialTotalBytes_20260830_1078": [
     "［2026-08-30 / #1078］616,202 → 617,156（+0.95 kB）へ引き上げた。実測値である（pnpm run build →",
     "node scripts/check-chunk-budget.js --update）。増加は **BFF 境界のエラー文言を i18n した**ことによる ——",

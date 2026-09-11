@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { apiStream } from '@foundation/api/apiClient';
 import type { AskRequestAttributeFilters } from '@foundation/api/generated/bff.schemas';
 import { useBffSubmitFeedback } from '@foundation/api/generated/feedback/feedback';
-import type { AskCitation } from '../types/citations';
+import type { AskCitation } from '@foundation/ai-chat/citations';
 
 // SC-01, UC-01, FR-04/FR-08: AI 回答（SSE）とフィードバック送信の状態管理。
 //
@@ -11,21 +11,53 @@ import type { AskCitation } from '../types/citations';
 // `answerId` が変わるため、キャッシュに載せると戻る操作や再マウントで**古い回答が古い出典つきで復活する**。
 // 出典は「いま表示している回答の根拠」であり、これは単なる古さではなく誤った根拠の提示になる。
 // 発火（送信）は `useMutation` が持ち、増えていく途中経過（token 列）だけをローカル state に蓄積する。
+//
+// ［2026-09-12 / UI/UX 改善 A-8］停止・再生成・履歴
+//   - `cancel()` は**停止**である。`AbortController.abort()` で中断し、その時点の部分回答を `stopped: true`
+//     で残す（画面が「（停止）」を付ける）。中断は失敗ではない（`isAbort`）。
+//   - `regenerate()` は直前の入力（質問 ＋ 対象範囲）を ref に保持し、同じ内容で再送する。
+//   - `history` は直近 N 件（`HISTORY_LIMIT`）の確定した Q&A である。**`aiChatStore`（右レール）は流用しない**
+//     ——あれは画面キー（pathname）ごとの会話をシェルが持つもので、この画面の回答は IADR-0126 決定 1 の
+//     とおり画面のローカル state に閉じる（離脱で消える。古い出典つきの回答を別の場所へ持ち出さない）。
 
 /** 回答の進行状態。`idle` は未送信、`error` は縮退（UC-01 例外フロー）の入口である。 */
 export type AnswerStatus = 'idle' | 'streaming' | 'done' | 'error';
 
 export interface AnswerState {
   status: AnswerStatus;
+  /** 送った質問。 */
+  question: string;
   /** SSE の `token` を到着順に連結した本文。 */
   answer: string;
   /** SSE の `citations`（本文より先に届く）。 */
   citations: AskCitation[];
   /** SSE の `done` で確定する回答 ID。フィードバック（FR-08）の紐付け先。 */
   answerId: string | null;
+  /** 利用者が停止した回答か（`done` を待たずに `status: 'done'` へ入る）。 */
+  stopped: boolean;
 }
 
-const INITIAL: AnswerState = { status: 'idle', answer: '', citations: [], answerId: null };
+/** 確定した 1 往復（履歴の要素）。 */
+export interface AskTurn {
+  id: string;
+  question: string;
+  answer: string;
+  citations: AskCitation[];
+  answerId: string | null;
+  stopped: boolean;
+}
+
+/** 履歴に保つ件数。計画は件数を定めておらず、画面 1 枚に収まる目安で 10 とする。 */
+export const HISTORY_LIMIT = 10;
+
+const INITIAL: AnswerState = {
+  status: 'idle',
+  question: '',
+  answer: '',
+  citations: [],
+  answerId: null,
+  stopped: false,
+};
 
 interface DonePayload {
   answerId: string;
@@ -34,7 +66,7 @@ interface DonePayload {
   outputTokens: number;
 }
 
-/** 呼び出し側の意図的な中断（連投・離脱）は失敗ではない。 */
+/** 呼び出し側の意図的な中断（停止・連投・離脱）は失敗ではない。 */
 function isAbort(err: unknown): boolean {
   return err instanceof DOMException && err.name === 'AbortError';
 }
@@ -45,17 +77,51 @@ interface AskInput {
   attributeFilters?: AskRequestAttributeFilters;
 }
 
+let turnSeq = 0;
+function nextTurnId(): string {
+  turnSeq += 1;
+  return `ask-${turnSeq}`;
+}
+
 export function useAskStream() {
   const [state, setState] = useState<AnswerState>(INITIAL);
+  const [history, setHistory] = useState<AskTurn[]>([]);
+  /** 停止時に読むための写し（`cancel` は描画の外から state を読めない）。 */
+  const stateRef = useRef<AnswerState>(INITIAL);
   const abortRef = useRef<AbortController | null>(null);
+  const lastInputRef = useRef<AskInput | null>(null);
 
-  const ask = useMutation({
+  const update = useCallback((fn: (s: AnswerState) => AnswerState) => {
+    stateRef.current = fn(stateRef.current);
+    setState(stateRef.current);
+  }, []);
+
+  /** 確定した回答を履歴の先頭へ積む（直近が先。上限を超えた古いものは落とす）。 */
+  const remember = useCallback((s: AnswerState, stopped: boolean) => {
+    if (!s.answer) return;
+    setHistory((h) =>
+      [
+        {
+          id: nextTurnId(),
+          question: s.question,
+          answer: s.answer,
+          citations: s.citations,
+          answerId: s.answerId,
+          stopped,
+        },
+        ...h,
+      ].slice(0, HISTORY_LIMIT),
+    );
+  }, []);
+
+  const { mutate } = useMutation({
     mutationFn: async ({ question, attributeFilters }: AskInput) => {
       // 直前のストリームを中断する（連投で 2 本のストリームが同じ state へ書き込むのを防ぐ）。
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
-      setState({ ...INITIAL, status: 'streaming' });
+      lastInputRef.current = { question, attributeFilters };
+      update(() => ({ ...INITIAL, status: 'streaming', question }));
 
       await apiStream(
         '/analysis/ask/stream',
@@ -69,39 +135,62 @@ export function useAskStream() {
         (ev) => {
           if (ev.event === 'citations') {
             const parsed = JSON.parse(ev.data) as { citations?: AskCitation[] };
-            setState((s) => ({ ...s, citations: parsed.citations ?? [] }));
+            update((s) => ({ ...s, citations: parsed.citations ?? [] }));
           } else if (ev.event === 'token') {
             const parsed = JSON.parse(ev.data) as { text?: string };
-            setState((s) => ({ ...s, answer: s.answer + (parsed.text ?? '') }));
+            update((s) => ({ ...s, answer: s.answer + (parsed.text ?? '') }));
           } else if (ev.event === 'done') {
             const parsed = JSON.parse(ev.data) as DonePayload;
-            setState((s) => ({ ...s, status: 'done', answerId: parsed.answerId }));
+            update((s) => ({ ...s, status: 'done', answerId: parsed.answerId }));
           } else if (ev.event === 'error') {
             // UC-01 例外フロー: LLM が不調な場合。画面は検索結果一覧への導線へ縮退する。
-            setState((s) => ({ ...s, status: 'error' }));
+            update((s) => ({ ...s, status: 'error' }));
           }
         },
         controller.signal,
       );
+      return controller;
     },
-    onSuccess: () => {
+    onSuccess: (controller) => {
+      // 停止と同時に上流が閉じた場合。停止側（`cancel`）が既に片付けている。
+      if (controller.signal.aborted) return;
+      if (abortRef.current === controller) abortRef.current = null;
       // `done` が来ないまま上流が閉じた場合も、進行中のまま固まらせない。
-      setState((s) => (s.status === 'streaming' ? { ...s, status: 'done' } : s));
+      update((s) => (s.status === 'streaming' ? { ...s, status: 'done' } : s));
+      if (stateRef.current.status === 'done') remember(stateRef.current, false);
     },
     onError: (err) => {
-      // 中断は失敗ではない。中断した側（新しい送信）が既に state を初期化している。
+      // 中断は失敗ではない。中断した側（停止・新しい送信）が既に state を片付けている。
       if (isAbort(err)) return;
-      setState((s) => ({ ...s, status: 'error' }));
+      abortRef.current = null;
+      update((s) => ({ ...s, status: 'error' }));
     },
   });
 
   const submit = useCallback(
     (question: string, attributeFilters?: AskRequestAttributeFilters) =>
-      ask.mutate({ question, attributeFilters }),
-    [ask],
+      mutate({ question, attributeFilters }),
+    [mutate],
   );
 
-  return { ...state, submit };
+  /** 停止。走っているストリームを止め、その時点の部分回答を `stopped` として残す。 */
+  const cancel = useCallback(() => {
+    const controller = abortRef.current;
+    abortRef.current = null;
+    if (!controller) return;
+    controller.abort();
+    if (stateRef.current.status !== 'streaming') return;
+    update((s) => ({ ...s, status: 'done', stopped: true }));
+    remember(stateRef.current, true);
+  }, [remember, update]);
+
+  /** 直前の入力（質問 ＋ 対象範囲）を同じ内容で再送する。直前が無ければ何もしない。 */
+  const regenerate = useCallback(() => {
+    const last = lastInputRef.current;
+    if (last) mutate(last);
+  }, [mutate]);
+
+  return { ...state, history, submit, cancel, regenerate };
 }
 
 /** FR-08: 👍 / 👎 の評価値。 */
