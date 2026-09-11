@@ -3,15 +3,15 @@ title: 別紙 — 計画 ID レンジの追随記録と、計画 ADR の状態�
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-09-09
+updated: 2026-09-11
 author: claude
 ---
 <!-- trace:
-ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-06, SC-17, SC-18, SC-19, SC-20]
-adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093]
+ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-06, SC-17, SC-18, SC-19, SC-20, SC-22]
+adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093, ADR-0094, ADR-0095, ADR-0096]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228, IADR-0423]
 specs: []
-issues: [#1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#591]
+issues: [#1411, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#591]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -23,6 +23,41 @@ issues: [#1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #8
 >
 > **本別紙が持つのは「レンジをいつどう引き直したか」（pin 時代の記録を含む）「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れなかったか」の記録だけ**である（必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
+
+### ［2026-09-11・8 回目］ADR `0001..0093` → `0001..0096`（3 件）＋ **SC `01..21` → `01..22`（1 件。記録開始以来、画面の採番が動いた初回である）**
+
+**動いたのは 2 種である。** `FR-01..22`（22 件）／`NFR-01..27`（27 件）／`UC-01..11`（11 件）は不動。
+
+| 計画 ADR | 計画コミット | 状態 | 内容 |
+| --- | --- | --- | --- |
+| 0094 | `3d1fc8a` | `Accepted` | 存在秘匿の所要時間の判定を「反復した中央値が分かれないこと」と定め、差は前段の床時間で均す |
+| 0095 | `834f82e` | `Accepted` | Git に置けない秘密情報だけを製品の画面から投入する。構成変更は Git 経由を維持する |
+| 0096 | `78b813f` | `Accepted` | 退職後 30 日が過ぎた個人資料は完全削除する。削除は定期処理が行い、窓の間の管理者の権能は閲覧に限る |
+
+**3 件とも `created: 2026-09-11` / `status: Accepted`**（隣接クローンの `origin/main` から frontmatter を直接読んだ）。
+欠番が無いことは、`07_adr` の `ADR-` 始まりのファイルが **96 件**あり、その番号の最小と最大が
+**`0001` と `0096`** であることの対で確かめた（7 回目と同じ数え方）。
+
+画面のほうは、`05_screens/01_screens.md` の定義表の行頭セルを一意化して **`SC-01`〜`SC-22` の 22 件・欠番なし**
+であることを確かめた（表が 2 度現れるため行数ではなく一意な ID を数える）。**`SC-22` は 3 件のうちの 1 件が
+新設した画面である**（秘密情報の投入面。同じ裁定の中で画面と ADR が同時に生えた）。
+
+#### 🔴 記録開始以来はじめて `ADR` 以外が動いた —— **「他の 4 種は不動」という文が 7 回続いた後である**
+
+本別紙の過去 7 世代は**すべて**「`ADR` だけが増えた／他の 4 種は不動」と書いている。
+**そのため「引き直すのは ADR だけでよい」と読みたくなる形が記録の側にできていた。**
+🔴 **本回はその形が破れた。** 画面の採番を引き直さずに ADR だけを前進させていたら、
+**新設画面を引く作業がコミット件名と trace ブロックの両方で止まっていた**（`SC-22` がレンジ外になる）。
+
+**規則は変えない** —— `.claude/rules/traceability.repo.md` は最初から 4 種すべてのレンジを宣言しており、
+**「4 種を引き直す」という手順自体は正しく書かれていた。** 破れたのは手順ではなく、
+**7 回続いた結果の側が作った期待**である。**引き直しは毎回 4 種に対して行う。**
+
+#### 契機（本回は「参照するより先に」でも「引き当てて」でもない）
+
+本回の契機は **`ADR-0095` を起点とする実装作業の着手そのもの**である。
+作業が引く ID（`SC-22` / `ADR-0095`）が**どちらもレンジ外**であることが、
+着手時の走査で同時に分かった。**2 種が同時にレンジ外になる事例は初めてである。**
 
 ### ［2026-09-05・7 回目］ADR `0001..0077` → `0001..0081`（4 件。**引き当てた 1 件が、着手中の作業の前提を覆した**）
 
