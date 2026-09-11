@@ -16,10 +16,10 @@ import type { MessageDescriptor } from '@lingui/core';
 /** 契約が定める公開ライフサイクルの 4 値。 */
 export const DOCUMENT_STATUSES = ['draft', 'normalized', 'published', 'archived'] as const;
 
-export type DocumentStatus = (typeof DOCUMENT_STATUSES)[number];
+type DocumentStatus = (typeof DOCUMENT_STATUSES)[number];
 
 /** `StatusBadge` の tone。tone ごとに固定アイコンが付く（INDEX 決定 21 を型で強制する部品）。 */
-export type DocumentStatusTone = 'neutral' | 'success';
+type DocumentStatusTone = 'neutral' | 'success';
 
 export interface DocumentStatusView {
   /** 表示文言。**未知の状態は生値を出すため `string` になる**（翻訳しない）。 */

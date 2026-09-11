@@ -286,7 +286,7 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 656554,
+  "initialTotalBytes": 705386,
   "$comment_initialTotalBytes_20260830_1078": [
     "［2026-08-30 / #1078］616,202 → 617,156（+0.95 kB）へ引き上げた。実測値である（pnpm run build →",
     "node scripts/check-chunk-budget.js --update）。増加は **BFF 境界のエラー文言を i18n した**ことによる ——",
@@ -329,5 +329,19 @@
     "判定 4 は warn であり fail にしない（往復の増加は性能の劣化ではあっても壊れではない）。",
     "［2026-08-23 / #917］5 → 6。echartsGraphBundle.ts（GraphChart の登録層 0.16 kB）が同型で 1 本増えた。"
   ],
-  "smallLazyChunks": 6
+  "smallLazyChunks": 9,
+  "$comment_initialTotalBytes_20260912_integration": [
+    "［2026-09-12 / UI/UX 改善の統合］656,554 → 705,390（+48.84 kB）へ引き上げた。実測値である（全タスク統合後の",
+    "pnpm run build → node scripts/check-chunk-budget.js --update）。直前の床 656,554 は AI 対話（T3）単独の A/B であり、",
+    "その後に共通シェル・17 画面・ConfirmDialog の Base UI 化・翻訳カタログの統合が同じ成果物へ入った。",
+    "内訳のうち単独で切り分けて測れたのは 1 件: **ConfirmDialog → Base UI Dialog で +29.49 kB**",
+    "（vendor-baseui 85,457 → 114,124 B。React.lazy では回避できない＝manualChunks が @base-ui/ を 1 チャンクへ固定し、",
+    "右レールの Tooltip が既に初期ロードへ載せているため。実測は G3 の報告）。",
+    "残り +19.35 kB は共通シェル（3 カラム・skip link・ThemeToggle・パンくず段の出し分け）、foundation の QueryState、",
+    "ルータの既定エラー／待ち画面、17 画面の追加文言（約 100 msgid × 2 ロケール ≒ 10 kB。1 文言 107〜110 B の既往実測）の合算で、",
+    "並行作業の統合後に測ったため個別には切り分けていない（切り分けなかった事実を残す。推測値で分けて書かない）。",
+    "smallLazyChunks 6 → 9: markdown（動的 import 側の登録）・routeStates・ai-chat の小モジュールが遅延側へ分かれた。",
+    "⚠️ 初期ロードの 12% が Base UI（Dialog/Tooltip）である。Tooltip を右レールから外す／manualChunks を",
+    "@base-ui のサブパスで分ける（vendor-baseui-dialog）と 85 kB 前後は遅延へ動かせる。次に初期ロードを増やす作業で先に検討すること。"
+  ]
 }
