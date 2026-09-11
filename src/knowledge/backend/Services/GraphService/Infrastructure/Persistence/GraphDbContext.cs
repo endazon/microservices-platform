@@ -26,6 +26,12 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
     public DbSet<GraphClusterMember> ClusterMembers => Set<GraphClusterMember>();
     public DbSet<GraphClusterSummary> ClusterSummaries => Set<GraphClusterSummary>();
 
+    // FR-17, FR-18, ADR-0035 決定 5, [[IADR-0430]] 決定 3 (#1395): 要約の**本文**。
+    // 🔴 `graph_cluster_summaries` とは**別の表**である（同表は [[IADR-0425]] 決定 4 が
+    // 「生成時刻だけを持つ」として凍結している）。**索引化しない別コレクション**であり、
+    // 既存の検索索引へは 1 行も登録しない（ADR-0035 決定 5）。
+    public DbSet<GraphClusterSummaryBody> ClusterSummaryBodies => Set<GraphClusterSummaryBody>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         // FR-17, FR-18, SC-10, SC-18, ADR-0035 決定 3・5・6, ADR-0083 決定 1〜3,
@@ -62,6 +68,28 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
             e.ToTable("graph_cluster_summaries");
             e.HasKey(s => new { s.ClusterId, s.Confidentiality });
             e.Property(s => s.Confidentiality).HasMaxLength(20).IsRequired();
+            e.Property(s => s.GeneratedAt).IsRequired();
+
+            e.HasOne<GraphCluster>()
+                .WithMany()
+                .HasForeignKey(s => s.ClusterId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ADR-0035 決定 5, [[IADR-0430]] 決定 3 (#1395): 要約の**本文**（別コレクション）。
+        //
+        // 🔴 **主キーは `graph_cluster_summaries` と同じ**（クラスタ × 機密区分）。
+        // これが「生成時刻の行」と「本文」を結ぶ参照であり、時刻側へ参照列を足さない。
+        // **索引（全文・ベクトル）は張らない** —— ADR-0035 決定 5 の「索引化しない」は
+        // 「既存の検索索引へ登録しない」であり、本表を検索対象にする列も置かない。
+        mb.Entity<GraphClusterSummaryBody>(e =>
+        {
+            e.ToTable("graph_cluster_summary_bodies");
+            e.HasKey(s => new { s.ClusterId, s.Confidentiality });
+            e.Property(s => s.Confidentiality).HasMaxLength(20).IsRequired();
+            // 本文の長さに上限を置かない（要約の長さは ADR-0083 決定 4 の実測待ちであり、
+            // ここで刻むと実測の前に形が決まってしまう）。
+            e.Property(s => s.Body).IsRequired();
             e.Property(s => s.GeneratedAt).IsRequired();
 
             e.HasOne<GraphCluster>()

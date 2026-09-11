@@ -335,7 +335,9 @@ public sealed class ClusterDetectionTests
             .ToListAsync(TestContext.Current.CancellationToken);
     }
 
-    // 機密区分 4 通りぶんの要約を、全クラスタへ入れる（要約生成バッチの代わり）。
+    // 機密区分 4 通りぶんの要約を、全クラスタへ入れる。
+    // 🔴 **生成バッチ（`ClusterSummaryJob`。#1395）を通さず直接置く** —— 本ファイルが測るのは
+    // 検出と計数であり、生成の経路はそちらの試験（`ClusterSummaryTests`）が持つ。
     private static async Task SeedSummariesAsync(
         TestWebApplicationFactory factory, DateTimeOffset generatedAt)
     {

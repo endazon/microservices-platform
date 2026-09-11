@@ -6,11 +6,14 @@ namespace GraphService.Domain.Clustering;
 // 🔴 **要約の本文は持たない。** ADR-0035 決定 5 が別系統（別ストアまたは別コレクション）と定めており、
 // ここが持つのは ADR-0083 決定 3 の起点（「**前回の要約生成時刻**（クラスタ × 機密区分ごと）」）だけである。
 //
-// 🔴 **現時点で書き手が居ない。** 要約生成バッチ（ADR-0035 決定 3 の `claude-opus-5` 呼び出し）は
-// #1363 の受け入れ基準に無く、本作業の射程外である。**それでもこの表を今置く**のは、
-// これが無いと ADR-0083 決定 3 の条件 2・3 が実装不能になり、「常に未要約」を焼き付けた生産者しか
-// 作れないためである（[[IADR-0425]] 決定 4）。**空であることは「全クラスタが未要約」を意味し、
-// それは現況として正しい。**
+// ★［2026-09-11 更新 / #1395］**書き手が付いた。** 従前ここには「現時点で書き手が居ない」と
+// 書いてあったが、`ClusterSummaryJob`（`Features/Clustering/Summarize/`）が書くようになった
+// （[[IADR-0430]]）。**ただし既定はオフ**（`ClusterSummary:Enabled=false`）であり、
+// 有効化するまでこの表は空のままである —— **空であることは「全クラスタが未要約」を意味し、
+// それは現況として正しい**（0 件のプレースホルダではなく実測値である）。
+//
+// 表を書き手より先に置いた理由（[[IADR-0425]] 決定 4）は今も生きている: これが無いと
+// ADR-0083 決定 3 の条件 2・3 が実装不能になり、「常に未要約」を焼き付けた生産者しか作れない。
 public class GraphClusterSummary
 {
     public Guid ClusterId { get; private set; }
@@ -27,6 +30,10 @@ public class GraphClusterSummary
             Confidentiality = confidentiality,
             GeneratedAt = generatedAt,
         };
+
+    // FR-18, ADR-0035 決定 6, [[IADR-0430]] (#1395): 作り直したときに生成時刻を進める。
+    // **履歴は持たない** —— ADR-0083 決定 3 の判定は「最新の生成時刻」だけを見る。
+    public void MarkGenerated(DateTimeOffset generatedAt) => GeneratedAt = generatedAt;
 }
 
 // ADR-0035 決定 3: コミュニティ要約の粒度は**機密区分単位**（4 通り）である。

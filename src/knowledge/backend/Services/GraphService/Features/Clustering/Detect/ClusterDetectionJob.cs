@@ -74,6 +74,10 @@ public sealed class ClusterDetectionJob(
             db.ClusterMembers.RemoveRange(memberRows.Where(m => removed.Contains(m.ClusterId)));
             db.ClusterSummaries.RemoveRange(
                 await db.ClusterSummaries.Where(s => removed.Contains(s.ClusterId)).ToListAsync(ct));
+            // [[IADR-0430]] 決定 3 (#1395): 本文も同じ理由で明示的に消す
+            // （時刻だけ消えて本文が残ると、次に同じクラスタ ID が振られたときに他人の要約が付く）。
+            db.ClusterSummaryBodies.RemoveRange(
+                await db.ClusterSummaryBodies.Where(s => removed.Contains(s.ClusterId)).ToListAsync(ct));
             db.Clusters.RemoveRange(reconciliation.Removed.Select(id => byId[id]));
         }
 
