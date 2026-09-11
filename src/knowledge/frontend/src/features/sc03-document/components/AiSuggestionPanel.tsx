@@ -1,7 +1,7 @@
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Link } from '@tanstack/react-router';
 import { RotateCcw } from 'lucide-react';
-import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Tag } from '@platform/ui';
+import { Alert, Button, Note, Panel, Tag } from '@platform/ui';
 import type { AiSuggestion } from '@foundation/api/generated/bff.schemas';
 import { ApiError } from '@foundation/api/ApiError';
 import {
@@ -47,7 +47,7 @@ import {
  */
 function ReinstatedNotice() {
   return (
-    <p className="mt-1 flex items-start gap-1 text-xs text-[--color-fg-muted]">
+    <p className="mt-1 flex items-start gap-1 text-xs text-fg-muted">
       <RotateCcw className="mt-0.5 size-3.5 shrink-0" aria-hidden />
       <Trans>この提案は一度却下されましたが、文書が更新されたため再度提示しています。</Trans>
     </p>
@@ -81,63 +81,58 @@ export function AiSuggestionPanel({ documentId }: { documentId: string }) {
   // ADR-0063 決定 2 後段: 辞書に無い値は承認できず却下のみ。後段は 400 `unknown_tag` を本文ごと透過する。
   const unknownTag = isUnknownTagError(approve.error);
 
+  // hi-fi（sc-03）の下段は `.panel`＋`h4` である。見出しの役割（`heading`）は
+  // **`AI 提案` の文字列のまま**にする——テストと E2E が `role="heading"` で本欄を特定している。
   return (
-    <Card className="mb-3">
-      <CardHeader>
-        <CardTitle as="h2">
-          <Trans>AI 提案</Trans>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="mb-2 text-xs text-[--color-fg-muted]">
-          <Trans>
-            この文書に対するリンク候補・タグ候補です。両端の文書の内容を確かめたうえで、 1
-            件ずつ承認または却下してください。
-          </Trans>
-        </p>
+    <Panel heading={<Trans>AI 提案</Trans>}>
+      <Note>
+        <Trans>
+          この文書に対するリンク候補・タグ候補です。両端の文書の内容を確かめたうえで、 1
+          件ずつ承認または却下してください。
+        </Trans>
+      </Note>
 
-        <ul className="flex flex-col gap-3">
-          {items.map((s) => (
-            <SuggestionRow
-              key={s.id}
-              suggestion={s}
-              edgeTypeName={(s.edgeTypeId && edgeTypeNames.get(s.edgeTypeId)) || t`型不明`}
-              busy={busy}
-              onApprove={() => approve.mutate({ id: s.id })}
-              onReject={() => reject.mutate({ id: s.id })}
-            />
-          ))}
-        </ul>
+      <ul className="flex flex-col gap-3">
+        {items.map((s) => (
+          <SuggestionRow
+            key={s.id}
+            suggestion={s}
+            edgeTypeName={(s.edgeTypeId && edgeTypeNames.get(s.edgeTypeId)) || t`型不明`}
+            busy={busy}
+            onApprove={() => approve.mutate({ id: s.id })}
+            onReject={() => reject.mutate({ id: s.id })}
+          />
+        ))}
+      </ul>
 
-        {unknownTag ? (
+      {unknownTag ? (
+        <Alert tone="danger" role="alert" label={t`エラー`} className="mt-3">
+          <Trans>このタグは辞書に無いため反映できません。却下してください。</Trans>
+        </Alert>
+      ) : (
+        (approve.isError || reject.isError) && (
           <Alert tone="danger" role="alert" label={t`エラー`} className="mt-3">
-            <Trans>このタグは辞書に無いため反映できません。却下してください。</Trans>
+            <Trans>
+              操作できませんでした。すでに他の利用者が承認・却下した可能性があります。
+              画面を再読み込みして確認してください。
+            </Trans>
           </Alert>
-        ) : (
-          (approve.isError || reject.isError) && (
-            <Alert tone="danger" role="alert" label={t`エラー`} className="mt-3">
-              <Trans>
-                操作できませんでした。すでに他の利用者が承認・却下した可能性があります。
-                画面を再読み込みして確認してください。
-              </Trans>
-            </Alert>
-          )
-        )}
+        )
+      )}
 
-        {/* 05_screens §SC-03: 本欄から SC-21（棚卸しの一覧）への導線を置く。 */}
-        <p className="mt-3 text-sm">
-          {/* SC-21 は URL が絞り込みの単一情報源であり、検索パラメータが必須である。
-           **棚卸しの既定（承認待ち・種類はすべて）で開く** —— 本欄から渡す絞りは無い。 */}
-          <Link
-            to="/ai-suggestions"
-            search={{ state: 'pending', kind: 'all' }}
-            className="text-[--color-brand] hover:underline"
-          >
-            <Trans>AI 提案の一覧を見る</Trans>
-          </Link>
-        </p>
-      </CardContent>
-    </Card>
+      {/* 05_screens §SC-03: 本欄から SC-21（棚卸しの一覧）への導線を置く。 */}
+      <p className="mt-n3 text-sm">
+        {/* SC-21 は URL が絞り込みの単一情報源であり、検索パラメータが必須である。
+         **棚卸しの既定（承認待ち・種類はすべて）で開く** —— 本欄から渡す絞りは無い。 */}
+        <Link
+          to="/ai-suggestions"
+          search={{ state: 'pending', kind: 'all' }}
+          className="text-brand hover:underline"
+        >
+          <Trans>AI 提案の一覧を見る</Trans>
+        </Link>
+      </p>
+    </Panel>
   );
 }
 
@@ -167,7 +162,7 @@ function SuggestionRow({
   const targetTitle = suggestion.targetDocumentTitle ?? '';
 
   return (
-    <li className="rounded-[--radius-control] border border-[--color-border] p-3">
+    <li className="rounded-md border border-border p-3">
       <div className="mb-1 flex flex-wrap items-center gap-2">
         {/* 種類は分類であって状態ではないので Tag を使う（StatusBadge は状態の部品である）。 */}
         <Tag tone="neutral">{isTag ? t`タグ` : t`リンク`}</Tag>
@@ -183,7 +178,7 @@ function SuggestionRow({
       </div>
 
       {/* 05_screens §SC-03 / §SC-21 主要素 6: **提案の根拠**（なぜ関連と判断したか）。 */}
-      <p className="text-xs text-[--color-fg-muted]">{suggestion.rationale}</p>
+      <p className="text-xs text-fg-muted">{suggestion.rationale}</p>
       {suggestion.reinstatedReason ? <ReinstatedNotice /> : null}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -196,7 +191,7 @@ function SuggestionRow({
         </Button>
         {forbidden && (
           // 🔴 押せない理由を**画面上のテキストとして**出す（無効なボタンだけを置くと理由が読めない）。
-          <span className="text-xs text-[--color-fg-muted]">
+          <span className="text-xs text-fg-muted">
             <Trans>この文書のタグを編集する権限がありません。</Trans>
           </span>
         )}

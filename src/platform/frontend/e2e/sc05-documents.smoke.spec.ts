@@ -54,7 +54,8 @@ test('SC-05: an operator reaches the screen and its navigation entry', async ({ 
 
   // ★ 陰性対照: 空状態の文言は**行があるときに出てはならない**
   // （取得できた一覧を 0 件表示へ寄せる実装がここで落ちる）。
-  await expect(page.getByText('文書はありません。')).toHaveCount(0);
+  // **［2026-09-12］`EmptyState` への統一で文言が変わった**（空は次の一手を示す）。
+  await expect(page.getByText('文書はまだありません。')).toHaveCount(0);
 
   expectBffTrafficIsComplete(traffic);
 });

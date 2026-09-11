@@ -190,9 +190,11 @@ describe('DocumentDetailPage (SC-03)', () => {
     // **［2026-08-10 訂正 / #553］理由は「計画が 4 値中 2 値しか表示名を持たない」ではなくなった**
     // —— 4 値の表示名は裁定（2026-08-05 Q7・Q8・派生 Q30）で確定している。
     // **写像の実装先が #541 である**ため、それまでの現状として生値を出している。
-    expect(screen.getByText('機密区分:')).toBeInTheDocument();
+    // **［2026-09-12］項目名から「:」が消えた**（hi-fi の属性欄を `Kv` / `KvItem` へ寄せたため。
+    // `dt` / `dd` の対が区切りを担うので、文字としてのコロンは冗長である）。実装が正・テストを追随。
+    expect(screen.getByText('機密区分')).toBeInTheDocument();
     expect(screen.getByText('internal')).toBeInTheDocument();
-    expect(screen.getByText('部門:')).toBeInTheDocument();
+    expect(screen.getByText('部門')).toBeInTheDocument();
     expect(screen.getByText('accounting')).toBeInTheDocument();
     expect(screen.getByText('経理')).toBeInTheDocument();
     // 版履歴は詳細の成功後に取りに行く（IADR-0126 決定 4）ため、1 段階遅れて現れる。
@@ -645,7 +647,7 @@ describe('DocumentDetailPage (SC-03)', () => {
     await renderPage();
 
     expect(await screen.findByText('Normalized document (Markdown) preview')).toBeInTheDocument();
-    expect(screen.getByText('Confidentiality:')).toBeInTheDocument();
+    expect(screen.getByText('Confidentiality')).toBeInTheDocument();
   });
 });
 
@@ -678,7 +680,11 @@ describe('SC-03 breadcrumb leaf (#446)', () => {
     mocks.apiRequest.mockImplementation(() => new Promise(() => {}));
     await renderPage();
 
-    expect(await screen.findByText('読み込み中…')).toBeInTheDocument();
+    // **［2026-09-12］待ちは `QueryState` → `LoadingState` が描く。** 同じ文言が
+    // **読み上げ用（`sr-only`）と視覚用（`aria-hidden`）の 2 箇所**に出るので、
+    // テキストではなく**役割**で引く（`findByText` は複数一致で落ちる）。
+    // `role="status"` は「内容から名前を取る」役割ではないので、名前ではなく**中身**で見る。
+    expect(await screen.findByRole('status')).toHaveTextContent('読み込み中…');
     expect(mocks.useBreadcrumbLeaf).toHaveBeenCalled();
     expect(leaves().every((leaf) => leaf === undefined)).toBe(true);
   });

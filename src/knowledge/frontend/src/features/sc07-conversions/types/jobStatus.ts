@@ -102,3 +102,32 @@ export function isBodyAbsent(job: { hasBody?: boolean }): boolean {
 export function isRetryable(status: string): boolean {
   return status === 'failed';
 }
+
+/**
+ * **デッドレター（DLQ）へ落ちたか**（計画 `05_screens:320`「デッドレターの表示は failed の
+ * **内訳**として扱う」／裁定 Q13・#533。契約 `ConversionJobDto.deadLettered`）。
+ *
+ * 🔴 **`status` の 5 値目にしない。** `diagramsRetained` / `hasBody` と同じく、4 値の状態に
+ * **併記する標識**である。hi-fi:421 の「⚠ デッドレター（本文変換 恒久失敗）」がこれに当たる。
+ *
+ * フィールドを持たない応答（古いサーバ）は `false`（落ちていない）へ倒す ——
+ * `undefined` は「知らない」であって「落ちた」ではない。
+ */
+export function isDeadLettered(job: { deadLettered?: boolean }): boolean {
+  return job.deadLettered === true;
+}
+
+/**
+ * 試行回数の表示（`3/5`）。**分母は契約の `maxAttempts`** であり、画面へ定数を複写しない
+ * （SC-06 が `retryLimit` を分母に使うのと同じ作法）。
+ *
+ * どちらかが欠けていれば `null` を返す —— **半分だけの分数を描かない**
+ * （「3/」や「/5」は読めないうえ、欠けていることも伝わらない）。
+ */
+export function attemptRatio(job: { attempts?: number; maxAttempts?: number }): string | null {
+  const { attempts, maxAttempts } = job;
+  if (typeof attempts !== 'number' || typeof maxAttempts !== 'number' || maxAttempts <= 0) {
+    return null;
+  }
+  return `${attempts}/${maxAttempts}`;
+}

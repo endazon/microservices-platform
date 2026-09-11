@@ -1,17 +1,6 @@
 import { useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Input,
-  Label,
-  Select,
-  Tag,
-} from '@platform/ui';
-import { Alert } from '@platform/ui';
+import { Button, Input, Label, Note, Panel, Select, Tag } from '@platform/ui';
 import {
   CONFIDENTIALITY_KEY,
   CONFIDENTIALITY_VALUES,
@@ -90,139 +79,140 @@ export function DocumentForm({
     setTagDraft('');
   }
 
+  // hi-fi（sc-05）の右カラムは `.panel`＋`h4`「編集フォーム」である。**見出しは新規・編集で
+  // 変えず**、いま何を編集しているかは直下の 1 行で示す（見出しが動くと区画そのものが
+  // 入れ替わったように読める）。
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          {editing ? <Trans>文書を編集（v{version}）</Trans> : <Trans>文書を登録</Trans>}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form
-          aria-label={editing ? t`文書編集` : t`文書登録`}
-          className="flex flex-col gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!canSubmit) return;
-            onSubmit({
-              title: title.trim(),
-              // 既存の属性を保ったまま機密区分だけ差し替える（部門などを落とさない）。
-              attributes: { ...editing?.attributes, [CONFIDENTIALITY_KEY]: confidentiality },
-              tags,
-              changeNote: changeNote.trim() || null,
-            });
-          }}
-        >
-          <div>
-            <Label htmlFor="doc-title" requiredHint={t`（必須）`}>
-              <Trans>タイトル</Trans>
-            </Label>
-            <Input
-              id="doc-title"
-              value={title}
-              maxLength={MAX_TITLE}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </div>
+    <Panel heading={<Trans>編集フォーム</Trans>}>
+      <p className="mb-n2 text-xs text-fg-muted">
+        {editing ? <Trans>編集中の文書: v{version}</Trans> : <Trans>新規登録</Trans>}
+      </p>
+      <form
+        aria-label={editing ? t`文書編集` : t`文書登録`}
+        className="flex flex-col gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!canSubmit) return;
+          onSubmit({
+            title: title.trim(),
+            // 既存の属性を保ったまま機密区分だけ差し替える（部門などを落とさない）。
+            attributes: { ...editing?.attributes, [CONFIDENTIALITY_KEY]: confidentiality },
+            tags,
+            changeNote: changeNote.trim() || null,
+          });
+        }}
+      >
+        <div>
+          <Label htmlFor="doc-title" requiredHint={t`（必須）`}>
+            <Trans>タイトル</Trans>
+          </Label>
+          <Input
+            id="doc-title"
+            value={title}
+            maxLength={MAX_TITLE}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </div>
 
-          <div>
-            {/* 05_screens §SC-05: 機密区分（ABAC属性）は必須・**定義済み区分のみ**。
+        <div>
+          {/* 05_screens §SC-05: 機密区分（ABAC属性）は必須・**定義済み区分のみ**。
                 値そのものは翻訳しない（表示名が計画に無い値がある。abac/confidentiality.ts 参照）。 */}
-            <Label htmlFor="doc-conf" requiredHint={t`（必須）`}>
-              <Trans>機密区分（ABAC属性）</Trans>
-            </Label>
+          <Label htmlFor="doc-conf" requiredHint={t`（必須）`}>
+            <Trans>機密区分（ABAC属性）</Trans>
+          </Label>
+          <Select
+            id="doc-conf"
+            value={confidentiality}
+            onChange={(e) => setConfidentiality(e.target.value)}
+          >
+            {CONFIDENTIALITY_VALUES.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <div>
+          <Label htmlFor="doc-tag">
+            <Trans>タグ</Trans>
+          </Label>
+          {tags.length > 0 && (
+            <span className="mb-1 flex flex-wrap gap-1">
+              {tags.map((tag) => (
+                <span key={tag} className="inline-flex items-center gap-1">
+                  <Tag tone="neutral">{tag}</Tag>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    aria-label={t`タグ ${tag} を削除`}
+                    onClick={() => setTags(tags.filter((x) => x !== tag))}
+                  >
+                    ✕
+                  </Button>
+                </span>
+              ))}
+            </span>
+          )}
+          <span className="flex gap-2">
+            {/* 05_screens §SC-05: タグは**既定タグ辞書に整合**する。値は辞書から選ぶ。 */}
             <Select
-              id="doc-conf"
-              value={confidentiality}
-              onChange={(e) => setConfidentiality(e.target.value)}
+              id="doc-tag"
+              value={tagDraft}
+              onChange={(e) => setTagDraft(e.target.value)}
+              disabled={selectable.length === 0}
             >
-              {CONFIDENTIALITY_VALUES.map((value) => (
-                <option key={value} value={value}>
-                  {value}
+              <option value="">
+                {selectable.length === 0 ? t`辞書に候補がありません` : t`タグを選択`}
+              </option>
+              {selectable.map((name) => (
+                <option key={name} value={name}>
+                  {name}
                 </option>
               ))}
             </Select>
-          </div>
-
-          <div>
-            <Label htmlFor="doc-tag">
-              <Trans>タグ</Trans>
-            </Label>
-            {tags.length > 0 && (
-              <span className="mb-1 flex flex-wrap gap-1">
-                {tags.map((tag) => (
-                  <span key={tag} className="inline-flex items-center gap-1">
-                    <Tag tone="neutral">{tag}</Tag>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      aria-label={t`タグ ${tag} を削除`}
-                      onClick={() => setTags(tags.filter((x) => x !== tag))}
-                    >
-                      ✕
-                    </Button>
-                  </span>
-                ))}
-              </span>
-            )}
-            <span className="flex gap-2">
-              {/* 05_screens §SC-05: タグは**既定タグ辞書に整合**する。値は辞書から選ぶ。 */}
-              <Select
-                id="doc-tag"
-                value={tagDraft}
-                onChange={(e) => setTagDraft(e.target.value)}
-                disabled={selectable.length === 0}
-              >
-                <option value="">
-                  {selectable.length === 0 ? t`辞書に候補がありません` : t`タグを選択`}
-                </option>
-                {selectable.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </Select>
-              <Button type="button" onClick={addTag} disabled={!canAddTag}>
-                <Trans>追加</Trans>
-              </Button>
-            </span>
-          </div>
-
-          {editing && (
-            <div>
-              <Label htmlFor="doc-note">
-                <Trans>変更メモ</Trans>
-              </Label>
-              <Input
-                id="doc-note"
-                value={changeNote}
-                maxLength={MAX_CHANGE_NOTE}
-                onChange={(e) => setChangeNote(e.target.value)}
-              />
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="submit" variant="primary" disabled={!canSubmit}>
-              <Trans>保存</Trans>
+            <Button type="button" onClick={addTag} disabled={!canAddTag}>
+              <Trans>追加</Trans>
             </Button>
-            <span className="text-xs text-[--color-fg-muted]">
-              <Trans>→ 取り込み・Wiki同期をトリガ</Trans>
-            </span>
-            {editing && (
-              <Button type="button" onClick={onCancel}>
-                <Trans>キャンセル</Trans>
-              </Button>
-            )}
-          </div>
-        </form>
+          </span>
+        </div>
 
-        {/* 05_screens §SC-05 の注記。静的な注記なので role は付けない。 */}
-        <Alert tone="info" className="mt-3" label={t`注記`}>
-          <Trans>必須属性が未設定の場合は保存を拒否します（UC-03 例外フロー）。</Trans>
-        </Alert>
-      </CardContent>
-    </Card>
+        {editing && (
+          <div>
+            <Label htmlFor="doc-note">
+              <Trans>変更メモ</Trans>
+            </Label>
+            <Input
+              id="doc-note"
+              value={changeNote}
+              maxLength={MAX_CHANGE_NOTE}
+              onChange={(e) => setChangeNote(e.target.value)}
+            />
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="submit" variant="primary" disabled={!canSubmit}>
+            <Trans>保存</Trans>
+          </Button>
+          <span className="text-xs text-fg-muted">
+            <Trans>→ 取り込み・Wiki同期をトリガ</Trans>
+          </span>
+          {editing && (
+            <Button type="button" onClick={onCancel}>
+              <Trans>キャンセル</Trans>
+            </Button>
+          )}
+        </div>
+      </form>
+
+      {/* hi-fi の `.note`（05_screens §SC-05 の注記）。静的な注記なので role は付けない。
+          **`Alert` から `Note` へ寄せた** —— `Alert` は「いま起きたこと」を伝える器であり、
+          常にそこに在る補足を同じ強さで描くと、本当の通知が埋もれる。 */}
+      <Note>
+        <Trans>必須属性が未設定の場合は保存を拒否します（UC-03 例外フロー）。</Trans>
+      </Note>
+    </Panel>
   );
 }

@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
+import { i18n } from '@foundation/i18n';
+import type { MessageDescriptor } from '@lingui/core';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import {
-  Alert,
   Button,
+  EmptyState,
   Input,
   Label,
+  Select,
   StatusBadge,
   Table,
   TableBody,
@@ -16,40 +19,61 @@ import {
   TableRow,
   Tag,
 } from '@platform/ui';
-import { toMessages } from '@foundation/utils/apiErrors';
+import { QueryState } from '@foundation/ui/QueryState';
 import { useSearchQuery } from '../api/useSearchQuery';
 import { formatDateTime } from '@foundation/utils/formatDateTime';
+import { CONFIDENTIALITY_KEY } from '../../../lib/abac';
+import {
+  DEFAULT_SEARCH_MODE,
+  DEFAULT_SEARCH_SORT,
+  SEARCH_MODES,
+  SEARCH_SORTS,
+  searchModeLabel,
+  searchSortLabel,
+} from '../types/searchOptions';
+import type { ResultsSearch, SearchMode, SearchSort } from '../types/searchOptions';
 // SC-02, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
-import type { SearchResultDto } from '@foundation/api/generated/bff.schemas';
+import type { SearchResponse, SearchResultDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-02, UC-01, FR-03/FR-05: 検索結果一覧（05_screens: ルート /search?q=）。
 // UC-01 代替フロー（キーワード検索のみで結果一覧を返し、AI 回答を省略する）の受け皿であり、
 // 本画面は AI 回答を一切呼ばない。各件から SC-03（文書詳細）へ内部遷移する。
 //
-// 実装しない要素（画面仕様書 docs/screens/SC-02_search-results.md §hi-fi モックアップとの対応）:
-//   - **検索モード切替（ハイブリッド｜キーワード｜意味）**: **契約は #531 で揃った**
-//     （`SearchRequest.Mode` の 3 値・裁定 Q4）。**切替 UI が未実装**なので画面には出ていない。
-//   - **並び順（関連度〔既定〕｜更新日時の新しい順）**: **契約は #532 で揃った**
-//     （`SearchRequest.SortBy` の 2 値・裁定 Q5）。**切替 UI が未実装**なので画面には出ていない。
-//     後段は**取得後に並べ替える**（[[IADR-0150]]）——関連度が候補を決め、並び順は表示順だけを決める。
-//   **切替 UI（上の 2 つ）はモックでは同じツールバー行に並ぶため、まとめて 1 つの画面実装として扱う**
-//   （[[IADR-0150]] フォローアップ）。**「契約が揃った」と「画面が実装された」を混同しないこと。**
-//   もとの記録は projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md（planning#197 で裁定済み）。
+// **［2026-09-12 / UI/UX 改善］hi-fi モック（sc-02）の構造へ寄せた。**
+//   - 見出しは `.ttl`＋`.sub`、ツールバー行は「件数（権限内のみ表示）… 並び ▾ … 検索モード ▾」。
+//   - **検索モード（3 値）と並び順（2 値）の切替 UI を実装した。** 契約は #531 / #532 で既に
+//     揃っており（裁定 Q4 / Q5）、残っていたのは切替 UI だけだった。値は URL が単一情報源で、
+//     既定は URL にも要求本文にも載せない（`types/searchOptions.ts` 冒頭）。
+//     後段は `updated` を**取得後に並べ替える**（[[IADR-0150]]）。
+//   - 待ち・空・失敗を `QueryState` の 1 本へ統一した（`<p role="status">` 直書き・
+//     `Alert` での失敗表示・`&&` 並置を撤去）。**0 件と失敗を混同しない**——
+//     0 件は `EmptyState`（中立の文言。存在秘匿）、失敗は `ErrorState`（再試行つき）である。
 //   **［2026-08-09 / #536］更新日時列は実装した。** 契約（`SearchResultDto.updatedAt`）が
 //   裁定 Q6 を受けて日時を持ち、索引（Qdrant のペイロード）へも取り込むようにしたため（[[IADR-0149]]）。
 //   **［2026-09-03 / #1193］本文なしの文書の縮退表示を足した**（ADR-0070 決定 4 / [[IADR-0358]]）。
 //   本文抜粋が出せない文書（テキスト層の無い PDF 等）を**結果から除外せず**、抜粋の位置へ
 //   「本文なし（原本を参照）」を出す。**SC-07 の「画像保持へ縮退済み」と同じ形の併記**である。
 
+/**
+ * 空のときの「次の一手」の実体: 検索入力へ戻す。
+ *
+ * `@platform/ui` の `Input` は ref を転送する型を持たない（`Button` と同じ事情）ので、
+ * **安定した id で引く**。下の文字列は DOM の id であって表示文言ではない。
+ */
+function focusSearchInput() {
+  const element = document.getElementById('search-q');
+  if (element instanceof HTMLInputElement) element.focus();
+}
+
 export function SearchResultsPage() {
   const { t } = useLingui();
   // SC-02, ADR-0031 / IADR-0124 決定 3: 検索パラメータ `?q=` は型付きで受け取る。
   // ルート ID のリテラルを渡す形だけが厳密に型付く（Route.useSearch() は any になる）。
-  const { q } = useSearch({ from: '/_shell/search' });
+  const { q, mode, sort } = useSearch({ from: '/_shell/search' });
   const navigate = useNavigate();
   // 入力欄は「未確定の編集値」であり、取得の引き金にはならない（IADR-0126 決定 3）。
   const [input, setInput] = useState(q);
-  const search = useSearchQuery(q);
+  const search = useSearchQuery(q, { mode, sort });
 
   // IADR-0126 決定 3: 検索語の単一情報源は URL である。**入力欄もそれに追随する。**
   //
@@ -76,22 +100,33 @@ export function SearchResultsPage() {
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     // 検索条件の単一情報源は URL である。ここは URL を更新するだけで、取得は URL の変化に従う。
-    void navigate({ to: '/search', search: { q: input.trim() } });
+    // **検索モード・並び順は保つ**（語だけを差し替える）。
+    //
+    // 🔴 **`prev` は `Partial<ResultsSearch>` である。** ルータの検索パラメータ更新関数は
+    // 登録済み全ルートの検索パラメータの和（すべて省略可）を受け取るため、`ResultsSearch`
+    // （`q` が必須）で受けると**アプリ全体をビルドしたときだけ**型が合わなくなる
+    // （ユニット単体の `tsc` では登録が無いので通ってしまい、気づけない）。
+    void navigate({
+      to: '/search',
+      search: (prev: Partial<ResultsSearch>) => ({ ...prev, q: input.trim() }),
+    });
   }
-
-  const results = search.data?.results ?? [];
-  const totalHits = search.data?.totalHits ?? results.length;
-  // `lingui/no-expression-in-message`: 翻訳単位へ渡せるのは単一の変数だけである
-  // （`results.length` のようなプロパティ参照はカタログの ID を壊す）。
-  const shownCount = results.length;
 
   return (
     <section>
-      <h1 className="text-lg font-semibold text-[--color-fg]">
+      {/* hi-fi `.ttl` / `.sub`。**見出しの文言は変えない**——導線テストと E2E が
+          「検索結果一覧」で画面を特定している。 */}
+      <h1 className="text-[17px] font-medium text-fg">
         <Trans>検索結果一覧</Trans>
       </h1>
+      {/* 🔴 **この行に「権限」の語を入れない。** 0 件の画面で「権限」と書いた瞬間に
+          「在るが見せない」が漏れる（存在秘匿。E2E の陰性対照が固定している）。
+          件数のチップ（`ResultCount`）は結果があるときだけ描くので対象外である。 */}
+      <p className="text-xs text-fg-muted">
+        <Trans>キーワードと文意の両方で探した結果である。</Trans>
+      </p>
 
-      <form onSubmit={onSubmit} role="search" className="mt-3 mb-2 flex items-end gap-2">
+      <form onSubmit={onSubmit} role="search" className="mt-n3 mb-n2 flex items-end gap-n2">
         <div className="grow">
           <Label htmlFor="search-q" className="sr-only">
             <Trans>キーワード・意味検索</Trans>
@@ -107,67 +142,179 @@ export function SearchResultsPage() {
         <Button type="submit" variant="primary" disabled={input.trim().length === 0}>
           <Trans>検索</Trans>
         </Button>
-        <Link to="/ask" className="shrink-0 text-sm text-[--color-brand] hover:underline">
+        <Link to="/ask" className="shrink-0 text-sm text-brand hover:underline">
           <Trans>← チャットに戻る</Trans>
         </Link>
       </form>
 
-      {search.isFetching && (
-        <p role="status" className="text-sm text-[--color-fg-muted]">
-          <Trans>検索中…</Trans>
-        </p>
-      )}
+      {/* hi-fi の 2 行目: 件数 … 並び ▾ … 検索モード ▾。
+          件数は取得できたときだけ出す（取得前・失敗時に「0 件」と読める器を置かない）。 */}
+      <div className="mb-n2 flex flex-wrap items-center gap-n2">
+        <ResultCount data={search.isSuccess ? search.data : undefined} />
+        <span className="grow" />
+        <SearchOptionSelect
+          id="search-sort"
+          label={t`並び`}
+          value={sort ?? DEFAULT_SEARCH_SORT}
+          options={SEARCH_SORTS}
+          optionLabel={searchSortLabel}
+          onChange={(next) =>
+            void navigate({
+              to: '/search',
+              // `q` を明示するのは、更新関数の戻り値が**そのルートの検索パラメータを満たす**
+              // 必要があるためである（`q` は必須）。値は URL から読んだものをそのまま戻す。
+              search: (prev: Partial<ResultsSearch>) => ({
+                ...prev,
+                q,
+                sort: next === DEFAULT_SEARCH_SORT ? undefined : (next as SearchSort),
+              }),
+            })
+          }
+        />
+        <SearchOptionSelect
+          id="search-mode"
+          label={t`検索モード`}
+          value={mode ?? DEFAULT_SEARCH_MODE}
+          options={SEARCH_MODES}
+          optionLabel={searchModeLabel}
+          onChange={(next) =>
+            void navigate({
+              to: '/search',
+              search: (prev: Partial<ResultsSearch>) => ({
+                ...prev,
+                q,
+                mode: next === DEFAULT_SEARCH_MODE ? undefined : (next as SearchMode),
+              }),
+            })
+          }
+        />
+      </div>
 
-      {search.isError && (
-        <Alert tone="danger" role="alert" label={t`エラー`}>
-          {toMessages(search.error, t`検索に失敗しました。`).join(' / ')}
-        </Alert>
+      {/* 検索語が無いときは取得そのものが走らない（`enabled: false`）。無効な照会は
+          TanStack Query では永遠に `isPending` なので、**`QueryState` へ渡さない**
+          ——「読み込み中…」が消えない画面になる。 */}
+      {q === '' ? (
+        <EmptyState
+          title={t`検索語を入力してください。`}
+          description={t`キーワード、または探している内容を文で入力する。`}
+        />
+      ) : (
+        <QueryState
+          query={search}
+          loadingLabel={t`検索中…`}
+          errorTitle={t`検索に失敗しました。`}
+          isEmpty={(data) => (data.results ?? []).length === 0}
+          empty={
+            // deny-by-default: 権限外・0 件はいずれも中立に「見つからない」と表示する
+            // （存在秘匿・IADR-0009）。**次の行動を示す**——空は再試行ではなく条件の変更である。
+            <EmptyState
+              title={t`該当する文書はありません。`}
+              description={t`条件を変えて再検索してください。`}
+              action={
+                <Button type="button" onClick={focusSearchInput}>
+                  <Trans>検索条件を変える</Trans>
+                </Button>
+              }
+            />
+          }
+        >
+          {(data) => <ResultTable results={data.results ?? []} />}
+        </QueryState>
       )}
-
-      {search.isSuccess &&
-        (results.length === 0 ? (
-          // deny-by-default: 権限外・0 件はいずれも中立に「見つからない」と表示する（存在秘匿・IADR-0009）。
-          <p className="text-sm">
-            <Trans>該当する文書が見つかりませんでした。</Trans>
-          </p>
-        ) : (
-          <>
-            {/* FR-05: 一覧が全体ではないことを明示する（05_screens §SC-02「権限内のみ表示」を明示）。 */}
-            <p className="mb-2 text-sm text-[--color-fg-muted]">
-              <Trans>{totalHits} 件（権限内のみ表示）</Trans>
-              {shownCount < totalHits && (
-                <>
-                  {' '}
-                  <Trans>（表示 {shownCount} 件）</Trans>
-                </>
-              )}
-            </p>
-            <Table>
-              <TableCaption>
-                <Trans>検索結果</Trans>
-              </TableCaption>
-              <TableHead>
-                <TableRow>
-                  <TableHeaderCell>
-                    <Trans>文書</Trans>
-                  </TableHeaderCell>
-                  <TableHeaderCell>
-                    <Trans>タグ</Trans>
-                  </TableHeaderCell>
-                  <TableHeaderCell>
-                    <Trans>更新日時</Trans>
-                  </TableHeaderCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {results.map((r) => (
-                  <ResultRow key={r.chunkId} result={r} />
-                ))}
-              </TableBody>
-            </Table>
-          </>
-        ))}
     </section>
+  );
+}
+
+/**
+ * FR-05: 一覧が全体ではないことを明示する（05_screens §SC-02「権限内のみ表示」を明示）。
+ *
+ * `Tag` の children は文字列を要求するので、`t` のテンプレート形で組む。
+ * `lingui/no-expression-in-message`: 翻訳単位へ渡せるのは単一の変数だけである。
+ */
+function ResultCount({ data }: { data: SearchResponse | undefined }) {
+  const { t } = useLingui();
+  if (data === undefined) return null;
+  const results = data.results ?? [];
+  // 🔴 **0 件のときは出さない。** 「0 件（権限内のみ表示）」と書くと、
+  // **「在るが見せていない」と読める** —— 存在秘匿（IADR-0009）に反する。
+  // 件数が無いことは `EmptyState` の文言が中立に伝える（E2E の陰性対照が固定している）。
+  if (results.length === 0) return null;
+  const totalHits = data.totalHits ?? results.length;
+  const shownCount = results.length;
+  return (
+    <>
+      <Tag tone="neutral">{t`${totalHits} 件（権限内のみ表示）`}</Tag>
+      {shownCount < totalHits ? <Tag tone="neutral">{t`（表示 ${shownCount} 件）`}</Tag> : null}
+    </>
+  );
+}
+
+/** hi-fi のツールバーの「並び: 関連度 ▾」「検索モード: ハイブリッド ▾」。 */
+function SearchOptionSelect<T extends string>({
+  id,
+  label,
+  value,
+  options,
+  optionLabel,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: T;
+  options: readonly T[];
+  optionLabel: (value: T) => MessageDescriptor;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <span className="flex items-center gap-n2">
+      <Label htmlFor={id} className="shrink-0">
+        {label}
+      </Label>
+      <Select
+        id={id}
+        selectSize="sm"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-auto"
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {i18n._(optionLabel(option))}
+          </option>
+        ))}
+      </Select>
+    </span>
+  );
+}
+
+function ResultTable({ results }: { results: SearchResultDto[] }) {
+  return (
+    <Table>
+      <TableCaption>
+        <Trans>検索結果</Trans>
+      </TableCaption>
+      <TableHead>
+        <TableRow>
+          <TableHeaderCell>
+            <Trans>文書</Trans>
+          </TableHeaderCell>
+          <TableHeaderCell>
+            <Trans>機密区分</Trans>
+          </TableHeaderCell>
+          <TableHeaderCell>
+            <Trans>タグ</Trans>
+          </TableHeaderCell>
+          <TableHeaderCell>
+            <Trans>更新日時</Trans>
+          </TableHeaderCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {results.map((r) => (
+          <ResultRow key={r.chunkId} result={r} />
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
@@ -178,6 +325,9 @@ function ResultRow({ result }: { result: SearchResultDto }) {
   // 「本文なし（原本を参照）」を出す。**`hasBody === false` のときだけ**である
   // （項目を持たない応答＝本文ありとして従来どおり描く）。
   const bodyless = result.hasBody === false;
+  // hi-fi の SC-05 と同じく、機密区分は accent のチップで示す。値そのものは訳さない
+  // （表示名が計画に無い値がある。lib/abac/confidentiality.ts 参照）。
+  const confidentiality = result.attributes?.[CONFIDENTIALITY_KEY];
 
   return (
     <TableRow>
@@ -186,7 +336,7 @@ function ResultRow({ result }: { result: SearchResultDto }) {
         <Link
           to="/docs/$id"
           params={{ id: result.documentId }}
-          className="font-medium text-[--color-brand] hover:underline"
+          className="font-medium text-brand hover:underline"
         >
           {result.documentTitle}
         </Link>
@@ -201,8 +351,11 @@ function ResultRow({ result }: { result: SearchResultDto }) {
             </Link>
           </p>
         ) : (
-          <p className="text-xs text-[--color-fg-muted]">{result.text}</p>
+          <p className="text-xs text-fg-muted">{result.text}</p>
         )}
+      </TableCell>
+      <TableCell>
+        {confidentiality ? <Tag tone="accent">{confidentiality}</Tag> : <span aria-hidden>—</span>}
       </TableCell>
       <TableCell>
         <span className="flex flex-wrap gap-1">
@@ -216,7 +369,7 @@ function ResultRow({ result }: { result: SearchResultDto }) {
       {/* SC-02（裁定 Q6 / #536）: 更新日時。**未再索引のチャンクは値を持たない**ので `—` になる
           （[[IADR-0149]] 決定 3）。「日時が無い」と「まだ再索引していない」を利用者へ区別して
           見せない —— 索引の内部事情である。 */}
-      <TableCell className="whitespace-nowrap text-sm text-[--color-fg-muted]">
+      <TableCell className="whitespace-nowrap text-sm text-fg-muted">
         {formatDateTime(result.updatedAt)}
       </TableCell>
     </TableRow>

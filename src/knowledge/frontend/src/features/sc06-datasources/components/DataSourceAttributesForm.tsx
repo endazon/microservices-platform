@@ -1,15 +1,6 @@
 import { useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Input,
-  Label,
-  Select,
-} from '@platform/ui';
+import { Button, Panel, Input, Label, Select } from '@platform/ui';
 import {
   CONFIDENTIALITY_KEY,
   CONFIDENTIALITY_VALUES,
@@ -89,124 +80,117 @@ export function DataSourceAttributesForm({
     : [confidentiality, ...CONFIDENTIALITY_VALUES];
 
   return (
-    <Card className="mb-3">
-      <CardHeader>
-        <CardTitle>
-          <Trans>既定属性を編集: {sourceName}</Trans>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form
-          aria-label={t`既定属性の編集`}
-          className="flex flex-col gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (submitting) return;
+    <Panel heading={<Trans>既定属性を編集: {sourceName}</Trans>}>
+      <form
+        aria-label={t`既定属性の編集`}
+        className="flex flex-col gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (submitting) return;
 
-            // 全置換セマンティクスに合わせ、**自分が管理しないキーは保った土台**を作る。
-            const next: Record<string, string> = { ...current };
-            delete next[CONFIDENTIALITY_KEY];
-            delete next[DEPARTMENT_KEY];
-            delete next[LIFECYCLE_KEY];
+          // 全置換セマンティクスに合わせ、**自分が管理しないキーは保った土台**を作る。
+          const next: Record<string, string> = { ...current };
+          delete next[CONFIDENTIALITY_KEY];
+          delete next[DEPARTMENT_KEY];
+          delete next[LIFECYCLE_KEY];
 
-            // 未入力の `department` / 未指定の `lifecycle` は**キーごと送らない**（登録側と同じ
-            // 規約。#767 / #796）。値の有無ではなく**キーの有無**が「指定しなかった」を表す。
-            const trimmedDepartment = department.trim();
-            //
-            // FR-05, SC-06（#1194）: 🔴 **写像表は `defaultAttributes` とは別のキーで、常に送る。**
-            // 別の器なので「土台を保つ」細工は要らない（本フォームが表全体を持っている）。
-            // **空の表も送る** —— 管理者が最後の行を消したのなら、それは「空にした」である
-            // （既定属性の「未入力ならキーごと送らない」とは意味が違う。写像表には予約値が無い）。
-            onSubmit({
-              defaultAttributes: {
-                ...next,
-                [CONFIDENTIALITY_KEY]: confidentiality,
-                ...(trimmedDepartment ? { [DEPARTMENT_KEY]: trimmedDepartment } : {}),
-                ...(lifecycle ? { [LIFECYCLE_KEY]: lifecycle } : {}),
-              },
-              ownerMappings: ownerMap.mappings(),
-            });
-          }}
-        >
-          <div>
-            <Label htmlFor="ds-edit-conf">
-              <Trans>既定の機密区分</Trans>
-            </Label>
-            <Select
-              id="ds-edit-conf"
-              value={confidentiality}
-              onChange={(e) => setConfidentiality(e.target.value)}
-            >
-              {confidentialityOptions.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </Select>
-          </div>
+          // 未入力の `department` / 未指定の `lifecycle` は**キーごと送らない**（登録側と同じ
+          // 規約。#767 / #796）。値の有無ではなく**キーの有無**が「指定しなかった」を表す。
+          const trimmedDepartment = department.trim();
+          //
+          // FR-05, SC-06（#1194）: 🔴 **写像表は `defaultAttributes` とは別のキーで、常に送る。**
+          // 別の器なので「土台を保つ」細工は要らない（本フォームが表全体を持っている）。
+          // **空の表も送る** —— 管理者が最後の行を消したのなら、それは「空にした」である
+          // （既定属性の「未入力ならキーごと送らない」とは意味が違う。写像表には予約値が無い）。
+          onSubmit({
+            defaultAttributes: {
+              ...next,
+              [CONFIDENTIALITY_KEY]: confidentiality,
+              ...(trimmedDepartment ? { [DEPARTMENT_KEY]: trimmedDepartment } : {}),
+              ...(lifecycle ? { [LIFECYCLE_KEY]: lifecycle } : {}),
+            },
+            ownerMappings: ownerMap.mappings(),
+          });
+        }}
+      >
+        <div>
+          <Label htmlFor="ds-edit-conf">
+            <Trans>既定の機密区分</Trans>
+          </Label>
+          <Select
+            id="ds-edit-conf"
+            value={confidentiality}
+            onChange={(e) => setConfidentiality(e.target.value)}
+          >
+            {confidentialityOptions.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </Select>
+        </div>
 
-          <div>
-            <Label htmlFor="ds-edit-dept">
-              <Trans>既定の部門</Trans>
-            </Label>
-            <Input
-              id="ds-edit-dept"
-              value={department}
-              aria-describedby="ds-edit-dept-hint"
-              onChange={(e) => setDepartment(e.target.value)}
-              placeholder={t`例: 開発`}
-            />
-            <p id="ds-edit-dept-hint" className="text-xs text-[--color-fg-muted]">
-              <Trans>未入力のときは予約値 {UNRESOLVED_DEPARTMENT} が入ります。</Trans>
-            </p>
-          </div>
-
-          <div>
-            <Label htmlFor="ds-edit-lifecycle">
-              <Trans>既定のライフサイクル状態</Trans>
-            </Label>
-            <Select
-              id="ds-edit-lifecycle"
-              value={lifecycle}
-              aria-describedby="ds-edit-lifecycle-hint"
-              onChange={(e) => setLifecycle(e.target.value)}
-            >
-              <option value="">{t`未指定`}</option>
-              {LIFECYCLE_VALUES.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </Select>
-            <p id="ds-edit-lifecycle-hint" className="text-xs text-[--color-fg-muted]">
-              <Trans>未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。</Trans>
-            </p>
-          </div>
-
-          <OwnerMappingRows
-            rows={ownerMap.rows}
-            onChange={ownerMap.setRows}
-            idPrefix={ownerMap.idPrefix}
+        <div>
+          <Label htmlFor="ds-edit-dept">
+            <Trans>既定の部門</Trans>
+          </Label>
+          <Input
+            id="ds-edit-dept"
+            value={department}
+            aria-describedby="ds-edit-dept-hint"
+            onChange={(e) => setDepartment(e.target.value)}
+            placeholder={t`例: 開発`}
           />
-
-          {/* 既定属性が効くのは**これ以降に取り込まれる文書**である。取り込み済みの文書の属性は
-              この操作では変わらない（遡及適用は #516 の裁定待ち）。誤解を招くため明示する。 */}
-          <p className="text-xs text-[--color-fg-muted]">
-            <Trans>
-              既定属性は、これ以降に取り込まれる文書に適用されます。取り込み済みの文書は変わりません。
-            </Trans>
+          <p id="ds-edit-dept-hint" className="text-xs text-fg-muted">
+            <Trans>未入力のときは予約値 {UNRESOLVED_DEPARTMENT} が入ります。</Trans>
           </p>
+        </div>
 
-          <div className="flex gap-2">
-            <Button type="submit" variant="primary" disabled={submitting}>
-              <Trans>更新する</Trans>
-            </Button>
-            <Button type="button" onClick={onCancel}>
-              <Trans>キャンセル</Trans>
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+        <div>
+          <Label htmlFor="ds-edit-lifecycle">
+            <Trans>既定のライフサイクル状態</Trans>
+          </Label>
+          <Select
+            id="ds-edit-lifecycle"
+            value={lifecycle}
+            aria-describedby="ds-edit-lifecycle-hint"
+            onChange={(e) => setLifecycle(e.target.value)}
+          >
+            <option value="">{t`未指定`}</option>
+            {LIFECYCLE_VALUES.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </Select>
+          <p id="ds-edit-lifecycle-hint" className="text-xs text-fg-muted">
+            <Trans>未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。</Trans>
+          </p>
+        </div>
+
+        <OwnerMappingRows
+          rows={ownerMap.rows}
+          onChange={ownerMap.setRows}
+          idPrefix={ownerMap.idPrefix}
+        />
+
+        {/* 既定属性が効くのは**これ以降に取り込まれる文書**である。取り込み済みの文書の属性は
+              この操作では変わらない（遡及適用は #516 の裁定待ち）。誤解を招くため明示する。 */}
+        <p className="text-xs text-fg-muted">
+          <Trans>
+            既定属性は、これ以降に取り込まれる文書に適用されます。取り込み済みの文書は変わりません。
+          </Trans>
+        </p>
+
+        <div className="flex gap-2">
+          <Button type="submit" variant="primary" disabled={submitting}>
+            <Trans>更新する</Trans>
+          </Button>
+          <Button type="button" onClick={onCancel}>
+            <Trans>キャンセル</Trans>
+          </Button>
+        </div>
+      </form>
+    </Panel>
   );
 }

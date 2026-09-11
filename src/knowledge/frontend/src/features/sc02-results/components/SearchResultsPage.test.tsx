@@ -254,14 +254,83 @@ describe('SearchResultsPage (SC-02)', () => {
   });
 
   // deny-by-default: 権限外・0 件はいずれも中立に表示する（存在秘匿・IADR-0009）。
-  it('shows a neutral empty message when results are empty (existence hidden)', async () => {
+  //
+  // **［2026-09-12］文言が変わった**（`QueryState` ＋ `EmptyState` への統一）。
+  // 「見つかりませんでした」は**探した結果の報告**でしかなく、次の一手を示さない。
+  // 空は再試行ではなく**条件の変更**なので、説明と導線をそこへ向ける（実装が正・テストを追随）。
+  it('shows a neutral empty message with a next step when results are empty (existence hidden)', async () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse({ results: [], totalHits: 0, elapsedMs: 1 }));
     await renderPage();
     await search('取締役会');
 
-    expect(await screen.findByText('該当する文書が見つかりませんでした。')).toBeInTheDocument();
+    expect(await screen.findByText('該当する文書はありません。')).toBeInTheDocument();
+    expect(screen.getByText('条件を変えて再検索してください。')).toBeInTheDocument();
+    // **0 件は失敗ではない**——再試行ボタンも `role="alert"` も出さない（ErrorState と見分けが付く）。
+    expect(screen.queryByRole('button', { name: '再試行' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    // 次の一手（検索入力へ戻す導線）がある。
+    expect(screen.getByRole('button', { name: '検索条件を変える' })).toBeInTheDocument();
     // 「権限がない」を示唆する文言を出さない。
     expect(screen.queryByText(/権限がありません/)).not.toBeInTheDocument();
+  });
+
+  // SC-02（裁定 Q4 / Q5）: 検索モード（3 値）と並び順（2 値）の切替。**URL が単一情報源**であり、
+  // **既定（hybrid / relevance）は URL にも要求本文にも載せない**（既存の `/search?q=` の形と、
+  // 既定のままの要求本文 `{ query, topK }` をどちらも動かさないため）。
+  it('switches the search mode through the url and sends it only when non-default', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(RESPONSE));
+    const user = userEvent.setup();
+    const { router } = await renderPage('/search?q=%E7%B5%8C%E8%B2%BB');
+    await screen.findByRole('link', { name: '経費精算規程 v3.2' });
+
+    // 既定では本文に mode / sortBy を載せない。
+    expect(sentQuery(mocks.apiRequest.mock.calls[0])).toEqual({ query: '経費', topK: 20 });
+
+    await user.selectOptions(screen.getByLabelText('検索モード'), 'keyword');
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ mode: 'keyword' }));
+    await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(String((mocks.apiRequest.mock.calls[1][1] as RequestInit).body))).toEqual({
+      query: '経費',
+      topK: 20,
+      mode: 'keyword',
+    });
+  });
+
+  it('switches the sort order through the url', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(RESPONSE));
+    const user = userEvent.setup();
+    const { router } = await renderPage('/search?q=%E7%B5%8C%E8%B2%BB');
+    await screen.findByRole('link', { name: '経費精算規程 v3.2' });
+
+    await user.selectOptions(screen.getByLabelText('並び'), 'updated');
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ sort: 'updated' }));
+    await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(String((mocks.apiRequest.mock.calls[1][1] as RequestInit).body))).toEqual({
+      query: '経費',
+      topK: 20,
+      sortBy: 'updated',
+    });
+  });
+
+  // 未知・既定の値は `undefined` へ倒れる（URL へ既定を書き戻さない。契約も「未知は hybrid」）。
+  it('falls back to the defaults for unknown mode/sort values in the url', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(RESPONSE));
+    await renderPage('/search?q=%E7%B5%8C%E8%B2%BB&mode=telepathy&sort=price');
+    await screen.findByRole('link', { name: '経費精算規程 v3.2' });
+
+    expect(sentQuery(mocks.apiRequest.mock.calls[0])).toEqual({ query: '経費', topK: 20 });
+    expect(screen.getByLabelText('検索モード')).toHaveValue('hybrid');
+    expect(screen.getByLabelText('並び')).toHaveValue('relevance');
+  });
+
+  // hi-fi モック（sc-02）のツールバー行: 機密区分は accent のチップで示す（SC-05 と同じ扱い）。
+  it('lists the confidentiality of each result', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(RESPONSE));
+    await renderPage();
+    await search('経費精算');
+
+    const row = (await screen.findByRole('link', { name: '経費精算規程 v3.2' })).closest('tr')!;
+    expect(within(row).getByText('internal')).toBeInTheDocument();
   });
 
   it('shows an alert when the search request fails', async () => {

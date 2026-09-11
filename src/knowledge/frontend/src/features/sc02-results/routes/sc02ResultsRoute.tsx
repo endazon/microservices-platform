@@ -2,6 +2,8 @@ import { msg } from '@lingui/core/macro';
 import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
 import type { FeatureBreadcrumb, PlanNavItem } from '@foundation/routing/featureRegistry';
+import { normalizeMode, normalizeSort } from '../types/searchOptions';
+import type { ResultsSearch } from '../types/searchOptions';
 
 // SC-02, UC-01, FR-03/FR-05: 検索結果一覧（05_screens: ルート /search?q=）。認証済みユーザー向け。
 // ABAC はサーバ側（/bff/search の deny-by-default）で適用され、権限外文書は結果に現れない。
@@ -20,8 +22,16 @@ export const createSc02ResultsRoute = (shell: ShellRoute) =>
     // SC-02, IADR-0124: `?q=` を型付きの検索パラメータとして受ける（ADR-0031 が TanStack Router を
     // 採った理由そのもの）。URL は外部由来なので、文字列でない・欠落した値は空文字へ正規化する。
     // IADR-0126 決定 3: この値が検索語の**単一情報源**である。
-    validateSearch: (raw: Record<string, unknown>): { q: string } => ({
+    //
+    // **検索モード・並び順も同じく URL が単一情報源である**（hi-fi モックのツールバー行）。
+    // 既定（hybrid / relevance）と未知の値はいずれも `undefined` へ倒すので、
+    // **`/search?q=経費` という既存の URL の形は変わらない**（`types/searchOptions.ts` 参照）。
+    // 省略可能な項目にしてあるため、`search={{ q }}` だけを渡す既存の導線（SC-01 / SC-03）も
+    // そのまま型が通る。
+    validateSearch: (raw: Record<string, unknown>): ResultsSearch => ({
       q: typeof raw.q === 'string' ? raw.q : '',
+      mode: normalizeMode(raw.mode),
+      sort: normalizeSort(raw.sort),
     }),
     component: SearchResultsPage,
   });

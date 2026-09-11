@@ -1,12 +1,12 @@
+import type { ReactNode } from 'react';
 import { i18n } from '@lingui/core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Link, useParams } from '@tanstack/react-router';
 import {
-  Alert,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
+  EmptyState,
+  Kv,
+  KvItem,
+  Panel,
   StatusBadge,
   Table,
   TableBody,
@@ -17,6 +17,7 @@ import {
   TableRow,
   Tag,
 } from '@platform/ui';
+import { QueryState } from '@foundation/ui/QueryState';
 // SC-03, UC-07, #1200 / IADR-0365 決定 1: 「Wiki で閲覧」は**権限内の Wiki 台帳にこの文書が載っているとき**だけ出す
 // （実行時 config `wikiBaseUrl` の有無で出し分ける形は廃止。stg/prod では同値が供給されないため一度も出なかった）。
 import { useWikiPageIndex } from '../../../lib/wiki-pages';
@@ -35,10 +36,19 @@ import type {
   DocumentDto,
   DocumentVersionDto,
 } from '@foundation/api/generated/bff.schemas';
+import type { UseQueryResult } from '@tanstack/react-query';
 
 // SC-03, UC-01/UC-02/UC-07, FR-05/FR-06/FR-12: 文書詳細／プレビュー（05_screens: ルート /docs/:id）。
 // 正規化文書（Markdown）本文と属性・タグ・版履歴を表示し、出典元・Wiki（SC-04）への導線を提供する。
 // ABAC はサーバ側で適用され、権限外・不在はいずれも 404（存在秘匿・IADR-0009）→ UI は中立に表示する。
+//
+// **［2026-09-12 / UI/UX 改善］hi-fi モック（sc-03）の 2 カラム構造へ寄せた。**
+//   左（`flex-[1.7]`）= `.ttl` ＋ `.sub` ＋ 本文の `Panel` ＋ 導線の行 ＋ AI 提案の `Panel`、
+//   右（`flex-1`）= 属性・タグの `Kv` ＋ 版履歴の `Table`。`Card` は**カード（一覧に並ぶ独立した単位）**
+//   の部品であり、本文の**区画**はモックの `.panel`＝`Panel` である。
+//   待ち・失敗は `QueryState` へ寄せた。**ただし 404 だけは `QueryState` の手前で分ける**——
+//   404 は「無い」であって「失敗」ではなく、`ErrorState`（`role="alert"` ＋ 再試行）で出すと
+//   **存在秘匿が壊れ**、押しても必ず同じ 404 になる再試行を押させることになる（SC-18 と同じ作法）。
 //
 // SC-03, FR-17, SC-18 (#1240): **計画が本画面へ置くと定めた 2 つは、これで両方とも揃った。**
 // 05_screens §SC-03「知識グラフ」（2026-08-02 の利用者裁定）は
@@ -70,81 +80,75 @@ export function DocumentDetailPage() {
   // 「読み込み中」を段に出すと、パンくずが現在地ではなく状態の表示になる）。
   useBreadcrumbLeaf(detail.data?.title);
 
-  if (detail.isPending) {
+  // 404（不在／秘匿）と 5xx を分ける。**404 は文書の有無を示さない中立表示**であり、
+  // `role="alert"` も再試行も付けない（同じ要求は必ず同じ 404 を返す）。
+  // SC-18 の「起点未指定 → 404 → 三部品」と同じ描き分けである。
+  if (isNotFound(detail.error)) {
     return (
-      <p role="status" className="text-sm text-[--color-fg-muted]">
-        <Trans>読み込み中…</Trans>
-      </p>
+      <EmptyState
+        title={t`文書が見つかりませんでした。`}
+        description={t`URL を確かめるか、検索から辿り直してください。`}
+      />
     );
   }
 
-  if (detail.isError) {
-    // 404（不在／秘匿）と 5xx を分ける。404 は文書の有無を示さない中立表示、5xx はサーバの状態である。
-    return isNotFound(detail.error) ? (
-      <p className="text-sm">
-        <Trans>文書が見つかりませんでした。</Trans>
-      </p>
-    ) : (
-      <Alert tone="danger" role="alert" label={t`エラー`}>
-        <Trans>文書の取得に失敗しました。</Trans>
-      </Alert>
-    );
-  }
+  return (
+    <QueryState query={detail} errorTitle={t`文書の取得に失敗しました。`}>
+      {(doc) => <DocumentDetail doc={doc} content={content} versions={versions} />}
+    </QueryState>
+  );
+}
 
-  const doc = detail.data;
+function DocumentDetail({
+  doc,
+  content,
+  versions,
+}: {
+  doc: DocumentDto;
+  content: UseQueryResult<DocumentContentDto, unknown>;
+  versions: UseQueryResult<DocumentVersionDto[], unknown>;
+}) {
   // `lingui/no-expression-in-message`: 翻訳単位へ渡せるのは単一の変数だけである
   // （プロパティ参照・関数呼び出しはカタログの ID を壊す）。
   const status = doc.status;
   const version = doc.version;
   const updatedAt = formatDateTime(doc.updatedAt);
+
   return (
-    <section className="flex flex-col gap-4 lg:flex-row">
-      <div className="min-w-0 grow">
-        <h1 className="text-lg font-semibold text-[--color-fg]">{doc.title}</h1>
-        <p className="mb-3 text-sm text-[--color-fg-muted]">
+    <section className="flex flex-col gap-n4 lg:flex-row">
+      <div className="min-w-0 lg:flex-[1.7]">
+        {/* hi-fi `.ttl` / `.sub`。 */}
+        <h1 className="text-[17px] font-medium text-fg">{doc.title}</h1>
+        <p className="text-xs text-fg-muted">
           <Trans>正規化文書（Markdown）プレビュー</Trans>
         </p>
-        <p className="mb-3 text-xs text-[--color-fg-muted]">
+        <p className="mb-n3 text-xs text-fg-muted">
           <Trans>
             状態: {status}｜版: v{version}｜更新: {updatedAt}
           </Trans>
         </p>
 
-        <ContentView
-          isPending={content.isPending}
-          isError={content.isError}
-          content={content.data}
-          hasBody={doc.hasBody !== false}
-        />
+        <ContentView content={content} hasBody={doc.hasBody !== false} />
+        {/* hi-fi の順: 本文 → 導線の行 → AI 提案。 */}
+        <SourceLinks doc={doc} content={content.data} />
         {/* 05_screens §SC-03:「本文の下部に表示し、その場で承認／却下できる」。0 件なら欄ごと出ない。 */}
         <AiSuggestionPanel documentId={doc.id} />
-        <SourceLinks doc={doc} content={content.data} />
       </div>
 
-      <div className="min-w-0 lg:w-80">
-        <Card className="mb-3">
-          <CardHeader>
-            <CardTitle as="h2">
-              <Trans>属性・タグ</Trans>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <AttributeList attributes={doc.attributes} tags={doc.tags} />
-          </CardContent>
-        </Card>
+      <div className="min-w-0 lg:flex-1">
+        <Panel heading={<Trans>属性・タグ</Trans>}>
+          <AttributeList attributes={doc.attributes} tags={doc.tags} />
+        </Panel>
 
-        {versions.isSuccess && versions.data.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle as="h2">
-                <Trans>バージョン</Trans>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <VersionTable versions={versions.data} />
-            </CardContent>
-          </Card>
-        )}
+        {/* 版履歴は**補助情報**である。取れない・0 件のときは**欄ごと出さない**——
+            本体（本文と属性）の読みを妨げないためであり、`QueryState` へは寄せない
+            （失敗を `role="alert"` で割り込ませる相手ではない。
+            不在は `DocumentDetailPage.test.tsx` が固定している）。 */}
+        {versions.isSuccess && versions.data.length > 0 ? (
+          <Panel heading={<Trans>バージョン</Trans>}>
+            <VersionTable versions={versions.data} />
+          </Panel>
+        ) : null}
       </div>
     </section>
   );
@@ -158,50 +162,39 @@ export function DocumentDetailPage() {
  * Markdown レンダラは無い。原文を等幅・改行保持で安全に表示する。
  */
 function ContentView({
-  isPending,
-  isError,
   content,
   hasBody,
 }: {
-  isPending: boolean;
-  isError: boolean;
-  content?: DocumentContentDto;
+  content: UseQueryResult<DocumentContentDto, unknown>;
   hasBody: boolean;
 }) {
   // `StatusBadge` の children は文字列を要求する（アイコン＋テキストを内部で組むため）。
   // SC-02 と同じく `useLingui().t` のテンプレート形で渡す。
   const { t } = useLingui();
   return (
-    <Card className="mb-3">
-      <CardHeader>
-        <CardTitle as="h2">
-          <Trans>本文</Trans>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {/* SC-03, ADR-0070 決定 3・決定 4 / #1254（[[IADR-0388]] 決定 2）:
-            **原本が本文を持たない文書**（テキスト層の無い PDF 等）は、空の本文を出すのではなく
-            SC-02 と**同じ文言・同じ導出**で「本文なし（原本を参照）」を示し、原本の導線
-            （下の SourceLinks）へ委ねる。空の `pre` を出すと「読み込みに失敗した」と読み違える。
-            **`hasBody === false` のときだけ**である（項目を持たない旧応答は従来どおり本文を描く）。 */}
-        {!hasBody && <StatusBadge tone="neutral">{t`本文なし（原本を参照）`}</StatusBadge>}
-        {hasBody && isPending && (
-          <p role="status" className="text-sm text-[--color-fg-muted]">
-            <Trans>本文を読み込み中…</Trans>
-          </p>
-        )}
-        {hasBody && isError && (
-          <p className="text-sm text-[--color-fg-muted]">
-            <Trans>本文は利用できません。</Trans>
-          </p>
-        )}
-        {hasBody && content && (
-          <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-[--radius-control] bg-[--color-surface-muted] p-3 text-sm">
-            {content.markdown}
-          </pre>
-        )}
-      </CardContent>
-    </Card>
+    <Panel heading={<Trans>本文</Trans>}>
+      {/* SC-03, ADR-0070 決定 3・決定 4 / #1254（[[IADR-0388]] 決定 2）:
+          **原本が本文を持たない文書**（テキスト層の無い PDF 等）は、空の本文を出すのではなく
+          SC-02 と**同じ文言・同じ導出**で「本文なし（原本を参照）」を示し、原本の導線
+          （下の SourceLinks）へ委ねる。空の `pre` を出すと「読み込みに失敗した」と読み違える。
+          **`hasBody === false` のときだけ**である（項目を持たない旧応答は従来どおり本文を描く）。
+          **本文を取りに行っていないので `QueryState` へは渡さない**——無効な照会は永遠に待ちである。 */}
+      {hasBody ? (
+        <QueryState
+          query={content}
+          loadingLabel={t`本文を読み込み中…`}
+          errorTitle={t`本文は利用できません。`}
+        >
+          {(data) => (
+            <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-surface-muted p-3 text-sm">
+              {data.markdown}
+            </pre>
+          )}
+        </QueryState>
+      ) : (
+        <StatusBadge tone="neutral">{t`本文なし（原本を参照）`}</StatusBadge>
+      )}
+    </Panel>
   );
 }
 
@@ -222,24 +215,20 @@ function SourceLinks({ doc, content }: { doc: DocumentDto; content?: DocumentCon
   const sourceUri = content?.sourceUri ?? doc.markdownUri ?? null;
   const isHttp = !!sourceUri && /^https?:\/\//i.test(sourceUri);
   return (
-    <p className="flex flex-wrap items-center gap-2 text-sm">
+    <p className="mb-n3 flex flex-wrap items-center gap-n2 text-sm">
       {hasWikiPage && (
         <>
           {/* UC-07: Wiki 閲覧導線（内部ルート）。閲覧範囲は前段ゲートウェイ（ABAC）が台帳の側で決めている。 */}
           <span aria-hidden>📖</span>
-          <Link
-            to="/wiki"
-            search={{ doc: doc.id }}
-            className="text-[--color-brand] hover:underline"
-          >
+          <Link to="/wiki" search={{ doc: doc.id }} className="text-brand hover:underline">
             <Trans>Wikiで閲覧</Trans>
           </Link>
-          <span className="text-[--color-fg-muted]" aria-hidden>
+          <span className="text-fg-muted" aria-hidden>
             ｜
           </span>
         </>
       )}
-      <span className="text-[--color-fg-muted]">
+      <span className="text-fg-muted">
         <Trans>原本</Trans>:
       </span>
       {sourceUri ? (
@@ -248,17 +237,17 @@ function SourceLinks({ doc, content }: { doc: DocumentDto; content?: DocumentCon
             href={sourceUri}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[--color-brand] hover:underline"
+            className="text-brand hover:underline"
           >
             {sourceUri}
           </a>
         ) : (
-          <code className="text-xs text-[--color-fg-muted]">{sourceUri}</code>
+          <code className="text-xs text-fg-muted">{sourceUri}</code>
         )
       ) : (
         <span aria-hidden>—</span>
       )}
-      <span className="text-[--color-fg-muted]" aria-hidden>
+      <span className="text-fg-muted" aria-hidden>
         ｜
       </span>
       {/* SC-18, UC-10, FR-17 (#1240): 近傍探索の**起点として本文書を引き渡す**。
@@ -278,7 +267,7 @@ function SourceLinks({ doc, content }: { doc: DocumentDto; content?: DocumentCon
       <Link
         to="/graph"
         search={{ root: doc.id, hops: 2, by: 'distance' }}
-        className="text-[--color-brand] hover:underline"
+        className="text-brand hover:underline"
       >
         <Trans>ナレッジグラフで見る</Trans>
       </Link>
@@ -296,22 +285,21 @@ function AttributeList({
   const { t } = useLingui();
   const entries = orderedAttributes(attributes);
   return (
-    <dl className="flex flex-col gap-1.5 text-sm">
-      {entries.map(([key, value]) => {
+    // hi-fi の属性欄は 1 列である（`Kv columns={1}`）。項目名と値の対は `dl` が担う。
+    <Kv columns={1}>
+      {entries.map(([key, value]): ReactNode => {
         const label = attributeLabel(key);
         return (
-          <div key={key} className="flex gap-2">
-            <dt className="text-[--color-fg-muted]">{label ? i18n._(label) : key}:</dt>
+          <KvItem key={key} label={label ? i18n._(label) : key}>
             {/* 値は変換せず生値を出す（attributes.ts の冒頭コメント参照）。 */}
-            <dd>{value}</dd>
-          </div>
+            {value}
+          </KvItem>
         );
       })}
-      <div className="flex flex-wrap items-baseline gap-2">
-        <dt className="text-[--color-fg-muted]">{t`タグ`}:</dt>
-        <dd className="flex flex-wrap gap-1">
+      <KvItem label={t`タグ`}>
+        <span className="flex flex-wrap gap-1">
           {tags.length === 0 ? (
-            <span className="text-[--color-fg-muted]" aria-hidden>
+            <span className="text-fg-muted" aria-hidden>
               —
             </span>
           ) : (
@@ -321,9 +309,9 @@ function AttributeList({
               </Tag>
             ))
           )}
-        </dd>
-      </div>
-    </dl>
+        </span>
+      </KvItem>
+    </Kv>
   );
 }
 

@@ -4,6 +4,8 @@ import { Link } from '@tanstack/react-router';
 import {
   Alert,
   Button,
+  EmptyState,
+  Note,
   StatusBadge,
   Table,
   TableBody,
@@ -14,6 +16,7 @@ import {
   TableRow,
   Tag,
 } from '@platform/ui';
+import { QueryState } from '@foundation/ui/QueryState';
 import { i18n } from '@foundation/i18n';
 import { PlatformRole, useHasAnyRole } from '@foundation/auth/roles';
 import { toMessages } from '@foundation/utils/apiErrors';
@@ -25,14 +28,22 @@ import { useDataSourceActions, useDataSources } from '../api/useDataSources';
 // SC-06, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type { DataSourceDto } from '@foundation/api/generated/bff.schemas';
 
+// **［2026-09-12 / UI/UX 改善］hi-fi モック（sc-06）の構造へ寄せた。**
+//   `.ttl`「データソース」＋「＋ ソース登録」の行、表（ソース／種別／同期状態／**次回同期**／操作）、
+//   末尾の Vault 注記は `.note`（琥珀）＝`Note tone="warn"` である（`Alert` は「いま起きたこと」の器
+//   であり、常にそこに在る補足を同じ強さで描くと本当の通知が埋もれる）。
+//   一覧の待ち・空・失敗は `QueryState` へ統一した（更新系の結果通知は従来どおり `Alert` である）。
+//
 // SC-06, UC-04, FR-01/FR-02: データソース管理画面（05_screens: ルート /admin/sources）。
 // ソースの登録・一覧・同期状態の確認・手動同期を行い、SC-07（変換ジョブ）への導線を持つ。
 //
 // 未実装の要素（画面仕様書 docs/screens/SC-06_datasource-management.md §hi-fi モックアップとの対応）:
 //   - **「⚠ 再試行中（3/5）」**: **［2026-08-08 / #537］実装した。** 契約が同期健全性
 //     （`consecutiveFailureCount` / `retryLimit` / `lastSyncError`）を持ったため（裁定 Q14）。
-//   - **「次回同期」列**: 契約（`nextSyncAt`）は #538 で揃ったが、**列の表示は未実装**である
-//     （全ソース同値の共通間隔。IADR-0136）。
+//   - **「次回同期」列**: **［2026-09-12］実装した。** 契約（`nextSyncAt`）は #538 で揃っており、
+//     残っていたのは列の側だけだった。**全ソースで同じ値**になる（共通間隔。IADR-0136）ので、
+//     ソース別スケジュールと読み違えないよう、**表の下に共通間隔である旨の注記を置く**。
+//     定期同期が無効なとき（`DataSourceSync:Enabled=false`）は `null` ＝ `—` である。
 //   - **行操作「設定」**: **［2026-08-08 / #534］契約側の更新 API（PUT / PATCH）は揃った。**
 //     **［2026-08-28 追記 / #754］既定属性（`confidentiality` / `department` / `lifecycle`）の
 //     編集フォームを置いた**（計画 §SC-06「登録・**更新**フォームは既定属性 3 つを持つ」）。
@@ -85,8 +96,9 @@ export function DataSourceManagementPage() {
 
   return (
     <section>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-lg font-semibold text-[--color-fg]">
+      <div className="mb-n3 flex flex-wrap items-center justify-between gap-n2">
+        {/* hi-fi `.ttl`。 */}
+        <h1 className="text-[17px] font-medium text-fg">
           <Trans>データソース</Trans>
         </h1>
         {/* 押しても 403 になるボタンを置かない（#502 が確立した規則・[[IADR-0127]] 決定 1）。
@@ -103,7 +115,7 @@ export function DataSourceManagementPage() {
             <Trans>＋ ソース登録</Trans>
           </Button>
         ) : (
-          <span className="text-xs text-[--color-fg-muted]">
+          <span className="text-xs text-fg-muted">
             <Trans>ソースの登録・無効化は管理者のみ実行できます</Trans>
           </span>
         )}
@@ -159,26 +171,27 @@ export function DataSourceManagementPage() {
         </Alert>
       )}
 
-      {sources.isPending && (
-        <p role="status" className="text-sm text-[--color-fg-muted]">
-          <Trans>読み込み中…</Trans>
-        </p>
-      )}
-
-      {/* BFF は後段障害を空一覧へ縮退させない（502 で可視化する）。「未登録」と誤認させて
-          重複登録を招かないためであり、画面も取得失敗を 0 件表示へ寄せない。 */}
-      {sources.isError && (
-        <Alert tone="danger" role="alert" label={t`エラー`}>
-          {toMessages(sources.error, t`データソースを取得できませんでした。`).join(' / ')}
-        </Alert>
-      )}
-
-      {sources.isSuccess &&
-        (items.length === 0 ? (
-          <p className="text-sm">
-            <Trans>データソースは登録されていません。</Trans>
-          </p>
-        ) : (
+      {/* 一覧の待ち・空・失敗は `QueryState` の 1 本に統一する（判定順は失敗 → 待ち → 空 → 本体）。
+          🔴 **BFF は後段障害を空一覧へ縮退させない**（502 で可視化する）。「未登録」と誤認させて
+          重複登録を招かないためであり、画面も取得失敗を 0 件表示へ寄せない ——
+          `QueryState` の判定順（失敗が先）がこれを構造で保証する。 */}
+      <QueryState
+        query={sources}
+        loadingLabel={t`データソースを読み込み中…`}
+        errorTitle={t`データソースを取得できませんでした。`}
+        isEmpty={(data) => data.length === 0}
+        empty={
+          <EmptyState
+            title={t`データソースは登録されていません。`}
+            description={
+              canWrite
+                ? t`「＋ ソース登録」から取り込み元を登録してください。`
+                : t`登録は管理者が行います。`
+            }
+          />
+        }
+      >
+        {(rows) => (
           <Table>
             <TableCaption>
               <Trans>登録済みデータソースの一覧</Trans>
@@ -195,12 +208,15 @@ export function DataSourceManagementPage() {
                   <Trans>同期状態</Trans>
                 </TableHeaderCell>
                 <TableHeaderCell>
+                  <Trans>次回同期</Trans>
+                </TableHeaderCell>
+                <TableHeaderCell>
                   <Trans>操作</Trans>
                 </TableHeaderCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {items.map((source) => (
+              {rows.map((source) => (
                 <SourceRow
                   key={source.id}
                   source={source}
@@ -232,21 +248,32 @@ export function DataSourceManagementPage() {
               ))}
             </TableBody>
           </Table>
-        ))}
+        )}
+      </QueryState>
+
+      {/* hi-fi の 1 つ目の `.note`。**ソース別スケジュールは持たない**（IADR-0136）ことを、
+          「次回同期」列がソースごとに違う値に見えないよう明示する。 */}
+      <Note>
+        <Trans>
+          同期は全ソース共通の間隔で実行します。ソースごとに時刻を設定することはできません。
+        </Trans>
+      </Note>
 
       {/* 計画の遷移図 SC06 → SC07（取り込み → 変換の運用フロー）。 */}
       <p className="mt-4 text-sm">
-        <Link to="/admin/conversions" className="text-[--color-brand] hover:underline">
+        <Link to="/admin/conversions" className="text-brand hover:underline">
           <Trans>変換ジョブの状況を見る →</Trans>
         </Link>
       </p>
 
-      {/* 05_screens §SC-06 主要素の注記。静的な注記なので role は付けない。 */}
-      <Alert tone="info" className="mt-3" label={t`注記`}>
+      {/* 05_screens §SC-06 主要素の注記（hi-fi の 2 つ目の `.note`。琥珀＝`tone="warn"`）。
+          静的な注記なので role は付けない。**色は補強でしかない**ので、注意すべき理由
+          （接続の継続失敗はアラートになる）は本文に書く。 */}
+      <Note tone="warn">
         <Trans>
           接続情報（認証情報）は Vault 管理です。接続の継続失敗はアラートで通知されます。
         </Trans>
-      </Alert>
+      </Note>
     </section>
   );
 }
@@ -279,7 +306,7 @@ function SourceRow({
     <TableRow>
       <TableCell>
         <span className="font-medium">{source.name}</span>
-        <p className="text-xs text-[--color-fg-muted]">
+        <p className="text-xs text-fg-muted">
           <code>{source.connectionUri}</code>
         </p>
         {/* FR-05, UC-04, SC-06, ADR-0074 決定 1 (#1252): 既定属性 3 つと `owner` 写像表を
@@ -294,18 +321,20 @@ function SourceRow({
       <TableCell>
         <StatusBadge tone={state.tone}>{i18n._(state.label)}</StatusBadge>
         {state.showSyncedAt && (
-          <p className="text-xs text-[--color-fg-muted]">{formatDateTime(source.lastSyncedAt)}</p>
+          <p className="text-xs text-fg-muted">{formatDateTime(source.lastSyncedAt)}</p>
         )}
         {/* SC-06（Q14 / #537）: 直近エラーは「なぜ止まったか」の唯一の手掛かりである。値は
             サービス側でマスク済み（IADR-0053 と同じ守り）。異常時だけ出す。 */}
         {state.tone === 'warning' && source.lastSyncError && (
-          <p
-            className="text-xs text-[--color-fg-muted]"
-            title={formatDateTime(source.lastSyncErrorAt)}
-          >
+          <p className="text-xs text-fg-muted" title={formatDateTime(source.lastSyncErrorAt)}>
             <code>{source.lastSyncError}</code>
           </p>
         )}
+      </TableCell>
+      {/* SC-06（裁定 Q15 / #538 / IADR-0136）: 次回同期。**全ソースで同じ値**になる
+          （共通間隔）。定期同期が無効なら `null` ＝ `—` である。 */}
+      <TableCell className="whitespace-nowrap text-sm text-fg-muted">
+        {formatDateTime(source.nextSyncAt)}
       </TableCell>
       <TableCell>
         <span className="flex flex-wrap gap-2">

@@ -77,7 +77,7 @@ export function OwnerMappingRows({
       <Label htmlFor={`${idPrefix}-owner-map-src-0`}>
         <Trans>所有者の写像（ソース側の利用者 → 基盤の利用者）</Trans>
       </Label>
-      <p id={hintId} className="text-xs text-[--color-fg-muted]">
+      <p id={hintId} className="text-xs text-fg-muted">
         {/* **「予約値」と書く** —— `system` は「解決できなかったことの記録」であって既定値ではない
             （`lib/abac/owner.ts`）。ただし件数を債務として数えるかは `owner` では別である。 */}
         <Trans>

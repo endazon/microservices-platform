@@ -417,6 +417,29 @@ describe('ConversionJobsPage (SC-07)', () => {
     expect(table.getByText('Mermaid 2図')).toBeInTheDocument();
   });
 
+  // SC-07（裁定 Q13 / #533 / hi-fi:421）: **デッドレターは `failed` の内訳**である。
+  // `status` は `failed` のままで、標識として併記する（色 ＋ アイコン ＋ テキスト）。
+  // 試行回数の分母は契約の `maxAttempts` から取る（画面へ定数を複写しない）。
+  it('shows a dead-lettered job as a marker beside the failed status, not as a fifth status', async () => {
+    mockConversionApi([{ ...FAILED_JOB, deadLettered: true, attempts: 5, maxAttempts: 5 }]);
+    await renderPage(['platform-admin']);
+
+    const table = within(await screen.findByRole('table'));
+    // **状態は 4 値のまま**。
+    expect(table.getByText('失敗')).toBeInTheDocument();
+    expect(table.getByText('デッドレター（試行 5/5）')).toBeInTheDocument();
+  });
+
+  // **陽性対照**: 落ちていないジョブには標識が付かない（「常に出る」実装では上の 1 本だけでは緑になる）。
+  it('shows no dead-letter marker for a job that is not dead-lettered', async () => {
+    mockConversionApi([{ ...FAILED_JOB, deadLettered: false, attempts: 1, maxAttempts: 5 }]);
+    await renderPage(['platform-admin']);
+
+    const table = within(await screen.findByRole('table'));
+    expect(table.getByText('失敗')).toBeInTheDocument();
+    expect(table.queryByText(/デッドレター/)).not.toBeInTheDocument();
+  });
+
   // #1192 / 計画 ADR「PDF の本文抽出は pandoc の外に置く」決定 3: テキスト層を持たない PDF は
   // **「本文なしで完了」を理由つきで**表示し、`failed` の列（再変換の対象）に並ばない。
   // 状態バッジは「完了」のまま（4 値モデル不変）。色だけで意味を持たせない（標識はテキスト付き）。

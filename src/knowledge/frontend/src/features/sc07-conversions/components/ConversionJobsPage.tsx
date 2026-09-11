@@ -5,7 +5,9 @@ import { Link } from '@tanstack/react-router';
 import {
   Alert,
   Button,
+  EmptyState,
   Label,
+  Note,
   Select,
   StatusBadge,
   Table,
@@ -18,12 +20,15 @@ import {
 } from '@platform/ui';
 import { ApiError } from '@foundation/api/ApiError';
 import { PlatformRole, useHasAnyRole } from '@foundation/auth/roles';
+import { QueryState } from '@foundation/ui/QueryState';
 import { i18n } from '@foundation/i18n';
 import { toMessages } from '@foundation/utils/apiErrors';
 import {
+  attemptRatio,
   hasRetainedFigures,
   isBodyAbsent,
   isCorrectable,
+  isDeadLettered,
   isRetryable,
   jobStatusView,
   JOB_STATUSES,
@@ -34,6 +39,12 @@ import { FigureCorrectionPanel } from './FigureCorrectionPanel';
 // SC-07, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type { ConversionJobDto } from '@foundation/api/generated/bff.schemas';
 
+// **［2026-09-12 / UI/UX 改善］hi-fi モック（sc-07）の構造へ寄せた。**
+//   `.ttl`「変換ジョブ（pandoc＋LLM）」＋絞り込みの行、表、`.note`「補正のあるジョブを再実行すると
+//   補正は失われる」、2 ペインの補正編集。一覧の待ち・空・失敗は `QueryState` へ統一した
+//   （**再変換・補正の結果通知は従来どおり `Alert role="alert"`** である ——
+//   あちらは「取得の状態」ではなく「直前の操作の結果」であり、別の軸である）。
+//
 // SC-07, UC-06, FR-12: 変換ジョブ画面（05_screens: ルート /admin/conversions）。
 // 計画が 2026-08-04 に確定した内容（4 状態モデル・状態フィルタ・retry・**再変換は管理者ロール限定**・
 // 同一ジョブの直列化）に従う。API 側の管理者ロール強制の突合は #501（IADR-0128）が済ませている。
@@ -44,10 +55,11 @@ import type { ConversionJobDto } from '@foundation/api/generated/bff.schemas';
 //   **Markdown 全体の編集欄は置かない**——`05_screens:330` が Phase 2 へ繰り延べている。
 //
 // 実装しない要素（画面仕様書 docs/screens/SC-07_conversion-jobs.md §hi-fi モックアップとの対応）:
-//   - **「デッドレター」の内訳表示**: **契約は #533 で載った**（`ConversionJobDto.deadLettered` /
-//     `maxAttempts`。planning#198 の裁定 Q13）。**画面へ出す作業は本ファイルではまだ行っていない**——
-//     契約の追加とは別の作業単位であり、**人手補正とは別の資源**なので #651 でも束ねなかった
-//     （[[IADR-0139]] の判定単位は資源。作業仕様書 .ai-context/specs/20260806_issue-533_*.md §未決事項 1）。
+//   - **「デッドレター」の内訳表示**: **［2026-09-12］実装した**（契約は #533 で載っていた。
+//     `ConversionJobDto.deadLettered` / `attempts` / `maxAttempts`。planning#198 の裁定 Q13）。
+//     hi-fi:421 の「⚠ デッドレター」に対応する。**`status` の 5 値目にはしない** ——
+//     計画（`05_screens:320`）が「デッドレターの表示は failed の**内訳**として扱う」と定めている
+//     （`diagramsRetained` / `hasBody` と同じ、状態へ**併記する標識**である）。
 //   もとの記録は projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md（planning#198 で裁定済み）。
 
 /** 絞り込みの選択肢。**既定は「すべて」**（理由は画面仕様書 §絞り込みの既定値）。 */
@@ -157,15 +169,16 @@ export function ConversionJobsPage() {
   // **実効境界はサーバ側**であり、ここは表示制御にすぎない（IADR-0039 決定 2）。
   const canRetry = useHasAnyRole(PlatformRole.Admin);
 
-  const items = jobs.data ?? [];
-
   return (
     <section>
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-        <h1 className="text-lg font-semibold text-[--color-fg]">
+      <div className="mb-n3 flex flex-wrap items-end justify-between gap-n2">
+        {/* hi-fi `.ttl`。 */}
+        <h1 className="text-[17px] font-medium text-fg">
           <Trans>変換ジョブ（pandoc＋LLM）</Trans>
         </h1>
-        <div className="flex items-center gap-2">
+        {/* hi-fi は「失敗のみ ▾」の 1 つだけを描くが、**4 状態すべてを選べる形が上位互換**である
+            （「失敗のみ」は選択肢の 1 つとして含まれる）。既定は「すべて」（画面仕様書 §絞り込みの既定値）。 */}
+        <div className="flex items-center gap-n2">
           <Label htmlFor="job-filter" className="shrink-0">
             <Trans>状態で絞り込み</Trans>
           </Label>
@@ -283,26 +296,26 @@ export function ConversionJobsPage() {
         />
       )}
 
-      {jobs.isPending && (
-        <p role="status" className="text-sm text-[--color-fg-muted]">
-          <Trans>読み込み中…</Trans>
-        </p>
-      )}
-
-      {/* BFF は後段障害を空一覧へ縮退させない（502 で可視化する）。画面もこれに合わせ、
-          取得失敗を「ジョブ無し」と見せない。 */}
-      {jobs.isError && (
-        <Alert tone="danger" role="alert" label={t`エラー`}>
-          {toMessages(jobs.error, t`変換ジョブを取得できませんでした。`).join(' / ')}
-        </Alert>
-      )}
-
-      {jobs.isSuccess &&
-        (items.length === 0 ? (
-          <p className="text-sm">
-            <Trans>該当する変換ジョブはありません。</Trans>
-          </p>
-        ) : (
+      {/* 一覧の待ち・空・失敗は `QueryState` の 1 本に統一する（判定順は失敗 → 待ち → 空 → 本体）。
+          🔴 **BFF は後段障害を空一覧へ縮退させない**（502 で可視化する）。画面もこれに合わせ、
+          取得失敗を「ジョブ無し」と見せない —— `QueryState` の判定順がこれを構造で保証する。 */}
+      <QueryState
+        query={jobs}
+        loadingLabel={t`変換ジョブを読み込み中…`}
+        errorTitle={t`変換ジョブを取得できませんでした。`}
+        isEmpty={(data) => data.length === 0}
+        empty={
+          <EmptyState
+            title={t`該当する変換ジョブはありません。`}
+            description={
+              filter === ''
+                ? t`データソースから取り込むとジョブが並びます。`
+                : t`絞り込みを「すべて」に戻すと他のジョブが見えます。`
+            }
+          />
+        }
+      >
+        {(rows) => (
           <Table>
             <TableCaption>
               <Trans>変換ジョブの一覧</Trans>
@@ -327,7 +340,7 @@ export function ConversionJobsPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {items.map((job) => (
+              {rows.map((job) => (
                 <JobRow
                   key={job.id}
                   job={job}
@@ -349,11 +362,20 @@ export function ConversionJobsPage() {
               ))}
             </TableBody>
           </Table>
-        ))}
+        )}
+      </QueryState>
+
+      {/* hi-fi の `.note`（計画 `05_screens:313`）。**確認ダイアログそのものは 409 を受けてから出す**
+          （上の `pendingDiscard`）。ここは「そうなる」ことを前もって知らせる静的な注記である。 */}
+      <Note tone="warn">
+        <Trans>
+          補正のあるジョブを再実行すると、補正は失われます。実行前に確認を求めます（補正版が正）。
+        </Trans>
+      </Note>
 
       {/* 遷移図 SC06 → SC07 の逆方向の導線（計画のパンくずが示す階層。パンくず自体は #452 系）。 */}
-      <p className="mt-4 text-sm">
-        <Link to="/admin/sources" className="text-[--color-brand] hover:underline">
+      <p className="mt-n4 text-sm">
+        <Link to="/admin/sources" className="text-brand hover:underline">
           <Trans>← データソース管理へ戻る</Trans>
         </Link>
       </p>
@@ -383,6 +405,9 @@ function JobRow({
   const coded = job.diagramsCoded ?? 0;
   // ADR-0070 決定 3（#1192）: 「本文なしで完了」も同じく導出。`status` は `succeeded` のまま。
   const bodyAbsent = isBodyAbsent(job);
+  // 裁定 Q13（#533）: デッドレターも導出（`status` は `failed` のまま）。
+  const deadLettered = isDeadLettered(job);
+  const attempts = attemptRatio(job);
 
   return (
     <TableRow>
@@ -404,9 +429,16 @@ function JobRow({
           {/* ADR-0070 決定 3（#1192）「本文なしで完了」。**状態ではなく併記の標識**である
               （色 ＋ アイコン ＋ テキスト。tone は warning＝注意であって失敗ではない）。 */}
           {bodyAbsent && <StatusBadge tone="warning">{t`本文なしで完了`}</StatusBadge>}
+          {/* hi-fi:421「⚠ デッドレター」（裁定 Q13 / #533）。**failed の内訳**であって 5 値目ではない。
+              試行回数は契約の `attempts` / `maxAttempts` から組む（分母を画面へ複写しない）。 */}
+          {deadLettered && (
+            <StatusBadge tone="warning">
+              {attempts === null ? t`デッドレター` : t`デッドレター（試行 ${attempts}）`}
+            </StatusBadge>
+          )}
         </div>
       </TableCell>
-      <TableCell className="text-xs text-[--color-fg-muted]">
+      <TableCell className="text-xs text-fg-muted">
         {/* hi-fi:422「Mermaid 2図」——備考は `diagramsCoded` から導出する。
             補間には**素の変数だけ**を置く（`lingui/no-expression-in-message`）。
             「本文なしで完了」は**理由つき**で出す（ADR-0070 決定 3。理由は契約の `hasBody` から
@@ -430,7 +462,7 @@ function JobRow({
                 <Trans>人手補正</Trans>
               </Button>
             ) : (
-              <span className="text-xs text-[--color-fg-muted]">
+              <span className="text-xs text-fg-muted">
                 <Trans>人手補正は管理者のみ実行できます</Trans>
               </span>
             ))}
@@ -448,7 +480,7 @@ function JobRow({
             ) : (
               // 無言でボタンを消すと「このジョブは再変換できない（状態の問題）」と読めてしまい、
               // 権限の問題と区別できない。理由を書く（IADR-0127 決定 1。存在秘匿の対象ではない）。
-              <span className="text-xs text-[--color-fg-muted]">
+              <span className="text-xs text-fg-muted">
                 <Trans>再変換は管理者のみ実行できます</Trans>
               </span>
             )
@@ -458,7 +490,7 @@ function JobRow({
               to="/docs/$id"
               params={{ id: job.documentId }}
               aria-label={t`変換結果の文書を開く`}
-              className="text-sm text-[--color-brand] hover:underline"
+              className="text-sm text-brand hover:underline"
             >
               <Trans>結果 →</Trans>
             </Link>
