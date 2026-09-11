@@ -187,7 +187,7 @@ describe('Layout common shell (brand / SC-16)', () => {
     const saved = window.__APP_CONFIG__;
     window.__APP_CONFIG__ = {
       ...saved,
-      oidc: { authority: 'https://idp.test.invalid/realms/mutant', clientId: 'platform-spa' },
+      oidc: { authority: 'https://idp.test.invalid/realms/mutant' },
     };
     resetAppConfigCache();
     try {

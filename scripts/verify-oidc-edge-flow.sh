@@ -9,6 +9,9 @@
 #   ⚠️ 本スクリプトが通す経路は ADR-0032（BFF セッション方式 / Token Handler・#439）の移行で無くなる。
 #      移行後は BFF が confidential client として交換を行いトークンをブラウザへ渡さないため、
 #      手順 3〜6 を Cookie 経由の検証へ書き換えること（作業仕様書 §未決事項）。
+#      **#1393 で client だけは `platform-spa`（public）→ `bff`（confidential）へ移した** ——
+#      public client を realm から撤去するのに必要な最小の変更であり、**Cookie 方式化は残作業**である
+#      （IADR-0251 決定 9 の狭める条件 1 / IADR-0429）。
 #
 # 背景:
 #   現行の E2E は「バックエンド不要のスモーク」だけで、`/login` への誘導など**認証前**の導線しか
@@ -113,8 +116,33 @@ else
   fi
 fi
 REALM="${OIDC_REALM:-platform}"
-CLIENT_ID="${OIDC_CLIENT_ID:-platform-spa}"
-REDIRECT_URI="${OIDC_REDIRECT_URI:-${EDGE_URL}/callback}"
+# ---- 認可コードを取るクライアント（#1393 で public → confidential へ移した） ---------
+#
+# 🔴 **従前ここは `platform-spa`（public client・PKCE）だった。** ADR-0032（BFF セッション方式）の
+#    移行で SPA はトークンを扱わなくなったのに realm には public client が残り、
+#    **ブラウザが利用者トークンを取れる口**として開いたままだった。#1393 で realm から撤去したので、
+#    本スクリプトも **BFF 自身の confidential client（`bff`）**で認可コードを取る。
+#
+#    本スクリプトは Location ヘッダを自分で読むだけで **redirect_uri を実際に開かない**ので、
+#    `bff` に登録済みの `/bff/auth/callback` をそのまま使える。
+#
+#    ⚠️ 本スクリプトが通す経路は依然として Bearer である（冒頭の警告のとおり Cookie 方式への
+#    書き換えが残作業）。BFF 側は `azp` が自分の client か無人の主体だけを Bearer で受理する
+#    （IADR-0429）ため、**`bff` 以外の client_id を与えると段 7 以降が 401 になる。**
+CLIENT_ID="${OIDC_CLIENT_ID:-bff}"
+REDIRECT_URI="${OIDC_REDIRECT_URI:-${EDGE_URL}/bff/auth/callback}"
+# confidential client の secret。**リテラルを書かない** —— dev realm の単一情報源
+# （`deploy/keycloak/microservices-platform-realm.json`）から読む。実環境では
+# OIDC_CLIENT_SECRET / BFF_OIDC_CLIENT_SECRET で上書きする。
+#
+# ※ `node -e` は**1 行で書く**。複数行の -e は Windows の Git Bash で引数が渡らず、
+#   **何も出力せず空文字になる**（実測）。空だと `client_secret` を付けずに交換しに行き、
+#   `invalid_client` で落ちる —— 静かに縮退する形なので 1 行を崩さないこと。
+CLIENT_SECRET="${OIDC_CLIENT_SECRET:-${BFF_OIDC_CLIENT_SECRET:-}}"
+REALM_FILE="$SCRIPT_DIR/../deploy/keycloak/microservices-platform-realm.json"
+if [ -z "$CLIENT_SECRET" ] && [ -f "$REALM_FILE" ]; then
+  CLIENT_SECRET=$(node -e "const c=(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).clients||[]).find((x)=>x.clientId===process.argv[2]);process.stdout.write((c&&c.secret)||'')" "$REALM_FILE" "$CLIENT_ID" 2>/dev/null || true)
+fi
 OIDC_USER="${OIDC_USER:-developer}"
 OIDC_PASSWORD="${OIDC_PASSWORD:-Developer-2026}"
 # 固定の code_verifier（再現可能性のため乱数を使わない。dev 専用の検証値であり秘密ではない）。
@@ -399,8 +427,11 @@ acquire_token() {
   [ "$verbose" = "1" ] && pass "認可コードを取得（redirect 先: ${location%%\?*}）"
 
   [ "$verbose" = "1" ] && step "5/$TOTAL" "トークンエンドポイントでコードを交換する（PKCE 検証）"
+  # #1393: confidential client なので client_secret を添える（空なら付けない ——
+  # public client 構成の realm でも動くようにしておく。付いていないだけで意味は変わらない）。
   token_json=$(curl -s $CURL_K -m 15 -X POST "$KC_URL/realms/$REALM/protocol/openid-connect/token" \
     -d "grant_type=authorization_code" -d "client_id=$CLIENT_ID" -d "code=$code" \
+    ${CLIENT_SECRET:+--data-urlencode "client_secret=$CLIENT_SECRET"} \
     --data-urlencode "redirect_uri=$REDIRECT_URI" -d "code_verifier=$CODE_VERIFIER")
   ACQUIRED_TOKEN=$(printf '%s' "$token_json" | json_field access_token)
   if [ -z "$ACQUIRED_TOKEN" ]; then

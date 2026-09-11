@@ -2,9 +2,13 @@
 // デプロイ時に切り替えられるようにする（バックエンドとフロントの疎結合。BFF/OpenAPI が境界）。
 // 優先順: window.__APP_CONFIG__（public/config.js・本番は envsubst 生成） → import.meta.env（dev fallback）。
 
+// NFR, SC-16, ADR-0032, IADR-0273, [[IADR-0429]] (#1393): **`clientId` は持たない。**
+// BFF セッション方式では OIDC を BFF が confidential client として実施し、SPA はトークンを
+// 扱わない。かつて在った `clientId`（`platform-spa`）は **読み手が 1 つも無いまま**
+// config → 型 → env → helm → compose の 5 層に残っていた（#1393 で実測）。
+// 残るのは `authority` だけで、SC-16 のアカウントコンソール導線（`Layout.tsx`）が読む。
 export interface OidcConfig {
   authority: string;
-  clientId: string;
 }
 
 // Issue #136 / SC-10: 運用ダッシュボードから開く外部可観測性ツールの入口 URL。環境ごとに異なり
@@ -45,7 +49,6 @@ function fromEnv(): AppConfig {
     bffBaseUrl: import.meta.env.VITE_BFF_BASE_URL ?? '/bff',
     oidc: {
       authority: import.meta.env.VITE_OIDC_AUTHORITY ?? 'http://localhost:8080/realms/platform',
-      clientId: import.meta.env.VITE_OIDC_CLIENT_ID ?? 'platform-spa',
     },
     opsLinks: {
       grafanaUrl: orUndef(import.meta.env.VITE_GRAFANA_URL),
@@ -92,7 +95,6 @@ export function loadAppConfig(win: Window = window): AppConfig {
     bffBaseUrl,
     oidc: {
       authority: injected.oidc?.authority ?? env.oidc.authority,
-      clientId: injected.oidc?.clientId ?? env.oidc.clientId,
     },
     opsLinks: {
       grafanaUrl: orUndef(injected.opsLinks?.grafanaUrl) ?? env.opsLinks.grafanaUrl,

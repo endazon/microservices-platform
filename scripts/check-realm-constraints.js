@@ -83,7 +83,9 @@ const MAX_LEN = 255;
 //
 // 🔴 #780: **宣言は `wiki-js` 1 件だけだった。** ブラウザ OIDC を持つ 7 クライアントのうち
 //    6 つが無検査であり、「片方の経路だけ足して片方を忘れる」事故を止める仕掛けが
-//    その事故を最も起こしやすい 6 件を見ていなかった。本表を 7 クライアント＋`bff` へ広げる。
+//    その事故を最も起こしやすい 6 件を見ていなかった。本表を 7 クライアント＋`bff` へ広げた。
+//    🔴 #1393 で `platform-spa` を realm ごと撤去したので、本表の母集合は **7 件**である
+//    （`bff` / `wiki-js` / `headlamp` / `grafana` / `argocd` / `minio` / `vault`）。
 //
 // 🔴 **`attributes.post.logout.redirect.uris` は `##` 区切りの 1 本の文字列である。**
 //    redirect / origin と別フィールドなので、片方だけ足す事故がここでも起きる（#780 本文が
@@ -105,20 +107,13 @@ const REQUIRED_CLIENT_URLS = {
       'http://localhost:3001',
     ],
   },
-  // SPA（public client・PKCE）。origin 由来で redirect を組むため、経路の数だけ登録が要る。
-  'platform-spa': {
-    redirectUris: [
-      'https://localhost/*',      // edge（LOCALEDGE=1・443）
-      'http://localhost:3100/*',  // compose(dev) の host 公開
-      'http://localhost:8081/*',  // 非 edge の port-forward
-    ],
-    webOrigins: ['https://localhost', 'http://localhost:3100', 'http://localhost:8081'],
-    'attributes.post.logout.redirect.uris': [
-      'https://localhost/*', 'http://localhost:3100/*', 'http://localhost:8081/*',
-    ],
-  },
-  // BFF セッション方式（ADR-0032・Token Handler）の confidential client。**ブラウザは
-  // BFF の callback へ戻る**ので、SPA とは別の URL 集合を持つ（#439 3a）。
+  // BFF セッション方式（ADR-0032・Token Handler）の confidential client。**ブラウザの
+  // ログイン開始も戻り先も BFF である**（`/bff/auth/login` → `/bff/auth/callback`）。
+  //
+  // 🔴 **かつてここには SPA の public client（`platform-spa`）が並んでいた**（#126 / IADR-0033）。
+  //    ADR-0032 の移行で SPA はトークンを扱わなくなり、#1393 で realm から撤去した。
+  //    **同型の public client を足し直さない** —— 足すと「ブラウザが利用者トークンを取り、
+  //    `/bff/*` を Bearer で直接叩く」経路（＝セッション方式の迂回）が復活する（[[IADR-0429]]）。
   bff: {
     redirectUris: [
       'https://localhost/bff/auth/callback',      // edge
@@ -1259,30 +1254,30 @@ function selfTest() {
   });
 
   // --- #780: post-logout（`##` 連結）と、7 クライアントへ広げた宣言の検査 ---
-  const reqPl = { 'platform-spa': { 'attributes.post.logout.redirect.uris': ['https://localhost/*', 'http://localhost:3100/*'] } };
+  const reqPl = { bff: { 'attributes.post.logout.redirect.uris': ['https://localhost/*', 'http://localhost:3100/*'] } };
   cases.push({
     name: 'post-logout（## 連結）が揃っていれば欠落なし',
     pass: collectMissingUrls({
-      clients: [{ clientId: 'platform-spa', attributes: { 'post.logout.redirect.uris': 'http://localhost:3100/*##https://localhost/*##https://localhost' } }],
+      clients: [{ clientId: 'bff', attributes: { 'post.logout.redirect.uris': 'http://localhost:3100/*##https://localhost/*##https://localhost' } }],
     }, reqPl).length === 0,
   });
   cases.push({
     name: '変異: post-logout から https 版を落とすと検出する（片方だけ足す事故・#780）',
     pass: (() => {
       const m = collectMissingUrls({
-        clients: [{ clientId: 'platform-spa', attributes: { 'post.logout.redirect.uris': 'http://localhost:3100/*' } }],
+        clients: [{ clientId: 'bff', attributes: { 'post.logout.redirect.uris': 'http://localhost:3100/*' } }],
       }, reqPl);
       return m.length === 1 && m[0].url === 'https://localhost/*'
-        && m[0].path === 'clients[platform-spa].attributes.post.logout.redirect.uris';
+        && m[0].path === 'clients[bff].attributes.post.logout.redirect.uris';
     })(),
   });
   cases.push({
     name: 'post-logout 属性が無ければ全件欠落として検出する',
-    pass: collectMissingUrls({ clients: [{ clientId: 'platform-spa' }] }, reqPl).length === 2,
+    pass: collectMissingUrls({ clients: [{ clientId: 'bff' }] }, reqPl).length === 2,
   });
   cases.push({
-    name: '#780: ブラウザ OIDC を持つ 7 クライアント＋bff がすべて宣言されている',
-    pass: ['wiki-js', 'platform-spa', 'bff', 'headlamp', 'grafana', 'argocd', 'minio', 'vault']
+    name: '#780 / #1393: ブラウザ OIDC を持つ 7 クライアントがすべて宣言されている（撤去した platform-spa は含まない）',
+    pass: ['wiki-js', 'bff', 'headlamp', 'grafana', 'argocd', 'minio', 'vault']
       .every((c) => Object.prototype.hasOwnProperty.call(REQUIRED_CLIENT_URLS, c)),
   });
   cases.push({

@@ -18,9 +18,11 @@
 // ---- 母集合（#1163 の 7 クライアント） -------------------------------------------
 //
 // 走査の出所は作業仕様書 `.ai-context/specs/20260903_issue-1163_tool-oidc-login-verifier.md` §母集合。
-// realm JSON の `standardFlowEnabled: true` かつ `redirectUris` 非空は 8 件で、
-// そのうち `platform-spa` は ADR-0032（BFF セッション方式）の移行でブラウザのログイン開始を
-// 持たなくなった（開始は `bff` の `/bff/auth/login`）。よって 7 件。
+// realm JSON の `standardFlowEnabled: true` かつ `redirectUris` 非空は **7 件**である。
+// 🔴 #1163 の時点では 8 件あり、`platform-spa`（SPA の public client）だけを
+// 「ブラウザのログイン開始を持たない」として除いていた（開始は `bff` の `/bff/auth/login`）。
+// **#1393 でその client を realm ごと撤去したので、いまは走査結果がそのまま 7 件になる**
+// —— 除外の説明が要らなくなっただけで、母集合そのものは変わっていない。
 //
 // `clientId` は**ここでは宣言しない** —— 実行時に認可 URL から読み取って報告する。
 // 宣言すると realm 側の client 名を写すことになり、受け入れ基準 2 に反する。

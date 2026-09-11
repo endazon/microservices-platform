@@ -125,5 +125,8 @@ pnpm run build      # 型チェック + 本番ビルド（platform/frontend/dist
 pnpm run test:e2e   # Playwright スモーク（ブラウザ未取得なら `pnpm exec playwright install chromium`）
 ```
 
-Keycloak ログインには dev スタック（`docker compose -f deploy/docker-compose.yml up -d keycloak bff`）と、
-realm の public client `platform-spa`（redirect `http://localhost:3100/*`。realm import 済み）が必要。
+Keycloak ログインには dev スタック（`docker compose -f deploy/docker-compose.yml up -d keycloak bff`）が必要。
+ログインは **BFF が confidential client `bff` として実施する**（ADR-0032 / IADR-0429。SPA はトークンを扱わない）ので、
+ブラウザは `/bff/auth/login` へ遷移するだけである。realm には `bff` の redirect
+（`http://localhost:3100/bff/auth/callback` 等）が import 済みで、**SPA 側の client 登録は要らない**
+（`platform-spa` は #1393 で撤去した）。
