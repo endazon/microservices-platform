@@ -287,15 +287,30 @@ function pickTargetUser(realm) {
   return u ? { username: u.username, email: u.email } : null;
 }
 
-/** 認可要求に使う public client を realm 宣言から選ぶ（PKCE は常に付ける）。 */
-function pickPublicClient(realm) {
+/**
+ * 認可要求（ブラウザの標準フロー）に使うクライアントを realm 宣言から選ぶ（PKCE は常に付ける）。
+ *
+ * 🔴 **public client を要求しない**（#1413）。本検査器はトークン交換を行わず、認可エンドポイント →
+ * ログイン画面 → `login-actions/reset-credentials` のフォームを叩くだけである。Keycloak 24 では
+ * confidential client でも認可エンドポイントは client secret なしで到達でき、リセットフォームまで進める
+ * （稼働 Keycloak で `bff` の `/auth` が 200 でリセットリンクを含むことを実測・2026-09-11）。
+ * `platform-spa`（唯一の public client）は IADR-0429 / #1402 で撤去されており、public を要求すると
+ * 検査が「前提なし」で止まって何も測らなくなる。
+ *
+ * 選び方: standard flow が有効・bearer-only でない・redirectUri を 1 つ以上持つクライアントのうち、
+ * public client があればそれ、無ければ製品自身の `bff`、それも無ければ最初の候補（決定的）。
+ */
+function pickBrowserFlowClient(realm) {
   const clients = Array.isArray(realm && realm.clients) ? realm.clients : [];
-  const c = clients.find((x) => x && x.publicClient === true && x.standardFlowEnabled !== false
+  const candidates = clients.filter((x) => x && x.bearerOnly !== true && x.standardFlowEnabled !== false
     && Array.isArray(x.redirectUris) && x.redirectUris.length > 0);
+  const c = candidates.find((x) => x.publicClient === true)
+    || candidates.find((x) => x.clientId === 'bff')
+    || candidates[0];
   if (!c) return null;
   // `https://localhost/*` のようなワイルドカードから具体の URI を作る。
   const redirectUri = String(c.redirectUris[0]).replace(/\*+$/, '');
-  return { clientId: c.clientId, redirectUri };
+  return { clientId: c.clientId, redirectUri, publicClient: c.publicClient === true };
 }
 
 /** リセットリンクの有効期限（分）。realm から導く（値を書き写さない）。 */
@@ -556,10 +571,10 @@ async function run() {
   const realm = realmRes.value;
   const realmName = realm.realm;
   const user = pickTargetUser(realm);
-  const client = pickPublicClient(realm);
+  const client = pickBrowserFlowClient(realm);
   const lifetimeMinutes = linkLifetimeMinutes(realm);
   if (!user) return { failures: ['[前提] realm 宣言に、メールアドレスを持つ対話利用者が居ない（0 件走査を緑にしない）。'], notices };
-  if (!client) return { failures: ['[前提] realm 宣言に public client（standard flow）が無い。申請画面へ到達できない。'], notices };
+  if (!client) return { failures: ['[前提] realm 宣言に標準フローのクライアント（redirectUri あり・bearer-only でない）が無い。申請画面へ到達できない。'], notices };
 
   const target = mailCaptureTarget();
   if (!target) return { failures: [`[前提] ${MAIL_CAPTURE_MANIFEST} から捕捉用 MTA の Service を読めない。`], notices };
@@ -887,9 +902,47 @@ function selfTest() {
     const r = loadRealm();
     assert.ok(r.ok, `realm 宣言を読めない: ${r.error || ''}`);
     assert.ok(pickTargetUser(r.value), '対象利用者を選べない');
-    assert.ok(pickPublicClient(r.value), 'public client を選べない');
+    assert.ok(pickBrowserFlowClient(r.value), '標準フローのクライアントを選べない');
     assert.ok(linkLifetimeMinutes(r.value) > 0, '有効期限を realm から導けない');
     assert.ok(mailCaptureTarget(), `捕捉用 MTA の宣言を読めない（${MAIL_CAPTURE_MANIFEST}）`);
+  });
+
+  // #1413: public client が無い realm（IADR-0429 で platform-spa 撤去後の実データ）でも confidential の
+  // 標準フロークライアントを選べる。陰性対照: bearer-only / standard flow 無効 / redirectUri なしは選ばれない。
+  ok('#1413: public client が無くても confidential の標準フロークライアント（bff 優先）を選ぶ', () => {
+    const realm = { clients: [
+      { clientId: 'svc-only', publicClient: false, bearerOnly: true, standardFlowEnabled: true, redirectUris: ['https://x/*'] },
+      { clientId: 'grafana', publicClient: false, standardFlowEnabled: true, redirectUris: ['https://g/cb'] },
+      { clientId: 'bff', publicClient: false, standardFlowEnabled: true, redirectUris: ['https://localhost/bff/auth/callback'] },
+    ] };
+    const c = pickBrowserFlowClient(realm);
+    assert.ok(c, '選べない');
+    assert.strictEqual(c.clientId, 'bff');
+    assert.strictEqual(c.publicClient, false);
+    assert.strictEqual(c.redirectUri, 'https://localhost/bff/auth/callback');
+  });
+  ok('#1413: public client があればそれを優先する', () => {
+    const realm = { clients: [
+      { clientId: 'bff', publicClient: false, standardFlowEnabled: true, redirectUris: ['https://localhost/bff/auth/callback'] },
+      { clientId: 'spa', publicClient: true, standardFlowEnabled: true, redirectUris: ['https://localhost/*'] },
+    ] };
+    assert.strictEqual(pickBrowserFlowClient(realm).clientId, 'spa');
+  });
+  ok('#1413 陰性対照: bearer-only・standard flow 無効・redirectUri なしは選ばれない', () => {
+    const realm = { clients: [
+      { clientId: 'a', bearerOnly: true, standardFlowEnabled: true, redirectUris: ['https://a/*'] },
+      { clientId: 'b', publicClient: false, standardFlowEnabled: false, redirectUris: ['https://b/*'] },
+      { clientId: 'c', publicClient: false, standardFlowEnabled: true, redirectUris: [] },
+    ] };
+    assert.strictEqual(pickBrowserFlowClient(realm), null);
+  });
+  ok('#1413 ラチェット: 実データの realm に public client は無く、それでも選べる', () => {
+    const r = loadRealm();
+    assert.ok(r.ok);
+    const hasPublic = (r.value.clients || []).some((x) => x && x.publicClient === true && x.standardFlowEnabled !== false);
+    assert.strictEqual(hasPublic, false, 'public client が復活している（IADR-0429 に反する。戻すなら新 IADR）');
+    const c = pickBrowserFlowClient(r.value);
+    assert.ok(c && c.publicClient === false, '確認: confidential の標準フロークライアントが選ばれる');
   });
 
   console.log(`[check-password-reset-mail] self-test OK: ${n} 件`);
@@ -936,7 +989,7 @@ if (require.main === module) {
  */
 module.exports = {
   pickTargetUser,
-  pickPublicClient,
+  pickBrowserFlowClient,
   linkLifetimeMinutes,
   hasTool,
   keycloakBaseUrl,
