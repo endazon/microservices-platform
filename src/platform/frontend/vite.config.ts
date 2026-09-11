@@ -54,6 +54,14 @@ export default defineConfig({
           // TanStack Query の内部も全画面が使う。放置すると @platform/ui と同じ理由で
           // 遅延チャンク側へ切り出される（実測: useMutation 3.10 kB / Table 11.41 kB の 2 本）。
           if (/^@tanstack\/(react-)?query(-core)?\//.test(pkg)) return 'vendor-query';
+          // ADR-0031 / IADR-0125: Base UI（`@base-ui/react`）は共有 UI の Dialog / Tooltip の土台。
+          // **`ui` 規則は拾えない** —— あれは `/packages/ui/` のソースだけを見ており、
+          // Base UI は `node_modules` に在る。規則が無いと、ダイアログを使う画面ごとに
+          // Base UI の断片が遅延チャンクへ散る（`@platform/ui` で実測したのと同じ型の退行）。
+          //
+          // 🔴 **規則を足したら `scripts/chunk-budget-baseline.json` の `requiredChunks` にも足す**
+          // （自己試験が両者の完全一致を突き合わせる）。
+          if (/^@base-ui\//.test(pkg)) return 'vendor-baseui';
           // ADR-0031 §採用技術一覧（チャート = Apache ECharts・自己ホスト）/ #788:
           // ECharts と zrender は本リポジトリで最大級の依存である。**初期ロードへ入れない**
           // （IADR-0134 の初期ロード ratchet に直撃する）。実際の遅延は
