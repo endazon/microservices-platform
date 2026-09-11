@@ -1314,6 +1314,10 @@ msgstr "再発行したときの注意"
 msgid "再発行する"
 msgstr "再発行する"
 
+#: platform/frontend/src/components/ui/QueryState.tsx
+msgid "再試行"
+msgstr "再試行"
+
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
 msgid "再試行中（{failures}/{limit}）"
 msgstr "再試行中（{failures}/{limit}）"
@@ -1491,6 +1495,10 @@ msgstr "取り扱い"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "取り消す"
 msgstr "取り消す"
+
+#: platform/frontend/src/components/ui/QueryState.tsx
+msgid "取得に失敗しました。"
+msgstr "取得に失敗しました。"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "取消"
@@ -2770,6 +2778,10 @@ msgstr "該当するノードがありません。"
 msgid "該当するページはありません。"
 msgstr "該当するページはありません。"
 
+#: platform/frontend/src/components/ui/QueryState.tsx
+msgid "該当するものはありません。"
+msgstr "該当するものはありません。"
+
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "該当する利用者はいません。"
 msgstr "該当する利用者はいません。"
@@ -2821,6 +2833,7 @@ msgstr "読み込みエラー"
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+#: platform/frontend/src/components/ui/QueryState.tsx
 #: platform/frontend/src/lib/auth/RequireAuth.tsx
 #: platform/frontend/src/lib/auth/RequireRole.tsx
 msgid "読み込み中…"
