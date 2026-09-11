@@ -171,9 +171,19 @@
   --color-fg-muted: #9397ab;
   /* brand と accent は同値である（モックの `--color-accent`）。名前を 2 つ持つのは
      既存コード（brand）とモックの語彙（accent）の双方から引けるようにするためで、
-     **値をずらさない**。 */
-  --color-brand: #9184d9;
-  --color-accent: #9184d9;
+     **値をずらさない**。
+
+     🔴 ［2026-09-12 / NFR-12］**モックの #9184d9 から #988cdb へ持ち上げた。**
+     モック値は `--color-surface-muted`（#292b31。ダークで最も明るい面）に対して
+     **4.38:1 しか無く WCAG 2.1 AA（4.5:1）に届かない** —— axe が右レールの
+     「AI チャットを開く」（`text-accent` の ghost ボタンが `bg-surface-muted` の上に載る）で
+     実際に落とした（`platform/frontend/e2e/a11y.smoke.spec.ts`）。
+     **ボタン 1 つを避難させる形では直さない**: 落ちているのは要素ではなく
+     「accent の文字 × muted の面」という**組み合わせそのもの**で、同じ組み合わせは今後も現れる。
+     持ち上げ後の実測（ダークの全面に対して）: bg 5.96 / surface 5.14 / surface-muted 4.79 /
+     accent-soft 4.84。色相・彩度は変えていない（HSL の明度のみ +0.02）。 */
+  --color-brand: #988cdb;
+  --color-accent: #988cdb;
   --color-brand-fg: #161826;
   --color-accent-soft: #2b2741;
   --color-success: oklch(0.74 0.09 152);
@@ -240,8 +250,9 @@
   --color-divider: color-mix(in srgb, #e9e9ed 16%, transparent);
   --color-fg: #e9e9ed;
   --color-fg-muted: #9397ab;
-  --color-brand: #9184d9;
-  --color-accent: #9184d9;
+  /* 上の `:root` と同値（持ち上げの理由はそちらに書いてある）。 */
+  --color-brand: #988cdb;
+  --color-accent: #988cdb;
   --color-brand-fg: #161826;
   --color-accent-soft: #2b2741;
   --color-success: oklch(0.74 0.09 152);

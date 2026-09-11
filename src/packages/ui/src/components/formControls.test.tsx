@@ -93,7 +93,17 @@ describe('Label（必須の印は読み上げ文言なしでは出せない。IN
   });
 
   it('requiredHint を渡すと印（装飾）と読み上げ文言の両方が出る', () => {
-    render(<Label requiredHint="（必須）">タイトル</Label>);
+    // ラベルは単体では存在し得ない（jsx-a11y/label-has-associated-control）。印の検査であっても
+    // 関連付け先の入力を伴って描画する——「宙に浮いたラベル」を試験の中でだけ許すと、
+    // 画面側が同じ形を書いたときに規則違反へ気付けない。
+    render(
+      <>
+        <Label htmlFor="required-title" requiredHint="（必須）">
+          タイトル
+        </Label>
+        <Input id="required-title" />
+      </>,
+    );
     expect(screen.getByText('（必須）')).toBeInTheDocument();
     // 印そのものは装飾であり、意味は読み上げ文言が担う。
     const marker = screen.getByText('*');
@@ -101,7 +111,12 @@ describe('Label（必須の印は読み上げ文言なしでは出せない。IN
   });
 
   it('requiredHint が無ければ印も出ない（記号だけの必須表現を作らせない）', () => {
-    render(<Label>タイトル</Label>);
+    render(
+      <>
+        <Label htmlFor="plain-title">タイトル</Label>
+        <Input id="plain-title" />
+      </>,
+    );
     expect(screen.queryByText('*')).toBeNull();
   });
 });

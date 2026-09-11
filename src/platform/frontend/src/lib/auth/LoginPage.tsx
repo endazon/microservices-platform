@@ -25,8 +25,8 @@ export function LoginPage() {
        **翻訳カタログの対象としない**（Layout.tsx の注記と IADR-0125 決定 8 を参照）。 */}
       {/* eslint-disable-next-line lingui/no-unlocalized-strings --
           05_screens §共通シェル ［2026-08-04 確定］「翻訳カタログの対象としない」による意図的な例外。 */}
-      <h1 className="text-2xl font-semibold text-[--color-fg]">汎用プラットフォーム</h1>
-      <p className="mt-2 text-sm text-[--color-fg-muted]">
+      <h1 className="text-2xl font-semibold text-fg">汎用プラットフォーム</h1>
+      <p className="mt-2 text-sm text-fg-muted">
         {i18n._(msg`社内ナレッジ検索・AI 回答プラットフォーム`)}
       </p>
       {/* ログイン完了後の戻り先は遷移元（?from=。loginRoute の validateSearch が SPA 内部の
