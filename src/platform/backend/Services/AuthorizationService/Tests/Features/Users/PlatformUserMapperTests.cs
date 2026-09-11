@@ -1,3 +1,4 @@
+using AuthorizationService.Domain;
 using AuthorizationService.Domain.Ports;
 using AuthorizationService.Features.Users;
 using AwesomeAssertions;
@@ -55,6 +56,25 @@ public class PlatformUserMapperTests
 
         dto.Roles.Should().NotBeNull().And.BeEmpty();
         dto.Attributes.Should().NotBeNull().And.BeEmpty();
+    }
+
+    // FR-19, SC-17, SC-19, 計画 ADR-0036 D-09, ADR-0082 決定 5, [[IADR-0428]] (#1392):
+    // 🔴 **予約キー（保持起点）は応答へ出さない。** 画面は行の属性をそのまま差し替え要求へ
+    // 送り返すので、出すと**辞書に無いキー**として 400 になる（無効化済み利用者の属性編集が壊れる）。
+    // 陽性対照を同じ本文に置く —— **すべて落とす実装**でも陰性だけなら緑になる。
+    [Fact]
+    public void ToDto_DropsTheRetentionAnchorButKeepsAbacAttributes()
+    {
+        var dto = PlatformUserMapper.ToDto(User(attributes: new Dictionary<string, string>
+        {
+            ["department"] = "hr",
+            [RetentionAnchorAttributes.AccountDisabledAtKey] = "2026-08-01T03:00:00Z",
+            [RetentionAnchorAttributes.HrLeaveDateKey] = "2026-08-01",
+        }));
+
+        dto.Attributes.Should().ContainKey("department").And.HaveCount(1);
+        dto.Attributes.Should().NotContainKey(RetentionAnchorAttributes.AccountDisabledAtKey);
+        dto.Attributes.Should().NotContainKey(RetentionAnchorAttributes.HrLeaveDateKey);
     }
 
     // 🔴 **コレクションは複製である**（移送前の `[.. user.Roles]` / `new Dictionary<…>(…)` と同じ）。

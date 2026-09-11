@@ -63,6 +63,12 @@ spec:
               value: "false"
             - name: KC_SPI_THEME_STATIC_MAX_AGE
               value: "-1"
+            # #1399: JVM ヒープの上限。Keycloak 24 の既定 -XX:MaxRAMPercentage=70 は limit 2Gi で約 1.4GiB の
+            # ヒープになり、metaspace / off-heap と合わせて 2Gi を超えて OOMKilled(137) を繰り返した（7 日で 11 回。
+            # 再起動中は全サービスのトークン検証が一時的に 401 になる）。50% ≒ 1GiB に抑える。JAVA_OPTS 全体は
+            # 置き換えない（Keycloak が用意した上書き点だけを使う）。
+            - name: JAVA_OPTS_KC_HEAP
+              value: "-XX:MaxRAMPercentage=50"
           ports:
             - containerPort: 8080
           readinessProbe:

@@ -41,6 +41,10 @@ public class IdentityAdminContractTests
                 nameof(IIdentityAdminClient.FindByUsernameAsync),
                 nameof(IIdentityAdminClient.ListAssignableRolesAsync),
                 nameof(IIdentityAdminClient.ReplaceAttributesAsync),
+                // FR-19, SC-19, 計画 ADR-0036 D-09, ADR-0082 決定 5, [[IADR-0428]] (#1392):
+                // 退職時の 30 日窓の**起点を書く唯一の口**。🔴 **属性の書き込みであって、
+                // 新規作成の口ではない**（差し替えと兼用にできない理由はポートの XML コメント）。
+                nameof(IIdentityAdminClient.SetRetentionAnchorAsync),
                 nameof(IIdentityAdminClient.ReplaceRealmRolesAsync),
                 nameof(IIdentityAdminClient.SetEnabledAsync),
                 nameof(IIdentityAdminClient.RevokeSessionsAsync));
