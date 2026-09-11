@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ApiError } from '@foundation/api/ApiError';
 import { ErrorBoundary } from './ErrorBoundary';
 
@@ -69,5 +70,56 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>,
     );
     expect(spy.mock.calls.some((call) => call[0] === 'UI error boundary caught:')).toBe(true);
+  });
+});
+
+// ［2026-09-12 / UI/UX 改善 裁定 6］**次の一手を持つこと**を固定する。
+// 従前の fallback は見出しと本文だけで、利用者にはタブを閉じる以外の選択肢が無かった。
+// 🔴 ここは**ルータの外**の最後の砦であり、画面 1 枚の失敗はルータ側の境界
+// （`app/routing/routeStates.tsx`）が共通シェルを残したまま受ける。役割が違う 2 枚である。
+describe('ErrorBoundary recovery actions', () => {
+  it('offers 再読み込み and ホームへ戻る', () => {
+    silenceConsole();
+    render(
+      <ErrorBoundary>
+        <Boom error={new Error('boom')} />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByRole('button', { name: '再読み込み' })).toBeInTheDocument();
+    // ルータの外なので SPA 遷移は使えない。素の <a href="/"> でアプリを読み直す。
+    expect(screen.getByRole('link', { name: 'ホームへ戻る' })).toHaveAttribute('href', '/');
+  });
+
+  it('re-renders the children when 再読み込み is pressed', async () => {
+    silenceConsole();
+    let shouldThrow = true;
+    function Flaky() {
+      if (shouldThrow) throw new Error('boom');
+      return <p>復帰した本文</p>;
+    }
+    render(
+      <ErrorBoundary>
+        <Flaky />
+      </ErrorBoundary>,
+    );
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+
+    shouldThrow = false;
+    await userEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+
+    expect(screen.getByText('復帰した本文')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  // 🔴 読み上げの器は 1 つだけ（`ErrorState` が `role="alert"` を持つ）。
+  // 自前でもう 1 つ付けると同じ本文が 2 回読まれる。
+  it('exposes exactly one alert region', () => {
+    silenceConsole();
+    render(
+      <ErrorBoundary>
+        <Boom error={new Error('boom')} />
+      </ErrorBoundary>,
+    );
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
   });
 });

@@ -14,6 +14,7 @@ import {
   i18n,
   initI18n,
   isSupportedLocale,
+  registerUnitMessages,
 } from './index';
 
 // ADR-0031（i18n = Lingui〔ja / en〕）/ IADR-0125 決定 3・4・7 の回帰。
@@ -137,5 +138,59 @@ describe('マクロ変換の設定がビルドとテストの両方に入って�
   it('vitest.config.ts にも同じ babel プラグインが入っている', () => {
     const vitestConfig = readFileSync(resolve(process.cwd(), 'vitest.config.ts'), 'utf8');
     expect(vitestConfig).toContain(PLUGIN);
+  });
+});
+
+// ［2026-09-12 / 利用者裁定 #3］**可変機能ユニットのカタログ追加ロード。**
+//
+// 🔴 **このテストは恒久である。** 追加ロードの規則は 3 つあり、どれが崩れても
+// 「画面にハッシュがそのまま出る」「基盤の英訳が日本語で上書きされる」という
+// **静かな**破綻になる（どちらもテストが無ければ誰も気付かない）。
+//   1. 与えたロケールへは素直に**追加**される（基盤のカタログを消さない）。
+//   2. 与えていないロケール（例: en）には、**そのロケールに未登録の ID だけ**流す。
+//   3. `catalogFor()` は追加分を含む（＝カタログ整合の検査が追加分にも効く）。
+//
+// ID は本物の msg ハッシュではなく合成の文字列を使う。基盤のカタログを書き換えずに
+// 規則だけを見るためである（本物の ID を使うと、このファイルの他のテストへ影響が漏れる）。
+describe('registerUnitMessages（ユニットのカタログ追加ロード）', () => {
+  const BOTH = 'test.unit.both';
+  const JA_ONLY = 'test.unit.ja-only';
+
+  it('adds the unit catalog to each provided locale without dropping the base catalog', () => {
+    const baseJa = Object.keys(catalogFor('ja')).length;
+    registerUnitMessages({ ja: { [BOTH]: 'ユニット ja' }, en: { [BOTH]: 'unit en' } });
+
+    expect(catalogFor('ja')[BOTH]).toBe('ユニット ja');
+    expect(catalogFor('en')[BOTH]).toBe('unit en');
+    // 基盤の分が残っていること（載せ替えではなく追加である）。
+    expect(Object.keys(catalogFor('ja')).length).toBe(baseJa + 1);
+    activate('ja');
+    expect(i18n._(BOTH)).toBe('ユニット ja');
+    activate('en');
+    expect(i18n._(BOTH)).toBe('unit en');
+  });
+
+  // 🔴 規則 2 の要点は「**未登録の ID だけ**」である。無条件に流すと、ユニットの ja と
+  // 既存の en が同じ ID を持つとき（同じ本文＝同じハッシュ）**英訳が日本語で潰れる**。
+  it('fills only the ids the other locale does not have yet (既存の訳を潰さない)', () => {
+    registerUnitMessages({ ja: { [BOTH]: 'ユニット ja', [JA_ONLY]: 'ja だけの文言' } });
+
+    // en に既に在る ID は**そのまま**（ja が流れ込まない）。
+    expect(catalogFor('en')[BOTH]).toBe('unit en');
+    // en に無い ID には ja が流れる（en ロケールでもハッシュではなく日本語が出る）。
+    expect(catalogFor('en')[JA_ONLY]).toBe('ja だけの文言');
+    expect(catalogFor('ja')[JA_ONLY]).toBe('ja だけの文言');
+    activate('en');
+    expect(i18n._(JA_ONLY)).toBe('ja だけの文言');
+  });
+
+  it('keeps the ja / en id sets equal so the catalog integrity check still covers the unit', () => {
+    expect(Object.keys(catalogFor('en')).sort()).toEqual(Object.keys(catalogFor('ja')).sort());
+  });
+
+  it('is a no-op when no locale is provided', () => {
+    const before = Object.keys(catalogFor('ja')).length;
+    registerUnitMessages({});
+    expect(Object.keys(catalogFor('ja')).length).toBe(before);
   });
 });

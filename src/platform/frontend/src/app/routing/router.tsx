@@ -2,6 +2,7 @@ import { createRouter } from '@tanstack/react-router';
 import { rootRoute, loginRoute, shellRoute, homeRedirectRoute, catchAllRoute } from './shell';
 import { registerNavItems, registerUnitNavGroups } from './nav';
 import { registerBreadcrumbs } from './breadcrumbs';
+import { RouteErrorComponent, RoutePendingComponent } from './routeStates';
 import { createUnitRoutes, planNavItems, planBreadcrumbs, unitNavGroups } from '@features/index';
 
 // ADR-0031 / IADR-0124: ルート木の組み立て。
@@ -38,7 +39,23 @@ registerBreadcrumbs(planBreadcrumbs);
 
 export const routeTree = rootRoute.addChildren([loginRoute, shellWithUnits]);
 
-export const router = createRouter({ routeTree });
+export const router = createRouter({
+  routeTree,
+  // ［2026-09-12 / UI/UX 改善 裁定 6］**画面単位のエラー境界・待ち表示・遷移時の先読み。**
+  //
+  // `defaultErrorComponent` / `defaultPendingComponent` は**マッチしたルートの位置**
+  // （＝共通シェルの本文）だけを差し替える。アプリ全体を差し替える `App.tsx` の
+  // `ErrorBoundary` とは役割が違い、**両方要る**（ルータの外の例外はルータでは捕まらない）。
+  // 中身は `routeStates.tsx`——`createRouter` の呼び出しに JSX を混ぜないためである。
+  defaultErrorComponent: RouteErrorComponent,
+  defaultPendingComponent: RoutePendingComponent,
+  // **リンクに触れた（hover / focus）時点で次の画面を読み始める。** 遷移の体感はこれで決まる。
+  // `'render'`（描画と同時に全リンクを先読み）は採らない——左レールには常時 10 数本の
+  // リンクが並んでおり、開いただけで全画面分の取得が走る。
+  // `defaultPreloadStaleTime` は既定（30 秒）のまま——先読みの結果をどれだけ信じるかは
+  // 画面ごとの `staleTime` が決めるべき値であり、ここで一律に伸ばすと古い内容が出る。
+  defaultPreload: 'intent',
+});
 
 // IADR-0124 決定 4: 型登録は `@tanstack/react-router`（再エクスポート側）ではなく、
 // Register インターフェースの**宣言元**である `@tanstack/router-core` へ行う。

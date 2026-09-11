@@ -29,10 +29,10 @@ interface SeverityStyle {
 }
 
 const SEVERITIES: Record<Severity, SeverityStyle> = {
-  success: { icon: CircleCheck, label: msg`成功`, className: 'text-[--color-success]' },
-  info: { icon: Info, label: msg`情報`, className: 'text-[--color-fg-muted]' },
-  warning: { icon: AlertTriangle, label: msg`注意`, className: 'text-[--color-warning]' },
-  error: { icon: CircleX, label: msg`エラー`, className: 'text-[--color-danger]' },
+  success: { icon: CircleCheck, label: msg`成功`, className: 'text-success' },
+  info: { icon: Info, label: msg`情報`, className: 'text-fg-muted' },
+  warning: { icon: AlertTriangle, label: msg`注意`, className: 'text-warning' },
+  error: { icon: CircleX, label: msg`エラー`, className: 'text-danger' },
 };
 
 function body(severity: Severity, message: string) {
@@ -41,7 +41,7 @@ function body(severity: Severity, message: string) {
     <span className="flex items-center gap-2 text-sm">
       <Icon className={`size-4 ${className}`} aria-hidden />
       <span className={`font-medium ${className}`}>{i18n._(label)}</span>
-      <span className="text-[--color-fg]">{message}</span>
+      <span className="text-fg">{message}</span>
     </span>
   );
 }

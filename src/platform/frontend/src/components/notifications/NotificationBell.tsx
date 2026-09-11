@@ -65,12 +65,12 @@ export function NotificationBell() {
         aria-expanded={open}
         // 未読件数を**ラベルにも入れる**——バッジの数字だけだと、支援技術には「6」としか読まれない。
         aria-label={i18n._(msg`通知（未読 ${unreadCount} 件）`)}
-        className="flex items-center gap-1.5 rounded px-2 py-1 text-sm text-[--color-fg-muted] hover:underline"
+        className="flex items-center gap-1.5 rounded-sm px-2 py-1 text-sm text-fg-muted hover:text-fg"
       >
         <Bell className="size-5" aria-hidden />
         {/* 未読が 0 のときは数字を出さない（0 を出すと「未読がある」と誤読される）。 */}
         {unreadCount > 0 ? (
-          <span className="rounded-full bg-[--color-danger] px-1.5 text-xs font-medium text-[--color-surface]">
+          <span className="rounded-full bg-danger px-1.5 text-xs font-medium text-bg">
             {unreadCount}
           </span>
         ) : null}
@@ -81,7 +81,7 @@ export function NotificationBell() {
           // 見出しで領域に名前を付ける（ナビと同じ作法）。
           aria-label={i18n._(msg`通知一覧`)}
           role="region"
-          className="absolute right-0 z-10 mt-1 w-96 rounded-[--radius-control] border border-[--color-border] bg-[--color-surface] p-3 shadow"
+          className="absolute right-0 z-10 mt-1 w-96 rounded-md border border-border bg-surface p-n3 shadow-md"
         >
           {list.isError ? (
             <Alert tone="danger" label={i18n._(msg`エラー`)} role="alert">
@@ -89,25 +89,23 @@ export function NotificationBell() {
             </Alert>
           ) : items.length === 0 ? (
             // **空であることを明示する**（無言で何も描かない形にしない）。
-            <p className="text-sm text-[--color-fg-muted]">{i18n._(msg`通知はありません`)}</p>
+            <p className="text-sm text-fg-muted">{i18n._(msg`通知はありません`)}</p>
           ) : (
             <ul>
               {items.map((n) => {
                 const tone = notificationTone(n);
                 return (
-                  <li key={n.id} className="border-b border-[--color-border] py-2 last:border-b-0">
+                  <li key={n.id} className="border-b border-divider py-2 last:border-b-0">
                     <div className="flex items-start gap-2">
                       <StatusBadge tone={tone}>{notificationToneLabel(tone)}</StatusBadge>
                       <div className="grow">
                         {/* ★ 文言は種別・件数・閾値・期限だけから組み立てる。
                             資料のタイトル・本文・検索語・回答内容は契約に存在しない。 */}
-                        <p className="text-sm text-[--color-fg]">{notificationText(n)}</p>
-                        <p className="text-xs text-[--color-fg-muted]">
-                          {formatDateTime(n.occurredAt)}
-                        </p>
+                        <p className="text-sm text-fg">{notificationText(n)}</p>
+                        <p className="text-xs text-fg-muted">{formatDateTime(n.occurredAt)}</p>
                       </div>
                       {n.read ? (
-                        <span className="text-xs text-[--color-fg-muted]">{i18n._(msg`既読`)}</span>
+                        <span className="text-xs text-fg-muted">{i18n._(msg`既読`)}</span>
                       ) : (
                         <Button
                           size="sm"
