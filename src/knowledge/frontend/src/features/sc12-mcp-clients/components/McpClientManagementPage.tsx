@@ -2,8 +2,26 @@ import { useMemo } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { MessageDescriptor } from '@lingui/core';
 import { i18n } from '@foundation/i18n';
-import { Alert, Button, Input, Label, Select, StatusBadge } from '@platform/ui';
+import {
+  Alert,
+  Button,
+  EmptyState,
+  Input,
+  Label,
+  Note,
+  Panel,
+  Select,
+  StatusBadge,
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
+} from '@platform/ui';
 import { appConfig } from '@foundation/config/runtimeConfig';
+import { QueryState } from '@foundation/ui/QueryState';
 import { toMessages } from '@foundation/utils/apiErrors';
 import type { McpClientView } from '@foundation/api/generated/bff.schemas';
 import { DataTable } from '../../../components/DataTable';
@@ -109,7 +127,7 @@ export function McpClientManagementPage() {
         cell: ({ row }) => (
           <div>
             <span>{row.original.displayName}</span>
-            <p className="text-xs text-[--color-fg-muted]">{row.original.clientId}</p>
+            <p className="text-xs text-fg-muted">{row.original.clientId}</p>
           </div>
         ),
       },
@@ -124,7 +142,7 @@ export function McpClientManagementPage() {
         header: t`認証`,
         enableSorting: false,
         cell: ({ row }) => (
-          <span className="text-xs text-[--color-fg-muted]">
+          <span className="text-xs text-fg-muted">
             {labelOf(clientAuthLabel(row.original.kind))}
           </span>
         ),
@@ -143,7 +161,7 @@ export function McpClientManagementPage() {
               ))}
             </ul>
           ) : (
-            <span className="text-xs text-[--color-fg-muted]">
+            <span className="text-xs text-fg-muted">
               <Trans>利用者の属性で解決</Trans>
             </span>
           ),
@@ -212,10 +230,11 @@ export function McpClientManagementPage() {
   return (
     <section className="space-y-6">
       <div>
-        <h1 className="text-lg font-semibold text-[--color-fg]">
+        {/* モックの `.ttl` / `.sub`。 */}
+        <h1 className="text-[17px] font-medium text-fg">
           <Trans>MCP クライアント登録管理</Trans>
         </h1>
-        <p className="text-xs text-[--color-fg-muted]" data-testid="mcp-help">
+        <p className="text-xs text-fg-muted" data-testid="mcp-help">
           <Trans>
             MCP サーバーへ接続できるクライアント（外部 AI エージェント）を登録・無効化し、
             無人アカウントへ ABAC
@@ -225,7 +244,7 @@ export function McpClientManagementPage() {
       </div>
 
       <div>
-        <h2 className="mb-2 text-sm font-medium text-[--color-fg-muted]">
+        <h2 className="mb-2 text-sm font-medium text-fg-muted">
           <Trans>呼び出し監査ログ</Trans>
         </h2>
         {auditLogUrl ? (
@@ -233,14 +252,14 @@ export function McpClientManagementPage() {
             href={auditLogUrl}
             target="_blank"
             rel="noreferrer"
-            className="text-sm text-[--color-brand] hover:underline"
+            className="text-sm text-brand hover:underline"
             data-testid="audit-log-link"
           >
             <Trans>ログ基盤で呼び出し監査ログを見る ↗</Trans>
           </a>
         ) : (
           // 🔴 **無いリンクを描かない。** 導線が未設定であることと、記録が残っている場所は書く。
-          <p className="text-sm text-[--color-fg-muted]" data-testid="audit-log-unavailable">
+          <p className="text-sm text-fg-muted" data-testid="audit-log-unavailable">
             <Trans>
               監査ログの参照先が未設定です。ツールの呼び出しはすべてログ基盤へ記録されています。
             </Trans>
@@ -248,44 +267,41 @@ export function McpClientManagementPage() {
         )}
       </div>
 
-      <div>
-        <h2 className="mb-2 text-sm font-medium text-[--color-fg-muted]">
-          <Trans>登録クライアント</Trans>
-        </h2>
-        {clients.isError ? (
-          // 🔴 **空の一覧へ縮退しない。**「1 件も登録が無い」と「一覧が引けない」は別の意味である。
-          <Alert tone="danger" role="alert" label={t`エラー`} data-testid="clients-error">
-            {toMessages(clients.error, t`登録クライアントを取得できませんでした。`).join(' / ')}
-          </Alert>
-        ) : clients.isPending ? (
-          <p className="text-sm text-[--color-fg-muted]" data-testid="clients-loading">
-            <Trans>読み込み中です。</Trans>
-          </p>
-        ) : rows.length === 0 ? (
-          <p className="text-sm text-[--color-fg-muted]" data-testid="clients-empty">
-            <Trans>登録されたクライアントはありません。</Trans>
-          </p>
-        ) : (
-          <DataTable
-            caption={t`登録された MCP クライアントの一覧`}
-            sortHint={t`並べ替え`}
-            columns={columns}
-            data={rows}
-          />
-        )}
-      </div>
+      <Panel heading={t`登録クライアント`}>
+        {/* 🔴 待ち・失敗・空・本体は `QueryState` が 1 か所で描き分ける（判定順 isError → isPending →
+            isEmpty → 本体）。**空の一覧へ縮退しない** ——「1 件も登録が無い」と「一覧が引けない」は
+            別の意味であり、後者を前者に見せると管理者は重複登録へ進む。 */}
+        <QueryState
+          query={clients}
+          isEmpty={(list) => list.length === 0}
+          empty={
+            <EmptyState
+              title={t`登録されたクライアントはありません。`}
+              description={t`下の「クライアント登録」から、接続する外部 AI エージェントを登録してください。`}
+            />
+          }
+          errorTitle={t`登録クライアントを取得できませんでした。`}
+          errorDescription={toMessages(clients.error, '').join(' / ') || undefined}
+        >
+          {() => (
+            <DataTable
+              caption={t`登録された MCP クライアントの一覧`}
+              sortHint={t`並べ替え`}
+              columns={columns}
+              data={rows}
+            />
+          )}
+        </QueryState>
+      </Panel>
 
       {/* FR-16, UC-09, SC-12: 登録後の ABAC 属性の差し替え。**置換であって追加ではない** ——
           後段の端点が属性の集合ごと入れ替えるので、画面も現在値を読み込んでから編集させる。 */}
       {editor.editingClientId !== null && (
-        <div data-testid="attribute-edit">
-          <h2 className="mb-2 text-sm font-medium text-[--color-fg-muted]">
-            <Trans>ABAC 属性の変更</Trans>
-          </h2>
-          <p className="text-xs text-[--color-fg-muted]" data-testid="attribute-edit-target">
+        <Panel heading={t`ABAC 属性の変更`} data-testid="attribute-edit">
+          <p className="text-xs text-fg-muted" data-testid="attribute-edit-target">
             {editor.editingClientId}
           </p>
-          <p className="mt-1 text-xs text-[--color-fg-muted]">
+          <p className="mt-1 text-xs text-fg-muted">
             <Trans>
               保存すると属性はここに並んでいる内容で置き換わります。残したい属性は消さないでください。
             </Trans>
@@ -390,189 +406,207 @@ export function McpClientManagementPage() {
               <Trans>取消</Trans>
             </Button>
           </div>
-        </div>
+        </Panel>
       )}
 
-      <div>
-        <h2 className="mb-2 text-sm font-medium text-[--color-fg-muted]">
-          <Trans>クライアント登録</Trans>
-        </h2>
-        <div className="flex flex-wrap items-end gap-4">
-          <div>
-            <Label htmlFor="mcp-client-id">
-              <Trans>クライアント ID</Trans>
-            </Label>
-            <Input
-              id="mcp-client-id"
-              value={form.clientId}
-              onChange={(e) => form.setClientId(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="mcp-display-name">
-              <Trans>表示名</Trans>
-            </Label>
-            <Input
-              id="mcp-display-name"
-              value={form.displayName}
-              onChange={(e) => form.setDisplayName(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="mcp-kind">
-              <Trans>クライアント種別</Trans>
-            </Label>
-            <Select
-              id="mcp-kind"
-              selectSize="sm"
-              value={form.kind}
-              onChange={(e) => form.setKind(e.target.value as ClientKind)}
-            >
-              {CLIENT_KINDS.map((option) => (
-                <option key={option} value={option}>
-                  {`${labelOf(clientKindLabel(option))}（${labelOf(clientAuthLabel(option))}）`}
-                </option>
-              ))}
-            </Select>
-          </div>
-        </div>
-
-        {/* 無人のときだけ属性の入力を出す。**有人では要求しない**（05_screens §SC-12）。 */}
-        {form.needsAttributes && (
-          <div className="mt-3" data-testid="attribute-assignment">
-            <p className="text-xs text-[--color-fg-muted]">
-              <Trans>
-                無人（サービスアカウント）には ABAC 属性の割当が必須です。選べるのは定義済みの属性と
-                その許可値だけです。
-              </Trans>
-            </p>
-            <div className="mt-2 flex flex-wrap items-end gap-4">
-              <div>
-                <Label htmlFor="mcp-attribute-key">
-                  <Trans>属性</Trans>
-                </Label>
-                <Select
-                  id="mcp-attribute-key"
-                  selectSize="sm"
-                  value={form.attributeKey}
-                  onChange={(e) => form.selectAttributeKey(e.target.value)}
-                >
-                  <option value="">{t`選択してください`}</option>
-                  {definitions.map((definition) => (
-                    <option key={definition.id} value={definition.key}>
-                      {definition.label}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="mcp-attribute-value">
-                  <Trans>値</Trans>
-                </Label>
-                <Select
-                  id="mcp-attribute-value"
-                  selectSize="sm"
-                  value={form.attributeValue}
-                  onChange={(e) => form.setAttributeValue(e.target.value)}
-                >
-                  <option value="">{t`選択してください`}</option>
-                  {(form.selectedDefinition?.allowedValues ?? []).map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <Button size="sm" onClick={form.addEntry}>
-                <Trans>属性を追加</Trans>
-              </Button>
+      {/* モックの `.g2`: 左が登録フォーム、右が公開ツール一覧。 */}
+      <div className="grid gap-n3 lg:grid-cols-2">
+        <Panel heading={t`クライアント登録`} className="mb-0">
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <Label htmlFor="mcp-client-id">
+                <Trans>クライアント ID</Trans>
+              </Label>
+              <Input
+                id="mcp-client-id"
+                value={form.clientId}
+                onChange={(e) => form.setClientId(e.target.value)}
+              />
             </div>
-            <ul className="mt-2 text-xs" data-testid="attribute-entries">
-              {form.entries.map((entry) => (
-                <li key={entry.key}>{`${entry.key}: ${entry.value}`}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {form.issues.length > 0 && (
-          <Alert
-            tone="warning"
-            role="alert"
-            label={t`入力を確認してください`}
-            className="mt-3"
-            data-testid="registration-issues"
-          >
-            {form.issues.map((issue) => issueLabels[issue]).join(' / ')}
-          </Alert>
-        )}
-
-        {actions.register.isError && (
-          // 後段の拒否理由（RFC7807）をそのまま出す。**中立化しない** ——
-          // 「無人アカウントへ個人資料を読ませる属性割当は禁止」等、管理者が直せる情報である。
-          <Alert
-            tone="danger"
-            role="alert"
-            label={t`エラー`}
-            className="mt-3"
-            data-testid="registration-error"
-          >
-            {toMessages(actions.register.error, t`クライアントを登録できませんでした。`).join(
-              ' / ',
-            )}
-          </Alert>
-        )}
-
-        <Button variant="primary" className="mt-3" onClick={submit}>
-          <Trans>登録</Trans>
-        </Button>
-      </div>
-
-      <div>
-        <h2 className="mb-2 text-sm font-medium text-[--color-fg-muted]">
-          <Trans>公開ツール一覧（実効構成の参照）</Trans>
-        </h2>
-        {/* 🔴 **変更の入口を置かない。** 常に出す固定文言で、変更経路が Git であることを示す。 */}
-        <p className="text-xs text-[--color-fg-muted]" data-testid="tools-readonly-notice">
-          <Trans>
-            公開ツールはこの画面からは変更できません。公開範囲は許可リスト方式で管理しており、
-            変更は Git 上の公開構成を更新して反映します。
-          </Trans>
-        </p>
-        {tools.isError ? (
-          <Alert tone="danger" role="alert" label={t`エラー`} data-testid="tools-error">
-            {toMessages(tools.error, t`公開ツール一覧を取得できませんでした。`).join(' / ')}
-          </Alert>
-        ) : tools.isPending ? (
-          <p className="text-sm text-[--color-fg-muted]" data-testid="tools-loading">
-            <Trans>読み込み中です。</Trans>
-          </p>
-        ) : (
-          <>
-            <ul className="mt-2 text-sm" data-testid="published-tools">
-              {tools.data?.tools.map((tool) => (
-                <li key={tool.name}>
-                  <span className="font-medium">{tool.name}</span>
-                  <span className="text-xs text-[--color-fg-muted]">{` — ${tool.service}`}</span>
-                </li>
-              ))}
-            </ul>
-            {(tools.data?.drifts.length ?? 0) > 0 && (
-              // ADR-0024 §5: 申告と許可リストの食い違い。**握り潰さない** ——
-              // 「公開されているつもりの公開されていない」を人が気付ける唯一の出口である。
-              <Alert
-                tone="warning"
-                label={t`構成のずれ`}
-                className="mt-2"
-                data-testid="tool-drifts"
+            <div>
+              <Label htmlFor="mcp-display-name">
+                <Trans>表示名</Trans>
+              </Label>
+              <Input
+                id="mcp-display-name"
+                value={form.displayName}
+                onChange={(e) => form.setDisplayName(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="mcp-kind">
+                <Trans>クライアント種別</Trans>
+              </Label>
+              <Select
+                id="mcp-kind"
+                selectSize="sm"
+                value={form.kind}
+                onChange={(e) => form.setKind(e.target.value as ClientKind)}
               >
-                {(tools.data?.drifts ?? [])
-                  .map((drift) => `${drift.kind} / ${drift.target}: ${drift.detail}`)
-                  .join(' / ')}
-              </Alert>
+                {CLIENT_KINDS.map((option) => (
+                  <option key={option} value={option}>
+                    {`${labelOf(clientKindLabel(option))}（${labelOf(clientAuthLabel(option))}）`}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+
+          {/* 無人のときだけ属性の入力を出す。**有人では要求しない**（05_screens §SC-12）。 */}
+          {form.needsAttributes && (
+            <div className="mt-3" data-testid="attribute-assignment">
+              <p className="text-xs text-fg-muted">
+                <Trans>
+                  無人（サービスアカウント）には ABAC
+                  属性の割当が必須です。選べるのは定義済みの属性と その許可値だけです。
+                </Trans>
+              </p>
+              <div className="mt-2 flex flex-wrap items-end gap-4">
+                <div>
+                  <Label htmlFor="mcp-attribute-key">
+                    <Trans>属性</Trans>
+                  </Label>
+                  <Select
+                    id="mcp-attribute-key"
+                    selectSize="sm"
+                    value={form.attributeKey}
+                    onChange={(e) => form.selectAttributeKey(e.target.value)}
+                  >
+                    <option value="">{t`選択してください`}</option>
+                    {definitions.map((definition) => (
+                      <option key={definition.id} value={definition.key}>
+                        {definition.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="mcp-attribute-value">
+                    <Trans>値</Trans>
+                  </Label>
+                  <Select
+                    id="mcp-attribute-value"
+                    selectSize="sm"
+                    value={form.attributeValue}
+                    onChange={(e) => form.setAttributeValue(e.target.value)}
+                  >
+                    <option value="">{t`選択してください`}</option>
+                    {(form.selectedDefinition?.allowedValues ?? []).map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <Button size="sm" onClick={form.addEntry}>
+                  <Trans>属性を追加</Trans>
+                </Button>
+              </div>
+              <ul className="mt-2 text-xs" data-testid="attribute-entries">
+                {form.entries.map((entry) => (
+                  <li key={entry.key}>{`${entry.key}: ${entry.value}`}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {form.issues.length > 0 && (
+            <Alert
+              tone="warning"
+              role="alert"
+              label={t`入力を確認してください`}
+              className="mt-3"
+              data-testid="registration-issues"
+            >
+              {form.issues.map((issue) => issueLabels[issue]).join(' / ')}
+            </Alert>
+          )}
+
+          {actions.register.isError && (
+            // 後段の拒否理由（RFC7807）をそのまま出す。**中立化しない** ——
+            // 「無人アカウントへ個人資料を読ませる属性割当は禁止」等、管理者が直せる情報である。
+            <Alert
+              tone="danger"
+              role="alert"
+              label={t`エラー`}
+              className="mt-3"
+              data-testid="registration-error"
+            >
+              {toMessages(actions.register.error, t`クライアントを登録できませんでした。`).join(
+                ' / ',
+              )}
+            </Alert>
+          )}
+
+          <Button variant="primary" className="mt-3" onClick={submit}>
+            <Trans>登録</Trans>
+          </Button>
+        </Panel>
+
+        <Panel heading={t`公開ツール一覧（実効構成の参照）`} className="mb-0">
+          {/* 🔴 **変更の入口を置かない。** 常に出す固定文言で、変更経路が Git であることを示す。
+            モックの `.note`（区画内の注記）へ寄せる。 */}
+          <Note data-testid="tools-readonly-notice">
+            <Trans>
+              公開ツールはこの画面からは変更できません。公開範囲は許可リスト方式で管理しており、
+              変更は Git 上の公開構成を更新して反映します。
+            </Trans>
+          </Note>
+          <QueryState
+            query={tools}
+            isEmpty={(view) => view.tools.length === 0}
+            empty={
+              <EmptyState
+                title={t`公開されているツールはありません。`}
+                description={t`公開範囲は Git 上の公開構成で定義します。許可リストへ追加してください。`}
+              />
+            }
+            errorTitle={t`公開ツール一覧を取得できませんでした。`}
+            errorDescription={toMessages(tools.error, '').join(' / ') || undefined}
+          >
+            {(view) => (
+              <>
+                {/* 一覧は**表**にする（モックは縦並びだが、名前とサービスの 2 項目を持つため
+                  列見出しのある表のほうが読み手に速い）。**参照専用**で操作の列は置かない。 */}
+                <Table data-testid="published-tools">
+                  <TableCaption>{t`公開ツールの一覧`}</TableCaption>
+                  <TableHead>
+                    <TableRow>
+                      <TableHeaderCell>
+                        <Trans>ツール</Trans>
+                      </TableHeaderCell>
+                      <TableHeaderCell>
+                        <Trans>提供サービス</Trans>
+                      </TableHeaderCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {view.tools.map((tool) => (
+                      <TableRow key={tool.name}>
+                        <TableCell className="font-medium">{tool.name}</TableCell>
+                        <TableCell className="text-xs text-fg-muted">{tool.service}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {view.drifts.length > 0 && (
+                  // ADR-0024 §5: 申告と許可リストの食い違い。**握り潰さない** ——
+                  // 「公開されているつもりの公開されていない」を人が気付ける唯一の出口である。
+                  <Alert
+                    tone="warning"
+                    label={t`構成のずれ`}
+                    className="mt-n2"
+                    data-testid="tool-drifts"
+                  >
+                    {view.drifts
+                      .map((drift) => `${drift.kind} / ${drift.target}: ${drift.detail}`)
+                      .join(' / ')}
+                  </Alert>
+                )}
+              </>
             )}
-          </>
-        )}
+          </QueryState>
+        </Panel>
       </div>
     </section>
   );

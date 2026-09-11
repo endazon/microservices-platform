@@ -225,20 +225,35 @@ describe('OperationsDashboardPage (SC-10)', () => {
   });
 
   // IADR-0129 決定 3 / IADR-0009: 403 と 404 は**同じ**中立文言。文言から権限の有無を読ませない。
-  it('shows the same neutral message for a 403', async () => {
-    mocks.apiRequest.mockRejectedValue(new ApiError('forbidden', '権限がありません。', 403));
-    await renderPage();
+  //
+  // ★［UI/UX 改善 2026-09-12］🔴 **「alert ではないこと」では測らなくなった。**
+  // 三部品（NFR / ADR-0031）へ寄せたことで失敗の描画は `ErrorState` が担い、`role="alert"` は
+  // **部品側が決める**（失敗は割り込んで知らせる事象である）。ここで固定したい性質は
+  // 「403 と 404 で**表示が 1 文字も違わない**」ことなので、**両者の描画を突き合わせる**
+  // ——`queryByRole('alert')` は、その性質を測っていなかった（後段の文言がそのまま出ていても緑になる）。
+  async function renderNeutralFailure(error: ApiError): Promise<string> {
+    mocks.apiRequest.mockRejectedValue(error);
+    const { unmount } = await renderPage();
+    const neutral = await screen.findByText('運用ダッシュボードは利用できません。');
+    // 再試行は出さない（押しても権限は増えず、不在の資源も現れない）。
+    expect(screen.queryByRole('button', { name: '再試行' })).not.toBeInTheDocument();
+    const markup = (neutral.closest('[role="alert"]') as HTMLElement).innerHTML;
+    unmount();
+    return markup;
+  }
 
-    expect(await screen.findByText('運用ダッシュボードは利用できません。')).toBeInTheDocument();
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
+  it('shows the same neutral markup for a 403 and a 404, leaking neither reason', async () => {
+    const forbidden = await renderNeutralFailure(
+      new ApiError('forbidden', '権限がありません。', 403),
+    );
+    const notFound = await renderNeutralFailure(
+      new ApiError('notFound', '見つかりませんでした。', 404),
+    );
 
-  it('shows the same neutral message for a 404', async () => {
-    mocks.apiRequest.mockRejectedValue(new ApiError('notFound', '見つかりませんでした。', 404));
-    await renderPage();
-
-    expect(await screen.findByText('運用ダッシュボードは利用できません。')).toBeInTheDocument();
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(forbidden).toBe(notFound);
+    // 後段の文言は 1 つも漏れない（漏れると文言から権限の有無が読める）。
+    expect(forbidden).not.toContain('権限がありません。');
+    expect(forbidden).not.toContain('見つかりませんでした。');
   });
 
   // 5xx は中立化しない（系の状態であって資源の存在ではない。運用者が障害を見逃さないようにする）。
@@ -349,16 +364,22 @@ describe('OperationsDashboardPage (SC-10)', () => {
 
     expect(await screen.findByText('1840')).toBeInTheDocument();
 
-    // KPI カードの見出し（CardTitle）は h2。一覧・詳細ツールの見出しも h2 なので、
-    // KPI が増減したらこの集合が動く。
+    // ★［UI/UX 改善 2026-09-12］指標は `Stat`（モックの `.panel.stat`）で描く。
+    // **指標名は見出しではない** —— `.stat .l` は accent 色の小さな語であり、
+    // 文書構造としての見出しは区画（`Panel`）の側が持つ。よって
+    // 「見出しの集合」と「指標名の集合」を**別々に**固定する（合わせて旧テストと同じ網を張る）。
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
-      '検索総数',
-      '回答総数',
-      '満足率',
       '利用状況（日次）',
       '検索傾向（上位語）',
-      '詳細ツール',
+      '専用ツール',
     ]);
+    // KPI は契約から出せる 3 枚だけ。増減すればこの集合が動く。
+    for (const label of ['検索総数', '回答総数', '満足率']) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+    for (const label of ['SLO・レイテンシ', 'LLMコスト', '達成率']) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
+    }
 
     expect(screen.queryByRole('heading', { name: 'SLO' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'LLMコスト' })).not.toBeInTheDocument();

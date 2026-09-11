@@ -3,7 +3,7 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import { msg } from '@lingui/core/macro';
 import type { MessageDescriptor } from '@lingui/core';
 import { Link } from '@tanstack/react-router';
-import { Alert, Card, CardContent, CardHeader, CardTitle, Label, Select } from '@platform/ui';
+import { EmptyState, Label, Note, Panel, Select, Stat, buttonVariants, cn } from '@platform/ui';
 // ADR-0031 §採用技術一覧（テーブル = TanStack Table）/ #788: 表は共通の DataTable へ載せる。
 // 見た目と表構造の a11y は `@platform/ui` の Table 一式が持ったままである（DataTable の冒頭を参照）。
 import { DataTable } from '../../../components/DataTable';
@@ -12,6 +12,7 @@ import type { DataTableColumns } from '../../../components/DataTable';
 import { EChart } from '../../../components/EChart';
 import { searchTermBarOption, usageTrendLineOption } from '../types/dashboardCharts';
 import { ApiError } from '@foundation/api/ApiError';
+import { QueryState } from '@foundation/ui/QueryState';
 import { appConfig } from '@foundation/config/runtimeConfig';
 import { i18n } from '@foundation/i18n';
 import { toMessages } from '@foundation/utils/apiErrors';
@@ -93,12 +94,13 @@ export function OperationsDashboardPage() {
     <section>
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="text-lg font-semibold text-[--color-fg]">
+          {/* モックの `.ttl` / `.sub`（17px medium ＋ 12px muted）。 */}
+          <h1 className="text-[17px] font-medium text-fg">
             <Trans>運用ダッシュボード</Trans>
           </h1>
           {/* モックの副題は「SLO・利用状況・コスト」だが、SLO とコストは契約に無い。
               出さないものを名乗ると読み手を誤らせるため、出すものだけを書く。 */}
-          <p className="text-xs text-[--color-fg-muted]">
+          <p className="text-xs text-fg-muted">
             <Trans>利用状況・検索傾向・回答品質（SLO・コストは Grafana で参照）</Trans>
           </p>
         </div>
@@ -121,69 +123,75 @@ export function OperationsDashboardPage() {
         </div>
       </div>
 
-      {summary.isPending && (
-        <p role="status" className="text-sm text-[--color-fg-muted]">
-          <Trans>読み込み中…</Trans>
-        </p>
-      )}
+      {/* 🔴 待ち・失敗・本体は `QueryState` が 1 か所で描き分ける（判定順 isError → isPending → 本体）。
+          **中立の文言は `errorTitle` へ渡す** —— 403 と 404 は同一の文言へ寄せ（IADR-0129 決定 3 /
+          IADR-0009）、**再試行も出さない**（押しても権限は増えない）。
+          5xx・ネットワーク断は中立化せず後段の理由を出したうえで再試行を出す ——
+          系の状態であって資源の存在ではなく、秘匿の対象ではない。区別しないと運用者が
+          「権限が無い」と誤読して障害を見逃す。 */}
+      <QueryState
+        query={summary}
+        errorTitle={
+          unavailable
+            ? t`運用ダッシュボードは利用できません。`
+            : t`運用サマリを取得できませんでした。`
+        }
+        errorDescription={
+          // 🔴 **中立の側で後段の文言へフォールバックさせない。** `undefined` を渡すと
+          // `QueryState` は `ApiError.message` を出し、403 は「権限がありません。」・
+          // 404 は「見つかりませんでした。」と**文言が割れる** —— それこそ
+          // IADR-0129 決定 3 が塞いだ穴である。両方で同じ次の一手を出す。
+          unavailable
+            ? t`運用状況は下の専用ツール（Grafana など）でも確認できます。`
+            : toMessages(summary.error, '').join(' / ') || undefined
+        }
+        canRetry={!unavailable}
+      >
+        {(data) => <SummaryView summary={data} />}
+      </QueryState>
 
-      {summary.isError && unavailable && (
-        <p className="text-sm">
-          <Trans>運用ダッシュボードは利用できません。</Trans>
-        </p>
-      )}
-      {/* 5xx・ネットワーク断は中立化しない。系の状態であって資源の存在ではなく、秘匿の対象ではない
-          ——区別しないと運用者が「権限が無い」と誤読して障害を見逃す。 */}
-      {summary.isError && !unavailable && (
-        <Alert tone="danger" role="alert" label={t`エラー`}>
-          {toMessages(summary.error, t`運用サマリを取得できませんでした。`).join(' / ')}
-        </Alert>
-      )}
-
-      {summary.isSuccess && summary.data && <SummaryView summary={summary.data} />}
-
-      <h2 className="mb-2 text-sm font-medium text-[--color-fg-muted]">
-        <Trans>詳細ツール</Trans>
-      </h2>
-      {tools.length === 0 ? (
-        <p className="text-sm">
-          <Trans>外部ツールの導線は未設定です。</Trans>
-        </p>
-      ) : (
-        <ul className="flex flex-wrap gap-2">
-          {tools.map((tool) => (
-            <li key={tool.id}>
-              <a
-                href={tool.url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex flex-col rounded-[--radius-control] border border-[--color-border] bg-[--color-surface] px-3 py-2 text-sm text-[--color-fg] hover:bg-[--color-surface-muted]"
-              >
-                <span className="font-medium">{tool.name} ↗</span>
-                <span className="text-xs text-[--color-fg-muted]">{i18n._(tool.description)}</span>
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* モックの `.row` のボタン列（Grafana / Kiali / Jaeger・Tempo）。**外部リンクなので
+          要素は `<a>` のまま**で、見た目だけ二次ボタンへ寄せる（`Button` は `<button>` を描くため
+          新しいタブで開く導線には使えない）。 */}
+      <Panel heading={t`専用ツール`}>
+        {tools.length === 0 ? (
+          <EmptyState
+            title={t`外部ツールの導線は未設定です。`}
+            description={t`接続先は実行時 config（opsLinks）で注入します。配備済みのツールの URL を設定してください。`}
+          />
+        ) : (
+          <ul className="flex flex-wrap gap-n2">
+            {tools.map((tool) => (
+              <li key={tool.id}>
+                <a
+                  href={tool.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={cn(buttonVariants({ variant: 'secondary', size: 'sm' }))}
+                >
+                  {`${tool.name} ↗`}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+        {/* 役割の説明はボタンの外へ出す（モックの `.note`）。**落とさない** ——
+            「Grafana へ行けば何が見えるのか」が分からないと導線として機能しない。 */}
+        <Note>
+          <Trans>運用面は専用ツールで提供します。本画面はこれらへの入口です。</Trans>{' '}
+          {tools.map((tool) => `${tool.name}（${i18n._(tool.description)}）`).join(' / ')}
+        </Note>
+      </Panel>
 
       {/* IADR-0129 決定 4: 導線を権限で出し分けない。本画面へ到達できるのは platform-admin だけであり、
           platform-admin は ConfigViewer（admin または operator）の部分集合であるため、
           ロール判定は**この画面では常に真**になる（到達しない分岐を作らない）。
           SC-10 の閲覧ロールが広がる時点で、そのとき必要な出し分けを書く。 */}
-      <p className="mt-3 text-sm">
-        <Link to="/admin/config-viewer" className="text-[--color-brand] hover:underline">
+      <p className="mt-n3 text-sm">
+        <Link to="/admin/config-viewer" className="text-brand hover:underline">
           <Trans>構成ビューア →</Trans>
         </Link>
       </p>
-
-      <Alert tone="info" className="mt-3" label={t`運用ツール`}>
-        <Trans>
-          運用面は専用ツールで提供します:
-          Grafana（メトリクス・コスト）・Kiali（サービスメッシュ）・Jaeger /
-          Tempo（分散トレース）。本画面はこれらへの入口です。
-        </Trans>
-      </Alert>
     </section>
   );
 }
@@ -201,37 +209,30 @@ function SummaryView({ summary }: { summary: DashboardSummaryDto }) {
   const down = summary.quality.down;
   return (
     <>
-      <div className="mb-3 grid gap-3 sm:grid-cols-3">
-        <Kpi label={t`検索総数`} value={String(summary.totalSearches)} />
-        <Kpi label={t`回答総数`} value={String(summary.totalAnswers)} />
-        <Kpi
-          label={t`満足率`}
-          value={`${Math.round(summary.quality.satisfactionRate * 100)}%`}
-          note={t`👍 ${up} / 👎 ${down}`}
-        />
+      {/* モックの `.g3` ＋ `.panel.stat`。**指標名は見出しではない** ——
+          `Stat` の label は accent 色の小さな語（`.stat .l`）であり、
+          文書構造としての見出しは区画（`Panel`）の側が持つ。 */}
+      <div className="mb-n3 grid grid-cols-3 gap-n3">
+        <Panel className="mb-0">
+          <Stat label={t`検索総数`} value={String(summary.totalSearches)} />
+        </Panel>
+        <Panel className="mb-0">
+          <Stat label={t`回答総数`} value={String(summary.totalAnswers)} />
+        </Panel>
+        <Panel className="mb-0">
+          <Stat
+            label={t`満足率`}
+            value={`${Math.round(summary.quality.satisfactionRate * 100)}%`}
+            meta={t`👍 ${up} / 👎 ${down}`}
+          />
+        </Panel>
       </div>
 
-      <div className="mb-3 grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-n3 lg:grid-cols-2">
         <UsageTrendTable points={summary.usageTrend} />
         <SearchTrendTable terms={summary.topSearchTerms} minCount={summary.searchTermMinCount} />
       </div>
     </>
-  );
-}
-
-function Kpi({ label, value, note }: { label: string; value: string; note?: string }) {
-  return (
-    <Card>
-      <CardHeader className="mb-1">
-        <CardTitle className="text-xs uppercase tracking-wide text-[--color-fg-muted]">
-          {label}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-semibold text-[--color-fg]">{value}</div>
-        {note && <div className="text-xs text-[--color-fg-muted]">{note}</div>}
-      </CardContent>
-    </Card>
   );
 }
 
@@ -261,30 +262,25 @@ function UsageTrendTable({ points }: { points: UsagePointDto[] }) {
   const chartOption = useMemo(() => usageTrendLineOption(points, usageEventLabel), [points]);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          <Trans>利用状況（日次）</Trans>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {points.length === 0 ? (
-          <p>
-            <Trans>期間内の利用はありません。</Trans>
-          </p>
-        ) : (
-          <>
-            <EChart option={chartOption} ariaLabel={t`利用状況（日次）の推移グラフ`} />
-            <DataTable
-              caption={t`利用状況（日次）の一覧`}
-              sortHint={t`並べ替え`}
-              columns={columns}
-              data={points}
-            />
-          </>
-        )}
-      </CardContent>
-    </Card>
+    <Panel heading={t`利用状況（日次）`} className="mb-0">
+      {points.length === 0 ? (
+        // **0 件は正常な結果**であり再試行を促すものではない（取得の失敗は上の QueryState が描く）。
+        <EmptyState
+          title={t`期間内の利用はありません。`}
+          description={t`集計期間を広げると、より古い利用が含まれます。`}
+        />
+      ) : (
+        <>
+          <EChart option={chartOption} ariaLabel={t`利用状況（日次）の推移グラフ`} />
+          <DataTable
+            caption={t`利用状況（日次）の一覧`}
+            sortHint={t`並べ替え`}
+            columns={columns}
+            data={points}
+          />
+        </>
+      )}
+    </Panel>
   );
 }
 
@@ -331,38 +327,33 @@ function SearchTrendTable({ terms, minCount }: { terms: SearchTrendDto[]; minCou
   const chartOption = useMemo(() => searchTermBarOption(visible, t`件数`), [visible, t]);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          <Trans>検索傾向（上位語）</Trans>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {/* 併記は一覧が空のときも出す——0 件はしきい値の効果が最も強く出ている状態であり、
-            そこで数字が消えると「なぜ空なのか」が読めなくなる。
-            **ただし下限を知らないときは名乗らない**——「0 件以上の語のみを表示します」は
-            何も言っていないうえ、しきい値が効いているかのように読める。 */}
-        {effectiveMinCount > 0 && (
-          <p className="mb-2 text-xs text-[--color-fg-muted]">
-            <Trans>{effectiveMinCount} 件以上検索された語のみを表示します。</Trans>
-          </p>
-        )}
-        {visible.length === 0 ? (
-          <p>
-            <Trans>検索傾向はまだありません。</Trans>
-          </p>
-        ) : (
-          <>
-            <EChart option={chartOption} ariaLabel={t`検索傾向（上位語）の棒グラフ`} />
-            <DataTable
-              caption={t`検索傾向（上位語）の一覧`}
-              sortHint={t`並べ替え`}
-              columns={columns}
-              data={visible}
-            />
-          </>
-        )}
-      </CardContent>
-    </Card>
+    <Panel heading={t`検索傾向（上位語）`} className="mb-0">
+      {/* 併記は一覧が空のときも出す——0 件はしきい値の効果が最も強く出ている状態であり、
+          そこで数字が消えると「なぜ空なのか」が読めなくなる。
+          **ただし下限を知らないときは名乗らない**——「0 件以上の語のみを表示します」は
+          何も言っていないうえ、しきい値が効いているかのように読める。 */}
+      {effectiveMinCount > 0 && (
+        <p className="mb-n2 text-xs text-fg-muted">
+          <Trans>{effectiveMinCount} 件以上検索された語のみを表示します。</Trans>
+        </p>
+      )}
+      {visible.length === 0 ? (
+        // 🔴 **「その他 M 件」を出さない**（ADR-0071 決定 1）。次の一手も件数を示さない語で書く。
+        <EmptyState
+          title={t`検索傾向はまだありません。`}
+          description={t`集計期間を広げると、下限を満たす語が現れることがあります。`}
+        />
+      ) : (
+        <>
+          <EChart option={chartOption} ariaLabel={t`検索傾向（上位語）の棒グラフ`} />
+          <DataTable
+            caption={t`検索傾向（上位語）の一覧`}
+            sortHint={t`並べ替え`}
+            columns={columns}
+            data={visible}
+          />
+        </>
+      )}
+    </Panel>
   );
 }

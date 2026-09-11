@@ -226,12 +226,18 @@ describe('ConfigViewerPage (SC-11)', () => {
   });
 
   // 404 は「不在」と「権限による秘匿」を区別しない中立文言へ寄せる（決定 3）。
-  it('shows the neutral drift message for a 404 without an alert', async () => {
+  // ★［UI/UX 改善 2026-09-12］🔴 **「alert ではないこと」では測らない。**
+  // 三部品（NFR / ADR-0031）へ寄せたことで失敗の描画は `ErrorState` が担い、`role="alert"` は
+  // **部品側が決める**（失敗は割り込んで知らせる事象である）。決定 3 が守らせたい性質は
+  // 「後段の理由を画面へ出さない（＝文言から権限の有無を読ませない）」ことなので、**それを直接測る**。
+  // 併せて**再試行を出さない**ことも見る —— 押しても権限は増えず、不在の資源も現れない。
+  it('shows the neutral drift message for a 404 and leaks no downstream reason', async () => {
     mockApi({ drift: new ApiError('notFound', 'nope', 404) });
     await renderPage();
 
-    expect(await screen.findByText('ドリフト情報は利用できません。')).toBeInTheDocument();
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    const neutral = await screen.findByText('ドリフト情報は利用できません。');
+    expect(neutral.closest('[role="alert"]')).not.toHaveTextContent('nope');
+    expect(screen.queryByRole('button', { name: '再試行' })).not.toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'パイプライン段' })).toBeInTheDocument();
   });
 
@@ -244,21 +250,33 @@ describe('ConfigViewerPage (SC-11)', () => {
     expect(screen.getByRole('list', { name: 'パイプライン段' })).toBeInTheDocument();
   });
 
-  it('shows the neutral history message for a 404 without an alert', async () => {
+  // ★［UI/UX 改善 2026-09-12］🔴 **「alert ではないこと」では測らない。**
+  // 三部品（NFR / ADR-0031）へ寄せたことで失敗の描画は `ErrorState` が担い、`role="alert"` は
+  // **部品側が決める**（失敗は割り込んで知らせる事象である）。決定 3 が守らせたい性質は
+  // 「後段の理由を画面へ出さない（＝文言から権限の有無を読ませない）」ことなので、**それを直接測る**。
+  // 併せて**再試行を出さない**ことも見る —— 押しても権限は増えず、不在の資源も現れない。
+  it('shows the neutral history message for a 404 and leaks no downstream reason', async () => {
     mockApi({ history: new ApiError('notFound', 'nope', 404) });
     await renderPage();
 
-    expect(await screen.findByText('バージョン履歴は利用できません。')).toBeInTheDocument();
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    const neutral = await screen.findByText('バージョン履歴は利用できません。');
+    expect(neutral.closest('[role="alert"]')).not.toHaveTextContent('nope');
+    expect(screen.queryByRole('button', { name: '再試行' })).not.toBeInTheDocument();
   });
 
   // IADR-0009: 404 は「不在」と「権限による秘匿」を区別しない中立文言にする。
+  // ★［UI/UX 改善 2026-09-12］🔴 **「alert ではないこと」では測らない。**
+  // 三部品（NFR / ADR-0031）へ寄せたことで失敗の描画は `ErrorState` が担い、`role="alert"` は
+  // **部品側が決める**（失敗は割り込んで知らせる事象である）。決定 3 が守らせたい性質は
+  // 「後段の理由を画面へ出さない（＝文言から権限の有無を読ませない）」ことなので、**それを直接測る**。
+  // 併せて**再試行を出さない**ことも見る —— 押しても権限は増えず、不在の資源も現れない。
   it('shows a neutral message for a 404 without revealing whether it exists', async () => {
     mockApi({ config: new ApiError('notFound', 'nope', 404) });
     await renderPage();
 
-    expect(await screen.findByText('構成情報は利用できません。')).toBeInTheDocument();
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    const neutral = await screen.findByText('構成情報は利用できません。');
+    expect(neutral.closest('[role="alert"]')).not.toHaveTextContent('nope');
+    expect(screen.queryByRole('button', { name: '再試行' })).not.toBeInTheDocument();
   });
 
   // 5xx は中立化しない（系の状態であって資源の存在ではない）。

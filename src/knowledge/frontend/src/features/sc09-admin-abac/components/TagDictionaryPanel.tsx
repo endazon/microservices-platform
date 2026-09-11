@@ -3,8 +3,10 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import {
   Alert,
   Button,
+  EmptyState,
   Input,
   Label,
+  Panel,
   Table,
   TableBody,
   TableCaption,
@@ -13,6 +15,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from '@platform/ui';
+import { QueryState } from '@foundation/ui/QueryState';
 import { toMessages } from '@foundation/utils/apiErrors';
 import { tagInUseCount, useTagActions, useTagDictionary } from '../api/useTagDictionary';
 // SC-09, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
@@ -117,7 +120,7 @@ function TagRow({
 
 export function TagDictionaryPanel() {
   const { t } = useLingui();
-  const { data, isPending, isError } = useTagDictionary();
+  const query = useTagDictionary();
   const actions = useTagActions();
   const { create, rename, remove } = actions;
   const [name, setName] = useState('');
@@ -146,24 +149,13 @@ export function TagDictionaryPanel() {
   const republished =
     rename.isSuccess && !failed ? (rename.data?.data?.republishedDocuments ?? null) : null;
 
-  const tags = data?.tags ?? [];
-
   function beginOperation() {
     for (const mutation of mutations) mutation.reset();
   }
 
   return (
-    <section className="mt-3">
-      <h2 className="mb-2 text-base font-semibold text-[--color-fg]">
-        <Trans>タグ辞書</Trans>
-      </h2>
-
-      {isError && (
-        <Alert tone="danger" role="alert" label={t`エラー`}>
-          <Trans>タグ辞書を読み込めませんでした。</Trans>
-        </Alert>
-      )}
-
+    // モックの `.panel`（区画）。見出しは区画のラベルとして Panel が描く。
+    <Panel heading={t`タグ辞書`} aria-label={t`タグ辞書`} className="mt-n3">
       {republished !== null && (
         <Alert tone="success" role="status" className="mb-2" label={t`完了`}>
           <Trans>タグを改名しました。{republished} 件の文書へ反映しています。</Trans>
@@ -186,54 +178,58 @@ export function TagDictionaryPanel() {
         </Alert>
       )}
 
-      <Table>
-        <TableCaption>
-          <Trans>タグ辞書の一覧</Trans>
-        </TableCaption>
-        <TableHead>
-          <TableRow>
-            <TableHeaderCell>
-              <Trans>タグ</Trans>
-            </TableHeaderCell>
-            <TableHeaderCell>
-              <Trans>使用件数</Trans>
-            </TableHeaderCell>
-            <TableHeaderCell>
-              <Trans>操作</Trans>
-            </TableHeaderCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {isPending ? (
-            <TableRow>
-              <TableCell colSpan={3}>
-                <Trans>読み込み中…</Trans>
-              </TableCell>
-            </TableRow>
-          ) : tags.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={3}>
-                <Trans>タグは登録されていません。</Trans>
-              </TableCell>
-            </TableRow>
-          ) : (
-            tags.map((tag) => (
-              <TagRow
-                key={tag.id}
-                tag={tag}
-                onRename={(next) => {
-                  beginOperation();
-                  rename.mutate({ id: tag.id, data: { name: next } });
-                }}
-                onDelete={() => {
-                  beginOperation();
-                  remove.mutate({ id: tag.id });
-                }}
-              />
-            ))
-          )}
-        </TableBody>
-      </Table>
+      {/* 🔴 三状態は `QueryState` へ寄せ、**表の器の中では描かない**。
+          待ち・0 件・失敗をセル 1 つに詰めると、支援技術には「1 行の表」として読まれ、
+          **失敗が 0 件と同じ形**になる（判定順 isError → isPending → isEmpty → 本体）。 */}
+      <QueryState
+        query={query}
+        isEmpty={(dictionary) => (dictionary.tags ?? []).length === 0}
+        empty={
+          <EmptyState
+            title={t`タグは登録されていません。`}
+            description={t`下の「タグ名（必須）」から最初のタグを登録してください。`}
+          />
+        }
+        errorTitle={t`タグ辞書を読み込めませんでした。`}
+        errorDescription={toMessages(query.error, '').join(' / ') || undefined}
+      >
+        {(dictionary) => (
+          <Table>
+            <TableCaption>
+              <Trans>タグ辞書の一覧</Trans>
+            </TableCaption>
+            <TableHead>
+              <TableRow>
+                <TableHeaderCell>
+                  <Trans>タグ</Trans>
+                </TableHeaderCell>
+                <TableHeaderCell>
+                  <Trans>使用件数</Trans>
+                </TableHeaderCell>
+                <TableHeaderCell>
+                  <Trans>操作</Trans>
+                </TableHeaderCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {(dictionary.tags ?? []).map((tag) => (
+                <TagRow
+                  key={tag.id}
+                  tag={tag}
+                  onRename={(next) => {
+                    beginOperation();
+                    rename.mutate({ id: tag.id, data: { name: next } });
+                  }}
+                  onDelete={() => {
+                    beginOperation();
+                    remove.mutate({ id: tag.id });
+                  }}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </QueryState>
 
       <form
         className="mt-3 flex items-end gap-2"
@@ -255,6 +251,6 @@ export function TagDictionaryPanel() {
           <Trans>追加</Trans>
         </Button>
       </form>
-    </section>
+    </Panel>
   );
 }
