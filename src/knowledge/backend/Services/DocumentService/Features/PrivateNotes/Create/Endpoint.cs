@@ -45,7 +45,10 @@ internal static class CreatePrivateNoteEndpoint
             db.PrivateNotes.Add(note);
             // 本文なし（0 バイト）の作成は使用量を変えないため、警告の再評価は不要である。
             await db.SaveChangesAsync(ct);
-            return Results.Created($"/private-notes/{doc.Id}", PrivateNoteEndpoints.ToDto(note, doc));
+            // #1441: 作成直後も一覧と同じ導出で埋める（公開範囲＝`private`・同期状態は端末と
+            // 対象フォルダ次第・タグは空）。**口ごとに別の埋め方をしない。**
+            var enrichment = await PrivateNoteEnrichment.LoadAsync(db, owner, [doc.Id], now, ct);
+            return Results.Created($"/private-notes/{doc.Id}", enrichment.ToDto(note, doc));
         });
     }
 }

@@ -1566,6 +1566,28 @@ export interface PrivateNoteDto {
   purgeAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+     * 公開範囲の 3 状態（SC-19 主要素 2）。値は `private`（非公開・既定。共有 0 件）／
+     * `users`（個人指定。利用者への共有のみ）／`groups`（グループ指定。グループへの共有が 1 つでもある）。
+     * 供給元は個人資料の共有台帳（ADR-0036 D-06。判定は ABAC の `shared_with`）。
+     * 🔴 **指定先（共有相手の識別子・表示名）は載せない** —— 指定先の単位（ADR-0036 §未確定事項 5）が
+     * 未決であり、型が決まるまで契約に出さない（planning#618）。
+     */
+  visibility: string;
+  /** 利用者への共有の件数（0 以上） */
+  sharedUserCount: number;
+  /** グループへの共有の件数（0 以上） */
+  sharedGroupCount: number;
+  /**
+     * 同期状態の 3 状態（SC-19 主要素 5。公開範囲とは独立に変化する）。値は
+     * `conflict`（競合あり。未解決の同期競合が 1 件以上）／`target`（同期対象。有効な同期端末が 1 台以上あり、
+     * 同期対象フォルダが未設定か、`vaultPath` がいずれかの対象フォルダの配下）／`excluded`（対象外。それ以外。
+     * 未解決の競合が無い削除済みの資料は常に `excluded`）。**判定は `conflict` → `target` → `excluded` の順**
+     * （競合は解決されるまで表示し続ける）。供給元は Obsidian 同期の機構（ADR-0037 決定 3・4・7）。
+     */
+  syncState: string;
+  /** タグ辞書の表示名（SC-09 の辞書。ADR-0063 は個人資料も対象）。辞書に無い ID は落とす */
+  tags: string[];
 }
 
 /**
@@ -1794,6 +1816,92 @@ export interface SyncTokenIssuedResponse {
  */
 export interface RevokeAllSyncDevicesResponse {
   revokedCount: number;
+}
+
+/**
+ * FR-20, SC-20 主要素 3: 同期対象フォルダ 1 件（Obsidian Vault 内の相対パス）と、配下の資料数・最終同期日時。
+ * `noteCount` は削除済みを除く配下の資料数、`lastSyncAt` は配下の資料の更新日時の最大（無ければ null）。
+ */
+export interface SyncTargetFolderDto {
+  /** Vault 内の相対パス（正規化済み。先頭・末尾に / を持たない） */
+  path: string;
+  noteCount: number;
+  lastSyncAt?: string | null;
+}
+
+/**
+ * FR-20, SC-20 主要素 3, ADR-0037 決定 3・4: 本人の同期設定。**同期対象は「本人が所有する個人資料」で判定し、
+ * 公開範囲とは独立**である。`targetFolders` が空なら全資料が対象（既定）。
+ * 対象から外れたフォルダの資料は**削除ではなく同期停止**（`syncState` が `excluded` になるだけ）。
+ */
+export interface SyncSettingsDto {
+  targetFolders: SyncTargetFolderDto[];
+  /** 未設定なら null */
+  updatedAt?: string | null;
+}
+
+/**
+ * FR-20, SC-20 主要素 3: 同期対象フォルダの置き換え（全量）。各要素は空でない・先頭末尾の `/` を除いて正規化・
+ * 重複不可・最大 100 件・各 1024 文字以内。違反は 400（RFC7807 ValidationProblem）。
+ */
+export interface UpdateSyncSettingsRequest {
+  targetFolders: string[];
+}
+
+/**
+ * FR-20, SC-20 主要素 5, ADR-0037 決定 7: 未解決の同期競合 1 件（一覧用。本文は含まない）。
+ * push の `baseVersion` が現在版と食い違ったときにサーバが記録する（プロトコルの 409 応答は変えていない）。
+ * `localBaseVersion` は端末が土台にしていた版、`serverVersion` は検出時のサーバの版。
+ */
+export interface SyncConflictSummaryDto {
+  id: string;
+  noteId: string;
+  title: string;
+  vaultPath: string;
+  detectedAt: string;
+  deviceId: string;
+  deviceName: string;
+  localBaseVersion: number;
+  serverVersion: number;
+}
+
+/**
+ * FR-20, SC-20 主要素 5: 競合 1 件の詳細（2 ペイン差分の材料）。`localContent` は端末が送った本文、
+ * `serverContent` は現在のサーバ版の本文。**本文は詳細だけが返す**（一覧を重くしない）。
+ */
+export interface SyncConflictDetailDto {
+  id: string;
+  noteId: string;
+  title: string;
+  vaultPath: string;
+  detectedAt: string;
+  deviceId: string;
+  deviceName: string;
+  localBaseVersion: number;
+  serverVersion: number;
+  localContent: string;
+  serverContent: string;
+}
+
+/**
+ * FR-20, SC-20 主要素 5, ADR-0037 決定 7: 競合の解決。値は `local`（ローカルを採用。端末の本文を新しい版として書く）／
+ * `server`（サーバを採用。資料は変えない）／`both`（両方を残す。端末の本文を別名の新規資料として作る）。
+ * **自動解決（後勝ち）の値は存在しない。**
+ */
+export interface ResolveSyncConflictRequest {
+  resolution: string;
+}
+
+/**
+ * FR-20, SC-20 主要素 5: 解決の結果。`noteVersion` は解決後の元資料の版（`server` / `both` では不変）。
+ * `createdNoteId` は `both` で作った別名資料の ID（それ以外は null）。
+ */
+export interface ResolveSyncConflictResponse {
+  conflictId: string;
+  noteId: string;
+  resolution: string;
+  noteVersion: number;
+  createdNoteId?: string | null;
 }
 
 /**

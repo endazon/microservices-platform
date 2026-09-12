@@ -70,6 +70,14 @@ public static class PrivateNoteBffEndpoints
         var devices = app.MapGroup("/bff/private-notes/devices").WithTags("PrivateNotes BFF")
             .RequireAuthorization();
 
+        // FR-20, SC-20 主要素 3・5 (#1442): 同期対象範囲と同期競合。**群を分ける**のは後段の
+        // パスが別群だからであり（`/private-notes/sync-settings*` / `/private-notes/conflicts*`）、
+        // 認可の強さが違うからではない —— 認証必須・ロール不要は上の 2 群と同じである。
+        var settings = app.MapGroup("/bff/private-notes/sync-settings").WithTags("PrivateNotes BFF")
+            .RequireAuthorization();
+        var conflicts = app.MapGroup("/bff/private-notes/conflicts").WithTags("PrivateNotes BFF")
+            .RequireAuthorization();
+
         // ── SC-19: 一覧＋容量表示 ───────────────────────────────────
         // 削除済みも同じ一覧に載る（SC-19 の「削除済み」タブは同じ応答を絞って描く）。
         // **容量の内訳「うち削除済み」は画面が削除済み行の bytes を合算して出す** ——
@@ -152,6 +160,42 @@ public static class PrivateNoteBffEndpoints
             ForwardAsync(HttpMethod.Post, "/private-notes/devices/revoke-all", null,
                 httpFactory, http, ct))
             .WithName("BffSyncDeviceRevokeAll").Produces<RevokeAllSyncDevicesResponse>();
+
+        // ── SC-20 主要素 3: 同期対象範囲（#1442）─────────────────────────
+        // **未設定は `targetFolders: []`**（＝全資料が対象。ADR-0037 決定 3）であり 404 ではない。
+        settings.MapGet("/", (IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
+            ForwardAsync(HttpMethod.Get, "/private-notes/sync-settings/", null, httpFactory, http, ct))
+            .WithName("BffSyncSettingsGet").Produces<SyncSettingsDto>();
+
+        // 🔴 **対象から外しても資料は削除されない**（決定 4）。この口が触るのは同期設定だけである。
+        // 画面は「対象フォルダから外す」と「削除する」を明確に区別する（SC-20 主要素 3）。
+        settings.MapPut("/", (UpdateSyncSettingsRequest req, IHttpClientFactory httpFactory,
+            HttpContext http, CancellationToken ct) =>
+            ForwardIfWritableAsync(HttpMethod.Put, "/private-notes/sync-settings/", req,
+                httpFactory, http, ct))
+            .WithName("BffSyncSettingsUpdate").Produces<SyncSettingsDto>();
+
+        // ── SC-20 主要素 5: 同期競合（#1442）──────────────────────────
+        // **未解決のみ・検出日時の新しい順。** 本文は載らない（2 ペイン差分は詳細が返す）。
+        conflicts.MapGet("/", (IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
+            ForwardAsync(HttpMethod.Get, "/private-notes/conflicts/", null, httpFactory, http, ct))
+            .WithName("BffSyncConflictList").Produces<List<SyncConflictSummaryDto>>();
+
+        // 他人の競合・不在・解決済みはいずれも **404**（存在ごと秘匿する。冒頭の 2）。
+        conflicts.MapGet("/{id:guid}", (Guid id, IHttpClientFactory httpFactory,
+            HttpContext http, CancellationToken ct) =>
+            ForwardAsync(HttpMethod.Get, $"/private-notes/conflicts/{id}", null,
+                httpFactory, http, ct))
+            .WithName("BffSyncConflictGet").Produces<SyncConflictDetailDto>();
+
+        // 🔴 **利用者が選んだ 3 択の適用であり、自動解決の口ではない**（ADR-0037 決定 7）。
+        // `both` は新規資料を作るため容量上限（507）が効く —— **本文を詰め替えず透過する**
+        // （507 の本文が SC-19 / SC-20 の固定文言の根拠である）。
+        conflicts.MapPost("/{id:guid}/resolve", (Guid id, ResolveSyncConflictRequest req,
+            IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
+            ForwardIfWritableAsync(HttpMethod.Post, $"/private-notes/conflicts/{id}/resolve", req,
+                httpFactory, http, ct))
+            .WithName("BffSyncConflictResolve").Produces<ResolveSyncConflictResponse>();
 
         return app;
     }

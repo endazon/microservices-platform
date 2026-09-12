@@ -312,6 +312,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public static readonly Guid OtherOwnerNoteId = Guid.Parse("20202020-2020-2020-2020-202020202020");
     public static readonly Guid StubSyncDeviceId = Guid.Parse("d0d0d0d0-d0d0-d0d0-d0d0-d0d0d0d0d0d0");
     public static readonly Guid OtherOwnerDeviceId = Guid.Parse("d1d1d1d1-d1d1-d1d1-d1d1-d1d1d1d1d1d1");
+    // #1442: 同期競合（alice の 1 件と、到達できないことを測るための bob の 1 件）。
+    public static readonly Guid StubSyncConflictId = Guid.Parse("c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c0c0");
+    public static readonly Guid OtherOwnerConflictId = Guid.Parse("c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1");
     // 発行応答にだけ現れる平文トークン（一覧に載らないことを測る）。
     public const string StubSyncTokenPlaintext = "sync-token-plaintext-once";
     // BFF が後段へ渡した Authorization の観測点。**テスト間で共有される**（IClassFixture）ため、
@@ -952,15 +955,21 @@ public class BffTestFactory : WebApplicationFactory<Program>
 
             // ② 台帳: 誰が何を持つか。alice の資料・端末と bob のそれを 1 件ずつ置く。
             static string? OwnerOf(Guid id) =>
-                id == StubPrivateNoteId || id == StubSyncDeviceId ? NoteOwner
-                : id == OtherOwnerNoteId || id == OtherOwnerDeviceId ? OtherNoteOwner
+                id == StubPrivateNoteId || id == StubSyncDeviceId || id == StubSyncConflictId
+                    ? NoteOwner
+                : id == OtherOwnerNoteId || id == OtherOwnerDeviceId || id == OtherOwnerConflictId
+                    ? OtherNoteOwner
                 : null;
             bool Owns(Guid id) => OwnerOf(id) == subject;
 
             var now = DateTimeOffset.UtcNow;
+            // #1441: 公開範囲・共有件数・同期状態・タグは後段が導出して載せる（BFF は透過する）。
             PrivateNoteDto Note(Guid id, string title, bool deleted = false) => new(
                 id, title, $"{title}.md", 3, 1024, "sha256:stub", false, false, false, deleted,
-                deleted ? now : null, deleted ? now.AddDays(90) : null, now, now);
+                deleted ? now : null, deleted ? now.AddDays(90) : null, now, now,
+                PrivateNoteVisibilityValues.Private, 0, 0,
+                deleted ? PrivateNoteSyncStates.Excluded : PrivateNoteSyncStates.Target,
+                ["設計"]);
             SyncDeviceDto Device(Guid id, string name) =>
                 new(id, name, now.AddDays(-3), now.AddDays(27), false, now.AddHours(-1), true);
             var issued = new SyncTokenIssuedResponse(
@@ -1012,6 +1021,49 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 if (ids.Count == 0 || ids.Any(id => !Owns(id)))
                     return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
                 return Ok(new PurgePrivateNotesResponse(ids.Count, 1024L * ids.Count));
+            }
+
+            // ── /private-notes/sync-settings（同期対象範囲。#1442）────────────
+            // 主体ごとに分かれる（②）。未設定は**空配列**（404 ではない）。
+            if (segments[0] == "sync-settings")
+            {
+                if (method == HttpMethod.Put)
+                    return Ok(new SyncSettingsDto(
+                        [new SyncTargetFolderDto("work", 2, now.AddHours(-1))], now));
+                return Ok(new SyncSettingsDto(
+                    subject == NoteOwner
+                        ? [new SyncTargetFolderDto("work", 2, now.AddHours(-1))]
+                        : [],
+                    subject == NoteOwner ? now : null));
+            }
+
+            // ── /private-notes/conflicts*（同期競合。#1442）──────────────────
+            // ③ 他人の競合は**不在と同じ 404**（403 にすると他人の競合 ID の実在が漏れる）。
+            if (segments[0] == "conflicts")
+            {
+                SyncConflictSummaryDto Summary(Guid id, Guid noteId) =>
+                    new(id, noteId, "競合する資料", "work/conflict.md", now, StubSyncDeviceId,
+                        "Obsidian（自宅 PC）", 2, 3);
+
+                if (segments.Length == 1)
+                    return Ok(subject == NoteOwner
+                        ? new List<SyncConflictSummaryDto>
+                            { Summary(StubSyncConflictId, StubPrivateNoteId) }
+                        : subject == OtherNoteOwner
+                            ? [Summary(OtherOwnerConflictId, OtherOwnerNoteId)]
+                            : []);
+
+                if (!Guid.TryParse(segments[1], out var conflictId) || !Owns(conflictId))
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+
+                if (segments.Length == 3 && segments[2] == "resolve")
+                    return Ok(new ResolveSyncConflictResponse(conflictId, StubPrivateNoteId,
+                        SyncConflictResolutions.Server, 3, null));
+
+                var summary = Summary(conflictId, StubPrivateNoteId);
+                return Ok(new SyncConflictDetailDto(summary.Id, summary.NoteId, summary.Title,
+                    summary.VaultPath, summary.DetectedAt, summary.DeviceId, summary.DeviceName,
+                    summary.LocalBaseVersion, summary.ServerVersion, "ローカル版", "サーバ版"));
             }
 
             // ── /private-notes/devices/*（端末・トークン）──────────────────

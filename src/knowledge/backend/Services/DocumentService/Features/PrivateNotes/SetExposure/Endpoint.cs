@@ -51,7 +51,10 @@ internal static class SetPrivateNoteExposureEndpoint
                 await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, names, ct);
             }
 
-            return Results.Ok(PrivateNoteEndpoints.ToDto(note, doc));
+            // #1441: 露出更新の応答も一覧と同じ導出で埋める（露出 3 トグルと公開範囲は別物である）。
+            var enrichment = await PrivateNoteEnrichment.LoadAsync(db, owner, [id],
+                DateTimeOffset.UtcNow, ct);
+            return Results.Ok(enrichment.ToDto(note, doc));
         });
     }
 }

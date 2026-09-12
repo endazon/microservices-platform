@@ -3068,6 +3068,113 @@ paths:
               schema: { $ref: "#/components/schemas/RevokeAllSyncDevicesResponse" }
         "401": { description: 未認証 }
 
+  # ── #1442（planning#614 の裁定。SC-20 主要素 3・5）: 同期対象範囲と競合 ──
+  # 後段 DocumentService の `/private-notes/sync-settings`・`/private-notes/conflicts*` へ透過中継する。
+  # 書き込み（PUT / resolve）は個人資料の他の書き込みと同じく ABAC の write スコープで前段を絞る。
+  # 🔴 同期履歴（主要素 6）の口は無い —— N と保持期間が計画に無い（planning#618）。
+  /bff/private-notes/sync-settings:
+    get:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-20, UC-11, SC-20: 同期対象範囲（本人の同期設定）"
+      description: |
+        `targetFolders` が空なら全資料が対象（既定。ADR-0037 決定 3）。
+      operationId: bff-sync-settings-get
+      responses:
+        "200":
+          description: 本人の同期設定
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncSettingsDto" }
+        "401": { description: 未認証 }
+    put:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-20, UC-11, SC-20: 同期対象フォルダを置き換える（対象から外しても資料は削除しない）"
+      description: |
+        対象から外れたフォルダの資料は**同期停止**であり削除ではない（ADR-0037 決定 4）。
+        画面は「対象フォルダから外す」と「削除する」を明確に区別する（SC-20 主要素 3）。
+      operationId: bff-sync-settings-update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSyncSettingsRequest" }
+      responses:
+        "200":
+          description: 更新後の同期設定
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncSettingsDto" }
+        "400": { description: フォルダ指定の検証エラー（RFC7807 ValidationProblem） }
+        "401": { description: 未認証 }
+        "403": { description: write スコープが無い }
+
+  /bff/private-notes/conflicts:
+    get:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-20, UC-11, SC-20: 未解決の同期競合の一覧（本人のもののみ。検出日時の新しい順）"
+      description: |
+        競合は push の `baseVersion` 不一致でサーバが記録する（プロトコルの 409 応答は不変）。
+        **自動解決はしない**（ADR-0037 決定 7）。プラグイン側で解決して push が通れば、競合は `client` として閉じる。
+      operationId: bff-sync-conflict-list
+      responses:
+        "200":
+          description: 未解決の競合
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SyncConflictSummaryDto" }
+        "401": { description: 未認証 }
+
+  /bff/private-notes/conflicts/{id}:
+    get:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-20, UC-11, SC-20: 競合の詳細（ローカル版／サーバ版の本文）"
+      operationId: bff-sync-conflict-get
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: 競合の詳細
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncConflictDetailDto" }
+        "401": { description: 未認証 }
+        "404": { description: 不在・他人の競合・解決済み（区別しない） }
+
+  /bff/private-notes/conflicts/{id}/resolve:
+    post:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-20, UC-11, SC-20: 競合を解決する（ローカルを採用／サーバを採用／両方を残す）"
+      description: |
+        `local` は端末の本文を新しい版として書く。`server` は資料を変えない。`both` は端末の本文を
+        別名の新規資料（容量上限の新規作成拒否が適用される。507）として作る。**自動解決の値は無い。**
+      operationId: bff-sync-conflict-resolve
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResolveSyncConflictRequest" }
+      responses:
+        "200":
+          description: 解決の結果
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResolveSyncConflictResponse" }
+        "400": { description: resolution が 3 値のいずれでもない（RFC7807 ValidationProblem） }
+        "401": { description: 未認証 }
+        "403": { description: write スコープが無い }
+        "404": { description: 不在・他人の競合（区別しない） }
+        "409": { description: 解決済みの競合 }
+        "507": { description: both の別名資料が保存容量の上限で作れない（ProblemDetails） }
+
   # ── SC-17, FR-05, FR-09, UC-05, ADR-0026: 利用者アカウント管理 BFF ─
   # 管理者限定（05_screens §共通シェル「SC-09・SC-12・SC-17 = システム管理者」。運用者も不可）。
   # BFF は AuthorizationService の /authz/users* へ**透過中継**する。後段の 400（検証エラー）・
@@ -4918,6 +5025,11 @@ components:
           deleted,
           createdAt,
           updatedAt,
+          visibility,
+          sharedUserCount,
+          sharedGroupCount,
+          syncState,
+          tags,
         ]
       properties:
         id: { type: string, format: uuid }
@@ -4934,6 +5046,30 @@ components:
         purgeAt: { type: string, format: date-time, nullable: true, description: "完全削除の期限" }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+        # ── #1441（planning#614 の裁定。SC-19 主要素 1・2・5・6）: 公開範囲・同期状態・タグ ──
+        # 状態文字列は enum にしない（IADR-0131 論点 C。後段が値を増やしても契約が壊れない）。
+        visibility:
+          type: string
+          description: |
+            公開範囲の 3 状態（SC-19 主要素 2）。値は `private`（非公開・既定。共有 0 件）／
+            `users`（個人指定。利用者への共有のみ）／`groups`（グループ指定。グループへの共有が 1 つでもある）。
+            供給元は個人資料の共有台帳（ADR-0036 D-06。判定は ABAC の `shared_with`）。
+            🔴 **指定先（共有相手の識別子・表示名）は載せない** —— 指定先の単位（ADR-0036 §未確定事項 5）が
+            未決であり、型が決まるまで契約に出さない（planning#618）。
+        sharedUserCount: { type: integer, format: int32, description: "利用者への共有の件数（0 以上）" }
+        sharedGroupCount: { type: integer, format: int32, description: "グループへの共有の件数（0 以上）" }
+        syncState:
+          type: string
+          description: |
+            同期状態の 3 状態（SC-19 主要素 5。公開範囲とは独立に変化する）。値は
+            `conflict`（競合あり。未解決の同期競合が 1 件以上）／`target`（同期対象。有効な同期端末が 1 台以上あり、
+            同期対象フォルダが未設定か、`vaultPath` がいずれかの対象フォルダの配下）／`excluded`（対象外。それ以外。
+            未解決の競合が無い削除済みの資料は常に `excluded`）。**判定は `conflict` → `target` → `excluded` の順**
+            （競合は解決されるまで表示し続ける）。供給元は Obsidian 同期の機構（ADR-0037 決定 3・4・7）。
+        tags:
+          type: array
+          items: { type: string }
+          description: "タグ辞書の表示名（SC-09 の辞書。ADR-0063 は個人資料も対象）。辞書に無い ID は落とす"
 
     PrivateNoteUsageDto:
       type: object
@@ -5146,6 +5282,104 @@ components:
       required: [revokedCount]
       properties:
         revokedCount: { type: integer, format: int32 }
+
+    # ── #1442（planning#614 の裁定。SC-20 主要素 3・5）: 同期対象範囲と競合 ──
+    # C# 側の正本は `Knowledge.Contracts/Dtos/PrivateNoteDto.cs`（同ファイルに同居）。
+    # 🔴 同期履歴（主要素 6）は載せない —— 「直近 N 件」の N と保持期間が計画に無い（planning#618）。
+    SyncTargetFolderDto:
+      type: object
+      description: |
+        FR-20, SC-20 主要素 3: 同期対象フォルダ 1 件（Obsidian Vault 内の相対パス）と、配下の資料数・最終同期日時。
+        `noteCount` は削除済みを除く配下の資料数、`lastSyncAt` は配下の資料の更新日時の最大（無ければ null）。
+      required: [path, noteCount]
+      properties:
+        path: { type: string, description: "Vault 内の相対パス（正規化済み。先頭・末尾に / を持たない）" }
+        noteCount: { type: integer, format: int32 }
+        lastSyncAt: { type: string, format: date-time, nullable: true }
+
+    SyncSettingsDto:
+      type: object
+      description: |
+        FR-20, SC-20 主要素 3, ADR-0037 決定 3・4: 本人の同期設定。**同期対象は「本人が所有する個人資料」で判定し、
+        公開範囲とは独立**である。`targetFolders` が空なら全資料が対象（既定）。
+        対象から外れたフォルダの資料は**削除ではなく同期停止**（`syncState` が `excluded` になるだけ）。
+      required: [targetFolders]
+      properties:
+        targetFolders:
+          type: array
+          items: { $ref: "#/components/schemas/SyncTargetFolderDto" }
+        updatedAt: { type: string, format: date-time, nullable: true, description: "未設定なら null" }
+
+    UpdateSyncSettingsRequest:
+      type: object
+      description: |
+        FR-20, SC-20 主要素 3: 同期対象フォルダの置き換え（全量）。各要素は空でない・先頭末尾の `/` を除いて正規化・
+        重複不可・最大 100 件・各 1024 文字以内。違反は 400（RFC7807 ValidationProblem）。
+      required: [targetFolders]
+      properties:
+        targetFolders:
+          type: array
+          items: { type: string }
+
+    SyncConflictSummaryDto:
+      type: object
+      description: |
+        FR-20, SC-20 主要素 5, ADR-0037 決定 7: 未解決の同期競合 1 件（一覧用。本文は含まない）。
+        push の `baseVersion` が現在版と食い違ったときにサーバが記録する（プロトコルの 409 応答は変えていない）。
+        `localBaseVersion` は端末が土台にしていた版、`serverVersion` は検出時のサーバの版。
+      required: [id, noteId, title, vaultPath, detectedAt, deviceId, deviceName, localBaseVersion, serverVersion]
+      properties:
+        id: { type: string, format: uuid }
+        noteId: { type: string, format: uuid }
+        title: { type: string }
+        vaultPath: { type: string }
+        detectedAt: { type: string, format: date-time }
+        deviceId: { type: string, format: uuid }
+        deviceName: { type: string }
+        localBaseVersion: { type: integer, format: int32 }
+        serverVersion: { type: integer, format: int32 }
+
+    SyncConflictDetailDto:
+      type: object
+      description: |
+        FR-20, SC-20 主要素 5: 競合 1 件の詳細（2 ペイン差分の材料）。`localContent` は端末が送った本文、
+        `serverContent` は現在のサーバ版の本文。**本文は詳細だけが返す**（一覧を重くしない）。
+      required: [id, noteId, title, vaultPath, detectedAt, deviceId, deviceName, localBaseVersion, serverVersion, localContent, serverContent]
+      properties:
+        id: { type: string, format: uuid }
+        noteId: { type: string, format: uuid }
+        title: { type: string }
+        vaultPath: { type: string }
+        detectedAt: { type: string, format: date-time }
+        deviceId: { type: string, format: uuid }
+        deviceName: { type: string }
+        localBaseVersion: { type: integer, format: int32 }
+        serverVersion: { type: integer, format: int32 }
+        localContent: { type: string }
+        serverContent: { type: string }
+
+    ResolveSyncConflictRequest:
+      type: object
+      description: |
+        FR-20, SC-20 主要素 5, ADR-0037 決定 7: 競合の解決。値は `local`（ローカルを採用。端末の本文を新しい版として書く）／
+        `server`（サーバを採用。資料は変えない）／`both`（両方を残す。端末の本文を別名の新規資料として作る）。
+        **自動解決（後勝ち）の値は存在しない。**
+      required: [resolution]
+      properties:
+        resolution: { type: string }
+
+    ResolveSyncConflictResponse:
+      type: object
+      description: |
+        FR-20, SC-20 主要素 5: 解決の結果。`noteVersion` は解決後の元資料の版（`server` / `both` では不変）。
+        `createdNoteId` は `both` で作った別名資料の ID（それ以外は null）。
+      required: [conflictId, noteId, resolution, noteVersion]
+      properties:
+        conflictId: { type: string, format: uuid }
+        noteId: { type: string, format: uuid }
+        resolution: { type: string }
+        noteVersion: { type: integer, format: int32 }
+        createdNoteId: { type: string, format: uuid, nullable: true }
 
     # ── SC-17, FR-05, FR-09, UC-05, ADR-0026: 利用者アカウント管理 ─
     PlatformUserDto:

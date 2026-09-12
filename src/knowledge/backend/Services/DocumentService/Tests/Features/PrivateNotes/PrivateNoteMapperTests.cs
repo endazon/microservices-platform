@@ -23,13 +23,15 @@ public class PrivateNoteMapperTests
         PrivateNote.Create(Guid.NewGuid(), "alice", "研究/メモ.md", 2048, "hash-1", Now);
 
     // 陽性: 全 14 列が値を保ったまま写る（追加引数の `Title` / `Version` を含む）。
+    // #1441 で足した 5 列（公開範囲・共有件数・同期状態・タグ）は `PrivateNoteListDerivationTests` が見る。
     [Fact]
     public void ToDto_CopiesEveryProperty()
     {
         var n = NewNote();
         n.SetExposure(includeInSearch: true, includeInGraph: false, includeInAi: true, Now);
 
-        var dto = PrivateNoteMapper.ToDto(n, "研究メモ", 7);
+        var dto = PrivateNoteMapper.ToDto(n, "研究メモ", 7, PrivateNoteVisibilityValues.Private, 0, 0,
+            PrivateNoteSyncStates.Excluded, []);
 
         dto.Id.Should().Be(n.DocumentId);
         dto.Title.Should().Be("研究メモ");
@@ -55,7 +57,8 @@ public class PrivateNoteMapperTests
     {
         var n = PrivateNote.Create(Guid.NewGuid(), "bob", "雑記.md", 0, contentHash: null, Now);
 
-        var dto = PrivateNoteMapper.ToDto(n, string.Empty, 0);
+        var dto = PrivateNoteMapper.ToDto(n, string.Empty, 0, PrivateNoteVisibilityValues.Private, 0, 0,
+            PrivateNoteSyncStates.Excluded, []);
 
         dto.ContentHash.Should().BeNull();
         dto.DeletedAt.Should().BeNull();
@@ -70,14 +73,16 @@ public class PrivateNoteMapperTests
         var n = NewNote();
         n.SoftDelete(Now);
 
-        var deleted = PrivateNoteMapper.ToDto(n, "研究メモ", 1);
+        var deleted = PrivateNoteMapper.ToDto(n, "研究メモ", 1, PrivateNoteVisibilityValues.Private, 0, 0,
+            PrivateNoteSyncStates.Excluded, []);
         deleted.Deleted.Should().BeTrue();
         deleted.DeletedAt.Should().Be(Now);
         deleted.PurgeAt.Should().Be(Now.AddDays(90));
 
         n.Restore(Now.AddDays(1));
 
-        var restored = PrivateNoteMapper.ToDto(n, "研究メモ", 1);
+        var restored = PrivateNoteMapper.ToDto(n, "研究メモ", 1, PrivateNoteVisibilityValues.Private, 0, 0,
+            PrivateNoteSyncStates.Excluded, []);
         restored.Deleted.Should().BeFalse();
         restored.DeletedAt.Should().BeNull();
         restored.PurgeAt.Should().BeNull();
@@ -90,7 +95,8 @@ public class PrivateNoteMapperTests
     {
         var n = NewNote();
 
-        var dto = PrivateNoteMapper.ToDto(n, string.Empty, 0);
+        var dto = PrivateNoteMapper.ToDto(n, string.Empty, 0, PrivateNoteVisibilityValues.Private, 0, 0,
+            PrivateNoteSyncStates.Excluded, []);
 
         dto.Title.Should().BeEmpty();
         dto.Version.Should().Be(0);
@@ -118,7 +124,11 @@ public class PrivateNoteMapperTests
     //
     // 縮退が要るのは、資料に対応する文書の複製がまだ届いていない場合である
     // （`PrivateNoteEndpoints.cs:112`）。**生成マッパへ持ち込むと `?? throw` に化ける**ため、
-    // ここは端の判断として残してある（`PrivateNoteMapper.cs:14`）。**その端を測る。**
+    // ここは端の判断として残してある。**その端を測る。**
+    //
+    // ★［#1441］縮退の置き場は `PrivateNoteEndpoints.ToDto` から `PrivateNoteEnrichment.ToDto`
+    // へ移った（導出項目が増え、材料を DB から引く必要が出たため。2 か所に分けると材料を
+    // 引かずに写せる口が残る）。**測る内容は変わらない。**
 
     // 陰性側: 文書がまだ届いていない資料は、題が空・版が 0 で返る（例外にしない）。
     [Fact]
@@ -126,7 +136,7 @@ public class PrivateNoteMapperTests
     {
         var n = NewNote();
 
-        var dto = PrivateNoteEndpoints.ToDto(n, doc: null);
+        var dto = PrivateNoteEnrichment.Empty.ToDto(n, doc: null);
 
         dto.Title.Should().BeEmpty("文書がまだ届いていないだけであり、例外にしない");
         dto.Version.Should().Be(0, "版が分からないことを 0 で表す");
@@ -144,7 +154,7 @@ public class PrivateNoteMapperTests
         var n = NewNote();
         var doc = Document.CreateNormalized(n.DocumentId, "研究メモ", "s3://bucket/note.md");
 
-        var dto = PrivateNoteEndpoints.ToDto(n, doc);
+        var dto = PrivateNoteEnrichment.Empty.ToDto(n, doc);
 
         dto.Title.Should().Be("研究メモ");
         dto.Version.Should().Be(doc.Version);

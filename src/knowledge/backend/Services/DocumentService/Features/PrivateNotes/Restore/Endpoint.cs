@@ -16,10 +16,13 @@ internal static class RestorePrivateNoteEndpoint
             if (!note.IsDeleted)
                 return Results.Conflict(new { error = "not_deleted" });
 
-            note.Restore(DateTimeOffset.UtcNow);
+            var now = DateTimeOffset.UtcNow;
+            note.Restore(now);
             await db.SaveChangesAsync(ct);
             var doc = await db.Documents.FindAsync([id], ct);
-            return Results.Ok(PrivateNoteEndpoints.ToDto(note, doc));
+            // #1441: 復元後の同期状態は「削除済みだから対象外」ではなくなる —— 導出をやり直す。
+            var enrichment = await PrivateNoteEnrichment.LoadAsync(db, owner, [id], now, ct);
+            return Results.Ok(enrichment.ToDto(note, doc));
         });
     }
 }
