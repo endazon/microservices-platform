@@ -3,15 +3,15 @@ title: 別紙 — 計画 ID レンジの追随記録と、計画 ADR の状態�
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-09-12
+updated: 2026-09-13
 author: claude
 ---
 <!-- trace:
 ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-06, SC-17, SC-18, SC-19, SC-20, SC-22]
-adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093, ADR-0094, ADR-0095, ADR-0096, ADR-0098, ADR-0099]
-iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228, IADR-0423]
+adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093, ADR-0094, ADR-0095, ADR-0096, ADR-0098, ADR-0099, ADR-0101]
+iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228, IADR-0423, IADR-0450]
 specs: []
-issues: [#1411, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#591]
+issues: [#1411, #1451, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#591, planning#627]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -23,6 +23,26 @@ issues: [#1411, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987, #620,
 >
 > **本別紙が持つのは「レンジをいつどう引き直したか」（pin 時代の記録を含む）「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れなかったか」の記録だけ**である（必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
+
+### ［2026-09-13・11 回目］ADR `0001..0100` → `0001..0101`（1 件）
+
+**動いたのは `ADR` だけである。** `FR-01..22`／`UC-01..11`／`SC-01..22` は不動（4 種すべてを引き直した）。
+
+| 計画 ADR | 状態 | 内容 |
+| --- | --- | --- |
+| 0101 | `Accepted` | 共有先の写し（応答の `sharedWith`）は所有者にだけ返す。共有された相手に他の共有先の識別子を見せない |
+
+**出典は計画リポジトリの導出器の実測である** —— 隣接クローン（`origin/main` の先頭は `165e6e2`）で
+`node tools/doc-checks/gen-plan-ranges.js --check` が「宣言 [1, 101] / 実物 [1, 101]・欠番なし」と出し、
+`git ls-tree origin/main projects/microservices-platform/07_adr/` の一意な `ADR-XXXX` が 101 件であることと突き合わせた。
+
+#### 契機
+
+10 回目までと向きが逆である —— **実装（#1451）が先に `develop` へ着地し、その裁定を記録する計画 ADR が後から
+起案された**（計画側の PR は trace ブロックの issues に持つ）。実装側の文書は起案中の ADR を trace ブロックへ書けない（値域検査がレンジで止める）ため、
+計画 ADR に触れずに着地させ、計画側のマージを確認してから本回でレンジを引き直し、権限仕様書と BFF 通信仕様書の
+trace ブロックに `ADR-0101` を足した。**レンジの更新は計画 ADR のマージ後にしか行えない**（実測前に宣言を動かすと、
+実在しない番号を trace ブロックが引けるようになる）。
 
 ### ［2026-09-12・10 回目］ADR `0001..0099` → `0001..0100`（1 件。9 回目と同日）
 

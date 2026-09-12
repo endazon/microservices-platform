@@ -8,7 +8,7 @@ updated: 2026-09-13
 ---
 <!-- trace:
 ids: [FR-05, FR-19, UC-11, SC-19]
-adrs: [ADR-0036, ADR-0080, ADR-0088, ADR-0098, ADR-0100]
+adrs: [ADR-0036, ADR-0080, ADR-0088, ADR-0098, ADR-0100, ADR-0101]
 iadrs: [IADR-0253, IADR-0385, IADR-0396, IADR-0401, IADR-0445, IADR-0447, IADR-0448, IADR-0449, IADR-0450]
 specs: [20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching]
 issues: [#1445, #1447, #1448, #1451]
