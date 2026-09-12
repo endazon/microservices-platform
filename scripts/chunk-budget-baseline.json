@@ -287,7 +287,7 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 606019,
+  "initialTotalBytes": 580710,
   "$comment_initialTotalBytes_20260912_1438": [
     "［2026-09-12 / #1438］731,293 → 731,435（+142 B）へ引き上げた。実測値である",
     "（rm -rf platform/frontend/dist → pnpm run build → node scripts/check-chunk-budget.js --update。",
@@ -357,6 +357,19 @@
     "+25,907 B の 97.5% は AST の ja カタログ 25,267 B（442 文言）で、合成点が同期に registerUnitMessages で読んで",
     "index-*.js に入っていた（残りは lucide のアイコン追加分）。是正は AST#793（登録を画面の遅延チャンク側へ）で、",
     "取り込み時に 25 kB 下がる見込み（AST 側実測 731,435 → 706,121）。IADR-0441 決定 3 の追記も参照。"
+  ],
+  "$comment_initialTotalBytes_20260912_ast-bump-793": [
+    "［2026-09-12 / AST#793 取り込み］606,019 → 580,710（**−25,309 B / −4.2%**）へ**下げた**。submodule src/ai-stock-trading を",
+    "develop 7780edc → 8a0b3e1（AST#793: 文言カタログの登録を画面の遅延チャンク側へ移す。AST/IADR-0340 ／ AST#794: 同テストの cwd 非依存化。",
+    "c5cd0de では合成 test:coverage が 1 件落ちるため 8a0b3e1 を取り込む）へ進めた合成ビルドの",
+    "実測（rm -rf dist → pnpm install → pnpm run build → node scripts/check-chunk-budget.js --update）。上の $comment_…_ast-bump の",
+    "訂正が予告した回収である（AST 側の単独実測 −25,314 B とは 5 B 差。基盤側は #1440 の成果物を土台にしているため）。",
+    "内訳（A/B: 同一環境で submodule を 7780edc に戻して再ビルドし突き合わせた）: 動いたのは index-*.js の 1 本だけ",
+    "（287,014 → 261,705 B ＝ −25,309 B）。ui 76,575 / vendor-react 196,828 / vendor-query 45,602 B はハッシュまで同一。",
+    "AST の ja カタログ（442 文言）は AST 4 画面が共有する既存の遅延チャンク queries-*.js（9,641 → 35,000 B）へ合流した",
+    "（初期ロードの index.html は読まない。チャンク本数は不変で smallLazyChunks も 10 のまま）。",
+    "pnpm-lock.yaml に差分なし（AST#793 は依存を足していない）。合成点 features/index.ts の任意項目読みは",
+    "IADR-0441 決定 3 の追記どおり据え置く（aiStockTradingMessages は公開されなくなったので skip される）。"
   ],
   "$comment_initialTotalBytes_20260912_bundle-1437-1438": [
     "［2026-09-12 / #1437 + #1438 束ね］605,877 → 606,019（+142 B）。#1437（vendor-baseui 切り離し。731,293 → 605,877）",
