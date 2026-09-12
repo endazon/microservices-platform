@@ -389,13 +389,19 @@ $ node scripts/check-plan-id-qualification.js
 
 ## 残余リスク
 
-1. 🔴 **初期ロードの約 12%（114,124 B）が Base UI である。** 右レールの `Tooltip` と
+1. ~~🔴 **初期ロードの約 12%（114,124 B）が Base UI である。** 右レールの `Tooltip` と
    確認ダイアログの `Dialog` が原因で、`React.lazy` では消えない静的辺である。
    **次に初期ロードを増やす作業は、先に切り離しを検討すること** ——
    (a) 右レールから `Tooltip` を外す、(b) `manualChunks` を `@base-ui` のサブパスで分ける
-   （`vendor-baseui-dialog`）。どちらでも 85 kB 前後を遅延へ動かせる見込みである（**未実測**）。
+   （`vendor-baseui-dialog`）。どちらでも 85 kB 前後を遅延へ動かせる見込みである（**未実測**）。~~
+   ［2026-09-12 追記 / #1437］**解消済み（IADR-0443）。** 静的辺は 2 本あった（右レールの `Tooltip` と、
+   `manualChunks` が `/packages/ui/` を丸ごと初期チャンク `ui` へ寄せるため `Dialog` も `ui` に居座る）。
+   右レール本体を `React.lazy` 化し `Tooltip` / `Dialog` を `ui-overlay` へ分けて、`vendor-baseui` 114,124 B を
+   丸ごと遅延へ移した（初期ロード 731,293 → 605,877 B）。「`React.lazy` では消えない」は (A) だけを試した結論であった。
 2. **submodule の bump で `pnpm-lock.yaml` が動く。** 本 PR には含めないため、bump PR に差分が出る。
-   あわせて合成点の任意項目読み（`as unknown as {...}`）を**名前付き import へ戻す**こと。
+   ~~あわせて合成点の任意項目読み（`as unknown as {...}`）を**名前付き import へ戻す**こと。~~
+   ［2026-09-12 追記 / #1437 / AST#792］**戻さない。** AST が文言カタログの再公開を外したため（AST#793）、
+   任意項目読みは維持する（IADR-0441 決定 3 の追記）。bump（#1439）は完了済み。
 3. ~~🔴 **`NotFound` が自前の `<main>` を持ち、`Layout` の `<main id="main-content">` と入れ子になる。**~~
    **解消済み**（［2026-09-12 追記 / #1438］。`IADR-0442`）。既存負債として据え置いていたもので、
    「片方に合わせるともう片方が `<main>` を失う」はシェル外の経路にだけ器を与えて解いた。
