@@ -233,7 +233,10 @@ planning#618 の裁定（2026-09-12・ADR-0098 / ADR-0099）で、IADR-0444 が�
 | Platform.Bff.Tests | 570 | 590（+20） |
 | frontend（vitest） | 1,678 | 1,708（+30） |
 
-（backend の全アセンブリ再走と coverage の 4 値は本節の末尾に追記する。）
+- backend の全アセンブリ再走（両エージェントの成果を統合した作業ツリーで）: knowledge 12 アセンブリ・platform 7 アセンブリ
+  **すべて Passed**（`--filter "Category!=Integration"`）。
+- frontend `test:coverage`: **144 ファイル / 1,708 件 passed**、statements **98.31** / branches **93.17** / functions **95.14** /
+  lines **98.31**（床 93 / 88 / 89 / 93）。
 
 ## 計画書との差異
 
