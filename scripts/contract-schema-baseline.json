@@ -62,6 +62,20 @@
       "approvedBy": "claude (実装エージェント)",
       "issue": "#1441",
       "date": "2026-09-12"
+    },
+    {
+      "key": "constValueChanged:Knowledge.Contracts.Dtos.AttributeValueKeys.SharedWith",
+      "reason": "値は不変である（どちらも \"shared_with\"）。リテラルを DocumentAttributeEncoding.SharedWithKey への参照へ置き換えただけで、線上表現・索引のペイロードキー・認可フィルタのキーは 1 バイトも変わらない。文書側の集合値の語彙を 2 つ持たないため（片方だけ直る事故を構造で消す。IADR-0448）。",
+      "approvedBy": "Claude (backend-knowledge)",
+      "issue": "#1448",
+      "date": "2026-09-12"
+    },
+    {
+      "key": "constValueChanged:Knowledge.Contracts.Dtos.AttributeValueKeys.Tags",
+      "reason": "値は不変である（どちらも \"tags\"）。リテラルを DocumentAttributeEncoding.TagsKey への参照へ置き換えただけ。上の SharedWith と同じ理由・同じ置き換えである。",
+      "approvedBy": "Claude (backend-knowledge)",
+      "issue": "#1448",
+      "date": "2026-09-12"
     }
   ],
   "projects": {
@@ -297,12 +311,12 @@
           "SharedWith": {
             "source": "const",
             "type": "string",
-            "value": "\"shared_with\""
+            "value": "DocumentAttributeEncoding.SharedWithKey"
           },
           "Tags": {
             "source": "const",
             "type": "string",
-            "value": "\"tags\""
+            "value": "DocumentAttributeEncoding.TagsKey"
           }
         }
       },
@@ -1043,6 +1057,11 @@
           "MarkdownUri": {
             "source": "property",
             "type": "string?",
+            "required": false
+          },
+          "SharedWith": {
+            "source": "property",
+            "type": "List<string>?",
             "required": false
           },
           "Status": {
@@ -3344,6 +3363,10 @@
           }
         }
       },
+      "Platform.Shared.Contracts.Dtos.AttributeFilterMatch": {
+        "kind": "class",
+        "members": {}
+      },
       "Platform.Shared.Contracts.Dtos.CompletionApiRequest": {
         "kind": "record",
         "members": {
@@ -3590,6 +3613,26 @@
           }
         }
       },
+      "Platform.Shared.Contracts.Dtos.DocumentAttributeEncoding": {
+        "kind": "class",
+        "members": {
+          "SetValuedKeys": {
+            "source": "property",
+            "type": "IReadOnlySet<string>",
+            "required": false
+          },
+          "SharedWithKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"shared_with\""
+          },
+          "TagsKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"tags\""
+          }
+        }
+      },
       "Platform.Shared.Contracts.Dtos.DriftFindingDto": {
         "kind": "record",
         "members": {
@@ -3789,6 +3832,29 @@
           }
         }
       },
+      "Platform.Shared.Contracts.Dtos.GroupSummaryDto": {
+        "kind": "record",
+        "members": {
+          "DisplayName": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "Id": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Path": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
       "Platform.Shared.Contracts.Dtos.PipelineStageDto": {
         "kind": "record",
         "members": {
@@ -3909,6 +3975,17 @@
         "kind": "record",
         "members": {
           "Roles": {
+            "source": "positional",
+            "type": "List<string>",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.ResolveGroupsRequest": {
+        "kind": "record",
+        "members": {
+          "Ids": {
             "source": "positional",
             "type": "List<string>",
             "required": true,

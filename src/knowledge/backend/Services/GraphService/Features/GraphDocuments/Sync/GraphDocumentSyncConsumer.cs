@@ -4,6 +4,7 @@ using GraphService.Domain.Ports;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
+using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 
 
@@ -79,18 +80,22 @@ public class GraphDocumentSyncConsumer(
 
         var node = await db.Documents.FirstOrDefaultAsync(d => d.DocumentId == ev.DocumentId, ct);
 
+        // 🔴 FR-19, ADR-0036 D-06, ADR-0098 決定 1, [[IADR-0447]] 決定 4 (#1447):
+        // **複製する属性は `shared_with` を重ねた像である**（下の `AbacAttributes`）。
+        var attributes = AbacAttributes(ev);
+
         string? previousHash;
         if (node is null)
         {
             previousHash = null;
             node = GraphDocument.Create(
-                ev.DocumentId, ev.Title, ev.Attributes, ev.ContentFingerprint, ev.UpdatedAt);
+                ev.DocumentId, ev.Title, attributes, ev.ContentFingerprint, ev.UpdatedAt);
             db.Documents.Add(node);
         }
         else
         {
             previousHash = node.BodyHash;
-            if (!node.TryApply(ev.Title, ev.Attributes, ev.ContentFingerprint, ev.UpdatedAt))
+            if (!node.TryApply(ev.Title, attributes, ev.ContentFingerprint, ev.UpdatedAt))
             {
                 // 順序ガード: 追い越し・再配信の古いイベント。何も変えずに正常終了（冪等）。
                 logger.LogInformation(
@@ -145,9 +150,34 @@ public class GraphDocumentSyncConsumer(
         logger.LogInformation(
             "Synced graph document {DocumentId} (attributes={AttributeCount} reinstated={Reinstated} "
             + "links={Links} edgesAdded={Added} edgesRemoved={Removed} termProfile={TermProfile})",
-            ev.DocumentId, ev.Attributes.Count, reinstated,
+            ev.DocumentId, attributes.Count, reinstated,
             linkSync.Extracted, linkSync.Added, linkSync.Removed, termProfile);
     }
+
+    // 🔴 FR-19, FR-20, ADR-0036 D-06, ADR-0098 決定 1, ADR-0061 決定 5,
+    // [[IADR-0447]] 決定 4, [[IADR-0448]] (#1447): **ABAC 判定に使う属性の複製を作る。**
+    //
+    // 共有先は属性辞書では運べない（値が単一文字列で集合を持てない。[[IADR-0253]] 決定 4）ため
+    // `DocumentUpdated.SharedWith` という独立した項目で届く。一方、ホップごとの判定
+    // （`AbacNodeFilter` → `AttributeFilterMatch`）が見るのは**属性辞書だけ**である ——
+    // したがって**複製する時点で `shared_with` を重ねる**。重ねないと共有先ベースの分岐
+    // （選言の第 3 節）はグラフに 1 件も効かない（#1447 が名指した穴の Graph 側）。
+    //
+    // 🔴 **符号化と規則は `DocumentAttributeEncoding.WithSharedWith` を再利用する**
+    // （BFF の `AuthzView` と**同じ関数**）——
+    //   - 線上表現はカンマ連結（`UserAttributeEncoding.Join`。表現を 2 つ持たない。IADR-0385 決定 2）
+    //   - **空集合は載せない**（載せると「属性は持つが空」となり、空文字と一致する余地が生まれる）
+    //   - **元の `ev.Attributes` は変えない**（露出の判定 `DocumentExposure.IsGraphAllowed` は
+    //     生の属性に対して行われており、そちらへ混ぜない）
+    //
+    // 🔴 **`shared_with` はここでしか入らない。** 属性の書き戻し経路（SC-05 のメタデータ更新 →
+    // `DocumentUpdated.Attributes`）は正本（DocumentService）の属性辞書をそのまま運ぶため、
+    // 共有先が属性として保存されることは無い（`WithSharedWith` が**読み取り用の像**を返し、
+    // 複製先はグラフ側の `graph_documents` だけである）。
+    private static Dictionary<string, string> AbacAttributes(DocumentUpdated ev)
+        => new(
+            DocumentAttributeEncoding.WithSharedWith(ev.Attributes, ev.SharedWith),
+            StringComparer.Ordinal);
 
     // FR-19, ADR-0061 決定 4 / [[IADR-0396]] 決定 5 (#1184): グラフからの撤収。
     //

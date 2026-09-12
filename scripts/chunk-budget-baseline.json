@@ -287,7 +287,7 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 594006,
+  "initialTotalBytes": 594636,
   "$comment_initialTotalBytes_20260912_1438": [
     "［2026-09-12 / #1438］731,293 → 731,435（+142 B）へ引き上げた。実測値である",
     "（rm -rf platform/frontend/dist → pnpm run build → node scripts/check-chunk-budget.js --update。",
@@ -357,6 +357,18 @@
     "+25,907 B の 97.5% は AST の ja カタログ 25,267 B（442 文言）で、合成点が同期に registerUnitMessages で読んで",
     "index-*.js に入っていた（残りは lucide のアイコン追加分）。是正は AST#793（登録を画面の遅延チャンク側へ）で、",
     "取り込み時に 25 kB 下がる見込み（AST 側実測 731,435 → 706,121）。IADR-0441 決定 3 の追記も参照。"
+  ],
+  "$comment_initialTotalBytes_20260912_1447": [
+    "［2026-09-12 / #1447］594,006 → 594,636（+630 B / +0.11%）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --update）。",
+    "内訳（A/B: 同一環境で locales/ だけを HEAD へ戻して再ビルドし、ハッシュを外して突き合わせた）:",
+    "  A  +630 B  Lingui カタログの純増 8 文言 × 2 ロケール（追加 11 ／ 撤去 3。撤去は SC-19 の",
+    "            グループ告知・「個人への共有はありません。」・「利用者を追加」で、暫定手段の解除に伴うものである）。",
+    "            カタログは foundation/i18n が静的 import するため必ず初期ロードへ入る。",
+    "  B  +  0 B  コード側の増分は**初期ロードに 1 バイトも出ていない**。ShareTargetsDialog（グループ指定）と",
+    "            SyncHistoryPanel（0 件の読み分け）はどちらも遅延チャンクの中に居る。",
+    "            実測: locales を HEAD へ戻したビルドの初期ロード合計は 594,006 B で床と完全に一致し、",
+    "            ハッシュを外した資産一覧の差は index.js の 275,001 → 275,631 B の 1 本だけであった。",
+    "smallLazyChunks は 10 のまま（新しい 1 kB 未満の遅延チャンクは生まれていない）。"
   ],
   "$comment_initialTotalBytes_20260912_1445-1446": [
     "［2026-09-12 / #1445 #1446］588,890 → 594,006（+5,116 B / +0.87%）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --update）。",

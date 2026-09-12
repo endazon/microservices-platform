@@ -64,7 +64,7 @@ internal static class PutDocumentBodyEndpoint
             // 索引反映を経て RAG 検索の結果として返るようになる。
             var bodyNames = await TagResolver.NamesAsync(db);
             await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, bodyNames, ct);
-            return Results.Ok(DocumentEndpoints.ToDto(doc, bodyNames));
+            return Results.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, bodyNames, ct));
         }).WithName("DocumentBodyPut");
     }
 }

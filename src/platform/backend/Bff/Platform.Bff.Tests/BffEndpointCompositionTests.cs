@@ -60,6 +60,10 @@ public class BffEndpointCompositionTests
             // #1445, FR-19, UC-11, SC-19 主要素 3: 共有先に指定する利用者の検索・表示名の引き当て
             // （後段は AuthorizationService。**認証のみ・ロール不問**で、管理面とは別の口である）。
             app.MapUserLookupBffEndpoints();
+            // #1447, FR-19, UC-11, SC-19 主要素 3, ADR-0098 決定 1・3, ADR-0100 フォローアップ 2:
+            // 共有先に指定する**グループ**の検索・表示名の引き当て（後段は AuthorizationService。
+            // **ロール不問・ただし人の主体だけ**で、利用者側の口と対である）。
+            app.MapGroupLookupBffEndpoints();
             // NFR, SC-16, ADR-0032 / IADR-0251 / #439 第 3 段(3a): BFF セッションの入口。
             app.MapAuthBffEndpoints();
             // #600, FR-22, UC-11: 利用者本人へのアプリ内通知（後段は NotificationService）。
@@ -89,7 +93,9 @@ public class BffEndpointCompositionTests
         // 後段の WikiService が knowledge ユニットのサービスであるため。IADR-0355 決定 1）。
         // #1445, FR-19, UC-11, SC-19 主要素 3, IADR-0445: 共有先の利用者検索（UserLookup）を追加した
         // （platform 同居。後段の AuthorizationService が platform ユニットのサービスであるため）。
-        BffEndpointComposition.Modules.Should().HaveCount(23);
+        // #1447, FR-19, UC-11, SC-19 主要素 3, ADR-0098 決定 1・3, IADR-0447: 共有先の**グループ**検索
+        // （GroupLookup）を追加した（platform 同居。後段は同じ AuthorizationService である）。
+        BffEndpointComposition.Modules.Should().HaveCount(24);
     }
 
     // 内容一致の検証（claude-review 指摘対応）: 合成点経由でビルドした実アプリ（全 DI 込み）の実体化ルートが、
@@ -98,7 +104,7 @@ public class BffEndpointCompositionTests
     [Fact]
     public void Composition_maps_exactly_the_expected_bff_route_groups()
     {
-        // 期待する 21 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
+        // 期待する 22 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
         string[] expectedGroups =
         [
             // #451, FR-19, FR-20, SC-19, SC-20: 個人資料と同期端末（後段は DocumentService の
@@ -151,6 +157,12 @@ public class BffEndpointCompositionTests
             // 🔴 **`/bff/admin/users`（AdminOnly の管理面）とは別の接頭辞である。** 同じ口にすると、
             // 一般利用者が 403 になるか、名簿と ABAC 属性が誰からでも引けるかのどちらかになる。
             "/bff/users",
+            // #1447, FR-19, UC-11, SC-19 主要素 3, ADR-0098 決定 1・3, ADR-0100 フォローアップ 2,
+            // IADR-0447/0449: 共有先に指定するグループの検索・表示名の引き当て（後段は
+            // AuthorizationService。**ロール不問・ただし人の主体だけ**）。
+            // 🔴 **すぐ上の `/bff/users` と対である** —— 画面 SC-19 は指定先の種別（個人／グループ）を
+            // 切り替えるだけなので、作法を揃えてある。
+            "/bff/groups",
             // #1199, FR-13, UC-07, SC-04, ADR-0073 決定 2・4: Wiki 前段の 4 経路（後段は WikiService。
             // **認証必須・ロールは問わない**。可視性を決めるのは役割ではなく ABAC である）。
             // **`/bff/wiki/pages/by-doc/{documentId}` もこの接頭辞に含まれる。**

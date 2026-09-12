@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 
 namespace Platform.Shared.Infrastructure.Foundation.Extensions;
 
@@ -25,6 +26,25 @@ public static class PlatformAuthPolicies
     // ポリシー。**利用者のロール（AdminOnly / ConfigViewer）とは別軸**であり、利用者のトークンでは通らない
     // （通ると「利用者が直接呼んだ」と区別できず、confused deputy になる）。
     public const string ServiceCaller = "ServiceCaller";
+
+    // FR-19, SC-19 主要素 3, 計画 ADR-0098 決定 1, **ADR-0100 決定 1・フォローアップ 2**,
+    // [[IADR-0401]] 決定 2, [[IADR-0449]] (#1447): **人の主体だけを通す**（認証済み かつ
+    // 無人の主体ではない）。名簿・グループ名簿の読み口に課す。
+    //
+    // 🔴 **ロールの軸ではない。主体の種別の軸である。** 計画 `ADR-0100` 決定 1 は利用者検索の
+    // 到達範囲を「全利用者」と定め（ロールで絞らない）、フォローアップ 2 は
+    // **realm のサービスアカウント（`platform-service`）も認証済みなので到達できてしまう**ことを
+    // 実装側へ戻した。したがって絞る軸は**ロールではなく主体の種別**である ——
+    // `AdminOnly` を持つサービスアカウント（`abac-seeder`）も通さない。
+    //
+    // 🔴 **`ServiceCaller` の裏返しではない。** あちらは「`platform-service` を持つこと」であり、
+    // ロールを持たない機械クライアントを通してしまう。こちらは
+    // `MachinePrincipal.IsMachine`（トークンが名乗る形だけで判定・許可集合を構成に持たない）の否定である。
+    //
+    // 🔴 **[[IADR-0401]] 決定 2 の分界を名簿の側で保つ。** 名簿の列挙は s2s の面へ出さない ——
+    // サービス間で利用者を引く経路は gRPC `UserDirectory` の狭い読み口だけであり、
+    // 一般利用者向けの検索（`lookup` / `resolve`）は**人の操作**である。
+    public const string InteractiveUser = "InteractiveUser";
 
     // サービスアカウント（client credentials で得た JWT）に付けるレルムロール。realm の各 confidential client の
     // service account へ付与する（deploy/keycloak/microservices-platform-realm.json）。
@@ -102,6 +122,15 @@ public static class AuthExtensions
             // 資格情報（`platform-service`）だけを通し、利用者のトークンは（管理者であっても）通さない。
             options.AddPolicy(PlatformAuthPolicies.ServiceCaller, policy =>
                 policy.RequireRole(PlatformAuthPolicies.ServiceRole));
+
+            // FR-19, SC-19 主要素 3, 計画 ADR-0098 決定 1, ADR-0100 決定 1・フォローアップ 2,
+            // [[IADR-0401]] 決定 2, [[IADR-0449]] (#1447): 名簿の読み口は**人の主体だけ**。
+            // 🔴 **ロールを一切要求しない**（共有は一般利用者の操作である）。絞るのは主体の種別で、
+            // 判定は `MachinePrincipal.IsMachine` ただ 1 つに委ねる（サービスアカウントの一覧を
+            // 構成に持たない ＝ 統制の抜け道を作らない。[[IADR-0420]]）。
+            options.AddPolicy(PlatformAuthPolicies.InteractiveUser, policy =>
+                policy.RequireAuthenticatedUser()
+                    .RequireAssertion(ctx => !MachinePrincipal.IsMachine(ctx.User)));
         });
         return services;
     }

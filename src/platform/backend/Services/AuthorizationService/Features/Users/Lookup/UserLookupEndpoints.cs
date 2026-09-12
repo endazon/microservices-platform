@@ -1,5 +1,6 @@
 using AuthorizationService.Features.Users.Lookup.LookupUsers;
 using AuthorizationService.Features.Users.Lookup.ResolveUsers;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace AuthorizationService.Features.Users.Lookup;
 
@@ -12,11 +13,17 @@ namespace AuthorizationService.Features.Users.Lookup;
 //   （共有は所有者＝一般利用者の操作であり、管理者限定にすると誰も共有先を選べない）。
 //   逆に、こちらの群へ管理操作を足してはならない（**認可が緩む向き**）。
 //
-// ■ 認可は **認証のみ・ロール不問**（ADR-0098 決定 1）
+// ■ 認可は **ロール不問だが人の主体だけ**（ADR-0098 決定 1 / ADR-0100 フォローアップ 2）
 //   計画は「画面には表示名を出し、識別子は出さない」と定める。表示名を出すには利用者名簿を
 //   一般利用者が引けなければならない。**面に出す項目を 3 つ（利用者名・表示名・有効状態）へ
 //   閉じる**ことで釣り合いを取る —— ロール・ABAC 属性・内部 ID を運ぶ項目が
 //   `UserSummaryDto` に無い（型で閉じる。`UserDirectoryGrpcService` が s2s で採ったのと同じ作法）。
+//
+//   ★［2026-09-12 / #1447］**`PlatformAuthPolicies.InteractiveUser` を課した**
+//   （計画 `ADR-0100` フォローアップ 2 / [[IADR-0449]]）。従前は `RequireAuthorization()` だけで、
+//   realm のサービスアカウント（`platform-service`）も**認証済みなので到達できた** ——
+//   名簿の列挙を s2s の面へ出さないという [[IADR-0401]] 決定 2 の分界が、この口だけ破れていた。
+//   🔴 **ロールは依然として要求しない。** 絞る軸は主体の種別（人か機械か）である。
 //
 // ■ 🔴 **書き込みの口を作らない。** この群は読み取りだけである（新規作成の不在は
 //   `IdentityAdminContractTests` がポートの側で固定する）。
@@ -29,10 +36,10 @@ public static class UserLookupEndpoints
 {
     public static IEndpointRouteBuilder MapUserLookupEndpoints(this IEndpointRouteBuilder app)
     {
-        // 🔴 **`RequireAuthorization()` にロールを渡さない**（上の「認可」を参照）。
+        // 🔴 **ロールは渡さない。人の主体だけを通す**（上の「認可」を参照。#1447 / IADR-0449）。
         var g = app.MapGroup("/authz/users")
             .WithTags("UserLookup")
-            .RequireAuthorization();
+            .RequireAuthorization(PlatformAuthPolicies.InteractiveUser);
 
         // `lookup` / `resolve` は literal 1 段（2 セグメント）であり、AdminOnly 群の
         // `{userId}` 経路（3 セグメント）とも `assignable-roles` とも衝突しない。

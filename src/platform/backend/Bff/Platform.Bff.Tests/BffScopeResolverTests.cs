@@ -74,6 +74,87 @@ public class BffScopeResolverTests
         BffScopeResolver.Matches(docAttrs, scope).Should().BeFalse();
     }
 
+    // ── FR-19, 計画 ADR-0036 D-06, ADR-0080 決定 2, ADR-0098 決定 1, [[IADR-0448]] (#1448):
+    //    **文書側の集合値属性は交差で一致する**（受け入れ基準 3 の BFF 面）────────────
+    //
+    // 🔴 従前ここ（`BffScopeResolver` の private `MatchesAll`）は属性値を**単一文字列**として
+    // 比べており、集合値の `shared_with`（文書ごとに可変長の共有先）は**1 件も一致しなかった**。
+    // 述語は契約側の 1 か所（`AttributeFilterMatch`）へ寄せた —— **ここへ自前の実装を戻すと
+    // この節が赤くなる。**
+
+    // 集合値キー: 交差が空でなければ一致する（部分集合ではない）。
+    [Theory]
+    [InlineData("u-alice,g-knowledge", true)]   // 交差 {g-knowledge}
+    [InlineData("g-knowledge", true)]           // 1 要素でも足りる
+    [InlineData("g-knowledge,g-finance", true)] // 許可側に無い要素が在っても失われない
+    [InlineData("g-finance", false)]            // 交差なし（他人のグループ共有）
+    [InlineData("", false)]                     // 🔴 空集合は何にも一致しない
+    public void Matches_EvaluatesSetValuedDocumentAttributesAsIntersection(string sharedWith, bool expected)
+    {
+        var scope = new BffAccessScope(
+            [new AttributeFilter(DocumentAttributeEncoding.SharedWithKey, ["g-knowledge"])],
+            GrantsAccess: true);
+
+        BffScopeResolver.Matches(
+            new Dictionary<string, string>
+            {
+                [DocumentAttributeEncoding.SharedWithKey] = sharedWith,
+            }, scope)
+            .Should().Be(expected);
+    }
+
+    // 🔴 陽性対照（**単一値の判定は不変である**）: 集合の規則を単一値キーへ広げていない。
+    // `"internal,public"` は「internal でも public でもない値」のままである（[[IADR-0385]] の禁則）。
+    [Fact]
+    public void Matches_DoesNotSplitSingleValuedAttributes()
+    {
+        var scope = new BffAccessScope(
+            [new AttributeFilter("confidentiality", ["internal"])],
+            GrantsAccess: true);
+
+        BffScopeResolver.Matches(
+            new Dictionary<string, string> { ["confidentiality"] = "internal" }, scope)
+            .Should().BeTrue("陽性対照: 単一値の一致は従前どおり");
+        BffScopeResolver.Matches(
+            new Dictionary<string, string> { ["confidentiality"] = "internal,public" }, scope)
+            .Should().BeFalse("一律に分割すると単一値属性の値域へ区切り文字が侵食する");
+    }
+
+    // FR-19, ADR-0098 決定 1 / #1447 の消費側: 共有先を重ねた像（`WithSharedWith`）が、
+    // `${current_groups}` を束縛した分岐で一致する（**個人共有とグループ共有が同じ分岐で効く**）。
+    [Fact]
+    public void Matches_AllowsADocumentSharedWithOneOfMyGroups()
+    {
+        // 認可サービスが `shared_with ∈ {自分, 所属…}` へ束縛した分岐（IADR-0447）。
+        var scope = new BffAccessScope(
+            [new AttributeFilter(DocumentAttributeEncoding.SharedWithKey, ["u-alice", "g-knowledge"])],
+            GrantsAccess: true,
+            Branches:
+            [
+                new AccessScopeBranch("共有された資料",
+                    [new AttributeFilter(DocumentAttributeEncoding.SharedWithKey, ["u-alice", "g-knowledge"])]),
+            ]);
+
+        var document = new Dictionary<string, string> { ["confidentiality"] = "restricted" };
+
+        // グループへの共有（自分は共有先に個人として入っていない）→ 可視。
+        BffScopeResolver.Matches(
+            DocumentAttributeEncoding.WithSharedWith(document, ["g-knowledge"]), scope)
+            .Should().BeTrue();
+        // 個人への共有 → 可視。
+        BffScopeResolver.Matches(
+            DocumentAttributeEncoding.WithSharedWith(document, ["u-alice"]), scope)
+            .Should().BeTrue();
+        // 陰性対照: 自分が入っていない共有 → 不可視（存在秘匿は呼び出し側が 404 へ写す）。
+        BffScopeResolver.Matches(
+            DocumentAttributeEncoding.WithSharedWith(document, ["u-bob", "g-finance"]), scope)
+            .Should().BeFalse();
+        // 陰性対照: 共有が 1 つも無い個人資料 → キーごと載らないので不可視。
+        BffScopeResolver.Matches(
+            DocumentAttributeEncoding.WithSharedWith(document, []), scope)
+            .Should().BeFalse();
+    }
+
     // ── #989 段 3（FR-19, ADR-0036, IADR-0253 決定 1）: 名前つき分岐の評価 ────────────
     //
     // 分岐内は AND・分岐間は OR。#989 退行防止の写像: 「個人資料（owner ベース）」と

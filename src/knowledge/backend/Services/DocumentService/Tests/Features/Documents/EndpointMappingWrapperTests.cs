@@ -29,7 +29,8 @@ public class EndpointMappingWrapperTests
         var unknown = Guid.NewGuid();
         var d = Document.Create("報告", null, null, tags: [known, unknown]);
 
-        var dto = DocumentEndpoints.ToDto(d, new Dictionary<Guid, string> { [known] = "営業" });
+        var dto = DocumentEndpoints.ToDto(d, new Dictionary<Guid, string> { [known] = "営業" },
+            sharedWith: null);
 
         dto.Tags.Should().Equal("営業");
         dto.Tags.Should().NotContain(known.ToString());

@@ -261,6 +261,201 @@ public class AbacEvaluatorTests
                 "計画が束縛変数の語彙を定めていないため、実装が先取りして増やさない");
     }
 
+    // ── FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0036 D-03・D-06, ADR-0098 決定 1,
+    //    [[IADR-0447]] (#1447): `${current_groups}` の束縛（受け入れ基準 1）────────────
+    //
+    // 🔴 認可を**広げる**変更なので、陽性（所属が効く）と陰性（所属が無ければ効かない・
+    // 語彙は増えない）を対で置く。片方だけでは「常に全グループを許す」実装と区別できない。
+
+    // 9: `${current_groups}` は所属の集合へ**展開される**（0..N 値）。
+    [Fact]
+    public void ResolveScope_ExpandsCurrentGroupsPlaceholder_IntoTheMembershipSet()
+    {
+        var req = new AccessScopeRequest("alice", new() { ["department"] = "engineering" });
+        var policies = new[]
+        {
+            NamedReadPolicy("共有された資料", new() { ["department"] = ["engineering"] },
+                            new() { ["shared_with"] = ["${current_groups}"] }),
+        };
+
+        var result = AbacEvaluator.ResolveScope(
+            req, policies, PolicyAction.Read,
+            new HashSet<string>(StringComparer.Ordinal) { "g-knowledge", "g-finance" });
+
+        result.Branches!.Single().Filters.Single().AllowedValues
+            .Should().BeEquivalentTo("g-knowledge", "g-finance");
+    }
+
+    // 10: 計画 07_abac-attribute-model §動的束縛の判定規則
+    // `doc.shared_with ∩ ({${current_user}} ∪ ${current_groups}) ≠ ∅` —— **1 つのフィルタに
+    // 主体と所属が同居する**（個人共有とグループ共有は同じ分岐で効く）。
+    [Fact]
+    public void ResolveScope_BindsBothCurrentUserAndCurrentGroups_InOneFilter()
+    {
+        var req = new AccessScopeRequest("alice", new() { ["department"] = "engineering" });
+        var policies = new[]
+        {
+            NamedReadPolicy("共有された資料", new() { ["department"] = ["engineering"] },
+                            new() { ["shared_with"] = ["${current_user}", "${current_groups}"] }),
+        };
+
+        var result = AbacEvaluator.ResolveScope(
+            req, policies, PolicyAction.Read,
+            new HashSet<string>(StringComparer.Ordinal) { "g-knowledge" });
+
+        result.Branches!.Single().Filters.Single().AllowedValues
+            .Should().BeEquivalentTo("alice", "g-knowledge");
+    }
+
+    // 11: 🔴 所属が無ければ `shared_with` の分岐は **`${current_user}` だけ**になる
+    // （グループ共有の分は 1 つも生えない ＝ 他人のグループ共有へ到達しない）。
+    [Fact]
+    public void ResolveScope_WithoutMemberships_LeavesOnlyTheCurrentUser()
+    {
+        var req = new AccessScopeRequest("alice", new() { ["department"] = "engineering" });
+        var policies = new[]
+        {
+            NamedReadPolicy("共有された資料", new() { ["department"] = ["engineering"] },
+                            new() { ["shared_with"] = ["${current_user}", "${current_groups}"] }),
+        };
+
+        // 所属なし（空集合）と**渡し忘れ（null）は同値**である（実装の注記）。
+        foreach (var groups in new IReadOnlySet<string>?[] { null, new HashSet<string>() })
+        {
+            var result = AbacEvaluator.ResolveScope(req, policies, PolicyAction.Read, groups);
+
+            result.Branches!.Single().Filters.Single().AllowedValues
+                .Should().BeEquivalentTo(["alice"],
+                    "所属が無い主体に他人のグループ共有が見えてはならない");
+        }
+    }
+
+    // 12: 🔴 `${current_groups}` **しか**無い条件で所属が空なら、**分岐ごと落ちる**。
+    //
+    // フィルタだけ落ちる（＝連言が空になる）形にすると、消費側は「分岐のフィルタが空 ＝
+    // そのポリシーの範囲で全件許可」と読む（`BffScopeResolver` / `AbacPageFilter` の契約）——
+    // **所属が無い主体に全件が見える**。倒す向きを間違えると最悪の壊れ方をする箇所である。
+    [Fact]
+    public void ResolveScope_DropsTheWholeBranch_WhenBindingEmptiesAFilter()
+    {
+        var req = new AccessScopeRequest("alice", new() { ["department"] = "engineering" });
+        var policies = new[]
+        {
+            NamedReadPolicy("グループ共有のみ", new() { ["department"] = ["engineering"] },
+                            new() { ["shared_with"] = ["${current_groups}"] }),
+        };
+
+        var result = AbacEvaluator.ResolveScope(req, policies, PolicyAction.Read, groups: null);
+
+        result.Branches.Should().BeEmpty(
+            "許可値が空のフィルタを残すと、消費側が「無条件許可」と読む余地が生まれる");
+        // 🔴 **`Granted` は true のままである**（マッチしたポリシーは在った）。それでも
+        // 据え置きの `AllowedFilters` はリテラルのままなので、どの文書にも一致しない ＝ deny 側。
+        result.Granted.Should().BeTrue();
+        result.AllowedFilters.Single().AllowedValues.Should().BeEquivalentTo(["${current_groups}"]);
+    }
+
+    // 13: 陽性対照（12 の対）: **同じ入力で所属が 1 つあれば分岐は立つ。**
+    // 「常に分岐を落とす」実装は 12 だけを通してしまう。
+    [Fact]
+    public void ResolveScope_KeepsTheBranch_WhenAtLeastOneGroupIsBound()
+    {
+        var req = new AccessScopeRequest("alice", new() { ["department"] = "engineering" });
+        var policies = new[]
+        {
+            NamedReadPolicy("グループ共有のみ", new() { ["department"] = ["engineering"] },
+                            new() { ["shared_with"] = ["${current_groups}"] }),
+        };
+
+        var result = AbacEvaluator.ResolveScope(
+            req, policies, PolicyAction.Read,
+            new HashSet<string>(StringComparer.Ordinal) { "g-knowledge" });
+
+        result.Branches!.Single().Filters.Single().AllowedValues
+            .Should().BeEquivalentTo("g-knowledge");
+    }
+
+    // 14: 🔴 **落ちるのは空になった分岐だけである**（他の分岐は残る）。
+    // 分岐間は OR なので、1 本落ちても他の許可は生きていなければならない。
+    [Fact]
+    public void ResolveScope_DroppingOneBranch_DoesNotAffectTheOthers()
+    {
+        var req = new AccessScopeRequest("alice", new() { ["department"] = "engineering" });
+        var policies = new[]
+        {
+            NamedReadPolicy("組織文書", new() { ["department"] = ["engineering"] },
+                            new() { ["confidentiality"] = ["internal"] }),
+            NamedReadPolicy("グループ共有のみ", new() { ["department"] = ["engineering"] },
+                            new() { ["shared_with"] = ["${current_groups}"] }),
+        };
+
+        var result = AbacEvaluator.ResolveScope(req, policies, PolicyAction.Read, groups: null);
+
+        result.Branches.Should().ContainSingle().Which.Name.Should().Be("組織文書");
+    }
+
+    // 15: 🔴 陰性対照（**AllowedFilters では束縛しない**。#989 / IADR-0253 決定 2 の据え置き）。
+    // `${current_groups}` でも `${current_user}` と同じ非対称を保つ。
+    [Fact]
+    public void ResolveScope_DoesNotBindCurrentGroups_InAllowedFilters()
+    {
+        var req = new AccessScopeRequest("alice", new() { ["department"] = "engineering" });
+        var policies = new[]
+        {
+            NamedReadPolicy("共有された資料", new() { ["department"] = ["engineering"] },
+                            new() { ["shared_with"] = ["${current_user}", "${current_groups}"] }),
+        };
+
+        var result = AbacEvaluator.ResolveScope(
+            req, policies, PolicyAction.Read,
+            new HashSet<string>(StringComparer.Ordinal) { "g-knowledge" });
+
+        result.AllowedFilters.Single().AllowedValues.Should().BeEquivalentTo(
+            ["${current_user}", "${current_groups}"],
+            "未移行の消費側は据え置きの面を読む。束縛すると壊れた連言で判定してしまう");
+    }
+
+    // 16: 🔴 陰性対照（語彙は 2 つのままである）: 所属を渡しても未知のプレースホルダは残る。
+    // **`${current_department}` は束縛しない** —— 計画 `ADR-0036` D-03 が定めた 2 つだけである。
+    [Fact]
+    public void ResolveScope_StillLeavesUnknownPlaceholdersUntouched_WhenGroupsAreBound()
+    {
+        var req = new AccessScopeRequest("alice", new() { ["department"] = "engineering" });
+        var policies = new[]
+        {
+            NamedReadPolicy("未知の束縛", new() { ["department"] = ["engineering"] },
+                            new() { ["department"] = ["${current_department}"] }),
+        };
+
+        var result = AbacEvaluator.ResolveScope(
+            req, policies, PolicyAction.Read,
+            new HashSet<string>(StringComparer.Ordinal) { "g-knowledge" });
+
+        result.Branches!.Single().Filters.Single().AllowedValues
+            .Should().BeEquivalentTo(
+                ["${current_department}"],
+                "束縛変数の語彙は計画が定める。実装が 3 つ目を先取りしない");
+    }
+
+    // 17: 所属と同名のリテラルが混ざっても**重複しない**（許可集合は集合である）。
+    [Fact]
+    public void ResolveScope_DoesNotDuplicateValues_WhenALiteralEqualsABoundGroup()
+    {
+        var req = new AccessScopeRequest("alice", new() { ["department"] = "engineering" });
+        var policies = new[]
+        {
+            NamedReadPolicy("共有された資料", new() { ["department"] = ["engineering"] },
+                            new() { ["shared_with"] = ["g-knowledge", "${current_groups}"] }),
+        };
+
+        var result = AbacEvaluator.ResolveScope(
+            req, policies, PolicyAction.Read,
+            new HashSet<string>(StringComparer.Ordinal) { "g-knowledge", "g-finance" });
+
+        result.Branches!.Single().Filters.Single().AllowedValues
+            .Should().Equal("g-knowledge", "g-finance");
+    }
+
     // ---- FR-21, ADR-0036 D-07, IADR-0253 決定 5（2026-08-23 改定 / #989）段 5: Action の解決 ----
     //
     // 🔴 認可の変更なので、否定形（許してはならないものが通らない）と陽性対照を対で置く。

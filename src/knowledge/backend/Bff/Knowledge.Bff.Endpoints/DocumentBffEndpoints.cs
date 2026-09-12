@@ -25,7 +25,8 @@ namespace Knowledge.Bff.Endpoints;
 // 🔴 **後段への読み取り 4 箇所は east-west gRPC でも呼べる**（`Services:DocumentServiceGrpc` が
 // 構成されたときだけ。無ければ従来どおり REST。**並走中の正は REST**）。
 // この 4 箇所が移せるのは、**現状も利用者の資格情報を運んでいない**からである ——
-// ABAC の実施点は下の `BffScopeResolver` ＋ `IsManageable` ただ 1 つであり（[[IADR-0041]] /
+// ABAC の実施点は下の `BffScopeResolver` ＋ `IsManageable` / `IsReadable`（**判定は 1 か所で
+// 面ごとに 1 つ**。読み取りと管理面の違いは [[IADR-0447]] 決定 4 / #1447）であり（[[IADR-0041]] /
 // [[IADR-0045]]）、後段の読み取り group はロールで塞いでいない。**移行で判定の位置を動かさない。**
 // 同じファイルの `Forwarding()`（書き込み経路）は**利用者の資格情報を運ぶので移さない** ——
 // 後段が `AdminOnly` を二重ゲートで強制しており、s2s へ替えると門が 1 枚になる。
@@ -293,7 +294,65 @@ public static class DocumentBffEndpoints
     // 片方が壊れても気付けない。**判定は集合帰属で書く**（「organization でない」ではない ——
     // 属性を持たない既存文書が全部 個人資料 に化ける。ADR-0054 決定 5）。
     private static bool IsManageable(DocumentDto doc, BffAccessScope scope)
-        => BffScopeResolver.Matches(doc.Attributes, scope) && !IsPrivateNote(doc);
+        => BffScopeResolver.Matches(AuthzView(doc), scope) && !IsPrivateNote(doc);
+
+    // FR-19, ADR-0036 D-06, ADR-0098 決定 1, [[IADR-0447]] 決定 4, [[IADR-0448]] (#1447 / #1448):
+    // **判定へ渡す像を作る点はここ 1 つである。**
+    //
+    // 共有先は属性辞書では運べない（値が単一文字列で集合を持てない。[[IADR-0253]] 決定 4）ため、
+    // `DocumentDto.SharedWith` として独立した項目で届く。判定側（`AttributeFilter`）は属性辞書を
+    // 見るので、**`shared_with` の集合値属性として重ねた読み取り用の像**を渡す。
+    //
+    // 🔴 **経路ごとに割らない。** 一覧・詳細・本文・版・書き込みプリフライトのすべてがこの 1 行を
+    // 通る —— 「共有先を重ねた経路」と「重ねない経路」に割れると、同じスコープが経路によって
+    // 違う答えを出す（#1448 で実測した型の欠陥）。
+    //
+    // **元の `doc.Attributes` は変えない**（`WithSharedWith` の契約）。`DocumentDto.Attributes` は
+    // 書き戻しの入力にもなるため、共有先を属性へ混ぜて保存させない。
+    // **空集合は載せない** —— 載せると「属性は持つが空」となり、`shared_with` を条件に持つ分岐が
+    // 空文字と一致する余地が生まれる。
+    private static IReadOnlyDictionary<string, string> AuthzView(DocumentDto doc)
+        => DocumentAttributeEncoding.WithSharedWith(doc.Attributes, doc.SharedWith);
+
+    // FR-19, FR-20, UC-11, ADR-0036 D-05・D-06・D-08, ADR-0061 決定 5・6,
+    // [[IADR-0447]] 決定 4, [[IADR-0448]] (#1447): **読み取り（詳細・本文・版）の判定。**
+    //
+    // 🔴 **管理面（上の `IsManageable`）と違い、個人資料を一律には落とさない。** 一律に落とすと
+    // **FR-19 の共有が BFF の単体判定に一切効かない** —— 共有された相手が `GET /bff/documents/{id}`
+    // で読めず、「台帳には入るが誰にも何も許可しない」（#1447 が名指した穴）が BFF 側に残る。
+    //
+    // 代わりに、許可の根拠が**裁量の分岐**（`owner` または `shared_with` を条件に持つ分岐）で
+    // あることを要求する。🔴 **述語を新設しない** —— `PrivateNoteVisibility.BranchMayGrant` は
+    // 索引（Retrieval の 2 実装）とグラフ（`AbacNodeFilter`）が既に使っている**同じ関数**であり、
+    // BFF は 4 つ目の消費面になる（判定を 2 本目に書くと 1 本だけ改名されて静かに無効化される）。
+    //
+    // **ADR-0036 D-08（管理者・運用者は平時、非公開の個人資料を一切閲覧できない）は保たれる** ——
+    // 管理者のポリシーは静的属性（`confidentiality` 等）の条件しか持たないため裁量の分岐にならず、
+    // `BranchMayGrant` が偽になる。組織文書には 1 ビットも効かない（`doc_scope` を持たない文書は
+    // 集合帰属で「個人資料ではない」）。
+    //
+    // 🔴 **`SC-05` の一覧（`GET /bff/documents`）と書き込みプリフライトはこの述語を使わない。**
+    // あちらは組織文書の管理面であり、共有された個人資料が現れてはならない（従前どおり
+    // `IsManageable` の一律除外。陰性対照テストが固定する）。
+    private static bool IsReadable(DocumentDto doc, BffAccessScope scope)
+    {
+        if (!scope.GrantsAccess)
+            return false;
+
+        var attributes = AuthzView(doc);
+
+        // [[IADR-0253]] 決定 1: 分岐があれば選言で評価する（分岐間 OR・分岐内 AND）。
+        // 🔴 **許可した分岐ごとに裁量かを見る**（`AbacNodeFilter` と同じ形）——
+        // 分岐をキー単位 union へ畳んでから見ると、静的属性の分岐が個人資料を許してしまう。
+        if (scope.Branches is { Count: > 0 })
+            return scope.Branches.Any(b =>
+                AttributeFilterMatch.MatchesAll(attributes, b.Filters)
+                && PrivateNoteVisibility.BranchMayGrant(attributes, b.Filters));
+
+        // 未移行の応答（分岐なし）は従来どおり `Filters` の連言で評価する（後方互換）。
+        return AttributeFilterMatch.MatchesAll(attributes, scope.Filters)
+            && PrivateNoteVisibility.BranchMayGrant(attributes, scope.Filters);
+    }
 
     // `DocumentAttributes`（DocumentService）はユニット外から参照できないため、判定を持つ
     // （GraphService が `GraphDocumentScope` を持つのと同じ理由・同じ形）。
@@ -346,8 +405,17 @@ public static class DocumentBffEndpoints
             doc = await resp.Content.ReadFromJsonAsync<DocumentDto>(ct);
         }
 
-        if (doc is null || !IsManageable(doc, scope))
-            return null; // スコープ外・個人資料は不在と同じ 404
+        if (doc is null)
+            return null; // 不在は秘匿し区別しない
+
+        // FR-19, [[IADR-0447]] 決定 4 (#1447): **読み取りと書き込みプリフライトで述語が違う。**
+        // 読み取り（詳細・本文・版）は裁量の分岐（`owner` / `shared_with`）で個人資料も通すが、
+        // 書き込み（`ForwardIfInScope`）は SC-05 の管理面であり従前どおり一律除外である。
+        var authorized = action == BffScopeAction.Read
+            ? IsReadable(doc, scope)
+            : IsManageable(doc, scope);
+        if (!authorized)
+            return null; // スコープ外・（管理面では）個人資料は不在と同じ 404
 
         return doc;
     }

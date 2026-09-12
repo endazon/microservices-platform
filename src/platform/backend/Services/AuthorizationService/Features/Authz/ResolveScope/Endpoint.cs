@@ -44,9 +44,12 @@ public static class ResolveScopeEndpoint
 
             // 「居ない」は**応答**である（deny を 200 で返す。エラーにしない）。
             var policies = await db.Policies.Where(p => p.IsActive).ToListAsync(ct);
+            // FR-19, 計画 ADR-0036 D-03, ADR-0098 決定 1, [[IADR-0447]] (#1447):
+            // `${current_groups}` は **IdP の所属照会**の結果で束縛する（同じ 1 つの点を通る。
+            // gRPC 面も同じ値を渡す —— 面ごとに書かない）。
             var scope = lookup.Outcome == ScopeUserAttributeSource.Outcome.Found
                 ? AbacEvaluator.ResolveScope(
-                    req with { UserAttributes = lookup.Attributes }, policies, req.Action)
+                    req with { UserAttributes = lookup.Attributes }, policies, req.Action, lookup.Groups)
                 : new AccessScopeResponse(req.UserId, [], false);
             return Results.Ok(scope);
         });

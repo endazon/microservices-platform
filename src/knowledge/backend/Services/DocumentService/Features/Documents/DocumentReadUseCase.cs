@@ -28,20 +28,30 @@ namespace DocumentService.Features.Documents;
 public sealed class DocumentReadUseCase(DocumentDbContext db)
 {
     // FR-06, UC-03: 一覧（更新の新しい順）。
+    //
+    // FR-19, [[IADR-0447]] (#1447): 共有先は**1 クエリで引いて分配する**（`ResolveSharedWithAsync`
+    // の束の口）。🔴 **文書ごとに引かない** —— 一覧の応答が文書数に比例して遅くなる
+    // （`PrivateNoteEnrichment` が共有の件数で採っているのと同じ規律）。
     public async Task<List<DocumentDto>> ListAsync(CancellationToken ct = default)
     {
         var names = await TagResolver.NamesAsync(db);
         var docs = await db.Documents
             .OrderByDescending(d => d.UpdatedAt)
             .ToListAsync(ct);
-        return docs.Select(d => DocumentEndpoints.ToDto(d, names)).ToList();
+        var shares = await DocumentEndpoints.ResolveSharedWithAsync(
+            db, docs.Select(d => d.Id).ToList(), ct);
+        return docs
+            .Select(d => DocumentEndpoints.ToDto(d, names, shares.GetValueOrDefault(d.Id)))
+            .ToList();
     }
 
     // FR-06, UC-03: 1 件の取得。台帳に無ければ null。
     public async Task<DocumentDto?> GetAsync(Guid id, CancellationToken ct = default)
     {
         var doc = await db.Documents.FindAsync([id], ct);
-        return doc is null ? null : DocumentEndpoints.ToDto(doc, await TagResolver.NamesAsync(db));
+        return doc is null
+            ? null
+            : await DocumentEndpoints.ToDtoAsync(db, doc, await TagResolver.NamesAsync(db), ct);
     }
 
     // FR-06, UC-03: 版履歴一覧（新しい順）。

@@ -141,6 +141,73 @@ public class GrpcResolveScopeTests
         }
     }
 
+    // ── FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0036 D-03, ADR-0098 決定 1,
+    //    [[IADR-0447]] (#1447): `${current_groups}` は **gRPC 面でも同じ 1 つの点**で束縛される ──
+    //
+    // 🔴 **面ごとに書かない**（`ScopeUserAttributeSource` の注記）。REST 面の
+    // `CurrentGroupsBindingTests` と対であり、**片方だけが古くなる形**を封じるために両面に置く。
+
+    // 🔴 T-1447-a（陽性・gRPC）: 所属が分岐の許可値へ展開される。
+    //
+    // 🔴 **利用者条件に専用のキーを使う** —— この器は `GrpcServerCollection` で共有され、
+    // 既存の試験（T-01 / T-07）が「alice の分岐は 1 本」を固定している。alice が持たない
+    // キーで絞れば、増やしたポリシーが既存の固定に触れない。
+    [Fact]
+    public async Task The_scope_binds_memberships_over_grpc()
+    {
+        const string key = "clearance-1447";
+        var policyName = $"grpc-shared-with-{Guid.NewGuid():N}";
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AuthorizationDbContext>();
+            db.Policies.Add(AbacPolicy.Create(
+                policyName,
+                PolicyAction.Read,
+                new Dictionary<string, List<string>> { [key] = ["internal"] },
+                new Dictionary<string, List<string>>
+                {
+                    ["shared_with"] = ["${current_user}", "${current_groups}"],
+                }));
+            db.SaveChanges();
+        }
+
+        var user = $"gmember-{Guid.NewGuid():N}"[..20];
+        _factory.Identity.Attributes[user] = new Dictionary<string, string> { [key] = "internal" };
+        _factory.Identity.Groups[user] = ["g-knowledge"];
+
+        var token = GrpcKestrelFactory.IssueToken(ServiceSubject, [PlatformAuthPolicies.ServiceRole]);
+        var resp = await PlainClient().ResolveAsync(
+            new ResolveScopeRequest { UserId = user },
+            headers: Bearer(token), cancellationToken: TestContext.Current.CancellationToken);
+
+        resp.Branches.Should().ContainSingle(b => b.Name == policyName)
+            .Which.Filters.Should().ContainSingle(f => f.Key == "shared_with")
+            .Which.AllowedValues.Should().BeEquivalentTo([user, "g-knowledge"]);
+    }
+
+    // 🔴 T-1447-b（受け入れ基準 2・gRPC）: **所属照会の失敗は `UNAVAILABLE`** である
+    // （REST 面の 503 と同値。deny に畳まない。`ADR-0088` 決定 1）。
+    [Fact]
+    public async Task A_membership_lookup_outage_is_unavailable_over_grpc()
+    {
+        var token = GrpcKestrelFactory.IssueToken(ServiceSubject, [PlatformAuthPolicies.ServiceRole]);
+        // **属性は引ける**（`Failure` ではなく `GroupFailure`）。所属だけが引けない。
+        _factory.Identity.GroupFailure = new HttpRequestException("Keycloak の所属照会へ届かない");
+        try
+        {
+            var act = async () => await PlainClient().ResolveAsync(
+                EngineeringRequest(), headers: Bearer(token),
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode
+                .Should().Be(StatusCode.Unavailable);
+        }
+        finally
+        {
+            _factory.Identity.GroupFailure = null;
+        }
+    }
+
     // 呼び出し側の共通部品（CreatePlatformChannel = 平文 h2c ＋ s2s CallCredentials）を実際に通す。
     private sealed class FixedTokenProvider(string token) : IServiceTokenProvider
     {

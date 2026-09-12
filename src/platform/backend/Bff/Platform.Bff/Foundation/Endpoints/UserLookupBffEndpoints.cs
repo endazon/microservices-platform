@@ -1,4 +1,5 @@
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace Platform.Bff.Foundation.Endpoints;
 
@@ -13,9 +14,15 @@ namespace Platform.Bff.Foundation.Endpoints;
 //   一般利用者が 403 になるか、名簿と属性が漏れるかのどちらかになる
 //   （辞書管理と描画用カタログを分けた `/bff/graph/edge-types` と同じ切り分け）。
 //
-// 🔴 **認可の実施点は後段である。** 後段の群も `RequireAuthorization()`（ロール不問）を持ち、
+// 🔴 **認可の実施点は後段でもある。** 後段の群も同じポリシー（ロール不問・人の主体だけ）を持ち、
 //   BFF は利用者の資格情報を転送する（二重ゲート。[[IADR-0044]]）。転送を落とすと後段は
 //   401 を返す —— **緩む向きではないが、機能が丸ごと死ぬ**。
+//
+// ★［2026-09-12 / #1447］**`PlatformAuthPolicies.InteractiveUser` を課した**
+//   （計画 `ADR-0100` フォローアップ 2 / [[IADR-0449]]）。従前は `RequireAuthorization()` だけで、
+//   realm のサービスアカウント（`platform-service`）も**認証済みなので到達できた**。
+//   🔴 **ロールは依然として要求しない**（`x-roles: []` は変わらない —— 絞る軸はロールではなく
+//   主体の種別である）。
 //
 // 🔴 **書き込みの口を持たない。** 利用者の作成・変更は計画が本画面から禁じており（SC-17）、
 //   この群が担うのは読み取り 2 つだけである。
@@ -24,9 +31,10 @@ public static class UserLookupBffEndpoints
     public static IEndpointRouteBuilder MapUserLookupBffEndpoints(this IEndpointRouteBuilder app)
     {
         // ADR-0098 決定 1: 共有は一般利用者（所有者）の操作である。**ロールを要求しない。**
+        // ADR-0100 フォローアップ 2 / #1447: ただし人の主体だけを通す（サービスアカウントは 403）。
         var g = app.MapGroup("/bff/users")
             .WithTags("UserLookup BFF")
-            .RequireAuthorization();
+            .RequireAuthorization(PlatformAuthPolicies.InteractiveUser);
 
         // SC-19 主要素 3: 候補の検索（`q` 2 文字以上・有効な利用者のみ・上限 50／既定 20）。
         // 🔴 **クエリ文字列はそのまま後段へ渡す** —— 既定・上限・検証の規則は後段が唯一の

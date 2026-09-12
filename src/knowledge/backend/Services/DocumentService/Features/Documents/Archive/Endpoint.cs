@@ -22,7 +22,7 @@ internal static class ArchiveDocumentEndpoint
             await db.SaveChangesAsync();
             var names = await TagResolver.NamesAsync(db);
             await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, names, ct);
-            return Results.Ok(DocumentEndpoints.ToDto(doc, names));
+            return Results.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, names, ct));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
     }
 }

@@ -136,8 +136,62 @@ public static class DocumentEndpoints
     //
     // SC-03, ADR-0070 決定 3 / [[IADR-0388]] 決定 2 (#1254): `HasBody` は本文なしの文書を
     // 文書詳細が区別できるようにする（表示は SC-02 と同じ「本文なし（原本を参照）」）。同名 1:1 で写る。
-    internal static DocumentDto ToDto(Document d, IReadOnlyDictionary<Guid, string> names)
-        => DocumentMapper.ToDto(d, TagResolver.ToNames(d.Tags, names));
+    //
+    // FR-19, ADR-0036 D-06, ADR-0098 決定 1, [[IADR-0447]] (#1447): **`SharedWith` は引数で受ける。**
+    // 🔴 **既定値を付けない。** 付けると新しい経路を足した人が渡し忘れ、**その経路だけ共有先を
+    // 運ばない応答**になる（BFF の単体判定が共有先へ到達できなくなる＝共有が黙って効かない）。
+    // 単一文書の経路は下の `ToDtoAsync` を使い、一覧は `ResolveSharedWithAsync`（束）で分配する。
+    internal static DocumentDto ToDto(Document d, IReadOnlyDictionary<Guid, string> names,
+        List<string>? sharedWith)
+        => DocumentMapper.ToDto(d, TagResolver.ToNames(d.Tags, names), NullIfEmpty(sharedWith));
+
+    // FR-19, [[IADR-0447]] (#1447): 単一文書の経路（取得・登録・編集・公開・アーカイブ・本文投入・
+    // タグ反映）の写像。**共有先の解決は `ResolveSharedWithAsync` ただ 1 つ**であり、
+    // `PublishUpdatedAsync`（イベント）も同じ関数を呼ぶ —— 応答とイベントで値が割れない。
+    internal static async Task<DocumentDto> ToDtoAsync(DocumentDbContext db, Document d,
+        IReadOnlyDictionary<Guid, string> names, CancellationToken ct = default)
+        => ToDto(d, names, await ResolveSharedWithAsync(db, d.Id, ct));
+
+    // FR-19, ADR-0036 D-06, ADR-0098 決定 1, [[IADR-0447]] (#1447): **共有先の唯一の解決点。**
+    // 共有台帳（`DocumentShares`）の `SubjectId` を並べる。
+    //
+    // 🔴 **`SubjectType` を落とすのは意図である。** 判定規則
+    // `doc.shared_with ∩ ({${current_user}} ∪ ${current_groups}) ≠ ∅` は種別を区別せず
+    // **1 つの集合として突き合わせる** —— 利用者名（Keycloak の username）とグループ ID（UUID）は
+    // 名前空間が交わらないため、混ぜても「別種の同名」が起きない。種別を運ぶと、消費側 3 面
+    // （BFF・Graph・索引）がそれぞれ種別の扱いを決めることになり、判定軸が増える。
+    // 種別が要るのは**管理 API**（`/documents/{id}/shares`。取り消しの鍵）だけである。
+    internal static Task<List<string>> ResolveSharedWithAsync(
+        DocumentDbContext db, Guid documentId, CancellationToken ct = default)
+        => db.DocumentShares
+            .Where(s => s.DocumentId == documentId)
+            .Select(s => s.SubjectId)
+            .ToListAsync(ct);
+
+    // FR-19, [[IADR-0447]] (#1447): 一覧用。**1 クエリで引いて文書ごとへ分配する**（N+1 を作らない
+    // ——`PrivateNoteEnrichment.LoadAsync` が共有の件数で採っているのと同じ形）。
+    // 返す辞書に**共有 0 件の文書の鍵は現れない**（呼び出し側は `GetValueOrDefault` で null 相当を得る）。
+    internal static async Task<Dictionary<Guid, List<string>>> ResolveSharedWithAsync(
+        DocumentDbContext db, IReadOnlyCollection<Guid> documentIds, CancellationToken ct = default)
+    {
+        if (documentIds.Count == 0)
+            return [];
+
+        var rows = await db.DocumentShares
+            .Where(s => documentIds.Contains(s.DocumentId))
+            .Select(s => new { s.DocumentId, s.SubjectId })
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(r => r.DocumentId)
+            .ToDictionary(g => g.Key, g => g.Select(r => r.SubjectId).ToList());
+    }
+
+    // FR-19 (#1447): 応答の既定は **null（＝共有なし）** である（`DocumentDto.SharedWith` の契約）。
+    // 🔴 **空リストにしない** —— `DocumentAttributeEncoding.WithSharedWith` が空集合を属性へ載せない
+    // のと同じ向きで、「属性は持つが空」という状態を作らない。
+    private static List<string>? NullIfEmpty(List<string>? sharedWith)
+        => sharedWith is { Count: > 0 } ? sharedWith : null;
 
     // **過去版も現在の表示名で出る**——改名は表示上の変更である（[[IADR-0153]] 決定 4）。
     //
@@ -167,10 +221,9 @@ public static class DocumentEndpoints
         DocumentDbContext db, Document d,
         IReadOnlyDictionary<Guid, string> names, CancellationToken ct = default)
     {
-        var sharedWith = await db.DocumentShares
-            .Where(s => s.DocumentId == d.Id)
-            .Select(s => s.SubjectId)
-            .ToListAsync(ct);
+        // [[IADR-0447]] (#1447): 解決は `ResolveSharedWithAsync` ただ 1 つ。
+        // **応答（`DocumentDto.SharedWith`）と同じ関数**であり、値が経路で割れない。
+        var sharedWith = await ResolveSharedWithAsync(db, d.Id, ct);
 
         await bus.PublishUpdatedAsync(d.Id, d.Title, d.Status, d.MarkdownUri,
             d.Attributes, TagResolver.ToNames(d.Tags, names), d.UpdatedAt,

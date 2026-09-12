@@ -41,7 +41,9 @@ public record AttributeValuesResponse(
 public static class AttributeValueKeys
 {
     // タグは Qdrant ペイロードのリスト項目 `tags` に入る。
-    public const string Tags = "tags";
+    // 🔴 **綴りは `DocumentAttributeEncoding` へ委譲する**（[[IADR-0448]] / #1448）——
+    // 文書側の集合値の語彙を 2 つ持つと、片方だけ直る形になる（`shared_with` で実測した型）。
+    public const string Tags = DocumentAttributeEncoding.TagsKey;
 
     // ABAC 属性はネスト構造体 `attributes -> { k: v }` に入る（IADR-0014 選択肢C・実機検証済み）。
     // facet のキーはドット記法で `attributes.<key>` を指す。
@@ -53,16 +55,28 @@ public static class AttributeValueKeys
     // 🔴 **属性（`attributes -> { k: v }`）には置けない。** 値が単一文字列であり集合を持てないためで、
     // ここを間違えると「共有先が 1 人だけ効く」または「誰にも効かない」索引になる。
     // リストにしておけば、`Match.Keywords`（いずれか一致）が `tags` と同じ意味論で通る。
-    public const string SharedWith = "shared_with";
+    //
+    // 🔴 **綴りは `DocumentAttributeEncoding.SharedWithKey` へ委譲する**（[[IADR-0448]] / #1448）。
+    // 認可フィルタ側の集合値キーの集合（`SetValuedKeys`）と**同じ文字列**であることが要る ——
+    // 索引が `shared_with` をリスト項目に載せているのに、判定側が別の綴りを集合として読むと
+    // 「索引では交差・単体判定では不一致」という面ごとの食い違いになる。
+    public const string SharedWith = DocumentAttributeEncoding.SharedWithKey;
 
     // ペイロードが**リスト項目**であるキーの集合。属性（単一値・完全一致）と扱いが違う。
     // **判定をここへ寄せる**のは、`InMemoryVectorStore` と Qdrant の 2 実装が
     // 同じ意味論を持つ必要があるためである（ずれると「テストは緑・本番は別物」になる）。
-    private static readonly HashSet<string> ListValuedKeys =
-        new(StringComparer.Ordinal) { Tags, SharedWith };
-
+    //
+    // 🔴 **集合そのものも `DocumentAttributeEncoding.SetValuedKeys` へ委譲する**
+    // （[[IADR-0448]] / #1448）—— 索引の「リスト項目」と認可フィルタの「集合値キー」は
+    // **同じ語彙**である。2 つ持つと、集合値キーを足したときに片方だけ増え、
+    // **その面だけ単一値として突き合わせる**（＝1 件も一致しない）形になる。
+    // 判定が大小文字を無視する側へ寄るのは安全である —— 引数は常に `ToPayloadKey` の出力
+    // （`tags` / `shared_with` / `attributes.<key>`）であり、属性キーは接頭辞つきなので
+    // 集合値キーと衝突しない。
+    //
     // 写像済みのペイロードキーがリスト項目か（＝「いずれか一致」で真になるか）。
-    public static bool IsListValued(string payloadKey) => ListValuedKeys.Contains(payloadKey);
+    public static bool IsListValued(string payloadKey)
+        => DocumentAttributeEncoding.IsSetValued(payloadKey);
 
     // 照会キーを Qdrant ペイロードのキーへ写す。**`tags` / `shared_with` が例外で、他は属性として扱う。**
     //

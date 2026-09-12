@@ -39,6 +39,13 @@ import type { SyncCountPart } from '../types/syncHistory';
 // ■ 結果は**色だけに頼らない**（INDEX 決定 21）。`StatusBadge` が tone ごとの固定アイコンを付け、
 //   文言（「成功」「失敗」）も併記する。失敗を `danger` ではなく `warning` にするのは、
 //   **同期の失敗は利用者の操作で解消できる**状態であり、取り返しのつかない事故ではないためである。
+//
+// ■ 🔴 **0 件の読み分け**（ADR-0099 §残るもの の帰結。#1447）。履歴は**本機能の配備後の同期から**
+//   記録される。配備前に同期していた利用者には、0 件が「記録されていない」のか「同期していない」のか
+//   区別できない —— **同じ 0 件に 2 つの意味がある。** 端末のいずれかに最終同期があれば
+//   「配備前の同期は表示されない」と告げ、無ければ従前どおり「同期すると並ぶ」と案内する。
+//   **判断の材料（`hasPriorSync`）は本区画では引かない** —— 端末一覧は親（`ObsidianSettingsPage`）が
+//   既に引いており、同じ一覧を 2 度引くと「どちらの応答で描いたか」が読めなくなる。
 
 /** `MessageDescriptor` と生値の両方を受ける（未知の方向は翻訳せず生値で出る）。 */
 function labelOf(label: MessageDescriptor | string): string {
@@ -68,7 +75,17 @@ function BreakdownCell({ entry }: { entry: SyncHistoryEntryDto }) {
   );
 }
 
-export function SyncHistoryPanel() {
+export interface SyncHistoryPanelProps {
+  /**
+   * 接続端末のいずれかに最終同期があるか。
+   *
+   * 🔴 **「履歴が空である」ことの意味を決める唯一の手掛かりである。** 真なら過去に同期しており、
+   * それでも履歴が空なのは**配備前の同期が記録に無い**ためである（ADR-0099）。
+   */
+  hasPriorSync: boolean;
+}
+
+export function SyncHistoryPanel({ hasPriorSync }: SyncHistoryPanelProps) {
   const { t } = useLingui();
   const history = useSyncHistory();
 
@@ -89,7 +106,13 @@ export function SyncHistoryPanel() {
           empty={
             <EmptyState
               title={t`同期の記録はまだありません。`}
-              description={t`Obsidian プラグインから同期すると、ここに結果が並びます。`}
+              // 🔴 **題は共通・案内だけを分ける。** 0 件であること自体は同じ事実であり、
+              // 変わるのは「なぜ 0 件なのか」だけである。
+              description={
+                hasPriorSync
+                  ? t`同期履歴の記録は本機能の配備後の同期から残ります。配備前の同期は表示されません。`
+                  : t`Obsidian プラグインから同期すると、ここに結果が並びます。`
+              }
             />
           }
         >

@@ -20,7 +20,19 @@
     "read 側が clearance の階段を持つのとの非対称は意図的である —— read の規則は属性ベースの",
     "3 分岐 OR を含むが、write の規則は所有者ベースの 1 分岐しか持たない。規則が違うから形も違う。",
     "owner は attributes.json へ登録しない。検証器は未定義キーを許容し（AbacValidation の",
-    "ValidateConditions）、利用者名は列挙できないため辞書に入れる意味が無い。"
+    "ValidateConditions）、利用者名は列挙できないため辞書に入れる意味が無い。",
+    "",
+    "shared_with（FR-19 / ADR-0036 D-06 / ADR-0098 決定 1 / IADR-0447 決定 5・#1447）:",
+    "共有先ベースの分岐（計画 read 規則の選言の第 3 節）は**ポリシーとして表す**（IADR-0253 決定 1",
+    "「1 ポリシー = 1 分岐」。owner 分岐と同じ形）。${current_groups} は AbacEvaluator が所属の集合へ",
+    "展開し、shared_with は集合値キーなので交差で判定する（ADR-0080 決定 2）。",
+    "🔴 **配備環境ではこのポリシーの投入が統制の実現手段である** —— 投入するまで共有は誰にも",
+    "何も許可しない（従前と同じ fail-closed。統制＝ADR-0036 D-06／実現手段＝本ポリシーの投入／",
+    "投入までの暫定＝共有が効かない）。",
+    "userConditions は**空オブジェクトで明示する** —— 共有は clearance / department で絞らない",
+    "（絞ると共有された相手の取扱区分によって共有が効かなくなる。write 側と同じ非対称の理由）。",
+    "省略ではなく {} と書くのは、階段の回帰試験（scripts/scripts.repo.test.js）が read ポリシーの",
+    "userConditions.clearance を無条件に読むためである（空なら階段のどの段にも数えられない）。"
   ],
   "policies": [
     {
@@ -52,6 +64,12 @@
       "action": "analyze",
       "userConditions": { "clearance": ["confidential", "restricted"] },
       "documentConditions": { "confidentiality": ["public", "internal", "confidential"] }
+    },
+    {
+      "name": "dev: 共有された個人資料を読める",
+      "action": "read",
+      "userConditions": {},
+      "documentConditions": { "shared_with": ["${current_user}", "${current_groups}"] }
     },
     {
       "name": "dev: 所有者は自分の文書を書ける",

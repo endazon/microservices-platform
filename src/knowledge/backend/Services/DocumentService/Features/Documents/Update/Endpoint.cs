@@ -63,7 +63,7 @@ internal static class UpdateDocumentEndpoint
                 http.User, doc.Attributes, UnitProjectMetrics.OperationUpdate);
             var updateNames = await TagResolver.NamesAsync(db);
             await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, updateNames, ct);
-            return Results.Ok(DocumentEndpoints.ToDto(doc, updateNames));
+            return Results.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, updateNames, ct));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
     }
 }

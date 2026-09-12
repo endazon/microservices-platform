@@ -62,6 +62,25 @@ const PULL_EMPTY = {
 const ALL_ENTRIES = [PUSH_SUCCESS, PUSH_CONFLICT, PULL_EMPTY];
 
 /**
+ * 過去に同期した端末（#1447 の 0 件の読み分けに使う）。
+ *
+ * 🔴 **`lastSyncAt` が「配備前に同期していた」ことの唯一の手掛かりである。** 同期履歴が
+ * 配備後の記録しか持たないため、端末側の最終同期と履歴の 0 件は**両立する**。
+ */
+const SYNCED_DEVICE = {
+  id: '00000000-0000-0000-0000-0000000000a1',
+  deviceName: 'MacBook Pro',
+  issuedAt: '2026-08-20T00:00:00Z',
+  expiresAt: '2026-09-19T00:00:00Z',
+  revoked: false,
+  lastSyncAt: '2026-08-27T22:10:00Z',
+  active: true,
+};
+
+/** まだ 1 度も同期していない端末（`lastSyncAt` が無い）。 */
+const NEVER_SYNCED_DEVICE = { ...SYNCED_DEVICE, lastSyncAt: null };
+
+/**
  * BFF の面へ応答を割り当てる。
  *
  * **同期履歴以外は静かにしておく**（端末 0 件・フォルダ未設定・競合 0 件）。本ファイルが見るのは
@@ -70,14 +89,15 @@ const ALL_ENTRIES = [PUSH_SUCCESS, PUSH_CONFLICT, PULL_EMPTY];
 function respond({
   history = ALL_ENTRIES as unknown[],
   historyFails = false,
-}: { history?: unknown[]; historyFails?: boolean } = {}) {
+  devices = [] as unknown[],
+}: { history?: unknown[]; historyFails?: boolean; devices?: unknown[] } = {}) {
   mocks.apiRequest.mockImplementation((path: string) => {
     if (path === '/private-notes/sync-history') {
       return historyFails
         ? Promise.reject(new Error('boom'))
         : Promise.resolve(jsonResponse(history));
     }
-    if (path === '/private-notes/devices') return Promise.resolve(jsonResponse([]));
+    if (path === '/private-notes/devices') return Promise.resolve(jsonResponse(devices));
     if (path === '/private-notes/sync-settings') {
       return Promise.resolve(
         jsonResponse({ targetFolders: [], updatedAt: '2026-09-11T00:00:00Z' }),
@@ -187,7 +207,52 @@ describe('SC-20 同期履歴: 行の描画（#1446）', () => {
     expect(await history.findByText(/同期の記録はまだありません/)).toBeInTheDocument();
     expect(history.queryByRole('table')).not.toBeInTheDocument();
   });
+});
 
+// #1447: ADR-0099 §残るもの の帰結。**同じ 0 件に 2 つの意味がある**ため、端末の最終同期で読み分ける。
+//
+// 🔴 **両側を置く。** 片側だけでは「常に同じ文言を出す実装」でも緑になる。
+describe('SC-20 同期履歴: 0 件の読み分け（#1447）', () => {
+  it('端末に最終同期があり履歴が空なら、配備前の同期は表示されない旨を出す', async () => {
+    respond({ history: [], devices: [SYNCED_DEVICE] });
+    await renderPage();
+    const history = within(historyPanel());
+
+    // ★ 陽性対照: 題は共通（0 件であること自体は同じ事実である）。
+    expect(await history.findByText(/同期の記録はまだありません/)).toBeInTheDocument();
+    expect(
+      history.getByText(
+        '同期履歴の記録は本機能の配備後の同期から残ります。配備前の同期は表示されません。',
+      ),
+    ).toBeInTheDocument();
+    // 🔴 陰性: 「まだ同期していない」と読める従前の案内は出さない（過去に同期しているため誤りである）。
+    expect(history.queryByText(/ここに結果が並びます/)).not.toBeInTheDocument();
+  });
+
+  it('端末の最終同期が無ければ従前の案内を出す（陰性対照）', async () => {
+    respond({ history: [], devices: [NEVER_SYNCED_DEVICE] });
+    await renderPage();
+    const history = within(historyPanel());
+
+    expect(await history.findByText(/同期の記録はまだありません/)).toBeInTheDocument();
+    expect(
+      history.getByText('Obsidian プラグインから同期すると、ここに結果が並びます。'),
+    ).toBeInTheDocument();
+    // 🔴 陰性: 同期していない利用者へ「配備前の同期」の話をしない（無用な不安を与える）。
+    expect(history.queryByText(/配備前の同期は表示されません/)).not.toBeInTheDocument();
+  });
+
+  it('端末が 1 台も無ければ従前の案内を出す', async () => {
+    respond({ history: [], devices: [] });
+    await renderPage();
+    const history = within(historyPanel());
+
+    expect(await history.findByText(/同期の記録はまだありません/)).toBeInTheDocument();
+    expect(history.queryByText(/配備前の同期は表示されません/)).not.toBeInTheDocument();
+  });
+});
+
+describe('SC-20 同期履歴: 取得の失敗（#1446）', () => {
   it('取得に失敗したら空状態へ縮退させず、再試行の導線を出す', async () => {
     respond({ historyFails: true });
     await renderPage();

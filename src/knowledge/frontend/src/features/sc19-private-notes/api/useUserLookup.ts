@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   bffUserResolve,
@@ -7,6 +6,7 @@ import {
 } from '@foundation/api/generated/users/users';
 import { okArray } from '@foundation/api/orvalSelect';
 import type { UserSummaryDto } from '@foundation/api/generated/bff.schemas';
+import { useLookupTerm } from './lookupTerm';
 
 // SC-19 主要素 3, FR-19, ADR-0098 決定 1 / IADR-0445: 共有先に指定する利用者を
 // **表示名で**扱うための 2 本の読み口。
@@ -18,41 +18,17 @@ import type { UserSummaryDto } from '@foundation/api/generated/bff.schemas';
 // 無効化済みも返す** —— 既に台帳に載っている共有先を表示できなければ、取り消しもできなくなる。
 // この非対称は契約側の意図であり、画面で揃えない。
 
-/** 検索を始める最小文字数（契約 `q` の `minLength: 2`）。1 文字は 400 になる。 */
-const MIN_QUERY_LENGTH = 2;
-
-/** 入力の落ち着きを待つ時間。**1 文字ごとに問い合わせない**ための間隔である。 */
-const DEBOUNCE_MS = 300;
-
-/**
- * 値の変化を `delay` ミリ秒だけ遅らせて返す。
- *
- * **export しない** —— いまの用途は共有先の検索 1 つであり、汎用の口を作ると
- * 未使用 export の床（check-knip）を押し上げる。他画面が要るようになったら foundation へ出す。
- */
-function useDebounced<T>(value: T, delay: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return settled;
-}
-
 /**
  * 表示名・利用者名の部分一致で候補を引く（有効な利用者のみ・表示名順）。
  *
- * **2 文字未満では問い合わせない。** 契約が 400 を返す条件を画面側でも止める
- * （多層防御。`syncFolders.ts` と同じ考え方で、**値域の防壁はサーバ側にある**）。
+ * **2 文字未満では問い合わせない**（下限とデバウンスは `lookupTerm.ts` が持つ）。
  */
 export function useUserLookup(rawQuery: string) {
-  const term = useDebounced(rawQuery.trim(), DEBOUNCE_MS);
-  const enabled = term.length >= MIN_QUERY_LENGTH;
+  const { term, enabled } = useLookupTerm(rawQuery);
   // 🔴 **問い合わせの結果を分配束縛（スプレッド）で混ぜない。** `@tanstack/query/no-rest-destructuring`
   // が禁じている形であり、TanStack Query の「読んだ項目だけを購読する」最適化が丸ごと外れる。
   // よって `query` は**そのまま 1 つの項目として返す**（`QueryState` へはこれを渡す）。
   return {
-    /** 入力が落ち着いて、かつ 2 文字以上になったか（画面の案内文の出し分けに使う）。 */
     enabled,
     query: useBffUserLookup<UserSummaryDto[], Error>(
       { q: term },

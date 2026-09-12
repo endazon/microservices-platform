@@ -406,6 +406,29 @@ public class BffTestFactory : WebApplicationFactory<Program>
         new("takahashi.jiro", "高橋 次郎", false),
     ];
 
+    // FR-19, SC-19 主要素 3, #1447: 共有先のグループ候補・表示名（**3 項目だけ**。所属者・属性を
+    // 運ばない型である）。同名のグループを 2 つ含める —— 画面が `path` で区別することを測れる。
+    public List<GroupSummaryDto> StubGroupSummaries { get; set; } =
+    [
+        new("g-knowledge", "knowledge", "/teams/knowledge"),
+        new("g-finance", "finance", "/teams/finance"),
+    ];
+
+    // #1447: グループの読み口（`/authz/groups/*`）の観測点。**利用者側と分けて持つ** ——
+    // 同じ変数へ書くと、どちらの口へ中継したのかを測る試験が互いを上書きする。
+    public string? LastGroupLookupPath { get; private set; }
+    public string? LastGroupLookupMethod { get; private set; }
+    public string? LastGroupLookupBody { get; private set; }
+    public string? LastGroupLookupForwardedAuthorization { get; private set; }
+
+    internal void RecordGroupLookup(string? path, string method, string? body, string? authorization)
+    {
+        LastGroupLookupPath = path;
+        LastGroupLookupMethod = method;
+        LastGroupLookupBody = body;
+        LastGroupLookupForwardedAuthorization = authorization;
+    }
+
     internal void RecordUserAdmin(string? path, string method, string? body, string? authorization)
     {
         LastUserAdminPath = path;
@@ -762,6 +785,23 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // FR-09 (SC-09): 管理系は AuthzManagementStatusCode で状態を差し替えられる（400/409/404 透過検証）。
             // FR-05, FR-09, UC-05, SC-17 (#452): 利用者アカウント管理。**観測してから応答する** ——
             // 伝播（Authorization）と後段パス・本文の陽性対照に使う。
+            // FR-19, SC-19 主要素 3, #1447: 共有先のグループ検索・表示名の引き当て
+            // （**利用者側と同じ後段・同じ named client** なのでここで振り分ける）。
+            // 🔴 **`/authz/users` の分岐より前に置く** —— あちらの末尾には総称分岐（`StubUsers[0]`）が
+            // あり、接頭辞が違うので吸われはしないが、**対で読めるように並べる**。
+            if (path.StartsWith("/authz/groups", StringComparison.Ordinal))
+            {
+                var groupBody = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+                owner.RecordGroupLookup(path, method.Method, groupBody,
+                    request.Headers.TryGetValues("Authorization", out var groupAuth)
+                        ? string.Join(",", groupAuth) : null);
+
+                // 後段の検証 400 の透過は利用者側と同じスイッチで作る（`UserAdminStatusCode`）。
+                if (owner.UserAdminStatusCode != HttpStatusCode.OK)
+                    return Json(owner.UserAdminStatusCode, new { errors = new[] { "invalid" } });
+                return Json(HttpStatusCode.OK, owner.StubGroupSummaries);
+            }
+
             if (path.StartsWith("/authz/users", StringComparison.Ordinal))
             {
                 var userBody = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
