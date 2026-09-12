@@ -584,6 +584,10 @@ export interface DocumentDto {
      * 索引（`DocumentUpdated.sharedWith`）と同じ値・同じ順で、**共有が無い資料と組織文書は空**。
      * BFF の単体判定（`BffScopeResolver.Matches`）はこれを `shared_with` の集合値属性として読む。
      * **項目を持たない旧応答は「共有なし」として読む。**
+     * 🔴 **BFF は所有者にだけ返す**（ADR-0098 フォローアップ 5 の利用者裁定 planning#626。実装は #1451）:
+     * `GET /bff/documents/{id}`・`GET /bff/documents` は `owner` を条件に持つ分岐で許可された閲覧者にだけ
+     * 本項目を載せ、共有先ベースの分岐だけで読めた相手（所有者以外）への応答では**項目ごと落とす**
+     * （`null`。空集合にしない —— 「共有の有無」も見せない）。読めるかどうかは変わらない。
      */
   sharedWith?: string[] | null;
 }

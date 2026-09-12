@@ -235,4 +235,79 @@ public class BffSharedDocumentReadTests : IClassFixture<BffTestFactory>
         view.Should().ContainKey(DocumentAttributeEncoding.SharedWithKey);
         doc.Attributes.Should().NotContainKey(DocumentAttributeEncoding.SharedWithKey);
     }
+
+    // FR-19, ADR-0098 フォローアップ 5（利用者裁定 planning#626）, [[IADR-0450]] (#1451):
+    // **共有先の写しは所有者にだけ返す。** 陽性: `owner` 分岐で読んだ所有者には `sharedWith` がそのまま返る。
+    [Fact]
+    public async Task 所有者には共有先の写しが返る()
+    {
+        _factory.ScopeBranches =
+            [new AccessScopeBranch("owner", [new AttributeFilter("owner", ["someone-else"])])];
+        _factory.StubDocument = SharedNote(["alice", "11111111-1111-1111-1111-111111111111"]);
+
+        var body = await _factory.CreateClient().GetFromJsonAsync<DocumentDto>(
+            $"/bff/documents/{NoteId}", TestContext.Current.CancellationToken);
+
+        body!.SharedWith.Should().Equal("alice", "11111111-1111-1111-1111-111111111111");
+    }
+
+    // 陰性: 共有先ベースの分岐だけで読めた相手（所有者ではない）には、読めることは変わらないが
+    // `sharedWith` は項目ごと落ちる（他の共有先の識別子を見せない）。他の項目は不変（陽性対照）。
+    [Fact]
+    public async Task 共有された相手には共有先の写しを返さない()
+    {
+        _factory.ScopeBranches = [SharedWithBranch("alice")];
+        _factory.StubDocument = SharedNote(["alice", "bob"]);
+
+        var body = await _factory.CreateClient().GetFromJsonAsync<DocumentDto>(
+            $"/bff/documents/{NoteId}", TestContext.Current.CancellationToken);
+
+        body!.SharedWith.Should().BeNull();
+        body.Id.Should().Be(NoteId);
+        body.Title.Should().Be("共有された個人メモ");
+    }
+
+    // 所有者分岐と共有先分岐の両方を持つスコープ（実運用の形）: 所有者分岐が一致した閲覧者にだけ返る。
+    // 陰性側は `owner` 分岐が別人に束縛されており、共有先分岐だけで読めている。
+    [Theory]
+    [InlineData("someone-else", true)]
+    [InlineData("another-user", false)]
+    public async Task 両分岐を持つスコープでは所有者分岐の一致で写しの有無が決まる(string boundOwner, bool visible)
+    {
+        _factory.ScopeBranches =
+            [SharedWithBranch("alice"), new AccessScopeBranch("owner", [new AttributeFilter("owner", [boundOwner])])];
+        _factory.StubDocument = SharedNote(["alice"]);
+
+        var body = await _factory.CreateClient().GetFromJsonAsync<DocumentDto>(
+            $"/bff/documents/{NoteId}", TestContext.Current.CancellationToken);
+
+        (body!.SharedWith is not null).Should().Be(visible);
+    }
+
+    // 🔴 「共有の有無」の 1 ビットも漏らさない: 空集合を運ぶ応答でも、所有者以外には `null` に畳む。
+    // 組織文書（静的分岐で読める）を使い、読めること自体は変わらないことも固定する。
+    [Fact]
+    public async Task 所有者以外には空集合も項目ごと落とす()
+    {
+        _factory.ScopeBranches = [StaticBranch()];
+        _factory.StubDocument = OrganizationDocument() with { SharedWith = [] };
+
+        var body = await _factory.CreateClient().GetFromJsonAsync<DocumentDto>(
+            $"/bff/documents/{BffTestFactory.StubDocumentId}", TestContext.Current.CancellationToken);
+
+        body!.SharedWith.Should().BeNull();
+    }
+
+    // SC-05 の一覧（管理面）も同じ 1 点を通る: 管理者・運用者は所有者ではないので写しは返らない。
+    [Fact]
+    public async Task SC05の一覧でも所有者以外には写しを返さない()
+    {
+        _factory.ScopeBranches = [StaticBranch()];
+        _factory.StubDocumentList = [OrganizationDocument() with { SharedWith = ["alice"] }];
+
+        var body = (await _factory.CreateClient().GetFromJsonAsync<List<DocumentDto>>(
+            "/bff/documents", TestContext.Current.CancellationToken))!;
+
+        body.Should().ContainSingle().Which.SharedWith.Should().BeNull();
+    }
 }

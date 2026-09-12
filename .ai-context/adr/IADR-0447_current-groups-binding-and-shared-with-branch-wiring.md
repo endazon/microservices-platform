@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-05, FR-19, UC-11, SC-19, ADR-0036, ADR-0088, ADR-0098, ADR-0100, IADR-0253, IADR-0301, IADR-0385, IADR-0396, IADR-0401, IADR-0445, IADR-0447, IADR-0448, IADR-0449]
 author: Claude
 created: 2026-09-12
-updated: 2026-09-12
+updated: 2026-09-13
 plan_refs:
   - planning:projects/microservices-platform/06_technical/07_abac-attribute-model.md
   - planning:projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md
@@ -102,11 +102,11 @@ ADR-0098 は起案時に実測し、**グループ共有は台帳に入るが誰
   - 🔴 **配備環境の統制はポリシー投入に依存する**（決定 3）。投入し忘れは fail-closed だが「共有したのに見えない」に戻る。投入の有無は `GET /authz/policies` で確認できる。
   - 判定ごとの IdP 往復が増える。件数の実測はキャッシュ導入の判断材料として残す（本 IADR ではキャッシュを置かない。置くと鮮度が変わり ADR-0032 と同じ論点になる）。
   - 利用者名がグループ ID（UUID）と同じ綴りになる可能性を排除していない（決定 5）。Keycloak の利用者名は任意文字列だが、UUID 形式の利用者名は人事連携（ADR-0026）が作らないことを前提に置く。
-  - `DocumentDto.SharedWith` は共有先の識別子を所有者以外に見せ得る（BFF の `GET /bff/documents/{id}` は判定後に DTO を返す）。**共有された相手は「誰と共有されているか」を見られる**。ADR-0036 はこれを禁じていないが、planning へ記録として環流する。
+  - `DocumentDto.SharedWith` は共有先の識別子を所有者以外に見せ得る（BFF の `GET /bff/documents/{id}` は判定後に DTO を返す）。**共有された相手は「誰と共有されているか」を見られる**。ADR-0036 はこれを禁じていないが、planning へ記録として環流する。 **［2026-09-13 追記 / #1451］利用者裁定（planning#626・ADR-0098 フォローアップ 5）は「所有者だけに返す」。BFF が所有者以外への応答から `SharedWith` を落とす（IADR-0450）。本リスクは閉じた。**
   - Keycloak の realm export に共有用のグループ木は足していない（ADR-0098 決定 3。管理者の作業）。
 
 ## フォローアップ
 
 1. 鮮度の実測（キャッシュ無し・往復 2）を planning へ環流（ADR-0098 フォローアップ 3）。
-2. 共有された相手が共有先の識別子を見られる点の記録を planning へ環流。
+2. 共有された相手が共有先の識別子を見られる点の記録を planning へ環流。 **［2026-09-13 追記 / #1451］環流済み（ADR-0098 フォローアップ 5・planning#625）。裁定は planning#626、実装は IADR-0450。**
 3. 配備環境へのポリシー投入手順（`docs/authz/FR-19_share-target-authorization.md`）。

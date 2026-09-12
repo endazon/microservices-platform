@@ -3,15 +3,15 @@ title: BFF 境界（/bff/*）通信仕様書
 type: api-spec
 status: in-progress
 created: 2026-08-05
-updated: 2026-09-12
+updated: 2026-09-13
 author: Claude
 ---
 <!-- trace:
 ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-13, FR-15, FR-16, FR-19, FR-20, FR-22, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-12, SC-17, SC-19, SC-20, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-07, UC-09, UC-11]
 adrs: [ADR-0011, ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0037, ADR-0043, ADR-0073, ADR-0074, ADR-0098, ADR-0099, ADR-0100]
-iadrs: [IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0352, IADR-0355, IADR-0359, IADR-0444, IADR-0445, IADR-0446, IADR-0447, IADR-0448, IADR-0449]
+iadrs: [IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0352, IADR-0355, IADR-0359, IADR-0444, IADR-0445, IADR-0446, IADR-0447, IADR-0448, IADR-0449, IADR-0450]
 specs: [20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching]
-issues: [#439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, #1441, #1442, #1445, #1446, #1447, #1448, planning#200, planning#236, planning#244, planning#299, planning#518, planning#618, planning#621]
+issues: [#439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, #1441, #1442, #1445, #1446, #1447, #1448, #1451, planning#200, planning#236, planning#244, planning#299, planning#518, planning#618, planning#621]
 -->
 
 # 通信仕様書: BFF 境界（`/bff/*`）
@@ -126,7 +126,7 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | GET | `/bff/dashboard/summary` | **admin ＋ operator**（**#544**。計画側の運用ダッシュボード「運用者・管理者ロール限定」。従前は admin のみ） | —| `useBffDashboardSummary` |
 | GET | `/bff/documents` | **端点認可なし**（ABAC で絞る） | —| `useBffDocumentList` |
 | POST | `/bff/documents` | **admin のみ** | —| `useBffDocumentCreate` |
-| GET | `/bff/documents/{id}` | **端点認可なし**（ABAC ＋ 404 秘匿）。**共有先ベースの分岐は応答の `sharedWith` を `shared_with` の集合値属性として読む**（カンマ連結の像を作り、交差で突き合わせる）。共有が無ければ属性は載らず、属性キーの欠落は不一致（欠落は安全側）。🔴 **共有された個人資料が読めるのはこの読み取り系 3 口だけ**で、下の一覧（管理面）には現れない | —| `useBffDocumentDetail` |
+| GET | `/bff/documents/{id}` | **端点認可なし**（ABAC ＋ 404 秘匿）。**共有先ベースの分岐は応答の `sharedWith` を `shared_with` の集合値属性として読む**（カンマ連結の像を作り、交差で突き合わせる）。共有が無ければ属性は載らず、属性キーの欠落は不一致（欠落は安全側）。🔴 **共有された個人資料が読めるのはこの読み取り系 3 口だけ**で、下の一覧（管理面）には現れない。**応答の `sharedWith` は所有者（`owner` 分岐で許可された閲覧者）にだけ載せ、共有された相手への応答では項目ごと落とす**（空集合にしない。一覧も同じ 1 点を通る） | —| `useBffDocumentDetail` |
 | PUT | `/bff/documents/{id}` | **admin のみ** | —| `useBffDocumentUpdate` |
 | DELETE | `/bff/documents/{id}` | **admin のみ** | —| `useBffDocumentDelete` |
 | GET | `/bff/documents/{id}/content` | **端点認可なし**（ABAC ＋ 404 秘匿）。判定は詳細と同じ像（`sharedWith` を重ねる） | —| `useBffDocumentContent` |
