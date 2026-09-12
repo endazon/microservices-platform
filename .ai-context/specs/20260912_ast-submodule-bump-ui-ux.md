@@ -128,3 +128,6 @@ knowledge と同じ形にする作業は AST#792 へ委ねる。
 +25,907 B の 97.5% は ja カタログ 25,267 B（合成点が同期に `registerUnitMessages` で読み、`index-*.js` に入る）。
 AST#792 はこの訂正を受けて「カタログ登録を画面の遅延チャンク側へ移す」作業に変わり、AST#793 で実装された
 （AST 側実測 731,435 → 706,121 B）。`scripts/chunk-budget-baseline.json` の `$comment` に同じ訂正を書いた。
+
+［2026-09-12 追記 / AST#793 取り込み］AST#793 は develop `c5cd0de` に入り、本リポジトリは submodule を `8a0b3e1`（AST#794 を含む）へ進めて床を
+606,019 → 580,710 B（−25,309 B）へ下げた。実測と手順は `.ai-context/specs/20260912_ast-submodule-bump-793.md`。
