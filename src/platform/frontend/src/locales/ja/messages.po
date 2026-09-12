@@ -53,6 +53,10 @@ msgstr "（終端）"
 msgid "（表示 {shownCount} 件）"
 msgstr "（表示 {shownCount} 件）"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "（見つからないグループ）"
+msgstr "（見つからないグループ）"
+
 #: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "{count} 件で絞り込み中"
 msgstr "{count} 件で絞り込み中"
@@ -544,6 +548,26 @@ msgstr "グラフを読み込めませんでした。"
 msgid "グラフ内検索"
 msgstr "グラフ内検索"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "グループ"
+msgstr "グループ"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "グループの候補"
+msgstr "グループの候補"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "グループを検索できませんでした。"
+msgstr "グループを検索できませんでした。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "グループを検索中…"
+msgstr "グループを検索中…"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "グループ名で検索する"
+msgstr "グループ名で検索する"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "グループ指定"
 msgstr "グループ指定"
@@ -644,10 +668,6 @@ msgstr "この端末を失効しますか？"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "この端末を失効する"
 msgstr "この端末を失効する"
-
-#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
-msgid "この資料にはグループへの共有が {groupCount} 件あります。本画面では変更できません。"
-msgstr "この資料にはグループへの共有が {groupCount} 件あります。本画面では変更できません。"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 msgid "この辺の型は {inUseCount} 本の辺で使われているため削除できません。"
@@ -1484,13 +1504,10 @@ msgstr "保存容量の使用量が 95% を超えました。上限に達する�
 msgid "保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い適用は Git の履歴を参照してください。"
 msgstr "保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い適用は Git の履歴を参照してください。"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 #: platform/frontend/src/app/routing/nav.ts
 msgid "個人"
 msgstr "個人"
-
-#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
-msgid "個人への共有はありません。"
-msgstr "個人への共有はありません。"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人指定"
@@ -1656,6 +1673,10 @@ msgstr "公開範囲を判定できません"
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "共有した相手はこの資料を閲覧できます。共有された相手が、さらに別の人へ共有することはできません。"
 msgstr "共有した相手はこの資料を閲覧できます。共有された相手が、さらに別の人へ共有することはできません。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "共有している相手はいません。"
+msgstr "共有している相手はいません。"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "共有先を取得できませんでした。"
@@ -1851,10 +1872,6 @@ msgstr "利用者を検索できませんでした。"
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "利用者を検索中…"
 msgstr "利用者を検索中…"
-
-#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
-msgid "利用者を追加"
-msgstr "利用者を追加"
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "利用者一覧を取得できませんでした。"
@@ -2052,6 +2069,10 @@ msgstr "同期対象範囲"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
 msgid "同期履歴"
 msgstr "同期履歴"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "同期履歴の記録は本機能の配備後の同期から残ります。配備前の同期は表示されません。"
+msgstr "同期履歴の記録は本機能の配備後の同期から残ります。配備前の同期は表示されません。"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
 msgid "同期履歴を取得できませんでした。"
@@ -2482,8 +2503,16 @@ msgid "指定しない"
 msgstr "指定しない"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "指定先の種別"
+msgstr "指定先の種別"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "指定先を取り消しました。"
 msgstr "指定先を取り消しました。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "指定先を追加"
+msgstr "指定先を追加"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "指定先を追加しました。"
@@ -3593,6 +3622,10 @@ msgstr "許可値"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "許可値（カンマ区切り）"
 msgstr "許可値（カンマ区切り）"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "該当するグループがありません。"
+msgstr "該当するグループがありません。"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "該当するノードがありません。"

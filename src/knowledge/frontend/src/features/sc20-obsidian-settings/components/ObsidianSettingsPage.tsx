@@ -66,6 +66,13 @@ export function ObsidianSettingsPage() {
   const [confirming, setConfirming] = useState<Confirmation>(null);
 
   const rows = useMemo(() => devices.data ?? [], [devices.data]);
+
+  // #1447: 履歴が 0 件のときの読み分け（下の注記）。**「引けていない」を「同期していない」と
+  // 読ませない** —— 端末一覧が未取得のあいだは偽であり、取得できてはじめて真になり得る。
+  const hasPriorSync = useMemo(
+    () => rows.some((device) => device.lastSyncAt !== null && device.lastSyncAt !== undefined),
+    [rows],
+  );
   // 「いま」は描画のたびに読み直さない（残り日数が描画のたびに揺れないようにする）。
   const now = useMemo(() => new Date(), []);
 
@@ -339,8 +346,12 @@ export function ObsidianSettingsPage() {
       {/*
         主要素 6: 同期履歴（ADR-0099）。**競合の区画の下に置く** —— 履歴の失敗理由
         「競合を記録しました。上の「同期の競合」から解決してください。」が**上**を指すためである。
+
+        🔴 **0 件の意味は端末一覧が決める**（#1447）。最終同期のある端末が 1 つでもあれば、
+        空の履歴は「配備前の同期が記録に無い」ことを意味する。**この画面が既に引いている
+        `devices` から渡す** —— 区画の側で引き直すと同じ一覧を 2 度引くことになる。
       */}
-      <SyncHistoryPanel />
+      <SyncHistoryPanel hasPriorSync={hasPriorSync} />
 
       {/* 露出設定は資料単位で個人資料管理画面が持つ（作業仕様書 §計画との差異 を参照）。 */}
       <Note>

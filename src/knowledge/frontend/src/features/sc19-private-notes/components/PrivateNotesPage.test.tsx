@@ -630,7 +630,7 @@ describe('SC-19 個人資料管理: 公開範囲・同期状態・タグの 3 �
     await user.click(row.getByRole('button', { name: '共有先を変更する' }));
 
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('heading', { name: '利用者を追加' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('heading', { name: '指定先を追加' })).toBeInTheDocument();
     // 開いてはじめて指定先を引く。
     await waitFor(() =>
       expect(

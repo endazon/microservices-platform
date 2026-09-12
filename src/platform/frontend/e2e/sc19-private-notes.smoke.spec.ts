@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type {
   DocumentShareDto,
+  GroupSummaryDto,
   PrivateNoteDto,
   PrivateNoteListResponse,
   UserSummaryDto,
@@ -264,7 +265,7 @@ test('SC-19 (#1441): visibility, sync state and tag filters live in the URL', as
   expectBffTrafficIsComplete(traffic);
 });
 
-test('SC-19/UC-11 (#1445): share targets are listed by display name, added by search, and revoked — never by user id, and never by group', async ({
+test('SC-19/UC-11 (#1445): share targets are listed by display name, added by search, and revoked — never by user id', async ({
   page,
 }) => {
   let shares: DocumentShareDto[] = [
@@ -323,9 +324,9 @@ test('SC-19/UC-11 (#1445): share targets are listed by display name, added by se
   await expect(dialog.getByText('花子 ハナコ')).toBeVisible();
   // 🔴 陰性対照 1: ADR-0098 決定 1 —— 利用者識別子は画面に出ない。
   await expect(dialog.getByText('hanako')).toHaveCount(0);
-  // 🔴 陰性対照 2: ADR-0098 決定 2 —— グループの導線も文言も無い。
-  await expect(dialog.getByText(/グループ/)).toHaveCount(0);
-  await expect(dialog.getByRole('combobox')).toHaveCount(0);
+  // ［2026-09-12 / #1447］種別の切替が在り、**既定は個人**である（グループの導線は下の spec が踏む）。
+  await expect(dialog.getByRole('radio', { name: '個人' })).toBeChecked();
+  await expect(dialog.getByRole('radio', { name: 'グループ' })).not.toBeChecked();
 
   // 検索 → 候補（表示名だけ）→ 追加。**すでに共有済みの花子は候補に出ない。**
   await dialog.getByLabel('名前で検索する').fill('次郎');
@@ -354,6 +355,102 @@ test('SC-19/UC-11 (#1445): share targets are listed by display name, added by se
   // Esc で降りられる（キーボードだけで閉じられる）。
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('SC-19/UC-11 (#1447): group targets are searched, added and revoked by display name — never by group id', async ({
+  page,
+}) => {
+  // 🔴 **Keycloak のグループ ID は画面に出してはならない**（ADR-0098 決定 1）。`g-` 接頭辞と
+  // UUID の両方の形を含めて、実装が一部だけ隠しても緑にならないようにする。
+  const SALES_GROUP = 'g-9f8e7d6c-5b4a-4321-8765-0a1b2c3d4e5f';
+  const DEV_GROUP = 'g-8e7d6c5b-4a39-4210-9876-1b2c3d4e5f60';
+  let shares: DocumentShareDto[] = [
+    {
+      subjectType: 'group',
+      subjectId: SALES_GROUP,
+      grantedBy: 'e2e',
+      createdAt: '2026-09-02T00:00:00Z',
+    },
+  ];
+  const groups: GroupSummaryDto[] = [
+    { id: SALES_GROUP, displayName: '営業部', path: '/teams/sales' },
+    { id: DEV_GROUP, displayName: '開発部', path: '/teams/dev' },
+  ];
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      'GET /private-notes': () =>
+        listOf([
+          note({
+            id: 'note-1',
+            visibility: 'groups',
+            sharedUserCount: 0,
+            sharedGroupCount: shares.length,
+          }),
+        ]),
+      'GET /private-notes/note-1/shares': () => shares,
+      'POST /private-notes/note-1/shares': (call) => {
+        const body = call.body as { subjectType: string; subjectId: string };
+        shares = [...shares, { ...body, grantedBy: 'e2e', createdAt: '2026-09-12T00:00:00Z' }];
+        return shares[shares.length - 1];
+      },
+      [`DELETE /private-notes/note-1/shares/group/${SALES_GROUP}`]: () => {
+        shares = shares.filter((s) => s.subjectId !== SALES_GROUP);
+        return reply(204, {});
+      },
+      // 表示名は `resolve`（POST だが照会）で引く。**無い ID は応答から落ちる。**
+      'POST /groups/resolve': (call) => {
+        const body = call.body as { ids: string[] };
+        return groups.filter((g) => body.ids.includes(g.id));
+      },
+      'GET /groups/lookup': () => groups,
+    },
+  });
+
+  await page.goto('/my/notes');
+  await expect(page.getByRole('cell', { name: '設計メモ' })).toBeVisible();
+
+  await page.getByRole('button', { name: '共有先を変更する' }).click();
+  const dialog = page.getByRole('dialog');
+
+  // ★ 陽性対照: 既存のグループ共有が**表示名（＋パス）で**並ぶ。
+  await expect(dialog.getByText('営業部')).toBeVisible();
+  await expect(dialog.getByText('/teams/sales')).toBeVisible();
+  // ［2026-09-12 / #1447］暫定手段の解除: **「本画面では変更できません」の告知は無い。**
+  await expect(dialog.getByText(/本画面では変更できません/)).toHaveCount(0);
+
+  // グループへ切り替えて検索 → 候補（表示名 ＋ パス）→ 追加。**共有済みの営業部は候補に出ない。**
+  await dialog.getByRole('radio', { name: 'グループ' }).click();
+  await dialog.getByLabel('グループ名で検索する').fill('開発');
+  const options = dialog.getByRole('option');
+  await expect(options).toHaveCount(1);
+  await expect(options.first()).toContainText('開発部');
+  await options.first().click();
+  await dialog.getByRole('button', { name: '追加' }).click();
+
+  await expect(dialog.getByText('開発部')).toBeVisible();
+  // 送った本文は `subjectType: 'group'` である（グループ指定が実際に効くようになった）。
+  const granted = traffic.calls.find((c) => c.key === 'POST /private-notes/note-1/shares');
+  expect(granted?.body).toEqual({ subjectType: 'group', subjectId: DEV_GROUP });
+
+  // 取り消し（営業部の行）。**取り消すと一覧から消える。**
+  await dialog
+    .getByRole('listitem')
+    .filter({ hasText: '営業部' })
+    .getByRole('button', { name: '取り消す' })
+    .click();
+  await expect(dialog.getByText('営業部')).toHaveCount(0);
+  expect(traffic.calls.map((c) => c.key)).toContain(
+    `DELETE /private-notes/note-1/shares/group/${SALES_GROUP}`,
+  );
+
+  // 🔴 陰性対照: グループ識別子は本文にも属性値にも現れない（表示名とパスが在ることと対で読む）。
+  const html = await dialog.innerHTML();
+  for (const id of [SALES_GROUP, DEV_GROUP]) {
+    expect(html, id).not.toContain(id);
+  }
 
   expectBffTrafficIsComplete(traffic);
 });

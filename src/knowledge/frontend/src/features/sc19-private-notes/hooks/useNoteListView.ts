@@ -80,7 +80,8 @@ export function useNoteListView(all: PrivateNoteDto[]): NoteListView {
   // （`PrivateNoteDto` は 3 状態と件数だけを載せる）。指定先は資料 1 件ごとに別の口
   // （`/bff/private-notes/{id}/shares`）を引くので、**絞り込みに使うと一覧の行数だけ
   // 問い合わせが飛ぶ**。［2026-09-12 / #1445］相手の一覧・追加・取り消しは行操作から開く
-  // ダイアログ（`ShareTargetsDialog`）が持つようになったが、**絞り込みの軸は増やしていない。**
+  // ダイアログ（`ShareTargetsDialog`）が持つようになり、［2026-09-12 / #1447］グループ指定も
+  // そこで扱えるようになったが、**絞り込みの軸は増やしていない。**
   const query = search.q.trim().toLowerCase();
   const { visibility, sync, tag } = search;
   const rows = useMemo(() => {

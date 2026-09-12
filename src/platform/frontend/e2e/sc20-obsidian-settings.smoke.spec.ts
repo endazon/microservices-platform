@@ -345,3 +345,57 @@ test('SC-20 (#1446): the sync history lists a failed sync with what to do next, 
 
   expectBffTrafficIsComplete(traffic);
 });
+
+test('SC-20 (#1447): an empty history reads differently once a device has synced before', async ({
+  page,
+}) => {
+  // ADR-0099 §残るもの の帰結: 履歴は**本機能の配備後の同期から**残る。配備前に同期していた
+  // 利用者には、0 件が「記録されていない」のか「同期していない」のか区別できない ——
+  // **同じ 0 件に 2 つの意味がある**ので、端末の最終同期で読み分ける。
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      // `device()` は最終同期を持つ（＝配備前に同期していた利用者）。履歴は空である。
+      'GET /private-notes/devices': [device()],
+      ...QUIET_SYNC_PANELS,
+    },
+  });
+
+  await page.goto('/my/obsidian');
+  const panel = page.getByRole('region', { name: '同期履歴' });
+
+  // ★ 陽性対照: 題は共通（0 件であること自体は同じ事実である）。
+  await expect(panel.getByText('同期の記録はまだありません。')).toBeVisible();
+  await expect(
+    panel.getByText(
+      '同期履歴の記録は本機能の配備後の同期から残ります。配備前の同期は表示されません。',
+    ),
+  ).toBeVisible();
+  // 🔴 陰性対照: 「まだ同期していない」と読める従前の案内は出さない（過去に同期しているため誤り）。
+  await expect(panel.getByText(/ここに結果が並びます/)).toHaveCount(0);
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('SC-20 (#1447): a device that never synced keeps the original empty-state guidance', async ({
+  page,
+}) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      'GET /private-notes/devices': [device({ lastSyncAt: null })],
+      ...QUIET_SYNC_PANELS,
+    },
+  });
+
+  await page.goto('/my/obsidian');
+  const panel = page.getByRole('region', { name: '同期履歴' });
+
+  await expect(
+    panel.getByText('Obsidian プラグインから同期すると、ここに結果が並びます。'),
+  ).toBeVisible();
+  // 🔴 陰性対照: 同期していない利用者へ「配備前の同期」の話をしない（無用な不安を与える）。
+  await expect(panel.getByText(/配備前の同期は表示されません/)).toHaveCount(0);
+
+  expectBffTrafficIsComplete(traffic);
+});
