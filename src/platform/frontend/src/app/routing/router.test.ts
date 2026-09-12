@@ -3,7 +3,7 @@ import { router } from './router';
 import { navGroups, navItems, unitNavGroups } from './nav';
 import { rootRoute, shellRoute, catchAllRoute } from './shell';
 import { ENTRY_ROUTE_PATH } from './entryPath';
-import { NotFound } from '@foundation/ui/NotFound';
+import { NotFound, NotFoundPage } from '@foundation/ui/NotFound';
 
 // ADR-0031 / IADR-0124: ルート木の配線を固定する。
 // - 決定 6: 計画（05_screens §共通シェル「ルートパス」）のルートが木に存在すること
@@ -150,7 +150,13 @@ describe('existence hiding: catch-all wiring (IADR-0009)', () => {
     expect(catchAllRoute.options.component).toBe(NotFound);
     // シェル配下から notFound() が投げられた場合も同じ画面にする。
     expect(shellRoute.options.notFoundComponent).toBe(NotFound);
-    expect(rootRoute.options.notFoundComponent).toBe(NotFound);
+    // 🔴 **`rootRoute` だけ `NotFoundPage` である**（#1438 / IADR-0442 決定 2）。
+    // ここはシェルの**外**なので、素の `NotFound`（`<section>`）だとページに `main`
+    // ランドマークが 1 つも無くなる。**揃っていないように見えても戻さないこと** ——
+    // 揃えると、解消したはずの `<main>` の入れ子（`Layout` の `<main>` の中の `<main>`）が戻る。
+    // 存在秘匿に穴は開かない: URL で到達できる未知パスは下の it が固定するとおり
+    // 必ず catch-all（＝シェルの内側）が受け、ここは「シェル外で notFound() が投げられた場合」専用である。
+    expect(rootRoute.options.notFoundComponent).toBe(NotFoundPage);
   });
 
   it.each([

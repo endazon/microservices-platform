@@ -2,6 +2,7 @@
   "$comment": "check-chunk-budget.js の床（NFR / ADR-0031 / IADR-0134 / issue #556）。 requiredChunks は vite.config.ts の manualChunks が返す名前と一致していること（self-test が突き合わせる）。 **規則の欠落を捕まえるのは requiredChunks の実在判定だけである** —— 500 kB 判定も初期ロードの ratchet も、規則を外した実測では発火しなかった（詳細は check-chunk-budget.js 冒頭の実測表）。 initialTotalBytes / smallLazyChunks は実測値。意図的に増やすときは node scripts/check-chunk-budget.js --update で更新し、差分を PR に載せること。 maxChunkBytes は Vite の chunkSizeWarningLimit 既定（500 kB・1000 進）に合わせている。 **kB 換算はこのファイル全体で 1000 進に統一する**（1024 進と混ぜると差分の検算が合わなくなる。実際に 1 件混入していた）。 ／ 2026-08-28: #449 SC-04 導線の i18n 文言追加で 586.64→587.49 kB（+0.85）。 ／ 2026-08-28: #451-c SC-19/SC-20 の 2 画面（i18n カタログ 95 キー×2 とナビ・確認ダイアログ）で 587.49→602.25 kB（+14.76）。 ／ 2026-08-28: 床を 602249→602250 へ 1 バイト是正（#1034）。**増加ではなく記録の誤り**である —— origin/develop を単独でビルドしても実測は 602250 で、床の 602249 を 1 バイト超えて落ちていた（本 PR のフロント成果物は develop とチャンクのハッシュまで同一）。",
   "requiredChunks": [
     "ui",
+    "ui-overlay",
     "vendor-react",
     "vendor-query",
     "vendor-echarts",
@@ -286,7 +287,18 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 731293,
+  "initialTotalBytes": 606019,
+  "$comment_initialTotalBytes_20260912_1438": [
+    "［2026-09-12 / #1438］731,293 → 731,435（+142 B）へ引き上げた。実測値である",
+    "（rm -rf platform/frontend/dist → pnpm run build → node scripts/check-chunk-budget.js --update。",
+    "**再ビルドしてから測った** —— dist に別作業の合成ビルドが残っていると 706 kB を自分の成果と誤読する）。",
+    "増分は NotFound のランドマーク重複の解消（IADR-0442 決定 1・2）だけである:",
+    "  - シェル外の経路用の器 NotFoundPage（<main> 1 枚）を足した",
+    "  - NotFound の外側を <section aria-labelledby> にし、見出しへ固定 id を与えた",
+    "NotFound は存在秘匿のため初期チャンクに残す部品なので（IADR-0134）、増分は初期ロードに載る。",
+    "**i18n の文言は 1 つも増えていない**（pnpm run i18n の再生成差分は 0 件。文言・役割は不変という",
+    "決定 1 の帰結である）。axe の走査面の追加は e2e 側だけの変更で、成果物には入らない。"
+  ],
   "$comment_initialTotalBytes_20260830_1078": [
     "［2026-08-30 / #1078］616,202 → 617,156（+0.95 kB）へ引き上げた。実測値である（pnpm run build →",
     "node scripts/check-chunk-budget.js --update）。増加は **BFF 境界のエラー文言を i18n した**ことによる ——",
@@ -339,7 +351,31 @@
     "index.esm-*.js（79.5 kB）は AST と無関係（@hookform/devtools の little-state-machine。SC-10 の遅延チャンク",
     "だけが import し初期ロードに入らない）。1 kB 未満の遅延チャンク 9 → 10 本は AST 画面と knowledge の遅延",
     "画面が共有する小モジュールが 1 本増えたもの（規則は足さない）。A は AST 側の lazy 化で遅延へ移せる",
-    "（AST へ issue で委ねた。本 PR では直せない: IADR-0120）。仕様書 .ai-context/specs/20260912_ast-submodule-bump-ui-ux.md。"
+    "（AST へ issue で委ねた。本 PR では直せない: IADR-0120）。仕様書 .ai-context/specs/20260912_ast-submodule-bump-ui-ux.md。",
+    "［訂正 2026-09-12 / #1437 / AST#792］上の A/B の帰属は誤りであった。AST の 4 画面は #723/#691 から lazyRouteComponent",
+    "であり、合成 dist でも独立した遅延チャンク（計 66,182 B。index.html は読まない）＝初期ロードへの寄与は 0 B。",
+    "+25,907 B の 97.5% は AST の ja カタログ 25,267 B（442 文言）で、合成点が同期に registerUnitMessages で読んで",
+    "index-*.js に入っていた（残りは lucide のアイコン追加分）。是正は AST#793（登録を画面の遅延チャンク側へ）で、",
+    "取り込み時に 25 kB 下がる見込み（AST 側実測 731,435 → 706,121）。IADR-0441 決定 3 の追記も参照。"
+  ],
+  "$comment_initialTotalBytes_20260912_bundle-1437-1438": [
+    "［2026-09-12 / #1437 + #1438 束ね］605,877 → 606,019（+142 B）。#1437（vendor-baseui 切り離し。731,293 → 605,877）",
+    "と #1438（NotFound のランドマーク解消。+142 B。下の $comment_…_1438 の内訳）を同じ PR に束ねた合成の実測。",
+    "rm -rf dist → pnpm run build → --update で確定した。"
+  ],
+  "$comment_initialTotalBytes_20260912_baseui-split": [
+    "［2026-09-12 / #1437 作業 4］731,293 → 605,877（**−125.42 kB / −17.2%**）へ**下げた**。実測値である",
+    "（pnpm run build → node scripts/check-chunk-budget.js --update）。直前のコメント",
+    "（$comment_initialTotalBytes_20260912_integration 末尾）が申し送った「Base UI を初期ロードから外す」の回収である。",
+    "内訳（初期ロードの 5 本 → 4 本）:",
+    "  −114,124 B  vendor-baseui が**丸ごと遅延側へ**（modulepreload から消えた。チャンク自体は残る＝Dialog / Tooltip を使う画面が読む）",
+    "  − 10,081 B  index（右レール本体 AiChatRail が 6,741 B の遅延チャンクへ出た分ほか）",
+    "  −  1,211 B  ui（Tooltip / Dialog のラッパが ui-overlay 1,248 B へ移った分。i18n 文言 1 件 × 2 ロケールの増分を相殺して純減）",
+    "requiredChunks に ui-overlay を足した（manualChunks の新規則。self-test が完全一致を突き合わせる）。",
+    "🔴 **経路は 2 本あり、片方だけでは外れない**（IADR-0443）。右レールの React.lazy 化だけ（manualChunks 据え置き）では",
+    "ui チャンクが vendor-baseui を静的 import したままで、実測 721.15 kB にしか下がらなかった。",
+    "smallLazyChunks は 10 のまま（ui-overlay は 1,248 B ＝ 1 kB 超）。",
+    "⚠️ 次に AST submodule を前進させたら床を測り直すこと（合成ビルドのため AST 側の文言・画面が初期ロードへ効く）。"
   ],
   "$comment_initialTotalBytes_20260912_integration": [
     "［2026-09-12 / UI/UX 改善の統合］656,554 → 705,390（+48.84 kB）へ引き上げた。実測値である（全タスク統合後の",

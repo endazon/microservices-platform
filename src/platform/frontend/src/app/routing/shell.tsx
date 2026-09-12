@@ -1,6 +1,6 @@
 import { createRootRoute, createRoute, Outlet, redirect } from '@tanstack/react-router';
 import { Layout } from '../Layout';
-import { NotFound } from '@foundation/ui/NotFound';
+import { NotFound, NotFoundPage } from '@foundation/ui/NotFound';
 import { RequireAuth } from '@foundation/auth/RequireAuth';
 import { LoginPage } from '@foundation/auth/LoginPage';
 import { toInternalPath } from '@foundation/auth/safeRedirect';
@@ -14,7 +14,18 @@ import { ENTRY_ROUTE_PATH } from './entryPath';
 export const rootRoute = createRootRoute({
   component: Outlet,
   // IADR-0009: 存在秘匿。不在も権限による秘匿も同じ画面で応答する。
-  notFoundComponent: NotFound,
+  //
+  // 🔴 **ここだけ `NotFoundPage`（`<main>` の器つき）である**（#1438 / IADR-0442 決定 2）。
+  // `rootRoute` はシェルの**外**であり、素の `NotFound`（`<section>`）を置くと
+  // **ページにランドマークが 1 つも無くなる**。シェルの内側で描く 3 経路
+  // （下の `shellRoute.notFoundComponent` / `catchAllRoute.component` / `RequireRole`）は
+  // `Layout` の `<main id="main-content">` の中に入るので、素の `NotFound` のままにする
+  // —— 器を二重に持たせると、解消したはずの `<main>` の入れ子が戻る。
+  //
+  // **この非対称は存在秘匿を損なわない。** URL で到達できる未知パスは必ずシェル配下の
+  // `catchAllRoute` が受ける（下の注記と `router.test.ts` が固定）。ここが出るのは
+  // 「シェルの外で `notFound()` が投げられた場合」だけで、利用者が突いて比較できる面ではない。
+  notFoundComponent: NotFoundPage,
 });
 
 // 認証導線。**計画のルート表（05_screens §共通シェル）の対象外**である

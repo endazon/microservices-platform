@@ -112,6 +112,15 @@ bump が来た時点で自然に有効になる。**
 **bump 後に名前付き import へ戻してよい。** 任意項目は順序依存を消すための一時的な形であり、
 恒久的な作法ではない（型が緩むので、戻せるときに戻す）。
 
+> ［2026-09-12 追記 / #1437 / AST#792］**決定 3 の任意項目読みは bump 後も維持する（名前付き import へ戻さない）。**
+> AST#793（endazon/ai-stock-trading#793。AST/IADR-0340）で、当該ユニットは文言カタログの登録を**画面の遅延チャンク側**
+> （`src/lib/i18n.ts` のモジュール評価時に `registerUnitMessages` を自ら呼ぶ）へ移し、`features/index.ts` からの
+> `aiStockTradingMessages` の再公開を外した。名前付き import へ戻すと基盤の tsc が落ちる。
+> 決定 1「合成点だけが束ねる」は**登録口の所有**（`registerUnitMessages` は基盤が公開し、foundation は
+> ユニットを知らない）の意味で維持し、**呼び出し元がユニットの遅延チャンクであることを許す**——
+> 合成点で同期に呼ぶと ja カタログ 25,267 B（442 文言）が初期チャンクへ入る（MSP#1439 の +25.9 kB の 97.5%。
+> 実測は AST#792 のコメントと `scripts/chunk-budget-baseline.json` の `$comment_…_ast-bump` の訂正を参照）。
+
 ### 決定 4: `publicHoistPattern` は `@platform/ui` **ただ 1 つ**に限る
 
 ルート `node_modules` へ公開 hoist し、当該ユニットが knowledge と同じ経路で解決できるようにする。
@@ -147,7 +156,7 @@ Lingui の抽出設定（`src/lingui.config.ts`）も当該ユニットを含め
   - 🔴 **`pnpm-lock.yaml` は submodule の bump で動く。** 本 PR には submodule のポインタ前進を
     含めないため、bump PR で lockfile の差分が出る。
 - フォローアップ:
-  - submodule bump 後に、合成点の任意項目読みを**名前付き import へ戻す**（決定 3）。
+  - ~~submodule bump 後に、合成点の任意項目読みを**名前付き import へ戻す**（決定 3）。~~ ［2026-09-12 追記 / #1437］**撤回**。上の決定 3 の追記のとおり維持する。
 
 ## 関連
 

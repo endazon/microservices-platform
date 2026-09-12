@@ -315,13 +315,17 @@ describe('existence hiding: unknown path and forbidden path render alike (IADR-0
   /**
    * 比べるのは**共通シェルの本文領域（Outlet の器）**である。
    *
-   * NFR / [[IADR-0134]]: 以前は見出しの親（NotFound 自身の `<main>`）を比べていたが、
-   * それだと **NotFound を包む要素の違いが比較の外に落ちる**——変異試験で、未知パス側だけを
-   * `<div>` で包んでも素通りすることを実測した。包む要素が違えば「シェルが出るかどうか」と
-   * 同種の手がかりになるため、器ごと比べる。器は Layout の `<main>`、その中の
-   * `<main>` が NotFound（DOM 順で外側が先）。
+   * NFR / [[IADR-0134]]: 以前は見出しの親（当時の NotFound は自前の `<main>` を持っていた）を
+   * 比べていたが、それだと **NotFound を包む要素の違いが比較の外に落ちる**——変異試験で、
+   * 未知パス側だけを `<div>` で包んでも素通りすることを実測した。包む要素が違えば
+   * 「シェルが出るかどうか」と同種の手がかりになるため、器ごと比べる。
+   *
+   * ［2026-09-12 / #1438・IADR-0442 決定 1］**`main` はシェルに 1 つだけになった。**
+   * NotFound の外側は `<section aria-labelledby>` であり、器は Layout の `<main>` ただ 1 つである
+   * （従前はその中にもう 1 つ `<main>` が入っていた＝ランドマークの重複）。
+   * `getAllByRole(…)[0]` ではなく `getByRole` で引くのは、**2 つに戻ったらここで落とす**ためである。
    */
-  const outletContainer = () => screen.getAllByRole('main')[0];
+  const outletContainer = () => screen.getByRole('main');
 
   it('produces the same not-found markup in both cases', async () => {
     const unknown = await renderLayout(['user'], '/no-such-screen');
@@ -335,6 +339,26 @@ describe('existence hiding: unknown path and forbidden path render alike (IADR-0
 
     expect(unknownHtml).toBeTruthy();
     expect(forbiddenHtml).toBe(unknownHtml);
+  });
+
+  /**
+   * NFR-12 / #1438 / [[IADR-0442]] 決定 1: **`main` ランドマークはシェルに 1 つだけである。**
+   *
+   * 従前は `NotFound` が自前の `<main>` を持ち、`Layout` の `<main id="main-content">` の中で
+   * 入れ子になっていた（axe の `landmark-no-duplicate-main` / `landmark-main-is-top-level` /
+   * `landmark-unique` が落ちる状態。#1438 で実測した）。
+   *
+   * 🔴 **E2E（`e2e/a11y.smoke.spec.ts` の「存在秘匿の 404」面）でも同じことを見ているが、
+   * ここにも置く。** あちらはビルドとブラウザ起動の後にしか落ちない。**入れ子は
+   * 「コンポーネント境界を跨ぐ」ため `eslint-plugin-jsx-a11y` は 1 件も検出しない**
+   * （IADR-0440 §結果）ので、静的解析に戻す道は無い。
+   */
+  it('keeps exactly one main landmark (no nested <main> from NotFound)', async () => {
+    await renderLayout(['user'], '/no-such-screen');
+    await screen.findByRole('heading', { name: '見つかりませんでした' });
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+    // 404 の本文は名前つきの region（`<section aria-labelledby>`）として主領域の中に入る。
+    expect(screen.getByRole('region', { name: '見つかりませんでした' })).toBeInTheDocument();
   });
 });
 
@@ -354,8 +378,8 @@ describe('Layout shell skeleton (hi-fi モック .hf / WCAG 2.4.1)', () => {
 
   it('gives the skip link an existing landing point (id ＋ tabIndex)', async () => {
     await renderLayout([]);
-    // 共通シェルの本文領域（Outlet の器）。DOM 順で外側が先（既存の outletContainer と同じ）。
-    const main = screen.getAllByRole('main')[0];
+    // 共通シェルの本文領域（Outlet の器）。**`main` はシェルに 1 つだけである**（#1438）。
+    const main = screen.getByRole('main');
     expect(main).toHaveAttribute('id', 'main-content');
     // フラグメント遷移でフォーカスを受け取れること（受け取れないと「跳んだのに Tab が元へ戻る」）。
     expect(main).toHaveAttribute('tabindex', '-1');
@@ -368,7 +392,7 @@ describe('Layout shell skeleton (hi-fi モック .hf / WCAG 2.4.1)', () => {
     expect(screen.queryByRole('navigation', { name: 'パンくず' })).not.toBeInTheDocument();
     // 骨格そのものは残る（ヘッダ・左レール・本文）。
     expect(nav()).toBeInTheDocument();
-    expect(screen.getAllByRole('main')[0]).toHaveAttribute('id', 'main-content');
+    expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content');
   });
 });
 

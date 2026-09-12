@@ -36,6 +36,26 @@ export default defineConfig({
         // ここで扱うのは残りの 2 種類だけである。
         manualChunks(id) {
           if (!id.includes('/node_modules/')) {
+            // NFR / IADR-0443（#1437 作業 4）: **重なりの部品（Base UI 土台）は `ui` から外す。**
+            // `ui` はエントリが Button 等を引くため**初期チャンク**であり、`manualChunks` の
+            // 割り付けは到達経路を問わないので、**遅延ルートからしか使われない `Dialog` も
+            // `ui` に居座る**。その結果 `ui` 自身が `vendor-baseui` を静的 import し、
+            // Base UI 114 kB が初期ロードへ載っていた（実測 2026-09-12）。
+            // 🔴 **右レールの遅延化（AiChatPanel の React.lazy）だけでは外れない。** 経路は 2 本あり、
+            //    アプリ側の静的到達（経路 A）とこの割り付け（経路 B）の両方を切って初めて外れる。
+            // 🔴 **述語の文字列を return 文の中に書かない** —— `check-chunk-budget.js --self-test` は
+            //    return 句の裸の文字列をチャンク名として拾うため、部品名のような
+            //    `/` を含まない語を return 句へ置くと**チャンク名と誤認して落ちる**。
+            //    （**この注意書き自体も同じ罠を踏む。** 引用符で囲った語をこのコメントへ書くと、
+            //     直後の文までが 1 つの return 文として拾われ、自己試験が赤くなる。実測 2026-09-12）
+            // **名前を付ける（`undefined` に落とさない）。** `undefined` を返して Rollup の自動分割へ
+            // 委ねる案も実測したが、**重なりの部品は `ui` に残ったまま**で効果が無かった
+            // （初期ロード 721.15 kB。`ui-*.js` の先頭に `from"./vendor-baseui-*.js"` が残る）。
+            // 名前つきなら 605.79 kB まで下がる（実測 2026-09-12。IADR-0443 決定 2）。
+            const isOverlayPrimitive =
+              id.includes('/packages/ui/src/components/Dialog') ||
+              id.includes('/packages/ui/src/components/Tooltip');
+            if (isOverlayPrimitive) return 'ui-overlay';
             // 共有 UI プリミティブ（@platform/ui）は**全画面が使う**。放置すると Rollup が
             // 「2 つ以上の遅延チャンクが共有するモジュール」を 1 kB 未満のチャンクへ切り出し、
             //  往復だけが増える（実測: Label / Tag / Card / Input / Select / StatusBadge の 6 本）。

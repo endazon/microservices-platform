@@ -116,7 +116,9 @@ async function openAndAsk(question: string) {
   const user = userEvent.setup();
   await renderPanel();
   await user.click(screen.getByRole('button', { name: 'AI チャットを開く' }));
-  await user.type(screen.getByLabelText('質問'), question);
+  // #1437 / IADR-0443: レール本体は `React.lazy` で読み込む。**同期取得にしない**
+  // （遅延 import の解決を待たずに引くと、遅延化した瞬間に全テストが落ちる）。
+  await user.type(await screen.findByLabelText('質問'), question);
   await user.click(screen.getByRole('button', { name: '送信' }));
   return user;
 }
