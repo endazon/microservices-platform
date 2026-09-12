@@ -57,6 +57,9 @@ public class BffEndpointCompositionTests
             app.MapMcpClientBffEndpoints();
             // #452, FR-05, FR-09, UC-05, SC-17: 利用者アカウント管理（後段は AuthorizationService）。
             app.MapUserAdminBffEndpoints();
+            // #1445, FR-19, UC-11, SC-19 主要素 3: 共有先に指定する利用者の検索・表示名の引き当て
+            // （後段は AuthorizationService。**認証のみ・ロール不問**で、管理面とは別の口である）。
+            app.MapUserLookupBffEndpoints();
             // NFR, SC-16, ADR-0032 / IADR-0251 / #439 第 3 段(3a): BFF セッションの入口。
             app.MapAuthBffEndpoints();
             // #600, FR-22, UC-11: 利用者本人へのアプリ内通知（後段は NotificationService）。
@@ -84,7 +87,9 @@ public class BffEndpointCompositionTests
         // 後段の NotificationService が platform ユニットのサービスであるため。IADR-0346 決定 1）。
         // #1199, FR-13, UC-07, SC-04: Wiki 前段の 4 経路（Wiki）を追加した（Knowledge.Bff.Endpoints。
         // 後段の WikiService が knowledge ユニットのサービスであるため。IADR-0355 決定 1）。
-        BffEndpointComposition.Modules.Should().HaveCount(22);
+        // #1445, FR-19, UC-11, SC-19 主要素 3, IADR-0445: 共有先の利用者検索（UserLookup）を追加した
+        // （platform 同居。後段の AuthorizationService が platform ユニットのサービスであるため）。
+        BffEndpointComposition.Modules.Should().HaveCount(23);
     }
 
     // 内容一致の検証（claude-review 指摘対応）: 合成点経由でビルドした実アプリ（全 DI 込み）の実体化ルートが、
@@ -141,6 +146,11 @@ public class BffEndpointCompositionTests
             // #600, FR-22, UC-11: 本人宛のアプリ内通知（後段は NotificationService。**認証必須・
             // ロールは問わない**。絞るのは役割ではなく主体＝JWT の sub）。
             "/bff/notifications",
+            // #1445, FR-19, UC-11, SC-19 主要素 3, ADR-0098 決定 1, IADR-0445: 共有先に指定する利用者の
+            // 検索・表示名の引き当て（後段は AuthorizationService。**認証必須・ロールは問わない**）。
+            // 🔴 **`/bff/admin/users`（AdminOnly の管理面）とは別の接頭辞である。** 同じ口にすると、
+            // 一般利用者が 403 になるか、名簿と ABAC 属性が誰からでも引けるかのどちらかになる。
+            "/bff/users",
             // #1199, FR-13, UC-07, SC-04, ADR-0073 決定 2・4: Wiki 前段の 4 経路（後段は WikiService。
             // **認証必須・ロールは問わない**。可視性を決めるのは役割ではなく ABAC である）。
             // **`/bff/wiki/pages/by-doc/{documentId}` もこの接頭辞に含まれる。**

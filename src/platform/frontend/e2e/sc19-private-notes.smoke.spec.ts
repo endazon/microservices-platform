@@ -1,6 +1,16 @@
 import { test, expect } from '@playwright/test';
-import type { PrivateNoteDto, PrivateNoteListResponse } from '../src/lib/api/generated/bff.schemas';
-import { installBffSession, sessionUser, expectBffTrafficIsComplete } from './support/bffSession';
+import type {
+  DocumentShareDto,
+  PrivateNoteDto,
+  PrivateNoteListResponse,
+  UserSummaryDto,
+} from '../src/lib/api/generated/bff.schemas';
+import {
+  installBffSession,
+  sessionUser,
+  expectBffTrafficIsComplete,
+  reply,
+} from './support/bffSession';
 
 // SC-19, UC-11, FR-19, FR-21 (#1099): 個人資料管理（`/my/notes`）のスクリーンレベル・スモーク。
 //
@@ -209,10 +219,11 @@ test('SC-19 (#1441): the list shows visibility, sync state and tags, and never n
   await expect(row.getByText('競合あり')).toBeVisible();
   await expect(row.getByText('議事録')).toBeVisible();
 
-  // ★ 陰性対照: 指定先（共有相手）を出す導線も表示も無い（planning#618 の裁定待ち）。
+  // ★ 陰性対照: **行には**指定先（共有相手）の名前を出さない（一覧の応答が運ばない値である）。
   // 「置いていない」だけでは何も描かない実装と区別できないため、上の陽性対照と対で読むこと。
-  await expect(page.getByRole('button', { name: /公開範囲を変更/ })).toHaveCount(0);
+  // ［2026-09-12 / #1445］相手の一覧は**行操作から開くダイアログ**が持つ（下の spec）。
   await expect(page.getByText(/共有先:/)).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 
   expectBffTrafficIsComplete(traffic);
 });
@@ -249,6 +260,100 @@ test('SC-19 (#1441): visibility, sync state and tag filters live in the URL', as
   await page.goto('/my/notes?tag=設計');
   await expect(page.getByRole('cell', { name: '下書き' })).toBeVisible();
   await expect(page.getByRole('cell', { name: '部門の方針メモ' })).toHaveCount(0);
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('SC-19/UC-11 (#1445): share targets are listed by display name, added by search, and revoked — never by user id, and never by group', async ({
+  page,
+}) => {
+  let shares: DocumentShareDto[] = [
+    {
+      subjectType: 'user',
+      subjectId: 'hanako',
+      grantedBy: 'e2e',
+      createdAt: '2026-09-02T00:00:00Z',
+    },
+  ];
+  const directory: UserSummaryDto[] = [
+    { username: 'hanako', displayName: '花子 ハナコ', enabled: true },
+    { username: 'jiro', displayName: '次郎 ジロウ', enabled: true },
+  ];
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      'GET /private-notes': () =>
+        listOf([
+          note({
+            id: 'note-1',
+            visibility: 'users',
+            sharedUserCount: shares.length,
+            sharedGroupCount: 0,
+          }),
+        ]),
+      'GET /private-notes/note-1/shares': () => shares,
+      'POST /private-notes/note-1/shares': (call) => {
+        const body = call.body as { subjectType: string; subjectId: string };
+        shares = [...shares, { ...body, grantedBy: 'e2e', createdAt: '2026-09-12T00:00:00Z' }];
+        return shares[shares.length - 1];
+      },
+      'DELETE /private-notes/note-1/shares/user/hanako': () => {
+        shares = shares.filter((s) => s.subjectId !== 'hanako');
+        return reply(204, {});
+      },
+      // 表示名は `resolve`（POST だが照会）で引く。`lookup` は有効な利用者だけを返す。
+      'POST /users/resolve': (call) => {
+        const body = call.body as { usernames: string[] };
+        return directory.filter((u) => body.usernames.includes(u.username));
+      },
+      'GET /users/lookup': () => directory,
+    },
+  });
+
+  await page.goto('/my/notes');
+  await expect(page.getByRole('cell', { name: '設計メモ' })).toBeVisible();
+
+  // ★ 陰性対照: 開く前は共有先を 1 度も引かない（閉じている間は問い合わせない）。
+  expect(traffic.calls.map((c) => c.key)).not.toContain('GET /private-notes/note-1/shares');
+
+  await page.getByRole('button', { name: '共有先を変更する' }).click();
+  const dialog = page.getByRole('dialog');
+
+  // ★ 陽性対照: 現在の指定先が**表示名で**並ぶ。
+  await expect(dialog.getByText('花子 ハナコ')).toBeVisible();
+  // 🔴 陰性対照 1: ADR-0098 決定 1 —— 利用者識別子は画面に出ない。
+  await expect(dialog.getByText('hanako')).toHaveCount(0);
+  // 🔴 陰性対照 2: ADR-0098 決定 2 —— グループの導線も文言も無い。
+  await expect(dialog.getByText(/グループ/)).toHaveCount(0);
+  await expect(dialog.getByRole('combobox')).toHaveCount(0);
+
+  // 検索 → 候補（表示名だけ）→ 追加。**すでに共有済みの花子は候補に出ない。**
+  await dialog.getByLabel('名前で検索する').fill('次郎');
+  const options = dialog.getByRole('option');
+  await expect(options).toHaveCount(1);
+  await expect(options.first()).toHaveText('次郎 ジロウ');
+  await options.first().click();
+  await dialog.getByRole('button', { name: '追加' }).click();
+
+  await expect(dialog.getByText('次郎 ジロウ')).toBeVisible();
+  // 送った本文は `subjectType: 'user'` 固定である（グループを送る経路が無いことの実測）。
+  const granted = traffic.calls.find((c) => c.key === 'POST /private-notes/note-1/shares');
+  expect(granted?.body).toEqual({ subjectType: 'user', subjectId: 'jiro' });
+
+  // 取り消し（花子の行）。**取り消すと一覧から消える。**
+  await dialog
+    .getByRole('listitem')
+    .filter({ hasText: '花子 ハナコ' })
+    .getByRole('button', { name: '取り消す' })
+    .click();
+  await expect(dialog.getByText('花子 ハナコ')).toHaveCount(0);
+  expect(traffic.calls.map((c) => c.key)).toContain(
+    'DELETE /private-notes/note-1/shares/user/hanako',
+  );
+
+  // Esc で降りられる（キーボードだけで閉じられる）。
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 
   expectBffTrafficIsComplete(traffic);
 });

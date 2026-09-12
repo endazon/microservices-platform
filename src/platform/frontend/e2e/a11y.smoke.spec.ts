@@ -4,18 +4,23 @@ import AxeBuilder from '@axe-core/playwright';
 import type {
   AttributeValuesResponse,
   DocumentDto,
+  DocumentShareDto,
   PrivateNoteDto,
   PrivateNoteListResponse,
   TagDictionaryResponse,
+  UserSummaryDto,
 } from '../src/lib/api/generated/bff.schemas';
 import { installBffSession, sessionUser, expectBffTrafficIsComplete } from './support/bffSession';
 
 // NFR-12（アクセシビリティ）/ ADR-0031, ADR-0032: **実ブラウザ・実ビルド成果物に対する
 // アクセシビリティの機械検査**（axe-core / WCAG 2.1 A・AA ＋ best-practice）。
 //
-// ■ 走査面は 5 つ（#1438 で 3 → 5）。共通シェル / SC-01 / SC-05 / **存在秘匿の 404** /
-//   **SC-19 の確認ダイアログ**。後ろ 2 つは「畳まれた状態・例外の状態でしか描かれない DOM」であり、
-//   **通常の画面を何面足しても届かない**——面を増やすときはこの軸（状態の種類）で選ぶ。
+// ■ 走査面は 6 つ（#1438 で 3 → 5、#1445 で 6）。共通シェル / SC-01 / SC-05 / **存在秘匿の 404** /
+//   **SC-19 の確認ダイアログ** / **SC-19 の共有先ダイアログ**。後ろ 3 つは「畳まれた状態・例外の
+//   状態でしか描かれない DOM」であり、**通常の画面を何面足しても届かない**——面を増やすときは
+//   この軸（状態の種類）で選ぶ。6 面目を足したのは、共有先ダイアログが**本リポジトリで唯一の
+//   `role="listbox"` / `role="option"` を持つ面**だからである（既存の 5 面を何度測っても
+//   `aria-required-children` / `aria-required-parent` は 1 度も評価されない）。
 //
 // ■ 静的検査（`eslint-plugin-jsx-a11y`）との役割分担
 //   ESLint が見るのは **JSX のソースの形**（`<img>` に alt があるか、`<div onClick>` でないか）だけで、
@@ -249,6 +254,50 @@ test('SC-19: 確認ダイアログを開いた状態に WCAG 2.1 A/AA ＋ best-p
 
   // ★ 陰性対照: 測っただけで降りる。破壊的操作の要求は 1 件も出ない。
   expect(traffic.calls.map((c) => c.key)).not.toContain('DELETE /private-notes/note-1');
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('SC-19 (#1445): 共有先ダイアログ（listbox の候補つき）に WCAG 2.1 A/AA ＋ best-practice の違反が無い', async ({
+  page,
+}) => {
+  const shares: DocumentShareDto[] = [
+    {
+      subjectType: 'user',
+      subjectId: 'hanako',
+      grantedBy: 'e2e',
+      createdAt: '2026-09-02T00:00:00Z',
+    },
+  ];
+  const directory: UserSummaryDto[] = [
+    { username: 'jiro', displayName: '次郎 ジロウ', enabled: true },
+  ];
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      'GET /private-notes': noteList,
+      'GET /private-notes/note-1/shares': shares,
+      'POST /users/resolve': directory,
+      'GET /users/lookup': directory,
+    },
+  });
+
+  await page.goto('/my/notes');
+  await page.getByRole('button', { name: '共有先を変更する' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  // **開き切ってから測る**（初期フォーカスは検索入力である）。
+  await expect(dialog.getByLabel('名前で検索する')).toBeFocused();
+
+  // 🔴 **候補の listbox を出した状態で測る。** 閉じたままだと `aria-required-children` /
+  // `aria-required-parent` / `aria-allowed-role` が 1 つも評価されず、この面を足した意味が消える。
+  await dialog.getByLabel('名前で検索する').fill('次郎');
+  await expect(dialog.getByRole('option')).toHaveCount(1);
+
+  await expectNoAxeViolations(page, 'SC-19 共有先ダイアログ');
+
+  // ★ 陰性対照: 測っただけで降りる。台帳を変える要求は 1 件も出ない。
+  expect(traffic.calls.map((c) => c.key)).not.toContain('POST /private-notes/note-1/shares');
 
   expectBffTrafficIsComplete(traffic);
 });

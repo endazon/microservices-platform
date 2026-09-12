@@ -44,6 +44,27 @@ public interface IIdentityAdminClient
     Task<IdentityUser?> FindByUsernameAsync(string username, CancellationToken ct);
 
     /// <summary>
+    /// FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1, [[IADR-0445]] (#1445):
+    /// **共有先に指定する利用者を名前で探す**（部分一致・**有効な利用者だけ**・最大 <paramref name="max"/> 件）。
+    ///
+    /// 🔴 **これは新規作成の口ではない**（`IdentityAdminContractTests` の禁止語に触れない読み取りである）。
+    ///
+    /// 🔴 **<see cref="ListUsersAsync"/> で代用できない。** あちらは AdminOnly の管理面が使う
+    /// 全件列挙であり、ロール・ABAC 属性つきの広い像を返す。共有先の選択は**一般利用者の操作**で
+    /// あって、面に出してよいのは利用者名・表示名・有効状態の 3 つだけである（決定 1
+    /// 「画面には表示名を出し、識別子は出さない」）。列挙を一般利用者へ開くと、**全社の名簿と
+    /// 属性が誰からでも引ける**ことになる。
+    ///
+    /// 🔴 **ロールは引かない**（<see cref="FindByUsernameAsync"/> と同じ判断）。`Roles` が空なのは
+    /// 「ロールが無い」ではなく「この口では引いていない」である —— 呼び出し元（共有先の検索）は
+    /// ロールを読まず、引くと 1 人あたり往復が 1 つ増える。
+    ///
+    /// 🔴 **無効化済み（退職者）は返さない。** 退職者を新たな共有先に指定できてはならない。
+    /// 既存の共有先の**表示**は <see cref="FindByUsernameAsync"/> 側で引く（そちらは無効化済みも返る）。
+    /// </summary>
+    Task<IReadOnlyList<IdentityUser>> SearchUsersAsync(string query, int max, CancellationToken ct);
+
+    /// <summary>
     /// SC-17 入力規則「定義済みロールのみ」の**値域の正**。IdP が持つ割当可能な realm ロールを返す。
     /// **画面にも後段にも焼き込まない** —— 焼き込むと realm を増やしても選べず、
     /// 消えたロールを選べてしまう。

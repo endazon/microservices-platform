@@ -594,7 +594,7 @@ describe('SC-19 個人資料管理: 公開範囲・同期状態・タグの 3 �
     expect(screen.queryByRole('columnheader', { name: '同期状態' })).not.toBeInTheDocument();
   });
 
-  it('🔴 指定先（共有相手）の表示も変更ダイアログも置かない（陽性対照つき）', async () => {
+  it('🔴 一覧の行は指定先（共有相手）を出さない（陽性対照つき）', async () => {
     const user = userEvent.setup();
     respond({ notes: THREE_STATES });
     await renderPage();
@@ -603,15 +603,51 @@ describe('SC-19 個人資料管理: 公開範囲・同期状態・タグの 3 �
     expect(await screen.findByText('個人指定（2 人）')).toBeInTheDocument();
     expect(screen.getByText('グループ指定（3 件）')).toBeInTheDocument();
 
-    // 陰性: 相手の一覧・変更の導線をどこにも置かない（planning#618 の裁定待ち）。
-    expect(screen.queryByRole('button', { name: /公開範囲を変更/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /共有相手/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /指定先/ })).not.toBeInTheDocument();
+    // 陰性: 相手の表示名・識別子を**行には**出さない（一覧の応答が運ばない値である）。
+    // ［2026-09-12 / #1445］相手の一覧そのものは**行操作から開くダイアログ**が持つ
+    // （`ShareTargetsDialog.test.tsx`）。**行に出さない**という性質だけが本ケースの射程である。
     expect(screen.queryByText(/共有先:/)).not.toBeInTheDocument();
+    expect(within(screen.getByRole('table')).queryByRole('listbox')).not.toBeInTheDocument();
 
     // 公開範囲のバッジを押しても何も開かない（バッジ自体が導線になっていない）。
     await user.click(screen.getByText('個人指定（2 人）'));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('行操作の「共有先を変更する」でダイアログが開く（利用中タブだけ・#1445）', async () => {
+    const user = userEvent.setup();
+    respond({ notes: THREE_STATES });
+    await renderPage();
+
+    await screen.findByText('設計メモ');
+    // 陰性対照: 開く前はダイアログも共有先の問い合わせも無い（閉じている間は引かない）。
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(
+      mocks.apiRequest.mock.calls.filter((c) => String(c[0]).endsWith('/shares')),
+    ).toHaveLength(0);
+
+    const row = within(screen.getByRole('row', { name: /設計メモ/ }));
+    await user.click(row.getByRole('button', { name: '共有先を変更する' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: '利用者を追加' })).toBeInTheDocument();
+    // 開いてはじめて指定先を引く。
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.filter((c) => String(c[0]).endsWith('/shares')).length,
+      ).toBeGreaterThan(0),
+    );
+  });
+
+  it('削除済みタブの行には「共有先を変更する」を置かない（陽性対照つき）', async () => {
+    respond();
+    await renderPage('/my/notes?tab=trash');
+
+    await screen.findByText('古い議事録');
+    // 陽性対照: 削除済みの行操作は在る（何も描かない実装と区別する）。
+    expect(screen.getAllByRole('button', { name: '復元する' }).length).toBeGreaterThan(0);
+    // 復元してから変える面であり、削除済みの共有先を変える導線は置かない。
+    expect(screen.queryByRole('button', { name: '共有先を変更する' })).not.toBeInTheDocument();
   });
 });
 

@@ -2,6 +2,7 @@ using AuthorizationService.Domain;
 using AuthorizationService.Features.Authz;
 using AuthorizationService.Features.Authz.ResolveScope;
 using AuthorizationService.Features.Users;
+using AuthorizationService.Features.Users.Lookup;
 using AuthorizationService.Features.Users.Directory;
 using AuthorizationService.Infrastructure.ExternalServices;
 using AuthorizationService.Infrastructure.Persistence;
@@ -100,6 +101,10 @@ app.MapGrpcService<AuthzScopeGrpcService>();
 app.MapGrpcService<UserDirectoryGrpcService>();
 // FR-05, FR-09, UC-05, SC-17: 利用者アカウント管理（AdminOnly）。
 app.MapUserAdminEndpoints();
+// FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1, [[IADR-0445]] (#1445): 共有先に指定する
+// 利用者の検索・表示名の引き当て（**認証のみ・ロール不問**）。
+// 🔴 **上の AdminOnly 群とは別の `MapGroup` である**（同じ群に足すと一般利用者が 403 になる）。
+app.MapUserLookupEndpoints();
 
 app.Run();
 

@@ -55,6 +55,13 @@ namespace Knowledge.Bff.Endpoints;
 // ── 載せなかった後段の口（理由は作業仕様書 §母集合 軸 1）
 //   - `/private-notes/quotas/{ownerId}`（管理者の上限変更）… **載せる画面が計画に無い**。
 //     SC-19 は管理者が他利用者の個人資料を扱う導線を明示的に禁じている。
+//   - ★［2026-09-12 / #1445・#1446］**共有台帳（`/documents/{id}/shares*`）と同期履歴
+//     （`/private-notes/sync-history`）は載せた。** planning#618 の裁定（ADR-0098 / ADR-0099）で
+//     SC-19 主要素 3（公開範囲の指定先）と SC-20 主要素 6（同期履歴）の前提が揃ったためである
+//     （それまでは「指定先は裁定待ち」「同期履歴は描かない」として載せていなかった）。
+//     🔴 共有台帳の後段は `/documents/*` 集約であり、本ファイルの他の口（`/private-notes/*`）と
+//     **後段のパスが違う** —— それでも前段の口を `/bff/private-notes/{id}/shares` に置くのは、
+//     画面（SC-19）が個人資料の行操作として扱うからである（計画の面に合わせる）。
 //   - `/private-notes/sync/*`（同期プロトコル 4 件）… 資格情報が別系統（Bearer 同期トークン）で、
 //     呼ぶのは Obsidian プラグインである。ブラウザ SPA は 1 度も呼ばない。
 public static class PrivateNoteBffEndpoints
@@ -125,6 +132,50 @@ public static class PrivateNoteBffEndpoints
             ForwardIfWritableAsync(HttpMethod.Put, $"/private-notes/{id}/exposure", req,
                 httpFactory, http, ct))
             .WithName("BffPrivateNoteExposure").Produces<PrivateNoteDto>();
+
+        // ── SC-19 主要素 3: 公開範囲の指定先（共有台帳）。#1445 / ADR-0098 決定 1・2 ────
+        //
+        // 🔴 **後段は `/documents/{id}/shares*` である**（`/private-notes/*` ではない）。共有台帳は
+        // 文書の従属資源であり、**変更できるのは所有者だけ・他人の資料は 404**（存在秘匿）を
+        // 後段が判定する —— 冒頭の 2 のとおり、BFF は判定を複製しない。
+        // 🔴 **画面が送るのは `subjectType=user` だけである**（決定 2。グループ指定の UI は
+        // `${current_groups}` の束縛が配備されるまで描かない）。**契約・台帳は `group` を
+        // 受け付けたままにする** —— 拒む改修を入れると、配線が入ったときに開き直す作業が生じる。
+        notes.MapGet("/{id:guid}/shares", (Guid id, IHttpClientFactory httpFactory,
+            HttpContext http, CancellationToken ct) =>
+            ForwardAsync(HttpMethod.Get, $"/documents/{id}/shares", null, httpFactory, http, ct))
+            .WithName("BffPrivateNoteShareList").Produces<List<DocumentShareDto>>();
+
+        notes.MapPost("/{id:guid}/shares", (Guid id, CreateShareRequest req,
+            IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
+            ForwardIfWritableAsync(HttpMethod.Post, $"/documents/{id}/shares", req,
+                httpFactory, http, ct))
+            .WithName("BffPrivateNoteShareGrant")
+            .Produces<DocumentShareDto>(StatusCodes.Status201Created);
+
+        // 🔴 **取り消しの鍵は `subjectType` / `subjectId` である**（`subjectId` は利用者名）。
+        // 経路に載るので `Uri.EscapeDataString` で包む —— 利用者名は自由文ではないが、
+        // **後段のパスを組み立てる値をそのまま連結しない**（`UserAdminBffEndpoints` と同じ作法）。
+        notes.MapDelete("/{id:guid}/shares/{subjectType}/{subjectId}", (Guid id, string subjectType,
+            string subjectId, IHttpClientFactory httpFactory, HttpContext http,
+            CancellationToken ct) =>
+            ForwardIfWritableAsync(HttpMethod.Delete,
+                $"/documents/{id}/shares/{Uri.EscapeDataString(subjectType)}"
+                + $"/{Uri.EscapeDataString(subjectId)}", null, httpFactory, http, ct))
+            .WithName("BffPrivateNoteShareRevoke");
+
+        // ── SC-20 主要素 6: 同期履歴。#1446 / ADR-0099 ──────────────────────
+        //
+        // **読めるのは本人の記録だけ**（決定 2）で、絞るのは後段である（冒頭の 2・4）。
+        // 🔴 **表示は 50 件固定**（決定 4）。`limit` を画面から受けない —— 件数を画面が決める
+        // 必要が無く、口を開くと「保持（3 年）と表示（N 件）」の区別が前段でも二重になる。
+        // 🔴 **題名・パス・資料 ID は 1 つも通らない**（決定 5。後段の表に列が無い）。
+        notes.MapGet("/sync-history", (IHttpClientFactory httpFactory, HttpContext http,
+            CancellationToken ct) =>
+            ForwardAsync(HttpMethod.Get,
+                $"/private-notes/sync-history?limit={SyncHistoryPageSize}", null,
+                httpFactory, http, ct))
+            .WithName("BffSyncHistoryList").Produces<List<SyncHistoryEntryDto>>();
 
         // ── SC-20: 端末一覧（トークンは平文もハッシュも載らない）──────────────────
         devices.MapGet("/", (IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
@@ -199,6 +250,11 @@ public static class PrivateNoteBffEndpoints
 
         return app;
     }
+
+    // ADR-0099 決定 4 (#1446): 同期履歴の表示件数。**保持期間（3 年。後段の
+    // `SyncAuditEntry.RetentionYears`）とは別の値である。**「さらに読み込む」は作らない
+    // （決定 4 は実装設計に委ねたが、要望が出るまで固定でよい）。
+    private const int SyncHistoryPageSize = 50;
 
     // FR-19, ADR-0036 D-07, #1010, [[IADR-0272]]: 書き込み経路は **write スコープ**で前段を絞る。
     //

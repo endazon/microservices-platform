@@ -53,6 +53,8 @@ tags:
     description: "FR-16, UC-09, SC-12, ADR-0024: MCP クライアント登録管理（管理者限定）。登録・無効化・無人アカウントの ABAC 属性割当と、実効ツール一覧（許可リストの参照）。**公開ツールの変更口は置かない** —— 公開範囲は Git 経由の構成変更で行う（GitOps）"
   - name: Notifications
     description: "FR-22, UC-11, ADR-0037, ADR-0045, IADR-0215: 利用者本人へのアプリ内通知。**本文は件数と期限のみ**で、資料のタイトル・本文を含めない（スキーマに自由文の項目を置かない）"
+  - name: Users
+    description: "FR-19, SC-19, ADR-0098 決定 1: 共有先の個人指定のための利用者検索（認証必須・ロール不問）。**返すのは利用者名・表示名・有効状態だけ**であり、ロール・ABAC 属性・内部 ID は出さない。画面には表示名だけを出す"
   - name: UserAdmin
     description: "FR-05, FR-09, UC-05, SC-17, ADR-0026: 利用者アカウント管理（管理者限定）。ロール割当・ABAC 属性割当・無効化（全セッション失効）。**新規作成の口は置かない** —— アカウントは人事システム連携で自動プロビジョニングされる"
 
@@ -2943,6 +2945,74 @@ paths:
         "403": { description: write 許可ポリシーが無い }
         "404": { description: 不在または他人の資料（区別しない） }
 
+  # ── ADR-0098 決定 1・2（planning#618 の裁定。SC-19 主要素 3）: 公開範囲の指定先（共有台帳） ──
+  # 後段 DocumentService の `/documents/{id}/shares*`（共有台帳の管理 API）へ透過中継する。
+  # 変更できるのは所有者だけ（`doc.owner ∈ { ${current_user} }`）で、他人の資料は 404（存在秘匿）。
+  # 🔴 **画面が扱うのは個人指定（`subjectType=user`）だけである**（ADR-0098 決定 2）。台帳と本契約は
+  # `group` も受け付けるが、`${current_groups}` の束縛が未配備の間、グループ共有は誰にも何も許可しない。
+  # 識別子（`subjectId`）は取り消しの鍵であり、画面には表示名（`/bff/users/resolve`）を出す。
+  /bff/private-notes/{id}/shares:
+    get:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, UC-11, SC-19 主要素 3: 公開範囲の指定先の一覧（所有者のみ。付与順）"
+      operationId: bff-private-note-share-list
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: 共有先の一覧（空配列＝非公開）
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DocumentShareDto" }
+        "401": { description: 未認証 }
+        "404": { description: 不在または他人の資料（区別しない） }
+    post:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, UC-11, SC-19 主要素 3: 指定先を追加する（所有者のみ。再共有不可）"
+      description: |
+        `subjectType` は `user`（利用者識別子＝`${current_user}` と同じ名前空間）または
+        `group`（Keycloak グループ識別子）。**画面は `user` しか送らない**（ADR-0098 決定 2）。
+        同じ相手への重複付与は 409。
+      operationId: bff-private-note-share-grant
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateShareRequest" }
+      responses:
+        "201":
+          description: 付与した共有先
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocumentShareDto" }
+        "400": { description: subjectType が不正または subjectId が空（RFC7807 ValidationProblem） }
+        "401": { description: 未認証 }
+        "403": { description: write 許可ポリシーが無い }
+        "404": { description: 不在または他人の資料（区別しない） }
+        "409": { description: 既に共有済み }
+
+  /bff/private-notes/{id}/shares/{subjectType}/{subjectId}:
+    delete:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, UC-11, SC-19 主要素 3: 指定先を取り消す（所有者のみ。既に見られた事実は取り消せない）"
+      operationId: bff-private-note-share-revoke
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: subjectType, in: path, required: true, schema: { type: string } }
+        - { name: subjectId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: 取り消した }
+        "401": { description: 未認証 }
+        "403": { description: write 許可ポリシーが無い }
+        "404": { description: 不在・他人の資料・該当する共有が無い（区別しない） }
+
   /bff/private-notes/purge:
     post:
       x-roles: []
@@ -3071,7 +3141,7 @@ paths:
   # ── #1442（planning#614 の裁定。SC-20 主要素 3・5）: 同期対象範囲と競合 ──
   # 後段 DocumentService の `/private-notes/sync-settings`・`/private-notes/conflicts*` へ透過中継する。
   # 書き込み（PUT / resolve）は個人資料の他の書き込みと同じく ABAC の write スコープで前段を絞る。
-  # 🔴 同期履歴（主要素 6）の口は無い —— N と保持期間が計画に無い（planning#618）。
+  # 同期履歴（主要素 6）は `/bff/private-notes/sync-history`（ADR-0099。planning#618 の裁定で N・保持期間が確定）。
   /bff/private-notes/sync-settings:
     get:
       x-roles: []
@@ -3109,6 +3179,30 @@ paths:
         "400": { description: フォルダ指定の検証エラー（RFC7807 ValidationProblem） }
         "401": { description: 未認証 }
         "403": { description: write スコープが無い }
+
+  # ── ADR-0099（planning#618 の裁定。SC-20 主要素 6）: 同期履歴 ──
+  # 供給元は**同期の監査ログ**（ADR-0037 決定 9）を本人スコープで読んだもの。専用の履歴ストアは持たない
+  # （ADR-0099 決定 1）。🔴 **資料のタイトルも Vault のパスも資料 ID も載らない**（決定 5）。
+  /bff/private-notes/sync-history:
+    get:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-20, UC-11, SC-20 主要素 6: 同期履歴（本人の記録のみ。端末横断で新しい順に直近 50 件）"
+      description: |
+        **読めるのは本人の記録だけ**（ADR-0099 決定 2）。**表示は直近 50 件**（決定 4。表示の件数であり
+        保持の件数ではない —— 保持は 3 年。決定 3）。**失敗も載る**（決定 6）。
+        1 行は 実行日時 / 端末名 / 方向（`push` / `pull`）/ 件数の内訳（追加・更新・削除・競合）/
+        結果（`success` / `failure`）/ 失敗理由（コード。文言は画面が持つ）。
+      operationId: bff-sync-history-list
+      responses:
+        "200":
+          description: 同期履歴（新しい順）
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SyncHistoryEntryDto" }
+        "401": { description: 未認証 }
 
   /bff/private-notes/conflicts:
     get:
@@ -3177,6 +3271,61 @@ paths:
 
   # ── SC-17, FR-05, FR-09, UC-05, ADR-0026: 利用者アカウント管理 BFF ─
   # 管理者限定（05_screens §共通シェル「SC-09・SC-12・SC-17 = システム管理者」。運用者も不可）。
+  # ── ADR-0098 決定 1（planning#618 の裁定。SC-19 主要素 3）: 共有先の個人指定のための利用者検索 ──
+  # 後段 AuthorizationService の `/authz/users/lookup`・`/authz/users/resolve`（認証必須・ロール不問）へ
+  # 利用者の `Authorization` を転送して透過中継する。**管理面（`/bff/admin/users`）とは別の口**であり、
+  # 返すのは利用者名・表示名・有効状態だけ（ロール・ABAC 属性・内部 ID を出さない）。
+  /bff/users/lookup:
+    get:
+      x-roles: []
+      tags: [Users]
+      summary: "FR-19, SC-19 主要素 3: 共有先に指定する利用者を表示名・利用者名で検索する（有効な利用者のみ）"
+      description: |
+        `q` は 2 文字以上（部分一致・大小文字無視）。**無効化済みの利用者は返さない**（退職者へは共有できない）。
+        `limit` は既定 20・上限 50。**自分自身も返り得る**（画面が除く）。
+      operationId: bff-user-lookup
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, format: int32, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        "200":
+          description: 該当する利用者（表示名順）
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/UserSummaryDto" }
+        "400": { description: q が 2 文字未満・limit が範囲外（RFC7807 ValidationProblem） }
+        "401": { description: 未認証 }
+        "502": { description: AuthorizationService へ到達できない }
+
+  /bff/users/resolve:
+    post:
+      x-roles: []
+      tags: [Users]
+      summary: "FR-19, SC-19 主要素 3: 利用者名の集合を表示名へ引く（共有先一覧の表示用）"
+      description: |
+        見つかった利用者だけを返す（**居ない名前は応答から落ちる**。エラーではない）。無効化済みも返す
+        （既存の共有先を表示するため。`enabled=false` で区別できる）。1 回に引けるのは 100 件まで。
+      operationId: bff-user-resolve
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResolveUsersRequest" }
+      responses:
+        "200":
+          description: 見つかった利用者
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/UserSummaryDto" }
+        "400": { description: usernames が空または 100 件超（RFC7807 ValidationProblem） }
+        "401": { description: 未認証 }
+        "502": { description: AuthorizationService へ到達できない }
+
+  # ── SC-17, FR-05, FR-09, UC-05, ADR-0026: 利用者アカウント管理（管理者限定） ──
   # BFF は AuthorizationService の /authz/users* へ**透過中継**する。後段の 400（検証エラー）・
   # 404（不在）はそのまま返る。後段不達は 502。
   # 🔴 **`POST /bff/admin/users`（新規作成）は宣言しない** —— 計画 §SC-17 アクションが
@@ -5012,6 +5161,7 @@ components:
         `deleted` が真のとき `purgeAt` が完全削除の期限であり、SC-19 の「残り日数」と
         警告色（残り 7 日以内）の根拠になる。
         🔴 **所有者を運ぶ項目を持たない。** 誰の資料かは主体（JWT）で決まり、要求側が指定できない。
+        指定先（共有相手）は本 DTO に載せず `GET /bff/private-notes/{id}/shares` で引く（ADR-0098）。
       required:
         [
           id,
@@ -5054,8 +5204,8 @@ components:
             公開範囲の 3 状態（SC-19 主要素 2）。値は `private`（非公開・既定。共有 0 件）／
             `users`（個人指定。利用者への共有のみ）／`groups`（グループ指定。グループへの共有が 1 つでもある）。
             供給元は個人資料の共有台帳（ADR-0036 D-06。判定は ABAC の `shared_with`）。
-            🔴 **指定先（共有相手の識別子・表示名）は載せない** —— 指定先の単位（ADR-0036 §未確定事項 5）が
-            未決であり、型が決まるまで契約に出さない（planning#618）。
+            指定先（共有相手）は本 DTO に載せず、`GET /bff/private-notes/{id}/shares` が返す
+            （ADR-0098 決定 1。planning#618 の裁定で指定先の単位は Keycloak グループ・個人は利用者識別子に確定）。
         sharedUserCount: { type: integer, format: int32, description: "利用者への共有の件数（0 以上）" }
         sharedGroupCount: { type: integer, format: int32, description: "グループへの共有の件数（0 以上）" }
         syncState:
@@ -5285,7 +5435,7 @@ components:
 
     # ── #1442（planning#614 の裁定。SC-20 主要素 3・5）: 同期対象範囲と競合 ──
     # C# 側の正本は `Knowledge.Contracts/Dtos/PrivateNoteDto.cs`（同ファイルに同居）。
-    # 🔴 同期履歴（主要素 6）は載せない —— 「直近 N 件」の N と保持期間が計画に無い（planning#618）。
+    # 同期履歴（主要素 6）は `SyncHistoryEntryDto`（ADR-0099。planning#618 の裁定で N・保持期間が確定）。
     SyncTargetFolderDto:
       type: object
       description: |
@@ -5380,6 +5530,78 @@ components:
         resolution: { type: string }
         noteVersion: { type: integer, format: int32 }
         createdNoteId: { type: string, format: uuid, nullable: true }
+
+    # ── ADR-0098 決定 1・2（planning#618）: 公開範囲の指定先（共有台帳） ──
+    DocumentShareDto:
+      type: object
+      description: |
+        FR-19, SC-19 主要素 3, ADR-0036 D-06, ADR-0098 決定 1: 共有先 1 件。`subjectType` は `user`
+        （利用者識別子）または `group`（Keycloak グループ識別子）。`subjectId` は取り消しの鍵であり、
+        **画面には出さず、表示名は `/bff/users/resolve` で引く**（ADR-0098 決定 1）。`grantedBy` は付与した所有者。
+      required: [subjectType, subjectId, grantedBy, createdAt]
+      properties:
+        subjectType: { type: string, description: "`user` / `group`（enum にしない）" }
+        subjectId: { type: string }
+        grantedBy: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    CreateShareRequest:
+      type: object
+      description: |
+        FR-19, SC-19 主要素 3: 指定先の追加。**画面は `subjectType=user` しか送らない**（ADR-0098 決定 2。
+        グループ指定の導線を置かない）。
+      required: [subjectType, subjectId]
+      properties:
+        subjectType: { type: string }
+        subjectId: { type: string }
+
+    # ── ADR-0099（planning#618）: 同期履歴 ──
+    SyncHistoryEntryDto:
+      type: object
+      description: |
+        FR-20, SC-20 主要素 6, ADR-0037 決定 9, ADR-0099 決定 5: 同期履歴 1 行（本人の同期監査ログの投影）。
+        `direction` は `push`（端末→サーバ。作成・更新・削除・改名）/ `pull`（サーバ→端末）。
+        内訳は 1 回の同期操作で動いた件数（現行プロトコルは 1 操作 1 資料なので合計は 0 か 1）。
+        `outcome` は `success` / `failure`。`failureReason` は失敗のときだけ入るコード
+        （`version_conflict` / `deleted` / `path_conflict` / `quota_exceeded` / `body_too_large` /
+        `invalid_request` / `not_found`）。**利用者向けの文言は画面が持つ**（次に何をすればよいかが分かる形）。
+        🔴 **資料のタイトル・Vault のパス・資料 ID は載らない**（決定 5。完全削除後も題名が残らない）。
+      required: [id, occurredAt, deviceName, direction, added, updated, deleted, conflicted, outcome]
+      properties:
+        id: { type: string, format: uuid }
+        occurredAt: { type: string, format: date-time }
+        deviceName: { type: string, description: "記録時点の端末名（端末 ID は出さない。失効・削除後も名前は残る）" }
+        direction: { type: string }
+        added: { type: integer, format: int32 }
+        updated: { type: integer, format: int32 }
+        deleted: { type: integer, format: int32 }
+        conflicted: { type: integer, format: int32 }
+        outcome: { type: string }
+        failureReason: { type: string, nullable: true }
+
+    # ── ADR-0098 決定 1（planning#618）: 共有先の個人指定のための利用者検索 ──
+    UserSummaryDto:
+      type: object
+      description: |
+        FR-19, SC-19 主要素 3, ADR-0098 決定 1: 共有先候補・共有先表示用の利用者の像。
+        **利用者名・表示名・有効状態だけ**を運ぶ（ロール・ABAC 属性・内部 ID は出さない）。
+        `username` が共有台帳の `subjectId`（`${current_user}` と同じ名前空間）である。
+      required: [username, displayName, enabled]
+      properties:
+        username: { type: string }
+        displayName: { type: string }
+        enabled: { type: boolean }
+
+    ResolveUsersRequest:
+      type: object
+      description: "FR-19, SC-19 主要素 3: 表示名へ引く利用者名の集合（1〜100 件）。"
+      required: [usernames]
+      properties:
+        usernames:
+          type: array
+          items: { type: string }
+          minItems: 1
+          maxItems: 100
 
     # ── SC-17, FR-05, FR-09, UC-05, ADR-0026: 利用者アカウント管理 ─
     PlatformUserDto:

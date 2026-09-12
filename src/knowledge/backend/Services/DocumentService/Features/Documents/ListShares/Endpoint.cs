@@ -1,5 +1,6 @@
 using DocumentService.Domain;
 using DocumentService.Infrastructure.Persistence;
+using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocumentService.Features.Documents.ListShares;

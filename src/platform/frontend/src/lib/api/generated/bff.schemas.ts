@@ -1541,6 +1541,7 @@ export interface EmbedApiResponse {
  * `deleted` が真のとき `purgeAt` が完全削除の期限であり、SC-19 の「残り日数」と
  * 警告色（残り 7 日以内）の根拠になる。
  * 🔴 **所有者を運ぶ項目を持たない。** 誰の資料かは主体（JWT）で決まり、要求側が指定できない。
+ * 指定先（共有相手）は本 DTO に載せず `GET /bff/private-notes/{id}/shares` で引く（ADR-0098）。
  */
 export interface PrivateNoteDto {
   id: string;
@@ -1570,8 +1571,8 @@ export interface PrivateNoteDto {
      * 公開範囲の 3 状態（SC-19 主要素 2）。値は `private`（非公開・既定。共有 0 件）／
      * `users`（個人指定。利用者への共有のみ）／`groups`（グループ指定。グループへの共有が 1 つでもある）。
      * 供給元は個人資料の共有台帳（ADR-0036 D-06。判定は ABAC の `shared_with`）。
-     * 🔴 **指定先（共有相手の識別子・表示名）は載せない** —— 指定先の単位（ADR-0036 §未確定事項 5）が
-     * 未決であり、型が決まるまで契約に出さない（planning#618）。
+     * 指定先（共有相手）は本 DTO に載せず、`GET /bff/private-notes/{id}/shares` が返す
+     * （ADR-0098 決定 1。planning#618 の裁定で指定先の単位は Keycloak グループ・個人は利用者識別子に確定）。
      */
   visibility: string;
   /** 利用者への共有の件数（0 以上） */
@@ -1905,6 +1906,73 @@ export interface ResolveSyncConflictResponse {
 }
 
 /**
+ * FR-19, SC-19 主要素 3, ADR-0036 D-06, ADR-0098 決定 1: 共有先 1 件。`subjectType` は `user`
+ * （利用者識別子）または `group`（Keycloak グループ識別子）。`subjectId` は取り消しの鍵であり、
+ * **画面には出さず、表示名は `/bff/users/resolve` で引く**（ADR-0098 決定 1）。`grantedBy` は付与した所有者。
+ */
+export interface DocumentShareDto {
+  /** `user` / `group`（enum にしない） */
+  subjectType: string;
+  subjectId: string;
+  grantedBy: string;
+  createdAt: string;
+}
+
+/**
+ * FR-19, SC-19 主要素 3: 指定先の追加。**画面は `subjectType=user` しか送らない**（ADR-0098 決定 2。
+ * グループ指定の導線を置かない）。
+ */
+export interface CreateShareRequest {
+  subjectType: string;
+  subjectId: string;
+}
+
+/**
+ * FR-20, SC-20 主要素 6, ADR-0037 決定 9, ADR-0099 決定 5: 同期履歴 1 行（本人の同期監査ログの投影）。
+ * `direction` は `push`（端末→サーバ。作成・更新・削除・改名）/ `pull`（サーバ→端末）。
+ * 内訳は 1 回の同期操作で動いた件数（現行プロトコルは 1 操作 1 資料なので合計は 0 か 1）。
+ * `outcome` は `success` / `failure`。`failureReason` は失敗のときだけ入るコード
+ * （`version_conflict` / `deleted` / `path_conflict` / `quota_exceeded` / `body_too_large` /
+ * `invalid_request` / `not_found`）。**利用者向けの文言は画面が持つ**（次に何をすればよいかが分かる形）。
+ * 🔴 **資料のタイトル・Vault のパス・資料 ID は載らない**（決定 5。完全削除後も題名が残らない）。
+ */
+export interface SyncHistoryEntryDto {
+  id: string;
+  occurredAt: string;
+  /** 記録時点の端末名（端末 ID は出さない。失効・削除後も名前は残る） */
+  deviceName: string;
+  direction: string;
+  added: number;
+  updated: number;
+  deleted: number;
+  conflicted: number;
+  outcome: string;
+  failureReason?: string | null;
+}
+
+/**
+ * FR-19, SC-19 主要素 3, ADR-0098 決定 1: 共有先候補・共有先表示用の利用者の像。
+ * **利用者名・表示名・有効状態だけ**を運ぶ（ロール・ABAC 属性・内部 ID は出さない）。
+ * `username` が共有台帳の `subjectId`（`${current_user}` と同じ名前空間）である。
+ */
+export interface UserSummaryDto {
+  username: string;
+  displayName: string;
+  enabled: boolean;
+}
+
+/**
+ * FR-19, SC-19 主要素 3: 表示名へ引く利用者名の集合（1〜100 件）。
+ */
+export interface ResolveUsersRequest {
+  /**
+     * @minItems 1
+     * @maxItems 100
+     */
+  usernames: string[];
+}
+
+/**
  * ABAC 属性（部門・機密区分上限・タグ）。1 キー 1 値
  */
 export type PlatformUserDtoAttributes = {[key: string]: string};
@@ -2103,4 +2171,16 @@ export const BffGraphSuggestionsKind = {
   link: 'link',
   tag: 'tag',
 } as const;
+
+export type BffUserLookupParams = {
+/**
+ * @minLength 2
+ */
+q: string;
+/**
+ * @minimum 1
+ * @maximum 50
+ */
+limit?: number;
+};
 

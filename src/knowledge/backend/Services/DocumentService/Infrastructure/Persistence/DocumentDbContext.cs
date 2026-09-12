@@ -28,6 +28,10 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
     public DbSet<SyncSettings> SyncSettings => Set<SyncSettings>();
     public DbSet<SyncConflict> SyncConflicts => Set<SyncConflict>();
 
+    // FR-20, SC-20 主要素 6, ADR-0037 決定 9, ADR-0099 決定 1・3, #1446: 同期の監査ログ（貯蔵つき）。
+    // 🔴 **資料を指す列を持たない表である**（決定 5。理由は `SyncAuditEntry` の注記）。
+    public DbSet<SyncAuditEntry> SyncAuditEntries => Set<SyncAuditEntry>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         mb.Entity<Document>(e =>
@@ -169,6 +173,21 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
                 .WithMany()
                 .HasForeignKey(c => c.DocumentId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FR-20, SC-20 主要素 6, ADR-0099 決定 1・3・5, #1446: 同期の監査ログ。
+        // 索引は `(OwnerId, OccurredAt)` —— 一覧が引くのは「本人の行を新しい順に N 件」だけである。
+        // 🔴 **FK を張らない**（端末・資料が消えても行は残る＝監査ログ。`SyncAuditEntry` の注記）。
+        // 🔴 **資料・題名・パスの列は無い**（決定 5 を型で守る。ここへ足してはならない）。
+        mb.Entity<SyncAuditEntry>(e =>
+        {
+            e.HasKey(a => a.Id);
+            e.Property(a => a.OwnerId).HasMaxLength(200).IsRequired();
+            e.Property(a => a.DeviceName).HasMaxLength(200).IsRequired();
+            e.Property(a => a.Direction).HasMaxLength(20).IsRequired();
+            e.Property(a => a.Outcome).HasMaxLength(20).IsRequired();
+            e.Property(a => a.FailureReason).HasMaxLength(40);
+            e.HasIndex(a => new { a.OwnerId, a.OccurredAt });
         });
 
         // FR-09, SC-09, #634: タグ辞書。表示名は**一意**である

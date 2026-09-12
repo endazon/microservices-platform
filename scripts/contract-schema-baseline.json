@@ -768,6 +768,23 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.CreateShareRequest": {
+        "kind": "record",
+        "members": {
+          "SubjectId": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "SubjectType": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.CreateSyncDeviceRequest": {
         "kind": "record",
         "members": {
@@ -1102,6 +1119,35 @@
             "source": "const",
             "type": "string",
             "value": "\"private-note\""
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.DocumentShareDto": {
+        "kind": "record",
+        "members": {
+          "CreatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 3
+          },
+          "GrantedBy": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "SubjectId": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "SubjectType": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
           }
         }
       },
@@ -2180,6 +2226,21 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.ShareSubjectTypes": {
+        "kind": "class",
+        "members": {
+          "Group": {
+            "source": "const",
+            "type": "string",
+            "value": "\"group\""
+          },
+          "User": {
+            "source": "const",
+            "type": "string",
+            "value": "\"user\""
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.SyncConflictDetailDto": {
         "kind": "record",
         "members": {
@@ -2379,6 +2440,141 @@
             "type": "bool",
             "required": true,
             "position": 4
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.SyncDirections": {
+        "kind": "class",
+        "members": {
+          "Pull": {
+            "source": "const",
+            "type": "string",
+            "value": "\"pull\""
+          },
+          "Push": {
+            "source": "const",
+            "type": "string",
+            "value": "\"push\""
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.SyncFailureReasons": {
+        "kind": "class",
+        "members": {
+          "BodyTooLarge": {
+            "source": "const",
+            "type": "string",
+            "value": "\"body_too_large\""
+          },
+          "Deleted": {
+            "source": "const",
+            "type": "string",
+            "value": "\"deleted\""
+          },
+          "InvalidRequest": {
+            "source": "const",
+            "type": "string",
+            "value": "\"invalid_request\""
+          },
+          "NotFound": {
+            "source": "const",
+            "type": "string",
+            "value": "\"not_found\""
+          },
+          "PathConflict": {
+            "source": "const",
+            "type": "string",
+            "value": "\"path_conflict\""
+          },
+          "QuotaExceeded": {
+            "source": "const",
+            "type": "string",
+            "value": "\"quota_exceeded\""
+          },
+          "VersionConflict": {
+            "source": "const",
+            "type": "string",
+            "value": "\"version_conflict\""
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.SyncHistoryEntryDto": {
+        "kind": "record",
+        "members": {
+          "Added": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 4
+          },
+          "Conflicted": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 7
+          },
+          "Deleted": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 6
+          },
+          "DeviceName": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "Direction": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 3
+          },
+          "FailureReason": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 9
+          },
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "OccurredAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 1
+          },
+          "Outcome": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 8
+          },
+          "Updated": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 5
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.SyncOutcomes": {
+        "kind": "class",
+        "members": {
+          "Failure": {
+            "source": "const",
+            "type": "string",
+            "value": "\"failure\""
+          },
+          "Success": {
+            "source": "const",
+            "type": "string",
+            "value": "\"success\""
           }
         }
       },
@@ -3720,6 +3916,17 @@
           }
         }
       },
+      "Platform.Shared.Contracts.Dtos.ResolveUsersRequest": {
+        "kind": "record",
+        "members": {
+          "Usernames": {
+            "source": "positional",
+            "type": "List<string>",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
       "Platform.Shared.Contracts.Dtos.RestrictedProject": {
         "kind": "class",
         "members": {
@@ -3826,6 +4033,29 @@
             "source": "const",
             "type": "string",
             "value": "\"tags\""
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.UserSummaryDto": {
+        "kind": "record",
+        "members": {
+          "DisplayName": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "Enabled": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 2
+          },
+          "Username": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
           }
         }
       },

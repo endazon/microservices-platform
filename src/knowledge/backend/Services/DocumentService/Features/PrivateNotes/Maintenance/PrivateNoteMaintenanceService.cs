@@ -12,7 +12,8 @@ namespace DocumentService.Features.PrivateNotes.Maintenance;
 // [[IADR-0270]] 決定 6, [[IADR-0431]]:
 // 個人資料の定期処理。①90 日経過の自動物理削除（＋事後通知 ①-c）②版履歴の刈り取り
 // （直近 50 版かつ 90 日）③完全削除 7 日前通知（①-b）④週次の削除通知（①-a）
-// ⑤同期トークンの期限 7 日前通知（③）⑥**退職 30 日後の完全削除**（通知なし。#1409）。
+// ⑤同期トークンの期限 7 日前通知（③）⑥**退職 30 日後の完全削除**（通知なし。#1409）
+// ⑦**同期履歴の 3 年超の削除**（ADR-0099 決定 3。#1446）。
 //
 // 🔴 **⑥と①は別の時計である。** ①は ADR-0037 決定 5 の「論理削除から 90 日」、
 // ⑥は ADR-0036 D-09 の「退職から 30 日」であり、起点も対象も違う（⑥は論理削除の有無を見ない）。
@@ -55,6 +56,33 @@ public sealed class PrivateNoteMaintenanceService(
         await NotifyPurgeImminentAsync(now, ct);
         await NotifyWeeklyDigestAsync(now, ct);
         await NotifyTokenExpiryAsync(now, ct);
+        // ★［2026-09-12 追加 / #1446・ADR-0099 決定 3］⑦同期履歴（監査ログ）の保持期限。
+        // **順序はどこでもよい** —— 他の 6 つと対象の表が重ならない（唯一 `SyncAuditEntries` を
+        // 触る処理である）。末尾に置くのは、通知の 3 つが遅れる理由を作らないためである。
+        await PurgeSyncAuditAsync(now, ct);
+    }
+
+    // FR-20, SC-20 主要素 6, ADR-0099 決定 3, #1446: **同期履歴は 3 年で消える。**
+    //
+    // 🔴 **表示の件数（決定 4 の 50 件）とは別の値である。** 50 件を超えた行も 3 年は残り、
+    // 3 年を超えた行は表示件数に関係なく消える。`SyncAuditEntry.RetentionYears` が唯一の値で、
+    // ここへ数値を書き下さない。
+    //
+    // 🔴 **通知しない。** 消えるのは利用者が作った資料ではなく記録であり、FR-22 の 3 段通知の
+    // 対象（①論理削除の期限）とは別物である。監査ログへ「いつ・何件」を 1 行残す
+    // （ADR-0037 決定 9 と同じ粒度。**所有者ごとの件数は出さない** —— 全体の掃除である）。
+    private async Task PurgeSyncAuditAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        var cutoff = now.AddYears(-SyncAuditEntry.RetentionYears);
+        var expired = await db.SyncAuditEntries.Where(a => a.OccurredAt < cutoff).ToListAsync(ct);
+        if (expired.Count == 0) return;
+
+        db.SyncAuditEntries.RemoveRange(expired);
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation(
+            "保持期限（{Years} 年）を超えた同期履歴を削除した（{Count} 件）",
+            SyncAuditEntry.RetentionYears, expired.Count);
     }
 
     // FR-19, UC-11, SC-19, SC-10, 計画 ADR-0036 D-09, ADR-0057 決定 1・2, ADR-0096 決定 1・2,

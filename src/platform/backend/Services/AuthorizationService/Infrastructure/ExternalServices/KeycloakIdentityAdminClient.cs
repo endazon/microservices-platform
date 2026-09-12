@@ -116,6 +116,37 @@ public sealed class KeycloakIdentityAdminClient(
         return matched.Count == 0 ? null : ToIdentityUser(matched[0], []);
     }
 
+    // FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1, [[IADR-0445]] (#1445):
+    // 共有先の候補を Keycloak の `search=` で引く（**1 往復**）。
+    //
+    // Keycloak の `search` は username / email / firstName / lastName の**部分一致**である
+    // （`exact=true` を付けないのが `FindByUsernameAsync` との違いで、こちらは候補を探す口である）。
+    //
+    // 🔴 **`enabled=true` をサーバ側で掛ける** —— 退職者を新たな共有先に指定できてはならない
+    // （ADR-0098 決定 1。こちらで絞り直すのではなく IdP に絞らせるのは、`max` の打ち切りが
+    // 「無効な利用者で埋まって有効な候補が消える」ことを防ぐためである）。
+    //
+    // 🔴 **`briefRepresentation=true` で引く。** 返す像（利用者名・表示名・有効状態）に
+    // 属性は含まれない —— **一般利用者へ開く口で ABAC 属性を運ばない**（面を型で閉じるのと同じ向き）。
+    // したがって `Attributes` は空、`Roles` も空である（ロールは引かない。ポートの注記）。
+    public async Task<IReadOnlyList<IdentityUser>> SearchUsersAsync(
+        string query, int max, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return [];
+
+        var client = await AuthorizedClientAsync(ct);
+        var users = await client.GetFromJsonAsync<List<KeycloakUser>>(
+            $"admin/realms/{Realm}/users?search={Uri.EscapeDataString(query)}"
+            + $"&enabled=true&briefRepresentation=true&max={max}", Json, ct) ?? [];
+
+        return
+        [
+            .. users
+                .Where(u => !string.IsNullOrEmpty(u.Id) && u.Enabled)
+                .Select(u => ToIdentityUser(u, []))
+        ];
+    }
+
     public async Task<IReadOnlyList<string>> ListAssignableRolesAsync(CancellationToken ct)
     {
         var client = await AuthorizedClientAsync(ct);

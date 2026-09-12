@@ -62,7 +62,12 @@ public static class UserAdminBffEndpoints
     // AuthorizationService へ透過中継する。要求本文（書き込み時）と Authorization を後段へ引き継ぎ、
     // 応答は status・content-type・本文をそのまま返す（検証 400・不在 404 を保つ）。
     // 応答本文は一括読み込みする（管理系の小さなペイロードを前提とする。AuthzBffEndpoints と同じ判断）。
-    private static async Task<IResult> Proxy(
+    //
+    // ★［2026-09-12 / #1445］**`internal` にした。** 共有先の利用者検索（`UserLookupBffEndpoints`）が
+    // 同じ後段（`AuthorizationService`）へ同じ形で中継するため、**中継の作法を 2 本持たない**
+    // （転送・502 縮退・本文の透過を写すと、片方だけが古くなる）。🔴 **認可は呼び出し側の群が
+    // 決める** —— このヘルパは認可を一切見ない（あちらは認証のみ、こちらは AdminOnly）。
+    internal static async Task<IResult> Proxy(
         IHttpClientFactory httpFactory, HttpContext http, HttpMethod method, string path, CancellationToken ct)
     {
         var client = httpFactory.CreateClient(ClientName);
