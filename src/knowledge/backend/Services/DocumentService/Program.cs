@@ -21,6 +21,7 @@ using DocumentService.Features.PrivateNotes.Create;
 using DocumentService.Features.PrivateNotes.Purge;
 using DocumentService.Features.SyncConflicts;
 using DocumentService.Features.SyncConflicts.Resolve;
+using DocumentService.Features.SyncHistory;
 using DocumentService.Features.SyncDevices;
 using DocumentService.Features.SyncDevices.Issue;
 using DocumentService.Features.SyncSettings;
@@ -295,6 +296,8 @@ app.MapSyncDeviceEndpoints();
 app.MapSyncSettingsEndpoints();
 // FR-20, SC-20 主要素 5, ADR-0037 決定 7, #1442: 同期競合（一覧・詳細・解決の 3 択）。
 app.MapSyncConflictEndpoints();
+// FR-20, SC-20 主要素 6, ADR-0037 決定 9, ADR-0099, #1446: 同期履歴（本人の監査ログを読む）。
+app.MapSyncHistoryEndpoints();
 // FR-20, ADR-0037: Obsidian プラグイン向け同期プロトコル（同期トークン認証）。
 app.MapObsidianSyncEndpoints();
 // FR-16, ADR-0024 §2: MCP ツール定義の自己申告（メッシュ内部限定。#1020）。

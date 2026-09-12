@@ -1,6 +1,8 @@
 using DocumentService.Features.PrivateNotes;
 using DocumentService.Infrastructure.Persistence;
 using FluentValidation;
+// #1446: 方向・結果・失敗理由の値集合は契約が持つ（後段と BFF と画面で同じ値を使う）。
+using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 
 namespace DocumentService.Features.ObsidianSync.Move;
@@ -36,42 +38,76 @@ internal static class MoveNoteEndpoint
             // が持つ。**先頭 1 件を、その鍵で返す**（移送前は最初のガード節でここから返っていた）。
             // 🔴 **この呼び出しは 401 の後ろ・`FindOwnedAsync`（404）の前**でなければならない。
             var gate = validator.Validate(req);
-            if (!gate.IsValid) return ValidationProblems.FirstViolation(gate);
+            if (!gate.IsValid)
+            {
+                // #1446, ADR-0099 決定 6: 失敗も履歴へ残す。**応答（400）は変えない。**
+                await SyncAuditRecorder.FailureAsync(db, audit, owner, device, SyncOps.Move,
+                    SyncFailureReasons.InvalidRequest, conflicted: 0, now, ct);
+                return ValidationProblems.FirstViolation(gate);
+            }
             var version = req.Version!.Value;
 
             // 所有者スコープ外・不在はいずれも 404（存在秘匿。403 を返すと他人の資料 ID の実在が漏れる）。
             var note = await ObsidianSyncEndpoints.FindOwnedAsync(db, owner, id, ct);
-            if (note is null) return Results.NotFound();
+            if (note is null)
+            {
+                await SyncAuditRecorder.FailureAsync(db, audit, owner, device, SyncOps.Move,
+                    SyncFailureReasons.NotFound, conflicted: 0, now, ct);
+                return Results.NotFound();
+            }
             if (note.IsDeleted)
+            {
+                await SyncAuditRecorder.FailureAsync(db, audit, owner, device, SyncOps.Move,
+                    SyncFailureReasons.Deleted, conflicted: 0, now, ct);
                 return Results.Conflict(new { error = "deleted", purgeAt = note.PurgeAt });
+            }
 
             var doc = await db.Documents.FindAsync([note.DocumentId], ct);
-            if (doc is null) return Results.NotFound();
+            if (doc is null)
+            {
+                await SyncAuditRecorder.FailureAsync(db, audit, owner, device, SyncOps.Move,
+                    SyncFailureReasons.NotFound, conflicted: 0, now, ct);
+                return Results.NotFound();
+            }
 
             if (version != doc.Version)
+            {
+                // 🔴 **競合台帳（`SyncConflict`）には入れない**（従前どおり。move は本文を運ばないので
+                // 2 ペイン差分の材料が無い）。同期履歴には `conflicted=1` の失敗として残る。
+                await SyncAuditRecorder.FailureAsync(db, audit, owner, device, SyncOps.Move,
+                    SyncFailureReasons.VersionConflict, conflicted: 1, now, ct);
                 return Results.Conflict(new
                 {
                     error = "version_conflict",
                     serverVersion = doc.Version,
                     serverUpdatedAt = doc.UpdatedAt,
                 });
+            }
 
             var target = req.VaultPath.Trim();
             if (note.VaultPath == target)
                 // 冪等（同じ名前への move は何も書かない。自分自身と衝突させない）。
+                // 🔴 **同期履歴へも残さない**（#1446）—— 何も動いていない（`updated=0`）ので、
+                // 残すと「0 件の同期」が履歴を埋める。ADR-0099 決定 5 の内訳は
+                // 「動いた件数」であり、動いていない操作は載せる対象ではない。
                 return Results.Ok(new MoveNoteResponse(note.DocumentId, note.VaultPath,
                     doc.Version, note.UpdatedAt));
 
             // パスの一意性は新規作成と**同じ関数**で判定する（数え方を 2 つ持たない。[[IADR-0360]] 決定 3）。
             if (await PrivateNoteEndpoints.ActivePathExistsAsync(db, owner, target, ct))
+            {
+                await SyncAuditRecorder.FailureAsync(db, audit, owner, device, SyncOps.Move,
+                    SyncFailureReasons.PathConflict, conflicted: 0, now, ct);
                 return PrivateNoteEndpoints.PathConflictProblem(target);
+            }
 
             note.MoveTo(target, now);
             device.TouchSync(now);
+            // ADR-0037 決定 9 / ADR-0099 決定 5 (#1446): 「誰が・いつ・何件」。
+            // **パス（＝実質的な題名）は書かない。** リネームの内訳は `updated=1` である。
+            SyncAuditRecorder.Success(db, audit, owner, device, SyncOps.Move,
+                added: 0, updated: 1, deleted: 0, now, extra: "count=1");
             await db.SaveChangesAsync(ct);
-
-            // ADR-0037 決定 9: 「誰が・いつ・何件」。パス（＝実質的な題名）は書かない。
-            audit.Record("private-note.sync.move", owner, "granted", $"device={device.Id} count=1");
             return Results.Ok(new MoveNoteResponse(note.DocumentId, note.VaultPath, doc.Version,
                 note.UpdatedAt));
         });

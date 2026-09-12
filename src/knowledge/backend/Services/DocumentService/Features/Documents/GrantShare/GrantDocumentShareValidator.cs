@@ -1,5 +1,6 @@
 using DocumentService.Domain;
 using FluentValidation;
+using Knowledge.Contracts.Dtos;
 
 namespace DocumentService.Features.Documents.GrantShare;
 

@@ -76,8 +76,11 @@ export function useNoteListView(all: PrivateNoteDto[]): NoteListView {
   // （`PrivateNoteDto.syncState` の注記）、削除済みタブで同期状態を絞ると「全件」か「0 件」に
   // しかならない。**列も絞りも利用中タブだけに置く**（公開範囲とタグは両タブで意味を持つ）。
   //
-  // 🔴 **指定先（共有相手）では絞れない。** 契約が指定先を運ばないためである
-  //（件数だけが載る。planning#618 の裁定待ち）。
+  // 🔴 **指定先（共有相手）では絞れない。** 一覧の応答が指定先を運ばないためである
+  // （`PrivateNoteDto` は 3 状態と件数だけを載せる）。指定先は資料 1 件ごとに別の口
+  // （`/bff/private-notes/{id}/shares`）を引くので、**絞り込みに使うと一覧の行数だけ
+  // 問い合わせが飛ぶ**。［2026-09-12 / #1445］相手の一覧・追加・取り消しは行操作から開く
+  // ダイアログ（`ShareTargetsDialog`）が持つようになったが、**絞り込みの軸は増やしていない。**
   const query = search.q.trim().toLowerCase();
   const { visibility, sync, tag } = search;
   const rows = useMemo(() => {

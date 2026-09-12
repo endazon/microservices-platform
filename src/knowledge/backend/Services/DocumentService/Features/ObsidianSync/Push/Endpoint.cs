@@ -5,6 +5,9 @@ using DocumentService.Features.Documents;
 using DocumentService.Features.PrivateNotes;
 using DocumentService.Infrastructure.Persistence;
 using FluentValidation;
+// #1446: 方向・結果・失敗理由の値集合は契約（`SyncDirections` / `SyncOutcomes` /
+// `SyncFailureReasons`）が持つ。**後段とBFFと画面で同じ値を使う**ので、ここへ写さない。
+using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
@@ -38,16 +41,28 @@ internal static class PushNoteEndpoint
             // 規則は `PushNoteValidator` が持つ。**先頭 1 件を、その鍵（`errors`）で返す。**
             // 🔴 **この呼び出しは 401 の後ろ・413 の前**でなければならない。
             var requiredGate = validator.Validate(req);
-            if (!requiredGate.IsValid) return ValidationProblems.FirstViolation(requiredGate);
+            if (!requiredGate.IsValid)
+            {
+                // #1446, ADR-0099 決定 6: 失敗も同期履歴へ残す。**応答は変えない**（400 のまま）。
+                await SyncAuditRecorder.FailureAsync(db, audit, owner, device, SyncOps.Push,
+                    SyncFailureReasons.InvalidRequest, conflicted: 0, now, ct);
+                return ValidationProblems.FirstViolation(requiredGate);
+            }
 
             // FR-21 と同じ上限（1 MB / 413）。同期経路だけ上限が違うと
             // 「Obsidian では書けるが KB に入らない」資料ができる（[[IADR-0270]] 決定 7）。
             if (req.Edits.Any(e => DocumentBodyIntake.ExceedsLimit(e.Content!)))
+            {
+                // #1446: 失敗の記録。🔴 **応答の状態・本文は 1 バイトも変えない**
+                // （`ObsidianSyncProtocolTests` / `SyncValidationProblemContractTests` が固定する）。
+                await SyncAuditRecorder.FailureAsync(db, audit, owner, device, SyncOps.Push,
+                    SyncFailureReasons.BodyTooLarge, conflicted: 0, now, ct);
                 return Results.Problem(
                     title: "本文が上限を超えています。",
                     detail: $"本文の上限は {DocumentBodyIntake.MaxBytes} バイト（UTF-8）です。"
                           + "上限を超える本文は切り詰めずに拒否します。",
                     statusCode: StatusCodes.Status413PayloadTooLarge);
+            }
 
             var lastContent = req.Edits[^1].Content!;
             var lastBytes = (long)Encoding.UTF8.GetByteCount(lastContent);
@@ -60,11 +75,19 @@ internal static class PushNoteEndpoint
                 var used = await PrivateNoteUsage.UsedBytesAsync(db, owner, ct);
                 var quota = await PrivateNoteUsage.GetOrCreateQuotaAsync(db, owner, now, ct);
                 if (quota.RejectsNewNote(used, lastBytes))
+                {
+                    await SyncAuditRecorder.FailureAsync(db, audit, owner, device, SyncOps.Push,
+                        SyncFailureReasons.QuotaExceeded, conflicted: 0, now, ct);
                     return PrivateNoteEndpoints.QuotaExceededProblem(used, quota.LimitBytes);
+                }
 
                 if (await PrivateNoteEndpoints.ActivePathExistsAsync(db, owner,
                         req.VaultPath.Trim(), ct))
+                {
+                    await SyncAuditRecorder.FailureAsync(db, audit, owner, device, SyncOps.Push,
+                        SyncFailureReasons.PathConflict, conflicted: 0, now, ct);
                     return PrivateNoteEndpoints.PathConflictProblem(req.VaultPath.Trim());
+                }
 
                 var id = Guid.NewGuid();
                 // ADR-0037 フォローアップ 8: プラグイン流入は画面バリデーションを経由しないため、
@@ -83,15 +106,20 @@ internal static class PushNoteEndpoint
                     lastHash, now);
                 db.PrivateNotes.Add(note);
                 device.TouchSync(now);
+                // ADR-0037 決定 9 / ADR-0099 決定 1・5 (#1446): 監査は「誰が・いつ・何件」。
+                // タイトル・内容・Vault パスは記録しない。**行と構造化ログの両方をここで出す**
+                // （`SyncAuditRecorder`）。新規作成は `added=1` である。
+                // 🔴 行は資料の Add と**同じ** `SaveChangesAsync` で確定させる（IADR-0446 決定 3。
+                // 成功したのに履歴が無い／履歴が在るのに資料が無い、のどちらも起こさない）。
+                SyncAuditRecorder.Success(db, audit, owner, device, SyncOps.Push,
+                    added: 1, updated: 0, deleted: 0, now,
+                    extra: $"count=1 versions={req.Edits.Count}");
                 await db.SaveChangesAsync(ct);
                 await PrivateNoteUsage.RecordUsageAndWarnAsync(db, notifier, owner, now, ct);
                 await db.SaveChangesAsync(ct);
 
-                // ADR-0037 決定 9: 監査は「誰が・いつ・何件」。タイトル・内容は記録しない。
                 await PublishIfExposedAsync(bus, db, doc, ct);
 
-                audit.Record("private-note.sync.push", owner, "granted",
-                    $"device={device.Id} count=1 versions={req.Edits.Count}");
                 return Results.Created($"/private-notes/sync/notes/{id}",
                     new PushNoteResponse(id, doc.Version, lastHash, lastBytes));
             }
@@ -99,12 +127,26 @@ internal static class PushNoteEndpoint
             {
                 // ── 既存資料の更新 ──
                 var note = await ObsidianSyncEndpoints.FindOwnedAsync(db, owner, req.NoteId.Value, ct);
-                if (note is null) return Results.NotFound();
+                if (note is null)
+                {
+                    await SyncAuditRecorder.FailureAsync(db, audit, owner, device, SyncOps.Push,
+                        SyncFailureReasons.NotFound, conflicted: 0, now, ct);
+                    return Results.NotFound();
+                }
                 if (note.IsDeleted)
+                {
+                    await SyncAuditRecorder.FailureAsync(db, audit, owner, device, SyncOps.Push,
+                        SyncFailureReasons.Deleted, conflicted: 0, now, ct);
                     return Results.Conflict(new { error = "deleted", purgeAt = note.PurgeAt });
+                }
 
                 var doc = await db.Documents.FindAsync([note.DocumentId], ct);
-                if (doc is null) return Results.NotFound();
+                if (doc is null)
+                {
+                    await SyncAuditRecorder.FailureAsync(db, audit, owner, device, SyncOps.Push,
+                        SyncFailureReasons.NotFound, conflicted: 0, now, ct);
+                    return Results.NotFound();
+                }
 
                 // ADR-0037 決定 7: 競合はサーバで解決しない。クライアントが最後に見た版
                 // （baseVersion）と現在版の不一致を 409 で返し、選択は利用者に委ねる。
@@ -119,7 +161,11 @@ internal static class PushNoteEndpoint
                 var baseVersionGate = validator.Validate(req,
                     o => o.IncludeRuleSets(PushNoteValidator.BaseVersionRuleSet));
                 if (!baseVersionGate.IsValid)
+                {
+                    await SyncAuditRecorder.FailureAsync(db, audit, owner, device, SyncOps.Push,
+                        SyncFailureReasons.InvalidRequest, conflicted: 0, now, ct);
                     return ValidationProblems.FirstViolation(baseVersionGate);
+                }
                 var baseVersion = req.BaseVersion!.Value;
 
                 if (baseVersion != doc.Version)
@@ -129,6 +175,11 @@ internal static class PushNoteEndpoint
                     // プラグインは従来どおり自分で解決でき、通れば下の成功分岐が競合を閉じる。
                     await SyncConflictRecorder.RecordAsync(db, storage, audit, owner, device.Id,
                         doc, baseVersion, lastContent, now, ct);
+                    // #1446, ADR-0099 決定 6: 🔴 **競合の記録（`SyncConflict`）と同期履歴の失敗
+                    // （`SyncAuditEntry`）は別の行である。** 前者は「利用者が解決すべき競合」、
+                    // 後者は「この同期は失敗した」という履歴であり、片方で他方を代用できない。
+                    await SyncAuditRecorder.FailureAsync(db, audit, owner, device, SyncOps.Push,
+                        SyncFailureReasons.VersionConflict, conflicted: 1, now, ct);
                     return Results.Conflict(new
                     {
                         error = "version_conflict",
@@ -142,6 +193,11 @@ internal static class PushNoteEndpoint
                 await ApplyEditsAsync(doc, req, storage, skipFirst: false, ct);
                 note.RecordBody(lastBytes, lastHash, now);
                 device.TouchSync(now);
+                // ADR-0037 決定 9 / ADR-0099 決定 1・5 (#1446): 更新は `updated=1`。行は資料の版と
+                // **同じ** `SaveChangesAsync` で確定させる（IADR-0446 決定 3）。
+                SyncAuditRecorder.Success(db, audit, owner, device, SyncOps.Push,
+                    added: 0, updated: 1, deleted: 0, now,
+                    extra: $"count=1 versions={req.Edits.Count}");
                 await db.SaveChangesAsync(ct);
                 // #1442, ADR-0037 決定 7: 正しい `baseVersion` で書けた＝**プラグイン側で解決済み**。
                 // 未解決のまま残っている競合を `client` で閉じる（利用者が選んだわけではないので
@@ -152,8 +208,6 @@ internal static class PushNoteEndpoint
 
                 await PublishIfExposedAsync(bus, db, doc, ct);
 
-                audit.Record("private-note.sync.push", owner, "granted",
-                    $"device={device.Id} count=1 versions={req.Edits.Count}");
                 return Results.Ok(new PushNoteResponse(doc.Id, doc.Version, lastHash, lastBytes));
             }
         });

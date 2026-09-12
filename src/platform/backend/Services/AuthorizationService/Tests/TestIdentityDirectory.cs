@@ -81,6 +81,10 @@ public sealed class TestIdentityDirectory
         }
 
         public Task<IReadOnlyList<IdentityUser>> ListUsersAsync(CancellationToken ct) => inner.ListUsersAsync(ct);
+        // FR-19, SC-19 主要素 3, [[IADR-0445]] (#1445): 共有先の候補の検索も**素通しする**
+        // （SC-19 の試験は本物の偽物が持つ名簿を見る。`FindByUsernameAsync` だけが操作される）。
+        public Task<IReadOnlyList<IdentityUser>> SearchUsersAsync(string query, int max, CancellationToken ct)
+            => inner.SearchUsersAsync(query, max, ct);
         public Task<IReadOnlyList<string>> ListAssignableRolesAsync(CancellationToken ct) => inner.ListAssignableRolesAsync(ct);
         public Task<IdentityUser?> ReplaceAttributesAsync(
             string userId, IReadOnlyDictionary<string, string> attributes, CancellationToken ct)

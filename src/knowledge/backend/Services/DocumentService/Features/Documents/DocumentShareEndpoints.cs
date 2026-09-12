@@ -45,6 +45,7 @@ public static class DocumentShareEndpoints
     }
 }
 
-// FR-20: 共有先 1 件の公開形。一覧と付与の両方が返すため集約直下に置く。
-public record DocumentShareDto(string SubjectType, string SubjectId, string GrantedBy,
-    DateTimeOffset CreatedAt);
+// FR-19, SC-19 主要素 3, ADR-0098 決定 1, #1445: 🔴 **応答・要求の形はここに無い。**
+// `Knowledge.Contracts/Dtos/PrivateNoteShareDto.cs`（`DocumentShareDto` / `CreateShareRequest`）が持つ
+// —— **BFF（別ユニット）が同じ形を画面へ配るため、定義を 2 つ持たない**（個人資料・タグ辞書と同じ
+// 切り分け。写しを置くと契約検査が片方しか見ず、静かに割れる）。**名前も項目も変えずに移した。**

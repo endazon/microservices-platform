@@ -79,6 +79,28 @@ public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
             .FirstOrDefault(u => string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase))
             ?.ToIdentityUser());
 
+    // FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1, [[IADR-0445]] (#1445): 共有先の候補。
+    // 🔴 **本物（Keycloak の `search=`）と同じ意味論にする** —— 利用者名・表示名の部分一致
+    // （大小文字無視）・**有効な利用者だけ**・表示名順・`max` 件。ここだけ素朴に作ると、
+    // 偽物で緑になる試験が本物では別の答えを返す（`FindByUsernameAsync` と同じ注記）。
+    public Task<IReadOnlyList<IdentityUser>> SearchUsersAsync(
+        string query, int max, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(query) || max < 1)
+            return Task.FromResult<IReadOnlyList<IdentityUser>>([]);
+
+        return Task.FromResult<IReadOnlyList<IdentityUser>>(
+        [
+            .. _users.Values
+                .Where(u => u.Enabled)
+                .Where(u => u.Username.Contains(query, StringComparison.OrdinalIgnoreCase)
+                         || u.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(u => u.DisplayName, StringComparer.Ordinal)
+                .Take(max)
+                .Select(u => u.ToIdentityUser())
+        ]);
+    }
+
     public Task<IReadOnlyList<string>> ListAssignableRolesAsync(CancellationToken ct)
         => Task.FromResult<IReadOnlyList<string>>([.. AssignableRoles]);
 

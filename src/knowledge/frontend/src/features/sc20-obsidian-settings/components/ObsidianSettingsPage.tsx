@@ -29,6 +29,7 @@ import { deviceView } from '../types/deviceState';
 import type { DeviceState } from '../types/deviceState';
 import { SyncTargetFoldersPanel } from './SyncTargetFoldersPanel';
 import { SyncConflictsPanel } from './SyncConflictsPanel';
+import { SyncHistoryPanel } from './SyncHistoryPanel';
 
 // SC-20, UC-11, FR-20: Obsidian 連携設定（05_screens: ルート /my/obsidian）。
 //
@@ -46,9 +47,9 @@ import { SyncConflictsPanel } from './SyncConflictsPanel';
 //   （`SyncTargetFoldersPanel`）。計画が「フォルダ指定 UI のすぐ隣」と定めているためで、
 //   区画が出来たいま画面上部から移した。**残る 2 段落（同期の範囲・削除の扱い）は上部のまま**である。
 //
-// ■ 🔴 **同期履歴は依然として描かない。** 引く口が無く、**N 件・保持期間が未確定**だからである
-//   （05_screens §SC-20 主要素 6。planning#618 の裁定待ち）。件数と期間を画面が勝手に決めると、
-//   裁定後に「画面に出ている履歴の長さ」と「実際に保持している長さ」が食い違う。
+// ■ 同期履歴は主要素 6 として描く（ADR-0099）。**供給元は既存の同期監査ログ**であり、専用の
+//   履歴ストアは無い（同 決定 1）。**件数（直近 50 件）も保持期間（3 年）も計画が定めた値**であり、
+//   画面が決めない（決定 3・4）。🔴 **行にタイトルとパスは出さない**（決定 5。契約にも項目が無い）。
 
 /** 確認ダイアログの種別。開いていないときは `null`。 */
 type Confirmation = { kind: 'revoke'; device: SyncDeviceDto } | { kind: 'revokeAll' } | null;
@@ -334,6 +335,12 @@ export function ObsidianSettingsPage() {
 
       {/* 主要素 5: 競合の一覧・2 ペイン差分・3 択（自動解決は置かない）。 */}
       <SyncConflictsPanel />
+
+      {/*
+        主要素 6: 同期履歴（ADR-0099）。**競合の区画の下に置く** —— 履歴の失敗理由
+        「競合を記録しました。上の「同期の競合」から解決してください。」が**上**を指すためである。
+      */}
+      <SyncHistoryPanel />
 
       {/* 露出設定は資料単位で個人資料管理画面が持つ（作業仕様書 §計画との差異 を参照）。 */}
       <Note>

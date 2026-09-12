@@ -1,6 +1,8 @@
 using AwesomeAssertions;
 using DocumentService.Domain;
 using DocumentService.Features.Documents.GrantShare;
+// #1445: 要求の形は契約（Knowledge.Contracts）へ移った。検証器だけが本リポの Features に残る。
+using Knowledge.Contracts.Dtos;
 
 namespace DocumentService.Tests.Features.Documents.GrantShare;
 

@@ -90,11 +90,20 @@ const CONFLICT_DETAIL = {
   serverContent: 'サーバに保存されている本文',
 };
 
+// #1446: 同期履歴（主要素 6）。**本ファイルの既定は 0 件**である —— 履歴の行の描画は
+// `SyncHistoryPanel.test.tsx` が固定しており、こちらへ行を足すと端末名の正規表現で行を引く
+// 既存のテスト（`deviceRow()`）が 2 つの表に当たる。
 function respond({
   devices = ALL_DEVICES as unknown[],
   folders = FOLDERS as unknown[],
   conflicts = [CONFLICT_SUMMARY] as unknown[],
-}: { devices?: unknown[]; folders?: unknown[]; conflicts?: unknown[] } = {}) {
+  history = [] as unknown[],
+}: {
+  devices?: unknown[];
+  folders?: unknown[];
+  conflicts?: unknown[];
+  history?: unknown[];
+} = {}) {
   // apiRequest が受けるパスは /bff 接頭辞を**除いた**形である（bffFetch が付け直す）。
   mocks.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
     const method = init?.method ?? 'GET';
@@ -110,6 +119,7 @@ function respond({
       );
     }
     if (path === '/private-notes/conflicts') return Promise.resolve(jsonResponse(conflicts));
+    if (path === '/private-notes/sync-history') return Promise.resolve(jsonResponse(history));
     if (path.endsWith('/resolve')) {
       return Promise.resolve(
         jsonResponse({

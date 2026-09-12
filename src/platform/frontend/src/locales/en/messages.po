@@ -14,6 +14,7 @@ msgstr ""
 
 #: knowledge/frontend/src/features/sc11-config/types/driftView.ts
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
 msgid "—"
 msgstr "—"
 
@@ -28,6 +29,10 @@ msgstr "(2) Difference from the declaration (Git) — drift"
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "(3) 構成バージョン履歴（新しい順）"
 msgstr "(3) Configuration version history (newest first)"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "（不明な利用者）"
+msgstr "(unknown user)"
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
@@ -51,6 +56,10 @@ msgstr "({shownCount} shown)"
 #: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "{count} 件で絞り込み中"
 msgstr "Narrowed by {count}"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "{displayName}（無効化済み）"
+msgstr "{displayName} (deactivated)"
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "{effectiveMinCount} 件以上検索された語のみを表示します。"
@@ -95,6 +104,10 @@ msgstr "{totalHits} result(s) (only documents you may access)"
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "「{editingName}」のアカウントを無効化します。その利用者の全セッションが即座に失効し、作業中の画面もその場で使えなくなります。"
 msgstr "This disables the account of “{editingName}”. All of that user's sessions expire immediately, and any screen they are working on stops working at once."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "「{noteTitle}」の共有先"
+msgstr "Share targets for “{noteTitle}”"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "「{revokeTargetName}」のトークンを無効にします。この端末からの同期はすぐに停止します。再び同期するには、トークンを再発行してプラグインへ入れ直してください。"
@@ -151,6 +164,10 @@ msgstr "👍 {up} / 👎 {down}"
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "👤 個人資料（自分のみ）"
 msgstr "👤 Private note (only you)"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "2 文字以上入力すると候補が出ます。"
+msgstr "Enter at least 2 characters to see suggestions."
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "90 日待てば自動的に完全削除されます。急がなければ、この操作は必要ありません。"
@@ -309,6 +326,10 @@ msgstr "MCP"
 msgid "Mermaid {coded}図"
 msgstr "Mermaid, {coded} diagram(s)"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "Obsidian プラグインから同期すると、ここに結果が並びます。"
+msgstr "Once you sync from the Obsidian plugin, the results appear here."
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "Obsidian 側で削除した資料は、サーバ上では削除済みとして 90 日間保管され、その間は復元できます。90 日を過ぎると自動的に完全削除され、復元できなくなります。削除済み資料がある場合は週に一度お知らせし、完全削除の 7 日前にも改めてお知らせします。"
 msgstr "Notes you delete in Obsidian are kept on the server as deleted for 90 days and can be restored during that period. After 90 days they are permanently deleted automatically and can no longer be restored. We notify you weekly while deleted notes exist, and again 7 days before permanent deletion."
@@ -430,6 +451,7 @@ msgstr "Right now every one of your private notes is synchronised. To synchronis
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
@@ -622,6 +644,10 @@ msgstr "Revoke this device?"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "この端末を失効する"
 msgstr "Revoke this device"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "この資料にはグループへの共有が {groupCount} 件あります。本画面では変更できません。"
+msgstr "This note has {groupCount} group share(s), which cannot be changed on this screen."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 msgid "この辺の型は {inUseCount} 本の辺で使われているため削除できません。"
@@ -1434,6 +1460,10 @@ msgstr "Storage usage has reached {threshold}% of your limit"
 msgid "保存容量の上限"
 msgstr "Storage limit"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
+msgid "保存容量の上限に達しています。資料を削除して容量を空けてください。"
+msgstr "You have reached your storage limit. Delete some notes to free up space."
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
 msgid "保存容量の上限に達しました。新しい資料は作成できませんが、編集中の資料は保存できます。 容量を空けるには、削除済み一覧から「完全に削除（即時）」を実行してください（通常の削除では容量は空きません）。 管理者へ上限の引き上げを依頼することもできます。"
 msgstr "You have reached the storage limit. You cannot create new notes, but you can still save the notes you are editing. To free up storage, run \"Delete permanently (immediate)\" from the deleted list (ordinary deletion does not free up storage). You can also ask an administrator to raise the limit."
@@ -1457,6 +1487,10 @@ msgstr "The retention range is decided by GitOps (Git and ArgoCD). See the Git h
 #: platform/frontend/src/app/routing/nav.ts
 msgid "個人"
 msgstr "Personal"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "個人への共有はありません。"
+msgstr "This note is not shared with any individual."
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人指定"
@@ -1619,6 +1653,30 @@ msgstr "The published scope is defined by the publication configuration in Git. 
 msgid "公開範囲を判定できません"
 msgstr "Visibility cannot be determined"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "共有した相手はこの資料を閲覧できます。共有された相手が、さらに別の人へ共有することはできません。"
+msgstr "People you share with can view this note. They cannot re-share it with anyone else."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "共有先を取得できませんでした。"
+msgstr "Could not load the share targets."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "共有先を変更する"
+msgstr "Change share targets"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "共有先を変更できませんでした。時間をおいて再度お試しください。"
+msgstr "Could not change the share targets. Please wait a moment and try again."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "共有先を読み込み中…"
+msgstr "Loading share targets…"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "内訳"
+msgstr "Breakdown"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "円 = 組織文書"
 msgstr "Circle = organization document"
@@ -1774,6 +1832,10 @@ msgstr "List of user accounts"
 msgid "利用者のロール割当・ABAC 属性割当・アカウントの無効化を行います。アカウントは人事システム 連携で自動的に作成・更新され、この画面からは作成できません。退職者は連携により自動で 無効化され、全セッションが失効します。"
 msgstr "Assign roles and ABAC attributes to users and disable accounts. Accounts are created and updated automatically through the HR system integration and cannot be created from this screen. Leavers are disabled automatically by that integration and all their sessions are revoked."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "利用者の候補"
+msgstr "Matching users"
+
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "利用者の属性で解決"
 msgstr "Resolved from the user's attributes"
@@ -1781,6 +1843,18 @@ msgstr "Resolved from the user's attributes"
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "利用者はまだ登録されていません。"
 msgstr "No users are registered yet."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "利用者を検索できませんでした。"
+msgstr "Could not search for users."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "利用者を検索中…"
+msgstr "Searching users…"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "利用者を追加"
+msgstr "Add a user"
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "利用者一覧を取得できませんでした。"
@@ -1795,6 +1869,10 @@ msgstr "Could not load the user list."
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "削除"
 msgstr "Delete"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "削除 {count}"
+msgstr "Deleted {count}"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "削除した資料は 90 日間ここに残ります。"
@@ -1832,6 +1910,10 @@ msgstr "There are no deleted private notes."
 msgid "削除済みの個人資料を確認する"
 msgstr "Review deleted private notes"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
+msgid "削除済みの資料です。削除済みタブから復元するか、Obsidian 側のファイルを削除してください。"
+msgstr "This note is in the trash. Restore it from the Deleted tab, or delete the file in Obsidian."
+
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "却下"
 msgstr "Reject"
@@ -1859,6 +1941,7 @@ msgid "取り扱い"
 msgstr "Handling"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "取り消す"
 msgstr "Cancel"
 
@@ -1874,9 +1957,17 @@ msgstr "Could not load the data."
 msgid "取消"
 msgstr "Cancel"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
+msgid "受信"
+msgstr "Received"
+
 #: knowledge/frontend/src/features/sc11-config/types/driftView.ts
 msgid "古い段の残留"
 msgstr "Stale stage left running"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
+msgid "同じパスの資料が既にあります。Obsidian 側でファイル名を変えてください。"
+msgstr "A note with the same path already exists. Rename the file in Obsidian."
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "同じ資料が端末とサーバの両方で編集されたときに競合として記録されます。どちらを採るかは、両方の本文を見てあなたが選びます。"
@@ -1898,6 +1989,10 @@ msgstr "Only the private notes you created are synced. Other users' notes and or
 msgid "同期トークン {count} 件が {deadline} に期限切れになります（7 日前の通知）"
 msgstr "{count} sync token(s) will expire on {deadline} (7-day notice)"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
+msgid "同期に失敗しました（理由: {code}）"
+msgstr "The sync failed (reason: {code})."
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "同期の競合"
 msgstr "Sync conflicts"
@@ -1913,6 +2008,10 @@ msgstr "Loading the sync conflicts…"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "同期の範囲"
 msgstr "What is synced"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "同期の記録はまだありません。"
+msgstr "There are no sync records yet."
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "同期は全ソース共通の間隔で実行します。ソースごとに時刻を設定することはできません。"
@@ -1950,6 +2049,18 @@ msgstr "Loading the synchronised folders…"
 msgid "同期対象範囲"
 msgstr "Sync scope"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "同期履歴"
+msgstr "Sync history"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "同期履歴を取得できませんでした。"
+msgstr "Could not load the sync history."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "同期履歴を読み込み中…"
+msgstr "Loading sync history…"
+
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
 msgid "同期済み"
 msgstr "Synchronised"
@@ -1978,6 +2089,10 @@ msgstr "Name"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "名前（必須）"
 msgstr "Name (required)"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "名前で検索する"
+msgstr "Search by name"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "呼び出し監査ログ"
@@ -2091,8 +2206,13 @@ msgid "失効済み"
 msgstr "Revoked"
 
 #: knowledge/frontend/src/features/sc07-conversions/types/jobStatus.ts
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
 msgid "失敗"
 msgstr "Failed"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "失敗理由"
+msgstr "Failure reason"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "孤立文書（表示中の辺なし）"
@@ -2107,6 +2227,7 @@ msgstr "Isolated document (no displayed edges)"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "完了"
 msgstr "Done"
@@ -2122,6 +2243,10 @@ msgstr "Until permanent deletion"
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "実効構成"
 msgstr "Effective configuration"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "実行日時"
+msgstr "Time"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "実装"
@@ -2315,6 +2440,7 @@ msgstr "Info"
 msgid "意味"
 msgstr "Semantic"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
 #: platform/frontend/src/components/ui/notifications.tsx
 msgid "成功"
 msgstr "Success"
@@ -2354,6 +2480,14 @@ msgstr "The starting document cannot be shown. Whether it does not exist or you 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "指定しない"
 msgstr "Not specified"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "指定先を取り消しました。"
+msgstr "The share target was revoked."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "指定先を追加しました。"
+msgstr "The share target was added."
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "探索深さ（hops）"
@@ -2564,6 +2698,7 @@ msgid "新規登録"
 msgstr "New document"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
 msgid "方向"
 msgstr "Direction"
 
@@ -2624,6 +2759,10 @@ msgstr "Could not mark as read"
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "日付"
 msgstr "Date"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "更新 {count}"
+msgstr "Updated {count}"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 msgid "更新する"
@@ -2723,6 +2862,10 @@ msgstr "Not set (the reserved value {UNRESOLVED_DEPARTMENT} is used)"
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "本文"
 msgstr "Body"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
+msgid "本文が上限（1 MB）を超えています。分割してください。"
+msgstr "The body exceeds the 1 MB limit. Split the note into smaller ones."
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
@@ -3095,6 +3238,10 @@ msgstr "Filter by status"
 msgid "状態や種類の絞り込みを変えると、ほかの提案が見つかることがあります。"
 msgstr "Changing the state or kind filter may reveal other suggestions."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "現在の指定先"
+msgstr "Current share targets"
+
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 msgid "画像を読み込み中…"
 msgstr "Loading image…"
@@ -3159,6 +3306,14 @@ msgstr "No audit log destination is configured. Permission changes and account d
 msgid "直近 {d} 日"
 msgstr "Last {d} days"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "直近 50 件を表示します。記録は 3 年間保持されます。資料の名前は履歴に残しません。"
+msgstr "The 50 most recent records are shown. Records are kept for 3 years. Note names are never stored in the history."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "直近の同期履歴"
+msgstr "Recent sync history"
+
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "省略時は分析内容を流用します"
 msgstr "Left blank, the analysis request itself is used"
@@ -3205,12 +3360,17 @@ msgid "種類"
 msgstr "Kind"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
 msgid "端末"
 msgstr "Device"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "端末: {issuedDeviceName} ／ 有効期限: {issuedExpiresAt}"
 msgstr "Device: {issuedDeviceName} / Expires: {issuedExpiresAt}"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "端末ごとの同期の結果です。失敗した同期も記録されます。あなた自身の記録だけが表示されます。"
+msgstr "Sync results per device. Failed syncs are recorded too. Only your own records are shown."
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "端末とサーバで同じ資料が別々に編集されると、ここに現れます。"
@@ -3235,6 +3395,10 @@ msgstr "Device name (optional)"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "端末名を入力してトークンを発行し、Obsidian プラグインの設定へ貼り付けてください。トークンの有効期限は 30 日です。期限が切れたら、この画面から手動で再発行して入れ直してください（自動更新は行いません）。"
 msgstr "Enter a device name, issue a token, and paste it into your Obsidian plugin settings. Tokens are valid for 30 days. When a token expires, reissue it manually from this screen and paste it in again (tokens are never refreshed automatically)."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "競合 {count}"
+msgstr "Conflicts {count}"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "競合あり"
@@ -3264,6 +3428,10 @@ msgstr "There are no conflicts."
 msgid "競合を解決できませんでした。時間をおいて再度お試しください。"
 msgstr "The conflict could not be resolved. Please wait a moment and try again."
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
+msgid "競合を記録しました。上の「同期の競合」から解決してください。"
+msgstr "A conflict was recorded. Resolve it under “Sync conflicts” above."
+
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 #: platform/frontend/src/app/routing/nav.ts
 msgid "管理"
@@ -3292,6 +3460,7 @@ msgid "組織文書と個人資料はアイコン＋ラベルで区別する（�
 msgstr "Organisational documents and personal materials are distinguished by icon and label (never by colour alone)."
 
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
 msgid "結果"
 msgstr "Result"
 
@@ -3393,6 +3562,10 @@ msgstr "Original image of the diagram being corrected"
 msgid "要求が失敗しました（{status}）。"
 msgstr "The request failed ({status})."
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
+msgid "要求の形式が不正です。プラグインを最新にしてください。"
+msgstr "The request was malformed. Update the plugin to the latest version."
+
 #: platform/frontend/src/components/ui/NotFound.tsx
 msgid "見つかりませんでした"
 msgstr "Not found"
@@ -3432,6 +3605,10 @@ msgstr "No pages matched."
 #: platform/frontend/src/components/ui/QueryState.tsx
 msgid "該当するものはありません。"
 msgstr "Nothing to show."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+msgid "該当する利用者がいません。"
+msgstr "No matching users."
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "該当する利用者はいません。"
@@ -3476,6 +3653,10 @@ msgstr "Loading…"
 #: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
 msgid "警告"
 msgstr "Warning"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
+msgid "資料が見つかりません。Obsidian 側で再同期してください。"
+msgstr "The note was not found. Re-sync from Obsidian."
 
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "質問"
@@ -3569,8 +3750,13 @@ msgstr "The edge type dictionary could not be loaded."
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "追加"
 msgstr "Add"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "追加 {count}"
+msgstr "Added {count}"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "追加する"
@@ -3581,6 +3767,7 @@ msgid "追加するフォルダのパス"
 msgstr "Path of the folder to add"
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "送信"
 msgstr "Send"
@@ -3717,6 +3904,7 @@ msgstr "Important"
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "閉じる"
 msgstr "Close"
 

@@ -317,6 +317,14 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public static readonly Guid OtherOwnerConflictId = Guid.Parse("c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1");
     // 発行応答にだけ現れる平文トークン（一覧に載らないことを測る）。
     public const string StubSyncTokenPlaintext = "sync-token-plaintext-once";
+    // #1445, SC-19 主要素 3: 共有台帳の 1 行（**画面には表示名を出し、この識別子は出さない**）。
+    public const string StubShareSubjectId = "bob";
+    // 取り消しの後段パスの観測点（鍵が経路へ正しく載ることを測る）。
+    public string? LastShareRevokePath { get; set; }
+    // #1446, SC-20 主要素 6: 同期履歴の 1 行と、後段へ渡ったパス＋クエリの観測点
+    // （**表示件数が前段で固定されている**ことを測る）。
+    public static readonly Guid StubSyncHistoryId = Guid.Parse("a0a0a0a0-a0a0-a0a0-a0a0-a0a0a0a0a0a0");
+    public string? LastSyncHistoryPath { get; set; }
     // BFF が後段へ渡した Authorization の観測点。**テスト間で共有される**（IClassFixture）ため、
     // 観測する側が呼ぶ前に null へ戻すこと。
     public string? LastPrivateNoteForwardedAuthorization { get; set; }
@@ -389,6 +397,14 @@ public class BffTestFactory : WebApplicationFactory<Program>
             new Dictionary<string, string> { ["department"] = "hr", ["clearance"] = "public" }),
     ];
     public List<string> StubAssignableRoles { get; set; } = ["platform-admin", "platform-operator"];
+
+    // FR-19, SC-19 主要素 3, #1445: 共有先の候補・表示名（**3 項目だけ**。ロール・属性・内部 ID を
+    // 運ばない型である）。**無効化済み（退職者）を 1 人含める** —— resolve が返すことを測る。
+    public List<UserSummaryDto> StubUserSummaries { get; set; } =
+    [
+        new("tanaka.taro", "田中 太郎", true),
+        new("takahashi.jiro", "高橋 次郎", false),
+    ];
 
     internal void RecordUserAdmin(string? path, string method, string? body, string? authorization)
     {
@@ -755,6 +771,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
 
                 if (owner.UserAdminStatusCode != HttpStatusCode.OK)
                     return Json(owner.UserAdminStatusCode, new { errors = new[] { "invalid" } });
+                // FR-19, SC-19 主要素 3, #1445: 共有先の利用者検索・表示名の引き当て
+                // （**認証のみ・ロール不問**の別の口。管理面と同じ named client なのでここで振り分ける）。
+                if (path == "/authz/users/lookup" || path == "/authz/users/resolve")
+                    return Json(HttpStatusCode.OK, owner.StubUserSummaries);
                 if (path == "/authz/users/assignable-roles")
                     return Json(HttpStatusCode.OK, owner.StubAssignableRoles);
                 if (path == "/authz/users")
@@ -839,6 +859,11 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // 吸われると、所有者スコープも 401 も測れなくなる。
             if (path.StartsWith("/private-notes", StringComparison.Ordinal))
                 return PrivateNotes(owner, request, path, method, cancellationToken);
+
+            // FR-19, SC-19 主要素 3, #1445: 公開範囲の指定先（共有台帳）。**同じ理由で先に置く**
+            // —— `/documents/{id}/shares` は末尾の総称分岐（GET → StubDocument）に吸われる。
+            if (path.Contains("/shares", StringComparison.Ordinal))
+                return DocumentShares(owner, request, path, method);
 
             // FR-09, SC-05, SC-09, #634: タグ辞書（IADR-0152）。
             // BFF は管理者・運用者のときだけここを呼ぶ。**呼ばれたこと自体を観測する**
@@ -930,6 +955,57 @@ public class BffTestFactory : WebApplicationFactory<Program>
             if (method == HttpMethod.Delete)
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
             return Ok(owner.StubDocument);
+        }
+
+        // FR-19, SC-19 主要素 3, ADR-0098 決定 1・2, #1445: 共有台帳の後段（DocumentService の
+        // `/documents/{id}/shares*`）を**実体と同じ判定の形**で再現する。
+        //   ① 主体はトークンからしか採らない（転送が無ければ 401）
+        //   ② 変更できるのは所有者だけ
+        //   ③ 他人の資料・不在の共有はいずれも **404**（403 にすると資料 ID の実在が漏れる）
+        private static Task<HttpResponseMessage> DocumentShares(
+            BffTestFactory owner, HttpRequestMessage request, string path, HttpMethod method)
+        {
+            var auth = request.Headers.Authorization?.ToString();
+            // 🔴 **同じ観測点を使う**（画面から見れば個人資料の行操作であり、転送が切れたことを
+            // 1 か所で測りたい）。
+            owner.LastPrivateNoteForwardedAuthorization = auth;
+
+            var subject = auth is not null
+                && auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                    ? auth["Bearer ".Length..].Trim()
+                    : null;
+            if (string.IsNullOrEmpty(subject))
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized));
+
+            var segments = path.Trim('/').Split('/');   // documents/{id}/shares[/{type}/{id}]
+            if (segments.Length < 3 || !Guid.TryParse(segments[1], out var documentId))
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+
+            var docOwner = documentId == StubPrivateNoteId ? NoteOwner
+                : documentId == OtherOwnerNoteId ? OtherNoteOwner
+                : null;
+            if (docOwner != subject)
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+
+            var now = DateTimeOffset.UtcNow;
+            if (method == HttpMethod.Post)
+                return Json(HttpStatusCode.Created,
+                    new DocumentShareDto(ShareSubjectTypes.User, StubShareSubjectId, subject, now));
+            if (method == HttpMethod.Delete)
+            {
+                // 取り消しは経路の鍵（`{subjectType}/{subjectId}`）で引く。台帳に無ければ 404。
+                if (segments.Length != 5) return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+                owner.LastShareRevokePath = path;
+                return Task.FromResult(new HttpResponseMessage(
+                    Uri.UnescapeDataString(segments[4]) == StubShareSubjectId
+                        ? HttpStatusCode.NoContent
+                        : HttpStatusCode.NotFound));
+            }
+
+            return Ok(new List<DocumentShareDto>
+            {
+                new(ShareSubjectTypes.User, StubShareSubjectId, subject, now),
+            });
         }
 
         // FR-19, FR-20, UC-11, SC-19, SC-20, #451: 個人資料・同期端末の後段を、**実体と同じ判定の形**で
@@ -1035,6 +1111,20 @@ public class BffTestFactory : WebApplicationFactory<Program>
                         ? [new SyncTargetFolderDto("work", 2, now.AddHours(-1))]
                         : [],
                     subject == NoteOwner ? now : null));
+            }
+
+            // ── /private-notes/sync-history（同期履歴。#1446・ADR-0099）─────────
+            // **本人の記録だけ**（決定 2）。🔴 題名・パス・資料 ID は 1 つも載らない（決定 5）。
+            if (segments[0] == "sync-history")
+            {
+                owner.LastSyncHistoryPath = path + request.RequestUri?.Query;
+                return Ok(subject == NoteOwner
+                    ? new List<SyncHistoryEntryDto>
+                    {
+                        new(StubSyncHistoryId, now.AddMinutes(-5), "Obsidian（自宅 PC）",
+                            SyncDirections.Push, 1, 0, 0, 0, SyncOutcomes.Success, null),
+                    }
+                    : []);
             }
 
             // ── /private-notes/conflicts*（同期競合。#1442）──────────────────

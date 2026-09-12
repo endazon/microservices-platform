@@ -24,7 +24,9 @@ import type {
 
 import type {
   CreatePrivateNoteRequest,
+  CreateShareRequest,
   CreateSyncDeviceRequest,
+  DocumentShareDto,
   PrivateNoteDeletedResponse,
   PrivateNoteDto,
   PrivateNoteListResponse,
@@ -37,6 +39,7 @@ import type {
   SyncConflictDetailDto,
   SyncConflictSummaryDto,
   SyncDeviceDto,
+  SyncHistoryEntryDto,
   SyncSettingsDto,
   SyncTokenIssuedResponse,
   UpdateExposureRequest,
@@ -585,6 +588,322 @@ export const useBffPrivateNoteExposure = <TError = void,
         TContext
       > => {
       return useMutation(getBffPrivateNoteExposureMutationOptions(options));
+    }
+    export type bffPrivateNoteShareListResponse200 = {
+  data: DocumentShareDto[]
+  status: 200
+}
+
+export type bffPrivateNoteShareListResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffPrivateNoteShareListResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffPrivateNoteShareListResponseSuccess = (bffPrivateNoteShareListResponse200) & {
+  headers: Headers;
+};
+export type bffPrivateNoteShareListResponseError = (bffPrivateNoteShareListResponse401 | bffPrivateNoteShareListResponse404) & {
+  headers: Headers;
+};
+
+export type bffPrivateNoteShareListResponse = (bffPrivateNoteShareListResponseSuccess | bffPrivateNoteShareListResponseError)
+
+export const getBffPrivateNoteShareListUrl = (id: string,) => {
+
+
+
+
+  return `/bff/private-notes/${id}/shares`
+}
+
+/**
+ * @summary FR-19, UC-11, SC-19 主要素 3: 公開範囲の指定先の一覧（所有者のみ。付与順）
+ */
+export const bffPrivateNoteShareList = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffPrivateNoteShareListResponse> => {
+
+  return bffFetch<bffPrivateNoteShareListResponse>(getBffPrivateNoteShareListUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffPrivateNoteShareListQueryKey = (id: string,) => {
+    return [
+    `/bff/private-notes/${id}/shares`
+    ] as const;
+    }
+
+
+export const getBffPrivateNoteShareListQueryOptions = <TData = Awaited<ReturnType<typeof bffPrivateNoteShareList>>, TError = void>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffPrivateNoteShareList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffPrivateNoteShareListQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffPrivateNoteShareList>>> = ({ signal }) => bffPrivateNoteShareList(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffPrivateNoteShareList>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffPrivateNoteShareListQueryResult = NonNullable<Awaited<ReturnType<typeof bffPrivateNoteShareList>>>
+export type BffPrivateNoteShareListQueryError = void
+
+
+/**
+ * @summary FR-19, UC-11, SC-19 主要素 3: 公開範囲の指定先の一覧（所有者のみ。付与順）
+ */
+
+export function useBffPrivateNoteShareList<TData = Awaited<ReturnType<typeof bffPrivateNoteShareList>>, TError = void>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffPrivateNoteShareList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffPrivateNoteShareListQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffPrivateNoteShareGrantResponse201 = {
+  data: DocumentShareDto
+  status: 201
+}
+
+export type bffPrivateNoteShareGrantResponse400 = {
+  data: void
+  status: 400
+}
+
+export type bffPrivateNoteShareGrantResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffPrivateNoteShareGrantResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffPrivateNoteShareGrantResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffPrivateNoteShareGrantResponse409 = {
+  data: void
+  status: 409
+}
+
+export type bffPrivateNoteShareGrantResponseSuccess = (bffPrivateNoteShareGrantResponse201) & {
+  headers: Headers;
+};
+export type bffPrivateNoteShareGrantResponseError = (bffPrivateNoteShareGrantResponse400 | bffPrivateNoteShareGrantResponse401 | bffPrivateNoteShareGrantResponse403 | bffPrivateNoteShareGrantResponse404 | bffPrivateNoteShareGrantResponse409) & {
+  headers: Headers;
+};
+
+export type bffPrivateNoteShareGrantResponse = (bffPrivateNoteShareGrantResponseSuccess | bffPrivateNoteShareGrantResponseError)
+
+export const getBffPrivateNoteShareGrantUrl = (id: string,) => {
+
+
+
+
+  return `/bff/private-notes/${id}/shares`
+}
+
+/**
+ * `subjectType` は `user`（利用者識別子＝`${current_user}` と同じ名前空間）または
+ * `group`（Keycloak グループ識別子）。**画面は `user` しか送らない**（ADR-0098 決定 2）。
+ * 同じ相手への重複付与は 409。
+ * @summary FR-19, UC-11, SC-19 主要素 3: 指定先を追加する（所有者のみ。再共有不可）
+ */
+export const bffPrivateNoteShareGrant = async (id: string,
+    createShareRequest: CreateShareRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffPrivateNoteShareGrantResponse> => {
+
+  return bffFetch<bffPrivateNoteShareGrantResponse>(getBffPrivateNoteShareGrantUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createShareRequest)
+  }
+);}
+
+
+
+
+
+export const getBffPrivateNoteShareGrantMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffPrivateNoteShareGrant>>, TError,{id: string;data: CreateShareRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffPrivateNoteShareGrant>>, TError,{id: string;data: CreateShareRequest}, TContext> => {
+
+const mutationKey = ['bffPrivateNoteShareGrant'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffPrivateNoteShareGrant>>, {id: string;data: CreateShareRequest}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  bffPrivateNoteShareGrant(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffPrivateNoteShareGrantMutationResult = NonNullable<Awaited<ReturnType<typeof bffPrivateNoteShareGrant>>>
+    export type BffPrivateNoteShareGrantMutationBody = CreateShareRequest
+    export type BffPrivateNoteShareGrantMutationError = void
+
+    /**
+ * @summary FR-19, UC-11, SC-19 主要素 3: 指定先を追加する（所有者のみ。再共有不可）
+ */
+export const useBffPrivateNoteShareGrant = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffPrivateNoteShareGrant>>, TError,{id: string;data: CreateShareRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffPrivateNoteShareGrant>>,
+        TError,
+        {id: string;data: CreateShareRequest},
+        TContext
+      > => {
+      return useMutation(getBffPrivateNoteShareGrantMutationOptions(options));
+    }
+    export type bffPrivateNoteShareRevokeResponse204 = {
+  data: void
+  status: 204
+}
+
+export type bffPrivateNoteShareRevokeResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffPrivateNoteShareRevokeResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffPrivateNoteShareRevokeResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffPrivateNoteShareRevokeResponseSuccess = (bffPrivateNoteShareRevokeResponse204) & {
+  headers: Headers;
+};
+export type bffPrivateNoteShareRevokeResponseError = (bffPrivateNoteShareRevokeResponse401 | bffPrivateNoteShareRevokeResponse403 | bffPrivateNoteShareRevokeResponse404) & {
+  headers: Headers;
+};
+
+export type bffPrivateNoteShareRevokeResponse = (bffPrivateNoteShareRevokeResponseSuccess | bffPrivateNoteShareRevokeResponseError)
+
+export const getBffPrivateNoteShareRevokeUrl = (id: string,
+    subjectType: string,
+    subjectId: string,) => {
+
+
+
+
+  return `/bff/private-notes/${id}/shares/${subjectType}/${subjectId}`
+}
+
+/**
+ * @summary FR-19, UC-11, SC-19 主要素 3: 指定先を取り消す（所有者のみ。既に見られた事実は取り消せない）
+ */
+export const bffPrivateNoteShareRevoke = async (id: string,
+    subjectType: string,
+    subjectId: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffPrivateNoteShareRevokeResponse> => {
+
+  return bffFetch<bffPrivateNoteShareRevokeResponse>(getBffPrivateNoteShareRevokeUrl(id,subjectType,subjectId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffPrivateNoteShareRevokeMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffPrivateNoteShareRevoke>>, TError,{id: string;subjectType: string;subjectId: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffPrivateNoteShareRevoke>>, TError,{id: string;subjectType: string;subjectId: string}, TContext> => {
+
+const mutationKey = ['bffPrivateNoteShareRevoke'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffPrivateNoteShareRevoke>>, {id: string;subjectType: string;subjectId: string}> = (props) => {
+          const {id,subjectType,subjectId} = props ?? {};
+
+          return  bffPrivateNoteShareRevoke(id,subjectType,subjectId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffPrivateNoteShareRevokeMutationResult = NonNullable<Awaited<ReturnType<typeof bffPrivateNoteShareRevoke>>>
+
+    export type BffPrivateNoteShareRevokeMutationError = void
+
+    /**
+ * @summary FR-19, UC-11, SC-19 主要素 3: 指定先を取り消す（所有者のみ。既に見られた事実は取り消せない）
+ */
+export const useBffPrivateNoteShareRevoke = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffPrivateNoteShareRevoke>>, TError,{id: string;subjectType: string;subjectId: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffPrivateNoteShareRevoke>>,
+        TError,
+        {id: string;subjectType: string;subjectId: string},
+        TContext
+      > => {
+      return useMutation(getBffPrivateNoteShareRevokeMutationOptions(options));
     }
     export type bffPrivateNotePurgeResponse200 = {
   data: PurgePrivateNotesResponse
@@ -1376,7 +1695,106 @@ export const useBffSyncSettingsUpdate = <TError = void,
       > => {
       return useMutation(getBffSyncSettingsUpdateMutationOptions(options));
     }
-    export type bffSyncConflictListResponse200 = {
+    export type bffSyncHistoryListResponse200 = {
+  data: SyncHistoryEntryDto[]
+  status: 200
+}
+
+export type bffSyncHistoryListResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffSyncHistoryListResponseSuccess = (bffSyncHistoryListResponse200) & {
+  headers: Headers;
+};
+export type bffSyncHistoryListResponseError = (bffSyncHistoryListResponse401) & {
+  headers: Headers;
+};
+
+export type bffSyncHistoryListResponse = (bffSyncHistoryListResponseSuccess | bffSyncHistoryListResponseError)
+
+export const getBffSyncHistoryListUrl = () => {
+
+
+
+
+  return `/bff/private-notes/sync-history`
+}
+
+/**
+ * **読めるのは本人の記録だけ**（ADR-0099 決定 2）。**表示は直近 50 件**（決定 4。表示の件数であり
+ * 保持の件数ではない —— 保持は 3 年。決定 3）。**失敗も載る**（決定 6）。
+ * 1 行は 実行日時 / 端末名 / 方向（`push` / `pull`）/ 件数の内訳（追加・更新・削除・競合）/
+ * 結果（`success` / `failure`）/ 失敗理由（コード。文言は画面が持つ）。
+ * @summary FR-20, UC-11, SC-20 主要素 6: 同期履歴（本人の記録のみ。端末横断で新しい順に直近 50 件）
+ */
+export const bffSyncHistoryList = async ( options?: Parameters<typeof bffFetch>[1]): Promise<bffSyncHistoryListResponse> => {
+
+  return bffFetch<bffSyncHistoryListResponse>(getBffSyncHistoryListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffSyncHistoryListQueryKey = () => {
+    return [
+    `/bff/private-notes/sync-history`
+    ] as const;
+    }
+
+
+export const getBffSyncHistoryListQueryOptions = <TData = Awaited<ReturnType<typeof bffSyncHistoryList>>, TError = void>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffSyncHistoryList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffSyncHistoryListQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffSyncHistoryList>>> = ({ signal }) => bffSyncHistoryList({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffSyncHistoryList>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffSyncHistoryListQueryResult = NonNullable<Awaited<ReturnType<typeof bffSyncHistoryList>>>
+export type BffSyncHistoryListQueryError = void
+
+
+/**
+ * @summary FR-20, UC-11, SC-20 主要素 6: 同期履歴（本人の記録のみ。端末横断で新しい順に直近 50 件）
+ */
+
+export function useBffSyncHistoryList<TData = Awaited<ReturnType<typeof bffSyncHistoryList>>, TError = void>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffSyncHistoryList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffSyncHistoryListQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffSyncConflictListResponse200 = {
   data: SyncConflictSummaryDto[]
   status: 200
 }

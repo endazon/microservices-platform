@@ -8,10 +8,10 @@ author: Claude
 ---
 <!-- trace:
 ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-13, FR-15, FR-16, FR-19, FR-20, FR-22, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-12, SC-17, SC-19, SC-20, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-07, UC-09, UC-11]
-adrs: [ADR-0011, ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0037, ADR-0043, ADR-0073, ADR-0074]
-iadrs: [IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0352, IADR-0355, IADR-0359, IADR-0444]
-specs: [20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes, 20260912_1441-1442_private-note-contract-gaps]
-issues: [#439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, #1441, #1442, planning#200, planning#236, planning#244, planning#299, planning#518]
+adrs: [ADR-0011, ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0037, ADR-0043, ADR-0073, ADR-0074, ADR-0098, ADR-0099]
+iadrs: [IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0352, IADR-0355, IADR-0359, IADR-0444, IADR-0445, IADR-0446]
+specs: [20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history]
+issues: [#439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, #1441, #1442, #1445, #1446, planning#200, planning#236, planning#244, planning#299, planning#518, planning#618]
 -->
 
 # 通信仕様書: BFF 境界（`/bff/*`）
@@ -189,9 +189,21 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | GET | `/bff/private-notes/conflicts` | 同上（読み取り）。**未解決のものだけ・検出日時の新しい順**。本文は載らない（差分の材料は詳細が返す） | —| `useBffSyncConflictList` |
 | GET | `/bff/private-notes/conflicts/{id}` | 同上。**他人の競合・不在・解決済みはいずれも 404**（存在秘匿。403 を返さない） | —| `useBffSyncConflictGet` |
 | POST | `/bff/private-notes/conflicts/{id}/resolve` | 同上 ＋ **`write` スコープ**。利用者が選んだ 3 択（ローカル採用／サーバ採用／両方残す）の適用であり、**自動解決の値は無い**。解決済みへの再実行は 409、「両方残す」が容量上限に当たると 507（**本文ごと透過する**） | —| `useBffSyncConflictResolve` |
+| GET | `/bff/private-notes/{id}/shares` | **認証必須・ロールは問わない**（`x-roles: []`）。**絞るのは役割ではなく主体** —— 変更できるのは所有者だけで、**他人の資料は 404**（存在秘匿。403 を返さない）。付与順 | —| `useBffPrivateNoteShareList` |
+| POST | `/bff/private-notes/{id}/shares` | 同上 ＋ **書き込みは ABAC の `write` スコープ**（許可が無ければ 403）。重複付与は 409。🔴 **画面が送る指定先の種別は個人（`user`）だけである**（グループ指定の UI は、共有先の束縛が配備されるまで描かない。契約と台帳は `group` を受け付けたままにする） | —| `useBffPrivateNoteShareGrant` |
+| DELETE | `/bff/private-notes/{id}/shares/{subjectType}/{subjectId}` | 同上 ＋ **`write` スコープ**。取り消しの鍵は種別と識別子である。不在・他人の資料・該当する共有が無い場合はいずれも 404（区別しない） | —| `useBffPrivateNoteShareRevoke` |
+| GET | `/bff/private-notes/sync-history` | 同上（読み取り）。**読めるのは本人の記録だけ**で、端末横断に**新しい順**で返る。**表示件数は前段が固定する**（保持期間とは別の値である）。🔴 **資料の題名・Vault のパス・資料 ID は 1 つも載らない** | —| `useBffSyncHistoryList` |
+| GET | `/bff/users/lookup` | **認証必須・ロールは問わない**（`x-roles: []`）。共有先に指定する利用者を名前で探す。`q` は 2 文字以上・**有効な利用者のみ**・上限 50（既定 20）。🔴 **`/bff/admin/users`（admin のみ）とは別の口である** —— 返すのは利用者名・表示名・有効状態の 3 つだけで、ロール・属性・内部 ID を運ばない | —| `useBffUserLookup` |
+| POST | `/bff/users/resolve` | 同上。利用者名の集合を表示名へ引く（1 回に 100 件まで）。**居ない名前は応答から落ちる**（エラーではない）。**無効化済みも返る** —— 既存の共有先を表示して取り消せるようにするため（検索の側は返さないのと意図的に非対称である） | —| `useBffUserResolve` |
 | GET | `/bff/admin/config` | **ConfigViewer**（非権限は 404） | —| `useBffConfigEffective` |
 | GET | `/bff/admin/config/drift` | 同上 | —| `useBffConfigDrift` |
 | GET | `/bff/admin/config/history` | 同上 | —| `useBffConfigHistory` |
+
+> **［2026-09-12 追記 / #1445・#1446］公開範囲の指定先（3 行）・同期履歴（1 行）・共有先に指定する
+> 利用者の検索（2 行）を足した。** 前提となる裁定が揃うまでは「指定先は裁定待ち」「同期履歴は描かない」
+> として載せていなかったもので、**認可の姿は他の個人資料の口と同じ**（認証必須・ロール不問・書き込みだけ
+> `write` スコープ）である。利用者検索の 2 行だけは `/bff/users` という別の接頭辞に置いた ——
+> **管理面（`/bff/admin/users`）と同じ口にすると、一般利用者が 403 になるか名簿と属性が漏れる。**
 
 > **［2026-09-12 追記 / #1442］同期対象範囲・同期競合の 5 行を足した。**
 > 🔴 **同じ群の既存の口（個人資料のライフサイクル 6 件と同期端末 5 件）は、本表にもともと載っていない。**

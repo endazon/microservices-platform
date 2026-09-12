@@ -13,6 +13,7 @@ import {
 } from '@faker-js/faker';
 
 import type {
+  DocumentShareDto,
   PrivateNoteDeletedResponse,
   PrivateNoteDto,
   PrivateNoteListResponse,
@@ -22,6 +23,7 @@ import type {
   SyncConflictDetailDto,
   SyncConflictSummaryDto,
   SyncDeviceDto,
+  SyncHistoryEntryDto,
   SyncSettingsDto,
   SyncTokenIssuedResponse
 } from '../bff.schemas';
@@ -37,6 +39,10 @@ export const getBffPrivateNoteRestoreResponseMock = (overrideResponse: Partial<E
 
 export const getBffPrivateNoteExposureResponseMock = (overrideResponse: Partial<Extract<PrivateNoteDto, object>> = {}): PrivateNoteDto => ({id: faker.string.uuid(), title: faker.string.alpha({length: {min: 10, max: 20}}), vaultPath: faker.string.alpha({length: {min: 10, max: 20}}), version: faker.number.int(), bytes: faker.number.int(), contentHash: faker.helpers.arrayElement([faker.string.alpha({length: {min: 10, max: 20}}), null]), includeInSearch: faker.datatype.boolean(), includeInGraph: faker.datatype.boolean(), includeInAi: faker.datatype.boolean(), deleted: faker.datatype.boolean(), deletedAt: faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null]), purgeAt: faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null]), createdAt: faker.date.past().toISOString().slice(0, 19) + 'Z', updatedAt: faker.date.past().toISOString().slice(0, 19) + 'Z', visibility: faker.string.alpha({length: {min: 10, max: 20}}), sharedUserCount: faker.number.int(), sharedGroupCount: faker.number.int(), syncState: faker.string.alpha({length: {min: 10, max: 20}}), tags: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}}))), ...overrideResponse})
 
+export const getBffPrivateNoteShareListResponseMock = (): DocumentShareDto[] => (Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => ({subjectType: faker.string.alpha({length: {min: 10, max: 20}}), subjectId: faker.string.alpha({length: {min: 10, max: 20}}), grantedBy: faker.string.alpha({length: {min: 10, max: 20}}), createdAt: faker.date.past().toISOString().slice(0, 19) + 'Z'})))
+
+export const getBffPrivateNoteShareGrantResponseMock = (overrideResponse: Partial<Extract<DocumentShareDto, object>> = {}): DocumentShareDto => ({subjectType: faker.string.alpha({length: {min: 10, max: 20}}), subjectId: faker.string.alpha({length: {min: 10, max: 20}}), grantedBy: faker.string.alpha({length: {min: 10, max: 20}}), createdAt: faker.date.past().toISOString().slice(0, 19) + 'Z', ...overrideResponse})
+
 export const getBffPrivateNotePurgeResponseMock = (overrideResponse: Partial<Extract<PurgePrivateNotesResponse, object>> = {}): PurgePrivateNotesResponse => ({purgedCount: faker.number.int(), freedBytes: faker.number.int(), ...overrideResponse})
 
 export const getBffSyncDeviceListResponseMock = (): SyncDeviceDto[] => (Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => ({id: faker.string.uuid(), deviceName: faker.string.alpha({length: {min: 10, max: 20}}), issuedAt: faker.date.past().toISOString().slice(0, 19) + 'Z', expiresAt: faker.date.past().toISOString().slice(0, 19) + 'Z', revoked: faker.datatype.boolean(), lastSyncAt: faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null]), active: faker.datatype.boolean()})))
@@ -50,6 +56,8 @@ export const getBffSyncDeviceRevokeAllResponseMock = (overrideResponse: Partial<
 export const getBffSyncSettingsGetResponseMock = (overrideResponse: Partial<Extract<SyncSettingsDto, object>> = {}): SyncSettingsDto => ({targetFolders: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => ({path: faker.string.alpha({length: {min: 10, max: 20}}), noteCount: faker.number.int(), lastSyncAt: faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null])})), updatedAt: faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null]), ...overrideResponse})
 
 export const getBffSyncSettingsUpdateResponseMock = (overrideResponse: Partial<Extract<SyncSettingsDto, object>> = {}): SyncSettingsDto => ({targetFolders: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => ({path: faker.string.alpha({length: {min: 10, max: 20}}), noteCount: faker.number.int(), lastSyncAt: faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null])})), updatedAt: faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null]), ...overrideResponse})
+
+export const getBffSyncHistoryListResponseMock = (): SyncHistoryEntryDto[] => (Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => ({id: faker.string.uuid(), occurredAt: faker.date.past().toISOString().slice(0, 19) + 'Z', deviceName: faker.string.alpha({length: {min: 10, max: 20}}), direction: faker.string.alpha({length: {min: 10, max: 20}}), added: faker.number.int(), updated: faker.number.int(), deleted: faker.number.int(), conflicted: faker.number.int(), outcome: faker.string.alpha({length: {min: 10, max: 20}}), failureReason: faker.helpers.arrayElement([faker.string.alpha({length: {min: 10, max: 20}}), null])})))
 
 export const getBffSyncConflictListResponseMock = (): SyncConflictSummaryDto[] => (Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => ({id: faker.string.uuid(), noteId: faker.string.uuid(), title: faker.string.alpha({length: {min: 10, max: 20}}), vaultPath: faker.string.alpha({length: {min: 10, max: 20}}), detectedAt: faker.date.past().toISOString().slice(0, 19) + 'Z', deviceId: faker.string.uuid(), deviceName: faker.string.alpha({length: {min: 10, max: 20}}), localBaseVersion: faker.number.int(), serverVersion: faker.number.int()})))
 

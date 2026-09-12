@@ -69,6 +69,11 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
     [InlineData("GET", "/bff/private-notes/conflicts")]
     [InlineData("GET", "/bff/private-notes/conflicts/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c0c0")]
     [InlineData("POST", "/bff/private-notes/conflicts/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c0c0/resolve")]
+    // #1445 / #1446: 公開範囲の指定先（共有台帳）と同期履歴（SC-19 主要素 3・SC-20 主要素 6）。
+    [InlineData("GET", "/bff/private-notes/19191919-1919-1919-1919-191919191919/shares")]
+    [InlineData("POST", "/bff/private-notes/19191919-1919-1919-1919-191919191919/shares")]
+    [InlineData("DELETE", "/bff/private-notes/19191919-1919-1919-1919-191919191919/shares/user/bob")]
+    [InlineData("GET", "/bff/private-notes/sync-history")]
     public async Task Anonymous_requests_are_rejected_with_401(string method, string path)
     {
         var client = _factory.CreateClient();
@@ -204,6 +209,9 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
     // #1442: 同期設定の更新と競合の解決も書き込みである（読み取りの 3 口は下の陽性対照が見る）。
     [InlineData("PUT", "/bff/private-notes/sync-settings")]
     [InlineData("POST", "/bff/private-notes/conflicts/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c0c0/resolve")]
+    // #1445: 指定先の追加・取り消しも書き込みである（一覧と同期履歴は下の陽性対照が見る）。
+    [InlineData("POST", "/bff/private-notes/19191919-1919-1919-1919-191919191919/shares")]
+    [InlineData("DELETE", "/bff/private-notes/19191919-1919-1919-1919-191919191919/shares/user/bob")]
     public async Task Writes_are_forbidden_for_a_subject_without_a_write_policy(
         string method, string path)
     {
@@ -420,6 +428,98 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         _factory.LastPrivateNoteForwardedAuthorization.Should()
             .Be($"Bearer {BffTestFactory.NoteOwner}");
+    }
+
+    // ── 5-c. SC-19 主要素 3・SC-20 主要素 6: 公開範囲の指定先と同期履歴（#1445 / #1446）──
+    //
+    // 陽性対照: 本人は自分の資料の指定先を読み・追加し・取り消せる（後段は `/documents/{id}/shares*`）。
+    [Fact]
+    public async Task The_owner_lists_grants_and_revokes_share_targets_on_their_own_note()
+    {
+        var client = As(BffTestFactory.NoteOwner);
+        var path = NotePath(BffTestFactory.StubPrivateNoteId) + "/shares";
+
+        var list = await client.GetFromJsonAsync<List<DocumentShareDto>>(path,
+            TestContext.Current.CancellationToken);
+        list!.Select(s => s.SubjectId).Should().Contain(BffTestFactory.StubShareSubjectId);
+
+        // 🔴 **画面が送るのは `user` だけである**（ADR-0098 決定 2。グループの導線は無い）。
+        var grant = await client.PostAsJsonAsync(path,
+            new CreateShareRequest(ShareSubjectTypes.User, BffTestFactory.StubShareSubjectId),
+            TestContext.Current.CancellationToken);
+        grant.StatusCode.Should().Be(HttpStatusCode.Created);
+        (await grant.Content.ReadFromJsonAsync<DocumentShareDto>(
+            TestContext.Current.CancellationToken))!.SubjectType
+            .Should().Be(ShareSubjectTypes.User);
+
+        var revoke = await client.DeleteAsync(
+            $"{path}/{ShareSubjectTypes.User}/{BffTestFactory.StubShareSubjectId}",
+            TestContext.Current.CancellationToken);
+        revoke.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        // 取り消しの鍵（種別・識別子）が後段の経路へ載る（落とすと別の相手を消しうる）。
+        _factory.LastShareRevokePath.Should().Be(
+            $"/documents/{BffTestFactory.StubPrivateNoteId}/shares/"
+            + $"{ShareSubjectTypes.User}/{BffTestFactory.StubShareSubjectId}");
+    }
+
+    // 陰性: 他人の資料の指定先は**不在と同じ 404**（403 にすると資料 ID の実在が漏れる）。
+    // 陽性対照は直前の試験である。
+    [Theory]
+    [InlineData("GET", "")]
+    [InlineData("POST", "")]
+    [InlineData("DELETE", "/user/bob")]
+    public async Task Share_targets_of_another_users_note_are_indistinguishable_from_absence(
+        string method, string suffix)
+    {
+        using var req = new HttpRequestMessage(new HttpMethod(method),
+            NotePath(BffTestFactory.OtherOwnerNoteId) + "/shares" + suffix)
+        {
+            Content = JsonContent.Create(
+                new CreateShareRequest(ShareSubjectTypes.User, BffTestFactory.StubShareSubjectId)),
+        };
+        var resp = await As(BffTestFactory.NoteOwner).SendAsync(req,
+            TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // 陽性対照: 指定先の一覧と同期履歴は**読み取り**なので write ポリシーが無くても通る。
+    // 🔴 同期履歴は**前段が表示件数を決める**（ADR-0099 決定 4。保持 3 年とは別の値）。
+    [Fact]
+    public async Task Reading_share_targets_and_sync_history_works_without_a_write_policy()
+    {
+        _factory.SearchScopeGranted = false;
+        _factory.WriteScopeGranted = false;
+        try
+        {
+            var client = As(BffTestFactory.NoteOwner);
+
+            (await client.GetAsync(NotePath(BffTestFactory.StubPrivateNoteId) + "/shares",
+                TestContext.Current.CancellationToken))
+                .StatusCode.Should().Be(HttpStatusCode.OK);
+
+            var history = await client.GetFromJsonAsync<List<SyncHistoryEntryDto>>(
+                "/bff/private-notes/sync-history", TestContext.Current.CancellationToken);
+            history!.Select(h => h.Id).Should().Contain(BffTestFactory.StubSyncHistoryId);
+            _factory.LastSyncHistoryPath.Should().Be("/private-notes/sync-history?limit=50");
+        }
+        finally
+        {
+            _factory.SearchScopeGranted = true;
+            _factory.WriteScopeGranted = true;
+        }
+    }
+
+    // 🔴 ADR-0099 決定 5: 同期履歴の応答に題名・パス・資料 ID が現れない（後段の表に列が無い）。
+    [Fact]
+    public async Task The_sync_history_response_carries_no_title_path_or_note_id()
+    {
+        var json = await As(BffTestFactory.NoteOwner)
+            .GetStringAsync("/bff/private-notes/sync-history", TestContext.Current.CancellationToken);
+
+        json.Should().NotBeEmpty("陽性対照: 応答そのものは返っている");
+        json.Should().NotContain("title").And.NotContain("vaultPath")
+            .And.NotContain("noteId").And.NotContain("documentId");
     }
 
     // ── 6. 後段の本文を詰め替えない（SC-19 の固定文言の根拠が画面へ届く）─────────

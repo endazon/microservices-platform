@@ -44,6 +44,7 @@ import {
 import { SYNC_TONES, VISIBILITY_TONES, syncKeyOf, visibilityKeyOf } from '../types/noteBadges';
 import type { SyncFilter, TabOption, VisibilityFilter } from '../routes/sc19PrivateNotesRoute';
 import { QuotaPanel } from './QuotaPanel';
+import { ShareTargetsDialog } from './ShareTargetsDialog';
 
 // SC-19, UC-11, FR-19/FR-21: 個人資料管理（05_screens: ルート /my/notes）。
 //
@@ -53,14 +54,16 @@ import { QuotaPanel } from './QuotaPanel';
 //     - **本画面内での本文編集**（リッチエディタも編集導線も置かない。ADR-0046 D-02）
 //   いずれも「置いていない」ことを単体テストが**陽性対照と対で**固定する。
 //
-// ■ 🔴 **公開範囲は「3 状態と件数」までしか描かない。指定先（共有相手）は出さない。**
+// ■ 🔴 **一覧の行が出すのは「3 状態と件数」までである。指定先はダイアログの中だけに出す。**
 //   契約 `PrivateNoteDto` が運ぶのは `visibility` と `sharedUserCount` / `sharedGroupCount` だけで、
-//   **相手の識別子も表示名も載っていない**。載っていない理由は「まだ実装していない」ではなく
-//   **指定先の単位が未確定だから**である（ADR-0036 §未確定事項 5。Keycloak グループ／部門／
-//   プロジェクトのいずれを単位にするかは planning#618 の裁定待ち）。
-//   単位が決まる前に画面へ相手の一覧や変更ダイアログを置くと、**決まった単位と食い違う語彙**
-//   （「グループ」なのか「部門」なのか）が利用者の記憶と翻訳カタログへ先に焼き付く。
-//   よって**公開範囲のバッジの近くに指定先を出さない**。不在は単体テストが陽性対照と対で固定する。
+//   **相手の識別子も表示名も載っていない**（指定先は `/bff/private-notes/{id}/shares` を別に引く）。
+//   行に相手を並べると、一覧の行数だけ問い合わせが飛び、かつ**誰と共有しているかが肩越しに読める**。
+//   よって一覧の行は件数までとし、相手は行操作から開くダイアログ（`ShareTargetsDialog`）で扱う。
+//
+// ■ 🔴 **指定先は個人だけを扱う。グループ指定の導線は置かない**（ADR-0098 決定 2）。
+//   単位そのものは Keycloak グループと確定したが（同 決定 1）、`${current_groups}` の束縛が
+//   実装に無いため**グループ共有は今日ひとつも効かない**。文言・導線を置かないことは
+//   `ShareTargetsDialog` 側の注記と単体テストが陽性対照と対で固定する。
 //
 // ■ 同期状態とタグは**同じ一覧の応答から描く**（問い合わせを増やさない）。
 //   同期状態の列と絞りは**利用中タブだけ**に置く —— 削除済みは契約上つねに `excluded` である。
@@ -74,6 +77,16 @@ import { QuotaPanel } from './QuotaPanel';
 /** 確認ダイアログの種別。開いていないときは `null`。 */
 type Confirmation =
   { kind: 'softDelete'; note: PrivateNoteDto } | { kind: 'purge'; ids: string[] } | null;
+
+/**
+ * 共有先の変更ダイアログの状態。**確認ダイアログと同型に保つ**（開いているときだけ値が入る）。
+ *
+ * 🔴 **`confirming` と 1 つの union にまとめない。** 確認ダイアログは破壊的操作の直前の関門であり、
+ * `pending` で両ボタンを止め、実行後に必ず閉じる。共有先の変更は**開いたまま何度も操作する**面で、
+ * 閉じる条件が違う。1 つにすると `confirmSoftDelete` / `confirmPurge` の早期 return が増え、
+ * 「どの kind ならどの関数が走るか」を読む負担が両方へ乗る。
+ */
+type Sharing = { kind: 'share'; note: PrivateNoteDto } | null;
 
 /**
  * 公開範囲のバッジ（05_screens §SC-19 主要素 2）。
@@ -139,6 +152,7 @@ export function PrivateNotesPage() {
   const [title, setTitle] = useState('');
   const [vaultPath, setVaultPath] = useState('');
   const [confirming, setConfirming] = useState<Confirmation>(null);
+  const [sharing, setSharing] = useState<Sharing>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const all = useMemo(() => notes.data?.notes ?? [], [notes.data]);
@@ -630,14 +644,29 @@ export function PrivateNotesPage() {
                               </Button>
                             </div>
                           ) : (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              disabled={pending}
-                              onClick={() => setConfirming({ kind: 'softDelete', note })}
-                            >
-                              <Trans>削除する</Trans>
-                            </Button>
+                            <div className="flex flex-wrap gap-2">
+                              {/*
+                                05_screens §SC-19 主要素 3: 公開範囲の変更ダイアログへの導線。
+                                **利用中タブだけに置く** —— 削除済みの資料の共有先を変える意味は無い
+                                （復元してから変える）。
+                              */}
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={pending}
+                                onClick={() => setSharing({ kind: 'share', note })}
+                              >
+                                <Trans>共有先を変更する</Trans>
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={pending}
+                                onClick={() => setConfirming({ kind: 'softDelete', note })}
+                              >
+                                <Trans>削除する</Trans>
+                              </Button>
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
@@ -704,6 +733,15 @@ export function PrivateNotesPage() {
             </Trans>
           </p>
         </ConfirmDialog>
+      )}
+
+      {/*
+        主要素 3: 公開範囲の変更ダイアログ。**開いているときだけマウントする**
+        （`ConfirmDialog` と同じ作法）—— 閉じている間に指定先を引かないための唯一の手段である
+        （生成フックの `enabled` は id の有無しか見ない）。
+      */}
+      {sharing !== null && (
+        <ShareTargetsDialog note={sharing.note} onClose={() => setSharing(null)} />
       )}
     </section>
   );

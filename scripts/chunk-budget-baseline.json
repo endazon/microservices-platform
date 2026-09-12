@@ -287,7 +287,7 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 588890,
+  "initialTotalBytes": 594006,
   "$comment_initialTotalBytes_20260912_1438": [
     "［2026-09-12 / #1438］731,293 → 731,435（+142 B）へ引き上げた。実測値である",
     "（rm -rf platform/frontend/dist → pnpm run build → node scripts/check-chunk-budget.js --update。",
@@ -357,6 +357,17 @@
     "+25,907 B の 97.5% は AST の ja カタログ 25,267 B（442 文言）で、合成点が同期に registerUnitMessages で読んで",
     "index-*.js に入っていた（残りは lucide のアイコン追加分）。是正は AST#793（登録を画面の遅延チャンク側へ）で、",
     "取り込み時に 25 kB 下がる見込み（AST 側実測 731,435 → 706,121）。IADR-0441 決定 3 の追記も参照。"
+  ],
+  "$comment_initialTotalBytes_20260912_1445-1446": [
+    "［2026-09-12 / #1445 #1446］588,890 → 594,006（+5,116 B / +0.87%）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --update）。",
+    "内訳（A/B: 同一環境で locales/ だけを HEAD へ戻して再ビルドし突き合わせた）:",
+    "  A  +5,108 B  Lingui カタログ 44 文言 × 2 ロケール（1 文言あたり約 116 B。近隣の項の既往実測 107〜110 B と同水準）。",
+    "              カタログは foundation/i18n が静的 import するため必ず初期ロードへ入る。",
+    "  B  +    8 B  コード側の増分。**新設の 3 部品はすべて遅延チャンクの中に居る**",
+    "              （ShareTargetsDialog は PrivateNotesPage-*.js 側、SyncHistoryPanel は ObsidianSettingsPage-*.js 側）。",
+    "              動いたのは index-*.js の 1 本だけで、ui 76,575 / vendor-react 196,828 / vendor-query 45,602 B はハッシュまで同一。",
+    "smallLazyChunks は 10 のまま（新しい 1 kB 未満の遅延チャンクは生まれていない）。",
+    "**カタログは文言を足すたびに初期ロードを押し上げる**（近隣の項が申し送っているとおり）。分割は別作業。"
   ],
   "$comment_initialTotalBytes_20260912_1441-1442": [
     "［2026-09-12 / #1441 #1442］580,710 → 588,890（+8,180 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --update）。",

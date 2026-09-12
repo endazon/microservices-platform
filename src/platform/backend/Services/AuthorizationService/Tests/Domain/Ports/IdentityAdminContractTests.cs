@@ -39,6 +39,10 @@ public class IdentityAdminContractTests
                 // #1333: 名指しの 1 人を引く読み取りの口（計画 ADR-0088 決定 1）。
                 // 🔴 **列挙の上で絞る形の置き換えであって、新規作成の口ではない。**
                 nameof(IIdentityAdminClient.FindByUsernameAsync),
+                // FR-19, SC-19 主要素 3, 計画 ADR-0098 決定 1, [[IADR-0445]] (#1445):
+                // 共有先に指定する利用者を名前で探す読み取りの口。
+                // 🔴 **候補を探す読み取りであって、新規作成の口ではない**（禁止語に触れない）。
+                nameof(IIdentityAdminClient.SearchUsersAsync),
                 nameof(IIdentityAdminClient.ListAssignableRolesAsync),
                 nameof(IIdentityAdminClient.ReplaceAttributesAsync),
                 // FR-19, SC-19, 計画 ADR-0036 D-09, ADR-0082 決定 5, [[IADR-0428]] (#1392):

@@ -3,12 +3,12 @@ title: 別紙 — 計画 ID レンジの追随記録と、計画 ADR の状態�
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-09-11
+updated: 2026-09-12
 author: claude
 ---
 <!-- trace:
 ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-06, SC-17, SC-18, SC-19, SC-20, SC-22]
-adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093, ADR-0094, ADR-0095, ADR-0096]
+adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093, ADR-0094, ADR-0095, ADR-0096, ADR-0098, ADR-0099]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228, IADR-0423]
 specs: []
 issues: [#1411, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#591]
@@ -23,6 +23,36 @@ issues: [#1411, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987, #620,
 >
 > **本別紙が持つのは「レンジをいつどう引き直したか」（pin 時代の記録を含む）「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れなかったか」の記録だけ**である（必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
+
+### ［2026-09-12・9 回目］ADR `0001..0096` → `0001..0099`（3 件。うち本作業が引くのは 2 件）
+
+**動いたのは `ADR` だけである。** `FR-01..22`（22 件）／`UC-01..11`（11 件）／`SC-01..22`（22 件）は不動
+（**8 回目の教訓どおり 4 種すべてを引き直した**。`SC` は前回動いたばかりだが、今回は動いていない）。
+
+| 計画 ADR | 状態 | 内容 |
+| --- | --- | --- |
+| 0097 | `Accepted` | （本作業は引かない。レンジの連続性のために数えた） |
+| 0098 | `Accepted` | 個人資料の共有先は認可サーバーのグループで指定する。グループ指定の UI は束縛の配備まで描かない |
+| 0099 | `Accepted` | 同期履歴は既存の監査ログを本人へ開く。専用の履歴ストアを持たない |
+
+**出典は計画リポジトリの導出器の実測である** ——
+隣接クローンで `node tools/doc-checks/gen-plan-ranges.js --check` を走らせ、
+`ADR [1, 99]`・99 件・欠番なしを得た（同じ表で `FR [1,22]` / `UC [1,11]` / `SC [1,22]` も不動と出た）。
+🔴 **8 回目は導出器の答えを採らず直接数えた**（隣接クローンの作業ツリーが `origin/main` より古かった）。
+**本回は `git ls-tree --name-only origin/main projects/microservices-platform/07_adr/` の一意な
+`ADR-XXXX` が 99 件であることと突き合わせ、導出器と一致したので導出器の値を採った**
+（`origin/main` の先頭は `f2173bc`）。**一致を確かめずに導出器を採る手順には戻さない。**
+
+#### 契機
+
+引き当てである —— 画面の実装が新しい裁定 2 件を trace ブロックへ書こうとして
+`check-trace-blocks` の値域検査に止められた。8 回目・7 回目と同じ形であり、
+**「レンジ外の計画 ADR を引こうとしたときに機械が止める」経路が 3 世代続けて働いている。**
+
+**参考（レンジ表へは足さない）**: 同じ導出器は `NFR` の実物を **[1, 28]・28 件**と報告する。
+入口（companion）の宣言は `NFR-01`〜`NFR-27` のままである。🔴 **本作業では直していない** ——
+`NFR` は実在性を検査されない種別であり（入口の宣言どおり）、内訳の追随は別紙 §4 の担当である。
+**気付いたことだけを記録に残す**（黙って通り過ぎない）。
 
 ### ［2026-09-11・8 回目］ADR `0001..0093` → `0001..0096`（3 件。#1409 / #1417 と同日に同じ前進を引いた）＋ **SC `01..21` → `01..22`（1 件。記録開始以来、画面の採番が動いた初回である）**
 

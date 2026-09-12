@@ -78,6 +78,14 @@ public static class BffEndpointComposition
         // platform 同居とする。**管理者限定**（05_screens §共通シェル「SC-09・SC-12・SC-17 =
         // システム管理者」）。**新規作成の口は持たない**（計画が本画面からの作成を禁じている）。
         new DelegateBffEndpointModule(a => a.MapUserAdminBffEndpoints()),
+        // Issue #1445, FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1, IADR-0445: 共有先に指定する
+        // 利用者の検索・表示名の引き当て（AuthorizationService の /authz/users/{lookup,resolve} へ
+        // pass-through）。後段は platform ユニットなので platform 同居とする。
+        // 🔴 **すぐ上の利用者アカウント管理（/bff/admin/users）とは別の口である。** あちらは
+        // admin 限定でロール・ABAC 属性つきの広い像を返す管理面、こちらは**認証のみ・ロール不問**で
+        // 利用者名・表示名・有効状態の 3 つだけを返す。**prefix ごと分けてある** —— 1 つの口に
+        // 両方を担わせると、一般利用者が 403 になるか名簿と属性が漏れるかのどちらかになる。
+        new DelegateBffEndpointModule(a => a.MapUserLookupBffEndpoints()),
         // Issue #600, FR-22, UC-11, ADR-0037/0045, IADR-0215/0340: 利用者本人へのアプリ内通知
         // （NotificationService の /notifications* へ pass-through）。後段は platform ユニットなので
         // platform 同居とする。**認証必須・ロールは問わない**（絞るのは役割ではなく主体＝JWT の sub）。

@@ -2,6 +2,7 @@ using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
 using FluentValidation;
+using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocumentService.Features.Documents.GrantShare;

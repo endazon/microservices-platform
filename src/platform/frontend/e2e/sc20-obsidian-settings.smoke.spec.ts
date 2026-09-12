@@ -3,6 +3,7 @@ import type {
   SyncConflictDetailDto,
   SyncConflictSummaryDto,
   SyncDeviceDto,
+  SyncHistoryEntryDto,
   SyncSettingsDto,
 } from '../src/lib/api/generated/bff.schemas';
 import {
@@ -57,10 +58,29 @@ function conflict(overrides: Partial<SyncConflictSummaryDto> = {}): SyncConflict
   };
 }
 
-/** 新しい区画が既定で引く 2 面（中身を見ない spec 用の空応答）。 */
+// #1446: 同期履歴（主要素 6）。**画面を開いた時点で引く**ので、応答を用意しない spec は
+// `expectBffTrafficIsComplete` で落ちる。
+function historyEntry(overrides: Partial<SyncHistoryEntryDto> = {}): SyncHistoryEntryDto {
+  return {
+    id: 'history-1',
+    occurredAt: new Date(Date.now() - DAY).toISOString(),
+    deviceName: '自宅 PC',
+    direction: 'push',
+    added: 0,
+    updated: 0,
+    deleted: 0,
+    conflicted: 1,
+    outcome: 'failure',
+    failureReason: 'version_conflict',
+    ...overrides,
+  };
+}
+
+/** 新しい区画が既定で引く 3 面（中身を見ない spec 用の空応答）。 */
 const QUIET_SYNC_PANELS = {
   'GET /private-notes/sync-settings': EMPTY_SETTINGS,
   'GET /private-notes/conflicts': [] as SyncConflictSummaryDto[],
+  'GET /private-notes/sync-history': [] as SyncHistoryEntryDto[],
 };
 
 test('unauthenticated visit to /my/obsidian redirects to /login', async ({ page }) => {
@@ -165,6 +185,7 @@ test('SC-20 (#1442): removing a target folder stops syncing and says it is not a
     handlers: {
       'GET /private-notes/devices': [device()],
       'GET /private-notes/conflicts': [],
+      'GET /private-notes/sync-history': [],
       'GET /private-notes/sync-settings': () => settings,
       'PUT /private-notes/sync-settings': (call) => {
         const body = call.body as { targetFolders: string[] };
@@ -186,7 +207,7 @@ test('SC-20 (#1442): removing a target folder stops syncing and says it is not a
 
   // ★ 陽性対照: フォルダの一覧（パス・配下の資料数・最終同期）が出る（主要素 3）。
   await expect(panel.getByRole('cell', { name: '仕事/メモ' })).toBeVisible();
-  await expect(panel.getByRole('cell', { name: '12' })).toBeVisible();
+  await expect(panel.getByRole('cell', { name: '12', exact: true })).toBeVisible();
   // 05_screens §SC-20 主要素 3: 業務関連資料の固定文言は**この区画の中**にある。
   await expect(panel.getByText('同期した資料は業務関連資料として扱われます。')).toBeVisible();
 
@@ -226,6 +247,7 @@ test('SC-20/UC-11 (#1442): a conflict is resolved by the person from three expli
     handlers: {
       'GET /private-notes/devices': [device()],
       'GET /private-notes/sync-settings': EMPTY_SETTINGS,
+      'GET /private-notes/sync-history': [],
       'GET /private-notes/conflicts': () => conflicts,
       'GET /private-notes/conflicts/conflict-1': detail,
       'POST /private-notes/conflicts/conflict-1/resolve': () => {
@@ -276,6 +298,50 @@ test('SC-20/UC-11 (#1442): a conflict is resolved by the person from three expli
     (c) => c.key === 'POST /private-notes/conflicts/conflict-1/resolve',
   );
   expect(resolved?.body).toEqual({ resolution: 'local' });
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('SC-20 (#1446): the sync history lists a failed sync with what to do next, and never names the note', async ({
+  page,
+}) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      'GET /private-notes/devices': [device()],
+      'GET /private-notes/sync-settings': EMPTY_SETTINGS,
+      'GET /private-notes/conflicts': [] as SyncConflictSummaryDto[],
+      // ADR-0099 決定 6: **失敗も記録する**（記録しなければ主要素 6 が成立しない）。
+      'GET /private-notes/sync-history': [historyEntry()],
+    },
+  });
+
+  await page.goto('/my/obsidian');
+  const panel = page.getByRole('region', { name: '同期履歴' });
+
+  // ★ 陽性対照: 1 行が実行日時・端末・方向・内訳・結果・失敗理由で読める。
+  await expect(panel.getByRole('cell', { name: '自宅 PC' })).toBeVisible();
+  await expect(panel.getByRole('cell', { name: '送信' })).toBeVisible();
+  await expect(panel.getByRole('cell', { name: '競合 1' })).toBeVisible();
+  // 結果は色だけに頼らない（文言が残る）。
+  await expect(panel.getByRole('cell', { name: '失敗' })).toBeVisible();
+  // 🔴 コードそのまま（`version_conflict`）ではなく、次の行動を指す文言を出す。
+  await expect(
+    panel.getByRole('cell', { name: /上の「同期の競合」から解決してください/ }),
+  ).toBeVisible();
+  await expect(panel.getByText('version_conflict')).toHaveCount(0);
+
+  // ★ 陰性対照: ADR-0099 決定 5 —— タイトル・パスの列を持たない（端末の列が在ることと対で読む）。
+  await expect(panel.getByRole('columnheader', { name: '端末' })).toBeVisible();
+  await expect(panel.getByRole('columnheader', { name: 'タイトル' })).toHaveCount(0);
+  await expect(panel.getByRole('columnheader', { name: 'パス' })).toHaveCount(0);
+
+  // 表示件数と保持期間を同じ枠で告げる（50 件より前が消えたと読ませない）。
+  await expect(
+    panel.getByText(
+      '直近 50 件を表示します。記録は 3 年間保持されます。資料の名前は履歴に残しません。',
+    ),
+  ).toBeVisible();
 
   expectBffTrafficIsComplete(traffic);
 });

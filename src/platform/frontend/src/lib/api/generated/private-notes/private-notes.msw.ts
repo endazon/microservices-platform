@@ -17,6 +17,7 @@ import type {
 } from 'msw';
 
 import type {
+  DocumentShareDto,
   PrivateNoteDeletedResponse,
   PrivateNoteDto,
   PrivateNoteListResponse,
@@ -26,6 +27,7 @@ import type {
   SyncConflictDetailDto,
   SyncConflictSummaryDto,
   SyncDeviceDto,
+  SyncHistoryEntryDto,
   SyncSettingsDto,
   SyncTokenIssuedResponse
 } from '../bff.schemas';
@@ -36,6 +38,8 @@ import {
   getBffPrivateNoteListResponseMock,
   getBffPrivateNotePurgeResponseMock,
   getBffPrivateNoteRestoreResponseMock,
+  getBffPrivateNoteShareGrantResponseMock,
+  getBffPrivateNoteShareListResponseMock,
   getBffPrivateNoteSoftDeleteResponseMock,
   getBffSyncConflictGetResponseMock,
   getBffSyncConflictListResponseMock,
@@ -44,11 +48,12 @@ import {
   getBffSyncDeviceListResponseMock,
   getBffSyncDeviceReissueResponseMock,
   getBffSyncDeviceRevokeAllResponseMock,
+  getBffSyncHistoryListResponseMock,
   getBffSyncSettingsGetResponseMock,
   getBffSyncSettingsUpdateResponseMock
 } from './private-notes.faker';
 
-export { getBffPrivateNoteListResponseMock, getBffPrivateNoteCreateResponseMock, getBffPrivateNoteSoftDeleteResponseMock, getBffPrivateNoteRestoreResponseMock, getBffPrivateNoteExposureResponseMock, getBffPrivateNotePurgeResponseMock, getBffSyncDeviceListResponseMock, getBffSyncDeviceIssueResponseMock, getBffSyncDeviceReissueResponseMock, getBffSyncDeviceRevokeAllResponseMock, getBffSyncSettingsGetResponseMock, getBffSyncSettingsUpdateResponseMock, getBffSyncConflictListResponseMock, getBffSyncConflictGetResponseMock, getBffSyncConflictResolveResponseMock } from './private-notes.faker';
+export { getBffPrivateNoteListResponseMock, getBffPrivateNoteCreateResponseMock, getBffPrivateNoteSoftDeleteResponseMock, getBffPrivateNoteRestoreResponseMock, getBffPrivateNoteExposureResponseMock, getBffPrivateNoteShareListResponseMock, getBffPrivateNoteShareGrantResponseMock, getBffPrivateNotePurgeResponseMock, getBffSyncDeviceListResponseMock, getBffSyncDeviceIssueResponseMock, getBffSyncDeviceReissueResponseMock, getBffSyncDeviceRevokeAllResponseMock, getBffSyncSettingsGetResponseMock, getBffSyncSettingsUpdateResponseMock, getBffSyncHistoryListResponseMock, getBffSyncConflictListResponseMock, getBffSyncConflictGetResponseMock, getBffSyncConflictResolveResponseMock } from './private-notes.faker';
 
 
 export const getBffPrivateNoteListMockHandler = (overrideResponse?: PrivateNoteListResponse | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<PrivateNoteListResponse> | PrivateNoteListResponse), options?: RequestHandlerOptions) => {
@@ -107,6 +112,40 @@ export const getBffPrivateNoteExposureMockHandler = (overrideResponse?: PrivateN
     ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
     : getBffPrivateNoteExposureResponseMock(),
       { status: 200
+      })
+  }, options)
+}
+
+export const getBffPrivateNoteShareListMockHandler = (overrideResponse?: DocumentShareDto[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<DocumentShareDto[]> | DocumentShareDto[]), options?: RequestHandlerOptions) => {
+  return http.get('*/bff/private-notes/:id/shares', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffPrivateNoteShareListResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
+
+export const getBffPrivateNoteShareGrantMockHandler = (overrideResponse?: DocumentShareDto | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<DocumentShareDto> | DocumentShareDto), options?: RequestHandlerOptions) => {
+  return http.post('*/bff/private-notes/:id/shares', async (info: Parameters<Parameters<typeof http.post>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffPrivateNoteShareGrantResponseMock(),
+      { status: 201
+      })
+  }, options)
+}
+
+export const getBffPrivateNoteShareRevokeMockHandler = (overrideResponse?: void | ((info: Parameters<Parameters<typeof http.delete>[1]>[0]) => Promise<void> | void), options?: RequestHandlerOptions) => {
+  return http.delete('*/bff/private-notes/:id/shares/:subjectType/:subjectId', async (info: Parameters<Parameters<typeof http.delete>[1]>[0]) => {
+  if (typeof overrideResponse === 'function') {await overrideResponse(info); }
+
+    return new HttpResponse(null,
+      { status: 204
       })
   }, options)
 }
@@ -205,6 +244,18 @@ export const getBffSyncSettingsUpdateMockHandler = (overrideResponse?: SyncSetti
   }, options)
 }
 
+export const getBffSyncHistoryListMockHandler = (overrideResponse?: SyncHistoryEntryDto[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<SyncHistoryEntryDto[]> | SyncHistoryEntryDto[]), options?: RequestHandlerOptions) => {
+  return http.get('*/bff/private-notes/sync-history', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffSyncHistoryListResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
+
 export const getBffSyncConflictListMockHandler = (overrideResponse?: SyncConflictSummaryDto[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<SyncConflictSummaryDto[]> | SyncConflictSummaryDto[]), options?: RequestHandlerOptions) => {
   return http.get('*/bff/private-notes/conflicts', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
 
@@ -246,6 +297,9 @@ export const getPrivateNotesMock = () => [
   getBffPrivateNoteSoftDeleteMockHandler(),
   getBffPrivateNoteRestoreMockHandler(),
   getBffPrivateNoteExposureMockHandler(),
+  getBffPrivateNoteShareListMockHandler(),
+  getBffPrivateNoteShareGrantMockHandler(),
+  getBffPrivateNoteShareRevokeMockHandler(),
   getBffPrivateNotePurgeMockHandler(),
   getBffSyncDeviceListMockHandler(),
   getBffSyncDeviceIssueMockHandler(),
@@ -254,6 +308,7 @@ export const getPrivateNotesMock = () => [
   getBffSyncDeviceRevokeAllMockHandler(),
   getBffSyncSettingsGetMockHandler(),
   getBffSyncSettingsUpdateMockHandler(),
+  getBffSyncHistoryListMockHandler(),
   getBffSyncConflictListMockHandler(),
   getBffSyncConflictGetMockHandler(),
   getBffSyncConflictResolveMockHandler()
