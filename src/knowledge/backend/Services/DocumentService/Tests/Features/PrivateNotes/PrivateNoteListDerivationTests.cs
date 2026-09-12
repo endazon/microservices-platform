@@ -140,7 +140,10 @@ public class PrivateNoteListDerivationTests(TestWebApplicationFactory factory)
     }
 
     // ADR-0037 決定 7: 未解決の競合がある資料は `conflict`（対象／対象外より強い）。
-    // 削除済みの資料は常に `excluded`（陽性対照は同じ試験内の未削除の資料）。
+    // 未解決の競合が無い削除済みの資料は `excluded`（陽性対照は同じ試験内の未削除の資料）。
+    // 🔴 判定順は `conflict` → `target` → `excluded`（IADR-0444 決定 3）: **削除済みでも未解決の競合が
+    // あれば `conflict`** —— 競合は解決されるまで表示し続ける。`IsDeleted` の分岐を競合の前へ動かす退行を
+    // ここで捕まえる。
     [Fact]
     public async Task 未解決の競合は同期状態を上書きし削除済みは対象外になる()
     {
@@ -149,6 +152,7 @@ public class PrivateNoteListDerivationTests(TestWebApplicationFactory factory)
         var conflicted = await CreateNoteAsync(session, "競合あり", "conf/a.md");
         var clean = await CreateNoteAsync(session, "競合なし", "conf/b.md");
         var deleted = await CreateNoteAsync(session, "削除済み", "conf/c.md");
+        var deletedConflicted = await CreateNoteAsync(session, "削除済みで競合あり", "conf/d.md");
 
         (await session.PostAsJsonAsync("/private-notes/devices",
             new { deviceName = "pc" }, TestContext.Current.CancellationToken))
@@ -158,10 +162,14 @@ public class PrivateNoteListDerivationTests(TestWebApplicationFactory factory)
         {
             db.SyncConflicts.Add(SyncConflict.Detect(conflicted, user, Guid.NewGuid(),
                 localBaseVersion: 1, serverVersion: 2, DateTimeOffset.UtcNow));
+            db.SyncConflicts.Add(SyncConflict.Detect(deletedConflicted, user, Guid.NewGuid(),
+                localBaseVersion: 1, serverVersion: 2, DateTimeOffset.UtcNow));
             return Task.CompletedTask;
         });
         (await session.DeleteAsync($"/private-notes/{deleted}", TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await session.DeleteAsync($"/private-notes/{deletedConflicted}",
+            TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
 
         var notes = await ListAsync(session);
         notes[conflicted].SyncState.Should().Be(PrivateNoteSyncStates.Conflict);
@@ -169,6 +177,8 @@ public class PrivateNoteListDerivationTests(TestWebApplicationFactory factory)
             "陽性対照: 同じ所有者の競合していない資料は対象のままである");
         notes[deleted].SyncState.Should().Be(PrivateNoteSyncStates.Excluded,
             "削除済みの資料は同期の対象にならない");
+        notes[deletedConflicted].SyncState.Should().Be(PrivateNoteSyncStates.Conflict,
+            "削除済みでも未解決の競合があれば conflict（判定順は conflict → target → excluded）");
     }
 
     // ── SC-19 主要素 1, ADR-0063: タグは**辞書の表示名**で返る ────────────────
