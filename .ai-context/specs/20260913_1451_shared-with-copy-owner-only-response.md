@@ -1,7 +1,7 @@
 ---
 title: "共有先の写し（`DocumentDto.sharedWith`）を所有者にだけ返す（#1451。ADR-0098 フォローアップ 5 の裁定 planning#626）"
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-19, UC-11, SC-03, SC-19, ADR-0036, ADR-0098, IADR-0253, IADR-0396, IADR-0447, IADR-0448, IADR-0450]
 author: Claude
 created: 2026-09-13
@@ -100,4 +100,12 @@ IADR-0447 決定 4 で応答に載せた共有先の写し（`sharedWith`）が�
 
 ## 監査記録
 
-（監査後に記入）
+2026-09-13・別エージェント（sonnet）が diff（`origin/develop...741e7e9`・10 ファイル）と §受け入れ基準 だけを渡されて監査。**合格**（🔴🟡🟢 いずれも指摘なし）。証跡: `git rev-parse --is-shallow-repository`＝`true` を確認したうえで diff / grep / テスト実行のみで判定。`dotnet test Platform.Bff.Tests --filter BffSharedDocumentReadTests` 24 件緑、両 slnx の build / test / format 緑、`check-contract-schema` / `check-openapi-dto-drift` / `check-trace-blocks` / `check-cross-repo-refs` OK。
+
+| 観点 | 判定 |
+| --- | --- |
+| 漏れ経路の全数（`grep -rn "SharedWith" src --include=*.cs`） | 利用者へ `DocumentDto` が返る口は詳細・一覧の 2 つで、両方が `ForViewer` を通る。`/content`・`/versions` の DTO は `SharedWith` を持たない。`RelayAsync` は後段の応答を透過するだけで、`FetchAuthorizedAsync` の戻りは null 判定にしか使わない |
+| 判定の不変 | `IsReadable` / `IsManageable` の本体に diff 行なし |
+| 陰性対照 | 「共有された相手には返さない」「空集合も落とす」「SC-05 一覧」の 3 件 |
+| `class → record` | 等価性・キーとしての利用 0 件。契約検査 2 種とも緑 |
+| 文書の整合・trace ブロック規約 | 実装と一致。`docs/*.md` の表示テキストに ID 無し |
