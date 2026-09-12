@@ -207,7 +207,7 @@ test('SC-20 (#1442): removing a target folder stops syncing and says it is not a
 
   // ★ 陽性対照: フォルダの一覧（パス・配下の資料数・最終同期）が出る（主要素 3）。
   await expect(panel.getByRole('cell', { name: '仕事/メモ' })).toBeVisible();
-  await expect(panel.getByRole('cell', { name: '12' })).toBeVisible();
+  await expect(panel.getByRole('cell', { name: '12', exact: true })).toBeVisible();
   // 05_screens §SC-20 主要素 3: 業務関連資料の固定文言は**この区画の中**にある。
   await expect(panel.getByText('同期した資料は業務関連資料として扱われます。')).toBeVisible();
 
