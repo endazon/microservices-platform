@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import type { PrivateNoteDto } from '@foundation/api/generated/bff.schemas';
 import type { PrivateNotesSearch, TabOption } from '../routes/sc19PrivateNotesRoute';
+import { tagOptionsOf } from '../types/noteBadges';
 
 // SC-19, UC-11, FR-19/FR-21: 一覧の見え方のクライアント状態
 // （計画 13_frontend-stack §ディレクトリ構成 の `hooks/`）。
@@ -27,8 +28,14 @@ export interface NoteListView {
   live: PrivateNoteDto[];
   /** 削除済みの資料（件数バッジの母数）。 */
   trashed: PrivateNoteDto[];
-  /** いま表示するタブに、タイトルの部分一致を掛けた行。 */
+  /** いま表示するタブに、4 軸の絞り込み（タイトル・公開範囲・同期状態・タグ）を掛けた行。 */
   rows: PrivateNoteDto[];
+  /**
+   * タグ絞り込みの選択肢。**取得済みの全件から作る**（タブの切り替えで選択肢が消えない）。
+   * URL で指定されたタグが一覧に無い場合も選択肢へ残す —— 残さないと、
+   * 0 件になった絞り込みを画面から解除できなくなる。
+   */
+  tagOptions: string[];
   /**
    * 「いま」。**描画のたびに読み直さない** —— 残り日数が描画のたびに揺れると、
    * 検査でも実運用でも同じ行が違う値を出しうる。
@@ -62,14 +69,33 @@ export function useNoteListView(all: PrivateNoteDto[]): NoteListView {
   const live = useMemo(() => all.filter((n) => !n.deleted), [all]);
   const trashed = useMemo(() => all.filter((n) => n.deleted), [all]);
 
-  // 絞り込み（05_screens §SC-19 主要素 6）。**タイトルの部分一致だけ**を実装している ——
-  // タグ・公開範囲・同期状態は台帳（契約）に項目が無い（作業仕様書 §計画との差異）。
+  // 絞り込み（05_screens §SC-19 主要素 6）。**4 軸すべてが URL に載る**
+  // （タイトル `q` ／ 公開範囲 `visibility` ／ 同期状態 `sync` ／ タグ `tag`）。
+  //
+  // 🔴 **同期状態だけはタブに依存する。** 削除済みの資料は契約上つねに `excluded` なので
+  // （`PrivateNoteDto.syncState` の注記）、削除済みタブで同期状態を絞ると「全件」か「0 件」に
+  // しかならない。**列も絞りも利用中タブだけに置く**（公開範囲とタグは両タブで意味を持つ）。
+  //
+  // 🔴 **指定先（共有相手）では絞れない。** 契約が指定先を運ばないためである
+  //（件数だけが載る。planning#618 の裁定待ち）。
   const query = search.q.trim().toLowerCase();
+  const { visibility, sync, tag } = search;
   const rows = useMemo(() => {
     const source = search.tab === 'trash' ? trashed : live;
-    if (query === '') return source;
-    return source.filter((n) => n.title.toLowerCase().includes(query));
-  }, [search.tab, live, trashed, query]);
+    const syncFilter = search.tab === 'trash' ? undefined : sync;
+    return source.filter(
+      (n) =>
+        (query === '' || n.title.toLowerCase().includes(query)) &&
+        (visibility === undefined || n.visibility === visibility) &&
+        (syncFilter === undefined || n.syncState === syncFilter) &&
+        (tag === undefined || n.tags.includes(tag)),
+    );
+  }, [search.tab, live, trashed, query, visibility, sync, tag]);
+
+  const tagOptions = useMemo(() => {
+    const found = tagOptionsOf(all);
+    return tag !== undefined && !found.includes(tag) ? [...found, tag] : found;
+  }, [all, tag]);
 
   const now = useMemo(() => new Date(), []);
 
@@ -80,6 +106,7 @@ export function useNoteListView(all: PrivateNoteDto[]): NoteListView {
     live,
     trashed,
     rows,
+    tagOptions,
     now,
     selected,
     setSelected,

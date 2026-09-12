@@ -287,7 +287,7 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 580710,
+  "initialTotalBytes": 588890,
   "$comment_initialTotalBytes_20260912_1438": [
     "［2026-09-12 / #1438］731,293 → 731,435（+142 B）へ引き上げた。実測値である",
     "（rm -rf platform/frontend/dist → pnpm run build → node scripts/check-chunk-budget.js --update。",
@@ -357,6 +357,14 @@
     "+25,907 B の 97.5% は AST の ja カタログ 25,267 B（442 文言）で、合成点が同期に registerUnitMessages で読んで",
     "index-*.js に入っていた（残りは lucide のアイコン追加分）。是正は AST#793（登録を画面の遅延チャンク側へ）で、",
     "取り込み時に 25 kB 下がる見込み（AST 側実測 731,435 → 706,121）。IADR-0441 決定 3 の追記も参照。"
+  ],
+  "$comment_initialTotalBytes_20260912_1441-1442": [
+    "［2026-09-12 / #1441 #1442］580,710 → 588,890（+8,180 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --update）。",
+    "増分は SC-19 / SC-20 の新区画（公開範囲・同期状態・タグの列と絞り込み、同期対象範囲、競合の一覧と 3 択）の",
+    "Lingui カタログ 71 文言 × 2 ロケールがほぼ全額（実装側の A/B: ロケールだけを HEAD に戻すと +0.19 kB に留まる）。",
+    "残り約 0.19 kB は sc19PrivateNotesRoute.ts の validateSearch（絞り込み 3 軸の検索パラメータ）で、ルート定義は初期チャンクに載る。",
+    "画面本体（PrivateNotesPage / ObsidianSettingsPage と新設の SyncTargetFoldersPanel / SyncConflictsPanel）は遅延チャンクのまま。",
+    "**カタログは文言を足すたびに初期ロードを押し上げる**（近隣の項が申し送っているとおり。1 文言あたり約 110 B）。分割は別作業。"
   ],
   "$comment_initialTotalBytes_20260912_ast-bump-793": [
     "［2026-09-12 / AST#793 取り込み］606,019 → 580,710（**−25,309 B / −4.2%**）へ**下げた**。submodule src/ai-stock-trading を",

@@ -8,6 +8,7 @@ import {
   Input,
   Label,
   Note,
+  Select,
   StatusBadge,
   Table,
   TableBody,
@@ -19,6 +20,7 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
+  Tag,
 } from '@platform/ui';
 import { QueryState } from '@foundation/ui/QueryState';
 import { formatDateTime } from '@foundation/utils/formatDateTime';
@@ -39,7 +41,8 @@ import {
   formatBytes,
   usagePercent,
 } from '../types/quota';
-import type { TabOption } from '../routes/sc19PrivateNotesRoute';
+import { SYNC_TONES, VISIBILITY_TONES, syncKeyOf, visibilityKeyOf } from '../types/noteBadges';
+import type { SyncFilter, TabOption, VisibilityFilter } from '../routes/sc19PrivateNotesRoute';
 import { QuotaPanel } from './QuotaPanel';
 
 // SC-19, UC-11, FR-19/FR-21: 個人資料管理（05_screens: ルート /my/notes）。
@@ -50,6 +53,18 @@ import { QuotaPanel } from './QuotaPanel';
 //     - **本画面内での本文編集**（リッチエディタも編集導線も置かない。ADR-0046 D-02）
 //   いずれも「置いていない」ことを単体テストが**陽性対照と対で**固定する。
 //
+// ■ 🔴 **公開範囲は「3 状態と件数」までしか描かない。指定先（共有相手）は出さない。**
+//   契約 `PrivateNoteDto` が運ぶのは `visibility` と `sharedUserCount` / `sharedGroupCount` だけで、
+//   **相手の識別子も表示名も載っていない**。載っていない理由は「まだ実装していない」ではなく
+//   **指定先の単位が未確定だから**である（ADR-0036 §未確定事項 5。Keycloak グループ／部門／
+//   プロジェクトのいずれを単位にするかは planning#618 の裁定待ち）。
+//   単位が決まる前に画面へ相手の一覧や変更ダイアログを置くと、**決まった単位と食い違う語彙**
+//   （「グループ」なのか「部門」なのか）が利用者の記憶と翻訳カタログへ先に焼き付く。
+//   よって**公開範囲のバッジの近くに指定先を出さない**。不在は単体テストが陽性対照と対で固定する。
+//
+// ■ 同期状態とタグは**同じ一覧の応答から描く**（問い合わせを増やさない）。
+//   同期状態の列と絞りは**利用中タブだけ**に置く —— 削除済みは契約上つねに `excluded` である。
+//
 // ■ タブは URL（`?tab=trash`）に持つ。**問い合わせは 1 本**であり、タブは同じ応答の絞りにすぎない。
 // ■ 容量の内訳「うち削除済み」と削除済みの件数バッジは、**同じ応答から画面が数える**
 //   （契約が「数え方を 2 つにしない」と決めている）。
@@ -59,6 +74,60 @@ import { QuotaPanel } from './QuotaPanel';
 /** 確認ダイアログの種別。開いていないときは `null`。 */
 type Confirmation =
   { kind: 'softDelete'; note: PrivateNoteDto } | { kind: 'purge'; ids: string[] } | null;
+
+/**
+ * 公開範囲のバッジ（05_screens §SC-19 主要素 2）。
+ *
+ * 🔴 **件数までしか出さない。** 「誰と共有しているか」は契約に無い（冒頭の注記）。
+ * 色は `types/noteBadges.ts` が持ち、ここは文言だけを担う（色だけで意味を持たせない）。
+ */
+function VisibilityBadge({ note }: { note: PrivateNoteDto }) {
+  const { t } = useLingui();
+  const key = visibilityKeyOf(note.visibility);
+  // ［2026-08-30 / #1078］翻訳文へは単純な変数で渡す（lingui/no-expression-in-message）。
+  const userCount = note.sharedUserCount;
+  const groupCount = note.sharedGroupCount;
+  const label =
+    key === 'private'
+      ? t`非公開`
+      : key === 'users'
+        ? t`個人指定（${userCount} 人）`
+        : key === 'groups'
+          ? t`グループ指定（${groupCount} 件）`
+          : t`公開範囲を判定できません`;
+  return <StatusBadge tone={VISIBILITY_TONES[key]}>{label}</StatusBadge>;
+}
+
+/** 同期状態のバッジ（同 主要素 5）。**利用中タブにだけ置く**（削除済みは常に対象外）。 */
+function SyncStateBadge({ note }: { note: PrivateNoteDto }) {
+  const { t } = useLingui();
+  const key = syncKeyOf(note.syncState);
+  const label =
+    key === 'conflict'
+      ? t`競合あり`
+      : key === 'target'
+        ? t`同期対象`
+        : key === 'excluded'
+          ? t`対象外`
+          : t`同期状態を判定できません`;
+  return <StatusBadge tone={SYNC_TONES[key]}>{label}</StatusBadge>;
+}
+
+/**
+ * タグ列（同 主要素 1）。**状態ではなく分類なので `Tag` を使う**
+ * （`StatusBadge` は tone ごとの固定アイコンが付き、分類に情報アイコンが付くと意味が変わる）。
+ */
+function TagCell({ tags }: { tags: string[] }) {
+  const { t } = useLingui();
+  if (tags.length === 0) return <span className="text-xs text-fg-muted">{t`—`}</span>;
+  return (
+    <span className="flex flex-wrap gap-1">
+      {tags.map((name) => (
+        <Tag key={name}>{name}</Tag>
+      ))}
+    </span>
+  );
+}
 
 export function PrivateNotesPage() {
   const { t } = useLingui();
@@ -85,6 +154,7 @@ export function PrivateNotesPage() {
     live,
     trashed,
     rows,
+    tagOptions,
     now,
     selected,
     setSelected,
@@ -281,15 +351,75 @@ export function PrivateNotesPage() {
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="note-filter">
-                  <Trans>タイトルで絞り込む</Trans>
-                </Label>
-                <Input
-                  id="note-filter"
-                  value={search.q}
-                  onChange={(e) => setParams({ q: e.target.value })}
-                />
+              {/*
+                絞り込みは 4 軸（05_screens §SC-19 主要素 6）。**いずれも URL が単一情報源**である。
+                🔴 **同期状態は利用中タブにだけ出す** —— 削除済みは契約上つねに「対象外」であり、
+                絞っても全件か 0 件にしかならない（hooks/useNoteListView.ts の注記）。
+              */}
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="note-filter">
+                    <Trans>タイトルで絞り込む</Trans>
+                  </Label>
+                  <Input
+                    id="note-filter"
+                    value={search.q}
+                    onChange={(e) => setParams({ q: e.target.value })}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="note-visibility-filter">
+                    <Trans>公開範囲で絞り込む</Trans>
+                  </Label>
+                  <Select
+                    id="note-visibility-filter"
+                    value={search.visibility ?? ''}
+                    onChange={(e) =>
+                      setParams({ visibility: (e.target.value || undefined) as VisibilityFilter })
+                    }
+                  >
+                    <option value="">{t`すべての公開範囲`}</option>
+                    <option value="private">{t`非公開`}</option>
+                    <option value="users">{t`個人指定`}</option>
+                    <option value="groups">{t`グループ指定`}</option>
+                  </Select>
+                </div>
+                {search.tab === 'active' && (
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="note-sync-filter">
+                      <Trans>同期状態で絞り込む</Trans>
+                    </Label>
+                    <Select
+                      id="note-sync-filter"
+                      value={search.sync ?? ''}
+                      onChange={(e) =>
+                        setParams({ sync: (e.target.value || undefined) as SyncFilter })
+                      }
+                    >
+                      <option value="">{t`すべての同期状態`}</option>
+                      <option value="conflict">{t`競合あり`}</option>
+                      <option value="target">{t`同期対象`}</option>
+                      <option value="excluded">{t`対象外`}</option>
+                    </Select>
+                  </div>
+                )}
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="note-tag-filter">
+                    <Trans>タグで絞り込む</Trans>
+                  </Label>
+                  <Select
+                    id="note-tag-filter"
+                    value={search.tag ?? ''}
+                    onChange={(e) => setParams({ tag: e.target.value || undefined })}
+                  >
+                    <option value="">{t`すべてのタグ`}</option>
+                    {tagOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
               </div>
             </div>
 
@@ -347,6 +477,18 @@ export function PrivateNotesPage() {
                     <TableHeaderCell scope="col">
                       <Trans>タイトル</Trans>
                     </TableHeaderCell>
+                    {/* 公開範囲・タグは両タブで、同期状態は利用中タブだけで出す（冒頭の注記）。 */}
+                    <TableHeaderCell scope="col">
+                      <Trans>公開範囲</Trans>
+                    </TableHeaderCell>
+                    {search.tab === 'active' && (
+                      <TableHeaderCell scope="col">
+                        <Trans>同期状態</Trans>
+                      </TableHeaderCell>
+                    )}
+                    <TableHeaderCell scope="col">
+                      <Trans>タグ</Trans>
+                    </TableHeaderCell>
                     <TableHeaderCell scope="col">
                       {search.tab === 'trash' ? <Trans>削除日時</Trans> : <Trans>更新日時</Trans>}
                     </TableHeaderCell>
@@ -402,6 +544,18 @@ export function PrivateNotesPage() {
                         <TableCell>
                           <span className="font-medium">{note.title}</span>
                           <span className="block text-xs text-fg-muted">{note.vaultPath}</span>
+                        </TableCell>
+                        <TableCell>
+                          {/* 🔴 指定先（共有相手）はここに出さない（冒頭の注記）。 */}
+                          <VisibilityBadge note={note} />
+                        </TableCell>
+                        {search.tab === 'active' && (
+                          <TableCell>
+                            <SyncStateBadge note={note} />
+                          </TableCell>
+                        )}
+                        <TableCell>
+                          <TagCell tags={note.tags} />
                         </TableCell>
                         <TableCell>
                           {formatDateTime(search.tab === 'trash' ? note.deletedAt : note.updatedAt)}

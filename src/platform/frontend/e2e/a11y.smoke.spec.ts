@@ -69,6 +69,12 @@ const note: PrivateNoteDto = {
   deleted: false,
   createdAt: '2026-08-01T00:00:00Z',
   updatedAt: '2026-08-02T00:00:00Z',
+  // #1441: 公開範囲・同期状態・タグ（契約 `PrivateNoteDto` の 5 項目）。
+  visibility: 'private',
+  sharedUserCount: 0,
+  sharedGroupCount: 0,
+  syncState: 'target',
+  tags: [],
 };
 
 const noteList: PrivateNoteListResponse = {

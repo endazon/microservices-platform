@@ -13,6 +13,7 @@ msgstr ""
 "Plural-Forms: \n"
 
 #: knowledge/frontend/src/features/sc11-config/types/driftView.ts
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "—"
 msgstr "—"
 
@@ -413,6 +414,10 @@ msgstr "List of event bindings"
 msgid "イベント接続はありません。"
 msgstr "There are no event bindings."
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "いまは、あなたの個人資料がすべて同期の対象です。特定のフォルダだけを同期したい場合は、下の入力欄からパスを追加してください。"
+msgstr "Right now every one of your private notes is synchronised. To synchronise only certain folders, add a path in the field below."
+
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
@@ -426,6 +431,8 @@ msgstr "There are no event bindings."
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 #: platform/frontend/src/app/routing/routeStates.tsx
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 #: platform/frontend/src/components/notifications/NotificationBell.tsx
@@ -515,6 +522,14 @@ msgstr "The graph could not be loaded."
 msgid "グラフ内検索"
 msgstr "Search within graph"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "グループ指定"
+msgstr "Shared with groups"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "グループ指定（{groupCount} 件）"
+msgstr "Shared with groups ({groupCount})"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "コネクタ"
 msgstr "Connectors"
@@ -558,6 +573,10 @@ msgstr "This tag is not in the tag dictionary, so it cannot be applied. Please r
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "このトークンを表示できるのは今回だけです。閉じると再表示できません（再発行のみ可能です）。"
 msgstr "This token is shown only once. Once you leave this page it cannot be shown again (you can only reissue it)."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "このフォルダを同期対象から外しますか？"
+msgstr "Remove this folder from the sync scope?"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
@@ -624,13 +643,49 @@ msgstr "Commit"
 msgid "コミット {commit}"
 msgstr "Commit {commit}"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "これは削除ではありません。フォルダ配下の資料はサーバに残り、Obsidian との同期が止まるだけです。資料を消したい場合は、個人資料の一覧から削除してください。"
+msgstr "This is not a deletion. The notes in the folder stay on the server; only the synchronisation with Obsidian stops. To delete the notes themselves, delete them from the private notes list."
+
 #: platform/frontend/src/lib/api/ApiError.ts
 msgid "サーバでエラーが発生しました。"
 msgstr "A server error occurred."
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "サーバの本文はそのまま残し、端末の本文を別名の資料として新しく作ります。どちらの本文も失われません。"
+msgstr "The server text is kept as it is, and the text from your device is created as a new note under a different name. Neither text is lost."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "サーバの本文をそのまま採ります。端末側の本文は失われます。この操作は元に戻せません。"
+msgstr "The server text is kept as it is. The text on your device is lost. This action cannot be undone."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "サーバの本文を採用しました。"
+msgstr "The server text has been kept."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "サーバの本文を採用しますか？"
+msgstr "Keep the server text?"
+
 #: platform/frontend/src/lib/api/apiClient.ts
 msgid "サーバへ到達できませんでした。"
 msgstr "Could not reach the server."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "サーバを採用"
+msgstr "Keep the server text"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "サーバを採用する"
+msgstr "Keep the server text"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "サーバ版（いま保存されている本文）"
+msgstr "Server version (the text stored now)"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "サーバ版の本文"
+msgstr "Text of the server version"
 
 #: knowledge/frontend/src/features/sc10-operations/types/opsTools.ts
 msgid "サービスメッシュ"
@@ -665,6 +720,18 @@ msgstr "All"
 #: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "すべてが対象"
 msgstr "All in scope"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "すべてのタグ"
+msgstr "All tags"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "すべての公開範囲"
+msgstr "All visibilities"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "すべての同期状態"
+msgstr "All sync states"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "すべての端末を失効しますか？"
@@ -701,6 +768,7 @@ msgstr "Dark"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "タイトル"
 msgstr "Title"
 
@@ -713,6 +781,7 @@ msgstr "Filter by title"
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 #: knowledge/frontend/src/lib/scope-filter/scopeSelection.ts
 msgid "タグ"
@@ -725,6 +794,10 @@ msgstr "Remove tag {tag}"
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "タグ:"
 msgstr "Tags:"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "タグで絞り込む"
+msgstr "Filter by tag"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "タグの新しい名前: {tagName}"
@@ -931,6 +1004,10 @@ msgstr "Pipeline stages"
 msgid "ハイブリッド"
 msgstr "Hybrid"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "パス"
+msgstr "Path"
+
 #: platform/frontend/src/app/routing/breadcrumbs.ts
 msgid "パンくず"
 msgstr "Breadcrumb"
@@ -950,6 +1027,14 @@ msgstr "Feedback sent."
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "フィードバックを送信できませんでした。"
 msgstr "Could not send the feedback."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "フォルダのパス"
+msgstr "Folder path"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "フォルダを追加する"
+msgstr "Add folder"
 
 #: knowledge/frontend/src/lib/scope-filter/scopeSelection.ts
 msgid "プロジェクト"
@@ -1079,6 +1164,8 @@ msgstr "Model: none (nothing was sent to the AI)"
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "やめる"
 msgstr "Cancel"
 
@@ -1115,6 +1202,34 @@ msgstr "Link"
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "リンク先が表示されない場合、リンク切れなのか、閲覧権限がないのかは区別できません。これは、閲覧権限のない文書の存在を知られないようにするための仕様です。"
 msgstr "When a link target is not shown, you cannot tell whether the link is broken or whether you lack permission to view it. This is by design, so that the existence of documents you cannot view is not revealed."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "ローカル {localVersion} 版 ／ サーバ {serverVersion} 版"
+msgstr "Local v{localVersion} / server v{serverVersion}"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "ローカルの本文を採用しますか？"
+msgstr "Keep the local text?"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "ローカルの本文を新しい版として保存しました。"
+msgstr "The local text has been saved as a new version."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "ローカルを採用"
+msgstr "Keep the local text"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "ローカルを採用する"
+msgstr "Keep the local text"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "ローカル版（端末の本文）"
+msgstr "Local version (the text on your device)"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "ローカル版の本文"
+msgstr "Text of the local version"
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "ロール"
@@ -1175,6 +1290,22 @@ msgstr "Use “Add an attribute” below to register the first user or document 
 #: knowledge/frontend/src/features/sc05-documents/types/documentStatus.ts
 msgid "下書き"
 msgstr "Draft"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "両方を残しました。別名の資料を作成しています。"
+msgstr "Both have been kept. A note under a different name is being created."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "両方を残しますか？"
+msgstr "Keep both?"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "両方を残す"
+msgstr "Keep both"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "両方を残す（別名保存）"
+msgstr "Keep both (save under a different name)"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "並び"
@@ -1328,6 +1459,14 @@ msgid "個人"
 msgstr "Personal"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人指定"
+msgstr "Shared with people"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "個人指定（{userCount} 人）"
+msgstr "Shared with {userCount} people"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/routes/sc19PrivateNotesRoute.ts
 #: platform/frontend/src/components/ai-chat/CitationList.tsx
 msgid "個人資料"
@@ -1464,9 +1603,21 @@ msgstr "Could not load the published tools."
 msgid "公開中"
 msgstr "Published"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "公開範囲"
+msgstr "Visibility"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "公開範囲で絞り込む"
+msgstr "Filter by visibility"
+
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "公開範囲は Git 上の公開構成で定義します。許可リストへ追加してください。"
 msgstr "The published scope is defined by the publication configuration in Git. Add the tool to the allow list."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "公開範囲を判定できません"
+msgstr "Visibility cannot be determined"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "円 = 組織文書"
@@ -1529,6 +1680,7 @@ msgstr "Latest"
 
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "最終同期"
 msgstr "Last sync"
 
@@ -1702,7 +1854,7 @@ msgid "参照元は特定できませんでした。"
 msgstr "The referencing policies could not be identified."
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "取り扱い"
 msgstr "Handling"
 
@@ -1726,9 +1878,17 @@ msgstr "Cancel"
 msgid "古い段の残留"
 msgstr "Stale stage left running"
 
-#: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "同じ資料が端末とサーバの両方で編集されたときに競合として記録されます。どちらを採るかは、両方の本文を見てあなたが選びます。"
+msgstr "A conflict is recorded when the same note is edited both on your device and on the server. You decide which one to keep after reading both texts."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "同期した資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。同期対象フォルダに入れた私的なメモも、ナレッジベースに入った時点で同じ扱いになります。"
 msgstr "Synced notes are treated as work-related material. When you leave the company, administrators may view them for 30 days from your last day. Personal notes you put into a synced folder are treated the same way once they enter the knowledge base."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "同期するフォルダを Obsidian Vault 内の相対パスで指定します。フォルダを 1 つも指定していない場合は、あなたの個人資料がすべて同期の対象です。"
+msgstr "Specify the folders to synchronise as paths relative to the Obsidian vault. If no folder is specified, all of your private notes are synchronised."
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "同期できるのは、あなたが作成した個人資料のみです。他の利用者の資料および組織文書は同期されません。公開範囲を変更しても同期は継続します。"
@@ -1737,6 +1897,18 @@ msgstr "Only the private notes you created are synced. Other users' notes and or
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "同期トークン {count} 件が {deadline} に期限切れになります（7 日前の通知）"
 msgstr "{count} sync token(s) will expire on {deadline} (7-day notice)"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "同期の競合"
+msgstr "Sync conflicts"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "同期の競合を取得できませんでした。"
+msgstr "The sync conflicts could not be retrieved."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "同期の競合を読み込み中…"
+msgstr "Loading the sync conflicts…"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "同期の範囲"
@@ -1750,13 +1922,50 @@ msgstr "Synchronisation runs on a single interval shared by every source. A per-
 msgid "同期をトリガしました。"
 msgstr "A synchronisation has been triggered."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "同期対象"
+msgstr "Synchronised"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "同期対象フォルダの一覧"
+msgstr "List of synchronised folders"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "同期対象フォルダを取得できませんでした。"
+msgstr "The synchronised folders could not be retrieved."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "同期対象フォルダを指定していません。"
+msgstr "No folder has been specified for synchronisation."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "同期対象フォルダを更新できませんでした。時間をおいて再度お試しください。"
+msgstr "The synchronised folders could not be updated. Please wait a moment and try again."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "同期対象フォルダを読み込み中…"
+msgstr "Loading the synchronised folders…"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "同期対象範囲"
+msgstr "Sync scope"
+
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
 msgid "同期済み"
 msgstr "Synchronised"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "同期状態"
 msgstr "Sync state"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "同期状態で絞り込む"
+msgstr "Filter by sync state"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "同期状態を判定できません"
+msgstr "Sync state cannot be determined"
 
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
 msgid "同期異常（{failures}/{limit}）"
@@ -1898,6 +2107,7 @@ msgstr "Isolated document (no displayed edges)"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "完了"
 msgstr "Done"
 
@@ -1941,9 +2151,29 @@ msgstr "Selected: {deviceCount} device(s)"
 msgid "対象: {purgeTargetCount} 件 ／ 解放される容量: {freed}"
 msgstr "Target: {purgeTargetCount} item(s) / Space to be freed: {freed}"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "対象: {removing}"
+msgstr "Target: {removing}"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "対象: 「{selectedTitle}」"
+msgstr "Target: \\u201c{selectedTitle}\\u201d"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "対象アクション"
 msgstr "Action"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "対象から外す"
+msgstr "Remove from scope"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "対象フォルダから外す"
+msgstr "Remove from the sync scope"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "対象外"
+msgstr "Not synchronised"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "対象属性"
@@ -2204,6 +2434,8 @@ msgstr "Loading the list of suggestions…"
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "操作"
 msgstr "Actions"
 
@@ -2476,6 +2708,10 @@ msgstr "The default value {DEFAULT_LIFECYCLE} is used when left unspecified."
 msgid "未登録（写像に無い利用者は予約値 {UNRESOLVED_OWNER} になります）"
 msgstr "Not registered (users missing from the mapping fall back to the reserved value {UNRESOLVED_OWNER})"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "未解決の同期競合"
+msgstr "Unresolved sync conflicts"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
 msgid "未設定"
 msgstr "Not set"
@@ -2512,6 +2748,10 @@ msgstr "Skip to main content"
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "本文を取得できませんでした。"
 msgstr "Could not load the page body."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "本文を見て解決する"
+msgstr "Read both texts and resolve"
 
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
@@ -2553,6 +2793,10 @@ msgstr "Automated stock trading"
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "棚卸しの残量は判断できません。空の一覧ではありません。"
 msgstr "How much is left to triage cannot be determined. This is not an empty listing."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "検出日時"
+msgstr "Detected at"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
@@ -2824,6 +3068,7 @@ msgstr "Disable"
 
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "版"
 msgstr "Version"
 
@@ -2959,9 +3204,21 @@ msgstr "Kind:"
 msgid "種類"
 msgstr "Kind"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "端末"
+msgstr "Device"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "端末: {issuedDeviceName} ／ 有効期限: {issuedExpiresAt}"
 msgstr "Device: {issuedDeviceName} / Expires: {issuedExpiresAt}"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "端末とサーバで同じ資料が別々に編集されると、ここに現れます。"
+msgstr "Conflicts appear here when the same note is edited separately on your device and on the server."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "端末の本文が新しい版になります。サーバ上の現在の本文は、1 つ前の版として版履歴に残ります。"
+msgstr "The text from your device becomes the new version. The text currently on the server is kept in the version history as the previous version."
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "端末を接続する"
@@ -2979,9 +3236,33 @@ msgstr "Device name (optional)"
 msgid "端末名を入力してトークンを発行し、Obsidian プラグインの設定へ貼り付けてください。トークンの有効期限は 30 日です。期限が切れたら、この画面から手動で再発行して入れ直してください（自動更新は行いません）。"
 msgstr "Enter a device name, issue a token, and paste it into your Obsidian plugin settings. Tokens are valid for 30 days. When a token expires, reissue it manually from this screen and paste it in again (tokens are never refreshed automatically)."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "競合あり"
+msgstr "In conflict"
+
 #: platform/frontend/src/lib/api/ApiError.ts
 msgid "競合が発生しました。"
 msgstr "A conflict occurred."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "競合の本文を取得できませんでした。"
+msgstr "The conflicting texts could not be retrieved."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "競合の本文を読み込み中…"
+msgstr "Loading the conflicting texts…"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "競合の解決"
+msgstr "Conflict resolution"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "競合はありません。"
+msgstr "There are no conflicts."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "競合を解決できませんでした。時間をおいて再度お試しください。"
+msgstr "The conflict could not be resolved. Please wait a moment and try again."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 #: platform/frontend/src/app/routing/nav.ts
@@ -3062,6 +3343,10 @@ msgstr "Theme: Light"
 #: platform/frontend/src/components/theme/ThemeToggle.tsx
 msgid "表示テーマの切替。現在は {currentName}、押すと {upcomingName} になります"
 msgstr "Switch the display theme. Currently {currentName}; press to change it to {upcomingName}"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "表示中"
+msgstr "Shown"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "表示中のノードをタイトルで絞り込む"
@@ -3291,6 +3576,10 @@ msgstr "Add"
 msgid "追加する"
 msgstr "Add"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "追加するフォルダのパス"
+msgstr "Path of the folder to add"
+
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "送信"
@@ -3417,6 +3706,10 @@ msgstr "Set the department and role filters back to “All” to see every user.
 msgid "部門と機密区分上限は必須です。"
 msgstr "Department and clearance ceiling are required."
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+msgid "配下の資料数"
+msgstr "Notes in folder"
+
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "重要"
 msgstr "Important"
@@ -3470,6 +3763,10 @@ msgstr "Widen the aggregation period and terms that meet the threshold may appea
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "露出"
 msgstr "Exposure"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "非公開"
+msgstr "Private"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 msgid "非対称"
