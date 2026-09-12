@@ -286,7 +286,18 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 731293,
+  "initialTotalBytes": 731435,
+  "$comment_initialTotalBytes_20260912_1438": [
+    "［2026-09-12 / #1438］731,293 → 731,435（+142 B）へ引き上げた。実測値である",
+    "（rm -rf platform/frontend/dist → pnpm run build → node scripts/check-chunk-budget.js --update。",
+    "**再ビルドしてから測った** —— dist に別作業の合成ビルドが残っていると 706 kB を自分の成果と誤読する）。",
+    "増分は NotFound のランドマーク重複の解消（IADR-0442 決定 1・2）だけである:",
+    "  - シェル外の経路用の器 NotFoundPage（<main> 1 枚）を足した",
+    "  - NotFound の外側を <section aria-labelledby> にし、見出しへ固定 id を与えた",
+    "NotFound は存在秘匿のため初期チャンクに残す部品なので（IADR-0134）、増分は初期ロードに載る。",
+    "**i18n の文言は 1 つも増えていない**（pnpm run i18n の再生成差分は 0 件。文言・役割は不変という",
+    "決定 1 の帰結である）。axe の走査面の追加は e2e 側だけの変更で、成果物には入らない。"
+  ],
   "$comment_initialTotalBytes_20260830_1078": [
     "［2026-08-30 / #1078］616,202 → 617,156（+0.95 kB）へ引き上げた。実測値である（pnpm run build →",
     "node scripts/check-chunk-budget.js --update）。増加は **BFF 境界のエラー文言を i18n した**ことによる ——",

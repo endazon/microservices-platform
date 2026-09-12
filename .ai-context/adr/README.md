@@ -515,3 +515,4 @@
 | [IADR-0439](./IADR-0439_ai-chat-streaming-ux-and-markdown.md) | **AI 対話の追従スクロール・停止・再生成・出典・Markdown 描画と脚注方式の対応印**（裁定 6・SC-01・FR-04）。下端判定 32px。サーバが位置を返さないので対応印は脚注方式。`marked` は動的 import（`vendor-markdown`） | Accepted |
 | [IADR-0440](./IADR-0440_a11y-machine-checks-jsx-a11y-and-axe.md) | **アクセシビリティの機械検査（jsx-a11y を error・axe の E2E・キーボード経路）と抑制ファイルへ逃がさない裁定**（裁定 7・NFR-12）。🔴 `settings['jsx-a11y'].components` の対応表が無いと 182 ファイルで 0 件 | Accepted |
 | [IADR-0441](./IADR-0441_unit-message-registration-and-platform-ui-public-hoist.md) | **可変ユニットの文言カタログを合成点で束ねる登録口（`registerUnitMessages`）と、共有 UI の公開 hoist（`publicHoistPattern`）**（裁定 3・FR-14・IADR-0124 決定 1）。未提供ロケールへ流すのは未登録 ID だけ | Accepted |
+| [IADR-0442](./IADR-0442_notfound-landmark-and-axe-scan-surfaces.md) | **NotFound のランドマーク重複を解消し、axe のタグへ best-practice を、走査面へ存在秘匿の 404 と確認ダイアログを加える**（#1438・NFR-12・IADR-0438 / IADR-0440 のフォローアップ）。シェル外の経路だけ `<main>` の器を与える | Accepted |
