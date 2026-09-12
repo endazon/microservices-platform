@@ -1,6 +1,9 @@
 namespace Knowledge.Contracts.Dtos;
 
-public class DocumentDto
+// FR-19, ADR-0098 フォローアップ 5 / [[IADR-0450]] (#1451): `record` にしてある。BFF が利用者へ返す直前に
+// `doc with { SharedWith = null }` で**所有者以外向けの写し**を作るため（項目を 1 つずつ写す複製は、
+// 項目を足したときに黙って落ちる）。JSON の形・既定値は `class` のときと同じで、契約は変わらない。
+public record DocumentDto
 {
     public Guid Id { get; init; }
     public string Title { get; init; } = string.Empty;

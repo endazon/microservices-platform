@@ -58,7 +58,7 @@ public static class DocumentBffEndpoints
                 return Results.Ok(new List<DocumentDto>());
 
             var docs = await FetchListAsync(httpFactory, http, ct);
-            var visible = docs.Where(d => IsManageable(d, scope)).ToList();
+            var visible = docs.Where(d => IsManageable(d, scope)).Select(d => ForViewer(d, scope)).ToList();
             return Results.Ok(visible);
         }).WithName("BffDocumentList").Produces<List<DocumentDto>>()
             .RequireAuthorization(p => p.RequireRole(
@@ -314,6 +314,39 @@ public static class DocumentBffEndpoints
     private static IReadOnlyDictionary<string, string> AuthzView(DocumentDto doc)
         => DocumentAttributeEncoding.WithSharedWith(doc.Attributes, doc.SharedWith);
 
+    // FR-19, ADR-0036 D-06, ADR-0098 フォローアップ 5（利用者裁定 planning#626）, [[IADR-0450]] (#1451):
+    // **共有先の写し（`SharedWith`）は所有者にだけ返す。** 判定へ渡す像（上の `AuthzView`）は変えず、
+    // **利用者へ返す直前の 1 点**で、所有者でない閲覧者の項目を落とす（詳細・一覧のどちらもここを通る）。
+    //
+    // 所有者かどうかは「許可した分岐のうち `owner` を条件に持つ分岐が一致したか」で決める ——
+    // `${current_user}` を束縛するのは認可サービスであり、BFF は利用者名の比較を **2 本目の判定軸**として
+    // 持たない（`IsManageable` が所有者判定を持ち込まない理由と同じ）。共有先ベースの分岐だけで読めた
+    // 相手（＝所有者ではない）には、他の共有先の識別子（利用者名・グループ ID）を見せない。
+    //
+    // 🔴 **所有者以外には空集合ではなく項目ごと落とす（`null`）。** 空集合を返すと「共有が無い」と
+    // 「見せていない」が応答の形で区別できないうえ、空でない集合を返す実装との差で「共有の有無」の
+    // 1 ビットが漏れる。`null` は契約上「共有なし」と同じ読み（`DocumentDto`）で、旧応答と同じ形に畳む。
+    // **読めるかどうか（`IsReadable` / `IsManageable`）は 1 ビットも変えない。**
+    private static DocumentDto ForViewer(DocumentDto doc, BffAccessScope scope)
+        => doc.SharedWith is null || GrantedAsOwner(doc, scope) ? doc : doc with { SharedWith = null };
+
+    // 許可した分岐に `owner` の条件が含まれ、その分岐が一致したか（＝閲覧者は所有者）。
+    // 未移行の応答（分岐なし）は `Filters` の連言を 1 分岐として同じ規則で見る（`IsReadable` と同じ形）。
+    private static bool GrantedAsOwner(DocumentDto doc, BffAccessScope scope)
+    {
+        if (!scope.GrantsAccess)
+            return false;
+
+        var attributes = AuthzView(doc);
+        IEnumerable<IReadOnlyList<AttributeFilter>> branches = scope.Branches is { Count: > 0 }
+            ? scope.Branches.Select(b => (IReadOnlyList<AttributeFilter>)b.Filters)
+            : [scope.Filters];
+
+        return branches.Any(b =>
+            AttributeFilterMatch.MatchesAll(attributes, b)
+            && b.Any(f => string.Equals(f.Key, PrivateNoteVisibility.OwnerKey, StringComparison.OrdinalIgnoreCase)));
+    }
+
     // FR-19, FR-20, UC-11, ADR-0036 D-05・D-06・D-08, ADR-0061 決定 5・6,
     // [[IADR-0447]] 決定 4, [[IADR-0448]] (#1447): **読み取り（詳細・本文・版）の判定。**
     //
@@ -417,7 +450,7 @@ public static class DocumentBffEndpoints
         if (!authorized)
             return null; // スコープ外・（管理面では）個人資料は不在と同じ 404
 
-        return doc;
+        return ForViewer(doc, scope);
     }
 
     private static async Task<List<DocumentDto>> FetchListAsync(

@@ -76,6 +76,13 @@
       "approvedBy": "Claude (backend-knowledge)",
       "issue": "#1448",
       "date": "2026-09-12"
+    },
+    {
+      "key": "typeKindChanged:Knowledge.Contracts.Dtos.DocumentDto",
+      "reason": "BFF が利用者へ返す直前に `doc with { SharedWith = null }` で所有者以外向けの写しを作るため、`class` を `record` にした（#1451 / IADR-0450 決定 4。ADR-0098 フォローアップ 5 の利用者裁定 planning#626「共有先の写しは所有者だけに返す」の実装）。JSON の形・メンバー・既定値は 1 つも変わらず、ワイヤ互換である（check-openapi-dto-drift は緑）。変わるのは C# 側の等価性（参照 → 値）だけで、DocumentDto を辞書のキーや同一性比較に使う箇所はリポジトリ内に 0 件（`== doc` / `: DocumentDto` を走査。DocumentService / Graph / Retrieval / Bff の全テスト 19 アセンブリが変更後も緑）。項目を 1 つずつ写す複製メソッドは、項目を足したときに黙って落ちるため採らない。",
+      "approvedBy": "claude (実装エージェント)",
+      "issue": "#1451",
+      "date": "2026-09-13"
     }
   ],
   "projects": {
@@ -1032,7 +1039,7 @@
         }
       },
       "Knowledge.Contracts.Dtos.DocumentDto": {
-        "kind": "class",
+        "kind": "record",
         "members": {
           "Attributes": {
             "source": "property",
