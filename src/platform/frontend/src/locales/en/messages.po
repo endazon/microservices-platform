@@ -29,7 +29,7 @@ msgid "(3) 構成バージョン履歴（新しい順）"
 msgstr "(3) Configuration version history (newest first)"
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "（停止）"
 msgstr "(stopped)"
 
@@ -184,11 +184,15 @@ msgstr "ABAC settings"
 msgid "AI が提案したリンク候補・タグ候補を棚卸しするための一覧です。 承認・却下はこの画面では行いません。各行の「文書詳細で確認」から文書詳細へ移動し、 両端の文書の内容を見たうえで判断してください。まとめて承認する操作は提供していません。 閲覧権限のない文書に関する提案は、件数を含め表示されません。"
 msgstr "A working list of the link and tag candidates suggested by AI. Approval and rejection are not performed on this screen. Open the document detail from each row and decide after reading both documents. There is no way to approve suggestions in bulk. Suggestions about documents you may not view are never shown, not even as a count."
 
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "AI チャットパネル"
 msgstr "AI chat panel"
 
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+msgid "AI チャットを読み込み中…"
+msgstr "Loading AI chat…"
+
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "AI チャットを閉じる"
 msgstr "Close AI chat"
 
@@ -232,7 +236,7 @@ msgstr "AI suggestions"
 msgid "AI 提案由来の辺は破線（承認済みのみ表示）"
 msgstr "Edges from AI suggestions are dashed (approved only)"
 
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "AIチャット"
 msgstr "AI chat"
 
@@ -423,7 +427,7 @@ msgstr "There are no event bindings."
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: platform/frontend/src/app/routing/routeStates.tsx
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 #: platform/frontend/src/components/notifications/NotificationBell.tsx
 #: platform/frontend/src/components/ui/ErrorBoundary.tsx
 #: platform/frontend/src/components/ui/notifications.tsx
@@ -580,15 +584,15 @@ msgstr "Link and tag candidates for this document. Review the contents of both d
 msgid "この文書のタグを編集する権限がありません。"
 msgstr "You do not have permission to edit the tags of this document."
 
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "この画面について質問する"
 msgstr "Ask about this screen"
 
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "この画面の会話履歴はまだありません。"
 msgstr "No conversation history for this screen yet."
 
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "この画面の履歴を消去"
 msgstr "Clear this screen's history"
 
@@ -1220,7 +1224,7 @@ msgstr "Count"
 msgid "任意"
 msgstr "Optional"
 
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "会話履歴"
 msgstr "Conversation history"
 
@@ -1395,7 +1399,7 @@ msgid "値"
 msgstr "Value"
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "停止"
 msgstr "Stop"
 
@@ -1428,7 +1432,7 @@ msgstr "Check the input"
 msgid "入力内容に誤りがあります。"
 msgstr "The input contains errors."
 
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "全消去"
 msgstr "Clear all"
 
@@ -1494,7 +1498,7 @@ msgid "再有効化はこの画面から行えます（ロールと属性の割�
 msgstr "You can re-enable the account from this screen; role and attribute assignments are kept."
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "再生成"
 msgstr "Regenerate"
 
@@ -1519,7 +1523,7 @@ msgstr "Retrying ({failures}/{limit})"
 msgid "再読み込み"
 msgstr "Reload"
 
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "最新へ"
 msgstr "Latest"
 
@@ -1774,12 +1778,12 @@ msgstr "Invocation audit log"
 msgid "回答をコピー"
 msgstr "Copy answer"
 
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "回答を生成できませんでした。時間をおいて再度お試しください。"
 msgstr "The answer could not be generated. Please try again later."
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "回答を生成中…"
 msgstr "Generating the answer…"
 
@@ -2023,7 +2027,7 @@ msgstr "Attribute registration"
 msgid "層"
 msgstr "Layer"
 
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "履歴（{screenKey}） {turnCount}件"
 msgstr "History ({screenKey}): {turnCount}"
 
@@ -2031,7 +2035,7 @@ msgstr "History ({screenKey}): {turnCount}"
 msgid "履歴（直近{limit}件）"
 msgstr "History (last {limit})"
 
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "履歴は画面単位。リロードで消えます"
 msgstr "History is kept per screen and cleared on reload"
 
@@ -3188,7 +3192,7 @@ msgstr "Loading…"
 msgid "警告"
 msgstr "Warning"
 
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "質問"
 msgstr "Question"
 
@@ -3288,7 +3292,7 @@ msgid "追加する"
 msgstr "Add"
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
-#: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
+#: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "送信"
 msgstr "Send"
 
