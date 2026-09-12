@@ -27,6 +27,8 @@ import { useSyncDeviceActions, useSyncDevices } from '../api/useSyncDevices';
 import { useIssuedToken } from '../hooks/useIssuedToken';
 import { deviceView } from '../types/deviceState';
 import type { DeviceState } from '../types/deviceState';
+import { SyncTargetFoldersPanel } from './SyncTargetFoldersPanel';
+import { SyncConflictsPanel } from './SyncConflictsPanel';
 
 // SC-20, UC-11, FR-20: Obsidian 連携設定（05_screens: ルート /my/obsidian）。
 //
@@ -39,6 +41,14 @@ import type { DeviceState } from '../types/deviceState';
 // ■ 平文のトークンは**発行・再発行の応答にしか載らない**。画面はそれをその場の状態として持ち、
 //   次の操作を始めた時点で捨てる。保存もコピー履歴も残さない。
 // ■ 自動更新（リフレッシュ）の導線を置かない。更新は**手動再発行だけ**である（ADR-0037 決定 15）。
+//
+// ■ 固定文言 3 段落のうち、**業務関連資料としての扱い（3 段落目）は同期対象範囲の区画の中にある**
+//   （`SyncTargetFoldersPanel`）。計画が「フォルダ指定 UI のすぐ隣」と定めているためで、
+//   区画が出来たいま画面上部から移した。**残る 2 段落（同期の範囲・削除の扱い）は上部のまま**である。
+//
+// ■ 🔴 **同期履歴は依然として描かない。** 引く口が無く、**N 件・保持期間が未確定**だからである
+//   （05_screens §SC-20 主要素 6。planning#618 の裁定待ち）。件数と期間を画面が勝手に決めると、
+//   裁定後に「画面に出ている履歴の長さ」と「実際に保持している長さ」が食い違う。
 
 /** 確認ダイアログの種別。開いていないときは `null`。 */
 type Confirmation = { kind: 'revoke'; device: SyncDeviceDto } | { kind: 'revokeAll' } | null;
@@ -151,13 +161,6 @@ export function ObsidianSettingsPage() {
           <Trans>削除済みの個人資料を確認する</Trans>
         </Link>
       </Alert>
-      <Alert tone="warning" label={t`取り扱い`}>
-        <Trans>
-          同期した資料は業務関連資料として扱われます。退職時には、退職日から 30
-          日間、管理者が閲覧することがあります。同期対象フォルダに入れた私的なメモも、ナレッジベースに入った時点で同じ扱いになります。
-        </Trans>
-      </Alert>
-
       {/* 接続手順とトークンの発行（05_screens §SC-20 主要素 2）。管理者承認のステップは無い。 */}
       <Panel heading={<Trans>端末を接続する</Trans>} headingAs="h2">
         <div className="flex flex-col gap-2">
@@ -325,6 +328,12 @@ export function ObsidianSettingsPage() {
           )}
         </QueryState>
       </section>
+
+      {/* 主要素 3: 同期対象範囲。**業務関連資料の固定文言はこの区画の中にある**（冒頭の注記）。 */}
+      <SyncTargetFoldersPanel />
+
+      {/* 主要素 5: 競合の一覧・2 ペイン差分・3 択（自動解決は置かない）。 */}
+      <SyncConflictsPanel />
 
       {/* 露出設定は資料単位で個人資料管理画面が持つ（作業仕様書 §計画との差異 を参照）。 */}
       <Note>

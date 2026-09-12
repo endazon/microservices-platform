@@ -27,6 +27,41 @@
       "approvedBy": "claude (実装エージェント)",
       "issue": "#1254",
       "date": "2026-09-05"
+    },
+    {
+      "key": "memberAddedRequired:Knowledge.Contracts.Dtos.PrivateNoteDto.SharedGroupCount",
+      "reason": "#1441（planning#614 の裁定）: 応答側 DTO `PrivateNoteDto` に公開範囲 3 状態・共有件数・同期状態・タグ名を足す。既定値付きで足す互換案は採らない —— 後段が値を供給し忘れても `private` / `excluded` / 空配列が黙って返り、計画の規律「供給が無い値を 0 や空で描かない」を型の側で破るからである。消費者は orval 生成物（同 PR で再生成）と Platform.Bff.Tests のスタブだけで、外部の消費者は無い。",
+      "approvedBy": "claude (実装エージェント)",
+      "issue": "#1441",
+      "date": "2026-09-12"
+    },
+    {
+      "key": "memberAddedRequired:Knowledge.Contracts.Dtos.PrivateNoteDto.SharedUserCount",
+      "reason": "#1441（planning#614 の裁定）: 応答側 DTO `PrivateNoteDto` に公開範囲 3 状態・共有件数・同期状態・タグ名を足す。既定値付きで足す互換案は採らない —— 後段が値を供給し忘れても `private` / `excluded` / 空配列が黙って返り、計画の規律「供給が無い値を 0 や空で描かない」を型の側で破るからである。消費者は orval 生成物（同 PR で再生成）と Platform.Bff.Tests のスタブだけで、外部の消費者は無い。",
+      "approvedBy": "claude (実装エージェント)",
+      "issue": "#1441",
+      "date": "2026-09-12"
+    },
+    {
+      "key": "memberAddedRequired:Knowledge.Contracts.Dtos.PrivateNoteDto.SyncState",
+      "reason": "#1441（planning#614 の裁定）: 応答側 DTO `PrivateNoteDto` に公開範囲 3 状態・共有件数・同期状態・タグ名を足す。既定値付きで足す互換案は採らない —— 後段が値を供給し忘れても `private` / `excluded` / 空配列が黙って返り、計画の規律「供給が無い値を 0 や空で描かない」を型の側で破るからである。消費者は orval 生成物（同 PR で再生成）と Platform.Bff.Tests のスタブだけで、外部の消費者は無い。",
+      "approvedBy": "claude (実装エージェント)",
+      "issue": "#1441",
+      "date": "2026-09-12"
+    },
+    {
+      "key": "memberAddedRequired:Knowledge.Contracts.Dtos.PrivateNoteDto.Tags",
+      "reason": "#1441（planning#614 の裁定）: 応答側 DTO `PrivateNoteDto` に公開範囲 3 状態・共有件数・同期状態・タグ名を足す。既定値付きで足す互換案は採らない —— 後段が値を供給し忘れても `private` / `excluded` / 空配列が黙って返り、計画の規律「供給が無い値を 0 や空で描かない」を型の側で破るからである。消費者は orval 生成物（同 PR で再生成）と Platform.Bff.Tests のスタブだけで、外部の消費者は無い。",
+      "approvedBy": "claude (実装エージェント)",
+      "issue": "#1441",
+      "date": "2026-09-12"
+    },
+    {
+      "key": "memberAddedRequired:Knowledge.Contracts.Dtos.PrivateNoteDto.Visibility",
+      "reason": "#1441（planning#614 の裁定）: 応答側 DTO `PrivateNoteDto` に公開範囲 3 状態・共有件数・同期状態・タグ名を足す。既定値付きで足す互換案は採らない —— 後段が値を供給し忘れても `private` / `excluded` / 空配列が黙って返り、計画の規律「供給が無い値を 0 や空で描かない」を型の側で破るからである。消費者は orval 生成物（同 PR で再生成）と Platform.Bff.Tests のスタブだけで、外部の消費者は無い。",
+      "approvedBy": "claude (実装エージェント)",
+      "issue": "#1441",
+      "date": "2026-09-12"
     }
   ],
   "projects": {
@@ -1641,6 +1676,30 @@
             "required": true,
             "position": 11
           },
+          "SharedGroupCount": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 16
+          },
+          "SharedUserCount": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 15
+          },
+          "SyncState": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 17
+          },
+          "Tags": {
+            "source": "positional",
+            "type": "List<string>",
+            "required": true,
+            "position": 18
+          },
           "Title": {
             "source": "positional",
             "type": "string",
@@ -1664,6 +1723,12 @@
             "type": "int",
             "required": true,
             "position": 3
+          },
+          "Visibility": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 14
           }
         }
       },
@@ -1681,6 +1746,26 @@
             "type": "PrivateNoteUsageDto",
             "required": true,
             "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.PrivateNoteSyncStates": {
+        "kind": "class",
+        "members": {
+          "Conflict": {
+            "source": "const",
+            "type": "string",
+            "value": "\"conflict\""
+          },
+          "Excluded": {
+            "source": "const",
+            "type": "string",
+            "value": "\"excluded\""
+          },
+          "Target": {
+            "source": "const",
+            "type": "string",
+            "value": "\"target\""
           }
         }
       },
@@ -1719,6 +1804,26 @@
             "source": "const",
             "type": "string",
             "value": "AttributeValueKeys.SharedWith"
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.PrivateNoteVisibilityValues": {
+        "kind": "class",
+        "members": {
+          "Groups": {
+            "source": "const",
+            "type": "string",
+            "value": "\"groups\""
+          },
+          "Private": {
+            "source": "const",
+            "type": "string",
+            "value": "\"private\""
+          },
+          "Users": {
+            "source": "const",
+            "type": "string",
+            "value": "\"users\""
           }
         }
       },
@@ -1830,6 +1935,52 @@
             "type": "TagDto",
             "required": true,
             "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.ResolveSyncConflictRequest": {
+        "kind": "record",
+        "members": {
+          "Resolution": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.ResolveSyncConflictResponse": {
+        "kind": "record",
+        "members": {
+          "ConflictId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "CreatedNoteId": {
+            "source": "positional",
+            "type": "Guid?",
+            "required": true,
+            "position": 4
+          },
+          "NoteId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 1
+          },
+          "NoteVersion": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 3
+          },
+          "Resolution": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
           }
         }
       },
@@ -2029,6 +2180,161 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.SyncConflictDetailDto": {
+        "kind": "record",
+        "members": {
+          "DetectedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 4
+          },
+          "DeviceId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 5
+          },
+          "DeviceName": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 6
+          },
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "LocalBaseVersion": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 7
+          },
+          "LocalContent": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 9
+          },
+          "NoteId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 1
+          },
+          "ServerContent": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 10
+          },
+          "ServerVersion": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 8
+          },
+          "Title": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "VaultPath": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 3
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.SyncConflictResolutions": {
+        "kind": "class",
+        "members": {
+          "Both": {
+            "source": "const",
+            "type": "string",
+            "value": "\"both\""
+          },
+          "Client": {
+            "source": "const",
+            "type": "string",
+            "value": "\"client\""
+          },
+          "Local": {
+            "source": "const",
+            "type": "string",
+            "value": "\"local\""
+          },
+          "Server": {
+            "source": "const",
+            "type": "string",
+            "value": "\"server\""
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.SyncConflictSummaryDto": {
+        "kind": "record",
+        "members": {
+          "DetectedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 4
+          },
+          "DeviceId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 5
+          },
+          "DeviceName": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 6
+          },
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "LocalBaseVersion": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 7
+          },
+          "NoteId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 1
+          },
+          "ServerVersion": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 8
+          },
+          "Title": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "VaultPath": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 3
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.SyncDeviceDto": {
         "kind": "record",
         "members": {
@@ -2073,6 +2379,46 @@
             "type": "bool",
             "required": true,
             "position": 4
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.SyncSettingsDto": {
+        "kind": "record",
+        "members": {
+          "TargetFolders": {
+            "source": "positional",
+            "type": "List<SyncTargetFolderDto>",
+            "required": true,
+            "position": 0
+          },
+          "UpdatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.SyncTargetFolderDto": {
+        "kind": "record",
+        "members": {
+          "LastSyncAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": true,
+            "position": 2
+          },
+          "NoteCount": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 1
+          },
+          "Path": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
           }
         }
       },
@@ -2209,6 +2555,17 @@
           "IncludeInSearch": {
             "source": "positional",
             "type": "bool",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.UpdateSyncSettingsRequest": {
+        "kind": "record",
+        "members": {
+          "TargetFolders": {
+            "source": "positional",
+            "type": "List<string>",
             "required": true,
             "position": 0
           }

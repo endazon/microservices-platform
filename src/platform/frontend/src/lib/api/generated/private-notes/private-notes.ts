@@ -31,10 +31,16 @@ import type {
   ProblemDetails,
   PurgePrivateNotesRequest,
   PurgePrivateNotesResponse,
+  ResolveSyncConflictRequest,
+  ResolveSyncConflictResponse,
   RevokeAllSyncDevicesResponse,
+  SyncConflictDetailDto,
+  SyncConflictSummaryDto,
   SyncDeviceDto,
+  SyncSettingsDto,
   SyncTokenIssuedResponse,
-  UpdateExposureRequest
+  UpdateExposureRequest,
+  UpdateSyncSettingsRequest
 } from '../bff.schemas';
 
 import { bffFetch } from '../../orvalMutator';
@@ -1172,4 +1178,515 @@ export const useBffSyncDeviceRevokeAll = <TError = void,
         TContext
       > => {
       return useMutation(getBffSyncDeviceRevokeAllMutationOptions(options));
+    }
+    export type bffSyncSettingsGetResponse200 = {
+  data: SyncSettingsDto
+  status: 200
+}
+
+export type bffSyncSettingsGetResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffSyncSettingsGetResponseSuccess = (bffSyncSettingsGetResponse200) & {
+  headers: Headers;
+};
+export type bffSyncSettingsGetResponseError = (bffSyncSettingsGetResponse401) & {
+  headers: Headers;
+};
+
+export type bffSyncSettingsGetResponse = (bffSyncSettingsGetResponseSuccess | bffSyncSettingsGetResponseError)
+
+export const getBffSyncSettingsGetUrl = () => {
+
+
+
+
+  return `/bff/private-notes/sync-settings`
+}
+
+/**
+ * `targetFolders` が空なら全資料が対象（既定。ADR-0037 決定 3）。
+ * @summary FR-20, UC-11, SC-20: 同期対象範囲（本人の同期設定）
+ */
+export const bffSyncSettingsGet = async ( options?: Parameters<typeof bffFetch>[1]): Promise<bffSyncSettingsGetResponse> => {
+
+  return bffFetch<bffSyncSettingsGetResponse>(getBffSyncSettingsGetUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffSyncSettingsGetQueryKey = () => {
+    return [
+    `/bff/private-notes/sync-settings`
+    ] as const;
+    }
+
+
+export const getBffSyncSettingsGetQueryOptions = <TData = Awaited<ReturnType<typeof bffSyncSettingsGet>>, TError = void>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffSyncSettingsGet>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffSyncSettingsGetQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffSyncSettingsGet>>> = ({ signal }) => bffSyncSettingsGet({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffSyncSettingsGet>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffSyncSettingsGetQueryResult = NonNullable<Awaited<ReturnType<typeof bffSyncSettingsGet>>>
+export type BffSyncSettingsGetQueryError = void
+
+
+/**
+ * @summary FR-20, UC-11, SC-20: 同期対象範囲（本人の同期設定）
+ */
+
+export function useBffSyncSettingsGet<TData = Awaited<ReturnType<typeof bffSyncSettingsGet>>, TError = void>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffSyncSettingsGet>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffSyncSettingsGetQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffSyncSettingsUpdateResponse200 = {
+  data: SyncSettingsDto
+  status: 200
+}
+
+export type bffSyncSettingsUpdateResponse400 = {
+  data: void
+  status: 400
+}
+
+export type bffSyncSettingsUpdateResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffSyncSettingsUpdateResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffSyncSettingsUpdateResponseSuccess = (bffSyncSettingsUpdateResponse200) & {
+  headers: Headers;
+};
+export type bffSyncSettingsUpdateResponseError = (bffSyncSettingsUpdateResponse400 | bffSyncSettingsUpdateResponse401 | bffSyncSettingsUpdateResponse403) & {
+  headers: Headers;
+};
+
+export type bffSyncSettingsUpdateResponse = (bffSyncSettingsUpdateResponseSuccess | bffSyncSettingsUpdateResponseError)
+
+export const getBffSyncSettingsUpdateUrl = () => {
+
+
+
+
+  return `/bff/private-notes/sync-settings`
+}
+
+/**
+ * 対象から外れたフォルダの資料は**同期停止**であり削除ではない（ADR-0037 決定 4）。
+ * 画面は「対象フォルダから外す」と「削除する」を明確に区別する（SC-20 主要素 3）。
+ * @summary FR-20, UC-11, SC-20: 同期対象フォルダを置き換える（対象から外しても資料は削除しない）
+ */
+export const bffSyncSettingsUpdate = async (updateSyncSettingsRequest: UpdateSyncSettingsRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffSyncSettingsUpdateResponse> => {
+
+  return bffFetch<bffSyncSettingsUpdateResponse>(getBffSyncSettingsUpdateUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateSyncSettingsRequest)
+  }
+);}
+
+
+
+
+
+export const getBffSyncSettingsUpdateMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffSyncSettingsUpdate>>, TError,{data: UpdateSyncSettingsRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffSyncSettingsUpdate>>, TError,{data: UpdateSyncSettingsRequest}, TContext> => {
+
+const mutationKey = ['bffSyncSettingsUpdate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffSyncSettingsUpdate>>, {data: UpdateSyncSettingsRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  bffSyncSettingsUpdate(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffSyncSettingsUpdateMutationResult = NonNullable<Awaited<ReturnType<typeof bffSyncSettingsUpdate>>>
+    export type BffSyncSettingsUpdateMutationBody = UpdateSyncSettingsRequest
+    export type BffSyncSettingsUpdateMutationError = void
+
+    /**
+ * @summary FR-20, UC-11, SC-20: 同期対象フォルダを置き換える（対象から外しても資料は削除しない）
+ */
+export const useBffSyncSettingsUpdate = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffSyncSettingsUpdate>>, TError,{data: UpdateSyncSettingsRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffSyncSettingsUpdate>>,
+        TError,
+        {data: UpdateSyncSettingsRequest},
+        TContext
+      > => {
+      return useMutation(getBffSyncSettingsUpdateMutationOptions(options));
+    }
+    export type bffSyncConflictListResponse200 = {
+  data: SyncConflictSummaryDto[]
+  status: 200
+}
+
+export type bffSyncConflictListResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffSyncConflictListResponseSuccess = (bffSyncConflictListResponse200) & {
+  headers: Headers;
+};
+export type bffSyncConflictListResponseError = (bffSyncConflictListResponse401) & {
+  headers: Headers;
+};
+
+export type bffSyncConflictListResponse = (bffSyncConflictListResponseSuccess | bffSyncConflictListResponseError)
+
+export const getBffSyncConflictListUrl = () => {
+
+
+
+
+  return `/bff/private-notes/conflicts`
+}
+
+/**
+ * 競合は push の `baseVersion` 不一致でサーバが記録する（プロトコルの 409 応答は不変）。
+ * **自動解決はしない**（ADR-0037 決定 7）。プラグイン側で解決して push が通れば、競合は `client` として閉じる。
+ * @summary FR-20, UC-11, SC-20: 未解決の同期競合の一覧（本人のもののみ。検出日時の新しい順）
+ */
+export const bffSyncConflictList = async ( options?: Parameters<typeof bffFetch>[1]): Promise<bffSyncConflictListResponse> => {
+
+  return bffFetch<bffSyncConflictListResponse>(getBffSyncConflictListUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffSyncConflictListQueryKey = () => {
+    return [
+    `/bff/private-notes/conflicts`
+    ] as const;
+    }
+
+
+export const getBffSyncConflictListQueryOptions = <TData = Awaited<ReturnType<typeof bffSyncConflictList>>, TError = void>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffSyncConflictList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffSyncConflictListQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffSyncConflictList>>> = ({ signal }) => bffSyncConflictList({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffSyncConflictList>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffSyncConflictListQueryResult = NonNullable<Awaited<ReturnType<typeof bffSyncConflictList>>>
+export type BffSyncConflictListQueryError = void
+
+
+/**
+ * @summary FR-20, UC-11, SC-20: 未解決の同期競合の一覧（本人のもののみ。検出日時の新しい順）
+ */
+
+export function useBffSyncConflictList<TData = Awaited<ReturnType<typeof bffSyncConflictList>>, TError = void>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffSyncConflictList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffSyncConflictListQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffSyncConflictGetResponse200 = {
+  data: SyncConflictDetailDto
+  status: 200
+}
+
+export type bffSyncConflictGetResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffSyncConflictGetResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffSyncConflictGetResponseSuccess = (bffSyncConflictGetResponse200) & {
+  headers: Headers;
+};
+export type bffSyncConflictGetResponseError = (bffSyncConflictGetResponse401 | bffSyncConflictGetResponse404) & {
+  headers: Headers;
+};
+
+export type bffSyncConflictGetResponse = (bffSyncConflictGetResponseSuccess | bffSyncConflictGetResponseError)
+
+export const getBffSyncConflictGetUrl = (id: string,) => {
+
+
+
+
+  return `/bff/private-notes/conflicts/${id}`
+}
+
+/**
+ * @summary FR-20, UC-11, SC-20: 競合の詳細（ローカル版／サーバ版の本文）
+ */
+export const bffSyncConflictGet = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffSyncConflictGetResponse> => {
+
+  return bffFetch<bffSyncConflictGetResponse>(getBffSyncConflictGetUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffSyncConflictGetQueryKey = (id: string,) => {
+    return [
+    `/bff/private-notes/conflicts/${id}`
+    ] as const;
+    }
+
+
+export const getBffSyncConflictGetQueryOptions = <TData = Awaited<ReturnType<typeof bffSyncConflictGet>>, TError = void>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffSyncConflictGet>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffSyncConflictGetQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffSyncConflictGet>>> = ({ signal }) => bffSyncConflictGet(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffSyncConflictGet>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffSyncConflictGetQueryResult = NonNullable<Awaited<ReturnType<typeof bffSyncConflictGet>>>
+export type BffSyncConflictGetQueryError = void
+
+
+/**
+ * @summary FR-20, UC-11, SC-20: 競合の詳細（ローカル版／サーバ版の本文）
+ */
+
+export function useBffSyncConflictGet<TData = Awaited<ReturnType<typeof bffSyncConflictGet>>, TError = void>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffSyncConflictGet>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffSyncConflictGetQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffSyncConflictResolveResponse200 = {
+  data: ResolveSyncConflictResponse
+  status: 200
+}
+
+export type bffSyncConflictResolveResponse400 = {
+  data: void
+  status: 400
+}
+
+export type bffSyncConflictResolveResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffSyncConflictResolveResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffSyncConflictResolveResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffSyncConflictResolveResponse409 = {
+  data: void
+  status: 409
+}
+
+export type bffSyncConflictResolveResponse507 = {
+  data: void
+  status: 507
+}
+
+export type bffSyncConflictResolveResponseSuccess = (bffSyncConflictResolveResponse200) & {
+  headers: Headers;
+};
+export type bffSyncConflictResolveResponseError = (bffSyncConflictResolveResponse400 | bffSyncConflictResolveResponse401 | bffSyncConflictResolveResponse403 | bffSyncConflictResolveResponse404 | bffSyncConflictResolveResponse409 | bffSyncConflictResolveResponse507) & {
+  headers: Headers;
+};
+
+export type bffSyncConflictResolveResponse = (bffSyncConflictResolveResponseSuccess | bffSyncConflictResolveResponseError)
+
+export const getBffSyncConflictResolveUrl = (id: string,) => {
+
+
+
+
+  return `/bff/private-notes/conflicts/${id}/resolve`
+}
+
+/**
+ * `local` は端末の本文を新しい版として書く。`server` は資料を変えない。`both` は端末の本文を
+ * 別名の新規資料（容量上限の新規作成拒否が適用される。507）として作る。**自動解決の値は無い。**
+ * @summary FR-20, UC-11, SC-20: 競合を解決する（ローカルを採用／サーバを採用／両方を残す）
+ */
+export const bffSyncConflictResolve = async (id: string,
+    resolveSyncConflictRequest: ResolveSyncConflictRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffSyncConflictResolveResponse> => {
+
+  return bffFetch<bffSyncConflictResolveResponse>(getBffSyncConflictResolveUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(resolveSyncConflictRequest)
+  }
+);}
+
+
+
+
+
+export const getBffSyncConflictResolveMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffSyncConflictResolve>>, TError,{id: string;data: ResolveSyncConflictRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffSyncConflictResolve>>, TError,{id: string;data: ResolveSyncConflictRequest}, TContext> => {
+
+const mutationKey = ['bffSyncConflictResolve'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffSyncConflictResolve>>, {id: string;data: ResolveSyncConflictRequest}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  bffSyncConflictResolve(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffSyncConflictResolveMutationResult = NonNullable<Awaited<ReturnType<typeof bffSyncConflictResolve>>>
+    export type BffSyncConflictResolveMutationBody = ResolveSyncConflictRequest
+    export type BffSyncConflictResolveMutationError = void
+
+    /**
+ * @summary FR-20, UC-11, SC-20: 競合を解決する（ローカルを採用／サーバを採用／両方を残す）
+ */
+export const useBffSyncConflictResolve = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffSyncConflictResolve>>, TError,{id: string;data: ResolveSyncConflictRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffSyncConflictResolve>>,
+        TError,
+        {id: string;data: ResolveSyncConflictRequest},
+        TContext
+      > => {
+      return useMutation(getBffSyncConflictResolveMutationOptions(options));
     }

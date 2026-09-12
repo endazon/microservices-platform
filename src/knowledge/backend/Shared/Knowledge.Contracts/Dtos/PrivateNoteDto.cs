@@ -32,7 +32,32 @@ public record PrivateNoteDto(
     DateTimeOffset? DeletedAt,
     DateTimeOffset? PurgeAt,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    // #1441（planning#614 の裁定。SC-19 主要素 1・2・5・6）: 公開範囲・同期状態・タグ。
+    // 状態は文字列（enum にしない。IADR-0131 論点 C）。値集合は `PrivateNoteVisibilityValues` /
+    // `PrivateNoteSyncStates` が持つ。🔴 **指定先（共有相手）は載せない**（ADR-0036 §未確定事項 5 の
+    // 裁定待ち。planning#618）。`Tags` はタグ辞書の表示名。
+    string Visibility,
+    int SharedUserCount,
+    int SharedGroupCount,
+    string SyncState,
+    List<string> Tags);
+
+// #1441, SC-19 主要素 2: 公開範囲の 3 状態（契約の値集合。後段の導出とフロントの描き分けが同じ定数を見る）。
+public static class PrivateNoteVisibilityValues
+{
+    public const string Private = "private";
+    public const string Users = "users";
+    public const string Groups = "groups";
+}
+
+// #1441, SC-19 主要素 5, ADR-0037 決定 3・4・7: 同期状態の 3 状態。
+public static class PrivateNoteSyncStates
+{
+    public const string Conflict = "conflict";
+    public const string Target = "target";
+    public const string Excluded = "excluded";
+}
 
 // FR-19, SC-19, ADR-0037 決定 16・17: 保存容量の使用状況。
 //
@@ -95,3 +120,62 @@ public record SyncTokenIssuedResponse(
 
 // FR-20, SC-20, ADR-0037 決定 13: 全端末の一括失効の結果（端末紛失時の防御）。
 public record RevokeAllSyncDevicesResponse(int RevokedCount);
+
+// ── #1442（planning#614 の裁定。SC-20 主要素 3・5）: 同期対象範囲と競合 ──
+// 🔴 同期履歴（主要素 6）の型は無い —— N と保持期間が計画に無い（planning#618）。
+
+// FR-20, SC-20 主要素 3: 同期対象フォルダ 1 件と配下の資料数・最終同期日時。
+public record SyncTargetFolderDto(string Path, int NoteCount, DateTimeOffset? LastSyncAt);
+
+// FR-20, SC-20 主要素 3, ADR-0037 決定 3・4: 本人の同期設定。`TargetFolders` が空なら全資料が対象。
+public record SyncSettingsDto(List<SyncTargetFolderDto> TargetFolders, DateTimeOffset? UpdatedAt);
+
+// FR-20, SC-20 主要素 3: 同期対象フォルダの置き換え（全量）。
+public record UpdateSyncSettingsRequest(List<string> TargetFolders);
+
+// FR-20, SC-20 主要素 5, ADR-0037 決定 7: 未解決の同期競合 1 件（一覧用。本文は含まない）。
+public record SyncConflictSummaryDto(
+    Guid Id,
+    Guid NoteId,
+    string Title,
+    string VaultPath,
+    DateTimeOffset DetectedAt,
+    Guid DeviceId,
+    string DeviceName,
+    int LocalBaseVersion,
+    int ServerVersion);
+
+// FR-20, SC-20 主要素 5: 競合の詳細（2 ペイン差分の材料）。本文は詳細だけが返す。
+public record SyncConflictDetailDto(
+    Guid Id,
+    Guid NoteId,
+    string Title,
+    string VaultPath,
+    DateTimeOffset DetectedAt,
+    Guid DeviceId,
+    string DeviceName,
+    int LocalBaseVersion,
+    int ServerVersion,
+    string LocalContent,
+    string ServerContent);
+
+// FR-20, SC-20 主要素 5, ADR-0037 決定 7: 競合の解決。値は `SyncConflictResolutions` の 3 つ。
+// **自動解決（後勝ち）の値は存在しない。**
+public record ResolveSyncConflictRequest(string Resolution);
+
+// FR-20, SC-20 主要素 5: 解決の結果。`CreatedNoteId` は `both` で作った別名資料の ID（それ以外は null）。
+public record ResolveSyncConflictResponse(
+    Guid ConflictId, Guid NoteId, string Resolution, int NoteVersion, Guid? CreatedNoteId);
+
+// #1442: 解決の 3 択（利用者が選ぶ値）。`Client` は契約の値ではなく、プラグイン側で解決されて
+// 正しい baseVersion の push が通ったときに後段が競合を閉じる記録用の値である。
+public static class SyncConflictResolutions
+{
+    public const string Local = "local";
+    public const string Server = "server";
+    public const string Both = "both";
+    public const string Client = "client";
+
+    public static readonly string[] Selectable = [Local, Server, Both];
+    public static bool IsSelectable(string value) => Selectable.Contains(value);
+}

@@ -3,15 +3,15 @@ title: BFF 境界（/bff/*）通信仕様書
 type: api-spec
 status: in-progress
 created: 2026-08-05
-updated: 2026-09-03
+updated: 2026-09-12
 author: Claude
 ---
 <!-- trace:
-ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-13, FR-15, FR-16, FR-22, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-12, SC-17, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-07, UC-09, UC-11]
+ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-13, FR-15, FR-16, FR-19, FR-20, FR-22, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-12, SC-17, SC-19, SC-20, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-07, UC-09, UC-11]
 adrs: [ADR-0011, ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0037, ADR-0043, ADR-0073, ADR-0074]
-iadrs: [IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0355, IADR-0359]
-specs: [20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes]
-issues: [#439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, planning#200, planning#236, planning#244, planning#299, planning#518]
+iadrs: [IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0352, IADR-0355, IADR-0359, IADR-0444]
+specs: [20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes, 20260912_1441-1442_private-note-contract-gaps]
+issues: [#439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, #1441, #1442, planning#200, planning#236, planning#244, planning#299, planning#518]
 -->
 
 # 通信仕様書: BFF 境界（`/bff/*`）
@@ -184,9 +184,21 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | GET | `/bff/wiki/search` | 同上。**絞り込みは指定されたときだけ後段へ載る**（既定・上限は後段が唯一の情報源）。委譲先の故障は **502**（空で隠さない） | —| `useBffWikiSearch` |
 | GET | `/bff/wiki/pages/{slug}` | 同上。**権限外・不存在・非公開化はいずれも 404**（存在秘匿。403 を返さない） | —| `useBffWikiPageBySlug` |
 | GET | `/bff/wiki/pages/by-doc/{documentId}` | 同上。文書詳細から本文へ渡る導線が使う | —| `useBffWikiPageByDocument` |
+| GET | `/bff/private-notes/sync-settings` | **認証必須・ロールは問わない**（`x-roles: []`）。**絞るのは役割ではなく主体** —— 後段が本人の設定だけを返す。**未設定は 404 ではなく空配列**（＝全資料が同期対象という既定） | —| `useBffSyncSettingsGet` |
+| PUT | `/bff/private-notes/sync-settings` | 同上 ＋ **書き込みは ABAC の `write` スコープ**（許可が無ければ 403）。🔴 **対象フォルダから外しても資料は削除されない**（同期が止まるだけ。画面は「外す」と「削除する」を明確に区別する） | —| `useBffSyncSettingsUpdate` |
+| GET | `/bff/private-notes/conflicts` | 同上（読み取り）。**未解決のものだけ・検出日時の新しい順**。本文は載らない（差分の材料は詳細が返す） | —| `useBffSyncConflictList` |
+| GET | `/bff/private-notes/conflicts/{id}` | 同上。**他人の競合・不在・解決済みはいずれも 404**（存在秘匿。403 を返さない） | —| `useBffSyncConflictGet` |
+| POST | `/bff/private-notes/conflicts/{id}/resolve` | 同上 ＋ **`write` スコープ**。利用者が選んだ 3 択（ローカル採用／サーバ採用／両方残す）の適用であり、**自動解決の値は無い**。解決済みへの再実行は 409、「両方残す」が容量上限に当たると 507（**本文ごと透過する**） | —| `useBffSyncConflictResolve` |
 | GET | `/bff/admin/config` | **ConfigViewer**（非権限は 404） | —| `useBffConfigEffective` |
 | GET | `/bff/admin/config/drift` | 同上 | —| `useBffConfigDrift` |
 | GET | `/bff/admin/config/history` | 同上 | —| `useBffConfigHistory` |
+
+> **［2026-09-12 追記 / #1442］同期対象範囲・同期競合の 5 行を足した。**
+> 🔴 **同じ群の既存の口（個人資料のライフサイクル 6 件と同期端末 5 件）は、本表にもともと載っていない。**
+> 本作業で足したのは新設の 5 行だけであり、**欠けている 11 行は本作業の前から欠けている**
+> （実測: `grep -n "bff/private-notes" docs/api/BFF_bff-surface.md` が本追記の前は 0 件）。
+> 認可の姿はいずれも上の 5 行と同じ（認証必須・ロール不問・書き込みだけ `write` スコープ）で、
+> 各口の要求・応答は [`openapi.yaml`](openapi.yaml) が正である。
 
 > **［2026-08-07 追記 / #586］`/bff/feedback` 系の 2 行は計画と食い違う。**
 > 計画リポジトリのコミット `3e58b97`（裁定依頼への回答を反映したもの）で、フィードバック収集の要求に

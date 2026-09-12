@@ -40,5 +40,11 @@ internal static partial class PrivateNoteMapper
     [MapProperty(nameof(PrivateNote.DocumentId), nameof(PrivateNoteDto.Id))]
     [MapProperty(nameof(PrivateNote.LatestBytes), nameof(PrivateNoteDto.Bytes))]
     [MapProperty(nameof(PrivateNote.IsDeleted), nameof(PrivateNoteDto.Deleted))]
-    internal static partial PrivateNoteDto ToDto(PrivateNote n, string title, int version);
+    // #1441, SC-19 主要素 1・2・5: 公開範囲・共有件数・同期状態・タグ名も**導出済みの値**で受ける。
+    // 🔴 **材料（共有台帳・競合・端末・同期設定・タグ辞書）を写像へ持ち込まない。** 導出は
+    // 所有者ごとに 1 回だけ引く `PrivateNoteEnrichment` が行い、ここへは結果だけが来る
+    // （`Document?` を入れないのと同じ理由。IADR-0406 決定 1・決定 3 の「時計はここで畳む」と同型）。
+    internal static partial PrivateNoteDto ToDto(PrivateNote n, string title, int version,
+        string visibility, int sharedUserCount, int sharedGroupCount, string syncState,
+        List<string> tags);
 }

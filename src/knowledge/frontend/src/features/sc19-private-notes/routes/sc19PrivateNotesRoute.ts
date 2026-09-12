@@ -30,10 +30,40 @@ const PrivateNotesPage = lazyRouteComponent(
 const TAB_OPTIONS = ['active', 'trash'] as const;
 export type TabOption = (typeof TAB_OPTIONS)[number];
 
+/**
+ * 公開範囲・同期状態の絞り込みの選択肢（05_screens §SC-19 主要素 6）。
+ *
+ * 🔴 **契約の値集合（`private` / `users` / `groups`・`conflict` / `target` / `excluded`）と
+ * 同じ綴りを使う** —— 画面側で別名に付け替えると、URL を共有された相手が
+ * 契約の語と突き合わせられなくなる。
+ */
+const VISIBILITY_FILTERS = ['private', 'users', 'groups'] as const;
+const SYNC_FILTERS = ['conflict', 'target', 'excluded'] as const;
+
+export type VisibilityFilter = (typeof VISIBILITY_FILTERS)[number];
+export type SyncFilter = (typeof SYNC_FILTERS)[number];
+
 export interface PrivateNotesSearch {
   tab: TabOption;
   /** タイトルの部分一致（05_screens §SC-19 主要素 6）。空文字は絞り込みなし。 */
   q: string;
+  /**
+   * 公開範囲の絞り込み（`?visibility=`）。**未指定（`undefined`）は「絞り込まない」**である。
+   *
+   * 🔴 **既定値を持つ必須項目にしない。** 絞り込みなしを `'all'` のような値で表すと、
+   * 何も絞っていない URL にも `?visibility=all` が焼き付き、**他画面からの
+   * `<Link search={…}>` が全項目の列挙を強いられる**。未指定は URL から消える
+   * （TanStack Router は `undefined` の項目を書き出さない）。
+   */
+  visibility?: VisibilityFilter;
+  /**
+   * 同期状態の絞り込み（`?sync=`）。**利用中タブにだけ効く** ——
+   * 削除済みの資料は契約上つねに `excluded` であり（`PrivateNoteDto.syncState` の注記）、
+   * 削除済みタブで絞っても「全件」か「0 件」にしかならない。
+   */
+  sync?: SyncFilter;
+  /** タグの絞り込み（`?tag=`）。**表示名の完全一致**である（部分一致はタイトルの `q` だけが担う）。 */
+  tag?: string;
 }
 
 export const createSc19PrivateNotesRoute = (shell: ShellRoute) =>
@@ -48,6 +78,10 @@ export const createSc19PrivateNotesRoute = (shell: ShellRoute) =>
     validateSearch: (raw: Record<string, unknown>): PrivateNotesSearch => ({
       tab: TAB_OPTIONS.find((t) => t === raw.tab) ?? 'active',
       q: typeof raw.q === 'string' ? raw.q : '',
+      // 未知の値は**既定へ倒すのではなく落とす**（絞り込みは「無い」が既定である）。
+      visibility: VISIBILITY_FILTERS.find((v) => v === raw.visibility),
+      sync: SYNC_FILTERS.find((v) => v === raw.sync),
+      tag: typeof raw.tag === 'string' && raw.tag !== '' ? raw.tag : undefined,
     }),
     component: PrivateNotesPage,
   });

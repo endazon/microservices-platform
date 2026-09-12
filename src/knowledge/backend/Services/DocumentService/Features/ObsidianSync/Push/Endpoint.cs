@@ -123,12 +123,19 @@ internal static class PushNoteEndpoint
                 var baseVersion = req.BaseVersion!.Value;
 
                 if (baseVersion != doc.Version)
+                {
+                    // #1442, SC-20 主要素 5: **409 を返す直前に**競合を記録する
+                    // （`SyncConflictRecorder`）。🔴 **応答の状態・本文は変えない** ——
+                    // プラグインは従来どおり自分で解決でき、通れば下の成功分岐が競合を閉じる。
+                    await SyncConflictRecorder.RecordAsync(db, storage, audit, owner, device.Id,
+                        doc, baseVersion, lastContent, now, ct);
                     return Results.Conflict(new
                     {
                         error = "version_conflict",
                         serverVersion = doc.Version,
                         serverUpdatedAt = doc.UpdatedAt,
                     });
+                }
 
                 // ADR-0037 決定 17: **更新は容量を見ずに通す**（100% でも保存できる。
                 // 書きかけを失わせない）。超過分は最新版の増分に限られる。
@@ -136,6 +143,10 @@ internal static class PushNoteEndpoint
                 note.RecordBody(lastBytes, lastHash, now);
                 device.TouchSync(now);
                 await db.SaveChangesAsync(ct);
+                // #1442, ADR-0037 決定 7: 正しい `baseVersion` で書けた＝**プラグイン側で解決済み**。
+                // 未解決のまま残っている競合を `client` で閉じる（利用者が選んだわけではないので
+                // 3 択のどれでもない値を使う）。閉じないと SC-20 に解決済みの競合が残り続ける。
+                await SyncConflictRecorder.CloseAsync(db, storage, owner, doc.Id, now, ct);
                 await PrivateNoteUsage.RecordUsageAndWarnAsync(db, notifier, owner, now, ct);
                 await db.SaveChangesAsync(ct);
 

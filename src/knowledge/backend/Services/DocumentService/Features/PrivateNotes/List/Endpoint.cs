@@ -25,9 +25,13 @@ internal static class ListPrivateNotesEndpoint
             var quota = await PrivateNoteUsage.GetOrCreateQuotaAsync(db, owner, now, ct);
             await db.SaveChangesAsync(ct);
 
+            // #1441, SC-19 主要素 1・2・5: 公開範囲・同期状態・タグ名の材料は**所有者ごとに 1 回**
+            // 引く（資料ごとに引くと一覧が件数に比例して遅くなる）。
+            var enrichment = await PrivateNoteEnrichment.LoadAsync(db, owner, docIds, now, ct);
+
             return Results.Ok(new PrivateNoteListResponse(
                 new PrivateNoteUsageDto(used, quota.LimitBytes, quota.PercentOf(used)),
-                notes.Select(n => PrivateNoteEndpoints.ToDto(n, docs.GetValueOrDefault(n.DocumentId)))
+                notes.Select(n => enrichment.ToDto(n, docs.GetValueOrDefault(n.DocumentId)))
                     .ToList()));
         });
     }

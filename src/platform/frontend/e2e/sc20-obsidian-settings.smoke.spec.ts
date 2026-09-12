@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test';
-import type { SyncDeviceDto } from '../src/lib/api/generated/bff.schemas';
+import type {
+  SyncConflictDetailDto,
+  SyncConflictSummaryDto,
+  SyncDeviceDto,
+  SyncSettingsDto,
+} from '../src/lib/api/generated/bff.schemas';
 import {
   installBffSession,
   sessionUser,
@@ -33,6 +38,31 @@ function device(overrides: Partial<SyncDeviceDto> = {}): SyncDeviceDto {
   };
 }
 
+// #1442: 同期対象範囲（主要素 3）と競合（主要素 5）。**どちらも画面を開いた時点で引く**ので、
+// セッション付きの面はすべて応答を用意する（用意し忘れは `expectBffTrafficIsComplete` が落とす）。
+const EMPTY_SETTINGS: SyncSettingsDto = { targetFolders: [], updatedAt: null };
+
+function conflict(overrides: Partial<SyncConflictSummaryDto> = {}): SyncConflictSummaryDto {
+  return {
+    id: 'conflict-1',
+    noteId: 'note-1',
+    title: '設計メモ',
+    vaultPath: '仕事/メモ/設計メモ.md',
+    detectedAt: new Date(Date.now() - DAY).toISOString(),
+    deviceId: 'device-1',
+    deviceName: '会議室の PC',
+    localBaseVersion: 3,
+    serverVersion: 5,
+    ...overrides,
+  };
+}
+
+/** 新しい区画が既定で引く 2 面（中身を見ない spec 用の空応答）。 */
+const QUIET_SYNC_PANELS = {
+  'GET /private-notes/sync-settings': EMPTY_SETTINGS,
+  'GET /private-notes/conflicts': [] as SyncConflictSummaryDto[],
+};
+
 test('unauthenticated visit to /my/obsidian redirects to /login', async ({ page }) => {
   await page.goto('/my/obsidian');
 
@@ -45,7 +75,7 @@ test('SC-20: states the sync scope and asks for no administrator approval', asyn
   const traffic = await installBffSession(page, {
     // 05_screens §SC-20 主アクター「Obsidian を使う利用者本人」。ロール限定は無い。
     user: sessionUser([]),
-    handlers: { 'GET /private-notes/devices': [device()] },
+    handlers: { 'GET /private-notes/devices': [device()], ...QUIET_SYNC_PANELS },
   });
 
   await page.goto('/my/obsidian');
@@ -78,6 +108,7 @@ test('SC-20/UC-11: an issued sync token is shown once and never comes back from 
   const traffic = await installBffSession(page, {
     user: sessionUser([]),
     handlers: {
+      ...QUIET_SYNC_PANELS,
       'GET /private-notes/devices': () => devices,
       'POST /private-notes/devices': (call) => {
         const body = call.body as { deviceName: string };
@@ -115,6 +146,136 @@ test('SC-20/UC-11: an issued sync token is shown once and never comes back from 
   await page.reload();
   await expect(page.getByRole('cell', { name: '社用ノート PC' })).toBeVisible();
   await expect(page.getByText('plaintext-sync-token-e2e')).toHaveCount(0);
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('SC-20 (#1442): removing a target folder stops syncing and says it is not a deletion', async ({
+  page,
+}) => {
+  let settings: SyncSettingsDto = {
+    targetFolders: [
+      { path: '仕事/メモ', noteCount: 12, lastSyncAt: new Date(Date.now() - DAY).toISOString() },
+      { path: '日誌', noteCount: 3, lastSyncAt: null },
+    ],
+    updatedAt: new Date(Date.now() - DAY).toISOString(),
+  };
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      'GET /private-notes/devices': [device()],
+      'GET /private-notes/conflicts': [],
+      'GET /private-notes/sync-settings': () => settings,
+      'PUT /private-notes/sync-settings': (call) => {
+        const body = call.body as { targetFolders: string[] };
+        settings = {
+          targetFolders: body.targetFolders.map((path) => ({
+            path,
+            noteCount: 0,
+            lastSyncAt: null,
+          })),
+          updatedAt: new Date().toISOString(),
+        };
+        return settings;
+      },
+    },
+  });
+
+  await page.goto('/my/obsidian');
+  const panel = page.getByRole('region', { name: '同期対象範囲' });
+
+  // ★ 陽性対照: フォルダの一覧（パス・配下の資料数・最終同期）が出る（主要素 3）。
+  await expect(panel.getByRole('cell', { name: '仕事/メモ' })).toBeVisible();
+  await expect(panel.getByRole('cell', { name: '12' })).toBeVisible();
+  // 05_screens §SC-20 主要素 3: 業務関連資料の固定文言は**この区画の中**にある。
+  await expect(panel.getByText('同期した資料は業務関連資料として扱われます。')).toBeVisible();
+
+  await panel
+    .getByRole('row', { name: /仕事\/メモ/ })
+    .getByRole('button', { name: '対象フォルダから外す' })
+    .click();
+
+  // 🔴 「外す」と「削除する」を読み分けられること（ADR-0037 決定 4）。
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('これは削除ではありません');
+  await expect(dialog).toContainText('フォルダ配下の資料はサーバに残り');
+  await dialog.getByRole('button', { name: '対象から外す' }).click();
+
+  // ★ 陽性対照: 外した 1 件を除いた**全量**が送られ、一覧へ反映される。
+  await expect(panel.getByRole('cell', { name: '仕事/メモ' })).toHaveCount(0);
+  await expect(panel.getByRole('cell', { name: '日誌' })).toBeVisible();
+  const put = traffic.calls.find((c) => c.key === 'PUT /private-notes/sync-settings');
+  expect(put?.body).toEqual({ targetFolders: ['日誌'] });
+  // ★ 陰性対照: 資料を消す口は 1 つも叩いていない。
+  expect(traffic.calls.map((c) => c.key)).not.toContain('DELETE /private-notes/note-1');
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('SC-20/UC-11 (#1442): a conflict is resolved by the person from three explicit choices', async ({
+  page,
+}) => {
+  let conflicts: SyncConflictSummaryDto[] = [conflict()];
+  const detail: SyncConflictDetailDto = {
+    ...conflict(),
+    localContent: '端末で書いた本文',
+    serverContent: 'サーバに保存されている本文',
+  };
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      'GET /private-notes/devices': [device()],
+      'GET /private-notes/sync-settings': EMPTY_SETTINGS,
+      'GET /private-notes/conflicts': () => conflicts,
+      'GET /private-notes/conflicts/conflict-1': detail,
+      'POST /private-notes/conflicts/conflict-1/resolve': () => {
+        conflicts = [];
+        return {
+          conflictId: 'conflict-1',
+          noteId: 'note-1',
+          resolution: 'local',
+          noteVersion: 6,
+          createdNoteId: null,
+        };
+      },
+    },
+  });
+
+  await page.goto('/my/obsidian');
+  const panel = page.getByRole('region', { name: '同期の競合' });
+
+  // ★ 陽性対照: 未解決の競合が一覧に出る（主要素 5）。
+  // タイトルとパスは同じ語を含むので `exact` で引き分ける（部分一致だと 2 セルに当たる）。
+  await expect(panel.getByRole('cell', { name: '設計メモ', exact: true })).toBeVisible();
+  await expect(panel.getByRole('cell', { name: '仕事/メモ/設計メモ.md' })).toBeVisible();
+  await expect(panel.getByText('ローカル 3 版 ／ サーバ 5 版')).toBeVisible();
+  // ★ 陰性対照 1: 一覧の応答は本文を運ばない（運ぶと「詳細だけが返す」が嘘になる）。
+  await expect(page.getByText('端末で書いた本文')).toHaveCount(0);
+
+  await panel.getByRole('button', { name: '本文を見て解決する' }).click();
+
+  // 2 ペイン（ローカル版／サーバ版）を並べて読める。
+  const resolution = page.getByRole('region', { name: '競合の解決' });
+  await expect(resolution.getByLabel('ローカル版の本文')).toContainText('端末で書いた本文');
+  await expect(resolution.getByLabel('サーバ版の本文')).toContainText('サーバに保存されている本文');
+
+  // ★ 陰性対照 2: **自動解決の択を置かない**（ADR-0037 決定 7）。3 択が在ることと対で読む。
+  await expect(resolution.getByRole('button', { name: 'ローカルを採用' })).toBeVisible();
+  await expect(resolution.getByRole('button', { name: 'サーバを採用' })).toBeVisible();
+  await expect(resolution.getByRole('button', { name: '両方を残す（別名保存）' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /自動|後勝ち/ })).toHaveCount(0);
+
+  await resolution.getByRole('button', { name: 'ローカルを採用' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('端末の本文が新しい版になります');
+  await dialog.getByRole('button', { name: 'ローカルを採用する' }).click();
+
+  // ★ 陽性対照: 解決すると一覧から消え、択が要求として届く。
+  await expect(page.getByText('競合はありません。')).toBeVisible();
+  const resolved = traffic.calls.find(
+    (c) => c.key === 'POST /private-notes/conflicts/conflict-1/resolve',
+  );
+  expect(resolved?.body).toEqual({ resolution: 'local' });
 
   expectBffTrafficIsComplete(traffic);
 });

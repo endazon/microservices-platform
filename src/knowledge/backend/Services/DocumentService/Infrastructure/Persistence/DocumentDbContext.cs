@@ -24,6 +24,10 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
     public DbSet<PrivateNoteQuota> PrivateNoteQuotas => Set<PrivateNoteQuota>();
     public DbSet<SyncDevice> SyncDevices => Set<SyncDevice>();
 
+    // FR-20, SC-20 主要素 3・5, ADR-0037 決定 3・4・7, #1442: 同期対象範囲と同期競合。
+    public DbSet<SyncSettings> SyncSettings => Set<SyncSettings>();
+    public DbSet<SyncConflict> SyncConflicts => Set<SyncConflict>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         mb.Entity<Document>(e =>
@@ -136,6 +140,35 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
             e.Property(d => d.TokenHash).HasMaxLength(64).IsRequired();
             e.HasIndex(d => d.TokenHash).IsUnique();
             e.HasIndex(d => d.OwnerId);
+        });
+
+        // FR-20, SC-20 主要素 3, ADR-0037 決定 3・4, #1442: 同期対象範囲（利用者ごとに 1 行）。
+        // 🔴 **`List<string>` 用の変換器を使うこと**（本ファイル §Tags の注記と同じ罠。
+        // `HasConversion` は非ジェネリック多重定義を持ち、`List<Guid>` 用を渡してもコンパイルは通る）。
+        mb.Entity<SyncSettings>(e =>
+        {
+            e.HasKey(s => s.OwnerId);
+            e.Property(s => s.OwnerId).HasMaxLength(200);
+            e.Property(s => s.TargetFolders)
+                .HasConversion(StringListConverter())
+                .HasColumnType("jsonb")
+                .Metadata.SetValueComparer(StringListComparer());
+        });
+
+        // FR-20, SC-20 主要素 5, ADR-0037 決定 7, #1442: 同期競合。
+        // 索引は `(OwnerId, ResolvedAt)` —— 一覧が引くのは「本人の未解決だけ」である。
+        // 資料（`PrivateNote`）の完全削除で連動削除する（資料が無い競合は解決しようがない）。
+        mb.Entity<SyncConflict>(e =>
+        {
+            e.HasKey(c => c.Id);
+            e.Property(c => c.OwnerId).HasMaxLength(200).IsRequired();
+            e.Property(c => c.LocalContentUri).HasMaxLength(2048).IsRequired();
+            e.Property(c => c.Resolution).HasMaxLength(20);
+            e.HasIndex(c => new { c.OwnerId, c.ResolvedAt });
+            e.HasOne<PrivateNote>()
+                .WithMany()
+                .HasForeignKey(c => c.DocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // FR-09, SC-09, #634: タグ辞書。表示名は**一意**である

@@ -40,6 +40,38 @@ const LIVE_NOTE = {
   purgeAt: null,
   createdAt: '2026-08-01T00:00:00Z',
   updatedAt: '2026-08-20T09:30:00Z',
+  // #1441: 公開範囲・同期状態・タグ（契約 `PrivateNoteDto` の 5 項目）。
+  visibility: 'private',
+  sharedUserCount: 0,
+  sharedGroupCount: 0,
+  syncState: 'target',
+  tags: ['設計'],
+};
+
+/** 個人へ共有され、競合している資料（3 状態 × 2 の「もう片方」を作るための行）。 */
+const SHARED_NOTE = {
+  ...LIVE_NOTE,
+  id: '00000000-0000-0000-0000-000000000011',
+  title: '共有した手順書',
+  vaultPath: '共有した手順書.md',
+  visibility: 'users',
+  sharedUserCount: 2,
+  sharedGroupCount: 0,
+  syncState: 'conflict',
+  tags: ['議事録'],
+};
+
+/** グループへ共有され、同期対象外の資料。 */
+const GROUP_NOTE = {
+  ...LIVE_NOTE,
+  id: '00000000-0000-0000-0000-000000000012',
+  title: '部門の方針メモ',
+  vaultPath: '部門の方針メモ.md',
+  visibility: 'groups',
+  sharedUserCount: 1,
+  sharedGroupCount: 3,
+  syncState: 'excluded',
+  tags: [],
 };
 
 /** 完全削除まで 3 日（残り 7 日以内＝警告色）。 */
@@ -52,6 +84,8 @@ const TRASHED_URGENT = {
   deleted: true,
   deletedAt: '2026-06-02T00:00:00Z',
   purgeAt: '2026-08-31T00:00:00Z',
+  // 契約: 削除済みの資料は常に対象外である（`PrivateNoteDto.syncState` の注記）。
+  syncState: 'excluded',
 };
 
 /** 完全削除まで 60 日（警告色ではない）。 */
@@ -478,5 +512,177 @@ describe('SC-19 個人資料管理: 取得失敗', () => {
     await renderPage();
 
     expect(await screen.findByText(/一覧を取得できませんでした/)).toBeInTheDocument();
+  });
+});
+
+describe('SC-19 個人資料管理: 公開範囲・同期状態・タグの 3 列（#1441）', () => {
+  /** 3 状態を同時に見るための一覧（利用中 3 件）。 */
+  const THREE_STATES = [LIVE_NOTE, SHARED_NOTE, GROUP_NOTE];
+
+  it('利用中タブに「公開範囲」「同期状態」「タグ」の 3 列が出る', async () => {
+    respond({ notes: THREE_STATES });
+    await renderPage();
+
+    expect(await screen.findByRole('columnheader', { name: '公開範囲' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '同期状態' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'タグ' })).toBeInTheDocument();
+  });
+
+  it('🔴 公開範囲の 3 状態が文言で区別され、共有の件数が併記される', async () => {
+    respond({ notes: THREE_STATES });
+    await renderPage();
+
+    // 🔴 **表の中だけを見る。** 絞り込みの選択肢にも同じ語が並ぶため、
+    // 画面全体で引くと「選択肢が在る」だけで緑になる（列が無くても通ってしまう）。
+    await screen.findByText('設計メモ');
+    const table = within(screen.getByRole('table'));
+    // 色を落としても読める文言であること（色だけで意味を持たせない）。
+    expect(table.getByText('非公開')).toBeInTheDocument();
+    expect(table.getByText('個人指定（2 人）')).toBeInTheDocument();
+    expect(table.getByText('グループ指定（3 件）')).toBeInTheDocument();
+  });
+
+  it('🔴 同期状態の 3 状態が文言で区別される', async () => {
+    respond({ notes: THREE_STATES });
+    await renderPage();
+
+    await screen.findByText('設計メモ');
+    const table = within(screen.getByRole('table'));
+    expect(table.getByText('同期対象')).toBeInTheDocument();
+    expect(table.getByText('競合あり')).toBeInTheDocument();
+    expect(table.getByText('対象外')).toBeInTheDocument();
+  });
+
+  it('🔴 契約に無い値は「非公開」「同期対象」へ丸めず、判定できない旨を出す', async () => {
+    respond({
+      notes: [{ ...LIVE_NOTE, visibility: 'shared', syncState: 'synced', tags: [] }],
+    });
+    await renderPage();
+
+    await screen.findByText('設計メモ');
+    const table = within(screen.getByRole('table'));
+    expect(table.getByText('公開範囲を判定できません')).toBeInTheDocument();
+    expect(table.getByText('同期状態を判定できません')).toBeInTheDocument();
+    // 陰性の対: 既知の状態へ丸めていない（表の中に既知の文言が現れない）。
+    expect(table.queryByText('非公開')).not.toBeInTheDocument();
+    expect(table.queryByText('同期対象')).not.toBeInTheDocument();
+  });
+
+  it('タグをチップで並べ、タグの無い行は空欄を示す', async () => {
+    respond({ notes: THREE_STATES });
+    await renderPage();
+
+    await screen.findByText('設計メモ');
+    const table = within(screen.getByRole('table'));
+    expect(table.getByText('設計')).toBeInTheDocument();
+    expect(table.getByText('議事録')).toBeInTheDocument();
+    // タグの無い行（部門の方針メモ）は「—」。
+    expect(
+      within(screen.getByRole('row', { name: /部門の方針メモ/ })).getByText('—'),
+    ).toBeInTheDocument();
+  });
+
+  it('削除済みタブでは公開範囲とタグを出し、同期状態の列は出さない', async () => {
+    respond();
+    await renderPage('/my/notes?tab=trash');
+
+    await screen.findByText('古い議事録');
+    // 陽性対照: 公開範囲とタグは削除済みでも意味を持つ。
+    expect(screen.getByRole('columnheader', { name: '公開範囲' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'タグ' })).toBeInTheDocument();
+    // 削除済みは契約上つねに「対象外」なので列を置かない。
+    expect(screen.queryByRole('columnheader', { name: '同期状態' })).not.toBeInTheDocument();
+  });
+
+  it('🔴 指定先（共有相手）の表示も変更ダイアログも置かない（陽性対照つき）', async () => {
+    const user = userEvent.setup();
+    respond({ notes: THREE_STATES });
+    await renderPage();
+
+    // 陽性対照: 公開範囲そのものは 3 状態とも描かれている（何も描かない実装と区別する）。
+    expect(await screen.findByText('個人指定（2 人）')).toBeInTheDocument();
+    expect(screen.getByText('グループ指定（3 件）')).toBeInTheDocument();
+
+    // 陰性: 相手の一覧・変更の導線をどこにも置かない（planning#618 の裁定待ち）。
+    expect(screen.queryByRole('button', { name: /公開範囲を変更/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /共有相手/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /指定先/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/共有先:/)).not.toBeInTheDocument();
+
+    // 公開範囲のバッジを押しても何も開かない（バッジ自体が導線になっていない）。
+    await user.click(screen.getByText('個人指定（2 人）'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+describe('SC-19 個人資料管理: 絞り込み 3 軸（#1441）', () => {
+  const THREE_STATES = [LIVE_NOTE, SHARED_NOTE, GROUP_NOTE];
+
+  it('公開範囲で絞り込め、条件が URL に載る', async () => {
+    respond({ notes: THREE_STATES });
+    const user = userEvent.setup();
+    const { router } = await renderPage();
+
+    await screen.findByText('設計メモ');
+    await user.selectOptions(screen.getByLabelText('公開範囲で絞り込む'), 'groups');
+
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject({ visibility: 'groups' }),
+    );
+    expect(bodyRows()).toHaveLength(1);
+    expect(screen.getByText('部門の方針メモ')).toBeInTheDocument();
+  });
+
+  it('同期状態で絞り込め、条件が URL に載る', async () => {
+    respond({ notes: THREE_STATES });
+    const user = userEvent.setup();
+    const { router } = await renderPage();
+
+    await screen.findByText('設計メモ');
+    await user.selectOptions(screen.getByLabelText('同期状態で絞り込む'), 'conflict');
+
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ sync: 'conflict' }));
+    expect(bodyRows()).toHaveLength(1);
+    expect(screen.getByText('共有した手順書')).toBeInTheDocument();
+  });
+
+  it('タグで絞り込め、条件が URL に載る', async () => {
+    respond({ notes: THREE_STATES });
+    const user = userEvent.setup();
+    const { router } = await renderPage();
+
+    await screen.findByText('設計メモ');
+    await user.selectOptions(screen.getByLabelText('タグで絞り込む'), '議事録');
+
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ tag: '議事録' }));
+    expect(bodyRows()).toHaveLength(1);
+    expect(screen.getByText('共有した手順書')).toBeInTheDocument();
+  });
+
+  it('URL の ?visibility= / ?sync= / ?tag= で直接開ける', async () => {
+    respond({ notes: THREE_STATES });
+    await renderPage('/my/notes?visibility=users&sync=conflict&tag=議事録');
+
+    expect(await screen.findByText('共有した手順書')).toBeInTheDocument();
+    expect(bodyRows()).toHaveLength(1);
+  });
+
+  it('未知の絞り込み値は「絞り込まない」へ倒す（画面を壊さない）', async () => {
+    respond({ notes: THREE_STATES });
+    await renderPage('/my/notes?visibility=public&sync=auto');
+
+    await screen.findByText('設計メモ');
+    expect(bodyRows()).toHaveLength(3);
+  });
+
+  it('削除済みタブには同期状態の絞り込みを置かない（常に対象外のため）', async () => {
+    respond();
+    await renderPage('/my/notes?tab=trash');
+
+    await screen.findByText('古い議事録');
+    // 陽性対照: 他の 2 軸は削除済みタブにも在る。
+    expect(screen.getByLabelText('公開範囲で絞り込む')).toBeInTheDocument();
+    expect(screen.getByLabelText('タグで絞り込む')).toBeInTheDocument();
+    expect(screen.queryByLabelText('同期状態で絞り込む')).not.toBeInTheDocument();
   });
 });

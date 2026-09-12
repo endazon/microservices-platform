@@ -33,6 +33,11 @@ function note(over: Partial<PrivateNoteDto>): PrivateNoteDto {
     purgeAt: null,
     createdAt: '2026-08-01T00:00:00Z',
     updatedAt: '2026-08-01T00:00:00Z',
+    visibility: 'private',
+    sharedUserCount: 0,
+    sharedGroupCount: 0,
+    syncState: 'excluded',
+    tags: [],
     ...over,
   };
 }

@@ -63,6 +63,12 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
     [InlineData("POST", "/bff/private-notes/devices/d0d0d0d0-d0d0-d0d0-d0d0-d0d0d0d0d0d0/reissue")]
     [InlineData("DELETE", "/bff/private-notes/devices/d0d0d0d0-d0d0-d0d0-d0d0-d0d0d0d0d0d0")]
     [InlineData("POST", "/bff/private-notes/devices/revoke-all")]
+    // #1442: 同期対象範囲と同期競合（SC-20 主要素 3・5）。
+    [InlineData("GET", "/bff/private-notes/sync-settings")]
+    [InlineData("PUT", "/bff/private-notes/sync-settings")]
+    [InlineData("GET", "/bff/private-notes/conflicts")]
+    [InlineData("GET", "/bff/private-notes/conflicts/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c0c0")]
+    [InlineData("POST", "/bff/private-notes/conflicts/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c0c0/resolve")]
     public async Task Anonymous_requests_are_rejected_with_401(string method, string path)
     {
         var client = _factory.CreateClient();
@@ -195,6 +201,9 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
     [InlineData("POST", "/bff/private-notes/19191919-1919-1919-1919-191919191919/restore")]
     [InlineData("PUT", "/bff/private-notes/19191919-1919-1919-1919-191919191919/exposure")]
     [InlineData("POST", "/bff/private-notes/purge")]
+    // #1442: 同期設定の更新と競合の解決も書き込みである（読み取りの 3 口は下の陽性対照が見る）。
+    [InlineData("PUT", "/bff/private-notes/sync-settings")]
+    [InlineData("POST", "/bff/private-notes/conflicts/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c0c0/resolve")]
     public async Task Writes_are_forbidden_for_a_subject_without_a_write_policy(
         string method, string path)
     {
@@ -323,6 +332,94 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
         var revokeAll = await As(BffTestFactory.NoteOwner)
             .PostAsync("/bff/private-notes/devices/revoke-all", null, TestContext.Current.CancellationToken);
         revokeAll.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // ── 5-b. SC-20 主要素 3・5: 同期対象範囲と同期競合（#1442）───────────────
+    //
+    // 陽性対照: 本人は自分の同期設定と競合を読める（**write ポリシーが無くても読める**）。
+    [Fact]
+    public async Task The_owner_reads_their_sync_settings_and_conflicts_without_a_write_policy()
+    {
+        _factory.SearchScopeGranted = false;
+        _factory.WriteScopeGranted = false;
+        try
+        {
+            var settings = await As(BffTestFactory.NoteOwner).GetFromJsonAsync<SyncSettingsDto>(
+                "/bff/private-notes/sync-settings", TestContext.Current.CancellationToken);
+            settings!.TargetFolders.Select(f => f.Path).Should().Contain("work");
+
+            var conflicts = await As(BffTestFactory.NoteOwner)
+                .GetFromJsonAsync<List<SyncConflictSummaryDto>>(
+                    "/bff/private-notes/conflicts", TestContext.Current.CancellationToken);
+            conflicts!.Select(c => c.Id).Should().Contain(BffTestFactory.StubSyncConflictId);
+
+            var detail = await As(BffTestFactory.NoteOwner)
+                .GetFromJsonAsync<SyncConflictDetailDto>(
+                    $"/bff/private-notes/conflicts/{BffTestFactory.StubSyncConflictId}",
+                    TestContext.Current.CancellationToken);
+            detail!.LocalContent.Should().NotBeEmpty("2 ペイン差分の材料は詳細だけが返す");
+            detail.ServerContent.Should().NotBeEmpty();
+        }
+        finally
+        {
+            _factory.SearchScopeGranted = true;
+            _factory.WriteScopeGranted = true;
+        }
+    }
+
+    // 陰性: 他人の競合は**不在と同じ 404**（一覧にも現れない）。
+    // 陽性対照は直前の試験（本人の競合は 200 で読める）である。
+    [Fact]
+    public async Task Another_users_conflict_is_not_reachable()
+    {
+        var conflicts = await As(BffTestFactory.NoteOwner)
+            .GetFromJsonAsync<List<SyncConflictSummaryDto>>(
+                "/bff/private-notes/conflicts", TestContext.Current.CancellationToken);
+        conflicts!.Select(c => c.Id).Should().NotContain(BffTestFactory.OtherOwnerConflictId);
+
+        var detail = await As(BffTestFactory.NoteOwner).GetAsync(
+            $"/bff/private-notes/conflicts/{BffTestFactory.OtherOwnerConflictId}",
+            TestContext.Current.CancellationToken);
+        detail.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        var resolve = await As(BffTestFactory.NoteOwner).PostAsJsonAsync(
+            $"/bff/private-notes/conflicts/{BffTestFactory.OtherOwnerConflictId}/resolve",
+            new ResolveSyncConflictRequest(SyncConflictResolutions.Server),
+            TestContext.Current.CancellationToken);
+        resolve.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // 陽性対照: write スコープがあれば、本人の同期設定の更新と競合の解決は通る。
+    [Fact]
+    public async Task The_owner_can_update_sync_settings_and_resolve_their_own_conflict()
+    {
+        var put = await As(BffTestFactory.NoteOwner).PutAsJsonAsync(
+            "/bff/private-notes/sync-settings", new UpdateSyncSettingsRequest(["work"]),
+            TestContext.Current.CancellationToken);
+        put.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var resolve = await As(BffTestFactory.NoteOwner).PostAsJsonAsync(
+            $"/bff/private-notes/conflicts/{BffTestFactory.StubSyncConflictId}/resolve",
+            new ResolveSyncConflictRequest(SyncConflictResolutions.Server),
+            TestContext.Current.CancellationToken);
+        resolve.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await resolve.Content.ReadFromJsonAsync<ResolveSyncConflictResponse>(
+            TestContext.Current.CancellationToken))!.ConflictId
+            .Should().Be(BffTestFactory.StubSyncConflictId);
+    }
+
+    // 🔴 資格情報の転送は**新しい 5 口でも**実体である（後段は主体をトークンからしか採らない）。
+    [Fact]
+    public async Task The_callers_credentials_reach_the_downstream_for_the_new_endpoints()
+    {
+        _factory.LastPrivateNoteForwardedAuthorization = null;
+
+        var resp = await As(BffTestFactory.NoteOwner).GetAsync(
+            "/bff/private-notes/conflicts", TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        _factory.LastPrivateNoteForwardedAuthorization.Should()
+            .Be($"Bearer {BffTestFactory.NoteOwner}");
     }
 
     // ── 6. 後段の本文を詰め替えない（SC-19 の固定文言の根拠が画面へ届く）─────────

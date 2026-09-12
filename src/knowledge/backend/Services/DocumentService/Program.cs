@@ -19,8 +19,12 @@ using DocumentService.Features.ObsidianSync.Push;
 using DocumentService.Features.PrivateNotes;
 using DocumentService.Features.PrivateNotes.Create;
 using DocumentService.Features.PrivateNotes.Purge;
+using DocumentService.Features.SyncConflicts;
+using DocumentService.Features.SyncConflicts.Resolve;
 using DocumentService.Features.SyncDevices;
 using DocumentService.Features.SyncDevices.Issue;
+using DocumentService.Features.SyncSettings;
+using DocumentService.Features.SyncSettings.Update;
 using DocumentService.Features.Tags;
 using DocumentService.Features.Tags.Names;
 using DocumentService.Features.Tags.Create;
@@ -103,6 +107,9 @@ builder.Services.AddScoped<IValidator<PurgePrivateNotesRequest>, PurgePrivateNot
 builder.Services.AddScoped<IValidator<CreateSyncDeviceRequest>, IssueSyncDeviceValidator>();
 builder.Services.AddScoped<IValidator<MoveNoteRequest>, MoveNoteValidator>();
 builder.Services.AddScoped<IValidator<PushNoteRequest>, PushNoteValidator>();
+// #1442: 同期対象範囲と競合解決（SC-20 主要素 3・5）。
+builder.Services.AddScoped<IValidator<UpdateSyncSettingsRequest>, UpdateSyncSettingsValidator>();
+builder.Services.AddScoped<IValidator<ResolveSyncConflictRequest>, ResolveSyncConflictValidator>();
 
 // FR-06: Document DbContext (ADR-0002 Database per Service)
 builder.Services.AddDbContext<DocumentDbContext>(opt => opt.UseNpgsql(connStr));
@@ -284,6 +291,10 @@ app.MapDocumentShareEndpoints();
 app.MapPrivateNoteEndpoints();
 // FR-20, SC-20: 同期端末とトークン（発行・再発行・失効）。
 app.MapSyncDeviceEndpoints();
+// FR-20, SC-20 主要素 3, ADR-0037 決定 3・4, #1442: 同期対象範囲（同期設定）。
+app.MapSyncSettingsEndpoints();
+// FR-20, SC-20 主要素 5, ADR-0037 決定 7, #1442: 同期競合（一覧・詳細・解決の 3 択）。
+app.MapSyncConflictEndpoints();
 // FR-20, ADR-0037: Obsidian プラグイン向け同期プロトコル（同期トークン認証）。
 app.MapObsidianSyncEndpoints();
 // FR-16, ADR-0024 §2: MCP ツール定義の自己申告（メッシュ内部限定。#1020）。

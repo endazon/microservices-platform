@@ -28,6 +28,12 @@ function note(overrides: Partial<PrivateNoteDto> = {}): PrivateNoteDto {
     deleted: false,
     createdAt: '2026-08-01T00:00:00Z',
     updatedAt: '2026-08-02T00:00:00Z',
+    // #1441: 公開範囲・同期状態・タグ（契約 `PrivateNoteDto` の 5 項目）。
+    visibility: 'private',
+    sharedUserCount: 0,
+    sharedGroupCount: 0,
+    syncState: 'target',
+    tags: [],
     ...overrides,
   };
 }
@@ -166,6 +172,83 @@ test('SC-19/UC-11 exception flow: a full quota blocks creation only, and warns t
   await page.getByRole('button', { name: '削除する' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('削除しても容量は空きません（90 日間保管されます）');
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('SC-19 (#1441): the list shows visibility, sync state and tags, and never names who it is shared with', async ({
+  page,
+}) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      // 契約が運ぶのは**状態と件数だけ**である（相手の識別子も表示名も無い）。
+      'GET /private-notes': listOf([
+        note({
+          id: 'note-shared',
+          title: '共有した手順書',
+          vaultPath: '共有した手順書.md',
+          visibility: 'groups',
+          sharedUserCount: 1,
+          sharedGroupCount: 2,
+          syncState: 'conflict',
+          tags: ['議事録'],
+        }),
+      ]),
+    },
+  });
+
+  await page.goto('/my/notes');
+
+  // ★ 陽性対照: 3 列がいずれも見出しとして在り、値は**色ではなく文言**で読める。
+  await expect(page.getByRole('columnheader', { name: '公開範囲' })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: '同期状態' })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'タグ' })).toBeVisible();
+  const row = page.getByRole('row', { name: /共有した手順書/ });
+  await expect(row.getByText('グループ指定（2 件）')).toBeVisible();
+  await expect(row.getByText('競合あり')).toBeVisible();
+  await expect(row.getByText('議事録')).toBeVisible();
+
+  // ★ 陰性対照: 指定先（共有相手）を出す導線も表示も無い（planning#618 の裁定待ち）。
+  // 「置いていない」だけでは何も描かない実装と区別できないため、上の陽性対照と対で読むこと。
+  await expect(page.getByRole('button', { name: /公開範囲を変更/ })).toHaveCount(0);
+  await expect(page.getByText(/共有先:/)).toHaveCount(0);
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('SC-19 (#1441): visibility, sync state and tag filters live in the URL', async ({ page }) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      'GET /private-notes': listOf([
+        note({ id: 'note-private', title: '下書き', tags: ['設計'] }),
+        note({
+          id: 'note-groups',
+          title: '部門の方針メモ',
+          vaultPath: '部門の方針メモ.md',
+          visibility: 'groups',
+          sharedGroupCount: 3,
+          syncState: 'excluded',
+          tags: ['議事録'],
+        }),
+      ]),
+    },
+  });
+
+  await page.goto('/my/notes');
+  await expect(page.getByRole('cell', { name: '下書き' })).toBeVisible();
+
+  // 🔴 絞り込みの単一情報源は URL である（再読込・共有で同じ一覧になる）。
+  await page.getByLabel('公開範囲で絞り込む').selectOption('groups');
+  await expect(page).toHaveURL(/visibility=groups/);
+  await expect(page.getByRole('cell', { name: '部門の方針メモ' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '下書き' })).toHaveCount(0);
+
+  // ★ 陽性対照: 絞り込みは URL だけで再現できる（画面の一時状態に置いていない）。
+  await page.goto('/my/notes?tag=設計');
+  await expect(page.getByRole('cell', { name: '下書き' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '部門の方針メモ' })).toHaveCount(0);
 
   expectBffTrafficIsComplete(traffic);
 });

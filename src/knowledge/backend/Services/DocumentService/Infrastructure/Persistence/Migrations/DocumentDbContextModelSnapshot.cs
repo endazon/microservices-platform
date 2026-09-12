@@ -256,6 +256,53 @@ namespace DocumentService.Infrastructure.Migrations
                     b.ToTable("PrivateNoteQuotas");
                 });
 
+            modelBuilder.Entity("DocumentService.Domain.SyncConflict", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("DetectedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("LocalBaseVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LocalContentUri")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ServerVersion")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("OwnerId", "ResolvedAt");
+
+                    b.ToTable("SyncConflicts");
+                });
+
             modelBuilder.Entity("DocumentService.Domain.SyncDevice", b =>
                 {
                     b.Property<Guid>("Id")
@@ -300,6 +347,24 @@ namespace DocumentService.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("SyncDevices");
+                });
+
+            modelBuilder.Entity("DocumentService.Domain.SyncSettings", b =>
+                {
+                    b.Property<string>("OwnerId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TargetFolders")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("OwnerId");
+
+                    b.ToTable("SyncSettings");
                 });
 
             modelBuilder.Entity("DocumentService.Domain.Tag", b =>
@@ -350,6 +415,15 @@ namespace DocumentService.Infrastructure.Migrations
                     b.HasOne("DocumentService.Domain.Document", null)
                         .WithOne()
                         .HasForeignKey("DocumentService.Domain.PrivateNote", "DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DocumentService.Domain.SyncConflict", b =>
+                {
+                    b.HasOne("DocumentService.Domain.PrivateNote", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

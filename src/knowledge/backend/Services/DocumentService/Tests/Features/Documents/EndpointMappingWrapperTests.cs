@@ -12,6 +12,9 @@ namespace DocumentService.Tests.Features.Documents;
 // `[Mapper]` へ持ち込めない・持ち込んではならないものであり、それを今持っている端
 // （登録表 `<集約>Endpoints.cs`）に残った。**ラッパは 1 式で、列の詰め替えを含まない。**
 // 列の詰め替え側は `DocumentMapperTests` / `PrivateNoteMapperTests` が見る。
+//
+// ★［#1441］個人資料側の縮退は `PrivateNoteEnrichment.ToDto` へ移った（導出項目が増え、
+// 材料を DB から引く必要が出たため）。`Empty` は材料が 1 つも無い状態で、縮退だけを測れる。
 [Trait("TestKind", "Unit")]
 public class EndpointMappingWrapperTests
 {
@@ -54,7 +57,7 @@ public class EndpointMappingWrapperTests
     {
         var n = PrivateNote.Create(Guid.NewGuid(), "alice", "研究/メモ.md", 10, "h", Now);
 
-        var dto = PrivateNoteEndpoints.ToDto(n, doc: null);
+        var dto = PrivateNoteEnrichment.Empty.ToDto(n, doc: null);
 
         dto.Title.Should().BeEmpty();
         dto.Version.Should().Be(0);
@@ -68,7 +71,7 @@ public class EndpointMappingWrapperTests
         var n = PrivateNote.Create(Guid.NewGuid(), "alice", "研究/メモ.md", 10, "h", Now);
         var doc = Document.Create("研究メモ", null, null);
 
-        var dto = PrivateNoteEndpoints.ToDto(n, doc);
+        var dto = PrivateNoteEnrichment.Empty.ToDto(n, doc);
 
         dto.Title.Should().Be("研究メモ");
         dto.Version.Should().Be(doc.Version);
