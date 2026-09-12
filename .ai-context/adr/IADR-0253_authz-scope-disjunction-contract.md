@@ -5,7 +5,7 @@ status: Proposed
 related_ids: [FR-05, FR-19, FR-20, FR-21, UC-11, ADR-0004, ADR-0034, ADR-0036, ADR-0046, ADR-0054]
 author: claude
 created: 2026-08-22
-updated: 2026-08-23
+updated: 2026-09-12
 plan_refs:
   - planning:projects/microservices-platform/06_technical/07_abac-attribute-model.md
   - planning:projects/microservices-platform/07_adr/ADR-0046_private-note-not-synced-to-wikijs.md
@@ -142,6 +142,10 @@ B `{ confidentiality: [public], department: [sales] }` が同時マッチのと�
 `AbacEvaluator.ResolveScope` が `request.UserId` を用いて `${current_user}` を展開してから
 分岐を組み立てる。**束縛できる変数は `${current_user}` の 1 つだけとする**（増やさない。
 計画が語彙を定めていないため、実装が語彙を先取りしない）。
+
+> ［2026-09-12 追記 / #1447］**本決定の「1 つだけ・増やさない」は [IADR-0447](./IADR-0447_current-groups-binding-and-shared-with-branch-wiring.md) 決定 2 が改めた（部分 supersede）。**
+> 計画が束縛変数の語彙を確定した（ADR-0036 D-03: `${current_user}` と `${current_groups}` の 2 つ。ADR-0098 決定 1: `${current_groups}` の値は Keycloak のグループ ID）ため、
+> 「語彙を先取りしない」という理由が消えた。**現行値は 2 変数である。** 「述語側は解釈せず評価器でのみ解決する」は据え置く。
 
 ### 決定 4: `shared_with` は**属性辞書に載せず、専用の記録として持つ**（段を分ける）
 

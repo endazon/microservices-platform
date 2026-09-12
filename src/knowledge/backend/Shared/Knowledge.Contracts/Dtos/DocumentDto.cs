@@ -17,6 +17,14 @@ public class DocumentDto
     // 「本文なし（原本を参照）」を出す（**SC-02 と同じ文言・同じ導出**）。
     // **既定は `true`**（本項目を持たない旧応答は従来どおり「本文あり」として読める）。
     public bool HasBody { get; init; } = true;
+    // FR-19, ADR-0036 D-06, ADR-0098 決定 1 / #1447: **共有台帳の写し**（`subjectId` の集合。個人は利用者名、
+    // グループは Keycloak のグループ ID）。`DocumentUpdated.SharedWith` と同じ値・同じ順であり、
+    // **解決点は `DocumentEndpoints.PublishUpdatedAsync` と同じ 1 つ**に寄せる（経路ごとに割らない）。
+    // 🔴 `SubjectType` は運ばない —— 判定規則 `doc.shared_with ∩ ({${current_user}} ∪ ${current_groups}) ≠ ∅`
+    // が 1 つの集合として突き合わせる（利用者名と UUID は名前空間が交わらない）。
+    // BFF の単体判定は `DocumentAttributeEncoding.WithSharedWith` で `shared_with` の集合値属性として読む。
+    // **既定は null（＝共有なし）**。項目を持たない旧応答は「共有なし」として読める（末尾追加・既定値付き）。
+    public List<string>? SharedWith { get; init; }
 }
 
 // SC-03, FR-06: 文書本文（正規化 Markdown）の取得結果。BFF が ABAC 判定後にオブジェクト

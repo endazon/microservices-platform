@@ -577,6 +577,15 @@ export interface DocumentDto {
      * **項目を持たない応答は「本文あり」として読む**（既定 `true`）。
      */
   hasBody?: boolean;
+  /**
+     * FR-19, ADR-0036 D-06, ADR-0098 決定 1 (#1447): **共有台帳の写し**（`subjectId` の集合。個人は利用者名、
+     * グループは Keycloak のグループ ID。`subjectType` は運ばない —— 判定規則
+     * `doc.shared_with ∩ ({${current_user}} ∪ ${current_groups}) ≠ ∅` が 1 つの集合として突き合わせるため）。
+     * 索引（`DocumentUpdated.sharedWith`）と同じ値・同じ順で、**共有が無い資料と組織文書は空**。
+     * BFF の単体判定（`BffScopeResolver.Matches`）はこれを `shared_with` の集合値属性として読む。
+     * **項目を持たない旧応答は「共有なし」として読む。**
+     */
+  sharedWith?: string[] | null;
 }
 
 /**
@@ -1919,8 +1928,8 @@ export interface DocumentShareDto {
 }
 
 /**
- * FR-19, SC-19 主要素 3: 指定先の追加。**画面は `subjectType=user` しか送らない**（ADR-0098 決定 2。
- * グループ指定の導線を置かない）。
+ * FR-19, SC-19 主要素 3: 指定先の追加。`subjectType` は `user`（`subjectId` は利用者名）か `group`
+ * （`subjectId` は Keycloak のグループ ID。#1447 で配線済み）。
  */
 export interface CreateShareRequest {
   subjectType: string;
@@ -1970,6 +1979,30 @@ export interface ResolveUsersRequest {
      * @maxItems 100
      */
   usernames: string[];
+}
+
+/**
+ * FR-19, SC-19 主要素 3, ADR-0098 決定 1: 共有先候補・共有先表示用のグループの像。
+ * **識別子・表示名・パスだけ**を運ぶ（所属者・属性は出さない）。`id` が共有台帳の `subjectId`
+ * （`${current_groups}` と同じ名前空間 ＝ Keycloak のグループ ID）である。画面には `displayName` を出し、
+ * 同名のグループを区別するために `path` を添える。`id` は画面に出さない。
+ */
+export interface GroupSummaryDto {
+  id: string;
+  displayName: string;
+  /** Keycloak のグループパス（例: `/teams/knowledge`） */
+  path: string;
+}
+
+/**
+ * FR-19, SC-19 主要素 3: 表示名へ引くグループ ID の集合（1〜100 件）。無い ID は応答から落ちる。
+ */
+export interface ResolveGroupsRequest {
+  /**
+     * @minItems 1
+     * @maxItems 100
+     */
+  ids: string[];
 }
 
 /**
@@ -2173,6 +2206,18 @@ export const BffGraphSuggestionsKind = {
 } as const;
 
 export type BffUserLookupParams = {
+/**
+ * @minLength 2
+ */
+q: string;
+/**
+ * @minimum 1
+ * @maximum 50
+ */
+limit?: number;
+};
+
+export type BffGroupLookupParams = {
 /**
  * @minLength 2
  */
