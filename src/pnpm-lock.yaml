@@ -174,12 +174,21 @@ importers:
 
   ai-stock-trading/frontend:
     dependencies:
+      '@lingui/core':
+        specifier: ^6.6.0
+        version: 6.6.0(@babel/core@7.29.7)(@babel/types@7.29.8)(babel-plugin-macros@3.1.0)
+      '@lingui/react':
+        specifier: ^6.6.0
+        version: 6.6.0(@babel/core@7.29.7)(@babel/types@7.29.8)(babel-plugin-macros@3.1.0)(react@19.2.8)
       '@tanstack/react-query':
         specifier: ^5.101.0
         version: 5.101.4(react@19.2.8)
       '@tanstack/react-router':
         specifier: ^1.170.18
         version: 1.170.18(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      lucide-react:
+        specifier: ^0.577.0
+        version: 0.577.0(react@19.2.8)
       react:
         specifier: ^19.2.0
         version: 19.2.8
@@ -190,6 +199,15 @@ importers:
       '@eslint/js':
         specifier: ^9.11.1
         version: 9.39.5
+      '@lingui/babel-plugin-lingui-macro':
+        specifier: ^6.6.0
+        version: 6.6.0(@babel/core@7.29.7)(@babel/types@7.29.8)
+      '@lingui/cli':
+        specifier: ^6.6.0
+        version: 6.6.0(babel-plugin-macros@3.1.0)(esbuild@0.28.1)
+      '@lingui/format-po':
+        specifier: ^6.6.0
+        version: 6.6.0
       '@playwright/test':
         specifier: ^1.48.0
         version: 1.62.1

@@ -286,7 +286,7 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 705386,
+  "initialTotalBytes": 731293,
   "$comment_initialTotalBytes_20260830_1078": [
     "［2026-08-30 / #1078］616,202 → 617,156（+0.95 kB）へ引き上げた。実測値である（pnpm run build →",
     "node scripts/check-chunk-budget.js --update）。増加は **BFF 境界のエラー文言を i18n した**ことによる ——",
@@ -329,7 +329,18 @@
     "判定 4 は warn であり fail にしない（往復の増加は性能の劣化ではあっても壊れではない）。",
     "［2026-08-23 / #917］5 → 6。echartsGraphBundle.ts（GraphChart の登録層 0.16 kB）が同型で 1 本増えた。"
   ],
-  "smallLazyChunks": 9,
+  "smallLazyChunks": 10,
+  "$comment_initialTotalBytes_20260912_ast-bump": [
+    "［2026-09-12 / #1437 作業 1・2］705,386 → 731,293（+25.91 kB）へ引き上げた。submodule src/ai-stock-trading を",
+    "develop 3d35c7a → 7780edc（AST#791: 4 画面を @platform/ui と Lingui へ載せ替え）へ進めた合成ビルドの実測。",
+    "内訳 A/B: A = AST の 4 画面本体（AST の route factory は component: へ画面を直接渡しており、knowledge の",
+    "lazyRouteComponent と違って合成点の静的 import 経由で初期チャンク index-*.js に入る。増分の大半）。",
+    "B = AST の ja カタログ 442 文言（registerUnitMessages で合成点が読む）と lucide のアイコン追加分。",
+    "index.esm-*.js（79.5 kB）は AST と無関係（@hookform/devtools の little-state-machine。SC-10 の遅延チャンク",
+    "だけが import し初期ロードに入らない）。1 kB 未満の遅延チャンク 9 → 10 本は AST 画面と knowledge の遅延",
+    "画面が共有する小モジュールが 1 本増えたもの（規則は足さない）。A は AST 側の lazy 化で遅延へ移せる",
+    "（AST へ issue で委ねた。本 PR では直せない: IADR-0120）。仕様書 .ai-context/specs/20260912_ast-submodule-bump-ui-ux.md。"
+  ],
   "$comment_initialTotalBytes_20260912_integration": [
     "［2026-09-12 / UI/UX 改善の統合］656,554 → 705,390（+48.84 kB）へ引き上げた。実測値である（全タスク統合後の",
     "pnpm run build → node scripts/check-chunk-budget.js --update）。直前の床 656,554 は AI 対話（T3）単独の A/B であり、",
