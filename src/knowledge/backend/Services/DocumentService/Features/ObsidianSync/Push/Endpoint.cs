@@ -106,20 +106,20 @@ internal static class PushNoteEndpoint
                     lastHash, now);
                 db.PrivateNotes.Add(note);
                 device.TouchSync(now);
+                // ADR-0037 決定 9 / ADR-0099 決定 1・5 (#1446): 監査は「誰が・いつ・何件」。
+                // タイトル・内容・Vault パスは記録しない。**行と構造化ログの両方をここで出す**
+                // （`SyncAuditRecorder`）。新規作成は `added=1` である。
+                // 🔴 行は資料の Add と**同じ** `SaveChangesAsync` で確定させる（IADR-0446 決定 3。
+                // 成功したのに履歴が無い／履歴が在るのに資料が無い、のどちらも起こさない）。
+                SyncAuditRecorder.Success(db, audit, owner, device, SyncOps.Push,
+                    added: 1, updated: 0, deleted: 0, now,
+                    extra: $"count=1 versions={req.Edits.Count}");
                 await db.SaveChangesAsync(ct);
                 await PrivateNoteUsage.RecordUsageAndWarnAsync(db, notifier, owner, now, ct);
                 await db.SaveChangesAsync(ct);
 
                 await PublishIfExposedAsync(bus, db, doc, ct);
 
-                // ADR-0037 決定 9 / ADR-0099 決定 1・5 (#1446): 監査は「誰が・いつ・何件」。
-                // タイトル・内容・Vault パスは記録しない。**行と構造化ログの両方をここで出す**
-                // （`SyncAuditRecorder`）。新規作成は `added=1` である。
-                // 🔴 行は上の `SaveChangesAsync` の**後ろ**なので、自分で確定させる。
-                SyncAuditRecorder.Success(db, audit, owner, device, SyncOps.Push,
-                    added: 1, updated: 0, deleted: 0, now,
-                    extra: $"count=1 versions={req.Edits.Count}");
-                await db.SaveChangesAsync(ct);
                 return Results.Created($"/private-notes/sync/notes/{id}",
                     new PushNoteResponse(id, doc.Version, lastHash, lastBytes));
             }
@@ -193,6 +193,11 @@ internal static class PushNoteEndpoint
                 await ApplyEditsAsync(doc, req, storage, skipFirst: false, ct);
                 note.RecordBody(lastBytes, lastHash, now);
                 device.TouchSync(now);
+                // ADR-0037 決定 9 / ADR-0099 決定 1・5 (#1446): 更新は `updated=1`。行は資料の版と
+                // **同じ** `SaveChangesAsync` で確定させる（IADR-0446 決定 3）。
+                SyncAuditRecorder.Success(db, audit, owner, device, SyncOps.Push,
+                    added: 0, updated: 1, deleted: 0, now,
+                    extra: $"count=1 versions={req.Edits.Count}");
                 await db.SaveChangesAsync(ct);
                 // #1442, ADR-0037 決定 7: 正しい `baseVersion` で書けた＝**プラグイン側で解決済み**。
                 // 未解決のまま残っている競合を `client` で閉じる（利用者が選んだわけではないので
@@ -203,11 +208,6 @@ internal static class PushNoteEndpoint
 
                 await PublishIfExposedAsync(bus, db, doc, ct);
 
-                // ADR-0037 決定 9 / ADR-0099 決定 1・5 (#1446): 更新は `updated=1` である。
-                SyncAuditRecorder.Success(db, audit, owner, device, SyncOps.Push,
-                    added: 0, updated: 1, deleted: 0, now,
-                    extra: $"count=1 versions={req.Edits.Count}");
-                await db.SaveChangesAsync(ct);
                 return Results.Ok(new PushNoteResponse(doc.Id, doc.Version, lastHash, lastBytes));
             }
         });

@@ -1,7 +1,7 @@
 ---
 title: SC-19 公開範囲の指定先（個人指定）と SC-20 同期履歴の契約を足し、画面へ描く（#1445 / #1446。planning#618 の裁定 ADR-0098 / ADR-0099）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-19, FR-20, UC-11, SC-19, SC-20, ADR-0036, ADR-0037, ADR-0096, ADR-0098, ADR-0099, IADR-0131, IADR-0139, IADR-0253, IADR-0270, IADR-0301, IADR-0401, IADR-0444, IADR-0445, IADR-0446]
 author: Claude
 created: 2026-09-12
@@ -176,14 +176,14 @@ planning#618 の裁定（2026-09-12・ADR-0098 / ADR-0099）で、IADR-0444 が�
 
 ## 受け入れ基準
 
-- [ ] SC-19: 所有者が個人資料の共有先（利用者）を一覧・検索・追加・取り消しできる。画面に表示名だけが出て利用者名は出ない
-- [ ] SC-19: グループ指定の導線が無い（陽性対照つき）。台帳にグループ共有があっても消えない（`Note` で告知）
-- [ ] 共有先の検索は 2 文字以上・有効な利用者のみ・上限 50。resolve は無効化済みも返す。どちらも一般利用者で 200
-- [ ] SC-20: 同期履歴が新しい順に 50 件、各行に 実行日時 / 端末名 / 方向 / 内訳 / 結果 / 失敗理由（文言）。タイトル・パスは無い
-- [ ] Push / Move / Pull / Delete の成功と失敗（7 理由）が `SyncAuditEntry` に残る。401 は残らない。409 応答の本文・状態は不変
-- [ ] 3 年超の行が定期処理で消える（時計を進めたテスト）
-- [ ] 後段の口: `/authz/users/lookup`・`/resolve` は認証のみで通り、AdminOnly の `/authz/users` の認可は変わらない（陽性対照）
-- [ ] ゲート: 契約 4 検査・両 slnx build/test/format・typecheck/lint/format/knip/i18n/route-manifest/build/chunk/static-egress/
+- [x] SC-19: 所有者が個人資料の共有先（利用者）を一覧・検索・追加・取り消しできる。画面に表示名だけが出て利用者名は出ない
+- [x] SC-19: グループ指定の導線が無い（陽性対照つき）。台帳にグループ共有があっても消えない（`Note` で告知）
+- [x] 共有先の検索は 2 文字以上・有効な利用者のみ・上限 50。resolve は無効化済みも返す。どちらも一般利用者で 200
+- [x] SC-20: 同期履歴が新しい順に 50 件、各行に 実行日時 / 端末名 / 方向 / 内訳 / 結果 / 失敗理由（文言）。タイトル・パスは無い
+- [x] Push / Move / Pull / Delete の成功と失敗（7 理由）が `SyncAuditEntry` に残る。401 は残らない。409 応答の本文・状態は不変
+- [x] 3 年超の行が定期処理で消える（時計を進めたテスト）
+- [x] 後段の口: `/authz/users/lookup`・`/resolve` は認証のみで通り、AdminOnly の `/authz/users` の認可は変わらない（陽性対照）
+- [x] ゲート: 契約 4 検査・両 slnx build/test/format・typecheck/lint/format/knip/i18n/route-manifest/build/chunk/static-egress/
   coverage/E2E・文書検査
 
 ## テスト方針
@@ -237,6 +237,19 @@ planning#618 の裁定（2026-09-12・ADR-0098 / ADR-0099）で、IADR-0444 が�
   **すべて Passed**（`--filter "Category!=Integration"`）。
 - frontend `test:coverage`: **144 ファイル / 1,708 件 passed**、statements **98.31** / branches **93.17** / functions **95.14** /
   lines **98.31**（床 93 / 88 / 89 / 93）。
+
+### 監査（2026-09-12・別エージェント〔sonnet〕・diff＋受け入れ基準のみ・証跡付き）
+
+- `git rev-parse --is-shallow-repository` → `true`（`git log` を出典に使わない）。HEAD `cc3d106` に対して 12 観点を判定し、
+  契約 4 検査・文書検査・両 slnx の build/test/format・frontend の typecheck/lint/format/build/i18n/chunk を実走して全緑を確認。
+- 判定: **条件付き合格**。🟡 1 件 —— Push の成功 2 経路が資料の保存**後**に別の `SaveChangesAsync` で履歴行を確定させており、
+  `SyncAuditRecorder.Success` の「同じトランザクション」の不変条件と食い違う（2 回の保存の間で落ちると「成功したのに履歴が無い」）。
+  → 行の Add を資料の Add／版の確定と同じ `SaveChangesAsync` の前へ移して是正（DocumentService.Tests 546 件緑。IADR-0446 決定 6 も訂正）。
+- その他: 監査中に自己是正した 2 件（cross-repo-refs の列挙形・IADR-0301/0401 のリンク先）は HEAD で解消済みと確認された。
+
+### 受け入れ基準のチェック（実装後）
+
+§受け入れ基準の 8 項目はすべて満たした（各項目の根拠は上記ゲートと監査の観点 1〜12）。
 
 ## 計画書との差異
 
