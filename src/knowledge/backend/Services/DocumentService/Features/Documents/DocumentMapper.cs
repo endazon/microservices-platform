@@ -51,7 +51,13 @@ internal static partial class DocumentMapper
     // `Tags = MapToListOfString(d.Tags)` —— **タグ名ではなく GUID 文字列**が生成される。
     // これを止めているのは RMG082 の error 化だけである（`NoWarn` を足すと 0 警告で通る）。
     [MapperIgnoreSource(nameof(Document.Tags))]
-    internal static partial DocumentDto ToDto(Document d, List<string> tags);
+    // FR-19, ADR-0036 D-06, ADR-0098 決定 1, [[IADR-0447]] (#1447): 共有先（`DocumentDto.SharedWith`）は
+    // **源（`Document`）に無い** —— 共有は属性辞書ではなく専用の台帳（`DocumentShare`）が持つ
+    // （[[IADR-0253]] 決定 4）。したがって `tags` と同じ**追加引数**で受ける。
+    // 🔴 **引数名は対象メンバ名（`SharedWith`）と一致させる**（上の `tags` と同じ理由。
+    // 改名すると RMG006 でコンパイルエラー、または黙って捨てられる）。
+    // 解決点は `DocumentEndpoints.ResolveSharedWithAsync` ただ 1 つである。
+    internal static partial DocumentDto ToDto(Document d, List<string> tags, List<string>? sharedWith);
 
     // **過去版も現在の表示名で出る** —— 改名は表示上の変更である（[[IADR-0153]] 決定 4）。
     //

@@ -124,24 +124,26 @@ public static class BffScopeResolver
 
         // #989 段 3: 分岐があれば選言で評価する（分岐間 OR・分岐内 AND）。
         if (scope.Branches is { Count: > 0 })
-            return scope.Branches.Any(b => MatchesAll(attributes, b.Filters));
+            return scope.Branches.Any(b => AttributeFilterMatch.MatchesAll(attributes, b.Filters));
 
-        return MatchesAll(attributes, scope.Filters);
+        return AttributeFilterMatch.MatchesAll(attributes, scope.Filters);
     }
 
-    // フィルタ間 AND、値集合内 OR。属性キーを持たない文書は不一致（欠落は安全側に倒す）。
-    private static bool MatchesAll(
-        IReadOnlyDictionary<string, string> attributes, List<AttributeFilter> filters)
-    {
-        foreach (var filter in filters)
-        {
-            if (!attributes.TryGetValue(filter.Key, out var value))
-                return false;
-            if (!filter.AllowedValues.Contains(value, StringComparer.OrdinalIgnoreCase))
-                return false;
-        }
-        return true;
-    }
+    // ★［2026-09-12 / #1448］**述語は契約側の 1 か所（`AttributeFilterMatch.MatchesAll`）へ委譲する。**
+    //
+    // 従前ここに同名の private 実装があり、属性値を**単一文字列**として
+    // `AllowedValues.Contains(value)` で比べていた。文書側の集合値属性（`shared_with` ＝ 文書ごとに
+    // 可変長の共有先）は線上表現（カンマ連結。[[IADR-0385]] 決定 2）で届くため、
+    // **1 件も一致しなかった**（#1448）。同じ形の実装が GraphService（`AbacNodeFilter`）・
+    // WikiService（`AbacPageFilter`）にもあり、検索側（Qdrant のリスト項目 `Match.Keywords`）だけが
+    // 交差で判定していた —— **同じスコープが面によって違う答えを出していた。**
+    //
+    // 🔴 集合値キーは**交差**（`∩ ≠ ∅`）で判定する（計画 `ADR-0080` 決定 2。部分集合ではない ——
+    // 「タグを 1 つ足しただけで既存のアクセスが失われる」振る舞いを決定 2 が明示的に退けている）。
+    // **単一値キーの判定は 1 文字も変わらない**（値一致・大小文字無視）。
+    //
+    // 🔴 **ここへ自前の実装を戻してはならない。** 3 面は互いを参照できない（`src/README.md` の
+    // 依存規則）ので、述語を各面へ写すと食い違いをそのまま再生産する（[[IADR-0448]]）。
 }
 
 // FR-05, FR-19, IADR-0253 決定 1・2（段 3 / #989）: BFF 内の判定に用いる解決済みスコープ。

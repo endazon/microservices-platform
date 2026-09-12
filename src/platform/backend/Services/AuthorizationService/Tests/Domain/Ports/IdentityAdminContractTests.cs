@@ -43,6 +43,14 @@ public class IdentityAdminContractTests
                 // 共有先に指定する利用者を名前で探す読み取りの口。
                 // 🔴 **候補を探す読み取りであって、新規作成の口ではない**（禁止語に触れない）。
                 nameof(IIdentityAdminClient.SearchUsersAsync),
+                // FR-05, FR-19, SC-19 主要素 3, 計画 ADR-0036 D-03, ADR-0088 決定 1,
+                // ADR-0098 決定 1, [[IADR-0447]] (#1447): `${current_groups}` の供給元と、
+                // 共有先グループの検索・ID 引き当て。
+                // 🔴 **いずれも読み取りであって、新規作成の口ではない**（禁止語に触れない）。
+                // グループを**作る**口は持たない —— 木は管理者が Keycloak で作る（決定 3）。
+                nameof(IIdentityAdminClient.GetUserGroupsAsync),
+                nameof(IIdentityAdminClient.SearchGroupsAsync),
+                nameof(IIdentityAdminClient.GetGroupsByIdsAsync),
                 nameof(IIdentityAdminClient.ListAssignableRolesAsync),
                 nameof(IIdentityAdminClient.ReplaceAttributesAsync),
                 // FR-19, SC-19, 計画 ADR-0036 D-09, ADR-0082 決定 5, [[IADR-0428]] (#1392):

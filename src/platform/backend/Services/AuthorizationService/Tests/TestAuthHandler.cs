@@ -20,13 +20,33 @@ public class TestAuthHandler(
     public const string SchemeName = "Test";
     public const string RolesHeader = "X-Test-Roles";
 
+    // FR-19, 計画 ADR-0100 フォローアップ 2, [[IADR-0449]] (#1447): **主体の利用者名を差し替える。**
+    // 🔴 これが無いと「人か機械か」を作り分けられない —— `MachinePrincipal.IsMachine` は
+    // 利用者名が `service-account-` で始まるかで判定するため、既定の `test-user` では
+    // **サービスアカウントが 403 になることを測れない**（陰性対照が書けない）。
+    public const string UsernameHeader = "X-Test-Username";
+
+    // FR-19, #1447: JWT を一切持たない匿名リクエストを再現する（このハンドラは既定で常に認証成功
+    // するため、401 を測るには明示的に認証をスキップする必要がある。BFF 側の同名ヘッダと揃える）。
+    public const string AnonymousHeader = "X-Test-Anonymous";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        // #1447: 無認証ケースは認証結果なし（NoResult）とし、http.User を未認証のまま通す。
+        if (Request.Headers.ContainsKey(AnonymousHeader))
+            return Task.FromResult(AuthenticateResult.NoResult());
+
         var roles = Request.Headers.TryGetValue(RolesHeader, out var header)
             ? header.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : ["platform-admin"];
 
-        var claims = new List<Claim> { new(ClaimTypes.Name, "test-user") };
+        // #1447: 既定は従前どおり `test-user`（人）。ヘッダで `service-account-<clientId>` を名乗れる。
+        var username = Request.Headers.TryGetValue(UsernameHeader, out var name)
+            && !string.IsNullOrWhiteSpace(name.ToString())
+                ? name.ToString().Trim()
+                : "test-user";
+
+        var claims = new List<Claim> { new(ClaimTypes.Name, username) };
         claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
 
         var identity = new ClaimsIdentity(claims, SchemeName);

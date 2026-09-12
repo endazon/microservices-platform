@@ -221,6 +221,89 @@ public class AbacNodeFilterTests
             "述語がプレースホルダを解釈すると認可の判断が 2 箇所へ散る");
     }
 
+    // ══ FR-19, ADR-0080 決定 2, [[IADR-0448]] (#1448): 集合値属性（`shared_with` / `tags`）の交差 ══
+    //
+    // 従前は属性値を**単一文字列**として `AllowedValues.Contains(v, …)` で比べており、
+    // カンマ連結の集合値は **1 件も一致しなかった** —— 同じスコープに対して検索側
+    // （Qdrant の `Match.Keywords`）だけが交差で答えており、**面によって認可が違った**。
+    //
+    // 🔴 **3 面（BFF / Graph / Wiki）は同じ述語（`AttributeFilterMatch`）へ委譲している。**
+    // その一致は下の `Matches_SetValued_AgreesWithTheContractPredicate` が直接固定する
+    // （`AbacPageFilterTests` にも同型の行がある。BFF は `Platform.Bff.Tests` の HTTP 経路で見る）。
+    [Theory]
+    // 交差（∩ ≠ ∅）で一致する —— 部分集合ではない。
+    [InlineData("a,b", new[] { "b" }, true)]
+    [InlineData("a,b", new[] { "a" }, true)]
+    [InlineData("a,b", new[] { "b", "z" }, true)]
+    // 交わらなければ不一致。
+    [InlineData("a,b", new[] { "c" }, false)]
+    // 🔴 **空集合は何にも一致しない**（空文字・区切りだけ）。
+    [InlineData("", new[] { "a" }, false)]
+    [InlineData(",", new[] { "a" }, false)]
+    // 単一の要素でも集合として読む（従前の単一値一致と同じ答えになる境界）。
+    [InlineData("a", new[] { "a" }, true)]
+    [InlineData("a", new[] { "b" }, false)]
+    public void Matches_SetValuedAttribute_IsEvaluatedAsIntersection(
+        string nodeValue, string[] allowed, bool expected)
+    {
+        var scope = new AccessScopeResponse("u",
+            [new AttributeFilter(DocumentAttributeEncoding.SharedWithKey, [.. allowed])], true);
+
+        AbacNodeFilter.Matches(Node((DocumentAttributeEncoding.SharedWithKey, nodeValue)), scope)
+            .Should().Be(expected);
+    }
+
+    // 🔴 **3 面の意味論一致の固定点**: ノードの述語は契約側の述語（`AttributeFilterMatch`）と
+    // **同じ答えを返す**。ここが割れると「Wiki では見えないのにグラフでは見える」が戻る。
+    [Theory]
+    [InlineData("shared_with", "alice,g-1", new[] { "g-1" })]
+    [InlineData("shared_with", "alice,g-1", new[] { "g-2" })]
+    [InlineData("shared_with", "", new[] { "alice" })]
+    [InlineData("tags", "hr,legal", new[] { "legal" })]
+    [InlineData("confidentiality", "internal", new[] { "internal" })]
+    [InlineData("confidentiality", "internal", new[] { "public" })]
+    public void Matches_SetValued_AgreesWithTheContractPredicate(
+        string key, string value, string[] allowed)
+    {
+        var filters = new List<AttributeFilter> { new(key, [.. allowed]) };
+        var node = Node((key, value));
+
+        AbacNodeFilter.Matches(node, new AccessScopeResponse("u", filters, true))
+            .Should().Be(AttributeFilterMatch.MatchesAll(node.Attributes, filters));
+    }
+
+    // 🔴 陰性対照: **単一値キーはカンマで分割しない。** 一律に分割すると、値にカンマを含む
+    // 単一値属性が別の意味に化ける（deny 側だが静かに壊れる）。
+    [Fact]
+    public void Matches_SingleValuedAttribute_IsNotSplitOnComma()
+    {
+        var scope = new AccessScopeResponse("u",
+            [new AttributeFilter("department", ["hr"])], true);
+
+        AbacNodeFilter.Matches(Node(("department", "hr,sales")), scope).Should().BeFalse(
+            "`department` は集合値キーではない（`DocumentAttributeEncoding.SetValuedKeys` に無い）");
+    }
+
+    // FR-19, ADR-0061 決定 5・6, [[IADR-0396]] 決定 7: 集合値になっても
+    // **個人資料を許可してよいのは裁量（`owner` / `shared_with`）の分岐だけ**である。
+    [Fact]
+    public void Matches_SharedWithBranch_GrantsAPrivateNote_ButAStaticBranchDoesNot()
+    {
+        var note = Node(
+            ("doc_scope", "private-note"),
+            ("owner", "someone-else"),
+            ("confidentiality", "restricted"),
+            (DocumentAttributeEncoding.SharedWithKey, "alice,g-1"));
+
+        AbacNodeFilter.Matches(note, Branched(new AccessScopeBranch("共有先ベース",
+            [new AttributeFilter(DocumentAttributeEncoding.SharedWithKey, ["g-1"])])))
+            .Should().BeTrue("共有先ベースの分岐は裁量である（ADR-0036 D-06）");
+
+        AbacNodeFilter.Matches(note, Branched(new AccessScopeBranch("静的属性ベース",
+            [new AttributeFilter("confidentiality", ["restricted"])])))
+            .Should().BeFalse("静的分岐は個人資料を許可しない（ADR-0061 決定 6）");
+    }
+
     // ホップごと ABAC の型ゲート（IADR-0242 決定 2）を通しても分岐が効く。
     [Fact]
     public void AuthorizedNode_Authorize_AppliesBranches()

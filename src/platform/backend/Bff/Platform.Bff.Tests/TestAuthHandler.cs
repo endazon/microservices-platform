@@ -37,6 +37,12 @@ public class TestAuthHandler(
     // 「利用者文脈を運ぶ」ことを測る試験が、**空を運んでも成立してしまう**（実測で確認した）。
     public const string AttributesHeader = "X-Test-Attributes";
 
+    // FR-19, 計画 ADR-0100 フォローアップ 2, [[IADR-0449]] (#1447): **主体の利用者名を差し替える。**
+    // 🔴 これが無いと「人か機械か」を作り分けられない —— `MachinePrincipal.IsMachine` は
+    // 利用者名が `service-account-` で始まるかで判定するため、既定の `test-user` では
+    // **サービスアカウントが 403 になることを測れない**（`InteractiveUser` ポリシーの陰性対照）。
+    public const string UsernameHeader = "X-Test-Username";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         // FR-15: 無認証ケースは認証結果なし（NoResult）とし、http.User を未認証のまま通す。
@@ -47,7 +53,13 @@ public class TestAuthHandler(
             ? header.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : ["platform-admin"];
 
-        var claims = new List<Claim> { new(ClaimTypes.Name, "test-user") };
+        // #1447: 既定は従前どおり `test-user`（人）。ヘッダで `service-account-<clientId>` を名乗れる。
+        var username = Request.Headers.TryGetValue(UsernameHeader, out var name)
+            && !string.IsNullOrWhiteSpace(name.ToString())
+                ? name.ToString().Trim()
+                : "test-user";
+
+        var claims = new List<Claim> { new(ClaimTypes.Name, username) };
         claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
         // #1203: Keycloak のトークンは呼び出し元クライアントを `azp` で名乗る。
         if (Request.Headers.TryGetValue(ClientIdHeader, out var clientId)

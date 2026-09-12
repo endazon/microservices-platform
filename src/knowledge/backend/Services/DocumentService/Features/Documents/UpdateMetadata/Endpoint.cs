@@ -59,7 +59,7 @@ internal static class UpdateDocumentMetadataEndpoint
                 http.User, doc.Attributes, UnitProjectMetrics.OperationUpdateMetadata);
             var metaNames = await TagResolver.NamesAsync(db);
             await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, metaNames, ct);
-            return Results.Ok(DocumentEndpoints.ToDto(doc, metaNames));
+            return Results.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, metaNames, ct));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
     }
 }

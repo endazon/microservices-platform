@@ -25,8 +25,28 @@ namespace DocumentService.Features.Documents;
 // （＝403 が許される決定 2 の側）だと**言い切れない**。判定できないものを読めると仮定せず、
 // fail-closed 側へ倒す。403 を返すと**文書 ID の総当たりで実在が判別できてしまう**。
 //
-// 🔴 本段は**貯蔵と管理 API まで**である。共有先ベースの分岐（選言の第 3 節）を認可スコープへ
-// 載せる配線は、消費側が共有記録へ到達する方式（DB per Service の越境）が未決のため別段とする。
+// FR-19, ADR-0036 D-06, ADR-0098 決定 1, [[IADR-0447]] 決定 4 (#1447):
+// **共有先ベースの分岐（選言の第 3 節）は配線済みである。**
+// （従前ここには「本段は貯蔵と管理 API までであり、消費側が共有記録へ到達する方式
+// 〔DB per Service の越境〕が未決のため別段とする」と書いてあった。その未決が解けた。）
+//
+// - **運ぶ**: 共有先は `DocumentDto.SharedWith`（応答）と `DocumentUpdated.SharedWith`（イベント）で
+//   運ぶ。**所有者（本サービス）が写しを載せ、消費側は台帳へ到達しない**（越境しない）。
+//   解決点は `DocumentEndpoints.ResolveSharedWithAsync` ただ 1 つで、応答とイベントで同じ値である。
+// - **評価する**: 判定は `shared_with` を条件に持つ read ポリシーの分岐であり
+//   （`documentConditions: { "shared_with": ["${current_user}", "${current_groups}"] }`）、
+//   `AbacEvaluator` が `${current_groups}` を所属の集合へ展開する。集合値キーなので交差で判定する
+//   （ADR-0080 決定 2 / [[IADR-0448]]）。**配備環境ではポリシーの投入が統制の実現手段である** ——
+//   投入までは従前と同じ fail-closed（共有は誰にも何も許可しない）。dev は
+//   `deploy/local/abac-seed/policies.json` に 1 本入っている。
+// - **到達する面**: 索引（Qdrant のリスト項目）・BFF の単体判定（`DocumentAttributeEncoding.WithSharedWith`
+//   の像）・グラフの複製（`GraphDocument.Attributes["shared_with"]`）。
+//
+// 🔴 **`PublishUpdatedAsync` が `SubjectType` を落とすのは意図である。** 判定規則
+// `doc.shared_with ∩ ({${current_user}} ∪ ${current_groups}) ≠ ∅` は種別を区別せず
+// **1 つの集合として突き合わせる** —— 利用者名（Keycloak の username）とグループ ID（UUID）は
+// 名前空間が交わらないため、混ぜても「別種の同名」が起き得ない。**種別が要るのはこの管理 API
+// だけである**（取り消しの鍵 `/{subjectType}/{subjectId}` と、SC-19 の公開範囲の導出）。
 public static class DocumentShareEndpoints
 {
     public static IEndpointRouteBuilder MapDocumentShareEndpoints(this IEndpointRouteBuilder app)

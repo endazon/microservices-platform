@@ -45,10 +45,14 @@ public static class AbacPageFilter
     }
 
     // フィルタ間 AND、値集合内 OR。属性キーを持たないページは不一致（欠落は安全側に倒す）。
+    //
+    // 🔴 FR-19, ADR-0080 決定 2, [[IADR-0448]] (#1448): **述語は契約側の 1 つへ委譲する**
+    // （`AbacNodeFilter` / `BffScopeResolver` と同じ関数。3 面で同じ入力に同じ答えを出す）。
+    // 集合値キー（`shared_with` / `tags`）は交差、単一値キーは値一致で**従前と変わらない**。
+    // **本サービスへ個人資料は流れない**（Wiki 同期の対象は組織文書だけ）ので、ここで集合値が
+    // 効く場面は現状 `tags` に限られる —— それでも**述語を 3 本持たない**ことが要点である。
     private static bool MatchesAll(WikiPage page, List<AttributeFilter> filters) =>
-        filters.All(f =>
-            page.Attributes.TryGetValue(f.Key, out var v)
-            && f.AllowedValues.Contains(v, StringComparer.OrdinalIgnoreCase));
+        AttributeFilterMatch.MatchesAll(page.Attributes, filters);
 
     // 可視ページのみを返す。
     public static IEnumerable<WikiPage> Filter(IEnumerable<WikiPage> pages, AccessScopeResponse scope)

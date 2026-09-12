@@ -79,10 +79,82 @@ public class UserLookupEndpointTests(TestWebApplicationFactory factory)
             .Should().Be(HttpStatusCode.Forbidden);
     }
 
-    // **認証は必須である。** テストの認証ハンドラは常に認証を通すため（無認証を作れない）、
-    // 「群に認可メタデータが在り、かつ AdminOnly ではない」ことを経路表で固定する。
+    // ── 1b. 🔴 FR-19, 計画 ADR-0100 決定 1・フォローアップ 2, [[IADR-0449]] (#1447):
+    //     **人の主体だけが到達できる**（受け入れ基準 6）──────────────────────
+    //
+    // 計画 `ADR-0100` フォローアップ 2 が実装側へ戻した穴である —— 従前この群は
+    // `RequireAuthorization()` だけで、realm のサービスアカウント（`platform-service`）も
+    // **認証済みなので到達できた**（名簿の列挙を s2s の面へ出さないという [[IADR-0401]] 決定 2 の
+    // 分界が、この口だけ破れていた）。
+    //
+    // 🔴 **絞る軸はロールではなく主体の種別である。** 陽性（人は通る）と陰性（機械は 3 つの
+    // 形すべてで通らない）を対で置く —— 片方だけでは「常に 403」「常に 200」の実装と区別できない。
+
+    // サービスアカウント（Keycloak は client credentials の主体へ
+    // `preferred_username = service-account-<clientId>` を発行する）。
+    private HttpClient AsServiceAccount(params string[] roles)
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.UsernameHeader, "service-account-platform");
+        client.DefaultRequestHeaders.Add(
+            TestAuthHandler.RolesHeader,
+            string.Join(',', roles.Length == 0 ? [PlatformAuthPolicies.ServiceRole] : roles));
+        return client;
+    }
+
+    private HttpClient Anonymous()
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
+        return client;
+    }
+
+    [Theory]
+    [InlineData("/authz/users/lookup?q=tanaka")]
+    [InlineData("/authz/users/resolve")]
+    public async Task A_service_account_is_forbidden(string path)
+    {
+        // 🔴 `platform-service` だけを持つ機械主体。**認証は通っている**（401 ではなく 403 である
+        // ことが要点 —— 「認証が足りない」ではなく「この主体には開かない」）。
+        (await Send(AsServiceAccount(), path)).StatusCode
+            .Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    // 🔴 **ロールを持つサービスアカウントでも 403 である**（ロールではなく主体の種別で分ける）。
+    // `abac-seeder` のように `platform-admin` を持つサービスアカウントが realm に居る。
+    [Theory]
+    [InlineData("/authz/users/lookup?q=tanaka")]
+    [InlineData("/authz/users/resolve")]
+    public async Task A_service_account_holding_the_admin_role_is_still_forbidden(string path)
+        => (await Send(AsServiceAccount(PlatformAuthPolicies.AdminRole), path)).StatusCode
+            .Should().Be(HttpStatusCode.Forbidden);
+
+    // 未認証は 401（403 ではない。主体が決まっていない）。
+    [Theory]
+    [InlineData("/authz/users/lookup?q=tanaka")]
+    [InlineData("/authz/users/resolve")]
+    public async Task An_anonymous_request_is_unauthorized(string path)
+        => (await Send(Anonymous(), path)).StatusCode
+            .Should().Be(HttpStatusCode.Unauthorized);
+
+    // 陽性対照: **同じ 2 経路が人では 200 である**（上の 3 つが「常に拒否」ではないことを示す）。
+    [Theory]
+    [InlineData("/authz/users/lookup?q=tanaka")]
+    [InlineData("/authz/users/resolve")]
+    public async Task A_human_subject_still_reaches_both_endpoints(string path)
+        => (await Send(AsRegularUser(), path)).StatusCode
+            .Should().Be(HttpStatusCode.OK);
+
+    // 経路ごとに動詞と本文が違うので、1 か所で組み立てる（試験の意図は認可だけである）。
+    private static Task<HttpResponseMessage> Send(HttpClient client, string path)
+        => path.EndsWith("/resolve", StringComparison.Ordinal)
+            ? client.PostAsJsonAsync(path, new ResolveUsersRequest(["tanaka.taro"]), Ct)
+            : client.GetAsync(path, Ct);
+
+    // **認証は必須である。** 「群に認可メタデータが在り、かつ AdminOnly ではなく
+    // `InteractiveUser` である」ことを経路表で固定する（#1447 で `InteractiveUser` へ変えた）。
     [Fact]
-    public void The_lookup_group_requires_authentication_but_not_the_admin_policy()
+    public void The_lookup_group_requires_the_interactive_user_policy_but_not_the_admin_policy()
     {
         var endpoints = factory.Services.GetRequiredService<EndpointDataSource>().Endpoints
             .OfType<RouteEndpoint>()
@@ -95,8 +167,10 @@ public class UserLookupEndpointTests(TestWebApplicationFactory factory)
         {
             var endpoint = endpoints.Should().ContainSingle(e => e.Pattern == pattern).Subject;
             endpoint.Authorize.Should().NotBeEmpty($"{pattern} は認証を要求する");
-            endpoint.Authorize.Should().OnlyContain(a => string.IsNullOrEmpty(a.Policy),
-                $"{pattern} はロールを要求しない（AdminOnly を掛けない）");
+            // #1447: **`InteractiveUser` ただ 1 つ**である（ロールの軸は足さない）。
+            endpoint.Authorize.Should().OnlyContain(
+                a => a.Policy == PlatformAuthPolicies.InteractiveUser,
+                $"{pattern} は人の主体だけを通す（ロール＝AdminOnly は掛けない）");
         }
 
         // 陽性対照: 同じ接頭辞の管理面には AdminOnly が掛かっている。

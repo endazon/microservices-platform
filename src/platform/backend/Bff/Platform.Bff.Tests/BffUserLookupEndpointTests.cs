@@ -86,6 +86,53 @@ public class BffUserLookupEndpointTests : IClassFixture<BffTestFactory>
         => (await AsRegularUser().GetAsync("/bff/admin/users", Ct))
             .StatusCode.Should().Be(HttpStatusCode.Forbidden);
 
+    // ── 1b. 🔴 FR-19, 計画 ADR-0100 決定 1・フォローアップ 2, [[IADR-0449]] (#1447):
+    //     **人の主体だけが到達できる**（受け入れ基準 6）──────────────────────
+    //
+    // 従前この群は `RequireAuthorization()` だけで、realm のサービスアカウント
+    // （`platform-service`）も**認証済みなので到達できた** —— 名簿の列挙を s2s の面へ出さない
+    // という [[IADR-0401]] 決定 2 の分界が、この口だけ破れていた。
+    // 🔴 **絞る軸はロールではなく主体の種別である**（`x-roles: []` は変わらない）。
+
+    // Keycloak のサービスアカウント（`preferred_username = service-account-<clientId>`）。
+    private HttpClient AsServiceAccount(params string[] roles)
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.UsernameHeader, "service-account-platform");
+        client.DefaultRequestHeaders.Add(
+            TestAuthHandler.RolesHeader,
+            string.Join(',', roles.Length == 0 ? ["platform-service"] : roles));
+        return client;
+    }
+
+    private static Task<HttpResponseMessage> Send(HttpClient client, string method, string path)
+        => method == "POST"
+            ? client.PostAsJsonAsync(path, new ResolveUsersRequest(["tanaka.taro"]), Ct)
+            : client.GetAsync(path, Ct);
+
+    [Theory]
+    [InlineData("GET", "/bff/users/lookup?q=tanaka")]
+    [InlineData("POST", "/bff/users/resolve")]
+    public async Task A_service_account_is_forbidden(string method, string path)
+        => (await Send(AsServiceAccount(), method, path)).StatusCode
+            .Should().Be(HttpStatusCode.Forbidden);
+
+    // 🔴 **`platform-admin` を持つサービスアカウントも 403**（realm の `abac-seeder` が該当する）。
+    [Theory]
+    [InlineData("GET", "/bff/users/lookup?q=tanaka")]
+    [InlineData("POST", "/bff/users/resolve")]
+    public async Task A_service_account_holding_the_admin_role_is_still_forbidden(string method, string path)
+        => (await Send(AsServiceAccount("platform-admin"), method, path)).StatusCode
+            .Should().Be(HttpStatusCode.Forbidden);
+
+    // 陽性対照（上の 2 つの対）: 同じ 2 経路が人では 200 である（「常に拒否」ではない）。
+    [Theory]
+    [InlineData("GET", "/bff/users/lookup?q=tanaka")]
+    [InlineData("POST", "/bff/users/resolve")]
+    public async Task A_human_subject_reaches_both_endpoints(string method, string path)
+        => (await Send(AsRegularUser(), method, path)).StatusCode
+            .Should().Be(HttpStatusCode.OK);
+
     // ── 2. 無認証は 401 ──────────────────────────────────────────
 
     [Theory]

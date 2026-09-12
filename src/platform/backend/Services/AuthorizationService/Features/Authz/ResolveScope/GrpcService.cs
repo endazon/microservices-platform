@@ -46,8 +46,11 @@ public sealed class AuthzScopeGrpcService(
         var req = new AccessScopeRequest(request.UserId, lookup.Attributes, action);
         var policies = await db.Policies.Where(p => p.IsActive).ToListAsync(context.CancellationToken);
         // 「居ない」は**応答**である（deny を応答で返す。status にしない）。
+        // FR-19, 計画 ADR-0036 D-03, ADR-0098 決定 1, [[IADR-0447]] (#1447):
+        // `${current_groups}` の束縛値は REST 面と**同じ点**（`ScopeUserAttributeSource`）が出す。
+        // 🔴 **契約（proto）は変えない** —— 束縛は評価器の内側で完結する（[[IADR-0379]] 決定 2）。
         var scope = lookup.Outcome == ScopeUserAttributeSource.Outcome.Found
-            ? AbacEvaluator.ResolveScope(req, policies, action)
+            ? AbacEvaluator.ResolveScope(req, policies, action, lookup.Groups)
             : new AccessScopeResponse(request.UserId, [], false);
 
         var resp = new ResolveScopeResponse { UserId = scope.UserId, Granted = scope.Granted };

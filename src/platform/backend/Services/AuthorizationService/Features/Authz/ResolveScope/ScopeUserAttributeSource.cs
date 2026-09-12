@@ -42,14 +42,34 @@ public sealed class ScopeUserAttributeSource(
         Unavailable,
     }
 
-    public readonly record struct Result(Outcome Outcome, Dictionary<string, string> Attributes);
+    /// <summary>
+    /// 引いた利用者の文脈。<c>Groups</c> は **IdP の所属グループ ID の集合**
+    /// （`${current_groups}` の束縛値。FR-19, 計画 ADR-0036 D-03, ADR-0098 決定 1, [[IADR-0447]] / #1447）。
+    /// <c>Outcome</c> が <see cref="Outcome.Found"/> 以外のときは空集合である。
+    /// </summary>
+    public readonly record struct Result(
+        Outcome Outcome, Dictionary<string, string> Attributes, IReadOnlySet<string> Groups);
+
+    // 「所属が無い」を表す空集合（`Found` でも所属 0 件はあり得る。null と区別しない）。
+    private static readonly IReadOnlySet<string> NoGroups =
+        new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>
-    /// `userId`（<c>preferred_username</c>）の ABAC 属性を IdP から引く。
+    /// `userId`（<c>preferred_username</c>）の ABAC 属性**と所属グループ**を IdP から引く。
     ///
     /// 🔴 **属性の線上表現は変換しない**（[[IADR-0385]] 決定 2）——
     /// `tags = "sales,hr"` はそのまま届き、集合値の交差判定は `AbacEvaluator` が行う
     /// （[[IADR-0411]] / `ADR-0080` 決定 2）。**符号化の規則を 2 か所に持たない。**
+    ///
+    /// 🔴 **FR-19, 計画 ADR-0036 D-03, ADR-0088 決定 1, ADR-0098 決定 1, [[IADR-0447]] (#1447):
+    /// 所属も同じ点で引く。** トークンの `groups` クレームは読まない ——
+    /// 属性だけを引き直して所属を主張のままにすると、**共有先ベースの分岐が呼び出し元の申告で
+    /// 決まる**（`platform-service` を持つサービス 1 つの侵害で任意のグループを名乗れる）。
+    ///
+    /// 🔴 **所属照会の失敗は属性と同じく <see cref="Outcome.Unavailable"/> である。**
+    /// deny に畳まない（`ADR-0088` 決定 1）—— 畳むと IdP の不調が「そのグループに共有されていない」
+    /// として記録され、**原因が追えなくなる**。呼び出し元は非 2xx / `RpcException` を deny へ
+    /// 縮退するので fail-closed は保たれる。
     /// </summary>
     public async Task<Result> ResolveAsync(string userId, CancellationToken ct)
     {
@@ -63,10 +83,21 @@ public sealed class ScopeUserAttributeSource(
                 // （後段の不調を権限の不在として記録しないことのほうを重く見る）。
                 logger.LogInformation(
                     "ABAC 判定: 利用者が名簿に居ないため deny とする。userId={UserId}", ForLog(userId));
-                return new Result(Outcome.NotFound, []);
+                return new Result(Outcome.NotFound, [], NoGroups);
             }
 
-            return new Result(Outcome.Found, new Dictionary<string, string>(user.Attributes, StringComparer.Ordinal));
+            // #1447: 所属は**内部 ID**で引く（Keycloak の所属照会は名前で引けない）。
+            // ID が空なら引かない（偽物・スタブが ID を持たない像を返すことがある）。
+            IReadOnlyList<IdentityGroup> groups = string.IsNullOrEmpty(user.Id)
+                ? []
+                : await identity.GetUserGroupsAsync(user.Id, ct);
+
+            return new Result(
+                Outcome.Found,
+                new Dictionary<string, string>(user.Attributes, StringComparer.Ordinal),
+                new HashSet<string>(
+                    groups.Select(g => g.Id).Where(id => !string.IsNullOrEmpty(id)),
+                    StringComparer.Ordinal));
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
@@ -74,9 +105,11 @@ public sealed class ScopeUserAttributeSource(
             // 「その利用者に権限が無い」として記録され、**原因が追えなくなる。**
             // 呼び出し元はいずれも非 2xx / `RpcException` を deny へ縮退するので、
             // **status で返しても fail-closed は保たれる**（作業仕様書 §実測 2）。
+            // #1447: 🔴 **所属照会の失敗もここへ落ちる**（属性と同じ扱い。上の XML コメント）。
             logger.LogError(ex,
-                "ABAC 判定: 利用者属性を IdP から引けなかった。userId={UserId}", ForLog(userId));
-            return new Result(Outcome.Unavailable, []);
+                "ABAC 判定: 利用者属性または所属グループを IdP から引けなかった。userId={UserId}",
+                ForLog(userId));
+            return new Result(Outcome.Unavailable, [], NoGroups);
         }
     }
 

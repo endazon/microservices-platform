@@ -596,6 +596,150 @@ public class KeycloakIdentityAdminClientTests
         (await Client(handler).FindByUsernameAsync("alice", Ct))!.Attributes["tags"].Should().Be("sales,hr");
     }
 
+    // ── FR-05, FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0036 D-03, ADR-0088 決定 1,
+    //    ADR-0098 決定 1・3, [[IADR-0447]] (#1447): グループの 3 つの読み口 ──────────
+
+    // 所属照会は `GET /users/{id}/groups`（**内部 ID** で引く・`briefRepresentation=true`）。
+    // 🔴 **要求の形そのものを固定する** —— `briefRepresentation` を落とすと属性つきの広い像が
+    // 返り、面を 3 項目へ閉じた意味が無くなる。
+    [Fact]
+    public async Task It_reads_the_memberships_of_a_user_by_internal_id()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users/u-1/groups?briefRepresentation=true", """
+                [{"id":"g-1","name":"knowledge","path":"/teams/knowledge"},
+                 {"id":"g-2","name":"finance","path":"/teams/finance"}]
+                """);
+
+        var groups = await Client(handler).GetUserGroupsAsync("u-1", Ct);
+
+        groups.Select(g => g.Id).Should().Equal("g-1", "g-2");
+        groups[0].Path.Should().Be("/teams/knowledge");
+        handler.Requests.Should().Contain(r =>
+            r.Path.EndsWith("users/u-1/groups?briefRepresentation=true")
+            && r.Authorization == "Bearer admin-token");
+    }
+
+    // 🔴 **ID を持たない節は落とす**（判定と取り消しの鍵が無い像は画面でも使えない）。
+    [Fact]
+    public async Task Memberships_without_an_id_are_dropped()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users/u-1/groups?briefRepresentation=true", """
+                [{"id":"","name":"broken","path":"/broken"},
+                 {"id":"g-2","name":"finance","path":"/teams/finance"}]
+                """);
+
+        (await Client(handler).GetUserGroupsAsync("u-1", Ct))
+            .Select(g => g.Id).Should().Equal("g-2");
+    }
+
+    // 🔴 **Keycloak 24 は search の結果を木のまま返す** —— 一致した子孫が祖先の `subGroups` に
+    // 入って返る。**平坦化しないと子孫が 1 件も出ず、絞り直さないと一致していない祖先が混ざる。**
+    // どちらもスタブでは自然には出ないので、実 Keycloak の応答の形を再現して固定する。
+    [Fact]
+    public async Task Group_search_flattens_subgroups_and_keeps_only_the_matching_names()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/groups?search=know&briefRepresentation=true", """
+                [{"id":"g-teams","name":"teams","path":"/teams","subGroups":[
+                    {"id":"g-know","name":"knowledge","path":"/teams/knowledge"},
+                    {"id":"g-fin","name":"finance","path":"/teams/finance"}]}]
+                """);
+
+        var groups = await Client(handler).SearchGroupsAsync("know", 20, Ct);
+
+        // 一致したのは子孫 1 件だけである（祖先 `teams` と兄弟 `finance` は名前が一致しない）。
+        groups.Select(g => g.Path).Should().Equal("/teams/knowledge");
+    }
+
+    // 並びはパス順・打ち切りは**平坦化して絞ったあと**である（サーバ側の `max` は頂点に掛かる）。
+    [Fact]
+    public async Task Group_search_orders_by_path_and_applies_the_limit_after_flattening()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/groups?search=team&briefRepresentation=true", """
+                [{"id":"g-z","name":"team-z","path":"/z/team-z"},
+                 {"id":"g-a","name":"team-a","path":"/a/team-a","subGroups":[
+                    {"id":"g-b","name":"team-b","path":"/a/team-a/team-b"}]}]
+                """);
+
+        var groups = await Client(handler).SearchGroupsAsync("team", 2, Ct);
+
+        groups.Select(g => g.Path).Should().Equal("/a/team-a", "/a/team-a/team-b");
+    }
+
+    // 空のクエリ・0 件以下の上限では**往復しない**（後段を無駄に叩かない）。
+    [Theory]
+    [InlineData("", 20)]
+    [InlineData("  ", 20)]
+    [InlineData("know", 0)]
+    public async Task Group_search_does_not_call_the_idp_for_a_meaningless_request(string query, int max)
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token());
+
+        (await Client(handler).SearchGroupsAsync(query, max, Ct)).Should().BeEmpty();
+
+        handler.Requests.Should().NotContain(r => r.Path.Contains("/groups"));
+    }
+
+    // 🔴 **1 判定ぶんの往復を実測して固定する**（計画 ADR-0098 フォローアップ 3 / [[IADR-0447]]）。
+    //
+    // `ScopeUserAttributeSource` が 1 判定で行うのは `FindByUsernameAsync` ＋ `GetUserGroupsAsync` で
+    // あり、Keycloak Admin REST に対しては **GET 2 回**になる（#1447 の前は 1 回）。
+    // 🔴 **admin トークンの取得は 1 回だけである**（`_token` を 2 つ目の呼び出しでも使い回す）——
+    // 呼び出しごとに client_credentials を回す形へ退行すると、往復が 1 判定あたり 4 回になる。
+    //
+    // 🔴 **キャッシュは置かない**（`ADR-0088` 決定 1 を所属にも通す）。鮮度は IdP の読み取り
+    // 一貫性そのものであり、そのかわり往復が判定ごとに掛かる。**その費用をここで見えるようにする。**
+    [Fact]
+    public async Task One_abac_decision_costs_two_admin_gets_and_one_token_fetch()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users?username=alice&exact=true&briefRepresentation=false&max=2", """
+                [{"id":"u-1","username":"alice","firstName":"Alice","lastName":"A","enabled":true}]
+                """)
+            .Get("admin/realms/platform/users/u-1/groups?briefRepresentation=true", """
+                [{"id":"g-1","name":"knowledge","path":"/teams/knowledge"}]
+                """);
+        var client = Client(handler);
+
+        // 1 判定ぶん（属性の引き直し → 所属照会）。
+        var user = await client.FindByUsernameAsync("alice", Ct);
+        await client.GetUserGroupsAsync(user!.Id, Ct);
+
+        handler.Requests.Count(r => r.Method == "GET").Should().Be(2,
+            "属性の引き直し 1 ＋ 所属照会 1。所属を利用者ごと・グループごとに回す形へ退行させない");
+        handler.Requests.Count(r => r.Path.Contains("openid-connect/token")).Should().Be(1,
+            "admin トークンは使い回す（呼び出しごとに client_credentials を回さない）");
+    }
+
+    // 🔴 **ID 引き当ての 404 は落とす。エラーではない**（削除済みのグループへの共有は台帳に残る）。
+    // 要求順を保つ（`Task.WhenAll` は入力順で返る）。
+    [Fact]
+    public async Task Resolving_group_ids_drops_the_missing_ones_and_keeps_the_request_order()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/groups/g-1", """
+                {"id":"g-1","name":"knowledge","path":"/teams/knowledge"}
+                """)
+            .Get("admin/realms/platform/groups/g-2", """
+                {"id":"g-2","name":"finance","path":"/teams/finance"}
+                """);
+        // `g-gone` は登録しない —— スタブは未登録のパスへ 404 を返す（＝削除済みのグループ）。
+
+        var groups = await Client(handler).GetGroupsByIdsAsync(["g-1", "g-gone", "g-2"], Ct);
+
+        groups.Select(g => g.Id).Should().Equal("g-1", "g-2");
+    }
+
     private sealed class StubHandler : HttpMessageHandler
     {
         private readonly Dictionary<string, (HttpStatusCode Status, string Body)> _responses = new(StringComparer.Ordinal);
@@ -617,8 +761,12 @@ public class KeycloakIdentityAdminClientTests
         {
             var path = request.RequestUri!.PathAndQuery.TrimStart('/');
             var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
-            Requests.Add(new Recorded(request.Method.Method, path, body,
-                request.Headers.Authorization?.ToString()));
+            // #1447: `GetGroupsByIdsAsync` は ID ごとに**並列で**引くので、観測点を lock で守る。
+            lock (Requests)
+            {
+                Requests.Add(new Recorded(request.Method.Method, path, body,
+                    request.Headers.Authorization?.ToString()));
+            }
 
             if (!_responses.TryGetValue($"{request.Method.Method} {path}", out var response))
                 return new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("") };

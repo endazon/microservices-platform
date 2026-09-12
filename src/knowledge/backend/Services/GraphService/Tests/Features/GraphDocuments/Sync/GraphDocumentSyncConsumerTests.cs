@@ -5,6 +5,7 @@ using GraphService.Domain;
 using GraphService.Common.Observability;
 using GraphService.Infrastructure.Persistence;
 using GraphService.Domain.Ports;
+using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -84,6 +85,95 @@ public class GraphDocumentSyncConsumerTests
 
     private static GraphDocument? NodeOf(GraphDbContext db, Guid id)
         => db.Documents.FirstOrDefault(d => d.DocumentId == id);
+
+    // ── FR-19, ADR-0036 D-06, ADR-0098 決定 1, [[IADR-0447]] 決定 4 (#1447): 共有先の到達 ──────
+    //
+    // 共有先は属性辞書では運べないため `DocumentUpdated.SharedWith` で届く。判定
+    // （`AbacNodeFilter` → `AttributeFilterMatch`）が見るのは**属性辞書だけ**なので、
+    // **複製する時点で `shared_with` を重ねる**。重ねないと共有先ベースの分岐はグラフに効かない。
+
+    // 露出 ON の個人資料（グラフに出る個人資料）を模した事象。
+    private static DocumentUpdated SharedNote(List<string>? sharedWith, Guid? docId = null)
+        => new(docId ?? DocA, "共有された個人メモ", "published", "storage://b/note.md",
+            new Dictionary<string, string>
+            {
+                ["doc_scope"] = "private-note",
+                ["owner"] = "someone-else",
+                ["confidentiality"] = "restricted",
+                [DocumentExposure.GraphKey] = DocumentExposure.Included,
+            },
+            [], T0, "fp-note", SharedWith: sharedWith);
+
+    private static AccessScopeResponse SharedWithBranch(params string[] subjects)
+        => new("test-user", [], true,
+            [new AccessScopeBranch("共有先ベース",
+                [new AttributeFilter(DocumentAttributeEncoding.SharedWithKey, [.. subjects])])]);
+
+    [Fact]
+    public async Task 共有先はノードの属性へカンマ連結で写る()
+    {
+        using var db = NewDb();
+
+        await Consumer(db).Handle(SharedNote(["alice", "g-1"]), TestContext.Current.CancellationToken);
+
+        NodeOf(db, DocA)!.Attributes[DocumentAttributeEncoding.SharedWithKey]
+            .Should().Be("alice,g-1");
+    }
+
+    // 🔴 **空は載せない**（`WithSharedWith` と同じ規則）—— 載せると「属性は持つが空」となり、
+    // `shared_with` を条件に持つ分岐が空文字と一致する余地が生まれる。
+    [Theory]
+    [InlineData(true)]   // SharedWith = null（共有先を運ばない発行元）
+    [InlineData(false)]  // SharedWith = 空リスト（誰とも共有されていない）
+    public async Task 共有が無ければ属性に共有先の鍵は現れない(bool useNull)
+    {
+        using var db = NewDb();
+
+        await Consumer(db).Handle(SharedNote(useNull ? null : []),
+            TestContext.Current.CancellationToken);
+
+        NodeOf(db, DocA)!.Attributes.Should()
+            .NotContainKey(DocumentAttributeEncoding.SharedWithKey);
+    }
+
+    // 受け入れ基準 3・4: 共有先ベースの分岐でノードが**可視になる**（陽性）。
+    [Fact]
+    public async Task 共有先ベースの分岐で共有された個人資料のノードが可視になる()
+    {
+        using var db = NewDb();
+        await Consumer(db).Handle(SharedNote(["alice", "g-1"]), TestContext.Current.CancellationToken);
+
+        AbacNodeFilter.Matches(NodeOf(db, DocA)!, SharedWithBranch("g-1")).Should().BeTrue(
+            "集合値は交差で判定する（ADR-0080 決定 2）——グループ ID だけでも一致する");
+    }
+
+    // 🔴 陰性対照 2 つ: 交わらない相手には不可視／共有が無ければ不可視。
+    // これが無いと「共有先ベースの分岐で常に可視」という実装でも上の陽性が緑になる。
+    [Fact]
+    public async Task 共有先に含まれない主体と共有なしの資料は不可視である()
+    {
+        using var db = NewDb();
+        await Consumer(db).Handle(SharedNote(["alice", "g-1"]), TestContext.Current.CancellationToken);
+        await Consumer(db).Handle(SharedNote(null, DocB), TestContext.Current.CancellationToken);
+
+        AbacNodeFilter.Matches(NodeOf(db, DocA)!, SharedWithBranch("bob")).Should().BeFalse(
+            "共有先と交わらない主体には不可視である");
+        AbacNodeFilter.Matches(NodeOf(db, DocB)!, SharedWithBranch("alice")).Should().BeFalse(
+            "共有が無い資料は `shared_with` の鍵を持たない＝欠落は不一致（安全側）");
+    }
+
+    // 🔴 組織文書の同期は 1 ビットも変わらない（回帰）——`shared_with` が混入しない。
+    [Fact]
+    public async Task 組織文書の属性に共有先の鍵は混入しない()
+    {
+        using var db = NewDb();
+
+        await Consumer(db).Handle(Event(), TestContext.Current.CancellationToken);
+
+        var attrs = NodeOf(db, DocA)!.Attributes;
+        attrs.Should().NotContainKey(DocumentAttributeEncoding.SharedWithKey);
+        attrs.Should().Contain("confidentiality", "internal");
+    }
 
     // ── デノーマライズ（ADR-0033 決定 2）と AbacNodeFilter の実効 ──────────────
 

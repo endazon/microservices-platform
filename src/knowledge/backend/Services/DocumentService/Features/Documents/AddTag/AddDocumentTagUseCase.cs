@@ -68,11 +68,11 @@ public sealed class AddDocumentTagUseCase(DocumentDbContext db, IDocumentUpdated
 
         var names = await TagResolver.NamesAsync(db, ct);
         if (!doc.AddTag(ids[0], ChangeNote))
-            return AddDocumentTagOutcome.Ok(DocumentEndpoints.ToDto(doc, names));
+            return AddDocumentTagOutcome.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, names, ct));
 
         await db.SaveChangesAsync(ct);
         await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, names, ct);
-        return AddDocumentTagOutcome.Ok(DocumentEndpoints.ToDto(doc, names));
+        return AddDocumentTagOutcome.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, names, ct));
     }
 }
 

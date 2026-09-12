@@ -9,7 +9,7 @@ namespace DocumentService.Tests.Features.Documents;
 // IADR-0393 / IADR-0406: 手書きの詰め替えを生成マッパへ置き換えた際の**振る舞い同値**を固定する。
 //
 // 🔴 **生成物を信じるのではなく、写った値を見る。** Mapperly は名前が一致しないプロパティを
-// 黙って落とすことがあり、**列が 1 つ抜けても型は通る**。10 列 / 8 列を 1 つずつ見る。
+// 黙って落とすことがあり、**列が 1 つ抜けても型は通る**。11 列 / 8 列を 1 つずつ見る。
 [Trait("TestKind", "Unit")]
 public class DocumentMapperTests
 {
@@ -24,13 +24,13 @@ public class DocumentMapperTests
             originalPath: "/in/q1.pdf",
             dataSourceName: "shared-drive");
 
-    // 陽性: `DocumentDto` の全 10 列が値を保ったまま写る（タグ名は追加引数から入る）。
+    // 陽性: `DocumentDto` の全 11 列が値を保ったまま写る（タグ名・共有先は追加引数から入る）。
     [Fact]
     public void ToDto_CopiesEveryProperty()
     {
         var d = NewDocument();
 
-        var dto = DocumentMapper.ToDto(d, ["営業", "総務"]);
+        var dto = DocumentMapper.ToDto(d, ["営業", "総務"], sharedWith: ["alice", "g-1"]);
 
         dto.Id.Should().Be(d.Id);
         dto.Title.Should().Be("四半期報告");
@@ -42,6 +42,8 @@ public class DocumentMapperTests
         dto.CreatedAt.Should().Be(d.CreatedAt);
         dto.UpdatedAt.Should().Be(d.UpdatedAt);
         dto.HasBody.Should().BeTrue();
+        // FR-19, [[IADR-0447]] (#1447): 共有先は追加引数がそのまま・同じ順で載る。
+        dto.SharedWith.Should().Equal("alice", "g-1");
     }
 
     // 🔴 **タグは追加引数がそのまま載る**（源の `List<Guid>` は写らない）。
@@ -53,10 +55,12 @@ public class DocumentMapperTests
         var tagId = Guid.NewGuid();
         var d = NewDocument([tagId]);
 
-        var dto = DocumentMapper.ToDto(d, ["経理"]);
+        var dto = DocumentMapper.ToDto(d, ["経理"], sharedWith: null);
 
         dto.Tags.Should().Equal("経理");
         dto.Tags.Should().NotContain(tagId.ToString());
+        // FR-19 (#1447): 共有先を渡さない（＝共有なし）なら null のまま（空リストへ化けない）。
+        dto.SharedWith.Should().BeNull();
     }
 
     // 陰性: 任意項目の null は null のまま写る。
@@ -66,7 +70,7 @@ public class DocumentMapperTests
     {
         var d = Document.Create("下書き", originalUri: null, contentType: null);
 
-        var dto = DocumentMapper.ToDto(d, []);
+        var dto = DocumentMapper.ToDto(d, [], sharedWith: null);
 
         dto.MarkdownUri.Should().BeNull();
         dto.Tags.Should().BeEmpty();
@@ -76,7 +80,7 @@ public class DocumentMapperTests
         var noBody = Document.CreateNormalized(
             Guid.NewGuid(), "本文なし PDF", "storage://docs/none.md", hasBody: false);
 
-        DocumentMapper.ToDto(noBody, []).HasBody.Should().BeFalse();
+        DocumentMapper.ToDto(noBody, [], sharedWith: null).HasBody.Should().BeFalse();
     }
 
     // 陽性: `DocumentVersionDto` の全 8 列が写る。

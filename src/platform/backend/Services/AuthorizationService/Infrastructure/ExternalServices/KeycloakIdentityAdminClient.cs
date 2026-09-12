@@ -147,6 +147,111 @@ public sealed class KeycloakIdentityAdminClient(
         ];
     }
 
+    // FR-05, FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0036 D-03, ADR-0088 決定 1, ADR-0098 決定 1,
+    // [[IADR-0447]] (#1447): 利用者の所属グループを **1 往復**で引く（`${current_groups}` の供給元）。
+    //
+    // 🔴 **鍵は IdP の内部 ID である**（利用者名ではない）。Keycloak の所属照会は
+    // `GET /users/{id}/groups` しか持たない —— 名前で引く口が無いので、呼び出し元
+    // （`ScopeUserAttributeSource`）は `FindByUsernameAsync` で引いた `IdentityUser.Id` を渡す。
+    // したがって 1 判定あたりの往復は 2 つ（属性 ＋ 所属）になる。**キャッシュは置かない**
+    // （`ADR-0088` 決定 1 の「判定ごとに引き直す」を所属にも通す。鮮度の実測は IADR-0447）。
+    //
+    // 🔴 **`briefRepresentation=true` で引く。** 要るのは `id` / `name` / `path` の 3 つだけであり、
+    // グループの属性・所属者を運ばない（面を型で閉じる）。
+    //
+    // 🔴 **親グループへ遡らない。** Keycloak のこの口は**直接の所属**を返す。共有先は個々のグループで
+    // あり（`ADR-0098` 決定 3 の木は管理者の作業）、親の所属を推論すると
+    // **管理者が作った木の形が認可の広さを黙って変える**（`/teams` の共有が全チームへ効く）。
+    public async Task<IReadOnlyList<IdentityGroup>> GetUserGroupsAsync(string userId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(userId)) return [];
+
+        var client = await AuthorizedClientAsync(ct);
+        var groups = await client.GetFromJsonAsync<List<KeycloakGroup>>(
+            $"admin/realms/{Realm}/users/{Uri.EscapeDataString(userId)}/groups"
+            + "?briefRepresentation=true", Json, ct) ?? [];
+
+        return [.. groups.Where(g => !string.IsNullOrEmpty(g.Id)).Select(ToIdentityGroup)];
+    }
+
+    // FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1・3, [[IADR-0447]] (#1447):
+    // 共有先の候補となるグループを Keycloak の `search=` で引く（**1 往復**）。
+    //
+    // 🔴 **Keycloak 24 は search の結果を木のまま返す。** 一致したのが子孫であっても、応答の頂点は
+    // その**祖先**であり、一致した子孫が `subGroups` に入って返る（実測される形）。したがって
+    // **再帰で平坦化してから名前で絞る** —— 平坦化しないと「一致した子孫が 1 件も出ない」、
+    // 絞り直さないと「一致していない祖先が候補に混ざる」。どちらも画面で気付きにくい。
+    //
+    // 🔴 **`max` は平坦化して絞った**あとに掛ける。サーバ側の `max` は頂点の件数に掛かるため、
+    // それだけでは「木を 1 つ返したら 1 件」になり上限の意味が変わる。
+    public async Task<IReadOnlyList<IdentityGroup>> SearchGroupsAsync(
+        string query, int max, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(query) || max < 1) return [];
+
+        var client = await AuthorizedClientAsync(ct);
+        var roots = await client.GetFromJsonAsync<List<KeycloakGroup>>(
+            $"admin/realms/{Realm}/groups?search={Uri.EscapeDataString(query)}"
+            + "&briefRepresentation=true", Json, ct) ?? [];
+
+        return
+        [
+            .. Flatten(roots)
+                .Where(g => g.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(g => g.Path, StringComparer.Ordinal)
+                .Take(max)
+        ];
+    }
+
+    // FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1, [[IADR-0447]] (#1447):
+    // グループ ID の集合を像へ引く（**ID 1 件につき 1 往復・並列**）。
+    //
+    // 🔴 **404 は落とす。エラーではない**（ポートの注記。削除済みのグループへの共有は台帳に残る）。
+    // 🔴 **要求順を保つ** —— `Task.WhenAll` は入力順で結果を返すので、画面が受け取る順は台帳の順
+    // （＝付与順）のままである（`ResolveUsersEndpoint` と同じ作法）。
+    public async Task<IReadOnlyList<IdentityGroup>> GetGroupsByIdsAsync(
+        IReadOnlyList<string> ids, CancellationToken ct)
+    {
+        if (ids.Count == 0) return [];
+
+        var client = await AuthorizedClientAsync(ct);
+        var found = await Task.WhenAll(ids.Select(id => GroupByIdAsync(client, id, ct)));
+        return [.. found.Where(g => g is not null).Select(g => g!)];
+    }
+
+    private async Task<IdentityGroup?> GroupByIdAsync(HttpClient client, string id, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return null;
+
+        var response = await client.GetAsync(
+            $"admin/realms/{Realm}/groups/{Uri.EscapeDataString(id)}", ct);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+
+        var group = await response.Content.ReadFromJsonAsync<KeycloakGroup>(Json, ct);
+        return group is null || string.IsNullOrEmpty(group.Id) ? null : ToIdentityGroup(group);
+    }
+
+    // グループ木を深さ優先で平坦化する（`subGroups` は Keycloak が入れ子で返す）。
+    // **ID を持たない節は落とす**（判定と取り消しの鍵が無い像は画面でも使えない）。
+    private static IEnumerable<IdentityGroup> Flatten(IEnumerable<KeycloakGroup> groups)
+    {
+        foreach (var group in groups)
+        {
+            if (!string.IsNullOrEmpty(group.Id)) yield return ToIdentityGroup(group);
+            foreach (var child in Flatten(group.SubGroups ?? [])) yield return child;
+        }
+    }
+
+    // `path` が空のときだけ名前から組み立てる（Keycloak は常に `path` を返すが、
+    // **`Path` は画面が同名グループを区別する唯一の手掛かり**なので空文字で通さない）。
+    private static IdentityGroup ToIdentityGroup(KeycloakGroup group)
+    {
+        var name = group.Name ?? string.Empty;
+        var path = string.IsNullOrWhiteSpace(group.Path) ? "/" + name : group.Path;
+        return new IdentityGroup(group.Id ?? string.Empty, name, path);
+    }
+
     public async Task<IReadOnlyList<string>> ListAssignableRolesAsync(CancellationToken ct)
     {
         var client = await AuthorizedClientAsync(ct);
@@ -541,4 +646,12 @@ public sealed class KeycloakIdentityAdminClient(
         Dictionary<string, List<string>?>? Attributes);
 
     private sealed record KeycloakRole(string? Id, string? Name);
+
+    // #1447: Keycloak のグループ表現。**`subGroups` を持つ**（search の応答が木のまま返るため。
+    // `SearchGroupsAsync` の注記を参照）。`briefRepresentation=true` では属性・所属者は返らない。
+    private sealed record KeycloakGroup(
+        string? Id,
+        string? Name,
+        string? Path,
+        List<KeycloakGroup>? SubGroups);
 }

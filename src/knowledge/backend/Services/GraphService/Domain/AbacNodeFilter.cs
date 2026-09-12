@@ -58,8 +58,12 @@ public static class AbacNodeFilter
     }
 
     // フィルタ間 AND、値集合内 OR。属性キーを持たないノードは不一致（欠落は安全側に倒す）。
+    //
+    // 🔴 FR-19, ADR-0080 決定 2, [[IADR-0448]] (#1448): **述語は契約側の 1 つへ委譲する。**
+    // 従前はここで `AllowedValues.Contains(v, …)` と**単一文字列**で突き合わせており、
+    // 集合値の `shared_with`（カンマ連結。`DocumentAttributeEncoding`）は **1 件も一致しなかった** ——
+    // 同じスコープに対して検索側（Qdrant の `Match.Keywords`）だけが交差で答えており、
+    // **面によって認可が違った**。集合値キーは交差・単一値キーは値一致（従前と 1 文字も変わらない）。
     private static bool MatchesAll(GraphDocument node, List<AttributeFilter> filters) =>
-        filters.All(f =>
-            node.Attributes.TryGetValue(f.Key, out var v)
-            && f.AllowedValues.Contains(v, StringComparer.OrdinalIgnoreCase));
+        AttributeFilterMatch.MatchesAll(node.Attributes, filters);
 }

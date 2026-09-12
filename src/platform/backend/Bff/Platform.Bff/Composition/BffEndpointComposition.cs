@@ -86,6 +86,12 @@ public static class BffEndpointComposition
         // 利用者名・表示名・有効状態の 3 つだけを返す。**prefix ごと分けてある** —— 1 つの口に
         // 両方を担わせると、一般利用者が 403 になるか名簿と属性が漏れるかのどちらかになる。
         new DelegateBffEndpointModule(a => a.MapUserLookupBffEndpoints()),
+        // Issue #1447, FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1・3, ADR-0100 フォローアップ 2,
+        // IADR-0447/0449: 共有先に指定する**グループ**の検索・表示名の引き当て（AuthorizationService の
+        // /authz/groups/{lookup,resolve} へ pass-through）。後段は platform ユニットなので platform 同居。
+        // 🔴 **すぐ上の利用者検索と対である**（画面 SC-19 は指定先の種別を切り替えるだけ）。
+        // 認可も同じ（ロール不問・**人の主体だけ**）——「グループだから管理者限定」ではない。
+        new DelegateBffEndpointModule(a => a.MapGroupLookupBffEndpoints()),
         // Issue #600, FR-22, UC-11, ADR-0037/0045, IADR-0215/0340: 利用者本人へのアプリ内通知
         // （NotificationService の /notifications* へ pass-through）。後段は platform ユニットなので
         // platform 同居とする。**認証必須・ロールは問わない**（絞るのは役割ではなく主体＝JWT の sub）。

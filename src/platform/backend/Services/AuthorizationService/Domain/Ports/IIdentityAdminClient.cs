@@ -65,6 +65,49 @@ public interface IIdentityAdminClient
     Task<IReadOnlyList<IdentityUser>> SearchUsersAsync(string query, int max, CancellationToken ct);
 
     /// <summary>
+    /// FR-05, FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0036 D-03・D-06, ADR-0088 決定 1,
+    /// ADR-0098 決定 1, [[IADR-0447]] (#1447): **利用者の所属グループを引く**
+    /// （`${current_groups}` の供給元）。<paramref name="userId"/> は **IdP の内部 ID**
+    /// （<see cref="IdentityUser.Id"/>）であって利用者名ではない。
+    ///
+    /// 🔴 **トークンの `groups` クレームを読む形は採らない。** `/authz/scope` は本文もトークンも
+    /// 信じず属性を IdP から引き直す（`ADR-0088` 決定 1）——**同じ点で所属も引く**のでなければ、
+    /// 属性だけが引き直され所属は呼び出し元の主張のままになる（片方だけ信じる形が一番危ない）。
+    ///
+    /// 🔴 **返すのは ID・名前・パスの 3 つだけである**（<see cref="IdentityGroup"/>）。
+    /// 判定に使うのは `Id`（`ADR-0098` 決定 1「共有先は識別子」。改名・移動で共有が外れない）で、
+    /// 名前とパスは画面の表示用である。属性・所属者は運ばない。
+    ///
+    /// 🔴 **これは新規作成の口ではない**（`IdentityAdminContractTests` の禁止語に触れない読み取りである）。
+    /// </summary>
+    Task<IReadOnlyList<IdentityGroup>> GetUserGroupsAsync(string userId, CancellationToken ct);
+
+    /// <summary>
+    /// FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1・3, [[IADR-0447]] (#1447):
+    /// **共有先に指定するグループを名前で探す**（部分一致・大小文字無視・最大 <paramref name="max"/> 件・パス順）。
+    ///
+    /// 🔴 **グループ木を平坦化して返す。** 計画 `ADR-0098` 決定 3 はグループ木を管理者が Keycloak で
+    /// 作ると定めており、木の形（親子）は共有の単位ではない —— 指定できるのは**個々のグループ**である。
+    /// 階層は <see cref="IdentityGroup.Path"/> が表し、画面は同名グループの区別にそれを使う。
+    ///
+    /// 🔴 **これは新規作成の口ではない**（禁止語に触れない読み取りである）。
+    /// </summary>
+    Task<IReadOnlyList<IdentityGroup>> SearchGroupsAsync(string query, int max, CancellationToken ct);
+
+    /// <summary>
+    /// FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1, [[IADR-0447]] (#1447):
+    /// **グループ ID の集合を像へ引く**（共有台帳の `subjectId` → 画面に出す表示名）。
+    ///
+    /// 🔴 **無い ID は応答から落ちる。エラーではない。** 共有台帳は IdP の外にあり、台帳に残った
+    /// グループが Keycloak から消えていることは起こり得る（削除・realm の入れ替え）。
+    /// 落とさずに失敗させると、**画面が 1 件の不整合で共有先を 1 つも表示できなくなる** ——
+    /// 取り消すべき相手が見えないのが最悪である（`ResolveUsersEndpoint` と同じ判断）。
+    ///
+    /// 🔴 **これは新規作成の口ではない**（禁止語に触れない読み取りである）。
+    /// </summary>
+    Task<IReadOnlyList<IdentityGroup>> GetGroupsByIdsAsync(IReadOnlyList<string> ids, CancellationToken ct);
+
+    /// <summary>
     /// SC-17 入力規則「定義済みロールのみ」の**値域の正**。IdP が持つ割当可能な realm ロールを返す。
     /// **画面にも後段にも焼き込まない** —— 焼き込むと realm を増やしても選べず、
     /// 消えたロールを選べてしまう。
@@ -123,3 +166,15 @@ public sealed record IdentityUser(
     bool Enabled,
     IReadOnlyList<string> Roles,
     IReadOnlyDictionary<string, string> Attributes);
+
+// FR-05, FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0036 D-03・D-06, ADR-0098 決定 1・3,
+// [[IADR-0447]] (#1447): IdP が持つグループの像。**本サービスはこれを永続化しない**
+// （グループ木の正本は Keycloak であり、決定 3 が「管理者が Keycloak で作る」と定めている）。
+//
+// 🔴 **`Id` が共有の鍵である。** 共有台帳のグループ `subjectId`・`${current_groups}` の束縛値・
+// 画面が取り消しに使う値がすべてこの ID で揃う（`ADR-0098` 決定 1）。
+// `Name` は表示名、`Path` は同名グループを区別するための階層（例 `/teams/knowledge`）である。
+//
+// 🔴 **所属者・属性を持たない。** 一般利用者へ開く面（`GroupSummaryDto` の 3 項目）より
+// 広い像を作らない —— 広い像を作ると、面を絞る責務が端点側の「書き忘れ」になる。
+public sealed record IdentityGroup(string Id, string Name, string Path);

@@ -207,6 +207,46 @@ public class AbacPageFilterTests
             "分岐が空のときに AllowedFilters を読まないと、未移行応答で全滅する");
     }
 
+    // ══ FR-19, ADR-0080 決定 2, [[IADR-0448]] (#1448): 集合値属性（`shared_with` / `tags`）の交差 ══
+    //
+    // 述語を契約側の 1 つ（`AttributeFilterMatch`）へ寄せた。**`AbacNodeFilterTests` の同名の行と
+    // 同じ入力・同じ期待値**であり、3 面（BFF / Graph / Wiki）が同じ答えを出すことの Wiki 側の固定点。
+    //
+    // 🔴 **本サービスへ個人資料は流れない**ので、ここで集合値が実際に効くのは `tags` である ——
+    // それでも意味論は 3 面で一致させる（ずれると「いつか流れたとき」に面ごとに答えが違う）。
+    [Theory]
+    [InlineData("a,b", new[] { "b" }, true)]
+    [InlineData("a,b", new[] { "a" }, true)]
+    [InlineData("a,b", new[] { "b", "z" }, true)]
+    [InlineData("a,b", new[] { "c" }, false)]
+    [InlineData("", new[] { "a" }, false)]
+    [InlineData(",", new[] { "a" }, false)]
+    [InlineData("a", new[] { "a" }, true)]
+    [InlineData("a", new[] { "b" }, false)]
+    public void Matches_SetValuedAttribute_IsEvaluatedAsIntersection(
+        string pageValue, string[] allowed, bool expected)
+    {
+        var page = Page(new() { [DocumentAttributeEncoding.SharedWithKey] = pageValue });
+        var scope = new AccessScopeResponse("u",
+            [new AttributeFilter(DocumentAttributeEncoding.SharedWithKey, [.. allowed])],
+            Granted: true);
+
+        AbacPageFilter.Matches(page, scope).Should().Be(expected);
+    }
+
+    // 🔴 陰性対照: **単一値キーはカンマで分割しない**（値にカンマを含む単一値属性が
+    // 別の意味に化けるのを防ぐ。`AbacNodeFilterTests` と同型）。
+    [Fact]
+    public void Matches_SingleValuedAttribute_IsNotSplitOnComma()
+    {
+        var page = Page(new() { ["department"] = "hr,sales" });
+        var scope = new AccessScopeResponse("u",
+            [new AttributeFilter("department", ["hr"])], Granted: true);
+
+        AbacPageFilter.Matches(page, scope).Should().BeFalse(
+            "`department` は集合値キーではない（`DocumentAttributeEncoding.SetValuedKeys` に無い）");
+    }
+
     // IADR-0253 決定 3（否定形）: 述語はプレースホルダを解釈しない。束縛前の文字列が
     // 分岐に紛れても素の文字列比較で不一致になる（解釈すると認可の判断が 2 箇所へ散る）。
     [Fact]

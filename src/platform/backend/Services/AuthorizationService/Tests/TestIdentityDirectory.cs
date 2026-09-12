@@ -30,6 +30,30 @@ public sealed class TestIdentityDirectory
     public List<string> LookedUp { get; } = [];
 
     /// <summary>
+    /// FR-19, 計画 ADR-0036 D-03, ADR-0098 決定 1, [[IADR-0447]] (#1447):
+    /// 利用者名 → **所属グループ ID**（`${current_groups}` の束縛値）。
+    /// **ここに無い名前は本物の偽物（`InMemoryIdentityAdminClient`）へ素通しする**（属性と同じ規則）。
+    ///
+    /// 🔴 **鍵は利用者名である**（本物のポートは内部 ID を取るが、器へ書くのは名前のほうが
+    /// 試験の意図に近い）。この器が作る内部 ID は `id-&lt;利用者名&gt;` なので、受け取った ID から
+    /// 接頭辞を落として引く。
+    /// </summary>
+    public Dictionary<string, string[]> Groups { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// #1447: **所属照会だけが引けない**ことにする（属性は引ける）。
+    /// 🔴 <see cref="Failure"/> と別に持つ —— 同じものにすると「属性は引けたが所属が引けなかった」
+    /// ときに 503 へ倒れることを測れない（`ADR-0088` 決定 1 を所属にも通す試験）。
+    /// </summary>
+    public Exception? GroupFailure { get; set; }
+
+    /// <summary>`GetUserGroupsAsync` が受け取った ID（所属照会が実際に走った観測点）。</summary>
+    public List<string> GroupsLookedUp { get; } = [];
+
+    /// <summary>この器が作る内部 ID の接頭辞（`id-&lt;利用者名&gt;`）。</summary>
+    internal const string StubIdPrefix = "id-";
+
+    /// <summary>
     /// 包んだ本物の偽物。SC-17 の試験（失効要求の観測など）はこちらを見る。
     /// 🔴 **装飾を挟んだので `GetRequiredService<IIdentityAdminClient>()` のキャストでは取れない。**
     /// </summary>
@@ -41,6 +65,10 @@ public sealed class TestIdentityDirectory
         Unknown.Clear();
         Failure = null;
         LookedUp.Clear();
+        // #1447: 所属の状態も戻す（片方だけ戻すと、次のクラスが前のクラスの所属を見る）。
+        Groups.Clear();
+        GroupFailure = null;
+        GroupsLookedUp.Clear();
     }
 
     /// <summary>
@@ -77,8 +105,37 @@ public sealed class TestIdentityDirectory
                 return inner.FindByUsernameAsync(username, ct);
 
             return Task.FromResult<IdentityUser?>(
-                new IdentityUser($"id-{username}", username, username, true, [], attributes));
+                new IdentityUser($"{StubIdPrefix}{username}", username, username, true, [], attributes));
         }
+
+        // FR-19, 計画 ADR-0036 D-03, ADR-0088 決定 1, ADR-0098 決定 1, [[IADR-0447]] (#1447):
+        // 所属照会。**属性と同じ規則**（器が意見を持たない名前は本物の偽物へ素通しする）。
+        // 🔴 グループの像は ID だけが判定に効く（名前・パスは画面の表示用）ので、
+        // 器は ID から機械的に組み立てる。
+        public Task<IReadOnlyList<IdentityGroup>> GetUserGroupsAsync(string userId, CancellationToken ct)
+        {
+            lock (state.GroupsLookedUp) state.GroupsLookedUp.Add(userId);
+
+            if (state.GroupFailure is not null) throw state.GroupFailure;
+
+            var username = userId.StartsWith(StubIdPrefix, StringComparison.Ordinal)
+                ? userId[StubIdPrefix.Length..]
+                : userId;
+            if (!state.Groups.TryGetValue(username, out var ids))
+                return inner.GetUserGroupsAsync(userId, ct);
+
+            return Task.FromResult<IReadOnlyList<IdentityGroup>>(
+                [.. ids.Select(id => new IdentityGroup(id, id, "/" + id))]);
+        }
+
+        // FR-19, SC-19 主要素 3, [[IADR-0447]] (#1447): グループ検索・ID 引き当ては**素通しする**
+        // （SC-19 の試験は本物の偽物が持つグループ木を見る。操作されるのは所属照会だけである）。
+        public Task<IReadOnlyList<IdentityGroup>> SearchGroupsAsync(string query, int max, CancellationToken ct)
+            => inner.SearchGroupsAsync(query, max, ct);
+
+        public Task<IReadOnlyList<IdentityGroup>> GetGroupsByIdsAsync(
+            IReadOnlyList<string> ids, CancellationToken ct)
+            => inner.GetGroupsByIdsAsync(ids, ct);
 
         public Task<IReadOnlyList<IdentityUser>> ListUsersAsync(CancellationToken ct) => inner.ListUsersAsync(ct);
         // FR-19, SC-19 主要素 3, [[IADR-0445]] (#1445): 共有先の候補の検索も**素通しする**

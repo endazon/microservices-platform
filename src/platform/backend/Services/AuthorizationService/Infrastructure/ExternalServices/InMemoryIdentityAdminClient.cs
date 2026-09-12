@@ -24,6 +24,36 @@ public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
     private readonly ConcurrentDictionary<string, MutableUser> _users = new(StringComparer.Ordinal);
     private readonly ConcurrentQueue<string> _revoked = new();
 
+    // FR-05, FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1・3, [[IADR-0447]] (#1447):
+    // **固定のグループ木**（`${current_groups}` の束縛と共有先の検索を開発環境で通すための最小の木）。
+    //
+    // 🔴 **realm export（`deploy/keycloak/microservices-platform-realm.json`）へは足さない** ——
+    // 計画 `ADR-0098` 決定 3 が「グループ木は管理者が Keycloak で作る」と定めており、
+    // 例示の木を配備の正本へ焼き込むと**管理者が作る前提の構造を実装が先取りする**ことになる。
+    // 開発・テストだけがこの偽物の木を見る。
+    //
+    // 🔴 **親も 1 つの群として並ぶ**（`/teams` も指定できる）。本物（Keycloak）の平坦化が
+    // 祖先を落とさないため、ここだけ子だけを持つと**偽物で緑になる試験が本物では別の答えを返す**。
+    private static readonly IdentityGroup[] Groups =
+    [
+        new("g-teams", "teams", "/teams"),
+        new("g-knowledge", "knowledge", "/teams/knowledge"),
+        new("g-finance", "finance", "/teams/finance"),
+        new("g-department", "department", "/department"),
+        new("g-engineering", "engineering", "/department/engineering"),
+    ];
+
+    // 利用者の**内部 ID** → 所属グループ ID（`GetUserGroupsAsync` の鍵は利用者名ではない）。
+    // 既存 seed の 4 人に 1〜2 件ずつ与える。**属性（department）と重ねてあるが別物である** ——
+    // 属性は ABAC の条件、グループは共有先の識別子である。
+    private static readonly Dictionary<string, string[]> Memberships = new(StringComparer.Ordinal)
+    {
+        ["u-tanaka"] = ["g-finance"],
+        ["u-sato"] = ["g-knowledge", "g-engineering"],
+        ["u-suzuki"] = ["g-knowledge"],
+        ["u-takahashi"] = ["g-teams"],
+    };
+
     /// <summary>
     /// 失効を要求された利用者 ID（要求された順）。
     ///
@@ -100,6 +130,45 @@ public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
                 .Select(u => u.ToIdentityUser())
         ]);
     }
+
+    // FR-05, FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0088 決定 1, ADR-0098 決定 1,
+    // [[IADR-0447]] (#1447): 所属グループ。**鍵は利用者の内部 ID**（本物と同じ意味論）。
+    // 🔴 **親へ遡らない**（本物の注記と同じ。木の形が認可の広さを黙って変えないため）。
+    public Task<IReadOnlyList<IdentityGroup>> GetUserGroupsAsync(string userId, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<IdentityGroup>>(
+            Memberships.TryGetValue(userId, out var ids)
+                ? [.. Groups.Where(g => ids.Contains(g.Id, StringComparer.Ordinal))]
+                : []);
+
+    // FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1, [[IADR-0447]] (#1447): 共有先の候補。
+    // 🔴 **本物（Keycloak の平坦化 ＋ 名前の部分一致）と同じ意味論にする** ——
+    // 大小文字無視・パス順・`max` 件（`SearchUsersAsync` と同じ注記の理由）。
+    public Task<IReadOnlyList<IdentityGroup>> SearchGroupsAsync(
+        string query, int max, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(query) || max < 1)
+            return Task.FromResult<IReadOnlyList<IdentityGroup>>([]);
+
+        return Task.FromResult<IReadOnlyList<IdentityGroup>>(
+        [
+            .. Groups
+                .Where(g => g.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(g => g.Path, StringComparer.Ordinal)
+                .Take(max)
+        ]);
+    }
+
+    // FR-19, SC-19 主要素 3, 計画 ADR-0098 決定 1, [[IADR-0447]] (#1447): ID → 像。
+    // 🔴 **無い ID は落ちる（エラーではない）・要求順を保つ**（本物と同じ意味論）。
+    public Task<IReadOnlyList<IdentityGroup>> GetGroupsByIdsAsync(
+        IReadOnlyList<string> ids, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<IdentityGroup>>(
+        [
+            .. ids
+                .Select(id => Groups.FirstOrDefault(g => string.Equals(g.Id, id, StringComparison.Ordinal)))
+                .Where(g => g is not null)
+                .Select(g => g!)
+        ]);
 
     public Task<IReadOnlyList<string>> ListAssignableRolesAsync(CancellationToken ct)
         => Task.FromResult<IReadOnlyList<string>>([.. AssignableRoles]);
