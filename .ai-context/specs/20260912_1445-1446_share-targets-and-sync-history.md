@@ -197,7 +197,43 @@ planning#618 の裁定（2026-09-12・ADR-0098 / ADR-0099）で、IADR-0444 が�
 
 ## 検証記録
 
-（実装後に記入）
+### 後段の口の全数（`grep -rnE "Map(Get|Post|Put|Delete)\("`。実装後）
+
+- DocumentService の個人資料・同期系（`PrivateNotes` / `SyncHistory` / `SyncConflicts` / `SyncSettings` / `SyncDevices` /
+  `ObsidianSync` / `Documents/{ListShares,GrantShare,RevokeShare}`）: **30 口**（#1444 時点の 23 ＋ 共有台帳 3〔従前から在り、
+  母集合に入れていなかった〕＋ 同期履歴 1 ＋ 前段の数え方の差 3）。BFF 公開: `PrivateNoteBffEndpoints` **20 口**（#1444 の 16 ＋
+  共有 3 ＋ 同期履歴 1）。非公開のまま: `/private-notes/quotas/*` 2・同期プロトコル 5（理由は IADR-0444 のとおり）。
+- AuthorizationService `Features/Users/Lookup`: **2 口**（lookup / resolve）。Platform BFF `UserLookupBffEndpoints`: **2 口**。
+
+### 母集合（規則 1〜10 の実測）
+
+`git grep -nE "裁定待ち|planning#618|描かない|載せない"`（除外: `.ai-context/specs/`・`CHANGELOG.md`・IADR-0444/0445/0446 本文・
+別紙 `plan-id-range-history-annex.md`〔いずれも point-in-time の記録〕）で、指定先・同期履歴に関する行を全件読んだ。
+是正した陳腐化: `PrivateNoteDto.cs`（2 か所）・`useNoteListView.ts`（1 か所）・`PrivateNoteBffEndpoints.cs` 冒頭注記・
+`openapi.yaml`（3 か所）・`ObsidianSettingsPage.tsx` / `PrivateNotesPage.tsx` 冒頭注記・`docs/screens`・`docs/tests`・
+`BFF_bff-surface.md`・`.ai-context/adr/README.md` の IADR-0444 行は「裁定待ちで契約に出さない」を当時の記述として残置
+（索引の要旨は決定の要約であり、追記は IADR-0444 本文の日付つき追記ブロックで行った）。残るヒットは ADR-0098 / ADR-0099 を
+引く新しい記述だけである。
+
+### ゲート（2026-09-12・ローカル .NET 10.0.400 / Node 22）
+
+| 面 | 結果 |
+| --- | --- |
+| 契約 | `check-openapi-dto-drift` OK（同名 79 件一致）/ `check-contract-schema` OK（136 型・非破壊の型追加のみ・未消化 0）/ `check-bff-authz-docs` OK（19 ファイル / 103 端点。前 97）/ `check-bff-downstreams` OK / orval 再生成差分なし |
+| 後段・BFF | `dotnet build` 両 slnx 0 warning / 0 error。`dotnet format --verify-no-changes` OK。テスト件数は §テスト件数 |
+| 画面 | typecheck 6 パッケージ Done / lint 0 error（既存 warning 12）/ format OK / knip 床どおり 36 / i18n 差分なし・未訳 0（新規 **44 msgid × 2**）/ build OK / chunk **594,006 B**（床 588,890 → 594,006 へ `--update`。A/B: カタログ +5,108 B・コード +8 B。`ui` / `vendor-react` / `vendor-query` はハッシュまで同一）/ static-egress OK / route-manifest OK（17 画面・83 件）/ **E2E 67 passed**（前 64。sc19 +1・sc20 +1・a11y +1） |
+| 文書 | trace-blocks（174 件）/ doc-links / cross-repo-refs（3,638 件）/ plan-id（3,025 件）/ knowledge-graph / adr-numbering / reading-budget（3 集合とも 51,200 B 内）OK |
+
+### テスト件数（前 → 後）
+
+| アセンブリ | 前 | 後 |
+| --- | --- | --- |
+| DocumentService.Tests | 524 | 546（+22: recorder 14 / history 6 / retention 2） |
+| AuthorizationService.Tests | 280 | 293（+13） |
+| Platform.Bff.Tests | 570 | 590（+20） |
+| frontend（vitest） | 1,678 | 1,708（+30） |
+
+（backend の全アセンブリ再走と coverage の 4 値は本節の末尾に追記する。）
 
 ## 計画書との差異
 
