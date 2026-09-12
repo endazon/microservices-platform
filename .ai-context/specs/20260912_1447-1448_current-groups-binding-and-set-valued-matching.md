@@ -150,4 +150,11 @@ ADR-0099 の環流応答が残した帰結 1 つを、**同じ資源（個人資
 
 ## 監査記録
 
-（監査後に記入）
+2026-09-12・別エージェント（sonnet）が diff（`origin/develop...939de24`・101 ファイル）と §受け入れ基準 だけを渡されて監査。**条件付き合格**（🔴 なし・🟡 2 件）。証跡: 観点別の `dotnet test --filter`（Shared.Infrastructure 39 / AuthorizationService 27+20+13 / Platform.Bff 44+16+14 / Graph 34 / Wiki 25 / DocumentService 5。すべて Failed 0）、`vitest run`（sc19 / sc20 169 件）、`check-trace-blocks` / `check-cross-repo-refs` / `check-commit-messages`（3 件適合）/ `check-openapi-dto-drift` / `check-contract-schema` / `check-bff-authz-docs`（105 端点）/ `check-bff-downstreams`。shallow clone のため `git log` は出典に用いていない。
+
+| 指摘 | 対応 |
+| --- | --- |
+| 🟡 IADR-0447 決定 4 の副作用（`owner` 分岐で所有者自身の個人資料が `GET /bff/documents/{id}` で読める）に専用の陽性テストが無い | `BffSharedDocumentReadTests.所有者分岐が一致する自分の個人資料は読める`（`owner` 一致 → 200・別人 → 404 の Theory）を追加 |
+| 🟡 「共有された相手が `sharedWith` から他の共有先の識別子を読める」の planning への環流の着手状況が本文に無い | 環流は本 PR のマージ後に planning へ別 PR で行う（ADR-0098 決定 2 の暫定手段解除・鮮度と同じ PR。§計画書との差異・未決事項 と IADR-0447 §フォローアップ 1・2 に記載済み）。起票済みの issue 番号は無い —— 記録として計画 ADR-0098 §結果 へ追記する形を採る |
+
+併せて CodeQL（`cs/user-controlled-bypass`・high）が `KeycloakIdentityAdminClient.SearchGroupsAsync` の冒頭の早期 return を指摘 → 新設 3 メソッドとも認可済みクライアントの取得を先に、入力のガードを後にした（`eafb816`）。

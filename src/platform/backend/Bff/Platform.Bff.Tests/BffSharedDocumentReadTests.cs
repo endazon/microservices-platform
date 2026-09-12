@@ -155,6 +155,25 @@ public class BffSharedDocumentReadTests : IClassFixture<BffTestFactory>
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    // [[IADR-0447]] 決定 4 の副作用（監査 🟡 の写像）: **`owner` 分岐が一致する所有者自身の個人資料も
+    // 同じ経路で読める**（従前は `IsManageable` の一律除外で 404 だった。ADR-0036 D-05 の範囲内）。
+    // `${current_user}` は評価器が束縛済みで、BFF へは値（利用者名）として届く。
+    // 陰性: `owner` が別人なら 404 のまま（`owner` 分岐は「所有者にだけ」効く）。
+    [Theory]
+    [InlineData("someone-else", HttpStatusCode.OK)]
+    [InlineData("another-user", HttpStatusCode.NotFound)]
+    public async Task 所有者分岐が一致する自分の個人資料は読める(string boundOwner, HttpStatusCode expected)
+    {
+        _factory.ScopeBranches =
+            [new AccessScopeBranch("owner", [new AttributeFilter("owner", [boundOwner])])];
+        _factory.StubDocument = SharedNote(null);
+
+        var resp = await _factory.CreateClient()
+            .GetAsync($"/bff/documents/{NoteId}", TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(expected);
+    }
+
     // 🔴 陰性対照（従前どおり）: **SC-05 の一覧には共有された個人資料も現れない。**
     // 一覧は組織文書の管理面（`IsManageable` の一律除外）であり、個人資料は SC-19 が持つ。
     [Fact]
