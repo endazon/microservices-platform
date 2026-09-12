@@ -190,6 +190,12 @@ push が成功したとき（正しい `baseVersion` で書けた＝プラグイ
   実装側の A/B でロケール分がほぼ全額。`--update` し `$comment_initialTotalBytes_20260912_1441-1442` に内訳）
 - 文書: trace-blocks / cross-repo-refs / plan-id / knowledge-graph / doc-links / adr-numbering / reading-budget / backend-libraries / doc-type-vocabulary / test-traceability / test-spec-coverage OK
 
+### 監査（2026-09-12・別エージェント・diff＋受け入れ基準のみ・証跡付き）
+
+条件付き合格 → 推奨 1 件（「削除済み＋未解決競合 → `conflict`」の分岐がテストに無い）を `PrivateNoteListDerivationTests` に
+1 ケース足して回収。他 9 観点（契約三者一致・409 不変・自動解決の不在・所有者を運ぶ口の不在・同期停止≠削除・色以外の区別・
+trace 規約・過剰実装なし・IADR 整合）は合格。
+
 ### 実装で仕様と変えた点（IADR-0444 に反映済み）
 
 - `syncState` の判定順は `conflict` → `target` → `excluded`（未解決競合があれば削除済みでも `conflict`。契約の description と本仕様書 §設計を揃えた）
