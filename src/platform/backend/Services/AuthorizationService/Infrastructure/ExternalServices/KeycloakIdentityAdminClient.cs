@@ -164,9 +164,12 @@ public sealed class KeycloakIdentityAdminClient(
     // **管理者が作った木の形が認可の広さを黙って変える**（`/teams` の共有が全チームへ効く）。
     public async Task<IReadOnlyList<IdentityGroup>> GetUserGroupsAsync(string userId, CancellationToken ct)
     {
+        // 🔴 **入力のガードは認可済みクライアントの取得の後に置く**（CodeQL `cs/user-controlled-bypass`。
+        // 呼び出し元の入力で `AuthorizedClientAsync` を迂回する形にしない。値域の検査は端点が行っており、
+        // ここは「空なら空」の縮退だけである。3 メソッドとも同じ順にする）。
+        var client = await AuthorizedClientAsync(ct);
         if (string.IsNullOrWhiteSpace(userId)) return [];
 
-        var client = await AuthorizedClientAsync(ct);
         var groups = await client.GetFromJsonAsync<List<KeycloakGroup>>(
             $"admin/realms/{Realm}/users/{Uri.EscapeDataString(userId)}/groups"
             + "?briefRepresentation=true", Json, ct) ?? [];
@@ -187,9 +190,10 @@ public sealed class KeycloakIdentityAdminClient(
     public async Task<IReadOnlyList<IdentityGroup>> SearchGroupsAsync(
         string query, int max, CancellationToken ct)
     {
+        // 入力のガードは認可済みクライアントの取得の後（`GetUserGroupsAsync` の注記）。
+        var client = await AuthorizedClientAsync(ct);
         if (string.IsNullOrWhiteSpace(query) || max < 1) return [];
 
-        var client = await AuthorizedClientAsync(ct);
         var roots = await client.GetFromJsonAsync<List<KeycloakGroup>>(
             $"admin/realms/{Realm}/groups?search={Uri.EscapeDataString(query)}"
             + "&briefRepresentation=true", Json, ct) ?? [];
@@ -212,9 +216,10 @@ public sealed class KeycloakIdentityAdminClient(
     public async Task<IReadOnlyList<IdentityGroup>> GetGroupsByIdsAsync(
         IReadOnlyList<string> ids, CancellationToken ct)
     {
+        // 入力のガードは認可済みクライアントの取得の後（`GetUserGroupsAsync` の注記）。
+        var client = await AuthorizedClientAsync(ct);
         if (ids.Count == 0) return [];
 
-        var client = await AuthorizedClientAsync(ct);
         var found = await Task.WhenAll(ids.Select(id => GroupByIdAsync(client, id, ct)));
         return [.. found.Where(g => g is not null).Select(g => g!)];
     }
