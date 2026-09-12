@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DocumentService.Features.SyncHistory.List;
 
-// FR-20, UC-11, SC-20 主要素 6, ADR-0037 決定 9, ADR-0099 決定 1〜5, planning#618, #1446:
+// FR-20, UC-11, SC-20 主要素 6, ADR-0037 決定 9, ADR-0099 決定 1〜5, #1446（planning#618 の裁定）:
 // 同期履歴の一覧（**本人の行だけ**を実行日時の新しい順に）。
 //
 // 🔴 **読めるのは本人の記録だけである**（ADR-0099 決定 2。第三者閲覧は未確定）。主体は

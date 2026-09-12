@@ -2,7 +2,7 @@ using Knowledge.Contracts.Dtos;
 
 namespace DocumentService.Domain;
 
-// FR-20, UC-11, SC-20 主要素 6, ADR-0037 決定 9, ADR-0099, planning#618, #1446:
+// FR-20, UC-11, SC-20 主要素 6, ADR-0037 決定 9, ADR-0099, #1446（planning#618 の裁定）:
 // 同期の監査ログ 1 行（**貯蔵を持つ監査ログ**）。
 //
 // ■ なぜ表を作るのか（ADR-0099 決定 1 との関係）

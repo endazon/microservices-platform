@@ -35,8 +35,8 @@ public record PrivateNoteDto(
     DateTimeOffset UpdatedAt,
     // #1441（planning#614 の裁定。SC-19 主要素 1・2・5・6）: 公開範囲・同期状態・タグ。
     // 状態は文字列（enum にしない。IADR-0131 論点 C）。値集合は `PrivateNoteVisibilityValues` /
-    // `PrivateNoteSyncStates` が持つ。🔴 **指定先（共有相手）は載せない**（ADR-0036 §未確定事項 5 の
-    // 裁定待ち。planning#618）。`Tags` はタグ辞書の表示名。
+    // `PrivateNoteSyncStates` が持つ。**指定先（共有相手）は本 DTO に載せず `DocumentShareDto`
+    // （`GET /bff/private-notes/{id}/shares`）で引く**（ADR-0098 決定 1。#1445）。`Tags` はタグ辞書の表示名。
     string Visibility,
     int SharedUserCount,
     int SharedGroupCount,
@@ -122,7 +122,7 @@ public record SyncTokenIssuedResponse(
 public record RevokeAllSyncDevicesResponse(int RevokedCount);
 
 // ── #1442（planning#614 の裁定。SC-20 主要素 3・5）: 同期対象範囲と競合 ──
-// 🔴 同期履歴（主要素 6）の型は無い —— N と保持期間が計画に無い（planning#618）。
+// 同期履歴（主要素 6）の型は `SyncHistoryDto.cs`（ADR-0099。#1446）。
 
 // FR-20, SC-20 主要素 3: 同期対象フォルダ 1 件と配下の資料数・最終同期日時。
 public record SyncTargetFolderDto(string Path, int NoteCount, DateTimeOffset? LastSyncAt);

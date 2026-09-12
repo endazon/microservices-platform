@@ -5,7 +5,7 @@ using Platform.Shared.Infrastructure.Foundation.Audit;
 
 namespace DocumentService.Features.ObsidianSync;
 
-// FR-20, UC-11, SC-20 主要素 6, ADR-0037 決定 9, ADR-0099, planning#618, #1446:
+// FR-20, UC-11, SC-20 主要素 6, ADR-0037 決定 9, ADR-0099, #1446（planning#618 の裁定）:
 // 同期の実行記録を**同じ内容で 2 つの出口へ**出す（貯蔵を持つ監査ログ）。
 //   ① `SyncAuditEntry`（表）… SC-20 の同期履歴が本人スコープで読む（ADR-0099 決定 1・2）
 //   ② `audit.Record("private-note.sync.<op>", ...)`（構造化ログ → OTel）… 従前の監査ログ（決定 9）

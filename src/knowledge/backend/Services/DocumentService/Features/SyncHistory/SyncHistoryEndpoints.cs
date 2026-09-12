@@ -2,7 +2,7 @@ using DocumentService.Features.SyncHistory.List;
 
 namespace DocumentService.Features.SyncHistory;
 
-// FR-20, UC-11, SC-20 主要素 6, ADR-0037 決定 9, ADR-0099, planning#618, #1446:
+// FR-20, UC-11, SC-20 主要素 6, ADR-0037 決定 9, ADR-0099, #1446（planning#618 の裁定）:
 // 同期履歴の合成点（現在は一覧の 1 操作だけ）。
 //
 // ADR-0065 決定 2: 操作の実体は `Features/SyncHistory/<操作>/` に居る。

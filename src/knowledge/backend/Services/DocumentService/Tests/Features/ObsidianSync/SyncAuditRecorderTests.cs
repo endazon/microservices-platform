@@ -11,7 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocumentService.Tests.Features.ObsidianSync;
 
-// FR-20, UC-11, SC-20 主要素 6, ADR-0037 決定 9, ADR-0099, planning#618, #1446:
+// FR-20, UC-11, SC-20 主要素 6, ADR-0037 決定 9, ADR-0099, #1446（planning#618 の裁定）:
 // 同期の実行が**貯蔵つきの監査ログ**（`SyncAuditEntry`）へ残ることを固定する。
 //
 // 🔴 否定形（残らない・列が無い）は**陽性対照と対で置く** ——

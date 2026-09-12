@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocumentService.Tests.Features.PrivateNotes;
 
-// FR-20, SC-20 主要素 6, ADR-0099 決定 3, planning#618, #1446:
+// FR-20, SC-20 主要素 6, ADR-0099 決定 3, #1446（planning#618 の裁定）:
 // 定期処理 ⑦ ——**同期履歴は 3 年で消える**（表示件数〔決定 4 の 50 件〕とは別の値である）。
 //
 // 時計は `RunAsync(now)` の引数で進める（既存の定期処理の試験と同じ形）。

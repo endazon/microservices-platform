@@ -31,8 +31,8 @@ related_specs:
   管理者が Keycloak 側で作る）／ADR-0036（D-06。§未確定事項 5 は ADR-0098 で解消）／planning#618 の裁定記録
 - 関連する実装 ADR: [IADR-0444](IADR-0444_private-note-contract-visibility-sync-state-and-conflict-ledger.md)（決定 6 で指定先を
   裁定待ちとして切り離した。本決定はその残り）／[IADR-0253](IADR-0253_authz-scope-disjunction-contract.md)（段 4 共有台帳。
-  **配線は本決定でも行わない**）／[IADR-0301](IADR-0301_user-admin-identity-provider-delegation.md)（`IIdentityAdminClient` の抽象。
-  本決定はそこへ検索を足す）／[IADR-0401](IADR-0401_user-directory-grpc-narrow-surface.md)（s2s の名簿は列挙を持たない。
+  **配線は本決定でも行わない**）／[IADR-0301](IADR-0301_sc17-identity-admin-abstraction.md)（`IIdentityAdminClient` の抽象。
+  本決定はそこへ検索を足す）／[IADR-0401](IADR-0401_east-west-grpc-authz-user-directory.md)（s2s の名簿は列挙を持たない。
   本決定の読み口はそれと**別の面**であり、s2s には出さない）／[IADR-0131](IADR-0131_openapi-as-bff-contract-source.md)／
   [IADR-0139](IADR-0139_domain-bundled-contract-prs.md)
 - 起点 issue: #1445（#1446 と 1 PR に束ねる）
@@ -108,6 +108,14 @@ ADR-0098 で指定先の名前空間が決まり、SC-19 は「3 状態と件数
    呼び出し側の群（`/bff/users` は認証のみ・`/bff/admin/users` は AdminOnly）が決め、中継は資格情報を転送するだけである。
    AuthorizationService 側も `/authz/users/lookup`・`/resolve` は AdminOnly 群と**別の `MapGroup`**（literal 2 セグメントで
    `{userId}` 経路と衝突しないことを経路表とテストで固定）。
+
+7. **画面の照会 `POST /bff/users/resolve` は mutation ではなく `useQuery` の `queryFn` に据える**（生成関数 `bffUserResolve` を直接呼ぶ）。
+   POST だが副作用の無い照会であり、mutation にすると結果がキャッシュに載らず、shares の無効化ごとに `useEffect` で mutate を
+   仕込む形になる（開き直しで表示名が一瞬消える）。[IADR-0135](IADR-0135_generated-client-adoption-and-cache-keys.md) 決定 2 が
+   `/bff/search` について採った判断をこの口へ広げる。`useUserLookup` は `{ enabled, query }` を返す（`no-rest-destructuring`）。
+   ダイアログの `initialFocus` は関数形（`@platform/ui` の `Input` は `ref` を型で受けないため、入力を囲む枠の ref から引く。
+   `packages/ui` は変えない）。自分自身は `/bff/auth/me` の `preferred_username` で候補から除く（台帳の `subjectId` と同じ
+   名前空間＝後段の `Identity.Name` である前提。クレームの写像が変われば候補に残るが、付与は 409 で止まり情報は漏れない）。
 
 ## 結果
 

@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DocumentService.Tests.Features.SyncHistory;
 
-// FR-20, UC-11, SC-20 主要素 6, ADR-0099 決定 2・4・5, planning#618, #1446:
+// FR-20, UC-11, SC-20 主要素 6, ADR-0099 決定 2・4・5, #1446（planning#618 の裁定）:
 // `GET /private-notes/sync-history` の本人絞り・順序・件数。
 //
 // **行は DB へ直に置く**（同期を 200 回走らせずに順序と件数を測る）。記録側の正しさは
