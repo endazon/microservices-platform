@@ -287,7 +287,7 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 605877,
+  "initialTotalBytes": 606019,
   "$comment_initialTotalBytes_20260912_1438": [
     "［2026-09-12 / #1438］731,293 → 731,435（+142 B）へ引き上げた。実測値である",
     "（rm -rf platform/frontend/dist → pnpm run build → node scripts/check-chunk-budget.js --update。",
@@ -351,16 +351,26 @@
     "index.esm-*.js（79.5 kB）は AST と無関係（@hookform/devtools の little-state-machine。SC-10 の遅延チャンク",
     "だけが import し初期ロードに入らない）。1 kB 未満の遅延チャンク 9 → 10 本は AST 画面と knowledge の遅延",
     "画面が共有する小モジュールが 1 本増えたもの（規則は足さない）。A は AST 側の lazy 化で遅延へ移せる",
-    "（AST へ issue で委ねた。本 PR では直せない: IADR-0120）。仕様書 .ai-context/specs/20260912_ast-submodule-bump-ui-ux.md。"
+    "（AST へ issue で委ねた。本 PR では直せない: IADR-0120）。仕様書 .ai-context/specs/20260912_ast-submodule-bump-ui-ux.md。",
+    "［訂正 2026-09-12 / #1437 / AST#792］上の A/B の帰属は誤りであった。AST の 4 画面は #723/#691 から lazyRouteComponent",
+    "であり、合成 dist でも独立した遅延チャンク（計 66,182 B。index.html は読まない）＝初期ロードへの寄与は 0 B。",
+    "+25,907 B の 97.5% は AST の ja カタログ 25,267 B（442 文言）で、合成点が同期に registerUnitMessages で読んで",
+    "index-*.js に入っていた（残りは lucide のアイコン追加分）。是正は AST#793（登録を画面の遅延チャンク側へ）で、",
+    "取り込み時に 25 kB 下がる見込み（AST 側実測 731,435 → 706,121）。IADR-0441 決定 3 の追記も参照。"
+  ],
+  "$comment_initialTotalBytes_20260912_bundle-1437-1438": [
+    "［2026-09-12 / #1437 + #1438 束ね］605,877 → 606,019（+142 B）。#1437（vendor-baseui 切り離し。731,293 → 605,877）",
+    "と #1438（NotFound のランドマーク解消。+142 B。下の $comment_…_1438 の内訳）を同じ PR に束ねた合成の実測。",
+    "rm -rf dist → pnpm run build → --update で確定した。"
   ],
   "$comment_initialTotalBytes_20260912_baseui-split": [
-    "［2026-09-12 / #1437 作業 4］731,293 → 605,877（**\u2212125.42 kB / \u221217.2%**）へ**下げた**。実測値である",
+    "［2026-09-12 / #1437 作業 4］731,293 → 605,877（**−125.42 kB / −17.2%**）へ**下げた**。実測値である",
     "（pnpm run build → node scripts/check-chunk-budget.js --update）。直前のコメント",
     "（$comment_initialTotalBytes_20260912_integration 末尾）が申し送った「Base UI を初期ロードから外す」の回収である。",
     "内訳（初期ロードの 5 本 → 4 本）:",
-    "  \u2212114,124 B  vendor-baseui が**丸ごと遅延側へ**（modulepreload から消えた。チャンク自体は残る＝Dialog / Tooltip を使う画面が読む）",
-    "  \u2212 10,081 B  index（右レール本体 AiChatRail が 6,741 B の遅延チャンクへ出た分ほか）",
-    "  \u2212  1,211 B  ui（Tooltip / Dialog のラッパが ui-overlay 1,248 B へ移った分。i18n 文言 1 件 \u00d7 2 ロケールの増分を相殺して純減）",
+    "  −114,124 B  vendor-baseui が**丸ごと遅延側へ**（modulepreload から消えた。チャンク自体は残る＝Dialog / Tooltip を使う画面が読む）",
+    "  − 10,081 B  index（右レール本体 AiChatRail が 6,741 B の遅延チャンクへ出た分ほか）",
+    "  −  1,211 B  ui（Tooltip / Dialog のラッパが ui-overlay 1,248 B へ移った分。i18n 文言 1 件 × 2 ロケールの増分を相殺して純減）",
     "requiredChunks に ui-overlay を足した（manualChunks の新規則。self-test が完全一致を突き合わせる）。",
     "🔴 **経路は 2 本あり、片方だけでは外れない**（IADR-0443）。右レールの React.lazy 化だけ（manualChunks 据え置き）では",
     "ui チャンクが vendor-baseui を静的 import したままで、実測 721.15 kB にしか下がらなかった。",

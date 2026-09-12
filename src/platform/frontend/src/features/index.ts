@@ -32,7 +32,11 @@ import type { Messages } from '@lingui/core';
 // （`aiStockTradingMessages` / `aiStockTradingBreadcrumbs`。AST の UI/UX 改善 PR で追加）は
 // **無いかもしれない前提で読む**。名前付き import にすると旧 AST で tsc が落ち、AST の bump PR と
 // 本 PR のどちらを先にマージしても赤になる（順序依存）。名前空間 import から任意項目として取り出せば
-// どちらの順でも緑で、bump が来た時点で自然に有効になる。**bump 後に名前付き import へ戻してよい**。
+// どちらの順でも緑で、bump が来た時点で自然に有効になる。
+// ［2026-09-12 / #1437 / AST#792］🔴 **bump 後も任意項目読みを維持する（名前付き import へ戻さない）。**
+// AST は文言カタログの登録を画面の遅延チャンク側へ移し（AST/IADR-0340）、`aiStockTradingMessages` の
+// 再公開を外した——合成点で同期に束ねると ja カタログ 25 kB が初期チャンクへ入るためである。
+// 戻すと tsc が落ちる。`aiStockTradingBreadcrumbs` も同じ読み方のまま据え置く（IADR-0441 決定 3 の追記）。
 const astOptionalSurface = aiStockTradingUnit as unknown as {
   aiStockTradingMessages?: Partial<Record<Locale, Messages>>;
   aiStockTradingBreadcrumbs?: readonly FeatureBreadcrumb[];
