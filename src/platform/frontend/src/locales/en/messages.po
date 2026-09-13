@@ -30,6 +30,7 @@ msgstr "(2) Difference from the declaration (Git) — drift"
 msgid "(3) 構成バージョン履歴（新しい順）"
 msgstr "(3) Configuration version history (newest first)"
 
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "（不明な利用者）"
 msgstr "(unknown user)"
@@ -568,6 +569,7 @@ msgstr "Searching groups…"
 msgid "グループ名で検索する"
 msgstr "Search by group name"
 
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "グループ指定"
 msgstr "Shared with groups"
@@ -1509,6 +1511,7 @@ msgstr "The retention range is decided by GitOps (Git and ArgoCD). See the Git h
 msgid "個人"
 msgstr "Personal"
 
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人指定"
 msgstr "Shared with people"
@@ -1517,6 +1520,7 @@ msgstr "Shared with people"
 msgid "個人指定（{userCount} 人）"
 msgstr "Shared with {userCount} people"
 
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
@@ -1532,6 +1536,10 @@ msgstr "{count} personal note(s) will be permanently deleted on {deadline} (7-da
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "個人資料 {count} 件を完全削除しました"
 msgstr "{count} personal note(s) have been permanently deleted"
+
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
+msgid "個人資料（自分のみ）"
+msgstr "Private note (only you)"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人資料がまだありません。"
@@ -1556,6 +1564,10 @@ msgstr "Loading the list of private notes…"
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人資料の新規作成"
 msgstr "Create a private note"
+
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
+msgid "個人資料の管理へ"
+msgstr "Manage private notes"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。"
@@ -1651,6 +1663,7 @@ msgstr "Could not load the published tools."
 msgid "公開中"
 msgstr "Published"
 
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "公開範囲"
 msgstr "Visibility"
@@ -1663,6 +1676,7 @@ msgstr "Filter by visibility"
 msgid "公開範囲は Git 上の公開構成で定義します。許可リストへ追加してください。"
 msgstr "The published scope is defined by the publication configuration in Git. Add the tool to the allow list."
 
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "公開範囲を判定できません"
 msgstr "Visibility cannot be determined"
@@ -2462,6 +2476,10 @@ msgstr "Semantic"
 #: platform/frontend/src/components/ui/notifications.tsx
 msgid "成功"
 msgstr "Success"
+
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
+msgid "所有者"
+msgstr "Owner"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
 msgid "所有者の写像"
@@ -3672,6 +3690,7 @@ msgstr "You need to sign in."
 msgid "説明"
 msgstr "Detail"
 
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: platform/frontend/src/app/routing/routeStates.tsx
 #: platform/frontend/src/components/ui/QueryState.tsx
 #: platform/frontend/src/lib/auth/RequireAuth.tsx
@@ -3982,6 +4001,7 @@ msgstr "Widen the aggregation period and terms that meet the threshold may appea
 msgid "露出"
 msgstr "Exposure"
 
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "非公開"
 msgstr "Private"

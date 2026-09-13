@@ -30,6 +30,7 @@ msgstr "(2) 宣言（Git）との差分 — ドリフト"
 msgid "(3) 構成バージョン履歴（新しい順）"
 msgstr "(3) 構成バージョン履歴（新しい順）"
 
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "（不明な利用者）"
 msgstr "（不明な利用者）"
@@ -568,6 +569,7 @@ msgstr "グループを検索中…"
 msgid "グループ名で検索する"
 msgstr "グループ名で検索する"
 
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "グループ指定"
 msgstr "グループ指定"
@@ -1509,6 +1511,7 @@ msgstr "保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い�
 msgid "個人"
 msgstr "個人"
 
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人指定"
 msgstr "個人指定"
@@ -1517,6 +1520,7 @@ msgstr "個人指定"
 msgid "個人指定（{userCount} 人）"
 msgstr "個人指定（{userCount} 人）"
 
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
@@ -1532,6 +1536,10 @@ msgstr "個人資料 {count} 件が {deadline} に完全削除されます（7 �
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "個人資料 {count} 件を完全削除しました"
 msgstr "個人資料 {count} 件を完全削除しました"
+
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
+msgid "個人資料（自分のみ）"
+msgstr "個人資料（自分のみ）"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人資料がまだありません。"
@@ -1556,6 +1564,10 @@ msgstr "個人資料の一覧を読み込み中…"
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人資料の新規作成"
 msgstr "個人資料の新規作成"
+
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
+msgid "個人資料の管理へ"
+msgstr "個人資料の管理へ"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。"
@@ -1651,6 +1663,7 @@ msgstr "公開ツール一覧を取得できませんでした。"
 msgid "公開中"
 msgstr "公開中"
 
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "公開範囲"
 msgstr "公開範囲"
@@ -1663,6 +1676,7 @@ msgstr "公開範囲で絞り込む"
 msgid "公開範囲は Git 上の公開構成で定義します。許可リストへ追加してください。"
 msgstr "公開範囲は Git 上の公開構成で定義します。許可リストへ追加してください。"
 
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "公開範囲を判定できません"
 msgstr "公開範囲を判定できません"
@@ -2462,6 +2476,10 @@ msgstr "意味"
 #: platform/frontend/src/components/ui/notifications.tsx
 msgid "成功"
 msgstr "成功"
+
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
+msgid "所有者"
+msgstr "所有者"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
 msgid "所有者の写像"
@@ -3672,6 +3690,7 @@ msgstr "認証が必要です。"
 msgid "説明"
 msgstr "説明"
 
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: platform/frontend/src/app/routing/routeStates.tsx
 #: platform/frontend/src/components/ui/QueryState.tsx
 #: platform/frontend/src/lib/auth/RequireAuth.tsx
@@ -3982,6 +4001,7 @@ msgstr "集計期間を広げると、下限を満たす語が現れることが
 msgid "露出"
 msgstr "露出"
 
+#: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "非公開"
 msgstr "非公開"

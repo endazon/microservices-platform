@@ -9,5 +9,6 @@ export {
   DEFAULT_CONFIDENTIALITY,
 } from './confidentiality';
 export { DEPARTMENT_KEY, UNRESOLVED_DEPARTMENT } from './department';
+export { isPrivateNote } from './docScope';
 export { DEFAULT_LIFECYCLE, LIFECYCLE_KEY, LIFECYCLE_VALUES } from './lifecycle';
 export { UNRESOLVED_OWNER } from './owner';

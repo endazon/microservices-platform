@@ -30,6 +30,8 @@ import { attributeLabel, orderedAttributes } from '../types/attributes';
 import { isNotFound, useDocumentQueries } from '../api/useDocumentQueries';
 // SC-03, FR-18 (#450): AI 提案の承認欄。**承認の主導線は本画面である**（SC-21 は棚卸しの従）。
 import { AiSuggestionPanel } from './AiSuggestionPanel';
+// SC-03 §個人資料の表示, FR-19, 計画 ADR-0102 / [[IADR-0451]] (#1455): 個人資料のときだけ描く欄。
+import { PrivateNoteSummary } from './PrivateNoteSummary';
 // SC-03, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type {
   DocumentContentDto,
@@ -136,6 +138,10 @@ function DocumentDetail({
       </div>
 
       <div className="min-w-0 lg:flex-1">
+        {/* 個人資料のときだけ出る欄（組織文書では `null`）。属性・タグより先に置く ——
+            「誰の資料か」は属性の読み方を決める文脈だからである。 */}
+        <PrivateNoteSummary doc={doc} />
+
         <Panel heading={<Trans>属性・タグ</Trans>}>
           <AttributeList attributes={doc.attributes} tags={doc.tags} />
         </Panel>

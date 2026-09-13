@@ -3,15 +3,15 @@ title: SC-03 文書詳細／プレビュー テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-05
+updated: 2026-09-13
 author: claude
 ---
 <!-- trace:
-ids: [FR-05, FR-06, FR-12, FR-13, FR-17, FR-18, SC-03, SC-04, SC-05, SC-06, SC-09, SC-18, SC-21, UC-01, UC-02, UC-07, UC-10]
-adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0063, ADR-0070, ADR-0073]
-iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0126, IADR-0272, IADR-0276, IADR-0300, IADR-0323, IADR-0364, IADR-0365, IADR-0386, IADR-0388]
-specs: [20260804_issue-502_sc01-03-search-flow, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
-issues: [#1014, #1104, #1187, #1200, #1240, #1254, #449, #450]
+ids: [FR-05, FR-06, FR-12, FR-13, FR-17, FR-18, FR-19, SC-03, SC-04, SC-05, SC-06, SC-09, SC-18, SC-19, SC-21, UC-01, UC-02, UC-07, UC-10, UC-11]
+adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0036, ADR-0063, ADR-0070, ADR-0073, ADR-0098, ADR-0100, ADR-0101, ADR-0102]
+iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0126, IADR-0272, IADR-0276, IADR-0300, IADR-0323, IADR-0364, IADR-0365, IADR-0386, IADR-0388, IADR-0451]
+specs: [20260804_issue-502_sc01-03-search-flow, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260913_1455_sc03-private-note-display]
+issues: [#1014, #1104, #1187, #1200, #1240, #1254, #1455, #449, #450]
 -->
 
 # テスト仕様書: 文書詳細／プレビュー
@@ -22,6 +22,11 @@ issues: [#1014, #1104, #1187, #1200, #1240, #1254, #449, #450]
 > **［2026-08-05 / #510］§フロント・§純関数の見出しにテストファイル名を書き戻した。**
 > 節そのものは残っていたが、#502 の改訂でファイル名（`DocumentDetailPage.test.tsx`）が落ちており、
 > 本書からテストの実体へ辿れなくなっていた（文書管理画面・データソース管理画面で起きた「節ごと落ちる」の軽い型）。
+
+> **［2026-09-13 / #1455］個人資料の表示（所有者・公開範囲・👤 ラベル）と属性の whitelist 化を加えた。**
+> 計画側の裁定（所有者以外の閲覧者への描き方）を受けた画面の追加であり、
+> **陰性対照（所有者以外に公開範囲の欄を出さない・計画外の属性行を出さない）が本体**である
+> —— 「出る」ほうだけを測ると、欄を出す実装も既定値を描く実装も緑になる。
 
 > **［2026-08-31］AI 提案の文書での絞り込みがサーバ側へ移った。** 従前ケース 15 は
 > 「当該文書を端点に持たない提案を描かない」（＝画面側の間引き）を固定していたが、
@@ -45,8 +50,10 @@ issues: [#1014, #1104, #1187, #1200, #1240, #1254, #449, #450]
 | **画面の分界（計画の確定事項）** | **バックリンク欄・ローカルグラフは本画面に併置しない**（Wiki 閲覧画面のみ） | `does not render a backlink panel or a local graph (they belong to the wiki screen only)` ＋ E2E `SC-03: the knowledge-graph entry is here, but the backlink panel and local graph are not` |
 | **AI 提案の棚卸し 代替フロー**（承認が確定するのは文書詳細経由のみ） | 当該文書に関わる承認待ちの提案を本文の下に描き、1 件ずつ承認・却下する | `renders a link suggestion with its edge type, rationale and both actions` ＋ `posts approve and reject to the endpoint of that single suggestion` |
 | **AI 提案の棚卸し 制約**（一括承認を提供しない） | 一括のボタンも複数選択も置かない | `never offers a bulk approve or reject action`（**陽性対照つき** —— 単票のボタンが在ることを先に測る） |
+| **自分の資料を管理する 基本**（公開範囲を自ら設定する）を**閲覧側から見た形** | 個人資料を開くと 👤 のラベルと所有者（表示名）が出る。**公開範囲は所有者にだけ**出し、所有者以外には**欄ごと出さない** | `shows the owner display name but no visibility for a viewer who is not the owner` ＋ `shows the visibility to the owner, taken from the owner-only endpoint` |
+| **同上 例外**（所有者の表示名を引けない／利用者が無効化済み） | 「（不明な利用者）」を出し、**利用者名（識別子）へは落とさない**。退職者でも表示名は出す | `falls back to a neutral label — never to the username — when the display name cannot be resolved` ＋ `shows the display name of a disabled (retired) owner` |
 
-> **「無いこと」を固定するテストが 2 本ある**（**バックリンク欄・ローカルグラフの併置の不在**・一括承認の不在）。
+> **「無いこと」を固定するテストが 4 本ある**（**バックリンク欄・ローカルグラフの併置の不在**・一括承認の不在・**所有者以外への公開範囲の欄の不在**・**属性パネルの計画外の行の不在**。後の 2 本は ［2026-09-13 / #1455］ で加わった）。
 > 対象を後から不用意に足すと落ちるため、「バックリンク欄・ローカルグラフは Wiki 閲覧画面のみに置く」
 > という計画の確定事項と、「一括承認はどの層にも作らない」という禁止が、テストとしても効く。
 >
@@ -93,6 +100,12 @@ issues: [#1014, #1104, #1187, #1200, #1240, #1254, #449, #450]
 | 17 | **一括操作の不在** | 「すべて」「一括」「まとめて」のボタンも複数選択も無い | **一括承認を提供しない**（要求側の禁止） |
 | 18 | 一覧への導線 | 承認欄から AI 提案一覧へのリンクが在る | 計画側の文書詳細画面 §AI 提案の承認欄 |
 | 19 | 提案の取得失敗 | **空の欄へ縮退しない**（「取得できませんでした」を出し、本体表示は継続） | 一覧画面と同じ判断 |
+| 20 | **個人資料（所有者以外）** | 👤「個人資料」と所有者の**表示名**が出る。**公開範囲の欄は出ない**（空欄も既定値も無い）。括弧書き「（自分のみ）」も利用者名も出ない（陰性対照 4 本） | 計画側の文書詳細画面 §個人資料の表示（所有者以外への描き方の裁定） |
+| 21 | **個人資料（所有者）** | 公開範囲が状態バッジで出る。**供給は所有者だけが読める一覧の口**であり、共有の写しからは導かない。ラベルは「個人資料（自分のみ）」 | 同上（供給元の裁定） |
+| 22 | **表示名が引けない** | 「（不明な利用者）」。**利用者名へフォールバックしない**（陰性対照） | 同上 ＋ 画面には表示名を出し識別子は出さないという確定事項 |
+| 22-b | **無効化済み（退職者）の所有者** | 表示名が出る（窓の期間に管理者が開く経路で、誰の資料か分からなくならないため） | 同上 |
+| 23 | **属性の whitelist** | 属性・タグパネルに `owner` / `doc_scope` / 露出 3 トグルの行が**出ない**。機密区分は出る（陽性対照） | 計画側の文書詳細画面 §主要素（属性は 3 カテゴリに閉じる） |
+| 24 | **陰性対照**: 組織文書 | 個人資料の欄そのものを描かない（所有者欄も導線も無い） | 同上 |
 
 ### 純関数（`attributes.ts` ／ `attributes.test.ts`）
 
@@ -101,6 +114,8 @@ issues: [#1014, #1104, #1187, #1200, #1240, #1254, #449, #450]
 | P-1 | `confidentiality` | ラベル「機密区分」 |
 | P-2 | `department` | ラベル「部門」 |
 | P-3 | 未知のキー（`owner` 等） | キーをそのまま返す |
+| P-4 | 計画が名指した属性を持つ辞書 | **計画の順序**で並べて返す（辞書の並び順に依存しない） |
+| P-5 | 計画が名指していないキー（`owner` / `doc_scope` / 露出 3 トグル） | **落とす**（blacklist ではなく whitelist。属性が後から増えても画面へ漏れない） |
 
 ## BFF（xUnit・#129 で作成済み）: `BffDocumentEndpointTests`
 

@@ -124,6 +124,10 @@ function respond({
   edgeTypes = EDGE_TYPES as unknown,
   approve = undefined as unknown,
   wikiPages = [] as unknown,
+  // FR-19, SC-03 §個人資料の表示, 計画 ADR-0102 / #1455: 公開範囲は**所有者だけが読める口**から、
+  // 所有者の表示名は `POST /bff/users/resolve` から来る。既定は「自分の資料は無い」「解決できない」。
+  privateNotes = { usage: null, notes: [] } as unknown,
+  resolvedUsers = [] as unknown,
 }: {
   detail?: unknown;
   content?: unknown;
@@ -133,6 +137,8 @@ function respond({
   /** 承認の口の応答を差し替える（既定は成功。`Error` を渡すと拒否を再現する）。 */
   approve?: unknown;
   wikiPages?: unknown;
+  privateNotes?: unknown;
+  resolvedUsers?: unknown;
 } = {}) {
   const reply = (value: unknown) => {
     if (value instanceof Error) return Promise.reject(value);
@@ -141,6 +147,8 @@ function respond({
   };
   mocks.apiRequest.mockImplementation((path: string) => {
     if (path === '/wiki/pages') return reply(wikiPages);
+    if (path === '/private-notes') return reply(privateNotes);
+    if (path === '/users/resolve') return reply(resolvedUsers);
     // 🔴 提案の口を**最初に**見る。承認・却下は `/graph/suggestions/{id}/approve` であり、
     // 一覧の判定を後ろに置くと `endsWith('/content')` 等と取り違えはしないが、
     // 「承認したのに一覧の応答が返る」形になって観測が壊れる。
@@ -179,6 +187,129 @@ afterEach(() => {
 });
 
 describe('DocumentDetailPage (SC-03)', () => {
+  // FR-19, UC-11, SC-03 §個人資料の表示, 計画 ADR-0102 決定 1〜5 / [[IADR-0451]] (#1455):
+  // **所有者以外の閲覧者への描き方。** ハーネスのセッション利用者は `tester` である。
+  describe('個人資料の表示', () => {
+    const PRIVATE_NOTE = {
+      ...DETAIL,
+      attributes: {
+        confidentiality: 'restricted',
+        doc_scope: 'private-note',
+        owner: 'tanaka',
+        include_in_search: 'excluded',
+        include_in_graph: 'excluded',
+        include_in_ai: 'excluded',
+      },
+    };
+    const OWNED_NOTE = {
+      ...PRIVATE_NOTE,
+      attributes: { ...PRIVATE_NOTE.attributes, owner: 'tester' },
+    };
+    const NOTE_ROW = {
+      id: DOC_ID,
+      title: DETAIL.title,
+      vaultPath: '設計メモ.md',
+      version: 3,
+      bytes: 1024,
+      contentHash: null,
+      includeInSearch: false,
+      includeInGraph: false,
+      includeInAi: false,
+      deleted: false,
+      deletedAt: null,
+      purgeAt: null,
+      createdAt: DETAIL.createdAt,
+      updatedAt: DETAIL.updatedAt,
+      visibility: 'groups',
+      sharedUserCount: 1,
+      sharedGroupCount: 2,
+      syncState: 'excluded',
+      tags: [],
+    };
+
+    // 決定 1: 所有者以外には**公開範囲の欄ごと出さない**（空欄・既定値も描かない）。
+    // 決定 3: 所有者は**表示名**で出し、**利用者名（識別子）は出さない**。
+    // 決定 5: 括弧書き「（自分のみ）」は所有者にだけ付す。
+    it('shows the owner display name but no visibility for a viewer who is not the owner', async () => {
+      respond({
+        detail: PRIVATE_NOTE,
+        resolvedUsers: [{ username: 'tanaka', displayName: '田中 太郎', enabled: true }],
+      });
+      await renderPage();
+
+      expect(await screen.findByText('田中 太郎')).toBeInTheDocument();
+      expect(screen.getByText('個人資料', { selector: 'p' })).toBeInTheDocument();
+      // 🔴 「（自分のみ）」も、公開範囲の欄も、利用者名も出ない。
+      expect(screen.queryByText(/自分のみ/)).not.toBeInTheDocument();
+      expect(screen.queryByText('公開範囲')).not.toBeInTheDocument();
+      expect(screen.queryByText(/非公開|個人指定|グループ指定/)).not.toBeInTheDocument();
+      expect(screen.queryByText('tanaka')).not.toBeInTheDocument();
+    });
+
+    // 決定 1・2: 所有者には**所有者だけが読める口の値**で公開範囲を描く（写しからは導かない）。
+    it('shows the visibility to the owner, taken from the owner-only endpoint', async () => {
+      respond({
+        detail: OWNED_NOTE,
+        privateNotes: { usage: null, notes: [NOTE_ROW] },
+        resolvedUsers: [{ username: 'tester', displayName: '試験 太郎', enabled: true }],
+      });
+      await renderPage();
+
+      expect(await screen.findByText('グループ指定')).toBeInTheDocument();
+      expect(screen.getByText('公開範囲')).toBeInTheDocument();
+      expect(screen.getByText('個人資料（自分のみ）')).toBeInTheDocument();
+      expect(screen.getByText('試験 太郎')).toBeInTheDocument();
+    });
+
+    // 決定 3: 引けなければ「（不明な利用者）」。🔴 **利用者名へフォールバックしない。**
+    it('falls back to a neutral label — never to the username — when the display name cannot be resolved', async () => {
+      respond({ detail: PRIVATE_NOTE, resolvedUsers: [] });
+      await renderPage();
+
+      expect(await screen.findByText('（不明な利用者）')).toBeInTheDocument();
+      expect(screen.queryByText('tanaka')).not.toBeInTheDocument();
+    });
+
+    // 決定 3: **無効化済み（退職者）の所有者でも表示名を出す** —— D-09 の窓で管理者が開く経路が
+    // まさにこの場合であり、ここで識別子や空欄に落ちると誰の資料か分からなくなる。
+    it('shows the display name of a disabled (retired) owner', async () => {
+      respond({
+        detail: PRIVATE_NOTE,
+        resolvedUsers: [{ username: 'tanaka', displayName: '田中 太郎', enabled: false }],
+      });
+      await renderPage();
+
+      expect(await screen.findByText('田中 太郎')).toBeInTheDocument();
+      expect(screen.queryByText('tanaka')).not.toBeInTheDocument();
+    });
+
+    // 決定 4: 属性・タグパネルは計画の 3 カテゴリに閉じる。
+    it('keeps owner / doc_scope / exposure toggles out of the attribute panel', async () => {
+      respond({
+        detail: PRIVATE_NOTE,
+        resolvedUsers: [{ username: 'tanaka', displayName: '田中 太郎', enabled: true }],
+      });
+      await renderPage();
+
+      expect(await screen.findByText('機密区分')).toBeInTheDocument();
+      expect(screen.queryByText('doc_scope')).not.toBeInTheDocument();
+      expect(screen.queryByText('owner')).not.toBeInTheDocument();
+      expect(screen.queryByText('include_in_search')).not.toBeInTheDocument();
+      expect(screen.queryByText('private-note')).not.toBeInTheDocument();
+      expect(screen.queryByText('excluded')).not.toBeInTheDocument();
+    });
+
+    // 回帰: 組織文書では欄そのものが出ない。
+    it('does not render the private-note panel for an organization document', async () => {
+      respond();
+      await renderPage();
+
+      expect(await screen.findByRole('heading', { name: '経費精算規程 v3.2' })).toBeInTheDocument();
+      expect(screen.queryByText('所有者')).not.toBeInTheDocument();
+      expect(screen.queryByText('個人資料の管理へ')).not.toBeInTheDocument();
+    });
+  });
+
   // UC-01 基本フロー 5 / UC-02 基本フロー 4: 出典・一覧から辿り着いた文書を根拠として読める。
   it('renders title, markdown body, attributes and version history', async () => {
     respond();
