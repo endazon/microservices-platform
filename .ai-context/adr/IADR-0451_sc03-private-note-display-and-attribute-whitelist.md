@@ -2,7 +2,7 @@
 title: IADR-0451 SC-03 の個人資料は「供給が返るかどうか」で描き、属性・タグパネルは既知キーの whitelist に閉じる — 共有する語彙はユニットの lib/ に置く
 type: impl-adr
 status: Accepted
-related_ids: [FR-19, UC-11, SC-03, SC-19, ADR-0036, ADR-0098, ADR-0100, ADR-0101, ADR-0102, IADR-0444, IADR-0445, IADR-0450, IADR-0451]
+related_ids: [FR-19, UC-11, SC-03, SC-19, ADR-0036, ADR-0098, ADR-0100, ADR-0101, ADR-0102, IADR-0444, IADR-0445, IADR-0450]
 author: Claude
 created: 2026-09-13
 updated: 2026-09-13

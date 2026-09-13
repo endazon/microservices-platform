@@ -2,7 +2,7 @@
 title: IADR-0450 共有先の写し（`DocumentDto.SharedWith`）は所有者にだけ返す — BFF が利用者へ返す直前の 1 点で落とし、所有者は「`owner` 分岐で許可されたか」で決める
 type: impl-adr
 status: Accepted
-related_ids: [FR-19, UC-11, SC-03, SC-19, ADR-0036, ADR-0098, IADR-0253, IADR-0396, IADR-0447, IADR-0448, IADR-0450]
+related_ids: [FR-19, UC-11, SC-03, SC-19, ADR-0036, ADR-0098, IADR-0253, IADR-0396, IADR-0447, IADR-0448]
 author: Claude
 created: 2026-09-13
 updated: 2026-09-13

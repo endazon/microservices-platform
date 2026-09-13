@@ -2,7 +2,7 @@
 title: IADR-0445 公開範囲の指定先は共有台帳をそのまま BFF へ出し、画面は個人指定だけを描く — 利用者検索は「利用者名・表示名・有効状態」に閉じた認証必須の読み口を新設する
 type: impl-adr
 status: Accepted
-related_ids: [FR-19, UC-11, SC-19, ADR-0036, ADR-0098, IADR-0131, IADR-0139, IADR-0253, IADR-0301, IADR-0401, IADR-0444, IADR-0445]
+related_ids: [FR-19, UC-11, SC-19, ADR-0036, ADR-0098, IADR-0131, IADR-0139, IADR-0253, IADR-0301, IADR-0401, IADR-0444]
 author: Claude
 created: 2026-09-12
 updated: 2026-09-12
