@@ -3,15 +3,15 @@ title: UC-11 自分の資料を作成・管理し公開範囲を自ら設定す�
 type: test-spec
 status: completed
 created: 2026-08-23
-updated: 2026-08-30
+updated: 2026-09-13
 author: Claude
 ---
 <!-- trace:
-ids: [FR-19, FR-20, FR-22, UC-11, SC-19, SC-20]
-adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054]
-iadrs: [IADR-0270]
-specs: [20260823_issue-451_private-note-obsidian-sync-core]
-issues: [#451]
+ids: [FR-19, FR-20, FR-22, UC-11, SC-03, SC-19, SC-20]
+adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0101, ADR-0102]
+iadrs: [IADR-0270, IADR-0451]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260913_1455_sc03-private-note-display]
+issues: [#451, #1455]
 -->
 
 # テスト仕様書: 自分の資料を作成・管理し公開範囲を自ら設定する
@@ -28,6 +28,7 @@ issues: [#451]
 | 同期（編集）・トークン・競合 | [FR-20_obsidian-sync](FR-20_obsidian-sync.md) |
 | 公開範囲（共有の付与・取り消し・再共有不可） | [FR-20_document-sharing](FR-20_document-sharing.md) |
 | Wiki への非露出 | [FR-19_private-note-wikijs-exclusion](FR-19_private-note-wikijs-exclusion.md) |
+| 閲覧時の表示（所有者・公開範囲を誰に描くか。［2026-09-13 / #1455］） | [SC-03_document-detail](SC-03_document-detail.md) |
 
 ## 実行
 

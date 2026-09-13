@@ -17,7 +17,10 @@ import { toMessages } from '@foundation/utils/apiErrors';
 import { useAuth } from '@foundation/auth/useAuth';
 import type { DocumentShareDto, PrivateNoteDto } from '@foundation/api/generated/bff.schemas';
 import { usePrivateNoteShareActions, usePrivateNoteShares } from '../api/usePrivateNoteShares';
-import { useResolvedUsers, useUserLookup } from '../api/useUserLookup';
+// [[IADR-0451]] (#1455): 表示名の解決は **SC-03 と共有する**ためユニットの `lib/` にある
+// （feature 間の import は境界規則が止める）。検索（`lookup`）は本画面だけの口なので feature に残す。
+import { useResolvedUsers } from '../../../lib/users';
+import { useUserLookup } from '../api/useUserLookup';
 import { useGroupLookup, useResolvedGroups } from '../api/useGroupLookup';
 
 // SC-19 主要素 3, UC-11, FR-19, ADR-0036 D-06 / ADR-0098 決定 1 / IADR-0445 / IADR-0447 (#1447):

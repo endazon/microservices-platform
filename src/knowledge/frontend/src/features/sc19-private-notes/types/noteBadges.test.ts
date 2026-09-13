@@ -1,11 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import {
-  SYNC_TONES,
-  VISIBILITY_TONES,
-  syncKeyOf,
-  tagOptionsOf,
-  visibilityKeyOf,
-} from './noteBadges';
+import { SYNC_TONES, syncKeyOf, tagOptionsOf } from './noteBadges';
+// [[IADR-0451]] (#1455): 公開範囲の語彙は SC-03 と共有するため `lib/private-notes` へ移した。
+// **本書はその移設後も同じ規則（未知は `unknown`・共有は注意色）を固定し続ける。**
+import { VISIBILITY_TONES, visibilityKeyOf } from '../../../lib/private-notes';
 
 // SC-19, FR-19/FR-20, ADR-0036 D-06 / ADR-0037 決定 3・4・7: 公開範囲・同期状態の導出（純関数）。
 //

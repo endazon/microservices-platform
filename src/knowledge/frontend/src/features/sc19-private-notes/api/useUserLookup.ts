@@ -1,15 +1,13 @@
-import { useQuery } from '@tanstack/react-query';
-import {
-  bffUserResolve,
-  getBffUserLookupQueryKey,
-  useBffUserLookup,
-} from '@foundation/api/generated/users/users';
+import { getBffUserLookupQueryKey, useBffUserLookup } from '@foundation/api/generated/users/users';
 import { okArray } from '@foundation/api/orvalSelect';
 import type { UserSummaryDto } from '@foundation/api/generated/bff.schemas';
 import { useLookupTerm } from './lookupTerm';
 
-// SC-19 主要素 3, FR-19, ADR-0098 決定 1 / IADR-0445: 共有先に指定する利用者を
-// **表示名で**扱うための 2 本の読み口。
+// SC-19 主要素 3, FR-19, ADR-0098 決定 1 / IADR-0445: 共有先に指定する利用者を**表示名で**扱う読み口。
+//
+// 🔴 **［2026-09-13 / [[IADR-0451]] / #1455］表示名の解決（`useResolvedUsers`）はユニットの
+// `lib/users` へ移した** —— SC-03 の個人資料の表示（計画 ADR-0102 決定 3）が同じ口を要り、
+// feature 間の import は境界規則が止めるためである。**検索（`lookup`）は本画面だけの口なのでここに残す。**
 //
 // 🔴 **画面には表示名を出し、利用者識別子は出さない**（ADR-0098 決定 1）。台帳が持つのは
 // `subjectId`（利用者名）だけなので、**表示名は別に引く**。それが `resolve` の存在理由である。
@@ -35,27 +33,4 @@ export function useUserLookup(rawQuery: string) {
       { query: { queryKey: getBffUserLookupQueryKey({ q: term }), select: okArray, enabled } },
     ),
   };
-}
-
-/**
- * 利用者名の集合を表示名へ引く（見つからない名前は応答から落ちる）。
- *
- * IADR-0135 決定 2 と同じ作法: `/bff/users/resolve` は **POST** なので orval が生成するのは
- * `useMutation`（`useBffUserResolve`）であり、**照会としては使えない** —— キャッシュに載らず、
- * 一覧が無効化されるたびに画面側が発火を手で仕込む必要が生じる（`useEffect` で mutate する形は、
- * 「開き直すと表示名が一瞬消える」退行を作る）。そこで**生成された操作関数 `bffUserResolve` を
- * `useQuery` の `queryFn` に据える**。型も URL も生成物由来であり、出口も `bffFetch` →
- * `apiRequest` の一本道である（手書き HTTP クライアントではない）。
- *
- * **空集合では問い合わせない**（契約は空の `usernames` を 400 にする）。
- */
-export function useResolvedUsers(usernames: readonly string[]) {
-  // キーは**並び順に依存させない** —— 台帳の付与順が変わっても同じ集合なら同じ結果である。
-  const sorted = [...usernames].sort();
-  return useQuery({
-    queryKey: ['bff', 'users', 'resolve', ...sorted],
-    queryFn: ({ signal }) => bffUserResolve({ usernames: sorted }, { signal }),
-    select: okArray,
-    enabled: sorted.length > 0,
-  });
 }

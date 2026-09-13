@@ -18,25 +18,37 @@ describe('attributeLabel (SC-03)', () => {
 });
 
 describe('orderedAttributes (SC-03)', () => {
-  // 表示順を応答の JSON 順に左右させない（計画の挙げる順を先頭に、残りは辞書順）。
-  it('puts the plan-named attributes first and sorts the rest', () => {
+  // 表示順を応答の JSON 順に左右させない（計画の挙げる順で出す）。
+  it('renders the plan-named attributes in the planned order', () => {
     expect(
       orderedAttributes({
-        owner: 'u1',
         department: 'accounting',
         confidentiality: 'internal',
-        lifecycle: 'active',
       }),
     ).toEqual([
       ['confidentiality', 'internal'],
       ['department', 'accounting'],
-      ['lifecycle', 'active'],
-      ['owner', 'u1'],
     ]);
   });
 
+  // 🔴 SC-03 §主要素・計画 ADR-0102 決定 4 (#1455): **既知のキーだけを描く。**
+  // 従前は未知のキーも生値で出しており、個人資料では `owner`（利用者名）・`doc_scope`・
+  // 露出 3 トグルが読める者すべてに出ていた。
+  it('drops the keys the plan does not name (owner / doc_scope / exposure toggles)', () => {
+    expect(
+      orderedAttributes({
+        owner: 'tanaka',
+        doc_scope: 'private-note',
+        include_in_search: 'excluded',
+        include_in_graph: 'excluded',
+        include_in_ai: 'excluded',
+        confidentiality: 'restricted',
+      }),
+    ).toEqual([['confidentiality', 'restricted']]);
+  });
+
   it('skips the plan-named attributes that are absent', () => {
-    expect(orderedAttributes({ owner: 'u1' })).toEqual([['owner', 'u1']]);
+    expect(orderedAttributes({ owner: 'u1' })).toEqual([]);
     expect(orderedAttributes({})).toEqual([]);
   });
 });

@@ -20,6 +20,13 @@
     "懸念そのものは実在しない —— 本リポジトリのビルドは 1 つ（platform/frontend が knowledge の",
     "features を合成する）で、SC-10 が EChart を使うため vendor-echarts は必ず出力される。"
   ],
+  "$comment_initialTotalBytes_2026-09-13_sc03-private-note-display": [
+    "［2026-09-13 / #1455］594,636 → 594,762（+0.13 kB）へ引き上げた。増分は SC-03 の個人資料の表示で",
+    "足した i18n 文言（「所有者」「個人資料（自分のみ）」「個人資料の管理へ」ほか。ja/en の",
+    "カタログは初期ロードに載る）である。**表示部品そのものは遅延チャンク側**であり初期ロードに入らない",
+    "（SC-06 既定属性フォームのときと同じ型の増分）。実測: ビルド後の --require が +0.13 kB 超過を報告し、",
+    "--update で床を更新した。"
+  ],
   "$comment_initialTotalBytes_2026-08-28_sc06-attributes-form": [
     "［2026-08-28 / #1021］586,001 → 586,637（+0.64 kB）へ引き上げた。増分は SC-06 既定属性の",
     "編集フォーム追加に伴う i18n カタログ 6 文言（ja/en。カタログは初期ロードに載る）である。",
@@ -287,7 +294,7 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 594636,
+  "initialTotalBytes": 594762,
   "$comment_initialTotalBytes_20260912_1438": [
     "［2026-09-12 / #1438］731,293 → 731,435（+142 B）へ引き上げた。実測値である",
     "（rm -rf platform/frontend/dist → pnpm run build → node scripts/check-chunk-budget.js --update。",

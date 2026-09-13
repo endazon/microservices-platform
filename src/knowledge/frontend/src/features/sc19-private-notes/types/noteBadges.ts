@@ -17,35 +17,19 @@ import type { StatusBadgeProps } from '@platform/ui';
 /** 状態バッジの色。部品側の値域をそのまま借りる（増減が型で伝わる）。 */
 export type BadgeTone = NonNullable<StatusBadgeProps['tone']>;
 
-/** 公開範囲の 3 状態 ＋ 判定不能（05_screens §SC-19 主要素 2）。 */
-export type VisibilityKey = 'private' | 'users' | 'groups' | 'unknown';
+// [[IADR-0451]] (#1455): **公開範囲の語彙（`VisibilityKey` / `visibilityKeyOf` / `VISIBILITY_TONES`）は
+// ユニットの `lib/private-notes` へ移した** —— SC-03 の個人資料の表示（計画 ADR-0102 決定 1）が同じ 3 状態を
+// 描くためであり、feature 間の import は境界規則が止める。**同期状態は本画面だけの語彙なのでここに残す。**
 
 /** 同期状態の 3 状態 ＋ 判定不能（同 主要素 5）。 */
 export type SyncKey = 'conflict' | 'target' | 'excluded' | 'unknown';
 
-const VISIBILITY_KEYS: readonly VisibilityKey[] = ['private', 'users', 'groups'];
 const SYNC_KEYS: readonly SyncKey[] = ['conflict', 'target', 'excluded'];
-
-/** 契約の文字列を公開範囲の状態へ落とす。既知の 3 値以外は `unknown`。 */
-export function visibilityKeyOf(raw: string): VisibilityKey {
-  return VISIBILITY_KEYS.find((k) => k === raw) ?? 'unknown';
-}
 
 /** 契約の文字列を同期状態へ落とす。既知の 3 値以外は `unknown`。 */
 export function syncKeyOf(raw: string): SyncKey {
   return SYNC_KEYS.find((k) => k === raw) ?? 'unknown';
 }
-
-/**
- * 公開範囲の色。**非公開だけが中立**で、共有されている状態（個人指定・グループ指定）と
- * 判定できない状態はいずれも注意色にする —— 画面の眼目は「この資料が他人から見えるか」である。
- */
-export const VISIBILITY_TONES: Record<VisibilityKey, BadgeTone> = {
-  private: 'neutral',
-  users: 'warning',
-  groups: 'warning',
-  unknown: 'warning',
-};
 
 /**
  * 同期状態の色。競合は利用者の操作を待っている状態なので注意色、同期対象は正常、
