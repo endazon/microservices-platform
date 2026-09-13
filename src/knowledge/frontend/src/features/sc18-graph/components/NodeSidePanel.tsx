@@ -78,7 +78,11 @@ export function NodeSidePanel({ node, edges, edgeTypes, onClose }: NodeSidePanel
           <span className="text-fg-muted">
             <Trans>種別:</Trans>
           </span>{' '}
-          {node.isPrivateNote ? <Trans>個人資料（自分のみ）</Trans> : <Trans>組織文書</Trans>}
+          {/* FR-19, SC-18, 計画 ADR-0102 決定 5 (#1456): 🔴 **括弧書き「（自分のみ）」は付けない。**
+              本画面は他の利用者が所有する個人資料も描き得る（所有者がグラフ表示を ON にし、閲覧者が読める場合）が、
+              ノードの契約（`GraphNodeItem`）は所有者を運ばないため所有者を判別できない。決定 5 は「所有者以外に
+              付さない」ことを求めており所有者へ付けることは義務づけていないので、**一律で外す**のが適合である。 */}
+          {node.isPrivateNote ? <Trans>個人資料</Trans> : <Trans>組織文書</Trans>}
         </p>
         {detail.data && (
           <>

@@ -1517,6 +1517,8 @@ msgstr "Shared with people"
 msgid "個人指定（{userCount} 人）"
 msgstr "Shared with {userCount} people"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+#: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/routes/sc19PrivateNotesRoute.ts
 #: platform/frontend/src/components/ai-chat/CitationList.tsx
@@ -1530,11 +1532,6 @@ msgstr "{count} personal note(s) will be permanently deleted on {deadline} (7-da
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "個人資料 {count} 件を完全削除しました"
 msgstr "{count} personal note(s) have been permanently deleted"
-
-#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
-#: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
-msgid "個人資料（自分のみ）"
-msgstr "Private note (only you)"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人資料がまだありません。"
@@ -3604,8 +3601,8 @@ msgid "見つかりませんでした。"
 msgstr "Not found."
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
-msgid "角丸四角（破線の輪郭）= 個人資料（自分のみ）"
-msgstr "Rounded square (dashed outline) = private note (only you)"
+msgid "角丸四角（破線の輪郭）= 個人資料"
+msgstr "Rounded square (dashed outline) = private note"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 msgid "記法"

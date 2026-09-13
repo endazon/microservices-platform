@@ -12,7 +12,7 @@ import { buildGraphOption, edgeVisualFor, isolatedNodeIds } from './graphOption'
 
 const LABELS = {
   organization: '組織文書',
-  privateNote: '個人資料（自分のみ）',
+  privateNote: '個人資料',
   isolated: '孤立文書',
 };
 

@@ -294,7 +294,10 @@ describe('GraphViewPage (SC-18)', () => {
     });
 
     const panel = await screen.findByTestId('node-side-panel');
-    expect(panel).toHaveTextContent('個人資料（自分のみ）');
+    expect(panel).toHaveTextContent('個人資料');
+    // FR-19, SC-18, 計画 ADR-0102 決定 5 (#1456): **括弧書き「（自分のみ）」は付かない。**
+    // 本画面は所有者を判別できない（`GraphNodeItem` は所有者を運ばない）ため一律で外す。
+    expect(panel).not.toHaveTextContent('自分のみ');
   });
 
   // 文書詳細の 404（不在と権限は区別されない。IADR-0009）はパネルを壊さない。

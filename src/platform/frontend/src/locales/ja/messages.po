@@ -1517,6 +1517,8 @@ msgstr "個人指定"
 msgid "個人指定（{userCount} 人）"
 msgstr "個人指定（{userCount} 人）"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+#: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/routes/sc19PrivateNotesRoute.ts
 #: platform/frontend/src/components/ai-chat/CitationList.tsx
@@ -1530,11 +1532,6 @@ msgstr "個人資料 {count} 件が {deadline} に完全削除されます（7 �
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "個人資料 {count} 件を完全削除しました"
 msgstr "個人資料 {count} 件を完全削除しました"
-
-#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
-#: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
-msgid "個人資料（自分のみ）"
-msgstr "個人資料（自分のみ）"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人資料がまだありません。"
@@ -3604,8 +3601,8 @@ msgid "見つかりませんでした。"
 msgstr "見つかりませんでした。"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
-msgid "角丸四角（破線の輪郭）= 個人資料（自分のみ）"
-msgstr "角丸四角（破線の輪郭）= 個人資料（自分のみ）"
+msgid "角丸四角（破線の輪郭）= 個人資料"
+msgstr "角丸四角（破線の輪郭）= 個人資料"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 msgid "記法"
