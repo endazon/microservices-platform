@@ -2,7 +2,7 @@
 title: IADR-0448 文書側の集合値属性（`shared_with` / `tags`）は契約側の唯一の述語 `AttributeFilterMatch` で交差判定し、BFF・Graph・Wiki の 3 面を同じ述語へ寄せる
 type: impl-adr
 status: Accepted
-related_ids: [FR-05, FR-19, ADR-0080, ADR-0098, IADR-0253, IADR-0385, IADR-0396, IADR-0447, IADR-0448]
+related_ids: [FR-05, FR-19, ADR-0080, ADR-0098, IADR-0253, IADR-0385, IADR-0396, IADR-0447]
 author: Claude
 created: 2026-09-12
 updated: 2026-09-12

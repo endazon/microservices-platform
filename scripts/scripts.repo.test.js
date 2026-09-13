@@ -5211,6 +5211,137 @@ ${r.stderr}`);
     });
   }
 
+  // --- #1460 / [[IADR-0452]]: frontmatter の `related_ids` に自 ID を書かない -------------
+  //
+  // `related_ids` は「この決定が関係する**他の** ID」を並べる欄である。自 ID は
+  // **ファイル名と `title:` が既に持って**おり、重ねて書いても参照の網には何も足さない
+  // （`gen-knowledge-graph.js` の辺としては自己ループが 1 本増えるだけである）。
+  //
+  // **同型の混入が 8 回**起きていた。うち 7 件は `IADR-0445`〜`0451` の連番で、
+  // **直近 7 件のうち 6 件**が自己参照つき——**多数派（122 件）と逆の形が定着しかけていた**。
+  //
+  // **baseline を置かない**（#1459 の状態列と同じ判断）。是正後の違反は 0 件であり、
+  // ラチェットにすると 8 件が「許容された残件」として固定される。
+  //
+  // **射程は実装ADR の frontmatter だけである**（[[IADR-0452]] 決定 4）。`.ai-context/specs/` は
+  // 自分の ID を持たず（ファイル名で識別する）、`docs/` の trace ブロックは参照する側と
+  // される側が別文書なので、いずれも自己参照が起こり得ない。
+  {
+    /**
+     * frontmatter の `related_ids` を読む（欄が無ければ null）。本文は見ない。
+     *
+     * 🔴 **YAML の 2 つの書き方を両方読む。** 本リポの実装ADR は
+     * **フロー形式 `[A, B]` が 131 件・ブロック形式（`- A` の並び）が 322 件**であり、
+     * **片方だけを読むパーサは母集合の 7 割を黙って取りこぼす**。
+     * 実際、本 issue の起票時の走査はフロー形式しか見ておらず、ブロック形式の
+     * `IADR-0385` を 1 件見落としていた（母集合の規則 2「あり得る形をすべて列挙してから引く」の破れ）。
+     */
+    const relatedIdsOf = (text) => {
+      const flow = /^related_ids:[ \t]*\[(.*?)\]/ms.exec(text);
+      if (flow) {
+        return flow[1]
+          .split(',')
+          .map((x) => x.trim())
+          .filter(Boolean);
+      }
+      const blockList = /^related_ids:[ \t]*\r?\n((?:[ \t]+-[ \t]*.*\r?\n)*)/m.exec(text);
+      if (blockList) {
+        return blockList[1]
+          .split('\n')
+          .map((l) => l.replace(/^[ \t]*-[ \t]*/, '').trim())
+          .filter(Boolean);
+      }
+      return null;
+    };
+
+    /** `{ id, text }` の並びを受け取り、自己参照している ID を返す純関数。 */
+    const findSelfReferencingIds = (records) =>
+      records.filter((r) => (relatedIdsOf(r.text) || []).includes(r.id)).map((r) => r.id);
+
+    const REC = (id, ids) => ({ id, text: `---\ntitle: ${id} 何かの決定\nrelated_ids: [${ids}]\n---\n\n# ${id}\n` });
+
+    ok('related_ids: 他の ID だけを並べた記録は違反 0（正例）', () => {
+      assert.deepStrictEqual(
+        findSelfReferencingIds([REC('IADR-0001', 'FR-19, UC-11, IADR-0002'), REC('IADR-0002', '')]),
+        [],
+      );
+      // frontmatter に `related_ids` が無い記録を落とさない（欄は必須ではない）。
+      assert.deepStrictEqual(
+        findSelfReferencingIds([{ id: 'IADR-0003', text: '---\ntitle: IADR-0003\n---\n' }]),
+        [],
+      );
+    });
+
+    ok('related_ids: 自 ID を書くと検出する（#1460 の事故そのもの・変異試験）', () => {
+      assert.deepStrictEqual(
+        findSelfReferencingIds([REC('IADR-0001', 'FR-19, IADR-0002, IADR-0001')]),
+        ['IADR-0001'],
+      );
+      // 🔴 **本文に自 ID が出るのは正常である**（見出し・引用）。frontmatter だけを見る。
+      const bodyOnly = {
+        id: 'IADR-0004',
+        text: '---\nrelated_ids: [IADR-0005]\n---\n\n# IADR-0004: 何かの決定\n\nIADR-0004 は…\n',
+      };
+      assert.deepStrictEqual(findSelfReferencingIds([bodyOnly]), []);
+    });
+
+    ok('related_ids: 別 ID の部分一致を自己参照と誤判定しない（境界）', () => {
+      // `IADR-0045` の一覧に `IADR-0451` が在っても、部分一致で拾ってはならない。
+      assert.deepStrictEqual(findSelfReferencingIds([REC('IADR-0045', 'IADR-0451, IADR-0450')]), []);
+    });
+
+    // 🔴 **ブロック形式（`- A` の並び）も読む。** 本リポではこちらが多数派（322 / 453）であり、
+    // フロー形式だけを読むパーサは**母集合の 7 割を黙って取りこぼす**（起票時の走査がこれで、
+    // `IADR-0385` を 1 件見落とした）。正例と変異を対で固定する。
+    const REC_BLOCK = (id, ids) => ({
+      id,
+      text: `---\ntitle: ${id}\nrelated_ids:\n${ids.map((x) => `  - ${x}`).join('\n')}\nauthor: claude\n---\n`,
+    });
+
+    ok('related_ids: ブロック形式でも読み、自 ID を検出する（起票時の走査が落とした形）', () => {
+      assert.deepStrictEqual(findSelfReferencingIds([REC_BLOCK('IADR-0001', ['FR-19', 'IADR-0002'])]), []);
+      assert.deepStrictEqual(
+        findSelfReferencingIds([REC_BLOCK('IADR-0001', ['FR-19', 'IADR-0002', 'IADR-0001'])]),
+        ['IADR-0001'],
+      );
+      // 次の欄（`author:`）まで食べない（読み過ぎで別の値を ID として拾わない）。
+      assert.deepStrictEqual(relatedIdsOf(REC_BLOCK('IADR-0001', ['IADR-0002']).text), ['IADR-0002']);
+    });
+
+    ok('related_ids: 本リポの実装ADR に自己参照が無い（実データ）', () => {
+      const adrDir = path.join(__dirname, '..', '.ai-context', 'adr');
+      const bodyFiles = fs.readdirSync(adrDir).filter((f) => /^IADR-\d{4}_.*\.md$/.test(f));
+      const records = bodyFiles.map((f) => ({
+        id: f.slice(0, 9),
+        text: fs.readFileSync(path.join(adrDir, f), 'utf8'),
+      }));
+
+      // 走査 0 件で緑を返す fail-open を塞ぐ（隣の索引検査と同じ守り方）。
+      //
+      // 🔴 **「本体の過半が欄を持つ」を下限にしない。** 実測では `related_ids` を持つのは
+      // 453 件中 131 件（欄は必須ではなく、古い記録の多くは持たない）。件数の絶対値を書くと
+      // 記録が増えるたびに腐るので、**別経路で数えた「欄を持つファイル数」と突き合わせる**
+      // ——パーサだけが静かに壊れた場合に落ちる、記録の増減に依らない不変条件である。
+      assert.ok(bodyFiles.length > 0, '.ai-context/adr/ に ADR 本体が 1 件も見つからない（走査が壊れている）');
+      const withField = records.filter((r) => relatedIdsOf(r.text) !== null).length;
+      const looksLikeField = records.filter((r) => /^related_ids:/m.test(r.text)).length;
+      assert.ok(looksLikeField > 0, 'related_ids を持つ実装ADR が 1 件も無い（走査が壊れている）');
+      assert.strictEqual(
+        withField,
+        looksLikeField,
+        `related_ids の行を持つのは ${looksLikeField} 件だが読めたのは ${withField} 件（パーサが壊れている）`,
+      );
+
+      const offenders = findSelfReferencingIds(records);
+      assert.deepStrictEqual(
+        offenders,
+        [],
+        'related_ids が自分自身を含む実装ADR がある（自 ID の項目だけを落とすこと。[[IADR-0452]]）:\n  ' +
+          offenders.join('\n  '),
+      );
+    });
+  }
+
   // --- #664: 0 件走査で緑を返さない（fail-closed の門） -------------------------
   //
   // #592 の初版は `walk()` へ絶対パスを渡し、`catch` が黙って空配列を返していた。

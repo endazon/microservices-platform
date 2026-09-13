@@ -2,7 +2,7 @@
 title: IADR-0446 同期の監査ログに貯蔵を与える — `SyncAuditEntry` を監査ログの正本とし、失敗 7 理由と方向・内訳を同じ書き込みで記録し、本人へ新しい順 50 件を開き、3 年で消す
 type: impl-adr
 status: Accepted
-related_ids: [FR-20, UC-11, SC-20, ADR-0037, ADR-0096, ADR-0099, IADR-0131, IADR-0139, IADR-0270, IADR-0352, IADR-0444, IADR-0446]
+related_ids: [FR-20, UC-11, SC-20, ADR-0037, ADR-0096, ADR-0099, IADR-0131, IADR-0139, IADR-0270, IADR-0352, IADR-0444]
 author: Claude
 created: 2026-09-12
 updated: 2026-09-12

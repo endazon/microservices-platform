@@ -2,7 +2,7 @@
 title: IADR-0387 辺の型辞書の画面の口は公開カタログと別に新設し、409 と使用件数を素通しにする。「同じ規則をタグ辞書にも」は削除拒否と改名追随だけを指し、related フォールバックは含まない。契約の無い「逆向きの表示語」の列は作らない
 type: impl-adr
 status: Proposed
-related_ids: [FR-17, SC-03, SC-04, SC-09, SC-10, SC-18, SC-21, UC-05, UC-10, ADR-0033, ADR-0034, ADR-0043, ADR-0066, IADR-0009, IADR-0044, IADR-0119, IADR-0127, IADR-0129, IADR-0135, IADR-0152, IADR-0153, IADR-0242, IADR-0281, IADR-0387]
+related_ids: [FR-17, SC-03, SC-04, SC-09, SC-10, SC-18, SC-21, UC-05, UC-10, ADR-0033, ADR-0034, ADR-0043, ADR-0066, IADR-0009, IADR-0044, IADR-0119, IADR-0127, IADR-0129, IADR-0135, IADR-0152, IADR-0153, IADR-0242, IADR-0281]
 author: claude
 created: 2026-09-05
 updated: 2026-09-05

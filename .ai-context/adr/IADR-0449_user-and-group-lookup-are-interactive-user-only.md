@@ -2,7 +2,7 @@
 title: IADR-0449 利用者・グループの名簿の読み口（`/authz/users/*`・`/authz/groups/*`・BFF の `/bff/users/*`・`/bff/groups/*`）は「人の主体だけ」の認可ポリシー `InteractiveUser` で守る — ロールではなく主体の種別で分ける
 type: impl-adr
 status: Accepted
-related_ids: [FR-19, SC-19, ADR-0098, ADR-0100, IADR-0401, IADR-0445, IADR-0447, IADR-0449]
+related_ids: [FR-19, SC-19, ADR-0098, ADR-0100, IADR-0401, IADR-0445, IADR-0447]
 author: Claude
 created: 2026-09-12
 updated: 2026-09-12

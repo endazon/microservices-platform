@@ -529,3 +529,4 @@
 | [IADR-0449](./IADR-0449_user-and-group-lookup-are-interactive-user-only.md) | **利用者・グループの名簿の読み口は「人の主体だけ」の認可ポリシー `InteractiveUser` で守る**（ADR-0100 フォローアップ 2）。ロールではなく主体の種別で分け、IADR-0401 の分界を保つ | Accepted |
 | [IADR-0450](./IADR-0450_shared-with-copy-is-returned-to-owner-only.md) | **共有先の写し（`DocumentDto.SharedWith`）は所有者にだけ返す**（ADR-0098 フォローアップ 5 の裁定 planning#626）。BFF が利用者へ返す直前の 1 点で所有者以外の項目を落とし（空集合にしない）、所有者は「`owner` を条件に持つ分岐が一致したか」で決める。判定の像は不変 | Accepted |
 | [IADR-0451](./IADR-0451_sc03-private-note-display-and-attribute-whitelist.md) | **SC-03 の個人資料は「供給が返るかどうか」で描き、属性・タグパネルは既知キーの whitelist に閉じる**（#1455・ADR-0102）。所有者の判定は表示の分岐にだけ使い、公開範囲は所有者だけが読める口から引く。共有する語彙はユニットの `lib/` に置く | Accepted |
+| [IADR-0452](./IADR-0452_related-ids-excludes-self.md) | **frontmatter の `related_ids` は「関係する他の ID」だけを並べ、自分自身の ID を含めない**（#1460）。自己参照は辺として無意味で、集合の意味も揺らす。既存 9 件は frontmatter だけを直し（本文は凍結）、機械検査は baseline を持たず 0 件を維持する | Accepted |

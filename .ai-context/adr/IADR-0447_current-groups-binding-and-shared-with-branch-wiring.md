@@ -2,7 +2,7 @@
 title: IADR-0447 `${current_groups}` は IdP の所属照会で束縛し、共有先ベースの分岐は「ポリシー 1 本」と「DocumentService が応答へ載せる共有先の写し」で 4 面に効かせる — グループ指定の UI を解禁する
 type: impl-adr
 status: Accepted
-related_ids: [FR-05, FR-19, UC-11, SC-19, ADR-0036, ADR-0088, ADR-0098, ADR-0100, IADR-0253, IADR-0301, IADR-0385, IADR-0396, IADR-0401, IADR-0445, IADR-0447, IADR-0448, IADR-0449]
+related_ids: [FR-05, FR-19, UC-11, SC-19, ADR-0036, ADR-0088, ADR-0098, ADR-0100, IADR-0253, IADR-0301, IADR-0385, IADR-0396, IADR-0401, IADR-0445, IADR-0448, IADR-0449]
 author: Claude
 created: 2026-09-12
 updated: 2026-09-13
