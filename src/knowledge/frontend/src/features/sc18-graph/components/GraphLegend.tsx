@@ -47,7 +47,8 @@ export function GraphLegend() {
             >
               👤
             </span>
-            <Trans>角丸四角（破線の輪郭）= 個人資料（自分のみ）</Trans>
+            {/* FR-19, SC-18, 計画 ADR-0102 決定 5 (#1456): 凡例は閲覧者と資料の所有関係に依らないため「個人資料」とする。 */}
+            <Trans>角丸四角（破線の輪郭）= 個人資料</Trans>
           </li>
           <li>
             <span

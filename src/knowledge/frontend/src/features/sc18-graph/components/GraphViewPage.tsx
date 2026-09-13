@@ -67,7 +67,9 @@ export function GraphViewPage() {
         focusedId,
         labels: {
           organization: t`組織文書`,
-          privateNote: t`個人資料（自分のみ）`,
+          // FR-19, SC-18, 計画 ADR-0102 決定 5 (#1456): 括弧書き「（自分のみ）」は付けない
+          // （所有者を判別できない面であるため一律で外す。`NodeSidePanel` と同じ理由）。
+          privateNote: t`個人資料`,
           isolated: t`孤立文書（表示中の辺なし）`,
         },
       }),
