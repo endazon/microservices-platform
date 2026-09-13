@@ -9187,6 +9187,40 @@ ${r.stderr}`);
       assert.strictEqual(new Set(ids).size, ids.length, 'ノード ID が重複している（doc/iadr/spec の正規化衝突の疑い）');
     });
 
+    // #1462: **フロー形式の frontmatter がグラフに載ることを実データで固定する。**
+    //
+    // 🔴 `--self-test` の正例だけでは足りない —— パーサが片方の書き方しか読まなくても、
+    // **実データ側のテストは「エッジが 0 でない」で緑になる**（ブロック形式が多数派のため）。
+    // 実際、ブロック形式しか読まなかった間はフロー形式の参照 3,567 件が 1 本もエッジにならず、
+    // `--check` もその範囲を検査していなかった（#1460 の実測から判明）。
+    ok('gen-knowledge-graph.js: フロー形式の related_ids も実データでエッジになる（#1462）', () => {
+      const adrDir = path.join(__dirname, '..', '.ai-context', 'adr');
+      const flowSources = fs
+        .readdirSync(adrDir)
+        .filter((f) => /^IADR-\d{4}_.*\.md$/.test(f))
+        .filter((f) => /^related_ids:[ \t]*\[[^\]]*[^\s\]]/m.test(fs.readFileSync(path.join(adrDir, f), 'utf8')))
+        .map((f) => f.slice(0, 9));
+      // 走査が壊れて 0 件になったら、この検査は何も守らない（fail-closed の門）。
+      assert.ok(flowSources.length > 0, 'フロー形式の related_ids を持つ実装ADR が 1 件も無い（走査が壊れている）');
+
+      const r = spawnSync(process.execPath, [path.join(__dirname, 'gen-knowledge-graph.js'), '--json'], {
+        encoding: 'utf8',
+        maxBuffer: 32 * 1024 * 1024,
+      });
+      assert.strictEqual(r.status, 0, `--json が失敗した:\n${r.stdout}${r.stderr}`);
+      const graph = JSON.parse(r.stdout);
+      const withEdges = new Set(
+        graph.edges.filter((e) => e.kind === 'frontmatter-related').map((e) => e.from),
+      );
+      const missing = flowSources.filter((id) => !withEdges.has(id));
+      assert.deepStrictEqual(
+        missing,
+        [],
+        'フロー形式で related_ids を書いた実装ADR がエッジを 1 本も持たない（yamlListField がブロック形式しか読んでいない）:\n  ' +
+          missing.join('\n  '),
+      );
+    });
+
     ok('gen-knowledge-graph.js --mermaid --scope: スコープ配下だけの flowchart を出す', () => {
       const r = spawnSync(
         process.execPath,

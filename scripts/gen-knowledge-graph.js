@@ -88,10 +88,29 @@ function field(fm, key) {
   return m ? m[1] : null;
 }
 
-// --- frontmatter の block list（`key:\n  - a\n  - b`）を読む -------------------------
+// --- frontmatter のリスト欄を読む（block list と flow list の両方） ------------------
+//
+// 🔴 **2 つの書き方を両方読む**（#1462）。本リポの記録は
+// **ブロック形式 `key:` ＋ `  - a`（1,399 欄）とフロー形式 `key: [a, b]`（323 欄）が混在**しており、
+// **ブロック形式しか読まなかった間、フロー形式の参照 3,567 件が 1 本もエッジにならず、
+// `--check`（エッジ先の実在）も同じ範囲を検査していなかった**（エッジ総数 11,586 に対し約 23% 相当）。
+//
+// 見つかった経緯: #1460 で自己参照 9 件を frontmatter から落としたのに**辺が 1 本しか減らず**、
+// 8 件（フロー形式）は**そもそもエッジになっていなかった**ことから判明した。同じ穴が人手の走査にも
+// 空いていた（[[IADR-0452]]）。**片方しか読まない実装は、実データでも静かに緑になる。**
 
 function yamlListField(fm, key) {
   if (fm === null) return [];
+  // フロー形式を先に見る（同じキーが両形式で書かれることは YAML として無い）。
+  // `[...]` の中に `]` は現れない前提で閉じ括弧まで取る。空配列 `[]` は空の並びになる。
+  const flow = new RegExp(`^${key}:[ \\t]*\\[([^\\]]*)\\]`, 'm').exec(fm);
+  if (flow) {
+    return flow[1]
+      .split(',')
+      .map((x) => x.trim())
+      .map((x) => x.replace(/^["'`]|["'`]$/g, '').trim())
+      .filter(Boolean);
+  }
   const re = new RegExp(`^${key}:\\s*\\n((?:^[ \\t]*-[ \\t]*.+\\n?)*)`, 'm');
   const m = re.exec(`${fm}\n`);
   if (!m) return [];
@@ -486,6 +505,20 @@ function selfTest() {
   }
   t('yamlListField: 負例 — キーが無ければ空配列', yamlListField('title: x', 'related_ids').length === 0);
   t('yamlListField: null frontmatter は空配列', yamlListField(null, 'related_ids').length === 0);
+
+  // フロー形式（#1462）。**ブロック形式の正例と対で置く** —— 片方しか読まない実装で落ちる。
+  {
+    const fm = 'title: x\nrelated_ids: [FR-01, IADR-0058]\nauthor: y\nrelated_specs: [../a.md]';
+    t('yamlListField: 正例 — フロー形式 `[a, b]` を読む（#1462）',
+      yamlListField(fm, 'related_ids').join(',') === 'FR-01,IADR-0058'
+        && yamlListField(fm, 'related_specs').join(',') === '../a.md', yamlListField(fm, 'related_ids'));
+    t('yamlListField: 境界 — フロー形式は次のキーを食べない',
+      yamlListField(fm, 'related_ids').every((x) => !x.includes('author')));
+    t('yamlListField: 境界 — 空のフロー配列は空の並び',
+      yamlListField('related_ids: []', 'related_ids').length === 0);
+    t('yamlListField: 境界 — フロー形式の引用符を落とす',
+      yamlListField(`related_ids: ["FR-01", 'IADR-0058']`, 'related_ids').join(',') === 'FR-01,IADR-0058');
+  }
 
   t('leadingIdToken: 正例 — 説明文（全角括弧）を切り落とす',
     leadingIdToken('ADR-0001（マイクロサービス採用）') === 'ADR-0001');
