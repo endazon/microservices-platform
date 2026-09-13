@@ -41,7 +41,9 @@ import {
   formatBytes,
   usagePercent,
 } from '../types/quota';
-import { SYNC_TONES, VISIBILITY_TONES, syncKeyOf, visibilityKeyOf } from '../types/noteBadges';
+import { SYNC_TONES, syncKeyOf } from '../types/noteBadges';
+// [[IADR-0451]] (#1455): 公開範囲の語彙は SC-03 と共有するためユニットの `lib/` にある。
+import { VISIBILITY_TONES, visibilityKeyOf } from '../../../lib/private-notes';
 import type { SyncFilter, TabOption, VisibilityFilter } from '../routes/sc19PrivateNotesRoute';
 import { QuotaPanel } from './QuotaPanel';
 import { ShareTargetsDialog } from './ShareTargetsDialog';

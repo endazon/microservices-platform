@@ -16,7 +16,10 @@ import type { MessageDescriptor } from '@lingui/core';
 // （#553 がそう指示している）、ここで先に入れると**同じ写像が 2 か所に生まれる**。
 // 値集合の単一情報源は `lib/abac/confidentiality.ts` である。
 
-/** 計画が画面ラベルを与えている属性キー。ここに無いキーはそのまま表示する。 */
+/**
+ * 計画が画面ラベルを与えている属性キー。**ここに無いキーは描かない**
+ * （計画 ADR-0102 決定 4 / #1455。下の `orderedAttributes` を参照）。
+ */
 const ATTRIBUTE_LABELS: Record<string, MessageDescriptor> = {
   confidentiality: msg`機密区分`,
   department: msg`部門`,
@@ -28,14 +31,22 @@ export function attributeLabel(key: string): MessageDescriptor | undefined {
 }
 
 /**
- * 属性を表示順へ並べる。計画 §SC-03 が挙げる順（機密区分 → 部門）を先頭に置き、
- * それ以外はキーの辞書順で続ける（表示順が応答の JSON 順に左右されないようにする）。
+ * 属性を表示順へ並べる。計画 §SC-03 §主要素 が挙げる 3 カテゴリ（機密区分・部門・タグ）に閉じる。
+ *
+ * 🔴 **［2026-09-13 / 計画 ADR-0102 決定 4 / #1455］既知のキーだけを描く（whitelist）。**
+ * 従前は「既知のキー ＋ 残り全部」を返しており、**応答に載る属性がそのまま画面へ出ていた** ——
+ * 個人資料では `owner=<利用者名>` / `doc_scope` / 露出 3 トグルの生の行が、読める者すべてに出ていた。
+ * 計画は本パネルを「機密区分・部門・タグ」と定めており、**計画が正である**（実装が先行して乖離していた）。
+ *
+ * **落とした値は消えるのではなく、それぞれの持ち場が描く** —— 所有者は §個人資料の表示（`PrivateNoteSummary`）、
+ * 個人資料であることは 👤 のラベル、露出 3 トグルは SC-19 である。
+ *
+ * 🔴 **`ATTRIBUTE_LABELS` が唯一の値域である。** 属性が増えても画面の統制は自動では緩まない
+ * （出したい属性はラベルを与える＝明示の判断を要する）。
  */
 export function orderedAttributes(attributes: Record<string, string>): [string, string][] {
-  const known = ['confidentiality', 'department'];
-  const entries = Object.entries(attributes ?? {});
-  return [
-    ...known.flatMap((k): [string, string][] => (k in attributes ? [[k, attributes[k]]] : [])),
-    ...entries.filter(([k]) => !known.includes(k)).sort(([a], [b]) => a.localeCompare(b)),
-  ];
+  const entries = attributes ?? {};
+  return Object.keys(ATTRIBUTE_LABELS).flatMap((key): [string, string][] =>
+    key in entries ? [[key, entries[key]]] : [],
+  );
 }
