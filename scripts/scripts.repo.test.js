@@ -5072,6 +5072,145 @@ ${r.stderr}`);
     });
   }
 
+  // --- #1459: 索引の状態セルの検査 ----------------------------------------------------
+  //
+  // **なぜ必要か（実測）**: 一覧は `| IADR | タイトル | 状態 |` の 3 列だが、**3 列目を見る機械が
+  // どこにも無かった**。`check-adr-numbering.js` は採番と索引⇄本体の双方向一致を見るが突き合わせるのは
+  // **ID だけ**で、上のラチェットが見るのは**タイトルセルだけ**である。その穴に
+  // **同型の混入が 4 回**入った（`IADR-0447`〜`IADR-0450` の 3 列目に状態ではなく日付が書かれ、
+  // 本体はいずれも `Accepted`。索引だけが本体と食い違っていた）。
+  //
+  // **ラチェットにしない。** タイトル側は 141 行中 96 行が要是正で「新規混入だけ落とす」以外に
+  // 進みようが無かったが、こちらは**是正後の違反が 0 件**である。baseline を置くと 4 行が
+  // 「許容された残件」として固定され、索引が事実と食い違ったまま残る。
+  //
+  // **比較は先頭の状態語だけで行う。** 索引は後継をリンク付きで並べ
+  // （`Superseded by [IADR-0282](./…md) / [IADR-0321](…)`）、本体 `status:` は `Superseded` とだけ書く
+  // （実測: 本体の値域は `Accepted` / `Proposed` / `Superseded` の 3 種）。全文一致を課すと
+  // **既に正しい 7 行が一斉に赤になる**ので、語だけを突き合わせる。
+  //
+  // **2 列で書いた行もここで落ちる**（`status-missing`）—— #1458 で実際に起きた型である
+  // （状態列ごと落とした結果、タイトル側の検査が `title-missing` として拾った）。
+  {
+    /** 索引 3 列目に書いてよい状態語。本体 frontmatter の `status:` と同じ語彙である。 */
+    const ADR_STATUS_WORDS = ['Accepted', 'Proposed', 'Deprecated', 'Superseded'];
+
+    /** セルの先頭にある状態語（`Superseded by …` は `Superseded`）。無ければ null。 */
+    const statusWordOf = (cell) => ADR_STATUS_WORDS.find((w) => cell.startsWith(w)) ?? null;
+
+    /**
+     * 索引 1 ファイル分の Markdown を受け取り、状態セルの違反を返す純関数。
+     * `bodyStatuses`（ID → 本体 frontmatter の `status:`）を渡したときだけ `status-mismatch` を見る。
+     */
+    const inspectAdrIndexStatuses = (md, opts = {}) => {
+      const bodyStatuses = opts.bodyStatuses ?? {};
+      const violations = [];
+      md.split('\n').forEach((line, i) => {
+        if (!INDEX_LINE_RE_SHARED.test(line)) return; // 索引の行だけを見る
+        const id = line.match(/IADR-\d{4}/)[0];
+        const t = line.trim();
+        const cells = t.slice(1, t.endsWith('|') ? -1 : undefined).split('|').map((c) => c.trim());
+        const status = cells.length >= 3 ? cells[2] : null;
+        const push = (kind) => violations.push({ line: i + 1, id, kind });
+        if (status === null || status === '') {
+          push('status-missing'); // 列ごと欠けている（2 列で書いた行を含む）
+          return;
+        }
+        const word = statusWordOf(status);
+        if (word === null) {
+          push('status-vocabulary'); // 日付・自由文。索引から生死が読めない
+          return;
+        }
+        const body = bodyStatuses[id];
+        if (body && statusWordOf(body) !== word) push('status-mismatch');
+      });
+      return violations;
+    };
+
+    const STATUS_GOOD = [
+      '| IADR | タイトル | 状態 |',
+      '| --- | --- | --- |',
+      '| [IADR-0000](./IADR-0000_a.md) | 実装意思決定の記録方針 | Accepted |',
+      '| [IADR-0001](./IADR-0001_b.md) | カタログの正本所有 | Superseded by [IADR-0002](./IADR-0002_c.md) |',
+      '| [IADR-0002](./IADR-0002_c.md) | 置換後のカタログ | Proposed |',
+    ].join('\n');
+    const STATUS_GOOD_BODIES = {
+      'IADR-0000': 'Accepted',
+      'IADR-0001': 'Superseded', // 本体は後継を書かない。**先頭の語だけで突き合わせる**
+      'IADR-0002': 'Proposed',
+    };
+
+    ok('索引の状態: 正常な索引は違反 0（正例・後継リンク付きの Superseded を含む）', () => {
+      assert.deepStrictEqual(
+        inspectAdrIndexStatuses(STATUS_GOOD, { bodyStatuses: STATUS_GOOD_BODIES }),
+        [],
+      );
+      // 索引行以外（見出し・本文）を誤検出しない。
+      assert.deepStrictEqual(inspectAdrIndexStatuses('## 一覧\nただの本文 IADR-0001'), []);
+    });
+
+    ok('索引の状態: 日付を書くと落ちる（#1459 の事故そのもの・変異試験）', () => {
+      const mutated = STATUS_GOOD.replace('| 実装意思決定の記録方針 | Accepted |', '| 実装意思決定の記録方針 | 2026-09-12 |');
+      assert.deepStrictEqual(inspectAdrIndexStatuses(mutated), [
+        { line: 3, id: 'IADR-0000', kind: 'status-vocabulary' },
+      ]);
+    });
+
+    ok('索引の状態: 状態列ごと落とすと落ちる（2 列の行・#1458 で起きた型）', () => {
+      const mutated = STATUS_GOOD.replace('| 実装意思決定の記録方針 | Accepted |', '| 実装意思決定の記録方針 |');
+      assert.deepStrictEqual(inspectAdrIndexStatuses(mutated), [
+        { line: 3, id: 'IADR-0000', kind: 'status-missing' },
+      ]);
+      // 空セルも同じ扱いにする（「列は在るが読めない」を素通りさせない）。
+      assert.deepStrictEqual(
+        inspectAdrIndexStatuses(STATUS_GOOD.replace('| 実装意思決定の記録方針 | Accepted |', '| 実装意思決定の記録方針 |  |')),
+        [{ line: 3, id: 'IADR-0000', kind: 'status-missing' }],
+      );
+    });
+
+    ok('索引の状態: 本体と食い違うと落ちる（語彙には合うが事実と違う型・変異試験）', () => {
+      // 🔴 **索引だけを見る検査では取り逃す型である。** 本体が Superseded になったのに
+      // 索引が Accepted のまま、が最も起こりやすい腐り方である。
+      const bodies = { ...STATUS_GOOD_BODIES, 'IADR-0000': 'Superseded' };
+      assert.deepStrictEqual(inspectAdrIndexStatuses(STATUS_GOOD, { bodyStatuses: bodies }), [
+        { line: 3, id: 'IADR-0000', kind: 'status-mismatch' },
+      ]);
+      // 陽性対照: 本体を渡さなければ語彙だけを見る（突合材料が無いのに落とさない）。
+      assert.deepStrictEqual(inspectAdrIndexStatuses(STATUS_GOOD), []);
+    });
+
+    ok('索引の状態: 本リポの .ai-context/adr/README.md が違反 0（実データ）', () => {
+      const adrDir = path.join(__dirname, '..', '.ai-context', 'adr');
+      const md = fs.readFileSync(path.join(adrDir, 'README.md'), 'utf8');
+      const bodyFiles = fs.readdirSync(adrDir).filter((f) => /^IADR-\d{4}_.*\.md$/.test(f));
+      const bodyStatuses = {};
+      for (const f of bodyFiles) {
+        const raw = (fs.readFileSync(path.join(adrDir, f), 'utf8').match(/^status:\s*(.+)$/m) || [])[1];
+        if (raw) bodyStatuses[f.slice(0, 9)] = raw.trim();
+      }
+
+      // 走査 0 件で緑を返す fail-open を塞ぐ（タイトル側ラチェットと同じ守り方）。
+      const indexRows = md.split('\n').filter((l) => INDEX_LINE_RE_SHARED.test(l));
+      assert.ok(bodyFiles.length > 0, '.ai-context/adr/ に ADR 本体が 1 件も見つからない（走査が壊れている）');
+      assert.ok(
+        indexRows.length >= bodyFiles.length,
+        `索引行 ${indexRows.length} 件に対し ADR 本体は ${bodyFiles.length} 件（索引行が隠されているか走査が壊れている）`,
+      );
+      assert.ok(
+        Object.keys(bodyStatuses).length >= bodyFiles.length,
+        `本体 status: を読めた ADR は ${Object.keys(bodyStatuses).length} 件（本体 ${bodyFiles.length} 件。frontmatter の欠落か走査の破損）`,
+      );
+
+      const actual = inspectAdrIndexStatuses(md, { bodyStatuses });
+      assert.deepStrictEqual(
+        actual,
+        [],
+        '索引の状態セルに違反がある（baseline は置かない。本体 status: と同じ状態語へ直すこと）:\n' +
+          actual.map((x) => `  README.md:${x.line} ${x.id} ${x.kind}`).join('\n'),
+      );
+    });
+  }
+
   // --- #664: 0 件走査で緑を返さない（fail-closed の門） -------------------------
   //
   // #592 の初版は `walk()` へ絶対パスを渡し、`catch` が黙って空配列を返していた。
