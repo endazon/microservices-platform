@@ -75,6 +75,18 @@ plan_refs:
 - `src/platform/frontend/src/locales/**`（Lingui カタログの再生成分）
 - `docs/screens/SC-03_document-detail.md`（§属性の表示 の「上記以外＝キーをそのまま表示」を改める・個人資料の表示を足す）
 - `.ai-context/adr/IADR-0451_*.md`（新規）・`.ai-context/adr/README.md`（索引）
+- `docs/tests/SC-03_document-detail.md`・`docs/tests/UC-11_private-note-management.md`（［2026-09-13 追記 / #1455］）
+
+> **［2026-09-13 追記 / #1455］レビューと CI を受けて 3 点を追加した。**
+> ① **テスト仕様書の追随を落としていた**（`docs/README.md` は FR 単位でテスト仕様書を必須にしている）。
+> 母集合の走査語に**テストの写像先**を入れていなかったのが原因で、規則 9 の破れである。
+> ② **索引行を 2 列で書いた**ため `scripts-tests` の索引タイトル検査が赤になった
+> （`.ai-context/adr/README.md` は 3 列。検査はタイトルを 3 列目の存在から取る）。
+> **`node scripts/check-adr-numbering.js` だけでは捕まらない** —— 索引の列数と長さを見るのは
+> `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` 側であり、これを検証に含めていなかった。
+> ③ **使われない export を 5 つ足していた**ため `check-knip` のラチェットが赤になった
+> （`DOC_SCOPE_KEY` / `DOC_SCOPE_PRIVATE_NOTE` の 2 つ × 実体と再輸出、`VisibilityKey` 型）。
+> **公開面は「呼び出し側が実際に使うもの」だけにする**（判定関数だけを出し、キーと値は内へ閉じる）。
 
 ### 母集合（規則 1〜10）
 
@@ -106,3 +118,9 @@ plan_refs:
 `node scripts/check-i18n-catalogs.js` / `check-trace-blocks` / `check-doc-links` / `check-doc-type-vocabulary` /
 `check-doc-status-vocabulary` / `check-adr-numbering` / `gen-knowledge-graph --check` /
 `node scripts/check-commit-messages.js --range origin/develop..HEAD`。
+
+**［2026-09-13 追記 / #1455］次の 2 つを検証に加える。** `.ai-context/adr/README.md` と
+`src/**` の公開面に触れる変更では、**この 2 つを通さないと CI で初めて赤が出る**。
+
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`（索引の列数・タイトル長）
+- `node scripts/check-knip.js --require`（未使用 export・型のラチェット。`unlisted` は submodule 未 populate の環境で 1 件多く出る）

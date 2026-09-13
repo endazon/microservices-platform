@@ -9,8 +9,11 @@ import type { StatusBadgeProps } from '@platform/ui';
 
 type BadgeTone = NonNullable<StatusBadgeProps['tone']>;
 
+// 状態の型は**外へ出さない** —— 呼び出し側が要るのは `visibilityKeyOf` の戻り値と
+// `VISIBILITY_TONES` の索引だけであり、どちらも推論で足りる（未使用 export を増やさない）。
+
 /** 公開範囲の 3 状態 ＋ 判定不能（05_screens §SC-19 主要素 2）。 */
-export type VisibilityKey = 'private' | 'users' | 'groups' | 'unknown';
+type VisibilityKey = 'private' | 'users' | 'groups' | 'unknown';
 
 const VISIBILITY_KEYS: readonly VisibilityKey[] = ['private', 'users', 'groups'];
 

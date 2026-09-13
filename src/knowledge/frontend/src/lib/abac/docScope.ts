@@ -7,11 +7,15 @@
 // 組織文書は **`doc_scope` を持たない文書も含む**（ADR-0054 決定 5。契約 `GraphNodeItem` の注記が同じ扱いを述べている）。
 // したがって `organization` の定数は置かず、**`private-note` かどうかだけ**を判定する。
 
+// **公開するのは判定関数だけである。** キーと値を export すると、呼び出し側が
+// `attributes[DOC_SCOPE_KEY] === DOC_SCOPE_PRIVATE_NOTE` を各所で書き直せてしまい、
+// 「個人資料か」の判定が 2 通りに割れる（未使用 export のラチェット `check-knip` にも載る）。
+
 /** 文書スコープの属性キー。 */
-export const DOC_SCOPE_KEY = 'doc_scope';
+const DOC_SCOPE_KEY = 'doc_scope';
 
 /** 個人資料を表す値（バックエンド `DocumentAttributes.DocScopePrivateNote` と同じ）。 */
-export const DOC_SCOPE_PRIVATE_NOTE = 'private-note';
+const DOC_SCOPE_PRIVATE_NOTE = 'private-note';
 
 /** その文書が個人資料か（属性を持たない文書は組織文書として偽を返す）。 */
 export function isPrivateNote(attributes: Record<string, string> | undefined): boolean {
