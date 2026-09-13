@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-06, SC-17, SC-18, SC-19, SC-20, SC-22]
-adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093, ADR-0094, ADR-0095, ADR-0096, ADR-0098, ADR-0099, ADR-0101]
+adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093, ADR-0094, ADR-0095, ADR-0096, ADR-0098, ADR-0099, ADR-0101, ADR-0102]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228, IADR-0423, IADR-0450]
 specs: []
-issues: [#1411, #1451, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#591, planning#627]
+issues: [#1411, #1451, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#591, planning#627, planning#628, planning#630]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -23,6 +23,32 @@ issues: [#1411, #1451, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987
 >
 > **本別紙が持つのは「レンジをいつどう引き直したか」（pin 時代の記録を含む）「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れなかったか」の記録だけ**である（必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
+
+### ［2026-09-13・12 回目］ADR `0001..0101` → `0001..0102`（1 件。11 回目と同日）
+
+**動いたのは `ADR` だけである。** `FR-01..22`／`UC-01..11`／`SC-01..22` は不動（4 種すべてを引き直した）。
+
+| 計画 ADR | 状態 | 内容 |
+| --- | --- | --- |
+| 0102 | `Accepted` | 所有者以外の閲覧者への個人資料の描き方。公開範囲は所有者にだけ描き、所有者は表示名で描き、「（自分のみ）」は所有者にだけ付す |
+
+**出典は計画リポジトリの導出器の実測である** —— 隣接クローン（`origin/main` の先頭は `f798ba5`）で
+`node tools/doc-checks/gen-plan-ranges.js --check` が「宣言 [1, 102] / 実物 [1, 102]・欠番なし」と出し、
+`git ls-tree origin/main projects/microservices-platform/07_adr/` の一意な `ADR-XXXX` が 102 件であることと突き合わせた。
+
+#### 契機
+
+**11 回目と向きが逆である** —— 今回は**実装が 1 行も動いていない**。今回の計画 ADR は、前回引き直した
+計画 ADR の §結果 フォローアップ 1（共有先の写しを所有者にだけ返した帰結として、所有者以外の閲覧者に
+公開範囲をどう描くか）の裁定を記録したものであり、**実装への反映（文書詳細の個人資料表示・属性パネルの
+カテゴリの絞り込み・ナレッジグラフのラベル是正）はこれから起票する**。
+
+**先にレンジだけを引き直すのは、起票と仕様書の trace ブロックが新しい番号を引けるようにするためである**
+—— レンジを動かさないまま引くと値域検査（`check-trace-blocks.js` / `check-commit-messages.js`）が止める。
+
+🔴 **本回で trace ブロックへ新しい計画 ADR を足したのは本別紙だけである**（自らが引き直しを記録する文書で
+あるため）。**他の権威文書・仕様書は、実装が入る PR で必要になった時点で引く** —— 参照が要らないうちに
+足すと、「どの文書がこの決定に従っているか」が読めなくなる。
 
 ### ［2026-09-13・11 回目］ADR `0001..0100` → `0001..0101`（1 件）
 
