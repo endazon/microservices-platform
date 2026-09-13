@@ -48,6 +48,10 @@
 - **索引の ID セルは本体への相対リンク**にする（#580）。表記は `[` ＋ ID ＋ `](./` ＋ 本体ファイル名 ＋ `)`。
   プレーンテキストだと本体の改名・削除で索引が腐っても検査に掛からない。リンクにすれば
   [`check-doc-links.js`](../../scripts/check-doc-links.js) が全件を検査する。
+- **索引の状態セルには本体 `status:` と同じ状態語だけを書く**（#1459）。値域は `Accepted` / `Proposed` /
+  `Deprecated` / `Superseded by <後継 ID>`。**日付を書かない** —— 作成日・更新日は本体 frontmatter の
+  `created:` / `updated:` が正本であり、索引へ複写すると片方が腐る。`scripts/scripts.repo.test.js` が
+  語彙・欠落・**本体との食い違い**（先頭の状態語で比較）を検査する。**baseline は置いていない**（違反 0 が前提）。
 
 ## 一覧
 
@@ -520,8 +524,8 @@
 | [IADR-0444](./IADR-0444_private-note-contract-visibility-sync-state-and-conflict-ledger.md) | **個人資料の契約に公開範囲 3 状態・同期状態・タグを足し、同期対象範囲と競合をサーバの台帳で持つ**（#1441 / #1442・planning#614 の裁定）。状態は導出（共有台帳・有効端末・フォルダ配下・未解決競合）、競合は push の 409 経路で記録し画面から 3 択で解決（応答は不変）。指定先と同期履歴は裁定待ち（planning#618）で契約に出さない | Accepted |
 | [IADR-0445](./IADR-0445_share-targets-user-only-ui-and-user-lookup-surface.md) | **公開範囲の指定先は共有台帳をそのまま BFF へ出し、画面は個人指定だけを描く**（#1445・ADR-0098）。利用者の表示名は「利用者名・表示名・有効状態」に閉じた認証必須の読み口（`/authz/users/lookup`・`/resolve`）を新設して引き、識別子は画面に出さない。グループは台帳・契約で受け付けたまま画面だけで止める（配線 #1447 が入るまで） | Accepted |
 | [IADR-0446](./IADR-0446_sync-audit-ledger-as-the-store-of-the-sync-audit-log.md) | **同期の監査ログに貯蔵を与える**（#1446・ADR-0099）。`SyncAuditEntry` を監査ログの正本とし（`ILogger` の行は同じ書き込みの計器）、失敗 7 理由と方向・内訳を記録し、本人へ新しい順 50 件を開き、3 年で消す。🔴 資料 ID・タイトル・パスの列を持たない（型で決定 5 を守る）。「既存の監査ログ」に貯蔵が無かった事実は planning へ環流 | Accepted |
-| [IADR-0447](./IADR-0447_current-groups-binding-and-shared-with-branch-wiring.md) | **`${current_groups}` は IdP の所属照会で束縛し、共有先ベースの分岐は「ポリシー 1 本」と「DocumentService が応答へ載せる共有先の写し」で 4 面に効かせる**（#1447・ADR-0098 フォローアップ 1）。IADR-0253 決定 3 を部分 supersede（束縛変数は 2 つ）。グループ検索の読み口を新設し SC-19 のグループ指定を解禁 | 2026-09-12 |
-| [IADR-0448](./IADR-0448_set-valued-document-attribute-matching-in-one-predicate.md) | **文書側の集合値属性（`shared_with` / `tags`）は契約側の唯一の述語 `AttributeFilterMatch` で交差判定し、BFF・Graph・Wiki の 3 面を同じ述語へ寄せる**（#1448・ADR-0080 決定 2） | 2026-09-12 |
-| [IADR-0449](./IADR-0449_user-and-group-lookup-are-interactive-user-only.md) | **利用者・グループの名簿の読み口は「人の主体だけ」の認可ポリシー `InteractiveUser` で守る**（ADR-0100 フォローアップ 2）。ロールではなく主体の種別で分け、IADR-0401 の分界を保つ | 2026-09-12 |
-| [IADR-0450](./IADR-0450_shared-with-copy-is-returned-to-owner-only.md) | **共有先の写し（`DocumentDto.SharedWith`）は所有者にだけ返す**（ADR-0098 フォローアップ 5 の裁定 planning#626）。BFF が利用者へ返す直前の 1 点で所有者以外の項目を落とし（空集合にしない）、所有者は「`owner` を条件に持つ分岐が一致したか」で決める。判定の像は不変 | 2026-09-13 |
+| [IADR-0447](./IADR-0447_current-groups-binding-and-shared-with-branch-wiring.md) | **`${current_groups}` は IdP の所属照会で束縛し、共有先ベースの分岐は「ポリシー 1 本」と「DocumentService が応答へ載せる共有先の写し」で 4 面に効かせる**（#1447・ADR-0098 フォローアップ 1）。IADR-0253 決定 3 を部分 supersede（束縛変数は 2 つ）。グループ検索の読み口を新設し SC-19 のグループ指定を解禁 | Accepted |
+| [IADR-0448](./IADR-0448_set-valued-document-attribute-matching-in-one-predicate.md) | **文書側の集合値属性（`shared_with` / `tags`）は契約側の唯一の述語 `AttributeFilterMatch` で交差判定し、BFF・Graph・Wiki の 3 面を同じ述語へ寄せる**（#1448・ADR-0080 決定 2） | Accepted |
+| [IADR-0449](./IADR-0449_user-and-group-lookup-are-interactive-user-only.md) | **利用者・グループの名簿の読み口は「人の主体だけ」の認可ポリシー `InteractiveUser` で守る**（ADR-0100 フォローアップ 2）。ロールではなく主体の種別で分け、IADR-0401 の分界を保つ | Accepted |
+| [IADR-0450](./IADR-0450_shared-with-copy-is-returned-to-owner-only.md) | **共有先の写し（`DocumentDto.SharedWith`）は所有者にだけ返す**（ADR-0098 フォローアップ 5 の裁定 planning#626）。BFF が利用者へ返す直前の 1 点で所有者以外の項目を落とし（空集合にしない）、所有者は「`owner` を条件に持つ分岐が一致したか」で決める。判定の像は不変 | Accepted |
 | [IADR-0451](./IADR-0451_sc03-private-note-display-and-attribute-whitelist.md) | **SC-03 の個人資料は「供給が返るかどうか」で描き、属性・タグパネルは既知キーの whitelist に閉じる**（#1455・ADR-0102）。所有者の判定は表示の分岐にだけ使い、公開範囲は所有者だけが読める口から引く。共有する語彙はユニットの `lib/` に置く | Accepted |
