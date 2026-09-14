@@ -173,8 +173,10 @@ public static class SecretItemBffEndpoints
                 new SecretWriteRecord(written.Version, subject, property, written.UpdatedAt), ct);
 
             var detail = $"{target} version={written.Version}";
+            // IADR-0453 決定 7: 利用者の入力した理由は引用符で囲みエスケープする。素のまま連結すると
+            // `x version=99 item=postgres` のような入力で key=value を読む側が監査行を取り違える。
             if (!string.IsNullOrEmpty(reason))
-                detail += $" reason={reason}";
+                detail += $" reason={QuoteForAudit(reason)}";
             audit.Record(UpdateAction, subject, "granted", detail);
 
             return Results.Ok(new SecretItemWriteResultDto(definition.Item, property, written.Version, written.UpdatedAt));
@@ -186,6 +188,11 @@ public static class SecretItemBffEndpoints
 
         return app;
     }
+
+    // IADR-0453 決定 7: 利用者の入力（更新の理由）を監査の detail へ載せるときの形。
+    // 二重引用符で囲み、`\` と `"` をエスケープする（改行等の制御文字は監査ロガーの LogSanitizer が落とす）。
+    internal static string QuoteForAudit(string text) =>
+        "\"" + text.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
 
     // 運用者・システム管理者か（`SecretItemWriter`）。拒否は監査へ `denied` を残して 403。
     // 権限ありは null を返して続行する。

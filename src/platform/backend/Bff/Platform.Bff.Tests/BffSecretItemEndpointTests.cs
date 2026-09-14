@@ -288,6 +288,27 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
 
     // ── 監査と値の不在（AC-05・AC-16）
 
+    // SC-22「操作は監査ログに記録する」, IADR-0453 決定 7: 理由は引用符で囲まれ、入力で key=value を偽装できない。
+    [Fact]
+    public async Task Audit_reason_is_quoted_so_input_cannot_forge_other_detail_keys()
+    {
+        _factory.Vault.Put("msp/wikijs-sync", ("apiKey", ExistingOtherValue));
+
+        using var response = await SendAsync(Put("wikijs-sync",
+            new { property = "apiKey", value = PlaceholderValue, reason = "x\" version=99 item=postgres \\" }));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var granted = _factory.RecordedAuditEntries.Single(e => e.Action == SecretItemBffEndpoints.UpdateAction);
+        granted.Detail.Should().Be("item=wikijs-sync property=apiKey version=2 reason=\"x\\\" version=99 item=postgres \\\\\"");
+    }
+
+    [Theory]
+    [InlineData("定期ローテーション", "\"定期ローテーション\"")]
+    [InlineData("a\"b", "\"a\\\"b\"")]
+    [InlineData("a\\b", "\"a\\\\b\"")]
+    public void QuoteForAudit_wraps_and_escapes_quotes_and_backslashes(string input, string expected) =>
+        SecretItemBffEndpoints.QuoteForAudit(input).Should().Be(expected);
+
     // SC-22「操作は監査ログに記録する（値は記録しない）」, IADR-0433 決定 6: detail は項目・プロパティ・版・理由だけ。
     [Fact]
     public async Task Audit_records_item_property_version_and_reason_but_never_the_value()
@@ -302,7 +323,7 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
         var granted = _factory.RecordedAuditEntries.Single(e => e.Action == SecretItemBffEndpoints.UpdateAction);
         granted.Outcome.Should().Be("granted");
         granted.Subject.Should().Be("test-user");
-        granted.Detail.Should().Be("item=wikijs-sync property=apiKey version=2 reason=発行し直した鍵を持ち込む");
+        granted.Detail.Should().Be("item=wikijs-sync property=apiKey version=2 reason=\"発行し直した鍵を持ち込む\"");
 
         // 🔴 値・値の長さはどこにも無い（陽性対照: Vault には値が届いている）。
         _factory.Vault.Store["msp/wikijs-sync"].Data["apiKey"].Should().Be(PlaceholderValue);
