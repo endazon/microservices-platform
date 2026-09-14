@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Options;
 using Platform.Bff.Foundation.Secrets;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Audit;
@@ -28,6 +30,12 @@ public static class SecretItemBffEndpoints
 
     /// <summary>更新の理由の上限（文字数）。監査ログの 1 行に載る。</summary>
     public const int MaxReasonLength = 500;
+
+    /// <summary>
+    /// `PUT` 本文の上限（バイト）。IADR-0454 決定 2 (#1467): 値 8192 文字と理由 500 文字を**すべて `\uXXXX`（1 文字 6 バイト）**で
+    /// 送る最悪の本文（約 53.4 KB）が収まり、約 12 KiB の余裕を持つ。Kestrel 既定（30 MB）には頼らない。
+    /// </summary>
+    public const int MaxRequestBodyBytes = 64 * 1024;
 
     private const string ProblemTypePrefix = "urn:microservices-platform:secret-items:";
 
@@ -96,15 +104,20 @@ public static class SecretItemBffEndpoints
           .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
         // SC-22 主要素 2・入力/バリデーション: 1 回に 1 プロパティだけを書く（IADR-0453 決定 2）。
+        // IADR-0454 決定 2 (#1467): 🔴 **本文は暗黙バインドしない。** 暗黙バインドはハンドラ（＝ロール判定）より前に本文を解釈し、
+        // 解釈の失敗をフレームワークが監査なしで返す。ロール判定 → allowlist → 上限付きの手読み、の順に進む。
+        // 🔴 同じ理由で `.Accepts<T>("application/json")` も付けない。受け付ける Content-Type のメタデータがあると、ルーティングの
+        // `AcceptsMatcherPolicy` がハンドラより前に 415 を返し、拒否が監査に残らない（試験で実測した）。
+        // 要求本文の契約の正は `docs/api/openapi.yaml` である。
         g.MapPut("/{item}", async (
             string item,
-            UpdateSecretItemRequest? body,
             HttpContext http,
             IAuthorizationService authz,
             IAuditLogger audit,
             SecretItemCatalog catalog,
             IVaultKvClient vault,
             ISecretWriteRecordStore records,
+            IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions> jsonOptions,
             CancellationToken ct) =>
         {
             var denied = await DenyUnlessWriterAsync(http, authz, audit, UpdateAction, item);
@@ -119,7 +132,12 @@ public static class SecretItemBffEndpoints
                 return Invalid("item", "この項目は画面から投入できる項目の一覧にありません。");
             }
 
-            var property = body?.Property;
+            var (body, rejected) = await ReadUpdateBodyAsync(
+                http.Request, jsonOptions.Value.SerializerOptions, audit, subject, definition.Item, ct);
+            if (rejected is not null)
+                return rejected;
+
+            var property = body!.Property;
             if (property is null || !definition.Properties.Contains(property, StringComparer.Ordinal))
             {
                 // 🔴 `notWritable`（構成・realm と対の秘密）も同じ扱いで拒む。allowlist の型が持たないので
@@ -130,7 +148,7 @@ public static class SecretItemBffEndpoints
             }
 
             // 🔴 値そのものも、その長さも、ここから先のどこにも出さない。
-            if (string.IsNullOrEmpty(body!.Value) || body.Value.Length > MaxValueLength)
+            if (string.IsNullOrEmpty(body.Value) || body.Value.Length > MaxValueLength)
             {
                 audit.Record(UpdateAction, subject, "denied",
                     $"item={definition.Item} property={property} reason=invalid-value");
@@ -192,6 +210,8 @@ public static class SecretItemBffEndpoints
           .Produces<SecretItemWriteResultDto>()
           .ProducesValidationProblem()
           .ProducesProblem(StatusCodes.Status409Conflict)
+          .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
+          .ProducesProblem(StatusCodes.Status415UnsupportedMediaType)
           .ProducesProblem(StatusCodes.Status502BadGateway)
           .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
@@ -202,6 +222,65 @@ public static class SecretItemBffEndpoints
     // 二重引用符で囲み、`\` と `"` をエスケープする（改行等の制御文字は監査ロガーの LogSanitizer が落とす）。
     internal static string QuoteForAudit(string text) =>
         "\"" + text.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
+
+    // IADR-0454 決定 2 (#1467): `PUT` 本文を上限付きで手読みする。拒否はすべて監査へ `denied` を残して返す。
+    // 🔴 **`Content-Length` だけに頼らない**（持たない送り方がある）。読むのは上限 ＋ 1 バイトまでで、超えた時点でやめる。
+    // 🔴 本文・例外メッセージ・長さはログにも監査にも出さない（`JsonException` のメッセージは本文の位置や断片を含み得る）。
+    private static async Task<(UpdateSecretItemRequest? Body, IResult? Rejected)> ReadUpdateBodyAsync(
+        HttpRequest request, JsonSerializerOptions json, IAuditLogger audit, string subject, string item, CancellationToken ct)
+    {
+        if (!request.HasJsonContentType())
+        {
+            audit.Record(UpdateAction, subject, "denied", $"item={item} reason=unsupported-media-type");
+            return (null, Results.Problem(
+                statusCode: StatusCodes.Status415UnsupportedMediaType,
+                type: ProblemTypePrefix + "unsupported-media-type",
+                title: "本文は JSON（application/json）で送ってください。"));
+        }
+
+        if (request.ContentLength is > MaxRequestBodyBytes)
+            return (null, TooLarge());
+
+        using var buffer = new MemoryStream();
+        var chunk = new byte[8 * 1024];
+        while (true)
+        {
+            var room = MaxRequestBodyBytes + 1 - (int)buffer.Length;
+            var read = await request.Body.ReadAsync(chunk.AsMemory(0, Math.Min(chunk.Length, room)), ct);
+            if (read == 0)
+                break;
+            buffer.Write(chunk, 0, read);
+            if (buffer.Length > MaxRequestBodyBytes)
+                return (null, TooLarge());
+        }
+
+        UpdateSecretItemRequest? body;
+        try
+        {
+            body = JsonSerializer.Deserialize<UpdateSecretItemRequest>(buffer.GetBuffer().AsSpan(0, (int)buffer.Length), json);
+        }
+        catch (JsonException)
+        {
+            body = null;
+        }
+
+        if (body is null)
+        {
+            audit.Record(UpdateAction, subject, "denied", $"item={item} reason=invalid-body");
+            return (null, Invalid("body", "本文を解釈できません（JSON の形を確認してください）。"));
+        }
+
+        return (body, null);
+
+        IResult TooLarge()
+        {
+            audit.Record(UpdateAction, subject, "denied", $"item={item} reason=body-too-large");
+            return Results.Problem(
+                statusCode: StatusCodes.Status413PayloadTooLarge,
+                type: ProblemTypePrefix + "body-too-large",
+                title: $"本文が大きすぎます（{MaxRequestBodyBytes} バイトまで）。");
+        }
+    }
 
     // 運用者・システム管理者か（`SecretItemWriter`）。拒否は監査へ `denied` を残して 403。
     // 権限ありは null を返して続行する。

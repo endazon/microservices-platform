@@ -83,6 +83,11 @@ issues: [#1411, #1467]
 | T-41 | 現在の版が削除・破棄された項目 | 更新 | **409**（削除済みを示す種別）。失敗が監査に残り、**作成の要求を送らず**、保管先の中身と削除状態は変わらず、最終更新者の記録を作らない。一覧は「未設定」のまま | 削除済みの版へ書かない・原因を見せる | 自動 |
 | T-42 | 同上（保管先クライアント単体） | metadata の取得と書き込み | 削除・破棄のどちらでも「現在の版が削除されている」を返し、作成の要求を送らない。項目が無いときは従来どおり作る（陽性対照）。在るときは metadata を読まずに部分更新する | 同上 | 自動 |
 | T-43 | 更新フォーム | 更新が 409 で失敗する | 「削除されています」「復元」「値は保存されていません」を出す。境界層の日本語の見出しをそのまま出さない | 次の一手を見せる | 自動 |
+| T-44 | 入力規則は満たすが本文が上限（64 KiB）を超える。長さの宣言あり／無しの 2 通り | 更新 | **413**。拒否が監査に残り、保管先の data へ触れない（上限が無ければ書き込みまで進む本文である） | 本文の上限 | 自動 |
+| T-45 | 値 8192 文字・理由 500 文字をすべて 6 バイトの文字で送る最悪の本文（50 KB 超） | 更新 | 200（陽性対照。上限が入力規則の最大を収める） | 本文の上限 | 自動 |
+| T-46 | 壊れた JSON・`null`・JSON でない文字列 | 更新 | **400**。拒否が監査に残り、本文の断片が監査にもログにも出ない（陽性対照: ログは捕捉できている） | 解釈失敗の監査 | 自動 |
+| T-47 | JSON でない Content-Type | 更新 | **415**。拒否が監査に残り、保管先に触れない | 解釈失敗の監査 | 自動 |
+| T-48 | 他のロール ＋ 壊れた本文 | 更新 | **403**（400 ではない）。拒否が監査に残る —— 本文より先にロールを見る | ロール限定 | 自動 |
 | T-40 | 稼働クラスタ（保管先・同期あり） | 画面から 1 プロパティを更新し、同期後の Secret を長さだけで確かめる | 更新したプロパティの長さが一致し、同居するキーが減っていない | 稼働での成立 | 手動（未実施） |
 
 ## 自動試験の所在
@@ -90,7 +95,7 @@ issues: [#1411, #1467]
 | 区分 | ファイル | 対応 |
 | --- | --- | --- |
 | 画面 | `src/knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.test.tsx` | T-01〜T-09・T-43 |
-| 境界層（端点） | `src/platform/backend/Bff/Platform.Bff.Tests/BffSecretItemEndpointTests.cs` | T-10〜T-28・T-41 |
+| 境界層（端点） | `src/platform/backend/Bff/Platform.Bff.Tests/BffSecretItemEndpointTests.cs` | T-10〜T-28・T-41・T-44〜T-48 |
 | 境界層（保管先クライアント） | `src/platform/backend/Bff/Platform.Bff.Tests/VaultKvClientTests.cs` | T-42 |
 | 境界層（項目集合） | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemCatalogTests.cs` | T-29〜T-31 |
 | 保管先の権限の字面 | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemVaultPolicyTests.cs` | T-32〜T-35 |

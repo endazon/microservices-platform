@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Hosting;
@@ -321,6 +323,150 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
         tooLong.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         longReason.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         _factory.Vault.Requests.Should().NotContain(r => r.Path.StartsWith("/v1/secret/data/", StringComparison.Ordinal));
+    }
+
+    // ── 本文の上限と解釈（IADR-0453 フォローアップ 6, IADR-0454 決定 2, #1467）
+    //
+    // 🔴 TestServer は Kestrel の本文上限を強制しない。**端点が自分で上限付きに読む**ことを、`Content-Length` がある送り方と
+    // 無い送り方の両方で固定する（片方だけだと、`Content-Length` だけを見る実装が緑になる）。
+
+    private const int DocumentedMaxRequestBodyBytes = 64 * 1024;
+
+    private static HttpRequestMessage PutRaw(string item, HttpContent content, string? roles = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Put, $"/bff/secrets/{item}") { Content = content };
+        Decorate(request, roles, anonymous: false);
+        return request;
+    }
+
+    private static ByteArrayContent JsonBytes(byte[] bytes)
+    {
+        var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        return content;
+    }
+
+    // SC-22, IADR-0454 決定 2: 上限を超える本文は 413。Vault に触れず、拒否が監査に残る。
+    // 本文は**入力規則を満たす**（値は短い）ので、上限が無ければ書き込みまで進む —— 上限だけが止めていることを示す。
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Oversized_body_gets_413_before_anything_reaches_vault(bool withContentLength)
+    {
+        _factory.Vault.Put("msp/wikijs-sync", ("apiKey", ExistingOtherValue));
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            property = "apiKey",
+            value = PlaceholderValue,
+            padding = new string('p', DocumentedMaxRequestBodyBytes),
+        });
+        HttpContent content = withContentLength
+            ? JsonBytes(bytes)
+            : new UnknownLengthContent(bytes, "application/json");
+        content.Headers.ContentLength.Should().Be(withContentLength ? bytes.Length : null);
+
+        using var response = await SendAsync(PutRaw("wikijs-sync", content));
+
+        response.StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
+        _factory.RecordedAuditEntries.Where(e => e.Action == SecretItemBffEndpoints.UpdateAction)
+            .Should().ContainSingle()
+            .Which.Should().Be((SecretItemBffEndpoints.UpdateAction, "test-user", "denied",
+                (string?)"item=wikijs-sync reason=body-too-large"));
+        _factory.Vault.Requests.Should().NotContain(r => r.Path.StartsWith("/v1/secret/data/", StringComparison.Ordinal));
+        _factory.Vault.Store["msp/wikijs-sync"].Data["apiKey"].Should().Be(ExistingOtherValue);
+    }
+
+    // SC-22, IADR-0454 決定 2（陽性対照）: 値 8192 文字・理由 500 文字を**すべて `\uXXXX`（1 文字 6 バイト）で送る**最悪の本文は通る。
+    [Fact]
+    public async Task Worst_case_body_within_the_maxima_is_accepted()
+    {
+        _factory.Vault.Put("msp/wikijs-sync", ("apiKey", ExistingOtherValue));
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            property = "apiKey",
+            value = new string('あ', SecretItemBffEndpoints.MaxValueLength),
+            reason = new string('い', SecretItemBffEndpoints.MaxReasonLength),
+        });
+        bytes.Length.Should().BeGreaterThan(52_000, "既定の JSON は非 ASCII を \\uXXXX で送る（最悪の大きさになっていること）");
+        bytes.Length.Should().BeLessThan(DocumentedMaxRequestBodyBytes);
+
+        using var response = await SendAsync(PutRaw("wikijs-sync", JsonBytes(bytes)));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // SC-22, IADR-0454 決定 2: 解釈できない本文は 400 で、拒否が監査に残る。🔴 本文の断片は監査にもログにも出ない。
+    [Theory]
+    [InlineData("{\"property\":\"apiKey\",\"value\":\"placeholder-value-for-sc22-tests-0001\"")]
+    [InlineData("null")]
+    [InlineData("not json placeholder-value-for-sc22-tests-0001")]
+    public async Task Unparseable_body_gets_400_and_is_audited_without_its_content(string raw)
+    {
+        var sink = new ConcurrentQueue<string>();
+        using var logged = _factory.WithWebHostBuilder(b =>
+            b.ConfigureLogging(l => l.AddProvider(new CollectingLoggerProvider(sink)).SetMinimumLevel(LogLevel.Trace)));
+
+        using var response = await SendAsync(
+            PutRaw("wikijs-sync", new StringContent(raw, Encoding.UTF8, "application/json")), logged.CreateClient());
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        _factory.RecordedAuditEntries.Where(e => e.Action == SecretItemBffEndpoints.UpdateAction)
+            .Should().ContainSingle()
+            .Which.Should().Be((SecretItemBffEndpoints.UpdateAction, "test-user", "denied",
+                (string?)"item=wikijs-sync reason=invalid-body"));
+        _factory.Vault.Requests.Should().NotContain(r => r.Path.StartsWith("/v1/secret/data/", StringComparison.Ordinal));
+        sink.Should().NotBeEmpty("ログを捕捉できていること（陽性対照）");
+        sink.Should().NotContain(line => line.Contains(PlaceholderValue, StringComparison.Ordinal));
+        AllAuditDetails().Should().NotContain(d => d.Contains(PlaceholderValue, StringComparison.Ordinal));
+    }
+
+    // SC-22, IADR-0454 決定 2: JSON でない本文は 415 で、拒否が監査に残る（暗黙バインドが持っていた要求を保つ）。
+    [Fact]
+    public async Task Non_json_content_type_gets_415_and_is_audited()
+    {
+        var json = JsonSerializer.Serialize(new { property = "apiKey", value = PlaceholderValue });
+
+        using var response = await SendAsync(PutRaw("wikijs-sync", new StringContent(json, Encoding.UTF8, "text/plain")));
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnsupportedMediaType);
+        _factory.RecordedAuditEntries.Should().Contain(e =>
+            e.Action == SecretItemBffEndpoints.UpdateAction && e.Outcome == "denied"
+            && e.Detail == "item=wikijs-sync reason=unsupported-media-type");
+        _factory.Vault.Requests.Should().BeEmpty();
+    }
+
+    // SC-22, IADR-0454 決定 2: 🔴 **本文より先にロールを見る。** 非権限者は本文が壊れていても 403 ＋ 監査 forbidden。
+    [Fact]
+    public async Task Non_writers_get_403_before_the_body_is_read()
+    {
+        using var response = await SendAsync(
+            PutRaw("wikijs-sync", new StringContent("{", Encoding.UTF8, "application/json"), roles: "platform-user"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        _factory.RecordedAuditEntries.Should().ContainSingle(e => e.Action == SecretItemBffEndpoints.UpdateAction)
+            .Which.Detail.Should().Be("item=wikijs-sync reason=forbidden");
+        _factory.Vault.Requests.Should().BeEmpty();
+    }
+
+    // `Content-Length` を持たない本文（chunked 相当）。上限の判定が長さの宣言だけに頼っていないことを確かめる。
+    private sealed class UnknownLengthContent : HttpContent
+    {
+        private readonly byte[] _bytes;
+
+        public UnknownLengthContent(byte[] bytes, string mediaType)
+        {
+            _bytes = bytes;
+            Headers.ContentType = new MediaTypeHeaderValue(mediaType);
+        }
+
+        protected override Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context) =>
+            stream.WriteAsync(_bytes).AsTask();
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
     }
 
     // ── 監査と値の不在（AC-05・AC-16）

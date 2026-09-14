@@ -179,7 +179,17 @@ MSP#1466（develop `eed1ff24`）で SC-22 の画面 → BFF → Vault が着地�
 | 緑 | クライアント・端点・SPA を直して `dotnet test … --filter "BffSecretItemEndpointTests\|VaultKvClientTests\|SecretItem"` と vitest | **合格 52 / 失敗 0**、**合格 9 / 失敗 0** |
 | 再生成 | `pnpm run codegen` → `secret-items.ts` だけ更新（409 の応答型）。`pnpm run i18n` → 初回は en の未翻訳 1 件で compile が失敗し、訳を入れて再実行で **Missing 0** |
 
-（フォローアップ 6・7 は実装時に記入する）
+### フォローアップ 6（PUT 本文の上限と解釈失敗の監査）
+
+| 段 | 実行 | 結果 |
+| --- | --- | --- |
+| 赤 | 試験 7 本（上限超 × 長さの宣言あり／無し・最悪の大きさ・解釈できない × 3・JSON でない・非権限者 ＋ 壊れた本文）を足し、`dotnet test … --filter BffSecretItemEndpointTests`（本番コードは未変更） | **失敗 7 / 合格 31**。上限超は 2 通りとも `Expected … RequestEntityTooLarge {value: 413}, but found … OK {value: 200}`（**入力規則を満たす本文なので書き込みまで進んだ**）。壊れた JSON・JSON でない文字列は監査 0 件、`null` は監査の理由が `property-not-writable`。JSON でない Content-Type は監査 0 件（フレームワークの 415）。非権限者は `found … BadRequest {value: 400}`（**ロール判定より前に本文で落ちていた**）。最悪の大きさ（陽性対照）は修正前から緑 |
+| 緑 1 | 暗黙バインドをやめて手読みにし、`.Accepts<UpdateSecretItemRequest>("application/json")` を付けて実行 | **失敗 1 / 合格 65**。JSON でない Content-Type だけが監査 0 件のまま。🔴 **`Accepts` のメタデータがルーティングの `AcceptsMatcherPolicy` を働かせ、ハンドラより前に 415 を返していた。** 付けないことにし、コードに理由を書いた |
+| 緑 2 | `Accepts` を外して `dotnet test … --filter "BffSecretItemEndpointTests\|VaultKvClientTests\|SecretItem\|BffEndpointCompositionTests"` | **合格 66 / 失敗 0**（`dotnet format --verify-no-changes` がコメントの位置で WHITESPACE を 4 件出したため、コメントを群の先頭へ移した） |
+| 検査 | `check-bff-authz-docs.js` / `check-openapi-dto-drift.js` | OK（107 端点の実効ロールが一致／同名 84 件のプロパティ集合が一致） |
+| 再生成 | `pnpm run codegen` | `secret-items.ts` だけ更新（413 / 415 の応答型） |
+
+（フォローアップ 7 は実装時に記入する）
 
 ## 検証
 

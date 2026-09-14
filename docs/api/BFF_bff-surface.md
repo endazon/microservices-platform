@@ -181,7 +181,7 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | POST | `/bff/admin/users/{userId}/disable` | **admin のみ** | —| `useBffUserAdminDisableUser`（**無効化と全セッション失効は 1 つの操作である**。後段の 404 を**そのまま**返す） |
 | POST | `/bff/admin/users/{userId}/enable` | **admin のみ** | —| `useBffUserAdminEnableUser`（セッションは復活しない） |
 | GET | `/bff/secrets` | **admin / operator**（未認証 401・権限外 403。拒否も監査する） | —| `useBffSecretItemsList`（秘密情報の項目の一覧。🔴 **値の列は無い**。状態は「版がある／無い／取れない」の 3 値で、**「版がある」はプロパティに空でない値が入っていることを保証しない**。保管先が未構成・不達なら **503**（空の一覧で返さない）） |
-| PUT | `/bff/secrets/{item}` | **admin / operator**（同上） | —| `useBffSecretItemsUpdate`（**1 回に 1 プロパティだけ**を部分更新で書く。一覧に無い項目・書けないプロパティは **400**（404 にしない）。項目の現在の版が保管先で削除されていれば **409**（書かない。コンソールで版を戻してから書き直す）。保管先が拒否 502・未構成／不達 503。🔴 **値を読み出す口は無い**。値は監査・ログ・応答に残らない） |
+| PUT | `/bff/secrets/{item}` | **admin / operator**（同上） | —| `useBffSecretItemsUpdate`（**1 回に 1 プロパティだけ**を部分更新で書く。一覧に無い項目・書けないプロパティは **400**（404 にしない）。項目の現在の版が保管先で削除されていれば **409**（書かない。コンソールで版を戻してから書き直す）。本文は 64 KiB までで、超過 413・JSON でない 415・解釈できない 400（いずれもロール判定の後に読み、拒否を監査する）。保管先が拒否 502・未構成／不達 503。🔴 **値を読み出す口は無い**。値は監査・ログ・応答に残らない） |
 | GET | `/bff/wiki/pages` | **認証必須・ロールは問わない**（`x-roles: []`）。可視性を決めるのは役割ではなく属性ベースの権限であり、許可が無ければ **200 ＋ 空**（deny-by-default） | —| `useBffWikiPageList` |
 | GET | `/bff/wiki/search` | 同上。**絞り込みは指定されたときだけ後段へ載る**（既定・上限は後段が唯一の情報源）。委譲先の故障は **502**（空で隠さない） | —| `useBffWikiSearch` |
 | GET | `/bff/wiki/pages/{slug}` | 同上。**権限外・不存在・非公開化はいずれも 404**（存在秘匿。403 を返さない） | —| `useBffWikiPageBySlug` |

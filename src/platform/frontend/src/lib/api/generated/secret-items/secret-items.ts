@@ -186,6 +186,16 @@ export type bffSecretItemsUpdateResponse409 = {
   status: 409
 }
 
+export type bffSecretItemsUpdateResponse413 = {
+  data: ProblemDetails
+  status: 413
+}
+
+export type bffSecretItemsUpdateResponse415 = {
+  data: ProblemDetails
+  status: 415
+}
+
 export type bffSecretItemsUpdateResponse502 = {
   data: ProblemDetails
   status: 502
@@ -199,7 +209,7 @@ export type bffSecretItemsUpdateResponse503 = {
 export type bffSecretItemsUpdateResponseSuccess = (bffSecretItemsUpdateResponse200) & {
   headers: Headers;
 };
-export type bffSecretItemsUpdateResponseError = (bffSecretItemsUpdateResponse400 | bffSecretItemsUpdateResponse401 | bffSecretItemsUpdateResponse403 | bffSecretItemsUpdateResponse409 | bffSecretItemsUpdateResponse502 | bffSecretItemsUpdateResponse503) & {
+export type bffSecretItemsUpdateResponseError = (bffSecretItemsUpdateResponse400 | bffSecretItemsUpdateResponse401 | bffSecretItemsUpdateResponse403 | bffSecretItemsUpdateResponse409 | bffSecretItemsUpdateResponse413 | bffSecretItemsUpdateResponse415 | bffSecretItemsUpdateResponse502 | bffSecretItemsUpdateResponse503) & {
   headers: Headers;
 };
 
@@ -218,6 +228,8 @@ export const getBffSecretItemsUpdateUrl = (item: string,) => {
  * Vault へは `PATCH`（`application/merge-patch+json`）で書き、同じ KV の他のプロパティを消さない。
  * KV が無いときだけ `cas=0`（存在しないときだけ作る）で作る。
  * KV の現在版が削除・破棄されているときは書かずに 409 を返す（IADR-0454 決定 1。BFF の権限を広げない）。
+ * 本文は **64 KiB（65,536 バイト）まで**。ロール判定と allowlist の判定の後に読み、超過（413）・JSON でない（415）・
+ * 解釈できない（400）はいずれも監査へ `denied` で残る（IADR-0454 決定 2）。
  * 更新の理由（任意）は監査ログへ残る。🔴 **値・値の長さは監査・ログ・応答のどこにも残らない。**
  * @summary SC-22 主要素 2: 1 プロパティだけを書く（KV v2 の部分更新）
  */
