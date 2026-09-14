@@ -74,7 +74,7 @@ issues: [#1411, #1467]
 | T-30 | 保留・対象外を含むファイル | 読み込む | 一覧に入るのは `items[]` だけ | `items[]` だけを読む | 自動 |
 | T-31 | 書ける／書けないの交差・ワイルドカード・`..`・空・壊れた JSON | 読み込む | いずれも例外（起動しない） | fail-closed | 自動 |
 | T-32 | 保管先の権限ファイル | path を数える | 項目集合の data ＋ metadata と**完全一致**（多くも少なくもない） | 完全一致パス | 自動 |
-| T-33 | 同上 | capability を見る | data は create / patch / update、metadata は read だけ。ワイルドカード・list・delete・destroy・sudo が無い | 値を読み返せない権限 | 自動 |
+| T-33 | 同上 | capability を見る | data は create / patch だけ（全置換の update も無い）、metadata は read だけ。ワイルドカード・list・delete・destroy・sudo が無い | 値を読み返せず、KV を全置換できない権限 | 自動 |
 | T-34 | 同上 | 保留・対象外のパスを探す | 無い（陽性対照: 対象の項目は在る） | 集合の外へ書けない | 自動 |
 | T-35 | 初期化スクリプト | ロールの束縛先を見る | 専用 SA `bff`・名前空間 `microservices-platform` だけ。`default` を含まない。同期側のロールに相乗りしない | 専用 SA・同期は読み取り専用のまま | 自動 |
 | T-36 | ブラウザ・未認証 | 画面へ行く | ログインへ | 認証 | 自動（E2E） |
