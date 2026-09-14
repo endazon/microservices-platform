@@ -161,6 +161,14 @@ public static class SecretItemBffEndpoints
                         statusCode: StatusCodes.Status502BadGateway,
                         type: ProblemTypePrefix + "vault-rejected",
                         title: "秘密情報の保管先（Vault）が書き込みを受け付けませんでした。");
+                case VaultWriteOutcome.CurrentVersionDeleted:
+                    // IADR-0454 決定 1 (#1467): 現在版が Vault で削除・破棄されている。🔴 **権限を広げて書かない。**
+                    // 運用者はコンソールで版を復元してから画面で更新し直す（運用 Runbook の失敗の分岐）。
+                    audit.Record(UpdateAction, subject, "failed", $"{target} reason=current-version-deleted");
+                    return Results.Problem(
+                        statusCode: StatusCodes.Status409Conflict,
+                        type: ProblemTypePrefix + "current-version-deleted",
+                        title: "この項目の現在の版は保管先（Vault）で削除されているため、画面から書き込めません。");
                 case VaultWriteOutcome.NotConfigured:
                     audit.Record(UpdateAction, subject, "failed", $"{target} reason=vault-not-configured");
                     return NotConfiguredProblem();
@@ -183,6 +191,7 @@ public static class SecretItemBffEndpoints
         }).WithName("BffSecretItemsUpdate")
           .Produces<SecretItemWriteResultDto>()
           .ProducesValidationProblem()
+          .ProducesProblem(StatusCodes.Status409Conflict)
           .ProducesProblem(StatusCodes.Status502BadGateway)
           .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
@@ -247,6 +256,8 @@ public static class SecretItemBffEndpoints
     {
         VaultMetadataState.Present => "set",
         VaultMetadataState.Absent => "notSet",
+        // IADR-0454 決定 1: 削除・破棄も一覧では「未設定」のまま（状態の値域は変えない。書き込みで区別する）。
+        VaultMetadataState.Deleted => "notSet",
         _ => "unavailable",
     };
 

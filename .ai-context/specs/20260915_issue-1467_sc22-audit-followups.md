@@ -169,7 +169,17 @@ MSP#1466（develop `eed1ff24`）で SC-22 の画面 → BFF → Vault が着地�
 
 ## 赤 → 緑の記録
 
-（実装時に記入する）
+### フォローアップ 5（削除済みの版への書き込み）
+
+| 段 | 実行 | 結果 |
+| --- | --- | --- |
+| 赤 1 | FakeVault を実 Vault に合わせ（削除・破棄への `PATCH` 404／既存 KV への `POST` 403）、端点の試験を足した時点で `dotnet test … --filter BffSecretItemEndpointTests`（本番コードは未変更） | **失敗 2 / 合格 28**。`Expected response.StatusCode to be HttpStatusCode.Conflict {value: 409}, but found HttpStatusCode.BadGateway {value: 502}`（削除・破棄の両方） |
+| 赤 2 | 同じ時点で `vitest run knowledge/frontend/src/features/sc22-secrets` | **失敗 1 / 合格 8**。受け取った文言は境界層の title そのまま（「……削除されているため、画面から書き込めません。」）で、「削除されています」「復元」「値は保存されていません」が無い |
+| 赤 3 | 列挙の値だけを足し（振る舞いは未変更）、`VaultKvClientTests` を足して実行 | **失敗 2 / 合格 2**。`Expected metadata.State to be VaultMetadataState.Deleted {value: 3}, but found VaultMetadataState.Absent {value: 1}`。陽性対照（不在は作る・在れば metadata を読まずに部分更新）は緑 |
+| 緑 | クライアント・端点・SPA を直して `dotnet test … --filter "BffSecretItemEndpointTests\|VaultKvClientTests\|SecretItem"` と vitest | **合格 52 / 失敗 0**、**合格 9 / 失敗 0** |
+| 再生成 | `pnpm run codegen` → `secret-items.ts` だけ更新（409 の応答型）。`pnpm run i18n` → 初回は en の未翻訳 1 件で compile が失敗し、訳を入れて再実行で **Missing 0** |
+
+（フォローアップ 6・7 は実装時に記入する）
 
 ## 検証
 

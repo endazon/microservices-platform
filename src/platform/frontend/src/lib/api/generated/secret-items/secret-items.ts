@@ -181,6 +181,11 @@ export type bffSecretItemsUpdateResponse403 = {
   status: 403
 }
 
+export type bffSecretItemsUpdateResponse409 = {
+  data: ProblemDetails
+  status: 409
+}
+
 export type bffSecretItemsUpdateResponse502 = {
   data: ProblemDetails
   status: 502
@@ -194,7 +199,7 @@ export type bffSecretItemsUpdateResponse503 = {
 export type bffSecretItemsUpdateResponseSuccess = (bffSecretItemsUpdateResponse200) & {
   headers: Headers;
 };
-export type bffSecretItemsUpdateResponseError = (bffSecretItemsUpdateResponse400 | bffSecretItemsUpdateResponse401 | bffSecretItemsUpdateResponse403 | bffSecretItemsUpdateResponse502 | bffSecretItemsUpdateResponse503) & {
+export type bffSecretItemsUpdateResponseError = (bffSecretItemsUpdateResponse400 | bffSecretItemsUpdateResponse401 | bffSecretItemsUpdateResponse403 | bffSecretItemsUpdateResponse409 | bffSecretItemsUpdateResponse502 | bffSecretItemsUpdateResponse503) & {
   headers: Headers;
 };
 
@@ -212,6 +217,7 @@ export const getBffSecretItemsUpdateUrl = (item: string,) => {
  * **1 回の呼び出しで書くのは 1 プロパティだけ**である（一括再投入の口は無い）。
  * Vault へは `PATCH`（`application/merge-patch+json`）で書き、同じ KV の他のプロパティを消さない。
  * KV が無いときだけ `cas=0`（存在しないときだけ作る）で作る。
+ * KV の現在版が削除・破棄されているときは書かずに 409 を返す（IADR-0454 決定 1。BFF の権限を広げない）。
  * 更新の理由（任意）は監査ログへ残る。🔴 **値・値の長さは監査・ログ・応答のどこにも残らない。**
  * @summary SC-22 主要素 2: 1 プロパティだけを書く（KV v2 の部分更新）
  */

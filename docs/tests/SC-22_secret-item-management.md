@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-05, NFR-18, SC-22]
 adrs: [ADR-0032, ADR-0042, ADR-0095]
-iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0135, IADR-0433, IADR-0453]
-specs: [20260914_issue-1411_sc22-secret-injection-screen]
-issues: [#1411]
+iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0135, IADR-0433, IADR-0453, IADR-0454]
+specs: [20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups]
+issues: [#1411, #1467]
 -->
 
 # テスト仕様書: 秘密情報・接続設定の管理
@@ -24,7 +24,7 @@ issues: [#1411]
 
 | 事項 | 理由・送り先 |
 | --- | --- |
-| 🔴 **実 Vault への疎通** | 自動試験は**保管先の偽物**（k8s 認証・KV v2 の metadata / 部分更新 / 作成を写したもの）に対する固定である。**「緑である」ことは「稼働クラスタで書ける」ことを意味しない。** 稼働クラスタでの確認は手動（T-40）で行う |
+| 🔴 **実 Vault への疎通** | 自動試験は**保管先の偽物**（k8s 認証・KV v2 の metadata / 部分更新 / 作成を写したもの。削除・破棄された版への部分更新は 404、既に在る項目への作成は権限不足の 403 を返す）に対する固定である。**「緑である」ことは「稼働クラスタで書ける」ことを意味しない。** 稼働クラスタでの確認は手動（T-40）で行う |
 | 同期（保管先 → 外部シークレット同期 → Secret）の反映 | 別の経路（読み取り専用の同期）であり、本画面は触れない。反映の確認は運用 Runbook の手順で行う |
 | 監査ログの保持・閲覧 | 記録は構造化ログであり、閲覧はログ基盤側 |
 
@@ -80,14 +80,18 @@ issues: [#1411]
 | T-36 | ブラウザ・未認証 | 画面へ行く | ログインへ | 認証 | 自動（E2E） |
 | T-37 | ブラウザ・運用者 | 画面へ行く | 見出し・左ナビ・未設定の表示が出る | 到達 | 自動（E2E） |
 | T-38 | ブラウザ・他のロール | 画面へ行く | 未検出画面。左ナビにも出ず、一覧を呼ばない | 存在秘匿 | 自動（E2E） |
+| T-41 | 現在の版が削除・破棄された項目 | 更新 | **409**（削除済みを示す種別）。失敗が監査に残り、**作成の要求を送らず**、保管先の中身と削除状態は変わらず、最終更新者の記録を作らない。一覧は「未設定」のまま | 削除済みの版へ書かない・原因を見せる | 自動 |
+| T-42 | 同上（保管先クライアント単体） | metadata の取得と書き込み | 削除・破棄のどちらでも「現在の版が削除されている」を返し、作成の要求を送らない。項目が無いときは従来どおり作る（陽性対照）。在るときは metadata を読まずに部分更新する | 同上 | 自動 |
+| T-43 | 更新フォーム | 更新が 409 で失敗する | 「削除されています」「復元」「値は保存されていません」を出す。境界層の日本語の見出しをそのまま出さない | 次の一手を見せる | 自動 |
 | T-40 | 稼働クラスタ（保管先・同期あり） | 画面から 1 プロパティを更新し、同期後の Secret を長さだけで確かめる | 更新したプロパティの長さが一致し、同居するキーが減っていない | 稼働での成立 | 手動（未実施） |
 
 ## 自動試験の所在
 
 | 区分 | ファイル | 対応 |
 | --- | --- | --- |
-| 画面 | `src/knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.test.tsx` | T-01〜T-09 |
-| 境界層（端点） | `src/platform/backend/Bff/Platform.Bff.Tests/BffSecretItemEndpointTests.cs` | T-10〜T-28 |
+| 画面 | `src/knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.test.tsx` | T-01〜T-09・T-43 |
+| 境界層（端点） | `src/platform/backend/Bff/Platform.Bff.Tests/BffSecretItemEndpointTests.cs` | T-10〜T-28・T-41 |
+| 境界層（保管先クライアント） | `src/platform/backend/Bff/Platform.Bff.Tests/VaultKvClientTests.cs` | T-42 |
 | 境界層（項目集合） | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemCatalogTests.cs` | T-29〜T-31 |
 | 保管先の権限の字面 | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemVaultPolicyTests.cs` | T-32〜T-35 |
 | ブラウザ | `src/platform/frontend/e2e/sc22-secrets.smoke.spec.ts` | T-36〜T-38 |

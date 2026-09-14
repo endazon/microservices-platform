@@ -203,6 +203,41 @@ describe('SecretItemManagementPage (SC-22)', () => {
     expect(confirmation).toHaveValue('');
   });
 
+  // IADR-0453 フォローアップ 5, IADR-0454 決定 1 (#1467): 現在の版が保管先で削除されている（409）ときは、
+  // 原因と次の一手（コンソールで版を復元してから更新し直す）と「値は保存されていない」を出す。
+  // 🔴 境界層の日本語の title をそのまま出す実装では「復元」も「値は保存されていません」も出ない（変異の検出点）。
+  it('explains a deleted current version (409) and tells the operator to restore it first', async () => {
+    mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        const title =
+          'この項目の現在の版は保管先（Vault）で削除されているため、画面から書き込めません。';
+        return Promise.reject(
+          ApiError.fromStatus(409, [title], {
+            type: 'urn:microservices-platform:secret-items:current-version-deleted',
+            title,
+            status: 409,
+          }),
+        );
+      }
+      if (String(path) === '/secrets') return Promise.resolve(jsonResponse(ITEMS));
+      return Promise.resolve(jsonResponse([]));
+    });
+    const user = userEvent.setup();
+    await renderPage();
+    const form = within(await openForm(user, 'メール送信（SMTP）の認証情報'));
+
+    await user.type(form.getByLabelText('新しい値'), PLACEHOLDER);
+    await user.type(form.getByLabelText('新しい値（確認のためもう一度）'), PLACEHOLDER);
+    await user.click(form.getByRole('button', { name: 'このプロパティを更新する' }));
+
+    const alert = await form.findByTestId('secret-update-error');
+    expect(alert).toHaveTextContent('削除されています');
+    expect(alert).toHaveTextContent('復元');
+    expect(alert).toHaveTextContent('値は保存されていません');
+    expect(alert).not.toHaveTextContent(PLACEHOLDER);
+    expect(form.queryByTestId('secret-update-done')).toBeNull();
+  });
+
   // IADR-0453 決定 5: 保管先に届かない（503）ときは失敗を見せ、空の一覧に縮退しない。
   it('shows the vault failure instead of an empty list when the list returns 503', async () => {
     mocks.apiRequest.mockImplementation(() => Promise.reject(ApiError.fromStatus(503)));

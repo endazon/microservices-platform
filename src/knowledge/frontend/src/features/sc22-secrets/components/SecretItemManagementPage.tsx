@@ -330,11 +330,17 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
 const UPDATE_UNAVAILABLE = msg`秘密情報の保管先（Vault）が構成されていないか、接続できません。値は保存されていません。`;
 const UPDATE_REJECTED = msg`秘密情報の保管先（Vault）が書き込みを受け付けませんでした。値は保存されていません。`;
 const UPDATE_FAILED = msg`更新できませんでした。値は保存されていません。`;
+// IADR-0454 決定 1 (#1467): 現在の版が保管先で削除・破棄されている（409）。一覧では「未設定」と出る状態であり、
+// 🔴 **画面は権限を広げて削除済みの版の上へ書かない**。次の一手（コンソールで版を復元する）を示す。
+// 境界層の日本語の title をそのまま出さない（en ロケールで日本語が混ざる）。
+const UPDATE_CURRENT_VERSION_DELETED = msg`この項目の現在の版は保管先（Vault）で削除されています。画面からは削除された版へ書き込めないため、運用 Runbook の手順でコンソールから版を復元してから、もう一度更新してください。値は保存されていません。`;
 
 function updateErrorMessage(
   error: unknown,
   resolve: (message: MessageDescriptor) => string,
 ): string {
+  if (error instanceof ApiError && error.status === 409)
+    return resolve(UPDATE_CURRENT_VERSION_DELETED);
   if (error instanceof ApiError && error.status === 503) return resolve(UPDATE_UNAVAILABLE);
   if (error instanceof ApiError && error.status === 502) return resolve(UPDATE_REJECTED);
   return toMessages(error, resolve(UPDATE_FAILED)).join(' / ');

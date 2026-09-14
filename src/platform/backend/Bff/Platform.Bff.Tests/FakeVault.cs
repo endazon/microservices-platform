@@ -9,8 +9,10 @@ namespace Platform.Bff.Tests;
 // SC-22, IADR-0433 決定 1・2, IADR-0453 決定 4・5・7 (#1411): Vault（KV v2 ＋ k8s auth）の偽物。
 //
 // 🔴 **実 Vault の権限の形を写す**: data の GET（値の読み出し）は 403 を返す —— BFF が値を読みに行く実装へ
-// 変わったら、ここで落ちる。PATCH は `application/merge-patch+json` 以外を 415 で拒み、KV が無ければ 404。
-// POST は `options.cas=0` のとき既存 KV を拒む（400）。
+// 変わったら、ここで落ちる。PATCH は `application/merge-patch+json` 以外を 415 で拒み、KV が無いか
+// **現在版が削除・破棄されていれば 404**（KV v2 の patch は削除済みの版に効かない）。
+// IADR-0454 決定 1 (#1467): 🔴 **POST は metadata が在る KV に対して `cas` に関係なく 403**。実 Vault は既存 path への
+// POST を `update` として権限判定し、BFF の policy に `update` は無い（IADR-0453 決定 10）。
 public sealed class FakeVault
 {
     public const string Address = "http://vault.test:8200";
@@ -25,6 +27,7 @@ public sealed class FakeVault
         public Dictionary<string, string> Data { get; } = new(StringComparer.Ordinal);
         public DateTimeOffset CreatedAt { get; set; }
         public bool Deleted { get; set; }
+        public bool Destroyed { get; set; }
     }
 
     private int _loginCount;
@@ -62,6 +65,7 @@ public sealed class FakeVault
         kv.Version++;
         kv.CreatedAt = new DateTimeOffset(2026, 9, 14, 1, 0, kv.Version, TimeSpan.Zero);
         kv.Deleted = false;
+        kv.Destroyed = false;
         return kv;
     }
 
@@ -122,7 +126,7 @@ public sealed class FakeVault
                             {
                                 ["created_time"] = kv.CreatedAt.ToString("O"),
                                 ["deletion_time"] = deletion,
-                                ["destroyed"] = false,
+                                ["destroyed"] = kv.Destroyed,
                             },
                         },
                     },
@@ -144,16 +148,17 @@ public sealed class FakeVault
                 {
                     if (request.Content?.Headers.ContentType?.MediaType != VaultKvClient.MergePatchContentType)
                         return Json(HttpStatusCode.UnsupportedMediaType, """{"errors":["unsupported media type"]}""");
-                    if (!vault.Store.ContainsKey(kvPath)) return Json(HttpStatusCode.NotFound, """{"errors":[]}""");
+                    if (!vault.Store.TryGetValue(kvPath, out var existing) || existing.Deleted || existing.Destroyed)
+                        return Json(HttpStatusCode.NotFound, """{"errors":[]}""");
                     var kv = vault.Put(kvPath, [.. data.Select(p => (p.Key, p.Value))]);
                     return Written(kv);
                 }
 
                 if (request.Method == HttpMethod.Post)
                 {
-                    var cas = node["options"]?["cas"]?.GetValue<int>();
-                    if (cas == 0 && vault.Store.ContainsKey(kvPath))
-                        return Json(HttpStatusCode.BadRequest, """{"errors":["check-and-set parameter did not match the current version"]}""");
+                    // 🔴 metadata が在る path への POST は `update`（policy に無い）。cas の検査より前に権限で拒まれる。
+                    if (vault.Store.ContainsKey(kvPath))
+                        return Json(HttpStatusCode.Forbidden, """{"errors":["1 error occurred:\n\t* permission denied\n\n"]}""");
                     var kv = vault.Put(kvPath, [.. data.Select(p => (p.Key, p.Value))]);
                     return Written(kv);
                 }

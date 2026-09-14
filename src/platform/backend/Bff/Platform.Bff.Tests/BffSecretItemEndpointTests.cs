@@ -221,6 +221,43 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
         body.RootElement.GetProperty("data").EnumerateObject().Select(p => p.Name).Should().Equal("password");
     }
 
+    // SC-22, IADR-0453 フォローアップ 5, IADR-0454 決定 1 (#1467): 現在版がソフト削除・破棄された KV へは書かない。
+    // 🔴 409 と区別した problem type・監査理由で返し、`POST`（metadata が在る path では `update` を要し 403 になる）を送らない。
+    // 陽性対照: KV が無いときは `cas=0` で作る（`Update_creates_the_kv_with_cas_zero_only_when_it_is_absent`）。
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Update_on_a_kv_whose_current_version_is_deleted_returns_409_without_posting(bool destroyed)
+    {
+        var kv = _factory.Vault.Put("msp/wikijs-sync", ("apiKey", ExistingOtherValue));
+        if (destroyed) kv.Destroyed = true;
+        else kv.Deleted = true;
+
+        using var response = await SendAsync(Put("wikijs-sync", new { property = "apiKey", value = PlaceholderValue }));
+        var raw = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        using (var problem = JsonDocument.Parse(raw))
+            problem.RootElement.GetProperty("type").GetString()
+                .Should().Be("urn:microservices-platform:secret-items:current-version-deleted");
+        raw.Should().NotContain(PlaceholderValue);
+
+        _factory.RecordedAuditEntries.Where(e => e.Action == SecretItemBffEndpoints.UpdateAction)
+            .Should().ContainSingle()
+            .Which.Should().Be((SecretItemBffEndpoints.UpdateAction, "test-user", "failed",
+                (string?)"item=wikijs-sync property=apiKey reason=current-version-deleted"));
+
+        // 🔴 作成（POST）を送らず、Vault の中身も削除状態も変えず、最終更新者の記録も作らない。
+        _factory.Vault.Requests.Should().NotContain(r => r.Method == "POST");
+        kv.Version.Should().Be(1);
+        kv.Data["apiKey"].Should().Be(ExistingOtherValue);
+        (destroyed ? kv.Destroyed : kv.Deleted).Should().BeTrue();
+        _factory.SecretWriteRecords.Records.Should().BeEmpty();
+
+        // 一覧は従来どおり「未設定」と出す（状態の値域は変えない）。
+        (await ListAsync())["wikijs-sync"].Status.Should().Be("notSet");
+    }
+
     // SC-22, IADR-0453 決定 7: ログインは使い回し、トークンが無効になったら 1 度だけ取り直す。
     [Fact]
     public async Task Vault_token_is_reused_and_renewed_once_on_403()

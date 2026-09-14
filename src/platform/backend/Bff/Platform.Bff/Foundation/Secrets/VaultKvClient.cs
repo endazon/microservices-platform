@@ -59,16 +59,23 @@ public enum VaultMetadataState
     /// <summary>KV に削除されていない現在版がある。</summary>
     Present,
 
-    /// <summary>KV が無い（404）か、現在版が削除・破棄されている。</summary>
+    /// <summary>KV が無い（404）か、`current_version` が 0。</summary>
     Absent,
 
     /// <summary>取れない（403・5xx・不達・解釈不能）。</summary>
     Unavailable,
+
+    /// <summary>
+    /// metadata は在り、現在版が削除（`deletion_time`）または破棄（`destroyed`）されている（IADR-0454 決定 1）。
+    /// 一覧では `Absent` と同じく未設定と出すが、**書き込みでは区別する** —— この KV へは `cas=0` で作れない。
+    /// </summary>
+    Deleted,
 }
 
 public sealed record VaultMetadata(VaultMetadataState State, int? CurrentVersion, DateTimeOffset? CurrentVersionCreatedAt)
 {
     public static readonly VaultMetadata Absent = new(VaultMetadataState.Absent, null, null);
+    public static readonly VaultMetadata Deleted = new(VaultMetadataState.Deleted, null, null);
     public static readonly VaultMetadata Unavailable = new(VaultMetadataState.Unavailable, null, null);
 }
 
@@ -82,6 +89,13 @@ public enum VaultWriteOutcome
 
     /// <summary>Vault が書き込みを拒んだ（403 等。policy と allowlist の食い違い）。</summary>
     Rejected,
+
+    /// <summary>
+    /// KV の現在版が削除・破棄されていて、画面からは書けない（IADR-0454 決定 1）。
+    /// 🔴 BFF の権限（`create` / `patch`）では削除済みの版の上へ書く手段が無く、権限は広げない。
+    /// 運用者がコンソールで版を復元してから書き直す。
+    /// </summary>
+    CurrentVersionDeleted,
 }
 
 public sealed record VaultWriteResult(VaultWriteOutcome Outcome, int Version = 0, DateTimeOffset UpdatedAt = default);
@@ -158,9 +172,26 @@ public sealed class VaultKvClient(
             if (patched is not null)
                 return patched;
 
+            // PATCH の 404 は「KV が無い」と「現在版が削除・破棄されている」の 2 通りある。metadata（値を持たない）で見分ける。
+            // IADR-0454 決定 1 (#1467): 🔴 **削除・破棄された KV へは POST を送らない。** metadata が在る path への POST を
+            // Vault は `update` として権限判定し、BFF の policy に `update` は無い（IADR-0453 決定 10）。
+            // 送れば 403 になり、利用者には原因の分からない 502 が返っていた。
+            var metadata = await ReadMetadataAsync(mount, path, ct);
+            switch (metadata.State)
+            {
+                case VaultMetadataState.Deleted:
+                    return new VaultWriteResult(VaultWriteOutcome.CurrentVersionDeleted);
+                case VaultMetadataState.Unavailable:
+                    return new VaultWriteResult(VaultWriteOutcome.Unavailable);
+                case VaultMetadataState.Present:
+                    // PATCH と metadata の間に誰かが作った・復元した。部分更新を 1 度だけやり直す。
+                    return await PatchAsync(mount, path, property, value, ct) ?? new VaultWriteResult(VaultWriteOutcome.Rejected);
+            }
+
             // KV がまだ無い（PATCH は既存の KV にしか効かない）。
             // 🔴 **`cas=0` ＝「存在しないときだけ作る」。** 競合して誰かが先に作っていたら 400 が返り、
             // 既存の KV を全置換しない。その場合は部分更新を 1 度だけやり直す。
+            // （IADR-0454 帰結: `update` を持たない policy の下では、この競合は 400 ではなく 403 ＝ Rejected として現れる。）
             var created = await CreateIfAbsentAsync(mount, path, property, value, ct);
             if (created is not null)
                 return created;
@@ -319,7 +350,7 @@ public sealed class VaultKvClient(
         var deleted = version.TryGetProperty("deletion_time", out var deletion)
                       && !string.IsNullOrEmpty(deletion.GetString());
         var destroyed = version.TryGetProperty("destroyed", out var d) && d.ValueKind == JsonValueKind.True;
-        if (deleted || destroyed) return VaultMetadata.Absent;
+        if (deleted || destroyed) return VaultMetadata.Deleted;
 
         DateTimeOffset? createdAt = version.TryGetProperty("created_time", out var created)
                                     && DateTimeOffset.TryParse(created.GetString(), out var parsed)
