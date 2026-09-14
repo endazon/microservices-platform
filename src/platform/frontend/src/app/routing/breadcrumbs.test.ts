@@ -249,6 +249,7 @@ describe('registered breadcrumbs (実アプリの宣言)', () => {
       '/my/notes',
       '/my/obsidian',
       '/ai-suggestions',
+      '/admin/secrets',
     ];
     // 本計画に属さない可変ユニット（AST。IADR-0125 決定 9）の画面は、ユニットが宣言を公開した時点で
     // 合成点経由でここへ載る（AST#791 以降の 4 画面）。**計画の 17 画面とは別の集合**なので、
