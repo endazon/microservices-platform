@@ -16,7 +16,8 @@ end-to-end 疎通**する。認証は **kubernetes auth**（静的 root トー�
 | `clustersecretstore-k8s.yaml` | 同名 `vault-backend` の **kubernetes 認証版**（`ESO=1` で bootstrap 後に上書き適用） |
 | `vault-auth-rbac.yaml` | vault の**専用 SA `vault`**（vault-dev.yaml で作成）に `system:auth-delegator`（TokenReview）。default SA には付与しない（blast radius 限定） |
 | `policy-eso-read.hcl` | Vault policy `eso-read`（**MSP `secret/data/msp/*`＋AST `secret/data/ai-stock-trading/*`** の read・最小権限。store 共有のため両 path を許可） |
-| `bootstrap.sh` | k8s auth の enable/config＋policy＋role `eso`＋seed（`kubectl exec`・runtime・再実行可） |
+| `policy-bff-secret-write.hcl` | Vault policy `bff-secret-write`（SC-22 / #1411 / IADR-0433・IADR-0453）。**`deploy/bootstrap/sc22-secret-items.json` の `items[]` 4 KV だけ**に、data の `create`/`update`/`patch` と metadata の `read` を完全一致パスで与える。**ワイルドカード・data の `read`・`list`/`delete` なし**（一致は `Platform.Bff.Tests` の `SecretItemVaultPolicyTests` が固定） |
+| `bootstrap.sh` | k8s auth の enable/config＋policy `eso-read`・`bff-secret-write`＋role `eso`・`bff-secret-writer`（**後者は BFF 専用 SA `microservices-platform/bff` にだけ束縛**。`default` に束縛しない）＋seed（`kubectl exec`・runtime・再実行可） |
 | `externalsecret-llm.yaml` | ExternalSecret（Vault `secret/msp/llm-provider-credentials` → 既存 Secret・同一キー・PR-1） |
 | `externalsecret-minio.yaml` | ExternalSecret（`secret/msp/minio-credentials` → `minio-credentials` accessKey/secretKey・PR-2/IADR-0097） |
 | `externalsecret-wikijs-db.yaml` | ExternalSecret（`secret/msp/wikijs-db` → `wikijs-db` password・PR-2/IADR-0097） |
