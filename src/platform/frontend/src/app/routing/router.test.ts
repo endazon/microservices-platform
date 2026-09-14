@@ -48,6 +48,8 @@ const PLANNED_ROUTES: ReadonlyArray<readonly [string, string]> = [
   ['SC-20', '/my/obsidian'],
   // #918: SC-21 は既定の検索パラメータ（?state=pending）を持つが、木に載るのはパスだけである。
   ['SC-21', '/ai-suggestions'],
+  // #1411: SC-22 は運用者・システム管理者限定（RequireRole）だが、木に載るかどうかはロールと独立である。
+  ['SC-22', '/admin/secrets'],
 ];
 
 /**

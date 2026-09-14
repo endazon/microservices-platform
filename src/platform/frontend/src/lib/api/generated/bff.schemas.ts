@@ -2050,6 +2050,62 @@ export interface ReplaceUserRolesRequest {
   roles: string[];
 }
 
+/**
+ * set = KV に版がある（プロパティ単位の空欄は判定しない）／notSet = KV が無い・現在版が削除済み／unavailable = 取れない
+ */
+export type SecretItemStatusDtoStatus = typeof SecretItemStatusDtoStatus[keyof typeof SecretItemStatusDtoStatus];
+
+
+export const SecretItemStatusDtoStatus = {
+  set: 'set',
+  notSet: 'notSet',
+  unavailable: 'unavailable',
+} as const;
+
+/**
+ * SC-22 主要素 1・3: 秘密情報の項目の一覧の 1 行（KV 単位）。🔴 **値の項目を持たない。**
+ */
+export interface SecretItemStatusDto {
+  /** allowlist の項目名 */
+  item: string;
+  /** Vault の KV パス（マウントを除く。例 msp/llm-provider-credentials） */
+  vaultPath: string;
+  /** 画面から書けるプロパティ名（書けないプロパティは含まない） */
+  properties: string[];
+  /** set = KV に版がある（プロパティ単位の空欄は判定しない）／notSet = KV が無い・現在版が削除済み／unavailable = 取れない */
+  status: SecretItemStatusDtoStatus;
+  /** 現在版（status=set のときだけ） */
+  currentVersion?: number | null;
+  /** 現在版の作成時刻（status=set のときだけ） */
+  lastUpdatedAt?: string | null;
+  /** BFF が書いた版が現在版であるときだけ、その利用者名。それ以外は null（画面は「記録なし」） */
+  lastUpdatedBy?: string | null;
+}
+
+/**
+ * SC-22 入力/バリデーション: 1 プロパティだけを書く。値は書き込み専用で、どの応答にも返らない。
+ */
+export interface UpdateSecretItemRequest {
+  /** 書くプロパティ名（項目の properties のいずれか） */
+  property: string;
+  /** 新しい値（1〜8192 文字）。監査・ログに残らない */
+  value: string;
+  /** 更新の理由（任意・500 文字以内）。監査ログへ残る */
+  reason?: string | null;
+}
+
+/**
+ * SC-22: 書き込みの結果。**値は返さない。**
+ */
+export interface SecretItemWriteResultDto {
+  item: string;
+  property: string;
+  /** 書き込み後の版 */
+  version: number;
+  /** 書き込み後の版の作成時刻 */
+  updatedAt: string;
+}
+
 export type BffAuthLoginParams = {
 /**
  * ログイン後の戻り先。**自サイト内のパスに限る**（オープンリダイレクト防止）

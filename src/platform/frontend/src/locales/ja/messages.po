@@ -106,6 +106,10 @@ msgstr "{title} を選択"
 msgid "{totalHits} 件（権限内のみ表示）"
 msgstr "{totalHits} 件（権限内のみ表示）"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "{writtenProperty} を更新しました（版 {writtenVersion}）。"
+msgstr "{writtenProperty} を更新しました（版 {writtenVersion}）。"
+
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "「{editingName}」のアカウントを無効化します。その利用者の全セッションが即座に失効し、作業中の画面もその場で使えなくなります。"
 msgstr "「{editingName}」のアカウントを無効化します。その利用者の全セッションが即座に失効し、作業中の画面もその場で使えなくなります。"
@@ -133,6 +137,10 @@ msgstr "「＋ ソース登録」から取り込み元を登録してくださ�
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "「＋ 新規登録」から最初の文書を登録してください。"
 msgstr "「＋ 新規登録」から最初の文書を登録してください。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "「設定済み」は保管先に値の版があることを示します。各プロパティに空でない値が入っているかは、値を読み出さないためこの画面では判定できません。最終更新者は、この画面から更新した版にだけ表示されます（コンソールから更新した版は「記録なし」）。"
+msgstr "「設定済み」は保管先に値の版があることを示します。各プロパティに空でない値が入っているかは、値を読み出さないためこの画面では判定できません。最終更新者は、この画面から更新した版にだけ表示されます（コンソールから更新した版は「記録なし」）。"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "← チャットに戻る"
@@ -303,6 +311,10 @@ msgstr "derived-from: 破線・矢印"
 msgid "embeds: 点線・矢印"
 msgstr "embeds: 点線・矢印"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "Git に置けない秘密情報（API キー・接続秘密・通知の webhook）を 1 項目ずつ投入・更新します。値は書き込み専用で、保存後はこの画面からも読み出せません。操作は監査ログに記録されます（値は記録されません）。"
+msgstr "Git に置けない秘密情報（API キー・接続秘密・通知の webhook）を 1 項目ずつ投入・更新します。値は書き込み専用で、保存後はこの画面からも読み出せません。操作は監査ログに記録されます（値は記録されません）。"
+
 #: platform/frontend/src/lib/auth/LoginPage.tsx
 msgid "Keycloak でサインイン"
 msgstr "Keycloak でサインイン"
@@ -388,6 +400,10 @@ msgstr "Wiki の検索に失敗しました。"
 msgid "Wiki を検索"
 msgstr "Wiki を検索"
 
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "Wiki 同期の API キー"
+msgstr "Wiki 同期の API キー"
+
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "Wiki 閲覧"
 msgstr "Wiki 閲覧"
@@ -460,6 +476,7 @@ msgstr "いまは、あなたの個人資料がすべて同期の対象です。
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 #: platform/frontend/src/app/routing/routeStates.tsx
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 #: platform/frontend/src/components/notifications/NotificationBell.tsx
@@ -625,6 +642,10 @@ msgstr "このトークンを表示できるのは今回だけです。閉じる
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "このフォルダを同期対象から外しますか？"
 msgstr "このフォルダを同期対象から外しますか？"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "このプロパティを更新する"
+msgstr "このプロパティを更新する"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
@@ -1197,6 +1218,10 @@ msgstr "ポリシー登録"
 msgid "まもなく完全削除（残り {days} 日）"
 msgstr "まもなく完全削除（残り {days} 日）"
 
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "メール送信（SMTP）の認証情報"
+msgstr "メール送信（SMTP）の認証情報"
+
 #: knowledge/frontend/src/features/sc10-operations/types/opsTools.ts
 msgid "メトリクス・コスト"
 msgstr "メトリクス・コスト"
@@ -1363,6 +1388,7 @@ msgstr "並び"
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "並べ替え"
 msgstr "並べ替え"
 
@@ -1597,6 +1623,10 @@ msgstr "候補を読み込み中…"
 msgid "値"
 msgstr "値"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "値は {MAX_VALUE_LENGTH} 文字以内で入力してください。"
+msgstr "値は {MAX_VALUE_LENGTH} 文字以内で入力してください。"
+
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "停止"
@@ -1624,6 +1654,7 @@ msgstr "入力してください。"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "入力を確認してください"
 msgstr "入力を確認してください"
 
@@ -1773,6 +1804,14 @@ msgstr "最新へ"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "最終同期"
 msgstr "最終同期"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "最終更新日時"
+msgstr "最終更新日時"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "最終更新者"
+msgstr "最終更新者"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 msgid "写像に無いソース側の利用者は、予約値 {UNRESOLVED_OWNER} になります。基盤の利用者は ログイン名で指定してください（存在しない利用者は保存できません）。"
@@ -1976,6 +2015,10 @@ msgstr "取り消す"
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "取り込みが済むとここに並びます。"
 msgstr "取り込みが済むとここに並びます。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "取得できない"
+msgstr "取得できない"
 
 #: platform/frontend/src/components/ui/QueryState.tsx
 msgid "取得に失敗しました。"
@@ -2221,6 +2264,10 @@ msgstr "変換結果の文書を開く"
 msgid "変更メモ"
 msgstr "変更メモ"
 
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "外部 LLM の API キー"
+msgstr "外部 LLM の API キー"
+
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "外部ツールの導線は未設定です。"
 msgstr "外部ツールの導線は未設定です。"
@@ -2434,6 +2481,10 @@ msgstr "履歴を確認中…"
 msgid "差分の有無は GitOps（Git と ArgoCD）の同期状況からも確認できます。"
 msgstr "差分の有無は GitOps（Git と ArgoCD）の同期状況からも確認できます。"
 
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "市場データ・経済指標・開示情報の API キーと、Discord 通知の webhook・トークンです。"
+msgstr "市場データ・経済指標・開示情報の API キーと、Discord 通知の webhook・トークンです。"
+
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "役に立たなかった"
 msgstr "役に立たなかった"
@@ -2614,6 +2665,7 @@ msgstr "提案の一覧を読み込み中…"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "操作"
 msgstr "操作"
 
@@ -2668,6 +2720,10 @@ msgstr "文書の詳細は表示できません。"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "文書はまだありません。"
 msgstr "文書はまだありません。"
+
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "文書を Wiki.js と同期するための接続キーです。"
+msgstr "文書を Wiki.js と同期するための接続キーです。"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "文書をアーカイブしました。"
@@ -2737,6 +2793,14 @@ msgstr "新しいお知らせが {count} 件あります"
 msgid "新しい個人資料を作成する"
 msgstr "新しい個人資料を作成する"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "新しい値"
+msgstr "新しい値"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "新しい値（確認のためもう一度）"
+msgstr "新しい値（確認のためもう一度）"
+
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 msgid "新規登録"
 msgstr "新規登録"
@@ -2804,13 +2868,41 @@ msgstr "既読にできませんでした"
 msgid "日付"
 msgstr "日付"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "更新"
+msgstr "更新"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "更新 — {itemName}"
+msgstr "更新 — {itemName}"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
 msgid "更新 {count}"
 msgstr "更新 {count}"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "更新しました"
+msgstr "更新しました"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 msgid "更新する"
 msgstr "更新する"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "更新するプロパティ"
+msgstr "更新するプロパティ"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "更新できませんでした。値は保存されていません。"
+msgstr "更新できませんでした。値は保存されていません。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "更新の理由（任意）"
+msgstr "更新の理由（任意）"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "更新の理由は {MAX_REASON_LENGTH} 文字以内で入力してください。"
+msgstr "更新の理由は {MAX_REASON_LENGTH} 文字以内で入力してください。"
 
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "更新日:"
@@ -2896,6 +2988,7 @@ msgid "未解決の同期競合"
 msgstr "未解決の同期競合"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "未設定"
 msgstr "未設定"
 
@@ -2977,6 +3070,10 @@ msgstr "条件を追加"
 msgid "株式自動売買"
 msgstr "株式自動売買"
 
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "株式自動売買の外部 API キーと通知"
+msgstr "株式自動売買の外部 API キーと通知"
+
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "棚卸しの残量は判断できません。空の一覧ではありません。"
 msgstr "棚卸しの残量は判断できません。空の一覧ではありません。"
@@ -2999,6 +3096,10 @@ msgstr "検索・チャット質問"
 #: knowledge/frontend/src/features/sc01-search/routes/sc01SearchRoute.ts
 msgid "検索・質問"
 msgstr "検索・質問"
+
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "検索・質問応答・分析で外部の LLM を呼び出すための API キーです。"
+msgstr "検索・質問応答・分析で外部の LLM を呼び出すための API キーです。"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "検索に失敗しました。"
@@ -3286,6 +3387,18 @@ msgstr "状態や種類の絞り込みを変えると、ほかの提案が見つ
 msgid "現在の指定先"
 msgstr "現在の指定先"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "理由は監査ログに残ります。値そのものは書かないでください。"
+msgstr "理由は監査ログに残ります。値そのものは書かないでください。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "用途"
+msgstr "用途"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "用途の説明が登録されていません。"
+msgstr "用途の説明が登録されていません。"
+
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 msgid "画像を読み込み中…"
 msgstr "画像を読み込み中…"
@@ -3378,6 +3491,10 @@ msgstr "矛盾はありません。まだ保存していません。"
 msgid "確認"
 msgstr "確認"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "確認のための入力が一致しません。"
+msgstr "確認のための入力が一致しません。"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "確認時刻"
 msgstr "確認時刻"
@@ -3385,6 +3502,31 @@ msgstr "確認時刻"
 #: platform/frontend/src/lib/auth/LoginPage.tsx
 msgid "社内ナレッジ検索・AI 回答プラットフォーム"
 msgstr "社内ナレッジ検索・AI 回答プラットフォーム"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+#: knowledge/frontend/src/features/sc22-secrets/routes/sc22SecretsRoute.tsx
+msgid "秘密情報・接続設定の管理"
+msgstr "秘密情報・接続設定の管理"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "秘密情報の保管先（Vault）が書き込みを受け付けませんでした。値は保存されていません。"
+msgstr "秘密情報の保管先（Vault）が書き込みを受け付けませんでした。値は保存されていません。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "秘密情報の保管先（Vault）が構成されていないか、接続できません。保管先の稼働を確認してください。"
+msgstr "秘密情報の保管先（Vault）が構成されていないか、接続できません。保管先の稼働を確認してください。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "秘密情報の保管先（Vault）が構成されていないか、接続できません。値は保存されていません。"
+msgstr "秘密情報の保管先（Vault）が構成されていないか、接続できません。値は保存されていません。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "秘密情報の項目の一覧"
+msgstr "秘密情報の項目の一覧"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "秘密情報の項目を取得できませんでした。"
+msgstr "秘密情報の項目を取得できませんでした。"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
@@ -3626,9 +3768,17 @@ msgstr "角丸四角（破線の輪郭）= 個人資料"
 msgid "記法"
 msgstr "記法"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "記録なし"
+msgstr "記録なし"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "設定した条件"
 msgstr "設定した条件"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "設定済み"
+msgstr "設定済み"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "許可値"
@@ -3685,6 +3835,10 @@ msgstr "認証"
 #: platform/frontend/src/lib/api/ApiError.ts
 msgid "認証が必要です。"
 msgstr "認証が必要です。"
+
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "認証基盤がパスワード再設定などの通知メールを送るための送信元アドレスと資格情報です（宛先ホスト・ポートは構成であり、ここでは扱いません）。"
+msgstr "認証基盤がパスワード再設定などの通知メールを送るための送信元アドレスと資格情報です（宛先ホスト・ポートは構成であり、ここでは扱いません）。"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "説明"
@@ -3954,6 +4108,7 @@ msgstr "重要"
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "閉じる"
 msgstr "閉じる"
 
@@ -4009,3 +4164,11 @@ msgstr "非公開"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 msgid "非対称"
 msgstr "非対称"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "項目"
+msgstr "項目"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "項目名"
+msgstr "項目名"

@@ -53,6 +53,7 @@ import {
   sc21AiSuggestionsNav,
   sc21AiSuggestionsBreadcrumb,
 } from './sc21-ai-suggestions';
+import { createSc22SecretsRoute, sc22SecretsNav, sc22SecretsBreadcrumb } from './sc22-secrets';
 
 // ADR-0031 / IADR-0124 決定 1: 本ユニットの画面を 1 本のタプルにして公開する。
 // platform の合成点は、このタプルをスプレッドして型付きルート木へ組み込む。
@@ -79,6 +80,7 @@ export const createKnowledgeRoutes = (shell: ShellRoute) =>
     createSc19PrivateNotesRoute(shell), // SC-19 個人資料管理（#451。本文編集は持たない）
     createSc20ObsidianSettingsRoute(shell), // SC-20 Obsidian 連携設定（#451）
     createSc21AiSuggestionsRoute(shell), // SC-21 AI 提案一覧（#918。承認は SC-03 経由）
+    createSc22SecretsRoute(shell), // SC-22 秘密情報・接続設定の管理（#1411。値は書き込み専用）
   ] as const;
 
 // 05_screens §共通シェル: 左ナビへ出す項目。グループ（利用者／個人／管理／運用）は各 feature が宣言する。
@@ -105,6 +107,8 @@ export const knowledgeNavItems: readonly PlanNavItem[] = [
   sc11ConfigNav,
   sc12McpClientsNav,
   sc17UsersNav,
+  // 05_screens §SC-22: 左ナビ「運用」グループ（運用者・システム管理者だけに出る）。
+  sc22SecretsNav,
 ];
 
 /**
@@ -135,4 +139,5 @@ export const knowledgeBreadcrumbs: readonly FeatureBreadcrumb[] = [
   sc19PrivateNotesBreadcrumb,
   sc20ObsidianSettingsBreadcrumb,
   sc21AiSuggestionsBreadcrumb,
+  sc22SecretsBreadcrumb,
 ];

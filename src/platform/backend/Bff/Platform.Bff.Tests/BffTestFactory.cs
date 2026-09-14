@@ -13,6 +13,7 @@ using System.Net.Http.Json;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Platform.Bff.Foundation.Secrets;
 
 namespace Platform.Bff.Tests;
 
@@ -21,6 +22,14 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-15 BFF テスト: 構成情報 API の集約対象の自己申告をスタブ化し、監査記録を捕捉する。
     public EffectiveCollection StubEffective { get; set; } = EffectiveCollection.Empty;
     public List<(string Action, string Subject, string Outcome)> RecordedAudits { get; } = [];
+
+    // SC-22 (#1411): 監査の detail まで捕捉する（**値が監査へ出ないこと**を測るため）。
+    // 既存の RecordedAudits は形を変えない（他のテストが 3 要素のタプルで読んでいる）。
+    public List<(string Action, string Subject, string Outcome, string? Detail)> RecordedAuditEntries { get; } = [];
+
+    // SC-22 (#1411): Vault KV v2 の偽物と、最終更新者の書き込み記録（Redis の代わり）。
+    public FakeVault Vault { get; } = new();
+    public InMemorySecretWriteRecordStore SecretWriteRecords { get; } = new();
 
     // FR-15 (#145): 即時ドリフト検出のアラート発火（IDriftAlertSink）を捕捉する。
     public List<DriftReportDto> AlertedReports { get; } = [];
@@ -540,7 +549,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ["Drift:Enabled"] = "false",
                 ["Config:GitCommit"] = "abc1234",
                 ["Config:AppliedAt"] = "2026-07-07T00:00:00Z",
-                ["Config:AppliedBy"] = "argocd"
+                ["Config:AppliedBy"] = "argocd",
+                // SC-22 (#1411): Vault の接続先（通信は FakeVault が受ける）。未構成の 503 は個別のテストが空へ上書きして測る。
+                ["Vault:Address"] = FakeVault.Address
             }));
 
         builder.ConfigureServices(services =>
@@ -604,6 +615,15 @@ public class BffTestFactory : WebApplicationFactory<Program>
             services.AddHttpClient("WikiService")
                 .ConfigurePrimaryHttpMessageHandler(() => new WikiStubHandler(this));
 
+            // SC-22 (#1411): Vault（KV v2 と k8s auth）を偽物へ差し替える。**クライアント本体（VaultKvClient）は本物が走る**
+            // —— PATCH の方式・Content-Type・本文の形・トークンの取り直しを要求の側から観測するため。
+            services.AddHttpClient(VaultKvClient.ClientName)
+                .ConfigurePrimaryHttpMessageHandler(() => Vault.CreateHandler());
+            services.RemoveAll<IServiceAccountTokenReader>();
+            services.AddSingleton<IServiceAccountTokenReader>(new FakeVault.TokenReader());
+            services.RemoveAll<ISecretWriteRecordStore>();
+            services.AddSingleton<ISecretWriteRecordStore>(SecretWriteRecords);
+
             // FR-10: /bff/dashboard/summary は管理系ロール（admin ＋ operator。#544）を要求する。テストでは Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
             services.AddAuthentication(TestAuthHandler.SchemeName)
@@ -637,8 +657,11 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-15: 監査記録を捕捉して検証可能にする。
     private sealed class RecordingAuditLogger(BffTestFactory owner) : IAuditLogger
     {
-        public void Record(string action, string subject, string outcome, string? detail = null) =>
+        public void Record(string action, string subject, string outcome, string? detail = null)
+        {
             owner.RecordedAudits.Add((action, subject, outcome));
+            owner.RecordedAuditEntries.Add((action, subject, outcome, detail));
+        }
     }
 
     private sealed class StubHandler(BffTestFactory owner) : HttpMessageHandler

@@ -7,6 +7,7 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Observability;
 using Platform.Bff.Composition;
+using Platform.Bff.Foundation.Secrets;
 using Platform.Bff.Foundation.Session;
 
 const string ServiceName = "microservices-platform.bff";
@@ -210,7 +211,14 @@ builder.Services.AddPlatformObjectStorage(builder.Configuration);
 // 在れば JwtBearer、無ければセッション Cookie。SPA はセッション方式（3b②③で切り替え済み）。
 builder.Services.AddBffSession(builder.Configuration);
 
+// SC-22, FR-05, ADR-0095 決定 3, IADR-0433, IADR-0453 (#1411): 秘密情報の投入（BFF → Vault の KV v2）。
+// allowlist（deploy/bootstrap/sc22-secret-items.json）・Vault クライアント・最終更新者の書き込み記録。
+builder.Services.AddSecretItemInjection();
+
 var app = builder.Build();
+
+// 🔴 IADR-0433 決定 3: allowlist を読めなければここで例外になり、BFF は起動しない（fail-closed）。
+app.EnsureSecretItemCatalogLoaded();
 
 app.UsePlatformMiddleware();
 

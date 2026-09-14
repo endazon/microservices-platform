@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-11
-updated: 2026-09-11
+updated: 2026-09-15
 ---
 <!-- trace:
 ids: [SC-22, SC-06, SC-15, FR-05, NFR-11, NFR-18]
 adrs: [ADR-0007, ADR-0032, ADR-0040, ADR-0042, ADR-0095]
-iadrs: [IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433]
-specs: [20260911_issue-1411_sc22-console-fallback-and-bff-vault-write]
+iadrs: [IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433, IADR-0453]
+specs: [20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen]
 issues: [#310, #438, #1102, #1411, planning#599]
 -->
 
@@ -32,7 +32,10 @@ issues: [#310, #438, #1102, #1411, planning#599]
 次の **すべて** に当てはまるときだけ実行する。
 
 - 秘密情報を **1 項目だけ**投入・更新する必要がある。
-- **製品の画面から投入できない。** 画面が未実装である／落ちている／到達できない、のいずれかである。
+- **製品の画面から投入できない。** 画面（[秘密情報・接続設定の管理](../screens/SC-22_secret-item-management.md)）が
+  落ちている／到達できない／保管先への書き込み権限（policy `bff-secret-write` と role `bff-secret-writer`）が
+  その環境に入っていない、のいずれかである。
+  ［2026-09-15 追記］画面は実装された。**まず画面を使うこと。** 画面で書いた更新は監査ログに残るが、本書の手順は残らない。
 - 対象の項目が **`deploy/bootstrap/sc22-secret-items.json` の `items[]` に載っている**。
 
 **実行してはいけない場合**:

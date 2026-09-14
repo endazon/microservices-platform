@@ -78,6 +78,10 @@ public static class BffEndpointComposition
         // platform 同居とする。**管理者限定**（05_screens §共通シェル「SC-09・SC-12・SC-17 =
         // システム管理者」）。**新規作成の口は持たない**（計画が本画面からの作成を禁じている）。
         new DelegateBffEndpointModule(a => a.MapUserAdminBffEndpoints()),
+        // Issue #1411, SC-22, FR-05, ADR-0095 決定 3, IADR-0433, IADR-0453: 秘密情報・接続設定の管理
+        // （BFF が Vault の KV v2 へ項目ごとに書く）。後段はサービスではなく Vault なので platform 同居とする。
+        // **運用者・システム管理者限定**。🔴 **値を読み出す口は持たない。**
+        new DelegateBffEndpointModule(a => a.MapSecretItemBffEndpoints()),
         // Issue #1445, FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1, IADR-0445: 共有先に指定する
         // 利用者の検索・表示名の引き当て（AuthorizationService の /authz/users/{lookup,resolve} へ
         // pass-through）。後段は platform ユニットなので platform 同居とする。

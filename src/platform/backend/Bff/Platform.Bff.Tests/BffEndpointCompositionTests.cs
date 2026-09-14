@@ -57,6 +57,8 @@ public class BffEndpointCompositionTests
             app.MapMcpClientBffEndpoints();
             // #452, FR-05, FR-09, UC-05, SC-17: 利用者アカウント管理（後段は AuthorizationService）。
             app.MapUserAdminBffEndpoints();
+            // #1411, SC-22, ADR-0095 決定 3, IADR-0453: 秘密情報・接続設定の管理（後段は Vault の KV v2）。
+            app.MapSecretItemBffEndpoints();
             // #1445, FR-19, UC-11, SC-19 主要素 3: 共有先に指定する利用者の検索・表示名の引き当て
             // （後段は AuthorizationService。**認証のみ・ロール不問**で、管理面とは別の口である）。
             app.MapUserLookupBffEndpoints();
@@ -95,7 +97,8 @@ public class BffEndpointCompositionTests
         // （platform 同居。後段の AuthorizationService が platform ユニットのサービスであるため）。
         // #1447, FR-19, UC-11, SC-19 主要素 3, ADR-0098 決定 1・3, IADR-0447: 共有先の**グループ**検索
         // （GroupLookup）を追加した（platform 同居。後段は同じ AuthorizationService である）。
-        BffEndpointComposition.Modules.Should().HaveCount(24);
+        // #1411, SC-22, IADR-0453: 秘密情報の投入（SecretItem）を追加した（platform 同居。後段はサービスではなく Vault）。
+        BffEndpointComposition.Modules.Should().HaveCount(25);
     }
 
     // 内容一致の検証（claude-review 指摘対応）: 合成点経由でビルドした実アプリ（全 DI 込み）の実体化ルートが、
@@ -131,6 +134,9 @@ public class BffEndpointCompositionTests
             "/bff/conversion/jobs",
             "/bff/dashboard",
             "/bff/datasources",
+            // #1411, SC-22, IADR-0453: 秘密情報の一覧と 1 プロパティずつの書き込み（運用者・システム管理者）。
+            // 🔴 **値を読み出す口（`GET /bff/secrets/{item}`）は無い。**
+            "/bff/secrets",
             // #1241, FR-17, SC-09, ADR-0033: 辺の型辞書の管理（追加・改名・削除）。後段は GraphService。
             // 🔴 **`/bff/graph/edge-types`（描画用カタログ・認証のみ）とは別の接頭辞である。**
             // 同じ口にすると、一般利用者が 403 になるか ABAC 未適用の集計値が漏れるかのどちらかになる。

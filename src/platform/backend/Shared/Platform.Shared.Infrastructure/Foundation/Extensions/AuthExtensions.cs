@@ -19,8 +19,16 @@ public static class PlatformAuthPolicies
     // 管理者ロール（Keycloak のレルムロール想定）。
     public const string AdminRole = "platform-admin";
 
-    // FR-15, SC-11, IADR-0030: 運用者ロール（Keycloak のレルムロール想定。構成閲覧のみ。管理系操作は不可）。
+    // FR-15, SC-11, IADR-0030: 運用者ロール（Keycloak のレルムロール想定）。
+    // ［2026-09-14 / #1411］従前の注記「構成閲覧のみ。管理系操作は不可」は実態より狭かった
+    // （辺の型辞書の管理は既に admin ＋ operator）。**計画 SC-22 は秘密情報の投入を運用者にも開く**
+    // （ADR-0042 決定 2・IADR-0453 決定 1）。運用者に何を許すかは各ポリシーが持つ。
     public const string OperatorRole = "platform-operator";
+
+    // SC-22, FR-05, ADR-0095 決定 3, ADR-0042 決定 2, IADR-0453 決定 1 (#1411): 秘密情報の投入は
+    // 運用者・システム管理者に限る。🔴 **`ConfigViewer` を流用しない** —— 集合は同じだが、
+    // 閲覧の名前に書き込みを相乗りさせると、構成閲覧の公開範囲を変えたときに秘密の書き込みまで黙って動く。
+    public const string SecretItemWriter = "SecretItemWriter";
 
     // NFR-09, ADR-0029, ADR-0075, IADR-0379 決定 4 (#1201): east-west gRPC の呼び出し側サービスに要求する
     // ポリシー。**利用者のロール（AdminOnly / ConfigViewer）とは別軸**であり、利用者のトークンでは通らない
@@ -114,6 +122,12 @@ public static class AuthExtensions
             // FR-15, SC-11, IADR-0030: 構成情報 API・構成ビューア用。
             // RequireRole の複数指定はいずれか一致（OR）で許可する。
             options.AddPolicy(PlatformAuthPolicies.ConfigViewer, policy =>
+                policy.RequireRole(
+                    PlatformAuthPolicies.AdminRole,
+                    PlatformAuthPolicies.OperatorRole));
+
+            // SC-22, ADR-0095, IADR-0453 決定 1 (#1411): 秘密情報の投入（BFF の /bff/secrets）。
+            options.AddPolicy(PlatformAuthPolicies.SecretItemWriter, policy =>
                 policy.RequireRole(
                     PlatformAuthPolicies.AdminRole,
                     PlatformAuthPolicies.OperatorRole));

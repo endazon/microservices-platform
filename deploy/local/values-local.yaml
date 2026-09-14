@@ -105,6 +105,11 @@ services:
         value: "http://opend:8080"
       - name: OpendAuth__DeviceTrustPersisted
         value: "true"
+    # SC-22, IADR-0433, IADR-0453 決定 5 (#1411): 秘密情報の投入先はローカルの dev Vault（VAULT=1）。
+    # **VAULT=1 ESO=1 でなければ Vault も policy も無く、/admin/secrets は 503（接続できない）を出す** —— 静かに成功しない。
+    # policy と role は deploy/local/vault/eso/bootstrap.sh が入れる（ESO=1 のとき）。
+    vault:
+      address: "http://vault.platform-infra.svc.cluster.local:8200"
 
 # Issue #313, IADR-0078: SPA(frontend) を経路B(ローカル k8s / k3d) で配信する。image は
 # global.image.registry=k3d-local を接頭辞に使う（k8s-local-images.sh が同接頭辞・タグで build/import）。

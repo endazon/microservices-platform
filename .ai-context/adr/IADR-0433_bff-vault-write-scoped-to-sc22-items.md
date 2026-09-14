@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-22, FR-05, NFR-11, NFR-18, ADR-0040, ADR-0042, ADR-0095, ADR-0032, ADR-0007]
 author: claude
 created: 2026-09-11
-updated: 2026-09-11
+updated: 2026-09-15
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md
   - planning:projects/microservices-platform/05_screens/01_screens.md
@@ -116,6 +116,11 @@ path "secret/metadata/msp/llm-provider-credentials" {
 - **`list` はどの階層にも与えない**（`secret/metadata/msp/` の `list` も含む）。
   一覧は allowlist から作るのであって、Vault から作らない。
 - **`delete` / `destroy` も与えない。** SC-22 に削除の要件は無い。
+
+> ［2026-09-15 追記 / #1411］**data の `update` は与えない**（IADR-0453 決定 10 で本決定の capability 列を狭めた）。
+> 部分更新の `patch` は `update` を要さず、KV が無いときの作成（`cas=0`）は `create` だけで足りる。
+> `update` を残すと POST による KV の**全置換**が BFF のトークンで可能になり、同居する構成や realm と対の値を消せる ——
+> それを「コードが全置換しない」で守るのは、本決定が退けた「統制がコードの自制になる」形そのものである（PR #1466 のフェーズ末監査で検出）。
 
 ### 決定 2: 書き込みは KV v2 の部分更新（`patch`）で行う
 
