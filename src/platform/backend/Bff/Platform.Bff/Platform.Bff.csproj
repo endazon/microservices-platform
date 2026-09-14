@@ -19,4 +19,13 @@
          platform 同居から unit-owned Bff（AiStockTrading.Bff.Endpoints）へ移行。submodule checkout 前提（IADR-0065）。 -->
     <ProjectReference Include="..\..\..\..\ai-stock-trading\backend\Bff\AiStockTrading.Bff.Endpoints\AiStockTrading.Bff.Endpoints.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- SC-22, ADR-0095 決定 3, IADR-0433 決定 3, IADR-0453 決定 9 (#1411): 画面から投入できる項目の集合（allowlist）。
+         単一情報源 deploy/bootstrap/sc22-secret-items.json を**写さずにリンク**して出力ディレクトリへ置く。
+         BFF はこれを読めないと起動しない（fail-closed）。コンテナでは Dockerfile が同じ相対位置へ COPY する。 -->
+    <Content Include="..\..\..\..\..\deploy\bootstrap\sc22-secret-items.json"
+             Link="sc22-secret-items.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
