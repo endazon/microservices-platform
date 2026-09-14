@@ -1,11 +1,11 @@
 ---
 title: "SC-22 秘密情報・接続設定の管理を画面から Vault まで通し、項目ごとの書き込み権限と BFF 専用 ServiceAccount を同時に配備する（#1411。計画 ADR-0095）"
 type: spec
-status: in-progress
+status: done
 related_ids: [SC-22, FR-05, NFR-11, NFR-18, ADR-0032, ADR-0040, ADR-0042, ADR-0095, IADR-0009, IADR-0030, IADR-0035, IADR-0096, IADR-0124, IADR-0125, IADR-0433, IADR-0453]
 author: claude
 created: 2026-09-14
-updated: 2026-09-14
+updated: 2026-09-15
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md
   - planning:projects/microservices-platform/07_adr/ADR-0042_ops-management-ui-production.md
@@ -157,24 +157,24 @@ plan_refs:
 
 SC-22 と IADR-0433 から写す（`[x]` は検証で確かめたもの）。
 
-- [ ] **AC-01** 画面 `/admin/secrets` があり、一覧の列が 項目名／用途／最終更新日時／最終更新者／操作 で、**値の列が無い**
-- [ ] **AC-02** 更新は **1 回に 1 項目（1 プロパティ）**。**一括再投入のボタンが無い**
-- [ ] **AC-03** 未設定の項目を「未設定」として出し、**「取得できない」と区別できる**（色だけに頼らない）
-- [ ] **AC-04** 値の入力はマスクされ、**確認入力が一致しないと送信できない**
-- [ ] **AC-05** 更新の理由は任意で、監査ログへ残る。**値は監査・ログ・応答のどこにも残らない**
-- [ ] **AC-06** 到達できるのは **運用者・システム管理者だけ**。権限外にはメニュー・画面を出さない（NotFound）。BFF は未認証 401・権限外 403
-- [ ] **AC-07** 左ナビ「運用」グループに項目がある
-- [ ] **AC-08** allowlist 外の項目は **400**（404 ではない）。`notWritable` のプロパティも 400
-- [ ] **AC-09** BFF は allowlist を読めないと**起動しない**。`items[]` だけを読み、`properties` と `notWritable` の交差を拒む
-- [ ] **AC-10** 書き込みは **KV v2 の PATCH（`application/merge-patch+json`）**。KV が無いときだけ `cas=0` で作る。`put` の全置換をしない
-- [ ] **AC-11** Vault が未配備（接続先未設定・不達）なら **503** で失敗を見せる（静かに成功しない・空の一覧にしない）
-- [ ] **AC-12** **値を読み出す口が無い**（契約に `GET /bff/secrets/{item}` が無い）
-- [ ] **AC-13** Vault policy の path 集合が `items[]` と**完全一致**し、ワイルドカード・`list`・`delete`・`destroy`・data の `read` を含まない（機械検査）
-- [ ] **AC-14** BFF 専用 ServiceAccount `bff` が helm で作られ、BFF の Deployment が使う。k8s auth の role はそれに束縛され、`default` に束縛しない
-- [ ] **AC-15** `policy-eso-read.hcl` は変更しない
-- [ ] **AC-16** 監査は `secret.item.update` を `granted` / `denied` / `failed` で残し、`detail` は項目・プロパティ・版（と理由）だけ
-- [ ] **AC-17** i18n の未翻訳キーが無い（ja / en）
-- [ ] **AC-18** IADR-0453 が 1〜8 の決定を記録し、索引に登録されている
+- [x] **AC-01** 画面 `/admin/secrets` があり、一覧の列が 項目名／用途／最終更新日時／最終更新者／操作 で、**値の列が無い**
+- [x] **AC-02** 更新は **1 回に 1 項目（1 プロパティ）**。**一括再投入のボタンが無い**
+- [x] **AC-03** 未設定の項目を「未設定」として出し、**「取得できない」と区別できる**（色だけに頼らない）
+- [x] **AC-04** 値の入力はマスクされ、**確認入力が一致しないと送信できない**
+- [x] **AC-05** 更新の理由は任意で、監査ログへ残る。**値は監査・ログ・応答のどこにも残らない**
+- [x] **AC-06** 到達できるのは **運用者・システム管理者だけ**。権限外にはメニュー・画面を出さない（NotFound）。BFF は未認証 401・権限外 403
+- [x] **AC-07** 左ナビ「運用」グループに項目がある
+- [x] **AC-08** allowlist 外の項目は **400**（404 ではない）。`notWritable` のプロパティも 400
+- [x] **AC-09** BFF は allowlist を読めないと**起動しない**。`items[]` だけを読み、`properties` と `notWritable` の交差を拒む
+- [x] **AC-10** 書き込みは **KV v2 の PATCH（`application/merge-patch+json`）**。KV が無いときだけ `cas=0` で作る。`put` の全置換をしない
+- [x] **AC-11** Vault が未配備（接続先未設定・不達）なら **503** で失敗を見せる（静かに成功しない・空の一覧にしない）
+- [x] **AC-12** **値を読み出す口が無い**（契約に `GET /bff/secrets/{item}` が無い）
+- [x] **AC-13** Vault policy の path 集合が `items[]` と**完全一致**し、ワイルドカード・`list`・`delete`・`destroy`・data の `read` を含まない（機械検査）
+- [x] **AC-14** BFF 専用 ServiceAccount `bff` が helm で作られ、BFF の Deployment が使う。k8s auth の role はそれに束縛され、`default` に束縛しない
+- [x] **AC-15** `policy-eso-read.hcl` は変更しない
+- [x] **AC-16** 監査は `secret.item.update` を `granted` / `denied` / `failed` で残し、`detail` は項目・プロパティ・版（と理由）だけ
+- [x] **AC-17** i18n の未翻訳キーが無い（ja / en）
+- [x] **AC-18** IADR-0453 が 1〜8 の決定を記録し、索引に登録されている
 
 ## テスト方針
 
@@ -189,6 +189,41 @@ SC-22 と IADR-0433 から写す（`[x]` は検証で確かめたもの）。
 | 検査器 | `check-trace-blocks` ほか（下記） | 文書 |
 
 変異試験（陽性対照の検出力の確認）は、主要な否定形（値の列が無い・一括の口が無い・値が監査に出ない）について実装を一時的に壊して落ちることを確かめる。
+
+## 検証（2026-09-15・ローカル Windows / .NET SDK 10.0.301 / Node v24.18.0 / pnpm 10.34.5）
+
+| コマンド | 結果 |
+| --- | --- |
+| `dotnet test src/platform/backend/backend.slnx` | Platform.Bff.Tests 以外は全件合格。Platform.Bff.Tests は**初回 3 件失敗**（`BffEndpointCompositionTests`: 登録簿の件数と経路群の期待値に新しい口が無かった）→ 期待値を直して **合格 682 / 失敗 0 / スキップ 1**（既存） |
+| SC-22 の 3 クラス ＋ 合成点の試験 | 48 / 48 合格 |
+| `dotnet build src/knowledge/backend/backend.slnx` | 0 エラー |
+| `dotnet format src/platform/backend/backend.slnx --verify-no-changes` | exit 0 |
+| `pnpm run typecheck` / `lint` / `format:check` | エラー 0（lint は既存 warning 12 件のみ） |
+| `npx vitest run knowledge/frontend/src/features/sc22-secrets` | 8 / 8 |
+| ルート表・パンくず・分割・Layout の試験 | 126 / 126 |
+| `npx vitest run`（全体） | 140 ファイル合格 / 5 ファイル失敗。**失敗は本作業が触れていないファイル**（`ConfirmDialog` / `Dialog` の初期フォーカス・echarts ローダ・`orvalMutator` の Blob）で、`git diff --stat origin/develop` にパスが無い。ローカルの Node v24 に依ると見ている（CI は Node 22） |
+| Playwright（`pnpm run build` 後。SC-22 と SC-17 のスモーク） | 6 / 6 |
+| `pnpm run codegen` / `pnpm run i18n` の再実行 | 差分なし・en の Missing 0 |
+| 文書・契約の検査器（trace-blocks / doc-type-vocabulary / doc-links / cross-repo-refs / plan-id-qualification / gen-knowledge-graph --check / adr-numbering / doc-status-vocabulary / test-name-references / reading-budget / test-traceability / test-spec-coverage / route-manifest / openapi-dto-drift / bff-authz-docs / secret-injected-options / bff-downstreams / default-credentials / unit-dependencies / static-egress / i18n-catalogs / commit-messages） | すべて OK（test-spec-coverage と chunk-budget は `--update` で床を上げた） |
+| `helm template`（既定 / values-local / address 指定） | SA・`serviceAccountName`・`Vault__*`・egress（address 指定時のみ）を描画 |
+| `check-knip.js` / `check-deploy-manifests.js` | ローカルでは実行不能（`.CMD` を spawn できない／kubeconform 未導入）。CI に委ねる |
+
+## 実装中に判明し、設計へ戻したこと
+
+- **全項目の metadata が取れないときも 503 にした**（IADR-0453 決定 5 の表へ 1 行足した）。
+  BFF は Vault のトークンをリース中は使い回すため、ログイン確認を飛ばした後に Vault が落ちると、
+  一覧が「全行『取得できない』の 200」になっていた（テストの実行順で実測）。「保管先に届かない」を行の状態に散らさない。
+- **関数へ渡した Lingui の `t` はマクロ展開されない。** 更新失敗の文言を `t` 引数の関数に置いたところ抽出されなかったため、
+  `msg` で持って呼び出し側の `i18n._` で解決する形に直した。
+- **初期ロードの床が +6.24 kB 動いた**（ルート・ナビ・パンくずの宣言と ja/en カタログ 39 件）。直近の画面追加（SC-19 / SC-20 / SC-03）と同じく `--update` で床を上げた。
+
+## 変異試験（否定形の検出力）
+
+| # | 変異 | 結果 |
+| --- | --- | --- |
+| M1 | 一覧に「値」の列を足す | **落ちた**（列の完全一致を見る試験） |
+| M2 | 確認入力の比較を「長さだけ」にする | 🔴 **当初は緑のまま通った**（不一致の例が長さ違いだった）。同じ長さで 1 文字違う値へ替え、**落ちることを確認した** |
+| M3 | 監査の detail に値を載せる | **落ちた**（監査の detail 完全一致と値の不在を見る試験） |
 
 ## 計画書との差異
 
