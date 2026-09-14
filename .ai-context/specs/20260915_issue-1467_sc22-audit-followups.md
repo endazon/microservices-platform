@@ -1,7 +1,7 @@
 ---
 title: "SC-22 のフェーズ末監査の非ブロッキング指摘 3 件（ソフト削除後の書き込み・PUT 本文の上限・metadata 再作成時の最終更新者）を片付ける（#1467）"
 type: spec
-status: in-progress
+status: done
 related_ids: [SC-22, FR-05, NFR-18, ADR-0095, IADR-0433, IADR-0453, IADR-0454]
 author: claude
 created: 2026-09-15
@@ -136,24 +136,24 @@ MSP#1466（develop `eed1ff24`）で SC-22 の画面 → BFF → Vault が着地�
 
 ## 受け入れ基準
 
-- [ ] **AC-01**（FU5）FakeVault が「現在版が削除・破棄された KV への `PATCH` は 404」「metadata が在る KV への `POST` は 403」を返す
-- [ ] **AC-02**（FU5）その状態への `PUT` は **409**・problem type `…:current-version-deleted`・監査 `failed reason=current-version-deleted`。**`POST` を送らず**、Vault の中身と削除状態は変わらず、書き込み記録を作らない
-- [ ] **AC-03**（FU5）`VaultKvClient` 単体でも削除（`deletion_time`）と破棄（`destroyed`）の両方で `CurrentVersionDeleted` を返し、metadata は `Deleted` を返す。KV が無いときは従来どおり作る（陽性対照）
-- [ ] **AC-04**（FU5）一覧は削除済みを従来どおり `notSet` と出す
-- [ ] **AC-05**（FU5）SPA は 409 で「現在の版が削除されている・復元してから更新し直す・値は保存されていない」を出す
-- [ ] **AC-06**（FU6）本文が 64 KiB を超える `PUT` は **413**・監査 `denied reason=body-too-large`・Vault に触れない。`Content-Length` がある送り方と無い送り方の両方で
-- [ ] **AC-07**（FU6）最悪の大きさ（値 8192 文字・理由 500 文字をすべて `\uXXXX` で送る。50 KB 超）は通る（陽性対照）
-- [ ] **AC-08**（FU6）不正 JSON・JSON の `null` は **400**・監査 `denied reason=invalid-body`。本文の断片が監査にもログにも出ない
-- [ ] **AC-09**（FU6）JSON でない Content-Type は **415**・監査 `denied reason=unsupported-media-type`
-- [ ] **AC-10**（FU6）運用者・管理者以外は本文が壊れていても **403 ＋ 監査 `reason=forbidden`**（本文より前にロールを見る）。CSRF ヘッダの扱いは変わらない
-- [ ] **AC-11**（FU7）metadata を削除して作り直した KV（版 1・別の作成時刻）では、古い記録の版が一致しても `lastUpdatedBy` は null
-- [ ] **AC-12**（FU7）画面から書いた版が現在版のままなら名前が出る（既存の試験が陽性対照）
-- [ ] **AC-13** 値・値の長さ・ハッシュが応答・ログ・監査に出ない（既存の試験を保ち、新しい経路も同じ）
-- [ ] **AC-14** Vault の policy は変わらない（`SecretItemVaultPolicyTests` が緑のまま・HCL の差分なし）
-- [ ] **AC-15** 3 件それぞれに**修正前の実装で落ちる試験**があり、落ちたことを本書に記録した
-- [ ] **AC-16** IADR-0454 が決定を記録し、索引に登録され、IADR-0453 フォローアップ 5〜7 から参照される
-- [ ] **AC-17** planning#631 の裁定 (a) を IADR-0453 フォローアップ 1 と画面仕様書へ**別コミットで**記録した
-- [ ] **AC-18** `pnpm run codegen` / `pnpm run i18n` の再実行で差分なし・未翻訳キーなし
+- [x] **AC-01**（FU5）FakeVault が「現在版が削除・破棄された KV への `PATCH` は 404」「metadata が在る KV への `POST` は 403」を返す
+- [x] **AC-02**（FU5）その状態への `PUT` は **409**・problem type `…:current-version-deleted`・監査 `failed reason=current-version-deleted`。**`POST` を送らず**、Vault の中身と削除状態は変わらず、書き込み記録を作らない
+- [x] **AC-03**（FU5）`VaultKvClient` 単体でも削除（`deletion_time`）と破棄（`destroyed`）の両方で `CurrentVersionDeleted` を返し、metadata は `Deleted` を返す。KV が無いときは従来どおり作る（陽性対照）
+- [x] **AC-04**（FU5）一覧は削除済みを従来どおり `notSet` と出す
+- [x] **AC-05**（FU5）SPA は 409 で「現在の版が削除されている・復元してから更新し直す・値は保存されていない」を出す
+- [x] **AC-06**（FU6）本文が 64 KiB を超える `PUT` は **413**・監査 `denied reason=body-too-large`・Vault に触れない。`Content-Length` がある送り方と無い送り方の両方で
+- [x] **AC-07**（FU6）最悪の大きさ（値 8192 文字・理由 500 文字をすべて `\uXXXX` で送る。50 KB 超）は通る（陽性対照）
+- [x] **AC-08**（FU6）不正 JSON・JSON の `null` は **400**・監査 `denied reason=invalid-body`。本文の断片が監査にもログにも出ない
+- [x] **AC-09**（FU6）JSON でない Content-Type は **415**・監査 `denied reason=unsupported-media-type`
+- [x] **AC-10**（FU6）運用者・管理者以外は本文が壊れていても **403 ＋ 監査 `reason=forbidden`**（本文より前にロールを見る）。CSRF ヘッダの扱いは変わらない
+- [x] **AC-11**（FU7）metadata を削除して作り直した KV（版 1・別の作成時刻）では、古い記録の版が一致しても `lastUpdatedBy` は null
+- [x] **AC-12**（FU7）画面から書いた版が現在版のままなら名前が出る（既存の試験が陽性対照）
+- [x] **AC-13** 値・値の長さ・ハッシュが応答・ログ・監査に出ない（既存の試験を保ち、新しい経路も同じ）
+- [x] **AC-14** Vault の policy は変わらない（`SecretItemVaultPolicyTests` が緑のまま・HCL の差分なし）
+- [x] **AC-15** 3 件それぞれに**修正前の実装で落ちる試験**があり、落ちたことを本書に記録した
+- [x] **AC-16** IADR-0454 が決定を記録し、索引に登録され、IADR-0453 フォローアップ 5〜7 から参照される
+- [x] **AC-17** planning#631 の裁定 (a) を IADR-0453 フォローアップ 1 と画面仕様書へ**別コミットで**記録した
+- [x] **AC-18** `pnpm run codegen` / `pnpm run i18n` の再実行で差分なし・未翻訳キーなし
 
 ## テスト方針
 
@@ -197,9 +197,29 @@ MSP#1466（develop `eed1ff24`）で SC-22 の画面 → BFF → Vault が着地�
 | 緑 | 一覧の条件に「記録の `UpdatedAt` ＝ 現在版の `created_time`」を足し、`dotnet test … --filter "BffSecretItemEndpointTests\|VaultKvClientTests\|SecretItem\|BffEndpointCompositionTests"` | **合格 67 / 失敗 0**。`dotnet format --verify-no-changes`（触った 5 ファイル）exit 0。`check-contract-schema.js` OK（143 型が baseline と一致。DTO はコメントだけの変更） |
 | 再生成 | `pnpm run codegen` | `bff.schemas.ts` と `secret-items.ts` の説明コメントだけ更新 |
 
-## 検証
+## 検証（2026-09-15・ローカル Windows / .NET SDK 10 / Node v24.18.0 / pnpm 10.34.5）
 
-（PR 前に記入する）
+| コマンド | 結果 |
+| --- | --- |
+| `dotnet test src/platform/backend/Bff/Platform.Bff.Tests` | **合格 701 / 失敗 0 / スキップ 1**（スキップは既存） |
+| `dotnet format src/platform/backend/backend.slnx --verify-no-changes` | exit 0 |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 1 回目: `check-test-spec-coverage` の**床の上げ忘れ**（`docs/tests/SC-22_*::VaultKvClientTests`）→ `--update` で 308 対へ上げた。2 回目: 索引タイトルの **`title-too-long`**（IADR-0454 の索引セルに決定の要約を貼っていた）→ 本体 `title:` の要約へ縮めた。3 回目: **782 tests passed** |
+| `pnpm run typecheck`（`src/`） | 1 回目は `ai-stock-trading/frontend` が `node_modules` 無しで失敗（submodule を初期化する前に `pnpm install` した作業環境の問題。本作業の差分ではない）→ `pnpm install --frozen-lockfile` をやり直して **exit 0**（6 パッケージ） |
+| `pnpm run lint` | エラー 0（warning 12 件は既存） |
+| `pnpm run format:check` | 全ファイル OK |
+| `vitest run knowledge/frontend/src/features/sc22-secrets` | **9 / 9** |
+| `pnpm run codegen` / `pnpm run i18n` の再実行 | 差分なし／en の Missing 0 |
+| `check-trace-blocks` / `gen-knowledge-graph --check` / `check-adr-numbering` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-doc-links` / `check-doc-updated` / `check-i18n-catalogs` / `check-test-traceability` | すべて OK（`gen-knowledge-graph` と `check-doc-links` の「参考」1 件は既存の凍結記録で fail-open） |
+| `check-bff-authz-docs` / `check-openapi-dto-drift` / `check-contract-schema` | OK（107 端点の実効ロール一致／同名 84 件一致／143 型が baseline と一致。baseline の更新は不要） |
+| `check-commit-messages`（`origin/develop..HEAD`） | 本仕様書のコミットより前の 8 件で OK。最終範囲の結果は PR 本文に書く（本書を書くコミットが範囲を 1 件動かすため） |
+| `SecretItemVaultPolicyTests`（policy の字面） | 緑のまま・`policy-bff-secret-write.hcl` の差分なし（AC-14） |
+
+**実行していないもの**: `dotnet test src/platform/backend/backend.slnx`（BFF 以外のテストプロジェクト。本作業は BFF と契約 DTO のコメントだけを触った）・knowledge backend のビルド・Playwright（画面の到達経路は変えていない）・稼働クラスタと実 Vault（作業条件で触らない。IADR-0454 フォローアップ 1 は T-40 と同じ場で確かめる）。
+
+## 実装中に判明し、設計へ戻したこと
+
+- 🔴 **`.Accepts<T>("application/json")` を付けると、JSON でない本文の 415 がルーティング（`AcceptsMatcherPolicy`）で先に返り、監査に残らない。** 試験（T-47）が緑にならず判明した。付けないことにし、コードと IADR-0454 決定 2 の趣旨（拒否はすべてハンドラの中で監査する）に合わせた。
+- **実 Vault の `update` 欠如の下では、`cas=0` 作成の競合は 400 ではなく 403 として現れる。** コードの 400 分岐は policy が変わらない限り通らない。挙動は変えず、IADR-0454「帰結」とコードのコメントに書いた。
 
 ## 計画書との差異
 
