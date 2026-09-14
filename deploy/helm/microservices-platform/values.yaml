@@ -1003,7 +1003,9 @@ services:
 minio:
   enabled: true
   replicas: 1
-  registry: docker.io
+  # #1434: Docker Hub の minio/minio は撤去された（ImagePullBackOff: repository does not exist）。
+  # 同じリリースを MinIO 公式の quay.io から引く（compose / Knowledge.IntegrationTests と同じ参照）。
+  registry: quay.io
   image: minio/minio
   tag: "RELEASE.2025-04-08T15-41-24Z"
   port: 9000

@@ -3,15 +3,15 @@ title: Docker Engine API が無い環境（containerd 等）で統合テスト�
 type: how-to
 status: fixed
 created: 2026-09-08
-updated: 2026-09-10
+updated: 2026-09-15
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, NFR-09, UC-03, UC-05]
 adrs: [ADR-0004, ADR-0027]
 iadrs: [IADR-0130, IADR-0231, IADR-0232, IADR-0414]
-specs: [20260908_issue-1336_integration-gate-asks-for-services, 20260909_issue-1337_fanout-tests-on-shared-broker]
-issues: [#455, #1073, #1336, #1337]
+specs: [20260908_issue-1336_integration-gate-asks-for-services, 20260909_issue-1337_fanout-tests-on-shared-broker, 20260915_issue-1434_minio-image-registry]
+issues: [#455, #1073, #1336, #1337, #1434]
 -->
 
 # 手順書: Docker Engine API が無い環境で統合テストを走らせる
@@ -47,10 +47,12 @@ Qdrant と MinIO も要るなら:
 nerdctl run -d --name msp-test-qdrant -p 56334:6334 qdrant/qdrant:latest
 ```
 
+MinIO は **quay.io の公式イメージ**から引く（Docker Hub の `minio/minio` は撤去されており、pull が失敗する）。
+
 ```bash
 nerdctl run -d --name msp-test-minio -p 59000:9000 \
   -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
-  minio/minio:RELEASE.2025-04-08T15-41-24Z server /data
+  quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z server /data
 ```
 
 🔴 **MinIO の資格情報は `minioadmin` / `minioadmin` でなければならない。**
