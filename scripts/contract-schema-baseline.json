@@ -4031,6 +4031,82 @@
           }
         }
       },
+      "Platform.Shared.Contracts.Dtos.SecretItemStatusDto": {
+        "kind": "record",
+        "members": {
+          "CurrentVersion": {
+            "source": "positional",
+            "type": "int?",
+            "required": true,
+            "position": 4
+          },
+          "Item": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "LastUpdatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": true,
+            "position": 5
+          },
+          "LastUpdatedBy": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 6
+          },
+          "Properties": {
+            "source": "positional",
+            "type": "List<string>",
+            "required": true,
+            "position": 2
+          },
+          "Status": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 3
+          },
+          "VaultPath": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.SecretItemWriteResultDto": {
+        "kind": "record",
+        "members": {
+          "Item": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Property": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "UpdatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 3
+          },
+          "Version": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
       "Platform.Shared.Contracts.Dtos.ServiceIntrospectionDto": {
         "kind": "record",
         "members": {
@@ -4092,6 +4168,29 @@
             "type": "IReadOnlyList<string>",
             "required": true,
             "position": 3
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.UpdateSecretItemRequest": {
+        "kind": "record",
+        "members": {
+          "Property": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Reason": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 2
+          },
+          "Value": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
           }
         }
       },
