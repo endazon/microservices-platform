@@ -28,6 +28,18 @@ vexec 'vault policy write eso-read -' < "$ROOT/deploy/local/vault/eso/policy-eso
 echo "==> role: eso（ESO の SA external-secrets/external-secrets に束縛）"
 vexec 'vault write auth/kubernetes/role/eso bound_service_account_names=external-secrets bound_service_account_namespaces=external-secrets policies=eso-read ttl=1h'
 
+# SC-22, ADR-0095 決定 3, IADR-0433 決定 1・4, IADR-0453 決定 9 (#1411): 画面（/admin/secrets）から秘密情報を
+# 投入する BFF の書き込み権限。**画面と同じ PR で配備する**（先に権限だけを作らない。ADR-0095 §統制の表）。
+# 🔴 policy は SC-22 の項目ごとの完全一致パスだけ（ワイルドカードなし・data の read なし）。項目集合の単一情報源は
+#    deploy/bootstrap/sc22-secret-items.json の items[] で、HCL との一致は Platform.Bff.Tests が固定する。
+# 🔴 role は BFF 専用の ServiceAccount `bff`（helm が作る）にだけ束縛する。**`default` に束縛しない** ——
+#    名前空間の全 Pod が秘密を書けるようになる。**`eso` role へ足さない**（ESO は読み取り専用のまま。決定 5）。
+echo "==> policy: bff-secret-write（SC-22 の項目だけ・完全一致パス・data の read なし）"
+vexec 'vault policy write bff-secret-write -' < "$ROOT/deploy/local/vault/eso/policy-bff-secret-write.hcl"
+
+echo "==> role: bff-secret-writer（BFF 専用 SA microservices-platform/bff に束縛）"
+vexec 'vault write auth/kubernetes/role/bff-secret-writer bound_service_account_names=bff bound_service_account_namespaces=microservices-platform policies=bff-secret-write ttl=1h'
+
 echo "==> seed: secret/msp/*（env 由来 or dev 既定・平文の実 secret は非コミット）"
 # 値は現行 apply_secret の既定と同一（minioadmin/kp/空）。env で上書き可。
 vexec "vault kv put secret/msp/llm-provider-credentials anthropic-api-key='${ANTHROPIC_API_KEY:-}' openai-api-key='${OPENAI_API_KEY:-}'"
