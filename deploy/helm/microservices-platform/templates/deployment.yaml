@@ -32,6 +32,12 @@ spec:
         checksum/pipeline-config: {{ $.Files.Get "files/pipeline.json" | sha256sum | quote }}
       {{- end }}
     spec:
+      {{- with $svc.serviceAccount }}
+      # SC-22, ADR-0095 決定 3, IADR-0433 決定 4, IADR-0453 決定 9 (#1411): サービス専用の ServiceAccount。
+      # 🔴 **BFF は Vault の k8s auth ロール `bff-secret-writer` にこの SA の名前で束縛される**。
+      # 宣言が無いサービスは従来どおり名前空間の `default` で動く（`default` を Vault に束縛しないこと）。
+      serviceAccountName: {{ .name }}
+      {{- end }}
       {{- with $.Values.imagePullSecrets }}
       # ADR-0007: Harbor レジストリからの Pull 認証（Secret は deploy/secrets で事前作成）。
       imagePullSecrets:
@@ -137,6 +143,17 @@ spec:
                 secretKeyRef:
                   name: {{ $svc.serviceToken.existingSecret }}
                   key: {{ $svc.serviceToken.clientSecretKey }}
+          {{- end }}
+          {{- if $svc.vault }}
+            # SC-22, NFR-18, ADR-0095 決定 3, IADR-0433, IADR-0453 決定 5 (#1411): 秘密情報の投入先（Vault の KV v2）。
+            # **address が空なら「Vault を配備していない構成」**として扱い、/bff/secrets は 503 を返す（静かに成功しない）。
+            # 名乗りは Pod の ServiceAccount トークン（k8s auth）。静的トークンを env で渡さない（IADR-0433 決定 4 の案 C を採らない）。
+            - name: Vault__Address
+              value: {{ $svc.vault.address | default "" | quote }}
+            - name: Vault__Role
+              value: {{ $svc.vault.role | default "bff-secret-writer" | quote }}
+            - name: Vault__AuthMount
+              value: {{ $svc.vault.authMount | default "kubernetes" | quote }}
           {{- end }}
           {{- if $pipelineMount }}
             # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成（ConfigMap マウント）の読み込み先。

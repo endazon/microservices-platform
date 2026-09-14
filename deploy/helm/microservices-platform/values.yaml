@@ -884,6 +884,20 @@ services:
       clientId: bff
       existingSecret: bff-oidc
       clientSecretKey: client-secret
+    # SC-22, ADR-0095 決定 3, IADR-0433 決定 4, IADR-0453 決定 9 (#1411): BFF 専用の ServiceAccount。
+    # 🔴 Vault の k8s auth ロール `bff-secret-writer` はこの名前にだけ束縛する（`default` に束縛しない）。
+    serviceAccount:
+      create: true
+      name: bff
+    # SC-22, NFR-18, IADR-0433, IADR-0453 決定 5 (#1411): 秘密情報の投入先（Vault の KV v2）。
+    # **address の既定は空＝Vault を配備していない構成**。/bff/secrets は 503 を返し、NetworkPolicy の穴も開けない。
+    # 書ける項目は deploy/bootstrap/sc22-secret-items.json の items[] だけ（BFF のイメージに同梱。policy は bootstrap.sh）。
+    vault:
+      address: ""
+      role: bff-secret-writer
+      authMount: kubernetes
+      namespace: platform-infra
+      port: 8200
     # NFR-09 / NFR-16, ADR-0029 / ADR-0032 / ADR-0075, IADR-0379 決定 4, IADR-0402 (#1255):
     # 🔴 **BFF が east-west gRPC の「呼び出し元」として名乗るための資格情報。**
     #
