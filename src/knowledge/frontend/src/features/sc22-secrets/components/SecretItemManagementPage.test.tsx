@@ -168,7 +168,8 @@ describe('SecretItemManagementPage (SC-22)', () => {
 
     await user.selectOptions(form.getByLabelText('更新するプロパティ'), 'openai-api-key');
     await user.type(value, PLACEHOLDER);
-    await user.type(confirmation, `${PLACEHOLDER}x`);
+    // 🔴 **同じ長さで 1 文字だけ違う**確認を入れる（変異試験: 長さだけを比べる実装は、長さの違う入力では落ちない）。
+    await user.type(confirmation, `${PLACEHOLDER.slice(0, -1)}X`);
     expect(form.getByTestId('secret-confirmation-mismatch')).toBeInTheDocument();
     expect(submit).toBeDisabled();
     await user.click(submit);
