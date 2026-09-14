@@ -107,7 +107,7 @@ plan_refs:
   - `GET /bff/secrets` → `SecretItemStatusDto[]`（項目名・Vault パス・書けるプロパティ・状態・現在版・最終更新日時・最終更新者）。値の列は無い。
   - `PUT /bff/secrets/{item}` 本文 `{property, value, reason?}` → `SecretItemWriteResultDto`（項目・プロパティ・版・更新日時）。
     allowlist 外の項目 → **400**（404 にしない）／書けないプロパティ（`notWritable` を含む）→ 400／空の値・8192 文字超 → 400／理由 500 文字超 → 400。
-  - 監査: `secret.item.list` / `secret.item.update`。`detail` は `item=… property=… version=… reason=…`（**値・長さ・ハッシュを入れない**）。拒否理由 `not-in-allowlist` / `property-not-writable` / `invalid-value` / `invalid-reason` / `forbidden`、失敗理由 `vault-not-configured` / `vault-unavailable` / `vault-rejected`。
+  - 監査: `secret.item.list` / `secret.item.update`。`detail` は `item=… property=… version=… reason="…"`（**値・長さ・ハッシュを入れない**。利用者の理由は引用符で囲みエスケープする）。拒否理由 `not-in-allowlist` / `property-not-writable` / `invalid-value` / `invalid-reason` / `forbidden`、失敗理由 `vault-not-configured` / `vault-unavailable` / `vault-rejected`。
 
 ### 3. SPA（`/admin/secrets`）
 
@@ -127,7 +127,13 @@ plan_refs:
   NetworkPolicy 有効かつ `address` 非空のとき、BFF から Vault 名前空間の 8200 への egress を 1 本だけ開ける。
 - `values-local.yaml`: `address: http://vault.platform-infra.svc.cluster.local:8200`（`VAULT=1` でなければ不達＝503）。
 - Dockerfile: allowlist を `/deploy/bootstrap/` へ COPY（csproj の `Content` リンクがそこを引く）。
-- Vault: `policy-bff-secret-write.hcl`（4 項目 × 2 path。data に `create`/`update`/`patch`、metadata に `read`。ワイルドカードなし）、
+- Vault: `policy-bff-secret-write.hcl`（4 項目 × 2 path。data に `create`/`patch`、metadata に `read`。ワイルドカードなし・`update` なし）、
+
+  > ［2026-09-15 追記 / #1411］フェーズ末監査（PR #1466・別文脈のエージェント・条件付き合格）の指摘を受け、
+  > (1) data の `update` を外した（使う経路が無く、KV の全置換を許すため。IADR-0453 決定 10・IADR-0433 に追記）、
+  > (2) 監査 detail の理由を引用符で囲みエスケープした（入力で `key=value` を偽装できたため。IADR-0453 決定 7）、
+  > (3) 主要素 3（プロパティ単位の未設定）を計画へ環流した（planning#631）。ソフト削除後の書き込み文言・PUT 本文の上限・metadata 再作成時の最終更新者は
+  > IADR-0453 フォローアップ 5〜7 へ記録し、本 PR では直していない（いずれも監査の判定は非ブロッキング）。
   `bootstrap.sh` に `vault policy write bff-secret-write` と `auth/kubernetes/role/bff-secret-writer`（`bound_service_account_names=bff` / `bound_service_account_namespaces=microservices-platform` / `ttl=1h`）。
 
 ## 走査した母集合

@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-22, FR-05, NFR-11, NFR-18, ADR-0032, ADR-0042, ADR-0095, IADR-0009, IADR-0030, IADR-0096, IADR-0251, IADR-0433]
 author: claude
 created: 2026-09-14
-updated: 2026-09-14
+updated: 2026-09-15
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md
   - planning:projects/microservices-platform/07_adr/ADR-0042_ops-management-ui-production.md
@@ -158,7 +158,9 @@ IADR-0433 は Vault policy・k8s auth ロール・allowlist・監査・端点の
 - 400（RFC7807 ValidationProblem）: allowlist 外の項目（**404 にしない**。IADR-0433 決定 7）／書けないプロパティ／空の値・8192 文字超／理由 500 文字超。
   🔴 **エラー本文に値を入れない**（長さも入れない）。
 - 監査 `outcome` は `granted` / `denied` に **`failed`** を足す（Vault 側の失敗。許可・拒否のどちらでもないため）。
-  `detail` は `item=… property=… version=… reason=…`。拒否・失敗の理由は `not-in-allowlist` / `property-not-writable` /
+  `detail` は `item=… property=… version=… reason="…"`（**利用者の入力した理由は二重引用符で囲み、`\` と `"` をエスケープする**。
+  入力に `version=99 item=postgres` のような文字列を入れても、`key=value` を読む側が監査行を取り違えないため）。
+  拒否・失敗の理由（機械語・引用符なし）は `not-in-allowlist` / `property-not-writable` /
   `invalid-value` / `invalid-reason` / `forbidden` / `vault-not-configured` / `vault-unavailable` / `vault-rejected`。
   一覧は `secret.item.list`（`granted` / `denied` / `failed`）。
 - 書き込みは **KV v2 の `PATCH`（`Content-Type: application/merge-patch+json`）**。KV が存在しない（404）ときだけ
@@ -177,6 +179,20 @@ IADR-0433 決定 3 のまま。**本 ADR は `items[]` を 1 行も動かさな�
   **policy の path 集合が `items[]` と一致しワイルドカードを含まないことを xUnit で固定する**
   （IADR-0433 フォローアップ 3 は「同型の事故 2 回」を待つとしていたが、**配備と同じ PR で policy を初めて書く**以上、
   書いた瞬間から突合できる形で置く。検査器（`scripts/`）ではなく既存のテストスイートに載せ、CI の新設はしない）。
+
+### 決定 10: data の `update` を与えない（IADR-0433 決定 1 の capability 列を狭める）
+
+- `policy-bff-secret-write.hcl` の data パスは **`create` / `patch` だけ**にする（metadata は `read` のまま）。
+- BFF の書き込み経路は **`PATCH`（`patch`）と、KV が無いときの `POST` ＋ `cas=0`（`create`）の 2 つしかない**（決定 7）。
+  `update` を要する経路はコードに無い。
+- 🔴 **`update` を残すと、BFF のトークンで `POST` による KV の全置換ができる。** `msp/keycloak-smtp` の `host` / `port` / `starttls`
+  （構成）や `ai-stock-trading/app-secrets` の `*-auth-client-*`（realm と対）を消せてしまい、ADR-0095 決定 4 が防ぐ事故の形になる。
+  「コードが全置換しない」で守るのは、IADR-0433 決定 1 が退けた「統制がコードの自制になる」形である。
+- **帰結**: KV の現在版がソフト削除された状態（metadata は在る）では、`cas=0` の作成が `update` を要して 403 になり、
+  画面は 502（`vault-rejected`）を出す。変更前も同じ状態は `cas=0` 失敗 → `PATCH` 404 で 502 だったため、**利用者から見た結果は変わらない**
+  （区別した文言はフォローアップ 5）。
+- 経緯: PR #1466 のフェーズ末監査（別文脈のエージェント）が「HCL の注記が存在しない経路を理由にしている」と検出した。
+  IADR-0433 には同日付の追記ブロックを置いた。
 
 ## 理由
 
@@ -203,15 +219,21 @@ IADR-0433 決定 3 のまま。**本 ADR は `items[]` を 1 行も動かさな�
   - BFF が Redis を**セッション以外の用途**にも使うようになる（キーの接頭辞 `bff:sc22:` で分ける）。
   - 監査の `outcome` の値域が 3 値になる（`failed`）。監査を抽出する側のクエリが 2 値を前提にしていれば追随が要る。
 - **フォローアップ**:
-  1. 🔴 **計画への問い（本 PR では起票しない）**: SC-22 主要素 3「値が入っていない項目を『未設定』として出す」は、
+  1. 🔴 **計画への問い（planning#631 で起票した・2026-09-15。フェーズ末監査の必須指摘により当初の「起票しない」を改めた）**: SC-22 主要素 3「値が入っていない項目を『未設定』として出す」は、
      IADR-0433 決定 1（data の `read` を与えない）の下では **KV 単位でしか満たせない**。
      (a) KV 単位で足りるとするか、(b) bootstrap が空文字で seed するのをやめて「未設定＝KV が無い」を成り立たせるか
      （ESO の同期先 Secret が作られず消費側が起動しない問題と対になる）、(c) data の read を与えるか、の裁定が要る。
   2. `deferred[]`（20 件）を画面で扱うか（IADR-0433 フォローアップ 4 のまま）。
   3. 退避手段の使用記録（ADR-0095 フォローアップ 4。Runbook は引き続き issue コメントへ記録する）。
   4. 監査の抽出クエリ（可観測性基盤）が `outcome=failed` を拾うか確かめる（本 PR では抽出側を触っていない）。
+  5. **KV の現在版がソフト削除された状態での書き込み**は 502（`vault-rejected`）になり、原因が画面から分からない（決定 10 の帰結。監査指摘 2）。
+     区別した結果と文言を返し、FakeVault に「削除済み版への PATCH が 404」を再現させる。
+  6. **PUT 本文の大きさに上限が無い**（Kestrel 既定 30 MB。ロール判定より前に本文を解釈する）。
+     端点に小さい上限を置くか、本文を手で束縛して解釈失敗も監査に残す（監査指摘 4。TestServer は本文上限を強制しないため試験の形も併せて決める）。
+  7. **metadata を削除して作り直すと版が 1 から振り直され**、古い Redis の記録が別人の「最終更新者」を出し得る（監査指摘 5）。
+     記録の `UpdatedAt` と metadata の `created_time` も突き合わせる。
 
 ## 関連
 
-- Supersedes: なし（IADR-0433 を覆さない。同 ADR「モックアップ受領後に決める」の欄を埋める）
+- Supersedes: なし（IADR-0433 を覆さない。同 ADR「モックアップ受領後に決める」の欄を埋める。**ただし決定 10 で IADR-0433 決定 1 の capability 列から data の `update` を外した**＝部分的に狭める改定であり、IADR-0433 に同日付の追記を置いた）
 - Superseded by: なし

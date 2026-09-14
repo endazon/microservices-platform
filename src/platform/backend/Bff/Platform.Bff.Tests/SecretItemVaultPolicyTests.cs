@@ -47,14 +47,15 @@ public class SecretItemVaultPolicyTests
         ParsePolicy().Keys.Order(StringComparer.Ordinal).Should().Equal(expected);
     }
 
-    // SC-22, IADR-0433 決定 1・2: data は create/update/patch だけ（read なし）、metadata は read だけ。
+    // SC-22, IADR-0433 決定 1・2, IADR-0453 決定 10: data は create/patch だけ（read も全置換の update も無い）、
+    // metadata は read だけ。
     [Fact]
     public void Policy_grants_write_without_read_on_data_and_read_only_on_metadata()
     {
         foreach (var (path, caps) in ParsePolicy())
         {
             if (path.Contains("/data/", StringComparison.Ordinal))
-                caps.Should().Equal(["create", "patch", "update"], $"{path} は値を読み返せない形であること");
+                caps.Should().Equal(["create", "patch"], $"{path} は値を読み返せず、KV を全置換できない形であること");
             else
                 caps.Should().Equal(["read"], $"{path} は版と時刻だけを読めること");
         }
