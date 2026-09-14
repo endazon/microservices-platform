@@ -189,7 +189,13 @@ MSP#1466（develop `eed1ff24`）で SC-22 の画面 → BFF → Vault が着地�
 | 検査 | `check-bff-authz-docs.js` / `check-openapi-dto-drift.js` | OK（107 端点の実効ロールが一致／同名 84 件のプロパティ集合が一致） |
 | 再生成 | `pnpm run codegen` | `secret-items.ts` だけ更新（413 / 415 の応答型） |
 
-（フォローアップ 7 は実装時に記入する）
+### フォローアップ 7（metadata 再作成時の最終更新者）
+
+| 段 | 実行 | 結果 |
+| --- | --- | --- |
+| 赤 | FakeVault の作成時刻を書き込みごとに進める形へ変え、作り直しの試験を足して `dotnet test … --filter BffSecretItemEndpointTests`（本番コードは未変更） | **失敗 1 / 合格 38**。`Expected afterRecreate["keycloak-smtp"].LastUpdatedBy to be <null>, but found "test-user".`（古い記録の版 1 が作り直し後の版 1 と一致した）。既存の「画面で書いた版が現在版なら名前が出る」は緑のまま（時刻の変更で陽性対照は壊れていない） |
+| 緑 | 一覧の条件に「記録の `UpdatedAt` ＝ 現在版の `created_time`」を足し、`dotnet test … --filter "BffSecretItemEndpointTests\|VaultKvClientTests\|SecretItem\|BffEndpointCompositionTests"` | **合格 67 / 失敗 0**。`dotnet format --verify-no-changes`（触った 5 ファイル）exit 0。`check-contract-schema.js` OK（143 型が baseline と一致。DTO はコメントだけの変更） |
+| 再生成 | `pnpm run codegen` | `bff.schemas.ts` と `secret-items.ts` の説明コメントだけ更新 |
 
 ## 検証
 

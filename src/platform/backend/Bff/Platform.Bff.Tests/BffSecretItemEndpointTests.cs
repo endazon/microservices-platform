@@ -169,6 +169,28 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
         afterConsole["wikijs-sync"].LastUpdatedBy.Should().BeNull();
     }
 
+    // SC-22 主要素 1「最終更新者」, IADR-0453 フォローアップ 7, IADR-0454 決定 3 (#1467):
+    // metadata を消して作り直すと版は 1 から振り直される。🔴 古い記録（版 1・画面の利用者）は**版だけなら一致してしまう**。
+    // 作成時刻も突き合わせ、一致しなければ「記録なし」。陽性対照: 作り直す前（画面で書いた版が現在版）は名前が出る。
+    [Fact]
+    public async Task Last_updater_is_not_attached_to_a_recreated_kv_that_restarted_at_version_1()
+    {
+        using (var update = await SendAsync(Put("keycloak-smtp", new { property = "password", value = PlaceholderValue })))
+            update.StatusCode.Should().Be(HttpStatusCode.OK);
+        var beforeRecreate = await ListAsync();
+        beforeRecreate["keycloak-smtp"].CurrentVersion.Should().Be(1);
+        beforeRecreate["keycloak-smtp"].LastUpdatedBy.Should().Be("test-user");
+
+        // コンソールで metadata ごと消して作り直した（`vault kv metadata delete` → `vault kv put`）。版は 1 に戻る。
+        _factory.Vault.Store.TryRemove("msp/keycloak-smtp", out _).Should().BeTrue();
+        _factory.Vault.Put("msp/keycloak-smtp", ("password", ExistingOtherValue));
+
+        var afterRecreate = await ListAsync();
+        afterRecreate["keycloak-smtp"].CurrentVersion.Should().Be(1);
+        _factory.SecretWriteRecords.Records["keycloak-smtp"].Version.Should().Be(1, "古い記録は版だけなら一致する（変異の検出点）");
+        afterRecreate["keycloak-smtp"].LastUpdatedBy.Should().BeNull();
+    }
+
     private async Task<Dictionary<string, SecretItemStatusDto>> ListAsync()
     {
         using var response = await SendAsync(Get());

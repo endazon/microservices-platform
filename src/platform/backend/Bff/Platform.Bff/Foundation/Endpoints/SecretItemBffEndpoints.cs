@@ -71,11 +71,17 @@ public static class SecretItemBffEndpoints
                 var present = metadata.State == VaultMetadataState.Present;
 
                 // IADR-0453 決定 3: 最終更新者は「BFF が書いた版」と現在版が一致するときだけ出す。
+                // IADR-0454 決定 3 (#1467): 🔴 **版の番号だけでなく作成時刻も突き合わせる。** metadata を消して作り直すと
+                // 版は 1 から振り直され、古い記録（版 1・別の利用者）が番号だけなら一致してしまう。
+                // 記録の `UpdatedAt` は書き込み応答の `created_time`（metadata の `versions[n].created_time` と同じ値）。
                 string? updatedBy = null;
                 if (present && metadata.CurrentVersion is int current)
                 {
                     var record = await records.GetAsync(definition.Item, ct);
-                    if (record?.Version == current)
+                    if (record is not null
+                        && record.Version == current
+                        && metadata.CurrentVersionCreatedAt is { } createdAt
+                        && record.UpdatedAt == createdAt)
                         updatedBy = record.UpdatedBy;
                 }
 

@@ -10,6 +10,8 @@ namespace Platform.Bff.Foundation.Secrets;
 //
 // 🔴 **表示は Vault の現在版と一致するときだけ**（呼び出し側が突き合わせる）。
 // コンソール・bootstrap が後から書いた版に、画面の利用者名が付くことは無い。
+// IADR-0454 決定 3 (#1467): 突き合わせは**版の番号と作成時刻（`UpdatedAt` ＝ 書いた版の `created_time`）の両方**で行う。
+// metadata を作り直すと番号は 1 から振り直されるためである。**TTL は置かない**（正しい名前まで期限で消えるため）。
 // 🔴 **正本は監査ログである。** 本記録は 1 列を出すための付随物で、消えたら「記録なし」へ倒れる。
 public sealed record SecretWriteRecord(int Version, string UpdatedBy, string Property, DateTimeOffset UpdatedAt);
 

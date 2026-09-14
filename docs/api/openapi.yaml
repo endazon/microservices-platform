@@ -3573,6 +3573,7 @@ paths:
         状態は `set`（KV に版がある）/ `notSet`（KV が無い・現在版が削除済み）/ `unavailable`（取れない）の 3 値。
         🔴 **`set` はプロパティに空でない値が入っていることを保証しない**（data を読む権限を持たないため）。
         `lastUpdatedBy` は BFF が書いた版が現在版であるときだけ埋まる（コンソールで書いた版は null）。
+        版の番号に加えて**版の作成時刻も一致する**ことを条件にする（metadata を作り直して版が 1 から振り直された KV に古い記録を付けない。IADR-0454 決定 3）。
       operationId: bff-secret-items-list
       responses:
         "200":
@@ -5876,7 +5877,7 @@ components:
         lastUpdatedBy:
           type: string
           nullable: true
-          description: "BFF が書いた版が現在版であるときだけ、その利用者名。それ以外は null（画面は「記録なし」）"
+          description: "BFF が書いた版が現在版であるとき（版の番号と作成時刻の両方が一致するとき）だけ、その利用者名。それ以外は null（画面は「記録なし」）"
 
     UpdateSecretItemRequest:
       type: object

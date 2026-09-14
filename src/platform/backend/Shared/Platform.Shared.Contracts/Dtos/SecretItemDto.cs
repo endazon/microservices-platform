@@ -15,6 +15,7 @@ namespace Platform.Shared.Contracts.Dtos;
 //
 // `LastUpdatedBy` は **BFF が書いた版の記録と Vault の現在版が一致するときだけ**埋まる
 // （IADR-0453 決定 3）。コンソール・bootstrap が書いた版では null（画面は「記録なし」）。
+// 一致は版の番号と作成時刻の両方で見る（metadata を作り直すと番号は 1 から振り直される。IADR-0454 決定 3）。
 public record SecretItemStatusDto(
     string Item,
     string VaultPath,

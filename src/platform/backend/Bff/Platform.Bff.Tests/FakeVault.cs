@@ -32,6 +32,11 @@ public sealed class FakeVault
 
     private int _loginCount;
 
+    // IADR-0454 決定 3 (#1467): 作成時刻は**書き込みごとに進める**。版から決めると、metadata を消して作り直した版 1 が
+    // 元の版 1 と同じ時刻を持ち、最終更新者の時刻の突き合わせを試験できない。
+    private static readonly DateTimeOffset BaseTime = new(2026, 9, 14, 1, 0, 0, TimeSpan.Zero);
+    private int _writeSequence;
+
     public ConcurrentQueue<RecordedRequest> Requests { get; } = new();
     public ConcurrentDictionary<string, Kv> Store { get; } = new(StringComparer.Ordinal);
 
@@ -55,6 +60,7 @@ public sealed class FakeVault
         WriteStatus = null;
         Throws = false;
         Interlocked.Exchange(ref _loginCount, 0);
+        Interlocked.Exchange(ref _writeSequence, 0);
     }
 
     /// <summary>KV を置く（版は既存 ＋1）。コンソール・bootstrap からの書き込みの再現にも使う。</summary>
@@ -63,7 +69,7 @@ public sealed class FakeVault
         var kv = Store.GetOrAdd(path, _ => new Kv());
         foreach (var (key, value) in data) kv.Data[key] = value;
         kv.Version++;
-        kv.CreatedAt = new DateTimeOffset(2026, 9, 14, 1, 0, kv.Version, TimeSpan.Zero);
+        kv.CreatedAt = BaseTime.AddSeconds(Interlocked.Increment(ref _writeSequence));
         kv.Deleted = false;
         kv.Destroyed = false;
         return kv;

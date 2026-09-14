@@ -88,6 +88,7 @@ issues: [#1411, #1467]
 | T-46 | 壊れた JSON・`null`・JSON でない文字列 | 更新 | **400**。拒否が監査に残り、本文の断片が監査にもログにも出ない（陽性対照: ログは捕捉できている） | 解釈失敗の監査 | 自動 |
 | T-47 | JSON でない Content-Type | 更新 | **415**。拒否が監査に残り、保管先に触れない | 解釈失敗の監査 | 自動 |
 | T-48 | 他のロール ＋ 壊れた本文 | 更新 | **403**（400 ではない）。拒否が監査に残る —— 本文より先にロールを見る | ロール限定 | 自動 |
+| T-49 | 画面から書いた項目を、保管先で消して作り直す（版が 1 に戻り、作成時刻が変わる） | 一覧を作り直しの前後で引く | 前は利用者名（陽性対照）、後は null。**古い記録の版は現在版と同じ 1 のまま**（版だけの突き合わせでは誤った名前が出る） | 最終更新者（誤帰属しない） | 自動 |
 | T-40 | 稼働クラスタ（保管先・同期あり） | 画面から 1 プロパティを更新し、同期後の Secret を長さだけで確かめる | 更新したプロパティの長さが一致し、同居するキーが減っていない | 稼働での成立 | 手動（未実施） |
 
 ## 自動試験の所在
@@ -95,7 +96,7 @@ issues: [#1411, #1467]
 | 区分 | ファイル | 対応 |
 | --- | --- | --- |
 | 画面 | `src/knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.test.tsx` | T-01〜T-09・T-43 |
-| 境界層（端点） | `src/platform/backend/Bff/Platform.Bff.Tests/BffSecretItemEndpointTests.cs` | T-10〜T-28・T-41・T-44〜T-48 |
+| 境界層（端点） | `src/platform/backend/Bff/Platform.Bff.Tests/BffSecretItemEndpointTests.cs` | T-10〜T-28・T-41・T-44〜T-49 |
 | 境界層（保管先クライアント） | `src/platform/backend/Bff/Platform.Bff.Tests/VaultKvClientTests.cs` | T-42 |
 | 境界層（項目集合） | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemCatalogTests.cs` | T-29〜T-31 |
 | 保管先の権限の字面 | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemVaultPolicyTests.cs` | T-32〜T-35 |
