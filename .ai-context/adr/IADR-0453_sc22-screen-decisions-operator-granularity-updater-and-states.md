@@ -139,6 +139,7 @@ IADR-0433 は Vault policy・k8s auth ロール・allowlist・監査・端点の
 | `Vault:Address` が未設定（Vault を配備していない構成） | **503**（`vault-not-configured`） | **503** | `failed` |
 | ログインが不達・拒否される | **503**（`vault-unavailable`） | **503** | `failed` |
 | 個別の metadata が取れない | 200。その行だけ `unavailable` | — | — |
+| **全項目の** metadata が取れない（保持中のトークンでログイン確認を飛ばした後に Vault が落ちた等） | **503**（`vault-unavailable`） | — | `failed` |
 | 書き込みを Vault が拒否した（policy と allowlist の食い違い等） | — | **502**（`vault-rejected`） | `failed` |
 
 - 🔴 **一覧を空配列で返さない。** 「扱う項目が 0 件」と「保管先に届かない」を同じ見た目にしない。
