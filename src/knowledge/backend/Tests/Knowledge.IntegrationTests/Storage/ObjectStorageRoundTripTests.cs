@@ -31,7 +31,9 @@ public sealed class ObjectStorageRoundTripTests
     {
         if (RequiredServices.ObjectStorage.External is not null) return null;
 
-        var minio = new MinioBuilder().WithImage("minio/minio:RELEASE.2025-04-08T15-41-24Z")
+        // #1434: Docker Hub の minio/minio は撤去された（pull が「repository does not exist」で落ちる）。
+        // 同じリリースを MinIO 公式の quay.io から引く（compose / helm values と同じ参照）。
+        var minio = new MinioBuilder().WithImage("quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z")
             .WithUsername(AccessKey).WithPassword(SecretKey).Build();
         await minio.StartAsync(TestContext.Current.CancellationToken);
         return minio;
