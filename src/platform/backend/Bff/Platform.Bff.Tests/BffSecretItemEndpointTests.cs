@@ -272,7 +272,9 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
                 (string?)"item=wikijs-sync property=apiKey reason=current-version-deleted"));
 
         // 🔴 作成（POST）を送らず、Vault の中身も削除状態も変えず、最終更新者の記録も作らない。
-        _factory.Vault.Requests.Should().NotContain(r => r.Method == "POST");
+        // 対象は KV の path への POST だけに絞る —— k8s auth のログイン（POST /v1/auth/kubernetes/login）も POST であり、
+        // 本試験が最初にログインする実行順（CI の Linux で実測）ではそれを数えて落ちていた（試験側の順序依存）。
+        _factory.Vault.Requests.Should().NotContain(r => r.Method == "POST" && r.Path.StartsWith("/v1/secret/", StringComparison.Ordinal));
         kv.Version.Should().Be(1);
         kv.Data["apiKey"].Should().Be(ExistingOtherValue);
         (destroyed ? kv.Destroyed : kv.Deleted).Should().BeTrue();
