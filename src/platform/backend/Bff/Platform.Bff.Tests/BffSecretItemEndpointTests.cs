@@ -1,9 +1,12 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -167,6 +170,28 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
         afterConsole["wikijs-sync"].LastUpdatedBy.Should().BeNull();
     }
 
+    // SC-22 主要素 1「最終更新者」, IADR-0453 フォローアップ 7, IADR-0454 決定 3 (#1467):
+    // metadata を消して作り直すと版は 1 から振り直される。🔴 古い記録（版 1・画面の利用者）は**版だけなら一致してしまう**。
+    // 作成時刻も突き合わせ、一致しなければ「記録なし」。陽性対照: 作り直す前（画面で書いた版が現在版）は名前が出る。
+    [Fact]
+    public async Task Last_updater_is_not_attached_to_a_recreated_kv_that_restarted_at_version_1()
+    {
+        using (var update = await SendAsync(Put("keycloak-smtp", new { property = "password", value = PlaceholderValue })))
+            update.StatusCode.Should().Be(HttpStatusCode.OK);
+        var beforeRecreate = await ListAsync();
+        beforeRecreate["keycloak-smtp"].CurrentVersion.Should().Be(1);
+        beforeRecreate["keycloak-smtp"].LastUpdatedBy.Should().Be("test-user");
+
+        // コンソールで metadata ごと消して作り直した（`vault kv metadata delete` → `vault kv put`）。版は 1 に戻る。
+        _factory.Vault.Store.TryRemove("msp/keycloak-smtp", out _).Should().BeTrue();
+        _factory.Vault.Put("msp/keycloak-smtp", ("password", ExistingOtherValue));
+
+        var afterRecreate = await ListAsync();
+        afterRecreate["keycloak-smtp"].CurrentVersion.Should().Be(1);
+        _factory.SecretWriteRecords.Records["keycloak-smtp"].Version.Should().Be(1, "古い記録は版だけなら一致する（変異の検出点）");
+        afterRecreate["keycloak-smtp"].LastUpdatedBy.Should().BeNull();
+    }
+
     private async Task<Dictionary<string, SecretItemStatusDto>> ListAsync()
     {
         using var response = await SendAsync(Get());
@@ -219,6 +244,45 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
         using var body = JsonDocument.Parse(writes[1].Body!);
         body.RootElement.GetProperty("options").GetProperty("cas").GetInt32().Should().Be(0);
         body.RootElement.GetProperty("data").EnumerateObject().Select(p => p.Name).Should().Equal("password");
+    }
+
+    // SC-22, IADR-0453 フォローアップ 5, IADR-0454 決定 1 (#1467): 現在版がソフト削除・破棄された KV へは書かない。
+    // 🔴 409 と区別した problem type・監査理由で返し、`POST`（metadata が在る path では `update` を要し 403 になる）を送らない。
+    // 陽性対照: KV が無いときは `cas=0` で作る（`Update_creates_the_kv_with_cas_zero_only_when_it_is_absent`）。
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Update_on_a_kv_whose_current_version_is_deleted_returns_409_without_posting(bool destroyed)
+    {
+        var kv = _factory.Vault.Put("msp/wikijs-sync", ("apiKey", ExistingOtherValue));
+        if (destroyed) kv.Destroyed = true;
+        else kv.Deleted = true;
+
+        using var response = await SendAsync(Put("wikijs-sync", new { property = "apiKey", value = PlaceholderValue }));
+        var raw = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        using (var problem = JsonDocument.Parse(raw))
+            problem.RootElement.GetProperty("type").GetString()
+                .Should().Be("urn:microservices-platform:secret-items:current-version-deleted");
+        raw.Should().NotContain(PlaceholderValue);
+
+        _factory.RecordedAuditEntries.Where(e => e.Action == SecretItemBffEndpoints.UpdateAction)
+            .Should().ContainSingle()
+            .Which.Should().Be((SecretItemBffEndpoints.UpdateAction, "test-user", "failed",
+                (string?)"item=wikijs-sync property=apiKey reason=current-version-deleted"));
+
+        // 🔴 作成（POST）を送らず、Vault の中身も削除状態も変えず、最終更新者の記録も作らない。
+        // 対象は KV の path への POST だけに絞る —— k8s auth のログイン（POST /v1/auth/kubernetes/login）も POST であり、
+        // 本試験が最初にログインする実行順（CI の Linux で実測）ではそれを数えて落ちていた（試験側の順序依存）。
+        _factory.Vault.Requests.Should().NotContain(r => r.Method == "POST" && r.Path.StartsWith("/v1/secret/", StringComparison.Ordinal));
+        kv.Version.Should().Be(1);
+        kv.Data["apiKey"].Should().Be(ExistingOtherValue);
+        (destroyed ? kv.Destroyed : kv.Deleted).Should().BeTrue();
+        _factory.SecretWriteRecords.Records.Should().BeEmpty();
+
+        // 一覧は従来どおり「未設定」と出す（状態の値域は変えない）。
+        (await ListAsync())["wikijs-sync"].Status.Should().Be("notSet");
     }
 
     // SC-22, IADR-0453 決定 7: ログインは使い回し、トークンが無効になったら 1 度だけ取り直す。
@@ -284,6 +348,179 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
         tooLong.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         longReason.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         _factory.Vault.Requests.Should().NotContain(r => r.Path.StartsWith("/v1/secret/data/", StringComparison.Ordinal));
+    }
+
+    // ── 本文の上限と解釈（IADR-0453 フォローアップ 6, IADR-0454 決定 2, #1467）
+    //
+    // 🔴 TestServer は Kestrel の本文上限を強制しない。**端点が自分で上限付きに読む**ことを、`Content-Length` がある送り方と
+    // 無い送り方の両方で固定する（片方だけだと、`Content-Length` だけを見る実装が緑になる）。
+
+    private const int DocumentedMaxRequestBodyBytes = 64 * 1024;
+
+    private static HttpRequestMessage PutRaw(string item, HttpContent content, string? roles = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Put, $"/bff/secrets/{item}") { Content = content };
+        Decorate(request, roles, anonymous: false);
+        return request;
+    }
+
+    private static ByteArrayContent JsonBytes(byte[] bytes)
+    {
+        var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        return content;
+    }
+
+    // SC-22, IADR-0454 決定 2: 上限を超える本文は 413。Vault に触れず、拒否が監査に残る。
+    // 本文は**入力規則を満たす**（値は短い）ので、上限が無ければ書き込みまで進む —— 上限だけが止めていることを示す。
+    [Fact]
+    public async Task Oversized_body_gets_413_before_anything_reaches_vault()
+    {
+        _factory.Vault.Put("msp/wikijs-sync", ("apiKey", ExistingOtherValue));
+        var bytes = OversizedBody();
+
+        using var response = await SendAsync(PutRaw("wikijs-sync", JsonBytes(bytes)));
+
+        response.StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
+        AssertOversizedWasRejectedWithoutTouchingVault();
+    }
+
+    // SC-22, IADR-0454 決定 2: Content-Length の無い（chunked の）本文でも 413。
+    // 🔴 HttpClient 経由では TestServer が長さを計算して付けてしまい、読み取りループの上限を一度も通らない
+    //    （PR #1469 の監査が実測）。サーバ側の HttpContext を直接組み、ContentLength = null・シーク不能な本文で送る。
+    [Fact]
+    public async Task Oversized_body_without_content_length_gets_413_from_the_read_loop()
+    {
+        _factory.Vault.Put("msp/wikijs-sync", ("apiKey", ExistingOtherValue));
+        var bytes = OversizedBody();
+
+        var context = await _factory.Server.SendAsync(ctx =>
+        {
+            ctx.Request.Method = HttpMethods.Put;
+            ctx.Request.Path = "/bff/secrets/wikijs-sync";
+            ctx.Request.ContentType = "application/json";
+            ctx.Request.ContentLength = null;
+            ctx.Request.Body = new NonSeekableReadStream(bytes);
+        }, TestContext.Current.CancellationToken);
+
+        context.Request.ContentLength.Should().BeNull("読み取りループの上限だけが止めていることを示すため");
+        context.Response.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
+        AssertOversizedWasRejectedWithoutTouchingVault();
+    }
+
+    private static byte[] OversizedBody() =>
+        JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            property = "apiKey",
+            value = PlaceholderValue,
+            padding = new string('p', DocumentedMaxRequestBodyBytes),
+        });
+
+    private void AssertOversizedWasRejectedWithoutTouchingVault()
+    {
+        _factory.RecordedAuditEntries.Where(e => e.Action == SecretItemBffEndpoints.UpdateAction)
+            .Should().ContainSingle()
+            .Which.Should().Be((SecretItemBffEndpoints.UpdateAction, "test-user", "denied",
+                (string?)"item=wikijs-sync reason=body-too-large"));
+        _factory.Vault.Requests.Should().NotContain(r => r.Path.StartsWith("/v1/secret/data/", StringComparison.Ordinal));
+        _factory.Vault.Store["msp/wikijs-sync"].Data["apiKey"].Should().Be(ExistingOtherValue);
+    }
+
+    // SC-22, IADR-0454 決定 2（陽性対照）: 値 8192 文字・理由 500 文字を**すべて `\uXXXX`（1 文字 6 バイト）で送る**最悪の本文は通る。
+    [Fact]
+    public async Task Worst_case_body_within_the_maxima_is_accepted()
+    {
+        _factory.Vault.Put("msp/wikijs-sync", ("apiKey", ExistingOtherValue));
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            property = "apiKey",
+            value = new string('あ', SecretItemBffEndpoints.MaxValueLength),
+            reason = new string('い', SecretItemBffEndpoints.MaxReasonLength),
+        });
+        bytes.Length.Should().BeGreaterThan(52_000, "既定の JSON は非 ASCII を \\uXXXX で送る（最悪の大きさになっていること）");
+        bytes.Length.Should().BeLessThan(DocumentedMaxRequestBodyBytes);
+
+        using var response = await SendAsync(PutRaw("wikijs-sync", JsonBytes(bytes)));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // SC-22, IADR-0454 決定 2: 解釈できない本文は 400 で、拒否が監査に残る。🔴 本文の断片は監査にもログにも出ない。
+    [Theory]
+    [InlineData("{\"property\":\"apiKey\",\"value\":\"placeholder-value-for-sc22-tests-0001\"")]
+    [InlineData("null")]
+    [InlineData("not json placeholder-value-for-sc22-tests-0001")]
+    public async Task Unparseable_body_gets_400_and_is_audited_without_its_content(string raw)
+    {
+        var sink = new ConcurrentQueue<string>();
+        using var logged = _factory.WithWebHostBuilder(b =>
+            b.ConfigureLogging(l => l.AddProvider(new CollectingLoggerProvider(sink)).SetMinimumLevel(LogLevel.Trace)));
+
+        using var response = await SendAsync(
+            PutRaw("wikijs-sync", new StringContent(raw, Encoding.UTF8, "application/json")), logged.CreateClient());
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        _factory.RecordedAuditEntries.Where(e => e.Action == SecretItemBffEndpoints.UpdateAction)
+            .Should().ContainSingle()
+            .Which.Should().Be((SecretItemBffEndpoints.UpdateAction, "test-user", "denied",
+                (string?)"item=wikijs-sync reason=invalid-body"));
+        _factory.Vault.Requests.Should().NotContain(r => r.Path.StartsWith("/v1/secret/data/", StringComparison.Ordinal));
+        sink.Should().NotBeEmpty("ログを捕捉できていること（陽性対照）");
+        sink.Should().NotContain(line => line.Contains(PlaceholderValue, StringComparison.Ordinal));
+        AllAuditDetails().Should().NotContain(d => d.Contains(PlaceholderValue, StringComparison.Ordinal));
+    }
+
+    // SC-22, IADR-0454 決定 2: JSON でない本文は 415 で、拒否が監査に残る（暗黙バインドが持っていた要求を保つ）。
+    [Fact]
+    public async Task Non_json_content_type_gets_415_and_is_audited()
+    {
+        var json = JsonSerializer.Serialize(new { property = "apiKey", value = PlaceholderValue });
+
+        using var response = await SendAsync(PutRaw("wikijs-sync", new StringContent(json, Encoding.UTF8, "text/plain")));
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnsupportedMediaType);
+        _factory.RecordedAuditEntries.Should().Contain(e =>
+            e.Action == SecretItemBffEndpoints.UpdateAction && e.Outcome == "denied"
+            && e.Detail == "item=wikijs-sync reason=unsupported-media-type");
+        _factory.Vault.Requests.Should().BeEmpty();
+    }
+
+    // SC-22, IADR-0454 決定 2: 🔴 **本文より先にロールを見る。** 非権限者は本文が壊れていても 403 ＋ 監査 forbidden。
+    [Fact]
+    public async Task Non_writers_get_403_before_the_body_is_read()
+    {
+        using var response = await SendAsync(
+            PutRaw("wikijs-sync", new StringContent("{", Encoding.UTF8, "application/json"), roles: "platform-user"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        _factory.RecordedAuditEntries.Should().ContainSingle(e => e.Action == SecretItemBffEndpoints.UpdateAction)
+            .Which.Detail.Should().Be("item=wikijs-sync reason=forbidden");
+        _factory.Vault.Requests.Should().BeEmpty();
+    }
+
+    // `Content-Length` を持たない本文（chunked 相当）。上限の判定が長さの宣言だけに頼っていないことを確かめる。
+    // 長さを持たない（シーク不能な）本文。Kestrel の chunked 受信と同じく、読み取り側は終わりまで読まないと大きさが分からない。
+    private sealed class NonSeekableReadStream(byte[] bytes) : Stream
+    {
+        private readonly MemoryStream _inner = new(bytes, writable: false);
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override int Read(byte[] buffer, int offset, int count) => _inner.Read(buffer, offset, count);
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            _inner.ReadAsync(buffer, cancellationToken);
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) _inner.Dispose();
+            base.Dispose(disposing);
+        }
     }
 
     // ── 監査と値の不在（AC-05・AC-16）

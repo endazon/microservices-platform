@@ -696,6 +696,10 @@ msgstr "この端末を失効する"
 msgid "この辺の型は {inUseCount} 本の辺で使われているため削除できません。"
 msgstr "この辺の型は {inUseCount} 本の辺で使われているため削除できません。"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "この項目の現在の版は保管先（Vault）で削除されています。画面からは削除された版へ書き込めないため、運用 Runbook の手順でコンソールから版を復元してから、もう一度更新してください。値は保存されていません。"
+msgstr "この項目の現在の版は保管先（Vault）で削除されています。画面からは削除された版へ書き込めないため、運用 Runbook の手順でコンソールから版を復元してから、もう一度更新してください。値は保存されていません。"
+
 #: platform/frontend/src/components/ai-chat/CopyButton.tsx
 msgid "コピーしました"
 msgstr "コピーしました"

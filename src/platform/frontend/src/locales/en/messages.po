@@ -696,6 +696,10 @@ msgstr "Revoke this device"
 msgid "この辺の型は {inUseCount} 本の辺で使われているため削除できません。"
 msgstr "This edge type is used by {inUseCount} edges and cannot be deleted."
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "この項目の現在の版は保管先（Vault）で削除されています。画面からは削除された版へ書き込めないため、運用 Runbook の手順でコンソールから版を復元してから、もう一度更新してください。値は保存されていません。"
+msgstr "The current version of this item has been deleted in the secret store (Vault). This screen cannot write over a deleted version, so restore the version from the console by following the runbook, then update again. The value was not saved."
+
 #: platform/frontend/src/components/ai-chat/CopyButton.tsx
 msgid "コピーしました"
 msgstr "Copied."

@@ -9,9 +9,9 @@ updated: 2026-09-15
 <!-- trace:
 ids: [SC-22, SC-06, SC-15, FR-05, NFR-11, NFR-18]
 adrs: [ADR-0007, ADR-0032, ADR-0040, ADR-0042, ADR-0095]
-iadrs: [IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433, IADR-0453]
-specs: [20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen]
-issues: [#310, #438, #1102, #1411, planning#599]
+iadrs: [IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433, IADR-0453, IADR-0454]
+specs: [20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups]
+issues: [#310, #438, #1102, #1411, #1467, planning#599]
 -->
 
 # 運用 Runbook: 画面が使えないときに秘密情報を 1 項目だけコンソールから投入する
@@ -212,6 +212,29 @@ kubectl -n microservices-platform get secret llm-provider-credentials \
 | Secret は更新されたが挙動が変わらない | 消費側 Pod が古い環境変数を持ったまま | 手順 4 の `rollout restart` を行う |
 | 同じ KV の別のキーが消えた | `put` を使ってしまった | **元の値を持っていれば書き戻す。持っていなければ、そのキーの供給元（発行元のサービス・認証基盤の宣言）から取り直す。**この事故は記録に残す（手順 5） |
 | 認証が壊れた（トークン端点が `invalid_client`） | `deferred[]` の項目を単独で書き換えた | 認証基盤側の宣言と同値へ戻す。**本書の対象外の操作であり、単独では直せない** |
+| **画面が「現在の版は保管先で削除されています」と出す**（一覧では「未設定」） | その KV の現在版がコンソール等で削除（`vault kv delete`）または破棄（`vault kv destroy`）された。画面の権限（部分更新と「無いときだけ作る」）では削除済みの版の上へ書けず、**画面の権限は広げない** | 下の「現在の版が削除されているとき」で版を戻してから、**画面で更新し直す**。コンソールでそのまま `put` しない |
+
+### 現在の版が削除されているとき（画面へ戻すための復元）
+
+画面へ戻すための操作であり、値を投入する操作ではない。**値は画面から入れる**（監査に残るため）。
+
+```sh
+# 現在版と各版の状態を見る（metadata だけ。値は出ない）
+kubectl -n platform-infra exec deploy/vault -- sh -c '
+  export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"
+  vault kv metadata get secret/msp/llm-provider-credentials
+'
+```
+
+- 現在版の `deletion_time` が埋まっていて `destroyed` が `false` なら、**削除を取り消す**:
+  `vault kv undelete -versions=<現在版> secret/msp/llm-provider-credentials`
+- 現在版が `destroyed: true` なら取り消せない。**破棄されていない版から新しい版を作る**:
+  `vault kv rollback -version=<破棄されていない版> secret/msp/llm-provider-credentials`
+  （戻した版の値が現在版になる。破棄されていない版が 1 つも無ければ、手順 3 の但し書きどおり `put` で全プロパティを明示して作る）
+
+いずれも手順と同じく Vault Pod 内で実行し、パスは手順 1 で確かめた実際のパスに置き換える。
+戻したら一覧が「設定済み」になることを確かめ、**画面から目的のプロパティを更新する**。
+戻したこと自体は画面の監査に残らないため、手順 5 のとおり記録する（書く値は無い。戻した版の番号を書く）。
 
 ## 記録
 

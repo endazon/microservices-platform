@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-05, NFR-18, SC-22]
 adrs: [ADR-0032, ADR-0042, ADR-0095]
-iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0135, IADR-0433, IADR-0453]
-specs: [20260914_issue-1411_sc22-secret-injection-screen]
-issues: [#1411]
+iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0135, IADR-0433, IADR-0453, IADR-0454]
+specs: [20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups]
+issues: [#1411, #1467]
 -->
 
 # テスト仕様書: 秘密情報・接続設定の管理
@@ -24,7 +24,7 @@ issues: [#1411]
 
 | 事項 | 理由・送り先 |
 | --- | --- |
-| 🔴 **実 Vault への疎通** | 自動試験は**保管先の偽物**（k8s 認証・KV v2 の metadata / 部分更新 / 作成を写したもの）に対する固定である。**「緑である」ことは「稼働クラスタで書ける」ことを意味しない。** 稼働クラスタでの確認は手動（T-40）で行う |
+| 🔴 **実 Vault への疎通** | 自動試験は**保管先の偽物**（k8s 認証・KV v2 の metadata / 部分更新 / 作成を写したもの。削除・破棄された版への部分更新は 404、既に在る項目への作成は権限不足の 403 を返す）に対する固定である。**「緑である」ことは「稼働クラスタで書ける」ことを意味しない。** 稼働クラスタでの確認は手動（T-40）で行う |
 | 同期（保管先 → 外部シークレット同期 → Secret）の反映 | 別の経路（読み取り専用の同期）であり、本画面は触れない。反映の確認は運用 Runbook の手順で行う |
 | 監査ログの保持・閲覧 | 記録は構造化ログであり、閲覧はログ基盤側 |
 
@@ -74,20 +74,30 @@ issues: [#1411]
 | T-30 | 保留・対象外を含むファイル | 読み込む | 一覧に入るのは `items[]` だけ | `items[]` だけを読む | 自動 |
 | T-31 | 書ける／書けないの交差・ワイルドカード・`..`・空・壊れた JSON | 読み込む | いずれも例外（起動しない） | fail-closed | 自動 |
 | T-32 | 保管先の権限ファイル | path を数える | 項目集合の data ＋ metadata と**完全一致**（多くも少なくもない） | 完全一致パス | 自動 |
-| T-33 | 同上 | capability を見る | data は create / patch / update、metadata は read だけ。ワイルドカード・list・delete・destroy・sudo が無い | 値を読み返せない権限 | 自動 |
+| T-33 | 同上 | capability を見る | data は create / patch だけ（全置換の update も無い）、metadata は read だけ。ワイルドカード・list・delete・destroy・sudo が無い | 値を読み返せず、KV を全置換できない権限 | 自動 |
 | T-34 | 同上 | 保留・対象外のパスを探す | 無い（陽性対照: 対象の項目は在る） | 集合の外へ書けない | 自動 |
 | T-35 | 初期化スクリプト | ロールの束縛先を見る | 専用 SA `bff`・名前空間 `microservices-platform` だけ。`default` を含まない。同期側のロールに相乗りしない | 専用 SA・同期は読み取り専用のまま | 自動 |
 | T-36 | ブラウザ・未認証 | 画面へ行く | ログインへ | 認証 | 自動（E2E） |
 | T-37 | ブラウザ・運用者 | 画面へ行く | 見出し・左ナビ・未設定の表示が出る | 到達 | 自動（E2E） |
 | T-38 | ブラウザ・他のロール | 画面へ行く | 未検出画面。左ナビにも出ず、一覧を呼ばない | 存在秘匿 | 自動（E2E） |
+| T-41 | 現在の版が削除・破棄された項目 | 更新 | **409**（削除済みを示す種別）。失敗が監査に残り、**作成の要求を送らず**、保管先の中身と削除状態は変わらず、最終更新者の記録を作らない。一覧は「未設定」のまま | 削除済みの版へ書かない・原因を見せる | 自動 |
+| T-42 | 同上（保管先クライアント単体） | metadata の取得と書き込み | 削除・破棄のどちらでも「現在の版が削除されている」を返し、作成の要求を送らない。項目が無いときは従来どおり作る（陽性対照）。在るときは metadata を読まずに部分更新する | 同上 | 自動 |
+| T-43 | 更新フォーム | 更新が 409 で失敗する | 「削除されています」「復元」「値は保存されていません」を出す。境界層の日本語の見出しをそのまま出さない | 次の一手を見せる | 自動 |
+| T-44 | 入力規則は満たすが本文が上限（64 KiB）を超える。長さの宣言あり／無しの 2 通り | 更新 | **413**。拒否が監査に残り、保管先の data へ触れない（上限が無ければ書き込みまで進む本文である） | 本文の上限 | 自動 |
+| T-45 | 値 8192 文字・理由 500 文字をすべて 6 バイトの文字で送る最悪の本文（50 KB 超） | 更新 | 200（陽性対照。上限が入力規則の最大を収める） | 本文の上限 | 自動 |
+| T-46 | 壊れた JSON・`null`・JSON でない文字列 | 更新 | **400**。拒否が監査に残り、本文の断片が監査にもログにも出ない（陽性対照: ログは捕捉できている） | 解釈失敗の監査 | 自動 |
+| T-47 | JSON でない Content-Type | 更新 | **415**。拒否が監査に残り、保管先に触れない | 解釈失敗の監査 | 自動 |
+| T-48 | 他のロール ＋ 壊れた本文 | 更新 | **403**（400 ではない）。拒否が監査に残る —— 本文より先にロールを見る | ロール限定 | 自動 |
+| T-49 | 画面から書いた項目を、保管先で消して作り直す（版が 1 に戻り、作成時刻が変わる） | 一覧を作り直しの前後で引く | 前は利用者名（陽性対照）、後は null。**古い記録の版は現在版と同じ 1 のまま**（版だけの突き合わせでは誤った名前が出る） | 最終更新者（誤帰属しない） | 自動 |
 | T-40 | 稼働クラスタ（保管先・同期あり） | 画面から 1 プロパティを更新し、同期後の Secret を長さだけで確かめる | 更新したプロパティの長さが一致し、同居するキーが減っていない | 稼働での成立 | 手動（未実施） |
 
 ## 自動試験の所在
 
 | 区分 | ファイル | 対応 |
 | --- | --- | --- |
-| 画面 | `src/knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.test.tsx` | T-01〜T-09 |
-| 境界層（端点） | `src/platform/backend/Bff/Platform.Bff.Tests/BffSecretItemEndpointTests.cs` | T-10〜T-28 |
+| 画面 | `src/knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.test.tsx` | T-01〜T-09・T-43 |
+| 境界層（端点） | `src/platform/backend/Bff/Platform.Bff.Tests/BffSecretItemEndpointTests.cs` | T-10〜T-28・T-41・T-44〜T-49 |
+| 境界層（保管先クライアント） | `src/platform/backend/Bff/Platform.Bff.Tests/VaultKvClientTests.cs` | T-42 |
 | 境界層（項目集合） | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemCatalogTests.cs` | T-29〜T-31 |
 | 保管先の権限の字面 | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemVaultPolicyTests.cs` | T-32〜T-35 |
 | ブラウザ | `src/platform/frontend/e2e/sc22-secrets.smoke.spec.ts` | T-36〜T-38 |

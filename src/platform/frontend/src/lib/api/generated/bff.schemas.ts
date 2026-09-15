@@ -2078,7 +2078,7 @@ export interface SecretItemStatusDto {
   currentVersion?: number | null;
   /** 現在版の作成時刻（status=set のときだけ） */
   lastUpdatedAt?: string | null;
-  /** BFF が書いた版が現在版であるときだけ、その利用者名。それ以外は null（画面は「記録なし」） */
+  /** BFF が書いた版が現在版であるとき（版の番号と作成時刻の両方が一致するとき）だけ、その利用者名。それ以外は null（画面は「記録なし」） */
   lastUpdatedBy?: string | null;
 }
 

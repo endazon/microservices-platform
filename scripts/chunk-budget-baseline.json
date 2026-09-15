@@ -294,7 +294,7 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 601000,
+  "initialTotalBytes": 601558,
   "$comment_initialTotalBytes_20260912_1438": [
     "［2026-09-12 / #1438］731,293 → 731,435（+142 B）へ引き上げた。実測値である",
     "（rm -rf platform/frontend/dist → pnpm run build → node scripts/check-chunk-budget.js --update。",

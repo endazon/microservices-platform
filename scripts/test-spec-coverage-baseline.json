@@ -267,7 +267,8 @@
     "docs/tests/SC-22_secret-item-management.md": [
       "BffSecretItemEndpointTests",
       "SecretItemCatalogTests",
-      "SecretItemVaultPolicyTests"
+      "SecretItemVaultPolicyTests",
+      "VaultKvClientTests"
     ],
     "docs/tests/UC-01_search-and-ask.md": [
       "AnalysisBffEndpointTests",
