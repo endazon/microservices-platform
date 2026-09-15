@@ -3607,6 +3607,12 @@ paths:
         本文は **64 KiB（65,536 バイト）まで**。ロール判定と allowlist の判定の後に読み、超過（413）・JSON でない（415）・
         解釈できない（400）はいずれも監査へ `denied` で残る（IADR-0454 決定 2）。
         更新の理由（任意）は監査ログへ残る。🔴 **値・値の長さは監査・ログ・応答のどこにも残らない。**
+        プロパティの種別（一覧の `propertyDetails[].kind`。IADR-0456 決定 1〜3）で値の扱いが変わる:
+        `value` は送った値をそのまま書く／`md5-from-password` は平文のパスワードを送り、BFF が MD5（小文字 hex 32 桁）へ変換して書く
+        （平文もハッシュも保存・ログ・応答に出さない）／`generate-rsa-pkcs1` は `value` を**空文字**で送り、BFF が RSA 1024 bit の
+        PKCS#1 PEM を生成して書く（鍵はどこにも返さない。値を送ると 400）。
+        書き込みが成立した後、項目の同期先 ExternalSecret へ `force-sync` の注釈を付けて即時同期を依頼する（IADR-0456 決定 4）。
+        🔴 **依頼が通らなくても 200 のまま**（`syncRequested: false`。同期は ESO の既定の間隔で行われる）。
       operationId: bff-secret-items-update
       requestBody:
         required: true
@@ -3622,7 +3628,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/SecretItemWriteResultDto"
         "400":
-          description: 検証エラー（RFC7807 ValidationProblem）。allowlist 外の項目（**404 にしない**）・本文を JSON として解釈できない・書けないプロパティ・空または 8192 文字超の値・500 文字超の理由
+          description: 検証エラー（RFC7807 ValidationProblem）。allowlist 外の項目（**404 にしない**）・本文を JSON として解釈できない・書けないプロパティ・空または 8192 文字超の値・生成の種別（`generate-rsa-pkcs1`）へ値を送った・500 文字超の理由
           content:
             application/problem+json:
               schema:
@@ -5878,6 +5884,25 @@ components:
           type: string
           nullable: true
           description: "BFF が書いた版が現在版であるとき（版の番号と作成時刻の両方が一致するとき）だけ、その利用者名。それ以外は null（画面は「記録なし」）"
+        propertyDetails:
+          type: array
+          nullable: true
+          items: { $ref: "#/components/schemas/SecretItemPropertyDto" }
+          description: "`properties` と同じ並びの、プロパティごとの入力の形（IADR-0456 決定 1）。BFF は常に埋める"
+
+    SecretItemPropertyDto:
+      type: object
+      description: |
+        SC-22, IADR-0456 決定 1: 書けるプロパティ 1 つの入力の形。🔴 **値を持たない。**
+        `sensitive: false` のプロパティは秘密ではない（画面は平文で入力させる）が、**書き込み専用なのは同じ**である。
+      required: [name, kind, sensitive]
+      properties:
+        name: { type: string, description: "プロパティ名" }
+        kind:
+          type: string
+          enum: [value, md5-from-password, generate-rsa-pkcs1]
+          description: "value = 送った値をそのまま書く／md5-from-password = 平文のパスワードを送り BFF が MD5 で書く／generate-rsa-pkcs1 = 値を送らず BFF が鍵を生成して書く"
+        sensitive: { type: boolean, description: "秘密か（false は環境固有の非秘密値。画面は平文で入力させる）" }
 
     UpdateSecretItemRequest:
       type: object
@@ -5886,7 +5911,7 @@ components:
       required: [property, value]
       properties:
         property: { type: string, description: "書くプロパティ名（項目の properties のいずれか）" }
-        value: { type: string, description: "新しい値（1〜8192 文字）。監査・ログに残らない" }
+        value: { type: string, description: "新しい値（1〜8192 文字）。種別 md5-from-password では平文のパスワード（BFF が MD5 で書く）、種別 generate-rsa-pkcs1 では空文字（BFF が生成する）。監査・ログに残らない" }
         reason:
           type: string
           nullable: true
@@ -5896,9 +5921,10 @@ components:
       type: object
       description: |
         SC-22: 書き込みの結果。**値は返さない。**
-      required: [item, property, version, updatedAt]
+      required: [item, property, version, updatedAt, syncRequested]
       properties:
         item: { type: string }
         property: { type: string }
         version: { type: integer, description: "書き込み後の版" }
         updatedAt: { type: string, format: date-time, description: "書き込み後の版の作成時刻" }
+        syncRequested: { type: boolean, description: "同期先の ExternalSecret へ即時同期を依頼できたか（IADR-0456 決定 4）。false でも書き込みは成立している（同期は既定の間隔で行われる）" }

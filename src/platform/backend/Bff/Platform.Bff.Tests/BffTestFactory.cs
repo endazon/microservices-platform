@@ -31,6 +31,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public FakeVault Vault { get; } = new();
     public InMemorySecretWriteRecordStore SecretWriteRecords { get; } = new();
 
+    // SC-22, IADR-0456 決定 4 (#1477): 書き込み後の force-sync 注釈を受ける Kubernetes API の偽物。
+    public FakeKubernetesApi KubernetesApi { get; } = new();
+
     // FR-15 (#145): 即時ドリフト検出のアラート発火（IDriftAlertSink）を捕捉する。
     public List<DriftReportDto> AlertedReports { get; } = [];
 
@@ -551,7 +554,11 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ["Config:AppliedAt"] = "2026-07-07T00:00:00Z",
                 ["Config:AppliedBy"] = "argocd",
                 // SC-22 (#1411): Vault の接続先（通信は FakeVault が受ける）。未構成の 503 は個別のテストが空へ上書きして測る。
-                ["Vault:Address"] = FakeVault.Address
+                ["Vault:Address"] = FakeVault.Address,
+                // SC-22, IADR-0456 決定 4 (#1477): 書き込み後の同期依頼（通信は FakeKubernetesApi が受ける）。
+                // 未構成の `sync-not-configured` は個別のテストが Enabled=false へ上書きして測る。
+                ["ExternalSecretSync:Enabled"] = "true",
+                ["ExternalSecretSync:ApiServer"] = FakeKubernetesApi.ApiServer
             }));
 
         builder.ConfigureServices(services =>
@@ -623,6 +630,11 @@ public class BffTestFactory : WebApplicationFactory<Program>
             services.AddSingleton<IServiceAccountTokenReader>(new FakeVault.TokenReader());
             services.RemoveAll<ISecretWriteRecordStore>();
             services.AddSingleton<ISecretWriteRecordStore>(SecretWriteRecords);
+            // SC-22, IADR-0456 決定 4 (#1477): Kubernetes API を偽物へ差し替える。**同期依頼のクライアント本体は本物が走る**
+            // —— 方式（PATCH）・Content-Type・注釈の本文・Bearer を要求の側から観測するため。
+            // 名前は `ExternalSecretSyncRequester.ClientName` と一致させる（型を引かないのは、実装より先に赤を取るため）。
+            services.AddHttpClient("KubernetesApi")
+                .ConfigurePrimaryHttpMessageHandler(() => KubernetesApi.CreateHandler());
 
             // FR-10: /bff/dashboard/summary は管理系ロール（admin ＋ operator。#544）を要求する。テストでは Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。

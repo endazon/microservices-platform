@@ -4031,6 +4031,29 @@
           }
         }
       },
+      "Platform.Shared.Contracts.Dtos.SecretItemPropertyDto": {
+        "kind": "record",
+        "members": {
+          "Kind": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Sensitive": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
       "Platform.Shared.Contracts.Dtos.SecretItemStatusDto": {
         "kind": "record",
         "members": {
@@ -4064,6 +4087,12 @@
             "required": true,
             "position": 2
           },
+          "PropertyDetails": {
+            "source": "positional",
+            "type": "List<SecretItemPropertyDto>?",
+            "required": false,
+            "position": 7
+          },
           "Status": {
             "source": "positional",
             "type": "string",
@@ -4092,6 +4121,12 @@
             "type": "string",
             "required": true,
             "position": 1
+          },
+          "SyncRequested": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 4
           },
           "UpdatedAt": {
             "source": "positional",

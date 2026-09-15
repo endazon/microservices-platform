@@ -36,6 +36,15 @@ public static class SecretItemServiceCollectionExtensions
         services.TryAddSingleton<IServiceAccountTokenReader, FileServiceAccountTokenReader>();
         services.TryAddSingleton<IVaultKvClient, VaultKvClient>();
         services.TryAddSingleton<ISecretWriteRecordStore, DistributedCacheSecretWriteRecordStore>();
+
+        // IADR-0456 決定 4 (#1477): 書き込み後に ExternalSecret へ即時同期を依頼する。名乗りは Vault と同じ Pod の SA トークン。
+        services.AddOptions<ExternalSecretSyncOptions>().BindConfiguration(ExternalSecretSyncOptions.SectionName);
+        services.AddHttpClient(ExternalSecretSyncRequester.ClientName, (sp, client) =>
+                client.Timeout = TimeSpan.FromSeconds(
+                    Math.Max(1, sp.GetRequiredService<IOptions<ExternalSecretSyncOptions>>().Value.TimeoutSeconds)))
+            .ConfigurePrimaryHttpMessageHandler(sp =>
+                ExternalSecretSyncRequester.CreateApiServerHandler(sp.GetRequiredService<IOptions<ExternalSecretSyncOptions>>().Value));
+        services.TryAddSingleton<IExternalSecretSyncRequester, ExternalSecretSyncRequester>();
         return services;
     }
 

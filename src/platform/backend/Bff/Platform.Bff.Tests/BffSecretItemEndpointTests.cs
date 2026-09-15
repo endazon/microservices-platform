@@ -33,6 +33,7 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
     {
         _factory = factory;
         _factory.Vault.Reset();
+        _factory.KubernetesApi.Reset();
         _factory.SecretWriteRecords.Records.Clear();
         _factory.RecordedAuditEntries.Clear();
     }
@@ -75,7 +76,8 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var rows = await response.Content.ReadFromJsonAsync<List<SecretItemStatusDto>>(TestContext.Current.CancellationToken);
-        rows!.Select(r => r.Item).Should().Equal("llm-provider-credentials", "keycloak-smtp", "wikijs-sync", "ast-app-secrets");
+        rows!.Select(r => r.Item).Should().Equal(
+            "llm-provider-credentials", "keycloak-smtp", "wikijs-sync", "ast-app-secrets", "ast-moomoo", "ast-moomoo-rsa");
         _factory.RecordedAuditEntries.Should().Contain(e => e.Action == SecretItemBffEndpoints.ListAction && e.Outcome == "granted");
     }
 
@@ -644,13 +646,239 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
         _factory.SecretWriteRecords.Records.Should().BeEmpty();
     }
 
+    // ── プロパティの種別（IADR-0456 決定 1〜3, #1477）
+
+    // 🔴 テスト用の明白なダミーのパスワード。本物の資格情報は書かない。
+    private const string PlaceholderPassword = "placeholder-password-for-sc22-md5-test";
+
+    // 🔴 PEM の見出しを字面で書かない（`.claude/hooks/guard-secrets.js` が秘密鍵の混入として止める）。
+    private const string PrivateKeyMarker = "PRIVATE " + "KEY";
+
+    private static string Md5Hex(string text) =>
+        Convert.ToHexStringLower(System.Security.Cryptography.MD5.HashData(Encoding.UTF8.GetBytes(text)));
+
+    // SC-22, IADR-0456 決定 1: 一覧は書けるプロパティごとの種別と秘密かどうかを返す（`properties` と同じ並び）。
+    [Fact]
+    public async Task List_returns_property_details_for_each_writable_property()
+    {
+        using var response = await SendAsync(Get());
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        var rows = document.RootElement.EnumerateArray().ToDictionary(r => r.GetProperty("item").GetString()!);
+
+        static IEnumerable<string> Details(JsonElement row) => row.GetProperty("propertyDetails").EnumerateArray()
+            .Select(p => $"{p.GetProperty("name").GetString()}|{p.GetProperty("kind").GetString()}|{p.GetProperty("sensitive").GetBoolean()}");
+
+        Details(rows["ast-moomoo"]).Should().Equal("login-account|value|True", "login-pwd-md5|md5-from-password|True");
+        Details(rows["ast-moomoo-rsa"]).Should().Equal("opend_rsa.pem|generate-rsa-pkcs1|True");
+        Details(rows["ast-app-secrets"]).Should().Contain("finnhub-api-key|value|True")
+            .And.Contain("discord-bot-guild-id|value|False")
+            .And.Contain("discord-bot-user-mapping|value|False");
+        foreach (var row in rows.Values)
+            row.GetProperty("propertyDetails").EnumerateArray().Select(p => p.GetProperty("name").GetString())
+                .Should().Equal(row.GetProperty("properties").EnumerateArray().Select(p => p.GetString()));
+    }
+
+    // SC-22, IADR-0456 決定 2: パスワードは平文ではなく小文字 hex の MD5 で保管する。
+    // 🔴 平文もハッシュも応答・監査・ログに出ない。Vault への要求本文にも平文が載らない。
+    // 陽性対照: 同じ項目の `login-account`（種別 value）はそのまま保管される。
+    [Fact]
+    public async Task Md5_property_stores_the_lowercase_hex_md5_and_never_the_plaintext()
+    {
+        var sink = new ConcurrentQueue<string>();
+        using var logged = _factory.WithWebHostBuilder(b =>
+            b.ConfigureLogging(l => l.AddProvider(new CollectingLoggerProvider(sink)).SetMinimumLevel(LogLevel.Trace)));
+        var client = logged.CreateClient();
+
+        using (var account = await SendAsync(Put("ast-moomoo", new { property = "login-account", value = PlaceholderValue }), client))
+            account.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var response = await SendAsync(Put("ast-moomoo", new { property = "login-pwd-md5", value = PlaceholderPassword }), client);
+        var raw = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var expected = Md5Hex(PlaceholderPassword);
+        expected.Should().MatchRegex("^[0-9a-f]{32}$");
+        var stored = _factory.Vault.Store["ai-stock-trading/moomoo"].Data;
+        stored["login-account"].Should().Be(PlaceholderValue, "種別 value はそのまま書く（陽性対照）");
+        stored["login-pwd-md5"].Should().Be(expected).And.NotBe(PlaceholderPassword);
+
+        _factory.Vault.Requests.Should().NotContain(r => r.Body != null && r.Body.Contains(PlaceholderPassword, StringComparison.Ordinal));
+        raw.Should().NotContain(PlaceholderPassword).And.NotContain(expected);
+        AllAuditDetails().Should().NotContain(d => d.Contains(PlaceholderPassword, StringComparison.Ordinal) || d.Contains(expected, StringComparison.Ordinal));
+        sink.Should().NotBeEmpty("ログを捕捉できていること（陽性対照）");
+        sink.Should().NotContain(line => line.Contains(PlaceholderPassword, StringComparison.Ordinal) || line.Contains(expected, StringComparison.Ordinal));
+        _factory.RecordedAuditEntries.Should().Contain(e => e.Action == SecretItemBffEndpoints.UpdateAction && e.Outcome == "granted"
+            && e.Detail == "item=ast-moomoo property=login-pwd-md5 version=2");
+    }
+
+    // SC-22, IADR-0456 決定 3: 生成は値を受けず、RSA 1024 bit の PKCS#1 PEM を作って保管する。
+    // 🔴 鍵は応答・監査・ログに出ない。生成し直すと別の鍵になる。
+    [Fact]
+    public async Task Generate_property_stores_a_fresh_rsa_1024_pkcs1_key_and_never_returns_it()
+    {
+        var sink = new ConcurrentQueue<string>();
+        using var logged = _factory.WithWebHostBuilder(b =>
+            b.ConfigureLogging(l => l.AddProvider(new CollectingLoggerProvider(sink)).SetMinimumLevel(LogLevel.Trace)));
+        var client = logged.CreateClient();
+
+        using var first = await SendAsync(Put("ast-moomoo-rsa", new { property = "opend_rsa.pem", value = "", reason = "初回の鍵" }), client);
+        var raw = await first.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        var pem = _factory.Vault.Store["ai-stock-trading/moomoo-rsa"].Data["opend_rsa.pem"];
+
+        pem.Should().StartWith("-----BEGIN RSA " + PrivateKeyMarker + "-----", "PKCS#1 の見出しであること（PKCS#8 の見出しではない）");
+        using (var rsa = System.Security.Cryptography.RSA.Create())
+        {
+            rsa.ImportFromPem(pem);
+            rsa.KeySize.Should().Be(1024);
+        }
+
+        var body = pem.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[1];
+        raw.Should().NotContain(PrivateKeyMarker).And.NotContain(body);
+        AllAuditDetails().Should().NotContain(d => d.Contains(PrivateKeyMarker, StringComparison.Ordinal) || d.Contains(body, StringComparison.Ordinal));
+        sink.Should().NotBeEmpty("ログを捕捉できていること（陽性対照）");
+        sink.Should().NotContain(line => line.Contains(PrivateKeyMarker, StringComparison.Ordinal) || line.Contains(body, StringComparison.Ordinal));
+
+        using (var second = await SendAsync(Put("ast-moomoo-rsa", new { property = "opend_rsa.pem", value = "" }), client))
+            second.StatusCode.Should().Be(HttpStatusCode.OK);
+        _factory.Vault.Store["ai-stock-trading/moomoo-rsa"].Data["opend_rsa.pem"].Should().NotBe(pem, "生成し直すと別の鍵になる");
+    }
+
+    // SC-22, IADR-0456 決定 3: 生成の種別へ値を送ると 400（利用者の持ち込んだ鍵を書かない）。Vault に触れない。
+    // IADR-0456 決定 2: MD5 の種別もパスワードが空なら 400（従来の入力規則のまま）。
+    [Theory]
+    [InlineData("ast-moomoo-rsa", "opend_rsa.pem", PlaceholderValue)]
+    [InlineData("ast-moomoo", "login-pwd-md5", "")]
+    public async Task Kind_specific_value_rules_reject_with_400(string item, string property, string value)
+    {
+        using var response = await SendAsync(Put(item, new { property, value }));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        _factory.RecordedAuditEntries.Should().ContainSingle(e => e.Action == SecretItemBffEndpoints.UpdateAction)
+            .Which.Detail.Should().Be($"item={item} property={property} reason=invalid-value");
+        _factory.Vault.Requests.Should().NotContain(r => r.Path.StartsWith("/v1/secret/data/", StringComparison.Ordinal));
+        _factory.KubernetesApi.Requests.Should().BeEmpty();
+    }
+
+    // SC-22, IADR-0456 決定 1: 秘密でない（sensitive: false）プロパティも書き込み専用のまま、値はそのまま保管し応答に出さない。
+    [Fact]
+    public async Task Non_sensitive_property_is_written_as_is_and_still_not_returned()
+    {
+        using var response = await SendAsync(Put("ast-app-secrets", new { property = "discord-bot-guild-id", value = PlaceholderValue }));
+        var raw = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        _factory.Vault.Store["ai-stock-trading/app-secrets"].Data["discord-bot-guild-id"].Should().Be(PlaceholderValue);
+        raw.Should().NotContain(PlaceholderValue);
+    }
+
+    // ── 即時同期（IADR-0456 決定 4, #1477）
+
+    private const string SyncAction = "secret.item.sync";
+
+    // SC-22, IADR-0456 決定 4: 書き込みが成功したら、項目の ExternalSecret へ force-sync の注釈を merge-patch する。
+    [Theory]
+    [InlineData("llm-provider-credentials", "anthropic-api-key", "microservices-platform", "llm-provider-credentials")]
+    [InlineData("keycloak-smtp", "password", "platform-infra", "keycloak-smtp")]
+    [InlineData("ast-app-secrets", "finnhub-api-key", "ai-stock-trading", "ast-secrets")]
+    [InlineData("ast-moomoo", "login-account", "ai-stock-trading", "moomoo-credentials")]
+    public async Task Successful_write_requests_force_sync_on_the_items_external_secret(
+        string item, string property, string ns, string externalSecret)
+    {
+        var before = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        using var response = await SendAsync(Put(item, new { property, value = PlaceholderValue }));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var result = await response.Content.ReadFromJsonAsync<SecretItemWriteResultDto>(TestContext.Current.CancellationToken);
+        result!.SyncRequested.Should().BeTrue();
+
+        var patch = _factory.KubernetesApi.Requests.Should().ContainSingle().Which;
+        patch.Method.Should().Be("PATCH");
+        patch.Path.Should().Be($"/apis/external-secrets.io/v1/namespaces/{ns}/externalsecrets/{externalSecret}");
+        patch.ContentType.Should().Be("application/merge-patch+json");
+        patch.Authorization.Should().Be("Bearer " + FakeVault.ServiceAccountJwt);
+        using (var body = JsonDocument.Parse(patch.Body!))
+        {
+            body.RootElement.EnumerateObject().Select(p => p.Name).Should().Equal("metadata");
+            var annotations = body.RootElement.GetProperty("metadata").GetProperty("annotations");
+            annotations.EnumerateObject().Select(p => p.Name).Should().Equal("force-sync");
+            long.Parse(annotations.GetProperty("force-sync").GetString()!, System.Globalization.CultureInfo.InvariantCulture)
+                .Should().BeGreaterThanOrEqualTo(before);
+        }
+
+        patch.Body.Should().NotContain(PlaceholderValue);
+        _factory.RecordedAuditEntries.Should().ContainSingle(e => e.Action == SyncAction)
+            .Which.Should().Be((SyncAction, "test-user", "granted", (string?)$"item={item} externalSecret={ns}/{externalSecret}"));
+    }
+
+    // SC-22, IADR-0456 決定 4: 🔴 **同期の依頼が失敗しても書き込みを失敗にしない。** 200 ＋ syncRequested=false、監査は別の行で failed。
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden, false)]
+    [InlineData(HttpStatusCode.NotFound, false)]
+    [InlineData(HttpStatusCode.InternalServerError, false)]
+    [InlineData(null, true)]
+    public async Task Failed_sync_request_does_not_fail_the_write(HttpStatusCode? status, bool throws)
+    {
+        _factory.KubernetesApi.ForcedStatus = status;
+        _factory.KubernetesApi.Throws = throws;
+
+        using var response = await SendAsync(Put("wikijs-sync", new { property = "apiKey", value = PlaceholderValue }));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var result = await response.Content.ReadFromJsonAsync<SecretItemWriteResultDto>(TestContext.Current.CancellationToken);
+        result!.SyncRequested.Should().BeFalse();
+        result.Version.Should().Be(1);
+        _factory.Vault.Store["msp/wikijs-sync"].Data["apiKey"].Should().Be(PlaceholderValue, "書き込みは成立している");
+        _factory.SecretWriteRecords.Records.Should().ContainKey("wikijs-sync");
+        _factory.RecordedAuditEntries.Where(e => e.Action == SecretItemBffEndpoints.UpdateAction)
+            .Should().ContainSingle().Which.Outcome.Should().Be("granted");
+        _factory.RecordedAuditEntries.Should().ContainSingle(e => e.Action == SyncAction)
+            .Which.Should().Be((SyncAction, "test-user", "failed",
+                (string?)"item=wikijs-sync externalSecret=microservices-platform/wikijs-sync reason=sync-request-failed"));
+    }
+
+    // SC-22, IADR-0456 決定 4: 同期が構成されていない（クラスタ外・無効化）なら依頼を送らず、false と監査 sync-not-configured。
+    [Fact]
+    public async Task Sync_not_configured_reports_false_without_calling_the_api()
+    {
+        using var disabled = _factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration((_, cfg) =>
+            cfg.AddInMemoryCollection(new Dictionary<string, string?> { ["ExternalSecretSync:Enabled"] = "false" })));
+
+        using var response = await SendAsync(Put("wikijs-sync", new { property = "apiKey", value = PlaceholderValue }), disabled.CreateClient());
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await response.Content.ReadFromJsonAsync<SecretItemWriteResultDto>(TestContext.Current.CancellationToken))!
+            .SyncRequested.Should().BeFalse();
+        _factory.KubernetesApi.Requests.Should().BeEmpty();
+        _factory.RecordedAuditEntries.Should().ContainSingle(e => e.Action == SyncAction)
+            .Which.Detail.Should().Be("item=wikijs-sync externalSecret=microservices-platform/wikijs-sync reason=sync-not-configured");
+    }
+
+    // SC-22, IADR-0456 決定 4: 書き込みが成立しなかったら同期を依頼しない（502・409）。
+    [Fact]
+    public async Task Failed_write_does_not_request_sync()
+    {
+        _factory.Vault.Put("msp/wikijs-sync", ("apiKey", ExistingOtherValue));
+        _factory.Vault.WriteStatus = HttpStatusCode.Forbidden;
+        using (var rejected = await SendAsync(Put("wikijs-sync", new { property = "apiKey", value = PlaceholderValue })))
+            rejected.StatusCode.Should().Be(HttpStatusCode.BadGateway);
+
+        _factory.Vault.WriteStatus = null;
+        _factory.Vault.Store["msp/wikijs-sync"].Deleted = true;
+        using (var deleted = await SendAsync(Put("wikijs-sync", new { property = "apiKey", value = PlaceholderValue })))
+            deleted.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        _factory.KubernetesApi.Requests.Should().BeEmpty();
+        _factory.RecordedAuditEntries.Should().NotContain(e => e.Action == SyncAction);
+    }
+
     // ── fail-closed（AC-09）
 
     // SC-22, IADR-0433 決定 3: 起動した BFF は実ファイルの allowlist を読み込んでいる（陽性対照）。
     [Fact]
     public void The_running_bff_loaded_the_allowlist_at_startup()
     {
-        _factory.Services.GetRequiredService<SecretItemCatalog>().Items.Should().HaveCount(4);
+        _factory.Services.GetRequiredService<SecretItemCatalog>().Items.Should().HaveCount(6);
     }
 
     // SC-22, IADR-0433 決定 3: allowlist を読めなければ BFF は起動しない。
