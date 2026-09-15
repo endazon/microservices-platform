@@ -266,7 +266,9 @@
     ],
     "docs/tests/SC-22_secret-item-management.md": [
       "BffSecretItemEndpointTests",
+      "SecretItemBootstrapSeedTests",
       "SecretItemCatalogTests",
+      "SecretItemExternalSecretRbacTests",
       "SecretItemVaultPolicyTests",
       "VaultKvClientTests"
     ],

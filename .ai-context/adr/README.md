@@ -533,3 +533,4 @@
 | [IADR-0453](./IADR-0453_sc22-screen-decisions-operator-granularity-updater-and-states.md) | **SC-22 は運用者を含め、プロパティ 1 つずつ書き、最終更新者は BFF が書いた版にだけ付け、状態は metadata から 3 値で出す**（#1411・ADR-0095・IADR-0433 の先送り分）。🔴 Vault の権限は広げない（最終更新者は Redis の書き込み記録を現在版と突き合わせる）。「設定済み」はプロパティ単位の空欄を保証しない。Vault 未配備は 503 | Accepted |
 | [IADR-0454](./IADR-0454_sc22-deleted-version-write-body-limit-and-stale-updater.md) | **SC-22 は現在版が削除された項目へ書かずに 409 で次の一手を示し、PUT 本文を 64 KiB で打ち切って解釈失敗も監査し、最終更新者は版と作成時刻で突き合わせる**（#1467） | Accepted |
 | [IADR-0455](./IADR-0455_publish-gate-all-paths-withdrawal-and-private-note-scope.md) | **`DocumentUpdated` の発行はすべて門を通す**（#1471）。属性を書き換える経路は撤収の形の門を使い、素の発行は `private`。🔴 門の述語は個人資料にだけ効かせ、組織文書の発行はデータに依らず不変 | Accepted |
+| [IADR-0456](./IADR-0456_sc22-property-kinds-force-sync-reloader-and-seed-if-absent.md) | **SC-22 のプロパティの種別・即時同期・Reloader・seed-if-absent**（#1477） | Accepted |

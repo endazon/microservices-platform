@@ -16,8 +16,9 @@ end-to-end 疎通**する。認証は **kubernetes auth**（静的 root トー�
 | `clustersecretstore-k8s.yaml` | 同名 `vault-backend` の **kubernetes 認証版**（`ESO=1` で bootstrap 後に上書き適用） |
 | `vault-auth-rbac.yaml` | vault の**専用 SA `vault`**（vault-dev.yaml で作成）に `system:auth-delegator`（TokenReview）。default SA には付与しない（blast radius 限定） |
 | `policy-eso-read.hcl` | Vault policy `eso-read`（**MSP `secret/data/msp/*`＋AST `secret/data/ai-stock-trading/*`** の read・最小権限。store 共有のため両 path を許可） |
-| `policy-bff-secret-write.hcl` | Vault policy `bff-secret-write`（SC-22 / #1411 / IADR-0433・IADR-0453）。**`deploy/bootstrap/sc22-secret-items.json` の `items[]` 4 KV だけ**に、data の `create`/`patch` と metadata の `read` を完全一致パスで与える。**ワイルドカード・data の `read`・KV を全置換できる `update`・`list`/`delete` なし**（一致は `Platform.Bff.Tests` の `SecretItemVaultPolicyTests` が固定） |
-| `bootstrap.sh` | k8s auth の enable/config＋policy `eso-read`・`bff-secret-write`＋role `eso`・`bff-secret-writer`（**後者は BFF 専用 SA `microservices-platform/bff` にだけ束縛**。`default` に束縛しない）＋seed（`kubectl exec`・runtime・再実行可） |
+| `policy-bff-secret-write.hcl` | Vault policy `bff-secret-write`（SC-22 / #1411・#1477 / IADR-0433・IADR-0453・IADR-0456）。**`deploy/bootstrap/sc22-secret-items.json` の `items[]` 6 KV だけ**（`ai-stock-trading/moomoo`・`moomoo-rsa` を含む）に、data の `create`/`patch` と metadata の `read` を完全一致パスで与える。**ワイルドカード・data の `read`・KV を全置換できる `update`・`list`/`delete` なし**（一致は `Platform.Bff.Tests` の `SecretItemVaultPolicyTests` が固定） |
+| `rbac-bff-externalsecret-sync.yaml` | BFF（SA `microservices-platform/bff`）が **platform-infra / ai-stock-trading** の ExternalSecret へ `force-sync` の注釈を付ける Role / RoleBinding（SC-22 / #1477 / IADR-0456 決定 4）。`get`/`patch` を **`resourceNames` で `items[]` の `externalSecret` に限る**（MSP ns の Role はチャート。名前集合の一致は `SecretItemExternalSecretRbacTests` が固定）。`ESO=1` で apply |
+| `bootstrap.sh` | k8s auth の enable/config＋policy `eso-read`・`bff-secret-write`＋role `eso`・`bff-secret-writer`（**後者は BFF 専用 SA `microservices-platform/bff` にだけ束縛**。`default` に束縛しない）＋seed（`kubectl exec`・runtime・再実行可）。**SC-22 の KV（`llm-provider-credentials`・`wikijs-sync`・`keycloak-smtp`・`ai-stock-trading/app-secrets`）は無いときだけ `-cas=0` で作り、在れば env が空でないキーだけ部分更新する**（画面で入れた値を再実行で消さない。#1477 / IADR-0456 決定 6。`SecretItemBootstrapSeedTests` が固定）。`ai-stock-trading/moomoo`・`moomoo-rsa` は seed しない |
 | `externalsecret-llm.yaml` | ExternalSecret（Vault `secret/msp/llm-provider-credentials` → 既存 Secret・同一キー・PR-1） |
 | `externalsecret-minio.yaml` | ExternalSecret（`secret/msp/minio-credentials` → `minio-credentials` accessKey/secretKey・PR-2/IADR-0097） |
 | `externalsecret-wikijs-db.yaml` | ExternalSecret（`secret/msp/wikijs-db` → `wikijs-db` password・PR-2/IADR-0097） |
@@ -42,6 +43,14 @@ VAULT=1 ESO=1 bash scripts/k8s-local-up.sh
 (2) `vault-auth-rbac.yaml` 適用、(3) `bootstrap.sh`（k8s auth＋policy＋role＋seed）、(4) `eso/clustersecretstore-k8s.yaml`（store を kubernetes 認証へ上書き）適用、
 (5) `externalsecret-llm.yaml` 適用 を行い、**`llm-provider-credentials` の手動 `apply_secret` はスキップ**する
 （ExternalSecret が Secret を所有＝二重所有回避）。
+
+［2026-09-15 / #1477 / IADR-0456 決定 4・5］(2) の直後に、画面（`/admin/secrets`）で書いた値を待たずに Pod へ届ける部品を入れる:
+`ai-stock-trading` の名前空間を冪等に作り、`rbac-bff-externalsecret-sync.yaml` を apply し、**Stakater Reloader**
+（chart `stakater/reloader` 2.2.17・image v1.4.22 を pin。`reloader.watchGlobally=false` ＋ `reloader.namespaces` で
+microservices-platform / platform-infra / ai-stock-trading だけを見る）を `reloader` 名前空間へ入れる。
+BFF は書き込み成功後に同期先の ExternalSecret へ `force-sync` を付け、Reloader は注釈 `secret.reloader.stakater.com/reload` を持つ
+消費側（llmgateway-service・wiki-service は `values-local.yaml`、mail-relay は `deploy/mail-relay/mail-relay.yaml`）を作り直す。
+上書きは `RELOADER_CHART_VERSION` / `RELOADER_IMAGE_TAG`。
 
 ## seed 値（**平文非コミット**）
 

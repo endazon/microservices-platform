@@ -1,11 +1,11 @@
 ---
 title: "PoC の立ち上げを画面だけで行えるよう、SC-22 に moomoo 資格情報（MD5 変換）・OpenD の RSA 鍵（生成）・Discord の環境固有 ID を加え、書き込み後に即時同期と消費側の再起動を通す（#1477）"
 type: spec
-status: in-progress
+status: done
 related_ids: [SC-22, FR-05, NFR-18, ADR-0095, IADR-0096, IADR-0103, IADR-0433, IADR-0453, IADR-0454, IADR-0456]
 author: claude
 created: 2026-09-15
-updated: 2026-09-15
+updated: 2026-09-16
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md
@@ -135,7 +135,8 @@ fail-closed で拒むもの（起動しない）: 未知の `kind`／オブジ�
 - ヘルパ `vkv_exists <path>`（`vault kv metadata get`）で在否を見る。**無いときだけ `vault kv put`**。在るときは、env が**空でない**プロパティだけを `vault kv patch`。
 - 対象: `msp/llm-provider-credentials`（`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`）・`msp/wikijs-sync`（`WIKIJS_SYNC_APIKEY`）・
   `msp/keycloak-smtp`（`host`/`port`/`starttls` は構成なので毎回 patch、`from`/`user`/`password` は env が空でないときだけ）・
-  `ai-stock-trading/app-secrets`（無いときだけ。`*-auth-client-*` 8 件は realm と同値、他 15 件は空文字）。
+  `ai-stock-trading/app-secrets`（無いときだけ。`*-auth-client-*` 8 件は realm と同値、画面から書ける 11 件は空文字）。
+- 作成は `vault kv put -cas=0`（Vault 側でも「無いときだけ」）。試験は「items[] のパスへの `kv put` はすべて `-cas=0` を持ち、`vkv_exists` の分岐の中にある」を固定する。
 - `ai-stock-trading/moomoo` / `moomoo-rsa` は seed しない（Secret 不在で OpenD が待機＝fail-closed）。
 - **items[] の全パスについて「無条件の `vault kv put`」が無いことを xUnit で固定する**。
 
@@ -150,7 +151,7 @@ fail-closed で拒むもの（起動しない）: 未知の `kind`／オブジ�
 | AC-5 | 書き込みが失敗したら同期を依頼しない | 同上 |
 | AC-6 | Vault policy の path 集合が items[] と完全一致（6 KV × 2） | `SecretItemVaultPolicyTests` ＋ 変異（path を 1 本抜く） |
 | AC-7 | RBAC の (ns, resourceNames) が items[] の externalSecret と完全一致し、verbs は get/patch だけ、束縛先は SA bff | `SecretItemExternalSecretRbacTests` ＋ 変異（名前を 1 つ足す） |
-| AC-8 | bootstrap は items[] のどのパスも無条件に `kv put` しない。app-secrets の seed は realm と同値の 8 件と空の 15 件、moomoo は seed しない | `SecretItemBootstrapSeedTests` ＋ 変異（put を戻す） |
+| AC-8 | bootstrap は items[] のどのパスも無条件に `kv put` しない。app-secrets の seed は realm と同値の 8 件と空の 11 件、moomoo は seed しない | `SecretItemBootstrapSeedTests` ＋ 変異（put を戻す） |
 | AC-9 | ESO=1 で Reloader を pin して入れ、BFF の RBAC を apply する。ESO 未設定では入れない | `scripts/k8s-local-up.test.js` |
 | AC-10 | 画面: 種別ごとの入力形、生成の確認、Discord ID の平文入力と注記、同期の表示。i18n に未翻訳なし | `SecretItemManagementPage.test.tsx` ＋ `check-i18n-catalogs` |
 | AC-11 | 既存の SC-22 の試験（T-01〜T-49）が緑のまま | `dotnet test` ／ vitest |
@@ -179,4 +180,64 @@ fail-closed で拒むもの（起動しない）: 未知の `kind`／オブジ�
 
 ## 実行記録
 
-（実装中に追記する）
+環境: Windows 11・.NET SDK 10.0.301・helm v4.2.1・pnpm 10.33.0。`src/ai-stock-trading` は `git submodule update --init` 済み（BFF の試験のビルドに要る）。
+
+### 赤（実装前）
+
+| 対象 | コマンド | 結果 |
+| --- | --- | --- |
+| allowlist のスキーマ | 旧 `SecretItemCatalog.cs` に戻し `dotnet build src/platform/backend/Bff/Platform.Bff.Tests` | ビルド失敗: CS0103 `SecretPropertyKind` ×14、CS0246 `SecretPropertyDefinition` ×14・`ExternalSecretReference` ×2、CS1061 `PropertyDefinitions` ×10・`FindProperty` ×4・`ExternalSecret` ×2 |
+| 端点（MD5・生成・同期・一覧の種別） | 試験と偽物（FakeKubernetesApi・構成キー）だけを先に入れて `dotnet test ... --filter BffSecretItemEndpointTests` | **失敗 13・合格 42**（新しい 13 件だけが落ち、既存 42 件は緑）: `Md5_property_stores_…`、`Generate_property_stores_…`、`Kind_specific_value_rules_reject_with_400(ast-moomoo-rsa…)`、`List_returns_property_details_…`、`Successful_write_requests_force_sync_…` ×4、`Failed_sync_request_does_not_fail_the_write` ×4、`Sync_not_configured_…` |
+
+### 緑
+
+| 対象 | 結果 |
+| --- | --- |
+| `SecretItemCatalogTests` ＋ `SecretItemVaultPolicyTests` | 合格 36 |
+| SC-22 の BFF 試験（`SecretItem*`・`VaultKvClientTests`） | 合格 95 → RBAC / seed の試験を足して合格 103（途中 1 件は試験側の誤り —— `"secrets\"]"` が `"externalsecrets"]` に一致した —— を直した） |
+| `node scripts/k8s-local-up.test.js` | 177 tests passed |
+| `bash -n` | `bootstrap.sh`・`k8s-local-up.sh` とも OK |
+| `helm template`（既定 / `-f deploy/local/values-local.yaml`） | 両方 exit 0。既定は Role も API サーバへの Egress も描かない。ローカルは Role（resourceNames 2）と Reloader の注釈（llmgateway・wiki）を描く。`--set externalSecretSync.enabled=true,apiServerEgress.cidrs={10.0.0.1/32}` で Egress（443・6443）を描く |
+| `dotnet format src/platform/backend/backend.slnx --verify-no-changes` | exit 0 |
+| `check-openapi-dto-drift` | OK（同名 85 件） |
+| `check-contract-schema` | 非破壊 3 件（`SecretItemStatusDto.PropertyDetails`・`SecretItemWriteResultDto.SyncRequested`・型 `SecretItemPropertyDto`）→ `--update`（文書化された流れ。破壊的 0・承認消費 0）→ OK |
+| i18n | en 17 件を訳して `pnpm run i18n` の Missing 0、`check-i18n-catalogs` OK |
+| SC-22 の vitest | 14 passed（既存 9 ＋ 新 5） |
+
+### 変異試験（手で壊し、落ちるのを見てから戻した）
+
+| # | 変異 | 落ちた試験と理由 |
+| --- | --- | --- |
+| ① | `SecretPropertyValues.Derive` の MD5 を「平文をそのまま返す」へ | `Md5_property_stores_…`: 保管値が期待の MD5 と index 0 で食い違う |
+| ② | 端点の応答に生成した鍵を載せる（`mutant = generated ? derived : null`） | `Generate_property_stores_…`: `Did not expect raw … to contain`（応答の本文に鍵の見出し） |
+| ③ | `rbac-bff-externalsecret-sync.yaml` の platform-infra の `resourceNames` に `bff-oidc` を足す | `Role_resource_names_equal_…`: `{"bff-oidc", "keycloak-smtp"} contains 1 item(s) too many` |
+| ④ | `bootstrap.sh` の wikijs-sync の分岐の後ろに無条件の `vault kv put secret/msp/wikijs-sync …` を戻す | `Kv_puts_on_screen_written_paths_…`: その put が `-cas=0` を含まない |
+| ⑤ | `policy-bff-secret-write.hcl` から `secret/data/ai-stock-trading/moomoo-rsa` を抜く | `Policy_paths_equal_the_allowlist_items_exactly` と `Policy_does_not_cover_deferred_or_excluded_paths` |
+
+①②⑤ は 1 回の実行で 4 件失敗・3 件合格、③④ は 2 件失敗・6 件合格。戻した後はいずれも合格（MUTANT の字面が残っていないことを grep で確かめた）。
+
+### 完了前の検証（2026-09-16）
+
+| コマンド | 結果 |
+| --- | --- |
+| `dotnet test src/platform/backend/Bff/Platform.Bff.Tests` | **合格 743・スキップ 1・失敗 0**（3 分 10 秒） |
+| `dotnet format src/platform/backend/backend.slnx --verify-no-changes` | exit 0 |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | **782 tests passed**（1 回目は IADR 索引のタイトルセルが 200 字を超えて赤 → 本体 H1 の要約へ縮めて緑） |
+| `node scripts/k8s-local-up.test.js` | 177 tests passed |
+| `bash -n`（`bootstrap.sh`・`k8s-local-up.sh`） | OK |
+| `helm template`（既定 / `-f deploy/local/values-local.yaml`） | exit 0 / exit 0 |
+| `src/`: `pnpm run typecheck` | exit 0（submodule を init した後に `pnpm install --frozen-lockfile` をやり直して AST のワークスペースを結線した） |
+| `src/`: `pnpm run lint` | exit 0（0 errors・12 warnings。警告はすべて本作業の外のファイル） |
+| `src/`: `pnpm run format:check` | OK（新規 3 ファイルを prettier で整形した後） |
+| `src/`: `vitest run knowledge/frontend/src/features/sc22-secrets` | 14 passed |
+| `src/`: `pnpm run codegen` ／ `pnpm run i18n` | 生成物をコミット済み（en Missing 0） |
+| `check-i18n-catalogs` | OK |
+| `check-openapi-dto-drift` | OK（同名 85 件） |
+| `check-contract-schema` | OK（非破壊 3 件を `--update` 済み） |
+| `check-test-spec-coverage` | 床の上げ忘れ 2 件（`SecretItemExternalSecretRbacTests` / `SecretItemBootstrapSeedTests` を記載）→ `--update`（対 310 件）→ OK |
+| `check-trace-blocks` | 1 回目は試験仕様書の本文の `PKCS#1` を参照と判定 → 「PKCS1 形式」へ言い換え（Runbook の同じ字面も）→ OK（177 件） |
+| `gen-knowledge-graph --check` ／ `check-adr-numbering` ／ `check-doc-links` ／ `check-doc-type-vocabulary` ／ `check-plan-id-qualification` ／ `check-cross-repo-refs` | いずれも OK |
+
+### 未実施
+
+- T-40（稼働クラスタでの疎通・即時同期・Reloader・OpenD が生成した鍵を読むこと）。作業条件により稼働クラスタに触れていない。

@@ -9,9 +9,9 @@ updated: 2026-09-15
 <!-- trace:
 ids: [SC-22, SC-06, SC-15, FR-05, NFR-11, NFR-18]
 adrs: [ADR-0007, ADR-0032, ADR-0040, ADR-0042, ADR-0095]
-iadrs: [IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433, IADR-0453, IADR-0454]
-specs: [20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups]
-issues: [#310, #438, #1102, #1411, #1467, planning#599]
+iadrs: [IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433, IADR-0453, IADR-0454, IADR-0456]
+specs: [20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup]
+issues: [#310, #438, #1102, #1411, #1467, #1477, planning#599, planning#635]
 -->
 
 # 運用 Runbook: 画面が使えないときに秘密情報を 1 項目だけコンソールから投入する
@@ -60,6 +60,10 @@ env で値を渡さなかった項目は**既定値（多くは開発用の固�
 
 > `bootstrap.sh` が正しいのは「何も入っていない環境を立ち上げるとき」だけである。
 > **既に動いている環境に対しては、一括再投入は退避手段ではなく破壊操作である。**
+
+［2026-09-15 追記］**画面が書く KV（`items[]` のうち `bootstrap.sh` が種を入れるもの）は、無いときだけ作るようになった。**
+既に在る KV は、env が空でないプロパティだけが差し替わる（画面で入れた値は再実行で消えない）。
+🔴 **それ以外の項目（認証基盤・データベース・ブローカの資格情報）は従来どおり再投入される。** 1 項目を直すために `bootstrap.sh` を実行しない、は変わらない。
 
 ## 前提
 
@@ -126,6 +130,11 @@ EOF
   `patch` は指定したプロパティだけを差し替える。
 - KV そのものがまだ存在しない場合に限り `patch` は失敗する。そのときは `put` で**その KV の
   全プロパティを明示して**作る（欠けたプロパティは空になる、と理解した上で行う）。
+- ［2026-09-15 追記］**プロパティの種別が「値そのまま」でない項目**（同ファイルの `properties[]` のオブジェクト要素の `kind`）:
+  - `md5-from-password`（例 `ai-stock-trading/moomoo` の `login-pwd-md5`）: **パスワードそのものを書かない。** 小文字 hex の MD5 を書く。
+    手順 2 で読み込んだ値から、表示せずに作って渡す: `printf '%s' "$SECRET_VALUE" | md5sum | cut -d' ' -f1` の出力を `キー名=-` の標準入力へ渡す。
+  - `generate-rsa-pkcs1`（例 `ai-stock-trading/moomoo-rsa` の `opend_rsa.pem`）: **画面の「生成」を使う。** 生成し直すと OpenD に登録済みの鍵との対応が失効する。
+    コンソールで作るのは画面が使えないときだけで、RSA 1024 bit の PEM（PKCS1 形式）を Vault Pod の中で作って書き、端末へ出さない。
 
 書き終えたら値を捨てる。
 
@@ -155,6 +164,13 @@ kubectl -n microservices-platform rollout status  deploy/llm-gateway --timeout=1
 
 消費側の名前は、その Secret を `secretKeyRef` で読んでいる Deployment である
 （`deploy/helm/` の values で辿れる）。**読み手がいない項目もある** —— その場合はこの段を飛ばす。
+
+［2026-09-15 追記］**画面から書いた場合、この段は自動で行われる。** 書き込みが成立すると境界層が同期先の ExternalSecret へ
+`force-sync` を付け（画面に「即時同期を依頼しました」と出る）、`ESO=1` のローカル配備では Stakater Reloader が
+注釈 `secret.reloader.stakater.com/reload` を持つ消費側（llmgateway-service・wiki-service・mail-relay。AST の消費側は AST のチャート）を作り直す。
+画面が「即時同期を依頼できませんでした」と出したときと、本書のコンソール手順を使ったときは、上の `annotate` を手で行う。
+Reloader の注釈がある消費側は Secret の更新で作り直されるため、`rollout restart` は要らない。
+keycloak-smtp を読むのは mail-relay であり、**Keycloak は作り直さない**。
 
 ### 5. 使ったことを記録する（**省略しない**）
 
