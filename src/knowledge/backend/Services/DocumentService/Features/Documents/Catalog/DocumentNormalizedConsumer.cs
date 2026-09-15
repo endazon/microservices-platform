@@ -45,6 +45,9 @@ public class DocumentNormalizedConsumer(
             fingerprint = DocumentBodyIntake.Fingerprint(await storage.GetTextAsync(ev.MarkdownUri, ct));
 
         var doc = await db.Documents.FindAsync(new object?[] { ev.DocumentId }, ct);
+        // FR-19, ADR-0061 決定 4, [[IADR-0455]] 決定 1 (#1471): **属性を差し替える「前」に門の判定を取る。**
+        // 再正規化は属性を辞書ごと差し替えるため、個人資料の露出を外し得る（撤収の形の門を使う）。
+        var wasPublishable = doc is not null && DocumentEndpoints.PassesPublishGate(doc);
         if (doc is null)
         {
             // ADR-0057 決定 1, [[IADR-0296]]: **`ev.AssetUris` を台帳へ写す。**
@@ -84,7 +87,8 @@ public class DocumentNormalizedConsumer(
         // **［#1184］共有先（`shared_with`）の解決も含めて `DocumentEndpoints` の 1 か所へ寄せる**
         // （ADR-0061 決定 5 / [[IADR-0396]] 決定 3）—— ここで独自に組み立てると、
         // 取り込み経路の文書だけ判定軸が 1 本足りない索引になる。
-        await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, names, ct);
+        await DocumentEndpoints.PublishUpdatedIfIndexableOrWithdrawingAsync(
+            bus, db, doc, wasPublishable, names, ct);
     }
 
     // SC-05, SC-09, SC-10, #637: 辞書に在るタグだけを返し、**無いものは件数として記録して捨てる**。

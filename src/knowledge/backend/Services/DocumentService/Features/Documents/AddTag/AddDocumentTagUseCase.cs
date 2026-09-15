@@ -71,7 +71,7 @@ public sealed class AddDocumentTagUseCase(DocumentDbContext db, IDocumentUpdated
             return AddDocumentTagOutcome.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, names, ct));
 
         await db.SaveChangesAsync(ct);
-        await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, names, ct);
+        await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, names, ct);
         return AddDocumentTagOutcome.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, names, ct));
     }
 }

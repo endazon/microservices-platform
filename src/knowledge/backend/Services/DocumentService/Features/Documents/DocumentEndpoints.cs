@@ -210,14 +210,15 @@ public static class DocumentEndpoints
     // **イベントも表示名を運ぶ。** 射影（Qdrant / Wiki.js）は人が読む面であり、
     // 検索の hot path に辞書引きを増やさない（[[IADR-0153]] 決定 1・2）。
     //
-    // **［#635］`internal` にしてある。** 改名の再発行（`Tags/Rename`）が同じ形を要るためで、
-    // **識別子 → 表示名の変換点を 2 つに割らない**ことがここでの目的である（同 決定 2）。
+    // **［#635］改名の再発行（`Tags/Rename`）も同じ形を使う。** **識別子 → 表示名の変換点を
+    // 2 つに割らない**ことがここでの目的である（同 決定 2）。
+    // 🔴 **［#1471］`private` にしてある。経路からは下の 2 つの門を通してだけ使う**（[[IADR-0455]] 決定 1）。
     // （旧 `ToEvent` の後継。イベントの構築はアダプタ側にある —— 可視発行を 1 点に保つため。）
     // **［#1184］共有先（`shared_with`）の解決もここで行う**（ADR-0061 決定 5 / [[IADR-0396]] 決定 3）。
     // 🔴 **呼び出し側に解決させない。** 「共有先を載せる経路」と「載せない経路」に割れると、
     // 索引の中の判定軸が経路ごとに違うものになり、**どちらが正しいかを誰も言えなくなる**
     // （識別子 → 表示名の変換点を 1 つに保っているのと同じ理由）。
-    internal static async Task PublishUpdatedAsync(IDocumentUpdatedPublisher bus,
+    private static async Task PublishUpdatedAsync(IDocumentUpdatedPublisher bus,
         DocumentDbContext db, Document d,
         IReadOnlyDictionary<Guid, string> names, CancellationToken ct = default)
     {
@@ -232,17 +233,50 @@ public static class DocumentEndpoints
 
     // FR-19, ADR-0061 決定 1・2 / [[IADR-0396]] 決定 4 (#1184): **発行の門。**
     //
+    // 🔴 **［2026-09-15 追記 / #1471］`DocumentUpdated` を出す本番経路はすべて門を通す**
+    // （[[IADR-0455]] 決定 1）。一部の経路だけ門を通す形にすると、**「発行の門がある」という説明と
+    // コードの実態が食い違い**、後から経路を足した人がどちらの作法に倣えばよいか判らなくなる
+    // （PR #1281 のレビュー指摘）。その修正は squash マージの後に push されて develop に入らず、
+    // 10 経路が素の発行を直接呼んだまま残っていた。**経路は次の 2 つから選ぶ。**
+    //
+    //   - 属性を変えない経路 → `PublishUpdatedIfIndexableAsync`
+    //   - 属性を書き換え得る経路（管理者の全置換・正規化・露出トグル）
+    //     → `PublishUpdatedIfIndexableOrWithdrawingAsync`。単純な門だと ON → OFF の**撤収の
+    //     イベントが弾かれ、本文が索引に残る**（[[IADR-0396]] 決定 5）
+    //
+    // 素の発行を `private` にしたので `DocumentEndpoints.` 付きの直接呼び出しはコンパイルで止まる。
+    // ポートを経路から直接叩く形は型で止まらないため、`PublishGateCoverageTests` がソースを走査して止める。
+    //
     // 🔴 **個人資料は「3 トグルのうち 1 つでも ON」のときだけ索引の生産側へ流す。**
     // 3 つとも OFF の資料は**イベントそのものを出さない** —— OFF を「索引に存在しない」ことで
     // 構造的に守る性質（[[IADR-0270]] 決定 5 が守っていたもの）をそのまま残すためである。
     //
-    // **判定は `DocumentExposure.IsIndexable` ただ 1 つ**であり、索引の生産側
+    // **個人資料に対する判定は `DocumentExposure.IsIndexable` ただ 1 つ**であり、索引の生産側
     // （`IngestionService.DocumentUpdatedConsumer`）が呼ぶのと**同じ関数**である。
-    // 組織文書は常に true（露出キーを持たない）なので、既存経路の挙動は変わらない。
+    //
+    // 🔴 **［#1471］門は個人資料にだけ効かせる**（[[IADR-0455]] 決定 2）。`DocumentExposure.IsAllowed` は
+    // 明示値を文書種別より優先するため、露出キーを全 `excluded` にした組織文書は `IsIndexable` が偽になる
+    // （そうした属性を拒否する検証は無い）。門で止めると `WikiService` へアーカイブ（ページの非公開化）が
+    // 届かない。**組織文書は常に通す** —— 既存経路の挙動はデータに依らず変わらない。
+    internal static bool PassesPublishGate(Document d)
+        => !DocumentScopes.IsPrivateNote(d.Attributes) || DocumentExposure.IsIndexable(d.Attributes);
+
     internal static Task PublishUpdatedIfIndexableAsync(IDocumentUpdatedPublisher bus,
         DocumentDbContext db, Document d,
         IReadOnlyDictionary<Guid, string> names, CancellationToken ct = default)
-        => DocumentExposure.IsIndexable(d.Attributes)
+        => PassesPublishGate(d)
+            ? PublishUpdatedAsync(bus, db, d, names, ct)
+            : Task.CompletedTask;
+
+    // FR-19, ADR-0061 決定 4 / [[IADR-0396]] 決定 5 / [[IADR-0455]] 決定 1 (#1471): **撤収の形の門。**
+    // 「今通る」または「書き換える前は通った」ときに出す（ON → OFF は索引からの削除まで及ぶ）。
+    //
+    // 🔴 **`wasPublishable` は属性を書き換える「前」に `PassesPublishGate` で取った値である。**
+    // 書き換えた後に取ると今の値と常に等しくなり、撤収が黙って落ちる。
+    internal static Task PublishUpdatedIfIndexableOrWithdrawingAsync(IDocumentUpdatedPublisher bus,
+        DocumentDbContext db, Document d, bool wasPublishable,
+        IReadOnlyDictionary<Guid, string> names, CancellationToken ct = default)
+        => wasPublishable || PassesPublishGate(d)
             ? PublishUpdatedAsync(bus, db, d, names, ct)
             : Task.CompletedTask;
 
