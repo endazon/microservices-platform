@@ -148,6 +148,13 @@ SetExposure だけは、全 OFF → 全 OFF の保存でタグ辞書の読み取
 - **挙動**（`PrivateNoteExposurePublishTests` へ追加・`TestWebApplicationFactory` ＋ `RecordingMessageBus`）: 上記受け入れ基準 2・4・5。
 - Docker を要する Integration（Testcontainers）は手元で起こせない。本件の試験は InMemory EF と記録用バスで完結する。
 
+> ［2026-09-15 追記 / #1471］**フェーズ末監査（PR #1473・別文脈のエージェント・条件付き合格）の必須指摘を反映した。**
+> 監査の変異 M7（`DocumentNormalizedConsumer` を撤収の門から単純な門へ戻す）が DocumentService.Tests 557 件をすべて通過しており、
+> **再正規化での撤収だけ試験が無かった**。`Tests/Features/Documents/Catalog/NormalizedExposureWithdrawalTests.cs`（Unit・MassTransit in-memory ハーネス）を足した:
+> 既存の個人資料を台帳へ置き、属性を差し替える `DocumentNormalized` を消費させて、①露出 ON → OFF で撤収のイベントが 1 件出る ②全 OFF のままでは出ない（陽性対照: 台帳の題名は更新されている）。
+> **変異の再確認**: 単純な門へ戻すと ① だけが「コレクションが空」で落ちる（失敗 1・合格 1）。戻した後は DocumentService.Tests 559 件通過・`dotnet format` OK・`scripts.test.js` 782 件通過。
+> 監査の非ブロッキング指摘（走査試験の死角＝`DocumentEndpoints.cs` 全体の許可・メソッドグループ参照／改行を挟む呼び出し、全 OFF の個人資料で「再送による自己修復」が無くなったこと）は本 PR では直さず記録に留める。`SyncConflicts/Resolve` の件は #1474 で起票した。
+
 ## 計画書との差異
 
 - 差異: なし。ADR-0061 決定 1・2・4 と IADR-0396 決定 4・5 の実装形を揃えるもので、門の述語を「個人資料に限る」と明示したのは
