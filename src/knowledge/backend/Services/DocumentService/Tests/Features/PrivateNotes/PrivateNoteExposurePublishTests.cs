@@ -187,4 +187,106 @@ public class PrivateNoteExposurePublishTests(TestWebApplicationFactory factory)
 
         dto.Version.Should().Be(versionBefore);
     }
+
+    // ［#1471］管理者の保存（`PUT /documents/{id}` / `PATCH /documents/{id}/metadata`）。
+    // 既定の主体は `platform-admin`（`TestAuthHandler`）。**属性は全置換である。**
+    private Task<HttpResponseMessage> AdminSaveAsync(string method, Guid id, string title,
+        Dictionary<string, string> attributes)
+    {
+        var admin = factory.CreateClient();
+        return method == "PUT"
+            ? admin.PutAsJsonAsync($"/documents/{id}",
+                new { title, attributes, tags = new List<string>() }, TestContext.Current.CancellationToken)
+            : admin.PatchAsJsonAsync($"/documents/{id}/metadata",
+                new { attributes, tags = new List<string>() }, TestContext.Current.CancellationToken);
+    }
+
+    // ［#1471］受け入れ基準: **管理者の属性全置換で露出が外れた個人資料は、撤収のイベントが出る**
+    // （ADR-0061 決定 4 / [[IADR-0396]] 決定 5 / [[IADR-0455]] 決定 1）。
+    //
+    // 🔴 SetExposure だけが ON → OFF を作るのではない。属性の全置換で露出キーを `excluded` にする保存も
+    // 同じ遷移であり、「今」索引可のときだけ出す単純な門を当てると**消させるためのイベントが弾かれて
+    // 本文が索引に残る**。PR #1281 のレビュー修正（`c4830568`）をそのまま当てると、ここが落ちる。
+    [Theory]
+    [InlineData("PUT")]
+    [InlineData("PATCH")]
+    public async Task 管理者の属性更新で露出が外れると撤収のイベントが発行される(string method)
+    {
+        var (_, session, plugin) = await OwnerAsync();
+        var noteId = await PushAsync(plugin, $"管理者更新-{method}.md", "本文");
+        await SetExposureAsync(session, noteId, search: true, graph: false, ai: false);
+
+        var afterOn = UpdatesFor(noteId);
+        afterOn.Should().NotBeEmpty("陽性対照: 露出 ON で索引の生産側へ流れている");
+        var withdrawn = new Dictionary<string, string>(afterOn[^1].Attributes)
+        {
+            [DocumentExposure.SearchKey] = DocumentExposure.Excluded,
+        };
+
+        var res = await AdminSaveAsync(method, noteId, afterOn[^1].Title, withdrawn);
+        res.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var published = UpdatesFor(noteId);
+        published.Count.Should().BeGreaterThan(afterOn.Count,
+            "ON → OFF は索引からの削除まで及ぶ。管理者の保存でもイベントが出ないと撤収の契機が無い");
+        published[^1].Attributes.Should()
+            .Contain(DocumentExposure.SearchKey, DocumentExposure.Excluded);
+    }
+
+    // ［#1471］上のテストと対: **全 OFF のまま管理者が保存しても発行しない**（ADR-0061 決定 2）。
+    // 片方だけだと「管理者の保存は常に出す」実装（＝門を通さない直接発行）でも通ってしまう。
+    [Theory]
+    [InlineData("PUT")]
+    [InlineData("PATCH")]
+    public async Task 全てOFFの個人資料を管理者が更新しても発行されない(string method)
+    {
+        var (_, session, plugin) = await OwnerAsync();
+        var noteId = await PushAsync(plugin, $"管理者更新OFF-{method}.md", "本文");
+        await SetExposureAsync(session, noteId, search: true, graph: false, ai: false);
+        await SetExposureAsync(session, noteId, search: false, graph: false, ai: false);
+
+        var afterOff = UpdatesFor(noteId);
+        afterOff[^1].Attributes.Should().Contain(DocumentExposure.SearchKey, DocumentExposure.Excluded,
+            "陽性対照: 撤収のイベントまでは出ている（ここから全 OFF のまま保存する）");
+
+        var res = await AdminSaveAsync(method, noteId, afterOff[^1].Title,
+            new Dictionary<string, string>(afterOff[^1].Attributes));
+        res.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        UpdatesFor(noteId).Count.Should().Be(afterOff.Count,
+            "3 つとも OFF の資料はイベントそのものを出さない（索引に存在しないまま保つ）");
+    }
+
+    // ［#1471］陽性対照（組織文書）: **露出キーを明示的に全 `excluded` にした組織文書でも、発行は止まらない**
+    // （[[IADR-0455]] 決定 2）。
+    //
+    // `DocumentExposure.IsAllowed` は明示値を文書種別より優先するので、この文書の `IsIndexable` は偽である。
+    // 門を `IsIndexable` だけで書くと作成もアーカイブも発行されず、**WikiService へアーカイブ（ページの
+    // 非公開化）が届かない**。門は個人資料にだけ効かせ、組織文書の挙動をデータに依らず不変に保つ。
+    [Fact]
+    public async Task 露出キーを全てexcludedにした組織文書でも作成とアーカイブは発行される()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var admin = factory.CreateClient();
+        var attributes = new Dictionary<string, string>
+        {
+            ["confidentiality"] = "internal",
+            [DocumentExposure.SearchKey] = DocumentExposure.Excluded,
+            [DocumentExposure.GraphKey] = DocumentExposure.Excluded,
+            [DocumentExposure.AiKey] = DocumentExposure.Excluded,
+        };
+        DocumentExposure.IsIndexable(attributes).Should().BeFalse(
+            "前提: 門を IsIndexable だけで書くと、この組織文書は止まる");
+
+        var created = await admin.PostAsJsonAsync("/documents",
+            new { title = $"露出キー付き組織文書 {Guid.NewGuid():N}", attributes, tags = new List<string>() }, ct);
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        var doc = (await created.Content.ReadFromJsonAsync<DocumentDto>(ct))!;
+        UpdatesFor(doc.Id).Should().NotBeEmpty("組織文書の作成は従来どおり発行される");
+
+        var archived = await admin.PostAsync($"/documents/{doc.Id}/archive", null, ct);
+        archived.StatusCode.Should().Be(HttpStatusCode.OK);
+        UpdatesFor(doc.Id).Should().Contain(e => e.Status == "archived",
+            "アーカイブが届かないと Wiki.js のページが公開のまま残る");
+    }
 }
