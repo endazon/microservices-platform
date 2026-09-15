@@ -898,6 +898,19 @@ services:
       authMount: kubernetes
       namespace: platform-infra
       port: 8200
+    # SC-22, NFR-18, ADR-0095 決定 3, IADR-0456 決定 4 (#1477): 書き込み後に ExternalSecret へ即時同期（force-sync 注釈）を依頼する。
+    # **既定 false**（ESO を配備しない構成では依頼しない。書き込みの応答は syncRequested=false になる）。
+    # true で SA `bff` に Role `bff-externalsecret-sync`（この名前空間の ExternalSecret の get / patch。resourceNames は
+    # deploy/bootstrap/sc22-secret-items.json の items[] と一致。templates/bff-externalsecret-sync-rbac.yaml）を束縛し、
+    # BFF へ ExternalSecretSync__Enabled を渡す。他の名前空間（platform-infra / ai-stock-trading）の Role はチャートの外
+    # （deploy/local/vault/eso/rbac-bff-externalsecret-sync.yaml）。
+    # apiServerEgress: networkPolicy.enabled のとき BFF → API サーバの Egress を開ける宛先。
+    # 🔴 **cidrs が空なら穴を開けない**（API サーバの所在は環境で違うため既定を持たない。空のままだと依頼は届かず syncRequested=false）。
+    externalSecretSync:
+      enabled: false
+      apiServerEgress:
+        cidrs: []
+        ports: [443, 6443]
     # NFR-09 / NFR-16, ADR-0029 / ADR-0032 / ADR-0075, IADR-0379 決定 4, IADR-0402 (#1255):
     # 🔴 **BFF が east-west gRPC の「呼び出し元」として名乗るための資格情報。**
     #

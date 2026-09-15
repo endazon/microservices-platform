@@ -36,6 +36,12 @@ metadata:
   name: mail-relay
   namespace: platform-infra
   labels: { app: mail-relay }
+  # SC-22, IADR-0456 決定 5 (#1477): 上流の資格情報（Secret keycloak-smtp）は env で読む＝Pod 起動時に 1 度だけ解決される。
+  # 画面（/admin/secrets）で from / user / password を差し替えると ESO が Secret を即時に更新し、
+  # Stakater Reloader（ローカルは ESO=1 で導入）がこの注釈を見て作り直す。Reloader の無い環境では何も起きない
+  # （その場合は従来どおり `kubectl -n platform-infra rollout restart deploy/mail-relay`）。Keycloak は作り直さない。
+  annotations:
+    secret.reloader.stakater.com/reload: "keycloak-smtp"
 spec:
   replicas: 1
   # spool（キュー）を 1 つの Pod だけが所有する。RollingUpdate だと 2 つの Postfix が同じ役を持つ瞬間ができる。

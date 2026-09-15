@@ -169,4 +169,37 @@ spec:
         - protocol: TCP
           port: {{ $vault.port | default 8200 }}
 {{- end }}
+{{- /* SC-22, ADR-0095 決定 3, IADR-0456 決定 4 (#1477): BFF → Kubernetes API サーバ（ExternalSecret への force-sync 注釈）。
+       allow-intra-namespace が Egress を「同 Namespace ＋ DNS」に絞るため、API サーバへは L3/L4 で届かない。
+       🔴 **宛先（cidrs）を宣言したときだけ描く。** API サーバの所在（ノード IP・マネージドの端点）は環境で違い、
+       既定の宛先を置くと「どこへでも 443 / 6443」の穴になる。空なら描かず、依頼は届かず syncRequested=false に倒れる。 */}}
+{{- $sync := $bff.externalSecretSync | default dict }}
+{{- $apiEgress := $sync.apiServerEgress | default dict }}
+{{- if and $bff.enabled $sync.enabled $apiEgress.cidrs }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-bff-egress-to-kube-apiserver
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: bff-service
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        {{- range $apiEgress.cidrs }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      ports:
+        {{- range ($apiEgress.ports | default (list 443 6443)) }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}
 {{- end }}

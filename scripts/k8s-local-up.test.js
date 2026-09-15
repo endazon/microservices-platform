@@ -62,6 +62,7 @@ const OPTIN_TOKENS = [
   '50000', //                          LOCALEDGE (admin entrypoint port, IADR-0091)
   'external-secrets', //               ESO (helm install / ns, IADR-0096)
   'deploy/local/vault/eso/', //        ESO (bootstrap/externalsecret, IADR-0096。配下のみが apply される)
+  'stakater/reloader', //              ESO (Stakater Reloader の install, IADR-0456 決定 5 / #1477)
   'seed-abac-policies.js', //          ABACSEED (ABAC 初期投入, IADR-0133)
   'seed-search-documents.js', //       SEARCHSEED (検索検証用文書の初期投入, IADR-0284)
   'seed-tag-dictionary.js', //         TAGSEED (タグ辞書の初期投入, #1359)
@@ -1196,6 +1197,27 @@ ok('ESO=1: external-secrets install＋k8s auth store＋ExternalSecret apply・ll
   assert.ok(
     !anyLineHas(res.lines, 'create secret generic llm-provider-credentials'),
     'ESO=1 なのに llm-provider-credentials を手動 apply している（二重所有）',
+  );
+});
+
+// SC-22, IADR-0456 決定 4・5 (#1477): ESO=1 で、画面で書いた値を待たずに Pod へ届ける部品を入れる。
+// (1) ai-stock-trading の名前空間を冪等に作る → (2) BFF の同期依頼の RBAC を apply → (3) Stakater Reloader（chart・image を pin、
+// 見る名前空間を 3 つに限る）。**(1) より前に (2)(3) を置くと、名前空間の Role が NotFound で落ちる。**
+ok('ESO=1 (#1477): ai-stock-trading ns を作ってから BFF の RBAC と Reloader（pin・scoped）を入れる', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  const nsAt = res.lines.findIndex((l) => l.startsWith('kubectl create namespace ai-stock-trading'));
+  const rbacAt = res.lines.indexOf('kubectl apply -f deploy/local/vault/eso/rbac-bff-externalsecret-sync.yaml');
+  const reloaderAt = res.lines.findIndex((l) => l.startsWith('helm upgrade --install reloader stakater/reloader'));
+  assert.ok(nsAt >= 0, 'ai-stock-trading の名前空間を作っていない');
+  assert.ok(rbacAt > nsAt, 'BFF の同期依頼の RBAC が apply されない、または名前空間の作成より前にある');
+  assert.ok(reloaderAt > nsAt, 'Reloader が入らない、または名前空間の作成より前にある');
+  const reloader = res.lines[reloaderAt];
+  assert.ok(/--version 2\.2\.17(\s|$)/.test(reloader), `Reloader の chart の版を pin していない: ${reloader}`);
+  assert.ok(/image\.tag=v1\.4\.22(\s|$)/.test(reloader), `Reloader の image を pin していない: ${reloader}`);
+  assert.ok(reloader.includes('reloader.watchGlobally=false'), `Reloader がクラスタ全体を見る: ${reloader}`);
+  assert.ok(
+    reloader.includes('reloader.namespaces={microservices-platform,platform-infra,ai-stock-trading}'),
+    `Reloader の見る名前空間が 3 つに限られていない: ${reloader}`,
   );
 });
 
