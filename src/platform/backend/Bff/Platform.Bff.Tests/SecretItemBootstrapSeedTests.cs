@@ -93,7 +93,7 @@ public class SecretItemBootstrapSeedTests
         body.Should().Contain("$2=-");
     }
 
-    // SC-22, IADR-0456 決定 6: app-secrets の seed のキー集合は契約（items[] の書ける 11 ＋ notWritable 8）と一致し、
+    // SC-22, IADR-0456 決定 6: app-secrets の seed のキー集合は契約（items[] の書ける 12 ＋ notWritable 8）と一致し、
     // 書けるキーは空文字、*-auth-client-* は realm の機密クライアントと同値である。
     [Fact]
     public void App_secrets_seed_matches_the_contract_keys_and_realm_defaults()
@@ -108,7 +108,7 @@ public class SecretItemBootstrapSeedTests
         var writable = SecretItemCatalog.Load(CatalogPath).Find("ast-app-secrets")!.Properties;
         var notWritable = item.GetProperty("notWritable").EnumerateArray().Select(e => e.GetString()!).ToList();
 
-        writable.Should().HaveCount(11);
+        writable.Should().HaveCount(12);
         notWritable.Should().HaveCount(8);
         seeded.Keys.Order(StringComparer.Ordinal).Should().Equal(writable.Concat(notWritable).Order(StringComparer.Ordinal));
         foreach (var key in writable)
@@ -124,6 +124,45 @@ public class SecretItemBootstrapSeedTests
             clients.Should().ContainKey(clientId, $"{prefix} の client id は realm の機密クライアントであること");
             seeded[$"{prefix}-auth-client-secret"].Should().Be(clients[clientId], $"{prefix} の secret は realm と同値であること");
         }
+    }
+
+    // SC-22, IADR-0456 決定 6 (#1477 / PR #1478 監査 D4): app-secrets が既に在る（画面が先に 1 プロパティだけ書いて作った）ときも、
+    // *-auth-client-* 8 件は**無いものだけ**、seed と同じ realm の値で足す。在る値は触らない（取得に成功したら patch しない）。
+    [Fact]
+    public void App_secrets_present_branch_fills_only_missing_auth_client_keys()
+    {
+        var statements = Statements();
+        var ifAt = statements.FindIndex(s => Regex.IsMatch(s, @"^\s*if\s+!\s*vkv_exists\s+ai-stock-trading/app-secrets\s*;\s*then\s*$"));
+        ifAt.Should().BeGreaterThanOrEqualTo(0, "app-secrets の seed の分岐を読めること");
+        var fiAt = statements.FindIndex(ifAt, s => Regex.IsMatch(s, @"^\s*fi\s*$"));
+        var elseAt = statements.FindIndex(ifAt, fiAt - ifAt, s => Regex.IsMatch(s, @"^\s*else\s*$"));
+        elseAt.Should().BeGreaterThan(ifAt, "KV が在る側の分岐を持つこと");
+
+        var filled = statements.Skip(elseAt + 1).Take(fiAt - elseAt - 1)
+            .Select(s => Regex.Match(s, @"^\s*vkv_patch_if_missing\s+ai-stock-trading/app-secrets\s+(?<key>[A-Za-z0-9._-]+)\s+'(?<value>[^']*)'\s*$"))
+            .Where(m => m.Success)
+            .ToDictionary(m => m.Groups["key"].Value, m => m.Groups["value"].Value);
+
+        var put = statements.Single(s => PutOn("ai-stock-trading/app-secrets").IsMatch(s));
+        var seeded = Regex.Matches(put, @"(?<key>[A-Za-z0-9._-]+)='(?<value>[^']*)'")
+            .ToDictionary(m => m.Groups["key"].Value, m => m.Groups["value"].Value);
+        using var allowlist = JsonDocument.Parse(File.ReadAllText(CatalogPath));
+        var notWritable = allowlist.RootElement.GetProperty("items").EnumerateArray()
+            .Single(i => i.GetProperty("item").GetString() == "ast-app-secrets")
+            .GetProperty("notWritable").EnumerateArray().Select(e => e.GetString()!).ToList();
+
+        filled.Keys.Order(StringComparer.Ordinal).Should().Equal(notWritable.Order(StringComparer.Ordinal));
+        foreach (var key in notWritable)
+            filled[key].Should().Be(seeded[key], $"{key} は seed と同じ realm の値で足すこと");
+
+        // 補助関数: 取得に成功したら何もしない（在る値を上書きしない）。取得の後でだけ patch する。
+        var body = Regex.Match(File.ReadAllText(BootstrapPath), @"(?s)vkv_patch_if_missing\(\)\s*\{(.*?)\n\}").Groups[1].Value;
+        body.Should().NotBeEmpty("vkv_patch_if_missing の定義を読めること");
+        var get = body.IndexOf("vault kv get -field=$2", StringComparison.Ordinal);
+        var patch = body.IndexOf("vault kv patch", StringComparison.Ordinal);
+        get.Should().BeGreaterThanOrEqualTo(0);
+        body.Should().Contain("&& return 0");
+        patch.Should().BeGreaterThan(get, "在否を確かめてから足すこと");
     }
 
     // SC-22, IADR-0456 決定 6: moomoo / moomoo-rsa は seed しない（未設定のあいだ OpenD は Secret 不在で待機する＝fail-closed）。

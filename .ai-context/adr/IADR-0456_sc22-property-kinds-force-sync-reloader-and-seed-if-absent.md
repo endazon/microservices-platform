@@ -97,9 +97,9 @@ MSP と AST が同じ Vault パス・プロパティ・Secret 名を共有する
 
 - 要素は文字列（種別 `value`・秘密）か `{ "name", "kind"?, "sensitive"? }`。`kind` は `value` / `md5-from-password` / `generate-rsa-pkcs1`。
 - 🔴 **fail-closed**（IADR-0433 決定 3 のまま起動しない）: 未知の `kind`・オブジェクトの未知のキー（綴り違い）・真偽値でない `sensitive`・**`value` 以外への `sensitive: false`**（パスワードと生成鍵を「秘密でない」と宣言させない）・`externalSecret` の欠落・書式違反・重複。
-- 項目は 6 KV・書けるプロパティ 20（`ast-app-secrets` に Discord ID 4 件、`deferred[]` から `ast-moomoo`・`ast-moomoo-rsa` を移す）。
+- 項目は 6 KV・書けるプロパティ 21（`ast-app-secrets` に Discord ID 4 件と SEC EDGAR の User-Agent 1 件、`deferred[]` から `ast-moomoo`・`ast-moomoo-rsa` を移す）。
 - 一覧の応答に `propertyDetails`（名前・種別・秘密か）を足す（契約の追加。既定値つきで後方互換）。画面は種別で入力の形を選び、**宣言が無い・未知の種別は「値・秘密」（マスクと確認入力）へ倒す**。
-- `sensitive: false`（Discord ID）でも**書き込み専用なのは同じ**（読み出す口は無い）。画面は平文で入力させ、確認入力を求めない。
+- `sensitive: false`（Discord ID・SEC EDGAR の User-Agent）でも**書き込み専用なのは同じ**（読み出す口は無い）。画面は平文で入力させ、確認入力を求めない。
 
 ### 決定 2: `md5-from-password` は BFF が平文を MD5（UTF-8・小文字 hex 32 桁）へ変換して書き、平文もハッシュも出さない
 
@@ -111,7 +111,7 @@ MSP と AST が同じ Vault パス・プロパティ・Secret 名を共有する
 
 - 要求は `{ property: "opend_rsa.pem", value: "" }`（**要求の型は変えない**。空でない値は 400 `invalid-value` —— 持ち込んだ鍵を書かない）。
 - 鍵長 1024 は OpenD の要件（CA5385 はこの理由で抑止する）。生成器は使い終えたら破棄する。
-- 画面は値の欄を持たず、「生成」を 1 度押すと**生成し直すと OpenD に登録済みの鍵との対応が失効する**旨の確認を出し、「生成して書き込む」でだけ送る（IADR-0453 決定 6「確認ダイアログは置かない」の例外。値の書き直しと違い、戻せない副作用が外にある）。
+- 画面は値の欄を持たず、「生成」を 1 度押すと**生成し直すと OpenD に登録済みの鍵との対応が失効する**旨と、**OpenD は Reloader の対象外なので `kubectl -n ai-stock-trading rollout restart deploy/opend` で手動で再起動し、そのとき SMS / 画像の認証を再び求められ得る**旨（PR #1478 監査 D2）の確認を出し、「生成して書き込む」でだけ送る（IADR-0453 決定 6「確認ダイアログは置かない」の例外。値の書き直しと違い、戻せない副作用が外にある）。
 
 ### 決定 4: 書き込み成功後に ExternalSecret へ force-sync を依頼し、失敗しても書き込みを失敗にしない
 
@@ -124,7 +124,7 @@ MSP と AST が同じ Vault パス・プロパティ・Secret 名を共有する
 ### 決定 5: env で読む消費側は Stakater Reloader が作り直す（ローカルは ESO=1 で導入）
 
 - chart `stakater/reloader` **2.2.17**・image **v1.4.22** を pin する（ESO の chart を pin したのと同じ理由）。
-- 🔴 `reloader.watchGlobally=false` ＋ `reloader.namespaces={microservices-platform,platform-infra,ai-stock-trading}`（各名前空間の Role。クラスタ全体の Secret を読ませない）。`ai-stock-trading` の名前空間は Role の置き場として `k8s-local-up.sh` が冪等に作る。
+- 🔴 `reloader.watchGlobally=false` ＋ `reloader.namespaces={microservices-platform,platform-infra,ai-stock-trading}`（各名前空間の Role。クラスタ全体の Secret を読ませない）。`ai-stock-trading` の名前空間は Role の置き場として `k8s-local-up.sh` が冪等に作る。撤去は `k8s-local-down.sh`（Rancher Desktop 経路）が release と名前空間 `reloader` を消す（PR #1478 監査 D6）。
 - 注釈 `secret.reloader.stakater.com/reload`: llmgateway-service（`llm-provider-credentials`）・wiki-service（`wikijs-sync`）は `values-local.yaml`（チャートの汎用テンプレートに `deploymentAnnotations` を足す）、mail-relay（`keycloak-smtp`）は `deploy/mail-relay/mail-relay.yaml`。AST の消費側は AST#795。
 - **keycloak-smtp の反映**: 消費側は #1245 以降 **mail-relay（env）** であり Keycloak ではない。Reloader が mail-relay を作り直す。**Keycloak は作り直さない**（realm の `smtpServer` は mail-relay を指す宣言固定で、秘密は持たない）。
 
@@ -132,7 +132,8 @@ MSP と AST が同じ Vault パス・プロパティ・Secret 名を共有する
 
 - 対象は items[] のうち seed するもの: `msp/llm-provider-credentials`・`msp/wikijs-sync`・`msp/keycloak-smtp`（`host` / `port` / `starttls` は構成なので在っても毎回その値へ揃える）・`ai-stock-trading/app-secrets`。
 - 作成は `vault kv put -cas=0`（Vault 側でも「無いときだけ」）を `vkv_exists` の「無い」側の分岐に置く。部分更新は値を stdin で渡し、空なら何もしない。失敗（現在版が削除されている等）は警告にして bootstrap を止めない。
-- `ai-stock-trading/app-secrets` の seed: `*-auth-client-*` 8 件は **MSP realm（`deploy/keycloak/microservices-platform-realm.json`）の機密クライアントと同値**、画面から書ける 11 件は空文字。**在れば触らない**（env での上書きも持たない —— 投入面は画面）。
+- `ai-stock-trading/app-secrets` の seed: `*-auth-client-*` 8 件は **MSP realm（`deploy/keycloak/microservices-platform-realm.json`）の機密クライアントと同値**、画面から書ける 12 件は空文字。**在れば触らない**（env での上書きも持たない —— 投入面は画面）。
+  ただし在る KV にも `*-auth-client-*` 8 件は**プロパティが無いものだけ**同じ値で足す（`vkv_patch_if_missing`。画面が先に 1 プロパティだけ書くと BFF がその 1 件だけの KV を作り、auth キーが欠けて AST のサービス間トークン取得が止まるため。PR #1478 監査 D4）。
 - `ai-stock-trading/moomoo` / `moomoo-rsa` は seed しない（未設定のあいだ OpenD は Secret 不在で待機する＝fail-closed）。
 - 形（items[] のパスへの put はすべて分岐の中・`-cas=0`、app-secrets のキー集合と realm との一致、moomoo を seed しない）は xUnit で固定する。
 
@@ -157,7 +158,7 @@ MSP と AST が同じ Vault パス・プロパティ・Secret 名を共有する
   - bootstrap は KV が在る限り env 未指定のプロパティを戻さない。**意図して空へ戻すには画面かコンソールで書く**。
 - **帰結として記録する食い違い（コードは変えない）**:
   - AST の `k8s-local-deploy.sh` は `kb-auth-client-secret` / `llm-auth-client-secret` の既定が**空**である。本 ADR の seed は契約（realm と同値）に従い MSP realm の値を入れる。AST 側の既定は AST#795 の範囲。
-  - AST の `ast-secrets` は `sec-edgar-user-agent` も持つが、契約の `app-secrets` の表に無いため seed も allowlist も持たない。
+  - AST の `ast-secrets` は `sec-edgar-user-agent` も読むが、当初の契約の `app-secrets` の表に無かった。**画面から入れられないと ESO 所有の経路で SEC EDGAR だけが収集対象から外れる**（AST#796 の監査指摘）ため、契約へ加え、allowlist に秘密でない値（`sensitive: false`）として置き、seed は空文字とした（書ける 12 件）。
 - **フォローアップ**:
   1. planning#635 の裁定（ADR-0095 決定 1 の射程に Discord ID が入るか・SC-22 の画面設計の追随）。裁定が異なれば本 ADR を改定する。
   2. 稼働クラスタでの疎通（SC-22 テスト仕様書 T-40 と同じ場）: force-sync で数秒以内に Secret が変わること、Reloader が消費側を作り直すこと、生成した鍵を OpenD が読めること。

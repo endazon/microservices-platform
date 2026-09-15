@@ -174,8 +174,8 @@ IADR-0433 は Vault policy・k8s auth ロール・allowlist・監査・端点の
 
 IADR-0433 決定 3 のまま。**本 ADR は `items[]` を 1 行も動かさない。** 画面が扱うのは 4 KV・13 プロパティである。
 
-> ［2026-09-15 追記 / #1477］**IADR-0456 で `items[]` を動かした**（`ast-moomoo`・`ast-moomoo-rsa` を `deferred[]` から移し、`ast-app-secrets` に Discord の環境固有 ID 4 件を足した）。
-> 画面が扱うのは **6 KV・20 プロパティ**になった。書き込み後は ExternalSecret へ即時同期を依頼する（IADR-0456 決定 4。書き込みの応答に `syncRequested` を足した）。
+> ［2026-09-15 追記 / #1477］**IADR-0456 で `items[]` を動かした**（`ast-moomoo`・`ast-moomoo-rsa` を `deferred[]` から移し、`ast-app-secrets` に Discord の環境固有 ID 4 件と SEC EDGAR の User-Agent を足した）。
+> 画面が扱うのは **6 KV・21 プロパティ**になった。書き込み後は ExternalSecret へ即時同期を依頼する（IADR-0456 決定 4。書き込みの応答に `syncRequested` を足した）。
 
 ### 決定 9: allowlist はイメージへ同梱し、配備は画面と同時に行う
 

@@ -384,6 +384,11 @@ describe('SecretItemManagementPage (SC-22)', () => {
 
     await user.click(form.getByRole('button', { name: '生成' }));
     expect(form.getByTestId('secret-generate-confirm')).toHaveTextContent('失効');
+    // AST#796 の監査: OpenD は Reloader の対象外なので、手動の再起動と再認証の可能性を確認の場で伝える。
+    expect(form.getByTestId('secret-generate-confirm')).toHaveTextContent(
+      'kubectl -n ai-stock-trading rollout restart deploy/opend',
+    );
+    expect(form.getByTestId('secret-generate-confirm')).toHaveTextContent('SMS');
     expect(putCalls()).toHaveLength(0);
 
     // 「やめる」で確認を閉じ、送らない。

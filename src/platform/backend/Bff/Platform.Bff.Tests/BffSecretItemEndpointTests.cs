@@ -234,6 +234,25 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
         _factory.Vault.Requests.Should().NotContain(r => r.Method == "PUT");
     }
 
+    // SC-22, IADR-0456 決定 6 (#1477): ast-app-secrets への画面の書き込みは、同じ KV の realm と対の *-auth-client-*
+    // （許可リストの外）を消さない。消すと ESO が ast-secrets から auth キーを落とし、AST のサービス間トークン取得が止まる。
+    [Fact]
+    public async Task Update_to_ast_app_secrets_keeps_the_auth_client_keys()
+    {
+        _factory.Vault.Put("ai-stock-trading/app-secrets",
+            ("service-auth-client-id", "ai-stock-trading-svc"), ("service-auth-client-secret", ExistingOtherValue), ("finnhub-api-key", "old"));
+
+        using var response = await SendAsync(Put("ast-app-secrets",
+            new { property = "finnhub-api-key", value = PlaceholderValue, reason = "PoC の立ち上げ" }));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var data = _factory.Vault.Store["ai-stock-trading/app-secrets"].Data;
+        data["finnhub-api-key"].Should().Be(PlaceholderValue);
+        data["service-auth-client-id"].Should().Be("ai-stock-trading-svc");
+        data["service-auth-client-secret"].Should().Be(ExistingOtherValue);
+        _factory.Vault.Requests.Should().NotContain(r => r.Method == "PUT");
+    }
+
     // SC-22, IADR-0453 決定 7: KV が無いときだけ `cas=0` で作る（既存を全置換しない作り方）。
     [Fact]
     public async Task Update_creates_the_kv_with_cas_zero_only_when_it_is_absent()
@@ -672,7 +691,8 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
         Details(rows["ast-moomoo-rsa"]).Should().Equal("opend_rsa.pem|generate-rsa-pkcs1|True");
         Details(rows["ast-app-secrets"]).Should().Contain("finnhub-api-key|value|True")
             .And.Contain("discord-bot-guild-id|value|False")
-            .And.Contain("discord-bot-user-mapping|value|False");
+            .And.Contain("discord-bot-user-mapping|value|False")
+            .And.Contain("sec-edgar-user-agent|value|False");
         foreach (var row in rows.Values)
             row.GetProperty("propertyDetails").EnumerateArray().Select(p => p.GetProperty("name").GetString())
                 .Should().Equal(row.GetProperty("properties").EnumerateArray().Select(p => p.GetString()));

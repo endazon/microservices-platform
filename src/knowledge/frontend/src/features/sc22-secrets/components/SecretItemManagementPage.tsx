@@ -389,7 +389,9 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
           >
             <Trans>
               鍵を生成し直すと、OpenD に登録済みの鍵との対応が失効します。OpenD
-              の設定も新しい鍵に合わせる必要があります。生成して書き込みますか？
+              は自動では再起動されないため、書き込み後に kubectl -n ai-stock-trading rollout restart
+              deploy/opend で手動で再起動してください。再起動のとき SMS
+              または画像の認証を再び求められることがあります。生成して書き込みますか？
             </Trans>
           </Alert>
         )}

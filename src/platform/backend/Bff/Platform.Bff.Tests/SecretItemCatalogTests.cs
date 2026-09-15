@@ -24,7 +24,7 @@ public class SecretItemCatalogTests
         }
         """;
 
-    // SC-22, IADR-0433 決定 3, IADR-0456 決定 1 (#1477): 実ファイル（単一情報源）を読める。6 KV・20 プロパティ。
+    // SC-22, IADR-0433 決定 3, IADR-0456 決定 1 (#1477): 実ファイル（単一情報源）を読める。6 KV・21 プロパティ。
     [Fact]
     public void Loads_the_repository_allowlist()
     {
@@ -33,7 +33,7 @@ public class SecretItemCatalogTests
         catalog.VaultMount.Should().Be("secret");
         catalog.Items.Select(i => i.Item).Should().Equal(
             "llm-provider-credentials", "keycloak-smtp", "wikijs-sync", "ast-app-secrets", "ast-moomoo", "ast-moomoo-rsa");
-        catalog.Items.Sum(i => i.Properties.Count).Should().Be(20);
+        catalog.Items.Sum(i => i.Properties.Count).Should().Be(21);
         // 🔴 notWritable（構成）は書けるプロパティに入らない。
         catalog.Find("keycloak-smtp")!.Properties.Should().Equal("from", "user", "password");
     }
@@ -56,7 +56,8 @@ public class SecretItemCatalogTests
 
         var app = catalog.Find("ast-app-secrets")!;
         app.PropertyDefinitions.Where(p => !p.Sensitive).Select(p => p.Name).Should().Equal(
-            "discord-bot-guild-id", "discord-bot-channel-id", "discord-bot-allowed-user-ids", "discord-bot-user-mapping");
+            "discord-bot-guild-id", "discord-bot-channel-id", "discord-bot-allowed-user-ids", "discord-bot-user-mapping",
+            "sec-edgar-user-agent");
         app.PropertyDefinitions.Should().OnlyContain(p => p.Kind == SecretPropertyKind.Value);
         // 🔴 realm と対の *-auth-client-* は書けない（陽性対照: 外部 API キーは書ける）。
         app.Properties.Should().Contain("finnhub-api-key").And.NotContain(p => p.Contains("auth-client", StringComparison.Ordinal));

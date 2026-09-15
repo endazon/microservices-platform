@@ -38,6 +38,8 @@ plan_refs:
 反映: 書き込み成功後に ExternalSecret へ `force-sync` 注釈。env で読む消費側は Stakater Reloader が再起動する。
 seed: `ai-stock-trading/app-secrets` を**無いときだけ**作る（`*-auth-client-*` は realm と同値、他は空文字）。`moomoo` / `moomoo-rsa` は seed しない。
 
+［2026-09-16 追記 / #1477］契約の表に `sec-edgar-user-agent` を加える（**書ける 12 ＝外部 API キー 7 ＋ Discord ID 4 ＋ SEC EDGAR User-Agent 1**、秘密でない値＝`sensitive: false`、seed は空文字）。AST の `ast-secrets` はこのキーを optional の `secretKeyRef` で読んでおり、表から漏れていたため ESO 所有の経路では画面から入れられず SEC EDGAR だけが収集対象から外れていた（AST#796 の監査指摘・利用者指示「PoC の立ち上げをすべて画面から」）。AST 側は `dataFrom.extract` で取り込むため変更不要。
+
 ## 着手前の実測（`origin/develop` `1196f400`）
 
 | 箇所 | 現状 |
@@ -135,7 +137,7 @@ fail-closed で拒むもの（起動しない）: 未知の `kind`／オブジ�
 - ヘルパ `vkv_exists <path>`（`vault kv metadata get`）で在否を見る。**無いときだけ `vault kv put`**。在るときは、env が**空でない**プロパティだけを `vault kv patch`。
 - 対象: `msp/llm-provider-credentials`（`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`）・`msp/wikijs-sync`（`WIKIJS_SYNC_APIKEY`）・
   `msp/keycloak-smtp`（`host`/`port`/`starttls` は構成なので毎回 patch、`from`/`user`/`password` は env が空でないときだけ）・
-  `ai-stock-trading/app-secrets`（無いときだけ。`*-auth-client-*` 8 件は realm と同値、画面から書ける 11 件は空文字）。
+  `ai-stock-trading/app-secrets`（無いときだけ。`*-auth-client-*` 8 件は realm と同値、画面から書ける 12 件は空文字）。
 - 作成は `vault kv put -cas=0`（Vault 側でも「無いときだけ」）。試験は「items[] のパスへの `kv put` はすべて `-cas=0` を持ち、`vkv_exists` の分岐の中にある」を固定する。
 - `ai-stock-trading/moomoo` / `moomoo-rsa` は seed しない（Secret 不在で OpenD が待機＝fail-closed）。
 - **items[] の全パスについて「無条件の `vault kv put`」が無いことを xUnit で固定する**。
@@ -144,14 +146,14 @@ fail-closed で拒むもの（起動しない）: 未知の `kind`／オブジ�
 
 | # | 基準 | 検証 |
 | --- | --- | --- |
-| AC-1 | allowlist が 6 KV・20 プロパティ（書ける）を持ち、`deferred[]` に moomoo が無い。種別・sensitive・externalSecret の不正は起動しない | `SecretItemCatalogTests` |
+| AC-1 | allowlist が 6 KV・21 プロパティ（書ける）を持ち、`deferred[]` に moomoo が無い。種別・sensitive・externalSecret の不正は起動しない | `SecretItemCatalogTests` |
 | AC-2 | MD5 種別は平文ではなく小文字 hex MD5 を保管し、平文もハッシュも応答・監査・ログに出ない | `BffSecretItemEndpointTests` ＋ 変異（平文を保管） |
 | AC-3 | 生成種別は値なしで RSA 1024 bit PKCS#1 PEM を保管し、応答・監査・ログに鍵が出ない。値を送ると 400 | 同上 ＋ 変異（鍵を応答に載せる） |
 | AC-4 | 書き込み成功後に対象 ExternalSecret へ `force-sync` を merge-patch し `syncRequested:true`。失敗・未構成でも 200 で `syncRequested:false`、監査 `secret.item.sync failed` | 同上（偽の k8s API） |
 | AC-5 | 書き込みが失敗したら同期を依頼しない | 同上 |
 | AC-6 | Vault policy の path 集合が items[] と完全一致（6 KV × 2） | `SecretItemVaultPolicyTests` ＋ 変異（path を 1 本抜く） |
 | AC-7 | RBAC の (ns, resourceNames) が items[] の externalSecret と完全一致し、verbs は get/patch だけ、束縛先は SA bff | `SecretItemExternalSecretRbacTests` ＋ 変異（名前を 1 つ足す） |
-| AC-8 | bootstrap は items[] のどのパスも無条件に `kv put` しない。app-secrets の seed は realm と同値の 8 件と空の 11 件、moomoo は seed しない | `SecretItemBootstrapSeedTests` ＋ 変異（put を戻す） |
+| AC-8 | bootstrap は items[] のどのパスも無条件に `kv put` しない。app-secrets の seed は realm と同値の 8 件と空の 12 件、moomoo は seed しない | `SecretItemBootstrapSeedTests` ＋ 変異（put を戻す） |
 | AC-9 | ESO=1 で Reloader を pin して入れ、BFF の RBAC を apply する。ESO 未設定では入れない | `scripts/k8s-local-up.test.js` |
 | AC-10 | 画面: 種別ごとの入力形、生成の確認、Discord ID の平文入力と注記、同期の表示。i18n に未翻訳なし | `SecretItemManagementPage.test.tsx` ＋ `check-i18n-catalogs` |
 | AC-11 | 既存の SC-22 の試験（T-01〜T-49）が緑のまま | `dotnet test` ／ vitest |

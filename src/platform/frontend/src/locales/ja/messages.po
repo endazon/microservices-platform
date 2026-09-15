@@ -4170,8 +4170,8 @@ msgid "鍵を生成してよいか確認してください"
 msgstr "鍵を生成してよいか確認してください"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
-msgid "鍵を生成し直すと、OpenD に登録済みの鍵との対応が失効します。OpenD の設定も新しい鍵に合わせる必要があります。生成して書き込みますか？"
-msgstr "鍵を生成し直すと、OpenD に登録済みの鍵との対応が失効します。OpenD の設定も新しい鍵に合わせる必要があります。生成して書き込みますか？"
+msgid "鍵を生成し直すと、OpenD に登録済みの鍵との対応が失効します。OpenD は自動では再起動されないため、書き込み後に kubectl -n ai-stock-trading rollout restart deploy/opend で手動で再起動してください。再起動のとき SMS または画像の認証を再び求められることがあります。生成して書き込みますか？"
+msgstr "鍵を生成し直すと、OpenD に登録済みの鍵との対応が失効します。OpenD は自動では再起動されないため、書き込み後に kubectl -n ai-stock-trading rollout restart deploy/opend で手動で再起動してください。再起動のとき SMS または画像の認証を再び求められることがあります。生成して書き込みますか？"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
