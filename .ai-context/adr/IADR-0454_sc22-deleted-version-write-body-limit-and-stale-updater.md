@@ -153,6 +153,7 @@ IADR-0453 は SC-22 の画面 → BFF → Vault を決め、PR #1466 で着地�
   400 ではなく 403 として現れ、502 `vault-rejected` になる。作成と作成が数十ミリ秒で重なる稀な場合であり、再送すれば `PATCH` で通る。
 - **フォローアップ**:
   1. 稼働クラスタの Vault で、書き込み応答の `created_time` と metadata の `versions[n].created_time` が同じ文字列であることを確かめる（SC-22 テスト仕様書 T-40 と同じ場で行う）。食い違えば最終更新者は常に「記録なし」になる（誤った名前は出ない）。
+  2. 本文の手読みは **UTF-8 として解釈する**ため、`Content-Type: application/json; charset=utf-16` など UTF-8 以外の charset を名乗る本文は 400（`invalid-body`）になる（PR #1469 のフェーズ末監査が実測。暗黙バインドは charset で変換していた可能性があるが develop では測っていない）。SPA とブラウザは UTF-8 で送るため実害は無いと判断し、コードは変えない。UTF-8 以外の送り手が現れたら charset を読んで変換するか 415 で明示的に断る。
 
 ## 関連
 
