@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using AwesomeAssertions;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -372,26 +373,51 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
 
     // SC-22, IADR-0454 決定 2: 上限を超える本文は 413。Vault に触れず、拒否が監査に残る。
     // 本文は**入力規則を満たす**（値は短い）ので、上限が無ければ書き込みまで進む —— 上限だけが止めていることを示す。
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task Oversized_body_gets_413_before_anything_reaches_vault(bool withContentLength)
+    [Fact]
+    public async Task Oversized_body_gets_413_before_anything_reaches_vault()
     {
         _factory.Vault.Put("msp/wikijs-sync", ("apiKey", ExistingOtherValue));
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(new
+        var bytes = OversizedBody();
+
+        using var response = await SendAsync(PutRaw("wikijs-sync", JsonBytes(bytes)));
+
+        response.StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
+        AssertOversizedWasRejectedWithoutTouchingVault();
+    }
+
+    // SC-22, IADR-0454 決定 2: Content-Length の無い（chunked の）本文でも 413。
+    // 🔴 HttpClient 経由では TestServer が長さを計算して付けてしまい、読み取りループの上限を一度も通らない
+    //    （PR #1469 の監査が実測）。サーバ側の HttpContext を直接組み、ContentLength = null・シーク不能な本文で送る。
+    [Fact]
+    public async Task Oversized_body_without_content_length_gets_413_from_the_read_loop()
+    {
+        _factory.Vault.Put("msp/wikijs-sync", ("apiKey", ExistingOtherValue));
+        var bytes = OversizedBody();
+
+        var context = await _factory.Server.SendAsync(ctx =>
+        {
+            ctx.Request.Method = HttpMethods.Put;
+            ctx.Request.Path = "/bff/secrets/wikijs-sync";
+            ctx.Request.ContentType = "application/json";
+            ctx.Request.ContentLength = null;
+            ctx.Request.Body = new NonSeekableReadStream(bytes);
+        }, TestContext.Current.CancellationToken);
+
+        context.Request.ContentLength.Should().BeNull("読み取りループの上限だけが止めていることを示すため");
+        context.Response.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
+        AssertOversizedWasRejectedWithoutTouchingVault();
+    }
+
+    private static byte[] OversizedBody() =>
+        JsonSerializer.SerializeToUtf8Bytes(new
         {
             property = "apiKey",
             value = PlaceholderValue,
             padding = new string('p', DocumentedMaxRequestBodyBytes),
         });
-        HttpContent content = withContentLength
-            ? JsonBytes(bytes)
-            : new UnknownLengthContent(bytes, "application/json");
-        content.Headers.ContentLength.Should().Be(withContentLength ? bytes.Length : null);
 
-        using var response = await SendAsync(PutRaw("wikijs-sync", content));
-
-        response.StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
+    private void AssertOversizedWasRejectedWithoutTouchingVault()
+    {
         _factory.RecordedAuditEntries.Where(e => e.Action == SecretItemBffEndpoints.UpdateAction)
             .Should().ContainSingle()
             .Which.Should().Be((SecretItemBffEndpoints.UpdateAction, "test-user", "denied",
@@ -473,23 +499,27 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
     }
 
     // `Content-Length` を持たない本文（chunked 相当）。上限の判定が長さの宣言だけに頼っていないことを確かめる。
-    private sealed class UnknownLengthContent : HttpContent
+    // 長さを持たない（シーク不能な）本文。Kestrel の chunked 受信と同じく、読み取り側は終わりまで読まないと大きさが分からない。
+    private sealed class NonSeekableReadStream(byte[] bytes) : Stream
     {
-        private readonly byte[] _bytes;
+        private readonly MemoryStream _inner = new(bytes, writable: false);
 
-        public UnknownLengthContent(byte[] bytes, string mediaType)
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override int Read(byte[] buffer, int offset, int count) => _inner.Read(buffer, offset, count);
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            _inner.ReadAsync(buffer, cancellationToken);
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        protected override void Dispose(bool disposing)
         {
-            _bytes = bytes;
-            Headers.ContentType = new MediaTypeHeaderValue(mediaType);
-        }
-
-        protected override Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context) =>
-            stream.WriteAsync(_bytes).AsTask();
-
-        protected override bool TryComputeLength(out long length)
-        {
-            length = 0;
-            return false;
+            if (disposing) _inner.Dispose();
+            base.Dispose(disposing);
         }
     }
 
