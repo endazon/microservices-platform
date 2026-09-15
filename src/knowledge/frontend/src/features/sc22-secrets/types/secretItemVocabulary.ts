@@ -50,7 +50,7 @@ export const MAX_VALUE_LENGTH = 8192;
 export const MAX_REASON_LENGTH = 500;
 
 /** プロパティの値の作り方（BFF の `SecretPropertyKind`・契約の `SecretItemPropertyDto.kind`）。 */
-export type SecretPropertyKind = 'value' | 'md5-from-password' | 'generate-rsa-pkcs1';
+type SecretPropertyKind = 'value' | 'md5-from-password' | 'generate-rsa-pkcs1';
 
 export interface SecretPropertyShape {
   name: string;
