@@ -60,6 +60,12 @@ internal static class ResolveSyncConflictEndpoint
             var note = await db.PrivateNotes.FindAsync([conflict.DocumentId], ct);
             var doc = await db.Documents.FindAsync([conflict.DocumentId], ct);
             if (note is null || doc is null) return Results.NotFound();
+            // #1474（PR #1476 のフェーズ末監査 D1）: **ゴミ箱の資料へは本文を書かない。**
+            // push（`ObsidianSync/Push`）・移動と同じく 409 `deleted` を返す。`local` / `both` を通すと、
+            // 利用者がゴミ箱へ移した資料の本文が新しくなり、露出 ON なら索引へ再発行されてしまう。
+            // `server` は資料を変えないので、競合を片付ける手段として残す。
+            if (note.IsDeleted && req.Resolution != SyncConflictResolutions.Server)
+                return Results.Conflict(new { error = "deleted", purgeAt = note.PurgeAt });
 
             var now = DateTimeOffset.UtcNow;
             var localContent = await Get.GetSyncConflictEndpoint.ReadAsync(storage,
@@ -95,16 +101,18 @@ internal static class ResolveSyncConflictEndpoint
             // FR-22 ②: `both` で使用量が増えるため、警告の跨ぎを再評価する。
             await PrivateNoteUsage.RecordUsageAndWarnAsync(db, notifier, owner, now, ct);
 
+            // ADR-0037 決定 9: 監査は「誰が・いつ・何件」。**タイトル・本文は記録しない。**
+            // 🔴 発行より**前**に置く（PR #1476 のフェーズ末監査 D2）—— 保存は確定しているので、
+            // 発行が例外になっても解決の監査行は残す。
+            audit.Record("private-note.sync.conflict-resolve", owner, "granted",
+                $"conflict={conflict.Id} resolution={req.Resolution} count=1");
+
             // #1474: 確定した後に門を通す（`local` は元の資料・`both` は別名資料）。
             if (written is not null)
             {
                 var names = await TagResolver.NamesAsync(db, ct);
                 await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, written, names, ct);
             }
-
-            // ADR-0037 決定 9: 監査は「誰が・いつ・何件」。**タイトル・本文は記録しない。**
-            audit.Record("private-note.sync.conflict-resolve", owner, "granted",
-                $"conflict={conflict.Id} resolution={req.Resolution} count=1");
 
             var createdNoteId = req.Resolution == SyncConflictResolutions.Both ? written?.Id : null;
             return Results.Ok(new ResolveSyncConflictResponse(conflict.Id, conflict.DocumentId,

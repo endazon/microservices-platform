@@ -344,6 +344,38 @@ public class SyncConflictEndpointTests(TestWebApplicationFactory factory)
             TestContext.Current.CancellationToken))!;
     }
 
+    // #1474（PR #1476 のフェーズ末監査 D1）: **ゴミ箱の資料へ本文を書く解決は 409 `deleted`**（push・移動と同じ）。
+    // 🔴 通すと、利用者がゴミ箱へ移した資料の本文が新しくなり、露出 ON なら索引へ再発行される。
+    // 陽性対照: 同じゴミ箱の資料でも `server`（資料を変えない）は通り、競合を片付けられる。
+    [Theory]
+    [InlineData(SyncConflictResolutions.Local)]
+    [InlineData(SyncConflictResolutions.Both)]
+    public async Task ゴミ箱の資料へ本文を書く解決は409で発行もしない(string resolution)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (note, session, _, plugin) = await ConflictedNoteAsync($"c-trash-{resolution}");
+        await ExposeToSearchAsync(session, note.NoteId);
+        (await session.DeleteAsync($"/private-notes/{note.NoteId}", ct)).IsSuccessStatusCode
+            .Should().BeTrue("前提: 資料をゴミ箱へ移せている");
+        var before = UpdatesFor(note.NoteId).Count;
+        var conflicts = await ConflictsAsync(session);
+        conflicts.Should().ContainSingle("前提: ゴミ箱の資料の競合も一覧に残っている");
+
+        var resp = await session.PostAsJsonAsync($"/private-notes/conflicts/{conflicts[0].Id}/resolve",
+            new ResolveSyncConflictRequest(resolution), ct);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await resp.Content.ReadAsStringAsync(ct)).Should().Contain("deleted");
+        UpdatesFor(note.NoteId).Count.Should().Be(before, "ゴミ箱の資料を索引へ再発行しない");
+        (await ConflictsAsync(session)).Should().ContainSingle("拒否したので競合は未解決のまま");
+
+        // 陽性対照: `server` はゴミ箱の資料でも通る（資料を変えない解決なので）。
+        var server = await session.PostAsJsonAsync($"/private-notes/conflicts/{conflicts[0].Id}/resolve",
+            new ResolveSyncConflictRequest(SyncConflictResolutions.Server), ct);
+        server.StatusCode.Should().Be(HttpStatusCode.OK);
+        _ = plugin;
+    }
+
     // `local` は属性を変えずに本文だけを書き換える —— 単純な門（今通るとき）で 1 回だけ出す。
     [Fact]
     public async Task localの解決は露出ONの個人資料で新しい本文のイベントを1件発行する()
