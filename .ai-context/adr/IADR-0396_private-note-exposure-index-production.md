@@ -22,9 +22,10 @@ related_ids:
   - IADR-0296
   - IADR-0358
   - IADR-0388
+  - IADR-0455
 author: claude
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-15
 plan_refs:
   - "planning:projects/microservices-platform/07_adr/ADR-0061 決定 1〜6（露出 3 トグルの索引への載せ方）"
   - "planning:projects/microservices-platform/02_requirements/01_requirements.md (FR-19 / FR-21 受け入れ基準 ⑨)"
@@ -147,6 +148,22 @@ related_specs:
 
 **組織文書は全キーが欠落するため 3 軸とも true** であり、既存経路の挙動は 1 ビットも変わらない
 （回帰は陽性対照テストで対にして固定した）。
+
+**［2026-09-15 追記 / #1471］🔴 門は「一部の経路だけ」に付けない。** 本 ADR の着地時（PR #1281）は露出を触る
+4 経路（`SetExposure` / 共有の付与・取り消し / Obsidian push）だけを門付きにし、`/documents/*` の 7 経路と正規化の
+取り込み経路は無条件の発行のままだった。消費側の門があるため実害は無かったが、**「発行の門がある」という説明と
+コードの実態が食い違う**（PR #1281 のレビュー指摘）。全経路を門へ寄せる修正（`c4830568`）が作られたが、
+**squash マージの後に同じブランチへ push されたため develop に入らなかった**（2026-09-15 のリモートブランチ棚卸しで検出）。
+#1471 でこれを現在のコードへ当て直した（直接発行していた 10 経路）。当て直しの際に 2 点を補った（[[IADR-0455]]）。
+
+- **属性を書き換える経路（管理者の `PUT` / `PATCH`・再正規化）は撤収の形の門を使う。** 単純な門では、
+  属性の全置換で露出が外れたときの撤収（決定 5）が門に弾かれて本文が索引に残る。`SetExposure` も同じ門へ移した。
+- **門の述語は個人資料にだけ効かせる**（`!IsPrivateNote || IsIndexable`）。上の「組織文書は全キーが欠落する」は
+  データの前提であり、露出キーを明示した組織文書を拒否する検証は無い。組織文書は常に通し、個人資料に対しては
+  本決定のとおり `IsIndexable` ただ 1 つで判定する（消費側と同じ関数である点は変わらない）。
+
+素の発行（`DocumentEndpoints.PublishUpdatedAsync`）は `private` にし、直接発行が本番経路へ戻ったら落ちる試験
+（`PublishGateCoverageTests`）を置いた。
 
 ### 決定 5: ON → OFF の撤収は**削除**で行う。撤収の契機は `DocumentUpdated` の再発行である
 
