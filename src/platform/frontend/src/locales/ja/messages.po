@@ -343,6 +343,10 @@ msgstr "MCP管理"
 msgid "Mermaid {coded}図"
 msgstr "Mermaid {coded}図"
 
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "moomoo 証券のログイン情報"
+msgstr "moomoo 証券のログイン情報"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
 msgid "Obsidian プラグインから同期すると、ここに結果が並びます。"
 msgstr "Obsidian プラグインから同期すると、ここに結果が並びます。"
@@ -367,6 +371,18 @@ msgstr "Obsidian 連携設定へ"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/routes/sc20ObsidianSettingsRoute.ts
 msgid "Obsidian連携"
 msgstr "Obsidian連携"
+
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "OpenD が moomoo 証券へログインするための ID とパスワードです。パスワードは MD5 に変換した値だけが保存されます。"
+msgstr "OpenD が moomoo 証券へログインするための ID とパスワードです。パスワードは MD5 に変換した値だけが保存されます。"
+
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "OpenD との通信に使う RSA 秘密鍵です。値は入力せず、この画面の「生成」で作ります。"
+msgstr "OpenD との通信に使う RSA 秘密鍵です。値は入力せず、この画面の「生成」で作ります。"
+
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "OpenD の RSA 鍵"
+msgstr "OpenD の RSA 鍵"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "related: 実線・細（向きなし）"
@@ -642,6 +658,14 @@ msgstr "このトークンを表示できるのは今回だけです。閉じる
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "このフォルダを同期対象から外しますか？"
 msgstr "このフォルダを同期対象から外しますか？"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "このプロパティは値を入力しません。「生成」を押すと RSA 1024 bit の鍵を新しく作って保管先に書き込みます。鍵はこの画面にも表示されません。"
+msgstr "このプロパティは値を入力しません。「生成」を押すと RSA 1024 bit の鍵を新しく作って保管先に書き込みます。鍵はこの画面にも表示されません。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "このプロパティは秘密情報ではありません（環境ごとの ID など）。入力内容は表示されますが、保存後はこの画面から読み出せません。"
+msgstr "このプロパティは秘密情報ではありません（環境ごとの ID など）。入力内容は表示されますが、保存後はこの画面から読み出せません。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "このプロパティを更新する"
@@ -1081,6 +1105,18 @@ msgstr "ハイブリッド"
 msgid "パス"
 msgstr "パス"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "パスワード"
+msgstr "パスワード"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "パスワード（確認のためもう一度）"
+msgstr "パスワード（確認のためもう一度）"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "パスワードはそのまま保存されません。MD5 に変換した値だけが保管先に書き込まれます。"
+msgstr "パスワードはそのまま保存されません。MD5 に変換した値だけが保管先に書き込まれます。"
+
 #: platform/frontend/src/app/routing/breadcrumbs.ts
 msgid "パンくず"
 msgstr "パンくず"
@@ -1243,6 +1279,7 @@ msgstr "モデル: 未使用（AI へ送信なし）"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "やめる"
 msgstr "やめる"
 
@@ -1535,6 +1572,10 @@ msgstr "保存容量の使用量が 95% を超えました。上限に達する�
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い適用は Git の履歴を参照してください。"
 msgstr "保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い適用は Git の履歴を参照してください。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "保管先への書き込みは完了しましたが、即時同期を依頼できませんでした。アプリケーションへの反映は定期同期（最大 1 時間）を待ちます。"
+msgstr "保管先への書き込みは完了しましたが、即時同期を依頼できませんでした。アプリケーションへの反映は定期同期（最大 1 時間）を待ちます。"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 #: platform/frontend/src/app/routing/nav.ts
@@ -1984,6 +2025,14 @@ msgstr "削除済みの個人資料を確認する"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "削除済みの資料です。削除済みタブから復元するか、Obsidian 側のファイルを削除してください。"
 msgstr "削除済みの資料です。削除済みタブから復元するか、Obsidian 側のファイルを削除してください。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "即時同期を依頼しました。アプリケーションへの反映まで少し時間がかかることがあります。"
+msgstr "即時同期を依頼しました。アプリケーションへの反映まで少し時間がかかることがあります。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "即時同期を依頼できませんでした"
+msgstr "即時同期を依頼できませんでした"
 
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "却下"
@@ -2486,8 +2535,8 @@ msgid "差分の有無は GitOps（Git と ArgoCD）の同期状況からも確�
 msgstr "差分の有無は GitOps（Git と ArgoCD）の同期状況からも確認できます。"
 
 #: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
-msgid "市場データ・経済指標・開示情報の API キーと、Discord 通知の webhook・トークンです。"
-msgstr "市場データ・経済指標・開示情報の API キーと、Discord 通知の webhook・トークンです。"
+msgid "市場データ・経済指標・開示情報の API キーと、Discord 通知の webhook・トークン・環境ごとの ID（サーバー・チャンネル・許可する利用者）です。"
+msgstr "市場データ・経済指標・開示情報の API キーと、Discord 通知の webhook・トークン・環境ごとの ID（サーバー・チャンネル・許可する利用者）です。"
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "役に立たなかった"
@@ -3396,6 +3445,14 @@ msgid "理由は監査ログに残ります。値そのものは書かないで�
 msgstr "理由は監査ログに残ります。値そのものは書かないでください。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "生成"
+msgstr "生成"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "生成して書き込む"
+msgstr "生成して書き込む"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "用途"
 msgstr "用途"
 
@@ -4107,6 +4164,14 @@ msgstr "配下の資料数"
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "重要"
 msgstr "重要"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "鍵を生成してよいか確認してください"
+msgstr "鍵を生成してよいか確認してください"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "鍵を生成し直すと、OpenD に登録済みの鍵との対応が失効します。OpenD の設定も新しい鍵に合わせる必要があります。生成して書き込みますか？"
+msgstr "鍵を生成し直すと、OpenD に登録済みの鍵との対応が失効します。OpenD の設定も新しい鍵に合わせる必要があります。生成して書き込みますか？"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx

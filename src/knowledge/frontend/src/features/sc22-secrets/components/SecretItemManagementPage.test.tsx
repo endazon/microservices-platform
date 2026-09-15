@@ -269,6 +269,190 @@ describe('SecretItemManagementPage (SC-22)', () => {
     expect(mocks.apiRequest).not.toHaveBeenCalled();
   });
 
+  // ── プロパティの種別と同期の表示（IADR-0456 決定 1〜4, #1477）
+
+  // BFF が返す種別つきの行（`propertyDetails`）。上の ITEMS は種別の宣言を持たない行（安全側へ倒れること）の試験に使う。
+  const KIND_ITEMS = [
+    {
+      item: 'ast-app-secrets',
+      vaultPath: 'ai-stock-trading/app-secrets',
+      properties: ['finnhub-api-key', 'discord-bot-guild-id'],
+      propertyDetails: [
+        { name: 'finnhub-api-key', kind: 'value', sensitive: true },
+        { name: 'discord-bot-guild-id', kind: 'value', sensitive: false },
+      ],
+      status: 'set',
+      currentVersion: 1,
+      lastUpdatedAt: '2026-09-15T00:00:00Z',
+      lastUpdatedBy: null,
+    },
+    {
+      item: 'ast-moomoo',
+      vaultPath: 'ai-stock-trading/moomoo',
+      properties: ['login-account', 'login-pwd-md5'],
+      propertyDetails: [
+        { name: 'login-account', kind: 'value', sensitive: true },
+        { name: 'login-pwd-md5', kind: 'md5-from-password', sensitive: true },
+      ],
+      status: 'notSet',
+      currentVersion: null,
+      lastUpdatedAt: null,
+      lastUpdatedBy: null,
+    },
+    {
+      item: 'ast-moomoo-rsa',
+      vaultPath: 'ai-stock-trading/moomoo-rsa',
+      properties: ['opend_rsa.pem'],
+      propertyDetails: [{ name: 'opend_rsa.pem', kind: 'generate-rsa-pkcs1', sensitive: true }],
+      status: 'notSet',
+      currentVersion: null,
+      lastUpdatedAt: null,
+      lastUpdatedBy: null,
+    },
+  ];
+
+  function mockKindApi(syncRequested = true) {
+    mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
+      if (init?.method === 'PUT' && String(path).startsWith('/secrets/')) {
+        const sent = JSON.parse(String(init.body)) as { property: string };
+        return Promise.resolve(
+          jsonResponse({
+            item: String(path).slice('/secrets/'.length),
+            property: sent.property,
+            version: 1,
+            updatedAt: '2026-09-15T01:00:00Z',
+            syncRequested,
+          }),
+        );
+      }
+      if (String(path) === '/secrets') return Promise.resolve(jsonResponse(KIND_ITEMS));
+      return Promise.resolve(jsonResponse([]));
+    });
+  }
+
+  const putCalls = () =>
+    mocks.apiRequest.mock.calls.filter(([, init]) => (init as RequestInit)?.method === 'PUT');
+
+  // IADR-0456 決定 2: パスワードはマスクと確認入力を持ち、MD5 だけが保存される旨を書く。送るのは平文（変換は BFF）。
+  it('asks for a masked password twice and says only its MD5 is stored', async () => {
+    mockKindApi();
+    const user = userEvent.setup();
+    await renderPage();
+    const form = within(await openForm(user, 'moomoo 証券のログイン情報'));
+
+    // 陽性対照: 同じ項目の login-account（種別 value・秘密）は従来の入力の形で、MD5 の注記を出さない。
+    expect(form.getByLabelText('新しい値')).toHaveAttribute('type', 'password');
+    expect(form.queryByTestId('secret-md5-note')).toBeNull();
+
+    await user.selectOptions(form.getByLabelText('更新するプロパティ'), 'login-pwd-md5');
+    const pwd = form.getByLabelText('パスワード');
+    const again = form.getByLabelText('パスワード（確認のためもう一度）');
+    expect(pwd).toHaveAttribute('type', 'password');
+    expect(again).toHaveAttribute('type', 'password');
+    expect(form.getByTestId('secret-md5-note')).toHaveTextContent('MD5 に変換した値だけ');
+
+    const submit = form.getByRole('button', { name: 'このプロパティを更新する' });
+    await user.type(pwd, PLACEHOLDER);
+    await user.type(again, `${PLACEHOLDER}X`);
+    expect(submit).toBeDisabled();
+    await user.clear(again);
+    await user.type(again, PLACEHOLDER);
+    await user.click(submit);
+
+    await waitFor(() => expect(putCalls()).toHaveLength(1));
+    expect(JSON.parse(String((putCalls()[0][1] as RequestInit).body))).toEqual({
+      property: 'login-pwd-md5',
+      value: PLACEHOLDER,
+      reason: null,
+    });
+    expect(await form.findByTestId('secret-update-done')).toHaveTextContent('版 1');
+    expect(pwd).toHaveValue('');
+  });
+
+  // IADR-0456 決定 3: 生成は値の欄を持たず、1 度目の押下では送らない。失効の説明を読んで確かめてから送る（値は空文字）。
+  it('generates the RSA key only after an explicit confirmation and has no value field', async () => {
+    mockKindApi();
+    const user = userEvent.setup();
+    await renderPage();
+    const form = within(await openForm(user, 'OpenD の RSA 鍵'));
+
+    expect(form.queryByLabelText('新しい値')).toBeNull();
+    expect(form.queryByLabelText('パスワード')).toBeNull();
+    expect(form.getByTestId('secret-generate-note')).toHaveTextContent(
+      '鍵はこの画面にも表示されません',
+    );
+
+    await user.click(form.getByRole('button', { name: '生成' }));
+    expect(form.getByTestId('secret-generate-confirm')).toHaveTextContent('失効');
+    expect(putCalls()).toHaveLength(0);
+
+    // 「やめる」で確認を閉じ、送らない。
+    await user.click(form.getByRole('button', { name: 'やめる' }));
+    expect(form.queryByTestId('secret-generate-confirm')).toBeNull();
+    expect(putCalls()).toHaveLength(0);
+
+    await user.click(form.getByRole('button', { name: '生成' }));
+    await user.click(form.getByRole('button', { name: '生成して書き込む' }));
+
+    await waitFor(() => expect(putCalls()).toHaveLength(1));
+    expect(JSON.parse(String((putCalls()[0][1] as RequestInit).body))).toEqual({
+      property: 'opend_rsa.pem',
+      value: '',
+      reason: null,
+    });
+    expect(await form.findByTestId('secret-update-done')).toHaveTextContent('opend_rsa.pem');
+    expect(form.queryByTestId('secret-generate-confirm')).toBeNull();
+  });
+
+  // IADR-0456 決定 1: 秘密でない ID は平文で入力させ、確認入力を求めず、秘密ではない旨を書く（書き込み専用なのは同じ）。
+  it('lets non-secret Discord IDs be typed in plain text without a confirmation', async () => {
+    mockKindApi();
+    const user = userEvent.setup();
+    await renderPage();
+    const form = within(await openForm(user, '株式自動売買の外部 API キーと通知'));
+
+    // 陽性対照: 秘密の API キーはマスクされ、確認入力がある。
+    expect(form.getByLabelText('新しい値')).toHaveAttribute('type', 'password');
+    expect(form.getByLabelText('新しい値（確認のためもう一度）')).toBeInTheDocument();
+
+    await user.selectOptions(form.getByLabelText('更新するプロパティ'), 'discord-bot-guild-id');
+    const input = form.getByLabelText('新しい値');
+    expect(input).toHaveAttribute('type', 'text');
+    expect(form.queryByLabelText('新しい値（確認のためもう一度）')).toBeNull();
+    expect(form.getByTestId('secret-non-secret-note')).toHaveTextContent('秘密情報ではありません');
+
+    await user.type(input, '123456789012345678');
+    await user.click(form.getByRole('button', { name: 'このプロパティを更新する' }));
+    await waitFor(() => expect(putCalls()).toHaveLength(1));
+    expect(JSON.parse(String((putCalls()[0][1] as RequestInit).body))).toEqual({
+      property: 'discord-bot-guild-id',
+      value: '123456789012345678',
+      reason: null,
+    });
+  });
+
+  // IADR-0456 決定 1: 種別の宣言が無い行は「値・秘密」へ倒す（上の ITEMS はマスクと確認入力のまま —— 既存の試験が固定）。
+  // IADR-0456 決定 4: 保存後に、即時同期を依頼できたかを示す。依頼できなくても書き込みは成立している旨を書く。
+  it.each([
+    [true, '即時同期を依頼しました'],
+    [false, '即時同期を依頼できませんでした'],
+  ])(
+    'shows whether the sync was requested after saving (syncRequested=%s)',
+    async (requested, text) => {
+      mockKindApi(requested);
+      const user = userEvent.setup();
+      await renderPage();
+      const form = within(await openForm(user, 'moomoo 証券のログイン情報'));
+
+      await user.type(form.getByLabelText('新しい値'), PLACEHOLDER);
+      await user.type(form.getByLabelText('新しい値（確認のためもう一度）'), PLACEHOLDER);
+      await user.click(form.getByRole('button', { name: 'このプロパティを更新する' }));
+
+      expect(await form.findByTestId('secret-update-done')).toHaveTextContent('login-account');
+      expect(form.getByTestId('secret-sync-status')).toHaveTextContent(text);
+    },
+  );
+
   // 05_screens §SC-22「共通シェル: 左ナビ『運用』グループ」・権限外にはメニューを表示しない。
   it('declares the navigation entry in the ops group for admins and operators only', () => {
     expect(sc22SecretsNav).toMatchObject({
