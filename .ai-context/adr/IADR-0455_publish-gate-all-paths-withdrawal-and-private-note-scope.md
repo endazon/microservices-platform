@@ -19,6 +19,7 @@ plan_refs:
   - "planning:projects/microservices-platform/07_adr/ADR-0061 決定 1・2・4（露出 3 トグルの索引への載せ方）"
 related_specs:
   - ../specs/20260915_issue-1471_publish-gate-all-paths.md
+  - ../specs/20260915_issue-1474_sync-conflict-resolve-publish.md
 ---
 
 # IADR-0455: `DocumentUpdated` の発行はすべて門を通す
@@ -67,6 +68,16 @@ IADR-0396 決定 4 は「個人資料は露出 3 トグルのうち 1 つでも 
   **書き換える前に** `DocumentEndpoints.PassesPublishGate(doc)` で取る（SetExposure の「変更『前』の値で判定する」と同じ作法）。
 - 🔴 **ポートを直接叩く形（`bus.PublishUpdatedAsync(`）は型では止まらない。** DocumentService の本番ソースを走査し、
   ポート宣言・アダプタ・`DocumentEndpoints.cs` 以外に現れたら落ちる試験（`PublishGateCoverageTests`）で止める。
+
+**［2026-09-15 追記 / #1474］「すべての本番経路」には、発行を 1 度も呼ばない経路が抜けていた。** 本 ADR の走査は
+「素の発行を呼ぶ経路」（誤りの側）から引いたため、**本文を書き換えるのに何も発行しない経路**は母集合に入らなかった。
+`SyncConflicts/Resolve` の `local`（ローカル本文で資料を上書きする）と `both`（ローカル本文で別名の新規資料を作る）がそれで、
+露出 ON の個人資料で `local` を選ぶと索引は古い本文のまま残っていた（#1471 の作業仕様書が「対象外・未決」として残した件）。
+#1474 で両分岐を**単純な門**（`PublishUpdatedIfIndexableAsync`）へ通した —— どちらも属性を書き換えない（`local` は現在の属性を
+そのまま渡し、`both` は新規作成）。`both` の別名資料は作成の既定（露出 3 トグル OFF）で作られ元の資料の露出を継がないため、
+現行は門に弾かれて発行されない（push の新規作成と同じ形）。**`PublishGateCoverageTests` は「呼ばない経路」を検出しない**
+（素の発行の走査である）。本文を書く／資料を作る経路の母集合と挙動の試験は
+[`20260915_issue-1474_sync-conflict-resolve-publish.md`](../specs/20260915_issue-1474_sync-conflict-resolve-publish.md) が正本である。
 
 ### 決定 2: 門の述語は**個人資料にだけ**効かせる
 

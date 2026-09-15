@@ -1,6 +1,7 @@
 using System.Text;
 using DocumentService.Domain;
 using DocumentService.Domain.Ports;
+using DocumentService.Features.Documents;
 using DocumentService.Features.PrivateNotes;
 using DocumentService.Infrastructure.Persistence;
 using FluentValidation;
@@ -23,6 +24,12 @@ namespace DocumentService.Features.SyncConflicts.Resolve;
 // 🔴 **ローカル本文の削除は SaveChanges の前**である（IADR-0296 決定 3 と同じ向き）——
 // 先に解決済みにしてから削除に失敗すると、**解決済みなのに本文だけが残り、誰も消せない**。
 // 前に置けば、失敗したときは何も確定せず利用者が選び直せる。
+//
+// FR-19, ADR-0061 決定 1・2, [[IADR-0396]] 決定 4, [[IADR-0455]] 決定 1, #1474:
+// 🔴 **本文を書き換える／本文を持つ資料を作る分岐は、発行の門を通して `DocumentUpdated` を出す。**
+// 出さないと、露出 ON の個人資料は本文だけ新しくなり、索引（検索・グラフ）は古い本文のまま残る。
+// どちらの分岐も属性を書き換えない（`local` は現在の属性をそのまま渡す／`both` は新規作成）ので、
+// 単純な門（`PublishUpdatedIfIndexableAsync`）を使う。発行は保存の後（push と同じ順）。
 internal static class ResolveSyncConflictEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
@@ -30,7 +37,7 @@ internal static class ResolveSyncConflictEndpoint
         g.MapPost("/{id:guid}/resolve", async (Guid id, ResolveSyncConflictRequest req,
             IValidator<ResolveSyncConflictRequest> validator, HttpContext http,
             DocumentDbContext db, IObjectStorageClient storage, IPrivateNoteNotifier notifier,
-            IAuditLogger audit, CancellationToken ct) =>
+            IAuditLogger audit, IDocumentUpdatedPublisher bus, CancellationToken ct) =>
         {
             if (PrivateNoteEndpoints.SubjectOf(http) is not { } owner) return Results.Unauthorized();
 
@@ -53,27 +60,36 @@ internal static class ResolveSyncConflictEndpoint
             var note = await db.PrivateNotes.FindAsync([conflict.DocumentId], ct);
             var doc = await db.Documents.FindAsync([conflict.DocumentId], ct);
             if (note is null || doc is null) return Results.NotFound();
+            // #1474（PR #1476 のフェーズ末監査 D1）: **ゴミ箱の資料へは本文を書かない。**
+            // push（`ObsidianSync/Push`）・移動と同じく 409 `deleted` を返す。`local` / `both` を通すと、
+            // 利用者がゴミ箱へ移した資料の本文が新しくなり、露出 ON なら索引へ再発行されてしまう。
+            // `server` は資料を変えないので、競合を片付ける手段として残す。
+            if (note.IsDeleted && req.Resolution != SyncConflictResolutions.Server)
+                return Results.Conflict(new { error = "deleted", purgeAt = note.PurgeAt });
 
             var now = DateTimeOffset.UtcNow;
             var localContent = await Get.GetSyncConflictEndpoint.ReadAsync(storage,
                 conflict.LocalContentUri, ct);
-            Guid? createdNoteId = null;
+            // 索引の生産側へ流す候補（`server` は資料を変えないので null のまま）。
+            Document? written = null;
 
             if (req.Resolution == SyncConflictResolutions.Local)
             {
                 await storage.PutTextAsync(DocumentBodyIntake.StorageKey(doc.Id), localContent,
                     DocumentBodyIntake.ContentType, ct);
                 doc.RecordContentFingerprint(DocumentBodyIntake.Fingerprint(localContent));
+                // 属性は現在の値をそのまま渡す（書き換えない）—— 撤収の形の門は要らない。
                 doc.Update(doc.Title, doc.Attributes, doc.Tags.ToList(), "conflict-resolve-local");
                 note.RecordBody(Encoding.UTF8.GetByteCount(localContent),
                     DocumentBodyIntake.Fingerprint(localContent), now);
+                written = doc;
             }
             else if (req.Resolution == SyncConflictResolutions.Both)
             {
                 var created = await CreateAliasNoteAsync(db, storage, owner, note, doc,
                     localContent, now, ct);
                 if (created.Problem is not null) return created.Problem;
-                createdNoteId = created.NoteId;
+                written = created.Doc;
             }
             // `server`: 何もしない（資料はサーバ版のまま。版も進まない）。
 
@@ -86,9 +102,19 @@ internal static class ResolveSyncConflictEndpoint
             await PrivateNoteUsage.RecordUsageAndWarnAsync(db, notifier, owner, now, ct);
 
             // ADR-0037 決定 9: 監査は「誰が・いつ・何件」。**タイトル・本文は記録しない。**
+            // 🔴 発行より**前**に置く（PR #1476 のフェーズ末監査 D2）—— 保存は確定しているので、
+            // 発行が例外になっても解決の監査行は残す。
             audit.Record("private-note.sync.conflict-resolve", owner, "granted",
                 $"conflict={conflict.Id} resolution={req.Resolution} count=1");
 
+            // #1474: 確定した後に門を通す（`local` は元の資料・`both` は別名資料）。
+            if (written is not null)
+            {
+                var names = await TagResolver.NamesAsync(db, ct);
+                await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, written, names, ct);
+            }
+
+            var createdNoteId = req.Resolution == SyncConflictResolutions.Both ? written?.Id : null;
             return Results.Ok(new ResolveSyncConflictResponse(conflict.Id, conflict.DocumentId,
                 req.Resolution, doc.Version, createdNoteId));
         });
@@ -96,7 +122,7 @@ internal static class ResolveSyncConflictEndpoint
 
     // SC-20 主要素 5: `both` の別名資料。**新規作成の規則（容量上限・経路衝突）を通す** ——
     // 既存の作成経路（`PrivateNoteEndpoints` の 507 / 409）と同じ応答であり、別の規則を作らない。
-    private static async Task<(Guid? NoteId, IResult? Problem)> CreateAliasNoteAsync(
+    private static async Task<(Document? Doc, IResult? Problem)> CreateAliasNoteAsync(
         DocumentDbContext db, IObjectStorageClient storage, string owner, PrivateNote source,
         Document sourceDoc, string localContent, DateTimeOffset now, CancellationToken ct)
     {
@@ -116,7 +142,9 @@ internal static class ResolveSyncConflictEndpoint
         var uri = await storage.PutTextAsync(DocumentBodyIntake.StorageKey(id), localContent,
             DocumentBodyIntake.ContentType, ct);
         // 既定（doc_scope=private-note / owner / restricted / 露出 3 トグル OFF）は作成経路と同じ。
-        // **露出はすべて OFF で作られる**ため、索引の生産側へは何も発行しない（ADR-0061 決定 2）。
+        // 🔴 **元の資料の露出を継がない**（新規作成の既定。FR-21 受け入れ基準 ⑩）。
+        // #1474: 呼び出し側で門を通す（push の新規作成と同じ形）。露出は OFF で作られるため、
+        // 現行の既定では門に弾かれ、索引の生産側へは何も流れない（ADR-0061 決定 2）。
         var doc = Document.CreateWithBody(id, ConflictAlias.TitleOf(sourceDoc.Title, now), uri,
             originalUri: null, contentType: DocumentBodyIntake.ContentType,
             attributes: PrivateNoteEndpoints.PrivateNoteDefaults(owner), tags: [],
@@ -124,6 +152,6 @@ internal static class ResolveSyncConflictEndpoint
         db.Documents.Add(doc);
         db.PrivateNotes.Add(PrivateNote.Create(id, owner, vaultPath, bytes,
             DocumentBodyIntake.Fingerprint(localContent), now));
-        return (id, null);
+        return (doc, null);
     }
 }
