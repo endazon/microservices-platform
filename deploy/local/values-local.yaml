@@ -82,6 +82,11 @@ services:
   # 再発防止は scripts/check-unit-service-ownership.js（CI 必須チェック）。
 
   llmgateway:
+    # SC-22, IADR-0456 決定 5 (#1477): 画面（/admin/secrets）で差し替えた API キーを Pod へ届ける。
+    # Secret は ESO が force-sync で即時に更新するが、env は Pod 起動時に 1 度だけ解決される（IADR-0103）。
+    # ESO=1 で入る Stakater Reloader がこの注釈を見て Deployment を作り直す（Reloader が無ければ何も起きない）。
+    deploymentAnnotations:
+      secret.reloader.stakater.com/reload: "llm-provider-credentials"
     # k8s-local-up.sh が作成する Secret llm-provider-credentials を LlmGateway の
     # Llm__ApiKey（Anthropic）へ配線する。fail-safe: 未設定なら空文字 = 外部 LLM を呼ばない
     # （compose の `Llm__ApiKey: ${ANTHROPIC_API_KEY:-}` と同じ挙動）。
@@ -110,6 +115,17 @@ services:
     # policy と role は deploy/local/vault/eso/bootstrap.sh が入れる（ESO=1 のとき）。
     vault:
       address: "http://vault.platform-infra.svc.cluster.local:8200"
+    # SC-22, IADR-0456 決定 4 (#1477): 書き込み後に ExternalSecret へ即時同期を依頼する（ESO の 1 時間の同期間隔を待たない）。
+    # MSP の名前空間の Role はチャートが描き、platform-infra / ai-stock-trading の Role は k8s-local-up.sh（ESO=1）が apply する。
+    # ローカルは networkPolicy.enabled=false のため apiServerEgress は不要。**ESO=1 でなければ ExternalSecret が無く、
+    # 依頼は 404 で失敗し syncRequested=false になる**（書き込み自体は成立する）。
+    externalSecretSync:
+      enabled: true
+
+  # SC-22, IADR-0456 決定 5 (#1477): wiki-service は wikijs-sync の apiKey を env で読む。画面で差し替えたら Reloader が作り直す。
+  wiki:
+    deploymentAnnotations:
+      secret.reloader.stakater.com/reload: "wikijs-sync"
 
 # Issue #313, IADR-0078: SPA(frontend) を経路B(ローカル k8s / k3d) で配信する。image は
 # global.image.registry=k3d-local を接頭辞に使う（k8s-local-images.sh が同接頭辞・タグで build/import）。

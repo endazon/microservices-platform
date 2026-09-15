@@ -151,6 +151,10 @@ IADR-0433 は Vault policy・k8s auth ロール・allowlist・監査・端点の
 - **確認ダイアログは置かない。** KV v2 は旧版を保持し、誤った値は書き直しで戻せる。
   一方、無効化（SC-17）や完全削除（SC-19）のような取り返しのつかない操作ではない。2 度入力がそのまま確認である。
 
+> ［2026-09-15 追記 / #1477］**種別 `generate-rsa-pkcs1`（OpenD の RSA 鍵の生成）だけは確認の段を置いた**（IADR-0456 決定 3）。
+> 値の書き直しと違い、生成し直すと OpenD に登録済みの鍵との対応が**保管先の外で**失効し、旧版を戻しても OpenD 側は戻らないためである。
+> 秘密でない値（`sensitive: false`。Discord の環境固有 ID）は平文で見えるため確認入力を求めない（IADR-0456 決定 1）。
+
 ### 決定 7: 契約とエラーの形
 
 - `GET /bff/secrets` → `SecretItemStatusDto[]`（`item` / `vaultPath` / `properties` / `status` / `currentVersion` / `lastUpdatedAt` / `lastUpdatedBy`）。**値の項目を持たない。**
@@ -169,6 +173,9 @@ IADR-0433 は Vault policy・k8s auth ロール・allowlist・監査・端点の
 ### 決定 8: `deferred[]` / `excluded[]` は扱わない
 
 IADR-0433 決定 3 のまま。**本 ADR は `items[]` を 1 行も動かさない。** 画面が扱うのは 4 KV・13 プロパティである。
+
+> ［2026-09-15 追記 / #1477］**IADR-0456 で `items[]` を動かした**（`ast-moomoo`・`ast-moomoo-rsa` を `deferred[]` から移し、`ast-app-secrets` に Discord の環境固有 ID 4 件と SEC EDGAR の User-Agent を足した）。
+> 画面が扱うのは **6 KV・21 プロパティ**になった。書き込み後は ExternalSecret へ即時同期を依頼する（IADR-0456 決定 4。書き込みの応答に `syncRequested` を足した）。
 
 ### 決定 9: allowlist はイメージへ同梱し、配備は画面と同時に行う
 

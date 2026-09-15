@@ -40,9 +40,37 @@ vexec 'vault policy write bff-secret-write -' < "$ROOT/deploy/local/vault/eso/po
 echo "==> role: bff-secret-writer（BFF 専用 SA microservices-platform/bff に束縛）"
 vexec 'vault write auth/kubernetes/role/bff-secret-writer bound_service_account_names=bff bound_service_account_namespaces=microservices-platform policies=bff-secret-write ttl=1h'
 
+# SC-22, ADR-0095 決定 4, IADR-0456 決定 6 (#1477): **画面（/admin/secrets）が書く KV は無いときだけ作る。**
+# 従前は毎回 `vault kv put`（全置換）していたため、`k8s-local-up.sh` を再実行するたびに**画面で入れた値が env の既定（空）で消えた**。
+# 対象は deploy/bootstrap/sc22-secret-items.json の items[] のうち seed するもの。
+# 🔴 作成は `-cas=0`（Vault 側でも「無いときだけ」）。既に在る KV は、env が**空でない**プロパティだけを部分更新する。
+#    この形は Platform.Bff.Tests の SecretItemBootstrapSeedTests が固定する（無条件の put へ戻すと落ちる）。
+vkv_exists() { vexec "vault kv metadata get secret/$1 >/dev/null 2>&1"; }
+# 既に在る KV のプロパティを 1 つだけ部分更新する。**値が空なら何もしない**（未指定の env で画面の値を消さない）。
+# 値は stdin で渡す（`キー=-`）。現在版が削除されている等で失敗しても bootstrap は止めない（画面・Runbook で直す）。
+vkv_patch_nonempty() { # <path> <property> <value>
+  [ -n "$3" ] || return 0
+  printf '%s' "$3" | vexec "vault kv patch -method=patch secret/$1 $2=- >/dev/null" \
+    || echo "    WARN: secret/$1 の $2 を更新できない（現在版が削除されている等）。画面または Runbook の手順で直す" >&2
+}
+# 既に在る KV に、プロパティが**無いときだけ**値を足す（在れば空文字でも触らない）。値は stdin で渡す。
+# 画面が先に 1 プロパティだけ書いた KV（BFF は KV が無いと cas=0 でそのプロパティだけの KV を作る）へ、
+# 画面から書けない構成値（realm と対の *-auth-client-*）を補うために使う。
+vkv_patch_if_missing() { # <path> <property> <value>
+  vexec "vault kv get -field=$2 secret/$1 >/dev/null 2>&1" && return 0
+  printf '%s' "$3" | vexec "vault kv patch -method=patch secret/$1 $2=- >/dev/null" \
+    || echo "    WARN: secret/$1 に $2 を足せない（現在版が削除されている等）。Runbook の手順で直す" >&2
+}
+
 echo "==> seed: secret/msp/*（env 由来 or dev 既定・平文の実 secret は非コミット）"
 # 値は現行 apply_secret の既定と同一（minioadmin/kp/空）。env で上書き可。
-vexec "vault kv put secret/msp/llm-provider-credentials anthropic-api-key='${ANTHROPIC_API_KEY:-}' openai-api-key='${OPENAI_API_KEY:-}'"
+# SC-22 の項目（IADR-0456 決定 6）: 無いときだけ作る。在れば env が空でないキーだけ差し替える。
+if vkv_exists msp/llm-provider-credentials; then
+  vkv_patch_nonempty msp/llm-provider-credentials anthropic-api-key "${ANTHROPIC_API_KEY:-}"
+  vkv_patch_nonempty msp/llm-provider-credentials openai-api-key "${OPENAI_API_KEY:-}"
+else
+  vexec "vault kv put -cas=0 secret/msp/llm-provider-credentials anthropic-api-key='${ANTHROPIC_API_KEY:-}' openai-api-key='${OPENAI_API_KEY:-}'"
+fi
 # IADR-0097 (#310) PR-2: minio-credentials / wikijs-db / wikijs-sync。
 vexec "vault kv put secret/msp/minio-credentials accessKey='${MINIO_ACCESS_KEY:-minioadmin}' secretKey='${MINIO_SECRET_KEY:-minioadmin}'"
 # NFR, ADR-0002 (#1012): サービス DB のパスワード。appsettings.json から接続文字列を撤去したため、
@@ -53,7 +81,12 @@ vexec "vault kv put secret/msp/postgres-app password='${APP_DB_PASSWORD:-kp}'"
 # `rabbitmq` と**同値**にすること（同じ env RABBITMQ_PASSWORD から作る。ズレると認証破壊）。
 vexec "vault kv put secret/msp/rabbitmq-app password='${RABBITMQ_PASSWORD:-guest}'"
 vexec "vault kv put secret/msp/wikijs-db password='${WIKIJS_DB_PASSWORD:-kp}'"
-vexec "vault kv put secret/msp/wikijs-sync apiKey='${WIKIJS_SYNC_APIKEY:-}'"
+# SC-22 の項目（IADR-0456 決定 6）。Wiki.js が発行した鍵の書き戻し（deploy/local/wikijs-setup/bootstrap.sh）は別の経路である。
+if vkv_exists msp/wikijs-sync; then
+  vkv_patch_nonempty msp/wikijs-sync apiKey "${WIKIJS_SYNC_APIKEY:-}"
+else
+  vexec "vault kv put -cas=0 secret/msp/wikijs-sync apiKey='${WIKIJS_SYNC_APIKEY:-}'"
+fi
 # IADR-0098 (#310) PR-3: OIDC client secret 群（minio/grafana/vault/headlamp）。既定は各 <tool>-dev-secret-change-me
 # （現行 apply_secret の env 既定と同値）。env で上書き可。realm import の dev client secret と一致させること。
 vexec "vault kv put secret/msp/minio-oidc client-secret='${MINIO_OIDC_CLIENT_SECRET:-minio-dev-secret-change-me}'"
@@ -136,12 +169,53 @@ if [ "$smtp_host" = "$SMTP_CAPTURE_HOST" ]; then
 else
   smtp_port_default='587'; smtp_starttls_default='true'
 fi
-vexec "vault kv put secret/msp/keycloak-smtp \
-  host='$smtp_host' port='${SMTP_PORT:-$smtp_port_default}' starttls='${SMTP_STARTTLS:-$smtp_starttls_default}' \
-  from='${SMTP_FROM:-}' user='${SMTP_USER:-}' password='${SMTP_PASSWORD:-}'"
+# SC-22 の項目（IADR-0456 決定 6）: from / user / password は画面が書く秘密なので、在れば env が空でないときだけ差し替える。
+# host / port / starttls は構成（env と Git が決める。画面は書けない）なので、在っても毎回その値へ揃える（従前と同じ意味論）。
+if vkv_exists msp/keycloak-smtp; then
+  vkv_patch_nonempty msp/keycloak-smtp host "$smtp_host"
+  vkv_patch_nonempty msp/keycloak-smtp port "${SMTP_PORT:-$smtp_port_default}"
+  vkv_patch_nonempty msp/keycloak-smtp starttls "${SMTP_STARTTLS:-$smtp_starttls_default}"
+  vkv_patch_nonempty msp/keycloak-smtp from "${SMTP_FROM:-}"
+  vkv_patch_nonempty msp/keycloak-smtp user "${SMTP_USER:-}"
+  vkv_patch_nonempty msp/keycloak-smtp password "${SMTP_PASSWORD:-}"
+else
+  vexec "vault kv put -cas=0 secret/msp/keycloak-smtp \
+    host='$smtp_host' port='${SMTP_PORT:-$smtp_port_default}' starttls='${SMTP_STARTTLS:-$smtp_starttls_default}' \
+    from='${SMTP_FROM:-}' user='${SMTP_USER:-}' password='${SMTP_PASSWORD:-}'"
+fi
+
+# SC-22, ADR-0095 決定 1, IADR-0456 決定 6 (#1477): AST が ESO で受ける ai-stock-trading/app-secrets（契約 #1477 の表）。
+# **無いときだけ作る。在れば触らない**（画面で入れた外部 API キー・Discord ID を消さない。env での上書きも持たない —— 投入面は画面）。
+# *-auth-client-* 8 件は realm（deploy/keycloak/microservices-platform-realm.json の機密クライアント）と**同値**の dev 既定
+# （ズレると client_credentials が invalid_client になる）。画面から書ける 12 件は空文字（未設定＝各連携が no-op）。
+# 🔴 ai-stock-trading/moomoo / moomoo-rsa は seed しない（未設定のあいだ OpenD は Secret 不在で待機する＝fail-closed）。
+# 値の一致（キー集合＝items[] の書ける 12 ＋ notWritable 8、auth は realm と同値）は SecretItemBootstrapSeedTests が固定する。
+if ! vkv_exists ai-stock-trading/app-secrets; then
+  vexec "vault kv put -cas=0 secret/ai-stock-trading/app-secrets \
+    finnhub-api-key='' marketdata-finnhub-api-key='' fred-api-key='' edinet-subscription-key='' \
+    discord-webhook-url='' discord-bot-token='' discord-bot-killswitch-phrase='' \
+    discord-bot-guild-id='' discord-bot-channel-id='' discord-bot-allowed-user-ids='' discord-bot-user-mapping='' \
+    sec-edgar-user-agent='' \
+    service-auth-client-id='ai-stock-trading-svc' service-auth-client-secret='dev-only-service-secret' \
+    kb-auth-client-id='ai-stock-trading-kb-writer' kb-auth-client-secret='ai-stock-trading-kb-writer-dev-secret-change-me' \
+    llm-auth-client-id='ai-stock-trading-llm-caller' llm-auth-client-secret='ai-stock-trading-llm-caller-dev-secret-change-me' \
+    discord-owner-auth-client-id='ai-stock-trading-owner' discord-owner-auth-client-secret='dev-only-owner-secret'"
+else
+  # 在る KV にも *-auth-client-* 8 件を**無いものだけ**足す（画面が先に書いて作った KV には auth キーが無く、
+  # そのままでは ast-secrets に auth キーが載らず AST のサービス間トークン取得が止まる。PR #1478 監査 D4）。値は上の seed と同値。
+  vkv_patch_if_missing ai-stock-trading/app-secrets service-auth-client-id 'ai-stock-trading-svc'
+  vkv_patch_if_missing ai-stock-trading/app-secrets service-auth-client-secret 'dev-only-service-secret'
+  vkv_patch_if_missing ai-stock-trading/app-secrets kb-auth-client-id 'ai-stock-trading-kb-writer'
+  vkv_patch_if_missing ai-stock-trading/app-secrets kb-auth-client-secret 'ai-stock-trading-kb-writer-dev-secret-change-me'
+  vkv_patch_if_missing ai-stock-trading/app-secrets llm-auth-client-id 'ai-stock-trading-llm-caller'
+  vkv_patch_if_missing ai-stock-trading/app-secrets llm-auth-client-secret 'ai-stock-trading-llm-caller-dev-secret-change-me'
+  vkv_patch_if_missing ai-stock-trading/app-secrets discord-owner-auth-client-id 'ai-stock-trading-owner'
+  vkv_patch_if_missing ai-stock-trading/app-secrets discord-owner-auth-client-secret 'dev-only-owner-secret'
+fi
 
 echo ""
-echo "done. ExternalSecret が Vault→k8s Secret を同期する（refresh 1h）:"
+echo "done. ExternalSecret が Vault→k8s Secret を同期する（refresh 1h。画面 /admin/secrets からの書き込みは BFF が force-sync で即時同期を依頼する）:"
+echo "  #1477: SC-22 の KV（llm-provider-credentials / wikijs-sync / keycloak-smtp / ai-stock-trading/app-secrets）は無いときだけ作った（在るものは env が空でないキーだけ差し替えた）"
 echo "  PR-1: llm-provider-credentials / PR-2: minio-credentials, wikijs-db, wikijs-sync"
 echo "  PR-3: minio-oidc (MSP ns) / grafana-oidc, vault-oidc, headlamp-oidc (platform-infra ns)"
 echo "  #1107: bff-oidc (MSP ns。BFF セッションの client secret。空だと /bff/auth/login が 500)"

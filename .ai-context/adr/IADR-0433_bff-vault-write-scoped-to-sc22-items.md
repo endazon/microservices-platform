@@ -150,6 +150,12 @@ path "secret/metadata/msp/llm-provider-credentials" {
 | `deferred[]` | OIDC クライアントシークレット群と east-west gRPC の s2s 資格情報（計 18 件）／`ai-stock-trading/moomoo`・`moomoo-rsa` | 🔴 **realm の宣言と同値でなければならず、片側だけ書くと認証が静かに壊れる。** 認証基盤への書き込みと**対**で設計する必要がある。`moomoo-rsa` は値がファイル形（PEM）で UI の作法が別である |
 | `excluded[]` | `msp/postgres` / `postgres-app` / `rabbitmq` / `rabbitmq-app` / `keycloak-admin` / `minio-credentials` / `wikijs-db` | 🔴 **稼働中のデータストアが既存パスワードで初期化済みである。** Vault 側だけ書き換えると ESO が誤った資格情報を配って認証が壊れる。**回転は画面の 1 欄では成立しない。恒久的に対象外とする** |
 
+> ［2026-09-15 追記 / #1477］**`ai-stock-trading/moomoo`・`moomoo-rsa` を `deferred[]` から `items[]` へ移した**（IADR-0456 決定 1〜3）。
+> 「値がファイル形（PEM）で UI の作法が別」は、パスワードを BFF が MD5 へ変換し、RSA 鍵を BFF が**生成**する（値の入力欄を持たない）形で解いた。
+> あわせて `ai-stock-trading/app-secrets` に Discord の環境固有 ID 4 件と SEC EDGAR の User-Agent（いずれも秘密ではないが Git に置かない値）を足した。
+> `items[]` は **6 KV・書けるプロパティ 21**、`deferred[]` は Vault パスで **18 件**になった（§結果の「4 KV・13 プロパティ」「20 件」は当時の数）。
+> policy は完全一致パスを 2 KV ぶん足しただけで、data の `read`・`update`・ワイルドカードは足していない（本決定 1 のまま）。
+
 ### 決定 4: BFF 専用の ServiceAccount を作り、k8s auth ロールをそれに束縛する
 
 ```

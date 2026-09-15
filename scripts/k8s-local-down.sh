@@ -18,6 +18,8 @@ else
   echo "Rancher Desktop 経路: helm release と namespace を撤去します（内蔵 k3s は残す）。"
   helm uninstall msp -n microservices-platform 2>/dev/null || true
   helm uninstall ast -n ai-stock-trading 2>/dev/null || true
-  kubectl delete namespace microservices-platform ai-stock-trading platform-infra --ignore-not-found
+  # SC-22, IADR-0456 決定 5 (#1477): ESO=1 の up が入れる Stakater Reloader も撤去する（残すと削除済みの名前空間を見張り続ける）。
+  helm uninstall reloader -n reloader 2>/dev/null || true
+  kubectl delete namespace microservices-platform ai-stock-trading platform-infra reloader --ignore-not-found
   echo "done."
 fi

@@ -71,14 +71,25 @@ public class SecretItemVaultPolicyTests
             text.Should().NotContain(forbidden);
     }
 
-    // SC-22, IADR-0433 決定 3: deferred[] / excluded[] のパスは policy に現れない（陽性対照: 1 件目は items[] に在る）。
+    // SC-22, IADR-0433 決定 3: deferred[] / excluded[] のパスは policy に現れない（陽性対照: items[] のパスは在る）。
+    // IADR-0456 (#1477): moomoo / moomoo-rsa は deferred[] から items[] へ移った。**外側の集合はファイルから引く**
+    // （手で列挙すると、分類を動かしたときにこの試験だけが古い分類を守り続ける）。
     [Fact]
     public void Policy_does_not_cover_deferred_or_excluded_paths()
     {
         var paths = ParsePolicy().Keys.ToList();
-        paths.Should().Contain("secret/data/msp/llm-provider-credentials");
-        foreach (var outside in new[] { "msp/bff-oidc", "msp/postgres", "msp/keycloak-admin", "ai-stock-trading/moomoo" })
-            paths.Should().NotContain(p => p.EndsWith("/" + outside, StringComparison.Ordinal));
+        paths.Should().Contain("secret/data/msp/llm-provider-credentials")
+            .And.Contain("secret/data/ai-stock-trading/moomoo")
+            .And.Contain("secret/data/ai-stock-trading/moomoo-rsa");
+
+        using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(CatalogPath));
+        var outside = new[] { "deferred", "excluded" }
+            .SelectMany(section => document.RootElement.GetProperty(section).EnumerateArray())
+            .SelectMany(group => group.GetProperty("vaultPaths").EnumerateArray().Select(p => p.GetString()!))
+            .ToList();
+        outside.Should().Contain("msp/bff-oidc").And.Contain("msp/postgres").And.NotContain("ai-stock-trading/moomoo");
+        foreach (var path in outside)
+            paths.Should().NotContain(p => p.EndsWith("/" + path, StringComparison.Ordinal));
     }
 
     // SC-22, IADR-0433 決定 4・5: role は BFF 専用 SA `bff` にだけ束縛し、ESO の role へ相乗りしない。

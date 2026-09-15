@@ -525,6 +525,29 @@ if [ "${ESO:-}" = "1" ]; then
     -n external-secrets --create-namespace --set installCRDs=true --wait
   # Vault の SA に TokenReview 権限（k8s auth の reviewer）。
   kubectl apply -f deploy/local/vault/eso/vault-auth-rbac.yaml
+  # SC-22, ADR-0095 決定 3, IADR-0456 決定 4・5 (#1477): 画面（/admin/secrets）で書いた値を待たずに Pod へ届ける部品。
+  # (1) AST の名前空間を冪等に作る —— 下の BFF の Role と Reloader の scoped RBAC がこの名前空間に置かれる。
+  #     AST の配備（src/ai-stock-trading/scripts/k8s-local-deploy.sh）は後から走り、同じ冪等作成をする。
+  kubectl create namespace ai-stock-trading --dry-run=client -o yaml | kubectl apply -f -
+  # (2) BFF（SA microservices-platform/bff）が platform-infra / ai-stock-trading の ExternalSecret へ force-sync を付ける Role。
+  #     MSP の名前空間の Role はチャート（services.bff.externalSecretSync）が描く。resourceNames は SC-22 の items[] と一致
+  #     （Platform.Bff.Tests の SecretItemExternalSecretRbacTests が固定）。
+  kubectl apply -f deploy/local/vault/eso/rbac-bff-externalsecret-sync.yaml
+  # (3) Stakater Reloader: Secret が変わったら、注釈（secret.reloader.stakater.com/reload）を持つ Deployment を作り直す
+  #     （env の secretKeyRef は Pod 起動時に 1 度だけ解決される。IADR-0103）。**chart と image を pin する**（ESO と同じ理由）。
+  #     🔴 見る名前空間を 3 つに限る（watchGlobally=false ＋ namespaces ＝ 各名前空間の Role。クラスタ全体の Secret を読ませない）。
+  #     上書きは RELOADER_CHART_VERSION / RELOADER_IMAGE_TAG（chart の既定の image と合わせること）。
+  RELOADER_CHART_VERSION="${RELOADER_CHART_VERSION:-2.2.17}"
+  RELOADER_IMAGE_TAG="${RELOADER_IMAGE_TAG:-v1.4.22}"
+  helm repo add stakater https://stakater.github.io/stakater-charts >/dev/null 2>&1 || true
+  helm repo update stakater >/dev/null 2>&1 || true
+  helm upgrade --install reloader stakater/reloader \
+    --version "$RELOADER_CHART_VERSION" \
+    -n reloader --create-namespace \
+    --set reloader.watchGlobally=false \
+    --set "reloader.namespaces={$MSP_NS,$INFRA_NS,ai-stock-trading}" \
+    --set image.tag="$RELOADER_IMAGE_TAG" \
+    --wait
   # Vault k8s auth の enable/config＋policy＋role `eso`＋seed（runtime・kubectl exec 経由・平文非コミット・再実行可）。
   bash deploy/local/vault/eso/bootstrap.sh
   # 上で k8s auth backend/role を設定した「後に」store を kubernetes 認証へ上書きする（同名 vault-backend）。

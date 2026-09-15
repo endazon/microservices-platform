@@ -38,10 +38,26 @@ path "secret/metadata/msp/wikijs-sync" {
   capabilities = ["read"]
 }
 
-# ai-stock-trading/app-secrets（外部 API キーと通知の 7 プロパティ。*-auth-client-* は書かない）
+# ai-stock-trading/app-secrets（外部 API キーと通知の 7 プロパティ ＋ Discord の環境固有 ID 4。*-auth-client-* は書かない）
 path "secret/data/ai-stock-trading/app-secrets" {
   capabilities = ["create", "patch"]
 }
 path "secret/metadata/ai-stock-trading/app-secrets" {
+  capabilities = ["read"]
+}
+
+# ai-stock-trading/moomoo（login-account / login-pwd-md5。パスワードは BFF が MD5 へ変換して書く。IADR-0456 決定 2・#1477）
+path "secret/data/ai-stock-trading/moomoo" {
+  capabilities = ["create", "patch"]
+}
+path "secret/metadata/ai-stock-trading/moomoo" {
+  capabilities = ["read"]
+}
+
+# ai-stock-trading/moomoo-rsa（opend_rsa.pem。BFF が生成して書く。IADR-0456 決定 3・#1477）
+path "secret/data/ai-stock-trading/moomoo-rsa" {
+  capabilities = ["create", "patch"]
+}
+path "secret/metadata/ai-stock-trading/moomoo-rsa" {
   capabilities = ["read"]
 }

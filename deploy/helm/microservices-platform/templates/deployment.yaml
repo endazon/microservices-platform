@@ -13,6 +13,12 @@ metadata:
   labels:
     app: {{ $name }}-service
     chart: {{ $.Chart.Name }}-{{ $.Chart.Version }}
+  {{- with $svc.deploymentAnnotations }}
+  # SC-22, IADR-0456 決定 5 (#1477): Deployment 自体の注釈。ローカルでは Stakater Reloader の
+  # `secret.reloader.stakater.com/reload`（env で読む Secret が変わったら作り直す）に使う（deploy/local/values-local.yaml）。
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   {{- /* NFR (#197): HPA 対象サービスは replicas を宣言しない（HPA が所有し値の綱引きを避ける）。
          非対象サービスは従来どおり静的 replicas を用いる。 */}}
@@ -154,6 +160,12 @@ spec:
               value: {{ $svc.vault.role | default "bff-secret-writer" | quote }}
             - name: Vault__AuthMount
               value: {{ $svc.vault.authMount | default "kubernetes" | quote }}
+          {{- end }}
+          {{- if $svc.externalSecretSync }}
+            # SC-22, IADR-0456 決定 4 (#1477): 書き込み後に ExternalSecret へ即時同期（force-sync 注釈）を依頼するか。
+            # 名乗りは Pod の ServiceAccount トークン、API サーバの所在は Pod の KUBERNETES_SERVICE_HOST/PORT（env では渡さない）。
+            - name: ExternalSecretSync__Enabled
+              value: {{ $svc.externalSecretSync.enabled | default false | quote }}
           {{- end }}
           {{- if $pipelineMount }}
             # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成（ConfigMap マウント）の読み込み先。

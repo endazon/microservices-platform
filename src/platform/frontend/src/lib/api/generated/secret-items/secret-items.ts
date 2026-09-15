@@ -232,6 +232,12 @@ export const getBffSecretItemsUpdateUrl = (item: string,) => {
  * 本文は **64 KiB（65,536 バイト）まで**。ロール判定と allowlist の判定の後に読み、超過（413）・JSON でない（415）・
  * 解釈できない（400）はいずれも監査へ `denied` で残る（IADR-0454 決定 2）。
  * 更新の理由（任意）は監査ログへ残る。🔴 **値・値の長さは監査・ログ・応答のどこにも残らない。**
+ * プロパティの種別（一覧の `propertyDetails[].kind`。IADR-0456 決定 1〜3）で値の扱いが変わる:
+ * `value` は送った値をそのまま書く／`md5-from-password` は平文のパスワードを送り、BFF が MD5（小文字 hex 32 桁）へ変換して書く
+ * （平文もハッシュも保存・ログ・応答に出さない）／`generate-rsa-pkcs1` は `value` を**空文字**で送り、BFF が RSA 1024 bit の
+ * PKCS#1 PEM を生成して書く（鍵はどこにも返さない。値を送ると 400）。
+ * 書き込みが成立した後、項目の同期先 ExternalSecret へ `force-sync` の注釈を付けて即時同期を依頼する（IADR-0456 決定 4）。
+ * 🔴 **依頼が通らなくても 200 のまま**（`syncRequested: false`。同期は ESO の既定の間隔で行われる）。
  * @summary SC-22 主要素 2: 1 プロパティだけを書く（KV v2 の部分更新）
  */
 export const bffSecretItemsUpdate = async (item: string,

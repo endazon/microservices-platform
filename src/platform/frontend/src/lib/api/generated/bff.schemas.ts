@@ -2063,6 +2063,31 @@ export const SecretItemStatusDtoStatus = {
 } as const;
 
 /**
+ * value = 送った値をそのまま書く／md5-from-password = 平文のパスワードを送り BFF が MD5 で書く／generate-rsa-pkcs1 = 値を送らず BFF が鍵を生成して書く
+ */
+export type SecretItemPropertyDtoKind = typeof SecretItemPropertyDtoKind[keyof typeof SecretItemPropertyDtoKind];
+
+
+export const SecretItemPropertyDtoKind = {
+  value: 'value',
+  'md5-from-password': 'md5-from-password',
+  'generate-rsa-pkcs1': 'generate-rsa-pkcs1',
+} as const;
+
+/**
+ * SC-22, IADR-0456 決定 1: 書けるプロパティ 1 つの入力の形。🔴 **値を持たない。**
+ * `sensitive: false` のプロパティは秘密ではない（画面は平文で入力させる）が、**書き込み専用なのは同じ**である。
+ */
+export interface SecretItemPropertyDto {
+  /** プロパティ名 */
+  name: string;
+  /** value = 送った値をそのまま書く／md5-from-password = 平文のパスワードを送り BFF が MD5 で書く／generate-rsa-pkcs1 = 値を送らず BFF が鍵を生成して書く */
+  kind: SecretItemPropertyDtoKind;
+  /** 秘密か（false は環境固有の非秘密値。画面は平文で入力させる） */
+  sensitive: boolean;
+}
+
+/**
  * SC-22 主要素 1・3: 秘密情報の項目の一覧の 1 行（KV 単位）。🔴 **値の項目を持たない。**
  */
 export interface SecretItemStatusDto {
@@ -2080,6 +2105,8 @@ export interface SecretItemStatusDto {
   lastUpdatedAt?: string | null;
   /** BFF が書いた版が現在版であるとき（版の番号と作成時刻の両方が一致するとき）だけ、その利用者名。それ以外は null（画面は「記録なし」） */
   lastUpdatedBy?: string | null;
+  /** `properties` と同じ並びの、プロパティごとの入力の形（IADR-0456 決定 1）。BFF は常に埋める */
+  propertyDetails?: SecretItemPropertyDto[] | null;
 }
 
 /**
@@ -2088,7 +2115,7 @@ export interface SecretItemStatusDto {
 export interface UpdateSecretItemRequest {
   /** 書くプロパティ名（項目の properties のいずれか） */
   property: string;
-  /** 新しい値（1〜8192 文字）。監査・ログに残らない */
+  /** 新しい値（1〜8192 文字）。種別 md5-from-password では平文のパスワード（BFF が MD5 で書く）、種別 generate-rsa-pkcs1 では空文字（BFF が生成する）。監査・ログに残らない */
   value: string;
   /** 更新の理由（任意・500 文字以内）。監査ログへ残る */
   reason?: string | null;
@@ -2104,6 +2131,8 @@ export interface SecretItemWriteResultDto {
   version: number;
   /** 書き込み後の版の作成時刻 */
   updatedAt: string;
+  /** 同期先の ExternalSecret へ即時同期を依頼できたか（IADR-0456 決定 4）。false でも書き込みは成立している（同期は既定の間隔で行われる） */
+  syncRequested: boolean;
 }
 
 export type BffAuthLoginParams = {

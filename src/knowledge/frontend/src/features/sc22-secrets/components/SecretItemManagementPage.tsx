@@ -26,10 +26,11 @@ import {
   MAX_REASON_LENGTH,
   MAX_VALUE_LENGTH,
   secretItemLabel,
+  secretPropertyShapes,
   secretUpdateIssues,
 } from '../types/secretItemVocabulary';
 
-// SC-22, FR-05, NFR-18, ADR-0095 決定 1・3・4, IADR-0433, IADR-0453: 秘密情報・接続設定の管理
+// SC-22, FR-05, NFR-18, ADR-0095 決定 1・3・4, IADR-0433, IADR-0453, IADR-0456 (#1477): 秘密情報・接続設定の管理
 // （05_screens: ルート /admin/secrets）。
 //
 // ■ 🔴 **値の列を置かない。** 値は書き込み専用で、保存後は画面から読み出せない（契約にも読み出し口が無い）。
@@ -39,6 +40,9 @@ import {
 //   色 ＋ アイコン ＋ テキストを強制する）。「設定済み」は KV に版があることであり、各プロパティに
 //   値が入っていることは意味しない —— 注記でそう書く（IADR-0453 決定 4）。
 // ■ 値と確認入力はマスクし、**一致しなければ送信できない**（SC-22 入力規則）。確認ダイアログは置かない（IADR-0453 決定 6）。
+// ■ IADR-0456 決定 1〜3: 入力の形はプロパティの種別で変わる —— パスワード（MD5 で保存される旨を書く）／
+//   生成（値の欄を持たず、生成し直すと OpenD の鍵の対応が失効することを確かめてから送る）／秘密でない ID（平文で入力させる）。
+// ■ IADR-0456 決定 4: 保存後に即時同期を依頼できたかを示す（依頼できなくても書き込みは成立している）。
 // ■ 到達できるのは運用者・システム管理者だけ。ガードはルート側（RequireRole → NotFound）にある。
 
 export function SecretItemManagementPage() {
@@ -172,27 +176,49 @@ export function SecretItemManagementPage() {
 function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose: () => void }) {
   const { t, i18n } = useLingui();
   const update = useSecretItemUpdate();
-  const [property, setProperty] = useState(row.properties[0] ?? '');
+  const shapes = useMemo(() => secretPropertyShapes(row), [row]);
+  const [property, setProperty] = useState(shapes[0]?.name ?? '');
   const [value, setValue] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [reason, setReason] = useState('');
-  const [written, setWritten] = useState<{ property: string; version: number } | null>(null);
+  const [confirmingGenerate, setConfirmingGenerate] = useState(false);
+  const [written, setWritten] = useState<{
+    property: string;
+    version: number;
+    syncRequested: boolean;
+  } | null>(null);
 
   const label = secretItemLabel(row.item);
   const itemName = label ? i18n._(label.name) : row.item;
   const heading = t`更新 — ${itemName}`;
-  const issues = secretUpdateIssues({ property, value, confirmation, reason }, row.properties);
+  const shape = shapes.find((candidate) => candidate.name === property);
+  const generate = shape?.kind === 'generate-rsa-pkcs1';
+  const password = shape?.kind === 'md5-from-password';
+  const plain = shape?.kind === 'value' && !shape.sensitive;
+  const issues = secretUpdateIssues({ property, value, confirmation, reason }, shapes);
   const mismatch = confirmation.length > 0 && issues.includes('confirmation-mismatch');
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (issues.length > 0 || update.isPending) return;
+  // プロパティを替えたら入力を捨てる（別のプロパティの値を送らない。生成の確認も取り直す）。
+  const selectProperty = (next: string) => {
+    setProperty(next);
+    setValue('');
+    setConfirmation('');
+    setConfirmingGenerate(false);
+    setWritten(null);
+  };
+
+  const send = () => {
     setWritten(null);
     const trimmedReason = reason.trim();
     update.mutate(
       {
         item: row.item,
-        data: { property, value, reason: trimmedReason.length > 0 ? trimmedReason : null },
+        // IADR-0456 決定 3: 生成は値を持たない（空文字で送り、BFF が鍵を作る）。
+        data: {
+          property,
+          value: generate ? '' : value,
+          reason: trimmedReason.length > 0 ? trimmedReason : null,
+        },
       },
       {
         onSuccess: (result) => {
@@ -200,11 +226,27 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
           setValue('');
           setConfirmation('');
           setReason('');
+          setConfirmingGenerate(false);
           if (result.status === 200)
-            setWritten({ property: result.data.property, version: result.data.version });
+            setWritten({
+              property: result.data.property,
+              version: result.data.version,
+              syncRequested: result.data.syncRequested === true,
+            });
         },
       },
     );
+  };
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (issues.length > 0 || update.isPending) return;
+    // IADR-0456 決定 3: 生成し直すと OpenD の鍵の対応が失効する。1 度目の押下では送らず、確かめてから送る。
+    if (generate && !confirmingGenerate) {
+      setConfirmingGenerate(true);
+      return;
+    }
+    send();
   };
 
   const writtenProperty = written?.property ?? '';
@@ -221,43 +263,88 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
             id="secret-property"
             selectSize="sm"
             value={property}
-            onChange={(e) => setProperty(e.target.value)}
+            onChange={(e) => selectProperty(e.target.value)}
           >
-            {row.properties.map((name) => (
+            {shapes.map(({ name }) => (
               <option key={name} value={name}>
                 {name}
               </option>
             ))}
           </Select>
         </div>
-        <div>
-          <Label htmlFor="secret-value">
-            <Trans>新しい値</Trans>
-          </Label>
-          <Input
-            id="secret-value"
-            type="password"
-            autoComplete="new-password"
-            spellCheck={false}
-            value={value}
-            invalid={value.length > MAX_VALUE_LENGTH}
-            onChange={(e) => setValue(e.target.value)}
-          />
-        </div>
-        <div>
-          <Label htmlFor="secret-confirmation">
-            <Trans>新しい値（確認のためもう一度）</Trans>
-          </Label>
-          <Input
-            id="secret-confirmation"
-            type="password"
-            autoComplete="new-password"
-            spellCheck={false}
-            value={confirmation}
-            invalid={mismatch}
-            onChange={(e) => setConfirmation(e.target.value)}
-          />
-        </div>
+
+        {generate ? (
+          <Note data-testid="secret-generate-note">
+            <Trans>
+              このプロパティは値を入力しません。「生成」を押すと RSA 1024 bit
+              の鍵を新しく作って保管先に書き込みます。鍵はこの画面にも表示されません。
+            </Trans>
+          </Note>
+        ) : plain ? (
+          <div>
+            <Label htmlFor="secret-value">
+              <Trans>新しい値</Trans>
+            </Label>
+            <Input
+              id="secret-value"
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              value={value}
+              invalid={value.length > MAX_VALUE_LENGTH}
+              onChange={(e) => setValue(e.target.value)}
+            />
+            <p className="text-xs text-fg-muted" data-testid="secret-non-secret-note">
+              <Trans>
+                このプロパティは秘密情報ではありません（環境ごとの ID
+                など）。入力内容は表示されますが、保存後はこの画面から読み出せません。
+              </Trans>
+            </p>
+          </div>
+        ) : (
+          <>
+            <div>
+              <Label htmlFor="secret-value">
+                {password ? <Trans>パスワード</Trans> : <Trans>新しい値</Trans>}
+              </Label>
+              <Input
+                id="secret-value"
+                type="password"
+                autoComplete="new-password"
+                spellCheck={false}
+                value={value}
+                invalid={value.length > MAX_VALUE_LENGTH}
+                onChange={(e) => setValue(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="secret-confirmation">
+                {password ? (
+                  <Trans>パスワード（確認のためもう一度）</Trans>
+                ) : (
+                  <Trans>新しい値（確認のためもう一度）</Trans>
+                )}
+              </Label>
+              <Input
+                id="secret-confirmation"
+                type="password"
+                autoComplete="new-password"
+                spellCheck={false}
+                value={confirmation}
+                invalid={mismatch}
+                onChange={(e) => setConfirmation(e.target.value)}
+              />
+            </div>
+            {password && (
+              <p className="text-xs text-fg-muted" data-testid="secret-md5-note">
+                <Trans>
+                  パスワードはそのまま保存されません。MD5 に変換した値だけが保管先に書き込まれます。
+                </Trans>
+              </p>
+            )}
+          </>
+        )}
+
         <div>
           <Label htmlFor="secret-reason">
             <Trans>更新の理由（任意）</Trans>
@@ -293,6 +380,21 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
             <Trans>更新の理由は {MAX_REASON_LENGTH} 文字以内で入力してください。</Trans>
           </Alert>
         )}
+        {generate && confirmingGenerate && (
+          <Alert
+            tone="warning"
+            role="alert"
+            label={t`鍵を生成してよいか確認してください`}
+            data-testid="secret-generate-confirm"
+          >
+            <Trans>
+              鍵を生成し直すと、OpenD に登録済みの鍵との対応が失効します。OpenD
+              は自動では再起動されないため、書き込み後に kubectl -n ai-stock-trading rollout restart
+              deploy/opend で手動で再起動してください。再起動のとき SMS
+              または画像の認証を再び求められることがあります。生成して書き込みますか？
+            </Trans>
+          </Alert>
+        )}
 
         {update.isError && (
           <Alert tone="danger" role="alert" label={t`エラー`} data-testid="secret-update-error">
@@ -309,13 +411,58 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
             <Trans>
               {writtenProperty} を更新しました（版 {writtenVersion}）。
             </Trans>
+            {written.syncRequested && (
+              <span className="block" data-testid="secret-sync-status">
+                <Trans>
+                  即時同期を依頼しました。アプリケーションへの反映まで少し時間がかかることがあります。
+                </Trans>
+              </span>
+            )}
+          </Alert>
+        )}
+        {written && !written.syncRequested && (
+          <Alert
+            tone="warning"
+            role="status"
+            label={t`即時同期を依頼できませんでした`}
+            data-testid="secret-sync-status"
+          >
+            <Trans>
+              保管先への書き込みは完了しましたが、即時同期を依頼できませんでした。アプリケーションへの反映は定期同期（最大
+              1 時間）を待ちます。
+            </Trans>
           </Alert>
         )}
 
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" variant="primary" disabled={issues.length > 0 || update.isPending}>
-            <Trans>このプロパティを更新する</Trans>
-          </Button>
+          {generate ? (
+            confirmingGenerate ? (
+              <>
+                <Button type="submit" variant="primary" disabled={update.isPending}>
+                  <Trans>生成して書き込む</Trans>
+                </Button>
+                <Button type="button" onClick={() => setConfirmingGenerate(false)}>
+                  <Trans>やめる</Trans>
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={issues.length > 0 || update.isPending}
+              >
+                <Trans>生成</Trans>
+              </Button>
+            )
+          ) : (
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={issues.length > 0 || update.isPending}
+            >
+              <Trans>このプロパティを更新する</Trans>
+            </Button>
+          )}
           <Button type="button" onClick={onClose}>
             <Trans>閉じる</Trans>
           </Button>

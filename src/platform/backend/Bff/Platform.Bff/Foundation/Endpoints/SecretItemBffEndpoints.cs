@@ -25,7 +25,16 @@ public static class SecretItemBffEndpoints
     public const string ListAction = "secret.item.list";
     public const string UpdateAction = "secret.item.update";
 
-    /// <summary>値の上限（文字数）。PEM など大きな値は対象外（`deferred[]`）であり、API キー・webhook には十分。</summary>
+    /// <summary>
+    /// 書き込み後の ExternalSecret への即時同期の依頼（IADR-0456 決定 4）。**書き込みの監査行とは別の行**で残す ——
+    /// 依頼の失敗は書き込みの失敗ではないため、`secret.item.update` の outcome を汚さない。
+    /// </summary>
+    public const string SyncAction = "secret.item.sync";
+
+    /// <summary>
+    /// 利用者が入力する値の上限（文字数）。API キー・webhook・パスワードには十分。
+    /// PEM（`opend_rsa.pem`）は利用者が入力せず BFF が生成する（IADR-0456 決定 3）ので、この上限の対象外である。
+    /// </summary>
     public const int MaxValueLength = 8192;
 
     /// <summary>更新の理由の上限（文字数）。監査ログの 1 行に載る。</summary>
@@ -92,7 +101,9 @@ public static class SecretItemBffEndpoints
                     StatusOf(metadata.State),
                     present ? metadata.CurrentVersion : null,
                     present ? metadata.CurrentVersionCreatedAt : null,
-                    updatedBy));
+                    updatedBy,
+                    // IADR-0456 決定 1: 画面が入力の形（マスク・MD5 の注記・生成ボタン・平文）を選ぶための種別。
+                    [.. definition.PropertyDefinitions.Select(p => new SecretItemPropertyDto(p.Name, p.KindName, p.Sensitive))]));
             }
 
             // IADR-0453 決定 5: **1 件も取れない**なら保管先に届いていない（保持中のトークンで
@@ -123,6 +134,7 @@ public static class SecretItemBffEndpoints
             SecretItemCatalog catalog,
             IVaultKvClient vault,
             ISecretWriteRecordStore records,
+            IExternalSecretSyncRequester sync,
             IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions> jsonOptions,
             CancellationToken ct) =>
         {
@@ -144,7 +156,8 @@ public static class SecretItemBffEndpoints
                 return rejected;
 
             var property = body!.Property;
-            if (property is null || !definition.Properties.Contains(property, StringComparer.Ordinal))
+            var propertyDefinition = definition.FindProperty(property);
+            if (propertyDefinition is null)
             {
                 // 🔴 `notWritable`（構成・realm と対の秘密）も同じ扱いで拒む。allowlist の型が持たないので
                 // 「書けるプロパティに無い」で閉じる。
@@ -154,11 +167,18 @@ public static class SecretItemBffEndpoints
             }
 
             // 🔴 値そのものも、その長さも、ここから先のどこにも出さない。
-            if (string.IsNullOrEmpty(body.Value) || body.Value.Length > MaxValueLength)
+            // IADR-0456 決定 3: 生成の種別は値を受けない（利用者が持ち込んだ鍵を書かない）。空文字（または省略）だけを通す。
+            var generated = propertyDefinition.Kind == SecretPropertyKind.GenerateRsaPkcs1;
+            var valueInvalid = generated
+                ? !string.IsNullOrEmpty(body.Value)
+                : string.IsNullOrEmpty(body.Value) || body.Value.Length > MaxValueLength;
+            if (valueInvalid)
             {
                 audit.Record(UpdateAction, subject, "denied",
                     $"item={definition.Item} property={property} reason=invalid-value");
-                return Invalid("value", $"値を入力してください（{MaxValueLength} 文字以内）。");
+                return Invalid("value", generated
+                    ? "このプロパティは値を入力せず、書き込むときに生成します。"
+                    : $"値を入力してください（{MaxValueLength} 文字以内）。");
             }
 
             var reason = body.Reason?.Trim();
@@ -174,7 +194,11 @@ public static class SecretItemBffEndpoints
             if (unavailable is not null)
                 return unavailable;
 
-            var written = await vault.WritePropertyAsync(catalog.VaultMount, definition.VaultPath, property, body.Value, ct);
+            // IADR-0456 決定 2・3: 保管する値を種別から作る（MD5 は平文から、RSA は BFF が生成する）。
+            // 🔴 作った値も入力の値と同じく、Vault への要求本文の外へ出さない。変数にも持たない。
+            var written = await vault.WritePropertyAsync(
+                catalog.VaultMount, definition.VaultPath, property,
+                SecretPropertyValues.Derive(propertyDefinition.Kind, body.Value), ct);
             switch (written.Outcome)
             {
                 case VaultWriteOutcome.Written:
@@ -211,7 +235,12 @@ public static class SecretItemBffEndpoints
                 detail += $" reason={QuoteForAudit(reason)}";
             audit.Record(UpdateAction, subject, "granted", detail);
 
-            return Results.Ok(new SecretItemWriteResultDto(definition.Item, property, written.Version, written.UpdatedAt));
+            // IADR-0456 決定 4: 書き込みが成立した**後**に、ExternalSecret へ即時同期を依頼する。
+            // 🔴 依頼が通らなくても 200 のまま（書き込みは成立している）。結果は `syncRequested` と別の監査行に写す。
+            var syncRequested = await RequestSyncAsync(sync, audit, subject, definition, ct);
+
+            return Results.Ok(new SecretItemWriteResultDto(
+                definition.Item, property, written.Version, written.UpdatedAt, syncRequested));
         }).WithName("BffSecretItemsUpdate")
           .Produces<SecretItemWriteResultDto>()
           .ProducesValidationProblem()
@@ -222,6 +251,26 @@ public static class SecretItemBffEndpoints
           .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
         return app;
+    }
+
+    // IADR-0456 決定 4 (#1477): 同期依頼の結果を監査へ写す。detail は項目と ExternalSecret の名前だけ（値に関わるものは無い）。
+    private static async Task<bool> RequestSyncAsync(
+        IExternalSecretSyncRequester sync, IAuditLogger audit, string subject, SecretItemDefinition definition, CancellationToken ct)
+    {
+        var externalSecret = definition.ExternalSecret;
+        var target = $"item={definition.Item} externalSecret={externalSecret.Namespace}/{externalSecret.Name}";
+        switch (await sync.RequestSyncAsync(externalSecret, ct))
+        {
+            case ExternalSecretSyncOutcome.Requested:
+                audit.Record(SyncAction, subject, "granted", target);
+                return true;
+            case ExternalSecretSyncOutcome.NotConfigured:
+                audit.Record(SyncAction, subject, "failed", $"{target} reason=sync-not-configured");
+                return false;
+            default:
+                audit.Record(SyncAction, subject, "failed", $"{target} reason=sync-request-failed");
+                return false;
+        }
     }
 
     // IADR-0453 決定 7: 利用者の入力（更新の理由）を監査の detail へ載せるときの形。
