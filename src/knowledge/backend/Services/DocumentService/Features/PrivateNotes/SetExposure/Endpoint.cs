@@ -39,16 +39,21 @@ internal static class SetPrivateNoteExposureEndpoint
 
             // 🔴 **変更「前」の値で判定する。** 撤収（決定 4）は「以前は載っていた」ことが条件であり、
             // 属性を書き換えた後では常に偽になる。
-            var wasIndexable = doc is not null && DocumentExposure.IsIndexable(doc.Attributes);
+            // ［#1471］判定は門（`PassesPublishGate`）と同じ関数で取る。本経路の文書は個人資料だけなので
+            // `DocumentExposure.IsIndexable` と同値である（[[IADR-0455]] 決定 2）。
+            var wasPublishable = doc is not null && DocumentEndpoints.PassesPublishGate(doc);
 
             // **版は進めない**（[[IADR-0283]] 決定 4）——露出トグルは本文の編集ではない。
             doc?.SetExposureAttributes(req.IncludeInSearch, req.IncludeInGraph, req.IncludeInAi);
             await db.SaveChangesAsync(ct);
 
-            if (doc is not null && (wasIndexable || DocumentExposure.IsIndexable(doc.Attributes)))
+            // ［#1471］上の条件 1・2 は撤収の形の門がそのまま持つ（[[IADR-0455]] 決定 1）。
+            // 条件をここへ書き下さない —— 門と経路で 2 か所になると、片方だけが直る。
+            if (doc is not null)
             {
                 var names = await TagResolver.NamesAsync(db, ct);
-                await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, names, ct);
+                await DocumentEndpoints.PublishUpdatedIfIndexableOrWithdrawingAsync(
+                    bus, db, doc, wasPublishable, names, ct);
             }
 
             // #1441: 露出更新の応答も一覧と同じ導出で埋める（露出 3 トグルと公開範囲は別物である）。

@@ -96,7 +96,7 @@ internal static class CreateDocumentEndpoint
             unitProject.RecordIfUnitSubjectSavedWithoutProject(
                 http.User, doc.Attributes, UnitProjectMetrics.OperationCreate);
             var createNames = await TagResolver.NamesAsync(db);
-            await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, createNames, ct);
+            await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, createNames, ct);
             return Results.Created($"/documents/{doc.Id}",
                 await DocumentEndpoints.ToDtoAsync(db, doc, createNames, ct));
         });

@@ -51,6 +51,9 @@ internal static class UpdateDocumentMetadataEndpoint
             var (metaTagIds, metaUnknown) = await TagResolver.ToIdsAsync(db, req.Tags);
             if (metaUnknown.Count > 0) return DocumentEndpoints.UnknownTagsProblem(metaUnknown);
 
+            // FR-19, ADR-0061 決定 4, [[IADR-0455]] 決定 1 (#1471): **書き換える「前」に門の判定を取る**
+            // （`Update` と同じ理由。属性の全置換は個人資料の露出を外し得る）。
+            var wasPublishable = DocumentEndpoints.PassesPublishGate(doc);
             doc.UpdateMetadata(req.Attributes ?? [], metaTagIds, req.ChangeNote);
             await db.SaveChangesAsync();
             // FR-05, FR-16, SC-10, SC-12, ADR-0085 決定 4, [[IADR-0420]] (#1233):
@@ -58,7 +61,8 @@ internal static class UpdateDocumentMetadataEndpoint
             unitProject.RecordIfUnitSubjectSavedWithoutProject(
                 http.User, doc.Attributes, UnitProjectMetrics.OperationUpdateMetadata);
             var metaNames = await TagResolver.NamesAsync(db);
-            await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, metaNames, ct);
+            await DocumentEndpoints.PublishUpdatedIfIndexableOrWithdrawingAsync(
+                bus, db, doc, wasPublishable, metaNames, ct);
             return Results.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, metaNames, ct));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
     }

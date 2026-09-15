@@ -54,6 +54,9 @@ internal static class UpdateDocumentEndpoint
             var (updateTagIds, updateUnknown) = await TagResolver.ToIdsAsync(db, req.Tags);
             if (updateUnknown.Count > 0) return DocumentEndpoints.UnknownTagsProblem(updateUnknown);
 
+            // FR-19, ADR-0061 決定 4, [[IADR-0455]] 決定 1 (#1471): **書き換える「前」に門の判定を取る。**
+            // 属性は全置換なので、個人資料の露出キーを落とす・`excluded` にする保存は ON → OFF の撤収になる。
+            var wasPublishable = DocumentEndpoints.PassesPublishGate(doc);
             doc.Update(req.Title, req.Attributes ?? [], updateTagIds, req.ChangeNote);
             await db.SaveChangesAsync();
             // FR-05, FR-16, SC-10, SC-12, ADR-0085 決定 4, [[IADR-0420]] (#1233):
@@ -62,7 +65,8 @@ internal static class UpdateDocumentEndpoint
             unitProject.RecordIfUnitSubjectSavedWithoutProject(
                 http.User, doc.Attributes, UnitProjectMetrics.OperationUpdate);
             var updateNames = await TagResolver.NamesAsync(db);
-            await DocumentEndpoints.PublishUpdatedAsync(bus, db, doc, updateNames, ct);
+            await DocumentEndpoints.PublishUpdatedIfIndexableOrWithdrawingAsync(
+                bus, db, doc, wasPublishable, updateNames, ct);
             return Results.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, updateNames, ct));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
     }
