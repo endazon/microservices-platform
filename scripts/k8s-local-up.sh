@@ -492,13 +492,28 @@ if [ "${VAULT:-}" = "1" ]; then
   if [ "${ESO:-}" != "1" ]; then
     apply_secret "$INFRA_NS" vault-oidc "client-secret=${VAULT_OIDC_CLIENT_SECRET:-vault-dev-secret-change-me}"
   fi
+  # IADR-0457 (#1479): Vault の永続化は **既定オン**（file ストレージを PVC に置き、Pod 内ラッパーが init / unseal /
+  # 固定 root トークン / kv-v2 mount を毎回行う）。-dev（インメモリ）は k3s 再起動で全状態（k8s auth・policy・KV・
+  # OIDC・画面 SC-22 で入れた秘密）を失い、ESO の store が InvalidProviderConfig に倒れた（2026-09-16 実測）。
+  # opt-out は上の [4/7] と同じ PERSIST=0（使い捨てスタック専用・従来の deploy/local/vault とバイト等価）。
+  # StorageClass の不在は [4/7] のガードが先に止める。
+  VAULT_KUSTOMIZE="deploy/local/vault-persistence"
+  if [ "${PERSIST:-1}" = "0" ]; then
+    VAULT_KUSTOMIZE="deploy/local/vault"
+    echo "    [PERSIST=0] Vault は -dev（インメモリ・再起動で揮発）"
+  else
+    echo "    [PERSIST 既定] Vault を file ストレージ＋PVC で永続化（Pod 内ラッパーが init / unseal / 固定トークンを自動化）"
+  fi
   if kubectl get crd clustersecretstores.external-secrets.io >/dev/null 2>&1; then
-    kubectl apply -k deploy/local/vault
+    kubectl apply -k "$VAULT_KUSTOMIZE"
   else
     echo "    WARN: external-secrets.io CRD 未導入のため ClusterSecretStore/Vault は skip。" >&2
-    echo "          先に ESO を導入する（deploy/local/vault/README.md）。Vault dev のみ適用:" >&2
+    echo "          先に ESO を導入する（deploy/local/vault/README.md）。Vault dev のみ適用（非永続・再起動で揮発）:" >&2
     kubectl apply -f deploy/local/vault/vault-dev.yaml
   fi
+  # 永続化版は readinessProbe（vault status＝unseal 済み）を持つ。ここで待たないと、後段の ESO bootstrap が
+  # unseal 前に `kubectl exec` して "Vault is sealed" で落ちる。-dev（PERSIST=0）は probe が無く即座に返る。
+  kubectl -n "$INFRA_NS" rollout status deploy/vault --timeout=180s
 fi
 
 # IADR-0096 (#310): Vault＋ESO で secret を Pod へ自動供給する（本番同等・k8s auth）。opt-in（既定オフ・fail-safe）。
@@ -548,6 +563,13 @@ if [ "${ESO:-}" = "1" ]; then
     --set "reloader.namespaces={$MSP_NS,$INFRA_NS,ai-stock-trading}" \
     --set image.tag="$RELOADER_IMAGE_TAG" \
     --wait
+  # IADR-0457 (#1479): 🔴 新規クラスタでは上の VAULT ブロックの時点で ESO の CRD が無く、Vault は -dev（非永続）の
+  # フォールバックで立っている。ESO を入れた「後」にここで永続化オーバーレイを当て直し、unseal を待ってから seed する
+  # （当て直さないと初回 run の seed と画面の値がインメモリに入り、2 回目の run で消える）。既に永続化版なら unchanged。
+  if [ "${PERSIST:-1}" != "0" ]; then
+    kubectl apply -k deploy/local/vault-persistence
+    kubectl -n "$INFRA_NS" rollout status deploy/vault --timeout=180s
+  fi
   # Vault k8s auth の enable/config＋policy＋role `eso`＋seed（runtime・kubectl exec 経由・平文非コミット・再実行可）。
   bash deploy/local/vault/eso/bootstrap.sh
   # 上で k8s auth backend/role を設定した「後に」store を kubernetes 認証へ上書きする（同名 vault-backend）。

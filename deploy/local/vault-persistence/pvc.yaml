@@ -1,0 +1,15 @@
+# IADR-0457 (#1479): 経路B の Vault の file ストレージを永続化する PVC。
+# クラスタの local-path provisioner（k3s / Rancher Desktop 同梱・RWO）で動的プロビジョニングする。
+# 適用は scripts/k8s-local-up.sh の既定（PERSIST=0 で従来の -dev＝インメモリへ戻る）。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vault-data
+  namespace: platform-infra
+  labels: { app: vault }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi

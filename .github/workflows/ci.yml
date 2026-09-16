@@ -93,6 +93,10 @@ jobs:
         env:
           REQUIRE_REPO_TESTS: "1"
         run: node scripts/scripts.test.js
+      # IADR-0457 (#1479): 経路B の Vault を永続化する Pod 内ラッパー（init / unseal / 固定 root トークン / kv mount）の
+      # 分岐を、`vault` をスタブへ差し替えた Bash テストで固定する。実 Vault・実クラスタは要らない。
+      - name: Test local Vault persistence entrypoint (vault stub)
+        run: bash deploy/local/vault-persistence/vault-entrypoint.test.sh
 
   # NFR / IADR-0232 決定 6: 依存ゼロの Node 検査を 1 ジョブへ束ねる（統合前は 12 の独立ジョブ）。
   #

@@ -179,6 +179,7 @@ G3 の必須ツールに `helm` / `bash` を足す（抜け道は置かない）
   事故としては未観測（1 回目に満たない）。置くなら `k8s-local-images.sh` の `--label org.opencontainers.image.revision` と
   Pod の `status.containerStatuses[].imageID` の突合が要る。
 - Vault dev のメモリ状態（`auth/oidc` は Pod 再起動で消える。IADR-0363 が実測）。永続化の対象外（別 issue）。
+  ［2026-09-16 追記 / #1479］IADR-0457 で Vault も永続化の対象になった（file ストレージ＋PVC・Pod 内ラッパーが自動 unseal・既定オン）。
 
 ## 理由
 

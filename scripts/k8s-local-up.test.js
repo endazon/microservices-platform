@@ -47,7 +47,8 @@ const OPTIN_TOKENS = [
   'deploy/local/observability', //     OBSERVABILITY ＋ PERSIST=0（素の overlay）
   'deploy/local/observability-persistence', // OBSERVABILITY（永続化は既定。IADR-0210 → IADR-0369）
   'grafana-oidc', //                   OBSERVABILITY (Grafana OIDC secret, IADR-0090)
-  'deploy/local/vault', //             VAULT
+  'deploy/local/vault', //             VAULT ＋ PERSIST=0（素の -dev）
+  'deploy/local/vault-persistence', // VAULT（永続化は既定。IADR-0457 / #1479）
   'vault-dev-token', //                VAULT (secret)
   'vault-oidc', //                     VAULT (OIDC client secret, IADR-0094)
   'deploy/local/headlamp', //          HEADLAMP
@@ -1182,6 +1183,58 @@ ok('VAULT=1 (CRD 無): vault-dev.yaml のみ apply・kustomize 経路は通ら�
   assert.ok(anyLineHas(res.lines, 'vault-dev-token'), 'vault-dev-token secret が作られない');
   assert.ok(anyLineHas(res.lines, 'apply -f deploy/local/vault/vault-dev.yaml'), 'vault-dev.yaml フォールバックが apply されない');
   assert.ok(!anyLineHas(res.lines, 'apply -k deploy/local/vault'), 'CRD 無なのに kustomize 経路が通った');
+  // IADR-0457 (#1479): フォールバックは非永続のまま。黙って落とさず WARN で言う。
+  assert.ok(/非永続/.test(res.stderr), 'CRD 無フォールバックが非永続であることを WARN で言わない');
+});
+
+// --- IADR-0457 (#1479): Vault の永続化は **既定オン**（file ストレージ＋PVC・Pod 内ラッパー）。opt-out は PERSIST=0 ---
+// dev Vault（-dev＝インメモリ）は k3s 再起動で全状態（k8s auth・policy・KV・OIDC・画面 SC-22 の値）を失い、
+// ESO の store が InvalidProviderConfig に倒れた（2026-09-16 実測）。infra-persistence と同じく既定で永続化する。
+ok('VAULT=1（永続化は既定）: vault-persistence を apply し、素の deploy/local/vault は apply しない', () => {
+  const res = runUp({ VAULT: '1' });
+  assert.strictEqual(res.status, 0, `VAULT=1 が非0終了: ${res.stderr}`);
+  assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/vault-persistence'), '既定で vault-persistence が apply されない');
+  assert.ok(!res.lines.some((l) => matchesToken(l, 'deploy/local/vault') && /apply -k/.test(l)),
+    '永続化が既定なのに素の deploy/local/vault が apply された');
+});
+
+ok('VAULT=1 + PERSIST=0: 素の deploy/local/vault（-dev）を apply し、永続化オーバーレイは現れない（バイト等価の opt-out）', () => {
+  const res = runUp({ VAULT: '1', PERSIST: '0' });
+  assert.strictEqual(res.status, 0, `PERSIST=0 が非0終了: ${res.stderr}`);
+  assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/vault'), 'PERSIST=0 で素の deploy/local/vault が apply されない');
+  assert.ok(!anyLineHas(res.lines, 'vault-persistence'), 'PERSIST=0 なのに vault-persistence が現れた');
+});
+
+ok('VAULT=1: apply の直後に deploy/vault の rollout status を待つ（unseal 前に bootstrap が exec して落ちない）', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  const applyAt = res.lines.findIndex((l) => /apply -k deploy\/local\/vault-persistence/.test(l));
+  const waitAt = res.lines.findIndex((l) => /rollout status deploy\/vault\b/.test(l));
+  // bootstrap.sh は stub 化されていない bash で実走し、その最初の `kubectl exec … deploy/vault`（vault auth list）が記録に出る。
+  const bootstrapAt = res.lines.findIndex((l) => /exec .*deploy\/vault\b/.test(l));
+  assert.ok(applyAt >= 0, 'vault-persistence の apply が無い');
+  assert.ok(waitAt > applyAt, 'apply の後に rollout status deploy/vault が無い');
+  assert.ok(bootstrapAt >= 0, 'bootstrap.sh の kubectl exec が記録に無い（検出の空振り）');
+  assert.ok(waitAt < bootstrapAt, 'rollout status が bootstrap.sh より後にある');
+});
+
+// IADR-0457 (#1479) 監査 D1: **新規クラスタ**（VAULT ブロックの時点で ESO の CRD が無い）でも、ESO=1 なら ESO を入れた後に
+// 永続化オーバーレイを当て直してから seed する。当て直さないと初回 run は -dev（非永続）に seed し、2 回目で消える。
+ok('VAULT=1 ESO=1 + CRD 不在（新規クラスタ）: ESO 導入後・bootstrap 前に vault-persistence を当て直し rollout を待つ', () => {
+  const res = runUp({ VAULT: '1', ESO: '1', STUB_CRD_ABSENT: '1' });
+  assert.strictEqual(res.status, 0, `非0終了: ${res.stderr}`);
+  const esoAt = res.lines.findIndex((l) => /helm upgrade --install external-secrets\b/.test(l));
+  const applyAt = res.lines.findIndex((l) => /apply -k deploy\/local\/vault-persistence/.test(l));
+  const waitAt = res.lines.findIndex((l, i) => i > applyAt && /rollout status deploy\/vault\b/.test(l));
+  // bootstrap.sh は stub 化されていない bash で実走し、その最初の `kubectl exec … deploy/vault`（vault auth list）が記録に出る。
+  const bootstrapAt = res.lines.findIndex((l) => /exec .*deploy\/vault\b/.test(l));
+  assert.ok(esoAt >= 0, 'ESO の helm install が無い');
+  assert.ok(bootstrapAt >= 0, 'bootstrap.sh の kubectl exec が記録に無い（検出の空振り）');
+  assert.ok(applyAt > esoAt, 'ESO 導入の後に vault-persistence の当て直しが無い（新規クラスタが非永続で立つ）');
+  assert.ok(waitAt > applyAt, '当て直しの後に rollout status deploy/vault が無い');
+  assert.ok(bootstrapAt > waitAt, 'bootstrap.sh が unseal 待ちより前にある');
+  // PERSIST=0 なら当て直さない（-dev のまま）。
+  const optOut = runUp({ VAULT: '1', ESO: '1', STUB_CRD_ABSENT: '1', PERSIST: '0' });
+  assert.ok(!anyLineHas(optOut.lines, 'vault-persistence'), 'PERSIST=0 なのに当て直しで vault-persistence が現れた');
 });
 
 // ESO=1 (#310 / IADR-0096): ESO 本体 install＋ExternalSecret apply、かつ llm-provider-credentials の手動 apply は

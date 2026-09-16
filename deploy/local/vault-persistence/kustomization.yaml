@@ -1,0 +1,35 @@
+# IADR-0457 (#1479): 経路B の Vault を永続化するオーバーレイ（**既定**。scripts/k8s-local-up.sh は PERSIST=0 で
+# base の deploy/local/vault（-dev・インメモリ）へ戻す。IADR-0369 の「永続化は既定オン」と同じ形）。
+#
+# base（deploy/local/vault）の Deployment を次のように差し替える:
+#   - command を Pod 内ラッパー（vault-entrypoint.sh）へ。`vault server -config=local.hcl`（file ストレージ）を起動し、
+#     init（初回のみ）・unseal・固定 root トークン・kv-v2 mount を自動で行う
+#   - PVC vault-data を /vault/data に、ConfigMap を /vault/config と /vault/bin にマウント
+#   - readinessProbe は `vault status`（unseal 済みで 0）。k8s-local-up.sh はこれを rollout status で待ってから bootstrap する
+# ClusterSecretStore（token 認証版）は base のまま。固定トークンをラッパーが作るので無改変で動く。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../vault
+  - pvc.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: vault-local-config
+    namespace: platform-infra
+    files:
+      - local.hcl
+  - name: vault-local-entrypoint
+    namespace: platform-infra
+    files:
+      - vault-entrypoint.sh
+
+patches:
+  - target:
+      kind: Deployment
+      name: vault
+      namespace: platform-infra
+    path: deployment-patch.yaml

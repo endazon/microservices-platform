@@ -64,7 +64,7 @@ bash scripts/k8s-local-down.sh
 
 ```bash
 OBSERVABILITY=1 bash scripts/k8s-local-up.sh   # Prometheus/Loki/Tempo/Grafana + collector forwarding
-VAULT=1         bash scripts/k8s-local-up.sh   # Vault dev + ClusterSecretStore(vault-backend)（要 ESO CRD）
+VAULT=1         bash scripts/k8s-local-up.sh   # Vault（既定は file ストレージ＋PVC で永続化・PERSIST=0 で -dev）+ ClusterSecretStore(vault-backend)（要 ESO CRD）
 ARGOCD=1        bash scripts/k8s-local-up.sh   # ArgoCD install + Application 適用（MSP/AST）
 PERSIST=0       bash scripts/k8s-local-up.sh   # 【opt-out】永続化を外す（使い捨てスタック専用）。永続化は既定オン（下記「永続化」節・IADR-0369）
 LOCALEDGE=1     bash scripts/k8s-local-up.sh   # ローカルエッジ集約: platform フロント 80/443 ＋ 管理ツール 50000（下記 edge 節）
@@ -113,6 +113,7 @@ PERSIST=0 bash scripts/k8s-local-up.sh
 | Keycloak | `keycloak-data`（1Gi・local-path） | `/opt/keycloak/data`（`start-dev` の file H2） | realm ＋ runtime state（追加ユーザー・シークレット・セッション） | `PERSIST=1` |
 | Postgres | `postgres-data`（2Gi・local-path） | `/var/lib/postgresql/data` | 全アプリ DB（MSP + AST） | `PERSIST=1` |
 | Qdrant | `qdrant-storage`（2Gi・local-path） | `/qdrant/storage` | コレクションとベクトル（再 ingest なしで検索を続けられる） | `PERSIST=1` |
+| Vault | `vault-data`（1Gi・local-path） | `/vault/data`（file ストレージ＋ unseal 鍵・初期 root トークンの 0600 ファイル） | k8s auth・policy・role・KV（画面 SC-22 で入れた秘密）・OIDC 設定。Pod 内ラッパーが自動 unseal（IADR-0457） | `PERSIST=1` ＋ `VAULT=1` |
 | Prometheus | `prometheus-data`（5Gi・local-path） | `/prometheus`（TSDB） | メトリクス（保持期間は下記 args で 35d / 4GB） | `PERSIST=1` ＋ `OBSERVABILITY=1` |
 | Loki | `loki-data`（2Gi・local-path） | `/tmp/loki`（config の `path_prefix`） | ログ（index / chunks） | `PERSIST=1` ＋ `OBSERVABILITY=1` |
 | Tempo | `tempo-data`（2Gi・local-path） | `/tmp/tempo`（`local.path` / `wal.path` の親） | トレース（blocks / wal） | `PERSIST=1` ＋ `OBSERVABILITY=1` |
@@ -603,7 +604,7 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
   立てない）。UI が要るなら compose（`deploy/docker-compose.yml`）を併用する。
 - **永続化は既定オン**: Keycloak/Postgres/Qdrant を、`OBSERVABILITY=1` なら Prometheus/Loki/Tempo/Grafana も PVC 永続化する
   （上記「永続化」節・IADR-0082 / IADR-0210 / IADR-0369）。`PERSIST=0` で emptyDir（使い捨てスタック専用）。
-  rabbitmq / redis / otel / Vault dev は揮発のまま。
+  `VAULT=1` の Vault も PVC 永続化する（`deploy/local/vault-persistence`・IADR-0457）。rabbitmq / redis / otel は揮発のまま。
 - **Istio/mTLS/NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
   エッジ `/bff/*` ルーティング等）は不変。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
   `ISTIO=1`（＋ `LOCALEDGE=1`）で有効化したときも **mTLS の既定は PERMISSIVE** である（IADR-0307 決定 4）。

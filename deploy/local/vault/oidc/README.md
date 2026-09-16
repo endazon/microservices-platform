@@ -3,7 +3,7 @@
 > 起点: [IADR-0094](../../../../.ai-context/adr/IADR-0094_vault-keycloak-oidc.md) /
 > 作業仕様書 [`.ai-context/specs/20260721_issue-353_vault-keycloak-oidc.md`](../../../../.ai-context/specs/20260721_issue-353_vault-keycloak-oidc.md)
 
-経路B の dev Vault（`VAULT=1` の opt-in・`-dev`・インメモリ・unseal 不要）を Keycloak OIDC でログインできるようにする。
+経路B の dev Vault（`VAULT=1` の opt-in。既定は file ストレージ＋PVC で永続化・Pod 内ラッパーが自動 unseal。`PERSIST=0` なら `-dev`・インメモリ）を Keycloak OIDC でログインできるようにする。
 Vault の OIDC 設定は **runtime**（`vault write auth/oidc/*`）のため、`vault-dev.yaml` は無改変で **bootstrap 手順**で入れる
 （realm import や MinIO の `mc` と同型）。root トークンは break-glass として残る。edge の `vault.localhost:50000` Ingress は
 #357 で追加済み（本 PR では無改変）。
@@ -15,7 +15,7 @@ env で上書き可・平文コミットなし）を作成する。`bootstrap.sh
 
 ## bootstrap（runtime 手順・**fail-safe**）
 
-dev Vault はインメモリ（Recreate）＝**Pod 再起動後は再実行**する。
+Vault は既定で永続化されている（file ストレージ＋PVC）ので Pod 再起動では消えない。**`vault-data` PVC を消したとき・新規クラスタ・`PERSIST=0` の Vault を再起動したときは再実行**する。
 
 ### 経路1: ホストに `vault` CLI ＋ `jq` がある場合
 

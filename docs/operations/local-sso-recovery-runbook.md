@@ -3,7 +3,7 @@ title: 経路B SSO 復旧 Runbook（揮発 live 設定の再適用手順）
 type: runbook
 status: active
 created: 2026-07-25
-updated: 2026-09-04
+updated: 2026-09-16
 author: claude
 ---
 <!-- trace:
@@ -24,13 +24,13 @@ issues: [#328, #388, #841, #1088, #1127, #1163, AST#245]
 | 設定 | 消える条件 | 復旧 |
 | --- | --- | --- |
 | Keycloak realm 全体（`admin` ユーザー・mapper・client ロール・redirect） | **realm 再インポート**（`keycloak-data` PVC 削除／新規クラスタ） | **STEP 0 で自動**（`realm.json` に恒久化済み） |
-| Vault dev の全状態（ESO seed・`auth/oidc`・policy・external group） | **vault Pod 再起動**（インメモリ）・クラスタ再構築 | STEP 0 で seed は自動。**OIDC は STEP 2 が手動** |
+| Vault の全状態（ESO seed・`auth/oidc`・policy・external group・画面で入れた秘密） | **`vault-data` PVC 削除**／クラスタ再構築／`PERSIST=0` で立てた Vault の Pod 再起動（永続化が既定になり、vault Pod の再起動だけでは消えなくなった。Pod 内ラッパーが自動で unseal する） | STEP 0 で seed は自動。**OIDC は STEP 2 が手動**。画面で入れた秘密は画面から入れ直す |
 | Wiki.js の OIDC ストラテジ・Site URL | **`postgres-data` PVC 削除**／wikijs DB 再作成 | **STEP 3**（`WIKIJS_OIDC=1` で bootstrap を 1 本。手動 SQL は退役） |
 | Pod の env に載った secret 値 | ESO が Secret を作る前に Pod が起動 | **STEP 0 で自動**（`ESO=1` 末尾の rollout） |
 | `argocd` ns の `keycloak` エイリアス | クラスタ再構築 | **STEP 0 で自動**（`ARGOCD=1` が適用） |
 | `ast-secrets` の実鍵 | `k8s-local-deploy.sh` を鍵未 export で実行 | STEP 1（鍵を export して再実行） |
 
-永続化（既定オン。`PERSIST=0` を付けていない）のまま vault Pod を再起動していなければ、**STEP 2・3 はスキップ可**。
+永続化（既定オン。`PERSIST=0` を付けていない）なら、vault Pod の再起動では Vault の状態は消えない（file ストレージを PVC に置き、Pod 内ラッパーが自動で unseal する）。`vault-data` PVC を消していなければ、**STEP 2・3 はスキップ可**。
 realm の変更は起動器の後段（realm の後追い Job）が差分として当てるので、STEP 0 の再実行で届く。
 
 ---
@@ -85,7 +85,7 @@ done                                                                          # 
 > 次回の `helm upgrade` が `conflict with "kubectl-set"` で失敗する。復旧時は**先に当該 env を
 > `KEY-` で削除**してから helm を通す。
 
-## STEP 2: Vault OIDC（**vault Pod 再起動時のみ**）
+## STEP 2: Vault OIDC（**`vault-data` PVC を消した／新規クラスタ／`PERSIST=0` の Vault を再起動したときのみ**）
 
 ESO seed は STEP 0 で自動投入される。**OIDC 設定だけは手動**。ホストに `vault` CLI が無い場合は
 **vault Pod 内 CLI** を使う（手順の全文は [`deploy/local/vault/oidc/README.md`](../../deploy/local/vault/oidc/README.md)

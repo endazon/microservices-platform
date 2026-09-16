@@ -6,8 +6,10 @@
 **opt-in オーバーレイ**。AST chart 側の `ExternalSecret`（`ast-secrets` / `moomoo-*`・opt-in）がこのストアを
 参照して Vault dev から同期できる状態を作る。
 
-> ⚠️ **dev 専用・本番の Vault 化充足ではない**。Vault dev はインメモリ・単一 Pod・unseal 不要で、
-> 再起動で中身が消える。本番は unseal / 監査 / HA / ローテーションを要する（Tier 3）。
+> ⚠️ **dev 専用・本番の Vault 化充足ではない**。既定（`PERSIST` 既定オン）は `deploy/local/vault-persistence/` が
+> file ストレージを PVC に置き、Pod 内ラッパーが init / unseal / 固定 root トークン / kv-v2 mount を毎回行う
+> （unseal 鍵は PVC 上の平文・単一 Pod）。`PERSIST=0` は本ディレクトリの `-dev`（インメモリ・再起動で中身が消える）。
+> 本番は unseal / 監査 / HA / ローテーションを要する（Tier 3）。
 > **平文の秘密（root トークン・API 鍵）をコミットしない。** root トークンは Secret `vault-dev-token`
 > （dev 既定 or `VAULT_DEV_ROOT_TOKEN` 環境変数）から注入する。
 

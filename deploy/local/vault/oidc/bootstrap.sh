@@ -3,7 +3,8 @@
 #
 #   VAULT_ADDR=http://localhost:8200 VAULT_TOKEN=<root> bash deploy/local/vault/oidc/bootstrap.sh
 #
-# 前提: vault CLI / jq。dev Vault はインメモリ（Recreate）＝Pod 再起動後は本 bootstrap を再実行する。
+# 前提: vault CLI / jq。Vault は既定で永続化（IADR-0457）＝Pod 再起動では消えない。vault-data PVC を消したとき・
+# PERSIST=0（インメモリ）の Vault を再起動したときは本 bootstrap を再実行する。
 # 事前に port-forward: kubectl -n platform-infra port-forward svc/vault 8200:8200
 # root トークンは Secret vault-dev-token（k8s-local-up.sh が作成・既定 devroot）。
 #

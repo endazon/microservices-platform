@@ -4,7 +4,7 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-11
-updated: 2026-09-15
+updated: 2026-09-16
 ---
 <!-- trace:
 ids: [SC-22, SC-06, SC-15, FR-05, NFR-11, NFR-18]
@@ -74,8 +74,8 @@ env で値を渡さなかった項目は**既定値（多くは開発用の固�
 | 前提の状態 | Vault と External Secrets Operator が稼働している（`VAULT=1 ESO=1` で立ち上がった環境） |
 | 所要時間の目安 | 1 項目あたり 5〜10 分（記録を残す時間を含む） |
 
-**開発環境の Vault はインメモリである。** Pod が再起動すると投入した値は消える。
-その場合は本手順ではなく通常の立ち上げ経路をやり直す。
+**開発環境の Vault は file ストレージを PVC に置いて永続化されている**（既定。`PERSIST=0` で立てた場合だけインメモリ）。
+Pod の再起動で投入した値は消えない。`vault-data` PVC を消した場合は本手順ではなく通常の立ち上げ経路をやり直す。
 
 ## 手順
 
@@ -222,7 +222,7 @@ kubectl -n microservices-platform get secret llm-provider-credentials \
 
 | 症状 | 原因の候補 | 次の手 |
 | --- | --- | --- |
-| `vault kv patch` が「no value found at ...」で失敗する | その KV がまだ存在しない（Vault Pod が再起動してインメモリの中身が消えた等） | 手順 3 の但し書きどおり `put` で KV ごと作る。**消えているのがその 1 項目だけとは限らない** —— 他の項目も消えているなら退避ではなく立ち上げ直しである |
+| `vault kv patch` が「no value found at ...」で失敗する | その KV がまだ存在しない（`vault-data` PVC を消した／`PERSIST=0` の Vault が再起動して中身が消えた等） | 手順 3 の但し書きどおり `put` で KV ごと作る。**消えているのがその 1 項目だけとは限らない** —— 他の項目も消えているなら退避ではなく立ち上げ直しである |
 | `vault kv patch` が 403 を返す | トークンが root ではない／policy に `patch` が無い | Vault Pod の env にある開発用 root トークンを使っているか確かめる。製品の画面経由の権限とは別物である |
 | ExternalSecret が `Ready=False` のまま | `ClusterSecretStore` の認証が切れている／パスの綴りが違う | `kubectl describe externalsecret <name>` の `Events` を読む。パスは `deploy/bootstrap/sc22-secret-items.json` の `vaultPath` と一致させる |
 | Secret は更新されたが挙動が変わらない | 消費側 Pod が古い環境変数を持ったまま | 手順 4 の `rollout restart` を行う |

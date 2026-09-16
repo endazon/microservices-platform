@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # IADR-0096 (#310): Vault の kubernetes 認証を有効化・設定し、ESO 用の policy/role と MSP secret の seed を入れる
-# runtime bootstrap（再実行可・[[IADR-0094]] と同型）。dev Vault はインメモリ（Recreate）＝Pod 再起動後は再実行する。
+# runtime bootstrap（再実行可・[[IADR-0094]] と同型）。Vault は既定で永続化（IADR-0457）＝Pod 再起動では消えない。
+# vault-data PVC を消したとき・PERSIST=0（インメモリ）の Vault を再起動したときは再実行する。
 #
 #   [ANTHROPIC_API_KEY=... OPENAI_API_KEY=...] bash deploy/local/vault/eso/bootstrap.sh
 #
