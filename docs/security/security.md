@@ -252,7 +252,9 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
 - **Vault dev root トークン（経路B の opt-in）**: 可観測性/Vault オーバーレイを opt-in で立てる際、
   Vault **dev モード**の root トークンを Secret `vault-dev-token`（`platform-infra`）へ入れる。既定は dev 値 `devroot`
   （`VAULT_DEV_ROOT_TOKEN` 環境変数で上書き可）で、**manifest に平文で置かず** `k8s-local-up.sh` の `VAULT=1` が
-  `apply_secret` で生成する（postgres/rabbitmq の dev secret と同位置づけ）。Vault dev はインメモリで再起動で揮発する
+  `apply_secret` で生成する（postgres/rabbitmq の dev secret と同位置づけ）。経路B の Vault は既定で file ストレージを
+  PVC に置き、Pod 内ラッパーが unseal 鍵を PVC 上の平文ファイルから読んで自動 unseal する（`PERSIST=0` ならインメモリ）。
+  root トークンが既知の dev 値である以上、鍵をローカルディスクに置いても守りの水準は変わらない。いずれも
   **dev 専用**であり、本番の Vault 化（unseal/監査/HA/ローテーション）充足ではない（Tier 3）。
 - **本番流用の禁止**: 共有／ステージング／本番の realm には **PoC ユーザーを含めない**。運用ユーザーは
   Keycloak 管理画面／IaC で個別に作成し、パスワードは realm import にコミットしない。クライアント

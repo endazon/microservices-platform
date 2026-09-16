@@ -1,0 +1,48 @@
+# IADR-0457 (#1479): base の vault Deployment（-dev）を file ストレージ＋ラッパー起動へ差し替える JSON patch。
+# base の containers[0].args は ["server","-dev","-dev-listen-address=0.0.0.0:8200"]。これを外して command をラッパーにする。
+# env VAULT_DEV_ROOT_TOKEN_ID（Secret vault-dev-token）は base のまま残す＝ラッパーが固定 root トークンの ID に使う。
+- op: remove
+  path: /spec/template/spec/containers/0/args
+- op: add
+  path: /spec/template/spec/containers/0/command
+  value: ["/bin/sh", "/vault/bin/vault-entrypoint.sh"]
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: VAULT_ADDR
+    value: "http://127.0.0.1:8200"
+- op: add
+  path: /spec/template/spec/containers/0/readinessProbe
+  value:
+    exec:
+      command: ["/bin/sh", "-c", "vault status >/dev/null 2>&1"]
+    initialDelaySeconds: 2
+    periodSeconds: 3
+    failureThreshold: 40
+- op: add
+  path: /spec/template/spec/containers/0/volumeMounts
+  value:
+    - { name: data, mountPath: /vault/data }
+    - { name: config, mountPath: /vault/config, readOnly: true }
+    - { name: entrypoint, mountPath: /vault/bin, readOnly: true }
+- op: add
+  path: /spec/template/spec/volumes
+  value:
+    - name: data
+      persistentVolumeClaim:
+        claimName: vault-data
+    - name: config
+      configMap:
+        name: vault-local-config
+    - name: entrypoint
+      configMap:
+        name: vault-local-entrypoint
+        defaultMode: 0555
+# 公式イメージの vault ユーザー（uid 100 / gid 1000）で動かし、PVC は fsGroup で書けるようにする
+# （ラッパー起動では docker-entrypoint.sh の su-exec を通らないため、ここで明示する）。
+- op: add
+  path: /spec/template/spec/securityContext
+  value:
+    runAsUser: 100
+    runAsGroup: 1000
+    fsGroup: 1000

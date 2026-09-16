@@ -534,3 +534,4 @@
 | [IADR-0454](./IADR-0454_sc22-deleted-version-write-body-limit-and-stale-updater.md) | **SC-22 は現在版が削除された項目へ書かずに 409 で次の一手を示し、PUT 本文を 64 KiB で打ち切って解釈失敗も監査し、最終更新者は版と作成時刻で突き合わせる**（#1467） | Accepted |
 | [IADR-0455](./IADR-0455_publish-gate-all-paths-withdrawal-and-private-note-scope.md) | **`DocumentUpdated` の発行はすべて門を通す**（#1471）。属性を書き換える経路は撤収の形の門を使い、素の発行は `private`。🔴 門の述語は個人資料にだけ効かせ、組織文書の発行はデータに依らず不変 | Accepted |
 | [IADR-0456](./IADR-0456_sc22-property-kinds-force-sync-reloader-and-seed-if-absent.md) | **SC-22 のプロパティの種別・即時同期・Reloader・seed-if-absent**（#1477） | Accepted |
+| [IADR-0457](./IADR-0457_local-vault-file-storage-pvc-and-in-pod-unseal.md) | **経路B の Vault を file ストレージ＋PVC で永続化し、Pod 内ラッパーが init / unseal / 固定 root トークンを自動化する**（#1479）。既定オン・`PERSIST=0` で従来の `-dev`。k3s 再起動で画面 SC-22 の秘密と ESO の設定が消える問題を解く | Accepted |
