@@ -42,7 +42,7 @@ plan_refs:
 | 箇所 | 扱い |
 | --- | --- |
 | `deploy/local/vault-persistence/kustomization.yaml` `pvc.yaml` `local.hcl` `vault-entrypoint.sh` `deployment-patch.yaml` | **新規** |
-| `deploy/local/vault-persistence/vault-entrypoint.test.sh` | **新規**（`vault` スタブで init / unseal / 固定トークン / kv mount の分岐を固定。`scripts.repo.test.js` から bash で起動） |
+| `deploy/local/vault-persistence/vault-entrypoint.test.sh` | **新規**（`vault` スタブで init / unseal / 固定トークン / kv mount の分岐を固定。`.github/workflows/ci.yml` の `scripts-tests` ジョブの独立 step として起動する。`scripts.test.js` からは起動しない） |
 | `scripts/k8s-local-up.sh` VAULT ブロック | **変更**: `PERSIST` で apply 先を切替、`rollout status deploy/vault` を追加、CRD 不在 WARN に非永続の注記 |
 | `scripts/k8s-local-up.test.js` | **変更**: 既定で `vault-persistence`／`PERSIST=0` で `deploy/local/vault`／rollout 待ち／`OPTIN_TOKENS` に追加 |
 | `.ai-context/adr/IADR-0457` ＋ 索引 | **新規** |
@@ -57,7 +57,7 @@ plan_refs:
 
 | # | 基準 | 検証 |
 | --- | --- | --- |
-| AC-1 | 既定（`VAULT=1`）で `deploy/local/vault-persistence` が apply され、`deploy/local/vault` 単独の apply は現れない。直後に `rollout status deploy/vault` を待つ | `k8s-local-up.test.js` |
+| AC-1 | 既定（`VAULT=1`）で `deploy/local/vault-persistence` が apply され、`deploy/local/vault` 単独の apply は現れない。直後に `rollout status deploy/vault` を待つ。**新規クラスタ（VAULT ブロック時点で CRD 不在）でも `ESO=1` なら ESO 導入後・bootstrap 前に当て直す**（監査 D1） | `k8s-local-up.test.js` |
 | AC-2 | `PERSIST=0`（`VAULT=1`）で `deploy/local/vault` が apply され、`vault-persistence` は現れない（従来とバイト等価） | 同上 |
 | AC-3 | CRD 不在のフォールバックは従来どおり `vault-dev.yaml` だけで、WARN に非永続の注記がある | 同上 |
 | AC-4 | ラッパー: 未初期化なら init して 0600 で保存し unseal する／初期化済みなら init せず保存済みの鍵で unseal する／固定トークンは無いときだけ作る／kv-v2 は無いときだけ mount する／サーバへ SIGTERM を転送する | `vault-entrypoint.test.sh`（`vault` スタブ） |

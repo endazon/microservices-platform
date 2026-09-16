@@ -64,8 +64,10 @@ assert_contains 'T-1479-01 初回: kv-v2 を secret/ に mount する' "$(cat "$
 # ---- T-1479-02: 再起動（初期化済み・sealed）: init しない・保存済みの鍵で unseal・トークンと mount は在るので触らない ----
 reset_state
 : > "$STATE/initialized"; : > "$STATE/token-ok"; : > "$STATE/kv-mounted"
+chmod 660 "$VAULT_INIT_FILE"   # kubelet の fsGroup 処理で緩んだ状態を模す（監査 D2）
 bootstrap_after_start >/dev/null 2>&1; RC=$?
 assert_eq 'T-1479-02 再起動: 正常終了する' "$RC" "0"
+assert_eq 'T-1479-02 再起動: 緩んだ init ファイルを 0600 へ戻す' "$(stat -c '%a' "$VAULT_INIT_FILE")" "600"
 assert_missing 'T-1479-02 再起動: operator init を実行しない' "$(cat "$STUB_LOG")" 'operator init -key-shares'
 assert_contains 'T-1479-02 再起動: 保存済みの鍵で unseal する' "$(cat "$STUB_LOG")" 'operator unseal STUB-UNSEAL-KEY'
 assert_missing 'T-1479-02 再起動: 固定トークンが在れば作らない' "$(cat "$STUB_LOG")" 'token create'

@@ -563,6 +563,13 @@ if [ "${ESO:-}" = "1" ]; then
     --set "reloader.namespaces={$MSP_NS,$INFRA_NS,ai-stock-trading}" \
     --set image.tag="$RELOADER_IMAGE_TAG" \
     --wait
+  # IADR-0457 (#1479): 🔴 新規クラスタでは上の VAULT ブロックの時点で ESO の CRD が無く、Vault は -dev（非永続）の
+  # フォールバックで立っている。ESO を入れた「後」にここで永続化オーバーレイを当て直し、unseal を待ってから seed する
+  # （当て直さないと初回 run の seed と画面の値がインメモリに入り、2 回目の run で消える）。既に永続化版なら unchanged。
+  if [ "${PERSIST:-1}" != "0" ]; then
+    kubectl apply -k deploy/local/vault-persistence
+    kubectl -n "$INFRA_NS" rollout status deploy/vault --timeout=180s
+  fi
   # Vault k8s auth の enable/config＋policy＋role `eso`＋seed（runtime・kubectl exec 経由・平文非コミット・再実行可）。
   bash deploy/local/vault/eso/bootstrap.sh
   # 上で k8s auth backend/role を設定した「後に」store を kubernetes 認証へ上書きする（同名 vault-backend）。

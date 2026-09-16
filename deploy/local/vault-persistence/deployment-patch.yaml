@@ -40,9 +40,12 @@
         defaultMode: 0555
 # 公式イメージの vault ユーザー（uid 100 / gid 1000）で動かし、PVC は fsGroup で書けるようにする
 # （ラッパー起動では docker-entrypoint.sh の su-exec を通らないため、ここで明示する）。
+# fsGroupChangePolicy: OnRootMismatch —— 既定（Always）だと kubelet が毎起動で /vault/data を再帰 chown ＋ g+rw し、
+# init ファイルが 0600 → 0660 になる（監査で実測）。ルートの所有が合っていれば触らせない。
 - op: add
   path: /spec/template/spec/securityContext
   value:
     runAsUser: 100
     runAsGroup: 1000
     fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch

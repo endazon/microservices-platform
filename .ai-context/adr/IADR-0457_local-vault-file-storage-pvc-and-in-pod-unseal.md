@@ -65,13 +65,17 @@ IADR-0369 は Keycloak / Postgres / Qdrant の永続化を既定にしたが、V
 `scripts/k8s-local-up.sh` の `VAULT=1` ブロックは既定で `deploy/local/vault-persistence`（kustomize オーバーレイ）を apply し、
 `PERSIST=0` のときだけ base の `deploy/local/vault`（`-dev`・インメモリ）へ戻る。IADR-0369 決定 1 と同じ形で、
 StorageClass の不在は [4/7] のガードが先に止める。ESO CRD 不在のフォールバック（`vault-dev.yaml` だけ）は従来どおり
-非永続で、WARN にその旨を書く（滅多に通らない縮退経路。黙って落とさない）。
+非永続で、WARN にその旨を書く（黙って落とさない）。
+🔴 **新規クラスタでは VAULT ブロックの時点で CRD が無く、必ずこのフォールバックを通る**（監査 D1）。そのため `ESO=1` の
+ブロックは ESO を入れた後・`bootstrap.sh` の前に `deploy/local/vault-persistence` を当て直し、`rollout status` で unseal を
+待ってから seed する（既に永続化版なら unchanged）。当て直さないと初回 run の seed と画面の値がインメモリに入り、2 回目の run で消える。
 
 ### 2. オーバーレイの形: base の Deployment を patch で差し替える
 
 `deploy/local/vault-persistence/` は `../vault` ＋ PVC `vault-data`（`local-path`・1Gi）＋ ConfigMap `vault-local-config`
 （`local.hcl`: `storage "file"`・`disable_mlock`・`ui`）＋ ConfigMap `vault-local-entrypoint`（ラッパー）＋ Deployment の JSON patch
-（`args` を外して `command` をラッパーへ、volume / volumeMount、readinessProbe＝`vault status`、`runAsUser: 100` / `fsGroup: 1000`）。
+（`args` を外して `command` をラッパーへ、volume / volumeMount、readinessProbe＝`vault status`、`runAsUser: 100` / `fsGroup: 1000` /
+`fsGroupChangePolicy: OnRootMismatch`——既定の `Always` だと kubelet が毎起動で g+rw を掛け init ファイルが 0660 になる。監査 D2）。
 `vault-dev.yaml` と `clustersecretstore.yaml` は無改変（`PERSIST=0` のバイト等価を保つ）。
 
 ### 3. Pod 内ラッパー `vault-entrypoint.sh` が毎回行うこと
@@ -84,7 +88,8 @@ StorageClass の不在は [4/7] のガードが先に止める。ESO CRD 不在�
    `token create -id=<固定値> -policy=root -orphan` を行う。**これにより `bootstrap.sh`（`kubectl exec` で `$VAULT_DEV_ROOT_TOKEN_ID`）・
    ESO の store（token 認証版）・OIDC bootstrap・BFF の k8s auth は無改変で動く。**
 5. `secret/` に kv-v2 が無ければ mount する（`-dev` が自動でしていたこと）。
-6. サーバを待つ。SIGTERM は転送する。値（鍵・トークン）はログに出さない。
+6. サーバを待つ。SIGTERM は転送し、サーバが実際に終わるまで待ち直す（`wait` はシグナルで中断されるため。監査 D3）。
+   値（鍵・トークン）はログに出さない。初期化済みの起動でも init ファイルを 0600 へ戻す。
 
 Vault 1.16 の使い捨てコンテナで、固定 ID のトークン作成・kv-v2 mount・サーバ再起動後に同じトークンで KV を読めることを実測した。
 

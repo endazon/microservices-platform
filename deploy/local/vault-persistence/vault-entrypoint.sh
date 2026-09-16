@@ -16,6 +16,8 @@
 #    守りの水準は同じ（ローカル dev 専用）。k8s Secret に置く案は Pod 内に kubectl が無く Job が要り、
 #    鍵も PVC も同じローカルディスク上で差が無いため採らなかった（IADR-0457）。
 # 🔴 値をログに出さない（init の出力はファイルへだけ書く）。
+# 起動ログ先頭の `You cannot specify a custom root token ID outside of "dev" mode. Your request has been ignored.` は
+# env VAULT_DEV_ROOT_TOKEN_ID を残している（本ラッパーが固定トークンの ID として読む）ことによる無害な警告。
 #
 # 試験（vault-entrypoint.test.sh）は VAULT_ENTRYPOINT_LIB=1 で source し、`vault` を PATH 上のスタブへ差し替える。
 
@@ -48,6 +50,8 @@ ensure_initialized() {
 	rc=$?
 	if [ "$rc" -eq 0 ]; then
 		log "initialized (reusing $VAULT_INIT_FILE)"
+		# kubelet の fsGroup 処理で緩んでいても 0600 へ戻す（冪等。ファイルが無ければ ensure_unsealed が中断する）。
+		[ -f "$VAULT_INIT_FILE" ] && chmod 600 "$VAULT_INIT_FILE"
 		return 0
 	fi
 	if [ "$rc" -ne 2 ]; then
@@ -124,7 +128,10 @@ main() {
 		wait "$server_pid" 2>/dev/null
 		exit 1
 	fi
-	wait "$server_pid"
+	# `wait` はシグナルで中断されるので、サーバが実際に終わるまで待ち直す（PID 1 が先に抜けると残りが SIGKILL される）。
+	while kill -0 "$server_pid" 2>/dev/null; do
+		wait "$server_pid"
+	done
 }
 
 if [ "${VAULT_ENTRYPOINT_LIB:-}" = "1" ]; then
