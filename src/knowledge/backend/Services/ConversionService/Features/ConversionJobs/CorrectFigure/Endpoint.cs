@@ -1,6 +1,7 @@
 using ConversionService.Domain;
 using FluentValidation;
 using Knowledge.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Kernel;
 
 namespace ConversionService.Features.ConversionJobs.CorrectFigure;
@@ -44,7 +45,9 @@ internal static class CorrectFigureEndpoint
                 // 本文が読めない・埋め込みが見つからない。**補正は保存していない。**
                 _ => Results.Conflict(new { error = "body_unavailable" }),
             };
-        }).WithName("ConversionJobFigureCorrection");
+        }).WithName("ConversionJobFigureCorrection")
+          // NFR-09, UC-06, ADR-0109 決定 3, IADR-0154 決定 6, IADR-0462 (#1520): 人手補正は管理者限定（BFF と同じ）。
+          .RequireAuthorization(PlatformAuthPolicies.AdminOnly);
     }
 
     // UC-06 / IADR-0371 決定 2: 入力規則の判定。**規則そのものは `FigureCorrectionValidator` が持つ。**
