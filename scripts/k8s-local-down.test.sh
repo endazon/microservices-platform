@@ -99,6 +99,8 @@ case "$1" in
       namespace) shift 2; for a in "$@"; do case "$a" in --*) ;; *) mkdir -p "$S/deleting"; : > "$S/deleting/$a" ;; esac; done; settle ;;
       crd) remove_line "$S/crds" "$3" ;;
       pv) remove_first_field "$S/pvs" "$3" ;;
+      validatingwebhookconfigurations|mutatingwebhookconfigurations)
+        [ -f "$S/webhook-delete-fails" ] && { echo "Error: webhook delete failed" >&2; exit 1; } ;;&
       validatingwebhookconfigurations) remove_first_field "$S/vwh" "$3" ;;
       mutatingwebhookconfigurations) remove_first_field "$S/mwh" "$3" ;;
     esac
@@ -110,6 +112,7 @@ case "$1" in
     awk -F '|' -v OFS='|' -v ns="$ns_arg" -v n="$3" '$1 == ns && $2 == n { $3 = "" } { print }' "$f" > "$S/tmp"; mv "$S/tmp" "$f"
     exit 0 ;;
   apply)
+    [ -f "$S/traefik-apply-fails" ] && { echo "error: apply failed" >&2; exit 1; }
     printf 'ports:\n  admin:\n    port: 50000\n' > "$S/traefik-values"; exit 0 ;;
 esac
 exit 0
@@ -119,7 +122,7 @@ cat > "$WORK/bin/helm" <<'STUB'
 echo "helm $*" >> "$STUB_LOG"
 [ -f "$STATE/unreachable" ] && { echo "Error: Kubernetes cluster unreachable" >&2; exit 1; }
 case "$1" in
-  list) awk '{ print $2 "\t" $1 "\t1\t2026-09-25\tdeployed\tchart-1.0.0\t1.0.0" }' "$STATE/releases" ;;
+  list) [ -f "$STATE/helm-list-fails" ] && { echo "Error: list failed" >&2; exit 1; }; awk '{ print $2 "\t" $1 "\t1\t2026-09-25\tdeployed\tchart-1.0.0\t1.0.0" }' "$STATE/releases" ;;
   uninstall) grep -vx "$4 $2" "$STATE/releases" > "$STATE/tmp" || true; mv "$STATE/tmp" "$STATE/releases" ;;
 esac
 exit 0
@@ -128,6 +131,7 @@ cat > "$WORK/bin/k3d" <<'STUB'
 #!/usr/bin/env bash
 echo "k3d $*" >> "$STUB_LOG"
 [ "$1 $2" = "cluster list" ] && { [ -f "$STATE/k3d-cluster" ] && exit 0 || exit 1; }
+[ "$1 $2" = "cluster delete" ] && [ -f "$STATE/k3d-delete-fails" ] && { echo "FATA failed to delete cluster" >&2; exit 1; }
 exit 0
 STUB
 cat > "$WORK/bin/nerdctl" <<'STUB'
@@ -179,6 +183,8 @@ dirty_cluster() {
 }
 snapshot() { (cd "$STATE" && find . -type f | sort | xargs cat) | cksum; }
 run_down() { K8S_LOCAL_RUNTIME="${RUNTIME_OVERRIDE:-rancher}" bash "$SCRIPT" "$@" 2>&1; }
+# 出力のうち 8 段目（検証）以降だけ。0 段目（現状）も同じ「残:」を出すので、検証が数えたことはここで見る。
+after8() { sed -n '/==> \[8\/8\]/,$p' <<<"$1"; }
 # スタブの記録のうち、読み取り以外の呼び出し（dry-run では 0 件でなければならない）。
 non_read_calls() { grep -Ev '^(kubectl (get|api-resources|config current-context)( |$)|helm list( |$)|k3d cluster list( |$))' "$STUB_LOG"; }
 
@@ -343,6 +349,39 @@ for i in $(seq 1 256); do echo "leftover-$i"; done >> "$STATE/namespaces"
 OUT="$(run_down --apply)"; RC=$?
 assert_eq 'T-1422-14 apply: 残り 256 件でも exit 1' "$RC" "1"
 assert_contains 'T-1422-14 apply: 件数を正しく出す' "$OUT" 'NG: 256 件が残った'
+
+# ---- T-1422-15: k3d 経路でクラスタの削除に失敗したら exit 1（「deleted」と言わない） ----
+dirty_cluster
+: > "$STATE/k3d-cluster"; : > "$STATE/k3d-delete-fails"
+OUT="$(RUNTIME_OVERRIDE=k3d run_down --apply)"; RC=$?
+assert_eq 'T-1422-15 k3d apply: 削除に失敗したら exit 1' "$RC" "1"
+assert_missing 'T-1422-15 k3d apply: 失敗したのに deleted と言わない' "$OUT" "deleted k3d cluster"
+assert_contains 'T-1422-15 k3d apply: 失敗を名指しする' "$OUT" "NG: k3d cluster 'msp-ast-dev' を削除できなかった"
+
+# ---- T-1422-16: 2 段目で webhook 設定を消せなかったら、8 段目が残りとして数える ----
+dirty_cluster
+: > "$STATE/webhook-delete-fails"
+OUT="$(run_down --apply)"; RC=$?
+assert_eq 'T-1422-16 apply: webhook 設定が残れば exit 1' "$RC" "1"
+assert_contains 'T-1422-16 apply: 残った validating を名指しする（名前に部品名が無い ESO の物も）' "$(after8 "$OUT")" '残: validatingwebhookconfiguration externalsecret-validate'
+assert_contains 'T-1422-16 apply: 残った mutating を名指しする' "$(after8 "$OUT")" '残: mutatingwebhookconfiguration istio-sidecar-injector'
+assert_missing 'T-1422-16 apply: 無関係な webhook は残りに数えない' "$OUT" 'unrelated-webhook'
+
+# ---- T-1422-17: 7 段目で Traefik の Service を戻せなかったら、8 段目が残りとして数える ----
+dirty_cluster
+: > "$STATE/traefik-apply-fails"
+OUT="$(run_down --apply)"; RC=$?
+assert_eq 'T-1422-17 apply: Traefik の Service が止まったままなら exit 1' "$RC" "1"
+assert_contains 'T-1422-17 apply: 失敗をその場で知らせる' "$OUT" 'Traefik の Service を戻せなかった'
+assert_contains 'T-1422-17 apply: 8 段目で名指しする' "$(after8 "$OUT")" '残: Traefik の Service が止まったまま'
+
+# ---- T-1422-18: 8 段目で一覧を読めないものは「0 件」ではなく「数えられない」として赤（helm list だけ失敗） ----
+dirty_cluster
+: > "$STATE/helm-list-fails"
+OUT="$(run_down --apply)"; RC=$?
+assert_eq 'T-1422-18 apply: helm list だけ失敗しても exit 1' "$RC" "1"
+assert_contains 'T-1422-18 apply: 読めなかった一覧を名指しする' "$(after8 "$OUT")" '残: helm のリリース一覧 を読めない'
+assert_contains 'T-1422-18 apply: 8 段目では読み取りの stderr を捨てない' "$(after8 "$OUT")" 'Error: list failed'
 
 echo
 echo "k8s-local-down.test.sh: ${PASSED} passed / ${FAILED} failed"

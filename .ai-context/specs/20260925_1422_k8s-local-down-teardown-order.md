@@ -126,6 +126,13 @@ docs/operations/operations.md:245
 12. 【監査指摘 d】試験は `KUBECONFIG=/nonexistent` を export し、kubectl / helm / k3d / nerdctl がスタブへ解決されることを
     `command -v` で確かめてから走る（外れていれば 1 つも走らせず exit 2）。
 
+13. 【再監査指摘 1】k3d 経路で `k3d cluster delete` が失敗したら exit 1（「deleted」と言わない）。T-1422-15
+14. 【再監査指摘 2】2 段目で消せなかった webhook 設定（2 段目と同じ選び方）を 8 段目が残りとして数える。T-1422-16
+15. 【再監査指摘 3】7 段目の Traefik の `kubectl apply` の失敗をその場で知らせ、8 段目は HelmChartConfig を読み直して
+    `service.enabled: false` のままなら残りとして数える。T-1422-17
+16. 【再監査・任意】8 段目（`cluster_readable` の後）は読み取りの stderr を捨てず、一覧を読めなければ「数えられない」を
+    1 件の残りとして数える（`helm list` だけの失敗で 0 件に倒れない）。`mutate` は失敗を戻り値で返す（段は止めない）。T-1422-18
+
 ## 検証
 
 - `bash scripts/k8s-local-down.test.sh`（スタブ。実クラスタ不要）

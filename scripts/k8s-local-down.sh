@@ -22,7 +22,9 @@
 #   7. Istio エッジが止めた Traefik の Service を戻す（止めたままだと次の up のエッジ待ちが
 #      `services "traefik" not found` で失敗する。2026-09-14 実測）
 #   8. 検証: 名前空間は default / kube-* だけ・PV 0・6 の CRD 0・Helm は kube-system の
-#      traefik / traefik-crd だけ。1 つでも残れば exit 1
+#      traefik / traefik-crd だけ・2 の webhook 設定 0・Traefik の Service が止まっていない。
+#      1 つでも残れば exit 1。クラスタを読めない・一覧を読めないときも exit 1（「0 件」に倒さない）。
+#      k3d 経路はクラスタの削除に失敗したら exit 1
 #
 # set -e にしない。途中の 1 段が失敗しても残りを進め、最後の検証で赤緑を出す
 # （set -e だと最初の Helm エラーで止まり、半分消えた状態が残る —— 旧版の実測）。
@@ -99,31 +101,53 @@ k3d_read() {
 mutate() {
   if [ "$MODE" = "apply" ]; then
     echo "  + $*"
-    "$@" || echo "  (失敗・続行) $*" >&2
+    "$@" && return 0
+    echo "  (失敗・続行) $*" >&2
+    return 1   # 呼び出し側が失敗を拾えるように返す（段は止めない。止めるかは呼び出し側が決める）
   else
     echo "  (dry-run) $*"
   fi
 }
 
 # --- 読み取り ---------------------------------------------------------------------
-list_namespaces() { kc_read get namespaces -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null; }
+# 読み取りの stderr の行き先。段 0〜7 は捨てる（在らない CRD の問い合わせ等が並ぶため）。8 段目の検証は
+# cluster_readable を通した後なので捨てない —— 捨てると失敗が「0 件」に見える。
+READ_ERR=/dev/null
+# 以下の list_* は**読み取りの失敗を終了コードで返す**（8 段目が「数えられなかった」を残りとして数えるため）。
+list_namespaces() { kc_read get namespaces -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>"$READ_ERR"; }
 # 「名前空間/リリース名」の行。
-list_releases() { helm_read list -A --no-headers 2>/dev/null | awk 'NF { print $2 "/" $1 }'; }
-list_crds() { kc_read get crd -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null | grep -E "$CRD_PATTERN"; }
+list_releases() {
+  local out
+  out="$(helm_read list -A --no-headers 2>"$READ_ERR")" || return 1
+  awk 'NF { print $2 "/" $1 }' <<<"$out"
+}
+list_crds() {
+  local out
+  out="$(kc_read get crd -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>"$READ_ERR")" || return 1
+  grep -E "$CRD_PATTERN" <<<"$out" || true
+}
 # 「名前<TAB>phase<TAB>claimRef の名前空間」の行。
 list_pvs() {
-  kc_read get pv -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.phase}{"\t"}{.spec.claimRef.namespace}{"\n"}{end}' 2>/dev/null
+  kc_read get pv -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.phase}{"\t"}{.spec.claimRef.namespace}{"\n"}{end}' 2>"$READ_ERR"
 }
 # 撤去対象の webhook 設定の名前。名前が部品名を含むもの**か**、呼び先の Service が撤去する名前空間に
 # 居るもの（ESO の `externalsecret-validate` / `secretstore-validate` は名前に部品名を含まない）。
 list_webhooks() {
-  local kind="$1" targets_re
+  local kind="$1" targets_re out
   targets_re="(^|[[:space:]])($(IFS='|'; echo "${TARGET_NAMESPACES[*]}"))([[:space:]]|$)"
-  kc_read get "$kind" -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.webhooks[*].clientConfig.service.namespace}{"\n"}{end}' 2>/dev/null \
-    | while IFS=$'\t' read -r name svc_ns; do
-        [ -n "$name" ] || continue
-        if grep -Eq "$WEBHOOK_PATTERN" <<<"$name" || [[ "$svc_ns" =~ $targets_re ]]; then echo "$name"; fi
-      done
+  out="$(kc_read get "$kind" -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.webhooks[*].clientConfig.service.namespace}{"\n"}{end}' 2>"$READ_ERR")" \
+    || return 1
+  while IFS=$'\t' read -r name svc_ns; do
+    [ -n "$name" ] || continue
+    if grep -Eq "$WEBHOOK_PATTERN" <<<"$name" || [[ "$svc_ns" =~ $targets_re ]]; then echo "$name"; fi
+  done <<<"$out"
+}
+# Traefik の Service を止める HelmChartConfig（Istio エッジが当てる `service.enabled: false`）が残っているか。
+# HelmChartConfig が無ければ（エッジを当てていない構成では普通に無い）止まっていないと読む。
+traefik_service_disabled() {
+  local values
+  values="$(kc_read get helmchartconfig traefik -n kube-system -o jsonpath='{.spec.valuesContent}' 2>/dev/null)" || return 1
+  grep -Eq 'enabled:[[:space:]]*false' <<<"$values"
 }
 # 「名前空間|名前|finalizers」の行（finalizers が空のものは出さない）。名前空間を渡せばそこだけ。
 # 区切りをタブにしない: タブは IFS の空白類で、cluster スコープの物（名前空間が空）を read すると
@@ -251,10 +275,10 @@ delete_crds_and_pvs() {
 }
 
 restore_traefik_service() {
-  local values
-  values="$(kc_read get helmchartconfig traefik -n kube-system -o jsonpath='{.spec.valuesContent}' 2>/dev/null)"
-  if grep -Eq 'enabled:[[:space:]]*false' <<<"$values"; then
-    mutate kubectl apply -f deploy/local/edge/traefik-entrypoint.yaml
+  if traefik_service_disabled; then
+    # 失敗しても続行する（8 段目が HelmChartConfig を読み直し、止まったままなら残りとして数える）。
+    mutate kubectl apply -f deploy/local/edge/traefik-entrypoint.yaml \
+      || echo "  Traefik の Service を戻せなかった。次の up のエッジ待ちが落ちる（8 段目で赤にする）。" >&2
   else
     echo "  （Traefik の Service は止められていない）"
   fi
@@ -272,25 +296,55 @@ cluster_readable() {
 # （`return <件数>` は 256 で 0 に巻き戻るので使わない）。
 LEFTOVER_COUNT=0
 report_leftovers() {
-  local bad=0 ns rel line
-  while IFS= read -r ns; do
-    [ -n "$ns" ] || continue
-    [[ "$ns" =~ $ALLOWED_NAMESPACES_RE ]] && continue
-    echo "  残: namespace $ns"; bad=$((bad + 1))
-  done < <(list_namespaces)
-  while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    echo "  残: pv ${line%%$'\t'*}"; bad=$((bad + 1))
-  done < <(list_pvs)
-  while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    echo "  残: crd $line"; bad=$((bad + 1))
-  done < <(list_crds)
-  while IFS= read -r rel; do
-    [ -n "$rel" ] || continue
-    [[ "$rel" =~ $ALLOWED_RELEASES_RE ]] && continue
-    echo "  残: helm $rel"; bad=$((bad + 1))
-  done < <(list_releases)
+  local bad=0 out line kind
+  # 読めなかった一覧は「0 件」ではなく「数えられなかった」として 1 件に数える（黙って緑にしない）。
+  unreadable() { echo "  残: $1 を読めない（数えられない）"; bad=$((bad + 1)); }
+
+  if out="$(list_namespaces)"; then
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      [[ "$line" =~ $ALLOWED_NAMESPACES_RE ]] && continue
+      echo "  残: namespace $line"; bad=$((bad + 1))
+    done <<<"$out"
+  else unreadable namespaces; fi
+
+  if out="$(list_pvs)"; then
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      echo "  残: pv ${line%%$'\t'*}"; bad=$((bad + 1))
+    done <<<"$out"
+  else unreadable pv; fi
+
+  if out="$(list_crds)"; then
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      echo "  残: crd $line"; bad=$((bad + 1))
+    done <<<"$out"
+  else unreadable crd; fi
+
+  if out="$(list_releases)"; then
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      [[ "$line" =~ $ALLOWED_RELEASES_RE ]] && continue
+      echo "  残: helm $line"; bad=$((bad + 1))
+    done <<<"$out"
+  else unreadable "helm のリリース一覧"; fi
+
+  # 2 段目で消せなかった webhook 設定（呼び先が居なくなった webhook は、以後の同種の資源の作成・更新を止める）。
+  for kind in validatingwebhookconfigurations mutatingwebhookconfigurations; do
+    if out="$(list_webhooks "$kind")"; then
+      while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        echo "  残: ${kind%s} $line"; bad=$((bad + 1))
+      done <<<"$out"
+    else unreadable "$kind"; fi
+  done
+
+  # 7 段目で戻せなかった Traefik の Service（止まったままだと次の up のエッジ待ちが落ちる）。
+  if traefik_service_disabled; then
+    echo "  残: Traefik の Service が止まったまま（HelmChartConfig traefik が service.enabled: false）"; bad=$((bad + 1))
+  fi
+
   LEFTOVER_COUNT="$bad"
   [ "$bad" -eq 0 ]
 }
@@ -304,7 +358,10 @@ fi
 echo "mode: $MODE（--apply で実行。既定は --dry-run で何も変更しない）"
 
 if [ "$RUNTIME" = "k3d" ] && command -v k3d >/dev/null 2>&1 && k3d_read cluster list "$CLUSTER" >/dev/null 2>&1; then
-  mutate k3d cluster delete "$CLUSTER"
+  if ! mutate k3d cluster delete "$CLUSTER"; then
+    echo "NG: k3d cluster '$CLUSTER' を削除できなかった。" >&2
+    exit 1
+  fi
   [ "$MODE" = "apply" ] && echo "deleted k3d cluster '$CLUSTER'."
   exit 0
 fi
@@ -348,8 +405,9 @@ if ! cluster_readable; then
   echo "NG: クラスタを読めない（namespaces の取得に失敗したか default が無い）。残りを数えられないので緑にしない。" >&2
   exit 1
 fi
+READ_ERR=/dev/stderr   # ここからは読み取りの失敗を捨てない
 if ! report_leftovers; then
   echo "NG: $LEFTOVER_COUNT 件が残った（上の「残」）。" >&2
   exit 1
 fi
-echo "OK: 名前空間は default / kube-* だけ・PV 0・アプリの CRD 0・Helm は kube-system の traefik だけ。"
+echo "OK: 名前空間は default / kube-* だけ・PV 0・アプリの CRD 0・Helm は kube-system の traefik だけ・webhook 設定 0・Traefik の Service は動いている。"
