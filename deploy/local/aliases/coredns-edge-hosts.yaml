@@ -1,7 +1,7 @@
 # IADR-0227 / #780: エッジ host（`*.localhost`）を **pod からも**解決できるようにする。
 #
 # 背景: OIDC issuer をエッジの https host（`keycloak.localhost`）へ移すと、Grafana / ArgoCD / Vault /
-# MinIO / Headlamp / Wiki.js は **pod から issuer を実際に引いて discovery を叩く**。
+# Headlamp / Wiki.js は **pod から issuer を実際に引いて discovery を叩く**。
 # IADR-0086 の metadata / issuer 分離は .NET 側しか救わないため、非 .NET のツールには名前解決が要る。
 #
 # ★ なぜ ExternalName ではないか: `keycloak.localhost` は**ドットを含むため Service 名にできない**

@@ -6,7 +6,7 @@
 #
 # 前提ツール: docker / k3d / kubectl / helm（scripts/README や docs/operations 参照）。
 # 機密の上書きは環境変数で: PG_PASSWORD / RABBITMQ_PASSWORD / KEYCLOAK_ADMIN_PASSWORD /
-#   MINIO_ACCESS_KEY / MINIO_SECRET_KEY / WIKIJS_DB_PASSWORD / WIKIJS_SYNC_APIKEY / ANTHROPIC_API_KEY /
+#   OBJECT_STORAGE_ACCESS_KEY / OBJECT_STORAGE_SECRET_KEY（IADR-0461。旧 MINIO_*）/ WIKIJS_DB_PASSWORD / WIKIJS_SYNC_APIKEY / ANTHROPIC_API_KEY /
 #   RABBITMQ_USER（#1022。helm の global.messaging.user と揃えること）/
 #   WIKIJS_OIDC_CLIENT_SECRET（#1127。WIKIJS_OIDC=1 のときだけ使う。realm の wiki-js client と揃えること）/
 #   KEYCLOAK_ADMIN_USER（IADR-0369。既定 admin。Keycloak と realm 後追い Job が同じ Secret から読む）/
@@ -225,13 +225,8 @@ kubectl -n "$INFRA_NS" rollout status deploy/reset-gate --timeout=120s
 
 echo "==> [5/7] MSP namespace & app secrets (dev 既定; fail-safe 空 = no-op)"
 kubectl create namespace "$MSP_NS" --dry-run=client -o yaml | kubectl apply -f -
-# IADR-0093 (#353): MinIO Console の Keycloak OIDC client secret（平文コミットしない・dev 既定 or env 上書き）。
-# minio.yaml は minio.oidc.enabled 時に optional 参照で注入する（未作成でも Pod 起動＝root ログインへフォールバック）。
-# IADR-0098 (#310) PR-3: minio-oidc は ESO=1 のとき Vault→ExternalSecret 供給へ委譲し手動 apply をスキップ（二重所有回避）。
-# 既定（ESO 未設定）は従来どおり手動 apply（バイト等価）。
-if [ "${ESO:-}" != "1" ]; then
-  apply_secret "$MSP_NS" minio-oidc "client-secret=${MINIO_OIDC_CLIENT_SECRET:-minio-dev-secret-change-me}"
-fi
+# ［IADR-0461 決定 5 / #1499］MinIO Console の OIDC client secret（minio-oidc。IADR-0093）の作成はここにあったが
+# 撤去した。オブジェクトストレージは SeaweedFS へ差し替え、管理 Console を持たない（ADR-0106 決定 6）。
 # NFR, SC-13, ADR-0026/ADR-0032, IADR-0251/IADR-0273/IADR-0316 (#1107): BFF セッション（Token Handler）の
 # client secret。helm の deployment.yaml が **非 optional** な secretKeyRef（services.bff.session.existingSecret）で
 # 参照するため、これが無いと bff-service Pod は起動できない（注入漏れが「空 secret で起動して login だけ 500」へ
@@ -301,11 +296,13 @@ if [ "${WIKIJS_OIDC:-}" = "1" ] && [ "${ESO:-}" != "1" ]; then
   apply_secret "$MSP_NS" wikijs-oidc \
     "client-secret=${WIKIJS_OIDC_CLIENT_SECRET:-wiki-js-dev-secret-change-me}"
 fi
-# IADR-0097 (#310) PR-2: minio-credentials/wikijs-db/wikijs-sync は ESO=1 のとき Vault→ExternalSecret 供給へ委譲し
+# IADR-0097 (#310) PR-2: object-storage-credentials/wikijs-db/wikijs-sync は ESO=1 のとき Vault→ExternalSecret 供給へ委譲し
 # 手動 apply をスキップする（二重所有回避）。既定（ESO 未設定）は従来どおり手動 apply（バイト等価）。
+# IADR-0461 決定 3 (#1499): オブジェクトストレージ（SeaweedFS）の S3 資格情報。旧名 minio-credentials から製品名を外した
+# （サーバとクライアント双方が読む Secret であり、次に製品が替わっても名前を変えずに済むようにする）。
 if [ "${ESO:-}" != "1" ]; then
-  apply_secret "$MSP_NS" minio-credentials \
-    "accessKey=${MINIO_ACCESS_KEY:-minioadmin}" "secretKey=${MINIO_SECRET_KEY:-minioadmin}"
+  apply_secret "$MSP_NS" object-storage-credentials \
+    "accessKey=${OBJECT_STORAGE_ACCESS_KEY:-objectstorage-dev}" "secretKey=${OBJECT_STORAGE_SECRET_KEY:-objectstorage-dev-secret}"
   # NFR, ADR-0002, #1012: サービス DB のパスワード。**appsettings.json から接続文字列を撤去した**ため、
   # これが無いと各サービスは起動時に落ちる（注入漏れが既定資格情報で成功へ倒れない）。
   # dev 既定は init スクリプトが作る `kp`（deploy/local/infra/postgres.yaml）。env で上書きする。
@@ -575,10 +572,10 @@ if [ "${ESO:-}" = "1" ]; then
   # 上で k8s auth backend/role を設定した「後に」store を kubernetes 認証へ上書きする（同名 vault-backend）。
   # 既定（VAULT=1 単独）は token 認証の store（deploy/local/vault/clustersecretstore.yaml）のままで既存フロー不変。
   kubectl apply -f deploy/local/vault/eso/clustersecretstore-k8s.yaml
-  # ExternalSecret で secret を Vault→Secret 供給する（PR-1: llm、PR-2: minio-credentials/wikijs-db/wikijs-sync、
+  # ExternalSecret で secret を Vault→Secret 供給する（PR-1: llm、PR-2: object-storage-credentials/wikijs-db/wikijs-sync、
   # PR-3: OIDC client secret 群）。
   kubectl apply -f deploy/local/vault/eso/externalsecret-llm.yaml
-  kubectl apply -f deploy/local/vault/eso/externalsecret-minio.yaml
+  kubectl apply -f deploy/local/vault/eso/externalsecret-object-storage.yaml
   # NFR, ADR-0002 (#1012): サービス DB のパスワード。手動 apply は上の `ESO != 1` ブロックで
   # スキップされるので、**これが唯一の供給元**である（欠けると DB を持つ全サービスが起動しない）。
   kubectl apply -f deploy/local/vault/eso/externalsecret-postgres-app.yaml
@@ -587,13 +584,11 @@ if [ "${ESO:-}" = "1" ]; then
   kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq-app.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-db.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-sync.yaml
-  # IADR-0098 (#310) PR-3: OIDC client secret 群。minio-oidc は MSP ns、grafana/vault/headlamp-oidc は platform-infra ns。
+  # IADR-0098 (#310) PR-3: OIDC client secret 群。grafana/vault/headlamp-oidc は platform-infra ns（MSP ns の minio-oidc は IADR-0461 で撤去）。
   # ExternalSecret は namespaced だが ClusterSecretStore は cluster-scoped のため両 ns から同名 store を参照できる。
   # 元の手動 apply のゲート意味論に合わせて供給する（機能オフ時に未使用 Secret を残さない＝元の条件付き apply と対称）:
-  #  - minio-oidc: 常時（step 5 相当・元も無条件）
   #  - vault-oidc: VAULT 前提（ESO=1 は VAULT 併用ガード下＝ここでは常に真）で常時
   #  - grafana-oidc / headlamp-oidc: 各機能（OBSERVABILITY / HEADLAMP）が有効なときだけ供給
-  kubectl apply -f deploy/local/vault/eso/externalsecret-minio-oidc.yaml
   # #1107: BFF セッションの client secret。手動 apply は上の `ESO != 1` ブロックでスキップされるので、
   # **これが唯一の供給元**である（欠けると bff-service Pod が起動しない）。常時供給。
   kubectl apply -f deploy/local/vault/eso/externalsecret-bff-oidc.yaml
@@ -653,14 +648,14 @@ if [ "${ESO:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-synthetic-monitor-oidc.yaml
   fi
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 18 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本、通知の面（IADR-0419）で document-service-token の 1 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 → 18 へ数え直した。**値は上の msp_es を数え直して出す** —— 継ぎ足すと必ずずれる）＋有効ゲートの wikijs-oidc（#1127）と synthetic-monitor-oidc（#1287）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5、#1245 で reset-gate-oidc を追加し 5 → 6 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
-  msp_es="llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
+  # 誤解させない）。MSP ns は常時 17 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本、通知の面（IADR-0419）で document-service-token の 1 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 → 18 へ、IADR-0461（#1499）で minio-oidc を撤去し 17 へ数え直した。**値は上の msp_es を数え直して出す** —— 継ぎ足すと必ずずれる）＋有効ゲートの wikijs-oidc（#1127）と synthetic-monitor-oidc（#1287）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5、#1245 で reset-gate-oidc を追加し 5 → 6 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
+  msp_es="llm-provider-credentials object-storage-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync bff-oidc identity-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
   [ "${WIKIJS_OIDC:-}" = "1" ] && msp_es="$msp_es wikijs-oidc"
   [ "${SYNTHETIC:-}" = "1" ] && msp_es="$msp_es synthetic-monitor-oidc"
   infra_es="postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp reset-gate-oidc"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
-  echo "    ESO: llm/minio-credentials/postgres-app/rabbitmq-app/wikijs-db/wikijs-sync/minio-oidc（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
+  echo "    ESO: llm/object-storage-credentials/postgres-app/rabbitmq-app/wikijs-db/wikijs-sync（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
   echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc/keycloak-smtp/reset-gate-oidc、および有効ゲートの grafana/headlamp-oidc（infra ns）と wikijs-oidc（MSP ns）を"
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
   echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret $msp_es"
@@ -668,7 +663,7 @@ if [ "${ESO:-}" = "1" ]; then
 
   # IADR-0103 (#354): env の `secretKeyRef` は **Pod 起動時に一度だけ解決され、その後の Secret 更新は
   # 既存 Pod の env へ反映されない**。ESO が Secret を作る/上書きするのは Pod 起動より後になるため、対象 Pod は
-  # 「空」または「旧値」の env を保持し続ける。実害として MinIO=`unauthorized_client / Invalid client credentials`
+  # 「空」または「旧値」の env を保持し続ける。実害として MinIO（当時。IADR-0461 で撤去）=`unauthorized_client / Invalid client credentials`
   # （client_secret 空）、Grafana=OIDC client_secret 空、LlmGateway=`API key is invalid`（旧鍵保持）が発生した。
   # ESO 供給後に対象 Deployment を rollout し直して env を作り直す。
   # best-effort（未デプロイ・未有効ゲート・同期遅延で `up` を止めない）。
@@ -688,7 +683,7 @@ if [ "${ESO:-}" = "1" ]; then
   }
   # #1255: retrieval / ingestion の s2s 資格情報。**env(secretKeyRef) で読む Pod がある**ので
   # rollout の前に同期を待つ（待たずに restart すると新 Pod も供給前の Secret を掴む。IADR-0103）。
-  msp_sync="llm-provider-credentials minio-credentials minio-oidc wikijs-db wikijs-sync retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
+  msp_sync="llm-provider-credentials object-storage-credentials wikijs-db wikijs-sync retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
   # #1127: wikijs-oidc を待つ理由は **rollout ではない**（env で読む Pod が無い）。`up` の後段で走る
   # deploy/local/wikijs-setup/bootstrap.sh の段 8 がこの Secret を読むためである。同期前だと段 8 は
   # 「client secret を取得できない」で何もせずに終わり、**OIDC ログインが入らないまま up は緑で終わる。**
@@ -714,7 +709,7 @@ if [ "${ESO:-}" = "1" ]; then
   [ -n "$infra_sync" ] && eso_wait "$INFRA_NS" $infra_sync
 
   # 2) 供給後の値で env を作り直す。対象＝**ESO 管理 Secret を env(secretKeyRef) で参照する Deployment**。
-  #      minio             : minio-credentials（root）/ minio-oidc（client secret）
+  #      seaweedfs         : object-storage-credentials（S3 の管理者資格情報。IADR-0461）
   #      llmgateway-service: llm-provider-credentials（Llm__ApiKey）
   #      wiki-service      : wikijs-sync（WikiJs__ApiKey）
   #      wiki-js           : wikijs-db（DB_PASS）
@@ -730,7 +725,7 @@ if [ "${ESO:-}" = "1" ]; then
   #    対象外: postgres / rabbitmq / keycloak-admin は creationPolicy: Merge で seed（step 3）と**同一値**のため
   #    env は変化せず、再起動は DB/broker を無用に落とすだけ（IADR-0099）。vault-oidc は env 参照が無く
   #    bootstrap が CLI で読むため rollout 不要。
-  for d in minio llmgateway-service wiki-service wiki-js retrieval-service ingestion-service \
+  for d in seaweedfs llmgateway-service wiki-service wiki-js retrieval-service ingestion-service \
            aianalysis-service graph-service conversion-service datasource-service mcp-service \
            document-service; do
     kubectl -n "$MSP_NS" rollout restart "deploy/$d" >/dev/null 2>&1 \
@@ -944,7 +939,7 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
   # IADR-0227 (#780): エッジ host（*.localhost）を **pod からも** 解決できるようにする。
   # k3s の CoreDNS は Corefile 末尾に import /etc/coredns/custom/*.server を持ち、coredns Deployment は
   # coredns-custom ConfigMap を optional で既にマウントしている。置けば効き、消せば元に戻る（fail-safe）。
-  # 非 .NET の OIDC クライアント（Grafana/ArgoCD/Vault/MinIO/Headlamp/Wiki.js）は IADR-0086 の
+  # 非 .NET の OIDC クライアント（Grafana/ArgoCD/Vault/Headlamp/Wiki.js）は IADR-0086 の
   # metadata/issuer 分離が使えず、pod から issuer host を実際に引く必要がある。
   # ★ import 先の追加は Corefile 自体の変更ではないため reload プラグインが拾わない。rollout restart で確実に反映する。
   kubectl apply -f deploy/local/aliases/coredns-edge-hosts.yaml
@@ -996,7 +991,7 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
   # ADR-0021, #782: エッジを Istio Ingress Gateway へ移す（ISTIO=1 と併用したときだけ）。
   #
   # 🔴 **STRICT mTLS の前提である。** kube-system の Traefik はメッシュの外にあり、そこから
-  #   mesh 内の 4 Service（frontend / bff / minio / wiki-js）へ平文で入っている。名前空間全体へ
+  #   mesh 内の 3 Service（frontend / bff / wiki-js。MinIO Console は IADR-0461 で撤去）へ平文で入っている。名前空間全体へ
   #   STRICT を掛けると Envoy がその平文を拒否し、**入口だけが 502 になる**（#1072 実測）。
   #   計画 ADR-0021 はこの境界問題を理由に「入口＝Istio Ingress Gateway・Traefik は無効化」と定めている。
   #
@@ -1147,7 +1142,4 @@ echo "  kubectl -n $MSP_NS port-forward svc/bff-service 5080:8080   # http://loc
 # ADR-0045 決定 9 (#1144): 捕捉用 MTA の閲覧 UI。**エッジへは出していない**（UI は認証を持たず、中身は
 # リセットリンク＝認証資格である）。運用者が明示的に開く。
 echo "  kubectl -n $INFRA_NS port-forward svc/mailpit 8025:8025     # http://localhost:8025 （開発環境の捕捉用 MTA）"
-# IADR-0093 (#353): MinIO Console SSO は集約 URL 前提（LOCALEDGE=1）＋ポリシー適用が必要。
-echo "MinIO Console SSO(#353): https://minio.localhost:50000 (要 LOCALEDGE=1)。ポリシー適用と port-forward 単独時の"
-echo "  制約（OIDC 未成立→root フォールバック）は deploy/local/minio-oidc/README.md を参照。"
 echo "AST 連結は AST chart(AST#122) 適用後に scripts/... で行う。"

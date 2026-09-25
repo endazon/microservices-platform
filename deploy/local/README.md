@@ -192,7 +192,7 @@ up を再実行すれば届く**（単独でも `bash deploy/local/keycloak-setu
 | `RABBITMQ_USER` | `platform-infra/rabbitmq.username` | `guest` | RabbitMQ 利用者名（#1022。**helm の `global.messaging.user` と揃えること**） |
 | `RABBITMQ_PASSWORD` | `platform-infra/rabbitmq.password` ＋ `microservices-platform/rabbitmq-app.password` | `guest` | RabbitMQ（#1022 でアプリ側 Secret を追加。ブローカと同値） |
 | `KEYCLOAK_ADMIN_PASSWORD` | `platform-infra/keycloak-admin.password` | `admin` | Keycloak 管理 |
-| `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` | `microservices-platform/minio-credentials` | `minioadmin` | MinIO（chart 参照） |
+| `OBJECT_STORAGE_ACCESS_KEY`/`OBJECT_STORAGE_SECRET_KEY` | `microservices-platform/object-storage-credentials` | `objectstorage-dev` / `objectstorage-dev-secret` | オブジェクトストレージ（SeaweedFS。chart 参照。旧名 `MINIO_*` / `minio-credentials`・IADR-0461） |
 | `WIKIJS_DB_PASSWORD` | `microservices-platform/wikijs-db.password` | `kp` | Wiki.js DB |
 | `WIKIJS_SYNC_APIKEY` | `microservices-platform/wikijs-sync.apiKey` | 空→**bootstrap が発行**（#1108） | WikiService→Wiki.js 同期。**明示指定が無ければ `deploy/local/wikijs-setup/bootstrap.sh` が Wiki.js に発行させて書き戻す**。up の再実行では既存値を保つ（空で潰さない） |
 | `WIKIJS_ADMIN_PASSWORD` | `microservices-platform/wikijs-admin.password` | **無し（乱数生成）** | Wiki.js の管理者（#1108 / [IADR-0327](../../.ai-context/adr/IADR-0327_wikijs-setup-bootstrap.md)）。**dev 既定文字列を置かない** —— エッジに露出する実ログイン口である |

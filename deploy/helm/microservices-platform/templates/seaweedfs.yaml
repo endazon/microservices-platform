@@ -1,0 +1,123 @@
+# FR-06, FR-12, ADR-0014, ADR-0015（Superseded by ADR-0106）, ADR-0106, IADR-0024, IADR-0461 (#1499):
+# 本文・資産の S3 互換オブジェクトストレージ（SeaweedFS）。Deployment/Service/PVC。
+# 資格情報は Secret（existingSecret）経由で注入する（コミットしない）。
+# IADR-0017/IADR-0024: S3 API は ClusterIP のみで Ingress を張らず、直接公開しない。
+# 読み取りは ABAC を強制するサービス経由。管理 Console は持たない（ADR-0106 決定 6 / IADR-0461 決定 5）。
+#
+# 起動形（IADR-0461 決定 2）: 1 プロセスの `weed server` に master / volume / filer / S3 を同居させる。
+#   - 内部の master・volume・filer は loopback（127.0.0.1）だけで待ち受け、Pod の外へは S3 の 1 口だけを開く。
+#   - 🔴 `-master.telemetry=false` を外さないこと。**SeaweedFS はテレメトリが既定で有効**であり
+#     （送信先 telemetry.seaweedfs.com）、外すと外部送信が起きる（ADR-0106 決定 5 / 08_data-egress-policy）。
+#   - 資格情報は AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY。SeaweedFS はこれを静的な管理者 ID として読み、
+#     認証を有効にする（未設定だと匿名で全許可になる —— Secret を optional にしてはならない）。
+{{- if .Values.seaweedfs.enabled }}
+{{- $s := .Values.seaweedfs }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seaweedfs
+  labels:
+    app: seaweedfs
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+spec:
+  replicas: 1
+  # 1 つの PVC（ReadWriteOnce）を 1 プロセスだけが持つ。RollingUpdate だと新旧 2 つの Pod が
+  # 同じデータディレクトリ（filer の leveldb）を同時に開こうとして新しい側が起動できない。
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: seaweedfs
+  template:
+    metadata:
+      labels:
+        app: seaweedfs
+    spec:
+      containers:
+        - name: seaweedfs
+          # ADR-0106 決定 5 / ADR-0107 決定 3: digest で固定する（タグは読みやすさのために残す）。
+          image: "{{ $s.registry }}/{{ $s.image }}:{{ $s.tag }}{{ if $s.digest }}@{{ $s.digest }}{{ end }}"
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          # イメージの entrypoint が `server` の先頭に `-dir=/data` を足す。
+          args:
+            - server
+            - -ip=127.0.0.1
+            - -ip.bind=127.0.0.1
+            - -s3
+            - -s3.ip.bind=0.0.0.0
+            - -s3.port={{ $s.port }}
+            - -s3.port.iceberg=0
+            - -s3.port.lance=0
+            - -master.telemetry=false
+          ports:
+            - name: http-s3
+              containerPort: {{ $s.port }}
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $s.existingSecret }}
+                  key: {{ $s.accessKeyKey }}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $s.existingSecret }}
+                  key: {{ $s.secretKeyKey }}
+          # S3 ゲートウェイの /healthz（待ち受けていれば 200）。MinIO の /minio/health/* の置き換え。
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http-s3
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http-s3
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          {{- if $s.persistence.enabled }}
+          volumeMounts:
+            - name: seaweedfs-data
+              mountPath: /data
+          {{- end }}
+          resources:
+            {{- toYaml $s.resources | nindent 12 }}
+      {{- if $s.persistence.enabled }}
+      volumes:
+        - name: seaweedfs-data
+          persistentVolumeClaim:
+            claimName: seaweedfs-data
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seaweedfs
+  labels:
+    app: seaweedfs
+spec:
+  selector:
+    app: seaweedfs
+  ports:
+    - name: http-s3
+      port: {{ $s.port }}
+      targetPort: http-s3
+      protocol: TCP
+{{- if $s.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seaweedfs-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if $s.persistence.storageClass }}
+  storageClassName: {{ $s.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $s.persistence.size }}
+{{- end }}
+{{- end }}

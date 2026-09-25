@@ -142,7 +142,7 @@ services:
 # —— deploy/local/README.md §Wiki 閲覧の到達）。**本番像 values.yaml では設定しないことが統制**（決定 1）。
 # 従前の記述「Wiki.js を直接開く導線。空文字だと『接続先が未設定です』」は失効した。
 # Issue #344 追補（IADR-0091 edge 集約フォローアップ・.ai-context/specs/20260725_issue-344_wiki-base-url-edge-alignment.md）:
-# 到達は他の管理ツール（grafana/minio/vault 等）と同じく edge 集約後の正規 URL に整合させる。IADR-0091 の
+# 到達は他の管理ツール（grafana/vault 等）と同じく edge 集約後の正規 URL に整合させる。IADR-0091 の
 # ローカル edge overlay `deploy/local/edge`（LOCALEDGE=1）で Wiki.js は wiki.localhost:50000 に公開され、realm
 # `wiki-js` client も同 URL を登録済み。集約後 URL は deploy/local/edge/README.md「アクセス／OIDC（集約後 URL）」参照:
 #   https://wiki.localhost:50000  （LOCALEDGE=1 で edge overlay 適用時＝ローカルの正規アクセス）
@@ -161,13 +161,5 @@ frontend:
     - name: WIKI_BASE_URL
       value: "https://wiki.localhost:50000"
 
-# Issue #353, IADR-0093: 経路B の MinIO Console を Keycloak OIDC(SSO) 連携する（本番像 values.yaml は
-# oidc.enabled=false のまま不変・byte 等価）。config_url は MSP ns の ExternalName alias `keycloak` 経由で
-# in-cluster の Keycloak well-known を指す（browser は #284 手順A）。集約後 URL（minio.localhost:50000・#357/edge）を
-# Console 公開 URL に。client secret は Secret `minio-oidc`（k8s-local-up.sh 作成）。root は break-glass として残る。
-# ※ 実ログインには MinIO ポリシー（platform-admin/operator）の適用が必要（deploy/local/minio-oidc/README.md の mc 手順）。
-minio:
-  oidc:
-    enabled: true
-    configUrl: "http://keycloak:8080/realms/platform/.well-known/openid-configuration"
-    browserRedirectUrl: "https://minio.localhost:50000"
+# ［IADR-0461 決定 5 / #1499］経路B の MinIO Console SSO（IADR-0093）の上書きはここにあったが撤去した。
+# オブジェクトストレージは SeaweedFS へ差し替え、管理 Console を持たない（ADR-0106 決定 6）。

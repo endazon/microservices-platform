@@ -229,15 +229,7 @@
         "name": "Administrators",
         "description": "IADR-0103: Wiki.js の管理者グループ名に文字列一致させる dev ロール。wiki-js の groups claim 経由で Map Groups が Administrators へ対応づける（Wiki.js 側は自前グループ管理のため名前一致が唯一の接点）。"
       }
-    ],
-    "client": {
-      "minio": [
-        {
-          "name": "consoleAdmin",
-          "description": "IADR-0103: MinIO 組込ポリシー名。minio client の policy claim を client ロール由来の単一値に保つための dev ロール（realm ロールを流すと多値になり MinIO がポリシー解決に失敗する）。"
-        }
-      ]
-    }
+    ]
   },
   "groups": [
     {
@@ -1012,48 +1004,6 @@
       ]
     },
     {
-      "clientId": "minio",
-      "name": "MinIO Console (object storage, dev-only OIDC)",
-      "description": "IADR-0093/#353: dev MinIO Console の Keycloak OIDC ログイン用 confidential client。集約後 URL minio.localhost:50000(#357)。dev 専用・secret は環境ごとに変更。policy クレーム(mapper)で MinIO ポリシーを判定(未一致は deny)。",
-      "enabled": true,
-      "protocol": "openid-connect",
-      "publicClient": false,
-      "secret": "minio-dev-secret-change-me",
-      "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": false,
-      "implicitFlowEnabled": false,
-      "serviceAccountsEnabled": false,
-      "redirectUris": [
-        "https://minio.localhost:50000/oauth_callback",
-        "http://localhost:9001/oauth_callback"
-      ],
-      "webOrigins": [
-        "https://minio.localhost:50000",
-        "http://localhost:9001"
-      ],
-      "protocolMappers": [
-        {
-          "name": "minio-client-roles",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-client-role-mapper",
-          "consentRequired": false,
-          "config": {
-            "claim.name": "policy",
-            "jsonType.label": "String",
-            "multivalued": "true",
-            "usermodel.clientRoleMapping.clientId": "minio",
-            "id.token.claim": "true",
-            "access.token.claim": "true",
-            "userinfo.token.claim": "true"
-          }
-        }
-      ],
-      "defaultClientScopes": [
-        "profile",
-        "email"
-      ]
-    },
-    {
       "clientId": "vault",
       "name": "Vault (dev secrets, dev-only OIDC)",
       "description": "IADR-0094/#353: dev Vault の Keycloak OIDC(auth/oidc) ログイン用 confidential client。集約後 URL vault.localhost:50000(#357)。dev 専用・secret は環境ごとに変更。groups クレーム(mapper)で Vault external group→policy を判定。",
@@ -1120,11 +1070,6 @@
         "wiki-editor",
         "Administrators"
       ],
-      "clientRoles": {
-        "minio": [
-          "consoleAdmin"
-        ]
-      },
       "requiredActions": [
         "CONFIGURE_TOTP"
       ],

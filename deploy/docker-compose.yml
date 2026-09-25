@@ -24,12 +24,13 @@ x-db-env: &db-env
 x-rabbit-env: &rabbit-env
   RabbitMq__ConnectionString: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672
 
-# FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: 本文・資産の S3 互換オブジェクトストレージ（MinIO）接続。
-# 資格情報は .env（MINIO_ROOT_USER / MINIO_ROOT_PASSWORD）で上書きする（コミットしない。dev 既定のみ）。
+# FR-06, FR-12, ADR-0014/ADR-0015（Superseded by ADR-0106）, IADR-0024, IADR-0461: 本文・資産の S3 互換
+# オブジェクトストレージ（SeaweedFS）接続。資格情報は .env（OBJECT_STORAGE_ACCESS_KEY / OBJECT_STORAGE_SECRET_KEY）で
+# 上書きする（コミットしない。dev 既定のみ）。
 x-objectstorage-env: &objectstorage-env
-  ObjectStorage__Endpoint: http://minio:9000
-  ObjectStorage__AccessKey: ${MINIO_ROOT_USER:-minioadmin}
-  ObjectStorage__SecretKey: ${MINIO_ROOT_PASSWORD:-minioadmin}
+  ObjectStorage__Endpoint: http://seaweedfs:8333
+  ObjectStorage__AccessKey: ${OBJECT_STORAGE_ACCESS_KEY:-objectstorage-dev}
+  ObjectStorage__SecretKey: ${OBJECT_STORAGE_SECRET_KEY:-objectstorage-dev-secret}
   ObjectStorage__Bucket: knowledge-normalized
 
 services:
@@ -146,25 +147,36 @@ services:
       timeout: 5s
       retries: 5
 
-  # FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: 本文・資産の S3 互換オブジェクトストレージ（MinIO）。
-  # 資格情報は .env（MINIO_ROOT_USER / MINIO_ROOT_PASSWORD）で上書きする（コミットしない。dev 既定のみ）。
-  # IADR-0017/IADR-0024: API(9000) は内部サービス専用のため host 公開しない（expose）。直接公開はせず、
-  # ABAC を強制するサービス経由で読み取る。dev 便宜でコンソール(9001)のみ host 公開（stg/prod では公開しない）。
-  # #1434: Docker Hub の minio/minio は撤去された（pull が「repository does not exist」で落ちる）。同じリリースを MinIO 公式の quay.io から引く。
-  minio:
-    image: quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
-    command: ["server", "/data", "--console-address", ":9001"]
+  # FR-06, FR-12, ADR-0014, ADR-0015（Superseded by ADR-0106）, ADR-0106, IADR-0024, IADR-0461 (#1499):
+  # 本文・資産の S3 互換オブジェクトストレージ（SeaweedFS）。
+  # 資格情報は .env（OBJECT_STORAGE_ACCESS_KEY / OBJECT_STORAGE_SECRET_KEY）で上書きする（コミットしない。dev 既定のみ）。
+  # IADR-0017/IADR-0024: S3 API(8333) は内部サービス専用のため host 公開しない（expose）。直接公開はせず、
+  # ABAC を強制するサービス経由で読み取る。管理 Console は持たない（ADR-0106 決定 6。MinIO 時代の 9001 公開は撤去）。
+  # 🔴 イメージは digest で固定する（ADR-0106 決定 5）。helm values と Knowledge.IntegrationTests の
+  #    SeaweedFsContainer.Image と同じ参照であり、SeaweedFsContainerDefinitionTests が突き合わせる。
+  # 🔴 -master.telemetry=false を外さないこと（SeaweedFS はテレメトリが既定で有効。08_data-egress-policy）。
+  #    引数の意味は IADR-0461 決定 2（内部の口は loopback のみ・S3 だけを開く）。
+  seaweedfs:
+    image: docker.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+    command:
+      - server
+      - -ip=127.0.0.1
+      - -ip.bind=127.0.0.1
+      - -s3
+      - -s3.ip.bind=0.0.0.0
+      - -s3.port=8333
+      - -s3.port.iceberg=0
+      - -s3.port.lance=0
+      - -master.telemetry=false
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_ACCESS_KEY_ID: ${OBJECT_STORAGE_ACCESS_KEY:-objectstorage-dev}
+      AWS_SECRET_ACCESS_KEY: ${OBJECT_STORAGE_SECRET_KEY:-objectstorage-dev-secret}
     expose:
-      - "9000"
-    ports:
-      - "9001:9001"
+      - "8333"
     volumes:
-      - minio-data:/data
+      - seaweedfs-data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "curl", "-f", "http://localhost:8333/healthz"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -276,7 +288,7 @@ services:
       - "8081"
     environment:
       # FR-06, FR-19, FR-21, ADR-0014/ADR-0057, IADR-0296: 本文の格納・取得と、完全削除時の
-      # 実体削除に MinIO 接続が要る（helm は services.document.objectStorage: true を持っており、
+      # 実体削除にオブジェクトストレージ接続が要る（helm は services.document.objectStorage: true を持っており、
       # compose 側だけが欠落していた）。未設定なら縮退クライアントが「警告して成功」へ倒すため、
       # 欠落は 500 にならず**静かに実体を残す**——だから配備側で塞ぐ。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
@@ -311,7 +323,7 @@ services:
     expose:
       - "8080"
     environment:
-      # FR-01, IADR-0051: 実コネクタが取得した原本を MinIO へ格納する（書き込み側）。未設定時は縮退。
+      # FR-01, IADR-0051: 実コネクタが取得した原本をオブジェクトストレージへ格納する（書き込み側）。未設定時は縮退。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=datasource_svc;Username=kp;Password=kp
       # FR-05, UC-04, SC-06, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証の後段
@@ -342,7 +354,7 @@ services:
     expose:
       - "8080"
     environment:
-      # FR-12, ADR-0015: 正規化本文・資産を MinIO へ保管する（書き込み側）。
+      # FR-12, ADR-0015（Superseded by ADR-0106）: 正規化本文・資産をオブジェクトストレージへ保管する（書き込み側）。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       # FR-12, UC-06, SC-07, IADR-0043: 変換ジョブ読み取りモデルの永続化（conversion_svc）。
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=conversion_svc;Username=kp;Password=kp
@@ -363,7 +375,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      minio:
+      seaweedfs:
         condition: service_healthy
 
   ingestion-service:
@@ -375,7 +387,7 @@ services:
     expose:
       - "8080"
     environment:
-      # FR-06: storage:// 本文を MinIO から実取得する（読み取り側）。
+      # FR-06: storage:// 本文をオブジェクトストレージから実取得する（読み取り側）。
       <<: [*common-env, *rabbit-env, *objectstorage-env]
       Qdrant__Host: qdrant
       Qdrant__Port: 6334
@@ -394,7 +406,7 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_healthy
-      minio:
+      seaweedfs:
         condition: service_healthy
       llm-gateway:
         condition: service_started
@@ -568,7 +580,7 @@ services:
     expose:
       - "8080"
     environment:
-      # FR-06: storage:// 本文を MinIO から実取得し Wiki.js へ push する（読み取り側）。
+      # FR-06: storage:// 本文をオブジェクトストレージから実取得し Wiki.js へ push する（読み取り側）。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=wiki_svc;Username=kp;Password=kp
       # IADR-0021: Wiki.js への同期先（GraphQL push）。API キーはシークレット経由で注入（コミットしない）。
@@ -592,7 +604,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      minio:
+      seaweedfs:
         condition: service_healthy
 
   # FR-13, UC-07, ADR-0011, IADR-0020: 閲覧・編集 UI の実体。専用 DB `wikijs`（Postgres）で永続化する。
@@ -730,7 +742,7 @@ services:
     environment:
       # ADR-0027 / #1016: DocumentDeleted 購読（graph-delete 段）のため RabbitMQ 接続が要る
       # （無いと Wolverine ホストが起動時に BrokerInitializationException）。
-      # FR-17, ADR-0033 決定 8 / #912: リンク抽出のため storage:// 本文を MinIO から実取得する
+      # FR-17, ADR-0033 決定 8 / #912: リンク抽出のため storage:// 本文をオブジェクトストレージから実取得する
       # （読み取り側）。無いと縮退クライアントが解決できず、抽出は毎回スキップされる。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=graph_svc;Username=kp;Password=kp
@@ -1047,7 +1059,7 @@ volumes:
   rabbitmq-data:
   redis-data:
   qdrant-data:
-  minio-data:
+  seaweedfs-data:
   prometheus-data:
   # #546: silence / notification log。経路B は emptyDir（再起動で silence は消える）。
   alertmanager-data:
