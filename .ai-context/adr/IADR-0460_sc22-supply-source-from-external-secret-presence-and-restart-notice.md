@@ -63,6 +63,7 @@ ADR-0104 決定 1 は環境固有 ID を画面と Git（Helm values）の両経�
 
 - `GET /bff/secrets` の各行に `supplySource`（`screen` / `git` / `unknown`）を足す（`SecretItemSupplySources`。既定値つきで後方互換、BFF は常に埋める）。
 - 判定器 `ExternalSecretPresenceReader` は同期依頼と**同じ構成・通信路・名乗り**（`ExternalSecretSync:*`・`KubernetesApi` クライアント・Pod の SA トークン・SA の CA で TLS 検証）を使い、`GET /apis/external-secrets.io/v1/namespaces/{ns}/externalsecrets/{name}` を投げる。
+  - 🔴 **［2026-09-26 追記 / #1511 監査］** 接続先 `ExternalSecretSync:ApiServer` が URL として壊れていると要求の組み立てが `UriFormatException` を投げ、一覧全体が 500 になっていた。これも `unknown` に写す（同期依頼の側も同じく `Failed` に写し、書き込みを 500 にしない）。
   - 2xx → `screen`／**404 → `git`**（ExternalSecret が無い。CRD 自体が無い＝ESO 未配備の 404 も同じく「画面の経路は効いていない」）／それ以外（構成無効・トークン不読・401・403・5xx・不達・時間切れ）→ `unknown`。
   - 🔴 **`unknown` を他の 2 値に畳まない。** 本番像（`externalSecretSync.enabled=false` が既定）では全項目 `unknown` になる。**これは正しい** —— BFF は配備の事実を読めないので、読めないと言う。
 - 🔴 **ExternalSecret の本文は読み捨て、Secret にも Vault にも触れない。** 使う動詞は既存 Role の `get` だけ（`resourceNames` 限定）。

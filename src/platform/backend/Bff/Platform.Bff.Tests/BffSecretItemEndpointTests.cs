@@ -965,6 +965,27 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
         _factory.KubernetesApi.Requests.Should().BeEmpty();
     }
 
+    // T-69: 🔴 `ApiServer` が URL として壊れている（構成の誤り）と、要求の組み立てが UriFormatException を投げる。
+    // 一覧は 500 にせず全項目 `unknown`、書き込みは 200 のまま `syncRequested: false`（#1511 の監査）。陽性対照: 同じ試験の中で一覧・書き込みとも 200。
+    [Fact]
+    public async Task Malformed_api_server_maps_to_unknown_and_does_not_fail_the_list_or_the_write()
+    {
+        using var broken = _factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration((_, cfg) =>
+            cfg.AddInMemoryCollection(new Dictionary<string, string?> { ["ExternalSecretSync:ApiServer"] = "https://[not a uri" })));
+        var client = broken.CreateClient();
+
+        var sources = await SupplySourcesAsync(client);
+        sources.Values.Should().OnlyContain(s => s == SecretItemSupplySources.Unknown);
+
+        using var write = await SendAsync(Put("wikijs-sync", new { property = "apiKey", value = PlaceholderValue }), client);
+        write.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await write.Content.ReadFromJsonAsync<SecretItemWriteResultDto>(TestContext.Current.CancellationToken))!
+            .SyncRequested.Should().BeFalse();
+        _factory.RecordedAuditEntries.Should().ContainSingle(e => e.Action == SyncAction)
+            .Which.Detail.Should().EndWith("reason=sync-request-failed");
+        _factory.KubernetesApi.Requests.Should().BeEmpty("壊れた URL では要求を組み立てられず、どこへも送っていない");
+    }
+
     // T-70: 権限外・保管先不達の一覧は Kubernetes API へ 1 度も触れない（判定は一覧を返すと決まった後）。
     // 🔴 保管先不達は**トークンを保持した状態**で起こす —— ログイン確認を飛ばして metadata が 1 件も取れない経路（IADR-0453 決定 5）で、
     // 判定を前に置いた初版はここで漏れた（#1502。クラス全体の実行順でだけ再現した）。

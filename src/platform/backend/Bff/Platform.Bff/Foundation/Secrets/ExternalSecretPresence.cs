@@ -75,7 +75,9 @@ public sealed class ExternalSecretPresenceReader(
                 target.Namespace, target.Name, (int)response.StatusCode);
             return ExternalSecretPresence.Unknown;
         }
-        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException
+        // #1511 の監査: `ExternalSecretSync:ApiServer` が URL として壊れていると要求の組み立て（`HttpRequestMessage`）が
+        // UriFormatException を投げる。捕まえないと一覧全体が 500 になる —— 構成の誤りも「判定できない」に倒す。
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or UriFormatException
                                        || (ex is TaskCanceledException && !ct.IsCancellationRequested))
         {
             logger.LogWarning("ExternalSecret の有無を判定できない: {Namespace}/{Name} {ExceptionType}",

@@ -126,7 +126,9 @@ public sealed class ExternalSecretSyncRequester(
                 target.Namespace, target.Name, (int)response.StatusCode);
             return ExternalSecretSyncOutcome.Failed;
         }
-        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException
+        // #1502 / #1511 の監査: 壊れた `ApiServer` は要求の組み立てで UriFormatException を投げる。捕まえないと、
+        // **書き込みが成立した後に** 500 を返してしまう（決定 4「依頼の失敗は書き込みの失敗にしない」に反する）。
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or UriFormatException
                                        || (ex is TaskCanceledException && !ct.IsCancellationRequested))
         {
             logger.LogWarning("ExternalSecret の同期を依頼できない: {Namespace}/{Name} {ExceptionType}",
