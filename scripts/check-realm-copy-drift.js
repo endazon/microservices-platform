@@ -40,17 +40,28 @@
  * 宣言に無い名前が片側だけに在れば赤、宣言に在れば **notice で必ず見せる**（exit には影響させない）。
  * `check-unit-service-ownership.js` の `NAME_COLLISION_EXEMPT` と同型 —— **黙って効く除外を作らない。**
  *
+ * 長さ検査（#1424 / AST#787）: 写しの export は**基盤が import する**（`k8s-local-up.sh` が
+ * `keycloak-realms` ConfigMap へ同梱する）。AST#787 では export の client / role の `description` と realm
+ * `attributes` が Keycloak の varchar(255) を超え、基盤の integration-stack で Keycloak が起動しなかった
+ * （SQLSTATE 22001）。`check-realm-constraints.js`（#18）は `deploy/keycloak/*-realm.json` しか見ないため、
+ * **AST export の長さはここで見る**。収集と閾値は同スクリプトの `collectFields` / `findViolations` /
+ * `MAX_LEN` を再利用し、それが収集しない **realm `attributes` の値**だけをここで足す（AST#787 の超過 6 箇所の
+ * うち 2 箇所）。基盤レルム側の射程は広げない —— 事故のログに出たのは `DESCRIPTION` 列だけで、
+ * attributes の値の列が 255 で切られるかは未実測である。
+ *
  * 縮退: AST 側 realm を**見つけられないとき**だけ `::warning::` で「**突合していない**」と明示して exit 0。
  *   🔴 **「差分 0 件」とは書かない**（`check-planning-adr-range.js` の `scanned: 0` の教訓 —— 0 は
  *   「ずれが無い」ではなく「検査が動いていない」）。基盤側 realm の欠落では縮退しない（追跡下のファイルである）。
  *
  * 使い方:
- *   node scripts/check-realm-copy-drift.js             # 実ファイルを突合。差分があれば終了コード 1。
+ *   node scripts/check-realm-copy-drift.js             # 実ファイルを突合。差分か写しの長さ超過があれば終了コード 1。
  *   node scripts/check-realm-copy-drift.js --self-test # 検査ロジック自体の自己試験。
  */
 const fs = require('fs');
 const path = require('path');
 const { warn } = require('./lib/ci-annotate');
+// #1424: 長さ検査の収集・閾値・文字数の数え方は基盤レルムの検査器と 1 か所に保つ。
+const { collectFields, findViolations, MAX_LEN } = require('./check-realm-constraints');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 
@@ -282,6 +293,31 @@ function formatNotice(n) {
   return `  [片側宣言] ${label} ${n.name}（${side}）: ${n.reason}`;
 }
 
+// --- 長さ検査（#1424 / AST#787） ----------------------------------------------
+
+// realm `attributes` の値を `collectFields` と同じ { path, value } の形で列挙する。
+// 値が文字列でなければ JSON 表現の長さで数える（AST 側 check-realm-export.js と同じ扱い）。
+function realmAttributeFields(realm) {
+  const out = [];
+  const attrs = (realm && realm.attributes) || {};
+  for (const key of Object.keys(attrs)) {
+    const v = attrs[key];
+    if (v == null) continue;
+    out.push({ path: `realm.attributes[${key}]`, value: typeof v === 'string' ? v : JSON.stringify(v) });
+  }
+  return out;
+}
+
+// AST export の varchar(255) 違反を返す。collected は検査した項目数（0 件を緑と読ませないため必ず出す）。
+function findLengthViolations(realm, maxLen = MAX_LEN) {
+  const fields = [...collectFields(realm), ...realmAttributeFields(realm)];
+  return { violations: findViolations(fields, maxLen), collected: fields.length };
+}
+
+function formatLengthViolation(v) {
+  return `  [長さ超過] ${v.path}: ${v.len} 文字（上限 ${v.maxLen}）`;
+}
+
 // --- 実ファイル突合 -----------------------------------------------------------
 
 function readJson(absPath) {
@@ -301,6 +337,15 @@ function findAstRealm(root = REPO_ROOT) {
     if (hit.length > 0) return path.join(dir, hit[0]).split(path.sep).join('/');
   }
   return null;
+}
+
+// root 配下の AST export を見つけて長さを検査する（#1424）。見つからなければ null（縮退）。
+// root を引数に取るのは、自己試験が一時ツリーで陰性対照を組むためである。
+function checkAstRealmLengths(root = REPO_ROOT) {
+  const astRel = findAstRealm(root);
+  if (astRel === null) return null;
+  const realm = readJson(path.join(root, astRel));
+  return { astRel, ...findLengthViolations(realm) };
 }
 
 // --- 自己試験 ----------------------------------------------------------------
@@ -519,6 +564,62 @@ function selfTest() {
         fs.rmSync(dir, { recursive: true, force: true });
       }
     }],
+
+    // --- 長さ検査（#1424 / AST#787） ----------------------------------------
+    ['長さ 陽性対照: 写しのフィクスチャは違反 0 件で、項目を数えている（0 件を緑にしない）', () => {
+      const r = findLengthViolations(A);
+      return r.violations.length === 0 && r.collected > 0;
+    }],
+    ['長さ 境界: 255 文字ちょうどは合格・256 文字は違反（client description）', () =>
+      findLengthViolations(patchClient(A, 'ai-stock-trading-svc', { description: 'a'.repeat(255) })).violations.length === 0 &&
+      findLengthViolations(patchClient(A, 'ai-stock-trading-svc', { description: 'a'.repeat(256) })).violations.length === 1],
+    ['長さ 陰性対照: role の description も対象', () => {
+      const a = JSON.parse(JSON.stringify(A));
+      for (const role of a.roles.realm) if (role.name === 'trading-owner') role.description = 'r'.repeat(300);
+      const v = findLengthViolations(a).violations;
+      return v.length === 1 && v[0].path === 'roles.realm[trading-owner].description' && v[0].len === 300;
+    }],
+    ['長さ 陰性対照: realm attributes の値も対象（collectFields が拾わない分をここで足す）', () => {
+      const a = JSON.parse(JSON.stringify(A));
+      a.attributes = { _scope: 's'.repeat(300), _ok: 'o'.repeat(255) };
+      const v = findLengthViolations(a).violations;
+      return v.length === 1 && v[0].path === 'realm.attributes[_scope]';
+    }],
+    ['長さ: マルチバイトは文字数で数える（あ×255 は合格）', () =>
+      findLengthViolations(patchClient(A, 'ai-stock-trading-svc', { description: 'あ'.repeat(255) })).violations.length === 0],
+    ['長さ 陰性対照（一時ツリー）: AST export の description を 300 文字にすると違反', () => {
+      const os = require('os');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'realmcopy-'));
+      try {
+        const target = path.join(dir, AST_REALM_DIRS[0]);
+        fs.mkdirSync(target, { recursive: true });
+        const realm = patchClient(A, 'ai-stock-trading-owner', { description: 'd'.repeat(300) });
+        fs.writeFileSync(path.join(target, 'realm-export.json'), JSON.stringify(realm));
+        const r = checkAstRealmLengths(dir);
+        return (
+          r !== null &&
+          r.violations.length === 1 &&
+          r.violations[0].path === 'clients[ai-stock-trading-owner].description' &&
+          formatLengthViolation(r.violations[0]).includes('300 文字')
+        );
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }],
+    ['長さ: 未取得の submodule では長さ検査も走らない（縮退の条件は突合と同じ）', () => {
+      const os = require('os');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'realmcopy-'));
+      try {
+        return checkAstRealmLengths(dir) === null;
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }],
+    ['長さ: 報告に secret が現れない（違反ありの経路でも）', () => {
+      const a = patchClient(A, 'ai-stock-trading-svc', { description: 'x'.repeat(300) });
+      const text = findLengthViolations(a).violations.map(formatLengthViolation).join('\n');
+      return text.length > 0 && !text.includes(SECRET_CANARY);
+    }],
   ];
 
   let failed = 0;
@@ -559,7 +660,8 @@ function main() {
     warn(
       '[check-realm-copy-drift] 突合していません（skip）: AST 専用レルムの宣言を見つけられませんでした。' +
         ` submodule src/ai-stock-trading が未取得です。探した場所: ${AST_REALM_DIRS.join(' / ')}。` +
-        ' これは「差分 0 件」ではありません —— 突合が走る場所は ci.yml の static-checks-units です。'
+        ' これは「差分 0 件」ではありません —— 突合が走る場所は ci.yml の static-checks-units です。' +
+        ' 写しの varchar(255) 長さ検査（#1424）も走っていません。'
     );
     process.exit(0);
   }
@@ -575,14 +677,33 @@ function main() {
   }
 
   const result = compareRealms(platform, ast);
+  const lengths = findLengthViolations(ast);
   for (const n of result.notices) console.log(formatNotice(n));
+
+  if (lengths.violations.length > 0) {
+    console.error(
+      `[check-realm-copy-drift] 写し（${astRel}）に Keycloak の varchar(${MAX_LEN}) を超える項目が ` +
+        `${lengths.violations.length} 件あります（検査 ${lengths.collected} 項目）:`
+    );
+    for (const v of lengths.violations) console.error(formatLengthViolation(v));
+    console.error('');
+    console.error('基盤はこの export を同じ Keycloak へ import します（scripts/k8s-local-up.sh）。超えたままだと');
+    console.error('import が SQLSTATE 22001 で失敗し、Keycloak が起動しません（AST#787 / #1424）。');
+    console.error('直す場所は AST リポジトリの export です。短縮してから submodule の pin を前進させてください。');
+    console.error('');
+  } else {
+    console.log(
+      `[check-realm-copy-drift] OK: 写し（${astRel}）に varchar(${MAX_LEN}) を超える項目はありません` +
+        `（検査 ${lengths.collected} 項目）。`
+    );
+  }
 
   if (result.differences.length === 0) {
     console.log(
       `[check-realm-copy-drift] OK: 正本（${PLATFORM_REALM}）と写し（${astRel}）に差分はありません` +
         `（突合: realm ロール ${result.compared.roles} 件 / クライアント ${result.compared.clients} 件、片側宣言 ${result.notices.length} 件）。`
     );
-    process.exit(0);
+    process.exit(lengths.violations.length > 0 ? 1 : 0);
   }
 
   console.error(
@@ -615,6 +736,10 @@ module.exports = {
   formatDifference,
   formatNotice,
   findAstRealm,
+  realmAttributeFields,
+  findLengthViolations,
+  formatLengthViolation,
+  checkAstRealmLengths,
   PLATFORM_REALM,
   AST_REALM_DIRS,
   ROLE_PREFIX,

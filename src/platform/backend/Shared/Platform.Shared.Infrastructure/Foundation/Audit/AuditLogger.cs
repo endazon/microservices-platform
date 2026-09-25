@@ -8,7 +8,9 @@ namespace Platform.Shared.Infrastructure.Foundation.Audit;
 public interface IAuditLogger
 {
     // action: 操作種別（例 "config.read"）、subject: 実行主体（利用者名）、
-    // outcome: 結果（"granted" / "denied"）、detail: 補足（任意）。
+    // outcome: 結果（"granted" / "denied" / "failed" ほか。値域は呼び出し側が決め、ここでは閉じない ——
+    // SC-22 の "failed"・同期競合の "recorded"・送信上限の "reached" 等。抽出する側は 2 値で列挙しないこと。#1472）、
+    // detail: 補足（任意）。
     void Record(string action, string subject, string outcome, string? detail = null);
 }
 

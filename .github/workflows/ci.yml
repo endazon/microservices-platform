@@ -670,6 +670,8 @@ jobs:
       # **ここが突合の実走点である。** 上の submodule 取得ステップで AST 専用レルムの宣言が読めるため、
       # 基盤レルム（正本）と写しの同名ロール・AST 所有クライアントを実際に突き合わせられる
       # （static-checks 側の同名ステップは submodule 未取得で skip になる）。
+      # Issue #1424 / AST#787: 同じ本走査が写しの export の varchar(255) 超過も止める（基盤が同じ Keycloak へ
+      # import するため。超えると integration-stack で Keycloak が起動しない）。
       # 自己試験は static-checks で毎回走っているため、ここでは本走査だけを置く。
       - name: Check realm copy drift against the AST realm export
         if: ${{ !cancelled() }}
