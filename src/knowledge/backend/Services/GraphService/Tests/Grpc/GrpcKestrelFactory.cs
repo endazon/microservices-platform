@@ -69,8 +69,7 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
             StartServer();
             var addresses = Services.GetRequiredService<IServer>().Features
                 .Get<IServerAddressesFeature>()?.Addresses ?? [];
-            return addresses.First(a => !a.EndsWith($":{GrpcPort}", StringComparison.Ordinal))
-                .Replace("[::]", "127.0.0.1").Replace("0.0.0.0", "127.0.0.1");
+            return addresses.First(a => !a.EndsWith($":{GrpcPort}", StringComparison.Ordinal));
         }
     }
 
@@ -86,6 +85,9 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
             }));
         builder.ConfigureServices(services =>
         {
+            // NFR-16 (#1509): 起動直後に待受がループバックだけであることを確かめる（HttpAddress を読まない試験でも効く）。
+            services.AddHostedService<GrpcTestConfiguration.LoopbackOnlyGuard>();
+
             ReplaceDbContext<GraphDbContext>(services, _dbName);
 
             services.RemoveAll<IGraphAccessResolver>();
