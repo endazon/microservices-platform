@@ -33,6 +33,8 @@ resources:
   # コードは既定を持たない。
   # 🔴 **器だけでは効かない。** 経路（リセット申請の POST を床へ向ける route）はエッジが与える ——
   #   ローカルは `scripts/istio-edge-up.sh` が既定（RESET_FLOOR=1）で `deploy/local/edge-istio-reset-floor`
-  #   を当てる。退路は RESET_FLOOR=0（経路だけが外れ、器は誰も通らないまま居る）。
+  #   を当てる。RESET_FLOOR=0（経路だけが外れ、器は誰も通らないまま居る）は検証で床の有無を比べる用途に限る。
   #   go-live は同じ経路を go-live のエッジ側で与える（production の Keycloak マニフェストは本リポジトリに無い）。
+  # ［2026-09-26 / #1543］ADR-0111: 器は 2 レプリカ ＋ PodDisruptionBudget で取り込まれる（決定 1。go-live も同じ宣言）。
+  #   器がすべて落ちたときの 503 は「申請を閉じた状態」として保ち、本番で RESET_FLOOR=0 を退路に使わない（決定 3）。
   - reset-floor

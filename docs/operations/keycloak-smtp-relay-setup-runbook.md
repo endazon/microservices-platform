@@ -7,11 +7,11 @@ updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
-ids: [SC-10, SC-15, FR-05, FR-09, FR-22, NFR-13]
+ids: [SC-10, SC-15, FR-05, FR-09, FR-22, NFR-05, NFR-13, NFR-21]
 adrs: [ADR-0006, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097]
 iadrs: [IADR-0197, IADR-0261, IADR-0329, IADR-0332, IADR-0344, IADR-0347, IADR-0369, IADR-0404, IADR-0421, IADR-0432]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260926_1500_reset-floor-default-on]
-issues: [#438, #578, #600, #1102, #1143, #1144, #1245, #1500]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260926_1500_reset-floor-default-on, 20260926_1543_reset-floor-replicas-pdb]
+issues: [#438, #578, #600, #1102, #1143, #1144, #1245, #1500, #1543, #1544, planning#656]
 -->
 
 # 運用 Runbook: Keycloak smtpServer（SMTP リレー）の設定
@@ -320,35 +320,75 @@ kubectl -n platform-infra port-forward deploy/mail-relay 9154:9154   # → http:
 
 | 部品 | どこにあるか | 既定 |
 | --- | --- | --- |
-| 器（逆プロキシ） | `platform-infra` の `deploy/reset-floor`（宣言は `deploy/mail-relay/reset-floor/`） | **常に立つ**（近接 MTA・門と同じ） |
+| 器（逆プロキシ） | `platform-infra` の `deploy/reset-floor`（宣言は `deploy/mail-relay/reset-floor/`） | **常に立つ**（近接 MTA・門と同じ）。**2 レプリカ** |
+| 器の退避の予算 | 同じ宣言の `PodDisruptionBudget reset-floor`（`minAvailable: 1`） | 常に作る（ノードの退避・更新で準備のできた器が 0 にならない） |
 | 器の本体 | ConfigMap `reset-floor-script`（起動器が `deploy/mail-relay/reset-floor.js` から作る） | 常に作る |
 | 経路（申請の POST を器へ向ける） | Istio エッジの VirtualService の先頭（`deploy/local/edge-istio-reset-floor/`） | **Istio のエッジを立てると入る** |
 | 床の値（150 ms） | 器のマニフェストの `RESET_FLOOR_MS` | **コードは既定を持たない**（無ければ器は起動しない） |
 
 ```sh
-kubectl -n platform-infra get deploy reset-floor                                # 器が居るか
+kubectl -n platform-infra get deploy,pdb reset-floor                            # 器（READY 2/2）と退避の予算
 kubectl -n istio-system get virtualservice msp-keycloak-edge \
   -o jsonpath='{.spec.http[0].name}{"\n"}'                                      # reset-credentials-floor なら経路が入っている
 ```
 
-- **外すとき（検証用の比較に限る）**: `RESET_FLOOR=0 bash scripts/istio-edge-up.sh`。経路だけが外れ、
-  器は誰も通らないまま居る。🔴 **外している間は所要時間で利用者名を判別できる。** 戻すときは
+- **外すとき（検証で床の有無を比べる用途に限る）**: `RESET_FLOOR=0 bash scripts/istio-edge-up.sh`。経路だけが外れ、
+  器は誰も通らないまま居る。🔴 **外している間は所要時間で利用者名を判別できる**（申請には回数制限が無く、
+  数回の申請で列挙できる）。**本番では外さない**（下の「器がすべて落ちたとき」）。戻すときは
   `RESET_FLOOR` を与えずに同じスクリプトを走らせる。`0` / `1` 以外の値は、入口に触る前に拒まれる。
 - 🔴 **Traefik のエッジ（Istio を使わないローカル経路）には経路が無い。** 器は立つが誰も通らない。
 - 🔴 **go-live では、器は近接 MTA と一緒に適用されるが、経路は go-live のエッジ側で与える必要がある**
   （本番の認証基盤のマニフェストは本リポジトリに無い）。与えるのは「`/realms/<realm>/login-actions/reset-credentials`
   への **POST だけ**を器へ向ける」経路であり、**ログイン経路には掛けない**。器の本体の ConfigMap
   （`reset-floor-script`）も門の ConfigMap と同じく作る必要がある。
-- 🔴 **器が落ちている間、パスワードリセットの申請はすべて 503 で失敗する。** 経路は申請の POST を器だけへ
-  向けており、認証基盤へ直接戻る予備の経路は無い（器に準備のできた Pod が 1 つも無ければ、エッジは 503 を返す）。
+- 🔴 **器がすべて落ちている間、パスワードリセットの申請はすべて 503 で失敗する。** 経路は申請の POST を器だけへ
+  向けており、認証基盤へ直接戻る予備の経路は**意図して持たない**（器に準備のできた Pod が 1 つも無ければ、エッジは 503 を返す）。
+  予備の経路を足すと、器が落ちたとき床の無い経路へ黙って戻り、所要時間で利用者名を判別できる窓が監視の無いまま開く。
   「床は効かなければ遅くならないだけ」が成り立つのは**経路が入っていない**ときだけである。
-  **起動器が器の rollout を待つのはこのためである。** 503 が続くときは `kubectl -n platform-infra get deploy reset-floor`
-  と `kubectl -n platform-infra logs deploy/reset-floor` を見る（多いのは ConfigMap `reset-floor-script` の欠落）。
-  急ぐときの退路は `RESET_FLOOR=0 bash scripts/istio-edge-up.sh`（経路を外す。所要時間の統制は外れる）。
+  **器を 2 レプリカで動かし退避の予算を置くのは、器の 1 つが止まって（再起動・更新・ノードの退避）も申請を失敗させないため**であり、
+  **起動器が器の rollout（2 つとも準備完了）を待つのも同じ理由である。** 手順は下の「器がすべて落ちたとき」。
 - **器の準備完了の判定は認証基盤の健康を映さない。** 映すと、認証基盤が落ちた瞬間に器が準備未完了になり、
   申請は床を待たずに即座の 503 になる（床で返る応答と所要時間で区別できる窓を新しく開ける）。
 - **床の値は定期に見直す**（四半期に 1 度・メール送出経路や認証基盤の構成を変えたとき・所要時間の検査が赤に
   なったとき）。床は下限を揃えるだけであり、**床を超える応答は床を超えたまま出る**（裾は隠さない）。
+
+### 器がすべて落ちたとき（503 は「申請を閉じた状態」である）
+
+**［2026-09-26］** 器がすべて落ちたときの 503 は、**申請を閉じた状態**として扱う。実在する利用者名にも実在しない
+利用者名にも同じ 503 を返すので、**存在秘匿は保たれている**。**床を外して申請を開け直さない。**
+
+1. **床を外さない。** 🔴 **本番では `RESET_FLOOR=0` を退路として使わない。** 外すと、その間は所要時間で実在する
+   利用者名を列挙できる（申請には回数制限が無い）。`RESET_FLOOR=0` は**検証で床の有無を比べる用途に限る**。
+   以前の版の本書は「急ぐときの退路は `RESET_FLOOR=0`」と書いていたが、**この案内は取り消した。**
+2. **器を戻す。** 原因を見てから直す:
+
+   ```sh
+   kubectl -n platform-infra get deploy,pdb reset-floor               # READY が 0/2 か
+   kubectl -n platform-infra get pods -l app=reset-floor              # Pending / CrashLoopBackOff / ContainerCreating
+   kubectl -n platform-infra logs deploy/reset-floor --tail=40        # 起動を拒んだ理由（env の欠落など）
+   kubectl -n platform-infra get configmap reset-floor-script         # 器の本体
+   ```
+
+   多いのは ConfigMap `reset-floor-script` の欠落である（Pod がマウントに失敗して起動しない）。作り直して器を再起動する:
+
+   ```sh
+   kubectl create configmap reset-floor-script -n platform-infra \
+     --from-file=reset-floor.js=deploy/mail-relay/reset-floor.js --dry-run=client -o yaml | kubectl apply -f -
+   kubectl -n platform-infra rollout restart deploy/reset-floor
+   kubectl -n platform-infra rollout status deploy/reset-floor --timeout=120s
+   ```
+
+   **器が 1 つでも準備完了に戻れば、申請は床つきで通る。**
+3. **利用者は、管理者による一時パスワード発行で復旧する。** 申請が閉じていても利用者は詰まない —— 送出経路が
+   使えないときと同じ代替手順である（[パスワードリセットの画面仕様書](../screens/SC-15_password-reset.md) の
+   「代替（メール基盤が止まったとき）」）。**申請（本人）→ 上長が本人性を保証 → 管理者が認証基盤の管理コンソールで
+   一時パスワードを発行し、パスワード更新の必須アクションを付ける。** 一時パスワードは口頭（対面・電話）で伝え、
+   申請者・承認者・実行者を監査ログへ残す。
+4. **器が全滅したことを自動で知らせる手段はまだ無い**（準備のできた器が 0 になったことの通知は未配線）。
+   気付く契機は利用者からの問い合わせ、または `kubectl -n platform-infra get deploy reset-floor` の目視である。
+
+> 🔴 **この節の射程は床の器の故障に限る。** 送出経路（SMTP）の故障時に申請を閉じる手段
+> （§0 の門・`resetPasswordAllowed=false`）は別であり、本節はそれを変えない。
 
 ## 記録
 
