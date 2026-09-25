@@ -66,9 +66,12 @@ public static class SeaweedFsContainer
     /// 鍵は viper の環境変数 <c>WEED_JWT_FILER_SIGNING_KEY</c> で与えられる（<c>weed/util/config.go</c> 120〜122 行）。
     /// **鍵を使うのは同じプロセスの filer と S3 ゲートウェイだけ**なので、起動のたびに乱数で作り、どこにも保存しない
     /// （Secret にも Git にも置かない。外部に鍵を知る必要のある相手はいない）。compose・helm と同じ文字列である。
+    /// 🔴 **fail-closed**: 鍵が作れなかった（<c>head</c> / <c>base64</c> が無い等で空・短い）ときは entrypoint を呼ばずに
+    /// 終了コード 1 で止める。<c>export X="$(…)"</c> は中の失敗に関係なく 0 を返すため、長さで確かめる
+    /// （32 バイトの base64 は 44 文字。下限 40）。
     /// </remarks>
     public const string StartupScript =
-        "export WEED_JWT_FILER_SIGNING_KEY=\"$(head -c 32 /dev/urandom | base64 | tr -d '\\n')\"; exec /entrypoint.sh \"$@\"";
+        "K=\"$(head -c 32 /dev/urandom | base64 | tr -d '\\n')\"; [ ${#K} -ge 40 ] || { echo 'signing key generation failed' >&2; exit 1; }; export WEED_JWT_FILER_SIGNING_KEY=\"$K\"; exec /entrypoint.sh \"$@\"";
 
     /// <summary>
     /// コンテナを組む。資格情報は環境変数 `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` で渡す

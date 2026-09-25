@@ -48,11 +48,12 @@ spec:
           # イメージの entrypoint へ渡す（entrypoint が `server` の先頭に `-dir=/data` を足す）。
           # 鍵が空だと S3 ゲートウェイの gRPC（18333）の管理用 RPC が認証なしで通る。鍵を使うのはこの
           # プロセスの filer と S3 だけなので、Secret にも Git にも置かない。
+          # 🔴 fail-closed: 鍵が作れなければ（空・40 文字未満）entrypoint を呼ばずに exit 1 で止める。
           # compose・Knowledge.IntegrationTests の SeaweedFsContainer.StartupScript と同じ文字列である。
           command:
             - /bin/sh
             - -c
-            - 'export WEED_JWT_FILER_SIGNING_KEY="$(head -c 32 /dev/urandom | base64 | tr -d ''\n'')"; exec /entrypoint.sh "$@"'
+            - 'K="$(head -c 32 /dev/urandom | base64 | tr -d ''\n'')"; [ ${#K} -ge 40 ] || { echo ''signing key generation failed'' >&2; exit 1; }; export WEED_JWT_FILER_SIGNING_KEY="$K"; exec /entrypoint.sh "$@"'
             - seaweedfs
           args:
             - server

@@ -57,8 +57,74 @@ public sealed class SeaweedFsContainerDefinitionTests
     public void Test_container_sets_a_random_filer_signing_key_before_starting()
     {
         SeaweedFsContainer.StartupScript.Should()
-            .StartWith("export WEED_JWT_FILER_SIGNING_KEY=\"$(head -c 32 /dev/urandom")
+            .StartWith("K=\"$(head -c 32 /dev/urandom")
+            // fail-closed: 鍵が短い（作れなかった）なら entrypoint へ進まずに止まる。
+            .And.Contain("[ ${#K} -ge 40 ] || { echo 'signing key generation failed' >&2; exit 1; }; ")
+            .And.Contain("export WEED_JWT_FILER_SIGNING_KEY=\"$K\"; ")
             .And.EndWith("exec /entrypoint.sh \"$@\"");
+    }
+
+    // [[IADR-0461]] 決定 10（2026-09-26 再監査）: 起動スクリプトを実際に sh で走らせて fail-closed を確かめる（Docker 不要）。
+    // `export X="$(…)"` は中の失敗に関係なく 0 を返すので、長さの門が無いと空の鍵のまま entrypoint へ進んでしまう。
+    // entrypoint は記録スタブに差し替える（鍵の長さと引数を書き出す）。/bin/sh が無い環境（Windows）では Skipped。
+    [Fact]
+    public void Startup_script_refuses_to_start_when_the_key_cannot_be_generated()
+    {
+        if (OperatingSystem.IsWindows() || !File.Exists("/bin/sh"))
+        {
+            Assert.Skip("/bin/sh が無い環境では走らせない（CI の Linux で走る）");
+            return;
+        }
+
+        using var dir = new TempDir();
+        var marker = Path.Combine(dir.Path, "entrypoint-called");
+        var entrypoint = dir.Write("entrypoint.sh", $"#!/bin/sh\necho \"len=${{#WEED_JWT_FILER_SIGNING_KEY}} args=$*\" > '{marker}'\n");
+        var stubBin = Directory.CreateDirectory(Path.Combine(dir.Path, "bin")).FullName;
+        File.WriteAllText(Path.Combine(stubBin, "head"), "#!/bin/sh\nexit 1\n");
+        File.SetUnixFileMode(Path.Combine(stubBin, "head"), UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var script = SeaweedFsContainer.StartupScript.Replace("/entrypoint.sh", entrypoint, StringComparison.Ordinal);
+
+        var failed = RunSh(script, $"{stubBin}:{Environment.GetEnvironmentVariable("PATH")}");
+        failed.ExitCode.Should().Be(1, "鍵が作れないときは entrypoint を呼ばずに止まる");
+        failed.Stderr.Should().Contain("signing key generation failed");
+        File.Exists(marker).Should().BeFalse("鍵の空いた SeaweedFS を起動してはならない");
+
+        var ok = RunSh(script, Environment.GetEnvironmentVariable("PATH") ?? "/usr/bin:/bin");
+        ok.ExitCode.Should().Be(0, ok.Stderr);
+        File.ReadAllText(marker).Trim().Should().Be($"len=44 args={string.Join(' ', SeaweedFsContainer.ServerArguments)}",
+            "32 バイトの base64（44 文字）を鍵として export し、引数をそのまま entrypoint へ渡す");
+    }
+
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    private static (int ExitCode, string Stderr) RunSh(string script, string path)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo("/bin/sh") { RedirectStandardError = true, RedirectStandardOutput = true };
+        psi.ArgumentList.Add("-c");
+        psi.ArgumentList.Add(script);
+        psi.ArgumentList.Add("seaweedfs");
+        foreach (var a in SeaweedFsContainer.ServerArguments) psi.ArgumentList.Add(a);
+        psi.Environment["PATH"] = path;
+        using var p = System.Diagnostics.Process.Start(psi)!;
+        var stderr = p.StandardError.ReadToEnd();
+        p.StandardOutput.ReadToEnd();
+        p.WaitForExit(30_000).Should().BeTrue("起動スクリプトが終わらない");
+        return (p.ExitCode, stderr);
+    }
+
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    private sealed class TempDir : IDisposable
+    {
+        public string Path { get; } = Directory.CreateTempSubdirectory("swfs-startup-").FullName;
+
+        public string Write(string name, string content)
+        {
+            var file = System.IO.Path.Combine(Path, name);
+            File.WriteAllText(file, content);
+            File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            return file;
+        }
+
+        public void Dispose() => Directory.Delete(Path, recursive: true);
     }
 
     // 試験が確かめた形と配備の形がずれると、受け入れ試験は配備の保証にならない。
@@ -99,11 +165,20 @@ public sealed class SeaweedFsContainerDefinitionTests
         var template = File.ReadAllText(RepoFile("deploy/helm/microservices-platform/templates/seaweedfs.yaml"));
         var intra = File.ReadAllText(RepoFile("deploy/helm/microservices-platform/templates/networkpolicy.yaml"));
 
+        template = template.Replace("\r\n", "\n");
+        intra = intra.Replace("\r\n", "\n");
         var policy = template[template.IndexOf("name: allow-seaweedfs-s3-only", StringComparison.Ordinal)..];
         policy.Should().Contain("app: seaweedfs").And.Contain("port: {{ $s.port }}").And.NotContain("18333");
+        // 送り元は同 Namespace の Pod だけ（`namespaceSelector` へ変えると他の Namespace からも 8333 へ届く）。
+        var ingress = policy[policy.IndexOf("  ingress:\n", StringComparison.Ordinal)..policy.IndexOf("  egress:\n", StringComparison.Ordinal)];
+        ingress.Should().Be(
+            "  ingress:\n    - from:\n        - podSelector: {}\n      ports:\n        - protocol: TCP\n          port: {{ $s.port }}\n",
+            "ingress は「同 Namespace の Pod から TCP 8333」の 1 本だけ");
+        // 除外は Pod のラベル `app`（seaweedfs.yaml の Pod ラベル）で行う。別のキーにすると何も除外されず 18333 が開く。
         var allowIntra = intra[intra.IndexOf("name: allow-intra-namespace", StringComparison.Ordinal)..];
         allowIntra[..allowIntra.IndexOf("policyTypes:", StringComparison.Ordinal)]
-            .Should().Contain("operator: NotIn").And.Contain("values: [seaweedfs]");
+            .Should().Contain("  podSelector:\n    matchExpressions:\n      - key: app\n        operator: NotIn\n        values: [seaweedfs]\n");
+        template.Should().Contain("      labels:\n        app: seaweedfs\n", "除外のキー app は Pod テンプレートのラベルと一致していなければならない");
     }
 
     // text の中で start から始まる節を、次に end が現れるまで切り出す（start が無ければ失敗させる）。
