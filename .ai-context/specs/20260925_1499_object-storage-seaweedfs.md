@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — オブジェクトストレージを MinIO から SeaweedFS へ差し替える（#1499・計画 ADR-0106 の受け入れ試験・配備・IADR-0461）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-06
   - FR-12
@@ -122,7 +122,7 @@ SeaweedFS へ差し替えると裁定した（planning#648 → ADR-0106。次点
 
 ## 受け入れ基準
 
-- [ ] **Integration（`workflow_dispatch`・本ブランチ）で `ObjectStorageRoundTripTests` 3 件が Passed**（Skipped ではない）—— 🔴 2026-09-25 の実走で 2 件 Passed・全版削除の 1 件 Failed（下記「受け入れ試験の結果」）
+- [x] **Integration（`workflow_dispatch`・本ブランチ）で `ObjectStorageRoundTripTests` 3 件が Passed**（Skipped ではない）—— 2026-09-25 の初回は全版削除の 1 件が Failed、削除手順の修正後（2026-09-26・run 36157636410）に 3 件とも Passed
 - [x] `SeaweedFsContainerDefinitionTests` 4 件がローカルで緑（digest の解釈・テレメトリ無効・compose / helm と同じ参照）
 - [x] `helm lint`（既定・values-local）・`helm template` が通り、描画結果に MinIO のイメージ・`/minio/health/*`・`minio-credentials` が無い
 - [x] 両ユニットの `dotnet build`・`dotnet test`（`Category!=Integration`）・`dotnet format --verify-no-changes` が緑（2026-09-26 に develop を取り込んだ後、全アセンブリ成功。取り込み前に出ていた Bff の 1 件は本 PR 以前の JSON でも再現しており、develop 側の変更で解消した）
@@ -156,6 +156,10 @@ IADR-0296 の前提「害が無い」は MinIO の振る舞いに依存してい
   **修正前のコードで 5 件中 4 件が落ち**（版管理が有効・対象なし・停止・前方一致の隣のキー。無効のケースだけ通る）、修正後は 5 件とも通る。
   既存の `S3ObjectStorageClientDeleteTests` 7 件も通る。受け入れ試験 `ObjectStorageRoundTripTests` の判定は変えていない。
 - 計画へ環流する（ADR-0106 決定 3 の「配備・試験・名前に閉じる」を越えてアプリのコードを直したため）。起票はコーディネータ。
+- **修正後の受け入れ試験（Integration・`workflow_dispatch`・run 36157636410・head `3a8b4234`）: 3 件とも Passed**
+  （`Persists_and_reads_markdown_and_asset` 13 s／`Delete_removes_every_version` 9 s／`Reconversion_overwrites_same_key_idempotently` 9 s）。
+  同 run の赤は AST の `MarketMonitorService.Tests.RiskManagementGrpcTests.T_10_1057…` だけで、本 PR と無関係
+  （MSP の submodule の pin が AST 側の修正より前。platform / knowledge の両ユニットは成功）。
 
 ## 並行 PR との交差
 
