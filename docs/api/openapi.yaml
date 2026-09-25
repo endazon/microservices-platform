@@ -3578,6 +3578,7 @@ paths:
         版の番号に加えて**版の作成時刻も一致する**ことを条件にする（metadata を作り直して版が 1 から振り直された KV に古い記録を付けない。IADR-0454 決定 3）。
         `supplySource` は項目の同期先 ExternalSecret を Kubernetes API で `get` した結果から作る（ADR-0104 決定 2・IADR-0460 決定 1）。
         在れば `screen`、404 なら `git`、それ以外（同期の構成が無効・拒否・障害・不達）は `unknown`。ExternalSecret の本文も Secret も読まない。
+        ADR-0110 決定 1: 画面の表示名は `screen`＝画面／`git`＝**画面以外**／`unknown`＝確認できない。値 `git` は識別子であり、出どころが Git とは限らない（値は変えない）。
       operationId: bff-secret-items-list
       responses:
         "200":
@@ -5896,7 +5897,7 @@ components:
         supplySource:
           type: string
           enum: [screen, git, unknown]
-          description: "いま効いている供給元（ADR-0104 決定 2・IADR-0460 決定 1）。screen = 同期先の ExternalSecret が在る（画面の経路が効いている）／git = 無い（値は配備時の設定から来る。画面で書いた値は届かない）／unknown = 判定できない（接続が構成されていない・拒否・不達）。unknown を他の 2 値に畳まない"
+          description: "いま効いている供給元（ADR-0104 決定 2・ADR-0110 決定 1・IADR-0460 決定 1）。screen = 同期先の ExternalSecret が在る（画面の経路が効いている。表示「画面」）／git = 無い（値は手で作った Secret・配備スクリプト・Git など画面以外から来る。画面で書いた値は届かない。表示「画面以外」。値の名前は据え置き）／unknown = 判定できない（接続が構成されていない・拒否・不達。表示「確認できない」）。unknown を他の 2 値に畳まない"
 
     SecretItemPropertyDto:
       type: object

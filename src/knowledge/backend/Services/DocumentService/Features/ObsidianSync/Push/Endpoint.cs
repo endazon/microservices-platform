@@ -90,13 +90,16 @@ internal static class PushNoteEndpoint
                 }
 
                 var id = Guid.NewGuid();
+                // ADR-0105 決定 3, [[IADR-0464]] (#1521): プラグインの「両方を残す」の写しは元のノートのタグだけを引き継ぐ。
+                var tags = await SourceNoteTagsAsync(db, owner, req.SourceNoteId, ct);
                 // ADR-0037 フォローアップ 8: プラグイン流入は画面バリデーションを経由しないため、
                 // フェイルセーフ既定（restricted / doc_scope=private-note / owner）をサーバ側で適用する。
+                // ADR-0105 決定 1・2・4: 写しでも露出は明示の OFF・共有台帳へ行を足さない（新規作成の既定のまま）。
                 var firstUri = await storage.PutTextAsync(DocumentBodyIntake.StorageKey(id),
                     req.Edits[0].Content!, DocumentBodyIntake.ContentType, ct);
                 var doc = Document.CreateWithBody(id, req.Title.Trim(), firstUri,
                     originalUri: null, contentType: DocumentBodyIntake.ContentType,
-                    attributes: PrivateNoteEndpoints.PrivateNoteDefaults(owner), tags: [],
+                    attributes: PrivateNoteEndpoints.PrivateNoteDefaults(owner), tags: tags,
                     // ADR-0050 (#911): 本文指紋（ContentHash と同じ計算）。
                     contentFingerprint: DocumentBodyIntake.Fingerprint(req.Edits[0].Content!));
                 db.Documents.Add(doc);
@@ -232,6 +235,24 @@ internal static class PushNoteEndpoint
             doc.Update(req.Title.Trim(), doc.Attributes, doc.Tags.ToList(),
                 edit.ChangeNote ?? "sync-edit");
         }
+    }
+
+    // FR-20, SC-20 主要素 5, ADR-0105 決定 3, ADR-0110（planning#652 の裁定 1）, [[IADR-0464]] (#1521):
+    // 新規 push の `sourceNoteId` が**同じ所有者の個人資料**を指すときだけ、その資料のタグ（辞書の識別子の集合）を写す。
+    //
+    // 🔴 **他者の資料・存在しない ID・組織文書の ID では、黙って何も写さない（拒否しない）。** 応答は
+    // `sourceNoteId` 無しのときと同じ 201 である —— 拒否すると写しの push が止まり、本文を失わせないための操作が
+    // タグのために失敗する（ADR-0105 決定 5: タグが無いことで漏れる向きの問題は生じない）。応答が同じなので他者の資料の
+    // 有無も探れない（同期プロトコルは所有者スコープ外の存在を秘匿する）。判定は更新の push と同じ `FindOwnedAsync`。
+    // 写すのは別のリストにする（元の資料と同じ実体を共有しない）。辞書との突き合わせは写すときに行わない（#1503 と同じ）。
+    private static async Task<List<Guid>> SourceNoteTagsAsync(DocumentDbContext db, string owner,
+        Guid? sourceNoteId, CancellationToken ct)
+    {
+        if (sourceNoteId is null) return [];
+        var source = await ObsidianSyncEndpoints.FindOwnedAsync(db, owner, sourceNoteId.Value, ct);
+        if (source is null) return [];
+        var sourceDoc = await db.Documents.FindAsync([source.DocumentId], ct);
+        return sourceDoc is null ? [] : [.. sourceDoc.Tags];
     }
 
     // FR-19, ADR-0061 決定 1・2 / [[IADR-0396]] 決定 4 (#1184): 本文の書き込みを索引の生産側へ流す門。

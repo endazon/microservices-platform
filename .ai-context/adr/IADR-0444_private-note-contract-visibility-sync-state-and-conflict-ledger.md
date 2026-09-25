@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-19, FR-20, UC-11, SC-19, SC-20, ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0063, ADR-0105, IADR-0131, IADR-0139, IADR-0270, IADR-0352, IADR-0360]
 author: Claude
 created: 2026-09-12
-updated: 2026-09-25
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md
@@ -157,6 +157,13 @@ planning#618 の裁定（ADR-0098 / ADR-0099）が出たため、決定 6 の「
   `noteId: null` で新規 push する）。サーバはこの push を別名資料と識別できず、push の契約にタグの口も無いため、**この経路の写しはタグを持たない**。
   ADR-0105 の実測はサーバ側の `CreateAliasNoteAsync` だけを挙げており、この経路を射程に含むかは計画の判断が要る（#1498 の PR 本文に記録）。
   本追記では変えない。
+
+## ［2026-09-26 追記 / #1521］プラグイン側の「両方残す」もタグを引き継ぐ（ADR-0105 フォローアップ 2 の訂正・ADR-0110）
+
+planning#652 の裁定 1（利用者裁定 2026-09-26）が、上の追記の未決（プラグインの経路を射程に含むか）を**含む**と決めた。
+push の契約に任意項目 `sourceNoteId` を足し、サーバは**同じ所有者の個人資料**を指すときだけタグを写す。他者・不在の ID は黙って写さない。
+判断と理由は [IADR-0464](IADR-0464_push-source-note-id-copies-tags-only-from-same-owner.md)。**上の追記の「この経路の写しはタグを持たない」は #1521 以降は当たらない**（本文は当時の断面として残す）。
+決定 4（`both` は既存の新規作成の経路を通す）とサーバ側解決の挙動は変えない。
 
 ## フォローアップ
 

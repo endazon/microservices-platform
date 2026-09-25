@@ -10,6 +10,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Wolverine;
+using Grpc.Core;
+using Grpc.Net.Client;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Routing;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Pb = Platform.Shared.Contracts.Grpc.Introspection.V1;
 
 namespace ConversionService.Tests;
 
@@ -39,6 +45,46 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
             .Which.Enabled.Should().BeTrue();
     }
 
+    // FR-15, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4, IADR-0462 (#1514, #1255 経路 ⑤):
+    // 自己申告の gRPC 面は共通基盤が REST と対で張るので、本サービスにも `ServiceCaller` 付きで張られている。
+    // ［2026-09-26 / #1520］NFR-09, ADR-0109 決定 3, IADR-0465: 本サービスが認証を持ったので、面は
+    // 他サービスと同じ形で判定する（従前は認可の登録が無く、どの要求も INTERNAL で落ちる fail-closed だった）。
+    // s2s 無し → UNAUTHENTICATED、利用者のトークン（管理者であっても）→ PERMISSION_DENIED、
+    // `platform-service` のトークン → 申告が返る。**本物の JwtBearer**（検証鍵だけテスト用）を通す。
+    // 配備の gRPC 宛先（helm・compose）の配線は IADR-0462 フォローアップ 3 の別作業であり、ここでは触らない。
+    // 呼び出しは TestServer 経由（待ち受けない）。
+    [Fact]
+    public async Task Introspection_grpc_face_is_mapped_behind_ServiceCaller_and_judges_the_caller()
+    {
+        var server = _factory.Server;
+        var endpoint = _factory.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .OfType<RouteEndpoint>()
+            .Single(e => e.RoutePattern.RawText == "/platform.introspection.v1.ServiceIntrospection/Get");
+        endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>().Select(a => a.Policy)
+            .Should().Contain(PlatformAuthPolicies.ServiceCaller);
+
+        using var channel = GrpcChannel.ForAddress(server.BaseAddress,
+            new GrpcChannelOptions { HttpHandler = server.CreateHandler() });
+        var client = new Pb.ServiceIntrospection.ServiceIntrospectionClient(channel);
+        var ct = TestContext.Current.CancellationToken;
+        static Metadata Bearer(string token) => new() { { "authorization", "Bearer " + token } };
+
+        var anonymous = async () => await client.GetAsync(new Pb.GetServiceIntrospectionRequest(), cancellationToken: ct);
+        (await anonymous.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.Unauthenticated);
+
+        var asUser = async () => await client.GetAsync(new Pb.GetServiceIntrospectionRequest(),
+            Bearer(TestUserTokens.Issue("alice", ["platform-admin"])), cancellationToken: ct);
+        (await asUser.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.PermissionDenied);
+
+        var asService = await client.GetAsync(new Pb.GetServiceIntrospectionRequest(),
+            Bearer(TestUserTokens.Issue("service-account-bff", ["platform-service"])), cancellationToken: ct);
+        asService.Should().NotBeNull();
+
+        // 対照: REST の面は従来どおり資格情報なしで申告を返す（門を持たない口）。
+        var rest = await _factory.CreateClient().GetAsync("/internal/introspection", ct);
+        rest.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
     public sealed class Factory : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -62,6 +108,9 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
                 // 落とさないと、テストごとに実 RabbitMQ への接続再試行（実測 20 回・約 135 秒）が走り、
                 // **落ちるのではなく黙って遅くなる**（1 テスト 2 分半）。ビルドも赤にならないので気づきにくい。
                 services.DisableAllExternalWolverineTransports();
+
+                // NFR-09, ADR-0109 決定 3, IADR-0465 (#1520): 門は本物の JwtBearer で判定する（検証鍵だけ差し替え）。
+                TestUserTokens.UseStaticJwtBearer(services);
             });
         }
     }

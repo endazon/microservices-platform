@@ -45,11 +45,12 @@ export function secretItemLabel(item: string): SecretItemLabel | null {
 }
 
 /**
- * 項目の「いま効いている供給元」（SC-22 主要素 1, ADR-0104 決定 2, IADR-0460 決定 1。契約の `supplySource`）。
+ * 項目の「いま効いている供給元」（SC-22 主要素 1, ADR-0104 決定 2, ADR-0110 決定 1, IADR-0460 決定 1。契約の `supplySource`）。
  *
- * - `screen`: 同期先の ExternalSecret が在る —— この画面で書いた値が届く。
- * - `git`: 同期先が無い —— 値は配備時の設定（Git 経路）から来る。書いた値は届かない。
- * - `unknown`: BFF が判定できなかった。
+ * - `screen`（表示「画面」）: 同期先の ExternalSecret が在る —— この画面で書いた値が届く。
+ * - `git`（表示「**画面以外**」）: 同期先が無い —— 値は手で作った Secret・配備スクリプト・Git などから来る。書いた値は届かない。
+ *   🔴 **契約の値は `git` のまま**（識別子であり表示名ではない。値を変えると契約の破壊的変更になる。#1523 / IADR-0460 の 2026-09-26 追記）。
+ * - `unknown`（表示「確認できない」）: BFF が判定できなかった。
  *
  * 🔴 **画面は推測しない。** 値が無い・未知の値は `unknown` として扱う（`screen` にも `git` にも倒さない）。
  */
@@ -60,27 +61,66 @@ export function secretSupplySource(row: { supplySource?: string | null }): Secre
 }
 
 /**
- * 書き込んだ値を読む消費側の作り直され方（ADR-0104 決定 4, IADR-0460 決定 2）。
+ * 書き込んだ値を読む消費側の作り直され方（ADR-0104 決定 4, ADR-0110 決定 3, IADR-0460 決定 2）。
  *
  * - `automatic`: 消費側は env で読み、Secret の変化で Reloader が作り直す（IADR-0456 決定 5 の注釈を持つ消費側）。
- *   🔴 Reloader を配備した環境（連結ローカルの ESO=1）に限る —— 画面の文言もそう書く。
+ *   🔴 Reloader を配備した環境（連結ローカルの ESO=1）に限る —— 画面の文言もそう書く（配備の有無は検出しない）。
  * - `manual-opend`: 消費側は OpenD であり Reloader の対象外（AST の IADR-0341 決定 4）。手動の再起動が要る。
  *
  * 表に無い項目は `null`（呼び出し側は「再起動されることがある」とだけ書く。**断定しない**）。
  */
-export type SecretConsumerRestart = 'automatic' | 'manual-opend';
+type SecretConsumerRestart = 'automatic' | 'manual-opend';
 
-const RESTARTS: Readonly<Record<string, SecretConsumerRestart>> = {
-  'llm-provider-credentials': 'automatic',
-  'keycloak-smtp': 'automatic',
-  'wikijs-sync': 'automatic',
-  'ast-app-secrets': 'automatic',
-  'ast-moomoo': 'manual-opend',
-  'ast-moomoo-rsa': 'manual-opend',
+/**
+ * ADR-0110 決定 3 (#1523): 確認の段に出す「再起動する消費側」と「断たれ得る処理の種類」。表示の関心なので画面に持つ。
+ */
+interface SecretConsumer {
+  restart: SecretConsumerRestart;
+  consumer: MessageDescriptor;
+  interrupts: MessageDescriptor;
+}
+
+const OPEND_INTERRUPTS = msg`moomoo 証券との接続（発注・約定と相場の受信）`;
+
+const CONSUMERS: Readonly<Record<string, SecretConsumer>> = {
+  'llm-provider-credentials': {
+    restart: 'automatic',
+    consumer: msg`LLM ゲートウェイ`,
+    interrupts: msg`検索・質問応答・分析での外部 LLM の呼び出し`,
+  },
+  'keycloak-smtp': {
+    restart: 'automatic',
+    consumer: msg`メール中継`,
+    interrupts: msg`通知メール（パスワード再設定など）の送信`,
+  },
+  'wikijs-sync': {
+    restart: 'automatic',
+    consumer: msg`Wiki 同期`,
+    interrupts: msg`Wiki.js との文書の同期`,
+  },
+  'ast-app-secrets': {
+    restart: 'automatic',
+    consumer: msg`株式自動売買のアプリケーション`,
+    interrupts: msg`売買・市場データと開示情報の取得・Discord への通知`,
+  },
+  'ast-moomoo': { restart: 'manual-opend', consumer: msg`OpenD`, interrupts: OPEND_INTERRUPTS },
+  'ast-moomoo-rsa': { restart: 'manual-opend', consumer: msg`OpenD`, interrupts: OPEND_INTERRUPTS },
 };
 
-export function secretConsumerRestart(item: string): SecretConsumerRestart | null {
-  return Object.prototype.hasOwnProperty.call(RESTARTS, item) ? RESTARTS[item] : null;
+/** 項目の消費側。表に無い項目は null（断定しない）。 */
+export function secretConsumer(item: string): SecretConsumer | null {
+  return Object.prototype.hasOwnProperty.call(CONSUMERS, item) ? CONSUMERS[item] : null;
+}
+
+/**
+ * ADR-0110 決定 3 (#1523): 送る前に確認の段を置くか。
+ *
+ * - 供給元が「画面以外」（`git`）なら置かない —— 書いても Secret が変わらず、再起動も起きない。
+ * - ただし**鍵の生成は置く**（保管先の鍵が置き換わる。IADR-0456 決定 3 の確認をこの段へ統合した）。
+ * - それ以外（「画面」「確認できない」、表に無い項目を含む）は置く —— 再起動を伴う、または伴い得る。
+ */
+export function needsWriteConfirmation(source: SecretSupplySource, generate: boolean): boolean {
+  return generate || source !== 'git';
 }
 
 /** 値の上限（BFF の `SecretItemBffEndpoints.MaxValueLength` と一致させる）。 */

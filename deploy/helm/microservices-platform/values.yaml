@@ -280,6 +280,11 @@ services:
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
     messaging: true
     port: 8080
+    # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0462 (#1514, #1255 経路 ⑤):
+    # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
+    # 面は**自己申告の読み取り 1 口だけ**（platform.introspection.v1.ServiceIntrospection）。呼び出し元は
+    # 構成情報 API（BFF の Introspection__GrpcServices__* を持つときだけ）。readiness は 8080 のまま。
+    grpcPort: 8081
     # FR-01, IADR-0051: 実コネクタが取得した原本をオブジェクトストレージへ格納する（書き込み側）。未設定時は縮退。
     # 実 filesystem 同期は対象ファイル共有（SMB/NFS）を PVC 等でマウントする必要がある（ops 手順・operations.md）。
     objectStorage: true
@@ -372,6 +377,11 @@ services:
     # port を持つと Service が生成され BFF が到達できる。worker=true は HTTP ヘルスプローブを抑止する
     # （バックグラウンドワーカーは /health/* を持たず、可用性判定に HTTP プローブが不適なため）。
     port: 8080
+    # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0462 (#1514, #1255 経路 ⑤):
+    # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
+    # 面は**自己申告の読み取り 1 口だけ**（platform.introspection.v1.ServiceIntrospection）。呼び出し元は
+    # 構成情報 API（BFF の Introspection__GrpcServices__* を持つときだけ）。readiness は 8080 のまま。
+    grpcPort: 8081
     worker: true
     # FR-02 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0397 (#1255): east-west gRPC の
     # 呼び出し側資格情報。realm の confidential client `ingestion-service`（service account ＋
@@ -459,6 +469,11 @@ services:
     image: microservices-platform/aianalysis-service
     tag: latest
     port: 8080
+    # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0462 (#1514, #1255 経路 ⑤):
+    # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
+    # 面は**自己申告の読み取り 1 口だけ**（platform.introspection.v1.ServiceIntrospection）。呼び出し元は
+    # 構成情報 API（BFF の Introspection__GrpcServices__* を持つときだけ）。readiness は 8080 のまま。
+    grpcPort: 8081
     # FR-04 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0400 (#1255): east-west gRPC の
     # 呼び出し側資格情報。realm の confidential client `aianalysis-service`（service account ＋
     # realm ロール platform-service のみ。ABAC ポリシーは持たない）。
@@ -567,6 +582,11 @@ services:
     # FR-14, IADR-0028: パイプライン段（wiki-sync / wiki-delete 段）をホストする — pipeline-config をマウントする。
     pipelineSteps: true
     port: 8080
+    # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0462 (#1514, #1255 経路 ⑤):
+    # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
+    # 面は**自己申告の読み取り 1 口だけ**（platform.introspection.v1.ServiceIntrospection）。呼び出し元は
+    # 構成情報 API（BFF の Introspection__GrpcServices__* を持つときだけ）。readiness は 8080 のまま。
+    grpcPort: 8081
     # FR-06: storage:// 本文をオブジェクトストレージから実取得し Wiki.js へ push する（読み取り側）。
     objectStorage: true
     # IADR-0021: Wiki.js への同期（GraphQL push）先とサービスアカウント API キー。
@@ -807,6 +827,11 @@ services:
     image: microservices-platform/feedback-service
     tag: latest
     port: 8080
+    # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0462 (#1514, #1255 経路 ⑤):
+    # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
+    # 面は**自己申告の読み取り 1 口だけ**（platform.introspection.v1.ServiceIntrospection）。呼び出し元は
+    # 構成情報 API（BFF の Introspection__GrpcServices__* を持つときだけ）。readiness は 8080 のまま。
+    grpcPort: 8081
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
@@ -968,6 +993,39 @@ services:
       # BFF 全体を not-ready にするのは fail-safe の後退である（IADR-0346 決定 6）。
       - name: Introspection__Services__notification-service
         value: "http://notification-service:8080"
+      # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 4・5, IADR-0462 (#1514, #1255 経路 ⑤):
+      # 自己申告の **gRPC（h2c）宛先**。**ここに在る宛先だけ**が gRPC で収集され（資格情報は上の serviceToken ＝
+      # `bff` の service account。利用者のトークンは載せない）、無い宛先は上の Introspection__Services__* の
+      # REST のまま（並走中の正は REST。戻すのは該当行を消すだけでよい）。
+      # ポートは各サービスの grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
+      # 🔴 llm-gateway の Service 名は llmgateway-service（上の REST 宛先と同じ）。
+      # 🔴 **conversion-service はまだ入れない**（REST のまま）。変換サービスは認証を持たず、gRPC 面の
+      # 呼び出し側サービスの資格情報を検証できない（面は張られているが fail-closed）。中継された利用者の
+      # 資格情報を自ら検証する実装（planning#651 の裁定。別作業）が着地した段で、grpcPort とこの行を足す。
+      - name: Introspection__GrpcServices__document-service
+        value: "http://document-service:8081"
+      - name: Introspection__GrpcServices__wiki-service
+        value: "http://wiki-service:8081"
+      - name: Introspection__GrpcServices__ingestion-service
+        value: "http://ingestion-service:8081"
+      - name: Introspection__GrpcServices__retrieval-service
+        value: "http://retrieval-service:8081"
+      - name: Introspection__GrpcServices__aianalysis-service
+        value: "http://aianalysis-service:8081"
+      - name: Introspection__GrpcServices__authorization-service
+        value: "http://authorization-service:8081"
+      - name: Introspection__GrpcServices__dashboard-service
+        value: "http://dashboard-service:8081"
+      - name: Introspection__GrpcServices__datasource-service
+        value: "http://datasource-service:8081"
+      - name: Introspection__GrpcServices__feedback-service
+        value: "http://feedback-service:8081"
+      - name: Introspection__GrpcServices__graph-service
+        value: "http://graph-service:8081"
+      - name: Introspection__GrpcServices__llm-gateway
+        value: "http://llmgateway-service:8081"
+      - name: Introspection__GrpcServices__notification-service
+        value: "http://notification-service:8081"
       # FR-04/FR-08/FR-10, UC-01: BFF の下流集約先（Refit クライアント・readiness の UriHealthCheck）。
       # appsettings 既定はローカル用ポート（5001-5009）のため、k8s Service の実 DNS（:8080）へ上書きする。
       - name: Services__RetrievalService

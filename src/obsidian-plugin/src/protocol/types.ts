@@ -41,6 +41,13 @@ export interface PushNoteRequest {
   title: string;
   baseVersion: number | null;
   edits: SyncEdit[];
+  /**
+   * FR-20, SC-20 主要素 5, ADR-0105 決定 3, ADR-0110（planning#652 の裁定 1）, [[IADR-0464]] (#1521):
+   * 「両方残す」の写しを新規 push するときだけ、**元のノートの ID** を添える（任意）。
+   * サーバは同じ所有者の資料を指すときだけそのタグを写す（露出・共有先・版は引き継がない）。
+   * 通常の新規 push・サーバ側削除からの作り直しでは送らない。
+   */
+  sourceNoteId?: string;
 }
 
 export interface PushNoteResponse {

@@ -98,6 +98,12 @@ async function openForm(user: ReturnType<typeof userEvent.setup>, itemName: stri
   return screen.getByTestId('secret-update-form');
 }
 
+// ADR-0110 決定 3 (#1523): 「画面以外」でない項目の書き込みは、確認ダイアログの確認を経て送る。
+async function confirmWrite(user: ReturnType<typeof userEvent.setup>, label = '書き込む') {
+  const dialog = within(await screen.findByRole('dialog'));
+  await user.click(dialog.getByRole('button', { name: label }));
+}
+
 beforeEach(() => {
   mocks.apiRequest.mockReset();
 });
@@ -189,6 +195,7 @@ describe('SecretItemManagementPage (SC-22)', () => {
     await user.type(form.getByLabelText('更新の理由（任意）'), '鍵の定期ローテーション');
     expect(submit).toBeEnabled();
     await user.click(submit);
+    await confirmWrite(user);
 
     await waitFor(() => {
       const put = mocks.apiRequest.mock.calls.find(
@@ -317,7 +324,7 @@ describe('SecretItemManagementPage (SC-22)', () => {
     // 供給元はすべて「画面」（種別の試験に供給元の表示を混ぜない。供給元は下の ADR-0104 の試験が固定する）。
   ].map((row) => ({ ...row, supplySource: 'screen' }));
 
-  function mockKindApi(syncRequested = true) {
+  function mockKindApi(syncRequested = true, items: readonly object[] = KIND_ITEMS) {
     mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
       if (init?.method === 'PUT' && String(path).startsWith('/secrets/')) {
         const sent = JSON.parse(String(init.body)) as { property: string };
@@ -331,7 +338,7 @@ describe('SecretItemManagementPage (SC-22)', () => {
           }),
         );
       }
-      if (String(path) === '/secrets') return Promise.resolve(jsonResponse(KIND_ITEMS));
+      if (String(path) === '/secrets') return Promise.resolve(jsonResponse(items));
       return Promise.resolve(jsonResponse([]));
     });
   }
@@ -364,6 +371,7 @@ describe('SecretItemManagementPage (SC-22)', () => {
     await user.clear(again);
     await user.type(again, PLACEHOLDER);
     await user.click(submit);
+    await confirmWrite(user);
 
     await waitFor(() => expect(putCalls()).toHaveLength(1));
     expect(JSON.parse(String((putCalls()[0][1] as RequestInit).body))).toEqual({
@@ -375,8 +383,9 @@ describe('SecretItemManagementPage (SC-22)', () => {
     expect(pwd).toHaveValue('');
   });
 
-  // IADR-0456 決定 3: 生成は値の欄を持たず、1 度目の押下では送らない。失効の説明を読んで確かめてから送る（値は空文字）。
-  it('generates the RSA key only after an explicit confirmation and has no value field', async () => {
+  // IADR-0456 決定 3: 生成は値の欄を持たず、1 度目の押下では送らない。鍵が置き換わることを確かめてから送る（値は空文字）。
+  // T-65（ADR-0110 決定 3・#1523 で改訂）: 生成の確認と再起動の確認は 1 つの確認ダイアログに出る（2 度確認させない）。
+  it('generates the RSA key only after one confirmation dialog that also covers the OpenD restart', async () => {
     mockKindApi();
     const user = userEvent.setup();
     await renderPage();
@@ -389,21 +398,31 @@ describe('SecretItemManagementPage (SC-22)', () => {
     );
 
     await user.click(form.getByRole('button', { name: '生成' }));
-    expect(form.getByTestId('secret-generate-confirm')).toHaveTextContent('失効');
-    // AST#796 の監査: OpenD は Reloader の対象外なので、手動の再起動と再認証の可能性を確認の場で伝える。
-    expect(form.getByTestId('secret-generate-confirm')).toHaveTextContent(
-      'kubectl -n ai-stock-trading rollout restart deploy/opend',
+    const dialog = within(await screen.findByRole('dialog'));
+    expect(dialog.getByTestId('secret-generate-confirm')).toHaveTextContent(
+      '新しい鍵に置き換わります',
     );
-    expect(form.getByTestId('secret-generate-confirm')).toHaveTextContent('SMS');
+    // ADR-0110 決定 2: 公開鍵の登録は要らない —— 「登録済みの鍵」とは書かない。
+    expect(dialog.getByTestId('secret-generate-confirm')).not.toHaveTextContent('登録');
+    // AST#796 の監査・ADR-0110 決定 3: OpenD は書き込みでは再起動しない。手動の再起動と再認証の可能性を確認の段で伝える。
+    const restart = dialog.getByTestId('secret-restart-confirm');
+    expect(restart).toHaveTextContent('OpenD は再起動しません');
+    expect(restart).toHaveTextContent('kubectl -n ai-stock-trading rollout restart deploy/opend');
+    expect(restart).toHaveTextContent('SMS');
     expect(putCalls()).toHaveLength(0);
+    // #1530 の監査: 生成は保管先の鍵を置き換えるので破壊的として示し（文言に加えて danger の見た目）、初期フォーカスは取消。
+    expect(dialog.getByRole('button', { name: '生成して書き込む' }).className).toContain(
+      'text-danger',
+    );
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'やめる' })).toHaveFocus());
 
     // 「やめる」で確認を閉じ、送らない。
-    await user.click(form.getByRole('button', { name: 'やめる' }));
-    expect(form.queryByTestId('secret-generate-confirm')).toBeNull();
+    await user.click(dialog.getByRole('button', { name: 'やめる' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(putCalls()).toHaveLength(0);
 
     await user.click(form.getByRole('button', { name: '生成' }));
-    await user.click(form.getByRole('button', { name: '生成して書き込む' }));
+    await confirmWrite(user, '生成して書き込む');
 
     await waitFor(() => expect(putCalls()).toHaveLength(1));
     expect(JSON.parse(String((putCalls()[0][1] as RequestInit).body))).toEqual({
@@ -412,7 +431,39 @@ describe('SecretItemManagementPage (SC-22)', () => {
       reason: null,
     });
     expect(await form.findByTestId('secret-update-done')).toHaveTextContent('opend_rsa.pem');
-    expect(form.queryByTestId('secret-generate-confirm')).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  // T-77（#1530 の監査）: 供給元が「画面以外」の鍵の生成は、確認は通すが（鍵が置き換わる）、再起動の本文を出さず、
+  // 「OpenD が読み込むまで食い違う」とも書かない —— 同期先が無いので、新しい鍵は再起動しても OpenD に届かない。
+  it('scopes the generate confirmation for an item supplied outside the screen: the new key never reaches OpenD', async () => {
+    mockKindApi(
+      true,
+      KIND_ITEMS.map((row) =>
+        row.item === 'ast-moomoo-rsa' ? { ...row, supplySource: 'git' } : row,
+      ),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+    const form = within(await openForm(user, 'OpenD の RSA 鍵'));
+    expect(form.getByTestId('secret-supply-not-screen')).toBeInTheDocument();
+
+    await user.click(form.getByRole('button', { name: '生成' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    const generate = dialog.getByTestId('secret-generate-confirm');
+    expect(generate).toHaveTextContent('新しい鍵に置き換わります');
+    expect(generate).toHaveTextContent('OpenD にもクライアントにも届きません');
+    expect(generate).not.toHaveTextContent('読み込むまで');
+    expect(dialog.queryByTestId('secret-restart-confirm')).toBeNull();
+    expect(dialog.getByRole('button', { name: '生成して書き込む' }).className).toContain(
+      'text-danger',
+    );
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'やめる' })).toHaveFocus());
+    expect(putCalls()).toHaveLength(0);
+
+    await confirmWrite(user, '生成して書き込む');
+    await waitFor(() => expect(putCalls()).toHaveLength(1));
+    expect(await form.findByTestId('secret-not-applied')).toHaveTextContent('反映されません');
   });
 
   // IADR-0456 決定 1: 秘密でない ID は平文で入力させ、確認入力を求めず、秘密ではない旨を書く（書き込み専用なのは同じ）。
@@ -434,6 +485,7 @@ describe('SecretItemManagementPage (SC-22)', () => {
 
     await user.type(input, '123456789012345678');
     await user.click(form.getByRole('button', { name: 'このプロパティを更新する' }));
+    await confirmWrite(user);
     await waitFor(() => expect(putCalls()).toHaveLength(1));
     expect(JSON.parse(String((putCalls()[0][1] as RequestInit).body))).toEqual({
       property: 'discord-bot-guild-id',
@@ -458,6 +510,7 @@ describe('SecretItemManagementPage (SC-22)', () => {
       await user.type(form.getByLabelText('新しい値'), PLACEHOLDER);
       await user.type(form.getByLabelText('新しい値（確認のためもう一度）'), PLACEHOLDER);
       await user.click(form.getByRole('button', { name: 'このプロパティを更新する' }));
+      await confirmWrite(user);
 
       expect(await form.findByTestId('secret-update-done')).toHaveTextContent('login-account');
       expect(form.getByTestId('secret-sync-status')).toHaveTextContent(text);
@@ -472,35 +525,37 @@ describe('SecretItemManagementPage (SC-22)', () => {
       .find((row) => within(row).queryByText(name))!;
 
   // T-72: 供給元は 3 値を別々に出し（色 ＋ アイコン ＋ テキスト）、値が無い・未知なら「確認できない」に倒す（推測しない）。
+  // ADR-0110 決定 1 (#1523): 同期先が無い項目の表示名は「画面以外」（契約の値 `git` は変えない）。「Git」とは出さない。
   it('shows the supply source per item and never guesses when it is missing', async () => {
     mockApi();
     await renderPage();
 
     expect(within(await findRow('外部 LLM の API キー')).getByText('画面')).toBeInTheDocument();
-    expect(
-      within(await findRow('メール送信（SMTP）の認証情報')).getByText('Git'),
-    ).toBeInTheDocument();
+    const smtp = within(await findRow('メール送信（SMTP）の認証情報'));
+    expect(smtp.getByText('画面以外')).toBeInTheDocument();
+    expect(smtp.queryByText('Git')).toBeNull();
     expect(
       within(await findRow('Wiki 同期の API キー')).getByText('確認できない'),
     ).toBeInTheDocument();
-    // 🔴 `supplySource` を持たない行も「確認できない」（「画面」にも「Git」にも倒さない）。
+    // 🔴 `supplySource` を持たない行も「確認できない」（「画面」にも「画面以外」にも倒さない）。
     const missing = within(await findRow('株式自動売買の外部 API キーと通知'));
     expect(missing.getByText('確認できない')).toBeInTheDocument();
     expect(missing.queryByText('画面')).toBeNull();
-    expect(missing.queryByText('Git')).toBeNull();
+    expect(missing.queryByText('画面以外')).toBeNull();
     expect(screen.getByTestId('secrets-supply-note')).toHaveTextContent('反映されません');
+    expect(screen.getByTestId('secrets-supply-note')).toHaveTextContent('「画面以外」');
   });
 
-  // T-73: Git から供給されている項目は、書き込みを拒否せず、書いても反映されないことを送る前と後の両方で伝える。
-  // 再起動の注記は出さない（Secret が変わらないので再起動も起きない）。同期の成否の文言も出さない。
-  it('warns before and after writing that a Git-supplied item will not take effect, without blocking the write', async () => {
+  // T-73: 画面以外から供給されている項目は、書き込みを拒否せず、書いても反映されないことを送る前と後の両方で伝える。
+  // ADR-0110 決定 3: 再起動の確認は出さない（Secret が変わらないので再起動も起きない）。同期の成否の文言も出さない。
+  it('warns before and after writing that an item supplied elsewhere will not take effect, without a restart confirmation', async () => {
     mockApi();
     const user = userEvent.setup();
     await renderPage();
     const form = within(await openForm(user, 'メール送信（SMTP）の認証情報'));
 
-    expect(form.getByTestId('secret-supply-git')).toHaveTextContent('反映されません');
-    expect(form.queryByTestId('secret-restart-note')).toBeNull();
+    expect(form.getByTestId('secret-supply-not-screen')).toHaveTextContent('反映されません');
+    expect(form.getByTestId('secret-supply-not-screen')).toHaveTextContent('画面以外');
 
     await user.type(form.getByLabelText('新しい値'), PLACEHOLDER);
     await user.type(form.getByLabelText('新しい値（確認のためもう一度）'), PLACEHOLDER);
@@ -508,47 +563,115 @@ describe('SecretItemManagementPage (SC-22)', () => {
     expect(submit).toBeEnabled();
     await user.click(submit);
 
+    // 確認ダイアログを経ずに送る。
     await waitFor(() =>
       expect(
         mocks.apiRequest.mock.calls.filter(([, init]) => (init as RequestInit)?.method === 'PUT'),
       ).toHaveLength(1),
     );
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(await form.findByTestId('secret-not-applied')).toHaveTextContent('反映されません');
     expect(form.queryByTestId('secret-sync-status')).toBeNull();
+    expect(form.queryByTestId('secret-restart-after')).toBeNull();
   });
 
-  // T-74: 供給元を確認できない項目は、反映されるかを画面が言えないことを伝える（再起動の注記は出す）。
-  it('says it cannot tell whether a write will take effect when the supply source is unknown', async () => {
+  // T-74: 供給元を確認できない項目は、反映されるかを画面が言えないことを伝え、再起動は「し得る」として確認する（断定しない）。
+  it('says it cannot tell whether a write will take effect and confirms a possible restart when the source is unknown', async () => {
     mockApi();
     const user = userEvent.setup();
     await renderPage();
     const form = within(await openForm(user, 'Wiki 同期の API キー'));
 
     expect(form.getByTestId('secret-supply-unknown')).toHaveTextContent('確認できません');
-    expect(form.queryByTestId('secret-supply-git')).toBeNull();
-    expect(form.getByTestId('secret-restart-note')).toBeInTheDocument();
+    expect(form.queryByTestId('secret-supply-not-screen')).toBeNull();
+
+    await user.type(form.getByLabelText('新しい値'), PLACEHOLDER);
+    await user.type(form.getByLabelText('新しい値（確認のためもう一度）'), PLACEHOLDER);
+    await user.click(form.getByRole('button', { name: 'このプロパティを更新する' }));
+
+    const restart = within(await screen.findByRole('dialog')).getByTestId('secret-restart-confirm');
+    expect(restart).toHaveTextContent('Wiki 同期');
+    expect(restart).toHaveTextContent('断定できません');
+    expect(restart).toHaveTextContent('再起動されることがあります');
+    expect(restart).not.toHaveTextContent('自動で再起動されます（');
+    expect(putCalls()).toHaveLength(0);
   });
 
-  // T-75: 送る前に「消費側が再起動する」旨を項目ごとに出す。自動で作り直される消費側と、OpenD（手動）を書き分ける。
-  it('tells before writing that the consumer restarts, and that OpenD needs a manual restart', async () => {
+  // T-75: OpenD が消費する項目は、書き込みでは再起動しないこと・手動の再起動・再認証を確認の段で出し、
+  // 書き込み後も「手動で再起動するまで反映されない」を出す。
+  it('confirms that OpenD does not restart on write and must be restarted by hand', async () => {
     mockKindApi();
     const user = userEvent.setup();
     await renderPage();
 
-    const app = within(await openForm(user, '株式自動売買の外部 API キーと通知'));
-    expect(app.getByTestId('secret-restart-note')).toHaveTextContent('自動で再起動されます');
-    expect(app.getByTestId('secret-restart-note')).toHaveTextContent('稼働中の処理を中断');
-    expect(app.getByTestId('secret-restart-note')).not.toHaveTextContent('OpenD');
-    await user.click(app.getByRole('button', { name: '閉じる' }));
-
     const moomoo = within(await openForm(user, 'moomoo 証券のログイン情報'));
-    expect(moomoo.getByTestId('secret-restart-note')).toHaveTextContent(
-      'OpenD は自動では再起動されません',
+    await user.type(moomoo.getByLabelText('新しい値'), PLACEHOLDER);
+    await user.type(moomoo.getByLabelText('新しい値（確認のためもう一度）'), PLACEHOLDER);
+    await user.click(moomoo.getByRole('button', { name: 'このプロパティを更新する' }));
+
+    const restart = within(await screen.findByRole('dialog')).getByTestId('secret-restart-confirm');
+    expect(restart).toHaveTextContent('OpenD');
+    expect(restart).toHaveTextContent('moomoo 証券との接続');
+    expect(restart).toHaveTextContent('この書き込みでは OpenD は再起動しません');
+    expect(restart).toHaveTextContent('kubectl -n ai-stock-trading rollout restart deploy/opend');
+    expect(restart).toHaveTextContent('SMS');
+    expect(restart).not.toHaveTextContent('自動で再起動されます');
+
+    await confirmWrite(user);
+    await waitFor(() => expect(putCalls()).toHaveLength(1));
+    expect(await moomoo.findByTestId('secret-restart-after')).toHaveTextContent(
+      'OpenD を手動で再起動するまで',
     );
-    expect(moomoo.getByTestId('secret-restart-note')).toHaveTextContent(
-      'kubectl -n ai-stock-trading rollout restart deploy/opend',
+  });
+
+  // T-76（ADR-0110 決定 3・#1523）: 自動で作り直される項目は、送信の押下で確認ダイアログを開き、再起動する消費側・
+  // 断たれ得る処理・配備していない環境の一文を出す。初期フォーカスは取消。取消で送らず、確認で初めて送る。
+  // 🔴 別の再起動の操作は無い（ダイアログの操作は「やめる」と「書き込む」の 2 つだけ）。
+  it('asks for a restart confirmation before writing an item whose consumer is re-created automatically', async () => {
+    mockKindApi();
+    const user = userEvent.setup();
+    await renderPage();
+    const app = within(await openForm(user, '株式自動売買の外部 API キーと通知'));
+
+    await user.type(app.getByLabelText('新しい値'), PLACEHOLDER);
+    await user.type(app.getByLabelText('新しい値（確認のためもう一度）'), PLACEHOLDER);
+    await user.click(app.getByRole('button', { name: 'このプロパティを更新する' }));
+
+    const dialogElement = await screen.findByRole('dialog');
+    const dialog = within(dialogElement);
+    expect(
+      dialog.getByRole('heading', { name: 'このプロパティを書き込みますか？' }),
+    ).toBeInTheDocument();
+    const restart = dialog.getByTestId('secret-restart-confirm');
+    expect(restart).toHaveTextContent('株式自動売買のアプリケーション');
+    expect(restart).toHaveTextContent('売買・市場データと開示情報の取得');
+    expect(restart).toHaveTextContent('自動で再起動されます');
+    expect(restart).toHaveTextContent(
+      '配備していない環境では、再起動するまで書いた値は反映されません',
     );
-    expect(moomoo.getByTestId('secret-restart-note')).not.toHaveTextContent('自動で再起動されます');
+    expect(restart).toHaveTextContent('稼働中の処理を中断');
+    expect(restart).not.toHaveTextContent('OpenD');
+    expect(dialog.getAllByRole('button').map((button) => button.textContent)).toEqual([
+      'やめる',
+      '書き込む',
+    ]);
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'やめる' })).toHaveFocus());
+    // 値の書き込みは旧版で戻せるので破壊的としない（生成だけが danger。陽性は生成の試験）。
+    expect(dialog.getByRole('button', { name: '書き込む' }).className).not.toContain('text-danger');
+    expect(putCalls()).toHaveLength(0);
+
+    // 取消で送らない（陰性）。
+    await user.click(dialog.getByRole('button', { name: 'やめる' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(putCalls()).toHaveLength(0);
+
+    // 確認で送る（陽性対照）。
+    await user.click(app.getByRole('button', { name: 'このプロパティを更新する' }));
+    await confirmWrite(user);
+    await waitFor(() => expect(putCalls()).toHaveLength(1));
+    expect(await app.findByTestId('secret-restart-after')).toHaveTextContent(
+      '自動再起動を配備していない環境では',
+    );
   });
 
   // 05_screens §SC-22「共通シェル: 左ナビ『運用』グループ」・権限外にはメニューを表示しない。

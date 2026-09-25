@@ -3,15 +3,15 @@ title: FR-20 個人資料・Obsidian 同期 API 通信仕様書
 type: api-spec
 status: completed
 created: 2026-08-23
-updated: 2026-09-03
+updated: 2026-09-26
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-19, SC-20]
-adrs: [ADR-0021, ADR-0037, ADR-0054]
-iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract]
-issues: [#451, #1098, #1153, #1154, #1176]
+adrs: [ADR-0021, ADR-0037, ADR-0054, ADR-0105, ADR-0110]
+iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0464]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260926_1521_plugin-keep-both-source-note-tags]
+issues: [#451, #1098, #1153, #1154, #1176, #1521, planning#652]
 -->
 
 # 通信仕様書: 個人資料・Obsidian 同期 API
@@ -67,7 +67,7 @@ issues: [#451, #1098, #1153, #1154, #1176]
 
 push の `baseVersion`（クライアントが最後に見た版）と現在版の不一致で返す。
 自動解決しない。クライアントは pull で現在版を取得し、利用者の選択
-（ローカル採用＝再 push／サーバ採用＝上書き／両方残す＝別パスで新規 push）に従う。
+（ローカル採用＝再 push／サーバ採用＝上書き／両方残す＝別パスで新規 push。元のノートの ID を添える）に従う。
 
 409 は他に 2 形ある。クライアントは `error` で区別する。**push とリネームは同じ 3 形を返す**ので、
 クライアントの解析は 1 本で足りる。
@@ -77,6 +77,28 @@ push の `baseVersion`（クライアントが最後に見た版）と現在版�
 | `version_conflict` | 更新の `baseVersion`／リネームの `version` が現在版と不一致 | `serverVersion` / `serverUpdatedAt` |
 | `deleted` | 対象がサーバ側で論理削除済み | `purgeAt` |
 | `vault_path_conflict` | 新規作成・リネームの `vaultPath` が既存の有効な資料と重なる | `vaultPath` |
+
+## push の契約（`POST /private-notes/sync/notes`）
+
+```json
+{
+  "noteId": null,
+  "vaultPath": "notes/memo (ローカル 20260926-0900).md",
+  "title": "memo (ローカル 20260926-0900)",
+  "baseVersion": null,
+  "edits": [{ "content": "…", "editedAt": "…" }],
+  "sourceNoteId": "3f2c…"
+}
+```
+
+- `noteId` が無ければ新規作成（201）、有れば更新（200。`baseVersion` 必須＝楽観ロック）。`edits` の 1 要素が 1 版である。
+- **［2026-09-26 追加］`sourceNoteId`（任意・uuid）は、競合を「両方残す」で解いた写しを送るときに、元のノートの ID を添える項目である。**
+  - **新規作成のときだけ読む。** 更新の push では読まない（既存の資料のタグは変わらない）。
+  - 🔴 **同期トークンの持ち主が所有する個人資料を指すときだけ、その資料のタグを写しへ写す。** 他者の資料・存在しない ID・組織文書の ID では
+    **何も写さず、拒否もしない**（応答は項目が無いときと同じ 201。写しの本文の送信をタグのために止めない。他者の資料の有無も応答に現れない）。
+  - 写すのは**タグだけ**である。露出 3 トグル（3 つとも明示の OFF）・共有先（0 件）・版履歴（`edits` の数から）・機密区分（個人資料の既定）は引き継がない。
+    画面側で競合を解いたときに作られる別名の資料と同じ扱いである。
+  - 項目が無ければ従来どおり（タグは空）。通常の新規作成・サーバ側削除からの作り直しでは送らない。
 
 ## リネームの契約（`POST /private-notes/sync/notes/{id}/move`）
 
