@@ -47,6 +47,8 @@ cat > "$WORK/bin/kubectl" <<'STUB'
 #!/usr/bin/env bash
 echo "kubectl $*" >> "$STUB_LOG"
 S="$STATE"
+# 到達不能なクラスタ（apiserver が応答しない）を模す。
+[ -f "$S/unreachable" ] && { echo "The connection to the server localhost:8080 was refused" >&2; exit 1; }
 ns_arg=""; all=0; args=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -115,6 +117,7 @@ STUB
 cat > "$WORK/bin/helm" <<'STUB'
 #!/usr/bin/env bash
 echo "helm $*" >> "$STUB_LOG"
+[ -f "$STATE/unreachable" ] && { echo "Error: Kubernetes cluster unreachable" >&2; exit 1; }
 case "$1" in
   list) awk '{ print $2 "\t" $1 "\t1\t2026-09-25\tdeployed\tchart-1.0.0\t1.0.0" }' "$STATE/releases" ;;
   uninstall) grep -vx "$4 $2" "$STATE/releases" > "$STATE/tmp" || true; mv "$STATE/tmp" "$STATE/releases" ;;
@@ -135,6 +138,15 @@ STUB
 chmod +x "$WORK/bin/"*
 export PATH="$WORK/bin:$PATH"
 export NS_WAIT_SECONDS=0 NS_POLL_INTERVAL=0
+# 🔴 スタブが外れても実クラスタへ届かないように、kubeconfig を存在しないパスへ向ける（--apply を走らせるため）。
+export KUBECONFIG=/nonexistent
+# スタブが本当に先に解決されることを、何かを走らせる前に確かめる（外れていれば 1 つも走らせない）。
+for bin in kubectl helm k3d nerdctl; do
+  if [ "$(command -v "$bin")" != "$WORK/bin/$bin" ]; then
+    echo "ABORT: $bin がスタブ（$WORK/bin/$bin）ではなく $(command -v "$bin") に解決される。試験を走らせない。" >&2
+    exit 2
+  fi
+done
 
 T=$'\t'
 # 2026-09-11 に実測した「汚れたクラスタ」の縮図。
@@ -167,6 +179,8 @@ dirty_cluster() {
 }
 snapshot() { (cd "$STATE" && find . -type f | sort | xargs cat) | cksum; }
 run_down() { K8S_LOCAL_RUNTIME="${RUNTIME_OVERRIDE:-rancher}" bash "$SCRIPT" "$@" 2>&1; }
+# スタブの記録のうち、読み取り以外の呼び出し（dry-run では 0 件でなければならない）。
+non_read_calls() { grep -Ev '^(kubectl (get|api-resources|config current-context)( |$)|helm list( |$)|k3d cluster list( |$))' "$STUB_LOG"; }
 
 # ---- T-1422-01: 既定（引数なし）は dry-run で、クラスタを一切変えない ----
 dirty_cluster
@@ -179,8 +193,7 @@ assert_eq 'T-1422-01 既定は dry-run: スタブのクラスタ状態が 1 バ�
 # ---- T-1422-02: dry-run が起動するのは読み取りだけ（呼び出しの全数を動詞で判定する） ----
 dirty_cluster
 run_down --dry-run >/dev/null
-NON_READ="$(grep -Ev '^(kubectl (get|api-resources|config current-context)( |$)|helm list( |$)|k3d cluster list( |$))' "$STUB_LOG")"
-assert_eq 'T-1422-02 dry-run: 読み取り以外の呼び出しが 0 件' "$NON_READ" ""
+assert_eq 'T-1422-02 dry-run: 読み取り以外の呼び出しが 0 件' "$(non_read_calls)" ""
 assert_contains 'T-1422-02 dry-run: 呼び出しは記録されている（0 件を緑にしない）' "$(cat "$STUB_LOG")" 'kubectl get namespaces'
 
 # ---- T-1422-03: dry-run の計画が実測の順序どおりに並ぶ ----
@@ -252,15 +265,47 @@ OUT="$(RUNTIME_OVERRIDE=k3d run_down)"; RC=$?
 assert_eq 'T-1422-09 k3d dry-run: 正常終了する' "$RC" "0"
 assert_contains 'T-1422-09 k3d dry-run: 削除を表示する' "$OUT" '(dry-run) k3d cluster delete msp-ast-dev'
 assert_missing 'T-1422-09 k3d dry-run: 削除を起動しない' "$(cat "$STUB_LOG")" 'k3d cluster delete'
+assert_eq 'T-1422-09 k3d dry-run: 読み取り以外の呼び出しが 0 件（k3d の分岐でも同じ判定）' "$(non_read_calls)" ""
+assert_contains 'T-1422-09 k3d dry-run: 呼び出しは記録されている（0 件を緑にしない）' "$(cat "$STUB_LOG")" 'k3d cluster list'
 : > "$STUB_LOG"
 OUT="$(RUNTIME_OVERRIDE=k3d run_down --apply my-cluster)"
 assert_contains 'T-1422-09 k3d apply: 指定したクラスタを削除する' "$(cat "$STUB_LOG")" 'k3d cluster delete my-cluster'
 
 # ---- T-1422-10: kubectl / helm / k3d を起動するのは 4 つの口だけ（静的） ----
-# コメント行を除き、コマンド位置（行頭・; & | ( の後・$( の直後）に現れるものを数える。
-DIRECT="$(grep -nE '(^|[;&|(]|\$\()[[:space:]]*(kubectl|helm|k3d)[[:space:]]' "$SCRIPT" | grep -Ev '^[0-9]+:[[:space:]]*#' \
-  | grep -Ev '^[0-9]+:  (kubectl|helm|k3d) "\$@"$')"
-assert_eq 'T-1422-10 静的: 読み取りの口の本体以外から kubectl / helm / k3d を直接起動しない' "$DIRECT" ""
+# 「コマンド位置」を列挙すると漏れる（`if kubectl …` / `then` / `!` / `command` / `xargs` / バッククォート）。
+# 逆に**許す形だけを消してから、語として残る kubectl / helm / k3d をすべて数える**:
+#   引用符の中（表示文言・jsonpath）とコメントを消す → `mutate <bin>`（dry-run では起動しない口）と
+#   `command -v <bin>`（在るかを見るだけ）を消す → 読み取りの口の本体 3 行（行番号で特定）を除く。
+scan_direct() { # file → 残った行（行番号つき）
+  local file="$1" bodies
+  bodies="$(grep -nE '^  (kubectl|helm|k3d) "\$@"$' "$file" | cut -d: -f1 | paste -sd'|' -)"
+  # 二重引用符は「コマンド置換（`$(` / バッククォート）を含まないもの」だけ消す —— `"$(kubectl …)"` は起動である。
+  sed -E -e "s/'[^']*'//g" -e 's/"([^"\\$`]|\\.|\$[^("`])*"//g' -e 's/(^|[[:space:]])#.*$//' \
+         -e 's/mutate[[:space:]]+(kubectl|helm|k3d)//g' -e 's/command -v (kubectl|helm|k3d)//g' "$file" \
+    | grep -nE '(^|[^[:alnum:]_./-])(kubectl|helm|k3d)([^[:alnum:]_-]|$)' \
+    | grep -Ev "^(${bodies:-0}):"
+}
+assert_eq 'T-1422-10 静的: 読み取りの口の本体以外から kubectl / helm / k3d を直接起動しない' "$(scan_direct "$SCRIPT")" ""
+# 検出力の対照: 監査で素通りした形（`if kubectl delete ns bogus` を k3d の分岐へ差し込む）を実物の写しで捕まえる。
+sed '/mutate k3d cluster delete/a\  if kubectl delete ns bogus; then :; fi' "$SCRIPT" > "$WORK/down-mutant.sh"
+assert_contains 'T-1422-10 静的（陰性対照）: k3d の分岐へ差し込んだ `if kubectl delete` を捕まえる' "$(scan_direct "$WORK/down-mutant.sh")" 'kubectl delete ns bogus'
+cat > "$WORK/scan-fixture.sh" <<'FIXTURE'
+if kubectl delete ns a; then :; fi
+  then helm uninstall b
+! kubectl get c
+command kubectl delete d
+echo e | xargs kubectl delete ns
+k3d cluster delete f && :
+x="$(kubectl delete ns g)"
+y=`helm uninstall h`
+mutate kubectl delete ns ok1
+command -v kubectl >/dev/null
+echo "  (dry-run) kubectl delete ns ok2"
+# kubectl delete ns ok3
+kc_read get ns ok4; helm_read list; k3d_read cluster list ok5
+FIXTURE
+assert_eq 'T-1422-10 静的（検出力）: 起動する 8 形をすべて捕まえ、許す 5 形は捕まえない' \
+  "$(scan_direct "$WORK/scan-fixture.sh" | cut -d: -f1 | paste -sd, -)" "1,2,3,4,5,6,7,8"
 assert_eq 'T-1422-10 静的: 読み取りの口の本体はちょうど 3 行' "$(grep -cE '^  (kubectl|helm|k3d) "\$@"$' "$SCRIPT")" "3"
 assert_contains 'T-1422-10 静的: mutate は dry-run で実行ファイルを起動しない' "$(sed -n '/^mutate() {/,/^}/p' "$SCRIPT")" 'echo "  (dry-run) $*"'
 
@@ -278,6 +323,26 @@ assert_before 'T-1422-12 対象外の名前空間の CR は CRD の削除より�
   '(dry-run) kubectl patch certificates.cert-manager.io stray-cert -n default' '(dry-run) kubectl delete crd certificates.cert-manager.io'
 assert_eq 'T-1422-12 対象の名前空間の CR は 6 段目で繰り返さない（5 段目で名前空間ごと消える）' \
   "$(grep -cF 'patch externalsecrets.external-secrets.io ast-secrets' <<<"$OUT")" "1"
+
+# ---- T-1422-13: クラスタを読めないときは緑にしない（読み取りの口は stderr を捨てて 0 件に倒れる） ----
+dirty_cluster
+: > "$STATE/unreachable"
+OUT="$(run_down --apply)"; RC=$?
+assert_eq 'T-1422-13 apply: 到達不能なら exit 1' "$RC" "1"
+assert_contains 'T-1422-13 apply: 読めないことを名指しする' "$OUT" 'NG: クラスタを読めない'
+assert_missing 'T-1422-13 apply: 到達不能で OK を出さない' "$OUT" 'OK: 名前空間は'
+dirty_cluster
+grep -vx default "$STATE/namespaces" > "$STATE/ns.tmp"; mv "$STATE/ns.tmp" "$STATE/namespaces"
+OUT="$(run_down --apply)"; RC=$?
+assert_eq 'T-1422-13 apply: 読めても default が無ければ exit 1（別のクラスタ・空の応答を緑にしない）' "$RC" "1"
+assert_contains 'T-1422-13 apply: default が無いことも同じ文言で名指しする' "$OUT" 'NG: クラスタを読めない'
+
+# ---- T-1422-14: 残りの件数が 256 でも赤（終了コードへ件数を入れると 256 で 0 に巻き戻る） ----
+dirty_cluster
+for i in $(seq 1 256); do echo "leftover-$i"; done >> "$STATE/namespaces"
+OUT="$(run_down --apply)"; RC=$?
+assert_eq 'T-1422-14 apply: 残り 256 件でも exit 1' "$RC" "1"
+assert_contains 'T-1422-14 apply: 件数を正しく出す' "$OUT" 'NG: 256 件が残った'
 
 echo
 echo "k8s-local-down.test.sh: ${PASSED} passed / ${FAILED} failed"

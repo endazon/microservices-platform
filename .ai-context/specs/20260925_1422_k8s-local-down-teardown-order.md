@@ -116,6 +116,16 @@ docs/operations/operations.md:245
 7. CRD の削除前に、5 段目で拾えない CR の finalizer を空にする（T-1422-12）。
 8. 稼働クラスタへの dry-run が読み取りだけで完走する（読み取り専用ガード越しに実測）。
 
+9. 【監査指摘 a】`--apply` の検証は、`kc_read get namespaces` が失敗するか `default` を含まなければ exit 1（T-1422-13）。
+   読み取りの口は stderr を捨てて 0 件に倒れるため、これが無いと到達不能なクラスタで「OK」と出る。
+10. 【監査指摘 b】残りの件数を終了コードで返さない（256 で 0 に巻き戻る）。`[ "$bad" -eq 0 ]` で返す（T-1422-14）。
+11. 【監査指摘 c】静的検査は「コマンド位置の列挙」をやめ、許す形（引用符内・コメント・`mutate <bin>`・`command -v <bin>`・
+    読み取りの口の本体 3 行）を消してから語として残る kubectl / helm / k3d をすべて数える。`if` / `then` / `!` / `command` /
+    `xargs` / バッククォート / `"$( … )"` の 8 形を捕まえ、k3d の分岐へ `if kubectl delete ns bogus` を差し込んだ写しも捕まえる
+    （T-1422-10）。k3d の dry-run の後にも読み取り以外の呼び出しが 0 件であることを見る（T-1422-09）。
+12. 【監査指摘 d】試験は `KUBECONFIG=/nonexistent` を export し、kubectl / helm / k3d / nerdctl がスタブへ解決されることを
+    `command -v` で確かめてから走る（外れていれば 1 つも走らせず exit 2）。
+
 ## 検証
 
 - `bash scripts/k8s-local-down.test.sh`（スタブ。実クラスタ不要）

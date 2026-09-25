@@ -260,7 +260,17 @@ restore_traefik_service() {
   fi
 }
 
-# 残っているものを数えて表示する。戻り値は残りの件数（0 なら緑）。
+# クラスタを読めることを確かめる。読み取りの口は stderr を捨てて「0 件」に倒れるので、
+# **読めないクラスタでは残りも 0 件に見える**（到達不能なのに OK と出す）。8 段目はこれを先に通す。
+cluster_readable() {
+  local names
+  names="$(kc_read get namespaces -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')" || return 1
+  grep -qx default <<<"$names"
+}
+
+# 残っているものを数えて表示する。件数は LEFTOVER_COUNT に置き、0 件のときだけ真を返す
+# （`return <件数>` は 256 で 0 に巻き戻るので使わない）。
+LEFTOVER_COUNT=0
 report_leftovers() {
   local bad=0 ns rel line
   while IFS= read -r ns; do
@@ -281,7 +291,8 @@ report_leftovers() {
     [[ "$rel" =~ $ALLOWED_RELEASES_RE ]] && continue
     echo "  残: helm $rel"; bad=$((bad + 1))
   done < <(list_releases)
-  return "$bad"
+  LEFTOVER_COUNT="$bad"
+  [ "$bad" -eq 0 ]
 }
 
 # --- 本体 ----------------------------------------------------------------------------
@@ -333,10 +344,12 @@ if [ "$MODE" != "apply" ]; then
   echo "  (dry-run) 何も変更していない。--apply で実行すると、ここで残りを数えて 1 つでもあれば exit 1 にする。"
   exit 0
 fi
-report_leftovers
-left=$?
-if [ "$left" -ne 0 ]; then
-  echo "NG: $left 件が残った（上の「残」）。" >&2
+if ! cluster_readable; then
+  echo "NG: クラスタを読めない（namespaces の取得に失敗したか default が無い）。残りを数えられないので緑にしない。" >&2
+  exit 1
+fi
+if ! report_leftovers; then
+  echo "NG: $LEFTOVER_COUNT 件が残った（上の「残」）。" >&2
   exit 1
 fi
 echo "OK: 名前空間は default / kube-* だけ・PV 0・アプリの CRD 0・Helm は kube-system の traefik だけ。"
