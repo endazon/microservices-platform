@@ -3138,6 +3138,183 @@ module.exports = ({ ok, assert }) => {
     assert.match(abac.renderText(r), /粒度 3: 機密区分単位/);
   });
 
+  // --- measure-cutover-inventory: 切替（破棄と再構築）の実在量と作り直しの検証（NFR-05・issue #457・IADR-0463） ---
+  //
+  // 🔴 **収集は稼働環境が要るが、分類・判定・突合は純関数なのでここで全部固定できる。**
+  // 判定は「空か」ではなく「作り直されたか」を時刻で見る。**触らない側（AST の DB・共有 PVC）が
+  // 作り直されていないこと**も同じ重さで見る —— こちらが消しすぎを捕まえる唯一の門である。
+  {
+    const cut = require('./measure-cutover-inventory.js');
+    const fsCut = require('fs');
+    const pathCut = require('path');
+    const REPO_CUT = pathCut.join(__dirname, '..');
+    const expectedCut = cut.loadExpected();
+    const SINCE = '2026-10-01T01:00:00Z';
+    const BEFORE = '2026-09-01T00:00:00Z';
+    const AFTER = '2026-10-01T01:30:00Z';
+
+    // 切替が正しく済んだ後の実測（作り直した側は SINCE 以降・触らない側は以前）。
+    const goodAfter = () => ({
+      namespaces: { infra: 'platform-infra', msp: 'microservices-platform' },
+      realm: 'platform',
+      pvcs: [
+        ...cut.RECREATED_PVCS.map((p) => ({ namespace: p.ns === 'infra' ? 'platform-infra' : 'microservices-platform', name: p.name, created: AFTER })),
+        ...cut.KEPT_PVCS.map((p) => ({ namespace: p.ns === 'infra' ? 'platform-infra' : 'microservices-platform', name: p.name, created: BEFORE })),
+      ],
+      postgres: {
+        databases: [
+          ...expectedCut.databases.msp.map((db) => ({ db, created: AFTER })),
+          ...expectedCut.databases.ast.map((db) => ({ db, created: BEFORE })),
+          { db: 'postgres', created: BEFORE },
+        ],
+        tables: [
+          { db: 'wikijs', table: 'pages', rows: 0 },
+          { db: 'authz_svc', table: 'Policies', rows: expectedCut.abac.policyNames.length },
+        ],
+        authz: { attributeKeys: [...expectedCut.abac.attributeKeys], policyNames: [...expectedCut.abac.policyNames] },
+      },
+      keycloak: {
+        realms: ['master', 'platform', 'ai-stock-trading'],
+        users: [
+          ...expectedCut.realm.humanUsers.map((u) => ({ username: u, createdTimestamp: Date.parse(AFTER) })),
+          { username: 'service-account-bff', createdTimestamp: Date.parse(AFTER) },
+        ],
+        clients: [...expectedCut.realm.clients, 'account', 'admin-cli'],
+      },
+      qdrant: { collections: [{ name: 'knowledge_chunks_voyage_3_5', points: 0 }] },
+      minio: { buckets: ['knowledge-normalized'], objects: 0 },
+      rabbitmq: { queues: [{ name: `${expectedCut.mspQueuePrefixes[0]}q`, messages: 0 }, { name: 'ast.orders', messages: 3 }] },
+      prometheus: { minTime: AFTER },
+    });
+    const failsOf = (data) => cut.evaluate(data, expectedCut, SINCE).filter((f) => f.status === 'fail');
+
+    ok('cutover: 初期化 SQL を MSP 13 本・AST 7 本に分け、MSP 側に AST の DB を 1 本も入れない', () => {
+      const d = expectedCut.databases;
+      assert.strictEqual(d.msp.length, 13);
+      assert.strictEqual(d.ast.length, 7);
+      // 陰性対照: AST の DB（owner=ai）は破棄の側に入らない。
+      for (const db of ['audit_svc', 'order_execution_svc', 'risk_management_svc']) {
+        assert.ok(d.ast.includes(db) && !d.msp.includes(db), db);
+      }
+      // 陽性対照: Wiki.js の DB は MSP 側（6 資産の Wiki.js に当たる）。
+      assert.ok(d.msp.includes('wikijs') && d.msp.includes('document_svc'));
+    });
+
+    ok('cutover: どちらにも分類できない CREATE DATABASE があれば例外（黙って片側へ倒さない）', () => {
+      const sql = 'CREATE DATABASE a_svc;\nALTER DATABASE a_svc OWNER TO kp;\nCREATE DATABASE orphan_svc;\n';
+      assert.throws(() => cut.classifyDatabases(sql), /orphan_svc/);
+      assert.throws(() => cut.classifyDatabases('-- nothing\n'), /0 件走査/);
+    });
+
+    ok('cutover: 作り直しの SQL は MSP の DB だけを DROP / CREATE し、AST の DB 名を含まない', () => {
+      const sql = cut.recreateSql(expectedCut.databases.msp);
+      for (const db of expectedCut.databases.msp) {
+        assert.ok(sql.includes(`DROP DATABASE IF EXISTS ${db} WITH (FORCE);`), db);
+        assert.ok(sql.includes(`CREATE DATABASE ${db} OWNER kp;`), db);
+      }
+      for (const db of expectedCut.databases.ast) assert.ok(!sql.includes(db), `AST の DB が混入: ${db}`);
+    });
+
+    ok('cutover: 正しく作り直した実測は fail 0 件', () => {
+      assert.deepStrictEqual(failsOf(goodAfter()), []);
+    });
+
+    ok('cutover: postgres-data を消して AST の DB まで作り直した実測は fail（消しすぎの陰性対照）', () => {
+      const d = goodAfter();
+      d.pvcs.find((p) => p.name === 'postgres-data').created = AFTER;
+      for (const x of d.postgres.databases) if (expectedCut.databases.ast.includes(x.db)) x.created = AFTER;
+      const fails = failsOf(d).map((f) => f.check);
+      assert.ok(fails.some((c) => c.includes('postgres-data')), fails.join(' / '));
+      assert.ok(fails.some((c) => c.includes('AST の DB audit_svc')), fails.join(' / '));
+    });
+
+    ok('cutover: keycloak-data を消した実測は fail（master と AST の realm まで消える経路）', () => {
+      const d = goodAfter();
+      d.pvcs.find((p) => p.name === 'keycloak-data').created = AFTER;
+      assert.ok(failsOf(d).some((f) => f.check.includes('keycloak-data')));
+    });
+
+    ok('cutover: MSP の DB が作り直されていない実測は fail', () => {
+      const d = goodAfter();
+      d.postgres.databases.find((x) => x.db === 'document_svc').created = BEFORE;
+      assert.ok(failsOf(d).some((f) => f.check.includes('document_svc')));
+    });
+
+    ok('cutover: realm に作り直し前の人間の利用者が残る・旧 realm 名が残る実測は fail', () => {
+      const d = goodAfter();
+      d.keycloak.users.push({ username: 'someone-old', createdTimestamp: Date.parse(BEFORE) });
+      d.keycloak.realms.push(cut.LEGACY_REALM);
+      const fails = failsOf(d).map((f) => f.detail + f.check);
+      assert.ok(fails.some((s) => s.includes('someone-old')), fails.join(' / '));
+      assert.ok(fails.some((s) => s.includes(cut.LEGACY_REALM)), fails.join(' / '));
+      // サービスアカウントは人間の利用者として数えない（作り直し後に Keycloak が作る）。
+      const d2 = goodAfter();
+      d2.keycloak.users.push({ username: 'service-account-old', createdTimestamp: Date.parse(BEFORE) });
+      assert.deepStrictEqual(failsOf(d2), []);
+    });
+
+    ok('cutover: MSP のキューの滞留は fail、MSP 以外のキューの滞留は fail にしない', () => {
+      const d = goodAfter();
+      assert.ok(cut.evaluate(d, expectedCut, SINCE).some((f) => f.status === 'skip' && f.detail.includes('ast.orders=3')));
+      d.rabbitmq.queues[0].messages = 5;
+      assert.ok(failsOf(d).some((f) => f.asset === 'RabbitMQ'));
+    });
+
+    ok('cutover: 収集できなかった資産は fail（読めなかったことを 0 件として扱わない）', () => {
+      const d = goodAfter();
+      d.qdrant = null;
+      d.minio = null;
+      d.rabbitmq = null;
+      d.keycloak = null;
+      const assets = failsOf(d).map((f) => f.asset);
+      for (const a of ['Qdrant', 'MinIO', 'RabbitMQ', 'Keycloak']) assert.ok(assets.includes(a), a);
+    });
+
+    ok('cutover: authz_svc のポリシーが seed とずれた実測は fail、可観測性の PVC が無い配備は skip', () => {
+      const d = goodAfter();
+      d.postgres.authz.policyNames.push('旧ポリシー');
+      d.pvcs = d.pvcs.filter((p) => !['prometheus-data', 'loki-data', 'tempo-data'].includes(p.name));
+      d.prometheus = null;
+      const r = cut.evaluate(d, expectedCut, SINCE);
+      assert.ok(r.some((f) => f.status === 'fail' && f.check.includes('ポリシー')));
+      assert.ok(r.filter((f) => f.status === 'skip' && f.asset === 'PVC').length === 3);
+      assert.ok(!r.some((f) => f.status === 'fail' && f.asset === '可観測性'));
+    });
+
+    ok('cutover: MinIO の ls -R から .minio.sys を除いてバケットとオブジェクトを数える', () => {
+      const ls = [
+        '/data:', '.minio.sys', 'knowledge-normalized', '',
+        '/data/.minio.sys:', 'format.json', '',
+        '/data/.minio.sys/buckets/knowledge-normalized/.metadata.bin:', 'xl.meta', '',
+        '/data/knowledge-normalized:', 'doc-1.md', 'doc-2.md', '',
+        '/data/knowledge-normalized/doc-1.md:', 'xl.meta', '',
+        '/data/knowledge-normalized/doc-2.md:', 'xl.meta', '',
+      ].join('\n');
+      assert.deepStrictEqual(cut.parseMinioListing(ls), { buckets: ['knowledge-normalized'], objects: 2 });
+      assert.deepStrictEqual(cut.parseMinioListing('/data:\n.minio.sys\n\n/data/.minio.sys:\nformat.json\n'), { buckets: [], objects: 0 });
+    });
+
+    ok('cutover: 切替前後の件数突合は DB ごとの行数と各資産の件数を並べる', () => {
+      const before = goodAfter();
+      before.postgres.tables = [{ db: 'document_svc', table: 'Documents', rows: 3630 }];
+      before.qdrant.collections[0].points = 12;
+      const rows = cut.compareCounts(before, goodAfter());
+      const doc = rows.find((r) => r.item.includes('document_svc'));
+      assert.deepStrictEqual([doc.before, doc.after], [3630, null]);
+      assert.deepStrictEqual(rows.filter((r) => r.item === 'qdrantPoints').map((r) => [r.before, r.after]), [[12, 0]]);
+    });
+
+    ok('cutover: 移行仕様書が挙げる引数をスクリプトが受け付け、trace ブロックが IADR を持つ', () => {
+      const doc = fsCut.readFileSync(pathCut.join(REPO_CUT, 'docs', 'migration', 'cutover-discard-and-rebuild.md'), 'utf8');
+      const src = fsCut.readFileSync(pathCut.join(REPO_CUT, 'scripts', 'measure-cutover-inventory.js'), 'utf8');
+      const flags = [...new Set([...doc.matchAll(/measure-cutover-inventory\.js((?: +--[a-z-]+(?: +[^\s`|]+)?)+)/g)]
+        .flatMap((m) => [...m[1].matchAll(/--[a-z-]+/g)].map((x) => x[0])))];
+      assert.ok(flags.length >= 4, `文書から引数を拾えていない: ${flags.join(' ')}`);
+      for (const f of flags) assert.ok(src.includes(`'${f}'`), `スクリプトが受け付けない引数: ${f}`);
+      assert.ok(/<!-- trace:[\s\S]*IADR-0463[\s\S]*-->/.test(doc));
+    });
+  }
+
   // --- measure-search-ndcg: 検索の関連性（nDCG@10）の実測（FR-02 / FR-03・issue #336） ---
   //
   // 🔴 **測定そのものは稼働環境が要るが、集計は純関数なのでここで全部固定できる。**
@@ -6985,6 +7162,9 @@ ${r.stderr}`);
           // 同じ扱いで、判定を返さない（数字を出す）。走らせると検索 API を叩きに行くので、
           // 検査器として spawn される母集合に入れてはならない。
           'measure-search-ndcg.js',
+          // #457 / IADR-0463: 切替（破棄と再構築）の**測定器**。`measure-abac-combinations.js` と同じ扱いで、
+          // 走らせると稼働クラスタへ kubectl を叩きに行く。検査器として spawn される母集合に入れてはならない。
+          'measure-cutover-inventory.js',
           'seed-abac-policies.js',
           // #992 / IADR-0284: 検索検証用文書の初期投入器。`seed-abac-policies.js` と同じ
           // **投入器**であり検査器ではない（副作用を持ち、判定を返さない）。母集合に数えない。
