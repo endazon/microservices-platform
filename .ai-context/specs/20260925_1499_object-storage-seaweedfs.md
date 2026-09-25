@@ -148,6 +148,15 @@ IADR-0296 の前提「害が無い」は MinIO の振る舞いに依存してい
 
 **判断は利用者へ返す**（計画 ADR-0106 の着手可否の注記: 覆す判断は利用者が行う）。選択肢は IADR-0461 には書かず PR で示す。
 
+［2026-09-26 追記 / #1499］**利用者裁定: 案 A（実装の削除手順を直し、SeaweedFS を維持する）。**
+
+- 修正: `S3ObjectStorageClient.DeleteAsync` の versionId 無しの削除を、全版削除の「後」から版の列挙の「前」へ移した
+  （理由と他の直し方の比較は IADR-0461 決定 9。IADR-0296 決定 1 へ日付付きの追記）。
+- 試験: 新設 `S3ObjectStorageClientDeleteMarkerSemanticsTests`（Docker 不要・状態つきの偽 S3）。
+  **修正前のコードで 5 件中 4 件が落ち**（版管理が有効・対象なし・停止・前方一致の隣のキー。無効のケースだけ通る）、修正後は 5 件とも通る。
+  既存の `S3ObjectStorageClientDeleteTests` 7 件も通る。受け入れ試験 `ObjectStorageRoundTripTests` の判定は変えていない。
+- 計画へ環流する（ADR-0106 決定 3 の「配備・試験・名前に閉じる」を越えてアプリのコードを直したため）。起票はコーディネータ。
+
 ## 並行 PR との交差
 
 | PR | 交差 | 扱い |
