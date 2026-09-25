@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-22, FR-05, NFR-11, NFR-18, ADR-0032, ADR-0042, ADR-0095, IADR-0009, IADR-0030, IADR-0096, IADR-0251, IADR-0433]
 author: claude
 created: 2026-09-14
-updated: 2026-09-15
+updated: 2026-09-25
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md
   - planning:projects/microservices-platform/07_adr/ADR-0042_ops-management-ui-production.md
@@ -236,6 +236,15 @@ IADR-0433 決定 3 のまま。**本 ADR は `items[]` を 1 行も動かさな�
   2. `deferred[]`（20 件）を画面で扱うか（IADR-0433 フォローアップ 4 のまま）。
   3. 退避手段の使用記録（ADR-0095 フォローアップ 4。Runbook は引き続き issue コメントへ記録する）。
   4. 監査の抽出クエリ（可観測性基盤）が `outcome=failed` を拾うか確かめる（本 PR では抽出側を触っていない）。
+     > ［2026-09-25 追記 / #1472］**確かめた。抽出側に 2 値前提のものは無い —— そもそも本リポジトリに監査の抽出クエリが無い。**
+     > `AuditOutcome` を名指しするのは記録側（`AuditLogger`）とその試験だけで、`deploy/`・`docs/observability/` の
+     > ダッシュボード・ルール・LogQL に監査の抽出は 0 件、収集器の `logs` パイプラインは `memory_limiter` と `batch` だけで
+     > 値で落とす段も無い（走査の全軸は `.ai-context/specs/20260925_1472_audit-failed-extraction.md`）。
+     > 2 値前提が残っていたのは**記録側**だった: `IAuditLogger` の注記が `outcome` を `granted` / `denied` と書き、
+     > 試験も 2 値しか固定していなかった（実際の値域は SC-22 より前から `recorded` / `reached` を含む）。
+     > 注記を直し、`AuditLoggerTests` に `failed` を足し、`docs/security/security.md`「監査ログ」に「抽出は `Audit=true` で絞り
+     > `outcome` を 2 値で列挙しない」を書いた。**稼働クラスタの Loki で `failed` の行を引く実測は #1472 項目 4（T-40）の場で行う。**
+     > 本フォローアップは閉じた。
   5. **KV の現在版がソフト削除された状態での書き込み**は 502（`vault-rejected`）になり、原因が画面から分からない（決定 10 の帰結。監査指摘 2）。
      区別した結果と文言を返し、FakeVault に「削除済み版への PATCH が 404」を再現させる。
      > ［2026-09-15 追記 / #1467］**IADR-0454 決定 1 で片付けた。** `PATCH` 404 の後に metadata を読み、現在版が削除・破棄なら

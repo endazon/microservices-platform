@@ -95,9 +95,11 @@ public class AuditLoggerTests
 
     // 許可と拒否が同じ形で記録される（outcome だけが違う）。
     // 拒否だけ落とす実装は「監査はあるが拒否が見えない」という最も危険な壊れ方になる。
+    // SC-22, IADR-0453 フォローアップ 4 (#1472): 失敗（"failed"）も同じ形で記録する。outcome は 2 値ではない。
     [Theory]
     [InlineData("granted")]
     [InlineData("denied")]
+    [InlineData("failed")]
     public void 許可も拒否も同じ形で記録する(string outcome)
     {
         var (sut, log) = Build();
