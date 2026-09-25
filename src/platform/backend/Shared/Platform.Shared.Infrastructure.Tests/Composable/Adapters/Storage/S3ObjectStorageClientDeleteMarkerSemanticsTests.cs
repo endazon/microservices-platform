@@ -37,12 +37,18 @@ public class S3ObjectStorageClientDeleteMarkerSemanticsTests
     //       Suspended … "null" 版を null の delete marker で置き換える
     //       Off       … "null" 版（唯一の版）を消す
     //   - ListVersions: Prefix の前方一致で全キーの版を返す（Off のバケットでも versionId "null" として返る）。
-    private sealed class VersionedBucketS3(Versioning versioning)
+    //     pageSize を与えると 1 応答をその件数で切り、IsTruncated と KeyMarker / VersionIdMarker で続きを返す
+    //     （並びはキー昇順・同じキーの中は新しい順。marker の版が途中で消えても、その位置の次から返す）。
+    //   - Versioning は途中で切り替えられる（有効 → 停止のバケットを作るため）。
+    private sealed class VersionedBucketS3(Versioning versioning, int pageSize = int.MaxValue)
         : AmazonS3Client(new BasicAWSCredentials("dummy", "dummy"),
             new AmazonS3Config { ServiceURL = "http://127.0.0.1:1", ForcePathStyle = true })
     {
         private readonly Dictionary<string, List<S3ObjectVersion>> _versions = [];
+        private readonly Dictionary<(string Key, string VersionId), int> _seq = [];
         private int _next;
+
+        public Versioning Mode { get; set; } = versioning;
 
         public void Seed(string key, int count)
         {
@@ -55,9 +61,15 @@ public class S3ObjectStorageClientDeleteMarkerSemanticsTests
         private void Put(string key)
         {
             var list = Versions(key);
-            var id = versioning == Versioning.Enabled ? $"v{++_next}" : "null";
+            var id = Mode == Versioning.Enabled ? $"v{++_next}" : "null";
             if (id == "null") list.RemoveAll(v => v.VersionId == "null");
-            list.Insert(0, new S3ObjectVersion { Key = key, VersionId = id, IsDeleteMarker = false });
+            Insert(list, new S3ObjectVersion { Key = key, VersionId = id, IsDeleteMarker = false });
+        }
+
+        private void Insert(List<S3ObjectVersion> list, S3ObjectVersion version)
+        {
+            _seq[(version.Key, version.VersionId)] = ++_next;
+            list.Insert(0, version);
         }
 
         private List<S3ObjectVersion> Versions(string key)
@@ -69,8 +81,9 @@ public class S3ObjectStorageClientDeleteMarkerSemanticsTests
         public override Task<ListVersionsResponse> ListVersionsAsync(
             ListVersionsRequest request, CancellationToken cancellationToken = default)
         {
-            var hits = _versions
+            var ordered = _versions
                 .Where(kv => kv.Key.StartsWith(request.Prefix ?? "", StringComparison.Ordinal))
+                .OrderBy(kv => kv.Key, StringComparer.Ordinal)
                 .SelectMany(kv => kv.Value.Select((v, i) => new S3ObjectVersion
                 {
                     Key = v.Key,
@@ -79,7 +92,28 @@ public class S3ObjectStorageClientDeleteMarkerSemanticsTests
                     IsLatest = i == 0
                 }))
                 .ToList();
-            return Task.FromResult(new ListVersionsResponse { Versions = hits, IsTruncated = false });
+
+            // marker より後ろだけを返す（marker の版が消えていても、記録した並び順の位置で比べる）。
+            if (request.KeyMarker is not null)
+            {
+                var markerSeq = request.VersionIdMarker is not null
+                    && _seq.TryGetValue((request.KeyMarker, request.VersionIdMarker), out var ms) ? ms : int.MaxValue;
+                ordered = ordered.Where(v =>
+                {
+                    var byKey = string.CompareOrdinal(v.Key, request.KeyMarker);
+                    return byKey > 0 || (byKey == 0 && _seq[(v.Key, v.VersionId)] < markerSeq);
+                }).ToList();
+            }
+
+            var page = ordered.Take(pageSize).ToList();
+            var truncated = ordered.Count > page.Count;
+            return Task.FromResult(new ListVersionsResponse
+            {
+                Versions = page,
+                IsTruncated = truncated,
+                NextKeyMarker = truncated ? page[^1].Key : null,
+                NextVersionIdMarker = truncated ? page[^1].VersionId : null
+            });
         }
 
         public override Task<DeleteObjectResponse> DeleteObjectAsync(
@@ -92,14 +126,14 @@ public class S3ObjectStorageClientDeleteMarkerSemanticsTests
                 return Task.FromResult(new DeleteObjectResponse());
             }
 
-            switch (versioning)
+            switch (Mode)
             {
                 case Versioning.Enabled:
-                    list.Insert(0, new S3ObjectVersion { Key = request.Key, VersionId = $"m{++_next}", IsDeleteMarker = true });
+                    Insert(list, new S3ObjectVersion { Key = request.Key, VersionId = $"m{++_next}", IsDeleteMarker = true });
                     break;
                 case Versioning.Suspended:
                     list.RemoveAll(v => v.VersionId == "null");
-                    list.Insert(0, new S3ObjectVersion { Key = request.Key, VersionId = "null", IsDeleteMarker = true });
+                    Insert(list, new S3ObjectVersion { Key = request.Key, VersionId = "null", IsDeleteMarker = true });
                     break;
                 default:
                     list.RemoveAll(v => v.VersionId == "null");
@@ -175,5 +209,31 @@ public class S3ObjectStorageClientDeleteMarkerSemanticsTests
 
         s3.VersionsOf(Key).Should().BeEmpty();
         s3.VersionsOf(Key + ".bak").Should().HaveCount(2);
+    }
+
+    // 版管理を有効にしてから停止したバケット: 有効の間の版（v…）と停止後の null 版が混ざる。どちらも残さない。
+    [Fact]
+    public async Task 版管理を有効から停止へ切り替えたバケットでも全版を残さない()
+    {
+        var s3 = new VersionedBucketS3(Versioning.Enabled);
+        s3.Seed(Key, 2);
+        s3.Mode = Versioning.Suspended;
+        s3.Seed(Key, 1);
+
+        await Sut(s3).DeleteAsync(Uri, TestContext.Current.CancellationToken);
+
+        s3.VersionsOf(Key).Should().BeEmpty("有効の間に積んだ版も、停止後の null 版も残してはならない");
+    }
+
+    // 版の一覧が複数の応答に分かれる（1 応答 2 件）とき、先に撃った削除が作る marker も含めて続きを辿り切る。
+    [Fact]
+    public async Task 版の一覧が複数の応答に分かれても全版を消す()
+    {
+        var s3 = new VersionedBucketS3(Versioning.Enabled, pageSize: 2);
+        s3.Seed(Key, 5);
+
+        await Sut(s3).DeleteAsync(Uri, TestContext.Current.CancellationToken);
+
+        s3.VersionsOf(Key).Should().BeEmpty("IsTruncated を辿らないと 2 件目より後ろの版が残る");
     }
 }
