@@ -73,7 +73,10 @@ public class S3ObjectStorageClientDeleteMarkerSemanticsTests
                 .Where(kv => kv.Key.StartsWith(request.Prefix ?? "", StringComparison.Ordinal))
                 .SelectMany(kv => kv.Value.Select((v, i) => new S3ObjectVersion
                 {
-                    Key = v.Key, VersionId = v.VersionId, IsDeleteMarker = v.IsDeleteMarker, IsLatest = i == 0
+                    Key = v.Key,
+                    VersionId = v.VersionId,
+                    IsDeleteMarker = v.IsDeleteMarker,
+                    IsLatest = i == 0
                 }))
                 .ToList();
             return Task.FromResult(new ListVersionsResponse { Versions = hits, IsTruncated = false });
