@@ -3,15 +3,15 @@ title: ログイン画面 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-23
-updated: 2026-09-11
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
 ids: [SC-13, SC-15, SC-16, UC-05, FR-05]
-adrs: [ADR-0026, ADR-0078, ADR-0094]
-iadrs: [IADR-0197, IADR-0261, IADR-0347, IADR-0427, IADR-0432]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260911_issue-1245_login-existence-disclosure, 20260911_issue-1410_reset-timing-floor]
-issues: [#438, #1245, #1410]
+adrs: [ADR-0026, ADR-0078, ADR-0094, ADR-0113]
+iadrs: [IADR-0197, IADR-0261, IADR-0347, IADR-0427, IADR-0432, IADR-0468]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260911_issue-1245_login-existence-disclosure, 20260911_issue-1410_reset-timing-floor, 20260926_1541_timing-rank-sum-test]
+issues: [#438, #1245, #1410, #1541]
 -->
 
 # テスト仕様書: ログイン画面
@@ -143,6 +143,8 @@ T-01・T-04・T-07 が**その裏返し（正常・対象外で鳴らないこ�
 - 🔴 **所要時間の合否**（T-12）。**［2026-09-11 更新］判定条件そのものは定まったが、
   ログイン経路は明示的にその対象外とされた。** 定まったのは「測定条件を揃えた反復で、実在／非実在の
   中央値の比が自己対照（環境の測定ノイズ）を超えないこと」であり、**反復を前提とする**。
+  ［2026-09-26 追記］リセット申請の経路の判定は、反復で取った標本をまとめた順位和検定（両側・有意水準 1%）へ改まった。
+  **反復を前提とする点は変わらない。**
   🔴 **この経路では反復が成立しない** —— 失敗回数のしきい値があるため標本を増やせず、
   増やせば**実在する利用者だけがロックされて、それ自体が存在オラクルになる**。
   **ロックの無い経路（パスワードリセットの申請）には同じ条件が適用され、判定されている**
