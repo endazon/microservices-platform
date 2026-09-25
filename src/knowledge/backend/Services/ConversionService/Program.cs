@@ -29,6 +29,12 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 
+// NFR-09, FR-12, SC-07, ADR-0109 決定 3, ADR-0084 決定 1, IADR-0465 (#1520): **BFF が中継した利用者の資格情報を
+// 自ら検証する**（他の後段サービスと同じ `AddPlatformAuth`。Keycloak の JWT を `Auth:Authority` の metadata で検証）。
+// 🔴 **これだけでは端点は 1 つも閉じない**（`FallbackPolicy` は置かない）—— 門は `/jobs` の群と各操作が持つ
+// （`ConversionJobEndpoints`）。
+builder.Services.AddPlatformAuth(builder.Configuration);
+
 // FR-12, UC-06, SC-07, IADR-0043: 変換ジョブ読み取りモデルの Postgres+EF 永続化。
 // ADR-0002: ConversionService 専用 DB（conversion_svc）。起動時に MigrateAsync でスキーマ最新化。
 var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -179,6 +185,10 @@ using (var scope = app.Services.CreateScope())
         await db.Database.MigrateAsync();
 }
 
+// NFR-09, ADR-0109 決定 3, IADR-0465 (#1520): 認証・認可のミドルウェア（相関 ID を含む。他の後段サービスと同じ）。
+// 端点の登録より前に置く。ヘルスチェックと自己申告は門を持たないので、ここを通っても開いたままである。
+app.UsePlatformMiddleware();
+
 // DB 到達性の readiness ヘルスチェック（/health/ready・/health/live）。
 app.MapPlatformHealthChecks();
 
@@ -187,6 +197,7 @@ app.MapPlatformHealthChecks();
 app.MapPlatformIntrospection();
 
 // FR-12, UC-06, SC-07: 変換ジョブの状況照会・人手補正（BFF 経由でのみ到達）。
+// NFR-09, ADR-0109 決定 3, IADR-0465 (#1520): 5 口すべてが利用者の資格情報で門を判定する。
 app.MapConversionJobEndpoints();
 
 app.Run();

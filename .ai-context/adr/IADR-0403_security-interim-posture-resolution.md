@@ -22,9 +22,10 @@ related_ids:
   - IADR-0377
   - IADR-0379
   - IADR-0458
+  - IADR-0465
 author: claude
 created: 2026-09-06
-updated: 2026-09-25
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0004_authz-abac.md 決定
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md 決定
@@ -159,6 +160,11 @@ Dashboard 10 / Feedback 4 / Notification 3 / Document 15 と**実際より多い
 **要約**: 8 件が R で充足、3 件（10-12）は A が保証を担うのでロール門は無意味、
 2 件（9・13）は**部分充足で残差を持つ**、2 件（14・15）は N で理由が記録済みである。
 
+［2026-09-26 追記 / #1520］🔴 **14 行目（`ConversionService`）は N から R（ロール門）へ動いた。** 計画 ADR-0109 決定 3
+（planning#651）が「BFF が中継した利用者の資格情報を後段が自ら検証する」と定め、[IADR-0465](./IADR-0465_conversion-service-validates-relayed-user-credential.md) が `AddPlatformAuth` と 5 口すべての
+端点の門（群に admin/operator、再変換・図の一覧・人手補正に `AdminOnly`）を掛けた。**見込んでいた S（`ServiceCaller`）ではない** ——
+BFF の中継はエッジであり east-west ではないため（ADR-0109 決定 1）。表の本文は書き換えていない。
+
 ### 決定 4: `ConversionService` は **acceptable（記録された理由つき）**、`IngestionService` は **correct**
 
 🔴 **どちらも defect ではない。** ただし根拠の強さが違うので分けて述べる。
@@ -192,6 +198,10 @@ ESO にある）。**つまり `ServiceCaller` を積む材料は既に配備さ
 
 `IADR-0044` フォローアップ 1（`ConversionService` への認可）は、**本 IADR 決定 4 をもって
 「据え置きを再確認した」として決着させる** —— 新しい作業ではなく、判断の再確認が答えである。
+
+［2026-09-26 追記 / #1520］**本決定は `ConversionService` について [IADR-0465](./IADR-0465_conversion-service-validates-relayed-user-credential.md) 決定 4 が置き換えた。** 本決定の理由
+（「`FallbackPolicy` が無い以上 `AddPlatformAuth` だけでは 1 つの口も塞がらない」）は今も正しく、だから同 IADR は
+`AddPlatformAuth` と**同時に 5 口の端点の門**を掛けた（計画 ADR-0084 決定 1 の端点単位の判定）。`IngestionService` は変わらない（口が無い）。
 
 ### 決定 6: 機械検査は**新設しない**。ただし**既存検査器の母集合の穴は塞ぐ**
 
@@ -312,6 +322,9 @@ ESO マニフェストは **25 本**（`deploy/local/vault/eso/`）で、うち 
      （[[IADR-0458]]）、east-west gRPC 移行は `ConversionService` に及ばない。残差の閉じ方は [[IADR-0458]] 「残るもの」4 が
      計画への環流として持つ。**他の 2 件（`AuthorizationService` REST `/authz/scope`・`LlmGateway` REST 3 口）は
      サービス → サービス（または BFF 自身の s2s）であり、本フォローアップのまま変わらない。**
+     ［2026-09-26 追記 / #1520］**`ConversionService` 5 口の残差は閉じた。** 計画 ADR-0109 決定 3（planning#651）が解消の経路を
+     「後段が中継された利用者の資格情報を自ら検証する」に置き換え、[IADR-0465](./IADR-0465_conversion-service-validates-relayed-user-credential.md) がそれを実装した（形は N → R）。
+     計画 ADR-0084 決定 4（暫定条項での追認）は役目を終える（計画側の記録は ADR-0109 フォローアップ 3）。
 
 ## 計画への環流
 

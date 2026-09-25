@@ -13,9 +13,10 @@ related_ids:
   - IADR-0127
   - IADR-0128
   - IADR-0154
+  - IADR-0465
 author: claude
 created: 2026-07-09
-updated: 2026-08-10
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/03_usecases/01_usecases.md
@@ -81,6 +82,13 @@ SC-07 は変換状況・失敗ジョブの一覧と人手補正（再変換）�
    > やり直し**・**補正版を正とする**・**マージは採らない**）に基づき、本 ADR が想定していた口とは
    > **範囲の違う別の決定**を置いている。
    > **本 ADR の決定 1〜3 は引き続き有効**である（読み取りモデル・照会・再変換）。
+
+   > **［2026-09-26 追記 / #1520］本決定 3 の「ワーカー自身は最小 HTTP サーフェスに留め認可を課さない」は、ConversionService の `/jobs` について [IADR-0465](./IADR-0465_conversion-service-validates-relayed-user-credential.md) 決定 4 が置き換えた。**
+   > 計画 ADR-0109 決定 3（利用者裁定 2026-09-26・planning#651）が、BFF の中継をエッジと分類したうえで
+   > 「後段は中継された利用者の資格情報を自ら検証する。ConversionService も検証する」と定めたためである。
+   > ConversionService は `AddPlatformAuth` を持ち、`/jobs` の 5 口すべてに **BFF と同じロール**の端点の門を掛ける
+   > （照会 = 管理者・運用者、再変換・図の一覧・人手補正 = 管理者のみ）。**BFF の門と代償統制（ネットワーク分離・mTLS）は外さない。**
+   > 本文は書き換えていない。
 
 ## 根拠 / 代替案
 
