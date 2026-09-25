@@ -17,9 +17,9 @@ related_specs:
   - "../adr/IADR-0090_grafana-keycloak-oidc-generic-oauth.md"
   - "../adr/IADR-0091_local-edge-aggregation-traefik.md"
   - "../adr/IADR-0024_object-storage-minio-buckets-and-access.md"
-  - "../../deploy/helm/microservices-platform/templates/minio.yaml"
+  # ［2026-09-25 追記 / #1499］ここにあった helm の templates/minio は IADR-0461 で撤去した（SeaweedFS へ差し替え）
   - "../../deploy/local/edge/README.md"
-  - "../../deploy/local/minio-oidc/README.md"
+  # ［2026-09-25 追記 / #1499］ここにあった deploy/local/minio-oidc の README は IADR-0461 で撤去した（Console の SSO を撤去）
   - "../../deploy/keycloak/microservices-platform-realm.json"
   - "../../scripts/k8s-local-up.sh"
 ---

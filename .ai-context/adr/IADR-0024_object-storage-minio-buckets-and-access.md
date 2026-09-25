@@ -9,9 +9,10 @@ related_ids:
   - UC-06
 author: claude
 created: 2026-07-07
-updated: 2026-08-28
+updated: 2026-09-25
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0015_object-storage-minio.md
+  - planning:projects/microservices-platform/07_adr/ADR-0106_object-storage-seaweedfs.md
   - planning:projects/microservices-platform/07_adr/ADR-0014_object-storage.md
   - planning:projects/microservices-platform/02_requirements/01_requirements.md (FR-06, FR-12)
   - planning:projects/microservices-platform/03_usecases/01_usecases.md (UC-03, UC-06)
@@ -85,6 +86,11 @@ ADR-0015（計画リポ） が
     永続化した文書は存在しない（旧実装は永続化せず、実クライアントは本 PR で初めて有効化される）ため、
     実クライアント有効化に伴う旧バケットへの読み取り失敗も発生しない。以降のデータは新形式で一貫する。
 - **配備**: docker-compose と Helm に MinIO を追加。資格情報は compose=`.env`、helm=Secret（`minio-credentials`）。
+  <!-- ［2026-09-25 追記 / #1499］本項と次項（バックアップの方式例）は [IADR-0461](./IADR-0461_object-storage-seaweedfs-deployment.md) 決定 6 で改めた。
+  製品は SeaweedFS（計画 `ADR-0015` は Superseded by `ADR-0106`）、Secret は `object-storage-credentials`、
+  バケット複製の方式例は `mc mirror` から S3 互換の同期ツール（`aws s3 sync` 等）／ボリュームスナップショットへ。
+  **参照 URI・バケット／キー設計・バージョニング・アクセス制御・共有クライアントは改めていない**（`ADR-0106` 決定 3）。
+  **本文は書き換えない。配備の現行の正は IADR-0461 である。** -->
 - **バックアップ・保持方針（運用）**: バケットバージョニングで論理削除・上書き履歴を保持し、実体バックアップは
   MinIO バケット複製（`mc mirror` もしくはボリューム／PVC スナップショット）を定期実行する。保持期間・
   ライフサイクル（古いバージョンの失効）は運用仕様で環境別に定める（本 IADR は既定＝バージョニング有効まで）。
