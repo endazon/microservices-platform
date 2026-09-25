@@ -13,7 +13,7 @@ namespace Knowledge.IntegrationTests.Fixtures;
 // （testcontainers/testcontainers-dotnet#1769。理由は「MinIO のイメージが公開されなくなった」）。
 // そのため専用モジュールではなく**汎用の `ContainerBuilder`** で組む（ADR-0106 決定 4 の注記）。
 //
-// 🔴 **起動形は配備（docker-compose / helm）と同じにする。** 受け入れ試験が確かめたいのは
+// 🔴 **起動形（起動スクリプト・引数）は配備（docker-compose / helm）と同じにする。** 受け入れ試験が確かめたいのは
 // 「配備する形の SeaweedFS が、実装の使う S3 機能を満たすか」であり、試験だけ別の起動形で
 // 通しても配備の保証にならない。引数の意味は IADR-0461 決定 2 が持つ。
 public static class SeaweedFsContainer
@@ -40,12 +40,17 @@ public static class SeaweedFsContainer
     public static readonly string[] ServerArguments =
     [
         "server",
-        // 内部の master / volume / filer は loopback だけで待ち受け、S3 だけを外へ開く。
+        // 内部の master / volume / filer は loopback だけで待ち受ける。
         "-ip=127.0.0.1",
         "-ip.bind=127.0.0.1",
         "-s3",
+        // S3 ゲートウェイは HTTP（8333）と gRPC（18333）の 2 口を同じ -s3.ip.bind で開く。
+        // gRPC だけを loopback に置く手段は 4.47 に無い（weed/command/s3.go 438 行。IADR-0461 決定 10）。
         "-s3.ip.bind=0.0.0.0",
         "-s3.port=8333",
+        // gRPC の口は既定（0 ＝ 10000 + s3.port）に任せず明示する。管理用 RPC（PutIdentity 等）を持つため、
+        // 起動スクリプトが署名鍵を与えて認証を必須にし（StartupScript）、配備では NetworkPolicy で 8333 以外を塞ぐ。
+        "-s3.port.grpc=18333",
         // 使わない付属の口（Iceberg REST カタログ・Lance）は閉じる。
         "-s3.port.iceberg=0",
         "-s3.port.lance=0",
@@ -53,11 +58,25 @@ public static class SeaweedFsContainer
     ];
 
     /// <summary>
+    /// コンテナの起動スクリプト（<c>/bin/sh -c</c> へ渡す）。引数は <see cref="ServerArguments"/> を位置引数で受け取る。
+    /// </summary>
+    /// <remarks>
+    /// 🔴 [[IADR-0461]] 決定 10 (#1499): S3 ゲートウェイの gRPC（管理用 RPC <c>PutIdentity</c> / <c>PutPolicy</c> 等）は、
+    /// 署名鍵 <c>jwt.filer_signing.key</c> が空だと**認証なしで通る**（<c>weed/s3api/s3api_server_grpc.go</c> 24〜31 行）。
+    /// 鍵は viper の環境変数 <c>WEED_JWT_FILER_SIGNING_KEY</c> で与えられる（<c>weed/util/config.go</c> 120〜122 行）。
+    /// **鍵を使うのは同じプロセスの filer と S3 ゲートウェイだけ**なので、起動のたびに乱数で作り、どこにも保存しない
+    /// （Secret にも Git にも置かない。外部に鍵を知る必要のある相手はいない）。compose・helm と同じ文字列である。
+    /// </remarks>
+    public const string StartupScript =
+        "export WEED_JWT_FILER_SIGNING_KEY=\"$(head -c 32 /dev/urandom | base64 | tr -d '\\n')\"; exec /entrypoint.sh \"$@\"";
+
+    /// <summary>
     /// コンテナを組む。資格情報は環境変数 `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` で渡す
     /// （SeaweedFS はこれを静的な管理者 ID として読み、認証を有効にする）。
     /// </summary>
     public static IContainer Build(string accessKey, string secretKey) =>
         new ContainerBuilder(Image)
+            .WithEntrypoint("/bin/sh", "-c", StartupScript, "seaweedfs")
             .WithCommand(ServerArguments)
             .WithEnvironment("AWS_ACCESS_KEY_ID", accessKey)
             .WithEnvironment("AWS_SECRET_ACCESS_KEY", secretKey)

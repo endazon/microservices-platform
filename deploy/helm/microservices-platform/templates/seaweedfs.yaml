@@ -5,7 +5,13 @@
 # 読み取りは ABAC を強制するサービス経由。管理 Console は持たない（ADR-0106 決定 6 / IADR-0461 決定 5）。
 #
 # 起動形（IADR-0461 決定 2）: 1 プロセスの `weed server` に master / volume / filer / S3 を同居させる。
-#   - 内部の master・volume・filer は loopback（127.0.0.1）だけで待ち受け、Pod の外へは S3 の 1 口だけを開く。
+#   - 内部の master・volume・filer は loopback（127.0.0.1）だけで待ち受ける。
+#   - 🔴 S3 ゲートウェイは **HTTP（8333）と gRPC（18333）の 2 口**を同じ `-s3.ip.bind` で開く（4.47 に gRPC だけを
+#     loopback へ置く手段は無い。weed/command/s3.go 438 行）。gRPC は管理用 RPC（PutIdentity / PutPolicy 等）を持ち、
+#     署名鍵が空だと認証なしで通るため、次の 2 段で塞ぐ（IADR-0461 決定 10）:
+#       1. 起動のたびに乱数の署名鍵を与え、gRPC の管理用 RPC に認証を必須にする（下の command）
+#       2. NetworkPolicy で Pod への ingress を TCP 8333 だけにする（networkPolicy.enabled のとき。本ファイル末尾）
+#     Service が公開するのも 8333 だけである。
 #   - 🔴 `-master.telemetry=false` を外さないこと。**SeaweedFS はテレメトリが既定で有効**であり
 #     （送信先 telemetry.seaweedfs.com）、外すと外部送信が起きる（ADR-0106 決定 5 / 08_data-egress-policy）。
 #   - 資格情報は AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY。SeaweedFS はこれを静的な管理者 ID として読み、
@@ -38,7 +44,16 @@ spec:
           # ADR-0106 決定 5 / ADR-0107 決定 3: digest で固定する（タグは読みやすさのために残す）。
           image: "{{ $s.registry }}/{{ $s.image }}:{{ $s.tag }}{{ if $s.digest }}@{{ $s.digest }}{{ end }}"
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
-          # イメージの entrypoint が `server` の先頭に `-dir=/data` を足す。
+          # IADR-0461 決定 10: 起動のたびに乱数の署名鍵（WEED_JWT_FILER_SIGNING_KEY）を作ってから
+          # イメージの entrypoint へ渡す（entrypoint が `server` の先頭に `-dir=/data` を足す）。
+          # 鍵が空だと S3 ゲートウェイの gRPC（18333）の管理用 RPC が認証なしで通る。鍵を使うのはこの
+          # プロセスの filer と S3 だけなので、Secret にも Git にも置かない。
+          # compose・Knowledge.IntegrationTests の SeaweedFsContainer.StartupScript と同じ文字列である。
+          command:
+            - /bin/sh
+            - -c
+            - 'export WEED_JWT_FILER_SIGNING_KEY="$(head -c 32 /dev/urandom | base64 | tr -d ''\n'')"; exec /entrypoint.sh "$@"'
+            - seaweedfs
           args:
             - server
             - -ip=127.0.0.1
@@ -46,6 +61,7 @@ spec:
             - -s3
             - -s3.ip.bind=0.0.0.0
             - -s3.port={{ $s.port }}
+            - -s3.port.grpc=18333
             - -s3.port.iceberg=0
             - -s3.port.lance=0
             - -master.telemetry=false
@@ -119,5 +135,42 @@ spec:
   resources:
     requests:
       storage: {{ $s.persistence.size }}
+{{- end }}
+{{- /* IADR-0461 決定 10 (#1499): SeaweedFS の Pod へ入ってよいのは同 Namespace からの TCP <port>（S3 HTTP）だけ。
+       gRPC（18333）など他の口へは届かせない。networkpolicy.yaml の allow-intra-namespace は本 Pod を除外している
+       （NetworkPolicy は許可の和なので、除外しないと同 Namespace の全ポートが開いたままになる）。
+       Egress は allow-intra-namespace と同じ（同 Namespace ＋ DNS）に揃える。 */}}
+{{- if .Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-seaweedfs-s3-only
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: seaweedfs
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: {{ $s.port }}
+  egress:
+    - to:
+        - podSelector: {}
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
 {{- end }}
 {{- end }}
