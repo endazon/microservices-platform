@@ -22,6 +22,9 @@ namespace Platform.Shared.Infrastructure.Foundation.Introspection;
 //   ただしログは status で分ける: `UNAUTHENTICATED` / `PERMISSION_DENIED` は**配線不備**
 //   （realm の service account・`platform-service`・Secret の注入漏れ）であり、再起動では直らないので
 //   Error で出す。REST には無かった失敗の種類であり、Warning に混ぜると「一過性の到達不能」に紛れる。
+//   **s2s トークンの取得失敗**（`ServiceToken:ClientId` の注入漏れ・IdP の拒否など）も同じ配線不備なので Error。
+//   取得失敗は CallCredentials の中で起き、gRPC クライアントが例外を包み直すので型では見分けられない ——
+//   発行側を包んで取得失敗に印を付け（`ServiceTokenAcquisitionException`）、例外の連鎖から印を探す。
 //
 // ■ 期限（deadline）: REST のタイムアウトと**同じ `Introspection:TimeoutSeconds`** を引く。
 //   既定の無期限のまま 1 宛先が応答しないと、定期検出の 1 周が止まる。
@@ -67,6 +70,14 @@ public sealed class GrpcServiceIntrospectionCollector(
             ct.ThrowIfCancellationRequested();
             throw;
         }
+        catch (Exception ex) when (FindTokenFailure(ex) is { } tokenFailure)
+        {
+            logger.LogError(tokenFailure.InnerException ?? tokenFailure,
+                "Introspection for {Service} at {Address} could not obtain the caller's service token; "
+                + "check ServiceToken:ClientId / ClientSecret and the token endpoint",
+                service, address);
+            return null;
+        }
         catch (RpcException ex) when (ex.StatusCode is StatusCode.Unauthenticated or StatusCode.PermissionDenied)
         {
             logger.LogError(ex,
@@ -84,7 +95,38 @@ public sealed class GrpcServiceIntrospectionCollector(
     }
 
     private GrpcChannel CreateChannel(string address) =>
-        GrpcClientExtensions.CreatePlatformChannel(address, tokenProvider);
+        GrpcClientExtensions.CreatePlatformChannel(address, new MarkingTokenProvider(tokenProvider));
+
+    // 例外の連鎖（InnerException と RpcException.Status.DebugException）から取得失敗の印を探す。
+    private static ServiceTokenAcquisitionException? FindTokenFailure(Exception? ex)
+    {
+        for (var depth = 0; ex is not null && depth < 8; depth++)
+        {
+            if (ex is ServiceTokenAcquisitionException marked)
+                return marked;
+            ex = ex is RpcException { Status.DebugException: { } debug } ? debug : ex.InnerException;
+        }
+        return null;
+    }
+
+    // 発行側の失敗に印を付ける（取り消しは印を付けずにそのまま通す）。
+    private sealed class MarkingTokenProvider(IServiceTokenProvider inner) : IServiceTokenProvider
+    {
+        public async ValueTask<string> GetTokenAsync(CancellationToken ct)
+        {
+            try
+            {
+                return await inner.GetTokenAsync(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                throw new ServiceTokenAcquisitionException(ex);
+            }
+        }
+    }
+
+    private sealed class ServiceTokenAcquisitionException(Exception inner)
+        : Exception("s2s トークンの取得に失敗しました。", inner);
 
     public void Dispose()
     {

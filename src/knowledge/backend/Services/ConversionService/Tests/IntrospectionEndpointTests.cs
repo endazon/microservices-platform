@@ -10,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Wolverine;
+using Grpc.Core;
 using Grpc.Net.Client;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Routing;
@@ -68,9 +69,13 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
         var act = async () => await client.GetAsync(
             new Pb.GetServiceIntrospectionRequest(), cancellationToken: TestContext.Current.CancellationToken);
 
-        // 認可の登録が無いので要求は受け口の中で落ちる（TestServer はアプリの例外を呼び出し側へ運ぶ。
-        // 実配備では 500 → gRPC の INTERNAL / UNKNOWN）。**匿名で申告が読めることは無い。**
-        await act.Should().ThrowAsync<Exception>();
+        // 認可の登録も認可ミドルウェアも無いので、要求は受け口の手前（EndpointMiddleware）で
+        // 「認可メタデータを持つのに認可ミドルウェアが無い」例外になる。TestServer はアプリの例外を呼び出し側へ運び、
+        // gRPC クライアントはそれを INTERNAL に包む（実配備では 500 → INTERNAL）。**匿名で申告が読めることは無い。**
+        // 🔴 status と文言まで見る —— 例外型だけだと、輸送の失敗（接続できない等）でも緑になる。
+        var ex = (await act.Should().ThrowAsync<RpcException>()).Which;
+        ex.StatusCode.Should().Be(StatusCode.Internal);
+        ex.Status.Detail.Should().Contain("authorization metadata");
 
         // 対照: REST の面は従来どおり申告を返す（gRPC 面を張ったことで REST を壊していない）。
         var rest = await _factory.CreateClient().GetAsync("/internal/introspection", TestContext.Current.CancellationToken);

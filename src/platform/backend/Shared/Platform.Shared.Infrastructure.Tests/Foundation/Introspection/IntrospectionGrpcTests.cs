@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
@@ -283,12 +282,16 @@ public sealed class IntrospectionGrpcTests
             },
         });
 
-        var watch = Stopwatch.StartNew();
-        var result = await collector.CollectAsync(Ct);
-        watch.Stop();
+        // 🔴 期限が効かない実装では収集が返らない。その場合に試験ごと止まらないよう、期限（1 秒）の 15 倍の
+        // 見張りを横に置き、見張りが先に鳴ったら「期限で打ち切られなかった」として落とす。
+        // 通常は 1 秒で収集が返るので、見張りとの競り合いにはならない（大きく離した上限であり、所要時間の判定ではない）。
+        var collect = collector.CollectAsync(Ct);
+        var guard = Task.Delay(TimeSpan.FromSeconds(15), Ct);
+        (await Task.WhenAny(collect, guard)).Should().BeSameAs(collect,
+            "期限（TimeoutSeconds=1）で打ち切られていない —— 何も返さない宛先で収集が止まったままである");
 
+        var result = await collect;
         result.UnreachableServices.Should().BeEquivalentTo(["silent"]);
-        watch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10), "期限（1 秒）で打ち切られる");
         silent.Stop();
         foreach (var c in accepted) c.Dispose();
     }
@@ -325,6 +328,37 @@ public sealed class IntrospectionGrpcTests
         await act.Should().ThrowAsync<OperationCanceledException>();
         silent.Stop();
         foreach (var c in accepted) c.Dispose();
+    }
+
+    private sealed class ThrowingTokenProvider : IServiceTokenProvider
+    {
+        public ValueTask<string> GetTokenAsync(CancellationToken ct) =>
+            throw new InvalidOperationException("ServiceToken:ClientId が未設定である（試験）。");
+    }
+
+    // 🔴 T-15: s2s トークンの取得失敗（`ServiceToken:ClientId` の注入漏れ等）は配線不備 —— 到達不能へ隔離し、
+    // UNAUTHENTICATED / PERMISSION_DENIED と同じく **Error** で出す（Warning の一過性の不達に紛れさせない）。
+    // 生きた宛先に向けるので、Error が出るのは輸送ではなく資格情報のせいである（対照: T-09 は Warning）。
+    [Fact]
+    public async Task Service_token_acquisition_failure_is_unreachable_and_logged_as_error()
+    {
+        await using var grpcTarget = await IntrospectionGrpcTestHost.StartAsync(ct: Ct);
+        var opts = Microsoft.Extensions.Options.Options.Create(new IntrospectionOptions
+        {
+            GrpcServices = new(StringComparer.Ordinal) { ["probe-service"] = grpcTarget.GrpcAddress },
+        });
+        var http = new HttpEffectiveConfigCollector(
+            new PlainClientFactory(), opts, NullLogger<HttpEffectiveConfigCollector>.Instance);
+        var log = new RecordingLogger<GrpcServiceIntrospectionCollector>();
+        using var grpc = new GrpcServiceIntrospectionCollector(new ThrowingTokenProvider(), opts, log);
+
+        var result = await new EffectiveConfigCollector(http, opts, grpc).CollectAsync(Ct);
+
+        result.UnreachableServices.Should().BeEquivalentTo(["probe-service"]);
+        var error = log.OfLevel(LogLevel.Error).Should().ContainSingle().Which;
+        error.Message.Should().Contain("service token");
+        error.Exception.Should().BeOfType<InvalidOperationException>("元の取得失敗をそのまま記録する");
+        log.OfLevel(LogLevel.Warning).Should().BeEmpty();
     }
 
     // T-13: gRPC の宛先が構成されているのに gRPC の収集器が無いのは登録の誤り —— 黙って REST へ倒さず起動で落とす。

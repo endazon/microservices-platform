@@ -628,8 +628,9 @@ JwtBearer と認可の登録を足した —— 無いと面への要求は**毎
 
 🔴 **失敗の畳み方は REST と同じ 2 値である**（申告を得た / 得られなかった）。全 status・s2s トークン取得失敗・期限切れ・
 **空の `service`**（申告として無効）を到達不能へ隔離する —— ドリフト検出の入力の値域を輸送で変えない。
-**ログだけは status で分ける**: `UNAUTHENTICATED` / `PERMISSION_DENIED` は**配線不備**（service account・`platform-service`・
-Secret の注入漏れ。再起動では直らない）なので Error、それ以外は Warning。REST には無かった失敗の種類であり、
+**ログだけは status で分ける**: `UNAUTHENTICATED` / `PERMISSION_DENIED` と **s2s トークンの取得失敗**は**配線不備**
+（service account・`platform-service`・Secret や `ServiceToken` の注入漏れ。再起動では直らない）なので Error、それ以外は Warning。
+取得失敗は gRPC クライアントの中で包み直されて型では見分けられないので、発行側を包んで印を付けて見分ける。REST には無かった失敗の種類であり、
 一過性の到達不能に紛れさせない。
 
 | 項目 | 値 |

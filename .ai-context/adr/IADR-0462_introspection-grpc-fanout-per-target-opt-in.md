@@ -104,8 +104,10 @@ plan_refs:
    キーの和。`GrpcServices` に空でないアドレスが在れば gRPC、無ければ REST（両方に在れば gRPC）。集約は REST だけの収集と同じ 1 つ。
    - **期限**: REST のタイムアウトと同じ `Introspection:TimeoutSeconds` を引く（値を書き写さない）
    - **リトライ**: 持たない（REST も持たない）。定期検出の次の周期が再試行である
-   - **失敗**: 全 status・s2s トークン取得失敗・期限切れ・空の申告を到達不能へ隔離する。`UNAUTHENTICATED` / `PERMISSION_DENIED` は
-     **配線不備**（再起動で直らない）として Error、それ以外は Warning
+   - **失敗**: 全 status・s2s トークン取得失敗・期限切れ・空の申告を到達不能へ隔離する。`UNAUTHENTICATED` / `PERMISSION_DENIED` と
+     **s2s トークンの取得失敗**（`ServiceToken:ClientId` の注入漏れ・IdP の拒否など）は**配線不備**（再起動で直らない）として Error、
+     それ以外は Warning。取得失敗は CallCredentials の中で起き、gRPC クライアントが包み直すので型では見分けられない ——
+     発行側を包んで取得失敗に印を付け、例外の連鎖（`InnerException` と `Status.DebugException`）から印を探す（#1524 の監査指摘）
    - **取り消し**: 呼び出し側の ct による取り消しだけを `OperationCanceledException` で外へ出す（REST と同じ。#1382）
    - **登録**: `AddPlatformConfigInspection` は `GrpcServices` が構成されたときだけ s2s トークンの発行側と gRPC の収集器を登録する
      （無い配備は資格情報を要求しない）。構成されているのに収集器が無ければ**起動時に落とす**（黙って REST へ倒すと、REST の退役の段で初めて露見する）

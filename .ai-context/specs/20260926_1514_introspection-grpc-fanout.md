@@ -111,7 +111,7 @@ plan_refs: []
    集約は 1 つ（`HttpEffectiveConfigCollector.Aggregate`）
    - 期限: `Introspection:TimeoutSeconds`（REST のタイムアウトと同じ値を引く）
    - リトライ: 無し（REST も無し。定期検出の次の周期が再試行）
-   - 失敗: 全 status・トークン取得失敗・期限切れを到達不能へ。`UNAUTHENTICATED` / `PERMISSION_DENIED` は Error ログ（配線不備）
+   - 失敗: 全 status・トークン取得失敗・期限切れを到達不能へ。`UNAUTHENTICATED` / `PERMISSION_DENIED` と s2s トークンの取得失敗は Error ログ（配線不備。取得失敗は［2026-09-26 追記］#1524 の監査指摘で足した）
    - 取り消し: 呼び出し側 ct 由来だけを `OperationCanceledException` で外へ
    - `AddPlatformConfigInspection` は `GrpcServices` が構成されたときだけ s2s トークンと gRPC 収集器を登録する。
      構成されているのに収集器が無ければ起動時に落とす
@@ -147,7 +147,8 @@ plan_refs: []
 | M6 | 空の service を受け入れる | 赤 4 |
 | M7 | 呼び出し側の取り消しを到達不能へ畳む | 赤 4 |
 | M8 | gRPC の収集器を登録しない | 赤 4 |
-| M9 | 期限を外す | 赤 3（hang を blame が打ち切り） |
+| M9 | 期限を外す | 赤 3（hang を blame が打ち切り）。［2026-09-26 追記］#1524 の監査指摘で期限の試験に 15 秒の見張りを足し、**hang せず赤 1 で落ちる**ことを確かめた |
+| M11 | s2s トークンの取得失敗の Error 枝を外す（#1524 の監査指摘で追加） | 赤 1 |
 | M10 | 変換サービスの `AddPlatformAuth` を外す（サービス側の配線試験。**当時の形**。のちに Conversion の認証は別作業へ回し、本 PR では足していない） | 赤 1 |
 | — | 変換サービスの明示の `UsePlatformMiddleware` を外す | **緑のまま** —— 登録があれば WebApplication が認証・認可のミドルウェアを自動で挟むため。明示の `Use*` は足さないことにした |
 
