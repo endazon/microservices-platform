@@ -8,8 +8,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ConversionService.Tests.Infrastructure.ExternalServices;
 
-// FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: 参照 URI 変換・縮退・書き込み委譲の単体テスト。
-// 実体（MinIO）を要するラウンドトリップは IntegrationTests の ObjectStorageRoundTripTests を参照。
+// FR-06, FR-12, ADR-0014/ADR-0015（Superseded by ADR-0106）, IADR-0024: 参照 URI 変換・縮退・書き込み委譲の単体テスト。
+// 実体（SeaweedFS）を要するラウンドトリップは IntegrationTests の ObjectStorageRoundTripTests を参照。
 [Trait("TestKind", "Unit")]
 public class ObjectStorageTests
 {

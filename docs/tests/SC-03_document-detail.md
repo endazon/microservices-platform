@@ -3,15 +3,15 @@ title: SC-03 文書詳細／プレビュー テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-13
+updated: 2026-09-25
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, FR-12, FR-13, FR-17, FR-18, FR-19, SC-03, SC-04, SC-05, SC-06, SC-09, SC-18, SC-19, SC-21, UC-01, UC-02, UC-07, UC-10, UC-11]
-adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0036, ADR-0063, ADR-0070, ADR-0073, ADR-0098, ADR-0100, ADR-0101, ADR-0102]
-iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0126, IADR-0272, IADR-0276, IADR-0300, IADR-0323, IADR-0364, IADR-0365, IADR-0386, IADR-0388, IADR-0451]
-specs: [20260804_issue-502_sc01-03-search-flow, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260913_1455_sc03-private-note-display]
-issues: [#1014, #1104, #1187, #1200, #1240, #1254, #1455, #449, #450]
+adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0036, ADR-0063, ADR-0070, ADR-0073, ADR-0098, ADR-0100, ADR-0101, ADR-0102, ADR-0106]
+iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0126, IADR-0272, IADR-0276, IADR-0300, IADR-0323, IADR-0364, IADR-0365, IADR-0386, IADR-0388, IADR-0451, IADR-0461]
+specs: [20260804_issue-502_sc01-03-search-flow, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260913_1455_sc03-private-note-display, 20260925_1499_object-storage-seaweedfs]
+issues: [#1014, #1104, #1187, #1200, #1240, #1254, #1455, #449, #450, #1499]
 -->
 
 # テスト仕様書: 文書詳細／プレビュー
@@ -144,7 +144,7 @@ issues: [#1014, #1104, #1187, #1200, #1240, #1254, #1455, #449, #450]
 
 ## 手動確認（任意）
 
-- 実 MinIO 配備時に `storage://` から実本文が取得されること（未配備時はプレースホルダ）。
+- 実オブジェクトストレージ（SeaweedFS）配備時に `storage://` から実本文が取得されること（未配備時はプレースホルダ）。
 
 <!-- trace-table:
 row1: FR-06, FR-12

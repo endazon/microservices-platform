@@ -1,6 +1,6 @@
 namespace Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
-// FR-06, FR-12, ADR-0014/ADR-0015: S3 互換オブジェクトストレージ（MinIO）への保存・取得ポート。
+// FR-06, FR-12, ADR-0014/ADR-0015（Superseded by ADR-0106）: S3 互換オブジェクトストレージ（SeaweedFS）への保存・取得ポート。
 // 書き込み側（ConversionService）と読み取り側（IngestionService/WikiService）が共有する。
 // 参照 URI は storage://<bucket>/<key>（StorageUri）で表し、実体は既定バケットへ格納する。
 public interface IObjectStorageClient

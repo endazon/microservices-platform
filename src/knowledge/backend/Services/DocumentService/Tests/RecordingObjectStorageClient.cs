@@ -3,7 +3,7 @@ using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace DocumentService.Tests;
 
-// FR-21, ADR-0014/ADR-0015: オブジェクトストレージ（MinIO）の記録用スタブ。
+// FR-21, ADR-0014/ADR-0015（Superseded by ADR-0106）: オブジェクトストレージ（SeaweedFS）の記録用スタブ。
 //
 // **`NullObjectStorageClient`（本番の縮退実装）では受け入れ基準 ⑦ を検証できない** ——
 // あちらは決定的な URI を返すだけで本文を保持しないため、「1 MB 以下の本文が
