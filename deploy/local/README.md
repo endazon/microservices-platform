@@ -52,11 +52,18 @@ kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 #   → http://localhost:5080/health
 ```
 
-破棄:
+破棄（**既定は `--dry-run`**。消す予定のものを順に表示するだけで何も変えない。実行は `--apply`）:
 
 ```bash
-bash scripts/k8s-local-down.sh
+bash scripts/k8s-local-down.sh            # dry-run（読み取りだけ）
+bash scripts/k8s-local-down.sh --apply    # 実行。AST の OpenD の PVC・Vault の保存領域も消える（戻せない）
 ```
+
+Rancher Desktop 経路（内蔵 k3s は残す）では、アプリの Helm → admission webhook → コントローラより長生きする
+finalizer（ESO / ArgoCD）→ 残りの Helm（external-secrets / istio-*）→ 名前空間 → CRD（istio.io / external-secrets.io /
+cert-manager.io / argoproj.io）と Bound でない PV → Traefik の Service の順に撤去し、最後に「名前空間は `default` /
+`kube-*` だけ・PV 0・上の CRD 0・Helm は `kube-system/traefik(-crd)` だけ」を検証する（1 つでも残れば exit 1）。
+順序の根拠は `scripts/k8s-local-down.sh` の冒頭注記。
 
 ### opt-in オーバーレイ（可観測性 / Vault / GitOps・AST#24 / IADR-0077）
 
@@ -135,8 +142,8 @@ PERSIST=0 bash scripts/k8s-local-up.sh
 - **⚠️ PVC の要求容量は縮小できない。** 上表の容量を小さくする変更を**既存クラスタへ再 apply すると API サーバが拒否する**
   （実測: `spec.resources.requests.storage: Forbidden: field can not be less than status.capacity`）。
   縮小したいときは対象 Deployment を `--replicas=0` にしてから PVC を消して作り直す（＝データは失われる）。
-- **保持されるのは Pod の再起動/再作成の範囲**。`bash scripts/k8s-local-down.sh` は k3d 経路ではクラスタごと、
-  Rancher Desktop 経路では `platform-infra` namespace を削除するため、**`down`→`up` の再構築サイクルでは PVC
+- **保持されるのは Pod の再起動/再作成の範囲**。`bash scripts/k8s-local-down.sh --apply` は k3d 経路ではクラスタごと、
+  Rancher Desktop 経路では `platform-infra` ほかアプリの namespace を削除するため、**`down`→`up` の再構築サイクルでは PVC
   （上表のすべて）も消える**（= realm/DB/embeddings/メトリクスは再生成）。PVC を残したまま作り直したいときは `down` を
   使わず `kubectl -n platform-infra rollout restart deploy/keycloak deploy/postgres` 等で Pod のみ入れ替える。
 - **`PERSIST=0`（opt-out）は base の `emptyDir`**（使い捨てスタック専用）。**rabbitmq / redis / otel は emptyDir 継続**

@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-11
-updated: 2026-09-16
+updated: 2026-09-25
 ---
 <!-- trace:
 ids: [SC-22, SC-06, SC-15, FR-05, NFR-11, NFR-18]
 adrs: [ADR-0007, ADR-0032, ADR-0040, ADR-0042, ADR-0095]
 iadrs: [IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433, IADR-0453, IADR-0454, IADR-0456]
-specs: [20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup]
-issues: [#310, #438, #1102, #1411, #1467, #1477, planning#599, planning#635]
+specs: [20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup]
+issues: [#458, #310, #438, #1102, #1411, #1467, #1477, planning#599, planning#635]
 -->
 
 # 運用 Runbook: 画面が使えないときに秘密情報を 1 項目だけコンソールから投入する
@@ -101,8 +101,8 @@ cat deploy/bootstrap/sc22-secret-items.json
 
 ### 2. 値を端末の履歴に残さずに読み込む
 
-```sh
-# -s = 画面へ表示しない。read はシェル履歴に値を残さない。
+```bash
+# -s = 画面へ表示しない。read はシェル履歴に値を残さない（-s / -p は bash の機能。bash で実行する）。
 read -rs -p "value: " SECRET_VALUE && echo
 ```
 
@@ -113,14 +113,15 @@ read -rs -p "value: " SECRET_VALUE && echo
 
 プロパティ 1 つだけを更新する（**同じ KV の他のプロパティに触らない**）。
 
-```sh
-kubectl -n platform-infra exec -i deploy/vault -- sh -c '
+```bash
+printf '%s' "$SECRET_VALUE" | kubectl -n platform-infra exec -i deploy/vault -- sh -c '
   export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"
   vault kv patch -method=patch secret/msp/llm-provider-credentials anthropic-api-key=-
-' <<EOF
-$SECRET_VALUE
-EOF
+'
 ```
+
+［2026-09-25 追記］🔴 **値は `printf '%s'` で渡す。** 本書の初版はヒアドキュメント（`<<EOF`）で渡していたが、
+末尾の改行ごと保管先へ入るおそれがある（入れば長さが 1 多くなり、発行元の値と一致しない）。`bootstrap.sh` も `printf '%s'` で渡している。
 
 - `secret/msp/llm-provider-credentials` と `anthropic-api-key` を、手順 1 で確かめた**実際の
   パスとプロパティ名**に置き換える。
@@ -132,7 +133,8 @@ EOF
   全プロパティを明示して**作る（欠けたプロパティは空になる、と理解した上で行う）。
 - ［2026-09-15 追記］**プロパティの種別が「値そのまま」でない項目**（同ファイルの `properties[]` のオブジェクト要素の `kind`）:
   - `md5-from-password`（例 `ai-stock-trading/moomoo` の `login-pwd-md5`）: **パスワードそのものを書かない。** 小文字 hex の MD5 を書く。
-    手順 2 で読み込んだ値から、表示せずに作って渡す: `printf '%s' "$SECRET_VALUE" | md5sum | cut -d' ' -f1` の出力を `キー名=-` の標準入力へ渡す。
+    手順 2 で読み込んだ値から、表示せずに作って渡す: `printf '%s' "$SECRET_VALUE" | md5sum | cut -d' ' -f1 | tr -d '\n'` の出力を `キー名=-` の標準入力へ渡す
+    （［2026-09-25 追記］`cut` は末尾に改行を付けるので `tr -d '\n'` で落とす。上の `printf '%s'` と同じ理由）。
   - `generate-rsa-pkcs1`（例 `ai-stock-trading/moomoo-rsa` の `opend_rsa.pem`）: **画面の「生成」を使う。** 生成し直すと OpenD に登録済みの鍵との対応が失効する。
     コンソールで作るのは画面が使えないときだけで、RSA 1024 bit の PEM（PKCS1 形式）を Vault Pod の中で作って書き、端末へ出さない。
 
@@ -264,6 +266,6 @@ kubectl -n platform-infra exec deploy/vault -- sh -c '
   なった運用の場ではじめて確かめられる。** 食い違いが出たら本書を直すこと。
 - **本手順は監査にならない。** 記録は人が書く前提であり、**書かなければ残らない。**
   監査ログに乗るのは製品の画面を経由した投入だけである。
-- **本手順は回転（ローテーション）の手順ではない。** 秘密を「新しい値に差し替える」ことはできるが、
+- **本手順は回転（ローテーション）の手順ではない**（回転の手順は [`secret-rotation-runbook.md`](secret-rotation-runbook.md)）。秘密を「新しい値に差し替える」ことはできるが、
   **古い値を無効化する**のは発行元（外部サービス・認証基盤）の仕事であり、本書の射程の外である。
 - **`excluded[]` の項目は本手順でも扱えない。** 扱えないことが設計であり、制限ではない。
