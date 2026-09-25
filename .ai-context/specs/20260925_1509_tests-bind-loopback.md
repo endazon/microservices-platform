@@ -30,7 +30,9 @@ plan_refs:
 
 利用者の指摘（2026-09-25）「Platform.Shared.Infrastructure.Tests が 0.0.0.0 でホストされているので 127.0.0.1 に」を受けた作業のうち、
 **`Platform.Shared.Infrastructure.Tests` の `GrpcListenerBindingTests.cs` と本番 `GrpcListenerExtensions.cs` は
-オーケストレータが別に是正する**（2026-09-25 の指示による射程の分割）。本書と本 PR はこの 2 ファイルに触れない。
+オーケストレータが別に是正した**（2026-09-25 の指示による射程の分割。#1507 / PR #1510、develop `36c51b99` でマージ済み。
+ワイルドカードの陰性対照はソケットを開かない判定の試験へ置き換わった）。本書と本 PR はこの 2 ファイルに触れない。
+本 PR は #1510 を取り込んだ develop に追随してから検証した。
 本書の射程は**それ以外の試験ホスト**である。
 
 ## 母集合（自分で引いた。基点 `origin/develop` `c99cb1e4`、`git rev-parse --is-shallow-repository` = `false`）
