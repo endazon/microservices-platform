@@ -142,7 +142,15 @@ public sealed class AuthorizationServiceRegistrarAttributes(
         }
 
         var scope = await resp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct);
-        if (scope is null) return (false, null);
+        if (scope is null)
+        {
+            // FR-05, #1378: 2xx だが本文が空。非 2xx・不達と同じく「引けなかった」理由を出す
+            // （従前はこの枝だけが無言で `Unavailable` へ倒れていた）。
+            logger.LogWarning(
+                "登録者の認可スコープの応答本文が空でした（HTTP {Status}）。無人アカウントの属性は検証できません。",
+                (int)resp.StatusCode);
+            return (false, null);
+        }
 
         return RegistrarScopeReading.ReadAssignableConfidentiality(scope);
     }
