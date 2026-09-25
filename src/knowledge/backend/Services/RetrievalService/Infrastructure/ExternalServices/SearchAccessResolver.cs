@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Net.Http.Json;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Authz;
@@ -26,8 +27,13 @@ namespace RetrievalService.Infrastructure.ExternalServices;
 // s2s トークンであり、利用者の文脈（userId / 属性 / action）は本文で運ぶ。
 public sealed class SearchAccessResolver(
     IHttpClientFactory httpFactory,
-    AuthzScopeGrpcClient? authzScopeGrpc = null) : ISearchAccessResolver
+    AuthzScopeGrpcClient? authzScopeGrpc = null,
+    ILogger<SearchAccessResolver>? logger = null) : ISearchAccessResolver
 {
+    // FR-05, #1378: スコープ解決の縮退を出す先。**既定 null は既存の直接構築を壊さないため**
+    // （DI は `ILogger<T>` を解決して渡す）。未注入なら出さない。
+    private readonly ILogger _logger = logger ?? NullLogger<SearchAccessResolver>.Instance;
+
     /// <summary>未認証のときに応答へ載せる利用者 ID（判定には使わない）。</summary>
     private const string AnonymousUserId = "anonymous";
 
@@ -62,13 +68,24 @@ public sealed class SearchAccessResolver(
         {
             var resp = await authzClient.PostAsJsonAsync("/authz/scope",
                 new AccessScopeRequest(userId, userAttrs, ScopeAction), ct);
-            return (resp.IsSuccessStatusCode
-                ? await resp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct)
-                : null) ?? new AccessScopeResponse(userId, [], false);
+
+            // FR-05, #1378: 縮退の理由（非 2xx・空本文・不達）は WARN で出す（`AuthzScopeRestLog`）。
+            // **`Granted=false` は出さない**（正当な deny）。戻り値は従来と同じである。
+            if (!resp.IsSuccessStatusCode)
+            {
+                AuthzScopeRestLog.NonSuccess(_logger, resp.StatusCode);
+                return new AccessScopeResponse(userId, [], false);
+            }
+
+            var resolved = await resp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct);
+            if (resolved is null)
+                AuthzScopeRestLog.EmptyBody(_logger, resp.StatusCode);
+            return resolved ?? new AccessScopeResponse(userId, [], false);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
             // 認可サービスへの通信失敗も deny-by-default へ縮退（権限外文書の漏えい防止）。
+            AuthzScopeRestLog.TransportFailure(_logger, ex);
             return new AccessScopeResponse(userId, [], false);
         }
     }
