@@ -1,23 +1,24 @@
 ---
 title: IADR-0093 経路B MinIO Console を Keycloak OIDC(MINIO_IDENTITY_OPENID) で認証し、policy クレームで RBAC を fail-safe deny 既定にする。集約 URL(minio.localhost:50000) をエッジに追加する
 type: impl-adr
-status: Accepted
+status: Superseded
 related_ids:
   - ADR-0017
   - IADR-0024
   - IADR-0090
   - IADR-0091
   - IADR-0220
+  - IADR-0464
 author: claude
 created: 2026-07-21
-updated: 2026-08-17
+updated: 2026-09-25
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ (ADR-0017 サービス間認証・エッジ)
 ---
 
 # IADR-0093: 経路B MinIO Console の Keycloak OIDC 連携とエッジ集約
 
-- 状態: Accepted
+- 状態: **Superseded**（by [IADR-0464](./IADR-0464_object-storage-seaweedfs-deployment.md)・2026-09-25）
 - 日付: 2026-07-21
 - 決定者: claude（実装）
 
@@ -27,6 +28,12 @@ plan_refs:
   エッジ集約 [IADR-0091](./IADR-0091_local-edge-aggregation-traefik.md)。
 - 仕様書: `docs/specs/20260721_issue-353_minio-keycloak-oidc.md`。
 - Issue: #353 子タスク 3（MinIO）。番号採番: develop 最新の IADR max=0092（#359 マージ済）＋1 の **0093**。
+
+> **［2026-09-25 追記 / #1499］本 IADR は [IADR-0464](./IADR-0464_object-storage-seaweedfs-deployment.md) 決定 5 により Superseded である。**
+> オブジェクトストレージの製品が MinIO から SeaweedFS へ替わり（計画 `ADR-0106`。`ADR-0015` は Superseded by `ADR-0106`）、
+> 計画は管理 Console を要求しない（同 決定 6）。SeaweedFS に Console の OIDC は無いため、本 IADR が足した
+> realm の `minio` client・client ロール `consoleAdmin`・`minio-oidc` の Secret / ExternalSecret / Vault の seed・
+> エッジの `minio.localhost` の route・`deploy/local/minio-oidc/` はすべて撤去した。**本文は当時の記録として書き換えない。**
 
 ## コンテキストと課題
 
@@ -98,3 +105,7 @@ helm の OIDC 配線は `minio.oidc.enabled`（既定 false）でゲートし、
 - **policy を built-in 名（consoleAdmin 等）で emit**: Keycloak 側で role→別値の条件マッピングが必要（client role/属性）で
   「既存 realm ロール踏襲」から外れるため、role 名の MinIO ポリシーを作る方式を採用。
 - **client secret を values/manifest に平文**: 非平文原則に反する。Secret + env 上書きに一元化。
+
+## 関連
+
+- Superseded by: [IADR-0464](./IADR-0464_object-storage-seaweedfs-deployment.md)（2026-09-25・#1499）
