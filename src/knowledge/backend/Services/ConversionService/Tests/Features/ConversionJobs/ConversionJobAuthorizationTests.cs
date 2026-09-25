@@ -127,8 +127,9 @@ public class ConversionJobAuthorizationTests
         (await SendAsync(factory, method, template, id, token)).Should().Be(HttpStatusCode.Forbidden);
     }
 
-    // NFR-09, ADR-0029, IADR-0379 決定 4, IADR-0465 決定 2: **サービス間トークンは通さない。**
+    // NFR-09, ADR-0029, IADR-0379 決定 4, IADR-0465 決定 2: **`platform-service` だけのサービス間トークンは通さない。**
     // `/jobs` をサービスとして呼ぶ呼び出し元は無い。通すと「利用者が操作した」と区別できない呼び出しが開く。
+    // （門はロールで判定するので、門のロールを持つサービスアカウントは通る。BFF・他の後段と同じ性質。）
     [Theory]
     [MemberData(nameof(AllRoutes))]
     public async Task EveryRoute_ServiceAccountToken_Returns403(string method, string template)
@@ -207,6 +208,27 @@ public class ConversionJobAuthorizationTests
         var status = (await client.GetAsync("/health/ready", TestContext.Current.CancellationToken)).StatusCode;
 
         status.Should().NotBe(HttpStatusCode.Unauthorized).And.NotBe(HttpStatusCode.Forbidden);
+    }
+
+    // NFR-09, IADR-0465 決定 1: `UsePlatformMiddleware` は認証・認可だけでなく相関 ID も張る（他サービスと同じ）。
+    // 受け取った相関 ID は応答へ返り、**門で弾かれた 401 にも付く**（ミドルウェアが認証より前に居る）。
+    // `UsePlatformMiddleware` を `UseAuthentication` / `UseAuthorization` だけへ差し替えると、ここが落ちる。
+    [Fact]
+    public async Task PlatformMiddleware_EchoesCorrelationId_EvenOnRejectedRequest()
+    {
+        using var factory = new Factory();
+        using var client = factory.CreateClient();
+
+        using var probe = new HttpRequestMessage(HttpMethod.Get, "/health/live");
+        probe.Headers.Add("X-Correlation-ID", "cv-corr-1");
+        using var probeResp = await client.SendAsync(probe, TestContext.Current.CancellationToken);
+        probeResp.Headers.GetValues("X-Correlation-ID").Should().ContainSingle().Which.Should().Be("cv-corr-1");
+
+        using var rejected = new HttpRequestMessage(HttpMethod.Get, "/jobs");
+        rejected.Headers.Add("X-Correlation-ID", "cv-corr-2");
+        using var rejectedResp = await client.SendAsync(rejected, TestContext.Current.CancellationToken);
+        rejectedResp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        rejectedResp.Headers.GetValues("X-Correlation-ID").Should().ContainSingle().Which.Should().Be("cv-corr-2");
     }
 
     private sealed class Factory : WebApplicationFactory<Program>

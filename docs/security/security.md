@@ -53,7 +53,10 @@ issues: [#1520, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, 
   - `DataSourceService` `/datasources`（一覧・登録・sync・無効化）: admin/operator 必須。
   - `ConversionService` `/jobs`（照会・再変換・図の一覧・人手補正）: 照会は admin/operator、**再変換・図の一覧・人手補正は admin 必須**
     （BFF の変換ジョブ集約と同じ境界）。**［2026-09-26］追加。** 従前はワーカーの最小 HTTP サーフェスとして認証を持たず、門は BFF だけだった。
-    BFF が中継した利用者の資格情報を他の後段と同じ JwtBearer で検証する。**サービス間トークンは通さない**（呼び出し元が BFF の中継しか無い）。
+    BFF が中継した利用者の資格情報を他の後段と同じ JwtBearer で検証する。**`platform-service` だけを持つサービス間トークンは通らない**
+    （呼び出し元が BFF の中継しか無く、サービス間の面は置かない）。🔴 **門はロールで判定し、主体の種別は見ない** —— 門のロールを持つ
+    realm のサービスアカウント（管理者ロールを持つ ABAC 投入用・運用者ロールを持つ AST の KB 書き込み用）は通る。
+    これは BFF の門・DataSourceService の門と同じ性質であり、それらより緩くはない。
   - `DocumentService` 書き込み: **更新・メタデータ・公開・アーカイブ・削除は admin 必須**。
     **作成（`POST`）だけ admin/operator のまま据え置く** —— `ai-stock-trading` の KB 書き込みが
     BFF を経由せず直接叩いており、その service-account は `platform-operator` しか持たないためである

@@ -70,7 +70,12 @@ gRPC 面は持たない（`MapGrpcService` 0 件）。IADR-0403 の「5 口」�
 | フロント（SC-07 画面・生成クライアント） | `/bff/conversion/jobs*` | BFF セッション | 後段を直接叩かない（BFF 経由） |
 | スクリプト・e2e・ワークフロー | — | — | **0 件**（`/jobs` を直接叩くものは無い） |
 
-**サービス間の呼び出し元は 0 件** → `ServiceCaller` は通さない（IADR-0465 決定 2）。
+**サービス間の呼び出し元は 0 件** → `ServiceCaller` は足さない（IADR-0465 決定 2）。
+
+［2026-09-26 追記 / #1520］**監査の指摘で射程を正した。** 通らないのは `platform-service` **だけ**を持つトークンである。
+門はロールで判定するので、門のロールを持つ realm のサービスアカウント（`service-account-abac-seeder` = `platform-admin`、
+`service-account-ai-stock-trading-kb-writer` = `platform-operator`）は通る。BFF の門・DataSourceService の門と同じ性質で、それらより緩くない。
+主体の種別で絞る案（`InteractiveUser` を重ねる）は ADR-0109 決定 3 の「他の後段と同じ形」から外れるので採らず、記録に留めた。
 
 ### 軸 3: 配備の構成（`Auth__Authority` 等）
 
@@ -122,7 +127,7 @@ gRPC 面は持たない（`MapGrpcService` 0 件）。IADR-0403 の「5 口」�
 | 1 | 資格情報なしは 5 口すべてで 401 | `ConversionJobAuthorizationTests.EveryRoute_WithoutCredential_Returns401` |
 | 2 | 偽造・他の発行元・期限切れは 401 | `InvalidToken_EvenClaimingAdmin_Returns401` |
 | 3 | 門のロールを持たない利用者は 403 | `EveryRoute_UserWithoutGateRole_Returns403` |
-| 4 | サービス間トークンは 403 | `EveryRoute_ServiceAccountToken_Returns403` |
+| 4 | `platform-service` だけのサービス間トークンは 403 | `EveryRoute_ServiceAccountToken_Returns403` |
 | 5 | 中継された運用者トークンで照会 200・管理者限定 3 口 403 | `Queries_WithRelayedOperatorToken_Return200` / `AdminOnlyRoutes_WithRelayedOperatorToken_Return403` |
 | 6 | 中継された管理者トークンで 5 口が門を通る | `EveryRoute_WithRelayedAdminToken_PassesTheGate` |
 | 7 | プローブと自己申告は門を持たない | `ProbeAndIntrospection_WithoutCredential_Return200` / `Readiness_WithoutCredential_IsNotGated` |

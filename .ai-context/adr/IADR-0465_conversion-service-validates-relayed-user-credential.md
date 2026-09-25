@@ -1,5 +1,5 @@
 ---
-title: IADR-0465 ConversionService は BFF が中継した利用者の資格情報を自ら検証し、変換ジョブの 5 口すべてに BFF と同じロールの端点の門を張る（サービス間トークンは通さない）
+title: IADR-0465 ConversionService は BFF が中継した利用者の資格情報を自ら検証し、変換ジョブの 5 口すべてに BFF と同じロールの端点の門を張る（`platform-service` だけのサービス間トークンは通さない）
 type: impl-adr
 status: Accepted
 related_ids: [NFR-09, NFR-16, FR-12, UC-06, SC-07, ADR-0004, ADR-0029, ADR-0084, ADR-0109, IADR-0029, IADR-0042, IADR-0044, IADR-0128, IADR-0154, IADR-0379, IADR-0403, IADR-0424, IADR-0458]
@@ -39,7 +39,7 @@ ConversionService は認証を持たなかった（`AddPlatformAuth`・`RequireA
 `IADR-0458`（オーナー裁定 2026-09-25）と計画 **ADR-0109 決定 1** が BFF の中継をエッジと分類したため、その移行は起きない。
 **ADR-0109 決定 3** は代わりの経路を「ConversionService は中継された利用者の資格情報を自ら検証する（他の 14 サービスと同じ形）」と定めた。
 
-判断が要ったのは 4 点である。**(A) 門をどの単位に掛け、どのロールを要求するか**、**(B) サービス間トークンを通すか**、
+判断が要ったのは 4 点である。**(A) 門をどの単位に掛け、どのロールを要求するか**、**(B) サービス間トークン（`platform-service`）を通すか**、
 **(C) 門を持たない口をどれにするか**、**(D) `IADR-0403` 決定 5（`AddPlatformAuth` を足さない）との関係**。
 
 ## 検討した選択肢
@@ -51,9 +51,9 @@ ConversionService は認証を持たなかった（`AddPlatformAuth`・`RequireA
 3. 認証済みであることだけを要求する — 端点は「閉じる」が、BFF を迂回した直呼びでは一般利用者が再変換・人手補正を実行できる。**BFF の門と後段の門が食い違い、緩い側が効く。**
 4. `FallbackPolicy` で全体を閉じる — ADR-0084 決定 1 の補完が「`FallbackPolicy` は門ではない（端点または端点群に付くものだけを門とする）」と定めている。
 
-### (B) サービス間トークン
+### (B) サービス間トークン（`platform-service`）
 
-1. **通さない**（採用） — `/jobs` を呼ぶのは BFF の中継だけである（呼び出し元の走査は作業仕様書）。
+1. **`ServiceCaller` を足さない**（採用） — `/jobs` を呼ぶのは BFF の中継だけである（呼び出し元の走査は作業仕様書）。
 2. `ServiceCaller` を OR で通す — 呼び出し元が無いのに口を開くことになる。利用者のロールと別軸の主体を混ぜると「利用者が操作した」と区別できない（IADR-0379 決定 4 の confused deputy）。
 
 ## 決定
@@ -77,11 +77,21 @@ ConversionService は認証を持たなかった（`AddPlatformAuth`・`RequireA
 - **ABAC（内容の絞り込み）は掛けない。** 変換ジョブは運用資産であり、SC-07 は照会を管理者・運用者のロールで絞る画面である。
   文書単位の可視範囲は取り込み後の文書側で判定される。
 
-### 決定 2: サービス間トークン（`platform-service`）は通さない
+### 決定 2: `ServiceCaller` を足さない。`platform-service` だけのトークンは通らない
 
-- `/jobs` をサービスとして呼ぶ呼び出し元は無い。`platform-service` だけを持つトークンは群のロールを満たさないので 403 になる。
+- `/jobs` をサービスとして呼ぶ呼び出し元は無い。**`platform-service` だけを持つトークン**（east-west の呼び出し側サービスの資格情報）は
+  群のロールを満たさないので 403 になる。
 - **サービス間で変換ジョブを扱う必要が出たら、それは east-west であり gRPC ＋ `ServiceCaller` の面として作る**（ADR-0029・IADR-0379 決定 4）。
   REST の `/jobs` に s2s を相乗りさせない。
+- 🔴 **門が判定するのはロールであって、主体の種別（人かサービスアカウントか）ではない。** realm のサービスアカウントのうち
+  **門のロールを持つもの**は通る —— 実測（`deploy/keycloak/microservices-platform-realm.json`）で `service-account-abac-seeder` は
+  `platform-admin` を持つので 5 口すべてを、`service-account-ai-stock-trading-kb-writer` は `platform-operator` を持つので照会 2 口を通る。
+  **「サービス間トークンは一切通さない」とは読まないこと。**
+- **これは BFF の門・DataSourceService の門より緩くない。** どちらも同じロール集合（admin / operator、破壊的操作は `AdminOnly`）で判定し、
+  主体の種別を見ない。本 IADR は ADR-0109 決定 3 の「他の 14 サービスと同じ形」に揃えたので、この性質も同じである。
+- **主体の種別で絞る（`InteractiveUser` を重ねる）ことは採らない。** ADR-0109 決定 3 が求めるのは他の後段と同じ形の検証であり、
+  後段 1 つだけを主体の種別で絞ると BFF・他の後段と境界が食い違う。ロールを持つサービスアカウントの扱いは、realm のロール付与の側で統制する
+  （絞るなら全後段で揃える別件である）。
 
 ### 決定 3: ヘルスチェック（`/health/live`・`/health/ready`）と自己申告（`/internal/introspection`）は門を持たない
 

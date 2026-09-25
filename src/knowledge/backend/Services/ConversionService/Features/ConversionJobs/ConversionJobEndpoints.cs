@@ -23,9 +23,11 @@ namespace ConversionService.Features.ConversionJobs;
 // | `GET /jobs/{id}/figures`（人手補正の材料） | **admin のみ** | 群 ∧ `AdminOnly`（`ListFigures/Endpoint.cs`） |
 // | `POST /jobs/{id}/figures/{figureId}/correction`（人手補正） | **admin のみ** | 群 ∧ `AdminOnly`（`CorrectFigure/Endpoint.cs`） |
 //
-// 🔴 **サービス間トークン（`platform-service`）は通さない。** `/jobs` をサービスとして呼ぶ呼び出し元は無い
-// （呼び出し元は BFF の中継だけ）。サービス間の呼び出しが要るなら、それは east-west であり gRPC と
-// `ServiceCaller` の面で作る（ADR-0029・IADR-0379 決定 4）。
+// 🔴 **`ServiceCaller` は足さない —— `platform-service` だけを持つサービス間トークンは通らない。** `/jobs` を
+// サービスとして呼ぶ呼び出し元は無い（呼び出し元は BFF の中継だけ）。サービス間の呼び出しが要るなら、それは
+// east-west であり gRPC と `ServiceCaller` の面で作る（ADR-0029・IADR-0379 決定 4）。
+// ただし門はロールで判定し主体の種別は見ないので、**門のロールを持つ realm のサービスアカウントは通る**
+// （BFF・DataSourceService と同じ性質。IADR-0465 決定 2）。
 //
 // `MapGroup` とタグ付けは集約の全操作が使うものであり、特定の 1 操作に属さない。
 // 各操作の処理は `Features/ConversionJobs/<操作>/` に居る（ADR-0065 決定 2）。

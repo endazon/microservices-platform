@@ -184,18 +184,19 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 | C1 | 資格情報なし | 5 口すべてで 401（従前は 200 / 202 / 404 が返り、メッシュ内から直に叩けば BFF の門を迂回できた） | `EveryRoute_WithoutCredential_Returns401` |
 | C2 | **資格情報そのものの検証** | 署名が違う・発行元が違う・期限切れは、管理者を名乗っていても 401 | `InvalidToken_EvenClaimingAdmin_Returns401` |
 | C3 | 門のロールを持たない利用者 | 5 口すべてで 403 | `EveryRoute_UserWithoutGateRole_Returns403` |
-| C4 | **サービス間トークンは通さない** | `platform-service` だけのトークンは 5 口すべてで 403（呼び出し元は BFF の中継だけ） | `EveryRoute_ServiceAccountToken_Returns403` |
+| C4 | **`platform-service` だけのサービス間トークンは通さない** | `platform-service` だけのトークンは 5 口すべてで 403（呼び出し元は BFF の中継だけ）。門はロールで判定するので、門のロールを持つサービスアカウントは通る（BFF・他の後段と同じ） | `EveryRoute_ServiceAccountToken_Returns403` |
 | C5 | 運用者の照会 | 中継された運用者のトークンで一覧・個別は 200 | `Queries_WithRelayedOperatorToken_Return200` |
 | C6 | **再変換と人手補正は管理者限定**（BFF と同じ境界） | 運用者は再変換・図の一覧・人手補正の 3 口で 403。**変異試験で確認済み** —— 再変換の管理者限定を外すと当該ケースだけが落ちる | `AdminOnlyRoutes_WithRelayedOperatorToken_Return403` |
 | C7 | 管理者は 5 口すべてで門を通る | 一覧・個別・図の一覧 200、人手補正は未知の図で 404（門を通った先の判定）、再変換 202 | `EveryRoute_WithRelayedAdminToken_PassesTheGate` |
 | C8 | プローブと自己申告は門を持たない | `/health/live`・`/internal/introspection` は資格情報なしで 200、`/health/ready` は 401 / 403 にならない | `ProbeAndIntrospection_WithoutCredential_Return200` / `Readiness_WithoutCredential_IsNotGated` |
+| C9 | 共通ミドルウェア（相関 ID）も張られている | 受け取った相関 ID が応答へ返り、門で弾かれた 401 にも付く（認証より前に居る） | `PlatformMiddleware_EchoesCorrelationId_EvenOnRejectedRequest` |
 
 ## デプロイ（Knowledge.IntegrationTests・#501）
 
 `Deployment/NetworkIsolationTests.cs`
 | # | 観点 | 検証内容 | ケース |
 | --- | --- | --- | --- |
-| 1 | 下流の到達性（compose） | `conversion-service` は host 非公開（`expose` のみ）。BFF で retry を絞っても後段へ直接到達できれば同じ穴が残るため、**後段が認可を課さなかった時期の代償統制（再変換の管理者限定と代償統制の決定 3）を機械検査で固定**した。**［2026-09-26］後段も門を持つようになった**（上の C1〜C8）が、ネットワーク分離は多層防御として残す | `InternalServices_MustNotPublishHostPorts` |
+| 1 | 下流の到達性（compose） | `conversion-service` は host 非公開（`expose` のみ）。BFF で retry を絞っても後段へ直接到達できれば同じ穴が残るため、**後段が認可を課さなかった時期の代償統制（再変換の管理者限定と代償統制の決定 3）を機械検査で固定**した。**［2026-09-26］後段も門を持つようになった**（上の C1〜C9）が、ネットワーク分離は多層防御として残す | `InternalServices_MustNotPublishHostPorts` |
 | 2 | 下流の到達性（本番系 Helm） | Service を `type: NodePort` / `LoadBalancer` にすると BFF 以外の公開エッジができる。`service.yaml` に `type:` / `nodePort:` が現れないことを固定する | `InternalServices_HelmServicesMustStayClusterIp` |
 
 > **本表が固定するのは到達不能の論拠 4 本のうち 2 本である。** 残る 2 本

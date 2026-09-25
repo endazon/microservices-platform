@@ -10,10 +10,10 @@ related_ids:
   - ADR-0027
   - ADR-0012
   - IADR-0039
-  - IADR-0465
   - IADR-0127
   - IADR-0128
   - IADR-0154
+  - IADR-0465
 author: claude
 created: 2026-07-09
 updated: 2026-09-26
