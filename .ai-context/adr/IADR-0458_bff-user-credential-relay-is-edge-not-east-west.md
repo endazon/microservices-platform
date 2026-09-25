@@ -17,9 +17,10 @@ related_ids:
   - IADR-0402
   - IADR-0403
   - IADR-0426
+  - IADR-0462
 author: claude
 created: 2026-09-25
-updated: 2026-09-25
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0029_grpc-rest-usage-criteria.md §決定（現行の該当経路に「BFF → 各サービス」を挙げる）・例外規定
   - planning:projects/microservices-platform/07_adr/ADR-0075_east-west-grpc-migration-order.md 決定 3・5・6
@@ -73,6 +74,10 @@ plan_refs:
 `ADR-0029` §決定 の該当経路の部分改定か）は計画側が決める。** 反映されるまでの間、計画 ADR の文面と
 本 IADR は食い違ったままであり、**それを隠さないために本節を置く。**
 
+［2026-09-26 追記 / #1520］**計画は反映した。** 計画 ADR-0109（利用者裁定 2026-09-26・planning#651）が、例外ではなく分類の是正として
+ADR-0029 §決定 の該当経路の列挙から「BFF → 各サービス」を外し、ADR-0075 決定 6 の根拠の記述を追随させた（いずれも部分改定）。
+ADR-0086 決定 1 の射程が east-west に限られることも同 決定 2 で確認された。本節の食い違いは解消している。
+
 ## 実測（基点 `origin/develop` `d3e8b2a4`・shallow でない）
 
 ### 15 本の中身（登録単位 = BFF の名前付きクライアント）
@@ -122,6 +127,9 @@ plan_refs:
   付けて送るが、**後段はそれを読まない。門は BFF の 1 枚だけ**（`/bff/conversion/jobs` の admin / operator と、retry・figure 系の
   `AdminOnly`）であり、代償統制はメッシュの STRICT mTLS とネットワーク分離である。**本裁定はこの経路もエッジとして east-west から
   外すので、`IADR-0403` が当てにしていた解消の道（下記「結果」）が消える。**
+  ［2026-09-26 追記 / #1520］**この例外は解消した。** 計画 ADR-0109 決定 3 が「エッジの後段は中継された利用者の資格情報を自ら検証する。
+  ConversionService も検証する」と定め、[IADR-0462](./IADR-0462_conversion-service-validates-relayed-user-credential.md) が `AddPlatformAuth` と 5 口の端点の門（BFF と同じロール）を掛けた。
+  **本決定の「14 本」は 15 本になった**（後段がみな自分の門を利用者の資格情報で判定する）。
 - **`ADR-0029` の gRPC 化の対象から外す。** したがって #1255 の受け入れ基準「east-west の `AddHttpClient` が 0 本」の
   母集合にも入らない。
 - **`ADR-0086` 決定 1（利用者トークンを面に通さない）の射程にも入らない** —— 同決定の対象は east-west だからである。
@@ -202,6 +210,9 @@ plan_refs:
    `AddPlatformAuth` ＋ BFF が既に付けている利用者トークンでの門を積むか、`NFR-09` の判定を BFF の門で満たすと読むか）。
    `IADR-0403` は `AddPlatformAuth` を足すだけでは口が塞がらない（`FallbackPolicy` が無い）とし、判定単位の裁定を計画へ求めていた。
    **決定 4 の環流に含めて計画へ出す。**
+   ［2026-09-26 追記 / #1520］**裁定され、着地した。** 計画 ADR-0109 決定 3（planning#651）は前者（後段に `AddPlatformAuth` ＋ BFF が既に
+   付けている利用者トークンでの門を積む）を採った。[IADR-0462](./IADR-0462_conversion-service-validates-relayed-user-credential.md) が実装した —— `FallbackPolicy` は置かず、5 口すべてに端点の門を掛けている
+   （`IADR-0403` 決定 5 の指摘どおり、`AddPlatformAuth` だけでは口は塞がらないため）。
 
 ## 関連
 

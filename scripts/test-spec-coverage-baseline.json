@@ -235,6 +235,7 @@
     "docs/tests/SC-07_conversion-jobs.md": [
       "BffConversionEndpointTests",
       "ConversionFigureCorrectionTests",
+      "ConversionJobAuthorizationTests",
       "ConversionJobEndpointTests",
       "ConversionJobStoreTests",
       "NetworkIsolationTests",

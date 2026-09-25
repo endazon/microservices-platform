@@ -3,15 +3,15 @@ title: セキュリティ仕様書
 type: security-spec
 status: in-progress
 created: 2026-07-02
-updated: 2026-09-25
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11]
-adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096]
-iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454]
-specs: [20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile]
-issues: [#1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, AST#18, AST#24, AST#727, planning#383]
+adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0109]
+iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0462]
+specs: [20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile]
+issues: [#1520, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, AST#18, AST#24, AST#727, planning#383]
 -->
 
 # セキュリティ仕様書
@@ -51,6 +51,9 @@ issues: [#1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #
   読み取りと手動同期は `platform-admin` または `platform-operator`。データソース管理・文書管理の BFF 集約の実装判断による）が、
   BFF 迂回のメッシュ内部直呼びに備え、**後段サービスにも同一のロール要件を二重化**する（サービスが最終防衛線）。
   - `DataSourceService` `/datasources`（一覧・登録・sync・無効化）: admin/operator 必須。
+  - `ConversionService` `/jobs`（照会・再変換・図の一覧・人手補正）: 照会は admin/operator、**再変換・図の一覧・人手補正は admin 必須**
+    （BFF の変換ジョブ集約と同じ境界）。**［2026-09-26］追加。** 従前はワーカーの最小 HTTP サーフェスとして認証を持たず、門は BFF だけだった。
+    BFF が中継した利用者の資格情報を他の後段と同じ JwtBearer で検証する。**サービス間トークンは通さない**（呼び出し元が BFF の中継しか無い）。
   - `DocumentService` 書き込み: **更新・メタデータ・公開・アーカイブ・削除は admin 必須**。
     **作成（`POST`）だけ admin/operator のまま据え置く** —— `ai-stock-trading` の KB 書き込みが
     BFF を経由せず直接叩いており、その service-account は `platform-operator` しか持たないためである
@@ -59,8 +62,8 @@ issues: [#1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #
   - 利用者トークンは BFF が後段へ伝播する（各 *BffEndpoints の `CreateForwardingClient`）。非権限は 403。
     否定テストは各サービスの `*AuthorizationTests` で検証。
 - **認可（ABAC 本体）**: 文書アクセスの属性ベース認可は `AbacEvaluator`（deny-by-default）が担う。
-- 未対応（多層防御のフォローアップ）: `ConversionService` `/jobs` の後段認可（認証基盤未導入・ingress 非公開で緩和。
-  変換ジョブ読み取りモデルの実装判断 §決定 3）、文書作成時の付与属性が呼び出し者 ABAC スコープ内かの厳密検証（文書管理の BFF 集約で見送った分）。
+- 未対応（多層防御のフォローアップ）: 文書作成時の付与属性が呼び出し者 ABAC スコープ内かの厳密検証（文書管理の BFF 集約で見送った分）。
+  **［2026-09-26］`ConversionService` `/jobs` の後段認可は解消した**（上の一覧へ移した）。
 
 ### Wiki.js 前段の ABAC 強制点— ⚠️ 機密性の要点
 

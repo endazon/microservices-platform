@@ -3,15 +3,15 @@ title: SC-07 変換ジョブ テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-05
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
-ids: [FR-12, SC-03, SC-06, SC-07, UC-06]
-adrs: [ADR-0031, ADR-0070]
-iadrs: [IADR-0009, IADR-0035, IADR-0042, IADR-0044, IADR-0127, IADR-0128, IADR-0132, IADR-0154, IADR-0157, IADR-0162, IADR-0356, IADR-0388]
-specs: [20260805_issue-501_retry-admin-only, 20260805_issue-503_sc05-08-admin-screens, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
-issues: [#533, #543, #553, #651, #658, #1192, #1254, planning#198]
+ids: [FR-12, NFR-09, SC-03, SC-06, SC-07, UC-06]
+adrs: [ADR-0031, ADR-0070, ADR-0084, ADR-0109]
+iadrs: [IADR-0009, IADR-0035, IADR-0042, IADR-0044, IADR-0127, IADR-0128, IADR-0132, IADR-0154, IADR-0157, IADR-0162, IADR-0356, IADR-0388, IADR-0458, IADR-0462]
+specs: [20260926_1520_conversion-service-auth, 20260805_issue-501_retry-admin-only, 20260805_issue-503_sc05-08-admin-screens, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
+issues: [#1520, #533, #543, #553, #651, #658, #1192, #1254, planning#198]
 -->
 
 # テスト仕様書: 変換ジョブ
@@ -171,13 +171,31 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 | 7c | 再変換の無認証 | 401（認証欠如と権限不足を取り違えない） | `Retry_WhenAnonymous_IsUnauthorized` |
 | 8 | 未知再変換 | 404 透過 | `Retry_WhenJobUnknown_Passes404Through` |
 | 8b | 再変換不可の透過 | 後段 409（`not_retryable`）を素通し | `Retry_WhenNotRetryable_Passes409Through` |
+| 9 | **利用者の資格情報を 6 口すべてで中継する**（2026-09-26） | 後段が資格情報で門を判定するようになったので、1 口でも中継が切れるとその口は後段で 401 になる。**変異試験で確認済み** —— 中継を止めると 6 ケースすべてが落ちる | `EveryRoute_RelaysTheUsersCredential_ToConversionService` |
+
+## ConversionService の門（xUnit・中継された利用者の資格情報の検証。2026-09-26）
+
+`Features/ConversionJobs/ConversionJobAuthorizationTests.cs`。本番の `Program.cs` を起こし、**本物の JwtBearer**（検証鍵だけテスト用）で判定する。
+偽の認証スキームは使わない —— 門は「資格情報そのものを検証すること」であり、署名・発行元・期限とロールの展開まで通さないと測れない。
+判定は端点単位であり、5 口を 1 つずつ並べる（群の門を 1 口で確かめても、別の群へ移された口は見えない）。テスト用のホストはメモリ内で、どのアドレスにも bind しない。
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| C1 | 資格情報なし | 5 口すべてで 401（従前は 200 / 202 / 404 が返り、メッシュ内から直に叩けば BFF の門を迂回できた） | `EveryRoute_WithoutCredential_Returns401` |
+| C2 | **資格情報そのものの検証** | 署名が違う・発行元が違う・期限切れは、管理者を名乗っていても 401 | `InvalidToken_EvenClaimingAdmin_Returns401` |
+| C3 | 門のロールを持たない利用者 | 5 口すべてで 403 | `EveryRoute_UserWithoutGateRole_Returns403` |
+| C4 | **サービス間トークンは通さない** | `platform-service` だけのトークンは 5 口すべてで 403（呼び出し元は BFF の中継だけ） | `EveryRoute_ServiceAccountToken_Returns403` |
+| C5 | 運用者の照会 | 中継された運用者のトークンで一覧・個別は 200 | `Queries_WithRelayedOperatorToken_Return200` |
+| C6 | **再変換と人手補正は管理者限定**（BFF と同じ境界） | 運用者は再変換・図の一覧・人手補正の 3 口で 403。**変異試験で確認済み** —— 再変換の管理者限定を外すと当該ケースだけが落ちる | `AdminOnlyRoutes_WithRelayedOperatorToken_Return403` |
+| C7 | 管理者は 5 口すべてで門を通る | 一覧・個別・図の一覧 200、人手補正は未知の図で 404（門を通った先の判定）、再変換 202 | `EveryRoute_WithRelayedAdminToken_PassesTheGate` |
+| C8 | プローブと自己申告は門を持たない | `/health/live`・`/internal/introspection` は資格情報なしで 200、`/health/ready` は 401 / 403 にならない | `ProbeAndIntrospection_WithoutCredential_Return200` / `Readiness_WithoutCredential_IsNotGated` |
 
 ## デプロイ（Knowledge.IntegrationTests・#501）
 
 `Deployment/NetworkIsolationTests.cs`
 | # | 観点 | 検証内容 | ケース |
 | --- | --- | --- | --- |
-| 1 | 下流の到達性（compose） | `conversion-service` は host 非公開（`expose` のみ）。BFF で retry を絞っても後段へ直接到達できれば同じ穴が残るため、**認可を課さない前提（再変換の管理者限定と代償統制の決定 3）を機械検査で固定**する | `InternalServices_MustNotPublishHostPorts` |
+| 1 | 下流の到達性（compose） | `conversion-service` は host 非公開（`expose` のみ）。BFF で retry を絞っても後段へ直接到達できれば同じ穴が残るため、**後段が認可を課さなかった時期の代償統制（再変換の管理者限定と代償統制の決定 3）を機械検査で固定**した。**［2026-09-26］後段も門を持つようになった**（上の C1〜C8）が、ネットワーク分離は多層防御として残す | `InternalServices_MustNotPublishHostPorts` |
 | 2 | 下流の到達性（本番系 Helm） | Service を `type: NodePort` / `LoadBalancer` にすると BFF 以外の公開エッジができる。`service.yaml` に `type:` / `nodePort:` が現れないことを固定する | `InternalServices_HelmServicesMustStayClusterIp` |
 
 > **本表が固定するのは到達不能の論拠 4 本のうち 2 本である。** 残る 2 本
@@ -204,7 +222,7 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 - `pnpm run test -- knowledge/frontend/src/features/sc07-conversions`（純関数 **7** ＋ 画面 **15** ケース）
 - `pnpm run test -- knowledge/frontend/src/features/adminFlow.test.tsx`（導線）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
-- `dotnet test src/knowledge/backend/Services/ConversionService/Tests`
+- `dotnet test src/knowledge/backend/Services/ConversionService/Tests`（門は `--filter ConversionJobAuthorizationTests`）
 - `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffConversionEndpointTests`
 - `dotnet test src/knowledge/backend/Tests/Knowledge.IntegrationTests --filter NetworkIsolationTests`
 
