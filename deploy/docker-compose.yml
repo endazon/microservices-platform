@@ -308,11 +308,17 @@ services:
       context: ..
       dockerfile: src/knowledge/backend/Services/DataSourceService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
+    # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 / IADR-0462 (#1514, #1255 経路 ⑤): 8081 は
+    # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用。面は自己申告の読み取り 1 口だけ）。helm の grpcPort と
+    # 同じ値。host へは公開しない。
     expose:
       - "8080"
+      - "8081"
     environment:
       # FR-01, IADR-0051: 実コネクタが取得した原本を MinIO へ格納する（書き込み側）。未設定時は縮退。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
+      # NFR-16, IADR-0379 決定 3, IADR-0462 (#1514): h2c リスナ。未設定ならリスナを立てない。readiness は 8080 のまま。
+      Grpc__Port: "8081"
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=datasource_svc;Username=kp;Password=kp
       # FR-05, UC-04, SC-06, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証の後段
       # （AuthorizationService の /authz/users。SC-17 側の `view-users` を持つ経路）。
@@ -339,11 +345,17 @@ services:
       dockerfile: src/knowledge/backend/Services/ConversionService/Dockerfile
     # FR-15, IADR-0029, IADR-0017: 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
     # host へは公開せずメッシュ内部限定（ingress 非公開）。
+    # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 / IADR-0462 (#1514, #1255 経路 ⑤): 8081 は
+    # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用。面は自己申告の読み取り 1 口だけ）。helm の grpcPort と
+    # 同じ値。host へは公開しない。
     expose:
       - "8080"
+      - "8081"
     environment:
       # FR-12, ADR-0015: 正規化本文・資産を MinIO へ保管する（書き込み側）。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
+      # NFR-16, IADR-0379 決定 3, IADR-0462 (#1514): h2c リスナ。未設定ならリスナを立てない。readiness は 8080 のまま。
+      Grpc__Port: "8081"
       # FR-12, UC-06, SC-07, IADR-0043: 変換ジョブ読み取りモデルの永続化（conversion_svc）。
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=conversion_svc;Username=kp;Password=kp
       # 🔴 **本サービスは compose で `Services__LlmGateway` を持たない**（appsettings の既定
@@ -372,11 +384,17 @@ services:
       dockerfile: src/knowledge/backend/Services/IngestionService/Dockerfile
     # FR-15, IADR-0029, IADR-0017: 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
     # host へは公開せずメッシュ内部限定（ingress 非公開）。
+    # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 / IADR-0462 (#1514, #1255 経路 ⑤): 8081 は
+    # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用。面は自己申告の読み取り 1 口だけ）。helm の grpcPort と
+    # 同じ値。host へは公開しない。
     expose:
       - "8080"
+      - "8081"
     environment:
       # FR-06: storage:// 本文を MinIO から実取得する（読み取り側）。
       <<: [*common-env, *rabbit-env, *objectstorage-env]
+      # NFR-16, IADR-0379 決定 3, IADR-0462 (#1514): h2c リスナ。未設定ならリスナを立てない。readiness は 8080 のまま。
+      Grpc__Port: "8081"
       Qdrant__Host: qdrant
       Qdrant__Port: 6334
       Services__LlmGateway: http://llm-gateway:8080
@@ -451,10 +469,16 @@ services:
       context: ..
       dockerfile: src/knowledge/backend/Services/AiAnalysisService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
+    # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 / IADR-0462 (#1514, #1255 経路 ⑤): 8081 は
+    # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用。面は自己申告の読み取り 1 口だけ）。helm の grpcPort と
+    # 同じ値。host へは公開しない。
     expose:
       - "8080"
+      - "8081"
     environment:
       <<: *common-env
+      # NFR-16, IADR-0379 決定 3, IADR-0462 (#1514): h2c リスナ。未設定ならリスナを立てない。readiness は 8080 のまま。
+      Grpc__Port: "8081"
       Services__AuthorizationService: http://authorization-service:8080
       Services__RetrievalService: http://retrieval-service:8080
       Services__LlmGateway: http://llm-gateway:8080
@@ -565,11 +589,17 @@ services:
       context: ..
       dockerfile: src/knowledge/backend/Services/WikiService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
+    # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 / IADR-0462 (#1514, #1255 経路 ⑤): 8081 は
+    # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用。面は自己申告の読み取り 1 口だけ）。helm の grpcPort と
+    # 同じ値。host へは公開しない。
     expose:
       - "8080"
+      - "8081"
     environment:
       # FR-06: storage:// 本文を MinIO から実取得し Wiki.js へ push する（読み取り側）。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
+      # NFR-16, IADR-0379 決定 3, IADR-0462 (#1514): h2c リスナ。未設定ならリスナを立てない。readiness は 8080 のまま。
+      Grpc__Port: "8081"
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=wiki_svc;Username=kp;Password=kp
       # IADR-0021: Wiki.js への同期先（GraphQL push）。API キーはシークレット経由で注入（コミットしない）。
       Services__WikiJs: http://wiki-js:3000
@@ -686,10 +716,16 @@ services:
       context: ..
       dockerfile: src/knowledge/backend/Services/FeedbackService/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）
+    # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 / IADR-0462 (#1514, #1255 経路 ⑤): 8081 は
+    # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用。面は自己申告の読み取り 1 口だけ）。helm の grpcPort と
+    # 同じ値。host へは公開しない。
     expose:
       - "8080"
+      - "8081"
     environment:
       <<: [*common-env, *db-env]
+      # NFR-16, IADR-0379 決定 3, IADR-0462 (#1514): h2c リスナ。未設定ならリスナを立てない。readiness は 8080 のまま。
+      Grpc__Port: "8081"
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=feedback_svc;Username=kp;Password=kp
     depends_on:
       postgres:
@@ -959,6 +995,23 @@ services:
       # **readiness の UriHealthCheck へは足さない** —— 通知は Should であり、後段の不調で
       # BFF 全体を not-ready にするのは fail-safe の後退である（IADR-0346 決定 6）。
       Introspection__Services__notification-service: http://notification-service:8080
+      # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 4・5, IADR-0462 (#1514, #1255 経路 ⑤):
+      # 自己申告の **gRPC（h2c）宛先**。**ここに在る宛先だけ**が gRPC で収集され（資格情報は上の ServiceToken ＝
+      # `bff`。利用者のトークンは載せない）、無い宛先は上の Introspection__Services__* の REST のまま
+      # （並走中の正は REST。戻すのは該当行を消すだけでよい）。ポートは各サービスの Grpc__Port と一致させること。
+      Introspection__GrpcServices__document-service: http://document-service:8081
+      Introspection__GrpcServices__wiki-service: http://wiki-service:8081
+      Introspection__GrpcServices__conversion-service: http://conversion-service:8081
+      Introspection__GrpcServices__ingestion-service: http://ingestion-service:8081
+      Introspection__GrpcServices__retrieval-service: http://retrieval-service:8081
+      Introspection__GrpcServices__aianalysis-service: http://aianalysis-service:8081
+      Introspection__GrpcServices__authorization-service: http://authorization-service:8081
+      Introspection__GrpcServices__dashboard-service: http://dashboard-service:8081
+      Introspection__GrpcServices__datasource-service: http://datasource-service:8081
+      Introspection__GrpcServices__feedback-service: http://feedback-service:8081
+      Introspection__GrpcServices__graph-service: http://graph-service:8081
+      Introspection__GrpcServices__llm-gateway: http://llm-gateway:8081
+      Introspection__GrpcServices__notification-service: http://notification-service:8081
     # FR-15, #146: 正の pipeline.json をそのまま読み取り専用でマウントする（複製しない・単一の真実源）。
     # ローダは生の pipeline.json を "Pipeline" セクションへ包んで読む（PipelineExtensions）。
     volumes:

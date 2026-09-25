@@ -1,7 +1,5 @@
-using System.Net;
 using System.Net.Http.Json;
 using AwesomeAssertions;
-using Platform.Shared.Contracts.Dtos;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Microsoft.AspNetCore.Authorization;
@@ -10,28 +8,21 @@ using Microsoft.Extensions.DependencyInjection;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Pb = Platform.Shared.Contracts.Grpc.Introspection.V1;
 
-namespace AiAnalysisService.Tests;
+namespace McpServer.Tests;
 
-// FR-15, IADR-0029 (#143): 自己申告エンドポイントが到達でき、サービス名を申告することを検証する
-// （段・合成可能ポートは持たない存在申告のみのサービス）。
+// FR-15, NFR-16, IADR-0029, IADR-0462 (#1514): 自己申告の面（REST と gRPC）を本番の Program.cs が張る（mcp-server）。
 [Trait("TestKind", "Integration")]
-public class IntrospectionEndpointTests : IClassFixture<TestWebApplicationFactory>
+public class IntrospectionGrpcFaceTests(TestWebApplicationFactory factory)
+    : IClassFixture<TestWebApplicationFactory>
 {
-    private readonly TestWebApplicationFactory _factory;
-
-    public IntrospectionEndpointTests(TestWebApplicationFactory factory) => _factory = factory;
-
+    // 対照: REST の面も同じ申告（サービス名）を返す（gRPC だけを張って REST を落としていない）。
     [Fact]
-    public async Task Reports_service_presence()
+    public async Task Reports_service_presence_over_rest()
     {
-        var client = _factory.CreateClient();
-
-        var res = await client.GetAsync("/internal/introspection", TestContext.Current.CancellationToken);
-        res.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var report = await res.Content.ReadFromJsonAsync<ServiceIntrospectionDto>(TestContext.Current.CancellationToken);
+        var report = await factory.CreateClient().GetFromJsonAsync<Platform.Shared.Contracts.Dtos.ServiceIntrospectionDto>(
+            "/internal/introspection", TestContext.Current.CancellationToken);
         report.Should().NotBeNull();
-        report!.Service.Should().Be("aianalysis-service");
+        report!.Service.Should().Be("mcp-server");
     }
 
     // FR-15, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4, IADR-0462 (#1514, #1255 経路 ⑤):
@@ -42,8 +33,8 @@ public class IntrospectionEndpointTests : IClassFixture<TestWebApplicationFactor
     [Fact]
     public async Task Maps_the_introspection_grpc_face_behind_ServiceCaller()
     {
-        var server = _factory.Server;
-        var endpoint = _factory.Services.GetRequiredService<EndpointDataSource>().Endpoints
+        var server = factory.Server;
+        var endpoint = factory.Services.GetRequiredService<EndpointDataSource>().Endpoints
             .OfType<RouteEndpoint>()
             .Single(e => e.RoutePattern.RawText == "/platform.introspection.v1.ServiceIntrospection/Get");
         endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>().Select(a => a.Policy)

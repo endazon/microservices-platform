@@ -9,6 +9,7 @@ using Knowledge.Contracts.Dtos;
 using OpenTelemetry.Metrics;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Observability;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
@@ -31,6 +32,11 @@ builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddMeter(RagStreamMetrics.MeterName));
 
 builder.Services.AddPlatformAuth(builder.Configuration);
+// FR-15, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 3, [[IADR-0462]] (#1514, #1255 経路 ⑤):
+// east-west gRPC の h2c リスナ（`Grpc:Port`。未設定なら立てない）。面は自己申告の gRPC 面
+// （`MapPlatformIntrospection` が REST と対で張る。構成情報 API が宛先ごと opt-in で収集する）。
+// HTTP/1.1 のポート（REST・/health/*・introspection）はそのまま残り、readiness も 8080 のままである。
+builder.AddPlatformGrpcListener();
 // NFR-02, ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視の標識。
 // 本サービスは内周なので判定はヘッダで行うが、**LLM を呼ぶ可否**（AllowLlmEgress）をここで受け取る。
 builder.Services.AddSyntheticMonitoring(builder.Configuration);
