@@ -4,6 +4,7 @@
 #   bash scripts/istio-edge-up.sh              # PERMISSIVE のまま入口だけ移す
 #   ISTIO_MTLS_MODE=STRICT bash scripts/istio-edge-up.sh   # 併せて mTLS を STRICT へ
 #   RESET_FLOOR=0 bash scripts/istio-edge-up.sh            # リセット申請の床を外す（既定は 1＝入れる。#1500）
+#                                                          # 🔴 検証で床の有無を比べる用途に限る。本番の退路に使わない（#1543）
 #
 # 前提（満たしていなければ非 0 で落ちる）:
 #   - Istio が入っていること（ISTIO=1 ./scripts/k8s-local-up.sh。IADR-0307）
@@ -18,7 +19,8 @@
 set -euo pipefail
 
 # SC-15 / NFR-13 / ADR-0097 決定 2 / IADR-0432 (#1500): リセット申請の床は**既定 1（入れる）**。
-# 退路は RESET_FLOOR=0。🔴 **0 / 1 以外は入口に触る前に落とす** —— 既定が 1 になったので
+# RESET_FLOOR=0 は検証で床の有無を比べる用途に限る（［2026-09-26 / #1543］計画 ADR-0111 決定 3。本番の退路に使わない）。
+# 🔴 **0 / 1 以外は入口に触る前に落とす** —— 既定が 1 になったので
 #   「false と書けば外れるつもり」の取り違えが起き得る。黙って入れても外しても誤りであり、
 #   [2/5] で Traefik を落とした後に気付くのが最悪である（下の前提確認と同じ理由）。
 RESET_FLOOR="${RESET_FLOOR:-1}"
@@ -75,8 +77,10 @@ echo "==> [4/5] Gateway / VirtualService と CoreDNS の転送先を当てる"
 #   覆した。既定 OFF のままだと go-live の経路で所要時間の統制が 1 つも効かない。
 #   🔴 **経路を入れた後に器が落ちると、リセット申請の POST はすべて 503 になる**（経路は器だけを向き、
 #   予備の route は無い）。器は k8s-local-up.sh が rollout を待ってから立てている。
-#   **退路は RESET_FLOOR=0**（素の edge-istio を当てる。経路だけが外れ、器は infra の持ち物として
-#   誰も通らないまま居る）。
+#   RESET_FLOOR=0 は素の edge-istio を当てる（経路だけが外れ、器は infra の持ち物として誰も通らないまま居る）。
+#   🔴 ［2026-09-26 / #1543］**RESET_FLOOR=0 は本番の退路ではない**（計画 ADR-0111 決定 3）。外している間は
+#   回数制限の無い申請で実在する利用者名を列挙できる。器がすべて落ちたときの 503 は「申請を閉じた状態」として
+#   保ち、器を戻して復旧する（利用者は管理者の一時パスワード発行で復旧する）。器は 2 レプリカ ＋ PDB で動く（決定 1）。
 if [ "$RESET_FLOOR" = "1" ]; then
   echo "    RESET_FLOOR=1（既定）: リセット申請の床を入れる（POST の応答を床まで返さない）"
   # 器の本体は ConfigMap 化する（kustomize は root 外ファイルを参照できない。門と同型）。
@@ -88,6 +92,7 @@ if [ "$RESET_FLOOR" = "1" ]; then
   kubectl apply -k deploy/local/edge-istio-reset-floor
 else
   echo "    RESET_FLOOR=0: リセット申請の床を外す（経路を足さない。所要時間で利用者名を判別できる状態に戻る）" >&2
+  echo "    🔴 検証で床の有無を比べる用途に限る。本番の退路に使わない（器が落ちたときは 503 のまま器を戻し、利用者は管理者の一時パスワード発行で復旧する）" >&2
   kubectl apply -k deploy/local/edge-istio
 fi
 # import 先の追加は Corefile 自体の変更ではないため reload プラグインが拾わない（IADR-0227 と同じ）。
