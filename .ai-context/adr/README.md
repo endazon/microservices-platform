@@ -538,3 +538,4 @@
 | [IADR-0458](./IADR-0458_bff-user-credential-relay-is-edge-not-east-west.md) | **BFF はエッジであり、BFF が利用者の資格情報を後段へ付けて中継する 15 本は east-west に数えない**（#1397・オーナー裁定。計画 ADR への反映は環流待ち） | Accepted |
 | [IADR-0459](./IADR-0459_cutover-discard-and-rebuild-boundaries-and-verification.md) | **切替は 6 資産の破棄と realm.json からの作り直しで行う**（#457）。共有 PVC は消さず DB 単位・realm 単位で消し、検証は作り直しの時刻で見る | Accepted |
 | [IADR-0460](./IADR-0460_sc22-supply-source-from-external-secret-presence-and-restart-notice.md) | **SC-22 の供給元は同期先 ExternalSecret の有無から境界層が判定して 3 値（screen / git / unknown）で返し、画面は送る前に消費側の再起動を項目ごとに告げる**（#1502。計画 ADR-0104 決定 2・4）。構成値の写しで判定しない（推測になる）。権限は IADR-0456 決定 4 の Role の `get` で足り、増やさない | Accepted |
+| [IADR-0463](./IADR-0463_reset-timing-samples-hrtime-ns-and-half-tick-comparison.md) | **リセット申請の所要時間の標本は単調時計の整数 ns で測り、段 1 の境界は半格子の整数で比べる**（#1525・計画 ADR-0108 決定 1。IADR-0432 決定 5 の部分改定）。分解能は時計の単位から導き、格子に乗らない標本は判定へ進まず不合格。所要時間の札を T-25 へ揃える | Accepted |

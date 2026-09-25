@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-15, SC-13, FR-05, FR-22, NFR-09, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097, ADR-0103]
 author: claude
 created: 2026-09-11
-updated: 2026-09-25
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0094_existence-hiding-timing-median-consistency-and-response-floor.md
   - planning:projects/microservices-platform/07_adr/ADR-0103_degenerate-self-control-is-not-a-bound.md
@@ -241,7 +241,16 @@ ADR-0094 決定 1 の判定式を部分改定した。原因は**比較の構造
 **`[T-10][所要時間]`** である（本 IADR の決定 5 以来の不一致）。計画 ADR-0103 §実測 5 は「`T-25` は一度も
 存在していない」とするが、根拠の走査は検査器ファイルに限られていた。本追記では ID を付け替えない。
 
+## ［2026-09-26 追記 / #1525］決定 5 の時計と分解能の宣言は IADR-0463 が部分改定した
+
+計画 ADR-0108（planning#650 の裁定）が ADR-0103 決定 3 を部分改定し、**標本を 1 ms より細かい分解能の時計で測る**と決めた。
+同 ADR のフォローアップ 1「`IADR-0432` の後継へ記録する」に従い、**時計（`Date.now()` → 単調時計の整数 ns）・分解能の宣言
+（1 ms → 1 ns）・段 1 の境界の比べ方・所要時間の札（`[T-10]` → `[T-25]`）は `IADR-0463` が持つ。** 上の 2026-09-25 追記のうち
+「標本の分解能は `TIMING_SAMPLE_RESOLUTION_MS = 1`」「受け入れたリスク: 刻み（1 ms）未満」と §残るもの の T-25 の不一致は、
+同 IADR の時点で現行値でなくなった（本文は当時の記録として残す）。本 IADR の他の決定は改めない。
+
 ## 関連
 
 - Supersedes: なし
 - Superseded by: なし（［2026-09-25 / #1470］決定 5 の判定式は計画 ADR-0103 に従い 2 段にした。上の追記）
+  ／［2026-09-26 / #1525］決定 5 の時計と分解能の宣言は `IADR-0463` が部分改定した（上の追記）

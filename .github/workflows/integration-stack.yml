@@ -87,7 +87,7 @@ jobs:
     # その形だと **`istio=false` の退路が恒久的に死ぬ**（既定 ON 側は偶然正しいので気づけない）。
     env:
       ISTIO: ${{ (github.event_name != 'workflow_dispatch' || inputs.istio) && '1' || '' }}
-      # ADR-0094 フォローアップ 3 / IADR-0432 決定 4: リセット申請の床（#1410）を入れた構成で T-10 の所要時間を再測定する。
+      # ADR-0094 フォローアップ 3 / IADR-0432 決定 4: リセット申請の床（#1410）を入れた構成で T-25 の所要時間を再測定する（［2026-09-26 / #1525］従前は T-10 と書いていた。所要時間の項目はテスト仕様書で T-25 である）。
       # istio-edge-up.sh が RESET_FLOOR=1 のときだけ deploy/local/edge-istio-reset-floor を当てる（ISTIO='' なら呼ばれない）。
       RESET_FLOOR: '1'
     steps:
