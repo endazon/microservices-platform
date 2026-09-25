@@ -3,15 +3,15 @@ title: 運用 Runbook — Keycloak smtpServer（SMTP リレー）の設定
 type: runbook
 status: draft
 created: 2026-08-23
-updated: 2026-09-09
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
-ids: [SC-10, SC-15, FR-05, FR-09, FR-22]
-adrs: [ADR-0006, ADR-0026, ADR-0045, ADR-0078]
-iadrs: [IADR-0197, IADR-0261, IADR-0329, IADR-0332, IADR-0344, IADR-0347, IADR-0369, IADR-0404, IADR-0421]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation]
-issues: [#438, #578, #600, #1102, #1143, #1144, #1245]
+ids: [SC-10, SC-15, FR-05, FR-09, FR-22, NFR-13]
+adrs: [ADR-0006, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097]
+iadrs: [IADR-0197, IADR-0261, IADR-0329, IADR-0332, IADR-0344, IADR-0347, IADR-0369, IADR-0404, IADR-0421, IADR-0432]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260926_1500_reset-floor-default-on]
+issues: [#438, #578, #600, #1102, #1143, #1144, #1245, #1500]
 -->
 
 # 運用 Runbook: Keycloak smtpServer（SMTP リレー）の設定
@@ -310,6 +310,39 @@ kubectl -n platform-infra port-forward deploy/mail-relay 9154:9154   # → http:
 
 > 🔴 **キューは Pod の再作成で失われる**（永続化していない。載るのは寿命 30 分のメールだけである）。
 > **近接 MTA を作り直すと、滞留していたメールは消える。**
+
+## 申請の所要時間の床（既定で入る）
+
+**［2026-09-26］** パスワードリセットの申請は、実在する利用者名のときだけ送出の 1 往復ぶん遅い
+（認証基盤の送出は同期で、実在しない利用者名はメールを作らず送らない）。**同じ名前を数回投げて中央値を取れば
+判別できる**ため、申請の POST を**床（最小応答時間・150 ms）に達するまで返さない前段**（`reset-floor`）を置く。
+**床は既定で入る。** 本手順（上流の値の投入）とは独立に働く —— 近接 MTA と同じ配備単位に付いてくる。
+
+| 部品 | どこにあるか | 既定 |
+| --- | --- | --- |
+| 器（逆プロキシ） | `platform-infra` の `deploy/reset-floor`（宣言は `deploy/mail-relay/reset-floor/`） | **常に立つ**（近接 MTA・門と同じ） |
+| 器の本体 | ConfigMap `reset-floor-script`（起動器が `deploy/mail-relay/reset-floor.js` から作る） | 常に作る |
+| 経路（申請の POST を器へ向ける） | Istio エッジの VirtualService の先頭（`deploy/local/edge-istio-reset-floor/`） | **Istio のエッジを立てると入る** |
+| 床の値（150 ms） | 器のマニフェストの `RESET_FLOOR_MS` | **コードは既定を持たない**（無ければ器は起動しない） |
+
+```sh
+kubectl -n platform-infra get deploy reset-floor                                # 器が居るか
+kubectl -n istio-system get virtualservice msp-keycloak-edge \
+  -o jsonpath='{.spec.http[0].name}{"\n"}'                                      # reset-credentials-floor なら経路が入っている
+```
+
+- **外すとき（検証用の比較に限る）**: `RESET_FLOOR=0 bash scripts/istio-edge-up.sh`。経路だけが外れ、
+  器は誰も通らないまま居る。🔴 **外している間は所要時間で利用者名を判別できる。** 戻すときは
+  `RESET_FLOOR` を与えずに同じスクリプトを走らせる。`0` / `1` 以外の値は、入口に触る前に拒まれる。
+- 🔴 **Traefik のエッジ（Istio を使わないローカル経路）には経路が無い。** 器は立つが誰も通らない。
+- 🔴 **go-live では、器は近接 MTA と一緒に適用されるが、経路は go-live のエッジ側で与える必要がある**
+  （本番の認証基盤のマニフェストは本リポジトリに無い）。与えるのは「`/realms/<realm>/login-actions/reset-credentials`
+  への **POST だけ**を器へ向ける」経路であり、**ログイン経路には掛けない**。器の本体の ConfigMap
+  （`reset-floor-script`）も門の ConfigMap と同じく作る必要がある。
+- **床は失敗しても安全側である。** 器が落ちても応答の内容は変わらず、遅くならないだけである。
+  **器の readiness は認証基盤の健康を映さない**（映すと認証基盤が落ちた瞬間に床ごと経路から外れる）。
+- **床の値は定期に見直す**（四半期に 1 度・メール送出経路や認証基盤の構成を変えたとき・所要時間の検査が赤に
+  なったとき）。床は下限を揃えるだけであり、**床を超える応答は床を超えたまま出る**（裾は隠さない）。
 
 ## 記録
 

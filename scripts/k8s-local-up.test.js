@@ -487,6 +487,26 @@ ok('既定: keycloak-theme-platform ConfigMap は keycloak-realms の直後・in
   );
 });
 
+// SC-15, NFR-13, ADR-0097 決定 2, IADR-0432 (#1500): リセット申請の床の器は **既定で** infra と一緒に立つ
+// （deploy/mail-relay/kustomization.yaml が取り込む）。器は本体を ConfigMap からマウントするので、
+// **ゲートなしで**・infra の apply より**前**に作り、rollout を待つ。旧: RESET_FLOOR=1 のときだけ
+// istio-edge-up.sh が作っていた（既定では作られず、器を既定へ入れると Pod が起動しなかった）。
+ok('既定: 床の器の reset-floor-script ConfigMap は infra の apply より前に作られ、rollout を待つ（#1500）', () => {
+  const cmIdx = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create configmap reset-floor-script '));
+  const infraApplyIdx = DEFAULT.lines.findIndex((l) => /^kubectl apply -k deploy\/local\/infra(-persistence)?$/.test(l));
+  assert.ok(cmIdx >= 0, '既定で reset-floor-script が作られない（器が既定で入るのに本体が無い）');
+  assert.ok(infraApplyIdx >= 0, 'infra の apply が見つからない');
+  assert.ok(cmIdx < infraApplyIdx, 'reset-floor-script の作成が infra の apply より後になっている（初回起動で Pod がマウントに失敗する）');
+  assert.ok(
+    DEFAULT.lines.some((l) => l.includes('--from-file=reset-floor.js=deploy/mail-relay/reset-floor.js')),
+    'reset-floor-script の中身がリポジトリの器の本体でない',
+  );
+  assert.ok(
+    DEFAULT.lines.some((l) => /rollout status deploy\/reset-floor\b/.test(l)),
+    '既定で床の器の rollout を待っていない',
+  );
+});
+
 // SC-15, FR-22, ADR-0045 決定 9, IADR-0344 (#1144): 捕捉用 MTA は **dev 既定**である。
 //
 // 🔴 **ゲートを持たないことが、この配備物の要点である。** 決定 9 は「開発環境では実送信しない」を
