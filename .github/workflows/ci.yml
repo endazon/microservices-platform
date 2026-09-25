@@ -97,6 +97,10 @@ jobs:
       # 分岐を、`vault` をスタブへ差し替えた Bash テストで固定する。実 Vault・実クラスタは要らない。
       - name: Test local Vault persistence entrypoint (vault stub)
         run: bash deploy/local/vault-persistence/vault-entrypoint.test.sh
+      # NFR, ADR-0006, IADR-0066, Issue #1422: k8s-local-down.sh の撤去順（webhook → finalizer → Helm → 名前空間 →
+      # CRD / PV → 検証）と、既定の dry-run が読み取りしか起動しないことを、kubectl / helm / k3d をスタブへ差し替えて固定する。
+      - name: Test local k8s teardown order and read-only dry-run (kubectl / helm stub)
+        run: bash scripts/k8s-local-down.test.sh
 
   # NFR / IADR-0232 決定 6: 依存ゼロの Node 検査を 1 ジョブへ束ねる（統合前は 12 の独立ジョブ）。
   #
