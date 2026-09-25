@@ -20,14 +20,28 @@ public sealed class HttpEffectiveConfigCollector(
 
     public async Task<EffectiveCollection> CollectAsync(CancellationToken ct = default)
     {
-        var client = httpClientFactory.CreateClient(HttpClientName);
-        client.Timeout = TimeSpan.FromSeconds(Math.Max(1, _options.TimeoutSeconds));
+        var client = CreateClient();
 
         // FR-15: 対象サービスの自己申告を並列に収集する（応答時間が対象サービス数に比例して
         // 増えないよう Task.WhenAll でまとめる。集約は完了後に単一スレッドで行い競合を避ける）。
         var results = await Task.WhenAll(
             _options.Services.Select(kv => CollectOneAsync(client, kv.Key, kv.Value, ct)));
 
+        return Aggregate(results);
+    }
+
+    // IADR-0462 (#1514): 1 宛先ぶんを REST で収集する（`EffectiveConfigCollector` が宛先ごとに輸送を選ぶ）。
+    // 到達不能・空応答は null（呼び出し側が UnreachableServices へ入れる）。
+    public async Task<ServiceIntrospectionDto?> CollectOneAsync(
+        string service, string baseUrl, CancellationToken ct)
+        => (await CollectOneAsync(CreateClient(), service, baseUrl, ct)).Report;
+
+    // FR-15: 収集結果の集約。応答した宛先だけを Services / ReachableServices へ、応答しなかった宛先を
+    // UnreachableServices へ入れる（適用漏れと到達不能を区別する。IADR-0029）。
+    // IADR-0462 (#1514): REST と gRPC の収集が**同じ 1 つの集約**を通る（輸送で意味を変えない）。
+    internal static EffectiveCollection Aggregate(
+        IEnumerable<(string Service, ServiceIntrospectionDto? Report)> results)
+    {
         var services = new List<ServiceIntrospectionDto>();
         var reachable = new HashSet<string>(StringComparer.Ordinal);
         var unreachable = new HashSet<string>(StringComparer.Ordinal);
@@ -44,6 +58,13 @@ public sealed class HttpEffectiveConfigCollector(
         }
 
         return new EffectiveCollection(services, reachable, unreachable);
+    }
+
+    private HttpClient CreateClient()
+    {
+        var client = httpClientFactory.CreateClient(HttpClientName);
+        client.Timeout = TimeSpan.FromSeconds(Math.Max(1, _options.TimeoutSeconds));
+        return client;
     }
 
     // FR-15: 1 サービス分の自己申告を収集する。到達不能・空応答は report=null で返し、呼び出し側で

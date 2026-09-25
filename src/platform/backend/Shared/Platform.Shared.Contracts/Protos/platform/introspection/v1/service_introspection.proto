@@ -1,0 +1,71 @@
+// FR-15, NFR-09, NFR-16, ADR-0018, ADR-0029, ADR-0075, IADR-0029, IADR-0379, IADR-0462 (#1514, #1255 経路 ⑤):
+// 各サービスの自己申告（REST `GET /internal/introspection` と同じ意味論）の gRPC 契約。
+//
+// ■ 置き場と所有（IADR-0379 決定 1）: 自己申告は**特定のサービスが持つ面ではなく、基盤が全サービスへ
+//   配る面**である（`AddPlatformIntrospection` / `MapPlatformIntrospection`）。所有者は platform の
+//   基盤（`Platform.Shared.Infrastructure`）であり、置き場は `Platform.Shared.Contracts` の
+//   `Protos/platform/introspection/v1/`。knowledge の 10 サービスも同じ proto から受け口を生成する
+//   （knowledge → platform の Shared/ 参照は許可。IADR-0117）。
+//
+// ■ versioning（IADR-0379 決定 2）: フィールド番号は不変。削除は reserved に残す。破壊的変更は v2 の並走。
+//
+// ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
+//   この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。REST の受け口は認証を
+//   課していない（メッシュ内部限定。IADR-0017 / IADR-0026）ので、**この面は現状より狭い**。
+//   REST 側は変えない（並走中の正は REST。IADR-0379 決定 5）。
+//
+// ■ 🔴 **扇形である。** 呼び出し元は構成情報 API（BFF）の 1 つ、宛先は構成
+//   （`Introspection:Services` / `Introspection:GrpcServices`）で開く。宛先ごとに
+//   同じ 1 つの rpc を実装するので、宛先が増えても proto は増えない。
+//
+// ■ 🔴 **proto3 に null は無い（IADR-0397 決定 5 ほか）。** REST の DTO が null を取り得るのは
+//   `PortSelectionDto.Target` だけであり、これを `optional`（field presence）で運ぶ。
+//   素の string にすると「接続先を申告しない」と「空文字の接続先」が同じ値に潰れる。
+//   それ以外の項目は DTO 側でも null を取らない（空文字・空列・false はそれ自体が申告の値である ——
+//   例: MassTransit 段は入力型を導出できないと `input` に空文字を申告する。ドリフト検出はそれを読む）。
+syntax = "proto3";
+
+package platform.introspection.v1;
+
+option csharp_namespace = "Platform.Shared.Contracts.Grpc.Introspection.V1";
+
+// 自己申告の読み取り（REST `GET /internal/introspection` と 1 対 1）。
+service ServiceIntrospection {
+  rpc Get(GetServiceIntrospectionRequest) returns (ServiceIntrospectionReport);
+}
+
+// 引数は持たない（REST も持たない）。後から足すのは非破壊の追加である。
+message GetServiceIntrospectionRequest {}
+
+// `ServiceIntrospectionDto` と 1 対 1。
+message ServiceIntrospectionReport {
+  // 申告したサービス名（pipeline.json の service 名と同じ語彙）。🔴 空は「申告として無効」であり、
+  // 呼び出し側は到達不能として扱う（REST の空応答と同じ枝）。
+  string service = 1;
+  repeated StepIntrospection steps = 2;
+  repeated PortSelection ports = 3;
+  repeated Connector connectors = 4;
+}
+
+// `StepIntrospectionDto` と 1 対 1。
+message StepIntrospection {
+  string name = 1;
+  string consumer = 2;
+  string input = 3;
+  repeated string outputs = 4;
+  bool enabled = 5;
+}
+
+// `PortSelectionDto` と 1 対 1。
+message PortSelection {
+  string port = 1;
+  string implementation = 2;
+  // 🔴 presence で運ぶ（DTO の `string?`）。未設定は null、空文字は空文字。
+  optional string target = 3;
+}
+
+// `ConnectorDto` と 1 対 1。
+message Connector {
+  string name = 1;
+  bool enabled = 2;
+}

@@ -539,3 +539,4 @@
 | [IADR-0459](./IADR-0459_cutover-discard-and-rebuild-boundaries-and-verification.md) | **切替は 6 資産の破棄と realm.json からの作り直しで行う**（#457）。共有 PVC は消さず DB 単位・realm 単位で消し、検証は作り直しの時刻で見る | Accepted |
 | [IADR-0460](./IADR-0460_sc22-supply-source-from-external-secret-presence-and-restart-notice.md) | **SC-22 の供給元は同期先 ExternalSecret の有無から境界層が判定して 3 値（screen / git / unknown）で返し、画面は送る前に消費側の再起動を項目ごとに告げる**（#1502。計画 ADR-0104 決定 2・4）。構成値の写しで判定しない（推測になる）。権限は IADR-0456 決定 4 の Role の `get` で足り、増やさない | Accepted |
 | [IADR-0461](./IADR-0461_object-storage-seaweedfs-deployment.md) | **オブジェクトストレージを MinIO から SeaweedFS へ差し替える**（#1499）。digest 固定・テレメトリ無効・S3 の gRPC を署名鍵と NetworkPolicy で塞ぐ・Console の SSO を撤去・全版削除の手順を直す | Accepted |
+| [IADR-0462](./IADR-0462_introspection-grpc-fanout-per-target-opt-in.md) | 実効構成の収集（introspection）は扇形のまま gRPC へ移す —— 面は共通基盤が REST と対で全サービスに張り、呼び出し側は宛先ごとに opt-in する（#1514） | Accepted |

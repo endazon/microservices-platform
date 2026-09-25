@@ -10,6 +10,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Wolverine;
+using Grpc.Core;
+using Grpc.Net.Client;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Routing;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Pb = Platform.Shared.Contracts.Grpc.Introspection.V1;
 
 namespace IngestionService.Tests;
 
@@ -36,6 +42,31 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
         report!.Service.Should().Be("ingestion-service");
         report.Steps.Should().ContainSingle(s => s.Name == "ingest")
             .Which.Enabled.Should().BeTrue();
+    }
+
+    // FR-15, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4, IADR-0462 (#1514, #1255 経路 ⑤):
+    // 本番の Program.cs が**自己申告の gRPC 面**を `ServiceCaller` 付きで張っている。
+    // 経路は宛先の側が面を持たないと 1 つも移らない（扇形）ので、宛先ごとに固定する。
+    // 呼び出しは TestServer 経由（待ち受けない）。s2s を持たない要求は認可で止まり、
+    // UNIMPLEMENTED（面が無い）でも INTERNAL（認可ミドルウェアが無い）でもないことを見る。
+    [Fact]
+    public async Task Maps_the_introspection_grpc_face_behind_ServiceCaller()
+    {
+        var server = _factory.Server;
+        var endpoint = _factory.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .OfType<RouteEndpoint>()
+            .Single(e => e.RoutePattern.RawText == "/platform.introspection.v1.ServiceIntrospection/Get");
+        endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>().Select(a => a.Policy)
+            .Should().Contain(PlatformAuthPolicies.ServiceCaller);
+
+        using var channel = GrpcChannel.ForAddress(server.BaseAddress,
+            new GrpcChannelOptions { HttpHandler = server.CreateHandler() });
+        var client = new Pb.ServiceIntrospection.ServiceIntrospectionClient(channel);
+        var act = async () => await client.GetAsync(
+            new Pb.GetServiceIntrospectionRequest(), cancellationToken: TestContext.Current.CancellationToken);
+
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode
+            .Should().BeOneOf(StatusCode.Unauthenticated, StatusCode.PermissionDenied);
     }
 
     public sealed class Factory : WebApplicationFactory<Program>
