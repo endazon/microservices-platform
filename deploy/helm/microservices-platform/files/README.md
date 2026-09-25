@@ -21,6 +21,7 @@
 | --- | --- |
 | `pipeline.json` | 宣言（正）。`events`（既知イベント契約型）・`sources`（同期 API 起点の発行）・`steps`（段） |
 | `pipeline.schema.json` | JSON Schema（エディタ補完・レビュー用。CI 検証はスクリプトが同等規則＋意味検証を実施） |
+| `synthetic-monitor/probe.js` | 合成監視のプローブ（#1287）。**写しである** —— 正本は `deploy/local/synthetic-monitor/probe.js`（helm も kustomize も互いのディレクトリの外を読めないため 2 か所に置く）。バイト一致は `scripts/helm-synthetic-monitor.test.js` が固定する。直すときは正本を直して写し直す。`syntheticMonitor.enabled`（既定 false）のときだけ ConfigMap `synthetic-monitor-probe` になる |
 
 ## 実行時の挙動（誤構成対策 = fail-fast）
 

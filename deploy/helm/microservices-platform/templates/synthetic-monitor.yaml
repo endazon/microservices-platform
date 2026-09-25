@@ -1,0 +1,147 @@
+{{- /*
+NFR-02, NFR-21, ADR-0044, ADR-0076 決定 3・4, ADR-0079 決定 1・2, IADR-0378, IADR-0469 (#1287):
+合成監視（synthetic）の常駐プローブ —— 60 秒間隔・LLM を呼ばない（ADR-0079 決定 1 の常時トラフィック側）。
+
+🔴 **syntheticMonitor.enabled（既定 false）のときだけ描く。** 無効では本ファイルは空になり、描画に 1 バイトも足さない
+   （注記を YAML のコメントで書くと無効時にも出てしまうので、Go テンプレートのコメントに置いている）。
+
+🔴 **標識と除外は同じ描画で入れる**（ADR-0076 決定 4）。3 サービスへの env は deployment.yaml が同じ条件で描く。
+   ここでは「除外できない構成」を**描画の段階で止める**:
+     1. 集合（_synthetic-monitor.tpl）のサービスが 1 つでも無効 → fail（その面では標識が読まれない）
+     2. aianalysis に SyntheticMonitoring__AllowLlmEgress が false 以外で立っている → fail
+        （60 秒のプローブが LLM を呼ぶ ＝ 月 43,200 回・概算 月約 264,000 円。ADR-0079 実測 2。
+         LLM を呼ぶのは 60 分側であり、**別の配備単位で、課金の承認が先**である。決定 2・フォローアップ 2）
+   🔴 **チャートはイメージの中身を確かめられない。** 「除外規則が入ったイメージであること」（ADR-0079 §フォローアップ 1）は
+   有効化する人が確かめる前提である（README の手順）。
+
+中身は overlay（deploy/local/synthetic-monitor/synthetic-monitor.yaml）と同じにする。env・イメージ・probe.js のバイト列の
+一致は scripts/helm-synthetic-monitor.test.js が突き合わせる。資源名も同じにしてある（運用手順の kubectl がそのまま通る）ので、
+ローカルの SYNTHETIC=1 と併用しない。
+
+★ Job（CronJob）ではなく Deployment のループにしてある理由は overlay と同じ（CronJob の刻みは 1 分が下限で、
+   pod 起動の揺らぎが乗ると 5 分境界の近くで不安定になる／メッシュ内の Job はサイドカーのせいで完了しない）。
+*/ -}}
+{{- $sm := .Values.syntheticMonitor | default dict }}
+{{- if $sm.enabled }}
+{{- $services := include "msp.syntheticMonitor.exclusionServices" . | splitList "," }}
+{{- range $services }}
+{{- $svc := index $.Values.services . | default dict }}
+{{- if not $svc.enabled }}
+{{- fail (printf "syntheticMonitor.enabled=true だが services.%s が無効である。標識を読む面が欠けると、その面では合成が実利用として数えられる。除外できない構成では合成監視を配備しない（ADR-0076 決定 4）。" .) }}
+{{- end }}
+{{- end }}
+{{- $ai := $.Values.services.aianalysis | default dict }}
+{{- range (concat ($ai.extraEnv | default list) ($ai.extraEnvAppend | default list)) }}
+{{- if eq .name "SyntheticMonitoring__AllowLlmEgress" }}
+{{- if or .secretKeyRef (ne (lower (toString .value)) "false") }}
+{{- fail "syntheticMonitor.enabled=true のまま aianalysis に SyntheticMonitoring__AllowLlmEgress が立っている。60 秒のプローブは LLM を呼ばない（ADR-0079 決定 1）。LLM を呼ぶ 60 分側は別の配備単位であり、課金の承認が先である（決定 2）。" }}
+{{- end }}
+{{- end }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: synthetic-monitor-probe
+  labels:
+    app: synthetic-monitor
+    app.kubernetes.io/part-of: microservices-platform
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+# 写しの正本は deploy/local/synthetic-monitor/probe.js（バイト一致は試験が固定する）。
+data:
+  probe.js: |
+{{ .Files.Get "files/synthetic-monitor/probe.js" | trimSuffix "\n" | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: synthetic-monitor
+  labels:
+    app: synthetic-monitor
+    app.kubernetes.io/part-of: microservices-platform
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: synthetic-monitor
+  template:
+    metadata:
+      labels:
+        app: synthetic-monitor
+      annotations:
+        # スクリプトを差し替えたら Pod を作り直す（overlay では手で rollout restart が要った）。
+        checksum/probe: {{ .Files.Get "files/synthetic-monitor/probe.js" | sha256sum | quote }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: probe
+          image: {{ $sm.image | quote }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          command: ["node", "/probe/probe.js"]
+          env:
+            - name: KC_URL
+              value: {{ $sm.keycloak.url | quote }}
+            - name: KC_REALM
+              value: {{ $sm.keycloak.realm | quote }}
+            # 🔴 この clientId が標識そのものである。3 サービスの SyntheticMonitoring__Subjects__0 と同じ値から描く。
+            - name: SYNTHETIC_CLIENT_ID
+              value: {{ $sm.clientId | quote }}
+            # 🔴 実値はチャートに書かない（Vault → ExternalSecret → Secret。チャートの外）。
+            - name: SYNTHETIC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $sm.existingSecret }}
+                  key: {{ $sm.clientSecretKey }}
+            - name: BFF_BASE_URL
+              value: {{ $sm.bffBaseUrl | quote }}
+            # ADR-0079 決定 1 の確定値。probe.js は既定値を持たない（未設定なら起動しない）。
+            - name: PROBE_INTERVAL_SECONDS
+              value: {{ $sm.intervalSeconds | quote }}
+            # 費用の出ない 2 経路のみ。LLM を呼ぶのは 60 分側（別の配備単位）である。
+            - name: PROBE_PATHS
+              value: {{ $sm.paths | quote }}
+          volumeMounts:
+            - name: probe
+              mountPath: /probe
+              readOnly: true
+          resources:
+            {{- toYaml $sm.resources | nindent 12 }}
+      volumes:
+        - name: probe
+          configMap:
+            name: synthetic-monitor-probe
+{{- if .Values.networkPolicy.enabled }}
+---
+# allow-intra-namespace（networkpolicy.yaml）は egress を「同 Namespace ＋ DNS」に絞るため、
+# 別 Namespace の Keycloak（token 端点）へは L3/L4 で届かない（届かなければ 1 度も BFF へ到達せず、
+# RagLatencySeriesAbsent が「評価対象が無い」の顔で鳴る）。プローブの Pod から Keycloak の Pod・ポートへ 1 本だけ開ける。
+# BFF → Vault（allow-bff-egress-to-vault）と同じ型。プローブ → BFF は同 Namespace なので既存の許可で足りる。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-synthetic-monitor-egress-to-keycloak
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: synthetic-monitor
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $sm.keycloak.namespace }}
+          podSelector:
+            matchLabels:
+              app: keycloak
+      ports:
+        - protocol: TCP
+          port: {{ $sm.keycloak.port }}
+{{- end }}
+{{- end }}

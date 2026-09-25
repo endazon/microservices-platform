@@ -25,7 +25,9 @@ overlay の apply → プローブの rollout 待ち）。差分は 2 点だけ�
   （ADR-0076 決定 4「除外できない構成では配備しない」。警告して続行はしない）。
 
 🔴 **既定はオフのままである。** ADR-0079 §フォローアップ 1 の「既定の起動器へ入れる」は**本番構成**
-（`deploy/helm/microservices-platform`）を指しており、そちらには合成監視が無い。加えてローカルで既定 ON に
+（`deploy/helm/microservices-platform`）を指している。🔵 ［2026-09-26 更新 / #1287］従前ここには「そちらには
+合成監視が無い」と書いてあった。**チャートに既定オフの口（`syntheticMonitor.enabled`）を用意した**（下節
+「本番構成（helm チャート）で有効にする」）。加えてローカルで既定 ON に
 すると、捨てるつもりの dev クラスタが常に `/analysis/ask` 系を叩き続ける。**既定 ON を望むなら
 `scripts/k8s-local-up.sh` の `SYNTHETIC_DEFAULT` を `"1"` にするだけでよい**（他は 1 行も変えなくてよい）。
 
@@ -34,8 +36,54 @@ overlay の apply → プローブの rollout 待ち）。差分は 2 点だけ�
 **稼働クラスタ（レジストリのタグを引く）へこの根拠は移せない。**
 
 ⚠️ **`ARGOCD=1` で同期させているクラスタでは、標識の env が ArgoCD に巻き戻される**
-（門は live の Deployment を触るが、chart には無い設定であるため）。その構成では `up` を打ち直すか、
-標識を chart 側へ入れる別の手当てが要る。
+（門は live の Deployment を触るが、chart の既定の姿には無い設定であるため）。その構成では `up` を打ち直すか、
+🔵 ［2026-09-26 更新 / #1287］**門ではなくチャート側で有効にする**（下節。`SYNTHETIC=1` とは併用しない）。
+
+## 本番構成（helm チャート）で有効にする（#1287）
+
+🔵 **［2026-09-26 追加 / #1287・利用者裁定 案 A］** チャート `deploy/helm/microservices-platform` に
+`syntheticMonitor.enabled`（**既定 `false`**）を用意した。**既定のままでは 1 バイトも描画されない** ——
+プローブも、3 サービスの標識の env も出ない（従前の描画とバイト等価。何も呼ばず、何も費やさない）。
+
+有効にすると、**同じ描画で**次が揃う（「標識と除外は同時に入れる」）。
+
+| 何 | 中身 |
+| --- | --- |
+| プローブ | `Deployment/synthetic-monitor` ＋ `ConfigMap/synthetic-monitor-probe`（**本 overlay と同名・同じ env・同じイメージ**。`probe.js` はチャートの `files/synthetic-monitor/probe.js` に写しを置き、バイト一致を試験が固定する） |
+| 標識 | `bff` / `dashboard` / `aianalysis` の env `SyntheticMonitoring__Subjects__0=synthetic-monitor`（門と同じ 3 つ。集合は values の knob にしていない） |
+| egress | `networkPolicy.enabled` のとき、プローブ → Keycloak（`platform-infra` の `app: keycloak`・8080）の 1 本 |
+| Secret | **チャートは参照だけ**（`existingSecret: synthetic-monitor-oidc`）。作るのは Vault → `deploy/local/vault/eso/externalsecret-synthetic-monitor-oidc.yaml` → Secret（チャートの外。他の OIDC クライアントと同じ流儀） |
+
+🔴 **描画の段階で止める構成**（`helm template` / `helm upgrade` が失敗する）:
+3 サービスのどれかが `enabled: false`（除外できない構成では配備しない）／`aianalysis` の `extraEnv` / `extraEnvAppend` に
+`SyntheticMonitoring__AllowLlmEgress` が `false` 以外で立っている（60 秒のプローブが LLM を呼ぶと月 43,200 回）。
+**LLM を呼ぶ 60 分側は別の配備単位であり、課金の承認が先である**（本チャートにその knob は無い）。
+
+### 🙏 利用者の手順
+
+1. **前提: 3 サービス（BFF / DashboardService / AiAnalysisService）と LlmGateway のイメージを develop から作り直して配備する**（#1378）。
+   🔴 **チャートはイメージの中身を確かめられない。** 稼働クラスタの `latest` は #1378 の実測（2026-09-11）で**約 7 週間前**であり、
+   除外規則（PR #1259 で入った標識の判定と除外）を含まない。**その状態で有効にすると、除外できない構成へ合成を流すことになる。**
+2. **realm に `synthetic-monitor` クライアントを反映し、その secret を Vault `secret/msp/synthetic-monitor-oidc`（`client-secret`）へ入れる。**
+   ExternalSecret を当てて `SecretSynced` を待つ（env は Pod 起動時に 1 度だけ解決される。先に Pod が立つと空の値で固定される）:
+
+   ```console
+   kubectl apply -f deploy/local/vault/eso/externalsecret-synthetic-monitor-oidc.yaml
+   kubectl -n microservices-platform wait --for=condition=Ready externalsecret/synthetic-monitor-oidc --timeout=120s
+   ```
+
+3. **有効にする**（ArgoCD なら Application の values / `helm.parameters`、手で当てるなら `--set`）:
+
+   ```console
+   helm upgrade <release> deploy/helm/microservices-platform -n microservices-platform --reuse-values \
+     --set syntheticMonitor.enabled=true
+   ```
+
+   🔴 **ローカルの `SYNTHETIC=1`（本 overlay）と併用しない**（同名の資源になり、後から当てた側が上書きする）。
+4. **確かめる** —— 上の「効いていることの確かめ方」がそのまま使える（資源名が同じ）。issue #1287 の受け入れ基準 ①②
+   （`RagLatencySeriesAbsent` が鳴らないこと／プローブを止めると鳴ること）はここで実測する。
+5. **止める** —— `--set syntheticMonitor.enabled=false` で、プローブ・標識・egress が同じ描画から一度に消える。
+   一時的に止めるだけなら `kubectl -n microservices-platform scale deploy/synthetic-monitor --replicas=0`（ArgoCD の自己修復が有効なら戻される）。
 
 ## 前提と手順（手で当てる場合）
 
@@ -128,4 +176,5 @@ kubectl -n microservices-platform scale deploy/synthetic-monitor --replicas=0
 **「SLO の評価対象が本当に無い」状態**である（クラスタ再作成中に鳴るのと同じ扱い）。
 **既定の起動器へ入れる条件は「除外を含むイメージが配備されていること」である**（`ADR-0079` §フォローアップ 1）。
 🔵 ［2026-09-09 追加 / #1287］**ローカル起動器には `SYNTHETIC=1` の口を用意した**（上節）。
-**本番構成（helm）への投入・稼働クラスタでの実測は利用者の手が要るため未着手である。**
+🔵 ［2026-09-26 更新 / #1287］**本番構成（helm）には既定オフの口を用意した**（上節「本番構成（helm チャート）で有効にする」）。
+**有効化（イメージの再ビルドが前提）と稼働クラスタでの実測は利用者の手が要るため未着手である。**
