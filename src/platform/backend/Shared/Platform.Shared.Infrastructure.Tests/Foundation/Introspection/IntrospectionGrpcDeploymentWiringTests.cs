@@ -16,6 +16,15 @@ public class IntrospectionGrpcDeploymentWiringTests
     private const string Helm = "deploy/helm/microservices-platform/values.yaml";
     private const int GrpcPort = 8081;
 
+    // 🔴 **まだ gRPC で収集しない宛先と、その理由。** ここに在る宛先は REST のまま残し、gRPC の宛先・
+    // h2c リスナを配線しない（配線しても面が応答できないため）。理由が解けたら、ここから外して配線を足す。
+    private static readonly IReadOnlyDictionary<string, string> PendingGrpcTargets = new Dictionary<string, string>
+    {
+        // 変換サービスは認証を持たず、gRPC 面の `ServiceCaller` を判定できない（面は張られているが fail-closed）。
+        // 中継された利用者の資格情報を自ら検証する実装（planning#651 の裁定。別作業）が着地したら外す。
+        ["conversion-service"] = "認証を持たない（planning#651 の裁定による自前の検証が未着地）",
+    };
+
     // compose は `Key: value`、helm は `- name: Key` の次行 `value: "..."`。どちらの書式でも引く。
     private static Dictionary<string, string> ReadMap(string file, string prefix)
     {
@@ -38,9 +47,11 @@ public class IntrospectionGrpcDeploymentWiringTests
         var grpc = ReadMap(file, "Introspection__GrpcServices");
 
         rest.Should().NotBeEmpty("対照: 収集先を 1 件も読めていないなら以下は何も検査していない");
-        grpc.Keys.Should().BeEquivalentTo(rest.Keys, "REST の収集先と gRPC の収集先は同じ集合である（片方だけの宛先を作らない）");
+        grpc.Keys.Should().BeEquivalentTo(rest.Keys.Except(PendingGrpcTargets.Keys),
+            "REST の収集先は（保留の宛先を除き）すべて gRPC の収集先でもある（片方だけの宛先を作らない）");
+        PendingGrpcTargets.Keys.Should().BeSubsetOf(rest.Keys, "保留の宛先は REST の収集先に残っている（収集から落ちていない）");
 
-        foreach (var (service, restUrl) in rest)
+        foreach (var (service, restUrl) in rest.Where(kv => !PendingGrpcTargets.ContainsKey(kv.Key)))
         {
             var g = new Uri(grpc[service]);
             g.Host.Should().Be(new Uri(restUrl).Host, $"{service} の gRPC 宛先は REST と同じ Service を指す");
@@ -87,7 +98,7 @@ public class IntrospectionGrpcDeploymentWiringTests
             .Where(File.Exists)
             .ToDictionary(p => p, File.ReadAllText);
 
-        foreach (var service in ReadMap(Helm, "Introspection__Services").Keys)
+        foreach (var service in ReadMap(Helm, "Introspection__Services").Keys.Except(PendingGrpcTargets.Keys))
         {
             var owner = programs.Where(kv => kv.Value.Contains($"AddPlatformIntrospection(\"{service}\"", StringComparison.Ordinal))
                 .Select(kv => kv).ToList();

@@ -69,13 +69,18 @@ plan_refs: []
 | 区分 | 対象 | 本数 |
 | --- | --- | --- |
 | gRPC 面（共通基盤に 1 つ。`MapPlatformIntrospection` が REST と対で張る） | 受け口を持つ全サービス | 14 |
-| h2c リスナの追加（`AddPlatformGrpcListener`） | 収集先のうち未設定のもの: AiAnalysis / Conversion / DataSource / Feedback / Ingestion / Wiki | 6 |
-| 認証の追加（`AddPlatformAuth`。ミドルウェアは登録があれば WebApplication が自動で挟む —— 明示の `Use*` を外す変異で試験が緑のままだったことで確認） | Conversion / Ingestion | 2 |
-| helm `grpcPort` / compose `Grpc__Port` ＋ `expose` の追加 | 上の 6 | 6 |
-| BFF の gRPC 宛先（`Introspection__GrpcServices__*`） | helm・compose の収集先 13 | 13 × 2 |
+| h2c リスナの追加（`AddPlatformGrpcListener`） | 収集先のうち未設定のもの（Conversion を除く）: AiAnalysis / DataSource / Feedback / Ingestion / Wiki | 5 |
+| 認証の追加（`AddPlatformAuth`。ミドルウェアは登録があれば WebApplication が自動で挟む —— 明示の `Use*` を外す変異で試験が緑のままだったことで確認） | Ingestion | 1 |
+| helm `grpcPort` / compose `Grpc__Port` ＋ `expose` の追加 | 上の 5 | 5 |
+| BFF の gRPC 宛先（`Introspection__GrpcServices__*`） | helm・compose の収集先 13 のうち Conversion を除く 12 | 12 × 2 |
 
 ### 除外とその理由
 
+- ［2026-09-26 追記］🔴 **Conversion の gRPC 収集の配線（h2c リスナ・`grpcPort`・gRPC 宛先・`AddPlatformAuth`）**:
+  planning#651 の裁定（BFF が中継する利用者の資格情報を後段が自ら検証する。Conversion だけが満たしていない）により、
+  **Conversion の認証は別の作業が実装する**（コーディネーターからの指示で判明。当初は本 PR で `AddPlatformAuth` を足していたが外した）。
+  共通基盤が張る gRPC 面は Conversion にも在るが、認可の登録が無いので fail-closed（どの要求も成功しない）。
+  配線の試験は保留一覧（`PendingGrpcTargets`）に理由つきで載せ、認証の着地後に外す
 - **McpServer の h2c リスナ・`grpcPort`**: 収集先に無い（軸 2）ので gRPC で呼ばれない。gRPC 面自体は共通基盤が張る
   （張り忘れを構造で起こさないため）。**収集先へ加えるのは FR-15 の挙動変更**（ドリフト検出の対象が 1 つ増える）なので本 PR では行わない
 - **BFF `appsettings.json` のローカル既定**（`:5001` / `:5006` の REST 2 宛先）: ローカル実行の既定であり gRPC アドレスを持たない。
@@ -121,4 +126,32 @@ plan_refs: []
 
 ## 実施結果
 
-（実装後に追記）
+### 試験
+
+- platform 合計 2,137（合格 2,136・skip 1）／ knowledge 合計 2,566（合格 2,516・skip 50）。失敗 0
+- 追加した試験は **40 件**（platform 28: 共通基盤 22・Authorization 1・LlmGateway 1・Notification 2・McpServer 2 ／
+  knowledge 12: 既存の `IntrospectionEndpointTests` 8 ＋ Document 2・Wiki 2）。**基点の件数は実走していない** ——
+  上の合計から追加分を引いた値（platform 2,109 / knowledge 2,554）は導出値である
+- 待受: 共通基盤の器は `IPAddress.Loopback` の動的ポートだけに開き、起動直後に全待受アドレスがループバックであることを表明する。
+  各サービスの配線試験は TestServer（待ち受けない）
+
+### 変異試験（共通基盤の試験 22 件に対して）
+
+| # | 変異 | 結果 |
+| --- | --- | --- |
+| M1 | `MapGrpcService<IntrospectionGrpcService>()` を外す | 赤 7 |
+| M2 | `[Authorize(ServiceCaller)]` を `[AllowAnonymous]` に | 赤 3 |
+| M3 | `HasTarget` を読まずに `Target` を読む | 赤 3 |
+| M4 | 収集器が gRPC の宛先を無視する | 赤 10 |
+| M5 | `UNAUTHENTICATED` / `PERMISSION_DENIED` の Error 枝を外す | 赤 4 |
+| M6 | 空の service を受け入れる | 赤 4 |
+| M7 | 呼び出し側の取り消しを到達不能へ畳む | 赤 4 |
+| M8 | gRPC の収集器を登録しない | 赤 4 |
+| M9 | 期限を外す | 赤 3（hang を blame が打ち切り） |
+| M10 | 変換サービスの `AddPlatformAuth` を外す（サービス側の配線試験。**当時の形**。のちに Conversion の認証は別作業へ回し、本 PR では足していない） | 赤 1 |
+| — | 変換サービスの明示の `UsePlatformMiddleware` を外す | **緑のまま** —— 登録があれば WebApplication が認証・認可のミドルウェアを自動で挟むため。明示の `Use*` は足さないことにした |
+
+### 確かめていないこと
+
+- 稼働 k3s での h2c 往復（Pod の再構築を要する）。compose の起動も行っていない
+- 並走中の正は REST のまま（[[IADR-0379]] 決定 5）

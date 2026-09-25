@@ -345,17 +345,11 @@ services:
       dockerfile: src/knowledge/backend/Services/ConversionService/Dockerfile
     # FR-15, IADR-0029, IADR-0017: 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
     # host へは公開せずメッシュ内部限定（ingress 非公開）。
-    # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 / IADR-0462 (#1514, #1255 経路 ⑤): 8081 は
-    # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用。面は自己申告の読み取り 1 口だけ）。helm の grpcPort と
-    # 同じ値。host へは公開しない。
     expose:
       - "8080"
-      - "8081"
     environment:
       # FR-12, ADR-0015: 正規化本文・資産を MinIO へ保管する（書き込み側）。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
-      # NFR-16, IADR-0379 決定 3, IADR-0462 (#1514): h2c リスナ。未設定ならリスナを立てない。readiness は 8080 のまま。
-      Grpc__Port: "8081"
       # FR-12, UC-06, SC-07, IADR-0043: 変換ジョブ読み取りモデルの永続化（conversion_svc）。
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=conversion_svc;Username=kp;Password=kp
       # 🔴 **本サービスは compose で `Services__LlmGateway` を持たない**（appsettings の既定
@@ -999,9 +993,10 @@ services:
       # 自己申告の **gRPC（h2c）宛先**。**ここに在る宛先だけ**が gRPC で収集され（資格情報は上の ServiceToken ＝
       # `bff`。利用者のトークンは載せない）、無い宛先は上の Introspection__Services__* の REST のまま
       # （並走中の正は REST。戻すのは該当行を消すだけでよい）。ポートは各サービスの Grpc__Port と一致させること。
+      # 🔴 conversion-service はまだ入れない（REST のまま。変換サービスは認証を持たず gRPC 面が fail-closed。
+      # 中継された利用者の資格情報を自ら検証する実装〔planning#651 の裁定。別作業〕の着地後に足す）。
       Introspection__GrpcServices__document-service: http://document-service:8081
       Introspection__GrpcServices__wiki-service: http://wiki-service:8081
-      Introspection__GrpcServices__conversion-service: http://conversion-service:8081
       Introspection__GrpcServices__ingestion-service: http://ingestion-service:8081
       Introspection__GrpcServices__retrieval-service: http://retrieval-service:8081
       Introspection__GrpcServices__aianalysis-service: http://aianalysis-service:8081

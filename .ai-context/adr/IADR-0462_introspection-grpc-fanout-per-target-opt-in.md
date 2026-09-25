@@ -56,7 +56,7 @@ plan_refs:
 1. **面をどこに置くか** —— 14 サービスの Program.cs へ個別に足すか、共通基盤に 1 つ置くか
 2. **切替の単位** —— 経路全体を 1 つのスイッチで切り替えるか、宛先ごとか
 3. **失敗の畳み方** —— gRPC の status をどう収集器の 2 値（申告を得た / 得られなかった）へ落とすか
-4. **受け口の前提が欠けるサービス** —— h2c リスナを持たない 6 サービスと、認証を持たない 2 サービス
+4. **受け口の前提が欠けるサービス** —— h2c リスナを持たない 6 サービスと、認証を持たない 2 サービス（変換・取り込み）
 
 ## 検討した選択肢
 
@@ -90,10 +90,15 @@ plan_refs:
 2. **受け口**（決定 1-A）: `IntrospectionGrpcService` は DI の同じ `ServiceIntrospectionDto` を写すだけで、REST と同じ 1 つの申告を返す。
    `[Authorize(Policy = ServiceCaller)]`。REST の受け口は認証を持たない（メッシュ内部限定）ので**この面は現状より狭い**。REST 側は変えない。
    `AddPlatformIntrospection` が `AddGrpc` を、`MapPlatformIntrospection` が `MapGrpcService` を呼ぶ
-3. **宛先の前提**: 収集先のうち h2c リスナを持たない 6 サービス（aianalysis / conversion / datasource / feedback / ingestion / wiki）に
-   `AddPlatformGrpcListener`、helm `grpcPort: 8081`、compose `Grpc__Port` と `expose`。認証を持たない 2 サービス（conversion / ingestion）に
+3. **宛先の前提**: 収集先のうち h2c リスナを持たない 5 サービス（aianalysis / datasource / feedback / ingestion / wiki）に
+   `AddPlatformGrpcListener`、helm `grpcPort: 8081`、compose `Grpc__Port` と `expose`。認証を持たない ingestion に
    `AddPlatformAuth` を足す（無いと面への要求は毎回「AddAuthorization が無い」例外で落ちる。ミドルウェアは登録があれば WebApplication が
    自動で挟むので `Use*` は足さない）。既存の REST 端点は認可を要求しないので挙動は変わらない。
+   🔴 **conversion は本決定では配線しない（REST のまま）。** conversion も認証を持たないが、その認証は planning#651 の裁定
+   （BFF が中継する利用者の資格情報を後段が自ら検証する。conversion だけが満たしていない）による**別作業が実装する**。
+   本決定で `AddPlatformAuth` を先に足すとその作業と重なるので触らない。共通基盤が張る gRPC 面は conversion にも在るが、
+   認可の登録が無いので **fail-closed**（どの要求も成功しない。匿名で申告が読めることは無い）であり、BFF の gRPC 宛先にも入れない。
+   認証が着地した段で、h2c リスナ・`grpcPort`・gRPC 宛先を足す（配線の試験は保留一覧から外すだけで赤から緑へ移る形にしてある）。
    **mcp-server は収集先に無い**ので h2c リスナも `grpcPort` も足さない（面は共通基盤が張る）。収集先へ加えるのは FR-15 の挙動変更であり本決定の外
 4. **呼び出し側**（決定 2-A・3-A）: `EffectiveConfigCollector` が新しい `IEffectiveConfigCollector` になる。宛先 = `Services` と `GrpcServices` の
    キーの和。`GrpcServices` に空でないアドレスが在れば gRPC、無ければ REST（両方に在れば gRPC）。集約は REST だけの収集と同じ 1 つ。
@@ -104,7 +109,7 @@ plan_refs:
    - **取り消し**: 呼び出し側の ct による取り消しだけを `OperationCanceledException` で外へ出す（REST と同じ。#1382）
    - **登録**: `AddPlatformConfigInspection` は `GrpcServices` が構成されたときだけ s2s トークンの発行側と gRPC の収集器を登録する
      （無い配備は資格情報を要求しない）。構成されているのに収集器が無ければ**起動時に落とす**（黙って REST へ倒すと、REST の退役の段で初めて露見する）
-5. **配備**: helm・compose の BFF に全収集先（13）の gRPC 宛先を入れる。資格情報は既存の `bff` client（`platform-service` 付き）を使い、
+5. **配備**: helm・compose の BFF に収集先 13 のうち conversion を除く 12 の gRPC 宛先を入れる。資格情報は既存の `bff` client（`platform-service` 付き）を使い、
    realm・Secret は増やさない。**並走中の正は REST**（[[IADR-0379]] 決定 5）—— 戻すのは宛先ごとに gRPC の行を消すだけ
 
 ## 理由
@@ -119,15 +124,17 @@ plan_refs:
 
 ## 結果
 
-- 良い影響: 経路 ⑤ の宛先 13 がすべて gRPC 面を持ち、配備上 gRPC で収集される。④（MCP のツール申告）も同じ形（面を配る側が 1 つ、
+- 良い影響: 経路 ⑤ の宛先 13 がすべて gRPC 面を持ち、conversion を除く 12 が配備上 gRPC で収集される。④（MCP のツール申告）も同じ形（面を配る側が 1 つ、
   呼び出し側は宛先ごと opt-in）で写せる（#1515）
 - 悪い影響・トレードオフ:
-  - 6 サービスの Service が複数ポートになり、ポートに名前が付く（`grpcPort` の既知の帰結。[[IADR-0379]] 決定 3）
-  - conversion / ingestion が JwtBearer を持つ（要求に Bearer が付いたときだけ IdP のメタデータを引く。付かない要求は従来どおり素通し）
+  - 5 サービスの Service が複数ポートになり、ポートに名前が付く（`grpcPort` の既知の帰結。[[IADR-0379]] 決定 3）
+  - ingestion が JwtBearer を持つ（要求に Bearer が付いたときだけ IdP のメタデータを引く。付かない要求は従来どおり素通し）
+  - conversion は認証の別作業が着地するまで REST のまま残る（経路 ⑤ はこの 1 宛先ぶん移り切らない）
   - 稼働 k3s での h2c 往復は**未実測**（Pod の再構築を要する）。ループバックの実 Kestrel 往復で代替した
 - フォローアップ:
   1. #1515（④-a）・#1516（④-b。判断待ち）・#1517（REST 退役。#1255 残射程 2 と同じ段）
   2. mcp-server を収集先へ加えるか（FR-15 の挙動変更。本決定の外）
+  3. conversion の gRPC 収集の配線（planning#651 の裁定による conversion の認証が着地した後）
 
 ## 関連
 

@@ -10,7 +10,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Wolverine;
-using Grpc.Core;
 using Grpc.Net.Client;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Routing;
@@ -46,12 +45,15 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
     }
 
     // FR-15, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4, IADR-0462 (#1514, #1255 経路 ⑤):
-    // 本番の Program.cs が**自己申告の gRPC 面**を `ServiceCaller` 付きで張っている。
-    // 経路は宛先の側が面を持たないと 1 つも移らない（扇形）ので、宛先ごとに固定する。
-    // 呼び出しは TestServer 経由（待ち受けない）。s2s を持たない要求は認可で止まり、
-    // UNIMPLEMENTED（面が無い）でも INTERNAL（認可ミドルウェアが無い）でもないことを見る。
+    // 自己申告の gRPC 面は共通基盤が REST と対で張るので、本サービスにも `ServiceCaller` 付きで張られている。
+    // 🔴 **ただし本サービスは認証を持たない**（中継された利用者の資格情報を自ら検証する実装は
+    // planning#651 の裁定による別作業であり、本スライスでは触らない）。したがって面は
+    // **fail-closed**（どの要求も成功しない）であり、構成情報 API はこの宛先を REST のまま収集する
+    // （helm・compose に gRPC の宛先を入れていない。`IntrospectionGrpcDeploymentWiringTests` の保留一覧）。
+    // 認証が着地したらこの試験は他サービスと同じ形（s2s 無し → UNAUTHENTICATED）へ書き換える。
+    // 呼び出しは TestServer 経由（待ち受けない）。
     [Fact]
-    public async Task Maps_the_introspection_grpc_face_behind_ServiceCaller()
+    public async Task Introspection_grpc_face_is_mapped_behind_ServiceCaller_and_fails_closed_without_auth()
     {
         var server = _factory.Server;
         var endpoint = _factory.Services.GetRequiredService<EndpointDataSource>().Endpoints
@@ -66,8 +68,13 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
         var act = async () => await client.GetAsync(
             new Pb.GetServiceIntrospectionRequest(), cancellationToken: TestContext.Current.CancellationToken);
 
-        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode
-            .Should().BeOneOf(StatusCode.Unauthenticated, StatusCode.PermissionDenied);
+        // 認可の登録が無いので要求は受け口の中で落ちる（TestServer はアプリの例外を呼び出し側へ運ぶ。
+        // 実配備では 500 → gRPC の INTERNAL / UNKNOWN）。**匿名で申告が読めることは無い。**
+        await act.Should().ThrowAsync<Exception>();
+
+        // 対照: REST の面は従来どおり申告を返す（gRPC 面を張ったことで REST を壊していない）。
+        var rest = await _factory.CreateClient().GetAsync("/internal/introspection", TestContext.Current.CancellationToken);
+        rest.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     public sealed class Factory : WebApplicationFactory<Program>

@@ -5,7 +5,6 @@ using Platform.Shared.Infrastructure.Foundation.Llm;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
-using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using ConversionService.Features.ConversionJobs;
@@ -29,18 +28,6 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
-// 🔴 FR-15, NFR-09, ADR-0029, [[IADR-0379]] 決定 4, [[IADR-0462]] (#1514): 認証・認可を持つ。
-// 自己申告の gRPC 面は `ServiceCaller`（呼び出し側サービスの s2s トークン）を要求するが、本サービスは
-// 従来 JwtBearer も認可の登録も持たなかった。無いままだと、その面への要求は**毎回**
-// 「AddAuthorization が無い」例外で落ち、呼び出し側からは恒久的な到達不能にしか見えない（例外は受け口の中に閉じる）。
-// 認証・認可のミドルウェアは、登録があれば WebApplication が自動で挟む（明示の Use* は要らない。試験で確認）。
-// 既存の REST 端点は認可を要求しないので、これを足しても挙動は変わらない（未認証の要求は素通しのまま）。
-builder.Services.AddPlatformAuth(builder.Configuration);
-// FR-15, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 3, [[IADR-0462]] (#1514, #1255 経路 ⑤):
-// east-west gRPC の h2c リスナ（`Grpc:Port`。未設定なら立てない）。面は自己申告の gRPC 面
-// （`MapPlatformIntrospection` が REST と対で張る。構成情報 API が宛先ごと opt-in で収集する）。
-// HTTP/1.1 のポート（REST・/health/*・introspection）はそのまま残り、readiness も 8080 のままである。
-builder.AddPlatformGrpcListener();
 
 // FR-12, UC-06, SC-07, IADR-0043: 変換ジョブ読み取りモデルの Postgres+EF 永続化。
 // ADR-0002: ConversionService 専用 DB（conversion_svc）。起動時に MigrateAsync でスキーマ最新化。
