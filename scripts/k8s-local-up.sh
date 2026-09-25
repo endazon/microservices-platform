@@ -13,7 +13,21 @@
 #   SYNTHETIC_MONITOR_CLIENT_SECRET（#1287。SYNTHETIC=1 のときだけ使う。realm の synthetic-monitor client と揃えること）
 # 永続化（Keycloak/Postgres/Qdrant ＋ OBSERVABILITY=1 の可観測性 4 種の PVC）は **既定オン**（IADR-0369 / #1088）。
 #   使い捨てスタックでだけ PERSIST=0 で外す。
+# リセット申請の床（SC-15）は **既定オン**（ADR-0097 決定 2 / #1500）。器は infra と一緒に必ず立ち、
+#   経路は ISTIO=1 ＋ LOCALEDGE=1 のエッジ（istio-edge-up.sh）が足す。外すときだけ RESET_FLOOR=0。
 set -euo pipefail
+
+# SC-15 / ADR-0097 決定 2 (#1500): RESET_FLOOR は末尾の istio-edge-up.sh が読む。そこでも 0 / 1 以外を拒むが、
+# 🔴 **長い起動の最後で落ちるより、最初に落とす**（監査 #1518）。空（未設定と同じ＝既定 1）・0・1 だけを受け付ける。
+case "${RESET_FLOOR:-}" in
+  ''|0|1) ;;
+  *) echo "ERROR: RESET_FLOOR は 0（床の経路を外す）か 1（入れる。既定）のどちらかです: '${RESET_FLOOR}'" >&2; exit 1 ;;
+esac
+# 床の経路を足すのは Istio のエッジだけである（ISTIO=1 ＋ LOCALEDGE=1 で istio-edge-up.sh が走るとき）。
+# それ以外で RESET_FLOOR を与えても何も変わらない —— 黙って無視せず、効かないことを告げる。
+if [ -n "${RESET_FLOOR:-}" ] && { [ "${ISTIO:-}" != "1" ] || [ "${LOCALEDGE:-}" != "1" ]; }; then
+  echo "WARN: RESET_FLOOR=${RESET_FLOOR} は ISTIO=1 ＋ LOCALEDGE=1（Istio のエッジ）のときだけ効きます。この起動では効きません（床の器は常に立ちます）。" >&2
+fi
 
 CLUSTER="${1:-msp-ast-dev}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -152,6 +166,14 @@ kubectl create configmap mail-queue-exporter-script -n "$INFRA_NS" \
   --from-file=mail-queue-exporter.js=deploy/mail-relay/mail-queue-exporter.js \
   --dry-run=client -o yaml | kubectl apply -f -
 
+# SC-15, NFR-13, ADR-0097 決定 2, IADR-0432 (#1500): リセット申請の床の器（deploy/mail-relay/reset-floor.js）。
+# 門と同型で --from-file にする。［2026-09-26］器は deploy/mail-relay が**既定で**取り込むようになった
+# （旧: RESET_FLOOR=1 のときだけ istio-edge-up.sh が作っていた）。🔴 [4/7] の apply より**前**に作る
+# （Pod が起動時にマウントする。無いと Pod が起動せず rollout で止まる）。経路は istio-edge-up.sh が足す。
+kubectl create configmap reset-floor-script -n "$INFRA_NS" \
+  --from-file=reset-floor.js=deploy/mail-relay/reset-floor.js \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 # Keycloak realm import 用 ConfigMap（実 realm ファイル＝単一情報源）。
 # AST realm（submodule）が存在すれば同一 Keycloak へ併せて import する（MSP+AST 連結）。
 realm_args=(--from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json)
@@ -222,6 +244,9 @@ kubectl -n "$INFRA_NS" rollout status deploy/mail-relay --timeout=120s
 # **opt-in ゲートを持たない**（決定 4 も無条件である）。近接 MTA の**後**に待ち合わせる ——
 # 門は relay へ SMTP 取引を打つので、relay が立つ前に測ると 1 周期ぶん誤って閉じる。
 kubectl -n "$INFRA_NS" rollout status deploy/reset-gate --timeout=120s
+# SC-15, ADR-0097 決定 2, IADR-0432 (#1500): リセット申請の床の器。**opt-in ゲートを持たない**（既定 ON）。
+# 器の readiness は上流（Keycloak）を映さない口なので、Keycloak の起動を待たずに Ready になる。
+kubectl -n "$INFRA_NS" rollout status deploy/reset-floor --timeout=120s
 
 echo "==> [5/7] MSP namespace & app secrets (dev 既定; fail-safe 空 = no-op)"
 kubectl create namespace "$MSP_NS" --dry-run=client -o yaml | kubectl apply -f -

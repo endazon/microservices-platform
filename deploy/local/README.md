@@ -14,6 +14,7 @@
   ns platform-infra          postgres / rabbitmq / redis / keycloak / qdrant / otel-collector
                              + mail-relay（近接 MTA。キューを持つ。deploy/mail-relay ＝環境非依存の base）
                              + reset-gate（SC-15 の門。mail-relay へ投函できないと申請を機械で閉じる）
+                             + reset-floor（SC-15 の床。申請の POST を最小応答時間まで返さない。経路は Istio エッジ）
                              + mailpit（開発環境の捕捉用 MTA。メールはここで止まり外へ出ない）  ← deploy/local/infra
                              送出経路: keycloak → mail-relay → mailpit（go-live は最後だけ外部リレー）
   ns microservices-platform  既存 Helm chart（values-local: mesh/NP/HPA off, registry=local）
@@ -311,6 +312,18 @@ kubectl -n platform-infra logs deploy/reset-gate --tail=20   # close / reopen �
 > 🔴 **`check-password-reset-mail.js` は門が閉じていると赤になる。** 存在秘匿としては健全だが、
 > **relay へ投函できていない**という意味だからである。門が閉じることを**期待する**実行だけが
 > `EXPECT_GATE_CLOSED=1` を立てる。
+
+**［2026-09-26 / #1500］申請の所要時間の床が既定で入る。** 計画 ADR-0097 決定 2 が IADR-0432 決定 4（opt-in）を
+覆したため、`platform-infra` に `reset-floor` が **dev 既定**で立つ（`deploy/mail-relay/reset-floor/`。
+値 `RESET_FLOOR_MS=150` はマニフェストが与え、コードは既定を持たない）。**経路**（リセット申請の POST だけを
+床へ向ける route）は `ISTIO=1 LOCALEDGE=1` のエッジ（`scripts/istio-edge-up.sh`）が既定で足す。
+**外すのは `RESET_FLOOR=0` を与えたときだけ**（経路だけが外れる。`0` / `1` 以外は入口に触る前に拒む）。
+🔴 **Traefik のエッジには経路が無い**（器は立つが誰も通らない）。
+
+```bash
+kubectl -n platform-infra get deploy reset-floor   # 器
+kubectl -n istio-system get virtualservice msp-keycloak-edge -o jsonpath='{.spec.http[0].name}{"\n"}'   # reset-credentials-floor
+```
 
 ```bash
 kubectl -n platform-infra port-forward svc/mailpit 8025:8025
