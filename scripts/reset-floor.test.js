@@ -209,7 +209,22 @@ ok('🔴 8. 起動器の既定は床を入れる（RESET_FLOOR 未設定で床�
 
   const explicit = runEdgeUp({ RESET_FLOOR: '1' });
   assert.strictEqual(explicit.status, 0, explicit.stderr);
-  assert.deepStrictEqual(explicit.lines, dflt.lines, 'RESET_FLOOR=1 と未設定で発行コマンドが違う（既定が 1 でない）');
+  // 🔴 パイプ `kubectl create … --dry-run=client -o yaml | kubectl apply -f -` は両側の stub が並行に起動し、
+  //   採取順は create→apply / apply→create のどちらにもなり得る（k8s-local-up.test.js の #438 と同じ。本試験でも
+  //   実行ごとに反転した ＝ AI レビューが 4 回中 1〜2 回の失敗を実測）。パイプの後段は前段と隣り合うことだけが
+  //   確かなので、隣り合う `apply -f -` を前段の直後へ寄せてから比べる（順序以外の差は落とす）。
+  const normalizePipes = (lines) => {
+    const out = [...lines];
+    for (let i = 0; i + 1 < out.length; i += 1) {
+      if (out[i] === 'kubectl apply -f -' && out[i + 1].includes('--dry-run=client -o yaml')) {
+        [out[i], out[i + 1]] = [out[i + 1], out[i]];
+        i += 1;
+      }
+    }
+    return out;
+  };
+  assert.deepStrictEqual(normalizePipes(explicit.lines), normalizePipes(dflt.lines),
+    'RESET_FLOOR=1 と未設定で発行コマンドが違う（既定が 1 でない）');
 
   const off = runEdgeUp({ RESET_FLOOR: '0' });
   assert.strictEqual(off.status, 0, off.stderr);
