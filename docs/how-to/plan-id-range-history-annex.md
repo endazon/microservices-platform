@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-06, SC-17, SC-18, SC-19, SC-20, SC-22]
-adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093, ADR-0094, ADR-0095, ADR-0096, ADR-0098, ADR-0099, ADR-0101, ADR-0102, ADR-0103, ADR-0104, ADR-0105, ADR-0106, ADR-0107, ADR-0108, ADR-0109, ADR-0110]
+adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093, ADR-0094, ADR-0095, ADR-0096, ADR-0098, ADR-0099, ADR-0101, ADR-0102, ADR-0103, ADR-0104, ADR-0105, ADR-0106, ADR-0107, ADR-0108, ADR-0109, ADR-0110, ADR-0111, ADR-0112, ADR-0113]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228, IADR-0423, IADR-0450]
-specs: [20260926_1519_plan-adr-range-0110, 20260925_1496_plan-adr-range-0107, 20260925_1487_plan-adr-range-0105]
-issues: [#1519, #1496, #1487, #1470, #1411, #1451, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#591, planning#627, planning#628, planning#630, planning#633, planning#634, planning#635, planning#636, planning#639, planning#640, planning#648, planning#649, planning#650, planning#651, planning#652, planning#653, planning#654, planning#655]
+specs: [20260926_1542_plan-adr-range-0113, 20260926_1519_plan-adr-range-0110, 20260925_1496_plan-adr-range-0107, 20260925_1487_plan-adr-range-0105]
+issues: [#1542, #1541, #1526, #1519, #1496, #1487, #1470, #1411, #1451, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#591, planning#627, planning#628, planning#630, planning#633, planning#634, planning#635, planning#636, planning#639, planning#640, planning#648, planning#649, planning#650, planning#651, planning#652, planning#653, planning#654, planning#655, planning#656, planning#657, planning#658, planning#659, planning#660, planning#661]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -23,6 +23,30 @@ issues: [#1519, #1496, #1487, #1470, #1411, #1451, #1409, #1417, #1333, #1203, #
 >
 > **本別紙が持つのは「レンジをいつどう引き直したか」（pin 時代の記録を含む）「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れなかったか」の記録だけ**である（必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
+
+### ［2026-09-26］ADR `0001..0110` → `0001..0113`（3 件。前回と同日）
+
+**動いたのは `ADR` だけである。** `FR-01..22`／`UC-01..11`／`SC-01..22` は不動（4 種すべてを引き直した）。
+既存の計画 ADR（0001〜0110）に状態の変化は無い（前回の出典 `244e63c` から `origin/main` までの `07_adr/` の差分で、`status:` 行の変化は追加ファイルの `+status: Accepted` だけ）。
+
+| 計画 ADR | 状態 | 内容 |
+| --- | --- | --- |
+| 0111 | `Accepted` | リセット申請の床は複数レプリカで動かし、床が落ちたときも床を外さない（0097 決定 2 の補完） |
+| 0112 | `Accepted` | インフラ製品の選定基準に「既定で開く管理用の口を塞げること」を加える（0107 の補完） |
+| 0113 | `Accepted` | 所要時間の判定を順位和検定（両側・有意水準 1%・片側 12）へ改める。時計の変更は判定式の変更と同時に入れる（0094 決定 1・0103 決定 1・0108 決定 1〜2 の部分改定） |
+
+**出典は計画リポジトリの導出器と公開ファイルの実測である。**
+
+- 隣接クローン（`origin/main` の先頭は `8b44bba`）の `07_adr/` には 0114（同期トークンの拒否）まで在る。**本回は 0113 で止めた**（下の契機）。
+- 同じクローンの作業ツリーは `9014e4f` のままで、遅れ分が `kg-ranges.json` に触れていた。**このため作業ツリーでは測らず**、`git archive origin/main` を一時ディレクトリへ展開して `node tools/doc-checks/gen-plan-ranges.js --check` を走らせ、「宣言 [1, 114] / 実物 [1, 114]・欠番なし」を得た（0111〜0113 の実在と欠番なしはここから読む）。
+
+#### 契機
+
+**前回と同じく「参照するより先に」引いた。** 所要時間の検査器の時計（整数 ns）が判定式より先に入っていた食い違いの差し戻しと、
+0113 の判定式の実装がコミット件名と記録で 0113 を引く必要があり、その前提として本回を起票した。
+**0114 は引く作業がまだ無いため開けていない**（宣言は実物の部分集合であり、値域検査は落ちない。定期の突合は宣言の遅れとして 0114 を示す）。
+
+🔴 **本回で trace ブロックへ新しい計画 ADR を足したのは本別紙だけである**（前回と同じ方針）。
 
 ### ［2026-09-26］ADR `0001..0107` → `0001..0110`（3 件）
 

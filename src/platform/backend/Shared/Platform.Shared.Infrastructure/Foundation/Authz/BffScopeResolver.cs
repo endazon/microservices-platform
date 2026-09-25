@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Platform.Shared.Contracts.Dtos;
 using System.Net.Http.Json;
 using System.Security.Claims;
@@ -44,12 +46,24 @@ public static class BffScopeResolver
         {
             var scopeResp = await authzClient.PostAsJsonAsync("/authz/scope",
                 new AccessScopeRequest(userId, userAttrs, action), ct);
-            var resolved = scopeResp.IsSuccessStatusCode
-                ? await scopeResp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct)
-                : null;
 
-            // deny-by-default: 許可ポリシーが無い/解決不能 → 閲覧可能なし。
-            if (resolved is not { Granted: true })
+            // FR-05, #1378: 縮退の理由（非 2xx・空本文・不達）は WARN で出す。**`Granted=false` は出さない**
+            // （正当な deny）。戻り値は従来どおり null（deny-by-default）である。
+            if (!scopeResp.IsSuccessStatusCode)
+            {
+                AuthzScopeRestLog.NonSuccess(LoggerOf(http), scopeResp.StatusCode);
+                return null;
+            }
+
+            var resolved = await scopeResp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct);
+            if (resolved is null)
+            {
+                AuthzScopeRestLog.EmptyBody(LoggerOf(http), scopeResp.StatusCode);
+                return null;
+            }
+
+            // deny-by-default: 許可ポリシーが無い → 閲覧可能なし。
+            if (!resolved.Granted)
                 return null;
 
             return new BffAccessScope(resolved.AllowedFilters, resolved.Granted, resolved.Branches);
@@ -57,9 +71,16 @@ public static class BffScopeResolver
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
             // 認可サービス不調は deny-by-default（null）へ縮退する。
+            AuthzScopeRestLog.TransportFailure(LoggerOf(http), ex);
             return null;
         }
     }
+
+    // FR-05, #1378: 本クラスは静的なので、ロガーは要求の DI から得る（失敗の枝でだけ引く）。
+    // 呼び出し元の署名を変えないためである。DI が無い（直接構築の試験など）なら出さない。
+    private static ILogger LoggerOf(HttpContext http) =>
+        http.RequestServices?.GetService<ILoggerFactory>()?.CreateLogger(typeof(BffScopeResolver))
+        ?? NullLogger.Instance;
 
     // FR-05, FR-09, ADR-0080 決定 1・2, IADR-0385, IADR-0411 (#1323):
     // JWT から ABAC 判定に用いる利用者属性を取り出す。**プラットフォーム唯一の抽出点である。**
