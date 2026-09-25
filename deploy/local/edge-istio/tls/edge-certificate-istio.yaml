@@ -32,7 +32,6 @@ spec:
     - grafana.localhost
     - headlamp.localhost
     - keycloak.localhost
-    - minio.localhost
     - qdrant.localhost
     - vault.localhost
     - wiki.localhost

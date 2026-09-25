@@ -33,7 +33,7 @@ public class ObjectStorageExtensionsTests
     public void 資格情報が揃っていれば実クライアントを登録する()
     {
         var client = Resolve(ConfigOf(
-            ("Endpoint", "http://minio:9000"), ("AccessKey", "ak"), ("SecretKey", "sk")));
+            ("Endpoint", "http://seaweedfs:8333"), ("AccessKey", "ak"), ("SecretKey", "sk")));
 
         client.Should().BeOfType<S3ObjectStorageClient>(
             "縮退側へ落ちると、例外もログも出ないまま本番の書き込みが捨てられる");
@@ -52,10 +52,10 @@ public class ObjectStorageExtensionsTests
     // 個別に見る（AND の項が 1 つ落ちても、他の 2 つで緑に見える形を潰す）。
     [Theory]
     [InlineData(null, "ak", "sk")]
-    [InlineData("http://minio:9000", null, "sk")]
-    [InlineData("http://minio:9000", "ak", null)]
+    [InlineData("http://seaweedfs:8333", null, "sk")]
+    [InlineData("http://seaweedfs:8333", "ak", null)]
     [InlineData("", "ak", "sk")]
-    [InlineData("http://minio:9000", "  ", "sk")]
+    [InlineData("http://seaweedfs:8333", "  ", "sk")]
     public void 三条件のどれか1つでも欠ければ縮退する(string? endpoint, string? accessKey, string? secretKey)
     {
         var client = Resolve(ConfigOf(
@@ -69,12 +69,12 @@ public class ObjectStorageExtensionsTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddPlatformObjectStorage(ConfigOf(("Endpoint", "http://minio:9000")));
+        services.AddPlatformObjectStorage(ConfigOf(("Endpoint", "http://seaweedfs:8333")));
 
         var options = services.BuildServiceProvider().GetRequiredService<ObjectStorageOptions>();
 
-        options.Endpoint.Should().Be("http://minio:9000");
+        options.Endpoint.Should().Be("http://seaweedfs:8333");
         options.Bucket.Should().Be("knowledge-normalized");
-        options.ForcePathStyle.Should().BeTrue("MinIO は仮想ホスト形式ではなくパス形式を使う");
+        options.ForcePathStyle.Should().BeTrue("自前ホストの S3 互換ストア（SeaweedFS）は仮想ホスト形式ではなくパス形式を使う");
     }
 }

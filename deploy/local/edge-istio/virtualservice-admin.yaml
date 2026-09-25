@@ -1,11 +1,11 @@
 # IADR-0091 決定 4 / #782: 管理面（admin entrypoint 50000）のルーティング。
-# Traefik の deploy/local/edge/admin-ingress-infra.yaml / admin-ingress-minio.yaml /
-# admin-ingress-wiki.yaml / argocd-ingress.yaml を写したもの。**host とポートは変えない** ——
-# 7 つの OIDC クライアントの redirect URI が `https://<host>.localhost:50000/...` で
+# Traefik の deploy/local/edge/admin-ingress-infra.yaml /
+# admin-ingress-wiki.yaml / argocd-ingress.yaml を写したもの（admin-ingress-minio.yaml は IADR-0461 で撤去）。
+# **host とポートは変えない** —— 6 つの OIDC クライアントの redirect URI が `https://<host>.localhost:50000/...` で
 # Keycloak に登録済みである（IADR-0092..0095 / IADR-0220）。
 #
-# 🔴 このうち minio と wiki-js は microservices-platform namespace（メッシュ内）にある。
-#   **STRICT を成立させるために移送が必要なのはこの 2 件**であり、他の 5 件は
+# 🔴 このうち wiki-js は microservices-platform namespace（メッシュ内）にある（MinIO Console は IADR-0461 で撤去）。
+#   **STRICT を成立させるために移送が必要なのはこの 1 件**であり、他の 5 件は
 #   メッシュ外だが「Traefik が 50000 を手放す」以上まとめて移す（片方だけ残せない）。
 #
 # 行き先が未作成でも VirtualService は無害（バックエンド不在時は 503）。各ツールは
@@ -74,22 +74,6 @@ spec:
 ---
 # ★ メッシュ内（microservices-platform）。STRICT の対象であり、ここを Envoy 経由にしないと
 #   PeerAuthentication を STRICT にした瞬間に落ちる。
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: msp-admin-minio
-  namespace: istio-system
-  labels: { app: minio, tier: local-edge }
-spec:
-  hosts: [minio.localhost]
-  gateways: [istio-system/msp-admin-edge]
-  http:
-    - route:
-        - destination:
-            host: minio.microservices-platform.svc.cluster.local
-            port: { number: 9001 }
----
-# ★ メッシュ内（microservices-platform）。上と同じ理由。
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:

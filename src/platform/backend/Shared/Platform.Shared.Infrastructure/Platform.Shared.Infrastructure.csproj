@@ -31,7 +31,7 @@
          手順 2 の WolverineFx.RuntimeCompilation はホストを起こす各サービスの射程であり、ここには入れない。 -->
     <PackageReference Include="WolverineFx" />
     <PackageReference Include="WolverineFx.RabbitMQ" />
-    <!-- FR-06/FR-12, ADR-0015: S3 互換オブジェクトストレージ（MinIO）クライアント（Storage/*） -->
+    <!-- FR-06/FR-12, ADR-0015（Superseded by ADR-0106）: S3 互換オブジェクトストレージのクライアント（Storage/*） -->
     <PackageReference Include="AWSSDK.S3" />
     <!-- NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 (#1201): east-west gRPC の共通部品（Foundation/Grpc）。
          Grpc.AspNetCore = 受け側（AddGrpc / MapGrpcService と h2c リスナ）、Grpc.Net.Client = 呼び出し側

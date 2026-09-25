@@ -56,7 +56,7 @@ public class PortSwapCompositionTests
         var settings = new Dictionary<string, string?>();
         if (configured)
         {
-            settings["ObjectStorage:Endpoint"] = "http://minio.invalid:9000";
+            settings["ObjectStorage:Endpoint"] = "http://seaweedfs.invalid:8333";
             settings["ObjectStorage:AccessKey"] = "test-access-key";
             settings["ObjectStorage:SecretKey"] = "test-secret-key";
         }

@@ -1,13 +1,13 @@
 namespace Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
-// FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: S3 互換オブジェクトストレージ（MinIO）の接続設定。
+// FR-06, FR-12, ADR-0014/ADR-0015（Superseded by ADR-0106）, IADR-0024: S3 互換オブジェクトストレージ（SeaweedFS）の接続設定。
 // 設定セクション `ObjectStorage` からバインドする。Endpoint 未設定の dev/test 環境では
 // 実クライアントを構成せず縮退クライアント（NullObjectStorageClient）にフォールバックする。
 public sealed class ObjectStorageOptions
 {
     public const string SectionName = "ObjectStorage";
 
-    // S3 互換エンドポイント（例: http://minio:9000）。未設定なら縮退する。
+    // S3 互換エンドポイント（例: http://seaweedfs:8333）。未設定なら縮退する。
     public string? Endpoint { get; set; }
 
     // 資格情報。実運用では Secret 経由で注入する（コミットしない）。
@@ -17,10 +17,10 @@ public sealed class ObjectStorageOptions
     // 正規化本文・資産を格納するバケット名。参照 URI は storage://<Bucket>/<key>。
     public string Bucket { get; set; } = "knowledge-normalized";
 
-    // S3 リージョン（MinIO では任意。既定 us-east-1）。
+    // S3 リージョン（自前ホストの S3 互換ストアでは署名に使うだけ。既定 us-east-1）。
     public string Region { get; set; } = "us-east-1";
 
-    // MinIO/自前ホストは仮想ホスト形式ではなくパス形式アクセスを使う。
+    // 自前ホストの S3 互換ストア（SeaweedFS）は仮想ホスト形式ではなくパス形式アクセスを使う。
     public bool ForcePathStyle { get; set; } = true;
 
     // 起動時にバケットの存在を保証し、バージョニングを有効化する（ADR-0014 版管理）。

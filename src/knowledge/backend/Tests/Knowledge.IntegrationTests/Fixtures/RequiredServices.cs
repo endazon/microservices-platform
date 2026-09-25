@@ -41,12 +41,12 @@ public static class RequiredServices
         () => QdrantEndpoint.External,
         "localhost:6334");
 
-    /// <summary>オブジェクトストレージ（MinIO / S3 互換）。値は S3 の端点 URL。</summary>
+    /// <summary>オブジェクトストレージ（S3 互換。製品は SeaweedFS）。値は S3 の端点 URL。</summary>
     public static ExternallySuppliable ObjectStorage { get; } = new(
-        "MinIO",
-        MinioEndpoint.ExternalEndpointVariable,
-        () => MinioEndpoint.External,
-        "http://localhost:9000");
+        "オブジェクトストレージ（SeaweedFS）",
+        ObjectStorageEndpoint.ExternalEndpointVariable,
+        () => ObjectStorageEndpoint.External,
+        "http://localhost:8333");
 
     /// <summary>
     /// 要る依存を**すべて**得られるのでなければ、テストを**真の Skipped** にする。

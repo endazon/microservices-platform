@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace IngestionService.Infrastructure.ExternalServices;
 
 // FR-02/FR-06, UC-04: 文書本文の取得（パース段）。
-// storage:// URI は S3 互換オブジェクトストレージ（MinIO, ADR-0015）から実本文を取得する
+// storage:// URI は S3 互換オブジェクトストレージ（SeaweedFS, ADR-0015（Superseded by ADR-0106））から実本文を取得する
 // （ABAC を強制する取り込みサービス経由のサーバサイド読み取り。IADR-0017 と整合）。
 // http(s) URI は HTTP で取得する。いずれでもない／ストレージ未配備のときはプレースホルダー本文へ縮退する。
 public class StorageDocumentContentReader(
