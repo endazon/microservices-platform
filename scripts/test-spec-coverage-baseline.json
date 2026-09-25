@@ -13,6 +13,8 @@
       "DocumentNormalizedSyncTests",
       "FileSystemConnectorTests",
       "HealthEndpointTests",
+      "RegistrantDepartmentEndpointTests",
+      "RegistrantDepartmentTests",
       "SaaSConnectorTests",
       "SyncErrorRedactorTests",
       "WikiConnectorTests"

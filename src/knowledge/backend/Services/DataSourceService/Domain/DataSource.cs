@@ -91,10 +91,13 @@ public class DataSource
     public const string DocScopeKey = "doc_scope";
     public const string DefaultDocScope = "organization";
 
+    // FR-05, UC-04, SC-06, IADR-0468 (#754): `registrantDepartment` は**登録した管理者の部門グループから
+    // 導いた部門コード**（`RegistrantDepartment.FromGroupPaths`。導けなければ null）。
     public static DataSource Create(string name, string sourceType, string connectionUri,
         Dictionary<string, string>? config = null,
         Dictionary<string, string>? defaultAttributes = null,
-        Dictionary<string, string>? ownerMappings = null)
+        Dictionary<string, string>? ownerMappings = null,
+        string? registrantDepartment = null)
     {
         return new()
         {
@@ -104,11 +107,35 @@ public class DataSource
             Config = config ?? [],
             // FR-01, FR-05, #516: 原本には計画が必須と定める属性を必ず付与する。
             // 未指定・空はフェイルセーフ既定値・予約値で補う。
-            DefaultAttributes = WithRequiredAttributeFailsafe(defaultAttributes),
+            // FR-05, IADR-0468 (#754): その手前で、未解決の `department` だけを登録者の部門で埋める。
+            DefaultAttributes = WithRequiredAttributeFailsafe(
+                WithRegistrantDepartment(defaultAttributes, registrantDepartment)),
             // FR-05, SC-06, ADR-0074 決定 1 (#1194): 写像表は**補完しない**。
             // 未指定は「写像が無い」であって、埋めるべき既定値を持たない。
             OwnerMappings = OwnerMappingTable.Normalize(ownerMappings),
         };
+    }
+
+    // FR-05, UC-04, SC-06, IADR-0468 (#754): 解決順 **② データソースの既定属性** を、登録者の部門で補う。
+    //
+    // 🔴 **登録（`Create`）だけが呼ぶ。`Update` / `Patch` は導き直さない** —— 裁定が定めたのは
+    // 「**登録した**利用者の所属」であり、更新した管理者の所属へ書き換わると、同じソースの部門が
+    // 最後に触った人で揺れる。更新で空にすれば従来どおり予約値へ倒れる。
+    //
+    // **明示値は上書きしない。** 埋めるのは `department` が**未解決**（欠落・空白・予約値 `unassigned`）の
+    // ときだけで、判定は取り込み経路の上書き（`GetEffectiveAttributes(perItem)`）と**同じ述語**
+    // `IsUnresolved` を使う —— 「未解決」の定義を 2 つ持たない。予約値の明示は「解決できなかった」の記録で
+    // あって部門の指定ではないので、導けるなら置き換える。
+    private static Dictionary<string, string>? WithRegistrantDepartment(
+        Dictionary<string, string>? attributes, string? registrantDepartment)
+    {
+        if (string.IsNullOrWhiteSpace(registrantDepartment)) return attributes;
+
+        var result = attributes is null
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string>(attributes);
+        if (IsUnresolved(result, DepartmentKey)) result[DepartmentKey] = registrantDepartment;
+        return result;
     }
 
     // FR-01, FR-05, IADR-0019: 原本発行時に必ず通るフェイルセーフ。`DefaultAttributes` に必須属性が
@@ -199,6 +226,13 @@ public class DataSource
         // 裁定（2026-08-16。planning#372）は「**部門コードの値域が定まるまで `department` の写像は
         // 行わない**」と明記しており、値域（既存の部門マスタの所在）は**組織側で未確定**である。
         // **実装側でフォルダ名から推定規則を決めない** —— 誤った部門は ADR-0034 の判定を狂わせる。
+        //
+        // ［2026-09-26 追記 / #754 / IADR-0468］**値域は定まった** —— 利用者裁定で「部門コードの値域は
+        // Keycloak realm の `department` グループ」「部門は**登録した利用者**の部門グループ所属から導く」と
+        // された。後者は②の中で実装した（`Create` の `WithRegistrantDepartment`）。
+        // 🔴 **それでも①（フォルダ → 部門の写像）はまだ実装しない。** 計画の★未確定表で
+        // **写像表の置き場所（器）が「計画（未確定）」のまま**だからである（ADR-0074 決定 2 は器と値域を
+        // 別の条件として分けた）。器が決まるまで、フォルダ名からの推定も写像表も入れない。
         FillIfBlank(result, DepartmentKey, UnresolvedDepartment);
 
         // `owner` はソース側の更新者を解決して入れるのが正である。
