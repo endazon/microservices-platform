@@ -17,6 +17,18 @@
 #   経路は ISTIO=1 ＋ LOCALEDGE=1 のエッジ（istio-edge-up.sh）が足す。外すときだけ RESET_FLOOR=0。
 set -euo pipefail
 
+# SC-15 / ADR-0097 決定 2 (#1500): RESET_FLOOR は末尾の istio-edge-up.sh が読む。そこでも 0 / 1 以外を拒むが、
+# 🔴 **長い起動の最後で落ちるより、最初に落とす**（監査 #1518）。空（未設定と同じ＝既定 1）・0・1 だけを受け付ける。
+case "${RESET_FLOOR:-}" in
+  ''|0|1) ;;
+  *) echo "ERROR: RESET_FLOOR は 0（床の経路を外す）か 1（入れる。既定）のどちらかです: '${RESET_FLOOR}'" >&2; exit 1 ;;
+esac
+# 床の経路を足すのは Istio のエッジだけである（ISTIO=1 ＋ LOCALEDGE=1 で istio-edge-up.sh が走るとき）。
+# それ以外で RESET_FLOOR を与えても何も変わらない —— 黙って無視せず、効かないことを告げる。
+if [ -n "${RESET_FLOOR:-}" ] && { [ "${ISTIO:-}" != "1" ] || [ "${LOCALEDGE:-}" != "1" ]; }; then
+  echo "WARN: RESET_FLOOR=${RESET_FLOOR} は ISTIO=1 ＋ LOCALEDGE=1（Istio のエッジ）のときだけ効きます。この起動では効きません（床の器は常に立ちます）。" >&2
+fi
+
 CLUSTER="${1:-msp-ast-dev}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

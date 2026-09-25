@@ -72,9 +72,11 @@ helm upgrade --install istio-ingressgateway istio/gateway \
 echo "==> [4/5] Gateway / VirtualService と CoreDNS の転送先を当てる"
 # SC-15 / NFR-13 / ADR-0094 決定 2 / ADR-0097 決定 2 / IADR-0432 (#1410 / #1500): リセット申請の**床**（最小応答時間）。
 # 🔴 **既定は 1（入れる）。** ［2026-09-26 / #1500］計画 ADR-0097 決定 2 が IADR-0432 決定 4（opt-in・既定 0）を
-#   覆した。床は失敗しても安全側であり（効かなければ遅くならないだけ）、既定 OFF のままだと
-#   go-live の経路で所要時間の統制が 1 つも効かない。**退路は RESET_FLOOR=0**（素の edge-istio を当てる。
-#   経路だけが外れ、器は infra の持ち物として誰も通らないまま居る）。
+#   覆した。既定 OFF のままだと go-live の経路で所要時間の統制が 1 つも効かない。
+#   🔴 **経路を入れた後に器が落ちると、リセット申請の POST はすべて 503 になる**（経路は器だけを向き、
+#   予備の route は無い）。器は k8s-local-up.sh が rollout を待ってから立てている。
+#   **退路は RESET_FLOOR=0**（素の edge-istio を当てる。経路だけが外れ、器は infra の持ち物として
+#   誰も通らないまま居る）。
 if [ "$RESET_FLOOR" = "1" ]; then
   echo "    RESET_FLOOR=1（既定）: リセット申請の床を入れる（POST の応答を床まで返さない）"
   # 器の本体は ConfigMap 化する（kustomize は root 外ファイルを参照できない。門と同型）。
