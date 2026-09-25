@@ -3,7 +3,7 @@ title: Docker Engine API が無い環境（containerd 等）で統合テスト�
 type: how-to
 status: fixed
 created: 2026-09-08
-updated: 2026-09-25
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
@@ -53,12 +53,16 @@ nerdctl run -d --name msp-test-qdrant -p 56334:6334 qdrant/qdrant:latest
 ```bash
 nerdctl run -d --name msp-test-seaweedfs -p 58333:8333 \
   -e AWS_ACCESS_KEY_ID=objectstorage-dev -e AWS_SECRET_ACCESS_KEY=objectstorage-dev-secret \
+  --entrypoint /bin/sh \
   docker.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882 \
-  server -ip=127.0.0.1 -ip.bind=127.0.0.1 -s3 -s3.ip.bind=0.0.0.0 -s3.port=8333 \
+  -c 'export WEED_JWT_FILER_SIGNING_KEY="$(head -c 32 /dev/urandom | base64 | tr -d '"'"'\n'"'"')"; exec /entrypoint.sh "$@"' seaweedfs \
+  server -ip=127.0.0.1 -ip.bind=127.0.0.1 -s3 -s3.ip.bind=0.0.0.0 -s3.port=8333 -s3.port.grpc=18333 \
   -s3.port.iceberg=0 -s3.port.lance=0 -master.telemetry=false
 ```
 
 🔴 **`-master.telemetry=false` を外さないこと。** SeaweedFS はテレメトリが既定で有効であり、外すと外部へ送信が起きる。
+🔴 **署名鍵を与える起動スクリプトも外さないこと。** S3 の gRPC（18333）の管理用の呼び出しは、鍵が空だと認証なしで通る
+（上の例は 18333 をホストへ公開していないが、同じネットワークの他のコンテナからは届く）。
 
 🔴 **資格情報は `objectstorage-dev` / `objectstorage-dev-secret` でなければならない。**
 テストはこの 1 組を前提にしており、端点だけを変数で受け取る（資格情報を変数にすると

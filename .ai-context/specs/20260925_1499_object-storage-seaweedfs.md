@@ -161,6 +161,28 @@ IADR-0296 の前提「害が無い」は MinIO の振る舞いに依存してい
   同 run の赤は AST の `MarketMonitorService.Tests.RiskManagementGrpcTests.T_10_1057…` だけで、本 PR と無関係
   （MSP の submodule の pin が AST 側の修正より前。platform / knowledge の両ユニットは成功）。
 
+## ［2026-09-26 追記 / #1499］監査の指摘（NO-GO 1 件）への対応
+
+**指摘**: S3 ゲートウェイは HTTP（8333）に加えて gRPC（既定 10000 + 8333 ＝ 18333）を同じ `-s3.ip.bind`（0.0.0.0）で開く。
+その管理用 RPC（`PutIdentity` 等）は署名鍵が空だと認証を素通りし、Pod IP へ届く相手が S3 の管理者 ID を足せた（ABAC 迂回）。
+起案時の「外へ開くのは S3 の 1 口だけ」は誤りだった（本仕様書・IADR-0461 決定 2 を訂正）。
+
+**対応**（正は IADR-0461 決定 10）:
+
+1. 口を閉じる手段は 4.47 に無い（`weed/command/s3.go` 438 行: gRPC と HTTP は同じ bindIp。無効化・別 bind の指定なし・
+   0 は 10000 + port へ置換・負の値は起動失敗）ことをソースで確かめた。
+2. **起動のたびに乱数の署名鍵**（`WEED_JWT_FILER_SIGNING_KEY`。viper の環境変数。`weed/util/config.go` 120〜122 行）を
+   コンテナ内で作ってから entrypoint を呼ぶ（compose・helm・試験のコンテナで同じ文字列）。鍵を使うのは同じプロセスの filer と
+   S3 だけなので Secret にしない（理由は IADR-0461 決定 10）。gRPC の口は `-s3.port.grpc=18333` と明示した。
+3. **NetworkPolicy** `allow-seaweedfs-s3-only`（ingress は同 Namespace からの TCP 8333 のみ）。`allow-intra-namespace` は
+   SeaweedFS を `app NotIn [seaweedfs]` で外した（許可の和で全ポートが開くのを防ぐ）。
+4. `SeaweedFsContainerDefinitionTests` を「引数の全体」「起動スクリプト」「NetworkPolicy」まで広げた（7 件）。
+   **変異試験**: compose / helm から gRPC の行を消す・allow-intra-namespace の除外を外す、の 3 通りでそれぞれ 1 件ずつ落ちることを確かめた。
+5. 切替 Runbook の手順 4・5 を「丸ごとの再実行をしない」形へ直した（`bootstrap.sh` / `k8s-local-up.sh` は他の資格情報を開発用の
+   既定値で書き直し、稼働中の PoC を壊す）。`object-storage-credentials` だけを作る Vault / Secret の手順、chart だけの
+   `helm upgrade`、旧 Secret・ExternalSecret・Ingress・VirtualService・Vault パス・realm の `minio` client の掃除を書いた。
+6. 偽 S3 の試験に「有効 → 停止へ切り替えたバケット」「版の一覧が複数の応答に分かれる（1 応答 2 件）」を足した（7 件）。
+
 ## 並行 PR との交差
 
 | PR | 交差 | 扱い |

@@ -68,15 +68,21 @@ S3 互換 API に閉じており（ADR-0106 決定 3）、**差し替えは配�
   `Knowledge.IntegrationTests` の `SeaweedFsContainer.Image`）。**一致は `SeaweedFsContainerDefinitionTests` が PR で突き合わせる**。
 - Harbor への mirror（ADR-0107 決定 3）は Harbor の配備後に行う（未配備。フォローアップ）。
 
-### 決定 2: 起動形は 1 プロセスの `weed server`、外へ開くのは S3 の 1 口だけ
+### 決定 2: 起動形は 1 プロセスの `weed server`。内部の口は loopback、外へ開くのは S3 ゲートウェイの 2 口（HTTP 8333・gRPC 18333）
 
 ```
-weed server -dir=/data                         # -dir はイメージの entrypoint が足す
+# 起動スクリプト（決定 10）: 乱数の署名鍵を与えてからイメージの entrypoint を呼ぶ（-dir は entrypoint が足す）
+weed server -dir=/data
   -ip=127.0.0.1 -ip.bind=127.0.0.1             # master / volume / filer は loopback だけで待ち受ける
-  -s3 -s3.ip.bind=0.0.0.0 -s3.port=8333        # S3 ゲートウェイだけを外へ開く
+  -s3 -s3.ip.bind=0.0.0.0 -s3.port=8333        # S3 ゲートウェイの HTTP
+  -s3.port.grpc=18333                          # S3 ゲートウェイの gRPC（同じ -s3.ip.bind で開く。決定 10）
   -s3.port.iceberg=0 -s3.port.lance=0          # 使わない付属の口（Iceberg REST・Lance）は閉じる
   -master.telemetry=false                      # 決定 4
 ```
+
+> ［2026-09-26 訂正 / #1499］起案時は「外へ開くのは S3 の 1 口だけ」と書いたが**誤り**だった（PR の監査が指摘）。
+> S3 ゲートウェイは HTTP に加えて gRPC（既定 `10000 + s3.port` ＝ 18333）を **同じ `-s3.ip.bind`** で開く
+> （`weed/command/s3.go` 345〜349・437〜449 行）。塞ぎ方は決定 10。
 
 - **根拠（ソース）**: `weed/command/server.go` —— `-s3` を立てると filer も立つ（249〜251 行）、`-s3.ip.bind` が
   空なら `-ip.bind` を継ぐ（301〜303 行）、`-s3.port.iceberg` / `-s3.port.lance` は「0 で無効」（167〜168 行）。
@@ -173,6 +179,37 @@ versionId 付きで消した**後に** versionId 無しの削除を撃ってお�
 - 🔴 **計画 ADR-0106 決定 3「差し替えは配備・試験・名前に閉じる」の射程を越え、アプリのコード（S3 の使い方）に手を入れた。**
   理由は、実装の削除手順が MinIO 固有の挙動を前提にしていたことであり、製品の差し替えがそれを露わにした。計画へ環流する。
 - IADR-0296 決定 1 へ日付付きの追記を置いた（本文は書き換えない）。
+
+### 決定 10: S3 ゲートウェイの gRPC（18333）は、署名鍵で認証を必須にし、NetworkPolicy で届かせない（2026-09-26・監査指摘）
+
+**問題**: gRPC は IAM キャッシュの管理用 RPC（`PutIdentity` / `RemoveIdentity` / `PutPolicy` / `DeletePolicy` 等）を持ち、
+**署名鍵 `jwt.filer_signing.key` が空だと認証を素通りする**（`weed/s3api/s3api_server_grpc.go` 24〜31 行
+`checkAdminAuth`）。決定 2 の起案時の形では、Pod IP へ届く相手なら誰でも S3 の管理者 ID を足し、全文書を読み書き・削除でき、
+**ABAC を迂回する**。経路B は `networkPolicy.enabled=false` であり、L3/L4 の防御も無かった。
+
+**第一選択（口そのものを閉じる）は 4.47 では取れない**: gRPC の待受は HTTP と同じ `bindIp` を使い（`s3.go` 438 行
+`util.NewIpAndLocalListeners(*s3opt.bindIp, grpcPort, 0)`）、別の bind 指定も無効化の指定も無い。`-s3.port.grpc` は 0 なら
+`10000 + port` に置き換わり（345〜347 行）、負の値は待受の失敗で起動が止まる。HTTP を loopback に寄せれば S3 自体が使えない。
+
+**採った 2 段（多層防御）**:
+
+1. **署名鍵で認証を必須にする。** 鍵は viper の環境変数 `WEED_JWT_FILER_SIGNING_KEY` で与える（`weed/util/config.go` 120〜122 行
+   `AutomaticEnv` / `SetEnvPrefix("weed")` / `.`→`_`。S3 は `s3api_server.go` 176 行で同じキーを読む）。
+   **鍵は起動のたびに Pod（コンテナ）の中で乱数から作り、どこにも保存しない**:
+   `export WEED_JWT_FILER_SIGNING_KEY="$(head -c 32 /dev/urandom | base64 | tr -d '\n')"; exec /entrypoint.sh "$@"`。
+   - Secret で配る案（ESO / SC-22 の流儀）を採らない理由: **この鍵を知る必要があるのは同じプロセスの filer と S3 ゲートウェイだけ**で、
+     外部の利用者はいない。配れば Vault・ExternalSecret・bootstrap・SC-22 の分類表に「使う者のいない秘密」が 1 つ増え、
+     リポジトリに開発用既定値を置く誘惑も生まれる。プロセス内で作れば漏れる経路そのものが無い（再起動のたびに替わる）。
+   - 副作用: filer の HTTP 書き込みも同じ鍵で JWT を要するようになるが、filer の HTTP は決定 2 で loopback にしか居ない。
+     受け入れ試験（決定 7）で S3 の読み書き・版管理・全版削除が鍵ありで通ることを確かめる。
+2. **NetworkPolicy で Pod への ingress を TCP 8333 だけにする**（`allow-seaweedfs-s3-only`。`networkPolicy.enabled` のとき）。
+   名前空間全体の許可 `allow-intra-namespace` は SeaweedFS の Pod を `app NotIn [seaweedfs]` で外した —— NetworkPolicy は
+   許可の和なので、外さないと同 Namespace の全ポートが開いたままになる。Egress は従来どおり（同 Namespace ＋ DNS）。
+   Service が公開するのも 8333 だけである（従来どおり）。
+
+- 起動スクリプトと引数の**全体**を `SeaweedFsContainerDefinitionTests` が compose・helm・試験の 3 か所で突き合わせる
+  （gRPC の口の行・署名鍵の行を消すと落ちることを変異で確かめた）。NetworkPolicy の除外と 8333 限定も同試験が見る。
+- 残る穴: `networkPolicy.enabled=false` の経路B では 18333 に L3/L4 で届くが、管理用 RPC は鍵を知らない相手を拒む。
 
 ## 検討した選択肢
 
