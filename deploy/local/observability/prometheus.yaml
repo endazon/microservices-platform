@@ -200,6 +200,23 @@ data:
             annotations:
               summary: "近接 MTA の後送がキュー寿命に達しつつある（最古 20 分超）"
               description: "deferred の最古メッセージが到着から 20 分を超えた。キュー寿命は 30 分であり、超えたメールは破棄される。破棄されたパスワードリセットは利用者からは「メールが来ない」としか見えない。しきい値は暫定値である。"
+      # FR-11, NFR-21, ADR-0044, IADR-0466 (#1111): LLM 費用の月次予算（用途別）の超過。
+      # 🔴 **金額も単価も式に無い。** 上限はゲートウェイのゲージ `llm_budget_monthly_limit`（設定
+      #   `Llm:Budget:MonthlyLimits`。既定なし）。**未設定のあいだ評価対象を持たず発火しない（不活性）。**
+      #   その間の統制は月次の手動確認の Runbook である。窓は直近 30 日（暦月ではない）。
+      #   理由の正本は compose 側（deploy/prometheus/alerts.yml）の同名グループの前書きである。
+      - name: llm-cost-budget
+        rules:
+          - alert: LlmMonthlyBudgetExceeded
+            expr: |
+              sum by (llm_purpose, llm_currency) (increase(llm_cost_total[30d]))
+                > on (llm_purpose, llm_currency)
+              max by (llm_purpose, llm_currency) (llm_budget_monthly_limit)
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "LLM 費用が用途 {{ $labels.llm_purpose }} の月次予算を超えた（直近 30 日の累計）"
+              description: "用途 {{ $labels.llm_purpose }} の直近 30 日の LLM 費用が {{ $value }} {{ $labels.llm_currency }} となり、所有者が設定した月次予算を超えた。窓は暦月ではなく直近 30 日である。単価を解決できなかった呼び出しが 0 でなければ金額は過小である。"
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -11071,4 +11071,165 @@ exit $RC
     });
   }
 
+  // --- T-3, FR-11, NFR-21, ADR-0044, IADR-0466 決定 6 (#1111): LLM 月次予算 —— 手動確認と上限アラートを併存させない ---
+  //
+  // 計画（06_technical/05_observability-ops.md 決定 39）は「手動確認を併存させない」と定める。
+  // 上限アラートは配線済みだが、金額（`Llm:Budget:MonthlyLimits`）は既定を持たず、未設定のあいだ
+  // 評価対象を持たない（不活性）。その間の統制は月次確認の Runbook である。
+  //   - 金額が設定されている      かつ Runbook が継続 → **併存**（同じ統制が 2 か所）
+  //   - 金額が設定されていない    かつ Runbook が superseded → **統制ゼロ**（本 Runbook が生まれた原因そのもの）
+  // **どちらも fail にする。** 金額を初めて設定する変更が、同じ変更で Runbook を superseded にする。
+  //
+  // あわせて、C# のゲージ名から導いた Prometheus 名がルールの式に現れることを見る ——
+  // 名前がずれると式は構文として正当なまま**永久に空ベクタ**になる（#1110 と同型）。
+  {
+    const fsB = require('fs');
+    const pathB = require('path');
+    const ROOT_B = pathB.resolve(__dirname, '..');
+    const GATEWAY_DIR = 'src/platform/backend/Services/LlmGateway';
+    const RUNBOOK = 'docs/operations/llm-cost-monthly-review-runbook.md';
+    const BUDGET_METRICS_CS = `${GATEWAY_DIR}/Common/Observability/LlmBudgetMetrics.cs`;
+    const RULE_FILES = [
+      'deploy/prometheus/alerts.yml',
+      'deploy/local/observability/prometheus.yaml',
+      'deploy/grafana/provisioning/alerting/slo-alerts.yaml',
+      'deploy/local/observability/grafana.yaml',
+    ];
+
+    // .NET の構成キーは大文字小文字を区別しない。JSON のキーも同じ規則で引く。
+    const getCI = (obj, key) => {
+      if (!obj || typeof obj !== 'object') return undefined;
+      const k = Object.keys(obj).find((x) => x.toLowerCase() === key.toLowerCase());
+      return k === undefined ? undefined : obj[k];
+    };
+
+    /** 金額が置かれている場所を列挙する（空なら未設定）。 */
+    function budgetSources({ appsettings, deployFiles }) {
+      const found = [];
+      for (const { rel, text } of appsettings) {
+        const limits = getCI(getCI(getCI(JSON.parse(text), 'Llm'), 'Budget'), 'MonthlyLimits');
+        if (limits && typeof limits === 'object') {
+          for (const purpose of Object.keys(limits)) found.push(`${rel}: Llm:Budget:MonthlyLimits:${purpose}`);
+        }
+      }
+      // deploy 側の環境変数上書き（`Llm__Budget__MonthlyLimits__<用途>`）と、コロン区切りの鍵も数える。
+      // **コメント行は数えない**（説明のために書いた名前で統制が切り替わってはならない）。
+      const ENV = /Llm(?:__|:)Budget(?:__|:)MonthlyLimits(?:__|:)[A-Za-z0-9_.-]+/i;
+      for (const { rel, text } of deployFiles) {
+        text.split('\n').forEach((line, i) => {
+          if (/^\s*(#|\/\/)/.test(line)) return;
+          const m = ENV.exec(line);
+          if (m) found.push(`${rel}:${i + 1}: ${m[0]}`);
+        });
+      }
+      return found;
+    }
+
+    /** Runbook の frontmatter `status` が superseded か。 */
+    function runbookSuperseded(text) {
+      const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+      if (!fm) throw new Error('Runbook に frontmatter が無い');
+      const st = /^status:\s*(\S+)\s*$/m.exec(fm[1]);
+      if (!st) throw new Error('Runbook の frontmatter に status が無い');
+      return st[1] === 'superseded';
+    }
+
+    /** 併存・統制ゼロの判定。問題が無ければ null。 */
+    function coexistenceIssue(sources, superseded) {
+      if (sources.length > 0 && !superseded) {
+        return '月次予算の金額が設定されているのに月次確認の Runbook が superseded になっていない（併存）:\n  '
+          + sources.join('\n  ')
+          + `\n  → 同じ変更で ${RUNBOOK} の status を superseded にし、後継（上限アラート）を明記すること`;
+      }
+      if (sources.length === 0 && superseded) {
+        return `月次確認の Runbook が superseded なのに月次予算の金額がどこにも無い（統制ゼロ）。`
+          + ' 上限アラートは金額が無いと評価対象を持たず発火しない';
+      }
+      return null;
+    }
+
+    const J = (limits) => JSON.stringify({ Llm: { Budget: { MonthlyLimits: limits } } });
+    const RB = (status) => `---\ntitle: x\ntype: runbook\nstatus: ${status}\n---\n\n# x\n`;
+    const none = { appsettings: [{ rel: 'a.json', text: J({}) }], deployFiles: [] };
+    const withAmount = { appsettings: [{ rel: 'a.json', text: J({ 'rag-answer': 10 }) }], deployFiles: [] };
+
+    ok('#1111: 金額なし × Runbook 継続 は正（現在の状態）', () => {
+      assert.strictEqual(coexistenceIssue(budgetSources(none), runbookSuperseded(RB('fixed'))), null);
+    });
+
+    ok('#1111: 金額あり × Runbook superseded は正（金額を設定したあとの状態）', () => {
+      assert.strictEqual(coexistenceIssue(budgetSources(withAmount), runbookSuperseded(RB('superseded'))), null);
+    });
+
+    ok('#1111: 金額あり × Runbook 継続 を併存として落とす（変異試験）', () => {
+      const r = coexistenceIssue(budgetSources(withAmount), runbookSuperseded(RB('fixed')));
+      assert.ok(r && r.includes('併存') && r.includes('rag-answer'), String(r));
+    });
+
+    ok('#1111: 金額なし × Runbook superseded を統制ゼロとして落とす（変異試験）', () => {
+      const r = coexistenceIssue(budgetSources(none), runbookSuperseded(RB('superseded')));
+      assert.ok(r && r.includes('統制ゼロ'), String(r));
+    });
+
+    ok('#1111: deploy 側の環境変数上書きも「設定済み」と数え、コメント行は数えない', () => {
+      const deploy = (text) => ({ appsettings: none.appsettings, deployFiles: [{ rel: 'v.yaml', text }] });
+      assert.strictEqual(budgetSources(deploy('      - name: Llm__Budget__MonthlyLimits__rag-answer\n')).length, 1);
+      assert.strictEqual(budgetSources(deploy('  Llm__Budget__MonthlyLimits__default: "5"\n')).length, 1);
+      assert.strictEqual(budgetSources(deploy('    # Llm__Budget__MonthlyLimits__rag-answer は置かない\n')).length, 0);
+    });
+
+    ok('#1111: 空の MonthlyLimits は未設定であり、鍵の大文字小文字は区別しない', () => {
+      assert.deepStrictEqual(budgetSources(none), []);
+      const lower = { appsettings: [{ rel: 'a.json', text: '{"llm":{"budget":{"monthlylimits":{"default":1}}}}' }], deployFiles: [] };
+      assert.strictEqual(budgetSources(lower).length, 1);
+    });
+
+    // 実データ。fail-closed（#664 / IADR-0130）: 走査対象が見つからなければ落とす。
+    const readRepo = (rel) => fsB.readFileSync(pathB.join(ROOT_B, rel), 'utf8');
+    const walk = (relDir) => {
+      const out = [];
+      const rec = (rel) => {
+        for (const e of fsB.readdirSync(pathB.join(ROOT_B, rel), { withFileTypes: true })) {
+          const child = `${rel}/${e.name}`;
+          if (e.isDirectory()) rec(child);
+          else out.push(child);
+        }
+      };
+      rec(relDir);
+      return out;
+    };
+
+    ok('#1111: 本リポジトリで「金額の設定」と「Runbook の superseded」が食い違っていない（実データ）', () => {
+      const appsettings = fsB.readdirSync(pathB.join(ROOT_B, GATEWAY_DIR))
+        .filter((f) => /^appsettings(\..+)?\.json$/i.test(f))
+        .map((f) => ({ rel: `${GATEWAY_DIR}/${f}`, text: readRepo(`${GATEWAY_DIR}/${f}`) }));
+      assert.ok(appsettings.some((a) => a.rel.endsWith('/appsettings.json')), 'LlmGateway の appsettings.json が見つからない（走査が壊れている）');
+      const deployFiles = walk('deploy').map((rel) => ({ rel, text: readRepo(rel) }));
+      assert.ok(deployFiles.length > 0, 'deploy/ 配下のファイルが 0 件（走査が壊れている）');
+      const r = coexistenceIssue(budgetSources({ appsettings, deployFiles }), runbookSuperseded(readRepo(RUNBOOK)));
+      assert.strictEqual(r, null, r || '');
+    });
+
+    ok('#1111: ゲージ名から導いた Prometheus 名が 4 か所のルールの式に現れる（名前のずれで永久に鳴らない、を止める）', () => {
+      const cs = readRepo(BUDGET_METRICS_CS);
+      const m = /LimitGaugeName\s*=\s*"([^"]+)"/.exec(cs);
+      assert.ok(m, `${BUDGET_METRICS_CS} に LimitGaugeName が見つからない（走査が壊れている）`);
+      // OTel → prometheusremotewrite: `.` は `_` へ。単位 `{currency}` は注記で接尾辞にならず、ゲージに `_total` は付かない。
+      const promName = m[1].replace(/\./g, '_');
+      assert.strictEqual(promName, 'llm_budget_monthly_limit');
+      for (const rel of RULE_FILES) {
+        const text = readRepo(rel);
+        // ルールの定義行から読む（ダッシュボードの説明文にも同じ名前が出るため、名前だけで探さない）。
+        const def = /(?:alert|title):\s*LlmMonthlyBudgetExceeded\s*$/m.exec(text);
+        assert.ok(def, `${rel} に LlmMonthlyBudgetExceeded のルール定義が無い`);
+        const at = def.index;
+        const around = text.slice(at, at + 2500);
+        assert.ok(around.includes(`(${promName})`), `${rel} の式が ${promName} を参照していない`);
+        assert.ok(around.includes('increase(llm_cost_total[30d])'), `${rel} の式が直近 30 日の llm_cost_total を見ていない`);
+        // 金額を式へ書かない（置き場はゲートウェイの設定 1 か所）。`> on (` の直後が数字なら式に金額がある。
+        assert.ok(!/>\s*[0-9]/.test(around.slice(0, around.indexOf(`(${promName})`))), `${rel} の式に数字のしきい値がある`);
+      }
+    });
+  }
+
 };
