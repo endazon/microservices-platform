@@ -312,16 +312,16 @@ msgid "embeds: 点線・矢印"
 msgstr "embeds: 点線・矢印"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
-msgid "Git"
-msgstr "Git"
-
-#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "Git に置けない秘密情報（API キー・接続秘密・通知の webhook）を 1 項目ずつ投入・更新します。値は書き込み専用で、保存後はこの画面からも読み出せません。操作は監査ログに記録されます（値は記録されません）。"
 msgstr "Git に置けない秘密情報（API キー・接続秘密・通知の webhook）を 1 項目ずつ投入・更新します。値は書き込み専用で、保存後はこの画面からも読み出せません。操作は監査ログに記録されます（値は記録されません）。"
 
 #: platform/frontend/src/lib/auth/LoginPage.tsx
 msgid "Keycloak でサインイン"
 msgstr "Keycloak でサインイン"
+
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "LLM ゲートウェイ"
+msgstr "LLM ゲートウェイ"
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "LLM不調時は検索結果のみ返す縮退運転（UC-01 例外フロー）。フィルタ候補は権限内のタグ／部門／プロジェクトのみ提示。"
@@ -346,6 +346,10 @@ msgstr "MCP管理"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "Mermaid {coded}図"
 msgstr "Mermaid {coded}図"
+
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "moomoo 証券との接続（発注・約定と相場の受信）"
+msgstr "moomoo 証券との接続（発注・約定と相場の受信）"
 
 #: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
 msgid "moomoo 証券のログイン情報"
@@ -377,6 +381,10 @@ msgid "Obsidian連携"
 msgstr "Obsidian連携"
 
 #: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "OpenD"
+msgstr "OpenD"
+
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
 msgid "OpenD が moomoo 証券へログインするための ID とパスワードです。パスワードは MD5 に変換した値だけが保存されます。"
 msgstr "OpenD が moomoo 証券へログインするための ID とパスワードです。パスワードは MD5 に変換した値だけが保存されます。"
 
@@ -387,6 +395,10 @@ msgstr "OpenD との通信に使う RSA 秘密鍵です。値は入力せず、�
 #: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
 msgid "OpenD の RSA 鍵"
 msgstr "OpenD の RSA 鍵"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "OpenD を手動で再起動するまで、書いた値は反映されません。"
+msgstr "OpenD を手動で再起動するまで、書いた値は反映されません。"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "related: 実線・細（向きなし）"
@@ -421,12 +433,20 @@ msgid "Wiki を検索"
 msgstr "Wiki を検索"
 
 #: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "Wiki 同期"
+msgstr "Wiki 同期"
+
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
 msgid "Wiki 同期の API キー"
 msgstr "Wiki 同期の API キー"
 
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "Wiki 閲覧"
 msgstr "Wiki 閲覧"
+
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "Wiki.js との文書の同期"
+msgstr "Wiki.js との文書の同期"
 
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "Wikiで閲覧"
@@ -676,8 +696,8 @@ msgid "このプロパティを更新する"
 msgstr "このプロパティを更新する"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
-msgid "この値を読む OpenD は自動では再起動されません。書き込み後に kubectl -n ai-stock-trading rollout restart deploy/opend で再起動してください。再起動は稼働中の処理を中断し、SMS または画像の認証を再び求められることがあります。書き込む時機を判断してください。"
-msgstr "この値を読む OpenD は自動では再起動されません。書き込み後に kubectl -n ai-stock-trading rollout restart deploy/opend で再起動してください。再起動は稼働中の処理を中断し、SMS または画像の認証を再び求められることがあります。書き込む時機を判断してください。"
+msgid "このプロパティを書き込みますか？"
+msgstr "このプロパティを書き込みますか？"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
@@ -703,6 +723,10 @@ msgstr "この文書に対するリンク候補・タグ候補です。両端の
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "この文書のタグを編集する権限がありません。"
 msgstr "この文書のタグを編集する権限がありません。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "この書き込みでは OpenD は再起動しません。書いた値を反映するには、書き込み後に kubectl -n ai-stock-trading rollout restart deploy/opend で OpenD を手動で再起動してください。手動の再起動は稼働中の処理を中断し、SMS または画像の認証を再び求められることがあります。"
+msgstr "この書き込みでは OpenD は再起動しません。書いた値を反映するには、書き込み後に kubectl -n ai-stock-trading rollout restart deploy/opend で OpenD を手動で再起動してください。手動の再起動は稼働中の処理を中断し、SMS または画像の認証を再び求められることがあります。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "この画面で書いた値は反映されません"
@@ -733,6 +757,10 @@ msgid "この辺の型は {inUseCount} 本の辺で使われているため削�
 msgstr "この辺の型は {inUseCount} 本の辺で使われているため削除できません。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "この項目の供給元を確認できないため、書き込みで {consumerName} が再起動するかは断定できません。同期先がある環境では、即時同期のあとで自動で再起動されることがあります（自動再起動を配備した環境の場合。配備していない環境では、再起動するまで反映されません）。"
+msgstr "この項目の供給元を確認できないため、書き込みで {consumerName} が再起動するかは断定できません。同期先がある環境では、即時同期のあとで自動で再起動されることがあります（自動再起動を配備した環境の場合。配備していない環境では、再起動するまで反映されません）。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "この項目の供給元を確認できません。書いた値がアプリケーションに反映されるかは、この画面からは分かりません。"
 msgstr "この項目の供給元を確認できません。書いた値がアプリケーションに反映されるかは、この画面からは分かりません。"
 
@@ -741,8 +769,8 @@ msgid "この項目の現在の版は保管先（Vault）で削除されてい�
 msgstr "この項目の現在の版は保管先（Vault）で削除されています。画面からは削除された版へ書き込めないため、運用 Runbook の手順でコンソールから版を復元してから、もう一度更新してください。値は保存されていません。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
-msgid "この項目はいま Git（配備時の設定）から供給されています。書き込みはできますが、配備時のスイッチを画面の経路へ切り替えるまで、書いた値はアプリケーションに反映されません。"
-msgstr "この項目はいま Git（配備時の設定）から供給されています。書き込みはできますが、配備時のスイッチを画面の経路へ切り替えるまで、書いた値はアプリケーションに反映されません。"
+msgid "この項目はいま画面以外（手で作った Secret・配備スクリプト・Git など）から供給されています。書き込みはできますが、配備時のスイッチを画面の経路へ切り替える（同期先を作る）まで、書いた値はアプリケーションに反映されません。"
+msgstr "この項目はいま画面以外（手で作った Secret・配備スクリプト・Git など）から供給されています。書き込みはできますが、配備時のスイッチを画面の経路へ切り替える（同期先を作る）まで、書いた値はアプリケーションに反映されません。"
 
 #: platform/frontend/src/components/ai-chat/CopyButton.tsx
 msgid "コピーしました"
@@ -1279,6 +1307,10 @@ msgid "まもなく完全削除（残り {days} 日）"
 msgstr "まもなく完全削除（残り {days} 日）"
 
 #: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "メール中継"
+msgstr "メール中継"
+
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
 msgid "メール送信（SMTP）の認証情報"
 msgstr "メール送信（SMTP）の認証情報"
 
@@ -1537,8 +1569,8 @@ msgid "供給元"
 msgstr "供給元"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
-msgid "供給元は、各項目の同期先（ExternalSecret）がクラスタにあるかで判定します。「画面」はこの画面で書いた値がアプリケーションへ届く状態です。「Git」は配備時の設定から値が供給されており、この画面で書いた値は反映されません。「確認できない」は判定に必要なクラスタへの接続が無いか、判定に失敗したことを示します。"
-msgstr "供給元は、各項目の同期先（ExternalSecret）がクラスタにあるかで判定します。「画面」はこの画面で書いた値がアプリケーションへ届く状態です。「Git」は配備時の設定から値が供給されており、この画面で書いた値は反映されません。「確認できない」は判定に必要なクラスタへの接続が無いか、判定に失敗したことを示します。"
+msgid "供給元は、各項目の同期先（ExternalSecret）がクラスタにあるかで判定します。「画面」はこの画面で書いた値がアプリケーションへ届く状態です。「画面以外」は同期先が無く、値が画面以外（手で作った Secret・配備スクリプト・Git など）から供給されている状態で、この画面で書いた値は反映されません。「確認できない」は判定に必要なクラスタへの接続が無いか、判定に失敗したことを示します（同期を無効にした構成では全項目がこの表示になります）。"
+msgstr "供給元は、各項目の同期先（ExternalSecret）がクラスタにあるかで判定します。「画面」はこの画面で書いた値がアプリケーションへ届く状態です。「画面以外」は同期先が無く、値が画面以外（手で作った Secret・配備スクリプト・Git など）から供給されている状態で、この画面で書いた値は反映されません。「確認できない」は判定に必要なクラスタへの接続が無いか、判定に失敗したことを示します（同期を無効にした構成では全項目がこの表示になります）。"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
@@ -1602,8 +1634,8 @@ msgid "保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い適
 msgstr "保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い適用は Git の履歴を参照してください。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
-msgid "保管先への書き込みは完了しましたが、この項目は Git（配備時の設定）から供給されているため、書いた値はアプリケーションに反映されません。"
-msgstr "保管先への書き込みは完了しましたが、この項目は Git（配備時の設定）から供給されているため、書いた値はアプリケーションに反映されません。"
+msgid "保管先への書き込みは完了しましたが、この項目は画面以外（手で作った Secret・配備スクリプト・Git など）から供給されているため、書いた値はアプリケーションに反映されません。"
+msgstr "保管先への書き込みは完了しましたが、この項目は画面以外（手で作った Secret・配備スクリプト・Git など）から供給されているため、書いた値はアプリケーションに反映されません。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "保管先への書き込みは完了しましたが、即時同期を依頼できませんでした。アプリケーションへの反映は定期同期（最大 1 時間）を待ちます。"
@@ -1871,6 +1903,14 @@ msgstr "再試行中（{failures}/{limit}）"
 #: platform/frontend/src/components/ui/ErrorBoundary.tsx
 msgid "再読み込み"
 msgstr "再読み込み"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "再起動する消費側"
+msgstr "再起動する消費側"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "再起動は稼働中の処理を中断します。止めてよい時機か確かめてから書き込んでください。"
+msgstr "再起動は稼働中の処理を中断します。止めてよい時機か確かめてから書き込んでください。"
 
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "最新へ"
@@ -2311,6 +2351,10 @@ msgstr "型名（必須）"
 #: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 msgid "基盤の利用者 {rowNumber}"
 msgstr "基盤の利用者 {rowNumber}"
+
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "売買・市場データと開示情報の取得・Discord への通知"
+msgstr "売買・市場データと開示情報の取得・Discord への通知"
 
 #: knowledge/frontend/src/features/sc07-conversions/routes/sc07ConversionsRoute.tsx
 msgid "変換ジョブ"
@@ -2870,6 +2914,10 @@ msgstr "文書詳細で確認"
 msgid "文書詳細へ戻る"
 msgstr "文書詳細へ戻る"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "断たれ得る処理"
+msgstr "断たれ得る処理"
+
 #: platform/frontend/src/components/notifications/notificationMessages.ts
 msgid "新しいお知らせが {count} 件あります"
 msgstr "新しいお知らせが {count} 件あります"
@@ -3011,12 +3059,12 @@ msgid "書いた値は反映されません"
 msgstr "書いた値は反映されません"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
-msgid "書き込むと、この値を読むアプリケーションが再起動されることがあります。再起動は稼働中の処理を中断します。書き込む時機を判断してください。"
-msgstr "書き込むと、この値を読むアプリケーションが再起動されることがあります。再起動は稼働中の処理を中断します。書き込む時機を判断してください。"
+msgid "書き込む"
+msgstr "書き込む"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
-msgid "書き込むと、同期のあとでこの値を読むアプリケーションが自動で再起動されます（自動再起動を配備した環境の場合。配備していない環境では、再起動するまで反映されません）。再起動は稼働中の処理を中断します。書き込む時機を判断してください。"
-msgstr "書き込むと、同期のあとでこの値を読むアプリケーションが自動で再起動されます（自動再起動を配備した環境の場合。配備していない環境では、再起動するまで反映されません）。再起動は稼働中の処理を中断します。書き込む時機を判断してください。"
+msgid "書き込むと、この値を読むアプリケーションが再起動されることがあります。再起動は稼働中の処理を中断します。止めてよい時機か確かめてから書き込んでください。"
+msgstr "書き込むと、この値を読むアプリケーションが再起動されることがあります。再起動は稼働中の処理を中断します。止めてよい時機か確かめてから書き込んでください。"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/types/mcpClientVocabulary.ts
 msgid "有人"
@@ -3168,6 +3216,10 @@ msgid "株式自動売買"
 msgstr "株式自動売買"
 
 #: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "株式自動売買のアプリケーション"
+msgstr "株式自動売買のアプリケーション"
+
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
 msgid "株式自動売買の外部 API キーと通知"
 msgstr "株式自動売買の外部 API キーと通知"
 
@@ -3193,6 +3245,10 @@ msgstr "検索・チャット質問"
 #: knowledge/frontend/src/features/sc01-search/routes/sc01SearchRoute.ts
 msgid "検索・質問"
 msgstr "検索・質問"
+
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "検索・質問応答・分析での外部 LLM の呼び出し"
+msgstr "検索・質問応答・分析での外部 LLM の呼び出し"
 
 #: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
 msgid "検索・質問応答・分析で外部の LLM を呼び出すための API キーです。"
@@ -3512,6 +3568,10 @@ msgstr "画像を読み込み中…"
 msgid "画面"
 msgstr "画面"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "画面以外"
+msgstr "画面以外"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "発行しました"
 msgstr "発行しました"
@@ -3599,6 +3659,10 @@ msgstr "矛盾はありません。まだ保存していません。"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "確認"
 msgstr "確認"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "確認して書き込むと、即時同期のあとで {consumerName} が自動で再起動されます（自動再起動を配備した環境の場合）。配備していない環境では、再起動するまで書いた値は反映されません。"
+msgstr "確認して書き込むと、即時同期のあとで {consumerName} が自動で再起動されます（自動再起動を配備した環境の場合）。配備していない環境では、再起動するまで書いた値は反映されません。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "確認できない"
@@ -3795,6 +3859,10 @@ msgstr "編集フォーム"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 msgid "編集中の文書: v{version}"
 msgstr "編集中の文書: v{version}"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "自動再起動を配備していない環境では、この値を読むアプリケーションを再起動するまで反映されません。"
+msgstr "自動再起動を配備していない環境では、この値を読むアプリケーションを再起動するまで反映されません。"
 
 #: platform/frontend/src/components/theme/ThemeToggle.tsx
 msgid "表示: システム"
@@ -4096,6 +4164,10 @@ msgstr "通知（未読 {unreadCount} 件）"
 msgid "通知はありません"
 msgstr "通知はありません"
 
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
+msgid "通知メール（パスワード再設定など）の送信"
+msgstr "通知メール（パスワード再設定など）の送信"
+
 #: platform/frontend/src/components/notifications/NotificationBell.tsx
 msgid "通知を取得できませんでした"
 msgstr "通知を取得できませんでした"
@@ -4218,12 +4290,12 @@ msgid "重要"
 msgstr "重要"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
-msgid "鍵を生成してよいか確認してください"
-msgstr "鍵を生成してよいか確認してください"
+msgid "鍵を生成して書き込みますか？"
+msgstr "鍵を生成して書き込みますか？"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
-msgid "鍵を生成し直すと、OpenD に登録済みの鍵との対応が失効します。OpenD は自動では再起動されないため、書き込み後に kubectl -n ai-stock-trading rollout restart deploy/opend で手動で再起動してください。再起動のとき SMS または画像の認証を再び求められることがあります。生成して書き込みますか？"
-msgstr "鍵を生成し直すと、OpenD に登録済みの鍵との対応が失効します。OpenD は自動では再起動されないため、書き込み後に kubectl -n ai-stock-trading rollout restart deploy/opend で手動で再起動してください。再起動のとき SMS または画像の認証を再び求められることがあります。生成して書き込みますか？"
+msgid "鍵を生成し直すと、保管先の鍵が新しい鍵に置き換わります。OpenD が新しい鍵を読み込むまで（手動で再起動するまで）、OpenD と同じ鍵で接続するクライアントとの間で鍵が食い違います。鍵はこの画面にも表示されません。"
+msgstr "鍵を生成し直すと、保管先の鍵が新しい鍵に置き換わります。OpenD が新しい鍵を読み込むまで（手動で再起動するまで）、OpenD と同じ鍵で接続するクライアントとの間で鍵が食い違います。鍵はこの画面にも表示されません。"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx

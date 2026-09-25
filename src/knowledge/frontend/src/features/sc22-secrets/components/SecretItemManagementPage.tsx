@@ -19,13 +19,15 @@ import type { SecretItemStatusDto } from '@foundation/api/generated/bff.schemas'
 import { QueryState } from '@foundation/ui/QueryState';
 import { toMessages } from '@foundation/utils/apiErrors';
 import { formatDateTime } from '@foundation/utils/formatDateTime';
+import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { DataTable } from '../../../components/DataTable';
 import type { DataTableColumns } from '../../../components/DataTable';
 import { useSecretItemUpdate, useSecretItems } from '../api/useSecretItems';
 import {
   MAX_REASON_LENGTH,
   MAX_VALUE_LENGTH,
-  secretConsumerRestart,
+  needsWriteConfirmation,
+  secretConsumer,
   secretItemLabel,
   secretPropertyShapes,
   secretSupplySource,
@@ -41,15 +43,17 @@ import {
 // ■ **未設定と「取得できない」を描き分ける**（SC-22 主要素 3）。状態は色だけで示さない（StatusBadge が
 //   色 ＋ アイコン ＋ テキストを強制する）。「設定済み」は KV に版があることであり、各プロパティに
 //   値が入っていることは意味しない —— 注記でそう書く（IADR-0453 決定 4）。
-// ■ 値と確認入力はマスクし、**一致しなければ送信できない**（SC-22 入力規則）。確認ダイアログは置かない（IADR-0453 決定 6）。
+// ■ 値と確認入力はマスクし、**一致しなければ送信できない**（SC-22 入力規則）。2 度目の入力が値の確認である（IADR-0453 決定 6）。
 // ■ IADR-0456 決定 1〜3: 入力の形はプロパティの種別で変わる —— パスワード（MD5 で保存される旨を書く）／
-//   生成（値の欄を持たず、生成し直すと OpenD の鍵の対応が失効することを確かめてから送る）／秘密でない ID（平文で入力させる）。
+//   生成（値の欄を持たず、鍵が置き換わることを確かめてから送る）／秘密でない ID（平文で入力させる）。
 // ■ IADR-0456 決定 4: 保存後に即時同期を依頼できたかを示す（依頼できなくても書き込みは成立している）。
-// ■ ADR-0104 決定 2, IADR-0460 決定 1 (#1502): 一覧に「供給元」（画面／Git／確認できない）を出す。値は BFF が配備の結果
-//   （同期先 ExternalSecret の有無）から判定したもので、🔴 **画面は推測しない**（無い・未知の値は「確認できない」）。
-//   Git から供給されている項目は**書き込みを拒否せず**、書いても反映されないことを送る前と後の両方で伝える。
-// ■ ADR-0104 決定 4, IADR-0460 決定 2: 送る前に「消費側が再起動する」旨を項目ごとに出し、書き込む時機を利用者に判断させる
-//   （OpenD が消費する moomoo の 2 項目は自動では再起動されず、手動の再起動が要る）。
+// ■ ADR-0104 決定 2, ADR-0110 決定 1, IADR-0460 決定 1 (#1502 / #1523): 一覧に「供給元」（画面／画面以外／確認できない）を出す。
+//   値は BFF が配備の結果（同期先 ExternalSecret の有無）から判定したもので、🔴 **画面は推測しない**（無い・未知の値は「確認できない」）。
+//   「画面以外」（契約の値は `git` のまま）の項目は**書き込みを拒否せず**、書いても反映されないことを送る前と後の両方で伝える。
+// ■ ADR-0110 決定 3 (#1523): **書き込みの確認を、消費側の再起動の確認とする。** 「画面以外」でない項目は、送信の押下で
+//   確認ダイアログを開き、再起動する消費側・断たれ得る処理・確認後に続くこと（即時同期 → 自動の作り直し／OpenD は手動）を出す。
+//   確認して初めて送る。🔴 **書き込みとは別の再起動の操作は置かない**（BFF に Deployment を動かす権限を与えない）。
+//   鍵の生成の確認（IADR-0456 決定 3）もこの確認の段へ統合した（2 度確認させない）。
 // ■ 到達できるのは運用者・システム管理者だけ。ガードはルート側（RequireRole → NotFound）にある。
 
 export function SecretItemManagementPage() {
@@ -123,7 +127,8 @@ export function SecretItemManagementPage() {
           // 色だけに意味を持たせない（StatusBadge が色 ＋ アイコン ＋ テキストを強制する）。
           const source = secretSupplySource(row.original);
           if (source === 'screen') return <StatusBadge tone="success">{t`画面`}</StatusBadge>;
-          if (source === 'git') return <StatusBadge tone="warning">{t`Git`}</StatusBadge>;
+          // ADR-0110 決定 1: 表示名は「画面以外」（契約の値 `git` は識別子であり、出どころが Git とは限らない）。
+          if (source === 'git') return <StatusBadge tone="warning">{t`画面以外`}</StatusBadge>;
           return <StatusBadge tone="neutral">{t`確認できない`}</StatusBadge>;
         },
       },
@@ -185,7 +190,9 @@ export function SecretItemManagementPage() {
         </Note>
         <Note data-testid="secrets-supply-note">
           <Trans>
-            供給元は、各項目の同期先（ExternalSecret）がクラスタにあるかで判定します。「画面」はこの画面で書いた値がアプリケーションへ届く状態です。「Git」は配備時の設定から値が供給されており、この画面で書いた値は反映されません。「確認できない」は判定に必要なクラスタへの接続が無いか、判定に失敗したことを示します。
+            供給元は、各項目の同期先（ExternalSecret）がクラスタにあるかで判定します。「画面」はこの画面で書いた値がアプリケーションへ届く状態です。「画面以外」は同期先が無く、値が画面以外（手で作った
+            Secret・配備スクリプト・Git
+            など）から供給されている状態で、この画面で書いた値は反映されません。「確認できない」は判定に必要なクラスタへの接続が無いか、判定に失敗したことを示します（同期を無効にした構成では全項目がこの表示になります）。
           </Trans>
         </Note>
       </Panel>
@@ -205,7 +212,8 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
   const [value, setValue] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [reason, setReason] = useState('');
-  const [confirmingGenerate, setConfirmingGenerate] = useState(false);
+  // ADR-0110 決定 3: 確認ダイアログを開いているか（開いている間は送っていない）。
+  const [confirming, setConfirming] = useState(false);
   const [written, setWritten] = useState<{
     property: string;
     version: number;
@@ -221,20 +229,23 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
   const plain = shape?.kind === 'value' && !shape.sensitive;
   const issues = secretUpdateIssues({ property, value, confirmation, reason }, shapes);
   const mismatch = confirmation.length > 0 && issues.includes('confirmation-mismatch');
-  // ADR-0104 決定 2・4: 供給元と消費側の作り直され方（どちらも送る前に見せる）。
+  // ADR-0104 決定 2・4, ADR-0110 決定 3: 供給元と消費側（再起動の確認に使う）。
   const source = secretSupplySource(row);
-  const restart = secretConsumerRestart(row.item);
+  const consumer = secretConsumer(row.item);
+  const restart = consumer?.restart ?? null;
+  const consumerName = consumer ? i18n._(consumer.consumer) : '';
+  const interrupts = consumer ? i18n._(consumer.interrupts) : '';
 
-  // プロパティを替えたら入力を捨てる（別のプロパティの値を送らない。生成の確認も取り直す）。
+  // プロパティを替えたら入力を捨てる（別のプロパティの値を送らない）。
   const selectProperty = (next: string) => {
     setProperty(next);
     setValue('');
     setConfirmation('');
-    setConfirmingGenerate(false);
     setWritten(null);
   };
 
   const send = () => {
+    setConfirming(false);
     setWritten(null);
     const trimmedReason = reason.trim();
     update.mutate(
@@ -253,7 +264,6 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
           setValue('');
           setConfirmation('');
           setReason('');
-          setConfirmingGenerate(false);
           if (result.status === 200)
             setWritten({
               property: result.data.property,
@@ -268,9 +278,10 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (issues.length > 0 || update.isPending) return;
-    // IADR-0456 決定 3: 生成し直すと OpenD の鍵の対応が失効する。1 度目の押下では送らず、確かめてから送る。
-    if (generate && !confirmingGenerate) {
-      setConfirmingGenerate(true);
+    // ADR-0110 決定 3: 再起動を伴う（伴い得る）項目と鍵の生成は、押下では送らず確認ダイアログを開く。
+    // 「画面以外」の値の書き込みは Secret が変わらず再起動も起きないので、そのまま送る。
+    if (needsWriteConfirmation(source, generate)) {
+      setConfirming(true);
       return;
     }
     send();
@@ -300,17 +311,17 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
           </Select>
         </div>
 
-        {/* ADR-0104 決定 2: 🔴 書き込みは拒否しない。Git から供給されているなら、書いても効かないことを先に伝える。 */}
+        {/* ADR-0104 決定 2, ADR-0110 決定 1: 🔴 書き込みは拒否しない。画面以外から供給されているなら、書いても効かないことを先に伝える。 */}
         {source === 'git' && (
           <Alert
             tone="warning"
             role="status"
             label={t`この画面で書いた値は反映されません`}
-            data-testid="secret-supply-git"
+            data-testid="secret-supply-not-screen"
           >
             <Trans>
-              この項目はいま
-              Git（配備時の設定）から供給されています。書き込みはできますが、配備時のスイッチを画面の経路へ切り替えるまで、書いた値はアプリケーションに反映されません。
+              この項目はいま画面以外（手で作った Secret・配備スクリプト・Git
+              など）から供給されています。書き込みはできますが、配備時のスイッチを画面の経路へ切り替える（同期先を作る）まで、書いた値はアプリケーションに反映されません。
             </Trans>
           </Alert>
         )}
@@ -409,29 +420,6 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
           </p>
         </div>
 
-        {/* ADR-0104 決定 4: 再起動をいつ行ってよいかの制約は計画で未定。定まるまでは、再起動する旨を送る前に出して利用者に判断させる。
-            Git から供給されている項目は書いても Secret が変わらない（＝再起動も起きない）ので出さない。 */}
-        {source !== 'git' && (
-          <Note data-testid="secret-restart-note">
-            {restart === 'automatic' ? (
-              <Trans>
-                書き込むと、同期のあとでこの値を読むアプリケーションが自動で再起動されます（自動再起動を配備した環境の場合。配備していない環境では、再起動するまで反映されません）。再起動は稼働中の処理を中断します。書き込む時機を判断してください。
-              </Trans>
-            ) : restart === 'manual-opend' ? (
-              <Trans>
-                この値を読む OpenD は自動では再起動されません。書き込み後に kubectl -n
-                ai-stock-trading rollout restart deploy/opend
-                で再起動してください。再起動は稼働中の処理を中断し、SMS
-                または画像の認証を再び求められることがあります。書き込む時機を判断してください。
-              </Trans>
-            ) : (
-              <Trans>
-                書き込むと、この値を読むアプリケーションが再起動されることがあります。再起動は稼働中の処理を中断します。書き込む時機を判断してください。
-              </Trans>
-            )}
-          </Note>
-        )}
-
         {mismatch && (
           <Alert
             tone="warning"
@@ -452,22 +440,6 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
             <Trans>更新の理由は {MAX_REASON_LENGTH} 文字以内で入力してください。</Trans>
           </Alert>
         )}
-        {generate && confirmingGenerate && (
-          <Alert
-            tone="warning"
-            role="alert"
-            label={t`鍵を生成してよいか確認してください`}
-            data-testid="secret-generate-confirm"
-          >
-            <Trans>
-              鍵を生成し直すと、OpenD に登録済みの鍵との対応が失効します。OpenD
-              は自動では再起動されないため、書き込み後に kubectl -n ai-stock-trading rollout restart
-              deploy/opend で手動で再起動してください。再起動のとき SMS
-              または画像の認証を再び求められることがあります。生成して書き込みますか？
-            </Trans>
-          </Alert>
-        )}
-
         {update.isError && (
           <Alert tone="danger" role="alert" label={t`エラー`} data-testid="secret-update-error">
             {updateErrorMessage(update.error, (message) => i18n._(message))}
@@ -490,9 +462,21 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
                 </Trans>
               </span>
             )}
+            {/* ADR-0110 決定 3: 書き込み後の表示でも「再起動するまで反映されない」を出す（配備の有無は検出しない）。 */}
+            {source !== 'git' && (
+              <span className="block" data-testid="secret-restart-after">
+                {restart === 'manual-opend' ? (
+                  <Trans>OpenD を手動で再起動するまで、書いた値は反映されません。</Trans>
+                ) : (
+                  <Trans>
+                    自動再起動を配備していない環境では、この値を読むアプリケーションを再起動するまで反映されません。
+                  </Trans>
+                )}
+              </span>
+            )}
           </Alert>
         )}
-        {/* ADR-0104 決定 2: Git から供給されている項目は、同期の成否ではなく「反映されない」を伝える
+        {/* ADR-0104 決定 2, ADR-0110 決定 1: 画面以外から供給されている項目は、同期の成否ではなく「反映されない」を伝える
             （同期先が無いので同期の依頼は通らず、「定期同期を待つ」と書くと反映されるかのように読める）。 */}
         {written && source === 'git' && (
           <Alert
@@ -502,8 +486,9 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
             data-testid="secret-not-applied"
           >
             <Trans>
-              保管先への書き込みは完了しましたが、この項目は
-              Git（配備時の設定）から供給されているため、書いた値はアプリケーションに反映されません。
+              保管先への書き込みは完了しましたが、この項目は画面以外（手で作った
+              Secret・配備スクリプト・Git
+              など）から供給されているため、書いた値はアプリケーションに反映されません。
             </Trans>
           </Alert>
         )}
@@ -522,40 +507,114 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
         )}
 
         <div className="flex flex-wrap gap-2">
-          {generate ? (
-            confirmingGenerate ? (
-              <>
-                <Button type="submit" variant="primary" disabled={update.isPending}>
-                  <Trans>生成して書き込む</Trans>
-                </Button>
-                <Button type="button" onClick={() => setConfirmingGenerate(false)}>
-                  <Trans>やめる</Trans>
-                </Button>
-              </>
-            ) : (
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={issues.length > 0 || update.isPending}
-              >
-                <Trans>生成</Trans>
-              </Button>
-            )
-          ) : (
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={issues.length > 0 || update.isPending}
-            >
-              <Trans>このプロパティを更新する</Trans>
-            </Button>
-          )}
+          <Button type="submit" variant="primary" disabled={issues.length > 0 || update.isPending}>
+            {generate ? <Trans>生成</Trans> : <Trans>このプロパティを更新する</Trans>}
+          </Button>
           <Button type="button" onClick={onClose}>
             <Trans>閉じる</Trans>
           </Button>
         </div>
       </form>
+
+      {/* ADR-0110 決定 3: 書き込みの確認＝消費側の再起動の確認。確認して初めて送る。初期フォーカスは取消（ConfirmDialog）。 */}
+      {confirming && (
+        <ConfirmDialog
+          title={generate ? t`鍵を生成して書き込みますか？` : t`このプロパティを書き込みますか？`}
+          confirmLabel={generate ? t`生成して書き込む` : t`書き込む`}
+          cancelLabel={t`やめる`}
+          pending={update.isPending}
+          onConfirm={send}
+          onCancel={() => setConfirming(false)}
+        >
+          <div data-testid="secret-write-confirm" className="flex flex-col gap-2">
+            {generate && (
+              <p data-testid="secret-generate-confirm">
+                <Trans>
+                  鍵を生成し直すと、保管先の鍵が新しい鍵に置き換わります。OpenD
+                  が新しい鍵を読み込むまで（手動で再起動するまで）、OpenD
+                  と同じ鍵で接続するクライアントとの間で鍵が食い違います。鍵はこの画面にも表示されません。
+                </Trans>
+              </p>
+            )}
+            {source !== 'git' && (
+              <RestartConfirmation
+                restart={restart}
+                sourceUnknown={source === 'unknown'}
+                consumerName={consumerName}
+                interrupts={interrupts}
+              />
+            )}
+          </div>
+        </ConfirmDialog>
+      )}
     </Panel>
+  );
+}
+
+// ADR-0110 決定 3 (#1523): 確認の段の本文。再起動する消費側と断たれ得る処理の種類、確認後に続くことを項目ごとに書き分ける。
+// 🔴 **断定しない**: 供給元を確認できない項目と表に無い項目は「再起動することがある」。自動の作り直しは「配備した環境の場合」に限る。
+function RestartConfirmation({
+  restart,
+  sourceUnknown,
+  consumerName,
+  interrupts,
+}: {
+  restart: 'automatic' | 'manual-opend' | null;
+  sourceUnknown: boolean;
+  consumerName: string;
+  interrupts: string;
+}) {
+  if (restart === null) {
+    return (
+      <p data-testid="secret-restart-confirm">
+        <Trans>
+          書き込むと、この値を読むアプリケーションが再起動されることがあります。再起動は稼働中の処理を中断します。止めてよい時機か確かめてから書き込んでください。
+        </Trans>
+      </p>
+    );
+  }
+  return (
+    <div data-testid="secret-restart-confirm" className="flex flex-col gap-2">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+        <dt>
+          <Trans>再起動する消費側</Trans>
+        </dt>
+        <dd>{consumerName}</dd>
+        <dt>
+          <Trans>断たれ得る処理</Trans>
+        </dt>
+        <dd>{interrupts}</dd>
+      </dl>
+      {restart === 'manual-opend' ? (
+        <p>
+          <Trans>
+            この書き込みでは OpenD は再起動しません。書いた値を反映するには、書き込み後に kubectl -n
+            ai-stock-trading rollout restart deploy/opend で OpenD
+            を手動で再起動してください。手動の再起動は稼働中の処理を中断し、SMS
+            または画像の認証を再び求められることがあります。
+          </Trans>
+        </p>
+      ) : sourceUnknown ? (
+        <p>
+          <Trans>
+            この項目の供給元を確認できないため、書き込みで {consumerName}{' '}
+            が再起動するかは断定できません。同期先がある環境では、即時同期のあとで自動で再起動されることがあります（自動再起動を配備した環境の場合。配備していない環境では、再起動するまで反映されません）。
+          </Trans>
+        </p>
+      ) : (
+        <p>
+          <Trans>
+            確認して書き込むと、即時同期のあとで {consumerName}{' '}
+            が自動で再起動されます（自動再起動を配備した環境の場合）。配備していない環境では、再起動するまで書いた値は反映されません。
+          </Trans>
+        </p>
+      )}
+      <p>
+        <Trans>
+          再起動は稼働中の処理を中断します。止めてよい時機か確かめてから書き込んでください。
+        </Trans>
+      </p>
+    </div>
   );
 }
 

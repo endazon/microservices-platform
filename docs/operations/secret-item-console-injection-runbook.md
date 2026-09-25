@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-11
-updated: 2026-09-25
+updated: 2026-09-26
 ---
 <!-- trace:
 ids: [SC-22, SC-06, SC-15, FR-05, NFR-11, NFR-18]
-adrs: [ADR-0007, ADR-0032, ADR-0040, ADR-0042, ADR-0095]
-iadrs: [IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433, IADR-0453, IADR-0454, IADR-0456]
+adrs: [ADR-0007, ADR-0032, ADR-0040, ADR-0042, ADR-0095, ADR-0110]
+iadrs: [IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460]
 specs: [20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup]
-issues: [#458, #310, #438, #1102, #1411, #1467, #1477, planning#599, planning#635]
+issues: [#458, #310, #438, #1102, #1411, #1467, #1477, #1523, planning#599, planning#635, planning#652]
 -->
 
 # 運用 Runbook: 画面が使えないときに秘密情報を 1 項目だけコンソールから投入する
@@ -135,7 +135,7 @@ printf '%s' "$SECRET_VALUE" | kubectl -n platform-infra exec -i deploy/vault -- 
   - `md5-from-password`（例 `ai-stock-trading/moomoo` の `login-pwd-md5`）: **パスワードそのものを書かない。** 小文字 hex の MD5 を書く。
     手順 2 で読み込んだ値から、表示せずに作って渡す: `printf '%s' "$SECRET_VALUE" | md5sum | cut -d' ' -f1 | tr -d '\n'` の出力を `キー名=-` の標準入力へ渡す
     （［2026-09-25 追記］`cut` は末尾に改行を付けるので `tr -d '\n'` で落とす。上の `printf '%s'` と同じ理由）。
-  - `generate-rsa-pkcs1`（例 `ai-stock-trading/moomoo-rsa` の `opend_rsa.pem`）: **画面の「生成」を使う。** 生成し直すと OpenD に登録済みの鍵との対応が失効する。
+  - `generate-rsa-pkcs1`（例 `ai-stock-trading/moomoo-rsa` の `opend_rsa.pem`）: **画面の「生成」を使う。** 生成し直すと保管先の鍵が置き換わり、OpenD を手動で再起動するまで、OpenD と同じ鍵で接続するクライアントとの間で鍵が食い違う（公開鍵をどこかへ登録する手順は無い）。
     コンソールで作るのは画面が使えないときだけで、RSA 1024 bit の PEM（PKCS1 形式）を Vault Pod の中で作って書き、端末へ出さない。
 
 書き終えたら値を捨てる。
