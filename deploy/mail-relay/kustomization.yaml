@@ -27,3 +27,12 @@ resources:
   # 門が測る相手はこの relay であり、片方だけが配備される形を作らないためである。
   # **opt-in ゲートに載せない**（ADR-0078 決定 4 は無条件。relay と同じ理由）。
   - reset-gate.yaml
+  # SC-15, NFR-13, ADR-0094 決定 2, ADR-0097 決定 2, IADR-0432 (#1410 / #1500):
+  # リセット申請の**床**（最小応答時間）の器。**既定で取り込む**（ADR-0097 決定 2 が
+  # IADR-0432 決定 4 の opt-in を覆した）。値（RESET_FLOOR_MS=150）はここが取り込むマニフェストが与え、
+  # コードは既定を持たない。
+  # 🔴 **器だけでは効かない。** 経路（リセット申請の POST を床へ向ける route）はエッジが与える ——
+  #   ローカルは `scripts/istio-edge-up.sh` が既定（RESET_FLOOR=1）で `deploy/local/edge-istio-reset-floor`
+  #   を当てる。退路は RESET_FLOOR=0（経路だけが外れ、器は誰も通らないまま居る）。
+  #   go-live は同じ経路を go-live のエッジ側で与える（production の Keycloak マニフェストは本リポジトリに無い）。
+  - reset-floor

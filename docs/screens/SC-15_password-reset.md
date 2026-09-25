@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [SC-10, SC-13, SC-14, SC-15, FR-05, UC-05]
-adrs: [ADR-0006, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0103, ADR-0108]
+adrs: [ADR-0006, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097, ADR-0103, ADR-0108]
 iadrs: [IADR-0197, IADR-0261, IADR-0329, IADR-0332, IADR-0344, IADR-0347, IADR-0369, IADR-0404, IADR-0421, IADR-0432, IADR-0463]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260911_issue-1410_reset-timing-floor, 20260925_1470_timing-self-control-step, 20260926_1525_timing-resolution-t25]
-issues: [#438, #1102, #1143, #1144, #1245, #1301, #1307, #1410, #1470, #1525, planning#650]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260911_issue-1410_reset-timing-floor, 20260925_1470_timing-self-control-step, 20260926_1500_reset-floor-default-on, 20260926_1525_timing-resolution-t25]
+issues: [#438, #1102, #1143, #1144, #1245, #1301, #1307, #1410, #1470, #1500, #1525, planning#650]
 -->
 
 # 画面仕様書: パスワードリセット
@@ -306,11 +306,19 @@ C1 は認証基盤の送出が同期でありタイムアウトが固定値で�
 🔴 **「遅延を足す」部品では足りない。** 固定の遅延は両側に同じだけ足すので**比が変わらない**
 （154:49 に 100 を足せば 254:149 で、縮むが 0 にはならない）。**要るのは床である。**
 
-**現況**: 🔴 **床は既定では入っていない**（配備は選択式）。床を入れた構成で比が許容内へ収まることを
-稼働クラスタで実測するまで、既定へは入れない —— **計画がこの決定を「覆り得る」と名指ししている**。
-収まらなければ、申請の受け口を製品側の画面へ移して送出を応答から切り離す案へ改めることになる。
-🔴 **床が入るまで、テスト仕様書の所要時間の項目は赤で居続ける。
-赤は「まだ塞いでいない」ことの正しい表示である。**
+**現況**: **［2026-09-26 更新］床は既定で入る**（計画の追加の裁定）。床の器は近接 MTA と同じ配備単位に
+置かれ、Istio のエッジを立てると**リセット申請の POST だけ**を床へ向ける経路が既定で足される。
+床を入れた構成の CI 実測で、実在／非実在の中央値の比は自己対照の内側（1.00 倍）に収まった。
+**全申請が床（150 ms）まで遅くなる**が、リセット申請は頻度の低い経路であり、計画がこのトレードオフを引き受けた。
+🔴 **床の器が落ちている間、リセット申請はすべて 503 で失敗する**（経路は器だけを向き、認証基盤へ戻る
+予備の経路は無い）。起動器は器が準備できるまで待ってから先へ進む。
+
+- **外すとき（退路）**: エッジを立てるときに `RESET_FLOOR=0` を与える。経路だけが外れ、
+  **所要時間で利用者名を判別できる状態に戻る**（検証用の比較に限る）。`0` / `1` 以外の値は起動器が拒む。
+- 🔴 **Traefik のエッジ（Istio を使わない既定のローカル経路）には床への経路が無い。** 器は立つが誰も通らない。
+- 🔴 **稼働クラスタではまだ測っていない**（CI の k3d で測った）。クラスタ再構築後に測り、差が出れば見直す。
+- テスト仕様書の所要時間の項目が赤なら、**床が外れている**（`RESET_FLOOR=0`・Istio 無し）か、
+  **床を超える応答が出ている**（床の値を引き直す契機）かのどちらかである。
 
 ## 関連仕様
 
