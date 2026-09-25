@@ -303,6 +303,14 @@
     "orval の生成物（propertyDetails / syncRequested）。Lingui カタログは初期ロードに載るため文言の追加が初期ロードに乗る。",
     "**チャンク単位の A/B 分解はしていない**（develop 単独ビルドとの差分の帰属は未測定）。smallLazyChunks は 10 本で床は変えていない。"
   ],
+  "$comment_initialTotalBytes_20260925_1489_ast-bump": [
+    "［2026-09-25 / #1489］submodule src/ai-stock-trading を develop 84026a4 → 471cbf3（AST#903 を含む）へ進めた合成ビルドを再測し、",
+    "**床 605,160 は据え置いた**（rm dist → pnpm run build → node scripts/check-chunk-budget.js --update が差分を出さない＝実測一致）。",
+    "A/B（同一環境で 84026a4 のまま同じ手順でビルドして突き合わせた）: index.html が読む 4 本は合計 605,160 B で A/B 同値。",
+    "index-*.js は同サイズで遅延チャンク名の参照だけが替わり、ui-*.js は内容がバイト一致（相方の ui-*.css が +43 B でハッシュだけ替わる）。",
+    "動いたのは AST/SC-02・AST/SC-03 の遅延チャンクだけ（AST#994 の損切り手法の選択と表示: RiskSettingsPage +2,696 /",
+    "queries +2,634 / ControlStatusPage +189 / OpendAuthPage +5 B）。pnpm-lock.yaml に差分なし。smallLazyChunks は 10 のまま。"
+  ],
   "$comment_initialTotalBytes_20260912_1438": [
     "［2026-09-12 / #1438］731,293 → 731,435（+142 B）へ引き上げた。実測値である",
     "（rm -rf platform/frontend/dist → pnpm run build → node scripts/check-chunk-budget.js --update。",
