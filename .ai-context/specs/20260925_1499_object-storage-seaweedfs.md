@@ -122,12 +122,31 @@ SeaweedFS へ差し替えると裁定した（planning#648 → ADR-0106。次点
 
 ## 受け入れ基準
 
-- [ ] **Integration（`workflow_dispatch`・本ブランチ）で `ObjectStorageRoundTripTests` 3 件が Passed**（Skipped ではない）
+- [ ] **Integration（`workflow_dispatch`・本ブランチ）で `ObjectStorageRoundTripTests` 3 件が Passed**（Skipped ではない）—— 🔴 2026-09-25 の実走で 2 件 Passed・全版削除の 1 件 Failed（下記「受け入れ試験の結果」）
 - [x] `SeaweedFsContainerDefinitionTests` 4 件がローカルで緑（digest の解釈・テレメトリ無効・compose / helm と同じ参照）
 - [x] `helm lint`（既定・values-local）・`helm template` が通り、描画結果に MinIO のイメージ・`/minio/health/*`・`minio-credentials` が無い
-- [ ] 両ユニットの `dotnet build`・`dotnet test`（`Category!=Integration`）・`dotnet format --verify-no-changes` が緑
-- [ ] `node scripts/scripts.test.js`・`k8s-local-up.test.js`・文書検査（trace ブロック・リンク・知識グラフ・IADR 採番）が緑
+- [x] 両ユニットの `dotnet build`・`dotnet test`（`Category!=Integration`）・`dotnet format --verify-no-changes` が緑（Bff の 1 件はローカルの既存の失敗。本 PR 以前の JSON でも再現。develop の CI では Passed）
+- [x] `node scripts/scripts.test.js`（782。採番の欠番を一時的に埋めて実行）・`k8s-local-up.test.js`（181）・文書検査（trace ブロック・リンク・知識グラフ）が緑。IADR 採番は 0458〜0463 のマージ待ち
 - [x] IADR-0464 に製品・起動形・名前・テレメトリ・Console・IADR-0024 の改定・データ移行・オーナー手順への参照がある
+
+## 受け入れ試験の結果（Integration・`workflow_dispatch`・run 36147130563・2026-09-25）
+
+| 試験 | 結果 |
+| --- | --- |
+| `SeaweedFsContainerDefinitionTests` 4 件 | Passed |
+| `ObjectStorageRoundTripTests.Persists_and_reads_markdown_and_asset`（`EnsureBucketAsync` を含む） | **Passed**（12 s。イメージの取得・起動・バケット作成・版管理の有効化・保存・読み出しが通った） |
+| `ObjectStorageRoundTripTests.Reconversion_overwrites_same_key_idempotently` | **Passed** |
+| `ObjectStorageRoundTripTests.Delete_removes_every_version` | 🔴 **Failed** —— 削除後の `ListVersions` に **delete marker が 1 つ残った**（`IsDeleteMarker=True`・`IsLatest=True`・作成時刻は削除の直後） |
+
+**原因の切り分け（ソースで確認）**: `S3ObjectStorageClient.DeleteAsync` は全版を versionId 付きで消した**後に、
+versionId 無しの削除を 1 回撃つ**（IADR-0296 決定 1 の最後の項「冪等なので害が無い」）。**バージョニングが有効なバケットでの
+versionId 無しの削除は、対象が無くても delete marker を作る** —— SeaweedFS の `deleteVersionedObject`
+（`weed/s3api/s3api_object_handlers_delete.go` 153〜161 行。`versionId == ""` かつ `VersioningEnabled` なら無条件に
+`createDeleteMarker`）がそう実装しており、これは AWS S3 の意味論と同じである。MinIO では marker が残らなかったため、
+IADR-0296 の前提「害が無い」は MinIO の振る舞いに依存していた。**SeaweedFS に機能が欠けているのではなく、
+実装側の削除手順が MinIO 固有の挙動を前提にしていた。**
+
+**判断は利用者へ返す**（計画 ADR-0106 の着手可否の注記: 覆す判断は利用者が行う）。選択肢は IADR-0464 には書かず PR で示す。
 
 ## 並行 PR との交差
 
