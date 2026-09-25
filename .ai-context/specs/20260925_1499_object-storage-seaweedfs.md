@@ -15,7 +15,7 @@ related_ids:
   - IADR-0461
 author: claude
 created: 2026-09-25
-updated: 2026-09-25
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0106_object-storage-seaweedfs.md (Accepted 2026-09-25)
   - planning:projects/microservices-platform/07_adr/ADR-0107_infrastructure-product-selection-criteria.md (Accepted 2026-09-25)
@@ -125,8 +125,8 @@ SeaweedFS へ差し替えると裁定した（planning#648 → ADR-0106。次点
 - [ ] **Integration（`workflow_dispatch`・本ブランチ）で `ObjectStorageRoundTripTests` 3 件が Passed**（Skipped ではない）—— 🔴 2026-09-25 の実走で 2 件 Passed・全版削除の 1 件 Failed（下記「受け入れ試験の結果」）
 - [x] `SeaweedFsContainerDefinitionTests` 4 件がローカルで緑（digest の解釈・テレメトリ無効・compose / helm と同じ参照）
 - [x] `helm lint`（既定・values-local）・`helm template` が通り、描画結果に MinIO のイメージ・`/minio/health/*`・`minio-credentials` が無い
-- [x] 両ユニットの `dotnet build`・`dotnet test`（`Category!=Integration`）・`dotnet format --verify-no-changes` が緑（Bff の 1 件はローカルの既存の失敗。本 PR 以前の JSON でも再現。develop の CI では Passed）
-- [x] `node scripts/scripts.test.js`（782。採番の欠番を一時的に埋めて実行）・`k8s-local-up.test.js`（181）・文書検査（trace ブロック・リンク・知識グラフ）が緑。IADR 採番は 0460（#1511）のマージ待ち
+- [x] 両ユニットの `dotnet build`・`dotnet test`（`Category!=Integration`）・`dotnet format --verify-no-changes` が緑（2026-09-26 に develop を取り込んだ後、全アセンブリ成功。取り込み前に出ていた Bff の 1 件は本 PR 以前の JSON でも再現しており、develop 側の変更で解消した）
+- [x] `node scripts/scripts.test.js`（800）・`k8s-local-up.test.js`（181）・`keycloak-realm-reconcile.test.js`（34）・文書検査（trace ブロック・リンク・知識グラフ・IADR 採番）が緑
 - [x] IADR-0461 に製品・起動形・名前・テレメトリ・Console・IADR-0024 の改定・データ移行・オーナー手順への参照がある
 
 ## 受け入れ試験の結果（Integration・`workflow_dispatch`・run 36147130563・2026-09-25）
@@ -161,5 +161,4 @@ IADR-0296 の前提「害が無い」は MinIO の振る舞いに依存してい
 
 ## 必須チェックへの影響
 
-ワークフローのジョブ名・起動条件は変えない（`ci.yml` はコメント 1 行のみ）。IADR の採番検査（`check-adr-numbering`）は
-**0460（#1511）が develop に入るまで欠番として赤になる**（コーディネータが番号順にマージする）。
+ワークフローのジョブ名・起動条件は変えない（`ci.yml` はコメント 1 行のみ）。IADR の採番検査（`check-adr-numbering`）は 0460（#1511）の develop 入りで欠番が解消した（2026-09-26）。
