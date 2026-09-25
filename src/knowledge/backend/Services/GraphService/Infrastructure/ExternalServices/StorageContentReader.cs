@@ -4,10 +4,10 @@ using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace GraphService.Infrastructure.ExternalServices;
 
-// FR-17, FR-06, ADR-0015, ADR-0033 決定 6, IADR-0281 (#912): 正規化 Markdown 本文の取得。
+// FR-17, FR-06, ADR-0015（Superseded by ADR-0106）, ADR-0033 決定 6, IADR-0281 (#912): 正規化 Markdown 本文の取得。
 //
 // WikiService の `StorageMarkdownReader` と同型である（storage:// は S3 互換オブジェクトストレージ
-// （MinIO）から、http(s) は HTTP で取得する）。**唯一の違いは縮退の向きである** ——
+// （SeaweedFS）から、http(s) は HTTP で取得する）。**唯一の違いは縮退の向きである** ——
 // 向こうは表示のためプレースホルダー本文を返すが、こちらは `IGraphContentReader` の契約どおり
 // **null を返して抽出をスキップさせる**（プレースホルダーで抽出すると既存の辺が全消しになる）。
 public class StorageContentReader(

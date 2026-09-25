@@ -3,15 +3,15 @@ title: 経路B SSO 復旧 Runbook（揮発 live 設定の再適用手順）
 type: runbook
 status: active
 created: 2026-07-25
-updated: 2026-09-16
+updated: 2026-09-25
 author: claude
 ---
 <!-- trace:
 ids: [NFR-09]
-adrs: []
-iadrs: [IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363, IADR-0369]
-specs: [20260902_issue-1127_wikijs-oidc-strategy-seed, 20260903_issue-1163_tool-oidc-login-verifier]
-issues: [#328, #388, #841, #1088, #1127, #1163, AST#245]
+adrs: [ADR-0106]
+iadrs: [IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363, IADR-0369, IADR-0461]
+specs: [20260902_issue-1127_wikijs-oidc-strategy-seed, 20260903_issue-1163_tool-oidc-login-verifier, 20260925_1499_object-storage-seaweedfs]
+issues: [#1499, #328, #388, #841, #1088, #1127, #1163, AST#245]
 -->
 
 # 経路B SSO 復旧 Runbook
@@ -147,7 +147,6 @@ kubectl -n ai-stock-trading get deploy | grep -c opend                          
 | SPA/BFF | `https://localhost/` | `developer`/`Developer-2026` ＋ **TOTP**（#438） | `realm_access.roles` |
 | Grafana | `grafana.localhost:50000` | `admin`/`admin` | claim `roles` → `platform-admin` → Admin |
 | ArgoCD | `argocd.localhost:50000` | `admin`/`admin` | claim `groups` → `g, platform-admin, role:admin` |
-| MinIO | `minio.localhost:50000` | `admin`/`admin` | claim `policy` = `["consoleAdmin"]`（client ロール） |
 | Vault | `vault.localhost:50000`（**http**） | `admin`/`admin`（Method=OIDC・role=default） | claim `groups` → external group → policy `admin` |
 | Wiki.js | `wiki.localhost:50000` | `admin`/`admin` | claim `groups` の `Administrators` → Map Groups |
 | Headlamp | `headlamp.localhost:50000` | **SA トークン**（下記） | `headlamp-viewer` SA = cluster-admin |

@@ -245,11 +245,16 @@ ok('requiredActions の defaultAction が違えば requiredAction.update（#1088
 });
 
 ok('realm ロールが無ければ role.create、client ロールが無ければ clientRole.create', () => {
-  const live = liveFrom(REALM);
+  // #1499 / IADR-0461 決定 5: realm が宣言していた唯一の client ロール（minio:consoleAdmin）は MinIO Console の
+  // SSO と一緒に撤去した。**宣言に client ロールが 1 つも無い realm でも経路を測れる**よう、既存の client
+  // （wiki-js）に合成のロールを 1 つ足した宣言で試す（実物の realm JSON は書き換えない）。
+  const desired = clone(REALM);
+  desired.roles.client = { 'wiki-js': [{ name: 'synthetic-client-role', description: 'test only' }] };
+  const live = liveFrom(desired);
   live.realmRoles = live.realmRoles.filter((r) => r.name !== 'wiki-editor');
-  const [cid] = Object.keys(REALM.roles.client);
+  const [cid] = Object.keys(desired.roles.client);
   live.clientRoles[cid] = [];
-  const ops = opsOf(REALM, live);
+  const ops = opsOf(desired, live);
   assert.deepStrictEqual(kinds(ops).sort(), ['clientRole.create', 'role.create']);
   assert.strictEqual(ops.find((o) => o.op === 'role.create').body.name, 'wiki-editor');
   assert.ok(ops.find((o) => o.op === 'clientRole.create').path.includes('/clients/'));

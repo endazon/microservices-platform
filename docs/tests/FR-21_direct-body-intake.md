@@ -4,11 +4,11 @@ type: test-spec
 status: draft
 author: claude
 created: 2026-08-23
-updated: 2026-08-28
+updated: 2026-09-25
 ---
 <!-- trace:
 ids: [FR-19, FR-21, UC-03, UC-11, SC-20]
-adrs: [ADR-0014, ADR-0015, ADR-0036, ADR-0054, ADR-0056]
+adrs: [ADR-0014, ADR-0015, ADR-0106, ADR-0036, ADR-0054, ADR-0056]
 iadrs: [IADR-0119, IADR-0142, IADR-0264, IADR-0270, IADR-0277, IADR-0283]
 specs: [20260823_issue-447_fr21-direct-body-intake, 20260828_issue-447_fr21-criteria-9-10]
 issues: [#447, #451]

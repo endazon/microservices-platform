@@ -48,7 +48,7 @@ ISTIO=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh # STRICT へ移す
 ```
 
 **いきなり STRICT にしてはならない。** サイドカーの入っていない `platform-infra`
-（postgres / keycloak / rabbitmq / qdrant / redis / minio …）との通信と、注入前の Pod からの通信が
+（postgres / keycloak / rabbitmq / qdrant / redis …）との通信と、注入前の Pod からの通信が
 **同時に**壊れ、どちらが原因か切り分けられなくなる。段取りは
 **注入 → 全 Pod Ready → PERMISSIVE で疎通確認 → STRICT** である。
 

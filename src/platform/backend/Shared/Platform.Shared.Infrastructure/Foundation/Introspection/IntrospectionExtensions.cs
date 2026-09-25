@@ -29,11 +29,22 @@ public static class IntrospectionExtensions
         var report = new ServiceIntrospectionDto(
             service, builder.Steps, builder.Ports, builder.Connectors);
         services.AddSingleton(report);
+        // NFR-16, IADR-0462 (#1514): gRPC 面（MapPlatformIntrospection が張る）の前提。
+        // `AddGrpc` は冪等であり、h2c リスナ（`AddPlatformGrpcListener`）を持たないサービスでも
+        // MapGrpcService が起動時に落ちないようにここでも呼ぶ（リスナの有無と面の有無を切り離す）。
+        services.AddGrpc();
         return services;
     }
 
     // 自己申告エンドポイント（GET /internal/introspection）をマップする。
     // メッシュ内部限定（ネットワーク分離 IADR-0017 / mTLS IADR-0026 が防御）。ingress へは公開しない。
+    //
+    // FR-15, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379, IADR-0462 (#1514, #1255 経路 ⑤):
+    // 🔴 **REST と gRPC の両面を必ず対で張る。** 扇形の経路は「宛先の側が同じ面を実装しないと
+    // 1 経路も移らない」ので、面を各サービスの Program.cs へ個別に足す形にすると、足し忘れた
+    // サービスだけが REST のまま残り、しかも**呼び出し側からは到達不能としか見えない**。
+    // 自己申告を張る唯一の口に gRPC 面を同居させ、張り忘れを構造で起こさない。
+    // gRPC 面は `ServiceCaller` を要求する（`IntrospectionGrpcService`）。REST 面は変えない。
     public static IEndpointRouteBuilder MapPlatformIntrospection(this IEndpointRouteBuilder app)
     {
         app.MapGet(IntrospectionPath,
@@ -41,6 +52,7 @@ public static class IntrospectionExtensions
                 ctx.RequestServices.GetRequiredService<ServiceIntrospectionDto>()))
            .WithName("PlatformIntrospection")
            .ExcludeFromDescription();
+        app.MapGrpcService<IntrospectionGrpcService>();
         return app;
     }
 }

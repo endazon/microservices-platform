@@ -7,8 +7,7 @@ resources:
   - traefik-entrypoint.yaml
   - platform-frontend-ingress.yaml
   - admin-ingress-infra.yaml
-  # IADR-0093 (#353): MinIO Console（microservices-platform ns）の集約 route（既存 route は無改変・追加のみ）。
-  - admin-ingress-minio.yaml
+  # ［IADR-0461 決定 5 / #1499］MinIO Console の集約 route（admin-ingress-minio.yaml・IADR-0093）は撤去した。
   # IADR-0095 (#353): Wiki.js（microservices-platform ns）の集約 route（既存 route は無改変・追加のみ）。
   - admin-ingress-wiki.yaml
   # IADR-0227 (#780): Keycloak を websecure(443) の keycloak.localhost へ出す（platform-infra ns）。

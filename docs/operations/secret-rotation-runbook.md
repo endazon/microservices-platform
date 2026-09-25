@@ -8,10 +8,10 @@ updated: 2026-09-26
 ---
 <!-- trace:
 ids: [NFR-18, SC-22]
-adrs: [ADR-0005, ADR-0023, ADR-0095, ADR-0110]
-iadrs: [IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460]
-specs: [20260925_458_secret-rotation-runbook]
-issues: [#458, #1411, #1477, #1523]
+adrs: [ADR-0005, ADR-0023, ADR-0095, ADR-0106, ADR-0110]
+iadrs: [IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461]
+specs: [20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm]
+issues: [#458, #1411, #1477, #1499, #1523]
 -->
 
 # 運用 Runbook: 秘密情報のローテーション
@@ -32,8 +32,8 @@ issues: [#458, #1411, #1477, #1523]
 | 分類 | 何か | 回せるか | 手順 |
 | --- | --- | --- | --- |
 | `items[]`（6 項目） | Git に置けず画面から入れる値 —— 外部の発行元がある値（外部 LLM の API キー・メール送信のアプリパスワード・Wiki.js の API キー・取引ユニットの外部 API キー / Discord / 証券会社ログイン）と、**画面が生成する** OpenD の RSA 鍵 | ✅ **回せる** | [手順 A](#手順-a-items画面から回す)（製品の画面から） |
-| `excluded[]`（7 項目） | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `rabbitmq-app` / `keycloak-admin` / `minio-credentials` / `wikijs-db` | 🟡 **ストア側と同時なら回せる** | [手順 B](#手順-b-excludedストア側と同時に回す)（コンソール。未実測） |
-| `deferred[]`（18 項目） | 認証基盤（Keycloak）のクライアントシークレット —— OIDC クライアント 9・サービス間 9 | 🔴 **いまは恒久的には回せない** | [手順 C](#手順-c-deferredいまは回せない理由と回すための前提) |
+| `excluded[]`（7 項目） | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `rabbitmq-app` / `keycloak-admin` / `object-storage-credentials` / `wikijs-db` | 🟡 **ストア側と同時なら回せる** | [手順 B](#手順-b-excludedストア側と同時に回す)（コンソール。未実測） |
+| `deferred[]`（17 項目） | 認証基盤（Keycloak）のクライアントシークレット —— OIDC クライアント 8・サービス間 9 | 🔴 **いまは恒久的には回せない** | [手順 C](#手順-c-deferredいまは回せない理由と回すための前提) |
 
 🔴 **どの分類でも、`scripts/k8s-local-up.sh` の再実行は回した値を元へ戻し得る。** 戻す経路は 3 つある
 （[回した値を元へ戻す経路](#回した値を元へ戻す経路)）。**回した後の運用まで含めて 1 つの手順である。**
@@ -86,7 +86,7 @@ issues: [#458, #1411, #1477, #1523]
   手動作成で env の値（未指定なら空）に一度書き換わる。保管先の値は残っているので同期で戻るが、`Merge` の Secret の
   上書きに同期がすぐ反応するかは確かめていない —— **起動の後に `keycloak-smtp` の同期を促す**（B-0 の `annotate`）。
 - **`excluded[]` は env で新しい値を渡し続ける限り戻らない。** env 名は `deploy/local/README.md` の「機密情報」表にある
-  （`PG_PASSWORD` / `APP_DB_PASSWORD` / `WIKIJS_DB_PASSWORD` / `RABBITMQ_USER` / `RABBITMQ_PASSWORD` / `KEYCLOAK_ADMIN_PASSWORD` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`）。
+  （`PG_PASSWORD` / `APP_DB_PASSWORD` / `WIKIJS_DB_PASSWORD` / `RABBITMQ_USER` / `RABBITMQ_PASSWORD` / `KEYCLOAK_ADMIN_PASSWORD` / `OBJECT_STORAGE_ACCESS_KEY` / `OBJECT_STORAGE_SECRET_KEY`）。
   🔴 **渡し忘れると、保管先と Secret だけが既定値へ戻り、ストア側は新しい値のまま残る —— 認証が壊れる。**
 - **`deferred[]` は env を渡しても戻る**（3 つ目の経路が realm JSON の値へ当て直す）。[手順 C](#手順-c-deferredいまは回せない理由と回すための前提)。
 
@@ -119,7 +119,7 @@ Stakater Reloader が注釈を持つ消費側（外部 LLM の境界サービス
 `excluded[]` は画面の対象外である。**稼働中のデータストアが既存の値で初期化済み**であり、保管先だけ書き換えると
 同期が誤った資格情報を配って認証が壊れる。**ストア側の値を先に変え、同じ作業の中で保管先・Secret・消費側を合わせる。**
 
-🔴 **本節は未実測である。** ストアごとの挙動（特に MinIO のルート資格情報の変更）は、最初のリハーサルで確かめて本書を直すこと。
+🔴 **本節は未実測である。** ストアごとの挙動（特にオブジェクトストレージ〔SeaweedFS〕の資格情報の変更）は、最初のリハーサルで確かめて本書を直すこと。
 
 ### B-0. 共通の部品
 
@@ -157,7 +157,7 @@ kubectl -n <namespace> annotate externalsecret <name> force-sync="$(date +%s)" -
 | アプリの DB 利用者 `kp`（`msp/postgres-app` と `msp/wikijs-db`） | `kubectl -n platform-infra exec -it deploy/postgres -- psql -U postgres -c '\password kp'` | 🔴 **`msp/postgres-app` と `msp/wikijs-db` の両方の `password`**（同じ DB 利用者 `kp` を共有している） | `microservices-platform/postgres-app` と `microservices-platform/wikijs-db` | `microservices-platform` の Deployment すべて（DB を使う各サービスと `wiki-js`） | `APP_DB_PASSWORD` と `WIKIJS_DB_PASSWORD`（**同値**） |
 | ブローカ（`msp/rabbitmq` と `msp/rabbitmq-app`） | 無し（ブローカは永続化しておらず、再起動時に Secret の値で利用者を作り直す） | 🔴 **`msp/rabbitmq` の `password` と `msp/rabbitmq-app` の `password` を同値で** | `platform-infra/rabbitmq` と `microservices-platform/rabbitmq-app` | `platform-infra` の `rabbitmq` を先に、次に `microservices-platform` の Deployment すべて | `RABBITMQ_PASSWORD`（利用者名も変えるなら `RABBITMQ_USER` と chart の `global.messaging.user`） |
 | 認証基盤の管理者（`msp/keycloak-admin`） | 認証基盤の master realm の管理画面で `admin` のパスワードを変える（環境変数の管理者は初回起動時にしか使われず、以後は認証基盤の DB が持つ） | `msp/keycloak-admin` の `password` | `platform-infra/keycloak-admin` | 無し。確かめ方: `bash deploy/local/keycloak-setup/reconcile-realm.sh --check` が**認証エラーで落ちない**こと（宣言の追随 Job がこの Secret で管理 API へログインする） | `KEYCLOAK_ADMIN_PASSWORD` |
-| オブジェクトストレージのルート（`msp/minio-credentials`） | 無し（ルート資格情報は起動時の環境変数で決まる）。🔴 **永続化済みのデータを持つ MinIO がルート資格情報の変更を受け入れることは未実測** | `msp/minio-credentials` の `accessKey` / `secretKey` | `microservices-platform/minio-credentials` | `minio` を先に、次に `microservices-platform` の Deployment すべて（各サービスが同じ資格情報で接続する） | `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` |
+| オブジェクトストレージの管理者資格情報（`msp/object-storage-credentials`） | 無し（資格情報は起動時の環境変数で決まり、SeaweedFS はデータ側へ保存しない）。🔴 **永続化済みのデータを持つ SeaweedFS が資格情報の変更後もそのデータを読めることは未実測** | `msp/object-storage-credentials` の `accessKey` / `secretKey` | `microservices-platform/object-storage-credentials` | `seaweedfs` を先に、次に `microservices-platform` の Deployment すべて（各サービスが同じ資格情報で接続する） | `OBJECT_STORAGE_ACCESS_KEY` / `OBJECT_STORAGE_SECRET_KEY` |
 
 作り直しのコマンド:
 
@@ -179,7 +179,7 @@ kubectl -n microservices-platform wait --for=condition=Available deploy --all --
 
 ## 手順 C: `deferred[]`（いまは回せない理由と回すための前提）
 
-**認証基盤のクライアントシークレット 18 項目**（OIDC クライアント: 境界層・利用者管理・MinIO・Grafana・Vault・Headlamp・Wiki.js・パスワード再設定の門・合成監視／
+**認証基盤のクライアントシークレット 17 項目**（OIDC クライアント: 境界層・利用者管理・Grafana・Vault・Headlamp・Wiki.js・パスワード再設定の門・合成監視／
 サービス間: 各サービスのサービスアカウント 9 本）は、**経路B では恒久的に回せない。**
 
 - 値は保管先と認証基盤の**両方**に在り、**両方が同値でなければ**トークン端点が `invalid_client` を返し続ける。
@@ -232,7 +232,7 @@ kubectl -n microservices-platform wait --for=condition=Available deploy --all --
 | 回した直後から認証が壊れた（DB / ブローカ / 管理 API） | ストア側と保管先の値が食い違っている（片側だけ変えた・同値にすべき 2 つの片方を忘れた） | 同値にすべき組（`kp` の 2 つ・ブローカの 2 つ）を見直す。どちらが正か分からなければ、ストア側を正として保管先を合わせる |
 | 次の起動の後に認証が壊れた | env を渡さずに `scripts/k8s-local-up.sh` を再実行し、保管先と Secret が既定値へ戻った | env に新しい値を渡して再実行する。値を控えていなければ、手順 B をやり直して新しい値を作る |
 | 新しい値そのものが誤っていた（発行元で失効させる前） | 投入の誤り | **保管先の直前の版へ戻す**: Vault Pod 内で `vault kv metadata get secret/<path>` で版を見て `vault kv rollback -version=<直前の版> secret/<path>`。その後に同期を促し、消費側を作り直す |
-| MinIO がルート資格情報の変更後に起動しない・データが読めない | 未実測の挙動（手順 B の注記） | 保管先を直前の版へ戻し（上）、同期と `minio` の作り直しで旧い値へ戻す。結果を本書へ書き戻す |
+| SeaweedFS が資格情報の変更後に起動しない・データが読めない | 未実測の挙動（手順 B の注記） | 保管先を直前の版へ戻し（上）、同期と `seaweedfs` の作り直しで旧い値へ戻す。結果を本書へ書き戻す |
 | `deferred[]` を回したら `invalid_client` | 手順 C のとおり、片側だけ・次の起動で戻る | 認証基盤側・保管先側とも realm JSON の値へ戻す（`scripts/k8s-local-up.sh` の再実行で両側とも既定値へ戻る） |
 
 ## 記録
@@ -258,7 +258,7 @@ kubectl -n microservices-platform wait --for=condition=Available deploy --all --
 ## 限界（この手順で担保できないこと）
 
 - 🔴 **リハーサル未実施。** 本書は手順を定めただけであり、「この手順で回せる」ことは最初のリハーサルではじめて確かめられる。
-- 🔴 **`deferred[]` の 18 項目は回せない**（手順 C）。「集中管理・ローテーション」の要件に対し、経路B が満たすのは `items[]` と `excluded[]` だけである。
+- 🔴 **`deferred[]` の 17 項目は回せない**（手順 C）。「集中管理・ローテーション」の要件に対し、経路B が満たすのは `items[]` と `excluded[]` だけである。
 - **周期の統制は無い。** 周期を定めていないので、回し忘れを知らせる仕組みも無い。
 - **旧の値の失効は発行元の操作であり、機械で確かめていない。** 失効させたかどうかは実施記録に人が書く。
 - **手順 B は監査にならない。** 記録は人が書く前提であり、書かなければ残らない。

@@ -9,11 +9,26 @@ public sealed class IntrospectionOptions
     // service 名 → 自己申告エンドポイントのベース URL（例: "document-service": "http://document-service:5001"）。
     public Dictionary<string, string> Services { get; set; } = new(StringComparer.Ordinal);
 
+    // FR-15, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0462 (#1514, #1255 経路 ⑤):
+    // service 名 → 自己申告の **gRPC（h2c）アドレス**（例: "document-service": "http://document-service:8081"）。
+    // 🔴 **宛先ごとの opt-in である。** ここに在る宛先だけが gRPC で収集され、無い宛先は上の
+    // `Services` の REST のまま（並走中の正は REST。戻すのはこの 1 行を消すだけでよい）。
+    // 両方に在れば gRPC を使う。値が空の項目は構成されていないものとして扱う。
+    public Dictionary<string, string> GrpcServices { get; set; } = new(StringComparer.Ordinal);
+
     // 自己申告エンドポイントのパス（既定は /internal/introspection）。
     public string Path { get; set; } = IntrospectionExtensions.IntrospectionPath;
 
     // 収集の HTTP タイムアウト（秒）。到達不能判定の上限。
+    // IADR-0462 (#1514): gRPC 収集の期限（deadline）も**同じ値を引く**（輸送ごとに別の値を持たない）。
     public int TimeoutSeconds { get; set; } = 5;
+
+    // IADR-0462 (#1514): gRPC で収集する宛先（値が空の項目を除く）。
+    // 構成の束縛（ConfigurationBinder）に拾われないよう、プロパティではなくメソッドにしてある。
+    public IReadOnlyDictionary<string, string> ConfiguredGrpcServices() =>
+        GrpcServices
+            .Where(kv => !string.IsNullOrWhiteSpace(kv.Value))
+            .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
 }
 
 // FR-15: 構成バージョン（適用中の構成定義の Git コミット ID・適用日時・適用者）。

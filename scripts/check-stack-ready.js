@@ -1402,9 +1402,9 @@ function evaluateAdminEntrypoint(traefikSvc, istioSvc) {
  *
  * 🔴 **ランナーからの curl（G4）はこれを代替しない。** ランナー側は systemd-resolved が
  * `.localhost` を RFC 6761 の合成応答で 127.0.0.1 に返すため、**クラスタ内の名前解決が壊れていても
- * G4 は通ってしまう**。一方、非 .NET の OIDC クライアント（Grafana / ArgoCD / Vault / MinIO /
- * Headlamp / Wiki.js）は [IADR-0086] の metadata/issuer 分離を使えず、**pod から issuer を実際に引く**。
- * つまり G6 が無いと「6 ツールが壊れているのに緑」が起きる。
+ * G4 は通ってしまう**。一方、非 .NET の OIDC クライアント（Grafana / ArgoCD / Vault /
+ * Headlamp / Wiki.js。MinIO Console は [IADR-0461] で撤去）は [IADR-0086] の metadata/issuer 分離を使えず、
+ * **pod から issuer を実際に引く**。つまり G6 が無いと「5 ツールが壊れているのに緑」が起きる。
  */
 function evaluatePodDnsOutput(host, stdout) {
   const text = String(stdout || '');

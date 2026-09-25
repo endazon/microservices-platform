@@ -189,7 +189,7 @@ curl -s -o /dev/null -w '%{http_code}\n' --cacert ca.crt --resolve wiki.localhos
 ## 注意
 
 - **port-forward 単独（`LOCALEDGE` 未使用）**: Site URL を集約 URL のままにしていると、コールバックが
-  `wiki.localhost:50000` を指すため edge 未起動だと OIDC が完了しない（Grafana PR-2/IADR-0090・MinIO/IADR-0093 と
+  `wiki.localhost:50000` を指すため edge 未起動だと OIDC が完了しない（Grafana PR-2/IADR-0090 と
   同性質）。この場合は Site URL を `http://localhost:3300`（＝`port-forward svc/wiki-js 3300:3000` と同値）へ切り替える
   ＝上の**「Site URL は経路と一致させる」節**の表のとおり。realm の `wiki-js` client には
   `http://localhost:3300/*` を登録済み（#385）。

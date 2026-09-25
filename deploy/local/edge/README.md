@@ -8,7 +8,7 @@
 既に稼働している **k3s 内蔵 Traefik** をエッジに使う（prod の Istio `templates/edge.yaml` とは別実装）。
 
 > 🔴 **`ISTIO=1` を併用するときは、このオーバーレイの Traefik はエッジから降りる**（#782 / `ADR-0021`）。
-> `kube-system` の Traefik はメッシュの外にあり、mesh 内の 4 Service（frontend / bff / minio / wiki-js）へ
+> `kube-system` の Traefik はメッシュの外にあり、mesh 内の 3 Service（frontend / bff / wiki-js）へ
 > **平文で入っている**。`PeerAuthentication` を STRICT にするとその平文が拒否され、**入口だけが 502 になる**。
 > 計画 `ADR-0021` は「入口＝Istio Ingress Gateway・k3s 同梱 Traefik は無効化」と定めており、
 > 経路B ではそれを [`../edge-istio/`](../edge-istio/) が実装する（`ISTIO=1` かつ `LOCALEDGE=1` のときだけ有効）。
@@ -22,7 +22,6 @@
 | `traefik-entrypoint.yaml` | k3s Traefik に追加 entrypoint `admin:50000` を定義（`HelmChartConfig`） |
 | `platform-frontend-ingress.yaml` | 80/443（web/websecure）: `/bff`→bff-service、catch-all→frontend-service |
 | `admin-ingress-infra.yaml` | 50000（admin）: grafana/headlamp/vault/qdrant をホスト名ベースで公開（platform-infra） |
-| `admin-ingress-minio.yaml` | 50000（admin）: MinIO Console `minio.localhost`→9001（microservices-platform ns・IADR-0093。OIDC は [minio-oidc/README](../minio-oidc/README.md)） |
 | `admin-ingress-wiki.yaml` | 50000（admin）: Wiki.js `wiki.localhost`→3000（microservices-platform ns・IADR-0095。OIDC は [wiki-oidc/README](../wiki-oidc/README.md)） |
 | `argocd-ingress.yaml` | 50000（admin）: argocd-server（argocd ns 存在時のみスクリプトが条件付き apply） |
 | `tls/cert-manager-issuers.yaml` | エッジ TLS の CA（`ClusterIssuer(selfSigned)` → ルート CA `Certificate` → `ClusterIssuer(ca)`。IADR-0206） |
@@ -85,7 +84,6 @@ kubectl get ns argocd >/dev/null 2>&1 && kubectl apply -f deploy/local/edge/argo
   - `https://vault.localhost:50000`（VAULT=1）
   - `https://qdrant.localhost:50000`（dashboard は `/dashboard`。**SSO 非対応＝認証なし**・閉域前提）
   - `https://argocd.localhost:50000`（ARGOCD=1。argocd-server の `server.insecure` は ArgoCD OIDC 実装 #353 で設定）
-  - `https://minio.localhost:50000`（MinIO Console。Keycloak OIDC＝IADR-0093。ポリシー適用は [minio-oidc/README](../minio-oidc/README.md)）
   - `https://wiki.localhost:50000`（Wiki.js。Keycloak OIDC＝IADR-0095。管理UI 設定は [wiki-oidc/README](../wiki-oidc/README.md)）
 
 ### admin entrypoint (50000) も TLS 終端である（IADR-0220・#841）
@@ -141,7 +139,7 @@ mkcert を使う手もあるが、**CA が開発者マシン固有でリポジ�
 
 issuer は **`https://keycloak.localhost/realms/platform`（エッジ host）**である（[IADR-0243](../../../.ai-context/adr/IADR-0243_keycloak-edge-issuer-migration.md)・#780。[IADR-0091](../../../.ai-context/adr/IADR-0091_local-edge-aggregation-traefik.md) 決定 5 の最小案「`keycloak:8080` 維持」は Supersede された）。ツール UI は従来どおり 50000 に集約する。
 
-> **ブラウザが開く URL だけをエッジ host にし、ツールがサーバ側で叩く URL は in-cluster のまま**にする（Grafana の `TOKEN_URL`/`API_URL`・MinIO の `configUrl`・Wiki.js の `tokenURL`/`userInfoURL`）。
+> **ブラウザが開く URL だけをエッジ host にし、ツールがサーバ側で叩く URL は in-cluster のまま**にする（Grafana の `TOKEN_URL`/`API_URL`・Wiki.js の `tokenURL`/`userInfoURL`）。
 > ローカル CA を各コンテナへ配らずに済むためで、IADR-0086 が .NET へ入れた metadata / issuer 分離の一般化である。
 > **分離できないツール**（ArgoCD・Vault）は 1 つの値が両方を決めるため、エッジ host ＋ CA を渡す設定を使う。
 

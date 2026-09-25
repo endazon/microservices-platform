@@ -20,11 +20,10 @@ end-to-end 疎通**する。認証は **kubernetes auth**（静的 root トー�
 | `rbac-bff-externalsecret-sync.yaml` | BFF（SA `microservices-platform/bff`）が **platform-infra / ai-stock-trading** の ExternalSecret へ `force-sync` の注釈を付ける Role / RoleBinding（SC-22 / #1477 / IADR-0456 決定 4）。`get`/`patch` を **`resourceNames` で `items[]` の `externalSecret` に限る**（MSP ns の Role はチャート。名前集合の一致は `SecretItemExternalSecretRbacTests` が固定）。`ESO=1` で apply |
 | `bootstrap.sh` | k8s auth の enable/config＋policy `eso-read`・`bff-secret-write`＋role `eso`・`bff-secret-writer`（**後者は BFF 専用 SA `microservices-platform/bff` にだけ束縛**。`default` に束縛しない）＋seed（`kubectl exec`・runtime・再実行可）。**SC-22 の KV（`llm-provider-credentials`・`wikijs-sync`・`keycloak-smtp`・`ai-stock-trading/app-secrets`）は無いときだけ `-cas=0` で作り、在れば env が空でないキーだけ部分更新する**（画面で入れた値を再実行で消さない。#1477 / IADR-0456 決定 6。`SecretItemBootstrapSeedTests` が固定）。`ai-stock-trading/moomoo`・`moomoo-rsa` は seed しない |
 | `externalsecret-llm.yaml` | ExternalSecret（Vault `secret/msp/llm-provider-credentials` → 既存 Secret・同一キー・PR-1） |
-| `externalsecret-minio.yaml` | ExternalSecret（`secret/msp/minio-credentials` → `minio-credentials` accessKey/secretKey・PR-2/IADR-0097） |
+| `externalsecret-object-storage.yaml` | ExternalSecret（`secret/msp/object-storage-credentials` → `object-storage-credentials` accessKey/secretKey・PR-2/IADR-0097。オブジェクトストレージ（SeaweedFS）の S3 資格情報。旧名 `minio-credentials`・IADR-0461） |
 | `externalsecret-wikijs-db.yaml` | ExternalSecret（`secret/msp/wikijs-db` → `wikijs-db` password・PR-2/IADR-0097） |
 | `externalsecret-wikijs-sync.yaml` | ExternalSecret（`secret/msp/wikijs-sync` → `wikijs-sync` apiKey・PR-2/IADR-0097） |
 | `externalsecret-rabbitmq-app.yaml` | ExternalSecret（`secret/msp/rabbitmq-app` → `rabbitmq-app` password・**MSP ns**・**Owner**・#1022。**手動 apply をスキップするので唯一の供給元**） |
-| `externalsecret-minio-oidc.yaml` | ExternalSecret（`secret/msp/minio-oidc` → `minio-oidc` client-secret・**MSP ns**・PR-3/IADR-0098） |
 | `externalsecret-grafana-oidc.yaml` | ExternalSecret（`secret/msp/grafana-oidc` → `grafana-oidc` client-secret・**platform-infra ns**・PR-3/IADR-0098） |
 | `externalsecret-vault-oidc.yaml` | ExternalSecret（`secret/msp/vault-oidc` → `vault-oidc` client-secret・**platform-infra ns**・PR-3/IADR-0098） |
 | `externalsecret-headlamp-oidc.yaml` | ExternalSecret（`secret/msp/headlamp-oidc` → `headlamp-oidc` client-secret・**platform-infra ns**・PR-3/IADR-0098） |
@@ -66,9 +65,9 @@ Vault は既定で永続化されている（file ストレージ＋PVC・Pod �
 ## 確認 / 挙動
 
 ```sh
-# PR-1: llm-provider-credentials / PR-2: minio-credentials, wikijs-db, wikijs-sync / PR-3: minio-oidc
+# PR-1: llm-provider-credentials / PR-2: object-storage-credentials, wikijs-db, wikijs-sync
 kubectl -n microservices-platform get externalsecret,secret \
-  llm-provider-credentials minio-credentials wikijs-db wikijs-sync minio-oidc
+  llm-provider-credentials object-storage-credentials wikijs-db wikijs-sync
 # PR-3/PR-4: platform-infra ns。基盤 postgres/rabbitmq/keycloak-admin（PR-4・常時）＋ vault-oidc（常時）＋
 # grafana-oidc（OBSERVABILITY=1）／headlamp-oidc（HEADLAMP=1）のときだけ供給（無効ゲートの secret は未作成＝NotFound で正常）。
 kubectl -n platform-infra get externalsecret,secret postgres rabbitmq keycloak-admin vault-oidc grafana-oidc headlamp-oidc
@@ -76,11 +75,12 @@ kubectl -n platform-infra get externalsecret,secret postgres rabbitmq keycloak-a
 
 - ESO 同期は helm install（各 Pod 起動）後に走るため、対象 Secret は一時的に未作成で消費側 Pod が数秒
   `CreateContainerConfigError` になりうる（ESO 同期で自己回復）。消費側 `secretKeyRef`（llmgateway=ADR-0010・
-  minio/wiki-js/OIDC secret 群も同様に optional 参照）は無改変。
-- PR-3 の OIDC client secret 群（`minio-oidc`／`grafana-oidc`／`vault-oidc`／`headlamp-oidc`）は各機能ゲート
-  （`OBSERVABILITY`/`VAULT`/`HEADLAMP`・minio-oidc は常時）で使うが、`ESO=1` のときは ExternalSecret が供給する
+  wiki-js/OIDC secret 群も同様に optional 参照）は無改変。🔴 `object-storage-credentials` は SeaweedFS が**非 optional** で読む
+  （未設定だと匿名で全許可になるため。IADR-0461 決定 3）。
+- PR-3 の OIDC client secret 群（`grafana-oidc`／`vault-oidc`／`headlamp-oidc`。`minio-oidc` は IADR-0461 で撤去）は各機能ゲート
+  （`OBSERVABILITY`/`VAULT`/`HEADLAMP`）で使うが、`ESO=1` のときは ExternalSecret が供給する
   ため各ゲート内の手動 apply はスキップする（二重所有回避）。ExternalSecret の apply も**元のゲート意味論に整合**させる:
-  `minio-oidc` は常時、`vault-oidc` は VAULT 前提（`ESO=1` のガード下で常に真）で常時、`grafana-oidc`／`headlamp-oidc`
+  `vault-oidc` は VAULT 前提（`ESO=1` のガード下で常に真）で常時、`grafana-oidc`／`headlamp-oidc`
   は `OBSERVABILITY`／`HEADLAMP` 有効時のみ（機能オフ時に未使用 Secret を残さない）。ExternalSecret は namespaced だが
   `ClusterSecretStore` は cluster-scoped のため MSP／platform-infra 両 ns から同名 store を参照できる。
 - **`externalsecret-keycloak-smtp.yaml`（#438・配線は #1102）は `ESO=1` のとき常時 apply される**
@@ -118,7 +118,7 @@ Vault へ seed する（本 policy は read のみ・write は付与しない）
 
 ```sh
 kubectl -n microservices-platform delete externalsecret \
-  llm-provider-credentials minio-credentials wikijs-db wikijs-sync minio-oidc
+  llm-provider-credentials object-storage-credentials wikijs-db wikijs-sync
 kubectl -n platform-infra delete externalsecret \
   grafana-oidc vault-oidc headlamp-oidc postgres rabbitmq keycloak-admin
 # 以降 ESO 未設定で再実行すると手動 apply_secret が Secret を作成する（基盤は元々手動作成のまま）。
@@ -127,8 +127,8 @@ kubectl -n platform-infra delete externalsecret \
 ## 段階移行（後続 PR）
 
 - **PR-1（IADR-0096）**: `llm-provider-credentials`（疎通・ESO 基盤）。
-- **PR-2（IADR-0097）**: `minio-credentials`／`wikijs-db`／`wikijs-sync`。
-- **PR-3（IADR-0098）**: OIDC client secret 群 `minio-oidc`／`grafana-oidc`／`vault-oidc`／`headlamp-oidc`。
+- **PR-2（IADR-0097）**: `minio-credentials`（IADR-0461 で `object-storage-credentials` へ改名）／`wikijs-db`／`wikijs-sync`。
+- **PR-3（IADR-0098）**: OIDC client secret 群 `minio-oidc`（IADR-0461 で撤去）／`grafana-oidc`／`vault-oidc`／`headlamp-oidc`。
 - **PR-4（IADR-0099）**: 基盤 secret `postgres`／`rabbitmq`／`keycloak-admin`（**creationPolicy: Merge**・手動 apply 保持・本 PR）。
   → これで #310 の secret 移行は一巡（PR-1〜4）。
 - 除外: `vault-dev-token`（Vault root・chicken-egg）／`argocd-secret`（argocd 所有・merge patch）／AST secrets（AST リポ管轄）。
