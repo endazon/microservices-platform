@@ -1,5 +1,5 @@
 ---
-title: IADR-0462 ConversionService は BFF が中継した利用者の資格情報を自ら検証し、変換ジョブの 5 口すべてに BFF と同じロールの端点の門を張る（サービス間トークンは通さない）
+title: IADR-0465 ConversionService は BFF が中継した利用者の資格情報を自ら検証し、変換ジョブの 5 口すべてに BFF と同じロールの端点の門を張る（サービス間トークンは通さない）
 type: impl-adr
 status: Accepted
 related_ids: [NFR-09, NFR-16, FR-12, UC-06, SC-07, ADR-0004, ADR-0029, ADR-0084, ADR-0109, IADR-0029, IADR-0042, IADR-0044, IADR-0128, IADR-0154, IADR-0379, IADR-0403, IADR-0424, IADR-0458]
@@ -15,7 +15,7 @@ related_specs:
   - ../specs/20260926_1520_conversion-service-auth.md
 ---
 
-# IADR-0462: ConversionService は中継された利用者の資格情報を自ら検証する（#1520）
+# IADR-0465: ConversionService は中継された利用者の資格情報を自ら検証する（#1520）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

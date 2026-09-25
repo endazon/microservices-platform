@@ -145,7 +145,7 @@ Phase 2 で変換結果 Markdown 全体の編集を扱う。**補正版を正**�
 （[IADR-0128](./IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) 決定 2）。ワーカー自身に認可を課さない点も変えない（[IADR-0029](./IADR-0029_config-info-api-placement-and-drift-granularity.md) /
 [IADR-0128](./IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) 決定 3。代償統制は `NetworkIsolationTests`）。
 
-［2026-09-26 追記 / #1520］**「ワーカー自身に認可を課さない点も変えない」は [IADR-0462](./IADR-0462_conversion-service-validates-relayed-user-credential.md) 決定 4 が置き換えた。**
+［2026-09-26 追記 / #1520］**「ワーカー自身に認可を課さない点も変えない」は [IADR-0465](./IADR-0465_conversion-service-validates-relayed-user-credential.md) 決定 4 が置き換えた。**
 計画 ADR-0109 決定 3（planning#651）により ConversionService は中継された利用者の資格情報を自ら検証し、
 **図の一覧と人手補正の投稿（ワーカー側の 2 口）にも本決定と同じ `AdminOnly` を重ねる**（BFF と同じ境界）。
 画像の取得は BFF がオブジェクトストレージから返す口であり、ワーカーには無い（決定 2 のまま）。本文は書き換えていない。

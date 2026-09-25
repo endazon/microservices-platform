@@ -14,7 +14,7 @@ using Wolverine;
 
 namespace ConversionService.Tests.Features.ConversionJobs;
 
-// NFR-09, FR-12, UC-06, SC-07, ADR-0109 決定 3, ADR-0084 決定 1, IADR-0462 (#1520):
+// NFR-09, FR-12, UC-06, SC-07, ADR-0109 決定 3, ADR-0084 決定 1, IADR-0465 (#1520):
 // **ConversionService は BFF が中継した利用者の資格情報を自ら検証する。** 従前は認証を持たず、門は BFF の
 // 1 枚だけだった（IADR-0403 決定 4・IADR-0458 決定 1）。本クラスは本番の `Program.cs` を
 // `WebApplicationFactory` で起こし、**本物の JwtBearer**（検証鍵だけテスト用）で `/jobs` の 5 口の門を測る。
@@ -127,7 +127,7 @@ public class ConversionJobAuthorizationTests
         (await SendAsync(factory, method, template, id, token)).Should().Be(HttpStatusCode.Forbidden);
     }
 
-    // NFR-09, ADR-0029, IADR-0379 決定 4, IADR-0462 決定 2: **サービス間トークンは通さない。**
+    // NFR-09, ADR-0029, IADR-0379 決定 4, IADR-0465 決定 2: **サービス間トークンは通さない。**
     // `/jobs` をサービスとして呼ぶ呼び出し元は無い。通すと「利用者が操作した」と区別できない呼び出しが開く。
     [Theory]
     [MemberData(nameof(AllRoutes))]
@@ -182,7 +182,7 @@ public class ConversionJobAuthorizationTests
         (await SendAsync(factory, "POST", "/jobs/{id}/retry", id, token)).Should().Be(HttpStatusCode.Accepted);
     }
 
-    // NFR-09, FR-15, IADR-0029, IADR-0462 決定 3: ヘルスチェックと自己申告は他サービスと同じく門を持たない
+    // NFR-09, FR-15, IADR-0029, IADR-0465 決定 3: ヘルスチェックと自己申告は他サービスと同じく門を持たない
     // （プローブと構成情報の収集は利用者の資格情報を持たない）。
     [Theory]
     [InlineData("/health/live")]
@@ -196,7 +196,7 @@ public class ConversionJobAuthorizationTests
             .Should().Be(HttpStatusCode.OK);
     }
 
-    // NFR-09, IADR-0462 決定 3: readiness も門を持たない。テストでは DB が InMemory で依存先の検査は
+    // NFR-09, IADR-0465 決定 3: readiness も門を持たない。テストでは DB が InMemory で依存先の検査は
     // 赤くなり得るので、状態コードは「認証・認可で弾かれていない」ことだけを見る。
     [Fact]
     public async Task Readiness_WithoutCredential_IsNotGated()

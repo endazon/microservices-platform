@@ -46,7 +46,7 @@ internal static class CorrectFigureEndpoint
                 _ => Results.Conflict(new { error = "body_unavailable" }),
             };
         }).WithName("ConversionJobFigureCorrection")
-          // NFR-09, UC-06, ADR-0109 決定 3, IADR-0154 決定 6, IADR-0462 (#1520): 人手補正は管理者限定（BFF と同じ）。
+          // NFR-09, UC-06, ADR-0109 決定 3, IADR-0154 決定 6, IADR-0465 (#1520): 人手補正は管理者限定（BFF と同じ）。
           .RequireAuthorization(PlatformAuthPolicies.AdminOnly);
     }
 

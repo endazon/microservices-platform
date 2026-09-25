@@ -34,7 +34,7 @@ public sealed class NetworkIsolationTests
         // ConversionService は **アプリ層の認可を課さなかった**（IADR-0042 決定3 / IADR-0029 の最小 HTTP サーフェス）。
         // その代償統制がネットワーク分離であるにもかかわらず本列挙から漏れており、host 公開の回帰を
         // 誰も止められなかった。BFF の retry を管理者限定へ絞っても、後段へ直接到達できれば同じ穴が残る。
-        // ［2026-09-26 / #1520］NFR-09, ADR-0109 決定 3, IADR-0462: 後段も中継された利用者の資格情報で門を
+        // ［2026-09-26 / #1520］NFR-09, ADR-0109 決定 3, IADR-0465: 後段も中継された利用者の資格情報で門を
         // 判定するようになった（`ConversionJobAuthorizationTests`）。ネットワーク分離は多層防御として残す。
         "conversion-service",
         // FR-22, ADR-0045, Issue #1025: 個人資料の通知の受け口（POST /internal/notifications）の後段。

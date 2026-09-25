@@ -59,7 +59,7 @@ internal static class RetryConversionJobEndpoint
             await bus.PublishAsync(ev);
             return Results.Accepted($"/jobs/{id}");
         }).WithName("ConversionJobRetry")
-          // NFR-09, FR-12, ADR-0109 決定 3, IADR-0128 決定 1, IADR-0462 (#1520): 再変換は管理者限定。
+          // NFR-09, FR-12, ADR-0109 決定 3, IADR-0128 決定 1, IADR-0465 (#1520): 再変換は管理者限定。
           // 群の「admin または operator」と AND 合成され、実効は **admin のみ**（BFF と同じ）。
           .RequireAuthorization(PlatformAuthPolicies.AdminOnly);
     }

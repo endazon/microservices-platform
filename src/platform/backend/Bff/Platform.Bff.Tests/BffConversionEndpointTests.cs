@@ -269,7 +269,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
         _factory.LastConversionPath.Should().Contain("discardCorrections=true");
     }
 
-    // NFR-09, SC-07, ADR-0109 決定 1・3, IADR-0458, IADR-0462 (#1520): **BFF は 6 口すべてで利用者の資格情報を
+    // NFR-09, SC-07, ADR-0109 決定 1・3, IADR-0458, IADR-0465 (#1520): **BFF は 6 口すべてで利用者の資格情報を
     // 後段へ中継する。** 後段（ConversionService）はそれで門を判定するようになったので、1 口でも中継が
     // 切れるとその口は後段で 401 になる。従前は後段が資格情報を読まなかったため、中継の有無はどのテストにも
     // 現れなかった（落としても緑のままだった）。

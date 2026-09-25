@@ -13,7 +13,7 @@ namespace Knowledge.Bff.Endpoints;
 // FR-12, UC-06, SC-07, IADR-0042 / IADR-0154: 変換ジョブ管理の BFF 集約。
 // ConversionService（/jobs）へプロキシする。運用系のため管理者・運用者ロールに限定する
 // （IADR-0042 §決定3。画面側は RequireRole で存在秘匿）。利用者の資格情報は後段へ伝播する。
-// NFR-09, ADR-0109 決定 1・3, IADR-0462 (#1520): **後段（ConversionService）は伝播された資格情報で下表と同じ
+// NFR-09, ADR-0109 決定 1・3, IADR-0465 (#1520): **後段（ConversionService）は伝播された資格情報で下表と同じ
 // ロールを自ら判定する**（二重化）。伝播が切れた口は後段で 401 になるので、全口で `Forwarding` を通すこと。
 //
 // **認可はこの群の中で 2 段になっている**（05_screens:314「閲覧は管理者・運用者。再変換の実行と

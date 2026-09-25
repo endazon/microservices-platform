@@ -9,7 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace ConversionService.Tests;
 
-// NFR-09, ADR-0109 決定 3, ADR-0084 決定 1, IADR-0462 (#1520): テスト用 IdP の代わりに、BFF が中継する
+// NFR-09, ADR-0109 決定 3, ADR-0084 決定 1, IADR-0465 (#1520): テスト用 IdP の代わりに、BFF が中継する
 // 利用者トークンと同じ形（Keycloak の `realm_access.roles`）の JWT を発行する。
 //
 // 🔴 **偽の認証スキーム（TestAuthHandler）は置かない。** 本サービスの門は「中継された利用者の資格情報を

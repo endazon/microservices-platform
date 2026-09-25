@@ -10,7 +10,7 @@ related_ids:
   - ADR-0027
   - ADR-0012
   - IADR-0039
-  - IADR-0462
+  - IADR-0465
   - IADR-0127
   - IADR-0128
   - IADR-0154
@@ -83,7 +83,7 @@ SC-07 は変換状況・失敗ジョブの一覧と人手補正（再変換）�
    > **範囲の違う別の決定**を置いている。
    > **本 ADR の決定 1〜3 は引き続き有効**である（読み取りモデル・照会・再変換）。
 
-   > **［2026-09-26 追記 / #1520］本決定 3 の「ワーカー自身は最小 HTTP サーフェスに留め認可を課さない」は、ConversionService の `/jobs` について [IADR-0462](./IADR-0462_conversion-service-validates-relayed-user-credential.md) 決定 4 が置き換えた。**
+   > **［2026-09-26 追記 / #1520］本決定 3 の「ワーカー自身は最小 HTTP サーフェスに留め認可を課さない」は、ConversionService の `/jobs` について [IADR-0465](./IADR-0465_conversion-service-validates-relayed-user-credential.md) 決定 4 が置き換えた。**
    > 計画 ADR-0109 決定 3（利用者裁定 2026-09-26・planning#651）が、BFF の中継をエッジと分類したうえで
    > 「後段は中継された利用者の資格情報を自ら検証する。ConversionService も検証する」と定めたためである。
    > ConversionService は `AddPlatformAuth` を持ち、`/jobs` の 5 口すべてに **BFF と同じロール**の端点の門を掛ける

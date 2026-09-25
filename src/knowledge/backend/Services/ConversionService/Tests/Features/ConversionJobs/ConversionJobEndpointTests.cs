@@ -225,12 +225,12 @@ public class ConversionJobEndpointTests
                 services.AddSingleton<RecordingMessageBus>();
                 services.AddSingleton<IMessageBus>(sp => sp.GetRequiredService<RecordingMessageBus>());
 
-                // NFR-09, ADR-0109 決定 3, IADR-0462 (#1520): 門は本物の JwtBearer で判定する（検証鍵だけ差し替え）。
+                // NFR-09, ADR-0109 決定 3, IADR-0465 (#1520): 門は本物の JwtBearer で判定する（検証鍵だけ差し替え）。
                 TestUserTokens.UseStaticJwtBearer(services);
             });
         }
 
-        // NFR-09, IADR-0462 (#1520): 本クラスは門の向こう側（状態の強制）を測る。門そのものは
+        // NFR-09, IADR-0465 (#1520): 本クラスは門の向こう側（状態の強制）を測る。門そのものは
         // `ConversionJobAuthorizationTests` が測るので、ここでは管理者の利用者トークンを既定で載せる。
         protected override void ConfigureClient(HttpClient client)
         {

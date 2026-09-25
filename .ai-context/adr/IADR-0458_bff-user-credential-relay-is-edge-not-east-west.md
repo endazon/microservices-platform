@@ -17,7 +17,7 @@ related_ids:
   - IADR-0402
   - IADR-0403
   - IADR-0426
-  - IADR-0462
+  - IADR-0465
 author: claude
 created: 2026-09-25
 updated: 2026-09-26
@@ -128,7 +128,7 @@ ADR-0086 決定 1 の射程が east-west に限られることも同 決定 2 �
   `AdminOnly`）であり、代償統制はメッシュの STRICT mTLS とネットワーク分離である。**本裁定はこの経路もエッジとして east-west から
   外すので、`IADR-0403` が当てにしていた解消の道（下記「結果」）が消える。**
   ［2026-09-26 追記 / #1520］**この例外は解消した。** 計画 ADR-0109 決定 3 が「エッジの後段は中継された利用者の資格情報を自ら検証する。
-  ConversionService も検証する」と定め、[IADR-0462](./IADR-0462_conversion-service-validates-relayed-user-credential.md) が `AddPlatformAuth` と 5 口の端点の門（BFF と同じロール）を掛けた。
+  ConversionService も検証する」と定め、[IADR-0465](./IADR-0465_conversion-service-validates-relayed-user-credential.md) が `AddPlatformAuth` と 5 口の端点の門（BFF と同じロール）を掛けた。
   **本決定の「14 本」は 15 本になった**（後段がみな自分の門を利用者の資格情報で判定する）。
 - **`ADR-0029` の gRPC 化の対象から外す。** したがって #1255 の受け入れ基準「east-west の `AddHttpClient` が 0 本」の
   母集合にも入らない。
@@ -211,7 +211,7 @@ ADR-0086 決定 1 の射程が east-west に限られることも同 決定 2 �
    `IADR-0403` は `AddPlatformAuth` を足すだけでは口が塞がらない（`FallbackPolicy` が無い）とし、判定単位の裁定を計画へ求めていた。
    **決定 4 の環流に含めて計画へ出す。**
    ［2026-09-26 追記 / #1520］**裁定され、着地した。** 計画 ADR-0109 決定 3（planning#651）は前者（後段に `AddPlatformAuth` ＋ BFF が既に
-   付けている利用者トークンでの門を積む）を採った。[IADR-0462](./IADR-0462_conversion-service-validates-relayed-user-credential.md) が実装した —— `FallbackPolicy` は置かず、5 口すべてに端点の門を掛けている
+   付けている利用者トークンでの門を積む）を採った。[IADR-0465](./IADR-0465_conversion-service-validates-relayed-user-credential.md) が実装した —— `FallbackPolicy` は置かず、5 口すべてに端点の門を掛けている
    （`IADR-0403` 決定 5 の指摘どおり、`AddPlatformAuth` だけでは口は塞がらないため）。
 
 ## 関連

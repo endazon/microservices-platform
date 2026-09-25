@@ -200,7 +200,7 @@ plan_refs:
   1. **ConversionService へのアプリ層認証の要否**を別 issue で判断する（同 Namespace 内 Pod からの到達は残る）。
      判断時は [IADR-0029](./IADR-0029_config-info-api-placement-and-drift-granularity.md) の「最小 HTTP サーフェス」との整合を再検討する。
      ［2026-09-26 追記 / #1520］**要る、と決まり着地した。** 計画 ADR-0109 決定 3（planning#651）が「後段は中継された利用者の資格情報を
-     自ら検証する」と定め、[IADR-0462](./IADR-0462_conversion-service-validates-relayed-user-credential.md) が ConversionService に `AddPlatformAuth` と 5 口の端点の門（本 IADR 決定 1 と同じ AND 合成で再変換は管理者のみ）を
+     自ら検証する」と定め、[IADR-0465](./IADR-0465_conversion-service-validates-relayed-user-credential.md) が ConversionService に `AddPlatformAuth` と 5 口の端点の門（本 IADR 決定 1 と同じ AND 合成で再変換は管理者のみ）を
      掛けた。上の選択肢表 (3) の「全環境への `Auth:Authority` 注入」は既に済んでいた（Helm は `global.auth` を全サービスへ描き、compose は
      `x-common-env` が注入する）。**本 IADR 決定 3 の代償統制（ネットワーク分離）は外さない** —— 多層防御の 1 枚が増えるだけである。
   2. `ingestion-service` も `NetworkIsolationTests` の列挙外である（同型の穴）。今回入れないのは、

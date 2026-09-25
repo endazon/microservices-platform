@@ -10,7 +10,7 @@ namespace ConversionService.Features.ConversionJobs;
 // FR-12, UC-06, SC-07, IADR-0042: 変換ジョブ集約の登録表（ADR-0068 決定 1）。
 // メッシュ内部の管理 API（BFF からのみ到達。ingress へは公開しない）。
 //
-// NFR-09, ADR-0109 決定 3, ADR-0084 決定 1, IADR-0462 (#1520): **BFF が中継した利用者の資格情報で門を判定する**。
+// NFR-09, ADR-0109 決定 3, ADR-0084 決定 1, IADR-0465 (#1520): **BFF が中継した利用者の資格情報で門を判定する**。
 // 従前は「認可は BFF 側で課し、ワーカーには課さない」（IADR-0042 決定 3・IADR-0403 決定 4）だったが、BFF の中継は
 // エッジであり east-west の gRPC 化で閉じる道が無くなったため（ADR-0109 決定 1）、後段が自ら検証する。
 // 実効ロールは **BFF の門（`ConversionBffEndpoints`）と同じ**にする —— 片側だけ緩いと、BFF を迂回した

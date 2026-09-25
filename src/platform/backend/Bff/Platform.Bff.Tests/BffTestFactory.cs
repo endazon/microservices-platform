@@ -354,7 +354,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public string? ConversionConflictBody { get; set; }
     // BFF が後段へ渡したパス（?discardCorrections=true が伝わることの観測点）。
     public string? LastConversionPath { get; set; }
-    // NFR-09, SC-07, ADR-0109 決定 3, IADR-0462 (#1520): BFF が後段へ中継した利用者の資格情報の観測点。
+    // NFR-09, SC-07, ADR-0109 決定 3, IADR-0465 (#1520): BFF が後段へ中継した利用者の資格情報の観測点。
     // 🔴 **後段（ConversionService）はこれで門を判定する。** 中継が切れると後段は 401 を返し、BFF はそれを
     // 透過するので、変換ジョブ画面が全口で 401 になる。**テスト間で共有される**（IClassFixture）ため毎テスト戻す。
     public string? LastConversionForwardedAuthorization { get; set; }

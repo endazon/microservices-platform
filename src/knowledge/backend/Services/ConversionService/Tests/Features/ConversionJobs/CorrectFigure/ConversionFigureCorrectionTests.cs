@@ -400,12 +400,12 @@ public class ConversionFigureCorrectionTests
                 // **落ちるのではなく黙って遅くなる**（1 テスト 2 分半）。ビルドも赤にならないので気づきにくい。
                 services.DisableAllExternalWolverineTransports();
 
-                // NFR-09, ADR-0109 決定 3, IADR-0462 (#1520): 門は本物の JwtBearer で判定する（検証鍵だけ差し替え）。
+                // NFR-09, ADR-0109 決定 3, IADR-0465 (#1520): 門は本物の JwtBearer で判定する（検証鍵だけ差し替え）。
                 TestUserTokens.UseStaticJwtBearer(services);
             });
         }
 
-        // NFR-09, IADR-0462 (#1520): 人手補正は管理者限定。本クラスは補正の中身を測るので、
+        // NFR-09, IADR-0465 (#1520): 人手補正は管理者限定。本クラスは補正の中身を測るので、
         // 管理者の利用者トークンを既定で載せる（門は `ConversionJobAuthorizationTests` が測る）。
         protected override void ConfigureClient(HttpClient client)
         {
