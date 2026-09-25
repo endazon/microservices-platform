@@ -1,4 +1,4 @@
-# SC-15, FR-05, NFR-09, NFR-13, ADR-0026 / ADR-0078 決定 1, ADR-0094 決定 2, ADR-0097 決定 2, IADR-0432 (#1410 / #1500):
+# SC-15, FR-05, NFR-05, NFR-09, NFR-13, ADR-0026 / ADR-0078 決定 1, ADR-0094 決定 2, ADR-0097 決定 2, ADR-0111, IADR-0432 (#1410 / #1500 / #1543):
 # **パスワードリセットの申請を、床（最小応答時間）に達するまで返さない前段。**
 #
 # ## 🔴 既定で入る（［2026-09-26 / #1500］旧: opt-in）
@@ -6,7 +6,8 @@
 # `deploy/mail-relay/kustomization.yaml` が本ディレクトリを**参照する**。近接 MTA・門と同じく
 # `deploy/local/infra` の描画に出て、`scripts/k8s-local-up.sh` の [4/7] で必ず立つ。
 # 経路（リセット申請の POST を床へ向ける route）は `deploy/local/edge-istio-reset-floor/` が足し、
-# `scripts/istio-edge-up.sh` が既定（RESET_FLOOR=1）で当てる。退路は RESET_FLOOR=0（経路だけが外れる）。
+# `scripts/istio-edge-up.sh` が既定（RESET_FLOOR=1）で当てる。RESET_FLOOR=0（経路だけが外れる）は**検証で床の有無を
+# 比べる用途に限る**（［2026-09-26 / #1543］計画 ADR-0111 決定 3。本番の退路に使わない —— 下の「器が落ちたとき」）。
 #
 # 🔴 **計画 ADR-0097 決定 2 が IADR-0432 決定 4（床は opt-in）を覆した。** 旧決定の理由は
 # 「床は ADR-0094 の着手可否の注記が覆り得ると名指しした決定だから」であり、ADR-0097 決定 1 が
@@ -15,6 +16,18 @@
 #   向き、Keycloak へ戻る予備の route は無い —— ready な endpoint が無ければ Envoy は 503 を返す。
 #   計画は「床は失敗しても安全側（効かなければ遅くならないだけ）」と書くが、それが成り立つのは**経路が
 #   入っていない**ときだけである。だから起動器（k8s-local-up.sh）は器の rollout を待つ。
+#   ［2026-09-26 / #1543］計画はこの根拠を訂正し（ADR-0097 例外 3）、可用性への依存の扱いを ADR-0111 で定めた。
+#
+# ## 器が落ちたとき（［2026-09-26 / #1543］計画 ADR-0111 決定 1〜3）
+#
+# - **器は 2 レプリカで動かし、PodDisruptionBudget（下）で自発的な退避による「ready が 0」を防ぐ**（決定 1）。
+#   目的は、器の 1 つが止まって（再起動・更新・退避）もリセット申請を失敗させないことである。
+# - **予備の経路（Keycloak へ直接戻る route）は足さない**（決定 2）。足せば器が落ちたとき床の無い経路へ黙って戻り、
+#   所要時間の窓が監視の無いまま開く。申請には回数制限も無い。
+# - 🔴 **器がすべて落ちたときの 503 は「申請を閉じた状態」である**（決定 3）。実在・非実在とも同じ 503 で存在秘匿は保たれる。
+#   **復旧は器を戻すこと**で行い、利用者は**管理者の一時パスワード発行**で復旧する（SC-15 の代替手順）。
+#   🔴 **本番で RESET_FLOOR=0 を退路に使わない** —— 外している間は実在する利用者名を列挙できる。
+# - 全滅の検知（ready な endpoint が 0）は通知の配線の射程であり、ここには無い（#1544）。
 #
 # ## なぜ Deployment（逆プロキシ）なのか
 #
@@ -39,15 +52,29 @@ metadata:
   namespace: platform-infra
   labels: { app: reset-floor }
 spec:
-  # 🔴 複数レプリカでよい（門と違い、床は状態を持たない —— 要求ごとに時刻を測って待つだけである）。
-  # ここを 1 にしているのは dev の資源都合であり、競合の回避ではない。
-  replicas: 1
+  # 🔴 **2 レプリカ以上**（［2026-09-26 / #1543］計画 ADR-0111 決定 1。旧: dev の資源都合で 1）。
+  #   経路は器だけを向くので、1 レプリカだと Pod を作り直すたびにリセット申請が 503 になる窓が生じる。
+  #   門と違い、床は状態を持たない（要求ごとに時刻を測って待つだけ）ので、複製しても競合しない。
+  #   更新は Deployment 既定の RollingUpdate（2 レプリカでは maxUnavailable 25% → 0・maxSurge 25% → 1）で、
+  #   更新中も ready は 2 を割らない。既定で足りるので strategy は書かない。
+  replicas: 2
   selector:
     matchLabels: { app: reset-floor }
   template:
     metadata:
       labels: { app: reset-floor }
     spec:
+      # 🔴 **分散は「できれば」に留める（ScheduleAnyway）。** ローカル（k3d / k3s）は単一ノードであり、
+      #   必須の anti-affinity や DoNotSchedule を置くと 2 つ目が Pending のまま残り、起動器の
+      #   `rollout status deploy/reset-floor` が期限切れで止まる（check-stack-ready.js の G1 も赤になる）。
+      #   複数ノードでは別ノードへ散り、単一ノードでは同じノードへ 2 つ載る —— 単一ノードで守れるのは
+      #   Pod 単位の故障・更新・再作成までで、ノードの喪失は守れない（単一ノードの限界）。
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app: reset-floor }
       containers:
         - name: floor
           # CI（Node 22）と同じメジャー版。外部依存ゼロ（Node 標準の http / url のみ）。
@@ -69,6 +96,7 @@ spec:
             #   （予備の route は無い）。上流が落ちても器は床まで待ってから返す（IADR-0432 決定 1）ので、
             #   readiness に上流を映すとその「床を守る」が崩れる。［2026-09-26 / #1500 訂正］旧記述は
             #   「床の無い経路へ戻る」と書いていたが、戻る経路は無い。
+            #   ［2026-09-26 / #1543］この形は計画 ADR-0111 決定 2 が前提とした。変えない。
             tcpSocket: { port: 8080 }
             periodSeconds: 5
           resources:
@@ -89,6 +117,22 @@ spec:
         - name: floor
           configMap:
             name: reset-floor-script
+---
+# ［2026-09-26 / #1543］計画 ADR-0111 決定 1: 自発的な退避（ノードのドレイン・退避）で ready な器が 0 になるのを防ぐ。
+# 🔴 **minAvailable: 1 を選ぶ（maxUnavailable: 1 ではない）。** 決定の目的「ready を 0 にしない」をそのまま書く形である。
+#   2 レプリカでは両者は同じ効果だが、replicas を一時的に 1 へ絞ったとき maxUnavailable: 1 は最後の 1 つの退避を
+#   許して ready を 0 にする。minAvailable: 1 はそれを止める。Helm チャートの PDB（templates/pdb.yaml）とも揃う。
+#   代償: 単一ノードのクラスタをドレインすると 2 つ目の退避で止まる（単一ノードのドレインは全停止と同義である）。
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: reset-floor
+  namespace: platform-infra
+  labels: { app: reset-floor }
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: reset-floor }
 ---
 apiVersion: v1
 kind: Service
