@@ -3,15 +3,15 @@ title: パスワードリセット テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-15
-updated: 2026-09-25
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
 ids: [SC-10, SC-15, FR-05, FR-22, NFR-21, UC-05]
-adrs: [ADR-0006, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0103]
+adrs: [ADR-0006, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097, ADR-0103]
 iadrs: [IADR-0197, IADR-0261, IADR-0332, IADR-0344, IADR-0347, IADR-0404, IADR-0421, IADR-0432]
-specs: [20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260911_issue-1410_reset-timing-floor, 20260925_1470_timing-self-control-step]
-issues: [#438, #1102, #1143, #1144, #1245, #1410, #1470]
+specs: [20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260911_issue-1410_reset-timing-floor, 20260925_1470_timing-self-control-step, 20260926_1500_reset-floor-default-on]
+issues: [#438, #1102, #1143, #1144, #1245, #1410, #1470, #1500]
 -->
 
 # テスト仕様書: パスワードリセット
@@ -90,8 +90,11 @@ T-25（所要時間）が計るのは**申請の POST だけ**である。認可
 差が出ようがなく、含めると差の出ない 2 往復が分母に入って**比が薄まる** ——
 「差が小さくなった」のか「測り方で薄めた」のかを区別できなくなる。1 反復の中では実在／非実在を
 **交互に**打つ（まとめて打つと、反復内のドリフトが片側だけに乗り、それが「差」として出る）。
-🔴 **判定に使う反復の中では、床が入るまで赤が続く。** 差は構造由来である —— 認証基盤の送出は同期であり、
-**非実在の利用者名はメールを作らず、送らない**。**赤は「まだ塞いでいない」ことの正しい表示である。**
+🔴 **床が無ければ、判定に使う反復の中で赤になる。** 差は構造由来である —— 認証基盤の送出は同期であり、
+**非実在の利用者名はメールを作らず、送らない**。**［2026-09-26 更新］床は既定で入る**（Istio のエッジを立てると
+申請の POST が床を通る。外すのは `RESET_FLOOR=0` を与えたときだけ）。したがって既定の構成で赤なら、
+**床が外れている**（`RESET_FLOOR=0`・Istio 無しの比較実行）か、**床を超える応答が出ている**（床の値を引き直す契機）
+かのどちらかであり、いずれも「塞げていない」ことの正しい表示である。
 
 ## 関連仕様
 
