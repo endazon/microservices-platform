@@ -108,6 +108,16 @@ const EXPECT_GATE_CLOSED_ENV = 'EXPECT_GATE_CLOSED';
  * 🔴 **ログイン経路（IADR-0427 / 環流 #602）は本判定の対象外である**（ADR-0094 決定 4）。
  * 同経路は `failureFactor=5` のロックがあり標本を増やせない —— 増やすと実在側だけロックされ、
  * それ自体が存在オラクルになる。**決定 1 は反復を前提とするため、あちらでは成立しない。**
+ *
+ * ［2026-09-25 / 計画 ADR-0103 / #1470］**判定を 2 段にした**（ADR-0094 決定 1 の判定式の部分改定）。
+ * 段 1: **実在・非実在の中央値の差が自己対照の刻み以下なら合格**（比と自己対照を比べない）。
+ * 段 2: 差が刻みを超えれば従前どおり「比が自己対照を超えないこと」。
+ * 🔴 **なぜ要るのか。** 自己対照は各群 3 標本（奇数）の中央値なので**刻みは 1 ms**、比は 6 標本（偶数）の
+ * 中央値なので**刻みは 0.5 ms** である。**自己対照がちょうど 1.00 に落ちると、0 より大きい差はすべて
+ * 上限を超える** —— 上限が測る量より粗い刻みでしか動けず、**分母が潰れている**（床の内側 1 ms の揺れで
+ * 赤が常態化した。#1470）。**表現できない差を上限に使うと、測れないものを測ったことにする。**
+ * 🔴 **自己対照が広い側（`評価不能`）は緩めない**（ADR-0103 決定 2）。段 1 に当たっても広ければ `評価不能`。
+ * 🔴 **受け入れたリスク**: 刻み（1 ms）未満の系統差は検出しない（ADR-0103 決定 3）。
  */
 
 /** 反復数。ADR-0094 決定 1 の下限（3 回以上）。**1 回目は暖機として捨てる**ので判定に使うのは 2 反復。 */
@@ -131,6 +141,13 @@ const TIMING_SAMPLES_PER_SIDE = 6;
  * 環境ごとに違ってよい。ここが止めるのは「**測れていないのに緑**」だけである。
  */
 const SELF_CONTROL_WIDE_RATIO = 2;
+/**
+ * 標本の分解能（ms）。`submitReset` は `Date.now()` の差で測るので**整数 ms** である。
+ *
+ * ［2026-09-25 / 計画 ADR-0103 決定 1 / #1470］段 1 の「自己対照の刻み」はここから**計算する**
+ * （`selfControlStepMs`）。🔴 **刻みの値を定数で書かない** —— 標本数を変えれば刻みも変わる。
+ */
+const TIMING_SAMPLE_RESOLUTION_MS = 1;
 /** 所要時間の判定の 3 値。🔴 `評価不能` は**緑ではない**（ADR-0094 決定 4）。 */
 const TIMING_VERDICT = { PASS: '合格', INCONCLUSIVE: '評価不能', FAIL: '不合格' };
 
@@ -454,13 +471,37 @@ function medianRatio(m1, m2) {
 }
 
 /**
+ * 自己対照の刻み（ms）＝**自己対照の中央値が取り得る最小の間隔**（計画 ADR-0103 決定 1 / #1470）。**純関数**。
+ *
+ * 中央値は、群の標本数が**奇数なら観測値そのもの**（刻み＝標本の分解能）、**偶数なら中央 2 値の平均**
+ * （刻み＝分解能 / 2）である。2 群の中央値の差が表せる最小の間隔は、**細かい方の群の刻み**である。
+ * 片側 6 標本 → 各群 3 標本（奇数）なので、現行の構成では**分解能そのもの＝ 1 ms**。
+ *
+ * 🔴 **計画は刻みの値を発明していない**（「整数 ms の標本では 1 ms」は導出の帰結として書かれている）。
+ * ここも値を書かず、分解能と群の大きさから計算する。
+ *
+ * @param {number} sizeA 自己対照の群 a の標本数
+ * @param {number} sizeB 自己対照の群 b の標本数
+ * @param {number} [resolutionMs] 標本の分解能
+ * @returns {number}
+ */
+function selfControlStepMs(sizeA, sizeB, resolutionMs = TIMING_SAMPLE_RESOLUTION_MS) {
+  const stepOf = (size) => (size % 2 === 1 ? resolutionMs : resolutionMs / 2);
+  return Math.min(stepOf(sizeA), stepOf(sizeB));
+}
+
+/**
  * T-10 の所要時間の軸（計画 ADR-0094 決定 1・4 / #1410）。**純関数**。
  *
  * **反復の配列**（取得順）を受け、**先頭 1 反復を暖機として捨て**、残りで判定する。
  * 各反復について:
  *   - `cross` = 実在／非実在の中央値の比（向きを問わない。1 以上）
  *   - `self`  = **自己対照** = 実在側を交互に 2 群へ分けた中央値の比（＝その環境の測定ノイズ）
- *   - 🔴 **`cross > self` なら不合格**（ADR-0094 決定 1 そのもの）
+ *   - `step`  = **自己対照の刻み**（`selfControlStepMs`。現行の構成では 1 ms）
+ *   - 🔴 **段 1（ADR-0103 決定 1）: 中央値の差 `|実在 − 非実在| <= step` なら合格**（比と自己対照を比べない）。
+ *     **`cross > self` より前に置く**（後ろに置くと、潰れた自己対照が先に不合格を出す。同 フォローアップ 1）。
+ *     ただし **`self >= SELF_CONTROL_WIDE_RATIO` なら段 1 でも `評価不能`**（広すぎる側を緩めない。同 決定 2）
+ *   - 🔴 **段 2: `cross > self` なら不合格**（ADR-0094 決定 1 の判定式）
  *   - 🔴 **不合格でなく、かつ `self >= SELF_CONTROL_WIDE_RATIO` なら `評価不能`**（合格にしない）
  *
  * 前提が崩れていれば**判定へ進まず不合格にする**（0 件走査・標本数の不揃いを緑にしない）。
@@ -469,7 +510,7 @@ function medianRatio(m1, m2) {
  * @returns {{verdict:string, failures:string[], lines:string[],
  *            perRepetition:Array<{index:number, warmup:boolean, n:number,
  *              existingMedian:?number, absentMedian:?number, cross:?number, self:?number,
- *              slower:?string}>}}
+ *              step:number, slower:?string}>}}
  */
 function evaluateTimingConsistency(input) {
   const reps = (input && input.repetitions) || [];
@@ -506,16 +547,19 @@ function evaluateTimingConsistency(input) {
     const halves = splitAlternating(rep.existing);
     const self = medianRatio(median(halves.a), median(halves.b));
     const cross = medianRatio(existingMedian, absentMedian);
+    const step = selfControlStepMs(halves.a.length, halves.b.length);
     const slower = (existingMedian === null || absentMedian === null) ? null
       : (existingMedian === absentMedian ? '同じ' : (existingMedian > absentMedian ? '実在' : '非実在'));
-    perRepetition.push({ index, warmup, n: (rep.existing || []).length, existingMedian, absentMedian, cross, self, slower });
+    perRepetition.push({
+      index, warmup, n: (rep.existing || []).length, existingMedian, absentMedian, cross, self, step, slower,
+    });
 
     const fmt = (x) => (typeof x === 'number' ? x.toFixed(1) : '—');
     const ratio = (x) => (typeof x === 'number' ? `${x.toFixed(2)} 倍` : '—');
     lines.push(`  反復 ${index + 1}${warmup ? '（暖機・**判定に使わない**）' : ''}:`
       + ` n=${(rep.existing || []).length}/${(rep.absent || []).length}`
       + ` 実在 中央=${fmt(existingMedian)} ms / 非実在 中央=${fmt(absentMedian)} ms`
-      + ` / 比=${ratio(cross)}（遅い側 ${slower || '—'}）/ 自己対照=${ratio(self)}`);
+      + ` / 比=${ratio(cross)}（遅い側 ${slower || '—'}）/ 自己対照=${ratio(self)}（刻み ${step} ms）`);
 
     if (warmup) return;
     if (halves.a.length < 2 || halves.b.length < 2 || self === null) {
@@ -529,9 +573,27 @@ function evaluateTimingConsistency(input) {
       lines.push(`    → ${TIMING_VERDICT.INCONCLUSIVE}: 中央値を取れない標本がある。`);
       return;
     }
+    // 段 1（計画 ADR-0103 決定 1 / #1470）: 中央値の差が自己対照の刻み以下なら、比と自己対照を比べない。
+    // 🔴 **`cross > self` より前に置く**（後ろに置くと、潰れた自己対照が先に不合格を出す。同 フォローアップ 1）。
+    const diff = Math.abs(existingMedian - absentMedian);
+    if (diff <= step) {
+      if (self >= SELF_CONTROL_WIDE_RATIO) {
+        // 🔴 **広すぎる側は緩めない**（ADR-0103 決定 2）。ノイズに埋もれた反復で中央値が偶然並んでも、
+        //    それは「差が無い」ではない。
+        inconclusive = true;
+        lines.push(`    → ${TIMING_VERDICT.INCONCLUSIVE}（段 1）: 中央値の差 ${diff} ms は刻み ${step} ms 以下だが、`
+          + `自己対照が ${self.toFixed(2)} 倍と広い（可検出性の下限 ${SELF_CONTROL_WIDE_RATIO} 倍以上）。`
+          + ' 🔴 **「ノイズに埋もれて見えない」を「差が無い」と読まない。** 標本数を増やして測り直す。');
+        return;
+      }
+      lines.push(`    → ${TIMING_VERDICT.PASS}（段 1）: 中央値の差 ${diff} ms ≦ 自己対照の刻み ${step} ms。`
+        + ' 自己対照はこれより細かい差を表せないので、比と比べない（刻み未満の系統差は検出しない）。');
+      return;
+    }
     if (cross > self) {
       failures.push(`[T-10][所要時間] 反復 ${index + 1}: 実在／非実在の中央値の比 ${cross.toFixed(2)} 倍が`
-        + ` 自己対照 ${self.toFixed(2)} 倍を超えている（遅い側は ${slower}）。`
+        + ` 自己対照 ${self.toFixed(2)} 倍を超えている（遅い側は ${slower}。`
+        + `中央値の差 ${diff} ms は自己対照の刻み ${step} ms を超えるので段 2 で判定した）。`
         + ' 🔴 **同じ名前を数回投げて中央値を取れば利用者名を判別できる。**'
         + ' リセット申請には回数制限が無いので、この反復は攻撃者にも行える'
         + '（差を均すには Keycloak 前段の床が要る。ADR-0094 決定 2 / IADR-0432）。');
@@ -544,7 +606,7 @@ function evaluateTimingConsistency(input) {
         + ' 🔴 **「ノイズに埋もれて見えない」を「差が無い」と読まない。** 標本数を増やして測り直す。');
       return;
     }
-    lines.push(`    → ${TIMING_VERDICT.PASS}: 比 ${cross.toFixed(2)} 倍 ≦ 自己対照 ${self.toFixed(2)} 倍。`);
+    lines.push(`    → ${TIMING_VERDICT.PASS}（段 2）: 比 ${cross.toFixed(2)} 倍 ≦ 自己対照 ${self.toFixed(2)} 倍。`);
   });
 
   if (failures.length > 0) return { verdict: TIMING_VERDICT.FAIL, failures, lines, perRepetition };
@@ -1227,6 +1289,67 @@ function selfTest() {
     const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
     assert.strictEqual(r.verdict, TIMING_VERDICT.PASS);
     assert.deepStrictEqual(r.failures, []);
+  });
+
+  // ---- 段 1（計画 ADR-0103 決定 1・2 / #1470）----------------------------------------
+  //
+  // 🔴 #1470 の実測の形で撃つ: 床の内側で自己対照が 1.00 に潰れ、中央値が 0.5〜1 ms ずれた反復。
+  //    従前の判定（`cross > self` で不合格）ではこれが赤になり、赤が常態化していた。
+
+  ok('T-10 段 1: 自己対照の刻みは分解能と群の大きさから計算する（奇数＝分解能・偶数を含めば半分）', () => {
+    assert.strictEqual(selfControlStepMs(3, 3), 1);
+    assert.strictEqual(selfControlStepMs(2, 2), 0.5);
+    assert.strictEqual(selfControlStepMs(3, 2), 0.5, '細かい方の群の刻みを採る');
+    assert.strictEqual(selfControlStepMs(3, 3, 10), 10);
+    // 現行の構成（片側 6 標本 → 各群 3 標本）では計画の「整数 ms の標本では 1 ms」と一致する。
+    const halves = splitAlternating(new Array(TIMING_SAMPLES_PER_SIDE).fill(0));
+    assert.strictEqual(selfControlStepMs(halves.a.length, halves.b.length), 1);
+    assert.strictEqual(TIMING_SAMPLE_RESOLUTION_MS, 1, 'Date.now() の差は整数 ms である');
+  });
+
+  ok('🔴 T-10 段 1: 自己対照 1.00・中央値の差 1 ms（#1470 の実測の形）は合格（段 1 は cross > self より前）', () => {
+    // 実在 中央 153 ms（群 a 153 / 群 b 153 → 自己対照 1.00）/ 非実在 中央 152 ms ＝ 比 1.0066。
+    const rep = () => ({ existing: [152, 153, 153, 154, 153, 153], absent: [151, 152, 152, 152, 153, 152] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    const judged = r.perRepetition[1];
+    assert.strictEqual(judged.self, 1, '前提: 自己対照が 1.00 に潰れている');
+    assert.ok(judged.cross > judged.self, '前提: 従前の判定式なら不合格になる形である');
+    assert.strictEqual(judged.step, 1);
+    assert.strictEqual(r.verdict, TIMING_VERDICT.PASS, r.failures.join('\n'));
+    assert.deepStrictEqual(r.failures, []);
+    assert.ok(r.lines.join('\n').includes('（段 1）'), 'どちらの段で合格したかを出していない');
+    assert.ok(r.lines.join('\n').includes('刻み 1 ms'), '刻みを併記していない');
+  });
+
+  ok('T-10 段 1: 中央値の差 0.5 ms（153.0 / 152.5）も合格', () => {
+    const rep = () => ({ existing: [152, 153, 153, 154, 153, 153], absent: [152, 153, 152, 153, 152, 153] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    assert.strictEqual(r.perRepetition[1].absentMedian, 152.5);
+    assert.strictEqual(r.verdict, TIMING_VERDICT.PASS, r.failures.join('\n'));
+  });
+
+  ok('🔴 T-10 段 2: 差が刻みを超えれば従前どおり（自己対照 1.00・差 2 ms は不合格）', () => {
+    const rep = () => ({ existing: [152, 153, 153, 154, 153, 153], absent: [151, 151, 151, 151, 151, 151] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    assert.strictEqual(r.verdict, TIMING_VERDICT.FAIL);
+    assert.ok(r.failures.join('\n').includes('段 2'), '段 2 で判定したことを言っていない');
+  });
+
+  ok('T-10 段 2: 差が刻みを超えても、比が自己対照の内側なら合格', () => {
+    // 実在 中央 153（群 a 150 / 群 b 156 → 自己対照 1.04）/ 非実在 中央 151 ＝ 比 1.013・差 2 ms。
+    const rep = () => ({ existing: [150, 156, 150, 156, 150, 156], absent: [151, 151, 151, 151, 151, 151] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    assert.strictEqual(r.verdict, TIMING_VERDICT.PASS, r.failures.join('\n'));
+    assert.ok(r.lines.join('\n').includes('（段 2）'));
+  });
+
+  ok(`🔴 T-10 段 1: 自己対照が広ければ、中央値の差が刻み以下でも ${TIMING_VERDICT.INCONCLUSIVE}（広い側を緩めない）`, () => {
+    // 実在 中央 25 / 非実在 中央 26 ＝ 差 1 ms（段 1 の条件は満たす）が、自己対照は 4 倍。
+    const rep = () => ({ existing: [10, 40, 10, 40, 10, 40], absent: [10, 42, 10, 42, 10, 42] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    assert.strictEqual(r.verdict, TIMING_VERDICT.INCONCLUSIVE);
+    assert.ok(r.failures.length >= 1, `${TIMING_VERDICT.INCONCLUSIVE} なのに失敗が 0 件＝緑になっている`);
+    assert.ok(r.lines.join('\n').includes(`${TIMING_VERDICT.INCONCLUSIVE}（段 1）`));
   });
 
   ok(`🔴 T-10: 自己対照が広ければ ${TIMING_VERDICT.INCONCLUSIVE} であり、**緑にしない**`, () => {
