@@ -22,7 +22,10 @@ public class IntrospectionGrpcDeploymentWiringTests
     {
         // 変換サービスは認証を持たず、gRPC 面の `ServiceCaller` を判定できない（面は張られているが fail-closed）。
         // 中継された利用者の資格情報を自ら検証する実装（planning#651 の裁定。別作業）が着地したら外す。
-        ["conversion-service"] = "認証を持たない（planning#651 の裁定による自前の検証が未着地）",
+        // ［2026-09-26 / #1520］NFR-09, ADR-0109 決定 3, IADR-0465: 認証は着地し、面は `ServiceCaller` を判定する
+        // （`ConversionService.Tests` の `Introspection_grpc_face_is_mapped_behind_ServiceCaller_and_judges_the_caller`）。
+        // 残るのは h2c リスナ・`grpcPort`・gRPC 宛先の配線だけで、IADR-0462 フォローアップ 3 の別作業である。
+        ["conversion-service"] = "認証は着地した。h2c リスナ・grpcPort・gRPC 宛先の配線が未着手（IADR-0462 フォローアップ 3）",
     };
 
     // compose は `Key: value`、helm は `- name: Key` の次行 `value: "..."`。どちらの書式でも引く。

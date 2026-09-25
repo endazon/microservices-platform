@@ -1,6 +1,7 @@
 using ConversionService.Domain;
 using ConversionService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace ConversionService.Features.ConversionJobs.ListFigures;
 
@@ -15,6 +16,9 @@ internal static class ListConversionFiguresEndpoint
         {
             var figures = await store.ListFiguresAsync(id, ct);
             return figures is null ? Results.NotFound() : Results.Ok(figures);
-        }).WithName("ConversionJobFigureList").Produces<List<ConversionFigureDto>>();
+        }).WithName("ConversionJobFigureList").Produces<List<ConversionFigureDto>>()
+          // NFR-09, UC-06, ADR-0109 決定 3, IADR-0154 決定 6, IADR-0465 (#1520): 2 ペインを開く操作そのものが
+          // 人手補正であるため、照会（GET）だが管理者限定（BFF と同じ）。
+          .RequireAuthorization(PlatformAuthPolicies.AdminOnly);
     }
 }

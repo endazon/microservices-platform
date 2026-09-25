@@ -47,14 +47,14 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
 
     // FR-15, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4, IADR-0462 (#1514, #1255 経路 ⑤):
     // 自己申告の gRPC 面は共通基盤が REST と対で張るので、本サービスにも `ServiceCaller` 付きで張られている。
-    // 🔴 **ただし本サービスは認証を持たない**（中継された利用者の資格情報を自ら検証する実装は
-    // planning#651 の裁定による別作業であり、本スライスでは触らない）。したがって面は
-    // **fail-closed**（どの要求も成功しない）であり、構成情報 API はこの宛先を REST のまま収集する
-    // （helm・compose に gRPC の宛先を入れていない。`IntrospectionGrpcDeploymentWiringTests` の保留一覧）。
-    // 認証が着地したらこの試験は他サービスと同じ形（s2s 無し → UNAUTHENTICATED）へ書き換える。
+    // ［2026-09-26 / #1520］NFR-09, ADR-0109 決定 3, IADR-0465: 本サービスが認証を持ったので、面は
+    // 他サービスと同じ形で判定する（従前は認可の登録が無く、どの要求も INTERNAL で落ちる fail-closed だった）。
+    // s2s 無し → UNAUTHENTICATED、利用者のトークン（管理者であっても）→ PERMISSION_DENIED、
+    // `platform-service` のトークン → 申告が返る。**本物の JwtBearer**（検証鍵だけテスト用）を通す。
+    // 配備の gRPC 宛先（helm・compose）の配線は IADR-0462 フォローアップ 3 の別作業であり、ここでは触らない。
     // 呼び出しは TestServer 経由（待ち受けない）。
     [Fact]
-    public async Task Introspection_grpc_face_is_mapped_behind_ServiceCaller_and_fails_closed_without_auth()
+    public async Task Introspection_grpc_face_is_mapped_behind_ServiceCaller_and_judges_the_caller()
     {
         var server = _factory.Server;
         var endpoint = _factory.Services.GetRequiredService<EndpointDataSource>().Endpoints
@@ -66,19 +66,22 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
         using var channel = GrpcChannel.ForAddress(server.BaseAddress,
             new GrpcChannelOptions { HttpHandler = server.CreateHandler() });
         var client = new Pb.ServiceIntrospection.ServiceIntrospectionClient(channel);
-        var act = async () => await client.GetAsync(
-            new Pb.GetServiceIntrospectionRequest(), cancellationToken: TestContext.Current.CancellationToken);
+        var ct = TestContext.Current.CancellationToken;
+        static Metadata Bearer(string token) => new() { { "authorization", "Bearer " + token } };
 
-        // 認可の登録も認可ミドルウェアも無いので、要求は受け口の手前（EndpointMiddleware）で
-        // 「認可メタデータを持つのに認可ミドルウェアが無い」例外になる。TestServer はアプリの例外を呼び出し側へ運び、
-        // gRPC クライアントはそれを INTERNAL に包む（実配備では 500 → INTERNAL）。**匿名で申告が読めることは無い。**
-        // 🔴 status と文言まで見る —— 例外型だけだと、輸送の失敗（接続できない等）でも緑になる。
-        var ex = (await act.Should().ThrowAsync<RpcException>()).Which;
-        ex.StatusCode.Should().Be(StatusCode.Internal);
-        ex.Status.Detail.Should().Contain("authorization metadata");
+        var anonymous = async () => await client.GetAsync(new Pb.GetServiceIntrospectionRequest(), cancellationToken: ct);
+        (await anonymous.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.Unauthenticated);
 
-        // 対照: REST の面は従来どおり申告を返す（gRPC 面を張ったことで REST を壊していない）。
-        var rest = await _factory.CreateClient().GetAsync("/internal/introspection", TestContext.Current.CancellationToken);
+        var asUser = async () => await client.GetAsync(new Pb.GetServiceIntrospectionRequest(),
+            Bearer(TestUserTokens.Issue("alice", ["platform-admin"])), cancellationToken: ct);
+        (await asUser.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.PermissionDenied);
+
+        var asService = await client.GetAsync(new Pb.GetServiceIntrospectionRequest(),
+            Bearer(TestUserTokens.Issue("service-account-bff", ["platform-service"])), cancellationToken: ct);
+        asService.Should().NotBeNull();
+
+        // 対照: REST の面は従来どおり資格情報なしで申告を返す（門を持たない口）。
+        var rest = await _factory.CreateClient().GetAsync("/internal/introspection", ct);
         rest.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -105,6 +108,9 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
                 // 落とさないと、テストごとに実 RabbitMQ への接続再試行（実測 20 回・約 135 秒）が走り、
                 // **落ちるのではなく黙って遅くなる**（1 テスト 2 分半）。ビルドも赤にならないので気づきにくい。
                 services.DisableAllExternalWolverineTransports();
+
+                // NFR-09, ADR-0109 決定 3, IADR-0465 (#1520): 門は本物の JwtBearer で判定する（検証鍵だけ差し替え）。
+                TestUserTokens.UseStaticJwtBearer(services);
             });
         }
     }

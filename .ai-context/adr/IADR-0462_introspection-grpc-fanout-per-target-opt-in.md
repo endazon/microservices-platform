@@ -20,6 +20,7 @@ related_ids:
   - IADR-0397
   - IADR-0419
   - IADR-0458
+  - IADR-0465
 author: claude
 created: 2026-09-26
 updated: 2026-09-26
@@ -99,6 +100,10 @@ plan_refs:
    本決定で `AddPlatformAuth` を先に足すとその作業と重なるので触らない。共通基盤が張る gRPC 面は conversion にも在るが、
    認可の登録が無いので **fail-closed**（どの要求も成功しない。匿名で申告が読めることは無い）であり、BFF の gRPC 宛先にも入れない。
    認証が着地した段で、h2c リスナ・`grpcPort`・gRPC 宛先を足す（配線の試験は保留一覧から外すだけで赤から緑へ移る形にしてある）。
+   ［2026-09-26 追記 / #1520］**conversion の認証は着地した**（[IADR-0465](./IADR-0465_conversion-service-validates-relayed-user-credential.md)）。gRPC 面は `ServiceCaller` を判定する
+   （s2s 無し → `UNAUTHENTICATED`、利用者のトークン → `PERMISSION_DENIED`、`platform-service` → 申告）。conversion の
+   `IntrospectionEndpointTests` の fail-closed の試験は他サービスと同じ形へ書き換えた。**配線（フォローアップ 3）は未着手のまま**であり、
+   保留一覧の理由だけを改めた。本文は書き換えていない。
    **mcp-server は収集先に無い**ので h2c リスナも `grpcPort` も足さない（面は共通基盤が張る）。収集先へ加えるのは FR-15 の挙動変更であり本決定の外
 4. **呼び出し側**（決定 2-A・3-A）: `EffectiveConfigCollector` が新しい `IEffectiveConfigCollector` になる。宛先 = `Services` と `GrpcServices` の
    キーの和。`GrpcServices` に空でないアドレスが在れば gRPC、無ければ REST（両方に在れば gRPC）。集約は REST だけの収集と同じ 1 つ。

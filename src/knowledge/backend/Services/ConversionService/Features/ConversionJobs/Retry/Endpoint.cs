@@ -1,6 +1,7 @@
 using ConversionService.Domain;
 using ConversionService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Wolverine;
 
 namespace ConversionService.Features.ConversionJobs.Retry;
@@ -57,6 +58,9 @@ internal static class RetryConversionJobEndpoint
             // （Wolverine が受け取って捨てるため。IADR-0245 の実測）。**辺は原子的に動かす。**
             await bus.PublishAsync(ev);
             return Results.Accepted($"/jobs/{id}");
-        }).WithName("ConversionJobRetry");
+        }).WithName("ConversionJobRetry")
+          // NFR-09, FR-12, ADR-0109 決定 3, IADR-0128 決定 1, IADR-0465 (#1520): 再変換は管理者限定。
+          // 群の「admin または operator」と AND 合成され、実効は **admin のみ**（BFF と同じ）。
+          .RequireAuthorization(PlatformAuthPolicies.AdminOnly);
     }
 }
