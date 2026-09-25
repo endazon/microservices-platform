@@ -33,11 +33,12 @@ set_mesh_mtls_mode "PERMISSIVE"
 
 echo "==> [2/4] Istio エッジ資材の撤去（hostPort を空ける）"
 kubectl delete -k deploy/local/edge-istio --ignore-not-found=true || true
-# SC-15 / IADR-0432 (#1410): 床（RESET_FLOOR=1 で入れたときだけ居る）。
-# 🔴 **無条件に消してよい。** 居なければ --ignore-not-found が黙って通る。逆に残すと、
-#   エッジを戻したあと誰も通らないポートで待つ Pod だけが残る。
-kubectl delete -k deploy/mail-relay/reset-floor --ignore-not-found=true || true
-kubectl delete configmap reset-floor-script -n platform-infra --ignore-not-found=true || true
+# SC-15 / ADR-0097 決定 2 / IADR-0432 (#1410 / #1500): 床の**経路**は msp-keycloak-edge（上で消した
+# VirtualService）の先頭 route なので、ここで一緒に消えている。
+# 🔴 **床の器（deploy/mail-relay/reset-floor）と ConfigMap reset-floor-script は消さない。**
+#   ［2026-09-26 / #1500］器は近接 MTA の配備単位（deploy/mail-relay → deploy/local/infra）が既定で
+#   持つようになった。エッジの切り戻しが消すと infra の宣言から外れる（check-stack-ready.js の G11 が
+#   「宣言に在るのに稼働していない」で落とす）。Traefik のエッジでは誰も通らないまま居る。
 kubectl delete -f deploy/local/edge-istio/tls/edge-certificate-istio.yaml --ignore-not-found=true || true
 helm uninstall istio-ingressgateway -n istio-system >/dev/null 2>&1 || true
 # svclb の DaemonSet が消えるまで待つ。消えないうちに Traefik を戻すと bind が衝突する。

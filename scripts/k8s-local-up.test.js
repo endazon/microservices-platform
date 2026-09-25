@@ -271,6 +271,7 @@ function runUp(extraEnv) {
     'HEADLAMP_OIDC_ISSUER_URL',
     'HEADLAMP_OIDC_CLIENT_ID',
     'K3S_IMAGE', // #783: k3s イメージの pin。実行環境に漏れていると既定のバイト等価が崩れる
+    'RESET_FLOOR', // #1500: 床の経路の退路。漏れていると冒頭の検査・警告が既定と違う形で走る
   ]) {
     delete base[k];
   }
@@ -485,6 +486,52 @@ ok('既定: keycloak-theme-platform ConfigMap は keycloak-realms の直後・in
     themeIdx < infraApplyIdx,
     'ConfigMap 作成が Deployment 適用（apply -k）より後になっている（初回起動でテーマが解決されない）',
   );
+});
+
+// SC-15, NFR-13, ADR-0097 決定 2, IADR-0432 (#1500): リセット申請の床の器は **既定で** infra と一緒に立つ
+// （deploy/mail-relay/kustomization.yaml が取り込む）。器は本体を ConfigMap からマウントするので、
+// **ゲートなしで**・infra の apply より**前**に作り、rollout を待つ。旧: RESET_FLOOR=1 のときだけ
+// istio-edge-up.sh が作っていた（既定では作られず、器を既定へ入れると Pod が起動しなかった）。
+ok('既定: 床の器の reset-floor-script ConfigMap は infra の apply より前に作られ、rollout を待つ（#1500）', () => {
+  const cmIdx = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create configmap reset-floor-script '));
+  const infraApplyIdx = DEFAULT.lines.findIndex((l) => /^kubectl apply -k deploy\/local\/infra(-persistence)?$/.test(l));
+  assert.ok(cmIdx >= 0, '既定で reset-floor-script が作られない（器が既定で入るのに本体が無い）');
+  assert.ok(infraApplyIdx >= 0, 'infra の apply が見つからない');
+  assert.ok(cmIdx < infraApplyIdx, 'reset-floor-script の作成が infra の apply より後になっている（初回起動で Pod がマウントに失敗する）');
+  assert.ok(
+    DEFAULT.lines.some((l) => l.includes('--from-file=reset-floor.js=deploy/mail-relay/reset-floor.js')),
+    'reset-floor-script の中身がリポジトリの器の本体でない',
+  );
+  assert.ok(
+    DEFAULT.lines.some((l) => /rollout status deploy\/reset-floor\b/.test(l)),
+    '既定で床の器の rollout を待っていない',
+  );
+});
+
+// SC-15, ADR-0097 決定 2 (#1500 / 監査 #1518): RESET_FLOOR は末尾の istio-edge-up.sh が読むが、
+// 🔴 **不正な値は長い起動の最初に落とす**（最後の段で落ちると、それまでの数分が無駄になる）。
+// 空・0・1 だけを受け付け、Istio のエッジが走らない起動で与えたら「効かない」と告げる。
+ok('RESET_FLOOR: 0 / 1 / 空 以外は、クラスタに触れる前に落ちる（#1500）', () => {
+  for (const bad of ['false', 'yes', '2']) {
+    const res = runUp({ RESET_FLOOR: bad });
+    assert.notStrictEqual(res.status, 0, `RESET_FLOOR=${bad} を受け付けた`);
+    assert.deepStrictEqual(res.lines, [], `RESET_FLOOR=${bad} で落ちる前にコマンドを発行した: ${res.lines.slice(0, 3).join(' / ')}`);
+    assert.ok(/RESET_FLOOR/.test(res.stderr), `落ちた理由が RESET_FLOOR を名指ししていない: ${res.stderr}`);
+  }
+});
+
+ok('RESET_FLOOR: Istio のエッジが走らない起動で与えると WARN を出し、起動は続ける（#1500）', () => {
+  for (const v of ['0', '1']) {
+    const res = runUp({ RESET_FLOOR: v, ISTIO: '' });
+    assert.strictEqual(res.status, 0, `RESET_FLOOR=${v}（ISTIO 無し）で起動が止まった: ${res.stderr}`);
+    assert.ok(/WARN: RESET_FLOOR=/.test(res.stderr), `RESET_FLOOR=${v} が効かないことを告げていない`);
+  }
+  // 陰性対照: 与えていなければ告げない（既定の起動にノイズを足さない）。
+  assert.ok(!/WARN: RESET_FLOOR=/.test(DEFAULT.stderr), '既定（RESET_FLOOR 未設定）なのに WARN を出した');
+  // 空は「未設定」と同じ扱い（既定 1）であり、拒まず告げもしない。
+  const empty = runUp({ RESET_FLOOR: '' });
+  assert.strictEqual(empty.status, 0, `RESET_FLOOR='' を拒んだ: ${empty.stderr}`);
+  assert.ok(!/WARN: RESET_FLOOR=/.test(empty.stderr), "RESET_FLOOR='' で WARN を出した");
 });
 
 // SC-15, FR-22, ADR-0045 決定 9, IADR-0344 (#1144): 捕捉用 MTA は **dev 既定**である。

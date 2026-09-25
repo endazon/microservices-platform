@@ -1,11 +1,11 @@
-# SC-15, ADR-0094 決定 2, IADR-0432 (#1410): リセット申請の**床**（最小応答時間）。
+# SC-15, NFR-13, ADR-0094 決定 2, ADR-0097 決定 2, IADR-0432 (#1410 / #1500): リセット申請の**床**（最小応答時間）。
 #
-# 🔴 **opt-in である。** 親（deploy/mail-relay/kustomization.yaml）はここを参照しない ——
-# 既定の描画は本 PR の前後で**バイト等価**である。取り込むのは
-# `deploy/local/edge-istio-reset-floor/` だけで、そこが**経路（VirtualService）も同時に**足す。
+# 🔴 **既定で入る。** 親（deploy/mail-relay/kustomization.yaml）がここを参照する
+# （［2026-09-26 / #1500］計画 ADR-0097 決定 2 が IADR-0432 決定 4 の opt-in を覆した）。
+# `deploy/local/edge-istio-reset-floor/` も器を含むが、同じ描画なので両方から apply しても冪等である。
 #
 # 🔴 **床だけを配備しても効かない。** 経路が Keycloak を直接向いたままなら、床は誰も通らない
-# ポートで待つだけである。だから配備単位を経路と分けず、上記 overlay が両方を足す形にしてある。
+# ポートで待つだけである。経路は上記 overlay が足す（`scripts/istio-edge-up.sh` が既定で当てる）。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

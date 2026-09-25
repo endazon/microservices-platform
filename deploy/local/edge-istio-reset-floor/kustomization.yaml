@@ -1,13 +1,16 @@
-# SC-15, FR-05, ADR-0078 決定 1, ADR-0094 決定 2, IADR-0432 (#1410):
-# **エッジ（edge-istio）＋ リセット申請の床**。opt-in の overlay。
+# SC-15, FR-05, NFR-13, ADR-0078 決定 1, ADR-0094 決定 2, ADR-0097 決定 2, IADR-0432 (#1410 / #1500):
+# **エッジ（edge-istio）＋ リセット申請の床**。Istio エッジの**既定**の overlay。
 #
 # 適用: kubectl apply -k deploy/local/edge-istio-reset-floor
-#       （`scripts/k8s-local-up.sh` は `RESET_FLOOR=1` のときだけこちらを適用する。既定は
-#        `deploy/local/edge-istio` のままであり、**既定の描画はバイト等価**である）
+#       （`scripts/istio-edge-up.sh` は既定（RESET_FLOOR=1）でこちらを適用する。
+#        退路の RESET_FLOOR=0 のときだけ素の `deploy/local/edge-istio` を当てる。
+#        ［2026-09-26 / #1500］計画 ADR-0097 決定 2 が IADR-0432 決定 4 の opt-in を覆した）
 #
 # ## 何を足すか（2 つで 1 組）
 #
-#   1. 床の器（`../../mail-relay/reset-floor`）
+#   1. 床の器（`../../mail-relay/reset-floor`）。🔴 器は `deploy/mail-relay/kustomization.yaml` も
+#      既定で取り込む（infra の描画に出る）。同じ描画なので、ここからも apply して冪等である ——
+#      overlay 単独でも「器と経路の 2 つで 1 組」を崩さないために残す。
 #   2. `msp-keycloak-edge` の**先頭**へ、**リセット申請の POST だけ**を床へ向ける route
 #
 # 🔴 **片方だけでは効かない。** 器だけなら誰も通らず、route だけなら 404 になる。
