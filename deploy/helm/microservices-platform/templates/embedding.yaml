@@ -1,7 +1,7 @@
 # FR-02, FR-03, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み推論基盤（Ruri v3 / 768 次元）。
 # 高機密区分（confidential/restricted）はティアA=セルフホスト固定であり、この基盤が未配備の間は fail-closed
 # （高機密は索引されない）。本テンプレートは案 A のインフラを opt-in で用意する（既定 embedding.enabled=false）。
-# 第三者 pull イメージ（TEI）のため generic services レンジ（registry 前置）には載せず、minio/wikijs と同型の
+# 第三者 pull イメージ（TEI）のため generic services レンジ（registry 前置）には載せず、seaweedfs/wikijs と同型の
 # 専用テンプレートにする。#275（check-image-mapping.js）は build を持つ microservices-platform/* のみ検査する
 # ため、本サービスは検査対象外＝ドリフト検査は緑。
 # ⚠️ 実モデル取得・GPU/CPU リソース・実埋め込み疎通・nDCG@10 実測は稼働環境依存＝分離（IADR-0085 / #303）。

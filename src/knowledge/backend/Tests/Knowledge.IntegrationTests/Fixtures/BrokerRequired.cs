@@ -2,7 +2,7 @@ namespace Knowledge.IntegrationTests.Fixtures;
 
 // #455 W3: 実ブローカ結合テスト（ADR-0027 手順 8）専用の skip 判定。
 //
-// 既存の DockerRequired を緩めない理由: あちらは Postgres / MinIO も要求するテスト群が
+// 既存の DockerRequired を緩めない理由: あちらは Postgres / オブジェクトストレージも要求するテスト群が
 // 使っており、「RabbitMQ だけ外から与えられている」状態で走らせると、それらは skip されずに
 // 落ちる。判定を分けるほうが、既存テストの意味を変えずに済む。
 //

@@ -19,7 +19,7 @@ namespace DocumentService.Tests.Features.Documents;
 // 🔴 **「削除 API が 204 を返した」は検出力の証拠にならない。** 従前も 204 は返っており、
 // 実体だけが残っていた。ここで測るのは **台帳から逆引きした URI が過不足なく消されたか**である。
 // 器は `RecordingObjectStorageClient`（消された URI を記録する）—— Docker 非依存で、
-// MinIO を立てずに「何が消えたか」を直接見られる唯一の観測点である。
+// オブジェクトストレージを立てずに「何が消えたか」を直接見られる唯一の観測点である。
 [Trait("TestKind", "Integration")]
 public class DeletionPropagationTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>

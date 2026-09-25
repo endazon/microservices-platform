@@ -5,7 +5,7 @@
 
 経路B の dev Vault（`VAULT=1` の opt-in。既定は file ストレージ＋PVC で永続化・Pod 内ラッパーが自動 unseal。`PERSIST=0` なら `-dev`・インメモリ）を Keycloak OIDC でログインできるようにする。
 Vault の OIDC 設定は **runtime**（`vault write auth/oidc/*`）のため、`vault-dev.yaml` は無改変で **bootstrap 手順**で入れる
-（realm import や MinIO の `mc` と同型）。root トークンは break-glass として残る。edge の `vault.localhost:50000` Ingress は
+（realm import と同型）。root トークンは break-glass として残る。edge の `vault.localhost:50000` Ingress は
 #357 で追加済み（本 PR では無改変）。
 
 ## client secret（自動）

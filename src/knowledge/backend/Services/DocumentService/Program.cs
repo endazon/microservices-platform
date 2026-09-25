@@ -115,7 +115,7 @@ builder.Services.AddScoped<IValidator<ResolveSyncConflictRequest>, ResolveSyncCo
 // FR-06: Document DbContext (ADR-0002 Database per Service)
 builder.Services.AddDbContext<DocumentDbContext>(opt => opt.UseNpgsql(connStr));
 
-// FR-21, ADR-0014/ADR-0015: 文書本文の直接受け入れ経路が本文を格納する先（MinIO）。
+// FR-21, ADR-0014/ADR-0015（Superseded by ADR-0106）: 文書本文の直接受け入れ経路が本文を格納する先（SeaweedFS）。
 // **バケットの作成（Bootstrap）はここでは行わない** —— 書き込み側の起動時保証は
 // ConversionService が担っており（`AddPlatformObjectStorageBootstrap`）、同じバケットを
 // 2 か所から作りにいく理由が無い。未設定の dev/test では縮退クライアントが登録される。

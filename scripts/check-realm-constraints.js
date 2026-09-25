@@ -84,8 +84,9 @@ const MAX_LEN = 255;
 // 🔴 #780: **宣言は `wiki-js` 1 件だけだった。** ブラウザ OIDC を持つ 7 クライアントのうち
 //    6 つが無検査であり、「片方の経路だけ足して片方を忘れる」事故を止める仕掛けが
 //    その事故を最も起こしやすい 6 件を見ていなかった。本表を 7 クライアント＋`bff` へ広げた。
-//    🔴 #1393 で `platform-spa` を realm ごと撤去したので、本表の母集合は **7 件**である
-//    （`bff` / `wiki-js` / `headlamp` / `grafana` / `argocd` / `minio` / `vault`）。
+//    🔴 #1393 で `platform-spa` を realm ごと撤去し、#1499 / [[IADR-0461]] 決定 5 で `minio`（MinIO Console。
+//    オブジェクトストレージを SeaweedFS へ差し替え、Console を持たなくなった）を撤去したので、本表の母集合は
+//    **6 件**である（`bff` / `wiki-js` / `headlamp` / `grafana` / `argocd` / `vault`）。
 //
 // 🔴 **`attributes.post.logout.redirect.uris` は `##` 区切りの 1 本の文字列である。**
 //    redirect / origin と別フィールドなので、片方だけ足す事故がここでも起きる（#780 本文が
@@ -143,13 +144,6 @@ const REQUIRED_CLIENT_URLS = {
       'http://localhost:8083/auth/callback',
     ],
     webOrigins: ['https://argocd.localhost:50000', 'http://localhost:8083'],
-  },
-  minio: {
-    redirectUris: [
-      'https://minio.localhost:50000/oauth_callback',
-      'http://localhost:9001/oauth_callback',
-    ],
-    webOrigins: ['https://minio.localhost:50000', 'http://localhost:9001'],
   },
   // Vault UI の callback パスは `/ui/vault/auth/<mount>/oidc/callback` 固定。
   // `http://localhost:8250/oidc/callback` は **CLI（vault login -method=oidc）のローカル待受**で
@@ -1276,8 +1270,8 @@ function selfTest() {
     pass: collectMissingUrls({ clients: [{ clientId: 'bff' }] }, reqPl).length === 2,
   });
   cases.push({
-    name: '#780 / #1393: ブラウザ OIDC を持つ 7 クライアントがすべて宣言されている（撤去した platform-spa は含まない）',
-    pass: ['wiki-js', 'bff', 'headlamp', 'grafana', 'argocd', 'minio', 'vault']
+    name: '#780 / #1393 / #1499: ブラウザ OIDC を持つ 6 クライアントがすべて宣言されている（撤去した platform-spa・minio は含まない）',
+    pass: ['wiki-js', 'bff', 'headlamp', 'grafana', 'argocd', 'vault']
       .every((c) => Object.prototype.hasOwnProperty.call(REQUIRED_CLIENT_URLS, c)),
   });
   cases.push({

@@ -15,14 +15,16 @@
  */
 'use strict';
 
-// ---- 母集合（#1163 の 7 クライアント） -------------------------------------------
+// ---- 母集合（#1163 の 7 クライアント。#1499 で 6） ---------------------------------
 //
 // 走査の出所は作業仕様書 `.ai-context/specs/20260903_issue-1163_tool-oidc-login-verifier.md` §母集合。
-// realm JSON の `standardFlowEnabled: true` かつ `redirectUris` 非空は **7 件**である。
+// realm JSON の `standardFlowEnabled: true` かつ `redirectUris` 非空は **6 件**である。
 // 🔴 #1163 の時点では 8 件あり、`platform-spa`（SPA の public client）だけを
 // 「ブラウザのログイン開始を持たない」として除いていた（開始は `bff` の `/bff/auth/login`）。
 // **#1393 でその client を realm ごと撤去したので、いまは走査結果がそのまま 7 件になる**
 // —— 除外の説明が要らなくなっただけで、母集合そのものは変わっていない。
+// **#1499 / [[IADR-0461]] 決定 5 で `minio`（MinIO Console）を realm ごと撤去したので 7 → 6 件になった**
+// （オブジェクトストレージを SeaweedFS へ差し替え、管理 Console を持たなくなった）。
 //
 // `clientId` は**ここでは宣言しない** —— 実行時に認可 URL から読み取って報告する。
 // 宣言すると realm 側の client 名を写すことになり、受け入れ基準 2 に反する。
@@ -32,7 +34,6 @@ const TOOLS = [
   { key: 'grafana', host: 'grafana', start: { kind: 'redirect', path: '/login/generic_oauth' }, probe: '/login' },
   { key: 'argocd', host: 'argocd', start: { kind: 'redirect', path: '/auth/login' }, probe: '/healthz' },
   { key: 'headlamp', host: 'headlamp', start: { kind: 'redirect', path: '/oidc?cluster=main' }, probe: '/' },
-  { key: 'minio', host: 'minio', start: { kind: 'json-get', path: '/api/v1/login', pick: 'minio' }, probe: '/api/v1/login' },
   { key: 'vault', host: 'vault', start: { kind: 'json-post', path: '/v1/auth/oidc/oidc/auth_url', pick: 'vault' }, probe: '/v1/sys/health' },
   { key: 'wiki-js', host: 'wiki', start: { kind: 'wikijs' }, probe: '/login' },
 ];
@@ -159,16 +160,6 @@ function classifyLoginForm(httpStatus, body) {
 
 // ---- ツールごとの「ログイン開始 URL の取り出し」 --------------------------------------
 
-/** MinIO console の `/api/v1/login`（未認証で引ける）から SSO の飛び先を取る。 */
-function extractMinioRedirect(text) {
-  const o = safeJson(text);
-  const rules = (o && o.redirectRules) || [];
-  for (const r of rules) {
-    if (r && typeof r.redirect === 'string' && r.redirect !== '') return r.redirect;
-  }
-  return '';
-}
-
 /** Vault の `auth/oidc/oidc/auth_url`（未認証で引ける）から飛び先を取る。 */
 function extractVaultAuthUrl(text) {
   const o = safeJson(text);
@@ -270,9 +261,6 @@ function main(argv) {
     case 'authorization-endpoint':
       process.stdout.write(extractAuthorizationEndpoint(readStdin()) + '\n');
       return 0;
-    case 'minio-redirect':
-      process.stdout.write(extractMinioRedirect(readStdin()) + '\n');
-      return 0;
     case 'vault-auth-url':
       process.stdout.write(extractVaultAuthUrl(readStdin()) + '\n');
       return 0;
@@ -310,7 +298,7 @@ function main(argv) {
       return 0;
     }
     default:
-      process.stderr.write(`usage: tool-oidc-login.js <tools|start-path|authorization-endpoint|minio-redirect|`
+      process.stderr.write(`usage: tool-oidc-login.js <tools|start-path|authorization-endpoint|`
         + `vault-auth-url|wikijs-oidc-key|classify-start|classify-form|negative-control-url|classify-negative>\n`);
       return 1;
   }
@@ -325,7 +313,6 @@ module.exports = {
   classifyStart,
   classifyLoginForm,
   classifyNegativeControl,
-  extractMinioRedirect,
   extractVaultAuthUrl,
   extractWikiOidcStrategyKey,
   extractAuthorizationEndpoint,

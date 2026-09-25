@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11]
-adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0109]
-iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0465]
-specs: [20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile]
-issues: [#1520, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, AST#18, AST#24, AST#727, planning#383]
+adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109]
+iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465]
+specs: [20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs]
+issues: [#1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, AST#18, AST#24, AST#727, planning#383]
 -->
 
 # セキュリティ仕様書
@@ -141,7 +141,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 
 | 区分 | 対象 | 方式 |
 | --- | --- | --- |
-| 保存時暗号化 | PostgreSQL（業務 DB）・MinIO（本文/資産）・Qdrant（ベクトル） | **アプリ層の暗号化は未実装（現状=なし）**。保存時暗号化はインフラ層（ストレージ/ボリューム暗号化・k8s Secret 暗号化）に委ねる方針で、実クラスタでの有効化・鍵管理は運用整備（未決事項・#198 と連動）。機微文書の機密性は ABAC（取得段 fail-closed）＋ Wiki `isPrivate` で担保する |
+| 保存時暗号化 | PostgreSQL（業務 DB）・SeaweedFS（本文/資産）・Qdrant（ベクトル） | **アプリ層の暗号化は未実装（現状=なし）**。保存時暗号化はインフラ層（ストレージ/ボリューム暗号化・k8s Secret 暗号化）に委ねる方針で、実クラスタでの有効化・鍵管理は運用整備（未決事項・#198 と連動）。機微文書の機密性は ABAC（取得段 fail-closed）＋ Wiki `isPrivate` で担保する |
 | 通信時暗号化（外部→BFF） | クライアント〜エッジ | TLS（リバースプロキシ/Ingress で終端）。**ローカル検証環境（経路B）も含めて平文 HTTP を残さない** —— `NFR-11` の適用範囲は環境を問わない（利用者裁定 2026-08-16・裁定依頼は計画側へ提出済み。証明書は計画 `ADR-0047` の selfsigned CA と、経路 B のエッジ TLS 終端の実装 ADR による） |
 | 通信時暗号化（サービス間） | 内部サービス間 | Istio STRICT mTLS で相互認証＋暗号化。NetworkPolicy を多層防御として併用 |
 | 個人情報 / 機微情報 | 文書本文・属性（機密区分）・利用者クレーム（clearance/department） | 文書の機密区分（`confidentiality`）は必須（サーバー側検証）。ABAC で区分×利用者資格を deny-by-default 評価（検索段の fail-closed な ABAC 強制）。高機密本文の外部 LLM への越境は egress ポリシーで遮断（confidential/restricted はセルフホスト固定）。個人情報の専用マスキング/匿名化は現状スコープ外（本システムは社内文書が対象。取り込み対象データの PII 取り扱いは各データソース側の責務） |
@@ -348,7 +348,7 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
 - RetrievalService `/search` の ABAC 取り扱い。
 - 稼働 Wiki.js での GraphQL PoC（スキーマ整合・`isPrivate` ページのサービスアカウント本文取得可否・
   ネットワーク分離の CI/E2E 検証）。GraphQL push 同期の実装 ADR のフォロー。
-- 保存時暗号化（PostgreSQL/MinIO/Qdrant）のインフラ層有効化・鍵管理（データ保護表参照。運用整備・#198 連動）。
+- 保存時暗号化（PostgreSQL/SeaweedFS/Qdrant）のインフラ層有効化・鍵管理（データ保護表参照。運用整備・#198 連動）。
 - コネクタ資格情報の Vault / External Secrets 移行（現状は DB 平文保存＋露出経路のマスクの暫定。上記「§データソースのコネクタ資格情報」参照）。**一元追跡: #458**（旧 #310 は 2026-08-02 に `duplicate` で close）。
 - 監査ログの保管期間・改ざん防止・エクスポートの運用設定（可観測性基盤側。#198 連動）。NFR「監査ログ保持」の具体化。
 - 検索クエリ側の機密区分ルーティング。現状クエリ埋め込みは既定外部

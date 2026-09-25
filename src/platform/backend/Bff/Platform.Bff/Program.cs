@@ -202,7 +202,7 @@ builder.Services.AddHttpClient("MarketMonitorService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:MarketMonitorService"]
         ?? "http://market-monitor-service:8080"));
 
-// FR-06, ADR-0014/ADR-0015: 正規化 Markdown 本文の読み取り用オブジェクトストレージ（storage://）。
+// FR-06, ADR-0014/ADR-0015（Superseded by ADR-0106）: 正規化 Markdown 本文の読み取り用オブジェクトストレージ（storage://）。
 // 未構成時は NullObjectStorageClient（CanResolve=false）へ縮退し、本文はプレースホルダへフォールバックする。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
 

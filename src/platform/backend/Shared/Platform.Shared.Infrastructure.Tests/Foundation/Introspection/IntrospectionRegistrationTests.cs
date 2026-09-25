@@ -161,12 +161,12 @@ public class IntrospectionRegistrationTests
     public void ポートは実装名と接続先を伴って申告される()
     {
         var report = Resolve("conversion-service", Declaration(), b => b
-            .AddPort("object-storage", "S3ObjectStorageClient", "minio:9000")
+            .AddPort("object-storage", "S3ObjectStorageClient", "seaweedfs:8333")
             .AddPort("vector-store", "QdrantIngestionVectorStore"));
 
         report.Ports.Should().HaveCount(2);
         report.Ports[0].Should().BeEquivalentTo(
-            new PortSelectionDto("object-storage", "S3ObjectStorageClient", "minio:9000"));
+            new PortSelectionDto("object-storage", "S3ObjectStorageClient", "seaweedfs:8333"));
         report.Ports[1].Target.Should().BeNull("接続先を持たないポートもある（既定 null）");
     }
 

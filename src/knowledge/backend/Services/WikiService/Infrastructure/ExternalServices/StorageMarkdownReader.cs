@@ -4,7 +4,7 @@ using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 namespace WikiService.Infrastructure.ExternalServices;
 
 // FR-13/FR-06, UC-07, IADR-0021: 正規化 Markdown 本文の取得。
-// storage:// URI は S3 互換オブジェクトストレージ（MinIO, ADR-0015）から実本文を取得する
+// storage:// URI は S3 互換オブジェクトストレージ（SeaweedFS, ADR-0015（Superseded by ADR-0106））から実本文を取得する
 // （ABAC を前段で強制する WikiService ゲートウェイ経由のサーバサイド読み取り。IADR-0017/IADR-0020 と整合）。
 // http(s) URI は HTTP で実取得し、いずれでもない／未指定／未配備のときはプレースホルダー本文へ縮退する。
 public class StorageMarkdownReader(

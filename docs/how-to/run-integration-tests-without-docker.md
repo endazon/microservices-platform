@@ -3,15 +3,15 @@ title: Docker Engine API が無い環境（containerd 等）で統合テスト�
 type: how-to
 status: fixed
 created: 2026-09-08
-updated: 2026-09-15
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, NFR-09, UC-03, UC-05]
-adrs: [ADR-0004, ADR-0027]
-iadrs: [IADR-0130, IADR-0231, IADR-0232, IADR-0414]
-specs: [20260908_issue-1336_integration-gate-asks-for-services, 20260909_issue-1337_fanout-tests-on-shared-broker, 20260915_issue-1434_minio-image-registry]
-issues: [#455, #1073, #1336, #1337, #1434]
+adrs: [ADR-0004, ADR-0027, ADR-0106]
+iadrs: [IADR-0130, IADR-0231, IADR-0232, IADR-0414, IADR-0461]
+specs: [20260908_issue-1336_integration-gate-asks-for-services, 20260909_issue-1337_fanout-tests-on-shared-broker, 20260915_issue-1434_minio-image-registry, 20260925_1499_object-storage-seaweedfs]
+issues: [#455, #1073, #1336, #1337, #1434, #1499]
 -->
 
 # 手順書: Docker Engine API が無い環境で統合テストを走らせる
@@ -41,21 +41,30 @@ nerdctl run -d --name msp-test-mq -p 55672:5672 rabbitmq:3.13-alpine
 **image はテストが使うものと同じにする**（`PostgresFixture` / `RabbitMqFixture` を参照）。
 ポートは既定と衝突しないよう 5 万番台へずらしてある。
 
-Qdrant と MinIO も要るなら:
+Qdrant とオブジェクトストレージも要るなら:
 
 ```bash
 nerdctl run -d --name msp-test-qdrant -p 56334:6334 qdrant/qdrant:latest
 ```
 
-MinIO は **quay.io の公式イメージ**から引く（Docker Hub の `minio/minio` は撤去されており、pull が失敗する）。
+オブジェクトストレージは **SeaweedFS** である（2026-09-25 に MinIO から差し替えた。MinIO の公開イメージは匿名で
+取得できなくなっている）。**イメージと引数はテストが起こすものと同じにする**（`SeaweedFsContainer` を参照）。
 
 ```bash
-nerdctl run -d --name msp-test-minio -p 59000:9000 \
-  -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
-  quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z server /data
+nerdctl run -d --name msp-test-seaweedfs -p 58333:8333 \
+  -e AWS_ACCESS_KEY_ID=objectstorage-dev -e AWS_SECRET_ACCESS_KEY=objectstorage-dev-secret \
+  --entrypoint /bin/sh \
+  docker.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882 \
+  -c 'K="$(head -c 32 /dev/urandom | base64 | tr -d '"'"'\n'"'"')"; [ ${#K} -ge 40 ] || { echo '"'"'signing key generation failed'"'"' >&2; exit 1; }; export WEED_JWT_FILER_SIGNING_KEY="$K"; exec /entrypoint.sh "$@"' seaweedfs \
+  server -ip=127.0.0.1 -ip.bind=127.0.0.1 -s3 -s3.ip.bind=0.0.0.0 -s3.port=8333 -s3.port.grpc=18333 \
+  -s3.port.iceberg=0 -s3.port.lance=0 -master.telemetry=false
 ```
 
-🔴 **MinIO の資格情報は `minioadmin` / `minioadmin` でなければならない。**
+🔴 **`-master.telemetry=false` を外さないこと。** SeaweedFS はテレメトリが既定で有効であり、外すと外部へ送信が起きる。
+🔴 **署名鍵を与える起動スクリプトも外さないこと。** S3 の gRPC（18333）の管理用の呼び出しは、鍵が空だと認証なしで通る
+（上の例は 18333 をホストへ公開していないが、同じネットワークの他のコンテナからは届く）。
+
+🔴 **資格情報は `objectstorage-dev` / `objectstorage-dev-secret` でなければならない。**
 テストはこの 1 組を前提にしており、端点だけを変数で受け取る（資格情報を変数にすると
 「端点だけ変えて資格情報を変え忘れた」状態が作れるため、意図的に変数にしていない）。
 
@@ -65,7 +74,7 @@ nerdctl run -d --name msp-test-minio -p 59000:9000 \
 export PLATFORM_TEST_POSTGRES="Host=127.0.0.1;Port=55432;Database=integration_test;Username=kp;Password=kp"
 export PLATFORM_TEST_RABBITMQ="amqp://guest:guest@127.0.0.1:55672"
 export PLATFORM_TEST_QDRANT="127.0.0.1:56334"
-export PLATFORM_TEST_MINIO="http://127.0.0.1:59000"
+export PLATFORM_TEST_OBJECT_STORAGE="http://127.0.0.1:58333"
 ```
 
 **要る分だけ渡せばよい。** 渡さなかった依存を要するテストは、理由と渡すべき変数名を添えて
@@ -165,7 +174,7 @@ dotnet test src/knowledge/backend/Tests/Knowledge.IntegrationTests/Knowledge.Int
 ## 後片付け
 
 ```bash
-nerdctl rm -f msp-test-pg msp-test-mq msp-test-qdrant msp-test-minio
+nerdctl rm -f msp-test-pg msp-test-mq msp-test-qdrant msp-test-seaweedfs
 ```
 
 ## 補足: `DOCKER_HOST` を持っている場合
