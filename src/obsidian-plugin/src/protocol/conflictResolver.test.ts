@@ -102,6 +102,15 @@ describe('conflictResolver — 3 択（ADR-0037 決定 7, IADR-0352 決定 3）'
       title: 'a (ローカル 20260903-0912)',
     });
     expect(server.find('a')).toMatchObject({ version: 2, content: 'server v2' });
+    // ADR-0105 決定 3, IADR-0464 (#1521): 写しの push は元のノートの ID を添える（サーバがタグだけを写す）。
+    const copyPush = server.calls.filter((c) => c.method === 'POST');
+    expect(copyPush).toHaveLength(1);
+    expect(JSON.parse(copyPush[0]!.body!)).toMatchObject({
+      noteId: null,
+      baseVersion: null,
+      vaultPath: 'a (ローカル 20260903-0912).md',
+      sourceNoteId: 'a',
+    });
     expect(state.saved?.[created!.noteId]).toMatchObject({ localPath: copyPath, version: 2 });
     expect(state.saved?.a).toMatchObject({ version: 2, localHash: 'h(server v2)' });
     expect(journal.saved?.edits).toEqual({});
@@ -165,6 +174,10 @@ describe('resolveServerDeleted（ADR-0037 決定 5, フォローアップ 11, IA
     expect(result).toMatchObject({ kind: 'recreated', localPath: target.localPath });
     const created = server.notes.find((n) => n.noteId !== 'a')!;
     expect(created).toMatchObject({ vaultPath: 'a.md', content: 'A edited', deleted: false });
+    // IADR-0464 (#1521): 作り直しは「両方残す」ではないので元のノートの ID を添えない（削除済みの資料から写さない）。
+    const recreatePush = server.calls.filter((c) => c.method === 'POST');
+    expect(recreatePush).toHaveLength(1);
+    expect(JSON.parse(recreatePush[0]!.body!)).not.toHaveProperty('sourceNoteId');
     expect(server.find('a')!.deleted).toBe(true);
     expect(state.saved?.a).toBeUndefined();
     expect(state.saved?.[created.noteId]).toMatchObject({

@@ -191,6 +191,7 @@
     "docs/tests/FR-20_obsidian-sync.md": [
       "ObsidianSyncMoveTests",
       "ObsidianSyncProtocolTests",
+      "PushSourceNoteTagsTests",
       "SyncDeviceTokenTests"
     ],
     "docs/tests/FR-21_direct-body-intake.md": [

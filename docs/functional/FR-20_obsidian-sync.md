@@ -3,15 +3,15 @@ title: FR-20 Obsidian 双方向同期 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-08-23
-updated: 2026-09-05
+updated: 2026-09-26
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-20]
-adrs: [ADR-0021, ADR-0037, ADR-0046, ADR-0054]
-iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0375]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451b_notification-ingress, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260905_issue-1213_obsidian-plugin-release-assets]
-issues: [#451, #600, #1098, #1153, #1154, #1176, #1213]
+adrs: [ADR-0021, ADR-0037, ADR-0046, ADR-0054, ADR-0105, ADR-0110]
+iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0375, IADR-0464]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451b_notification-ingress, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260905_issue-1213_obsidian-plugin-release-assets, 20260926_1521_plugin-keep-both-source-note-tags]
+issues: [#451, #600, #1098, #1153, #1154, #1176, #1213, #1521, planning#652]
 -->
 
 # 機能仕様書: Obsidian 双方向同期
@@ -103,7 +103,7 @@ sequenceDiagram
 | 取り込みの差分計算 | manifest の版とハッシュを最終同期時の記録と突き合わせ、変化のある資料だけ pull する。ローカルが既に同じ内容なら書かずに採用する。ローカルで編集済みの資料は上書きしない（送信で送る） |
 | 「1 編集」の刻み | 保存イベントを **30 秒の静穏窓**で畳み込んだ単位を 1 編集とし、未送信の編集列を `data.json` に本文つきで積む（1 ファイル 50 件まで）。送信時に `edits[]` として送るので、オフラインで 10 回保存すれば 10 版 |
 | 送信の計画 | 未追跡のファイルは新規、変わったファイルは更新（`baseVersion` = 最終同期時の版＝楽観ロック）。**「削除」と「同期フォルダから外す」は Obsidian のイベントで区別し**、削除だけ論理削除を送る。プラグインが見ていない間に消えたファイルは削除を送らない（報告のみ） |
-| 競合（409） | **上書きせず**、資料ごとにダイアログで「ローカルを採用（サーバの版の上に編集列を積んで送る）」「サーバを採用（ローカルを上書き）」「両方残す（ローカルを別名で新規送信）」「保留」を提示する。選ぶまでどちらも変わらない |
+| 競合（409） | **上書きせず**、資料ごとにダイアログで「ローカルを採用（サーバの版の上に編集列を積んで送る）」「サーバを採用（ローカルを上書き）」「両方残す（ローカルを別名で新規送信）」「保留」を提示する。選ぶまでどちらも変わらない。「両方残す」の写しは元のノートの ID を添えて送り、**元のノートのタグだけを引き継ぐ**（露出・共有先・版・機密区分は引き継がない。画面で解いた場合と同じ） |
 | サーバ側の削除 | `deleted=true`（または manifest からの消滅）を検知しても**ローカルは消さない**。同期状態に印を残し、送信時に「ローカルを採用（新規として再作成）／サーバを採用（ゴミ箱へ）」を確認する |
 | サーバ側のリネーム | ローカルのファイルを新パスへ移す（ローカルで編集していれば旧ファイルを残して通知） |
 | ローカルのリネーム | 追跡の紐付けを更新し、**ナレッジベース側の名前も変える**（中身を送るより先に名前を送る）。移動先の名前が埋まっている／版がずれていれば伝わらず、競合として提示する（自動で名前を付け替えない）。名前の失敗は本文の送信を止めない |

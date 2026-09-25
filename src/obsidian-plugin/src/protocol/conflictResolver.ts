@@ -5,7 +5,8 @@
 //   （サーバ側の編集はローカルの編集の**前の版**として履歴に残る。KB が正なので消えはしない）。
 // - **サーバを採用**: サーバの本文でローカルを上書きし、未送信の編集列を捨てる。
 // - **両方残す**: ローカルの内容を `<名前> (ローカル YYYYMMDD-HHmm).md` に写して新規 push し、
-//   元のパスはサーバの本文で上書きする。
+//   元のパスはサーバの本文で上書きする。写しの push には元のノートの ID（`sourceNoteId`）を添え、
+//   サーバが元の資料のタグだけを写す（ADR-0105 決定 3・[[IADR-0464]]）。
 //
 // **利用者が選ぶまでどれも実行しない。** ここは「選ばれたあと」の処理だけを持つ。
 // 3 択の提示は Obsidian の Modal（`obsidian/conflictModal.ts`）か CLI の引数（`cli/pull.ts`）。
@@ -136,6 +137,8 @@ export async function resolveVersionConflict(
   }
 
   // both: ローカルを別パスへ写して新規 push → 元のパスはサーバを採用。
+  // ADR-0105 決定 3, [[IADR-0464]] (#1521): 写しの push に元のノートの ID を添え、サーバにタグだけを写させる
+  // （サーバ側で「両方を残す」を解決した場合と、引き継ぐものを揃える）。
   const copyPath = localCopyPath(target.localPath, stampOf(deps.now()));
   await deps.files.write(copyPath, localContent);
   const copyVaultPath = toVaultPath(deps.syncFolder, copyPath) ?? copyPath;
@@ -145,6 +148,7 @@ export async function resolveVersionConflict(
     title: titleOf(copyPath),
     baseVersion: null,
     edits,
+    sourceNoteId: target.noteId,
   });
   state[created.noteId] = {
     localPath: copyPath,
