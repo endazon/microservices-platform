@@ -5,7 +5,7 @@ status: Proposed
 related_ids: [FR-19, FR-20, UC-11, SC-20, ADR-0037, ADR-0046, IADR-0270, IADR-0338]
 author: claude
 created: 2026-09-03
-updated: 2026-09-03
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0037_obsidian-sync-method.md
   - planning:projects/microservices-platform/05_screens/01_screens.md
@@ -151,6 +151,12 @@ issue: "#1153"
   1. サーバ契約に `vaultPath` の更新（リネーム）を足す（#1176）
   2. 自動同期（保存のたび／一定間隔）—— 必要になったら
   3. `IADR-0338` フォローアップ 1（エッジ公開 #1154）・3〜5 はそのまま
+
+## ［2026-09-26 追記 / #1521］「両方残す」の写しの push は元のノートの ID を添える
+
+計画 ADR-0105 決定 3（別名コピーはタグを引き継ぐ）の射程がプラグインの経路にも及ぶと planning#652 の裁定 1 が確定した（ADR-0105 フォローアップ 2 の 2026-09-26 訂正）。
+決定 3 の「両方残す」の新規 push に任意項目 `sourceNoteId`（元のノートの ID）を添え、サーバは同じ所有者の個人資料からだけタグを写す。
+通常の新規 push と `resolveServerDeleted` の `local`（作り直し）は添えない。判断と理由は [IADR-0464](IADR-0464_push-source-note-id-copies-tags-only-from-same-owner.md)。決定 1〜5 は変えない。
 
 ## 関連
 

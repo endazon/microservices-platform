@@ -4,14 +4,14 @@ type: how-to
 status: in-progress
 author: claude
 created: 2026-09-02
-updated: 2026-09-05
+updated: 2026-09-26
 ---
 <!-- trace:
 ids: [FR-19, FR-20, UC-11, SC-20, NFR-11]
-adrs: [ADR-0021, ADR-0037]
-iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0375]
-specs: [20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260905_issue-1213_obsidian-plugin-release-assets]
-issues: [#451, #1098, #1153, #1154, #1176, #1213]
+adrs: [ADR-0021, ADR-0037, ADR-0105, ADR-0110]
+iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0375, IADR-0464]
+specs: [20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260905_issue-1213_obsidian-plugin-release-assets, 20260926_1521_plugin-keep-both-source-note-tags]
+issues: [#451, #1098, #1153, #1154, #1176, #1213, #1521]
 -->
 
 # 手順ガイド: Obsidian プラグイン（個人資料同期）の入手・導入・配布
@@ -79,7 +79,7 @@ issues: [#451, #1098, #1153, #1154, #1176, #1213]
 | 同期フォルダの中で名前を変える | 次の送信で**ナレッジベース側の名前も変わる**（中身より先に名前が送られる）。同じ名前の資料が既にある／ナレッジベース側が先に進んでいる場合は名前だけ変わらず、競合として確認する（勝手に別名は付けない） |
 | ナレッジベース側で名前が変わった | 取り込み時にローカルのファイルが移動する（ローカルで編集していれば旧ファイルを残して通知） |
 | ナレッジベース側で削除された | ローカルのファイルは**消さない**。送信時に「ローカルを採用（新規として送り直す）／サーバを採用（ゴミ箱へ）」を確認する |
-| 両方で編集していた | 送信時に**競合**として 1 件ずつ確認ダイアログが出る。「ローカルを採用」「サーバを採用」「両方残す」「保留」から選ぶまで、どちらも上書きされない |
+| 両方で編集していた | 送信時に**競合**として 1 件ずつ確認ダイアログが出る。「ローカルを採用」「サーバを採用」「両方残す」「保留」から選ぶまで、どちらも上書きされない。「両方残す」で作られる写しは元の資料のタグを引き継ぐ（公開範囲・検索への露出は引き継がないので、必要なら画面で設定し直す） |
 
 ## 期限切れ・失効のとき
 

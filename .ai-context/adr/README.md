@@ -538,3 +538,4 @@
 | [IADR-0458](./IADR-0458_bff-user-credential-relay-is-edge-not-east-west.md) | **BFF はエッジであり、BFF が利用者の資格情報を後段へ付けて中継する 15 本は east-west に数えない**（#1397・オーナー裁定。計画 ADR への反映は環流待ち） | Accepted |
 | [IADR-0459](./IADR-0459_cutover-discard-and-rebuild-boundaries-and-verification.md) | **切替は 6 資産の破棄と realm.json からの作り直しで行う**（#457）。共有 PVC は消さず DB 単位・realm 単位で消し、検証は作り直しの時刻で見る | Accepted |
 | [IADR-0460](./IADR-0460_sc22-supply-source-from-external-secret-presence-and-restart-notice.md) | **SC-22 の供給元は同期先 ExternalSecret の有無から境界層が判定して 3 値（screen / git / unknown）で返し、画面は送る前に消費側の再起動を項目ごとに告げる**（#1502。計画 ADR-0104 決定 2・4）。構成値の写しで判定しない（推測になる）。権限は IADR-0456 決定 4 の Role の `get` で足り、増やさない | Accepted |
+| [IADR-0464](./IADR-0464_push-source-note-id-copies-tags-only-from-same-owner.md) | **プラグインの「両方を残す」の写しは push の任意項目 `sourceNoteId` で元のノートを指し、サーバは同じ所有者の個人資料からだけタグを写す**（#1521。計画 ADR-0105 決定 3・planning#652 の裁定 1）。他者・不在・組織文書の ID は拒否せず黙って写さない（写しの送信をタグのために止めない） | Accepted |

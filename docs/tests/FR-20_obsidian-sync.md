@@ -3,15 +3,15 @@ title: FR-20 Obsidian 双方向同期 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-08-23
-updated: 2026-09-03
+updated: 2026-09-26
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-20]
-adrs: [ADR-0037, ADR-0046]
-iadrs: [IADR-0270, IADR-0338, IADR-0352, IADR-0360]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1176_obsidian-sync-rename-contract]
-issues: [#451, #1098, #1153, #1176]
+adrs: [ADR-0037, ADR-0046, ADR-0105, ADR-0110]
+iadrs: [IADR-0270, IADR-0338, IADR-0352, IADR-0360, IADR-0464]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1176_obsidian-sync-rename-contract, 20260926_1521_plugin-keep-both-source-note-tags]
+issues: [#451, #1098, #1153, #1176, #1521]
 -->
 
 # テスト仕様書: Obsidian 双方向同期
@@ -59,6 +59,9 @@ issues: [#451, #1098, #1153, #1176]
 | 19 | 他人の資料・不在 ID のリネームは 404（存在秘匿）・トークン無しは 401（本人の同じ操作は 200＝陽性対照） | `他人の資料のリネームは404で存在ごと秘匿される` |
 | 20 | 論理削除済み資料のリネームは 409（復元すれば通る＝陽性対照） | `論理削除済みの資料のリネームは409deletedになる` |
 | 21 | リネームの実行記録が「誰が・いつ・何件」だけで、パス（＝実質的な題名）を含まない | `リネームの監査ログは件数のみでパスを含まない` |
+| 22 | 「両方残す」の写し（新規 push に元のノートの ID）は、自分の資料のタグだけを引き継ぐ（露出 3 つとも明示の OFF・共有 0 件・版は edits の数・機密区分は既定・索引へ流れない。元の資料の状態を先に確かめる＝陽性対照） | `PushSourceNoteTagsTests` › `sourceNoteIdが自分の資料を指すとタグだけを写し露出も共有先も版も機密区分も引き継がない` |
+| 23 | 元のノートの ID が他者の資料なら何も写さず、応答は ID 無しと同じ（同じ形の要求で自分の資料なら写る＝陽性対照） | `…他者の資料を指すと何も写さず応答も変わらない` |
+| 24 | 元のノートの ID が不在・組織文書なら何も写さない／ID 無しは従来どおりタグ空／更新の push では読まない | `…存在しない資料や組織文書を指すと何も写さない`（2 件）／`…sourceNoteIdが無ければ従来どおりタグは空`／`更新のpushではsourceNoteIdを読まない` |
 
 ## テストケース一覧（Obsidian プラグイン第 1 段。Obsidian 実体なし）
 
@@ -95,7 +98,7 @@ P15 と P19〜P22 の 5 件が落ちる。**リネームの 409 分岐**を同�
 | P18 | pull の書き込みが発火させた保存イベントは版として送らない | `pushSync.test.ts` › `journal が pull の書き込みの写しだけなら送らず unchanged…`／`collectEdits は…` |
 | P19 | ローカルを採用: サーバの現在版を baseVersion にして編集列を再 push | `conflictResolver.test.ts` › `local は…` |
 | P20 | サーバを採用: サーバの本文で上書きし未送信の編集を捨て、push しない | `conflictResolver.test.ts` › `server は…` |
-| P21 | 両方残す: 別名で新規 push し、元のパスはサーバの本文 | `conflictResolver.test.ts` › `both は…` |
+| P21 | 両方残す: 別名で新規 push し（元のノートの ID を添える）、元のパスはサーバの本文。通常の新規 push とサーバ側削除からの作り直しは ID を添えない | `conflictResolver.test.ts` › `both は…`／`resolveServerDeleted` の `local は…`／`pushSync.test.ts` › `未追跡のファイルは新規として push し…` |
 | P22 | 解決の途中でサーバがまた進んだら実行せず retry | `conflictResolver.test.ts` › `local の再 push がまた 409 になれば retry を返し、何も進めない` |
 | P23 | サーバ側削除はローカルを消さず状態に残し、送信時に提示（両側で無ければ外すだけ） | `pullSync.test.ts` › `追跡済み資料がサーバ側で削除…されたら serverDeleted を状態に残し、ファイルは触らない`／`pushSync.test.ts` › `serverDeleted の資料は…`／`conflictResolver.test.ts` の `resolveServerDeleted` 2 件 |
 | P24 | サーバ側リネームは移動（旧パスが未編集なら消す・編集済みなら残す）。ローカルのリネームは紐付けを更新し新規にしない | `pullSync.test.ts` › `サーバ側で vaultPath が変わった資料は…`／`journal にローカルのリネームがあれば…` |

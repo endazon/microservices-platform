@@ -79,6 +79,7 @@ describe('runPushSync（ADR-0037 決定 2・4・5・7・8・14, IADR-0352 決定
     const report = await runPushSync(deps(server, files, state, journal));
 
     expect(report.created).toEqual([`${FOLDER}/sub/新しいメモ.md`]);
+    // 本文全体の一致で固定する —— 通常の新規 push は `sourceNoteId` を送らない（IADR-0464。送るのは「両方残す」の写しだけ）。
     expect(pushed(server)).toEqual([
       {
         noteId: null,

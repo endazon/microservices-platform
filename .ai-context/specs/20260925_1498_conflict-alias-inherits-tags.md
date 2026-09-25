@@ -15,7 +15,7 @@ related_ids:
   - IADR-0455
 author: claude
 created: 2026-09-25
-updated: 2026-09-25
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0105_conflict-alias-note-inherits-tags-only.md (Accepted 2026-09-17)
   - planning:projects/microservices-platform/05_screens/01_screens.md (§SC-20 主要素 5 の 2026-09-17 確定ブロック)
@@ -81,6 +81,7 @@ MSP に対応する issue が無かったため #1498 を起票した。
    ローカル本文を `noteId: null` で新規 push する（`ObsidianSync/Push/Endpoint.cs:99` が `tags: []` で作る）。サーバはこの push を別名と識別できず、
    push の契約にタグの口も元の資料の口も無い。**ADR-0105 の実測はサーバ側の `CreateAliasNoteAsync` だけ**を挙げており、この経路を射程に含むかは
    計画の判断が要る（含むならプロトコルの変更＝元の資料の ID を push に載せる等が要る）。**本 PR では変えず、PR 本文と IADR-0444 の追記に記録する。**
+   ［2026-09-26 追記 / #1521］planning#652 の裁定 1 が「含む」と決め、#1521 で push に `sourceNoteId` を足して対応した（IADR-0464・作業仕様書 `20260926_1521_plugin-keep-both-source-note-tags.md`）。
 2. 画面の文言は変えない（上記 §除外）。
 
 ## 検証
