@@ -2,7 +2,7 @@
 title: "BFF → 各サービスの利用者資格情報を運ぶ 15 本を east-west に数えない —— オーナー裁定の記録と数え方の追随（#1397）"
 type: spec
 status: in-progress
-related_ids: [NFR-09, NFR-16, ADR-0029, ADR-0032, ADR-0075, ADR-0086, ADR-0089, IADR-0379, IADR-0401, IADR-0402, IADR-0426, IADR-0458]
+related_ids: [NFR-09, NFR-16, ADR-0029, ADR-0032, ADR-0075, ADR-0086, ADR-0089, IADR-0379, IADR-0042, IADR-0154, IADR-0401, IADR-0402, IADR-0403, IADR-0426, IADR-0458]
 author: claude
 created: 2026-09-25
 updated: 2026-09-25
@@ -84,13 +84,13 @@ plan_refs:
 | `DocumentService` の読み取り 4 箇所（REST） | 資格情報を付けない。gRPC `DocumentRead` の REST 並走側であり、east-west の退役規則で数える。**名前付きクライアント `DocumentService` 自体は書き込み側で資格情報を運ぶので 15 本に入る** |
 | `SearchBffEndpoints` の属性値照会（REST 側・資格情報あり） | 15 本（`RetrievalService`）の呼び出し箇所に数えるが、**gRPC `AttributeValues` の REST 並走側でもある**。この呼び出し箇所が消えるのは当該経路の REST 退役による（本裁定ではない） |
 | `HttpEffectiveConfigCollector` | 上表。⑤ として #1255 が移す |
-| `OpendAuthGateway`（AST `OpendAuthBffEndpoints`） | 後段は**サービスではなく OpenD Pod のサイドカー**で、認証を持たず、**BFF が利用者の資格情報を付けない**（BFF が唯一の認可点）。`AddHttpClient` 登録も MSP 側に無い |
+| `OpendAuthGateway`（AST `OpendAuthBffEndpoints`。宛先は `OpendAuth__BaseUrl` ＝ `deploy/local/values-local.yaml` の BFF の `extraEnv`。構成キーが `Services:` の外なので軸 2 には出ない） | 後段は**サービスではなく OpenD Pod のサイドカー**で、認証を持たず、**BFF が利用者の資格情報を付けない**（BFF が唯一の認可点）。`AddHttpClient` 登録も MSP 側に無い |
 | `VaultKvClient` / `ExternalSecretSyncRequester` / `SessionTokenRefresher` / 既定の `AddHttpClient()` | 後段が Vault・ESO・IdP（Keycloak）であり、メッシュ内のサービスではない |
 | サービス → サービスの呼び出し（AiAnalysis / Graph / Retrieval ほか） | 呼び出し元が BFF ではない。本裁定の射程外（#1255 のまま） |
 
 ## 裁定の読み方（本作業で固定する分類基準）
 
-- **エッジ（本裁定で east-west から外すもの）**: **BFF が利用者の要求を中継し、利用者の資格情報を後段へ付ける呼び出し。** 後段はその資格情報で自分の門（`AdminOnly` ／ ABAC ／主体の絞り込み）を判定する。north-south の続きであり、`IADR-0379` 決定 4 の「north-south = 利用者トークン」と同じ線である。
+- **エッジ（本裁定で east-west から外すもの）**: **BFF が利用者の要求を中継し、利用者の資格情報を後段へ付ける呼び出し。** 後段はその資格情報で自分の門（`AdminOnly` ／ ABAC ／主体の絞り込み）を判定する（🔴 **15 本のうち 14 本。`ConversionService` は認証を持たず、門は BFF の 1 枚**。下の 2026-09-25 追記）。north-south の続きであり、`IADR-0379` 決定 4 の「north-south = 利用者トークン」と同じ線である。
 - **east-west（従来どおり）**: **BFF 自身の資格情報（s2s）で呼ぶ呼び出し**と、サービス → サービスの呼び出し。
 - 🔴 **この基準はオーナー裁定の文言（「利用者資格情報を運ぶ 15 本」）を、呼び出し箇所へ降ろしたものである。** 裁定を広げない —— 「BFF から出る呼び出しはすべてエッジ」とは読まない（s2s の 3 面と扇形 ⑤ は east-west に残る）。
 
@@ -144,3 +144,19 @@ plan_refs:
 改番後は `check-commit-messages` の実在性検査（必須 check）が必ず落ちる。履歴を書き換えずに範囲から外す手は
 無い（`commit-allowlist.json` の区分 B は統合ブランチ上のコミットに限られる）ため、develop から切った新しい
 ブランチへ変更を 1 コミットで載せ直した。#1501 のブランチは残してある。
+
+［2026-09-25 追記 / #1397・監査の指摘］**規則 10（この変更で新たに誤りになる自分の記述）を引き直した。** 検索語は
+是正後の語ではなく、裁定が壊し得る前提の側で引いた: `自分の門` / `JWT を検証` / `二重ゲート` / `門を 1 枚` / `S へ動く` /
+`ConversionService` / `上表の外`（本 PR の差分と `.ai-context/adr/`・`docs/` 全体）。
+
+| 誤りになった記述 | 理由 | 扱い |
+| --- | --- | --- |
+| `IADR-0458` 決定 1・理由・結果「後段は受け取った利用者の資格情報で自分の門を判定する」「15 本の後段は利用者の JWT を検証し続ける」 | **`ConversionService` は認証を一切持たない**（`AddPlatformAuth` も `RequireAuthorization` も 0 件。`IADR-0042` 決定 3・`IADR-0154` 決定 6・`IADR-0403` 決定 4 の据え置き）。15 本のうち後段が門を持つのは 14 本 | 是正（14 本と明記し、例外として `ConversionService` を書いた） |
+| `IADR-0403` 決定 4・結果・フォローアップ 3「east-west gRPC 移行が `ConversionService` に及べば N から S へ動く」 | **本裁定で BFF → `ConversionService` は east-west ではなくなり、その移行は起きない** | フォローアップ 3 へ日付つき指し先を置いた（決定 4・結果の本文は当時の判断として残す）。閉じ方は `IADR-0458` 残るもの 4 と環流へ |
+| `docs/api/east-west-grpc.md` §5 の判定表直後「後段はその資格情報で自分の門を判定し続ける」 | 同上（変換のワーカーは例外） | 是正（例外の 1 段を足した） |
+| `IADR-0458` 実測「3 軸とも上表の外に REST の宛先を持たない」 | `OpendAuth__BaseUrl`（`Services:` の外の構成キー）が指すサイドカーがある。本書の除外表には載せていたが IADR が食い違っていた | 是正（サービス宛に限る旨と、決定 2 の表へ対象外の行を足した） |
+| 本書「裁定の読み方」のエッジの定義 | 上の 1 行目と同じ | 是正 |
+
+**変わらないもの**: 分類（15 本はエッジ）と本数。`ConversionService` も BFF が利用者の資格情報を付けて送る経路であり、
+裁定の文言（「利用者資格情報を運ぶ 15 本」）に当たる。変わるのは「後段が門を持つ」という理由づけが 1 本に当たらないことと、
+その 1 本の `NFR-09` 残差の行き先である。
