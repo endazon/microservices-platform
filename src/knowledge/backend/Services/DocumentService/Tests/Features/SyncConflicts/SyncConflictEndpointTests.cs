@@ -455,6 +455,149 @@ public class SyncConflictEndpointTests(TestWebApplicationFactory factory)
         UpdatesFor(note.NoteId).Should().BeEmpty();
     }
 
+    // ── ADR-0105（#1498）: 別名資料が引き継ぐのはタグだけ ─────────────────
+    //
+    // 決定 3: タグは**引き継ぐ**（組織共通の辞書への参照で秘密性を持たない）。
+    // 決定 1・2・3・4: 露出 3 トグル・共有先・版履歴・機密区分は**引き継がない**。
+    // 🔴 **陰性は陽性対照と対で置く** —— 元の資料が露出 ON・共有あり・版 3 以上・機密区分が既定と違う状態を
+    // 先に確かめないと、「そもそも元の資料に無かったから写らなかった」で緑になる。
+
+    private HttpClient TagAdmin()
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-admin");
+        return client;
+    }
+
+    private async Task<int> UsageCountAsync(Guid tagId)
+    {
+        var body = await TagAdmin().GetFromJsonAsync<TagDictionaryResponse>("/tags",
+            TestContext.Current.CancellationToken);
+        return body!.Tags.Single(t => t.Id == tagId).UsageCount;
+    }
+
+    // 元の資料にタグ 2 つ・共有 1 件・既定と違う機密区分を与える（露出は呼び出し側が API で ON にしておく）。
+    // 属性は現在の値（露出を含む）を土台に機密区分だけを差し替える —— 露出の投影を壊さない。
+    private async Task<(Tag A, Tag B)> DecorateSourceAsync(Guid noteId, string grantedBy)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var a = Tag.Create($"引継{Guid.NewGuid():N}"[..12]);
+        var b = Tag.Create($"引継{Guid.NewGuid():N}"[..12]);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+        db.Tags.AddRange(a, b);
+        var doc = await db.Documents.FirstAsync(d => d.Id == noteId, ct);
+        var attributes = new Dictionary<string, string>(doc.Attributes)
+        {
+            [DocumentAttributes.ConfidentialityKey] = "internal",
+        };
+        doc.UpdateMetadata(attributes, [a.Id, b.Id], "test-decorate");
+        db.DocumentShares.Add(DocumentShare.Create(noteId, "user", "colleague-1", grantedBy));
+        await db.SaveChangesAsync(ct);
+        return (a, b);
+    }
+
+    [Fact]
+    public async Task bothの解決で作る別名資料は元の資料のタグを引き継ぎ使用件数が1増える()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (note, session, user, _) = await ConflictedNoteAsync("c-alias-tags");
+        var (a, b) = await DecorateSourceAsync(note.NoteId, user);
+        (await UsageCountAsync(a.Id)).Should().Be(1, "前提: 元の資料だけがタグを参照している");
+        (await UsageCountAsync(b.Id)).Should().Be(1);
+
+        var body = await ResolveOnlyConflictAsync(session, SyncConflictResolutions.Both);
+        var createdId = body.CreatedNoteId!.Value;
+
+        var list = (await session.GetFromJsonAsync<PrivateNoteListResponse>("/private-notes/", ct))!;
+        list.Notes.Single(n => n.Id == createdId).Tags.Should().BeEquivalentTo([a.Name, b.Name],
+            "ADR-0105 決定 3: 別名資料は元の資料のタグを引き継ぐ");
+        list.Notes.Single(n => n.Id == note.NoteId).Tags.Should().BeEquivalentTo([a.Name, b.Name],
+            "元の資料のタグは変わらない");
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            var created = await db.Documents.FirstAsync(d => d.Id == createdId, ct);
+            var source = await db.Documents.FirstAsync(d => d.Id == note.NoteId, ct);
+            created.Tags.Should().Equal(source.Tags, "識別子の集合をそのまま写す（並びも保つ）");
+            created.Tags.Should().NotBeSameAs(source.Tags, "元の資料と同じリストの実体を共有しない");
+        }
+
+        // ADR-0105 決定 3 が受け入れた副作用: 写しの分だけ使用件数が増える（写しがある間は削除できない）。
+        (await UsageCountAsync(a.Id)).Should().Be(2);
+        (await UsageCountAsync(b.Id)).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task bothの解決で作る別名資料は露出も共有先も版履歴も機密区分も引き継がない()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (note, session, user, plugin) = await ConflictedNoteAsync("c-alias-noinherit");
+        await ExposeToSearchAsync(session, note.NoteId);
+        await DecorateSourceAsync(note.NoteId, user);
+        var sourceUpdates = UpdatesFor(note.NoteId).Count;
+
+        // 陽性対照: 元の資料は露出 ON・共有 1 件・版 3 以上・機密区分が既定（restricted）と違う。
+        var before = (await session.GetFromJsonAsync<PrivateNoteListResponse>("/private-notes/", ct))!
+            .Notes.Single(n => n.Id == note.NoteId);
+        before.IncludeInSearch.Should().BeTrue("前提: 元の資料は露出 ON");
+        before.SharedUserCount.Should().Be(1, "前提: 元の資料は 1 人に共有されている");
+        before.Version.Should().BeGreaterThanOrEqualTo(3, "前提: 元の資料は複数の版を持つ");
+
+        var body = await ResolveOnlyConflictAsync(session, SyncConflictResolutions.Both);
+        var createdId = body.CreatedNoteId!.Value;
+
+        var created = (await session.GetFromJsonAsync<PrivateNoteListResponse>("/private-notes/", ct))!
+            .Notes.Single(n => n.Id == createdId);
+        // 決定 1・4: 露出 3 トグルは引き継がない（3 つとも OFF）。
+        created.IncludeInSearch.Should().BeFalse();
+        created.IncludeInGraph.Should().BeFalse();
+        created.IncludeInAi.Should().BeFalse();
+        // 決定 2: 共有先は引き継がない（共有されていない資料として始まる）。
+        created.Visibility.Should().Be(PrivateNoteVisibilityValues.Private);
+        created.SharedUserCount.Should().Be(0);
+        created.SharedGroupCount.Should().Be(0);
+        // 決定 3: 版履歴は引き継がない（1 版から始まる）。
+        created.Version.Should().Be(1);
+        var pulled = await plugin.GetFromJsonAsync<PullNoteResponse>(
+            $"/private-notes/sync/notes/{createdId}", ct);
+        pulled!.Version.Should().Be(1);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            (await db.DocumentShares.CountAsync(s => s.DocumentId == createdId, ct))
+                .Should().Be(0, "共有台帳へ利用者の明示操作なしに行を足さない");
+            (await db.DocumentShares.CountAsync(s => s.DocumentId == note.NoteId, ct))
+                .Should().Be(1, "元の資料の共有はそのまま");
+            (await db.DocumentVersions.CountAsync(v => v.DocumentId == createdId, ct))
+                .Should().Be(1, "別名資料の版履歴は作成の 1 版だけ");
+            var doc = await db.Documents.FirstAsync(d => d.Id == createdId, ct);
+            // 決定 4: OFF は属性の不在ではなく資料単位の明示の値で書く。
+            doc.Attributes.Should().ContainKey(DocumentAttributes.ConfidentialityKey)
+                .WhoseValue.Should().Be("restricted", "機密区分は個人資料の既定へ戻る（元の資料は internal）");
+            foreach (var key in DocumentExposure.AllKeys)
+                doc.Attributes.Should().ContainKey(key)
+                    .WhoseValue.Should().Be(DocumentExposure.Excluded, $"{key} は明示の OFF が書かれている");
+        }
+
+        UpdatesFor(createdId).Should().BeEmpty("露出 OFF の別名資料は索引の生産側へ流れない");
+        UpdatesFor(note.NoteId).Should().HaveCount(sourceUpdates, "元の資料は変わらないので再発行しない");
+    }
+
+    [Fact]
+    public async Task bothの解決はタグの無い資料では別名資料のタグも空になる()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (_, session, _, _) = await ConflictedNoteAsync("c-alias-notags");
+
+        var body = await ResolveOnlyConflictAsync(session, SyncConflictResolutions.Both);
+
+        var list = (await session.GetFromJsonAsync<PrivateNoteListResponse>("/private-notes/", ct))!;
+        list.Notes.Single(n => n.Id == body.CreatedNoteId).Tags.Should().BeEmpty();
+    }
+
     // ADR-0037 決定 9: 監査は「誰が・いつ・何件」。**タイトル・本文・Vault パスを書かない。**
     [Fact]
     public async Task 競合の監査ログはタイトルも本文も書かない()

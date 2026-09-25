@@ -122,6 +122,20 @@ internal static class ResolveSyncConflictEndpoint
 
     // SC-20 主要素 5: `both` の別名資料。**新規作成の規則（容量上限・経路衝突）を通す** ——
     // 既存の作成経路（`PrivateNoteEndpoints` の 507 / 409）と同じ応答であり、別の規則を作らない。
+    //
+    // FR-19, FR-20, SC-20 主要素 5, ADR-0105 決定 1〜4, #1498: 別名資料が元の資料から引き継ぐのは**タグだけ**である。
+    //
+    // | 項目 | 扱い | 機序 |
+    // | --- | --- | --- |
+    // | タグ | 🔴 **引き継ぐ**（決定 3） | 元の資料（解決時点のサーバ版）の `Tags` を写す。タグは組織共通の辞書への参照であり秘密性を持たない |
+    // | 露出 3 トグル | 引き継がない（決定 1。**資料単位の明示の OFF** で書く＝決定 4） | `PrivateNoteDefaults` |
+    // | 共有先 | 引き継がない（決定 2） | 共有台帳は `DocumentId` で引く。別名資料は新しい ID なので 1 件も写らない（**ここで台帳へ行を足さない**） |
+    // | 版履歴 | 引き継がない（決定 3） | 新しい `Document` は 1 版から始まる |
+    // | 機密区分 | 引き継がない（`restricted`。SC-20 主要素 5 の表） | `PrivateNoteDefaults` |
+    //
+    // 🔴 **写すのは識別子の集合そのもの**（辞書との突き合わせをここで行わない）。元の資料に付いている時点で
+    // 辞書の値域は通過しており（`TagResolver.ToIdsAsync`）、参照のあるタグは削除が拒否される（SC-09）。
+    // 受け入れる副作用: 写した各タグの使用件数が 1 増え、写しがある間はそのタグを削除できない（決定 3）。
     private static async Task<(Document? Doc, IResult? Problem)> CreateAliasNoteAsync(
         DocumentDbContext db, IObjectStorageClient storage, string owner, PrivateNote source,
         Document sourceDoc, string localContent, DateTimeOffset now, CancellationToken ct)
@@ -142,12 +156,13 @@ internal static class ResolveSyncConflictEndpoint
         var uri = await storage.PutTextAsync(DocumentBodyIntake.StorageKey(id), localContent,
             DocumentBodyIntake.ContentType, ct);
         // 既定（doc_scope=private-note / owner / restricted / 露出 3 トグル OFF）は作成経路と同じ。
-        // 🔴 **元の資料の露出を継がない**（新規作成の既定。FR-21 受け入れ基準 ⑩）。
+        // 🔴 **元の資料の露出を継がない**（新規作成の既定。FR-21 受け入れ基準 ⑩・ADR-0105 決定 1）。
         // #1474: 呼び出し側で門を通す（push の新規作成と同じ形）。露出は OFF で作られるため、
         // 現行の既定では門に弾かれ、索引の生産側へは何も流れない（ADR-0061 決定 2）。
+        // ADR-0105 決定 3 (#1498): タグだけは元の資料から写す（別のリストにする —— 元の資料と同じ実体を共有しない）。
         var doc = Document.CreateWithBody(id, ConflictAlias.TitleOf(sourceDoc.Title, now), uri,
             originalUri: null, contentType: DocumentBodyIntake.ContentType,
-            attributes: PrivateNoteEndpoints.PrivateNoteDefaults(owner), tags: [],
+            attributes: PrivateNoteEndpoints.PrivateNoteDefaults(owner), tags: [.. sourceDoc.Tags],
             contentFingerprint: DocumentBodyIntake.Fingerprint(localContent));
         db.Documents.Add(doc);
         db.PrivateNotes.Add(PrivateNote.Create(id, owner, vaultPath, bytes,

@@ -2046,6 +2046,8 @@ export const getBffSyncConflictResolveUrl = (id: string,) => {
 /**
  * `local` は端末の本文を新しい版として書く。`server` は資料を変えない。`both` は端末の本文を
  * 別名の新規資料（容量上限の新規作成拒否が適用される。507）として作る。**自動解決の値は無い。**
+ * ADR-0105: `both` の別名資料が元の資料から引き継ぐのは**タグだけ**である（各タグの使用件数が 1 増える）。
+ * 露出 3 トグル（3 つとも明示の OFF）・共有先（0 件）・版履歴（1 版から）・機密区分（`restricted`）は引き継がない。
  * @summary FR-20, UC-11, SC-20: 競合を解決する（ローカルを採用／サーバを採用／両方を残す）
  */
 export const bffSyncConflictResolve = async (id: string,
