@@ -52,7 +52,7 @@ $ grep -n -E "kv put|kv patch" deploy/local/vault/eso/bootstrap.sh
 
 | 分類 | 本数 | 中身 | 回せるか（経路B・2026-09-25） |
 | --- | --- | --- | --- |
-| `items[]` | 6（MSP 3・AST 3） | 外部の発行元がある値（LLM API キー・SMTP・Wiki.js API キー・AST の外部 API キー / Discord・moomoo・OpenD RSA 鍵） | **回せる**（画面から） |
+| `items[]` | 6（MSP 3・AST 3） | Git に置けず画面から入れる値 —— 外部の発行元がある値（LLM API キー・SMTP・Wiki.js API キー・AST の外部 API キー / Discord・moomoo）と、画面が生成する OpenD RSA 鍵 | **回せる**（画面から） |
 | `excluded[]` | 7 | データストアの資格情報（postgres・postgres-app・rabbitmq・rabbitmq-app・keycloak-admin・minio-credentials・wikijs-db） | **ストア側と同時なら回せる**（手順を書く。未実測） |
 | `deferred[]` | 18 | Keycloak のクライアントシークレット（OIDC 9・s2s 9） | 🔴 **恒久的には回せない**（下の軸 2） |
 
@@ -66,8 +66,11 @@ $ grep -c '"secret": "' deploy/keycloak/microservices-platform-realm.json   → 
 ```
 
 - **`k8s-local-up.sh` の再実行が 3 つの経路で値を戻す**:
-  1. `apply_secret`（手動作成の Secret。`postgres` / `rabbitmq` / `keycloak-admin` は `ESO=1` でも作る）
-  2. `bootstrap.sh` の `vault kv put`（`items[]` のうち seed-if-absent にした 4 KV **以外**の 24 本は毎回全置換）
+  1. `apply_secret`（手動作成の Secret。`postgres` / `rabbitmq` / `keycloak-admin` / `reset-gate-oidc` / `keycloak-smtp` は `ESO=1` でも作る）
+  2. `bootstrap.sh` の `vault kv put`（seed-if-absent は `items[]` の 4 KV —— MSP 3 ＋ AST の app-secrets。無条件の
+     `vault kv put secret/…` は **25 本** ＝ `excluded[]` 7 ＋ `deferred[]` 18 で、毎回全置換）
+     ［2026-09-25 監査指摘で訂正: 初版は「24 本」と書いていた。MSP 28 から MSP の `items[]` 3 を引くと 25 である。
+     `grep -c '^vexec "vault kv put secret/' deploy/local/vault/eso/bootstrap.sh` → 25 で確かめた］
   3. realm の追随（`reconcile-realm.sh`）: realm JSON の `secret` を**正**として稼働 realm へ当て直す
 - ⇒ `excluded[]` は **env で新しい値を渡し続ける限り**戻らない（env 名は `deploy/local/README.md`「機密情報」表）。
 - ⇒ 🔴 `deferred[]` は env を渡しても **3 が realm JSON の開発用既定値へ戻す**。しかもその既定値は Git に在る

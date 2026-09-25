@@ -31,7 +31,7 @@ issues: [#458, #1411, #1477]
 
 | 分類 | 何か | 回せるか | 手順 |
 | --- | --- | --- | --- |
-| `items[]`（6 項目） | 外部の発行元がある値 —— 外部 LLM の API キー・メール送信のアプリパスワード・Wiki.js の API キー・取引ユニットの外部 API キー / Discord / 証券会社ログイン / OpenD の RSA 鍵 | ✅ **回せる** | [手順 A](#手順-a-items画面から回す)（製品の画面から） |
+| `items[]`（6 項目） | Git に置けず画面から入れる値 —— 外部の発行元がある値（外部 LLM の API キー・メール送信のアプリパスワード・Wiki.js の API キー・取引ユニットの外部 API キー / Discord / 証券会社ログイン）と、**画面が生成する** OpenD の RSA 鍵 | ✅ **回せる** | [手順 A](#手順-a-items画面から回す)（製品の画面から） |
 | `excluded[]`（7 項目） | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `rabbitmq-app` / `keycloak-admin` / `minio-credentials` / `wikijs-db` | 🟡 **ストア側と同時なら回せる** | [手順 B](#手順-b-excludedストア側と同時に回す)（コンソール。未実測） |
 | `deferred[]`（18 項目） | 認証基盤（Keycloak）のクライアントシークレット —— OIDC クライアント 9・サービス間 9 | 🔴 **いまは恒久的には回せない** | [手順 C](#手順-c-deferredいまは回せない理由と回すための前提) |
 
@@ -78,11 +78,13 @@ issues: [#458, #1411, #1477]
 
 | 経路 | 何をするか | 影響する分類 |
 | --- | --- | --- |
-| 手動の Secret 作成（`apply_secret`） | env が無ければ**開発用既定値**で Secret を作る。`postgres` / `rabbitmq` / `keycloak-admin` は `ESO=1` でも作る（同期は `Merge` で上書きするだけ） | `excluded[]` |
-| 保管先の再投入（`deploy/local/vault/eso/bootstrap.sh`） | 画面が書く KV（`items[]` のうち種を入れる 4 つ）は**無いときだけ**作り、在れば env が空でないプロパティだけ差し替える。**それ以外の 24 KV は毎回、env か開発用既定値で全置換する** | `excluded[]` と `deferred[]` |
+| 手動の Secret 作成（`apply_secret`） | env が無ければ**開発用既定値**で Secret を作る。`postgres` / `rabbitmq` / `keycloak-admin`（`excluded[]`）、`reset-gate-oidc`（`deferred[]`）、`keycloak-smtp`（`items[]`）は `ESO=1` でも作る（同期は `Merge` で上書きするだけ） | `excluded[]`・`deferred[]`（`reset-gate-oidc`）・`items[]`（`keycloak-smtp` の Secret だけ。下の注記） |
+| 保管先の再投入（`deploy/local/vault/eso/bootstrap.sh`） | 画面が書く KV（`items[]` のうち種を入れる 4 つ）は**無いときだけ**作り、在れば env が空でないプロパティだけ差し替える。**`excluded[]` の 7 と `deferred[]` の 18、計 25 KV は毎回、env か開発用既定値で全置換する** | `excluded[]` と `deferred[]` |
 | 認証基盤の宣言の追随（`deploy/local/keycloak-setup/reconcile-realm.sh`） | realm JSON を正として稼働中の realm へ差分を当てる。**クライアントの `secret` も含む** | `deferred[]` |
 
-- **`items[]` は戻らない**（画面で入れた値は再投入で消えない）。
+- **`items[]` は保管先の値が戻らない**（画面で入れた値は再投入で消えない）。ただし `keycloak-smtp` は **Secret だけ**が
+  手動作成で env の値（未指定なら空）に一度書き換わる。保管先の値は残っているので同期で戻るが、`Merge` の Secret の
+  上書きに同期がすぐ反応するかは確かめていない —— **起動の後に `keycloak-smtp` の同期を促す**（B-0 の `annotate`）。
 - **`excluded[]` は env で新しい値を渡し続ける限り戻らない。** env 名は `deploy/local/README.md` の「機密情報」表にある
   （`PG_PASSWORD` / `APP_DB_PASSWORD` / `WIKIJS_DB_PASSWORD` / `RABBITMQ_USER` / `RABBITMQ_PASSWORD` / `KEYCLOAK_ADMIN_PASSWORD` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`）。
   🔴 **渡し忘れると、保管先と Secret だけが既定値へ戻り、ストア側は新しい値のまま残る —— 認証が壊れる。**
@@ -93,7 +95,7 @@ issues: [#458, #1411, #1477]
 画面から書いた更新は**監査ログに残り**、書き込みが成立すると境界層が同期先の ExternalSecret へ即時同期を依頼し、
 Stakater Reloader が注釈を持つ消費側（外部 LLM の境界サービス・Wiki 同期サービス・メールの近接 MTA。取引ユニットの消費側は取引ユニットのチャート）を作り直す。
 
-1. **発行元で新しい値を発行する。** 旧はまだ失効させない（原則 1）。
+1. **発行元で新しい値を発行する。** 旧はまだ失効させない（原則 1）。OpenD の RSA 鍵には発行元が無く、2 の画面の「生成」が新しい値を作る。
 2. **画面（秘密情報・接続設定の管理）で、その項目のプロパティを 1 つずつ書く。** 画面の仕様は [秘密情報・接続設定の管理](../screens/SC-22_secret-item-management.md)。
    画面が「即時同期を依頼しました」と出すことを確かめる。「依頼できませんでした」と出たら
    [`secret-item-console-injection-runbook.md`](secret-item-console-injection-runbook.md) の手順 4（同期を促す）を手で行う。
@@ -121,22 +123,23 @@ Stakater Reloader が注釈を持つ消費側（外部 LLM の境界サービス
 
 ### B-0. 共通の部品
 
-値を読み込む（原則 2）:
+値を読み込む（原則 2。`read -s` / `-p` は bash の機能なので bash で実行する）:
 
-```sh
+```bash
 read -rs -p "new value: " NEW_VALUE && echo
 ```
 
 保管先のプロパティを 1 つ書く（`<path>` と `<property>` を置き換える）:
 
-```sh
-kubectl -n platform-infra exec -i deploy/vault -- sh -c '
+```bash
+printf '%s' "$NEW_VALUE" | kubectl -n platform-infra exec -i deploy/vault -- sh -c '
   export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"
   vault kv patch -method=patch secret/<path> <property>=-
-' <<EOF
-$NEW_VALUE
-EOF
+'
 ```
+
+🔴 **値は `printf '%s'` で渡す。ヒアドキュメント（`<<EOF`）や `echo` で渡さない** —— 末尾の改行ごと保管先へ入る
+おそれがあり、入ればストア側の値と 1 文字ずれて認証が壊れる（長さの確認で 1 多く出る）。`bootstrap.sh` も `printf '%s'` で渡している。
 
 同期を促す（同期の既定間隔は 1 時間）:
 
