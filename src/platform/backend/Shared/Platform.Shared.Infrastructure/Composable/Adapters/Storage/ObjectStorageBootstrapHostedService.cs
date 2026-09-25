@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 
-// FR-06, FR-12, ADR-0014/ADR-0015: 起動時にオブジェクトストレージのバケット存在とバージョニングを保証する。
+// FR-06, FR-12, ADR-0014/ADR-0015（Superseded by ADR-0106）: 起動時にオブジェクトストレージのバケット存在とバージョニングを保証する。
 // 書き込み側（ConversionService）で登録する。実クライアント（S3ObjectStorageClient）未構成のときは何もしない。
 // QdrantBootstrapHostedService（IngestionService）と同じ「起動時にストアを整える」方針。
 public sealed class ObjectStorageBootstrapHostedService(
@@ -27,7 +27,7 @@ public sealed class ObjectStorageBootstrapHostedService(
         }
         catch (Exception ex)
         {
-            // 起動を止めない（MinIO の起動待ちで全サービスが落ちるのは割に合わない）。
+            // 起動を止めない（オブジェクトストレージの起動待ちで全サービスが落ちるのは割に合わない）。
             //
             // 🔴 **［#1033］従前ここは「保存時に再試行される（MassTransit リトライ）」と書いていた。
             // それは誤りだった。** 書き込み元 4 サービスのうち DocumentService の `POST /documents` と

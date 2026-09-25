@@ -20,7 +20,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     // 他クラスの書き込みが見えてしまう（`DocumentTest` で実際に発火した。#660）。
     private readonly string _dbName = $"DocumentTest_{Guid.NewGuid()}";
 
-    // FR-21, ADR-0014/ADR-0015: 本文の格納先。**テストから格納内容を読める実装へ差し替える**
+    // FR-21, ADR-0014/ADR-0015（Superseded by ADR-0106）: 本文の格納先。**テストから格納内容を読める実装へ差し替える**
     // （縮退実装 `NullObjectStorageClient` は本文を保持しないため ⑦ が測れない）。
     public RecordingObjectStorageClient Storage { get; } = new();
 

@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 
-// FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: S3 互換オブジェクトストレージ（MinIO）クライアントの登録。
+// FR-06, FR-12, ADR-0014/ADR-0015（Superseded by ADR-0106）, IADR-0024: S3 互換オブジェクトストレージ（SeaweedFS）クライアントの登録。
 // 設定セクション `ObjectStorage` を読み、Endpoint と資格情報が揃えば実クライアント
 // （S3ObjectStorageClient）、揃わなければ縮退クライアント（NullObjectStorageClient）を登録する。
 public static class ObjectStorageExtensions

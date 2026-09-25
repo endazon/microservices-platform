@@ -47,12 +47,13 @@ global:
     existingSecret: rabbitmq-app
     passwordKey: password
 
-  # FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: S3 互換オブジェクトストレージ（MinIO）接続。
-  # 資格情報は Secret（existingSecret）経由で注入する（コミットしない。docs/security）。
+  # FR-06, FR-12, ADR-0014, ADR-0015（Superseded by ADR-0106）, IADR-0024, IADR-0461: S3 互換オブジェクト
+  # ストレージ（SeaweedFS）接続。資格情報は Secret（existingSecret）経由で注入する（コミットしない。docs/security）。
+  # Secret 名は製品名を持たない（IADR-0461 決定 3。サーバとクライアントが同じ Secret を読む）。
   objectStorage:
-    endpoint: http://minio:9000
+    endpoint: http://seaweedfs:8333
     bucket: knowledge-normalized
-    existingSecret: minio-credentials
+    existingSecret: object-storage-credentials
     accessKeyKey: accessKey
     secretKeyKey: secretKey
 
@@ -227,8 +228,8 @@ services:
     messaging: true
     # FR-14, IADR-0028: パイプライン段（catalog 段）をホストする — pipeline-config をマウントする。
     pipelineSteps: true
-    # FR-21, ADR-0014/ADR-0015, IADR-0264, IADR-0284 決定 5 (#992): 本文の直接受け入れ経路が
-    # 正規化 Markdown を格納する先（MinIO）。**これが無いと本文が永続化されない** ——
+    # FR-21, ADR-0014/ADR-0015（Superseded by ADR-0106）, IADR-0264, IADR-0284 決定 5 (#992): 本文の直接受け入れ経路が
+    # 正規化 Markdown を格納する先（オブジェクトストレージ）。**これが無いと本文が永続化されない** ——
     # `AddPlatformObjectStorage` は未設定時に `NullObjectStorageClient` へ縮退し、
     # 決定的な `storage://` URI を返すだけで実体を書かない。`MarkdownUri` は立つので
     # 取り込みの早期 return は通過するが、IngestionService が本文を読めない
@@ -284,7 +285,7 @@ services:
     # 面は**自己申告の読み取り 1 口だけ**（platform.introspection.v1.ServiceIntrospection）。呼び出し元は
     # 構成情報 API（BFF の Introspection__GrpcServices__* を持つときだけ）。readiness は 8080 のまま。
     grpcPort: 8081
-    # FR-01, IADR-0051: 実コネクタが取得した原本を MinIO へ格納する（書き込み側）。未設定時は縮退。
+    # FR-01, IADR-0051: 実コネクタが取得した原本をオブジェクトストレージへ格納する（書き込み側）。未設定時は縮退。
     # 実 filesystem 同期は対象ファイル共有（SMB/NFS）を PVC 等でマウントする必要がある（ops 手順・operations.md）。
     objectStorage: true
     # FR-01, UC-04, NFR(15分以内反映), IADR-0051, IADR-0074 (#299): 定期同期ワーカーの本番有効化。
@@ -331,7 +332,7 @@ services:
     messaging: true
     # FR-14, IADR-0028: パイプライン段（convert 段）をホストする — pipeline-config をマウントする。
     pipelineSteps: true
-    # FR-12, ADR-0015: 正規化本文・資産を MinIO へ保管する（書き込み側）。
+    # FR-12, ADR-0015（Superseded by ADR-0106）: 正規化本文・資産をオブジェクトストレージへ保管する（書き込み側）。
     objectStorage: true
     # FR-15, IADR-0029 (#142): 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
     # port を持つと Service が生成され BFF が到達できる。worker=true は HTTP ヘルスプローブを抑止する
@@ -370,7 +371,7 @@ services:
     messaging: true
     # FR-14, IADR-0028: パイプライン段（ingest 段）をホストする — pipeline-config をマウントする。
     pipelineSteps: true
-    # FR-06: storage:// 本文を MinIO から実取得する（読み取り側）。
+    # FR-06: storage:// 本文をオブジェクトストレージから実取得する（読み取り側）。
     objectStorage: true
     # FR-15, IADR-0029 (#142): 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
     # port を持つと Service が生成され BFF が到達できる。worker=true は HTTP ヘルスプローブを抑止する
@@ -586,7 +587,7 @@ services:
     # 面は**自己申告の読み取り 1 口だけ**（platform.introspection.v1.ServiceIntrospection）。呼び出し元は
     # 構成情報 API（BFF の Introspection__GrpcServices__* を持つときだけ）。readiness は 8080 のまま。
     grpcPort: 8081
-    # FR-06: storage:// 本文を MinIO から実取得し Wiki.js へ push する（読み取り側）。
+    # FR-06: storage:// 本文をオブジェクトストレージから実取得し Wiki.js へ push する（読み取り側）。
     objectStorage: true
     # IADR-0021: Wiki.js への同期（GraphQL push）先とサービスアカウント API キー。
     # API キーは Secret 経由で注入（コミットしない。事前に kubectl/ArgoCD で作成する。docs/security）。
@@ -683,7 +684,7 @@ services:
     # FR-14, IADR-0028 / #1016: パイプライン段（graph-delete 段）をホストする — pipeline-config をマウントする。
     pipelineSteps: true
     port: 8080
-    # FR-17, ADR-0033 決定 8 / #912: リンク抽出のため storage:// 本文を MinIO から実取得する
+    # FR-17, ADR-0033 決定 8 / #912: リンク抽出のため storage:// 本文をオブジェクトストレージから実取得する
     # （読み取り側。バケット作成は書き込み側の ConversionService が担う）。
     objectStorage: true
     # FR-04 / FR-05 / FR-17 / NFR-09 / NFR-16, ADR-0029 / ADR-0075 / ADR-0034 決定 1,
@@ -900,7 +901,7 @@ services:
     # ADR-0032 は「BFF がコンフィデンシャルクライアントとして Keycloak と通信する」ことを決めており、
     # **client secret の注入は任意配線ではなく前提**である。注入が無いと login が 500 で落ちる。
     # 資格情報は Secret（existingSecret, key=clientSecretKey）経由で注入する（値をチャートに書かない。
-    # minio.oidc / global.db / global.messaging と同じ形）。Secret はローカルでは scripts/k8s-local-up.sh が
+    # global.db / global.messaging と同じ形）。Secret はローカルでは scripts/k8s-local-up.sh が
     # 作り、ESO=1 では Vault→ExternalSecret（deploy/local/vault/eso/externalsecret-bff-oidc.yaml）が供給する。
     # ⚠️ 値は realm の `bff` クライアントの secret と**一致させること**（ズレると PAR 端点が 401 を返す）。
     # このブロックの有無が、client secret の注入と転送ヘッダの解釈（ASPNETCORE_FORWARDEDHEADERS_ENABLED）を
@@ -1067,34 +1068,28 @@ services:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
 
-# FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: S3 互換オブジェクトストレージ（MinIO）。
-# 本文・資産の実体を保管する。資格情報は Secret（existingSecret, key=accessKey/secretKey）経由で注入する
+# FR-06, FR-12, ADR-0014, ADR-0015（Superseded by ADR-0106）, ADR-0106, IADR-0024, IADR-0461 (#1499):
+# S3 互換オブジェクトストレージ（SeaweedFS）。本文・資産の実体を保管する。
+# 資格情報は Secret（existingSecret, key=accessKey/secretKey）経由で注入する
 # （コミットしない。事前に kubectl/ArgoCD で作成する。docs/security/security.md）。
-# IADR-0017/IADR-0024: API は ClusterIP のみで Ingress を張らず、直接公開しない（ABAC 強制サービス経由）。
-minio:
+# IADR-0017/IADR-0024: S3 API は ClusterIP のみで Ingress を張らず、直接公開しない（ABAC 強制サービス経由）。
+# 管理 Console は持たない（ADR-0106 決定 6。MinIO Console の SSO＝IADR-0093 は IADR-0461 決定 5 で撤去）。
+seaweedfs:
   enabled: true
-  replicas: 1
-  # #1434: Docker Hub の minio/minio は撤去された（ImagePullBackOff: repository does not exist）。
-  # 同じリリースを MinIO 公式の quay.io から引く（compose / Knowledge.IntegrationTests と同じ参照）。
-  registry: quay.io
-  image: minio/minio
-  tag: "RELEASE.2025-04-08T15-41-24Z"
-  port: 9000
-  consolePort: 9001
-  existingSecret: minio-credentials
+  # ADR-0106 決定 5 / ADR-0107 決定 3: digest で固定する。digest は multi-arch の image index
+  # （amd64 / arm64 / arm / 386）のもので、2026-09-25 に Docker Hub の registry API から匿名で読み、
+  # 匿名の manifest・config blob の取得がいずれも 200 であることを確かめた（IADR-0461 決定 1）。
+  # 上げるときは tag と digest を対で変え、Knowledge.IntegrationTests の SeaweedFsContainer.Image と
+  # deploy/docker-compose.yml を揃える（SeaweedFsContainerDefinitionTests が突き合わせる）。
+  registry: docker.io
+  image: chrislusf/seaweedfs
+  tag: "4.47"
+  digest: "sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882"
+  # S3 ゲートウェイの待受ポート（SeaweedFS の既定）。global.objectStorage.endpoint と揃える。
+  port: 8333
+  existingSecret: object-storage-credentials
   accessKeyKey: accessKey
   secretKeyKey: secretKey
-  # IADR-0093 (#353): MinIO Console の Keycloak OIDC(SSO)。既定 disabled ＝本番 values は byte 等価（env 未描画）。
-  # 経路B は values-local で enabled にする。root(minio-credentials) は break-glass として残る（fail-safe）。
-  oidc:
-    enabled: false
-    configUrl: ""            # 例: http://keycloak:8080/realms/platform/.well-known/openid-configuration
-    clientId: minio
-    existingSecret: minio-oidc
-    clientSecretKey: client-secret
-    scopes: "openid,profile,email"
-    claimName: policy        # MinIO はこのクレーム値に一致する MinIO ポリシーを適用（未一致は deny＝fail-safe）
-    browserRedirectUrl: ""   # 例: https://minio.localhost:50000（Console 公開 URL・OIDC redirect の基準）
   persistence:
     enabled: true
     size: 20Gi
@@ -1190,7 +1185,7 @@ wikijs:
 # FR-14, IADR-0056, IADR-0078 (#313), IADR-0362 (#1135): SPA(frontend)。platform/frontend の **Caddy**
 # イメージ（静的配信＋/bff プロキシ＋実行時 config.js 注入。ADR-0021 の指定）を k8s で配信する。
 # 汎用 services ループに載せず専用 template
-# (templates/frontend.yaml) で描画する（wikijs/minio と同じ非 .NET パターン）。イメージは
+# (templates/frontend.yaml) で描画する（wikijs/seaweedfs と同じ非 .NET パターン）。イメージは
 # global.image.registry を接頭辞に使う（本番=harbor、経路B=k3d-local）。#275 MAPPING に登録済み。
 # 外部からの入口はエッジ（edge ブロックの VirtualService catch-all → frontend-service）。
 frontend:

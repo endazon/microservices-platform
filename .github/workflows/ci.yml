@@ -522,11 +522,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/reset-gate.test.js
 
-      # SC-15 / FR-05, ADR-0094 決定 2, IADR-0432, Issue #1410: リセット申請の**床**
+      # SC-15 / FR-05, ADR-0094 決定 2, ADR-0097 決定 2, IADR-0432, Issue #1410 / #1500: リセット申請の**床**
       # （deploy/mail-relay/reset-floor.js）の純粋関数と、**床が 3 つの宣言に分かれて生きていること**
       # （器のコード・マニフェストの env・経路の route）が食い違わないことを固定する。
       # 🔴 どれか 1 つがズレると床は静かに効かなくなる（器が起動しない／誰も通らない／上流を向いている）。
-      # 🔴 **既定の描画に床が出ないこと**（opt-in）もここで機械的に押さえる。
+      # 🔴 **床が既定で入ること**（近接 MTA の配備単位が器を取り込み、istio-edge-up.sh の既定が 1）も
+      #    ここで機械的に押さえる（［2026-09-26 / #1500］ADR-0097 決定 2。旧: 既定の描画に床が出ないこと＝opt-in）。
       - name: Unit-test the SC-15 reset response floor
         if: ${{ !cancelled() }}
         run: node deploy/mail-relay/reset-floor.js --self-test
@@ -764,7 +765,7 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
-      # 🔴 Testcontainers（実 RabbitMQ / Postgres / MinIO）を起動するテストは PR から外す
+      # 🔴 Testcontainers（実 RabbitMQ / Postgres / SeaweedFS）を起動するテストは PR から外す
       # （IADR-0232 決定 3・改定 3。利用者裁定 2026-08-22「PR の精度低下は、どこかで回収できるなら
       # ある程度許容する。AI コーディング→PR→CI→AI コーディングのループ効率を上げよ」）。
       #

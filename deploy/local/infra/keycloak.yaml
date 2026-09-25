@@ -15,7 +15,7 @@
 # サービス間 JWT 検証（.NET）は in-cluster から到達できる `http://keycloak:8080/.../well-known/...` を
 # `Auth__MetadataAddress` で引き、`Auth__ValidIssuers` にエッジ issuer を許可リストとして足す
 # （IADR-0086 の分離。values-local.yaml global.auth 参照）。非 .NET の OIDC クライアント
-# （Grafana/ArgoCD/Vault/MinIO/Headlamp/Wiki.js）は pod からエッジ issuer へ直接到達する
+# （Grafana/ArgoCD/Vault/Headlamp/Wiki.js）は pod からエッジ issuer へ直接到達する
 # （coredns-custom。IADR-0227・deploy/local/aliases/coredns-edge-hosts.yaml）。
 apiVersion: apps/v1
 kind: Deployment

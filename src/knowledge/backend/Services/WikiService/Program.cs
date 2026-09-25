@@ -79,7 +79,7 @@ builder.Services.AddHttpClient<IWikiJsClient, WikiJsGraphQlClient>(ConfigureWiki
 // 関心であり、同期・削除の面を一緒に背負わせない。接続設定は上と同じ 1 箇所（`ConfigureWikiJsHttpClient`）
 // から与える（**接続先と API キーの解決点を 2 つに増やさない**）。
 builder.Services.AddHttpClient<IWikiJsSearchClient, WikiJsGraphQlClient>(ConfigureWikiJsHttpClient);
-// FR-06, ADR-0014/ADR-0015: オブジェクトストレージ（MinIO）クライアント（storage:// 本文の実取得用）。
+// FR-06, ADR-0014/ADR-0015（Superseded by ADR-0106）: オブジェクトストレージ（SeaweedFS）クライアント（storage:// 本文の実取得用）。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
 
 // IADR-0021: 正規化 Markdown 本文を MarkdownUri から取得して Wiki.js へ push する

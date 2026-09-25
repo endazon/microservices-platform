@@ -3,15 +3,15 @@ title: 固定/可変 区分表（実装版）— コンポーザビリティ対�
 type: tech
 status: completed
 created: 2026-07-08
-updated: 2026-08-30
+updated: 2026-09-25
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15]
-adrs: [ADR-0015, ADR-0018]
-iadrs: [IADR-0002, IADR-0007, IADR-0014, IADR-0021, IADR-0022, IADR-0023, IADR-0024, IADR-0025, IADR-0027, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0059]
-specs: [20260708_issue-102_composability-fixed-variable-separation]
-issues: [#102, #195, #217, #218, #219, #229]
+adrs: [ADR-0015, ADR-0018, ADR-0106]
+iadrs: [IADR-0002, IADR-0007, IADR-0014, IADR-0021, IADR-0022, IADR-0023, IADR-0024, IADR-0025, IADR-0027, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0059, IADR-0461]
+specs: [20260708_issue-102_composability-fixed-variable-separation, 20260925_1499_object-storage-seaweedfs]
+issues: [#102, #195, #217, #218, #219, #229, #1499]
 -->
 
 # 固定/可変 区分表（実装版）
@@ -68,8 +68,8 @@ Issue #102の作業項目 1「棚卸し」の成果物である。
 | `ILlmProvider` / `IEmbeddingProvider` | LlmGateway | Claude / Copilot / SelfHosted / Voyage / SelfHostedEmbedding | Anthropic API・Copilot・セルフホスト・Voyage AI | 構成（ルーティング表。設定駆動のエンドポイント定義・既定モデルの追加・埋め込みの機密区分ルーティング） |
 | `IEmbeddingService` | Retrieval / Ingestion | LlmGatewayEmbeddingService | LlmGateway 経由 | DI 登録 |
 | `IVectorStore` / `IIngestionVectorStore` | Retrieval / Ingestion | QdrantVectorStore / InMemoryVectorStore / QdrantIngestionVectorStore | Qdrant | 構成（接続文字列の有無。取り込みパイプラインと Qdrant ペイロード表現の実装判断） |
-| `IObjectStorageClient` | Shared.Infrastructure | S3ObjectStorageClient / NullObjectStorageClient | MinIO（S3 互換。バケット/キー設計は実装 ADR が定める） | 構成（エンドポイント有無） |
-| `IObjectStore` / `IDocumentContentReader` / `IWikiContentReader` | Conversion / Ingestion / Wiki | Storage* 系（IObjectStorageClient へ委譲） | MinIO | DI 登録 |
+| `IObjectStorageClient` | Shared.Infrastructure | S3ObjectStorageClient / NullObjectStorageClient | SeaweedFS（S3 互換。バケット/キー設計は実装 ADR が定める） | 構成（エンドポイント有無） |
+| `IObjectStore` / `IDocumentContentReader` / `IWikiContentReader` | Conversion / Ingestion / Wiki | Storage* 系（IObjectStorageClient へ委譲） | SeaweedFS | DI 登録 |
 | `IBodyConverter` | Conversion | PandocConversionService | pandoc（プロセス） | DI 登録 |
 | `IDiagramCoder` | Conversion | LlmGatewayDiagramCoder | LlmGateway 経由 | DI 登録 |
 | `IWikiJsClient` | Wiki | WikiJsGraphQlClient | Wiki.js（GraphQL push 同期） | DI 登録 |

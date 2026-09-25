@@ -2,14 +2,15 @@
 title: IADR-0432 リセット申請の所要時間は反復した中央値を自己対照で判定し、床は経路に居る専用の器で掛ける
 type: impl-adr
 status: Accepted
-related_ids: [SC-15, SC-13, FR-05, FR-22, NFR-09, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097, ADR-0103]
+related_ids: [SC-15, SC-13, FR-05, FR-22, NFR-09, NFR-13, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097, ADR-0103]
 author: claude
 created: 2026-09-11
-updated: 2026-09-25
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0094_existence-hiding-timing-median-consistency-and-response-floor.md
   - planning:projects/microservices-platform/07_adr/ADR-0103_degenerate-self-control-is-not-a-bound.md
   - planning:projects/microservices-platform/07_adr/ADR-0078_existence-hiding-response-indistinguishability-and-nearby-mta.md
+  - planning:projects/microservices-platform/07_adr/ADR-0097_timing-floor-release-default-on-and-periodic-review.md
 ---
 
 # IADR-0432: リセット申請の所要時間は反復した中央値を自己対照で判定し、床は経路に居る専用の器で掛ける
@@ -24,6 +25,7 @@ plan_refs:
   ADR-0094（決定 1・2・4。本 IADR の直接の起点）/ ADR-0078（決定 1 の所要時間の行を ADR-0094 が部分改定）
 - 関連する実装仕様書: `.ai-context/specs/20260911_issue-1410_reset-timing-floor.md`
   ／［2026-09-25 / #1470］`.ai-context/specs/20260925_1470_timing-self-control-step.md`（判定の段 1。計画 ADR-0103）
+  ／［2026-09-26 / #1500］`.ai-context/specs/20260926_1500_reset-floor-default-on.md`（床を既定 ON。計画 ADR-0097 決定 2）
 - 関連 IADR: `IADR-0404`（近接 MTA。**差の機序を名指しした記録**）/ `IADR-0421`（キュー観測）/
   `IADR-0427`（ログイン経路のプローブ。**所要時間を出すだけで判定しない**）/ `IADR-0347`（状態 B の 3 つの門）
 
@@ -115,6 +117,9 @@ ADR-0094 は環流 planning#596 の実測（稼働 k3s・近接 MTA 配備済み
 `reset-gate.yaml` / `probe.js` と同じ作法である。
 
 ### 決定 4: 床は opt-in にし、既定の描画をバイト等価に保つ
+
+> 🔴 **［2026-09-26 追記 / #1500］本決定は計画 ADR-0097 決定 2（Accepted 2026-09-12）に覆された。床は既定 ON である。**
+> 以下の本文は当時の判断として残す。現行の形は末尾の追記「床を既定 ON にする」を読むこと。
 
 `deploy/mail-relay/kustomization.yaml` は床を**参照しない**。取り込むのは opt-in の overlay
 `deploy/local/edge-istio-reset-floor/` だけで、そこが**器と経路を同時に**足す
@@ -241,7 +246,72 @@ ADR-0094 決定 1 の判定式を部分改定した。原因は**比較の構造
 **`[T-10][所要時間]`** である（本 IADR の決定 5 以来の不一致）。計画 ADR-0103 §実測 5 は「`T-25` は一度も
 存在していない」とするが、根拠の走査は検査器ファイルに限られていた。本追記では ID を付け替えない。
 
+## ［2026-09-26 追記 / #1500］床を既定 ON にする —— 計画 ADR-0097 決定 2 が決定 4（opt-in）を覆した
+
+**契機**: #1491（#1470 の実装）の監査で、計画 ADR-0097 決定 2（Accepted 2026-09-12）が未実装のまま
+`RESET_FLOOR` の既定が 0 であることが見つかった（#1500）。同決定は「**`RESET_FLOOR` の既定を 1 とし、
+`deploy/mail-relay/kustomization.yaml` が床を参照する形へ改める**」と定め、**本 IADR 決定 4 を覆す**と明記している。
+
+**覆された理由（計画の逐語の要点）**: 決定 4 の理由は「床は ADR-0094 の着手可否の注記が覆り得ると名指しした
+決定だから」であった。ADR-0097 決定 1 がその注記を解除し（床を入れた integration-stack の実測で比 1.00 倍・
+自己対照の内側。環流 planning#611）、**前提が消えた**。加えて計画は「床は失敗しても安全側である（効かなければ
+遅くならないだけで、応答の内容は変わらない）」とする。逆に既定 OFF のままだと **go-live の経路で所要時間の統制が
+1 つも効かない**。全申請が床（150 ms）まで遅くなるトレードオフは計画が引き受けた。
+
+🔴 **実装の訂正（計画の「安全側」の射程）**: 「遅くならないだけ」が成り立つのは**経路が入っていない**ときだけである。
+経路（VirtualService 先頭の POST route）は器だけを向き、Keycloak へ戻る予備の route は無い。**経路が入った後に
+器が落ちる（ready な endpoint が 0）と、Envoy はリセット申請の POST をすべて 503 で返す**（監査 #1518 の指摘）。
+これは存在秘匿を破らない（実在・非実在とも同じ 503）が、**申請そのものが失敗する**可用性の事象である。
+対処は 2 つ: ①`k8s-local-up.sh` が器の rollout を待つ（経路を足す `istio-edge-up.sh` はその後に走る）、
+②器の readiness は上流を映さない（映すと Keycloak が落ちた瞬間に床を待たない即座の 503 になり、決定 1 の
+「上流が落ちたときも床を守る」が崩れる）。**予備の route は足さない** —— 足せば器が落ちたとき床の無い経路へ
+黙って戻り、所要時間の窓が開く（監視の無い縮退を作らない）。この射程の違いは計画 ADR-0097 の記述に無い。
+
+**決定（改定後の形）**:
+
+| 部品 | 決定 4（旧） | 現行 |
+| --- | --- | --- |
+| 器（`deploy/mail-relay/reset-floor/`） | opt-in overlay だけが取り込む | **`deploy/mail-relay/kustomization.yaml` が取り込む**（近接 MTA・門と同じ配備単位。`deploy/local/infra` の描画に出る） |
+| 器の本体（ConfigMap `reset-floor-script`） | `istio-edge-up.sh` が `RESET_FLOOR=1` のときだけ作る | **`k8s-local-up.sh` が infra の apply より前に作り**、rollout を待つ。`istio-edge-up.sh` も冪等に作る |
+| 経路（`msp-keycloak-edge` 先頭の POST route） | `RESET_FLOOR=1` のときだけ `deploy/local/edge-istio-reset-floor` を当てる | **`RESET_FLOOR` の既定 1** で同じ overlay を当てる |
+| 退路 | — | **`RESET_FLOOR=0`**（素の `edge-istio`。経路だけが外れ、器は誰も通らないまま居る） |
+| 値（150 ms） | マニフェストが与え、コードは既定を持たない | **変えない**（決定 3 の形のまま。`RESET_FLOOR_MS` が無ければ器は起動しない） |
+
+- **「既定 ON」とは overlay を既定で取り込むことであって、値をコードへ焼くことではない**（ADR-0097 決定 2 の逐語）。
+- **`RESET_FLOOR` は 0 / 1 だけを受け付け、それ以外は入口に触る前に落とす。** 既定が 1 になったことで
+  「`false` と書けば外れるつもり」の取り違えが起き得る。黙って入れても外しても誤りであり、Traefik を落とした
+  後に気付くのが最悪である（`istio-edge-up.sh` 冒頭の前提確認と同じ理由）。**`k8s-local-up.sh` も冒頭で同じ検査をする**
+  （空・0・1 のみ。長い起動の最後で落とさない。監査 #1518）。Istio のエッジが走らない起動（`ISTIO=1` ＋ `LOCALEDGE=1`
+  でない）で `RESET_FLOOR` を与えたら、効かないことを WARN で告げる。
+- **エッジの切り戻し（`istio-edge-down.sh`）は器を消さない。** 器は近接 MTA の配備単位の持ち物になった ——
+  消すと infra の宣言から外れ、`check-stack-ready.js` の G11 が「宣言に在るのに稼働していない」で落とす。
+  経路は VirtualService ごと消える。
+- **integration-stack は `RESET_FLOOR` を job env で与えない。** 既定の経路そのものを測る（既定が 0 へ戻れば
+  T-10 の所要時間が赤になって気付ける）。ADR-0097 決定 1 の解除条件「床を入れた構成の integration-stack で
+  T-10 が継続して合格する」はこの既定の経路で満たす。
+- overlay（`edge-istio-reset-floor`）は器も含んだままにする（器と経路の 2 つで 1 組を overlay 単独でも保つ。
+  infra と同じ描画なので両方から apply して冪等）。
+
+**計画の字面との差異**: ADR-0097 §フォローアップ 1 は「IADR-0432 決定 4 を部分改定する IADR を起こし、本 ADR を
+根拠として引くこと」と書く。🔴 **本作業は新しい IADR を起こさず、本追記で記録した。** 先例は上の #1470 追記
+（計画 ADR-0103 による決定 5 の部分改定を追記で持つ）であり、覆したのは計画であって実装の新しい判断ではない ——
+実装が決めたのは上表の置き場と退路の形だけで、決定 4 の他の部分（器と経路を 2 つで 1 組にする）は変えていない。
+
+**残るもの**:
+
+- 🔴 **Traefik のエッジ（`ISTIO` 未設定のローカル経路）には床への経路が無い。** 経路は Istio の VirtualService の
+  patch でしか書いておらず、器は立つが誰も通らない。ADR-0097 は `RESET_FLOOR` と `deploy/mail-relay/kustomization.yaml`
+  だけを名指しており、Traefik 側の経路は計画外なので足していない。
+- **go-live の経路**: 器は `deploy/mail-relay` の適用で入るが、**経路は go-live のエッジ側が与える必要がある**
+  （production の Keycloak マニフェストは本リポジトリに無い。IADR-0404 決定 2）。
+- **稼働クラスタでの実測はしていない**（ADR-0097 フォローアップ 2。本作業の作業機はクラスタへ触れない）。
+- **検証**: `reset-floor.test.js` が既定 ON（器を取り込む resources 項目・`istio-edge-up.sh` を記録スタブの下で
+  走らせた発行コマンド列・0 / 1 以外の拒否・切り戻しが器を消さないこと）を固定し、`k8s-local-up.test.js` が
+  ConfigMap の作成順・rollout 待ち・冒頭の `RESET_FLOOR` 検査（不正値はコマンド発行前に落ちる・効かない起動で WARN）を固定する。変異 8 種（既定を 0 へ戻す・resources から器を外す・値の検査を
+  消す・切り戻しで器を消す・up で ConfigMap を作らない・up で rollout を待たない・up 冒頭の値検査を外す・効かない起動の警告を外す）はいずれも落ちる。
+
 ## 関連
 
 - Supersedes: なし
-- Superseded by: なし（［2026-09-25 / #1470］決定 5 の判定式は計画 ADR-0103 に従い 2 段にした。上の追記）
+- Superseded by: なし（［2026-09-25 / #1470］決定 5 の判定式は計画 ADR-0103 に従い 2 段にした。
+  ［2026-09-26 / #1500］決定 4 は計画 ADR-0097 決定 2 に覆され、床は既定 ON になった。いずれも上の追記）

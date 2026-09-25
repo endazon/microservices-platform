@@ -54,7 +54,7 @@ flowchart LR
   RET --> QD
   WIKI --> WJS[Wiki.js]
   DOC --> PG[(Postgres, per service)]
-  DOC --> MINIO[(MinIO)]
+  DOC --> OBJ[(SeaweedFS)]
 ```
 
 - **platform ユニット** (`src/platform/`): 基盤。SPA 基盤（foundation + アプリホスト）、BFF（エッジ・

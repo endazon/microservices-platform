@@ -3,6 +3,7 @@
 #
 #   bash scripts/istio-edge-up.sh              # PERMISSIVE のまま入口だけ移す
 #   ISTIO_MTLS_MODE=STRICT bash scripts/istio-edge-up.sh   # 併せて mTLS を STRICT へ
+#   RESET_FLOOR=0 bash scripts/istio-edge-up.sh            # リセット申請の床を外す（既定は 1＝入れる。#1500）
 #
 # 前提（満たしていなければ非 0 で落ちる）:
 #   - Istio が入っていること（ISTIO=1 ./scripts/k8s-local-up.sh。IADR-0307）
@@ -15,6 +16,16 @@
 #   **80/443/50000 を 2 つの Service が同時に持てない**ため、Traefik が明け渡してから
 #   istio-ingressgateway を立てる。逆順だと svclb が bind に失敗して**どちらの入口も立たない**。
 set -euo pipefail
+
+# SC-15 / NFR-13 / ADR-0097 決定 2 / IADR-0432 (#1500): リセット申請の床は**既定 1（入れる）**。
+# 退路は RESET_FLOOR=0。🔴 **0 / 1 以外は入口に触る前に落とす** —— 既定が 1 になったので
+#   「false と書けば外れるつもり」の取り違えが起き得る。黙って入れても外しても誤りであり、
+#   [2/5] で Traefik を落とした後に気付くのが最悪である（下の前提確認と同じ理由）。
+RESET_FLOOR="${RESET_FLOOR:-1}"
+case "$RESET_FLOOR" in
+  0|1) ;;
+  *) echo "ERROR: RESET_FLOOR は 0（床を外す）か 1（床を入れる。既定）のどちらかです: '${RESET_FLOOR}'" >&2; exit 1 ;;
+esac
 
 MSP_NS="${MSP_NS:-microservices-platform}"
 ISTIO_VERSION="${ISTIO_VERSION:-1.30.4}"
@@ -59,20 +70,24 @@ helm upgrade --install istio-ingressgateway istio/gateway \
   -f deploy/istio/ingressgateway-values-local.yaml --wait --timeout 5m
 
 echo "==> [4/5] Gateway / VirtualService と CoreDNS の転送先を当てる"
-# SC-15 / ADR-0094 決定 2 / IADR-0432 (#1410): リセット申請の**床**（最小応答時間）。
-# 🔴 **既定は 0（入れない）。** 床は ADR-0094 の着手可否の注記が「覆り得る」と名指しした決定であり、
-#   床を入れた構成で中央値の比が許容内に収まることを稼働クラスタで実測するまで既定へ入れない
-#   （近接 MTA・門と違い、計画が無条件と定めた統制ではない）。RESET_FLOOR=0 のときの
-#   適用対象は本 PR の前と**同じ overlay・同じ描画**である。
-if [ "${RESET_FLOOR:-0}" = "1" ]; then
-  echo "    RESET_FLOOR=1: リセット申請の床を入れる（POST の応答を床まで返さない）"
+# SC-15 / NFR-13 / ADR-0094 決定 2 / ADR-0097 決定 2 / IADR-0432 (#1410 / #1500): リセット申請の**床**（最小応答時間）。
+# 🔴 **既定は 1（入れる）。** ［2026-09-26 / #1500］計画 ADR-0097 決定 2 が IADR-0432 決定 4（opt-in・既定 0）を
+#   覆した。既定 OFF のままだと go-live の経路で所要時間の統制が 1 つも効かない。
+#   🔴 **経路を入れた後に器が落ちると、リセット申請の POST はすべて 503 になる**（経路は器だけを向き、
+#   予備の route は無い）。器は k8s-local-up.sh が rollout を待ってから立てている。
+#   **退路は RESET_FLOOR=0**（素の edge-istio を当てる。経路だけが外れ、器は infra の持ち物として
+#   誰も通らないまま居る）。
+if [ "$RESET_FLOOR" = "1" ]; then
+  echo "    RESET_FLOOR=1（既定）: リセット申請の床を入れる（POST の応答を床まで返さない）"
   # 器の本体は ConfigMap 化する（kustomize は root 外ファイルを参照できない。門と同型）。
-  # 🔴 overlay の apply より**前**に作る（Pod が起動時にマウントする）。
+  # 器は k8s-local-up.sh の [4/7] で既に立っており、ConfigMap もそこで作られている。ここでも作るのは
+  # 単独実行でもリポジトリの版を当てるためである（冪等）。🔴 overlay の apply より**前**に作る。
   kubectl create configmap reset-floor-script -n platform-infra \
     --from-file=reset-floor.js=deploy/mail-relay/reset-floor.js \
     --dry-run=client -o yaml | kubectl apply -f -
   kubectl apply -k deploy/local/edge-istio-reset-floor
 else
+  echo "    RESET_FLOOR=0: リセット申請の床を外す（経路を足さない。所要時間で利用者名を判別できる状態に戻る）" >&2
   kubectl apply -k deploy/local/edge-istio
 fi
 # import 先の追加は Corefile 自体の変更ではないため reload プラグインが拾わない（IADR-0227 と同じ）。

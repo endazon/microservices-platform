@@ -55,7 +55,7 @@ builder.Services.AddHostedService<QdrantBootstrapHostedService>();
 // **上のブートストラップより後に登録する**（索引を張ってから埋める。hosted service は登録順に始まる）。
 builder.Services.AddHostedService<QdrantCjkNgramBackfillHostedService>();
 
-// FR-06, ADR-0014/ADR-0015: オブジェクトストレージ（MinIO）クライアント（storage:// 本文の実取得用）。
+// FR-06, ADR-0014/ADR-0015（Superseded by ADR-0106）: オブジェクトストレージ（SeaweedFS）クライアント（storage:// 本文の実取得用）。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
 
 // FR-02/FR-06 parse: 本文（Markdown）取得（storage:// はオブジェクトストレージ、http(s) は実取得、

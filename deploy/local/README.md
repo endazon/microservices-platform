@@ -14,6 +14,7 @@
   ns platform-infra          postgres / rabbitmq / redis / keycloak / qdrant / otel-collector
                              + mail-relay（近接 MTA。キューを持つ。deploy/mail-relay ＝環境非依存の base）
                              + reset-gate（SC-15 の門。mail-relay へ投函できないと申請を機械で閉じる）
+                             + reset-floor（SC-15 の床。申請の POST を最小応答時間まで返さない。経路は Istio エッジ）
                              + mailpit（開発環境の捕捉用 MTA。メールはここで止まり外へ出ない）  ← deploy/local/infra
                              送出経路: keycloak → mail-relay → mailpit（go-live は最後だけ外部リレー）
   ns microservices-platform  既存 Helm chart（values-local: mesh/NP/HPA off, registry=local）
@@ -192,7 +193,7 @@ up を再実行すれば届く**（単独でも `bash deploy/local/keycloak-setu
 | `RABBITMQ_USER` | `platform-infra/rabbitmq.username` | `guest` | RabbitMQ 利用者名（#1022。**helm の `global.messaging.user` と揃えること**） |
 | `RABBITMQ_PASSWORD` | `platform-infra/rabbitmq.password` ＋ `microservices-platform/rabbitmq-app.password` | `guest` | RabbitMQ（#1022 でアプリ側 Secret を追加。ブローカと同値） |
 | `KEYCLOAK_ADMIN_PASSWORD` | `platform-infra/keycloak-admin.password` | `admin` | Keycloak 管理 |
-| `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` | `microservices-platform/minio-credentials` | `minioadmin` | MinIO（chart 参照） |
+| `OBJECT_STORAGE_ACCESS_KEY`/`OBJECT_STORAGE_SECRET_KEY` | `microservices-platform/object-storage-credentials` | `objectstorage-dev` / `objectstorage-dev-secret` | オブジェクトストレージ（SeaweedFS。chart 参照。旧名 `MINIO_*` / `minio-credentials`・IADR-0461） |
 | `WIKIJS_DB_PASSWORD` | `microservices-platform/wikijs-db.password` | `kp` | Wiki.js DB |
 | `WIKIJS_SYNC_APIKEY` | `microservices-platform/wikijs-sync.apiKey` | 空→**bootstrap が発行**（#1108） | WikiService→Wiki.js 同期。**明示指定が無ければ `deploy/local/wikijs-setup/bootstrap.sh` が Wiki.js に発行させて書き戻す**。up の再実行では既存値を保つ（空で潰さない） |
 | `WIKIJS_ADMIN_PASSWORD` | `microservices-platform/wikijs-admin.password` | **無し（乱数生成）** | Wiki.js の管理者（#1108 / [IADR-0327](../../.ai-context/adr/IADR-0327_wikijs-setup-bootstrap.md)）。**dev 既定文字列を置かない** —— エッジに露出する実ログイン口である |
@@ -311,6 +312,18 @@ kubectl -n platform-infra logs deploy/reset-gate --tail=20   # close / reopen �
 > 🔴 **`check-password-reset-mail.js` は門が閉じていると赤になる。** 存在秘匿としては健全だが、
 > **relay へ投函できていない**という意味だからである。門が閉じることを**期待する**実行だけが
 > `EXPECT_GATE_CLOSED=1` を立てる。
+
+**［2026-09-26 / #1500］申請の所要時間の床が既定で入る。** 計画 ADR-0097 決定 2 が IADR-0432 決定 4（opt-in）を
+覆したため、`platform-infra` に `reset-floor` が **dev 既定**で立つ（`deploy/mail-relay/reset-floor/`。
+値 `RESET_FLOOR_MS=150` はマニフェストが与え、コードは既定を持たない）。**経路**（リセット申請の POST だけを
+床へ向ける route）は `ISTIO=1 LOCALEDGE=1` のエッジ（`scripts/istio-edge-up.sh`）が既定で足す。
+**外すのは `RESET_FLOOR=0` を与えたときだけ**（経路だけが外れる。`0` / `1` 以外は入口に触る前に拒む）。
+🔴 **Traefik のエッジには経路が無い**（器は立つが誰も通らない）。
+
+```bash
+kubectl -n platform-infra get deploy reset-floor   # 器
+kubectl -n istio-system get virtualservice msp-keycloak-edge -o jsonpath='{.spec.http[0].name}{"\n"}'   # reset-credentials-floor
+```
 
 ```bash
 kubectl -n platform-infra port-forward svc/mailpit 8025:8025
