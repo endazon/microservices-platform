@@ -312,6 +312,10 @@ msgid "embeds: 点線・矢印"
 msgstr "embeds: dotted line with arrow"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "Git"
+msgstr "Git"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "Git に置けない秘密情報（API キー・接続秘密・通知の webhook）を 1 項目ずつ投入・更新します。値は書き込み専用で、保存後はこの画面からも読み出せません。操作は監査ログに記録されます（値は記録されません）。"
 msgstr "Enter or update secrets that cannot be kept in Git (API keys, connection secrets, notification webhooks), one item at a time. Values are write-only and cannot be read back from this screen once saved. Operations are recorded in the audit log (values are not)."
 
@@ -671,6 +675,10 @@ msgstr "This property is not a secret (for example, an environment-specific ID).
 msgid "このプロパティを更新する"
 msgstr "Update this property"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "この値を読む OpenD は自動では再起動されません。書き込み後に kubectl -n ai-stock-trading rollout restart deploy/opend で再起動してください。再起動は稼働中の処理を中断し、SMS または画像の認証を再び求められることがあります。書き込む時機を判断してください。"
+msgstr "OpenD, which reads this value, is not restarted automatically. After writing, restart it with kubectl -n ai-stock-trading rollout restart deploy/opend. The restart interrupts work in progress, and SMS or image verification may be requested again. Decide when to write."
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
 msgstr "This attribute is in use and cannot be deleted. Review the policies that reference it first."
@@ -695,6 +703,10 @@ msgstr "Link and tag candidates for this document. Review the contents of both d
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "この文書のタグを編集する権限がありません。"
 msgstr "You do not have permission to edit the tags of this document."
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "この画面で書いた値は反映されません"
+msgstr "Values written on this screen will not take effect"
 
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "この画面について質問する"
@@ -721,8 +733,16 @@ msgid "この辺の型は {inUseCount} 本の辺で使われているため削�
 msgstr "This edge type is used by {inUseCount} edges and cannot be deleted."
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "この項目の供給元を確認できません。書いた値がアプリケーションに反映されるかは、この画面からは分かりません。"
+msgstr "The supply source of this item cannot be confirmed. This screen cannot tell whether a value you write will reach the applications."
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "この項目の現在の版は保管先（Vault）で削除されています。画面からは削除された版へ書き込めないため、運用 Runbook の手順でコンソールから版を復元してから、もう一度更新してください。値は保存されていません。"
 msgstr "The current version of this item has been deleted in the secret store (Vault). This screen cannot write over a deleted version, so restore the version from the console by following the runbook, then update again. The value was not saved."
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "この項目はいま Git（配備時の設定）から供給されています。書き込みはできますが、配備時のスイッチを画面の経路へ切り替えるまで、書いた値はアプリケーションに反映されません。"
+msgstr "This item is currently supplied from Git (the deployment settings). You can still write, but the value will not reach the applications until the deployment switch is changed to the screen path."
 
 #: platform/frontend/src/components/ai-chat/CopyButton.tsx
 msgid "コピーしました"
@@ -1512,6 +1532,14 @@ msgstr "e.g. expense reimbursement"
 msgid "例: 開発"
 msgstr "e.g. engineering"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "供給元"
+msgstr "Supply source"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "供給元は、各項目の同期先（ExternalSecret）がクラスタにあるかで判定します。「画面」はこの画面で書いた値がアプリケーションへ届く状態です。「Git」は配備時の設定から値が供給されており、この画面で書いた値は反映されません。「確認できない」は判定に必要なクラスタへの接続が無いか、判定に失敗したことを示します。"
+msgstr "The supply source is determined by whether each item's sync target (ExternalSecret) exists in the cluster. \"Screen\" means values written on this screen reach the applications. \"Git\" means the value is supplied from the deployment settings and values written on this screen do not take effect. \"Cannot confirm\" means there is no cluster connection for the check, or the check failed."
+
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
@@ -1572,6 +1600,10 @@ msgstr "Storage usage has passed 95%. Once the limit is reached you can no longe
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い適用は Git の履歴を参照してください。"
 msgstr "The retention range is decided by GitOps (Git and ArgoCD). See the Git history for older applications."
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "保管先への書き込みは完了しましたが、この項目は Git（配備時の設定）から供給されているため、書いた値はアプリケーションに反映されません。"
+msgstr "The write to the secret store completed, but this item is supplied from Git (the deployment settings), so the value will not reach the applications."
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "保管先への書き込みは完了しましたが、即時同期を依頼できませんでした。アプリケーションへの反映は定期同期（最大 1 時間）を待ちます。"
@@ -2974,6 +3006,18 @@ msgstr "Updated"
 msgid "更新日時の新しい順"
 msgstr "Most recently updated"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "書いた値は反映されません"
+msgstr "The written value will not take effect"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "書き込むと、この値を読むアプリケーションが再起動されることがあります。再起動は稼働中の処理を中断します。書き込む時機を判断してください。"
+msgstr "Writing may restart the applications that read this value. A restart interrupts work in progress. Decide when to write."
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "書き込むと、同期のあとでこの値を読むアプリケーションが自動で再起動されます（自動再起動を配備した環境の場合。配備していない環境では、再起動するまで反映されません）。再起動は稼働中の処理を中断します。書き込む時機を判断してください。"
+msgstr "After writing and syncing, the applications that read this value are restarted automatically (in environments where automatic restart is deployed; elsewhere the value takes effect only after a restart). A restart interrupts work in progress. Decide when to write."
+
 #: knowledge/frontend/src/features/sc12-mcp-clients/types/mcpClientVocabulary.ts
 msgid "有人"
 msgstr "Attended"
@@ -3464,6 +3508,10 @@ msgstr "No description of the purpose is registered."
 msgid "画像を読み込み中…"
 msgstr "Loading image…"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "画面"
+msgstr "Screen"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "発行しました"
 msgstr "Issued"
@@ -3551,6 +3599,10 @@ msgstr "No contradictions found. Nothing has been saved yet."
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "確認"
 msgstr "Confirm"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "確認できない"
+msgstr "Cannot confirm"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "確認のための入力が一致しません。"

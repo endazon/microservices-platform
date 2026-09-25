@@ -10,6 +10,10 @@ namespace Platform.Bff.Tests;
 // 🔴 **実 API サーバの形を写す**: Bearer は Pod の ServiceAccount トークン（FakeVault と同じ JWT）でなければ 401、
 // CRD への部分更新は `application/merge-patch+json` 以外を 415、ExternalSecret の口以外は 404。
 // `ForcedStatus` で RBAC の拒否（403）・不在（404）・障害（5xx）を、`Throws` で不達を再現する。
+//
+// ADR-0104 決定 2, IADR-0460 決定 1 (#1502): 一覧の供給元の判定のため、ExternalSecret の `get` も受ける。
+// 既定では**すべての ExternalSecret が在る**（ESO 所有の配備）。`MarkMissing` した名前は `get` も `patch` も 404 を返す
+// （実 API サーバと同じく、在るかどうかは動詞に依らない。AST_ESO=0 で `ast-secrets` を描かない配備の再現）。
 public sealed class FakeKubernetesApi
 {
     public const string ApiServer = "https://kubernetes.test";
@@ -24,11 +28,17 @@ public sealed class FakeKubernetesApi
     public HttpStatusCode? ForcedStatus { get; set; }
     public bool Throws { get; set; }
 
+    private readonly ConcurrentDictionary<string, byte> _missing = new();
+
+    /// <summary>この ExternalSecret をクラスタに無いものとして扱う（`get` / `patch` とも 404）。</summary>
+    public void MarkMissing(string ns, string name) => _missing[$"{ns}/{name}"] = 0;
+
     public void Reset()
     {
         Requests.Clear();
         ForcedStatus = null;
         Throws = false;
+        _missing.Clear();
     }
 
     public HttpMessageHandler CreateHandler() => new Handler(this);
@@ -51,9 +61,12 @@ public sealed class FakeKubernetesApi
                 return Json(forced, """{"kind":"Status","reason":"forced"}""");
 
             var match = ExternalSecretPath.Match(path);
-            if (!match.Success || request.Method != HttpMethod.Patch)
+            if (!match.Success || (request.Method != HttpMethod.Patch && request.Method != HttpMethod.Get))
                 return Json(HttpStatusCode.NotFound, """{"kind":"Status","reason":"NotFound"}""");
-            if (request.Content?.Headers.ContentType?.MediaType != "application/merge-patch+json")
+            if (api._missing.ContainsKey($"{match.Groups["ns"].Value}/{match.Groups["name"].Value}"))
+                return Json(HttpStatusCode.NotFound, """{"kind":"Status","reason":"NotFound"}""");
+            if (request.Method == HttpMethod.Patch
+                && request.Content?.Headers.ContentType?.MediaType != "application/merge-patch+json")
                 return Json(HttpStatusCode.UnsupportedMediaType, """{"kind":"Status","reason":"UnsupportedMediaType"}""");
 
             return Json(HttpStatusCode.OK,

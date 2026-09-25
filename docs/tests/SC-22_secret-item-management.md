@@ -3,15 +3,15 @@ title: SC-22 秘密情報・接続設定の管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-09-14
-updated: 2026-09-15
+updated: 2026-09-25
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, NFR-18, SC-22]
-adrs: [ADR-0032, ADR-0042, ADR-0095]
-iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0135, IADR-0433, IADR-0453, IADR-0454, IADR-0456]
-specs: [20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup]
-issues: [#1411, #1467, #1477]
+adrs: [ADR-0032, ADR-0042, ADR-0095, ADR-0104]
+iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0135, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460]
+specs: [20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice]
+issues: [#1411, #1467, #1477, #1502]
 -->
 
 # テスト仕様書: 秘密情報・接続設定の管理
@@ -42,7 +42,7 @@ issues: [#1411, #1467, #1477]
 
 | ID | 前提条件 | 手順 | 期待結果 | 対応受け入れ基準 | 区分 |
 | --- | --- | --- | --- | --- | --- |
-| T-01 | 4 項目（試験の固定データ） | 画面を開く | 列が 項目名／用途／最終更新日時／最終更新者／操作 の 5 つだけ。値の列が無い。行は 4 | 一覧の主要素・値の列を置かない | 自動 |
+| T-01 | 4 項目（試験の固定データ） | 画面を開く | 列が 項目名／用途／最終更新日時／最終更新者／供給元／操作 の 6 つだけ。値の列が無い。行は 4 | 一覧の主要素・値の列を置かない | 自動 |
 | T-02 | 設定済み・未設定・取得できない が混在 | 一覧を見る | 3 つの状態が別々のバッジで出る。最終更新者は画面で書いた版だけに付き、他は「記録なし」。注記が判定の限界を書く | 未設定の明示と区別 | 自動 |
 | T-03 | 一覧が描かれている | 一括の操作を探す | 🔴 **無い**。行ごとの「更新」は 4 つ在る（陽性対照） | 一括再投入を置かない | 自動 |
 | T-04 | 更新フォーム | 値と異なる確認を入れて送信を押す | 不一致の警告が出て、**送信ボタンが押せず要求が飛ばない** | 確認入力を 2 度 | 自動 |
@@ -107,21 +107,29 @@ issues: [#1411, #1467, #1477]
 | T-65 | 画面・鍵のプロパティ | 「生成」→「やめる」→「生成」→「生成して書き込む」 | 値の欄が無い。1 度目の押下と「やめる」では要求を送らず、失効の確認を出す。確定で値を空文字として送る | 生成の確認 | 自動 |
 | T-66 | 画面・秘密でない ID | 入力して送る | 平文の入力で確認入力が無く、秘密ではない旨を出す。陽性対照: 同じ項目の API キーはマスクと確認入力 | 秘密でない値の入力の形 | 自動 |
 | T-67 | 画面・保存が成立 | 同期の依頼が成功／失敗 | 「即時同期を依頼しました」／「即時同期を依頼できませんでした」を出す | 同期の成否を見せる | 自動 |
+| T-68 | 株式自動売買の app-secrets の同期先だけが無い（他は在る） | 境界層の一覧を引く | その項目だけ `git`、他の 5 項目は `screen`。問い合わせは項目ごとに 1 回の `get`（SA トークンで名乗る。注釈を付けない）で、宛先は項目集合の同期先と一致する。同期の監査を残さない | 供給元（配備時のスイッチの事実を出す） | 自動 |
+| T-69 | Kubernetes API が拒否（401 / 403）・障害（5xx）・不達／同期が構成されていない／接続先の URL が壊れている | 境界層の一覧を引く（URL が壊れている場合は書き込みも） | 全項目 `unknown`（🔴 在る／無いのどちらにも倒さない）。構成されていなければ・URL が壊れていれば API へ送らない（一覧は 500 にならず、書き込みは 200 のまま同期の依頼は失敗として記録）。陽性対照: 404 だけが `git` になる | 供給元（推測しない） | 自動 |
+| T-70 | 他のロール／保管先に届かない | 境界層の一覧を引く | Kubernetes API へ 1 度も触れない（陽性対照: 通る一覧は問い合わせる） | 権限外に何も漏らさない | 自動 |
+| T-71 | — | 起動した境界層を見る | 本番の合成が判定器の本物を登録している（上の T-68〜T-70 は偽物の通信路だけを差し替えた本物の端点を通る） | 合成の証明 | 自動 |
+| T-72 | 画面・供給元が 画面／Git／確認できない／値なし の 4 行 | 画面を開く | 3 値が別々のバッジで出る。値の無い行は「確認できない」（「画面」「Git」を出さない）。判定の方法の注記がある | 供給元の表示 | 自動 |
+| T-73 | 画面・供給元が Git の項目 | 更新フォームを開いて送る | 送る前に「反映されません」を出し、送信は可能。保存後も「反映されません」を出し、同期の成否の文言を出さない。再起動の注記を出さない | 書いても効かないことを先に伝える（拒否しない） | 自動 |
+| T-74 | 画面・供給元を確認できない項目 | 更新フォームを開く | 反映されるかを確認できない旨を出す（Git の警告は出さない）。再起動の注記は出す | 推測しない | 自動 |
+| T-75 | 画面・株式自動売買の app-secrets と moomoo のログイン情報 | 更新フォームを開く | 前者は「自動で再起動されます」と「稼働中の処理を中断」、後者は「OpenD は自動では再起動されません」と手動の再起動コマンド（互いの文言を含まない） | 消費側が再起動する旨を送る前に出す | 自動 |
 | T-40 | 稼働クラスタ（保管先・同期あり） | 画面から 1 プロパティを更新し、同期後の Secret を長さだけで確かめる | 更新したプロパティの長さが一致し、同居するキーが減っていない | 稼働での成立 | 手動（未実施） |
 
 ## 自動試験の所在
 
 | 区分 | ファイル | 対応 |
 | --- | --- | --- |
-| 画面 | `src/knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.test.tsx` | T-01〜T-09・T-43・T-64〜T-67 |
-| 境界層（端点） | `src/platform/backend/Bff/Platform.Bff.Tests/BffSecretItemEndpointTests.cs` | T-10〜T-28・T-41・T-44〜T-49・T-52〜T-60 |
+| 画面 | `src/knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.test.tsx` | T-01〜T-09・T-43・T-64〜T-67・T-72〜T-75 |
+| 境界層（端点） | `src/platform/backend/Bff/Platform.Bff.Tests/BffSecretItemEndpointTests.cs` | T-10〜T-28・T-41・T-44〜T-49・T-52〜T-60・T-68〜T-71 |
 | 境界層（保管先クライアント） | `src/platform/backend/Bff/Platform.Bff.Tests/VaultKvClientTests.cs` | T-42 |
 | 境界層（項目集合） | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemCatalogTests.cs` | T-29〜T-31・T-50・T-51 |
 | 保管先の権限の字面 | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemVaultPolicyTests.cs` | T-32〜T-35 |
 | 同期依頼の権限の字面 | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemExternalSecretRbacTests.cs` | T-61 |
 | 初期化スクリプトの字面 | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemBootstrapSeedTests.cs` | T-62 |
 | 起動器 | `scripts/k8s-local-up.test.js` | T-63 |
-| Kubernetes API の偽物 | `src/platform/backend/Bff/Platform.Bff.Tests/FakeKubernetesApi.cs` | T-57〜T-60 が使う |
+| Kubernetes API の偽物 | `src/platform/backend/Bff/Platform.Bff.Tests/FakeKubernetesApi.cs` | T-57〜T-60・T-68〜T-70 が使う（既定では同期先がすべて在る。無いものは名前で指定する） |
 | ブラウザ | `src/platform/frontend/e2e/sc22-secrets.smoke.spec.ts` | T-36〜T-38 |
 | 保管先の偽物 | `src/platform/backend/Bff/Platform.Bff.Tests/FakeVault.cs` | 上記の境界層試験が使う |
 
@@ -129,3 +137,5 @@ issues: [#1411, #1467, #1477]
 
 - T-40（稼働クラスタでの疎通）は未実施である。稼働クラスタに触れない作業条件のため、次に保管先を立ち上げた運用の場で確かめる。
   同じ場で、即時同期で数秒以内に Secret が変わること、Reloader が消費側を作り直すこと、生成した鍵を OpenD が読めることも確かめる。
+- 同じ場で、供給元の判定を確かめる: 株式自動売買の外部シークレット同期を有効／無効にした 2 通りの配備で、一覧の供給元が
+  `screen` / `git` に切り替わること（境界層の権限で `get` が 403 にならないこと。403 なら `unknown` に倒れる）。

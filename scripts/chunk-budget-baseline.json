@@ -294,7 +294,15 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 605160,
+  "initialTotalBytes": 609234,
+  "$comment_initialTotalBytes_20260925_1502_sc22-supply-source": [
+    "［2026-09-25 / #1502］605,160 → 609,234（+4,074 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が",
+    "+4.07 kB 超過を報告し、--update で床を更新した）。本 PR のフロント成果物の変更は SC-22 だけである: 一覧の「供給元」列と注記、",
+    "更新フォームの供給元の警告・消費側の再起動の注記、その Lingui カタログ（ja / en で 13 キーずつ。再起動の注記は長文 3 種）、",
+    "orval の生成物（supplySource）。Lingui カタログは初期ロードに載るため、増分の大半は文言である（13 キー×2 の文字数からの概算で約 4 kB）。",
+    "**チャンク単位の A/B 分解はしていない**（develop 単独ビルドとの突き合わせは未測定。#1489 の記録では develop の実測が 605,160 で一致している）。",
+    "smallLazyChunks は 10 本で床は変えていない。"
+  ],
   "$comment_initialTotalBytes_20260916_1477": [
     "［2026-09-16 / #1477（PR #1478）］601,558 → 605,160（+3,602 B）へ引き上げた。実測値である",
     "（pnpm run build → node scripts/check-chunk-budget.js --update。CI の frontend.yml build-test の実測 605.16 kB と一致）。",
