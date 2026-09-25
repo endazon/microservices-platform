@@ -4,7 +4,7 @@ type: test-spec
 status: draft
 author: claude
 created: 2026-08-23
-updated: 2026-08-28
+updated: 2026-09-25
 ---
 <!-- trace:
 ids: [FR-19, FR-21, UC-03, UC-11, SC-20]

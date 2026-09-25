@@ -3,7 +3,7 @@ title: UC-06 文書を正規化変換する テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-31
-updated: 2026-09-05
+updated: 2026-09-25
 author: claude
 ---
 <!-- trace:
