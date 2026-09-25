@@ -20,8 +20,9 @@ namespace Platform.Shared.Infrastructure.Tests.Foundation.Grpc;
 // 構成の解決（`ResolveGrpcHost`）は `GrpcListenerExtensionsTests` が固定するが、
 // **解決した値が本当に bind へ届いているか**は別の主張であり、ここでしか確かめられない。
 //
-// 陽性対照を対で置く: 同じ器で「ワイルドカードなら外向きにも開く」ことを確かめる。
-// 片側（ループバックのみ）だけを見ると、**そもそも待受が立っていない**状態と区別できない。
+// 対になる主張「ワイルドカードなら全インタフェースへ開く」は、**実際には待ち受けずに**確かめる（#1507）。
+// 従前は `http://*:0` で本当にホストを起動しており、試験そのものが 0.0.0.0 で待ち受けて
+// 端末の外から届く状態を作っていた。本群の実ソケットはループバック（127.0.0.1）だけに限る。
 [Trait("TestKind", "Unit")]
 public sealed class GrpcListenerBindingTests
 {
@@ -120,18 +121,37 @@ public sealed class GrpcListenerBindingTests
 
     // 陰性対照（本番の形）: ワイルドカードなら従来どおり全インタフェースへ開く。
     // **狭める側だけを試すと、本番で繋がらない形を作っても気づけない。**
-    [Fact]
-    public async Task Grpc_port_stays_reachable_from_outside_when_http_binds_all_interfaces()
+    // 🔴 #1507: 全インタフェースへの待受を試験で実際に立てない。`AddPlatformGrpcListener` が h2c ポートの
+    // 待受先を決めるのと同じ関数の連鎖（HTTP 側の解決 → gRPC ホストの解決 → 待受先の判定）を通し、
+    // 全インタフェース（`ListenAnyIP`）に倒れることを確かめる。判定が実際の bind に届いていることは、
+    // 上のループバックの試験が実ソケットで確かめている（同じ `Listen` を通る）。
+    [Theory]
+    [InlineData("http://*:0")]
+    [InlineData("http://+:0")]
+    [InlineData("http://0.0.0.0:0")]
+    [InlineData("http://[::]:0")]
+    public void Grpc_port_targets_all_interfaces_when_http_binds_all_interfaces(string httpUrls)
     {
-        var outside = FindNonLoopbackIPv4();
-        Assert.SkipWhen(outside is null, "ループバック以外の IPv4 が無いため『外から』を試せない。");
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { [GrpcListenerExtensions.UrlsKey] = httpUrls })
+            .Build();
 
-        var grpcPort = FreeTcpPort();
-        await using var app = await StartAsync("http://*:0", grpcPort);
+        var grpcHost = GrpcListenerExtensions.ResolveGrpcHost(GrpcListenerExtensions.ResolveHttpAddresses(config));
+        var target = GrpcListenerExtensions.ResolveListenTarget(
+            Microsoft.AspNetCore.Http.BindingAddress.Parse($"http://{grpcHost}:50051"));
 
-        CanConnect(outside!, grpcPort).Should().BeTrue(
+        target.Kind.Should().Be(GrpcListenerExtensions.ListenTargetKind.AnyIP,
             "コンテナ既定（ワイルドカード）では h2c ポートがメッシュから届くこと");
+    }
 
-        await app.StopAsync(TestContext.Current.CancellationToken);
+    // 対: ループバックに絞った構成は、待受先の判定でもループバックの特定アドレスになる。
+    [Fact]
+    public void Grpc_port_targets_loopback_when_http_binds_loopback_only()
+    {
+        var target = GrpcListenerExtensions.ResolveListenTarget(
+            Microsoft.AspNetCore.Http.BindingAddress.Parse("http://127.0.0.1:50051"));
+
+        target.Kind.Should().Be(GrpcListenerExtensions.ListenTargetKind.Specific);
+        target.Address.Should().Be(IPAddress.Loopback);
     }
 }
