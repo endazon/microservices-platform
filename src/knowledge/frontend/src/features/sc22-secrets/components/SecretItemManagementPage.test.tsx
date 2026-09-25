@@ -324,7 +324,7 @@ describe('SecretItemManagementPage (SC-22)', () => {
     // 供給元はすべて「画面」（種別の試験に供給元の表示を混ぜない。供給元は下の ADR-0104 の試験が固定する）。
   ].map((row) => ({ ...row, supplySource: 'screen' }));
 
-  function mockKindApi(syncRequested = true) {
+  function mockKindApi(syncRequested = true, items: readonly object[] = KIND_ITEMS) {
     mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
       if (init?.method === 'PUT' && String(path).startsWith('/secrets/')) {
         const sent = JSON.parse(String(init.body)) as { property: string };
@@ -338,7 +338,7 @@ describe('SecretItemManagementPage (SC-22)', () => {
           }),
         );
       }
-      if (String(path) === '/secrets') return Promise.resolve(jsonResponse(KIND_ITEMS));
+      if (String(path) === '/secrets') return Promise.resolve(jsonResponse(items));
       return Promise.resolve(jsonResponse([]));
     });
   }
@@ -410,6 +410,11 @@ describe('SecretItemManagementPage (SC-22)', () => {
     expect(restart).toHaveTextContent('kubectl -n ai-stock-trading rollout restart deploy/opend');
     expect(restart).toHaveTextContent('SMS');
     expect(putCalls()).toHaveLength(0);
+    // #1530 の監査: 生成は保管先の鍵を置き換えるので破壊的として示し（文言に加えて danger の見た目）、初期フォーカスは取消。
+    expect(dialog.getByRole('button', { name: '生成して書き込む' }).className).toContain(
+      'text-danger',
+    );
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'やめる' })).toHaveFocus());
 
     // 「やめる」で確認を閉じ、送らない。
     await user.click(dialog.getByRole('button', { name: 'やめる' }));
@@ -427,6 +432,38 @@ describe('SecretItemManagementPage (SC-22)', () => {
     });
     expect(await form.findByTestId('secret-update-done')).toHaveTextContent('opend_rsa.pem');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  // T-77（#1530 の監査）: 供給元が「画面以外」の鍵の生成は、確認は通すが（鍵が置き換わる）、再起動の本文を出さず、
+  // 「OpenD が読み込むまで食い違う」とも書かない —— 同期先が無いので、新しい鍵は再起動しても OpenD に届かない。
+  it('scopes the generate confirmation for an item supplied outside the screen: the new key never reaches OpenD', async () => {
+    mockKindApi(
+      true,
+      KIND_ITEMS.map((row) =>
+        row.item === 'ast-moomoo-rsa' ? { ...row, supplySource: 'git' } : row,
+      ),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+    const form = within(await openForm(user, 'OpenD の RSA 鍵'));
+    expect(form.getByTestId('secret-supply-not-screen')).toBeInTheDocument();
+
+    await user.click(form.getByRole('button', { name: '生成' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    const generate = dialog.getByTestId('secret-generate-confirm');
+    expect(generate).toHaveTextContent('新しい鍵に置き換わります');
+    expect(generate).toHaveTextContent('OpenD にもクライアントにも届きません');
+    expect(generate).not.toHaveTextContent('読み込むまで');
+    expect(dialog.queryByTestId('secret-restart-confirm')).toBeNull();
+    expect(dialog.getByRole('button', { name: '生成して書き込む' }).className).toContain(
+      'text-danger',
+    );
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'やめる' })).toHaveFocus());
+    expect(putCalls()).toHaveLength(0);
+
+    await confirmWrite(user, '生成して書き込む');
+    await waitFor(() => expect(putCalls()).toHaveLength(1));
+    expect(await form.findByTestId('secret-not-applied')).toHaveTextContent('反映されません');
   });
 
   // IADR-0456 決定 1: 秘密でない ID は平文で入力させ、確認入力を求めず、秘密ではない旨を書く（書き込み専用なのは同じ）。
@@ -619,6 +656,8 @@ describe('SecretItemManagementPage (SC-22)', () => {
       '書き込む',
     ]);
     await waitFor(() => expect(dialog.getByRole('button', { name: 'やめる' })).toHaveFocus());
+    // 値の書き込みは旧版で戻せるので破壊的としない（生成だけが danger。陽性は生成の試験）。
+    expect(dialog.getByRole('button', { name: '書き込む' }).className).not.toContain('text-danger');
     expect(putCalls()).toHaveLength(0);
 
     // 取消で送らない（陰性）。

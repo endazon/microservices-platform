@@ -522,20 +522,33 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
           title={generate ? t`鍵を生成して書き込みますか？` : t`このプロパティを書き込みますか？`}
           confirmLabel={generate ? t`生成して書き込む` : t`書き込む`}
           cancelLabel={t`やめる`}
+          // #1530 の監査: 生成は保管先の鍵を置き換える（旧版へ戻しても OpenD が読み込んだ鍵は戻らない）ので破壊的として示す。
+          destructive={generate}
           pending={update.isPending}
           onConfirm={send}
           onCancel={() => setConfirming(false)}
         >
           <div data-testid="secret-write-confirm" className="flex flex-col gap-2">
-            {generate && (
-              <p data-testid="secret-generate-confirm">
-                <Trans>
-                  鍵を生成し直すと、保管先の鍵が新しい鍵に置き換わります。OpenD
-                  が新しい鍵を読み込むまで（手動で再起動するまで）、OpenD
-                  と同じ鍵で接続するクライアントとの間で鍵が食い違います。鍵はこの画面にも表示されません。
-                </Trans>
-              </p>
-            )}
+            {/* #1530 の監査: 「画面以外」では同期先が無く、生成した鍵は OpenD にもクライアントにも届かない。
+                「再起動するまで食い違う」と書くと再起動で届くかのように読めるので、供給元で書き分ける。 */}
+            {generate &&
+              (source === 'git' ? (
+                <p data-testid="secret-generate-confirm">
+                  <Trans>
+                    鍵を生成し直すと、保管先の鍵が新しい鍵に置き換わります。この項目は画面以外から供給されているため、生成した鍵は
+                    OpenD にもクライアントにも届きません（OpenD
+                    を再起動しても届きません）。鍵はこの画面にも表示されません。
+                  </Trans>
+                </p>
+              ) : (
+                <p data-testid="secret-generate-confirm">
+                  <Trans>
+                    鍵を生成し直すと、保管先の鍵が新しい鍵に置き換わります。OpenD
+                    が新しい鍵を読み込むまで（手動で再起動するまで）、OpenD
+                    と同じ鍵で接続するクライアントとの間で鍵が食い違います。鍵はこの画面にも表示されません。
+                  </Trans>
+                </p>
+              ))}
             {source !== 'git' && (
               <RestartConfirmation
                 restart={restart}

@@ -93,3 +93,11 @@ planning#652 の裁定 2〜4（ADR-0110）を SC-22 に写す。
 - `pnpm run build` → `check-chunk-budget --require` が +3.11 kB を報告 → `--update` で床を 612,346 B へ（`$comment_initialTotalBytes_20260926_1523_sc22-restart-confirm` に記録）。`check-static-egress --require src/platform/frontend/dist` → OK。
 - `dotnet build src/platform/backend/backend.slnx` → 警告 0・エラー 0。`dotnet format … --verify-no-changes` → 差分なし。`Platform.Bff.Tests` の `SecretItem` 系 → 111 件合格（BFF は変えていない）。
 - `check-contract-schema`（`SecretItemSupplySources.Git` の値は不変）・`check-openapi-dto-drift` → OK。
+
+## ［2026-09-26 追記 / #1530 の監査］指摘の反映
+
+- ①「画面以外」の項目で鍵を生成すると、同期先が無いので新しい鍵は再起動しても OpenD に届かない。生成の本文を供給元で書き分け、「画面以外」では「OpenD にもクライアントにも届きません（再起動しても届きません）」とし、「読み込むまで食い違う」とは書かない（新 T-77）。
+- ②生成の確定ボタンを破壊的（`destructive`）にした。値の書き込みは破壊的としない（T-76 に陰性の検査を足した）。
+- ③初期フォーカスが取消にあることは T-76 が既に固定していた。生成の試験（T-65）と T-77 にも同じ検査を足した。
+- 検証: `vitest run knowledge/frontend/src/features/sc22-secrets` → 20 件合格。赤の確認: 書き分けを外し `destructive` を外すと T-65・T-77 の 2 本が失敗。`pnpm run i18n` → 1 キー追加（en は手で訳した）・未翻訳 0。`pnpm run build` → `check-chunk-budget` +593 B を `--update` で床へ（612,939 B）。
+- develop の取り込み（#1513・#1524）で `docs/operations/secret-rotation-runbook.md` の trace ブロックが衝突した。両側の ID を合わせて解決した。

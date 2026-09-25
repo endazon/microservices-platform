@@ -4297,6 +4297,10 @@ msgstr "鍵を生成して書き込みますか？"
 msgid "鍵を生成し直すと、保管先の鍵が新しい鍵に置き換わります。OpenD が新しい鍵を読み込むまで（手動で再起動するまで）、OpenD と同じ鍵で接続するクライアントとの間で鍵が食い違います。鍵はこの画面にも表示されません。"
 msgstr "鍵を生成し直すと、保管先の鍵が新しい鍵に置き換わります。OpenD が新しい鍵を読み込むまで（手動で再起動するまで）、OpenD と同じ鍵で接続するクライアントとの間で鍵が食い違います。鍵はこの画面にも表示されません。"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "鍵を生成し直すと、保管先の鍵が新しい鍵に置き換わります。この項目は画面以外から供給されているため、生成した鍵は OpenD にもクライアントにも届きません（OpenD を再起動しても届きません）。鍵はこの画面にも表示されません。"
+msgstr "鍵を生成し直すと、保管先の鍵が新しい鍵に置き換わります。この項目は画面以外から供給されているため、生成した鍵は OpenD にもクライアントにも届きません（OpenD を再起動しても届きません）。鍵はこの画面にも表示されません。"
+
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
