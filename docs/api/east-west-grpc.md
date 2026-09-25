@@ -3,15 +3,15 @@ title: east-west gRPC 通信仕様書（proto の置き場・versioning・h2c・
 type: api-spec
 status: completed
 created: 2026-09-05
-updated: 2026-09-11
+updated: 2026-09-25
 author: Claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11, FR-12, FR-13, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, NFR-02, NFR-09, NFR-16, NFR-19, NFR-21, SC-03, SC-05, SC-06, SC-10, SC-12, SC-17, SC-18, UC-01, UC-02, UC-03, UC-04, UC-05, UC-07, UC-09, UC-10, UC-11]
 adrs: [ADR-0089, ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0037, ADR-0038, ADR-0044, ADR-0045, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088]
-iadrs: [IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419]
-specs: [20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body]
-issues: [#1201, #1255, #1333, #1318, #1364]
+iadrs: [IADR-0462, IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419]
+specs: [20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body]
+issues: [#1397, #1201, #1255, #1333, #1318, #1364]
 -->
 
 # 通信仕様書: east-west gRPC（サービス間の同期呼び出し）
@@ -27,6 +27,9 @@ issues: [#1201, #1255, #1333, #1318, #1364]
 - **プロトコル**: gRPC（HTTP/2）+ Protobuf 3。メッシュ内は **h2c（TLS 無し HTTP/2）** で、mTLS はサイドカーが終端する。
 - **対象**: メッシュ内のサービスどうしの**同期**呼び出し。候補／非候補の基準は「同期 ∧ east-west ∧ 応答を待つ」であり、
   呼び出しの頻度やレイテンシ要求では判定しない。外部 SaaS・IdP・オブジェクトストレージ・非同期イベント・SSE は対象外。
+  ［2026-09-25 追記］🔴 **BFF が利用者の資格情報を後段へ付けて中継する呼び出しも対象外である**（BFF はエッジ。
+  north-south の続きとして扱う。オーナー裁定）。**BFF 自身の s2s で呼ぶ呼び出しは対象のまま**である。
+  分け方は §4「BFF セッション方式との分け方」の行と §5 の判定表の直後を参照。
 - **状態**: gRPC 面を持つのは **11 経路** —— 参照実装（BFF → 認可サービスの権限スコープ解決）、
   埋め込み生成（取り込み・検索 → LLM ゲートウェイ）、テキスト生成（AI 分析・グラフ・変換 →
   LLM ゲートウェイ。一括と**逐次**）、**認可サービスの 5 呼び出し元**
@@ -98,7 +101,7 @@ C# 契約（DTO・イベント）の検査器とは母集合を共有しない�
 | 🔴 利用者トークン | **メタデータへ載せない。** 利用者のトークン（管理者であっても）はサービス間の面を通らない —— 通すと呼び出し先が「利用者が直接呼んだ」と「サービスが利用者のために呼んだ」を区別できず、利用者ロールがサービス間の面へ漏れる（confused deputy） |
 | 利用者の文脈 | **本文で運ぶ**（`user_id` / `user_attributes` / `action`。REST の要求本文と同じ形）。移行は本文を変えないトランスポートの差し替えになる。［2026-09-08 追記］🔴 **ただし `user_attributes` は権限スコープ解決では評価に用いられなくなった**（下の「利用者の権限で動く呼び出し先」の行を参照）。契約からは消していない |
 | deny-by-default | 該当ポリシーが無ければ `granted=false` を**応答で**返す（エラーではない）。呼び出し側は `UNAUTHENTICATED` / `PERMISSION_DENIED` / `UNAVAILABLE` / トークン取得失敗をすべて「閲覧可能なし」へ縮退する |
-| BFF セッション方式との分け方 | セッション Cookie ↔ 利用者トークンは **north-south**、s2s トークンは **east-west**。BFF は自分の confidential client（`bff`）で client credentials を取る（realm の `bff` に service account と `platform-service` を付けてある） |
+| BFF セッション方式との分け方 | セッション Cookie ↔ 利用者トークンは **north-south**、s2s トークンは **east-west**。BFF は自分の confidential client（`bff`）で client credentials を取る（realm の `bff` に service account と `platform-service` を付けてある）。［2026-09-25 追記］🔴 **BFF が利用者の資格情報を後段へ付けて中継する呼び出しは north-south の続き（エッジ）であり、east-west に数えない**（gRPC 化の対象外。オーナー裁定）。east-west に数えるのは BFF 自身の s2s で呼ぶものだけである |
 | 利用者の権限で動く呼び出し先 | **利用者文脈を本文で運ぶ**（上の行と同じ形）。呼び出し先は受け取った文脈で**自分の判定を行う**ので、ホップごと ABAC は満たされる。［2026-09-08 追記］🔴 **権限スコープ解決だけは「主張された属性」を使わない** —— 認可サービスが `user_id` から IdP へ引き直す。運ぶのは**引き直しの鍵**としての `user_id` であり、属性は根拠ではなくなった |
 | RFC 8693 token exchange | 🔴 **今は採らない。**［2026-09-08 更新］従前ここは「入れても閉じないから」と書いていた —— 認可サービスが主張された属性をそのまま評価していたためである。**その半分は閉じた**（属性は IdP から引き直す）。**残るのは `user_id` の詐称であり、それを閉じる手段は token exchange しかない。** 採らない理由は変わったが結論は変わらない（着手可否の 2 条件のうち①は動いていない） |
 
@@ -303,6 +306,18 @@ BFF は north-south の入口でもあるため、**どの呼び出しが移せ�
 | 文書の**書き込み**・本文投入・タグ辞書・個人資料 | 移さない | 利用者の資格情報を運び、後段が `AdminOnly` などを二重ゲートで強制する |
 | 検索・グラフ・Wiki・AI 分析・通知・変換・データソース・MCP・利用者管理・ABAC 管理 | 移さない | 同上（ホップごと ABAC・主体絞り・管理系の二重ゲート） |
 | introspection の収集 | 移さない | 呼び出し先集合が構成で開いており、**本リポジトリが著述できないユニットのサービスを含む**。一部だけ移すと「到達不能」が 2 つの意味を持つ |
+
+［2026-09-25 追記］🔴 **上表の「移さない」のうち、利用者の資格情報を運ぶ行は「移せない」から「移す対象でない」へ変わった。**
+BFF はエッジであり、BFF が利用者の資格情報を後段へ付けて中継する呼び出しは east-west に数えない（オーナー裁定）。
+後段はその資格情報で自分の門（管理者ロール・ABAC・主体の絞り込み）を判定し続ける —— s2s へ替えて門を 1 枚にする作業は発生しない。
+該当は BFF の名前付き HTTP クライアント **15 本**（AI 分析・フィードバック・ダッシュボード・認可〔管理面の代理〕・検索・グラフ・
+MCP・通知・Wiki・文書・変換・データソース、基盤を拡張する別プロジェクトの 3 サービス）で、利用者の資格情報を付ける
+呼び出し箇所は 27 である（2026-09-25 の実測）。
+
+- 🔴 **分けるのは名前付きクライアントではなく呼び出し箇所である。** 文書のクライアントは書き込み側で資格情報を付けるが、
+  **読み取り 4 箇所（本面の REST 並走側）は付けない**。この 4 箇所と、BFF 自身の s2s で呼ぶ権限スコープ解決の REST 側は
+  east-west のままであり、REST 退役の規則で数える。
+- 🔴 **introspection の収集は利用者の資格情報を運ばない**ので、上の 15 本に入らない。east-west の扇形として残る（§未決事項）。
 
 🔴 **この面は認可の判定を持たない。** 文書単位の ABAC（属性合致 ∧ 個人資料でないこと）は
 **呼び出し元の 1 か所**が実施点であり、移行で位置を動かしていない。書き込みプリフライト
@@ -670,6 +685,15 @@ sequenceDiagram
   🔴 **BFF → 各サービスの利用者資格情報を運ぶ経路は、この数え直しでも残っている** ——
   計画 `ADR-0086` 決定 3 の対象 2 経路に含まれず、扱いは未定である。
   **上の 49 / 17 / 27 / 5 は 2026-09-06 時点の実測であり、書き換えない** —— 数え直しは基点ごとに行う。
+  ［2026-09-25 追記］🔴 **直前の「BFF → 各サービスの利用者資格情報を運ぶ経路は…扱いは未定である」は解消した。**
+  BFF はエッジであり、この経路（名前付き HTTP クライアント 15 本・呼び出し箇所 27）は **east-west に数えない**
+  （オーナー裁定。§5 の判定表の直後を参照）。**したがって east-west の残りは次の 2 つである** ——
+  ①扇形の 2 経路（MCP のツール申告の収集・実効構成の収集）を**全宛先に gRPC の口を実装して移す**こと
+  （同日のオーナー裁定。従前ここに書いた「本リポジトリだけでは完結しない」は、宛先の側も実装する方針に改まった）、
+  ②gRPC 面を持つ経路の **REST 実装の退役**（並走中の正を gRPC へ反転する段）。
+  🔴 **introspection の収集は利用者の資格情報を運ばないので上の 15 本に入らない** —— 数を 15 のまま中身を取り違えないこと。
+  🔴 **計画側の gRPC / REST の使い分け基準は、BFF → 各サービスを east-west の該当経路として名指ししたままである**
+  （反映は計画側の判断を待っている）。
 - ［2026-09-07 更新］🔴 **利用者の権限で動く呼び出し先（ホップごと ABAC）の扱いは裁定された。**
   計画がその手段を「**利用者文脈を本文で運ぶ**」と定め（§7 つ目の面を参照）、
   **token exchange は今は採らない**とした。従前ここに書いていた「未決である」は解消した。

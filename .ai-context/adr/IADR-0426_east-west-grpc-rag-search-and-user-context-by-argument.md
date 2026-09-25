@@ -2,10 +2,10 @@
 title: IADR-0426 east-west gRPC 第 11 面: RAG の検索を s2s へ移し、利用者文脈を器から拾わず引数で段まで運ぶ
 type: impl-adr
 status: Accepted
-related_ids: [FR-03, FR-04, FR-05, FR-07, FR-17, NFR-02, NFR-09, NFR-16, UC-01, UC-02, UC-10, SC-01, SC-08, ADR-0004, ADR-0029, ADR-0034, ADR-0035, ADR-0036, ADR-0043, ADR-0075, ADR-0086, ADR-0087, ADR-0088, ADR-0089, IADR-0009, IADR-0012, IADR-0044, IADR-0149, IADR-0151, IADR-0242, IADR-0253, IADR-0259, IADR-0263, IADR-0272, IADR-0283, IADR-0358, IADR-0379, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0411, IADR-0412, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419]
+related_ids: [FR-03, FR-04, FR-05, FR-07, FR-17, NFR-02, NFR-09, NFR-16, UC-01, UC-02, UC-10, SC-01, SC-08, ADR-0004, ADR-0029, ADR-0034, ADR-0035, ADR-0036, ADR-0043, ADR-0075, ADR-0086, ADR-0087, ADR-0088, ADR-0089, IADR-0009, IADR-0012, IADR-0044, IADR-0149, IADR-0151, IADR-0242, IADR-0253, IADR-0259, IADR-0263, IADR-0272, IADR-0283, IADR-0358, IADR-0379, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0411, IADR-0412, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0462]
 author: claude
 created: 2026-09-11
-updated: 2026-09-11
+updated: 2026-09-25
 ---
 
 # IADR-0426: 利用者を「その場に在るもの」から拾うのをやめる
@@ -144,6 +144,8 @@ IGraphNeighborExpander.ExpandAsync(seeds, hops, user, ct)
 - 🔴 **稼働 k3s での h2c 往復は本 PR でも測っていない**（Pod 再構築を要する）。
 - 🔴 **BFF → 各サービスの利用者資格情報を運ぶ経路**は `ADR-0086` 決定 3 の対象 2 経路に含まれず、
   扱いは未定のままである。
+  ［2026-09-25 追記 / #1397］**決まった** —— BFF はエッジであり、BFF が利用者の資格情報を後段へ付けて中継する
+  15 本は east-west に数えない（オーナー裁定）。記録と 15 本の中身は [[IADR-0462]]。
 - 🔴 **`ADR-0089` 決定 2 フォローアップ 1（`POST /authz/attributes/validate` の `ServiceCaller`）は
   本 PR の射程外であり、拾い手が居ない。** #1255 のコメントで名指しした。
 
