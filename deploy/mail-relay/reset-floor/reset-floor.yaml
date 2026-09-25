@@ -31,7 +31,7 @@
 #     🔴 **覆えない床は差を残す**（床より遅い応答はそのまま出る）。
 # ［2026-09-26 / #1500］床を入れた構成の実測は integration-stack（k3d）で届いている（環流 planning#611・
 #   比 1.00 倍が自己対照の内側。計画 ADR-0097 §実測 1）。**稼働クラスタでは未測**（同 フォローアップ 2）。
-#   integration-stack は既定の経路（RESET_FLOOR 未設定＝床あり）で T-10 を測り続ける。
+#   integration-stack は既定の経路（RESET_FLOOR 未設定＝床あり）で T-25（所要時間）を測り続ける（［2026-09-26 / #1525］従前は T-10 と書いていた）。
 apiVersion: apps/v1
 kind: Deployment
 metadata:

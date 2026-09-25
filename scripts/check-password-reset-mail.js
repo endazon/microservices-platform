@@ -24,6 +24,7 @@
  * - **宛先**: 対象利用者の登録アドレスであること（別人へ出ていない）。
  * - **T-10 存在秘匿**（#1143）: 実在／非実在の利用者名で**ステータスと本文が区別できない**
  *   （フローの識別子と、申請者自身が送った利用者名の再表示だけを伏せて比較する）。
+ * - **T-25 所要時間**（#1410）: 実在／非実在の申請の**所要時間も区別できない**（下の「T-25 の所要時間の軸」）。
  * - **T-20 稼働状態の組**（#1143）: **応答を測る前に**「申請の開閉 × 送出先」を見る。
  *   🔴 **開いているのに送出先が使えない組は、それ自体が漏洩である** —— 実在する利用者名のときだけ
  *   送出に失敗して 500 が返り、実在しない利用者名は 200 を返す。**その差で利用者名を列挙できる。**
@@ -89,7 +90,11 @@ const GATE_STATE_CLOSED = 'closed';
 const EXPECT_GATE_CLOSED_ENV = 'EXPECT_GATE_CLOSED';
 
 /*
- * ===== T-10 の所要時間の軸（SC-15 / 計画 ADR-0094 決定 1・4 / #1410）=====
+ * ===== T-25 の所要時間の軸（SC-15 / 計画 ADR-0094 決定 1・4 / #1410）=====
+ *
+ * ［2026-09-26 / 計画 ADR-0108 / planning#650 / #1525］**項目 ID は T-25 である**（テスト仕様書
+ * `docs/tests/SC-15_password-reset.md` の採番。T-10 は応答ステータスと本文の比較）。本軸の失敗の札は
+ * #1417 以来 `[T-25][所要時間]` と出ており、テスト仕様書と食い違っていた。
  *
  * 計画 ADR-0094 は ADR-0078 決定 1 の**所要時間の行**を部分改定し、判定条件をこう定めた ——
  * 「**測定条件を揃えた反復を 3 回以上行い、各反復で実在・非実在の中央値の比が許容内**」。
@@ -117,7 +122,16 @@ const EXPECT_GATE_CLOSED_ENV = 'EXPECT_GATE_CLOSED';
  * 上限を超える** —— 上限が測る量より粗い刻みでしか動けず、**分母が潰れている**（床の内側 1 ms の揺れで
  * 赤が常態化した。#1470）。**表現できない差を上限に使うと、測れないものを測ったことにする。**
  * 🔴 **自己対照が広い側（`評価不能`）は緩めない**（ADR-0103 決定 2）。段 1 に当たっても広ければ `評価不能`。
- * 🔴 **受け入れたリスク**: 刻み（1 ms）未満の系統差は検出しない（ADR-0103 決定 3）。
+ *
+ * ［2026-09-26 / 計画 ADR-0108 決定 1・2 / #1525］**標本を 1 ms より細かい分解能の時計で測る**
+ * （`process.hrtime.bigint()`。単調時計・整数 ns）。上の「刻みは 1 ms」は `Date.now()`（整数 ms）で
+ * 測っていたための値であり、測定の限界ではなかった。刻みの導出（`selfControlStepMs`）は変えず、
+ * 分解能の宣言だけが 1 ns へ下がる —— 各群 3 標本（奇数）なら刻みは 1 ns、比の中央値は 0.5 ns 刻みになる。
+ * 🔴 **受け入れたリスクと根拠を改めた**（ADR-0103 決定 3 を ADR-0108 決定 2 が部分改定）: 刻み未満の
+ * 系統差は CI の門としては見逃す。旧根拠「同じ測定器を使う攻撃者にも見えない」は**取り下げた** ——
+ * 申請には回数制限が無く、攻撃者は大量の標本を平均でき、より細かい時計も使える。それでも受け入れるのは、
+ * **CI の門の役割が「床が効いていること」の回帰検知であり、稼働環境で存在秘匿を守るのは床だから**である。
+ * 床の実装そのものに系統的な偏りがあれば、攻撃者は回数制限の無さを使って推定し得る（残るリスク）。
  */
 
 /** 反復数。ADR-0094 決定 1 の下限（3 回以上）。**1 回目は暖機として捨てる**ので判定に使うのは 2 反復。 */
@@ -141,13 +155,23 @@ const TIMING_SAMPLES_PER_SIDE = 6;
  * 環境ごとに違ってよい。ここが止めるのは「**測れていないのに緑**」だけである。
  */
 const SELF_CONTROL_WIDE_RATIO = 2;
+/** 所要時間の時計（`timingClockNs`）の単位 ns を ms へ換算する係数。 */
+const NS_PER_MS = 1_000_000;
 /**
- * 標本の分解能（ms）。`submitReset` は `Date.now()` の差で測るので**整数 ms** である。
+ * 標本の分解能（ms）。`submitReset` は `timingClockNs()`（`process.hrtime.bigint()`・整数 ns）の差で測るので
+ * **1 ns ＝ 1e-6 ms** である。
  *
  * ［2026-09-25 / 計画 ADR-0103 決定 1 / #1470］段 1 の「自己対照の刻み」はここから**計算する**
  * （`selfControlStepMs`）。🔴 **刻みの値を定数で書かない** —— 標本数を変えれば刻みも変わる。
+ *
+ * ［2026-09-26 / 計画 ADR-0108 決定 1 / #1525］従前は `Date.now()` の差（整数 ms）で測り、ここは `1` だった。
+ * 🔴 **値を時計の単位から導く**（`1 / NS_PER_MS`）—— 宣言と時計が食い違うと刻みの導出が誤る（同決定 1）。
+ * 宣言より粗い標本（格子に乗らない標本）は `evaluateTimingConsistency` が判定へ進まず不合格にする。
+ * 🔴 **宣言は表現の格子であり、時計の実効の粒度ではない**（OS によっては 100 ns 程度で進む）。
+ * 実効が粗ければ中央値が 1 ns 刻みの値を取らないだけで、刻みを宣言より細かく取る側（段 1 が厳しい側）へ誤る。
+ * 緩い側（段 1 が広い側）へは誤らない。
  */
-const TIMING_SAMPLE_RESOLUTION_MS = 1;
+const TIMING_SAMPLE_RESOLUTION_MS = 1 / NS_PER_MS;
 /** 所要時間の判定の 3 値。🔴 `評価不能` は**緑ではない**（ADR-0094 決定 4）。 */
 const TIMING_VERDICT = { PASS: '合格', INCONCLUSIVE: '評価不能', FAIL: '不合格' };
 
@@ -475,7 +499,8 @@ function medianRatio(m1, m2) {
  *
  * 中央値は、群の標本数が**奇数なら観測値そのもの**（刻み＝標本の分解能）、**偶数なら中央 2 値の平均**
  * （刻み＝分解能 / 2）である。2 群の中央値の差が表せる最小の間隔は、**細かい方の群の刻み**である。
- * 片側 6 標本 → 各群 3 標本（奇数）なので、現行の構成では**分解能そのもの＝ 1 ms**。
+ * 片側 6 標本 → 各群 3 標本（奇数）なので、現行の構成では**分解能そのもの**である
+ * （［2026-09-26 / ADR-0108 / #1525］時計を整数 ns へ替えたので **1 ns**。`Date.now()` の頃は 1 ms だった）。
  *
  * 🔴 **計画は刻みの値を発明していない**（「整数 ms の標本では 1 ms」は導出の帰結として書かれている）。
  * ここも値を書かず、分解能と群の大きさから計算する。
@@ -491,14 +516,61 @@ function selfControlStepMs(sizeA, sizeB, resolutionMs = TIMING_SAMPLE_RESOLUTION
 }
 
 /**
- * T-10 の所要時間の軸（計画 ADR-0094 決定 1・4 / #1410）。**純関数**。
+ * ms の値を**分解能の半分を 1 とする整数**へ直す（計画 ADR-0108 決定 1 / #1525）。**純関数**。
+ *
+ * 🔴 **なぜ要るのか。** 分解能が 1 ns（1e-6 ms）になると、ms の浮動小数は格子の上に正確には乗らない
+ * （152,999,004 ns と 152,999,003 ns を ms にして引くと `1.0000000258969521e-6` であり、刻み `1e-6` を**超える**）。
+ * ms のまま段 1 の境界
+ * （差 ≦ 刻み）を比べると、**ちょうど刻みの差が段 2 へ落ちる**。中央値は必ず「分解能の半分」の格子に乗る
+ * （奇数個は観測値そのもの、偶数個は中央 2 値の平均）ので、半格子の整数へ丸めて比べれば境界は厳密になる。
+ * 丸めが消すのは浮動小数の表現誤差だけである —— 格子に乗らない標本は判定の前提で落とす（`offGridSample`）。
+ *
+ * @param {number} ms
+ * @param {number} resolutionMs
+ * @returns {number} 整数
+ */
+function toHalfTicks(ms, resolutionMs) {
+  return Math.round((ms / resolutionMs) * 2);
+}
+
+/**
+ * 分解能の格子に乗らない最初の標本を返す（乗っていれば null）。**純関数**。
+ * 🔴 **格子に乗らない標本は「宣言と時計が食い違っている」ことを示す**（計画 ADR-0108 決定 1）。
+ * そのまま判定すると刻みの導出が誤る（例: 分解能を 1 ns と宣言したまま `performance.now()` の差を入れる）。
+ *
+ * @param {number[]} samples
+ * @param {number} resolutionMs
+ * @returns {?number}
+ */
+function offGridSample(samples, resolutionMs) {
+  // 許容は格子 1 目の 1/1000。ms → 格子数の割り算の表現誤差（150 ms / 1e-6 で 1e-8 目程度）だけを吸収する。
+  const found = (samples || []).find((x) => {
+    const ticks = x / resolutionMs;
+    return Math.abs(ticks - Math.round(ticks)) > 1e-3;
+  });
+  return found === undefined ? null : found;
+}
+
+/** ms を末尾の 0 を落として出す（1 → "1"、1e-6 → "0.000001"、5e-7 → "0.0000005"）。 */
+function formatMs(ms) {
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) return '—';
+  return ms.toFixed(7).replace(/\.?0+$/, '');
+}
+
+/**
+ * T-25 の所要時間の軸（計画 ADR-0094 決定 1・4 / #1410）。**純関数**。
  *
  * **反復の配列**（取得順）を受け、**先頭 1 反復を暖機として捨て**、残りで判定する。
+ * `resolutionMs` は標本の分解能で、既定は `TIMING_SAMPLE_RESOLUTION_MS`（`submitReset` の時計）。
+ * 🔴 **標本と分解能は組で渡す** —— 別の時計で測った標本を既定の分解能で判定すると刻みが誤る。
  * 各反復について:
  *   - `cross` = 実在／非実在の中央値の比（向きを問わない。1 以上）
  *   - `self`  = **自己対照** = 実在側を交互に 2 群へ分けた中央値の比（＝その環境の測定ノイズ）
- *   - `step`  = **自己対照の刻み**（`selfControlStepMs`。現行の構成では 1 ms）
+ *   - `step`  = **自己対照の刻み**（`selfControlStepMs`。現行の構成では分解能そのもの＝ 1 ns）
+ *   - `stage` = 判定した段（1 / 2。暖機と段へ進まなかった `評価不能` は null）。
+ *     段 1 と段 2 の比率は計画へ届ける実測である（ADR-0108 フォローアップ 2）ので、行にも数を出す
  *   - 🔴 **段 1（ADR-0103 決定 1）: 中央値の差 `|実在 − 非実在| <= step` なら合格**（比と自己対照を比べない）。
+ *     比較は半格子の整数（`toHalfTicks`）で行う（浮動小数で境界がずれないように）。
  *     **`cross > self` より前に置く**（後ろに置くと、潰れた自己対照が先に不合格を出す。同 フォローアップ 1）。
  *     ただし **`self >= SELF_CONTROL_WIDE_RATIO` なら段 1 でも `評価不能`**（広すぎる側を緩めない。同 決定 2）
  *   - 🔴 **段 2: `cross > self` なら不合格**（ADR-0094 決定 1 の判定式）
@@ -506,20 +578,21 @@ function selfControlStepMs(sizeA, sizeB, resolutionMs = TIMING_SAMPLE_RESOLUTION
  *
  * 前提が崩れていれば**判定へ進まず不合格にする**（0 件走査・標本数の不揃いを緑にしない）。
  *
- * @param {{repetitions: Array<{existing:number[], absent:number[]}>}} input
+ * @param {{repetitions: Array<{existing:number[], absent:number[]}>, resolutionMs?:number}} input
  * @returns {{verdict:string, failures:string[], lines:string[],
  *            perRepetition:Array<{index:number, warmup:boolean, n:number,
  *              existingMedian:?number, absentMedian:?number, cross:?number, self:?number,
- *              step:number, slower:?string}>}}
+ *              step:number, slower:?string, stage:?number}>}}
  */
 function evaluateTimingConsistency(input) {
   const reps = (input && input.repetitions) || [];
+  const resolutionMs = (input && input.resolutionMs) || TIMING_SAMPLE_RESOLUTION_MS;
   const failures = [];
   const lines = [];
   const perRepetition = [];
 
   if (reps.length < TIMING_REPETITIONS) {
-    failures.push(`[T-10][所要時間] 反復が ${reps.length} 回しかない（必要 ${TIMING_REPETITIONS} 回以上）。`
+    failures.push(`[T-25][所要時間] 反復が ${reps.length} 回しかない（必要 ${TIMING_REPETITIONS} 回以上）。`
       + ' 🔴 **1 回目は暖機として捨てる**ので、判定に使えるのは 2 回目以降である。'
       + ' 反復せずに測ると、暖機の膨らみを定常状態と取り違える。');
     return { verdict: TIMING_VERDICT.FAIL, failures, lines, perRepetition };
@@ -529,13 +602,22 @@ function evaluateTimingConsistency(input) {
   const counts = reps.map((r) => [((r.existing || []).length), ((r.absent || []).length)]);
   const flat = counts.flat();
   if (flat.some((c) => c === 0)) {
-    failures.push(`[T-10][所要時間] 標本が 0 件の側がある（反復ごとの [実在, 非実在] = ${JSON.stringify(counts)}）。`
+    failures.push(`[T-25][所要時間] 標本が 0 件の側がある（反復ごとの [実在, 非実在] = ${JSON.stringify(counts)}）。`
       + ' 0 件走査を緑にしない。');
     return { verdict: TIMING_VERDICT.FAIL, failures, lines, perRepetition };
   }
   if (new Set(flat).size !== 1) {
-    failures.push(`[T-10][所要時間] 標本数が揃っていない（反復ごとの [実在, 非実在] = ${JSON.stringify(counts)}）。`
+    failures.push(`[T-25][所要時間] 標本数が揃っていない（反復ごとの [実在, 非実在] = ${JSON.stringify(counts)}）。`
       + ' 揃えないと中央値が比較できない（ADR-0094 決定 1 の測り方）。');
+    return { verdict: TIMING_VERDICT.FAIL, failures, lines, perRepetition };
+  }
+  // 標本は**宣言した分解能の格子に乗っていること**（計画 ADR-0108 決定 1 / #1525）。
+  // 🔴 乗らないなら宣言と時計が食い違っており、刻みの導出が誤る。判定へ進まない。
+  const offGrid = offGridSample(reps.flatMap((r) => [...(r.existing || []), ...(r.absent || [])]), resolutionMs);
+  if (offGrid !== null) {
+    failures.push(`[T-25][所要時間] 標本 ${offGrid} ms が宣言した分解能 ${formatMs(resolutionMs)} ms の格子に乗っていない。`
+      + ' 🔴 **宣言と時計が食い違うと、自己対照の刻みの導出が誤る**（ADR-0108 決定 1）。'
+      + ' 測った時計に合わせて分解能を宣言し直す。');
     return { verdict: TIMING_VERDICT.FAIL, failures, lines, perRepetition };
   }
 
@@ -547,19 +629,22 @@ function evaluateTimingConsistency(input) {
     const halves = splitAlternating(rep.existing);
     const self = medianRatio(median(halves.a), median(halves.b));
     const cross = medianRatio(existingMedian, absentMedian);
-    const step = selfControlStepMs(halves.a.length, halves.b.length);
+    const step = selfControlStepMs(halves.a.length, halves.b.length, resolutionMs);
     const slower = (existingMedian === null || absentMedian === null) ? null
       : (existingMedian === absentMedian ? '同じ' : (existingMedian > absentMedian ? '実在' : '非実在'));
-    perRepetition.push({
+    const record = {
       index, warmup, n: (rep.existing || []).length, existingMedian, absentMedian, cross, self, step, slower,
-    });
+      stage: null,
+    };
+    perRepetition.push(record);
 
-    const fmt = (x) => (typeof x === 'number' ? x.toFixed(1) : '—');
+    // 中央値は µs まで出す（分解能は 1 ns だが、読み手が比べるのは床 150 ms の内側の µs 〜 ms の揺れである）。
+    const fmt = (x) => (typeof x === 'number' ? x.toFixed(3) : '—');
     const ratio = (x) => (typeof x === 'number' ? `${x.toFixed(2)} 倍` : '—');
     lines.push(`  反復 ${index + 1}${warmup ? '（暖機・**判定に使わない**）' : ''}:`
       + ` n=${(rep.existing || []).length}/${(rep.absent || []).length}`
       + ` 実在 中央=${fmt(existingMedian)} ms / 非実在 中央=${fmt(absentMedian)} ms`
-      + ` / 比=${ratio(cross)}（遅い側 ${slower || '—'}）/ 自己対照=${ratio(self)}（刻み ${step} ms）`);
+      + ` / 比=${ratio(cross)}（遅い側 ${slower || '—'}）/ 自己対照=${ratio(self)}（刻み ${formatMs(step)} ms）`);
 
     if (warmup) return;
     if (halves.a.length < 2 || halves.b.length < 2 || self === null) {
@@ -575,25 +660,31 @@ function evaluateTimingConsistency(input) {
     }
     // 段 1（計画 ADR-0103 決定 1 / #1470）: 中央値の差が自己対照の刻み以下なら、比と自己対照を比べない。
     // 🔴 **`cross > self` より前に置く**（後ろに置くと、潰れた自己対照が先に不合格を出す。同 フォローアップ 1）。
-    const diff = Math.abs(existingMedian - absentMedian);
-    if (diff <= step) {
+    // ［2026-09-26 / ADR-0108 / #1525］**差と刻みは半格子の整数で比べる**（`toHalfTicks`）。分解能 1 ns では
+    // ms の浮動小数が格子に正確には乗らず、ms のまま比べると「ちょうど刻み」の差が段 2 へ落ちる。
+    const diffHalfTicks = Math.abs(toHalfTicks(existingMedian, resolutionMs) - toHalfTicks(absentMedian, resolutionMs));
+    const stepHalfTicks = toHalfTicks(step, resolutionMs);
+    const diff = (diffHalfTicks * resolutionMs) / 2;
+    if (diffHalfTicks <= stepHalfTicks) {
+      record.stage = 1;
       if (self >= SELF_CONTROL_WIDE_RATIO) {
         // 🔴 **広すぎる側は緩めない**（ADR-0103 決定 2）。ノイズに埋もれた反復で中央値が偶然並んでも、
         //    それは「差が無い」ではない。
         inconclusive = true;
-        lines.push(`    → ${TIMING_VERDICT.INCONCLUSIVE}（段 1）: 中央値の差 ${diff} ms は刻み ${step} ms 以下だが、`
+        lines.push(`    → ${TIMING_VERDICT.INCONCLUSIVE}（段 1）: 中央値の差 ${formatMs(diff)} ms は刻み ${formatMs(step)} ms 以下だが、`
           + `自己対照が ${self.toFixed(2)} 倍と広い（可検出性の下限 ${SELF_CONTROL_WIDE_RATIO} 倍以上）。`
           + ' 🔴 **「ノイズに埋もれて見えない」を「差が無い」と読まない。** 標本数を増やして測り直す。');
         return;
       }
-      lines.push(`    → ${TIMING_VERDICT.PASS}（段 1）: 中央値の差 ${diff} ms ≦ 自己対照の刻み ${step} ms。`
+      lines.push(`    → ${TIMING_VERDICT.PASS}（段 1）: 中央値の差 ${formatMs(diff)} ms ≦ 自己対照の刻み ${formatMs(step)} ms。`
         + ' 自己対照はこれより細かい差を表せないので、比と比べない（刻み未満の系統差は検出しない）。');
       return;
     }
+    record.stage = 2;
     if (cross > self) {
-      failures.push(`[T-10][所要時間] 反復 ${index + 1}: 実在／非実在の中央値の比 ${cross.toFixed(2)} 倍が`
+      failures.push(`[T-25][所要時間] 反復 ${index + 1}: 実在／非実在の中央値の比 ${cross.toFixed(2)} 倍が`
         + ` 自己対照 ${self.toFixed(2)} 倍を超えている（遅い側は ${slower}。`
-        + `中央値の差 ${diff} ms は自己対照の刻み ${step} ms を超えるので段 2 で判定した）。`
+        + `中央値の差 ${formatMs(diff)} ms は自己対照の刻み ${formatMs(step)} ms を超えるので段 2 で判定した）。`
         + ' 🔴 **同じ名前を数回投げて中央値を取れば利用者名を判別できる。**'
         + ' リセット申請には回数制限が無いので、この反復は攻撃者にも行える'
         + '（差を均すのは Keycloak 前段の床である。床は既定で入る（ADR-0097 決定 2）ので、'
@@ -611,11 +702,18 @@ function evaluateTimingConsistency(input) {
     lines.push(`    → ${TIMING_VERDICT.PASS}（段 2）: 比 ${cross.toFixed(2)} 倍 ≦ 自己対照 ${self.toFixed(2)} 倍。`);
   });
 
+  // 段 1 と段 2 の比率は計画へ届ける実測である（ADR-0108 フォローアップ 2。刻みが細かくなると段 2 へ回る反復が増え得る）。
+  const judged = perRepetition.filter((p) => !p.warmup);
+  const byStage = (s) => judged.filter((p) => p.stage === s).length;
+  lines.push(`  段の内訳: 段 1 で判定 ${byStage(1)} 反復 / 段 2 で判定 ${byStage(2)} 反復`
+    + ` / 段へ進まず ${judged.length - byStage(1) - byStage(2)} 反復`
+    + `（判定に使った ${judged.length} 反復のうち。分解能 ${formatMs(resolutionMs)} ms）`);
+
   if (failures.length > 0) return { verdict: TIMING_VERDICT.FAIL, failures, lines, perRepetition };
   if (inconclusive) {
     // 🔴 `評価不能` は**緑にしない**（ADR-0094 決定 4）。標本が足りないことを合格として記録すると、
     //    以後だれも測り直さない。
-    failures.push(`[T-10][${TIMING_VERDICT.INCONCLUSIVE}] 所要時間は**判定できなかった**（合格ではない）。`
+    failures.push(`[T-25][${TIMING_VERDICT.INCONCLUSIVE}] 所要時間は**判定できなかった**（合格ではない）。`
       + ' 自己対照（環境の測定ノイズ）が広く、この測定では差の有無を言えない。'
       + ' 🔴 **これを緑にすると「測れていない」が「差が無い」として記録される。**'
       + ' 標本数を増やすか、測定条件（負荷・並走するジョブ）を揃えて測り直す。');
@@ -796,12 +894,33 @@ async function submitResetRequest({ base, realmName, client, ca, username }) {
    * 認可要求と申請画面の GET は**利用者名を知らない段階**であり、実在／非実在で差が出ようがない。
    * フロー全体を計ると、差の出ない 2 往復が分母に入って**比が薄まる** ——
    * 「差が小さくなった」のか「測り方で薄めた」のかを区別できなくなる。
+   * ［2026-09-26 / 計画 ADR-0108 決定 1 / #1525］**時計は `timingClockNs`（整数 ns）**。整数 ms の壁時計では測らない。
    */
-  const startedAt = Date.now();
+  const startedAt = timingClockNs();
   const res = await request(decodeEntities(action[1]), {
     method: 'POST', jar, ca, body: `username=${encodeURIComponent(username)}`,
   });
-  return { ...res, elapsedMs: Date.now() - startedAt };
+  return { ...res, elapsedMs: elapsedMsBetween(startedAt, timingClockNs()) };
+}
+
+/**
+ * 所要時間の時計（計画 ADR-0108 決定 1 / #1525）。**単調時計の整数 ns**（`process.hrtime.bigint()`）。
+ * 🔴 **`Date.now()` を使わない** —— 整数 ms なので中央値の刻みが 1 ms に張り付き、1 ms 未満の差を表せない。
+ * 壁時計でもあるので NTP の補正で逆行し得る。ログイン経路の測定器（check-login-existence-disclosure.js）と同じ時計である。
+ * @returns {bigint}
+ */
+function timingClockNs() {
+  return process.hrtime.bigint();
+}
+
+/**
+ * 時計の 2 読みの差を ms にする。**純関数**。分解能 `TIMING_SAMPLE_RESOLUTION_MS` はこの換算と同じ係数から導く。
+ * @param {bigint} startNs
+ * @param {bigint} endNs
+ * @returns {number}
+ */
+function elapsedMsBetween(startNs, endNs) {
+  return Number(endNs - startNs) / NS_PER_MS;
 }
 
 /**
@@ -857,19 +976,19 @@ function evaluateTimingPair(input) {
   const existing = String((input && input.existingUsername) || '');
   const absent = String((input && input.absentUsername) || '');
   if (existing === '' || absent === '') {
-    failures.push('[T-10][所要時間] 対の利用者名を作れなかった（実在／非実在のどちらかが空）。'
+    failures.push('[T-25][所要時間] 対の利用者名を作れなかった（実在／非実在のどちらかが空）。'
       + ' 陰性対照を置けないので緑にしない。');
     return failures;
   }
   const existingBytes = Buffer.byteLength(existing);
   const absentBytes = Buffer.byteLength(absent);
   if (existingBytes !== absentBytes) {
-    failures.push(`[T-10][所要時間] 対の利用者名のバイト長が違う（実在 ${existingBytes} / 非実在 ${absentBytes}）。`
+    failures.push(`[T-25][所要時間] 対の利用者名のバイト長が違う（実在 ${existingBytes} / 非実在 ${absentBytes}）。`
       + ' 🔴 **申請した名前は応答へ反映されるため、長さが違えば本文長は必ず違う。**'
       + ' これは存在の漏れではなく測り方の誤りである（環流 planning#596 が 1 度目に踏んだ罠）。');
   }
   if (((input && input.realmUsernames) || []).includes(absent)) {
-    failures.push(`[T-10][所要時間] 陰性対照に選んだ利用者名 ${absent} が realm 宣言に実在する。`
+    failures.push(`[T-25][所要時間] 陰性対照に選んだ利用者名 ${absent} が realm 宣言に実在する。`
       + ' 「非実在のつもりが実在していた」測定を緑にしない。');
   }
   return failures;
@@ -1030,7 +1149,7 @@ async function run() {
         + `バイト長 ${Buffer.byteLength(absentUsername)} で実在名と一致）`);
     }
 
-    // 6) T-10 の**所要時間の軸**（計画 ADR-0094 決定 1・4 / #1410）。
+    // 6) T-25 の**所要時間の軸**（計画 ADR-0094 決定 1・4 / #1410）。
     //    **測定条件を揃えた反復 ≥3・1 回目は暖機として捨てる・標本数は反復間で揃える**。
     //    🔴 **床（ADR-0094 決定 2 / IADR-0432）が無ければ、ここは赤になる**（差は構造由来である ——
     //    非実在側はメールを作らず送らないので、SMTP 取引 1 往復ぶんだけ実在側が遅い）。
@@ -1047,7 +1166,7 @@ async function run() {
         const e = await submitReset(user.username);
         const a = await submitReset(absentUsername);
         if (e.error || a.error) {
-          failures.push(`[T-10][所要時間] 反復 ${rep + 1} の ${i + 1} 標本目で申請を通せなかった: `
+          failures.push(`[T-25][所要時間] 反復 ${rep + 1} の ${i + 1} 標本目で申請を通せなかった: `
             + `${e.error || a.error}`);
           break;
         }
@@ -1061,7 +1180,7 @@ async function run() {
     const timing = evaluateTimingConsistency({ repetitions });
     // 🔴 **走査件数と各反復の中央値を必ず併記する**（ADR-0094 決定 4）——
     //    「判定しなかった」と「差が無かった」を区別できる形にするためである。
-    notices.push(`[check-password-reset-mail] T-10 所要時間（判定: ${timing.verdict}）:`
+    notices.push(`[check-password-reset-mail] T-25 所要時間（判定: ${timing.verdict}）:`
       + ` 反復 ${repetitions.length} 回 × 片側 ${TIMING_SAMPLES_PER_SIDE} 標本`
       + `（**1 回目は暖機として捨てる**。許容比は自己対照＝実在側を交互に 2 群へ分けた中央値の比）`);
     for (const line of timing.lines) notices.push(line);
@@ -1262,7 +1381,7 @@ function selfTest() {
     assert.ok(!(r.value.users || []).some((u) => u.username === name), '作った名前が実在している');
   });
 
-  // ---- T-10 の所要時間の軸（計画 ADR-0094 決定 1・4 / #1410）----------------------
+  // ---- T-25 の所要時間の軸（計画 ADR-0094 決定 1・4 / #1410）----------------------
   //
   // 🔴 **合成した時系列で撃つ。** 稼働クラスタは要らない（判定は純関数に閉じている）。
   //    陽性対照＝計画が実測した「床の無い」形、陰性対照＝床が効いた形である。
@@ -1278,7 +1397,7 @@ function selfTest() {
     assert.deepStrictEqual(splitAlternating([1, 2, 3, 4, 5, 6]), { a: [1, 3, 5], b: [2, 4, 6] });
   });
 
-  ok('🔴 T-10 陽性対照: 床の無い形（計画の実測 反復 2）は不合格', () => {
+  ok('🔴 T-25 陽性対照: 床の無い形（計画の実測 反復 2）は不合格', () => {
     // 実在 中央 37 ms / 非実在 中央 19 ms ＝ 1.95 倍。自己対照は 1.00 倍。
     const rep = () => ({ existing: [35, 36, 37, 37, 38, 39], absent: [18, 19, 19, 19, 20, 21] });
     const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
@@ -1287,7 +1406,7 @@ function selfTest() {
     assert.ok(r.failures.join('\n').includes('自己対照'), '自己対照を超えたことを言っていない');
   });
 
-  ok('T-10 陰性対照: 床が効いた形（両側が床で揃う）は合格', () => {
+  ok('T-25 陰性対照: 床が効いた形（両側が床で揃う）は合格', () => {
     const rep = () => ({ existing: [150, 152, 150, 152, 150, 152], absent: [151, 151, 151, 151, 151, 151] });
     const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
     assert.strictEqual(r.verdict, TIMING_VERDICT.PASS);
@@ -1298,51 +1417,90 @@ function selfTest() {
   //
   // 🔴 #1470 の実測の形で撃つ: 床の内側で自己対照が 1.00 に潰れ、中央値が 0.5〜1 ms ずれた反復。
   //    従前の判定（`cross > self` で不合格）ではこれが赤になり、赤が常態化していた。
+  //
+  // ［2026-09-26 / ADR-0108 / #1525］`MS_CLOCK` を渡す試験（#1491 の境界試験を含む）は **`Date.now()`（整数 ms）の
+  // 時計で測った標本**である。時計を整数 ns へ替えたので、**分解能 1 ms を明示して**渡す（`MS_CLOCK`）。
+  // 段 1 の論理（差 ≦ 刻みなら合格・刻みを超えれば段 2）は分解能に依らないので、これらは意味を保つ。
+  // 新しい時計での境界は下の「分解能 1 ns」の試験が持つ。
+  const MS_CLOCK = 1;
 
-  ok('T-10 段 1: 自己対照の刻みは分解能と群の大きさから計算する（奇数＝分解能・偶数を含めば半分）', () => {
-    assert.strictEqual(selfControlStepMs(3, 3), 1);
-    assert.strictEqual(selfControlStepMs(2, 2), 0.5);
-    assert.strictEqual(selfControlStepMs(3, 2), 0.5, '細かい方の群の刻みを採る');
+  ok('T-25 段 1: 自己対照の刻みは分解能と群の大きさから計算する（奇数＝分解能・偶数を含めば半分）', () => {
+    assert.strictEqual(selfControlStepMs(3, 3, MS_CLOCK), 1);
+    assert.strictEqual(selfControlStepMs(2, 2, MS_CLOCK), 0.5);
+    assert.strictEqual(selfControlStepMs(3, 2, MS_CLOCK), 0.5, '細かい方の群の刻みを採る');
     assert.strictEqual(selfControlStepMs(3, 3, 10), 10);
-    // 現行の構成（片側 6 標本 → 各群 3 標本）では計画の「整数 ms の標本では 1 ms」と一致する。
+    // 現行の構成（片側 6 標本 → 各群 3 標本・奇数）では刻み＝分解能そのもの（整数 ns の時計で 1 ns）。
     const halves = splitAlternating(new Array(TIMING_SAMPLES_PER_SIDE).fill(0));
-    assert.strictEqual(selfControlStepMs(halves.a.length, halves.b.length), 1);
-    assert.strictEqual(TIMING_SAMPLE_RESOLUTION_MS, 1, 'Date.now() の差は整数 ms である');
+    assert.strictEqual(selfControlStepMs(halves.a.length, halves.b.length), TIMING_SAMPLE_RESOLUTION_MS);
+    assert.strictEqual(selfControlStepMs(halves.a.length, halves.b.length), 1e-6, '整数 ns の時計・各群 3 標本では 1 ns');
   });
 
-  ok('🔴 T-10 段 1: 自己対照 1.00・中央値の差 1 ms（#1470 の実測の形）は合格（段 1 は cross > self より前）', () => {
+  ok('🔴 T-25 分解能: 宣言は時計の単位（整数 ns）から導かれ、1 ms 未満の差を表せる（ADR-0108 決定 1）', () => {
+    assert.strictEqual(TIMING_SAMPLE_RESOLUTION_MS, 1e-6, 'process.hrtime.bigint() の差は整数 ns ＝ 1e-6 ms である');
+    assert.strictEqual(elapsedMsBetween(0n, 1_500_000n), 1.5);
+    assert.strictEqual(elapsedMsBetween(10n, 11n), TIMING_SAMPLE_RESOLUTION_MS, '時計の 1 目＝宣言した分解能');
+    // 🔴 **実際の時計で**確かめる。整数 ms の時計（`Date.now()` 由来）なら、異なる 2 読みの差は必ず 1 ms 以上である。
+    const first = timingClockNs();
+    assert.strictEqual(typeof first, 'bigint', '時計は整数 ns（bigint）を返す');
+    let next = first;
+    for (let i = 0; i < 10_000_000 && next === first; i += 1) next = timingClockNs();
+    assert.ok(next > first, '時計が進まない');
+    const tickMs = elapsedMsBetween(first, next);
+    assert.ok(tickMs < 1, `時計の連続する 2 読みの差が ${tickMs} ms ある（1 ms より細かく測れていない）`);
+    assert.strictEqual(offGridSample([tickMs], TIMING_SAMPLE_RESOLUTION_MS), null, '実際の標本が宣言の格子に乗らない');
+    // 🔴 **測る場所が宣言した時計を使っていること**。別の時計で測れば宣言と実物が食い違う（同決定 1）。
+    const src = submitResetRequest.toString();
+    assert.ok(/timingClockNs\(\)/.test(src), 'submitResetRequest が timingClockNs で測っていない');
+    assert.ok(!/Date\.now\(\)|performance\.now\(\)/.test(src), 'submitResetRequest が別の時計を使っている');
+  });
+
+  ok('🔴 T-25 段 1: 自己対照 1.00・中央値の差 1 ms（#1470 の実測の形・整数 ms の時計）は合格（段 1 は cross > self より前）', () => {
     // 実在 中央 153 ms（群 a 153 / 群 b 153 → 自己対照 1.00）/ 非実在 中央 152 ms ＝ 比 1.0066。
     const rep = () => ({ existing: [152, 153, 153, 154, 153, 153], absent: [151, 152, 152, 152, 153, 152] });
-    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()], resolutionMs: MS_CLOCK });
     const judged = r.perRepetition[1];
     assert.strictEqual(judged.self, 1, '前提: 自己対照が 1.00 に潰れている');
     assert.ok(judged.cross > judged.self, '前提: 従前の判定式なら不合格になる形である');
     assert.strictEqual(judged.step, 1);
+    assert.strictEqual(judged.stage, 1);
     assert.strictEqual(r.verdict, TIMING_VERDICT.PASS, r.failures.join('\n'));
     assert.deepStrictEqual(r.failures, []);
     assert.ok(r.lines.join('\n').includes('（段 1）'), 'どちらの段で合格したかを出していない');
     assert.ok(r.lines.join('\n').includes('刻み 1 ms'), '刻みを併記していない');
+    assert.ok(r.lines.join('\n').includes('段 1 で判定 2 反復 / 段 2 で判定 0 反復'), '段の内訳を出していない');
   });
 
-  ok('T-10 段 1: 中央値の差 0.5 ms（153.0 / 152.5）も合格', () => {
-    const rep = () => ({ existing: [152, 153, 153, 154, 153, 153], absent: [152, 153, 152, 153, 152, 153] });
+  ok('🔴 T-25 分解能: 同じ形を整数 ns の時計の分解能で判定すると、差 1 ms は刻み 1 ns を超えるので段 2 で不合格', () => {
+    // 宣言が刻みを決めることの固定。分解能を 1 ms へ戻す変異（Date.now() の頃の宣言）はここで落ちる。
+    const rep = () => ({ existing: [152, 153, 153, 154, 153, 153], absent: [151, 152, 152, 152, 153, 152] });
     const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    assert.strictEqual(r.perRepetition[1].step, 1e-6);
+    assert.strictEqual(r.perRepetition[1].stage, 2);
+    assert.strictEqual(r.verdict, TIMING_VERDICT.FAIL);
+    assert.ok(r.failures.join('\n').includes('段 2'), '段 2 で判定したことを言っていない');
+    assert.ok(r.failures.join('\n').includes('[T-25][所要時間]'), '所要時間の札が T-25 でない');
+    assert.ok(!r.failures.join('\n').includes('[T-10]'), '所要時間の失敗に T-10 の札が残っている');
+  });
+
+  ok('T-25 段 1: 中央値の差 0.5 ms（153.0 / 152.5・整数 ms の時計）も合格', () => {
+    const rep = () => ({ existing: [152, 153, 153, 154, 153, 153], absent: [152, 153, 152, 153, 152, 153] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()], resolutionMs: MS_CLOCK });
     assert.strictEqual(r.perRepetition[1].absentMedian, 152.5);
     assert.strictEqual(r.verdict, TIMING_VERDICT.PASS, r.failures.join('\n'));
   });
 
-  ok('🔴 T-10 段 2: 差が刻みを超えれば従前どおり（自己対照 1.00・差 2 ms は不合格）', () => {
+  ok('🔴 T-25 段 2: 差が刻みを超えれば従前どおり（自己対照 1.00・差 2 ms・整数 ms の時計は不合格）', () => {
     const rep = () => ({ existing: [152, 153, 153, 154, 153, 153], absent: [151, 151, 151, 151, 151, 151] });
-    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()], resolutionMs: MS_CLOCK });
     assert.strictEqual(r.verdict, TIMING_VERDICT.FAIL);
     assert.ok(r.failures.join('\n').includes('段 2'), '段 2 で判定したことを言っていない');
   });
 
-  ok('🔴 T-10 段 1 の境界: 自己対照 1.00・中央値の差 1.5 ms（刻みの 1.5 倍）は不合格（緩い側へ広げない）', () => {
+  ok('🔴 T-25 段 1 の境界: 自己対照 1.00・中央値の差 1.5 ms（刻みの 1.5 倍・整数 ms の時計）は不合格（緩い側へ広げない）', () => {
     // 実在 中央 153 / 非実在 中央 151.5 ＝ 差 1.5 ms。段 1 の上限を「刻み + 0.5」や「2 刻み未満」へ
     // 緩めるとここが合格に化ける —— 刻みを超えた差は段 2 の比較へ回さなければならない。
     const rep = () => ({ existing: [152, 153, 153, 154, 153, 153], absent: [151, 152, 151, 152, 151, 152] });
-    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()], resolutionMs: MS_CLOCK });
     const judged = r.perRepetition[1];
     assert.strictEqual(judged.self, 1, '前提: 自己対照が 1.00 に潰れている');
     assert.strictEqual(judged.absentMedian, 151.5);
@@ -1351,7 +1509,74 @@ function selfTest() {
     assert.ok(r.failures.join('\n').includes('段 2'), '段 2 で判定したことを言っていない');
   });
 
-  ok('T-10 段 2: 差が刻みを超えても、比が自己対照の内側なら合格', () => {
+  // ---- 分解能 1 ns での段 1 の境界（計画 ADR-0108 決定 1 / #1525）------------------------
+  //
+  // 🔴 標本は**時計の読みから作る**（`elapsedMsBetween`）。ms の浮動小数は 1 ns の格子に正確には乗らない ——
+  //    152,999,004 ns と 152,999,003 ns を ms にして引くと `1.0000000258969521e-6` で刻み `1e-6` を超える。
+  //    ms のまま比べる実装は「ちょうど刻み」の差を段 2 へ落とす。
+  const ns = (n) => elapsedMsBetween(0n, BigInt(n));
+
+  ok('🔴 T-25 段 1（1 ns）: 中央値の差がちょうど刻み 1 ns なら合格（浮動小数で境界がずれない）', () => {
+    // 実在 6 標本とも 152,999,004 ns（自己対照 1.00）/ 非実在の中央 152,999,003 ns ＝ 差 1 ns。
+    const rep = () => ({
+      existing: new Array(6).fill(ns(152_999_004)),
+      absent: [ns(152_999_002), ns(152_999_003), ns(152_999_003), ns(152_999_003), ns(152_999_004), ns(152_999_003)],
+    });
+    const naive = Math.abs(ns(152_999_004) - ns(152_999_003));
+    assert.ok(naive > TIMING_SAMPLE_RESOLUTION_MS, `前提: ms のまま引くと差 ${naive} は刻みを超えて見える`);
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    assert.strictEqual(r.perRepetition[1].stage, 1);
+    assert.strictEqual(r.verdict, TIMING_VERDICT.PASS, r.failures.join('\n'));
+    assert.ok(r.lines.join('\n').includes('刻み 0.000001 ms'), '刻みを 1 ns として出していない');
+  });
+
+  ok('🔴 T-25 段 1（1 ns）の境界: 差 1.5 ns（刻みの 1.5 倍）は段 2 へ回り、自己対照 1.00 なら不合格', () => {
+    // 非実在の中央は 152,999,998 ns と 152,999,999 ns の平均 ＝ 152,999,998.5 ns（半格子）。差 1.5 ns。
+    const rep = () => ({
+      existing: new Array(6).fill(ns(153_000_000)),
+      absent: [ns(152_999_998), ns(152_999_998), ns(152_999_998), ns(152_999_999), ns(152_999_999), ns(152_999_999)],
+    });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    assert.strictEqual(r.perRepetition[1].self, 1, '前提: 自己対照が 1.00');
+    assert.strictEqual(r.perRepetition[1].stage, 2);
+    assert.strictEqual(r.verdict, TIMING_VERDICT.FAIL);
+  });
+
+  ok('T-25 段 1（1 ns）: 差 0.5 ns（半格子）も合格', () => {
+    const rep = () => ({
+      existing: new Array(6).fill(ns(153_000_000)),
+      absent: [ns(152_999_999), ns(152_999_999), ns(152_999_999), ns(153_000_000), ns(153_000_000), ns(153_000_000)],
+    });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    assert.strictEqual(r.perRepetition[1].stage, 1);
+    assert.strictEqual(r.verdict, TIMING_VERDICT.PASS, r.failures.join('\n'));
+  });
+
+  ok('T-25 段 2（1 ns）: 床の内側の µs の揺れは、比が自己対照の内側なら段 2 で合格し、内訳が段 2 に数えられる', () => {
+    // 実在 群 a 153.000 / 群 b 153.020 ms（自己対照 1.00013・中央 153.010）/ 非実在 中央 153.005 ms
+    // ＝ 差 5 µs（＞ 刻み 1 ns なので段 2）・比 1.0000327 ≦ 自己対照。
+    const e = [ns(153_000_000), ns(153_020_000), ns(153_000_000), ns(153_020_000), ns(153_000_000), ns(153_020_000)];
+    const a = new Array(6).fill(ns(153_005_000));
+    const r = evaluateTimingConsistency({ repetitions: [{ existing: e, absent: a }, { existing: e, absent: a }, { existing: e, absent: a }] });
+    assert.strictEqual(r.perRepetition[1].stage, 2);
+    assert.strictEqual(r.verdict, TIMING_VERDICT.PASS, r.failures.join('\n'));
+    assert.ok(r.lines.join('\n').includes('段 1 で判定 0 反復 / 段 2 で判定 2 反復'), '段の内訳を出していない');
+  });
+
+  ok('🔴 T-25 分解能: 宣言した格子に乗らない標本は判定へ進まず不合格（宣言と時計の食い違い。ADR-0108 決定 1）', () => {
+    // 分解能 1 ns と宣言したまま、それより細かい値（performance.now() の差のような任意の浮動小数）を入れた形。
+    const rep = () => ({ existing: [150.00000042, 152, 150, 152, 150, 152], absent: [151, 151, 151, 151, 151, 151] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    assert.strictEqual(r.verdict, TIMING_VERDICT.FAIL);
+    assert.ok(r.failures.join('\n').includes('格子に乗っていない'), '格子の食い違いを言っていない');
+    assert.strictEqual(r.perRepetition.length, 0, '格子に乗らないのに判定へ進んでいる');
+    // 整数 ms の時計の宣言で 0.5 ms の標本を入れても同じ（宣言より細かい標本）。
+    const coarse = () => ({ existing: [150.5, 152, 150, 152, 150, 152], absent: [151, 151, 151, 151, 151, 151] });
+    assert.strictEqual(evaluateTimingConsistency({ repetitions: [coarse(), coarse(), coarse()], resolutionMs: MS_CLOCK }).verdict,
+      TIMING_VERDICT.FAIL);
+  });
+
+  ok('T-25 段 2: 差が刻みを超えても、比が自己対照の内側なら合格', () => {
     // 実在 中央 153（群 a 150 / 群 b 156 → 自己対照 1.04）/ 非実在 中央 151 ＝ 比 1.013・差 2 ms。
     const rep = () => ({ existing: [150, 156, 150, 156, 150, 156], absent: [151, 151, 151, 151, 151, 151] });
     const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
@@ -1359,16 +1584,16 @@ function selfTest() {
     assert.ok(r.lines.join('\n').includes('（段 2）'));
   });
 
-  ok(`🔴 T-10 段 1: 自己対照が広ければ、中央値の差が刻み以下でも ${TIMING_VERDICT.INCONCLUSIVE}（広い側を緩めない）`, () => {
+  ok(`🔴 T-25 段 1: 自己対照が広ければ、中央値の差が刻み以下でも ${TIMING_VERDICT.INCONCLUSIVE}（広い側を緩めない）`, () => {
     // 実在 中央 25 / 非実在 中央 26 ＝ 差 1 ms（段 1 の条件は満たす）が、自己対照は 4 倍。
     const rep = () => ({ existing: [10, 40, 10, 40, 10, 40], absent: [10, 42, 10, 42, 10, 42] });
-    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()], resolutionMs: MS_CLOCK });
     assert.strictEqual(r.verdict, TIMING_VERDICT.INCONCLUSIVE);
     assert.ok(r.failures.length >= 1, `${TIMING_VERDICT.INCONCLUSIVE} なのに失敗が 0 件＝緑になっている`);
     assert.ok(r.lines.join('\n').includes(`${TIMING_VERDICT.INCONCLUSIVE}（段 1）`));
   });
 
-  ok(`🔴 T-10: 自己対照が広ければ ${TIMING_VERDICT.INCONCLUSIVE} であり、**緑にしない**`, () => {
+  ok(`🔴 T-25: 自己対照が広ければ ${TIMING_VERDICT.INCONCLUSIVE} であり、**緑にしない**`, () => {
     // 比は 1.00 倍（重なっている）が、自己対照が 4 倍＝ノイズに埋もれている。
     const rep = () => ({ existing: [10, 40, 10, 40, 10, 40], absent: [10, 40, 10, 40, 10, 40] });
     const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
@@ -1377,14 +1602,14 @@ function selfTest() {
     assert.ok(r.failures.join('\n').includes(TIMING_VERDICT.INCONCLUSIVE));
   });
 
-  ok('🔴 T-10: 不合格は評価不能より優先する（差が見えているなら「測れない」で流さない）', () => {
+  ok('🔴 T-25: 不合格は評価不能より優先する（差が見えているなら「測れない」で流さない）', () => {
     const wide = { existing: [10, 40, 10, 40, 10, 40], absent: [10, 40, 10, 40, 10, 40] };
     const red = { existing: [35, 36, 37, 37, 38, 39], absent: [18, 19, 19, 19, 20, 21] };
     const r = evaluateTimingConsistency({ repetitions: [wide, wide, red] });
     assert.strictEqual(r.verdict, TIMING_VERDICT.FAIL);
   });
 
-  ok('🔴 T-10: 1 回目の反復は暖機として捨てる（暖機だけが分かれていても合格）', () => {
+  ok('🔴 T-25: 1 回目の反復は暖機として捨てる（暖機だけが分かれていても合格）', () => {
     // 計画の実測 2: 暖機は**両側を同じ向きに**膨らませる（実在 4.2 倍・非実在 2.6 倍）。
     const warmup = { existing: [150, 152, 150, 152, 150, 152], absent: [48, 49, 49, 49, 50, 51] };
     const steady = { existing: [150, 152, 150, 152, 150, 152], absent: [151, 151, 151, 151, 151, 151] };
@@ -1393,14 +1618,14 @@ function selfTest() {
     assert.ok(r.lines.join('\n').includes('暖機'), '暖機の反復を出力で区別していない');
   });
 
-  ok('T-10: 反復が足りなければ不合格（2 回では判定に使えるのが 1 回しかない）', () => {
+  ok('T-25: 反復が足りなければ不合格（2 回では判定に使えるのが 1 回しかない）', () => {
     const rep = () => ({ existing: [150, 152, 150, 152, 150, 152], absent: [151, 151, 151, 151, 151, 151] });
     const r = evaluateTimingConsistency({ repetitions: [rep(), rep()] });
     assert.strictEqual(r.verdict, TIMING_VERDICT.FAIL);
     assert.ok(r.failures.join('\n').includes('反復'));
   });
 
-  ok('T-10: 標本数が反復間で揃っていなければ不合格（中央値が比較できない）', () => {
+  ok('T-25: 標本数が反復間で揃っていなければ不合格（中央値が比較できない）', () => {
     const six = { existing: [150, 152, 150, 152, 150, 152], absent: [151, 151, 151, 151, 151, 151] };
     const four = { existing: [150, 152, 150, 152], absent: [151, 151, 151, 151] };
     const r = evaluateTimingConsistency({ repetitions: [six, six, four] });
@@ -1408,14 +1633,14 @@ function selfTest() {
     assert.ok(r.failures.join('\n').includes('標本数'));
   });
 
-  ok('T-10: 片側 0 件は不合格（0 件走査を緑にしない）', () => {
+  ok('T-25: 片側 0 件は不合格（0 件走査を緑にしない）', () => {
     const rep = () => ({ existing: [150, 152, 150, 152, 150, 152], absent: [] });
     const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
     assert.strictEqual(r.verdict, TIMING_VERDICT.FAIL);
     assert.ok(r.failures.join('\n').includes('0 件'));
   });
 
-  ok('T-10: 走査件数と各反復の中央値を必ず出す（判定しなかったと差が無かったを混ぜない）', () => {
+  ok('T-25: 走査件数と各反復の中央値を必ず出す（判定しなかったと差が無かったを混ぜない）', () => {
     const rep = () => ({ existing: [150, 152, 150, 152, 150, 152], absent: [151, 151, 151, 151, 151, 151] });
     const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
     assert.strictEqual(r.perRepetition.length, 3);
@@ -1427,7 +1652,7 @@ function selfTest() {
     }
   });
 
-  ok('🔴 T-10: 非実在名は実在名と**バイト長が一致**する（長さが違えば本文長は必ず違う）', () => {
+  ok('🔴 T-25: 非実在名は実在名と**バイト長が一致**する（長さが違えば本文長は必ず違う）', () => {
     const r = loadRealm();
     assert.ok(r.ok, '実データの realm を読めない');
     const user = pickTargetUser(r.value);
@@ -1442,7 +1667,7 @@ function selfTest() {
     }), []);
   });
 
-  ok('T-10: 長さの違う対・実在する陰性対照はどちらも落ちる', () => {
+  ok('T-25: 長さの違う対・実在する陰性対照はどちらも落ちる', () => {
     const mismatched = evaluateTimingPair({
       existingUsername: 'admin', absentUsername: 'no-such-user-abcdefgh', realmUsernames: ['admin'],
     });
@@ -1526,7 +1751,7 @@ async function main() {
     ? '[check-password-reset-mail] OK: 申請が閉じており、実在／非実在で応答が分かれない（存在秘匿は成立）。'
       + ' **送出とメール本文（T-16 / T-17）は測っていない。**'
     : '[check-password-reset-mail] OK: 申請 → 送出 → 捕捉用 MTA での受信 → 本文（リンクと有効期限のみ）'
-      + '、および実在／非実在の応答同値性（T-10）が成立している。');
+      + '、および実在／非実在の応答同値性（T-10: ステータス・本文 ／ T-25: 所要時間）が成立している。');
 }
 
 if (require.main === module) {
