@@ -97,9 +97,21 @@ public sealed class S3ObjectStorageClient(
     //
     // **`Prefix` は前方一致なので `Key` の厳密一致で絞る**（`body.md` の削除で `body.md.bak` を巻き込まない）。
     // **`IsTruncated` の間は marker で辿る**（1 応答は既定 1000 件までしか返らない）。
+    //
+    // 🔴 ［2026-09-26 / #1499, IADR-0296 追記, IADR-0461 決定 9］**versionId 無しの削除は、版の列挙より「先に」撃つ。**
+    // 従前はこれを全版削除の「後」に撃っていた（版管理の無いバケットの取りこぼしを塞ぐ保険）。しかし
+    // **版管理が有効なバケットでの versionId 無しの削除は、対象が無くても delete marker を新しく作る**
+    // （AWS S3 の仕様。SeaweedFS も同じ。MinIO では残らなかったので見えていなかった）。後に撃つと、
+    // 全版を消した直後にその marker が 1 つ残り、ADR-0057 決定 1 の「残っていない」を破る
+    // （SeaweedFS での受け入れ試験 `Delete_removes_every_version` が実際にこれで落ちた）。
+    // 先に撃てば、どの版管理状態でも結果は同じになる —— 有効: 作られた marker ごと下の列挙で消える／
+    // 停止: null 版が null marker に置き換わり、それも列挙で消える／無効: その場で実体が消え、列挙は空。
+    // 追加の API 呼び出しも、削除応答のヘッダ（x-amz-delete-marker）への依存も要らない。
     public async Task DeleteAsync(string uri, CancellationToken ct = default)
     {
         var (bucket, key) = Resolve(uri);
+
+        await s3.DeleteObjectAsync(new DeleteObjectRequest { BucketName = bucket, Key = key }, ct);
 
         var removed = 0;
         string? keyMarker = null;
@@ -139,10 +151,6 @@ public sealed class S3ObjectStorageClient(
             }
         }
         while (keyMarker is not null || versionIdMarker is not null);
-
-        // バージョニングが無効なバケット・列挙に現れない未バージョン化オブジェクトの取りこぼしを塞ぐ。
-        // versionId 無しの削除は冪等（実在しなくても 204）なので、余分に撃っても害が無い。
-        await s3.DeleteObjectAsync(new DeleteObjectRequest { BucketName = bucket, Key = key }, ct);
 
         logger.LogInformation("Deleted object {Uri} ({Versions} versions removed)", uri, removed);
     }

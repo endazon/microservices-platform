@@ -19,7 +19,7 @@ related_ids:
   - IADR-0459
 author: claude
 created: 2026-09-25
-updated: 2026-09-25
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0106_object-storage-seaweedfs.md (Accepted 2026-09-25)
   - planning:projects/microservices-platform/07_adr/ADR-0107_infrastructure-product-selection-criteria.md (Accepted 2026-09-25)
@@ -148,6 +148,31 @@ weed server -dir=/data                         # -dir はイメージの entrypo
   （IADR-0459・#1506。MinIO の PVC ごと作り直す）で**破棄と決まっている**。本 PR は稼働クラスタに触れない。
 - 🔴 **helm upgrade は chart から消えた `minio-data` PVC を削除する**（＝その時点で MinIO の中身は消える）。残したいものがあるなら
   upgrade の前に写す。手順は `docs/operations/object-storage-seaweedfs-cutover-runbook.md`。
+
+### 決定 9: 全版削除の手順を直す —— versionId 無しの削除は版の列挙より先に撃つ（2026-09-26・利用者裁定 案 A）
+
+**受け入れ試験（決定 7）は初回、3 件中 `Delete_removes_every_version` の 1 件が落ちた**（Integration run 36147130563。削除後に
+delete marker が 1 つ残った）。原因は SeaweedFS ではなく実装の削除手順にあった —— `S3ObjectStorageClient.DeleteAsync` は全版を
+versionId 付きで消した**後に** versionId 無しの削除を撃っており（IADR-0296 決定 1「冪等なので害が無い」）、**版管理が有効な
+バケットでの versionId 無しの削除は対象が無くても delete marker を作る**（AWS S3 の仕様。SeaweedFS も
+`weed/s3api/s3api_object_handlers_delete.go` 153〜161 行で同じ。MinIO では残らなかった）。
+
+利用者は **案 A（実装を直して SeaweedFS を維持する）** を選んだ（2026-09-26。次点 RustFS へは倒さない）。
+
+| 直し方 | 採否 |
+| --- | --- |
+| **versionId 無しの削除を列挙の前へ移す** | **採用**。版管理が有効／停止／無効のいずれでも版が残らない。API 呼び出しは増えず、削除応答のヘッダ（`x-amz-delete-marker` / `x-amz-version-id`）にも、バケットの版管理状態の問い合わせにも依存しない |
+| 版を 1 つも消さなかったときだけ撃つ | 版管理が有効なバケットで対象が無いと、やはり marker を作って残す（二重削除・再試行で起きる） |
+| 撃った後の応答が marker を示せばその版を消す | 応答ヘッダを SeaweedFS が返すことを実機で確かめていない。確かめても呼び出しが 1 つ増える |
+| バケットの版管理状態を問い合わせてから決める | 呼び出しが毎回 1 つ増える。停止状態の null marker の扱いを別に書く必要がある |
+
+- **AWS S3 の意味論でも正しい**（上の 3 状態の振る舞いは AWS の仕様どおり）。将来マネージド S3 へ移っても同じ欠陥を踏まない。
+- 試験: `S3ObjectStorageClientDeleteMarkerSemanticsTests`（Docker 不要。S3 の版管理の意味論を写した状態つきの偽物で、有効／停止／無効・
+  対象なし・前方一致の隣のキーを見る。**旧実装では 5 件中 4 件が落ちる**ことを確かめた）。受け入れ試験
+  `ObjectStorageRoundTripTests` は判定を変えていない。
+- 🔴 **計画 ADR-0106 決定 3「差し替えは配備・試験・名前に閉じる」の射程を越え、アプリのコード（S3 の使い方）に手を入れた。**
+  理由は、実装の削除手順が MinIO 固有の挙動を前提にしていたことであり、製品の差し替えがそれを露わにした。計画へ環流する。
+- IADR-0296 決定 1 へ日付付きの追記を置いた（本文は書き換えない）。
 
 ## 検討した選択肢
 
