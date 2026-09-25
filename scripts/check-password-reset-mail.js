@@ -1335,6 +1335,19 @@ function selfTest() {
     assert.ok(r.failures.join('\n').includes('段 2'), '段 2 で判定したことを言っていない');
   });
 
+  ok('🔴 T-10 段 1 の境界: 自己対照 1.00・中央値の差 1.5 ms（刻みの 1.5 倍）は不合格（緩い側へ広げない）', () => {
+    // 実在 中央 153 / 非実在 中央 151.5 ＝ 差 1.5 ms。段 1 の上限を「刻み + 0.5」や「2 刻み未満」へ
+    // 緩めるとここが合格に化ける —— 刻みを超えた差は段 2 の比較へ回さなければならない。
+    const rep = () => ({ existing: [152, 153, 153, 154, 153, 153], absent: [151, 152, 151, 152, 151, 152] });
+    const r = evaluateTimingConsistency({ repetitions: [rep(), rep(), rep()] });
+    const judged = r.perRepetition[1];
+    assert.strictEqual(judged.self, 1, '前提: 自己対照が 1.00 に潰れている');
+    assert.strictEqual(judged.absentMedian, 151.5);
+    assert.strictEqual(judged.step, 1);
+    assert.strictEqual(r.verdict, TIMING_VERDICT.FAIL);
+    assert.ok(r.failures.join('\n').includes('段 2'), '段 2 で判定したことを言っていない');
+  });
+
   ok('T-10 段 2: 差が刻みを超えても、比が自己対照の内側なら合格', () => {
     // 実在 中央 153（群 a 150 / 群 b 156 → 自己対照 1.04）/ 非実在 中央 151 ＝ 比 1.013・差 2 ms。
     const rep = () => ({ existing: [150, 156, 150, 156, 150, 156], absent: [151, 151, 151, 151, 151, 151] });
