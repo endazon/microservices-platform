@@ -58,8 +58,7 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
             StartServer();
             var addresses = Services.GetRequiredService<IServer>().Features
                 .Get<IServerAddressesFeature>()?.Addresses ?? [];
-            return addresses.First(a => !a.EndsWith($":{GrpcPort}", StringComparison.Ordinal))
-                .Replace("[::]", "127.0.0.1").Replace("0.0.0.0", "127.0.0.1");
+            return addresses.First(a => !a.EndsWith($":{GrpcPort}", StringComparison.Ordinal));
         }
     }
 
@@ -74,6 +73,9 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
             }));
         builder.ConfigureServices(services =>
         {
+            // NFR-16 (#1509): 起動直後に待受がループバックだけであることを確かめる（HttpAddress を読まない試験でも効く）。
+            services.AddHostedService<GrpcTestConfiguration.LoopbackOnlyGuard>();
+
             TestWebApplicationFactory.ReplaceDbContext<AuthorizationDbContext>(services, _dbName);
 
             // FR-05, NFR-09, 計画 ADR-0088 決定 1, [[IADR-0413]] (#1333): ABAC 判定に使う属性は

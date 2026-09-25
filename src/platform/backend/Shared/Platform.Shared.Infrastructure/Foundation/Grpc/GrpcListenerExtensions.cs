@@ -123,13 +123,41 @@ public static class GrpcListenerExtensions
 
         void Configure(ListenOptions o) => o.Protocols = protocols;
 
-        if (address.Host is "*" or "+" or "0.0.0.0" or "[::]")
-            kestrel.ListenAnyIP(address.Port, Configure);
-        else if (string.Equals(address.Host, "localhost", StringComparison.OrdinalIgnoreCase))
-            kestrel.ListenLocalhost(address.Port, Configure);
-        else if (IPAddress.TryParse(address.Host, out var ip))
-            kestrel.Listen(new IPEndPoint(ip, address.Port), Configure);
-        else
-            kestrel.ListenAnyIP(address.Port, Configure);
+        var target = ResolveListenTarget(address);
+        switch (target.Kind)
+        {
+            case ListenTargetKind.AnyIP:
+                kestrel.ListenAnyIP(address.Port, Configure);
+                break;
+            case ListenTargetKind.Localhost:
+                kestrel.ListenLocalhost(address.Port, Configure);
+                break;
+            default:
+                kestrel.Listen(new IPEndPoint(target.Address!, address.Port), Configure);
+                break;
+        }
     }
+
+    // #1507: 「どこへ待ち受けるか」の判定だけを切り出す。ソケットを開かずに確かめられるようにするため
+    // （全インタフェースへの待受を試験で実際に立てると、試験を走らせた端末の外から届く）。
+    // ワイルドカードと解釈できないホスト名は全インタフェースへ倒す（従前どおり）。
+    internal static ListenTarget ResolveListenTarget(BindingAddress address)
+    {
+        if (address.Host is "*" or "+" or "0.0.0.0" or "[::]")
+            return new ListenTarget(ListenTargetKind.AnyIP, null);
+        if (string.Equals(address.Host, "localhost", StringComparison.OrdinalIgnoreCase))
+            return new ListenTarget(ListenTargetKind.Localhost, null);
+        if (IPAddress.TryParse(address.Host, out var ip))
+            return new ListenTarget(ListenTargetKind.Specific, ip);
+        return new ListenTarget(ListenTargetKind.AnyIP, null);
+    }
+
+    internal enum ListenTargetKind
+    {
+        AnyIP,
+        Localhost,
+        Specific,
+    }
+
+    internal sealed record ListenTarget(ListenTargetKind Kind, IPAddress? Address);
 }
