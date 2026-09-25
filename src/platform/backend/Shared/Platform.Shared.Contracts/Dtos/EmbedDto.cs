@@ -18,10 +18,18 @@ public enum EmbedPurpose
 //   埋め込みは本文全量を送信するため、confidential/restricted はティアA（セルフホスト）固定で外部送信しない。
 //   Purpose=Query の検索クエリは既定外部経路（voyage）へ固定する（検索対象コレクションと次元を一致させる）。
 //   固定先はゲートウェイの構成で名指しできる（測定用。上の EmbedPurpose の注記）。
+//
+// FR-03, ADR-0092 決定 2, [[IADR-0467]] (#336): `TargetCollection` は**検索クエリ（Purpose=Query）が
+//   読むコレクション**を名乗る任意項目である。ゲートウェイは越境判定と `Enabled` の篩を通った候補を
+//   **そのコレクションのエンドポイントへ絞るだけ**で、機密区分が許さないティアを開くことはできない。
+//   Index（取り込み）では無視する（文書の送信先は機密区分が決める）。未指定（null）なら従来どおり。
+//   検索側は**束ねる追加コレクション用の要求にだけ**載せる（主コレクション用の要求は null ＝従来と同じ意味。
+//   REST の本文には `"targetCollection":null` が現れるが、受け側は未指定として扱う。gRPC の空文字は線に載らない）。
 public record EmbedApiRequest(
     string Text,
     string? Confidentiality = null,
-    EmbedPurpose Purpose = EmbedPurpose.Index);
+    EmbedPurpose Purpose = EmbedPurpose.Index,
+    string? TargetCollection = null);
 
 // FR-02, ADR-0016: Embedded=false は機密区分による送信拒否（fail-closed）または次元不整合・呼び出し失敗を示す。
 //   呼び出し側（Ingestion）は Embedded=false のとき索引をスキップする。

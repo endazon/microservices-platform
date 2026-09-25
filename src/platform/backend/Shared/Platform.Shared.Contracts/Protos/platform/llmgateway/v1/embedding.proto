@@ -39,6 +39,9 @@ message EmbedRequest {
   // 空文字・未知値は restricted（安全側）。
   string confidentiality = 2;
   EmbedPurpose purpose = 3;
+  // FR-03, ADR-0092 決定 2, IADR-0467 (#336): 検索クエリが読むコレクション（REST の TargetCollection）。
+  // 空文字＝未指定（従来どおり）。purpose=QUERY のときだけ、越境判定と Enabled の篩の後で候補を絞る。
+  string target_collection = 4;
 }
 
 // REST の EmbedApiResponse と同じ形。

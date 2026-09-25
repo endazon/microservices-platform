@@ -16,7 +16,13 @@ public enum EmbeddingRoutePurpose
     Query = 1
 }
 
-public record EmbeddingRoutingRequest(SensitivityClass Sensitivity, EmbeddingRoutePurpose Purpose);
+// FR-03, ADR-0092 決定 2, [[IADR-0467]] (#336): `TargetCollection` は検索クエリが読むコレクション。
+// Query のときだけ、越境判定と `Enabled` の篩を**通った後で**候補をそのコレクションへ絞る
+// （狭めることしかできない）。Index では無視する。null・空白は「指定なし」（従来どおり）。
+public record EmbeddingRoutingRequest(
+    SensitivityClass Sensitivity,
+    EmbeddingRoutePurpose Purpose,
+    string? TargetCollection = null);
 
 // Allowed=false は送信拒否（fail-closed）。呼び出し側は索引をスキップする。
 public record EmbeddingRoutingDecision(

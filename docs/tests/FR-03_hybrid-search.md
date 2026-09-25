@@ -3,15 +3,15 @@ title: ハイブリッド検索 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-05
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
-ids: [FR-02, FR-03, SC-01, SC-02, UC-01]
-adrs: [ADR-0016, ADR-0070]
-iadrs: [IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0256, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0390]
-specs: [20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
-issues: [#1116, #1118, #1193, #1247, #1253, #1254, #448, #532, #536, #642, #995]
+ids: [FR-02, FR-03, FR-05, SC-01, SC-02, UC-01]
+adrs: [ADR-0016, ADR-0057, ADR-0070, ADR-0092]
+iadrs: [IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0390, IADR-0422, IADR-0467]
+specs: [20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion]
+issues: [#336, #1116, #1118, #1193, #1247, #1253, #1254, #448, #532, #536, #642, #995]
 -->
 
 # テスト仕様書: ハイブリッド検索
@@ -130,6 +130,20 @@ issues: [#1116, #1118, #1193, #1247, #1253, #1254, #448, #532, #536, #642, #995]
 | T-72 | **陽性対照**: 本文ありの文書（パス・データソース名を運ぶ） | 本文チャンクの索引 | 🔴 **チャンクの本文にパスもデータソース名も入らない**（意図した非対称を固定する） | 「本文の語で当たった」と「置き場所の名前で当たった」を混ぜない | 自動 |
 | T-73 | **変異試験**: 索引テキストからパスとデータソース名を外す | 上の T-69 / T-70 | パス・データソース名の陽性（T-69 と `Consumer_ShouldIndexPathAndDataSourceName_WhenBodyIsEmpty`）が落ち、**題名の陽性対照・陰性対照・旧発行元の 3 本は通ったまま**（「何を入れても当たる」実装で緑にならない） | メタデータで検索に載せる裁定（決定 4） | 自動（手動変異） |
 | T-74 | 契約が「本文あり」なのにチャンク 0 件／「本文なし」なのにチャンクが在る | 取り込み（`DocumentUpdatedConsumerTests`） | **判定は変えず警告を残す**（向きが分かる文言）。一致しているときは鳴らさない（陰性対照） | 二重化した情報が片方だけ変わって静かに割れるのを検知する | 自動 |
+| T-75 | 追加コレクションが空（既定） | hybrid / keyword / semantic で検索（`MultiCollectionFusionTests`） | **束ねる前と同一**: hybrid の `Score` は `RRF(主ベクトル, 主全文)` の値・並びは初出順、単一モードは生スコアのまま。埋め込み・ストアの呼び出し回数も同じ | 既定の不変 | 自動 |
+| T-76 | 主の生スコアは小さく（0.1）、追加コレクションの生スコアは大きい（0.99） | hybrid で検索 | **順位だけで並ぶ**（生スコアで並べる変異は赤）。`Score` は RRF 値で生スコアは漏れない | 束ね方（スコアを比べない） | 自動 |
+| T-77 | 主と追加の 1 位が同点 | 同上 | 主が先に並ぶ（同点は初出順） | 束ね方（同点） | 自動 |
+| T-78 | 追加コレクションにだけキーワード一致がある | keyword で検索 | 追加コレクションの文書が見つかる（全文も束ねる）。埋め込みは呼ばない | 束ね方（全文） | 自動 |
+| T-79 | 主が埋め込めない／全コレクションが埋め込めない | semantic で検索 | 前者は追加だけで束ねる（空ベクトルをベクトルDB へ渡さない）、後者は 0 件 | 縮退 | 自動 |
+| T-80 | 追加コレクションだけ埋め込めない | hybrid で検索 | 追加のベクトル系統だけ落とし、全文は引く | 縮退 | 自動 |
+| T-81 | 高機密を許さないスコープ（`confidentiality ∈ {public}`） | 3 モードで検索 | 追加コレクションの**全系統が省かれずに引かれ、主と同じフィルタ**が渡る（追加側のフィルタを外す変異は赤） | 権限制御（束ねても緩めない） | 自動 |
+| T-82 | 追加コレクションに `confidential` の文書 | 3 モードで、許さないスコープ／許すスコープで検索 | 前者では現れず、後者では現れる（陽性対照つき） | 権限制御 | 自動 |
+| T-83 | `Scope` 未指定／`GrantsAccess=false` | 検索 | 0 件。追加コレクションも埋め込みも呼ばない | fail-closed | 自動 |
+| T-84 | 主と追加で属性値が一部重なる | 権限内属性値 | 和集合（重複なし・件数なし）。追加へも同じ制約が渡る。追加が空なら主の答えのまま | 候補と検索の一致 | 自動 |
+| T-85 | 文書削除イベント | 削除の購読 | 主と追加の両方から消す | 削除の伝播 | 自動 |
+| T-86 | 主／追加コレクション用のクエリ埋め込み要求 | REST・gRPC の要求を捕まえる（`FusedQueryEmbeddingTests`） | 主は名乗らない（REST は `targetCollection: null`、gRPC は空文字）、追加だけがコレクション名を名乗る（主にも名乗らせる変異は赤）。名乗っても答えが食い違えば捨てる | クエリはそのモデルで埋める | 自動 |
+| T-87 | ゲートウェイの振り分け（`EmbeddingRouterTargetCollectionTests`・`EmbedTargetCollectionTransportTests`） | 読み先を名乗った Query／Index | Query は越境判定の後でそのコレクションの送信先へ絞られる。無効・不在なら既定へ落ちず拒否（篩の前へ移す変異は赤）。**Index では無視**（効かせる変異は赤）。プロファイルとは積。REST と gRPC で同じ答え | 越境を開かない | 自動 |
+| T-88 | Helm / compose の配線（`k8s-local-up.test.js`） | 静的検査 | retrieval の `Qdrant__FusedCollections__0` は `embedding.enabled` と同じ条件でだけ描画され、値はゲートウェイ・取り込みの Ruri コレクション名と一致。compose は既定空 | 有効化の前提 | 自動 |
 
 ## テストデータ
 

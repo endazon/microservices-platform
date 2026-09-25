@@ -2736,6 +2736,59 @@ ok('IADR-0313: 既定 values は enabled: false（本番像は現状維持）', 
 });
 
 // ---------------------------------------------------------------------------
+// FR-03, ADR-0092 決定 1, IADR-0467 (#336): ティア A を有効化したら、検索もそのコレクションを束ねて読む。
+//
+// 🔴 **有効化の前提**である（ADR-0092 フォローアップ 1）。llmgateway だけ有効にして検索を束ねないと、
+// 高機密の文書は「索引されるが検索されない」になる。**描画の条件・値・キー名**の 3 つを静的に固定する。
+// ---------------------------------------------------------------------------
+const RURI_ENDPOINT = LLM_APPSETTINGS.Embedding.Routing.Endpoints
+  .find((e) => e.Provider === 'selfhosted-embedding');
+const INGESTION_APPSETTINGS = JSON.parse(readAt(
+  REPO_ROOT, 'src', 'knowledge', 'backend', 'Services', 'IngestionService', 'appsettings.json'));
+const QDRANT_VECTOR_STORE_CS = readAt(
+  REPO_ROOT, 'src', 'knowledge', 'backend', 'Services', 'RetrievalService',
+  'Infrastructure', 'ExternalServices', 'QdrantVectorStore.cs');
+
+function chartEmbeddingCollection() {
+  const at = CHART_VALUES.search(/^embedding:\s*$/m);
+  assert.ok(at !== -1, 'values.yaml に embedding: が無い');
+  // embedding ブロック直下（2 字下げ）の collection だけを読む（deterministicLocal の 4 字下げと混ぜない）。
+  return (/^ {2}collection:\s*(\S+)\s*$/m.exec(CHART_VALUES.slice(at)) || [])[1];
+}
+
+ok('IADR-0467: embedding.collection がゲートウェイ・取り込みの Ruri コレクション名と一致する', () => {
+  assert.ok(RURI_ENDPOINT, 'appsettings.json に selfhosted-embedding のエンドポイントが無い');
+  const collection = chartEmbeddingCollection();
+  assert.strictEqual(collection, RURI_ENDPOINT.Collection,
+    'values.yaml の embedding.collection がゲートウェイの Ruri コレクションと食い違う（検索が空のコレクションを読む）');
+  assert.ok(
+    INGESTION_APPSETTINGS.Embedding.Collections.some((c) => c.Name === collection),
+    '取り込みが作るコレクション（Embedding:Collections）に embedding.collection が無い');
+});
+
+ok('IADR-0467: retrieval の束ねる配線は embedding.enabled と同じ条件でだけ描画される', () => {
+  const at = CHART_DEPLOYMENT.indexOf('if and (eq $name "retrieval") $.Values.embedding.enabled');
+  assert.ok(at !== -1, 'retrieval に embedding.enabled 条件の分岐が無い');
+  const block = CHART_DEPLOYMENT.slice(at, CHART_DEPLOYMENT.indexOf('{{- end }}', at));
+  assert.ok(block.includes('- name: Qdrant__FusedCollections__0'), 'Qdrant__FusedCollections__0 が無い');
+  assert.ok(block.includes('$.Values.embedding.collection'), '値が embedding.collection から来ていない');
+  // 🔴 既定は非描画（embedding.enabled: false）＝検索は主コレクションだけ（現状維持）。
+  const e = CHART_VALUES.search(/^embedding:\s*$/m);
+  assert.match(CHART_VALUES.slice(e, e + 60), /^embedding:\s*\n\s{2}enabled:\s*false/m,
+    '既定が false でない（ティア A が既定で有効になっている）');
+});
+
+ok('IADR-0467: 環境変数名が RetrievalService の構成キーと一致する（helm / compose）', () => {
+  const key = (/FusedCollectionsKey\s*=\s*"([^"]+)"/.exec(QDRANT_VECTOR_STORE_CS) || [])[1];
+  assert.strictEqual(key, 'Qdrant:FusedCollections', 'QdrantVectorStore の構成キーが読めない');
+  const env = `${key.replace(/:/g, '__')}__0`;
+  assert.ok(CHART_DEPLOYMENT.includes(`- name: ${env}`), `deployment.yaml に ${env} が無い`);
+  // compose は既定空（空文字は検索側が捨てる＝主の 1 本だけ）。
+  assert.match(COMPOSE_YAML, new RegExp(`^\\s+${env}: \\$\\{SEARCH_FUSED_COLLECTION:-\\}\\s*$`, 'm'),
+    `docker-compose.yml の ${env} が既定空になっていない`);
+});
+
+// ---------------------------------------------------------------------------
 // #782 / ADR-0021: エッジを Istio Ingress Gateway へ移す overlay の静的検査。
 //
 // ここで固定するのは **STRICT が成立するための前提**だけである。実クラスタでの疎通は

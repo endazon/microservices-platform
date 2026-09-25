@@ -1,3 +1,5 @@
+using Platform.Shared.Contracts.Dtos;
+
 namespace RetrievalService.Infrastructure.ExternalServices;
 
 // FR-02, FR-03, ADR-0016, IADR-0422 決定 3 (#336): **クエリの埋め込みモデルと検索対象コレクションの照合。**
@@ -50,4 +52,23 @@ public static class QueryEmbeddingCollection
 // **値は合成点（`Program.cs`）が `QdrantVectorStore.ResolveCollectionName` から引いて渡す。**
 // 埋め込みの客体が構成を別の規則で読み直すと、**ベクトルストアと別の答えを出し得る** ——
 // それでは照合そのものが嘘になる（読み方の正は 1 つの関数に閉じる）。
-public sealed record QueryEmbeddingTarget(string Collection);
+//
+// FR-03, ADR-0092 決定 1・2, [[IADR-0467]] (#336): `NamedInRequest` は**束ねる追加コレクション**用の印。
+// true のときだけ、要求の `TargetCollection` にこのコレクション名を載せ、ゲートウェイに
+// 「このコレクションのモデルで埋めよ」と名乗る（絞り込みはゲートウェイが越境判定の後で行う）。
+// 🔴 **主コレクション（`Qdrant:CollectionName`）は false のまま** —— 要求の意味は従来と同じ（`TargetCollection` は null）
+// （既定構成の不変。ゲートウェイの優先度順の選択と、この照合がそのまま効く）。
+public sealed record QueryEmbeddingTarget(string Collection, bool NamedInRequest = false);
+
+// FR-03, ADR-0092 決定 2, [[IADR-0467]] (#336): 検索クエリの埋め込み要求を作る**唯一の関数**。
+// REST と gRPC の両実装がここを通る（`QueryEmbeddingCollection.Matches` と同じ姿勢 —— 輸送ごとに
+// 要求の形が分かれると、片方だけが名前を載せ忘れる）。
+public static class QueryEmbeddingRequest
+{
+    public static EmbedApiRequest For(string text, QueryEmbeddingTarget? target) =>
+        target is { NamedInRequest: true }
+            ? new EmbedApiRequest(text, Confidentiality: null, Purpose: EmbedPurpose.Query,
+                TargetCollection: target.Collection)
+            // 🔴 **主コレクションは従来の形のまま**（`TargetCollection` を載せない）。
+            : new EmbedApiRequest(text, Confidentiality: null, Purpose: EmbedPurpose.Query);
+}
