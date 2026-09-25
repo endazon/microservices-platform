@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [SC-10, SC-13, SC-14, SC-15, FR-05, UC-05, NFR-05, NFR-21]
-adrs: [ADR-0006, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097, ADR-0103, ADR-0108]
+adrs: [ADR-0006, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097, ADR-0103, ADR-0108, ADR-0113]
 iadrs: [IADR-0197, IADR-0261, IADR-0329, IADR-0332, IADR-0344, IADR-0347, IADR-0369, IADR-0404, IADR-0421, IADR-0432, IADR-0463]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260911_issue-1410_reset-timing-floor, 20260925_1470_timing-self-control-step, 20260926_1500_reset-floor-default-on, 20260926_1525_timing-resolution-t25, 20260926_1543_reset-floor-replicas-pdb]
-issues: [#438, #1102, #1143, #1144, #1245, #1301, #1307, #1410, #1470, #1500, #1525, #1543, #1544, planning#650, planning#656]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260911_issue-1410_reset-timing-floor, 20260925_1470_timing-self-control-step, 20260926_1500_reset-floor-default-on, 20260926_1525_timing-resolution-t25, 20260926_1543_reset-floor-replicas-pdb, 20260926_1546_timing-clock-revert-to-ms]
+issues: [#438, #1102, #1143, #1144, #1245, #1301, #1307, #1410, #1470, #1500, #1525, #1543, #1544, #1546, planning#650, planning#656, planning#659]
 -->
 
 # 画面仕様書: パスワードリセット
@@ -292,8 +292,12 @@ C1 は認証基盤の送出が同期でありタイムアウトが固定値で�
 自己対照が広い側の `評価不能` は緩めない（段 1 に当たっても広ければ `評価不能`）。
 **刻み未満の系統差は検出しない**（受け入れたリスク）。
 
-**［2026-09-26 改訂］標本は 1 ms より細かい分解能の時計で測る（計画の追加の裁定）。** 刻みが 1 ms だったのは
-整数 ms の時計で測っていたためで、測定の限界ではなかった。いまは単調時計の整数 ns で測り、各群 3 標本では刻みは 1 ns である。
+**［2026-09-26 改訂］標本は 1 ms より細かい分解能の時計で測る（計画の追加の裁定）。ただし判定式の変更と同時に入れる。**
+刻みが 1 ms なのは整数 ms の時計で測っているためで、測定の限界ではない。
+🔴 **いったん単調時計の整数 ns へ替えたが、上の 2 段の判定と組むと、系統差が無くても実行の約 6 割が不合格になった**
+（段 1 が実質消え、段 2 の「比が自己対照を超えない」は同じ大きさの雑音どうしの比較のため）。計画は判定を順位和検定へ改め、
+**時計の変更はその判定式と同時に入れ、単独では入れない**と裁定した。**それまでは整数 ms の時計と 2 段の判定のまま測る**
+（1 ms 以下の系統差は段 1 が合格させ、見逃す）。
 🔴 **受け入れの根拠を改めた。** 従前は「刻み未満の差は、同じ測定器を使う攻撃者にも見えない」としていたが、**この根拠は取り下げた** ——
 申請には回数制限が無く、攻撃者は大量の標本を平均でき、より細かい時計も使える。**検査で検出できる差の下限は
 時計の分解能と標本数で決まり、それ未満の差を検査としては見逃す。** それでも受け入れるのは、検査の役割が
