@@ -9,9 +9,9 @@ updated: 2026-09-26
 <!-- trace:
 ids: [FR-11, SC-08, NFR-18, NFR-19]
 adrs: [ADR-0010, ADR-0025, ADR-0038, ADR-0044, ADR-0095]
-iadrs: [IADR-0101, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0369, IADR-0374, IADR-0400, IADR-0456]
-specs: [20260926_issue-380_output-token-measurement-runbook, 20260830_issue-380_opus5-max-tokens-measurement]
-issues: [#380, #1089, #1091, #1111, #1411]
+iadrs: [IADR-0101, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0369, IADR-0374, IADR-0400, IADR-0456, IADR-0466]
+specs: [20260926_issue-380_output-token-measurement-runbook, 20260830_issue-380_opus5-max-tokens-measurement, 20260926_issue-1558_runbook-nits]
+issues: [#380, #1089, #1091, #1111, #1411, #1539, #1558]
 -->
 
 # 運用 Runbook: 既定層 LLM の出力トークン実測
@@ -471,8 +471,12 @@ q 'sum by (llm_result, llm_upstream_status) (increase(llm_completion_total{llm_r
 - **標本は実運用ではない。** 人が画面から作った依頼の分布であり、実運用の依頼の分布と一致する保証は無い。
   指示の種類を実運用に寄せるのは実行者の責任である。
 - **429 の確認は標本の頻度でしか言えない**（§6）。
-- **月次予算の上限アラートは無い。** 実費の上限は本書の承認額と §3-5 の停止でしか守られない。
-  上限アラートは #1111 で追跡しており、その前提（数か月分の実績）は本測定の後に初めて貯まり始める。
+- **月次予算の上限アラートは配線済みだが、金額が未設定のあいだは発火しない。** 用途別の上限アラートは入っており、
+  所有者が金額を設定すれば、本測定の費用の超過にも気づく安全網として使える
+  （置き場と手順は [`llm-cost-monthly-review-runbook.md`](llm-cost-monthly-review-runbook.md) §金額を設定する手順）。
+  ただし**アラートは検知であって費用を止めない**（既定の受信先は通知をどこへも届けない）。また金額を置く変更は
+  月次確認の Runbook を終了させる変更と同じであり、金額を決める前提（数か月分の実績）は本測定の後に初めて貯まり始める。
+  **金額が無いあいだ、実費の上限は本書の承認額と §3-5 の停止でしか守られない。**
 - `rag-answer` の値は `analysis` と共用であり、本書の標本の本体（`analysis`）だけでは `rag-answer` の妥当性は言えない。
   `rag-answer` についても判断したいなら §3-4 の任意の追加標本を取る。
 - 空文字での保管先の書き戻し（§3-5 の 2）は実測していない。費用を止める一次手段は発行元での失効である。
