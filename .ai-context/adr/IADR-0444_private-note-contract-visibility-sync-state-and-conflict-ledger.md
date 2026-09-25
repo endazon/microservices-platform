@@ -2,17 +2,19 @@
 title: IADR-0444 個人資料の契約に公開範囲 3 状態・同期状態・タグを足し、同期対象範囲と競合をサーバの台帳で持つ（指定先と同期履歴は裁定待ちのまま契約に出さない）
 type: impl-adr
 status: Accepted
-related_ids: [FR-19, FR-20, UC-11, SC-19, SC-20, ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0063, IADR-0131, IADR-0139, IADR-0270, IADR-0352, IADR-0360]
+related_ids: [FR-19, FR-20, UC-11, SC-19, SC-20, ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0063, ADR-0105, IADR-0131, IADR-0139, IADR-0270, IADR-0352, IADR-0360]
 author: Claude
 created: 2026-09-12
-updated: 2026-09-12
+updated: 2026-09-25
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md
   - planning:projects/microservices-platform/07_adr/ADR-0037_obsidian-sync-method.md
   - planning:projects/microservices-platform/10_feedback/20260912_mock-elements-without-contract.md
+  - planning:projects/microservices-platform/07_adr/ADR-0105_conflict-alias-note-inherits-tags-only.md
 related_specs:
   - ../specs/20260912_1441-1442_private-note-contract-gaps.md
+  - ../specs/20260925_1498_conflict-alias-inherits-tags.md
 ---
 
 # IADR-0444: 個人資料の契約に公開範囲 3 状態・同期状態・タグを足し、同期対象範囲と競合をサーバの台帳で持つ
@@ -141,6 +143,20 @@ SC-19 の公開範囲・同期状態・タグ、SC-20 の同期対象範囲・�
 ## ［2026-09-12 追記 / #1445・#1446］裁定後の状態
 
 planning#618 の裁定（ADR-0098 / ADR-0099）が出たため、決定 6 の「裁定後に別 PR で足す」を [IADR-0445](IADR-0445_share-targets-user-only-ui-and-user-lookup-surface.md)（指定先。個人指定のみ）と [IADR-0446](IADR-0446_sync-audit-ledger-as-the-store-of-the-sync-audit-log.md)（同期履歴）で実施した。決定 1〜5・7 は不変。§結果 の残余リスク「未解決競合のローカル本文の保持期限」は ADR-0099 では定まらず（同期履歴の保持 3 年は監査ログの数であり競合の本文には及ばない）、据え置きである。
+
+## ［2026-09-25 追記 / #1498］`both` の別名資料はタグを引き継ぐ（ADR-0105）
+
+計画 ADR-0105（Accepted 2026-09-17・planning#636）が、決定 4 の `both` で作る別名資料の引き継ぎを 4 項目すべてについて定めた。
+**決定 4 の「既存の新規作成の経路を通す」は変えず、タグだけを元の資料（解決時点のサーバ版）から写す**（ADR-0105 決定 3）。
+
+- 写すのは `Document.Tags`（辞書への識別子の集合）そのもの。辞書との突き合わせは写すときに行わない —— 元の資料に付いた時点で
+  値域は通過しており、参照のあるタグは削除が拒否される。受け入れる副作用は、各タグの使用件数が 1 増え、写しがある間は削除できないこと。
+- 露出 3 トグル（明示の OFF。決定 1・4）・共有先（決定 2）・版履歴（決定 3）・機密区分（`restricted`）は引き継がない。いずれも従前どおりで、
+  本追記で**試験に固定した**（`SyncConflictEndpointTests`。陽性対照つき）。
+- 🔴 **プラグイン側の「両方残す」は別の経路である**（`src/obsidian-plugin/src/protocol/conflictResolver.ts` がローカル本文を
+  `noteId: null` で新規 push する）。サーバはこの push を別名資料と識別できず、push の契約にタグの口も無いため、**この経路の写しはタグを持たない**。
+  ADR-0105 の実測はサーバ側の `CreateAliasNoteAsync` だけを挙げており、この経路を射程に含むかは計画の判断が要る（#1498 の PR 本文に記録）。
+  本追記では変えない。
 
 ## フォローアップ
 
