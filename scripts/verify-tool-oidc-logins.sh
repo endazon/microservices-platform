@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # NFR-09（セキュリティ｜認証・認可）/ NFR-11 / Issue #1163:
-#   **ツール側 7 クライアントの OIDC ログイン開始**を機械で測る。
+#   **ツール側 6 クライアントの OIDC ログイン開始**を機械で測る（当初 7。MinIO Console を #1499 / IADR-0464 で撤去）。
 #
 # なぜ要るか:
 #   `scripts/verify-oidc-edge-flow.sh` は **SPA → BFF の 1 経路専用**である。経路B には
 #   ブラウザ OIDC を持つクライアントが他にもあり（bff / grafana / argocd / headlamp /
-#   minio / vault / wiki-js）、**そのログイン導線を測る検証器が無かった**。
+#   vault / wiki-js）、**そのログイン導線を測る検証器が無かった**。
 #   IADR-0328 §実測 の「7 クライアントすべてで通した」は **2026-08-31 に人が手で curl した結果**で、
 #   再現も回帰検知もできない。同型の縮退（ストラテジが消える / issuer がずれる /
 #   Site URL と realm の redirect が食い違う）は **Pod が Running のまま**表面化しない。
@@ -191,9 +191,6 @@ start_location() { # $1=tool $2=origin $3=kind → 標準出力に URL（取れ�
     redirect)
       curl -sS "${CURL_TLS[@]}" -o /dev/null -D - -m 15 "$origin$path" 2>/dev/null \
         | grep -i '^location:' | tail -1 | tr -d '\r' | sed 's/^[Ll]ocation: *//'
-      ;;
-    json-get)
-      curl -sS "${CURL_TLS[@]}" -m 15 "$origin$path" 2>/dev/null | node "$LIB" minio-redirect
       ;;
     json-post)
       # Vault の UI がログイン画面の描画時に呼ぶのと同じ読み取り操作。role は config の

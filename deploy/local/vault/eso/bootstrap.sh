@@ -64,7 +64,7 @@ vkv_patch_if_missing() { # <path> <property> <value>
 }
 
 echo "==> seed: secret/msp/*（env 由来 or dev 既定・平文の実 secret は非コミット）"
-# 値は現行 apply_secret の既定と同一（minioadmin/kp/空）。env で上書き可。
+# 値は現行 apply_secret の既定と同一（objectstorage-dev/kp/空）。env で上書き可。
 # SC-22 の項目（IADR-0456 決定 6）: 無いときだけ作る。在れば env が空でないキーだけ差し替える。
 if vkv_exists msp/llm-provider-credentials; then
   vkv_patch_nonempty msp/llm-provider-credentials anthropic-api-key "${ANTHROPIC_API_KEY:-}"
@@ -72,8 +72,9 @@ if vkv_exists msp/llm-provider-credentials; then
 else
   vexec "vault kv put -cas=0 secret/msp/llm-provider-credentials anthropic-api-key='${ANTHROPIC_API_KEY:-}' openai-api-key='${OPENAI_API_KEY:-}'"
 fi
-# IADR-0097 (#310) PR-2: minio-credentials / wikijs-db / wikijs-sync。
-vexec "vault kv put secret/msp/minio-credentials accessKey='${MINIO_ACCESS_KEY:-minioadmin}' secretKey='${MINIO_SECRET_KEY:-minioadmin}'"
+# IADR-0097 (#310) PR-2: object-storage-credentials / wikijs-db / wikijs-sync。
+# IADR-0464 決定 3 (#1499): オブジェクトストレージ（SeaweedFS）の S3 資格情報。旧 msp/minio-credentials。
+vexec "vault kv put secret/msp/object-storage-credentials accessKey='${OBJECT_STORAGE_ACCESS_KEY:-objectstorage-dev}' secretKey='${OBJECT_STORAGE_SECRET_KEY:-objectstorage-dev-secret}'"
 # NFR, ADR-0002 (#1012): サービス DB のパスワード。appsettings.json から接続文字列を撤去したため、
 # これが無いと ESO=1 では DB を持つ全サービスが起動できない。dev 既定は init スクリプトが作る `kp`。
 vexec "vault kv put secret/msp/postgres-app password='${APP_DB_PASSWORD:-kp}'"
@@ -88,9 +89,9 @@ if vkv_exists msp/wikijs-sync; then
 else
   vexec "vault kv put -cas=0 secret/msp/wikijs-sync apiKey='${WIKIJS_SYNC_APIKEY:-}'"
 fi
-# IADR-0098 (#310) PR-3: OIDC client secret 群（minio/grafana/vault/headlamp）。既定は各 <tool>-dev-secret-change-me
+# IADR-0098 (#310) PR-3: OIDC client secret 群（grafana/vault/headlamp）。既定は各 <tool>-dev-secret-change-me
 # （現行 apply_secret の env 既定と同値）。env で上書き可。realm import の dev client secret と一致させること。
-vexec "vault kv put secret/msp/minio-oidc client-secret='${MINIO_OIDC_CLIENT_SECRET:-minio-dev-secret-change-me}'"
+# ［IADR-0464 決定 5 / #1499］msp/minio-oidc（MinIO Console の SSO）は撤去した。
 # NFR, SC-13, ADR-0032, IADR-0251/IADR-0273/IADR-0316 (#1107): BFF がコンフィデンシャルクライアントとして
 # Keycloak と通信するための client secret。**空だと `GET /bff/auth/login` が 500 で落ちる**（PAR が 401）。
 # 既定は realm の置き場と同値（一致しないと PAR が同じ 401 を返す）。env で上書き可。
@@ -217,8 +218,8 @@ fi
 echo ""
 echo "done. ExternalSecret が Vault→k8s Secret を同期する（refresh 1h。画面 /admin/secrets からの書き込みは BFF が force-sync で即時同期を依頼する）:"
 echo "  #1477: SC-22 の KV（llm-provider-credentials / wikijs-sync / keycloak-smtp / ai-stock-trading/app-secrets）は無いときだけ作った（在るものは env が空でないキーだけ差し替えた）"
-echo "  PR-1: llm-provider-credentials / PR-2: minio-credentials, wikijs-db, wikijs-sync"
-echo "  PR-3: minio-oidc (MSP ns) / grafana-oidc, vault-oidc, headlamp-oidc (platform-infra ns)"
+echo "  PR-1: llm-provider-credentials / PR-2: object-storage-credentials, wikijs-db, wikijs-sync"
+echo "  PR-3: grafana-oidc, vault-oidc, headlamp-oidc (platform-infra ns)"
 echo "  #1107: bff-oidc (MSP ns。BFF セッションの client secret。空だと /bff/auth/login が 500)"
 echo "  #1101: identity-admin-oidc (MSP ns。SC-17 の Keycloak Admin REST 反映。空だと authorization-service が起動しない)"
 echo "  #1245: reset-gate-oidc (platform-infra ns。SC-15 の申請を閉じる門。空だと門が起動しない＝窓が開いたままになる)"
@@ -231,6 +232,6 @@ echo "  #1287: synthetic-monitor-oidc (MSP ns。合成監視のプローブが e
 #    打った人が必ず NotFound を踏む）。grafana-oidc / headlamp-oidc は OBSERVABILITY=1 / HEADLAMP=1 の、
 #    wikijs-oidc は WIKIJS_OIDC=1 の、synthetic-monitor-oidc は SYNTHETIC=1 のときだけ apply されるため、
 #    無条件の並びからは外して注記に回す。
-echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials minio-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync minio-oidc bff-oidc identity-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
+echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials object-storage-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync bff-oidc identity-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
 echo "  確認(infra): kubectl -n platform-infra get externalsecret,secret postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp"
 echo "             （grafana-oidc は OBSERVABILITY=1、headlamp-oidc は HEADLAMP=1 のときだけ apply される）"

@@ -425,10 +425,12 @@ ok('matchesToken: 末尾境界を見る（接頭辞トークンが長い側の�
   assert.ok(!matchesToken('k3d cluster create c -p 127.0.0.1:500001:1@loadbalancer', '50000'));
 });
 
-// IADR-0093 (#353): MinIO OIDC の client secret 用 app-secret `minio-oidc` は既定実行で作成される
-// （opt-in ではなく MSP app-secrets の一部・平文コミットなし・minio.yaml は optional 参照）。
-ok('既定: minio-oidc app-secret が作られる', () => {
-  assert.ok(anyLineHas(DEFAULT.lines, 'minio-oidc'), 'minio-oidc secret が作られない');
+// IADR-0464 決定 5 (#1499): MinIO Console の SSO（IADR-0093）は撤去した。`minio-oidc` を作り直す回帰を止める
+// （オブジェクトストレージは SeaweedFS へ差し替え、Console を持たない。ADR-0106 決定 6）。
+ok('既定・ESO=1: minio-oidc を作らない（MinIO Console の SSO は撤去済み）', () => {
+  assert.ok(!anyLineHas(DEFAULT.lines, 'minio-oidc'), '撤去した minio-oidc を作っている');
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  assert.ok(!anyLineHas(res.lines, 'minio-oidc'), 'ESO=1 で撤去した minio-oidc を供給している');
 });
 
 // IADR-0096 (#310): ESO 未設定（既定）では llm-provider-credentials は手動 apply_secret で作成される
@@ -1274,13 +1276,14 @@ ok('ESO=1 (#1477): ai-stock-trading ns を作ってから BFF の RBAC と Reloa
   );
 });
 
-// IADR-0097 (#310) PR-2: ESO=1 で minio-credentials/wikijs-db/wikijs-sync も ExternalSecret 供給し、手動 apply はスキップ。
-ok('ESO=1 (PR-2): minio/wikijs 系 3 ExternalSecret apply・手動 apply はスキップ', () => {
+// IADR-0097 (#310) PR-2: ESO=1 で object-storage-credentials（IADR-0464。旧 minio-credentials）/wikijs-db/wikijs-sync も
+// ExternalSecret 供給し、手動 apply はスキップ。
+ok('ESO=1 (PR-2): object-storage/wikijs 系 3 ExternalSecret apply・手動 apply はスキップ', () => {
   const res = runUp({ VAULT: '1', ESO: '1' });
-  for (const f of ['externalsecret-minio.yaml', 'externalsecret-wikijs-db.yaml', 'externalsecret-wikijs-sync.yaml']) {
+  for (const f of ['externalsecret-object-storage.yaml', 'externalsecret-wikijs-db.yaml', 'externalsecret-wikijs-sync.yaml']) {
     assert.ok(anyLineHas(res.lines, `deploy/local/vault/eso/${f}`), `${f} が apply されない`);
   }
-  for (const name of ['minio-credentials', 'wikijs-db', 'wikijs-sync']) {
+  for (const name of ['object-storage-credentials', 'wikijs-db', 'wikijs-sync']) {
     assert.ok(
       !anyLineHas(res.lines, `create secret generic ${name}`),
       `ESO=1 なのに ${name} を手動 apply している（二重所有）`,
@@ -1289,8 +1292,8 @@ ok('ESO=1 (PR-2): minio/wikijs 系 3 ExternalSecret apply・手動 apply はス�
 });
 
 // IADR-0097 (#310) PR-2 回帰: 既定（ESO 未設定）は 3 secret を手動 apply する（バイト等価）。
-ok('既定 (PR-2): minio-credentials/wikijs-db/wikijs-sync を手動 apply する（ESO 未設定）', () => {
-  for (const name of ['minio-credentials', 'wikijs-db', 'wikijs-sync']) {
+ok('既定 (PR-2): object-storage-credentials/wikijs-db/wikijs-sync を手動 apply する（ESO 未設定）', () => {
+  for (const name of ['object-storage-credentials', 'wikijs-db', 'wikijs-sync']) {
     assert.ok(anyLineHas(DEFAULT.lines, `create secret generic ${name}`), `${name} の手動 apply が無い`);
   }
 });
@@ -1468,19 +1471,18 @@ ok('#1022: 基盤 secret rabbitmq は username と password の両方を作る�
   }
 });
 
-// IADR-0098 (#310) PR-3: ESO=1 で OIDC client secret 群（minio/grafana/vault/headlamp-oidc）も ExternalSecret 供給し、
-// 各機能ゲート内の手動 apply はスキップする（二重所有回避）。ゲートを全て有効化して skip を確認する。
-ok('ESO=1 (PR-3): OIDC 4 ExternalSecret apply・4 OIDC secret の手動 apply はスキップ', () => {
+// IADR-0098 (#310) PR-3: ESO=1 で OIDC client secret 群（grafana/vault/headlamp-oidc。minio-oidc は IADR-0464 で撤去）も
+// ExternalSecret 供給し、各機能ゲート内の手動 apply はスキップする（二重所有回避）。ゲートを全て有効化して skip を確認する。
+ok('ESO=1 (PR-3): OIDC 3 ExternalSecret apply・3 OIDC secret の手動 apply はスキップ', () => {
   const res = runUp({ VAULT: '1', ESO: '1', OBSERVABILITY: '1', HEADLAMP: '1' });
   for (const f of [
-    'externalsecret-minio-oidc.yaml',
     'externalsecret-grafana-oidc.yaml',
     'externalsecret-vault-oidc.yaml',
     'externalsecret-headlamp-oidc.yaml',
   ]) {
     assert.ok(anyLineHas(res.lines, `deploy/local/vault/eso/${f}`), `${f} が apply されない`);
   }
-  for (const name of ['minio-oidc', 'grafana-oidc', 'vault-oidc', 'headlamp-oidc']) {
+  for (const name of ['grafana-oidc', 'vault-oidc', 'headlamp-oidc']) {
     assert.ok(
       !anyLineHas(res.lines, `create secret generic ${name}`),
       `ESO=1 なのに ${name} を手動 apply している（二重所有）`,
@@ -1488,11 +1490,11 @@ ok('ESO=1 (PR-3): OIDC 4 ExternalSecret apply・4 OIDC secret の手動 apply �
   }
 });
 
-// IADR-0098 (#310) PR-3 回帰: 既定（ESO 未設定）は 4 OIDC secret を手動 apply する（バイト等価）。minio-oidc は
-// 常時（step 5）、grafana/vault/headlamp-oidc は各ゲート有効時。ゲートを全て有効化して手動 apply の存置を確認する。
-ok('既定 (PR-3): 4 OIDC secret を手動 apply する（ESO 未設定・各ゲート有効）', () => {
+// IADR-0098 (#310) PR-3 回帰: 既定（ESO 未設定）は 3 OIDC secret を手動 apply する（バイト等価）。
+// grafana/vault/headlamp-oidc は各ゲート有効時（minio-oidc は IADR-0464 で撤去）。ゲートを全て有効化して手動 apply の存置を確認する。
+ok('既定 (PR-3): 3 OIDC secret を手動 apply する（ESO 未設定・各ゲート有効）', () => {
   const res = runUp({ OBSERVABILITY: '1', VAULT: '1', HEADLAMP: '1' });
-  for (const name of ['minio-oidc', 'grafana-oidc', 'vault-oidc', 'headlamp-oidc']) {
+  for (const name of ['grafana-oidc', 'vault-oidc', 'headlamp-oidc']) {
     assert.ok(anyLineHas(res.lines, `create secret generic ${name}`), `${name} の手動 apply が無い`);
   }
   // ESO 未設定なので OIDC の ExternalSecret は apply されない（byte 等価・fail-safe）。
@@ -1501,10 +1503,9 @@ ok('既定 (PR-3): 4 OIDC secret を手動 apply する（ESO 未設定・各ゲ
 
 // IADR-0098 (#310) PR-3: OIDC ExternalSecret はゲート意味論に整合させる。ESO=1 かつ OBSERVABILITY/HEADLAMP が
 // 無効なら grafana-oidc/headlamp-oidc ExternalSecret は apply しない（機能オフ時に未使用 Secret を残さない）。
-// minio-oidc（常時）と vault-oidc（VAULT 前提＝ESO ガード下で常に真）は供給する。
+// vault-oidc（VAULT 前提＝ESO ガード下で常に真）は供給する。
 ok('ESO=1 (PR-3): OBSERVABILITY/HEADLAMP 無効なら grafana/headlamp-oidc ES は apply しない', () => {
   const res = runUp({ VAULT: '1', ESO: '1' }); // OBSERVABILITY/HEADLAMP は未設定
-  assert.ok(anyLineHas(res.lines, 'externalsecret-minio-oidc.yaml'), 'minio-oidc ES が apply されない（常時のはず）');
   assert.ok(anyLineHas(res.lines, 'externalsecret-vault-oidc.yaml'), 'vault-oidc ES が apply されない（VAULT 前提で常時のはず）');
   assert.ok(!anyLineHas(res.lines, 'externalsecret-grafana-oidc.yaml'), 'OBSERVABILITY 無効なのに grafana-oidc ES を apply した');
   assert.ok(!anyLineHas(res.lines, 'externalsecret-headlamp-oidc.yaml'), 'HEADLAMP 無効なのに headlamp-oidc ES を apply した');
@@ -1704,12 +1705,12 @@ ok('ARGOCD=1: argocd ns の keycloak ExternalName エイリアスを apply', () 
 
 // IADR-0103 (#354): env の secretKeyRef は Pod 起動時に一度だけ解決され、その後の Secret 更新は既存 Pod へ
 // 反映されない。ESO 供給後に **ESO 管理 Secret を env 参照する全 Deployment** を rollout し直して env を
-// 作り直す（MinIO の unauthorized_client / LlmGateway の旧鍵保持 等の実障害対策）。
+// 作り直す（MinIO（当時）の unauthorized_client / LlmGateway の旧鍵保持 等の実障害対策）。
 ok('ESO=1: 供給後に ESO 管理 secret を参照する Deployment を網羅的に rollout restart する', () => {
   const res = runUp({ VAULT: '1', ESO: '1' });
-  // minio=minio-credentials/minio-oidc, llmgateway-service=llm-provider-credentials,
+  // seaweedfs=object-storage-credentials（IADR-0464）, llmgateway-service=llm-provider-credentials,
   // wiki-service=wikijs-sync, wiki-js=wikijs-db。1 つでも漏れると当該ツールだけ旧値のまま残る。
-  for (const d of ['minio', 'llmgateway-service', 'wiki-service', 'wiki-js']) {
+  for (const d of ['seaweedfs', 'llmgateway-service', 'wiki-service', 'wiki-js']) {
     assert.ok(
       res.lines.some((l) => l.includes('rollout restart') && l.includes(`deploy/${d}`)),
       `ESO=1 なのに ${d} の rollout restart が無い`,
@@ -1730,8 +1731,8 @@ ok('ESO=1: 供給後に ESO 管理 secret を参照する Deployment を網羅�
   );
   // 既定（ESO 未設定）では rollout を出さない（byte 等価）。
   assert.ok(
-    !DEFAULT.lines.some((l) => l.includes('rollout restart') && l.includes('deploy/minio')),
-    'ESO 未設定なのに minio を rollout した',
+    !DEFAULT.lines.some((l) => l.includes('rollout restart') && l.includes('deploy/seaweedfs')),
+    'ESO 未設定なのに seaweedfs を rollout した',
   );
 });
 
@@ -1741,7 +1742,7 @@ ok('ESO=1: rollout の前に ExternalSecret の SecretSynced を待つ', () => {
   const res = runUp({ VAULT: '1', ESO: '1' });
   const isWait = (l) => l.includes('wait --for=condition=Ready') && l.includes('externalsecret/');
   const isRollout = (l) => l.includes('rollout restart') && l.includes('deploy/');
-  for (const es of ['llm-provider-credentials', 'minio-credentials', 'minio-oidc', 'wikijs-db', 'wikijs-sync']) {
+  for (const es of ['llm-provider-credentials', 'object-storage-credentials', 'wikijs-db', 'wikijs-sync']) {
     assert.ok(
       res.lines.some((l) => isWait(l) && l.includes(`externalsecret/${es}`)),
       `${es} の SecretSynced 待ちが無い`,
@@ -1793,28 +1794,10 @@ ok('realm.json: admin ユーザーとツール別 claim 設計が恒久化され
   for (const r of ['platform-admin', 'platform-operator', 'wiki-editor', 'Administrators']) {
     assert.ok((admin.realmRoles || []).includes(r), `admin に realm ロール ${r} が無い`);
   }
-  assert.ok(
-    ((admin.clientRoles || {}).minio || []).includes('consoleAdmin'),
-    'admin に minio client ロール consoleAdmin が無い',
-  );
-  // IADR-0103 (#354, claude-review 🟡): policy claim を単一値に保つのは「admin に minio client ロールを 1 つだけ
-  // 付与する」運用制約に依存する（mapper は multivalued=true で複数付与時に多値配列を返す）。逸脱すると対策した
-  // はずの callback 500 が再発するため、要素数 1 を機械検知して運用逸脱をブロックする。
-  assert.strictEqual(
-    ((admin.clientRoles || {}).minio || []).length,
-    1,
-    'admin の minio client ロールは 1 つだけ（複数付与で policy claim が多値化し callback 500 が再発する）',
-  );
-  // MinIO の policy claim は client ロール由来（多値だと MinIO がポリシー解決に失敗し 500）。
-  const minio = realm.clients.find((c) => c.clientId === 'minio');
-  const mm = (minio.protocolMappers || []).find((m) => m.config['claim.name'] === 'policy');
-  assert.ok(mm, 'minio に policy claim の mapper が無い');
-  assert.strictEqual(mm.protocolMapper, 'oidc-usermodel-client-role-mapper', 'minio の policy mapper が client ロール由来でない');
-  assert.strictEqual(mm.config['usermodel.clientRoleMapping.clientId'], 'minio', 'clientRoleMapping が minio でない');
-  assert.ok(
-    !(minio.protocolMappers || []).some((m) => m.protocolMapper === 'oidc-usermodel-realm-role-mapper'),
-    'minio に realm ロール mapper が残っている（policy claim が多値化して 500 になる）',
-  );
+  // IADR-0464 決定 5 (#1499): MinIO Console の SSO（IADR-0093）を撤去したので、minio client・client ロール
+  // consoleAdmin・admin への付与はすべて realm から外した。**戻さない**（Console を持たない製品へ差し替えた）。
+  assert.ok(!(realm.clients || []).some((c) => c.clientId === 'minio'), '撤去した minio client が realm に残っている');
+  assert.ok(!((admin.clientRoles || {}).minio), '撤去した minio client ロールが admin に残っている');
   // Wiki.js / Headlamp は groups claim（Wiki.js は Administrators と名前一致でマップ）。
   for (const cid of ['wiki-js', 'headlamp']) {
     const c = realm.clients.find((x) => x.clientId === cid);
@@ -1828,10 +1811,7 @@ ok('realm.json: admin ユーザーとツール別 claim 設計が恒久化され
     (realm.roles.realm || []).some((r) => r.name === 'Administrators'),
     'realm ロール Administrators が無い',
   );
-  assert.ok(
-    ((realm.roles.client || {}).minio || []).some((r) => r.name === 'consoleAdmin'),
-    'client ロール minio:consoleAdmin が無い',
-  );
+  assert.ok(!((realm.roles.client || {}).minio), '撤去した client ロール minio:consoleAdmin が残っている');
 });
 
 // --- IADR-0108 (#398): headlamp overlay の token ログイン用 SA と閲覧専用 RBAC ------------------
@@ -2082,7 +2062,8 @@ ok('#779: Certificate の dnsNames が Ingress の spec.tls.hosts を覆う', ()
 // **平文であることを固定していた**。
 
 const TRAEFIK_YAML = fs.readFileSync(TRAEFIK_MANIFEST, 'utf8');
-const ADMIN_ING_FILES = ['admin-ingress-infra.yaml', 'admin-ingress-minio.yaml', 'admin-ingress-wiki.yaml', 'argocd-ingress.yaml'];
+// IADR-0464 決定 5 (#1499): admin-ingress-minio.yaml（MinIO Console）は撤去した。
+const ADMIN_ING_FILES = ['admin-ingress-infra.yaml', 'admin-ingress-wiki.yaml', 'argocd-ingress.yaml'];
 
 ok('#841: admin:50000 は TLS 終端で、そこに載る Ingress は spec.tls(edge-tls) を持つ', () => {
   // entrypoint 側に TLS が無いまま Ingress へ spec.tls を足すと「TLS になったつもり」になる。
@@ -2116,13 +2097,13 @@ ok('#841: admin:50000 は TLS 終端で、そこに載る Ingress は spec.tls(e
       }
     }
   }
-  // 管理ツール 7 件（grafana / headlamp / vault / qdrant / minio / wiki / argocd）。
+  // 管理ツール 6 件（grafana / headlamp / vault / qdrant / wiki / argocd）。MinIO Console は IADR-0464 で撤去し 7 → 6。
   // 数が変わったら、増えたルータが TLS から漏れていないかを人が見る。
-  assert.strictEqual(routers, 7, `admin entrypoint のルータ数が 7 でない（実測 ${routers}）`);
+  assert.strictEqual(routers, 6, `admin entrypoint のルータ数が 6 でない（実測 ${routers}）`);
 });
 
 ok('#841: 管理ツールの namespace ごとに葉証明書が在る（spec.tls は同 ns の Secret しか参照できない）', () => {
-  // grafana/headlamp/vault/qdrant は platform-infra、minio/wiki は microservices-platform、argocd は argocd。
+  // grafana/headlamp/vault/qdrant は platform-infra、wiki は microservices-platform、argocd は argocd。
   // どれか 1 つでも欠けると、その ns の Ingress だけ静かに TLS が張られない。
   const ARGOCD_CERT_YAML = fs.readFileSync(path.join(TLS_DIR, 'argocd-certificate.yaml'), 'utf8');
   const nsOf = (yaml) => docsOf(yaml, 'Certificate').map((d) => field(d, 'namespace'));
@@ -2768,9 +2749,10 @@ ok('#782: Gateway は istio-system に居て edge-tls で終端し、80 は 443 
   assert.ok(/number:\s*50000/.test(EDGE_ISTIO_GW), 'admin(50000) の server が無い');
 });
 
-ok('#782: メッシュ内の 4 サービスがすべて Gateway 経由になっている（STRICT で落ちる側）', () => {
+// IADR-0464 決定 5 (#1499): MinIO Console を撤去し 4 → 3（オブジェクトストレージの S3 は Gateway に出さない）。
+ok('#782: メッシュ内の 3 サービスがすべて Gateway 経由になっている（STRICT で落ちる側）', () => {
   const routed = EDGE_ISTIO_VS_APP + EDGE_ISTIO_VS_ADMIN;
-  for (const svc of ['frontend-service', 'bff-service', 'minio', 'wiki-js']) {
+  for (const svc of ['frontend-service', 'bff-service', 'wiki-js']) {
     assert.ok(
       new RegExp(`host:\\s*${svc}\\.microservices-platform\\.svc\\.cluster\\.local`).test(routed),
       `${svc} への VirtualService が無い（Traefik のままだと STRICT で 502 になる）`,

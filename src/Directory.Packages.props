@@ -40,7 +40,7 @@
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
     <!-- Vector store -->
     <PackageVersion Include="Qdrant.Client" Version="1.18.1" />
-    <!-- FR-06/FR-12, ADR-0015: S3 互換オブジェクトストレージ（MinIO）クライアント -->
+    <!-- FR-06/FR-12, ADR-0015（Superseded by ADR-0106）: S3 互換オブジェクトストレージのクライアント（製品は SeaweedFS。IADR-0464） -->
     <PackageVersion Include="AWSSDK.S3" Version="4.0.100.2" />
     <!-- Health checks (9.x is latest; net10 compatible via netstandard2.0) -->
     <!-- NU1510 (Issue #33/#63): Microsoft.Extensions.Diagnostics.HealthChecks は Microsoft.AspNetCore.App
@@ -146,8 +146,8 @@
     <PackageVersion Include="Testcontainers.Qdrant" Version="4.12.0" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.12.0" />
     <PackageVersion Include="Testcontainers.RabbitMq" Version="4.12.0" />
-    <!-- FR-06/FR-12, ADR-0015: MinIO ラウンドトリップ統合テスト用 -->
-    <PackageVersion Include="Testcontainers.Minio" Version="4.12.0" />
+    <!-- FR-06/FR-12, ADR-0106, IADR-0464 (#1499): Testcontainers.Minio は撤去した（上流がモジュールを削除。
+         オブジェクトストレージの受け入れ試験は汎用 ContainerBuilder で SeaweedFS を起こす）。 -->
     <!-- NFR(セキュリティ): SSH.NET を直接ピンし GHSA-q939-rpr3-3284(High) を解消(#716, IADR-0186)。
          Testcontainers の推移依存であり、直接参照しているプロジェクトは無い。
          Testcontainers は 4.13.0 でも SSH.NET 2025.1.0 のままなので、上流の更新では直らない(実測)。

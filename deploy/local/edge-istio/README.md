@@ -7,7 +7,7 @@
 ## なぜ要るのか
 
 **STRICT mTLS の前提だからである。** `kube-system` の Traefik は**メッシュの外**にあり、そこから
-mesh 内の 4 Service（`frontend-service` / `bff-service` / `wiki-js` / `minio`）へ**平文で入っている**。
+mesh 内の 3 Service（`frontend-service` / `bff-service` / `wiki-js`）へ**平文で入っている**（当初は MinIO Console を含む 4 件だったが、IADR-0464 で撤去した）。
 `PeerAuthentication` を STRICT にすると Envoy がその平文を拒否し、**入口だけが 502 になる**（実測）。
 
 計画 `ADR-0021` はこの境界問題を理由に、入口を mesh ネイティブな Envoy にすると定めている。
@@ -20,7 +20,7 @@ mesh 内の 4 Service（`frontend-service` / `bff-service` / `wiki-js` / `minio`
 | `traefik-service-off.yaml` | Traefik の LoadBalancer Service を落として **80/443/50000 の hostPort を明け渡す**（`HelmChartConfig`）。**kustomization には入れない**（Gateway より先に当てる必要があるため） |
 | `gateway.yaml` | `msp-edge`（80 は 443 へリダイレクト／443 HTTPS）と `msp-admin-edge`（50000 HTTPS）。どちらも `credentialName: edge-tls` |
 | `virtualservice-app.yaml` | 443: catch-all（`/bff`→bff-service、`/private-notes/sync/`→document-service、残り→frontend-service）と `keycloak.localhost` |
-| `virtualservice-admin.yaml` | 50000: grafana / headlamp / vault / qdrant / minio / wiki / argocd の 7 host |
+| `virtualservice-admin.yaml` | 50000: grafana / headlamp / vault / qdrant / wiki / argocd の 6 host |
 | `coredns-edge-hosts.yaml` | pod 側の `*.localhost` 解決先を `istio-ingressgateway.istio-system` へ差し替える |
 | `tls/edge-certificate-istio.yaml` | `istio-system` の葉証明書 `edge-tls`（Gateway は同 namespace の Secret しか読めない）。**kustomization には入れない**（cert-manager の CRD 依存） |
 
@@ -63,8 +63,8 @@ k3s の ServiceLB（klipper）は **LoadBalancer Service ごとに hostPort を�
 
 ## 3 ポートすべてを移す理由（「80/443 だけ」は成立しない）
 
-`admin(50000)` には **mesh 内の 2 件**（`minio` / `wiki-js`）が載っている。50000 を Traefik に残すと
-その 2 件が STRICT で落ちる。かといって 443 へ移すこともできない —— **7 つの OIDC クライアントの
+`admin(50000)` には **mesh 内の 1 件**（`wiki-js`。当初は MinIO Console を含む 2 件だったが IADR-0464 で撤去）が載っている。
+50000 を Traefik に残すとそれが STRICT で落ちる。かといって 443 へ移すこともできない —— **OIDC クライアントの
 redirect URI が `:50000` 付きで Keycloak に登録済み**である（`IADR-0092`〜`IADR-0095` / `IADR-0220`）。
 
 ## 既知の限界

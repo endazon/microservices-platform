@@ -173,7 +173,7 @@ spec:
               value: /etc/microservices-platform/pipeline/pipeline.appsettings.json
           {{- end }}
           {{- if $svc.objectStorage }}
-            # FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: MinIO 接続。資格情報は Secret 経由。
+            # FR-06, FR-12, ADR-0014/ADR-0015（Superseded by ADR-0106）, IADR-0024, IADR-0464: オブジェクトストレージ（SeaweedFS）接続。資格情報は Secret 経由。
             - name: ObjectStorage__Endpoint
               value: {{ $.Values.global.objectStorage.endpoint | quote }}
             - name: ObjectStorage__Bucket

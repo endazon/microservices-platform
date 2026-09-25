@@ -14,9 +14,9 @@
 
 # Service。ports は **Traefik の 3 つの entrypoint と 1 対 1 に対応させる**。
 #   web(80) / websecure(443)          … platform フロント（SPA / BFF）と keycloak.localhost
-#   admin(50000)                      … 管理ツール 7 件（IADR-0091 決定 4 のホスト名ベース集約）
-# 50000 を落とすと minio / wiki（どちらも mesh 内）の OIDC redirect URI が全滅する
-# （IADR-0093 / IADR-0095 が :50000 付きで Keycloak へ登録済み）。**ポート番号は動かせない。**
+#   admin(50000)                      … 管理ツール 6 件（IADR-0091 決定 4 のホスト名ベース集約。MinIO Console は IADR-0464 で撤去）
+# 50000 を落とすと wiki（mesh 内）の OIDC redirect URI が全滅する
+# （IADR-0095 が :50000 付きで Keycloak へ登録済み）。**ポート番号は動かせない。**
 service:
   type: LoadBalancer
   ports:

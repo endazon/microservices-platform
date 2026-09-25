@@ -7,13 +7,20 @@ using AwesomeAssertions;
 using Knowledge.IntegrationTests.Fixtures;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
-using Testcontainers.Minio;
+using DotNet.Testcontainers.Containers;
 using Xunit;
 
 namespace Knowledge.IntegrationTests.Storage;
 
-// FR-06, FR-12, UC-03/UC-06, ADR-0014/ADR-0015, IADR-0024: MinIO 実体への保存→取得ラウンドトリップ、
-// 冪等な再変換（同一キー上書き）、バージョニング有効化を検証する（受け入れ基準: 実本文の永続化）。
+// FR-06, FR-12, UC-03/UC-06, ADR-0014/ADR-0015（Superseded by ADR-0106）, IADR-0024:
+// オブジェクトストレージ実体への保存→取得ラウンドトリップ、冪等な再変換（同一キー上書き）、
+// バージョニング有効化を検証する（受け入れ基準: 実本文の永続化）。
+//
+// 🔴 ADR-0106 決定 4, [[IADR-0464]] (#1499): **本クラスの 3 件と、各試験の冒頭で走る
+// EnsureBucketAsync（バケットの存在確認・作成・バージョニング有効化）が、製品差し替えの受け入れ試験である。**
+// digest で固定した SeaweedFS の実イメージ（SeaweedFsContainer.Image）に対して通ることが条件であり、
+// 落ちた場合は ADR-0106 決定 1 が覆り、次点（RustFS）で同じ試験を行う（同 決定 2）。
+// **3 件が Skipped のままでは試験は済んでいない**（ci.yml の PR 実行は本クラスを外す。回収先は Integration）。
 // 🔴 IADR-0232 決定 3: Trait が無いと integration.yml（日次）の --filter "Category=Integration" に
 // 拾われず、日次の走査から静かに落ちる（着手前の実測で見つかった欠落）。ci.yml は --filter を
 // 持たないので PR は緑のままであり、成功と見分けが付かない。同プロジェクトの他 11 クラスと同じ形に揃える。
@@ -21,29 +28,30 @@ namespace Knowledge.IntegrationTests.Storage;
 public sealed class ObjectStorageRoundTripTests
 {
     // [[IADR-0414]] (#1336): 資格情報は外部供給でも同じ値を使う（共有点が持つ）。
-    private const string AccessKey = MinioEndpoint.AccessKey;
-    private const string SecretKey = MinioEndpoint.SecretKey;
+    private const string AccessKey = ObjectStorageEndpoint.AccessKey;
+    private const string SecretKey = ObjectStorageEndpoint.SecretKey;
 
-    // [[IADR-0414]] (#1336): 外部の MinIO が与えられていればコンテナは起こさない。
+    // [[IADR-0414]] (#1336): 外部のオブジェクトストレージが与えられていればコンテナは起こさない。
     // 🔴 **端点の決め方をここ 1 か所に置く** —— 3 つの試験が同じ判断を写すと、
     // 片方だけ外部を見ない状態が作れる。
-    private static async Task<MinioContainer?> StartUnlessSuppliedAsync()
+    private static async Task<IContainer?> StartUnlessSuppliedAsync()
     {
         if (RequiredServices.ObjectStorage.External is not null) return null;
 
-        // #1434: Docker Hub の minio/minio は撤去された（pull が「repository does not exist」で落ちる）。
-        // 同じリリースを MinIO 公式の quay.io から引く（compose / helm values と同じ参照）。
-        var minio = new MinioBuilder().WithImage("quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z")
-            .WithUsername(AccessKey).WithPassword(SecretKey).Build();
-        await minio.StartAsync(TestContext.Current.CancellationToken);
-        return minio;
+        // ADR-0106 決定 4, [[IADR-0464]] (#1499): Testcontainers の MinIO モジュールは上流で削除された。
+        // 汎用コンテナで SeaweedFS を配備と同じ起動形で起こす（定義は SeaweedFsContainer が持つ）。
+        var store = SeaweedFsContainer.Build(AccessKey, SecretKey);
+        await store.StartAsync(TestContext.Current.CancellationToken);
+        await SeaweedFsContainer.WaitUntilWritableAsync(
+            SeaweedFsContainer.EndpointOf(store), AccessKey, SecretKey, TestContext.Current.CancellationToken);
+        return store;
     }
 
-    private static async Task<(IAmazonS3 S3, ObjectStorageOptions Options)> ConnectAsync(MinioContainer? minio)
+    private static async Task<(IAmazonS3 S3, ObjectStorageOptions Options)> ConnectAsync(IContainer? store)
     {
         var options = new ObjectStorageOptions
         {
-            Endpoint = RequiredServices.ObjectStorage.External ?? minio!.GetConnectionString(),
+            Endpoint = RequiredServices.ObjectStorage.External ?? SeaweedFsContainer.EndpointOf(store!),
             AccessKey = AccessKey,
             SecretKey = SecretKey,
             Bucket = "test-normalized",
@@ -68,10 +76,10 @@ public sealed class ObjectStorageRoundTripTests
     public async Task Persists_and_reads_markdown_and_asset()
     {
         RequiredServices.SkipUnlessObtainable(RequiredServices.ObjectStorage);
-        var minio = await StartUnlessSuppliedAsync();
+        var store = await StartUnlessSuppliedAsync();
         try
         {
-            var (s3, options) = await ConnectAsync(minio);
+            var (s3, options) = await ConnectAsync(store);
             var client = new S3ObjectStorageClient(s3, options, NullLogger<S3ObjectStorageClient>.Instance);
 
             var mdUri = await client.PutTextAsync("doc-1/document.md", "# 本文\nhello", "text/markdown", TestContext.Current.CancellationToken);
@@ -86,22 +94,22 @@ public sealed class ObjectStorageRoundTripTests
         }
         finally
         {
-            if (minio is not null) await minio.DisposeAsync();
+            if (store is not null) await store.DisposeAsync();
         }
     }
 
     // FR-06, FR-19, ADR-0057 決定 1, IADR-0296: **削除は全バージョンへ及ぶ。**
     // 🔴 バージョニング有効のバケットで素の DeleteObject を撃つと delete marker が積まれるだけで、
     // `ListVersions` には過去版が残る。ここでは **3 回上書きしてから削除し、版が 1 つも残らない**
-    // ことを実 MinIO で確かめる（単体側は SDK 呼び出しの形しか見られない）。
+    // ことを実ストア（SeaweedFS）で確かめる（単体側は SDK 呼び出しの形しか見られない）。
     [Fact]
     public async Task Delete_removes_every_version()
     {
         RequiredServices.SkipUnlessObtainable(RequiredServices.ObjectStorage);
-        var minio = await StartUnlessSuppliedAsync();
+        var store = await StartUnlessSuppliedAsync();
         try
         {
-            var (s3, options) = await ConnectAsync(minio);
+            var (s3, options) = await ConnectAsync(store);
             var client = new S3ObjectStorageClient(s3, options, NullLogger<S3ObjectStorageClient>.Instance);
 
             const string key = "doc-3/document.md";
@@ -122,7 +130,7 @@ public sealed class ObjectStorageRoundTripTests
         }
         finally
         {
-            if (minio is not null) await minio.DisposeAsync();
+            if (store is not null) await store.DisposeAsync();
         }
     }
 
@@ -131,10 +139,10 @@ public sealed class ObjectStorageRoundTripTests
     public async Task Reconversion_overwrites_same_key_idempotently()
     {
         RequiredServices.SkipUnlessObtainable(RequiredServices.ObjectStorage);
-        var minio = await StartUnlessSuppliedAsync();
+        var store = await StartUnlessSuppliedAsync();
         try
         {
-            var (s3, options) = await ConnectAsync(minio);
+            var (s3, options) = await ConnectAsync(store);
             var client = new S3ObjectStorageClient(s3, options, NullLogger<S3ObjectStorageClient>.Instance);
 
             var first = await client.PutTextAsync("doc-2/document.md", "v1", "text/markdown", TestContext.Current.CancellationToken);
@@ -148,7 +156,7 @@ public sealed class ObjectStorageRoundTripTests
         }
         finally
         {
-            if (minio is not null) await minio.DisposeAsync();
+            if (store is not null) await store.DisposeAsync();
         }
     }
 }

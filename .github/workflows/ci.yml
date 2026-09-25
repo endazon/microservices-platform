@@ -758,7 +758,7 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
-      # 🔴 Testcontainers（実 RabbitMQ / Postgres / MinIO）を起動するテストは PR から外す
+      # 🔴 Testcontainers（実 RabbitMQ / Postgres / SeaweedFS）を起動するテストは PR から外す
       # （IADR-0232 決定 3・改定 3。利用者裁定 2026-08-22「PR の精度低下は、どこかで回収できるなら
       # ある程度許容する。AI コーディング→PR→CI→AI コーディングのループ効率を上げよ」）。
       #

@@ -10225,7 +10225,7 @@ ${r.stderr}`);
     });
   }
 
-  // --- #1163: ツール側 7 クライアントの OIDC ログイン開始（verify-tool-oidc-logins.sh） ----
+  // --- #1163: ツール側 6 クライアントの OIDC ログイン開始（verify-tool-oidc-logins.sh） ----
   //
   // 実クラスタ無しで固定できるのは (a) 判定ロジック（`scripts/lib/tool-oidc-login.js` の
   // 純粋関数）(b) 検証器の結線（段数の式・段の本数・`-k` の不在）(c) 前提未整備の終了コード
@@ -10245,19 +10245,20 @@ ${r.stderr}`);
     const AUTHZ = 'https://keycloak.localhost/realms/platform/protocol/openid-connect/auth';
 
     // ---- 母集合 -------------------------------------------------------------------
-    ok('#1163: 母集合はブラウザ OIDC を持つ 7 クライアントである', () => {
+    ok('#1163: 母集合はブラウザ OIDC を持つ 6 クライアントである', () => {
       // 走査の出所は作業仕様書 §母集合。#1163 当時は realm JSON の standardFlowEnabled が 8 件で
       // そこから platform-spa を除いて 7 件だったが、#1393 で同 client を realm ごと撤去したので
       // **いまは走査結果がそのまま 7 件**である（母集合そのものは変わっていない）。
+      // #1499 / [[IADR-0464]] 決定 5 で minio（MinIO Console）を realm ごと撤去し 6 件になった。
       // 🔴 件数が変わったら**作業仕様書の走査をやり直す**（issue の数えを写さない）。
-      assert.strictEqual(tol.TOOLS.length, 7, `母集合が ${tol.TOOLS.length} 件（7 件のはず）`);
+      assert.strictEqual(tol.TOOLS.length, 6, `母集合が ${tol.TOOLS.length} 件（6 件のはず）`);
       const keys = tol.TOOLS.map((t) => t.key);
       assert.strictEqual(new Set(keys).size, keys.length, `key が重複している: ${keys}`);
       for (const t of tol.TOOLS) {
         assert.ok(t.host, `${t.key}: host が無い`);
         assert.ok(t.probe && t.probe.startsWith('/'), `${t.key}: probe が無い`);
         assert.ok(
-          ['redirect', 'json-get', 'json-post', 'wikijs'].includes(t.start.kind),
+          ['redirect', 'json-post', 'wikijs'].includes(t.start.kind),
           `${t.key}: 未知の start.kind ${t.start.kind}`,
         );
       }
@@ -10354,9 +10355,6 @@ ${r.stderr}`);
         tol.extractAuthorizationEndpoint(JSON.stringify({ authorization_endpoint: AUTHZ })), AUTHZ);
       assert.strictEqual(tol.extractAuthorizationEndpoint('not json'), '');
       assert.strictEqual(
-        tol.extractMinioRedirect(JSON.stringify({ redirectRules: [{ redirect: 'https://x/y' }] })), 'https://x/y');
-      assert.strictEqual(tol.extractMinioRedirect(JSON.stringify({ redirectRules: [] })), '');
-      assert.strictEqual(
         tol.extractVaultAuthUrl(JSON.stringify({ data: { auth_url: 'https://x/y' } })), 'https://x/y');
       // Vault は auth mount が消えると `{"errors":["permission denied"]}` を返す（実測・#1163）。
       assert.strictEqual(tol.extractVaultAuthUrl(JSON.stringify({ errors: ['permission denied'] })), '');
@@ -10436,7 +10434,7 @@ ${r.stderr}`);
       assert.match(TOOLSH, /if \[ "\$STEPS" -ne "\$TOTAL" \]; then/, '段数の門が無い');
     });
 
-    ok('#1163: 段 (a)(b) が 7 クライアントすべてを通る（反復元が母集合）', () => {
+    ok('#1163: 段 (a)(b) が 6 クライアントすべてを通る（反復元が母集合）', () => {
       // 反復は TSV を回すので、**ツール名をシェルへ列挙しない**のが正しい形である。
       // 逆に、母集合の各 key がライブラリから 1 行ずつ出ていることは実行して確かめる。
       const r = spawnTO(process.execPath, [pathTO.join(__dirname, 'lib/tool-oidc-login.js'), 'tools'], {
@@ -10511,7 +10509,7 @@ ${r.stderr}`);
       const osTO = require('os');
       const work = fsTO.mkdtempSync(pathTO.join(osTO.tmpdir(), 'msp-1163-'));
 
-      // ツール 7 件と Keycloak を 1 本のサーバで演じる。**認可端点のパスは realm のものを
+      // ツール 6 件と Keycloak を 1 本のサーバで演じる。**認可端点のパスは realm のものを
       // 写さない**（`/authz`）—— 検証器は discovery から引くので、何であれ追随するのが正しい。
       const STUB_JS = `'use strict';
 const http = require('http');
@@ -10547,7 +10545,6 @@ const srv = http.createServer(function (req, res) {
   if (p === '/login/generic_oauth') return send(302, '', { location: authUrl('grafana', '/login/generic_oauth') });
   if (p === '/auth/login') return send(303, '', { location: authUrl('argocd', '/auth/callback') });
   if (p === '/oidc') return send(302, '', { location: authUrl('headlamp', '/oidc-callback') });
-  if (p === '/api/v1/login') return json({ redirectRules: [{ redirect: authUrl('minio', '/oauth_callback') }] });
   if (p === '/v1/auth/oidc/oidc/auth_url') {
     return json({ data: { auth_url: authUrl('vault', '/ui/vault/auth/oidc/oidc/callback') } });
   }
@@ -10567,7 +10564,7 @@ srv.listen(0, '127.0.0.1', function () {
 });
 `;
       // スタブを起こし、検証器をそこへ向けて走らせ、片付ける。第 4 引数はツール側 origin へ
-      // 足す接尾辞（`/nowhere` を与えると 7 件とも到達不能になり、全件未配備の経路を測れる）。
+      // 足す接尾辞（`/nowhere` を与えると 6 件とも到達不能になり、全件未配備の経路を測れる）。
       const DRIVE_SH = `set -u
 STUB="$1"; SCRIPT="$2"; WORK="$3"; SUFFIX="\${4:-}"
 PORTFILE="$WORK/port"
@@ -10600,15 +10597,15 @@ exit $RC
       const VERIFIER = pathTO.join(__dirname, 'verify-tool-oidc-logins.sh');
       const bashMissing = (r) => r.error && r.error.code === 'ENOENT';
 
-      ok('#1163: 実走で 7 クライアント × 2 段 ＋ 陰性対照が実際に刻まれる（EXIT=0）', () => {
+      ok('#1163: 実走で 6 クライアント × 2 段 ＋ 陰性対照が実際に刻まれる（EXIT=0）', () => {
         const r = runAgainstStub(VERIFIER);
         if (bashMissing(r)) return; // bash が無い環境
         const out = `${r.stdout || ''}${r.stderr || ''}`;
         assert.strictEqual(r.status, 0, `全 PASS のはずが exit ${r.status}:\n${out}`);
-        assert.match(out, /結果: PASS 15 \/ FAIL 0 \/ SKIP 0（段 15\/15）/, `段の集計が違う:\n${out}`);
-        // **各段の存在**: 7 件それぞれが段 (a)(b) の 2 本を持つ（名指しできている）。
+        assert.match(out, /結果: PASS 13 \/ FAIL 0 \/ SKIP 0（段 13\/13）/, `段の集計が違う:\n${out}`);
+        // **各段の存在**: 6 件それぞれが段 (a)(b) の 2 本を持つ（名指しできている）。
         for (const t of tol.TOOLS) {
-          const n = (out.match(new RegExp(`^\\[\\d+/15\\] ${t.key}: `, 'gm')) || []).length;
+          const n = (out.match(new RegExp(`^\\[\\d+/13\\] ${t.key}: `, 'gm')) || []).length;
           assert.strictEqual(n, 2, `${t.key} の段が ${n} 本（(a)(b) の 2 本のはず）:\n${out}`);
         }
         // PAR の bff を「redirect_uri が無い＝壊れている」と読んでいない（実挙動で確かめる）。
@@ -10631,19 +10628,19 @@ exit $RC
         const out = `${r.stdout || ''}${r.stderr || ''}`;
         assert.strictEqual(r.status, 1, `段を消したのに exit ${r.status}（1 のはず）:\n${out}`);
         assert.match(
-          out, /実行した段が 8 本で、宣言（TOTAL=15）と一致しません/,
+          out, /実行した段が 7 本で、宣言（TOTAL=13）と一致しません/,
           `段数の門が落ちていない（PASS が減るだけで緑になっている）:\n${out}`,
         );
       });
 
       ok('#1163: 全クライアントが未配備なら「緑」ではなく前提未整備（EXIT=2）', () => {
         // 🔴 **何も測っていない実行を緑と呼ばせない**（受け入れ基準 6）。到達できない先へ
-        //    向けると 15 段すべて SKIP になり、PASS も FAIL も 0 のまま exit 2 で終わる。
+        //    向けると 13 段すべて SKIP になり、PASS も FAIL も 0 のまま exit 2 で終わる。
         const r = runAgainstStub(VERIFIER, '/nowhere');
         if (bashMissing(r)) return;
         const out = `${r.stdout || ''}${r.stderr || ''}`;
         assert.strictEqual(r.status, 2, `全件未配備で exit ${r.status}（2 のはず）:\n${out}`);
-        assert.match(out, /結果: PASS 0 \/ FAIL 0 \/ SKIP 15（段 15\/15）/, `段を飛ばしている:\n${out}`);
+        assert.match(out, /結果: PASS 0 \/ FAIL 0 \/ SKIP 13（段 13\/13）/, `段を飛ばしている:\n${out}`);
       });
 
       fsTO.rmSync(work, { recursive: true, force: true });

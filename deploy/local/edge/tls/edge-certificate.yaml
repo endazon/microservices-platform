@@ -7,8 +7,9 @@
 #   「TLS を張る Ingress が居る名前空間」ごとに要る。
 #
 #   IADR-0220 (#841): admin(50000) entrypoint も TLS 終端になった（NFR-11 の適用範囲が経路B にも及ぶ
-#   ことが利用者裁定 2026-08-16 で確定したため）。管理ツール 7 件は 3 つの名前空間に散っている:
-#     - microservices-platform … minio / wiki（＋ 443 の platform-frontend-edge）→ 本ファイル 1 つ目
+#   ことが利用者裁定 2026-08-16 で確定したため）。管理ツール 6 件は 3 つの名前空間に散っている
+#   （MinIO Console は IADR-0464 で撤去し 7 → 6。minio.localhost も dnsNames から外した）:
+#     - microservices-platform … wiki（＋ 443 の platform-frontend-edge）→ 本ファイル 1 つ目
 #     - platform-infra         … grafana / headlamp / vault / qdrant        → 本ファイル 2 つ目
 #     - argocd                 … argocd                                     → argocd-certificate.yaml
 #   argocd namespace は ARGOCD=1 の別 opt-in でのみ作られるため、そこだけ kustomization に含めず
@@ -43,7 +44,7 @@ spec:
   secretName: edge-tls
   commonName: localhost
   # 明示列挙の母集合は `deploy/local/` の Ingress が使う host を走査して引いた
-  # （2026-08-30 実測で 8 件。稼働クラスタの Ingress とも一致）。末尾の `*.localhost` は
+  # （2026-08-30 実測で 8 件。IADR-0464 で minio を外し 7 件）。末尾の `*.localhost` は
   # これを受け付けるクライアント向けの保険であり、単体では効かない（冒頭の注記）。
   # ⚠ このリストの中にコメント行を入れないこと —— `scripts/k8s-local-up.test.js` の
   #   `listValues()` は `- ` で始まらない行で走査を打ち切るため、以降の host が読まれなくなる。
@@ -53,7 +54,6 @@ spec:
     - grafana.localhost
     - headlamp.localhost
     - keycloak.localhost
-    - minio.localhost
     - qdrant.localhost
     - vault.localhost
     - wiki.localhost
@@ -94,7 +94,6 @@ spec:
     - grafana.localhost
     - headlamp.localhost
     - keycloak.localhost
-    - minio.localhost
     - qdrant.localhost
     - vault.localhost
     - wiki.localhost

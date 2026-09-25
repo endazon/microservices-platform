@@ -41,8 +41,8 @@
          実 Qdrant を起こす。層 1（Docker 不要・PR で走る）は共有インメモリ索引で同じ段を通すが、
          **2 つの Qdrant アダプタのペイロード表現の一致だけは実機でなければ測れない**。 -->
     <PackageReference Include="Testcontainers.Qdrant" />
-    <!-- FR-06/FR-12, ADR-0015: MinIO ラウンドトリップ統合テスト用 -->
-    <PackageReference Include="Testcontainers.Minio" />
+    <!-- FR-06/FR-12, ADR-0106 決定 4, IADR-0464 (#1499): オブジェクトストレージのラウンドトリップ（受け入れ試験）。
+         SeaweedFS は汎用 Testcontainers（上の PackageReference）で起こす。AWSSDK.S3 は試験が版の列挙を直接叩くため。 -->
     <PackageReference Include="AWSSDK.S3" />
   </ItemGroup>
   <ItemGroup>

@@ -1,7 +1,7 @@
 # IADR-0095 (#353): Wiki.js を 50000（Traefik 追加 entrypoint admin）へホスト名ベースで集約する。
-# Wiki.js は microservices-platform namespace（minio と同じ・他管理ツールの platform-infra とは別）にあるため、
-# admin-ingress-infra.yaml（platform-infra）とは別ファイルにする。既存 grafana/argocd/minio 等の route は無改変。
-# Wiki.js は #357 の集約対象に未登録だったため本ファイルで route を追加する（IADR-0093 の MinIO と同型）。
+# Wiki.js は microservices-platform namespace（他管理ツールの platform-infra とは別）にあるため、
+# admin-ingress-infra.yaml（platform-infra）とは別ファイルにする。既存 grafana/argocd 等の route は無改変。
+# Wiki.js は #357 の集約対象に未登録だったため本ファイルで route を追加する（IADR-0093 の MinIO と同型。MinIO 側は IADR-0464 で撤去）。
 # 本番 chart の Wiki.js 非公開運用（IADR-0020・Ingress 既定 disabled）は不変（本 Ingress は local 専用の edge overlay）。
 apiVersion: networking.k8s.io/v1
 kind: Ingress

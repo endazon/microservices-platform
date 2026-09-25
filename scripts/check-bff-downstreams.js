@@ -460,7 +460,7 @@ function selfTest() {
     '        value: "http://datasource-service:8080"',
     '  frontend:',
     '    port: 8080',
-    'minio:',
+    'seaweedfs:',
     '  enabled: true',
   ].join('\n');
   const helm = parseHelmServicesEnv(extractServiceBlock(valuesFixture, 'bff'));
