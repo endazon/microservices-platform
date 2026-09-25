@@ -10,7 +10,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0103_degenerate-self-control-is-not-a-bound.md (Accepted 2026-09-15)
   - planning:projects/microservices-platform/07_adr/ADR-0094_existence-hiding-timing-median-consistency-and-response-floor.md
   - planning:projects/microservices-platform/07_adr/ADR-0097_timing-floor-release-default-on-and-periodic-review.md
-related_specs: [20260911_issue-1410_reset-timing-floor, 20260925_1487_plan-adr-range-0105]
+related_specs: [20260911_issue-1410_reset-timing-floor.md, 20260925_1487_plan-adr-range-0105.md]
 issue: "#1470"
 ---
 
