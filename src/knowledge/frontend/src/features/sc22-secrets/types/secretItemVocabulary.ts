@@ -44,6 +44,45 @@ export function secretItemLabel(item: string): SecretItemLabel | null {
   return Object.prototype.hasOwnProperty.call(LABELS, item) ? LABELS[item] : null;
 }
 
+/**
+ * 項目の「いま効いている供給元」（SC-22 主要素 1, ADR-0104 決定 2, IADR-0460 決定 1。契約の `supplySource`）。
+ *
+ * - `screen`: 同期先の ExternalSecret が在る —— この画面で書いた値が届く。
+ * - `git`: 同期先が無い —— 値は配備時の設定（Git 経路）から来る。書いた値は届かない。
+ * - `unknown`: BFF が判定できなかった。
+ *
+ * 🔴 **画面は推測しない。** 値が無い・未知の値は `unknown` として扱う（`screen` にも `git` にも倒さない）。
+ */
+export type SecretSupplySource = 'screen' | 'git' | 'unknown';
+
+export function secretSupplySource(row: { supplySource?: string | null }): SecretSupplySource {
+  return row.supplySource === 'screen' || row.supplySource === 'git' ? row.supplySource : 'unknown';
+}
+
+/**
+ * 書き込んだ値を読む消費側の作り直され方（ADR-0104 決定 4, IADR-0460 決定 2）。
+ *
+ * - `automatic`: 消費側は env で読み、Secret の変化で Reloader が作り直す（IADR-0456 決定 5 の注釈を持つ消費側）。
+ *   🔴 Reloader を配備した環境（連結ローカルの ESO=1）に限る —— 画面の文言もそう書く。
+ * - `manual-opend`: 消費側は OpenD であり Reloader の対象外（AST の IADR-0341 決定 4）。手動の再起動が要る。
+ *
+ * 表に無い項目は `null`（呼び出し側は「再起動されることがある」とだけ書く。**断定しない**）。
+ */
+export type SecretConsumerRestart = 'automatic' | 'manual-opend';
+
+const RESTARTS: Readonly<Record<string, SecretConsumerRestart>> = {
+  'llm-provider-credentials': 'automatic',
+  'keycloak-smtp': 'automatic',
+  'wikijs-sync': 'automatic',
+  'ast-app-secrets': 'automatic',
+  'ast-moomoo': 'manual-opend',
+  'ast-moomoo-rsa': 'manual-opend',
+};
+
+export function secretConsumerRestart(item: string): SecretConsumerRestart | null {
+  return Object.prototype.hasOwnProperty.call(RESTARTS, item) ? RESTARTS[item] : null;
+}
+
 /** 値の上限（BFF の `SecretItemBffEndpoints.MaxValueLength` と一致させる）。 */
 export const MAX_VALUE_LENGTH = 8192;
 /** 更新の理由の上限（BFF の `SecretItemBffEndpoints.MaxReasonLength` と一致させる）。 */

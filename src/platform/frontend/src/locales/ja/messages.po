@@ -312,6 +312,10 @@ msgid "embeds: 点線・矢印"
 msgstr "embeds: 点線・矢印"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "Git"
+msgstr "Git"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "Git に置けない秘密情報（API キー・接続秘密・通知の webhook）を 1 項目ずつ投入・更新します。値は書き込み専用で、保存後はこの画面からも読み出せません。操作は監査ログに記録されます（値は記録されません）。"
 msgstr "Git に置けない秘密情報（API キー・接続秘密・通知の webhook）を 1 項目ずつ投入・更新します。値は書き込み専用で、保存後はこの画面からも読み出せません。操作は監査ログに記録されます（値は記録されません）。"
 
@@ -671,6 +675,10 @@ msgstr "このプロパティは秘密情報ではありません（環境ごと
 msgid "このプロパティを更新する"
 msgstr "このプロパティを更新する"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "この値を読む OpenD は自動では再起動されません。書き込み後に kubectl -n ai-stock-trading rollout restart deploy/opend で再起動してください。再起動は稼働中の処理を中断し、SMS または画像の認証を再び求められることがあります。書き込む時機を判断してください。"
+msgstr "この値を読む OpenD は自動では再起動されません。書き込み後に kubectl -n ai-stock-trading rollout restart deploy/opend で再起動してください。再起動は稼働中の処理を中断し、SMS または画像の認証を再び求められることがあります。書き込む時機を判断してください。"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
 msgstr "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
@@ -695,6 +703,10 @@ msgstr "この文書に対するリンク候補・タグ候補です。両端の
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "この文書のタグを編集する権限がありません。"
 msgstr "この文書のタグを編集する権限がありません。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "この画面で書いた値は反映されません"
+msgstr "この画面で書いた値は反映されません"
 
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "この画面について質問する"
@@ -721,8 +733,16 @@ msgid "この辺の型は {inUseCount} 本の辺で使われているため削�
 msgstr "この辺の型は {inUseCount} 本の辺で使われているため削除できません。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "この項目の供給元を確認できません。書いた値がアプリケーションに反映されるかは、この画面からは分かりません。"
+msgstr "この項目の供給元を確認できません。書いた値がアプリケーションに反映されるかは、この画面からは分かりません。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "この項目の現在の版は保管先（Vault）で削除されています。画面からは削除された版へ書き込めないため、運用 Runbook の手順でコンソールから版を復元してから、もう一度更新してください。値は保存されていません。"
 msgstr "この項目の現在の版は保管先（Vault）で削除されています。画面からは削除された版へ書き込めないため、運用 Runbook の手順でコンソールから版を復元してから、もう一度更新してください。値は保存されていません。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "この項目はいま Git（配備時の設定）から供給されています。書き込みはできますが、配備時のスイッチを画面の経路へ切り替えるまで、書いた値はアプリケーションに反映されません。"
+msgstr "この項目はいま Git（配備時の設定）から供給されています。書き込みはできますが、配備時のスイッチを画面の経路へ切り替えるまで、書いた値はアプリケーションに反映されません。"
 
 #: platform/frontend/src/components/ai-chat/CopyButton.tsx
 msgid "コピーしました"
@@ -1512,6 +1532,14 @@ msgstr "例: 経費精算"
 msgid "例: 開発"
 msgstr "例: 開発"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "供給元"
+msgstr "供給元"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "供給元は、各項目の同期先（ExternalSecret）がクラスタにあるかで判定します。「画面」はこの画面で書いた値がアプリケーションへ届く状態です。「Git」は配備時の設定から値が供給されており、この画面で書いた値は反映されません。「確認できない」は判定に必要なクラスタへの接続が無いか、判定に失敗したことを示します。"
+msgstr "供給元は、各項目の同期先（ExternalSecret）がクラスタにあるかで判定します。「画面」はこの画面で書いた値がアプリケーションへ届く状態です。「Git」は配備時の設定から値が供給されており、この画面で書いた値は反映されません。「確認できない」は判定に必要なクラスタへの接続が無いか、判定に失敗したことを示します。"
+
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
@@ -1572,6 +1600,10 @@ msgstr "保存容量の使用量が 95% を超えました。上限に達する�
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い適用は Git の履歴を参照してください。"
 msgstr "保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い適用は Git の履歴を参照してください。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "保管先への書き込みは完了しましたが、この項目は Git（配備時の設定）から供給されているため、書いた値はアプリケーションに反映されません。"
+msgstr "保管先への書き込みは完了しましたが、この項目は Git（配備時の設定）から供給されているため、書いた値はアプリケーションに反映されません。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "保管先への書き込みは完了しましたが、即時同期を依頼できませんでした。アプリケーションへの反映は定期同期（最大 1 時間）を待ちます。"
@@ -2974,6 +3006,18 @@ msgstr "更新日時"
 msgid "更新日時の新しい順"
 msgstr "更新日時の新しい順"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "書いた値は反映されません"
+msgstr "書いた値は反映されません"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "書き込むと、この値を読むアプリケーションが再起動されることがあります。再起動は稼働中の処理を中断します。書き込む時機を判断してください。"
+msgstr "書き込むと、この値を読むアプリケーションが再起動されることがあります。再起動は稼働中の処理を中断します。書き込む時機を判断してください。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "書き込むと、同期のあとでこの値を読むアプリケーションが自動で再起動されます（自動再起動を配備した環境の場合。配備していない環境では、再起動するまで反映されません）。再起動は稼働中の処理を中断します。書き込む時機を判断してください。"
+msgstr "書き込むと、同期のあとでこの値を読むアプリケーションが自動で再起動されます（自動再起動を配備した環境の場合。配備していない環境では、再起動するまで反映されません）。再起動は稼働中の処理を中断します。書き込む時機を判断してください。"
+
 #: knowledge/frontend/src/features/sc12-mcp-clients/types/mcpClientVocabulary.ts
 msgid "有人"
 msgstr "有人"
@@ -3464,6 +3508,10 @@ msgstr "用途の説明が登録されていません。"
 msgid "画像を読み込み中…"
 msgstr "画像を読み込み中…"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "画面"
+msgstr "画面"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "発行しました"
 msgstr "発行しました"
@@ -3551,6 +3599,10 @@ msgstr "矛盾はありません。まだ保存していません。"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "確認"
 msgstr "確認"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
+msgid "確認できない"
+msgstr "確認できない"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "確認のための入力が一致しません。"

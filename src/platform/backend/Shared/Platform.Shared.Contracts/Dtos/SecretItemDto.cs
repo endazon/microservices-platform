@@ -20,6 +20,9 @@ namespace Platform.Shared.Contracts.Dtos;
 //
 // `PropertyDetails` は `Properties` と同じ並びの種別と秘密かどうか（IADR-0456 決定 1）。
 // 既定値を持つのは契約の後方互換のためであり、BFF は常に埋める。
+//
+// `SupplySource` は項目の「いま効いている供給元」（SC-22 主要素 1・ADR-0104 決定 2・IADR-0460 決定 1）。値は `SecretItemSupplySources`。
+// 既定値（`unknown`）を持つのは後方互換のためであり、BFF は常に判定結果で埋める。🔴 **`unknown` を他の 2 値に畳まない。**
 public record SecretItemStatusDto(
     string Item,
     string VaultPath,
@@ -28,7 +31,22 @@ public record SecretItemStatusDto(
     int? CurrentVersion,
     DateTimeOffset? LastUpdatedAt,
     string? LastUpdatedBy,
-    List<SecretItemPropertyDto>? PropertyDetails = null);
+    List<SecretItemPropertyDto>? PropertyDetails = null,
+    string SupplySource = SecretItemSupplySources.Unknown);
+
+// SC-22 主要素 1, ADR-0104 決定 1・2, IADR-0460 決定 1 (#1502): 供給元の値集合（契約）。
+// 判定は配備の結果（項目の同期先 ExternalSecret の有無）から行い、画面は推測しない。
+public static class SecretItemSupplySources
+{
+    /// <summary>同期先の ExternalSecret が在る —— 画面の経路（Vault → ESO → Secret）が効いている。</summary>
+    public const string Screen = "screen";
+
+    /// <summary>同期先の ExternalSecret が無い —— 値は配備時の設定（Git 経路の Helm values・配備スクリプト）から来る。画面で書いた値は届かない。</summary>
+    public const string Git = "git";
+
+    /// <summary>判定できない（Kubernetes API への接続が構成されていない・拒否された・届かない）。</summary>
+    public const string Unknown = "unknown";
+}
 
 // SC-22, IADR-0456 決定 1 (#1477): 書けるプロパティ 1 つの入力の形。
 // `Kind` は `value`（値をそのまま書く）/ `md5-from-password`（平文のパスワードを送り、BFF が MD5 で書く）/

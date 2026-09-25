@@ -45,6 +45,10 @@ public static class SecretItemServiceCollectionExtensions
             .ConfigurePrimaryHttpMessageHandler(sp =>
                 ExternalSecretSyncRequester.CreateApiServerHandler(sp.GetRequiredService<IOptions<ExternalSecretSyncOptions>>().Value));
         services.TryAddSingleton<IExternalSecretSyncRequester, ExternalSecretSyncRequester>();
+
+        // ADR-0104 決定 2, IADR-0460 決定 1 (#1502): 一覧の「供給元」を、同期先 ExternalSecret の有無（`get`）から読む。
+        // 構成・通信路・名乗りは同期依頼と同じもの（`ExternalSecretSync:*`・`KubernetesApi` クライアント・SA トークン）を使う。
+        services.TryAddSingleton<IExternalSecretPresenceReader, ExternalSecretPresenceReader>();
         return services;
     }
 

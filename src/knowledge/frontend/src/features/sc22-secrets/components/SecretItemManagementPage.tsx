@@ -25,8 +25,10 @@ import { useSecretItemUpdate, useSecretItems } from '../api/useSecretItems';
 import {
   MAX_REASON_LENGTH,
   MAX_VALUE_LENGTH,
+  secretConsumerRestart,
   secretItemLabel,
   secretPropertyShapes,
+  secretSupplySource,
   secretUpdateIssues,
 } from '../types/secretItemVocabulary';
 
@@ -43,6 +45,11 @@ import {
 // ■ IADR-0456 決定 1〜3: 入力の形はプロパティの種別で変わる —— パスワード（MD5 で保存される旨を書く）／
 //   生成（値の欄を持たず、生成し直すと OpenD の鍵の対応が失効することを確かめてから送る）／秘密でない ID（平文で入力させる）。
 // ■ IADR-0456 決定 4: 保存後に即時同期を依頼できたかを示す（依頼できなくても書き込みは成立している）。
+// ■ ADR-0104 決定 2, IADR-0460 決定 1 (#1502): 一覧に「供給元」（画面／Git／確認できない）を出す。値は BFF が配備の結果
+//   （同期先 ExternalSecret の有無）から判定したもので、🔴 **画面は推測しない**（無い・未知の値は「確認できない」）。
+//   Git から供給されている項目は**書き込みを拒否せず**、書いても反映されないことを送る前と後の両方で伝える。
+// ■ ADR-0104 決定 4, IADR-0460 決定 2: 送る前に「消費側が再起動する」旨を項目ごとに出し、書き込む時機を利用者に判断させる
+//   （OpenD が消費する moomoo の 2 項目は自動では再起動されず、手動の再起動が要る）。
 // ■ 到達できるのは運用者・システム管理者だけ。ガードはルート側（RequireRole → NotFound）にある。
 
 export function SecretItemManagementPage() {
@@ -109,6 +116,18 @@ export function SecretItemManagementPage() {
           row.original.status === 'set' ? (row.original.lastUpdatedBy ?? t`記録なし`) : '—',
       },
       {
+        id: 'supplySource',
+        header: t`供給元`,
+        enableSorting: false,
+        cell: ({ row }) => {
+          // 色だけに意味を持たせない（StatusBadge が色 ＋ アイコン ＋ テキストを強制する）。
+          const source = secretSupplySource(row.original);
+          if (source === 'screen') return <StatusBadge tone="success">{t`画面`}</StatusBadge>;
+          if (source === 'git') return <StatusBadge tone="warning">{t`Git`}</StatusBadge>;
+          return <StatusBadge tone="neutral">{t`確認できない`}</StatusBadge>;
+        },
+      },
+      {
         id: 'operation',
         header: t`操作`,
         enableSorting: false,
@@ -164,6 +183,11 @@ export function SecretItemManagementPage() {
             「設定済み」は保管先に値の版があることを示します。各プロパティに空でない値が入っているかは、値を読み出さないためこの画面では判定できません。最終更新者は、この画面から更新した版にだけ表示されます（コンソールから更新した版は「記録なし」）。
           </Trans>
         </Note>
+        <Note data-testid="secrets-supply-note">
+          <Trans>
+            供給元は、各項目の同期先（ExternalSecret）がクラスタにあるかで判定します。「画面」はこの画面で書いた値がアプリケーションへ届く状態です。「Git」は配備時の設定から値が供給されており、この画面で書いた値は反映されません。「確認できない」は判定に必要なクラスタへの接続が無いか、判定に失敗したことを示します。
+          </Trans>
+        </Note>
       </Panel>
 
       {editing && (
@@ -197,6 +221,9 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
   const plain = shape?.kind === 'value' && !shape.sensitive;
   const issues = secretUpdateIssues({ property, value, confirmation, reason }, shapes);
   const mismatch = confirmation.length > 0 && issues.includes('confirmation-mismatch');
+  // ADR-0104 決定 2・4: 供給元と消費側の作り直され方（どちらも送る前に見せる）。
+  const source = secretSupplySource(row);
+  const restart = secretConsumerRestart(row.item);
 
   // プロパティを替えたら入力を捨てる（別のプロパティの値を送らない。生成の確認も取り直す）。
   const selectProperty = (next: string) => {
@@ -272,6 +299,28 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
             ))}
           </Select>
         </div>
+
+        {/* ADR-0104 決定 2: 🔴 書き込みは拒否しない。Git から供給されているなら、書いても効かないことを先に伝える。 */}
+        {source === 'git' && (
+          <Alert
+            tone="warning"
+            role="status"
+            label={t`この画面で書いた値は反映されません`}
+            data-testid="secret-supply-git"
+          >
+            <Trans>
+              この項目はいま
+              Git（配備時の設定）から供給されています。書き込みはできますが、配備時のスイッチを画面の経路へ切り替えるまで、書いた値はアプリケーションに反映されません。
+            </Trans>
+          </Alert>
+        )}
+        {source === 'unknown' && (
+          <Note data-testid="secret-supply-unknown">
+            <Trans>
+              この項目の供給元を確認できません。書いた値がアプリケーションに反映されるかは、この画面からは分かりません。
+            </Trans>
+          </Note>
+        )}
 
         {generate ? (
           <Note data-testid="secret-generate-note">
@@ -360,6 +409,29 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
           </p>
         </div>
 
+        {/* ADR-0104 決定 4: 再起動をいつ行ってよいかの制約は計画で未定。定まるまでは、再起動する旨を送る前に出して利用者に判断させる。
+            Git から供給されている項目は書いても Secret が変わらない（＝再起動も起きない）ので出さない。 */}
+        {source !== 'git' && (
+          <Note data-testid="secret-restart-note">
+            {restart === 'automatic' ? (
+              <Trans>
+                書き込むと、同期のあとでこの値を読むアプリケーションが自動で再起動されます（自動再起動を配備した環境の場合。配備していない環境では、再起動するまで反映されません）。再起動は稼働中の処理を中断します。書き込む時機を判断してください。
+              </Trans>
+            ) : restart === 'manual-opend' ? (
+              <Trans>
+                この値を読む OpenD は自動では再起動されません。書き込み後に kubectl -n
+                ai-stock-trading rollout restart deploy/opend
+                で再起動してください。再起動は稼働中の処理を中断し、SMS
+                または画像の認証を再び求められることがあります。書き込む時機を判断してください。
+              </Trans>
+            ) : (
+              <Trans>
+                書き込むと、この値を読むアプリケーションが再起動されることがあります。再起動は稼働中の処理を中断します。書き込む時機を判断してください。
+              </Trans>
+            )}
+          </Note>
+        )}
+
         {mismatch && (
           <Alert
             tone="warning"
@@ -411,7 +483,7 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
             <Trans>
               {writtenProperty} を更新しました（版 {writtenVersion}）。
             </Trans>
-            {written.syncRequested && (
+            {written.syncRequested && source !== 'git' && (
               <span className="block" data-testid="secret-sync-status">
                 <Trans>
                   即時同期を依頼しました。アプリケーションへの反映まで少し時間がかかることがあります。
@@ -420,7 +492,22 @@ function SecretUpdateForm({ row, onClose }: { row: SecretItemStatusDto; onClose:
             )}
           </Alert>
         )}
-        {written && !written.syncRequested && (
+        {/* ADR-0104 決定 2: Git から供給されている項目は、同期の成否ではなく「反映されない」を伝える
+            （同期先が無いので同期の依頼は通らず、「定期同期を待つ」と書くと反映されるかのように読める）。 */}
+        {written && source === 'git' && (
+          <Alert
+            tone="warning"
+            role="status"
+            label={t`書いた値は反映されません`}
+            data-testid="secret-not-applied"
+          >
+            <Trans>
+              保管先への書き込みは完了しましたが、この項目は
+              Git（配備時の設定）から供給されているため、書いた値はアプリケーションに反映されません。
+            </Trans>
+          </Alert>
+        )}
+        {written && !written.syncRequested && source !== 'git' && (
           <Alert
             tone="warning"
             role="status"

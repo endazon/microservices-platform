@@ -3,15 +3,15 @@ title: BFF 境界（/bff/*）通信仕様書
 type: api-spec
 status: in-progress
 created: 2026-08-05
-updated: 2026-09-15
+updated: 2026-09-25
 author: Claude
 ---
 <!-- trace:
 ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-13, FR-15, FR-16, FR-19, FR-20, FR-22, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-12, SC-17, SC-19, SC-20, SC-22, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-07, UC-09, UC-11]
-adrs: [ADR-0011, ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0037, ADR-0043, ADR-0073, ADR-0074, ADR-0095, ADR-0098, ADR-0099, ADR-0100, ADR-0101]
-iadrs: [IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0352, IADR-0355, IADR-0359, IADR-0433, IADR-0444, IADR-0445, IADR-0446, IADR-0447, IADR-0448, IADR-0449, IADR-0450, IADR-0453, IADR-0454, IADR-0456]
-specs: [20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1477_screen-only-poc-setup]
-issues: [#439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, #1411, #1441, #1442, #1445, #1446, #1447, #1448, #1451, #1477, planning#200, planning#236, planning#244, planning#299, planning#518, planning#618, planning#621]
+adrs: [ADR-0011, ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0037, ADR-0043, ADR-0073, ADR-0074, ADR-0095, ADR-0098, ADR-0099, ADR-0100, ADR-0101, ADR-0104]
+iadrs: [IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0352, IADR-0355, IADR-0359, IADR-0433, IADR-0444, IADR-0445, IADR-0446, IADR-0447, IADR-0448, IADR-0449, IADR-0450, IADR-0453, IADR-0454, IADR-0456, IADR-0460]
+specs: [20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice]
+issues: [#439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, #1411, #1441, #1442, #1445, #1446, #1447, #1448, #1451, #1477, #1502, planning#200, planning#236, planning#244, planning#299, planning#518, planning#618, planning#621]
 -->
 
 # 通信仕様書: BFF 境界（`/bff/*`）
@@ -180,7 +180,7 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | PUT | `/bff/admin/users/{userId}/roles` | **admin のみ** | —| `useBffUserAdminReplaceUserRoles`（差し替え。空集合は 400 —— 権限剥奪は無効化で行う） |
 | POST | `/bff/admin/users/{userId}/disable` | **admin のみ** | —| `useBffUserAdminDisableUser`（**無効化と全セッション失効は 1 つの操作である**。後段の 404 を**そのまま**返す） |
 | POST | `/bff/admin/users/{userId}/enable` | **admin のみ** | —| `useBffUserAdminEnableUser`（セッションは復活しない） |
-| GET | `/bff/secrets` | **admin / operator**（未認証 401・権限外 403。拒否も監査する） | —| `useBffSecretItemsList`（秘密情報の項目の一覧。🔴 **値の列は無い**。状態は「版がある／無い／取れない」の 3 値で、**「版がある」はプロパティに空でない値が入っていることを保証しない**。プロパティごとの入力の形（`propertyDetails`: 値そのまま／パスワードを MD5 で保存／鍵を生成、と秘密かどうか）を返す。保管先が未構成・不達なら **503**（空の一覧で返さない）） |
+| GET | `/bff/secrets` | **admin / operator**（未認証 401・権限外 403。拒否も監査する） | —| `useBffSecretItemsList`（秘密情報の項目の一覧。🔴 **値の列は無い**。状態は「版がある／無い／取れない」の 3 値で、**「版がある」はプロパティに空でない値が入っていることを保証しない**。プロパティごとの入力の形（`propertyDetails`: 値そのまま／パスワードを MD5 で保存／鍵を生成、と秘密かどうか）を返す。項目ごとの**供給元**（`supplySource`: 同期先の ExternalSecret が在る＝画面／無い＝Git／判定できない＝確認できない。**判定できないときを他の 2 値に倒さない**。本文も Secret も読まない）を返す。保管先が未構成・不達なら **503**（空の一覧で返さない）） |
 | PUT | `/bff/secrets/{item}` | **admin / operator**（同上） | —| `useBffSecretItemsUpdate`（**1 回に 1 プロパティだけ**を部分更新で書く。一覧に無い項目・書けないプロパティは **400**（404 にしない）。項目の現在の版が保管先で削除されていれば **409**（書かない。コンソールで版を戻してから書き直す）。本文は 64 KiB までで、超過 413・JSON でない 415・解釈できない 400（いずれもロール判定の後に読み、拒否を監査する）。保管先が拒否 502・未構成／不達 503。パスワードの種別は平文を受けて MD5 で書き、鍵の種別は値を受けずに生成して書く（値を送ると 400）。書き込みが成立したら同期先の ExternalSecret へ即時同期を依頼し、結果を `syncRequested` で返す（**依頼できなくても 200**）。🔴 **値を読み出す口は無い**。値・変換した値・生成した鍵は監査・ログ・応答に残らない） |
 | GET | `/bff/wiki/pages` | **認証必須・ロールは問わない**（`x-roles: []`）。可視性を決めるのは役割ではなく属性ベースの権限であり、許可が無ければ **200 ＋ 空**（deny-by-default） | —| `useBffWikiPageList` |
 | GET | `/bff/wiki/search` | 同上。**絞り込みは指定されたときだけ後段へ載る**（既定・上限は後段が唯一の情報源）。委譲先の故障は **502**（空で隠さない） | —| `useBffWikiSearch` |

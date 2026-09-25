@@ -3576,6 +3576,8 @@ paths:
         🔴 **`set` はプロパティに空でない値が入っていることを保証しない**（data を読む権限を持たないため）。
         `lastUpdatedBy` は BFF が書いた版が現在版であるときだけ埋まる（コンソールで書いた版は null）。
         版の番号に加えて**版の作成時刻も一致する**ことを条件にする（metadata を作り直して版が 1 から振り直された KV に古い記録を付けない。IADR-0454 決定 3）。
+        `supplySource` は項目の同期先 ExternalSecret を Kubernetes API で `get` した結果から作る（ADR-0104 決定 2・IADR-0460 決定 1）。
+        在れば `screen`、404 なら `git`、それ以外（同期の構成が無効・拒否・障害・不達）は `unknown`。ExternalSecret の本文も Secret も読まない。
       operationId: bff-secret-items-list
       responses:
         "200":
@@ -5861,7 +5863,7 @@ components:
       type: object
       description: |
         SC-22 主要素 1・3: 秘密情報の項目の一覧の 1 行（KV 単位）。🔴 **値の項目を持たない。**
-      required: [item, vaultPath, properties, status]
+      required: [item, vaultPath, properties, status, supplySource]
       properties:
         item: { type: string, description: "allowlist の項目名" }
         vaultPath: { type: string, description: "Vault の KV パス（マウントを除く。例 msp/llm-provider-credentials）" }
@@ -5891,6 +5893,10 @@ components:
           nullable: true
           items: { $ref: "#/components/schemas/SecretItemPropertyDto" }
           description: "`properties` と同じ並びの、プロパティごとの入力の形（IADR-0456 決定 1）。BFF は常に埋める"
+        supplySource:
+          type: string
+          enum: [screen, git, unknown]
+          description: "いま効いている供給元（ADR-0104 決定 2・IADR-0460 決定 1）。screen = 同期先の ExternalSecret が在る（画面の経路が効いている）／git = 無い（値は配備時の設定から来る。画面で書いた値は届かない）／unknown = 判定できない（接続が構成されていない・拒否・不達）。unknown を他の 2 値に畳まない"
 
     SecretItemPropertyDto:
       type: object

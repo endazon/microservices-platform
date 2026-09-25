@@ -892,6 +892,130 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
         _factory.RecordedAuditEntries.Should().NotContain(e => e.Action == SyncAction);
     }
 
+    // ── 供給元（ADR-0104 決定 2・IADR-0460 決定 1。#1502）
+
+    private static readonly string[] ItemsInOrder =
+        ["llm-provider-credentials", "keycloak-smtp", "wikijs-sync", "ast-app-secrets", "ast-moomoo", "ast-moomoo-rsa"];
+
+    private async Task<Dictionary<string, string>> SupplySourcesAsync(HttpClient? client = null)
+    {
+        using var response = await SendAsync(Get(), client);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var rows = await response.Content.ReadFromJsonAsync<List<SecretItemStatusDto>>(TestContext.Current.CancellationToken);
+        return rows!.ToDictionary(r => r.Item, r => r.SupplySource);
+    }
+
+    // T-68: 同期先の ExternalSecret が在れば `screen`、無ければ `git`。判定は `get` だけで、項目ごとに 1 回・SA トークンで名乗る。
+    // 🔴 陽性（在る＝screen）と陰性（無い＝git）を同じ一覧の中で対にする（AST_ESO=0 の配備で `ast-secrets` だけ無い形）。
+    [Fact]
+    public async Task Supply_source_is_screen_when_the_external_secret_exists_and_git_when_it_is_absent()
+    {
+        _factory.KubernetesApi.MarkMissing("ai-stock-trading", "ast-secrets");
+
+        var sources = await SupplySourcesAsync();
+
+        sources.Keys.Should().Equal(ItemsInOrder);
+        sources["ast-app-secrets"].Should().Be(SecretItemSupplySources.Git, "同期先が無い＝画面で書いた値は届かない");
+        foreach (var item in ItemsInOrder.Where(i => i != "ast-app-secrets"))
+            sources[item].Should().Be(SecretItemSupplySources.Screen, $"{item} の同期先は在る");
+
+        var requests = _factory.KubernetesApi.Requests.ToList();
+        requests.Should().OnlyContain(r => r.Method == "GET", "一覧は注釈を付けない（同期を依頼しない）");
+        requests.Should().OnlyContain(r => r.Authorization == "Bearer " + FakeVault.ServiceAccountJwt);
+        requests.Select(r => r.Path).Should().BeEquivalentTo(
+            "/apis/external-secrets.io/v1/namespaces/microservices-platform/externalsecrets/llm-provider-credentials",
+            "/apis/external-secrets.io/v1/namespaces/platform-infra/externalsecrets/keycloak-smtp",
+            "/apis/external-secrets.io/v1/namespaces/microservices-platform/externalsecrets/wikijs-sync",
+            "/apis/external-secrets.io/v1/namespaces/ai-stock-trading/externalsecrets/ast-secrets",
+            "/apis/external-secrets.io/v1/namespaces/ai-stock-trading/externalsecrets/moomoo-credentials",
+            "/apis/external-secrets.io/v1/namespaces/ai-stock-trading/externalsecrets/moomoo-rsa");
+        _factory.RecordedAuditEntries.Should().NotContain(e => e.Action == SyncAction);
+    }
+
+    // T-69: 🔴 **判定できないときは `unknown`**（RBAC の拒否・障害・不達）。在る／無いのどちらにも倒さない。
+    // 陽性対照: 同じ偽物が 404 を返すと `git` になる（404 だけが「無い」の根拠である）。
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden, false, SecretItemSupplySources.Unknown)]
+    [InlineData(HttpStatusCode.Unauthorized, false, SecretItemSupplySources.Unknown)]
+    [InlineData(HttpStatusCode.InternalServerError, false, SecretItemSupplySources.Unknown)]
+    [InlineData(null, true, SecretItemSupplySources.Unknown)]
+    [InlineData(HttpStatusCode.NotFound, false, SecretItemSupplySources.Git)]
+    public async Task Supply_source_is_unknown_unless_the_api_answers_present_or_absent(
+        HttpStatusCode? status, bool throws, string expected)
+    {
+        _factory.KubernetesApi.ForcedStatus = status;
+        _factory.KubernetesApi.Throws = throws;
+
+        var sources = await SupplySourcesAsync();
+
+        sources.Values.Should().OnlyContain(s => s == expected);
+        _factory.KubernetesApi.Requests.Should().HaveCount(ItemsInOrder.Length, "項目ごとに 1 回問い合わせている");
+    }
+
+    // T-69: 同期（＝Kubernetes API への接続）が構成されていなければ問い合わせず、全項目 `unknown`。
+    [Fact]
+    public async Task Supply_source_is_unknown_without_calling_the_api_when_sync_is_not_configured()
+    {
+        using var disabled = _factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration((_, cfg) =>
+            cfg.AddInMemoryCollection(new Dictionary<string, string?> { ["ExternalSecretSync:Enabled"] = "false" })));
+
+        var sources = await SupplySourcesAsync(disabled.CreateClient());
+
+        sources.Values.Should().OnlyContain(s => s == SecretItemSupplySources.Unknown);
+        _factory.KubernetesApi.Requests.Should().BeEmpty();
+    }
+
+    // T-69: 🔴 `ApiServer` が URL として壊れている（構成の誤り）と、要求の組み立てが UriFormatException を投げる。
+    // 一覧は 500 にせず全項目 `unknown`、書き込みは 200 のまま `syncRequested: false`（#1511 の監査）。陽性対照: 同じ試験の中で一覧・書き込みとも 200。
+    [Fact]
+    public async Task Malformed_api_server_maps_to_unknown_and_does_not_fail_the_list_or_the_write()
+    {
+        using var broken = _factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration((_, cfg) =>
+            cfg.AddInMemoryCollection(new Dictionary<string, string?> { ["ExternalSecretSync:ApiServer"] = "https://[not a uri" })));
+        var client = broken.CreateClient();
+
+        var sources = await SupplySourcesAsync(client);
+        sources.Values.Should().OnlyContain(s => s == SecretItemSupplySources.Unknown);
+
+        using var write = await SendAsync(Put("wikijs-sync", new { property = "apiKey", value = PlaceholderValue }), client);
+        write.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await write.Content.ReadFromJsonAsync<SecretItemWriteResultDto>(TestContext.Current.CancellationToken))!
+            .SyncRequested.Should().BeFalse();
+        _factory.RecordedAuditEntries.Should().ContainSingle(e => e.Action == SyncAction)
+            .Which.Detail.Should().EndWith("reason=sync-request-failed");
+        _factory.KubernetesApi.Requests.Should().BeEmpty("壊れた URL では要求を組み立てられず、どこへも送っていない");
+    }
+
+    // T-70: 権限外・保管先不達の一覧は Kubernetes API へ 1 度も触れない（判定は一覧を返すと決まった後）。
+    // 🔴 保管先不達は**トークンを保持した状態**で起こす —— ログイン確認を飛ばして metadata が 1 件も取れない経路（IADR-0453 決定 5）で、
+    // 判定を前に置いた初版はここで漏れた（#1502。クラス全体の実行順でだけ再現した）。
+    [Fact]
+    public async Task List_does_not_touch_the_kubernetes_api_when_denied_or_when_vault_is_unreachable()
+    {
+        using (var denied = await SendAsync(Get("platform-user")))
+            denied.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        _factory.KubernetesApi.Requests.Should().BeEmpty("権限外は判定まで進まない");
+
+        // 陽性対照: 通る一覧は問い合わせる（この一覧で BFF は Vault のトークンを保持する）。
+        (await SupplySourcesAsync()).Should().HaveCount(ItemsInOrder.Length);
+        _factory.KubernetesApi.Requests.Should().NotBeEmpty();
+        _factory.KubernetesApi.Requests.Clear();
+
+        _factory.Vault.Throws = true;
+        using (var unreachable = await SendAsync(Get()))
+            unreachable.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        _factory.KubernetesApi.Requests.Should().BeEmpty("保管先に届かない一覧は 503 で返し、供給元を判定しない");
+    }
+
+    // T-71: 本番の合成（Program.cs → AddSecretItemInjection）が判定器を登録している。偽物は通信路（HttpMessageHandler）だけで、
+    // 判定器・一覧の端点は本物が走る（上の T-68〜T-70 は本物の Program を起動した BffTestFactory 経由である）。
+    [Fact]
+    public void The_running_bff_resolves_the_real_presence_reader()
+    {
+        _factory.Services.GetRequiredService<IExternalSecretPresenceReader>()
+            .Should().BeOfType<ExternalSecretPresenceReader>();
+    }
+
     // ── fail-closed（AC-09）
 
     // SC-22, IADR-0433 決定 3: 起動した BFF は実ファイルの allowlist を読み込んでいる（陽性対照）。
