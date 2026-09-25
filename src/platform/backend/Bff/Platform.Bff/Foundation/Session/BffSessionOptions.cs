@@ -26,7 +26,7 @@ public sealed class BffSessionOptions
     /// <summary>
     /// 🔴 **コンフィデンシャルクライアントの secret。リポジトリへ実値を置かない。**
     /// realm には他のクライアントと同じく `*-dev-secret-change-me` の置き場だけがあり、
-    /// 実値は k8s Secret から環境変数で注入する（minio / grafana / vault と同じ形）。
+    /// 実値は k8s Secret から環境変数で注入する（grafana / vault と同じ形）。
     /// </summary>
     public string ClientSecret { get; set; } = string.Empty;
 

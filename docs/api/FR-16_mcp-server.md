@@ -4,14 +4,14 @@ type: api-spec
 status: draft
 author: claude
 created: 2026-08-23
-updated: 2026-09-04
+updated: 2026-09-26
 ---
 <!-- trace:
 ids: [FR-15, FR-16, UC-08, UC-09, SC-12]
 adrs: [ADR-0004, ADR-0018, ADR-0021, ADR-0024, ADR-0034, ADR-0054, ADR-0062]
-iadrs: [IADR-0269, IADR-0292, IADR-0297, IADR-0373]
+iadrs: [IADR-0269, IADR-0292, IADR-0297, IADR-0373, IADR-0462]
 specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban]
-issues: [#445, #452, #1020, #1190]
+issues: [#445, #452, #1020, #1190, #1514]
 -->
 
 # 通信仕様書: MCP サーバー
@@ -61,6 +61,7 @@ issues: [#445, #452, #1020, #1190]
 **メッシュ内の Service 名は `mcp-service` である**（配備の chart キーは `mcp`。テンプレートが
 `-service` を付す）。境界層のコード既定もこの名前に揃えてあり、配備 manifest 側の上書きは持たない。
 | GET | `/internal/introspection` | 自己申告（メッシュ内部限定） |
+| gRPC | `platform.introspection.v1.ServiceIntrospection/Get` | ［2026-09-26 追記］自己申告の east-west gRPC 面（共通基盤が REST と対で張る。呼び出し側サービスの資格情報を要求する）。🔴 本サービスは構成情報 API の収集先に無いので h2c リスナを立てておらず、配備上は呼ばれない |
 | GET | `/health/live`・`/health/ready` | ヘルスチェック |
 
 ## MCP 面

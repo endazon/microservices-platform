@@ -1096,6 +1096,136 @@
         }
       }
     },
+    "src/platform/backend/Shared/Platform.Shared.Contracts/Protos/platform/introspection/v1/service_introspection.proto": {
+      "syntax": "proto3",
+      "package": "platform.introspection.v1",
+      "csharpNamespace": "Platform.Shared.Contracts.Grpc.Introspection.V1",
+      "imports": [],
+      "messages": {
+        "Connector": {
+          "fields": {
+            "enabled": {
+              "number": 2,
+              "type": "bool",
+              "label": "singular"
+            },
+            "name": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "GetServiceIntrospectionRequest": {
+          "fields": {},
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "PortSelection": {
+          "fields": {
+            "implementation": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            },
+            "port": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "target": {
+              "number": 3,
+              "type": "string",
+              "label": "optional"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "ServiceIntrospectionReport": {
+          "fields": {
+            "connectors": {
+              "number": 4,
+              "type": "Connector",
+              "label": "repeated"
+            },
+            "ports": {
+              "number": 3,
+              "type": "PortSelection",
+              "label": "repeated"
+            },
+            "service": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "steps": {
+              "number": 2,
+              "type": "StepIntrospection",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "StepIntrospection": {
+          "fields": {
+            "consumer": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            },
+            "enabled": {
+              "number": 5,
+              "type": "bool",
+              "label": "singular"
+            },
+            "input": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            },
+            "name": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "outputs": {
+              "number": 4,
+              "type": "string",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "enums": {},
+      "services": {
+        "ServiceIntrospection": {
+          "rpcs": {
+            "Get": {
+              "request": "GetServiceIntrospectionRequest",
+              "response": "ServiceIntrospectionReport",
+              "clientStreaming": false,
+              "serverStreaming": false
+            }
+          }
+        }
+      }
+    },
     "src/platform/backend/Shared/Platform.Shared.Contracts/Protos/platform/llmgateway/v1/completion.proto": {
       "syntax": "proto3",
       "package": "platform.llmgateway.v1",

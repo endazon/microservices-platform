@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 
-// FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: MinIO（S3 互換 API）への保存・取得の本実装。
+// FR-06, FR-12, ADR-0014/ADR-0015（Superseded by ADR-0106）, IADR-0024: S3 互換 API（製品は SeaweedFS。IADR-0461）への保存・取得の本実装。
 // 参照 URI は storage://<bucket>/<key>。保存は既定バケットへ行い、取得は URI 内のバケットを尊重する。
 // バケット・キー設計、バージョニング、アクセス制御方針は .ai-context/adr/IADR-0024 を参照。
 public sealed class S3ObjectStorageClient(
@@ -97,9 +97,21 @@ public sealed class S3ObjectStorageClient(
     //
     // **`Prefix` は前方一致なので `Key` の厳密一致で絞る**（`body.md` の削除で `body.md.bak` を巻き込まない）。
     // **`IsTruncated` の間は marker で辿る**（1 応答は既定 1000 件までしか返らない）。
+    //
+    // 🔴 ［2026-09-26 / #1499, IADR-0296 追記, IADR-0461 決定 9］**versionId 無しの削除は、版の列挙より「先に」撃つ。**
+    // 従前はこれを全版削除の「後」に撃っていた（版管理の無いバケットの取りこぼしを塞ぐ保険）。しかし
+    // **版管理が有効なバケットでの versionId 無しの削除は、対象が無くても delete marker を新しく作る**
+    // （AWS S3 の仕様。SeaweedFS も同じ。MinIO では残らなかったので見えていなかった）。後に撃つと、
+    // 全版を消した直後にその marker が 1 つ残り、ADR-0057 決定 1 の「残っていない」を破る
+    // （SeaweedFS での受け入れ試験 `Delete_removes_every_version` が実際にこれで落ちた）。
+    // 先に撃てば、どの版管理状態でも結果は同じになる —— 有効: 作られた marker ごと下の列挙で消える／
+    // 停止: null 版が null marker に置き換わり、それも列挙で消える／無効: その場で実体が消え、列挙は空。
+    // 追加の API 呼び出しも、削除応答のヘッダ（x-amz-delete-marker）への依存も要らない。
     public async Task DeleteAsync(string uri, CancellationToken ct = default)
     {
         var (bucket, key) = Resolve(uri);
+
+        await s3.DeleteObjectAsync(new DeleteObjectRequest { BucketName = bucket, Key = key }, ct);
 
         var removed = 0;
         string? keyMarker = null;
@@ -140,10 +152,6 @@ public sealed class S3ObjectStorageClient(
         }
         while (keyMarker is not null || versionIdMarker is not null);
 
-        // バージョニングが無効なバケット・列挙に現れない未バージョン化オブジェクトの取りこぼしを塞ぐ。
-        // versionId 無しの削除は冪等（実在しなくても 204）なので、余分に撃っても害が無い。
-        await s3.DeleteObjectAsync(new DeleteObjectRequest { BucketName = bucket, Key = key }, ct);
-
         logger.LogInformation("Deleted object {Uri} ({Versions} versions removed)", uri, removed);
     }
 
@@ -171,10 +179,10 @@ public sealed class S3ObjectStorageClient(
         else if (options.EnableVersioning) await PutVersioningAsync(ct);
     }
 
-    // FR-06, FR-12, ADR-0014/ADR-0015, IADR-0303 (#1033): 書き込みの自己修復。
+    // FR-06, FR-12, ADR-0014/ADR-0015（Superseded by ADR-0106）, IADR-0303 (#1033): 書き込みの自己修復。
     //
     // 🔴 **バケットを作るのは ConversionService の起動時 bootstrap だけ**であり、その bootstrap は
-    // fail-open である（MinIO の起動待ちで例外が出ても警告を出して起動を続ける）。**競合に負けると
+    // fail-open である（オブジェクトストレージの起動待ちで例外が出ても警告を出して起動を続ける）。**競合に負けると
     // バケットは作られないまま**になり、以後の書き込みが `NoSuchBucket` で落ち続ける。
     // 実測（develop `3939e72` の integration-stack run 33230268422）: seed の `POST /documents` が
     // `The specified bucket does not exist` で 500 になった。**同じコードで前回の run は緑**であり、
@@ -202,7 +210,7 @@ public sealed class S3ObjectStorageClient(
         {
             logger.LogWarning(
                 "Object storage bucket {Bucket} did not exist on write; creating it and retrying once."
-                + " 起動時 bootstrap が MinIO の起動待ちに負けた可能性が高い（#1033）。", options.Bucket);
+                + " 起動時 bootstrap が オブジェクトストレージの起動待ちに負けた可能性が高い（#1033）。", options.Bucket);
             await CreateBucketWithVersioningAsync(ct);
             await put();
         }
@@ -217,7 +225,7 @@ public sealed class S3ObjectStorageClient(
         }
         // 🔴 **自己修復はリクエストごとに走る。** 起動時 bootstrap と違って単一ではないため、
         // バケット未作成の窓へ同時に到達した書き込みが**並行して作成を撃つ**。
-        // S3 / MinIO は重複作成を成功にせず `BucketAlreadyOwnedByYou` / `BucketAlreadyExists` を返す
+        // S3 互換ストアは重複作成を成功にせず `BucketAlreadyOwnedByYou` / `BucketAlreadyExists` を返す
         // （SDK は専用の例外型を持つ。いずれも `AmazonS3Exception` 派生でエラーコードを載せる）。
         //
         // **負けた側にとっても目的は達成されている** —— バケットは在る。ここで投げると

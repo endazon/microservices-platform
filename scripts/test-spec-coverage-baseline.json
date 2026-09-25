@@ -127,9 +127,14 @@
     "docs/tests/FR-15_config-info-api.md": [
       "ConfigBffEndpointTests",
       "ConfigInspectionDeclarationGuardTests",
+      "ConfigInspectionGrpcRegistrationTests",
       "ConfigViewerPolicyTests",
       "DriftDetectorTests",
       "DriftServiceCoverageTests",
+      "IntrospectionEndpointTests",
+      "IntrospectionGrpcDeploymentWiringTests",
+      "IntrospectionGrpcFaceTests",
+      "IntrospectionGrpcTests",
       "KeycloakRolesClaimsTransformationTests",
       "PipelineDeclarationEffectivenessTests",
       "PortSwapCompositionTests"

@@ -24,7 +24,14 @@ metadata:
     app.kubernetes.io/part-of: microservices-platform
 spec:
   # 同 Namespace 内のワークロード間通信を許可（サービス間 RAG/取り込みフロー）。
-  podSelector: {}
+  # FR-06, IADR-0461 決定 10 (#1499): SeaweedFS の Pod は対象から外す（seaweedfs.yaml の allow-seaweedfs-s3-only が
+  # TCP 8333 だけを許す）。NetworkPolicy は許可の和なので、ここで選ぶと S3 ゲートウェイの gRPC（18333）まで開く。
+  # `NotIn` は app ラベルを持たない Pod も選ぶため、従来の `podSelector: {}` から外れるのは seaweedfs だけである。
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: NotIn
+        values: [seaweedfs]
   policyTypes:
     - Ingress
     - Egress

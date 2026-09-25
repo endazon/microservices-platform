@@ -3,8 +3,8 @@ using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace ConversionService.Infrastructure.ExternalServices;
 
-// FR-12, ADR-0014/ADR-0015, IADR-0008/IADR-0024: 正規化本文・資産を S3 互換オブジェクトストレージ
-// （MinIO）へ保管する。共有クライアント（IObjectStorageClient）へ委譲し、キー設計・冪等 ID の方針は
+// FR-12, ADR-0014/ADR-0015（Superseded by ADR-0106）, IADR-0008/IADR-0024: 正規化本文・資産を S3 互換オブジェクトストレージ
+// （SeaweedFS）へ保管する。共有クライアント（IObjectStorageClient）へ委譲し、キー設計・冪等 ID の方針は
 // NormalizationService（呼び出し側）が決める。ストレージ未配備の dev では縮退クライアントが
 // 決定的な参照 URI を発行する（NullObjectStorageClient）。
 public class StorageObjectStore(IObjectStorageClient storage) : IObjectStore
