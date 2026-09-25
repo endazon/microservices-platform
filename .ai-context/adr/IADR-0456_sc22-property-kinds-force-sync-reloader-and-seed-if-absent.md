@@ -2,10 +2,10 @@
 title: IADR-0456 SC-22 はプロパティの種別（値・パスワードの MD5・RSA 鍵の生成）を allowlist に持ち、書き込み後に ExternalSecret へ即時同期を依頼し、消費側は Reloader で作り直し、bootstrap は画面の KV を無いときだけ作る
 type: impl-adr
 status: Accepted
-related_ids: [SC-22, FR-05, NFR-18, ADR-0095, ADR-0104, IADR-0096, IADR-0103, IADR-0433, IADR-0453, IADR-0454]
+related_ids: [SC-22, FR-05, NFR-18, ADR-0095, ADR-0104, ADR-0110, IADR-0096, IADR-0103, IADR-0433, IADR-0453, IADR-0454, IADR-0460]
 author: claude
 created: 2026-09-15
-updated: 2026-09-25
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md
   - planning:projects/microservices-platform/05_screens/01_screens.md
@@ -171,6 +171,18 @@ MSP と AST が同じ Vault パス・プロパティ・Secret 名を共有する
 - 決定 4 の Role（`get` / `patch`・`resourceNames` 限定）の **`get` を、一覧の供給元の判定（同期先 ExternalSecret の有無）が使うようになった**。
   権限・構成・通信路は本決定のものをそのまま使い、動詞も名前も足していない。
 - ADR-0104 決定 3 の公開鍵の表示は未実装（IADR-0460 フォローアップ 2）。
+
+## ［2026-09-26 追記 / #1523］生成の確認の文言と置き場（ADR-0110 決定 2・3）
+
+- **計画 ADR-0110 決定 2 が公開鍵の欄を取り下げた**（moomoo は OpenD とクライアントが同じ秘密鍵ファイルを共有するだけで、公開鍵の登録を要しない）。
+  上の追記の「公開鍵の表示は未実装」は**実装しない**に改まる。「生成」種別（決定 3）は残る。
+- 決定 3 の確認の文言「生成し直すと OpenD に**登録済みの鍵**との対応が失効する」は、取り下げられた前提（登録が要る）に寄った表現であった。
+  **「保管先の鍵が新しい鍵に置き換わり、OpenD が新しい鍵を読み込むまで（手動で再起動するまで）、OpenD と同じ鍵で接続するクライアントとの間で鍵が食い違う」へ改めた**
+  （AST の chart は鍵を読む注文執行を Reloader の対象にし、OpenD を対象外にしている）。旧版へ戻しても OpenD が読み込んだ鍵は戻らない、という確認の理由は変わらない。
+- 確認の置き場は、フォーム内の 2 段の押下（「生成」→「生成して書き込む」）から、**ADR-0110 決定 3 の書き込みの確認ダイアログ**へ移した。
+  生成の本文と OpenD の手動の再起動の本文を 1 つのダイアログに出す（2 度確認させない）。設計は [IADR-0460](IADR-0460_sc22-supply-source-from-external-secret-presence-and-restart-notice.md) の 2026-09-26 追記。
+- 決定 4（即時同期）・決定 5（Reloader）は変えない。ADR-0110 決定 3 が「確認して書き込むと、即時同期と自動の作り直しが続く」として両者を前提にした。
+  フォローアップ 3（本番の作り直し）を決めるときは、ADR-0110 決定 3 の「**利用者が確認した書き込みを契機とするものに限る**」に従う。
 
 ## 関連
 

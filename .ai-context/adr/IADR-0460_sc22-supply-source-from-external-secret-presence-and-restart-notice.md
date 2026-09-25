@@ -2,15 +2,17 @@
 title: IADR-0460 SC-22 の供給元は同期先 ExternalSecret の有無から境界層が判定して 3 値（screen / git / unknown）で返し、画面は送る前に消費側の再起動を項目ごとに告げる
 type: impl-adr
 status: Accepted
-related_ids: [SC-22, FR-05, NFR-18, ADR-0095, ADR-0104, IADR-0433, IADR-0453, IADR-0456]
+related_ids: [SC-22, FR-05, NFR-18, ADR-0095, ADR-0104, IADR-0433, IADR-0453, IADR-0456, ADR-0110]
 author: claude
 created: 2026-09-25
-updated: 2026-09-25
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0104_sc22-item-kinds-and-dual-path-for-env-ids.md
   - planning:projects/microservices-platform/05_screens/01_screens.md
+  - planning:projects/microservices-platform/07_adr/ADR-0110_sc22-supplier-three-values-no-public-key-restart-confirmed-at-write.md
 related_specs:
   - ../specs/20260925_1502_sc22-supply-source-and-restart-notice.md
+  - ../specs/20260926_1523_sc22-supply-label-and-restart-confirm.md
 ---
 
 # IADR-0460: SC-22 の供給元の判定と、消費側の再起動の告知
@@ -99,6 +101,31 @@ ADR-0104 決定 1 は環境固有 ID を画面と Git（Helm values）の両経�
   1. 稼働クラスタでの判定の実測（SC-22 テスト仕様書の手動の項。T-40 と同じ場）。
   2. ADR-0104 決定 3 の公開鍵の表示は本 IADR の射程外（置き場の設計と、公開鍵の登録が要るという前提の確認が要る。#1502 の PR 本文）。
   3. 再起動を**いつ**行ってよいかの制約と、同期を促す UI の形（ADR-0104 フォローアップ 2。計画で未定）。定まったら決定 2 の文言を改める。
+
+## ［2026-09-26 追記 / #1523］計画 ADR-0110 の裁定を受けた改訂（表示名・公開鍵・書き込みの確認）
+
+planning#652（本 IADR が起点の環流）の裁定を計画 ADR-0110（Accepted 2026-09-26）が記録した。3 値の判定（決定 1）と権限は変えない。
+
+1. **表示名「Git」を「画面以外」へ改めた**（ADR-0110 決定 1）。判定の中身は「同期先の ExternalSecret が無い」であり、手で作った Secret・配備スクリプト・Git のどれでもあり得る。
+   🔴 **契約の値 `git` と定数 `SecretItemSupplySources.Git` は据え置く。** 値は識別子であり表示名ではない。値を変えると const 値の変更＝契約スナップショットの破壊的変更
+   （`check-contract-schema.js` が fail にする）になり、BFF と画面を同時に替えても得るものが無い。OpenAPI・契約のコメントの**定義**を「画面以外」の意味へ改め、表示名を併記した。
+2. **公開鍵の表示は実装しない**（ADR-0110 決定 2 が取り下げた）。フォローアップ 2 は「計画の確認待ち」ではなく**取り下げで閉じた**。
+   IADR-0433 に公開鍵の記述は無く（`git grep -n -i "公開鍵\|public.key" -- .ai-context/adr/IADR-0433*` が 0 件）、追随は要らない。
+3. **決定 2（送る前の常設の注記）を、書き込みの確認ダイアログへ改めた**（ADR-0110 決定 3「書き込みの確認を、消費側の再起動の確認とする」）。フォローアップ 3 はこれで閉じた。
+   - 供給元が「画面以外」でない項目の送信は、押下では送らず確認ダイアログ（ユニット共有の `ConfirmDialog`＝`@platform/ui` の `Dialog`。初期フォーカスは取消）を開く。
+     本文に**再起動する消費側**と**断たれ得る処理の種類**（画面の語彙 `secretConsumer(item)` に項目ごとに持つ。B3 と同じく表示の関心）と、確認後に続くことを出す。
+   - 自動の作り直しの項目: 「確認して書き込むと、即時同期のあとで自動で再起動される（配備した環境の場合）。配備していない環境では再起動するまで反映されない」。
+     供給元が「確認できない」ときは「再起動するかは断定できない。再起動されることがある」に替える。表に無い項目は「再起動されることがある」。
+   - OpenD の項目: 「この書き込みでは OpenD は再起動しない。反映には手動の再起動（コマンド）。手動の再起動は処理を断ち、再認証を求め得る」。
+   - 書き込み後の成功の表示にも「再起動するまで反映されない」（OpenD は「手動で再起動するまで」）を添える（ADR-0110 決定 3 の「確認の段と書き込み後の表示で」）。
+   - 🔴 **書き込みとは別の再起動の操作は置かない。BFF の権限・契約は 1 つも変えていない。** 配備の有無も検出しない（B2 を採らない理由は同じ）。
+   - 鍵の生成の確認（IADR-0456 決定 3）はこの確認ダイアログへ統合した（生成は「画面以外」でも確認を通す）。IADR-0453 決定 6・IADR-0456 に同日付の追記を置いた。
+   - 送る前の常設の注記は撤去した（同じ内容を 2 箇所に置かない）。供給元の注記（「画面以外」「確認できない」）はフォームに残す。
+   - 監査（PR #1530）の指摘で 2 点を足した: ①「画面以外」の項目の生成では、同期先が無いので新しい鍵は再起動しても OpenD に届かない。
+     生成の本文を「OpenD にもクライアントにも届かない」へ書き分け、「読み込むまで食い違う」とは書かない。②生成の確定ボタンは保管先の鍵を置き換えるので
+     破壊的（`destructive`）として示す。値の書き込みは旧版で戻せるので破壊的としない。
+
+作業仕様書: `.ai-context/specs/20260926_1523_sc22-supply-label-and-restart-confirm.md`。
 
 ## 関連
 

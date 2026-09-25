@@ -97,6 +97,7 @@ export const getBffSecretItemsListUrl = () => {
  * 版の番号に加えて**版の作成時刻も一致する**ことを条件にする（metadata を作り直して版が 1 から振り直された KV に古い記録を付けない。IADR-0454 決定 3）。
  * `supplySource` は項目の同期先 ExternalSecret を Kubernetes API で `get` した結果から作る（ADR-0104 決定 2・IADR-0460 決定 1）。
  * 在れば `screen`、404 なら `git`、それ以外（同期の構成が無効・拒否・障害・不達）は `unknown`。ExternalSecret の本文も Secret も読まない。
+ * ADR-0110 決定 1: 画面の表示名は `screen`＝画面／`git`＝**画面以外**／`unknown`＝確認できない。値 `git` は識別子であり、出どころが Git とは限らない（値は変えない）。
  * @summary SC-22 主要素 1・3: 秘密情報の項目の一覧（値の列は無い）
  */
 export const bffSecretItemsList = async ( options?: Parameters<typeof bffFetch>[1]): Promise<bffSecretItemsListResponse> => {

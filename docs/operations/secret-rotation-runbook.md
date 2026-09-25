@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-25
-updated: 2026-09-25
+updated: 2026-09-26
 ---
 <!-- trace:
 ids: [NFR-18, SC-22]
-adrs: [ADR-0005, ADR-0023, ADR-0095, ADR-0106]
-iadrs: [IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0461]
-specs: [20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs]
-issues: [#458, #1411, #1477, #1499]
+adrs: [ADR-0005, ADR-0023, ADR-0095, ADR-0106, ADR-0110]
+iadrs: [IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461]
+specs: [20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm]
+issues: [#458, #1411, #1477, #1499, #1523]
 -->
 
 # 運用 Runbook: 秘密情報のローテーション
@@ -112,7 +112,7 @@ Stakater Reloader が注釈を持つ消費側（外部 LLM の境界サービス
 | `wikijs-sync`（`apiKey`） | Wiki.js の管理画面（Administration → API Access） | 新しいキーを発行 → 画面で書く → 同期が通ることを確かめる → **旧キーを Wiki.js 側で Revoke する**。キーは Wiki.js の管理 GraphQL 全体に及ぶので、漏洩の疑いなら即時 Revoke する |
 | `ast-app-secrets`（外部 API キー・Discord） | 各外部サービス | 🔴 **Discord の bot token は再発行した瞬間に旧が失効する**（重ねられない）。同じ KV の `*-auth-client-*` は画面では書けない（`deferred[]` と同じ扱い） |
 | `ast-moomoo`（`login-account` / `login-pwd-md5`） | 証券会社 | パスワードは画面へ平文で入れ、境界層が MD5 へ変換して書く。証券会社側で変えてから画面で書く。ログインのやり直し（検証コード）が要ることがある —— 取引ユニットの手順に従う |
-| `ast-moomoo-rsa`（`opend_rsa.pem`） | 画面の「生成」 | 🔴 **生成し直すと、OpenD に登録済みの鍵との対応が失効する。** 取引ユニットの手順で OpenD 側の登録を合わせてから行う |
+| `ast-moomoo-rsa`（`opend_rsa.pem`） | 画面の「生成」 | 🔴 **生成し直すと保管先の鍵が置き換わり、OpenD を手動で再起動するまで、OpenD と同じ鍵で接続するクライアントとの間で鍵が食い違う。** 画面の確認ダイアログで確かめてから生成し、書き込み後に OpenD を手動で再起動する（再認証を求められることがある）。公開鍵を証券会社へ登録する手順は無い（OpenD とクライアントが同じ秘密鍵を共有するだけ） |
 
 ## 手順 B: `excluded[]`（ストア側と同時に回す）
 

@@ -2063,7 +2063,7 @@ export const SecretItemStatusDtoStatus = {
 } as const;
 
 /**
- * いま効いている供給元（ADR-0104 決定 2・IADR-0460 決定 1）。screen = 同期先の ExternalSecret が在る（画面の経路が効いている）／git = 無い（値は配備時の設定から来る。画面で書いた値は届かない）／unknown = 判定できない（接続が構成されていない・拒否・不達）。unknown を他の 2 値に畳まない
+ * いま効いている供給元（ADR-0104 決定 2・ADR-0110 決定 1・IADR-0460 決定 1）。screen = 同期先の ExternalSecret が在る（画面の経路が効いている。表示「画面」）／git = 無い（値は手で作った Secret・配備スクリプト・Git など画面以外から来る。画面で書いた値は届かない。表示「画面以外」。値の名前は据え置き）／unknown = 判定できない（接続が構成されていない・拒否・不達。表示「確認できない」）。unknown を他の 2 値に畳まない
  */
 export type SecretItemStatusDtoSupplySource = typeof SecretItemStatusDtoSupplySource[keyof typeof SecretItemStatusDtoSupplySource];
 
@@ -2119,7 +2119,7 @@ export interface SecretItemStatusDto {
   lastUpdatedBy?: string | null;
   /** `properties` と同じ並びの、プロパティごとの入力の形（IADR-0456 決定 1）。BFF は常に埋める */
   propertyDetails?: SecretItemPropertyDto[] | null;
-  /** いま効いている供給元（ADR-0104 決定 2・IADR-0460 決定 1）。screen = 同期先の ExternalSecret が在る（画面の経路が効いている）／git = 無い（値は配備時の設定から来る。画面で書いた値は届かない）／unknown = 判定できない（接続が構成されていない・拒否・不達）。unknown を他の 2 値に畳まない */
+  /** いま効いている供給元（ADR-0104 決定 2・ADR-0110 決定 1・IADR-0460 決定 1）。screen = 同期先の ExternalSecret が在る（画面の経路が効いている。表示「画面」）／git = 無い（値は手で作った Secret・配備スクリプト・Git など画面以外から来る。画面で書いた値は届かない。表示「画面以外」。値の名前は据え置き）／unknown = 判定できない（接続が構成されていない・拒否・不達。表示「確認できない」）。unknown を他の 2 値に畳まない */
   supplySource: SecretItemStatusDtoSupplySource;
 }
 

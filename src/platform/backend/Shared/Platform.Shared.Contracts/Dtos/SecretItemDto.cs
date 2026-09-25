@@ -34,14 +34,16 @@ public record SecretItemStatusDto(
     List<SecretItemPropertyDto>? PropertyDetails = null,
     string SupplySource = SecretItemSupplySources.Unknown);
 
-// SC-22 主要素 1, ADR-0104 決定 1・2, IADR-0460 決定 1 (#1502): 供給元の値集合（契約）。
+// SC-22 主要素 1, ADR-0104 決定 1・2, ADR-0110 決定 1, IADR-0460 決定 1 (#1502 / #1523): 供給元の値集合（契約）。
 // 判定は配備の結果（項目の同期先 ExternalSecret の有無）から行い、画面は推測しない。
+// 🔴 **値は識別子であり表示名ではない。** 画面の表示は 画面／画面以外／確認できない（ADR-0110 決定 1）。
+// `git` の値と定数名は据え置く（変えると const 値の変更＝契約の破壊的変更になる。IADR-0460 の 2026-09-26 追記）。
 public static class SecretItemSupplySources
 {
-    /// <summary>同期先の ExternalSecret が在る —— 画面の経路（Vault → ESO → Secret）が効いている。</summary>
+    /// <summary>同期先の ExternalSecret が在る —— 画面の経路（Vault → ESO → Secret）が効いている（表示「画面」）。</summary>
     public const string Screen = "screen";
 
-    /// <summary>同期先の ExternalSecret が無い —— 値は配備時の設定（Git 経路の Helm values・配備スクリプト）から来る。画面で書いた値は届かない。</summary>
+    /// <summary>同期先の ExternalSecret が無い —— 値は画面以外（手で作った Secret・配備スクリプト・Git など）から来る。画面で書いた値は届かない（表示「画面以外」。値の名前は歴史的経緯で `git`）。</summary>
     public const string Git = "git";
 
     /// <summary>判定できない（Kubernetes API への接続が構成されていない・拒否された・届かない）。</summary>

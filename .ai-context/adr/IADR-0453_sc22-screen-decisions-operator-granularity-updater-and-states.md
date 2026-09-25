@@ -2,10 +2,10 @@
 title: IADR-0453 SC-22 は運用者を含め、プロパティ 1 つずつ書き、最終更新者は BFF が書いた版にだけ付け、状態は metadata から 3 値で出す
 type: impl-adr
 status: Accepted
-related_ids: [SC-22, FR-05, NFR-11, NFR-18, ADR-0032, ADR-0042, ADR-0095, IADR-0009, IADR-0030, IADR-0096, IADR-0251, IADR-0433]
+related_ids: [SC-22, FR-05, NFR-11, NFR-18, ADR-0032, ADR-0042, ADR-0095, ADR-0110, IADR-0009, IADR-0030, IADR-0096, IADR-0251, IADR-0433, IADR-0460]
 author: claude
 created: 2026-09-14
-updated: 2026-09-25
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md
   - planning:projects/microservices-platform/07_adr/ADR-0042_ops-management-ui-production.md
@@ -154,6 +154,12 @@ IADR-0433 は Vault policy・k8s auth ロール・allowlist・監査・端点の
 > ［2026-09-15 追記 / #1477］**種別 `generate-rsa-pkcs1`（OpenD の RSA 鍵の生成）だけは確認の段を置いた**（IADR-0456 決定 3）。
 > 値の書き直しと違い、生成し直すと OpenD に登録済みの鍵との対応が**保管先の外で**失効し、旧版を戻しても OpenD 側は戻らないためである。
 > 秘密でない値（`sensitive: false`。Discord の環境固有 ID）は平文で見えるため確認入力を求めない（IADR-0456 決定 1）。
+
+> ［2026-09-26 追記 / #1523］**再起動を伴う（伴い得る）項目の書き込みにも確認ダイアログを置いた**（計画 ADR-0110 決定 3「書き込みの確認を、消費側の再起動の確認とする」）。
+> 本決定の「確認ダイアログは置かない」は**値の確認について**は変わらない（2 度目の入力が値の確認のまま）。確認ダイアログは値ではなく**保管先の外で起きること**
+> （消費側の再起動が稼働中の処理を断つ）を確かめるものであり、本決定の理由（KV v2 の旧版で書き直せる）では戻せない。
+> 供給元が「画面以外」（契約の値 `git`）の書き込みには置かない。鍵の生成の確認もこの確認ダイアログへ統合した。上の 2026-09-15 追記の「登録済みの鍵」は
+> ADR-0110 決定 2 が誤りとした前提に寄った表現である（IADR-0456 の 2026-09-26 追記）。設計は [IADR-0460](IADR-0460_sc22-supply-source-from-external-secret-presence-and-restart-notice.md) の 2026-09-26 追記。
 
 ### 決定 7: 契約とエラーの形
 
