@@ -55,7 +55,7 @@ nerdctl run -d --name msp-test-seaweedfs -p 58333:8333 \
   -e AWS_ACCESS_KEY_ID=objectstorage-dev -e AWS_SECRET_ACCESS_KEY=objectstorage-dev-secret \
   --entrypoint /bin/sh \
   docker.io/chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882 \
-  -c 'export WEED_JWT_FILER_SIGNING_KEY="$(head -c 32 /dev/urandom | base64 | tr -d '"'"'\n'"'"')"; exec /entrypoint.sh "$@"' seaweedfs \
+  -c 'K="$(head -c 32 /dev/urandom | base64 | tr -d '"'"'\n'"'"')"; [ ${#K} -ge 40 ] || { echo '"'"'signing key generation failed'"'"' >&2; exit 1; }; export WEED_JWT_FILER_SIGNING_KEY="$K"; exec /entrypoint.sh "$@"' seaweedfs \
   server -ip=127.0.0.1 -ip.bind=127.0.0.1 -s3 -s3.ip.bind=0.0.0.0 -s3.port=8333 -s3.port.grpc=18333 \
   -s3.port.iceberg=0 -s3.port.lance=0 -master.telemetry=false
 ```

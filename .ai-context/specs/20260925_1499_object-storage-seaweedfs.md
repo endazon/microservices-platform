@@ -188,6 +188,20 @@ IADR-0296 の前提「害が無い」は MinIO の振る舞いに依存してい
    根拠はソース（`checkAdminAuth` は鍵が空でなければ Bearer JWT を要求する）と、起動スクリプトが鍵を export してから
    entrypoint を exec すること（試験のコンテナも同じスクリプトで起動し、起動に成功している）。
 
+## ［2026-09-26 追記 / #1499］再監査（GO-with-nits）への対応
+
+1. **起動スクリプトを fail-closed にした**: `export X="$(…)"` は中の失敗に関係なく 0 を返すため、鍵を変数へ受けて長さ（下限 40。
+   32 バイトの base64 は 44 文字）を確かめ、足りなければ entrypoint を呼ばずに exit 1。compose（`$$` でエスケープ）・helm・
+   `SeaweedFsContainer.StartupScript`・how-to・IADR-0461 決定 10 を同じ文字列へ揃えた。
+   - 定義試験に長さの門の検査を足し、さらに**スクリプトを /bin/sh で実際に走らせる試験**を足した（Docker 不要。`head` を失敗する
+     スタブに差し替えると exit 1・メッセージあり・entrypoint のスタブが呼ばれない／本物の `head` なら鍵 44 文字で entrypoint へ
+     引数がそのまま渡る）。Windows では /bin/sh が無いので Skipped、CI（Linux）で走る。
+2. **NetworkPolicy の試験を固めた**: 変異 M6（`NotIn` のキーを `app.kubernetes.io/name` へ）・M7（ingress の送り元を
+   `namespaceSelector: {}` へ）が生き残っていた。除外のブロックと ingress のブロックを文字列の完全一致で固定し、除外キー `app` が
+   Pod テンプレートのラベルと一致することも見る。**M6・M7 と、長さの門を helm / compose から消す M8 の計 4 通りで、それぞれ 1 件落ちる**ことを確かめた。
+3. **切替 Runbook 手順 5**: upgrade の前に `helm get values msp -n microservices-platform` で稼働中の release の値（起動器が `--set` で
+   重ねたメッシュの mTLS の方式等）を取り出し、`-f` で重ねて渡す形にした。
+
 ## 並行 PR との交差
 
 | PR | 交差 | 扱い |

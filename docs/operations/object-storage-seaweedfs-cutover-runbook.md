@@ -79,13 +79,21 @@ issues: [#457, #1483, #1435, #1499, #1506, planning#648]
        --dry-run=client -o yaml | kubectl apply -f -
      ```
 
-5. **chart だけを当てる。** `scripts/k8s-local-up.sh` は流さず、その段 6 と同じ `helm upgrade` だけを実行する
-   （メッシュや埋め込みの opt-in を使っている構成では、起動時と同じ追加フラグを付ける）:
+5. **chart だけを当てる。** `scripts/k8s-local-up.sh` は流さず、その段 6 と同じ `helm upgrade` だけを実行する。
+   🔴 **先に、いまの release に `--set` で渡されている値を取り出し、同じ値を渡す。** 起動器は opt-in（メッシュの mTLS の方式・
+   セルフホスト埋め込み等）を `--set` で重ねており、`values-local.yaml` だけで upgrade するとそれらが既定へ戻る
+   （例: STRICT の mTLS が外れる）。`helm get values` は利用者が与えた値（`values-local.yaml` 由来と `--set` 由来の和）を返す:
 
    ```bash
+   helm get values msp -n microservices-platform -o yaml > /tmp/msp-user-values.yaml
+   # 中身を目で確かめる（mesh.* / services.*.extraEnv 等）。秘密の値は入らない（chart は Secret 名だけを持つ）。
    helm upgrade --install msp deploy/helm/microservices-platform \
-     -n microservices-platform -f deploy/local/values-local.yaml
+     -n microservices-platform -f deploy/local/values-local.yaml -f /tmp/msp-user-values.yaml
    ```
+
+   後ろの `-f` が優先されるので、稼働中の release の値が `values-local.yaml` を上書きする。ただし **`values-local.yaml` 側で
+   意図して変わった値（本変更の `seaweedfs.*` と、撤去した `minio.*`）** まで旧い値で戻さないよう、取り出したファイルから
+   `minio:` の節を消してから渡す（`seaweedfs:` の節は旧 release に無いので問題にならない）。
 
    SeaweedFS の Deployment・Service・PVC（`seaweedfs` / `seaweedfs-data`）が作られ、MinIO のものは消える。
    オブジェクトストレージを使う 7 サービスは参照する Secret 名が変わるので自動で作り直される。

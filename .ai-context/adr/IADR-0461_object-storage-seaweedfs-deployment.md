@@ -196,7 +196,10 @@ versionId 付きで消した**後に** versionId 無しの削除を撃ってお�
 1. **署名鍵で認証を必須にする。** 鍵は viper の環境変数 `WEED_JWT_FILER_SIGNING_KEY` で与える（`weed/util/config.go` 120〜122 行
    `AutomaticEnv` / `SetEnvPrefix("weed")` / `.`→`_`。S3 は `s3api_server.go` 176 行で同じキーを読む）。
    **鍵は起動のたびに Pod（コンテナ）の中で乱数から作り、どこにも保存しない**:
-   `export WEED_JWT_FILER_SIGNING_KEY="$(head -c 32 /dev/urandom | base64 | tr -d '\n')"; exec /entrypoint.sh "$@"`。
+   `K="$(head -c 32 /dev/urandom | base64 | tr -d '\n')"; [ ${#K} -ge 40 ] || { echo 'signing key generation failed' >&2; exit 1; }; export WEED_JWT_FILER_SIGNING_KEY="$K"; exec /entrypoint.sh "$@"`。
+   **fail-closed**（2026-09-26 再監査の指摘）: `export X="$(…)"` は中のコマンドが失敗しても 0 を返すので、鍵の長さ（32 バイトの
+   base64 ＝ 44 文字。下限 40）を確かめ、足りなければ entrypoint を呼ばずに終了コード 1 で止める。イメージから `head` / `base64` が
+   消えても、鍵の空のまま SeaweedFS が起動して管理用 RPC が開く、という壊れ方をしない。
    - Secret で配る案（ESO / SC-22 の流儀）を採らない理由: **この鍵を知る必要があるのは同じプロセスの filer と S3 ゲートウェイだけ**で、
      外部の利用者はいない。配れば Vault・ExternalSecret・bootstrap・SC-22 の分類表に「使う者のいない秘密」が 1 つ増え、
      リポジトリに開発用既定値を置く誘惑も生まれる。プロセス内で作れば漏れる経路そのものが無い（再起動のたびに替わる）。
