@@ -182,6 +182,11 @@ IADR-0296 の前提「害が無い」は MinIO の振る舞いに依存してい
    既定値で書き直し、稼働中の PoC を壊す）。`object-storage-credentials` だけを作る Vault / Secret の手順、chart だけの
    `helm upgrade`、旧 Secret・ExternalSecret・Ingress・VirtualService・Vault パス・realm の `minio` client の掃除を書いた。
 6. 偽 S3 の試験に「有効 → 停止へ切り替えたバケット」「版の一覧が複数の応答に分かれる（1 応答 2 件）」を足した（7 件）。
+7. **署名鍵ありでの受け入れ試験**（Integration・run 36164059772・head `a90ce4c8`）: `ObjectStorageRoundTripTests` 3 件とも Passed、
+   定義試験 7 件も Passed。赤は AST の `T_10_1057…` だけ（無関係）。鍵を与えても S3 の読み書き・版管理・全版削除は通る。
+   🔴 **gRPC の管理用 RPC が鍵なしで拒まれることそのものは実機で確かめていない**（gRPC クライアントを試験に持ち込んでいない）。
+   根拠はソース（`checkAdminAuth` は鍵が空でなければ Bearer JWT を要求する）と、起動スクリプトが鍵を export してから
+   entrypoint を exec すること（試験のコンテナも同じスクリプトで起動し、起動に成功している）。
 
 ## 並行 PR との交差
 
