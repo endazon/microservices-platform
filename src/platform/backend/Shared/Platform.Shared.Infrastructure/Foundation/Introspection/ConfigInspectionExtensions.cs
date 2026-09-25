@@ -1,4 +1,5 @@
 using Platform.Shared.Infrastructure.Foundation.Audit;
+using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,7 +30,21 @@ public static class ConfigInspectionExtensions
         builder.Services.AddHttpClient(HttpEffectiveConfigCollector.HttpClientName);
         builder.Services.TryAddSingletonTimeProvider();
 
-        builder.Services.AddSingleton<IEffectiveConfigCollector, HttpEffectiveConfigCollector>();
+        // FR-15, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4・5, IADR-0462 (#1514, #1255 経路 ⑤):
+        // 宛先ごとに輸送を選ぶ収集器。**並走中の正は REST** —— `Introspection:GrpcServices` に
+        // アドレスが在る宛先だけが gRPC で収集される。gRPC の収集器と s2s トークンの発行側は、
+        // その構成が在るときだけ登録する（無い配備は 1 バイトも変わらない。資格情報を要求しない）。
+        builder.Services.AddSingleton<HttpEffectiveConfigCollector>();
+        var grpcTargets = builder.Configuration
+            .GetSection($"{IntrospectionOptions.SectionName}:{nameof(IntrospectionOptions.GrpcServices)}")
+            .GetChildren()
+            .Any(c => !string.IsNullOrWhiteSpace(c.Value));
+        if (grpcTargets)
+        {
+            builder.Services.AddPlatformServiceToken(builder.Configuration);
+            builder.Services.AddSingleton<GrpcServiceIntrospectionCollector>();
+        }
+        builder.Services.AddSingleton<IEffectiveConfigCollector, EffectiveConfigCollector>();
         builder.Services.AddSingleton<IConfigInspectionService, ConfigInspectionService>();
         builder.Services.AddSingleton<IDriftAlertSink, LoggingDriftAlertSink>();
         builder.Services.AddSingleton<IAuditLogger, AuditLogger>();

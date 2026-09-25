@@ -39,7 +39,7 @@ public class BearerCallerPolicyTests
     }
 
     // ★ public client に限らない。**ブラウザ OIDC を持つ他ツールの利用者トークンも通らない**
-    // （realm には grafana / argocd / minio / vault / headlamp / wiki-js が居る）。
+    // （realm には grafana / argocd / vault / headlamp / wiki-js が居る）。
     [Theory]
     [InlineData("grafana")]
     [InlineData("argocd")]

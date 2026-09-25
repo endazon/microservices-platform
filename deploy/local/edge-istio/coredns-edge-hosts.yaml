@@ -6,7 +6,7 @@
 #     Istio エッジ   … istio-ingressgateway.istio-system.svc.cluster.local
 #
 # なぜ要るのか（元ファイルの論拠をそのまま引き継ぐ）:
-#   非 .NET の OIDC クライアント（Grafana / ArgoCD / Vault / MinIO / Headlamp / Wiki.js）は
+#   非 .NET の OIDC クライアント（Grafana / ArgoCD / Vault / Headlamp / Wiki.js）は
 #   IADR-0086 の metadata / issuer 分離が使えず、**pod から issuer host を実際に引く**。
 #   CoreDNS が答えを持たないとノードのリゾルバへフォールスルーし、`*.localhost` は
 #   127.0.0.1（＝自分自身）へ解決されて 404 になる。**塞ぐために要る。**

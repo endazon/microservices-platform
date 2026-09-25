@@ -15,7 +15,7 @@ namespace Platform.Shared.Infrastructure.Tests.Composable.Adapters.Storage;
 // OR 結合であり、**両側それぞれを単独で** スキップさせられるケースを用意しないと、
 // 片方の退行が緑のまま残る（issue 本文の変異試験対象そのもの）。
 //
-// 🔴 `EnsureBucketAsync` の成功経路・例外握り潰し経路は MinIO が要るためスコープ外
+// 🔴 `EnsureBucketAsync` の成功経路・例外握り潰し経路は実ストアが要るためスコープ外
 // （`ObjectStorageRoundTripTests` が `[Trait("Category","Integration")]` + `[DockerFact]` で持つ）。
 // 単体側は「その 2 経路を検出できないこと」を issue 本文どおり明記するに留める。
 public class ObjectStorageBootstrapHostedServiceTests

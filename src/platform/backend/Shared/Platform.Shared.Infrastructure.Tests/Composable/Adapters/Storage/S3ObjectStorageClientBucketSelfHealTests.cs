@@ -8,11 +8,11 @@ using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace Platform.Shared.Infrastructure.Tests.Composable.Adapters.Storage;
 
-// FR-06, FR-12, FR-21, ADR-0014/ADR-0015, IADR-0303 (#1033):
+// FR-06, FR-12, FR-21, ADR-0014/ADR-0015（Superseded by ADR-0106）, IADR-0303 (#1033):
 // **バケットが無い状態への書き込みが、作って再試行することで通る**ことを実 I/O 無しで固定する。
 //
 // 🔴 **動機は実測された競合である。** バケットを作るのは ConversionService の起動時 bootstrap だけで、
-// その bootstrap は fail-open。MinIO の readiness に負けるとバケットは作られず、以後の書き込みが
+// その bootstrap は fail-open。オブジェクトストレージの readiness に負けるとバケットは作られず、以後の書き込みが
 // `NoSuchBucket` で 500 になる（develop `3939e72` の integration-stack で実測。前回 run は同じコードで緑）。
 //
 // 器は `AmazonS3Client` の派生である（既存 `S3ObjectStorageClientDeleteTests` と同じ作法。
@@ -124,7 +124,7 @@ public class S3ObjectStorageClientBucketSelfHealTests
     public async Task 並行作成で負けても書き込みは成功する(string createError)
     {
         // 🔴 **自己修復はリクエストごとに走る**ため、バケット未作成の窓へ同時に到達した書き込みが
-        // 並行して作成を撃つ。S3 / MinIO は重複作成を成功にせず「既にある」を返す。
+        // 並行して作成を撃つ。S3 互換ストアは重複作成を成功にせず「既にある」を返す。
         // **負けた側にとっても目的は達成されている**（バケットは在る）。ここで投げると
         // 「直っているのにその書き込みだけ失敗する」ことになる。
         var s3 = new FakeS3(failuresBeforeSuccess: 1, createBucketErrorCode: createError);

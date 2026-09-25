@@ -191,7 +191,7 @@ else
 // 生成段で辞書外として落としたタグ提案の件数（0 が正常）。Meter は EdgeTypeFallbackMetrics と同じ。
 builder.Services.AddSingleton<TagSuggestionDropMetrics>();
 
-// FR-17, FR-06, ADR-0015, ADR-0033 決定 3・6・8 (#912): リンク抽出と辺の差分更新。
+// FR-17, FR-06, ADR-0015（Superseded by ADR-0106）, ADR-0033 決定 3・6・8 (#912): リンク抽出と辺の差分更新。
 //
 // **バケットの作成（Bootstrap）はここでは行わない** —— 書き込み側の起動時保証は ConversionService が
 // 担っており、本サービスは読み取り側である（DocumentService / WikiService と同じ形）。

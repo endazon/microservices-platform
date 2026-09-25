@@ -3,10 +3,10 @@ using System.Text;
 
 namespace DocumentService.Domain;
 
-// FR-21, UC-03, ADR-0014/ADR-0015, ADR-0036: 文書本文の直接受け入れ経路の規則。
+// FR-21, UC-03, ADR-0014/ADR-0015（Superseded by ADR-0106）, ADR-0036: 文書本文の直接受け入れ経路の規則。
 // 「本文をどこへ置くか」「どこまで受けるか」「誰が書けるか」の 3 点を 1 か所へ集める。
 //
-// 本文は**オブジェクトストレージ（MinIO。ADR-0015）へ格納し、DB は参照（storage:// URI）のみ持つ**
+// 本文は**オブジェクトストレージ（SeaweedFS。ADR-0015（Superseded by ADR-0106））へ格納し、DB は参照（storage:// URI）のみ持つ**
 // （FR-21 受け入れ基準 ④）。参照の置き場は既存の `Document.MarkdownUri` である —— 新しい欄を作ると
 // 取り込み（`DocumentUpdatedConsumer` は `MarkdownUri` の有無で起動する）の分岐が 2 本になり、
 // 受け入れ基準 ①（取り込み・分割・埋め込みが起動する）を成立させるために取り込み側の改修が要る。

@@ -3,15 +3,15 @@ title: 構成情報 API（実効構成の可視化・ドリフト検出） 機�
 type: functional-spec
 status: draft
 created: 2026-07-08
-updated: 2026-08-23
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
-ids: [FR-14, FR-15, SC-11]
-adrs: [ADR-0018]
-iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0046, IADR-0069, IADR-0268]
-specs: [20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role]
-issues: [#444]
+ids: [FR-14, FR-15, SC-11, NFR-16]
+adrs: [ADR-0018, ADR-0029, ADR-0075]
+iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0046, IADR-0069, IADR-0268, IADR-0379, IADR-0462]
+specs: [20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, 20260926_1514_introspection-grpc-fanout]
+issues: [#444, #1514, #1255]
 -->
 
 # 機能仕様書: 構成情報 API（実効構成の可視化・ドリフト検出）
@@ -38,7 +38,7 @@ issues: [#444]
 
 | 項目 | 内容 |
 | --- | --- |
-| 入力 | 各サービスの自己申告（イントロスペクション）エンドポイント（メッシュ内部限定）。収集先は `Introspection:Services`（構成キー＝pipeline.json の service 名 → ベース URL）で注入 |
+| 入力 | 各サービスの自己申告（イントロスペクション）エンドポイント（メッシュ内部限定）。収集先は `Introspection:Services`（構成キー＝pipeline.json の service 名 → ベース URL）で注入。［2026-09-26 追記］宛先ごとに `Introspection:GrpcServices`（→ h2c のアドレス）が在れば、その宛先は east-west gRPC で収集する（無い宛先は REST のまま。失敗の扱いは REST と同じ。詳細は [east-west gRPC 通信仕様書](../api/east-west-grpc.md) の 12 つ目の面） |
 | 処理 | BFF の `ConfigInspectionService` が自己申告を集約し、宣言（pipeline.json）と突合（`DriftDetector`） |
 | 出力 | `GET /bff/admin/config` → `EffectiveConfigDto`（構成バージョン・段・イベント接続・ポート選択・コネクタ）、`GET /bff/admin/config/drift` → `DriftReportDto`（HasDrift・Findings[Kind/Severity/Target/Detail]）、`GET /bff/admin/config/history` → `ConfigVersionEntryDto[]`（コミット ID・適用日時・適用者・その時点のドリフト有無。新しい順） |
 | 業務ルール | 認可・秘匿・監査（下記） |
