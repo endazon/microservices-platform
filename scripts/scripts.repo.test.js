@@ -3281,6 +3281,60 @@ module.exports = ({ ok, assert }) => {
       assert.ok(!r.some((f) => f.status === 'fail' && f.asset === '可観測性'));
     });
 
+    // 監査の指摘（#457）: 「消えた」は作成時刻では見えない。--baseline があるときだけ消失を fail にできる。
+    const baselineOf = () => {
+      const b = goodAfter();
+      for (const x of b.postgres.databases) x.created = BEFORE;
+      b.keycloak.realms = ['master', 'platform', 'microservices-platform', 'ai-stock-trading'];
+      return b;
+    };
+
+    ok('cutover: --baseline で切替前に在った AST の DB が切替後に無ければ fail（消しすぎ）', () => {
+      const d = goodAfter();
+      d.postgres.databases = d.postgres.databases.filter((x) => x.db !== 'order_execution_svc');
+      const withBase = cut.evaluate(d, expectedCut, SINCE, baselineOf());
+      assert.ok(withBase.some((f) => f.status === 'fail' && f.check.includes('order_execution_svc')), 'baseline ありで fail になるべき');
+      // 陰性対照: baseline が無いと消失と未配備を区別できず skip（合否は緑のまま）であることを固定し、
+      // その限界を「基準」の skip 行として必ず表示する。
+      const noBase = cut.evaluate(d, expectedCut, SINCE);
+      assert.ok(noBase.some((f) => f.status === 'skip' && f.check.includes('order_execution_svc')));
+      assert.ok(noBase.some((f) => f.status === 'skip' && f.asset === '基準'));
+      assert.ok(!withBase.some((f) => f.asset === '基準'));
+    });
+
+    ok('cutover: --baseline で切替前から無い AST の DB は skip（未配備を fail にしない）', () => {
+      const b = baselineOf();
+      b.postgres.databases = b.postgres.databases.filter((x) => x.db !== 'report_svc');
+      const d = goodAfter();
+      d.postgres.databases = d.postgres.databases.filter((x) => x.db !== 'report_svc');
+      const r = cut.evaluate(d, expectedCut, SINCE, b);
+      assert.ok(r.some((f) => f.status === 'skip' && f.check.includes('report_svc') && f.detail.includes('切替前から無い')));
+      assert.deepStrictEqual(r.filter((f) => f.status === 'fail'), []);
+    });
+
+    ok('cutover: 作り直しの対象でない realm（AST realm）が切替後に無ければ fail、master は常に見る', () => {
+      const d = goodAfter();
+      d.keycloak.realms = ['master', 'platform'];
+      const r = cut.evaluate(d, expectedCut, SINCE, baselineOf());
+      assert.ok(r.some((f) => f.status === 'fail' && f.check.includes('ai-stock-trading')));
+      // 旧名 realm は作り直しの対象（消えるのが正しい）なので、消えても fail にしない。
+      assert.ok(!r.some((f) => f.status === 'fail' && f.check.includes(`realm ${cut.LEGACY_REALM} を消していない`)));
+      const d2 = goodAfter();
+      d2.keycloak.realms = ['platform', 'ai-stock-trading'];
+      assert.ok(cut.evaluate(d2, expectedCut, SINCE).some((f) => f.status === 'fail' && f.check.includes('master')));
+      // 正例: baseline つきの正しい切替は fail 0。
+      assert.deepStrictEqual(cut.evaluate(goodAfter(), expectedCut, SINCE, baselineOf()).filter((f) => f.status === 'fail'), []);
+    });
+
+    ok('cutover: Prometheus の head の最古サンプルは合否に使わない（判定は prometheus-data の PVC）', () => {
+      const d = goodAfter();
+      d.prometheus = { minTime: BEFORE }; // 古いブロックが残っているように見えても、head の値では判定しない
+      assert.deepStrictEqual(failsOf(d), []);
+      const d2 = goodAfter();
+      d2.pvcs.find((p) => p.name === 'prometheus-data').created = BEFORE;
+      assert.ok(failsOf(d2).some((f) => f.check.includes('prometheus-data')));
+    });
+
     ok('cutover: MinIO の ls -R から .minio.sys を除いてバケットとオブジェクトを数える', () => {
       const ls = [
         '/data:', '.minio.sys', 'knowledge-normalized', '',

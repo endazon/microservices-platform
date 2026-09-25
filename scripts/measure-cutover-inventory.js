@@ -16,7 +16,12 @@
  *   件数 0 は脆い判定になる。代わりに、破棄した側（MSP の DB・realm の人間の利用者・作り直した PVC・
  *   Prometheus の最古サンプル）が --since 以降に作られたことを見る。
  *   さらに**触らない側**（同じ Postgres に同居する AST の DB・postgres-data / keycloak-data / vault-data の PVC）が
- *   --since より前のままであることを見る（陰性対照。消しすぎを捕まえる）。
+ *   --since より前のままであることを見る（陰性対照。作り直しすぎを捕まえる）。
+ *   🔴 **「消えた」は作成時刻では見えない**（消えたものには時刻が無い）。--baseline（切替前の実測）を渡すと、切替前に
+ *   在った AST の DB と、作り直しの対象でない realm（master・AST realm ほか）が切替後に 1 つでも欠けていれば fail にする。
+ *   **--baseline が無いと消失は検出できない**（AST の DB が無いことは「未配備」と区別できず skip になる）。
+ *   Prometheus の最古サンプル（headStats.minTime）は参考表示に留める —— 古いブロックが在ると head の最古は
+ *   TSDB 全体の最古ではない。作り直しの判定は prometheus-data の PVC の作成時刻で行う。
  *
  * 性質:
  *   - **読み取り専用**。kubectl get / exec の SELECT・kcadm get・ls・rabbitmqctl list_queues・HTTP GET だけを行う。
@@ -181,7 +186,7 @@ function finding(asset, check, status, detail) {
   return { asset, check, status, detail };
 }
 
-function evaluate(data, expected, sinceIso) {
+function evaluate(data, expected, sinceIso, before = null) {
   const since = toMillis(sinceIso);
   if (since === null) throw new Error(`--since を時刻として読めない: ${sinceIso}`);
   const out = [];
@@ -216,10 +221,18 @@ function evaluate(data, expected, sinceIso) {
     if (t === undefined) out.push(finding('PostgreSQL', `MSP の DB ${db} を作り直した`, 'fail', '存在しない'));
     else out.push(finding('PostgreSQL', `MSP の DB ${db} を作り直した`, t !== null && t >= since ? 'ok' : 'fail', `作成 ${new Date(t).toISOString()}`));
   }
+  const astBefore = before ? new Set((before.postgres?.databases || []).map((d) => d.db)) : null;
   for (const db of expected.databases.ast) {
     const t = dbCreated.get(db);
-    if (t === undefined) out.push(finding('PostgreSQL', `AST の DB ${db} を消していない`, 'skip', '存在しない（AST 未配備）'));
-    else out.push(finding('PostgreSQL', `AST の DB ${db} を消していない`, t !== null && t < since ? 'ok' : 'fail', `作成 ${new Date(t).toISOString()}`));
+    if (t === undefined && astBefore && astBefore.has(db)) {
+      out.push(finding('PostgreSQL', `AST の DB ${db} を消していない`, 'fail', '切替前に在ったが切替後に無い（消しすぎ）'));
+    } else if (t === undefined) {
+      out.push(finding('PostgreSQL', `AST の DB ${db} を消していない`, 'skip',
+        astBefore ? '切替前から無い（AST 未配備）' : '存在しない（--baseline が無いので消失と未配備を区別できない）'));
+    } else out.push(finding('PostgreSQL', `AST の DB ${db} を消していない`, t !== null && t < since ? 'ok' : 'fail', `作成 ${new Date(t).toISOString()}`));
+  }
+  if (!before) {
+    out.push(finding('基準', '切替前の実測（--baseline）で消失を見た', 'skip', '--baseline が無い。AST の DB と realm の消失は検出していない'));
   }
 
   const authz = data.postgres?.authz;
@@ -242,6 +255,14 @@ function evaluate(data, expected, sinceIso) {
   const realms = kc.realms || [];
   out.push(finding('Keycloak', `realm ${expected.realm.realm} がある`, realms.includes(expected.realm.realm) ? 'ok' : 'fail', realms.join(', ')));
   out.push(finding('Keycloak', `旧名 ${LEGACY_REALM} が無い`, realms.includes(LEGACY_REALM) ? 'fail' : 'ok', realms.join(', ')));
+  out.push(finding('Keycloak', 'master realm を消していない', realms.includes('master') ? 'ok' : 'fail', realms.join(', ')));
+  if (before) {
+    const kept = (before.keycloak?.realms || []).filter((r) => r !== expected.realm.realm && r !== LEGACY_REALM && r !== 'master');
+    for (const r of kept) {
+      out.push(finding('Keycloak', `作り直しの対象でない realm ${r} を消していない`, realms.includes(r) ? 'ok' : 'fail',
+        realms.includes(r) ? '切替前後とも在る' : '切替前に在ったが切替後に無い（消しすぎ）'));
+    }
+  }
   const humans = (kc.users || []).filter((u) => !String(u.username).toLowerCase().startsWith(SERVICE_ACCOUNT_PREFIX));
   const stale = humans.filter((u) => !(toMillis(u.createdTimestamp) >= since)).map((u) => u.username);
   out.push(finding('Keycloak', '人間の利用者はすべて作り直し後に作られた', stale.length ? 'fail' : 'ok',
@@ -273,10 +294,11 @@ function evaluate(data, expected, sinceIso) {
     if (other.length) out.push(finding('RabbitMQ', 'MSP 以外のキューの滞留（参考）', 'skip', other.map((q) => `${q.name}=${q.messages}`).join(', ')));
   }
 
+  // 参考表示のみ（合否に使わない）。head の最古は古いブロックが在ると TSDB 全体の最古ではない。
+  // 作り直しの判定は prometheus-data の PVC の作成時刻（上の PVC の行）で行う。
   const minTime = data.prometheus ? toMillis(data.prometheus.minTime) : null;
-  if (!data.prometheus) out.push(finding('可観測性', 'Prometheus の最古サンプルが作り直し後', 'skip', '読めなかった（可観測性が無効なら正常）'));
-  else out.push(finding('可観測性', 'Prometheus の最古サンプルが作り直し後', minTime !== null && minTime >= since ? 'ok' : 'fail',
-    `minTime ${minTime === null ? '(なし)' : new Date(minTime).toISOString()}`));
+  out.push(finding('可観測性', 'Prometheus の head の最古サンプル（参考。判定は PVC の作成時刻）', 'skip',
+    data.prometheus ? `head minTime ${minTime === null ? '(なし)' : new Date(minTime).toISOString()}` : '読めなかった'));
 
   return out;
 }
@@ -502,12 +524,13 @@ async function main(argv) {
   const data = input ? JSON.parse(fs.readFileSync(input, 'utf8')) : await collect(expected.databases);
   if (dump) fs.writeFileSync(dump, `${JSON.stringify(data, null, 2)}\n`);
 
+  const before = baseline ? JSON.parse(fs.readFileSync(baseline, 'utf8')) : null;
   const result = { realm: data.realm, counts: countsOf(data) };
   if (since) {
     result.since = since;
-    result.findings = evaluate(data, expected, since);
+    result.findings = evaluate(data, expected, since, before);
   }
-  if (baseline) result.comparison = compareCounts(JSON.parse(fs.readFileSync(baseline, 'utf8')), data);
+  if (before) result.comparison = compareCounts(before, data);
   process.stdout.write(asJson ? `${JSON.stringify(result, null, 2)}\n` : `${renderText(result)}\n`);
   return result.findings && result.findings.some((f) => f.status === 'fail') ? 1 : 0;
 }

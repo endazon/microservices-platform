@@ -62,6 +62,18 @@ issues: [#457, #454, #439, #458]
 
 🔴 **「PVC を消して作り直す」を Postgres と Keycloak に当ててはならない。** ai-stock-trading の DB と、master / ai-stock-trading の realm まで消える。
 
+🔴 **ai-stock-trading の稼働中の身元は、作り直す realm `platform` の中にある。** ローカルクラスタの連携配備では
+ai-stock-trading は自分の realm ではなく platform realm で認証する。そこには ai-stock-trading のサービス用クライアント 4 つ
+（`ai-stock-trading-kb-writer` / `ai-stock-trading-llm-caller` / `ai-stock-trading-svc` / `ai-stock-trading-owner`）、realm ロール
+`trading-owner`（と `trading-service`）、利用者へのロールの付与（`developer` の `trading-owner` ほか）が入っている。
+**作り直すと、これらは realm.json に宣言されたとおりにしか戻らない。**
+
+- **ローテーションした client secret は宣言値（開発用の既定）に戻る。** ai-stock-trading 側が別の値を持っていれば、サービス間の認証が失敗する。
+- **実行時に付けたロール（宣言に無い利用者への `trading-owner` など）は失われる。** 売買 PoC の操作者が画面に入れなくなる。
+- 宣言にある分（`developer` の `trading-owner` など）は戻る。
+
+**売買 PoC に直接効く。** 手順 0 の 6 で現状を書き出し、手順 6 の 4 で戻す。
+
 🔴 **RabbitMQ の滞留を残してはならない。** 文書の更新・削除のイベントが作り直した DB と索引へ届くと、**存在しない文書を指すデータ**（グラフのノード・Wiki のページ・索引の点）が作られる。
 
 ## 検証スクリプト
@@ -70,11 +82,17 @@ issues: [#457, #454, #439, #458]
 
 | 側 | 見るもの | 合格の条件 |
 | --- | --- | --- |
-| 捨てた側 | MSP の DB の作成時刻・realm の人間の利用者の作成時刻・作り直した PVC の作成時刻・Prometheus の最古サンプル | 破棄を始めた時刻（`--since`）以降 |
-| **触らない側** | ai-stock-trading の DB の作成時刻・`postgres-data` / `keycloak-data` / `vault-data` の作成時刻 | **`--since` より前のまま**（消しすぎを捕まえる） |
+| 捨てた側 | MSP の DB の作成時刻・realm の人間の利用者の作成時刻・作り直した PVC の作成時刻（可観測性はこれで見る） | 破棄を始めた時刻（`--since`）以降 |
+| **触らない側（作り直していないこと）** | ai-stock-trading の DB の作成時刻・`postgres-data` / `keycloak-data` / `vault-data` の作成時刻 | **`--since` より前のまま**（作り直しすぎを捕まえる） |
+| **触らない側（消えていないこと）** | 切替前の実測（`--baseline`）に在った ai-stock-trading の DB と、作り直しの対象でない realm（master・ai-stock-trading ほか） | **切替後にも在る**。master は `--baseline` が無くても見る |
 | 中身 | realm `platform` がある・旧名が無い・seed 利用者とクライアントがそろう／ABAC の属性辞書とポリシーが seed と一致／Wiki.js のページ 0／Qdrant の点 0・MinIO のオブジェクト 0／MSP のキューの滞留 0 | 各行のとおり |
 
 - fail が 1 件でもあれば終了コード 1、収集自体の失敗は 2。**読めなかった資産は fail として出る**（0 件として扱わない）。
+- 🔴 **`--baseline` を必ず渡す。** 消えたものには作成時刻が無いので、「消えた」は切替前の実測と突き合わせないと見えない。
+  `--baseline` が無いと、ai-stock-trading の DB が無いことは「未配備」と区別できず skip になり、realm の消失（master を除く）も見ない。
+  その場合は「基準」の行が skip として出る。
+- Prometheus の head の最古サンプルは参考表示である。古いブロックが残っていると head の最古は TSDB 全体の最古ではないので、
+  可観測性の作り直しは PVC の作成時刻で判定する（永続化を使っていない配備では PVC が無いので skip になる）。
 - 件数 0 の判定（Qdrant・MinIO）は**書き込みを再開する前**に測る。再開後は合成監視や取り込みで増えるのが正常である。
 - DB 名の一覧は本書に書かない。`deploy/local/infra/postgres.yaml` の初期化 SQL が単一情報源であり、スクリプトがそこから MSP 側と ai-stock-trading 側を分類する。
 
@@ -100,10 +118,17 @@ node scripts/measure-cutover-inventory.js --input cutover-after.json --since 202
 ### 0. 事前確認（窓の前日まで）
 
 1. go-live の前提（BFF セッション方式の完了・セキュリティ暫定運用の解消）の状態を確かめる。本切替を go-live と同時に行うかどうかはオーナーが決める。
-2. 秘密情報の画面で入れた値が Vault に残っていることを確かめる（Vault は触らない。起動器の再実行は既存の値を上書きしない）。
+2. 秘密情報の画面で入れた値が Vault に残っていることを確かめる（Vault は触らない）。🔴 **起動器の再実行が既存の値を
+   上書きしないのは、秘密情報の画面の項目（`deploy/bootstrap/sc22-secret-items.json` の対象）だけである。** それ以外の
+   `secret/msp/*`（DB・MinIO・RabbitMQ のパスワード、各サービスの client secret ほか）は起動器が**毎回全置換する**
+   （env が無ければ開発用の既定値）。手で変えた値があれば、4 の起動器に同じ env を渡すか、後で入れ直す。
 3. realm のクライアントの secret を realm.json の宣言値と違う値へ変えていないか確かめる。変えているなら、作り直しの後に配り直す手順を用意する。
 4. オーナーが実行時に作った利用者（seed 利用者以外）を書き出しておく。作り直しでは**入り直らない**。
-5. 起動器（`scripts/k8s-local-up.sh`）を今のクラスタを作ったときと同じ環境変数で再実行できることを確かめる（`LOCALEDGE` / `OBSERVABILITY` / `VAULT` ほか）。
+5. 起動器（`scripts/k8s-local-up.sh`）を今のクラスタを作ったときと同じ環境変数で再実行できることを確かめる（`LOCALEDGE` / `OBSERVABILITY` / `VAULT` / `ARGOCD` ほか）。
+6. **ai-stock-trading の身元を書き出す**（破棄の境界の節）: realm `platform` の `ai-stock-trading-*` 4 クライアントの現在の secret と、
+   `trading-owner` / `trading-service` を持つ利用者・サービスアカウントの一覧。realm.json の宣言と違うものに印を付ける。
+7. **`ARGOCD=1` で立てたクラスタなら**、Application `microservices-platform`（`argocd` namespace）は自動同期（`selfHeal` / `prune`）である。
+   窓の間に 3 の削除と競合しないよう、2 で自動同期を止める（下記）。4 の起動器の再実行が Application を当て直すので、自動同期はそこで戻る。
 
 ### 1. 事前実測（窓の開始時）
 
@@ -119,6 +144,8 @@ node scripts/measure-cutover-inventory.js --dump cutover-before.json
 # 破棄を始めた時刻を記録する（検証の --since に渡す）
 date -u +%Y-%m-%dT%H:%M:%SZ
 # ai-stock-trading の書き込み（文書の取り込み・LLM 呼び出し）を止める（オーナーが PoC の止め方を選ぶ）
+# ARGOCD=1 のクラスタだけ: 自動同期を止める（selfHeal が 3 で消した PVC を即座に作り直し、prune が差分を消しに来るのを防ぐ）
+kubectl -n argocd patch application microservices-platform --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}'
 ```
 
 🔴 **MSP のサービスを `kubectl scale` で 0 にしてはならない。** chart の Deployment は Helm がサーバサイド apply で所有しており、
@@ -188,14 +215,19 @@ node scripts/measure-cutover-inventory.js --since <2 で記録した時刻> --ba
 node scripts/check-stack-ready.js      # realm の乖離・永続化・イメージ参照の門を含む
 ```
 
-どちらも緑であることを確かめる。🔴 **検証スクリプトが「触らない側」で fail を出したら、消しすぎである。** 再開せずに原因を調べる。
+どちらも緑であることを確かめる。🔴 **検証スクリプトが「触らない側」で fail を出したら、作り直しすぎか消しすぎである。** 再開せずに原因を調べる。
+`--baseline` を付け忘れると消失は見えない（「基準」の行が skip で出る）。
 
 ### 6. 再開
 
 1. realm の人間の利用者でログインし、TOTP を登録し直す（seed 利用者は初回ログインで登録を求められる）。
 2. 0 の 4 で書き出した利用者を作り直す。
 3. 0 の 3 で配り直しが要るとした secret を配り直す。
-4. ai-stock-trading の書き込みを再開し、文書の取り込みが 400 にならないこと（タグ辞書が入っていること）を確かめる。
+4. **0 の 6 で書き出した ai-stock-trading の身元を戻す**: 宣言値へ戻った `ai-stock-trading-*` の secret を ai-stock-trading 側の値と揃え
+   （どちらへ揃えるかはオーナーが決める。realm へ手で入れ直した値は、次に realm の差分 Job を走らせたとき（起動器の再実行を含む）宣言値へ戻されるので、宣言側を変えないなら ai-stock-trading 側を揃える）、
+   実行時に付けていた `trading-owner` などのロールを付け直す。売買 PoC の操作者でログインし、画面に入れることを確かめる。
+5. `ARGOCD=1` なら、Application `microservices-platform` の自動同期が戻っていることを確かめる（4 の起動器が当て直す）。
+6. ai-stock-trading の書き込みを再開し、文書の取り込みが 400 にならないこと（タグ辞書が入っていること）を確かめる。
 
 ## ロールバック・リスク
 
@@ -209,10 +241,14 @@ node scripts/check-stack-ready.js      # realm の乖離・永続化・イメー
 
 | リスク | 起きること | 抑え方 |
 | --- | --- | --- |
-| 消しすぎ（共有 PVC を消す） | ai-stock-trading の DB・master / ai-stock-trading の realm・Vault の秘密が消える | 破棄の境界の表を守る。検証スクリプトの「触らない側」が fail で出す |
+| 作り直しすぎ（共有 PVC を消して作り直す） | ai-stock-trading の DB・master / ai-stock-trading の realm・Vault の秘密が消える | 破棄の境界の表を守る。検証スクリプトが共有 PVC と ai-stock-trading の DB の作成時刻で fail を出す |
+| 消しすぎ（ai-stock-trading の DB や realm を個別に消す） | 同上 | 検証スクリプトが **`--baseline` を渡したときだけ** fail を出す（消えたものには作成時刻が無い）。master realm の消失は `--baseline` が無くても出す |
 | 消し足りない（旧 realm・旧 DB が残る） | 旧データの上で動き続け、切り替えたつもりになる | 検証スクリプトの「捨てた側」が fail で出す |
-| MSP のキューの滞留 | 存在しない文書を指すデータが作られる | 3(c) で空にし、検証スクリプトが滞留 0 を見る |
-| タグ辞書の入れ忘れ | ai-stock-trading の文書の保存が全件 400 | 4 で `TAGSEED=1`。6 の 4 で確かめる |
+| MSP のキューの滞留 | 存在しない文書を指すデータが作られる | 3(b) で空にし、検証スクリプトが滞留 0 を見る |
+| タグ辞書の入れ忘れ | ai-stock-trading の文書の保存が全件 400 | 4 で `TAGSEED=1`。6 の 6 で確かめる |
+| ai-stock-trading の身元の巻き戻り | client secret が宣言値へ戻りサービス間の認証が失敗する。実行時に付けた `trading-owner` が消え操作者が画面に入れない | 0 の 6 で書き出し、6 の 4 で戻す |
+| `ARGOCD=1` の自動同期 | 削除の途中で PVC が作り直される・差分が消される | 2 で自動同期を止める。4 の起動器が戻す |
+| 秘密情報の画面の外の `secret/msp/*` の巻き戻り | 手で変えた値が起動器の再実行で既定値へ戻る | 0 の 2 |
 | realm の secret の巻き戻り | 宣言値と違う secret を使うサービスが認証に失敗する | 0 の 3 で確かめ、6 の 3 で配り直す |
 | 人の資格情報の消失 | TOTP の再登録・実行時に作った利用者の作り直しが要る | 0 の 4 と 6 の 1・2 |
 
@@ -223,7 +259,7 @@ node scripts/check-stack-ready.js      # realm の乖離・永続化・イメー
 1. 起動器で経路B を立てる（今の稼働クラスタと同じ環境変数）。ai-stock-trading も配備する（同居の境界を確かめるため）。
 2. 適当なデータを入れる（検索検証用の文書・Wiki のページ・利用者 1 人）。
 3. 本書の手順 1〜5 を通し、**窓の長さ（2 の開始から 5 の緑まで）を測る**。
-4. 検証スクリプトが緑になること、**および** `postgres-data` を消した場合に「触らない側」が fail を出すことを確かめる（陰性対照）。
+4. 検証スクリプトが緑になること、**および** `postgres-data` を消した場合と ai-stock-trading の DB を 1 つ DROP した場合（`--baseline` つき）に「触らない側」が fail を出すことを確かめる（陰性対照）。
 5. 測った窓の長さと、手順どおりに動かなかった箇所を記録し、本書を直す。
 
 ## オーナー作業（AI は行わない）
@@ -235,6 +271,8 @@ node scripts/check-stack-ready.js      # realm の乖離・永続化・イメー
 | 手順 0〜6 の実行 | 稼働クラスタのデータを消す |
 | 任意の保全の要否 | 裁定の運用判断 |
 | TOTP の再登録・実行時に作った利用者の作り直し・secret の配り直し | 人の資格情報 |
+| ai-stock-trading の身元（`ai-stock-trading-*` 4 クライアントの secret・実行時に付けた `trading-owner` などのロール）の書き出しと復元 | 売買 PoC の認証に直接効く |
+| `ARGOCD=1` のクラスタでの自動同期の停止と復帰の確認 | 稼働クラスタの設定 |
 | 旧 ArgoCD Application・イメージ・不要ブランチの整理 | 稼働クラスタ・レジストリ・リモートへの破壊的操作 |
 
 ## 関連仕様
