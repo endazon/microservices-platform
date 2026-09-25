@@ -3,15 +3,15 @@ title: セキュリティ仕様書
 type: security-spec
 status: in-progress
 created: 2026-07-02
-updated: 2026-09-16
+updated: 2026-09-25
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096]
 iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454]
-specs: [20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile]
-issues: [#55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, AST#18, AST#24, AST#727, planning#383]
+specs: [20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile]
+issues: [#1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, AST#18, AST#24, AST#727, planning#383]
 -->
 
 # セキュリティ仕様書
@@ -305,6 +305,12 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
 | 秘密情報の一覧・投入（秘密情報・接続設定の管理。`/bff/secrets` 系） | `action`（`secret.item.list` / `secret.item.update`）・`subject`（利用者名）・`outcome`（`granted` / `denied` / `failed`〔保管先が未構成・不達・拒否・項目の現在の版が削除済み〕）・`detail`（項目名・プロパティ名・書き込み後の版・更新の理由、または拒否・失敗の理由）。🔴 **値・値の長さ・値のハッシュは記録しない**（テストが値の不在を監査・ログの両方で固定する） | 同上 |
 | LLM egress ルーティング判断（送信先切替・越境統制） | 構造化ログ（`sensitivity`・`purpose`（log-forging 対策でサニタイズ）・`allowedTiers`／拒否理由。`LlmRouter` / `EmbeddingRouter`） | 同上。※ 形式監査（`IAuditLogger`）ではなく越境統制の観測ログ。将来的な `IAuditLogger` 化はフォローアップ |
 
+- **`outcome` の値域は 2 値ではない。** `granted` / `denied` に加え、秘密情報の投入の `failed`、同期競合の `recorded`、
+  通知の送信上限の `reached` などがある（値域は呼び出し側が決め、記録側では閉じない）。**監査を抽出するときは `Audit=true`
+  で絞り、`outcome` を `granted` / `denied` の 2 値で列挙しない** —— 列挙すると `failed` の記録が抽出から黙って落ちる。
+  2026-09-25 時点で、本リポジトリには監査を抽出するクエリ・ルール・ダッシュボードは無く、収集器のログ経路
+  （`memory_limiter` と `batch` だけ）も値で落とさないため、`failed` は他の値と同じ経路で可観測性基盤へ届く。
+  抽出クエリを新設するときは本項に従うこと。
 - 監査ログの保持期間・改ざん防止・エクスポートは可観測性基盤側の運用設定で定める（`docs/operations/operations.md` の
   監視・アラート／バックアップと連動。#198）。NFR「監査ログ保持」の具体的な保管期間は運用整備で確定する。
 

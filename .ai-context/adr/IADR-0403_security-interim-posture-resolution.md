@@ -21,9 +21,10 @@ related_ids:
   - IADR-0154
   - IADR-0377
   - IADR-0379
+  - IADR-0458
 author: claude
 created: 2026-09-06
-updated: 2026-09-06
+updated: 2026-09-25
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0004_authz-abac.md 決定
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md 決定
@@ -306,6 +307,11 @@ ESO マニフェストは **25 本**（`deploy/local/vault/eso/`）で、うち 
   1. コネクタ資格情報の Vault 参照化（決定 8 の 4 段）。着地すれば **#447 も閉じられる**。
   2. CI でメッシュ有効なクラスタを立て、G12 を実際に走らせる（決定 7）。
   3. east-west gRPC の残り 31 本の展開に伴い、決定 3 の残差 3 件が S へ動くことを確認する。
+     ［2026-09-25 追記 / #1397］🔴 **`ConversionService` 5 口はこの道では S へ動かなくなった。** オーナー裁定で
+     BFF → 各サービスの利用者資格情報の中継（BFF → `ConversionService` を含む）は east-west に数えないと決まり
+     （[[IADR-0458]]）、east-west gRPC 移行は `ConversionService` に及ばない。残差の閉じ方は [[IADR-0458]] 「残るもの」4 が
+     計画への環流として持つ。**他の 2 件（`AuthorizationService` REST `/authz/scope`・`LlmGateway` REST 3 口）は
+     サービス → サービス（または BFF 自身の s2s）であり、本フォローアップのまま変わらない。**
 
 ## 計画への環流
 

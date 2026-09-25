@@ -97,6 +97,10 @@ jobs:
       # 分岐を、`vault` をスタブへ差し替えた Bash テストで固定する。実 Vault・実クラスタは要らない。
       - name: Test local Vault persistence entrypoint (vault stub)
         run: bash deploy/local/vault-persistence/vault-entrypoint.test.sh
+      # NFR, ADR-0006, IADR-0066, Issue #1422: k8s-local-down.sh の撤去順（webhook → finalizer → Helm → 名前空間 →
+      # CRD / PV → 検証）と、既定の dry-run が読み取りしか起動しないことを、kubectl / helm / k3d をスタブへ差し替えて固定する。
+      - name: Test local k8s teardown order and read-only dry-run (kubectl / helm stub)
+        run: bash scripts/k8s-local-down.test.sh
 
   # NFR / IADR-0232 決定 6: 依存ゼロの Node 検査を 1 ジョブへ束ねる（統合前は 12 の独立ジョブ）。
   #
@@ -666,6 +670,8 @@ jobs:
       # **ここが突合の実走点である。** 上の submodule 取得ステップで AST 専用レルムの宣言が読めるため、
       # 基盤レルム（正本）と写しの同名ロール・AST 所有クライアントを実際に突き合わせられる
       # （static-checks 側の同名ステップは submodule 未取得で skip になる）。
+      # Issue #1424 / AST#787: 同じ本走査が写しの export の varchar(255) 超過も止める（基盤が同じ Keycloak へ
+      # import するため。超えると integration-stack で Keycloak が起動しない）。
       # 自己試験は static-checks で毎回走っているため、ここでは本走査だけを置く。
       - name: Check realm copy drift against the AST realm export
         if: ${{ !cancelled() }}

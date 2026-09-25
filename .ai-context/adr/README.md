@@ -535,3 +535,5 @@
 | [IADR-0455](./IADR-0455_publish-gate-all-paths-withdrawal-and-private-note-scope.md) | **`DocumentUpdated` の発行はすべて門を通す**（#1471）。属性を書き換える経路は撤収の形の門を使い、素の発行は `private`。🔴 門の述語は個人資料にだけ効かせ、組織文書の発行はデータに依らず不変 | Accepted |
 | [IADR-0456](./IADR-0456_sc22-property-kinds-force-sync-reloader-and-seed-if-absent.md) | **SC-22 のプロパティの種別・即時同期・Reloader・seed-if-absent**（#1477） | Accepted |
 | [IADR-0457](./IADR-0457_local-vault-file-storage-pvc-and-in-pod-unseal.md) | **経路B の Vault を file ストレージ＋PVC で永続化し、Pod 内ラッパーが init / unseal / 固定 root トークンを自動化する**（#1479）。既定オン・`PERSIST=0` で従来の `-dev`。k3s 再起動で画面 SC-22 の秘密と ESO の設定が消える問題を解く | Accepted |
+| [IADR-0458](./IADR-0458_bff-user-credential-relay-is-edge-not-east-west.md) | **BFF はエッジであり、BFF が利用者の資格情報を後段へ付けて中継する 15 本は east-west に数えない**（#1397・オーナー裁定。計画 ADR への反映は環流待ち） | Accepted |
+| [IADR-0459](./IADR-0459_cutover-discard-and-rebuild-boundaries-and-verification.md) | **切替は 6 資産の破棄と realm.json からの作り直しで行う**（#457）。共有 PVC は消さず DB 単位・realm 単位で消し、検証は作り直しの時刻で見る | Accepted |
