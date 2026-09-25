@@ -2,7 +2,7 @@
 title: "BFF → 各サービスの利用者資格情報を運ぶ 15 本を east-west に数えない —— オーナー裁定の記録と数え方の追随（#1397）"
 type: spec
 status: in-progress
-related_ids: [NFR-09, NFR-16, ADR-0029, ADR-0032, ADR-0075, ADR-0086, ADR-0089, IADR-0379, IADR-0401, IADR-0402, IADR-0426, IADR-0462]
+related_ids: [NFR-09, NFR-16, ADR-0029, ADR-0032, ADR-0075, ADR-0086, ADR-0089, IADR-0379, IADR-0401, IADR-0402, IADR-0426, IADR-0458]
 author: claude
 created: 2026-09-25
 updated: 2026-09-25
@@ -19,7 +19,7 @@ plan_refs:
 
 - 非機能要件: `NFR-09`（全 API で OIDC/JWT 認証。暫定条項は「エッジ（BFF）で担保」）／`NFR-16`（サービス間 mTLS）
 - 関連 ADR: `ADR-0029`（east-west 同期は gRPC）／`ADR-0075` 決定 3・5・6（一括移行・実装側 IADR で REST 継続を自認しない・基盤先行は MSP 自身を含む）／`ADR-0086` 決定 1・3（利用者文脈は本文で運ぶ・対象 2 経路）／`ADR-0089` 決定 1（REST 並走の経路は退役をもって解けたと数える）／`ADR-0032`（BFF セッション方式）
-- 関連 IADR: `IADR-0379` 決定 4（north-south = 利用者トークン／east-west = s2s）／`IADR-0401`・`IADR-0402`（BFF の 15 本を数えた先行記録）／`IADR-0426`（「扱いは未定」と書いた記録）／**`IADR-0462`（本作業で起こす。事前割り当て）**
+- 関連 IADR: `IADR-0379` 決定 4（north-south = 利用者トークン／east-west = s2s）／`IADR-0401`・`IADR-0402`（BFF の 15 本を数えた先行記録）／`IADR-0426`（「扱いは未定」と書いた記録）／**`IADR-0458`（本作業で起こす。事前割り当て）**
 - 起票: #1397（#1255 の 2026-09-10 コメントと 2026-09-11 監査が「扱いが未定」とした項目）
 - **オーナー裁定（2026-09-25・#1397 コメント）**: 「BFF はエッジであり、BFF → 各サービスの利用者資格情報を運ぶ 15 本は east-west（ADR-0029 の gRPC 化の対象）に含めない。IADR に記録し、ADR-0029 / ADR-0086 の扱いとして計画へ環流する。」
 - 同日の #1255 裁定: ④⑤（MCP ツール申告・introspection の扇形）は全宛先に gRPC の口を実装して移す。BFF → サービスの 15 本は #1397 の裁定により対象外。
@@ -98,9 +98,9 @@ plan_refs:
 
 | # | 対象 | 変更 |
 | --- | --- | --- |
-| 1 | `.ai-context/adr/IADR-0462_*.md`（新規） | 裁定・分類基準・15 本の列挙・#1255 本文との食い違い・計画 ADR との関係と環流 |
+| 1 | `.ai-context/adr/IADR-0458_*.md`（新規） | 裁定・分類基準・15 本の列挙・#1255 本文との食い違い・計画 ADR との関係と環流 |
 | 2 | `.ai-context/adr/README.md` | 索引へ 1 行 |
-| 3 | `docs/api/east-west-grpc.md` | §概要「対象」・§4「BFF セッション方式との分け方」・§5 の判定表・§未決事項の残り内訳を裁定と整合させる（**表示テキストへ ID を書かない**。trace ブロックへ `IADR-0462` と #1397） |
+| 3 | `docs/api/east-west-grpc.md` | §概要「対象」・§4「BFF セッション方式との分け方」・§5 の判定表・§未決事項の残り内訳を裁定と整合させる（**表示テキストへ ID を書かない**。trace ブロックへ `IADR-0458` と #1397） |
 | 4 | `docs/tech/tech-requirements.md` | 「残る east-west 31 本」（古い数）を現況へ |
 | 5 | `.ai-context/adr/IADR-0426_*.md` | 「扱いは未定のままである」の隣へ日付つき追記（決定を変える追記ではなく、未決が決まった旨の指し先） |
 
@@ -125,7 +125,7 @@ plan_refs:
 
 ## 受け入れ基準（Given-When-Then）
 
-- [ ] Given 本 PR / When `IADR-0462` を読む / Then 裁定・分類基準・15 本の列挙（名前付きクライアントと呼び出し箇所）・#1255 本文との食い違い・計画 ADR（`ADR-0029` §決定 / `ADR-0075` 決定 5・6 / `ADR-0086`）との関係が書かれている
+- [ ] Given 本 PR / When `IADR-0458` を読む / Then 裁定・分類基準・15 本の列挙（名前付きクライアントと呼び出し箇所）・#1255 本文との食い違い・計画 ADR（`ADR-0029` §決定 / `ADR-0075` 決定 5・6 / `ADR-0086`）との関係が書かれている
 - [ ] Given `docs/api/east-west-grpc.md` と `docs/tech/tech-requirements.md` / When east-west の残りを読む / Then BFF の 15 本が east-west の残りに数えられておらず、「扱いは未定」「残る 31 本」が残っていない（原文を残す箇所は日付つき追記で解消が示されている）
 - [ ] Given `docs/` の変更 / When `node scripts/check-trace-blocks.js` / Then 緑（表示テキストへ ID を書いていない）
 - [ ] Given 索引 / When `node scripts/scripts.repo.test.js` 系の索引検査 / Then 緑
@@ -136,3 +136,8 @@ plan_refs:
 - #1255 の残作業（④⑤ の gRPC 化・REST 退役・`IADR-0379` 決定 5 の反転）。本裁定はその射程から 15 本を外すだけである。
 - 計画 ADR の文面の改定（計画側の判断。環流の下書きを報告に添えるが起票しない）。
 - `NFR-09` 恒久条項の経路ごとの達成の数え方への影響（BFF の後段は利用者トークンを自分で検証しており、エッジの中継は「全 API で OIDC/JWT 認証」と矛盾しない。記録に留める）。
+
+［2026-09-25 追記 / #1397］**実装 ADR の番号を `IADR-0462` から `IADR-0458` へ改番した。** 事前割り当ての 0458〜0461 が
+どの PR にも使われず欠番になり、`check-adr-numbering` が止めたためである（develop の最大は `IADR-0457`）。
+本書・索引・trace ブロック・`IADR-0426` の追記はすべて `IADR-0458` に追随させた。最初のコミットの件名に残る
+`IADR-0462` は履歴を書き換えないため残る（PR タイトルは `IADR-0458` へ直した）。

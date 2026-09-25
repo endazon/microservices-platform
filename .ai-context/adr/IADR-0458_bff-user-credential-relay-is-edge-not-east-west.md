@@ -1,5 +1,5 @@
 ---
-title: IADR-0462 BFF はエッジであり、BFF が利用者の資格情報を後段へ付けて中継する 15 本は east-west に数えない（オーナー裁定の記録。計画 ADR への反映は環流待ち）
+title: IADR-0458 BFF はエッジであり、BFF が利用者の資格情報を後段へ付けて中継する 15 本は east-west に数えない（オーナー裁定の記録。計画 ADR への反映は環流待ち）
 type: impl-adr
 status: Accepted
 related_ids:
@@ -25,7 +25,7 @@ plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md NFR-09（暫定条項「エッジ（BFF）で担保」）
 ---
 
-# IADR-0462: BFF の利用者資格情報の中継は east-west ではない（#1397）
+# IADR-0458: BFF の利用者資格情報の中継は east-west ではない（#1397）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
