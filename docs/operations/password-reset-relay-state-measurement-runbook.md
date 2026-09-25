@@ -10,8 +10,8 @@ updated: 2026-09-26
 ids: [SC-15, SC-13, SC-10, FR-05, NFR-13]
 adrs: [ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097, ADR-0103, ADR-0108]
 iadrs: [IADR-0347, IADR-0369, IADR-0404, IADR-0421, IADR-0427, IADR-0432, IADR-0463]
-specs: [20260926_issue-1245_pr-d-state-measurement-runbook, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260911_issue-1245_login-existence-disclosure]
-issues: [#1245, #1143, #1169, #1319, #1355, #1378, #1388, #1526, planning#596, planning#602, planning#656, planning#659]
+specs: [20260926_issue-1245_pr-d-state-measurement-runbook, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260911_issue-1245_login-existence-disclosure, 20260926_issue-1558_runbook-nits]
+issues: [#1245, #1143, #1169, #1319, #1355, #1378, #1388, #1526, #1558, planning#596, planning#602, planning#656, planning#659]
 -->
 
 # 運用 Runbook: パスワードリセットの近接 MTA の状態を作り、窓とキューを実測する
@@ -539,13 +539,20 @@ echo "C3-fault-end $(ts)"   | tee -a "$PRD/timeline.txt"
 **戻す**（§0.5 の `postconf` の行）:
 ```bash
 echo "C3-restore-begin $(ts)" | tee -a "$PRD/timeline.txt"
-# スナップショットの explicit=[] が空だった場合:
+# C3a（queue_minfree）—— スナップショットの explicit=[] が空だった場合:
 kubectl -n platform-infra exec deploy/mail-relay -c postfix -- postconf -X queue_minfree
 # explicit=[queue_minfree = <値>] だった場合は代わりに: postconf -e 'queue_minfree=<値>'
+# C3b（smtpd_client_restrictions）—— 上の 2 行の代わりに、スナップショットの
+# explicit=[smtpd_client_restrictions = <値>] の <値> をそのまま戻す:
+#   kubectl -n platform-infra exec deploy/mail-relay -c postfix -- postconf -e 'smtpd_client_restrictions=<値>'
 kubectl -n platform-infra exec deploy/mail-relay -c postfix -- postfix reload
 echo "C3-restore-end $(ts)"   | tee -a "$PRD/timeline.txt"
-kubectl -n platform-infra exec deploy/mail-relay -c postfix -- postconf -h queue_minfree   # スナップショットの effective と同じか
+kubectl -n platform-infra exec deploy/mail-relay -c postfix -- postconf -h queue_minfree   # C3b では smtpd_client_restrictions。スナップショットの effective と同じか
 ```
+
+🔴 **C3b に `postconf -X` を使わない。** このイメージは起動スクリプトが `smtpd_client_restrictions` を明示に書く
+（イメージのスクリプトからの導出では `permit_mynetworks,permit_sasl_authenticated,reject`。正はスナップショット）ため、
+スナップショットの `explicit=[...]` は空にならない。`-X` は Postfix の既定値へ戻すだけで、控えた値には戻らない。
 
 続けて §2.0.1 の「再開の観測」。
 
