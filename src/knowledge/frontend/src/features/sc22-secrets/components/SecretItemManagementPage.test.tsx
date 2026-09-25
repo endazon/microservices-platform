@@ -28,6 +28,7 @@ const ITEMS = [
     currentVersion: 3,
     lastUpdatedAt: '2026-09-14T01:02:03Z',
     lastUpdatedBy: 'sato.hanako',
+    supplySource: 'screen',
   },
   {
     item: 'keycloak-smtp',
@@ -37,6 +38,7 @@ const ITEMS = [
     currentVersion: null,
     lastUpdatedAt: null,
     lastUpdatedBy: null,
+    supplySource: 'git',
   },
   {
     item: 'wikijs-sync',
@@ -46,7 +48,9 @@ const ITEMS = [
     currentVersion: null,
     lastUpdatedAt: null,
     lastUpdatedBy: null,
+    supplySource: 'unknown',
   },
+  // 🔴 `supplySource` を持たない行（供給元の判定より前の BFF）。「確認できない」に倒れることの試験に使う。
   {
     item: 'ast-app-secrets',
     vaultPath: 'ai-stock-trading/app-secrets',
@@ -99,8 +103,9 @@ beforeEach(() => {
 });
 
 describe('SecretItemManagementPage (SC-22)', () => {
-  // 05_screens §SC-22 主要素 1: 列は 項目名／用途／最終更新日時／最終更新者／操作。🔴 値の列を置かない。
-  it('shows exactly the five planned columns and no value column', async () => {
+  // 05_screens §SC-22 主要素 1: 列は 項目名／用途／最終更新日時／最終更新者／操作 ＋ 供給元（ADR-0104 決定 2 で追加）。
+  // 🔴 値の列を置かない。
+  it('shows exactly the six planned columns and no value column', async () => {
     mockApi();
     await renderPage();
 
@@ -110,7 +115,7 @@ describe('SecretItemManagementPage (SC-22)', () => {
     const headers = within(await itemsTable())
       .getAllByRole('columnheader')
       .map((header) => header.textContent);
-    expect(headers).toEqual(['項目名', '用途', '最終更新日時', '最終更新者', '操作']);
+    expect(headers).toEqual(['項目名', '用途', '最終更新日時', '最終更新者', '供給元', '操作']);
     expect(headers.some((header) => /値/.test(header ?? ''))).toBe(false);
     // 陽性対照: 行は 4 件描かれている（見出し行 ＋ 4）。
     expect(within(await itemsTable()).getAllByRole('row')).toHaveLength(5);
@@ -309,7 +314,8 @@ describe('SecretItemManagementPage (SC-22)', () => {
       lastUpdatedAt: null,
       lastUpdatedBy: null,
     },
-  ];
+    // 供給元はすべて「画面」（種別の試験に供給元の表示を混ぜない。供給元は下の ADR-0104 の試験が固定する）。
+  ].map((row) => ({ ...row, supplySource: 'screen' }));
 
   function mockKindApi(syncRequested = true) {
     mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
@@ -457,6 +463,93 @@ describe('SecretItemManagementPage (SC-22)', () => {
       expect(form.getByTestId('secret-sync-status')).toHaveTextContent(text);
     },
   );
+
+  // ── 供給元と消費側の再起動（ADR-0104 決定 2・4, IADR-0460, #1502）
+
+  const findRow = async (name: string) =>
+    within(await itemsTable())
+      .getAllByRole('row')
+      .find((row) => within(row).queryByText(name))!;
+
+  // T-72: 供給元は 3 値を別々に出し（色 ＋ アイコン ＋ テキスト）、値が無い・未知なら「確認できない」に倒す（推測しない）。
+  it('shows the supply source per item and never guesses when it is missing', async () => {
+    mockApi();
+    await renderPage();
+
+    expect(within(await findRow('外部 LLM の API キー')).getByText('画面')).toBeInTheDocument();
+    expect(
+      within(await findRow('メール送信（SMTP）の認証情報')).getByText('Git'),
+    ).toBeInTheDocument();
+    expect(
+      within(await findRow('Wiki 同期の API キー')).getByText('確認できない'),
+    ).toBeInTheDocument();
+    // 🔴 `supplySource` を持たない行も「確認できない」（「画面」にも「Git」にも倒さない）。
+    const missing = within(await findRow('株式自動売買の外部 API キーと通知'));
+    expect(missing.getByText('確認できない')).toBeInTheDocument();
+    expect(missing.queryByText('画面')).toBeNull();
+    expect(missing.queryByText('Git')).toBeNull();
+    expect(screen.getByTestId('secrets-supply-note')).toHaveTextContent('反映されません');
+  });
+
+  // T-73: Git から供給されている項目は、書き込みを拒否せず、書いても反映されないことを送る前と後の両方で伝える。
+  // 再起動の注記は出さない（Secret が変わらないので再起動も起きない）。同期の成否の文言も出さない。
+  it('warns before and after writing that a Git-supplied item will not take effect, without blocking the write', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    const form = within(await openForm(user, 'メール送信（SMTP）の認証情報'));
+
+    expect(form.getByTestId('secret-supply-git')).toHaveTextContent('反映されません');
+    expect(form.queryByTestId('secret-restart-note')).toBeNull();
+
+    await user.type(form.getByLabelText('新しい値'), PLACEHOLDER);
+    await user.type(form.getByLabelText('新しい値（確認のためもう一度）'), PLACEHOLDER);
+    const submit = form.getByRole('button', { name: 'このプロパティを更新する' });
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.filter(([, init]) => (init as RequestInit)?.method === 'PUT'),
+      ).toHaveLength(1),
+    );
+    expect(await form.findByTestId('secret-not-applied')).toHaveTextContent('反映されません');
+    expect(form.queryByTestId('secret-sync-status')).toBeNull();
+  });
+
+  // T-74: 供給元を確認できない項目は、反映されるかを画面が言えないことを伝える（再起動の注記は出す）。
+  it('says it cannot tell whether a write will take effect when the supply source is unknown', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    const form = within(await openForm(user, 'Wiki 同期の API キー'));
+
+    expect(form.getByTestId('secret-supply-unknown')).toHaveTextContent('確認できません');
+    expect(form.queryByTestId('secret-supply-git')).toBeNull();
+    expect(form.getByTestId('secret-restart-note')).toBeInTheDocument();
+  });
+
+  // T-75: 送る前に「消費側が再起動する」旨を項目ごとに出す。自動で作り直される消費側と、OpenD（手動）を書き分ける。
+  it('tells before writing that the consumer restarts, and that OpenD needs a manual restart', async () => {
+    mockKindApi();
+    const user = userEvent.setup();
+    await renderPage();
+
+    const app = within(await openForm(user, '株式自動売買の外部 API キーと通知'));
+    expect(app.getByTestId('secret-restart-note')).toHaveTextContent('自動で再起動されます');
+    expect(app.getByTestId('secret-restart-note')).toHaveTextContent('稼働中の処理を中断');
+    expect(app.getByTestId('secret-restart-note')).not.toHaveTextContent('OpenD');
+    await user.click(app.getByRole('button', { name: '閉じる' }));
+
+    const moomoo = within(await openForm(user, 'moomoo 証券のログイン情報'));
+    expect(moomoo.getByTestId('secret-restart-note')).toHaveTextContent(
+      'OpenD は自動では再起動されません',
+    );
+    expect(moomoo.getByTestId('secret-restart-note')).toHaveTextContent(
+      'kubectl -n ai-stock-trading rollout restart deploy/opend',
+    );
+    expect(moomoo.getByTestId('secret-restart-note')).not.toHaveTextContent('自動で再起動されます');
+  });
 
   // 05_screens §SC-22「共通シェル: 左ナビ『運用』グループ」・権限外にはメニューを表示しない。
   it('declares the navigation entry in the ops group for admins and operators only', () => {

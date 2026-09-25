@@ -55,7 +55,9 @@ public sealed class FakeVault
         Requests.Clear();
         Store.Clear();
         MetadataStatus.Clear();
-        CurrentToken = "fake-vault-token-1";
+        // 🔴 `CurrentToken` は戻さない（#1502 で実測した順序依存）。BFF の Vault クライアントはトークンを singleton で保持し、
+        // 試験をまたいで残る。トークンを回した試験（`Vault_token_is_reused_and_renewed_once_on_403`）の直後にここで既定値へ戻すと、
+        // 次の試験の最初の書き込みが 403 → 再ログイン → 再送になり、data への要求が 2 本になる（1 本を数える試験が落ちる）。
         LoginStatus = null;
         WriteStatus = null;
         Throws = false;

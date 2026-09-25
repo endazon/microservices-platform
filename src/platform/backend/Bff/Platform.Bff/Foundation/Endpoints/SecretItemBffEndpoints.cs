@@ -13,7 +13,8 @@ namespace Platform.Bff.Foundation.Endpoints;
 // 供給（Vault → ESO → Secret）は別の主体が読み取り専用で行い、ここは触れない（IADR-0433 決定 5）。
 //
 // 🔴 **値を読み出す口を作らない。** `GET /bff/secrets/{item}` は存在しない。一覧は allowlist と
-// metadata（版・時刻。値を持たない）から作る（IADR-0433 決定 7）。
+// metadata（版・時刻。値を持たない）から作る（IADR-0433 決定 7）。供給元の列は同期先 ExternalSecret の有無から作る
+// （ADR-0104 決定 2・IADR-0460 決定 1。ExternalSecret の本文も Secret も読まない）。
 // 🔴 **値を監査・ログ・応答へ出さない。** 長さ・ハッシュ・先頭数文字も出さない（IADR-0433 決定 6）。
 // 🔴 **allowlist 外は 400。** 存在秘匿の対象ではなく「入力が不正」である（404 にしない）。
 //
@@ -62,6 +63,7 @@ public static class SecretItemBffEndpoints
             SecretItemCatalog catalog,
             IVaultKvClient vault,
             ISecretWriteRecordStore records,
+            IExternalSecretPresenceReader presence,
             CancellationToken ct) =>
         {
             var denied = await DenyUnlessWriterAsync(http, authz, audit, ListAction, null);
@@ -113,6 +115,15 @@ public static class SecretItemBffEndpoints
                 audit.Record(ListAction, subject, "failed", "reason=vault-unavailable");
                 return UnavailableProblem();
             }
+
+            // ADR-0104 決定 2, IADR-0460 決定 1 (#1502): 項目ごとの供給元を、同期先 ExternalSecret の有無から読む。
+            // 🔴 **一覧を返すと決まった後**に置く —— 権限外・保管先不達（保持中のトークンでログイン確認を飛ばした後に
+            // metadata が 1 件も取れない場合を含む）では Kubernetes API へ 1 度も触れない（#1502 の実測: 前に置くと後者で漏れた）。
+            // 項目は互いに独立なので並べて問い合わせる（1 件の遅延が一覧全体を項目数倍に延ばさない）。
+            var supplySources = await Task.WhenAll(catalog.Items.Select(async definition =>
+                SupplySourceOf(await presence.ReadAsync(definition.ExternalSecret, ct))));
+            for (var i = 0; i < rows.Count; i++)
+                rows[i] = rows[i] with { SupplySource = supplySources[i] };
 
             audit.Record(ListAction, subject, "granted", $"items={rows.Count}");
             return Results.Ok(rows);
@@ -385,6 +396,14 @@ public static class SecretItemBffEndpoints
 
     private static IResult Invalid(string field, string message) =>
         Results.ValidationProblem(new Dictionary<string, string[]> { [field] = [message] });
+
+    // ADR-0104 決定 2, IADR-0460 決定 1: 有無の 3 値を契約の 3 値へ写す（1 対 1。畳まない）。
+    private static string SupplySourceOf(ExternalSecretPresence presence) => presence switch
+    {
+        ExternalSecretPresence.Present => SecretItemSupplySources.Screen,
+        ExternalSecretPresence.Absent => SecretItemSupplySources.Git,
+        _ => SecretItemSupplySources.Unknown,
+    };
 
     private static string StatusOf(VaultMetadataState state) => state switch
     {

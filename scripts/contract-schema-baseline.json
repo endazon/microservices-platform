@@ -4099,11 +4099,37 @@
             "required": true,
             "position": 3
           },
+          "SupplySource": {
+            "source": "positional",
+            "type": "string",
+            "required": false,
+            "position": 8
+          },
           "VaultPath": {
             "source": "positional",
             "type": "string",
             "required": true,
             "position": 1
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.SecretItemSupplySources": {
+        "kind": "class",
+        "members": {
+          "Git": {
+            "source": "const",
+            "type": "string",
+            "value": "\"git\""
+          },
+          "Screen": {
+            "source": "const",
+            "type": "string",
+            "value": "\"screen\""
+          },
+          "Unknown": {
+            "source": "const",
+            "type": "string",
+            "value": "\"unknown\""
           }
         }
       },

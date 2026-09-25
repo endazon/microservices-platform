@@ -2,10 +2,10 @@
 title: IADR-0456 SC-22 はプロパティの種別（値・パスワードの MD5・RSA 鍵の生成）を allowlist に持ち、書き込み後に ExternalSecret へ即時同期を依頼し、消費側は Reloader で作り直し、bootstrap は画面の KV を無いときだけ作る
 type: impl-adr
 status: Accepted
-related_ids: [SC-22, FR-05, NFR-18, ADR-0095, IADR-0096, IADR-0103, IADR-0433, IADR-0453, IADR-0454]
+related_ids: [SC-22, FR-05, NFR-18, ADR-0095, ADR-0104, IADR-0096, IADR-0103, IADR-0433, IADR-0453, IADR-0454]
 author: claude
 created: 2026-09-15
-updated: 2026-09-15
+updated: 2026-09-25
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md
   - planning:projects/microservices-platform/05_screens/01_screens.md
@@ -163,6 +163,14 @@ MSP と AST が同じ Vault パス・プロパティ・Secret 名を共有する
   1. planning#635 の裁定（ADR-0095 決定 1 の射程に Discord ID が入るか・SC-22 の画面設計の追随）。裁定が異なれば本 ADR を改定する。
   2. 稼働クラスタでの疎通（SC-22 テスト仕様書 T-40 と同じ場）: force-sync で数秒以内に Secret が変わること、Reloader が消費側を作り直すこと、生成した鍵を OpenD が読めること。
   3. 本番の消費側の作り直し（Reloader を本番像に入れるか、別の方式か）。
+
+## ［2026-09-25 追記 / #1502］計画の追認と、決定 4 の Role の `get` の利用
+
+- フォローアップ 1 の planning#635 は計画 ADR-0104（Accepted 2026-09-17）で裁定された。決定 1（両経路）・決定 3（3 種別）は本 ADR の形を追認した。
+  **決定 2（供給元の表示）と決定 4（消費側が再起動する旨の告知）は本 ADR に無かった**ため、[IADR-0460](IADR-0460_sc22-supply-source-from-external-secret-presence-and-restart-notice.md) で実装した。
+- 決定 4 の Role（`get` / `patch`・`resourceNames` 限定）の **`get` を、一覧の供給元の判定（同期先 ExternalSecret の有無）が使うようになった**。
+  権限・構成・通信路は本決定のものをそのまま使い、動詞も名前も足していない。
+- ADR-0104 決定 3 の公開鍵の表示は未実装（IADR-0460 フォローアップ 2）。
 
 ## 関連
 

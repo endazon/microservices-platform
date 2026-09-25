@@ -17,6 +17,8 @@ const item: SecretItemStatusDto = {
   currentVersion: null,
   lastUpdatedAt: null,
   lastUpdatedBy: null,
+  // ADR-0104 決定 2 (#1502): 供給元（BFF が同期先 ExternalSecret の有無から判定する）。
+  supplySource: 'screen',
 };
 
 test('unauthenticated visit to /admin/secrets redirects to /login', async ({ page }) => {
@@ -40,6 +42,7 @@ test('SC-22: an operator reaches the screen and its navigation entry', async ({ 
   ).toBeVisible();
   await expect(page.getByRole('link', { name: '秘密情報・接続設定の管理' })).toBeVisible();
   await expect(page.getByRole('cell', { name: '未設定' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '画面' })).toBeVisible();
 
   expectBffTrafficIsComplete(traffic);
 });

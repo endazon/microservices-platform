@@ -535,3 +535,4 @@
 | [IADR-0455](./IADR-0455_publish-gate-all-paths-withdrawal-and-private-note-scope.md) | **`DocumentUpdated` の発行はすべて門を通す**（#1471）。属性を書き換える経路は撤収の形の門を使い、素の発行は `private`。🔴 門の述語は個人資料にだけ効かせ、組織文書の発行はデータに依らず不変 | Accepted |
 | [IADR-0456](./IADR-0456_sc22-property-kinds-force-sync-reloader-and-seed-if-absent.md) | **SC-22 のプロパティの種別・即時同期・Reloader・seed-if-absent**（#1477） | Accepted |
 | [IADR-0457](./IADR-0457_local-vault-file-storage-pvc-and-in-pod-unseal.md) | **経路B の Vault を file ストレージ＋PVC で永続化し、Pod 内ラッパーが init / unseal / 固定 root トークンを自動化する**（#1479）。既定オン・`PERSIST=0` で従来の `-dev`。k3s 再起動で画面 SC-22 の秘密と ESO の設定が消える問題を解く | Accepted |
+| [IADR-0460](./IADR-0460_sc22-supply-source-from-external-secret-presence-and-restart-notice.md) | **SC-22 の供給元は同期先 ExternalSecret の有無から境界層が判定して 3 値（screen / git / unknown）で返し、画面は送る前に消費側の再起動を項目ごとに告げる**（#1502。計画 ADR-0104 決定 2・4）。構成値の写しで判定しない（推測になる）。権限は IADR-0456 決定 4 の Role の `get` で足り、増やさない | Accepted |
