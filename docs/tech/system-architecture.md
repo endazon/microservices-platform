@@ -3,15 +3,15 @@ title: システム構成図（microservices-platform 基盤 + knowledge ユニ�
 type: tech-architecture
 status: draft
 created: 2026-07-16
-updated: 2026-08-21
+updated: 2026-09-25
 author: endazon (with Claude Code)
 ---
 <!-- trace:
 ids: [SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11]
-adrs: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0018, ADR-0019, ADR-0020, ADR-0027]
-iadrs: [IADR-0017, IADR-0026, IADR-0048, IADR-0056, IADR-0121]
-specs: []
-issues: [#497, #580, #591]
+adrs: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0018, ADR-0019, ADR-0020, ADR-0027, ADR-0106]
+iadrs: [IADR-0017, IADR-0026, IADR-0048, IADR-0056, IADR-0121, IADR-0464]
+specs: [20260925_1499_object-storage-seaweedfs]
+issues: [#497, #580, #591, #1499]
 -->
 
 # システム構成図: microservices-platform（基盤 + knowledge ユニット）
@@ -75,7 +75,7 @@ flowchart TB
     MQ[["RabbitMQ<br/>MassTransit"]]
     PG[("PostgreSQL<br/>Database per Service")]
     QD[("Qdrant<br/>ベクトル DB")]
-    OBJ[("MinIO<br/>オブジェクトストレージ")]
+    OBJ[("SeaweedFS<br/>オブジェクトストレージ")]
     REDIS[("Redis<br/>BFF キャッシュ")]
     KC["Keycloak（IdP）"]
     OBS["可観測性<br/>OTel / Prometheus / Grafana / Loki"]

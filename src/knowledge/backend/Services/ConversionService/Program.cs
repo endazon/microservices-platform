@@ -66,7 +66,7 @@ builder.Services.AddSingleton<PandocConversionService>();
 builder.Services.AddSingleton<PdfTextLayerConverter>();
 builder.Services.AddSingleton<IBodyConverter, FormatRoutingBodyConverter>();
 
-// FR-12, ADR-0014/ADR-0015, IADR-0024: 正規化本文・資産の S3 互換オブジェクトストレージ（MinIO）保管。
+// FR-12, ADR-0014/ADR-0015（Superseded by ADR-0106）, IADR-0024: 正規化本文・資産の S3 互換オブジェクトストレージ（SeaweedFS）保管。
 // 共有クライアントを登録し、起動時にバケット存在・バージョニングを保証する。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
 builder.Services.AddPlatformObjectStorageBootstrap();

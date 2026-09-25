@@ -3,14 +3,15 @@ title: UC-03 文書を管理する テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-31
-updated: 2026-08-31
+updated: 2026-09-25
 author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-09, UC-03, SC-05, NFR]
-adrs: [ADR-0004, ADR-0011, ADR-0014, ADR-0015, ADR-0056, ADR-0057, ADR-0058]
-specs: [20260831_issue-1106_uc-test-specs]
-issues: [#472, #1106]
+adrs: [ADR-0004, ADR-0011, ADR-0014, ADR-0015, ADR-0056, ADR-0057, ADR-0058, ADR-0106]
+specs: [20260831_issue-1106_uc-test-specs, 20260925_1499_object-storage-seaweedfs]
+issues: [#472, #1106, #1499]
+iadrs: [IADR-0464]
 -->
 
 # テスト仕様書: 文書を管理する
@@ -91,7 +92,7 @@ issues: [#472, #1106]
   引き受ける。本書が測るのは「事象を発行するところまで」である。
 - **索引への実反映も本書では測らない。** 取り込み・索引はデータソース同期のテスト仕様書が持つ。
   **同じ床を 2 箇所に置かない。**
-- **実 PostgreSQL / 実 MinIO を通した検査は一部しかしない。** 統合テストは Testcontainers に
+- **実 PostgreSQL / 実オブジェクトストレージを通した検査は一部しかしない。** 統合テストは Testcontainers に
   依存し、Docker daemon の無い環境では skip される（skip のまま緑になる）。単体側は代替の
   実装で覆っているが、**「統合テストが緑」を「実体で通った」と読んではならない**。
 - **同時編集（複数管理者）の競合は楽観ロックの 409 までしか測らない。** マージ戦略は計画が

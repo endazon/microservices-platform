@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 
-// FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: MinIO（S3 互換 API）への保存・取得の本実装。
+// FR-06, FR-12, ADR-0014/ADR-0015（Superseded by ADR-0106）, IADR-0024: S3 互換 API（製品は SeaweedFS。IADR-0464）への保存・取得の本実装。
 // 参照 URI は storage://<bucket>/<key>。保存は既定バケットへ行い、取得は URI 内のバケットを尊重する。
 // バケット・キー設計、バージョニング、アクセス制御方針は .ai-context/adr/IADR-0024 を参照。
 public sealed class S3ObjectStorageClient(
@@ -171,10 +171,10 @@ public sealed class S3ObjectStorageClient(
         else if (options.EnableVersioning) await PutVersioningAsync(ct);
     }
 
-    // FR-06, FR-12, ADR-0014/ADR-0015, IADR-0303 (#1033): 書き込みの自己修復。
+    // FR-06, FR-12, ADR-0014/ADR-0015（Superseded by ADR-0106）, IADR-0303 (#1033): 書き込みの自己修復。
     //
     // 🔴 **バケットを作るのは ConversionService の起動時 bootstrap だけ**であり、その bootstrap は
-    // fail-open である（MinIO の起動待ちで例外が出ても警告を出して起動を続ける）。**競合に負けると
+    // fail-open である（オブジェクトストレージの起動待ちで例外が出ても警告を出して起動を続ける）。**競合に負けると
     // バケットは作られないまま**になり、以後の書き込みが `NoSuchBucket` で落ち続ける。
     // 実測（develop `3939e72` の integration-stack run 33230268422）: seed の `POST /documents` が
     // `The specified bucket does not exist` で 500 になった。**同じコードで前回の run は緑**であり、
@@ -202,7 +202,7 @@ public sealed class S3ObjectStorageClient(
         {
             logger.LogWarning(
                 "Object storage bucket {Bucket} did not exist on write; creating it and retrying once."
-                + " 起動時 bootstrap が MinIO の起動待ちに負けた可能性が高い（#1033）。", options.Bucket);
+                + " 起動時 bootstrap が オブジェクトストレージの起動待ちに負けた可能性が高い（#1033）。", options.Bucket);
             await CreateBucketWithVersioningAsync(ct);
             await put();
         }
@@ -217,7 +217,7 @@ public sealed class S3ObjectStorageClient(
         }
         // 🔴 **自己修復はリクエストごとに走る。** 起動時 bootstrap と違って単一ではないため、
         // バケット未作成の窓へ同時に到達した書き込みが**並行して作成を撃つ**。
-        // S3 / MinIO は重複作成を成功にせず `BucketAlreadyOwnedByYou` / `BucketAlreadyExists` を返す
+        // S3 互換ストアは重複作成を成功にせず `BucketAlreadyOwnedByYou` / `BucketAlreadyExists` を返す
         // （SDK は専用の例外型を持つ。いずれも `AmazonS3Exception` 派生でエラーコードを載せる）。
         //
         // **負けた側にとっても目的は達成されている** —— バケットは在る。ここで投げると

@@ -3,15 +3,15 @@ title: Wiki ページ同期メタデータ（WikiPage） データ仕様書
 type: data-spec
 status: draft
 created: 2026-07-08
-updated: 2026-08-21
+updated: 2026-09-25
 author: claude
 ---
 <!-- trace:
 ids: [FR-13]
-adrs: [ADR-0002]
-iadrs: [IADR-0009, IADR-0020, IADR-0021, IADR-0023]
-specs: []
-issues: [#88, #118]
+adrs: [ADR-0002, ADR-0106]
+iadrs: [IADR-0009, IADR-0020, IADR-0021, IADR-0023, IADR-0464]
+specs: [20260925_1499_object-storage-seaweedfs]
+issues: [#88, #118, #1499]
 -->
 
 # データ仕様書: Wiki ページ同期メタデータ（WikiPage）
@@ -46,7 +46,7 @@ WikiPage は、文書管理（DocumentService）から同期された文書の *
 | DocumentId | Guid (uuid) | ○ | 一意インデックス | 同期元文書 ID |
 | Title | string (varchar(500)) | ○ | 最大長 500 | 文書タイトル |
 | Slug | string (varchar(500)) | ○ | 一意インデックス。タイトル由来のケバブケース | 人間可読の索引・メタデータ用途 |
-| MarkdownUri | string? | - | `storage://` 参照 | 正規化本文の所在（実体は MinIO） |
+| MarkdownUri | string? | - | `storage://` 参照 | 正規化本文の所在（実体はオブジェクトストレージ。製品は SeaweedFS） |
 | Status | string | ○ | `active` / `archived`。既定 `active` | アーカイブは可逆（再公開で解除） |
 | Attributes | jsonb | ○ | 既定 `{}` | ABAC 属性（clearance / department 等）。deny-by-default 判定の根拠 |
 | Tags | jsonb | ○ | 既定 `[]` | 文書タグ |

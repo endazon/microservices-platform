@@ -3,15 +3,15 @@ title: ログイン（Keycloak 統合認証） 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-08-23
-updated: 2026-09-11
+updated: 2026-09-25
 author: claude
 ---
 <!-- trace:
 ids: [SC-01, SC-13, SC-14, SC-15, SC-16, UC-05, FR-05]
-adrs: [ADR-0026, ADR-0032, ADR-0078, ADR-0094]
-iadrs: [IADR-0197, IADR-0251, IADR-0261, IADR-0273, IADR-0347, IADR-0427, IADR-0429, IADR-0432]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20260911_issue-1245_login-existence-disclosure, 20260911_issue-1393_remove-platform-spa-public-client, 20260911_issue-1410_reset-timing-floor]
-issues: [#438, #1245, #1393, #1410]
+adrs: [ADR-0026, ADR-0032, ADR-0078, ADR-0094, ADR-0106]
+iadrs: [IADR-0197, IADR-0251, IADR-0261, IADR-0273, IADR-0347, IADR-0427, IADR-0429, IADR-0432, IADR-0464]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20260911_issue-1245_login-existence-disclosure, 20260911_issue-1393_remove-platform-spa-public-client, 20260911_issue-1410_reset-timing-floor, 20260925_1499_object-storage-seaweedfs]
+issues: [#438, #1245, #1393, #1410, #1499]
 -->
 
 # 画面仕様書: ログイン（Keycloak 統合認証）
@@ -30,7 +30,7 @@ issues: [#438, #1245, #1393, #1410]
 
 ## 画面概要・目的
 
-全コンポーネント（SPA・Wiki.js・Grafana・ArgoCD・MinIO・Vault・Headlamp）共通の OIDC 認証入口。
+全コンポーネント（SPA・Wiki.js・Grafana・ArgoCD・Vault・Headlamp）共通の OIDC 認証入口。
 **Keycloak のログインテーマとして実装する**（自前 SPA では実装しない）。
 
 - 共通シェル: **適用外**（Keycloak テーマ。左ナビ・AI チャットパネル・パンくずは適用しない）

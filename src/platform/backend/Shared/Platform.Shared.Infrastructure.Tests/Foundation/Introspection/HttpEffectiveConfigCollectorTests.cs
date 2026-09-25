@@ -313,7 +313,7 @@ public class HttpEffectiveConfigCollectorTests
         var handler = new RoutingHandler(_ => Ok("""
             {"service":"conversion-service",
              "steps":[{"name":"convert","consumer":"C","input":"RawDocumentFetched","outputs":["DocumentNormalized"],"enabled":true}],
-             "ports":[{"port":"object-storage","implementation":"S3ObjectStorageClient","target":"minio:9000"}],
+             "ports":[{"port":"object-storage","implementation":"S3ObjectStorageClient","target":"seaweedfs:8333"}],
              "connectors":[{"name":"obsidian","enabled":false}]}
             """));
         var (collector, _, _) = Build(
@@ -325,7 +325,7 @@ public class HttpEffectiveConfigCollectorTests
         report.Service.Should().Be("conversion-service");
         report.Steps.Should().ContainSingle().Which.Should().BeEquivalentTo(
             new StepIntrospectionDto("convert", "C", "RawDocumentFetched", ["DocumentNormalized"], true));
-        report.Ports.Should().ContainSingle().Which.Target.Should().Be("minio:9000");
+        report.Ports.Should().ContainSingle().Which.Target.Should().Be("seaweedfs:8333");
         report.Connectors.Should().ContainSingle().Which.Enabled.Should().BeFalse();
     }
 }
