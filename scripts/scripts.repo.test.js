@@ -378,6 +378,43 @@ module.exports = ({ ok, assert }) => {
       );
     });
 
+    // 🔴 #1589（NFR-09, ADR-0032, IADR-0420, IADR-0429 決定 3）: BFF の Bearer 受理は
+    // `MachinePrincipal.IsMachine`（トークンが名乗る形だけ）で「無人の主体か」を決める。
+    // **人のトークンを機械と読ませる宣言**（service-account- で始まる人の利用者 / profile を既定に持たない
+    // 標準フローのクライアント）を、検査器の**入口（CLI）から**止められることを固定する。
+    // 自己試験は関数単体の試験なので、checkFiles → main の配線が外れても緑のまま残る。
+    // 取り具は実データの realm から一時ファイルへ作る（realm 全体の写しをコミットしない）。
+    ok('★ #1589: realm 検査の CLI が「人を無人の主体と読ませる宣言」2 種で exit 1、実データでは exit 0', () => {
+      const osT = require('os');
+      const { spawnSync: spawnT } = require('child_process');
+      const script = pathSeed.join(__dirname, 'check-realm-constraints.js');
+      const base = JSON.parse(fsSeed.readFileSync(seed.REALM_FILE, 'utf8'));
+      const run = (realm) => {
+        const dir = fsSeed.mkdtempSync(pathSeed.join(osT.tmpdir(), 'msp-1589-realm-'));
+        try {
+          const file = pathSeed.join(dir, 'fixture-realm.json');
+          fsSeed.writeFileSync(file, JSON.stringify(realm));
+          return spawnT(process.execPath, [script, file], { encoding: 'utf8' });
+        } finally {
+          fsSeed.rmSync(dir, { recursive: true, force: true });
+        }
+      };
+      // 陽性対照: 変異を入れない写しは通る（取り具の作り方で落ちているのではないことを示す）。
+      const clean = run(base);
+      assert.strictEqual(clean.status, 0, `変異なしの写しが落ちた:\n${clean.stdout}${clean.stderr}`);
+
+      const mutated = JSON.parse(JSON.stringify(base));
+      mutated.users.push({ username: 'service-account-mallory', enabled: true });
+      const web = mutated.clients.find((c) => c.clientId === 'wiki-js');
+      assert.ok(web && web.standardFlowEnabled === true, '標準フローのクライアント wiki-js が realm に無い（前提が変わった）');
+      web.defaultClientScopes = web.defaultClientScopes.filter((s) => s !== 'profile');
+      const res = run(mutated);
+      assert.strictEqual(res.status, 1, `変異を検出しなかった:\n${res.stdout}`);
+      assert.match(res.stderr, /人を無人の主体と読ませる宣言 2 件/);
+      assert.match(res.stderr, /realm\.users\[service-account-mallory\]\.username/);
+      assert.match(res.stderr, /realm\.clients\[wiki-js\]\.defaultClientScopes/);
+    });
+
     ok('★ seed: realm の client secret がスクリプトへ直書きされていない', () => {
       const src = fsSeed.readFileSync(pathSeed.join(__dirname, 'seed-abac-policies.js'), 'utf8');
       const realm = JSON.parse(fsSeed.readFileSync(seed.REALM_FILE, 'utf8'));

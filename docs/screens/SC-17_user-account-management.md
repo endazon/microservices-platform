@@ -7,11 +7,11 @@ updated: 2026-09-26
 author: implementation-agent
 ---
 <!-- trace:
-ids: [FR-05, FR-09, SC-09, SC-17, UC-05, FR-20, NFR-14]
+ids: [FR-05, FR-09, SC-09, SC-17, UC-05, FR-20, NFR-14, NFR-09]
 adrs: [ADR-0004, ADR-0026, ADR-0031, ADR-0032, ADR-0036, ADR-0115, ADR-0096, ADR-0114]
-iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0134, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329, IADR-0473, IADR-0474]
-specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable]
-issues: [#452, #438, #1101, #1573, #1532, planning#672]
+iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0134, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329, IADR-0473, IADR-0474, IADR-0420, IADR-0429]
+specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260926_issue-1589_realm-machine-judgement-premises]
+issues: [#452, #438, #1101, #1573, #1532, #1589, #1587, planning#672]
 -->
 
 # 画面仕様書: ユーザーアカウント管理
@@ -135,6 +135,26 @@ flowchart LR
 | ルート `/admin/users` | する | 左ナビ「管理」グループ「ユーザー管理」 | `01_screens.md:584` |
 | モックの「＋」ボタン相当（新規作成） | **しない（意図的）** | ハイファイのモックにも新規作成のボタンは無い。計画本文と一致している | `mockups/hi-fi/sc-17.html` |
 | モックの権限編集がインラインのカード | する | 一覧の下に展開する（モックと同じ配置） | `mockups/hi-fi/sc-17.html` |
+
+## 運用上の注意（認可基盤の管理コンソールで利用者を作るとき）
+
+本画面は利用者を作らないが、**認可基盤の管理コンソールからは作れてしまう**（人事システム連携が
+未整備の間の手作業や、障害時の緊急対応など）。そのとき次の 2 点を必ず守る。
+
+1. 🔴 **人の利用者名を `service-account-` で始めない。** 認可基盤はサービスアカウントの利用者名に
+   この接頭辞を付けるため、BFF は Bearer で受け取った呼び出し元のうち**利用者名がこの接頭辞で始まるものを
+   無人の主体（機械）として通す**。人の利用者にこの名前を付けると、**その人のトークンは BFF セッション
+   （HttpOnly Cookie と CSRF ヘッダ）を迂回して `/bff/*` を叩ける**。大文字小文字を変えても同じである
+   （認可基盤は利用者名を小文字へ正規化する）。
+2. 🔴 **人がログインするクライアント（標準フロー）を足すときは、`profile` を既定のクライアントスコープに入れる。**
+   `profile` が無いと人のトークンに利用者名（`preferred_username`）が乗らない。一方でクライアント識別
+   （`azp`）は必ず乗るので、BFF は**利用者名が無くクライアント識別がある主体を機械として通す**。
+   任意（optional）スコープに置くだけでは、要求しない限り乗らないので足りない。
+
+**realm の宣言（リポジトリの realm JSON）に入った場合は CI の realm 検査
+（`node scripts/check-realm-constraints.js`）が両方とも止める。** 止められないのは**稼働中の realm で
+管理コンソールから直接作ったもの**だけであり、そちらは本節の注意書きに頼る。作ったら、
+利用者名の接頭辞とクライアントの既定スコープを管理コンソールで目視で確かめること。
 
 ## 関連仕様
 

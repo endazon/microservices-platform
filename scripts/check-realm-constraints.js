@@ -60,6 +60,13 @@
  * と映る。到達可能性そのものは静的に測れないので、**到達し得ない形**（裸の localhost / ループバック /
  * `*.localhost`）だけを止める。詳細は collectServerSideUrlGaps の注記。
  *
+ * 検査7: **人のトークンを無人の主体と読ませる宣言**が無いか（#1589・#1587 の監査）。
+ * 背景: BFF の Bearer 受理は `MachinePrincipal.IsMachine`（IADR-0420）だけで呼び出し元を振り分ける。判定は
+ * 「利用者名が `service-account-` で始まる」か「利用者名が無くクライアント識別がある」の 2 腕であり、
+ * 許可集合を持たない。だから **`service-account-*` という名前の人の利用者**と、**`profile` を既定スコープに
+ * 持たない標準フローのクライアント**（人のトークンに preferred_username が乗らない）はどちらも、人を機械として
+ * 通す。詳細は collectMachineJudgementGaps の注記。稼働中の realm で作られる利用者は宣言の外（運用の注意書き）。
+ *
  * 使い方:
  *   node scripts/check-realm-constraints.js            # deploy/keycloak/*-realm.json を検査。違反で exit 1。
  *   node scripts/check-realm-constraints.js <path...>  # 明示したファイルのみ検査。
@@ -1122,6 +1129,110 @@ function checkRealmServiceAccountRolesText(text, opts) {
   return collectServiceAccountRoleGaps(JSON.parse(text), opts);
 }
 
+// --- 検査7: 「人か機械か」の判定の前提（#1589 / #1587 の監査）-----------------------------
+//
+// NFR-09, ADR-0032, IADR-0429 決定 3, IADR-0420: BFF の Bearer 受理は、呼び出し元が
+// **無人の主体か**を `MachinePrincipal.IsMachine` だけで決める（`BearerCallerPolicy`）。判定は
+// **トークンが名乗る形**だけで行い、許可集合を構成に持たない（IADR-0420 の決定）。その 2 つの腕は:
+//   腕 A: 利用者名（preferred_username）が `service-account-` で始まる
+//   腕 B: 利用者名が**無く**、クライアント識別のクレーム（azp など）がある
+// したがって、次のどちらかが realm の宣言に入ると、**人のトークンが機械として Bearer 受理を通り得る**:
+//   (1) `service-account-` で始まる名前の**人の利用者**を作る（腕 A が人を機械と読む）
+//   (2) 標準フロー（人がログインする経路）のクライアントが `profile` を既定スコープに持たない
+//       （人のトークンに preferred_username が乗らず、azp は必ず乗るので腕 B が人を機械と読む）
+// どちらも realm import は成功し、ログインも画面も動くため E2E では気付けない。**宣言で止める。**
+//
+// 🔴 **稼働中の realm で管理コンソールから作られる利用者は、この検査の外にある**（宣言しか見ない）。
+//    そちらは運用の注意書きに留める（docs/screens/SC-17 §運用上の注意）。
+// 🔴 **人の利用者 = `serviceAccountClientId` を持たない利用者**（`isServiceAccountUser` の否定）。
+//    Keycloak は利用者名を小文字へ正規化して保存し、`IsMachine` も大小を区別しない
+//    （`OrdinalIgnoreCase`）ので、接頭辞は大小を無視して比べる。
+// 🔴 対象 realm（既定 `platform`）以外は検査しない —— BFF と各サービスが受理する発行者は基盤 realm
+//    だけである。AST 専用 realm の写しは本スクリプトの走査対象でもない（check-realm-copy-drift.js の射程）。
+const MACHINE_USERNAME_PREFIX = 'service-account-';
+const PROFILE_SCOPE = 'profile';
+const USERNAME_CLAIM = 'preferred_username';
+
+// 人がログインしてトークンを得る経路を開いているクライアントか。
+// 🔴 `standardFlowEnabled` は**未設定なら Keycloak の既定で true** である（書き忘れで対象外へ落とさない）。
+//    `bearerOnly` のクライアントはログインできないので除く。implicit flow も人のトークンを出すので含める。
+function isHumanLoginClient(client) {
+  if (!client || client.bearerOnly === true) return false;
+  return client.standardFlowEnabled !== false || client.implicitFlowEnabled === true;
+}
+
+// realm が `profile` スコープを明示しているとき、そのスコープが access token へ preferred_username を
+// 載せるか。明示していない realm は Keycloak の組み込みスコープが生成されるので判定しない（null）。
+function profileScopeEmitsUsername(realm) {
+  const scopes = Array.isArray(realm.clientScopes) ? realm.clientScopes : [];
+  if (scopes.length === 0) return null;
+  const profile = scopes.find((s) => s && s.name === PROFILE_SCOPE);
+  if (!profile) return false;
+  return (profile.protocolMappers || []).some((m) => {
+    const cfg = (m && m.config) || {};
+    return cfg['claim.name'] === USERNAME_CLAIM && String(cfg['access.token.claim']) === 'true';
+  });
+}
+
+/**
+ * `MachinePrincipal.IsMachine` が人を機械と読まないための realm 宣言上の前提を検査する。**純関数**。
+ *
+ * @param {object} realm realm JSON
+ * @param {{realmName?:string}} opts
+ * @returns {{path:string, detail:string}[]}
+ */
+function collectMachineJudgementGaps(realm, { realmName = AUTH_POLICY_REALM } = {}) {
+  const gaps = [];
+  if (!realm || realm.realm !== realmName) return gaps;
+
+  // (1) 人の利用者名が `service-account-` で始まらないこと。
+  for (const user of Array.isArray(realm.users) ? realm.users : []) {
+    if (!user || isServiceAccountUser(user)) continue;
+    const name = typeof user.username === 'string' ? user.username : '';
+    if (!name.toLowerCase().startsWith(MACHINE_USERNAME_PREFIX)) continue;
+    gaps.push({
+      path: `realm.users[${name}].username`,
+      detail: `人の利用者（serviceAccountClientId を持たない）の名前が ${MACHINE_USERNAME_PREFIX} で始まっています。`
+        + ' BFF の Bearer 受理は利用者名がこの接頭辞で始まる主体を**無人の主体**として通すため、'
+        + 'この利用者のトークンは人の経路（BFF セッション）を迂回して /bff/* を Bearer で叩けます'
+        + '（MachinePrincipal.IsMachine の腕 A / IADR-0420・IADR-0429 決定 3）。名前を変えてください。',
+    });
+  }
+
+  // (2) 人がログインするクライアントは、すべて `profile` を既定スコープに持つこと。
+  const humanClients = (Array.isArray(realm.clients) ? realm.clients : []).filter(isHumanLoginClient);
+  for (const client of humanClients) {
+    const scopes = Array.isArray(client.defaultClientScopes) ? client.defaultClientScopes : [];
+    if (scopes.includes(PROFILE_SCOPE)) continue;
+    gaps.push({
+      path: `realm.clients[${client.clientId || '«無名»'}].defaultClientScopes`,
+      detail: `人がログインする経路（standardFlowEnabled${client.implicitFlowEnabled === true ? ' / implicitFlowEnabled' : ''}）を開いているのに、`
+        + `${PROFILE_SCOPE} が既定スコープに明示されていません`
+        + `（実際 ${JSON.stringify(scopes)}。optionalClientScopes は要求しない限り載らないので数えません）。`
+        + ` 人のトークンに ${USERNAME_CLAIM} が乗らず、azp は必ず乗るため、BFF の Bearer 受理が`
+        + '**人を無人の主体として通します**（MachinePrincipal.IsMachine の腕 B / IADR-0420・IADR-0429 決定 3）。',
+    });
+  }
+
+  // (2') `profile` を既定に持っていても、スコープの中身が preferred_username を載せなければ同じ穴になる。
+  //      本 realm は clientScopes を明示するため組み込みが生成されず、中身は宣言がすべてである。
+  if (humanClients.length > 0 && profileScopeEmitsUsername(realm) === false) {
+    gaps.push({
+      path: `realm.clientScopes[${PROFILE_SCOPE}].protocolMappers`,
+      detail: `${PROFILE_SCOPE} スコープが未定義か、access token へ ${USERNAME_CLAIM} を載せるマッパー`
+        + `（claim.name=${USERNAME_CLAIM} / access.token.claim=true）を持ちません。`
+        + ' clientScopes を明示した realm では組み込みスコープが生成されないため、'
+        + '既定スコープに profile と書いてあっても人のトークンに利用者名が乗らず、腕 B が人を機械と読みます。',
+    });
+  }
+
+  return gaps;
+}
+
+function checkRealmMachineJudgementText(text, opts) {
+  return collectMachineJudgementGaps(JSON.parse(text), opts);
+}
+
 // --- I/O（副作用は main / checkFiles に閉じる） --------------------------------
 
 // 既定の検査対象（REALM_DIR 配下の *-realm.json）をリポジトリ相対で列挙する。
@@ -1162,6 +1273,7 @@ function checkFiles(relPaths) {
       concealGaps: checkRealmResetConcealmentText(text),
       saRoleGaps: checkRealmServiceAccountRolesText(text),
       serverUrlGaps: checkRealmServerSideUrlsText(text),
+      machineGaps: checkRealmMachineJudgementText(text),
     });
   }
   return results;
@@ -2013,6 +2125,139 @@ function selfTest() {
     })(),
   });
 
+  // --- 検査7: 人を無人の主体と読ませる宣言（#1589）---
+  const profileScope = {
+    name: 'profile',
+    protocolMappers: [{
+      name: 'username',
+      protocolMapper: 'oidc-usermodel-property-mapper',
+      config: { 'claim.name': 'preferred_username', 'access.token.claim': 'true' },
+    }],
+  };
+  const mjOk = {
+    realm: AUTH_POLICY_REALM,
+    clientScopes: [profileScope, { name: 'roles' }],
+    clients: [
+      { clientId: 'bff', standardFlowEnabled: true, serviceAccountsEnabled: true, defaultClientScopes: ['profile', 'roles'] },
+      { clientId: 'svc', standardFlowEnabled: false, serviceAccountsEnabled: true, defaultClientScopes: ['roles'] },
+      { clientId: 'api', bearerOnly: true, defaultClientScopes: ['roles'] },
+    ],
+    users: [
+      { username: 'developer' },
+      { username: 'service-account-bff', serviceAccountClientId: 'bff' },
+      { username: 'service-account-svc', serviceAccountClientId: 'svc' },
+    ],
+  };
+  const mjMut = (fn) => { const c = JSON.parse(JSON.stringify(mjOk)); fn(c); return c; };
+  cases.push({
+    name: '検査7 陰性対照: 人の利用者名が普通で、標準フローのクライアントが profile を持てば 0 件（SA の service-account-* は対象外）',
+    pass: collectMachineJudgementGaps(mjOk).length === 0,
+  });
+  cases.push({
+    name: '検査7 変異: service-account- で始まる人の利用者（serviceAccountClientId なし）を検出する',
+    pass: (() => {
+      const g = collectMachineJudgementGaps(mjMut((c) => { c.users.push({ username: 'service-account-alice' }); }));
+      return g.length === 1 && g[0].path === 'realm.users[service-account-alice].username';
+    })(),
+  });
+  cases.push({
+    name: '検査7 変異: 接頭辞の大小を変えても検出する（Keycloak は小文字へ正規化・IsMachine は OrdinalIgnoreCase）',
+    pass: collectMachineJudgementGaps(mjMut((c) => { c.users.push({ username: 'Service-Account-Bob' }); })).length === 1,
+  });
+  cases.push({
+    name: '検査7 変異: 無効（enabled=false）の人の利用者でも検出する（後から有効化され得る）',
+    pass: collectMachineJudgementGaps(mjMut((c) => { c.users.push({ username: 'service-account-x', enabled: false }); })).length === 1,
+  });
+  cases.push({
+    name: '検査7 境界: serviceAccountClientId が空文字の利用者は人として扱い、接頭辞を検出する',
+    pass: collectMachineJudgementGaps(mjMut((c) => {
+      c.users.push({ username: 'service-account-y', serviceAccountClientId: '' });
+    })).length === 1,
+  });
+  cases.push({
+    name: '検査7 境界: 接頭辞を途中に含むだけの名前（my-service-account-z）は検出しない',
+    pass: collectMachineJudgementGaps(mjMut((c) => { c.users.push({ username: 'my-service-account-z' }); })).length === 0,
+  });
+  cases.push({
+    name: '検査7 変異: 標準フローのクライアントから profile を落とすと検出する',
+    pass: (() => {
+      const g = collectMachineJudgementGaps(mjMut((c) => { c.clients[0].defaultClientScopes = ['roles']; }));
+      return g.length === 1 && g[0].path === 'realm.clients[bff].defaultClientScopes';
+    })(),
+  });
+  cases.push({
+    name: '検査7 変異: standardFlowEnabled 未設定（Keycloak の既定 true）でも profile 欠落を検出する',
+    pass: collectMachineJudgementGaps(mjMut((c) => {
+      c.clients.push({ clientId: 'new-web', defaultClientScopes: ['email'] });
+    })).length === 1,
+  });
+  cases.push({
+    name: '検査7 変異: profile が optionalClientScopes にしか無ければ検出する（要求しない限り載らない）',
+    pass: collectMachineJudgementGaps(mjMut((c) => {
+      c.clients[0].defaultClientScopes = ['roles'];
+      c.clients[0].optionalClientScopes = ['profile'];
+    })).length === 1,
+  });
+  cases.push({
+    name: '検査7 変異: defaultClientScopes 自体が無い標準フローのクライアントを検出する（明示を求める）',
+    pass: collectMachineJudgementGaps(mjMut((c) => { delete c.clients[0].defaultClientScopes; })).length === 1,
+  });
+  cases.push({
+    name: '検査7 変異: implicit flow だけを開いたクライアントも人のログイン経路として検出する',
+    pass: collectMachineJudgementGaps(mjMut((c) => { c.clients[1].implicitFlowEnabled = true; })).length === 1,
+  });
+  cases.push({
+    name: '検査7 陰性対照: standardFlowEnabled=false と bearerOnly のクライアントは profile が無くても検出しない',
+    pass: isHumanLoginClient(mjOk.clients[0]) && !isHumanLoginClient(mjOk.clients[1]) && !isHumanLoginClient(mjOk.clients[2]),
+  });
+  cases.push({
+    name: '検査7 変異: profile スコープから preferred_username のマッパーを外すと検出する',
+    pass: (() => {
+      const g = collectMachineJudgementGaps(mjMut((c) => { c.clientScopes[0].protocolMappers = []; }));
+      return g.length === 1 && g[0].path === 'realm.clientScopes[profile].protocolMappers';
+    })(),
+  });
+  cases.push({
+    name: '検査7 変異: マッパーが access token へ載せない（access.token.claim=false）と検出する',
+    pass: collectMachineJudgementGaps(mjMut((c) => {
+      c.clientScopes[0].protocolMappers[0].config['access.token.claim'] = 'false';
+    })).length === 1,
+  });
+  cases.push({
+    name: '検査7 変異: clientScopes を明示した realm で profile スコープ自体が無いと検出する',
+    pass: collectMachineJudgementGaps(mjMut((c) => { c.clientScopes = [{ name: 'roles' }]; })).length === 1,
+  });
+  cases.push({
+    name: '検査7 境界: clientScopes を明示しない realm はスコープの中身を判定しない（組み込みが生成される）',
+    pass: collectMachineJudgementGaps(mjMut((c) => { delete c.clientScopes; })).length === 0,
+  });
+  cases.push({
+    name: '検査7: 別プロジェクトの realm（realm 名が違う）は検査しない',
+    pass: collectMachineJudgementGaps(mjMut((c) => {
+      c.realm = 'other';
+      c.users.push({ username: 'service-account-alice' });
+      c.clients[0].defaultClientScopes = [];
+    })).length === 0,
+  });
+  cases.push({
+    name: '検査7: JSON パース→検査（checkRealmMachineJudgementText）が通る',
+    pass: checkRealmMachineJudgementText(JSON.stringify(mjOk)).length === 0,
+  });
+  cases.push({
+    name: '🔴 検査7: 実データの realm が前提を守る（実データ・ラチェット。0 件走査を緑にしない）',
+    pass: (() => {
+      const realmPath = path.join(REPO_ROOT, REALM_DIR, 'microservices-platform-realm.json');
+      if (!fs.existsSync(realmPath)) return true; // realm が無い配布物では skip
+      const realm = JSON.parse(fs.readFileSync(realmPath, 'utf8'));
+      // 0 件走査の門: 人の利用者と、人がログインするクライアントがそれぞれ 1 つ以上在ること。
+      const humans = (realm.users || []).filter((u) => !isServiceAccountUser(u));
+      const logins = (realm.clients || []).filter(isHumanLoginClient);
+      if (humans.length === 0 || logins.length === 0) return false;
+      if (profileScopeEmitsUsername(realm) !== true) return false;
+      return collectMachineJudgementGaps(realm).length === 0;
+    })(),
+  });
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -2047,10 +2292,12 @@ function main() {
   const totalConcealGaps = results.reduce((n, r) => n + r.concealGaps.length, 0);
   const totalSaRoleGaps = results.reduce((n, r) => n + r.saRoleGaps.length, 0);
   const totalServerUrlGaps = results.reduce((n, r) => n + r.serverUrlGaps.length, 0);
+  const totalMachineGaps = results.reduce((n, r) => n + r.machineGaps.length, 0);
   if (total === 0 && totalMissing === 0 && totalDeviations === 0 && totalThemeGaps === 0
     && totalMfaGaps === 0 && totalMailGaps === 0 && totalRelayGaps === 0
-    && totalServerUrlGaps === 0 && totalConcealGaps === 0 && totalSaRoleGaps === 0) {
-    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れ・サービスアカウントの管理権限の天井超えはありません。`);
+    && totalServerUrlGaps === 0 && totalConcealGaps === 0 && totalSaRoleGaps === 0
+    && totalMachineGaps === 0) {
+    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れ・サービスアカウントの管理権限の天井超え・人を無人の主体と読ませる宣言（service-account- 接頭辞の人の利用者 / profile を既定に持たない標準フローのクライアント）はありません。`);
     process.exit(0);
   }
 
@@ -2177,6 +2424,20 @@ function main() {
       + '\n1 主体だけです。要件の正は planning の ADR-0078 決定 4、実装側の記録は IADR-0329 と IADR-0404（#1245）です。');
   }
 
+  if (totalMachineGaps > 0) {
+    console.error(`[check-realm-constraints] 人を無人の主体と読ませる宣言 ${totalMachineGaps} 件を検出しました:`);
+    for (const r of results) {
+      for (const g of r.machineGaps) {
+        console.error(`\n  ${r.file}\n    ${g.path}: ${g.detail}`);
+      }
+    }
+    console.error('\n🔴 これは「設定の食い違い」ではなく**人の経路（BFF セッション）の迂回**の話です。'
+      + '\nBFF の Bearer 受理はトークンが名乗る形だけで無人の主体かを決めます（許可集合を持たない）。'
+      + '\nrealm import は成功しログインも動くため、E2E では気付けません。'
+      + '\n稼働中の realm で管理コンソールから作る利用者はこの検査の外です（SC-17 の運用上の注意を参照）。'
+      + '\n実装側の記録は IADR-0420・IADR-0429 決定 3、起票は #1589 です。');
+  }
+
   process.exit(1);
 }
 
@@ -2210,6 +2471,11 @@ module.exports = {
   checkRealmResetConcealmentText,
   collectServiceAccountRoleGaps,
   checkRealmServiceAccountRolesText,
+  collectMachineJudgementGaps,
+  checkRealmMachineJudgementText,
+  isHumanLoginClient,
+  MACHINE_USERNAME_PREFIX,
+  PROFILE_SCOPE,
   REALM_MANAGEMENT_CLIENT,
   REALM_MANAGEMENT_ROLE_SCOPE,
   REALM_WRITE_ROLE,
