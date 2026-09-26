@@ -1,4 +1,3 @@
-using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Llm;
 using RetrievalService.Domain.Ports;
 using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
@@ -26,8 +25,8 @@ public class LlmGatewayGrpcEmbeddingService(
 {
     public async Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
     {
-        var request = LlmGrpcMapping.ToProto(
-            new EmbedApiRequest(text, Confidentiality: null, Purpose: EmbedPurpose.Query));
+        // FR-03, ADR-0092 決定 2, [[IADR-0467]] (#336): 要求の形は REST と**同じ関数**で作る。
+        var request = LlmGrpcMapping.ToProto(QueryEmbeddingRequest.For(text, target));
 
         var resp = await client.EmbedAsync(request, cancellationToken: ct);
 

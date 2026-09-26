@@ -153,7 +153,11 @@ export function DataSourceForm({
           {/* FR-05, UC-04, SC-06（#767）: 既定の所管部門。計画 07_abac-attribute-model は
                 `department` を**必須**の文書属性と定めるが、値域を列挙していない（「部門コード
                 （人事/経理/開発 等）」の例示のみ）ため自由入力にする。**実装が値集合を決めない。**
-                予約値そのものは翻訳しない（機密区分の値と同じ扱い）。 */}
+                予約値そのものは翻訳しない（機密区分の値と同じ扱い）。
+                ［2026-09-26 / #754 / IADR-0468］値域は利用者裁定で Keycloak realm の部門グループ
+                （`/department/<コード>`）と定まった。**未入力なら、サーバが登録する管理者の部門グループ
+                （ちょうど 1 つのとき）のコードで補う**ので、補助文でそれを伝え、例示もコードの体系に揃える。
+                値域の検証（候補外の拒否）はまだ無いため、入力は自由入力のままである。 */}
           <Label htmlFor="ds-dept">
             <Trans>既定の部門</Trans>
           </Label>
@@ -162,10 +166,14 @@ export function DataSourceForm({
             value={department}
             aria-describedby="ds-dept-hint"
             onChange={(e) => setDepartment(e.target.value)}
-            placeholder={t`例: 開発`}
+            placeholder={t`例: engineering`}
           />
           <p id="ds-dept-hint" className="text-xs text-fg-muted">
-            <Trans>未入力のときは予約値 {UNRESOLVED_DEPARTMENT} が入ります。</Trans>
+            <Trans>
+              未入力のときは、登録する管理者が属する部門グループ（1
+              つだけのとき）のコードが入ります。決まらないときは予約値 {UNRESOLVED_DEPARTMENT}{' '}
+              が入ります。
+            </Trans>
           </p>
         </div>
 

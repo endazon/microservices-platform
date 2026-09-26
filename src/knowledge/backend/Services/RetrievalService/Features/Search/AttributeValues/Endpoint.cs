@@ -1,5 +1,6 @@
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
+using RetrievalService.Domain;
 using RetrievalService.Domain.Ports;
 
 namespace RetrievalService.Features.Search.AttributeValues;
@@ -18,7 +19,7 @@ internal static class AttributeValuesEndpoint
     internal static void Map(RouteGroupBuilder g)
     {
         g.MapPost("/attribute-values", async (
-            AttributeValuesRequest req, IVectorStore store,
+            AttributeValuesRequest req, IVectorStore store, FusedCollections fused,
             ISearchAccessResolver access, HttpContext http, CancellationToken ct) =>
         {
             // deny-by-default: 呼び出し元が解決できなかった（null）／許可なしのスコープでは何も返さない。
@@ -36,7 +37,7 @@ internal static class AttributeValuesEndpoint
                 return Results.Ok(new AttributeValuesResponse([]));
 
             return Results.Ok(new AttributeValuesResponse(
-                await ListAsync(store, req.Key, scope, ct)));
+                await ListAsync(store, fused, req.Key, scope, ct)));
         }).WithName("AttributeValues").Produces<AttributeValuesResponse>();
     }
 
@@ -52,14 +53,28 @@ internal static class AttributeValuesEndpoint
     // （`HybridSearchService.BuildFilters` と同形。波 2 監査の是正）。
     //
     // 🔴 **検索と同じ制約を渡す**（別経路で絞ると「検索には出るが候補に無い値」が生まれる）。
-    internal static Task<List<string>> ListAsync(
-        IVectorStore store, string key, AccessScope scope, CancellationToken ct) =>
-        store.ListAttributeValuesAsync(
-            AttributeValueKeys.ToPayloadKey(key),
-            scope.Branches is { Count: > 0 }
-                ? new ScopeFilter(
-                    [],
-                    [.. scope.Branches.Select(b => (IReadOnlyList<AttributeFilter>)b.Filters)])
-                : new ScopeFilter(scope.Filters),
-            ct);
+    //
+    // FR-03, FR-05, ADR-0092 決定 1, [[IADR-0151]] 決定 1, [[IADR-0467]] (#336): 🔴 **検索が読む全コレクションの
+    // 和集合を返す。** 検索がティア A のコレクションを束ねるようになった以上、主だけの値を返すと
+    // 「検索には出るが候補に無い値」が生まれる（上と同じ禁止形）。**各コレクションへ同じ制約を渡す。**
+    // 件数は従来どおり持たない（和集合は値の集合であり、件数を合算しない）。追加が空なら従来と同一。
+    internal static async Task<List<string>> ListAsync(
+        IVectorStore store, FusedCollections fused, string key, AccessScope scope, CancellationToken ct)
+    {
+        var payloadKey = AttributeValueKeys.ToPayloadKey(key);
+        var filter = scope.Branches is { Count: > 0 }
+            ? new ScopeFilter(
+                [],
+                [.. scope.Branches.Select(b => (IReadOnlyList<AttributeFilter>)b.Filters)])
+            : new ScopeFilter(scope.Filters);
+
+        var primary = await store.ListAttributeValuesAsync(payloadKey, filter, ct);
+        if (fused.Items.Count == 0)
+            return primary;
+
+        var values = new SortedSet<string>(primary, StringComparer.Ordinal);
+        foreach (var collection in fused.Items)
+            values.UnionWith(await collection.Store.ListAttributeValuesAsync(payloadKey, filter, ct));
+        return [.. values];
+    }
 }

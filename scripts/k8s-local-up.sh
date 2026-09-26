@@ -13,6 +13,8 @@
 #   SYNTHETIC_MONITOR_CLIENT_SECRET（#1287。SYNTHETIC=1 のときだけ使う。realm の synthetic-monitor client と揃えること）
 # 永続化（Keycloak/Postgres/Qdrant ＋ OBSERVABILITY=1 の可観測性 4 種の PVC）は **既定オン**（IADR-0369 / #1088）。
 #   使い捨てスタックでだけ PERSIST=0 で外す。
+# 永続化と一緒に、Postgres / Vault の日次バックアップ CronJob（age 暗号化・クラスタ外 2 か所。IADR-0471 / #1560）も入る。
+#   受取人（age の公開鍵）は BACKUP_AGE_RECIPIENTS_FILE=<ファイル> を与えたときだけ ConfigMap にする（既定の再実行で上書きしない）。
 # リセット申請の床（SC-15）は **既定オン**（ADR-0097 決定 2 / #1500）。器は infra と一緒に必ず立ち、
 #   経路は ISTIO=1 ＋ LOCALEDGE=1 のエッジ（istio-edge-up.sh）が足す。外すときだけ RESET_FLOOR=0
 #   （検証で床の有無を比べる用途に限る。本番の退路に使わない。ADR-0111 決定 3 / #1543）。
@@ -199,6 +201,19 @@ kubectl create configmap keycloak-theme-platform -n "$INFRA_NS" \
   --from-file=account-theme-properties=deploy/keycloak/themes/platform/account/theme.properties \
   --from-file=account-css=deploy/keycloak/themes/platform/account/resources/css/platform.css \
   --dry-run=client -o yaml | kubectl apply -f -
+
+# NFR-21, IADR-0471 (#1560): 日次バックアップ（deploy/local/platform-backup。永続化 overlay が取り込む）の受取人＝age の**公開鍵**。
+# 🔴 kustomize の外に置き、**与えられたときだけ**作り直す —— 既定の再実行で占位へ戻さないため（CronJob 側は optional で、
+#    無い・占位のままなら何も書かずに失敗する）。公開鍵は秘密ではないが、秘密鍵はクラスタに置かない（手順書参照）。
+if [ -n "${BACKUP_AGE_RECIPIENTS_FILE:-}" ]; then
+  if [ ! -r "$BACKUP_AGE_RECIPIENTS_FILE" ]; then
+    echo "ERROR: BACKUP_AGE_RECIPIENTS_FILE を読めません: $BACKUP_AGE_RECIPIENTS_FILE" >&2
+    exit 1
+  fi
+  kubectl create configmap platform-backup-age-recipients -n "$INFRA_NS" \
+    --from-file=recipients.txt="$BACKUP_AGE_RECIPIENTS_FILE" \
+    --dry-run=client -o yaml | kubectl apply -f -
+fi
 
 echo "==> [4/7] apply in-cluster infra"
 # IADR-0082 (#324) / IADR-0210 (#787) → IADR-0369 (#1088): 永続化オーバーレイ（Keycloak/Postgres/Qdrant を
@@ -1107,9 +1122,12 @@ fi
 #
 # 🔴 **既定はオフである。既定 ON を採らなかった理由をここに置く**（ADR-0079 §フォローアップ 1 は
 #   「常駐プローブを**本番構成へ**投入する」と課しており、本番像は `deploy/helm/microservices-platform`
-#   である。そこには合成監視が無い ——「既定の起動器」は本番像を指す語であって、ローカルの
-#   `k8s-local-up.sh` のことではない）。加えてローカルで既定 ON にすると、**捨てるつもりの dev クラスタが
-#   常に `/analysis/ask` 系を叩き続ける**（検索までは走るので Qdrant / Postgres への負荷と利用イベントが
+#   である ——「既定の起動器」は本番像を指す語であって、ローカルの `k8s-local-up.sh` のことではない。
+#   🔵 ［2026-09-26 / #1287・IADR-0469］本番像には既定オフの口 `syntheticMonitor.enabled` を用意した。
+#   **この門と同じ 3 サービス・同じ主体名・同じプローブ**であることを scripts/helm-synthetic-monitor.test.js が
+#   描画結果で突き合わせる（ここの `for d in ...` の集合を変えたら、チャートの _synthetic-monitor.tpl も変えること）。
+#   チャート側で有効にしたクラスタではこの門を使わない（同名の資源になる））。
+#   加えてローカルで既定 ON にすると、**捨てるつもりの dev クラスタが常に `/analysis/ask` 系を叩き続ける**（検索までは走るので Qdrant / Postgres への負荷と利用イベントが
 #   常時立つ）。**利用者が既定 ON を望むなら、下の 1 行の既定値を `1` にするだけで足りる。**
 SYNTHETIC_DEFAULT="0" # ← 既定 ON にするならここを "1" にする（#1287。他は 1 行も変えなくてよい）
 if [ "${SYNTHETIC:-$SYNTHETIC_DEFAULT}" = "1" ]; then

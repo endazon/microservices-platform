@@ -719,7 +719,7 @@ export interface DataSourceDto {
 export type CreateDataSourceRequestConfig = {[key: string]: string} | null;
 
 /**
- * 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない
+ * 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない。登録時に限り、department が未指定（空白・unassigned を含む）なら登録する管理者の部門グループ（Keycloak の /department/<コード>。ちょうど 1 つのとき）のコードで先に補う（IADR-0468 / #754）
  */
 export type CreateDataSourceRequestDefaultAttributes = {[key: string]: string} | null;
 
@@ -736,7 +736,7 @@ export interface CreateDataSourceRequest {
   sourceType: string;
   connectionUri: string;
   config?: CreateDataSourceRequestConfig;
-  /** 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない */
+  /** 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない。登録時に限り、department が未指定（空白・unassigned を含む）なら登録する管理者の部門グループ（Keycloak の /department/<コード>。ちょうど 1 つのとき）のコードで先に補う（IADR-0468 / #754） */
   defaultAttributes?: CreateDataSourceRequestDefaultAttributes;
   /**
      * FR-05, SC-06（ADR-0074 決定 1・4 / #1194）: `owner` の写像表。未指定は空。
@@ -1527,6 +1527,8 @@ export interface EmbedApiRequest {
   confidentiality?: EmbedApiRequestConfidentiality;
   /** 用途。query は検索対象コレクションと次元を一致させるため既定外部経路へ固定 */
   purpose?: EmbedApiRequestPurpose;
+  /** 検索クエリ（purpose=query）が読むコレクション。越境判定と有効化の篩を通った候補をそのコレクションの送信先へ絞るだけで、許可されていない区分を開くことはない。index では無視する。省略時は従来どおり優先度順に選ぶ */
+  targetCollection?: string | null;
 }
 
 /**

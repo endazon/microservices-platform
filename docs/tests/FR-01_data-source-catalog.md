@@ -3,15 +3,15 @@ title: データソース登録・同期・カタログ化 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-04
-updated: 2026-09-02
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-05, SC-06, UC-04]
 adrs: [ADR-0002, ADR-0003, ADR-0014, ADR-0027]
-iadrs: [IADR-0001, IADR-0019, IADR-0044, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0199, IADR-0295]
-specs: []
-issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, planning#344, planning#361]
+iadrs: [IADR-0001, IADR-0019, IADR-0044, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0199, IADR-0295, IADR-0468]
+specs: [20260926_issue-754_department-from-registrant-group]
+issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, #754, planning#344, planning#361]
 -->
 
 # テスト仕様書: データソース登録・同期・カタログ化
@@ -95,6 +95,13 @@ issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, planning#34
 | T-50 | 資格情報つき `connectionUri` での登録・更新 | `POST` / `PUT` | **400**（`config` へ移すよう案内する） | 書き込み側の封鎖。実測で壊れる既存データは無い | 自動（エンドポイント） |
 | T-51 | マスク済み `connectionUri` をそのまま書き戻す／**編集して**書き戻す | `PUT /datasources/{id}` | 前者は 200 で実値が保たれ、後者は **400**（黙って保存して資格情報を失わせない） | 往復の保護。編集した形はどのマスク規則にも掛からないため明示的に弾く | 自動（エンドポイント） |
 | T-52 | discover / fetch が資格情報つきの例外を投げる | `POST /datasources/{id}/sync` ／ `SyncAsync` | 応答・ログのいずれにも平文が出ない。**例外オブジェクトをロガーへ渡さない**（型名は残す） | 応答とログの封鎖（#458）。共通ログ基盤にスクラビングは無い | 自動（エンドポイント・単体） |
+| T-53 | 登録者の所属グループのフルパスに `/department/<コード>` が**ちょうど 1 つ** | `RegistrantDepartment.FromGroupPaths` ／ `POST /datasources`（`department` 未指定） | 既定属性 `department` がそのコードになり、再読込しても残る | 利用者裁定（部門コードの値域は realm の部門グループ・部門は登録者の所属から導く）。補完は既定属性の中で行い、新しい段を作らない | 自動（xUnit） |
+| T-54 | 部門グループに属さない（部門以外のグループのみ・`/teams/sales` のような同名の別木・親 `/department` のみ・大小文字違い・名前だけの値） | 同上 | 導かない（`unassigned`） | 名前で突き合わせると誤った部門を作る。安全側は解決しない | 自動（xUnit） |
+| T-55 | 部門グループに **2 つ以上**属する | 同上 | 導かない（`unassigned`）。**「先頭を採る」へ変えると赤になる** | 複数部門の人の登録を片方へ寄せるのは推測である | 自動（xUnit） |
+| T-56 | `department` を明示／空白・予約値 `unassigned` を明示 | `DataSource.Create` ／ `POST /datasources` | 明示値は上書きしない／空白・予約値は未指定と同じく導く。入力の辞書を書き換えない | 予約値は部門の指定ではなく未解決の記録である | 自動（xUnit） |
+| T-57 | 登録後に別の管理者が `PATCH` / `PUT` で `department` を空にする | `PATCH` / `PUT /datasources/{id}` | **導き直さず** `unassigned` | 部門は「登録した」利用者の所属で決まる。更新者の所属で揺れない | 自動（xUnit） |
+| T-58 | 入れ子の所属（`/department/engineering/backend`） | `RegistrantDepartment.FromGroupPaths` | 上位のコード（`engineering`）に畳む。同じ部門の入れ子は 1 つ、異なる部門にまたがれば 2 つ | 下位グループの所属者はその部門の所属者でもある | 自動（xUnit） |
+| T-59 | 身元プロバイダが発行する形（`group_paths` の JSON 配列）の JWT | `JsonWebTokenHandler`（受信クレーム写像あり）→ 登録端点の読み口 | 1 値 1 クレームで読め、全部が数えられる | 先頭 1 値へ畳むと 2 部門の人が 1 つに見え、誤った部門を作る | 自動（xUnit） |
 
 ## テストデータ
 
@@ -120,6 +127,7 @@ issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, planning#34
 - 同期健全性: `.../DataSourceService.Tests/DataSourceSyncServiceTests.cs`（T-26〜T-28）、`.../SyncErrorRedactorTests.cs`（T-29）
 - 更新 API: `.../DataSourceService.Tests/DataSourceUpdateEndpointTests.cs`（T-30〜T-35）、`.../DataSourceAuthorizationTests.cs`（T-36）
 - 資格情報の露出封鎖: `src/knowledge/backend/Services/DataSourceService/Tests/Features/DataSources/DataSourceCredentialExposureTests.cs`（T-46〜T-52。**すべて秘密を実際に通す陽性対照**であり、マスクを外す変異で落ちることを実測している）
+- 登録者の部門グループからの補完: `src/knowledge/backend/Services/DataSourceService/Tests/Domain/RegistrantDepartmentTests.cs`（T-53〜T-55・T-58・T-59）、`.../Tests/Domain/DataSourceTests.cs`・`.../Tests/Features/DataSources/RegistrantDepartmentEndpointTests.cs`（T-53〜T-57）
 - BFF の中継: `src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs`（健全性の透過・`PUT` / `PATCH` の転送・運用者の 403）
 - 実装 ADR（追加）: `../../.ai-context/adr/IADR-0051_datasource-connector-port-and-filesystem.md`
 

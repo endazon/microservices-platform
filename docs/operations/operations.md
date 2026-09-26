@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07]
 adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0433, IADR-0453, IADR-0461, IADR-0466]
-specs: [20260926_deployment-name-population-scan, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable]
-issues: [#1558, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471]
+specs: [20260926_deployment-name-population-scan, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup]
+issues: [#1558, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538, AST#346]
 -->
 
 # 運用仕様書
@@ -522,6 +522,13 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
       と `Embedding__Routing__Endpoints__1__Enabled=true` を自動注入する（`services.llmgateway.selfHostedEmbedding`）。
     - compose: `docker compose --profile embedding up` で `embedding`（TEI）サービスを起動し、`.env` に
       `SELFHOSTED_EMBEDDING_URL=http://embedding:80` / `SELFHOSTED_EMBEDDING_ENABLED=true` を与える。
+    - 🔴 **検索側も同時に束ねる**（2026-09-26）: 検索サービスが Ruri のコレクションも読まないと、高機密の文書は
+      **索引されるが検索されない**。Helm は `embedding.enabled=true` で retrieval へ
+      `Qdrant__FusedCollections__0=<embedding.collection>` を自動で描画する。compose は `.env` に
+      `SEARCH_FUSED_COLLECTION=knowledge_chunks_ruri_v3` を与える。束ね方（順位で合成・スコアは比べない・
+      権限フィルタは全コレクションに掛ける）は [ハイブリッド検索 機能仕様書](../functional/FR-03_hybrid-search.md) にある。
+      有効化の後は、Ruri コレクションの全文索引が張られていること（取り込みの起動時ログ）を確かめる ——
+      検索の readiness は主コレクションの索引しか見ない。
     - **稼働環境依存（分離）**: 実モデル（Ruri v3）の取得・GPU/CPU リソース・実埋め込み疎通・下記 nDCG@10 実測は
       稼働環境で行う。既定の image tag / モデル ID はプレースホルダであり、実運用前に稼働環境で固定する。
   - 有効化後、社内文書サンプルで検索精度（nDCG@10）を実測し、voyage-3.5 比で大幅劣化しないことを確認する
@@ -959,6 +966,14 @@ LlmGateway）に在るため、**当該イメージが更新済みであるこ�
   `pg_restore`、オブジェクトストレージは複製からの書き戻し、Qdrant はスナップショット復元）→ ③依存サービスを再起動しヘルス確認 →
   ④整合確認（Qdrant/Wiki は必要なら `DocumentUpdated` 再発行で再構築。埋め込み再索引は本書「埋め込みプロバイダ」節参照）。
 - **リストア演習**: ステージング整備後に定期実施し、RTO の実測と手順の妥当性を検証する（follow-up）。
+
+### ローカル環境（`deploy/local`）で稼働しているもの
+
+- **platform-infra の Postgres（全 DB と globals）と Vault（file ストレージ）は、日次で age の公開鍵へ暗号化して
+  本機の C: と E: の 2 か所へ置く。** 永続化の既定と一緒に CronJob が入る（JST 12:00 / 12:15）。保持は日次 30 世代、
+  各月の最初の回と切替前の回は 7 年。準備（公開鍵と保管先の目印）・日々の確認・リストア試験（四半期と切替前）の手順は
+  [platform-infra-backup-runbook.md](platform-infra-backup-runbook.md)。
+- 🔴 **ローカル開発・PoC 環境専用であり、上の表の本番方式を置き換えない**（保管先は同じ筐体でオフサイトではない）。
 
 ## 障害対応（Runbook）（NFR / #198）
 

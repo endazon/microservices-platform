@@ -13,6 +13,8 @@
       "DocumentNormalizedSyncTests",
       "FileSystemConnectorTests",
       "HealthEndpointTests",
+      "RegistrantDepartmentEndpointTests",
+      "RegistrantDepartmentTests",
       "SaaSConnectorTests",
       "SyncErrorRedactorTests",
       "WikiConnectorTests"
@@ -28,8 +30,12 @@
       "BodylessDocumentSearchTests",
       "DocumentBodyPresenceTests",
       "DocumentUpdatedConsumerTests",
+      "EmbedTargetCollectionTransportTests",
+      "EmbeddingRouterTargetCollectionTests",
+      "FusedQueryEmbeddingTests",
       "HybridSearchServiceTests",
       "MetadataIndexTextTests",
+      "MultiCollectionFusionTests",
       "QdrantVectorStoreTests"
     ],
     "docs/tests/FR-04_ai-answer-citations.md": [

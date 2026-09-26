@@ -3,15 +3,15 @@ title: how-to — デプロイ手順（環境ごと）と GitOps 運用
 type: how-to
 status: published
 created: 2026-07-09
-updated: 2026-08-21
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
-ids: [FR-15]
-adrs: []
-iadrs: [IADR-0017, IADR-0026, IADR-0029, IADR-0034, IADR-0046, IADR-0069]
-specs: []
-issues: [#192]
+ids: [FR-15, NFR-02, NFR-21]
+adrs: [ADR-0076, ADR-0079]
+iadrs: [IADR-0017, IADR-0026, IADR-0029, IADR-0034, IADR-0046, IADR-0069, IADR-0378, IADR-0469]
+specs: [20260926_issue-1287_helm-synthetic-monitor-optin]
+issues: [#192, #1287]
 -->
 
 # how-to: デプロイ手順（環境ごと）と GitOps 運用
@@ -126,6 +126,22 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成の�
 （mesh 導入までの暫定措置。compose の `expose` / k8s の NetworkPolicy）は
 mTLS の決定に Supersede され、多層防御として存続している。検証コマンド（`istioctl authn tls-check` 等）は
 [`deploy/istio/README.md`](../../deploy/istio/README.md) を参照。
+
+## 合成監視の常駐プローブ（既定オフ）
+
+チャートは合成監視（低頻度の `/analysis/ask` 系へ 60 秒ごとに代表リクエストを打ち、SLO の評価対象を存在させる常駐プローブ。
+LLM は呼ばない）を `syntheticMonitor.enabled` で持つ。**既定は `false` で、既定のままでは何も描画されない**（何も呼ばず、何も費やさない）。
+
+有効にすると、プローブと「合成として扱う主体」の設定（`SyntheticMonitoring__Subjects__0`）が BFF / DashboardService /
+AiAnalysisService へ**同じ描画で**入る。合成トラフィックを利用実績・検索傾向・LLM 費用から外す仕組みは、この主体の設定と
+サービス側のコードの両方が揃って初めて効く。
+
+- 🔴 **有効にする前提は、それらのサービス（と LlmGateway）のイメージが除外の仕組みを含むソースから作り直されていること**である。
+  チャートはイメージの中身を確かめられない。古いイメージのまま有効にすると、合成が実利用として数えられ、指標が静かに汚れる。
+- 除外の面が欠ける構成（3 サービスのどれかを無効にしている）と、プローブが LLM を呼ぶ構成（AiAnalysisService に
+  `SyntheticMonitoring__AllowLlmEgress` を立てている）は、**`helm template` / `helm upgrade` の段階で失敗する**。
+- クライアント secret はチャートの外（Vault → ExternalSecret → Secret `synthetic-monitor-oidc`）で作り、同期を終えてから有効にする。
+- 手順・確かめ方・止め方の正本は `deploy/local/synthetic-monitor/README.md`「本番構成（helm チャート）で有効にする」である（`docs/` の外なのでリンクは張らない）。
 
 ## CI ゲート（マージ前の必須チェック）
 

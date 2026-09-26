@@ -37,7 +37,9 @@ public sealed class LlmEmbeddingGrpcService(EmbedUseCase useCase) : Pb.LlmEmbedd
         var dto = new EmbedApiRequest(
             request.Text,
             Confidentiality: request.Confidentiality,
-            Purpose: LlmGrpcMapping.ToDtoPurpose(request.Purpose));
+            Purpose: LlmGrpcMapping.ToDtoPurpose(request.Purpose),
+            // FR-03, ADR-0092 決定 2, [[IADR-0467]] (#336): 空文字（未指定）は null へ戻す（REST と同値）。
+            TargetCollection: LlmGrpcMapping.ToDtoTargetCollection(request.TargetCollection));
 
         var result = await useCase.ExecuteAsync(dto, context.CancellationToken);
         return LlmGrpcMapping.ToProto(result);

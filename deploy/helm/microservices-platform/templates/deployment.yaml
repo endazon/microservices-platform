@@ -253,6 +253,16 @@ spec:
                   key: {{ .secretKeyRef.key }}
               {{- end }}
           {{- end }}
+          {{- /* NFR-02, NFR-21, ADR-0076 決定 4, ADR-0079 決定 1, IADR-0378, IADR-0469 (#1287): 合成監視の標識の許可集合。
+                 syntheticMonitor.enabled のときだけ、プローブ（templates/synthetic-monitor.yaml）と**同じ描画で**描く
+                 ——「標識と除外は同時に入れる」。無効（既定）では 1 バイトも出ない。
+                 集合は _synthetic-monitor.tpl の 1 か所が持つ（knob にしない）。空だと SyntheticTraffic は何も合成と
+                 見なさない（fail-closed）ので、1 つでも欠けるとその面だけが合成を実利用として数える。 */}}
+          {{- $synthetic := $.Values.syntheticMonitor | default dict }}
+          {{- if and $synthetic.enabled (has $name (include "msp.syntheticMonitor.exclusionServices" $ | splitList ",")) }}
+            - name: SyntheticMonitoring__Subjects__0
+              value: {{ $synthetic.clientId | quote }}
+          {{- end }}
           {{- if and $svc.selfHostedEmbedding $.Values.embedding.enabled }}
             # FR-02, FR-03, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み（Ruri v3）の配線。
             # embedding.enabled=true のときのみ描画し、llmgateway を templates/embedding.yaml（TEI・OpenAI 互換
@@ -264,6 +274,16 @@ spec:
               value: "http://embedding-service:{{ $.Values.embedding.port }}"
             - name: Embedding__Routing__Endpoints__1__Enabled
               value: "true"
+          {{- end }}
+          {{- if and (eq $name "retrieval") $.Values.embedding.enabled }}
+            # FR-03, ADR-0092 決定 1, IADR-0467 (#336): ティア A を有効化したら、検索はそのコレクションも
+            # **束ねて**読む（主コレクションと 1 回の検索で引き、順位で合成する）。クエリはそのコレクションの
+            # モデルで埋める（検索サービスがコレクション名を名乗り、LlmGateway が越境判定の後で絞る）。
+            # 🔴 llmgateway の有効化（上のブロック）と**同じ条件**で描画する —— 片方だけだと
+            # 「索引されるが検索されない」か「検索するが埋め込めない」のどちらかになる。
+            # 既定 embedding.enabled=false では非描画＝検索は主コレクションだけ（現状維持）。
+            - name: Qdrant__FusedCollections__0
+              value: {{ $.Values.embedding.collection | quote }}
           {{- end }}
           {{- /* FR-02, FR-03, ADR-0016, IADR-0284, IADR-0313 (#992 案 2): 決定的ローカル埋め込み。
                  🔴 **使い捨ての検証スタック専用**（意味は values.yaml の embedding.deterministicLocal）。

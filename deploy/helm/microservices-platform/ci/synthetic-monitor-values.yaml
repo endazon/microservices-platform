@@ -1,0 +1,9 @@
+# NFR-02, NFR-21, ADR-0076 決定 4, ADR-0079 決定 1, IADR-0469 (#1287):
+# CI 専用の values。**配備には使わない**（helm / chart-testing の `ci/` 慣習）。
+#
+# 合成監視は既定オフ（values.yaml の syntheticMonitor.enabled: false）なので、既定の描画だけを検査すると
+# 有効時のテンプレートは 1 度も描画・スキーマ突合されない。scripts/check-deploy-manifests.js は chart の
+# `ci/*.yaml` を走査で見つけ、それぞれの values でも helm lint / helm template / kubeconform を回す。
+# scripts/helm-synthetic-monitor.test.js も「有効」をこのファイルで描く（有効の定義を 2 か所に書かない）。
+syntheticMonitor:
+  enabled: true

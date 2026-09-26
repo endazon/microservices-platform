@@ -7,17 +7,23 @@ namespace RetrievalService.Infrastructure.ExternalServices;
 // ADR-0013, ADR-0016: LLM ゲートウェイ経由でクエリ埋め込みを生成する（検索経路 = Purpose=Query）。
 // クエリは検索対象コレクションへ整合させるため、ゲートウェイが送信先を決める（**既定では**外部経路
 // ＝ voyage / 1024 次元。測定時は `Embedding:Routing:QueryProfile` で名指しできる。IADR-0422 決定 2）。
-// 高機密（ruri / 768 次元）コレクションの横断検索は FR-03 の後続課題。
+// ［2026-09-26 / #336］高機密（ruri / 768 次元）コレクションの横断検索は ADR-0092 決定 1 で束ねる形に決まり、
+// 束ねる追加コレクション用の本クラスは `QueryEmbeddingTarget.NamedInRequest=true` で作られる（[[IADR-0467]]）。
 public class LlmGatewayEmbeddingService(
     HttpClient http,
     QueryEmbeddingTarget? target = null,
     ILogger<LlmGatewayEmbeddingService>? logger = null) : IEmbeddingService
 {
+    // FR-03, ADR-0092 決定 2, [[IADR-0467]] (#336): 本クラスの型つきクライアントの名前。
+    // 束ねる追加コレクション用のインスタンスも**同じ名前つきクライアント**（宛先・s2s トークン）を使う
+    // —— 別に登録すると宛先や資格情報の付け方が 2 つに割れる。Program.cs の登録と必ず同じ値を使うこと。
+    public const string HttpClientName = nameof(IEmbeddingService);
+
     public async Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
     {
         var resp = await http.PostAsJsonAsync(
             "/embed",
-            new EmbedApiRequest(text, Confidentiality: null, Purpose: EmbedPurpose.Query),
+            QueryEmbeddingRequest.For(text, target),
             ct);
         // **到達できない・非 2xx はここで例外にする（潰さない）。** ゲートウェイの故障を
         // 「該当なし」に化けさせないため（[[IADR-0256]] 決定 3）。

@@ -103,6 +103,26 @@ function discoverCharts(repoRoot = REPO_ROOT) {
   );
 }
 
+/**
+ * NFR-02, ADR-0076 決定 4, IADR-0469 (#1287): chart の `ci/*.yaml`（helm / chart-testing の慣習。CI 専用の values）を
+ * リポジトリ相対で返す。**既定オフの opt-in テンプレートは既定の描画に 1 度も現れない**ため、既定の描画だけを
+ * 検査すると有効時のスキーマ違反を素通しする。ここで見つけた values ごとに lint / template / kubeconform を回す。
+ * 要点 1 と同じく列挙を持たない（ファイル名をワークフローにも本ファイルにも書かない）。
+ */
+function discoverChartCiValues(chartDir, repoRoot = REPO_ROOT) {
+  const ciDir = path.join(repoRoot, chartDir, 'ci');
+  let entries;
+  try {
+    entries = fs.readdirSync(ciDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((e) => e.isFile() && /\.ya?ml$/.test(e.name))
+    .map((e) => toPosix(path.join(chartDir, 'ci', e.name)))
+    .sort();
+}
+
 // 🔴 **`command -v` を使わない。** `shell: true` は Windows で `cmd.exe`（COMSPEC）を起こすが、
 // `cmd.exe` に `command` 組み込みは無い。結果、**在るツールまで「無い」と報告して常に fail する** ——
 // 実測（2026-09-06）: `helm` / `kubectl` が PATH に在る Windows 機で 3 つとも欠落と報告し、
@@ -173,14 +193,19 @@ function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
   }
 
   for (const c of charts) {
-    const lint = run('helm', ['lint', c], repoRoot);
-    if (!lint.ok) failures.push(`helm lint が失敗した: ${c}\n${lint.out}`);
-    const tpl = run('helm', ['template', 'ci-check', c], repoRoot);
-    if (!tpl.ok) {
-      failures.push(`helm template が失敗した: ${c}\n${tpl.out}`);
-    } else {
-      const schema = validateSchema(tpl.out, repoRoot);
-      if (!schema.ok) failures.push(`kubeconform（chart）でスキーマ不整合: ${c}\n${schema.out}`);
+    // 既定の values（引数なし）に加え、ci/*.yaml の各 values でも同じ 3 段を回す（#1287）。
+    for (const valuesFile of [null, ...discoverChartCiValues(c, repoRoot)]) {
+      const extra = valuesFile ? ['-f', valuesFile] : [];
+      const label = valuesFile ? `${c}（-f ${valuesFile}）` : c;
+      const lint = run('helm', ['lint', c, ...extra], repoRoot);
+      if (!lint.ok) failures.push(`helm lint が失敗した: ${label}\n${lint.out}`);
+      const tpl = run('helm', ['template', 'ci-check', c, ...extra], repoRoot);
+      if (!tpl.ok) {
+        failures.push(`helm template が失敗した: ${label}\n${tpl.out}`);
+      } else {
+        const schema = validateSchema(tpl.out, repoRoot);
+        if (!schema.ok) failures.push(`kubeconform（chart）でスキーマ不整合: ${label}\n${schema.out}`);
+      }
     }
   }
 
@@ -230,6 +255,18 @@ function selfTest() {
     mk('deploy/helm/msp/Chart.yaml', 'name: msp\n');
     mk('deploy/helm/msp/charts/upstream/Chart.yaml', 'name: upstream\n');
     assert.deepStrictEqual(discoverCharts(tmp), ['deploy/helm/msp']);
+  });
+
+  ok('chart の ci/*.yaml を拾い、YAML 以外と ci/ の無い chart は空を返す（#1287）', () => {
+    mk('deploy/helm/msp/ci/b-values.yaml', 'x: 1\n');
+    mk('deploy/helm/msp/ci/a-values.yml', 'x: 1\n');
+    mk('deploy/helm/msp/ci/README.md', '# not values\n');
+    assert.deepStrictEqual(discoverChartCiValues('deploy/helm/msp', tmp), [
+      'deploy/helm/msp/ci/a-values.yml',
+      'deploy/helm/msp/ci/b-values.yaml',
+    ]);
+    mk('deploy/helm/other/Chart.yaml', 'name: other\n');
+    assert.deepStrictEqual(discoverChartCiValues('deploy/helm/other', tmp), []);
   });
 
   ok('overlay が 0 件なら失敗する（0 件走査で緑を返さない）', () => {
@@ -317,4 +354,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { check, discoverOverlays, discoverCharts, ALLOW_MISSING_TOOLS_ENV };
+module.exports = { check, discoverOverlays, discoverCharts, discoverChartCiValues, ALLOW_MISSING_TOOLS_ENV };
