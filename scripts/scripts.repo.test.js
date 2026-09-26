@@ -5952,6 +5952,23 @@ ${r.stderr}`);
         'UNVERIFIABLE_ALLOWLIST: 載せたルールの「検証できない」は黙る',
         'condition が存在しない refId を指すことを検出する',
         'クエリと threshold の間の math の段は「検証できない」と報告する',
+        // #1595: YAML の木としての読み取り・空集合・端のケース
+        'YAML: 複数行に続く plain の expr（expr: up の次の行の == 0）を続きまで読み',
+        'YAML: 行末コメント・>- / |2- のブロック・複数行の引用符を読み',
+        'YAML: Grafana のエクスポート順 { params, type }',
+        'YAML: 読めない YAML',
+        'threshold の expression: $A を違反にする',
+        '空集合: 同じ選択子の矛盾する絞り込み',
+        '空集合: ラベルの矛盾',
+        '空集合: 健全に判定できない同型',
+        '同じ式の差 up - up は {0}',
+        'or on() / or ignoring() の右辺の修飾を剥がして読む',
+        '単項の符号は ^ より弱い',
+        '任意の値は ±Inf を含む',
+        '関数呼び出しへのサブクエリ',
+        '@ を offset より前に書いた選択子',
+        '名前が :offset / :bool で終わるメトリクスを修飾子として読まない',
+        'UNVERIFIABLE_ALLOWLIST: 理由が空・空白だけ・文字列でない項目は違反にし',
       ]) {
         assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
       }
@@ -6063,6 +6080,42 @@ ${r.stderr}`);
           assert.ok(
             r.issues.some((x) => x.startsWith(`[${label}] ルール ${title}:`) && x.includes(needle)),
             `${label} の ${title} を検出できなかった:\n${r.issues.join('\n')}`,
+          );
+        }
+      }
+    });
+
+    // #1595 / NFR-21: 実データの expr を「複数行に続く plain」へ書き換える（#1588 までの行の読み取りは 1 行目の `up{…}` だけを
+    //   読み、`lt 1` と組んで通していた）／決して値を返さない形へ変える —— どちらも写しの両方で赤になる。
+    //   フィクスチャだけだと、実書式の字下げ（compose の 14 桁・k8s inline は剥がした後の同じ桁）で続きを読めているかを捕まえられない。
+    ok('check-grafana-alerting: 実データの expr を複数行の plain に続けた == 1 ／決して値を返さない unless へ変えると写しの両方で赤（#1595・変異試験）', () => {
+      const g = require('./check-grafana-alerting.js');
+      const read = (p) => fs.readFileSync(path.join(REPO, p), 'utf8');
+      const prom = read('deploy/prometheus/alerts.yml');
+      const grafana = read('deploy/grafana/provisioning/alerting/slo-alerts.yaml');
+      const datasources = read('deploy/grafana/provisioning/datasources/datasources.yaml');
+      const k8sInline = g.extractK8sInline(read('deploy/local/observability/grafana.yaml'));
+      const cases = [
+        // lt 1 のまま、続きの行の `== 1` で値を {1} に絞る → 1 < 1 は偽。
+        ['OtelCollectorDown', '永久に発火しない', (t) => t.replace(
+          /^( *)expr: 'up\{job="otel-collector"\}'$/m,
+          '$1expr: up{job="otel-collector"}\n$1  == 1',
+        )],
+        ['OtelCollectorDown', '決して値を返さない', (t) => t.replace(
+          "expr: 'up{job=\"otel-collector\"}'",
+          "expr: 'up{job=\"otel-collector\"} unless up{job=\"otel-collector\"}'",
+        )],
+      ];
+      for (const [title, needle, mutate] of cases) {
+        const g2 = mutate(grafana);
+        const k2 = mutate(k8sInline);
+        assert.notStrictEqual(g2, grafana, `変異が compose に当たっていない（${title} / ${needle}）`);
+        assert.notStrictEqual(k2, k8sInline, `変異が k8s inline に当たっていない（${title} / ${needle}）`);
+        const r = g.findIssues({ prom, grafana: g2, datasources, k8sInline: k2 });
+        for (const label of ['compose', 'k8s inline']) {
+          assert.ok(
+            r.issues.some((x) => x.startsWith(`[${label}] ルール ${title}:`) && x.includes(needle)),
+            `${label} の ${title} を検出できなかった（${needle}）:\n${r.issues.join('\n')}`,
           );
         }
       }
