@@ -142,7 +142,10 @@ PR #1623 の監査（GO）の R1 を同じ PR に足した。**判定の筋は�
   読めない（null・空）ときも扱わない（fail-closed）。
 - 試験: 自己試験 +1（ブランチ main / feature/x / 空 / 無し × attempt 1・2、head のリポジトリがフォーク・null・空、基のリポジトリが null → すべて none。16 → 17 件）。
   `scripts.repo.test.js` の真理値表に `branches: [develop]` の存在と、ブランチ 4 種・フォークの head × 3 場面で起動しないことを足した。
-- 変異試験: `decide` のブランチの確かめを外す → 自己試験の R1 の場面が落ちる（証跡は PR 本文と下の追記）。
+- 変異試験: `decide` の `if (run.head_branch !== RERUN_BRANCH) return none(…)` の 1 行を消す → 自己試験が
+  「ブランチ feature/x」で落ち（exit 1）、`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` も exit 1。`git show HEAD:<path> > <path>` で戻し、
+  自己試験 17 件 OK・`✓ 841 tests passed`・`git status` は空。
+- 実データ（読むだけ）: run 36244009369 attempt 1 はブランチとリポジトリの確かめを通り、従前どおり「印の手順が無い」で none。
 
 ## 残るもの
 
