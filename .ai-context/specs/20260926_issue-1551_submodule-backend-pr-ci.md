@@ -102,3 +102,15 @@ issue: "#1551"
   変異（`build-and-test` の needs から `submodule-backend-build` を外す）で 1 件が落ちることも確かめた（戻し済み）。
   🔴 **本ブランチでは `node scripts/scripts.test.js` の全量をローカルで走らせていない。** 同じ試験の #852 節が稼働側の門
   （`check-password-reset-mail.js` など）を引数なしで起こすため（#1550。PR #1578 がその穴を塞ぐ）。全量は CI の `scripts-tests` で確かめる。
+
+## ［2026-09-26 追記 / 監査への対応］
+
+- N1: `ci.yml` は `permissions:` を持たず、リポジトリ既定は書き込み可である。新しい 2 ジョブに `permissions: { contents: read }` を置き、
+  checkout を `persist-credentials: false` にした（submodule は public で、`.gitmodules` の https URL を匿名で取れるので資格情報は要らない）。
+  他のジョブの権限は本 PR では変えない（ワークフロー全体の姿勢は別 issue の候補として PR 本文に記録）。
+- N2: 差分判定の `printf … | grep -Eq` は、step 自身の `set -euo pipefail` の下で、大きな差分の先頭で一致すると書き手が SIGPIPE（141）で
+  落ち「一致したのに build=false」になる。here-string（`grep -Eq -- "$pattern" <<< "$changed"`）へ替え、step を切り出して git / jq を
+  スタブにして実際に走らせる試験を足した（6 万行の差分の先頭・末尾で一致 → true、不一致 → false）。旧形へ戻すとこの試験が落ちることを
+  ローカルで確かめた（SIGPIPE を再現）。`images.yml` の同じ形は、step が既定シェル（`bash -e`・pipefail なし）で走るため
+  パイプの終了コードは grep のものになり、この経路は生じない —— 変えていない。
+- 指摘の小項目: `for u in $units` を `while IFS= read -r u … <<< "$units"` へ替えた。

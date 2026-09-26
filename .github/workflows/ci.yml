@@ -859,6 +859,10 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────────
   submodule-changes:
     runs-on: ubuntu-latest
+    # 🔴 NFR, #1551（監査 N1）: 本ワークフローは permissions: を持たず、リポジトリ既定は書き込み可である。
+    #    新しく足すジョブは読むだけの権限に絞り、checkout の資格情報も作業ツリーへ残さない。
+    permissions:
+      contents: read
     outputs:
       build: ${{ steps.filter.outputs.build }}
       units: ${{ steps.filter.outputs.units }}
@@ -867,6 +871,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Detect gitlink / shared props changes and derive submodule units
         id: filter
         env:
@@ -901,10 +906,14 @@ jobs:
           echo "::endgroup::"
           # gitlink の差分は `src/<unit>` の 1 行で現れる（submodule の中身のファイルは現れない）。
           pattern='^\.gitmodules$|^global\.json$|^src/Directory\.[^/]+$|^\.github/workflows/ci\.yml$'
-          for u in $units; do
+          while IFS= read -r u; do
+            [ -n "$u" ] || continue
             pattern="${pattern}|^src/$(printf '%s' "$u" | sed 's/[.[\*^$+?(){}|]/\\&/g')\$"
-          done
-          if printf '%s\n' "$changed" | grep -Eq "$pattern"; then
+          done <<< "$units"
+          # 🔴 監査 N2: `printf … | grep -q` にしない。grep -q は一致した時点で読むのをやめるので、差分が大きいと
+          #    書き手が SIGPIPE（141）で落ち、pipefail の下では「一致したのに偽」になる（build=false へ倒れる＝検査漏れ）。
+          #    here-string なら書き手のプロセスが無く、この経路が生じない。
+          if grep -Eq -- "$pattern" <<< "$changed"; then
             echo "build=true" >> "$GITHUB_OUTPUT"
             echo "合成を変え得る差分がある（gitlink / 共通 props / global.json / ci.yml）。submodule ユニットを MSP の構成で試す。"
           else
@@ -922,8 +931,15 @@ jobs:
       fail-fast: false
       matrix:
         unit: ${{ fromJSON(needs.submodule-changes.outputs.units) }}
+    # 🔴 NFR, #1551（監査 N1）: このジョブは他リポジトリ（submodule）のテストコードを走らせる。書き込み可の既定トークンと、
+    #    作業ツリーに残る checkout の資格情報をそのコードへ渡さない。submodule は public なので取得に資格情報は要らない
+    #    （.gitmodules の https URL を匿名で取る。private なユニットを足すときは読むだけのトークンを明示の手順で渡すこと）。
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # integration.yml と同じ取得（src/* の submodule のみ・非再帰。public ユニットはトークン不要。IADR-0065）。
       - name: Fetch unit submodules (src/*, public, non-recursive)
         run: |
