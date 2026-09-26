@@ -42,6 +42,7 @@ public sealed class StubOwnerRetentionDirectory : IOwnerRetentionDirectory
 
     /// <summary>
     /// #1583: 1 回目・2 回目…の照会に順に答える（例外を投げる答えも置ける）。尽きたら最後の答えを返し続ける。
+    /// 🔴 スタブはクラス内の試験で共有され、後続の試験の周期もこの所有者を引く —— **最後の答えに例外を置かない。**
     /// </summary>
     public void DeclareSequence(string ownerId, params Func<OwnerRetentionStatus?>[] answers)
     {

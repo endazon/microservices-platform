@@ -355,9 +355,12 @@ public class PrivateNoteDepartedOwnerPurgeTests(TestWebApplicationFactory factor
         var failingNote = await PushNoteAsync(failingPlugin, "reread-throw.md", "本文");
         var departedNote = await PushNoteAsync(departedPlugin, "reread-other.md", "本文");
         factory.Storage.ResetDeletions();
+        // 🔴 3 つ目（以降ずっと返す答え）は「引けなかった」にする。スタブと DB はクラス内で共有され、
+        // 後続の試験の周期もこの所有者を判定する —— 例外を残し続けると、その周期の 1 巡目の判定が落ちる（CI で実測）。
         factory.OwnerRetention.DeclareSequence(failing,
             StubOwnerRetentionDirectory.Departed,
-            () => throw new TimeoutException("fake"));
+            () => throw new TimeoutException("fake"),
+            () => null);
         factory.OwnerRetention.DeclareDeparted(departed);
 
         await RunMaintenanceAsync(Now);
@@ -365,5 +368,9 @@ public class PrivateNoteDepartedOwnerPurgeTests(TestWebApplicationFactory factor
         QueriedCount(failing).Should().Be(2);
         (await NoteExistsAsync(failingNote)).Should().BeTrue("読み直しに失敗した所有者は消さない");
         (await NoteExistsAsync(departedNote)).Should().BeFalse("他の所有者の削除は続く");
+
+        // 次の周期（同じクラスの後続の試験の周期と同じ形）も落ちずに回り、引けない所有者は引き続き消さない。
+        await RunMaintenanceAsync(Now.AddDays(1));
+        (await NoteExistsAsync(failingNote)).Should().BeTrue();
     }
 }
