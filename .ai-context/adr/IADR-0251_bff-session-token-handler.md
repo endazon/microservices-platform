@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR, SC-16, ADR-0026, ADR-0031, ADR-0032, IADR-0033, IADR-0121, IADR-0248]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md
   - planning:projects/microservices-platform/06_technical/13_frontend-stack.md
@@ -195,6 +195,25 @@ ADR-0032 §決定 が「**セッションストアは Redis とし、…全セ�
 
 **狭めるのは緩める方向ではないので、後から実施できる。** 逆（A から B へ緩める）は承認が要る。
 **可逆性の高い側を先に採っている。**
+
+> **［2026-09-26 追記 / #1535］条件 1 は満たされた。ただし既定は振り分けスキームのまま据え置く。**
+>
+> - **満たされたこと**: `verify-oidc-edge-flow.sh` は BFF のログイン往復（`/bff/auth/login` → Keycloak →
+>   `/bff/auth/callback`）で得たセッション Cookie で `/bff/*` を叩く形へ移った（POST は CSRF ヘッダ付き）。
+>   スクリプトは client secret もトークンも持たない。これに合わせ、[IADR-0429](./IADR-0429_platform-spa-removal-and-bearer-caller-narrowing.md)
+>   決定 3 の腕 B（BFF 自身の client 名義の利用者トークン）を落とした（同 IADR の追記）。
+>   **利用者の資格情報で `/bff/*` に入る口はセッション Cookie だけになった。**
+> - **据え置いたこと（既定を `BffSession` 単体へ狭めない）**: 本決定の執筆後、`/bff/*` を Bearer で叩く
+>   **恒久の呼び出し元が現れた** —— 合成監視（`synthetic-monitor`。IADR-0378・計画 ADR-0076 決定 4）が
+>   client credentials のトークンで `/bff/analysis/ask`（と `/stream`）を叩く。これは IADR-0429 決定 3 の腕 A
+>   （無人の主体）で受理されており、既定を `BffSession` 単体にすると 401 になる（上の「なぜ単純に Cookie を
+>   既定にしないか」の実測そのもの）。**条件 2（非ブラウザの呼び出し口がサービスアカウント方式へ移った）の形で
+>   残っている呼び出し元のために、振り分けは要る。**
+> - したがって本決定の「移行期の姿勢」は、**「Bearer を受理するのは無人の主体だけ」という恒久の姿勢**に
+>   置き換わった。利用者トークンの Bearer は `BearerCallerPolicy` が拒む（`BearerCallerPolicyTests` ・
+>   `BearerArmPipelineTests` が陰性・陽性の対で固定）。Cookie 経路は腕の撤去に依存しない —— セッションの
+>   アクセストークンを `Authorization` へ昇格するのは認証・認可の後であり、昇格後に既定スキームで
+>   再認証する経路は無い（`BearerArmPipelineTests` の変異 H で実測）。
 
 ### 検査（3 点セット ＋ 条件 4）
 
