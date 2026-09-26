@@ -15,7 +15,6 @@ using AuthorizationService.Features.Authz.ValidateAttributes;
 using AuthorizationService.Features.Authz.ValidatePolicy;
 using AuthorizationService.Infrastructure.Persistence;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
-using Microsoft.EntityFrameworkCore;
 
 namespace AuthorizationService.Features.Authz;
 
@@ -88,10 +87,13 @@ public static class AuthzEndpoints
     //
     // 🔴 **ADR-0065 決定 2 の 3 段化でも、この 1 つを操作フォルダへ複製してはならない**
     // （3 操作が同じ 1 つを呼ぶことが計画 #535 の要件そのものである）。集約直下に残す。
+    //
+    // ［2026-09-27 / #1609・計画 ADR-0116 決定 3］辞書は `AttributeDictionary` から読む —— `department` の許容値は
+    // realm の部門グループのコードである（seed の固定値ではない）。
     internal static async Task<List<string>> ValidatePolicyAsync(
-        CreatePolicyRequest req, AuthorizationDbContext db)
+        CreatePolicyRequest req, AuthorizationDbContext db, AttributeDictionary dictionary, CancellationToken ct)
     {
-        var definitions = await db.AttributeDefinitions.ToListAsync();
+        var definitions = (await dictionary.LoadAsync(db, ct)).Definitions;
         return AbacValidation.ValidatePolicy(
             req.Name, req.Action, req.UserConditions, req.DocumentConditions, definitions);
     }

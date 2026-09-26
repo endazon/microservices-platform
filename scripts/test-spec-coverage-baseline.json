@@ -275,7 +275,9 @@
       "RawDocumentFetchedConsumerJobTests"
     ],
     "docs/tests/SC-09_admin-abac-settings.md": [
-      "BffAuthzEndpointTests"
+      "BffAuthzEndpointTests",
+      "DepartmentDictionaryFromRealmTests",
+      "DepartmentDictionaryValuesTests"
     ],
     "docs/tests/SC-10_operations-dashboard.md": [
       "DashboardBffEndpointTests",
@@ -290,7 +292,10 @@
     "docs/tests/SC-17_user-account-management.md": [
       "DepartmentAttributeReconciliationTests",
       "DepartmentAttributeSyncTests",
-      "KeycloakIdentityAdminClientTests"
+      "DepartmentDictionaryFromRealmTests",
+      "DepartmentDictionaryValuesTests",
+      "KeycloakIdentityAdminClientTests",
+      "UserAdminEndpointTests"
     ],
     "docs/tests/SC-19_private-notes-screen.md": [
       "BffPrivateNoteEndpointTests"

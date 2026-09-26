@@ -26,7 +26,7 @@
 
 | ファイル | 役割 |
 | --- | --- |
-| `attributes.json` | 属性辞書（`document` / `user` スコープ）。値集合は計画 project-planning の `projects/microservices-platform/06_technical/07_abac-attribute-model.md` に合わせる |
+| `attributes.json` | 属性辞書（`document` / `user` スコープ）。値集合は計画 project-planning の `projects/microservices-platform/06_technical/07_abac-attribute-model.md` に合わせる。**`department` の許可値は空で投入する**——AuthorizationService が realm の部門グループ（`/department/<code>`）から導く（計画 ADR-0116 決定 3・#1609。手で足した値は 400 で拒まれる） |
 | `policies.json` | ABAC ポリシー。`clearance` が高いほど読める `confidentiality` が広がる階段 |
 
 `required` は**すべて `false`** にしてある。`/authz/attributes/validate` を呼ぶ取り込み経路は現時点で

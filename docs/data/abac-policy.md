@@ -3,15 +3,15 @@ title: ABAC 属性辞書・ポリシー（AttributeDefinition / AbacPolicy） �
 type: data-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-23
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
-ids: [FR-05, FR-09]
-adrs: [ADR-0002, ADR-0004, ADR-0036]
-iadrs: [IADR-0253]
-specs: [20260823_issue-989_authz-scope-disjunction-stages]
-issues: [#989, planning#466]
+ids: [FR-05, FR-09, SC-09, SC-17]
+adrs: [ADR-0002, ADR-0004, ADR-0036, ADR-0116, ADR-0115]
+iadrs: [IADR-0253, IADR-0476]
+specs: [20260823_issue-989_authz-scope-disjunction-stages, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
+issues: [#989, #1609, planning#466, planning#672]
 -->
 
 # データ仕様書: ABAC 属性辞書・ポリシー（AttributeDefinition / AbacPolicy）
@@ -44,7 +44,7 @@ AbacPolicy は評価ルールで、アクション（`read` / `analyze` / `manag
 | Id | Guid (uuid) | ○ | 主キー。既定 `Guid.NewGuid()` | 属性定義の識別子 |
 | Key | string (varchar(100)) | ○ | 最大長 100。`(Key, Scope)` で一意。同一性・一意制約の基礎のため不変 | 属性キー（例: `confidentiality`, `department`） |
 | Label | string (varchar(200)) | ○ | 最大長 200 | 表示ラベル |
-| AllowedValues | List&lt;string&gt; (jsonb) | ○ | NULL 不可 | 取りうる値（例: `public`/`internal`/`confidential`/`restricted`） |
+| AllowedValues | List&lt;string&gt; (jsonb) | ○ | NULL 不可 | 取りうる値（例: `public`/`internal`/`confidential`/`restricted`）。［2026-09-27 / #1609］**キー `department` だけは手で持たない** —— 読むたびに realm の部門グループ（`/department/<コード>`）から導いて置き換え、変わっていれば保存し直す（保存値は「最後に確かめた値」）。realm を読めないときは保存値を使い、消さない（応答の `allowedValuesSource` が `realm-unavailable`） |
 | Required | bool (boolean) | ○ | 既定 false | 必須属性か |
 | Scope | string (varchar(50)) | ○ | 最大長 50。既定 `document`。値: `document` / `user`。不変 | 属性の適用対象 |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `now()`（DB 既定値）／`UtcNow` | 作成時刻（後続マイグレーションで追加） |

@@ -8,10 +8,10 @@ author: implementation-agent
 ---
 <!-- trace:
 ids: [FR-05, FR-09, SC-09, SC-17, UC-05, NFR-09]
-adrs: [ADR-0004, ADR-0026, ADR-0031, ADR-0032, ADR-0115]
-iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0044, IADR-0124, IADR-0128, IADR-0129, IADR-0135, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329, IADR-0330, IADR-0473, IADR-0420, IADR-0429]
-specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260905_issue-439_session-revocation-e2e, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1589_realm-machine-judgement-premises, 20260926_issue-1596_realm-login-grants-and-username-source, 20260927_issue-1605_checker-residual-precision]
-issues: [#452, #438, #1101, #439, #1573, #1589, #1596, #1605, planning#672]
+adrs: [ADR-0004, ADR-0026, ADR-0031, ADR-0032, ADR-0115, ADR-0116]
+iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0044, IADR-0124, IADR-0128, IADR-0129, IADR-0135, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329, IADR-0330, IADR-0473, IADR-0420, IADR-0429, IADR-0476]
+specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260905_issue-439_session-revocation-e2e, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1589_realm-machine-judgement-premises, 20260926_issue-1596_realm-login-grants-and-username-source, 20260927_issue-1605_checker-residual-precision, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
+issues: [#452, #438, #1101, #439, #1573, #1589, #1596, #1605, #1609, planning#672]
 -->
 
 # テスト仕様書: ユーザーアカウント管理
@@ -90,7 +90,7 @@ issues: [#452, #438, #1101, #439, #1573, #1589, #1596, #1605, planning#672]
 | T-42 | 稼働クラスタ・機密クライアントの資格情報 | 権限外の操作（クライアント作成・realm 更新）を呼ぶ | **403**（**最小権限の陰性対照**） | 過剰権限を持たない | 手動（稼働クラスタ） |
 | T-43 | 部門グループに 1 つ属し、属性が違う・属性が無い・大小文字だけ違う利用者 | 部門の同期の計画を立てる／同期を回す | **食い違い**として検知され、直す先は**グループのコード**（属性ではない） | 部門の正本は部門グループ（属性の食い違いの検知） | 自動 |
 | T-44 | 同上（同期を `Fix` で有効化） | 同期を回す | 属性がグループのコードへ直る。**グループの所属は 1 件も変わらない**（逆向きに直さない） | 属性をグループへ合わせる | 自動 |
-| T-45 | 部門グループ 2 つ／部門以外の同名グループだけ／所属なし（サービスアカウント）／入れ子の部門グループ | 同期を `Fix` で回す | 前 3 者は**上書きされず消されもしない**。入れ子は上位のコードへ畳んで直る。🔴 先頭の部門へ寄せる変異・名前で部門を判定する変異で赤になる | 0 個・複数は未解決 | 自動 |
+| T-45 | 部門グループ 2 つ／部門以外の同名グループだけ／所属なし（サービスアカウント）／入れ子の部門グループ | 同期を `Fix` で回す | 2 つの人とサービスアカウントは**上書きされず消されもしない**。入れ子は上位のコードへ畳んで直る。部門以外の同名グループだけの人は部門グループ 0 個として扱う（［2026-09-27 改訂］T-56 で消える）。🔴 先頭の部門へ寄せる変異・名前で部門を判定する変異で赤になる | 複数は未解決・名前ではなくパスで判定する | 自動 |
 | T-46 | 一度 `Fix` で直した後 | 同期をもう一度回す | **書き込み 0 件**・食い違い 0 件（冪等） | 冪等 | 自動 |
 | T-47 | 構成が空／`Off`／`Report`／値域外（綴り違い・数値・周期 0） | 起動する／同期を回す | 空と `Off` は IdP へ**1 回も問い合わせない**（器はスコープも作らない）。`Report` は検知だけで書かない。値域外は**起動時例外** | 既定で無効（opt-in） | 自動 |
 | T-48 | スタブした HTTP ハンドラ（101 人の所属者・多値属性を持つ利用者） | 所属者・子グループを読む／部門だけを書く | 所属者は**最後のページまで**読む（101 人目が落ちない）。書き込みは `department` 1 キーだけで、他の属性は**多値のまま**持ち越す。読み直して反映されていなければ**例外** | 打ち切り・巻き添え・黙った破棄をしない | 自動（**これは疎通の検証ではない**） |
@@ -101,6 +101,12 @@ issues: [#452, #438, #1101, #439, #1573, #1589, #1596, #1605, planning#672]
 | T-53 | realm の宣言に、`service-account-` で始まる名前の人の利用者（大小の違いを含む）／`profile` を既定スコープに持たない標準フローのクライアント（標準フローが未設定の既定・任意スコープにだけ置いた形を含む）／利用者名を access token へ載せない `profile` スコープを入れる | `node scripts/check-realm-constraints.js --self-test` と、実データの realm へ 2 種の変異を入れた一時ファイルを CLI へ渡す試験（`node scripts/scripts.test.js`） | いずれも**検出する**（CLI は終了コード 1 で 2 件を名指しする）。サービスアカウント・標準フローを閉じたクライアント・ログインできないクライアントは検出しない。実データの realm は通る（人の利用者と標準フローのクライアントが在ることも確かめ、空振りを緑にしない） | 人のトークンを BFF が無人の主体と読まないこと。稼働中の realm で管理コンソールから作る利用者は対象外（画面仕様書 §運用上の注意） | 自動 |
 | T-54 | realm の宣言に、デバイスグラント／CIBA／直接アクセスだけを開き `profile` を既定に持たないクライアント（属性の大小違いを含む）／利用者名のマッパーに `lightweight.claim` の無い軽量アクセストークンのクライアント（クライアント属性・クライアントポリシーの実行器）／自己登録・利用者名の編集・メールアドレスを利用者名にする設定・IdP 連携（無効の IdP を含む）／利用者名以外（メールアドレス・利用者属性・固定値）から `preferred_username` を出すマッパー（`profile` スコープ・クライアント単位・別の既定 / 任意スコープ）を入れる | `node scripts/check-realm-constraints.js --self-test` と、実データの realm へ 4 種の変異を入れた一時ファイルを CLI へ渡す試験（`node scripts/scripts.test.js`） | いずれも**検出する**。ログインしないクライアント・`bearerOnly`・access token に載せない上書き・明示的に閉じた設定は検出しない。レビュー済みの理由を持つ例外は黙り、理由の空な例外と該当しない例外は検出する。実データの realm は通り、例外は空 | 利用者が機械の名前を名乗る経路と、人のトークンから利用者名が落ちる経路を宣言で止めること。検査器のソースから追加分を 1 つずつ戻す 20 通りの変異がすべて自己試験で落ちることを確かめた | 自動 |
 | T-55 | realm の宣言に、`lightweight.claim` の利用者名マッパーを任意スコープにだけ置いた軽量アクセストークンのクライアント／非推奨の `directGrantsOnly`（`true`・`"true"`・`false`）／`directAccessGrantsEnabled` を書かない・`null` や `"true"` にしたクライアント（`manage-realm` を持つ主体を含む）／利用者名のマッパーの `user.attribute` を `Username`（先頭だけ大文字）にした形／クライアントポリシーの軽量の実行器とログイン用クライアント 2 つを入れる | `node scripts/check-realm-constraints.js --self-test` と、実データの realm へ 4 種の変異と 1 種の陰性対照を入れた一時ファイルを CLI へ渡す試験（`node scripts/scripts.test.js`） | 任意スコープだけの軽量マッパー・`directGrantsOnly`・未設定の直接アクセスは**検出する**（直接アクセスは MFA の検査でも検出する）。`Username` は利用者名の出どころとして通し、`USERNAME` は検出する。実行器の指摘は 1 件にまとめ、該当するクライアントを列挙する | 認可基盤の読み方（任意スコープは要求したときだけ載る・非推奨の設定も管理 API の作成で効く・プロパティ名は先頭だけ大文字にして引く）に検査を合わせる。検査器の修正を 1 つずつ戻す 7 通りの変異がすべて自己試験で落ちることを確かめた | 自動 |
+| T-56 | ［2026-09-27 / #1609］部門グループに 1 つも属さず属性 `department` を持つ利用者（部門以外の同名グループだけの人を含む） | 同期を `Fix` で回す／`Report` で回す／実プロバイダ実装で部門を消す | `Fix` は属性 `department` の 1 キーだけを消し、他の属性とグループの所属は変わらない。計器 `users.total{outcome=cleared}` が 1 増える。2 周目は消さない。`Report` は記録するだけで書かない。実プロバイダ実装は他の属性を多値のまま持ち越し、読み直して残っていれば**例外**、読み取り後に変わっていれば PUT しない。消す直前の所属の読み直しで部門グループが見つかった人（所属者の一覧から漏れた人）は消さず見送る。🔴 読み直しの確認を外す変異で赤になる | 部門グループから外れた利用者は部門を持たない | 自動 |
+| T-57 | ［2026-09-27 / #1609］全利用者の列挙がページの途中で失敗する／上限で打ち切られる（読めた分に消す対象の人を含める）／実プロバイダの 2 ページ目が失敗・本文が null | 同期を `Fix` で回す／実プロバイダ実装で全利用者を読む | 🔴 **誰の属性も消えない**（否定の試験）。1 つ属する人の是正は続く。計器 `enumeration_incomplete.total{reason=page_failed/truncated}` が 1 増え、周期の結果は「列挙 未完了」。実プロバイダ実装は最後のページまで読み（101 人目が落ちない）、ページの失敗は**例外**（部分的な結果を返さない）、サービスアカウントは返さない。🔴 「列挙の未完了なら消さない」判定を外す変異で赤になる（実測） | 読めなかった人を「部門グループに属さない」と推定しない | 自動 |
+| T-58 | ［2026-09-27 / #1609］部門グループ 1 つ／2 つ／部門グループに属さず属性を持つサービスアカウント（`service-account-` で始まる利用者名） | 同期を `Fix` で回す | 1 つの人は従来どおりグループのコードへ直る。2 つの人とサービスアカウントの属性は**変わらない**（消されない）。🔴 サービスアカウントの除外を外す変異で赤になる（実測） | 複数所属は今回も対象外・機械の主体は所属から何も言えない | 自動 |
+| T-59 | ［2026-09-27 / #1609］realm の部門グループ（`engineering` / `hr` / `sales`）と、旧い固定値（`finance` / `legal` を含む）が保存された属性辞書 | 属性辞書を読む／`finance`・`sales` の部門で属性を差し替える／同じ値でポリシーを保存する | 辞書の部門の許可値（両スコープ）が realm のコードと一致し、出所は `realm`。旧い値は保存し直される。**本画面の部門の選択肢と保存の値域も同じ集合**になり、`finance` は 400・`sales` は 200。ポリシーも同じ集合で検証する | 部門の値の集合を 1 つにする（辞書は手で持たない） | 自動 |
+| T-60 | ［2026-09-27 / #1609］realm を読めない（グループの読み取りが例外） | 属性辞書を読む／更新する | 出所は「不明」（`realm-unavailable`）で、**保存済みの値は消えない**。一度導いた後の障害では最後に確かめた値を示し続ける。保存済みの値のまま送る更新だけが通る。🔴 読めないときにも当てはめる変異で赤になる（実測） | 読めないことは「部門が無い」ではない | 自動 |
+| T-61 | ［2026-09-27 / #1609］部門の許可値を手で足す登録・1 つ消す更新・空の登録・同じ集合（並び違い）の更新 | 属性辞書へ登録・更新する | 足す・消すは 400（理由に「realm の部門グループ」）。空は realm の値で登録され、同じ集合の更新（ラベルの変更）は通る | 部門の追加・削除は realm の部門グループで行う | 自動 |
 
 ## ブラウザ E2E（［2026-08-31 追記 / #1099］置いた）
 
@@ -146,7 +152,8 @@ issues: [#452, #438, #1101, #439, #1573, #1589, #1596, #1605, planning#672]
 ## 関連仕様
 
 - 画面仕様書: [ユーザーアカウント管理](../screens/SC-17_user-account-management.md)
-- 部門の同期のテストコード（T-43〜T-52）: `src/platform/backend/Services/AuthorizationService/Tests/Domain/DepartmentAttributeReconciliationTests.cs`・`.../Tests/Features/Users/DepartmentSync/DepartmentAttributeSyncTests.cs`・`.../Tests/Infrastructure/ExternalServices/KeycloakIdentityAdminClientTests.cs`
+- 部門の同期のテストコード（T-43〜T-52・T-56〜T-58）: `src/platform/backend/Services/AuthorizationService/Tests/Domain/DepartmentAttributeReconciliationTests.cs`・`.../Tests/Features/Users/DepartmentSync/DepartmentAttributeSyncTests.cs`・`.../Tests/Infrastructure/ExternalServices/KeycloakIdentityAdminClientTests.cs`
+- 属性辞書の部門の値のテストコード（T-59〜T-61）: `.../Tests/Features/Authz/DepartmentDictionaryFromRealmTests.cs`・`.../Tests/Domain/DepartmentDictionaryValuesTests.cs`・`.../Tests/Features/Users/UserAdminEndpointTests.cs`
 - 通信仕様書: [BFF 境界（`/bff/*`）](../api/BFF_bff-surface.md)
 
 ## 未決事項

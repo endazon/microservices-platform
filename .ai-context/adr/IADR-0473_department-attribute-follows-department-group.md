@@ -2,16 +2,18 @@
 title: IADR-0473 利用者属性 department は AuthorizationService の opt-in の定期処理が部門グループ所属へ合わせて直す（ちょうど 1 つのときだけ・グループは変えない・既定 Off）
 type: impl-adr
 status: Accepted
-related_ids: [FR-05, FR-09, UC-05, SC-17, ADR-0115, ADR-0026, ADR-0088, IADR-0301, IADR-0329, IADR-0369, IADR-0385, IADR-0413, IADR-0428, IADR-0468, IADR-0472]
+related_ids: [FR-05, FR-09, UC-05, SC-17, ADR-0115, ADR-0116, ADR-0026, ADR-0088, IADR-0301, IADR-0329, IADR-0369, IADR-0385, IADR-0413, IADR-0428, IADR-0468, IADR-0472, IADR-0476]
 author: claude
 created: 2026-09-26
-updated: 2026-09-26
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0115_department-domain-is-realm-group-and-default-from-registrant.md 決定 3
   - planning:projects/microservices-platform/07_adr/ADR-0088_authz-resolves-user-attributes-itself.md 決定 1
   - planning:projects/microservices-platform/06_technical/07_abac-attribute-model.md §利用者属性
+  - planning:projects/microservices-platform/07_adr/ADR-0116_sc17-department-edits-group-membership.md 決定 2（2026-09-27 追記 / #1609）
 related_specs:
   - ../specs/20260926_issue-1573_department-attribute-follows-group.md
+  - ../specs/20260927_issue-1609_department-clear-and-dictionary-from-realm.md
 ---
 
 # IADR-0473: 利用者属性 department を部門グループ所属へ合わせる（#1573）
@@ -62,6 +64,23 @@ AST のクライアントが依存する挙動を変えない。
    （打ち間違いを黙って Off へ倒さない。`IdentityAdmin:Provider` / `RetentionAnchor:Source` と同じ）。helm / compose には既定値を置かない。
 2. **直すのは「部門グループにちょうど 1 つ属する人」の属性 `department` だけ**であり、値はグループのパスの第 1 セグメント（入れ子は上位に畳む。IADR-0468 と同じ規則）。
    **0 個・2 個以上は未解決として上書きせず、消しもしない。** 照合は序数。
+
+   > **［2026-09-27 追記 / #1609］計画 ADR-0116 決定 2 により、0 個の扱いを改める。** 部門グループに 1 つも属さない利用者の属性 `department` は
+   > **消す**（判定 `Orphaned`・`Fix` だけが書く。`Report` は記録するだけ）。2 個以上は従来どおり上書きせず消しもしない。
+   > - 🔴 **0 個の人は全利用者の列挙からしか見つからない**（決定 3 の集め方では所属者として現れない）。ポートに全利用者の列挙
+   >   `ListAllUsersAsync`（`UserEnumeration(Users, Complete)`。属性つき・ロールなし・サービスアカウントを返さない）を足した。
+   >   **ページを最後まで読み、ページの失敗は例外、上限（`MaxEnumeratedPages` = 1000 ページ ＝ 10 万人）に達したら `Complete = false`** を返す。
+   > - 🔴 **列挙が例外・未完了の周期は、0 個の人を 1 人も計画に入れない**（原則 A: 列挙に現れなかった人は「居ない」ではなく「読めなかった」。
+   >   部分的な列挙から 0 個を推定しない）。未完了は計器 `department_sync.enumeration_incomplete.total{department_sync.reason=page_failed|truncated}` と
+   >   Error ログで知らせ、1 つ属する人の是正は続ける。アラート `DepartmentSyncNotCorrecting` の式に 3 つ目の項として足した（4 か所）。
+   >   [[IADR-0413]] 決定 5 の「黙った打ち切り」をここへ持ち込まない。
+   > - **消す直前にその人の所属を個別に読み直す**（`GetUserGroupsAsync`）。部門グループが見つかれば消さず `Changed`（見送り）として数える ——
+   >   所属者の一覧はページ送り（offset）であり、並行した所属の変更でページの境目の人が 1 人飛ぶことがある。飛んだ人を 0 個と読んで消さない。
+   > - 消す書き込みは新しい口 `ClearDepartmentAttributeAsync`（`department` 1 キーだけを消し、他の属性は多値のまま持ち越す）。決定 6 の競合の規則
+   >   （書く直前の読み直しで有効状態・部門以外の属性が変わっていれば PUT しない）を同じく当て、読み直して残っていれば例外（fail-closed）。
+   > - 🔴 **サービスアカウントは消さない**（Keycloak の表現の `serviceAccountClientId`、利用者名の `service-account-` 接頭辞）。開発用 realm の
+   >   `service-account-abac-seeder` は部門グループなしで `department` を持つ（実測）。「部門グループに属さないサービスアカウントは対象に現れない」を保つ。
+   > - 計器の利用者の結末に `cleared` を足した。全員が見送られた周期（決定 10）の判定には消す試みも含める。
 3. **グループは変えない**（逆向きに直す口をポートに持たない）。集め方は `/department` から子グループを辿り、各グループの直接の所属者を属性つきで読む ——
    所属者として現れない人（サービスアカウント・部門なし）は対象に入らない。
 4. **ポートに 3 つの口を足す**: `ListSubGroupsAsync`（直下の子）・`ListGroupMembersAsync`（直接の所属者・属性つき・ロールなし）・
@@ -103,3 +122,7 @@ AST のクライアントが依存する挙動を変えない。
 1. SC-17 の部門欄と決定 3 の整合（計画への環流。planning#672 で起票済み）。
 2. 部門グループに属さないのに属性 `department` を持つ人は、所属から何も言えないので触らない（検知もしない。全利用者の列挙が要り、打ち切りの問題を持ち込むため）。
    **部門グループからすべて外された人は古い部門の属性を持ち続け、ABAC はその部門として扱う**（決定 3 に対する残差）。計画側へは planning#672 のコメントで伝えた。
+   - ［2026-09-27 追記 / #1609］**解消した。** 計画 ADR-0116 決定 2 の裁定で、0 個の人の属性は消す（決定 2 の追記）。全利用者の列挙は読み切れた周期だけ使い、
+     読み切れなければ消さずに計器で知らせる。**2 個以上の人の扱いは計画でも対象外のまま**（ADR-0116 フォローアップ 4）。
+3. ［2026-09-27 追記 / #1609］SC-17 の部門欄（残るもの 1）は、計画 ADR-0116 決定 1 で「部門グループの所属を変える」と裁定された（#1610）。
+   属性辞書の部門の値は realm の部門グループから導く形になった（[[IADR-0476]]）。

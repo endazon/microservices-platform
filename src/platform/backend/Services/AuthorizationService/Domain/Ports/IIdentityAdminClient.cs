@@ -155,6 +155,34 @@ public interface IIdentityAdminClient
         string userId, string department, IdentityUser observed, CancellationToken ct);
 
     /// <summary>
+    /// FR-05, FR-09, SC-17, 計画 ADR-0116 決定 2, [[IADR-0473]] (#1609): **全利用者を属性つきで列挙する**
+    /// （ロールは引かない。サービスアカウントは返さない）。部門の同期が「部門グループに 1 つも属さない人」を見つけるためにある。
+    ///
+    /// 🔴 **最後のページまで読む。読み切れなかったことを隠さない。** ページの失敗は例外で上げる（部分的な結果を返さない）。
+    /// 上限に達して打ち切ったときは <see cref="UserEnumeration.Complete"/> を false にして返す。
+    /// 呼び出し元は Complete が true のときだけ「列挙に居るのに部門グループの所属者に居ない ＝ 0 個」と読んでよい
+    /// （原則 A: 読めなかった人は「0 個」ではなく「不明」）。
+    ///
+    /// 🔴 **<see cref="ListUsersAsync"/> で代用しない。** あちらは 1000 件で打ち切り、打ち切ったことを知らせない
+    /// （[[IADR-0413]] 決定 5）。打ち切りの外の人を「居ない」と読むのは同じ欠陥である。
+    ///
+    /// 🔴 **これは新規作成の口ではない**（禁止語に触れない読み取りである）。
+    /// </summary>
+    Task<UserEnumeration> ListAllUsersAsync(CancellationToken ct);
+
+    /// <summary>
+    /// FR-05, FR-09, SC-17, 計画 ADR-0116 決定 2, [[IADR-0473]] (#1609): 利用者属性 `department` **だけ**を消す。
+    /// 部門グループに 1 つも属さない利用者は部門を持たない。
+    ///
+    /// 🔴 <see cref="SetDepartmentAttributeAsync"/> と同じく、<paramref name="observed"/>（計画の読み取りの像）から
+    /// 有効状態・部門以外の属性が変わっていたら書かない（<see cref="DepartmentWriteOutcome.Changed"/>）。
+    /// 読み直して残っていれば例外（黙って残さない）。他の属性は多値のまま持ち越す。
+    /// 🔴 **これは新規作成の口ではない**（禁止語に触れない属性の書き込みである）。
+    /// </summary>
+    Task<DepartmentWriteResult> ClearDepartmentAttributeAsync(
+        string userId, IdentityUser observed, CancellationToken ct);
+
+    /// <summary>
     /// SC-17 入力規則「定義済みロールのみ」の**値域の正**。IdP が持つ割当可能な realm ロールを返す。
     /// **画面にも後段にも焼き込まない** —— 焼き込むと realm を増やしても選べず、
     /// 消えたロールを選べてしまう。
@@ -213,6 +241,10 @@ public sealed record IdentityUser(
     bool Enabled,
     IReadOnlyList<string> Roles,
     IReadOnlyDictionary<string, string> Attributes);
+
+// FR-05, FR-09, SC-17, 計画 ADR-0116 決定 2, [[IADR-0473]] (#1609): 全利用者の列挙の結果。
+// 🔴 **Complete が false なら、列挙に居ない人は「居ない」ではなく「不明」である。**
+public sealed record UserEnumeration(IReadOnlyList<IdentityUser> Users, bool Complete);
 
 // FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): 部門属性の書き込みの結果。
 public enum DepartmentWriteOutcome

@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17]
-adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473]
-specs: [20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group]
-issues: [#1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672]
+adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0116]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0476]
+specs: [20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
+issues: [#1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1609, planning#196, planning#524, planning#538, AST#346, planning#672]
 -->
 
 # 運用仕様書
@@ -351,8 +351,9 @@ config（Helm values）で行う。同期ユースケースの基本フロー「
      属性の見え方が違う realm であり、**同期は全員を見送り続けて誰も直さない**（周期の結末 `all_skipped_changed`・Warning ログ）。
      その場合は `Off` に戻して報告する。
   4. 以後、属性はグループのコードへ直る。2 周目以降の「直した」は 0 件になる（冪等）。
-- **書くもの**: 部門グループにちょうど 1 つ属する利用者の属性 `department` だけ。グループ所属・ロール・realm の構成・マッパー・
-  クライアント・secret には触れない。部門グループに属さない利用者（AST のサービスアカウントを含む）は対象に現れない。
+- **書くもの**: 部門グループにちょうど 1 つ属する利用者の属性 `department`（グループのコードへ直す）と、部門グループに 1 つも属さない利用者の
+  属性 `department`（消す。下の「部門グループから外された利用者」）だけ。グループ所属・ロール・realm の構成・マッパー・
+  クライアント・secret には触れない。サービスアカウント（AST のクライアントを含む）の属性は書かない。
   **realm の reconcile Job は変えていない。**
 - 🔴 **利用者アカウント管理画面の操作との競合（残る窓）**: Keycloak の利用者更新は表現全体の置き換え（PUT）で、条件付き更新が無い。
   同期は書く直前に利用者をもう一度読み、**計画を立てたときから有効状態か部門以外の属性が変わっていれば、その人への書き込みを見送る**
@@ -363,13 +364,30 @@ config（Helm values）で行う。同期ユースケースの基本フロー「
   周期のまとめ行が Warning になり、計器 `department_sync.users.total{department_sync.outcome="failed"}`（周期の結末は
   `department_sync.cycles.total`）が増える。周期ごと中断したとき（部門グループの木が読めない等）は `aborted`、
   直そうとした全員が見送られたときは `all_skipped_changed` として数える。
-  **アラート `DepartmentSyncNotCorrecting`（warning）** が、直近 1 時間に `failed` の利用者・`aborted` / `all_skipped_changed` の周期の
-  いずれかがあれば鳴る（同期が `Off` のときは系列が無く鳴らない）。
+  **アラート `DepartmentSyncNotCorrecting`（warning）** が、直近 1 時間に `failed` の利用者・`aborted` / `all_skipped_changed` の周期・
+  全利用者の列挙の未完了（`department_sync.enumeration_incomplete.total`）のいずれかがあれば鳴る（同期が `Off` のときは系列が無く鳴らない）。
 - **注意**: `Fix` の下では、部門グループにちょうど 1 つ属する利用者の部門を利用者アカウント管理画面で別の値へ変えても、次の周期でグループの値へ戻る。
-  画面の扱いは計画側へ問い合わせ中である（trace ブロックの計画リポジトリの issue）。
-- **部門グループから外された利用者**: どの部門グループにも属さなくなった利用者の属性 `department` は、同期が**触らない**（所属から何も言えないため）。
-  古い部門の属性が残り、ABAC はその部門として扱い続ける。外したときは属性も手で消す（この扱いも計画側へ問い合わせ中）。
-- **ロールバック**: env を外す（または `Off`）。既に直した属性は戻らない（直した値はグループのコードそのもの）。
+  画面の扱いは計画で「部門欄は部門グループの所属を変える」と決まった（画面の変更は別の作業。それまでは部門グループと属性を両方変える）。
+  ［2026-09-27］🔴 **部門グループに 1 つも属さない利用者に画面で部門を付けても、`Fix` の下では次の周期で消える。** 先に部門グループへ入れる。
+- **部門グループから外された利用者**: ［2026-09-27 改訂］どの部門グループにも属さなくなった利用者の属性 `department` は、`Fix` の同期が**消す**
+  （部門なし ＝ その部門の資料が見えなくなる側に倒れる）。`Report` はログ「部門グループに 1 つも属さないのに属性 department を持つ」を出すだけで書かない。
+  **外したときに属性を手で消す作業は、`Fix` で動かす環境では要らない**（次の周期で消える。`Off` / `Report` の環境では従前どおり手で消す）。
+  - 🔴 **消すのは全利用者の列挙を最後まで読めた周期だけ**である。列挙がページの途中で失敗した・上限（10 万人）で打ち切られた周期は、
+    **誰の属性も消さない**（読めなかった人を「部門グループに属さない」と推定しない）。その周期は Error ログ「全利用者の列挙が途中で失敗した／打ち切られた」、
+    計器 `department_sync.enumeration_incomplete.total{department_sync.reason="page_failed" | "truncated"}`、周期のまとめ行の Warning
+    （「全利用者の列挙 未完了（消去なし）」）で分かる。部門グループにちょうど 1 つ属する人の是正はその周期も続く。
+  - 消す直前にその人の所属を個別に読み直し、部門グループが見つかれば消さずに見送る（ログ「見送り（変更あり）」・計器 `skipped_changed`）。
+  - **2 個以上の部門グループに属する利用者は、今回も触らない**（ログ「未解決（複数所属）」に出る。どれに合わせるかは決めていない）。
+  - **サービスアカウント（`service-account-` で始まる利用者）は消さない。**
+  - 消した人数は計器 `department_sync.users.total{department_sync.outcome="cleared"}` とログ「属性 department を消した」（IdP 内部 ID つき）で分かる。
+  - 🔴 **有効化の前に `Report` で「部門グループに 1 つも属さない」の件数と対象を確かめる。** 部門グループを組む前の realm で `Fix` にすると、
+    部門グループに入っていない人の部門が一斉に消える（その部門の資料が見えなくなる）。
+- **属性辞書の部門の値**: ［2026-09-27］管理者設定画面の属性辞書の `department`（利用者・文書の両方）の許可値は、realm の部門グループ
+  （`/department/<コード>`）から導かれる。**部門を足す・消すときは realm の部門グループを変える**（画面からは足せない。手で値を足す登録・更新は 400）。
+  realm を読めないときは最後に確かめた値のまま「不明（realm を読めないため最後に確かめた値）」と表示され、値は消えない。
+  seed が入れていた `finance` / `legal` は realm に無いため辞書から消える。これらを条件に持つポリシーは評価は変わらないが、保存し直すと 400 になる
+  （配備後に管理者設定画面でポリシーの条件を確かめる）。
+- **ロールバック**: env を外す（または `Off`）。既に直した属性・消した属性は戻らない（直した値はグループのコードそのもの。消した人は部門グループへ入れれば次の周期で戻る）。
 - **多重実行**: 複数レプリカが同じ処理を回すが、書く値はグループから決まるので結果は同じである（書き込みが重複するだけ）。
 ### データソースの明示部門の値域検証 —— 配備順（データソース登録のユースケース / #1557）
 

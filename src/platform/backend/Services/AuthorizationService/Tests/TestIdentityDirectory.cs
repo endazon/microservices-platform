@@ -167,6 +167,13 @@ public sealed class TestIdentityDirectory
             string userId, string department, IdentityUser observed, CancellationToken ct)
             => inner.SetDepartmentAttributeAsync(userId, department, observed, ct);
 
+        // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 2, [[IADR-0473]] (#1609): 全利用者の列挙・部門の消去も素通しする。
+        public Task<UserEnumeration> ListAllUsersAsync(CancellationToken ct) => inner.ListAllUsersAsync(ct);
+
+        public Task<DepartmentWriteResult> ClearDepartmentAttributeAsync(
+            string userId, IdentityUser observed, CancellationToken ct)
+            => inner.ClearDepartmentAttributeAsync(userId, observed, ct);
+
         public Task<IReadOnlyList<IdentityUser>> ListUsersAsync(CancellationToken ct) => inner.ListUsersAsync(ct);
         // FR-19, SC-19 主要素 3, [[IADR-0445]] (#1445): 共有先の候補の検索も**素通しする**
         // （SC-19 の試験は本物の偽物が持つ名簿を見る。`FindByUsernameAsync` だけが操作される）。

@@ -60,6 +60,10 @@ public class IdentityAdminContractTests
                 nameof(IIdentityAdminClient.ListSubGroupsAsync),
                 nameof(IIdentityAdminClient.ListGroupMembersAsync),
                 nameof(IIdentityAdminClient.SetDepartmentAttributeAsync),
+                // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 2, [[IADR-0473]] (#1609): 部門グループ 0 個の人を見つける
+                // 全利用者の列挙（読み切れたかを返す）と、`department` 1 キーだけの消去。🔴 **いずれも新規作成の口ではない。**
+                nameof(IIdentityAdminClient.ListAllUsersAsync),
+                nameof(IIdentityAdminClient.ClearDepartmentAttributeAsync),
                 nameof(IIdentityAdminClient.ListAssignableRolesAsync),
                 nameof(IIdentityAdminClient.ReplaceAttributesAsync),
                 // FR-19, SC-19, 計画 ADR-0036 D-09, ADR-0082 決定 5, [[IADR-0428]] (#1392):

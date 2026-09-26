@@ -73,6 +73,10 @@ builder.Services.AddOpenTelemetry().WithMetrics(metrics => metrics.AddMeter(
 builder.Services.AddScoped<AuthorizationService.Features.Users.DepartmentSync.DepartmentAttributeSync>();
 builder.Services.AddHostedService<AuthorizationService.Features.Users.DepartmentSync.DepartmentAttributeSyncHostedService>();
 
+// FR-05, FR-09, SC-09, SC-17, 計画 ADR-0116 決定 3, [[IADR-0476]] (#1609): 属性辞書を読む唯一の入口。
+// `department` の許可値を realm の部門グループから導く（読めなければ保存済みの値を「不明」として使い、消さない）。
+builder.Services.AddScoped<AuthorizationService.Features.Authz.AttributeDictionary>();
+
 // FR-05, FR-21, UC-05 / 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 /
 // [[IADR-0398]] 決定 1 (b)（#1278 PR-C）: 端点の入力検証。
 // **アセンブリ走査（AddValidatorsFromAssembly）は使わない** —— 登録が暗黙になり、検証器を消しても

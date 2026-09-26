@@ -185,6 +185,45 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     expect(table.getByText('文書')).toBeInTheDocument();
   });
 
+  // SC-09（#1609・計画 ADR-0116 決定 3）: 部門の許可値は realm の部門グループから導く。出所を文言で示し、
+  // realm を読めない（不明・最後に確かめた値）ときはそれと分かるようにする。手で持つキーには何も出さない。
+  it('shows where the department values come from and flags an unreadable realm', async () => {
+    mockApi({
+      attributes: [
+        {
+          id: 'd1',
+          key: 'department',
+          label: '所属部門',
+          allowedValues: ['engineering', 'hr', 'sales'],
+          required: false,
+          scope: 'user',
+          allowedValuesSource: 'realm',
+        },
+        {
+          id: 'd2',
+          key: 'department',
+          label: '所管部門',
+          allowedValues: ['engineering', 'finance'],
+          required: false,
+          scope: 'document',
+          allowedValuesSource: 'realm-unavailable',
+        },
+        { ...ATTRIBUTES[1], allowedValuesSource: null },
+      ],
+    });
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: 'アクセスポリシーの一覧' });
+
+    await user.click(screen.getByRole('tab', { name: '属性体系' }));
+
+    const table = within(await screen.findByRole('table', { name: '属性辞書の一覧' }));
+    expect(table.getByText('realm の部門グループから導出')).toBeInTheDocument();
+    expect(table.getByText('不明（realm を読めないため最後に確かめた値）')).toBeInTheDocument();
+    // 手で持つキー（null）には出所を出さない（2 行分だけ）。
+    expect(table.queryAllByText(/realm/)).toHaveLength(2);
+  });
+
   it('creates an attribute with the parsed allowed values', async () => {
     mockApi();
     const user = userEvent.setup();

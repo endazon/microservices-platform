@@ -8,10 +8,10 @@ author: implementation-agent
 ---
 <!-- trace:
 ids: [FR-05, FR-09, SC-09, SC-17, UC-05, FR-20, NFR-14, NFR-09]
-adrs: [ADR-0004, ADR-0026, ADR-0031, ADR-0032, ADR-0036, ADR-0115, ADR-0096, ADR-0114]
-iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0134, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329, IADR-0473, IADR-0474, IADR-0420, IADR-0429]
-specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260926_issue-1589_realm-machine-judgement-premises, 20260926_issue-1596_realm-login-grants-and-username-source, 20260927_issue-1605_checker-residual-precision]
-issues: [#452, #438, #1101, #1573, #1532, #1589, #1587, #1596, #1605, planning#672]
+adrs: [ADR-0004, ADR-0026, ADR-0031, ADR-0032, ADR-0036, ADR-0115, ADR-0096, ADR-0114, ADR-0116]
+iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0134, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329, IADR-0473, IADR-0474, IADR-0420, IADR-0429, IADR-0476]
+specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260926_issue-1589_realm-machine-judgement-premises, 20260926_issue-1596_realm-login-grants-and-username-source, 20260927_issue-1605_checker-residual-precision, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
+issues: [#452, #438, #1101, #1573, #1532, #1589, #1587, #1596, #1605, #1609, planning#672]
 -->
 
 # 画面仕様書: ユーザーアカウント管理
@@ -69,7 +69,7 @@ issues: [#452, #438, #1101, #1573, #1532, #1589, #1587, #1596, #1605, planning#6
 | 項目 | 種別 | 必須 | 初期値 | 形式・制約 | 説明 |
 | --- | --- | --- | --- | --- | --- |
 | ロール割当 | チェックボックス（複数） | 必須 | 現在の割当 | **割当可能ロールのみ** | 併任できる（例:「管理者・運用者」） |
-| 部門 | 選択 | 必須 | 現在の値 | **属性辞書（利用者スコープ）の許可値のみ** | 一覧の「部門」列と同じ属性である。**［2026-09-26 / #1573］部門の正本は部門グループへの所属である。** 認可サービスの部門の同期を `Fix` で有効にすると、部門グループにちょうど 1 つ属する利用者の部門は次の周期でグループの値へ戻る（本画面で別の値へ変えても残らない）。同期は既定で無効であり、本画面の挙動そのものは変えていない。画面の扱い（部門欄を読み取り専用にする等）は計画側へ問い合わせ中である（trace ブロックの計画リポジトリの issue） |
+| 部門 | 選択 | 必須 | 現在の値 | **属性辞書（利用者スコープ）の許可値のみ** | 一覧の「部門」列と同じ属性である。**［2026-09-26 / #1573］部門の正本は部門グループへの所属である。** 認可サービスの部門の同期を `Fix` で有効にすると、部門グループにちょうど 1 つ属する利用者の部門は次の周期でグループの値へ戻る（本画面で別の値へ変えても残らない）。同期は既定で無効であり、本画面の挙動そのものは変えていない。画面の扱い（部門欄を読み取り専用にする等）は計画側へ問い合わせ中である（trace ブロックの計画リポジトリの issue）。**［2026-09-27 / #1609］選択肢（属性辞書の利用者スコープの部門の許可値）は realm の部門グループのコードから導かれ、保存の値域検証も同じ集合を見る**（辞書に無い旧い値を持つ利用者は、保存し直すときに値域の部門を選ぶ）。本画面の挙動は変えていない。計画は「部門欄は部門グループの所属を変える」と裁定しており、画面の変更は別の作業である。同期を `Fix` で有効にした環境では、**部門グループに 1 つも属さない利用者に本画面で部門を付けても次の周期で消える**（先に部門グループへ入れる） |
 | 機密区分上限 | 選択 | 必須 | 現在の値 | **同上** | 取扱可能な最大の機密区分 |
 | タグ（任意属性） | 選択 | 任意 | 現在の値 | **同上** | 未選択は「指定しない」。外すとキーごと送らない |
 | 部門フィルタ | 選択 | 任意 | すべて | 実データの部門 | 一覧の絞り込み |

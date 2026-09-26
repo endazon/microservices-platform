@@ -9,7 +9,10 @@
     "本ファイルは dev の初期値であり、実運用の属性辞書は SC-09（管理者設定）から編集する。",
     "ADR-0080 決定 1 / フォローアップ 1（#1323）: 利用者の tags は集合値である。値は交差判定でマッチする（決定 2）。",
     "projects は意図的に入れていない —— ADR-0085 決定 1・2 が必須化と判定軸をいずれも保留しており、",
-    "辞書に無ければ ValidatePolicy が projects を条件に持つポリシーを作らせない（保留を機械で守る）。"
+    "辞書に無ければ ValidatePolicy が projects を条件に持つポリシーを作らせない（保留を機械で守る）。",
+    "ADR-0116 決定 3（#1609）: department の許可値は手で持たない。空で投入すると AuthorizationService が realm の部門グループ",
+    "（/department/<code>。開発用 realm では engineering / sales / hr）のコードを入れる。従前の固定値にあった finance / legal は消えた",
+    "（realm に無い値だった）。tags は別のキーであり、finance / legal を含むまま変わらない。"
   ],
   "attributes": [
     {
@@ -24,7 +27,7 @@
       "label": "所管部門",
       "scope": "document",
       "required": false,
-      "allowedValues": ["engineering", "sales", "hr", "finance", "legal"]
+      "allowedValues": []
     },
     {
       "key": "lifecycle",
@@ -45,7 +48,7 @@
       "label": "所属部門",
       "scope": "user",
       "required": false,
-      "allowedValues": ["engineering", "sales", "hr", "finance", "legal"]
+      "allowedValues": []
     },
     {
       "key": "tags",
