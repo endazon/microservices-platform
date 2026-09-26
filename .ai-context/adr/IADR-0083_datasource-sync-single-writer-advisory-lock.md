@@ -145,6 +145,10 @@ CI（#275 ドリフト・images.yml）を壊さない。`scaling.services`（min
 >   **計画への環流は要らない**と判断した（計画の定める「再試行＋継続失敗のアラート」は満たしており、変えるとすれば実装の位置の持ち方である）。
 >   作業仕様書: `.ai-context/specs/20260927_issue-1608_purger-timeout-isolation.md`。
 
+> **［2026-09-27 追記 / #1622］拍の待ちの試験を偽の時計で決定化し、呼び出し側の取り消しの対照を HttpClient の形で起こす。**
+> 上の #1604 追記の「失敗の後に待たずに再試行する → 赤（間隔の表明）」は壁時計の間隔を測っており、負荷で本体が遅れると `PeriodicTimer` が溜まった拍をすぐ発火して正しい実装でも落ち得た。`DataSourceSyncHostedService` に試験だけの口 `internal CycleClock`（既定 `TimeProvider.System`）を `CycleInterval` の隣に足し、試験は `FakeTimeProvider` で拍を手で進める（起動時の 1 回目の後、失敗のたびに拍を進めるまで次の取得が来ないこと、k 回目の取得が見た偽の時刻が (k−1) 拍ぶんであること）。本番の挙動・SC-06 の位相は変えない。
+> 探索・取得の呼び出し側の取り消しの対照は、素の `OperationCanceledException`（`ct.ThrowIfCancellationRequested()`）で起こしていたため、絞り込みを「`TaskCanceledException` なら時間切れ」と**型で**判定する変異が生き残り、取得の捕捉には対照そのものが無かった。対照を探索・取得の 2 件にし、コネクタの HttpClient が表す形（呼び出し側の token を持つ `TaskCanceledException`）で起こす。**時間切れと停止要求は型では分けられず、ct でしか分けられない**（本決定の捕捉が ct で絞るのはこのためである）。変異: M1 → 拍の試験が赤／探索・取得の捕捉へ `|| ex is TaskCanceledException` → それぞれの対照が赤（直す前の試験では両方とも緑）。作業仕様書: `.ai-context/specs/20260927_issue-1622_deterministic-tick-tests.md`。
+
 - 良い影響: 本番マルチレプリカで 1 サイクルの原本 fetch が 1 回になり、コネクタ先・下流の冗長負荷が解消される。
   API 可用性（minReplicas 2 / PDB）は不変。fail-safe・後方互換を保つ。
 - トレードオフ: プーラ非対応の注意（上記）。サイクルごとの短命接続 1 本。

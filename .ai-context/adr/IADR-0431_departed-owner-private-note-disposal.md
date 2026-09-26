@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-19, FR-22, UC-11, SC-19, SC-17, SC-10, ADR-0036, ADR-0037, ADR-0057, ADR-0082, ADR-0096]
 author: Claude (worker)
 created: 2026-09-11
-updated: 2026-09-26
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0096_private-note-disposal-after-view-window.md
   - planning:projects/microservices-platform/07_adr/ADR-0057_deletion-propagation-scope.md
@@ -146,6 +146,7 @@ ADR-0096（2026-09-11 裁定・選択肢 A）がこれを確定した。決定 1
 > - ［2026-09-26 追記 / #1604］上の試験は「次の周期が来る」ことしか測らず、**失敗の直後に待たずに再試行する変異（M1）が生き残った**（#1601 の監査）。
 >   `PrivateNoteMaintenanceHostedServiceTests` に、1・2 周期目の判定で投げ 3 周期目で「経過」と答える試験を足し、判定の間隔が周期（300 ミリ秒）の半分以上
 >   あることを測る。M1（`RunAsync` を「失敗なら即座に再試行」の内側のループで包む）で**赤**。
+> - ［2026-09-27 追記 / #1622］上の拍の試験は壁時計の間隔を測っており、**負荷で揺れた**（1 周期目の本体が 300 ミリ秒を超えると `PeriodicTimer` が溜まった拍をすぐ発火し、正しい実装でも間隔が縮む）。`PrivateNoteMaintenanceHostedService`に周期の拍の源を差し替える試験だけの口（`internal CycleClock`、既定 `TimeProvider.System`。`PeriodicTimer(TimeSpan, TimeProvider)` で作る）を `CycleInterval` の隣に足し、試験は `FakeTimeProvider` で拍を手で進める。判定は「失敗の後、拍を進めるまで次の呼び出しが来ない」と「k 回目の呼び出しが見た偽の時刻が k 拍ぶん」で、正しい実装では決定的に成り立つ。本番の組み立て・周期・挙動は変えない。M1 を当てると、当てた常駐処理の拍の試験が「失敗の直後に呼び出しが 3 回」で**赤**。作業仕様書: `.ai-context/specs/20260927_issue-1622_deterministic-tick-tests.md`。
 
 ## 理由
 

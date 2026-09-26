@@ -220,6 +220,9 @@ appsettings.json の既定に寄りかかっているので、配線の試験（
 > 構成からは到達できず、**削った**（起こり得ない場合への防御を残さない）。期限は常に `UtcNow + Timeout` である。
 > 試験: `ToolCatalogRefresherTimeoutTests` に本番の構成ファイルを読む 1 件（キーが既定値で在り、登録を通すと期限が 10 秒）。期限そのものは従前どおり
 > `GrpcToolDeclarationCollectorTests` T-G8 が固定する。作業仕様書: `.ai-context/specs/20260927_issue-1608_purger-timeout-isolation.md`。
+>
+> **［2026-09-27 追記 / #1622］REST の収集器に、呼び出し側の取り消しの対照を足した。**
+> #1604 の追記の `CollectOneAsync` の捕捉（`when (ex is not OperationCanceledException || !ct.IsCancellationRequested)`）には、時間切れの側の試験（応答しない宛先）しか無く、呼び出し側の取り消しを畳まないことを見る対照が無かった。HttpClient は時間切れも呼び出し側の取り消しも `TaskCanceledException` で表すので、絞り込みを型で判定する変異（`|| ex is TaskCanceledException`）は時間切れの試験では見えない。`ToolCatalogRefresherTimeoutTests` に、何も返さない 127.0.0.1 の待受へ本物の HttpClient（期限 30 秒）で収集し呼び出し側の ct を 300 ミリ秒で取り消す 1 件を足した（外へ出るのが呼び出し側の token を持つ `TaskCanceledException` であること・申告なしの警告を出さないこと）。その変異で**赤**（直す前の試験では緑）。本番の挙動は変えない。作業仕様書: `.ai-context/specs/20260927_issue-1622_deterministic-tick-tests.md`。
 
 ## 関連
 
