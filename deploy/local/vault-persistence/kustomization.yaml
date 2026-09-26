@@ -7,12 +7,16 @@
 #   - PVC vault-data を /vault/data に、ConfigMap を /vault/config と /vault/bin にマウント
 #   - readinessProbe は `vault status`（unseal 済みで 0）。k8s-local-up.sh はこれを rollout status で待ってから bootstrap する
 # ClusterSecretStore（token 認証版）は base のまま。固定トークンをラッパーが作るので無改変で動く。
+# ［2026-09-26 / #1560］IADR-0471: /vault/data の日次バックアップ CronJob（deploy/local/platform-backup/vault）も取り込む。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
   - ../vault
   - pvc.yaml
+  # NFR-21, IADR-0471 (#1560): 永続化した Vault（/vault/data）の日次バックアップ（age 暗号化・クラスタ外 2 か所）。
+  # PVC vault-data が在るこの overlay でだけ描く。手順は docs/operations/platform-infra-backup-runbook.md。
+  - ../platform-backup/vault
 
 generatorOptions:
   disableNameSuffixHash: true

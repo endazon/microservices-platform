@@ -127,6 +127,13 @@ PERSIST=0 bash scripts/k8s-local-up.sh
 | Tempo | `tempo-data`（2Gi・local-path） | `/tmp/tempo`（`local.path` / `wal.path` の親） | トレース（blocks / wal） | `PERSIST=1` ＋ `OBSERVABILITY=1` |
 | Grafana | `grafana-data`（1Gi・local-path） | `/var/lib/grafana` | UI から import したダッシュボード・silences・ユーザー設定 | `PERSIST=1` ＋ `OBSERVABILITY=1` |
 
+- 🔴 **永続化した Postgres と Vault は日次でバックアップされる**（#1560 / [IADR-0471](../../.ai-context/adr/IADR-0471_platform-infra-encrypted-daily-backup.md)）。
+  `infra-persistence` が [`platform-backup/postgres`](platform-backup/postgres/) を、`vault-persistence` が [`platform-backup/vault`](platform-backup/vault/) を取り込み、
+  CronJob が JST 12:00 / 12:15 に age の**公開鍵**で暗号化して本機の C: と E:（`/mnt/c`・`/mnt/e/platform-infra-backups`）へ置く。
+  **受取人の ConfigMap `platform-backup-age-recipients` と保管先の目印 `.platform-backup-target` を用意するまでは、
+  何も書かずに毎日失敗する**（fail-closed）。受取人は `BACKUP_AGE_RECIPIENTS_FILE=<ファイル>` を与えた起動でだけ作り直す。
+  準備・確認・リストア試験（`scripts/backup-restore-drill.sh`）は [`docs/operations/platform-infra-backup-runbook.md`](../../docs/operations/platform-infra-backup-runbook.md)。
+  **ローカル開発・PoC 専用で、本番のバックアップ設計ではない。**
 - **Prometheus の保持期間**は base（[`observability/prometheus.yaml`](observability/prometheus.yaml)）の args
   `--storage.tsdb.retention.time=35d` / `--storage.tsdb.retention.size=4GB` で明示する（35d は月次規則の `[30d]` 窓を評価できる最小の保持 ＋ 余裕）。**`size` を PVC 容量（5Gi）
   未満に置いてあるので、流入が増えても PVC が満杯になって書き込み不能になることはない**（IADR-0210 決定 3）。

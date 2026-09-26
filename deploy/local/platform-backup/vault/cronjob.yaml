@@ -1,0 +1,102 @@
+# NFR-21, NFR-18, ADR-0008, IADR-0471 (#1560): platform-infra の Vault（file ストレージ）を日次で暗号化してクラスタ外 2 か所へ置く。
+#
+# 🔴 /vault/data には Pod 内ラッパーが置いた unseal 鍵と初期 root トークンの平文ファイルがある（vault-persistence 参照）。
+#    **この写しはそれだけで Vault の中身をすべて復号できる**ため、平文の tar をディスクへ書かず、tar → gzip → age を
+#    パイプで繋いで暗号文だけを置く。
+# - PVC vault-data を**読み取り専用**でマウントする（RWO の local-path は単一ノードなら同じノードの別 Pod から読める）。
+#   稼働中の file バックエンドの写しなので、スクリプトは写す前後のファイル一覧を比べ、変わっていたらやり直す（3 回まで）。
+# - 時刻: JST 12:15（Postgres の回と重ねない。米国市場の時間帯 JST 22:30〜05:00 を避ける）。後追いは 22:00 JST まで
+#   （35100 秒 = 12:15 から 9 時間 45 分）。
+# - 受取人・保管先・目印の扱いは Postgres の回（../postgres/cronjob.yaml）と同じ。
+# 🔴 deploy/local 専用（ローカル開発・PoC 環境）。本番のバックアップ設計ではない。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: platform-backup-vault
+  namespace: platform-infra
+  labels:
+    app: platform-backup
+    app.kubernetes.io/component: vault
+spec:
+  schedule: "15 12 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 35100
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 7
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app: platform-backup
+            app.kubernetes.io/component: vault
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          containers:
+            - name: backup
+              # Postgres の回と同じイメージ（tar / gzip / bash を持つ）。age は実行時に Alpine の署名付きパッケージから入れる。
+              # /vault/data の init ファイル（uid 100・0600）を読むため root で動かす（マウントは読み取り専用）。
+              image: postgres:16-alpine
+              command: ["/bin/bash", "/opt/platform-backup/backup.sh"]
+              env:
+                - name: BACKUP_KIND
+                  value: vault
+                - name: BACKUP_TARGETS
+                  value: "/backup/c /backup/e"
+                - name: BACKUP_AGE_INSTALL
+                  value: "1"
+                - name: VAULT_DATA_DIR
+                  value: /vault/data
+              securityContext:
+                allowPrivilegeEscalation: false
+                # seccomp は RuntimeDefault。capabilities の削減（drop: [ALL] ＋ 必要最小の add）は稼働クラスタで
+                # 必要な集合を実測してから行う（IADR-0471 のフォローアップ。推測で落とすと apk・drvfs 書き込み・0600 の読み取りが割れる）。
+                seccompProfile:
+                  type: RuntimeDefault
+              volumeMounts:
+                - name: vault-data
+                  mountPath: /vault/data
+                  readOnly: true
+                - name: script
+                  mountPath: /opt/platform-backup
+                  readOnly: true
+                - name: recipients
+                  mountPath: /etc/platform-backup/recipients
+                  readOnly: true
+                - name: staging
+                  mountPath: /staging
+                - name: target-c
+                  mountPath: /backup/c
+                - name: target-e
+                  mountPath: /backup/e
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits: { cpu: 500m, memory: 256Mi }
+          volumes:
+            - name: vault-data
+              persistentVolumeClaim:
+                claimName: vault-data
+                readOnly: true
+            - name: script
+              configMap:
+                name: platform-backup-script
+                defaultMode: 0555
+            - name: recipients
+              configMap:
+                name: platform-backup-age-recipients
+                optional: true
+            - name: staging
+              emptyDir:
+                sizeLimit: 1Gi
+            - name: target-c
+              hostPath:
+                path: /mnt/c/platform-infra-backups
+                type: DirectoryOrCreate
+            - name: target-e
+              hostPath:
+                path: /mnt/e/platform-infra-backups
+                type: DirectoryOrCreate

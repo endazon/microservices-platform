@@ -1,0 +1,11 @@
+# NFR-21, NFR-18, ADR-0008, IADR-0471 (#1560): platform-infra の Vault（file ストレージ /vault/data）を
+# 日次で age 暗号化し、クラスタ外の 2 か所へ置く CronJob。
+# Vault の永続化 overlay（deploy/local/vault-persistence）が取り込む —— PVC vault-data が在る配備でだけ描く
+# （無い配備で描くと、Pod が PVC を待って Pending のまま残り、失敗としても見えない）。
+# 🔴 deploy/local 専用（ローカル開発・PoC 環境）。本番のバックアップ設計ではない。手順は docs/operations/platform-infra-backup-runbook.md。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../script
+  - cronjob.yaml

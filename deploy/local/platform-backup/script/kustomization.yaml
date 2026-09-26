@@ -1,0 +1,14 @@
+# NFR-21, ADR-0008, IADR-0471 (#1560): バックアップ CronJob（postgres/ と vault/）が共有する本体スクリプトの ConfigMap。
+# 単独では何も動かさない。postgres/ と vault/ がそれぞれ取り込む（どちらか片方だけを当てても揃う）。
+# 🔴 deploy/local 専用（ローカル開発・PoC 環境）。本番のバックアップ設計ではない。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: platform-backup-script
+    namespace: platform-infra
+    files:
+      - backup.sh
