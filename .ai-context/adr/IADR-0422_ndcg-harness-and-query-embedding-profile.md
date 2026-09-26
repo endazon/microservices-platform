@@ -12,9 +12,11 @@ related_ids:
   - IADR-0025
   - IADR-0085
   - IADR-0313
+  - ADR-0092
+  - IADR-0467
 author: claude
 created: 2026-09-09
-updated: 2026-09-09
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0016_embedding-provider-voyage.md (モデル別コレクション分離・クエリは検索対象と整合)
   - planning:projects/microservices-platform/07_adr/ADR-0017_selfhosted-embedding-ruri.md (ティアA は Ruri v3。PoC で確定)
@@ -101,6 +103,14 @@ plan_refs:
 **Ruri を測ったつもりで voyage を測る**という最悪の測定事故になる。ルーター側も、候補が消えたときは
 既定へ落ちずに fail-closed で拒否する。
 
+> ［2026-09-26 追記 / #336］**内部契約について部分改定した**（[IADR-0467](./IADR-0467_multi-collection-rrf-fusion-and-per-collection-query-embedding.md) 決定 3）。
+> 計画 ADR-0092 決定 1 は分離したコレクションを **1 回の検索で束ねる**と決め、1 回の検索の中でコレクションごとに
+> 違う埋め込みが要るようになった —— これは「系全体を切り替えて 2 回測る」構成 1 つでは表せない。
+> そこで**内部契約 `EmbedApiRequest` / proto `EmbedRequest` に任意項目 `TargetCollection` を足した**。
+> 公開契約 `SearchRequest` は変えていない（本決定が退けた「要求ごとにティアを混ぜる」は利用者の要求の話で、そのまま守られる）。
+> 名乗るのは**エンドポイントではなくコレクション**で、絞り込みは本決定の `QueryProfile` と**同じ位置（篩の後）・Query だけ**に効く。
+> `QueryProfile` とは積で効く。下の代替案「検索側がエンドポイントを指示する」は引き続き採らない。
+
 ### 決定 3: Retrieval は**答えたコレクション**と**読むコレクション**を照合し、食い違えば降りる
 
 決定 2 は「クエリの埋め込みモデル」を動かす。**検索対象コレクションは別の構成が決めている。**
@@ -131,6 +141,9 @@ Helm の決定的ローカル経路も両方を同時に書き換える）。**�
 > （検索側は単一コレクションしか読まない）。`ADR-0016` はコレクション分離を決めたが、**分離した複数の
 > コレクションを 1 回の検索でどう束ねるか**を決めていない。実装側のコメントは 2026-07 から
 > 「高機密コレクションの横断検索は FR-03 の後続課題」と書いたままである。
+
+> ［2026-09-26 追記 / #336］この問いは planning#584 として環流され、計画 ADR-0092（Accepted）が
+> **束ねて順位（RRF）で合成する**と裁定した。実装は [IADR-0467](./IADR-0467_multi-collection-rrf-fusion-and-per-collection-query-embedding.md)。
 
 ## 影響・トレードオフ
 

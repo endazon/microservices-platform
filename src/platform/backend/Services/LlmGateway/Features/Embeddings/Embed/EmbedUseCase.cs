@@ -30,7 +30,9 @@ public sealed class EmbedUseCase(
         var purpose = req.Purpose == EmbedPurpose.Query
             ? EmbeddingRoutePurpose.Query
             : EmbeddingRoutePurpose.Index;
-        var decision = router.Route(new EmbeddingRoutingRequest(sensitivity, purpose));
+        // FR-03, ADR-0092 決定 2, [[IADR-0467]] (#336): 検索が名乗った読み先コレクションをそのまま渡す。
+        // **効かせるかどうか（Query だけ・篩の後）はルーターが決める** —— 判定を 2 か所に割らない。
+        var decision = router.Route(new EmbeddingRoutingRequest(sensitivity, purpose, req.TargetCollection));
 
         if (!decision.Allowed)
         {
