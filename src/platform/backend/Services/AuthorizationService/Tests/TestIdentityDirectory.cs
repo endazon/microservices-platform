@@ -50,6 +50,13 @@ public sealed class TestIdentityDirectory
     /// <summary>`GetUserGroupsAsync` が受け取った ID（所属照会が実際に走った観測点）。</summary>
     public List<string> GroupsLookedUp { get; } = [];
 
+    /// <summary>
+    /// FR-05, SC-06, [[IADR-0472]] (#1557): パスでの引き当て（`FindGroupByPathAsync`）で**追加で実在する**ことにするパス。
+    /// 本物の偽物の木へは足さない（SC-19 のグループ検索の試験が同じ木を見ている）。入れ子の部門グループ
+    /// （`/department/engineering/backend`）が値域に入らないことを測るために使う。
+    /// </summary>
+    public HashSet<string> ExtraGroupPaths { get; } = new(StringComparer.Ordinal);
+
     /// <summary>この器が作る内部 ID の接頭辞（`id-&lt;利用者名&gt;`）。</summary>
     internal const string StubIdPrefix = "id-";
 
@@ -69,6 +76,7 @@ public sealed class TestIdentityDirectory
         Groups.Clear();
         GroupFailure = null;
         GroupsLookedUp.Clear();
+        ExtraGroupPaths.Clear();
     }
 
     /// <summary>
@@ -136,6 +144,16 @@ public sealed class TestIdentityDirectory
         public Task<IReadOnlyList<IdentityGroup>> GetGroupsByIdsAsync(
             IReadOnlyList<string> ids, CancellationToken ct)
             => inner.GetGroupsByIdsAsync(ids, ct);
+
+        // FR-05, SC-06, 計画 ADR-0115 決定 5, [[IADR-0472]] (#1557): パスでの引き当ても素通しする。
+        // ただし `GroupFailure` は効かせる（「所属照会だけが引けない」と同じく、グループの読みが落ちた形を作る）。
+        public Task<IdentityGroup?> FindGroupByPathAsync(string path, CancellationToken ct)
+        {
+            if (state.GroupFailure is not null) throw state.GroupFailure;
+            if (state.ExtraGroupPaths.Contains(path))
+                return Task.FromResult<IdentityGroup?>(new IdentityGroup("extra" + path, path[(path.LastIndexOf('/') + 1)..], path));
+            return inner.FindGroupByPathAsync(path, ct);
+        }
 
         public Task<IReadOnlyList<IdentityUser>> ListUsersAsync(CancellationToken ct) => inner.ListUsersAsync(ct);
         // FR-19, SC-19 主要素 3, [[IADR-0445]] (#1445): 共有先の候補の検索も**素通しする**

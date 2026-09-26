@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-05, SC-06, SC-17, UC-04]
-adrs: [ADR-0002, ADR-0003, ADR-0009, ADR-0013, ADR-0027, ADR-0036, ADR-0064, ADR-0074]
-iadrs: [IADR-0019, IADR-0136, IADR-0148, IADR-0199, IADR-0295, IADR-0359, IADR-0392, IADR-0468]
-specs: [20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-752_connector-updated-by, 20260926_issue-754_department-from-registrant-group]
-issues: [#458, #516, #537, #538, #580, #752, #754, #767, #796, #1194, planning#344, planning#361, planning#372, planning#518]
+adrs: [ADR-0002, ADR-0003, ADR-0009, ADR-0013, ADR-0027, ADR-0036, ADR-0064, ADR-0074, ADR-0115]
+iadrs: [IADR-0019, IADR-0136, IADR-0148, IADR-0199, IADR-0295, IADR-0359, IADR-0392, IADR-0468, IADR-0472]
+specs: [20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-752_connector-updated-by, 20260926_issue-754_department-from-registrant-group, 20260926_issue-1557_department-domain-validation]
+issues: [#458, #516, #537, #538, #580, #752, #754, #767, #796, #1194, #1557, planning#344, planning#361, planning#372, planning#518]
 -->
 
 # データ仕様書: データソース・取り込みチャンク（DataSource / Vector Chunk）
@@ -114,6 +114,11 @@ IngestionService はリレーショナル DB を持たない Worker で、`Docum
 >   データソース管理画面で見えて直せる。**更新（PUT / PATCH）では導き直さない。** 明示値は上書きしない。
 >   🔴 **①フォルダ → 部門の写像はなお入れない** —— 値域は定まったが、写像表の**置き場所（器）**が計画側で未確定である。
 >   **値域の検証（候補外の部門コードの拒否）もまだ無い**（realm のグループ一覧を引く口が本サービスに無い）。
+>   **［2026-09-26 / #1557］値域の検証が入った。** 本欄で `department` を**明示**した登録と、**部門を変えた**全置換・部分更新は、
+>   書き込み時に認可サービスへ「この値は `/department` 直下の部門グループのコードか」を照会し（一覧は引かない）、
+>   **無ければ 400（理由つき）、照会できなければ 502** で、どちらも 1 項目も保存しない（`owner` の写像表の実在検証と同じ形）。
+>   照合は大小文字を区別し、前後の空白も落とさない。**予約値 `unassigned`・空白・未指定は照会しない**（未解決の記録であって部門コードではない）。
+>   認可サービスへの gRPC 宛先を持たない配備では照会できない扱いになり、明示した部門の書き込みは 502 になる。
 >
 > **したがって `department` は「実装が見落としている」で正しい。** `owner` と同じ扱いにしない。
 

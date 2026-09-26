@@ -55,6 +55,12 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.AddSingleton<StubPlatformUserDirectory>();
             services.AddSingleton<IPlatformUserDirectory>(sp => sp.GetRequiredService<StubPlatformUserDirectory>());
 
+            // FR-05, SC-06, 計画 ADR-0115 決定 5, [[IADR-0472]] (#1557): 部門コードの値域も同じ理由で差し替える
+            // （テストホストは gRPC 宛先を持たないので、差し替えないと本番の縮退＝常に 502 になる）。
+            services.RemoveAll<IDepartmentDomainDirectory>();
+            services.AddSingleton<StubDepartmentDomainDirectory>();
+            services.AddSingleton<IDepartmentDomainDirectory>(sp => sp.GetRequiredService<StubDepartmentDomainDirectory>());
+
             services.RemoveAll<IMessageBus>();
             services.AddSingleton<RecordingMessageBus>();
             services.AddSingleton<IMessageBus>(sp => sp.GetRequiredService<RecordingMessageBus>());

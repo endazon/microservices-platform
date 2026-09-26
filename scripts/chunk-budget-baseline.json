@@ -294,7 +294,12 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 613389,
+  "initialTotalBytes": 614209,
+  "$comment_initialTotalBytes_20260926_1557_sc06-department-domain": [
+    "［2026-09-26 / #1557］613,389 → 614,209（+820 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が",
+    "+0.82 kB 超過を報告し、--update で床を更新した。CI の build-test も同じ 614.21 kB を報告した）。増分は SC-06 の部門欄の補助文",
+    "（入力するなら部門グループのコード・無いコードは保存されない）と、登録・更新の 502 に添える説明の i18n 文言 2 件（ja/en。カタログは初期ロードに載る）である。"
+  ],
   "$comment_initialTotalBytes_20260926_754_sc06-department-helper": [
     "［2026-09-26 / #754］612,939 → 613,389（+450 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が",
     "+0.45 kB 超過を報告し、--update で床を更新した）。本 PR のフロント成果物の変更は SC-06 の登録フォームの補助文言（空の部門は登録者の部門グループから",
