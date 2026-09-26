@@ -452,6 +452,9 @@ services:
       Grpc__Port: "8081"
       Qdrant__Host: qdrant
       Qdrant__Port: 6334
+      # FR-03, ADR-0092 決定 1, IADR-0467 (#336): 束ねて読む追加コレクション（ティア A を有効化するときに
+      # SEARCH_FUSED_COLLECTION=knowledge_chunks_ruri_v3 を .env で与える）。既定は空＝検索は主の 1 本だけ。
+      Qdrant__FusedCollections__0: ${SEARCH_FUSED_COLLECTION:-}
       Services__LlmGateway: http://llm-gateway:8080
       # FR-03 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0397 (#1255): east-west gRPC。
       # **`Services__LlmGatewayGrpc` が在るときだけ**クエリ埋め込みが gRPC 経路になる
@@ -715,6 +718,8 @@ services:
   # --profile embedding up` でのみ起動）。build を持たない pull イメージ＝#275／images.yml いずれの検査対象外。
   # 有効化手順: プロファイルを有効化し、llm-gateway へ SELFHOSTED_EMBEDDING_URL=http://embedding:80 と
   #   SELFHOSTED_EMBEDDING_ENABLED=true を .env で与える。
+  #   🔴 同時に retrieval-service へ SEARCH_FUSED_COLLECTION=knowledge_chunks_ruri_v3 を与える
+  #   （ADR-0092 / IADR-0467。与えないと高機密の文書は索引されるが検索されない）。
   # ⚠️ 実モデル取得・実埋め込み疎通・nDCG@10 実測は稼働環境依存＝分離（IADR-0085 / #303）。
   # 既定 image tag / モデル ID はプレースホルダ。実運用前に固定する。
   embedding:

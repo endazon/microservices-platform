@@ -3742,6 +3742,12 @@
             "required": false,
             "position": 2
           },
+          "TargetCollection": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 3
+          },
           "Text": {
             "source": "positional",
             "type": "string",

@@ -275,6 +275,16 @@ spec:
             - name: Embedding__Routing__Endpoints__1__Enabled
               value: "true"
           {{- end }}
+          {{- if and (eq $name "retrieval") $.Values.embedding.enabled }}
+            # FR-03, ADR-0092 決定 1, IADR-0467 (#336): ティア A を有効化したら、検索はそのコレクションも
+            # **束ねて**読む（主コレクションと 1 回の検索で引き、順位で合成する）。クエリはそのコレクションの
+            # モデルで埋める（検索サービスがコレクション名を名乗り、LlmGateway が越境判定の後で絞る）。
+            # 🔴 llmgateway の有効化（上のブロック）と**同じ条件**で描画する —— 片方だけだと
+            # 「索引されるが検索されない」か「検索するが埋め込めない」のどちらかになる。
+            # 既定 embedding.enabled=false では非描画＝検索は主コレクションだけ（現状維持）。
+            - name: Qdrant__FusedCollections__0
+              value: {{ $.Values.embedding.collection | quote }}
+          {{- end }}
           {{- /* FR-02, FR-03, ADR-0016, IADR-0284, IADR-0313 (#992 案 2): 決定的ローカル埋め込み。
                  🔴 **使い捨ての検証スタック専用**（意味は values.yaml の embedding.deterministicLocal）。
                  埋め込みの鍵が無いスタックでも索引に点が入り「検索が実際に効くこと」を観測できる。

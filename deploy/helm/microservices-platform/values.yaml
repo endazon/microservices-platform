@@ -1107,6 +1107,12 @@ seaweedfs:
 # 既定 tag / modelId はプレースホルダ。実運用前に稼働環境で固定する。
 embedding:
   enabled: false
+  # FR-03, ADR-0092 決定 1, IADR-0467 (#336): ティア A（Ruri v3）のコレクション名。enabled=true のとき
+  # deployment.yaml が retrieval へ Qdrant__FusedCollections__0 として描画し、検索が主コレクション（voyage）と
+  # **1 回の検索で束ねて**読む（順位で合成）。🔴 **有効化の前提**である —— 束ねないまま有効化すると
+  # 「索引されるが検索されない」になる。値は LlmGateway の appsettings.json（selfhosted-ruri の Collection）と
+  # IngestionService の Embedding:Collections と一致していなければならない（scripts/k8s-local-up.test.js が固定する）。
+  collection: knowledge_chunks_ruri_v3
   replicas: 1
   registry: ghcr.io
   image: huggingface/text-embeddings-inference

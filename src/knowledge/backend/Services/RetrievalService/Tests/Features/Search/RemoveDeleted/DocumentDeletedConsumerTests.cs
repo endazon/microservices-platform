@@ -3,6 +3,7 @@ using Knowledge.Contracts.Events;
 using Microsoft.Extensions.Logging.Abstractions;
 using RetrievalService.Infrastructure.ExternalServices;
 using RetrievalService.Features.Search.RemoveDeleted;
+using RetrievalService.Domain;
 using RetrievalService.Domain.Ports;
 
 namespace RetrievalService.Tests.Features.Search.RemoveDeleted;
@@ -36,7 +37,7 @@ public class DocumentDeletedConsumerTests
         var before = await store.KeywordSearchAsync("規程", 10, null, ct);
         before.Select(r => r.DocumentId).Distinct().Should().BeEquivalentTo([DocA, DocB]);
 
-        var consumer = new DocumentDeletedConsumer(store, NullLogger<DocumentDeletedConsumer>.Instance);
+        var consumer = new DocumentDeletedConsumer(store, FusedCollections.None, NullLogger<DocumentDeletedConsumer>.Instance);
         await consumer.Handle(new DocumentDeleted(DocA, DateTimeOffset.UtcNow), ct);
 
         // 否定形: 削除文書のチャンクは 1 件も出ない。
@@ -51,7 +52,7 @@ public class DocumentDeletedConsumerTests
     {
         var ct = TestContext.Current.CancellationToken;
         var store = new InMemoryVectorStore();
-        var consumer = new DocumentDeletedConsumer(store, NullLogger<DocumentDeletedConsumer>.Instance);
+        var consumer = new DocumentDeletedConsumer(store, FusedCollections.None, NullLogger<DocumentDeletedConsumer>.Instance);
 
         // 未索引の文書 ID・二重配信のいずれも例外にしない（例外なら本テスト自体が失敗する）。
         await consumer.Handle(new DocumentDeleted(DocA, DateTimeOffset.UtcNow), ct);
