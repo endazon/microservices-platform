@@ -7,6 +7,7 @@ using DocumentService.Features.Documents.Delete;
 using DocumentService.Features.Documents.GetById;
 using DocumentService.Features.Documents.GetVersion;
 using DocumentService.Features.Documents.List;
+using DocumentService.Features.Documents.ListPage;
 using DocumentService.Features.Documents.ListVersions;
 using DocumentService.Features.Documents.Publish;
 using DocumentService.Features.Documents.PutBody;
@@ -67,7 +68,15 @@ public static class DocumentEndpoints
         // 死ぬ。判定は口の中で行い、拒否は 404 に倒す（`PutBody` と同じ）。**`write` 群へ入れてはならない。**
         var tagReflection = app.MapGroup("/documents").WithTags("Documents").RequireAuthorization();
 
+        // ── FR-06, NFR-08 (#1575): 組織文書の絞り込み・ページング（`GET /documents/page`） ──
+        //
+        // **認証だけを要する。** 読み取りの `g` 群（認証なし）へ入れないのは、新しい口を狭い側で開けるため
+        // （呼び出し元は KB 用のサービスアカウント等で、トークンを必ず持つ）。ロールは積まない ——
+        // 集合は `GET /documents` の部分集合であり、ロールで塞ぐと既存の一覧より狭い主体しか使えない口になる。
+        var pageRead = app.MapGroup("/documents").WithTags("Documents").RequireAuthorization();
+
         ListDocumentsEndpoint.Map(g);
+        ListDocumentPageEndpoint.Map(pageRead);
         GetDocumentEndpoint.Map(g);
         CreateDocumentEndpoint.Map(write);
         UpdateDocumentEndpoint.Map(write);

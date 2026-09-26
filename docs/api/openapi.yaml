@@ -1927,6 +1927,53 @@ paths:
         "201":
           description: 作成されたドキュメント
 
+  /documents/page:
+    get:
+      tags: [Documents]
+      summary: "FR-06, NFR-08: 組織文書の属性の絞り込みとページング（#1575）"
+      description: |
+        **組織文書**を属性の完全一致で絞り、作成順のキーセットのカーソルで切り出す。**認証を要する**（ロールは問わない）。
+
+        - 🔴 **見える集合を広げない。** 結果は常に `GET /documents` の部分集合であり、絞り込みを足すほど狭くなる。
+          DocumentService の読み取りは ABAC の判定を持たない（実施点は BFF）ため、直接の呼び出し元に見えている
+          集合は `GET /documents` の全件である。
+        - 🔴 **個人資料（`doc_scope=private-note`）は、絞り込みの値にも呼び出し元にも依らず返さない**
+          （平時は管理者も個人資料を見ない・機械の主体は個人資料を対象にしない）。
+        - 絞り込み: `attr.<キー>=<値>` を 0 個以上（AND）。キー・値とも大文字小文字を区別する完全一致。
+          **同じキーの重複・空のキー・空の値は 400**（クエリのキーは大文字小文字を区別しないので、
+          `attr.project` と `attr.Project` の併用も重複として 400）。
+        - 並び: `createdAt` 昇順、同時刻は `id` 昇順。**並びのキーは不変**なので、走査の途中で文書が
+          更新・削除・追加されても、走査の間ずっと在った文書はちょうど 1 回ずつ返る（途中で作られた文書は末尾に現れる）。
+          既存の `GET /documents`（更新の新しい順）とは並びが違う。
+        - 絞り込みは台帳を読んだ後に行う（DB の負荷は `GET /documents` と同じ。減るのは応答の量）。
+      operationId: list-document-page
+      parameters:
+        - name: attr.{key}
+          in: query
+          required: false
+          description: "属性の完全一致（例: `attr.project=ai-stock-trading`）。複数指定は AND"
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          description: 1 ページの件数。既定 100。1〜500 に丸める
+          schema: { type: integer, default: 100, minimum: 1, maximum: 500 }
+        - name: cursor
+          in: query
+          required: false
+          description: 前ページの `nextCursor`。不正な値は 400
+          schema: { type: string }
+      responses:
+        "200":
+          description: 1 ページ分の組織文書
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocumentPageDto" }
+        "400":
+          description: 絞り込み（重複・空のキー・空の値）またはカーソルが不正
+        "401":
+          description: 未認証
+
   /documents/{id}:
     get:
       tags: [Documents]
@@ -4351,6 +4398,31 @@ components:
             `GET /bff/documents/{id}`・`GET /bff/documents` は `owner` を条件に持つ分岐で許可された閲覧者にだけ
             本項目を載せ、共有先ベースの分岐だけで読めた相手（所有者以外）への応答では**項目ごと落とす**
             （`null`。空集合にしない —— 「共有の有無」も見せない）。読めるかどうかは変わらない。
+        contentFingerprint:
+          type: string
+          nullable: true
+          description: |
+            FR-06, ADR-0050 決定 1 (#1575): **本文指紋**。本文の内容だけで決まり、**メタデータだけの更新では変わらない**。
+            本文を持たない文書・指紋化できなかった文書は `null`（**空文字にしない**）。
+            全経路が同じ関数で作る —— **格納した本文の UTF-8 バイト列の SHA-256 小文字 hex**（64 文字）。
+            本文を投入した呼び出し側は、送った本文から同じ値を計算して「保存済みの本文が最新か」を判定できる。
+            本文を読める主体に本文の指紋を見せても新しい情報は漏れない（個人資料の `contentHash` と同じ扱い）。
+            **項目を持たない旧応答は「指紋不明」として読む。**
+
+    DocumentPageDto:
+      type: object
+      description: |
+        FR-06, NFR-08 (#1575): `GET /documents/page` の応答（組織文書の絞り込み・ページング。
+        `Knowledge.Contracts/Dtos/DocumentDto.cs`）。`nextCursor` が `null` なら終端。
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/DocumentDto" }
+        nextCursor:
+          type: string
+          nullable: true
+          description: 次のページの `cursor` にそのまま渡す不透明な文字列。呼び出し側は解釈しない
 
     DocumentContentDto:
       type: object

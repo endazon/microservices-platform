@@ -38,6 +38,8 @@ public static class DocumentReadGrpcMapping
         };
         // 🔴 null のときは**代入しない**（presence を立てない）。空文字を書くと画面の縮退文言が変わる。
         if (d.MarkdownUri is not null) m.MarkdownUri = d.MarkdownUri;
+        // FR-06, ADR-0050 決定 1 (#1575): 本文指紋も presence で運ぶ（null は「本文なし・不明」）。
+        if (d.ContentFingerprint is not null) m.ContentFingerprint = d.ContentFingerprint;
         foreach (var (key, value) in d.Attributes) m.Attributes[key] = value;
         m.Tags.AddRange(d.Tags);
         return m;
@@ -55,6 +57,7 @@ public static class DocumentReadGrpcMapping
         CreatedAt = m.CreatedAt.ToDateTimeOffset(),
         UpdatedAt = m.UpdatedAt.ToDateTimeOffset(),
         HasBody = m.HasBody,
+        ContentFingerprint = m.HasContentFingerprint ? m.ContentFingerprint : null,
     };
 
     public static Pb.DocumentVersionSnapshot ToProto(DocumentVersionDto v)

@@ -109,6 +109,11 @@
               "type": "map<string,string>",
               "label": "map"
             },
+            "content_fingerprint": {
+              "number": 11,
+              "type": "string",
+              "label": "optional"
+            },
             "created_at": {
               "number": 8,
               "type": "google.protobuf.Timestamp",
