@@ -274,6 +274,11 @@
       "BffMcpClientEndpointTests",
       "McpClientEndpointTests"
     ],
+    "docs/tests/SC-17_user-account-management.md": [
+      "DepartmentAttributeReconciliationTests",
+      "DepartmentAttributeSyncTests",
+      "KeycloakIdentityAdminClientTests"
+    ],
     "docs/tests/SC-19_private-notes-screen.md": [
       "BffPrivateNoteEndpointTests"
     ],

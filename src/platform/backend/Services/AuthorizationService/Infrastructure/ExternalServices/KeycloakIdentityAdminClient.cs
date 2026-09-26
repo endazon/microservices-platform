@@ -275,6 +275,93 @@ public sealed class KeycloakIdentityAdminClient(
         return string.Equals(group.Path, path, StringComparison.Ordinal) ? found : null;
     }
 
+    // FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): 部門の同期が使う 2 つの読み取り。
+    //
+    // 🔴 **ページを最後まで読む。** Keycloak の `children` / `members` は `first` / `max` のページ送りであり、
+    // 1 ページで止めると**打ち切りの外の利用者が黙って対象から落ちる**（`ListUsersAsync` の `max=1000` と同型の欠陥。
+    // [[IADR-0413]] 決定 5）。最後のページ（件数が `max` 未満）まで読む。
+    internal const int PageSize = 100;
+
+    // 直下の子グループ（Keycloak 23 以降の `GET /groups/{id}/children`）。孫は返らない（呼び出し元が辿る）。
+    public async Task<IReadOnlyList<IdentityGroup>> ListSubGroupsAsync(string groupId, CancellationToken ct)
+    {
+        var client = await AuthorizedClientAsync(ct);
+        if (string.IsNullOrWhiteSpace(groupId)) return [];
+
+        var result = new List<IdentityGroup>();
+        for (var first = 0; ; first += PageSize)
+        {
+            var page = await client.GetFromJsonAsync<List<KeycloakGroup>>(
+                $"admin/realms/{Realm}/groups/{Uri.EscapeDataString(groupId)}/children"
+                + $"?briefRepresentation=true&first={first}&max={PageSize}", Json, ct) ?? [];
+            result.AddRange(page.Where(g => !string.IsNullOrEmpty(g.Id)).Select(ToIdentityGroup));
+            if (page.Count < PageSize) return result;
+        }
+    }
+
+    // グループの直接の所属者（`GET /groups/{id}/members`）。**属性つき**（`briefRepresentation=false`）で引き、
+    // ロールは引かない（呼び出し元は読まない。`FindByUsernameAsync` と同じ判断）。
+    public async Task<IReadOnlyList<IdentityUser>> ListGroupMembersAsync(string groupId, CancellationToken ct)
+    {
+        var client = await AuthorizedClientAsync(ct);
+        if (string.IsNullOrWhiteSpace(groupId)) return [];
+
+        var result = new List<IdentityUser>();
+        for (var first = 0; ; first += PageSize)
+        {
+            var page = await client.GetFromJsonAsync<List<KeycloakUser>>(
+                $"admin/realms/{Realm}/groups/{Uri.EscapeDataString(groupId)}/members"
+                + $"?briefRepresentation=false&first={first}&max={PageSize}", Json, ct) ?? [];
+            result.AddRange(page.Where(u => !string.IsNullOrEmpty(u.Id)).Select(u => ToIdentityUser(u, [])));
+            if (page.Count < PageSize) return result;
+        }
+    }
+
+    // FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): 利用者属性 `department` **だけ**を書く。
+    //
+    // 🔴 **`ReplaceAttributesAsync` で代用しない。** あちらは属性の全置換であり、`IdentityUser.Attributes`
+    // （単一値キーは先頭 1 値へ畳んだ像）を書き戻すと、多値で入っている他の属性の 2 値目以降が消える。
+    // 現在の表現を多値のまま持ち越し、`department` の 1 キーだけを差し替える（`SetRetentionAnchorAsync` と同じ形）。
+    // 書けたことは読み直して確かめる（unmanaged 属性を黙って捨てる realm への fail-closed）。
+    //
+    // ［2026-09-26 / #1573 監査］🔴 **書く直前の GET で、計画の読み取りから有効状態・部門以外の属性が変わっていないかを
+    // 確かめ、変わっていれば PUT しない**（`Changed`）。Keycloak の `PUT /users/{id}` は表現全体の置き換えで If-Match を
+    // 持たないため、計画の読み取り〜PUT の間に入った SC-17 の無効化（`enabled=false` ＋ 保持起点）を古い表現で上書きし得る。
+    // この確認で窓は「この GET から PUT まで」（1 往復）に縮む。**ゼロにはできない**（Keycloak に条件付き更新が無い）。
+    // 残る窓は運用仕様書に書いてある。
+    public async Task<DepartmentWriteResult> SetDepartmentAttributeAsync(
+        string userId, string department, IdentityUser observed, CancellationToken ct)
+    {
+        var client = await AuthorizedClientAsync(ct);
+        var path = $"admin/realms/{Realm}/users/{Uri.EscapeDataString(userId)}";
+        var response = await client.GetAsync(path, ct);
+        if (response.StatusCode == HttpStatusCode.NotFound) return DepartmentWriteResult.NotFound;
+        response.EnsureSuccessStatusCode();
+        var representation = await response.Content.ReadFromJsonAsync<JsonObject>(Json, ct);
+        if (representation is null) return DepartmentWriteResult.NotFound;
+
+        var current = JsonSerializer.Deserialize<KeycloakUser>(representation, Json);
+        if (current is null || !DepartmentWriteResult.SameExceptDepartment(observed, ToIdentityUser(current, [])))
+            return DepartmentWriteResult.Changed;
+
+        foreach (var computed in ServerComputedFields) representation.Remove(computed);
+        var attributes = CurrentAttributes(representation);
+        attributes[DepartmentAttributeKey] = [department];
+        representation["attributes"] = JsonSerializer.SerializeToNode(attributes, Json);
+
+        var put = await client.PutAsJsonAsync(path, representation, Json, ct);
+        if (put.StatusCode == HttpStatusCode.NotFound) return DepartmentWriteResult.NotFound;
+        put.EnsureSuccessStatusCode();
+
+        var updated = await ReloadAsync(client, userId, ct);
+        if (updated is null) return DepartmentWriteResult.NotFound;
+        EnsureAttributesWereApplied(
+            new Dictionary<string, string>(StringComparer.Ordinal) { [DepartmentAttributeKey] = department }, updated);
+        return DepartmentWriteResult.Applied(updated);
+    }
+
+    private const string DepartmentAttributeKey = "department";
+
     // グループ木を深さ優先で平坦化する（`subGroups` は Keycloak が入れ子で返す）。
     // **ID を持たない節は落とす**（判定と取り消しの鍵が無い像は画面でも使えない）。
     private static IEnumerable<IdentityGroup> Flatten(IEnumerable<KeycloakGroup> groups)
