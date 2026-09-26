@@ -415,6 +415,55 @@ module.exports = ({ ok, assert }) => {
       assert.match(res.stderr, /realm\.clients\[wiki-js\]\.defaultClientScopes/);
     });
 
+    // 🔴 #1596（NFR-09, ADR-0032）: 検査 7 に足した 4 点（デバイスグラント / CIBA をログイン経路に数える・軽量アクセストークン・
+    //   利用者名を選べる宣言・preferred_username の出どころ）を、実データの realm へ入れて CLI から止められることを固定する。
+    //   自己試験は最小の取り具なので、実データのクライアント・スコープの書き方（属性の置き場・マッパーの名前）に合っているかは測れない。
+    ok('★ #1596: realm 検査の CLI がデバイスグラント・軽量アクセストークン・自己登録・preferred_username の出どころの変異で exit 1', () => {
+      const osT = require('os');
+      const { spawnSync: spawnT } = require('child_process');
+      const script = pathSeed.join(__dirname, 'check-realm-constraints.js');
+      const base = JSON.parse(fsSeed.readFileSync(seed.REALM_FILE, 'utf8'));
+      const run = (realm) => {
+        const dir = fsSeed.mkdtempSync(pathSeed.join(osT.tmpdir(), 'msp-1596-realm-'));
+        try {
+          const file = pathSeed.join(dir, 'fixture-realm.json');
+          fsSeed.writeFileSync(file, JSON.stringify(realm));
+          return spawnT(process.execPath, [script, file], { encoding: 'utf8' });
+        } finally {
+          fsSeed.rmSync(dir, { recursive: true, force: true });
+        }
+      };
+      const cases = [
+        // (a) 標準フローを閉じた SA のクライアントにデバイスグラントだけを開く（profile を持たない）
+        ['デバイスグラント', /realm\.clients\[synthetic-monitor\]\.defaultClientScopes/, (r) => {
+          const c = r.clients.find((x) => x.clientId === 'synthetic-monitor');
+          assert.ok(c && c.standardFlowEnabled === false, 'synthetic-monitor が標準フローを閉じた形でない（前提が変わった）');
+          c.attributes = { ...(c.attributes || {}), 'oauth2.device.authorization.grant.enabled': 'true' };
+        }],
+        // (b) 人がログインする bff に軽量アクセストークン（利用者名のマッパーは lightweight.claim を持たない）
+        ['軽量アクセストークン', /realm\.clients\[bff\]\.attributes\[client\.use\.lightweight\.access\.token\.enabled\]/, (r) => {
+          const c = r.clients.find((x) => x.clientId === 'bff');
+          c.attributes = { ...(c.attributes || {}), 'client.use.lightweight.access.token.enabled': 'true' };
+        }],
+        // (c) 自己登録を開く
+        ['自己登録', /realm\.registrationAllowed/, (r) => { r.registrationAllowed = true; }],
+        // (d) profile の preferred_username をメールアドレスから出す
+        ['preferred_username の出どころ', /realm\.clientScopes\[profile\]\.protocolMappers\[username\]/, (r) => {
+          const m = r.clientScopes.find((s) => s.name === 'profile').protocolMappers.find((x) => x.config['claim.name'] === 'preferred_username');
+          assert.ok(m && m.config['user.attribute'] === 'username', 'profile の利用者名マッパーが user.attribute=username でない（前提が変わった）');
+          m.config['user.attribute'] = 'email';
+        }],
+      ];
+      for (const [label, needle, mutate] of cases) {
+        const realm = JSON.parse(JSON.stringify(base));
+        mutate(realm);
+        const res = run(realm);
+        assert.strictEqual(res.status, 1, `${label} の変異を検出しなかった:\n${res.stdout}`);
+        assert.match(res.stderr, /人を無人の主体と読ませる宣言 \d+ 件/, label);
+        assert.match(res.stderr, needle, `${label}: ${res.stderr}`);
+      }
+    });
+
     ok('★ seed: realm の client secret がスクリプトへ直書きされていない', () => {
       const src = fsSeed.readFileSync(pathSeed.join(__dirname, 'seed-abac-policies.js'), 'utf8');
       const realm = JSON.parse(fsSeed.readFileSync(seed.REALM_FILE, 'utf8'));
@@ -5952,6 +6001,23 @@ ${r.stderr}`);
         'UNVERIFIABLE_ALLOWLIST: 載せたルールの「検証できない」は黙る',
         'condition が存在しない refId を指すことを検出する',
         'クエリと threshold の間の math の段は「検証できない」と報告する',
+        // #1595: YAML の木としての読み取り・空集合・端のケース
+        'YAML: 複数行に続く plain の expr（expr: up の次の行の == 0）を続きまで読み',
+        'YAML: 行末コメント・>- / |2- のブロック・複数行の引用符を読み',
+        'YAML: Grafana のエクスポート順 { params, type }',
+        'YAML: 読めない YAML',
+        'threshold の expression: $A を違反にする',
+        '空集合: 同じ選択子の矛盾する絞り込み',
+        '空集合: ラベルの矛盾',
+        '空集合: 健全に判定できない同型',
+        '同じ式の差 up - up は {0}',
+        'or on() / or ignoring() の右辺の修飾を剥がして読む',
+        '単項の符号は ^ より弱い',
+        '任意の値は ±Inf を含む',
+        '関数呼び出しへのサブクエリ',
+        '@ を offset より前に書いた選択子',
+        '名前が :offset / :bool で終わるメトリクスを修飾子として読まない',
+        'UNVERIFIABLE_ALLOWLIST: 理由が空・空白だけ・文字列でない項目は違反にし',
       ]) {
         assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
       }
@@ -6063,6 +6129,42 @@ ${r.stderr}`);
           assert.ok(
             r.issues.some((x) => x.startsWith(`[${label}] ルール ${title}:`) && x.includes(needle)),
             `${label} の ${title} を検出できなかった:\n${r.issues.join('\n')}`,
+          );
+        }
+      }
+    });
+
+    // #1595 / NFR-21: 実データの expr を「複数行に続く plain」へ書き換える（#1588 までの行の読み取りは 1 行目の `up{…}` だけを
+    //   読み、`lt 1` と組んで通していた）／決して値を返さない形へ変える —— どちらも写しの両方で赤になる。
+    //   フィクスチャだけだと、実書式の字下げ（compose の 14 桁・k8s inline は剥がした後の同じ桁）で続きを読めているかを捕まえられない。
+    ok('check-grafana-alerting: 実データの expr を複数行の plain に続けた == 1 ／決して値を返さない unless へ変えると写しの両方で赤（#1595・変異試験）', () => {
+      const g = require('./check-grafana-alerting.js');
+      const read = (p) => fs.readFileSync(path.join(REPO, p), 'utf8');
+      const prom = read('deploy/prometheus/alerts.yml');
+      const grafana = read('deploy/grafana/provisioning/alerting/slo-alerts.yaml');
+      const datasources = read('deploy/grafana/provisioning/datasources/datasources.yaml');
+      const k8sInline = g.extractK8sInline(read('deploy/local/observability/grafana.yaml'));
+      const cases = [
+        // lt 1 のまま、続きの行の `== 1` で値を {1} に絞る → 1 < 1 は偽。
+        ['OtelCollectorDown', '永久に発火しない', (t) => t.replace(
+          /^( *)expr: 'up\{job="otel-collector"\}'$/m,
+          '$1expr: up{job="otel-collector"}\n$1  == 1',
+        )],
+        ['OtelCollectorDown', '決して値を返さない', (t) => t.replace(
+          "expr: 'up{job=\"otel-collector\"}'",
+          "expr: 'up{job=\"otel-collector\"} unless up{job=\"otel-collector\"}'",
+        )],
+      ];
+      for (const [title, needle, mutate] of cases) {
+        const g2 = mutate(grafana);
+        const k2 = mutate(k8sInline);
+        assert.notStrictEqual(g2, grafana, `変異が compose に当たっていない（${title} / ${needle}）`);
+        assert.notStrictEqual(k2, k8sInline, `変異が k8s inline に当たっていない（${title} / ${needle}）`);
+        const r = g.findIssues({ prom, grafana: g2, datasources, k8sInline: k2 });
+        for (const label of ['compose', 'k8s inline']) {
+          assert.ok(
+            r.issues.some((x) => x.startsWith(`[${label}] ルール ${title}:`) && x.includes(needle)),
+            `${label} の ${title} を検出できなかった（${needle}）:\n${r.issues.join('\n')}`,
           );
         }
       }

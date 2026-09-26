@@ -133,22 +133,81 @@ public class LlmBudgetMetricsTests(TestWebApplicationFactory factory) : IClassFi
     }
 
     // T-2f: 未知の用途は起動時に落ちる（ValidateOnStart。黙って読み飛ばさない）。
+    //
+    // ［2026-09-26 / #1598］🔴 **`host.Services` が投げる例外では測らない**（GraphService の #1582・#1594 と同じ競合）。
+    // 起動検証はエントリポイントのスレッドで落ち、`app.Run()` の後始末が host を破棄する。テストスレッドの
+    // `DeferredHost.StartAsync` が破棄の**後**に着くと、破棄済みの ServiceProvider を引いて `ObjectDisposedException` になり、
+    // 着順しだいで届く例外が変わる（従前の書き方は ODE を受けると `OptionsValidationException` が見つからず赤になる）。
+    // そこで **起動検証そのものを包み、投げた例外を host の破棄より前に記録する**。
+    // ① 起動しない（`host.Services` が投げる）と ② 落ちた理由が起動検証である（ODE を合格扱いにしない）の 2 点を測る。
+    // 本サービスの `ValidateOnStart` は 3 件あり、複数が落ちると `AggregateException` にまとまるので、記録は平らにして探す。
     [Fact]
-    public void 未知の用途を設定するとホストは起動しない()
+    public async Task 未知の用途を設定するとホストは起動しない()
     {
-        using var host = WithBudget(("no-such-purpose", "1"));
+        var startupValidation = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var host = WithBudget(
+            services => RecordingStartupValidator.Install(services, startupValidation),
+            ("no-such-purpose", "1"));
 
         var act = () => host.Services;
 
-        act.Should().Throw<Exception>()
-            .Where(e => Flatten(e).Any(x => x is OptionsValidationException
-                && x.Message.Contains("no-such-purpose")));
+        act.Should().Throw<Exception>("未知の用途で host が起動してはならない");
+        var failure = await startupValidation.Task.WaitAsync(
+            TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        failure.Should().NotBeNull("起動を落としたのは起動検証（ValidateOnStart）である");
+        Flatten(failure!).Should().Contain(x => x is OptionsValidationException && x.Message.Contains("no-such-purpose"));
     }
 
     private Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> WithBudget(params (string Purpose, string Limit)[] limits)
-        => factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration((_, cfg) =>
-            cfg.AddInMemoryCollection(limits.ToDictionary(
-                l => $"{LlmBudgetOptions.SectionName}:MonthlyLimits:{l.Purpose}", l => (string?)l.Limit))));
+        => WithBudget(_ => { }, limits);
+
+    private Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> WithBudget(
+        Action<IServiceCollection> configureServices, params (string Purpose, string Limit)[] limits)
+        => factory.WithWebHostBuilder(b =>
+        {
+            b.ConfigureAppConfiguration((_, cfg) =>
+                cfg.AddInMemoryCollection(limits.ToDictionary(
+                    l => $"{LlmBudgetOptions.SectionName}:MonthlyLimits:{l.Purpose}", l => (string?)l.Limit)));
+            b.ConfigureServices(configureServices);
+        });
+
+    // #1598（#1594 の `SimilaritySourceWiringTests` と同じ包み。ユニットが別なので試験の補助は共有しない）:
+    // Program が `ValidateOnStart` で登録した起動検証を包み、結果（通れば null・落ちればその例外）を記録してから元どおり投げる。
+    // 🔴 `ValidateOnStart` を 1 つ外しても `IStartupValidator` の登録は残る（本サービスは他に 2 件ある。GraphService でも
+    // 唯一の 1 件を外して登録が残ることを #1598 で実測した）ので、そうした変異は下の「未登録」の枝ではなく、起動が通って
+    // 上の `Throw` か記録の検査で赤になる。この枝は**登録そのものが無い構成**への備えであり、記録されないまま待ち続けるより先に、
+    // 理由の分かる形で赤にする。
+    private sealed class RecordingStartupValidator(IStartupValidator inner, TaskCompletionSource<Exception?> sink)
+        : IStartupValidator
+    {
+        public static void Install(IServiceCollection services, TaskCompletionSource<Exception?> sink)
+        {
+            var original = services.SingleOrDefault(d => d.ServiceType == typeof(IStartupValidator));
+            if (original?.ImplementationType is not { } type)
+            {
+                var missing = new InvalidOperationException("起動検証（ValidateOnStart）が登録されていない");
+                sink.TrySetResult(missing);
+                throw missing;
+            }
+            services.Remove(original);
+            services.AddTransient<IStartupValidator>(sp =>
+                new RecordingStartupValidator((IStartupValidator)ActivatorUtilities.CreateInstance(sp, type), sink));
+        }
+
+        public void Validate()
+        {
+            try
+            {
+                inner.Validate();
+                sink.TrySetResult(null);
+            }
+            catch (Exception ex)
+            {
+                sink.TrySetResult(ex);
+                throw;
+            }
+        }
+    }
 
     // ホストの IMeterFactory は同じ名前の Meter を同じインスタンスで返す（キャッシュ）。
     private static Meter HostMeter(Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> host)

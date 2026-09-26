@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-19, FR-22, UC-11, SC-19, SC-17, SC-10, ADR-0036, ADR-0037, ADR-0057, ADR-0082, ADR-0096]
 author: Claude (worker)
 created: 2026-09-11
-updated: 2026-09-11
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0096_private-note-disposal-after-view-window.md
   - planning:projects/microservices-platform/07_adr/ADR-0057_deletion-propagation-scope.md
@@ -24,7 +24,7 @@ plan_refs:
   SC-19（固定文言「退職日から 30 日間」）・SC-17（無効化＝起点の発生源）・SC-10（削除の事実の観測）・
   ADR-0096 決定 1〜3（本 IADR の直接の起点）・ADR-0036 D-09 ／ §未確定事項 2・
   ADR-0057 決定 1（削除の射程）／決定 2（残余を置かない）・ADR-0037 決定 5（90 日の器）・ADR-0082 決定 5
-- 関連する実装仕様書: `.ai-context/specs/20260911_issue-1409_private-note-disposal-after-window.md`
+- 関連する実装仕様書: `.ai-context/specs/20260911_issue-1409_private-note-disposal-after-window.md`（［2026-09-26 追記 / #1598］日次ループの取り消しの扱い: `.ai-context/specs/20260926_issue-1598_maintenance-loop-foreign-cancellation.md`）
 - 前提として扱う実装ADR: IADR-0428（起点と 3 値判定。**決定 5 を本 IADR が解消する**）/
   IADR-0296（完全削除がオブジェクトストレージの本文へ及ぶ実装）/ IADR-0401（利用者名簿の狭い読み口）/
   IADR-0385（属性の線上表現）/ IADR-0379 決定 4（east-west に利用者トークンを載せない）
@@ -125,6 +125,24 @@ ADR-0096（2026-09-11 裁定・選択肢 A）がこれを確定した。決定 1
   （常に `null` を返す）を登録する。🔴 **口の不在を「窓が閉じた」へ倒さない。**
 - 例外を投げる縮退にしない —— 定期処理の他の 5 段（90 日の物理削除・版の刈り取り・3 段通知）まで
   巻き添えで止まる。
+
+> **［2026-09-26 追記 / #1598］日次の定期処理のループは、停止要求ではない取り消しで終わらない。**
+> 本決定の削除（と 90 日の器・3 段通知）を毎日回す `PrivateNoteMaintenanceHostedService` は、周期の本体の
+> `catch (Exception) when (ex is not OperationCanceledException)` が**型だけで**取り消しを素通しし、外側の型だけの
+> `catch (OperationCanceledException)` が「シャットダウン」と読んでいた。停止要求の無い取り消し（下流の時間切れの
+> `TaskCanceledException` 等）が 1 度でも周期の本体から漏れると、**プロセスが生きたまま日次のループが永久に終わり**、
+> 退職者の資料の削除（計画の 30 日の窓）・90 日の削除・通知が以後動かなかった（#1591 の監査で発見）。
+>
+> - 周期の本体は `when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)` とし、停止要求の無い取り消しは
+>   失敗として記録して次の周期へ進む。外側も `when (stoppingToken.IsCancellationRequested)` で絞り、想定外の取り消しを黙って
+>   シャットダウンと読まない。形は `DriftDetectionHostedService`（#1382）と同じで、新しい判断ではない。
+> - 試験のために周期の長さを差し替える口（`internal CycleInterval`、既定は `Interval`）を足した。本番の組み立てと `Interval` の意味は変えない。
+> - 同じ形は GraphService の 3 つの定期処理にもあり、同じ手当てを当てた（IADR-0299 決定 3 の同日の追記）。同じ欠陥で形の違う
+>   `DataSourceSyncHostedService` と、壊れ方の違う（ホストが落ちる）McpServer の `ToolCatalogRefresher` はフォローアップに回した。
+>   全数の走査は仕様書 `../specs/20260926_issue-1598_maintenance-loop-foreign-cancellation.md`「母集合」。
+> - 変異（1 か所ずつ書き換えて `PrivateNoteMaintenanceHostedServiceTests` で実行）: 直す前の形へ戻す → **赤**（10 秒待っても 2 周期目が
+>   資料を消さない）／周期の本体の絞り込みだけを戻す → **赤**（取り消しが外側の絞り込みを抜けてループが例外で終わる）。
+>   外側の絞り込みだけを外す変異は、本体が停止要求の無い取り消しを捕まえる限り外側へ何も届かないので、この試験では等価である。
 
 ## 理由
 

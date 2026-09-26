@@ -43,10 +43,23 @@ public sealed class StubOwnerRetentionDirectory : IOwnerRetentionDirectory
     /// <summary>
     /// #1583: 1 回目・2 回目…の照会に順に答える（例外を投げる答えも置ける）。尽きたら最後の答えを返し続ける。
     /// 🔴 スタブはクラス内の試験で共有され、後続の試験の周期もこの所有者を引く —— **最後の答えに例外を置かない。**
+    /// ［2026-09-26 / #1598］この約束は**宣言の時点で強制する**: 最後の答えを 1 回評価し、例外を投げるなら宣言を拒む。
+    /// 答えは副作用の無いラムダであり（列の消費は <see cref="GetAsync"/> だけが行う）、評価しても列に影響しない。
     /// </summary>
     public void DeclareSequence(string ownerId, params Func<OwnerRetentionStatus?>[] answers)
     {
         if (answers.Length == 0) throw new ArgumentException("答えが要る", nameof(answers));
+        try
+        {
+            _ = answers[^1]();
+        }
+        catch (Exception ex)
+        {
+            throw new ArgumentException(
+                "列の最後の答えが例外を投げる。尽きた後はこの答えを返し続け、同じクラスの後続の試験の周期の 1 巡目の判定を落とす"
+                + "（CI で実測。#1583）。最後には null などの例外を投げない答えを置く。",
+                nameof(answers), ex);
+        }
         _sequences[ownerId] = new ConcurrentQueue<Func<OwnerRetentionStatus?>>(answers);
     }
 

@@ -3,15 +3,15 @@ title: テスト仕様書 — FR-10 利用状況・検索傾向・回答品質�
 type: test-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-09-04
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-10, FR-17, FR-18, FR-19, UC-05, SC-10]
 adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0034, ADR-0044, ADR-0050, ADR-0054, ADR-0071, ADR-0072]
 iadrs: [IADR-0011, IADR-0122, IADR-0265, IADR-0299, IADR-0343, IADR-0353, IADR-0357, IADR-0367]
-specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count, 20260904_issue-1198_usage-event-subject-and-retention]
-issues: [#443, #1186, #1197, #1198, planning#494, planning#514, planning#515, planning#525, planning#526]
+specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count, 20260904_issue-1198_usage-event-subject-and-retention, 20260926_issue-1598_maintenance-loop-foreign-cancellation]
+issues: [#443, #1186, #1197, #1198, #1598, planning#494, planning#514, planning#515, planning#525, planning#526]
 -->
 
 # テスト仕様書: 利用状況・検索傾向・回答品質ダッシュボード
@@ -203,3 +203,4 @@ T-74 / T-75 の 2 本**）。境界は**上下から**固定する —— 基準
 - `DashboardEndpointTests` — ダッシュボードの集計端点
 - `UsageRetentionTests` — 利用イベントの主体（持たない）と保持期間（90 日で消す。境界は上下から）
 - `KnowledgeHealthProducerTests` — 観測値の生産（孤立文書の判定・スコープ付与・単一書き手化・送出）
+- `BatchLoopForeignCancellationTests` — 健全性の報告・クラスタ検出・クラスタ要約の定期処理のループが、停止要求ではない取り消しで終わらず次の周期を回す（失敗は記録し、停止要求では静かに終わる）
