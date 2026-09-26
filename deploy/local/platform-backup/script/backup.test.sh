@@ -63,6 +63,18 @@ if [ -f "$STATE/mutate-vault" ]; then
 fi
 { printf 'AGE['; cat; printf ']'; } > "$out"
 STUB
+# cp は既定で本物を呼ぶ。$STATE/corrupt-copy があれば、写した先の暗号文を 1 つ書き換える
+# （保管先への写しが壊れた世界。publish が SHA256SUMS で検証せずに改名すると、壊れた回が残る）。
+REAL_CP="$(command -v cp)"
+cat > "$WORK/bin/cp" <<STUB
+#!/usr/bin/env bash
+"$REAL_CP" "\$@" || exit \$?
+if [ -f "\$STATE/corrupt-copy" ]; then
+  dest="\${!#}"
+  for f in "\$dest"/*.age; do [ -f "\$f" ] && { printf 'X' >> "\$f"; break; }; done
+fi
+exit 0
+STUB
 chmod +x "$WORK/bin/"*
 export PATH="$WORK/bin:$PATH"
 
@@ -118,6 +130,22 @@ run_backup
 assert_ne 'T-1560-04 正しい鍵に不正な行が混ざる: 失敗で終わる' "$RC" "0"
 assert_missing 'T-1560-04 不正な行: pg_dump を呼ばない' "$(cat "$STUB_LOG")" 'pg_dump'
 
+# age は前後の空白を削らずに読む。検査器も同じに読み、失敗の原因として受取人ファイルを名指しする。
+for variant in 'lead' 'trail' 'blank' 'indented-comment'; do
+	new_env
+	case "$variant" in
+		lead) printf ' %s\n' "$FAKE_RECIPIENT" > "$R/recipients.txt" ;;
+		trail) printf '%s \n' "$FAKE_RECIPIENT" > "$R/recipients.txt" ;;
+		blank) printf '%s\n   \n' "$FAKE_RECIPIENT" > "$R/recipients.txt" ;;
+		indented-comment) printf '%s\n  # note\n' "$FAKE_RECIPIENT" > "$R/recipients.txt" ;;
+	esac
+	run_backup
+	assert_ne "T-1560-26 受取人の行の前後に空白（$variant）: 失敗で終わる" "$RC" "0"
+	assert_missing "T-1560-26 受取人の行の前後に空白（$variant）: pg_dump を呼ばない" "$(cat "$STUB_LOG")" 'pg_dump'
+	assert_contains "T-1560-26 受取人の行の前後に空白（$variant）: 受取人ファイルを名指しする" "$OUT" "$R/recipients.txt"
+	assert_contains "T-1560-26 受取人の行の前後に空白（$variant）: 原因が空白だと告げる" "$OUT" '前後に空白があります'
+done
+
 # ---- A1 / A2: 正常系（2 か所へ同じ回が並び、中身は age を通っている） ---------------
 new_env
 printf '%s\r\n' "$FAKE_RECIPIENT" > "$R/recipients.txt"   # CRLF でも読める（Windows で作ったファイル）
@@ -163,6 +191,14 @@ rm -f "$R/c/.platform-backup-target" "$R/e/.platform-backup-target"
 run_backup
 assert_ne 'T-1560-09 どちらにも書けない: 失敗で終わる' "$RC" "0"
 assert_contains 'T-1560-09 どちらにも書けない: そう告げる' "$OUT" 'どの保管先にも書けませんでした'
+
+new_env
+: > "$STATE/corrupt-copy"
+run_backup
+assert_ne 'T-1560-27 保管先への写しが壊れた: 失敗で終わる（SHA256SUMS で検証してから改名する）' "$RC" "0"
+assert_nofile 'T-1560-27 保管先への写しが壊れた: 壊れた回を C に残さない' "$R/c/postgres/2026-09-26T030000Z"
+assert_nofile 'T-1560-27 保管先への写しが壊れた: 壊れた回を E に残さない' "$R/e/postgres/2026-09-26T030000Z"
+assert_eq 'T-1560-27 保管先への写しが壊れた: incoming を残さない' "$(ls -A "$R/c/postgres" | grep -c '^\.incoming')" "0"
 
 # ---- 生成の失敗 ------------------------------------------------------------------
 new_env
@@ -276,6 +312,18 @@ assert_eq 'T-1560-23 回が 1 つも無ければ何も出さない' "$(prune_lis
 ONLYP=("2026-01-05T030000Z-partial" "2026-01-06T030000Z-partial" "2026-09-26T030000Z")
 DEL2="$(BACKUP_DAILY_KEEP=1 prune_list "2026-09-26T030000Z" "${ONLYP[@]}")"
 assert_eq 'T-1560-24 完全な回の無い月は、最初の一部失敗の回を月次にする（2 回目だけ消す）' "$DEL2" "2026-01-06T030000Z-partial"
+# 「最初」は日付順の最初である（最後・中ほどではない）。一部失敗の回が 3 つある月で、残るのは 1 つ目だけ。
+P3=("2026-02-20T030000Z-partial" "2026-02-10T030000Z-partial" "2026-02-25T030000Z-partial" "2026-09-26T030000Z")
+DEL3="$(BACKUP_DAILY_KEEP=1 prune_list "2026-09-26T030000Z" "${P3[@]}")"
+assert_eq 'T-1560-28 一部失敗だけの月は 1 つ目（2/10）を月次にし、2/20 と 2/25 を消す' "$DEL3" "$(printf '%s\n' 2026-02-20T030000Z-partial 2026-02-25T030000Z-partial)"
+# 🔴 一部失敗の回が 30 日以上続いても、最新の完全な回は消さない（日次の枠が一部失敗の回で埋まっても戻せる回を残す）。
+STREAK=("2026-08-01T030000Z" "2026-08-02T030000Z")
+for i in $(seq 0 34); do STREAK+=("$(date -u -d "2026-08-03 +$i day" +%Y-%m-%d)T030000Z-partial"); done
+DEL4="$(prune_list "2026-09-06T030000Z" "${STREAK[@]}")"
+has_del4() { printf '%s\n' "$DEL4" | grep -qx -- "$1"; }
+has_del4 '2026-08-02T030000Z' && ng 'T-1560-29 完全な回 2 つ → 一部失敗 35 日: 最新の完全な回（8/2）を残す' 'deleted' || ok 'T-1560-29 完全な回 2 つ → 一部失敗 35 日: 最新の完全な回（8/2）を残す'
+has_del4 '2026-08-01T030000Z' && ng 'T-1560-29 完全な回 2 つ → 一部失敗 35 日: 月次（8/1）も残す' 'deleted' || ok 'T-1560-29 完全な回 2 つ → 一部失敗 35 日: 月次（8/1）も残す'
+has_del4 '2026-08-03T030000Z-partial' && ok 'T-1560-29 完全な回 2 つ → 一部失敗 35 日: 30 日付を過ぎた一部失敗の回は消す' || ng 'T-1560-29 完全な回 2 つ → 一部失敗 35 日: 30 日付を過ぎた一部失敗の回は消す' 'kept'
 
 # ---- A6: prune_target は規則外のものに触れず、再帰削除をしない ---------------------
 new_env
@@ -294,6 +342,43 @@ assert_ne 'T-1560-25 prune_target: 消し切れなかったら失敗を返す' "
 assert_file 'T-1560-25 prune_target: 規則外のディレクトリに触れない' "$K/keep-me/file"
 assert_file 'T-1560-25 prune_target: 規則外のファイルに触れない' "$K/README.txt"
 assert_file 'T-1560-25 prune_target: 最新の回は残す' "$K/2026-09-26T030000Z/pg-a.dump.age"
+
+# ---- age の導入に失敗したら、apk の理由を出して止まる ------------------------------
+APKBIN="$WORK/apkbin"; mkdir -p "$APKBIN"
+printf '#!/usr/bin/env bash\necho "ERROR: unable to select packages: age (no such package)" >&2\nexit 1\n' > "$APKBIN/apk"
+chmod +x "$APKBIN/apk"
+if PATH="$APKBIN:/usr/bin:/bin" command -v age >/dev/null 2>&1; then
+	printf '  skip  T-1560-31 この環境の /usr/bin に age がある（age 不在の分岐を試せない）\n'
+else
+	AOUT="$(PATH="$APKBIN:/usr/bin:/bin" BACKUP_AGE_INSTALL=1 ensure_age 2>&1)"; ARC=$?
+	assert_ne 'T-1560-31 age を入れられない: 失敗を返す' "$ARC" "0"
+	assert_contains 'T-1560-31 age を入れられない: apk の理由をログに出す' "$AOUT" 'unable to select packages'
+	assert_contains 'T-1560-31 age を入れられない: 何も書かないと告げる' "$AOUT" 'age を用意できません'
+fi
+
+# ---- 🔴 シンボリックリンクを辿って消さない（`[ -d ]` はリンクを辿る） -------------------
+# Git Bash（Windows）の ln -s は既定で写しを作り、リンクにならない。そのときは試せないので飛ばす（Linux CI では走る）。
+new_env
+BACKUP_KIND=postgres
+K="$R/c/postgres"; mkdir -p "$K"
+OUTSIDE="$R/outside"; mkdir -p "$OUTSIDE"; echo precious > "$OUTSIDE/precious.age"
+mkdir -p "$K/2026-09-26T030000Z"; echo x > "$K/2026-09-26T030000Z/pg-a.dump.age"
+ln -s "$OUTSIDE" "$K/2019-01-01T030000Z" 2>/dev/null
+if [ -L "$K/2019-01-01T030000Z" ]; then
+	BACKUP_DAILY_KEEP=1 prune_target "$R/c" "2026-09-26T030000Z" >/dev/null 2>&1
+	assert_file 'T-1560-30 prune_target: 回の名前をしたシンボリックリンクの先のファイルを消さない' "$OUTSIDE/precious.age"
+	[ -L "$K/2019-01-01T030000Z" ] && ok 'T-1560-30 prune_target: シンボリックリンクそのものも回として扱わない' || ng 'T-1560-30 prune_target: シンボリックリンクそのものも回として扱わない' 'link removed'
+	remove_flat_dir "$K/2019-01-01T030000Z"; RRC=$?
+	assert_ne 'T-1560-30 remove_flat_dir: ディレクトリ自体がシンボリックリンクなら拒む' "$RRC" "0"
+	assert_file 'T-1560-30 remove_flat_dir: 拒んだときリンク先のファイルは残る' "$OUTSIDE/precious.age"
+	mkdir -p "$R/withlink"; echo y > "$R/withlink/pg-b.dump.age"; ln -s "$OUTSIDE/precious.age" "$R/withlink/link.age"
+	remove_flat_dir "$R/withlink"; RRC=$?
+	assert_ne 'T-1560-30 remove_flat_dir: 中身にシンボリックリンクがあれば拒む' "$RRC" "0"
+	assert_file 'T-1560-30 remove_flat_dir: 拒んだとき 1 つも消さない' "$R/withlink/pg-b.dump.age"
+	assert_file 'T-1560-30 remove_flat_dir: 中身のリンクの先も残る' "$OUTSIDE/precious.age"
+else
+	printf '  skip  T-1560-30 シンボリックリンクを作れない環境（Windows の Git Bash 等）\n'
+fi
 
 # 作業場（mktemp の下）は再帰削除しない。CI のランナーは使い捨てで、手元では一時領域の掃除に任せる。
 printf '\nbackup.test.sh: %d passed, %d failed\n' "$PASSED" "$FAILED"

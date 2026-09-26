@@ -46,6 +46,9 @@ is_run_name() { [[ "$1" =~ $RUN_NAME_RE ]]; }
 # 受取人ファイルを検査する。空行と # 行を除いたすべての行が age の公開鍵で、1 行以上あること。
 # 🔴 占位（リポジトリの例示ファイルそのまま）・不在・不正な行は失敗にする —— 暗号化できない鍵で
 #    「成功」を積まないため。行の中身は表示しない（公開鍵だが、表示の必要が無い）。
+# 🔴 **age の読み方と同じに読む**（前後の空白を削らない）。age（`-R`）は行末の CR だけを落とし
+#    （Go の bufio.ScanLines）、空行と「# で始まる行」だけを読み飛ばす。前後に空白のある行や空白だけの行は
+#    age では不正な受取人になる —— ここで削って通すと、失敗が pg_dump のパイプの側で出て原因が読めなくなる。
 check_recipients() {
 	local file="$1" line n=0 lineno=0
 	if [ ! -r "$file" ]; then
@@ -55,11 +58,13 @@ check_recipients() {
 	while IFS= read -r line || [ -n "$line" ]; do
 		lineno=$((lineno + 1))
 		line="${line%$'\r'}"
-		line="${line#"${line%%[![:space:]]*}"}"
-		line="${line%"${line##*[![:space:]]}"}"
 		case "$line" in '' | '#'*) continue ;; esac
+		if [[ "$line" =~ ^[[:space:]] || "$line" =~ [[:space:]]$ ]]; then
+			err "受取人ファイル $file の ${lineno} 行目の前後に空白があります（age は空白を削らずに読むため、この行は受取人として使えません）"
+			return 1
+		fi
 		if [[ ! "$line" =~ $AGE_RECIPIENT_RE ]]; then
-			err "受取人ファイルの ${lineno} 行目が age の公開鍵（age1...）ではありません（占位のままではないか確かめてください）"
+			err "受取人ファイル $file の ${lineno} 行目が age の公開鍵（age1...）ではありません（占位のままではないか確かめてください）"
 			return 1
 		fi
 		n=$((n + 1))
@@ -75,7 +80,12 @@ ensure_age() {
 	if command -v age >/dev/null 2>&1; then return 0; fi
 	if [ "$BACKUP_AGE_INSTALL" = "1" ]; then
 		log "age が無いため Alpine のパッケージを入れます"
-		apk add --no-cache age >/dev/null 2>&1 || true
+		# 失敗の理由（到達不能・署名・容量）を隠さない。apk の出力に秘密は含まれない。
+		local apk_err
+		if ! apk_err="$(apk add --no-cache age 2>&1 >/dev/null)"; then
+			err "apk add age が失敗しました:"
+			printf '%s\n' "$apk_err" | sed 's/^/    apk: /' >&2
+		fi
 	fi
 	if ! command -v age >/dev/null 2>&1; then
 		err "age を用意できません（暗号化できないため何も書きません）"
@@ -169,9 +179,11 @@ stage_vault() {
 # ---------------------------------------------------------------- publish / prune
 
 # 平らなディレクトリ（回・incoming・staging）を消す。🔴 再帰削除をしない —— 想定外の中身
-# （サブディレクトリ等の通常ファイル以外）があれば、**1 つも消さずに**失敗として返す。
+# （サブディレクトリ・シンボリックリンク等の通常ファイル以外）があれば、**1 つも消さずに**失敗として返す。
+# 🔴 ディレクトリ自体がシンボリックリンクなら拒む（`[ -d ]` はリンクを辿るので、辿った先のファイルを消してしまう）。
 remove_flat_dir() {
 	local d="$1" f
+	[ -L "$d" ] && return 1
 	[ -d "$d" ] || return 0
 	for f in "$d"/* "$d"/.[!.]*; do
 		[ -e "$f" ] || [ -L "$f" ] || continue
@@ -200,6 +212,7 @@ publish() {
 	fi
 	# 前回の途中で残った incoming を片付ける（平らなものだけ）。
 	for old in "$kind_dir"/.incoming-*; do
+		[ -L "$old" ] && continue
 		[ -d "$old" ] && remove_flat_dir "$old"
 	done
 	incoming="$kind_dir/.incoming-$run"
@@ -227,6 +240,7 @@ publish() {
 #   - 月次: 各月で最初に取れた回（完全な回を優先し、無ければ一部失敗の回）を BACKUP_LONG_YEARS 年残す
 #           （月初に PC を止めていても、その月の最初の回が月次になる）
 #   - -keep: BACKUP_LONG_YEARS 年残す（切替前など、運用者が改名した回）
+#   - 最新の完全な回（-partial でも -keep でもない回）は、上の規則に関わらず必ず残す
 #   - 規則に合わない名前は出さない（＝消さない）
 prune_list() {
 	local now="$1"
@@ -242,11 +256,14 @@ prune_list() {
 	cutoff_date="$(printf '%04d-%s' "$y" "${now:5:5}")"
 
 	local -A keep=() day_seen=() month_full=() month_any=()
-	local days=0 d m
+	local days=0 d m newest_full=""
 	# 日次（新しい順）。-keep は日次の数え方から外す（長期保持の規則で別に扱う）。
 	while IFS= read -r n; do
 		[ -n "$n" ] || continue
 		case "$n" in *-keep) continue ;; esac
+		# 🔴 **最新の完全な回は必ず残す。** 一部失敗の回が 30 日以上続くと、日次の枠が一部失敗の回だけで埋まり、
+		#    戻せる最後の完全な回を消してしまう（監査の指摘）。
+		case "$n" in *-partial) ;; *) [ -z "$newest_full" ] && newest_full="$n" && keep[$n]=1 ;; esac
 		d="${n:0:10}"
 		if [ -z "${day_seen[$d]:-}" ]; then
 			days=$((days + 1))
@@ -279,6 +296,8 @@ prune_target() {
 	[ -d "$kind_dir" ] || return 0
 	local -a names=()
 	for p in "$kind_dir"/*; do
+		# シンボリックリンクは回として扱わない（辿った先を消さない）。
+		[ -L "$p" ] && continue
 		[ -d "$p" ] || continue
 		name="${p##*/}"
 		is_run_name "$name" && names+=("$name")

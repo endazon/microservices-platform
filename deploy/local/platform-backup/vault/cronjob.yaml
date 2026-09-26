@@ -53,6 +53,10 @@ spec:
                   value: /vault/data
               securityContext:
                 allowPrivilegeEscalation: false
+                # seccomp は RuntimeDefault。capabilities の削減（drop: [ALL] ＋ 必要最小の add）は稼働クラスタで
+                # 必要な集合を実測してから行う（IADR-0471 のフォローアップ。推測で落とすと apk・drvfs 書き込み・0600 の読み取りが割れる）。
+                seccompProfile:
+                  type: RuntimeDefault
               volumeMounts:
                 - name: vault-data
                   mountPath: /vault/data

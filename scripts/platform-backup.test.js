@@ -125,9 +125,13 @@ function cronJobView(doc) {
     configMap: v.configMap ? parseMap(v.configMap) : null,
     pvc: v.persistentVolumeClaim ? parseMap(v.persistentVolumeClaim) : null,
   }));
+  const securityContext = container.securityContext ? parseMap(container.securityContext) : {};
+  const seccomp = securityContext.seccompProfile ? parseMap(securityContext.seccompProfile) : {};
   return {
     name: doc.name,
     namespace: doc.namespace,
+    allowPrivilegeEscalation: securityContext.allowPrivilegeEscalation,
+    seccompType: seccomp.type,
     schedule: spec.schedule,
     timeZone: spec.timeZone,
     concurrencyPolicy: spec.concurrencyPolicy,
@@ -356,6 +360,9 @@ ok('7. pg_dump のイメージは本体の Postgres と同じ。失敗を再試�
     assert.strictEqual(cj.backoffLimit, '0', `${cj.name}: backoffLimit が 0 でない（失敗が再試行で上書きされる）`);
     assert.strictEqual(cj.restartPolicy, 'Never', `${cj.name}: restartPolicy が Never でない`);
     assert.strictEqual(cj.automountServiceAccountToken, 'false', `${cj.name}: SA トークンを自動マウントしている（要らない権限）`);
+    assert.strictEqual(cj.allowPrivilegeEscalation, 'false', `${cj.name}: allowPrivilegeEscalation が false でない`);
+    // capabilities の削減は稼働クラスタでの実測待ち（IADR-0471 のフォローアップ）。seccomp は今ここで固定する。
+    assert.strictEqual(cj.seccompType, 'RuntimeDefault', `${cj.name}: seccompProfile が RuntimeDefault でない`);
   }
 });
 

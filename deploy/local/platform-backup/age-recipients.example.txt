@@ -10,5 +10,6 @@
 #        kubectl -n platform-infra create configmap platform-backup-age-recipients \
 #          --from-file=recipients.txt=<写したファイル> --dry-run=client -o yaml | kubectl apply -f -
 #
-# 空行と # で始まる行は読み飛ばす。それ以外の行が 1 つでも age の公開鍵でなければ、CronJob は何も書かずに失敗する。
+# 空行と # で始まる行は読み飛ばす（行頭に空白を置いた # 行は不可）。それ以外の行が 1 つでも age の公開鍵でなければ
+# （前後に空白があるだけでも）、CronJob は何も書かずに失敗する。行末の CRLF はよい。
 REPLACE_WITH_AGE_PUBLIC_KEY
