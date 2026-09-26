@@ -97,6 +97,8 @@ gRPC 面は従前どおり `ServiceCaller`。健全性の口は匿名のまま�
 - gRPC の `user.user_id` が空文字なら `INVALID_ARGUMENT`（「利用者が分からない」を機械の主体へ畳まない）。
 - 本文の利用者文脈を信じてよいのは、それを運ぶのが `ServiceCaller`（realm ロール `platform-service`）を通ったサービスだからである
   （ADR-0086 決定 1。`DocumentTagWrite/AddTag` の `user_id` と同じ扱い）。
+  ［2026-09-27 追記 / #1628］**この理由づけは改めた。** `platform-service` だけでは信じず、許可集合の中継者（既定 `bff`）に限る。
+  それ以外が `user` を付けたら `PERMISSION_DENIED`。末尾の追記 1 を見よ。
 - 名前の分からない人（`preferred_username` もクライアント識別も無い）は個人資料を読まない（組織文書は読む）。
 
 ### 決定 3: 可視性の唯一の判定点（`DocumentReadAccess`）
@@ -166,3 +168,39 @@ package をまたいで型を共有しない（[[IADR-0379]] 決定 1）ので�
   1. #1615: 内容の ABAC を `DocumentReadAccess` に入れる（決定 7）。
   2. 本件の範囲外で残る ADR-0119 の実装（機械クライアントの自分の文書の更新・削除、`IADR-0075` の改訂、edge の AuthorizationPolicy）。
 - 再検討の条件: 認可サービスが所属を返す狭い口を持ったとき（決定 4 の問い合わせを置き換えるか）。
+
+## 追記 1: gRPC の本文の利用者文脈を信じる呼び出し元を許可集合（既定 `bff`）に絞る（2026-09-27 / #1628）
+
+［2026-09-27 追記 / #1628］PR #1626 の監査の F1。決定 2 の「本文の利用者文脈を信じてよいのは `ServiceCaller` を通ったサービスだから」を改める。
+
+- **事実**: `ServiceCaller` は realm ロール `platform-service` だけを見る。realm では 11 のサービスアカウントがそれを持つ
+  （bff・aianalysis-service・graph-service・conversion-service・retrieval-service・ingestion-service・wiki-service・datasource-service・
+  mcp-server・document-service・別プロジェクトの `ai-stock-trading-llm-caller`）。どれかが `user.user_id` を任意の利用者にして `DocumentRead` を呼べば、
+  その利用者の個人資料の表題・owner・共有先が返っていた。実際に `DocumentRead` を呼ぶのは BFF だけである（`DocumentReadGrpcClient` のみ）。
+- **決定**:
+  1. **本文の `user` を信じるのは、呼び出し元が機械の主体（`MachinePrincipal.IsMachine`）で、かつクライアント識別
+     （`MachinePrincipal.ClientIdOf`。`azp` を第一に、無ければ `service-account-<clientId>` から復元）が許可集合に序数一致で含まれるときだけ。**
+     機械であることを併せて求めるのは、`azp` が人のトークンにも付く（BFF のセッションの利用者トークンは `azp=bff`）からである。
+  2. **許可集合は `DocumentRead:TrustedUserContextClients`（配列）で構成する。未構成なら `bff` だけ。構成すると既定を置き換える**（足し合わせない。
+     .NET の配列の束縛は初期値に追記するため、プロパティの既定を null にして読み出し側で既定を解決する）。空白だけの要素は捨て、
+     1 つも残らなければ誰も信じない（fail-closed）。`MachinePrincipal` の「一覧を構成に持たない」とは向きが逆である（こちらは許可の集合で、
+     外せば狭くなる。`SyntheticMonitoringOptions.Subjects` と同じ形）。
+  3. **許可集合に無い呼び出し元が `user` を付けたら `PERMISSION_DENIED`**（利用者識別子が空かどうかより先に判定する）。拒否はクライアント識別だけを
+     警告ログに残す（基数は realm の機密クライアント数で閉じる）。`user` を付けない呼び出し（呼び出し元サービス自身＝機械の主体）は従来どおり
+     全ての `ServiceCaller` に開いている。
+- **選ばなかった案: 機械の主体として扱う（`user` を捨てる）。** 個人資料は返らないが、ADR-0119 決定 3 の「本文で利用者が運ばれたなら、その利用者」を
+  呼び出し先が黙って別の主体へ読み替えることになる。呼び出し元は利用者の視野のつもりで機械の視野を受け取り、誤りに気付けない
+  （決定 2 の「利用者が分からないを機械の主体へ畳まない」と同じ理由）。拒否なら、受け付けた呼び出しでは決定 3 の主体の規則がそのまま成り立ち、
+  新しい中継者を足すには構成を 1 行足す判断が要る。
+- **ADR-0086 決定 1 との関係**: 決定 1 は運び方（本文で運ぶ）を定め、§結果は「中継サービスが正直であること」への依存を受け入れた。
+  受け入れたのは利用者の権限で動く中継者への依存であって、`platform-service` を持つ全主体への依存ではない。依存を実在する中継者（BFF）へ
+  狭めても、運び方は変わらない。
+- **`ai-stock-trading-llm-caller` の `platform-service`**: 外せない。AST の TradeDecisionService・ReportService が LlmGateway の `/complete`（REST）と
+  gRPC のテキスト生成をこの client で呼び、LlmGateway の両面の門が `ServiceCaller` である（AST/IADR-0323・AST/IADR-0332）。realm は変えない。
+  `DocumentRead` の穴は本追記の許可集合で閉じる。
+- **配備**: helm・compose とも BFF の s2s の client は `bff`（`services.bff.serviceToken.clientId` / `ServiceToken__ClientId`）で、既定の許可集合と一致する。
+  document-service だけを先に配備してよい（BFF の変更は無い）。BFF の client 名を変える配備は、先に document-service の許可集合へ足すこと ——
+  逆順だと BFF の gRPC の読み取りが利用者文脈つきで拒否され、BFF の縮退（一覧は空・詳細は 404）へ静かに落ちる。compose・helm の値の一致は
+  `DocumentReadRelayDeploymentWiringTests` が固定する。
+- **残るもの**: 本文の `user_id` を `platform-service` の全主体から信じる面は他にもある（`DocumentTagWrite/AddTag`・グラフの問い合わせ・検索の
+  `HybridSearch` / `ListValues`・`AuthzScope/Resolve`）。面ごとに呼び出し元が違うので、別の issue で扱う。

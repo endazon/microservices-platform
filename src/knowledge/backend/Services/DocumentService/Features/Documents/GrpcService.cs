@@ -1,8 +1,11 @@
 using Grpc.Core;
 using Knowledge.Contracts.Grpc;
 using Knowledge.Contracts.Grpc.Document.V1;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Options;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 
 namespace DocumentService.Features.Documents;
 
@@ -27,18 +30,26 @@ namespace DocumentService.Features.Documents;
 //   （ADR-0034 決定 9）。組織文書の内容の ABAC は引き続き BFF の `BffScopeResolver` が実施点である（#1615）。
 //   🔴 `user.user_id` が空なら INVALID_ARGUMENT —— 「利用者が分からない」を機械の主体へ畳まない。
 //
+// ［2026-09-27 追記 / #1628］🔴 **本文の `user` を信じるのは、許可集合（`DocumentReadRelayOptions`。既定 `bff` だけ）の
+//   機械クライアントが運んだときだけである。** それ以外の `platform-service` の主体が `user` を付けたら PERMISSION_DENIED
+//   （機械の主体へ読み替えない —— 呼び出し元は利用者の視野のつもりで機械の視野を受け取り、誤りに気付けない）。
+//   `user` を付けない呼び出し（呼び出し元サービス自身）は従来どおり全ての `ServiceCaller` に開いている。
+//
 // 🔴 **不在は応答であって status ではない。** `found=false` を返し `NOT_FOUND` を投げない
 //   （[[IADR-0401]] 決定 5 と同じ作法）。呼び出し元は「引けなかった」（`RpcException`）と
 //   同じ縮退（404 秘匿 / 空一覧）へ落とすが、**それは呼び出し元の判断**であって
 //   輸送の側で先取りしない。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
-public sealed class DocumentReadGrpcService(DocumentReadUseCase reads)
+public sealed class DocumentReadGrpcService(
+    DocumentReadUseCase reads,
+    IOptions<DocumentReadRelayOptions> relay,
+    ILogger<DocumentReadGrpcService> logger)
     : DocumentRead.DocumentReadBase
 {
     public override async Task<ListDocumentsResponse> ListDocuments(
         ListDocumentsRequest request, ServerCallContext context)
     {
-        var docs = await reads.ListAsync(PrincipalOf(request.User), context.CancellationToken);
+        var docs = await reads.ListAsync(PrincipalOf(request.User, context), context.CancellationToken);
         var resp = new ListDocumentsResponse();
         resp.Documents.AddRange(docs.Select(DocumentReadGrpcMapping.ToProto));
         return resp;
@@ -53,7 +64,7 @@ public sealed class DocumentReadGrpcService(DocumentReadUseCase reads)
         if (!Guid.TryParse(request.Id, out var id))
             throw new RpcException(new Status(StatusCode.InvalidArgument, "id は GUID である必要があります。"));
 
-        var doc = await reads.GetAsync(PrincipalOf(request.User), id, context.CancellationToken);
+        var doc = await reads.GetAsync(PrincipalOf(request.User, context), id, context.CancellationToken);
         return doc is null
             ? new GetDocumentResponse { Found = false }
             : new GetDocumentResponse { Found = true, Document = DocumentReadGrpcMapping.ToProto(doc) };
@@ -65,7 +76,7 @@ public sealed class DocumentReadGrpcService(DocumentReadUseCase reads)
         if (!Guid.TryParse(request.DocumentId, out var id))
             throw new RpcException(new Status(StatusCode.InvalidArgument, "document_id は GUID である必要があります。"));
 
-        var versions = await reads.ListVersionsAsync(PrincipalOf(request.User), id, context.CancellationToken);
+        var versions = await reads.ListVersionsAsync(PrincipalOf(request.User, context), id, context.CancellationToken);
         if (versions is null)
             return new ListVersionsResponse { Found = false };
 
@@ -80,21 +91,40 @@ public sealed class DocumentReadGrpcService(DocumentReadUseCase reads)
         if (!Guid.TryParse(request.DocumentId, out var id))
             throw new RpcException(new Status(StatusCode.InvalidArgument, "document_id は GUID である必要があります。"));
 
-        var snapshot = await reads.GetVersionAsync(PrincipalOf(request.User), id, request.Version,
+        var snapshot = await reads.GetVersionAsync(PrincipalOf(request.User, context), id, request.Version,
             context.CancellationToken);
         return snapshot is null
             ? new GetVersionResponse { Found = false }
             : new GetVersionResponse { Found = true, Snapshot = DocumentReadGrpcMapping.ToProto(snapshot) };
     }
 
-    // FR-19, 計画 ADR-0119 決定 3, ADR-0086 決定 1 (#1614): 本文の利用者文脈 → 主体。
+    // FR-19, 計画 ADR-0119 決定 3, ADR-0086 決定 1 (#1614, #1628): 本文の利用者文脈 → 主体。
+    private DocumentReadPrincipal PrincipalOf(UserContext? user, ServerCallContext context)
+    {
+        var caller = context.GetHttpContext().User;
+        if (user is not null && !relay.Value.TrustsUserContextFrom(caller))
+        {
+            // 基数は realm の機密クライアント数で閉じる（利用者識別子・文書 ID は載せない）。
+            logger.LogWarning(
+                "DocumentRead rejected a user context from a caller that is not a trusted relay (client={ClientId}). "
+                + "Trusted relays are configured under {Section}:TrustedUserContextClients.",
+                MachinePrincipal.ClientIdOf(caller) ?? "(unknown)", DocumentReadRelayOptions.SectionName);
+        }
+        return PrincipalOf(user, caller, relay.Value);
+    }
+
     // 🔴 **主体の検証（`GrpcService` の外の `ServiceCaller`）を通った呼び出し元だけがここへ来る。**
-    //   利用者文脈を信じてよいのは、それを運ぶのが realm の `platform-service` を持つサービスだからである
-    //   （ADR-0086 決定 1。`DocumentTagWrite/AddTag` の `user_id` と同じ扱い）。
-    internal static DocumentReadPrincipal PrincipalOf(UserContext? user)
+    //   ［2026-09-27 追記 / #1628］本文の利用者文脈を信じてよいのは、それを運ぶのが**利用者の権限で動く中継者として
+    //   許可集合に載った機械クライアント**だからである（ADR-0086 §結果が受け入れた依存の範囲）。`platform-service` を
+    //   持つことだけでは信じない —— そのロールは 11 のサービスアカウント（別プロジェクトのものを含む）が持つ。
+    internal static DocumentReadPrincipal PrincipalOf(
+        UserContext? user, ClaimsPrincipal caller, DocumentReadRelayOptions relay)
     {
         if (user is null)
             return DocumentReadPrincipal.CallingService();
+        if (!relay.TrustsUserContextFrom(caller))
+            throw new RpcException(new Status(StatusCode.PermissionDenied,
+                "この呼び出し元は利用者文脈（user）を運べません。user を省略すると呼び出し元サービス自身として読みます。"));
         if (string.IsNullOrWhiteSpace(user.UserId))
             throw new RpcException(new Status(StatusCode.InvalidArgument,
                 "user.user_id が空です。利用者文脈を運ばないなら user を省略してください。"));

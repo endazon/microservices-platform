@@ -10,8 +10,8 @@ author: claude
 ids: [FR-03, FR-04, FR-05, FR-06, SC-05, UC-03, NFR-09, FR-19]
 adrs: [ADR-0119, ADR-0034, ADR-0036, ADR-0050, ADR-0054]
 iadrs: [IADR-0476, IADR-0290, IADR-0475]
-specs: [20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint]
-issues: [#1614, #199, #1011, #1575, planning#473]
+specs: [20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint]
+issues: [#1628, #1614, #199, #1011, #1575, planning#473]
 -->
 
 # テスト仕様書: 文書CRUD・バージョン管理
@@ -94,12 +94,14 @@ issues: [#1614, #199, #1011, #1575, planning#473]
 | T-48 | 所有者 alice の個人資料 | gRPC の 4 rpc を利用者文脈 alice・他人・無し・サービスアカウントの形で呼ぶ。利用者識別子が空の文脈でも呼ぶ | alice だけに返り、他は `found=false`・一覧に現れない。空の利用者識別子は `INVALID_ARGUMENT` | 個人資料の可視性（gRPC） | 自動（エンドポイント） |
 | T-49 | 所有者・他人・機械 | 絞り込みの口を引く | 誰にも個人資料は返らず、組織文書は返る | 絞り込みの口は組織文書だけ | 自動（エンドポイント） |
 | T-50 | BFF（文書閲覧） | REST 経路の読み取り 4 口を利用者のトークンつきで引く。gRPC 経路の 4 口を利用者・機械として引く | REST は 4 口とも利用者の資格情報を後段へ中継する。gRPC は利用者文脈を運び、機械の呼び出し元では運ばない | 読み取りの主体の中継 | 自動（エンドポイント） |
+| T-51 | 所有者 alice の個人資料・組織文書。BFF の client（`bff`）と、`platform-service` を持つ BFF 以外のサービスアカウント（別プロジェクトの LLM 呼び出し用を含む）、`azp=bff` を持つ人のトークン | gRPC の 4 rpc を利用者文脈 alice つき・無しで呼ぶ。信頼する中継者の集合を未構成・置き換え・空白だけで束縛する。compose・helm の BFF の s2s の client を読む | BFF には alice の個人資料が返る（陽性対照）。BFF 以外と人のトークンは利用者文脈つきで 4 つとも `PERMISSION_DENIED`、利用者文脈なしなら機械として組織文書だけが返る。集合は未構成なら `bff` だけ・構成は既定を置き換える・空白だけは誰も信じない。配備の BFF の client は既定の集合に入る | 利用者文脈を運べる呼び出し元 | 自動（エンドポイント・単体） |
 
 対応テスト実装:
 
 - 単体（ドメイン）: `src/knowledge/backend/Services/DocumentService/Tests/Domain/DocumentVersioningTests.cs`（T-01〜T-05）、`DocumentAttributesTests.cs`（T-23）
 - 単体（エンドポイント, InMemory）: `.../DocumentEndpointVersioningTests.cs`（T-06〜T-11・T-24〜T-25）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）、`DocumentFingerprintResponseTests.cs`（T-26〜T-28・T-38）、`DocumentPageTests.cs`（T-30〜T-37・T-39〜T-41）
 - 単体（契約）: `src/knowledge/backend/Shared/Knowledge.Contracts.Tests/DocumentReadGrpcMappingTests.cs`（T-29）
+- 実 Kestrel ＋ 本物の JwtBearer・単体（構成）: `.../Features/Documents/DocumentReadTrustedRelayTests.cs`・`DocumentReadRelayOptionsTests.cs`・`DocumentReadRelayDeploymentWiringTests.cs`（T-51）
 - 統合（実 PostgreSQL）: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/DocumentService/DocumentCrudTests.cs`（T-12〜T-14）、`DocumentVersioningTests.cs`（T-15〜T-16）
 - 統合（実 PostgreSQL / RabbitMQ）: `.../DocumentNormalizedSyncTests.cs`（T-17〜T-18）
 

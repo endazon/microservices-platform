@@ -62,6 +62,9 @@
       "DocumentNormalizedSyncTests",
       "DocumentPageTests",
       "DocumentReadGrpcMappingTests",
+      "DocumentReadRelayDeploymentWiringTests",
+      "DocumentReadRelayOptionsTests",
+      "DocumentReadTrustedRelayTests",
       "DocumentVersioningTests"
     ],
     "docs/tests/FR-07_data-range-analysis.md": [
