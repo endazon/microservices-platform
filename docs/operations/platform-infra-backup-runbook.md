@@ -10,8 +10,8 @@ updated: 2026-09-26
 ids: [NFR-21, NFR-05, NFR-18]
 adrs: [ADR-0002, ADR-0008]
 iadrs: [IADR-0066, IADR-0369, IADR-0457, IADR-0471]
-specs: [20260926_issue-1560_platform-infra-encrypted-backup]
-issues: [#1560, AST#346]
+specs: [20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image]
+issues: [#1560, #1564, AST#346]
 -->
 
 # 運用 Runbook: platform-infra の暗号化バックアップ
@@ -64,6 +64,7 @@ issues: [#1560, AST#346]
 | §2 日々の確認 | 週に 1 度（または Job の失敗に気付いたとき） |
 | §3 リストア試験 | **四半期に 1 度と、切替（再実装版への移行）の前** |
 | §4 切替前の回を長期保持にする | 切替の直前に取った回を 7 年残すとき |
+| §6 イメージの版を上げる | CI のイメージのビルド（`build-local (platform-backup)`）が age の取得で落ちたとき・ベースを更新するとき |
 
 ## 前提
 
@@ -110,12 +111,20 @@ issues: [#1560, AST#346]
 
    🔴 **目印の無い保管先には書かない。** ドライブが外れているとクラスタはディストリの中に空のディレクトリを
    作る（そこはクラスタの外ではない）ため、目印で見分けている。
-5. **CronJob を当てる**（通常は起動スクリプトの永続化の既定で入っている）。単独で当てるなら:
+5. **CronJob を当てる**（通常は起動スクリプトの永続化の既定で入っている）。単独で当てるなら、先にイメージを作ってから:
 
    ```bash
+   # イメージ（pg_dump と age を同梱。レジストリには無く、クラスタのコンテナランタイムに直接置く）
+   bash scripts/k8s-local-images.sh          # 全イメージ。起動スクリプトの [2/7] と同じもの
    kubectl apply -k deploy/local/platform-backup/postgres
    kubectl apply -k deploy/local/platform-backup/vault      # Vault を永続化しているときだけ
    ```
+
+   CronJob のイメージは `k3d-local/platform-backup:pg<PG の版>-age<age の版>` で、`imagePullPolicy: IfNotPresent`
+   （pull しない）。**age は実行時に取りに行かない** —— イメージに版とチェックサムを固定して入れてあり、日次の回は
+   インターネットへの到達に依存しない。イメージだけを作り直すなら
+   `nerdctl --namespace k8s.io build -t k3d-local/platform-backup:<タグ> deploy/local/platform-backup/image`
+   （タグは `scripts/k8s-local-images.sh` の `LOCAL_ONLY_IMAGES` の値）。
 
 6. **初回を今すぐ走らせて確かめる**（翌日の 12:00 を待たない）:
 
@@ -198,11 +207,31 @@ issues: [#1560, AST#346]
 - **Vault**: Vault の Deployment を 0 にし、PVC `vault-data` の中身を復号した写しで置き換え、1 に戻す（Pod 内の
   ラッパーが写しの中の鍵で unseal する）。🔴 復号した写しは作業が終わったら消す。
 
+## 6. イメージの版を上げる（age・ベース）
+
+イメージ（`deploy/local/platform-backup/image/Dockerfile`）は、ベースを digest で固定し、age を**版・チェックサム・署名**の
+3 つで固定している。Alpine の安定版ブランチは各パッケージの最新のリリースしか置かないため、上流が age の `-rN` を上げると
+取得が失敗し、CI の `build-local (platform-backup)` が赤くなる。**赤くなるのが正しい**（黙って別の版を入れない）。
+次の手順で上げる。稼働クラスタへは、リポジトリに入ってから §1 の 5 で当てる。
+
+1. **ベースの digest を引く**（稼働クラスタへ pull しない。レジストリの API を読むだけ）。`postgres:<PG の版>-alpine<Alpine の版>`
+   の image index の digest を、匿名トークンで `registry-1.docker.io/v2/library/postgres/manifests/<タグ>` へ HEAD を撃ち、
+   応答ヘッダ `docker-content-digest` から取る。PG のメジャー版は本体（`deploy/local/infra/postgres.yaml`）と揃える。
+2. **age の版と sha256 を引く。** そのベースの Alpine のブランチ（例 `v3.24`）の
+   `dl-cdn.alpinelinux.org/alpine/<ブランチ>/community/<x86_64|aarch64>/APKINDEX.tar.gz` の `P:age` の `V:` が版。
+   同じ場所の `age-<版>.apk` を取り、`sha256sum` で両アーキテクチャのチェックサムを取る。
+3. **4 か所を同じ値へ上げる。** Dockerfile の `FROM`（タグと digest）と `ARG AGE_VERSION` / `AGE_APK_SHA256_*`、
+   `scripts/k8s-local-images.sh` の `LOCAL_ONLY_IMAGES` のタグ（`platform-backup:pg<PG の版>-age<age の版>`）、
+   2 つの CronJob の `image`。`node scripts/platform-backup.test.js` が食い違いを落とす。
+4. PR の CI で `build-local (platform-backup)` が緑になることを確かめる（ビルドし、ネットワーク無しで
+   `age --version` と `pg_dump --version` を実行する）。
+
 ## 確認（この手順が成功したと言える条件）
 
 - §1: 手動の Job のログ末尾が `完了（保管先 2 か所）` で、C: と E: に同じ名前の回が並ぶ。
 - §2: 直近の Job がすべて `Complete`。
 - §3: `backup-restore-drill.sh` が終了コード 0 で、要約の「失敗」が 0。
+- §6: `node scripts/platform-backup.test.js` が通り、CI の `build-local (platform-backup)` が緑。当てたあとの手動の Job が §1 と同じく完了する。
 
 ## 失敗したときの分岐
 
@@ -211,7 +240,8 @@ issues: [#1560, AST#346]
 | `age の受取人ファイルがありません` | ConfigMap `platform-backup-age-recipients` が無い | §1 の 2〜3 |
 | `… 行目が age の公開鍵（age1...）ではありません` / `公開鍵が 1 つもありません` | 占位のまま・写し間違い | 受取人ファイルを直して §1 の 3 |
 | `受取人ファイル … 行目の前後に空白があります` | 公開鍵の行の前後や `#` 行の頭に空白がある | 空白を消して §1 の 3 |
-| `apk add age が失敗しました:` に続く `apk:` 行、`age を用意できません` | Alpine のパッケージを取得できない（ネットワーク・ミラー） | `apk:` 行の理由を見て、直してから手動の Job を走らせ直す |
+| Pod が `ErrImageNeverPull` / `ErrImagePull` / `ImagePullBackOff`（イメージ `k3d-local/platform-backup:…`） | イメージを作っていない・タグを上げたのに作り直していない | §1 の 5 の手順でイメージを作り、手動の Job を走らせ直す（レジストリからは取れない） |
+| `age がありません（イメージが k3d-local/platform-backup ではない可能性があります…）` | CronJob が age を持たない別のイメージを指している（古いマニフェストの当て直し等） | `kubectl -n platform-infra get cronjob platform-backup-postgres -o jsonpath='{..image}'` で確かめ、§1 の 5 で当て直す |
 | `保管先に目印 .platform-backup-target がありません` | ドライブが外れている・目印を置いていない | ドライブを確かめて §1 の 4。**もう片方には書けている** |
 | `DB の一覧を取れません` | Postgres が落ちている・Secret `postgres` のパスワードと DB が食い違う | `kubectl -n platform-infra get pods`、Secret の供給（起動スクリプト・ESO）を確かめる |
 | `一部の成果物が欠けています`（回が `-partial`） | 特定の DB の `pg_dump` が失敗 | ログの `pg_dump が失敗しました: <DB>` を見る |

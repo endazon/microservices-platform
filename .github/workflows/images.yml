@@ -117,22 +117,51 @@ jobs:
 
   # ブランチ保護の必須チェックに指定する安定名のジョブ。マトリクスのジョブ名は対象が増減すると
   # 変わるため必須チェックに使えない。スキップ時も含めて常に結果を報告する。
+  # NFR-21, IADR-0471 決定 3 (#1564): compose に載らない deploy/local 専用のイメージ（scripts/k8s-local-images.sh の
+  # LOCAL_ONLY_IMAGES）。上の build は compose の build 定義しか見ないので、ここでビルド可否と中身を確かめる。
+  # 🔴 age は版・チェックサム・署名で固定しており、Alpine が -rN を上げると取得が失敗する。**ここが赤くなるのが正しい**
+  #    （稼働クラスタでの起動器の実行より先に知らせる）。上げ方は docs/operations/platform-infra-backup-runbook.md。
+  # 実行は --network none（中身の確認にネットワークは要らない。バックアップの回も実行時に何も取りに行かない）。
+  build-local:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    name: build-local (platform-backup)
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build image
+        run: docker build --progress plain -f deploy/local/platform-backup/image/Dockerfile -t platform-backup:ci deploy/local/platform-backup/image
+      - name: Check bundled tools (offline)
+        run: |
+          docker run --rm --network none --entrypoint age platform-backup:ci --version
+          docker run --rm --network none --entrypoint pg_dump platform-backup:ci --version
+          docker run --rm --network none --entrypoint bash platform-backup:ci -c 'command -v age-keygen tar gzip sha256sum >/dev/null'
+
   image-build:
     runs-on: ubuntu-latest
-    needs: [changes, build]
+    needs: [changes, build, build-local]
     if: always()
     steps:
       - name: Report result
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           BUILD_RESULT: ${{ needs.build.result }}
+          BUILD_LOCAL_RESULT: ${{ needs.build-local.result }}
           SHOULD_BUILD: ${{ needs.changes.outputs.build }}
         run: |
-          echo "changes=$CHANGES_RESULT / build=$BUILD_RESULT / should-build=$SHOULD_BUILD"
+          echo "changes=$CHANGES_RESULT / build=$BUILD_RESULT / build-local=$BUILD_LOCAL_RESULT / should-build=$SHOULD_BUILD"
           if [ "$CHANGES_RESULT" != "success" ]; then
             echo "::error::ビルド対象の導出に失敗した。"
             exit 1
           fi
+          # #1564: deploy/local 専用のイメージ。build と同じ条件で走り、同じく skipped は変更なしを意味する。
+          case "$BUILD_LOCAL_RESULT" in
+            success | skipped) ;;
+            *)
+              echo "::error::deploy/local 専用イメージのビルドに失敗した（build-local (platform-backup) ジョブのログを参照）。"
+              exit 1
+              ;;
+          esac
           case "$BUILD_RESULT" in
             success)
               echo "✓ 全サービスのイメージビルドが成立した。"

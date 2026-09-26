@@ -2,7 +2,7 @@
 title: IADR-0471 platform-infra の Postgres と Vault を日次で age 暗号化し、目印のあるクラスタ外 2 か所へ置く（deploy/local 専用）
 type: impl-adr
 status: Accepted
-related_ids: [NFR-21, NFR-05, NFR-18, ADR-0002, ADR-0008, IADR-0066, IADR-0082, IADR-0210, IADR-0369, IADR-0457]
+related_ids: [NFR-21, NFR-05, NFR-18, ADR-0002, ADR-0008, IADR-0066, IADR-0068, IADR-0082, IADR-0210, IADR-0369, IADR-0457]
 author: claude
 created: 2026-09-26
 updated: 2026-09-26
@@ -10,6 +10,7 @@ plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
 related_specs:
   - ../specs/20260926_issue-1560_platform-infra-encrypted-backup.md
+  - ../specs/20260926_issue-1564_platform-backup-image.md
 ---
 
 # IADR-0471: platform-infra の暗号化日次バックアップ（deploy/local 専用）
@@ -94,6 +95,34 @@ age の公開鍵で暗号化して秘密鍵はクラスタに置かない、日�
   最小集合を実測し、`platform-backup.test.js` へ固定する。
 - 本リポジトリの deploy/local は他のイメージもタグ固定（digest なし）であり、ここも揃える。
 
+> ［2026-09-26 追記 / #1564］**イメージの部分を改める。age は実行時に入れず、digest 固定のベースへ版・チェックサム・署名で
+> 同梱したローカルイメージで動かす。**（#1563 の差分監査の指摘 1〈中〉。上の本文は起案時の判断として残す。）
+>
+> - **改める理由**: 実行のたびの `apk add age` は、版が固定されず、日次の回がインターネットへの到達に依存し（落ちれば
+>   Job の失敗として見える）、root で hostPath への書き込み権と Vault の unseal 材料を持つコンテナへ、パッケージか浮動タグの
+>   侵害がそのまま届く。上で退けた「独自イメージのビルド」の費用（起動器の段・`:latest` の陳腐化）は、次の 2 点で小さくなった。
+>   ビルドは既存の `scripts/k8s-local-images.sh`（起動器の [2/7]）に載る。タグは中身の版から作るので、陳腐化は起きない。
+> - **イメージ**: `deploy/local/platform-backup/image/Dockerfile`。ベースは `postgres:16.15-alpine3.24@sha256:721873c3…`
+>   （image index の digest。2026-09-26 に `16-alpine` と同じ index であることをレジストリの API で確かめた）。age は Alpine v3.24
+>   community の `age=1.3.1-r6` を `apk fetch` で取り、アーキテクチャごとの sha256（x86_64 / aarch64）を照合してから
+>   `apk add <ファイル>` で入れる（署名も検証される。`--allow-untrusted` は使わない）。ビルドの最後に `age --version` と
+>   `pg_dump --version`（16.x）を確かめる。Alpine が `-rN` を上げると取得が失敗してビルドが止まる —— **黙って別の版を入れない**
+>   ための意図した挙動であり、上げ方は運用 Runbook §6 に置いた。
+> - **配る経路**: `k8s-local-images.sh` の新しい配列 `LOCAL_ONLY_IMAGES` に置く（`MAPPING` ではない ——
+>   `MAPPING` は IADR-0068 の検査器が compose の build 定義と 1 対 1 で突合し、compose に無い要素は `stale-mapping` になる）。
+>   タグは `k3d-local/platform-backup:pg16.15-age1.3.1-r6`。2 つの CronJob はこのタグを `imagePullPolicy: IfNotPresent` で使う。
+>   **Dockerfile・`LOCAL_ONLY_IMAGES`・CronJob の 3 か所の一致**を `platform-backup.test.js` の 9 が見る。
+> - **`BACKUP_AGE_INSTALL` と `backup.sh` の `apk add` は撤去した。退避路としても残さない** —— env 1 つで同じ経路が開くからである。
+>   age が無ければ、イメージの取り違えとして何も書かずに失敗する。
+> - **CI**: `images.yml` に `build-local (platform-backup)` を足した。ビルドし、`--network none` で同梱のツールを実行する。
+>   集約ジョブ `image-build` の判定に含めた（必須チェックの名前は変えていない）。
+> - **pg_dump の版の一致**は、CronJob と本体のイメージの一致ではなく、Dockerfile の FROM のメジャー版と本体のメジャー版の一致で
+>   見る（`platform-backup.test.js` の 7）。
+> - 下の capabilities の段落が挙げる「apk の展開に要る CHOWN / FOWNER / FSETID」は、実行時の apk が無くなったので数えなくてよい。
+>   削減の実測（フォローアップ）は drvfs への書き込みと uid 100 の 0600 ファイルの読み取りだけを見ればよい。
+> - 変わらないもの: root で動かすこと、`allowPrivilegeEscalation: false`・`seccompProfile: RuntimeDefault`・SA トークンなし・
+>   写し元の読み取り専用。
+
 ### 4. Vault: 稼働中の写しを、前後のファイル一覧の比較で守る
 
 - PVC を読み取り専用でマウントする（RWO の local-path は単一ノードなら同じノードの別 Pod から読める）。
@@ -158,4 +187,5 @@ age の公開鍵で暗号化して秘密鍵はクラスタに置かない、日�
 
 1. **age を実行時に版を固定せず入れている**（監査の指摘・中）。Alpine の署名付きパッケージなので改ざんには強いが、
    版は固定されず、取得できない日は失敗する。版の固定か、age を含むイメージへの置き換えを別 issue で扱う。
+   ［2026-09-26 追記 / #1564］**済み**（決定 3 の追記。age を版・チェックサム・署名で同梱したローカルイメージへ置き換えた）。
 2. **capabilities の最小化**（上の 3 を参照）。稼働クラスタで必要な集合を実測してから `drop: [ALL]` ＋ `add` にする。

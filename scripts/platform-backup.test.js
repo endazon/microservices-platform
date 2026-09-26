@@ -15,8 +15,11 @@
  *   4. 🔴 保管先は hostPath 2 本（/mnt/c と /mnt/e）で、どちらもコンテナにマウントされ、スクリプトの保管先一覧と一致する。
  *   5. 🔴 読むだけのもの（Vault の PVC・スクリプト・受取人）は読み取り専用でマウントする。PVC は本体の PVC 名と一致する。
  *   6. 🔴 受取人（公開鍵）の ConfigMap は optional で、**どの kustomization も描かない**（起動器の再実行で占位へ戻さない）。
- *   7. pg_dump のイメージを本体の Postgres と揃える。失敗を再試行で上書きしない（backoffLimit 0）。
+ *   7. pg_dump のメジャー版を本体の Postgres と揃える（同梱イメージの FROM で）。失敗を再試行で上書きしない（backoffLimit 0）。
  *   8. 🔴 秘密鍵（AGE-SECRET-KEY-）が deploy/ のどこにも無い。
+ *   9. 🔴 ［#1564］age は digest 固定のベースへ版・sha256 で同梱する（deploy/local/platform-backup/image/Dockerfile）。
+ *      タグは版から作り、Dockerfile・k8s-local-images.sh の LOCAL_ONLY_IMAGES・2 つの CronJob で揃える。IfNotPresent。
+ *      実行時に apk を呼ばない（BACKUP_AGE_INSTALL も撤去）。CI（images.yml）がビルドする。
  * 判定は純関数にし、変異を当てて落ちることも同じ試験の中で確かめる（見ているつもりで見ていない、を防ぐ）。
  *
  * 描画は `kubectl kustomize`（オフライン。クラスタに接続しない）。kubectl が無ければ失敗にする（fail-closed。
@@ -140,6 +143,7 @@ function cronJobView(doc) {
     restartPolicy: podSpec.restartPolicy,
     automountServiceAccountToken: podSpec.automountServiceAccountToken,
     image: container.image,
+    imagePullPolicy: container.imagePullPolicy,
     env,
     mounts,
     volumes,
@@ -172,6 +176,73 @@ function checkSchedule(cj) {
 /** env のうち、秘密を思わせる名前に value（平文）を書いたもの。 */
 const secretLiterals = (cj) =>
   cj.env.filter((e) => /PASS|TOKEN|SECRET|PRIVATE|IDENTITY/i.test(e.name) && e.value !== undefined).map((e) => e.name);
+
+// ---------------------------------------------------------------- イメージ（#1564）
+
+const BACKUP_DOCKERFILE = 'deploy/local/platform-backup/image/Dockerfile';
+
+/** Dockerfile・k8s-local-images.sh・images.yml・backup.sh・2 つの CronJob から、イメージの約束に要る事実を抜き出す。 */
+function imageFacts({ dockerfile, imagesSh, imagesYml, backupSh, cronJobs }) {
+  const from = (/^FROM\s+(\S+)/m.exec(dockerfile) || [])[1] || '';
+  const arg = (name) => (new RegExp(`^ARG\\s+${name}=(\\S+)`, 'm').exec(dockerfile) || [])[1];
+  const block = (/\nLOCAL_ONLY_IMAGES=\(([\s\S]*?)\n\)/.exec(imagesSh) || [])[1] || '';
+  const localOnly = [...block.matchAll(/"([^"|]+)\|([^"|]+)\|([^"|]+)"/g)].map((m) => ({ ref: m[1], context: m[2], dockerfile: m[3] }));
+  // 🔴 注記（# 行）は除いて、実行される行だけで apk の呼び出しを探す（撤去の経緯を書いた注記に語が残る）。
+  const codeLines = backupSh.split('\n').filter((l) => !/^\s*#/.test(l));
+  return {
+    from,
+    ageVersion: arg('AGE_VERSION'),
+    ageSha: { x86_64: arg('AGE_APK_SHA256_X86_64'), aarch64: arg('AGE_APK_SHA256_AARCH64') },
+    localOnly,
+    ciBuildsDockerfile: imagesYml.includes(BACKUP_DOCKERFILE),
+    scriptCallsApk: codeLines.some((l) => /(^|[\s;&|(])apk\s/.test(l)),
+    scriptReadsInstallEnv: codeLines.some((l) => l.includes('BACKUP_AGE_INSTALL')),
+    cronJobs: cronJobs.map((cj) => ({
+      name: cj.name,
+      image: cj.image,
+      imagePullPolicy: cj.imagePullPolicy,
+      envNames: cj.env.map((e) => e.name),
+    })),
+  };
+}
+
+/** 同梱イメージの約束: digest 固定・PG のメジャー版・age の版と sha256・タグの 3 か所一致・IfNotPresent・実行時の apk なし。 */
+function checkBackupImage(f, serverMajor) {
+  const errors = [];
+  const from = /^(?:docker\.io\/library\/)?postgres:((\d+)\.(\d+))-alpine[\d.]*@sha256:[0-9a-f]{64}$/.exec(f.from);
+  if (!from) {
+    errors.push(`Dockerfile の FROM（${f.from}）が postgres:<メジャー>.<マイナー>-alpine… を digest（@sha256:）で固定していない`);
+  } else if (from[2] !== String(serverMajor)) {
+    errors.push(`Dockerfile の PG のメジャー版 ${from[2]} が本体 ${serverMajor} と違う（pg_dump が本体を写せない）`);
+  }
+  if (!/^\d+\.\d+\.\d+-r\d+$/.test(f.ageVersion || '')) errors.push(`age の版（${f.ageVersion}）が <版>-r<N> で固定されていない`);
+  for (const [arch, sum] of Object.entries(f.ageSha)) {
+    if (!/^[0-9a-f]{64}$/.test(sum || '')) errors.push(`age のパッケージの sha256（${arch}）が無い`);
+  }
+  const entries = f.localOnly.filter((e) => e.ref.startsWith('platform-backup:'));
+  if (entries.length !== 1) {
+    errors.push(`k8s-local-images.sh の LOCAL_ONLY_IMAGES に platform-backup がちょうど 1 つ無い（${entries.length} 件。ビルドされない）`);
+    return errors;
+  }
+  const e = entries[0];
+  if (`${e.context.replace(/\/$/, '')}/${e.dockerfile}` !== BACKUP_DOCKERFILE) {
+    errors.push(`LOCAL_ONLY_IMAGES の platform-backup が ${BACKUP_DOCKERFILE} を指していない（${e.context}/${e.dockerfile}）`);
+  }
+  if (from) {
+    const want = `platform-backup:pg${from[1]}-age${f.ageVersion}`;
+    if (e.ref !== want) errors.push(`タグ ${e.ref} が Dockerfile の版から作ったタグ ${want} と違う（版を上げてタグを据え置くと古いイメージが使われ続ける）`);
+  }
+  if (/:latest$/.test(e.ref)) errors.push('タグが :latest（IfNotPresent では上げても入れ替わらない）');
+  for (const cj of f.cronJobs) {
+    if (cj.image !== `k3d-local/${e.ref}`) errors.push(`${cj.name}: イメージ ${cj.image} が k3d-local/${e.ref} と違う`);
+    if (cj.imagePullPolicy !== 'IfNotPresent') errors.push(`${cj.name}: imagePullPolicy が IfNotPresent でない（${cj.imagePullPolicy}。レジストリに無いので pull すると起動しない）`);
+    if (cj.envNames.includes('BACKUP_AGE_INSTALL')) errors.push(`${cj.name}: env に BACKUP_AGE_INSTALL が残っている（実行時の apk は撤去した）`);
+  }
+  if (f.scriptCallsApk) errors.push('backup.sh が apk を呼んでいる（実行時にパッケージを入れない）');
+  if (f.scriptReadsInstallEnv) errors.push('backup.sh が BACKUP_AGE_INSTALL を読んでいる（退避路としても残さない）');
+  if (!f.ciBuildsDockerfile) errors.push(`images.yml が ${BACKUP_DOCKERFILE} をビルドしていない（CI でビルド可否を見ていない）`);
+  return errors;
+}
 
 // ---------------------------------------------------------------- 入力
 
@@ -209,6 +280,13 @@ ok('🔴 1. 永続化 overlay（既定）に 2 つの CronJob と本体スクリ
 
 const PG = cronJobView(PG_DOC);
 const VA = cronJobView(VA_DOC);
+const IMAGE_FACTS = imageFacts({
+  dockerfile: read(...BACKUP_DOCKERFILE.split('/')),
+  imagesSh: read('scripts', 'k8s-local-images.sh'),
+  imagesYml: read('.github', 'workflows', 'images.yml'),
+  backupSh: BACKUP_SH,
+  cronJobs: [PG, VA],
+});
 
 ok('1. 永続化しない base（PERSIST=0）には出さない（PVC の無い配備で Pending を残さない）', () => {
   assert.ok(!/platform-backup/.test(R.infraBase), 'deploy/local/infra（emptyDir の使い捨て）にバックアップが混ざった');
@@ -351,12 +429,15 @@ ok('🔴 6. 受取人の ConfigMap は optional で、どの kustomization も�
 
 // ---------------------------------------------------------------- 7. イメージ・再試行
 
-ok('7. pg_dump のイメージは本体の Postgres と同じ。失敗を再試行で上書きしない。SA トークンを持たない', () => {
+ok('7. pg_dump のメジャー版は本体の Postgres と同じ（同梱イメージの FROM で）。失敗を再試行で上書きしない。SA トークンを持たない', () => {
+  // ［2026-09-26 / #1564］CronJob は本体のイメージそのものではなく、age を同梱したローカルイメージで動く。
+  // 揃えるべきは pg_dump のメジャー版であり、それは Dockerfile の FROM が決める。
   const server = find(INFRA_DOCS, 'Deployment', 'postgres');
   const serverImage = parseList(sub(server.top, 'spec', 'template', 'spec').containers)[0].image;
-  assert.ok(/^postgres:/.test(serverImage), `本体のイメージを読めない（試験の前提）: ${serverImage}`);
+  const serverMajor = /^postgres:(\d+)/.exec(serverImage);
+  assert.ok(serverMajor, `本体のイメージを読めない（試験の前提）: ${serverImage}`);
+  assert.deepStrictEqual(checkBackupImage(IMAGE_FACTS, serverMajor[1]), [], checkBackupImage(IMAGE_FACTS, serverMajor[1]).join(' / '));
   for (const cj of [PG, VA]) {
-    assert.strictEqual(cj.image, serverImage, `${cj.name}: イメージが本体（${serverImage}）と違う（pg_dump のメジャー版がずれる）`);
     assert.strictEqual(cj.backoffLimit, '0', `${cj.name}: backoffLimit が 0 でない（失敗が再試行で上書きされる）`);
     assert.strictEqual(cj.restartPolicy, 'Never', `${cj.name}: restartPolicy が Never でない`);
     assert.strictEqual(cj.automountServiceAccountToken, 'false', `${cj.name}: SA トークンを自動マウントしている（要らない権限）`);
@@ -381,6 +462,40 @@ ok('🔴 8. age の秘密鍵（AGE-SECRET-KEY-）が deploy/ のどこにも無�
   assert.deepStrictEqual(hits, [], `秘密鍵らしき値: ${hits.join(', ')}`);
   const example = read('deploy', 'local', 'platform-backup', 'age-recipients.example.txt');
   assert.ok(!/^age1[0-9a-z]{58}\s*$/m.test(example), '例示ファイルに実在の形をした公開鍵が入っている（占位のままにする）');
+});
+
+// ---------------------------------------------------------------- 9. イメージ（#1564）
+
+ok('🔴 9. age は digest 固定のベースへ版・sha256 で同梱し、タグは版から作って 3 か所で揃え、実行時に apk を呼ばない', () => {
+  assert.deepStrictEqual(checkBackupImage(IMAGE_FACTS, '16'), [], checkBackupImage(IMAGE_FACTS, '16').join(' / '));
+  const mut = (fn) => {
+    const f = clone(IMAGE_FACTS);
+    fn(f);
+    return checkBackupImage(f, '16');
+  };
+  // 変異: 見ているつもりで見ていない、を防ぐ。どれか 1 つでも見逃せば落ちる。
+  const cases = [
+    ['digest を外す', (f) => { f.from = f.from.replace(/@sha256:[0-9a-f]+$/, ''); }],
+    ['浮動タグ（16-alpine）へ戻す', (f) => { f.from = 'postgres:16-alpine'; }],
+    ['PG のメジャー版をずらす', (f) => { f.from = f.from.replace(/postgres:16\./, 'postgres:17.'); }],
+    ['age の版を外す', (f) => { f.ageVersion = undefined; }],
+    ['age の sha256（x86_64）を外す', (f) => { f.ageSha.x86_64 = undefined; }],
+    ['age の sha256（aarch64）を外す', (f) => { f.ageSha.aarch64 = undefined; }],
+    ['LOCAL_ONLY_IMAGES から外す', (f) => { f.localOnly = []; }],
+    ['タグを :latest にする', (f) => { f.localOnly[0].ref = 'platform-backup:latest'; }],
+    ['age の版を上げてタグを据え置く', (f) => { f.ageVersion = '1.3.1-r7'; }],
+    ['CronJob のイメージを 1 つだけずらす', (f) => { f.cronJobs[1].image = 'postgres:16-alpine'; }],
+    ['IfNotPresent を外す', (f) => { f.cronJobs[0].imagePullPolicy = undefined; }],
+    ['BACKUP_AGE_INSTALL を env へ戻す', (f) => { f.cronJobs[0].envNames.push('BACKUP_AGE_INSTALL'); }],
+    ['backup.sh に apk add を戻す', (f) => { f.scriptCallsApk = true; }],
+    ['CI のビルドから外す', (f) => { f.ciBuildsDockerfile = false; }],
+  ];
+  for (const [name, fn] of cases) assert.ok(mut(fn).length > 0, `変異「${name}」を見逃した`);
+  // 抜き出しの側も確かめる: 注記の中の apk は数えず、実行行の apk は数える。
+  const facts = (backupSh) => imageFacts({ dockerfile: '', imagesSh: '', imagesYml: '', backupSh, cronJobs: [] });
+  assert.strictEqual(facts('# 従前は `apk add age` を撃っていた\nensure_age() { :; }\n').scriptCallsApk, false, '注記の apk を数えた');
+  assert.strictEqual(facts('ensure_age() {\n\tapk add --no-cache age\n}\n').scriptCallsApk, true, '実行行の apk を見逃した');
+  assert.strictEqual(facts('x="$(apk add age 2>&1)"\n').scriptCallsApk, true, 'コマンド置換の中の apk を見逃した');
 });
 
 console.log(`[platform-backup.test] OK: ${passed} 件`);
