@@ -783,6 +783,21 @@ public class KeycloakIdentityAdminClientTests
         (await Client(handler).FindGroupByPathAsync("/department/Sales", Ct)).Should().BeNull();
     }
 
+    // #1557 監査: 🔴 応答が path を持たないときは**推測しない**（名前から `/名前` を組み立てて比べない）。例外 ＝ 502 側。
+    [Fact]
+    public async Task Finding_a_group_by_path_without_a_path_in_the_response_fails_instead_of_guessing()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/group-by-path/department/sales?briefRepresentation=true", """
+                {"id":"g-s","name":"sales"}
+                """);
+
+        var act = async () => await Client(handler).FindGroupByPathAsync("/department/sales", Ct);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain("path");
+    }
+
     // 🔴 404 以外の失敗は例外（＝ gRPC 面で status。「値域の外」と混ぜない）。
     [Fact]
     public async Task Finding_a_group_by_path_throws_on_non_404_failure()

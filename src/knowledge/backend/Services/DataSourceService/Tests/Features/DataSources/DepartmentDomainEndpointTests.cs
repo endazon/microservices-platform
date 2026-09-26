@@ -131,6 +131,66 @@ public class DepartmentDomainEndpointTests(TestWebApplicationFactory factory)
         DepartmentOf(reread).Should().Be("sales", "拒否した書き込みは 1 項目も反映しない");
     }
 
+    // ---- T-66（#1557 監査）: 変わっていない部門は照会しない ---------------------------
+
+    // 値域が定まる前に保存された値（旧属性辞書の `finance`）を持つソースを作る。
+    private async Task<Guid> CreateLegacySourceAsync(HttpClient client)
+    {
+        Domain.Codes.Add("finance");
+        var id = await CreateAsync(client, "finance");
+        Domain.Codes.Remove("finance"); // 以後 `finance` は値域の外
+        return id;
+    }
+
+    // 🔴 SC-06 の既定属性フォームは保存済みの部門を毎回送り返す。部門を変えない編集（機密区分・ライフサイクル）は
+    // **値域を引かずに通る**。値域が引けない状態でも通る（引けば 502 になるので、通ること自体が「引いていない」証拠）。
+    [Fact]
+    public async Task PatchAndPut_KeepingAStoredOutOfDomainDepartment_SucceedWithoutLookup()
+    {
+        Domain.Reset();
+        var client = factory.CreateClient();
+        var id = await CreateLegacySourceAsync(client);
+        var callsBefore = Domain.CallCount;
+        Domain.Available = false;
+
+        var patchAttrs = Attrs("finance");
+        patchAttrs["confidentiality"] = "confidential";
+        patchAttrs["lifecycle"] = "archived";
+        var patch = await client.PatchAsJsonAsync($"/datasources/{id}",
+            new { defaultAttributes = patchAttrs }, TestContext.Current.CancellationToken);
+        patch.StatusCode.Should().Be(HttpStatusCode.OK, "部門を変えない編集を旧データの部門で止めない");
+
+        var put = await client.PutAsJsonAsync($"/datasources/{id}", PutBody("finance"),
+            TestContext.Current.CancellationToken);
+        put.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        Domain.CallCount.Should().Be(callsBefore, "変わっていない部門は照会しない");
+        var reread = await ReadAsync(await client.GetAsync($"/datasources/{id}", TestContext.Current.CancellationToken));
+        DepartmentOf(reread).Should().Be("finance");
+    }
+
+    // 陽性対照: 同じソースでも**部門を変えれば**照会し、値域の外なら 400、引けなければ 502。
+    // 🔴 比較は序数（大小文字・前後空白の違いは「変わった」）。
+    [Theory]
+    [InlineData("legal", HttpStatusCode.BadRequest, true)]
+    [InlineData("Finance", HttpStatusCode.BadRequest, true)]
+    [InlineData("sales", HttpStatusCode.OK, true)]
+    [InlineData("sales", HttpStatusCode.BadGateway, false)]
+    public async Task Patch_ChangingTheDepartment_IsValidated(string next, HttpStatusCode expected, bool available)
+    {
+        Domain.Reset();
+        var client = factory.CreateClient();
+        var id = await CreateLegacySourceAsync(client);
+        var callsBefore = Domain.CallCount;
+        Domain.Available = available;
+
+        var patch = await client.PatchAsJsonAsync($"/datasources/{id}",
+            new { defaultAttributes = Attrs(next) }, TestContext.Current.CancellationToken);
+
+        patch.StatusCode.Should().Be(expected);
+        Domain.CallCount.Should().Be(callsBefore + 1);
+    }
+
     // ---- T-62: 引けない ------------------------------------------------------
 
     [Fact]

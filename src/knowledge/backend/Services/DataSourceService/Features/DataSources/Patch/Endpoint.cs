@@ -31,7 +31,9 @@ internal static class PatchDataSourceEndpoint
 
             // FR-05, SC-06, 計画 ADR-0115 決定 5, [[IADR-0472]] (#1557): 明示した部門の値域検証。
             // **`defaultAttributes` を送らない PATCH は値域を引かない**（写像表と同じく、無関係な操作を道連れにしない）。
-            if (await DepartmentDomainValidation.ValidateAsync(req.DefaultAttributes, departmentDomain, ct) is { } deptError)
+            // ［2026-09-26 / #1557 監査］**送っても部門が保存済みの値のままなら引かない**（SC-06 のフォームは部門を毎回送り返す）。
+            if (await DepartmentDomainValidation.ValidateAsync(
+                    req.DefaultAttributes, departmentDomain, ct, storedAttributes: ds.DefaultAttributes) is { } deptError)
                 return deptError;
 
             ds.Patch(req.Name, req.SourceType, req.ConnectionUri, req.Config, req.DefaultAttributes,
