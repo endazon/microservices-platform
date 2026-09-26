@@ -54,6 +54,7 @@
       "AccessScopeContractTests"
     ],
     "docs/tests/FR-06_document-crud-versioning.md": [
+      "AdminWritePrivateNoteScopeTests",
       "DocumentAttributesTests",
       "DocumentConfidentialityValidationTests",
       "DocumentCrudTests",
@@ -62,7 +63,9 @@
       "DocumentNormalizedSyncTests",
       "DocumentPageTests",
       "DocumentReadGrpcMappingTests",
-      "DocumentVersioningTests"
+      "DocumentVersioningTests",
+      "GrpcDocumentTagWriteTests",
+      "PrivateNoteExposurePublishTests"
     ],
     "docs/tests/FR-07_data-range-analysis.md": [
       "AnalysisEndpointTests",

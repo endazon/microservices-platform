@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-06, UC-03, NFR-09, FR-19]
-adrs: [ADR-0119, ADR-0050, ADR-0057]
-iadrs: [IADR-0476, IADR-0290, IADR-0296, IADR-0475]
-specs: [20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint]
-issues: [#1614, #201, #1011, #1575, planning#473]
+adrs: [ADR-0119, ADR-0036, ADR-0056, ADR-0050, ADR-0057]
+iadrs: [IADR-0476, IADR-0044, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475]
+specs: [20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint]
+issues: [#1629, #1614, #201, #1011, #1575, planning#473]
 -->
 
 # 機能仕様書: 文書CRUD・バージョン管理
@@ -71,6 +71,20 @@ issues: [#1614, #201, #1011, #1575, planning#473]
 - 読めない個人資料は一覧から除き（件数にも含めない）、単一取得・版履歴一覧・特定版取得は **404**（不在と区別しない）。
   特定版の可視性は現在の文書で判定する。
 - **組織文書**は認証済みの全主体に返る。組織文書の内容による絞り込み（機密・部門・ライフサイクル）は、現在は文書閲覧の経路（BFF）が行う。
+
+### 管理の書き込み口と個人資料
+
+- **管理の書き込み口（`PUT /documents/{id}`・`PATCH /documents/{id}/metadata`・`POST /documents/{id}/publish`・
+  `POST /documents/{id}/archive`・`DELETE /documents/{id}`）は組織文書だけを扱う。個人資料は対象外である。**
+- 個人資料の ID を渡すと、**主体を問わず不在と同じ 404** を返す —— 管理者ロールの人、管理者ロールを持つ機械クライアント、
+  所有者本人（管理者ロールを持つ場合）のいずれでも同じである。応答に表題・所有者・共有先は出ず、版・状態・属性は変わらず、
+  下流へのイベントも出ない。
+- **判定の順序**: 入力検証（400）は従前どおり文書の取得より前にある（不在の ID への空題名の更新は 400）。個人資料かどうかは
+  取得の直後に見るため、`doc_scope` の不変性（400）や並行制御（409）より先に 404 になる（個人資料の実在を応答から推せない）。
+- 個人資料を書き換える経路は所有者の経路だけである —— 個人資料の口（作成・ごみ箱・完全削除・露出）、Obsidian 同期、
+  本文の投入（所有者の束縛）、共有台帳。所有権は台帳と属性の 2 か所にあり、管理の口の属性全置換で食い違わせない。
+- **タグの反映口（`POST /documents/{id}/tags`）**の「管理者なら書ける」分岐も、個人資料には及ばない（所有者だけが足せる。
+  拒否は 404）。組織文書には従前どおり管理者の分岐が効く。east-west gRPC のタグ反映面も同じ判定を通る。
 
 ### 本文指紋（`ContentFingerprint`）
 

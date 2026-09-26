@@ -12,9 +12,15 @@ related_ids:
   - IADR-0017
   - IADR-0039
   - IADR-0041
+  - FR-19
+  - ADR-0036
+  - ADR-0056
+  - ADR-0119
+  - IADR-0277
+  - IADR-0476
 author: claude
 created: 2026-07-09
-updated: 2026-07-09
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md (FR-09)
   - planning:projects/microservices-platform/07_adr/ADR-0004_authz-abac.md
@@ -71,6 +77,26 @@ mTLS/NetworkPolicy（[IADR-0017](./IADR-0017_internal-service-auth-network-isola
      > （環流記録 20260809_document-write-machine-client.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260809_document-write-machine-client.md` へ移設）。
      > 計画側へは PR planning#306 で伝達済み・**裁定待ち**）。
      > **人間に対する実効境界は BFF 側で閉じている**（`/bff/documents` の `POST` は `AdminOnly`）。
+
+     > **［2026-09-27 追記 / #1629］上の 5 口（PUT / PATCH metadata / publish / archive / DELETE）は個人資料を対象外とする。
+     > 主体を問わず 404。** ロールの門（本決定）は「誰が管理の口を使えるか」を決めるが、「どの文書に作用してよいか」を決めて
+     > いなかった。そのため `AdminOnly` を持つ主体（人の管理者・機械の `abac-seeder`）は他人の個人資料を更新・公開・保管・削除でき、
+     > 応答に完全な DTO（表題・owner・共有先）が返り、`PUT` の属性全置換で `owner` を自分へ書き換えることさえできた。
+     > 計画 ADR-0036 D-08（管理者・運用者は平時、個人資料を一切閲覧できない）と ADR-0119 決定 3（個人資料は所有者と共有先にだけ返す。
+     > 管理者を含む）に反する。BFF は `IsManageable` で同じ経路を塞いでいたが、本 IADR の前提（サービスが最終防衛線）のとおり
+     > 後段でも塞ぐ。
+     >
+     > - **判定点は `DocumentManageScope.FindManageableAsync` ただ 1 つ**（5 口の取得がすべてここを通る）。不在と個人資料
+     >   （`DocumentScopes.IsPrivateNote`。集合帰属）を同じ `null` に畳み、口は従前どおり 404 を返す（ADR-0056 決定 1・[IADR-0277](./IADR-0277_write-denial-returns-404.md)。
+     >   403 は文書 ID の総当たりで実在を明かす）。入力検証（400）は従前どおり取得より前、`doc_scope` の不変性・並行制御は後ろ。
+     > - **除外は所有者を問わず一律**（所有者が管理者でも 404）。BFF の `IsManageable` と同じ形であり、所有者の分岐を管理の口へ
+     >   持ち込まない。個人資料を扱う経路は FR-19 の所有者の経路（`/private-notes/*`・Obsidian 同期・`PUT …/body`・共有台帳）だけで、
+     >   所有権は `PrivateNote.OwnerId` と属性 `owner` の 2 か所にある。管理の口で所有者を許すと、属性全置換で両者を食い違わせる・
+     >   ごみ箱を経ずに消す形が所有者自身にも開く。所有者の扱いを「404 か、所有者だけ許すか」で選べた（issue の「直すこと」）が、
+     >   前者を採った。
+     > - **タグの反映口（`POST /documents/{id}/tags`）の管理者の分岐も個人資料に及ばない**（[IADR-0364](./IADR-0364_tag-suggestion-reflection-and-dictionary-enforcement.md) 決定 3 の追記）。
+     > - `owner`・`doc_scope` の書き換えの禁止（組織文書の側）は #1616（ADR-0119 決定 2）で扱う。本追記は個人資料を管理の口から外すだけである。
+     > - 作業仕様書: `.ai-context/specs/20260927_issue-1629_admin-write-private-note-scope.md`。
 2. **サービス間内部呼び出しは対象外**とする。`AuthorizationService` `/authz/scope`（ABAC スコープ照会）は
    RetrievalService/AiAnalysisService が内部呼び出しするため無認可を維持（[IADR-0017](./IADR-0017_internal-service-auth-network-isolation.md) と整合）。
    管理系 `/authz`（属性辞書・ポリシー）は既に AdminOnly。

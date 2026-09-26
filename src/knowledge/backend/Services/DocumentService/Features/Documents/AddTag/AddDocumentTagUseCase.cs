@@ -57,8 +57,14 @@ public sealed class AddDocumentTagUseCase(DocumentDbContext db, IDocumentUpdated
         //   ② `platform-admin`（SC-05 の管理者経路。**運用者は含めない** —— `UpdateMetadata` が
         //      `AdminOnly` であることと揃える。取り込み文書は `owner=system` なので①では誰も書けず、
         //      ②が無いと誰も承認できない）
+        //
+        // 🔴 **②は個人資料に及ばない**（FR-19, 計画 ADR-0036 D-08, ADR-0119 決定 3 (#1629)）。管理者ロールは
+        // 所有者の束縛ではない —— 他人の個人資料へタグを足し、完全な DTO（表題・owner・共有先）を受け取れて
+        // しまう。個人資料は①（所有者）だけが書ける。拒否は同じ `NotWritable`（＝404。実在を明かさない）。
+        // 判定は管理の書き込み 5 口（`DocumentManageScope`）と同じ `DocumentScopes.IsPrivateNote`。
         var canWrite = DocumentBodyIntake.CanWrite(doc.Attributes, subject);
-        if (!canWrite && !isAdmin)
+        var adminMayWrite = isAdmin && !DocumentScopes.IsPrivateNote(doc.Attributes);
+        if (!canWrite && !adminMayWrite)
             return AddDocumentTagOutcome.NotWritable;
 
         // 🔴 **辞書に無い名前は却下**（SC-05「既定タグ辞書に整合」は経路を問わない不変条件。
