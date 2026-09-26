@@ -123,6 +123,7 @@ issue: "1558"
 | A（凍結記録） | 250 | 269（+19） | 本書が追跡下に入った分 16 行と、新しい仕様書 3 行（`20260926_issue-1287` 41 行・`20260926_issue-1560` 14・21 行。いずれも `deploy/helm`・`deploy/local` のパス）。実在しない名前の新規は 0 |
 
 - **再走査で新たに見つかった誤りは 0 件。** 直す箇所は上の #1・#2 のまま。
+- ［2026-09-26 追記 / #1561］2 回目の取り込み（`a562d20e..0a2e99af`＝#1567・#1571・#1569・#1568）の追加行を同じ書式（`種別/名前`・空白区切りの `rollout|logs|exec|…`・`-l app=`・`Deployment`）で引いた → 資源参照の新規 0、散文で名指すのは `operations.md` の「PVC を掴む `seaweedfs` / `wiki-js`」だけで実在（#1569 は `templates/wikijs.yaml` に `strategy: Recreate` を足しただけで名前は不変）。誤り 0。
 - 名前空間: 新しい資源参照はすべて `-n` を持ち、`synthetic-monitor` → `microservices-platform`、`postgres`・`platform-backup-*` → `platform-infra` で宣言と一致。
 - 衝突は `docs/operations/operations.md` の trace ブロック 1 か所だけ（本 PR の本書名・#1558 と develop の IADR-0471・#1560 の仕様書・#1560・AST#346 を
   キーごとに併合）。本文の #1・#2 は develop 側で触れられておらず、そのまま残った。
