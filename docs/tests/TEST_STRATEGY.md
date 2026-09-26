@@ -3,15 +3,15 @@ title: テスト戦略（退行防止テスト基盤）
 type: test-spec
 status: in-progress
 created: 2026-08-03
-updated: 2026-09-04
+updated: 2026-09-26
 author: Claude
 ---
 <!-- trace:
 ids: [SC-05, SC-06, SC-07, SC-08]
 adrs: [ADR-0027, ADR-0030, ADR-0065, ADR-0068]
 iadrs: [IADR-0034, IADR-0049, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0122, IADR-0123, IADR-0130, IADR-0137, IADR-0138, IADR-0161, IADR-0195, IADR-0231, IADR-0232, IADR-0236, IADR-0282, IADR-0334, IADR-0368]
-specs: [20260803_issue-453_regression-test-foundation, 20260831_issue-1063_tests-mirror-body-structure, 20260903_issue-1146_template-tests-mirror, 20260904_issue-1145_unit-integration-trait, 20260807_issue-571_coverage-exclude-generated, 20260821_issue-455_xunit-v3-migration, 20260822_issue-900_coverage-cross-report-dedup]
-issues: [#454, #503, #1063, #510, #568, #571, #580, #882, #899, #900, #901, #1145, #1146, planning#146, planning#160, planning#161, planning#162, planning#180]
+specs: [20260926_issue-1551_submodule-backend-pr-ci, 20260803_issue-453_regression-test-foundation, 20260831_issue-1063_tests-mirror-body-structure, 20260903_issue-1146_template-tests-mirror, 20260904_issue-1145_unit-integration-trait, 20260807_issue-571_coverage-exclude-generated, 20260821_issue-455_xunit-v3-migration, 20260822_issue-900_coverage-cross-report-dedup]
+issues: [#1551, #454, #503, #1063, #510, #568, #571, #580, #882, #899, #900, #901, #1145, #1146, planning#146, planning#160, planning#161, planning#162, planning#180]
 -->
 
 # テスト戦略 — 再実装の退行防止基盤
@@ -113,8 +113,10 @@ MassTransit の API を直接呼んでいる箇所を都度数えて評価する
 計画リポジトリ・ADR・ID 体系を持つ**別プロジェクト**（submodule）であり、本リポジトリの計画 ID や
 バックエンド標準ライブラリの決定を適用するのは誤りである（`.claude/rules/traceability.md`「複数プロジェクトを跨ぐ場合」）。
 
-カバレッジ床でとくに重要なのは、`ci.yml` の `build-and-test` が**全ユニットの `backend.slnx` を自動発見
-して test する**ため、除外しないと AST のカバレッジが合算されることである。合算すると双方向に濁る
+カバレッジ床でとくに重要なのは、床を強制する `integration.yml` が **submodule を取得したうえで全ユニットの
+`backend.slnx` を自動発見して test する**ため、除外しないと AST のカバレッジが合算されることである
+（PR の `ci.yml` では、行列 `backend-build` は AST を含まず、AST を本リポジトリの構成で試す
+`submodule-backend-build` はカバレッジを集めない）。合算すると双方向に濁る
 ——AST 側のテストが厚ければ platform / knowledge の実際の退行を薄めて隠し、逆に AST の pin 更新だけで
 無関係な PR の床判定が動く。
 

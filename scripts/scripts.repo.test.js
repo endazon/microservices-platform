@@ -71,6 +71,79 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #1551: submodule ユニットのバックエンドを、PR で MSP の構成（合成）で建てて単体テストする -----------------
+  //
+  // discover-units は submodule を取らないので、行列は本リポジトリの実体のユニットだけになる。AST を本リポジトリの
+  // src/Directory.Build.props を継承した形で試す経路は、従前マージ後の integration.yml しか無かった（#1492 の監査）。
+  // ここで固定するのは**配線**である（ジョブが在る・集約ジョブが拾う・skipped だけを合格にする・差分判定が合成を
+  // 変え得るパスを見る・ユニット名を書かない）。ビルドとテストそのものは CI の当該ジョブが走らせる。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const ci = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'ci.yml'), 'utf8').replace(/\r\n/g, '\n');
+    const job = (id) => {
+      const m = new RegExp(`^  ${id}:\\n([\\s\\S]*?)(?=^  [a-z][a-z0-9-]*:\\n|(?![\\s\\S]))`, 'm').exec(ci);
+      return m ? m[1] : null;
+    };
+    const code = (text) => text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+
+    ok('#1551: ci.yml に submodule-changes と submodule-backend-build が在る', () => {
+      assert.ok(job('submodule-changes'), 'submodule-changes が無い');
+      assert.ok(job('submodule-backend-build'), 'submodule-backend-build が無い');
+    });
+
+    ok('#1551: 集約ジョブ build-and-test が 2 つを needs に持ち、skipped だけを合格として扱う', () => {
+      const bt = job('build-and-test');
+      assert.ok(bt, 'build-and-test が無い（必須 check 名）');
+      const needs = /^    needs:\s*\[([^\]]*)\]/m.exec(bt);
+      assert.ok(needs, 'build-and-test の needs を読めない');
+      const list = needs[1].split(',').map((s) => s.trim());
+      for (const n of ['discover-units', 'backend-build', 'submodule-changes', 'submodule-backend-build']) {
+        assert.ok(list.includes(n), `build-and-test の needs に ${n} が無い（${list.join(', ')}）`);
+      }
+      assert.match(bt, /^    if: always\(\)$/m, 'build-and-test に if: always() が無い（前段の失敗で集約が走らない）');
+      const body = code(bt);
+      assert.ok(body.includes('needs.submodule-backend-build.result'), '集約が submodule-backend-build の結果を見ていない');
+      assert.ok(body.includes('needs.submodule-changes.result'), '集約が差分判定の結果を見ていない');
+      // skipped（合成を変え得る差分なし）と success だけを通し、それ以外（failure / cancelled）は落とす。
+      assert.match(body, /case "\$SUBMODULE_BUILD_RESULT" in[\s\S]*?success\)[\s\S]*?skipped\)[\s\S]*?\*\)[\s\S]*?exit 1/,
+        'submodule-backend-build の結果の扱いが「success / skipped は合格・それ以外は失敗」になっていない');
+    });
+
+    ok('#1551: 差分判定は gitlink・.gitmodules・共通 props・global.json・ci.yml を見て、ユニット名を書かない', () => {
+      const sc = code(job('submodule-changes'));
+      for (const p of ['^\\.gitmodules$', '^global\\.json$', '^src/Directory\\.[^/]+$', '^\\.github/workflows/ci\\.yml$']) {
+        assert.ok(sc.includes(p), `差分判定が ${p} を見ていない`);
+      }
+      assert.match(sc, /\^src\/\$\(printf/, 'gitlink（src/<unit>）を .gitmodules から導出したユニットで組み立てていない');
+      assert.match(sc, /git config --file \.gitmodules --get-regexp/, 'ユニットを .gitmodules から導出していない');
+      assert.ok(!/ai-stock-trading/.test(sc), '差分判定にユニット名が書かれている（次にユニットが増えたとき静かに外れる）');
+      assert.match(sc, /fetch-depth: 0/, 'origin/<base>...HEAD を解決できる深さで取っていない');
+    });
+
+    ok('#1551: submodule-backend-build は integration.yml と同じ合成で建て、Docker を要るテストだけを外す', () => {
+      const sb = job('submodule-backend-build');
+      assert.match(sb, /if: needs\.submodule-changes\.outputs\.build == 'true'/, '差分判定の結果で走らせていない');
+      assert.match(sb, /unit: \$\{\{ fromJSON\(needs\.submodule-changes\.outputs\.units\) \}\}/, '行列を差分判定の導出から取っていない');
+      const body = code(sb);
+      assert.ok(body.includes("awk '$2 ~ /^src\\// { print $2 }'") && body.includes('git submodule update --init'),
+        'integration.yml と同じ submodule 取得（src/* のみ・非再帰）をしていない');
+      assert.ok(body.includes('actions/cache@') && body.includes('~/.nuget/packages'), 'NuGet パッケージをキャッシュしていない');
+      assert.ok(body.includes('src/*/Directory.Packages.props'), 'submodule 自身の CPM 宣言をキャッシュのキーへ入れていない');
+      assert.match(body, /dotnet restore "\$slnx"[\s\S]*dotnet build "\$slnx" --no-restore --configuration Release[\s\S]*dotnet test "\$slnx" --no-build --configuration Release/,
+        'restore → build（Release）→ test の順になっていない');
+      assert.ok(body.includes('--filter "Category!=Integration"'), 'Docker を要る統合テストを外していない（外さないと PR でコンテナを起こす）');
+      assert.ok(!/^\s*cd\s/m.test(body), 'submodule の中へ cd している（submodule 自身の global.json が効き、MSP の構成ではなくなる）');
+    });
+
+    ok('#1551: discover-units は submodule を取らない（submodule ユニットを全 PR の行列へ入れない）', () => {
+      const du = code(job('discover-units'));
+      assert.ok(du, 'discover-units が無い');
+      assert.ok(!du.includes('submodule update'), 'discover-units が submodule を取っている（全 PR で AST の脚と整形検査が生まれる）');
+    });
+  }
+
+
   // --- seed-abac-policies: 冪等性の核（#517 / IADR-0133） ---------------------------
 
   {
