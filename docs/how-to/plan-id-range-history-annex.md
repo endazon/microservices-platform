@@ -7,11 +7,11 @@ updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
-ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-06, SC-17, SC-18, SC-19, SC-20, SC-22]
+ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-06, SC-17, SC-18, SC-19, SC-20, SC-22, NFR-28]
 adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093, ADR-0094, ADR-0095, ADR-0096, ADR-0098, ADR-0099, ADR-0101, ADR-0102, ADR-0103, ADR-0104, ADR-0105, ADR-0106, ADR-0107, ADR-0108, ADR-0109, ADR-0110, ADR-0111, ADR-0112, ADR-0113, ADR-0114, ADR-0115]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228, IADR-0423, IADR-0450]
-specs: [20260926_1565_plan-adr-range-0115, 20260926_1553_plan-adr-range-0114, 20260926_1542_plan-adr-range-0113, 20260926_1519_plan-adr-range-0110, 20260925_1496_plan-adr-range-0107, 20260925_1487_plan-adr-range-0105]
-issues: [#1565, #1553, #1542, #1541, #1526, #1519, #1496, #1487, #1470, #1411, #1451, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#591, planning#627, planning#628, planning#630, planning#633, planning#634, planning#635, planning#636, planning#639, planning#640, planning#648, planning#649, planning#650, planning#651, planning#652, planning#653, planning#654, planning#655, planning#656, planning#657, planning#658, planning#659, planning#660, planning#661, planning#662, planning#664, planning#666, planning#669]
+specs: [20260926_1527_nfr-numbering-to-28, 20260926_1565_plan-adr-range-0115, 20260926_1553_plan-adr-range-0114, 20260926_1542_plan-adr-range-0113, 20260926_1519_plan-adr-range-0110, 20260925_1496_plan-adr-range-0107, 20260925_1487_plan-adr-range-0105]
+issues: [#1527, #1565, #1553, #1542, #1541, #1526, #1519, #1496, #1487, #1470, #1411, #1451, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#577, planning#591, planning#627, planning#628, planning#630, planning#633, planning#634, planning#635, planning#636, planning#639, planning#640, planning#648, planning#649, planning#650, planning#651, planning#652, planning#653, planning#654, planning#655, planning#656, planning#657, planning#658, planning#659, planning#660, planning#661, planning#662, planning#664, planning#666, planning#669]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -761,17 +761,31 @@ ABAC の `owner` が実データ 0 件である件と、Wiki.js の個人スコ�
 
 ## 4. `NFR` に採番が付いた経緯
 
-**入口の規範は「`NFR-01`〜`NFR-27` を新規参照から使う」「該当する `NFR-xx` が無いメタ作業は無採番のまま」である。**
+**入口の規範は「`NFR-01`〜`NFR-28` を新規参照から使う」「該当する `NFR-xx` が無いメタ作業は無採番のまま」である。**
 **以下が、採番が付いた理由と計画側の実測である。**
 
 計画側が**非機能要件へ `NFR-01`〜`NFR-27` の ID 列を付与した**。**従前 NFR は「区分名」しか持たず、
 実装側は起点 ID を一律 `NFR` としか書けなかった**（計画側の実測: 直近 100 コミット中 50 件が起点 `NFR` のみで、
 規約整備なのか性能要件なのかを機械集計できない状態であった）。
+**その後 2026-09-09 に `NFR-28`（セキュリティ区分。ログ・監査記録の完全性 —— 外部由来の文字列をログへ渡す前に無害化する）が
+追加された。** 入口の宣言は 2026-09-26 に `NFR-01`〜`NFR-28` へ広げた（それまでは `NFR-01`〜`NFR-27` のままだった）。
+
+現在の内訳（28 件・欠番なし）:
+
+| 区分 | 番号 | 件数 |
+| --- | --- | ---: |
+| 性能 | 01〜04 | 4 |
+| 可用性 | 05〜06 | 2 |
+| スケーラビリティ | 07・08・27 | 3 |
+| セキュリティ | 09〜18・28 | 11 |
+| 運用・保守 | 19〜21 | 3 |
+| 拡張性 | 22〜26 | 5 |
 
 > **★ 「メタ作業は無採番のまま」を足した根拠**（#688。該当する番号が無いメタ作業は無採番のままとする実装 ADR）:
-> **`NFR-01`〜`27` は 27 件すべてが稼働する製品の要件**である（性能 / 可用性 / スケーラビリティ /
+> **`NFR-01`〜`28` は 28 件すべてが稼働する製品の要件**である（性能 / 可用性 / スケーラビリティ /
 > セキュリティ / 運用・保守 / 拡張性）。**「運用・保守」の 3 件も対象は稼働中のシステム**であり、
-> **文書・規約の統制を扱う番号は 1 件も無い。**
+> **文書・規約の統制を扱う番号は 1 件も無い。**（根拠を足した時点は 27 件。2026-09-09 に加わった
+> `NFR-28` もセキュリティ区分の製品要件であり、結論は変わらない。）
 
 ## 関連
 

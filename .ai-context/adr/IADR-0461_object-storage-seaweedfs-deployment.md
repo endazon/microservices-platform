@@ -214,6 +214,37 @@ versionId 付きで消した**後に** versionId 無しの削除を撃ってお�
   （gRPC の口の行・署名鍵の行を消すと落ちることを変異で確かめた）。NetworkPolicy の除外と 8333 限定も同試験が見る。
 - 残る穴: `networkPolicy.enabled=false` の経路B では 18333 に L3/L4 で届くが、管理用 RPC は鍵を知らない相手を拒む。
 
+### 決定 11: バケットの存在確認は HeadBucket で行い、答えを「在る／無い／不明」の 3 値で扱う（［2026-09-26 追記 / #1562］）
+
+**問題**: 切替後の稼働クラスタで、ConversionService の起動のたびに `Object storage bucket bootstrap failed; first write will create
+the bucket and retry (#1033)` が 1 回出た。スタックは `AmazonS3Util.DoesS3BucketExistV2Async` で `ServiceUnavailable`。
+バケット `knowledge-normalized` は在り、書き込み・読み出しは通っていた。SeaweedFS が起動済みのまま ConversionService だけを
+再起動しても再現したので、起動順の競合ではない。同ヘルパは内部で GetBucketAcl を撃つ（決定 2 の「使う S3 機能」の
+`GetBucketAcl〔DoesS3BucketExistV2Async〕`）。**SeaweedFS 4.47 は在るバケットへの GetBucketAcl に 503 を返す。**
+決定 7 の受け入れ試験がこれを捕まえなかったのは、各試験が新しいコンテナへ 1 回だけ `EnsureBucketAsync` を呼ぶため、
+**「無い」経路（GetBucketAcl が NoSuchBucket を返し、false になる）しか踏んでいなかった**からである。
+
+**決定**:
+
+1. 存在確認を `IAmazonS3.HeadBucketAsync` へ替える（`AWSSDK.S3` 4.0.100.2 が持つ。GetBucketLocation も持つが、HEAD は
+   存在だけを問う専用の操作で、ACL・領域といった副次機能の実装差に依存しない）。
+2. 答えを 3 値へ写す。**200 → 在る**（版管理を有効化。従来どおり）。**404（状態コード）または ErrorCode `NoSuchBucket` /
+   `NotFound` → 無い**（作成。従来どおり。HEAD の応答は本文を持たず、SDK のエラーコードは状態コード由来になり得るので、
+   状態コードを一次の根拠にする）。**それ以外（503・403・500・接続不能 等）→ 不明** —— 警告を 1 行出し、作成も版の設定もしない。
+   取り消し（`CancellationToken`）だけは握らずに投げる。
+3. **不明は無いではない（原則 A）。** 不明のまま作成を撃つと、在るバケットへの失敗を「作れば直る」と取り違える。
+   本当に無かった場合の回収は [IADR-0303](IADR-0303_object-storage-bucket-self-heal.md) の書き込み時の自己修復
+   （`NoSuchBucket` を受けて作成し 1 度だけ再試行）がすでに担っており、bootstrap の fail-open（同 決定 6）の根拠も変わらない。
+   従前の実装は 403 を「在る」とみなしていた（同ヘルパの仕様）が、これも不明へ寄せた。
+
+- 試験: 単体 `S3ObjectStorageClientEnsureBucketTests`（Docker 不要。`AmazonS3Client` 派生の偽物で 200 / 404×3 / 503 / 403 / 500 /
+  接続不能 / 取り消し / 版管理無効を見る。**旧実装へ戻すと 10 件すべてが落ちる**ことを確かめた —— 静的ヘルパは偽物の HEAD を通らない）。
+  受け入れ試験 `ObjectStorageRoundTripTests` へ 4 件目 `EnsureBucket_on_existing_bucket_reports_present_without_warning` を足した
+  （作ったバケットへ 2 回目を呼び、警告 0 件と版管理の有効を確かめる。日次 Integration と外部供給の口で走る）。
+- 決定 2 の「使う S3 機能」のうち `GetBucketAcl〔DoesS3BucketExistV2Async〕` は、本決定以降 `HeadBucket` と読む（本文は書き換えない）。
+- 運用: 切替 Runbook の確認項目を「起動直後に bootstrap の失敗警告も存在不明の警告も出ていない（回数ではなく有無）」へ改め、
+  失敗の分岐へ「起動のたびに警告」の行を足した。
+
 ## 検討した選択肢
 
 | 論点 | 選択肢 | 採否 |

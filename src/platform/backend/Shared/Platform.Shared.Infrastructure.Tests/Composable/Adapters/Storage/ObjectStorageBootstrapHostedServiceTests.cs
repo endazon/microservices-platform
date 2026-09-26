@@ -18,6 +18,9 @@ namespace Platform.Shared.Infrastructure.Tests.Composable.Adapters.Storage;
 // 🔴 `EnsureBucketAsync` の成功経路・例外握り潰し経路は実ストアが要るためスコープ外
 // （`ObjectStorageRoundTripTests` が `[Trait("Category","Integration")]` + `[DockerFact]` で持つ）。
 // 単体側は「その 2 経路を検出できないこと」を issue 本文どおり明記するに留める。
+// ［2026-09-26 / #1562］`EnsureBucketAsync` 自身の分岐（HeadBucket の在る／無い／不明）は、存在確認が差し替え可能な
+// `IAmazonS3.HeadBucketAsync` になったため `S3ObjectStorageClientEnsureBucketTests` が実 I/O 無しで持つ。
+// 本クラスの射程（ホストサービスのスキップ条件）は変わらない。
 public class ObjectStorageBootstrapHostedServiceTests
 {
     // スキップ経路は await を 1 つも通らないため、呼び出した瞬間に返る Task は
