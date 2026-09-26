@@ -60,6 +60,9 @@ issue: "#1582"
   報告で別 issue 化を提案する）。他の行はプロパティの読み出し（`factory.Services.GetRequiredService<…>()`）で、起動失敗を待たない（**除外**）。
 - 軸 2（起動失敗を語る試験）: `git grep -ln "OptionsValidationException\|fails_at_startup\|起動が落ち\|起動を落と"`（試験）→ 上の 2 件に加え
   `DashboardService…/DashboardEndpointTests.cs`・`UsageRetentionTests.cs`（「起動を落とさず既定へ倒す」側の試験で、起動は成功する。**除外**）。
+  ［2026-09-26 追記 / #1582］当初の走査はパス指定（`'src/**/Tests/**/*.cs' 'src/**/*.Tests/**/*.cs'`）が `Platform.Bff.Tests` の直下を拾わず、
+  `src/platform/backend/Bff/Platform.Bff.Tests/PlatformLoggingTests.cs` を落としていた（AI レビューが指摘）。`'src/**/*Tests.cs'` を足して引き直すと 5 件で、
+  追加の 1 件は「OTLP 先が不在でも起動が落ちない」側の試験であり起動は成功する（**除外**。上の Dashboard の 2 件と同じ理由）。
 - 文書: `docs/tests/FR-18_ai-suggestions.md` の T-50（「未知の値は起動が落ちる」）は測る内容が変わらないので**変更なし**。
 
 ## 検証
