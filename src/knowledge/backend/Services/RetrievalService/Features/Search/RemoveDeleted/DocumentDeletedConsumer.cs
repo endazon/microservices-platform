@@ -1,5 +1,6 @@
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
+using RetrievalService.Domain;
 using RetrievalService.Domain.Ports;
 
 namespace RetrievalService.Features.Search.RemoveDeleted;
@@ -19,8 +20,13 @@ namespace RetrievalService.Features.Search.RemoveDeleted;
 // モデル別コレクション横断の削除口（`DeleteByDocumentFromAllAsync`）は IngestionService 側の
 // ポートにあり、本サービスからは見えない —— 既知の限界として作業仕様書
 // `20260828_issue-1016_delete-propagation.md` §限界 に記録した。
+//
+// ［2026-09-26 追記 / #336］FR-03, ADR-0057 決定 1, ADR-0092 決定 1, [[IADR-0467]]: 検索が束ねて読む
+// 追加コレクション（`Qdrant:FusedCollections`）**からも消す**。検索が読むコレクションに点が残れば、
+// 削除済みの文書が検索に出る。追加が空（既定）なら従来どおり主の 1 本だけである。
 public class DocumentDeletedConsumer(
     IVectorStore store,
+    FusedCollections fused,
     ILogger<DocumentDeletedConsumer> logger) : IPipelineStep<DocumentDeleted>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
@@ -30,6 +36,8 @@ public class DocumentDeletedConsumer(
     public async Task Handle(DocumentDeleted ev, CancellationToken ct)
     {
         await store.DeleteByDocumentAsync(ev.DocumentId, ct);
+        foreach (var collection in fused.Items)
+            await collection.Store.DeleteByDocumentAsync(ev.DocumentId, ct);
         logger.LogInformation(
             "Removed chunks of deleted document {DocumentId} from the search index", ev.DocumentId);
     }

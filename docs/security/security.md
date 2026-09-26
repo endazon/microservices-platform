@@ -8,9 +8,9 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11]
-adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109]
-iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465]
-specs: [20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs]
+adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092]
+iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467]
+specs: [20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion]
 issues: [#1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, AST#18, AST#24, AST#727, planning#383]
 -->
 
@@ -331,7 +331,7 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
 | 高機密文書本文の外部埋め込み API への送信 | 取り込み時は本文全量を送るため露出が最大。confidential/restricted が外部（Voyage）へ出ると越境統制を破る | 埋め込み専用の越境ポリシー `EmbeddingEgress` で confidential/restricted を**ティアA（セルフホスト）固定**とし、外部（ティアB）を候補から除外。セルフホスト未有効なら**送信せず索引もしない（fail-closed）**。回帰は `EmbeddingEndpointTests`（外部プロバイダ未呼び出し）/ `DocumentUpdatedConsumerTests`（索引スキップ）で担保 |
 | 機密区分変更時の旧コレクション残存（ABAC バイパス） | 例 public→confidential 変更後、旧 voyage コレクションに本文が残り機密扱いの文書が低区分コレクションで検索ヒット | 取り込み冒頭で全モデル別コレクションから当該文書を削除してから再索引する（`DeleteByDocumentFromAllAsync`）。回帰は `DocumentUpdatedConsumerTests` で担保 |
 | Voyage AI のデータ保持・学習利用 | 送信本文が外部で保持・学習に利用される | 契約でゼロ保持（学習利用オプトアウト）を設定・確認してから本番データを流す（運用仕様書に記録）。未認定の間は Voyage 経路を無効化できる |
-| 検索クエリ文の外部埋め込み API への送信 | 検索クエリの埋め込みは機密区分に依らず、**既定では**既定外部経路（Voyage/1024次元）へ固定される（`Purpose=Query`。送信先はゲートウェイの構成 `Embedding:Routing:QueryProfile` で名指しでき、**指定できるのは越境ポリシーが既に許したエンドポイントだけ**である）。検索対象コレクション（voyage/1024）と整合させるための意図的設計だが、利用者が入力するクエリ文自体に機密情報が含まれ得る | クエリ文は本文全量ではなく利用者入力の短文に限られ、Voyage 側のゼロ保持（学習利用オプトアウト）契約が本文と同じく適用される。高機密（ruri/768）コレクションの横断検索はハイブリッド検索側の後続課題であり、その設計時にクエリ側の機密区分ルーティング要否を再評価する（下記「未決事項」）。ゼロ保持未認定の間は Voyage 経路自体を無効化して受容する |
+| 検索クエリ文の外部埋め込み API への送信 | 検索クエリの埋め込みは機密区分に依らず、**既定では**既定外部経路（Voyage/1024次元）へ固定される（`Purpose=Query`。送信先はゲートウェイの構成 `Embedding:Routing:QueryProfile` で名指しでき、**指定できるのは越境ポリシーが既に許したエンドポイントだけ**である）。検索対象コレクション（voyage/1024）と整合させるための意図的設計だが、利用者が入力するクエリ文自体に機密情報が含まれ得る | クエリ文は本文全量ではなく利用者入力の短文に限られ、Voyage 側のゼロ保持（学習利用オプトアウト）契約が本文と同じく適用される。［2026-09-26 更新］高機密（ruri/768）コレクションは検索が**束ねて読む**ようになり、そのコレクションを引くクエリは**セルフホスト（社外送信なし）で埋める**（検索サービスが読み先コレクションを名乗り、ゲートウェイが越境判定の後で絞る。取り込みの越境判定は変えない）。**主コレクションのクエリの既定は外部経路のまま**と計画が確定したため、クエリ文の越境の再評価は閉じた。ゼロ保持未認定の間は Voyage 経路自体を無効化して受容する |
 
 ## 未決事項
 
@@ -351,6 +351,6 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
 - 保存時暗号化（PostgreSQL/SeaweedFS/Qdrant）のインフラ層有効化・鍵管理（データ保護表参照。運用整備・#198 連動）。
 - コネクタ資格情報の Vault / External Secrets 移行（現状は DB 平文保存＋露出経路のマスクの暫定。上記「§データソースのコネクタ資格情報」参照）。**一元追跡: #458**（旧 #310 は 2026-08-02 に `duplicate` で close）。
 - 監査ログの保管期間・改ざん防止・エクスポートの運用設定（可観測性基盤側。#198 連動）。NFR「監査ログ保持」の具体化。
-- 検索クエリ側の機密区分ルーティング。現状クエリ埋め込みは既定外部
-  （Voyage/1024）へ固定。高機密（ruri/768）コレクションの横断検索をハイブリッド検索側で実装する際に、クエリ文の
-  機密区分に応じたセルフホスト経路への切り替え要否（クエリ文自体の越境抑止）を再評価する。
+- ~~検索クエリ側の機密区分ルーティング~~ ［2026-09-26 解消］計画が「クエリの埋め込みは取り込みと別に扱い、既定は外部経路。
+  高機密コレクションを引くときだけセルフホストで埋める」と確定し、検索は高機密コレクションを束ねて読むようになった。
+  残るのは Voyage のゼロ保持契約の認定（上の行）であり、**その認定までクエリ文の外部送信の保護は書面上のもの**である。

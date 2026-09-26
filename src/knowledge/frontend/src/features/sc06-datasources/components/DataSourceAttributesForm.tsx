@@ -139,8 +139,11 @@ export function DataSourceAttributesForm({
             value={department}
             aria-describedby="ds-edit-dept-hint"
             onChange={(e) => setDepartment(e.target.value)}
-            placeholder={t`例: 開発`}
+            placeholder={t`例: engineering`}
           />
+          {/* FR-05, SC-06, IADR-0468（#754）: 登録者の部門グループで補うのは**登録時だけ**である。
+                更新では導き直さない（更新した管理者の所属で部門が揺れないように）ので、
+                こちらの補助文は「未入力なら予約値」のままで正しい。 */}
           <p id="ds-edit-dept-hint" className="text-xs text-fg-muted">
             <Trans>未入力のときは予約値 {UNRESOLVED_DEPARTMENT} が入ります。</Trans>
           </p>

@@ -6,12 +6,24 @@ using RetrievalService.Domain.Ports;
 namespace RetrievalService.Features.Search.Hybrid;
 
 // FR-03, UC-01: ベクトル検索と全文検索を Reciprocal Rank Fusion で統合するハイブリッド検索
+//
+// FR-03, FR-05, ADR-0092 決定 1・2・3, [[IADR-0467]] (#336): **分離したコレクションを 1 回の検索で束ねる。**
+// 主コレクション（`store` / `embed`）に加え、`fused` の各コレクションでもベクトル系統と全文系統を引き、
+// **全系統を 1 回の RRF に平らに入れる**（並び: 主ベクトル → 主全文 → 追加 1 ベクトル → 追加 1 全文 → …）。
+// 🔴 **スコアを比べない**（モデルが違えばスコアは同じ意味を持たない）。定数は下の `RrfK`・候補幅・重み 1 を共用する。
+// 🔴 **ABAC フィルタは全コレクションの全系統へ同じ 1 本を渡す**（決定 3。問い合わせを省いて守る設計にしない）。
+// 🔴 **`fused` が空（既定）なら、全モードで従来と 1 バイトも違わない**（戻り値・Score・呼び出し回数）。
 public class HybridSearchService(
-    IVectorStore store, IEmbeddingService embed, ILogger<HybridSearchService> logger)
+    IVectorStore store, IEmbeddingService embed, ILogger<HybridSearchService> logger,
+    FusedCollections? fused = null)
     : IHybridSearchService
 {
     // RRF の平滑化定数（順位ベース統合。上位の影響を緩める一般的な既定値）
+    // [[IADR-0467]] 決定 2: コレクションを束ねる融合も**同じ値**を使う（系統ごとに k を変えない）。
     internal const int RrfK = 60;
+
+    // 束ねる追加コレクション（既定は空）。
+    private readonly IReadOnlyList<FusedCollection> _fused = fused?.Items ?? [];
 
     // FR-03, UC-01: 既存の呼び出し面。**振る舞いは従前と 1 バイトも変わらない。**
     //
@@ -70,10 +82,32 @@ public class HybridSearchService(
         var singleModeK = sort == SearchSorts.Updated ? candidateK : request.TopK;
 
         if (mode == SearchModes.Keyword)
+        {
             // 全文検索だけの経路。**ベクトル側が無いので段② の起点も無い**（起点はベクトル側のみ）。
+            if (_fused.Count == 0)
+                return new HybridSearchOutcome(
+                    await store.KeywordSearchAsync(request.Query, singleModeK, filters, ct),
+                    [], [], filters, sort, request.TopK, candidateK);
+
+            // FR-03, ADR-0092 実測 6・決定 1, [[IADR-0467]] (#336): **全文も束ねる。**
+            // 全文検索もコレクションを読む（scroll）ので、主だけを引くとティア A の文書は
+            // キーワードでも見つからない。各コレクションの全文の並びを順位で合成する。
+            var keywordTasks = new List<Task<List<SearchResultDto>>>(1 + _fused.Count)
+            {
+                store.KeywordSearchAsync(request.Query, singleModeK, filters, ct)
+            };
+            keywordTasks.AddRange(_fused.Select(f =>
+                f.Store.KeywordSearchAsync(request.Query, singleModeK, filters, ct)));
+            await Task.WhenAll(keywordTasks);
+
             return new HybridSearchOutcome(
-                await store.KeywordSearchAsync(request.Query, singleModeK, filters, ct),
+                ReciprocalRankFusion(keywordTasks.Select(t => (IReadOnlyList<SearchResultDto>)t.Result).ToArray()),
                 [], [], filters, sort, request.TopK, candidateK);
+        }
+
+        if (mode == SearchModes.Semantic && _fused.Count > 0)
+            return await SemanticAcrossCollectionsAsync(
+                request, filters, sort, singleModeK, candidateK, mode, ct);
 
         if (mode == SearchModes.Semantic)
         {
@@ -92,7 +126,9 @@ public class HybridSearchService(
         }
 
         // FR-03: 意味検索（ベクトル）と全文検索（キーワード）を並行実行し p95 を抑える
-        var vector = await embed.EmbedAsync(request.Query, ct);
+        // FR-03, ADR-0092 決定 2, [[IADR-0467]] (#336): 追加コレクションのクエリは**そのコレクションのモデルで**
+        // 埋める（主と並行に呼ぶ。追加が空なら主の 1 回だけで、従来と同じ呼び出しである）。
+        var (vector, fusedVectors) = await EmbedQueryAsync(request.Query, ct);
 
         // FR-03, ADR-0016, #995: 🔴 **空ベクトルを後段（ベクトルDB）へ渡さない。**
         // `/embed` は送信拒否（fail-closed）・次元不整合・呼び出し失敗のいずれでも
@@ -111,13 +147,103 @@ public class HybridSearchService(
             ? store.SearchAsync(vector, candidateK, filters, ct)
             : Task.FromResult(new List<SearchResultDto>());
         var keywordTask = store.KeywordSearchAsync(request.Query, candidateK, filters, ct);
-        await Task.WhenAll(vectorTask, keywordTask);
+
+        // FR-03, FR-05, ADR-0092 決定 1・3, [[IADR-0467]] (#336): 追加コレクションも**同じ候補幅・同じフィルタ**で
+        // 両系統を引く。🔴 **フィルタを省かない・緩めない** —— 利用者のスコープが高機密を許さなくても
+        // 問い合わせは省かず、権限外の点はフィルタが落とす（省略を統制の担い手にしない）。
+        var fusedTasks = _fused
+            .Select((f, i) => SearchCollectionAsync(f, fusedVectors[i], request.Query, candidateK, filters, mode, ct))
+            .ToList();
+        await Task.WhenAll(new Task[] { vectorTask, keywordTask }.Concat(fusedTasks));
 
         // FR-03: 順位ベースで両系統を統合（スコアのスケール差を正規化なしで吸収）
-        var fused = ReciprocalRankFusion(vectorTask.Result, keywordTask.Result);
+        // ADR-0092 決定 1: 追加コレクションの系統も**同じ 1 回の RRF に平らに**入れる。
+        // 追加が空なら `RRF(主ベクトル, 主全文)` —— 従来と同じ式である。
+        var rankings = new List<IReadOnlyList<SearchResultDto>> { vectorTask.Result, keywordTask.Result };
+        foreach (var t in fusedTasks)
+        {
+            rankings.Add(t.Result.Vector);
+            rankings.Add(t.Result.Keyword);
+        }
+
+        var fusedResults = ReciprocalRankFusion(rankings.ToArray());
+        // 段②③（二段検索）の起点は**主コレクションのベクトル側のまま**である（[[IADR-0467]] 決定 5）。
         return new HybridSearchOutcome(
-            fused, vectorTask.Result, vector, filters, sort, request.TopK, candidateK);
+            fusedResults, vectorTask.Result, vector, filters, sort, request.TopK, candidateK);
     }
+
+    // FR-03, ADR-0092 決定 2, [[IADR-0467]] (#336): 主と追加コレクションのクエリ埋め込みを並行に得る。
+    // **追加が空なら主の 1 回だけ**（従来と同じ呼び出し）。輸送の失敗は潰さずに上げる（[[IADR-0256]] 決定 3）。
+    private async Task<(float[] Primary, float[][] Fused)> EmbedQueryAsync(string query, CancellationToken ct)
+    {
+        var primary = embed.EmbedAsync(query, ct);
+        if (_fused.Count == 0)
+            return (await primary, []);
+
+        var fusedEmbeds = _fused.Select(f => f.Embed.EmbedAsync(query, ct)).ToArray();
+        await Task.WhenAll(fusedEmbeds.Prepend(primary));
+        return (primary.Result, fusedEmbeds.Select(t => t.Result).ToArray());
+    }
+
+    // FR-03, FR-05, ADR-0092 決定 1・3, [[IADR-0467]] (#336): 追加コレクション 1 つ分の両系統。
+    // 埋め込めなかったコレクションはベクトル系統だけを落とし、全文は引く（主の #995 と同じ縮退の向き）。
+    private async Task<(List<SearchResultDto> Vector, List<SearchResultDto> Keyword)> SearchCollectionAsync(
+        FusedCollection collection, float[] vector, string query, int k, ScopeFilter filters,
+        string mode, CancellationToken ct)
+    {
+        if (vector.Length == 0)
+            WarnFusedEmbeddingUnavailable(collection.Collection, mode);
+
+        var vectorTask = vector.Length > 0
+            ? collection.Store.SearchAsync(vector, k, filters, ct)
+            : Task.FromResult(new List<SearchResultDto>());
+        var keywordTask = collection.Store.KeywordSearchAsync(query, k, filters, ct);
+        await Task.WhenAll(vectorTask, keywordTask);
+        return (vectorTask.Result, keywordTask.Result);
+    }
+
+    // FR-03, ADR-0092 決定 1, [[IADR-0467]] (#336): semantic モードを束ねる経路（追加コレクションがあるときだけ通る）。
+    //
+    // 埋め込めたコレクションのベクトル系統だけを RRF で合成する。🔴 **どのコレクションも埋め込めなければ 0 件**
+    // （従来の semantic と同じ意味。全文へ振り替えて利用者が選んだモードを勝手に変えない）。
+    private async Task<HybridSearchOutcome> SemanticAcrossCollectionsAsync(
+        SearchRequest request, ScopeFilter filters, string sort, int k, int candidateK,
+        string mode, CancellationToken ct)
+    {
+        var (primaryVector, fusedVectors) = await EmbedQueryAsync(request.Query, ct);
+        if (primaryVector.Length == 0)
+            WarnEmbeddingUnavailable(mode);
+        for (var i = 0; i < _fused.Count; i++)
+            if (fusedVectors[i].Length == 0)
+                WarnFusedEmbeddingUnavailable(_fused[i].Collection, mode);
+
+        if (primaryVector.Length == 0 && fusedVectors.All(v => v.Length == 0))
+            return HybridSearchOutcome.Empty(sort, request.TopK);
+
+        var primaryTask = primaryVector.Length > 0
+            ? store.SearchAsync(primaryVector, k, filters, ct)
+            : Task.FromResult(new List<SearchResultDto>());
+        var fusedTasks = _fused
+            .Select((f, i) => fusedVectors[i].Length > 0
+                ? f.Store.SearchAsync(fusedVectors[i], k, filters, ct)
+                : Task.FromResult(new List<SearchResultDto>()))
+            .ToList();
+        await Task.WhenAll(fusedTasks.Prepend(primaryTask));
+
+        var rankings = new List<IReadOnlyList<SearchResultDto>> { primaryTask.Result };
+        rankings.AddRange(fusedTasks.Select(t => (IReadOnlyList<SearchResultDto>)t.Result));
+        return new HybridSearchOutcome(
+            ReciprocalRankFusion(rankings.ToArray()), primaryTask.Result, primaryVector,
+            filters, sort, request.TopK, candidateK);
+    }
+
+    // FR-03, ADR-0092 決定 1, [[IADR-0467]] (#336): 追加コレクションだけ埋め込めないときの痕跡。
+    // 主の縮退（`WarnEmbeddingUnavailable`）と**別の文言**にする —— どのコレクションが落ちたかが
+    // ログから読めないと、ティア A の推論基盤の不調と voyage の不調が区別できない。
+    private void WarnFusedEmbeddingUnavailable(string collection, string mode) =>
+        logger.LogWarning(
+            "Query embedding unavailable for fused collection {Collection}; "
+            + "searching it in mode {Mode} without its semantic channel", collection, mode);
 
     // FR-03, ADR-0016, #995: 🔴 **静かに縮退しない。** 「検索は 200 なのに意味検索が効いていない」は
     // 応答からは区別できない（`SearchResponse` は縮退の有無を持たない）。**ログだけが手掛かりである。**
@@ -222,11 +348,18 @@ public class HybridSearchService(
         new([new AttributeFilter("__deny__", ["__none__"])]);
 
     // FR-03: Reciprocal Rank Fusion。両リストに現れる文書ほど上位になる。
+    //
+    // FR-03, ADR-0092 決定 1, [[IADR-0467]] 決定 2 (#336): コレクションを束ねる融合も**この関数 1 つ**を通る。
+    // 🔴 **入力の `Score` は読まない**（順位だけを見る）。モデルが違えばスコアは同じ意味を持たない。
+    // 🔴 **同点は「先に現れた方が先」**（入力の並び順 → 各並びの中の順位）。従来は `Dictionary` の
+    // 列挙順に暗黙に依存していたので、同じ順序を**二次キーとして明示した**（並びは従来と同一）。
+    // 重みは全系統 1（系統ごとの重み付けはしない。入れるなら nDCG で測ってから IADR を改める）。
     internal static List<SearchResultDto> ReciprocalRankFusion(
         params IReadOnlyList<SearchResultDto>[] rankings)
     {
         var scores = new Dictionary<Guid, double>();
         var byId = new Dictionary<Guid, SearchResultDto>();
+        var firstSeen = new Dictionary<Guid, int>();
 
         foreach (var ranking in rankings)
         {
@@ -236,11 +369,13 @@ public class HybridSearchService(
                 scores[hit.ChunkId] = scores.GetValueOrDefault(hit.ChunkId) + 1.0 / (RrfK + rank + 1);
                 // 最初に出会ったペイロードを採用（出典情報は同一チャンクで一致）
                 byId.TryAdd(hit.ChunkId, hit);
+                firstSeen.TryAdd(hit.ChunkId, firstSeen.Count);
             }
         }
 
         return scores
             .OrderByDescending(kv => kv.Value)
+            .ThenBy(kv => firstSeen[kv.Key])
             .Select(kv => byId[kv.Key] with { Score = (float)kv.Value })
             .ToList();
     }

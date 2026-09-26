@@ -72,13 +72,29 @@ builder.Services.AddSingleton(
     new QueryEmbeddingTarget(QdrantVectorStore.ResolveCollectionName(builder.Configuration)));
 
 builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
-if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
+var embedOverGrpc = !string.IsNullOrWhiteSpace(
+    builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]);
+if (embedOverGrpc)
     builder.Services.AddSingleton<IEmbeddingService, LlmGatewayGrpcEmbeddingService>();
 else
     // 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): **REST 面は `ServiceCaller` を要する。**
-    builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(c =>
+    // FR-03, [[IADR-0467]] (#336): 名前は型つきクライアントの既定名（`nameof(IEmbeddingService)`）と同値を
+    // **明示する** —— 束ねる追加コレクションの客体が同じ名前つきクライアントを引くため（下）。
+    builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(
+        LlmGatewayEmbeddingService.HttpClientName, c =>
         c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"))
         .AddLlmGatewayServiceToken(builder.Configuration);
+
+// FR-03, FR-05, ADR-0016, ADR-0092 決定 1・2・3, [[IADR-0467]] (#336): **束ねる追加コレクション。**
+//
+// `Qdrant:FusedCollections`（既定は空）に挙げたコレクションを、主（`Qdrant:CollectionName`）と
+// **1 回の検索で束ねる**（順位ベースの RRF。スコアは比べない）。各コレクションのクエリは
+// **そのコレクションのモデルで**埋める（要求にコレクション名を載せ、ゲートウェイが越境判定の後で絞る）。
+// 🔴 **既定は空であり、そのとき検索・属性値・削除は従来と同一である**（`FusedCollections.None`）。
+// Helm は `embedding.enabled=true` のときだけティア A のコレクションをここへ描画する。
+var fusedCollectionNames = QdrantVectorStore.ResolveFusedCollectionNames(builder.Configuration);
+builder.Services.AddScoped(sp =>
+    FusedCollectionsComposition.Build(sp, fusedCollectionNames, embedOverGrpc));
 
 // FR-03, UC-01: ハイブリッド検索（ベクトル＋全文 RRF 統合）
 builder.Services.AddScoped<HybridSearchService>();

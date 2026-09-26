@@ -74,6 +74,42 @@ MFA 必須化により realm の対話利用者はパスワードグラントで
 またエンドポイント名の綴り間違い・無効なエンドポイントの指定は、**LlmGateway が起動時に落とす**
 （黙って既定へ落ちると「Ruri を測ったつもりで voyage を測る」ことになるため）。
 
+## 🔴 束ね方（複数コレクションの順位合成）を測る —— 「voyage のみ」と「束ねた」の A/B
+
+計画 ADR-0092 決定 1 は、機密区分で分けたコレクション（voyage / Ruri）を **1 回の検索で束ね、順位（RRF）で合成する**と決め、
+**束ね方（定数・候補幅・重み）も nDCG@10 で測れるようにする**ことを求めた（フォローアップ 3。定数は IADR-0467 決定 2）。
+束ねるかどうかは **RetrievalService の構成 1 つ**で入れ外しできるので、**同じ qrels で 2 回収集して並べる**だけでよい
+（ハーネスのコードは変えない。束ねても検索 API の応答の形は同じである）。
+
+| run | RetrievalService `Qdrant__FusedCollections__0` | LlmGateway | `NDCG_LABEL` の例 |
+| --- | --- | --- | --- |
+| 基準（voyage のみ） | **空**（既定） | 既定のまま（`QueryProfile` は空） | `voyage-only` |
+| 束ねた | `knowledge_chunks_ruri_v3` | セルフホスト有効（`Embedding__Routing__Endpoints__1__Enabled=true`）。**`QueryProfile` は空のまま** | `fused-voyage+ruri` |
+
+```bash
+# 1) 基準（束ねない）
+NDCG_BASE_URL=https://edge.example NDCG_TOKEN=<jwt> NDCG_LABEL=voyage-only \
+  node scripts/measure-search-ndcg.js --qrels perf/ndcg/qrels.json --dump perf/ndcg/voyage-only.dump.json
+# 2) 検索サービスへ Qdrant__FusedCollections__0 を与えて再起動したあと（Helm なら embedding.enabled=true）
+NDCG_BASE_URL=https://edge.example NDCG_TOKEN=<jwt> NDCG_LABEL=fused-voyage+ruri \
+  node scripts/measure-search-ndcg.js --qrels perf/ndcg/qrels.json --dump perf/ndcg/fused.dump.json
+# 3) 比較（先頭が基準。qrels の指紋が違えば落ちる）
+node scripts/measure-search-ndcg.js --input perf/ndcg/voyage-only.dump.json --input perf/ndcg/fused.dump.json
+```
+
+読み方の注意:
+
+- 🔴 **`QueryProfile` を空のまま測ること。** 束ねた検索は、追加コレクションのクエリだけを要求にコレクション名を載せて
+  そのモデルで埋める。`QueryProfile` はそれと**積で**効くので、`voyage-managed` などを指定したままだと
+  Ruri 側のクエリが拒否され、Ruri の意味検索の系統が落ちた数字になる（全文だけで束ねた数字）。
+- **高機密の文書にだけ付いた正解ラベルは、基準の run では原理的に 0 点**である（基準はそのコレクションを読まない）。
+  それは束ねた効果そのものだが、「公開文書の並びを束ねたことで悪くしていないか」を見たいときは、
+  **公開文書だけにラベルを付けた qrels（別の指紋）で同じ 2 回を測る**。指紋の違う run は並べて比べられない（ハーネスが落とす）。
+- **利用者のスコープで数字が変わる。** 権限フィルタは全コレクションに掛かるので、高機密を読めないトークンで測ると
+  束ねた run でも高機密の文書は出ない（それが正しい）。**2 回とも同じトークンで測る。**
+- `keyword` モードも束ねた run では変わり得る（全文も束ねる）。**陰性対照にはならない** —— 陰性対照は、
+  束ねずにモデルだけを替えた A/B（上の節）の `keyword` である。
+
 ## 結果の読み方・記録
 
 - モードは `keyword` / `semantic` / `hybrid` の 3 つを測る。**埋め込みの寄与は `semantic` と

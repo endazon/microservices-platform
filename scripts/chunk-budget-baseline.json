@@ -294,7 +294,13 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 612939,
+  "initialTotalBytes": 613389,
+  "$comment_initialTotalBytes_20260926_754_sc06-department-helper": [
+    "［2026-09-26 / #754］612,939 → 613,389（+450 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が",
+    "+0.45 kB 超過を報告し、--update で床を更新した）。本 PR のフロント成果物の変更は SC-06 の登録フォームの補助文言（空の部門は登録者の部門グループから",
+    "入ること）と入力例、その Lingui カタログ（ja / en）、orval の生成物（作成操作の説明文の jsdoc）だけであり、増分は文言である。",
+    "**チャンク単位の A/B 分解はしていない**。smallLazyChunks は 10 本で床は変えていない。"
+  ],
   "$comment_initialTotalBytes_20260926_1523_sc22-restart-confirm": [
     "［2026-09-26 / #1523］609,234 → 612,346（+3,112 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が",
     "+3.11 kB 超過を報告し、--update で床を更新した）。本 PR のフロント成果物の変更は SC-22 だけである: 供給元の表示名「画面以外」、",

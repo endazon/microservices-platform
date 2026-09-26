@@ -3,6 +3,7 @@ using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Grpc.Retrieval.V1;
 using Microsoft.AspNetCore.Authorization;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using RetrievalService.Domain;
 using RetrievalService.Domain.Ports;
 
 namespace RetrievalService.Features.Search.AttributeValues;
@@ -27,7 +28,7 @@ namespace RetrievalService.Features.Search.AttributeValues;
 // どちらも**空の配列**で返る。引けなかったのは gRPC status である。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
 public sealed class AttributeValuesGrpcService(
-    IVectorStore store, ISearchAccessResolver access)
+    IVectorStore store, ISearchAccessResolver access, FusedCollections fused)
     : Knowledge.Contracts.Grpc.Retrieval.V1.AttributeValues.AttributeValuesBase
 {
     public override async Task<ListValuesResponse> ListValues(
@@ -57,7 +58,7 @@ public sealed class AttributeValuesGrpcService(
             return response;
 
         response.Values.AddRange(
-            await AttributeValuesEndpoint.ListAsync(store, request.Key, scope, context.CancellationToken));
+            await AttributeValuesEndpoint.ListAsync(store, fused, request.Key, scope, context.CancellationToken));
         return response;
     }
 

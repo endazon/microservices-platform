@@ -197,6 +197,9 @@ export const getBffDataSourceCreateUrl = () => {
 
 /**
  * FR-05, #516: `defaultAttributes` は後段が必須属性のフェイルセーフを通る（`confidentiality`→`internal` / `owner`→`system` / `department`→`unassigned` / `lifecycle`→`active`）。明示指定は上書きしない。
+ * FR-05, SC-06, IADR-0468 (#754): **登録時に限り**、`department` が未指定（空白・`unassigned` を含む）なら、
+ * **登録する管理者の部門グループ**（Keycloak の `/department/<コード>`。**ちょうど 1 つのとき**）のコードで先に補う。
+ * 0 個・2 個以上は補わず予約値 `unassigned` へ倒れる。更新（PUT / PATCH）では導き直さない。
  * **登録は破壊的操作であり管理者限定である**（計画 §SC-06・裁定 Q19。#628 で是正。
  * 従前は運用者にも開いていた）。
  * @summary FR-01, UC-04, SC-06: データソース登録（**管理者のみ**）

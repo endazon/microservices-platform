@@ -1577,6 +1577,9 @@ paths:
       summary: "FR-01, UC-04, SC-06: データソース登録（**管理者のみ**）"
       description: |
         FR-05, #516: `defaultAttributes` は後段が必須属性のフェイルセーフを通る（`confidentiality`→`internal` / `owner`→`system` / `department`→`unassigned` / `lifecycle`→`active`）。明示指定は上書きしない。
+        FR-05, SC-06, IADR-0468 (#754): **登録時に限り**、`department` が未指定（空白・`unassigned` を含む）なら、
+        **登録する管理者の部門グループ**（Keycloak の `/department/<コード>`。**ちょうど 1 つのとき**）のコードで先に補う。
+        0 個・2 個以上は補わず予約値 `unassigned` へ倒れる。更新（PUT / PATCH）では導き直さない。
         **登録は破壊的操作であり管理者限定である**（計画 §SC-06・裁定 Q19。#628 で是正。
         従前は運用者にも開いていた）。
       operationId: bff-data-source-create
@@ -4500,7 +4503,7 @@ components:
           type: object
           nullable: true
           additionalProperties: { type: string }
-          description: "未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない"
+          description: "未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない。登録時に限り、department が未指定（空白・unassigned を含む）なら登録する管理者の部門グループ（Keycloak の /department/<コード>。ちょうど 1 つのとき）のコードで先に補う（IADR-0468 / #754）"
         ownerMappings:
           type: object
           nullable: true
@@ -5319,6 +5322,11 @@ components:
           enum: [index, query]
           default: index
           description: "用途。query は検索対象コレクションと次元を一致させるため既定外部経路へ固定"
+        targetCollection:
+          type: string
+          nullable: true
+          example: "knowledge_chunks_ruri_v3"
+          description: "検索クエリ（purpose=query）が読むコレクション。越境判定と有効化の篩を通った候補をそのコレクションの送信先へ絞るだけで、許可されていない区分を開くことはない。index では無視する。省略時は従来どおり優先度順に選ぶ"
 
     EmbedApiResponse:
       type: object

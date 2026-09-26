@@ -33,9 +33,25 @@ public sealed class EmbeddingRouter(IOptions<EmbeddingRoutingOptions> options, I
             ? _options.QueryProfile
             : null;
 
+        // FR-03, ADR-0092 決定 2, [[IADR-0467]] (#336): 検索が名乗った読み先コレクションへの絞り込み。
+        //
+        // ADR-0092 決定 1 はコレクションごとに検索して束ねる。**ティア A のコレクションはティア A の
+        // モデルで埋めたクエリでしか引けない**（次元も空間も違う）ので、検索側は束ねる追加コレクションの
+        // 名前を要求に載せてくる。
+        //
+        // 🔴 **プロファイルと同じ位置（篩の後）に置く。** 候補は既に越境判定と `Enabled` を通っており、
+        // ここは**狭めることしかできない** —— 前へ移すと無効なエンドポイントを名指しで選べる（変異 M-3）。
+        // 🔴 **Index には効かせない。** 文書の送信先を呼び出し側が選べてはならない（変異 M-4）。
+        // 🔴 **プロファイルとは積で効く**（両方が指定されれば両方を満たすものだけ）。片方で他方を
+        // 上書きしない —— 絞り込みは積み重なるだけで、広げる経路を作らない。
+        var targetCollection = request.Purpose == EmbeddingRoutePurpose.Query
+            ? request.TargetCollection
+            : null;
+
         var endpoint = _options.Endpoints
             .Where(e => e.Enabled && allowedTiers.Contains(e.Tier))
             .Where(e => string.IsNullOrWhiteSpace(profile) || e.Name == profile)
+            .Where(e => string.IsNullOrWhiteSpace(targetCollection) || e.Collection == targetCollection)
             .OrderBy(e => e.Priority)   // 優先度（小さいほど優先）
             .ThenBy(e => e.Tier)        // 同順位はより保護の強いティアを優先（A<B<C）
             .FirstOrDefault();
@@ -51,6 +67,10 @@ public sealed class EmbeddingRouter(IOptions<EmbeddingRoutingOptions> options, I
             var profileNote = string.IsNullOrWhiteSpace(profile)
                 ? string.Empty
                 : $"（クエリ送信先の固定 '{profile}' に該当する候補が無い）";
+            // FR-03, [[IADR-0467]] (#336): 読み先コレクションの指定で候補が消えたときも既定へ落とさない。
+            // 黙って別のコレクションのモデルで埋めると、検索側の照合が捨てるまで気づけない。
+            if (!string.IsNullOrWhiteSpace(targetCollection))
+                profileNote += $"（読み先コレクション '{targetCollection}' に該当する候補が無い）";
             var denyReason =
                 $"機密区分 {request.Sensitivity}（用途 {request.Purpose}）は許容ティア {Format(allowedTiers)} に" +
                 $"送信可能な埋め込みエンドポイントが無いため送信を拒否（fail-closed）{profileNote}";
