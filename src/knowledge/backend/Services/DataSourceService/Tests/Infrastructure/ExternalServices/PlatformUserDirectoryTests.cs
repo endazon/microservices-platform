@@ -130,6 +130,18 @@ public class PlatformUserDirectoryTests
 
     // 🔴 [[IADR-0401]] 決定 3: **口は「照会」である。** gRPC 実装は要求した名前だけを後段へ送る
     // （名簿の列挙を s2s の面へ出さないことの、呼び出し側から見た現れ）。
+    // #1557 監査: 写像先の実在照会も締切つきで呼ぶ（後段が固まっても書き込みが 5 秒で 502 になる）。
+    [Fact]
+    public async Task Grpc_calls_with_a_short_deadline()
+    {
+        var fake = FakeUserDirectoryClient.Knowing(["alice"]);
+
+        await Grpc(fake).LookupAsync(Ask("alice"), Ct);
+
+        fake.LastDeadline.Should().NotBeNull();
+        fake.LastDeadline!.Value.Should().BeOnOrBefore(DateTime.UtcNow.AddSeconds(5));
+    }
+
     [Fact]
     public async Task Grpc_sends_only_the_requested_names()
     {
@@ -210,6 +222,8 @@ public class PlatformUserDirectoryTests
 
         public int CallCount { get; private set; }
 
+        public DateTime? LastDeadline { get; private set; }
+
         public static FakeUserDirectoryClient Knowing(IEnumerable<string> usernames) =>
             new(new HashSet<string>(usernames, StringComparer.Ordinal), null);
 
@@ -220,6 +234,7 @@ public class PlatformUserDirectoryTests
         {
             CallCount++;
             LastRequestedUsernames = [.. request.Usernames];
+            LastDeadline = options.Deadline;
 
             if (_failWith is { } status)
             {

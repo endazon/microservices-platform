@@ -27,6 +27,12 @@ public sealed class UserDirectoryGrpcClient(
     Pb.UserDirectory.UserDirectoryClient client,
     ILogger<UserDirectoryGrpcClient> logger)
 {
+    // FR-05, SC-06, ADR-0074 決定 4, 計画 ADR-0115 決定 5, IADR-0472 (#1557 監査): 書き込み時の照会 2 つの締切。
+    // 後段（Keycloak）が応答しないと、管理者の登録・更新が接続が切れるまで固まる。締切を過ぎたら
+    // `RpcException(DeadlineExceeded)` ＝「引けなかった」（呼び出し元で 502）へ倒す。値は DocumentService の
+    // `GrpcPrivateNoteNotifier`（5 秒の deadline）と揃える。
+    internal static readonly TimeSpan WriteTimeLookupTimeout = TimeSpan.FromSeconds(5);
+
     /// <summary>
     /// FR-05, UC-04, SC-06, ADR-0074 決定 4: 送った利用者名のうち**実在するもの**を返す。
     /// 引けなかったときは <c>null</c>（空集合ではない）。
@@ -41,7 +47,8 @@ public sealed class UserDirectoryGrpcClient(
 
         try
         {
-            var resp = await client.CheckUsernamesAsync(request, cancellationToken: ct);
+            var resp = await client.CheckUsernamesAsync(
+                request, deadline: DateTime.UtcNow.Add(WriteTimeLookupTimeout), cancellationToken: ct);
             return new HashSet<string>(
                 resp.Results.Where(r => r.Exists).Select(r => r.Username), StringComparer.Ordinal);
         }
@@ -72,7 +79,8 @@ public sealed class UserDirectoryGrpcClient(
 
         try
         {
-            var resp = await client.CheckDepartmentCodesAsync(request, cancellationToken: ct);
+            var resp = await client.CheckDepartmentCodesAsync(
+                request, deadline: DateTime.UtcNow.Add(WriteTimeLookupTimeout), cancellationToken: ct);
             return new HashSet<string>(
                 resp.Results.Where(r => r.Exists).Select(r => r.Code), StringComparer.Ordinal);
         }

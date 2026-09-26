@@ -46,9 +46,11 @@ internal static class UpdateDataSourceEndpoint
                 return mapError;
 
             // FR-05, SC-06, 計画 ADR-0115 決定 5, [[IADR-0472]] (#1557): 明示した部門の値域検証（登録と同じ述語・同じ応答）。
-            // 🔴 **保存済みの値をそのまま送り返した PUT も検証する**（値が変わったかでは分けない）。部門グループが
-            // 削除・改名されていれば、その時点で値域の外であり、書き込みの時点で気付けるほうがよい。
-            if (await DepartmentDomainValidation.ValidateAsync(req.DefaultAttributes, departmentDomain, ct) is { } deptError)
+            // ［2026-09-26 / #1557 監査］🔴 **保存済みの値から変わったときだけ照会する**（`storedAttributes`）。
+            // 変わっていない部門まで検証すると、値域が定まる前の値を持つソースは部門以外の編集まで 400 になり、
+            // 認可サービスの障害中はあらゆる編集が 502 になる（理由は `DepartmentDomainValidation` の注記）。
+            if (await DepartmentDomainValidation.ValidateAsync(
+                    req.DefaultAttributes, departmentDomain, ct, storedAttributes: ds.DefaultAttributes) is { } deptError)
                 return deptError;
 
             ds.Update(req.Name, req.SourceType, req.ConnectionUri, req.Config, req.DefaultAttributes,

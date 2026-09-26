@@ -59,6 +59,20 @@ public class DepartmentDomainDirectoryTests
         fake.CallCount.Should().Be(1, "空の問いを後段へ投げない");
     }
 
+    // #1557 監査: 🔴 **締切（deadline）を付けて呼ぶ。** 後段（Keycloak）が応答しないと管理者の書き込みが固まる。
+    // 締切を過ぎれば DeadlineExceeded ＝ 上の「引けなかった」（502）へ倒れる。
+    [Fact]
+    public async Task Grpc_calls_with_a_short_deadline()
+    {
+        var fake = FakeClient.Knowing("sales");
+        var before = DateTime.UtcNow;
+
+        await Grpc(fake).LookupAsync(Ask("sales"), Ct);
+
+        fake.LastDeadline.Should().NotBeNull();
+        fake.LastDeadline!.Value.Should().BeOnOrBefore(DateTime.UtcNow.AddSeconds(5)).And.BeAfter(before);
+    }
+
     // 🔴 宛先が未宣言の配備は**常に「引けなかった」**である（値域の内へも外へも倒さない）。
     [Fact]
     public async Task Unconfigured_transport_always_reports_unavailable()
@@ -84,6 +98,8 @@ public class DepartmentDomainDirectoryTests
 
         public int CallCount { get; private set; }
 
+        public DateTime? LastDeadline { get; private set; }
+
         public static FakeClient Knowing(params string[] codes) => new(new HashSet<string>(codes, StringComparer.Ordinal), null);
 
         public static FakeClient Failing(StatusCode status) => new(null, status);
@@ -93,6 +109,7 @@ public class DepartmentDomainDirectoryTests
         {
             CallCount++;
             LastRequested = [.. request.Codes];
+            LastDeadline = options.Deadline;
 
             if (_failWith is { } status)
             {

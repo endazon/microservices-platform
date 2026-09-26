@@ -264,8 +264,15 @@ public sealed class KeycloakIdentityAdminClient(
         var group = await response.Content.ReadFromJsonAsync<KeycloakGroup>(Json, ct);
         if (group is null || string.IsNullOrEmpty(group.Id)) return null;
 
+        // ［2026-09-26 / #1557 監査］🔴 **応答が `path` を持たなければ「分からない」として失敗にする。**
+        // `ToIdentityGroup` は画面表示のために名前から `/名前` を組み立てるが、値域の判定でそれを使うと
+        // 推測で「在る／無い」を答えることになる。例外 ＝ gRPC 面で status ＝ 呼び出し元で 502（「引けなかった」）。
+        if (string.IsNullOrWhiteSpace(group.Path))
+            throw new InvalidOperationException(
+                "Keycloak の group-by-path 応答に path が無い。部門コードの値域を判定できない（推測で答えない）。");
+
         var found = ToIdentityGroup(group);
-        return string.Equals(found.Path, path, StringComparison.Ordinal) ? found : null;
+        return string.Equals(group.Path, path, StringComparison.Ordinal) ? found : null;
     }
 
     // グループ木を深さ優先で平坦化する（`subGroups` は Keycloak が入れ子で返す）。
