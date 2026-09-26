@@ -1,7 +1,7 @@
 ---
 title: DocumentService の読み取りの全ての口に認証を求め、個人資料を所有者・共有先以外へ返さない（#1614）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-05, FR-06, FR-19, UC-03, SC-03, SC-05, NFR-09, ADR-0119, IADR-0476, ADR-0034, ADR-0036, ADR-0054, ADR-0056, ADR-0086, ADR-0109, IADR-0012, IADR-0041, IADR-0045, IADR-0379, IADR-0402, IADR-0447]
 author: claude
 created: 2026-09-27
@@ -192,3 +192,17 @@ gRPC 面（`DocumentRead`）は `ServiceCaller` を要求するが、個人資�
 
 - `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes`（両 slnx）、`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`
 - 変異: ①読み取りの 1 口から認証の要求を外す → AC-1 の試験が落ちる ②1 口から個人資料の除外を外す → AC-2 の試験が落ちる
+
+### 結果（2026-09-27・ローカル）
+
+- knowledge: `dotnet build` 成功（警告 1 件は既存の `IngestToSearchQdrantTests` の CS0618。本件と無関係）、`dotnet test` 全 12 アセンブリ失敗 0
+  （DocumentService.Tests 688 合格・Knowledge.IntegrationTests 62 合格 46 スキップ〔Docker 前提の既存スキップ〕ほか）。
+- platform: `dotnet build` / `dotnet test` 失敗 0（Platform.Bff.Tests を含む。PR 本文に数値を載せる）。
+- `dotnet format --verify-no-changes`: knowledge・platform とも exit 0。
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`: 833 件合格。`check-proto-contracts` の baseline を更新（非破壊の追加 5 件）。
+- orval（`pnpm run codegen`）: 生成物の差分なし（BFF の契約は不変）。prettier の `format:check` 合格。
+- 変異（いずれもコミット後に施し `git show HEAD:<path> > <path>` で戻した）:
+  - M1: `GET /documents/{id}` に `.AllowAnonymous()` → `REST_の読み取りはトークンが無ければ401で_利用者のトークンがあれば200(route: "/documents/{id}")` が落ちた。
+  - M2: `GetVersionAsync` から可視性の判定を外す → `DocumentReadPrivateNoteTests` の 10 件と `gRPC_の個人資料は本文の利用者が所有者のときだけ返る` が落ちた。
+  - M3: BFF の REST 一覧の中継を外し、gRPC の詳細から利用者文脈を外す → `RestReads_ForwardTheCallersAuthorizationToDocumentService` と
+    `Grpc_reads_carry_the_caller_as_the_user_context` が落ちた。
