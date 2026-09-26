@@ -39,9 +39,10 @@ issue: "1558"
 | 同上 | Deployment | `embedding-service`（`embedding.enabled=true` のときだけ） | `templates/embedding.yaml` |
 | 同上 | Deployment | `seaweedfs` / `wiki-js` | `templates/seaweedfs.yaml` / `templates/wikijs.yaml` |
 | 同上 | Job | `config-drift-postsync` | `templates/drift-postsync-job.yaml` |
-| 同上 | Deployment | `synthetic-monitor`（`SYNTHETIC=1`） | `deploy/local/synthetic-monitor/synthetic-monitor.yaml` |
+| 同上 | Deployment | `synthetic-monitor`（`SYNTHETIC=1`／chart では `syntheticMonitor.enabled=true`。#1555 で chart にも入った。名前は同じ） | `deploy/local/synthetic-monitor/synthetic-monitor.yaml`・`templates/synthetic-monitor.yaml` 69 行 |
 | `platform-infra` | Deployment | `postgres` `rabbitmq` `redis` `keycloak` `qdrant` `otel-collector` `mailpit` `vault` `headlamp` `alertmanager` `grafana` `loki` `prometheus` `tempo` `mail-relay` `reset-gate` `reset-floor` | `deploy/local/{infra,observability,vault,headlamp}/*.yaml`・`deploy/mail-relay/**` |
 | 同上 | DaemonSet | `inotify-sysctl` | `deploy/local/infra/inotify-sysctl.yaml` |
+| 同上 | CronJob | `platform-backup-postgres` / `platform-backup-vault`（ラベル `app: platform-backup`。#1563 で追加） | `deploy/local/platform-backup/{postgres,vault}/cronjob.yaml` 15・18 行 |
 | `ai-stock-trading` | Deployment | `<key>-service`（`trade-decision` `order-execution` `risk-management` 等）・`opend` | AST chart（submodule pin `471cbf31` の `deploy/helm/ai-stock-trading/templates/{deployment,opend}.yaml` を隣接クローンで `git show`） |
 | `kube-system` / `argocd` / `cert-manager` / `istio-system` | Deployment | `coredns` / `argocd-server` / `cert-manager`・`cert-manager-webhook` / `istiod` | 上流配布物の既定名（本リポは宣言を持たない。名前の誤りの判定対象外とし、名前空間の組だけ見た） |
 
@@ -101,9 +102,35 @@ issue: "1558"
 - `deploy/helm/microservices-platform/templates/deployment.yaml` 48 行と `values.yaml` 149 行が `deploy/secrets`（`deploy/secrets/README.md`）を
   指すが、そのディレクトリは無い。Deployment 名ではなくパスの参照切れなので本作業の対象外。
 
+## 2b. 再走査（`origin/develop` `a562d20e` を取り込んだ後。PR #1561 の衝突解消時）
+
+［2026-09-26 追記 / #1561］本書を書いた後に develop へ #1548・#1556・#1555（合成監視を chart へ）・#1552・
+#1563（platform-infra の暗号化バックアップ）・#1566 が入った。develop をマージコミットで取り込み、上と同じ軸・同じ除外で
+**旧 `82801440` と取り込み後の作業ツリーを両方引き、行の集合の差（ファイル＋行内容で突き合わせ。行番号は無視）を 1 行ずつ読んだ**。
+軸 A・B・C・D・F・G の旧側の値は上表と一致した（314 / 17 / 10 / 21 / 1 / 15）＝式を再現できている。E1 は再現した式で旧 6
+（上表の 12 と式の細部が違う）なので**差だけを採る**。E2 は補助軸の前段（語の入った行）だけ引き直して 8 → 8。
+
+| 軸 | 旧（`82801440`） | 新（取り込み後） | 差の中身と判定 |
+| --- | --- | --- | --- |
+| A: `種別/名前` | 314 | 333（+19） | 増えた 22 行・消えた 3 行。消えた 3 と増えた 3 は同じ行の書き換え（本 PR の #1 と、再生成された Lingui カタログ `messages.ts` 2 行）。**純増 19 = パスだけ 13**（`deploy/local` を指す: IADR-0471 4・`adr/README.md` 1・`platform-backup/**` のコメント 6・`operations.md` 970 行・`platform-infra-backup-runbook.md` 22 行）**＋資源参照 6**: `synthetic-monitor/README.md` 88 行 `-n microservices-platform scale deploy/synthetic-monitor`、`platform-infra-backup-runbook.md` 72・164・195 行と `scripts/backup-restore-drill.sh` 27・312 行の `-n platform-infra … deploy/postgres` → **すべて実在・名前空間も一致。誤り 0** |
+| B: 空白区切り | 17 | 17 | 差なし |
+| C: ラベル選択子 | 10 | 11（+1） | `platform-infra-backup-runbook.md` 137 行 `-n platform-infra get jobs -l app=platform-backup`。ラベルは両 CronJob の metadata と Pod テンプレートに宣言がある（`cronjob.yaml` 18・34/35 行）→ 実在 |
+| D: 変数で組む名前 | 21 | 21 | 差なし。軸 D の式に掛からない形も差分で読んだ: `backup-restore-drill.sh` 146 行 `target="${LIVE_TARGET:-deploy/postgres}"`（`-` の直後なので軸 A の前置条件にも掛からない）、`scripts/helm-synthetic-monitor.test.js` の正規表現中の `deploy\/\$d-service`（既存の `k8s-local-up.sh` のループを照合するもの）→ 実在 |
+| E1: 散文 | 6（再現式） | 7（+1） | `values.yaml` 1247 行「Deployment `synthetic-monitor`」→ chart の `templates/synthetic-monitor.yaml` 69 行と一致 |
+| F: `svc/<x>` | 1 | 1 | 差なし |
+| G: `llm-gateway` | 15 | 15 | 差なし |
+| H（新設・隣接）: CronJob / Job | 5 | 10（+5） | #1563 が CronJob を足したので軸を足した（式 `(cronjob\|cronjobs\|cj\|job\|jobs\|job\.batch\|cronjob\.batch)/…` と空白区切りの `create job\|get\|logs … job <x>`）。増えた 5 行はすべて `platform-infra-backup-runbook.md` 123-126・140 行: `cronjob/platform-backup-{postgres,vault}` は実在、`job/platform-backup-postgres-manual-1` は直前の行で `create job --from=cronjob/…` が作る名前、`job/<名前>` は占位 → 誤り 0。旧 5 行（`job/helm-install-traefik`・`job/$JOB`）は前回の範囲で変化なし |
+| A（凍結記録） | 250 | 269（+19） | 本書が追跡下に入った分 16 行と、新しい仕様書 3 行（`20260926_issue-1287` 41 行・`20260926_issue-1560` 14・21 行。いずれも `deploy/helm`・`deploy/local` のパス）。実在しない名前の新規は 0 |
+
+- **再走査で新たに見つかった誤りは 0 件。** 直す箇所は上の #1・#2 のまま。
+- 名前空間: 新しい資源参照はすべて `-n` を持ち、`synthetic-monitor` → `microservices-platform`、`postgres`・`platform-backup-*` → `platform-infra` で宣言と一致。
+- 衝突は `docs/operations/operations.md` の trace ブロック 1 か所だけ（本 PR の本書名・#1558 と develop の IADR-0471・#1560 の仕様書・#1560・AST#346 を
+  キーごとに併合）。本文の #1・#2 は develop 側で触れられておらず、そのまま残った。
+
 ## 3. この変更で新たに誤りになる記述（規則 10）
 
 - 直した後に `deployment/wiki([^-a-z]|$)|wikijs Deployment|deploy/wiki([^-a-z]|$)` で引き直して 0 件。
+  develop `a562d20e` を取り込んだ後も `deploy/llm-gateway` を足した同じ式で 0 件（#1561）。
 - 導出値（行数）は本書にしか無く、本書は凍結記録の母集合（`.ai-context/specs`）へ入る。上の数は本書を書く前の値で、
   本書自身の行（`deploy/llm-gateway` 等を引用する行）は含まない（規則 8）。
 
