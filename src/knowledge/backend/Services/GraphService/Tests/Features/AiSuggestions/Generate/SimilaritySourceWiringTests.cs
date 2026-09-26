@@ -144,7 +144,10 @@ public class SimilaritySourceWiringTests : IClassFixture<TestWebApplicationFacto
     }
 
     // #1582: Program が `ValidateOnStart` で登録した起動検証を包み、結果（通れば null・落ちればその例外）を記録してから元どおり投げる。
-    // 🔴 登録が無ければ（ValidateOnStart を外す変異）ここで落ちる —— 記録されないまま待ち続けるより先に、理由の分かる形で赤にする。
+    // ［2026-09-26 / #1598 で是正］🔴 **`ValidateOnStart` を外す変異はこの「未登録」の枝に入らない。** 本サービス唯一の
+    // `ValidateOnStart` を外しても `IStartupValidator` の登録は残り（実測）、検証が何も落とさずに起動が通って、上の
+    // `act.Should().Throw` が赤になる（「no exception was thrown」）。この枝は**登録そのものが無い構成**への備えであり、
+    // 記録されないまま待ち続けるより先に、理由の分かる形で赤にする。
     private sealed class RecordingStartupValidator(IStartupValidator inner, TaskCompletionSource<Exception?> sink)
         : IStartupValidator
     {

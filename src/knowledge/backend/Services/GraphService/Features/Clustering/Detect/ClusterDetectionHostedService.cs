@@ -19,9 +19,12 @@ public sealed class ClusterDetectionHostedService(
     // ADR-0035 決定 3: **日次**。
     public static readonly TimeSpan Interval = TimeSpan.FromDays(1);
 
+    // #1598: 周期の実際の長さ。**試験だけが短くする**（周期は待てない）。本番の組み立ては触らない。
+    internal TimeSpan CycleInterval { get; init; } = Interval;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(Interval);
+        using var timer = new PeriodicTimer(CycleInterval);
         try
         {
             while (await timer.WaitForNextTickAsync(stoppingToken))
@@ -30,7 +33,10 @@ public sealed class ClusterDetectionHostedService(
                 {
                     await TryRunCycleAsync(stoppingToken);
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                // ［2026-09-26 / #1598・[[IADR-0299]] 追記］🔴 **素通しするのは停止要求（stoppingToken）の取り消しだけである。**
+                // 下流の時間切れ等の取り消しは周期の失敗であり、型だけで素通しすると外側で「シャットダウン」と読まれて
+                // ループが**永久に**終わる。形は DriftDetectionHostedService（#1382）と同じ。
+                catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
                 {
                     // 1 周期の失敗でホストを落とさない（本サービスは DocumentUpdated /
                     // DocumentDeleted の購読者でもある。クラスタ検出の都合で購読を止めない）。
@@ -38,7 +44,8 @@ public sealed class ClusterDetectionHostedService(
                 }
             }
         }
-        catch (OperationCanceledException)
+        // #1598: 想定外の取り消しを黙って「シャットダウン」と読まない（届いたら例外のまま出す）。
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             // シャットダウン。
         }

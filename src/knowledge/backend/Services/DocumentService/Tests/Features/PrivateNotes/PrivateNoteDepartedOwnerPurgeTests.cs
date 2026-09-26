@@ -329,6 +329,94 @@ public class PrivateNoteDepartedOwnerPurgeTests(TestWebApplicationFactory factor
         factory.Audit.OfAction("private-note.purge.departed").Should().NotContain(e => e.Subject == user);
     }
 
+    // ［2026-09-26 / #1598］🔴 読み直しで**窓が再び開いた**（`WithinWindow`。無効のまま）なら消さない。
+    // 起点が動いた（人事の退職日の訂正など）ときの形である。
+    // **変異検出**: 読み直しで資格の判定を見ない（`Found && !Enabled` だけで消す）とこの試験が赤になる
+    // （#1591 の監査で生き残った変異。再有効化・`null` の試験は `Enabled`・`null` の側で落ちるので、資格だけの変異を通していた）。
+    [Fact]
+    public async Task 削除の直前の読み直しで窓が再び開いた所有者の資料は無効のままでも消えない()
+    {
+        var (user, _, plugin) = await OwnerAsync();
+        var noteId = await PushNoteAsync(plugin, "reread-within.md", "本文");
+        factory.Storage.ResetDeletions();
+        factory.OwnerRetention.DeclareSequence(user,
+            StubOwnerRetentionDirectory.Departed,
+            () => new OwnerRetentionStatus(true, Enabled: false, OwnerRetentionEligibility.WithinWindow));
+
+        await RunMaintenanceAsync(Now);
+
+        QueriedCount(user).Should().Be(2, "削除の直前に読み直している");
+        (await NoteExistsAsync(noteId)).Should().BeTrue("読み直した時点で窓の中なら消さない");
+        (await DocumentExistsAsync(noteId)).Should().BeTrue();
+        factory.Audit.OfAction("private-note.purge.departed").Should().NotContain(e => e.Subject == user);
+    }
+
+    // ［2026-09-26 / #1598］🔴 読み直しで**判定不能**（`NotEvaluable`。無効のまま）になったら消さない。
+    // 数えていないものを経過したことにしない（1 巡目の `NotEvaluable` の陰性対照と同じ向き）。
+    // **変異検出**: 上と同じ（資格の判定を見ない変異）。`WithinWindow` だけを落とす変異（`!= WithinWindow`）もこちらで赤になる。
+    [Fact]
+    public async Task 削除の直前の読み直しで判定不能になった所有者の資料は無効のままでも消えない()
+    {
+        var (user, _, plugin) = await OwnerAsync();
+        var noteId = await PushNoteAsync(plugin, "reread-notevaluable.md", "本文");
+        factory.Storage.ResetDeletions();
+        factory.OwnerRetention.DeclareSequence(user,
+            StubOwnerRetentionDirectory.Departed,
+            () => new OwnerRetentionStatus(true, Enabled: false, OwnerRetentionEligibility.NotEvaluable));
+
+        await RunMaintenanceAsync(Now);
+
+        QueriedCount(user).Should().Be(2, "削除の直前に読み直している");
+        (await NoteExistsAsync(noteId)).Should().BeTrue("読み直した時点で判定できないなら消さない");
+        (await DocumentExistsAsync(noteId)).Should().BeTrue();
+    }
+
+    // ［2026-09-26 / #1598］🔴 読み直しの最中の**定期処理そのものの取り消し**は「見送った」に畳まず伝える（サービスの水準）。
+    // 畳むと停止要求の下で次の所有者の読み直しへ進んでしまう。
+    // **変異検出**: 読み直しの `catch` から取り消しのフィルタを外すと、1 人目の取り消しが見送りに畳まれて 2 人目の読み直しへ進み、
+    // 照会の合計が 3 → 4 になって赤になる。🔴 `RunAsync` が取り消しで終わるかどうかだけでは殺せない —— 変異の下でも後段の
+    // EF の呼び出しが取り消しを投げ得るため、**照会の回数**で測る。
+    // 読み直しの順序（所有者の `Distinct()` の順）に依らないよう、2 人とも同じ列を宣言する（最後は `null` ＝スタブの約束）。
+    [Fact]
+    public async Task 削除の直前の読み直しでの定期処理の取り消しは見送りに畳まず伝える()
+    {
+        var (first, _, firstPlugin) = await OwnerAsync();
+        var (second, _, secondPlugin) = await OwnerAsync();
+        var firstNote = await PushNoteAsync(firstPlugin, "reread-cancel-1.md", "本文");
+        var secondNote = await PushNoteAsync(secondPlugin, "reread-cancel-2.md", "本文");
+        factory.Storage.ResetDeletions();
+        using var job = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        Func<OwnerRetentionStatus?> cancelJob = () =>
+        {
+            job.Cancel();
+            throw new OperationCanceledException(job.Token);
+        };
+        factory.OwnerRetention.DeclareSequence(first, StubOwnerRetentionDirectory.Departed, cancelJob, () => null);
+        factory.OwnerRetention.DeclareSequence(second, StubOwnerRetentionDirectory.Departed, cancelJob, () => null);
+
+        try
+        {
+            using (var scope = factory.Services.CreateScope())
+            {
+                var act = () => scope.ServiceProvider.GetRequiredService<PrivateNoteMaintenanceService>()
+                    .RunAsync(Now, job.Token);
+                await act.Should().ThrowAsync<OperationCanceledException>("定期処理の取り消しは呼び出し元へ伝わる");
+            }
+
+            (QueriedCount(first) + QueriedCount(second)).Should().Be(3,
+                "判定で 2 回・読み直しは最初の 1 人だけ（取り消しで止まり、次の所有者の読み直しへ進まない）");
+            (await NoteExistsAsync(firstNote)).Should().BeTrue("取り消された周期では消さない");
+            (await NoteExistsAsync(secondNote)).Should().BeTrue();
+        }
+        finally
+        {
+            // 🔴 読み直されなかった方の列には取り消しの答えが**途中に**残る（本試験の狙いどおり）。スタブと DB はクラス内で共有され、
+            // 後続の試験の周期の 1 巡目がそれを引くと、破棄済みの取り消し元で落ちる（本 PR で実測）。2 人とも「引けなかった」へ戻す。
+            factory.OwnerRetention.DeclareSequence(first, () => null);
+            factory.OwnerRetention.DeclareSequence(second, () => null);
+        }
+    }
+
     // 🔴 読み直しで名簿を引けない（`null` ＝輸送の失敗・時間切れ）なら消さない。
     // **変異検出**: 読み直しの `null` を「消してよい」へ倒すとこの試験が赤になる。
     [Fact]

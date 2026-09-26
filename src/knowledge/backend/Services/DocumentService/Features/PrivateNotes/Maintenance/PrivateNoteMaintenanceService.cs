@@ -375,9 +375,12 @@ public sealed class PrivateNoteMaintenanceHostedService(
 {
     public static readonly TimeSpan Interval = TimeSpan.FromHours(24);
 
+    // #1598: 周期の実際の長さ。**試験だけが短くする**（24 時間は待てない）。本番の組み立ては触らない。
+    internal TimeSpan CycleInterval { get; init; } = Interval;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(Interval);
+        using var timer = new PeriodicTimer(CycleInterval);
         try
         {
             while (await timer.WaitForNextTickAsync(stoppingToken))
@@ -389,14 +392,19 @@ public sealed class PrivateNoteMaintenanceHostedService(
                         .GetRequiredService<PrivateNoteMaintenanceService>();
                     await maintenance.RunAsync(DateTimeOffset.UtcNow, stoppingToken);
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                // ［2026-09-26 / #1598・[[IADR-0431]] 追記］🔴 **素通しするのは停止要求（stoppingToken）の取り消しだけである。**
+                // 下流の時間切れ（HttpClient の TaskCanceledException 等）は停止要求ではなく周期の失敗であり、ここで記録して
+                // 次周期へ進む。型だけで素通しすると外側で「シャットダウン」と読まれ、日次のループが**永久に**終わる
+                // （退職者の資料の削除・90 日の削除・通知が以後動かない）。形は DriftDetectionHostedService（#1382）と同じ。
+                catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
                 {
                     // 定期処理の失敗でホストを落とさない。次周期で再試行する。
                     logger.LogError(ex, "個人資料の定期処理に失敗した。次周期で再試行する。");
                 }
             }
         }
-        catch (OperationCanceledException)
+        // #1598: 想定外の取り消しを黙って「シャットダウン」と読まない（届いたら例外のまま出す）。
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             // シャットダウン。
         }

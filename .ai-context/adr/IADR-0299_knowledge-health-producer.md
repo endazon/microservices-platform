@@ -27,7 +27,7 @@ related_ids:
   - IADR-0281
 author: claude
 created: 2026-08-29
-updated: 2026-08-29
+updated: 2026-09-26
 plan_refs:
   - "06_technical/05_observability-ops.md §ナレッジ健全性の指標（集計範囲・2026-08-02 確定）— 7 指標と 4 規則。陳腐化文書数のしきい値は未確定と明記"
   - "ADR-0033 決定 3・6・9（辺の型のフォールバック・差分更新・型別の使用件数）"
@@ -144,6 +144,19 @@ IADR-0265 が `POST /dashboard/knowledge-health/observations`（受け口）と 
 **DataSourceService の同型実装を参照せず複製した**（上の §抽象の置き場所）。
 advisory lock のキーは DataSourceService の "DSPS" と別値にしてある —— DB が分かれているため
 衝突し得ないが、**同じ値だと「同じロックを取っている」と読み違えられる**。
+
+> **［2026-09-26 追記 / #1598］周期のループは、停止要求ではない取り消しで終わらない。**
+> 本決定の `KnowledgeHealthHostedService` と、その形を写した `ClusterDetectionHostedService`（IADR-0425）・
+> `ClusterSummaryHostedService`（IADR-0430）は、周期の本体の `catch (Exception) when (ex is not OperationCanceledException)` が
+> **型だけで**取り消しを素通しし、外側の型だけの `catch (OperationCanceledException)` が「シャットダウン」と読んでいた。
+> リースの取得（Npgsql）や本体の下流が停止要求と無関係に取り消しを投げると、**プロセスが生きたまま周期が永久に止まる**
+> （毎時の健全性の報告・日次のクラスタ検出と要約）。個人資料の日次保守（IADR-0431 の同日の追記）と同じ欠陥である。
+>
+> - 3 つとも、周期の本体を `when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)`、外側を
+>   `when (stoppingToken.IsCancellationRequested)` にした（`DriftDetectionHostedService`・#1382 と同じ形）。
+> - 試験のために周期の長さを差し替える口（`internal CycleInterval`、既定は `Interval`）を足した。本番の組み立てと `Interval` の意味は変えない。
+> - 試験は `BatchLoopForeignCancellationTests`（3 つに 1 件ずつ）。1 回目のリースの取得で停止要求と無関係な取り消しを投げ、
+>   2 回目の取得が起きることを待つ。3 つとも直す前の形へ戻すと **3 件とも赤**（10 秒の時間切れ）。
 
 ### 決定 4 — 受け口を `/internal/knowledge-health/observations` へ移し、認可を外す
 

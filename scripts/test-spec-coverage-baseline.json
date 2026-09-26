@@ -83,6 +83,7 @@
       "TagIdentityTests"
     ],
     "docs/tests/FR-10_dashboard.md": [
+      "BatchLoopForeignCancellationTests",
       "DashboardEndpointTests",
       "GraphDocumentBodyUpdatedAtTests",
       "KnowledgeHealthEndpointTests",
@@ -199,6 +200,7 @@
       "ObsidianSyncProtocolTests",
       "PrivateNoteDepartedOwnerPurgeTests",
       "PrivateNoteLifecycleTests",
+      "PrivateNoteMaintenanceHostedServiceTests",
       "PrivateNoteQuotaTests"
     ],
     "docs/tests/FR-20_document-sharing.md": [

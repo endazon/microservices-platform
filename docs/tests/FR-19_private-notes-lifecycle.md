@@ -10,8 +10,8 @@ author: Claude
 ids: [FR-19, FR-21, FR-22, UC-11, SC-17, SC-19, SC-20]
 adrs: [ADR-0037, ADR-0054, ADR-0057, ADR-0096]
 iadrs: [IADR-0270, IADR-0283, IADR-0428, IADR-0431, IADR-0474]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-447_fr21-criteria-9-10, 20260911_issue-1409_private-note-disposal-after-window, 20260926_issue-1532_sync-token-rejected-after-disable, 20260926_issue-1583_purge-reread-before-delete]
-issues: [#451, #447, #1409, #1532, #1583]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-447_fr21-criteria-9-10, 20260911_issue-1409_private-note-disposal-after-window, 20260926_issue-1532_sync-token-rejected-after-disable, 20260926_issue-1583_purge-reread-before-delete, 20260926_issue-1598_maintenance-loop-foreign-cancellation]
+issues: [#451, #447, #1409, #1532, #1583, #1598]
 -->
 
 # テスト仕様書: 個人資料のライフサイクル・容量・版保持
@@ -28,7 +28,7 @@ issues: [#451, #447, #1409, #1532, #1583]
 **グラフ表示トグルの消費側は未着手のままである。**
 
 実体: `DocumentService.Tests` の `PrivateNoteQuotaTests` / `PrivateNoteLifecycleTests` /
-`DocScopeValidationTests` / `PrivateNoteDepartedOwnerPurgeTests`（結合テスト。InMemory ＋ 記録用スタブ）、
+`DocScopeValidationTests` / `PrivateNoteDepartedOwnerPurgeTests` / `PrivateNoteMaintenanceHostedServiceTests`（結合テスト。InMemory ＋ 記録用スタブ）、
 `GrpcOwnerRetentionDirectoryTests`（単体。名簿の偽物）。
 
 ## テスト観点
@@ -58,8 +58,9 @@ issues: [#451, #447, #1409, #1532, #1583]
 | 15 | 新規の個人資料は 3 トグルがすべて OFF・公開範囲は非公開（共有 0 件）・機密区分は最も厳しい区分 | `新規の個人資料は3トグルOFFかつ非公開かつrestrictedで作られる` |
 | 16 | 「AI の入力に含める」トグルの変更が文書属性へ写る（ON / OFF の両方向・他の既定属性を巻き込まない） | `AI入力トグルの変更が文書属性へ写る` |
 | 17 | 露出トグルの変更では版が進まない（版は編集の回数だけ保持するという規則を守る） | `露出トグルの変更では版が進まない` |
-| 18 | 退職して閲覧窓（無効化から 30 日）が閉じた所有者の資料だけを完全削除し、窓の中・起点なし・在籍中・名簿に居ない・名簿を引けない所有者の資料は残す。🔴 消す直前に所有者の状態を読み直し、判定の後に再有効化された・読み直しで名簿を引けない・読み直しに失敗した所有者の資料は残す（他の所有者の削除は続く） | `PrivateNoteDepartedOwnerPurgeTests` 全件（14 件） |
+| 18 | 退職して閲覧窓（無効化から 30 日）が閉じた所有者の資料だけを完全削除し、窓の中・起点なし・在籍中・名簿に居ない・名簿を引けない所有者の資料は残す。🔴 消す直前に所有者の状態を読み直し、判定の後に再有効化された・読み直しで窓が再び開いた・読み直しで判定不能になった（いずれも無効のまま）・読み直しで名簿を引けない・読み直しに失敗した所有者の資料は残す（他の所有者の削除は続く）。読み直しの最中の定期処理の取り消しは「見送った」に畳まず伝える（次の所有者の読み直しへ進まない） | `PrivateNoteDepartedOwnerPurgeTests` 全件（17 件） |
 | 19 | 🔴 削除を決める名簿の答えの写し方: 名簿が**明示的に**「経過」と答えた無効化済みの所有者だけが対象（陽性対照）。未指定（既定値）・未知の値・窓の項目を知らない古い認可サービスの応答（既定値だけ）・窓の中・在籍中・名簿に居ない・輸送の失敗・応答なし（5 秒で打ち切り）・口の未構成は削除しない。窓の判定の既定値（0）は「数えていない」。定期処理そのものの取り消しは「引けなかった」に畳まず伝える（本番のチャネルが投げる取り消しの形でも）。名簿は退職の窓の読み口で引き、失敗は「削除しない」旨で記録する | `GrpcOwnerRetentionDirectoryTests`（14 メソッド・19 件） |
+| 20 | 🔴 日次の定期処理のループは、停止要求ではない取り消し（下流の時間切れ等）で周期が失敗しても終わらず、次の周期で退職者の資料を消す。失敗は記録する。停止要求では静かに終わる | `PrivateNoteMaintenanceHostedServiceTests` |
 
 > **15 は登録経路が 2 本あるため 2 か所で測る。** もう 1 本（同期経由の新規作成）は
 > `ObsidianSyncProtocolTests` の `同期経由の新規作成はフェイルセーフ既定で作られる` が持つ。
