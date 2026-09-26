@@ -129,7 +129,18 @@ public sealed class DepartmentAttributeSync(
         metrics.RecordUsers("skipped_changed", skipped);
         metrics.RecordUsers("failed", failed);
         metrics.RecordUsers("not_found", notFound);
-        metrics.RecordCycle(failed > 0 ? "completed_with_failures" : "completed");
+        // ［2026-09-26 / #1573 監査］🔴 **直そうとした全員が「変わった」で見送られた周期は、別の結末として出す。**
+        // 計画の読み取り（`/groups/{id}/members`）と書く直前の読み直し（`/users/{id}`）で属性のキー集合が食い違う realm では、
+        // 毎回 `Changed` になり、`Fix` が**黙って誰も直さない**。偶然の競合では全員が見送られることはまず無い。
+        var attempted = corrected + skipped + failed + notFound;
+        var allSkipped = attempted > 0 && skipped == attempted;
+        if (allSkipped)
+            logger.LogWarning(
+                "部門の同期: 直そうとした {Count} 人すべてが「読み取り後に変わった」として見送られた。"
+                + "所属者の一覧と利用者の個別取得で属性の見え方が違う可能性がある（Fix が何も直せていない）。"
+                + "運用仕様書の「試験利用者 1 人での確認」を行うこと。",
+                attempted);
+        metrics.RecordCycle(allSkipped ? "all_skipped_changed" : failed > 0 ? "completed_with_failures" : "completed");
 
         var outcome = new Outcome(true, findings, corrected, skipped, failed);
         var summary =

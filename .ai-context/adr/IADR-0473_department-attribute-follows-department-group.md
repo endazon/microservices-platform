@@ -77,7 +77,15 @@ AST のクライアントが依存する挙動を変えない。
    残る窓は「その GET から PUT まで」の 1 往復で、ゼロにはできない。運用仕様書にそのまま書いた（従前の「有効状態に触れない」は競合下では正しくなかった）。
 7. ［同］**1 人の失敗で周期を止めない。** 書き込みの例外は利用者ごとに捕まえ、IdP 内部 ID つきで記録して続ける。失敗数は周期のまとめ行（失敗があれば Warning）と
    計器 `department_sync.users.total{department_sync.outcome=failed}`・`department_sync.cycles.total{...=completed_with_failures}` に出す。
-8. ［同］**周期は `hh:mm:ss` だけ・下限 1 分。** `TimeSpan.TryParse("60")` は 60 日を返すので、数字だけの値は起動時に落とす。
+8. ［同・差分監査で改めた］**周期は `TimeSpan.TryParseExact(..., "hh\:mm\:ss")` で読み、`00:01:00`〜`23:59:59`。**
+   `TryParse` は `60` を 60 日、`24:00:00` を 24 日と読み、50 日超は `PeriodicTimer` が起動後に落ちる。`hh` は 0〜23 しか受けないので、誤読も上限超過も起動時に落ちる。
+9. ［同・差分監査］**取り消し（ホストの停止）は利用者ごとの失敗として数えず、周期ごと中断する。** 周期ごとの例外は計器 `cycles.total{aborted}` に数える。
+10. ［同・差分監査］**直そうとした全員が `Changed` で見送られた周期は `all_skipped_changed` として Warning と計器に出す。** 所属者の一覧（`/groups/{id}/members`）と
+    利用者の個別取得（`/users/{id}`）で属性のキー集合が違う realm では、毎回 `Changed` になり `Fix` が黙って誰も直さないため。運用仕様書に試験利用者 1 人での確認手順を書いた。
+11. ［同・差分監査］**アラート `DepartmentSyncNotCorrecting`（warning）を 4 か所（compose / k8s の Prometheus と Grafana）に置いた。**
+    式は `failed` の利用者と `aborted` / `all_skipped_changed` の周期の直近 1 時間の前進量を `or vector(0)` で足して `> 0`、Grafana は `noDataState: OK` と
+    評価器 `gt 0`（`> 0` の後に残る値は正の前進量なので正しい。`== 0` と `gt 0` の組み合わせ〔#1577〕ではない）。
+12. ［同・差分監査］計器は 1 サービス 1 Meter の慣行に揃え、`microservices-platform.authorization-service` に載せる。
 
 ## 結果
 

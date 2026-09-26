@@ -10,7 +10,8 @@ namespace AuthorizationService.Features.Users.DepartmentSync;
 // 属性 `department_sync.outcome` = corrected / skipped_changed / failed / not_found（周期ごとに件数を足す）。
 public sealed class DepartmentAttributeSyncMetrics
 {
-    public const string MeterName = "microservices-platform.authorization-service.department-sync";
+    // 1 サービス 1 Meter の慣行に揃える（DocumentService の計器と同じく、サービス名の Meter に載せる）。
+    public const string MeterName = "microservices-platform.authorization-service";
     public const string OutcomeCounterName = "department_sync.users.total";
     public const string CycleCounterName = "department_sync.cycles.total";
     public const string OutcomeTag = "department_sync.outcome";
@@ -27,7 +28,8 @@ public sealed class DepartmentAttributeSyncMetrics
                        + "failed が 0 でなければ、その周期に直せなかった利用者が居る。");
         _cycles = meter.CreateCounter<long>(
             CycleCounterName, unit: "{cycle}",
-            description: "部門の同期の周期数。outcome = completed / completed_with_failures / aborted。");
+            description: "部門の同期の周期数。outcome = completed / completed_with_failures / all_skipped_changed / aborted。"
+                       + "all_skipped_changed が続くなら、書く直前の読み直しが毎回「変わった」と判定している（書けていない）。");
     }
 
     public void RecordUsers(string outcome, int count)

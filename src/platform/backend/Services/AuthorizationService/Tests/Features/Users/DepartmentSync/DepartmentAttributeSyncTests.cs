@@ -159,6 +159,8 @@ public class DepartmentAttributeSyncTests
     [InlineData("Fix", "60")]        // 🔴 TimeSpan.TryParse なら 60 日になる値（#1573 監査）
     [InlineData("Fix", "00:00:30")]  // 下限（1 分）未満
     [InlineData("Fix", "1.00:00:00")] // hh:mm:ss 以外の書式
+    [InlineData("Fix", "24:00:00")]   // 🔴 TryParse なら 24 日（時 ≥ 24 は日として読まれる）
+    [InlineData("Fix", "99:00:00")]   // 🔴 TryParse なら 99 日 → PeriodicTimer が起動後に落ちる
     public void Options_reject_undeclared_values(string mode, string? interval)
     {
         var act = () => DepartmentAttributeSyncOptions.FromConfiguration(Config(mode, interval));
@@ -170,6 +172,7 @@ public class DepartmentAttributeSyncTests
     [InlineData("00:01:00", 1)]
     [InlineData("00:15:00", 15)]
     [InlineData(" 01:30:00 ", 90)]
+    [InlineData("23:59:00", 1439)]
     public void Options_accept_hh_mm_ss_intervals_of_at_least_a_minute(string declared, int minutes)
         => DepartmentAttributeSyncOptions.FromConfiguration(Config("Fix", declared))
             .Interval.Should().Be(TimeSpan.FromMinutes(minutes));
@@ -215,6 +218,115 @@ public class DepartmentAttributeSyncTests
         outcome.Corrected.Should().Be(2, "他の人は直る");
     }
 
+    // ── #1573 差分監査 ──────────────────────────────────────────
+
+    // F2: 🔴 ホストの停止（取り消し）が周期の途中で来たら、**周期ごと中断**して例外を上げる。
+    // 利用者ごとの失敗として数えて次の人へ進む変異（取り消しも catch する）はここで赤になる。
+    [Fact]
+    public async Task Host_cancellation_mid_cycle_aborts_without_counting_user_failures()
+    {
+        var realm = Realm();
+        using var cts = new CancellationTokenSource();
+        realm.BeforeWrite = _ =>
+        {
+            cts.Cancel();
+            throw new OperationCanceledException(cts.Token);
+        };
+        using var listener = OutcomeCounter("failed", out var failures);
+
+        var act = async () => await Sync(realm).RunAsync(DepartmentAttributeSyncMode.Fix, cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        failures().Should().Be(0, "取り消しは利用者の失敗ではない");
+        realm.Writes.Should().BeEmpty();
+    }
+
+    // F3: 🔴 直そうとした全員が「変わった」で見送られた周期は、別の結末（all_skipped_changed）として出す。
+    // 計画の読み取りと書く直前の読み直しで属性の見え方が違う realm では、Fix が黙って誰も直さなくなるため。
+    [Fact]
+    public async Task A_cycle_where_every_correction_was_skipped_is_reported_as_such()
+    {
+        var realm = Realm();
+        realm.BeforeWrite = userId => realm.AddAttribute(userId, "only_on_user_endpoint", "x");
+        using var listener = CycleCounter("all_skipped_changed", out var cycles);
+
+        var outcome = await Sync(realm).RunAsync(DepartmentAttributeSyncMode.Fix, Ct);
+
+        outcome.SkippedChanged.Should().Be(3);
+        outcome.Corrected.Should().Be(0);
+        cycles().Should().Be(1);
+    }
+
+    // 陰性対照: 一部だけ見送られた周期は all_skipped_changed ではない。
+    [Fact]
+    public async Task A_cycle_with_some_corrections_is_not_reported_as_all_skipped()
+    {
+        var realm = Realm();
+        realm.BeforeWrite = userId =>
+        {
+            if (userId == "u-wrong") realm.AddAttribute(userId, "only_on_user_endpoint", "x");
+        };
+        using var listener = CycleCounter("all_skipped_changed", out var cycles);
+
+        await Sync(realm).RunAsync(DepartmentAttributeSyncMode.Fix, Ct);
+
+        cycles().Should().Be(0);
+    }
+
+    // F4: 🔴 周期ごとの失敗（木の読み取りが落ちた等）も計器 cycles.total{outcome=aborted} に出る。
+    [Fact]
+    public async Task Hosted_service_counts_a_failed_cycle_as_aborted()
+    {
+        var realm = Realm();
+        realm.FailTreeReads = true;
+        var services = new ServiceCollection();
+        services.AddSingleton<IIdentityAdminClient>(realm);
+        services.AddSingleton(new DepartmentAttributeSyncMetrics(Meters));
+        services.AddSingleton(typeof(Microsoft.Extensions.Logging.ILogger<>), typeof(NullLogger<>));
+        services.AddScoped<DepartmentAttributeSync>();
+        using var provider = services.BuildServiceProvider();
+        using var listener = CycleCounter("aborted", out var aborted);
+
+        using var service = new DepartmentAttributeSyncHostedService(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            new DepartmentAttributeSyncOptions(DepartmentAttributeSyncMode.Fix, TimeSpan.FromHours(1)),
+            provider.GetRequiredService<DepartmentAttributeSyncMetrics>(),
+            NullLogger<DepartmentAttributeSyncHostedService>.Instance);
+        await service.StartAsync(Ct);
+        for (var i = 0; i < 100 && aborted() == 0; i++) await Task.Delay(20, Ct);
+        await service.StopAsync(Ct);
+
+        aborted().Should().Be(1, "1 周目が例外で中断した");
+    }
+
+    private static MeterListener OutcomeCounter(string outcome, out Func<long> read)
+        => Listen(DepartmentAttributeSyncMetrics.OutcomeCounterName, outcome, out read);
+
+    private static MeterListener CycleCounter(string outcome, out Func<long> read)
+        => Listen(DepartmentAttributeSyncMetrics.CycleCounterName, outcome, out read);
+
+    private static MeterListener Listen(string counter, string outcome, out Func<long> read)
+    {
+        long total = 0;
+        var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, l) =>
+            {
+                if (instrument.Meter.Name == DepartmentAttributeSyncMetrics.MeterName && instrument.Name == counter)
+                    l.EnableMeasurementEvents(instrument);
+            },
+        };
+        listener.SetMeasurementEventCallback<long>((_, value, tags, _) =>
+        {
+            foreach (var tag in tags)
+                if (tag.Key == DepartmentAttributeSyncMetrics.OutcomeTag && (string?)tag.Value == outcome)
+                    Interlocked.Add(ref total, value);
+        });
+        listener.Start();
+        read = () => Interlocked.Read(ref total);
+        return listener;
+    }
+
     private static MeterListener FailedCounter(out Func<long> read)
     {
         long total = 0;
@@ -245,7 +357,7 @@ public class DepartmentAttributeSyncTests
         var factory = new ThrowingScopeFactory();
         using var service = new DepartmentAttributeSyncHostedService(
             factory, new DepartmentAttributeSyncOptions(DepartmentAttributeSyncMode.Off, TimeSpan.FromMilliseconds(10)),
-            NullLogger<DepartmentAttributeSyncHostedService>.Instance);
+            new DepartmentAttributeSyncMetrics(Meters), NullLogger<DepartmentAttributeSyncHostedService>.Instance);
 
         await service.StartAsync(Ct);
         await (service.ExecuteTask ?? Task.CompletedTask);
@@ -282,6 +394,10 @@ public class DepartmentAttributeSyncTests
         private readonly Dictionary<string, bool> _enabled = new(StringComparer.Ordinal);
 
         public HashSet<string> FailWritesFor { get; } = new(StringComparer.Ordinal);
+
+        public bool FailTreeReads { get; set; }
+
+        public void AddAttribute(string userId, string key, string value) => _attributes[userId][key] = value;
 
         // 計画の読み取りと書き込みの間に割り込む操作（SC-17 の無効化などを模す）。
         public Action<string>? BeforeWrite { get; set; }
@@ -322,6 +438,7 @@ public class DepartmentAttributeSyncTests
         public Task<IdentityGroup?> FindGroupByPathAsync(string path, CancellationToken ct)
         {
             Calls++;
+            if (FailTreeReads) throw new HttpRequestException("Keycloak のグループ照会へ届かない（偽）");
             return Task.FromResult(_groups.FirstOrDefault(g => string.Equals(g.Path, path, StringComparison.Ordinal)));
         }
 

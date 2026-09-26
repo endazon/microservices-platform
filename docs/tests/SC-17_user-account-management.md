@@ -96,7 +96,8 @@ issues: [#452, #438, #1101, #439, #1573, planning#672]
 | T-48 | スタブした HTTP ハンドラ（101 人の所属者・多値属性を持つ利用者） | 所属者・子グループを読む／部門だけを書く | 所属者は**最後のページまで**読む（101 人目が落ちない）。書き込みは `department` 1 キーだけで、他の属性は**多値のまま**持ち越す。読み直して反映されていなければ**例外** | 打ち切り・巻き添え・黙った破棄をしない | 自動（**これは疎通の検証ではない**） |
 | T-49 | 計画の読み取り後に管理画面の無効化（有効状態・保持起点）が入った利用者 | 同期を `Fix` で回す／実プロバイダ実装で部門を書く | その人には**書かず**（見送り）、無効化が残る。実プロバイダ実装は書く直前の読み直しで変化を見つけると **PUT を送らない**。他の人は直る | 管理画面の操作を上書きしない | 自動 |
 | T-50 | 1 人の書き込みが例外になる | 同期を `Fix` で回す | 周期は止まらず他の人は直る。失敗は 1 件と数えられ、計器 `department_sync.users.total{outcome=failed}` に出る | 1 人の失敗で全体を止めない | 自動 |
-| T-51 | 周期の構成が `60`／`00:00:30`／`1.00:00:00`／`00:15:00` | 起動する | 前 3 つは**起動時例外**（数字だけは 60 日になるため・下限 1 分・書式違い）。`00:15:00` は 15 分。子グループも最後のページまで読む | 周期の誤読・過密を起動時に止める | 自動 |
+| T-51 | 周期の構成が `60`／`24:00:00`／`99:00:00`／`00:00:30`／`1.00:00:00`／`00:15:00`／`23:59:00` | 起動する | 前 5 つは**起動時例外**（数字だけ・時 24 以上は日として読まれるため・下限 1 分・書式違い）。`00:15:00` は 15 分、`23:59:00` は受け付ける。子グループも最後のページまで読む | 周期の誤読・過密を起動時に止める | 自動 |
+| T-52 | 周期の途中でホストが停止する（取り消し）／直そうとした全員が「変わった」で見送られる／木の読み取りが落ちる | 同期を `Fix` で回す／常駐の器で回す | 取り消しは**周期ごと中断**し、利用者の失敗として数えない。全員が見送られた周期は計器 `cycles.total{all_skipped_changed}`（一部だけなら数えない）。木の読み取りの失敗は `cycles.total{aborted}`。これらと利用者の失敗はアラート `DepartmentSyncNotCorrecting` が拾う | 黙って誰も直さない状態を見えるようにする | 自動 |
 
 ## ブラウザ E2E（［2026-08-31 追記 / #1099］置いた）
 
@@ -142,7 +143,7 @@ issues: [#452, #438, #1101, #439, #1573, planning#672]
 ## 関連仕様
 
 - 画面仕様書: [ユーザーアカウント管理](../screens/SC-17_user-account-management.md)
-- 部門の同期のテストコード（T-43〜T-51）: `src/platform/backend/Services/AuthorizationService/Tests/Domain/DepartmentAttributeReconciliationTests.cs`・`.../Tests/Features/Users/DepartmentSync/DepartmentAttributeSyncTests.cs`・`.../Tests/Infrastructure/ExternalServices/KeycloakIdentityAdminClientTests.cs`
+- 部門の同期のテストコード（T-43〜T-52）: `src/platform/backend/Services/AuthorizationService/Tests/Domain/DepartmentAttributeReconciliationTests.cs`・`.../Tests/Features/Users/DepartmentSync/DepartmentAttributeSyncTests.cs`・`.../Tests/Infrastructure/ExternalServices/KeycloakIdentityAdminClientTests.cs`
 - 通信仕様書: [BFF 境界（`/bff/*`）](../api/BFF_bff-surface.md)
 
 ## 未決事項

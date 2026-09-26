@@ -28,20 +28,21 @@ public sealed record DepartmentAttributeSyncOptions(DepartmentAttributeSyncMode 
                 $"{ModeKey} の値 '{declaredMode}' は不正である（Off / Report / Fix のいずれか）。未設定なら Off。"),
         };
 
-        // ［2026-09-26 / #1573 監査］🔴 **書式は `hh:mm:ss` だけを受け付け、下限は 1 分。**
-        // `TimeSpan.TryParse("60")` は **60 日**を返す（秒のつもりの値が黙って 2 か月周期になる）。下限が無いと
-        // `00:00:01` で Keycloak を毎秒叩ける。どちらも起動時に落とす。
+        // ［2026-09-26 / #1573 監査］🔴 **書式は `hh:mm:ss` だけを受け付け、1 分以上 23:59:59 以下。**
+        // `TimeSpan.TryParse("60")` は **60 日**を、`TryParse("24:00:00")` は **24 日**を返す（時が 24 以上だと日として読む）。
+        // さらに 50 日超は `PeriodicTimer` が起動後に例外を投げる。**`TryParseExact` の `hh` は 0〜23 しか受けない**ので、
+        // 誤読も上限超過も起動時に落ちる。下限が無いと `00:00:01` で Keycloak を毎秒叩ける。
         var declaredInterval = configuration[IntervalKey];
         TimeSpan interval;
         if (string.IsNullOrWhiteSpace(declaredInterval))
             interval = DefaultInterval;
-        else if (System.Text.RegularExpressions.Regex.IsMatch(declaredInterval.Trim(), @"^\d{1,2}:\d{2}:\d{2}$")
-                 && TimeSpan.TryParse(declaredInterval.Trim(), System.Globalization.CultureInfo.InvariantCulture, out var t)
+        else if (TimeSpan.TryParseExact(declaredInterval.Trim(), @"hh\:mm\:ss",
+                     System.Globalization.CultureInfo.InvariantCulture, out var t)
                  && t >= MinimumInterval)
             interval = t;
         else
             throw new InvalidOperationException(
-                $"{IntervalKey} の値 '{declaredInterval}' は不正である（hh:mm:ss 形式・{MinimumInterval:hh\\:mm\\:ss} 以上。例 01:00:00）。");
+                $"{IntervalKey} の値 '{declaredInterval}' は不正である（hh:mm:ss 形式・00:01:00〜23:59:59。例 01:00:00）。");
 
         return new DepartmentAttributeSyncOptions(mode, interval);
     }
@@ -50,6 +51,7 @@ public sealed record DepartmentAttributeSyncOptions(DepartmentAttributeSyncMode 
 public sealed class DepartmentAttributeSyncHostedService(
     IServiceScopeFactory scopeFactory,
     DepartmentAttributeSyncOptions options,
+    DepartmentAttributeSyncMetrics metrics,
     ILogger<DepartmentAttributeSyncHostedService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -78,7 +80,10 @@ public sealed class DepartmentAttributeSyncHostedService(
             catch (Exception ex)
             {
                 // 1 周の失敗で常駐を止めない（IdP の一時障害で以後の同期が静かに止まるのを避ける）。
-                logger.LogError(ex, "部門の同期で例外が発生した。次の周期で再試行する。");
+                // ［2026-09-26 / #1573 監査］**周期ごと失敗したことも計器に出す**（`aborted`）。数えないと、
+                // 木の読み取り（部門グループ・所属者）が毎周期落ちていても計器が静かなままになる。
+                metrics.RecordCycle("aborted");
+                logger.LogError(ex, "部門の同期で例外が発生した（周期ごと中断）。次の周期で再試行する。");
             }
         }
         while (await timer.WaitForNextTickAsync(stoppingToken));

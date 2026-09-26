@@ -89,3 +89,11 @@ issue: "#1573"
 
 **軸 4 — 自分の変更で新たに誤りになる記述（規則 10）**: `IIdentityAdminClient` の冒頭注記「属性の実体は Keycloak のユーザー属性ひとつ」は正しいまま
 （正本の所在が変わるのは `department` だけで、実体は属性のまま）。SC-17 画面仕様の「部門＝属性辞書の許可値のみ」は Fix 有効時に実効が変わるため注記する。
+
+## ［2026-09-26 追記 / #1573 差分監査］アラートの反映先（母集合）
+
+`git grep -ln "UnitDocumentsMissingProjectAttribute"`（同型の「0 が正常」の前進検知ルール）で引いた 4 か所 —— `deploy/prometheus/alerts.yml`・
+`deploy/local/observability/prometheus.yaml`・`deploy/grafana/provisioning/alerting/slo-alerts.yaml`・`deploy/local/observability/grafana.yaml` —— へ
+`DepartmentSyncNotCorrecting` を足した。ルール数の導出値（19 → 20）は `git grep -n "alert-rules\` が 19\|両経路とも 19"` で引いた
+`slo-alerts.yaml`・`grafana.yaml`・`scripts/check-grafana-alerting.js`・`docs/operations/operations.md` を数え直した。
+**除外**: `scripts/reset-floor.test.js`（床の器の規則だけを検査する。本ルールと無関係）・`deploy/local/tag-seed/tags.json` / `docs/how-to/*` / `scripts/check-coverage-floor.js` 等の「19 件」（別の数）。
