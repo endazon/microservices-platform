@@ -148,6 +148,7 @@
       "ConfigViewerPolicyTests",
       "DriftDetectorTests",
       "DriftServiceCoverageTests",
+      "HttpEffectiveConfigCollectorTests",
       "IntrospectionEndpointTests",
       "IntrospectionGrpcDeploymentWiringTests",
       "IntrospectionGrpcFaceTests",

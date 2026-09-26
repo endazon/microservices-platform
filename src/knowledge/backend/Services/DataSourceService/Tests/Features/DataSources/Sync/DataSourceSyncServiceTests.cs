@@ -345,6 +345,9 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     // 探索と 1 件の取得の両方の捕捉に置く。素の `OperationCanceledException`（`ct.ThrowIfCancellationRequested()`）で起こしていた間は、
     // 絞り込みを「`TaskCanceledException` なら時間切れ」と**型で**判定する変異（`|| ex is TaskCanceledException`）が生き残り、
     // 取得の捕捉には対照そのものが無かった（#1619 の監査の指摘を #1604 の対照へ広げた）。
+    // ［#1630］外へ出たのが**注入した取り消しそのもの**（`BeSameAs`）であることを測る。型の表明だけでは、取得の捕捉の変異を落とせて
+    // いたのは「変異の下では後段が素の `OperationCanceledException` を投げ直し、型が違った」からにすぎなかった（後段が同じ型で
+    // 投げ直せば緑になる）。DocumentService の対照（`DeletionPropagationTests`）と同じ形である。
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -352,12 +355,14 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     {
         using var scope = factory.Services.CreateScope();
         using var cts = new CancellationTokenSource();
-        var svc = BuildService(scope, new CancellingConnector(cts, onDiscover));
+        var connector = new CancellingConnector(cts, onDiscover);
+        var svc = BuildService(scope, connector);
         var source = DataSource.Create("stopping", "filesystem", "");
 
         var act = async () => await svc.SyncAsync(source, cts.Token);
 
-        await act.Should().ThrowAsync<TaskCanceledException>("呼び出し側の取り消しは失敗へ畳まず、そのまま外へ出す");
+        (await act.Should().ThrowAsync<TaskCanceledException>("呼び出し側の取り消しは失敗へ畳まず、そのまま外へ出す"))
+            .Which.Should().BeSameAs(connector.Injected, "接続子が投げた取り消しをそのまま伝えている（失敗へ畳んで次へ進んでいない）");
         source.ConsecutiveFailureCount.Should().Be(0, "停止要求はソースの失敗ではない");
     }
 
@@ -447,12 +452,15 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
                 ? throw Cancel(ct)
                 : throw new InvalidOperationException("呼び出し側の取り消しの後に次の件の取得へ進んだ");
 
+        // 投げた取り消し（#1630: 外へ出たのがこれそのものであることを試験が表明する）。
+        public TaskCanceledException? Injected { get; private set; }
+
         private TaskCanceledException Cancel(CancellationToken ct)
         {
             caller.Cancel();
             if (!ct.IsCancellationRequested)
                 throw new InvalidOperationException("呼び出し側の取り消しが ct に届いていない（試験の前提の誤り）");
-            return new TaskCanceledException("A task was canceled.", null, ct);
+            return Injected = new TaskCanceledException("A task was canceled.", null, ct);
         }
     }
 
