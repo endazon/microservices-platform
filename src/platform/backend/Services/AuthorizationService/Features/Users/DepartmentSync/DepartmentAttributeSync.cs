@@ -20,14 +20,27 @@ namespace AuthorizationService.Features.Users.DepartmentSync;
 //   グループは変えない（逆向きに直さない）。0 個・2 個以上は上書きしない。他の属性・ロール・クレーム・マッパー・
 //   クライアントには触れない。部門グループに属さないサービスアカウント（AST のクライアントを含む）は対象に現れない。
 //
+// ■ ［2026-09-26 / #1573 監査］🔴 **SC-17 の操作との競合**: Keycloak の利用者更新は表現全体の PUT で条件付き更新が無い。
+//   計画の読み取りと書き込みの間に SC-17 の無効化（`enabled=false` ＋ 保持起点）が入ると、古い表現で上書きし得る。
+//   書く直前に読み直し、有効状態・部門以外の属性が変わっていれば見送る（`DepartmentWriteOutcome.Changed`）。
+//   **残る窓はその読み直しから PUT までの 1 往復**であり、ゼロにはできない（運用仕様書に明記）。
+//
+// ■ 1 人の失敗（例外）は数えて続ける。失敗数はログ（Warning）と計器 `DepartmentAttributeSyncMetrics` に出す。
+//
 // ■ 冪等: 直した後にもう一度回すと、全員が InSync（または Unresolved）になり書き込みは 0 件である。
-public sealed class DepartmentAttributeSync(IIdentityAdminClient identity, ILogger<DepartmentAttributeSync> logger)
+public sealed class DepartmentAttributeSync(
+    IIdentityAdminClient identity, DepartmentAttributeSyncMetrics metrics, ILogger<DepartmentAttributeSync> logger)
 {
-    /// <summary>1 周分の結果。<see cref="RootFound"/> が false なら `/department` グループが realm に無い（何もしない）。</summary>
+    /// <summary>
+    /// 1 周分の結果。<see cref="RootFound"/> が false なら `/department` グループが realm に無い（何もしない）。
+    /// <see cref="SkippedChanged"/> は書く直前に利用者が変わっていたので見送った人数、<see cref="Failed"/> は書き込みが例外になった人数。
+    /// </summary>
     public sealed record Outcome(
         bool RootFound,
         IReadOnlyList<DepartmentAttributeFinding> Findings,
-        int Corrected)
+        int Corrected,
+        int SkippedChanged = 0,
+        int Failed = 0)
     {
         public int InSync => Findings.Count(f => f.Verdict == DepartmentAttributeVerdict.InSync);
         public int Mismatched => Findings.Count(f => f.Verdict == DepartmentAttributeVerdict.Mismatch);
@@ -44,30 +57,58 @@ public sealed class DepartmentAttributeSync(IIdentityAdminClient identity, ILogg
         {
             logger.LogWarning(
                 "部門の同期: realm に /department グループが無い。部門グループの所属から属性を合わせられない（何もしない）。");
+            metrics.RecordCycle("aborted");
             return new Outcome(false, [], 0);
         }
 
-        var (codesByUser, currentByUser) = await CollectAsync(root, ct);
+        var (codesByUser, currentByUser, observed) = await CollectAsync(root, ct);
         var findings = DepartmentAttributeReconciliation.Plan(codesByUser, currentByUser);
 
-        var corrected = 0;
+        int corrected = 0, skipped = 0, failed = 0, notFound = 0;
         foreach (var finding in findings)
         {
             switch (finding.Verdict)
             {
                 case DepartmentAttributeVerdict.Mismatch when mode == DepartmentAttributeSyncMode.Fix:
-                    // 🔴 **グループのコードへ直す。** 書けたことは IdP 実装が読み直して確かめる（捨てられたら例外）。
-                    var updated = await identity.SetDepartmentAttributeAsync(finding.UserId, finding.Expected!, ct);
-                    if (updated is null)
+                    // ［2026-09-26 / #1573 監査］🔴 **1 人の失敗で周期を止めない。** 例外（IdP の一時障害・属性が
+                    // 捨てられた等）は利用者ごとに捕まえて数え、残りの人は続ける。失敗数はログと計器に出す。
+                    try
                     {
-                        logger.LogWarning(
-                            "部門の同期: 利用者 {UserId} は直す前に居なくなった（削除された）。飛ばす。", finding.UserId);
-                        continue;
+                        // 🔴 **グループのコードへ直す。** 計画の読み取りの像を渡し、書く直前に変わっていれば IdP 実装が見送る。
+                        var result = await identity.SetDepartmentAttributeAsync(
+                            finding.UserId, finding.Expected!, observed[finding.UserId], ct);
+                        switch (result.Outcome)
+                        {
+                            case DepartmentWriteOutcome.Applied:
+                                corrected++;
+                                logger.LogInformation(
+                                    "部門の同期: 利用者 {UserId} の属性 department を部門グループに合わせて直した（{Current} → {Expected}）。",
+                                    finding.UserId, Printable(finding.Current), finding.Expected);
+                                break;
+                            case DepartmentWriteOutcome.Changed:
+                                skipped++;
+                                logger.LogInformation(
+                                    "部門の同期: 利用者 {UserId} は読み取り後に有効状態か他の属性が変わった（管理画面の操作等）。"
+                                    + "上書きしないよう今回は見送り、次の周期で読み直す。",
+                                    finding.UserId);
+                                break;
+                            default:
+                                notFound++;
+                                logger.LogWarning(
+                                    "部門の同期: 利用者 {UserId} は直す前に居なくなった（削除された）。飛ばす。", finding.UserId);
+                                break;
+                        }
                     }
-                    corrected++;
-                    logger.LogInformation(
-                        "部門の同期: 利用者 {UserId} の属性 department を部門グループに合わせて直した（{Current} → {Expected}）。",
-                        finding.UserId, Printable(finding.Current), finding.Expected);
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        failed++;
+                        logger.LogError(ex,
+                            "部門の同期: 利用者 {UserId} の属性 department を直せなかった。他の利用者は続ける。", finding.UserId);
+                    }
                     break;
 
                 case DepartmentAttributeVerdict.Mismatch:
@@ -84,20 +125,32 @@ public sealed class DepartmentAttributeSync(IIdentityAdminClient identity, ILogg
             }
         }
 
-        var outcome = new Outcome(true, findings, corrected);
-        logger.LogInformation(
-            "部門の同期（{Mode}）: 一致 {InSync} / 食い違い {Mismatched} / 直した {Corrected} / 未解決（複数所属）{Unresolved}。",
-            mode, outcome.InSync, outcome.Mismatched, outcome.Corrected, outcome.Unresolved);
+        metrics.RecordUsers("corrected", corrected);
+        metrics.RecordUsers("skipped_changed", skipped);
+        metrics.RecordUsers("failed", failed);
+        metrics.RecordUsers("not_found", notFound);
+        metrics.RecordCycle(failed > 0 ? "completed_with_failures" : "completed");
+
+        var outcome = new Outcome(true, findings, corrected, skipped, failed);
+        var summary =
+            "部門の同期（{Mode}）: 一致 {InSync} / 食い違い {Mismatched} / 直した {Corrected} / 見送り（変更あり）{Skipped} / "
+            + "失敗 {Failed} / 未解決（複数所属）{Unresolved}。";
+        if (failed > 0)
+            logger.LogWarning(summary, mode, outcome.InSync, outcome.Mismatched, corrected, skipped, failed, outcome.Unresolved);
+        else
+            logger.LogInformation(summary, mode, outcome.InSync, outcome.Mismatched, corrected, skipped, failed, outcome.Unresolved);
         return outcome;
     }
 
     // `/department` の木を辿り、利用者ごとに所属する部門コード（入れ子は上位に畳む）と現在の属性を集める。
     // 🔴 部門コードはグループの**パス**から取る（名前では取らない。`/teams/sales` と `/department/sales` を混ぜない）。
-    private async Task<(Dictionary<string, IReadOnlySet<string>>, Dictionary<string, string?>)> CollectAsync(
-        IdentityGroup root, CancellationToken ct)
+    // 所属者の像（`observed`）も返す —— 書く直前に「読み取りから変わっていないか」を IdP 実装が確かめる基準である。
+    private async Task<(Dictionary<string, IReadOnlySet<string>>, Dictionary<string, string?>, Dictionary<string, IdentityUser>)>
+        CollectAsync(IdentityGroup root, CancellationToken ct)
     {
         var codes = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         var current = new Dictionary<string, string?>(StringComparer.Ordinal);
+        var observed = new Dictionary<string, IdentityUser>(StringComparer.Ordinal);
 
         var pending = new Queue<IdentityGroup>(await identity.ListSubGroupsAsync(root.Id, ct));
         while (pending.Count > 0)
@@ -111,6 +164,7 @@ public sealed class DepartmentAttributeSync(IIdentityAdminClient identity, ILogg
                 if (!codes.TryGetValue(member.Id, out var set))
                     codes[member.Id] = set = new HashSet<string>(StringComparer.Ordinal);
                 set.Add(code);
+                observed[member.Id] = member;
                 current[member.Id] = member.Attributes.TryGetValue(DepartmentAttributeReconciliation.AttributeKey, out var v)
                     ? v
                     : null;
@@ -120,7 +174,8 @@ public sealed class DepartmentAttributeSync(IIdentityAdminClient identity, ILogg
                 pending.Enqueue(child);
         }
 
-        return (codes.ToDictionary(kv => kv.Key, kv => (IReadOnlySet<string>)kv.Value, StringComparer.Ordinal), current);
+        return (codes.ToDictionary(kv => kv.Key, kv => (IReadOnlySet<string>)kv.Value, StringComparer.Ordinal),
+            current, observed);
     }
 
     // 属性値は管理者が入れた文字列である。ログ行を割らないよう改行・制御文字を落とす（無ければ「なし」）。

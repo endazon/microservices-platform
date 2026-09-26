@@ -200,8 +200,15 @@ public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
         ]);
 
     // FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): `department` 1 キーだけを書く。
-    public Task<IdentityUser?> SetDepartmentAttributeAsync(string userId, string department, CancellationToken ct)
-        => Task.FromResult(Mutate(userId, u => u.Attributes["department"] = department));
+    // 🔴 本物と同じく、計画の読み取りから有効状態・部門以外の属性が変わっていたら書かない（#1573 監査）。
+    public Task<DepartmentWriteResult> SetDepartmentAttributeAsync(
+        string userId, string department, IdentityUser observed, CancellationToken ct)
+    {
+        if (!_users.TryGetValue(userId, out var user)) return Task.FromResult(DepartmentWriteResult.NotFound);
+        if (!DepartmentWriteResult.SameExceptDepartment(observed, user.ToIdentityUser()))
+            return Task.FromResult(DepartmentWriteResult.Changed);
+        return Task.FromResult(DepartmentWriteResult.Applied(Mutate(userId, u => u.Attributes["department"] = department)!));
+    }
 
     public Task<IReadOnlyList<string>> ListAssignableRolesAsync(CancellationToken ct)
         => Task.FromResult<IReadOnlyList<string>>([.. AssignableRoles]);

@@ -11,7 +11,7 @@ ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-2
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088]
 iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473]
 specs: [20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group]
-issues: [#1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, AST#18, AST#24, AST#727, planning#383]
+issues: [#1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, AST#18, AST#24, AST#727, planning#383, planning#672]
 -->
 
 # セキュリティ仕様書
@@ -160,6 +160,7 @@ ABAC が判定に使う利用者の部門は IdP の利用者属性 `department`
 | 有効化 | 構成 `DepartmentAttributeSync:Mode`（`Off` 既定 / `Report` / `Fix`）。🔴 **既定は `Off` で、IdP へ問い合わせもしない。値域外の宣言は起動時に落ちる** |
 | 書く主体と権限 | 利用者アカウント管理と同じ機密クライアント（`view-users` / `manage-users`）。**主体・ロールは増やさない** |
 | 書く範囲 | 部門グループに**ちょうど 1 つ**属する利用者の属性 `department` の 1 キーだけ。他の属性・ロール・グループ・クライアント・secret には触れない |
+| 管理画面との競合 | 書く直前に読み直し、有効状態か部門以外の属性が変わっていれば見送る。**読み直しから書き込みまでの 1 往復の窓は残る**（Keycloak に条件付き更新が無い）。窓の中の無効化は上書きされ得る |
 | 書かない相手 | 部門グループが 0 個・2 個以上の利用者（未解決。消しもしない）。部門グループに属さないサービスアカウント |
 | ログ | 件数と、食い違い・未解決の利用者の IdP 内部 ID と値（制御文字を落とす）。利用者名は出さない |
 

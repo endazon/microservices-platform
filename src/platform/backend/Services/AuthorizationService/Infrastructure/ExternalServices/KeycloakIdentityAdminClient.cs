@@ -323,24 +323,41 @@ public sealed class KeycloakIdentityAdminClient(
     // （単一値キーは先頭 1 値へ畳んだ像）を書き戻すと、多値で入っている他の属性の 2 値目以降が消える。
     // 現在の表現を多値のまま持ち越し、`department` の 1 キーだけを差し替える（`SetRetentionAnchorAsync` と同じ形）。
     // 書けたことは読み直して確かめる（unmanaged 属性を黙って捨てる realm への fail-closed）。
-    public async Task<IdentityUser?> SetDepartmentAttributeAsync(
-        string userId, string department, CancellationToken ct)
+    //
+    // ［2026-09-26 / #1573 監査］🔴 **書く直前の GET で、計画の読み取りから有効状態・部門以外の属性が変わっていないかを
+    // 確かめ、変わっていれば PUT しない**（`Changed`）。Keycloak の `PUT /users/{id}` は表現全体の置き換えで If-Match を
+    // 持たないため、計画の読み取り〜PUT の間に入った SC-17 の無効化（`enabled=false` ＋ 保持起点）を古い表現で上書きし得る。
+    // この確認で窓は「この GET から PUT まで」（1 往復）に縮む。**ゼロにはできない**（Keycloak に条件付き更新が無い）。
+    // 残る窓は運用仕様書に書いてある。
+    public async Task<DepartmentWriteResult> SetDepartmentAttributeAsync(
+        string userId, string department, IdentityUser observed, CancellationToken ct)
     {
         var client = await AuthorizedClientAsync(ct);
-        var updated = await UpdateAndReloadAsync(client, userId, current =>
-        {
-            var attributes = CurrentAttributes(current);
-            attributes[DepartmentAttributeKey] = [department];
-            return new Dictionary<string, object?> { ["attributes"] = attributes };
-        }, ct);
+        var path = $"admin/realms/{Realm}/users/{Uri.EscapeDataString(userId)}";
+        var response = await client.GetAsync(path, ct);
+        if (response.StatusCode == HttpStatusCode.NotFound) return DepartmentWriteResult.NotFound;
+        response.EnsureSuccessStatusCode();
+        var representation = await response.Content.ReadFromJsonAsync<JsonObject>(Json, ct);
+        if (representation is null) return DepartmentWriteResult.NotFound;
 
-        if (updated is not null)
-        {
-            EnsureAttributesWereApplied(
-                new Dictionary<string, string>(StringComparer.Ordinal) { [DepartmentAttributeKey] = department },
-                updated);
-        }
-        return updated;
+        var current = JsonSerializer.Deserialize<KeycloakUser>(representation, Json);
+        if (current is null || !DepartmentWriteResult.SameExceptDepartment(observed, ToIdentityUser(current, [])))
+            return DepartmentWriteResult.Changed;
+
+        foreach (var computed in ServerComputedFields) representation.Remove(computed);
+        var attributes = CurrentAttributes(representation);
+        attributes[DepartmentAttributeKey] = [department];
+        representation["attributes"] = JsonSerializer.SerializeToNode(attributes, Json);
+
+        var put = await client.PutAsJsonAsync(path, representation, Json, ct);
+        if (put.StatusCode == HttpStatusCode.NotFound) return DepartmentWriteResult.NotFound;
+        put.EnsureSuccessStatusCode();
+
+        var updated = await ReloadAsync(client, userId, ct);
+        if (updated is null) return DepartmentWriteResult.NotFound;
+        EnsureAttributesWereApplied(
+            new Dictionary<string, string>(StringComparer.Ordinal) { [DepartmentAttributeKey] = department }, updated);
+        return DepartmentWriteResult.Applied(updated);
     }
 
     private const string DepartmentAttributeKey = "department";

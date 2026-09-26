@@ -13,6 +13,9 @@ public sealed record DepartmentAttributeSyncOptions(DepartmentAttributeSyncMode 
     // 既定の周期。人事連携がグループを変えてから属性が追随するまでの遅れの上限になる。
     public static readonly TimeSpan DefaultInterval = TimeSpan.FromHours(1);
 
+    // 周期の下限。これより短いと Keycloak を叩きすぎる（1 周で部門グループの数だけ往復が走る）。
+    public static readonly TimeSpan MinimumInterval = TimeSpan.FromMinutes(1);
+
     public static DepartmentAttributeSyncOptions FromConfiguration(IConfiguration configuration)
     {
         var declaredMode = configuration[ModeKey];
@@ -25,14 +28,20 @@ public sealed record DepartmentAttributeSyncOptions(DepartmentAttributeSyncMode 
                 $"{ModeKey} の値 '{declaredMode}' は不正である（Off / Report / Fix のいずれか）。未設定なら Off。"),
         };
 
-        var interval = configuration[IntervalKey] switch
-        {
-            null or "" => DefaultInterval,
-            var declared when TimeSpan.TryParse(declared, System.Globalization.CultureInfo.InvariantCulture, out var t)
-                             && t > TimeSpan.Zero => t,
-            var declared => throw new InvalidOperationException(
-                $"{IntervalKey} の値 '{declared}' は不正である（正の時間。例 01:00:00）。"),
-        };
+        // ［2026-09-26 / #1573 監査］🔴 **書式は `hh:mm:ss` だけを受け付け、下限は 1 分。**
+        // `TimeSpan.TryParse("60")` は **60 日**を返す（秒のつもりの値が黙って 2 か月周期になる）。下限が無いと
+        // `00:00:01` で Keycloak を毎秒叩ける。どちらも起動時に落とす。
+        var declaredInterval = configuration[IntervalKey];
+        TimeSpan interval;
+        if (string.IsNullOrWhiteSpace(declaredInterval))
+            interval = DefaultInterval;
+        else if (System.Text.RegularExpressions.Regex.IsMatch(declaredInterval.Trim(), @"^\d{1,2}:\d{2}:\d{2}$")
+                 && TimeSpan.TryParse(declaredInterval.Trim(), System.Globalization.CultureInfo.InvariantCulture, out var t)
+                 && t >= MinimumInterval)
+            interval = t;
+        else
+            throw new InvalidOperationException(
+                $"{IntervalKey} の値 '{declaredInterval}' は不正である（hh:mm:ss 形式・{MinimumInterval:hh\\:mm\\:ss} 以上。例 01:00:00）。");
 
         return new DepartmentAttributeSyncOptions(mode, interval);
     }

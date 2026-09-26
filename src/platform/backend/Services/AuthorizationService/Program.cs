@@ -67,6 +67,9 @@ builder.Services.AddSingleton(RetentionAnchorOptions.FromConfiguration(builder.C
 builder.Services.AddSingleton(
     AuthorizationService.Features.Users.DepartmentSync.DepartmentAttributeSyncOptions.FromConfiguration(
         builder.Configuration));
+builder.Services.AddSingleton<AuthorizationService.Features.Users.DepartmentSync.DepartmentAttributeSyncMetrics>();
+builder.Services.AddOpenTelemetry().WithMetrics(metrics => metrics.AddMeter(
+    AuthorizationService.Features.Users.DepartmentSync.DepartmentAttributeSyncMetrics.MeterName));
 builder.Services.AddScoped<AuthorizationService.Features.Users.DepartmentSync.DepartmentAttributeSync>();
 builder.Services.AddHostedService<AuthorizationService.Features.Users.DepartmentSync.DepartmentAttributeSyncHostedService>();
 

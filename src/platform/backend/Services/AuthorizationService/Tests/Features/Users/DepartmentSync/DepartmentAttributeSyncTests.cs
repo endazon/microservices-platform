@@ -4,6 +4,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Diagnostics.Metrics;
 
 namespace AuthorizationService.Tests.Features.Users.DepartmentSync;
 
@@ -40,8 +41,11 @@ public class DepartmentAttributeSyncTests
         return realm;
     }
 
+    private static readonly IMeterFactory Meters =
+        new ServiceCollection().AddMetrics().BuildServiceProvider().GetRequiredService<IMeterFactory>();
+
     private static DepartmentAttributeSync Sync(FakeDepartmentIdentity realm)
-        => new(realm, NullLogger<DepartmentAttributeSync>.Instance);
+        => new(realm, new DepartmentAttributeSyncMetrics(Meters), NullLogger<DepartmentAttributeSync>.Instance);
 
     // 受け入れ基準 1・2: Fix は食い違いを**グループのコード**へ直す。グループの所属は変えない。
     [Fact]
@@ -152,11 +156,86 @@ public class DepartmentAttributeSyncTests
     [InlineData("2", null)]
     [InlineData("Fix", "0")]
     [InlineData("Fix", "soon")]
+    [InlineData("Fix", "60")]        // 🔴 TimeSpan.TryParse なら 60 日になる値（#1573 監査）
+    [InlineData("Fix", "00:00:30")]  // 下限（1 分）未満
+    [InlineData("Fix", "1.00:00:00")] // hh:mm:ss 以外の書式
     public void Options_reject_undeclared_values(string mode, string? interval)
     {
         var act = () => DepartmentAttributeSyncOptions.FromConfiguration(Config(mode, interval));
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*DepartmentAttributeSync:*");
+    }
+
+    [Theory]
+    [InlineData("00:01:00", 1)]
+    [InlineData("00:15:00", 15)]
+    [InlineData(" 01:30:00 ", 90)]
+    public void Options_accept_hh_mm_ss_intervals_of_at_least_a_minute(string declared, int minutes)
+        => DepartmentAttributeSyncOptions.FromConfiguration(Config("Fix", declared))
+            .Interval.Should().Be(TimeSpan.FromMinutes(minutes));
+
+    // ── #1573 監査: 1 人の失敗で周期を止めない ──────────────────────────────
+
+    // 🔴 1 人の書き込みが例外でも、他の人は直り、失敗は数えられて計器に出る。
+    [Fact]
+    public async Task A_failing_user_is_counted_and_the_others_are_still_corrected()
+    {
+        var realm = Realm();
+        realm.FailWritesFor.Add("u-wrong");
+        using var listener = FailedCounter(out var failures);
+
+        var outcome = await Sync(realm).RunAsync(DepartmentAttributeSyncMode.Fix, Ct);
+
+        outcome.Failed.Should().Be(1);
+        outcome.Corrected.Should().Be(2);
+        realm.Department("u-missing").Should().Be("hr", "失敗した人の後ろの人も直る");
+        realm.Department("u-nested").Should().Be("engineering");
+        realm.Department("u-wrong").Should().Be("engineering", "失敗した人の属性は変わっていない");
+        failures().Should().Be(1, "失敗は計器 department_sync.users.total{outcome=failed} に出る");
+    }
+
+    // ── #1573 監査: SC-17 の操作との競合 ─────────────────────────────────
+
+    // 🔴 計画の読み取り後に有効状態が変わった（SC-17 の無効化）人は書かない。**無効化を取り消さない。**
+    [Fact]
+    public async Task A_user_changed_after_the_read_is_skipped_not_overwritten()
+    {
+        var realm = Realm();
+        realm.BeforeWrite = userId =>
+        {
+            if (userId == "u-wrong") realm.Disable("u-wrong", "2026-09-26T00:00:00Z");
+        };
+
+        var outcome = await Sync(realm).RunAsync(DepartmentAttributeSyncMode.Fix, Ct);
+
+        outcome.SkippedChanged.Should().Be(1);
+        realm.Writes.Select(w => w.UserId).Should().NotContain("u-wrong");
+        realm.IsEnabled("u-wrong").Should().BeFalse("無効化は残る");
+        realm.Department("u-wrong").Should().Be("engineering");
+        outcome.Corrected.Should().Be(2, "他の人は直る");
+    }
+
+    private static MeterListener FailedCounter(out Func<long> read)
+    {
+        long total = 0;
+        var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, l) =>
+            {
+                if (instrument.Meter.Name == DepartmentAttributeSyncMetrics.MeterName
+                    && instrument.Name == DepartmentAttributeSyncMetrics.OutcomeCounterName)
+                    l.EnableMeasurementEvents(instrument);
+            },
+        };
+        listener.SetMeasurementEventCallback<long>((_, value, tags, _) =>
+        {
+            foreach (var tag in tags)
+                if (tag.Key == DepartmentAttributeSyncMetrics.OutcomeTag && (string?)tag.Value == "failed")
+                    Interlocked.Add(ref total, value);
+        });
+        listener.Start();
+        read = () => Interlocked.Read(ref total);
+        return listener;
     }
 
     // 🔴 Off のときは器が同期を**解決すらしない**（スコープを作らない）。
@@ -200,6 +279,20 @@ public class DepartmentAttributeSyncTests
         private readonly List<IdentityGroup> _groups = [];
         private readonly Dictionary<string, Dictionary<string, string>> _attributes = new(StringComparer.Ordinal);
         private readonly Dictionary<string, List<string>> _members = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, bool> _enabled = new(StringComparer.Ordinal);
+
+        public HashSet<string> FailWritesFor { get; } = new(StringComparer.Ordinal);
+
+        // 計画の読み取りと書き込みの間に割り込む操作（SC-17 の無効化などを模す）。
+        public Action<string>? BeforeWrite { get; set; }
+
+        public void Disable(string userId, string anchor)
+        {
+            _enabled[userId] = false;
+            _attributes[userId]["account_disabled_at"] = anchor;
+        }
+
+        public bool IsEnabled(string userId) => _enabled[userId];
 
         public List<(string UserId, string Department)> Writes { get; } = [];
         public int Calls { get; private set; }
@@ -209,6 +302,7 @@ public class DepartmentAttributeSyncTests
         public void User(string id, string? department, params string[] groupIds)
         {
             _attributes[id] = new Dictionary<string, string>(StringComparer.Ordinal) { ["clearance"] = "internal" };
+            _enabled[id] = true;
             if (department is not null) _attributes[id]["department"] = department;
             foreach (var g in groupIds)
             {
@@ -223,7 +317,7 @@ public class DepartmentAttributeSyncTests
             => _members.ToDictionary(kv => kv.Key, kv => kv.Value.ToArray(), StringComparer.Ordinal);
 
         private IdentityUser Snapshot(string id)
-            => new(id, id, id, true, [], new Dictionary<string, string>(_attributes[id], StringComparer.Ordinal));
+            => new(id, id, id, _enabled[id], [], new Dictionary<string, string>(_attributes[id], StringComparer.Ordinal));
 
         public Task<IdentityGroup?> FindGroupByPathAsync(string path, CancellationToken ct)
         {
@@ -249,13 +343,19 @@ public class DepartmentAttributeSyncTests
                 [.. _members.GetValueOrDefault(groupId, []).Select(Snapshot)]);
         }
 
-        public Task<IdentityUser?> SetDepartmentAttributeAsync(string userId, string department, CancellationToken ct)
+        // 本物と同じ意味論: 書く直前の像が計画の読み取り（observed）と有効状態・部門以外の属性で違えば書かない。
+        public Task<DepartmentWriteResult> SetDepartmentAttributeAsync(
+            string userId, string department, IdentityUser observed, CancellationToken ct)
         {
             Calls++;
-            if (!_attributes.ContainsKey(userId)) return Task.FromResult<IdentityUser?>(null);
+            BeforeWrite?.Invoke(userId);
+            if (FailWritesFor.Contains(userId)) throw new HttpRequestException("Keycloak が 500 を返した（偽）");
+            if (!_attributes.ContainsKey(userId)) return Task.FromResult(DepartmentWriteResult.NotFound);
+            if (!DepartmentWriteResult.SameExceptDepartment(observed, Snapshot(userId)))
+                return Task.FromResult(DepartmentWriteResult.Changed);
             Writes.Add((userId, department));
             _attributes[userId]["department"] = department;
-            return Task.FromResult<IdentityUser?>(Snapshot(userId));
+            return Task.FromResult(DepartmentWriteResult.Applied(Snapshot(userId)));
         }
 
         public Task<IReadOnlyList<IdentityUser>> ListUsersAsync(CancellationToken ct) => throw Untouchable();

@@ -11,7 +11,7 @@ ids: [FR-05, FR-09, SC-09, SC-17, UC-05]
 adrs: [ADR-0004, ADR-0026, ADR-0031, ADR-0032, ADR-0115]
 iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0044, IADR-0124, IADR-0128, IADR-0129, IADR-0135, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329, IADR-0330, IADR-0473]
 specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260905_issue-439_session-revocation-e2e, 20260926_issue-1573_department-attribute-follows-group]
-issues: [#452, #438, #1101, #439, #1573]
+issues: [#452, #438, #1101, #439, #1573, planning#672]
 -->
 
 # テスト仕様書: ユーザーアカウント管理
@@ -94,6 +94,9 @@ issues: [#452, #438, #1101, #439, #1573]
 | T-46 | 一度 `Fix` で直した後 | 同期をもう一度回す | **書き込み 0 件**・食い違い 0 件（冪等） | 冪等 | 自動 |
 | T-47 | 構成が空／`Off`／`Report`／値域外（綴り違い・数値・周期 0） | 起動する／同期を回す | 空と `Off` は IdP へ**1 回も問い合わせない**（器はスコープも作らない）。`Report` は検知だけで書かない。値域外は**起動時例外** | 既定で無効（opt-in） | 自動 |
 | T-48 | スタブした HTTP ハンドラ（101 人の所属者・多値属性を持つ利用者） | 所属者・子グループを読む／部門だけを書く | 所属者は**最後のページまで**読む（101 人目が落ちない）。書き込みは `department` 1 キーだけで、他の属性は**多値のまま**持ち越す。読み直して反映されていなければ**例外** | 打ち切り・巻き添え・黙った破棄をしない | 自動（**これは疎通の検証ではない**） |
+| T-49 | 計画の読み取り後に管理画面の無効化（有効状態・保持起点）が入った利用者 | 同期を `Fix` で回す／実プロバイダ実装で部門を書く | その人には**書かず**（見送り）、無効化が残る。実プロバイダ実装は書く直前の読み直しで変化を見つけると **PUT を送らない**。他の人は直る | 管理画面の操作を上書きしない | 自動 |
+| T-50 | 1 人の書き込みが例外になる | 同期を `Fix` で回す | 周期は止まらず他の人は直る。失敗は 1 件と数えられ、計器 `department_sync.users.total{outcome=failed}` に出る | 1 人の失敗で全体を止めない | 自動 |
+| T-51 | 周期の構成が `60`／`00:00:30`／`1.00:00:00`／`00:15:00` | 起動する | 前 3 つは**起動時例外**（数字だけは 60 日になるため・下限 1 分・書式違い）。`00:15:00` は 15 分。子グループも最後のページまで読む | 周期の誤読・過密を起動時に止める | 自動 |
 
 ## ブラウザ E2E（［2026-08-31 追記 / #1099］置いた）
 
@@ -139,7 +142,7 @@ issues: [#452, #438, #1101, #439, #1573]
 ## 関連仕様
 
 - 画面仕様書: [ユーザーアカウント管理](../screens/SC-17_user-account-management.md)
-- 部門の同期のテストコード（T-43〜T-48）: `src/platform/backend/Services/AuthorizationService/Tests/Domain/DepartmentAttributeReconciliationTests.cs`・`.../Tests/Features/Users/DepartmentSync/DepartmentAttributeSyncTests.cs`・`.../Tests/Infrastructure/ExternalServices/KeycloakIdentityAdminClientTests.cs`
+- 部門の同期のテストコード（T-43〜T-51）: `src/platform/backend/Services/AuthorizationService/Tests/Domain/DepartmentAttributeReconciliationTests.cs`・`.../Tests/Features/Users/DepartmentSync/DepartmentAttributeSyncTests.cs`・`.../Tests/Infrastructure/ExternalServices/KeycloakIdentityAdminClientTests.cs`
 - 通信仕様書: [BFF 境界（`/bff/*`）](../api/BFF_bff-surface.md)
 
 ## 未決事項

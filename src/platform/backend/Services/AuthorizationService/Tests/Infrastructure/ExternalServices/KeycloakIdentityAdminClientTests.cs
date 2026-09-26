@@ -1,3 +1,4 @@
+using AuthorizationService.Domain.Ports;
 using AuthorizationService.Infrastructure.ExternalServices;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -864,7 +865,9 @@ public class KeycloakIdentityAdminClientTests
                 """)
             .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
 
-        var act = async () => await Client(handler).SetDepartmentAttributeAsync("u1", "sales", Ct);
+        var observed = Observed("u1", enabled: true,
+            ("department", "hr"), ("tags", "sales,hr"), ("clearance", "internal"));
+        var act = async () => await Client(handler).SetDepartmentAttributeAsync("u1", "sales", observed, Ct);
 
         (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain("department");
         var put = handler.Requests.Single(r => r.Method == "PUT");
@@ -888,10 +891,56 @@ public class KeycloakIdentityAdminClientTests
             .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]")
             .Status("admin/realms/platform/users/ghost", HttpStatusCode.NotFound);
 
-        (await Client(handler).SetDepartmentAttributeAsync("u1", "sales", Ct))!
-            .Attributes["department"].Should().Be("sales");
-        (await Client(handler).SetDepartmentAttributeAsync("ghost", "sales", Ct)).Should().BeNull();
+        var applied = await Client(handler).SetDepartmentAttributeAsync(
+            "u1", "sales", Observed("u1", enabled: true, ("department", "hr")), Ct);
+        applied.Outcome.Should().Be(DepartmentWriteOutcome.Applied);
+        applied.User!.Attributes["department"].Should().Be("sales");
+        (await Client(handler).SetDepartmentAttributeAsync("ghost", "sales", Observed("ghost", enabled: true), Ct))
+            .Outcome.Should().Be(DepartmentWriteOutcome.NotFound);
     }
+
+    // #1573 監査: 🔴 計画の読み取りの後に SC-17 の無効化（enabled=false ＋ 保持起点）が入っていたら、
+    // **PUT しない**（古い表現で上書きして無効化を取り消さない）。
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task Setting_the_department_is_skipped_when_the_user_changed_since_the_read(
+        bool enabledNow, bool anchorAdded)
+    {
+        var anchor = anchorAdded ? ",\"account_disabled_at\":[\"2026-09-26T00:00:00Z\"]" : "";
+        var current = "{\"id\":\"u1\",\"username\":\"t\",\"enabled\":" + (enabledNow ? "true" : "false")
+            + ",\"attributes\":{\"department\":[\"hr\"]" + anchor + "}}";
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users/u1", current);
+
+        var result = await Client(handler).SetDepartmentAttributeAsync(
+            "u1", "sales", Observed("u1", enabled: true, ("department", "hr")), Ct);
+
+        result.Outcome.Should().Be(DepartmentWriteOutcome.Changed);
+        handler.Requests.Should().NotContain(r => r.Method == "PUT", "変わっていたら書かない");
+    }
+
+    // #1573 監査: 子グループも最後のページまで読む。
+    [Fact]
+    public async Task Listing_sub_groups_reads_every_page()
+    {
+        var page1 = "[" + string.Join(",", Enumerable.Range(0, KeycloakIdentityAdminClient.PageSize).Select(i =>
+            "{\"id\":\"g" + i + "\",\"name\":\"d" + i + "\",\"path\":\"/department/d" + i + "\"}")) + "]";
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/groups/g-dept/children?briefRepresentation=true&first=0&max=100", page1)
+            .Get("admin/realms/platform/groups/g-dept/children?briefRepresentation=true&first=100&max=100",
+                "[{\"id\":\"g-last\",\"name\":\"last\",\"path\":\"/department/last\"}]");
+
+        var children = await Client(handler).ListSubGroupsAsync("g-dept", Ct);
+
+        children.Should().HaveCount(KeycloakIdentityAdminClient.PageSize + 1);
+        children[^1].Path.Should().Be("/department/last");
+    }
+
+    private static IdentityUser Observed(string id, bool enabled, params (string Key, string Value)[] attributes)
+        => new(id, "t", "t", enabled, [], attributes.ToDictionary(a => a.Key, a => a.Value, StringComparer.Ordinal));
 
     private sealed class StubHandler : HttpMessageHandler
     {

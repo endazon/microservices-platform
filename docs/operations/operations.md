@@ -11,7 +11,7 @@ ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-09, FR-10, FR-11, FR-13, FR-15, NFR-
 adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0115, ADR-0074]
 iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473]
 specs: [20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1557_department-domain-validation]
-issues: [#1573, #1557, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538, AST#346]
+issues: [#1573, #1557, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538, AST#346, planning#672]
 -->
 
 # 運用仕様書
@@ -336,13 +336,27 @@ config（Helm values）で行う。同期ユースケースの基本フロー「
 
 - **構成**: env `DepartmentAttributeSync__Mode`（`Off` / `Report` / `Fix`）と `DepartmentAttributeSync__Interval`（既定 `01:00:00`）を
   authorization-service へ与える。値域外は起動時に落ちる（打ち間違いを黙って無効にしない）。
+  🔴 **周期は `hh:mm:ss` 形式だけを受け付け、下限は `00:01:00`**。`60` のような数字だけの値は起動時に落ちる
+  （.NET の既定の解釈では 60 日になるため受け付けない）。
 - **段階的な適用（稼働 realm。AST の PoC と共有）**:
   1. `Report` で起動し、ログの「部門の同期（Report）」行で食い違いと未解決（複数所属）の件数・対象（IdP 内部 ID）を確かめる。**書き込みは起きない。**
   2. 食い違いがグループ側の誤りなら**グループ所属を直す**（属性ではない）。属性側の誤りなら `Fix` へ切り替える。
   3. `Fix` の周期で属性がグループのコードへ直る。2 周目以降の「直した」は 0 件になる（冪等）。
-- **触れないもの**: グループ所属・他の属性・ロール・有効状態・セッション・realm の構成・マッパー・クライアント・secret。
-  部門グループに属さない利用者（AST のサービスアカウントを含む）は対象に現れない。**realm の reconcile Job は変えていない。**
+- **書くもの**: 部門グループにちょうど 1 つ属する利用者の属性 `department` だけ。グループ所属・ロール・realm の構成・マッパー・
+  クライアント・secret には触れない。部門グループに属さない利用者（AST のサービスアカウントを含む）は対象に現れない。
+  **realm の reconcile Job は変えていない。**
+- 🔴 **利用者アカウント管理画面の操作との競合（残る窓）**: Keycloak の利用者更新は表現全体の置き換え（PUT）で、条件付き更新が無い。
+  同期は書く直前に利用者をもう一度読み、**計画を立てたときから有効状態か部門以外の属性が変わっていれば、その人への書き込みを見送る**
+  （ログ「見送り（変更あり）」・計器の `skipped_changed`。次の周期で読み直す）。それでも**その読み直しから PUT までの 1 往復の間**に
+  管理画面の無効化（有効状態と保持起点の属性の書き込み）が入ると、同期の PUT がそれを古い値で上書きし得る。**この窓はゼロにできない。**
+  影響を避けたい作業（利用者の無効化を多数行う等）の間は `Off` にしておくか、作業後に対象者の状態を確かめる。
+- **失敗の見え方**: 1 人の書き込みが失敗しても周期は止まらず、他の人は直る。失敗した人は IdP 内部 ID つきでエラーログに出て、
+  周期のまとめ行が Warning になり、計器 `department_sync.users.total{department_sync.outcome="failed"}`（周期の結末は
+  `department_sync.cycles.total`）が増える。**0 でない失敗が続くならアラートの対象**である。
 - **注意**: `Fix` の下では、部門グループにちょうど 1 つ属する利用者の部門を利用者アカウント管理画面で別の値へ変えても、次の周期でグループの値へ戻る。
+  画面の扱いは計画側へ問い合わせ中である（trace ブロックの計画リポジトリの issue）。
+- **部門グループから外された利用者**: どの部門グループにも属さなくなった利用者の属性 `department` は、同期が**触らない**（所属から何も言えないため）。
+  古い部門の属性が残り、ABAC はその部門として扱い続ける。外したときは属性も手で消す（この扱いも計画側へ問い合わせ中）。
 - **ロールバック**: env を外す（または `Off`）。既に直した属性は戻らない（直した値はグループのコードそのもの）。
 - **多重実行**: 複数レプリカが同じ処理を回すが、書く値はグループから決まるので結果は同じである（書き込みが重複するだけ）。
 ### データソースの明示部門の値域検証 —— 配備順（データソース登録のユースケース / #1557）
