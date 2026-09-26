@@ -719,7 +719,7 @@ export interface DataSourceDto {
 export type CreateDataSourceRequestConfig = {[key: string]: string} | null;
 
 /**
- * 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない。登録時に限り、department が未指定（空白・unassigned を含む）なら登録する管理者の部門グループ（Keycloak の /department/<コード>。ちょうど 1 つのとき）のコードで先に補う（IADR-0468 / #754）
+ * 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない。登録時に限り、department が未指定（空白・unassigned を含む）なら登録する管理者の部門グループ（Keycloak の /department/<コード>。ちょうど 1 つのとき）のコードで先に補う（IADR-0468 / #754）。明示した department は後段が値域（realm の /department 直下の部門グループのコード。大小文字を区別）で検証し、無ければ 400、値域を引けなければ 502 で、いずれも保存しない。予約値 unassigned・空白は検証しない（ADR-0115 決定 5 / IADR-0472 / #1557）
  */
 export type CreateDataSourceRequestDefaultAttributes = {[key: string]: string} | null;
 
@@ -736,7 +736,7 @@ export interface CreateDataSourceRequest {
   sourceType: string;
   connectionUri: string;
   config?: CreateDataSourceRequestConfig;
-  /** 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない。登録時に限り、department が未指定（空白・unassigned を含む）なら登録する管理者の部門グループ（Keycloak の /department/<コード>。ちょうど 1 つのとき）のコードで先に補う（IADR-0468 / #754） */
+  /** 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない。登録時に限り、department が未指定（空白・unassigned を含む）なら登録する管理者の部門グループ（Keycloak の /department/<コード>。ちょうど 1 つのとき）のコードで先に補う（IADR-0468 / #754）。明示した department は後段が値域（realm の /department 直下の部門グループのコード。大小文字を区別）で検証し、無ければ 400、値域を引けなければ 502 で、いずれも保存しない。予約値 unassigned・空白は検証しない（ADR-0115 決定 5 / IADR-0472 / #1557） */
   defaultAttributes?: CreateDataSourceRequestDefaultAttributes;
   /**
      * FR-05, SC-06（ADR-0074 決定 1・4 / #1194）: `owner` の写像表。未指定は空。
@@ -755,7 +755,7 @@ export interface CreateDataSourceRequest {
 export type UpdateDataSourceRequestConfig = {[key: string]: string} | null;
 
 /**
- * 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない
+ * 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない。明示した department は後段が値域（realm の /department 直下の部門グループのコード。大小文字を区別）で検証し、無ければ 400、値域を引けなければ 502 で、いずれも保存しない。予約値 unassigned・空白は検証しない（ADR-0115 決定 5 / IADR-0472 / #1557）
  */
 export type UpdateDataSourceRequestDefaultAttributes = {[key: string]: string} | null;
 
@@ -783,7 +783,7 @@ export interface UpdateDataSourceRequest {
      * （IADR-0148 決定 6）。読んで書き戻す往復が資格情報を壊さない。
      */
   config: UpdateDataSourceRequestConfig;
-  /** 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない */
+  /** 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない。明示した department は後段が値域（realm の /department 直下の部門グループのコード。大小文字を区別）で検証し、無ければ 400、値域を引けなければ 502 で、いずれも保存しない。予約値 unassigned・空白は検証しない（ADR-0115 決定 5 / IADR-0472 / #1557） */
   defaultAttributes: UpdateDataSourceRequestDefaultAttributes;
   /**
      * FR-05, SC-06（ADR-0074 決定 1 / #1194）: `owner` の写像表。
@@ -797,7 +797,7 @@ export interface UpdateDataSourceRequest {
 export type PatchDataSourceRequestConfig = {[key: string]: string} | null;
 
 /**
- * 指定したときのみ差し替える。差し替え時も必須属性のフェイルセーフを通す（confidentiality / owner / department / lifecycle）
+ * 指定したときのみ差し替える。差し替え時も必須属性のフェイルセーフを通す（confidentiality / owner / department / lifecycle）。明示した department は後段が値域（realm の /department 直下の部門グループのコード。大小文字を区別）で検証し、無ければ 400、値域を引けなければ 502 で、いずれも保存しない。予約値 unassigned・空白は検証しない（ADR-0115 決定 5 / IADR-0472 / #1557）
  */
 export type PatchDataSourceRequestDefaultAttributes = {[key: string]: string} | null;
 
@@ -817,7 +817,7 @@ export interface PatchDataSourceRequest {
   sourceType?: string | null;
   connectionUri?: string | null;
   config?: PatchDataSourceRequestConfig;
-  /** 指定したときのみ差し替える。差し替え時も必須属性のフェイルセーフを通す（confidentiality / owner / department / lifecycle） */
+  /** 指定したときのみ差し替える。差し替え時も必須属性のフェイルセーフを通す（confidentiality / owner / department / lifecycle）。明示した department は後段が値域（realm の /department 直下の部門グループのコード。大小文字を区別）で検証し、無ければ 400、値域を引けなければ 502 で、いずれも保存しない。予約値 unassigned・空白は検証しない（ADR-0115 決定 5 / IADR-0472 / #1557） */
   defaultAttributes?: PatchDataSourceRequestDefaultAttributes;
   /**
      * FR-05, SC-06（ADR-0074 決定 1・4 / #1194）: `owner` の写像表。**`null` は現状維持**。

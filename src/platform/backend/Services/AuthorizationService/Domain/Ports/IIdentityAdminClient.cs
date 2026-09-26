@@ -108,6 +108,21 @@ public interface IIdentityAdminClient
     Task<IReadOnlyList<IdentityGroup>> GetGroupsByIdsAsync(IReadOnlyList<string> ids, CancellationToken ct);
 
     /// <summary>
+    /// FR-05, UC-04, SC-06, 計画 ADR-0115 決定 1・5, ADR-0074 決定 4, [[IADR-0472]] (#1557):
+    /// **フルパスでグループを 1 つ引く**（例 <c>/department/engineering</c>）。居なければ null。
+    ///
+    /// 🔴 **部門コードの値域検証のためにある。** 値域は realm の <c>/department/&lt;code&gt;</c> の
+    /// <c>&lt;code&gt;</c> の集合であり（計画 ADR-0115 決定 1）、問いは「このパスのグループは実在するか」の 1 つだけである。
+    /// <see cref="SearchGroupsAsync"/> で代用しない —— あちらは名前の部分一致を上限つきで返すので、
+    /// 一致する名前が多い realm では目的のグループが上限の外へ落ち、**実在するのに「無い」と答える。**
+    ///
+    /// 🔴 **照合は序数一致である**（返したグループの <see cref="IdentityGroup.Path"/> が要求と完全に一致するときだけ返す）。
+    ///
+    /// 🔴 **これは新規作成の口ではない**（禁止語に触れない読み取りである）。
+    /// </summary>
+    Task<IdentityGroup?> FindGroupByPathAsync(string path, CancellationToken ct);
+
+    /// <summary>
     /// SC-17 入力規則「定義済みロールのみ」の**値域の正**。IdP が持つ割当可能な realm ロールを返す。
     /// **画面にも後段にも焼き込まない** —— 焼き込むと realm を増やしても選べず、
     /// 消えたロールを選べてしまう。

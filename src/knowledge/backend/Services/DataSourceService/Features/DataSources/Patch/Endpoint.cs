@@ -13,7 +13,8 @@ internal static class PatchDataSourceEndpoint
     internal static void Map(RouteGroupBuilder g)
     {
         g.MapPatch("/{id:guid}", async (Guid id, PatchDataSourceRequest req, DataSourceDbContext db,
-            SyncSchedule schedule, IPlatformUserDirectory userDirectory, CancellationToken ct) =>
+            SyncSchedule schedule, IPlatformUserDirectory userDirectory,
+            IDepartmentDomainDirectory departmentDomain, CancellationToken ct) =>
         {
             var ds = await db.DataSources.FindAsync(id);
             if (ds is null) return Results.NotFound();
@@ -27,6 +28,11 @@ internal static class PatchDataSourceEndpoint
             // **写像表を送らない PATCH は名簿を引かない**（無関係な操作を認可サービスの障害へ道連れにしない）。
             if (await OwnerMappingValidation.ValidateAsync(req.OwnerMappings, userDirectory, ct) is { } mapError)
                 return mapError;
+
+            // FR-05, SC-06, 計画 ADR-0115 決定 5, [[IADR-0472]] (#1557): 明示した部門の値域検証。
+            // **`defaultAttributes` を送らない PATCH は値域を引かない**（写像表と同じく、無関係な操作を道連れにしない）。
+            if (await DepartmentDomainValidation.ValidateAsync(req.DefaultAttributes, departmentDomain, ct) is { } deptError)
+                return deptError;
 
             ds.Patch(req.Name, req.SourceType, req.ConnectionUri, req.Config, req.DefaultAttributes,
                 req.OwnerMappings);

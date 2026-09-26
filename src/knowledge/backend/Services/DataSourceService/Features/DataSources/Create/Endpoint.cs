@@ -15,7 +15,8 @@ internal static class CreateDataSourceEndpoint
     internal static void Map(RouteGroupBuilder g)
     {
         g.MapPost("/", async (CreateDataSourceRequest req, DataSourceDbContext db, SyncSchedule schedule,
-            IPlatformUserDirectory userDirectory, HttpContext http, ILoggerFactory loggers, CancellationToken ct) =>
+            IPlatformUserDirectory userDirectory, IDepartmentDomainDirectory departmentDomain, HttpContext http,
+            ILoggerFactory loggers, CancellationToken ct) =>
         {
             // IADR-0295 決定 3: 資格情報つきの connectionUri は受け付けない（登録時が第 1 の関門）。
             if (ConnectionUriPolicy.Validate(req.ConnectionUri, existing: null) is { } uriError)
@@ -26,6 +27,13 @@ internal static class CreateDataSourceEndpoint
             // 裁量制御が意図しない相手に開く。
             if (await OwnerMappingValidation.ValidateAsync(req.OwnerMappings, userDirectory, ct) is { } mapError)
                 return mapError;
+
+            // FR-05, SC-06, 計画 ADR-0115 決定 5, [[IADR-0472]] (#1557): 明示した部門が値域（realm の部門グループ）に
+            // 在ることをサーバ側で検証する。未指定・空白・予約値 `unassigned` は照会しない（下の導出に委ねる）。
+            // 🔴 **登録者の部門から導いた値は検証しない** —— 導出は `/department/<code>` のフルパスからしか作らず、
+            // 構成上つねに値域の内側である（IADR-0468）。
+            if (await DepartmentDomainValidation.ValidateAsync(req.DefaultAttributes, departmentDomain, ct) is { } deptError)
+                return deptError;
 
             // FR-01, FR-05: 既定 ABAC 属性（機密区分）を伴ってデータソースを登録する。
             // FR-05, UC-04, SC-06, IADR-0468 (#754): `department` が未指定なら、**登録した管理者の

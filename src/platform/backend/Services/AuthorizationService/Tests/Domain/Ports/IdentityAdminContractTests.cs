@@ -51,6 +51,9 @@ public class IdentityAdminContractTests
                 nameof(IIdentityAdminClient.GetUserGroupsAsync),
                 nameof(IIdentityAdminClient.SearchGroupsAsync),
                 nameof(IIdentityAdminClient.GetGroupsByIdsAsync),
+                // FR-05, SC-06, 計画 ADR-0115 決定 1・5, [[IADR-0472]] (#1557): 部門コードの値域検証が
+                // 引く「このパスのグループは実在するか」。🔴 **読み取りであって、新規作成の口ではない。**
+                nameof(IIdentityAdminClient.FindGroupByPathAsync),
                 nameof(IIdentityAdminClient.ListAssignableRolesAsync),
                 nameof(IIdentityAdminClient.ReplaceAttributesAsync),
                 // FR-19, SC-19, 計画 ADR-0036 D-09, ADR-0082 決定 5, [[IADR-0428]] (#1392):

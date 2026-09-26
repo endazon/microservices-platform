@@ -4503,7 +4503,7 @@ components:
           type: object
           nullable: true
           additionalProperties: { type: string }
-          description: "未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない。登録時に限り、department が未指定（空白・unassigned を含む）なら登録する管理者の部門グループ（Keycloak の /department/<コード>。ちょうど 1 つのとき）のコードで先に補う（IADR-0468 / #754）"
+          description: "未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない。登録時に限り、department が未指定（空白・unassigned を含む）なら登録する管理者の部門グループ（Keycloak の /department/<コード>。ちょうど 1 つのとき）のコードで先に補う（IADR-0468 / #754）。明示した department は後段が値域（realm の /department 直下の部門グループのコード。大小文字を区別）で検証し、無ければ 400、値域を引けなければ 502 で、いずれも保存しない。予約値 unassigned・空白は検証しない（ADR-0115 決定 5 / IADR-0472 / #1557）"
         ownerMappings:
           type: object
           nullable: true
@@ -4538,7 +4538,7 @@ components:
           type: object
           nullable: true
           additionalProperties: { type: string }
-          description: "未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない"
+          description: "未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない。明示した department は後段が値域（realm の /department 直下の部門グループのコード。大小文字を区別）で検証し、無ければ 400、値域を引けなければ 502 で、いずれも保存しない。予約値 unassigned・空白は検証しない（ADR-0115 決定 5 / IADR-0472 / #1557）"
         ownerMappings:
           type: object
           nullable: true
@@ -4566,7 +4566,7 @@ components:
           type: object
           nullable: true
           additionalProperties: { type: string }
-          description: "指定したときのみ差し替える。差し替え時も必須属性のフェイルセーフを通す（confidentiality / owner / department / lifecycle）"
+          description: "指定したときのみ差し替える。差し替え時も必須属性のフェイルセーフを通す（confidentiality / owner / department / lifecycle）。明示した department は後段が値域（realm の /department 直下の部門グループのコード。大小文字を区別）で検証し、無ければ 400、値域を引けなければ 502 で、いずれも保存しない。予約値 unassigned・空白は検証しない（ADR-0115 決定 5 / IADR-0472 / #1557）"
         ownerMappings:
           type: object
           nullable: true
