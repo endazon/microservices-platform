@@ -1,7 +1,7 @@
 ---
 title: "realm の検査に、人の利用者名が service-account- で始まらないこと・標準フローのクライアントが profile を既定スコープに持つことを足す（#1589）"
 type: spec
-status: completed
+status: done
 related_ids: [NFR-09, SC-17, ADR-0032, IADR-0420, IADR-0429]
 author: claude
 created: 2026-09-26
