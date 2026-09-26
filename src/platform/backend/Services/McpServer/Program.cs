@@ -78,7 +78,10 @@ else
 // FR-16, ADR-0024: 宣言的公開構成・自己申告の集約・実効ツール一覧
 builder.Services.AddSingleton<ToolPublicationConfigLoader>();
 builder.Services.AddSingleton<ToolCatalog>();
-builder.Services.AddScoped<IToolDeclarationSource, HttpToolDeclarationSource>();
+// FR-16, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0462（2026-09-26 追記 / #1515, #1255 経路 ④-a）:
+// 申告の収集は宛先ごとに輸送を選ぶ。**並走中の正は REST** —— `Mcp:GrpcServices` にアドレスが在る宛先だけが
+// gRPC で収集される。gRPC の収集器と s2s トークンの発行側は、その構成が在るときだけ登録する。
+builder.Services.AddMcpToolDeclarationSources(builder.Configuration);
 builder.Services.AddHostedService<ToolCatalogRefresher>();
 
 // FR-16, UC-08: ツール呼び出しの単一経路（登録確認 → 公開確認 → 除外 → 越境 → 監査）
@@ -118,6 +121,14 @@ var app = builder.Build();
 // 「公開されているつもりの公開されていない」状態でヘルスチェックだけ緑になる。
 // **要求を受ける前に落とす**ことでしか「逸脱が起動時に止まる」は成立しない。
 app.Services.GetRequiredService<ToolPublicationConfigLoader>().Load();
+
+// 🔴 FR-16, NFR-16, IADR-0462（2026-09-26 追記 / #1515）: 申告の収集器も**ここで 1 度組む**。
+// `ToolDeclarationSource` は「`Mcp:GrpcServices` が構成されているのに gRPC の収集器が無い」登録の誤りを
+// コンストラクタで落とすが、初めて組まれるのは ToolCatalogRefresher の中であり、そこでの例外は
+// 「収集の一時失敗」として次の周期へ持ち越される（ホストは止まらず、Error ログだけが続く）。
+// 公開構成の検証と同じ理由で、要求を受ける前に組んで落とす。
+using (var scope = app.Services.CreateScope())
+    scope.ServiceProvider.GetRequiredService<IToolDeclarationSource>();
 
 using (var scope = app.Services.CreateScope())
 {

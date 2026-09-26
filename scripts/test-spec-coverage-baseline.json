@@ -151,12 +151,16 @@
     ],
     "docs/tests/FR-16_mcp-server.md": [
       "EgressPolicyTests",
+      "GrpcMcpToolDeclarationTests",
+      "GrpcToolDeclarationCollectorTests",
       "LogForgingSanitizationTests",
       "McpClientEndpointTests",
+      "McpToolsGrpcDeploymentWiringTests",
       "ServiceAccountAttributeSubsetEndpointTests",
       "ServiceAccountAttributeSubsetTests",
       "ServiceAccountDocumentFilterTests",
       "ToolCatalogTests",
+      "ToolDeclarationSourceFailFastTests",
       "ToolInvocationServiceTests",
       "ToolPublicationConfigValidatorTests",
       "ToolPublicationFailFastTests"

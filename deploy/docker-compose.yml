@@ -306,6 +306,8 @@ services:
       # FR-06 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0402 (#1255):
       # east-west gRPC の h2c リスナ。**面は読み取り 4 口だけ**（knowledge.document.v1.DocumentRead）で、
       # 書き込み・本文・共有は出していない。REST（8080）と /health/* はそのまま残る。
+      # ［2026-09-26 追記 / #1515］このリスナは MCP のツール申告の面（platform.mcp.v1.McpToolDeclarations）も受ける
+      # （呼び出し元は mcp-service の Mcp__GrpcServices__*）。
       Grpc__Port: "8081"
       # FR-22 / NFR-09 / NFR-16, ADR-0004 / ADR-0029 / ADR-0075, IADR-0379, IADR-0419 (#1255):
       # east-west gRPC。**`Services__NotificationServiceGrpc` が在るときだけ**個人資料の通知の
@@ -460,6 +462,8 @@ services:
       <<: [*common-env, *rabbit-env]
       # NFR-16, IADR-0379 決定 3, IADR-0417 (#1255): h2c リスナ。未設定ならリスナを立てない。
       # readiness は 8080 のまま（1 プロセスが両ポートを起動時に bind する）。
+      # ［2026-09-26 追記 / #1515］このリスナは MCP のツール申告の面（platform.mcp.v1.McpToolDeclarations）も受ける
+      # （呼び出し元は mcp-service の Mcp__GrpcServices__*）。
       Grpc__Port: "8081"
       Qdrant__Host: qdrant
       Qdrant__Port: 6334
@@ -835,6 +839,8 @@ services:
       Services__DocumentServiceGrpc: http://document-service:8081
       # NFR-16, IADR-0379 決定 3 / IADR-0410 (#1255): h2c リスナ。未設定ならリスナを立てない。
       # readiness は 8080 のまま。
+      # ［2026-09-26 追記 / #1515］このリスナは MCP のツール申告の面（platform.mcp.v1.McpToolDeclarations）も受ける
+      # （呼び出し元は mcp-service の Mcp__GrpcServices__*）。
       Grpc__Port: "8081"
     depends_on:
       postgres:
@@ -1107,6 +1113,13 @@ services:
       Mcp__Services__document-service: http://document-service:8080
       Mcp__Services__retrieval-service: http://retrieval-service:8080
       Mcp__Services__graph-service: http://graph-service:8080
+      # FR-16 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 5, IADR-0462（2026-09-26 追記 / #1515, #1255 経路 ④-a）:
+      # 自己申告の gRPC（h2c）の宛先。**宛先ごとの opt-in** —— ここに在る宛先だけが gRPC
+      # （platform.mcp.v1.McpToolDeclarations。下の ServiceToken の s2s で呼ぶ）で集められ、無い宛先は上の Mcp__Services__* の REST のまま
+      # （並走中の正は REST。戻すのは該当行を消すだけでよい）。ポートは各サービスの Grpc__Port と一致させること。
+      Mcp__GrpcServices__document-service: http://document-service:8081
+      Mcp__GrpcServices__retrieval-service: http://retrieval-service:8081
+      Mcp__GrpcServices__graph-service: http://graph-service:8081
       # FR-16, SC-12, ADR-0062 決定 3 (#1185): 無人アカウントの属性が登録者の集合の部分集合かを
       # 判定するために、登録者の ABAC 属性と認可スコープを認可サービスから解決する。
       # 上と同じ理由で明示する（既定へ黙って寄りかからない）。authorization-service が開けているのは

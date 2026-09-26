@@ -20,6 +20,12 @@ namespace McpServer.Domain;
 // `scripts/contract-schema-baseline.json` の更新を伴い、#1020 の領域宣言の外だった。IADR-0292 決定 4）。
 // **昇格までは本ファイルがワイヤ形式の正本である** —— 3 サービスが持つのは写しであり、
 // ここを変えるときは 3 箇所を同時に追随させること。
+//
+// ［2026-09-26 追記 / #1515］🔴 **昇格は gRPC の契約で行った** —— proto `platform.mcp.v1`
+// （`Platform.Shared.Contracts/Protos/platform/mcp/v1/mcp_tool_declarations.proto`）が共有契約である（IADR-0462 の
+// 「経路 ④-a への適用」）。本ファイルは REST（並走中の正）のワイヤ形式の正本として残り、REST の退役（#1517）で消える。
+// **並走中は形が 2 つ在る** —— ここを変えるときは proto も同時に変えること（項目名・数の一致は
+// `GrpcToolDeclarationCollectorTests.Proto_fields_match_the_rest_wire_names_of_the_dto` が固定する）。
 public sealed record McpToolDeclaration(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("description")] string Description,

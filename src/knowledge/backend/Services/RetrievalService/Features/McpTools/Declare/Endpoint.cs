@@ -13,6 +13,11 @@ public static class McpToolEndpoints
                 => Results.Ok(McpToolDeclarationSource.Declare(configuration)))
            .WithName("RetrievalServiceMcpTools")
            .ExcludeFromDescription();
+        // FR-16, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]], [[IADR-0462]]（2026-09-26 追記 / #1515, #1255 経路 ④-a）:
+        // 🔴 **REST と gRPC の申告面を必ず対で張る。** 扇形の経路は宛先の側が面を持たないと 1 経路も移らず、
+        // 張り忘れた宛先は MCP サーバーからは「申告なし」としか見えない（収集は失敗を申告なしへ畳む）。
+        // 申告を張る唯一の口に gRPC 面を同居させ、張り忘れを構造で起こさない。面は ServiceCaller を要求する。
+        app.MapGrpcService<McpToolDeclarationGrpcService>();
         return app;
     }
 }

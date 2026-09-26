@@ -11,6 +11,10 @@ namespace RetrievalService.Features.McpTools.Declare;
 // 🔴 **契約は新設していない。** McpServer の `Domain/McpToolContracts.cs` の**ワイヤ形式に
 // そのまま合わせた写し**である。共有化しない理由（ユニット外参照の制約と、
 // `Platform.Shared.Contracts` への昇格が本 issue の領域外であること）は [[IADR-0292]] 決定 3。
+//
+// ［2026-09-26 追記 / #1515］昇格は gRPC の契約（proto `platform.mcp.v1`。`Platform.Shared.Contracts`）で行った
+// （[[IADR-0462]] の「経路 ④-a への適用」）。本ファイルは REST の受け口（並走中の正）が使う写しとして残り、
+// REST の退役（#1517）で消える。gRPC の面（`GrpcService.cs`）は同じ `McpToolDeclarationSource.Declare` を proto へ写す。
 public sealed record McpToolDeclaration(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("description")] string Description,

@@ -2,10 +2,10 @@
 title: IADR-0269 MCP ツールの公開経路を 1 本に閉じ、サービスアカウントの個人資料除外を要求側・応答側の 2 層で強制する
 type: impl-adr
 status: Proposed
-related_ids: [FR-16, UC-08, UC-09, SC-12, ADR-0024, ADR-0034, ADR-0036, ADR-0046, ADR-0054]
+related_ids: [FR-16, UC-08, UC-09, SC-12, ADR-0024, ADR-0034, ADR-0036, ADR-0046, ADR-0054, IADR-0462]
 author: claude
 created: 2026-08-23
-updated: 2026-08-28
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0024_mcp-server-integration.md
   - planning:projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md
@@ -122,6 +122,9 @@ plan_refs:
       **これに伴い決定 6 の昇格条件（最初の生成側の実装）は満たされたが、昇格は追随 issue へ回している**
       （`*.Contracts` への型追加は `scripts/contract-schema-baseline.json` の更新を伴い、#1020 の
       領域宣言の外だった。IADR-0292 決定 4）。**決定 6 そのものは変えていない。**
+      ［2026-09-26 追記 / #1515］**昇格は gRPC の契約（proto `platform.mcp.v1`。`Platform.Shared.Contracts`）で行った**
+      （[[IADR-0462]] の「経路 ④-a への適用」）。REST の受け口が使う C# の写しは `*.Contracts` へ移さず、REST の退役（#1517）で消える。
+      並走中の REST のワイヤ形式の正本は引き続き McpServer の `McpToolContracts.cs` であり、proto と項目名・数が一致することを試験で固定した。
   - Istio Ingress の `/mcp` ルーティングとレート制限初期値（`deploy/` 配下）。
 
 ## 関連
