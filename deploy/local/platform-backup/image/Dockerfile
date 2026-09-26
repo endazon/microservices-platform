@@ -4,7 +4,7 @@
 # - ベースは image index の digest で固定する（amd64・arm64 の両方で同じ参照が効く）。タグは読み手のための注記で、
 #   効くのは digest である。PG のメジャー版は本体（deploy/local/infra/postgres.yaml）と揃える（試験が固定する）。
 # - age は Alpine の community パッケージを**版・チェックサム・署名**の 3 つで固定する:
-#   版は `age=<AGE_VERSION>` で指定し、取ってきたファイルの sha256 をアーキテクチャごとに照合し、`apk add <ファイル>` が
+#   版は AGE_VERSION のパッケージファイル（age-<版>.apk）をミラーから取ることで固定し、その sha256 をアーキテクチャごとに照合し、`apk add <ファイル>` が
 #   パッケージの署名を /etc/apk/keys で検証する（--allow-untrusted は使わない）。
 #   🔴 Alpine の安定版ブランチは最新のリリースしか置かないため、上流が -rN を上げると取得が失敗してビルドが止まる。
 #   **止まるのが正しい**（黙って別の版を入れない）。上げ方は docs/operations/platform-infra-backup-runbook.md。
@@ -25,7 +25,6 @@ ARG ALPINE_MIRROR=https://dl-cdn.alpinelinux.org/alpine
 # 「unable to select package」で止まった（CI で実測。`apk update` を挟んでも同じ）。取り方を変えても固定の強さは同じ ——
 # sha256 の照合と、`apk add <ファイル>` による署名の検証（/etc/apk/keys）は変わらない。
 RUN set -eu; \
-    cat /etc/apk/repositories; \
     case "$(cat /etc/alpine-release)" in \
       "${ALPINE_BRANCH#v}".*) ;; \
       *) echo "platform-backup: ベースの Alpine（$(cat /etc/alpine-release)）が ALPINE_BRANCH=$ALPINE_BRANCH と違います" >&2; exit 1 ;; \

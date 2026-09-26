@@ -220,7 +220,7 @@ issues: [#1560, #1564, AST#346]
 2. **age の版と sha256 を引く。** そのベースの Alpine のブランチ（例 `v3.24`）の
    `dl-cdn.alpinelinux.org/alpine/<ブランチ>/community/<x86_64|aarch64>/APKINDEX.tar.gz` の `P:age` の `V:` が版。
    同じ場所の `age-<版>.apk` を取り、`sha256sum` で両アーキテクチャのチェックサムを取る。
-3. **4 か所を同じ値へ上げる。** Dockerfile の `FROM`（タグと digest）と `ARG AGE_VERSION` / `AGE_APK_SHA256_*`、
+3. **4 か所を同じ値へ上げる。** Dockerfile の `FROM`（タグと digest）と `ARG AGE_VERSION` / `AGE_APK_SHA256_*` / `ALPINE_BRANCH`（ベースの Alpine を上げたとき）、
    `scripts/k8s-local-images.sh` の `LOCAL_ONLY_IMAGES` のタグ（`platform-backup:pg<PG の版>-age<age の版>`）、
    2 つの CronJob の `image`。`node scripts/platform-backup.test.js` が食い違いを落とす。
 4. PR の CI で `build-local (platform-backup)` が緑になることを確かめる（ビルドし、ネットワーク無しで

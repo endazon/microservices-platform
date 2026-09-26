@@ -47,7 +47,8 @@ issue: "1564"
 
 1. `deploy/local/platform-backup/image/Dockerfile` を新設する。
    - ベースは `postgres:16.15-alpine3.24@sha256:7218…`（`16-alpine`・`16-alpine3.24`・`16.15-alpine` も同じ index を指していた）（index の digest。amd64・arm64 の両方で効く）。
-   - age は `apk fetch age=1.3.1-r6` で取り、アーキテクチャごとの sha256 を照合してから `apk add <ファイル>` で入れる。
+   - age は `age-1.3.1-r6.apk` を Alpine のミラー（`v3.24/community/<arch>/`）から直接取り、アーキテクチャごとの sha256 を照合してから `apk add <ファイル>` で入れる。
+     （［2026-09-26 追記 / #1564］当初は `apk fetch age=1.3.1-r6` としたが、CI で「unable to select package」となり、`apk update` を挟んでも同じだったため、直接取得へ改めた。ベースの `/etc/alpine-release` とブランチの一致も確かめる。）
      apk はパッケージの署名も検証する。つまり**版・チェックサム・署名の 3 つで固定する**。
    - `age --version` がパッケージの版を含むことを確かめる。知らないアーキテクチャではビルドを止める。
 2. `scripts/k8s-local-images.sh` に `LOCAL_ONLY_IMAGES` 配列を足し、`k3d-local/platform-backup:pg16.15-age1.3.1-r6` を
@@ -92,5 +93,5 @@ issue: "1564"
 - [x] `node scripts/platform-backup.test.js` が通り、変異（digest を外す・タグをずらす・`BACKUP_AGE_INSTALL` を戻す・`apk add` を戻す）で落ちる。
 - [x] `bash deploy/local/platform-backup/script/backup.test.sh` が通る。symlink の試験は Linux の CI で走る（Git Bash では skip）。
 - [x] `node scripts/check-deploy-manifests.js`・`node scripts/check-image-mapping.js` が通る。
-- [x] Dockerfile がビルドでき、`age --version` がパッケージの版を返す（ローカルの nerdctl の default 名前空間で確かめる。k8s.io には入れない）。
+- [x] Dockerfile がビルドでき、`age --version` がパッケージの版を返す（手元の nerdctl は資格情報ヘルパのエラーでベースを取れなかったため、CI の `build-local (platform-backup)` で確かめた: sha256 OK・`v1.3.1`・`pg_dump (PostgreSQL) 16.15`）。
 - [ ] 稼働クラスタへの反映（イメージのビルドと CronJob の再適用）はコーディネータが行う。

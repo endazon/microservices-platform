@@ -104,9 +104,11 @@ age の公開鍵で暗号化して秘密鍵はクラスタに置かない、日�
 >   ビルドは既存の `scripts/k8s-local-images.sh`（起動器の [2/7]）に載る。タグは中身の版から作るので、陳腐化は起きない。
 > - **イメージ**: `deploy/local/platform-backup/image/Dockerfile`。ベースは `postgres:16.15-alpine3.24@sha256:721873c3…`
 >   （image index の digest。2026-09-26 に `16-alpine` と同じ index であることをレジストリの API で確かめた）。age は Alpine v3.24
->   community の `age=1.3.1-r6` を `apk fetch` で取り、アーキテクチャごとの sha256（x86_64 / aarch64）を照合してから
->   `apk add <ファイル>` で入れる（署名も検証される。`--allow-untrusted` は使わない）。ビルドの最後に `age --version` と
->   `pg_dump --version`（16.x）を確かめる。Alpine が `-rN` を上げると取得が失敗してビルドが止まる —— **黙って別の版を入れない**
+>   community の `age-1.3.1-r6.apk` をミラーから直接取り（`ARG ALPINE_BRANCH=v3.24`。ベースの `/etc/alpine-release` と
+>   食い違えばビルドを止める）、アーキテクチャごとの sha256（x86_64 / aarch64）を照合してから `apk add <ファイル>` で入れる
+>   （署名も検証される。`--allow-untrusted` は使わない）。`apk fetch age=<版>` はこのベースで「unable to select package」となり、
+>   `apk update` を挟んでも同じだった（CI で 2 回実測）ため採らなかった。固定の強さ（sha256 と署名）は取り方に依らない。
+>   ビルドの最後に `age --version` と `pg_dump --version`（16.x）を確かめる（CI の実測: `v1.3.1` / `16.15`）。Alpine が `-rN` を上げると取得が失敗してビルドが止まる —— **黙って別の版を入れない**
 >   ための意図した挙動であり、上げ方は運用 Runbook §6 に置いた。
 > - **配る経路**: `k8s-local-images.sh` の新しい配列 `LOCAL_ONLY_IMAGES` に置く（`MAPPING` ではない ——
 >   `MAPPING` は IADR-0068 の検査器が compose の build 定義と 1 対 1 で突合し、compose に無い要素は `stale-mapping` になる）。
