@@ -1,7 +1,7 @@
 ---
 title: 常駐処理の「次の拍まで待つ」試験を壁時計の間隔でなく偽の時計の拍で判定し、呼び出し側の取り消しの対照を HttpClient・AWS SDK の形（TaskCanceledException）で注入する（#1622）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-19, FR-22, UC-11, FR-17, FR-18, FR-10, FR-01, UC-04, FR-16, ADR-0035, ADR-0096, ADR-0024, ADR-0057, IADR-0299, IADR-0431, IADR-0083, IADR-0462, IADR-0296]
 author: claude
 created: 2026-09-27
@@ -119,10 +119,60 @@ issue: "#1622"
 - McpServer: REST の収集器の対照を足す。127.0.0.1 の何も返さない待受へ本物の HttpClient（期限 30 秒）で収集し、呼び出し側の ct を 300 ミリ秒で取り消す。
   本物の HttpClient が出す形（`TaskCanceledException`）であることを表明に含め、前提の崩れも赤にする。
 
+- DocumentService の対照は、注入の形を変えるだけでは型の変異を殺せなかった（実測）。変異の下でも 2 件目の台帳の逆引き
+  （`CollectAsync` の EF 読み）が立った ct で `OperationCanceledException` を投げ直し、「取り消しで終わる」「2 件目が消えない」がどちらも成り立つ。
+  そこで **外へ出た例外が注入した取り消しそのもの（`BeSameAs`）であること** と **1 件目を削除の失敗として Error 記録しないこと** で測る
+  （器は同じ DB・ストレージで purger を記録用ロガーつきで組む）。#1598 の `PrivateNoteDepartedOwnerPurgeTests` が「照会の回数で測る」としたのと同じ理由である。
+
 ## 変異の記録（AC-3・AC-5）
 
-（実装後に記入する）
+1 か所ずつ当て、該当の試験クラスを走らせ、`git show HEAD:<path> > <path>` で戻した（戻した後 `git status` が空であることを毎回確かめた）。
+器: `scratchpad/m1.py`・`tce.py`・`mutate.sh`・`mutate_tce.sh`（作業用。コミットしない）。
+
+### M1（周期の本体の呼び出しを「失敗なら即座に再試行する内側のループ（最大 5 回）」で包む）
+
+| 当てた常駐処理 | 走らせた試験クラス | 結果 | 赤の理由（拍の試験） |
+| --- | --- | --- | --- |
+| `ClusterDetectionHostedService` | `BatchLoopForeignCancellationTests` | **2/6 赤**（当てた処理の拍の試験と #1598 の試験） | `Expected coordinator.Calls to be 1 … but found 3` |
+| `ClusterSummaryHostedService` | 同上 | **2/6 赤**（同上） | 同上 |
+| `KnowledgeHealthHostedService` | 同上 | **2/6 赤**（同上） | 同上 |
+| `DataSourceSyncHostedService` | `DataSourceSyncHostedServiceTests` | **1/4 赤**（拍の試験） | 同上 |
+| `PrivateNoteMaintenanceHostedService` | `PrivateNoteMaintenanceHostedServiceTests` | **2/2 赤** | `Expected askedAt to contain 1 item(s) … but found 3: {01:00:00, 01:00:00, 01:00:00}`（3 回とも同じ拍） |
+
+- 拍の試験は 5 つとも静穏の窓の表明（「失敗の後、拍を進めるまで呼び出しは k 回のまま」）で赤になった。記録した偽の時刻も 3 回とも 1 拍目で、
+  窓を過ぎてから再試行する形でも最後の表明（k 回目 = k 拍ぶん）が赤にする。
+- #1598 の「次の周期が来る」試験も赤になったのは、今回の M1 が内側の再試行で失敗を記録せずに飲むため（同試験は Error の記録を表明している）。
+  #1604 の記録では同試験は M1 の下で緑だった —— M1 の書き方（再試行の前に失敗を記録するか）で変わる副次の検出であり、当てにしない。
+  M1 の検出は拍の試験だけで足りている。
+
+### 型で判定する変異（絞り込みへ `|| ex is TaskCanceledException` を足す）
+
+各変異を (1) 本 PR の試験 と (2) 直す前（`origin/develop`）の試験 の両方で走らせた。
+
+| 当てた絞り込み | 走らせた試験 | 本 PR の試験 | 直す前の試験 |
+| --- | --- | --- | --- |
+| `DocumentObjectPurger.PurgeIsolatedAsync`（L85） | `DeletionPropagationTests` | **赤**（`定期処理は呼び出し側の取り消しを隔離に畳まず伝える`） | 緑（12/12） |
+| `DataSourceSyncService` 探索（L95） | `DataSourceSyncServiceTests` | **赤**（`Sync_CallerCancellation_Propagates(onDiscover: True)`） | 緑（15/15） |
+| `DataSourceSyncService` 取得（L170） | 同上 | **赤**（`Sync_CallerCancellation_Propagates(onDiscover: False)`） | 緑（15/15。対照が無かった） |
+| `HttpToolDeclarationSource.CollectOneAsync`（L71） | `ToolCatalogRefresherTimeoutTests`・`GrpcToolDeclarationCollectorTests`・`ToolDeclarationSource*` | **赤**（`呼び出し側の取り消しは申告なしへ畳まず外へ出す`） | 緑（24/24。対照が無かった） |
 
 ## 反復の記録（AC-6）
 
-（実装後に記入する）
+各クラスを `dotnet test <csproj> --no-build --filter "FullyQualifiedName~<Class>"` で 20 回連続で走らせた（器: `scratchpad/repeat.sh`）。
+「負荷あり」は、同時に別の試験スイート（`platform/backend/backend.slnx` 全体と `IngestionService.Tests`）を停止ファイルが置かれるまで交互に
+繰り返し走らせた状態である（反復の間に platform 全体 4 回・IngestionService 4 回が完走。いずれも合格）。
+
+| 試験クラス | 負荷なし | 負荷あり |
+| --- | --- | --- |
+| `PrivateNoteMaintenanceHostedServiceTests` | 20/20 | 20/20 |
+| `BatchLoopForeignCancellationTests` | 20/20 | 20/20 |
+| `DataSourceSyncHostedServiceTests` | 20/20 | 20/20 |
+| `DataSourceSyncServiceTests` | 20/20 | 20/20 |
+| `DeletionPropagationTests` | 20/20 | 20/20 |
+| `ToolCatalogRefresherTimeoutTests` | 20/20 | 20/20 |
+
+## 結果
+
+- AC-1〜AC-6 を満たした。新しい IADR 番号は取らず、IADR-0299・IADR-0431・IADR-0083・IADR-0462・IADR-0296 へ日付つき追記した。
+- フォローアップ（射程外）: `HttpEffectiveConfigCollectorTests.呼び出し側の取り消しは到達不能へ化けずに外へ出る`（共通基盤・#1382）も
+  素の `OperationCanceledException` を注入しており、同じ型の変異が生き残り得る。
