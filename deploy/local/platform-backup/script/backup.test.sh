@@ -348,12 +348,12 @@ APKBIN="$WORK/apkbin"; mkdir -p "$APKBIN"
 printf '#!/usr/bin/env bash\necho "ERROR: unable to select packages: age (no such package)" >&2\nexit 1\n' > "$APKBIN/apk"
 chmod +x "$APKBIN/apk"
 if PATH="$APKBIN:/usr/bin:/bin" command -v age >/dev/null 2>&1; then
-	printf '  skip  T-1560-31 この環境の /usr/bin に age がある（age 不在の分岐を試せない）\n'
+	printf '  skip  T-1560-46 この環境の /usr/bin に age がある（age 不在の分岐を試せない）\n'
 else
 	AOUT="$(PATH="$APKBIN:/usr/bin:/bin" BACKUP_AGE_INSTALL=1 ensure_age 2>&1)"; ARC=$?
-	assert_ne 'T-1560-31 age を入れられない: 失敗を返す' "$ARC" "0"
-	assert_contains 'T-1560-31 age を入れられない: apk の理由をログに出す' "$AOUT" 'unable to select packages'
-	assert_contains 'T-1560-31 age を入れられない: 何も書かないと告げる' "$AOUT" 'age を用意できません'
+	assert_ne 'T-1560-46 age を入れられない: 失敗を返す' "$ARC" "0"
+	assert_contains 'T-1560-46 age を入れられない: apk の理由をログに出す' "$AOUT" 'unable to select packages'
+	assert_contains 'T-1560-46 age を入れられない: 何も書かないと告げる' "$AOUT" 'age を用意できません'
 fi
 
 # ---- 🔴 シンボリックリンクを辿って消さない（`[ -d ]` はリンクを辿る） -------------------
@@ -366,18 +366,18 @@ mkdir -p "$K/2026-09-26T030000Z"; echo x > "$K/2026-09-26T030000Z/pg-a.dump.age"
 ln -s "$OUTSIDE" "$K/2019-01-01T030000Z" 2>/dev/null
 if [ -L "$K/2019-01-01T030000Z" ]; then
 	BACKUP_DAILY_KEEP=1 prune_target "$R/c" "2026-09-26T030000Z" >/dev/null 2>&1
-	assert_file 'T-1560-30 prune_target: 回の名前をしたシンボリックリンクの先のファイルを消さない' "$OUTSIDE/precious.age"
-	[ -L "$K/2019-01-01T030000Z" ] && ok 'T-1560-30 prune_target: シンボリックリンクそのものも回として扱わない' || ng 'T-1560-30 prune_target: シンボリックリンクそのものも回として扱わない' 'link removed'
+	assert_file 'T-1560-45 prune_target: 回の名前をしたシンボリックリンクの先のファイルを消さない' "$OUTSIDE/precious.age"
+	[ -L "$K/2019-01-01T030000Z" ] && ok 'T-1560-45 prune_target: シンボリックリンクそのものも回として扱わない' || ng 'T-1560-45 prune_target: シンボリックリンクそのものも回として扱わない' 'link removed'
 	remove_flat_dir "$K/2019-01-01T030000Z"; RRC=$?
-	assert_ne 'T-1560-30 remove_flat_dir: ディレクトリ自体がシンボリックリンクなら拒む' "$RRC" "0"
-	assert_file 'T-1560-30 remove_flat_dir: 拒んだときリンク先のファイルは残る' "$OUTSIDE/precious.age"
+	assert_ne 'T-1560-45 remove_flat_dir: ディレクトリ自体がシンボリックリンクなら拒む' "$RRC" "0"
+	assert_file 'T-1560-45 remove_flat_dir: 拒んだときリンク先のファイルは残る' "$OUTSIDE/precious.age"
 	mkdir -p "$R/withlink"; echo y > "$R/withlink/pg-b.dump.age"; ln -s "$OUTSIDE/precious.age" "$R/withlink/link.age"
 	remove_flat_dir "$R/withlink"; RRC=$?
-	assert_ne 'T-1560-30 remove_flat_dir: 中身にシンボリックリンクがあれば拒む' "$RRC" "0"
-	assert_file 'T-1560-30 remove_flat_dir: 拒んだとき 1 つも消さない' "$R/withlink/pg-b.dump.age"
-	assert_file 'T-1560-30 remove_flat_dir: 中身のリンクの先も残る' "$OUTSIDE/precious.age"
+	assert_ne 'T-1560-45 remove_flat_dir: 中身にシンボリックリンクがあれば拒む' "$RRC" "0"
+	assert_file 'T-1560-45 remove_flat_dir: 拒んだとき 1 つも消さない' "$R/withlink/pg-b.dump.age"
+	assert_file 'T-1560-45 remove_flat_dir: 中身のリンクの先も残る' "$OUTSIDE/precious.age"
 else
-	printf '  skip  T-1560-30 シンボリックリンクを作れない環境（Windows の Git Bash 等）\n'
+	printf '  skip  T-1560-45 シンボリックリンクを作れない環境（Windows の Git Bash 等）\n'
 fi
 
 # 作業場（mktemp の下）は再帰削除しない。CI のランナーは使い捨てで、手元では一時領域の掃除に任せる。
