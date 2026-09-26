@@ -10,8 +10,8 @@ author: implementation-agent
 ids: [FR-05, FR-09, SC-09, SC-17, UC-05, NFR-09]
 adrs: [ADR-0004, ADR-0026, ADR-0031, ADR-0032, ADR-0115]
 iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0044, IADR-0124, IADR-0128, IADR-0129, IADR-0135, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329, IADR-0330, IADR-0473, IADR-0420, IADR-0429]
-specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260905_issue-439_session-revocation-e2e, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1589_realm-machine-judgement-premises]
-issues: [#452, #438, #1101, #439, #1573, #1589, planning#672]
+specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260905_issue-439_session-revocation-e2e, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1589_realm-machine-judgement-premises, 20260926_issue-1596_realm-login-grants-and-username-source]
+issues: [#452, #438, #1101, #439, #1573, #1589, #1596, planning#672]
 -->
 
 # テスト仕様書: ユーザーアカウント管理
@@ -99,6 +99,7 @@ issues: [#452, #438, #1101, #439, #1573, #1589, planning#672]
 | T-51 | 周期の構成が `60`／`24:00:00`／`99:00:00`／`00:00:30`／`1.00:00:00`／`00:15:00`／`23:59:00` | 起動する | 前 5 つは**起動時例外**（数字だけ・時 24 以上は日として読まれるため・下限 1 分・書式違い）。`00:15:00` は 15 分、`23:59:00` は受け付ける。子グループも最後のページまで読む | 周期の誤読・過密を起動時に止める | 自動 |
 | T-52 | 周期の途中でホストが停止する（取り消し）／直そうとした全員が「変わった」で見送られる／木の読み取りが落ちる | 同期を `Fix` で回す／常駐の器で回す | 取り消しは**周期ごと中断**し、利用者の失敗として数えない。全員が見送られた周期は計器 `cycles.total{all_skipped_changed}`（一部だけなら数えない）。木の読み取りの失敗は `cycles.total{aborted}`。これらと利用者の失敗はアラート `DepartmentSyncNotCorrecting` が拾う | 黙って誰も直さない状態を見えるようにする | 自動 |
 | T-53 | realm の宣言に、`service-account-` で始まる名前の人の利用者（大小の違いを含む）／`profile` を既定スコープに持たない標準フローのクライアント（標準フローが未設定の既定・任意スコープにだけ置いた形を含む）／利用者名を access token へ載せない `profile` スコープを入れる | `node scripts/check-realm-constraints.js --self-test` と、実データの realm へ 2 種の変異を入れた一時ファイルを CLI へ渡す試験（`node scripts/scripts.test.js`） | いずれも**検出する**（CLI は終了コード 1 で 2 件を名指しする）。サービスアカウント・標準フローを閉じたクライアント・ログインできないクライアントは検出しない。実データの realm は通る（人の利用者と標準フローのクライアントが在ることも確かめ、空振りを緑にしない） | 人のトークンを BFF が無人の主体と読まないこと。稼働中の realm で管理コンソールから作る利用者は対象外（画面仕様書 §運用上の注意） | 自動 |
+| T-54 | realm の宣言に、デバイスグラント／CIBA／直接アクセスだけを開き `profile` を既定に持たないクライアント（属性の大小違いを含む）／利用者名のマッパーに `lightweight.claim` の無い軽量アクセストークンのクライアント（クライアント属性・クライアントポリシーの実行器）／自己登録・利用者名の編集・メールアドレスを利用者名にする設定・IdP 連携（無効の IdP を含む）／利用者名以外（メールアドレス・利用者属性・固定値）から `preferred_username` を出すマッパー（`profile` スコープ・クライアント単位・別の既定 / 任意スコープ）を入れる | `node scripts/check-realm-constraints.js --self-test` と、実データの realm へ 4 種の変異を入れた一時ファイルを CLI へ渡す試験（`node scripts/scripts.test.js`） | いずれも**検出する**。ログインしないクライアント・`bearerOnly`・access token に載せない上書き・明示的に閉じた設定は検出しない。レビュー済みの理由を持つ例外は黙り、理由の空な例外と該当しない例外は検出する。実データの realm は通り、例外は空 | 利用者が機械の名前を名乗る経路と、人のトークンから利用者名が落ちる経路を宣言で止めること。検査器のソースから追加分を 1 つずつ戻す 20 通りの変異がすべて自己試験で落ちることを確かめた | 自動 |
 
 ## ブラウザ E2E（［2026-08-31 追記 / #1099］置いた）
 
