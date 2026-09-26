@@ -102,4 +102,55 @@ spec:
             port:
               number: {{ .Values.edge.frontend.port }}
     {{- end }}
+{{- if .Values.edge.privateNotesSync.enabled }}
+---
+# NFR-09, FR-20, ADR-0084, IADR-0348 追記（#1606）: **エッジの主体には DocumentService の /private-notes/sync/* だけを許す。**
+#
+# 上の VirtualService は /private-notes/sync/ だけを振り分けるが、それは「振り分け」であって「認可」ではない。
+# NetworkPolicy（allow-edge-ingress-to-document-service）は gateway の Namespace から 8080 番全体を開けるので、
+# 共有のゲートウェイへ別の VirtualService が付けば、JWT で守られた別の端点（/documents 等）へ届き得る。
+# ここで L7 の門を置き、**経路の制限を VirtualService 1 枚に頼らない**（多層防御）。
+#
+# ## ALLOW ではなく DENY にした理由（選んだのは安全側）
+#
+# ワークロードを選ぶ ALLOW が 1 枚でもあると、**当たらない要求はすべて拒否**に変わる。DocumentService の
+# 呼び出し元は名前空間の中（BFF / GraphService / McpServer）だけではない —— 別名前空間の AST
+# （サイドカー無し＝平文で principal を持たない）と kubelet のプローブも居る。ALLOW で「名前空間の主体」と
+# 「ゲートウェイ × sync」を列挙すると、それらが黙って 403 になり、呼び出し元が増えるたびに列挙を直す義務が生じる。
+# DENY は**当たった要求だけ**を落とすので、**当たる範囲（下の from × to）以外の呼び出しは 1 本も変わらない。**
+#
+# - from: gateway の Namespace（edge.gateway.namespace）。NetworkPolicy が開けた L3 の穴と**同じ単一情報源**であり、
+#   穴の範囲をそのまま L7 で絞る。service account 名（istioctl と helm の gateway chart で違う）と trust domain に
+#   依存しないため、principal を名指しするより取りこぼしが無い。source.namespace は mTLS の主体から採るので、
+#   ゲートウェイの Envoy → サイドカーの mTLS（auto mTLS ／ DestinationRule ISTIO_MUTUAL）では必ず当たる。
+# - to: notPaths /private-notes/sync/*（**末尾スラッシュ込み。上の route の前置と同じ字面で直書き**。knob にしない）。
+#   /private-notes/sync-settings/・/private-notes/sync（スラッシュ無し）・gRPC（8081）の面も当たる＝拒否される。
+#   メソッドは絞らない —— route もメソッドを絞っておらず、許すメソッドの正は端点側の契約にある。
+# - mTLS: STRICT（既定）では平文は PeerAuthentication が先に落とす。PERMISSIVE では principal を持たない平文の
+#   要求に source.namespace が無いので本 DENY は当たらない（＝平文の呼び出し元を巻き込まない）。代わりに、
+#   gateway の Namespace に居る**サイドカー無しの Pod**からの平文は本門を素通りする —— これは PERMISSIVE の既知の限界で、
+#   閉じるのは STRICT である（IADR-0348 追記 #1606）。
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: {{ .Values.edge.privateNotesSync.service }}-edge-sync-only
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  # 行き先は route の destination・NetworkPolicy の podSelector と同じ単一情報源（ドリフト無し）。
+  selector:
+    matchLabels:
+      app: {{ .Values.edge.privateNotesSync.service }}
+  action: DENY
+  rules:
+    - from:
+        - source:
+            namespaces:
+              - {{ .Values.edge.gateway.namespace | quote }}
+      to:
+        - operation:
+            notPaths:
+              - /private-notes/sync/*
+{{- end }}
 {{- end }}

@@ -135,6 +135,10 @@ edge:
   # 直書きで、ここでは knob にしない（打ち間違いで露出面が広がる経路を作らないため）。
   # networkPolicy.enabled と併用するときは templates/networkpolicy.yaml が gateway → document-service の
   # 穴を同じ条件で開ける。
+  # NFR-09, ADR-0084 (#1606): その穴は gateway の Namespace から 8080 番**全体**に開くので、同じ条件で
+  # templates/edge.yaml が AuthorizationPolicy（DENY）を置き、gateway の Namespace の主体からは
+  # /private-notes/sync/* 以外を落とす（経路の制限を VirtualService の振り分け 1 枚に頼らない）。
+  # 名前空間の中・別名前空間（AST）・プローブの呼び出しは当たらない＝変わらない（ALLOW にしない理由は同テンプレート）。
   privateNotesSync:
     enabled: false
     service: document-service

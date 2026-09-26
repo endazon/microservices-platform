@@ -1,0 +1,10 @@
+# NFR-09, FR-20, ADR-0084, IADR-0348 追記 (#1606):
+# CI 専用の values。**配備には使わない**（helm / chart-testing の `ci/` 慣習）。
+#
+# Obsidian 同期のエッジ公開は既定オフ（values.yaml の edge.privateNotesSync.enabled: false）なので、既定の描画だけを
+# 検査すると有効時の route・NetworkPolicy・AuthorizationPolicy は 1 度も描画・スキーマ突合されない。
+# scripts/check-deploy-manifests.js は chart の `ci/*.yaml` を走査で見つけ、この values でも helm lint / helm template /
+# kubeconform を回す。scripts/helm-private-notes-sync-authz.test.js も「有効」をこのファイルで描く（有効の定義を 2 か所に書かない）。
+edge:
+  privateNotesSync:
+    enabled: true
