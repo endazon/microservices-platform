@@ -193,6 +193,26 @@ appsettings.json の既定に寄りかかっているので、配線の試験（
 
 **射程外**: ツールの実行（`HttpToolInvoker`。#1516・判断待ち —— 申告の `endpoint` は本契約でも文字列のまま運び、意味を変えない）と、REST の退役（#1517）。
 
+> **［2026-09-26 追記 / #1604］収集の時間切れ 1 回で McpServer のホスト全体が止まっていた。期限を明示し、取り消しは停止要求だけを通す。**
+> REST の収集（`HttpToolDeclarationSource.CollectOneAsync`）と `ToolCatalogRefresher` の周期の捕捉が `when (ex is not OperationCanceledException)` で
+> 取り消しを**型だけで**素通ししていた。HttpClient の時間切れは `TaskCanceledException` なので、応答しない宛先 1 つで ExecuteAsync から例外が漏れ、
+> 既定の StopHost で `ApplicationStopping` が発火した（#1601 の監査が使い捨ての試験で再現。REST の宛先は 3 つとも既定の経路で、初回の収集は起動直後に走る。
+> #1382 の BFF と同じ種類）。上の 3（期限）が「期限のキーを作らない」とした判断は、**移行の段で REST の挙動を変えないため**のものであり、
+> 期限が 100 秒のまま時間切れがホストを止める不具合を温存する理由にはならない。
+>
+> - `CollectOneAsync` は `when (ex is not OperationCanceledException || !ct.IsCancellationRequested)`（`HttpEffectiveConfigCollector`・#1382 と同じ形）。
+>   時間切れは「申告なし」へ畳む（ADR-0024 §5「推測で公開しない」はそのまま）。gRPC 側は既に `when (ct.IsCancellationRequested)` を先に置いており変えない。
+> - `ToolCatalogRefresher` の収集の捕捉も停止要求で絞り、`Task.Delay` の捕捉は `when (stoppingToken.IsCancellationRequested)`（後者は等価で、意図の明示）。
+>   公開構成の検証の捕捉（#445。ホストを止める）は同期処理で取り消しを投げないので変えない。
+> - **期限のキー `Mcp:DeclarationTimeoutSeconds`（既定 10 秒、1 未満は 1）を名前付きクライアントの `Timeout` に与える。** gRPC は従前どおり同じ
+>   `Timeout` を引くので、**期限の出所が 1 つである**という 3 の要点は保たれる（gRPC の期限も 100 秒から 10 秒になる）。既定は構成情報 API の 5 秒と同じ桁で、
+>   宛先 3 つの逐次の 1 周は最悪 30 秒（周期の既定 300 秒・最短 10 秒に対し、`Task.Delay` が後に来るので周期は詰まらない）。
+> - 試験のために周期を与える口（`internal CycleInterval`、既定 null＝構成どおり）を足した（#1598 と同じ形）。
+> - 試験は `ToolCatalogRefresherTimeoutTests`（汎用ホスト・本物の常駐処理と REST の収集器・127.0.0.1 の待受）。変異: 2 つの捕捉を直す前へ戻す →
+>   応答しない宛先の試験が**約 1 秒で赤**（`ApplicationStopping`）／収集の捕捉だけ → 同試験が赤（申告なしへ畳まれない）／周期の捕捉だけ → 漏れた取り消しの試験が赤／
+>   期限を与えない → 期限の試験と応答しない宛先の試験が赤／`Task.Delay` の捕捉を型だけに戻す → 緑（等価）。
+>   作業仕様書: `.ai-context/specs/20260926_issue-1604_refresher-and-sync-loop-timeouts.md`。
+
 ## 関連
 
 - [[IADR-0379]] / [[IADR-0419]] / [[IADR-0029]] / [[IADR-0458]] / [[IADR-0269]] / [[IADR-0292]]
