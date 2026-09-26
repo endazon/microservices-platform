@@ -283,4 +283,94 @@ public class PrivateNoteDepartedOwnerPurgeTests(TestWebApplicationFactory factor
         (await NoteExistsAsync(departedNote)).Should().BeFalse();
         (await NoteExistsAsync(activeNote)).Should().BeTrue();
     }
+
+    // ── 削除の直前の読み直し（#1583・[[IADR-0474]] 決定 6 追記） ─────────────────────
+    //
+    // 判定は全員分を先に済ませるので、判定から削除までの間が 1 巡分（最悪で所有者数 × 5 秒）開く。
+    // 🔴 その間に再有効化された利用者を、判定時の答えのまま消してはならない（ADR-0057 決定 2：取り返せない）。
+    // スタブは 1 回目（判定）と 2 回目（削除の直前）で別の答えを返す。
+
+    private int QueriedCount(string user) => factory.OwnerRetention.Queried.Count(q => q == user);
+
+    // 陽性対照: 窓が閉じたままなら、読み直しの後に消える。**読み直しが起きている**ことも測る
+    // （読み直しを外す変異では照会が 1 回になる）。
+    [Fact]
+    public async Task 窓が閉じたままの所有者は読み直しの後に消える()
+    {
+        var (user, _, plugin) = await OwnerAsync();
+        var noteId = await PushNoteAsync(plugin, "reread-still.md", "本文");
+        factory.Storage.ResetDeletions();
+        factory.OwnerRetention.DeclareSequence(user,
+            StubOwnerRetentionDirectory.Departed, StubOwnerRetentionDirectory.Departed);
+
+        await RunMaintenanceAsync(Now);
+
+        (await NoteExistsAsync(noteId)).Should().BeFalse("読み直しでも窓が閉じたままなら消す");
+        QueriedCount(user).Should().Be(2, "判定で 1 回・削除の直前で 1 回");
+    }
+
+    // 🔴 #1583 の本体: 判定の後・削除の前に再有効化された所有者は消えない。
+    // **変異検出**: 読み直しを外す（判定の答えのまま消す）とこの試験が赤になる。
+    [Fact]
+    public async Task 判定の後に再有効化された所有者の資料は消えない()
+    {
+        var (user, _, plugin) = await OwnerAsync();
+        var noteId = await PushNoteAsync(plugin, "reread-reenabled.md", "本文");
+        factory.Storage.ResetDeletions();
+        factory.OwnerRetention.DeclareSequence(user,
+            StubOwnerRetentionDirectory.Departed,
+            () => new OwnerRetentionStatus(true, Enabled: true, OwnerRetentionEligibility.Elapsed));
+
+        await RunMaintenanceAsync(Now);
+
+        QueriedCount(user).Should().Be(2, "削除の直前に読み直している");
+        (await NoteExistsAsync(noteId)).Should().BeTrue("読み直した時点で在籍中なら消さない");
+        (await DocumentExistsAsync(noteId)).Should().BeTrue();
+        factory.Audit.OfAction("private-note.purge.departed").Should().NotContain(e => e.Subject == user);
+    }
+
+    // 🔴 読み直しで名簿を引けない（`null` ＝輸送の失敗・時間切れ）なら消さない。
+    // **変異検出**: 読み直しの `null` を「消してよい」へ倒すとこの試験が赤になる。
+    [Fact]
+    public async Task 削除の直前の読み直しで名簿を引けなければ消さない()
+    {
+        var (user, _, plugin) = await OwnerAsync();
+        var noteId = await PushNoteAsync(plugin, "reread-null.md", "本文");
+        factory.Storage.ResetDeletions();
+        factory.OwnerRetention.DeclareSequence(user, StubOwnerRetentionDirectory.Departed, () => null);
+
+        await RunMaintenanceAsync(Now);
+
+        QueriedCount(user).Should().Be(2);
+        (await NoteExistsAsync(noteId)).Should().BeTrue("引けなかったことを「まだ窓が閉じている」と読まない");
+        (await DocumentExistsAsync(noteId)).Should().BeTrue();
+    }
+
+    // 🔴 読み直しが例外で失敗しても消さない。**その所有者だけを見送り、同じ周期の他の所有者と後段は止めない。**
+    [Fact]
+    public async Task 削除の直前の読み直しが失敗したら消さず他の所有者は続ける()
+    {
+        var (failing, _, failingPlugin) = await OwnerAsync();
+        var (departed, _, departedPlugin) = await OwnerAsync();
+        var failingNote = await PushNoteAsync(failingPlugin, "reread-throw.md", "本文");
+        var departedNote = await PushNoteAsync(departedPlugin, "reread-other.md", "本文");
+        factory.Storage.ResetDeletions();
+        // 🔴 3 つ目（以降ずっと返す答え）は「引けなかった」にする。スタブと DB はクラス内で共有され、
+        // 後続の試験の周期もこの所有者を判定する —— 例外を残し続けると、その周期の 1 巡目の判定が落ちる（CI で実測）。
+        factory.OwnerRetention.DeclareSequence(failing,
+            StubOwnerRetentionDirectory.Departed,
+            () => throw new TimeoutException("fake"),
+            () => null);
+        factory.OwnerRetention.DeclareDeparted(departed);
+
+        await RunMaintenanceAsync(Now);
+
+        QueriedCount(failing).Should().Be(2);
+        (await NoteExistsAsync(failingNote)).Should().BeTrue("読み直しに失敗した所有者は消さない");
+        (await NoteExistsAsync(departedNote)).Should().BeFalse("他の所有者の削除は続く");
+
+        // 次の周期（同じクラスの後続の試験の周期と同じ形）も落ちずに回り、引けない所有者は引き続き消さない。
+        await RunMaintenanceAsync(Now.AddDays(1));
+        (await NoteExistsAsync(failingNote)).Should().BeTrue();
+    }
 }

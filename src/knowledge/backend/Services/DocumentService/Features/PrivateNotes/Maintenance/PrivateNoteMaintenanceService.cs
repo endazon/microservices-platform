@@ -115,6 +115,7 @@ public sealed class PrivateNoteMaintenanceService(
     // ■ 受容するトレードオフ: **所有者 1 人につき 1 往復**である（日次粒度）。
     //   個人資料を持つ所有者の数だけ認可サービスを呼ぶ。名簿の一括照会の口は s2s の面に無く
     //   （[[IADR-0401]] 決定 2 が列挙を出さないと決めた）、**面を広げるより往復を受ける**。
+    //   ［2026-09-26 / #1583］対象と判定した所有者だけは、削除の直前の読み直しでもう 1 往復する（計 2 往復）。
     private async Task PurgeDepartedOwnersAsync(DateTimeOffset now, CancellationToken ct)
     {
         var owners = await db.PrivateNotes.Select(n => n.OwnerId).Distinct().ToListAsync(ct);
@@ -124,6 +125,7 @@ public sealed class PrivateNoteMaintenanceService(
         // 削除は取り返せないので、周期ごとに「何人中何人を消そうとしたか・判定できなかったのは何人か」を
         // ログで追えるようにする（所有者 ID は出さない —— 監査ログ側に消した分だけ残る）。
         // 🔴 **1 周期あたりの上限は置かない**（理由は IADR-0474 決定 6。窓を計画の 30 日より延ばすことになる）。
+        // 🔴 ここでの判定は**削除の根拠ではなく候補の選別**である —— 消す前に 1 人ずつ読み直す（下。#1583）。
         var purgeable = new List<string>();
         var unknown = 0;
         foreach (var owner in owners)
@@ -138,8 +140,39 @@ public sealed class PrivateNoteMaintenanceService(
             "退職者の個人資料の完全削除: 所有者 {Owners} 人中 {Purgeable} 人が対象（名簿を引けず判定しなかった所有者 {Unknown} 人は削除しない）",
             owners.Count, purgeable.Count, unknown);
 
+        // ［2026-09-26 / #1583・[[IADR-0474]] 決定 6 追記］🔴 **消す直前に、その人の状態をもう一度読む。**
+        // 上の判定は 1 巡分（最悪で所有者数 × 5 秒）前の答えであり、その間に再有効化された利用者を
+        // 判定時の答えのまま消すと取り返せない（ADR-0057 決定 2）。読み直しで `IsPurgeable` が
+        // 引き続き真のときだけ消す。**引けない（`null`）・失敗した（例外）ときは消さない。**
+        // 残る隙間は「読み直し → 1 人分の削除」だけである（名簿と DB を跨ぐ排他までは取らない）。
+        var skipped = 0;
         foreach (var owner in purgeable)
+        {
+            if (!await StillPurgeableAsync(owner, ct)) { skipped++; continue; }
             await PurgeAllOwnedAsync(owner, now, ct);
+        }
+
+        if (skipped > 0)
+            logger.LogInformation(
+                "退職者の個人資料の完全削除: 削除の直前の読み直しで {Skipped} 人を見送った（再有効化・窓の変化・名簿を引けない）",
+                skipped);
+    }
+
+    // #1583: 削除の直前の読み直し。**消してよいと確かめられたときだけ true。**
+    // 呼び出し元（定期処理の停止）の取り消しだけは伝える —— 「見送った」に畳むと停止が次の所有者へ進む。
+    private async Task<bool> StillPurgeableAsync(string owner, CancellationToken ct)
+    {
+        try
+        {
+            var status = await ownerRetention.GetAsync(owner, ct);
+            return status is { IsPurgeable: true };
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            // 🔴 所有者 ID は出さない（監査ログ側に消した分だけ残る。見送った分は残す理由が無い）。
+            logger.LogWarning(ex, "退職者の個人資料の完全削除: 削除の直前の読み直しに失敗したため、この所有者は削除しない");
+            return false;
+        }
     }
 
     // ADR-0096 決定 1: 1 人分の完全削除。射程は ADR-0057 決定 1 と同じ

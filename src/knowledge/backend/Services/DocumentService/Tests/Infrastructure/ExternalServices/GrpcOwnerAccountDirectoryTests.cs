@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.ExternalServices;
 using Grpc.Core;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Pb = Platform.Shared.Contracts.Grpc.Authz.V1;
@@ -9,7 +10,7 @@ using Pb = Platform.Shared.Contracts.Grpc.Authz.V1;
 namespace DocumentService.Tests.Infrastructure.ExternalServices;
 
 // FR-20, SC-17, NFR-09, NFR-14, ADR-0029, ADR-0075, 計画 ADR-0114 決定 1・2,
-// [[IADR-0401]] 決定 2, [[IADR-0474]] (#1532):
+// [[IADR-0401]] 決定 2, [[IADR-0474]] (#1532, #1583):
 // 同期トークンの所有者のアカウント状態の gRPC 実装が、名簿の応答を**通すのは Enabled だけ**へ写すことを固定する。
 //
 // 🔴 陽性（有効 → Enabled）を陰性と対で置く —— 常に Unknown を返す実装でも陰性だけは緑になる。
@@ -109,6 +110,23 @@ public class GrpcOwnerAccountDirectoryTests
         var act = () => Directory(fake, TimeSpan.FromMinutes(1)).GetStateAsync("alice", cts.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    // T-AS-19（#1583）: 同期の所有者の実装は**同期の読み口**（`GetAccountStatusAsync`）を使う。
+    // 🔴 退職の窓の読み口（`GetRetentionStatusAsync`）へ取り違えても応答の写し方は同じで、上の試験はすべて緑のまま
+    // になる。違いは失敗時の文言だけ —— 取り違えると、同期要求のたびに「退職の窓…削除しません」と記録され、
+    // 運用者を誤った方向へ導く。失敗させた偽の名簿で、出た文言を測る。
+    [Fact]
+    public async Task 同期の読み口を使い失敗を同期要求の拒否として記録する()
+    {
+        var logger = new RecordingLogger<UserDirectoryGrpcClient>();
+        var client = new UserDirectoryGrpcClient(FakeUserDirectoryClient.Failing(StatusCode.Unavailable), logger);
+
+        (await new GrpcOwnerAccountDirectory(client).GetStateAsync("alice", Ct)).Should().Be(OwnerAccountState.Unknown);
+
+        var warn = logger.OfLevel(LogLevel.Warning).Should().ContainSingle().Subject;
+        warn.Message.Should().Contain("同期").And.Contain("拒否");
+        warn.Message.Should().NotContain("退職").And.NotContain("削除");
     }
 
     // T-AS-17: 未構成の縮退は常に Unknown（＝同期は 401）。
