@@ -114,6 +114,7 @@
     "docs/tests/FR-12_document-normalization.md": [
       "ConversionJobStoreTests",
       "DeterministicGuidTests",
+      "DiagramCodingLimitsTests",
       "FormatRoutingBodyConverterTests",
       "LlmGatewayDiagramCoderTests",
       "LlmGatewayGrpcDiagramCoderTests",

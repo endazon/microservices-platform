@@ -2,7 +2,7 @@
 title: REST の図のコード化が LLM ゲートウェイの時間切れで正規化全体を失敗させる件を直し、図を画像として残す（#1621）
 type: spec
 status: done
-related_ids: [FR-12, UC-06, FR-11, ADR-0010, ADR-0012, ADR-0029, IADR-0008, IADR-0400]
+related_ids: [FR-12, UC-06, FR-11, ADR-0010, ADR-0012, ADR-0027, ADR-0029, IADR-0008, IADR-0400]
 author: claude
 created: 2026-09-27
 updated: 2026-09-27
@@ -34,39 +34,55 @@ issue: "#1621"
 - `LlmGatewayDiagramCoder.CodeAsync`（ConversionService の REST 実装。`Services:LlmGatewayGrpc` 未構成時の既定）の捕捉は
   `catch (Exception ex) when (ex is not OperationCanceledException)`。
 - `HttpClient.Timeout`（名前付きクライアント。明示の設定なし＝既定 100 秒）の経過は `TaskCanceledException`（`OperationCanceledException` の派生・
-  内側に `TimeoutException`）で表れ、呼び出し元の ct は立っていない → 捕捉を抜け、`NormalizationService` → `RawDocumentFetchedConsumer.Handle` の
+  内側に `TimeoutException`）で表れる → 捕捉を抜け、`NormalizationService` → `RawDocumentFetchedConsumer.Handle` の
   `catch (Exception)` でジョブが `failed` になり再送出される（Wolverine の再試行 → 使い切ればデッドレター）。
 - `ct` の出所: `RawDocumentFetchedConsumer.Handle(ev, envelope, ct)` → `normalizer.NormalizeAsync(ev, ct)` → `diagramCoder.CodeAsync(figure, confidentiality, ct)` →
-  `http.PostAsJsonAsync(…, ct)` / `ReadFromJsonAsync(ct)`。**途中で差し替え・連結はない**ので、`ct` は呼び出し元（メッセージ消費）のものである。
-  `IDiagramCoder` の利用者は `NormalizationService` だけ（`git grep -n "IDiagramCoder\|diagramCoder" -- src/knowledge/backend/Services/ConversionService/Features`）。
+  `http.PostAsJsonAsync(…, ct)` / `ReadFromJsonAsync(ct)`。ConversionService の中では差し替え・連結は無い。`IDiagramCoder` の利用者は
+  `NormalizationService` だけ（`git grep -n "IDiagramCoder\|diagramCoder" -- src/knowledge/backend/Services/ConversionService/Features`）。
+- 🔴 **ただし受け口の `ct` そのものが、停止要求と Wolverine の 1 通ごとの実行期限の連結である**（本仕様書の最初の版はここを「呼び出し元（メッセージ消費）の ct」
+  とだけ書き、実行期限を見落としていた。監査が検出）。WolverineFx 6.24.4 は `HandlerChain.ExecutionTimeoutInSeconds`、未設定なら
+  `WolverineOptions.DefaultExecutionTimeout`（**60 秒**。`DiagramCodingLimitsTests.Wolverine_の既定の実行期限は60秒である` が固定）の CTS を受け口の ct へ連結する
+  （方針で 1 秒にすると受け口の ct が実際に約 1 秒で立つことを `受け口の期限の方針は受け口の_ct_をその長さで取り消す` がローカルキューで実測）。
+  本リポジトリは実行期限をどこでも設定していなかった（`git grep -n "ExecutionTimeout\|MessageTimeout" -- src` を origin/develop（`fd474424`）に対して引くと試験以外 0 行。作業木では本 PR が足した 4 行〔`DiagramCodingLimits.cs` 2・`RawDocumentFetchedTimeoutPolicy.cs` 2〕が出る・`UsePlatformMessagingDefaults` も設定しない）。
+  図のコード化の期限は REST が 100 秒、gRPC が期限なしで、**どちらも 60 秒より長い** → 応答しないゲートウェイは**いつも受け口の ct が先に立つ形で**終わり、
+  `!ct.IsCancellationRequested` の縮退の枝には本番では届かない。
 
 ## 受け入れ基準
 
 | # | 基準 | 写像先 |
 | --- | --- | --- |
-| AC-1 | REST 実装は、LLM ゲートウェイの時間切れ（`TaskCanceledException`・呼び出し元の ct は立っていない）を `Retain("llm-call-failed")` へ畳む | `LlmGatewayDiagramCoderTests.Retains_when_gateway_times_out`（FR-12 テスト仕様 T-44） |
-| AC-2 | 対照: 呼び出し元の ct による取り消し（その ct を運ぶ `TaskCanceledException`）は畳まずに外へ出す | `LlmGatewayDiagramCoderTests.Propagates_caller_cancellation`（T-44） |
+| AC-1 | REST 実装は、自分の期限の時間切れ（`TaskCanceledException`・受け口の ct は立っていない）を `Retain("llm-call-failed")` へ畳む | `LlmGatewayDiagramCoderTests.Retains_when_gateway_times_out`（FR-12 テスト仕様 T-44） |
+| AC-2 | 対照: 受け口の ct による取り消し（その ct を運ぶ `TaskCanceledException`）は畳まずに外へ出す | `LlmGatewayDiagramCoderTests.Propagates_caller_cancellation`（T-44） |
 | AC-3 | AC-1 の器が本物の時間切れの形（`TaskCanceledException`・内側 `TimeoutException`・ct 未取り消し）を作ること | `LlmGatewayDiagramCoderTests.Hanging_gateway_fixture_produces_the_timeout_shape`（T-44） |
-| AC-4 | 受け口から端まで: 時間切れでも図は画像として残り、変換ジョブは `succeeded`（`DiagramsRetained=1`・資産 1 件を発行） | `DiagramCodingTimeoutPipelineTests.Gateway_timeout_keeps_the_figure_as_an_image_and_the_job_succeeds`（UC-06 テスト仕様 T-46） |
-| AC-5 | 受け口から端まで（対照）: 呼び出し元の取り消しは受け口の外へ出て、図を画像として保管せず発行もしない | `DiagramCodingTimeoutPipelineTests.Caller_cancellation_propagates_out_of_the_consumer`（T-47） |
-| AC-6 | gRPC 実装が同じ性質を持つか確かめる。持つなら試験で固定し、持たなければ直す → **持つ**（直さない）。呼び出し元に由来しない `RpcException(DeadlineExceeded / Cancelled)` は画像保持、呼び出し元の取り消しは `RpcException(Cancelled)` のまま外へ出る。ct が生成クライアントへ渡ることも見る | `LlmGatewayGrpcDiagramCoderTests.呼び出し元に由来しない期限切れと取り消しは画像保持へ縮退する`・`呼び出し元の取り消しは畳まずに外へ出す`（T-45） |
-| AC-7 | IADR-0008 決定 B-2 へ日付つき追記（本文は書き換えない）。新しい IADR 番号は取らない | 同 IADR の追記 |
+| AC-4 | **受け口の期限つき ct の下で**（縮尺: 1 回 1 秒・総枠 2 秒・受け口 4 秒）、応答しないゲートウェイでも図は画像として残り、ジョブは受け口の期限が立つより前に `succeeded` | `DiagramCodingTimeoutPipelineTests.Hung_gateway_keeps_the_figure_as_an_image_before_the_handler_timeout_fires`（UC-06 テスト仕様 T-46） |
+| AC-5 | 受け口から端まで（対照）: 受け口の ct の取り消しは外へ出て、図を画像として保管せず発行もしない | `DiagramCodingTimeoutPipelineTests.Caller_cancellation_propagates_out_of_the_consumer`（T-47） |
+| AC-6 | gRPC 実装の絞りは元から同じ境界（直さない）。呼び出し元に由来しない `RpcException(DeadlineExceeded / Cancelled)` は画像保持、受け口の ct の取り消しは `RpcException(Cancelled)` のまま外へ出る。ct が生成クライアントへ渡る | `LlmGatewayGrpcDiagramCoderTests.呼び出し元に由来しない期限切れと取り消しは画像保持へ縮退する`・`呼び出し元の取り消しは畳まずに外へ出す`（T-45） |
+| AC-7 | **1 回の呼び出しの期限**を構成から与える（`Conversion:DiagramCodingTimeoutSeconds`・既定 20 秒・下限 1 秒）。REST は `HttpClient.Timeout`、gRPC は `Deadline` に同じ値 | `LlmGatewayGrpcDiagramCoderTests.呼び出しごとに構成の期限を付ける`（T-45）、`DiagramCodingLimitsTests.本番の配線は三つの上限を既定値で張る`（T-49）、AC-4 の試験（本番と同じ登録を通す） |
+| AC-8 | **1 文書の総枠**（`Conversion:DiagramCodingBudgetSeconds`・既定 120 秒）を使い切ったら、残りの図はゲートウェイを呼ばずに画像として残し、ジョブは続く | `NormalizationServiceTests.Retains_remaining_figures_without_calling_the_coder_once_the_budget_is_exhausted`・`Calls_the_coder_for_every_figure_while_the_budget_lasts`、`DiagramCodingTimeoutPipelineTests.Exhausted_budget_retains_the_remaining_figures_without_calling_the_gateway`（T-48） |
+| AC-9 | **受け口の実行期限**（`Conversion:HandlerTimeoutSeconds`・既定 300 秒）を `RawDocumentFetched` のハンドラへ与え、「受け口 ＞ 総枠 ＋ 1 回」でなければ起動を止める | `DiagramCodingLimitsTests`（既定値・下限・順序の検査・方針が受け口の ct を取り消す・Program.cs の配線。T-49） |
+| AC-10 | IADR-0008 決定 B-2 へ日付つき追記（本文は書き換えない。数値と選択の理由を含む）。新しい IADR 番号は取らない | 同 IADR の追記 |
+| AC-11 | 他の Wolverine の受け口で、既定 100 秒または期限なしの外向き呼び出しに頼るものを洗い出し、判定を記す（本 PR では直さない） | 下の「母集合」軸 4 |
 
 ## 設計
 
-- 捕捉を `when (ex is not OperationCanceledException || !ct.IsCancellationRequested)` にする（#1607＝#1604、#1619＝#1608 と同じ形。新しい判断ではない）。
+- 捕捉を `when (ex is not OperationCanceledException || !ct.IsCancellationRequested)` にする（#1607＝#1604、#1619＝#1608 と同じ形）。
   理由文字列は従前の `llm-call-failed` のまま（gRPC 実装と同じ。運用の集計を輸送で割らない）。
-- gRPC 実装（`LlmGatewayGrpcDiagramCoder`）の捕捉は `when (ex is RpcException or InvalidOperationException && !ct.IsCancellationRequested)`
-  （`is` のパターン結合子 `or` は `&&` より強く結合するので `(ex is (RpcException or InvalidOperationException)) && !ct…`）。
-  チャネル（`GrpcClientExtensions.CreatePlatformChannel`）は `ThrowOperationCanceledOnCancellation` を立てておらず、`HttpClient` ではなく
-  ハンドラ直結のため `HttpClient.Timeout` も無い。期限切れ・取り消し・s2s トークン取得（`CallCredentials` 内）の時間切れはいずれも
-  `RpcException(DeadlineExceeded / Cancelled)` として届く → **既に正しい**。コメントでこの根拠を明記し、試験で固定する。
-- 試験の器: 応答を返さず要求の ct が立つまで待つ `HttpMessageHandler`。時間切れは本物の `HttpClient.Timeout`（100 ms）で起こす。
-  呼び出し元の取り消しは、要求が届いた時点でハンドラから呼び出し元の `CancellationTokenSource.Cancel()` を呼んで「要求の途中」で起こす
-  （`HttpClient` はそのとき呼び出し元の ct を運ぶ `TaskCanceledException` を投げる）。対照の試験は伝わらなかったときに 100 秒待たないよう
-  `Timeout` を 30 秒にしておく。ネットワークは使わない（ハンドラ直結。待ち受けも無い）。
-- 端から端の試験は `RawDocumentFetchedConsumer` ＋ `NormalizationService` ＋ `LlmGatewayDiagramCoder` を本物で組み、LLM ゲートウェイ（ハンドラ）・
-  本文変換・オブジェクトストレージ・発行口だけを差し替える。ジョブストアは既存試験と同じ EF InMemory。
+- gRPC 実装の捕捉は `when (ex is RpcException or InvalidOperationException && !ct.IsCancellationRequested)`（`is` のパターン結合子 `or` は `&&` より強く結合）。
+  チャネルは `ThrowOperationCanceledOnCancellation` を立てておらず、期限切れ・取り消しは `RpcException(DeadlineExceeded / Cancelled)` で届く → 絞りは既に正しい。
+- **3 つの時間の上限**（`Infrastructure/Configuration/DiagramCodingLimits.cs`。内側から 1 回 ＜ 総枠 ＜ 受け口）:
+  - 1 回の期限 20 秒: REST は `DiagramCoderRegistration.AddRestDiagramCoder` が名前付きクライアントの `Timeout` に、gRPC は `LlmGatewayGrpcDiagramCoder` が
+    呼び出しの `Deadline`（`TimeProvider` の現在時刻 ＋ 期限）に与える。登録を Program.cs から切り出したのは、端から端の試験が**本番と同じ登録**で期限を測るため
+    （試験側で `HttpClient` を組むと本番の `Timeout` を外しても緑のまま）。
+  - 総枠 120 秒: `NormalizationService` が `TimeProvider.GetTimestamp()` で図のコード化の開始からの経過を測り、各図の**呼び出し前**に使い切りを判定する。
+    使い切りなら `Retain("coding-budget-exhausted")` として既存の画像保持の枝へ流す（図の記録の形・SC-07 の表示は変えない）。
+  - 受け口 300 秒: `RawDocumentFetchedTimeoutPolicy`（Wolverine の `IHandlerPolicy`）が `RawDocumentFetched` のチェーンにだけ `ExecutionTimeoutInSeconds` を与える。
+  - 数値の根拠: 受け口の既定 60 秒のままでは総枠 ＋ 1 回（140 秒）が収まらない。総枠を 60 秒未満へ縮めると 1 回 20 秒で 2 図しか試せない。
+    300 秒なら本文変換・保管に 160 秒残る。副作用: 固まった pandoc が 1 回の試行を占有する時間が 60 → 300 秒に延びる（再試行の間隔・回数は不変）。
+- 試験の器:
+  - 応答を返さず要求の ct が立つまで待つ `HttpMessageHandler`（届いた要求を数える）。ネットワークは使わない（ハンドラ直結。待ち受けも無い）。
+  - 端から端の試験は受け口へ **`DiagramCodingLimits.HandlerTimeout` で CancelAfter した ct**（Wolverine が渡す ct の縮尺版）を渡す。縮尺は構成の下限（1 秒）に合わせ
+    1 回 1 秒・総枠 2 秒・受け口 4 秒。
+  - 総枠の単体試験は試験だけが進める時計（`ManualTimeProvider`）で経過を作る（実時間に依存しない）。
 
 ## 母集合（同じ欠陥の走査）
 
@@ -93,6 +109,24 @@ issue: "#1621"
   `PandocConversionService.cs:85`・`:395`・`PdfTextLayerConverter.cs:193`・`RawSourceResolver.cs:71`・`:72`（一時ファイルの後始末・形式の推定の
   best-effort。LLM 呼び出しではなく、取り消しを伝える経路でもない）。本件以外に該当なし。
 
+- 軸 4（#1621 の監査の追加依頼: **他の Wolverine の受け口で、既定 100 秒または期限なしの外向き呼び出しに頼るもの**）: 受け口の登録
+  `git grep -n "AddPlatformWolverineStep<\|UseWolverine(" -- 'src/knowledge' 'src/platform'`（試験以外）→ `UseWolverine` 7 サービス。
+  DataSourceService・DocumentService は発行だけ（`DisableConventionalDiscovery` ＋ `RoutePlatformEvent`、段の登録なし）で**除外**。残る 5 サービスの受け口 7 つの
+  コンストラクタ依存から外向きの呼び出しを辿った。**いずれの受け口も実行期限は既定 60 秒**（上の事実）で、受け口と依存側に try/catch は無い
+  （該当ファイルの `grep -c catch` がすべて 0。例外は受け口の外へ出て Wolverine の再試行 → デッドレター）。
+
+  | 受け口 | 外向きの呼び出し（登録） | 期限 | 判定 |
+  | --- | --- | --- | --- |
+  | ConversionService `RawDocumentFetchedConsumer` | 図のコード化（REST / gRPC） | 本 PR で 20 秒 / 20 秒 | **本件**（縮退の枝を持つので、受け口の期限より短い期限が要る） |
+  | GraphService `GraphDocumentSyncConsumer` | `IGraphContentReader`＝`StorageContentReader`（`AddHttpClient<…>()`・http(s) の本文取得）・オブジェクトストレージ | HttpClient 既定 100 秒 / SDK 既定 | 縮退の枝なし。固まると 60 秒で受け口の ct が立ち、失敗 → 再試行。計画の縮退とは矛盾しないが、原因が「時間切れ」でなく「取り消し」として記録される。**報告** |
+  | GraphService `DocumentDeletedConsumer` | DB のみ（`GraphDbContext`） | — | 外向き呼び出しなし。除外 |
+  | IngestionService `DocumentUpdatedConsumer` | `IDocumentContentReader`＝`StorageDocumentContentReader`（既定 100 秒）・`IEmbeddingService`（REST `LlmGatewayEmbeddingService`＝既定 100 秒 / gRPC `LlmGatewayGrpcEmbeddingService`＝期限なし）・Qdrant gRPC（`QdrantClient`・期限なし） | 100 秒 / なし | 縮退の枝なし（失敗 → 再試行）。埋め込みは分割数に比例して呼ぶため、大きな文書が**正常系でも** 60 秒の受け口の期限を越え得るかは未測定。**報告** |
+  | RetrievalService `DocumentDeletedConsumer` | `IVectorStore`＝`QdrantVectorStore`（Qdrant gRPC・期限なし） | なし | 縮退の枝なし。**報告**（期限なしの gRPC） |
+  | WikiService `DocumentSyncConsumer` | `IWikiJsClient`＝`WikiJsGraphQlClient`（`ConfigureWikiJsHttpClient` は `Timeout` を設定しない＝既定 100 秒）・`IWikiContentReader`＝`StorageMarkdownReader`（既定 100 秒） | 100 秒 | 縮退の枝なし。**報告** |
+  | WikiService `DocumentDeletedConsumer` | `IWikiJsClient`（既定 100 秒） | 100 秒 | 縮退の枝なし。**報告** |
+
+  本 PR では直さない（射程外。起票は依頼元に委ねる）。
+
 ## 検証
 
 実測はすべて 2026-09-27、手元（Windows・.NET SDK 10）。結果は PR 本文と報告に記す。
@@ -101,8 +135,12 @@ issue: "#1621"
 - `dotnet format <slnx> --verify-no-changes`: `src/knowledge/backend/backend.slnx`・`src/platform/backend/backend.slnx`。
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`。
 - 変異（1 か所ずつ。修正のコミットの上で書き換え、`git show HEAD:<path> > <path>` で戻す）:
-  - M1: REST の捕捉を型だけへ戻す（`when (ex is not OperationCanceledException)`）→ AC-1・AC-4 の試験が赤。
-  - M2: REST の捕捉を型で広げる（`when (ex is not OperationCanceledException || ex is TaskCanceledException)`）→ AC-2・AC-5 の試験が赤。
+  - M1: REST の捕捉を型だけへ戻す → AC-1・AC-4・AC-8（端から端）の試験が赤。
+  - M2: REST の捕捉を型で広げる（`|| ex is TaskCanceledException`）→ AC-2・AC-5 の試験が赤。
   - M3: gRPC の捕捉から `&& !ct.IsCancellationRequested` を外す → AC-6 の対照が赤。
-  - M4: gRPC の呼び出しへ ct を渡さない（`cancellationToken: default`）→ AC-6 の対照が赤（ct の受け渡しの確認）。
-  - M5: REST の要求へ ct を渡さない（`CancellationToken.None`）→ AC-2・AC-5 の試験が赤（ct が呼び出し元のものであることの確認）。
+  - M4: gRPC の呼び出しへ ct を渡さない → AC-6 の対照が赤。
+  - M5: REST の要求へ ct を渡さない → AC-2・AC-5 の試験が赤。
+  - M6: 登録から `c.Timeout = limits.CallTimeout` を外す（1 回の期限なし＝既定 100 秒）→ AC-4・AC-8（端から端）・AC-7（配線）の試験が赤（受け口の期限が先に立つ）。
+  - M7: 総枠の判定を無効にする → AC-8 の単体・端から端の試験が赤。
+  - M8: gRPC の `Deadline` を外す → AC-7 の gRPC 試験が赤。
+  - M9: Program.cs から受け口の期限の方針を外す → AC-9 の配線試験が赤。

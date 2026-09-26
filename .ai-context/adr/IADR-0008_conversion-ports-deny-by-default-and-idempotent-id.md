@@ -5,6 +5,8 @@ status: Accepted
 related_ids:
   - FR-12
   - UC-06
+  - ADR-0027
+  - ADR-0029
 author: claude
 created: 2026-07-03
 updated: 2026-09-27
@@ -69,20 +71,39 @@ FR-12 / UC-06 は「取得した原本を、AI が扱いやすい正規化形式
   送信可否ロジックは FR-11 の `/complete`（越境マトリクス、[IADR-0007](./IADR-0007_llm-egress-routing-config-driven.md)）へ委譲し、
   変換固有の送信制御を二重実装しない。
 
-> **［2026-09-27 追記 / #1621］B-2 の「呼び出し失敗」は時間切れを含む。外へ出すのは呼び出し元（メッセージ消費）の ct による取り消しだけである。**
-> REST の図のコード化 `LlmGatewayDiagramCoder.CodeAsync`（`Services:LlmGatewayGrpc` 未構成時の既定の実装）の捕捉は
-> `when (ex is not OperationCanceledException)` と型だけで絞っており、LLM ゲートウェイの時間切れ（名前付きクライアントの
-> `HttpClient.Timeout`＝既定 100 秒は `TaskCanceledException`＝`OperationCanceledException` の派生で表れ、呼び出し元の ct は立っていない）が
-> 画像保持へ縮退せず、`RawDocumentFetchedConsumer` の正規化全体を失敗させていた（ジョブは `failed`、再試行を使い切ればデッドレター）。
-> これは本決定 B-2 と UC-06 例外フロー「図コード化（LLM）の失敗は画像保持へ縮退」に反する。捕捉を
-> `when (ex is not OperationCanceledException || !ct.IsCancellationRequested)` に改めた（#1604 / #1608 と同じ形）。`ct` は
-> 受け口の `Handle(…, ct)` → `NormalizationService.NormalizeAsync` → `CodeAsync` とそのまま渡る呼び出し元のものである。
-> gRPC 実装 `LlmGatewayGrpcDiagramCoder` は `RpcException` を `!ct.IsCancellationRequested` で絞って捕捉しており、期限切れ・取り消しは
-> `RpcException(DeadlineExceeded / Cancelled)` で表れる（チャネルは `ThrowOperationCanceledOnCancellation` を立てていない）ため**影響を受けない**。
-> 同じ性質を試験で固定した。試験: `LlmGatewayDiagramCoderTests`（時間切れ・器の確認・呼び出し元の取り消しの対照）、
-> `LlmGatewayGrpcDiagramCoderTests`（期限切れ・取り消し・呼び出し元の取り消しの対照）、`DiagramCodingTimeoutPipelineTests`
-> （受け口から端まで: 時間切れでジョブが成功し図が画像として残る／呼び出し元の取り消しは外へ出る）。
-> 作業仕様書: `.ai-context/specs/20260927_issue-1621_diagram-coder-timeout-retain.md`。**本文（決定 B-2）は書き換えない。**
+> **［2026-09-27 追記 / #1621］B-2 の「呼び出し失敗」は時間切れを含む。時間切れが縮退の枝に届くよう、図のコード化に 3 つの時間の上限を置く。**
+>
+> **欠陥**: REST の図のコード化 `LlmGatewayDiagramCoder.CodeAsync`（`Services:LlmGatewayGrpc` 未構成時の既定）は捕捉を
+> `when (ex is not OperationCanceledException)` と型だけで絞っており、LLM ゲートウェイの時間切れ（`TaskCanceledException`）を画像保持へ
+> 縮退させず、`RawDocumentFetchedConsumer` の正規化全体を失敗させていた（ジョブは `failed`、再試行を使い切ればデッドレター）。
+> 本決定 B-2 と UC-06 例外フロー「図コード化（LLM）の失敗は画像保持へ縮退」に反する。
+>
+> **絞りの修正だけでは直らない**（本 PR の最初の版の誤り。監査が検出）。受け口の ct は**停止要求と Wolverine の 1 通ごとの実行期限の連結**
+> である（WolverineFx 6.24.4 は `HandlerChain.ExecutionTimeoutInSeconds`、未設定なら `WolverineOptions.DefaultExecutionTimeout`＝**60 秒**の CTS を
+> 受け口の ct へ連結する。本リポジトリはどちらも設定していなかった）。一方、図のコード化の期限は REST が `HttpClient` 既定の 100 秒、gRPC は期限なし
+> だった。したがって応答しないゲートウェイは**いつも受け口の ct が先に立つ形で**終わり、`!ct.IsCancellationRequested` の縮退の枝には届かなかった。
+>
+> **決定**:
+> 1. 捕捉を `when (ex is not OperationCanceledException || !ct.IsCancellationRequested)` にする（#1604 / #1608 と同じ形）。外へ出すのは受け口の ct が
+>    立った取り消し（停止要求・実行期限）だけ。gRPC 実装の捕捉（`RpcException or InvalidOperationException && !ct.IsCancellationRequested`）は元から同じ境界である。
+> 2. **1 回の呼び出しの期限** `Conversion:DiagramCodingTimeoutSeconds`（既定 **20 秒**・下限 1 秒）。REST は名前付きクライアントの `HttpClient.Timeout`
+>    （`DiagramCoderRegistration.AddRestDiagramCoder`）、gRPC は呼び出しの `Deadline`。**同じ値を 1 か所から引く**（#1604 の `Mcp:DeclarationTimeoutSeconds` と同じ扱い）。
+> 3. **1 文書あたりの図のコード化の総枠** `Conversion:DiagramCodingBudgetSeconds`（既定 **120 秒**・下限 1 秒）。`NormalizationService` が図ごとに呼び出しの
+>    **前**に経過時間を見て、使い切っていたら**ゲートウェイを呼ばずに**画像保持へ回す（理由 `coding-budget-exhausted` をログへ出す。図の記録の形は変えない）。
+>    超過は最後の 1 回の期限までに収まる。後日の人手補正（UC-06 代替フロー Phase 1）でコード化できるので、残りの図を捨てることにはならない。
+> 4. **受け口の実行期限** `Conversion:HandlerTimeoutSeconds`（既定 **300 秒**）を `RawDocumentFetched` のハンドラの `ExecutionTimeoutInSeconds` へ与える
+>    （`RawDocumentFetchedTimeoutPolicy`。他のメッセージ型の既定 60 秒は変えない）。**受け口の期限 ＞ 総枠 ＋ 1 回の期限**でなければ起動を止める
+>    （`DiagramCodingLimits.From`）。既定では本文変換（pandoc。自前の期限を持たず受け口の ct に従う）・保管に 300 −（120 ＋ 20）＝ 160 秒が残る。
+>
+> **選択の理由**: 総枠だけでは受け口の既定 60 秒に収まらず（120 ＋ 20 ＞ 60）、受け口の期限だけでは図の多い文書で期限を食い尽くす。総枠を 60 秒未満へ
+> 縮めると 1 回 20 秒で 2 図しか試せず、段階的コード化（ADR-0012）の実効が落ちる。両方を置き、順序（1 回 ＜ 総枠 ＜ 受け口）を起動時に検査する形にした。
+> 受け口の期限を延ばした副作用として、固まった pandoc が 1 回の試行を占有する時間は 60 秒から 300 秒へ延びる（再試行の間隔・回数は変えない）。
+>
+> 試験: `DiagramCodingTimeoutPipelineTests`（縮尺した受け口の期限つき ct を渡し、応答しないゲートウェイで受け口の期限より前に成功する／総枠を使い切った
+> 残りの図はゲートウェイを呼ばない／受け口の ct の取り消しは外へ出る）、`NormalizationServiceTests`（総枠の単体）、`LlmGatewayDiagramCoderTests`・
+> `LlmGatewayGrpcDiagramCoderTests`（絞りの境界・gRPC の期限）、`DiagramCodingLimitsTests`（既定値・下限・順序の検査・Wolverine の既定 60 秒の固定・
+> 方針が受け口の ct を実際に取り消すこと・Program.cs の配線）。作業仕様書: `.ai-context/specs/20260927_issue-1621_diagram-coder-timeout-retain.md`。
+> **本文（決定 B-2）は書き換えない。**
 
 - **C-2 を採用**。`DeterministicGuid.ForDocument(SourceId, OriginalPath)` で `DocumentId` を導出する。
 - **pandoc 実行**: `IBodyConverter` は pandoc が利用可能かつ原本がローカル解決可能な場合、
