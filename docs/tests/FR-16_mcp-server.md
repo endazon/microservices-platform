@@ -3,7 +3,7 @@ title: FR-16 MCP サーバー統合 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-23
-updated: 2026-09-26
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:

@@ -3,7 +3,7 @@ title: UC-04 データソースを登録・同期する テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-31
-updated: 2026-09-26
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:

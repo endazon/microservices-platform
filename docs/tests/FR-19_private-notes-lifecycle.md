@@ -3,7 +3,7 @@ title: FR-19 個人資料のライフサイクル・容量・版保持 テスト
 type: test-spec
 status: completed
 created: 2026-08-23
-updated: 2026-09-26
+updated: 2026-09-27
 author: Claude
 ---
 <!-- trace:

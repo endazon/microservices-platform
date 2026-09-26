@@ -3,7 +3,7 @@ title: テスト仕様書 — FR-10 利用状況・検索傾向・回答品質�
 type: test-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-09-26
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
