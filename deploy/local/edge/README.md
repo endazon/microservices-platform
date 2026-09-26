@@ -31,7 +31,7 @@
 ## 有効化（opt-in・既定オフ）
 
 ```sh
-LOCALEDGE=1 bash scripts/k8s-local-up.sh          # 必要に応じ OBSERVABILITY=1 HEADLAMP=1 VAULT=1 ARGOCD=1 を併記
+LOCALEDGE=1 bash scripts/k8s-local-up.sh --live          # 必要に応じ OBSERVABILITY=1 HEADLAMP=1 VAULT=1 ARGOCD=1 を併記
 ```
 
 `scripts/k8s-local-up.sh` は `LOCALEDGE=1` のとき、(1) k3d cluster を **80/443/50000 公開で作成**し、(2) 本オーバーレイを
@@ -57,7 +57,7 @@ LOCALEDGE=1 bash scripts/k8s-local-up.sh          # 必要に応じ OBSERVABILIT
 
 ```sh
 k3d cluster delete msp-ast-dev
-LOCALEDGE=1 bash scripts/k8s-local-up.sh
+LOCALEDGE=1 bash scripts/k8s-local-up.sh --live
 ```
 
 ### Rancher Desktop（内蔵 k3s）の差分

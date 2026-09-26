@@ -3,7 +3,7 @@ title: 経路B SSO 復旧 Runbook（揮発 live 設定の再適用手順）
 type: runbook
 status: active
 created: 2026-07-25
-updated: 2026-09-25
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
@@ -43,7 +43,7 @@ git checkout develop && git pull --ff-only origin develop && git submodule updat
 
 read -rs ANTHROPIC_API_KEY; export ANTHROPIC_API_KEY
 LOCALEDGE=1 ESO=1 VAULT=1 OBSERVABILITY=1 HEADLAMP=1 ARGOCD=1 \
-  bash scripts/k8s-local-up.sh     # 永続化は既定オン（PERSIST=1 は不要。外すときだけ PERSIST=0）
+  bash scripts/k8s-local-up.sh --live     # 永続化は既定オン（PERSIST=1 は不要。外すときだけ PERSIST=0）
 ```
 
 > `ESO=1` は `VAULT=1` 必須（未併記なら fail-fast）。この起動で ①ESO seed 投入 ②ESO 供給後の rollout
@@ -133,7 +133,7 @@ kubectl -n platform-infra exec -i deploy/postgres -- \
 # ブラウザ OIDC を持つツール 7 件のログイン開始をまとめて測る（段 15 本・読み取り専用）。
 # ルート CA はクラスタから自動で取り出し、**TLS 検証は切らない**（-k を持たない）。
 # 終了コード: 0=全 PASS / 1=導線の失敗（落ちたクライアントを名指しする） / 2=前提未整備。
-bash scripts/verify-tool-oidc-logins.sh
+bash scripts/verify-tool-oidc-logins.sh --live
 
 # 実弾 OFF（最重要・不変であること）
 kubectl -n ai-stock-trading set env deploy/order-execution-service --list | grep Broker__Provider   # paper

@@ -6,9 +6,14 @@
 # タグ規則は values-local.yaml と一致: k3d-local/<chart-image>:latest（IfNotPresent で pull しない）。
 # compose に載らない deploy/local 専用のイメージ（LOCAL_ONLY_IMAGES）は、版から作ったタグで同じ経路へ置く（#1564）。
 #
-#   bash scripts/k8s-local-images.sh [cluster-name]      # cluster-name は k3d 経路でのみ使用
+#   bash scripts/k8s-local-images.sh --live [cluster-name]   # cluster-name は k3d 経路でのみ使用（--live か LIVE=1 が無ければ何もしない。#1550）
 #   K8S_LOCAL_RUNTIME=rancher|k3d で明示指定も可（既定 auto）。
 set -euo pipefail
+
+# NFR, #1550: 稼働クラスタのランタイム（k3d / Rancher Desktop の containerd）へイメージを取り込む。明示の指定（--live か LIVE=1）が無ければ何もせずに終わる（判定は副作用より前に置く）。
+. "$(dirname "$0")/lib/live-opt-in.sh" || exit 3   # 判定器が読めなければ守れない —— 黙って続けず止める
+live_opt_in_scan "$@"; set -- "${LIVE_REST[@]+"${LIVE_REST[@]}"}"
+live_opt_in_require "k8s-local-images.sh"
 
 CLUSTER="${1:-msp-ast-dev}"
 PREFIX="k3d-local"   # 実レジストリではないローカル接頭辞（Rancher/k3d 共通）

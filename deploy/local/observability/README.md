@@ -72,7 +72,7 @@ kubectl -n platform-infra port-forward svc/grafana 3000:3000   # http://localhos
 `tempo-data` 2Gi → `/tmp/tempo` ／ `grafana-data` 1Gi → `/var/lib/grafana`）。
 
 ```sh
-PERSIST=1 OBSERVABILITY=1 bash scripts/k8s-local-up.sh
+PERSIST=1 OBSERVABILITY=1 bash scripts/k8s-local-up.sh --live
 # 直接当てるなら: kubectl apply -k deploy/local/observability-persistence
 ```
 

@@ -33,9 +33,9 @@
  *
  * 実行方法（手順の全体は docs/migration/cutover-discard-and-rebuild.md）:
  *   事前実測（破棄の直前。生データを保存する）:
- *     node scripts/measure-cutover-inventory.js --dump before.json
+ *     node scripts/measure-cutover-inventory.js --live --dump before.json
  *   再構築の後の検証（破棄を始めた時刻を --since へ渡す。fail が 1 件でもあれば終了コード 1）:
- *     node scripts/measure-cutover-inventory.js --since 2026-10-01T01:00:00Z --baseline before.json --dump after.json
+ *     node scripts/measure-cutover-inventory.js --live --since 2026-10-01T01:00:00Z --baseline before.json --dump after.json
  *   保存済みの生データから判定だけやり直す:
  *     node scripts/measure-cutover-inventory.js --input after.json --since 2026-10-01T01:00:00Z --baseline before.json
  *   MSP の DB を作り直す SQL を表示する（実行はしない）:
@@ -52,6 +52,7 @@
  */
 
 const { spawnSync } = require('child_process');
+const { requireLiveOptIn } = require('./lib/live-opt-in.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -521,6 +522,8 @@ async function main(argv) {
   const since = argValue(argv, '--since');
   const baseline = argValue(argv, '--baseline');
 
+  // NFR, #1550: 収集（--input なし）は稼働クラスタへ kubectl で当たる。明示の指定が無ければ何もしない。
+  if (!input) requireLiveOptIn('measure-cutover-inventory', argv, { offline: '--input <収集済み JSON> / --print-recreate-sql' });
   const data = input ? JSON.parse(fs.readFileSync(input, 'utf8')) : await collect(expected.databases);
   if (dump) fs.writeFileSync(dump, `${JSON.stringify(data, null, 2)}\n`);
 

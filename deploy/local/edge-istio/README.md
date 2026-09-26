@@ -30,15 +30,15 @@ istiod / ingressgateway の values は [`../../istio/`](../../istio/README.md)�
 
 ```sh
 # クラスタ作成から通す（推奨）
-ISTIO=1 LOCALEDGE=1 ./scripts/k8s-local-up.sh                        # PERMISSIVE
-ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh # STRICT
+ISTIO=1 LOCALEDGE=1 ./scripts/k8s-local-up.sh --live                        # PERMISSIVE
+ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh --live # STRICT
 
 # 既に立っているクラスタのエッジだけを移す
-bash scripts/istio-edge-up.sh
-ISTIO_MTLS_MODE=STRICT bash scripts/istio-edge-up.sh
+bash scripts/istio-edge-up.sh --live
+ISTIO_MTLS_MODE=STRICT bash scripts/istio-edge-up.sh --live
 
 # 🔴 切り戻し（1 コマンド・冪等）。**触る前に読むこと**
-bash scripts/istio-edge-down.sh
+bash scripts/istio-edge-down.sh --live
 ```
 
 🔴 **mTLS モードは helm を通してしか書かない**（#1159 / [`IADR-0377`](../../../.ai-context/adr/IADR-0377_mesh-mtls-single-writer-and-drift-gate.md)）。

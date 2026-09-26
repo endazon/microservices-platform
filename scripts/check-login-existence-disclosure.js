@@ -64,7 +64,7 @@
  * 比較器が 2 つあると、片方だけが直る（**正規化規則の正本は 1 つ**）。
  *
  * 使い方:
- *   node scripts/check-login-existence-disclosure.js              # 稼働クラスタに対して測る
+ *   node scripts/check-login-existence-disclosure.js --live       # 稼働クラスタに対して測る（--live か LIVE=1 が無ければ何もしない。#1550）
  *   node scripts/check-login-existence-disclosure.js --self-test  # 判定関数（純関数）の自己試験
  */
 const {
@@ -79,6 +79,7 @@ const {
   decodeEntities,
   normalizeConcealmentBody,
 } = require('./check-password-reset-mail');
+const { LIVE_FLAG, requireLiveOptIn } = require('./lib/live-opt-in.js');
 
 const TAG = '[check-login-existence-disclosure]';
 
@@ -608,12 +609,14 @@ function selfTest() {
 
 async function main() {
   const argv = process.argv.slice(2);
-  const unknown = argv.filter((a) => a !== '--self-test');
+  const unknown = argv.filter((a) => a !== '--self-test' && a !== LIVE_FLAG);
   if (unknown.length > 0) {
     console.error(`${TAG} 未知の引数: ${unknown.join(' ')}`);
     process.exit(2);
   }
   if (argv.includes('--self-test')) { selfTest(); return; }
+  // NFR, #1550: 稼働の Keycloak へ認証の失敗を投げる（brute-force の計数を消費する）。明示の指定が無ければ何もしない。
+  requireLiveOptIn('check-login-existence-disclosure', argv, { offline: '--self-test' });
 
   const r = await run();
   for (const notice of r.notices) console.log(notice);

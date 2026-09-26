@@ -190,7 +190,7 @@ Keycloak 管理コンソールでの一時パスワード発行と `UPDATE_PASSW
 | 層 | 何を見るか | 落ち方 |
 | --- | --- | --- |
 | 宣言（静的） | realm 宣言の「申請の開閉」と「送出先」の対 | `node scripts/check-realm-constraints.js` が fail |
-| 稼働（実行時） | 稼働 realm の同じ対 | `node scripts/check-password-reset-mail.js` が**応答を測る前に** fail し、どの状態に居るかを名指しする |
+| 稼働（実行時） | 稼働 realm の同じ対 | `node scripts/check-password-reset-mail.js --live` が**応答を測る前に** fail し、どの状態に居るかを名指しする |
 | 運用（手順） | 実リレーへ切り替える前後・送出経路が落ちたとき | [運用 Runbook](../operations/keycloak-smtp-relay-setup-runbook.md) が「先に閉じる／戻してから開く」を持つ |
 
 > 🔴 **稼働状態は放っておくと状態 B へ戻る。** 認証基盤のコンテナが再起動すると、実行時に投入した送出先は

@@ -25,7 +25,7 @@
  * 実行方法:
  *   1) 収集 ＋ 集計（稼働環境が要る）:
  *        NDCG_BASE_URL=https://edge.example NDCG_TOKEN=<jwt> \
- *          node scripts/measure-search-ndcg.js --qrels perf/ndcg/qrels.json --dump run-voyage.json
+ *          node scripts/measure-search-ndcg.js --live --qrels perf/ndcg/qrels.json --dump run-voyage.json
  *   2) 集計だけ（保存済みの順位から。**環境非依存＝レビューの追試はこちら**）:
  *        node scripts/measure-search-ndcg.js --input run-voyage.json
  *   3) A/B の比較（2 回の収集を並べる。qrels が同一であることは digest で検査する）:
@@ -46,6 +46,7 @@
 
 const fs = require('fs');
 const crypto = require('crypto');
+const { requireLiveOptIn } = require('./lib/live-opt-in.js');
 
 // 検索モード（`Knowledge.Contracts/Dtos/SearchDto.cs` の SearchModes と同じ 3 値）。
 // 🔴 **ここを 2 値にしない** —— hybrid を測れないと「埋め込みの寄与」を切り分けられない。
@@ -409,6 +410,8 @@ async function main(argv) {
   if (inputs.length > 0) {
     data = mergeDatasets(inputs.map(readJson));
   } else {
+    // NFR, #1550: 収集（--input なし）は稼働の検索 API と Keycloak へ当たる。明示の指定が無ければ何もしない。
+    requireLiveOptIn('measure-search-ndcg', argv, { offline: '--input <収集済み JSON>' });
     const qrelsPath = qrelsPaths[0] || 'perf/ndcg/qrels.json';
     const qrels = readJson(qrelsPath);
     const errors = validateQrels(qrels);

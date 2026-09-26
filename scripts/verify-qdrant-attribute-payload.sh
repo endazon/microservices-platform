@@ -17,9 +17,9 @@
 #   1) 実機 Qdrant を用意する。例（ローカル）:
 #        docker run -d --name qdrant -p 6333:6333 qdrant/qdrant:latest
 #   2) 本スクリプトを実行する:
-#        QDRANT_URL=http://localhost:6333 bash scripts/verify-qdrant-attribute-payload.sh
+#        QDRANT_URL=http://localhost:6333 bash scripts/verify-qdrant-attribute-payload.sh --live
 #      API キーが必要な場合:
-#        QDRANT_URL=... QDRANT_API_KEY=... bash scripts/verify-qdrant-attribute-payload.sh
+#        QDRANT_URL=... QDRANT_API_KEY=... bash scripts/verify-qdrant-attribute-payload.sh --live
 #
 # 依存: bash / curl のみ（jq があれば整形表示、無くても判定は動作する）。
 #
@@ -27,6 +27,11 @@
 #       進むべきかの判定を標準出力へ表示する。副作用として検証用の一時コレクションを作成・削除する。
 
 set -u
+
+# NFR, #1550: 稼働の Qdrant（QDRANT_URL）へコレクションと点を作って消す。明示の指定（--live か LIVE=1）が無ければ何もせずに終わる（判定は副作用より前に置く）。
+. "$(dirname "$0")/lib/live-opt-in.sh" || exit 3   # 判定器が読めなければ守れない —— 黙って続けず止める
+live_opt_in_scan "$@"; set -- "${LIVE_REST[@]+"${LIVE_REST[@]}"}"
+live_opt_in_require "verify-qdrant-attribute-payload.sh"
 
 QDRANT_URL="${QDRANT_URL:-http://localhost:6333}"
 QDRANT_API_KEY="${QDRANT_API_KEY:-}"

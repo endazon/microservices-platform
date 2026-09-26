@@ -5,7 +5,7 @@
 #      表示される公開鍵（age1 で始まる 1 行）だけを控える。🔴 秘密鍵はクラスタにもリポジトリにも置かない。
 #   2. このファイルを写し、下の占位の行を公開鍵の行に置き換える（複数の受取人を並べてよい。1 行 1 鍵）。
 #   3. ConfigMap にする（kustomize の外。k8s-local-up.sh の再実行で上書きされない）:
-#        BACKUP_AGE_RECIPIENTS_FILE=<写したファイル> bash scripts/k8s-local-up.sh
+#        BACKUP_AGE_RECIPIENTS_FILE=<写したファイル> bash scripts/k8s-local-up.sh --live
 #      または
 #        kubectl -n platform-infra create configmap platform-backup-age-recipients \
 #          --from-file=recipients.txt=<写したファイル> --dry-run=client -o yaml | kubectl apply -f -

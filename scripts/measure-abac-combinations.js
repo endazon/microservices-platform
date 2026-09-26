@@ -23,10 +23,10 @@
  *
  * 実行方法:
  *   1) 経路B（ローカル k8s）が稼働している場合＝既定。kubectl exec 経由で収集する:
- *        node scripts/measure-abac-combinations.js
+ *        node scripts/measure-abac-combinations.js --live
  *   2) 別環境の Postgres / Keycloak へ直接向ける場合:
  *        ABAC_DOC_DSN=postgres://... ABAC_AUTHZ_DSN=postgres://... \
- *        ABAC_KC_URL=https://keycloak.example/ node scripts/measure-abac-combinations.js
+ *        ABAC_KC_URL=https://keycloak.example/ node scripts/measure-abac-combinations.js --live
  *      （DSN 指定時はホストに psql が要る。Keycloak は Admin REST を直接叩く）
  *   3) 収集済みの JSON から集計だけやり直す場合（実データが消えた後の再集計・レビュー時の追試）:
  *        node scripts/measure-abac-combinations.js --input measured.json
@@ -41,6 +41,7 @@
  */
 
 const { spawnSync } = require('child_process');
+const { requireLiveOptIn } = require('./lib/live-opt-in.js');
 const fs = require('fs');
 
 // ---------------------------------------------------------------------------
@@ -546,6 +547,8 @@ async function main(argv) {
   const inputIdx = argv.indexOf('--input');
   const dumpIdx = argv.indexOf('--dump');
 
+  // NFR, #1550: 収集（--input なし）は稼働の Keycloak と DB へ当たる。明示の指定が無ければ何もしない。
+  if (inputIdx < 0) requireLiveOptIn('measure-abac-combinations', argv, { offline: '--input <収集済み JSON>' });
   const data = inputIdx >= 0 ? JSON.parse(fs.readFileSync(argv[inputIdx + 1], 'utf8')) : await collect();
   if (dumpIdx >= 0) fs.writeFileSync(argv[dumpIdx + 1], `${JSON.stringify(data, null, 2)}\n`);
 

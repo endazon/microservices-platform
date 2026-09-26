@@ -93,7 +93,7 @@ issues: [#1560, #1564, AST#346]
 
    ```bash
    # 起動スクリプトと一緒に（与えたときだけ作り直す。与えない再実行では触らない）
-   BACKUP_AGE_RECIPIENTS_FILE=<受取人ファイル> bash scripts/k8s-local-up.sh
+   BACKUP_AGE_RECIPIENTS_FILE=<受取人ファイル> bash scripts/k8s-local-up.sh --live
 
    # 単独で
    kubectl -n platform-infra create configmap platform-backup-age-recipients \
@@ -115,7 +115,7 @@ issues: [#1560, #1564, AST#346]
 
    ```bash
    # イメージ（pg_dump と age を同梱。レジストリには無く、クラスタのコンテナランタイムに直接置く）
-   bash scripts/k8s-local-images.sh          # 全イメージ。起動スクリプトの [2/7] と同じもの
+   bash scripts/k8s-local-images.sh --live          # 全イメージ。起動スクリプトの [2/7] と同じもの
    kubectl apply -k deploy/local/platform-backup/postgres
    kubectl apply -k deploy/local/platform-backup/vault      # Vault を永続化しているときだけ
    ```

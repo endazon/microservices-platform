@@ -8,7 +8,7 @@ related_ids:
   - IADR-0084
 author: claude
 created: 2026-07-20
-updated: 2026-07-20
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/ (NFR 運用性・信頼性)
 ---
@@ -64,6 +64,13 @@ opt-in 分岐の入力（env）→ 出力（発行される `k3d cluster create`
 - 決定性の担保: `K8S_LOCAL_RUNTIME=k3d` を固定して runtime 自動判定を回避し、`k3d cluster list` スタブを
    非0（未作成）に返させて `cluster create` 経路を必ず通す。`src/ai-stock-trading` submodule 未取得
    （CI 既定チェックアウト）で AST 分岐（realm 同梱・argocd 追加 apply）は決定的に skip する。
+
+> **［2026-09-26 追記 / #1550］`k8s-local-up.sh` の冒頭へ、明示の指定（`--live` か `LIVE=1`）が無ければ何もせずに
+> 終了コード 3 で終わる判定を足した。** 本 ADR の「スクリプト無改変」は試験のための構造変更をしないという意味であり、
+> #1550 の変更は試験のためではなく稼働クラスタへの誤実行を止めるためのものである。opt-in 分岐の挙動（発行コマンド列）は
+> 変えていない。試験器（`k8s-local-up.test.js`・同型の `reset-floor.test.js` / `k8s-local-down.test.sh`）は PATH のスタブの
+> 下で `LIVE=1` を与えて走らせる。拒否の経路は `scripts.repo.test.js` の #1550 節が固定する（経緯と規則は
+> [IADR-0248](./IADR-0248_integration-stack-ci-readiness-gate.md) の同日の追記）。
 
 ## 理由・トレードオフ
 

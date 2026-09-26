@@ -1,0 +1,51 @@
+{
+  "$comment": [
+    "NFR, #1550: 稼働クラスタへ当たる scripts の一覧（単一情報源）。scripts/scripts.repo.test.js の #1550 節が読む。",
+    "live: 明示の指定（--live か LIVE=1）が無ければ exit 3 で何もせずに終わる入口。offline はその入口が指定なしで動かせるモード（ワークフロー検査が読む）。",
+    "ownFlag: 稼働クラスタへ触れる経路が、もともと自前の明示フラグの後ろにある入口。",
+    "offline: markers に当たるが稼働クラスタへは当たらないファイル（理由つき）。",
+    "markers に当たる新しいファイルは、ここへ分類するまで scripts-tests が赤になる。人向けの一覧は scripts/README.md「稼働クラスタへ当たる scripts」。"
+  ],
+  "markers": "\\bkubectl\\b|port-forward|\\bk3d\\b|\\bnerdctl\\b|\\brdctl\\b|\\bkcadm\\b|/admin/realms|\\bhelm\\s+(upgrade|install|uninstall|status|rollback|get|list)\\b|(localhost|127\\.0\\.0\\.1)(:\\d|\\b)|svc\\.cluster\\.local",
+  "excludedPatterns": [
+    { "pattern": "\\.test\\.(js|sh)$", "reason": "試験器。実ツールは PATH のスタブで置き換えて走る" },
+    { "pattern": "^scripts(\\.repo)?\\.test\\.js$", "reason": "試験器（受け口と companion）" },
+    { "pattern": "\\.json$", "reason": "データ。実行されない" },
+    { "pattern": "\\.md$", "reason": "文書。実行されない" }
+  ],
+  "live": [
+    { "path": "check-login-existence-disclosure.js", "offline": ["--self-test"] },
+    { "path": "check-password-reset-mail.js", "offline": ["--self-test"] },
+    { "path": "check-stack-ready.js", "offline": ["--self-test"] },
+    { "path": "seed-abac-policies.js", "offline": ["--dry-run"] },
+    { "path": "seed-search-documents.js", "offline": ["--dry-run", "--print-probe-term", "--print-keyword-only-query", "--print-japanese-keyword-query"] },
+    { "path": "seed-tag-dictionary.js", "offline": ["--dry-run"] },
+    { "path": "measure-abac-combinations.js", "offline": ["--input"] },
+    { "path": "measure-cutover-inventory.js", "offline": ["--input", "--print-recreate-sql"] },
+    { "path": "measure-search-ndcg.js", "offline": ["--input"] },
+    { "path": "verify-oidc-edge-flow.sh", "offline": [] },
+    { "path": "verify-qdrant-attribute-payload.sh", "offline": [] },
+    { "path": "verify-qdrant-fulltext-index.sh", "offline": [] },
+    { "path": "verify-tool-oidc-logins.sh", "offline": [] },
+    { "path": "k8s-local-up.sh", "offline": [] },
+    { "path": "k8s-local-down.sh", "offline": [] },
+    { "path": "k8s-local-images.sh", "offline": [] },
+    { "path": "istio-edge-up.sh", "offline": [] },
+    { "path": "istio-edge-down.sh", "offline": [] }
+  ],
+  "ownFlag": [
+    { "path": "backup-restore-drill.sh", "reason": "稼働クラスタへは自前の --live のときだけ読み取り専用の psql で触れる。--live-counts は使い捨てのコンテナ（--network none）だけ、--self-test はスタブだけ。拒否の経路は同スクリプトの T-1560-39 / T-1560-41 が固定する" }
+  ],
+  "offline": [
+    { "path": "check-collector-self-telemetry.js", "reason": "collector の待受が loopback でないことを見る静的検査。localhost は正規表現に現れるだけ" },
+    { "path": "check-default-credentials.js", "reason": "既定資格情報の静的検査。localhost はダミーの接続文字列の例" },
+    { "path": "check-deploy-manifests.js", "reason": "kubectl kustomize と helm template と kubeconform はクラスタへ当たらない" },
+    { "path": "check-integration-config-timing.js", "reason": "設定の読み出し時点の静的検査。localhost は試験用の文字列" },
+    { "path": "check-permission-denials.js", "reason": "kubectl は許可規則の対象コマンド名として現れるだけ" },
+    { "path": "check-realm-constraints.js", "reason": "realm JSON の静的検査。localhost と port-forward は登録 URL の期待値と注記" },
+    { "path": "check-test-spec-coverage.js", "reason": "kubectl は偽陽性の説明と試験用の文字列に現れるだけ" },
+    { "path": "lib/live-opt-in.js", "reason": "判定器そのもの。注記に kubectl が現れるだけ" },
+    { "path": "lib/mesh-mtls-mode.sh", "reason": "source される関数定義だけ（sourcing は何もしない）。呼ぶのは live の istio-edge-up.sh / istio-edge-down.sh" },
+    { "path": "lib/tool-oidc-login.js", "reason": "判定だけの純関数。I/O は live の verify-tool-oidc-logins.sh が持つ" }
+  ]
+}

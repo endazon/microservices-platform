@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # IADR-0066 / #1422: ローカル k8s dev 環境の破棄。
 #
-#   bash scripts/k8s-local-down.sh [--dry-run|--apply] [cluster-name]   # 既定 --dry-run / msp-ast-dev
+#   bash scripts/k8s-local-down.sh --live [--dry-run|--apply] [cluster-name]   # 既定 --dry-run / msp-ast-dev（--live か LIVE=1 が無ければ何もしない。#1550）
 #
 # 🔴 既定は --dry-run である。何も変更せず、消す予定のものを順に表示するだけ。--apply で実行する。
 # 🔴 --apply は AST の OpenD の PVC（ログイン状態）・Vault の保存領域・投入済みの秘密を含め、
@@ -40,6 +40,11 @@ usage() {
   sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
 }
 
+# NFR, #1550: 既定の --dry-run も稼働クラスタを読む（--apply は消す）。明示の指定（--live か LIVE=1）が無ければ
+# 何もせずに終わる。引数の解析は副作用を持たないので、判定はその直後・最初の kubectl より前に置く。
+. "$(dirname "$0")/lib/live-opt-in.sh" || exit 3   # 判定器が読めなければ守れない —— 黙って続けず止める
+live_opt_in_scan "$@"; set -- "${LIVE_REST[@]+"${LIVE_REST[@]}"}"
+
 MODE="dry-run"
 CLUSTER="msp-ast-dev"
 for arg in "$@"; do
@@ -51,6 +56,7 @@ for arg in "$@"; do
     *) CLUSTER="$arg" ;;
   esac
 done
+live_opt_in_require "k8s-local-down.sh"
 
 cd "$(dirname "$0")/.."
 

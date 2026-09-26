@@ -12,14 +12,14 @@
 🔵 **［2026-09-09 追加 / #1287］下の「前提と手順」を 1 コマンドにまとめた口が起動器に在る。**
 
 ```console
-SYNTHETIC=1 bash scripts/k8s-local-up.sh
+SYNTHETIC=1 bash scripts/k8s-local-up.sh --live
 ```
 
 門は手順 1〜4 と**同じことを同じ順で**行う（realm 追随 → 標識の env → 除外 3 サービスの rollout →
 overlay の apply → プローブの rollout 待ち）。差分は 2 点だけである。
 
 - **Secret は dev の置き値で作る**（`synthetic-monitor-dev-secret-change-me`。他の dev クライアントと同じ扱い）。
-  `SYNTHETIC_MONITOR_CLIENT_SECRET=... SYNTHETIC=1 bash scripts/k8s-local-up.sh` で上書きできる。
+  `SYNTHETIC_MONITOR_CLIENT_SECRET=... SYNTHETIC=1 bash scripts/k8s-local-up.sh --live` で上書きできる。
   **`ESO=1` を併用すると Vault → ExternalSecret 供給へ委譲する**（手動 apply はしない。二重所有回避）。
 - 🔴 **除外の 3 サービスが揃わなければ、プローブを配備せずに `up` が落ちる**
   （ADR-0076 決定 4「除外できない構成では配備しない」。警告して続行はしない）。

@@ -15,7 +15,7 @@ related_ids:
   - IADR-0243
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0007_cicd.md
   - planning:projects/microservices-platform/07_adr/ADR-0021_runtime-platform.md
@@ -189,6 +189,26 @@ error calling eq: incompatible types for comparison
     200 のままで、#458 適用済みの現状（401）と食い違っている。**直さずに baseline 化すると、
     壊れた期待値を恒久的な FAIL 1 件として焼き付ける**
   - **#948**: 有効トークンで `/bff/dashboard/summary` が 401（CI の新規デプロイでも再現）
+
+> **［2026-09-26 追記 / #1550］本ワークフローが呼ぶ稼働側の入口は、明示の指定（`--live` か `LIVE=1`）が無ければ
+> 何もせずに終了コード 3 で終わる。本ワークフローは各行に `--live` を明示する。**
+>
+> - 事故: 作業エージェントが本ワークフローの `node scripts/...` の行をまとめて実行し、`check-password-reset-mail.js` が
+>   稼働中の Keycloak へ本物のパスワード再設定を申請した（mailpit が受けた）。`check-login-existence-disclosure.js` も
+>   Keycloak へ当たり、`seed-abac-policies.js` も起動した。**スクリプトの名前や引数の無さからは、稼働クラスタへ当たるか
+>   どうかが読めない**ことが原因である。加えて `scripts.repo.test.js` の #852 節（検査器の git 呼び出しを数える）は
+>   `check-stack-ready.js` / `check-password-reset-mail.js` / `check-login-existence-disclosure.js` を**引数なしで起こして
+>   いた** —— 稼働クラスタのある作業機で必須 check の試験を走らせるだけで、同じ申請が起き得た。
+> - 決定: 規則は `scripts/` 全体に課す（本ワークフローの 7 行だけではない）。判定器は `scripts/lib/live-opt-in.{js,sh}`
+>   の 1 か所、対象の一覧の単一情報源は `scripts/live-scripts.json`（`live` 18 入口 / 自前の `--live` で閉じている
+>   `backup-restore-drill.sh` / 標識に当たるが当たらない `offline`）。判定は副作用より前に置き、`--self-test` /
+>   `--dry-run` / `--input` / `--print-*` は指定なしで今のまま動く。bash の入口は指定を `LIVE=1` として export し、
+>   `k8s-local-up.sh` の中から呼ぶ子（`k8s-local-images.sh` / `istio-edge-up.sh` / `seed-*.js`）は親の指定を引き継ぐ。
+> - 機械検査: `scripts.repo.test.js` の #1550 節（必須 check `scripts-tests`）が、①`scripts/` を標識で走査した集合と一覧の
+>   一致（新しい入口は分類するまで赤）、②`live` の各入口が指定なしで exit 3 と所定の文言で終わりツールを 1 つも起動しない
+>   こと（拒否の経路だけ。Node は `-r` の前置き、bash は `BASH_ENV` と PATH のスタブで塞いだ下で試す）、③ワークフローの
+>   呼び出しが `--live` を持つこと、を見る。本ワークフローの起動条件（schedule / push(develop) / dispatch）と
+>   必須 check でないことは変わらない。作業仕様書: `.ai-context/specs/20260926_issue-1550_live-script-opt-in.md`
 
 ## 関連
 

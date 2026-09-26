@@ -1,22 +1,27 @@
 #!/usr/bin/env bash
 # #782 / ADR-0021: 経路B のエッジを Traefik から **Istio Ingress Gateway** へ移す。
 #
-#   bash scripts/istio-edge-up.sh              # PERMISSIVE のまま入口だけ移す
-#   ISTIO_MTLS_MODE=STRICT bash scripts/istio-edge-up.sh   # 併せて mTLS を STRICT へ
-#   RESET_FLOOR=0 bash scripts/istio-edge-up.sh            # リセット申請の床を外す（既定は 1＝入れる。#1500）
+#   bash scripts/istio-edge-up.sh --live              # PERMISSIVE のまま入口だけ移す
+#   ISTIO_MTLS_MODE=STRICT bash scripts/istio-edge-up.sh --live   # 併せて mTLS を STRICT へ
+#   RESET_FLOOR=0 bash scripts/istio-edge-up.sh --live            # リセット申請の床を外す（既定は 1＝入れる。#1500）
 #                                                          # 🔴 検証で床の有無を比べる用途に限る。本番の退路に使わない（#1543）
 #
 # 前提（満たしていなければ非 0 で落ちる）:
-#   - Istio が入っていること（ISTIO=1 ./scripts/k8s-local-up.sh。IADR-0307）
+#   - Istio が入っていること（ISTIO=1 ./scripts/k8s-local-up.sh --live。IADR-0307）
 #   - cert-manager と ClusterIssuer local-edge-ca が居ること（LOCALEDGE=1。IADR-0206）
 #
-# 🔴 切り戻しは `bash scripts/istio-edge-down.sh` の 1 コマンドである。**先に読むこと。**
+# 🔴 切り戻しは `bash scripts/istio-edge-down.sh --live` の 1 コマンドである。**先に読むこと。**
 #
 # なぜこの順でしか当てられないか:
 #   k3s の ServiceLB（klipper）は LoadBalancer Service ごとに hostPort を握る DaemonSet を作る。
 #   **80/443/50000 を 2 つの Service が同時に持てない**ため、Traefik が明け渡してから
 #   istio-ingressgateway を立てる。逆順だと svclb が bind に失敗して**どちらの入口も立たない**。
 set -euo pipefail
+
+# NFR, #1550: 稼働クラスタのエッジを helm と kubectl で入れ替える。明示の指定（--live か LIVE=1）が無ければ何もせずに終わる（判定は副作用より前に置く）。
+. "$(dirname "$0")/lib/live-opt-in.sh" || exit 3   # 判定器が読めなければ守れない —— 黙って続けず止める
+live_opt_in_scan "$@"; set -- "${LIVE_REST[@]+"${LIVE_REST[@]}"}"
+live_opt_in_require "istio-edge-up.sh"
 
 # SC-15 / NFR-13 / ADR-0097 決定 2 / IADR-0432 (#1500): リセット申請の床は**既定 1（入れる）**。
 # RESET_FLOOR=0 は検証で床の有無を比べる用途に限る（［2026-09-26 / #1543］計画 ADR-0111 決定 3。本番の退路に使わない）。
@@ -38,11 +43,11 @@ cd "$(dirname "$0")/.."
 
 # 前提の確認。**黙って続けない**（入口を落としてから気付くのが最悪である）。
 if ! kubectl -n istio-system get deploy istiod >/dev/null 2>&1; then
-  echo "ERROR: istiod が居ません。先に ISTIO=1 ./scripts/k8s-local-up.sh を実行してください。" >&2
+  echo "ERROR: istiod が居ません。先に ISTIO=1 ./scripts/k8s-local-up.sh --live を実行してください。" >&2
   exit 1
 fi
 if ! kubectl get clusterissuer local-edge-ca >/dev/null 2>&1; then
-  echo "ERROR: ClusterIssuer local-edge-ca が居ません。先に LOCALEDGE=1 ./scripts/k8s-local-up.sh を実行してください。" >&2
+  echo "ERROR: ClusterIssuer local-edge-ca が居ません。先に LOCALEDGE=1 ./scripts/k8s-local-up.sh --live を実行してください。" >&2
   exit 1
 fi
 
@@ -118,4 +123,4 @@ echo "OK: エッジは istio-ingressgateway です。"
 echo "    疎通確認（証明書検証を切らないこと。-k は使わない）:"
 echo "      kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\\.crt}' | base64 -d > /tmp/root-ca.pem"
 echo "      curl --cacert /tmp/root-ca.pem https://localhost/ -o /dev/null -w '%{http_code}\\n'"
-echo "    切り戻し: bash scripts/istio-edge-down.sh"
+echo "    切り戻し: bash scripts/istio-edge-down.sh --live"

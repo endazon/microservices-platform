@@ -191,7 +191,8 @@ const runEdgeUp = (extraEnv) => {
   const origPath = process.env.PATH || process.env.Path || '';
   const r = spawnSync('bash', [path.join('scripts', 'istio-edge-up.sh')], {
     cwd: REPO_ROOT,
-    env: { ...base, PATH: binDir + path.delimiter + origPath, STUB_LOG: logFile, ...extraEnv },
+    // NFR, #1550: istio-edge-up.sh は明示の指定が無ければ何もせずに終わる。スタブの下なので LIVE=1 を与える。
+    env: { ...base, PATH: binDir + path.delimiter + origPath, STUB_LOG: logFile, LIVE: '1', ...extraEnv },
     encoding: 'utf8',
   });
   const lines = fs.readFileSync(logFile, 'utf8').split('\n').filter((l) => l.length > 0);

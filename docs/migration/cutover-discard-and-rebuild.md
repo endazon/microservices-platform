@@ -4,7 +4,7 @@ type: migration-spec
 status: draft
 author: Claude
 created: 2026-09-25
-updated: 2026-09-25
+updated: 2026-09-26
 ---
 <!-- trace:
 ids: [NFR-05, NFR-18]
@@ -98,11 +98,11 @@ ai-stock-trading は自分の realm ではなく platform realm で認証する�
 
 ```bash
 # 事前実測（生データを保存する。切替後の突合の基準値になる）
-node scripts/measure-cutover-inventory.js --dump cutover-before.json
+node scripts/measure-cutover-inventory.js --live --dump cutover-before.json
 # MSP の DB を作り直す SQL を表示する（表示するだけで実行しない）
 node scripts/measure-cutover-inventory.js --print-recreate-sql
 # 再構築の後の検証（--since は破棄を始めた時刻）
-node scripts/measure-cutover-inventory.js --since 2026-10-01T01:00:00Z --baseline cutover-before.json --dump cutover-after.json
+node scripts/measure-cutover-inventory.js --live --since 2026-10-01T01:00:00Z --baseline cutover-before.json --dump cutover-after.json
 # 保存した生データから判定だけやり直す
 node scripts/measure-cutover-inventory.js --input cutover-after.json --since 2026-10-01T01:00:00Z --baseline cutover-before.json
 ```
@@ -133,7 +133,7 @@ node scripts/measure-cutover-inventory.js --input cutover-after.json --since 202
 ### 1. 事前実測（窓の開始時）
 
 ```bash
-node scripts/measure-cutover-inventory.js --dump cutover-before.json
+node scripts/measure-cutover-inventory.js --live --dump cutover-before.json
 ```
 
 出力の realm 一覧に旧名 `microservices-platform` があるか、ai-stock-trading の DB が並ぶかを確かめる。**この時点で収集が失敗するなら中止する**（検証スクリプトが稼働構成に合っていない）。
@@ -198,21 +198,21 @@ kubectl -n platform-infra rollout status deploy/keycloak
 kubectl -n microservices-platform rollout restart deployment
 # 起動器を今のクラスタと同じ環境変数で再実行する。PVC を作り直し、realm の差分を当て、初期化と初期投入を行う。
 # ABAC とタグ辞書の初期投入を有効にする（タグ辞書が空だと外部ユニットの文書が全件 400 になる）
-ABACSEED=1 TAGSEED=1 <今のクラスタと同じ環境変数> bash scripts/k8s-local-up.sh
+ABACSEED=1 TAGSEED=1 <今のクラスタと同じ環境変数> bash scripts/k8s-local-up.sh --live
 kubectl -n microservices-platform rollout status deployment --timeout=10m
 ```
 
 起動器の初期化と初期投入（Wiki.js の初期セットアップ・ABAC・タグ辞書）は best-effort であり、失敗しても警告だけで先へ進む。
-警告が出ていたら、全サービスが起きた後に `bash deploy/local/wikijs-setup/bootstrap.sh`・`node scripts/seed-abac-policies.js`・
-`node scripts/seed-tag-dictionary.js` を再実行する（いずれも冪等）。
+警告が出ていたら、全サービスが起きた後に `bash deploy/local/wikijs-setup/bootstrap.sh`・`node scripts/seed-abac-policies.js --live`・
+`node scripts/seed-tag-dictionary.js --live` を再実行する（いずれも冪等）。
 
 `SEARCHSEED=1`（検索検証用の文書を作る）は**付けない** —— 使い捨てスタック専用であり、検証の「点 0・オブジェクト 0」も崩す。
 
 ### 5. 検証（書き込みの再開前）
 
 ```bash
-node scripts/measure-cutover-inventory.js --since <2 で記録した時刻> --baseline cutover-before.json --dump cutover-after.json
-node scripts/check-stack-ready.js      # realm の乖離・永続化・イメージ参照の門を含む
+node scripts/measure-cutover-inventory.js --live --since <2 で記録した時刻> --baseline cutover-before.json --dump cutover-after.json
+node scripts/check-stack-ready.js --live      # realm の乖離・永続化・イメージ参照の門を含む
 ```
 
 どちらも緑であることを確かめる。🔴 **検証スクリプトが「触らない側」で fail を出したら、作り直しすぎか消しすぎである。** 再開せずに原因を調べる。

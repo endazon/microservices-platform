@@ -154,7 +154,7 @@ jobs:
         run: |
           set -euo pipefail
           LOCALEDGE=1 ABACSEED=1 SEARCHSEED=1 LOCALEMBED=1 K8S_LOCAL_RUNTIME=k3d \
-            bash scripts/k8s-local-up.sh "${CLUSTER}"
+            bash scripts/k8s-local-up.sh --live "${CLUSTER}"
 
       # 🔴 up が EXIT=0 で戻ってもアプリ pod は起きていない。ここで待つ。
       # **待つだけで、判定はしない。** 待てたことを成功の根拠にしない —— このステップは検査ではなく、
@@ -222,7 +222,7 @@ jobs:
       # 「まだ届いていない」を欠陥として報告してしまう（間欠赤）。**取り込みの成立は
       # 後段の `SEARCH_HITS=1` の門が陽性・陰性の対で測る。**
       - name: 🔴 Gate — the stack is actually up
-        run: node scripts/check-stack-ready.js
+        run: node scripts/check-stack-ready.js --live
 
       # 🔴 ここが 3 つめの門である（#1144 / SC-15・ADR-0045 決定 7・9）。
       # readiness（G8）は「捕捉用 MTA が居て API が読める」までしか言わない。**送出が成立すること**と
@@ -249,7 +249,7 @@ jobs:
       # 本ワークフローは**必須チェックではない**（schedule / push(develop) / dispatch のみ）ので、
       # この赤が PR のマージを止めることはない。
       - name: 🔴 Gate — パスワードリセットの送出とメール本文（#1144）
-        run: node scripts/check-password-reset-mail.js
+        run: node scripts/check-password-reset-mail.js --live
 
       # 🔴 `k8s-local-up.sh` の ABACSEED は **best-effort**（失敗しても WARN で通す）。
       # 投入が失敗したまま「空」になると、次の門が「認可の故障」と「投入漏れ」を区別できない。
@@ -257,14 +257,14 @@ jobs:
       # **明示的に再実行して終了コードを見る**。ここが緑なら、次の門の空はポリシー起因ではない。
       # up の中では pod がまだ起きておらず失敗しうるため、この順序が要る。
       - name: ABAC ポリシーの投入を確定させる（冪等・失敗を握り潰さない）
-        run: node scripts/seed-abac-policies.js
+        run: node scripts/seed-abac-policies.js --live
 
       # 🔴 ABAC 投入とまったく同じ理由（up の中の投入は best-effort）。#992 / IADR-0284。
       # 投入器は冪等なので readiness の後に**明示的に再実行して終了コードを見る**。
       # ここが緑なら、次の門で seed 文書が見えないのは投入漏れではない。
       # 投入器は作成した文書が markdownUri を持たないときも失敗する（取り込みの入口条件）。
       - name: 検索検証用文書の投入を確定させる（冪等・失敗を握り潰さない）
-        run: node scripts/seed-search-documents.js
+        run: node scripts/seed-search-documents.js --live
 
       # 🔴 ここが 2 つめの門である（#972）。readiness は「起きている」までしか言わない。
       # 認証後に **結果が出る**ことは別の判定が要る。
@@ -297,7 +297,7 @@ jobs:
       #
       # ABAC_POSITIVE=1 / SEARCH_SEEDED=1 は **文書を作る**。このクラスタは次のステップで破棄される。
       - name: 🔴 Gate — ABAC の正常系と検索の命中が観測できる（#972 / #992）
-        run: ABAC_POSITIVE=1 SEARCH_HITS=1 bash scripts/verify-oidc-edge-flow.sh
+        run: ABAC_POSITIVE=1 SEARCH_HITS=1 bash scripts/verify-oidc-edge-flow.sh --live
 
       # 🔴 ここが 4 つめの門である（#1245 PR-0 / SC-13・ADR-0078 決定 1）。
       # 計画 ADR は存在秘匿の統制を「**応答の区別不能性**（ステータス・本文・所要時間）」と定め、
@@ -312,7 +312,7 @@ jobs:
       # 後段に「その利用者で成功するログインを通す門」を置くと、計数が積み上がって一時ロックに触れ得る。
       # **測定の副作用を他の門へ波及させない**ため、順序そのものを統制にしている。
       - name: 🔴 Gate — ログイン経路の存在秘匿（#1245 PR-0）
-        run: node scripts/check-login-existence-disclosure.js
+        run: node scripts/check-login-existence-disclosure.js --live
 
       # 失敗したときに原因を名指しできる情報を残す（#466 のスコープ「失敗時に原因が特定できる出力」）。
       - name: Dump cluster state (診断用・失敗時のみ)

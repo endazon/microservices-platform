@@ -33,7 +33,7 @@
 #    段数の単一情報源は `scripts/lib/tool-oidc-login.js` の `TOOLS`（TOTAL = 2 × 件数 + 1）。
 #
 # 実行方法:
-#   bash scripts/verify-tool-oidc-logins.sh
+#   bash scripts/verify-tool-oidc-logins.sh --live   # --live か LIVE=1 が無ければ何もしない（#1550）
 #
 # 終了コード: 0=全項目 PASS / 1=導線の失敗（FAIL あり） / 2=前提未整備（SKIP。失敗と区別する）
 #
@@ -44,6 +44,11 @@
 #   Vault の `auth_url` は UI がログイン画面の描画時に呼ぶのと同じ読み取り操作である。
 
 set -uo pipefail
+
+# NFR, #1550: 稼働スタックの管理ツールと Keycloak へ OIDC の入口を叩く。明示の指定（--live か LIVE=1）が無ければ何もせずに終わる（判定は副作用より前に置く）。
+. "$(dirname "$0")/lib/live-opt-in.sh" || exit 3   # 判定器が読めなければ守れない —— 黙って続けず止める
+live_opt_in_scan "$@"; set -- "${LIVE_REST[@]+"${LIVE_REST[@]}"}"
+live_opt_in_require "verify-tool-oidc-logins.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB="$SCRIPT_DIR/lib/tool-oidc-login.js"
