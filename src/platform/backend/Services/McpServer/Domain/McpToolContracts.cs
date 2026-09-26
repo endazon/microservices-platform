@@ -4,9 +4,14 @@ namespace McpServer.Domain;
 
 // FR-16, ADR-0024: 各サービスが `GET /internal/mcp-tools` で自己申告するツール定義の規約。
 //
-// 計画（06_technical/11_mcp-server-integration §2「ツール定義規約」）が挙げる 6 項目
-// （name / description / input_schema / endpoint / required_scope / egress_class）をそのまま持つ。
+// 計画（06_technical/11_mcp-server-integration §2「ツール定義規約」）が挙げる項目をそのまま持つ。
 // 詳細形は計画が実装リポジトリへ明示的に委任している（ADR-0024 §結果）。
+//
+// ［2026-09-27 追記 / #1516］🔴 **規約は 5 項目である**（name / description / input_schema / required_scope / egress_class）。
+// 計画 ADR-0117 決定 1 が `endpoint`（申告の実行先 URL）を規約から外した —— 実行先は**申告したサービス＋ツール名**で決まり、
+// 申告の中身の URL は使わない（URL のままだと、あるサービスが別のサービスの内部経路を自分のツールとして申告できる）。
+// 旧い申告元が JSON に `endpoint` を載せても、本 DTO に対応する項目が無いので**読み飛ばされる**（dial する値がそもそも残らない）。
+// proto 側は番号 4 と名前 `endpoint` を reserved にした。
 //
 // 🔴 **本 DTO を Platform.Shared.Contracts へ置いていない**のは、起草時点で**プロセス内の生成側が
 // 1 つも存在しなかった**ためである（`/internal/mcp-tools` はどのサービスにも未実装。実測 0 件）。
@@ -30,7 +35,6 @@ public sealed record McpToolDeclaration(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("description")] string Description,
     [property: JsonPropertyName("input_schema")] string InputSchema,
-    [property: JsonPropertyName("endpoint")] string Endpoint,
     [property: JsonPropertyName("required_scope")] string RequiredScope,
     [property: JsonPropertyName("egress_class")] string EgressClass);
 

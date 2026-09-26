@@ -12,6 +12,8 @@ related_ids:
   - ADR-0029
   - ADR-0075
   - ADR-0089
+  - ADR-0086
+  - ADR-0117
   - IADR-0017
   - IADR-0026
   - IADR-0029
@@ -151,6 +153,7 @@ plan_refs:
 - フォローアップ:
   1. #1515（④-a）・#1516（④-b。判断待ち）・#1517（REST 退役。#1255 残射程 2 と同じ段）
      ［2026-09-26 追記 / #1515］**④-a を本決定の形で移した**（下の「経路 ④-a への適用」）。#1516・#1517 は未着手のまま。
+     ［2026-09-27 追記 / #1516］**④-b（ツールの実行）の輸送を移した**（下の「経路 ④-b への適用」）。判断は計画 ADR-0117 が下した。各サービスの実行口は #1611。
   2. mcp-server を収集先へ加えるか（FR-15 の挙動変更。本決定の外）
   3. conversion の gRPC 収集の配線（planning#651 の裁定による conversion の認証が着地した後）
      ［2026-09-26 追記 / #1537］**完了**（作業仕様書 `.ai-context/specs/20260926_1537_conversion-introspection-grpc-wiring.md`）。
@@ -223,6 +226,46 @@ appsettings.json の既定に寄りかかっているので、配線の試験（
 >
 > **［2026-09-27 追記 / #1622］REST の収集器に、呼び出し側の取り消しの対照を足した。**
 > #1604 の追記の `CollectOneAsync` の捕捉（`when (ex is not OperationCanceledException || !ct.IsCancellationRequested)`）には、時間切れの側の試験（応答しない宛先）しか無く、呼び出し側の取り消しを畳まないことを見る対照が無かった。HttpClient は時間切れも呼び出し側の取り消しも `TaskCanceledException` で表すので、絞り込みを型で判定する変異（`|| ex is TaskCanceledException`）は時間切れの試験では見えない。`ToolCatalogRefresherTimeoutTests` に、何も返さない 127.0.0.1 の待受へ本物の HttpClient（期限 30 秒）で収集し呼び出し側の ct を 300 ミリ秒で取り消す 1 件を足した（外へ出るのが呼び出し側の token を持つ `TaskCanceledException` であること・申告なしの警告を出さないこと）。その変異で**赤**（直す前の試験では緑）。本番の挙動は変えない。作業仕様書: `.ai-context/specs/20260927_issue-1622_deterministic-tick-tests.md`。
+
+## 経路 ④-b への適用（［2026-09-27 追記 / #1516］）
+
+**MCP のツールの実行**（McpServer → ツールを申告したサービス。従前は `HttpToolInvoker` が申告の `endpoint` の URL へ REST で POST していた）の
+**輸送を gRPC へ差し替えた**。射程は計画 ADR-0117（利用者裁定 2026-09-26。planning#677）が決めた —— 決定 1: ツール定義規約から `endpoint` を外し、
+実行先は申告したサービスとツール名で決める／決定 2: #1516 は輸送の差し替えだけ（各サービスの実行口は FR-16 の別作業 #1611）／決定 4: 実行口ができるまで
+ツールの実行は fail-closed。新しい IADR は起こしていない —— 扇形であること・宛先ごとのアドレス（`Mcp:GrpcServices`）・s2s・配線不備を Error に分けること・
+構成が在るのに部品が無ければ起動時に落とすことは、上の「経路 ④-a への適用」をそのまま引き継ぐ。作業仕様書: `.ai-context/specs/20260927_issue-1516_mcp-tool-execution-grpc.md`。
+
+**④-a と違う点は次の 6 つであり、いずれも「利用者が応答を待つ 1 回の実行」であることと ADR-0117 から決まる。**
+
+1. **申告の契約から `endpoint` を外した**（ADR-0117 決定 1）。proto `McpToolDeclaration` の番号 4 と名前は `reserved` に残し（再利用しない）、McpServer と
+   3 サービスの DTO の写しからも外した。3 サービスは URL を組み立てる理由を失ったので、基底 URL の構成（`Mcp:SelfBaseUrl`。配備には 0 件）と候補の引数も外した。
+   **旧い申告元が送る URL は読み飛ばされる**（gRPC は未知のフィールド、REST の JSON は対応する項目が無い）—— dial する値がそもそも残らない。
+   破壊的変更の承認は ADR-0117 決定 1 を根拠に `scripts/proto-breaking-allowlist.json` へ書き、`--update` で baseline の `$acceptedBreakingChanges` へ移した
+   （受け手は McpServer 1 つで、申告元 3 サービスと同じ PR で揃うので v2 の並走は要らない。ワイヤ互換でもある）。
+2. **宛先の決め方**: `PublishedTool.Service`（公開構成で申告を突き合わせたサービス）の `Mcp:GrpcServices:<サービス名>`（申告元サービスの h2c アドレス。④-a と同じ値）。
+   要求には**申告名**を載せる（公開名ではない）。**申告の中身から宛先を作らない。** アドレスの構成が無い宛先は実行を拒否する（REST へ倒さない ——
+   REST の実行経路は宛先に受け口が 1 つも無く常に失敗していたので、並走させて守る挙動が無い。④-a の「並走中の正は REST」は実行には当てはまらない）。
+3. **失敗の畳み方**: 「申告なし」ではなく**拒否**。全 status・s2s トークン取得失敗・期限切れ・到達不能を `ToolExecutionUnavailableException`（利用者向けの文言）に包み、
+   `ToolInvocationService` が `ToolInvocationOutcome.Rejected` へ写す（結果を 1 件も返さない）。文言は理由の種類（経路が無い・実行口が無い・時間切れ・拒否・到達不能）
+   だけを区別し、**内部のサービス名・アドレス・status を含めない**（ログにだけ書く）。ログは `UNAUTHENTICATED` / `PERMISSION_DENIED` / トークン取得失敗を Error、
+   `UNIMPLEMENTED`（#1611 まで全宛先がここへ来る。配線の誤りではない）とそれ以外を Warning。取得失敗の印付けは収集器の private 型だったものを
+   `ServiceTokenFailures` へ出し、収集器と実行器で 1 つを使う（挙動は変えていない）。
+4. **期限**: 別のキー `Mcp:ToolExecutionTimeoutSeconds`（既定 30 秒、1 未満は 1 秒。McpServer の `appsettings.json` に既定値で並べた）。④-a の「期限の出所を 1 つにする」は
+   **同じ呼び出しの輸送ごとに値を書き写さない**ための判断であり、背景処理の収集と利用者が待つ実行とで値を共有する理由にはならない（下流の処理時間の桁が違う）。
+   期限は常に有限。**リトライは持たない**（ツールの実行は冪等とは限らない）。呼び出し側の取り消しは拒否へ畳まず外へ出す。
+5. **本文の意味論は変えていない**（ADR-0117 決定 2）。proto の `ExecuteMcpToolRequest.scope` は従前の REST の本文（McpServer が解決した実行スコープ）の写しであり、
+   🔴 **暫定**である。ADR-0117 決定 3 は本文を利用者文脈（`user_id` / `action`）とツールの引数へ改め、解決済みの scope を信じさせる形を採らないと定めた ——
+   その変更は #1611 が行い、`scope` の番号と名前は reserved へ移す。**#1611 までに、この `scope` を信じて認可する受け口を作ってはならない**（同 決定 4）。
+6. **受け口が無いことを固定した**: 3 サービスの本番の Program.cs の h2c ポートで `Execute` が `UNIMPLEMENTED` を返すことを各サービスの試験が持つ（#1611 で反転する）。
+
+**配備**: 新しい構成は無い（`Mcp__GrpcServices__*` と `serviceToken` は ④-a のために在る）。helm の描画は develop と同一（values-local で確認）。宛先の Istio の認可は
+文書サービスの DENY だけのポリシーで、McpServer → h2c の実行の面は通る（`scripts/helm-private-notes-sync-authz.test.js` の呼び出し元の一覧を REST の実行から gRPC の実行へ差し替えた）。
+
+**試験**: `GrpcToolInvokerTests`（ループバックの実 Kestrel。申告の URL の側にも待受を置き、旧い申告元の申告を本物の収集器と突合で公開して実行しても**接続が 1 本も来ない**ことを数える）・
+`GrpcToolDeclarationCollectorTests` T-G15〜T-G17（5 項目・番号 4 の不使用・旧い申告元の申告の読み飛ばし）・`ToolInvocationServiceTests`（拒否への写しと一覧に残ること）・
+3 サービスの `McpToolDeclarationEndpointTests`（申告の JSON のキーが 5 項目ちょうど）と `GrpcMcpToolDeclarationTests`（`UNIMPLEMENTED`）。
+変異: 申告の URL を再び宛先にする → 旧い申告元の試験が赤／申告したサービスを見ない → 宛先の試験が赤／`UNIMPLEMENTED` の枝を外す・期限を外す・取り消しを畳む・
+単一経路が拒否へ写さない・文書サービスの申告に URL を戻す → それぞれ対応する試験が赤（作業仕様書に出力）。
 
 ## 関連
 

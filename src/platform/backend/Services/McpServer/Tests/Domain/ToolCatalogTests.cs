@@ -15,7 +15,7 @@ public class ToolCatalogTests
     private static ToolCatalog NewCatalog() => new(NullLogger<ToolCatalog>.Instance);
 
     private static McpToolDeclaration Decl(string name, string egressClass = "internal") =>
-        new(name, "説明", """{"type":"object"}""", "http://svc/exec", "read", egressClass);
+        new(name, "説明", """{"type":"object"}""", "read", egressClass);
 
     // FR-16: **既定は非公開**。申告があっても公開構成に無いツールは公開しない。
     [Fact]

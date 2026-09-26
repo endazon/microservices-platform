@@ -9,8 +9,8 @@ public static class McpToolEndpoints
 
     public static IEndpointRouteBuilder MapMcpToolEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet(ToolsPath, (IConfiguration configuration)
-                => Results.Ok(McpToolDeclarationSource.Declare(configuration)))
+        app.MapGet(ToolsPath, ()
+                => Results.Ok(McpToolDeclarationSource.Declare()))
            .WithName("GraphServiceMcpTools")
            .ExcludeFromDescription();
         // FR-16, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]], [[IADR-0462]]（2026-09-26 追記 / #1515, #1255 経路 ④-a）:

@@ -8,10 +8,10 @@ author: Claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11, FR-12, FR-13, FR-15, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, NFR-02, NFR-09, NFR-16, NFR-19, NFR-21, SC-03, SC-05, SC-06, SC-10, SC-12, SC-17, SC-18, UC-01, UC-02, UC-03, UC-04, UC-05, UC-07, UC-09, UC-10, UC-11]
-adrs: [ADR-0119, ADR-0089, ADR-0050, ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0037, ADR-0038, ADR-0044, ADR-0045, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088, ADR-0018, ADR-0024, ADR-0109, ADR-0092, ADR-0115, ADR-0096, ADR-0114]
+adrs: [ADR-0119, ADR-0089, ADR-0050, ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0037, ADR-0038, ADR-0044, ADR-0045, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088, ADR-0018, ADR-0024, ADR-0109, ADR-0092, ADR-0115, ADR-0096, ADR-0114, ADR-0117]
 iadrs: [IADR-0476, IADR-0475, IADR-0465, IADR-0029, IADR-0462, IADR-0269, IADR-0292, IADR-0458, IADR-0403, IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0467, IADR-0472, IADR-0474, IADR-0431]
-specs: [20260927_issue-1614_document-read-authn-private-note, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable]
-issues: [#1614, #1575, #1515, #1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1557, #1532]
+specs: [20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1614_document-read-authn-private-note, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable]
+issues: [#1516, #1614, #1575, #1515, #1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1557, #1532]
 -->
 
 # 通信仕様書: east-west gRPC（サービス間の同期呼び出し）
@@ -705,8 +705,33 @@ JwtBearer と認可の登録を足した —— 無いと面への要求は**毎
   **公開されない**（推測で公開しない）。ログは資格情報の拒否とトークン取得失敗を Error、それ以外を Warning に分ける。
 - 資格情報: MCP サーバーの既存の `mcp-server` client（`platform-service` 付き。認可サービスの gRPC 経路と同じもの）。realm・Secret は増やしていない。
 - 宛先の 3 サービスは既に h2c リスナ・helm の `grpcPort`・compose の `Grpc__Port` と認証を持っていたので、宛先の側に足した配線は面だけである。
-- 申告の `endpoint`（ツールの実行先）は**文字列のまま**運ぶ。**ツールの実行はまだ gRPC へ移していない** —— 宛先に実行口が 1 つも無く、
-  gRPC で実行するときの `endpoint` の扱いと実行口の実装主体の判断が先に要る。
+- ［2026-09-27 改訂］従前ここに書いた「申告の `endpoint` は文字列のまま運ぶ。ツールの実行はまだ移していない」は解消した。
+  `endpoint`（番号 4）は規約から外して番号と名前を予約に残し、ツールの実行は §14 つ目の面へ移した。
+
+## 14 つ目の面: MCP のツール実行（`platform.mcp.v1.McpToolExecution/Execute`）
+
+- 呼び出し元と呼び出し先: **MCP サーバー → ツールを申告したサービス**（文書・検索・グラフ）。外部エージェントの `tools/call` 1 回につき 1 呼び出し。
+- 🔴 **宛先の決め方**: 公開構成で申告を突き合わせた**サービス**の h2c アドレス（13 つ目の面と同じ `Mcp:GrpcServices:<サービス名>`）へ送り、要求に**申告名**を載せる。
+  **申告の中身から宛先を作らない** —— 申告の実行先 URL（旧 `endpoint`）は規約から外した（URL のままだと、あるサービスが別のサービスの内部経路を
+  自分のツールとして申告でき、申告元と実行先が食い違う）。
+- 置き場: `Platform.Shared.Contracts` の `Protos/platform/mcp/v1/mcp_tool_execution.proto`（所有は 13 つ目の面と同じ MCP サーバー）。
+- 認証・認可: 呼び出し側は MCP サーバー自身のサービス間トークン（`mcp-server` client）。受け口は `ServiceCaller` を要求すること。利用者のトークンは運ばない。
+- 🔴 **受け口はまだどのサービスにも無い**（別の作業で作る）。今は呼び出しが `UNIMPLEMENTED` で終わり、MCP サーバーは実行を拒否する（fail-closed）。
+  3 サービスの本番の起動処理のまま `UNIMPLEMENTED` であることを試験で固定した（受け口を作る作業で反転する）。
+
+**13 つ目の面（申告の収集）との違い**は次のとおりである。
+
+| 違い | 形 | 理由 |
+| --- | --- | --- |
+| 切替 | **無い**（REST の並走を持たない）。gRPC のアドレスが構成されていない宛先は実行を拒否する | REST の実行経路は宛先に受け口が 1 つも無く常に失敗していた。並走させて守る挙動が無い |
+| 失敗の畳み方 | 「申告なし」ではなく**拒否**（結果を返さない）。利用者へ返す文言は内部の宛先を含めない | 利用者が応答を待つ呼び出しであり、拒否の理由（受け口が無い・時間切れ・拒否・到達不能）を区別して返す |
+| 期限 | 別のキー `Mcp:ToolExecutionTimeoutSeconds`（既定 30 秒、1 未満は 1 秒） | 収集は背景処理、実行は下流の処理を待つ呼び出しで、所要時間の桁が違う |
+| リトライ | 持たない | ツールの実行は冪等とは限らない |
+
+- 🔴 **要求本文の `scope` は暫定である。** 従前の REST の本文と同じ意味（MCP サーバーが解決した実行スコープ）を写しただけであり、受け口を作る作業で
+  **利用者文脈（利用者と操作）とツールの引数**へ改め、この項目は番号ごと予約へ移す。**それまで、本文の `scope` を信じて認可する受け口を作らない。**
+- 配備: 新しい構成は要らない（`Mcp__GrpcServices__*` とサービス間トークンは 13 つ目の面のために既に在る）。宛先の Istio の認可（文書サービスの DENY のみのポリシー）は
+  MCP サーバーから h2c ポートへの呼び出しを通す（試験の呼び出し元の一覧を実行の面へ差し替えた）。
 
 ## シーケンス
 
@@ -817,6 +842,8 @@ sequenceDiagram
   🔴 **ツールの実行は宛先に実行口が 1 つも無い**（申告された実行先の路を、どの宛先も張っていない）。今の REST の実行経路は
   常に失敗しており、**輸送だけを差し替えても 1 経路も通らない** —— 申告の実行先の扱いと実行口の実装主体の判断が先に要る。
   ［2026-09-26 追記］🔴 **ツール申告の収集も移った**（§13 つ目の面）。**扇形で残るのはツールの実行だけであり、判断待ちのまま変わらない。**
+  ［2026-09-27 追記］🔴 **ツールの実行も移った**（§14 つ目の面）。判断は下りた —— 申告の実行先の URL は規約から外し、実行先は申告したサービスとツール名で決める。
+  実行口（受け口）は別の作業で作る。**輸送は gRPC だけになり、受け口ができるまで実行は拒否で終わる**（従前の REST の実行経路も常に失敗していた）。
   REST の退役（②）は、扇形 2 経路の REST と移行済み経路の REST をまとめて同じ段で行う。
 - ［2026-09-07 更新］🔴 **利用者の権限で動く呼び出し先（ホップごと ABAC）の扱いは裁定された。**
   計画がその手段を「**利用者文脈を本文で運ぶ**」と定め（§7 つ目の面を参照）、

@@ -1117,6 +1117,8 @@ services:
       # 自己申告の gRPC（h2c）の宛先。**宛先ごとの opt-in** —— ここに在る宛先だけが gRPC
       # （platform.mcp.v1.McpToolDeclarations。下の ServiceToken の s2s で呼ぶ）で集められ、無い宛先は上の Mcp__Services__* の REST のまま
       # （並走中の正は REST。戻すのは該当行を消すだけでよい）。ポートは各サービスの Grpc__Port と一致させること。
+      # ［2026-09-27 追記 / #1516, ADR-0117］ツールの実行（platform.mcp.v1.McpToolExecution）も同じアドレスへ送る（申告の URL は使わない）。
+      # ここに無いサービスのツールは実行を拒否する。各サービスの受け口は #1611 まで無い。
       Mcp__GrpcServices__document-service: http://document-service:8081
       Mcp__GrpcServices__retrieval-service: http://retrieval-service:8081
       Mcp__GrpcServices__graph-service: http://graph-service:8081

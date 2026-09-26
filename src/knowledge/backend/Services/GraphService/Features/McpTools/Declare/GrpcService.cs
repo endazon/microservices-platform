@@ -16,14 +16,14 @@ namespace GraphService.Features.McpTools.Declare;
 // 🔴 **ServiceCaller を要求する。** 利用者のトークンは（管理者であっても）通らない（[[IADR-0379]] 決定 4）。
 // REST の受け口は認証を持たない（メッシュ内部限定）ので、この面は現状より**狭い**。REST 側は変えない。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
-public sealed class McpToolDeclarationGrpcService(IConfiguration configuration)
+public sealed class McpToolDeclarationGrpcService
     : Pb.McpToolDeclarations.McpToolDeclarationsBase
 {
     public override Task<Pb.ServiceToolDeclarations> Declare(
         Pb.DeclareMcpToolsRequest request, ServerCallContext context)
-        => Task.FromResult(ToProto(McpToolDeclarationSource.Declare(configuration)));
+        => Task.FromResult(ToProto(McpToolDeclarationSource.Declare()));
 
-    // REST の DTO（McpServer の `Domain/McpToolContracts.cs` の写し）と proto は 6 項目が 1 対 1。
+    // REST の DTO（McpServer の `Domain/McpToolContracts.cs` の写し）と proto は 5 項目が 1 対 1（［2026-09-27 / #1516］`endpoint` を外した。proto は番号 4 を reserved）。
     private static Pb.ServiceToolDeclarations ToProto(ServiceToolDeclarations declared)
     {
         var message = new Pb.ServiceToolDeclarations { Service = declared.Service };
@@ -34,7 +34,6 @@ public sealed class McpToolDeclarationGrpcService(IConfiguration configuration)
                 Name = tool.Name,
                 Description = tool.Description,
                 InputSchema = tool.InputSchema,
-                Endpoint = tool.Endpoint,
                 RequiredScope = tool.RequiredScope,
                 EgressClass = tool.EgressClass,
             });
