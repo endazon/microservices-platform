@@ -35,6 +35,9 @@ public class LlmGatewayGrpcDiagramCoder(
         catch (Exception ex) when (ex is RpcException or InvalidOperationException && !ct.IsCancellationRequested)
         {
             // RpcException（全 status）と s2s トークン取得失敗（InvalidOperationException）。
+            // UC-06 (#1621): 期限切れ・取り消しは `RpcException(DeadlineExceeded / Cancelled)` で表れる
+            // （チャネルは `ThrowOperationCanceledOnCancellation` を立てていない）。呼び出し元の ct が
+            // 立っていなければ画像保持へ畳み、立っていれば外へ出す —— REST 実装と同じ境界である。
             // 🔴 **理由文字列は REST 実装と同じ `llm-call-failed` である**（変えると集計が輸送で割れる）。
             logger.LogWarning(ex, "Diagram coding gRPC call failed for {FigureId}; retaining as image",
                 figure.FigureId);

@@ -118,6 +118,67 @@ public class LlmGatewayDiagramCoderTests
         result.Reason.Should().Be("llm-call-failed");
     }
 
+    // T-44 (#1621), UC-06 例外フロー「図コード化（LLM）の失敗は画像保持へ縮退」:
+    // **LLM ゲートウェイの時間切れも呼び出し失敗である。** `HttpClient.Timeout` の経過は
+    // `TaskCanceledException`（`OperationCanceledException` の派生）で表れ、呼び出し元の ct は立っていない。
+    // 🔴 従前は型だけで絞っており（`ex is not OperationCanceledException`）、時間切れ 1 回で正規化全体が失敗していた。
+    [Fact]
+    public async Task Retains_when_gateway_times_out()
+    {
+        var http = new HttpClient(new HangingHandler())
+        {
+            BaseAddress = new Uri("http://llm-gateway:5007"),
+            Timeout = TimeSpan.FromMilliseconds(100),
+        };
+        var coder = new LlmGatewayDiagramCoder(http, NullLogger<LlmGatewayDiagramCoder>.Instance);
+
+        var result = await coder.CodeAsync(Figure(), "internal", TestContext.Current.CancellationToken);
+
+        result.Coded.Should().BeFalse();
+        result.Reason.Should().Be("llm-call-failed");
+    }
+
+    // T-44 の器の確認: 上の試験が注入しているのは**本物の時間切れの形**である
+    // （`TaskCanceledException`・内側に `TimeoutException`・呼び出し元の ct は立っていない）。
+    // これが崩れると、上の試験は時間切れではない何かを畳んで緑になり得る。
+    [Fact]
+    public async Task Hanging_gateway_fixture_produces_the_timeout_shape()
+    {
+        using var http = new HttpClient(new HangingHandler())
+        {
+            BaseAddress = new Uri("http://llm-gateway:5007"),
+            Timeout = TimeSpan.FromMilliseconds(100),
+        };
+        var ct = TestContext.Current.CancellationToken;
+
+        var act = () => http.PostAsync("/complete", new StringContent("{}"), ct);
+
+        var thrown = await act.Should().ThrowExactlyAsync<TaskCanceledException>();
+        thrown.Which.InnerException.Should().BeOfType<TimeoutException>();
+        ct.IsCancellationRequested.Should().BeFalse();
+    }
+
+    // T-44 の対照 (#1621): **呼び出し元（メッセージ消費）の取り消しは畳まずに外へ出す。**
+    // 要求の途中で呼び出し元の ct を取り消すと、`HttpClient` はその ct を運ぶ `TaskCanceledException` を投げる。
+    // 画像保持へ畳むと、停止要求の最中に図を画像として保管し、変換を「成功」として記録してしまう。
+    [Fact]
+    public async Task Propagates_caller_cancellation()
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var http = new HttpClient(new HangingHandler(onSend: cts.Cancel))
+        {
+            BaseAddress = new Uri("http://llm-gateway:5007"),
+            // 取り消しが伝わらなかったときに 100 秒待たないための上限（本試験の期待はこれより先に投げること）。
+            Timeout = TimeSpan.FromSeconds(30),
+        };
+        var coder = new LlmGatewayDiagramCoder(http, NullLogger<LlmGatewayDiagramCoder>.Instance);
+
+        var act = () => coder.CodeAsync(Figure(), "internal", cts.Token);
+
+        var thrown = await act.Should().ThrowAsync<TaskCanceledException>();
+        thrown.Which.CancellationToken.Should().Be(cts.Token);
+    }
+
     private sealed class StubHandler(CompletionApiResponse response) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
@@ -153,5 +214,18 @@ public class LlmGatewayDiagramCoderTests
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
             => throw new HttpRequestException("connection refused");
+    }
+
+    // 応答を返さず、要求の ct が立つまで待つ（LLM ゲートウェイが応答しない状態）。
+    // `onSend` は要求が届いた時点で呼ぶ（呼び出し元の取り消しを「要求の途中」で起こすため）。
+    private sealed class HangingHandler(Action? onSend = null) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            onSend?.Invoke();
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            throw new InvalidOperationException("unreachable: the delay only ends by cancellation");
+        }
     }
 }

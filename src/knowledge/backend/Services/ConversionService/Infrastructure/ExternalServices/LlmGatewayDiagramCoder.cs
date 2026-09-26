@@ -26,9 +26,13 @@ public class LlmGatewayDiagramCoder(
             resp.EnsureSuccessStatusCode();
             result = await resp.Content.ReadFromJsonAsync<CompletionApiResponse>(ct);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             // 呼び出し失敗は例外送出せず画像保持へ縮退する（変換パイプラインを止めない）。
+            // 🔴 UC-06 (#1621): **時間切れも呼び出し失敗である。** `HttpClient.Timeout` の経過は
+            // `TaskCanceledException`（`OperationCanceledException` の派生）で表れ、呼び出し元の ct は立っていない。
+            // 型だけで絞ると、LLM ゲートウェイの時間切れ 1 回で `RawDocumentFetchedConsumer` の正規化全体が
+            // 失敗していた。外へ出す取り消しは**呼び出し元（メッセージ消費）の ct によるもの**だけである。
             logger.LogWarning(ex, "Diagram coding call failed for {FigureId}; retaining as image", figure.FigureId);
             return DiagramCodingResult.Retain("llm-call-failed");
         }

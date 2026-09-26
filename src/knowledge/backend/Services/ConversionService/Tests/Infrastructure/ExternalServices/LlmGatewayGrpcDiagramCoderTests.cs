@@ -129,6 +129,57 @@ public class LlmGatewayGrpcDiagramCoderTests
         result.Reason.Should().Be("llm-call-failed");
     }
 
+    // T-45 (#1621), UC-06 例外フロー: gRPC の期限切れ・取り消しは `RpcException(DeadlineExceeded / Cancelled)`
+    // で表れる（チャネルは `ThrowOperationCanceledOnCancellation` を立てていない）。
+    // **呼び出し元の ct が立っていなければ**、時間切れも輸送の失敗として画像保持へ畳む（REST の T-44 と同じ境界）。
+    [Theory]
+    [InlineData(StatusCode.DeadlineExceeded)]
+    [InlineData(StatusCode.Cancelled)]
+    public async Task 呼び出し元に由来しない期限切れと取り消しは画像保持へ縮退する(StatusCode status)
+    {
+        var coder = new LlmGatewayGrpcDiagramCoder(
+            new ThrowingClient(new RpcException(new Status(status, "gateway timed out"))),
+            NullLogger<LlmGatewayGrpcDiagramCoder>.Instance);
+
+        var result = await coder.CodeAsync(Figure(), "internal", TestContext.Current.CancellationToken);
+
+        result.Coded.Should().BeFalse();
+        result.Reason.Should().Be("llm-call-failed");
+    }
+
+    // T-45 の対照 (#1621): **呼び出し元（メッセージ消費）の取り消しは畳まずに外へ出す。**
+    // 呼び出し元の ct が生成クライアントへ渡っていること（`CallOptions.CancellationToken`）も併せて見る ——
+    // 渡っていなければ、`!ct.IsCancellationRequested` の絞りは実際の取り消しと結び付かない。
+    [Fact]
+    public async Task 呼び出し元の取り消しは畳まずに外へ出す()
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var client = new CancellingClient(cts);
+        var coder = new LlmGatewayGrpcDiagramCoder(client, NullLogger<LlmGatewayGrpcDiagramCoder>.Instance);
+
+        var act = () => coder.CodeAsync(Figure(), "internal", cts.Token);
+
+        var thrown = await act.Should().ThrowAsync<RpcException>();
+        thrown.Which.StatusCode.Should().Be(StatusCode.Cancelled);
+        client.ReceivedToken.Should().Be(cts.Token);
+    }
+
+    // 呼び出しの途中で呼び出し元の ct を取り消し、実チャネルと同じ `RpcException(Cancelled)` で終わる。
+    private sealed class CancellingClient(CancellationTokenSource caller) : Pb.LlmCompletion.LlmCompletionClient
+    {
+        public CancellationToken ReceivedToken { get; private set; }
+
+        public override AsyncUnaryCall<Pb.CompleteResponse> CompleteAsync(
+            Pb.CompleteRequest request, CallOptions options)
+        {
+            ReceivedToken = options.CancellationToken;
+            caller.Cancel();
+            return new(Task.FromException<Pb.CompleteResponse>(
+                    new RpcException(new Status(StatusCode.Cancelled, "Call canceled by the client."))),
+                Task.FromResult(new Metadata()), () => Status.DefaultSuccess, () => [], () => { });
+        }
+    }
+
     private sealed class FakeClient(Pb.CompleteResponse response) : Pb.LlmCompletion.LlmCompletionClient
     {
         public override AsyncUnaryCall<Pb.CompleteResponse> CompleteAsync(
