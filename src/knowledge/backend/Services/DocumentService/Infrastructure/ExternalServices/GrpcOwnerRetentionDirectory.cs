@@ -17,14 +17,49 @@ namespace DocumentService.Infrastructure.ExternalServices;
 //
 // ■ 縮退: `UserDirectoryGrpcClient` が `null` を返す（`RpcException` 全 status ／ s2s トークン取得失敗）。
 //   そのまま `null` を通す —— **呼び出し元は削除しない側へ倒す。**
+//
+// ■［2026-09-26 / #1532・[[IADR-0474]] 決定 6］上限（5 秒）を掛ける。
+//   チャネルに期限は無く、認可サービスが応答しないと日次の定期処理がそこで止まり続ける
+//   （同じ周期の他の段 —— 90 日の物理削除・版の刈り取り・通知 —— も巻き添えになる）。
+//   上限を超えたら「引けなかった」（`null` ＝削除しない）へ倒す。
+//   🔴 本口は #1532 の配線で**初めて配備で実働する**。写像の各枝は `GrpcOwnerRetentionDirectoryTests` が固定する。
 public sealed class GrpcOwnerRetentionDirectory(UserDirectoryGrpcClient client) : IOwnerRetentionDirectory
 {
+    internal static readonly TimeSpan LookupTimeout = TimeSpan.FromSeconds(5);
+
+    private readonly TimeSpan _timeout = LookupTimeout;
+
+    // 試験用: 時間切れの枝を短い上限で測る。
+    internal GrpcOwnerRetentionDirectory(UserDirectoryGrpcClient client, TimeSpan timeout) : this(client)
+        => _timeout = timeout;
+
     public async Task<OwnerRetentionStatus?> GetAsync(string ownerId, CancellationToken ct)
     {
-        var status = await client.GetRetentionStatusAsync(ownerId, ct);
-        if (status is null) return null;
+        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        bounded.CancelAfter(_timeout);
+
+        PlatformUserRetentionStatus? status;
+        try
+        {
+            status = await client.GetRetentionStatusAsync(ownerId, bounded.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // 上限に達した（gRPC の外 —— s2s トークン取得の途中など —— で取り消された場合もここへ来る）。
+            return null;
+        }
+
+        if (status is null)
+        {
+            // 呼び出し元（定期処理の停止）が取り消したなら、「引けなかった」に畳まず取り消しを伝える。
+            ct.ThrowIfCancellationRequested();
+            return null;
+        }
 
         // 🔴 **`Unspecified`（proto3 の既定 0）と未知の値は `NotEvaluable` へ倒す。**
+        // 🔴 **`Elapsed` は名簿が明示したときだけ**である —— 本項目を知らない古い認可サービスの応答は
+        //   found=true・enabled=false（既定）・Unspecified になり、ここが `Elapsed` へ倒れると
+        //   **無効化済みの全利用者の資料が一度に消える**（変異 M6。#1532 の監査で生存を実測した）。
         // 応答を返した相手が本項目を知らない古い配備でも、**既定値が削除を発火させない。**
         var eligibility = status.Eligibility switch
         {

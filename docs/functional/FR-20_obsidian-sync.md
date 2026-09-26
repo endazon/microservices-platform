@@ -7,11 +7,11 @@ updated: 2026-09-26
 author: Claude
 ---
 <!-- trace:
-ids: [FR-19, FR-20, FR-22, UC-11, SC-20]
-adrs: [ADR-0021, ADR-0037, ADR-0046, ADR-0054, ADR-0105, ADR-0110]
-iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0375, IADR-0464]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451b_notification-ingress, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260905_issue-1213_obsidian-plugin-release-assets, 20260926_1521_plugin-keep-both-source-note-tags]
-issues: [#451, #600, #1098, #1153, #1154, #1176, #1213, #1521, planning#652]
+ids: [FR-19, FR-20, FR-22, UC-11, SC-17, SC-20, NFR-14]
+adrs: [ADR-0021, ADR-0037, ADR-0046, ADR-0054, ADR-0096, ADR-0105, ADR-0110, ADR-0114]
+iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0375, IADR-0464, IADR-0474]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451b_notification-ingress, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260905_issue-1213_obsidian-plugin-release-assets, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable]
+issues: [#451, #600, #1098, #1153, #1154, #1176, #1213, #1521, #1532, planning#652]
 -->
 
 # 機能仕様書: Obsidian 双方向同期
@@ -53,6 +53,9 @@ issues: [#451, #600, #1098, #1153, #1154, #1176, #1213, #1521, planning#652]
 | 失効 | 端末ごとの個別失効＋**全端末の一括失効**（紛失端末を特定できない場面の防御） |
 | 保存 | 平文は発行応答で 1 回だけ返す。サーバは SHA-256 ハッシュのみ保存する |
 | 期限予告 | 期限の **7 日前に 1 回**通知（当日の追加通知なし） |
+| アカウントの無効化 | 管理者が利用者を無効化したら、その利用者のトークンは**無効化の後の最初の同期要求から 401**。トークンは失効させず、**同期要求ごとに**利用者名簿で所有者が有効かを確かめる（結果を持ち越さない） |
+| 判定できないとき | 名簿を読めない・応答が 5 秒を超える・名簿に居ない・名簿の口が構成されていない場合も **401**（通さない）。名簿の障害の間は、有効な利用者の同期も止まる |
+| 再有効化 | 無効化はトークンを失効させていないので、**再有効化すると、期限内で本人が失効させていないトークンは次の同期要求から再び通る**。無効化の間に 30 日の期限が過ぎたトークンは戻らない（連携設定画面で再発行する） |
 
 ### 同期の規則
 
@@ -122,7 +125,7 @@ sequenceDiagram
 
 | 状況 | 応答 |
 | --- | --- |
-| トークン欠落・不正・期限切れ・失効 | いずれも同じ 401（理由と存在を漏らさない） |
+| トークン欠落・不正・期限切れ・失効、所有者のアカウントが無効・名簿で判定できない | いずれも同じ 401（理由と存在を漏らさない） |
 | スコープ外の資料 | 404（存在秘匿） |
 | 版の競合 | 409（自動解決しない） |
 | 容量 100% での新規作成 | 507 |

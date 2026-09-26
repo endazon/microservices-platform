@@ -8,10 +8,10 @@ author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-21, FR-22, UC-11, SC-10, SC-17, SC-19, SC-20]
-adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0056, ADR-0057, ADR-0058, ADR-0061, ADR-0082, ADR-0096, ADR-0105, ADR-0110]
-iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278, IADR-0283, IADR-0296, IADR-0396, IADR-0428, IADR-0431, IADR-0444, IADR-0455, IADR-0464]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260905_issue-1184_private-note-exposure-index-production, 20260911_issue-1409_private-note-disposal-after-window, 20260915_issue-1474_sync-conflict-resolve-publish, 20260925_1498_conflict-alias-inherits-tags, 20260926_1521_plugin-keep-both-source-note-tags]
-issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, planning#472, planning#475, planning#492, planning#652]
+adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0056, ADR-0057, ADR-0058, ADR-0061, ADR-0082, ADR-0096, ADR-0105, ADR-0110, ADR-0114]
+iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278, IADR-0283, IADR-0296, IADR-0396, IADR-0428, IADR-0431, IADR-0444, IADR-0455, IADR-0464, IADR-0474]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260905_issue-1184_private-note-exposure-index-production, 20260911_issue-1409_private-note-disposal-after-window, 20260915_issue-1474_sync-conflict-resolve-publish, 20260925_1498_conflict-alias-inherits-tags, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable]
+issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, planning#472, planning#475, planning#492, planning#652]
 -->
 
 # 機能仕様書: 個人資料（private-note）
@@ -26,7 +26,8 @@ issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, planning#472
 > **切り替えはその場で索引へ届く。**
 > **④退職時規則も 2026-09-11 に実装した** —— 日次の定期処理が「所有者が無効化済み ∧
 > 退職の起点から 30 日経過」の資料だけを完全削除する（後述 §退職後の完全削除）。
-> **入っていないのは** アカウント無効化時の**同期トークン失効**（認可・人事連携側）である。
+> **⑤アカウント無効化の後の同期の拒否も 2026-09-26 に実装した** —— 同期トークンは失効させず、
+> 同期要求ごとに所有者のアカウントが有効かを確かめ、無効化・判定不能なら拒否する（[連携の機能仕様書](FR-20_obsidian-sync.md) §同期トークン）。
 > （②通知は受け口・発火の結線とも 2026-08-28 に実装済み — 通知サービスの配備が残る）
 > 線引きは同名の作業仕様書と実装 ADR（trace 参照）にある。
 

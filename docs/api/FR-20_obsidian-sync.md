@@ -7,11 +7,11 @@ updated: 2026-09-26
 author: Claude
 ---
 <!-- trace:
-ids: [FR-19, FR-20, FR-22, UC-11, SC-19, SC-20]
-adrs: [ADR-0021, ADR-0037, ADR-0054, ADR-0105, ADR-0110]
-iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0464]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260926_1521_plugin-keep-both-source-note-tags]
-issues: [#451, #1098, #1153, #1154, #1176, #1521, planning#652]
+ids: [FR-19, FR-20, FR-22, UC-11, SC-17, SC-19, SC-20, NFR-14]
+adrs: [ADR-0021, ADR-0037, ADR-0054, ADR-0105, ADR-0110, ADR-0114]
+iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0464, IADR-0474]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable]
+issues: [#451, #1098, #1153, #1154, #1176, #1521, #1532, planning#652]
 -->
 
 # 通信仕様書: 個人資料・Obsidian 同期 API
@@ -56,6 +56,10 @@ issues: [#451, #1098, #1153, #1154, #1176, #1521, planning#652]
 
 - 同期トークンは `Authorization: Bearer <token>`。検証失敗（欠落・不正・期限切れ・失効）は
   **区別せず 401**。
+- トークンの検証に通った要求だけ、文書サービスが**要求ごとに**利用者名簿（east-west gRPC の
+  狭い読み口）で所有者のアカウントが有効かを確かめる。**有効と確かめられたときだけ通し**、
+  無効化・名簿に居ない・判定できない（名簿の障害・5 秒の時間切れ・口の未構成）はいずれも
+  **同じ 401** である（通さない側へ倒す）。結果は持ち越さない（無効化の後の最初の要求から拒否する）。
 - 所有者スコープ外の資料 ID は **404**（存在秘匿。403 を返さない）。
 - ライフサイクル群の主体は JWT の主体のみから決める（クエリ・本文に主体の口を作らない）。
 

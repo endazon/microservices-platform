@@ -185,6 +185,21 @@ else
     builder.Services.AddScoped<DocumentService.Domain.Ports.IOwnerRetentionDirectory,
         DocumentService.Infrastructure.ExternalServices.UnavailableOwnerRetentionDirectory>();
 }
+// FR-20, SC-17, NFR-14, 計画 ADR-0114 決定 1・2, [[IADR-0474]] (#1532): 同期トークンの所有者が
+// いま有効かの照会（同期要求ごと・キャッシュなし）。**同じ構成キー・同じ生成クライアント**を読む。
+// 🔴 **未構成なら常に「判定できない」を返す縮退を登録する ＝ 同期は 401**（fail-closed）。
+// 退職の窓（上）とは**倒す向きが逆**である —— あちらは「分からなければ消さない」、こちらは
+// 「分からなければ通さない」。だから口を分けている。
+if (!string.IsNullOrWhiteSpace(builder.Configuration[AuthzScopeGrpcClient.AddressKey]))
+{
+    builder.Services.AddScoped<DocumentService.Domain.Ports.IOwnerAccountDirectory,
+        DocumentService.Infrastructure.ExternalServices.GrpcOwnerAccountDirectory>();
+}
+else
+{
+    builder.Services.AddScoped<DocumentService.Domain.Ports.IOwnerAccountDirectory,
+        DocumentService.Infrastructure.ExternalServices.UnavailableOwnerAccountDirectory>();
+}
 builder.Services.AddScoped<DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceService>();
 builder.Services.AddHostedService<
     DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceHostedService>();

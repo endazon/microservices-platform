@@ -120,14 +120,26 @@ public sealed class PrivateNoteMaintenanceService(
         var owners = await db.PrivateNotes.Select(n => n.OwnerId).Distinct().ToListAsync(ct);
         if (owners.Count == 0) return;
 
+        // ［2026-09-26 / #1532・[[IADR-0474]] 決定 6］判定を先に全員分済ませ、**消す前に件数を 1 行残す**。
+        // 削除は取り返せないので、周期ごとに「何人中何人を消そうとしたか・判定できなかったのは何人か」を
+        // ログで追えるようにする（所有者 ID は出さない —— 監査ログ側に消した分だけ残る）。
+        // 🔴 **1 周期あたりの上限は置かない**（理由は IADR-0474 決定 6。窓を計画の 30 日より延ばすことになる）。
+        var purgeable = new List<string>();
+        var unknown = 0;
         foreach (var owner in owners)
         {
             var status = await ownerRetention.GetAsync(owner, ct);
             // 🔴 `null`（引けなかった）はここで落ちる。**「窓が閉じた」へ倒さない。**
-            if (status is null || !status.IsPurgeable) continue;
-
-            await PurgeAllOwnedAsync(owner, now, ct);
+            if (status is null) { unknown++; continue; }
+            if (status.IsPurgeable) purgeable.Add(owner);
         }
+
+        logger.LogInformation(
+            "退職者の個人資料の完全削除: 所有者 {Owners} 人中 {Purgeable} 人が対象（名簿を引けず判定しなかった所有者 {Unknown} 人は削除しない）",
+            owners.Count, purgeable.Count, unknown);
+
+        foreach (var owner in purgeable)
+            await PurgeAllOwnedAsync(owner, now, ct);
     }
 
     // ADR-0096 決定 1: 1 人分の完全削除。射程は ADR-0057 決定 1 と同じ
