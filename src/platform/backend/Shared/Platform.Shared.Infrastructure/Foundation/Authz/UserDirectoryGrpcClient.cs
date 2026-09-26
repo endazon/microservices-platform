@@ -12,9 +12,10 @@ namespace Platform.Shared.Infrastructure.Foundation.Authz;
 // 利用者名簿の**狭い読み口**（`platform.authz.v1.UserDirectory`）の呼び出し側。
 //
 // 🔴 **列挙の口は無い。** REST の `GET /authz/users`（AdminOnly・全件列挙）は s2s の面へ出していない
-// （IADR-0401 決定 2）。呼び出し元が要る問いは 2 つだけである ——
+// （IADR-0401 決定 2）。呼び出し元が要る問いは 3 つだけである ——
 // 「これらの利用者名は実在するか」（DataSourceService）と
-// 「この 1 人の属性は何か」（McpServer の登録者自身）。
+// 「この 1 人の属性は何か」（McpServer の登録者自身）と、
+// ［2026-09-26 / #1557・IADR-0472］「これらの部門コードは値域に在るか」（DataSourceService。計画 ADR-0115 決定 5）。
 //
 // 🔴 **「居ない」と「引けなかった」を型で分ける。**
 //   居ない = 応答（`exists=false` / `Found=false`）、引けなかった = 戻り値 `null`。
@@ -26,6 +27,12 @@ public sealed class UserDirectoryGrpcClient(
     Pb.UserDirectory.UserDirectoryClient client,
     ILogger<UserDirectoryGrpcClient> logger)
 {
+    // FR-05, SC-06, ADR-0074 決定 4, 計画 ADR-0115 決定 5, IADR-0472 (#1557 監査): 書き込み時の照会 2 つの締切。
+    // 後段（Keycloak）が応答しないと、管理者の登録・更新が接続が切れるまで固まる。締切を過ぎたら
+    // `RpcException(DeadlineExceeded)` ＝「引けなかった」（呼び出し元で 502）へ倒す。値は DocumentService の
+    // `GrpcPrivateNoteNotifier`（5 秒の deadline）と揃える。
+    internal static readonly TimeSpan WriteTimeLookupTimeout = TimeSpan.FromSeconds(5);
+
     /// <summary>
     /// FR-05, UC-04, SC-06, ADR-0074 決定 4: 送った利用者名のうち**実在するもの**を返す。
     /// 引けなかったときは <c>null</c>（空集合ではない）。
@@ -40,7 +47,8 @@ public sealed class UserDirectoryGrpcClient(
 
         try
         {
-            var resp = await client.CheckUsernamesAsync(request, cancellationToken: ct);
+            var resp = await client.CheckUsernamesAsync(
+                request, deadline: DateTime.UtcNow.Add(WriteTimeLookupTimeout), cancellationToken: ct);
             return new HashSet<string>(
                 resp.Results.Where(r => r.Exists).Select(r => r.Username), StringComparer.Ordinal);
         }
@@ -53,6 +61,38 @@ public sealed class UserDirectoryGrpcClient(
         catch (InvalidOperationException ex)
         {
             logger.LogWarning(ex, "s2s トークンが取得できないため利用者名簿を照会できません。");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// FR-05, UC-04, SC-06, 計画 ADR-0115 決定 1・5, ADR-0074 決定 4, IADR-0472 (#1557):
+    /// 送った部門コードのうち**値域に在るもの**（realm の <c>/department/&lt;code&gt;</c> が実在するもの）を返す。
+    /// 引けなかったときは <c>null</c>（空集合ではない）。
+    /// 🔴 照合は呼び出し先が**序数一致**で行う（登録者の部門を導く <c>RegistrantDepartment</c> と同じ）。
+    /// </summary>
+    public async Task<IReadOnlySet<string>?> CheckDepartmentCodesAsync(
+        IReadOnlyCollection<string> codes, CancellationToken ct)
+    {
+        var request = new Pb.CheckDepartmentCodesRequest();
+        request.Codes.AddRange(codes);
+
+        try
+        {
+            var resp = await client.CheckDepartmentCodesAsync(
+                request, deadline: DateTime.UtcNow.Add(WriteTimeLookupTimeout), cancellationToken: ct);
+            return new HashSet<string>(
+                resp.Results.Where(r => r.Exists).Select(r => r.Code), StringComparer.Ordinal);
+        }
+        catch (RpcException ex)
+        {
+            logger.LogWarning(
+                "部門グループの gRPC 照会に失敗しました（{Status}）。部門コードの値域検証は行えません。", ex.StatusCode);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(ex, "s2s トークンが取得できないため部門グループを照会できません。");
             return null;
         }
     }

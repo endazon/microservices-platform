@@ -972,6 +972,32 @@
       "csharpNamespace": "Platform.Shared.Contracts.Grpc.Authz.V1",
       "imports": [],
       "messages": {
+        "CheckDepartmentCodesRequest": {
+          "fields": {
+            "codes": {
+              "number": 1,
+              "type": "string",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "CheckDepartmentCodesResponse": {
+          "fields": {
+            "results": {
+              "number": 1,
+              "type": "DepartmentCodeExistence",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
         "CheckUsernamesRequest": {
           "fields": {
             "usernames": {
@@ -991,6 +1017,24 @@
               "number": 1,
               "type": "UsernameExistence",
               "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "DepartmentCodeExistence": {
+          "fields": {
+            "code": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "exists": {
+              "number": 2,
+              "type": "bool",
+              "label": "singular"
             }
           },
           "reserved": {
@@ -1080,6 +1124,12 @@
       "services": {
         "UserDirectory": {
           "rpcs": {
+            "CheckDepartmentCodes": {
+              "request": "CheckDepartmentCodesRequest",
+              "response": "CheckDepartmentCodesResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            },
             "CheckUsernames": {
               "request": "CheckUsernamesRequest",
               "response": "CheckUsernamesResponse",

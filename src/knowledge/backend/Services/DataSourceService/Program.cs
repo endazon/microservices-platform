@@ -114,6 +114,16 @@ else
     builder.Services.AddScoped<IPlatformUserDirectory,
         DataSourceService.Infrastructure.ExternalServices.AuthorizationServiceUserDirectory>();
 
+// FR-05, UC-04, SC-06, 計画 ADR-0115 決定 5, ADR-0074 決定 4, [[IADR-0472]] 決定 2 (#1557):
+// 明示した部門の値域検証の輸送。**gRPC だけである**（REST の兄弟実装は作らない —— 利用者トークンの転送へ戻さない）。
+// 宛先が未宣言の配備では「引けなかった」へ倒れ、明示した部門の書き込みは 502 で保存されない（黙って通さない）。
+if (!string.IsNullOrWhiteSpace(builder.Configuration[AuthzScopeGrpcClient.AddressKey]))
+    builder.Services.AddScoped<IDepartmentDomainDirectory,
+        DataSourceService.Infrastructure.ExternalServices.GrpcDepartmentDomainDirectory>();
+else
+    builder.Services.AddSingleton<IDepartmentDomainDirectory,
+        DataSourceService.Infrastructure.ExternalServices.UnavailableDepartmentDomainDirectory>();
+
 // FR-01, UC-04, IADR-0051: 実データソースコネクタと同期基盤。
 // オブジェクトストレージ（原本格納。未設定時は Null クライアントで縮退）。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
