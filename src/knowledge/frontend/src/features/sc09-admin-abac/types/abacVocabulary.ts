@@ -56,10 +56,10 @@ export function attributeScopeLabel(scope: string): MessageDescriptor | string {
  */
 export const ALLOWED_VALUES_SOURCES = ['realm', 'realm-unavailable'] as const;
 
-export type AllowedValuesSource = (typeof ALLOWED_VALUES_SOURCES)[number];
+type AllowedValuesSource = (typeof ALLOWED_VALUES_SOURCES)[number];
 
 /** 出所の表示。**色だけに頼らない**（`StatusBadge` がアイコン＋文言を強制する）。不明は注意の色にする。 */
-export interface AllowedValuesSourceBadge {
+interface AllowedValuesSourceBadge {
   tone: 'neutral' | 'warning';
   label: MessageDescriptor | string;
 }
