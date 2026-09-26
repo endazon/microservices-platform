@@ -522,6 +522,13 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
       と `Embedding__Routing__Endpoints__1__Enabled=true` を自動注入する（`services.llmgateway.selfHostedEmbedding`）。
     - compose: `docker compose --profile embedding up` で `embedding`（TEI）サービスを起動し、`.env` に
       `SELFHOSTED_EMBEDDING_URL=http://embedding:80` / `SELFHOSTED_EMBEDDING_ENABLED=true` を与える。
+    - 🔴 **検索側も同時に束ねる**（2026-09-26）: 検索サービスが Ruri のコレクションも読まないと、高機密の文書は
+      **索引されるが検索されない**。Helm は `embedding.enabled=true` で retrieval へ
+      `Qdrant__FusedCollections__0=<embedding.collection>` を自動で描画する。compose は `.env` に
+      `SEARCH_FUSED_COLLECTION=knowledge_chunks_ruri_v3` を与える。束ね方（順位で合成・スコアは比べない・
+      権限フィルタは全コレクションに掛ける）は [ハイブリッド検索 機能仕様書](../functional/FR-03_hybrid-search.md) にある。
+      有効化の後は、Ruri コレクションの全文索引が張られていること（取り込みの起動時ログ）を確かめる ——
+      検索の readiness は主コレクションの索引しか見ない。
     - **稼働環境依存（分離）**: 実モデル（Ruri v3）の取得・GPU/CPU リソース・実埋め込み疎通・下記 nDCG@10 実測は
       稼働環境で行う。既定の image tag / モデル ID はプレースホルダであり、実運用前に稼働環境で固定する。
   - 有効化後、社内文書サンプルで検索精度（nDCG@10）を実測し、voyage-3.5 比で大幅劣化しないことを確認する

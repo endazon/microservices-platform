@@ -27,6 +27,44 @@ public class QdrantVectorStore(
     internal static string ResolveCollectionName(IConfiguration config) =>
         config["Qdrant:CollectionName"] ?? config["Qdrant:Collection"] ?? "knowledge_chunks";
 
+    // FR-03, ADR-0016, ADR-0092 決定 1, [[IADR-0467]] (#336): **束ねる追加コレクション**の名前。
+    internal const string FusedCollectionsKey = "Qdrant:FusedCollections";
+
+    // FR-03, ADR-0092 決定 1, [[IADR-0467]] (#336): 主コレクション（`ResolveCollectionName`）に加えて
+    // 検索が読むコレクションを解決する。**既定は空**（＝検索は主の 1 本だけ。従来と同一）。
+    //
+    // 捨てるもの: 空・空白（compose の既定 `${…:-}` が空文字で届く）／主と同名（二重に引くと同じ点が
+    // RRF で二度加点される）／重複。**順序は構成の順を保つ**（RRF の同点を決める並びである）。
+    internal static IReadOnlyList<string> ResolveFusedCollectionNames(IConfiguration config)
+    {
+        var primary = ResolveCollectionName(config);
+        var names = new List<string>();
+        foreach (var child in config.GetSection(FusedCollectionsKey).GetChildren())
+        {
+            var name = child.Value?.Trim();
+            if (string.IsNullOrEmpty(name) || name == primary || names.Contains(name))
+                continue;
+            names.Add(name);
+        }
+
+        return names;
+    }
+
+    // FR-03, ADR-0092 決定 1, [[IADR-0467]] (#336): 指定したコレクションを読む実装を作る。
+    // **読み方（ABAC・全文・復元）は主と 1 行も違わない** —— 違うのはコレクション名だけであり、
+    // 名前の解決規則も既存の `ResolveCollectionName` をそのまま通す（別の規則を作らない）。
+    internal static QdrantVectorStore ForCollection(
+        QdrantClient client, string collection, ILogger<QdrantVectorStore> logger,
+        KeywordSearchMetrics metrics) =>
+        new(client,
+            new ConfigurationBuilder()
+                .AddInMemoryCollection([new("Qdrant:CollectionName", collection)])
+                .Build(),
+            logger, metrics);
+
+    // 読むコレクション名（束ねる側の組み立てと試験が読む）。
+    internal string Collection => _collection;
+
     // FR-03, #1116: 全文検索が引くペイロードキー。取り込み側
     // （`IngestionService.QdrantIngestionVectorStore.FullTextKey`）と同じ 1 つの値であること。
     internal const string FullTextKey = "text";

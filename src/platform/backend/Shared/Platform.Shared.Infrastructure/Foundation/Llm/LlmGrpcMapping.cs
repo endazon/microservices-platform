@@ -31,7 +31,14 @@ public static class LlmGrpcMapping
         // 受け側の SensitivityClasses.Parse が null と同じ restricted（安全側）へ倒す。
         Confidentiality = req.Confidentiality ?? string.Empty,
         Purpose = ToProtoPurpose(req.Purpose),
+        // FR-03, ADR-0092 決定 2, [[IADR-0467]] (#336): null（未指定）は空文字へ写す。
+        TargetCollection = req.TargetCollection ?? string.Empty,
     };
+
+    // FR-03, ADR-0092 決定 2, [[IADR-0467]] (#336): 受け側の写し。空文字は REST の null（未指定）へ戻す
+    // —— 空文字のまま渡すと「空という名前のコレクション」への絞り込みになり、全件拒否へ化ける。
+    public static string? ToDtoTargetCollection(string targetCollection) =>
+        string.IsNullOrEmpty(targetCollection) ? null : targetCollection;
 
     public static Pb.EmbedResponse ToProto(EmbedApiResponse resp)
     {

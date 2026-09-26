@@ -1405,6 +1405,11 @@
               "type": "EmbedPurpose",
               "label": "singular"
             },
+            "target_collection": {
+              "number": 4,
+              "type": "string",
+              "label": "singular"
+            },
             "text": {
               "number": 1,
               "type": "string",

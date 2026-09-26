@@ -1527,6 +1527,8 @@ export interface EmbedApiRequest {
   confidentiality?: EmbedApiRequestConfidentiality;
   /** 用途。query は検索対象コレクションと次元を一致させるため既定外部経路へ固定 */
   purpose?: EmbedApiRequestPurpose;
+  /** 検索クエリ（purpose=query）が読むコレクション。越境判定と有効化の篩を通った候補をそのコレクションの送信先へ絞るだけで、許可されていない区分を開くことはない。index では無視する。省略時は従来どおり優先度順に選ぶ */
+  targetCollection?: string | null;
 }
 
 /**
