@@ -3,15 +3,15 @@ title: テスト仕様書 — FR-12 原本の正規化変換
 type: test-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-09-05
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, FR-12, UC-06, SC-07]
 adrs: [ADR-0010, ADR-0012, ADR-0014, ADR-0070]
 iadrs: [IADR-0008, IADR-0104, IADR-0132, IADR-0162, IADR-0296, IADR-0298, IADR-0320, IADR-0351, IADR-0356, IADR-0388]
-specs: [20260703_FR-12_document-normalization-pipeline, 20260829_issue-447_fr12-golden-files, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
-issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120, #1192, #1254]
+specs: [20260703_FR-12_document-normalization-pipeline, 20260927_issue-1621_diagram-coder-timeout-retain, 20260829_issue-447_fr12-golden-files, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
+issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120, #1192, #1254, #1621]
 -->
 
 # テスト仕様書: 原本の正規化変換
@@ -63,6 +63,8 @@ issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120, #1192, #1254]
 | T-41 | **本文なしはジョブの成功として記録される** | コンシューマは `HasBody = false` の正規化結果を `succeeded` で確定し、発行口へも同じ値を渡す | `status = succeeded`・`hasBody = false`・`deadLettered = false`・`error = null`。本文ありでは `hasBody = true`（陽性対照） | 正規化変換: 例外 E6 / `RawDocumentFetchedConsumerJobTests` |
 | T-42 | **読み取りモデルの標識** | `hasBody` は succeeded の内訳として保存され、処理を再開したら本文ありへ戻る | 成功直後 false → 再受信で processing ＋ true | `ConversionJobStoreTests` |
 | T-43 | **発行イベントへの写像** | `DocumentNormalized.HasBody` へ写る（既定 true なので false を渡して見る） | `ev.HasBody == false` | `MassTransitDocumentNormalizedPublisherTests` |
+| T-44 | **縮退（時間切れ・REST）** | LLM ゲートウェイが応答せず `HttpClient.Timeout` が経過したとき（`TaskCanceledException`・呼び出し元の取り消しは立っていない）も、T-06 と同じく例外送出せず画像保持へ縮退する。**対照**: 呼び出し元の取り消し（その取り消しを運ぶ `TaskCanceledException`）は畳まずに外へ出す。器の確認として、応答しないハンドラが本物の時間切れの形（内側に `TimeoutException`）を作ることも見る | 時間切れ: `Coded=false`・`Reason="llm-call-failed"`。取り消し: `TaskCanceledException` が伝わり、その `CancellationToken` が呼び出し元のもの | 正規化変換: 例外（図コード化の失敗は画像保持へ縮退） / `LlmGatewayDiagramCoderTests.Retains_when_gateway_times_out`・`Hanging_gateway_fixture_produces_the_timeout_shape`・`Propagates_caller_cancellation` |
+| T-45 | **縮退（期限切れ・取り消し・gRPC）** | 呼び出し元に由来しない `RpcException(DeadlineExceeded)`・`RpcException(Cancelled)` は画像保持へ縮退する（REST の T-44 と同じ境界）。**対照**: 呼び出しの途中で呼び出し元が取り消したときは `RpcException(Cancelled)` を畳まずに外へ出し、呼び出し元の取り消しが生成クライアントへ渡っていることも見る | 期限切れ・取り消し: `Reason="llm-call-failed"`。呼び出し元の取り消し: `RpcException(Cancelled)` が伝わる・`CallOptions.CancellationToken` が呼び出し元のもの | 正規化変換: 例外 / `LlmGatewayGrpcDiagramCoderTests.呼び出し元に由来しない期限切れと取り消しは画像保持へ縮退する`・`呼び出し元の取り消しは畳まずに外へ出す` |
 | T-11 | 完了イベント | 変換後に `DocumentNormalized` が発行され後続へ連鎖する | Published = true、`MarkdownUri` 非空 | 正規化変換: 連鎖 / `RawDocumentFetchedConsumerTests` |
 | T-12 | **画像保持（モデル拒否）** | `stopReason="refusal"`（送信は成立したがモデルが拒否）は本文が空で返るためフェンスも無いが、T-02 の「コード化不能」と混同せず拒否として記録する。縮退先（画像保持）は不変 | `Coded=false`、`Reason="llm-refused"`（`not-codeable` でない） | LLM 送信先切替・正規化変換 / `LlmGatewayDiagramCoderTests.Retains_with_refusal_reason_when_model_refuses` |
 

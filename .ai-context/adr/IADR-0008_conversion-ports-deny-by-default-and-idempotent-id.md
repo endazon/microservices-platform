@@ -7,7 +7,7 @@ related_ids:
   - UC-06
 author: claude
 created: 2026-07-03
-updated: 2026-07-03
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md (FR-12)
   - planning:projects/microservices-platform/03_usecases/01_usecases.md (UC-06)
@@ -17,6 +17,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md
 related_specs:
   - ../specs/20260703_FR-12_document-normalization-pipeline.md
+  - ../specs/20260927_issue-1621_diagram-coder-timeout-retain.md
   - ../../docs/functional/FR-12_document-normalization.md
   - ../../docs/tests/FR-12_document-normalization.md
   - ./IADR-0007_llm-egress-routing-config-driven.md
@@ -67,6 +68,22 @@ FR-12 / UC-06 は「取得した原本を、AI が扱いやすい正規化形式
   「呼び出し失敗」をすべて `Retain(reason)` として返し、`NormalizationService` が画像保持へ振り分ける。
   送信可否ロジックは FR-11 の `/complete`（越境マトリクス、[IADR-0007](./IADR-0007_llm-egress-routing-config-driven.md)）へ委譲し、
   変換固有の送信制御を二重実装しない。
+
+> **［2026-09-27 追記 / #1621］B-2 の「呼び出し失敗」は時間切れを含む。外へ出すのは呼び出し元（メッセージ消費）の ct による取り消しだけである。**
+> REST の図のコード化 `LlmGatewayDiagramCoder.CodeAsync`（`Services:LlmGatewayGrpc` 未構成時の既定の実装）の捕捉は
+> `when (ex is not OperationCanceledException)` と型だけで絞っており、LLM ゲートウェイの時間切れ（名前付きクライアントの
+> `HttpClient.Timeout`＝既定 100 秒は `TaskCanceledException`＝`OperationCanceledException` の派生で表れ、呼び出し元の ct は立っていない）が
+> 画像保持へ縮退せず、`RawDocumentFetchedConsumer` の正規化全体を失敗させていた（ジョブは `failed`、再試行を使い切ればデッドレター）。
+> これは本決定 B-2 と UC-06 例外フロー「図コード化（LLM）の失敗は画像保持へ縮退」に反する。捕捉を
+> `when (ex is not OperationCanceledException || !ct.IsCancellationRequested)` に改めた（#1604 / #1608 と同じ形）。`ct` は
+> 受け口の `Handle(…, ct)` → `NormalizationService.NormalizeAsync` → `CodeAsync` とそのまま渡る呼び出し元のものである。
+> gRPC 実装 `LlmGatewayGrpcDiagramCoder` は `RpcException` を `!ct.IsCancellationRequested` で絞って捕捉しており、期限切れ・取り消しは
+> `RpcException(DeadlineExceeded / Cancelled)` で表れる（チャネルは `ThrowOperationCanceledOnCancellation` を立てていない）ため**影響を受けない**。
+> 同じ性質を試験で固定した。試験: `LlmGatewayDiagramCoderTests`（時間切れ・器の確認・呼び出し元の取り消しの対照）、
+> `LlmGatewayGrpcDiagramCoderTests`（期限切れ・取り消し・呼び出し元の取り消しの対照）、`DiagramCodingTimeoutPipelineTests`
+> （受け口から端まで: 時間切れでジョブが成功し図が画像として残る／呼び出し元の取り消しは外へ出る）。
+> 作業仕様書: `.ai-context/specs/20260927_issue-1621_diagram-coder-timeout-retain.md`。**本文（決定 B-2）は書き換えない。**
+
 - **C-2 を採用**。`DeterministicGuid.ForDocument(SourceId, OriginalPath)` で `DocumentId` を導出する。
 - **pandoc 実行**: `IBodyConverter` は pandoc が利用可能かつ原本がローカル解決可能な場合、
   `pandoc -f <fmt> -t gfm --extract-media <tmp> <src>` を実行し、抽出画像を `ExtractedFigure` に写す。

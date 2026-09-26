@@ -3,15 +3,15 @@ title: UC-06 文書を正規化変換する テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-31
-updated: 2026-09-25
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
 ids: [FR-12, UC-06, SC-07, NFR]
 adrs: [ADR-0010, ADR-0012, ADR-0014, ADR-0015, ADR-0106, ADR-0053, ADR-0070]
-iadrs: [IADR-0154, IADR-0298, IADR-0320, IADR-0351, IADR-0356, IADR-0388]
-specs: [20260831_issue-1106_uc-test-specs, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
-issues: [#472, #1106, #1120, #1192, #1254]
+iadrs: [IADR-0008, IADR-0154, IADR-0298, IADR-0320, IADR-0351, IADR-0356, IADR-0388]
+specs: [20260831_issue-1106_uc-test-specs, 20260927_issue-1621_diagram-coder-timeout-retain, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
+issues: [#472, #1106, #1120, #1192, #1254, #1621]
 -->
 
 # テスト仕様書: 文書を正規化変換する
@@ -101,6 +101,8 @@ issues: [#472, #1106, #1120, #1192, #1254]
 | T-43 | 図に写像できない抽出媒体／認識できない参照構文 | 変換する | 参照は落ちる。**一時パスは 1 件も残さない** | 基本 3・例外 | 自動 |
 | T-44 | 媒体外の画像参照（外部 URL・原本内の相対パス） | 変換する | **そのまま残る**（陽性対照） | 基本 2 | 自動 |
 | T-45 | 位置を本文中へ戻したあと | 図を補正する | 置換が**空振りしない**（補正の目印と一致している） | 代替（補正） | 自動 |
+| T-46 | 図を含む原本・LLM ゲートウェイが応答しない（時間切れ） | 変換する | 図は**画像として残り**、変換ジョブは**成功**で確定する（失敗にもデッドレターにもならない）。発行する資産に画像が 1 件載る | 例外（図コード化の失敗は画像保持へ縮退） | 自動 |
+| T-47 | 同上・変換の途中で呼び出し元が取り消す | 変換する | 取り消しは**畳まずに外へ出る**。図を画像として保管せず、発行もしない（T-46 の対照） | 例外 | 自動 |
 
 ### T-03 を「明示に限る」として置く理由
 
@@ -148,6 +150,8 @@ T-41 は**陰性の結論**（一時パスが 0 件）である。これだけ�
 - `PandocExtractedMediaRewriteTests` — 抽出媒体の参照書き換え（実変換で採取した綴りを入力にする）・
   写像できない参照と認識できない構文の掃除・媒体外の参照の不変（T-41・T-43・T-44）
 - `RawDocumentFetchedConsumerTests` — 正規化済み文書と資産の発行（T-11）
+- `DiagramCodingTimeoutPipelineTests` — 受け口から図のコード化（REST）までを本物で組み、LLM ゲートウェイの
+  時間切れで図が画像として残りジョブが成功すること・呼び出し元の取り消しが外へ出ること（T-46・T-47）
 - `RawDocumentFetchedConsumerJobTests` — 成功／失敗のジョブ記録・最終試行でのデッドレター印・
   試行上限の定数一致（T-01・T-30・T-33）
 - `ConversionJobStoreTests` — 4 値の状態遷移・試行回数・デッドレター印の立ち消え（T-01・T-13・
