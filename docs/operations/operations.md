@@ -7,11 +7,11 @@ updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07]
-adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471]
-specs: [20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup]
-issues: [#1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538, AST#346]
+ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-09, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-17, SC-22, UC-01, UC-04, UC-05, UC-07]
+adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0115]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0473]
+specs: [20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1573_department-attribute-follows-group]
+issues: [#1573, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538, AST#346]
 -->
 
 # 運用仕様書
@@ -327,6 +327,24 @@ config（Helm values）で行う。同期ユースケースの基本フロー「
 - **多重実行の注記**: 本番 HPA（`scaling`）で datasource は minReplicas 2 のため 2 pod が同時に sync ループを
   回すが、上記の下流冪等性により**不整合は生じない**（原本 fetch は冗長になる）。冗長排除（単一書き手化）は
   フォローアップ issue で対応する。
+
+### 利用者の部門属性を部門グループへ合わせる同期の有効化（利用者属性の割当の要求 / #1573）
+
+認可サービスの定期処理 `DepartmentAttributeSyncHostedService` は、ABAC が読む利用者属性 `department` を部門グループ
+（`/department/<コード>`）の所属へ合わせる。**既定無効**（`Off`）で、有効化は構成で行う。**helm values・compose には既定値を置いていない**
+（＝デプロイしただけでは稼働 realm に何も起きない）。
+
+- **構成**: env `DepartmentAttributeSync__Mode`（`Off` / `Report` / `Fix`）と `DepartmentAttributeSync__Interval`（既定 `01:00:00`）を
+  authorization-service へ与える。値域外は起動時に落ちる（打ち間違いを黙って無効にしない）。
+- **段階的な適用（稼働 realm。AST の PoC と共有）**:
+  1. `Report` で起動し、ログの「部門の同期（Report）」行で食い違いと未解決（複数所属）の件数・対象（IdP 内部 ID）を確かめる。**書き込みは起きない。**
+  2. 食い違いがグループ側の誤りなら**グループ所属を直す**（属性ではない）。属性側の誤りなら `Fix` へ切り替える。
+  3. `Fix` の周期で属性がグループのコードへ直る。2 周目以降の「直した」は 0 件になる（冪等）。
+- **触れないもの**: グループ所属・他の属性・ロール・有効状態・セッション・realm の構成・マッパー・クライアント・secret。
+  部門グループに属さない利用者（AST のサービスアカウントを含む）は対象に現れない。**realm の reconcile Job は変えていない。**
+- **注意**: `Fix` の下では、部門グループにちょうど 1 つ属する利用者の部門を利用者アカウント管理画面で別の値へ変えても、次の周期でグループの値へ戻る。
+- **ロールバック**: env を外す（または `Off`）。既に直した属性は戻らない（直した値はグループのコードそのもの）。
+- **多重実行**: 複数レプリカが同じ処理を回すが、書く値はグループから決まるので結果は同じである（書き込みが重複するだけ）。
 
 ### 適用直後のドリフト即時検出（構成情報 API の要求 / 実装 ADR のフォローアップ 4 / #145）
 

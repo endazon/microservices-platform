@@ -123,6 +123,31 @@ public interface IIdentityAdminClient
     Task<IdentityGroup?> FindGroupByPathAsync(string path, CancellationToken ct);
 
     /// <summary>
+    /// FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): **直下の子グループ**を引く（孫は返らない）。
+    /// 部門の同期が `/department` の木を辿るために使う。🔴 **ページを最後まで読む**（打ち切りで子を落とさない）。
+    /// 🔴 **これは新規作成の口ではない**（禁止語に触れない読み取りである）。
+    /// </summary>
+    Task<IReadOnlyList<IdentityGroup>> ListSubGroupsAsync(string groupId, CancellationToken ct);
+
+    /// <summary>
+    /// FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): グループの**直接の所属者**を属性つきで引く
+    /// （ロールは引かない。`Roles` が空なのは「この口では引いていない」である）。
+    /// 🔴 **ページを最後まで読む**（打ち切りの外の利用者を黙って落とさない）。
+    /// 🔴 **これは新規作成の口ではない**（禁止語に触れない読み取りである）。
+    /// </summary>
+    Task<IReadOnlyList<IdentityUser>> ListGroupMembersAsync(string groupId, CancellationToken ct);
+
+    /// <summary>
+    /// FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): 利用者属性 `department` **だけ**を書く。
+    /// 該当利用者が居なければ null。
+    ///
+    /// 🔴 **部門グループに合わせて属性を直す唯一の口である**（逆向き＝グループを属性に合わせる口は持たない）。
+    /// <see cref="ReplaceAttributesAsync"/> で代用しない —— 全置換は他の属性の多値を畳んで消し得る。
+    /// 🔴 **これは新規作成の口ではない**（禁止語に触れない属性の書き込みである）。
+    /// </summary>
+    Task<IdentityUser?> SetDepartmentAttributeAsync(string userId, string department, CancellationToken ct);
+
+    /// <summary>
     /// SC-17 入力規則「定義済みロールのみ」の**値域の正**。IdP が持つ割当可能な realm ロールを返す。
     /// **画面にも後段にも焼き込まない** —— 焼き込むと realm を増やしても選べず、
     /// 消えたロールを選べてしまう。

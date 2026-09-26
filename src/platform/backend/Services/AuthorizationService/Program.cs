@@ -61,6 +61,15 @@ builder.Services.AddIdentityAdminClient(builder.Configuration, builder.Environme
 // 値域外の宣言はここで落ちる（`IdentityAdmin:Provider` と同じ deny-by-default）。
 builder.Services.AddSingleton(RetentionAnchorOptions.FromConfiguration(builder.Configuration));
 
+// FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): 利用者属性 `department` を部門グループの所属へ
+// 合わせる定期処理。🔴 **opt-in**（`DepartmentAttributeSync__Mode` の既定は Off。Report は検知だけ、Fix だけが書く）。
+// 値域外の宣言はここで落ちる。
+builder.Services.AddSingleton(
+    AuthorizationService.Features.Users.DepartmentSync.DepartmentAttributeSyncOptions.FromConfiguration(
+        builder.Configuration));
+builder.Services.AddScoped<AuthorizationService.Features.Users.DepartmentSync.DepartmentAttributeSync>();
+builder.Services.AddHostedService<AuthorizationService.Features.Users.DepartmentSync.DepartmentAttributeSyncHostedService>();
+
 // FR-05, FR-21, UC-05 / 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 /
 // [[IADR-0398]] 決定 1 (b)（#1278 PR-C）: 端点の入力検証。
 // **アセンブリ走査（AddValidatorsFromAssembly）は使わない** —— 登録が暗黙になり、検証器を消しても

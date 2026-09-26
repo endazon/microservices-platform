@@ -3,15 +3,15 @@ title: SC-17 ユーザーアカウント管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-08-29
-updated: 2026-09-05
+updated: 2026-09-26
 author: implementation-agent
 ---
 <!-- trace:
 ids: [FR-05, FR-09, SC-09, SC-17, UC-05]
-adrs: [ADR-0004, ADR-0026, ADR-0031, ADR-0032]
-iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0044, IADR-0124, IADR-0128, IADR-0129, IADR-0135, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329, IADR-0330]
-specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260905_issue-439_session-revocation-e2e]
-issues: [#452, #438, #1101, #439]
+adrs: [ADR-0004, ADR-0026, ADR-0031, ADR-0032, ADR-0115]
+iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0044, IADR-0124, IADR-0128, IADR-0129, IADR-0135, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329, IADR-0330, IADR-0473]
+specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260905_issue-439_session-revocation-e2e, 20260926_issue-1573_department-attribute-follows-group]
+issues: [#452, #438, #1101, #439, #1573]
 -->
 
 # テスト仕様書: ユーザーアカウント管理
@@ -88,6 +88,12 @@ issues: [#452, #438, #1101, #439]
 | T-40 | 稼働クラスタ・実プロバイダ | 一覧を呼ぶ／実在しない利用者を無効化する | 実在する利用者が返る／**404**（**陽性対照と陰性対照を対で**。片方だけでは「常に空」「常に 404」と区別がつかない） | 実 IdP への疎通 | 手動（稼働クラスタ） |
 | T-41 | 稼働クラスタ・実プロバイダ | 実在する利用者を無効化する／属性を差し替える | 認可基盤側で `enabled=false` になる／属性が変わる。**姓名・メール・要求アクションは失われない** | 実 IdP への反映 | 手動（稼働クラスタ） |
 | T-42 | 稼働クラスタ・機密クライアントの資格情報 | 権限外の操作（クライアント作成・realm 更新）を呼ぶ | **403**（**最小権限の陰性対照**） | 過剰権限を持たない | 手動（稼働クラスタ） |
+| T-43 | 部門グループに 1 つ属し、属性が違う・属性が無い・大小文字だけ違う利用者 | 部門の同期の計画を立てる／同期を回す | **食い違い**として検知され、直す先は**グループのコード**（属性ではない） | 部門の正本は部門グループ（属性の食い違いの検知） | 自動 |
+| T-44 | 同上（同期を `Fix` で有効化） | 同期を回す | 属性がグループのコードへ直る。**グループの所属は 1 件も変わらない**（逆向きに直さない） | 属性をグループへ合わせる | 自動 |
+| T-45 | 部門グループ 2 つ／部門以外の同名グループだけ／所属なし（サービスアカウント）／入れ子の部門グループ | 同期を `Fix` で回す | 前 3 者は**上書きされず消されもしない**。入れ子は上位のコードへ畳んで直る。🔴 先頭の部門へ寄せる変異・名前で部門を判定する変異で赤になる | 0 個・複数は未解決 | 自動 |
+| T-46 | 一度 `Fix` で直した後 | 同期をもう一度回す | **書き込み 0 件**・食い違い 0 件（冪等） | 冪等 | 自動 |
+| T-47 | 構成が空／`Off`／`Report`／値域外（綴り違い・数値・周期 0） | 起動する／同期を回す | 空と `Off` は IdP へ**1 回も問い合わせない**（器はスコープも作らない）。`Report` は検知だけで書かない。値域外は**起動時例外** | 既定で無効（opt-in） | 自動 |
+| T-48 | スタブした HTTP ハンドラ（101 人の所属者・多値属性を持つ利用者） | 所属者・子グループを読む／部門だけを書く | 所属者は**最後のページまで**読む（101 人目が落ちない）。書き込みは `department` 1 キーだけで、他の属性は**多値のまま**持ち越す。読み直して反映されていなければ**例外** | 打ち切り・巻き添え・黙った破棄をしない | 自動（**これは疎通の検証ではない**） |
 
 ## ブラウザ E2E（［2026-08-31 追記 / #1099］置いた）
 
@@ -133,6 +139,7 @@ issues: [#452, #438, #1101, #439]
 ## 関連仕様
 
 - 画面仕様書: [ユーザーアカウント管理](../screens/SC-17_user-account-management.md)
+- 部門の同期のテストコード（T-43〜T-48）: `src/platform/backend/Services/AuthorizationService/Tests/Domain/DepartmentAttributeReconciliationTests.cs`・`.../Tests/Features/Users/DepartmentSync/DepartmentAttributeSyncTests.cs`・`.../Tests/Infrastructure/ExternalServices/KeycloakIdentityAdminClientTests.cs`
 - 通信仕様書: [BFF 境界（`/bff/*`）](../api/BFF_bff-surface.md)
 
 ## 未決事項

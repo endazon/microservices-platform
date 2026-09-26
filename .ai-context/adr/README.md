@@ -550,3 +550,4 @@
 | [IADR-0470](./IADR-0470_reset-timing-rank-sum-exact-test.md) | **リセット申請の所要時間は暖機を除く 2 反復をまとめた順位和検定（両側・有意水準 1%・正確法・同順位は中間順位）で判定し、整数 ns の時計を同時に入れる**（#1541・計画 ADR-0113 決定 1〜4）。自己対照は `評価不能` の判定にだけ使い、段 1・段 2 を撤去する | Accepted |
 | [IADR-0471](./IADR-0471_platform-infra-encrypted-daily-backup.md) | **platform-infra の Postgres と Vault を日次で age 暗号化し、目印のあるクラスタ外 2 か所へ置く**（#1560・deploy/local 専用）。受取人は kustomize の外で optional・占位なら fail-closed。日次 30 世代・月の最初の回は 7 年 | Accepted |
 | [IADR-0472](./IADR-0472_datasource-department-domain-validation-via-authz-grpc.md) | SC-06 で明示した部門の値域検証は、AuthorizationService の east-west gRPC に足した照会（CheckDepartmentCodes）で行い、引けなければ 502 で保存しない（#1557） | Accepted |
+| [IADR-0473](./IADR-0473_department-attribute-follows-department-group.md) | 利用者属性 department は AuthorizationService の opt-in の定期処理が部門グループ所属へ合わせて直す（ちょうど 1 つのときだけ・グループは変えない・既定 Off）（#1573） | Accepted |

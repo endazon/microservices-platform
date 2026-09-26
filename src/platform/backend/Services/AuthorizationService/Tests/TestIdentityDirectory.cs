@@ -155,6 +155,17 @@ public sealed class TestIdentityDirectory
             return inner.FindGroupByPathAsync(path, ct);
         }
 
+        // FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): 部門の同期の読み書きは**素通しする**
+        // （同期の判断は `DepartmentAttributeSyncTests` が専用の偽物で測る。ここは器の網羅だけ）。
+        public Task<IReadOnlyList<IdentityGroup>> ListSubGroupsAsync(string groupId, CancellationToken ct)
+            => inner.ListSubGroupsAsync(groupId, ct);
+
+        public Task<IReadOnlyList<IdentityUser>> ListGroupMembersAsync(string groupId, CancellationToken ct)
+            => inner.ListGroupMembersAsync(groupId, ct);
+
+        public Task<IdentityUser?> SetDepartmentAttributeAsync(string userId, string department, CancellationToken ct)
+            => inner.SetDepartmentAttributeAsync(userId, department, ct);
+
         public Task<IReadOnlyList<IdentityUser>> ListUsersAsync(CancellationToken ct) => inner.ListUsersAsync(ct);
         // FR-19, SC-19 主要素 3, [[IADR-0445]] (#1445): 共有先の候補の検索も**素通しする**
         // （SC-19 の試験は本物の偽物が持つ名簿を見る。`FindByUsernameAsync` だけが操作される）。

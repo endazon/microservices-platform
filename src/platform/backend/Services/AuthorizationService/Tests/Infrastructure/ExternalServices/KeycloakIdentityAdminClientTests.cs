@@ -797,6 +797,87 @@ public class KeycloakIdentityAdminClientTests
         await act.Should().ThrowAsync<HttpRequestException>();
     }
 
+    // ── FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): 部門の同期が使う読み書き ──
+
+    // 🔴 所属者は**最後のページまで**読む（1 ページで止めると 101 人目以降が黙って対象から落ちる）。
+    [Fact]
+    public async Task Listing_group_members_reads_every_page_with_attributes()
+    {
+        var page1 = "[" + string.Join(",", Enumerable.Range(0, KeycloakIdentityAdminClient.PageSize).Select(i =>
+            $$$"""{"id":"u{{{i}}}","username":"user{{{i}}}","enabled":true,"attributes":{"department":["sales"]}}""")) + "]";
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/groups/g-sales/members?briefRepresentation=false&first=0&max=100", page1)
+            .Get("admin/realms/platform/groups/g-sales/members?briefRepresentation=false&first=100&max=100", """
+                [{"id":"u-last","username":"last","enabled":true,"attributes":{"department":["hr"]}}]
+                """);
+
+        var members = await Client(handler).ListGroupMembersAsync("g-sales", Ct);
+
+        members.Should().HaveCount(KeycloakIdentityAdminClient.PageSize + 1);
+        members[^1].Id.Should().Be("u-last");
+        members[^1].Attributes["department"].Should().Be("hr", "属性つき（briefRepresentation=false）で引く");
+        handler.Requests.Should().NotContain(r => r.Path.Contains("role-mappings"), "ロールは引かない");
+    }
+
+    [Fact]
+    public async Task Listing_sub_groups_returns_direct_children_with_paths()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/groups/g-dept/children?briefRepresentation=true&first=0&max=100", """
+                [{"id":"g-eng","name":"engineering","path":"/department/engineering"},
+                 {"id":"g-sales","name":"sales","path":"/department/sales"}]
+                """);
+
+        var children = await Client(handler).ListSubGroupsAsync("g-dept", Ct);
+
+        children.Select(g => g.Path).Should().Equal("/department/engineering", "/department/sales");
+    }
+
+    // 🔴 `department` 1 キーだけを差し替え、**他の属性は多値のまま持ち越す**（全置換で畳まない）。
+    // 本スタブは読み直しでも古い値（hr）を返す ＝ 捨てられた形なので、**例外になるのが正しい**（fail-closed）。
+    [Fact]
+    public async Task Setting_the_department_writes_only_that_key_and_fails_closed_when_it_is_dropped()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Put("admin/realms/platform/users/u1", "")
+            .Get("admin/realms/platform/users/u1", """
+                {"id":"u1","username":"tanaka.taro","enabled":true,
+                 "attributes":{"department":["hr"],"tags":["sales","hr"],"clearance":["internal","public"]}}
+                """)
+            .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
+
+        var act = async () => await Client(handler).SetDepartmentAttributeAsync("u1", "sales", Ct);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain("department");
+        var put = handler.Requests.Single(r => r.Method == "PUT");
+        using var body = JsonDocument.Parse(put.Body!);
+        var attrs = body.RootElement.GetProperty("attributes");
+        attrs.GetProperty("department").EnumerateArray().Select(e => e.GetString()).Should().Equal("sales");
+        attrs.GetProperty("tags").EnumerateArray().Select(e => e.GetString()).Should().Equal("sales", "hr");
+        attrs.GetProperty("clearance").EnumerateArray().Select(e => e.GetString())
+            .Should().Equal(["internal", "public"], "単一値キーの 2 値目も落とさない（全置換で畳まない）");
+    }
+
+    [Fact]
+    public async Task Setting_the_department_returns_the_reloaded_user_when_applied_and_null_when_missing()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Put("admin/realms/platform/users/u1", "")
+            .Get("admin/realms/platform/users/u1", """
+                {"id":"u1","username":"tanaka.taro","enabled":true,"attributes":{"department":["sales"]}}
+                """)
+            .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]")
+            .Status("admin/realms/platform/users/ghost", HttpStatusCode.NotFound);
+
+        (await Client(handler).SetDepartmentAttributeAsync("u1", "sales", Ct))!
+            .Attributes["department"].Should().Be("sales");
+        (await Client(handler).SetDepartmentAttributeAsync("ghost", "sales", Ct)).Should().BeNull();
+    }
+
     private sealed class StubHandler : HttpMessageHandler
     {
         private readonly Dictionary<string, (HttpStatusCode Status, string Body)> _responses = new(StringComparer.Ordinal);
