@@ -3,15 +3,15 @@ title: ログイン（Keycloak 統合認証） 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-08-23
-updated: 2026-09-25
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
 ids: [SC-01, SC-13, SC-14, SC-15, SC-16, UC-05, FR-05]
-adrs: [ADR-0026, ADR-0032, ADR-0078, ADR-0094, ADR-0106]
-iadrs: [IADR-0197, IADR-0251, IADR-0261, IADR-0273, IADR-0347, IADR-0427, IADR-0429, IADR-0432, IADR-0461]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20260911_issue-1245_login-existence-disclosure, 20260911_issue-1393_remove-platform-spa-public-client, 20260911_issue-1410_reset-timing-floor, 20260925_1499_object-storage-seaweedfs]
-issues: [#438, #1245, #1393, #1410, #1499]
+adrs: [ADR-0026, ADR-0032, ADR-0078, ADR-0094, ADR-0106, ADR-0113]
+iadrs: [IADR-0197, IADR-0251, IADR-0261, IADR-0273, IADR-0347, IADR-0427, IADR-0429, IADR-0432, IADR-0461, IADR-0470]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20260911_issue-1245_login-existence-disclosure, 20260911_issue-1393_remove-platform-spa-public-client, 20260911_issue-1410_reset-timing-floor, 20260925_1499_object-storage-seaweedfs, 20260926_1541_timing-rank-sum-test]
+issues: [#438, #1245, #1393, #1410, #1499, #1541]
 -->
 
 # 画面仕様書: ログイン（Keycloak 統合認証）
@@ -154,6 +154,8 @@ flowchart LR
   **［2026-09-11 更新］判定条件は定まったが、本経路は明示的にその対象外である。**
   定まった条件は「測定条件を揃えた反復で、実在／非実在の中央値の比が自己対照（実在側を 2 群に分けた
   中央値の比＝環境の測定ノイズ）を超えないこと」であり、**反復を前提とする**。
+  ［2026-09-26 追記］リセット申請の経路の判定は、反復で取った標本をまとめた順位和検定（両側・有意水準 1%）へ改まった。
+  **反復を前提とする点は変わらない**（標本を増やせない本経路が対象外である理由も同じである）。
   🔴 **本経路では反復が成立しない** —— 失敗回数のしきい値があるため標本を増やせず、
   増やせば**実在する利用者だけがロックされて、それ自体が存在オラクルになる**。
   **本経路の測り方は別の裁定を待つ。**

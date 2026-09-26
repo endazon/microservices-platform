@@ -428,7 +428,7 @@
     },
     {
       "name": "abac-attributes",
-      "description": "ABAC 属性（clearance / department の単値、tags / projects の集合値）とグループを JWT に載せる。ADR-0080 決定 1・2。WikiService ゲートウェイと Wiki.js 表示制御が参照する。",
+      "description": "ABAC 属性（clearance / department の単値、tags / projects の集合値）とグループを JWT に載せる。ADR-0080 決定 1・2。WikiService ゲートウェイと Wiki.js 表示制御が参照する。group_paths（グループのフルパス）は DataSourceService が登録者の部門を導くのに使う（IADR-0468）。",
       "protocol": "openid-connect",
       "attributes": {
         "include.in.token.scope": "true",
@@ -504,6 +504,19 @@
             "id.token.claim": "true",
             "access.token.claim": "true",
             "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "group-paths",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "group_paths",
+            "full.path": "true",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
           }
         }
       ]

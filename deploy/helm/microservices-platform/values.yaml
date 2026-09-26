@@ -1228,3 +1228,55 @@ frontend:
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { cpu: 200m, memory: 128Mi }
+
+# NFR-02, NFR-21, ADR-0076 決定 3・4, ADR-0079 決定 1・2, IADR-0378, IADR-0469 (#1287):
+# 合成監視（synthetic）の常駐プローブ —— **60 秒間隔・LLM を呼ばない**（ADR-0079 決定 1 の常時トラフィック側）。
+# 低頻度経路（/analysis/ask 系）へ代表リクエストを打ち、SLO の評価対象そのもの（`RagLatencySeriesAbsent` が
+# 前提にする HTTP 系列）を存在させる。クラスタ内で完結し、外部の監視 SaaS は使わない（08_data-egress-policy）。
+#
+# 🔴 **既定は false（利用者裁定 2026-09-26・#1287 の案 A）。false の間は 1 バイトも描画しない**
+#   （プローブも、3 サービスの標識の env も出ない＝従前の描画とバイト等価）。何も呼ばず、何も費やさない。
+#
+# 🔴 **有効にする前提: 3 サービスのイメージが「除外規則が入ったソース」から作り直されていること。**
+#   ADR-0076 決定 4「除外できない構成では配備しない」。**チャートはイメージの中身を確かめられない** ——
+#   古い `latest`（#1378 の実測で約 7 週間前）のまま有効にすると、標識を読めない BFF / DashboardService /
+#   LlmGateway に合成が流れ、利用実績・検索傾向・LLM 費用が静かに汚れる。手順は
+#   deploy/local/synthetic-monitor/README.md「本番構成（helm チャート）で有効にする」。
+#
+# 有効にすると**同じ描画で**次が揃う（標識と除外を同時に入れる。templates/synthetic-monitor.yaml）:
+#   - Deployment `synthetic-monitor` ＋ ConfigMap `synthetic-monitor-probe`（files/synthetic-monitor/probe.js）
+#   - bff / dashboard / aianalysis の env `SyntheticMonitoring__Subjects__0=<clientId>`（3 つは knob にしない）
+#   - networkPolicy.enabled のとき、プローブ → Keycloak の egress 1 本
+# 描画時に止める（helm template が失敗する）: 3 サービスのどれかが無効／aianalysis に AllowLlmEgress が立っている。
+#
+# 🔴 **LLM を呼ぶ 60 分側（ADR-0079 決定 2・フォローアップ 2）はここに無い。別の配備単位であり、課金の承認が先である。**
+#   本ブロックには AllowLlmEgress の knob を置かない。
+# ⚠️ ローカルの `SYNTHETIC=1`（deploy/local/synthetic-monitor の overlay）と**併用しない**（同名の資源になる）。
+syntheticMonitor:
+  enabled: false
+  # 🔴 **この clientId が標識そのものである。** プローブが名乗る Keycloak クライアントであり、
+  #   同じ値を 3 サービスの `SyntheticMonitoring__Subjects__0` へ描く（1 つの値から両側を描くので食い違わない）。
+  #   realm（deploy/keycloak/microservices-platform-realm.json）の client `synthetic-monitor` と一致させること。
+  clientId: synthetic-monitor
+  # overlay（deploy/local/synthetic-monitor/synthetic-monitor.yaml）と同じ。外部依存ゼロ（Node 標準の fetch のみ）。
+  image: node:22-alpine
+  # ADR-0079 決定 1 の確定値（秒）。**変えるなら deploy/prometheus/alerts.yml の RagLatencySeriesAbsent の lookback も見直すこと。**
+  intervalSeconds: 60
+  # 費用の出ない 2 経路のみ（AiAnalysisService が合成の要求では LLM を呼ばずに縮退する）。
+  paths: /bff/analysis/ask,/bff/analysis/ask/stream
+  bffBaseUrl: http://bff-service:8080
+  keycloak:
+    # token 端点の基底 URL。overlay と同じ in-cluster 名（platform-infra の Service）。
+    url: http://keycloak.platform-infra.svc.cluster.local:8080
+    realm: platform
+    # networkPolicy.enabled のとき egress を開ける宛先（namespace の名前と Pod ラベル app: keycloak・ポート）。
+    namespace: platform-infra
+    port: 8080
+  # 🔴 client secret の実値はチャートに書かない。Secret は**チャートの外**で作る ——
+  #   Vault → ExternalSecret（deploy/local/vault/eso/externalsecret-synthetic-monitor-oidc.yaml。target 名が同じ）→ Secret。
+  #   env(secretKeyRef) は Pod 起動時に 1 度だけ解決されるので、**有効化の前に同期を終えておくこと**（IADR-0103）。
+  existingSecret: synthetic-monitor-oidc
+  clientSecretKey: client-secret
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { cpu: 200m, memory: 128Mi }
