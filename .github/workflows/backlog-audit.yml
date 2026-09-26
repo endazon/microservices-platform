@@ -29,16 +29,22 @@ on:
     - cron: '0 21 * * 1'
   workflow_dispatch:
 
+# NFR, IADR-0232 (#1581): ワークフロー単位は読むだけにし、書き込みは要るジョブにだけ置く。
 permissions:
   contents: read
-  issues: write
-  pull-requests: read
 
 jobs:
   audit:
     runs-on: ubuntu-latest
+    # 棚卸し issue の本文の置き換え・要約コメント・ラベルの作成（issues: write）と、動いていない PR の列挙（pull-requests: read）。
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: '22'

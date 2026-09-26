@@ -51,6 +51,11 @@ concurrency:
   group: claude-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+# NFR, IADR-0232 (#1581): ワークフロー単位は読むだけにする（リポジトリの既定は write）。
+# 書き込み（PR へのスティッキーコメント・レビュー・issue の起票）は claude-review ジョブの permissions が持つ。
+permissions:
+  contents: read
+
 jobs:
   claude-review:
     # dependabot に加え、bot が自動生成する PR（CHANGELOG 更新等）も除外する。
@@ -77,12 +82,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          # NFR, IADR-0232 (#1581): 資格情報を .git/config へ残さない。レビューは push せず
+          # （contents: read）、`git fetch` は public リポジトリなので認証なしで通る。残すと、
+          # 許可済みの `cat` で作業ツリーのトークンを読めてしまう。PR 本文・コメントの投稿は
+          # アクションが github_token で API を叩くので checkout の資格情報に依らない。
+          persist-credentials: false
           fetch-depth: 0
-          # 実装リポの checkout / push には既定の GITHUB_TOKEN を使う（上の
-          # permissions: contents: write が push を許可する）。ここで token を
-          # 上書きしないこと。上書きすると checkout がその資格情報を永続化し、
-          # 後段の git push もそのトークンで実行されるため、実装リポへの書き込み
-          # 権限が無い PAT だと 403（Permission denied）になる。
+          # ここで token を上書きしないこと（キット由来の注意。上書きした資格情報は
+          # persist-credentials を戻したときに作業ツリーへ残る）。
 
       # 検証(build/test)を @claude セッション内で実走するための SDK 準備。
       # 技術スタックに合わせて書き換える（既定は C#/.NET 10。ci.example.yml と揃える。

@@ -30,6 +30,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # Issue #1182, IADR-0372: 可変ユニット（src/*）の submodule を取得する。SERVICE_PROJECT /
       # dockerfile が **pin されたツリーに実在するか**を見るのに実体が要る（ci.yml / images.yml と
       # 同型のイディオム。public ユニットはトークン不要）。取得できなければ次のステップが

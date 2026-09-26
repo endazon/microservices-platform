@@ -81,11 +81,19 @@ concurrency:
   group: frontend-tests-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# NFR, IADR-0232 (#1581): GITHUB_TOKEN は読むだけにする（リポジトリの既定は write）。
+# 本ワークフローのジョブは GitHub へ何も書かない（カバレッジは actions/upload-artifact で、
+# GITHUB_TOKEN の権限を使わない）。checkout も資格情報を残さない（persist-credentials: false）。
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # Issue #283, IADR-0070: 可変ユニット（src/*）の submodule を取得する。横断 vitest は AST の feature
       # テストも収集するため、未取得だと pnpm install / test:coverage が解決不能になる（ci.yml と同型・トークン不要）。
       - name: Fetch unit submodules (src/*, public, non-recursive)

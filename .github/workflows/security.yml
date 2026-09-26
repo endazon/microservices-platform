@@ -36,6 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       # 誤検知の扱い（実運用の知見）:
       #   - 単発・履歴上の誤検知（例示鍵・ダミー ID 等）は `.gitleaksignore` に fingerprint を
@@ -55,6 +56,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Dependency Review
         uses: actions/dependency-review-action@v5
         with:
@@ -79,6 +82,8 @@ jobs:
     if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # FR-14, IADR-0063 / IADR-0073, Issue #286: platform の Bff は例外3 で AST（submodule）ユニットの
       # BFF エンドポイント（ai-stock-trading/backend/Bff/AiStockTrading.Bff.Endpoints）を参照する。未取得だと
       # dotnet restore が当該 csproj を「見つからない」と黙ってスキップし、AST 依存が脆弱性スキャンから漏れる

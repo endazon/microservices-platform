@@ -124,11 +124,18 @@ concurrency:
   group: frontend-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# NFR, IADR-0232 (#1581): GITHUB_TOKEN は読むだけにする（リポジトリの既定は write）。
+# 本ワークフローのジョブは GitHub へ何も書かない。checkout も資格情報を残さない（persist-credentials: false）。
+permissions:
+  contents: read
+
 jobs:
   build-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # Issue #283, IADR-0070: 可変ユニット（src/*）の submodule を取得する。SPA は @ai-stock-trading を
       # 合成し pnpm workspace メンバでもあるため、未取得だと pnpm install / build / typecheck が解決不能になる。
       - name: Fetch unit submodules (src/*, public, non-recursive)
@@ -246,6 +253,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # Issue #283, IADR-0070: 可変ユニット（src/*）の submodule を取得する（@ai-stock-trading 合成のため）。
       - name: Fetch unit submodules (src/*, public, non-recursive)
         working-directory: ${{ github.workspace }}

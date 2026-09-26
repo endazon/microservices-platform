@@ -31,21 +31,27 @@ concurrency:
   group: codeql-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# NFR, IADR-0232 (#1581): ワークフロー単位は読むだけにし、書き込みは要るジョブにだけ置く。
 permissions:
-  security-events: write
   contents: read
-  actions: read
 
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    # 解析結果（SARIF）のアップロード（security-events: write）と、codeql-action が実行中の run を読む（actions: read）。
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
         language: ["csharp"]
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # FR-14, IADR-0063 / IADR-0073, Issue #286: platform の Bff は例外3 で AST（submodule）ユニットの
       # BFF エンドポイント（ai-stock-trading/backend/Bff/AiStockTrading.Bff.Endpoints）を参照する。未取得だと
       # platform/backend/backend.slnx のトレースビルドが CS0246 で失敗する。ci.yml / images.yml と同型

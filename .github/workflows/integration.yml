@@ -56,6 +56,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
       # 未取得だと追加ユニットが src/*/backend/backend.slnx 自動発見に現れず対象外になる。
       - name: Fetch unit submodules (src/*, public, non-recursive)

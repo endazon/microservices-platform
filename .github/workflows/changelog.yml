@@ -19,15 +19,21 @@ on:
     branches: [develop, main]
     tags: ["v*"]
 
+# NFR, IADR-0232 (#1581): ワークフロー単位は読むだけにし、書き込みは changelog ジョブにだけ置く。
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   changelog:
     # PR マージ由来の push による無限ループを避ける（PR ブランチは automation/ 配下）
     if: "!startsWith(github.event.head_commit.message, 'docs(NFR): CHANGELOG を自動更新')"
     runs-on: ubuntu-latest
+    # 更新ブランチの push と GitHub Release の作成・更新（contents: write）、更新 PR の作成とラベル付け（pull-requests: write）。
+    # AUTOMATION_PR_TOKEN が設定されていれば PR はそちらで作られるが、未設定時は GITHUB_TOKEN が両方を担う。
+    # 🔴 develop / main / タグへの push でしか走らないので、PR の CI では確かめられない（従前と同じ権限をジョブへ移しただけ）。
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v7
