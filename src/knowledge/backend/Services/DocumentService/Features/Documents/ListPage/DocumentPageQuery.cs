@@ -9,9 +9,10 @@ namespace DocumentService.Features.Documents.ListPage;
 // FR-06, NFR-08, ADR-0036 D-08, ADR-0034 決定 9, ADR-0054 (#1575):
 // `GET /documents/page` の本体 —— **組織文書**を属性の完全一致で絞り、キーセットのカーソルで切り出す。
 //
-// 🔴 **見える集合を広げない。** DocumentService の読み取りは ABAC の判定を持たず（実施点は BFF の
-// `BffScopeResolver` ＋ `IsManageable`。IADR-0041 / IADR-0045、`IADR-0012`）、直接の呼び出し元に
-// 見えている集合は `GET /documents` の全件である。ここが返すのは
+// 🔴 **見える集合を広げない。** DocumentService の読み取りは組織文書の内容の ABAC をまだ持たず（実施点は BFF の
+// `BffScopeResolver` ＋ `IsManageable`。IADR-0041 / IADR-0045、`IADR-0012`。#1615 で後段にも入る）、
+// 直接の呼び出し元に見えている組織文書は `GET /documents` の全件である（［2026-09-27 / #1614］他人の
+// 個人資料は `GET /documents` からも除かれるようになった）。ここが返すのは
 // 「その全件 ∩ 組織文書 ∩ 全絞り込みに一致」であり、**構成上その部分集合にしかならない**。
 // 絞り込みの項目を足すほど狭くなり、どの値を与えても広がらない。
 //

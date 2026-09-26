@@ -71,7 +71,8 @@ public class ObsidianSyncMoveTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task リネームはマニフェストに反映され版履歴を進めない()
     {
-        var token = await IssueTokenAsync(UserName("mallory"));
+        var owner = UserName("mallory");
+        var token = await IssueTokenAsync(owner);
         var plugin = PluginWith(token);
         var note = await CreateAsync(plugin, "旧名", "notes/old.md", "中身");
 
@@ -94,7 +95,8 @@ public class ObsidianSyncMoveTests(TestWebApplicationFactory factory)
         pull!.Content.Should().Be("中身");
         pull.VaultPath.Should().Be("notes/new.md");
 
-        var versions = await factory.CreateClient().GetFromJsonAsync<List<DocumentVersionDto>>(
+        // #1614: 個人資料の版は所有者（と共有先）にしか返らない（計画 ADR-0119 決定 3）→ 所有者として読む。
+        var versions = await SessionAs(owner).GetFromJsonAsync<List<DocumentVersionDto>>(
             $"/documents/{note.NoteId}/versions", TestContext.Current.CancellationToken);
         versions.Should().ContainSingle("リネームは版履歴に行を足さない");
 

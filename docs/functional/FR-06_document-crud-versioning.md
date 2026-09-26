@@ -7,11 +7,11 @@ updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
-ids: [FR-06, UC-03]
-adrs: [ADR-0050, ADR-0057]
-iadrs: [IADR-0290, IADR-0296, IADR-0475]
-specs: [20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint]
-issues: [#201, #1011, #1575, planning#473]
+ids: [FR-06, UC-03, NFR-09, FR-19]
+adrs: [ADR-0119, ADR-0050, ADR-0057]
+iadrs: [IADR-0476, IADR-0290, IADR-0296, IADR-0475]
+specs: [20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint]
+issues: [#1614, #201, #1011, #1575, planning#473]
 -->
 
 # 機能仕様書: 文書CRUD・バージョン管理
@@ -43,16 +43,34 @@ issues: [#201, #1011, #1575, planning#473]
 
 | メソッド / パス | 用途 | 主な応答 |
 | --- | --- | --- |
-| `GET /documents` | 一覧（`UpdatedAt` 降順） | 200 `DocumentDto[]` |
-| `GET /documents/page` | **組織文書**の属性の絞り込み（`attr.<キー>=<値>`・AND・完全一致）とページング（`limit`・`cursor`。作成順）。**認証を要する** | 200 `DocumentPageDto` / 400 |
-| `GET /documents/{id}` | 単一取得 | 200 / 404 |
+| `GET /documents` | 一覧（`UpdatedAt` 降順）。**認証を要する**。読めない個人資料は現れない | 200 `DocumentDto[]` / 401 |
+| `GET /documents/page` | **組織文書**の属性の絞り込み（`attr.<キー>=<値>`・AND・完全一致）とページング（`limit`・`cursor`。作成順）。**認証を要する** | 200 `DocumentPageDto` / 400 / 401 |
+| `GET /documents/{id}` | 単一取得。**認証を要する**。読めない個人資料は 404 | 200 / 401 / 404 |
 | `POST /documents` | 作成（版 1 記録・`DocumentUpdated` 発行） | 201 `DocumentDto` / 400 |
 | `PUT /documents/{id}` | タイトル・メタデータ更新（版追記・並行制御） | 200 / 400 / 404 / 409 |
 | `PATCH /documents/{id}/metadata` | 属性・タグのみ更新（版追記） | 200 / 404 / 409 |
 | `POST /documents/{id}/publish` | 公開（`status=published`・版追記） | 200 / 404 |
-| `GET /documents/{id}/versions` | 版履歴一覧（新しい順） | 200 `DocumentVersionDto[]` / 404 |
-| `GET /documents/{id}/versions/{version}` | 特定版取得 | 200 / 404 |
+| `GET /documents/{id}/versions` | 版履歴一覧（新しい順）。**認証を要する** | 200 `DocumentVersionDto[]` / 401 / 404 |
+| `GET /documents/{id}/versions/{version}` | 特定版取得。**認証を要する** | 200 / 401 / 404 |
 | `DELETE /documents/{id}` | 削除（版履歴も連動削除） | 204 / 404 |
+
+### 読み取りの認証と個人資料の可視性
+
+- **読み取りの 5 口（一覧・ページ・単一取得・版履歴一覧・特定版取得）はすべて認証を要する**（ロールは問わない）。
+  トークンが無い・検証できない要求は 401。健全性の口（`/health/*`）は匿名のまま。east-west gRPC の読み取り面も同じ判定を通る。
+- **主体**は呼び出し元の資格情報である —— 文書閲覧の経路（BFF）が中継した利用者、または機械クライアント自身
+  （`service-account-` で始まる利用者名、または利用者名を持たずクライアント識別だけを持つトークン）。
+  gRPC の面では要求の利用者文脈が主体になり、無ければ呼び出し元サービス自身になる。
+- **個人資料**（`doc_scope=private-note`。値の大文字小文字は問わない）は次の利用者にだけ返る。
+  1. 所有者（`owner` 属性が利用者名と一致。本文の投入の所有者判定と同じ比較）
+  2. 利用者として共有された相手
+  3. グループとして共有された相手 —— 所属は認可サービスへ問う（文書サービスはトークンの所属を読まない）。
+     問い合わせは要求ごとに高々 1 回で、所有者・利用者の共有先・組織文書だけの読み取りでは問わない。
+     **引けない・未構成のときは読めない側へ倒す**（その資料だけが見えなくなる）。
+- 機械の主体と管理者ロールの利用者には、他人の個人資料は返らない。
+- 読めない個人資料は一覧から除き（件数にも含めない）、単一取得・版履歴一覧・特定版取得は **404**（不在と区別しない）。
+  特定版の可視性は現在の文書で判定する。
+- **組織文書**は認証済みの全主体に返る。組織文書の内容による絞り込み（機密・部門・ライフサイクル）は、現在は文書閲覧の経路（BFF）が行う。
 
 ### 本文指紋（`ContentFingerprint`）
 
@@ -66,8 +84,8 @@ issues: [#201, #1011, #1575, planning#473]
 
 ### 組織文書の絞り込み・ページング（`GET /documents/page`）
 
-- **見える集合を広げない。** 文書サービスの読み取りは権限判定を持たず（実施点は BFF）、直接の呼び出し元に見えているのは
-  `GET /documents` の全件である。この口はそこから「組織文書」「全絞り込みに一致」で削るだけで、**結果は常にその部分集合**になる。
+- **見える集合を広げない。** 文書サービスの読み取りは組織文書の内容による権限判定を持たず（実施点は BFF）、直接の呼び出し元に見えている
+  組織文書は `GET /documents` の全件である（他人の個人資料は `GET /documents` からも除かれる）。この口はそこから「組織文書」「全絞り込みに一致」で削るだけで、**結果は常にその部分集合**になる。
 - **個人資料は、絞り込みの値にも呼び出し元にも依らず返さない**（`attr.doc_scope=private-note` を与えても、所有者本人が呼んでも空）。
 - 絞り込み: `attr.<キー>=<値>` を 0 個以上（AND）。キー・値とも大文字小文字を区別する完全一致。同じキーの重複・空のキー・空の値は 400。
 - ページング: `limit`（既定 100・1〜500 に丸める）と `cursor`（前ページの `nextCursor`。不透明な文字列・壊れていれば 400）。

@@ -39,7 +39,7 @@ related_ids:
   - IADR-0401
 author: claude
 created: 2026-09-06
-updated: 2026-09-06
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0029_grpc-rest-usage-criteria.md §決定・2026-08-04 追記
   - planning:projects/microservices-platform/07_adr/ADR-0075_east-west-grpc-migration-order.md 決定 3・5・6
@@ -119,7 +119,12 @@ knowledge ユニットで proto を持つのはこれが最初であり、その
 ### 決定 3: 🔴 **判定の位置を動かさない。** gRPC の面は認可を持たず、REST の 4 端点と**同じ本体**を通る
 
 文書単位の ABAC（属性合致 ∧ 個人資料でないこと）は BFF 側のスコープ解決と `IsManageable` ただ 1 つが
-実施点である（[[IADR-0041]] / `IADR-0012`）。書き込みプリフライト（[[IADR-0045]]）も残す ——
+実施点である（[[IADR-0041]] / `IADR-0012`）。
+
+> ［2026-09-27 追記 / #1614］**個人資料の除外は DocumentService の中でも行うようになった**（計画 ADR-0119 決定 3・[[IADR-0476]]）。
+> gRPC の 4 要求へ利用者文脈 `user` を足し、在ればその利用者、無ければ呼び出し元サービス自身（機械）を主体として、個人資料を
+> 所有者と共有先の利用者にだけ返す。REST の 4 端点も認証を要し、同じ本体（`DocumentReadUseCase` → `DocumentReadAccess`）を通る。
+> 組織文書の ABAC の実施点が BFF であることは変わらない（#1615 で後段にも入る）。本決定の「REST と gRPC が同じ本体を通る」はそのまま保たれている。書き込みプリフライト（[[IADR-0045]]）も残す ——
 本スライスが差し替えるのはその中の**取得**だけで、往復は減らさない。
 
 呼び出し先では `DocumentReadUseCase` を括り出し、**REST の 4 端点と gRPC の 4 rpc が同じ関数を呼ぶ**

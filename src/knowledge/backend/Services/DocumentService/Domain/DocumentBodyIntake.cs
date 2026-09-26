@@ -81,6 +81,12 @@ public static class DocumentBodyIntake
     }
 
     public static bool CanWrite(IReadOnlyDictionary<string, string>? attributes, string? subject)
+        => IsOwnedBy(attributes, subject);
+
+    // FR-19, ADR-0036 D-05, 計画 ADR-0119 決定 3 (#1614): **動的束縛 `doc.owner ∈ { ${current_user} }` の唯一の比較。**
+    // 本文の書き込み（上の `CanWrite`）と、個人資料の読み取りの所有者の分岐（`DocumentReadAccess`）が同じ関数を通る
+    // —— 所有者の比較を 2 本書くと、片方だけ大文字小文字の扱いが変わって書けるのに読めない（またはその逆）が起きる。
+    public static bool IsOwnedBy(IReadOnlyDictionary<string, string>? attributes, string? subject)
     {
         if (string.IsNullOrWhiteSpace(subject)) return false;
         if (attributes is null) return false;

@@ -152,7 +152,8 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task 一回の同期に10編集を載せると10版が刻まれる()
     {
-        var token = await IssueTokenAsync($"carol-{Guid.NewGuid():N}"[..20]);
+        var owner = $"carol-{Guid.NewGuid():N}"[..20];
+        var token = await IssueTokenAsync(owner);
         var plugin = PluginWith(token);
 
         var edits = Enumerable.Range(1, 10).Select(i => $"版 {i}").ToArray();
@@ -162,7 +163,8 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
         var created = await push.Content.ReadFromJsonAsync<PushNoteResponse>(TestContext.Current.CancellationToken);
         created!.Version.Should().Be(10, "1 編集 = 1 版（同期 1 回へ丸めない）");
 
-        var versions = await factory.CreateClient().GetFromJsonAsync<List<DocumentVersionDto>>(
+        // #1614: 個人資料の版は所有者（と共有先）にしか返らない（計画 ADR-0119 決定 3）→ 所有者として読む。
+        var versions = await SessionAs(owner).GetFromJsonAsync<List<DocumentVersionDto>>(
             $"/documents/{created.NoteId}/versions", TestContext.Current.CancellationToken);
         versions.Should().HaveCount(10);
 
@@ -255,7 +257,8 @@ public class ObsidianSyncProtocolTests(TestWebApplicationFactory factory)
             PushBody("既定値", "default.md", "本文"), TestContext.Current.CancellationToken);
         var note = await push.Content.ReadFromJsonAsync<PushNoteResponse>(TestContext.Current.CancellationToken);
 
-        var doc = await factory.CreateClient().GetFromJsonAsync<DocumentDto>(
+        // #1614: 個人資料は所有者（と共有先）にしか返らない → 所有者として読む。
+        var doc = await SessionAs(user).GetFromJsonAsync<DocumentDto>(
             $"/documents/{note!.NoteId}", TestContext.Current.CancellationToken);
         doc!.Attributes.Should().Contain("doc_scope", "private-note");
         doc.Attributes.Should().Contain("owner", user);

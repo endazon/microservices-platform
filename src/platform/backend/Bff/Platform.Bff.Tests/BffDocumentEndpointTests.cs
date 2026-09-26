@@ -224,4 +224,27 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
         single!.Version.Should().Be(3);
         list!.Should().HaveCount(2);
     }
+
+    // NFR-09, FR-19, 計画 ADR-0119 決定 3 (#1614): 🔴 **REST の読み取り 4 口（一覧・詳細・版の一覧・特定版）は
+    // 利用者の資格情報を後段へ中継する。** 後段の読み取りは認証を要するので、中継が切れると 401 になり
+    // （BFF は 404 秘匿・空一覧へ畳むので画面からは「文書が無い」に見える）、所有者が自分の個人資料も開けない。
+    // スタブは資格情報を見ずに 200 を返すため、**伝播したこと自体を観測する**（見ないと中継を落としても緑のまま）。
+    [Fact]
+    public async Task RestReads_ForwardTheCallersAuthorizationToDocumentService()
+    {
+        _factory.DocumentReadForwardedAuthorization.Clear();
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer reader-jwt");
+
+        (await client.GetAsync("/bff/documents", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        (await client.GetAsync(DetailPath, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        (await client.GetAsync($"{DetailPath}/versions", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        (await client.GetAsync($"{DetailPath}/versions/3", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+
+        var id = BffTestFactory.StubDocumentId;
+        _factory.DocumentReadForwardedAuthorization.Keys.Should().Contain(
+            ["/documents", $"/documents/{id}", $"/documents/{id}/versions", $"/documents/{id}/versions/3"]);
+        _factory.DocumentReadForwardedAuthorization.Values.Should().OnlyContain(a => a == "Bearer reader-jwt",
+            "読み取りのどの経路でも利用者の資格情報が後段へ届く");
+    }
 }
