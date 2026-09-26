@@ -2,7 +2,7 @@
 title: IADR-0432 リセット申請の所要時間は反復した中央値を自己対照で判定し、床は経路に居る専用の器で掛ける
 type: impl-adr
 status: Accepted
-related_ids: [SC-15, SC-13, FR-05, FR-22, NFR-05, NFR-09, NFR-13, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097, ADR-0103, ADR-0111, ADR-0113, IADR-0470]
+related_ids: [SC-15, SC-13, FR-05, FR-22, NFR-05, NFR-09, NFR-13, NFR-21, ADR-0006, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097, ADR-0103, ADR-0111, ADR-0113, IADR-0470]
 author: claude
 created: 2026-09-11
 updated: 2026-09-26
@@ -28,6 +28,7 @@ plan_refs:
   ／［2026-09-25 / #1470］`.ai-context/specs/20260925_1470_timing-self-control-step.md`（判定の段 1。計画 ADR-0103）
   ／［2026-09-26 / #1500］`.ai-context/specs/20260926_1500_reset-floor-default-on.md`（床を既定 ON。計画 ADR-0097 決定 2）
   ／［2026-09-26 / #1543］`.ai-context/specs/20260926_1543_reset-floor-replicas-pdb.md`（器の 2 レプリカ ＋ PDB・退路の是正。計画 ADR-0111）
+  ／［2026-09-26 / #1544］`.ai-context/specs/20260926_1544_reset-floor-zero-endpoint-alert.md`（器の全滅を通知の配線へ載せる。計画 ADR-0111 フォローアップ 3）
 - 関連 IADR: `IADR-0404`（近接 MTA。**差の機序を名指しした記録**）/ `IADR-0421`（キュー観測）/
   `IADR-0427`（ログイン経路のプローブ。**所要時間を出すだけで判定しない**）/ `IADR-0347`（状態 B の 3 つの門）
 
@@ -372,6 +373,37 @@ selector を外す・`DoNotSchedule` へ・readiness を httpGet で上流へ・
 まとめた片側 24 標本・両側・正確法）。標本は片側 6 → 12、時計は整数 ns（`IADR-0463` 決定 1 を判定式と同時に再び入れた）。
 **本 IADR の `評価不能` の境界（自己対照 2 倍・決定 5 の導出）は改めない** —— 自己対照は `評価不能` の判定にだけ使う（ADR-0113 決定 3）。
 床の器・床の値 150 ms・床の配備も改めない。
+
+## ［2026-09-26 追記 / #1544］器の全滅（ready な endpoint が 0）を通知の配線へ載せる —— 計画 ADR-0111 フォローアップ 3
+
+**契機**: 上の #1543 追記が「本作業では実装しない」として起票した #1544。計画 ADR-0111 フォローアップ 3 は「器が落ちたこと
+（ready な endpoint が 0）の検知は NFR-21 の通知の配線の射程で扱う。本 ADR では検知の手段を定めない」とした。
+**計画が手段を定めていないので、手段は実装の判断であり、ここに記録する**（新しい IADR は起こさない —— 器の可用性の扱いは本 IADR の
+#1500 / #1543 追記が持っており、同じ器への追補である）。
+
+**決めたこと**:
+
+| # | 判断 | 内容 |
+| --- | --- | --- |
+| 1 | 信号 | **otel-collector の prometheus receiver（`prometheus/reset-floor`・`job_name: reset-floor`・30 秒）が器の Service `reset-floor:8080` の `/metrics` を取り、receiver が出す `up{job="reset-floor"}` で判定する。** ready な endpoint が 1 つ以上なら Service がそこへ振り分けて `up = 1`、0 なら接続が拒まれて `up = 0`。Envoy が 503 を返す条件（EndpointSlice の ready が 0）と同じ情報源を見る。宛先は Pod ではなく **Service**（見たいのは Pod の生死ではなく、申請が 503 になる条件そのもの） |
+| 2 | 器の変更 | **器に `GET /metrics`（パス完全一致・`GET` のみ）を足す。上流へ渡さず、床も掛けない。** 値は `reset_floor_up 1` の 1 系列。それ以外（申請の POST を含む）は従来どおりバイト列を変えずに中継する（決定 1 の「本文・ステータス・ヘッダを 1 バイトも変えない」は中継する要求について保たれる）。エッジの route は申請の POST だけを器へ向けるので、この口はクラスタ外から届かない。**`Connection: close` を返す** —— scrape の接続を使い回すと、器が Service から外れた後も古い Pod へ繋がったまま `up = 1` を返し得る（kube-proxy は新しい接続にだけ効く） |
+| 3 | 規則 | `ResetFloorNoReadyEndpoint`（群 `reset-floor-availability`・`up{job="reset-floor"} == 0`・`for: 2m`・critical）と `ResetFloorUpSeriesAbsent`（群 `platform-slo-evaluation-target`・`absent(up{job="reset-floor"})`・`for: 5m`・warning）。`OtelCollectorDown` ＋ `OtelCollectorUpSeriesAbsent` と同じ対。`up` は scrape ごとに必ず出る（失敗時も 0）ので不在の規則は恒常発火しない（ADR-0076 決定 3 の判定基準を満たす）。検出はおよそ 3 分（NFR-21 の 5 分以内）。器が 1 つでも ready なら鳴らない |
+| 4 | 置き場 | compose・経路 B の Prometheus、Grafana の provisioning 2 か所（既存のパリティ検査がそのまま効く）。collector は経路 B の既定・転送の 2 設定に同じ receiver を置き、**compose には置かない**（器が居ない。`MailRelayQueueSeriesAbsent` と同じく compose では不在の規則が鳴り続ける既知の状態） |
+| 5 | Grafana 版 | `up` をそのまま取り `lt 1` で比べる。🔴 `up == 0` を `gt 0` で比べる形は、フィルタ後の値が 0 なので永久に発火しない（既存の Grafana 版 `OtelCollectorDown` がこの形であり、本作業では直さず報告した）。`noDataState: OK`（不在は対の規則が拾う） |
+| 6 | 宛先 | 既存の Alertmanager（既定の受信先 `default-null`）と Grafana の暫定アラートだけ。**外部の通知先は足さない**（IADR-0304 決定 2） |
+
+**採らなかった案**: kube-state-metrics（イメージと cluster 全体の list/watch 権限が増え、得るのは本件 1 系列。Prometheus の直 scrape を足すと
+#546 / #1090 の不変条件が崩れる）／エッジ（Envoy）の 503 の統計（新たな scrape の配線が要り、**申請が来ないと 503 も出ない** —— 頻度の低い経路では
+全滅していても無風なら鳴らない）／blackbox exporter（新しいイメージ。IADR-0421 決定 1 と同じ理由）／collector の `httpcheck` receiver（0.102.0 での
+系列名・失敗時の出し方を稼働 Prometheus で確かめられない。#1110 の「推測で名前を書かない」）／Pod ごとの service discovery（RBAC が要り、見たいのは Service の振り分け先）。
+
+**検証**: `scripts/reset-floor.test.js` の試験 11（器・collector 2 設定・compose・規則・Grafana の突き合わせを純関数で判定し、13 種の変異で落ちる）と
+試験 12（127.0.0.1 の一時ポートで器を実際に立て、`/metrics` が上流へ渡らず床を待たず `Connection: close` で答え、申請の POST・クエリ付き・別メソッドは
+床つきで中継されることを確かめる）。器の自己試験に 2 件を足した。既存の `check-prometheus-alerts-parity.js` / `check-grafana-alerting.js` /
+`check-grafana-provisioning-parity.js` / `check-collector-self-telemetry.js` は 19 件で緑。
+🔴 **稼働クラスタでは確かめていない**（本作業の作業機はクラスタへ触れない）。特に **receiver が scrape に失敗したときの `up = 0` が remote write で
+Prometheus へ届くこと**は、既存の規則が `up` を Prometheus の直 scrape（`job="otel-collector"`）でしか使っていないため、この job では実測が無い。
+確かめる手順（陽性対照を対で置く）と、器を 0 へ絞って firing までの時間を測る手順は SC-15 のテスト仕様書 T-29（手動）に置いた。
 
 ## 関連
 

@@ -213,6 +213,22 @@ groups:
           summary: "SLO の評価対象が無い: 近接 MTA のキュー長の系列が存在しない"
           description: "mail-relay の postfix_queue_size{queue=\"deferred\"} が無い。MailRelayDeferredBacklog / MailRelayDeferredMessageNearExpiry は空ベクタになり発火せず、上流停止が無監視になる（ADR-0078 決定 3 の観測点が消えた状態）。exporter サイドカーの不在・spool の読み取り失敗・otel-collector の prometheus receiver の欠落・NetworkPolicy による遮断を疑う。"
 
+      # SC-15, NFR-21, ADR-0111 フォローアップ 3, IADR-0432 (#1544): 下の reset-floor-availability 群の評価対象。
+      # 🔴 **`up` は scrape のたびに必ず出る**（失敗しても 0 として出る）。系列が消えるのは
+      #   **otel-collector の prometheus/reset-floor receiver が無い・collector が居ない**ときだけであり、
+      #   MailRelayQueueSeriesAbsent と同じく常時トラフィックが要らない対象である。
+      # 🔴 **ResetFloorNoReadyEndpoint（up == 0）と読み分けること。** 0 は「器が答えない（ready が 0）」、
+      #   不在は「見ていない」である。不在のあいだ主の規則は空ベクタになり、全滅しても鳴らない（#1110 の形）。
+      # 🔴 compose スタックに床の器は居ない（collector の compose 設定は receiver を持たない）ので、compose では鳴り続ける。
+      #   MailRelayQueueSeriesAbsent と同じ既知の状態である（deploy/otel-collector-config.yaml 冒頭）。
+      - alert: ResetFloorUpSeriesAbsent
+        expr: absent(up{job="reset-floor"})
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: 'SLO の評価対象が無い: up{job="reset-floor"} の系列が存在しない'
+          description: "リセット申請の床の器を見る up{job=\"reset-floor\"} が無い。ResetFloorNoReadyEndpoint は空ベクタになり、器が全滅しても発火しない。otel-collector の prometheus/reset-floor receiver の欠落（経路 B の 2 つの collector 設定の片方だけ、など）か collector の停止を疑う（ADR-0076 決定 3）。"
+
   # FR-10, SC-10, ADR-0076 決定 3, IADR-0389 決定 5 (#1246):
   # **ナレッジ健全性の生産者が居なくなったこと**を warning とする。
   #
@@ -317,6 +333,37 @@ groups:
         annotations:
           summary: "近接 MTA の後送がキュー寿命に達しつつある（最古 20 分超）"
           description: "deferred の最古メッセージが到着から 20 分を超えた。キュー寿命は 30 分であり、これを超えたメールは破棄される（バウンスも溜めない設定）。破棄されたパスワードリセットは利用者からは「メールが来ない」としか見えない。上流を復旧するか、リセットの申請を閉じること。しきい値は実測前の暫定値である（#1245 PR-D）。"
+
+  # SC-15, NFR-05, NFR-21, ADR-0097 決定 2, ADR-0111（決定 2・3・フォローアップ 3）, IADR-0432 (#1544):
+  # **リセット申請の床の器に ready な endpoint が 1 つも無い** —— 申請の POST がすべて 503 になっている。
+  #
+  # 🔴 **経路は器だけを向き、Keycloak へ戻る予備の経路は無い**（ADR-0111 決定 2）。器が全滅すると
+  #   申請は「閉じた状態」の 503 になる（決定 3。実在・非実在とも同じ 503 で存在秘匿は保たれる。**破れるのは可用性**）。
+  #   器は 2 レプリカ ＋ PDB（決定 1）なので、**1 つ落ちただけでは鳴らない**（Service は残る 1 つへ振り分け up=1 のまま）。
+  #
+  # 🔴 **信号の取り方**: otel-collector の prometheus receiver（job_name: reset-floor）が**器の Service**
+  #   （`reset-floor:8080`）の `/metrics` を 30 秒ごとに取る。器自身が答える口であり、上流（Keycloak）の健康を映さない。
+  #   ready な endpoint が 0 なら Service に振り分け先が無く接続が拒まれ、receiver の `up` が 0 になる ——
+  #   **Envoy（エッジ）が 503 を返す条件と同じ情報源**（EndpointSlice の ready）を見ている。
+  #   器は scrape ごとに接続を閉じる（使い回した接続が Service から外れた Pod へ残らないように）。
+  #   kube-state-metrics / blackbox / Envoy の統計を入れなかった理由は IADR-0432 の 2026-09-26 追記（#1544）。
+  #   「otel-collector が唯一の scrape 対象」という不変条件（#546 / #1090）はそのままである。
+  #
+  # 🔴 **for: 2m・critical は OtelCollectorDown と同じ**。利用者に見える停止（申請が全件失敗）である。
+  #   検出の見積り: 全滅 → 次の scrape（≦30 秒）→ remote write（≦5 秒）→ 評価（15 秒間隔）→ for 2m ＝ **およそ 3 分**（NFR-21 の 5 分以内）。
+  #   更新は RollingUpdate 既定（maxUnavailable 0）で ready は 0 にならず、単発の scrape 失敗は for が吸う。
+  #
+  # 🔴 **稼働クラスタでは確かめていない**（#1544 の作業機はクラスタへ触れない）。式を変えるときの手順（陽性対照を対で置く）は
+  #   本ファイル冒頭の #1110 の注意書き。器を 0 へ絞って firing までの時間を測る手順は SC-15 のテスト仕様書の手動項目にある。
+  - name: reset-floor-availability
+    rules:
+      - alert: ResetFloorNoReadyEndpoint
+        expr: up{job="reset-floor"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "リセット申請の床の器に ready な endpoint が無い（申請はすべて 503＝閉じた状態）"
+          description: "otel-collector から器の Service（reset-floor:8080）の /metrics に 2 分間届かない。器が全滅しており、パスワードリセットの申請はすべて 503 になっている（予備の経路は無い。実在・非実在とも同じ 503 で存在秘匿は保たれる）。復旧は器を戻すこと（kubectl -n platform-infra get deploy,pdb,pods -l app=reset-floor・ConfigMap reset-floor-script の有無）。利用者は管理者の一時パスワード発行で復旧する。🔴 本番で RESET_FLOOR=0 を退路に使わない（外している間は利用者名を列挙できる）。手順は運用 Runbook の「器がすべて落ちたとき」（ADR-0111 決定 3）。"
 
   # FR-11, NFR-21, ADR-0044, IADR-0466 (#1111): **LLM 費用の月次予算（用途別）の超過。**
   #
