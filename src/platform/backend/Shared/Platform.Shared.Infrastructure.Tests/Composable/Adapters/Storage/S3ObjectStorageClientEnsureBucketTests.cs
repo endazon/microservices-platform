@@ -136,17 +136,25 @@ public class S3ObjectStorageClientEnsureBucketTests
             .Which.Message.Should().Contain(nameof(HttpRequestException));
     }
 
+    // ［#1630］取り消しは **AWS SDK（HttpClient）が表す形** —— 呼び出し側の token を持つ `TaskCanceledException` —— で、
+    // HeadBucket の最中に起こす。素の `OperationCanceledException` を注入していた間は、絞り込みを「`TaskCanceledException` なら
+    // 時間切れ（不明）」と**型で**判定する変異（`|| ex is TaskCanceledException`）が生き残った。
     [Fact]
     public async Task 取り消しは握らずに投げる()
     {
         using var cts = new CancellationTokenSource();
-        await cts.CancelAsync();
-        var s3 = new FakeS3(() => new OperationCanceledException(cts.Token));
+        var injected = new TaskCanceledException("注入した呼び出し側の取り消し", null, cts.Token);
+        var s3 = new FakeS3(() =>
+        {
+            cts.Cancel();
+            return injected;
+        });
         var (sut, log) = Sut(s3);
 
         var act = async () => await sut.EnsureBucketAsync(cts.Token);
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        (await act.Should().ThrowAsync<OperationCanceledException>())
+            .Which.Should().BeSameAs(injected, "取り消しを「不明」へ畳まず、そのまま伝えている");
         log.OfLevel(LogLevel.Warning).Should().BeEmpty();
     }
 

@@ -222,21 +222,27 @@ public class DepartmentAttributeSyncTests
 
     // F2: 🔴 ホストの停止（取り消し）が周期の途中で来たら、**周期ごと中断**して例外を上げる。
     // 利用者ごとの失敗として数えて次の人へ進む変異（取り消しも catch する）はここで赤になる。
+    // ［#1630］取り消しは **実物の IdP 管理クライアント（HttpClient）が表す形** —— 呼び出し側の token を持つ `TaskCanceledException`
+    // —— で起こす。素の `OperationCanceledException` を注入していた間は、周期ごと中断する枝を「`TaskCanceledException` なら時間切れ
+    // （1 人の失敗）」と**型で**判定する変異（`when (ct.IsCancellationRequested && ex is not TaskCanceledException)`）が生き残った。
+    // 外へ出たのが注入した取り消しそのもの（`BeSameAs`）であることも測る（後段が取り消しを投げ直しても緑にならない）。
     [Fact]
     public async Task Host_cancellation_mid_cycle_aborts_without_counting_user_failures()
     {
         var realm = Realm();
         using var cts = new CancellationTokenSource();
+        var injected = new TaskCanceledException("注入した呼び出し側の取り消し", null, cts.Token);
         realm.BeforeWrite = _ =>
         {
             cts.Cancel();
-            throw new OperationCanceledException(cts.Token);
+            throw injected;
         };
         using var listener = OutcomeCounter("failed", out var failures);
 
         var act = async () => await Sync(realm).RunAsync(DepartmentAttributeSyncMode.Fix, cts.Token);
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        (await act.Should().ThrowAsync<OperationCanceledException>())
+            .Which.Should().BeSameAs(injected, "1 人目の取り消しをそのまま伝えている（1 人の失敗として次の人へ進んでいない）");
         failures().Should().Be(0, "取り消しは利用者の失敗ではない");
         realm.Writes.Should().BeEmpty();
     }
