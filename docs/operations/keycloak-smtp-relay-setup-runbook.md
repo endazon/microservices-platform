@@ -8,9 +8,9 @@ author: claude
 ---
 <!-- trace:
 ids: [SC-10, SC-15, FR-05, FR-09, FR-22, NFR-05, NFR-13, NFR-21]
-adrs: [ADR-0006, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097]
+adrs: [ADR-0006, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097, ADR-0111]
 iadrs: [IADR-0197, IADR-0261, IADR-0329, IADR-0332, IADR-0344, IADR-0347, IADR-0369, IADR-0404, IADR-0421, IADR-0432]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260926_1500_reset-floor-default-on, 20260926_1543_reset-floor-replicas-pdb]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260926_1500_reset-floor-default-on, 20260926_1543_reset-floor-replicas-pdb, 20260926_1544_reset-floor-zero-endpoint-alert]
 issues: [#438, #578, #600, #1102, #1143, #1144, #1245, #1500, #1543, #1544, planning#656]
 -->
 
@@ -384,8 +384,13 @@ kubectl -n istio-system get virtualservice msp-keycloak-edge \
    「代替（メール基盤が止まったとき）」）。**申請（本人）→ 上長が本人性を保証 → 管理者が認証基盤の管理コンソールで
    一時パスワードを発行し、パスワード更新の必須アクションを付ける。** 一時パスワードは口頭（対面・電話）で伝え、
    申請者・承認者・実行者を監査ログへ残す。
-4. **器が全滅したことを自動で知らせる手段はまだ無い**（準備のできた器が 0 になったことの通知は未配線）。
-   気付く契機は利用者からの問い合わせ、または `kubectl -n platform-infra get deploy reset-floor` の目視である。
+4. **［2026-09-26 更新］器の全滅はアラート `ResetFloorNoReadyEndpoint`（critical）が知らせる。** 収集器（OTel Collector）が
+   器の Service 越しに器自身の `/metrics` を 30 秒ごとに取り、準備のできた器が 0 で届かない状態が 2 分続くと発火する
+   （およそ 3 分で気付ける。器が 1 つでも準備完了なら鳴らない）。**通知は Alertmanager までであり、その先の宛先は未配線**
+   （運用仕様書の「監視・アラート」）—— 気付く契機は Alertmanager / Grafana の Alerting 画面、利用者からの問い合わせ、
+   または `kubectl -n platform-infra get deploy reset-floor` の目視である。
+   `ResetFloorUpSeriesAbsent`（warning）が出ているときは**全滅ではなく「見ていない」**（収集器の受け口 `prometheus/reset-floor` の欠落・
+   収集器の停止）であり、そのあいだ全滅は鳴らない。**転送構成（可観測性オーバーレイ）を当てていないクラスタでは、そもそも Prometheus が居ない。**
 
 > 🔴 **この節の射程は床の器の故障に限る。** 送出経路（SMTP）の故障時に申請を閉じる手段
 > （§0 の門・`resetPasswordAllowed=false`）は別であり、本節はそれを変えない。

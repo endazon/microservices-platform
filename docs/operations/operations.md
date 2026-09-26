@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07]
-adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471]
-specs: [20260926_issue-1550_live-script-opt-in, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup]
-issues: [#1550, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538, AST#346]
+adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471]
+specs: [20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup]
+issues: [#1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538, AST#346]
 -->
 
 # 運用仕様書
@@ -651,7 +651,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   運用環境ごとに設定するもので、既定は `default-null`＝どこへも送らない**（設定漏れではなく既定）。
 - **暫定のアラート（Grafana 統合アラート。#665 / 計画 決定 42）**:
   [`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)
-  が同じ 17 ルール（［2026-09-26 / #1111］で数え直した。従前の「13」は既に実体の 16 と食い違っていた）を
+  が同じ 19 ルール（［2026-09-26 / #1544］で数え直した。#1111 の時点は 17、その前の「13」は既に実体の 16 と食い違っていた）を
   Grafana 側でも評価し、**Alerting 画面に発火を表示する**。**通知は送らない**（下記★）。
   `alerts.yml` との対応は `node scripts/check-grafana-alerting.js` が CI で突合する。
 - **★ 経路間のパリティ（#674。Grafana provisioning は経路間で同内容とする実装 ADR）**: provisioning（datasources / dashboards / alerting）は
@@ -690,7 +690,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   **dev の 2 経路（docker-compose と、ローカル k8s の可観測性オーバーレイ）に配線**されている。
   **［2026-08-30 更新 / #546］経路B（ローカル k8s）にも Alertmanager を配備し、両経路のルールが
   同じ受け手へ届くようにした**（それ以前は compose だけだった）。
-  🔵 **［2026-09-09 更新］経路B の Prometheus の inline は compose と同数である**（両経路とも 17 件。［2026-09-26 / #1111］で数え直した。
+  🔵 **［2026-09-09 更新］経路B の Prometheus の inline は compose と同数である**（両経路とも 19 件。［2026-09-26 / #1544］で数え直した。
   `node scripts/check-prometheus-alerts-parity.js` が群名・ルール名・`expr`・`for`・`severity` で 1 対 1 を
   確かめる）。**2026-09-05 時点の「2 件が写されていない」はその後の是正で解消しており、本追記はその訂正である。**
   **件数は導出値なので、数えるのは実体である。****stg/prod は依然として対象外**である
@@ -709,7 +709,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 >
 > 計画が定めた**暫定の通知先＝ Grafana の内蔵アラート**（決定 42）は、**#665 で provisioning を配線した**
 > （[`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)。
-> compose・k8s の 2 か所。17 ルールは `alerts.yml` と 1 対 1）。**ただし、配線したのは検知と可視化までである。**
+> compose・k8s の 2 か所。19 ルールは `alerts.yml` と 1 対 1）。**ただし、配線したのは検知と可視化までである。**
 >
 > - **push 配信の宛先（contactPoints / policies）は設定していない。** 届かない宛先を書くと「配線した」と
 >   読めてしまうため、**意図的に書いていない**（SLO の暫定通知先を Grafana 統合アラートへ配線する実装 ADR の決定 3）。
@@ -718,7 +718,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 >   **人が気づくまでの時間は見に行く間隔に等しい。**
 > - **Grafana が provisioning を受理するかは、CI では見ていない。** 機械で確かめているのは
 >   `node scripts/check-grafana-alerting.js` の範囲（ルール数・名前の 1 対 1・`datasourceUid` の実在・
->   compose と k8s の同内容・必須キー）まで。**配備時に `/api/v1/provisioning/alert-rules` が 17 件返すことを確かめる。**
+>   compose と k8s の同内容・必須キー）まで。**配備時に `/api/v1/provisioning/alert-rules` が 19 件返すことを確かめる。**
 >   🔵 **［2026-09-04 更新］稼働クラスタでは受理された** —— `reload` の後に当時の 9 件が返ることを実測した
 >   （「実装環境で Grafana を起動できない」という以前の記述は、もう当てはまらない）。
 >   **ルールを増減させたら毎回確かめること**（件数は導出値である）。
@@ -750,17 +750,29 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 | **RAG 初回応答（SLO 判定）** | aianalysis `/analysis/ask/stream` の**初回トークンまでの時間**（`rag_answer_first_token_duration_seconds_bucket`）p95 | > 5（**秒**）が 10 分 | Alertmanager（warning） | **RAG 初回応答 p95 5s** |
 | RAG 応答完了（**傾向の観察に留める**） | aianalysis `/analysis/ask`（一括経路）の応答完了 p95 | > 5（**秒**）が 10 分 | Alertmanager（warning） | — （**判定に用いない**） |
 | **LLM 費用（用途別の月次予算）** — ［2026-09-26 / #1111］ | 直近 30 日の `llm_cost_total` ＞ ゲージ `llm_budget_monthly_limit`（用途・通貨ごと） | 超過が 5 分（**金額は未設定＝不活性**） | Alertmanager（warning） | — （費用の統制。金額が設定されるまでは Runbook の月次確認） |
+| **パスワードリセット申請の床の器（全滅）** — ［2026-09-26 / #1544］ | `up{job="reset-floor"}`（収集器が器の **Service** の `/metrics` を 30 秒ごとに取る。準備のできた器が 0 なら届かず 0） | ==0 が 2 分（**器が 1 つでも準備完了なら鳴らない**） | Alertmanager（critical） | 検出 5 分以内・可用性 99.9% |
 | **評価対象の不在** — 収集経路 | `absent(up{job="otel-collector"})` | 系列が無い状態が 5 分 | Alertmanager（warning） | 検出（**統制**） |
 | **評価対象の不在** — 全サービスの HTTP メトリクス | `absent(http_server_request_duration_seconds_count)` | 系列が無い状態が 5 分 | Alertmanager（warning） | 検出（**統制**） |
 | **評価対象の不在** — 検索レイテンシ | `absent(http_server_request_duration_seconds_bucket{job="…retrieval-service"})` | 系列が無い状態が 5 分 | Alertmanager（warning） | 検出（**統制**） |
 | **評価対象の不在** — RAG 応答完了（一括経路） | `absent(http_server_request_duration_seconds_bucket{job="…aianalysis-service", http_route="/analysis/ask"})` | 系列が無い状態が 5 分 | Alertmanager（warning） | 検出（**統制**） |
+| **評価対象の不在** — 床の器（全滅の行が見る系列） — ［2026-09-26 / #1544］ | `absent(up{job="reset-floor"})` | 系列が無い状態が 5 分 | Alertmanager（warning） | 検出（**統制**） |
 
-> 🔵 **［2026-09-04 追記 / 2026-09-05 更新］下 4 行は「評価対象そのものが無いこと」を鳴らす。上の行の SLO とは別物である。**
+> 🔴 **［2026-09-26 追記 / #1544］床の器の 2 行。** リセット申請の POST は床の器だけへ向かい、認証基盤へ戻る予備の経路は無い。
+> **準備のできた器が 0 になると申請はすべて 503（申請を閉じた状態）になる。** それを知らせるのが「全滅」の行である。
+> 収集器（OTel Collector）が器の Service 越しに**器自身が答える `/metrics`** を取る —— 準備のできた器が 1 つでもあれば
+> Service がそこへ振り分けて `up` は 1、0 なら接続が拒まれて 0 になる（エッジが 503 を返す条件と同じ情報源を見ている）。
+> 器は 2 レプリカなので、**1 つ落ちただけでは鳴らない。** 検出はおよそ 3 分（収集 30 秒 ＋ 評価 ＋ `for: 2m`）。
+> 「評価対象の不在」の行は、収集器の受け口（receiver）が欠けて `up` の系列ごと消えた状態を拾う（そのあいだ全滅の行は鳴りようがない）。
+> **Prometheus を直接 scrape する対象は増やしていない**（唯一の scrape 対象は収集器のまま）。対応は下の「障害対応」の表。
+> 🔴 **稼働クラスタでは未確認である**（器を 0 へ絞って `firing` になるまでの時間を測る手順は[パスワードリセットのテスト仕様書](../tests/SC-15_password-reset.md)の手動項目）。
+> 🔴 **compose 経路には床の器が居ない**ので、compose では不在の行が鳴り続ける（近接 MTA の不在の行と同じ既知の状態）。
+>
+> 🔵 **［2026-09-04 追記 / 2026-09-05 更新］下 5 行は「評価対象そのものが無いこと」を鳴らす。上の行の SLO とは別物である。**（［2026-09-26 / #1544］床の器の不在の行を足して 4 → 5 行）
 >
 > **「サービス応答断（近似）」の行と読み分けること。** あちらは
 > **直近まで受信していたのに途絶した**場合だけを拾い（`== 0` かつ `offset 15m > 0`）、
 > **系列そのものが消えると式が空になって発火しない。** 2026-08-30 まで 4 ルールが
-> 存在しないメトリクス名を見ていた事故は、**下 4 行の形でしか検知できない。**
+> 存在しないメトリクス名を見ていた事故は、**下 5 行の形でしか検知できない。**
 >
 > 🔴 **対象は「無風でいられる時間が検知要件（5 分）より短い経路」だけである。**
 > 全 SLO へ対で置くと低頻度経路で恒常発火し、**警報を無視する習慣を作る**ため、計画がその案を却下している。
@@ -772,18 +784,18 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 >
 > | RAG の行 | いまの扱い | 理由 |
 > | --- | --- | --- |
-> | **RAG 応答完了（一括経路）** | ✅ **対象へ入れた**（表の最終行） | 60 秒間隔の合成プローブが `/analysis/ask` を叩く。**LLM を呼ばなくても検索までは走る**ので HTTP 系列は立つ。60 秒 × 5 ＝ 5 分の余裕があり `absent()` の既定 lookback に収まる |
+> | **RAG 応答完了（一括経路）** | ✅ **対象へ入れた**（表の「評価対象の不在 — RAG 応答完了」の行） | 60 秒間隔の合成プローブが `/analysis/ask` を叩く。**LLM を呼ばなくても検索までは走る**ので HTTP 系列は立つ。60 秒 × 5 ＝ 5 分の余裕があり `absent()` の既定 lookback に収まる |
 > | **RAG 初回応答（SLO 判定）** | 🔴 **依然として対象外** | 初回トークンの計器は**トークンが 1 件も出なければ記録しない**。系列を立てるのは LLM を呼ぶ 60 分間隔の合成であり、**それは未配備である**（下の未決事項）。いま置くと**恒常発火**になる。配備後に入れる形は `absent_over_time(…[2h])`（周期 60 分の 2 周期ぶん）である |
 >
 > 🔴 **これらの行が意味を持つのは、合成監視のオーバーレイが当たっているクラスタだけである**（opt-in）。
 > 当てていないクラスタで RAG 応答完了の行が鳴るのは**誤報ではなく「評価対象が本当に無い」状態**である。
 >
-> 🔴 **下 4 行の検知は最大およそ 10 分であり、「5 分以内」ではない。** `absent()` は瞬間ベクタ選択子の
+> 🔴 **下 5 行の検知は最大およそ 10 分であり、「5 分以内」ではない。** `absent()` は瞬間ベクタ選択子の
 > 既定 5 分 lookback が空になって初めて真になり、そこへ `for: 5m` が積まる。
 > **これが拾うのはサービス障害ではなく統制の欠落**であり、障害の 5 分検知は上の行が担う。
 > `for` を短くして早める案は採らない（恒常発火の回避を優先している）。
 >
-> **Grafana 版は下 4 行だけ `noDataState: OK` である。** `absent(m)` は `m` が存在するとき空ベクタを返す
+> **Grafana 版は下 5 行と床の器の「全滅」の行が `noDataState: OK` である**（全滅の行は系列の不在を対の不在の行へ任せ、同じ不在で 2 通鳴らさないため）。不在の行は、`m` が存在するとき `absent(m)` が空ベクタを返す
 > （＝正常時が「データ無し」）ため、他と同じ `NoData` にすると**正常時に恒常発火する。**
 >
 > **実測済み**（2026-09-04・ローカル k8s。**当時この群は 3 行であり、RAG 応答完了の行はまだ無い**）。
@@ -988,6 +1000,7 @@ LlmGateway）に在るため、**当該イメージが更新済みであるこ�
 | RabbitMQ 停止 | サービス接続エラー、パイプライン滞留 | ブローカ再起動。MassTransit は再接続。未処理は再配信（冪等消費のため重複安全） | 永続化ボリューム/ディスク確認。デッドレター滞留は原因メッセージを調査 |
 | Qdrant 停止 | 検索 5xx/エラーログ | Qdrant 再起動。索引は再取り込みで再構築可能（決定的チャンク ID） | ボリューム障害時はスナップショットからリストア（バックアップ節） |
 | PostgreSQL 停止 | サービス起動失敗/DB 接続エラー | DB 再起動・接続確認。書き込み不可の間は該当サービスを縮退 | データ破損時はバックアップからリストア（RPO/RTO 節） |
+| パスワードリセット申請の床の器が全滅（申請がすべて 503） | `ResetFloorNoReadyEndpoint` アラート（critical）。`ResetFloorUpSeriesAbsent` は「見ていない」（収集器の受け口の欠落）であり全滅ではない | 🔴 **503 は「申請を閉じた状態」であり、床を外さない**（本番で `RESET_FLOOR=0` を退路に使わない —— 外している間は所要時間で利用者名を列挙できる）。器を戻す: `kubectl -n platform-infra get deploy,pdb,pods -l app=reset-floor`・ログ・ConfigMap `reset-floor-script` の有無を見て直す。利用者は**管理者による一時パスワード発行**で復旧する。手順は [運用 Runbook](keycloak-smtp-relay-setup-runbook.md) の「器がすべて落ちたとき」 | 器が戻らない（イメージ取得・ノード資源・PDB による退避の停止）ならノードと Deployment の事象を確認する。全滅が繰り返すならレプリカ数・分散の見直しを計画へ環流する |
 | サービス 5xx スパイク | `HighHttp5xxRate` アラート | 対象サービスのログ/トレース（Tempo）で原因特定。必要ならロールバック（Git revert → ArgoCD 同期） | 依存（DB/ブローカ/外部）起因の切り分け。HPA 上限到達なら `scaling` 見直し |
 | 構成ドリフト検出 | ドリフト検出 Warning（監査/警告ログ） | 宣言（`pipeline.json`）と実効の差分を確認。意図せぬ差分は Git を正として再同期 | 起動時 fail-fastで不整合構成の反映は阻止済み。恒常化は宣言の是正 |
 

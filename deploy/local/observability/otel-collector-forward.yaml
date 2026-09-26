@@ -29,6 +29,18 @@ data:
               scrape_interval: 30s
               static_configs:
                 - targets: ['mail-relay:9154']
+      # SC-15, NFR-21, ADR-0111 フォローアップ 3, IADR-0432 (#1544): リセット申請の床の器の Service に
+      # ready な endpoint が残っているか（器自身の `/metrics` が答えるか）。receiver が出す `up{job="reset-floor"}` を
+      # ResetFloorNoReadyEndpoint（== 0）と ResetFloorUpSeriesAbsent（系列の不在）が見る。
+      # 🔴 **既定構成（deploy/local/infra/otel-collector.yaml）と同じ宣言を持つ**（上の mail-relay と同じ理由）。
+      prometheus/reset-floor:
+        config:
+          scrape_configs:
+            - job_name: reset-floor
+              scrape_interval: 30s
+              metrics_path: /metrics
+              static_configs:
+                - targets: ['reset-floor:8080']
     processors:
       batch:
         timeout: 5s
@@ -64,7 +76,8 @@ data:
         metrics:
           # 🔴 近接 MTA のキューはここから Prometheus（remote write）へ入る。job ラベルは
           #   `mail-relay`（receiver の job_name 由来）になる ——アラートの式はこの名前を使う。
-          receivers: [otlp, prometheus/mail-relay]
+          # 🔴 床の器の `up` も同じ経路で入る（job ラベルは `reset-floor`）。
+          receivers: [otlp, prometheus/mail-relay, prometheus/reset-floor]
           processors: [memory_limiter, batch]
           exporters: [prometheusremotewrite, debug]
         logs:

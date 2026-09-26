@@ -1,4 +1,4 @@
-# SC-15, FR-05, NFR-05, NFR-09, NFR-13, ADR-0026 / ADR-0078 決定 1, ADR-0094 決定 2, ADR-0097 決定 2, ADR-0111, IADR-0432 (#1410 / #1500 / #1543):
+# SC-15, FR-05, NFR-05, NFR-09, NFR-13, ADR-0026 / ADR-0078 決定 1, ADR-0094 決定 2, ADR-0097 決定 2, ADR-0111, NFR-21, IADR-0432 (#1410 / #1500 / #1543 / #1544):
 # **パスワードリセットの申請を、床（最小応答時間）に達するまで返さない前段。**
 #
 # ## 🔴 既定で入る（［2026-09-26 / #1500］旧: opt-in）
@@ -28,6 +28,10 @@
 #   **復旧は器を戻すこと**で行い、利用者は**管理者の一時パスワード発行**で復旧する（SC-15 の代替手順）。
 #   🔴 **本番で RESET_FLOOR=0 を退路に使わない** —— 外している間は実在する利用者名を列挙できる。
 # - 全滅の検知（ready な endpoint が 0）は通知の配線の射程であり、ここには無い（#1544）。
+#   ［2026-09-26 / #1544］配線した: otel-collector の prometheus receiver（`prometheus/reset-floor`）が下の **Service** の
+#   `/metrics`（器自身が答える口。上流へ渡さず床も掛けない）を取り、届かなければ `up{job="reset-floor"}` が 0 になって
+#   `ResetFloorNoReadyEndpoint`（deploy/prometheus/alerts.yml）が鳴る。🔴 **Service の名前と port はその scrape 先の単一情報源**
+#   である（変えるなら collector の 2 設定も同時に。scripts/reset-floor.test.js の試験 11 が突き合わせる）。
 #
 # ## なぜ Deployment（逆プロキシ）なのか
 #
