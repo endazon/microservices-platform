@@ -104,11 +104,14 @@ jobs:
       # NFR-21, NFR-05, IADR-0471, Issue #1560: platform-infra の日次バックアップ本体（deploy/local/platform-backup/script/backup.sh）の
       # 分岐（受取人の fail-closed・2 か所への書き込みと片側の失敗・平文を残さないこと・Vault の写しのやり直し・保持と削除の安全）を、
       # pg_dump / psql / age をスタブへ差し替えた Bash テストで固定する。実 Postgres・実 age・実クラスタは要らない。
+      # 先行ステップの失敗（例: 並行 PR の予約で IADR が一時的に欠番）で本試験まで走らなくならないよう、!cancelled() で走らせる。
       - name: Test platform-infra backup script (pg_dump / age stub)
+        if: ${{ !cancelled() }}
         run: bash deploy/local/platform-backup/script/backup.test.sh
       # 同 #1560: リストア試験（scripts/backup-restore-drill.sh）の突き合わせの判定と、使い捨てコンテナ・読み取り専用・
       # 秘密鍵を表示しないことを、docker / kubectl / age をスタブへ差し替えて固定する（稼働クラスタにも Docker にも触れない）。
       - name: Self-test backup restore drill (docker / kubectl / age stub)
+        if: ${{ !cancelled() }}
         run: bash scripts/backup-restore-drill.sh --self-test
 
   # NFR / IADR-0232 決定 6: 依存ゼロの Node 検査を 1 ジョブへ束ねる（統合前は 12 の独立ジョブ）。
