@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using DataSourceService.Domain;
 using DataSourceService.Infrastructure.ExternalServices;
 using DataSourceService.Infrastructure.Persistence;
@@ -12,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 
 namespace DataSourceService.Tests.Features.DataSources.Sync;
 
@@ -66,13 +66,22 @@ public sealed class DataSourceSyncHostedServiceTests : IDisposable
     //
     // 直す前は型だけの `catch (OperationCanceledException) { break; }` で、1 回の時間切れで定期同期が**黙って永久に**止まった
     // （ログなし・プロセスは健全）。周期は構成から来て最短 30 秒に丸められるので、試験だけが与える口 `CycleInterval` で短くする。
-    // 1・2 回目のリースの取得で時間切れと同じ型を投げ、3 回目の取得が起きること、各回の間隔が周期の半分以上あること
+    // 1・2 回目のリースの取得で時間切れと同じ型を投げ、3 回目の取得が起きること、各回が**別の拍**で起きること
     // （＝失敗の後に待たずに再試行していない）を測る。
+    //
+    // ［#1622］IADR-0083 の追記: 拍は**偽の時計**（`CycleClock` に `FakeTimeProvider`）で試験が手で進める。従前は周期 300 ミリ秒の実時間で
+    // 「各回の間隔が周期の半分以上」を測っており、負荷で本体が遅れると `PeriodicTimer` が溜まった拍をすぐに発火し、正しい実装でも落ち得た。
+    // 判定: (a) 失敗の後、拍を進める前は次の取得が来ない（静穏の窓を置いて回数を見る）、(b) k 回目の取得が見た偽の時刻が「開始 + (k−1) 周期」
+    // （本ワーカーは起動時に 1 回目を回す）。正しい実装では (a)(b) とも決定的に成り立つ。窓が効くのは M1（待たずに再試行）の側だけである。
     [Fact]
     public async Task Loop_SurvivesForeignCancellation_AndWaitsForTheNextTickAfterEachFailure()
     {
-        var cycle = TimeSpan.FromMilliseconds(300);
-        var coordinator = new ThrowTwiceCoordinator();
+        var cycle = TimeSpan.FromHours(1);
+        var quiet = TimeSpan.FromMilliseconds(250);
+        var deadline = TimeSpan.FromSeconds(10);
+        var clock = new ManualTickClock();
+        var start = clock.GetUtcNow();
+        var coordinator = new ThrowTwiceCoordinator(clock);
         var logger = new RecordingLogger<DataSourceSyncHostedService>();
         using var services = new ServiceCollection().BuildServiceProvider();
         var worker = new DataSourceSyncHostedService(
@@ -81,19 +90,30 @@ public sealed class DataSourceSyncHostedServiceTests : IDisposable
             new SyncSchedule(TimeProvider.System),
             Options.Create(new DataSourceSyncOptions { Enabled = true }),
             logger)
-        { CycleInterval = cycle };
+        { CycleInterval = cycle, CycleClock = clock };
 
         await worker.StartAsync(TestContext.Current.CancellationToken);
         try
         {
-            // 直す前の形では 1 回目の取得でループが終わり、2 回目は来ない（ここが時間切れで赤になる）。
-            await coordinator.ThirdAcquire.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            // 拍の源が作られる前に進めた時刻は拍にならない（StartAsync は ExecuteAsync を待たずに返り得る）。
+            await clock.TimerCreated.WaitAsync(deadline, TestContext.Current.CancellationToken);
+            (await coordinator.WaitForCallAsync(deadline)).Should().BeTrue("起動時に 1 回目の取得が起きる");
+            for (var tick = 1; tick <= 2; tick++)
+            {
+                // 直す前の形では 1 回目の取得でループが終わり、2 回目は来ない（下の待ちが時間切れで赤になる）。
+                await Task.Delay(quiet, TestContext.Current.CancellationToken);
+                coordinator.Calls.Should().Be(tick,
+                    $"{tick} 回目の失敗の後、次の拍を進めるまで取得しない（待たずに再試行していない）");
+
+                clock.Advance(cycle);
+                (await coordinator.WaitForCallAsync(deadline)).Should().BeTrue($"拍 {tick} で {tick + 1} 回目の取得が起きる");
+            }
+
             worker.ExecuteTask!.IsCompleted.Should().BeFalse("停止要求は出していない。ループは回り続けている");
             logger.Errors().Where(e => e is OperationCanceledException).Should().HaveCount(2,
                 "停止要求でない取り消しは周期の失敗として記録する（黙って読み飛ばさない）");
-            var at = coordinator.AcquiredAt();
-            (at[1] - at[0]).Should().BeGreaterThanOrEqualTo(cycle / 2, "1 回目の失敗の後、次の拍まで待っている");
-            (at[2] - at[1]).Should().BeGreaterThanOrEqualTo(cycle / 2, "2 回目の失敗の後も、次の拍まで待っている");
+            coordinator.AcquiredAt().Should().Equal([start, start + cycle, start + 2 * cycle],
+                "取得はそれぞれ別の拍で起きている（失敗の後に同じ拍のうちに再試行していない）");
         }
         finally
         {
@@ -172,25 +192,44 @@ public sealed class DataSourceSyncHostedServiceTests : IDisposable
     }
 
     // 1・2 回目の取得で停止要求と無関係な取り消し（HttpClient の時間切れと同じ型）を投げ、以後はリースを渡さない
-    // （＝本体は DB を読まない）。各回の時刻を記録する。
-    private sealed class ThrowTwiceCoordinator : ISyncLeaseCoordinator
+    // （＝本体は DB を読まない）。各回が見た**偽の時計の時刻**を記録する（#1622。壁時計は測らない）。
+    private sealed class ThrowTwiceCoordinator(TimeProvider clock) : ISyncLeaseCoordinator
     {
-        private readonly Stopwatch _clock = Stopwatch.StartNew();
-        private readonly ConcurrentQueue<TimeSpan> _acquiredAt = new();
+        private readonly ConcurrentQueue<DateTimeOffset> _acquiredAt = new();
+        private readonly SemaphoreSlim _called = new(0);
         private int _calls;
 
-        public TaskCompletionSource ThirdAcquire { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int Calls => Volatile.Read(ref _calls);
 
-        public IReadOnlyList<TimeSpan> AcquiredAt() => [.. _acquiredAt];
+        public IReadOnlyList<DateTimeOffset> AcquiredAt() => [.. _acquiredAt];
+
+        public Task<bool> WaitForCallAsync(TimeSpan deadline) =>
+            _called.WaitAsync(deadline, TestContext.Current.CancellationToken);
 
         public Task<IAsyncDisposable?> TryAcquireAsync(CancellationToken ct)
         {
-            _acquiredAt.Enqueue(_clock.Elapsed);
+            _acquiredAt.Enqueue(clock.GetUtcNow());
             var call = Interlocked.Increment(ref _calls);
+            _called.Release();
             if (call <= 2)
                 return Task.FromException<IAsyncDisposable?>(new TaskCanceledException("接続の時間切れ（停止要求ではない）"));
-            if (call == 3) ThirdAcquire.TrySetResult();
             return Task.FromResult<IAsyncDisposable?>(null);
+        }
+    }
+
+    // #1622: 周期の拍を試験が手で進める偽の時計。`PeriodicTimer` がこの時計から拍の源を作ったことを知らせる
+    // （作られる前に進めた時刻は拍にならない —— 偽の時計の拍は、源が作られた時刻から数える）。
+    private sealed class ManualTickClock : FakeTimeProvider
+    {
+        private readonly TaskCompletionSource _timerCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task TimerCreated => _timerCreated.Task;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = base.CreateTimer(callback, state, dueTime, period);
+            _timerCreated.TrySetResult();
+            return timer;
         }
     }
 

@@ -378,9 +378,12 @@ public sealed class PrivateNoteMaintenanceHostedService(
     // #1598: 周期の実際の長さ。**試験だけが短くする**（24 時間は待てない）。本番の組み立ては触らない。
     internal TimeSpan CycleInterval { get; init; } = Interval;
 
+    // #1622: 周期の拍の源。**試験だけが偽の時計（FakeTimeProvider）に差し替える**（壁時計の間隔は負荷で揺れる）。本番はシステムの時計のまま。
+    internal TimeProvider CycleClock { get; init; } = TimeProvider.System;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(CycleInterval);
+        using var timer = new PeriodicTimer(CycleInterval, CycleClock);
         try
         {
             while (await timer.WaitForNextTickAsync(stoppingToken))
