@@ -7,7 +7,7 @@ using Pb = Platform.Shared.Contracts.Grpc.Authz.V1;
 
 namespace Platform.Shared.Infrastructure.Tests.Foundation.Authz;
 
-// FR-19, FR-20, SC-17, NFR-14, ADR-0096 決定 1, 計画 ADR-0114 決定 2, IADR-0431, IADR-0474 (#1532):
+// FR-19, FR-20, SC-17, NFR-14, ADR-0096 決定 1, 計画 ADR-0114 決定 2, IADR-0431, IADR-0474 (#1532, #1583):
 // 利用者名簿の 1 人分の照会（`GetUserAttributes` の found / enabled / 退職の窓）は 2 つの呼び出し元が読む ——
 // 退職者の個人資料の完全削除（日次）と、同期トークンの所有者の照会（同期要求ごと）。
 // **応答の写し方は同じで、失敗時のログの文言だけが違う**ことを固定する。
@@ -58,12 +58,48 @@ public class UserDirectoryGrpcClientStatusTests
         warn.Message.Should().Contain("退職の窓").And.Contain("削除しません");
     }
 
-    private sealed class FakeClient(StatusCode? failWith) : Pb.UserDirectory.UserDirectoryClient
+    // #1583: s2s の資格情報が取れない枝（`InvalidOperationException`。`UserDirectoryGrpcClient` の 2 つ目の catch）。
+    // 🔴 RpcException の枝と同じく、**同期の経路の失敗を退職の窓の文言で書かない**ことを固定する ——
+    // 2 つの枝は別々の `if` であり、片方だけを取り違える変異を RpcException の試験は捕まえない。
+    [Fact]
+    public async Task 同期の読み口のs2s失敗は同期要求を拒否する旨を記録し退職の窓の文言で記録しない()
+    {
+        var logger = new RecordingLogger<UserDirectoryGrpcClient>();
+        var client = new UserDirectoryGrpcClient(
+            new FakeClient(null, new InvalidOperationException("no s2s token")), logger);
+
+        (await client.GetAccountStatusAsync("alice", Ct)).Should().BeNull();
+
+        var warn = logger.OfLevel(LogLevel.Warning).Should().ContainSingle().Subject;
+        warn.Message.Should().Contain("s2s").And.Contain("同期").And.Contain("拒否");
+        warn.Message.Should().NotContain("退職").And.NotContain("削除");
+        warn.Exception.Should().BeOfType<InvalidOperationException>("原因を運用者へ残す");
+    }
+
+    // 対: 退職の窓の読み口の s2s 失敗は「削除しない」旨を記録する（上の試験が常に同期の文言を出す実装で緑にならないように）。
+    [Fact]
+    public async Task 退職の窓の読み口のs2s失敗は削除しない旨を記録する()
+    {
+        var logger = new RecordingLogger<UserDirectoryGrpcClient>();
+        var client = new UserDirectoryGrpcClient(
+            new FakeClient(null, new InvalidOperationException("no s2s token")), logger);
+
+        (await client.GetRetentionStatusAsync("alice", Ct)).Should().BeNull();
+
+        var warn = logger.OfLevel(LogLevel.Warning).Should().ContainSingle().Subject;
+        warn.Message.Should().Contain("s2s").And.Contain("退職の窓").And.Contain("削除しません");
+        warn.Message.Should().NotContain("同期");
+    }
+
+    private sealed class FakeClient(StatusCode? failWith, Exception? throwing = null)
+        : Pb.UserDirectory.UserDirectoryClient
     {
         public override AsyncUnaryCall<Pb.GetUserAttributesResponse> GetUserAttributesAsync(
             Pb.GetUserAttributesRequest request, CallOptions options)
         {
-            var response = failWith is { } status
+            var response = throwing is not null
+                ? Task.FromException<Pb.GetUserAttributesResponse>(throwing)
+                : failWith is { } status
                 ? Task.FromException<Pb.GetUserAttributesResponse>(new RpcException(new Status(status, "fake")))
                 : Task.FromResult(new Pb.GetUserAttributesResponse
                 {

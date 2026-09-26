@@ -10,8 +10,8 @@ author: Claude
 ids: [FR-19, FR-20, FR-22, UC-11, SC-17, SC-20, NFR-14]
 adrs: [ADR-0037, ADR-0046, ADR-0105, ADR-0110, ADR-0114]
 iadrs: [IADR-0270, IADR-0338, IADR-0352, IADR-0360, IADR-0464, IADR-0474]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1176_obsidian-sync-rename-contract, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable]
-issues: [#451, #1098, #1153, #1176, #1521, #1532]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1176_obsidian-sync-rename-contract, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable, 20260926_issue-1583_purge-reread-before-delete]
+issues: [#451, #1098, #1153, #1176, #1521, #1532, #1583]
 -->
 
 # テスト仕様書: Obsidian 双方向同期
@@ -71,7 +71,7 @@ issues: [#451, #1098, #1153, #1176, #1521, #1532]
 | 29 | 有効な利用者は他者の無効化に巻き込まれず、名簿は 1 要求につき 1 回・トークンの所有者で引かれる | `…有効な利用者は他者の無効化に巻き込まれず名簿は所有者のIDで引かれる` |
 | 30 | トークンが無い・不正・期限切れ・失効の要求では名簿を引かない | `…端末が有効と確定しない要求では名簿を引かない` |
 | 31 | 名簿の口が構成されていない配備では同期トークンが通らない（同じホストで発行は通る＝陽性対照） | `SyncTokenAccountDirectoryUnconfiguredTests` › `口が構成されていない配備では同期トークンが通らない` |
-| 32 | 名簿の応答の写像: 有効 → 通す／無効化 → 拒否／居ない → 拒否（無効化と区別）／輸送の失敗（全 status）・上限（5 秒）超過 → 判定不能／要求自身の取り消しは判定不能に畳まない（本番のチャネルが投げる取り消しの形でも）／未構成の縮退と既定値は判定不能 | `GrpcOwnerAccountDirectoryTests`（8 メソッド・13 件） |
+| 32 | 名簿の応答の写像: 有効 → 通す／無効化 → 拒否／居ない → 拒否（無効化と区別）／輸送の失敗（全 status）・上限（5 秒）超過 → 判定不能／要求自身の取り消しは判定不能に畳まない（本番のチャネルが投げる取り消しの形でも）／未構成の縮退と既定値は判定不能／名簿は同期の経路の読み口で引き、失敗は「同期要求を拒否する」旨で記録する（退職の窓の文言で記録しない） | `GrpcOwnerAccountDirectoryTests`（9 メソッド・14 件） |
 
 ## テストケース一覧（Obsidian プラグイン第 1 段。Obsidian 実体なし）
 

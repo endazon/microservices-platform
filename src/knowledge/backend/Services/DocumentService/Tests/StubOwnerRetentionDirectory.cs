@@ -13,6 +13,11 @@ public sealed class StubOwnerRetentionDirectory : IOwnerRetentionDirectory
 {
     private readonly ConcurrentDictionary<string, OwnerRetentionStatus> _known = new(StringComparer.Ordinal);
 
+    // #1583: 呼ばれた回ごとに答えを変える所有者（判定の後・削除の直前の読み直しの間に状態が変わる状況）。
+    // 先頭から 1 つずつ消費し、**最後の 1 つは残し続ける**。
+    private readonly ConcurrentDictionary<string, ConcurrentQueue<Func<OwnerRetentionStatus?>>> _sequences =
+        new(StringComparer.Ordinal);
+
     // 照会された所有者（「所有者ごとに 1 回だけ引く」ことを測る）。
     public ConcurrentQueue<string> Queried { get; } = new();
 
@@ -35,15 +40,36 @@ public sealed class StubOwnerRetentionDirectory : IOwnerRetentionDirectory
         OwnerRetentionEligibility eligibility = OwnerRetentionEligibility.NotEvaluable)
         => Declare(ownerId, new OwnerRetentionStatus(true, true, eligibility));
 
+    /// <summary>
+    /// #1583: 1 回目・2 回目…の照会に順に答える（例外を投げる答えも置ける）。尽きたら最後の答えを返し続ける。
+    /// </summary>
+    public void DeclareSequence(string ownerId, params Func<OwnerRetentionStatus?>[] answers)
+    {
+        if (answers.Length == 0) throw new ArgumentException("答えが要る", nameof(answers));
+        _sequences[ownerId] = new ConcurrentQueue<Func<OwnerRetentionStatus?>>(answers);
+    }
+
+    /// <summary>退職済みで窓が閉じた所有者の答え（<see cref="DeclareSequence"/> 用）。</summary>
+    public static OwnerRetentionStatus Departed()
+        => new(true, false, OwnerRetentionEligibility.Elapsed);
+
     public Task<OwnerRetentionStatus?> GetAsync(string ownerId, CancellationToken ct)
     {
         Queried.Enqueue(ownerId);
+        if (_sequences.TryGetValue(ownerId, out var sequence))
+        {
+            Func<OwnerRetentionStatus?>? answer;
+            if (sequence.Count > 1) sequence.TryDequeue(out answer);
+            else sequence.TryPeek(out answer);
+            return Task.FromResult(answer!());
+        }
         return Task.FromResult(_known.TryGetValue(ownerId, out var status) ? status : null);
     }
 
     public void Reset()
     {
         _known.Clear();
+        _sequences.Clear();
         Queried.Clear();
     }
 }

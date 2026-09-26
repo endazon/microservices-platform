@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.ExternalServices;
 using Grpc.Core;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Pb = Platform.Shared.Contracts.Grpc.Authz.V1;
@@ -9,7 +10,7 @@ using Pb = Platform.Shared.Contracts.Grpc.Authz.V1;
 namespace DocumentService.Tests.Infrastructure.ExternalServices;
 
 // FR-19, UC-11, SC-19, NFR-09, ADR-0057 決定 2, ADR-0096 決定 1, [[IADR-0428]] 決定 3,
-// [[IADR-0431]], [[IADR-0474]] 決定 6 (#1532):
+// [[IADR-0431]], [[IADR-0474]] 決定 6 (#1532, #1583):
 // **退職者の個人資料の完全削除を決める gRPC 写像**を固定する。
 //
 // 🔴 本クラスが無かった。IADR-0431 の口は #1532 で document-service へ配線されるまで配備で動いておらず、
@@ -149,6 +150,41 @@ public class GrpcOwnerRetentionDirectoryTests
         var fake = FakeUserDirectoryClient.Hanging(asRpcException);
 
         (await Directory(fake, TimeSpan.FromMilliseconds(50)).GetAsync("carol", Ct)).Should().BeNull();
+    }
+
+    // T-RD-13 🔴 M8 を殺す試験（#1583）: 定期処理そのもの（呼び出し元）が取り消されたら、
+    // 「引けなかった」（null）に畳まず取り消しを伝える（`GrpcOwnerRetentionDirectory` の `null` の枝の
+    // `ct.ThrowIfCancellationRequested()`）。
+    // 🔴 本番のチャネルは取り消しを `RpcException(Cancelled)` で投げ、共有クライアントがそれを null に畳む。
+    // **その形（true）でしか M8 は見えない** —— `OperationCanceledException` の形（false）は catch の
+    // `when (!ct.IsCancellationRequested)` を素通りして、変異の有無に関わらず伝わる。両方を置いて向きを固定する。
+    [Theory(Timeout = 10_000)]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task 定期処理そのものが取り消されたら取り消しをそのまま伝える(bool asRpcException)
+    {
+        var fake = FakeUserDirectoryClient.Hanging(asRpcException);
+        using var cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromMilliseconds(50));
+
+        var act = () => Directory(fake, TimeSpan.FromMinutes(1)).GetAsync("carol", cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    // T-RD-14（#1583）: 退職の窓の実装は**退職の窓の読み口**（`GetRetentionStatusAsync`）を使う。
+    // 2 つの読み口は応答の写し方が同じなので、失敗時のログの文言でしか区別できない。
+    [Fact]
+    public async Task 退職の窓の読み口を使い失敗を削除しない旨で記録する()
+    {
+        var logger = new RecordingLogger<UserDirectoryGrpcClient>();
+        var client = new UserDirectoryGrpcClient(FakeUserDirectoryClient.Failing(StatusCode.Unavailable), logger);
+
+        (await new GrpcOwnerRetentionDirectory(client).GetAsync("carol", Ct)).Should().BeNull();
+
+        var warn = logger.OfLevel(LogLevel.Warning).Should().ContainSingle().Subject;
+        warn.Message.Should().Contain("退職の窓").And.Contain("削除しません");
+        warn.Message.Should().NotContain("同期");
     }
 
     // T-RD-10: 本番の上限は 5 秒（同期の口と同じ）。
