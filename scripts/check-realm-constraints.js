@@ -70,6 +70,9 @@
  * クライアントは利用者名のマッパーに lightweight.claim を求める／利用者が利用者名を選べる宣言（自己登録・利用者名の
  * 編集・メールアドレスを利用者名にする・IdP 連携）はレビュー済みの例外（SELF_CHOSEN_USERNAME_EXCEPTIONS）が無ければ
  * 違反／preferred_username の出どころは利用者のプロパティ username だけ（profile・クライアント単位・別スコープの上書きを含む）。
+ * #1605: 軽量アクセストークンは常に載るマッパー（クライアント単位・既定スコープ）だけで満たす／非推奨の directGrantsOnly と
+ * 未設定の directAccessGrantsEnabled（管理 REST の作成は true にする）をログインの口として数える（検査 5・SA の検査も同じ。loginFlowFlags）／
+ * user.attribute の先頭の大小を問わない（Keycloak は getUsername を引く）。
  *
  * 使い方:
  *   node scripts/check-realm-constraints.js            # deploy/keycloak/*-realm.json を検査。違反で exit 1。
@@ -481,14 +484,25 @@ function collectMfaAuditGaps(realm, { realmName = AUTH_POLICY_REALM } = {}) {
   }
 
   // --- (2) browser フローを迂回する direct access grant が無いこと ---
+  // #1605: 非推奨の directGrantsOnly と、未設定（管理 REST の作成は true にする）も数える（loginFlowFlags の注記）。
+  //        未設定を数えるのは bearerOnly でないクライアントだけ（bearerOnly はトークンを得られない）。
   for (const client of realm.clients || []) {
-    if (client && client.directAccessGrantsEnabled === true) {
-      gaps.push({
-        path: `realm.clients[${(client && client.clientId) || '«無名»'}].directAccessGrantsEnabled`,
-        detail: 'true です。パスワードグラントは browser フローを通らないため、OTP を一切問われずに'
-          + 'トークンが出ます（MFA のバイパス口）。',
-      });
-    }
+    if (!client) continue;
+    const { directBy } = loginFlowFlags(client);
+    if (directBy === null || (directBy === 'default' && client.bearerOnly === true)) continue;
+    const id = client.clientId || '«無名»';
+    const why = {
+      explicit: [`realm.clients[${id}].directAccessGrantsEnabled`, 'true です。'],
+      directGrantsOnly: [`realm.clients[${id}].directGrantsOnly`,
+        'true です（非推奨だが Keycloak 24 はまだ尊重し、管理 REST の作成では明示の directAccessGrantsEnabled=false も上書きして直接付与を開く）。'],
+      default: [`realm.clients[${id}].directAccessGrantsEnabled`,
+        '未設定です（import では false だが、管理 REST でクライアントを作ると Keycloak 24 は true にする。false を明示すること）。'],
+    }[directBy];
+    gaps.push({
+      path: why[0],
+      detail: `${why[1]}パスワードグラントは browser フローを通らないため、OTP を一切問われずに`
+        + 'トークンが出ます（MFA のバイパス口）。',
+    });
   }
 
   // --- (3) 登録済み OTP を利用者自身が消せないこと ---
@@ -1068,11 +1082,12 @@ function collectServiceAccountRoleGaps(realm, { realmName = AUTH_POLICY_REALM } 
             + '（IADR-0301 決定 2 / IADR-0329 決定 1 が分けた区切りです）。',
         });
       }
-      if (client && (client.standardFlowEnabled !== false || client.directAccessGrantsEnabled !== false)) {
+      // #1605: 非推奨の directGrantsOnly も数える（loginFlowFlags。true は直接付与・false は管理 REST の作成で標準フローを開く）。
+      if (client && (loginFlowFlags(client).standard || loginFlowFlags(client).direct)) {
         gaps.push({
           path: `realm.clients[${clientId}]`,
           detail: `${REALM_WRITE_ROLE} を持つ主体が対話ログインの経路を開いています`
-            + '（standardFlowEnabled / directAccessGrantsEnabled は両方 false であること）。'
+            + '（standardFlowEnabled / directAccessGrantsEnabled は両方 false を明示し、非推奨の directGrantsOnly は置かないこと）。'
             + ' 直接付与が通ると MFA を迂回して realm 設定を書ける経路になります（#438 検査 5 と同じ理由）。',
         });
       }
@@ -1184,16 +1199,43 @@ const SELF_CHOSEN_USERNAME_EXCEPTIONS = Object.freeze({});
 
 const clientAttributeTrue = (client, key) => String(((client && client.attributes) || {})[key] ?? '').toLowerCase() === 'true';
 
+/**
+ * 標準フローと直接アクセス（ROPC）が開くか（#1605）。**realm の import と管理 REST のクライアント作成のどちらかで開くなら開く**（保守側）。
+ * Keycloak 24.0（24.0.0 と 24.0.5 で同じ）の実装:
+ *   - import（`RepresentationToModel.createClient`。realm の作成・起動時 import）: 非推奨の `directGrantsOnly` があれば
+ *     `standardFlow = !dgo`・`directAccess = dgo` を入れ、**その後で明示の `standardFlowEnabled` / `directAccessGrantsEnabled` が上書き**する。
+ *     未設定は標準フロー true（JpaRealmProvider.addClient）・直接アクセス false。
+ *   - 管理 REST の作成（`ClientManager.createClient` → `OIDCLoginProtocolFactory.setupClientDefaults`。reconcile の `POST /clients`）:
+ *     同じ後で `directGrantsOnly` があれば**明示の値を上書き**し、無ければ未設定の標準フローと**直接アクセスを true にする**。
+ *   - 更新（`updateClient`）は `directGrantsOnly` を読まない。
+ * 戻り値の directBy は直接アクセスが開く理由（'directGrantsOnly' / 'explicit' / 'default'〔未設定〕/ null）。
+ */
+function loginFlowFlags(client) {
+  const c = client || {};
+  const dgo = typeof c.directGrantsOnly === 'boolean' ? c.directGrantsOnly : null;
+  const standard = dgo === true ? c.standardFlowEnabled === true : dgo === false ? true : c.standardFlowEnabled !== false;
+  let directBy = null;
+  if (dgo === true) directBy = 'directGrantsOnly';
+  else if (c.directAccessGrantsEnabled === true) directBy = 'explicit';
+  else if (dgo === null && c.directAccessGrantsEnabled === undefined) directBy = 'default';
+  return { standard, direct: directBy !== null, directBy, standardByDgo: dgo === false && c.standardFlowEnabled === false };
+}
+
 // 人のトークンを出す grant のうち、そのクライアントで開いているものの名前。
 // 🔴 `standardFlowEnabled` は**未設定なら Keycloak の既定で true**（JpaRealmProvider.addClient）である。
-//    implicit / 直接アクセス（ROPC）は既定 false なので明示の true だけを数える。
+//    implicit は既定 false なので明示の true だけを数える。
+//    #1605: 直接アクセス（ROPC）の「既定 false」は import にしか当たらない（管理 REST の作成は未設定を true にする）。
+//    非推奨の directGrantsOnly も数える（loginFlowFlags の注記）。
 //    #1596: デバイスグラントと CIBA はクライアント属性で開き、人が認証した結果のトークンを出す。
 function humanLoginGrants(client) {
   if (!client || client.bearerOnly === true) return [];
   const grants = [];
-  if (client.standardFlowEnabled !== false) grants.push('standardFlowEnabled');
+  const flags = loginFlowFlags(client);
+  if (flags.standard) grants.push(flags.standardByDgo ? 'standardFlowEnabled（directGrantsOnly=false は管理 REST の作成で標準フローを開く）' : 'standardFlowEnabled');
   if (client.implicitFlowEnabled === true) grants.push('implicitFlowEnabled');
-  if (client.directAccessGrantsEnabled === true) grants.push('directAccessGrantsEnabled');
+  if (flags.directBy === 'directGrantsOnly') grants.push('directGrantsOnly（非推奨。Keycloak 24 は直接アクセスを開く）');
+  else if (flags.directBy === 'explicit') grants.push('directAccessGrantsEnabled');
+  else if (flags.directBy === 'default') grants.push('directAccessGrantsEnabled（未設定。管理 REST の作成は true にする）');
   if (clientAttributeTrue(client, DEVICE_GRANT_ATTRIBUTE)) grants.push(`attributes.${DEVICE_GRANT_ATTRIBUTE}`);
   if (clientAttributeTrue(client, CIBA_GRANT_ATTRIBUTE)) grants.push(`attributes.${CIBA_GRANT_ATTRIBUTE}`);
   return grants;
@@ -1209,8 +1251,12 @@ const mapperConfig = (m) => (m && m.config) || {};
 const emitsUsernameToAccessToken = (m) => mapperConfig(m)['claim.name'] === USERNAME_CLAIM && String(mapperConfig(m)['access.token.claim']) === 'true';
 const emitsUsernameToLightweightToken = (m) => mapperConfig(m)['claim.name'] === USERNAME_CLAIM && String(mapperConfig(m)['lightweight.claim']) === 'true';
 // #1596: preferred_username の値が利用者のプロパティ `username` から来るか（出どころの検査）。
+// #1605: Keycloak 24.0 の ProtocolMapperUtils.getUserModelValue は `"get" + 先頭の 1 文字を大文字 + 残り` のメソッドを引くので、
+//        先頭の大小だけを問わない（`Username` も getUsername。`USERNAME` は getUSERNAME で無く、値が出ない）。
+const isUsernameSourceProperty = (v) => typeof v === 'string' && v.length > 0
+  && v[0].toLowerCase() === USERNAME_SOURCE_PROPERTY[0] && v.slice(1) === USERNAME_SOURCE_PROPERTY.slice(1);
 const isUsernameSourceMapper = (m) => !!m && m.protocolMapper === USERNAME_SOURCE_MAPPER
-  && mapperConfig(m)['user.attribute'] === USERNAME_SOURCE_PROPERTY;
+  && isUsernameSourceProperty(mapperConfig(m)['user.attribute']);
 
 // realm が `profile` スコープを明示しているとき、そのスコープが access token へ preferred_username を
 // **利用者名から**載せるか。明示していない realm は Keycloak の組み込みスコープが生成されるので判定しない（null）。
@@ -1224,19 +1270,19 @@ function profileScopeEmitsUsername(realm) {
 
 // クライアントのトークンに効くマッパー（クライアント単位の protocolMappers と、既定・任意スコープの中身）。
 // 任意スコープも数える —— クライアントが scope で要求すれば載り、preferred_username を上書きし得る。
+// `always` は要求によらず常に載るか（クライアント単位と既定スコープ。#1605: Keycloak 24 の TokenManager.getRequestedClientScopes は
+// 既定スコープとクライアント自身を常に、任意スコープは scope で要求したものだけを足す）。
 // realm が宣言していないスコープ（組み込み）は中身を判定しない。
 function effectiveMappers(realm, client) {
   const byName = new Map((Array.isArray(realm.clientScopes) ? realm.clientScopes : []).filter((s) => s && s.name).map((s) => [s.name, s]));
   const out = (Array.isArray(client.protocolMappers) ? client.protocolMappers : [])
-    .map((m) => ({ m, path: `realm.clients[${client.clientId || '«無名»'}].protocolMappers[${(m && m.name) || '«無名»'}]` }));
-  const names = [
-    ...(Array.isArray(client.defaultClientScopes) ? client.defaultClientScopes : []),
-    ...(Array.isArray(client.optionalClientScopes) ? client.optionalClientScopes : []),
-  ];
+    .map((m) => ({ m, always: true, path: `realm.clients[${client.clientId || '«無名»'}].protocolMappers[${(m && m.name) || '«無名»'}]` }));
+  const defaults = new Set(Array.isArray(client.defaultClientScopes) ? client.defaultClientScopes : []);
+  const names = [...defaults, ...(Array.isArray(client.optionalClientScopes) ? client.optionalClientScopes : [])];
   for (const name of new Set(names)) {
     const scope = byName.get(name);
     for (const m of (scope && Array.isArray(scope.protocolMappers) ? scope.protocolMappers : [])) {
-      out.push({ m, path: `realm.clientScopes[${name}].protocolMappers[${(m && m.name) || '«無名»'}]` });
+      out.push({ m, always: defaults.has(name), path: `realm.clientScopes[${name}].protocolMappers[${(m && m.name) || '«無名»'}]` });
     }
   }
   return out;
@@ -1282,7 +1328,11 @@ function collectMachineJudgementGaps(realm, { realmName = AUTH_POLICY_REALM, exc
   if (realm.registrationAllowed === true) selfChosen.push(['registrationAllowed', '利用者の自己登録が開いていて、登録画面で利用者名を入力できます']);
   if (realm.editUsernameAllowed === true) selfChosen.push(['editUsernameAllowed', '利用者がアカウント画面・プロフィール更新で自分の利用者名を変えられます']);
   if (realm.registrationEmailAsUsername === true) {
-    selfChosen.push(['registrationEmailAsUsername', '利用者名が利用者の入力するメールアドレスになります（登録・IdP の確認・メール変更で名乗れる）']);
+    // #1605: 単独では名乗れない（DeclarativeUserProfileProviderFactory.editEmailCondition: メールアドレスを利用者が入れられるのは
+    //        登録・IdP の確認・editUsernameAllowed・機能 UPDATE_EMAIL のときだけ）。UPDATE_EMAIL は realm の宣言の外で有効になり得るので検出は続ける。
+    selfChosen.push(['registrationEmailAsUsername', '利用者名がメールアドレスと同じになります。単独では利用者は名乗れませんが、'
+      + '自己登録・IdP の初回ログインの確認・editUsernameAllowed・機能 UPDATE_EMAIL（realm の宣言の外で有効になり得る）のどれかと組むと、'
+      + '利用者が入力・変更したメールアドレスがそのまま利用者名になります']);
   }
   for (const idp of Array.isArray(realm.identityProviders) ? realm.identityProviders : []) {
     const alias = (idp && idp.alias) || '«無名»';
@@ -1344,6 +1394,13 @@ function collectMachineJudgementGaps(realm, { realmName = AUTH_POLICY_REALM, exc
   //       access token から preferred_username が落ち、azp は乗るので腕 B が人を機械と読む）。
   const reported = new Set();
   const lightweightByPolicy = realmDeclaresLightweightExecutor(realm);
+  const lightweightByPolicyClients = [];
+  const lightweightDetail = (who) => `${who}軽量アクセストークンが有効なのに、`
+    + `利用者名から ${USERNAME_CLAIM} を出し lightweight.claim=true を持つマッパーが、常に載るマッパー（クライアント単位と既定スコープ）にありません`
+    + '（任意スコープは scope で要求しない限り載らないので数えません）。'
+    + ' 軽量アクセストークンには lightweight.claim=true のクレームしか載らない（Keycloak 24.0 の AbstractOIDCProtocolMapper）ため'
+    + `人のトークンから ${USERNAME_CLAIM} が落ち、azp は乗るので BFF の Bearer 受理が人を無人の主体として通します（腕 B）。`
+    + ' 軽量アクセストークンをやめるか、既定スコープの利用者名のマッパーへ lightweight.claim=true を足してください。';
   for (const client of humanClients) {
     const mappers = effectiveMappers(realm, client);
     for (const { m, path: p } of mappers) {
@@ -1359,19 +1416,25 @@ function collectMachineJudgementGaps(realm, { realmName = AUTH_POLICY_REALM, exc
           + ` ${USERNAME_SOURCE_MAPPER} の user.attribute=${USERNAME_SOURCE_PROPERTY} で出してください。`,
       });
     }
+    // #1605: 満たすのは常に載るマッパー（クライアント単位と既定スコープ）だけ。任意スコープは要求しない限り載らない。
     const lightweight = clientAttributeTrue(client, LIGHTWEIGHT_ATTRIBUTE) || lightweightByPolicy;
-    if (lightweight && !mappers.some(({ m }) => emitsUsernameToLightweightToken(m) && isUsernameSourceMapper(m))) {
-      gaps.push({
-        path: clientAttributeTrue(client, LIGHTWEIGHT_ATTRIBUTE)
-          ? `realm.clients[${client.clientId || '«無名»'}].attributes[${LIGHTWEIGHT_ATTRIBUTE}]`
-          : `realm.clientProfiles[${LIGHTWEIGHT_EXECUTOR}]`,
-        detail: `人がログインするクライアント ${client.clientId || '«無名»'} で軽量アクセストークンが有効なのに、`
-          + `利用者名から ${USERNAME_CLAIM} を出すマッパーが lightweight.claim=true を持ちません。`
-          + ' 軽量アクセストークンには lightweight.claim=true のクレームしか載らない（Keycloak 24.0 の AbstractOIDCProtocolMapper）ため'
-          + `人のトークンから ${USERNAME_CLAIM} が落ち、azp は乗るので BFF の Bearer 受理が人を無人の主体として通します（腕 B）。`
-          + ' 軽量アクセストークンをやめるか、利用者名のマッパーへ lightweight.claim=true を足してください。',
-      });
+    if (lightweight && !mappers.some(({ m, always }) => always && emitsUsernameToLightweightToken(m) && isUsernameSourceMapper(m))) {
+      if (clientAttributeTrue(client, LIGHTWEIGHT_ATTRIBUTE)) {
+        gaps.push({
+          path: `realm.clients[${client.clientId || '«無名»'}].attributes[${LIGHTWEIGHT_ATTRIBUTE}]`,
+          detail: lightweightDetail(`人がログインするクライアント ${client.clientId || '«無名»'} で`),
+        });
+      } else {
+        lightweightByPolicyClients.push(client.clientId || '«無名»');
+      }
     }
+  }
+  // #1605: クライアントポリシーの実行器は経路が 1 つなので、該当するクライアントを列挙した 1 件にまとめる（クライアントの数だけ出さない）。
+  if (lightweightByPolicyClients.length > 0) {
+    gaps.push({
+      path: `realm.clientProfiles[${LIGHTWEIGHT_EXECUTOR}]`,
+      detail: lightweightDetail(`クライアントポリシーの実行器 ${LIGHTWEIGHT_EXECUTOR} により、人がログインするクライアント ${lightweightByPolicyClients.join(' / ')} で`),
+    });
   }
 
   return gaps;
@@ -1786,6 +1849,18 @@ function selfTest() {
   cases.push({
     name: 'MFA: 変異 4 — direct access grant を開けると 1 件',
     pass: collectMfaAuditGaps(mutate((c) => { c.clients[0].directAccessGrantsEnabled = true; })).length === 1,
+  });
+  cases.push({
+    name: 'MFA: 変異（#1605）— 非推奨の directGrantsOnly=true も direct access grant として 1 件（管理 REST の作成は明示の false を上書きする）',
+    pass: (() => {
+      const g = collectMfaAuditGaps(mutate((c) => { c.clients[0].directGrantsOnly = true; }));
+      return g.length === 1 && g[0].path === 'realm.clients[bff].directGrantsOnly';
+    })(),
+  });
+  cases.push({
+    name: 'MFA: 変異（#1605）— directAccessGrantsEnabled 未設定も 1 件（管理 REST の作成は未設定を true にする）。bearerOnly の未設定は数えない',
+    pass: collectMfaAuditGaps(mutate((c) => { delete c.clients[0].directAccessGrantsEnabled; })).length === 1
+      && collectMfaAuditGaps(mutate((c) => { c.clients.push({ clientId: 'api', bearerOnly: true }); })).length === 0,
   });
   cases.push({
     name: 'MFA: 変異 5 — delete_credential を有効へ戻すと 1 件',
@@ -2230,6 +2305,11 @@ function selfTest() {
       && collectServiceAccountRoleGaps(saMut((c) => { c.clients[0].standardFlowEnabled = true; })).length === 1,
   });
   cases.push({
+    name: '🔴 SA 権限（#1605）: manage-realm を持つ主体の非推奨 directGrantsOnly も対話ログインの経路として落ちる（true は直接付与・false は管理 REST の作成で標準フロー）',
+    pass: collectServiceAccountRoleGaps(saMut((c) => { c.clients[0].directGrantsOnly = true; })).length === 1
+      && collectServiceAccountRoleGaps(saMut((c) => { c.clients[0].directGrantsOnly = false; })).length === 1,
+  });
+  cases.push({
     name: '🔴 SA 権限: realm-management-roles を宣言したのに担い手が users[] に無いと落ちる（#1301 の形）',
     pass: collectServiceAccountRoleGaps(saMut((c) => { c.users.splice(0, 1); })).length === 1,
   });
@@ -2286,8 +2366,9 @@ function selfTest() {
     realm: AUTH_POLICY_REALM,
     clientScopes: [profileScope, { name: 'roles' }],
     clients: [
-      { clientId: 'bff', standardFlowEnabled: true, serviceAccountsEnabled: true, defaultClientScopes: ['profile', 'roles'] },
-      { clientId: 'svc', standardFlowEnabled: false, serviceAccountsEnabled: true, defaultClientScopes: ['roles'] },
+      // #1605: directAccessGrantsEnabled を明示する（未設定は管理 REST の作成で true になるので、直接アクセスとして数える）。
+      { clientId: 'bff', standardFlowEnabled: true, directAccessGrantsEnabled: false, serviceAccountsEnabled: true, defaultClientScopes: ['profile', 'roles'] },
+      { clientId: 'svc', standardFlowEnabled: false, directAccessGrantsEnabled: false, serviceAccountsEnabled: true, defaultClientScopes: ['roles'] },
       { clientId: 'api', bearerOnly: true, defaultClientScopes: ['roles'] },
     ],
     users: [
@@ -2514,6 +2595,73 @@ function selfTest() {
   cases.push({
     name: '検査7（#1596 c）: 利用者名を自分で選べる宣言の例外（SELF_CHOSEN_USERNAME_EXCEPTIONS）は空で始める',
     pass: Object.keys(SELF_CHOSEN_USERNAME_EXCEPTIONS).length === 0,
+  });
+  // --- 検査7 の細部（#1605。#1602 の監査の残り）---
+  const lwMapper = (where) => ({
+    name: `lw-username-${where}`,
+    protocolMapper: 'oidc-usermodel-property-mapper',
+    config: { 'user.attribute': 'username', 'claim.name': 'preferred_username', 'access.token.claim': 'true', 'lightweight.claim': 'true' },
+  });
+  const lwBase = (fn) => mjMut((c) => {
+    c.clients[0].attributes = { 'client.use.lightweight.access.token.enabled': 'true' };
+    c.clientScopes.push({ name: 'lw', protocolMappers: [lwMapper('scope')] });
+    fn(c);
+  });
+  cases.push({
+    name: '検査7 変異（#1605）: 軽量アクセストークンの利用者名マッパー（lightweight.claim=true）が任意スコープにしか無ければ検出する（任意スコープは要求しない限り載らない）',
+    pass: (() => {
+      const g = collectMachineJudgementGaps(lwBase((c) => { c.clients[0].optionalClientScopes = ['lw']; }));
+      return g.length === 1 && g[0].path === 'realm.clients[bff].attributes[client.use.lightweight.access.token.enabled]';
+    })(),
+  });
+  cases.push({
+    name: '検査7 陰性対照（#1605）: 同じマッパーが既定スコープ・クライアント単位の protocolMappers にあれば軽量でも通す',
+    pass: collectMachineJudgementGaps(lwBase((c) => { c.clients[0].defaultClientScopes.push('lw'); })).length === 0
+      && collectMachineJudgementGaps(lwBase((c) => { c.clients[0].protocolMappers = [lwMapper('client')]; })).length === 0,
+  });
+  cases.push({
+    name: '検査7 変異（#1605）: 非推奨の directGrantsOnly=true だけのクライアント（明示の directAccessGrantsEnabled=false でも管理 REST の作成が上書きする）を直接アクセスとして検出する',
+    pass: (() => {
+      const g = collectMachineJudgementGaps(mjMut((c) => { c.clients[1].directGrantsOnly = true; }));
+      return g.length === 1 && g[0].path === 'realm.clients[svc].defaultClientScopes' && g[0].detail.includes('directGrantsOnly');
+    })(),
+  });
+  cases.push({
+    name: '検査7 変異（#1605）: directGrantsOnly=false は管理 REST の作成で標準フローを開く（明示の standardFlowEnabled=false を上書きする）ので検出する',
+    pass: collectMachineJudgementGaps(mjMut((c) => { c.clients[1].directGrantsOnly = false; })).length === 1,
+  });
+  cases.push({
+    name: '検査7 変異（#1605）: directAccessGrantsEnabled 未設定のクライアントは直接アクセスとして数える（管理 REST の作成は未設定を true にする）',
+    pass: (() => {
+      const g = collectMachineJudgementGaps(mjMut((c) => { delete c.clients[1].directAccessGrantsEnabled; }));
+      return g.length === 1 && g[0].path === 'realm.clients[svc].defaultClientScopes';
+    })(),
+  });
+  cases.push({
+    name: '検査7 陰性対照（#1605）: user.attribute=Username は Keycloak が getUsername を呼ぶので利用者名の出どころと認める（USERNAME・username2 は認めない）',
+    pass: collectMachineJudgementGaps(mjMut((c) => { c.clientScopes[0].protocolMappers[0].config['user.attribute'] = 'Username'; })).length === 0
+      && ['USERNAME', 'username2', ' username'].every((v) => paths(collectMachineJudgementGaps(mjMut((c) => {
+        c.clientScopes[0].protocolMappers[0].config['user.attribute'] = v;
+      }))).includes('realm.clientScopes[profile].protocolMappers')),
+  });
+  cases.push({
+    name: '検査7（#1605）: registrationEmailAsUsername の文言は、単独では名乗れず登録・IdP・editUsernameAllowed・UPDATE_EMAIL と組むときだと書く',
+    pass: (() => {
+      const g = collectMachineJudgementGaps(mjMut((c) => { c.registrationEmailAsUsername = true; }));
+      return g.length === 1 && g[0].path === 'realm.registrationEmailAsUsername'
+        && g[0].detail.includes('単独では') && g[0].detail.includes('editUsernameAllowed') && g[0].detail.includes('UPDATE_EMAIL');
+    })(),
+  });
+  cases.push({
+    name: '検査7（#1605）: クライアントポリシーの実行器 use-lightweight-access-token は、ログイン用クライアントが複数でも 1 件にまとめて報告する',
+    pass: (() => {
+      const g = collectMachineJudgementGaps(mjMut((c) => {
+        c.clientProfiles = { profiles: [{ name: 'lw', executors: [{ executor: 'use-lightweight-access-token', configuration: {} }] }] };
+        c.clients.push({ clientId: 'web2', directAccessGrantsEnabled: false, defaultClientScopes: ['profile'] });
+      }));
+      return g.length === 1 && g[0].path === 'realm.clientProfiles[use-lightweight-access-token]'
+        && g[0].detail.includes('bff') && g[0].detail.includes('web2');
+    })(),
   });
   cases.push({
     name: '🔴 検査7: 実データの realm が前提を守る（実データ・ラチェット。0 件走査を緑にしない）',

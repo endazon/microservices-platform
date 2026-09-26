@@ -464,6 +464,61 @@ module.exports = ({ ok, assert }) => {
       }
     });
 
+    // 🔴 #1605（NFR-09, ADR-0032）: #1602 の監査の残り —— 任意スコープにしか無い軽量の利用者名マッパー・非推奨の directGrantsOnly を
+    //   実データの realm へ入れて CLI から止められること、`user.attribute=Username`（Keycloak は getUsername を引く）は通すことを固定する。
+    ok('★ #1605: realm 検査の CLI が任意スコープだけの軽量マッパー・directGrantsOnly の変異で exit 1、user.attribute=Username は exit 0', () => {
+      const osT = require('os');
+      const { spawnSync: spawnT } = require('child_process');
+      const script = pathSeed.join(__dirname, 'check-realm-constraints.js');
+      const base = JSON.parse(fsSeed.readFileSync(seed.REALM_FILE, 'utf8'));
+      const run = (realm) => {
+        const dir = fsSeed.mkdtempSync(pathSeed.join(osT.tmpdir(), 'msp-1605-realm-'));
+        try {
+          const file = pathSeed.join(dir, 'fixture-realm.json');
+          fsSeed.writeFileSync(file, JSON.stringify(realm));
+          return spawnT(process.execPath, [script, file], { encoding: 'utf8' });
+        } finally {
+          fsSeed.rmSync(dir, { recursive: true, force: true });
+        }
+      };
+      const profileUsername = (r) => {
+        const m = r.clientScopes.find((s) => s.name === 'profile').protocolMappers.find((x) => x.config['claim.name'] === 'preferred_username');
+        assert.ok(m && m.config['user.attribute'] === 'username', 'profile の利用者名マッパーが user.attribute=username でない（前提が変わった）');
+        return m;
+      };
+      const cases = [
+        // (a) bff を軽量にし、lightweight.claim=true の利用者名マッパーを任意スコープにだけ置く
+        ['任意スコープだけの軽量マッパー', [/realm\.clients\[bff\]\.attributes\[client\.use\.lightweight\.access\.token\.enabled\]/], (r) => {
+          const c = r.clients.find((x) => x.clientId === 'bff');
+          c.attributes = { ...(c.attributes || {}), 'client.use.lightweight.access.token.enabled': 'true' };
+          const m = JSON.parse(JSON.stringify(profileUsername(r)));
+          m.name = 'lw-username';
+          m.config['lightweight.claim'] = 'true';
+          delete m.id;
+          r.clientScopes.push({ name: 'lw-username', protocol: 'openid-connect', protocolMappers: [m] });
+          c.optionalClientScopes = [...(c.optionalClientScopes || []), 'lw-username'];
+        }],
+        // (b) 標準フローも直接アクセスも閉じた SA のクライアントに非推奨の directGrantsOnly=true（検査 5 と検査 7 の両方）
+        ['directGrantsOnly', [/realm\.clients\[synthetic-monitor\]\.directGrantsOnly/, /realm\.clients\[synthetic-monitor\]\.defaultClientScopes/], (r) => {
+          const c = r.clients.find((x) => x.clientId === 'synthetic-monitor');
+          assert.ok(c && c.standardFlowEnabled === false && c.directAccessGrantsEnabled === false, 'synthetic-monitor がログインの口を閉じた形でない（前提が変わった）');
+          c.directGrantsOnly = true;
+        }],
+      ];
+      for (const [label, needles, mutate] of cases) {
+        const realm = JSON.parse(JSON.stringify(base));
+        mutate(realm);
+        const res = run(realm);
+        assert.strictEqual(res.status, 1, `${label} の変異を検出しなかった:\n${res.stdout}`);
+        for (const needle of needles) assert.match(res.stderr, needle, `${label}: ${res.stderr}`);
+      }
+      // 陰性対照: user.attribute=Username は利用者名の出どころ（Keycloak 24.0 の ProtocolMapperUtils.getUserModelValue は getUsername を引く）
+      const upper = JSON.parse(JSON.stringify(base));
+      profileUsername(upper).config['user.attribute'] = 'Username';
+      const ok1605 = run(upper);
+      assert.strictEqual(ok1605.status, 0, `user.attribute=Username を誤検出した:\n${ok1605.stdout}${ok1605.stderr}`);
+    });
+
     ok('★ seed: realm の client secret がスクリプトへ直書きされていない', () => {
       const src = fsSeed.readFileSync(pathSeed.join(__dirname, 'seed-abac-policies.js'), 'utf8');
       const realm = JSON.parse(fsSeed.readFileSync(seed.REALM_FILE, 'utf8'));
@@ -6018,6 +6073,13 @@ ${r.stderr}`);
         '@ を offset より前に書いた選択子',
         '名前が :offset / :bool で終わるメトリクスを修飾子として読まない',
         'UNVERIFIABLE_ALLOWLIST: 理由が空・空白だけ・文字列でない項目は違反にし',
+        // #1605: #1600 の監査の残り
+        'YAML: plain の数を yaml.v3 と同じに読む',
+        'absent のラベルを Prometheus と同じに作る',
+        'YAML: 二重引用の行末のエスケープした空白を残す',
+        'YAML: |+ / >+ はファイル末の改行を空行として数えない',
+        'YAML: ブロックスカラーの中の空白だけの行は',
+        '評価器の型は Grafana 11.0.0 の threshold が受け付ける 4 つだけ',
       ]) {
         assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
       }
@@ -6153,6 +6215,40 @@ ${r.stderr}`);
         ['OtelCollectorDown', '決して値を返さない', (t) => t.replace(
           "expr: 'up{job=\"otel-collector\"}'",
           "expr: 'up{job=\"otel-collector\"} unless up{job=\"otel-collector\"}'",
+        )],
+      ];
+      for (const [title, needle, mutate] of cases) {
+        const g2 = mutate(grafana);
+        const k2 = mutate(k8sInline);
+        assert.notStrictEqual(g2, grafana, `変異が compose に当たっていない（${title} / ${needle}）`);
+        assert.notStrictEqual(k2, k8sInline, `変異が k8s inline に当たっていない（${title} / ${needle}）`);
+        const r = g.findIssues({ prom, grafana: g2, datasources, k8sInline: k2 });
+        for (const label of ['compose', 'k8s inline']) {
+          assert.ok(
+            r.issues.some((x) => x.startsWith(`[${label}] ルール ${title}:`) && x.includes(needle)),
+            `${label} の ${title} を検出できなかった（${needle}）:\n${r.issues.join('\n')}`,
+          );
+        }
+      }
+    });
+
+    // #1605 / NFR-21: 実データの評価器を Grafana 11.0.0 に無い型（lte）へ変える／params を 0 始まり（yaml.v3 は 8 進）にする —— 写しの両方で赤。
+    //   `> 9` と `lt 010` は 8 進で `lt 8` になり永久に発火しない（10 進で読むと (9, 10) で発火し得るように見えていた）。
+    ok('check-grafana-alerting: 実データの評価器を 11.0.0 に無い型／0 始まりの params へ変えると写しの両方で赤（#1605・変異試験）', () => {
+      const g = require('./check-grafana-alerting.js');
+      const read = (p) => fs.readFileSync(path.join(REPO, p), 'utf8');
+      const prom = read('deploy/prometheus/alerts.yml');
+      const grafana = read('deploy/grafana/provisioning/alerting/slo-alerts.yaml');
+      const datasources = read('deploy/grafana/provisioning/datasources/datasources.yaml');
+      const k8sInline = g.extractK8sInline(read('deploy/local/observability/grafana.yaml'));
+      const cases = [
+        ['OtelCollectorDown', 'Grafana 11.0.0 の threshold が受け付けない型', (t) => t.replace(
+          /(expr: 'up\{job="otel-collector"\}'[\s\S]*?)type: lt, params: \[1\]/,
+          '$1type: lte, params: [1]',
+        )],
+        ['OtelCollectorDown', '永久に発火しない', (t) => t.replace(
+          /expr: 'up\{job="otel-collector"\}'([\s\S]*?)type: lt, params: \[1\]/,
+          'expr: \'up{job="otel-collector"} > 9\'$1type: lt, params: [010]',
         )],
       ];
       for (const [title, needle, mutate] of cases) {
