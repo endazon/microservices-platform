@@ -1,4 +1,5 @@
 using ConversionService.Domain.Ports;
+using ConversionService.Infrastructure.Configuration;
 using Grpc.Core;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Llm;
@@ -17,10 +18,19 @@ namespace ConversionService.Infrastructure.ExternalServices;
 // REST 実装が `EnsureSuccessStatusCode` の例外と接続失敗を同じ理由で画像保持にしているのと
 // **同じ枝・同じ理由文字列**である —— 変換パイプラインを止めないための deny-by-default であり、
 // 理由コードが変わると運用の集計（何件がどの理由で画像保持になったか）が輸送で割れる。
+//
+// 🔴 UC-06, IADR-0008（2026-09-27 追記 / #1621）: **呼び出しごとに期限（`Deadline`）を付ける。** 値は REST の
+// `HttpClient.Timeout` と同じ `DiagramCodingLimits.CallTimeout`（既定 20 秒）。期限が無いと、応答しないゲートウェイは
+// 受け口の ct（Wolverine の実行期限を含む）が先に立つ形でしか終わらず、画像保持への縮退に届かない。
 public class LlmGatewayGrpcDiagramCoder(
     Pb.LlmCompletion.LlmCompletionClient client,
-    ILogger<LlmGatewayGrpcDiagramCoder> logger) : IDiagramCoder
+    ILogger<LlmGatewayGrpcDiagramCoder> logger,
+    DiagramCodingLimits? limits = null,
+    TimeProvider? timeProvider = null) : IDiagramCoder
 {
+    private readonly TimeSpan _callTimeout = (limits ?? DiagramCodingLimits.Default).CallTimeout;
+    private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
+
     public async Task<DiagramCodingResult> CodeAsync(ExtractedFigure figure, string? confidentiality,
         CancellationToken ct = default)
     {
@@ -29,6 +39,7 @@ public class LlmGatewayGrpcDiagramCoder(
         {
             var resp = await client.CompleteAsync(
                 LlmGrpcMapping.ToProto(DiagramCodingInterpretation.BuildRequest(figure, confidentiality)),
+                deadline: (_time.GetUtcNow() + _callTimeout).UtcDateTime,
                 cancellationToken: ct);
             result = LlmGrpcMapping.ToDto(resp);
         }
@@ -36,8 +47,9 @@ public class LlmGatewayGrpcDiagramCoder(
         {
             // RpcException（全 status）と s2s トークン取得失敗（InvalidOperationException）。
             // UC-06 (#1621): 期限切れ・取り消しは `RpcException(DeadlineExceeded / Cancelled)` で表れる
-            // （チャネルは `ThrowOperationCanceledOnCancellation` を立てていない）。呼び出し元の ct が
-            // 立っていなければ画像保持へ畳み、立っていれば外へ出す —— REST 実装と同じ境界である。
+            // （チャネルは `ThrowOperationCanceledOnCancellation` を立てていない）。呼び出し元の ct（受け口の ct ＝
+            // 停止要求と Wolverine の実行期限の連結）が立っていなければ画像保持へ畳み、立っていれば外へ出す ——
+            // REST 実装と同じ境界である。自分の `Deadline` の期限切れは前者に当たる。
             // 🔴 **理由文字列は REST 実装と同じ `llm-call-failed` である**（変えると集計が輸送で割れる）。
             logger.LogWarning(ex, "Diagram coding gRPC call failed for {FigureId}; retaining as image",
                 figure.FigureId);

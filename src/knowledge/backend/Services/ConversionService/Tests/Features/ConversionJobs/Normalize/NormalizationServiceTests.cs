@@ -1,6 +1,7 @@
 using ConversionService.Domain.Ports;
 using ConversionService.Features.ConversionJobs.Normalize;
 using ConversionService.Domain;
+using ConversionService.Infrastructure.Configuration;
 using AwesomeAssertions;
 using Knowledge.Contracts.Events;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -234,6 +235,62 @@ public class NormalizationServiceTests
             "テキスト層あり（本文あり）／なし（本文なしで完了）の対が要る");
         goldens.Should().BeEquivalentTo(cases,
             "golden と case は 1 対 1 である（孤児 golden は case の削除漏れ）");
+    }
+
+    // UC-06 テスト仕様 T-48 の単体版 (#1621), IADR-0008（2026-09-27 追記）: 1 文書あたりの図のコード化の総枠。
+    // 1 回 50 秒かかるゲートウェイ（試験の時計を進めるだけ）と総枠 120 秒で図 5 つ → 0・50・100 秒の 3 回は呼び、
+    // 150 秒の時点で枠を使い切っているので**残る 2 つはゲートウェイを呼ばずに**画像として残す。
+    [Fact]
+    public async Task Retains_remaining_figures_without_calling_the_coder_once_the_budget_is_exhausted()
+    {
+        var time = new ManualTimeProvider();
+        var coder = new ClockAdvancingDiagramCoder(time, TimeSpan.FromSeconds(50));
+        var store = new RecordingObjectStore();
+        var figures = Enumerable.Range(1, 5).Select(i => new ExtractedFigure($"fig-{i}", "image/png", [1, 2, 3])).ToList();
+        var svc = new NormalizationService(
+            new FakeBodyConverter(new BodyConversionResult("# 本文\n", figures)),
+            coder, store, NullLogger<NormalizationService>.Instance,
+            DiagramCodingLimits.Default with { Budget = TimeSpan.FromSeconds(120) }, time);
+
+        var result = await svc.NormalizeAsync(Raw(), TestContext.Current.CancellationToken);
+
+        coder.CodedFigureIds.Should().Equal("fig-1", "fig-2", "fig-3");
+        result.DiagramsCoded.Should().Be(3);
+        result.DiagramsRetained.Should().Be(2);
+        result.Figures.Where(f => !f.Coded).Select(f => f.FigureId).Should().Equal("fig-4", "fig-5");
+        store.SavedAssets.Should().HaveCount(2);
+    }
+
+    // 対照: 枠の内に収まる文書では、すべての図をゲートウェイへ送る（枠が「常に呼ばない」に退化していない）。
+    [Fact]
+    public async Task Calls_the_coder_for_every_figure_while_the_budget_lasts()
+    {
+        var time = new ManualTimeProvider();
+        var coder = new ClockAdvancingDiagramCoder(time, TimeSpan.FromSeconds(10));
+        var figures = Enumerable.Range(1, 5).Select(i => new ExtractedFigure($"fig-{i}", "image/png", [1, 2, 3])).ToList();
+        var svc = new NormalizationService(
+            new FakeBodyConverter(new BodyConversionResult("# 本文\n", figures)),
+            coder, new RecordingObjectStore(), NullLogger<NormalizationService>.Instance,
+            DiagramCodingLimits.Default with { Budget = TimeSpan.FromSeconds(120) }, time);
+
+        var result = await svc.NormalizeAsync(Raw(), TestContext.Current.CancellationToken);
+
+        coder.CodedFigureIds.Should().HaveCount(5);
+        result.DiagramsCoded.Should().Be(5);
+    }
+
+    // 呼ばれるたびに試験の時計を進め、コード化に成功する（呼ばれた図を記録する）。
+    private sealed class ClockAdvancingDiagramCoder(ManualTimeProvider time, TimeSpan perCall) : IDiagramCoder
+    {
+        public List<string> CodedFigureIds { get; } = [];
+
+        public Task<DiagramCodingResult> CodeAsync(ExtractedFigure figure, string? confidentiality,
+            CancellationToken ct = default)
+        {
+            CodedFigureIds.Add(figure.FigureId);
+            time.Advance(perCall);
+            return Task.FromResult(DiagramCodingResult.Success("mermaid", "graph TD; A-->B"));
+        }
     }
 
     private sealed class FakeBodyConverter(BodyConversionResult result) : IBodyConverter

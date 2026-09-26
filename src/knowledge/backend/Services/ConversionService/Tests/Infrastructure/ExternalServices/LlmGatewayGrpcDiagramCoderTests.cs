@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using ConversionService.Domain;
 using ConversionService.Domain.Ports;
+using ConversionService.Infrastructure.Configuration;
 using ConversionService.Infrastructure.ExternalServices;
 using Grpc.Core;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -162,6 +163,38 @@ public class LlmGatewayGrpcDiagramCoderTests
         var thrown = await act.Should().ThrowAsync<RpcException>();
         thrown.Which.StatusCode.Should().Be(StatusCode.Cancelled);
         client.ReceivedToken.Should().Be(cts.Token);
+    }
+
+    // FR-12 T-45 (#1621), IADR-0008（2026-09-27 追記）: **呼び出しごとに期限を付ける**（値は REST の `HttpClient.Timeout` と
+    // 同じ `DiagramCodingLimits.CallTimeout`）。期限が無いと、応答しないゲートウェイは受け口の ct（Wolverine の実行期限を含む）が
+    // 先に立つ形でしか終わらず、上の縮退の枝に届かない。
+    [Fact]
+    public async Task 呼び出しごとに構成の期限を付ける()
+    {
+        var time = new ManualTimeProvider();
+        var client = new CapturingClient();
+        var coder = new LlmGatewayGrpcDiagramCoder(client, NullLogger<LlmGatewayGrpcDiagramCoder>.Instance,
+            DiagramCodingLimits.Default with { CallTimeout = TimeSpan.FromSeconds(17) }, time);
+
+        await coder.CodeAsync(Figure(), "internal", TestContext.Current.CancellationToken);
+
+        client.Deadline.Should().Be((time.GetUtcNow() + TimeSpan.FromSeconds(17)).UtcDateTime);
+    }
+
+    // 呼び出しの選択肢（期限）を記録し、コード化できない応答を返す。
+    private sealed class CapturingClient : Pb.LlmCompletion.LlmCompletionClient
+    {
+        public DateTime? Deadline { get; private set; }
+
+        public override AsyncUnaryCall<Pb.CompleteResponse> CompleteAsync(
+            Pb.CompleteRequest request, CallOptions options)
+        {
+            Deadline = options.Deadline;
+            var response = LlmGrpcMapping.ToProto(new CompletionApiResponse(
+                Text: "不可", Model: "m", InputTokens: 1, OutputTokens: 1));
+            return new(Task.FromResult(response), Task.FromResult(new Metadata()),
+                () => Status.DefaultSuccess, () => [], () => { });
+        }
     }
 
     // 呼び出しの途中で呼び出し元の ct を取り消し、実チャネルと同じ `RpcException(Cancelled)` で終わる。
