@@ -165,6 +165,10 @@ builder.Services.AddScoped<DocumentService.Features.Documents.DocumentObjectPurg
 // **REST の 4 端点と east-west gRPC の面（DocumentReadGrpcService）が同じ実体を通る**
 // （判定器を 2 つにしない）。DbContext と同じ scoped にする。
 builder.Services.AddScoped<DocumentReadUseCase>();
+// FR-19, NFR-09, 計画 ADR-0086 決定 1, ADR-0119 決定 3, [[IADR-0476]] 追記 (#1628): gRPC `DocumentRead` の本文の
+// 利用者文脈を信じる呼び出し元（クライアント識別子の許可集合）。**未構成なら `bff` だけ。構成したら置き換える。**
+builder.Services.Configure<DocumentService.Features.Documents.DocumentReadRelayOptions>(
+    builder.Configuration.GetSection(DocumentService.Features.Documents.DocumentReadRelayOptions.SectionName));
 // FR-05, FR-18, SC-05, ADR-0063 決定 1〜3, ADR-0065 決定 2, 計画 ADR-0086 決定 1, [[IADR-0410]] (#1255):
 // タグ反映の**本体**。🔴 **REST の端点と east-west gRPC の rpc が同じ関数を通る**（判定器を 2 つにしない）。
 builder.Services.AddScoped<AddDocumentTagUseCase>();
