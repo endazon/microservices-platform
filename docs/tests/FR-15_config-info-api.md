@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-15, SC-11, NFR-16]
 adrs: [ADR-0018, ADR-0029, ADR-0075]
-iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0268, IADR-0379, IADR-0462]
-specs: [20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, 20260926_1514_introspection-grpc-fanout]
-issues: [#444, #1514, #1255]
+iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0268, IADR-0379, IADR-0462, IADR-0465]
+specs: [20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, 20260926_1514_introspection-grpc-fanout, 20260926_1537_conversion-introspection-grpc-wiring]
+issues: [#444, #1514, #1255, #1537]
 -->
 
 # テスト仕様書: 構成情報 API（実効構成・ドリフト検出）
@@ -55,7 +55,7 @@ issues: [#444, #1514, #1255]
 | 2e | ポート差し替え | 構成でポート実装が入れ替わり、段登録・実効構成は不変 | `Platform.Shared.Infrastructure.Tests/Foundation/Pipeline/PortSwapCompositionTests` |
 | 2f | 自己申告の gRPC 面 | s2s で REST と同じ申告・`target` の null と空文字の往復・トークン無し=UNAUTHENTICATED・利用者トークン（管理者）=PERMISSION_DENIED（ループバックの実 Kestrel） | `Platform.Shared.Infrastructure.Tests/Foundation/Introspection/IntrospectionGrpcTests` |
 | 2g | 宛先ごとの輸送選択 | gRPC 宛先と REST 宛先の混在・gRPC だけの宛先・空の gRPC 項目は REST・配線不備は到達不能＋Error・不達は Warning・空の service は到達不能・期限・取り消し・登録の有無 | `…/Introspection/IntrospectionGrpcTests`・`…/Introspection/ConfigInspectionGrpcRegistrationTests` |
-| 2h | 配線 | compose・helm の全収集先（保留の宛先は理由つきで列挙し REST に残す）に gRPC 宛先・`grpcPort` / `Grpc__Port` が揃い、収集先の本番 Program.cs が h2c リスナを立てる／14 サービスの本番配線に gRPC 面が `ServiceCaller` 付きで張られる | `…/Introspection/IntrospectionGrpcDeploymentWiringTests`・各サービスの `IntrospectionEndpointTests` / `IntrospectionGrpcFaceTests` |
+| 2h | 配線 | compose・helm の全収集先（保留の宛先は理由つきで列挙し REST に残す。［2026-09-26］保留は 0 件——最後の変換サービスも配線した）に gRPC 宛先・`grpcPort` / `Grpc__Port` が揃い、収集先の本番 Program.cs が h2c リスナを立てる／14 サービスの本番配線に gRPC 面が `ServiceCaller` 付きで張られる | `…/Introspection/IntrospectionGrpcDeploymentWiringTests`・各サービスの `IntrospectionEndpointTests` / `IntrospectionGrpcFaceTests` |
 | 3 | ポリシー | ConfigViewer の OR 判定・AdminOnly 非侵食 | `AuthorizationService.Tests/ConfigViewerPolicyTests` |
 | 4 | ロール展開 | realm_access.roles → Role クレーム変換 | `AuthorizationService.Tests/KeycloakRolesClaimsTransformationTests` |
 | 5 | E2E（手動） | compose 実環境で operator=200 / 一般・無認証=404、実効構成の集約を確認 | Issue #118 監査で実測済み（poc-operator） |

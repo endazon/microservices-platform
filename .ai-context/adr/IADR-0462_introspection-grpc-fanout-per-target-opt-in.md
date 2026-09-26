@@ -104,6 +104,12 @@ plan_refs:
    （s2s 無し → `UNAUTHENTICATED`、利用者のトークン → `PERMISSION_DENIED`、`platform-service` → 申告）。conversion の
    `IntrospectionEndpointTests` の fail-closed の試験は他サービスと同じ形へ書き換えた。**配線（フォローアップ 3）は未着手のまま**であり、
    保留一覧の理由だけを改めた。本文は書き換えていない。
+   ［2026-09-26 追記 / #1537］**フォローアップ 3 を履行した。** conversion に `AddPlatformGrpcListener`、helm `grpcPort: 8081`、
+   compose `Grpc__Port` と `expose` を足し、BFF の gRPC 宛先へ加えた（下の決定 5 の追記）。配線の試験は保留一覧から外すだけで
+   conversion を検査対象へ入れ、保留は 0 件になった（一覧の仕組みは決定 2-A の段階移行のために残す）。conversion の
+   `IntrospectionEndpointTests` は、`platform-service` で得た申告を収集器と同じ写し（`IntrospectionGrpcMapping.ToDto`）で戻すと
+   REST の申告と一致することを足した。新しい IADR は起こしていない —— 本決定がすでに「認証が着地した段で h2c リスナ・`grpcPort`・
+   gRPC 宛先を足す」と決めており、これはその履行である。
    **mcp-server は収集先に無い**ので h2c リスナも `grpcPort` も足さない（面は共通基盤が張る）。収集先へ加えるのは FR-15 の挙動変更であり本決定の外
 4. **呼び出し側**（決定 2-A・3-A）: `EffectiveConfigCollector` が新しい `IEffectiveConfigCollector` になる。宛先 = `Services` と `GrpcServices` の
    キーの和。`GrpcServices` に空でないアドレスが在れば gRPC、無ければ REST（両方に在れば gRPC）。集約は REST だけの収集と同じ 1 つ。
@@ -118,6 +124,7 @@ plan_refs:
      （無い配備は資格情報を要求しない）。構成されているのに収集器が無ければ**起動時に落とす**（黙って REST へ倒すと、REST の退役の段で初めて露見する）
 5. **配備**: helm・compose の BFF に収集先 13 のうち conversion を除く 12 の gRPC 宛先を入れる。資格情報は既存の `bff` client（`platform-service` 付き）を使い、
    realm・Secret は増やさない。**並走中の正は REST**（[[IADR-0379]] 決定 5）—— 戻すのは宛先ごとに gRPC の行を消すだけ
+   ［2026-09-26 追記 / #1537］conversion を加え、gRPC 宛先は**収集先 13 のすべて**になった（REST の行は残す）。
 
 ## 理由
 
@@ -137,11 +144,13 @@ plan_refs:
   - 5 サービスの Service が複数ポートになり、ポートに名前が付く（`grpcPort` の既知の帰結。[[IADR-0379]] 決定 3）
   - ingestion が JwtBearer を持つ（要求に Bearer が付いたときだけ IdP のメタデータを引く。付かない要求は従来どおり素通し）
   - conversion は認証の別作業が着地するまで REST のまま残る（経路 ⑤ はこの 1 宛先ぶん移り切らない）
+    ［2026-09-26 追記 / #1537］解消した。13 宛先すべてが配備上 gRPC で収集される（並走中の正は引き続き REST）。
   - 稼働 k3s での h2c 往復は**未実測**（Pod の再構築を要する）。ループバックの実 Kestrel 往復で代替した
 - フォローアップ:
   1. #1515（④-a）・#1516（④-b。判断待ち）・#1517（REST 退役。#1255 残射程 2 と同じ段）
   2. mcp-server を収集先へ加えるか（FR-15 の挙動変更。本決定の外）
   3. conversion の gRPC 収集の配線（planning#651 の裁定による conversion の認証が着地した後）
+     ［2026-09-26 追記 / #1537］**完了**（作業仕様書 `.ai-context/specs/20260926_1537_conversion-introspection-grpc-wiring.md`）。
 
 ## 関連
 
