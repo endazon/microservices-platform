@@ -5905,6 +5905,16 @@ ${r.stderr}`);
         '== 0 の絞り込みと gt 0 の評価器の組み合わせを検出する',
         'and の左辺の == 0 を検出する',
         '評価器を読めないルールを検出する',
+        // #1588: bool の固定・読めない式の報告・refId の鎖
+        'bool は値を {0, 1} に固定する: x == bool 0 と gt 1 の組み合わせを検出する',
+        '右辺の定数の算術（up == 0 + 0）と gt 0 を検出する',
+        '16 進の定数（up == 0x0）と gt 0 を検出する',
+        'clamp_max(up, 0) と gt 0 を検出する',
+        '比較の上に算術が乗る形（(up == 0) * 1）は「検証できない」と報告する',
+        '集約・関数が比較を包む形',
+        'UNVERIFIABLE_ALLOWLIST: 載せたルールの「検証できない」は黙る',
+        'condition が存在しない refId を指すことを検出する',
+        'クエリと threshold の間の math の段は「検証できない」と報告する',
       ]) {
         assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
       }
@@ -5984,6 +5994,52 @@ ${r.stderr}`);
           );
         }
       }
+    });
+
+    // #1588 / NFR-21: 実データへ「読めない式」「bool の値域の取り違え」を入れると、写しの両方で赤になる。
+    //   フィクスチャだけだと実書式（`|` ブロックの expr・refId の鎖）に読み取りが合っていない型の空振りを捕まえられない。
+    ok('check-grafana-alerting: 実データの式を比較を包む集約へ変える／bool の値域を外すと写しの両方で赤（#1588・変異試験）', () => {
+      const g = require('./check-grafana-alerting.js');
+      const read = (p) => fs.readFileSync(path.join(REPO, p), 'utf8');
+      const prom = read('deploy/prometheus/alerts.yml');
+      const grafana = read('deploy/grafana/provisioning/alerting/slo-alerts.yaml');
+      const datasources = read('deploy/grafana/provisioning/datasources/datasources.yaml');
+      const k8sInline = g.extractK8sInline(read('deploy/local/observability/grafana.yaml'));
+      const cases = [
+        ['OtelCollectorDown', '式を検証できない', (t) => t.replace(
+          "expr: 'up{job=\"otel-collector\"}'",
+          "expr: 'max(up{job=\"otel-collector\"} == 0)'",
+        )],
+        // == bool 0 は {0, 1}。gt 1 では 1 も真にならない。
+        ['ServiceRequestMetricsAbsent', '永久に発火しない', (t) => t.replace(
+          /(== bool 0[\s\S]*?)type: gt, params: \[0\]/,
+          '$1type: gt, params: [1]',
+        )],
+      ];
+      for (const [title, needle, mutate] of cases) {
+        const g2 = mutate(grafana);
+        const k2 = mutate(k8sInline);
+        assert.notStrictEqual(g2, grafana, `変異が compose に当たっていない（${title}）`);
+        assert.notStrictEqual(k2, k8sInline, `変異が k8s inline に当たっていない（${title}）`);
+        const r = g.findIssues({ prom, grafana: g2, datasources, k8sInline: k2 });
+        for (const label of ['compose', 'k8s inline']) {
+          assert.ok(
+            r.issues.some((x) => x.startsWith(`[${label}] ルール ${title}:`) && x.includes(needle)),
+            `${label} の ${title} を検出できなかった:\n${r.issues.join('\n')}`,
+          );
+        }
+      }
+    });
+
+    // #1588: 許可リストは空で始める（実データの 20 件はすべて読める）。載せるならレビューを経て理由つきで。
+    ok('check-grafana-alerting: 実データは許可リストに頼らずすべて検証できる（#1588）', () => {
+      const g = require('./check-grafana-alerting.js');
+      const read = (p) => fs.readFileSync(path.join(REPO, p), 'utf8');
+      const grafana = read('deploy/grafana/provisioning/alerting/slo-alerts.yaml');
+      const r = g.filterEvaluatorIssues(grafana, 'compose');
+      assert.deepStrictEqual(r.issues, []);
+      assert.deepStrictEqual(r.allowlisted, [], `許可リストで黙らせているルールがある: ${r.allowlisted.join(', ')}`);
+      assert.strictEqual(r.checked, g.grafanaRuleTitles(grafana).length, '判定できたルール数がルール数と一致しない');
     });
 
     // 検査 6 の 0 件走査の門（件数リテラルは書かない。#558）。
@@ -7232,22 +7288,41 @@ ${r.stderr}`);
     const REPO = path.join(__dirname, '..');
     const WF = path.join(REPO, '.github/workflows');
 
-    /** 書き込みのスコープを持ってよいジョブ（`<file>:<job>` → 書き込みのスコープ）。作業仕様書の表と同じもの。 */
-    const WRITE_JOBS = {
-      'backlog-audit.yml:audit': ['issues'],
-      'changelog.yml:changelog': ['contents', 'pull-requests'],
-      'ci-failure-issue.yml:report': ['issues'],
-      'ci-latency-watch.yml:report-failure': ['issues'],
-      'backlog-audit.yml:report-failure': ['issues'],
-      'claude-code-review.yml:claude-review': ['id-token', 'issues', 'pull-requests'],
-      'claude-coding.yml:claude': ['contents', 'id-token', 'issues', 'pull-requests'],
-      'codeql.yml:analyze': ['security-events'],
-      'codeql.yml:report-failure': ['issues'],
-      'integration-stack.yml:report-failure': ['issues'],
-      'integration.yml:report-failure': ['issues'],
-      'obsidian-plugin-release.yml:release': ['contents'],
-      'openapi.yml:openapi': ['contents', 'pull-requests'],
-      'security.yml:report-failure': ['issues'],
+    /**
+     * `contents: read` 以外のスコープを持つジョブ（`<file>:<job>` → { スコープ: 水準 }）。作業仕様書の表と同じもの。
+     * #1588: **読み取りのスコープも載せて固定する。** #1581 は書き込みだけを固定しており、ci-latency-watch の
+     * `checks: read` / `pull-requests: read` のような「要る読み取り」を外しても PR の CI は通り、週次の実行で
+     * 初めて 403 で落ちる（fail-open する経路では落ちもしない）。表に無いスコープを足しても、表のスコープを
+     * 外しても落ちる。ジョブ単位で `contents` を書かない（＝ none）形は `contents: 'none'` として比べる。
+     */
+    const JOB_SCOPES = {
+      'backlog-audit.yml:audit': { issues: 'write', 'pull-requests': 'read' },
+      'backlog-audit.yml:report-failure': { actions: 'read', issues: 'write' },
+      'changelog.yml:changelog': { contents: 'write', 'pull-requests': 'write' },
+      // 起票（issues: write）と失敗ジョブ名の取得（listJobsForWorkflowRun → actions: read。#1588）
+      'ci-failure-issue.yml:report': { actions: 'read', issues: 'write' },
+      // GET /pulls → pull-requests: read ／ GET /commits/{sha}/check-runs → checks: read（ワークフローの注記）
+      'ci-latency-watch.yml:watch': { checks: 'read', 'pull-requests': 'read' },
+      'ci-latency-watch.yml:report-failure': { actions: 'read', issues: 'write' },
+      // actions: read は mcp__github_ci__* の導入条件と `gh run list`（ワークフローの注記）
+      'claude-code-review.yml:claude-review': { actions: 'read', 'id-token': 'write', issues: 'write', 'pull-requests': 'write' },
+      'claude-coding.yml:claude': { actions: 'read', contents: 'write', 'id-token': 'write', issues: 'write', 'pull-requests': 'write' },
+      'codeql.yml:analyze': { actions: 'read', 'security-events': 'write' },
+      'codeql.yml:report-failure': { actions: 'read', issues: 'write' },
+      'integration-stack.yml:report-failure': { actions: 'read', issues: 'write' },
+      'integration.yml:report-failure': { actions: 'read', issues: 'write' },
+      'obsidian-plugin-release.yml:release': { contents: 'write' },
+      'openapi.yml:openapi': { contents: 'write', 'pull-requests': 'write' },
+      'security.yml:report-failure': { actions: 'read', issues: 'write' },
+    };
+    const sortedScopes = (o) => Object.fromEntries(Object.entries(o || {}).sort(([a], [b]) => a.localeCompare(b)));
+    /** ジョブの permissions から `contents: read` を除いたもの（キーで整列）。ブロックが無ければ {}（ワークフロー単位を継ぐ）。 */
+    const nonDefaultScopes = (perms) => {
+      if (!perms) return {};
+      const out = {};
+      if (!('contents' in perms)) out.contents = 'none';
+      for (const [k, v] of Object.entries(perms)) if (!(k === 'contents' && v === 'read')) out[k] = v;
+      return sortedScopes(out);
     };
     /** contents: write を持たないのに checkout の資格情報を残してよいジョブと理由。 */
     const PERSIST_EXCEPTIONS = {
@@ -7299,7 +7374,9 @@ ${r.stderr}`);
           }
           checkouts.push({ persistFalse });
         });
-        return { id, permissions: pAt >= 0 ? readPermissions(body, pAt) : null, checkouts };
+        const usesLine = body.find((l) => /^ {4}uses:\s*\S/.test(l));
+        const uses = usesLine ? usesLine.replace(/^ {4}uses:\s*/, '').trim() : null;
+        return { id, permissions: pAt >= 0 ? readPermissions(body, pAt) : null, checkouts, uses };
       });
       return { permissions: wAt >= 0 ? readPermissions(lines, wAt) : null, jobs };
     }
@@ -7327,13 +7404,13 @@ ${r.stderr}`);
             issues.push(`${key}: ジョブの permissions が一括指定（${perms}）である。要るスコープだけを列挙する`);
             continue;
           }
-          const writes = Object.entries(perms || {}).filter(([, v]) => v === 'write').map(([k]) => k).sort();
-          const expected = WRITE_JOBS[key];
-          if (writes.length > 0 || expected) {
+          const actual = nonDefaultScopes(perms);
+          const expected = JOB_SCOPES[key] ? sortedScopes(JOB_SCOPES[key]) : undefined;
+          if (Object.keys(actual).length > 0 || expected) {
             seenWriteJobs.add(key);
-            if (JSON.stringify(writes) !== JSON.stringify(expected || [])) {
-              issues.push(`${key}: 書き込みのスコープが表と違う（実際 ${JSON.stringify(writes)} / 表 ${JSON.stringify(expected || [])}）。` +
-                '増やすなら表と作業仕様書の表を同時に直す');
+            if (JSON.stringify(actual) !== JSON.stringify(expected || {})) {
+              issues.push(`${key}: contents: read 以外のスコープが表と違う（実際 ${JSON.stringify(actual)} / 表 ${JSON.stringify(expected || {})}）。` +
+                '書き込みも読み取りも、増減させるなら表と作業仕様書の表を同時に直す（#1581・#1588）');
             }
           }
           const canPush = perms && perms.contents === 'write';
@@ -7360,8 +7437,8 @@ ${r.stderr}`);
       assert.ok(jobCount >= 30 && checkoutCount >= 25, `ジョブ ${jobCount} 件 / checkout ${checkoutCount} 件しか読めない（走査が壊れている）`);
       assert.deepStrictEqual(issues, [], `GITHUB_TOKEN の権限の違反:\n  ${issues.join('\n  ')}`);
       // 表の側の腐り（消えたジョブが表に残る）も止める。
-      const stale = Object.keys(WRITE_JOBS).filter((k) => !seenWriteJobs.has(k));
-      assert.deepStrictEqual(stale, [], `表にあるのに実在しない（書き込みを持たない）ジョブ: ${stale.join(', ')}`);
+      const stale = Object.keys(JOB_SCOPES).filter((k) => !seenWriteJobs.has(k));
+      assert.deepStrictEqual(stale, [], `表にあるのに実在しない（contents: read 以外を持たない）ジョブ: ${stale.join(', ')}`);
     });
 
     ok('#1581: 権限の検査は、ワークフロー単位の欠落・一括指定・表に無い書き込み・資格情報の残置を落とす（変異試験）', () => {
@@ -7375,12 +7452,52 @@ ${r.stderr}`);
         ['ジョブを write-all にする', 'ci.yml', ci.replace(/^ {2}lint:\n {4}runs-on: ubuntu-latest\n/m, '  lint:\n    runs-on: ubuntu-latest\n    permissions: write-all\n'), 'ジョブの permissions が一括指定'],
         ['表に無いジョブへ contents: write を足す', 'ci.yml', ci.replace(/^ {2}lint:\n {4}runs-on: ubuntu-latest\n/m, '  lint:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n'), '表と違う'],
         ['読むだけのジョブの persist-credentials: false を外す', 'ci.yml', ci.replace(/(commit-messages:[\s\S]*?)\n {10}persist-credentials: false/, '$1'), '資格情報を残す'],
+        // #1588: 読み取りのスコープも固定する（外しても足しても落ちる）。
+        ['ci-latency-watch の要る読み取り（checks: read）を外す', 'ci-latency-watch.yml', files['ci-latency-watch.yml'].replace(/\n {6}checks: read\n/, '\n'), '表と違う'],
+        ['codeql の analyze から actions: read を外す', 'codeql.yml', files['codeql.yml'].replace(/(security-events: write\n {6}contents: read\n) {6}actions: read\n/, '$1'), '表と違う'],
+        ['表に無いジョブへ読み取り（pull-requests: read）を足す', 'ci.yml', ci.replace(/^ {2}lint:\n {4}runs-on: ubuntu-latest\n/m, '  lint:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      pull-requests: read\n'), '表と違う'],
+        ['ジョブ単位の permissions から contents を落とす（contents: none になる）', 'backlog-audit.yml', files['backlog-audit.yml'].replace(/(\n {4}permissions:\n) {6}contents: read\n( {6}issues: write\n {6}pull-requests: read\n)/, '$1$2'), '表と違う'],
       ];
       for (const [name, file, mutated, expect] of cases) {
         assert.notStrictEqual(mutated, files[file], `変異「${name}」が当たっていない`);
         const { issues } = permissionIssues({ ...files, [file]: mutated });
         assert.ok(issues.some((x) => x.includes(expect)), `変異「${name}」を検出できなかった:\n  ${issues.join('\n  ')}`);
       }
+    });
+
+    // #1588: 再利用ワークフロー ci-failure-issue.yml の report ジョブが要求する範囲を、呼び出し側のすべてが与える。
+    //   要求が呼び出し側の上限を超えると、呼び出し側の run は**起動時に**失敗する。ところが report-failure は
+    //   PR では if: で skipped になり、起票そのものは非 PR の失敗時にしか走らない —— 食い違いに気付くのは
+    //   後段が落ちて起票が要る日である。表（JOB_SCOPES）とは別に、呼ぶ側と呼ばれる側の関係として固定する。
+    const reusableCallerIssues = (files) => {
+      const callee = parseWorkflow(files['ci-failure-issue.yml']).jobs.find((j) => j.id === 'report');
+      const need = sortedScopes(callee && callee.permissions);
+      const issues = [];
+      let callers = 0;
+      for (const [f, text] of Object.entries(files)) {
+        for (const job of parseWorkflow(text).jobs) {
+          if (job.uses !== './.github/workflows/ci-failure-issue.yml') continue;
+          callers++;
+          const given = sortedScopes(job.permissions);
+          if (JSON.stringify(given) !== JSON.stringify(need)) {
+            issues.push(`${f}:${job.id}: 呼び出し側が与える範囲 ${JSON.stringify(given)} が report ジョブの要求 ${JSON.stringify(need)} と違う`);
+          }
+        }
+      }
+      return { issues, callers, need };
+    };
+
+    ok('#1588: ci-failure-issue.yml の呼び出し側 6 本すべてが report ジョブの要求（actions: read を含む）を与える', () => {
+      const files = realFiles();
+      const { issues, callers, need } = reusableCallerIssues(files);
+      assert.ok(callers >= 6, `呼び出し側を ${callers} 本しか読めない（走査が壊れている）`);
+      assert.strictEqual(need.actions, 'read', 'report ジョブが actions: read を要求していない（失敗ジョブ名の取得が 403 になる）');
+      assert.deepStrictEqual(issues, []);
+      // 変異: 呼び出し側 1 本から actions: read を外すと落ちる。
+      const mutated = files['security.yml'].replace(/(uses: \.\/\.github\/workflows\/ci-failure-issue\.yml[\s\S]*?)\n {6}actions: read\n/, '$1\n');
+      assert.notStrictEqual(mutated, files['security.yml'], '変異が security.yml に当たっていない');
+      const r = reusableCallerIssues({ ...files, 'security.yml': mutated });
+      assert.ok(r.issues.some((x) => x.startsWith('security.yml:report-failure:')), r.issues.join('\n'));
     });
   }
 

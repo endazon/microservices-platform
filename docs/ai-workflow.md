@@ -1,8 +1,8 @@
 <!-- trace:
 adrs: [ADR-0048]
 iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240]
-specs: [20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups]
-issues: [#1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
+specs: [20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups]
+issues: [#1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
 -->
 
 # AI 駆動の実装ワークフロー（Runbook）
@@ -255,24 +255,32 @@ $ gh api -X PUT repos/<owner>/<repo>/branches/develop/protection \
 次の 4 点を `scripts/scripts.repo.test.js` が全ワークフローについて検査する（`scripts-tests` で走る）。
 
 1. **ワークフロー単位は `permissions: { contents: read }` だけ**にする。書かないと全ジョブが既定の `write` で走る。
-2. **書き込みは要るジョブにだけ、ジョブ単位で置く。** 書き込みを持つジョブは検査側の表で名指ししており、
-   表に無いジョブへ書き込みを足すと落ちる（足すときは表を同時に直す）。
+2. **書き込みと、`contents: read` 以外の読み取りは、要るジョブにだけジョブ単位で置く。** そうしたジョブは検査側の表で
+   スコープまで名指ししており、表に無いスコープを足しても、**要る読み取りを外しても**落ちる（増減させるときは表を同時に直す）。
+   読み取りまで固定するのは、要る読み取りが欠けても PR の CI は緑のまま通り、週次・日次の実行で初めて落ちるからである。
 3. `write-all` / `read-all` の一括指定は使わない。
 4. **`contents: write` を持たないジョブの checkout は `persist-credentials: false`** にする（資格情報を `.git/config` へ残さない。
    取得する submodule は public なので認証なしで取れる）。例外は Copilot のセットアップ手順の 1 つだけで、検査側に理由とともに名指ししてある。
+   🔴 **AI レビューのジョブでは、これでトークンが作業ツリーから消えるわけではない。** レビューのアクションが起動時に
+   `origin` をトークン入りの URL へ書き換えるため、同じトークンが `.git/config` に残る（手順の環境変数にも在る）。
+   設定は規則を一律に保つために残しており、トークンを縛っているのはジョブの権限の範囲とジョブ終了での失効である。
 
-書き込みを持つジョブ（2026-09-26 時点）:
+`contents: read` 以外のスコープを持つジョブ（2026-09-26 時点）:
 
-| ジョブ | 書き込み | 何を書くか |
-| --- | --- | --- |
-| `claude-code-review.yml` の `claude-review` | `pull-requests` / `issues` / `id-token` | レビューのスティッキーコメント・レビュー・issue の起票 |
-| `claude-coding.yml` の `claude` | `contents` / `pull-requests` / `issues` / `id-token` | 実装ブランチの push・PR / issue へのコメント |
-| `changelog.yml` の `changelog` | `contents` / `pull-requests` | 更新ブランチの push・更新 PR・タグ時の Release |
-| `openapi.yml` の `openapi` | `contents` / `pull-requests` | 更新ブランチの push・更新 PR |
-| `obsidian-plugin-release.yml` の `release` | `contents` | Release と資産 |
-| `codeql.yml` の `analyze` | `security-events` | 解析結果のアップロード |
-| `backlog-audit.yml` の `audit` | `issues` | 棚卸し issue の更新 |
-| 各ワークフローの `report-failure` と `ci-failure-issue.yml` の `report` | `issues` | 後段の失敗の起票 |
+| ジョブ | 書き込み | 読み取り（`contents` 以外） | 何に使うか |
+| --- | --- | --- | --- |
+| `claude-code-review.yml` の `claude-review` | `pull-requests` / `issues` / `id-token` | `actions` | レビューのスティッキーコメント・レビュー・issue の起票。CI の状態を読む道具の導入条件 |
+| `claude-coding.yml` の `claude` | `contents` / `pull-requests` / `issues` / `id-token` | `actions` | 実装ブランチの push・PR / issue へのコメント。自分の PR の CI 失敗を読む |
+| `changelog.yml` の `changelog` | `contents` / `pull-requests` | — | 更新ブランチの push・更新 PR・タグ時の Release |
+| `openapi.yml` の `openapi` | `contents` / `pull-requests` | — | 更新ブランチの push・更新 PR |
+| `obsidian-plugin-release.yml` の `release` | `contents` | — | Release と資産 |
+| `codeql.yml` の `analyze` | `security-events` | `actions` | 解析結果のアップロード |
+| `backlog-audit.yml` の `audit` | `issues` | `pull-requests` | 棚卸し issue の更新・PR の列挙 |
+| `ci-latency-watch.yml` の `watch` | — | `pull-requests` / `checks` | PR 一覧と check-runs を読む（足りないと 403） |
+| 各ワークフローの `report-failure` と `ci-failure-issue.yml` の `report` | `issues` | `actions` | 後段の失敗の起票と、失敗したジョブ名の取得 |
+
+🔴 **再利用ワークフロー `ci-failure-issue.yml` の `report` が要求する範囲は、呼び出し側の `report-failure` 6 本すべてが与える。**
+要求が呼び出し側の上限を超えると、呼び出し側の実行が起動時に失敗する。この一致も同じ検査が突き合わせる。
 
 🔴 **`changelog` / `openapi` / `release` / `report-failure` は develop・main・タグへの push、日次・週次、手動実行でしか走らない。**
 PR の CI ではこれらの権限が足りているかを確かめられない。権限を変えたら、次にそのワークフローが走ったときに結果を見ること。

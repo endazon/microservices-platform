@@ -14,6 +14,7 @@
 #     permissions:
 #       contents: read
 #       issues: write
+#       actions: read   # 失敗ジョブ名の取得（listJobsForWorkflowRun）。#1588
 #
 # ■ 設計の要点（いずれも外すと運用が壊れる）
 #   - **重複起票を防ぐ。** 日次実行が同じ理由で 5 日続けば issue が 5 本立つ。body に
@@ -39,7 +40,9 @@ on:
 
 # NFR, IADR-0232 (#1581): ワークフロー単位は読むだけにし、起票の書き込みは report ジョブにだけ置く。
 # 再利用ワークフローの権限は呼び出し側のジョブが与えた範囲を超えられない（上の「呼び出し側の書き方」の
-# permissions: { contents: read, issues: write } が上限）。
+# permissions: { contents: read, issues: write, actions: read } が上限）。
+# 🔴 #1588: report ジョブが要求する範囲を呼び出し側 6 本のすべてが与えること。要求が上限を超えると、
+#    呼び出し側の run が起動時に失敗する（scripts.repo.test.js の #1588 の検査が呼び出し側と突き合わせる）。
 permissions:
   contents: read
 
@@ -47,9 +50,12 @@ jobs:
   report:
     runs-on: ubuntu-latest
     # issue の起票・既存 issue へのコメント・ラベルの作成（issues: write）。
+    # 失敗したジョブ名の取得（listJobsForWorkflowRun。actions: read）。#1588 までは付けておらず、
+    # 取得は 403 で警告へ倒れ、起票の本文から失敗ジョブ名が落ちていた。
     permissions:
       contents: read
       issues: write
+      actions: read
     steps:
       - uses: actions/github-script@v9
         env:
