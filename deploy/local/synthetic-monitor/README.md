@@ -57,6 +57,8 @@ overlay の apply → プローブの rollout 待ち）。差分は 2 点だけ�
 🔴 **描画の段階で止める構成**（`helm template` / `helm upgrade` が失敗する）:
 3 サービスのどれかが `enabled: false`（除外できない構成では配備しない）／`aianalysis` の `extraEnv` / `extraEnvAppend` に
 `SyntheticMonitoring__AllowLlmEgress` が `false` 以外で立っている（60 秒のプローブが LLM を呼ぶと月 43,200 回）。
+鍵の綴りの揺れ（大文字小文字・`:` 区切り・`DOTNET_` / `ASPNETCORE_` 接頭辞）も .NET が同じ鍵として読むので同じく止め、
+値はリテラルの `false` だけを通す（Secret 参照は中身を確かめられないので止める）。
 **LLM を呼ぶ 60 分側は別の配備単位であり、課金の承認が先である**（本チャートにその knob は無い）。
 
 ### 🙏 利用者の手順

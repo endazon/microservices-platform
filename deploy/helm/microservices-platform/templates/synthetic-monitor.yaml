@@ -31,9 +31,21 @@ NFR-02, NFR-21, ADR-0044, ADR-0076 決定 3・4, ADR-0079 決定 1・2, IADR-037
 {{- end }}
 {{- end }}
 {{- $ai := $.Values.services.aianalysis | default dict }}
+{{- /* 🔴 名前は .NET の構成が同じ鍵として読む綴りをすべて同じものとして比べる（#1287 監査）:
+       大文字小文字を区別しない / `:` と `__` は同じ区切り / WebApplication.CreateBuilder は `DOTNET_`・`ASPNETCORE_`
+       接頭辞の環境変数も接頭辞を外して読む。完全一致で比べると SYNTHETICMONITORING__ALLOWLLMEGRESS や
+       DOTNET_SyntheticMonitoring__AllowLlmEgress が素通りする。
+       値は**リテラルの false（前後の空白・大文字小文字は無視）だけを許す**。それ以外はすべて止める ——
+       Secret 参照（secretKeyRef / valueFrom）は描画時に中身を確かめられず、値の無い項目は何が入るか決まらない。
+       ★ 判定は「リテラルの false か」の 1 条件だけにしてある。以前は `or .secretKeyRef (...)` の枝を並べていたが、
+         Secret 参照の項目は `value` を持たないので値の条件だけで既に止まり、その枝は効いていなかった
+         （監査の変異 M5 が生き残った理由）。deployment.yaml は `value` があればそれを描いて Secret 参照を無視するので、
+         「value: false と secretKeyRef を両方書いた項目」は実際に false が入り、通してよい。 */}}
 {{- range (concat ($ai.extraEnv | default list) ($ai.extraEnvAppend | default list)) }}
-{{- if eq .name "SyntheticMonitoring__AllowLlmEgress" }}
-{{- if or .secretKeyRef (ne (lower (toString .value)) "false") }}
+{{- $key := .name | toString | lower | trimPrefix "dotnet_" | trimPrefix "aspnetcore_" | replace ":" "__" }}
+{{- if eq $key "syntheticmonitoring__allowllmegress" }}
+{{- $literalFalse := eq (lower (trim (toString .value))) "false" }}
+{{- if not $literalFalse }}
 {{- fail "syntheticMonitor.enabled=true のまま aianalysis に SyntheticMonitoring__AllowLlmEgress が立っている。60 秒のプローブは LLM を呼ばない（ADR-0079 決定 1）。LLM を呼ぶ 60 分側は別の配備単位であり、課金の承認が先である（決定 2）。" }}
 {{- end }}
 {{- end }}

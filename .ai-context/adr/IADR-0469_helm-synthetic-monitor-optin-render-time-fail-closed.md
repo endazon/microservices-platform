@@ -72,6 +72,16 @@ develop の描画（既定の values・`values-local.yaml` の 2 通り）とバ
   門が与えているのでそろえる（無害な重複。一致を試験で固定する方を取る）。LlmGateway はヘッダだけを見るので env は要らない。
 - **描画時の fail-closed**: 集合のサービスが 1 つでも無効なら `fail`。`aianalysis` の `extraEnv` / `extraEnvAppend` に
   `SyntheticMonitoring__AllowLlmEgress` が `false` 以外（`secretKeyRef` を含む）で立っていれば `fail`。
+  - ［2026-09-26 追記 / #1287 監査］**鍵の名前は .NET の構成が同じ鍵として読む綴りをすべて同じものとして比べる。**
+    構成の鍵は大文字小文字を区別せず、`:` と `__` を同じ区切りとし、`WebApplication.CreateBuilder` は `DOTNET_` /
+    `ASPNETCORE_` 接頭辞の環境変数も接頭辞を外して読む。初版は完全一致で比べており、
+    `SYNTHETICMONITORING__ALLOWLLMEGRESS` / `SyntheticMonitoring:AllowLlmEgress` / `DOTNET_SyntheticMonitoring__AllowLlmEgress`
+    がどれも `true` のまま描画を通った（監査が rc=0 を実測）。比較の前に名前を小文字化し、接頭辞を外し、`:` を `__` にそろえる。
+  - ［同］**値の判定は「リテラルの false か」の 1 条件だけにした**（前後の空白・大文字小文字は無視）。初版の
+    `or .secretKeyRef (値が false でない)` の `.secretKeyRef` の枝は効いていなかった —— Secret 参照の項目は `value` を持たず、
+    値の条件だけで既に止まる（監査の変異 M5 が生き残った理由）。Secret 参照・`valueFrom`・値の無い項目は、いずれも
+    「リテラルの false ではない」として止まる。`value: false` と Secret 参照を両方書いた項目は、deployment.yaml が `value` を描いて
+    Secret 参照を無視するので実際に false が入り、通す（試験が描画の中身まで確かめる）。
   60 秒のプローブが LLM を呼ぶと月 43,200 回（ADR-0079 実測 2 の概算で月約 264,000 円）になる。**60 分側は別の配備単位で課金の承認が先**であり、
   本チャートに `AllowLlmEgress` の knob は置かない。
 - 🔴 **チャートはイメージの中身を確かめられない。** 「除外規則が入ったイメージであること」（ADR-0079 §フォローアップ 1）は

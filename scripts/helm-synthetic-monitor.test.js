@@ -347,6 +347,78 @@ ok('🔴 描画時の fail-closed: aianalysis に AllowLlmEgress が立ってい
   }
 });
 
+// #1287 監査（MEDIUM）: .NET の構成は鍵の大文字小文字を区別せず、`:` と `__` を同じ区切りとして読み、
+// WebApplication.CreateBuilder は `DOTNET_` / `ASPNETCORE_` 接頭辞の環境変数も接頭辞を外して読む。
+// 門が完全一致で名前を比べていると、どれも同じ AllowLlmEgress として効くのに素通りする（監査が rc=0 を実測した）。
+ok('🔴 描画時の fail-closed: AllowLlmEgress の綴りの揺れ（大文字・`:` 区切り・DOTNET_/ASPNETCORE_ 接頭辞）も止める', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'helm-synthetic-spell-'));
+  try {
+    const spellings = [
+      'SYNTHETICMONITORING__ALLOWLLMEGRESS',
+      'SyntheticMonitoring:AllowLlmEgress',
+      'DOTNET_SyntheticMonitoring__AllowLlmEgress',
+      'ASPNETCORE_SyntheticMonitoring__AllowLlmEgress',
+      'dotnet_syntheticmonitoring:allowllmegress',
+    ];
+    spellings.forEach((name, i) => {
+      const f = path.join(tmp, `s${i}.yaml`);
+      fs.writeFileSync(f, `services:\n  aianalysis:\n    extraEnvAppend:\n      - name: "${name}"\n        value: "true"\n`);
+      const r = helmTemplate(['-f', CI_VALUES, '-f', f]);
+      assert.notStrictEqual(r.status, 0, `${name}=true を通した（.NET は同じ鍵として読み、60 秒のプローブが LLM を呼ぶ）`);
+      assert.match(r.err, /AllowLlmEgress/);
+    });
+    // 陰性対照: 綴りが揺れても値が false なら通す（正規化が値の判定まで壊していないこと）。
+    const f = path.join(tmp, 'false.yaml');
+    fs.writeFileSync(f, 'services:\n  aianalysis:\n    extraEnvAppend:\n      - name: "DOTNET_SyntheticMonitoring:AllowLlmEgress"\n        value: " False "\n');
+    assert.strictEqual(helmTemplate(['-f', CI_VALUES, '-f', f]).status, 0);
+    // 陰性対照: 似ているが別の鍵は止めない（正規化が広すぎないこと）。
+    const g = path.join(tmp, 'other.yaml');
+    fs.writeFileSync(g, 'services:\n  aianalysis:\n    extraEnvAppend:\n      - name: "SyntheticMonitoring__AllowLlmEgressAudit"\n        value: "true"\n');
+    assert.strictEqual(helmTemplate(['-f', CI_VALUES, '-f', g]).status, 0);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// #1287 監査（LOW・変異 M5 の生存）: Secret 参照は描画時に中身を確かめられないので、立っているものとして止める。
+// この試験が無いと、門から `.secretKeyRef` の枝を消しても 17 本がすべて緑のままだった。
+ok('🔴 描画時の fail-closed: AllowLlmEgress を Secret 参照（secretKeyRef / valueFrom）で与えても止める', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'helm-synthetic-secret-'));
+  try {
+    const cases = {
+      secretKeyRef: '        secretKeyRef:\n          name: synthetic-llm\n          key: allow\n',
+      valueFrom: '        valueFrom:\n          secretKeyRef:\n            name: synthetic-llm\n            key: allow\n',
+    };
+    for (const [label, body] of Object.entries(cases)) {
+      for (const list of ['extraEnv', 'extraEnvAppend']) {
+        const f = path.join(tmp, `${label}-${list}.yaml`);
+        fs.writeFileSync(f, `services:\n  aianalysis:\n    ${list}:\n      - name: SyntheticMonitoring__AllowLlmEgress\n${body}`);
+        const r = helmTemplate(['-f', CI_VALUES, '-f', f]);
+        assert.notStrictEqual(r.status, 0, `${list} の ${label} 参照を通した（中身を確かめられない値で LLM が有効になり得る）`);
+        assert.match(r.err, /AllowLlmEgress/);
+      }
+    }
+    // 陰性対照: `value: false` と secretKeyRef を両方書いた項目は、deployment.yaml が value を描いて Secret 参照を
+    // 無視するので実際に false が入る。門はこれを通し、描画にも literal の false だけが出る（Secret 参照は出ない）。
+    const both = path.join(tmp, 'both.yaml');
+    fs.writeFileSync(
+      both,
+      'services:\n  aianalysis:\n    extraEnvAppend:\n      - name: SyntheticMonitoring__AllowLlmEgress\n        value: "false"\n        secretKeyRef:\n          name: synthetic-llm\n          key: allow\n',
+    );
+    const out = mustRender(['-f', CI_VALUES, '-f', both]);
+    const at = out.indexOf('- name: SyntheticMonitoring__AllowLlmEgress');
+    assert.ok(at !== -1, 'value: false の項目が描画に出ていない（試験の前提が崩れている）');
+    // 項目の範囲 = 見出し行の次から、次の `- name:` 行の手前まで。
+    const lines = out.slice(at).split('\n');
+    const next = lines.findIndex((l, i) => i > 0 && /^\s*- name:/.test(l));
+    const entry = lines.slice(0, next === -1 ? 4 : next).join('\n');
+    assert.match(entry, /value: "false"/);
+    assert.ok(!/secretKeyRef/.test(entry), `value と Secret 参照を両方描いた（Kubernetes が拒否する）:\n${entry}`);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 ok('🔴 変異: チャートの集合から 1 つ落とすと本試験の判定が赤になる（試験が効くことの陽性対照）', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'helm-synthetic-mut-'));
   try {
