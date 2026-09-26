@@ -5905,6 +5905,16 @@ ${r.stderr}`);
         '== 0 の絞り込みと gt 0 の評価器の組み合わせを検出する',
         'and の左辺の == 0 を検出する',
         '評価器を読めないルールを検出する',
+        // #1588: bool の固定・読めない式の報告・refId の鎖
+        'bool は値を {0, 1} に固定する: x == bool 0 と gt 1 の組み合わせを検出する',
+        '右辺の定数の算術（up == 0 + 0）と gt 0 を検出する',
+        '16 進の定数（up == 0x0）と gt 0 を検出する',
+        'clamp_max(up, 0) と gt 0 を検出する',
+        '比較の上に算術が乗る形（(up == 0) * 1）は「検証できない」と報告する',
+        '集約・関数が比較を包む形',
+        'UNVERIFIABLE_ALLOWLIST: 載せたルールの「検証できない」は黙る',
+        'condition が存在しない refId を指すことを検出する',
+        'クエリと threshold の間の math の段は「検証できない」と報告する',
       ]) {
         assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
       }
@@ -5984,6 +5994,52 @@ ${r.stderr}`);
           );
         }
       }
+    });
+
+    // #1588 / NFR-21: 実データへ「読めない式」「bool の値域の取り違え」を入れると、写しの両方で赤になる。
+    //   フィクスチャだけだと実書式（`|` ブロックの expr・refId の鎖）に読み取りが合っていない型の空振りを捕まえられない。
+    ok('check-grafana-alerting: 実データの式を比較を包む集約へ変える／bool の値域を外すと写しの両方で赤（#1588・変異試験）', () => {
+      const g = require('./check-grafana-alerting.js');
+      const read = (p) => fs.readFileSync(path.join(REPO, p), 'utf8');
+      const prom = read('deploy/prometheus/alerts.yml');
+      const grafana = read('deploy/grafana/provisioning/alerting/slo-alerts.yaml');
+      const datasources = read('deploy/grafana/provisioning/datasources/datasources.yaml');
+      const k8sInline = g.extractK8sInline(read('deploy/local/observability/grafana.yaml'));
+      const cases = [
+        ['OtelCollectorDown', '式を検証できない', (t) => t.replace(
+          "expr: 'up{job=\"otel-collector\"}'",
+          "expr: 'max(up{job=\"otel-collector\"} == 0)'",
+        )],
+        // == bool 0 は {0, 1}。gt 1 では 1 も真にならない。
+        ['ServiceRequestMetricsAbsent', '永久に発火しない', (t) => t.replace(
+          /(== bool 0[\s\S]*?)type: gt, params: \[0\]/,
+          '$1type: gt, params: [1]',
+        )],
+      ];
+      for (const [title, needle, mutate] of cases) {
+        const g2 = mutate(grafana);
+        const k2 = mutate(k8sInline);
+        assert.notStrictEqual(g2, grafana, `変異が compose に当たっていない（${title}）`);
+        assert.notStrictEqual(k2, k8sInline, `変異が k8s inline に当たっていない（${title}）`);
+        const r = g.findIssues({ prom, grafana: g2, datasources, k8sInline: k2 });
+        for (const label of ['compose', 'k8s inline']) {
+          assert.ok(
+            r.issues.some((x) => x.startsWith(`[${label}] ルール ${title}:`) && x.includes(needle)),
+            `${label} の ${title} を検出できなかった:\n${r.issues.join('\n')}`,
+          );
+        }
+      }
+    });
+
+    // #1588: 許可リストは空で始める（実データの 20 件はすべて読める）。載せるならレビューを経て理由つきで。
+    ok('check-grafana-alerting: 実データは許可リストに頼らずすべて検証できる（#1588）', () => {
+      const g = require('./check-grafana-alerting.js');
+      const read = (p) => fs.readFileSync(path.join(REPO, p), 'utf8');
+      const grafana = read('deploy/grafana/provisioning/alerting/slo-alerts.yaml');
+      const r = g.filterEvaluatorIssues(grafana, 'compose');
+      assert.deepStrictEqual(r.issues, []);
+      assert.deepStrictEqual(r.allowlisted, [], `許可リストで黙らせているルールがある: ${r.allowlisted.join(', ')}`);
+      assert.strictEqual(r.checked, g.grafanaRuleTitles(grafana).length, '判定できたルール数がルール数と一致しない');
     });
 
     // 検査 6 の 0 件走査の門（件数リテラルは書かない。#558）。
