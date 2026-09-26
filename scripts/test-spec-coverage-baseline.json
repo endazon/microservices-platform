@@ -228,6 +228,8 @@
       "PrivateNoteNotificationDispatchTests"
     ],
     "docs/tests/NFR-09_bff-edge-authentication.md": [
+      "BearerArmPipelineTests",
+      "BearerCallerPolicyTests",
       "BffEndpointAuthenticationTests"
     ],
     "docs/tests/NFR_test-isolation.md": [

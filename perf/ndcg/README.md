@@ -43,7 +43,7 @@
 
 ```bash
 # 1) 収集 ＋ 集計（既定のモデルで測る）
-NDCG_BASE_URL=https://edge.example NDCG_TOKEN=<jwt> NDCG_LABEL=voyage-3.5 \
+NDCG_BASE_URL=https://edge.example NDCG_SESSION_COOKIE=<セッション Cookie の値> NDCG_LABEL=voyage-3.5 \
   node scripts/measure-search-ndcg.js --live --qrels perf/ndcg/qrels.json --dump perf/ndcg/voyage.dump.json
 
 # 2) 集計だけ（保存済みの順位から。**環境なしで追試できる**）
@@ -54,7 +54,10 @@ node scripts/measure-search-ndcg.js --input perf/ndcg/voyage.dump.json --input p
 ```
 
 主な環境変数は `scripts/measure-search-ndcg.js` の冒頭にある（`NDCG_BASE_URL` / `NDCG_SEARCH_PATH` /
-`NDCG_TOKEN` / `NDCG_MODES` / `NDCG_LABEL` / `NDCG_K`）。**認証は取得済みのアクセストークンを与えること** ——
+`NDCG_SESSION_COOKIE` / `NDCG_TOKEN` / `NDCG_MODES` / `NDCG_LABEL` / `NDCG_K`）。
+**既定の経路（`/bff/search`）は BFF セッション Cookie で測ること**（`NDCG_SESSION_COOKIE`。ブラウザで BFF に
+ログインし、開発者ツールから `__Host-msp-session` の値を写す。値は資格情報である）—— BFF は利用者のトークンを
+`Authorization: Bearer` で受理しない（401）。`NDCG_TOKEN` は検索サービスを直に叩く（`NDCG_SEARCH_PATH=/search`）ときに使う。
 MFA 必須化により realm の対話利用者はパスワードグラントで取得できない（`perf/k6/README.md` と同じ事情）。
 
 ## 🔴 A/B のときに必ず対で切り替える 2 つの設定
@@ -88,10 +91,10 @@ MFA 必須化により realm の対話利用者はパスワードグラントで
 
 ```bash
 # 1) 基準（束ねない）
-NDCG_BASE_URL=https://edge.example NDCG_TOKEN=<jwt> NDCG_LABEL=voyage-only \
+NDCG_BASE_URL=https://edge.example NDCG_SESSION_COOKIE=<セッション Cookie の値> NDCG_LABEL=voyage-only \
   node scripts/measure-search-ndcg.js --live --qrels perf/ndcg/qrels.json --dump perf/ndcg/voyage-only.dump.json
 # 2) 検索サービスへ Qdrant__FusedCollections__0 を与えて再起動したあと（Helm なら embedding.enabled=true）
-NDCG_BASE_URL=https://edge.example NDCG_TOKEN=<jwt> NDCG_LABEL=fused-voyage+ruri \
+NDCG_BASE_URL=https://edge.example NDCG_SESSION_COOKIE=<セッション Cookie の値> NDCG_LABEL=fused-voyage+ruri \
   node scripts/measure-search-ndcg.js --live --qrels perf/ndcg/qrels.json --dump perf/ndcg/fused.dump.json
 # 3) 比較（先頭が基準。qrels の指紋が違えば落ちる）
 node scripts/measure-search-ndcg.js --input perf/ndcg/voyage-only.dump.json --input perf/ndcg/fused.dump.json

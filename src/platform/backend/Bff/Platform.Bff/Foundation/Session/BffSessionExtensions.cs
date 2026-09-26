@@ -25,7 +25,8 @@ public static class BffSessionExtensions
     /// 既定の振り分けスキーム。`Authorization: Bearer` が在れば JwtBearer、無ければ
     /// セッション Cookie へ委ねる。**両方を受理する**ための入口（IADR-0251 決定 9）。
     /// 🔴 ただし Bearer 腕は**誰の名義でも通るわけではない** ——
-    /// <see cref="BearerCallerPolicy"/> が「ブラウザが取得し得ないトークン」に絞る（[[IADR-0429]]）。
+    /// <see cref="BearerCallerPolicy"/> が無人の主体（サービス間）だけに絞る（[[IADR-0429]] / #1535）。
+    /// 利用者の資格情報で入る口はセッション Cookie だけである。
     /// </summary>
     public const string SmartScheme = "BffSmart";
 
@@ -65,14 +66,19 @@ public static class BffSessionExtensions
         //
         // 素直に `AddAuthentication(SessionScheme)` とすると、**スキームを指定しない端点は
         // Cookie しか見なくなり、`/bff/*` への Bearer 呼び出しが 401 になる**（実測。
-        // `DefaultSchemeRoutingTests` が固定している）。`scripts/verify-oidc-edge-flow.sh` は
-        // `/bff/*` を Bearer で 4 箇所叩いており、**統合スタックで動いている唯一の外形確認**である。
-        // 移行の副作用でそれを失わない。
+        // `DefaultSchemeRoutingTests` が固定している）。
+        //
+        // 🔴 ［2026-09-26 / #1535］**振り分けを残す理由は、無人の主体（サービス間 Bearer）だけになった。**
+        // 当初の理由だった `scripts/verify-oidc-edge-flow.sh`（`/bff/*` を利用者トークンの Bearer で
+        // 叩いていた）は BFF のログイン往復で得たセッション Cookie で叩く形へ移り、利用者トークンの
+        // 腕は `BearerCallerPolicy` から落とした。一方、合成監視（`synthetic-monitor`。IADR-0378）は
+        // client credentials の Bearer で `/bff/analysis/ask` を叩く恒久の呼び出し元であり、
+        // 既定を `BffSession` 単体へ狭めるとそれが 401 になる。[[IADR-0251]] 決定 9 の追記を参照。
         //
         // 🔴 **これは計画が許した形ではなく、実装側の判断である。** ADR-0032 が禁じているのは
         // **SPA がトークンを扱うこと**であって、非ブラウザの呼び出し口が `/bff/*` を Bearer で
         // 叩くことではない（原文に言及が無い）。**言及が無いことは許可ではない**ので、
-        // 移行期の姿勢として採り、狭める条件を [[IADR-0251]] 決定 9 に書く。
+        // 受理する主体を無人の主体に限っている（`BearerCallerPolicy`）。
         //
         // **振り分けスキームにするのは、既定ポリシーだけでは足りないからである。**
         // 端点が `RequireAuthorization(p => p.RequireRole(...))` で作る内側のポリシーは
@@ -228,12 +234,13 @@ public static class BffSessionExtensions
                 };
             });
 
-        // 🔴 NFR, SC-13, ADR-0032, IADR-0251 決定 9, [[IADR-0429]] (#1393):
+        // 🔴 NFR-09, SC-13, ADR-0032, IADR-0251 決定 9, [[IADR-0429]] (#1393 / #1535):
         // **Bearer 腕に門を掛ける。** 上の振り分けは「Bearer が在れば JwtBearer」までしか決めず、
         // **realm が発行した有効な JWT なら誰の名義でも通る**ままだった。#1393 で realm から
         // `platform-spa`（public client）を撤去したが、**口を閉じるだけでは足りない** ——
         // 同型の public client が足された瞬間に「ブラウザが利用者トークンを取り、`/bff/*` を
         // Bearer で直接叩く」経路（＝セッション Cookie と CSRF ヘッダの迂回）が復活する。
+        // #1535 で受理を無人の主体だけに狭めた（BFF 自身の client 名義の利用者トークンも通さない）。
         //
         // `AddPlatformAuth` が登録した JwtBearer を**後から**構成する（`AddJwtBearer` を二重に
         // 呼ぶと既定値の上書き順に依存する形になる）。判定は `BearerCallerPolicy` の純粋関数に
@@ -246,7 +253,7 @@ public static class BffSessionExtensions
             o.Events.OnTokenValidated = async ctx =>
             {
                 if (inner is not null) await inner(ctx);
-                if (BearerCallerPolicy.IsAcceptedCaller(ctx.Principal, options.ClientId)) return;
+                if (BearerCallerPolicy.IsAcceptedCaller(ctx.Principal)) return;
                 ctx.Fail(BearerCallerPolicy.RejectionReason(ctx.Principal));
             };
         });

@@ -1,7 +1,7 @@
 // NFR (#196): 横断検索の負荷試験（k6）。SLO: 検索 p95 ≤ 1.5s。
 // 実行例:
-//   BASE_URL=http://localhost:5000 TOKEN=<jwt> k6 run perf/k6/search-load.js
-//   （または KC_TOKEN_URL/KC_USERNAME/KC_PASSWORD で Keycloak パスワードグラント）
+//   BASE_URL=http://localhost:5000 SESSION_COOKIE=<BFF セッション Cookie の値> k6 run perf/k6/search-load.js
+//   （利用者のトークンは BFF が 401 で拒む。認証の詳細は lib/config.js。#1535）
 // 閾値（thresholds）を満たさない場合 k6 は非ゼロ終了する（CI/ゲート化に利用可能）。
 
 import http from 'k6/http';

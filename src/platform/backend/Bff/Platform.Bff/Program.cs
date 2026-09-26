@@ -209,6 +209,7 @@ builder.Services.AddPlatformObjectStorage(builder.Configuration);
 // NFR, ADR-0032 / IADR-0251 / IADR-0273 / #439 第 3 段: BFF セッション（Token Handler）。
 // **既定の認証スキームは振り分け（BffSmart）である**（3b①）—— `Authorization: Bearer` が
 // 在れば JwtBearer、無ければセッション Cookie。SPA はセッション方式（3b②③で切り替え済み）。
+// Bearer で受理するのは無人の主体（サービス間）だけである（BearerCallerPolicy。IADR-0429 / #1535）。
 builder.Services.AddBffSession(builder.Configuration);
 
 // SC-22, FR-05, ADR-0095 決定 3, IADR-0433, IADR-0453 (#1411): 秘密情報の投入（BFF → Vault の KV v2）。

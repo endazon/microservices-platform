@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR, SC-13, SC-16, ADR-0026, ADR-0031, ADR-0032, IADR-0033, IADR-0197, IADR-0251, IADR-0273, IADR-0420]
 author: claude
 created: 2026-09-11
-updated: 2026-09-11
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
@@ -82,6 +82,27 @@ ADR-0032 が禁じた「SPA がトークンを扱う」形はこの腕では成�
 Cookie 方式へ移ったら**腕 B を落とす**（機械のみ＝`ServiceCaller` と同じ強さ）。
 狭めるのは緩める方向ではないので後から実施できる。
 
+> **［2026-09-26 追記 / #1535］条件が満たされ、腕 B を落とした。Bearer で受理するのは腕 A（無人の主体）だけである。**
+>
+> - `verify-oidc-edge-flow.sh` は BFF のログイン往復で得たセッション Cookie で叩く形へ移った（決定 4 の追記）。
+> - `BearerCallerPolicy.IsAcceptedCaller` は `MachinePrincipal.IsMachine` だけを見る。**構成のクライアント ID を
+>   引数に取らなくなった**（許可リストを構成で持たない姿勢はそのまま —— 見る構成値そのものが無くなった）。
+>   **`azp` が `bff` でも、利用者のトークンは 401**。同じ `azp` の BFF 自身の service account（client credentials）は
+>   無人の主体として通る（拒否の軸は `azp` ではなく主体の種別である）。
+> - 母集合（腕 B に依存し得る呼び出し）は着手時に引き直した（作業仕様書 `20260926_issue-1535_drop-bff-bearer-user-arm.md`）。
+>   依存は `verify-oidc-edge-flow.sh`（直接）と、k6 / nDCG 計測（検証器の導線で取ったトークンを与える運用＝潜在）の 3 件で、
+>   後 2 者にはセッション Cookie の口を足した。合成監視は腕 A、SPA・E2E は Cookie／スタブ、AST は `/bff` を
+>   Bearer で叩かない（client credentials で後段を直接叩く）ため影響しない。
+> - 🔴 **隠れた依存の確認**: セッションが保持するアクセストークンは `azp=bff` の利用者トークンそのものであり、
+>   `SessionTokenPropagationMiddleware` がそれを `Authorization` へ昇格する。昇格後に既定スキームで再認証する
+>   経路があれば、腕 B の撤去で Cookie 経路が全滅する。BFF・knowledge・AST の BFF モジュールに該当する呼び出し
+>   （`AuthenticateAsync()` の既定スキーム・`GetTokenAsync`）は 0 件であり、`BearerArmPipelineTests` が本番と同じ配線で固定する。
+>
+> | 変異（2026-09-26 実測。戻して残渣 0） | 落ちたテスト |
+> | --- | --- |
+> | 腕 B を戻す（`azp == "bff"` の利用者を受理） | **4 件**: `User_token_minted_for_the_bff_confidential_client_is_refused`・`Wiring_fails_authentication_for_a_bff_client_user_token` ×2（構成値 `bff` / 空）・`BearerArmPipelineTests.Bff_client_user_token_sent_as_bearer_is_401`。陽性 5 件（service account・機械クライアント・`bff` の service account・配線の素通り・パイプラインの合成監視）と Cookie の陽性は緑のまま |
+> | 昇格の後に既定スキームで再認証する（隠れた依存の形） | **1 件**: `Cookie_session_is_accepted_and_promotes_the_same_token_downstream`（401）。同じクラスの他の 3 件は緑のまま |
+
 ### なぜ realm の撤去だけで足りないか
 
 realm は複数環境で運用され、**同型の public client は再び足され得る**（`platform-spa` は #126 から
@@ -100,6 +121,17 @@ realm は複数環境で運用され、**同型の public client は再び足さ
 - 🔴 **Cookie 方式への書き換えは採らなかった**（IADR-0251 決定 9 条件 1 は**開いたまま**）。
   20 段超・700 行の検証器を書き換えるのは本 issue の射程を超え、**CI の唯一の外形確認を
   同じ PR で作り直すのは、失敗したときに原因が切り分けられなくなる**。
+
+> **［2026-09-26 追記 / #1535］Cookie 方式へ移した（本決定の「Cookie 方式化はしない」は解消した）。**
+> 段数（基底 11 ＋ モードごとの加算）は変えず、段 3〜6 の中身を差し替えた。段 3＝`/bff/auth/login` の 302 が
+> discovery の認可端点を指す → ログイン画面、段 4＝資格情報（＋TOTP）→ `/bff/auth/callback` への redirect（従来どおり）、
+> 段 5＝コールバックを BFF に渡し **BFF がコードを交換してセッション Cookie（HttpOnly・Secure）を発行する**、
+> 段 6＝`/bff/auth/me` で利用者名・ロールが載り**応答にトークンが無い**こと。段 7 以降は Bearer を
+> 「Cookie の jar ＋ CSRF ヘッダ」へ置き換えた。**`OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `BFF_OIDC_CLIENT_SECRET` /
+> `OIDC_REDIRECT_URI` / `OIDC_CODE_VERIFIER` と realm JSON からの secret 読み出しは撤去した**（検証器が confidential
+> client の secret を持たなくなった）。従前の段 6（トークンのクレーム `clearance` / `department`）は検証器が
+> トークンを持たないので見られない —— ABAC の入力が載っていることは `ABAC_POSITIVE=1` の段 13〜15 が結果で示す
+> （CI の `integration-stack.yml` は常にこのモードで走る）。
 
 ## テストと変異試験（検出力の実測。戻して残渣 0 を確認済み）
 
