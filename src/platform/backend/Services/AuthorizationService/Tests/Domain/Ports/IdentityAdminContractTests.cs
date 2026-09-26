@@ -54,6 +54,12 @@ public class IdentityAdminContractTests
                 // FR-05, SC-06, 計画 ADR-0115 決定 1・5, [[IADR-0472]] (#1557): 部門コードの値域検証が
                 // 引く「このパスのグループは実在するか」。🔴 **読み取りであって、新規作成の口ではない。**
                 nameof(IIdentityAdminClient.FindGroupByPathAsync),
+                // FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): 部門の同期が使う
+                // 木の辿り・所属者の読み取りと、`department` 1 キーだけの書き込み。
+                // 🔴 **いずれも新規作成の口ではない。グループを属性に合わせる（逆向きの）口も持たない。**
+                nameof(IIdentityAdminClient.ListSubGroupsAsync),
+                nameof(IIdentityAdminClient.ListGroupMembersAsync),
+                nameof(IIdentityAdminClient.SetDepartmentAttributeAsync),
                 nameof(IIdentityAdminClient.ListAssignableRolesAsync),
                 nameof(IIdentityAdminClient.ReplaceAttributesAsync),
                 // FR-19, SC-19, 計画 ADR-0036 D-09, ADR-0082 決定 5, [[IADR-0428]] (#1392):

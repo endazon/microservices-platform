@@ -21,13 +21,13 @@
 #      機械で確かめたのは **`scripts/check-grafana-alerting.js`** の範囲
 #      —— ルール数と名前が `deploy/prometheus/alerts.yml` と 1 対 1、参照する
 #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、まで。
-#      **配備時に `/api/v1/provisioning/alert-rules` が 19 件返すことを確かめること。**
+#      **配備時に `/api/v1/provisioning/alert-rules` が 20 件返すことを確かめること。**
 #      🔴 **件数は導出値である。ここの数字を信用せず、着手のたびに数え直すこと**（IADR-0383）——
 #      本行は #1246 が 2 件足した後も「9 件」のままであり、**2 世代ぶん腐っていた**（#1203 で是正）。
 #      現在の内訳: platform-availability 2 ／ platform-slo 4 ／ platform-slo-evaluation-target 6
 #      ／ knowledge-health-producers 2 ／ knowledge-health-violations 1 ／ mail-relay-queue 2
 #      ／ reset-floor-availability 1 ／ llm-cost-budget 1 ＝ **19**
-#      （#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17、#1544 で 17 → 19 へ数え直した）。
+#      （#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17、#1544 で 17 → 19、#1573 で 19 → 20 へ数え直した）。
 #
 # 式は `deploy/prometheus/alerts.yml` と**同じもの**を使う（二重管理だが、暫定期間だけである）。
 #
@@ -516,6 +516,43 @@ groups:
               refId: A
               instant: true
               expr: 'increase(documents_unit_project_missing_total[1h]) > 0'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+
+  # FR-05, FR-09, SC-17, ADR-0115 決定 3, IADR-0473 (#1573): 部門の同期が直せていないこと（**0 が正常**）。
+  # 🔴 **`noDataState: OK`**（平常時・同期が Off のときは系列が無い）。🔴 **評価器は `gt 0` で正しい** ——
+  #   expr の `> 0` の後に残る値は前進量そのもの（正の数）であり、`== 0` で絞って `gt 0` で比べる形（#1577）ではない。
+  #   理由の正本は `deploy/prometheus/alerts.yml` の同名グループの前書きである。
+  - orgId: 1
+    name: department-sync
+    folder: SLO
+    interval: 1m
+    rules:
+      - uid: department-sync-not-correcting
+        title: DepartmentSyncNotCorrecting
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "部門の同期が利用者の属性を直せていない（0 が正常）"
+          description: "認可サービスの部門の同期（DepartmentAttributeSync:Mode=Fix）で、直近 1 時間に利用者の書き込みが失敗した（department_sync_users_total{department_sync_outcome=\"failed\"}）、周期ごと中断した（aborted）、または直そうとした全員が「読み取り後に変わった」で見送られた（all_skipped_changed）。エラーログの IdP 内部 ID で対象を特定し、all_skipped_changed なら運用仕様書の試験利用者 1 人での確認を行う。同期が Off のときは系列が無く鳴らない。"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: '(sum(increase(department_sync_users_total{department_sync_outcome="failed"}[1h])) or vector(0)) + (sum(increase(department_sync_cycles_total{department_sync_outcome=~"aborted|all_skipped_changed"}[1h])) or vector(0)) > 0'
           - refId: C
             datasourceUid: __expr__
             model:
