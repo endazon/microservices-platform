@@ -249,6 +249,109 @@ public class DeletionPropagationTests(TestWebApplicationFactory factory)
             .Should().BeTrue("消せなかった資料は行を残し、次周期で再試行する");
     }
 
+    // 🔴 #1608: オブジェクトストレージの**時間切れ**も 1 件の失敗であり、隔離を抜けない。
+    // SDK の HttpClient.Timeout は `TaskCanceledException`（`OperationCanceledException` の派生・内側に TimeoutException）で
+    // 表れ、呼び出し側の ct は立っていない。直す前は `when (ex is not OperationCanceledException)` の型だけの絞りで
+    // これが素通りし、1 件目の時間切れで 2 件目以降が処理されずに周期が打ち切られた。
+    // **順序を固定するため purger を直接呼ぶ**（周期の本体は候補を DB の順で渡すので、1 件目を選べない）。
+    [Fact]
+    public async Task 定期処理は1件目の時間切れで2件目以降の削除を止めない()
+    {
+        factory.Storage.ResetDeletions();
+        var owner = $"tmo-{Guid.NewGuid():N}"[..20];
+        var now = DateTimeOffset.UtcNow;
+        var (slowId, slowUri) = await SeedDeletedNoteAsync(owner, "時間切れの資料", now.AddDays(-91));
+        var (secondId, secondUri) = await SeedDeletedNoteAsync(owner, "2 件目の資料", now.AddDays(-91));
+        var (thirdId, thirdUri) = await SeedDeletedNoteAsync(owner, "3 件目の資料", now.AddDays(-91));
+
+        factory.Storage.DeleteThrows = uri => uri == slowUri
+            ? new TaskCanceledException("注入した時間切れ", new TimeoutException())
+            : null;
+        IReadOnlyList<Guid> purged;
+        try
+        {
+            using var scope = factory.Services.CreateScope();
+            purged = await scope.ServiceProvider.GetRequiredService<DocumentObjectPurger>()
+                .PurgeIsolatedAsync([slowId, secondId, thirdId], TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            factory.Storage.DeleteThrows = null;
+        }
+
+        purged.Should().Equal([secondId, thirdId],
+            "時間切れはその 1 件の失敗であり、残りの文書の削除を打ち切らない");
+        Deleted().Should().Contain([secondUri, thirdUri]).And.NotContain(slowUri);
+    }
+
+    // #1608: 周期の本体（90 日の自動物理削除）でも同じ。時間切れの文書は行を残して次周期へ回り、
+    // 周期そのものは例外で終わらない（直す前は `RunAsync` から時間切れが漏れ、周期の失敗になっていた）。
+    [Fact]
+    public async Task 定期処理はオブジェクトの時間切れで周期を打ち切らない()
+    {
+        factory.Storage.ResetDeletions();
+        var owner = $"tmc-{Guid.NewGuid():N}"[..20];
+        var now = DateTimeOffset.UtcNow;
+        var (slowId, slowUri) = await SeedDeletedNoteAsync(owner, "時間切れの資料", now.AddDays(-91));
+        var (goodId, goodUri) = await SeedDeletedNoteAsync(owner, "消せる資料", now.AddDays(-91));
+
+        factory.Storage.DeleteThrows = uri => uri == slowUri
+            ? new TaskCanceledException("注入した時間切れ", new TimeoutException())
+            : null;
+        try
+        {
+            using var scope = factory.Services.CreateScope();
+            var act = async () => await scope.ServiceProvider.GetRequiredService<PrivateNoteMaintenanceService>()
+                .RunAsync(now, TestContext.Current.CancellationToken);
+            await act.Should().NotThrowAsync("オブジェクトの時間切れは周期の失敗ではなく、その 1 件の失敗である");
+        }
+        finally
+        {
+            factory.Storage.DeleteThrows = null;
+        }
+
+        Deleted().Should().Contain(goodUri);
+        await AssertDocumentGoneAsync(goodId);
+        using var check = factory.Services.CreateScope();
+        var db = check.ServiceProvider.GetRequiredService<DocumentDbContext>();
+        (await db.Documents.AnyAsync(d => d.Id == slowId, TestContext.Current.CancellationToken))
+            .Should().BeTrue("時間切れの資料は行を残し、次周期で再試行する");
+    }
+
+    // #1608 の対照: **呼び出し側の ct による取り消し（周期の停止要求）は隔離に畳まず外へ出す。**
+    // 畳むと停止要求の後も次の文書へ進む（絞り込みを「全部捕まえる」へ広げた変異をこの試験が落とす）。
+    [Fact]
+    public async Task 定期処理は呼び出し側の取り消しを隔離に畳まず伝える()
+    {
+        factory.Storage.ResetDeletions();
+        var owner = $"cnl-{Guid.NewGuid():N}"[..20];
+        var now = DateTimeOffset.UtcNow;
+        var (firstId, firstUri) = await SeedDeletedNoteAsync(owner, "取り消し中の資料", now.AddDays(-91));
+        var (secondId, secondUri) = await SeedDeletedNoteAsync(owner, "取り消し後の資料", now.AddDays(-91));
+
+        using var stopping = new CancellationTokenSource();
+        factory.Storage.DeleteThrows = uri =>
+        {
+            if (uri != firstUri) return null;
+            stopping.Cancel();
+            return new OperationCanceledException(stopping.Token);
+        };
+        try
+        {
+            using var scope = factory.Services.CreateScope();
+            var act = async () => await scope.ServiceProvider.GetRequiredService<DocumentObjectPurger>()
+                .PurgeIsolatedAsync([firstId, secondId], stopping.Token);
+            await act.Should().ThrowAsync<OperationCanceledException>(
+                "停止要求は 1 件の失敗ではない。周期の外まで伝えて止める");
+        }
+        finally
+        {
+            factory.Storage.DeleteThrows = null;
+        }
+
+        Deleted().Should().NotContain(secondUri, "停止要求の後に次の文書へ進まない");
+    }
+
     // 論理削除（90 日の猶予つき）では実体を消さない —— 復元できる状態を壊さない。
     [Fact]
     public async Task 論理削除では実体を消さない()
