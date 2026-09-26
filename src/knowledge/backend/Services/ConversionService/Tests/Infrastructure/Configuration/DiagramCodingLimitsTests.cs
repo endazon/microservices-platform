@@ -86,7 +86,7 @@ public class DiagramCodingLimitsTests
     }
 
     // 受け口の期限の方針は、Wolverine が受け口へ渡す ct を**実際に**その長さで取り消す（ローカルキューで配送して測る）。
-    // 期限 1 秒の方針を入れ、受け口の ct が立つまでの時間を測る（既定のままなら 60 秒待つ）。
+    // 期限 1 秒の方針を入れ、発行から受け口の ct が立つまでの時間を測る（既定のままなら 60 秒待つ）。
     [Fact]
     [Trait("TestKind", "Integration")]
     public async Task 受け口の期限の方針は受け口の_ct_をその長さで取り消す()
@@ -110,15 +110,20 @@ public class DiagramCodingLimitsTests
             .Build();
         await host.StartAsync(TestContext.Current.CancellationToken);
 
+        // 期限の起点は受信側の Executor（発行より後）なので、発行時刻から測れば下限（1 秒。タイマ分解能の分だけ 900 ms に緩める）は守られる。
+        // 受信側の初回のコード生成が期限の内に入ることがあるため、受け口の中から測ると下限が揺れる（負荷下で実測）。
+        var published = Stopwatch.GetTimestamp();
         await host.Services.GetRequiredService<IMessageBus>().PublishAsync(new RawDocumentFetched(
             Guid.NewGuid(), Guid.NewGuid(), "filesystem", "/docs/probe.docx", "storage://bucket/raw/probe.docx",
             "application/msword", new Dictionary<string, string>(), [], DateTimeOffset.UtcNow));
 
-        var elapsed = await normalizer.CancelledAfter.Task.WaitAsync(TimeSpan.FromSeconds(30),
+        var cancelledAt = await normalizer.CancelledAt.Task.WaitAsync(TimeSpan.FromSeconds(45),
             TestContext.Current.CancellationToken);
         await host.StopAsync(TestContext.Current.CancellationToken);
 
-        elapsed.Should().BeGreaterThan(TimeSpan.FromMilliseconds(500)).And.BeLessThan(TimeSpan.FromSeconds(10));
+        // 既定（60 秒）のままなら 45 秒の待ちで落ちる。上限は負荷下の揺らぎを見込んで 30 秒に置く（既定との区別には十分）。
+        Stopwatch.GetElapsedTime(published, cancelledAt).Should()
+            .BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(900)).And.BeLessThan(TimeSpan.FromSeconds(30));
     }
 
     // 本番の Program.cs の配線: 受け口の実行期限は 300 秒、REST の図のコード化の名前付きクライアントの期限は 20 秒、
@@ -141,22 +146,21 @@ public class DiagramCodingLimitsTests
             .Timeout.Should().Be(TimeSpan.FromSeconds(DiagramCodingLimits.DefaultCallTimeoutSeconds));
     }
 
-    // 受け口の ct が立つまで待ち、立つまでの時間を返す。
+    // 受け口の ct が立つまで待ち、立った時刻（`Stopwatch` のタイムスタンプ）を返す。
     private sealed class WaitsForCancellationNormalizer : INormalizationService
     {
-        public TaskCompletionSource<TimeSpan> CancelledAfter { get; } =
+        public TaskCompletionSource<long> CancelledAt { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public async Task<NormalizationResult> NormalizeAsync(RawDocumentFetched raw, CancellationToken ct = default)
         {
-            var started = Stopwatch.StartNew();
             try
             {
                 await Task.Delay(Timeout.Infinite, ct);
             }
             catch (OperationCanceledException)
             {
-                CancelledAfter.TrySetResult(started.Elapsed);
+                CancelledAt.TrySetResult(Stopwatch.GetTimestamp());
                 throw;
             }
             throw new UnreachableException("the delay only ends by cancellation");

@@ -148,7 +148,7 @@ public class LlmGatewayGrpcDiagramCoderTests
         result.Reason.Should().Be("llm-call-failed");
     }
 
-    // FR-12 T-45 の対照 (#1621): **呼び出し元（メッセージ消費）の取り消しは畳まずに外へ出す。**
+    // FR-12 T-45 の対照 (#1621): **呼び出し元（受け口の ct ＝停止要求と Wolverine の実行期限の連結）の取り消しは畳まずに外へ出す。**
     // 呼び出し元の ct が生成クライアントへ渡っていること（`CallOptions.CancellationToken`）も併せて見る ——
     // 渡っていなければ、`!ct.IsCancellationRequested` の絞りは実際の取り消しと結び付かない。
     [Fact]

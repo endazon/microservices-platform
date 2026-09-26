@@ -122,6 +122,8 @@ public class LlmGatewayDiagramCoderTests
     // **LLM ゲートウェイの時間切れも呼び出し失敗である。** `HttpClient.Timeout` の経過は
     // `TaskCanceledException`（`OperationCanceledException` の派生）で表れ、呼び出し元の ct は立っていない。
     // 🔴 従前は型だけで絞っており（`ex is not OperationCanceledException`）、時間切れ 1 回で正規化全体が失敗していた。
+    // ⚠️ 本試験は絞りの境界だけを測る。本番で「自分の期限が受け口の ct より先に切れる」ことは `DiagramCodingLimits` が保証し、
+    // 受け口の期限つき ct の下での挙動は `DiagramCodingTimeoutPipelineTests`（UC-06 T-46〜T-48）が測る。
     [Fact]
     public async Task Retains_when_gateway_times_out()
     {
@@ -158,7 +160,7 @@ public class LlmGatewayDiagramCoderTests
         ct.IsCancellationRequested.Should().BeFalse();
     }
 
-    // FR-12 T-44 の対照 (#1621): **呼び出し元（メッセージ消費）の取り消しは畳まずに外へ出す。**
+    // FR-12 T-44 の対照 (#1621): **呼び出し元（受け口の ct ＝停止要求と Wolverine の実行期限の連結）の取り消しは畳まずに外へ出す。**
     // 要求の途中で呼び出し元の ct を取り消すと、`HttpClient` はその ct を運ぶ `TaskCanceledException` を投げる。
     // 画像保持へ畳むと、停止要求の最中に図を画像として保管し、変換を「成功」として記録してしまう。
     [Fact]
