@@ -3,15 +3,15 @@ title: 文書CRUD・バージョン管理 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-02
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-06, SC-05, UC-03]
-adrs: []
-iadrs: [IADR-0290]
-specs: [20260828_issue-1011_version-body-contract]
-issues: [#199, #1011, planning#473]
+adrs: [ADR-0034, ADR-0036, ADR-0050, ADR-0054]
+iadrs: [IADR-0290, IADR-0475]
+specs: [20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint]
+issues: [#199, #1011, #1575, planning#473]
 -->
 
 # テスト仕様書: 文書CRUD・バージョン管理
@@ -36,6 +36,9 @@ issues: [#199, #1011, planning#473]
 - 不変性: 過去版スナップショットが後続更新で書き換わらない（append-only・防御的コピー）。
 - 契約: **版応答は「その版の本文」を約束しない**（本文の参照を返さない）。版ごとの本文は保持されない（#1011）。
 - 連携（冪等性）: `DocumentNormalized` 受信でカタログ登録され、同一 `DocumentId` 再配信でも重複しない。
+- 契約（本文指紋）: 応答の指紋は送った本文から呼び出し側が独立に計算できる値と一致し、本文の変化だけで変わる。期待値は試験側で独立に計算する（本番の関数で作ると、関数と一緒に期待値が動く）。
+- 権限（見える集合を広げない）: 絞り込みの口の結果は既存の一覧の部分集合で、個人資料を返さず、絞り込みを足すと狭くなる。**除外は陽性対照（既存の一覧には居ること）と対で確かめる。**
+- 走査の安定性: 走査の途中の更新・削除・追加で、ずっと在った文書を読み飛ばさない（更新時刻で並べると落ちる）。
 
 ## テストケース一覧
 
@@ -66,11 +69,24 @@ issues: [#199, #1011, planning#473]
 | T-23 | — | `DocumentAttributes.ValidateConfidentiality`（null／欠落／未知／正準値） | 欠落・未知は NG、正準値は OK | 検証ヘルパー単体 | 自動（単体） |
 | T-24 | 本文つきで作成（版1）→ `PUT /{id}/body` で本文差し替え（版2） | `GET /versions/1` と `GET /versions` の**生 JSON** を見る。対照として `GET /{id}` も見る | 版応答に `markdownUri` が**現れない**（大小文字を問わず）・版行自体は返る（`version` を含む）・文書詳細には現れる | 版応答は版ごとの本文を約束しない | 自動（エンドポイント） |
 | T-25 | 同上 | 本文の格納先と参照 URI を見る | 参照 URI は `documents/{id}/body.md` で版に依らず同一・そこから返るのは**版 2 の本文だけ**・版 1 の本文はどこからも引けない | 版ごとの本文の非保持（機序） | 自動（エンドポイント） |
+| T-26 | 本文つきで作成 | 作成・`GET /{id}`・`GET /documents` の応答を見る | 3 つとも `contentFingerprint` が送った本文の UTF-8 の SHA-256 小文字 hex | 本文指紋の応答 | 自動（エンドポイント） |
+| T-27 | 本文なしで作成 | 作成・取得の応答を見る | `contentFingerprint` が `null` | 本文指紋の応答 | 自動（エンドポイント） |
+| T-28 | 本文なしで作成 | `PUT /{id}/body` を 2 回（本文を変える）→ `PATCH /metadata` | 1 回目で指紋が現れ、2 回目で変わり、メタデータ更新では変わらない | 本文指紋の性質 | 自動（エンドポイント） |
+| T-29 | — | 指紋つき・null の `DocumentDto` を gRPC の形へ写して戻す | 値も `null` も往復する（空文字へ化けない） | 本文指紋の gRPC 往復 | 自動（単体） |
+| T-30 | 同じ `project` の組織文書 2 件・個人資料 1 件・別 `project` の組織文書 1 件 | `GET /documents`（陽性対照）と `GET /documents/page?attr.project=…` | 既存の一覧は 4 件とも含む。絞り込みの口は組織文書 2 件だけで、既存の一覧の部分集合 | 見える集合を広げない | 自動（エンドポイント） |
+| T-31 | 所有者 alice の個人資料 | alice として `attr.doc_scope=private-note`・`attr.project=…`・`attr.owner=alice` で絞る | いずれも個人資料を返さない（既存の一覧には居る＝陽性対照） | 個人資料を返さない | 自動（エンドポイント） |
+| T-32 | 属性の異なる組織文書 3 件 | 絞り込みを 1 → 2 → 3 条件へ足す・一致しない値・大小違い・部分一致 | 前の結果の部分集合へ狭まり、一致しない値・大小違い・部分一致は空 | 絞り込みの単調性 | 自動（エンドポイント） |
+| T-33 | 同じ `project` の組織文書 5 件 | `limit=2` とカーソルで辿る | 3 ページ・重複なし・作成時刻の昇順（同時刻は ID 昇順） | ページング | 自動（エンドポイント） |
+| T-34 | 同じ `project` の組織文書 6 件 | 1 ページ目の後に未読の 1 件を更新・既読の 1 件を削除・1 件を追加して残りを辿る | 未読だった 4 件がちょうど 1 回ずつ、途中で作った文書が末尾に現れる | 走査の安定性 | 自動（エンドポイント） |
+| T-35 | 組織文書 2 件 | `limit=0` / `limit=100000` | 1 件＋次のカーソル / 2 件 | `limit` の丸め | 自動（エンドポイント） |
+| T-36 | — | 同じキーの重複（大小違いを含む）・空のキー・空の値・壊れたカーソル | 400 | 入力検証 | 自動（エンドポイント） |
+| T-37 | — | 端点の認可メタデータを見る | 絞り込みの口は認証を要求し、既存の一覧は要求しない（陽性対照） | 認証必須 | 自動（エンドポイント） |
 
 対応テスト実装:
 
 - 単体（ドメイン）: `src/knowledge/backend/Services/DocumentService/Tests/Domain/DocumentVersioningTests.cs`（T-01〜T-05）、`DocumentAttributesTests.cs`（T-23）
-- 単体（エンドポイント, InMemory）: `.../DocumentEndpointVersioningTests.cs`（T-06〜T-11・T-24〜T-25）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）
+- 単体（エンドポイント, InMemory）: `.../DocumentEndpointVersioningTests.cs`（T-06〜T-11・T-24〜T-25）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）、`DocumentFingerprintResponseTests.cs`（T-26〜T-28）、`DocumentPageTests.cs`（T-30〜T-37）
+- 単体（契約）: `src/knowledge/backend/Shared/Knowledge.Contracts.Tests/DocumentReadGrpcMappingTests.cs`（T-29）
 - 統合（実 PostgreSQL）: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/DocumentService/DocumentCrudTests.cs`（T-12〜T-14）、`DocumentVersioningTests.cs`（T-15〜T-16）
 - 統合（実 PostgreSQL / RabbitMQ）: `.../DocumentNormalizedSyncTests.cs`（T-17〜T-18）
 

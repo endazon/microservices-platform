@@ -3,15 +3,15 @@ title: 文書CRUD・バージョン管理 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-28
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-06, UC-03]
-adrs: [ADR-0057]
-iadrs: [IADR-0290, IADR-0296]
-specs: [20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage]
-issues: [#201, #1011, planning#473]
+adrs: [ADR-0050, ADR-0057]
+iadrs: [IADR-0290, IADR-0296, IADR-0475]
+specs: [20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint]
+issues: [#201, #1011, #1575, planning#473]
 -->
 
 # 機能仕様書: 文書CRUD・バージョン管理
@@ -36,7 +36,7 @@ issues: [#201, #1011, planning#473]
 | --- | --- |
 | 入力 | 作成: `title`（必須）, `originalUri`, `contentType`, `attributes`, `tags` / 更新: `title`（必須）, `attributes`, `tags`, `expectedVersion`（任意）, `changeNote`（任意） / メタデータ更新: `attributes`, `tags`, `expectedVersion`, `changeNote` / 正規化取込: `DocumentNormalized` イベント（`DocumentId`, `Title`, `MarkdownUri`, `Attributes`, `Tags`） |
 | 処理 | `Document.Create` で版 1 を記録 → 各更新（`Update` / `UpdateMetadata` / `ApplyNormalized` / `Publish`）が `Version++`・`UpdatedAt` 更新・スナップショット追記を内部で実行 → 更新後 `DocumentUpdated` を発行。`expectedVersion` 指定時は API 層で現在版と照合し不一致なら 409（lost update 防止）。正規化取込は `DocumentId` 一致で冪等 upsert。 |
-| 出力 | `DocumentDto`（`Id`, `Title`, `Status`, `MarkdownUri`, `Version`, `Attributes`, `Tags`, `CreatedAt`, `UpdatedAt`） / `DocumentVersionDto`（`DocumentId`, `Version`, `Title`, `Status`, `Attributes`, `Tags`, `ChangeNote`, `CreatedAt`。**本文の参照は持たない** — #1011） / `DocumentUpdated` イベント |
+| 出力 | `DocumentDto`（`Id`, `Title`, `Status`, `MarkdownUri`, `Version`, `Attributes`, `Tags`, `CreatedAt`, `UpdatedAt`, `HasBody`, `SharedWith`, `ContentFingerprint`〔本文指紋。後述〕） / `DocumentPageDto`（`Items`, `NextCursor`） / `DocumentVersionDto`（`DocumentId`, `Version`, `Title`, `Status`, `Attributes`, `Tags`, `ChangeNote`, `CreatedAt`。**本文の参照は持たない** — #1011） / `DocumentUpdated` イベント |
 | 業務ルール | バージョン管理の射程は**版の作成・一覧・取得**まで（**復元は含まない**。利用者裁定 2026-08-23）。**版ごとの本文は保持せず、版応答は本文の参照を返さない**（本文のキーは文書 ID で固定・上書き。#1011）。タイトルは作成・更新で必須（空白は 400）。版履歴は append-only で過去版を書き換えない（スナップショットは後続更新の影響を受けない防御的コピー）。版一覧は新しい順（`Version` 降順）。`Status` は `draft`→`normalized`→`published` を取り、公開は `POST /publish` で行い版を追記する。属性（`Attributes`）は下流の ABAC 権限判定・検索フィルタで用いるメタデータ。 |
 
 ### エンドポイント一覧
@@ -44,6 +44,7 @@ issues: [#201, #1011, planning#473]
 | メソッド / パス | 用途 | 主な応答 |
 | --- | --- | --- |
 | `GET /documents` | 一覧（`UpdatedAt` 降順） | 200 `DocumentDto[]` |
+| `GET /documents/page` | **組織文書**の属性の絞り込み（`attr.<キー>=<値>`・AND・完全一致）とページング（`limit`・`cursor`。作成順）。**認証を要する** | 200 `DocumentPageDto` / 400 |
 | `GET /documents/{id}` | 単一取得 | 200 / 404 |
 | `POST /documents` | 作成（版 1 記録・`DocumentUpdated` 発行） | 201 `DocumentDto` / 400 |
 | `PUT /documents/{id}` | タイトル・メタデータ更新（版追記・並行制御） | 200 / 400 / 404 / 409 |
@@ -52,6 +53,27 @@ issues: [#201, #1011, planning#473]
 | `GET /documents/{id}/versions` | 版履歴一覧（新しい順） | 200 `DocumentVersionDto[]` / 404 |
 | `GET /documents/{id}/versions/{version}` | 特定版取得 | 200 / 404 |
 | `DELETE /documents/{id}` | 削除（版履歴も連動削除） | 204 / 404 |
+
+### 本文指紋（`ContentFingerprint`）
+
+- 文書の応答（作成・取得・一覧・本文投入・メタデータ更新ほか `DocumentDto` を返すすべての口）が本文指紋を運ぶ。
+- 値は**格納した本文の UTF-8 バイト列の SHA-256 小文字 hex**（64 文字）。本文を書くすべての経路が同じ関数で作る。
+  **本文を投入した呼び出し側は、送った本文から同じ値を計算して「保存済みの本文が最新か」を判定できる。**
+- 本文が変われば変わり、**メタデータだけの更新では変わらない**。本文を持たない文書・指紋化できなかった文書は `null`。
+- 本文の有無は `HasBody` ではなく `MarkdownUri`（と本指紋）で読む —— `HasBody` は「原本が本文を持っていたか」であり、
+  本文なしで作った文書でも既定で `true` である。
+
+### 組織文書の絞り込み・ページング（`GET /documents/page`）
+
+- **見える集合を広げない。** 文書サービスの読み取りは権限判定を持たず（実施点は BFF）、直接の呼び出し元に見えているのは
+  `GET /documents` の全件である。この口はそこから「組織文書」「全絞り込みに一致」で削るだけで、**結果は常にその部分集合**になる。
+- **個人資料は、絞り込みの値にも呼び出し元にも依らず返さない**（`attr.doc_scope=private-note` を与えても、所有者本人が呼んでも空）。
+- 絞り込み: `attr.<キー>=<値>` を 0 個以上（AND）。キー・値とも大文字小文字を区別する完全一致。同じキーの重複・空のキー・空の値は 400。
+- ページング: `limit`（既定 100・1〜500 に丸める）と `cursor`（前ページの `nextCursor`。不透明な文字列・壊れていれば 400）。
+  並びは**作成時刻の昇順**（同時刻は ID 昇順）。並びのキーが不変なので、走査の途中で更新・削除・追加があっても、
+  **走査の間ずっと在った文書はちょうど 1 回ずつ返る**（途中で作られた文書は末尾に現れる）。
+- 絞り込みは台帳を読んだ後に行う（DB の負荷は `GET /documents` と同じ）。
+- **認証を要する**（ロールは問わない）。
 
 ## 処理フロー / 状態遷移
 
@@ -93,6 +115,9 @@ stateDiagram-v2
 - [x] `PATCH /metadata` はタイトルを変更せず属性・タグのみ更新する。
 - [x] 作成・更新・公開・正規化取込のいずれでも `DocumentUpdated` を発行する。
 - [x] タイトル空白の作成は 400 を返す。
+- [x] 文書の応答が本文指紋を運び、本文を投入した文書では送った本文の UTF-8 の SHA-256 小文字 hex に一致する。本文の無い文書では `null`。メタデータだけの更新では変わらない。
+- [x] `GET /documents/page` は一致する組織文書だけを返し、結果は常に `GET /documents` の部分集合で、個人資料を返さない。絞り込みを足すと狭くなる一方である。
+- [x] `GET /documents/page` を `limit` とカーソルで辿ると、走査の途中で更新・削除・追加があっても、ずっと在った文書を重複なく読み飛ばさずに得る。
 
 > 検証: `DocumentVersioningTests`（ドメイン版管理）／`DocumentEndpointVersioningTests`（版・メタ・公開・
 > 409・400）／`DocumentLifecycleEventTests`（`DocumentUpdated`/`DocumentDeleted` 発行）／統合
@@ -114,3 +139,7 @@ stateDiagram-v2
   🔴 ただし**資産の台帳は遡及付与しない**ため、台帳へ資産欄を足す以前に取り込まれた文書の
   図表資産は実体が残る。**「全部消える」とは読まないこと。**
 - 楽観的並行制御は API 層の `expectedVersion` 照合のみで、DB 行ロックは導入しない。
+- **呼び出し側の自然キー（外部 ID）での引き当て・upsert は持たない。** 文書の同一性は文書 ID ただ 1 つであり、
+  別の同一性の概念を足すかは計画の判断を待つ（呼び出し側は `GET /documents/page` の属性の絞り込みで既存の写しを探す）。
+- **機械クライアント（サービスアカウント）は、自分が所有する文書でもメタデータ更新・削除をできない**（管理者限定のまま）。
+  破壊的操作の管理者限定が機械クライアントへ及ぶかは計画の判断を待つ。
