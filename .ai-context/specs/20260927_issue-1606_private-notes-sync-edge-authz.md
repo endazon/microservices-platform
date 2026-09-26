@@ -1,7 +1,7 @@
 ---
 title: edge.privateNotesSync を有効にしたとき、ゲートウェイの主体を document-service の /private-notes/sync/* に絞る AuthorizationPolicy を置く
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR-09, FR-20, UC-11, ADR-0005, ADR-0021, ADR-0084, IADR-0017, IADR-0026, IADR-0270, IADR-0273, IADR-0348, IADR-0377, IADR-0469]
 author: claude
 created: 2026-09-27
@@ -173,4 +173,60 @@ $ git grep -n -E "エッジ|NetworkPolicy|opt-in" -- docs/functional/FR-20_obsid
 
 ## 6. 検証（証跡）
 
-（実装後に追記する）
+**AC1 —— 既定の描画のバイト一致**（`git archive origin/develop` で取り出したチャート（f195df1f）と本ブランチを、同じ `helm template msp` で描いて比べた）:
+
+```console
+$ cmp dev-default.yaml new-default.yaml && echo "default: byte-identical"
+default: byte-identical
+$ cmp dev-local.yaml new-local.yaml && echo "values-local: byte-identical"
+values-local: byte-identical
+$ sha256sum dev-default.yaml new-default.yaml dev-local.yaml new-local.yaml
+51ff575c4b3ccaa7ee1ffa3753bda6e9edff2563bd7bb9359cd7252f1e884e30 *dev-default.yaml
+51ff575c4b3ccaa7ee1ffa3753bda6e9edff2563bd7bb9359cd7252f1e884e30 *new-default.yaml
+adf468a66155fceaf397247cd43ee1eca9085ffb9ba9564f3f3638e55013140c *dev-local.yaml
+adf468a66155fceaf397247cd43ee1eca9085ffb9ba9564f3f3638e55013140c *new-local.yaml
+```
+
+有効時（`--set edge.privateNotesSync.enabled=true` の develop 版と、`-f ci/private-notes-sync-values.yaml` の本ブランチ）の差は、
+注記行を除くと AuthorizationPolicy 1 枚の追加だけだった（`diff dev-on.yaml new-on.yaml | grep -v '^[<>] *#'` → `3081a3082,3132` の
+`kind: AuthorizationPolicy` … `notPaths: - /private-notes/sync/*`）。
+
+**AC2〜AC6 —— 描画の試験**（helm v4.2.1）:
+
+```console
+$ node scripts/helm-private-notes-sync-authz.test.js
+  ok  評価器の自己試験: Istio の path 照合（前置・完全一致・後置・境界）
+  ... （18 件）
+  ok  🔴 有効: 呼び出し元の一覧へ評価すると、エッジ × sync だけが通り、エッジ × それ以外は落ち、他は 1 本も切れない
+  ok  🔴 変異: 経路の制限（to: notPaths）を外すと、エッジ × sync が落ちて赤になる
+  ok  🔴 変異: 経路を広げる（/private-notes/*）と、エッジ × 一覧・端末が通って赤になる
+  ok  🔴 変異: from を名前空間の内側へ向けると、BFF が切れて赤になる
+  ok  🔴 変異: DENY を ALLOW に変えると、名前空間の呼び出し元・AST・プローブが切れて赤になる
+✓ 18 tests passed
+```
+
+**AC6 —— 手元での変異 1 回**: コミット後の `templates/edge.yaml` から `to: / - operation: / notPaths: / - /private-notes/sync/*` の
+4 行を消して試験を回すと **exit=1**（「有効: … ちょうど 1 枚」の `deepStrictEqual` が `to` の欠落を指して落ちた）。
+`git show HEAD:deploy/helm/microservices-platform/templates/edge.yaml > deploy/helm/microservices-platform/templates/edge.yaml` で戻し、
+`git status --short` が空・試験が 18 件緑に戻ることを確かめた。
+
+**AC7 —— lint とスキーマ**: `helm lint`（既定・ci values の両方）→ `1 chart(s) linted, 0 chart(s) failed`。
+kubeconform は手元に無いため CI（`static-checks-units` の `check-deploy-manifests.js`。`ci/*.yaml` を走査で拾う）に委ねた。
+スキーマの供給元 `datreeio/CRDs-catalog` に `security.istio.io/authorizationpolicy_v1.json` が在ることは確かめた（HTTP 200）。
+`node scripts/check-deploy-manifests.js --self-test` → `self-test OK: 9 件`。
+
+**文書・トレーサビリティの検査**:
+
+```console
+$ REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js      → ✓ 833 tests passed
+$ node scripts/check-trace-blocks.js                     → OK: 184 件の Markdown に trace ブロックの違反はありません。
+$ node scripts/check-plan-id-qualification.js            → OK
+$ node scripts/check-cross-repo-refs.js                  → OK: 3911 件
+$ node scripts/check-doc-type-vocabulary.js              → OK
+$ node scripts/gen-knowledge-graph.js --check            → OK
+```
+
+🔴 1 回目の `scripts.test.js` は赤だった —— 索引（`.ai-context/adr/README.md`）の IADR-0348 の行へ追記を書き足したところ、
+索引タイトル検査が `title-addendum` / `title-too-long` で止めた。索引の行は元へ戻し（§5）、2 回目で緑になった。
+
+稼働クラスタには触れていない（`kubectl` / `helm upgrade` / 稼働系のスクリプトは使っていない）。
