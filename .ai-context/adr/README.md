@@ -553,3 +553,4 @@
 | [IADR-0473](./IADR-0473_department-attribute-follows-department-group.md) | 利用者属性 department は AuthorizationService の opt-in の定期処理が部門グループ所属へ合わせて直す（ちょうど 1 つのときだけ・グループは変えない・既定 Off）（#1573） | Accepted |
 | [IADR-0474](./IADR-0474_sync-token-rejected-after-account-disable.md) | **同期トークンの検証で、所有者のアカウントが有効かを同期要求ごとに利用者名簿へ訊き、有効と確かめられたときだけ通す**（#1532・計画 ADR-0114）。判定できなければ 401。再有効化で端末は再び通る。名簿の口の配線で実働する退職者削除の写像を試験で固定 | Accepted |
 | [IADR-0475](./IADR-0475_document-page-and-fingerprint-in-response.md) | 文書の応答へ本文指紋（格納した本文の UTF-8 の SHA-256 小文字 hex）を載せ、組織文書の属性の絞り込みとページングは別の口 `GET /documents/page`（認証必須・個人資料を返さない・作成順のキーセット）に置く。外部 ID と機械の主体の所有文書の更新・削除は計画の裁定待ちで実装しない（#1575） | Accepted |
+| [IADR-0476](./IADR-0476_attribute-dictionary-department-values-from-realm.md) | **属性辞書の department の許可値は、読むたびに realm の部門グループから導いて保存し直し、realm を読めなければ最後に確かめた値を「不明」として示して消さない**（#1609・計画 ADR-0116 決定 3）。手で足す・消す要求は 400。応答に出所 `allowedValuesSource` | Accepted |

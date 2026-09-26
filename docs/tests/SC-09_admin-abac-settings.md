@@ -3,15 +3,15 @@ title: SC-09 管理者設定（ABAC） テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-05
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
-ids: [FR-05, FR-09, SC-05, SC-06, SC-07, SC-09, SC-10, SC-11, UC-05]
-adrs: [ADR-0031]
-iadrs: [IADR-0006, IADR-0009, IADR-0040, IADR-0119, IADR-0127, IADR-0129, IADR-0153, IADR-0253]
-specs: [20260805_issue-504_sc09-11-admin-ops-screens]
-issues: [#503, #504, #510, #535, #640, #989]
+ids: [FR-05, FR-09, SC-05, SC-06, SC-07, SC-09, SC-10, SC-11, UC-05, SC-17]
+adrs: [ADR-0031, ADR-0116, ADR-0115]
+iadrs: [IADR-0006, IADR-0009, IADR-0040, IADR-0119, IADR-0127, IADR-0129, IADR-0153, IADR-0253, IADR-0476]
+specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
+issues: [#503, #504, #510, #535, #640, #989, #1609, planning#672]
 -->
 
 # テスト仕様書: 管理者設定（ABAC）
@@ -43,6 +43,7 @@ issues: [#503, #504, #510, #535, #640, #989]
 | 基本 3. 保存前に矛盾を検証する | 検証結果パネル | `shows the server-side contradiction detail in the validation panel` |
 | 基本 4. 保存すると認可判定へ即時反映される | 検証結果パネルの完了表示 | `confirms in the validation panel that a saved policy takes effect immediately` |
 | **例外**. 参照中の属性は削除できない | 409 の理由表示 ＋ 参照元ポリシー名 | `explains a 409 when deleting a referenced attribute and keeps the server detail` |
+| ［2026-09-27 / #1609］部門の許可値は realm の部門グループから導く（手で持たない） | 属性辞書の行の出所のバッジ（導出／不明）。値の導出・保存し直し・不明のときに消さないこと・手で足す要求の拒否はサーバ側（下の §認可サービス） | `shows where the department values come from and flags an unreadable realm` |
 | 認可判定の実行（`AbacEvaluator`） | **写像しない**（サーバ側の責務） | — |
 
 ## 計画の要素 → 実装／テストの対応
@@ -105,6 +106,18 @@ issues: [#503, #504, #510, #535, #640, #989]
 | P7 | 重複 | 同じ組を 2 度積んでも値が重複しない |
 | P8 | 要約の順序 | 一覧の条件は**利用者属性が先**（計画の並び） |
 | P9 | 許可値の解釈 | カンマ区切りを配列へ。空要素を落とす |
+| P10 | 許可値の出所（#1609） | 出所の値集合は `realm` / `realm-unavailable` の 2 値。手で持つキー（null）は表示なし、不明は注意の色、未知の値は生値のまま |
+
+## 認可サービス（xUnit。［2026-09-27 / #1609］部門の許可値の導出）
+
+テスト: `src/platform/backend/Services/AuthorizationService/Tests/Features/Authz/DepartmentDictionaryFromRealmTests.cs`（結合）・
+`.../Tests/Domain/DepartmentDictionaryValuesTests.cs`（純関数）。番号は利用者アカウント管理のテスト仕様書（部門の値域と同じ集合を見る）と共有する。
+
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| T-58 | 導出 | 一覧・個別取得の `department`（利用者・文書の両方）の許可値が realm の部門グループのコードと一致し、出所は `realm`。保存済みの旧い値（`finance` / `legal`）は置き換わり、保存し直される。手で持つキーは出所 null。ポリシーの許容値も同じ集合で検証する（`finance` は 400・`sales` は 201） |
+| T-59 | 不明（否定の試験） | realm を読めない（グループの読み取りが例外）と出所は `realm-unavailable` で、**保存済みの値は消えない**（旧い値しか無い DB でも空へ倒さない）。一度導いた後の障害では最後に確かめた値を示し続ける |
+| T-60 | 手で持たない | 値を手で足す登録・1 つ消す更新は 400（理由に「realm の部門グループ」）。空の登録は realm の値で作られ、同じ集合（並び違い）でのラベルの変更は通る。realm を読めない間は保存済みの値のまま送る更新だけが通る |
 
 ## バックエンド（BFF・xUnit）
 

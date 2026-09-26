@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 部門グループから外れた利用者の部門属性を同期で消し、属性辞書の部門の値を realm の部門グループから導く（#1609・計画 ADR-0116 決定 2・3）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-05
   - FR-09
@@ -15,6 +15,7 @@ related_ids:
   - IADR-0428
   - IADR-0472
   - IADR-0473
+  - IADR-0476
 author: claude
 created: 2026-09-27
 updated: 2026-09-27
@@ -115,6 +116,21 @@ SC-17 の選択肢（属性辞書の利用者スコープの許可値）が real
 | 試験 `DepartmentAttributeReconciliationTests`・`DepartmentAttributeSyncTests` の 0 個の期待 | 新しい判定へ改める |
 | `IADR-0468`・`RegistrantDepartment.cs`・`data-source.md`・`SC-06` の「0 個・2 個以上」 | **除外**: データソースの既定部門を導く規則であり、本件と別（ADR-0115 決定 2） |
 | knowledge の試験データの `finance` / `legal` | **除外**: 文書の属性値の試験であり、属性辞書を読まない |
+
+## 実装判断の記録先
+
+- 同期の 0 個の扱い（列挙・消去・歯止め）: IADR-0473 決定 2 への追記 `［2026-09-27 追記 / #1609］`。
+- 属性辞書の部門の値の導出: IADR-0476（新設）。
+
+## 結果（2026-09-27）
+
+- 受け入れ基準 AC-1〜AC-6 は T-55〜T-60（テスト仕様書: 利用者アカウント管理／管理者設定）に写像し、いずれも緑。
+- 変異（いずれも赤になることを確かめ、`git show HEAD:<path> > <path>` で戻した）:
+  - 同期の「列挙が未完了なら 0 個の人を足さない」判定を外す → T-56（truncated）が赤。
+  - 消す直前の所属の読み直しを外す → T-55 の歯止めの試験が赤。
+  - サービスアカウントの除外を外す → T-57 ほか 7 件が赤。
+  - realm を読めないときにも辞書へ当てはめる → T-59 の 3 件が赤。
+- 開発用 realm の `service-account-abac-seeder` は部門グループなしで `department=engineering` を持つ（実測）。サービスアカウントを消さない判断の根拠。
 
 ## 手順
 

@@ -3,15 +3,15 @@ title: 管理者設定（ABAC） 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-05
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-09, FR-13, FR-17, FR-18, FR-19, FR-20, FR-21, SC-02, SC-04, SC-05, SC-09, SC-10, SC-12, UC-05, UC-08]
-adrs: [ADR-0031, ADR-0033, ADR-0037]
-iadrs: [IADR-0006, IADR-0009, IADR-0035, IADR-0040, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0129, IADR-0135, IADR-0142, IADR-0152, IADR-0153, IADR-0253, IADR-0281, IADR-0387]
-specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260807_issue-586_planning-pin-adr-accepted, 20260905_issue-1241_sc09-edge-type-dictionary]
-issues: [#1241, #445, #446, #452, #496, #504, #506, #519, #535, #586, #599, #640, #989, planning#237, planning#244]
+adrs: [ADR-0031, ADR-0033, ADR-0037, ADR-0116, ADR-0115]
+iadrs: [IADR-0006, IADR-0009, IADR-0035, IADR-0040, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0129, IADR-0135, IADR-0142, IADR-0152, IADR-0153, IADR-0253, IADR-0281, IADR-0387, IADR-0476]
+specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260807_issue-586_planning-pin-adr-accepted, 20260905_issue-1241_sc09-edge-type-dictionary, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
+issues: [#1609, #1241, #445, #446, #452, #496, #504, #506, #519, #535, #586, #599, #640, #989, planning#237, planning#244, planning#672]
 -->
 
 # 画面仕様書: 管理者設定（ABAC）
@@ -173,6 +173,10 @@ issues: [#1241, #445, #446, #452, #496, #504, #506, #519, #535, #586, #599, #640
 ### 属性体系（属性辞書）
 
 - 一覧（キー・ラベル・スコープ〔`Tag`〕・許可値・必須／任意）。0 件は「属性は登録されていません。」。
+- **［2026-09-27 / #1609］部門（`department`）の許可値は手で持たない。** サーバが realm の部門グループ（`/department/<コード>`）から導き、
+  許可値の下に出所を `StatusBadge` で示す —— 「realm の部門グループから導出」（`neutral`）／「不明（realm を読めないため最後に確かめた値）」
+  （`warning`。realm を読めないときも値は消えない）。手で持つキーには出さない。部門を足す・消すときは realm の部門グループを変える
+  （追加フォームで部門の許可値を手で入れると 400 になり、サーバの理由が `Alert` に出る。空で登録すると realm の値が入る）。
 - 追加フォーム → `POST`。成功で入力を空にし、一覧を `invalidateQueries` で取り直す。
 - 行の削除 → `DELETE`。**参照中は 409** で拒否され、理由を `Alert`（`warning`）で示す（ABAC 管理の検証方針）。
   **固定文言（拒否の理由）＋ `ApiError.details`（参照元のポリシー名）を併記する**——詳細を捨てると
