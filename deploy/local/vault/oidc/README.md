@@ -110,7 +110,7 @@ root トークンは常に break-glass。
 ```sh
 # edge 集約＋Vault を有効化（ポート再作成が必要・破壊操作はユーザー実行）
 k3d cluster delete msp-ast-dev
-LOCALEDGE=1 VAULT=1 bash scripts/k8s-local-up.sh
+LOCALEDGE=1 VAULT=1 bash scripts/k8s-local-up.sh --live
 # → 上の bootstrap を一度実行してから:
 
 # UI:  https://vault.localhost:50000 → Method=OIDC → role=default →「Sign in with Keycloak」→ developer/developer

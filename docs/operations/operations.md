@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17]
 adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473]
-specs: [20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group]
-issues: [#1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473]
+specs: [20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group]
+issues: [#1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672]
 -->
 
 # 運用仕様書
@@ -103,7 +103,7 @@ issues: [#1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1
 
   ```bash
   # ローカル: イメージ再ビルド/import 後に Pod を作り直して新イメージを反映
-  bash scripts/k8s-local-images.sh && kubectl -n microservices-platform rollout restart deployment/frontend-service
+  bash scripts/k8s-local-images.sh --live && kubectl -n microservices-platform rollout restart deployment/frontend-service
   ```
 
   宣言（`pipeline.json`）変更時は pod template の `checksum/pipeline-config` アノテーション
@@ -193,7 +193,7 @@ docker compose -f deploy/docker-compose.yml up -d
 
 #### 経路B（ローカル k8s dev）の永続化（既定オン・非機能要件: 運用性 / #324、経路B の Qdrant／可観測性 4 種の永続化と Prometheus 保持期間 / #787、既定化と realm の後追い / #1088）
 
-`bash scripts/k8s-local-up.sh` は**既定で** [`deploy/local/infra-persistence`](../../deploy/local/infra-persistence/)
+`bash scripts/k8s-local-up.sh --live` は**既定で** [`deploy/local/infra-persistence`](../../deploy/local/infra-persistence/)
 オーバーレイを適用し、**Keycloak（`/opt/keycloak/data`＝`start-dev` の file H2）・Postgres
 （`/var/lib/postgresql/data`）・Qdrant（`/qdrant/storage`）を `local-path` PVC で永続化**する。realm + runtime state
 （追加ユーザー・シークレット・セッション）・全アプリ DB・コレクション/ベクトルが Pod 再起動でも保持される。
@@ -234,7 +234,7 @@ Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 c
   import では届かない。`k8s-local-up.sh` は [7/7] の後に
   [`deploy/local/keycloak-setup/reconcile-realm.sh`](../../deploy/local/keycloak-setup/README.md) を呼び、
   **宣言と稼働 realm の差分を Job（Admin REST API）で当てる**。**realm JSON を変えたら up を再実行すれば届く**
-  （単独実行も可・冪等）。届いているかは `node scripts/check-stack-ready.js` の **G9** が見る。
+  （単独実行も可・冪等）。届いているかは `node scripts/check-stack-ready.js --live` の **G9** が見る。
   **既存の人間の利用者は触らない**（実行時が正）。**［2026-09-06］送出先は宣言が正になった** ——
   クラスタ内の中継を指す固定値であり、稼働側で消えても外を向いても、次の適用で宣言へ戻る。
   **パスワードリセットの申請の開閉だけは条件つきで例外**である（機械の門が閉じたと記録している間は開き直さない。
@@ -258,7 +258,7 @@ Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 c
 初回ログインでは TOTP の登録画面が挟まる（多要素認証を必須にしたため）。
 本番像（`deploy/helm` / `deploy/argocd` / compose）は不変で、資産は `deploy/local/headlamp/`（dev 専用）に閉じる。
 
-- **有効化**: `HEADLAMP=1 bash scripts/k8s-local-up.sh`（既定オフ・fail-safe）。`deploy/local/headlamp` を適用し、
+- **有効化**: `HEADLAMP=1 bash scripts/k8s-local-up.sh --live`（既定オフ・fail-safe）。`deploy/local/headlamp` を適用し、
   OIDC client secret を Secret `headlamp-oidc`（`platform-infra`・dev 既定＝realm import の dev 値・`HEADLAMP_OIDC_CLIENT_SECRET`
   で上書き可）へ作成する。UI 到達は `kubectl -n platform-infra port-forward svc/headlamp 4466:80`（http://localhost:4466）。
 - **realm client**: `deploy/keycloak/microservices-platform-realm.json` の client `headlamp`（confidential）が単一情報源。
@@ -1097,7 +1097,7 @@ conflict で必ず失敗する**。`--take-ownership` も `--force` も効かな
 
 | 事象 | 検知 | 一次対応 |
 | --- | --- | --- |
-| 宣言と稼働の mTLS モードが食い違う／`spec` を helm 以外が書いている | `node scripts/check-stack-ready.js` の門 G12 が対象を名指しして落ちる | 下の復旧手順。以後はモードを `set_mesh_mtls_mode` で切り替える |
+| 宣言と稼働の mTLS モードが食い違う／`spec` を helm 以外が書いている | `node scripts/check-stack-ready.js --live` の門 G12 が対象を名指しして落ちる | 下の復旧手順。以後はモードを `set_mesh_mtls_mode` で切り替える |
 | `helm upgrade` が `conflict with "kubectl-patch" … .spec.mtls.mode` で失敗する | 起動スクリプトが helm の段で停止する | 同上（値を戻すだけでは直らない。所有権が残っているため） |
 
 復旧（対象を消して helm に作り直させる。ダウンタイムは秒単位で、その間は名前空間の既定 = 平文許容になる）:
@@ -1121,17 +1121,17 @@ readiness でも捕まらない。**「当たっている」ことも索引の�
 
 | 事象 | 検知 | 一次対応 |
 | --- | --- | --- |
-| 点は在るのに検索が全件 0 件 | `node scripts/check-stack-ready.js` の門 **G13** が「点が在るのは X なのに検索側が読む Y は 0 点」と名指しして落ちる | 埋め込みの向き（プロバイダの有効化）を**取り込み・検索・ゲートウェイの 3 サービスすべて**に入れ直す。片側だけ入れると再発する |
+| 点は在るのに検索が全件 0 件 | `node scripts/check-stack-ready.js --live` の門 **G13** が「点が在るのは X なのに検索側が読む Y は 0 点」と名指しして落ちる | 埋め込みの向き（プロバイダの有効化）を**取り込み・検索・ゲートウェイの 3 サービスすべて**に入れ直す。片側だけ入れると再発する |
 | 全文ペイロード索引が無い／パラメータが違う | 同 **G13** が対象のコレクションとキーを名指しして落ちる | 取り込みサービスを再起動する（起動時に**存在の有無によらず**索引を張り直す。冪等） |
 | どのコレクションにも点が無い | 同 **G13** は notice に落とす（まだ何も取り込んでいない状態と区別できないため）。`SEARCHSEED=1` を宣言した実行では赤になる | 本文つきの文書が在るかを先に見る（本文の無い文書は索引に載らない） |
 
 確かめ方（**稼働コレクションには読み取りしか行わない**）:
 
 ```sh
-node scripts/check-stack-ready.js            # 門 G13 を含む全門
+node scripts/check-stack-ready.js --live            # 門 G13 を含む全門
 # 全文索引そのものの挙動（使い捨てコレクションで陽性・陰性の対）を測る場合:
 kubectl -n platform-infra port-forward svc/qdrant 6333:6333
-QDRANT_URL=http://localhost:6333 bash scripts/verify-qdrant-fulltext-index.sh
+QDRANT_URL=http://localhost:6333 bash scripts/verify-qdrant-fulltext-index.sh --live
 ```
 
 - **エスカレーション/通知**: **Alertmanager の配備後**に受信先（メール/チャット）と担当・当番を運用体制に応じて定める（環境ごと）。

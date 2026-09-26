@@ -21,11 +21,11 @@
  *
  * 実行方法:
  *   1) 経路B が稼働している状態で:
- *        node scripts/seed-abac-policies.js
+ *        node scripts/seed-abac-policies.js --live
  *      （kubectl port-forward を一時的に自分で張り、終了時に片付ける）
  *   2) 既に到達可能な URL があるなら port-forward を使わない:
  *        ABAC_SEED_AUTHZ_URL=http://localhost:5081 ABAC_SEED_KC_URL=http://keycloak:8080 \
- *          node scripts/seed-abac-policies.js
+ *          node scripts/seed-abac-policies.js --live
  *   3) 何が投入されるかだけ見る（副作用なし）:
  *        node scripts/seed-abac-policies.js --dry-run
  *
@@ -42,6 +42,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
+const { requireLiveOptIn } = require('./lib/live-opt-in.js');
 
 const env = (k, d) => process.env[k] || d;
 const SEED_DIR = env('ABAC_SEED_DIR', path.join(__dirname, '..', 'deploy', 'local', 'abac-seed'));
@@ -250,6 +251,8 @@ async function main(argv) {
     log('--dry-run のため投入しません。');
     return 0;
   }
+  // NFR, #1550: ここから先は稼働クラスタへ port-forward して管理 API へ書き込む。明示の指定が無ければ何もしない。
+  requireLiveOptIn('seed-abac-policies', argv, { offline: '--dry-run' });
 
   // 接続先を決める。URL が与えられていなければ port-forward を自分で張る。
   let authzUrl = env('ABAC_SEED_AUTHZ_URL', '');

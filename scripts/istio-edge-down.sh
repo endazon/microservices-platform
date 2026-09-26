@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # #782 / ADR-0021: Istio エッジ（＋ STRICT mTLS）からの **1 コマンド切り戻し**。
 #
-#   bash scripts/istio-edge-down.sh
+#   bash scripts/istio-edge-down.sh --live   # --live か LIVE=1 が無ければ何もしない（#1550）
 #
 # 何を戻すか（この順でしか戻せない）:
 #   1. PeerAuthentication を PERMISSIVE へ  … 先に緩める。ここが STRICT のままだと、
@@ -19,6 +19,11 @@
 # エッジは平文で入れるようになり、それが本スクリプトの目的である。istiod ごと撤去する手順は
 # .ai-context/adr/IADR-0307_istio-optin-and-staged-mtls.md §現在のクラスタの状態 にある。
 set -euo pipefail
+
+# NFR, #1550: 稼働クラスタのエッジを helm と kubectl で切り戻す。明示の指定（--live か LIVE=1）が無ければ何もせずに終わる（判定は副作用より前に置く）。
+. "$(dirname "$0")/lib/live-opt-in.sh" || exit 3   # 判定器が読めなければ守れない —— 黙って続けず止める
+live_opt_in_scan "$@"; set -- "${LIVE_REST[@]+"${LIVE_REST[@]}"}"
+live_opt_in_require "istio-edge-down.sh"
 
 MSP_NS="${MSP_NS:-microservices-platform}"
 cd "$(dirname "$0")/.."

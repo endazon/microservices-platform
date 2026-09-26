@@ -21,7 +21,7 @@
 #   1) 実機 Qdrant を用意する。稼働 k8s なら:
 #        kubectl -n platform-infra port-forward svc/qdrant 6333:6333
 #   2) 本スクリプトを実行する:
-#        QDRANT_URL=http://localhost:6333 bash scripts/verify-qdrant-fulltext-index.sh
+#        QDRANT_URL=http://localhost:6333 bash scripts/verify-qdrant-fulltext-index.sh --live
 #      API キーが必要な場合: QDRANT_API_KEY=... を併せて渡す。
 #
 # 依存: bash / curl / node（JSON の読み取りに使う。jq は前提にしない）。
@@ -32,6 +32,11 @@
 # 終了コード: 0=全項目 PASS / 1=判定の失敗 / 2=前提未整備（Qdrant へ到達できない等）
 
 set -u
+
+# NFR, #1550: 稼働の Qdrant（QDRANT_URL）へコレクションと点を作って消す。明示の指定（--live か LIVE=1）が無ければ何もせずに終わる（判定は副作用より前に置く）。
+. "$(dirname "$0")/lib/live-opt-in.sh" || exit 3   # 判定器が読めなければ守れない —— 黙って続けず止める
+live_opt_in_scan "$@"; set -- "${LIVE_REST[@]+"${LIVE_REST[@]}"}"
+live_opt_in_require "verify-qdrant-fulltext-index.sh"
 
 QDRANT_URL="${QDRANT_URL:-http://localhost:6333}"
 QDRANT_API_KEY="${QDRANT_API_KEY:-}"

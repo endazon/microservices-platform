@@ -295,6 +295,9 @@ function runUp(extraEnv) {
     STUB_LOG: logFile,
     STUB_HELM_MODEL: modelFile, // #953: kubectl stub が反映の成否を決めるのに使う
     K8S_LOCAL_RUNTIME: 'k3d', // runtime 自動判定を回避し cluster create 経路を決定的に通す
+    // NFR, #1550: 起動器は明示の指定（--live か LIVE=1）が無ければ何もせずに終わる。ここは PATH のスタブの下で
+    // 走らせる試験器なので指定を与える（拒否の経路は scripts.repo.test.js の #1550 節が固定する）。
+    LIVE: '1',
     ...extraEnv,
   };
 

@@ -35,7 +35,7 @@ end-to-end 疎通**する。認証は **kubernetes auth**（静的 root トー�
 ## 有効化（opt-in・`ESO=1`・`VAULT=1` 併用）
 
 ```sh
-VAULT=1 ESO=1 bash scripts/k8s-local-up.sh
+VAULT=1 ESO=1 bash scripts/k8s-local-up.sh --live
 ```
 
 `scripts/k8s-local-up.sh` は `ESO=1` のとき: (1) `helm upgrade --install external-secrets`（ESO 本体・CRD 同梱）、
@@ -56,7 +56,7 @@ BFF は書き込み成功後に同期先の ExternalSecret へ `force-sync` を�
 `bootstrap.sh` の seed は **env 由来 or 空既定**（`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`）:
 
 ```sh
-ANTHROPIC_API_KEY=sk-... VAULT=1 ESO=1 bash scripts/k8s-local-up.sh
+ANTHROPIC_API_KEY=sk-... VAULT=1 ESO=1 bash scripts/k8s-local-up.sh --live
 ```
 
 空既定＝外部 LLM を呼ばない（現行の空既定と同値・fail-safe）。**リポジトリに平文値は置かない**（gitleaks green）。

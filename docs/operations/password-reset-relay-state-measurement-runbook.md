@@ -433,8 +433,8 @@ node "$PRD/reset-pair.js" window 90 1000 | tee "$PRD/<状態>-window.jsonl"
 **閉じた状態の機械の確認（任意・T-20）**: 閉じている間に次を 1 回ずつ打つ。
 
 ```bash
-node scripts/check-password-reset-mail.js;           echo "exit=$?"   # 期待: exit=1、[T-20] 門（reset-gate）が申請を閉じている …
-EXPECT_GATE_CLOSED=1 node scripts/check-password-reset-mail.js; echo "exit=$?"   # 期待: exit=0、OK: 申請が閉じており …
+node scripts/check-password-reset-mail.js --live;           echo "exit=$?"   # 期待: exit=1、[T-20] 門（reset-gate）が申請を閉じている …
+EXPECT_GATE_CLOSED=1 node scripts/check-password-reset-mail.js --live; echo "exit=$?"   # 期待: exit=0、OK: 申請が閉じており …
 ```
 
 🔴 この検査器は稼働 realm を**認証基盤の Pod の中で管理 CLI を起動して**読む（既知の残債。認証基盤のメモリを圧迫し得る）。
@@ -458,7 +458,7 @@ node "$PRD/reset-pair.js" watch 180 2000 | tee "$PRD/<状態>-reopen.jsonl"
 1. 検査器を稼働モードで 1 回走らせる（送出・本文・ステータスと本文の同値・所要時間を通しで見る）。
 
    ```bash
-   node scripts/check-password-reset-mail.js 2>&1 | tee "$PRD/A-check.txt"; echo "exit=${PIPESTATUS[0]}"
+   node scripts/check-password-reset-mail.js --live 2>&1 | tee "$PRD/A-check.txt"; echo "exit=${PIPESTATUS[0]}"
    ```
 
    期待: `T-10: 実在=200 / 非実在=200`、T-16 / T-17 が通る（捕捉用 MTA にちょうど 1 通）。`T-25 所要時間（判定: …）` の行と、

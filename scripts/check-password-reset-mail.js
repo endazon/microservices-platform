@@ -49,7 +49,7 @@
  * （実際にそれで壊れに気付けなかった経緯がある）。
  *
  * 使い方:
- *   node scripts/check-password-reset-mail.js              # 稼働クラスタに対して測る
+ *   node scripts/check-password-reset-mail.js --live       # 稼働クラスタに対して測る（--live か LIVE=1 が無ければ何もしない。#1550）
  *   node scripts/check-password-reset-mail.js --self-test  # 判定関数（純関数）の自己試験
  */
 const fs = require('fs');
@@ -57,6 +57,7 @@ const path = require('path');
 const https = require('https');
 const http = require('http');
 const { spawnSync } = require('child_process');
+const { LIVE_FLAG, requireLiveOptIn } = require('./lib/live-opt-in.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 
@@ -1759,12 +1760,14 @@ function selfTest() {
 
 async function main() {
   const argv = process.argv.slice(2);
-  const unknown = argv.filter((a) => a !== '--self-test');
+  const unknown = argv.filter((a) => a !== '--self-test' && a !== LIVE_FLAG);
   if (unknown.length > 0) {
     console.error(`[check-password-reset-mail] 未知の引数: ${unknown.join(' ')}`);
     process.exit(2);
   }
   if (argv.includes('--self-test')) { selfTest(); return; }
+  // NFR, #1550: 稼働の Keycloak へ本物の再設定を申請し、メールを作る。明示の指定が無ければ何もしない。
+  requireLiveOptIn('check-password-reset-mail', argv, { offline: '--self-test' });
 
   const r = await run();
   for (const notice of r.notices) console.log(notice);

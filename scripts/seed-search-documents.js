@@ -28,11 +28,11 @@
  *
  * 実行方法:
  *   1) 経路B が稼働している状態で:
- *        node scripts/seed-search-documents.js
+ *        node scripts/seed-search-documents.js --live
  *      （kubectl port-forward を一時的に自分で張り、終了時に片付ける）
  *   2) 既に到達可能な URL があるなら port-forward を使わない:
  *        SEARCH_SEED_DOCUMENT_URL=http://localhost:5001 SEARCH_SEED_KC_URL=http://keycloak:8080 \
- *          node scripts/seed-search-documents.js
+ *          node scripts/seed-search-documents.js --live
  *   3) 何が投入されるかだけ見る（副作用なし）:
  *        node scripts/seed-search-documents.js --dry-run
  *   4) 検索の合言葉だけを出す（判定スクリプトが読む）:
@@ -52,6 +52,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
+const { requireLiveOptIn } = require('./lib/live-opt-in.js');
 
 // 🔴 資格情報の解決は ABAC 投入器と **同じ実装** を使う（値も作法も 2 か所に持たない）。
 // `seed-abac-policies.js` は `require.main` ガードを持つので、require しても投入は走らない。
@@ -329,6 +330,8 @@ async function main(argv) {
     log('--dry-run のため投入しません。');
     return 0;
   }
+  // NFR, #1550: ここから先は稼働クラスタへ port-forward して文書を作る。明示の指定が無ければ何もしない。
+  requireLiveOptIn('seed-search-documents', argv, { offline: '--dry-run / --print-probe-term / --print-keyword-only-query / --print-japanese-keyword-query' });
 
   let documentUrl = env('SEARCH_SEED_DOCUMENT_URL', '');
   let kcUrl = env('SEARCH_SEED_KC_URL', '');

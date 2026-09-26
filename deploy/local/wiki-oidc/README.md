@@ -28,7 +28,7 @@ realm には `wiki-js` client が既存（[IADR-0020](../../../.ai-context/adr/I
 
 ```sh
 # 既定オフの opt-in。エッジ（LOCALEDGE=1）で立てたスタックに対して使う。
-WIKIJS_OIDC=1 bash scripts/k8s-local-up.sh          # up ごと（推奨）
+WIKIJS_OIDC=1 bash scripts/k8s-local-up.sh --live          # up ごと（推奨）
 WIKIJS_OIDC=1 bash deploy/local/wikijs-setup/bootstrap.sh   # 既に立っているスタックへ後から
 ```
 
@@ -48,7 +48,7 @@ WIKIJS_OIDC=1 bash deploy/local/wikijs-setup/bootstrap.sh   # 既に立ってい
 ```sh
 # edge 集約を有効化（k3d はポート再作成が必要・破壊操作はユーザー実行）
 k3d cluster delete msp-ast-dev
-LOCALEDGE=1 bash scripts/k8s-local-up.sh
+LOCALEDGE=1 bash scripts/k8s-local-up.sh --live
 #   → https://wiki.localhost:50000  （admin-ingress-wiki.yaml が wiki-js:3000 へ）
 # 従来の port-forward も併用可: kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000 → http://localhost:3300
 ```

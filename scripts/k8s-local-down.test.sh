@@ -182,7 +182,9 @@ dirty_cluster() {
   printf 'service:\n  enabled: false\n' > "$STATE/traefik-values"
 }
 snapshot() { (cd "$STATE" && find . -type f | sort | xargs cat) | cksum; }
-run_down() { K8S_LOCAL_RUNTIME="${RUNTIME_OVERRIDE:-rancher}" bash "$SCRIPT" "$@" 2>&1; }
+# NFR, #1550: k8s-local-down.sh は明示の指定（--live か LIVE=1）が無ければ何もせずに終わる。ここはスタブの下なので
+# LIVE=1 を与える（拒否の経路は scripts.repo.test.js の #1550 節が固定する）。
+run_down() { LIVE=1 K8S_LOCAL_RUNTIME="${RUNTIME_OVERRIDE:-rancher}" bash "$SCRIPT" "$@" 2>&1; }
 # 出力のうち 8 段目（検証）以降だけ。0 段目（現状）も同じ「残:」を出すので、検証が数えたことはここで見る。
 after8() { sed -n '/==> \[8\/8\]/,$p' <<<"$1"; }
 # スタブの記録のうち、読み取り以外の呼び出し（dry-run では 0 件でなければならない）。

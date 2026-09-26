@@ -13,7 +13,7 @@ mTLS を強制する宣言（`PeerAuthentication` / `DestinationRule`）は Helm
 ### 経路B（ローカル k3s）— `ISTIO=1` の opt-in（#782 で配線した）
 
 ```sh
-ISTIO=1 ./scripts/k8s-local-up.sh
+ISTIO=1 ./scripts/k8s-local-up.sh --live
 ```
 
 `scripts/k8s-local-up.sh` が次を **[6/7] の前に** 行う（CRD が無いまま helm upgrade すると apply が失敗するため）:
@@ -43,8 +43,8 @@ kubectl -n microservices-platform get pods -o json |   jq -r '.items[] | .metada
 ### 🔴 mTLS モードは既定 PERMISSIVE で入る
 
 ```sh
-ISTIO=1 ./scripts/k8s-local-up.sh                        # PERMISSIVE（既定）
-ISTIO=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh # STRICT へ移す
+ISTIO=1 ./scripts/k8s-local-up.sh --live                        # PERMISSIVE（既定）
+ISTIO=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh --live # STRICT へ移す
 ```
 
 **いきなり STRICT にしてはならない。** サイドカーの入っていない `platform-infra`
@@ -71,11 +71,11 @@ ISTIO=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh # STRICT へ移す
 したがって経路B では **`ISTIO=1` と `LOCALEDGE=1` を併用してエッジを Envoy へ移してから** STRICT へ上げる。
 
 ```sh
-ISTIO=1 LOCALEDGE=1 ./scripts/k8s-local-up.sh                        # PERMISSIVE で立てる
-ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh # STRICT へ移す
+ISTIO=1 LOCALEDGE=1 ./scripts/k8s-local-up.sh --live                        # PERMISSIVE で立てる
+ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh --live # STRICT へ移す
 
-bash scripts/istio-edge-up.sh     # 既に立っているクラスタのエッジだけを移す
-bash scripts/istio-edge-down.sh   # 🔴 切り戻し（1 コマンド）。**触る前に読むこと**
+bash scripts/istio-edge-up.sh --live     # 既に立っているクラスタのエッジだけを移す
+bash scripts/istio-edge-down.sh --live   # 🔴 切り戻し（1 コマンド）。**触る前に読むこと**
 ```
 
 エッジ資材は [`../local/edge-istio/`](../local/edge-istio/)（Gateway 2 本 ＋ VirtualService 9 本 ＋
@@ -95,7 +95,7 @@ bash scripts/istio-edge-down.sh   # 🔴 切り戻し（1 コマンド）。**�
 Helm 4 はサーバサイド apply を使うので、外から書くと field manager が奪われ、
 **以後の `helm upgrade` が conflict で恒久的に失敗する**（`--take-ownership` も `--force` も効かない）。
 モードの切り替えは [`../../scripts/lib/mesh-mtls-mode.sh`](../../scripts/lib/mesh-mtls-mode.sh) の
-`set_mesh_mtls_mode` を使う。乖離は `node scripts/check-stack-ready.js` の門 **G12** が落とす。
+`set_mesh_mtls_mode` を使う。乖離は `node scripts/check-stack-ready.js --live` の門 **G12** が落とす。
 固まった release の復旧手順は `docs/operations/operations.md` の Runbook にある。
 
 ### 🔴 STRICT は **`ai-stock-trading`（メッシュ外のテナント）→ MSP を落とす**（#1159）

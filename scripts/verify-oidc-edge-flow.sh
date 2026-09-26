@@ -34,7 +34,7 @@
 # 実行方法:
 #   1) 経路B を起動し、エッジを有効にする（LOCALEDGE=1 / Rancher Desktop は overlay 適用のみ）。
 #   2) 本スクリプトを実行する:
-#        bash scripts/verify-oidc-edge-flow.sh
+#        bash scripts/verify-oidc-edge-flow.sh --live   # --live か LIVE=1 が無ければ何もしない（#1550）
 #
 # 終了コード: 0=全項目 PASS / 1=導線の失敗（FAIL あり） / 2=前提未整備（SKIP。失敗と区別する）
 #
@@ -66,6 +66,11 @@
 #       索引に 1 点も入らず、全文側にも当たるものが無い。#992 案 2 の裁定待ちである。
 
 set -uo pipefail
+
+# NFR, #1550: 稼働スタックのエッジと Keycloak へログインを通し、ABAC_POSITIVE=1 では文書も作る。明示の指定（--live か LIVE=1）が無ければ何もせずに終わる（判定は副作用より前に置く）。
+. "$(dirname "$0")/lib/live-opt-in.sh" || exit 3   # 判定器が読めなければ守れない —— 黙って続けず止める
+live_opt_in_scan "$@"; set -- "${LIVE_REST[@]+"${LIVE_REST[@]}"}"
+live_opt_in_require "verify-oidc-edge-flow.sh"
 
 # 本スクリプトからリポジトリ内の補助（scripts/lib/totp.js）を引くための基点。
 # 呼び出し元の cwd に依存しないよう、スクリプト自身の位置から導く。

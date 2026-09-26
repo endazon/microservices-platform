@@ -149,6 +149,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { LIVE_FLAG, requireLiveOptIn } = require('./lib/live-opt-in.js');
 
 const REPO_ROOT = path.join(__dirname, '..');
 
@@ -2378,7 +2379,7 @@ function selfTest() {
 
 function main() {
   const argv = process.argv.slice(2);
-  const unknown = argv.filter((a) => a !== '--self-test');
+  const unknown = argv.filter((a) => a !== '--self-test' && a !== LIVE_FLAG);
   if (unknown.length > 0) {
     console.error(`[check-stack-ready] 未知の引数: ${unknown.join(' ')}`);
     process.exit(2);
@@ -2387,6 +2388,8 @@ function main() {
     selfTest();
     return;
   }
+  // NFR, #1550: 稼働クラスタへ kubectl で当たる（G6 / G13 は使い捨ての Pod も立てる）。明示の指定が無ければ何もしない。
+  requireLiveOptIn('check-stack-ready', argv, { offline: '--self-test' });
 
   const r = check();
   for (const notice of r.notices) console.log(notice);

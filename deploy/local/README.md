@@ -47,7 +47,7 @@ winget install Helm.Helm
 ## 起動（Git Bash 推奨。1 コマンド）
 
 ```bash
-bash scripts/k8s-local-up.sh          # クラスタ作成→build/import→secret→infra→MSP chart→alias
+bash scripts/k8s-local-up.sh --live          # クラスタ作成→build/import→secret→infra→MSP chart→alias
 kubectl get pods -A
 kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 #   → http://localhost:5080/health
@@ -56,8 +56,8 @@ kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 破棄（**既定は `--dry-run`**。消す予定のものを順に表示するだけで何も変えない。実行は `--apply`）:
 
 ```bash
-bash scripts/k8s-local-down.sh            # dry-run（読み取りだけ）
-bash scripts/k8s-local-down.sh --apply    # 実行。AST の OpenD の PVC・Vault の保存領域も消える（戻せない）
+bash scripts/k8s-local-down.sh --live            # dry-run（読み取りだけ）
+bash scripts/k8s-local-down.sh --live --apply    # 実行。AST の OpenD の PVC・Vault の保存領域も消える（戻せない）
 ```
 
 Rancher Desktop 経路（内蔵 k3s は残す）では、アプリの Helm → admission webhook → コントローラより長生きする
@@ -71,13 +71,13 @@ cert-manager.io / argoproj.io）と Bound でない PV → Traefik の Service �
 既定は**無効**（env 未設定で従来どおり）。env ゲートで追加のみ有効化する（既存ステップは不変）。
 
 ```bash
-OBSERVABILITY=1 bash scripts/k8s-local-up.sh   # Prometheus/Loki/Tempo/Grafana + collector forwarding
-VAULT=1         bash scripts/k8s-local-up.sh   # Vault（既定は file ストレージ＋PVC で永続化・PERSIST=0 で -dev）+ ClusterSecretStore(vault-backend)（要 ESO CRD）
-ARGOCD=1        bash scripts/k8s-local-up.sh   # ArgoCD install + Application 適用（MSP/AST）
-PERSIST=0       bash scripts/k8s-local-up.sh   # 【opt-out】永続化を外す（使い捨てスタック専用）。永続化は既定オン（下記「永続化」節・IADR-0369）
-LOCALEDGE=1     bash scripts/k8s-local-up.sh   # ローカルエッジ集約: platform フロント 80/443 ＋ 管理ツール 50000（下記 edge 節）
-ESO=1           bash scripts/k8s-local-up.sh   # Vault＋ESO で secret 自動供給（要 VAULT=1・本番同等 k8s auth・IADR-0096・#310）
-SYNTHETIC=1     bash scripts/k8s-local-up.sh   # 合成監視の常駐プローブ（60 秒・LLM を呼ばない。ADR-0079 決定 1・#1287。下記「合成監視」節）
+OBSERVABILITY=1 bash scripts/k8s-local-up.sh --live   # Prometheus/Loki/Tempo/Grafana + collector forwarding
+VAULT=1         bash scripts/k8s-local-up.sh --live   # Vault（既定は file ストレージ＋PVC で永続化・PERSIST=0 で -dev）+ ClusterSecretStore(vault-backend)（要 ESO CRD）
+ARGOCD=1        bash scripts/k8s-local-up.sh --live   # ArgoCD install + Application 適用（MSP/AST）
+PERSIST=0       bash scripts/k8s-local-up.sh --live   # 【opt-out】永続化を外す（使い捨てスタック専用）。永続化は既定オン（下記「永続化」節・IADR-0369）
+LOCALEDGE=1     bash scripts/k8s-local-up.sh --live   # ローカルエッジ集約: platform フロント 80/443 ＋ 管理ツール 50000（下記 edge 節）
+ESO=1           bash scripts/k8s-local-up.sh --live   # Vault＋ESO で secret 自動供給（要 VAULT=1・本番同等 k8s auth・IADR-0096・#310）
+SYNTHETIC=1     bash scripts/k8s-local-up.sh --live   # 合成監視の常駐プローブ（60 秒・LLM を呼ばない。ADR-0079 決定 1・#1287。下記「合成監視」節）
 ```
 
 - [`deploy/local/observability/README.md`](observability/README.md) — 可観測性スタック（既定 debug-only を維持）
@@ -106,13 +106,13 @@ runtime state（TOTP 資格情報・追加利用者・セッション）が Pod 
 永続へ返した。**`local-path` StorageClass が無ければ起動器は止まる**（黙って emptyDir へは落とさない。使い捨てなら `PERSIST=0`）。
 
 ```bash
-bash scripts/k8s-local-up.sh
+bash scripts/k8s-local-up.sh --live
 # → deploy/local/infra-persistence を適用（base infra + PVC + volume パッチ）。
 
-OBSERVABILITY=1 bash scripts/k8s-local-up.sh
+OBSERVABILITY=1 bash scripts/k8s-local-up.sh --live
 # → 上記に加えて deploy/local/observability-persistence を適用（素の deploy/local/observability の "置換"）。
 
-PERSIST=0 bash scripts/k8s-local-up.sh
+PERSIST=0 bash scripts/k8s-local-up.sh --live
 # → 【opt-out・使い捨てスタック専用】base（emptyDir）。OBSERVABILITY=1 併用時も素の overlay。
 ```
 
@@ -150,7 +150,7 @@ PERSIST=0 bash scripts/k8s-local-up.sh
 - **⚠️ PVC の要求容量は縮小できない。** 上表の容量を小さくする変更を**既存クラスタへ再 apply すると API サーバが拒否する**
   （実測: `spec.resources.requests.storage: Forbidden: field can not be less than status.capacity`）。
   縮小したいときは対象 Deployment を `--replicas=0` にしてから PVC を消して作り直す（＝データは失われる）。
-- **保持されるのは Pod の再起動/再作成の範囲**。`bash scripts/k8s-local-down.sh --apply` は k3d 経路ではクラスタごと、
+- **保持されるのは Pod の再起動/再作成の範囲**。`bash scripts/k8s-local-down.sh --live --apply` は k3d 経路ではクラスタごと、
   Rancher Desktop 経路では `platform-infra` ほかアプリの namespace を削除するため、**`down`→`up` の再構築サイクルでは PVC
   （上表のすべて）も消える**（= realm/DB/embeddings/メトリクスは再生成）。PVC を残したまま作り直したいときは `down` を
   使わず `kubectl -n platform-infra rollout restart deploy/keycloak deploy/postgres` 等で Pod のみ入れ替える。
@@ -164,7 +164,7 @@ PERSIST=0 bash scripts/k8s-local-up.sh
   # 可観測性側（OBSERVABILITY=1 で作られる分）:
   kubectl -n platform-infra delete pvc prometheus-data loki-data tempo-data grafana-data
   ```
-- **非永続で立っていることは門が赤くする**: `node scripts/check-stack-ready.js` の **G10** が、オーバーレイの宣言する PVC を
+- **非永続で立っていることは門が赤くする**: `node scripts/check-stack-ready.js --live` の **G10** が、オーバーレイの宣言する PVC を
   対応する Deployment が参照し `Bound` であることを要求する（`PERSIST=0` を明示したときだけ notice）。
 
 #### realm（`microservices-platform-realm.json`）を更新したときの反映（自動・IADR-0369）
@@ -173,7 +173,7 @@ PERSIST=0 bash scripts/k8s-local-up.sh
 import では届かない。そこで `k8s-local-up.sh` は [7/7] の後に **[`keycloak-setup/reconcile-realm.sh`](keycloak-setup/README.md)**
 を呼び、**realm JSON（宣言）と稼働 realm の差分を Job（Admin REST API）で当てる**。つまり **realm JSON を変えたら
 up を再実行すれば届く**（単独でも `bash deploy/local/keycloak-setup/reconcile-realm.sh` で当てられる。冪等）。
-届いているかは `node scripts/check-stack-ready.js` の **G9**（`--check`＝差分 0 件）が fail-closed で見る。
+届いているかは `node scripts/check-stack-ready.js --live` の **G9**（`--check`＝差分 0 件）が fail-closed で見る。
 
 - **宣言が当てる層**: realm 設定（テーマ・ロケール・token 寿命・パスワード／OTP ポリシー・ブルートフォース・events）／
   `requiredActions`／ロール／グループ／client scopes ＋ mappers／clients（属性・redirect・secret・scope 割当 ＋ mappers）／
@@ -339,7 +339,7 @@ kubectl -n istio-system get virtualservice msp-keycloak-edge -o jsonpath='{.spec
 ```bash
 kubectl -n platform-infra port-forward svc/mailpit 8025:8025
 #   → http://localhost:8025            （受信箱。認証は無い）
-node scripts/check-password-reset-mail.js
+node scripts/check-password-reset-mail.js --live
 #   → 申請 → 送出 → 受信 → 本文（リンクと有効期限のみ）を機械で確かめる
 ```
 
@@ -422,7 +422,7 @@ Wiki.js の初期セットアップ・同期 API キー・本文 locale を冪�
 
 セットアップ状態は共有 Postgres の `wikijs` DB に載る。永続化が既定なので postgres Pod の作り直しでは消えないが、
 `PERSIST=0` で立てたクラスタでは `emptyDir` なので**消える** —— そのときは bootstrap を再実行する（冪等）。
-検知は `node scripts/check-stack-ready.js` の **G7**（fail-closed）。詳細は
+検知は `node scripts/check-stack-ready.js --live` の **G7**（fail-closed）。詳細は
 [wikijs-setup/README.md](wikijs-setup/README.md)。
 
 ### Wiki 閲覧の到達（SC-04・Issue #344 → #1200）
@@ -461,7 +461,7 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
   であり k8s の port-forward では使わない。非 edge で SSO を使う場合は Wiki.js の **Site URL も `http://localhost:3300`** に
   揃える（コールバックは `{Site URL}/login/{strategyKey}/callback`・[wiki-oidc/README](wiki-oidc/README.md)）。
   **ストラテジと Site URL の投入は自動である**（#1127・IADR-0342）——
-  `WIKIJS_OIDC=1 bash scripts/k8s-local-up.sh`（既定オフの opt-in）か、既に立っているスタックなら
+  `WIKIJS_OIDC=1 bash scripts/k8s-local-up.sh --live`（既定オフの opt-in）か、既に立っているスタックなら
   `WIKIJS_OIDC=1 bash deploy/local/wikijs-setup/bootstrap.sh`。冪等で、2 回目は何も変えない。
   非 edge で使うときは同時に `WIKIJS_SITE_URL=http://localhost:3300` を渡す。
   実ブラウザでの SSO ログイン疎通は稼働 k3d・edge 設定依存＝**live**（本 issue の live 分）。
@@ -569,7 +569,7 @@ Error: invalid authentication configuration: jwt[0].issuer.url:
 ### 有効化（opt-in・既定オフ）
 
 ```bash
-HEADLAMP=1 bash scripts/k8s-local-up.sh   # Rancher Desktop（内蔵 k3s）・k3d 共通
+HEADLAMP=1 bash scripts/k8s-local-up.sh --live   # Rancher Desktop（内蔵 k3s）・k3d 共通
 # → deploy/local/headlamp（Deployment/Service ＋ Pod 用 SA `headlamp` ＋ token ログイン用 SA `headlamp-viewer`
 #   と閲覧専用 RBAC・#398/IADR-0108）を適用。
 #   OIDC client secret は Secret headlamp-oidc（platform-infra）へ dev 既定で作成（HEADLAMP_OIDC_CLIENT_SECRET で上書き可）。
@@ -644,7 +644,7 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
   AST を mesh へ入れるまで（AST#627）既定は PERMISSIVE のままにする。
   **モードは `scripts/lib/mesh-mtls-mode.sh` の `set_mesh_mtls_mode`（helm 経由）でしか書かない** ——
   `kubectl patch` で書くと以後の `helm upgrade` が恒久的に失敗する（IADR-0377。乖離は
-  `node scripts/check-stack-ready.js` の G12 が落とす）。
+  `node scripts/check-stack-ready.js --live` の G12 が落とす）。
 
 ## 手動でステップ実行する場合
 

@@ -2,7 +2,7 @@
 # IADR-0066: MSP+AST 連結ローカル k8s(k3d) dev 環境の起動オーケストレーション。
 # 冪等（再実行可）。fail-safe: 機密は未設定なら dev 既定/空（no-op）で作成する。
 #
-#   bash scripts/k8s-local-up.sh [cluster-name]
+#   bash scripts/k8s-local-up.sh --live [cluster-name]   # --live か LIVE=1 が無ければ何もしない（#1550）
 #
 # 前提ツール: docker / k3d / kubectl / helm（scripts/README や docs/operations 参照）。
 # 機密の上書きは環境変数で: PG_PASSWORD / RABBITMQ_PASSWORD / KEYCLOAK_ADMIN_PASSWORD /
@@ -20,6 +20,13 @@
 #   （検証で床の有無を比べる用途に限る。本番の退路に使わない。ADR-0111 決定 3 / #1543）。
 #   器は 2 レプリカ ＋ PodDisruptionBudget（ADR-0111 決定 1）。下の rollout 待ちは 2 つとも ready になるまで待つ。
 set -euo pipefail
+
+# NFR, #1550: クラスタを作り、稼働クラスタへ helm / kubectl で書き込む。明示の指定（--live か LIVE=1）が無ければ
+# 何もせずに終わる（判定は副作用より前に置く）。指定は LIVE=1 として export され、中から呼ぶ
+# k8s-local-images.sh / istio-edge-up.sh / seed-*.js は親の指定を引き継ぐ。
+. "$(dirname "$0")/lib/live-opt-in.sh" || exit 3   # 判定器が読めなければ守れない —— 黙って続けず止める
+live_opt_in_scan "$@"; set -- "${LIVE_REST[@]+"${LIVE_REST[@]}"}"
+live_opt_in_require "k8s-local-up.sh"
 
 # SC-15 / ADR-0097 決定 2 (#1500): RESET_FLOOR は末尾の istio-edge-up.sh が読む。そこでも 0 / 1 以外を拒むが、
 # 🔴 **長い起動の最後で落ちるより、最初に落とす**（監査 #1518）。空（未設定と同じ＝既定 1）・0・1 だけを受け付ける。
@@ -563,7 +570,7 @@ if [ "${ESO:-}" = "1" ]; then
   # 早期ガード: ESO=1 は dev Vault（VAULT=1）を前提とする。bootstrap は `kubectl exec deploy/vault` を使うため、
   # Vault Deployment が無いと分かりにくいエラーで中断する。明示的に案内して止める（fail-fast）。
   if ! kubectl -n "$INFRA_NS" get deploy vault >/dev/null 2>&1; then
-    echo "ERROR: ESO=1 は VAULT=1 と併用してください（dev Vault が必要）。例: VAULT=1 ESO=1 bash scripts/k8s-local-up.sh" >&2
+    echo "ERROR: ESO=1 は VAULT=1 と併用してください（dev Vault が必要）。例: VAULT=1 ESO=1 bash scripts/k8s-local-up.sh --live" >&2
     exit 1
   fi
   # ESO 本体（idempotent・CRD 同梱）。webhook 準備を待つ。
@@ -1042,7 +1049,7 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
   if [ "${ISTIO:-}" = "1" ]; then
     echo "==> [opt-in] エッジを Istio Ingress Gateway へ移す (ADR-0021 / #782)"
     ISTIO_MTLS_MODE="${ISTIO_MTLS_MODE:-}" bash "$ROOT/scripts/istio-edge-up.sh"
-    echo "    切り戻し（1 コマンド）: bash scripts/istio-edge-down.sh"
+    echo "    切り戻し（1 コマンド）: bash scripts/istio-edge-down.sh --live"
   fi
 fi
 
@@ -1086,7 +1093,7 @@ bash "$ROOT/deploy/local/wikijs-setup/bootstrap.sh" \
 if [ "${ABACSEED:-}" = "1" ]; then
   echo "==> [opt-in] ABAC 初期投入（属性辞書・ポリシー / IADR-0133）"
   node "$ROOT/scripts/seed-abac-policies.js" \
-    || echo "    WARN: ABAC 初期投入に失敗（best-effort）。node scripts/seed-abac-policies.js で再実行できる" >&2
+    || echo "    WARN: ABAC 初期投入に失敗（best-effort）。node scripts/seed-abac-policies.js --live で再実行できる" >&2
 fi
 
 # IADR-0284 (#992): 検索検証用の文書を投入する。**本文を持つ文書**でないと索引に一度も入らない
@@ -1100,7 +1107,7 @@ fi
 if [ "${SEARCHSEED:-}" = "1" ]; then
   echo "==> [opt-in] 検索検証用文書の初期投入（本文つき / IADR-0284）"
   node "$ROOT/scripts/seed-search-documents.js" \
-    || echo "    WARN: 検索用文書の投入に失敗（best-effort）。node scripts/seed-search-documents.js で再実行できる" >&2
+    || echo "    WARN: 検索用文書の投入に失敗（best-effort）。node scripts/seed-search-documents.js --live で再実行できる" >&2
 fi
 
 # FR-06, FR-09, SC-05, SC-09 (#1359): タグ辞書へ**外部ユニットが送ってくる静的タグ**を初期投入する。
@@ -1114,7 +1121,7 @@ fi
 # best-effort: 投入の失敗で up 全体を止めない（再実行は冪等）。
 if [ "${TAGSEED:-}" = "1" ]; then
   echo "==> [opt-in] タグ辞書の初期投入（外部ユニットの静的タグ / #1359）"
-  node "$ROOT/scripts/seed-tag-dictionary.js"     || echo "    WARN: タグ辞書の投入に失敗（best-effort）。node scripts/seed-tag-dictionary.js で再実行できる" >&2
+  node "$ROOT/scripts/seed-tag-dictionary.js"     || echo "    WARN: タグ辞書の投入に失敗（best-effort）。node scripts/seed-tag-dictionary.js --live で再実行できる" >&2
 fi
 
 # NFR-02, NFR-21, ADR-0076 決定 3・4, ADR-0079 決定 1, IADR-0378 (#1287): 合成監視（synthetic）の常駐プローブ。

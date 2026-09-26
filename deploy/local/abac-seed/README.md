@@ -36,8 +36,8 @@
 ## 適用（opt-in・既定オフ）
 
 ```sh
-ABACSEED=1 bash scripts/k8s-local-up.sh     # 起動時に投入する
-node scripts/seed-abac-policies.js          # 稼働中のクラスタへ後から投入する（冪等）
+ABACSEED=1 bash scripts/k8s-local-up.sh --live     # 起動時に投入する
+node scripts/seed-abac-policies.js --live          # 稼働中のクラスタへ後から投入する（冪等）
 node scripts/seed-abac-policies.js --dry-run # 何が入るかだけ見る（副作用なし）
 ```
 

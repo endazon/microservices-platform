@@ -64,7 +64,7 @@ STRICT でも成立する。
 3. WikiService が使う locale が Wiki.js に入っている（`isInstalled`）
 
 ```sh
-node scripts/check-stack-ready.js          # 全ゲート
+node scripts/check-stack-ready.js --live          # 全ゲート
 node scripts/check-stack-ready.js --self-test
 ```
 

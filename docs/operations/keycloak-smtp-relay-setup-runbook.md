@@ -49,7 +49,7 @@ issues: [#438, #578, #600, #1102, #1143, #1144, #1245, #1500, #1543, #1544, plan
 
 ```sh
 kubectl -n platform-infra port-forward svc/mailpit 8025:8025   # → http://localhost:8025
-node scripts/check-password-reset-mail.js                       # 申請→送出→受信→本文を機械で確かめる
+node scripts/check-password-reset-mail.js --live                       # 申請→送出→受信→本文を機械で確かめる
 ```
 
 🔴 **本手順は「外部の実リレーへ向ける」ための手順である。** 実行すると、その開発環境からのメールは
@@ -234,7 +234,7 @@ kubectl -n platform-infra rollout status  deploy/mail-relay --timeout=120s
 2. 申請 → 送出 → 受信 → 本文までを機械で確かめる。
 
    ```sh
-   node scripts/check-password-reset-mail.js
+   node scripts/check-password-reset-mail.js --live
    ```
 
 3. 🔴 **送出が成立することを確かめてから、申請を開き直す**（§0 で閉じたものを戻す。**順序を逆にしない** ——
@@ -243,7 +243,7 @@ kubectl -n platform-infra rollout status  deploy/mail-relay --timeout=120s
    ```sh
    KC_POD=$(kubectl -n platform-infra get pod -l app=keycloak -o jsonpath='{.items[0].metadata.name}')
    kubectl -n platform-infra exec -i "$KC_POD" -- sh -c      '/opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master         --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null       && /opt/keycloak/bin/kcadm.sh update realms/platform -s "resetPasswordAllowed=true"'
-   node scripts/check-password-reset-mail.js   # 開閉と送出先の組・応答の同値性を機械で確かめる
+   node scripts/check-password-reset-mail.js --live   # 開閉と送出先の組・応答の同値性を機械で確かめる
    ```
 
 4. パスワードリセット画面を実運用アカウントで申請し、リセットメールが着信する。
@@ -332,7 +332,7 @@ kubectl -n istio-system get virtualservice msp-keycloak-edge \
   -o jsonpath='{.spec.http[0].name}{"\n"}'                                      # reset-credentials-floor なら経路が入っている
 ```
 
-- **外すとき（検証で床の有無を比べる用途に限る）**: `RESET_FLOOR=0 bash scripts/istio-edge-up.sh`。経路だけが外れ、
+- **外すとき（検証で床の有無を比べる用途に限る）**: `RESET_FLOOR=0 bash scripts/istio-edge-up.sh --live`。経路だけが外れ、
   器は誰も通らないまま居る。🔴 **外している間は所要時間で利用者名を判別できる**（申請には回数制限が無く、
   数回の申請で列挙できる）。**本番では外さない**（下の「器がすべて落ちたとき」）。戻すときは
   `RESET_FLOOR` を与えずに同じスクリプトを走らせる。`0` / `1` 以外の値は、入口に触る前に拒まれる。

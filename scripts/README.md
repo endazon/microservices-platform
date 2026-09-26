@@ -68,6 +68,41 @@
 | `lib/ci-annotate.js` | 検査器共通。警告を GitHub Actions のアノテーション（`::warning::` / `::notice::`）として出す。素の出力は緑ジョブのログに埋もれて読まれないため。ローカル実行時の見た目は従来どおり | — |
 | `setup.sh` | 開発環境セットアップ（SessionStart hook / devcontainer から実行）。NFR / issue #1349: `git submodule update --init src/ai-stock-trading`（`Platform.Bff.csproj` の ProjectReference が要る。dotnet restore より前）と `pnpm install --frozen-lockfile`（`src/`。在れば使う・fail-open）を行う。`setup.test.js` が stub-on-PATH で固定する | — |
 | `apply-profile.sh` | `AI_SETUP.md` で宣言したプロファイルに応じてキットを構成（`.example` 有効化等） | `.ai-profile` |
+| `lib/live-opt-in.js` / `lib/live-opt-in.sh` | NFR・#1550: 稼働クラスタへ当たる入口の**明示の指定**（`--live` か `LIVE=1`）を判定する共通器（Node / bash の対。同じ規則・同じ文言・同じ終了コード 3）。下の「稼働クラスタへ当たる scripts」を参照 | — |
+
+## 稼働クラスタへ当たる scripts
+
+NFR・#1550。ワークフローの `node scripts/...` の行をまとめて実行した作業エージェントが、稼働中の Keycloak へ本物のパスワード再設定を申請した（2026-09-26）。
+**スクリプトの名前や引数の無さからは、稼働クラスタへ当たるかどうかが読めない。** だから次の規則を置く。
+
+- 稼働クラスタ（`kubectl` / `port-forward` / localhost のサービス / Keycloak の管理 API など）へ当たる入口は、**`--live` か環境変数 `LIVE=1` が無ければ何もせずに終了コード 3 で終わる。** 判定は副作用より前に置く。
+- `LIVE` は `1` だけを受け付ける。bash の入口は指定があれば `LIVE=1` を export し、中から呼ぶ子（`k8s-local-up.sh` → `k8s-local-images.sh` / `istio-edge-up.sh` / `seed-*.js`）は親の指定を引き継ぐ。
+- 稼働クラスタに触れないモード（下表の「指定なしで動くモード」）は今のまま動く。
+- ワークフローと文書は、稼働スタックに対して呼ぶ行で `--live` を明示する。
+- 🔴 **新しいスクリプトにも同じ規則を課す。** 一覧の単一情報源は [`live-scripts.json`](live-scripts.json)（`live` / `ownFlag` / `offline` と、判定に使う標識の正規表現）。`scripts/` 配下で標識に当たるファイルは、この JSON のどこかへ分類するまで必須 check `scripts-tests`（`scripts.repo.test.js` の #1550 節）が赤になる。`live` に入れたら、入口は判定器を呼び、指定なしで exit 3 と所定の文言で終わり、ツールを 1 つも起動しないことが同じ節で試される（拒否の経路だけ。稼働の経路は走らせない）。
+
+| 入口 | 指定なしで動くモード |
+| --- | --- |
+| `check-login-existence-disclosure.js` | `--self-test` |
+| `check-password-reset-mail.js` | `--self-test` |
+| `check-stack-ready.js` | `--self-test` |
+| `seed-abac-policies.js` | `--dry-run` |
+| `seed-search-documents.js` | `--dry-run` / `--print-probe-term` / `--print-keyword-only-query` / `--print-japanese-keyword-query` |
+| `seed-tag-dictionary.js` | `--dry-run` |
+| `measure-abac-combinations.js` | `--input`（収集済みの集計） |
+| `measure-cutover-inventory.js` | `--input`（収集済みの集計）/ `--print-recreate-sql` |
+| `measure-search-ndcg.js` | `--input`（収集済みの集計） |
+| `verify-oidc-edge-flow.sh` | — |
+| `verify-qdrant-attribute-payload.sh` | — |
+| `verify-qdrant-fulltext-index.sh` | — |
+| `verify-tool-oidc-logins.sh` | — |
+| `k8s-local-up.sh` | — |
+| `k8s-local-down.sh` | `--help`（既定の `--dry-run` も稼働クラスタを読むので指定が要る） |
+| `k8s-local-images.sh` | — |
+| `istio-edge-up.sh` | — |
+| `istio-edge-down.sh` | — |
+
+`backup-restore-drill.sh` は**自前の `--live`** で既に閉じている（稼働クラスタへは `--live` のときだけ読み取り専用で触れる。`--live-counts` と `--self-test` は触れない）。
 
 ## プロファイルの適用
 

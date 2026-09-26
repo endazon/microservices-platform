@@ -27,11 +27,11 @@
  *
  * 実行方法:
  *   1) 経路B が稼働している状態で:
- *        node scripts/seed-tag-dictionary.js
+ *        node scripts/seed-tag-dictionary.js --live
  *      （kubectl port-forward を一時的に自分で張り、終了時に片付ける）
  *   2) 既に到達可能な URL があるなら port-forward を使わない:
  *        TAG_SEED_DOC_URL=http://localhost:5082 TAG_SEED_KC_URL=http://keycloak:8080 \
- *          node scripts/seed-tag-dictionary.js
+ *          node scripts/seed-tag-dictionary.js --live
  *   3) 何が投入されるかだけ見る（副作用なし）:
  *        node scripts/seed-tag-dictionary.js --dry-run
  *
@@ -46,6 +46,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
+const { requireLiveOptIn } = require('./lib/live-opt-in.js');
 
 // `seed-abac-policies.js` は `require.main` ガードを持つので、require しても投入は走らない。
 const abacSeed = require('./seed-abac-policies.js');
@@ -189,6 +190,8 @@ async function main(argv) {
     log('--dry-run のため投入しません。');
     return 0;
   }
+  // NFR, #1550: ここから先は稼働クラスタへ port-forward してタグを作る。明示の指定が無ければ何もしない。
+  requireLiveOptIn('seed-tag-dictionary', argv, { offline: '--dry-run' });
 
   let docUrl = env('TAG_SEED_DOC_URL', '');
   let kcUrl = env('TAG_SEED_KC_URL', '');
