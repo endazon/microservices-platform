@@ -28,6 +28,21 @@ public record DocumentDto
     // BFF の単体判定は `DocumentAttributeEncoding.WithSharedWith` で `shared_with` の集合値属性として読む。
     // **既定は null（＝共有なし）**。項目を持たない旧応答は「共有なし」として読める（末尾追加・既定値付き）。
     public List<string>? SharedWith { get; init; }
+    // FR-06, ADR-0050 決定 1 (#1575): **本文指紋**（台帳の `Document.ContentFingerprint` の写し）。
+    // 本文の内容だけで決まり、メタデータだけの更新では変わらない。本文を持たない・指紋化できなかった
+    // 文書は null。🔴 **原本が本文を持たない文書（`HasBody=false`）も null**（台帳には空の本文の指紋が
+    // 入っているが、応答では返さない。`DocumentEndpoints.ToDto` の 1 か所で倒す）。**全経路が同じ関数で作る**（格納した本文の UTF-8 の SHA-256 小文字 hex）ため、
+    // 本文を投入した呼び出し側は送った本文から同じ値を計算して「保存済みの本文が最新か」を判定できる。
+    // **既定は null**（末尾追加・既定値付き。項目を持たない旧応答は「指紋不明」として読める）。
+    public string? ContentFingerprint { get; init; }
+}
+
+// FR-06, NFR-08 (#1575): `GET /documents/page` の応答（組織文書の絞り込み・ページング）。
+// `NextCursor` が null なら終端。値は不透明な文字列で、次の要求の `cursor` へそのまま渡す。
+public record DocumentPageDto
+{
+    public List<DocumentDto> Items { get; init; } = [];
+    public string? NextCursor { get; init; }
 }
 
 // SC-03, FR-06: 文書本文（正規化 Markdown）の取得結果。BFF が ABAC 判定後にオブジェクト

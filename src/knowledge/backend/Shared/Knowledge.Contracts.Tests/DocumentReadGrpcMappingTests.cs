@@ -56,6 +56,21 @@ public class DocumentReadGrpcMappingTests
             .MarkdownUri.Should().Be("");
     }
 
+    // FR-06, ADR-0050 決定 1 (#1575): 本文指紋は値も null も往復する。
+    // 🔴 **変異試験**: presence を無視して常に代入すると null が "" になり、「本文なし」が
+    // 「指紋は空文字」へ化ける（呼び出し側は空文字を指紋として突き合わせ、常に不一致と判定する）。
+    // 代入を落とすと値が消え、gRPC 経路の BFF だけが指紋を持たない応答を返す。
+    [Fact]
+    public void ContentFingerprint_value_and_null_survive_the_round_trip()
+    {
+        var withFingerprint = Doc("storage://b/k", hasBody: true) with { ContentFingerprint = new string('a', 64) };
+        DocumentReadGrpcMapping.ToDto(DocumentReadGrpcMapping.ToProto(withFingerprint))
+            .ContentFingerprint.Should().Be(new string('a', 64));
+
+        DocumentReadGrpcMapping.ToDto(DocumentReadGrpcMapping.ToProto(Doc(null, true)))
+            .ContentFingerprint.Should().BeNull();
+    }
+
     // 文書の写像は**全項目**が往復する（順序つきのタグ・属性・時刻の tick まで）。
     [Fact]
     public void Document_round_trips_every_field()

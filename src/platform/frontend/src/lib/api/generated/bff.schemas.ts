@@ -590,6 +590,27 @@ export interface DocumentDto {
      * （`null`。空集合にしない —— 「共有の有無」も見せない）。読めるかどうかは変わらない。
      */
   sharedWith?: string[] | null;
+  /**
+     * FR-06, ADR-0050 決定 1 (#1575): **本文指紋**。本文の内容だけで決まり、**メタデータだけの更新では変わらない**。
+     * 本文を持たない文書・指紋化できなかった文書は `null`（**空文字にしない**）。
+     * 🔴 **原本が本文を持たない文書（`hasBody: false`。テキスト層の無い PDF 等）も `null`** ——
+     * 取り込みは空の本文を格納するが、その指紋（空文字列の SHA-256）は返さない。値があれば本文がある。
+     * 全経路が同じ関数で作る —— **格納した本文の UTF-8 バイト列の SHA-256 小文字 hex**（64 文字）。
+     * 本文を投入した呼び出し側は、送った本文から同じ値を計算して「保存済みの本文が最新か」を判定できる。
+     * 本文を読める主体に本文の指紋を見せても新しい情報は漏れない（個人資料の `contentHash` と同じ扱い）。
+     * **項目を持たない旧応答は「指紋不明」として読む。**
+     */
+  contentFingerprint?: string | null;
+}
+
+/**
+ * FR-06, NFR-08 (#1575): `GET /documents/page` の応答（組織文書の絞り込み・ページング。
+ * `Knowledge.Contracts/Dtos/DocumentDto.cs`）。`nextCursor` が `null` なら終端。
+ */
+export interface DocumentPageDto {
+  items: DocumentDto[];
+  /** 次のページの `cursor` にそのまま渡す不透明な文字列。呼び出し側は解釈しない */
+  nextCursor?: string | null;
 }
 
 /**

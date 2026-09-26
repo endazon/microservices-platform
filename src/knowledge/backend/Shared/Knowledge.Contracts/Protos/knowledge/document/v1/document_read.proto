@@ -74,6 +74,9 @@ message DocumentSummary {
   // 🔴 原本が本文を持っていたか。DTO の既定は true・proto3 の既定は false で向きが逆。
   // サーバは常に明示的に設定する（ADR-0070 決定 3 / IADR-0388 決定 2）。
   bool has_body = 10;
+  // FR-06, ADR-0050 決定 1 (#1575): 本文指紋（REST の `DocumentDto.ContentFingerprint`）。
+  // 🔴 本文を持たない文書は null。presence で運び、空文字と区別する。
+  optional string content_fingerprint = 11;
 }
 
 // REST の DocumentVersionDto と同じ形。**本文の参照は持たない**（IADR-0290）。
@@ -90,6 +93,8 @@ message DocumentVersionSnapshot {
 }
 
 // 一覧に絞り込みは無い（REST も無い）。将来の絞り込みは番号を足して非破壊で入れる。
+// （#1575 の REST `GET /documents/page`〔組織文書の絞り込み・ページング〕は別の口であり、
+//  本 rpc の同値の相手ではない。`GET /documents` は従来どおり絞り込みを持たない。）
 message ListDocumentsRequest {}
 
 message ListDocumentsResponse {

@@ -552,3 +552,4 @@
 | [IADR-0472](./IADR-0472_datasource-department-domain-validation-via-authz-grpc.md) | SC-06 で明示した部門の値域検証は、AuthorizationService の east-west gRPC に足した照会（CheckDepartmentCodes）で行い、引けなければ 502 で保存しない（#1557） | Accepted |
 | [IADR-0473](./IADR-0473_department-attribute-follows-department-group.md) | 利用者属性 department は AuthorizationService の opt-in の定期処理が部門グループ所属へ合わせて直す（ちょうど 1 つのときだけ・グループは変えない・既定 Off）（#1573） | Accepted |
 | [IADR-0474](./IADR-0474_sync-token-rejected-after-account-disable.md) | **同期トークンの検証で、所有者のアカウントが有効かを同期要求ごとに利用者名簿へ訊き、有効と確かめられたときだけ通す**（#1532・計画 ADR-0114）。判定できなければ 401。再有効化で端末は再び通る。名簿の口の配線で実働する退職者削除の写像を試験で固定 | Accepted |
+| [IADR-0475](./IADR-0475_document-page-and-fingerprint-in-response.md) | 文書の応答へ本文指紋（格納した本文の UTF-8 の SHA-256 小文字 hex）を載せ、組織文書の属性の絞り込みとページングは別の口 `GET /documents/page`（認証必須・個人資料を返さない・作成順のキーセット）に置く。外部 ID と機械の主体の所有文書の更新・削除は計画の裁定待ちで実装しない（#1575） | Accepted |

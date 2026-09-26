@@ -1046,6 +1046,11 @@
             "type": "Dictionary<string,string>",
             "required": false
           },
+          "ContentFingerprint": {
+            "source": "property",
+            "type": "string?",
+            "required": false
+          },
           "CreatedAt": {
             "source": "property",
             "type": "DateTimeOffset",
@@ -1125,6 +1130,21 @@
             "source": "const",
             "type": "string",
             "value": "\"search_exposure\""
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.DocumentPageDto": {
+        "kind": "record",
+        "members": {
+          "Items": {
+            "source": "property",
+            "type": "List<DocumentDto>",
+            "required": false
+          },
+          "NextCursor": {
+            "source": "property",
+            "type": "string?",
+            "required": false
           }
         }
       },
