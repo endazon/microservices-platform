@@ -5,9 +5,11 @@ using DocumentService.Domain;
 using DocumentService.Features.Documents;
 using DocumentService.Features.PrivateNotes;
 using DocumentService.Infrastructure.Persistence;
+using DocumentService.Tests.Infrastructure.ExternalServices;
 using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using DocumentService.Features.PrivateNotes.Maintenance;
 
@@ -323,6 +325,9 @@ public class DeletionPropagationTests(TestWebApplicationFactory factory)
     // ［#1622］取り消しは **AWS SDK（HttpClient）が表す形** —— 呼び出し側の token を持つ `TaskCanceledException` —— で起こす。
     // 素の `OperationCanceledException` を注入していた間は、絞り込みを「`TaskCanceledException` なら時間切れ」と**型で**判定する変異
     // （`|| ex is TaskCanceledException`）が生き残った（#1619 の監査）。時間切れと停止要求は型では分けられず、ct でしか分けられない。
+    // 🔴 「取り消しで終わる」「2 件目が消えない」だけではその変異を殺せない —— 変異の下でも 2 件目の台帳の逆引き（EF）が
+    // 立った ct で取り消しを投げ直し、2 件目は消えないまま取り消しで終わる。**外へ出たのが注入した取り消しそのものであること**と、
+    // **1 件目を「失敗」として記録していないこと**（隔離の枝へ入っていない）で測る。
     [Fact]
     public async Task 定期処理は呼び出し側の取り消しを隔離に畳まず伝える()
     {
@@ -333,25 +338,32 @@ public class DeletionPropagationTests(TestWebApplicationFactory factory)
         var (secondId, secondUri) = await SeedDeletedNoteAsync(owner, "取り消し後の資料", now.AddDays(-91));
 
         using var stopping = new CancellationTokenSource();
+        var injected = new TaskCanceledException("注入した呼び出し側の取り消し", null, stopping.Token);
         factory.Storage.DeleteThrows = uri =>
         {
             if (uri != firstUri) return null;
             stopping.Cancel();
-            return new TaskCanceledException("注入した呼び出し側の取り消し", null, stopping.Token);
+            return injected;
         };
+        var logger = new RecordingLogger<DocumentObjectPurger>();
         try
         {
             using var scope = factory.Services.CreateScope();
-            var act = async () => await scope.ServiceProvider.GetRequiredService<DocumentObjectPurger>()
-                .PurgeIsolatedAsync([firstId, secondId], stopping.Token);
-            await act.Should().ThrowAsync<OperationCanceledException>(
-                "停止要求は 1 件の失敗ではない。周期の外まで伝えて止める");
+            var purger = new DocumentObjectPurger(
+                scope.ServiceProvider.GetRequiredService<DocumentDbContext>(),
+                scope.ServiceProvider.GetRequiredService<IObjectStorageClient>(),
+                logger);
+            var act = async () => await purger.PurgeIsolatedAsync([firstId, secondId], stopping.Token);
+            (await act.Should().ThrowAsync<OperationCanceledException>(
+                    "停止要求は 1 件の失敗ではない。周期の外まで伝えて止める"))
+                .Which.Should().BeSameAs(injected, "1 件目の取り消しをそのまま伝えている（隔離して次の文書へ進んでいない）");
         }
         finally
         {
             factory.Storage.DeleteThrows = null;
         }
 
+        logger.OfLevel(LogLevel.Error).Should().BeEmpty("停止要求を 1 件の削除の失敗として記録していない");
         Deleted().Should().NotContain(secondUri, "停止要求の後に次の文書へ進まない");
     }
 
