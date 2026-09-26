@@ -1,7 +1,7 @@
 ---
 title: "Grafana ルールの検査の見逃しを埋め、ワークフローの読み取りスコープを試験で固定し、claude-review の資格情報の記述を正す（#1588）"
 type: spec
-status: completed
+status: done
 related_ids: [NFR-21, ADR-0006, IADR-0165, IADR-0232]
 author: claude
 created: 2026-09-26
