@@ -5,7 +5,7 @@ status: done
 related_ids: [FR-16, FR-01, UC-04, FR-19, FR-22, FR-17, FR-18, FR-10, NFR-16, ADR-0024, ADR-0029, ADR-0035, ADR-0096, IADR-0462, IADR-0379, IADR-0083, IADR-0051, IADR-0053, IADR-0054, IADR-0299, IADR-0425, IADR-0430, IADR-0431]
 author: claude
 created: 2026-09-26
-updated: 2026-09-26
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0024_mcp-server-integration.md §2・§5
 related_specs:
@@ -119,6 +119,12 @@ issue: "#1604"
   - 要求処理の内側（`LlmGatewayDiagramCoder.cs`・`DocumentObjectPurger.cs`・`SyncConflicts/Get/Endpoint.cs`・`CompletionUseCase.cs` ×2・
     `EmbedUseCase.cs`・`WolverineExtensions.cs`）: 常駐ループの寿命を決めない（**除外**。要求の ct と時間切れの取り違えは応答の種類の問題で、
     本件の「ループが止まる／ホストが落ちる」とは別。起票はしない）。
+    - ［2026-09-27 追記 / #1608］**上の分類のうち `DocumentObjectPurger.cs` は誤りだった。** これは要求処理だけでなく、PrivateNoteMaintenance の
+      定期処理（`PrivateNoteMaintenanceService` の退職者の完全削除と 90 日の自動物理削除）から `PurgeIsolatedAsync` として呼ばれる**周期の経路**である。
+      ループの寿命は決めない（#1598 以降、周期の捕捉が停止要求で絞られている）が、S3 の時間切れが文書ごとの隔離を抜けて、その周期に残っている
+      文書の束を丸ごと打ち切っていた。#1608 で `|| !ct.IsCancellationRequested` を足して直した（作業仕様書 `20260927_issue-1608_purger-timeout-isolation.md`）。
+      同じ括弧の他の行は、周期の経路から呼ばれないことを #1608 の走査で確かめた（`LlmGatewayDiagramCoder.cs` は要求ではなくメッセージの受け口の
+      経路であり、括弧の見出しは不正確だが、周期の経路でない点は同じ。詳細は #1608 の仕様書の「母集合」）。
 - 軸 2（型だけの `catch (OperationCanceledException)`）: `git grep -nE "catch\s*\(\s*(System\.)?(OperationCanceledException|TaskCanceledException)"` →
   試験以外 develop 15 行。絞りの無いものは `DataSourceSyncHostedService.cs:34`（**本 PR で直す**）と `DriftDetectionHostedService.cs:59`（外側で
   `WaitForNextTickAsync(ct)` だけを包む。#1598 で問題なしと判定済み）の 2 行。他 13 行は `when` で絞っている。

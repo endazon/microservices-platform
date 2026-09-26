@@ -77,7 +77,12 @@ public sealed class DocumentObjectPurger(
                 await PurgeAsync([id], ct);
                 purged.Add(id);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            // ［2026-09-27 / #1608］🔴 外へ出すのは**呼び出し側の ct による取り消しだけ**である。
+            // オブジェクトストレージの時間切れ（SDK の HttpClient.Timeout は `TaskCanceledException`＝
+            // `OperationCanceledException` の派生で表れ、呼び出し側の ct は立っていない）は**その 1 件の失敗**であり、
+            // 型だけで素通しすると隔離を抜けて、その周期に残っている文書の束を丸ごと打ち切る
+            // （#1604 の DataSource の探索・取得と同じ形。周期の停止要求は従前どおり止まる）。
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 // 行を残すことが「次周期で再試行する」の実体である。黙って消さない。
                 logger.LogError(ex,

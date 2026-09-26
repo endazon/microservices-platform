@@ -10,8 +10,8 @@ author: claude
 ids: [FR-05, FR-16, UC-08, UC-09, SC-12, NFR-09, NFR-16]
 adrs: [ADR-0004, ADR-0018, ADR-0024, ADR-0029, ADR-0034, ADR-0036, ADR-0046, ADR-0054, ADR-0062, ADR-0075]
 iadrs: [IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0379, IADR-0462]
-specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260903_issue-1185_unattended-account-attribute-subset, 20260926_1515_mcp-tool-declarations-grpc, 20260926_issue-1604_refresher-and-sync-loop-timeouts]
-issues: [#445, #1020, #1185, #1515, #1604]
+specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260903_issue-1185_unattended-account-attribute-subset, 20260926_1515_mcp-tool-declarations-grpc, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation]
+issues: [#445, #1020, #1185, #1515, #1604, #1608]
 -->
 
 # テスト仕様書: MCP サーバー統合
@@ -192,6 +192,7 @@ CI は緑のままで、**壊れた構成のまま Web サーバーが起動し�
 | R-3 | 収集器から停止要求でない取り消しが漏れる | 周期の失敗として記録し、次の周期へ進む（ホストは止まらない） |
 | R-4 | 停止要求 | 周期は静かに終わる（例外で終わらない） |
 | R-5 | 収集の HTTP クライアントの期限 | 構成で与えられ、既定 10 秒、1 未満は 1 秒。gRPC の期限は同じ値を引く（G-9） |
+| R-6 | 本番の構成ファイル（［2026-09-27 追加］） | 収集の期限のキーが周期のキーと並んで既定値（10 秒）で明示されており、読み込んで登録を通すと期限が 10 秒になる |
 
 ## 変異試験（本書の検査が実際に落ちることの確認）
 
@@ -217,6 +218,7 @@ CI は緑のままで、**壊れた構成のまま Web サーバーが起動し�
 | 周期の捕捉だけを戻す | **R-3・R-4 が落ちる**（REST の経路からは周期の捕捉まで取り消しが届かないので、R-1 では見えない） |
 | 収集の HTTP クライアントに期限を与えない | **R-5 が落ちる**。R-1 も落ちる（既定の 100 秒では周期が回らない） |
 | 周期の待ちの捕捉を型だけに戻す | 落ちない（**等価**。待ちは停止要求の取り消ししか受け取らない） |
+| （［2026-09-27 追加］）本番の構成ファイルから期限のキーを外す | **R-6 が落ちる** |
 | 期限を付けない | **G-9 が落ちる**（見張りで打ち切られ、試験は止まらない） |
 | 資格情報の拒否の Error 枝を外す | G-7 の拒否・検証できないトークンの観点が落ちる |
 | トークン取得失敗の Error 枝を外す | G-7 のトークン取得失敗の観点が落ちる |
@@ -243,7 +245,7 @@ CI は緑のままで、**壊れた構成のまま Web サーバーが起動し�
 - `GrpcToolDeclarationCollectorTests` — 宛先ごとの輸送選択・失敗の畳み方・期限・取り消し・登録・2 つの形の一致（G-5〜G-12）
 - `McpToolsGrpcDeploymentWiringTests` — 配備の配線（G-13）
 - `ToolDeclarationSourceFailFastTests` — 登録の誤りでホストが起動しないこと（G-11 の起動の側）
-- `ToolCatalogRefresherTimeoutTests` — 収集の時間切れ・拒否・漏れた取り消しでホストが止まらず周期が回ること、停止要求で静かに終わること、期限の構成（R-1〜R-5）
+- `ToolCatalogRefresherTimeoutTests` — 収集の時間切れ・拒否・漏れた取り消しでホストが止まらず周期が回ること、停止要求で静かに終わること、期限の構成と本番の構成ファイル（R-1〜R-6）
 
 > 上の 2 行だけクラス名を書いていない。被覆ラチェットの床（`scripts/` 配下の baseline）を同時に
 > 上げないと検査が落ちる仕組みであり、その更新は本作業の領域宣言の外だったためである。
