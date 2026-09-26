@@ -31,16 +31,21 @@ public interface IOwnerRetentionDirectory
 // FR-19, ADR-0096 決定 1, [[IADR-0428]] 決定 3, [[IADR-0431]] (#1409): 窓の判定。
 // 🔴 **bool にしない** —— `false` が「まだ経っていない」と「そもそも数えていない」を畳む
 // （[[IADR-0428]] 決定 3 が退けた形をユニットを跨いでも保つ）。
+//
+// ［2026-09-26 / #1532・[[IADR-0474]] 決定 6］🔴 **0 は `NotEvaluable`（削除しない）である。**
+// 従前は `Elapsed` が先頭（＝ 0）で、`default` ・初期化漏れ・写し損ねが**「窓が閉じた」＝削除**を意味していた。
+// 本列挙は DocumentService の中だけで使い、永続化も線上の表現も持たない（線上は proto の
+// `RetentionEligibility` で、`GrpcOwnerRetentionDirectory` が名前で写す）ので、番号を入れ替えても互換は壊れない。
 public enum OwnerRetentionEligibility
 {
-    /// <summary>起点から 30 日が経過した。**削除してよい唯一の値**である。</summary>
-    Elapsed,
+    /// <summary>🔴 起点が無い／読めない／未知の値。**数えていない**（削除しない）。既定値（0）。</summary>
+    NotEvaluable = 0,
 
     /// <summary>起点はあるが 30 日はまだ経っていない。</summary>
-    WithinWindow,
+    WithinWindow = 1,
 
-    /// <summary>🔴 起点が無い／読めない／未知の値。**数えていない**（削除しない）。</summary>
-    NotEvaluable,
+    /// <summary>起点から 30 日が経過した。**削除してよい唯一の値**である（名簿が明示したときだけ）。</summary>
+    Elapsed = 2,
 }
 
 // FR-19, ADR-0096 決定 1, [[IADR-0431]] (#1409): 所有者 1 人の像。

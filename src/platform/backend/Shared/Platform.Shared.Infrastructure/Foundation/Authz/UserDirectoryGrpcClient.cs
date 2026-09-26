@@ -97,8 +97,28 @@ public sealed class UserDirectoryGrpcClient(
     /// <c>null</c> を削除しない側へ倒すこと —— 認可サービスの障害を「窓が閉じた」と読むと**資料が消える**。
     /// </para>
     /// </summary>
-    public async Task<PlatformUserRetentionStatus?> GetRetentionStatusAsync(
+    public Task<PlatformUserRetentionStatus?> GetRetentionStatusAsync(
         string username, CancellationToken ct)
+        => GetStatusCoreAsync(username, StatusPurpose.Retention, ct);
+
+    /// <summary>
+    /// FR-20, SC-17, NFR-14, 計画 ADR-0114 決定 1・2, IADR-0474 (#1532):
+    /// 名指しした 1 人の**アカウントが有効か**（Obsidian 同期トークンの所有者の照会。同期要求ごと）。
+    /// <para>
+    /// 🔴 **読む rpc と応答の形は <see cref="GetRetentionStatusAsync"/> と同じ**である。分けたのは
+    /// 失敗時のログの文言だけ —— 同期の経路の失敗を「退職の窓…削除しません」と書くと、
+    /// 同期要求のたびに運用者を誤った方向へ導く（呼び出し元の倒す向きは逆で、こちらは「通さない」）。
+    /// </para>
+    /// <para>🔴 **引けなかったときは <c>null</c>**。呼び出し元は <c>null</c> を「通さない」側へ倒すこと。</para>
+    /// </summary>
+    public Task<PlatformUserRetentionStatus?> GetAccountStatusAsync(
+        string username, CancellationToken ct)
+        => GetStatusCoreAsync(username, StatusPurpose.SyncAccount, ct);
+
+    private enum StatusPurpose { Retention, SyncAccount }
+
+    private async Task<PlatformUserRetentionStatus?> GetStatusCoreAsync(
+        string username, StatusPurpose purpose, CancellationToken ct)
     {
         try
         {
@@ -108,14 +128,23 @@ public sealed class UserDirectoryGrpcClient(
         }
         catch (RpcException ex)
         {
-            logger.LogWarning(
-                "退職の窓の gRPC 照会に失敗しました（{Status}）。窓は判定できません（削除しません）。",
-                ex.StatusCode);
+            if (purpose == StatusPurpose.Retention)
+                logger.LogWarning(
+                    "退職の窓の gRPC 照会に失敗しました（{Status}）。窓は判定できません（削除しません）。",
+                    ex.StatusCode);
+            else
+                logger.LogWarning(
+                    "同期トークンの所有者のアカウント状態の gRPC 照会に失敗しました（{Status}）。有効か判定できないため同期要求を拒否します。",
+                    ex.StatusCode);
             return null;
         }
         catch (InvalidOperationException ex)
         {
-            logger.LogWarning(ex, "s2s トークンが取得できないため退職の窓を照会できません（削除しません）。");
+            if (purpose == StatusPurpose.Retention)
+                logger.LogWarning(ex, "s2s トークンが取得できないため退職の窓を照会できません（削除しません）。");
+            else
+                logger.LogWarning(ex,
+                    "s2s トークンが取得できないため同期トークンの所有者のアカウント状態を照会できません（同期要求を拒否します）。");
             return null;
         }
     }

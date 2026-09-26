@@ -187,7 +187,9 @@
     "docs/tests/FR-19_private-notes-lifecycle.md": [
       "BffPrivateNoteEndpointTests",
       "DocScopeValidationTests",
+      "GrpcOwnerRetentionDirectoryTests",
       "ObsidianSyncProtocolTests",
+      "PrivateNoteDepartedOwnerPurgeTests",
       "PrivateNoteLifecycleTests",
       "PrivateNoteQuotaTests"
     ],

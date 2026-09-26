@@ -1,7 +1,7 @@
 ---
 title: アカウントを無効化した利用者の同期トークンを、次の同期要求から 401 で拒否する（#1532）
 type: spec
-status: completed
+status: done
 related_ids: [FR-20, SC-17, SC-20, UC-11, NFR-14, ADR-0114, ADR-0096, ADR-0037, ADR-0026, ADR-0032, ADR-0029, ADR-0075, IADR-0270, IADR-0428, IADR-0431, IADR-0401, IADR-0379, IADR-0474]
 author: claude
 created: 2026-09-26
@@ -156,3 +156,11 @@ $ git grep -n "即時失効\|全セッション\|NFR-14" -- docs src/knowledge s
 ## 未決事項
 
 - 実クラスタでの疎通（無効化 → 同期 401）は測っていない（live cluster 禁止）。how-to §5 の手順で確かめる。
+
+［2026-09-26 追記 / #1579］フレッシュ監査（NO-GO）の指摘に対応した。①本仕様書の状態欄を `done` へ（`.ai-context/specs` の
+`completed` は据え置き 43 件のラチェット）。②配線で初めて実働する退職者削除の gRPC 写像に試験が無く、未知・未指定を
+`Elapsed` へ倒す変異が全件を通り抜けた —— 写像の試験 `GrpcOwnerRetentionDirectoryTests` を足し、列挙の 0 を
+`NotEvaluable` に替え、照会に 5 秒の上限を掛け、削除の前に件数をログへ残した（1 周期の上限は置かない。理由は IADR-0474 決定 6）。
+所有者は実働化を意図どおりと確認した。③本番のチャネルが投げる `RpcException(Cancelled)` でも要求の取り消しが伝わるようにした。
+④同期の経路の失敗ログが退職の窓の文言になっていたのを、共有クライアントに同期用の読み口を足して分けた。
+追加の反映先: `docs/tests/FR-19_private-notes-lifecycle.md`（退職者削除の試験の写像）。

@@ -39,7 +39,7 @@ public sealed class GrpcOwnerAccountDirectory(UserDirectoryGrpcClient client) : 
         PlatformUserRetentionStatus? status;
         try
         {
-            status = await client.GetRetentionStatusAsync(ownerId, bounded.Token);
+            status = await client.GetAccountStatusAsync(ownerId, bounded.Token);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -47,7 +47,14 @@ public sealed class GrpcOwnerAccountDirectory(UserDirectoryGrpcClient client) : 
             return OwnerAccountState.Unknown;
         }
 
-        if (status is null) return OwnerAccountState.Unknown;
+        if (status is null)
+        {
+            // 🔴 本番のチャネルは取り消しを `RpcException(Cancelled)` で投げ（`ThrowOperationCanceledOnCancellation`
+            //   は既定の false）、共有クライアントがそれを `null` に畳む。要求そのもの（`ct`）が取り消されて
+            //   いたなら、時間切れ・障害と混ぜずに取り消しとして伝える（どちらでも応答は返らない）。
+            ct.ThrowIfCancellationRequested();
+            return OwnerAccountState.Unknown;
+        }
         if (!status.Found) return OwnerAccountState.NotFound;
         return status.Enabled ? OwnerAccountState.Enabled : OwnerAccountState.Disabled;
     }

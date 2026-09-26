@@ -3,15 +3,15 @@ title: FR-19 個人資料のライフサイクル・容量・版保持 テスト
 type: test-spec
 status: completed
 created: 2026-08-23
-updated: 2026-08-30
+updated: 2026-09-26
 author: Claude
 ---
 <!-- trace:
-ids: [FR-19, FR-21, FR-22, UC-11, SC-19, SC-20]
-adrs: [ADR-0037, ADR-0054]
-iadrs: [IADR-0270, IADR-0283]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-447_fr21-criteria-9-10]
-issues: [#451, #447]
+ids: [FR-19, FR-21, FR-22, UC-11, SC-17, SC-19, SC-20]
+adrs: [ADR-0037, ADR-0054, ADR-0057, ADR-0096]
+iadrs: [IADR-0270, IADR-0283, IADR-0428, IADR-0431, IADR-0474]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-447_fr21-criteria-9-10, 20260911_issue-1409_private-note-disposal-after-window, 20260926_issue-1532_sync-token-rejected-after-disable]
+issues: [#451, #447, #1409, #1532]
 -->
 
 # テスト仕様書: 個人資料のライフサイクル・容量・版保持
@@ -28,7 +28,8 @@ issues: [#451, #447]
 **グラフ表示トグルの消費側は未着手のままである。**
 
 実体: `DocumentService.Tests` の `PrivateNoteQuotaTests` / `PrivateNoteLifecycleTests` /
-`DocScopeValidationTests`（結合テスト。InMemory ＋ 記録用スタブ）。
+`DocScopeValidationTests` / `PrivateNoteDepartedOwnerPurgeTests`（結合テスト。InMemory ＋ 記録用スタブ）、
+`GrpcOwnerRetentionDirectoryTests`（単体。名簿の偽物）。
 
 ## テスト観点
 
@@ -57,6 +58,8 @@ issues: [#451, #447]
 | 15 | 新規の個人資料は 3 トグルがすべて OFF・公開範囲は非公開（共有 0 件）・機密区分は最も厳しい区分 | `新規の個人資料は3トグルOFFかつ非公開かつrestrictedで作られる` |
 | 16 | 「AI の入力に含める」トグルの変更が文書属性へ写る（ON / OFF の両方向・他の既定属性を巻き込まない） | `AI入力トグルの変更が文書属性へ写る` |
 | 17 | 露出トグルの変更では版が進まない（版は編集の回数だけ保持するという規則を守る） | `露出トグルの変更では版が進まない` |
+| 18 | 退職して閲覧窓（無効化から 30 日）が閉じた所有者の資料だけを完全削除し、窓の中・起点なし・在籍中・名簿に居ない・名簿を引けない所有者の資料は残す | `PrivateNoteDepartedOwnerPurgeTests` 全件 |
+| 19 | 🔴 削除を決める名簿の答えの写し方: 名簿が**明示的に**「経過」と答えた無効化済みの所有者だけが対象（陽性対照）。未指定（既定値）・未知の値・窓の項目を知らない古い認可サービスの応答（既定値だけ）・窓の中・在籍中・名簿に居ない・輸送の失敗・応答なし（5 秒で打ち切り）・口の未構成は削除しない。窓の判定の既定値（0）は「数えていない」 | `GrpcOwnerRetentionDirectoryTests`（12 メソッド・17 件） |
 
 > **15 は登録経路が 2 本あるため 2 か所で測る。** もう 1 本（同期経由の新規作成）は
 > `ObsidianSyncProtocolTests` の `同期経由の新規作成はフェイルセーフ既定で作られる` が持つ。

@@ -95,10 +95,14 @@ public class GrpcOwnerAccountDirectoryTests
 
     // T-AS-16: 呼び出し元（要求）自身が取り消されたら、Unknown に畳まず取り消しを伝える
     // （時間切れと要求の中断を混ぜない。どちらでも応答は返らないが、ログの意味が変わる）。
-    [Fact(Timeout = 10_000)]
-    public async Task 要求そのものが取り消されたら取り消しをそのまま伝える()
+    // 🔴 本番のチャネルは取り消しを `RpcException(Cancelled)` で投げ、共有クライアントがそれを null に畳む
+    // （true の形）。その形でも取り消しとして伝わることを測る。
+    [Theory(Timeout = 10_000)]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task 要求そのものが取り消されたら取り消しをそのまま伝える(bool asRpcException)
     {
-        var fake = FakeUserDirectoryClient.Hanging(asRpcException: false);
+        var fake = FakeUserDirectoryClient.Hanging(asRpcException);
         using var cts = new CancellationTokenSource();
         cts.CancelAfter(TimeSpan.FromMilliseconds(50));
 
@@ -117,59 +121,4 @@ public class GrpcOwnerAccountDirectoryTests
     [Fact]
     public void 状態の既定値は_Unknown_である()
         => default(OwnerAccountState).Should().Be(OwnerAccountState.Unknown);
-
-    internal sealed class FakeUserDirectoryClient : Pb.UserDirectory.UserDirectoryClient
-    {
-        private readonly Pb.GetUserAttributesResponse? _answer;
-        private readonly StatusCode? _failWith;
-        private readonly bool? _hangAsRpc;
-
-        private FakeUserDirectoryClient(Pb.GetUserAttributesResponse? answer, StatusCode? failWith, bool? hangAsRpc)
-        {
-            _answer = answer;
-            _failWith = failWith;
-            _hangAsRpc = hangAsRpc;
-        }
-
-        public string? LastUsername { get; private set; }
-
-        public static FakeUserDirectoryClient Answering(Pb.GetUserAttributesResponse answer) => new(answer, null, null);
-
-        public static FakeUserDirectoryClient Failing(StatusCode status) => new(null, status, null);
-
-        public static FakeUserDirectoryClient Hanging(bool asRpcException) => new(null, null, asRpcException);
-
-        public override AsyncUnaryCall<Pb.GetUserAttributesResponse> GetUserAttributesAsync(
-            Pb.GetUserAttributesRequest request, CallOptions options)
-        {
-            LastUsername = request.Username;
-
-            Task<Pb.GetUserAttributesResponse> response;
-            if (_hangAsRpc is { } asRpc)
-                response = HangAsync(asRpc, options.CancellationToken);
-            else if (_failWith is { } status)
-                response = Task.FromException<Pb.GetUserAttributesResponse>(
-                    new RpcException(new Status(status, "fake")));
-            else
-                response = Task.FromResult(_answer!);
-
-            return new AsyncUnaryCall<Pb.GetUserAttributesResponse>(
-                response, Task.FromResult(new Metadata()),
-                () => Status.DefaultSuccess, () => [], () => { });
-        }
-
-        // 取り消されるまで応答しない。Grpc.Net.Client の既定は取り消しを `RpcException(Cancelled)` で投げる。
-        private static async Task<Pb.GetUserAttributesResponse> HangAsync(bool asRpc, CancellationToken ct)
-        {
-            try
-            {
-                await Task.Delay(Timeout.Infinite, ct);
-            }
-            catch (OperationCanceledException) when (asRpc)
-            {
-                throw new RpcException(new Status(StatusCode.Cancelled, "fake"));
-            }
-            throw new InvalidOperationException("unreachable");
-        }
-    }
 }
