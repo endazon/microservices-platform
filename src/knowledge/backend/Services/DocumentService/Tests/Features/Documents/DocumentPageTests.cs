@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using AwesomeAssertions;
 using DocumentService.Domain;
+using DocumentService.Features.Documents.ListPage;
 using DocumentService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
 using Microsoft.AspNetCore.Authorization;
@@ -298,6 +299,24 @@ public class DocumentPageTests(TestWebApplicationFactory factory)
         zero.NextCursor.Should().NotBeNull();
 
         (await PageAsync(client, $"attr.project={project}&limit=100000")).Items.Should().HaveCount(2);
+    }
+
+    // FR-06, NFR-08 (#1575): **上限 500・下限 1・未指定は 100** を値で固定する。
+    // 上の T-35 は 2 件しか置かないため上限を観測できない（上限を 100000 へ上げる変異が全試験を
+    // 生き延びた）。上限は「1 回の応答で返す件数」の天井であり、端点経由で 501 件を置く代わりに
+    // 丸めの関数を直接見る（端点がこの関数を通ることは T-35 の `limit=0` → 1 件が見ている）。
+    [Theory]
+    [InlineData(100000, 500)]
+    [InlineData(501, 500)]
+    [InlineData(500, 500)]
+    [InlineData(1, 1)]
+    [InlineData(0, 1)]
+    [InlineData(-5, 1)]
+    [InlineData(null, 100)]
+    public void limitの丸めは上限500_下限1_未指定100(int? requested, int expected)
+    {
+        DocumentPageQuery.ClampLimit(requested).Should().Be(expected);
+        DocumentPageQuery.MaxLimit.Should().Be(500, "上限は仕様の値（通信仕様書・機能仕様書が 500 と書いている）");
     }
 
     // ── 入力の検証 ───────────────────────────────────────────────────────

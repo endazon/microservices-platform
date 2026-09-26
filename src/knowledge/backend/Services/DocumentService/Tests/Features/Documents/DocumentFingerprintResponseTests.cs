@@ -99,7 +99,8 @@ public class DocumentFingerprintResponseTests(TestWebApplicationFactory factory)
         got.ContentFingerprint.Should().BeNull("本文なしの文書で空本文の指紋を返すと「本文あり」と読み違える");
 
         var list = await Client().GetFromJsonAsync<List<DocumentDto>>("/documents", TestContext.Current.CancellationToken);
-        list!.Single(d => d.Id == bodyless).ContentFingerprint.Should().BeNull("一覧も同じ写像を通る");
+        Assert.NotNull(list);
+        list.Single(d => d.Id == bodyless).ContentFingerprint.Should().BeNull("一覧も同じ写像を通る");
         list.Single(d => d.Id == withBody).ContentFingerprint.Should().Be(emptyBodyFingerprint,
             "陽性対照: HasBody=true なら台帳の値をそのまま返す");
     }
