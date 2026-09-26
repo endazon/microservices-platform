@@ -257,7 +257,13 @@ describe('DataSourceManagementPage (SC-06)', () => {
 
     expect(screen.getByRole('button', { name: '登録する' })).toBeEnabled();
     // 未入力時に何が起きるかを画面が伝える（予約値そのものは翻訳しない）。
-    expect(screen.getByText(/未入力のときは予約値 unassigned が入ります。/)).toBeInTheDocument();
+    // FR-05, SC-06, IADR-0468（#754）: 登録時は**登録する管理者の部門グループ（1 つだけのとき）**で
+    // サーバが補い、決まらなければ予約値になる —— その 2 段を両方伝える。
+    expect(
+      screen.getByText(
+        /未入力のときは、登録する管理者が属する部門グループ（1 つだけのとき）のコードが入ります。決まらないときは予約値 unassigned が入ります。/,
+      ),
+    ).toBeInTheDocument();
   });
 
   // 必須（名前・接続先）が埋まるまで登録できない。

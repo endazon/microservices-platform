@@ -3,15 +3,15 @@ title: SC-06 データソース管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-05
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-05, SC-05, SC-06, SC-07, SC-17, UC-04]
 adrs: [ADR-0031, ADR-0036, ADR-0064, ADR-0066, ADR-0074]
-iadrs: [IADR-0009, IADR-0035, IADR-0039, IADR-0044, IADR-0051, IADR-0127, IADR-0128, IADR-0136, IADR-0148, IADR-0199, IADR-0308, IADR-0359, IADR-0381]
-specs: [20260805_issue-503_sc05-08-admin-screens, 20260806_issue-538_next-sync-at, 20260830_issue-1065_feature-import-isolation, 20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-1252_sc06-operator-readonly-attributes]
-issues: [#501, #537, #538, #628, #767, #796, #1065, #1194, #1252, planning#200, planning#299, planning#361, planning#518]
+iadrs: [IADR-0009, IADR-0035, IADR-0039, IADR-0044, IADR-0051, IADR-0127, IADR-0128, IADR-0136, IADR-0148, IADR-0199, IADR-0308, IADR-0359, IADR-0381, IADR-0468]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260806_issue-538_next-sync-at, 20260830_issue-1065_feature-import-isolation, 20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-1252_sc06-operator-readonly-attributes, 20260926_issue-754_department-from-registrant-group]
+issues: [#501, #537, #538, #628, #754, #767, #796, #1065, #1194, #1252, planning#200, planning#299, planning#361, planning#518]
 -->
 
 # テスト仕様書: データソース管理
@@ -63,7 +63,7 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 | 3 | 種別の写像 | —| 4 種（`filesystem` / `wiki` / `saas` / `db`）に表示名がある。**未知の種別は生値**を出す |
 | 4 | 登録 | 登録・同期の基本 1 | 名前・種別・接続先・既定の機密区分を送る。**［2026-08-15 / #767］部門が未入力なら `department` キーを送らない**（`defaultAttributes` の完全一致で見る。空文字を送る形へ戻すと落ちる）。**［2026-08-16 / #796］ライフサイクル状態が未指定でも `lifecycle` キーを送らない**（同じ `toEqual` に加えて名指しでアサートする） |
 | 4-b | **既定の部門を送る** | **登録・同期の基本 1** / ABAC アクセス制御 / 必須属性フェイルセーフの拡張 | 部門を入力すると `defaultAttributes.department` に**前後空白を落とした値**が乗る。これが無いと画面から登録した全ソースが予約値 `unassigned` へ倒れ、ABAC の判定軸が実質 `confidentiality` 1 本になる |
-| 4-c | **部門は任意** | **登録・同期のユースケース** / 本画面の計画記述 | 部門が空でも「登録する」が押せる（計画に無い必須化を実装が足さない）。未入力時に何が入るか（予約値 `unassigned`）を補助文が伝える |
+| 4-c | **部門は任意** | **登録・同期のユースケース** / 本画面の計画記述 | 部門が空でも「登録する」が押せる（計画に無い必須化を実装が足さない）。未入力時に何が入るか（予約値 `unassigned`）を補助文が伝える。**［2026-09-26 / #754］登録フォームは「登録する管理者の部門グループ（1 つだけのとき）のコード → 決まらなければ予約値」の 2 段を伝える**（文言の完全一致で見る） |
 | 4-d | **既定のライフサイクル状態を送る** | **登録・同期の基本 1** / ABAC アクセス制御 / 必須属性フェイルセーフの拡張・決定 4 | `draft` を選ぶと `defaultAttributes.lifecycle` に乗る。これが無いと**ソース単位で下書き扱いにする指定が画面からできない**（計画 09_datasource-connectors が明記する運用が API 直叩きでしか行えない） |
 | 4-e | **値域が計画どおり** | 計画側 07_abac-attribute-model の `lifecycle` 属性 / 画面設計 §文書管理画面 | 選択肢が「未指定」＋ `draft` / `active` / `archived` の**ちょうど 4 つ**であり、**既定の選択が「未指定」**である。**計画に無い値（`normalized` / `published`）を実装が持ち込まない**（計画が名指しで「計画側の語彙ではない」と書いている）。`active` を初期選択にすると「明示指定した」と「しなかった」の区別が消える |
 | 4-f | **ライフサイクル状態は任意** | **登録・同期のユースケース** / 本画面の計画記述 | 未指定でも「登録する」が押せる。未指定時に何が入るか（**予約値ではなく既定値** `active`）を補助文が伝える |
