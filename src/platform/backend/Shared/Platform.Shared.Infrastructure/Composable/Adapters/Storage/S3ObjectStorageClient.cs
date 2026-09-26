@@ -1,8 +1,8 @@
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
+using System.Net;
 using System.Text;
 using Amazon.S3;
 using Amazon.S3.Model;
-using Amazon.S3.Util;
 using Microsoft.Extensions.Logging;
 
 namespace Platform.Shared.Infrastructure.Composable.Adapters.Storage;
@@ -23,6 +23,9 @@ public sealed class S3ObjectStorageClient(
 
     /// <summary>作成しようとしたバケットが既にある（名前が取られている）ときのエラーコード。</summary>
     internal const string BucketAlreadyExistsErrorCode = "BucketAlreadyExists";
+
+    /// <summary>本文の無い 404（HEAD の応答）に SDK が載せ得るエラーコード（#1562）。</summary>
+    internal const string NotFoundErrorCode = "NotFound";
 
     public async Task<string> PutTextAsync(string key, string text, string contentType,
         CancellationToken ct = default)
@@ -172,12 +175,75 @@ public sealed class S3ObjectStorageClient(
     }
 
     // 起動時にバケットの存在とバージョニングを保証する（ObjectStorageBootstrapHostedService から呼ぶ）。
+    //
+    // 🔴 ［2026-09-26 / #1562, IADR-0461 決定 11］**存在確認は HeadBucket で行い、答えを 3 値で扱う。**
+    // 従前の `AmazonS3Util.DoesS3BucketExistV2Async` は内部で GetBucketAcl を撃つ。SeaweedFS 4.47 はバケットが
+    // 在るときにこれへ 503 を返し、ConversionService の起動のたびに bootstrap の失敗警告が 1 回出ていた
+    // （書き込み・読み出しは通っていた）。HeadBucket は ACL を経ず、存在だけを問う。
+    //
+    // **「分からない」は「無い」ではない**（原則 A）。404 / NoSuchBucket だけを「無い」として作成へ進み、
+    // 200 は「在る」、それ以外（503・403・接続不能 等）は「不明」として警告し、作成も版の設定もしない。
+    // 不明のまま作成を撃つと、在るバケットへの失敗を「作れば直る」と取り違える。本当に無かった場合は
+    // 最初の書き込みが NoSuchBucket を受けて作成・再試行する（PutWithBucketSelfHealAsync。#1033）。
     public async Task EnsureBucketAsync(CancellationToken ct = default)
     {
-        var exists = await AmazonS3Util.DoesS3BucketExistV2Async(s3, options.Bucket);
-        if (!exists) await CreateBucketWithVersioningAsync(ct);
-        else if (options.EnableVersioning) await PutVersioningAsync(ct);
+        switch (await ProbeBucketAsync(ct))
+        {
+            case BucketPresence.Absent:
+                await CreateBucketWithVersioningAsync(ct);
+                break;
+            case BucketPresence.Present:
+                if (options.EnableVersioning) await PutVersioningAsync(ct);
+                break;
+            case BucketPresence.Unknown:
+                // 警告は ProbeBucketAsync が出した。作成も版の設定もしない。
+                break;
+        }
     }
+
+    /// <summary>バケットの存在確認の答え。<see cref="Unknown"/> を「無い」として扱わない（#1562）。</summary>
+    internal enum BucketPresence
+    {
+        Present,
+        Absent,
+        Unknown
+    }
+
+    // #1562: HeadBucket の結果を 3 値へ写す。取り消し（ct）だけは握らずに投げる。
+    internal async Task<BucketPresence> ProbeBucketAsync(CancellationToken ct)
+    {
+        try
+        {
+            await s3.HeadBucketAsync(new HeadBucketRequest { BucketName = options.Bucket }, ct);
+            return BucketPresence.Present;
+        }
+        catch (AmazonS3Exception ex) when (IsBucketAbsent(ex))
+        {
+            logger.LogInformation(
+                "Object storage bucket {Bucket} does not exist ({StatusCode} {ErrorCode}); creating it.",
+                options.Bucket, (int)ex.StatusCode, ex.ErrorCode);
+            return BucketPresence.Absent;
+        }
+        catch (Exception ex) when (!(ex is OperationCanceledException && ct.IsCancellationRequested))
+        {
+            logger.LogWarning(
+                ex,
+                "Object storage bucket {Bucket} existence is unknown (HeadBucket failed: {Reason}); not creating it."
+                + " If it is absent, the first write will create the bucket and retry (#1033, #1562).",
+                options.Bucket, DescribeFailure(ex));
+            return BucketPresence.Unknown;
+        }
+    }
+
+    // HEAD の応答は本文を持たないため、SDK の ErrorCode は状態コード由来（"NotFound"）になり得る。
+    // 本文を返す実装は "NoSuchBucket" を載せる。どちらも 404 を伴う —— 状態コードを一次の根拠にする。
+    private static bool IsBucketAbsent(AmazonS3Exception ex) =>
+        ex.StatusCode == HttpStatusCode.NotFound
+        || ex.ErrorCode is NoSuchBucketErrorCode or NotFoundErrorCode;
+
+    private static string DescribeFailure(Exception ex) => ex is AmazonS3Exception s3Ex
+        ? $"{(int)s3Ex.StatusCode} {s3Ex.ErrorCode}"
+        : ex.GetType().Name;
 
     // FR-06, FR-12, ADR-0014/ADR-0015（Superseded by ADR-0106）, IADR-0303 (#1033): 書き込みの自己修復。
     //
@@ -195,9 +261,10 @@ public sealed class S3ObjectStorageClient(
     // ここに置くのは、書き込み元が 4 サービス 6 箇所に散っているためである（うち 2 サービスは
     // バケットを作らない）。**クライアントに 1 箇所置けば全経路が守られ、起動順序にも依存しない。**
     //
-    // 🔴 **`EnsureBucketAsync` は呼ばない。** 同メソッドの存在確認は静的な
-    // `AmazonS3Util.DoesS3BucketExistV2Async` であり差し替えられない（＝検査が書けない）。
-    // **存在しないことは例外が既に教えている**ので、作成だけを行って 1 度だけ再試行する。
+    // 🔴 **`EnsureBucketAsync` は呼ばない。** **存在しないことは例外が既に教えている**ので、
+    // 存在確認を挟まず、作成だけを行って 1 度だけ再試行する。
+    // （［2026-09-26 / #1562］もう 1 つの理由だった「存在確認が静的な `AmazonS3Util.DoesS3BucketExistV2Async` で
+    // 差し替えられない」は、HeadBucket への置き換えで失効した。）
     private async Task PutWithBucketSelfHealAsync(Func<Task> put, CancellationToken ct)
     {
         try

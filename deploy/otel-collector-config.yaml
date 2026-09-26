@@ -6,6 +6,9 @@
 #    （運用 Runbook が compose 経路の SMTP 手順を退役させた）。**宛先の無い scrape を足すと
 #    恒常的に失敗し続ける** ——「配線してあるが届かない」を作らないため、ここには置かない。
 #    近接 MTA を compose へ載せるときは、本ファイルにも同じ receiver を足すこと。
+# 🔴 SC-15, NFR-21, ADR-0111 フォローアップ 3 (#1544): **`prometheus/reset-floor`（リセット申請の床の器）も同じ扱いである。**
+#    経路 B の 2 つの設定は持つが、compose に床の器は居ないので本ファイルには置かない（乖離は意図）。
+#    その結果、compose の Prometheus では `ResetFloorUpSeriesAbsent` が鳴り続ける —— `MailRelayQueueSeriesAbsent` と同じ既知の状態である。
 receivers:
   otlp:
     protocols:

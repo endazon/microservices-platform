@@ -39,17 +39,20 @@ spec:
           automountServiceAccountToken: false
           containers:
             - name: backup
-              # pg_dump のメジャー版を本体（deploy/local/infra/postgres.yaml）と揃える。age は実行時に Alpine の署名付き
-              # パッケージから入れる（BACKUP_AGE_INSTALL=1）。apk と保管先（WSL の drvfs）への書き込みのため root で動かす。
-              image: postgres:16-alpine
+              # pg_dump のメジャー版を本体（deploy/local/infra/postgres.yaml）と揃える（試験が Dockerfile の FROM と突き合わせる）。
+              # ［2026-09-26 / #1564］age はイメージに同梱し、実行時にネットワークから何も入れない
+              # （deploy/local/platform-backup/image/Dockerfile。ベースは digest 固定、age は版・チェックサム・署名で固定）。
+              # scripts/k8s-local-images.sh がビルドする。レジストリには無いので IfNotPresent で pull しない。
+              # タグは中身の版から作る —— 上げるときは Dockerfile・k8s-local-images.sh・2 つの CronJob の 3 か所を揃える。
+              # 保管先（WSL の drvfs）への書き込みのため root で動かす。
+              image: k3d-local/platform-backup:pg16.15-age1.3.1-r6
+              imagePullPolicy: IfNotPresent
               command: ["/bin/bash", "/opt/platform-backup/backup.sh"]
               env:
                 - name: BACKUP_KIND
                   value: postgres
                 - name: BACKUP_TARGETS
                   value: "/backup/c /backup/e"
-                - name: BACKUP_AGE_INSTALL
-                  value: "1"
                 - name: PGHOST
                   value: postgres
                 - name: PGPORT
@@ -66,7 +69,8 @@ spec:
               securityContext:
                 allowPrivilegeEscalation: false
                 # seccomp は RuntimeDefault。capabilities の削減（drop: [ALL] ＋ 必要最小の add）は稼働クラスタで
-                # 必要な集合を実測してから行う（IADR-0471 のフォローアップ。推測で落とすと apk・drvfs 書き込み・0600 の読み取りが割れる）。
+                # 必要な集合を実測してから行う（IADR-0471 のフォローアップ。推測で落とすと drvfs 書き込み・0600 の読み取りが割れる。
+                # 実行時の apk は #1564 で無くなったので、その展開に要った権限は数えなくてよい）。
                 seccompProfile:
                   type: RuntimeDefault
               volumeMounts:
