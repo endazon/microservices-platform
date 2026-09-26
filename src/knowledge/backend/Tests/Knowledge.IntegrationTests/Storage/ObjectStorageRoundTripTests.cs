@@ -20,6 +20,7 @@ namespace Knowledge.IntegrationTests.Storage;
 // EnsureBucketAsync（バケットの存在確認・作成・バージョニング有効化）が、製品差し替えの受け入れ試験である。**
 // digest で固定した SeaweedFS の実イメージ（SeaweedFsContainer.Image）に対して通ることが条件であり、
 // 落ちた場合は ADR-0106 決定 1 が覆り、次点（RustFS）で同じ試験を行う（同 決定 2）。
+// ［2026-09-26 / #1562］在るバケットへの存在確認を見る 4 件目を足した（末尾。IADR-0461 決定 11）。
 // **3 件が Skipped のままでは試験は済んでいない**（ci.yml の PR 実行は本クラスを外す。回収先は Integration）。
 // 🔴 IADR-0232 決定 3: Trait が無いと integration.yml（日次）の --filter "Category=Integration" に
 // 拾われず、日次の走査から静かに落ちる（着手前の実測で見つかった欠落）。ci.yml は --filter を
@@ -157,6 +158,54 @@ public sealed class ObjectStorageRoundTripTests
         finally
         {
             if (store is not null) await store.DisposeAsync();
+        }
+    }
+
+    // FR-06, ADR-0106, [[IADR-0461]] 決定 11 (#1562): **在るバケットに対する存在確認が「在る」と答える。**
+    // 🔴 従前の存在確認（GetBucketAcl を撃つ `DoesS3BucketExistV2Async`）は、SeaweedFS 4.47 で在るバケットに 503 を返し、
+    // ConversionService の起動のたびに bootstrap の失敗警告を出していた。上の 3 件は**新しいコンテナへ 1 回だけ**
+    // EnsureBucketAsync を呼ぶため「無い」経路しか踏まず、これを捕まえられなかった。
+    // ここでは ConnectAsync で作ったバケットへ 2 回目を呼び、**警告が 1 件も出ない**（＝不明に落ちていない）ことと、
+    // 版管理が有効のままであることを確かめる。
+    [Fact]
+    public async Task EnsureBucket_on_existing_bucket_reports_present_without_warning()
+    {
+        RequiredServices.SkipUnlessObtainable(RequiredServices.ObjectStorage);
+        var store = await StartUnlessSuppliedAsync();
+        try
+        {
+            var (s3, options) = await ConnectAsync(store);
+            var log = new WarningCountingLogger();
+            var client = new S3ObjectStorageClient(s3, options, log);
+
+            await client.EnsureBucketAsync(TestContext.Current.CancellationToken);
+
+            log.Warnings.Should().BeEmpty(
+                "在るバケットに対して存在確認が不明（503 等）に落ちてはならない（#1562）");
+            var versioning = await s3.GetBucketVersioningAsync(
+                new GetBucketVersioningRequest { BucketName = options.Bucket }, TestContext.Current.CancellationToken);
+            versioning.VersioningConfig.Status.Should().Be(VersionStatus.Enabled);
+        }
+        finally
+        {
+            if (store is not null) await store.DisposeAsync();
+        }
+    }
+
+    // 警告以上の行だけを控える最小のダブル（本プロジェクトは記録用ロガーを持たない）。
+    private sealed class WarningCountingLogger : Microsoft.Extensions.Logging.ILogger<S3ObjectStorageClient>
+    {
+        public List<string> Warnings { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state,
+            Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel >= Microsoft.Extensions.Logging.LogLevel.Warning) Warnings.Add(formatter(state, exception));
         }
     }
 }
