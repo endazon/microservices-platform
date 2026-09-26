@@ -71,7 +71,13 @@ public class DepartmentAttributeSyncTests
         realm.MembershipSnapshot().Should().BeEquivalentTo(membershipsBefore, "グループは正本であり、逆向きに直さない");
         outcome.Should().BeEquivalentTo(new
         {
-            RootFound = true, Corrected = 3, Mismatched = 3, InSync = 2, Unresolved = 1, Orphaned = 1, Cleared = 1,
+            RootFound = true,
+            Corrected = 3,
+            Mismatched = 3,
+            InSync = 2,
+            Unresolved = 1,
+            Orphaned = 1,
+            Cleared = 1,
             EnumerationComplete = true,
         });
     }
