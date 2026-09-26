@@ -19,29 +19,46 @@ public sealed class DataSourceSyncHostedService(
     IOptions<DataSourceSyncOptions> options,
     ILogger<DataSourceSyncHostedService> logger) : BackgroundService
 {
+    // #1604: 周期の実際の長さ。**試験だけが与える**（構成の周期は最短 30 秒に丸められ、試験で待てない）。
+    // null（本番）なら `StartSchedule()` が解決した実効間隔で刻む。SC-06 の「次回同期」の位相は常に構成の間隔で記録する。
+    // 形は #1598 の `CycleInterval`（PrivateNoteMaintenance・GraphService の 3 つ）と同じ。
+    internal TimeSpan? CycleInterval { get; init; }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var interval = StartSchedule();
         if (interval is null) return;
 
-        using var timer = new PeriodicTimer(interval.Value);
-        do
+        using var timer = new PeriodicTimer(CycleInterval ?? interval.Value);
+        try
         {
-            try
+            do
             {
-                await TryRunCycleAsync(stoppingToken);
+                try
+                {
+                    await TryRunCycleAsync(stoppingToken);
+                }
+                // ［2026-09-26 / #1604・IADR-0083 追記］🔴 **ループを抜けるのは停止要求（stoppingToken）の取り消しだけである。**
+                // 従前は型だけの `catch (OperationCanceledException) { break; }` で、コネクタの接続の時間切れ
+                // （HttpClient の TaskCanceledException）や Npgsql の取り消しが 1 度でも届くと、ログも残さず定期同期が**永久に**止まった
+                // （プロセスは健全なまま）。停止要求の無い取り消しは下の捕捉で周期の失敗として記録し、次の周期へ進む。
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    // 1 サイクルの失敗で停止させない（次サイクルで回復）。
+                    logger.LogError(ex, "定期同期サイクルでエラーが発生しました");
+                }
             }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                // 1 サイクルの失敗で停止させない（次サイクルで回復）。
-                logger.LogError(ex, "定期同期サイクルでエラーが発生しました");
-            }
+            while (await timer.WaitForNextTickAsync(stoppingToken));
         }
-        while (await timer.WaitForNextTickAsync(stoppingToken));
+        // #1604: 拍を待つ間の停止要求はシャットダウンとして静かに終える（想定外の取り消しは例外のまま出す）。
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // シャットダウン。
+        }
     }
 
     // 起動時の 1 回だけ行う設定解決。有効なら実効間隔を返し、同時に SC-06「次回同期」の起点を記録する。

@@ -305,6 +305,56 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
         published[1].Attributes[DataSource.OwnerKey].Should().Be("bob");
     }
 
+    // UC-04 例外フロー, IADR-0083 の 2026-09-26 追記 (#1604): 探索の**時間切れ**（HttpClient.Timeout の TaskCanceledException。
+    // 呼び出し側の ct は立っていない）は、そのソースの探索の失敗である。取り消しとして外へ出さず、連続失敗に数え、watermark を進めない。
+    // 直す前は型だけで素通しし、定期同期では周期のループまで抜けていた（そこで黙って永久に止まった）。
+    [Fact]
+    public async Task Sync_DiscoverTimeout_IsASourceFailure_NotACancellation()
+    {
+        using var scope = factory.Services.CreateScope();
+        var svc = BuildService(scope, new TimingOutConnector(onDiscover: true));
+        var source = DataSource.Create("slow-discover", "filesystem", "");
+
+        var result = await svc.SyncAsync(source, TestContext.Current.CancellationToken);
+
+        result.DiscoverSucceeded.Should().BeFalse("時間切れは探索の失敗として応答する");
+        result.ShouldAdvanceWatermark.Should().BeFalse();
+        source.LastSyncedAt.Should().BeNull();
+        source.ConsecutiveFailureCount.Should().Be(1, "時間切れも連続失敗に数える（継続失敗のアラートに届く）");
+    }
+
+    // UC-04 例外フロー (#1604): 1 件の取得の時間切れは、その 1 件の失敗である（残りの件の取得へ進み、watermark を進めない）。
+    [Fact]
+    public async Task Sync_FetchTimeout_IsAnItemFailure_NotACancellation()
+    {
+        using var scope = factory.Services.CreateScope();
+        var svc = BuildService(scope, new TimingOutConnector(onDiscover: false));
+        var source = DataSource.Create("slow-fetch", "filesystem", "");
+
+        var result = await svc.SyncAsync(source, TestContext.Current.CancellationToken);
+
+        result.Failed.Should().Be(1, "時間切れの 1 件だけが失敗である");
+        result.Fetched.Should().Be(1, "時間切れの後の件も取得している（取り消しとしてソースを打ち切っていない）");
+        result.ShouldAdvanceWatermark.Should().BeFalse();
+        source.LastSyncedAt.Should().BeNull();
+    }
+
+    // 対照 (#1604): 呼び出し側の ct による取り消し（停止要求・要求の打ち切り）は従前どおり外へ出す（失敗へ畳まない）。
+    // これが無いと、上の 2 件は「取り消しを何でも失敗へ畳む実装」でも緑になる。
+    [Fact]
+    public async Task Sync_CallerCancellation_Propagates()
+    {
+        using var scope = factory.Services.CreateScope();
+        using var cts = new CancellationTokenSource();
+        var svc = BuildService(scope, new CancellingConnector(cts));
+        var source = DataSource.Create("stopping", "filesystem", "");
+
+        var act = async () => await svc.SyncAsync(source, cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        source.ConsecutiveFailureCount.Should().Be(0, "停止要求はソースの失敗ではない");
+    }
+
     private static DataSourceSyncService BuildService(
         IServiceScope scope, IDataSourceConnector connector)
     {
@@ -352,6 +402,39 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
             => Task.FromResult<IReadOnlyList<SourceItem>>([new SourceItem("/x/a.md", DateTimeOffset.UtcNow, 1)]);
         public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
             => throw new IOException("fetch boom");
+    }
+
+    // 探索、または 1 件目の取得で、HttpClient の時間切れと同じ型（TaskCanceledException）を投げるコネクタ。
+    // 呼び出し側の ct は立てない（＝停止要求ではない取り消し）。
+    private sealed class TimingOutConnector(bool onDiscover) : IDataSourceConnector
+    {
+        public string SourceType => "filesystem";
+        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, DateTimeOffset? since, CancellationToken ct)
+            => onDiscover
+                ? throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout")
+                : Task.FromResult<IReadOnlyList<SourceItem>>(
+                [
+                    new SourceItem("/x/a.md", DateTimeOffset.UtcNow, 1),
+                    new SourceItem("/x/b.md", DateTimeOffset.UtcNow, 1),
+                ]);
+        public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
+            => item.Path == "/x/a.md"
+                ? throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout")
+                : Task.FromResult(new RawContent([1], "text/markdown"));
+    }
+
+    // 探索の最中に呼び出し側の取り消しを立て、その ct で取り消しを投げるコネクタ（停止要求を模す）。
+    private sealed class CancellingConnector(CancellationTokenSource caller) : IDataSourceConnector
+    {
+        public string SourceType => "filesystem";
+        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, DateTimeOffset? since, CancellationToken ct)
+        {
+            caller.Cancel();
+            ct.ThrowIfCancellationRequested();
+            throw new InvalidOperationException("呼び出し側の取り消しが ct に届いていない（試験の前提の誤り）");
+        }
+        public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
+            => throw new NotSupportedException();
     }
 
     // 2 件を返し、両方に同じ更新者（または null）を載せるスタブ。

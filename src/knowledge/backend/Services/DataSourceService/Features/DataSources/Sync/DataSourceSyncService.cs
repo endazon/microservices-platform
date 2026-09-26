@@ -88,7 +88,11 @@ public sealed class DataSourceSyncService(
             // 増分: 前回同期時刻を watermark に差分のみ列挙（初回は null＝フルスキャン）。
             items = await connector.DiscoverAsync(source, source.LastSyncedAt, ct);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        // ［2026-09-26 / #1604・IADR-0083 追記］🔴 外へ出すのは呼び出し側の ct による取り消しだけである。
+        // コネクタの接続の時間切れ（HttpClient.Timeout の TaskCanceledException）は**そのソースの探索の失敗**であり、
+        // 連続失敗として数えて watermark を進めない。型だけで素通しすると、定期同期では周期のループまで抜け
+        // （従前はそこで黙って永久に止まっていた）、残りのソースの同期も巻き添えにする。
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             AlertOnFailure(source, "discover", ex);
             // FR-01, UC-04, SC-06, IADR-0295 決定 2: **応答も `SyncErrorRedactor` を通す。**
@@ -162,7 +166,8 @@ public sealed class DataSourceSyncService(
                     source.Name));
                 fetched++;
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            // #1604: 1 件の取得の時間切れはその 1 件の失敗である（上の探索と同じ。呼び出し側の ct による取り消しだけを外へ出す）。
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 failed++;
                 // IADR-0295 決定 4: **例外オブジェクトをそのまま渡さない。** `ex` を第 1 引数に渡すと

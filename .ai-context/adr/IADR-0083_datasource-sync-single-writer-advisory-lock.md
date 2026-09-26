@@ -10,7 +10,7 @@ related_ids:
   - IADR-0074
 author: claude
 created: 2026-07-19
-updated: 2026-07-19
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md (FR-01 データソース同期 / NFR 15分以内反映)
   - planning:projects/microservices-platform/03_usecases/ (UC-04 定期取得・継続失敗アラート)
@@ -106,6 +106,25 @@ CI（#275 ドリフト・images.yml）を壊さない。`scaling.services`（min
 - **接続コスト**: サイクルごとに短命接続を 1 本張る（既定 300 秒間隔で軽微）。
 
 ## 影響・結果
+
+> **［2026-09-26 追記 / #1604］定期同期のループは、停止要求ではない取り消し（接続の時間切れ等）で終わらない。コネクタは明示の期限を持つ。**
+> 本決定のワーカー（`DataSourceSyncHostedService`）は周期の本体を型だけの `catch (OperationCanceledException) { break; }` で包んでいた。
+> `DataSourceSyncService` の探索と 1 件ごとの取得も `when (ex is not OperationCanceledException)` で型だけで絞っており、Wiki / SaaS コネクタの
+> HttpClient は期限が未設定（既定 100 秒）だった。1 回の接続の時間切れ（`TaskCanceledException`）で定期同期が**ログも残さず永久に**止まる
+> （プロセスは健全・手動の `/sync` は動く・データは失われない。#1601 の監査が読みで確認）。#1598 で見送った件である（同 PR の仕様書の「母集合」）。
+>
+> - ループは `catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }` とし、停止要求の無い取り消しは続く
+>   `catch (Exception)` が周期の失敗として記録して次の拍へ進む。拍を待つ間の停止要求は外側の `when (stoppingToken…)` で静かに終える
+>   （IADR-0299 決定 3・IADR-0431 決定 5 の #1598 追記と同じ形）。
+> - 探索と取得の捕捉は `when (ex is not OperationCanceledException || !ct.IsCancellationRequested)`。時間切れは**そのソース（その 1 件）の失敗**として数え、
+>   watermark を進めない（手動の `/sync` でも同じ。要求の ct による打ち切りは従前どおり外へ出す）。
+> - Wiki / SaaS の名前付きクライアント（`WikiConnector.HttpClientName` / `SaaSConnector.HttpClientName`）に `Timeout = 30 秒` を与える（1 要求ぶん。
+>   SaaS の 429 の待ちは要求の外）。業務 DB（Npgsql）は接続文字列の既定の期限を持つので対象外。
+> - 周期は構成から来て最短 30 秒に丸められ試験で待てないので、試験だけが与える口 `internal CycleInterval`（既定 null＝`StartSchedule()` の実効間隔）を足した。
+>   SC-06 の「次回同期」の位相は常に構成の間隔で記録する（本番の挙動は変えない）。
+> - 試験: `DataSourceSyncHostedServiceTests`（ループ・拍の待ち・コネクタの期限）、`DataSourceSyncServiceTests`（探索・取得の時間切れ・呼び出し側の取り消しの対照）。
+>   変異（1 か所ずつ）: ループの捕捉を型だけへ戻す → 赤（10 秒の時間切れ）／失敗の後に待たずに再試行する → 赤（間隔の表明）／探索の絞り込みを戻す → 赤／
+>   取得の絞り込みを戻す → 赤／コネクタの期限を外す → 赤。作業仕様書: `.ai-context/specs/20260926_issue-1604_refresher-and-sync-loop-timeouts.md`。
 
 - 良い影響: 本番マルチレプリカで 1 サイクルの原本 fetch が 1 回になり、コネクタ先・下流の冗長負荷が解消される。
   API 可用性（minReplicas 2 / PDB）は不変。fail-safe・後方互換を保つ。

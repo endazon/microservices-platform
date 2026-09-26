@@ -26,6 +26,11 @@ namespace DataSourceService.Infrastructure.ExternalServices;
 public sealed class SaaSConnector(IHttpClientFactory httpFactory, ILogger<SaaSConnector> logger)
     : IDataSourceConnector
 {
+    // #1604（IADR-0083 追記）: 名前付きクライアントの名前と、1 要求ぶんの期限（Program.cs が登録時に与える）。
+    // 429 の待ち（BackoffAsync）は要求の外なので、この期限には含まれない。
+    public const string HttpClientName = "SaaSConnector";
+    public static readonly TimeSpan HttpTimeout = TimeSpan.FromSeconds(30);
+
     public string SourceType => "saas";
 
     private const string DefaultListPath = "/api/items";
@@ -166,7 +171,7 @@ public sealed class SaaSConnector(IHttpClientFactory httpFactory, ILogger<SaaSCo
 
     private HttpClient CreateClient(DataSource source)
     {
-        var client = httpFactory.CreateClient("SaaSConnector");
+        var client = httpFactory.CreateClient(HttpClientName);
         var token = Config(source, "apiToken", string.Empty);
         if (!string.IsNullOrWhiteSpace(token))
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
