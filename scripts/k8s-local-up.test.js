@@ -3311,6 +3311,98 @@ ok('#1304: integration-stack の ISTIO 宣言が 3 つの契機で意図どお�
   );
 });
 
+// #1597 / ADR-0113 §結果 / IADR-0470: T-25（パスワードリセットの門）は系統差が無くても約 100 回に 1 回は偶然の赤を出す。
+// 既定の「前の失敗で以降を飛ばす」のままだと、その 1 回で後段の門（ABAC／検索の投入・ABAC と検索の門・ログイン経路の門）が
+// 1 本も評価されない（run 36244009369: p=0.0094 の単発の赤で 4 ステップが skipped）。
+//
+// 🔴 **ここも式の文字列を部分一致で見ない。場面ごとに `if:` を評価する**（上の #1304 と同じ理由）。
+// `if:` の無いステップは GitHub の既定 `success()`（前のどれかが落ちていれば飛ばす）として評価するので、
+// 条件を外す変異（＝是正前の形）は場面 1 で落ちる。
+ok('#1597: integration-stack の後段の門は、パスワードリセットの門の赤で飛ばされない（場面ごとの評価）', () => {
+  const wf = fs
+    .readFileSync(path.join(REPO_ROOT, '.github', 'workflows', 'integration-stack.yml'), 'utf8')
+    .replace(/\r\n/g, '\n');
+  const blocks = wf.split('\n      - name: ').slice(1);
+  const stepOf = (prefix) => {
+    const found = blocks.filter((b) => b.startsWith(prefix));
+    assert.strictEqual(found.length, 1, `ステップ「${prefix}」が ${found.length} 件ある（1 件であるべき）`);
+    const body = found[0].split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+    const id = (/^\s+id:\s*(\S+)\s*$/m.exec(body) || [])[1];
+    const cond = (/^\s+if:\s*\$\{\{(.+)\}\}\s*$/m.exec(body) || [])[1];
+    assert.ok(!/^\s+if:/m.test(body) || cond, `ステップ「${prefix}」の if: を \${{ … }} の式として読めない`);
+    assert.ok(!/continue-on-error/.test(body), `ステップ「${prefix}」が continue-on-error を持つ（ジョブの赤が消える）`);
+    return { id, cond: cond ? cond.trim() : null };
+  };
+  const STACK = stepOf('🔴 Gate — the stack is actually up');
+  const RESET = stepOf('🔴 Gate — パスワードリセットの送出とメール本文');
+  const SEED_ABAC = stepOf('ABAC ポリシーの投入を確定させる');
+  const SEED_SEARCH = stepOf('検索検証用文書の投入を確定させる');
+  const ABAC_GATE = stepOf('🔴 Gate — ABAC の正常系と検索の命中が観測できる');
+  const LOGIN_GATE = stepOf('🔴 Gate — ログイン経路の存在秘匿');
+
+  assert.ok(STACK.id, 'スタックの門に id が無い（後段が「スタックが起きていること」を条件にできない）');
+  // パスワードリセットの門そのものはスタックの門が緑のときだけ走る既定のまま（起きていないスタックを測らない）。
+  assert.strictEqual(RESET.cond, null, `パスワードリセットの門に if: が付いた: ${RESET.cond}`);
+  const wfCode = wf.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n'); // 注記の「continue-on-error は使わない」を拾わない
+  assert.ok(!/continue-on-error/.test(wfCode), 'integration-stack.yml が continue-on-error を持つ（ジョブの赤が消える）');
+
+  // GitHub の式を JS として評価する（`==` / `&&` / `!` は JS と同じ短絡規則）。`steps.<id>.outcome` の id は
+  // ハイフンを含むので添字へ書き換える。`if:` が無ければ既定の `success()`。
+  const run = (step, st) => {
+    const expr = (step.cond || 'success()').replace(/steps\.([A-Za-z0-9_-]+)\.outcome/g, 'steps["$1"].outcome');
+    // eslint-disable-next-line no-new-func
+    return new Function('steps', 'cancelled', 'success', 'failure', 'always', `return !!(${expr});`)(
+      new Proxy(st.outcomes, { get: (o, k) => ({ outcome: o[k] || 'skipped' }) }),
+      () => st.cancelled,
+      () => !st.cancelled && !st.anyFailed,
+      () => st.anyFailed,
+      () => true,
+    );
+  };
+  const later = [SEED_ABAC, SEED_SEARCH, ABAC_GATE, LOGIN_GATE];
+  for (const s of later) assert.ok(!/always\(\)/.test(s.cond || ''), 'always() は取り消しでも走らせてしまう');
+
+  // 場面 1（run 36244009369 の形）: スタックは緑・パスワードリセットの門だけが赤。🔴 後段の 4 本がすべて走る。
+  const s1 = { cancelled: false, anyFailed: true, outcomes: { [STACK.id]: 'success' } };
+  assert.ok(run(SEED_ABAC, s1), 'T-25 の赤で ABAC の投入が飛ばされる');
+  assert.ok(run(SEED_SEARCH, s1), 'T-25 の赤で検索文書の投入が飛ばされる');
+  s1.outcomes[SEED_ABAC.id] = 'success';
+  s1.outcomes[SEED_SEARCH.id] = 'success';
+  assert.ok(run(ABAC_GATE, s1), 'T-25 の赤で ABAC と検索の門が飛ばされる');
+  assert.ok(run(LOGIN_GATE, s1), 'T-25 の赤でログイン経路の門が飛ばされる');
+
+  // 場面 2: スタックの門が赤。起きていないスタックを後段で測らない（全部飛ばす）。
+  const s2 = { cancelled: false, anyFailed: true, outcomes: { [STACK.id]: 'failure' } };
+  for (const s of later) assert.ok(!run(s, s2), 'スタックの門が赤なのに後段が走る（起きていないスタックを測る）');
+
+  // 場面 3: 投入が赤。ABAC と検索の門は飛ばす（「認可の故障」と「投入漏れ」を区別できない）。ログイン経路の門は走る。
+  for (const failed of [SEED_ABAC, SEED_SEARCH]) {
+    const s3 = {
+      cancelled: false,
+      anyFailed: true,
+      outcomes: { [STACK.id]: 'success', [SEED_ABAC.id]: 'success', [SEED_SEARCH.id]: 'success', [failed.id]: 'failure' },
+    };
+    assert.ok(!run(ABAC_GATE, s3), `投入（${failed.id}）が赤なのに ABAC と検索の門が走る`);
+    assert.ok(run(LOGIN_GATE, s3), `投入（${failed.id}）の赤でログイン経路の門が飛ばされる`);
+  }
+
+  // 場面 4: 取り消し。何も走らせない。
+  const s4 = {
+    cancelled: true,
+    anyFailed: false,
+    outcomes: { [STACK.id]: 'success', [SEED_ABAC.id]: 'success', [SEED_SEARCH.id]: 'success' },
+  };
+  for (const s of later) assert.ok(!run(s, s4), '取り消した run で後段が走る');
+
+  // 場面 5（陽性対照）: すべて緑なら従来どおり全部走る。
+  const s5 = {
+    cancelled: false,
+    anyFailed: false,
+    outcomes: { [STACK.id]: 'success', [SEED_ABAC.id]: 'success', [SEED_SEARCH.id]: 'success' },
+  };
+  for (const s of later) assert.ok(run(s, s5), 'すべて緑なのに後段が走らない');
+});
+
 // ---------------------------------------------------------------------------
 // NFR-02, NFR-21, ADR-0076 決定 3・4, ADR-0079 決定 1, IADR-0378 (#1287):
 // 合成監視（synthetic）を既定の起動器へ入れる差分 —— `SYNTHETIC=1` の opt-in 門。

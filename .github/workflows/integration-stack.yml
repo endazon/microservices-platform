@@ -224,6 +224,7 @@ jobs:
       # 「まだ届いていない」を欠陥として報告してしまう（間欠赤）。**取り込みの成立は
       # 後段の `SEARCH_HITS=1` の門が陽性・陰性の対で測る。**
       - name: 🔴 Gate — the stack is actually up
+        id: stack-ready
         run: node scripts/check-stack-ready.js --live
 
       # 🔴 ここが 3 つめの門である（#1144 / SC-15・ADR-0045 決定 7・9）。
@@ -250,6 +251,14 @@ jobs:
       # 床が外れていれば p はごく小さく、赤が続く。p 値の分布と不合格の頻度は計画へ届ける実測である（同 フォローアップ 2）。
       # 本ワークフローは**必須チェックではない**（schedule / push(develop) / dispatch のみ）ので、
       # この赤が PR のマージを止めることはない。
+      #
+      # ［2026-09-26 / #1597］🔴 **本門の赤で後段の門を飛ばさない。** 後段の 4 ステップ（ABAC／検索の投入・
+      # ABAC と検索の門・ログイン経路の門）は本門の結果に依らず、**スタックの門（`stack-ready`）が緑なら走る**。
+      # 本門は上のとおり系統差が無くても約 100 回に 1 回は偶然の赤を出す。既定の「前の失敗で以降を飛ばす」のままだと、
+      # その 1 回で後段の門が 1 本も評価されず、**別の退行が同じ run に入っていても見えない**（run 36244009369 が
+      # この形だった: T-25 の p=0.0094 の単発の赤で、後段の 4 ステップが skipped）。
+      # ジョブの合否は変えない —— どれか 1 つでも落ちれば赤であり、`continue-on-error` は使わない
+      # （ci.yml の `!cancelled()` と同じ形）。**判定の意味を変えるのではなく、1 回の赤で得られる証拠を減らさない。**
       - name: 🔴 Gate — パスワードリセットの送出とメール本文（#1144）
         run: node scripts/check-password-reset-mail.js --live
 
@@ -259,6 +268,9 @@ jobs:
       # **明示的に再実行して終了コードを見る**。ここが緑なら、次の門の空はポリシー起因ではない。
       # up の中では pod がまだ起きておらず失敗しうるため、この順序が要る。
       - name: ABAC ポリシーの投入を確定させる（冪等・失敗を握り潰さない）
+        id: seed-abac
+        # #1597: パスワードリセットの門の赤では飛ばさない（スタックの門が緑なら走る）。
+        if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' }}
         run: node scripts/seed-abac-policies.js --live
 
       # 🔴 ABAC 投入とまったく同じ理由（up の中の投入は best-effort）。#992 / IADR-0284。
@@ -266,6 +278,9 @@ jobs:
       # ここが緑なら、次の門で seed 文書が見えないのは投入漏れではない。
       # 投入器は作成した文書が markdownUri を持たないときも失敗する（取り込みの入口条件）。
       - name: 検索検証用文書の投入を確定させる（冪等・失敗を握り潰さない）
+        id: seed-search
+        # #1597: パスワードリセットの門の赤では飛ばさない（スタックの門が緑なら走る）。
+        if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' }}
         run: node scripts/seed-search-documents.js --live
 
       # 🔴 ここが 2 つめの門である（#972）。readiness は「起きている」までしか言わない。
@@ -299,6 +314,9 @@ jobs:
       #
       # ABAC_POSITIVE=1 / SEARCH_SEEDED=1 は **文書を作る**。このクラスタは次のステップで破棄される。
       - name: 🔴 Gate — ABAC の正常系と検索の命中が観測できる（#972 / #992）
+        # #1597: 前提は 2 つの投入が緑であること（上の注記のとおり、投入が落ちたまま測ると
+        # 「認可の故障」と「投入漏れ」を区別できない）。パスワードリセットの門の赤では飛ばさない。
+        if: ${{ !cancelled() && steps.seed-abac.outcome == 'success' && steps.seed-search.outcome == 'success' }}
         run: ABAC_POSITIVE=1 SEARCH_HITS=1 bash scripts/verify-oidc-edge-flow.sh --live
 
       # 🔴 ここが 4 つめの門である（#1245 PR-0 / SC-13・ADR-0078 決定 1）。
@@ -314,6 +332,8 @@ jobs:
       # 後段に「その利用者で成功するログインを通す門」を置くと、計数が積み上がって一時ロックに触れ得る。
       # **測定の副作用を他の門へ波及させない**ため、順序そのものを統制にしている。
       - name: 🔴 Gate — ログイン経路の存在秘匿（#1245 PR-0）
+        # #1597: 前の門の赤では飛ばさない（スタックの門が緑なら走る）。**最後に置く**順序の統制は上のとおり変えない。
+        if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' }}
         run: node scripts/check-login-existence-disclosure.js --live
 
       # 失敗したときに原因を名指しできる情報を残す（#466 のスコープ「失敗時に原因が特定できる出力」）。
