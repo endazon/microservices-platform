@@ -39,6 +39,7 @@ jobs:
       # fetch-depth: 0 は origin/<base>...HEAD の差分解決に必須（ci.yml の commit-messages と同方針）。
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Detect relevant changes
         id: filter
@@ -101,6 +102,8 @@ jobs:
         service: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # Issue #283, IADR-0070: 可変ユニット（src/*）の submodule を取得してからビルドする。frontend は
       # @ai-stock-trading を合成し、configuration-service は AST バックエンドを build context にするため、
       # 未取得だとビルドできない（ci.yml と同型。public ユニットはトークン不要）。
@@ -129,6 +132,8 @@ jobs:
     name: build-local (platform-backup)
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build image
         run: docker build --progress plain -f deploy/local/platform-backup/image/Dockerfile -t platform-backup:ci deploy/local/platform-backup/image
       - name: Check bundled tools (offline)

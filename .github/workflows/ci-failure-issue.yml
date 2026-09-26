@@ -37,13 +37,19 @@ on:
         required: false
         default: ""
 
+# NFR, IADR-0232 (#1581): ワークフロー単位は読むだけにし、起票の書き込みは report ジョブにだけ置く。
+# 再利用ワークフローの権限は呼び出し側のジョブが与えた範囲を超えられない（上の「呼び出し側の書き方」の
+# permissions: { contents: read, issues: write } が上限）。
 permissions:
   contents: read
-  issues: write
 
 jobs:
   report:
     runs-on: ubuntu-latest
+    # issue の起票・既存 issue へのコメント・ラベルの作成（issues: write）。
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/github-script@v9
         env:

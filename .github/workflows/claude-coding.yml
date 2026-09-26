@@ -42,6 +42,12 @@ concurrency:
   group: claude-coding-${{ github.event.issue.number || github.event.pull_request.number }}
   cancel-in-progress: false
 
+# NFR, IADR-0232 (#1581): ワークフロー単位は読むだけにする（リポジトリの既定は write）。
+# 書き込み（ブランチの push・PR / issue へのコメント）は claude ジョブの permissions が持つ。
+# このジョブは git push するので、checkout の資格情報は残す（persist-credentials を付けない）。
+permissions:
+  contents: read
+
 jobs:
   claude:
     # @claude を含むイベントのみ起動する

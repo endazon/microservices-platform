@@ -32,14 +32,19 @@ on:
       - "src/*/backend/**"
   workflow_dispatch: {}
 
+# NFR, IADR-0232 (#1581): ワークフロー単位は読むだけにし、書き込みは openapi ジョブにだけ置く。
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   openapi:
     if: "!startsWith(github.event.head_commit.message, 'docs(NFR): OpenAPI を自動更新')"
     runs-on: ubuntu-latest
+    # 更新ブランチの push（contents: write）と更新 PR の作成・ラベル付け（pull-requests: write）。
+    # 🔴 develop / main への push と手動実行でしか走らないので、PR の CI では確かめられない（従前と同じ権限をジョブへ移しただけ）。
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v7

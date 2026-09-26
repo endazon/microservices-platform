@@ -439,3 +439,21 @@ PR 時点で SAST の指摘が一切出なくなる。**`paths:` を持つため
 >   全 PR で AST の脚（integration の実測で AST だけ約 6 分）を払い、`backend-format` とカバレッジ集計にも AST が混ざるため採らない。
 > - 回収先は変わらない: 統合テスト（Docker）込みの全量は引き続き `integration.yml` が回す。
 >   作業仕様書: `.ai-context/specs/20260926_issue-1551_submodule-backend-pr-ci.md`
+
+> **［2026-09-26 追記 / #1581］`GITHUB_TOKEN` の権限を各ワークフローの YAML で絞る。リポジトリ設定は変えない。**
+>
+> - 事実（#1580 の監査）: リポジトリの既定は `default_workflow_permissions: write`。`ci.yml` / `frontend.yml` / `frontend-tests.yml` には
+>   `permissions:` が無く、全ジョブが contents / pull-requests / actions / packages の write のトークンで走っていた（AST のコードを
+>   コンパイルするジョブを含む）。`claude-code-review.yml` / `claude-coding.yml` / `copilot-setup-steps.yml` はジョブ単位だけ持ち、
+>   `changelog.yml` / `openapi.yml` / `obsidian-plugin-release.yml` / `codeql.yml` / `backlog-audit.yml` / `ci-failure-issue.yml` /
+>   `ci-latency-watch.yml` はワークフロー単位に書き込み・追加の読み取りを置いていた。checkout は資格情報を `.git/config` へ残していた。
+> - 決定: **全ワークフローのワークフロー単位を `permissions: { contents: read }` だけにする。** 書き込みはジョブ単位で、実際に書くジョブにだけ置く
+>   （移しただけで、どのジョブの権限も広げていない）。`contents: write` を持たないジョブの checkout は `persist-credentials: false`
+>   （取得する submodule は public。例外は `copilot-setup-steps` の 1 つで、作業ツリーを Copilot coding agent へ引き渡すため変えない）。
+>   ジョブ → 権限の表は作業仕様書と `docs/ai-workflow.md` にあり、`scripts/scripts.repo.test.js` が同じ表で固定する（表に無い書き込みを落とす）。
+> - 決定 2 との関係: ジョブ名・`name:` は 1 つも変えていないので、**必須 check 名は変わらない**。起動条件（`on:`）も変えていない。
+> - 回収先への影響: `changelog` / `openapi` / `release` / 各 `report-failure` は push・日次・週次・手動でしか走らないので、PR の CI では確かめられない。
+>   いずれも従前と同じスコープをジョブへ移しただけであり、再利用ワークフロー `ci-failure-issue.yml` は呼び出し側のジョブが与える
+>   `{ contents: read, issues: write }` を上限に、`report` ジョブが同じものを求める（上限を超えない）。
+> - リポジトリの既定を `read` へ下げるかは**リポジトリ設定の変更であり、利用者の判断とする**（本追記は提案に留める。下げても本追記の YAML はそのまま効く）。
+>   作業仕様書: `.ai-context/specs/20260926_1581_workflow-token-permissions.md`

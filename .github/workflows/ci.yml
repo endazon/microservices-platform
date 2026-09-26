@@ -48,6 +48,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# NFR, IADR-0232 (#1581): GITHUB_TOKEN は読むだけにする。リポジトリの既定（default_workflow_permissions）は
+# write なので、ここを書かないと全ジョブが contents / pull-requests / actions / packages の write で走る
+# （AST のコードをコンパイルするジョブも含む）。本ワークフローのジョブは GitHub へ何も書かない
+# （成果物は actions/upload-artifact・キャッシュは actions/cache で、どちらも GITHUB_TOKEN の権限を使わない）。
+# checkout も資格情報を .git/config へ残さない（persist-credentials: false。取得する submodule は public）。
+# 書き込みが要るジョブを足すときは、そのジョブにだけ job 単位の permissions を置く。
+permissions:
+  contents: read
+
 jobs:
   # コミットメッセージ規約（種別(起点ID): 要約）の機械チェック（Issue #60・再発防止）。
   # PR で追加されるコミット（base..HEAD）のみ検査し、bot・マージ・[skip ci] は除外する。
@@ -58,6 +67,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
@@ -82,6 +92,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
@@ -140,6 +151,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           # check-action-versions の --compare-with-ref が統合ブランチ時点のワークフローを
           # 読むため、履歴が要る（shallow だと当該検査が warn で skip される）。
           fetch-depth: 0
@@ -592,6 +604,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
       # 既定 checkout は submodule 未取得で、追加ユニット（AST 等）の csproj 依存方向が
       # 検査対象外＝pin 更新時に platform 直参照の混入を見落とすため（未取得だと空の gitlink となる）。
@@ -741,6 +755,8 @@ jobs:
       units: ${{ steps.discover.outputs.units }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Discover backend units from src/*/backend/backend.slnx
         id: discover
         run: |
@@ -769,6 +785,8 @@ jobs:
         unit: ${{ fromJSON(needs.discover-units.outputs.units) }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
       # public ユニットはトークン不要（private ユニットは別途 IADR-0058 型トークンが要る）。詳細は
       # docs/how-to/adding-a-unit-submodule.md。
@@ -1024,6 +1042,8 @@ jobs:
           esac
           echo "✓ 全ユニットの restore / build / 単体テストが成立した（統合テストは integration.yml が回す）。"
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Download coverage reports from all units
         uses: actions/download-artifact@v8
         with:
@@ -1065,6 +1085,8 @@ jobs:
         unit: ${{ fromJSON(needs.discover-units.outputs.units) }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
       # public ユニットはトークン不要（private ユニットは別途 IADR-0058 型トークンが要る）。詳細は
       # docs/how-to/adding-a-unit-submodule.md。
@@ -1169,6 +1191,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       # NFR / IADR-0232: NuGet のグローバルパッケージをキャッシュする（backend-build と同じキー）。
       - uses: actions/cache@v6
         with:

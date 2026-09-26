@@ -7214,6 +7214,176 @@ ${r.stderr}`);
     });
   }
 
+  // --- #1581: GITHUB_TOKEN の権限を YAML で絞る（NFR / IADR-0232 の 2026-09-26 追記） ---------
+  //
+  // リポジトリの既定（default_workflow_permissions）は write である。ワークフローに permissions: が無いと、
+  // 全ジョブが contents / pull-requests / actions / packages の write のトークンで走り、checkout がその
+  // 資格情報を .git/config へ残す（#1580 の監査で見つかった。ci.yml には permissions: が無かった）。
+  // **リポジトリ設定は変えない**。各ワークフローの YAML で絞り、それが戻らないことをここで固定する:
+  //   1. 全ワークフローがワークフロー単位で `permissions: { contents: read }` だけを持つ
+  //   2. write-all / read-all の一括指定を使わない（ワークフロー・ジョブとも）
+  //   3. 書き込みのスコープを持つジョブは下の表のものだけ（増やすときは表と作業仕様書の表を同時に直す）
+  //   4. contents: write を持たないジョブの checkout は persist-credentials: false（例外は表で名指しする）
+  // YAML パーサは CI の scripts-tests に無い（pnpm install をしない）ので、行で読む。読み取りの穴は
+  // 変異試験で塞ぐ（書式が変わって 0 件走査になったら落ちる門も置く）。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const WF = path.join(REPO, '.github/workflows');
+
+    /** 書き込みのスコープを持ってよいジョブ（`<file>:<job>` → 書き込みのスコープ）。作業仕様書の表と同じもの。 */
+    const WRITE_JOBS = {
+      'backlog-audit.yml:audit': ['issues'],
+      'changelog.yml:changelog': ['contents', 'pull-requests'],
+      'ci-failure-issue.yml:report': ['issues'],
+      'ci-latency-watch.yml:report-failure': ['issues'],
+      'backlog-audit.yml:report-failure': ['issues'],
+      'claude-code-review.yml:claude-review': ['id-token', 'issues', 'pull-requests'],
+      'claude-coding.yml:claude': ['contents', 'id-token', 'issues', 'pull-requests'],
+      'codeql.yml:analyze': ['security-events'],
+      'codeql.yml:report-failure': ['issues'],
+      'integration-stack.yml:report-failure': ['issues'],
+      'integration.yml:report-failure': ['issues'],
+      'obsidian-plugin-release.yml:release': ['contents'],
+      'openapi.yml:openapi': ['contents', 'pull-requests'],
+      'security.yml:report-failure': ['issues'],
+    };
+    /** contents: write を持たないのに checkout の資格情報を残してよいジョブと理由。 */
+    const PERSIST_EXCEPTIONS = {
+      // 作業ツリーが Copilot coding agent のセッションへ引き渡される。PR の CI では確かめられないので変えない
+      // （トークンは contents: read だけなので、残っても書き込みには使えない）。
+      'copilot-setup-steps.yml:copilot-setup-steps': 'Copilot coding agent へ引き渡す作業ツリー',
+    };
+
+    const indentOf = (l) => /^\s*/.exec(l)[0].length;
+    /** `permissions:` の行から、インライン値（文字列）かブロック（{ scope: level }）を読む。 */
+    function readPermissions(lines, at) {
+      const inline = lines[at].replace(/^\s*permissions:\s*/, '').trim();
+      if (inline) return inline;
+      const base = indentOf(lines[at]);
+      const out = {};
+      for (let i = at + 1; i < lines.length; i++) {
+        if (lines[i].trim() === '') continue;
+        if (indentOf(lines[i]) <= base) break;
+        const m = /^\s*([a-z-]+):\s*([a-z-]+)\s*$/.exec(lines[i]);
+        if (m) out[m[1]] = m[2];
+        else out[`<読めない行: ${lines[i].trim()}>`] = '?';
+      }
+      return out;
+    }
+    /** ワークフロー本文を、ワークフロー単位の permissions とジョブの列に分ける。純関数。 */
+    function parseWorkflow(text) {
+      const lines = text.split('\n').map((l) => (/^\s*#/.test(l) ? '' : l));
+      const wAt = lines.findIndex((l) => /^permissions:/.test(l));
+      const jAt = lines.findIndex((l) => /^jobs:\s*$/.test(l));
+      const starts = [];
+      for (let i = jAt + 1; jAt >= 0 && i < lines.length; i++) {
+        if (/^\S/.test(lines[i])) break;
+        const m = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(lines[i]);
+        if (m) starts.push([m[1], i]);
+      }
+      const jobs = starts.map(([id, s], k) => {
+        const body = lines.slice(s, k + 1 < starts.length ? starts[k + 1][1] : lines.length);
+        const pAt = body.findIndex((l) => /^ {4}permissions:/.test(l));
+        const checkouts = [];
+        body.forEach((l, i) => {
+          const m = /^(\s*)(- )?uses: actions\/checkout@/.exec(l);
+          if (!m) return;
+          const stepIndent = m[1].length + (m[2] ? 2 : 0);
+          let persistFalse = false;
+          for (let j = i + 1; j < body.length; j++) {
+            if (body[j].trim() === '') continue;
+            if (indentOf(body[j]) < stepIndent || (indentOf(body[j]) === stepIndent - 2 && /^\s*- /.test(body[j]))) break;
+            if (/^\s*persist-credentials:\s*false\s*$/.test(body[j])) persistFalse = true;
+          }
+          checkouts.push({ persistFalse });
+        });
+        return { id, permissions: pAt >= 0 ? readPermissions(body, pAt) : null, checkouts };
+      });
+      return { permissions: wAt >= 0 ? readPermissions(lines, wAt) : null, jobs };
+    }
+    /** 違反の列挙。`files` は { ファイル名: 本文 }。純関数（変異試験から直接呼ぶ）。 */
+    function permissionIssues(files) {
+      const issues = [];
+      let jobCount = 0;
+      let checkoutCount = 0;
+      const seenWriteJobs = new Set();
+      for (const [f, text] of Object.entries(files)) {
+        const wf = parseWorkflow(text);
+        if (wf.permissions === null) {
+          issues.push(`${f}: ワークフロー単位の permissions: が無い（リポジトリの既定 write で走る）`);
+        } else if (typeof wf.permissions === 'string') {
+          issues.push(`${f}: ワークフロー単位の permissions が一括指定（${wf.permissions}）である。{ contents: read } にする`);
+        } else if (JSON.stringify(wf.permissions) !== JSON.stringify({ contents: 'read' })) {
+          issues.push(`${f}: ワークフロー単位の permissions が { contents: read } だけではない（${JSON.stringify(wf.permissions)}）。書き込みは要るジョブへ移す`);
+        }
+        if (wf.jobs.length === 0) issues.push(`${f}: ジョブを 1 件も読めない（走査が壊れている）`);
+        for (const job of wf.jobs) {
+          jobCount++;
+          const key = `${f}:${job.id}`;
+          const perms = job.permissions;
+          if (typeof perms === 'string') {
+            issues.push(`${key}: ジョブの permissions が一括指定（${perms}）である。要るスコープだけを列挙する`);
+            continue;
+          }
+          const writes = Object.entries(perms || {}).filter(([, v]) => v === 'write').map(([k]) => k).sort();
+          const expected = WRITE_JOBS[key];
+          if (writes.length > 0 || expected) {
+            seenWriteJobs.add(key);
+            if (JSON.stringify(writes) !== JSON.stringify(expected || [])) {
+              issues.push(`${key}: 書き込みのスコープが表と違う（実際 ${JSON.stringify(writes)} / 表 ${JSON.stringify(expected || [])}）。` +
+                '増やすなら表と作業仕様書の表を同時に直す');
+            }
+          }
+          const canPush = perms && perms.contents === 'write';
+          for (const c of job.checkouts) {
+            checkoutCount++;
+            if (!c.persistFalse && !canPush && !PERSIST_EXCEPTIONS[key]) {
+              issues.push(`${key}: contents: write を持たないのに checkout が資格情報を残す（persist-credentials: false を付ける）`);
+            }
+          }
+        }
+      }
+      return { issues, jobCount, checkoutCount, seenWriteJobs };
+    }
+
+    const realFiles = () => Object.fromEntries(
+      fs.readdirSync(WF).filter((f) => /\.ya?ml$/.test(f)).sort().map((f) => [f, fs.readFileSync(path.join(WF, f), 'utf8')]),
+    );
+
+    ok('#1581: 全ワークフローがワークフロー単位で permissions: { contents: read } を持ち、write-all のジョブが無い', () => {
+      const files = realFiles();
+      const { issues, jobCount, checkoutCount, seenWriteJobs } = permissionIssues(files);
+      // 0 件走査の門（件数リテラルで固定しない。下限だけを見る）。
+      assert.ok(Object.keys(files).length >= 15, `ワークフローが ${Object.keys(files).length} 件しか読めない（走査が壊れている）`);
+      assert.ok(jobCount >= 30 && checkoutCount >= 25, `ジョブ ${jobCount} 件 / checkout ${checkoutCount} 件しか読めない（走査が壊れている）`);
+      assert.deepStrictEqual(issues, [], `GITHUB_TOKEN の権限の違反:\n  ${issues.join('\n  ')}`);
+      // 表の側の腐り（消えたジョブが表に残る）も止める。
+      const stale = Object.keys(WRITE_JOBS).filter((k) => !seenWriteJobs.has(k));
+      assert.deepStrictEqual(stale, [], `表にあるのに実在しない（書き込みを持たない）ジョブ: ${stale.join(', ')}`);
+    });
+
+    ok('#1581: 権限の検査は、ワークフロー単位の欠落・一括指定・表に無い書き込み・資格情報の残置を落とす（変異試験）', () => {
+      const files = realFiles();
+      const ci = files['ci.yml'];
+      assert.ok(ci && /^permissions:\n {2}contents: read\n/m.test(ci), 'ci.yml のワークフロー単位の permissions を変異の前提にできない');
+      const cases = [
+        ['ci.yml のワークフロー単位の permissions を消す', 'ci.yml', ci.replace(/^permissions:\n {2}contents: read\n/m, ''), 'ワークフロー単位の permissions: が無い'],
+        ['ワークフロー単位を write-all にする', 'ci.yml', ci.replace(/^permissions:\n {2}contents: read\n/m, 'permissions: write-all\n'), '一括指定'],
+        ['ワークフロー単位へ issues: write を足す', 'ci.yml', ci.replace(/^permissions:\n {2}contents: read\n/m, 'permissions:\n  contents: read\n  issues: write\n'), 'だけではない'],
+        ['ジョブを write-all にする', 'ci.yml', ci.replace(/^ {2}lint:\n {4}runs-on: ubuntu-latest\n/m, '  lint:\n    runs-on: ubuntu-latest\n    permissions: write-all\n'), 'ジョブの permissions が一括指定'],
+        ['表に無いジョブへ contents: write を足す', 'ci.yml', ci.replace(/^ {2}lint:\n {4}runs-on: ubuntu-latest\n/m, '  lint:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n'), '表と違う'],
+        ['読むだけのジョブの persist-credentials: false を外す', 'ci.yml', ci.replace(/(commit-messages:[\s\S]*?)\n {10}persist-credentials: false/, '$1'), '資格情報を残す'],
+      ];
+      for (const [name, file, mutated, expect] of cases) {
+        assert.notStrictEqual(mutated, files[file], `変異「${name}」が当たっていない`);
+        const { issues } = permissionIssues({ ...files, [file]: mutated });
+        assert.ok(issues.some((x) => x.includes(expect)), `変異「${name}」を検出できなかった:\n  ${issues.join('\n  ')}`);
+      }
+    });
+  }
+
   // --- #683: 差分ベースの検査器が返す「偽の緑」（IADR-0183） --------------------
   //
   // ★ 検査器に欠陥は無い。**走らせた順序**の問題である。

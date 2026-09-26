@@ -29,6 +29,10 @@ on:
     paths:
       - .github/workflows/copilot-setup-steps.yml
 
+# NFR, IADR-0232 (#1581): ワークフロー単位も読むだけにする（リポジトリの既定は write）。
+permissions:
+  contents: read
+
 jobs:
   # ジョブ名は固定（変更不可）
   copilot-setup-steps:
@@ -37,6 +41,10 @@ jobs:
     permissions:
       contents: read
     steps:
+      # NFR, IADR-0232 (#1581): 🔴 persist-credentials: false を**付けない**（他の読むだけの checkout と違う）。
+      # この作業ツリーはそのまま Copilot coding agent のセッションへ引き渡され、エージェントがその上で
+      # git を使う。CI の PR 実行ではその振る舞いを確かめられないので変えない。トークンは contents: read
+      # だけなので、残っても書き込みには使えない。
       - name: Checkout
         uses: actions/checkout@v7
 

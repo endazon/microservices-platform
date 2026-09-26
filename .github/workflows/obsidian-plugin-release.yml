@@ -34,16 +34,21 @@ on:
         required: true
         type: string
 
+# NFR, IADR-0232 (#1581): ワークフロー単位は読むだけにし、Release の書き込みは release ジョブにだけ置く。
 permissions:
-  # Release の作成に要る最小。プラグインのビルドはリポジトリの他の何も書き換えない。
-  contents: write
+  contents: read
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      # Release の作成に要る最小。プラグインのビルドはリポジトリの他の何も書き換えない。
+      # 🔴 タグの push と手動実行でしか走らないので、PR の CI では確かめられない（従前と同じ権限をジョブへ移しただけ）。
+      contents: write
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           # workflow_dispatch では入力のタグを、タグ push では push されたタグそのものを取る。
           ref: ${{ inputs.tag || github.ref }}
       # 🔴 **submodule は取らない。** プラグインは src/ai-stock-trading を 1 行も参照しない

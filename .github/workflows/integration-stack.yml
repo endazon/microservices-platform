@@ -96,6 +96,8 @@ jobs:
       #   計画 ADR-0097 の解除条件の本文も T-25 へ再訂正された。planning#650）。
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
       # 🔴 **これが無いと bff と frontend のイメージビルドが落ちる**（実測 run 32554145102:

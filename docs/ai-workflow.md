@@ -1,8 +1,8 @@
 <!-- trace:
 adrs: [ADR-0048]
 iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240]
-specs: [20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups]
-issues: [#1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
+specs: [20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups]
+issues: [#1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
 -->
 
 # AI 駆動の実装ワークフロー（Runbook）
@@ -248,6 +248,34 @@ $ gh api -X PUT repos/<owner>/<repo>/branches/develop/protection \
 
 **3 点とも塞がっている間は、設定は人が行う**（本節の手順をそのまま渡せばよい）。
 **塞がっていない場合でも、`enforce_admins` や必須 check の増減は運用の形を変えるため、利用者の同意を取ってから行う。**
+
+### ワークフローのトークン権限（`GITHUB_TOKEN`）
+
+**リポジトリの既定（`default_workflow_permissions`）は `write` のままである。** 絞るのは各ワークフローの YAML であり、
+次の 4 点を `scripts/scripts.repo.test.js` が全ワークフローについて検査する（`scripts-tests` で走る）。
+
+1. **ワークフロー単位は `permissions: { contents: read }` だけ**にする。書かないと全ジョブが既定の `write` で走る。
+2. **書き込みは要るジョブにだけ、ジョブ単位で置く。** 書き込みを持つジョブは検査側の表で名指ししており、
+   表に無いジョブへ書き込みを足すと落ちる（足すときは表を同時に直す）。
+3. `write-all` / `read-all` の一括指定は使わない。
+4. **`contents: write` を持たないジョブの checkout は `persist-credentials: false`** にする（資格情報を `.git/config` へ残さない。
+   取得する submodule は public なので認証なしで取れる）。例外は Copilot のセットアップ手順の 1 つだけで、検査側に理由とともに名指ししてある。
+
+書き込みを持つジョブ（2026-09-26 時点）:
+
+| ジョブ | 書き込み | 何を書くか |
+| --- | --- | --- |
+| `claude-code-review.yml` の `claude-review` | `pull-requests` / `issues` / `id-token` | レビューのスティッキーコメント・レビュー・issue の起票 |
+| `claude-coding.yml` の `claude` | `contents` / `pull-requests` / `issues` / `id-token` | 実装ブランチの push・PR / issue へのコメント |
+| `changelog.yml` の `changelog` | `contents` / `pull-requests` | 更新ブランチの push・更新 PR・タグ時の Release |
+| `openapi.yml` の `openapi` | `contents` / `pull-requests` | 更新ブランチの push・更新 PR |
+| `obsidian-plugin-release.yml` の `release` | `contents` | Release と資産 |
+| `codeql.yml` の `analyze` | `security-events` | 解析結果のアップロード |
+| `backlog-audit.yml` の `audit` | `issues` | 棚卸し issue の更新 |
+| 各ワークフローの `report-failure` と `ci-failure-issue.yml` の `report` | `issues` | 後段の失敗の起票 |
+
+🔴 **`changelog` / `openapi` / `release` / `report-failure` は develop・main・タグへの push、日次・週次、手動実行でしか走らない。**
+PR の CI ではこれらの権限が足りているかを確かめられない。権限を変えたら、次にそのワークフローが走ったときに結果を見ること。
 
 ### 検査器の配線・CHANGELOG の是正（別紙）
 
