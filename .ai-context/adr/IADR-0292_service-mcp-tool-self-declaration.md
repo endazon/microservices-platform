@@ -2,10 +2,10 @@
 title: IADR-0292 MCP ツールの自己申告は「候補 → 選別」の 1 経路に閉じ、個人資料を対象に含む候補を申告しない
 type: impl-adr
 status: Accepted
-related_ids: [FR-16, FR-17, FR-19, UC-08, SC-12, ADR-0024, ADR-0034, ADR-0054, IADR-0462]
+related_ids: [FR-16, FR-17, FR-19, UC-08, SC-12, ADR-0024, ADR-0034, ADR-0054, ADR-0117, IADR-0462]
 author: claude
 created: 2026-08-28
-updated: 2026-09-26
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0024_mcp-server-integration.md
   - planning:projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md
@@ -94,6 +94,12 @@ plan_refs:
 
 **決定 5**: **共通エンベロープの実行口は本 issue で実装しない**（D-3）。
 `endpoint` は申告するが、実体が入るまでは解決しても 404 である。
+
+> ［2026-09-27 追記 / #1516］**本決定が切り出した裁定は計画 ADR-0117 が下した**（利用者裁定 2026-09-26。planning#677）。
+> `endpoint` はツール定義規約から外れ（規約は 5 項目。実行先は申告したサービスとツール名で決める）、3 サービスの申告からも外した。
+> ツールの実行は gRPC で申告したサービスへ送る形へ輸送だけを差し替え（[[IADR-0462]] の「経路 ④-b への適用」）、実行口が無い間は fail-closed で拒否する。
+> 実行口そのものと、本文で運ぶものを利用者文脈へ改めることは #1611 が行う（ADR-0117 決定 2・3）。本決定の「実行口を本 issue で実装しない」は、
+> 本文の scope を信じる実行口を作らないという意味で引き続き効く（同 決定 4）。
 **この状態を受け入れる** —— `ToolCatalog` の突合は「申告の有無」で行われ、実行口の実在は見ていない。
 権限伝播の方式（方式 A へ寄せて McpServer が資格情報を運ぶか、内部専用の別経路にするか）は
 **裁定を別 issue へ切り出す**。

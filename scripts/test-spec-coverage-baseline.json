@@ -157,6 +157,7 @@
       "EgressPolicyTests",
       "GrpcMcpToolDeclarationTests",
       "GrpcToolDeclarationCollectorTests",
+      "GrpcToolInvokerTests",
       "LogForgingSanitizationTests",
       "McpClientEndpointTests",
       "McpToolsGrpcDeploymentWiringTests",

@@ -22,6 +22,8 @@ public static class SearchEndpoints
         // （`SearchBffEndpoints` の 2 箇所と `RagOrchestrator`）。McpServer は申告先
         // `/internal/mcp/search_documents` を叩くが、**その路は Map されていない**。
         // ⇒ **契約は 1 バイトも変わらない**。
+        // ［2026-09-27 / #1516, ADR-0117 決定 1］McpServer のツール実行は gRPC（`platform.mcp.v1.McpToolExecution`。申告したサービスへ）へ移り、
+        // 申告の URL は規約から外れた。McpServer はこの群も旧い申告先の路も叩かない。
         //
         // 🔴 **ポリシーは付けない。** `ServiceCaller` を掛けると呼び出し元 3 つが全滅する
         // （運んでいるのは利用者トークンであってサービス資格情報ではない）。realm の

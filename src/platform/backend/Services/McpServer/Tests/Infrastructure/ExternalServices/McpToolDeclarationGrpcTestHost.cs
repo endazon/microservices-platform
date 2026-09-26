@@ -34,6 +34,10 @@ namespace McpServer.Tests.Infrastructure.ExternalServices;
 // 0.0.0.0 では待ち受けない。
 //
 // REST と gRPC で**違う申告**（`RestService` / `GrpcService`）を返させ、どちらの輸送で集めたかを結果から読めるようにする。
+//
+// ［2026-09-27 追記 / #1516, IADR-0462 経路 ④-b］ツールの実行の代役も持てる。`execution` を渡したときだけ
+// `platform.mcp.v1.McpToolExecution` を張る（渡さなければ張らない —— 実行口の無い本番の申告元と同じく `UNIMPLEMENTED` になる）。
+// `legacyEndpoint` を渡すと、**旧い申告元**の形（REST の JSON に `endpoint`、gRPC の番号 4）で申告する。
 internal sealed class McpToolDeclarationGrpcTestHost : IAsyncDisposable
 {
     public const string Issuer = "https://test-issuer/realms/platform";
@@ -56,13 +60,14 @@ internal sealed class McpToolDeclarationGrpcTestHost : IAsyncDisposable
 
     public string GrpcAddress { get; }
 
-    // 申告の 6 項目がすべて異なる値を持つ見本（写し忘れた項目があれば一致しない）。
+    // 申告の 5 項目がすべて異なる値を持つ見本（写し忘れた項目があれば一致しない）。
     public static McpToolDeclaration SampleTool { get; } = new(
-        "probe.tool", "説明", """{"type":"object"}""", "http://probe:8080/internal/mcp/tool", "probe:read", "internal");
+        "probe.tool", "説明", """{"type":"object"}""", "probe:read", "internal");
 
     // `grpcService` を渡せば gRPC 面の申告のサービス名を差し替える（空の service 名を返させるため）。
     public static async Task<McpToolDeclarationGrpcTestHost> StartAsync(
-        string grpcService = GrpcService, CancellationToken ct = default)
+        string grpcService = GrpcService, CancellationToken ct = default,
+        StubExecution? execution = null, string? legacyEndpoint = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -86,12 +91,19 @@ internal sealed class McpToolDeclarationGrpcTestHost : IAsyncDisposable
             o.TokenValidationParameters.ValidIssuer = Issuer;
         });
         builder.Services.AddGrpc();
-        builder.Services.AddSingleton(new StubDeclarations(grpcService));
+        builder.Services.AddSingleton(new StubDeclarations(grpcService, legacyEndpoint));
+        if (execution is not null)
+            builder.Services.AddSingleton(execution);
 
         var app = builder.Build();
         app.UsePlatformMiddleware();
-        app.MapGet("/internal/mcp-tools", () => Results.Ok(new ServiceToolDeclarations(RestService, [SampleTool])));
+        if (legacyEndpoint is null)
+            app.MapGet("/internal/mcp-tools", () => Results.Ok(new ServiceToolDeclarations(RestService, [SampleTool])));
+        else
+            app.MapGet("/internal/mcp-tools", () => Results.Text(LegacyRestJson(legacyEndpoint), "application/json"));
         app.MapGrpcService<StubMcpToolDeclarationsService>();
+        if (execution is not null)
+            app.MapGrpcService<StubMcpToolExecutionService>();
         await app.StartAsync(ct);
 
         var addresses = app.Services.GetRequiredService<IServer>().Features
@@ -145,7 +157,67 @@ internal sealed class McpToolDeclarationGrpcTestHost : IAsyncDisposable
         await _app.DisposeAsync();
     }
 
-    internal sealed record StubDeclarations(string Service);
+    internal sealed record StubDeclarations(string Service, string? LegacyEndpoint);
+
+    // 旧い申告元の REST の JSON（6 項目。`endpoint` を持つ）。
+    public static string LegacyRestJson(string endpoint) =>
+        System.Text.Json.JsonSerializer.Serialize(new
+        {
+            service = RestService,
+            tools = new[]
+            {
+                new Dictionary<string, string>
+                {
+                    ["name"] = SampleTool.Name,
+                    ["description"] = SampleTool.Description,
+                    ["input_schema"] = SampleTool.InputSchema,
+                    ["endpoint"] = endpoint,
+                    ["required_scope"] = SampleTool.RequiredScope,
+                    ["egress_class"] = SampleTool.EgressClass,
+                },
+            },
+        });
+
+    // 旧い申告元の gRPC の 1 ツール（番号 4 = 旧 `endpoint` を持つ）。今の生成型は番号 4 を知らないので、
+    // 生のバイト列を組んで今の型で読む —— 番号 4 は未知のフィールドとして保持され、送り返すとワイヤに載る。
+    public static Pb.McpToolDeclaration LegacyGrpcTool(string endpoint)
+    {
+        using var buffer = new MemoryStream();
+        var output = new Google.Protobuf.CodedOutputStream(buffer);
+        void Field(int number, string value)
+        {
+            output.WriteTag(number, Google.Protobuf.WireFormat.WireType.LengthDelimited);
+            output.WriteString(value);
+        }
+        Field(1, SampleTool.Name);
+        Field(2, SampleTool.Description);
+        Field(3, SampleTool.InputSchema);
+        Field(4, endpoint);
+        Field(5, SampleTool.RequiredScope);
+        Field(6, SampleTool.EgressClass);
+        output.Flush();
+        return Pb.McpToolDeclaration.Parser.ParseFrom(buffer.ToArray());
+    }
+
+    // 実行面の代役の振る舞い。受けた要求を記録し、`Respond` の結果を返す。
+    internal sealed class StubExecution
+    {
+        public System.Collections.Concurrent.ConcurrentQueue<Pb.ExecuteMcpToolRequest> Received { get; } = new();
+
+        public Func<Pb.ExecuteMcpToolRequest, CancellationToken, Task<Pb.McpToolResult>> Respond { get; init; } =
+            (_, _) => Task.FromResult(new Pb.McpToolResult());
+    }
+
+    // 実行面の代役（受け口と同じく ServiceCaller を要求する —— #1611 の受け口が満たすべき形）。
+    [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
+    internal sealed class StubMcpToolExecutionService(StubExecution stub) : Pb.McpToolExecution.McpToolExecutionBase
+    {
+        public override Task<Pb.McpToolResult> Execute(Pb.ExecuteMcpToolRequest request, ServerCallContext context)
+        {
+            stub.Received.Enqueue(request);
+            return stub.Respond(request, context.CancellationToken);
+        }
+    }
 
     // 申告元の gRPC 面の代役（申告元と同じ ServiceCaller を要求する）。
     [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
@@ -155,15 +227,16 @@ internal sealed class McpToolDeclarationGrpcTestHost : IAsyncDisposable
         public override Task<Pb.ServiceToolDeclarations> Declare(Pb.DeclareMcpToolsRequest request, ServerCallContext context)
         {
             var message = new Pb.ServiceToolDeclarations { Service = stub.Service };
-            message.Tools.Add(new Pb.McpToolDeclaration
-            {
-                Name = SampleTool.Name,
-                Description = SampleTool.Description,
-                InputSchema = SampleTool.InputSchema,
-                Endpoint = SampleTool.Endpoint,
-                RequiredScope = SampleTool.RequiredScope,
-                EgressClass = SampleTool.EgressClass,
-            });
+            message.Tools.Add(stub.LegacyEndpoint is { } legacy
+                ? LegacyGrpcTool(legacy)
+                : new Pb.McpToolDeclaration
+                {
+                    Name = SampleTool.Name,
+                    Description = SampleTool.Description,
+                    InputSchema = SampleTool.InputSchema,
+                    RequiredScope = SampleTool.RequiredScope,
+                    EgressClass = SampleTool.EgressClass,
+                });
             return Task.FromResult(message);
         }
     }

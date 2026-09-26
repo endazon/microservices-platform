@@ -87,7 +87,10 @@ builder.Services.AddHostedService<ToolCatalogRefresher>();
 // FR-16, UC-08: ツール呼び出しの単一経路（登録確認 → 公開確認 → 除外 → 越境 → 監査）
 builder.Services.AddSingleton<ServiceAccountDocumentFilter>();
 builder.Services.AddSingleton<EgressPolicy>();
-builder.Services.AddScoped<IToolInvoker, HttpToolInvoker>();
+// FR-16, NFR-16, ADR-0117 決定 1・4, IADR-0462（2026-09-27 追記 / #1516, #1255 経路 ④-b）: ツールの実行は gRPC で
+// **申告したサービス**へ送る（宛先 = `Mcp:GrpcServices:<サービス名>`。申告の中身の URL は使わない）。実行口の無い宛先は fail-closed。
+// s2s の発行側は上の AddMcpToolDeclarationSources が登録するので、その後に呼ぶ。
+builder.Services.AddMcpToolInvoker();
 builder.Services.AddScoped<McpSubjectResolver>();
 builder.Services.AddScoped<ToolInvocationService>();
 // ADR-0065 決定 2: プロトコル面のハンドラは操作フォルダ（Features/Tools/{ListTools,CallTool}）へ
@@ -129,6 +132,9 @@ app.Services.GetRequiredService<ToolPublicationConfigLoader>().Load();
 // 公開構成の検証と同じ理由で、要求を受ける前に組んで落とす。
 using (var scope = app.Services.CreateScope())
     scope.ServiceProvider.GetRequiredService<IToolDeclarationSource>();
+// ［2026-09-27 / #1516］ツールの実行器も同じ理由でここで 1 度組む（宛先が在るのに s2s の発行側が無い登録の誤りを、
+// 最初のツール呼び出しではなく起動の時点で落とす）。
+app.Services.GetRequiredService<IToolInvoker>();
 
 using (var scope = app.Services.CreateScope())
 {

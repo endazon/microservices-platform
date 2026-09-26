@@ -63,7 +63,6 @@ public sealed class McpToolCatalogIntegrationTests : IAsyncLifetime
         {
             tool.Declaration.Description.Should().NotBeNullOrWhiteSpace();
             tool.Declaration.InputSchema.Should().NotBeNullOrWhiteSpace();
-            tool.Declaration.Endpoint.Should().StartWith("http://");
             tool.Declaration.RequiredScope.Should().NotBeNullOrWhiteSpace();
             tool.Declaration.EgressClass.Should().NotBeNullOrWhiteSpace();
         }

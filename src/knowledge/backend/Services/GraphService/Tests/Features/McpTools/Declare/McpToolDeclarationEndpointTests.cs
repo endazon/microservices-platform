@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 using AwesomeAssertions;
 using GraphService.Features.McpTools.Declare;
 using Knowledge.Contracts.Dtos;
-using Microsoft.Extensions.Configuration;
+using System.Text.Json;
 
 namespace GraphService.Tests.Features.McpTools.Declare;
 
@@ -64,7 +64,7 @@ public class McpToolDeclarationEndpointTests(TestWebApplicationFactory factory)
         traverse.InputSchema.Should().Contain("\"maximum\":3").And.Contain("\"default\":2");
     }
 
-    // FR-16, ADR-0024 §5: 6 項目がすべて埋まっている。
+    // FR-16, ADR-0024 §5, ADR-0117 決定 1: 5 項目がすべて埋まっている。
     [Fact]
     public async Task 申告の各項目が埋まっている()
     {
@@ -76,7 +76,6 @@ public class McpToolDeclarationEndpointTests(TestWebApplicationFactory factory)
             tool.Name.Should().NotBeNullOrWhiteSpace();
             tool.Description.Should().NotBeNullOrWhiteSpace();
             tool.InputSchema.Should().NotBeNullOrWhiteSpace();
-            tool.Endpoint.Should().NotBeNullOrWhiteSpace();
             tool.RequiredScope.Should().NotBeNullOrWhiteSpace();
             tool.EgressClass.Should().NotBeNullOrWhiteSpace();
         }
@@ -86,7 +85,7 @@ public class McpToolDeclarationEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public void 申告するツールはいずれも個人資料を対象にしない()
     {
-        McpToolDeclarationSource.Candidates("http://localhost")
+        McpToolDeclarationSource.Candidates()
             .Should().NotBeEmpty("候補が空なら本試験は何も測っていない")
             .And.OnlyContain(c => !DocumentScopes.IsPrivateNote(c.Coverage));
     }
@@ -118,21 +117,21 @@ public class McpToolDeclarationEndpointTests(TestWebApplicationFactory factory)
             .Should().Equal("graph.get_links", "graph.get_backlinks");
     }
 
-    // FR-16: 実行口の基底 URL は構成で上書きできる（既定はメッシュ内の自サービス URL）。
+    // 🔴 FR-16, ADR-0117 決定 1（#1516）: **申告は実行先の URL を持たない。** 規約は 5 項目（`endpoint` は外した）。
+    // 実行先は McpServer が「申告したサービス＋ツール名」で決める。申告の JSON に URL が戻ると、申告元が別のサービスの
+    // 内部経路を自分のツールとして申告できる形が戻る。ワイヤ（JSON のキー）で測る —— DTO で読むと未知のキーは読み飛ばされて見えない。
     [Fact]
-    public void 実行口の基底URLを構成で上書きできる()
+    public async Task 申告は実行先のURLを持たない()
     {
-        McpToolDeclarationSource.SelfBaseUrl(new ConfigurationBuilder().Build())
-            .Should().Be(McpToolDeclarationSource.DefaultSelfBaseUrl);
+        var json = await factory.CreateClient()
+            .GetStringAsync(McpToolEndpoints.ToolsPath, TestContext.Current.CancellationToken);
+        using var document = JsonDocument.Parse(json);
+        var tools = document.RootElement.GetProperty("tools").EnumerateArray().ToList();
 
-        var overridden = new ConfigurationBuilder().AddInMemoryCollection(
-            new Dictionary<string, string?>
-            {
-                [McpToolDeclarationSource.SelfBaseUrlKey] = "http://graph-service.mesh:9090",
-            }).Build();
-
-        McpToolDeclarationSource.Declare(overridden).Tools
-            .Should().OnlyContain(t => t.Endpoint.StartsWith("http://graph-service.mesh:9090/internal/mcp/"));
+        tools.Should().NotBeEmpty("陽性対照 —— 空の申告で緑にしない");
+        tools.Should().AllSatisfy(t => t.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(
+            ["name", "description", "input_schema", "required_scope", "egress_class"],
+            "ツール定義規約は 5 項目であり、実行先の URL（旧 endpoint）を申告しない"));
     }
 
     private static McpToolCandidate Candidate(string name, string? scope) => new(
@@ -140,5 +139,5 @@ public class McpToolDeclarationEndpointTests(TestWebApplicationFactory factory)
             ? new Dictionary<string, string>()
             : new Dictionary<string, string> { [DocumentScopes.Key] = scope },
         new McpToolDeclaration(name, "説明", """{"type":"object"}""",
-            "http://graph-service:8080/internal/mcp/x", "graph:read", "internal"));
+            "graph:read", "internal"));
 }

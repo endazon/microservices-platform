@@ -22,7 +22,7 @@ namespace McpServer.Infrastructure.ExternalServices;
 //   （service account・`platform-service`・`ServiceToken` の注入漏れ。再起動では直らない）なので Error。
 //   REST には無かった失敗の種類であり、Warning に混ぜると「一過性の到達不能」に紛れる。
 //   取得失敗は CallCredentials の中で起き、gRPC クライアントが例外を包み直すので型では見分けられない ——
-//   発行側を包んで印を付け（`ServiceTokenAcquisitionException`）、例外の連鎖から印を探す（経路 ⑤ と同じ手）。
+//   発行側を包んで印を付け、例外の連鎖から印を探す（`ServiceTokenFailures`。経路 ⑤ と同じ手）。
 //
 // ■ 期限（deadline）: REST の HttpClient（`HttpToolDeclarationSource.HttpClientName`）の `Timeout` を**そのまま引く**。
 //   既定の無期限のまま 1 宛先が応答しないと、収集の 1 周が止まる（公開構成の突合も止まる）。
@@ -81,7 +81,7 @@ public sealed class GrpcToolDeclarationCollector(
             ct.ThrowIfCancellationRequested();
             throw;
         }
-        catch (Exception ex) when (FindTokenFailure(ex) is { } tokenFailure)
+        catch (Exception ex) when (ServiceTokenFailures.Find(ex) is { } tokenFailure)
         {
             logger.LogError(tokenFailure.InnerException ?? tokenFailure,
                 "MCP tool declarations from {Service} at {Address} could not be collected: the caller's service token "
@@ -105,51 +105,22 @@ public sealed class GrpcToolDeclarationCollector(
         }
     }
 
-    // proto → McpServer の DTO（ワイヤ形式の 6 項目は 1 対 1。名前は REST の JSON と同じ綴り）。
+    // proto → McpServer の DTO（ワイヤ形式の 5 項目は 1 対 1。名前は REST の JSON と同じ綴り）。
+    // ［2026-09-27 / #1516］旧い申告元が送る番号 4（旧 `endpoint`）は未知のフィールドとして読み飛ばされ、ここへは来ない。
     public static ServiceToolDeclarations ToDto(Pb.ServiceToolDeclarations declared) =>
         new(declared.Service,
             declared.Tools
                 .Select(t => new McpToolDeclaration(
-                    t.Name, t.Description, t.InputSchema, t.Endpoint, t.RequiredScope, t.EgressClass))
+                    t.Name, t.Description, t.InputSchema, t.RequiredScope, t.EgressClass))
                 .ToList());
 
     // REST の期限と同じ値（名前付きクライアントの Timeout。本番の登録では `Mcp:DeclarationTimeoutSeconds`、既定 10 秒）。
     private TimeSpan Timeout() =>
         httpClientFactory.CreateClient(HttpToolDeclarationSource.HttpClientName).Timeout;
 
+    // 発行側の失敗には印を付ける（`ServiceTokenFailures`。実行器 `GrpcToolInvoker` と共有）。
     private GrpcChannel CreateChannel(string address) =>
-        GrpcClientExtensions.CreatePlatformChannel(address, new MarkingTokenProvider(tokenProvider));
-
-    // 例外の連鎖（InnerException と RpcException.Status.DebugException）から取得失敗の印を探す。
-    private static ServiceTokenAcquisitionException? FindTokenFailure(Exception? ex)
-    {
-        for (var depth = 0; ex is not null && depth < 8; depth++)
-        {
-            if (ex is ServiceTokenAcquisitionException marked)
-                return marked;
-            ex = ex is RpcException { Status.DebugException: { } debug } ? debug : ex.InnerException;
-        }
-        return null;
-    }
-
-    // 発行側の失敗に印を付ける（取り消しは印を付けずにそのまま通す）。
-    private sealed class MarkingTokenProvider(IServiceTokenProvider inner) : IServiceTokenProvider
-    {
-        public async ValueTask<string> GetTokenAsync(CancellationToken ct)
-        {
-            try
-            {
-                return await inner.GetTokenAsync(ct);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                throw new ServiceTokenAcquisitionException(ex);
-            }
-        }
-    }
-
-    private sealed class ServiceTokenAcquisitionException(Exception inner)
-        : Exception("s2s トークンの取得に失敗しました。", inner);
+        GrpcClientExtensions.CreatePlatformChannel(address, ServiceTokenFailures.Marking(tokenProvider));
 
     public void Dispose()
     {

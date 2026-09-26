@@ -2,7 +2,7 @@
 // IADR-0379, IADR-0462 (#1515, #1255 経路 ④-a): MCP のツール定義の自己申告
 // （REST `GET /internal/mcp-tools` と同じ意味論）の gRPC 契約。
 //
-// ■ 置き場と所有（IADR-0379 決定 1）: ツール定義の規約（計画 11_mcp-server-integration §2 の 6 項目）を
+// ■ 置き場と所有（IADR-0379 決定 1）: ツール定義の規約（計画 11_mcp-server-integration §2。［2026-09-27 / #1516］ADR-0117 決定 1 で 5 項目）を
 //   定めるのは **MCP サーバー**であり、申告する各サービスはその規約に合わせて自己申告する（ADR-0024 §2）。
 //   規約の持ち主が platform なので置き場は `Platform.Shared.Contracts` の `Protos/platform/mcp/v1/`。
 //   knowledge の申告元（Document / Retrieval / Graph）も同じ proto から受け口を生成する
@@ -20,12 +20,15 @@
 // ■ 🔴 **扇形である。** 呼び出し元は MCP サーバーの 1 つ、宛先は構成（`Mcp:Services` / `Mcp:GrpcServices`）で開く。
 //   宛先ごとに同じ 1 つの rpc を実装するので、宛先が増えても proto は増えない。
 //
-// ■ proto3 に null は無い（IADR-0397 決定 5 ほか）。6 項目はいずれも DTO 側でも null を取らない。
+// ■ proto3 に null は無い（IADR-0397 決定 5 ほか）。5 項目はいずれも DTO 側でも null を取らない。
 //   **空文字はそれ自体が申告の値である** —— 例: `egress_class` が空の申告は MCP サーバーが公開しない（ADR-0024 §5）。
 //   したがって `optional` は使わない。
 //
-// ■ `endpoint` は申告どおりの**文字列のまま**運ぶ（今は絶対 URL）。gRPC でツールを実行するときの意味は
-//   #1516（判断待ち）が決める。本契約はその意味を変えない。
+// ■ ［2026-09-27 / #1516, ADR-0117 決定 1］🔴 **`endpoint`（番号 4）は規約から外し、番号と名前を reserved に残す。**
+//   ツールの実行先は「申告したサービス（封筒の `service`）＋ツール名（`name`）」で決まり、申告の中身の URL は使わない
+//   （URL のままだと、サービス X がサービス Y の内部経路を自分のツールとして申告でき、申告元と実行先が食い違う）。
+//   旧い申告元が番号 4 を送っても、新しい受け手は未知のフィールドとして読み飛ばす（dial しない）。
+//   実行の契約は同じパッケージの `mcp_tool_execution.proto`。
 syntax = "proto3";
 
 package platform.mcp.v1;
@@ -48,13 +51,16 @@ message ServiceToolDeclarations {
   repeated McpToolDeclaration tools = 2;
 }
 
-// `McpToolDeclaration`（計画のツール定義規約の 6 項目）と 1 対 1。名前は REST の JSON と同じ綴り。
+// `McpToolDeclaration`（計画のツール定義規約の 5 項目）と 1 対 1。名前は REST の JSON と同じ綴り。
 message McpToolDeclaration {
+  // ［2026-09-27 / #1516］旧 `string endpoint = 4;`（申告の実行先 URL）。ADR-0117 決定 1 で規約から外した。再利用しない。
+  reserved 4;
+  reserved "endpoint";
+
   string name = 1;
   string description = 2;
   // JSON Schema の文字列（REST と同じく文字列のまま運ぶ。構造化しない）。
   string input_schema = 3;
-  string endpoint = 4;
   string required_scope = 5;
   string egress_class = 6;
 }

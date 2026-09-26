@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Text.Json.Serialization;
 using AwesomeAssertions;
+using Google.Protobuf;
 using McpServer.Domain;
 using McpServer.Infrastructure.ExternalServices;
 using Microsoft.Extensions.Configuration;
@@ -59,7 +60,7 @@ public sealed class GrpcToolDeclarationCollectorTests
         return $"http://127.0.0.1:{port}";
     }
 
-    // T-G1: 陽性対照。s2s トークンの h2c で集めた申告は、6 項目とも申告元が返したとおりに McpServer の DTO へ戻る。
+    // T-G1: 陽性対照。s2s トークンの h2c で集めた申告は、5 項目とも申告元が返したとおりに McpServer の DTO へ戻る。
     [Fact]
     public async Task Collects_declarations_over_h2c_with_the_service_token()
     {
@@ -321,7 +322,52 @@ public sealed class GrpcToolDeclarationCollectorTests
             .Should().BeEmpty("引数は持たない（REST も持たない）");
     }
 
-    // T-G14: 写しは 6 項目を落とさない（各項目に別の値を入れて往復させる）。
+    // 🔴 T-G15（#1516, ADR-0117 決定 1）: **ツール定義規約は 5 項目。** 実行先の URL（旧 `endpoint`・番号 4）は
+    // proto にも DTO にも無い —— 番号 4 を再び使うと、旧い申告元の URL が新しい受け手に読まれる。
+    [Fact]
+    public void Declaration_carries_no_endpoint_and_field_4_is_not_reused()
+    {
+        Pb.McpToolDeclaration.Descriptor.Fields.InDeclarationOrder().Select(f => f.Name)
+            .Should().Equal(["name", "description", "input_schema", "required_scope", "egress_class"]);
+        Pb.McpToolDeclaration.Descriptor.FindFieldByNumber(4).Should().BeNull("番号 4 は reserved（旧 endpoint）");
+        typeof(McpToolDeclaration).GetProperties().Select(p => p.Name).Should().NotContain("Endpoint");
+    }
+
+    // 🔴 T-G16（#1516）: **旧い申告元**（gRPC の番号 4 に URL を載せる）の申告は、番号 4 を読み飛ばして 5 項目だけが戻る。
+    // 申告の中身は変わらず公開の突合に使える（旧い申告元を「申告なし」にしない）。
+    [Fact]
+    public async Task Legacy_grpc_declaration_with_field_4_is_collected_without_the_endpoint()
+    {
+        const string legacyEndpoint = "http://127.0.0.1:9/internal/mcp/tool";
+        // 自己確認: 代役は本当に番号 4 をワイヤへ載せている（載っていなければ本試験は何も測らない）。
+        McpToolDeclarationGrpcTestHost.LegacyGrpcTool(legacyEndpoint).ToByteArray()
+            .Should().ContainInConsecutiveOrder(System.Text.Encoding.UTF8.GetBytes(legacyEndpoint));
+
+        await using var target = await McpToolDeclarationGrpcTestHost.StartAsync(ct: Ct, legacyEndpoint: legacyEndpoint);
+        var (source, log) = Build(new Dictionary<string, string?> { ["Mcp:GrpcServices:probe"] = target.GrpcAddress });
+
+        var collected = await source.CollectAsync(Ct);
+
+        collected.Should().ContainSingle().Which.Tools.Should().ContainSingle()
+            .Which.Should().Be(McpToolDeclarationGrpcTestHost.SampleTool);
+        log.OfLevel(LogLevel.Warning).Should().BeEmpty();
+    }
+
+    // 🔴 T-G17（#1516）: 旧い申告元の REST の JSON（`endpoint` を持つ）も同じく、`endpoint` を読み飛ばして 5 項目だけが戻る。
+    [Fact]
+    public async Task Legacy_rest_declaration_with_endpoint_is_collected_without_the_endpoint()
+    {
+        await using var target = await McpToolDeclarationGrpcTestHost.StartAsync(
+            ct: Ct, legacyEndpoint: "http://127.0.0.1:9/internal/mcp/tool");
+        var (source, _) = Build(new Dictionary<string, string?> { ["Mcp:Services:probe"] = target.HttpAddress });
+
+        var collected = await source.CollectAsync(Ct);
+
+        collected.Should().ContainSingle().Which.Tools.Should().ContainSingle()
+            .Which.Should().Be(McpToolDeclarationGrpcTestHost.SampleTool);
+    }
+
+    // T-G14: 写しは 5 項目を落とさない（各項目に別の値を入れて往復させる）。
     [Fact]
     public void Mapping_carries_every_field()
     {
@@ -332,7 +378,6 @@ public sealed class GrpcToolDeclarationCollectorTests
             Name = tool.Name,
             Description = tool.Description,
             InputSchema = tool.InputSchema,
-            Endpoint = tool.Endpoint,
             RequiredScope = tool.RequiredScope,
             EgressClass = tool.EgressClass,
         });
