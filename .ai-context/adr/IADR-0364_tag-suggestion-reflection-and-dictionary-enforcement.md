@@ -5,7 +5,7 @@ status: Proposed
 related_ids: [FR-17, FR-18, UC-10, SC-03, SC-05, SC-09, SC-21, ADR-0033, ADR-0034, ADR-0036, ADR-0043, ADR-0059, ADR-0063, IADR-0044, IADR-0122, IADR-0152, IADR-0153, IADR-0266, IADR-0272, IADR-0299, IADR-0300, IADR-0323, IADR-0349]
 author: claude
 created: 2026-09-03
-updated: 2026-09-03
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0063_ai-tag-suggestion-reflection-and-authorization.md
   - planning:projects/microservices-platform/05_screens/01_screens.md
@@ -113,6 +113,14 @@ no-op であり、SC-03 は承認だけを理由つきで実行不可にして�
   （`ADR-0063` §結果「認可の判定が ADR-0059 と揃う。所有者、または管理者経路という同じ形」）。
 - 拒否は **404** のまま（`IADR-0272` 決定 5）。既存の否定形テストは既定ロールが `platform-admin` のため、
   ロールを落として（`viewer`）否定形を保つ。
+
+> **［2026-09-27 追記 / #1629］②（`platform-admin`）は個人資料に及ばない。** DocumentService の反映の本体
+> （`AddDocumentTagUseCase`。REST と east-west gRPC が共に通る）で、②を「管理者 **かつ** 個人資料でない」に狭めた。
+> 個人資料へタグを足せるのは①（所有者の動的束縛）だけで、管理者の拒否は従前どおり `NotWritable`（＝404）である。
+> 計画 ADR-0036 D-08・ADR-0119 決定 3（個人資料は管理者を含め所有者と共有先以外に作用させない）に揃える。
+> GraphService の `CanDecide` 側は可視性の判定が先に立つ（上の ADR-0034 決定 8）ため、管理者は他人の個人資料の提案を
+> そもそも見ない —— 本追記は最終防衛線の側を同じ形にするものである。判定は管理の書き込み 5 口と同じ `DocumentScopes.IsPrivateNote`
+> （[IADR-0044](./IADR-0044_backend-service-authorization-defense-in-depth.md) 決定 1 の 2026-09-27 追記）。
 
 ### 決定 4: 資格はサーバが判定し `AiSuggestionDto.CanDecide`（既定 `false`）で行ごとに運ぶ
 

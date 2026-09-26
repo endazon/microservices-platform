@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-06, SC-05, UC-03, NFR-09, FR-19]
-adrs: [ADR-0119, ADR-0034, ADR-0036, ADR-0050, ADR-0054]
-iadrs: [IADR-0476, IADR-0290, IADR-0475]
-specs: [20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint]
-issues: [#1614, #199, #1011, #1575, planning#473]
+adrs: [ADR-0119, ADR-0034, ADR-0036, ADR-0050, ADR-0054, ADR-0056]
+iadrs: [IADR-0476, IADR-0044, IADR-0364, IADR-0455, IADR-0290, IADR-0475]
+specs: [20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint]
+issues: [#1629, #1614, #199, #1011, #1575, planning#473]
 -->
 
 # テスト仕様書: 文書CRUD・バージョン管理
@@ -94,11 +94,15 @@ issues: [#1614, #199, #1011, #1575, planning#473]
 | T-48 | 所有者 alice の個人資料 | gRPC の 4 rpc を利用者文脈 alice・他人・無し・サービスアカウントの形で呼ぶ。利用者識別子が空の文脈でも呼ぶ | alice だけに返り、他は `found=false`・一覧に現れない。空の利用者識別子は `INVALID_ARGUMENT` | 個人資料の可視性（gRPC） | 自動（エンドポイント） |
 | T-49 | 所有者・他人・機械 | 絞り込みの口を引く | 誰にも個人資料は返らず、組織文書は返る | 絞り込みの口は組織文書だけ | 自動（エンドポイント） |
 | T-50 | BFF（文書閲覧） | REST 経路の読み取り 4 口を利用者のトークンつきで引く。gRPC 経路の 4 口を利用者・機械として引く | REST は 4 口とも利用者の資格情報を後段へ中継する。gRPC は利用者文脈を運び、機械の呼び出し元では運ばない | 読み取りの主体の中継 | 自動（エンドポイント） |
+| T-60 | 所有者 alice の個人資料・同じ所有者の組織文書 | 管理の書き込み 5 口（更新・メタデータ・公開・アーカイブ・削除）を、管理者ロールの人・管理者ロールを持つ機械クライアント・管理者ロールを持つ alice 本人で呼ぶ。更新とメタデータでは所有者を呼び出し元へ書き換えようとする | 個人資料には 15 通りとも 404。応答に表題・所有者・文書 ID が出ず、表題・状態・版・所有者は変わらず、更新・削除のイベントも出ない。同じ主体・同じ口で組織文書には作用できる（陽性対照） | 管理の口は個人資料を対象外にする | 自動（エンドポイント） |
+| T-61 | 他人の個人資料と不在の ID | 管理者で公開・削除を呼ぶ | 状態コードも本文も同じ（区別できない） | 存在秘匿 | 自動（エンドポイント） |
+| T-62 | 所有者 alice の個人資料・組織文書・辞書のタグ | タグの反映口を管理者ロールの人・機械で個人資料へ、alice（ロールなし）で同じ資料へ、管理者で組織文書へ呼ぶ。gRPC のタグ反映面でも管理者ロールと alice を運ぶ | 管理者は個人資料に 404（gRPC は書けない）でタグは付かない。alice と、組織文書への管理者は付けられる（陽性対照） | タグ反映の管理者の分岐は個人資料に及ばない | 自動（エンドポイント） |
+| T-63 | 所有者 alice の個人資料（露出 ON） | 管理者が更新・メタデータで露出を外し所有者を書き換えようとし、そのあと alice が露出を全て OFF にする | 管理者は 404 で、属性・表題・イベントは変わらない。alice の露出の変更は撤収のイベントまで届く（陽性対照）。本文の投入は alice に通り管理者には 404 | 所有者の経路は変わらない | 自動（エンドポイント） |
 
 対応テスト実装:
 
 - 単体（ドメイン）: `src/knowledge/backend/Services/DocumentService/Tests/Domain/DocumentVersioningTests.cs`（T-01〜T-05）、`DocumentAttributesTests.cs`（T-23）
-- 単体（エンドポイント, InMemory）: `.../DocumentEndpointVersioningTests.cs`（T-06〜T-11・T-24〜T-25）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）、`DocumentFingerprintResponseTests.cs`（T-26〜T-28・T-38）、`DocumentPageTests.cs`（T-30〜T-37・T-39〜T-41）
+- 単体（エンドポイント, InMemory）: `.../AdminWritePrivateNoteScopeTests.cs`（T-60〜T-63）、`.../AddTag/GrpcDocumentTagWriteTests.cs`（T-62 の gRPC 面）、`.../PrivateNotes/PrivateNoteExposurePublishTests.cs`（T-63）、`.../DocumentEndpointVersioningTests.cs`（T-06〜T-11・T-24〜T-25）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）、`DocumentFingerprintResponseTests.cs`（T-26〜T-28・T-38）、`DocumentPageTests.cs`（T-30〜T-37・T-39〜T-41）
 - 単体（契約）: `src/knowledge/backend/Shared/Knowledge.Contracts.Tests/DocumentReadGrpcMappingTests.cs`（T-29）
 - 統合（実 PostgreSQL）: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/DocumentService/DocumentCrudTests.cs`（T-12〜T-14）、`DocumentVersioningTests.cs`（T-15〜T-16）
 - 統合（実 PostgreSQL / RabbitMQ）: `.../DocumentNormalizedSyncTests.cs`（T-17〜T-18）
