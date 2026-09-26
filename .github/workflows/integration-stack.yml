@@ -235,7 +235,10 @@ jobs:
       # 捕捉先が無かったあいだ、これらは「手動（実環境）」で止まっていた（#1144）。
       # 0 通は「送らなくてよかった」ではなく「送出が成立していない」として落ちる。
       #
-      # **メールを 20 通作る**（実在／非実在の申請 1 組 ＋ 所要時間の反復 3 × 片側 6 標本）。
+      # **メールを 37 通作る**（実在／非実在の申請 1 組で 1 通 ＋ 所要時間の実在側 36 通）。
+      # ［2026-09-27 / #1617］所要時間は反復 3（1 回目は暖機）× 片側 12 標本を取り、暖機を除く 2 反復をまとめた
+      # 片側 24 標本を順位和検定（両側・有意水準 1%）で判定する（計画 ADR-0113 決定 1・2。ADR-0118 決定 1 が値を維持）。
+      # 従前ここは「20 通・反復 3 × 片側 6 標本」と書いていた（判定を順位和検定へ改めた #1541 で古くなっていた）。
       # このクラスタは次のステップで破棄されるので副作用は残らない
       # （ABAC_POSITIVE / SEARCH_SEEDED と同じ扱い）。**外へは 1 通も出ない** ——
       # 送出先はクラスタ内の捕捉用 MTA であり、それ自体が本門の測っていることである。
@@ -249,6 +252,10 @@ jobs:
       # ［2026-09-26 / ADR-0113 / #1541］判定は順位和検定（両側・有意水準 1%）なので、**系統差が無くても約 100 回に
       # 1 回は偶然の赤が出る**。ログの「順位和検定 … p=」を見る —— 偶然の赤は p が 0.01 をわずかに下回って単発に出る。
       # 床が外れていれば p はごく小さく、赤が続く。p 値の分布と不合格の頻度は計画へ届ける実測である（同 フォローアップ 2）。
+      # ［2026-09-27 / 計画 ADR-0118 / #1617］**赤はすべて起票する。確かめの最初の手順は、同じコミットでの 1 回だけの再実行である。**
+      # T-25 だけが赤（下の「T-25 only red」の手順が success）なら、integration-stack-rerun.yml が同じ run の失敗したジョブを
+      # 1 回だけ再実行し（`gh run rerun <id> --failed`）、結果を自動起票の issue へ書く。合格なら偶然の赤、また赤なら床の引き直しの契機。
+      # p の分布の月次の要約は `node scripts/t25-monthly-summary.js --month <YYYY-MM>`（GitHub を読むだけ）。
       # 本ワークフローは**必須チェックではない**（schedule / push(develop) / dispatch のみ）ので、
       # この赤が PR のマージを止めることはない。
       #
@@ -260,6 +267,8 @@ jobs:
       # ジョブの合否は変えない —— どれか 1 つでも落ちれば赤であり、`continue-on-error` は使わない
       # （ci.yml の `!cancelled()` と同じ形）。**判定の意味を変えるのではなく、1 回の赤で得られる証拠を減らさない。**
       - name: 🔴 Gate — パスワードリセットの送出とメール本文（#1144）
+        # #1617: 検査器が手順の出力 t25_only_red（失敗が T-25 の順位和検定の赤ただ 1 件か）と t25_p / t25_w を書く。
+        id: reset-mail
         run: node scripts/check-password-reset-mail.js --live
 
       # 🔴 `k8s-local-up.sh` の ABACSEED は **best-effort**（失敗しても WARN で通す）。
@@ -314,6 +323,7 @@ jobs:
       #
       # ABAC_POSITIVE=1 / SEARCH_SEEDED=1 は **文書を作る**。このクラスタは次のステップで破棄される。
       - name: 🔴 Gate — ABAC の正常系と検索の命中が観測できる（#972 / #992）
+        id: abac-search-gate
         # #1597: 前提は 2 つの投入が緑であること（上の注記のとおり、投入が落ちたまま測ると
         # 「認可の故障」と「投入漏れ」を区別できない）。パスワードリセットの門の赤では飛ばさない。
         if: ${{ !cancelled() && steps.seed-abac.outcome == 'success' && steps.seed-search.outcome == 'success' }}
@@ -332,9 +342,25 @@ jobs:
       # 後段に「その利用者で成功するログインを通す門」を置くと、計数が積み上がって一時ロックに触れ得る。
       # **測定の副作用を他の門へ波及させない**ため、順序そのものを統制にしている。
       - name: 🔴 Gate — ログイン経路の存在秘匿（#1245 PR-0）
+        id: login-disclosure
         # #1597: 前の門の赤では飛ばさない（スタックの門が緑なら走る）。**最後に置く**順序の統制は上のとおり変えない。
         if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' }}
         run: node scripts/check-login-existence-disclosure.js --live
+
+      # ［2026-09-27 / 計画 ADR-0118 決定 2 / #1617］🔴 **T-25 だけの赤（偶然の赤の候補）の印。** 判定はしない（ジョブの合否は変えない）。
+      # この手順が success になるのは、パスワードリセットの門が赤で、その失敗が T-25 の順位和検定の赤ただ 1 件
+      # （検査器の出力 t25_only_red。T-10 / T-16 / T-17 / 前提の失敗・評価不能が混ざれば false）であり、
+      # かつスタックの門・2 つの投入・ABAC と検索の門・ログイン経路の門がすべて success のときだけである。
+      # integration-stack-rerun.yml がこの手順の結論を API で読み、success のときだけ同じコミットで 1 回だけ再実行する
+      # （あちらでも手順の結論を数え直す。ほかの門が 1 つでも赤なら偶然の赤として扱わない）。
+      # 🔴 **手順名を変えない**（scripts/t25-rerun-on-chance-red.js の CANDIDATE_STEP と一致させる。API は長い名前を切るので短い ASCII）。
+      - name: T-25 only red (chance-red candidate)
+        id: t25-chance-red-candidate
+        if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' && steps.reset-mail.outcome == 'failure' && steps.reset-mail.outputs.t25_only_red == 'true' && steps.seed-abac.outcome == 'success' && steps.seed-search.outcome == 'success' && steps.abac-search-gate.outcome == 'success' && steps.login-disclosure.outcome == 'success' }}
+        env:
+          T25_P: ${{ steps.reset-mail.outputs.t25_p }}
+          T25_W: ${{ steps.reset-mail.outputs.t25_w }}
+        run: echo "::notice::T-25 だけが赤（p=${T25_P} / W=${T25_W}）。ほかの門はすべて緑。同じコミットで 1 回だけ再実行して確かめる（integration-stack-rerun.yml）"
 
       # 失敗したときに原因を名指しできる情報を残す（#466 のスコープ「失敗時に原因が特定できる出力」）。
       - name: Dump cluster state (診断用・失敗時のみ)

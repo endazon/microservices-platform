@@ -7449,6 +7449,8 @@ ${r.stderr}`);
       'codeql.yml:analyze': { actions: 'read', 'security-events': 'write' },
       'codeql.yml:report-failure': { actions: 'read', issues: 'write' },
       'integration-stack.yml:report-failure': { actions: 'read', issues: 'write' },
+      // #1617 / 計画 ADR-0118 決定 2: T-25 だけの赤の run を 1 回だけ再実行（actions: write）し、結果を issue へ書く（issues: write）
+      'integration-stack-rerun.yml:rerun': { actions: 'write', issues: 'write' },
       'integration.yml:report-failure': { actions: 'read', issues: 'write' },
       'obsidian-plugin-release.yml:release': { contents: 'write' },
       'openapi.yml:openapi': { contents: 'write', 'pull-requests': 'write' },
@@ -7860,6 +7862,12 @@ ${r.stderr}`);
           // 辞書へ行を入れる口は POST /tags だけで初期投入の仕組みが無く、外部ユニットの文書が
           // 100% 400 で弾かれていた（実測 既存 0 件）。
           'seed-tag-dictionary.js',
+          // #1617 / 計画 ADR-0118 決定 4: T-25 の p の分布の**月次の集計器**。`measure-*` と同じく数字を出すだけで
+          // 合否を返さない。走らせると GitHub の API を読みに行くので、検査器として spawn する母集合に入れない。
+          't25-monthly-summary.js',
+          // #1617 / 計画 ADR-0118 決定 2: T-25 だけの赤の run を 1 回だけ再実行し、issue へ書く**実行器**（副作用を持つ）。
+          // 投入器と同じく検査器ではない。ワークフロー（integration-stack-rerun.yml）からだけ `--apply` で呼ぶ。
+          't25-rerun-on-chance-red.js',
         ];
         const scripts = all.filter((f) => !NOT_CHECKERS.includes(f));
         // 母集合の件数を固定する。**新しい検査器が増えたら、まずここが落ちて宣言を促す。**
@@ -12118,6 +12126,149 @@ exit $RC
       const section = readme.slice(at, next < 0 ? undefined : next);
       const absent = manifest.live.map((x) => x.path).filter((p) => !section.includes(`\`${p}\``));
       assert.deepStrictEqual(absent, [], `節に載っていない入口: ${absent.join(', ')}`);
+    });
+  }
+
+  // --- #1617 / SC-15・NFR-13 / 計画 ADR-0118 決定 2〜4 / IADR-0470: T-25 の偶然の赤の 1 回の再実行と月次の要約 -------
+  //
+  // 🔴 **式の文字列を部分一致で見ない。場面ごとに `if:` を評価する**（k8s-local-up.test.js の #1304 / #1597 と同じ理由 ——
+  // PR #1328 の `A && '' || '1'` は部分一致の検査を 4 本とも緑で通した）。GitHub の式の `&&` / `||` / `!` / `==` は
+  // JS と同じ短絡規則なので、識別子を束縛して JS として評価する。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const { spawnSync } = require('child_process');
+    const REPO = path.join(__dirname, '..');
+    const wfText = (f) => fs.readFileSync(path.join(REPO, '.github', 'workflows', f), 'utf8').replace(/\r\n/g, '\n');
+    const rerunScript = require('./t25-rerun-on-chance-red.js');
+
+    for (const script of ['t25-monthly-summary.js', 't25-rerun-on-chance-red.js']) {
+      ok(`#1617: ${script} --self-test が通る（GitHub へ出ない）`, () => {
+        const r = spawnSync(process.execPath, [path.join(__dirname, script), '--self-test'], { encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, `${script} の自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+        assert.match(String(r.stdout), /self-test OK: \d+ 件/);
+      });
+    }
+
+    /** integration-stack.yml の手順を名前の前方一致で 1 つ引き、id と if: の式を返す。 */
+    const stepsOfStack = () => {
+      const blocks = wfText('integration-stack.yml').split('\n      - name: ').slice(1);
+      return (prefix) => {
+        const found = blocks.filter((b) => b.startsWith(prefix));
+        assert.strictEqual(found.length, 1, `手順「${prefix}」が ${found.length} 件ある（1 件であるべき）`);
+        const body = found[0].split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+        const id = (/^\s+id:\s*(\S+)\s*$/m.exec(body) || [])[1];
+        const cond = (/^\s+if:\s*\$\{\{(.+)\}\}\s*$/m.exec(body) || [])[1];
+        assert.ok(!/continue-on-error/.test(body), `手順「${prefix}」が continue-on-error を持つ`);
+        return { id, cond: cond ? cond.trim() : null, name: found[0].split('\n')[0].trim(), at: blocks.indexOf(found[0]) };
+      };
+    };
+
+    ok('#1617: 「T-25 only red」の手順は、T-25 だけの赤で走り、ほかの門のどれか 1 つでも緑でなければ走らない（場面ごとの評価）', () => {
+      const stepOf = stepsOfStack();
+      const STACK = stepOf('🔴 Gate — the stack is actually up');
+      const RESET = stepOf('🔴 Gate — パスワードリセットの送出とメール本文');
+      const SEED_ABAC = stepOf('ABAC ポリシーの投入を確定させる');
+      const SEED_SEARCH = stepOf('検索検証用文書の投入を確定させる');
+      const ABAC_GATE = stepOf('🔴 Gate — ABAC の正常系と検索の命中が観測できる');
+      const LOGIN_GATE = stepOf('🔴 Gate — ログイン経路の存在秘匿');
+      const CAND = stepOf(rerunScript.CANDIDATE_STEP);
+      const DUMP = stepOf('Dump cluster state');
+
+      // 手順名は再実行の script の定数と一致する（API は手順の結論を名前で返す）。
+      assert.strictEqual(CAND.name, rerunScript.CANDIDATE_STEP, '手順名が CANDIDATE_STEP と違う（再実行の script が候補を見つけられない）');
+      assert.strictEqual(RESET.id, 'reset-mail', 'パスワードリセットの門の id が reset-mail でない（出力を読めない）');
+      assert.strictEqual(RESET.cond, null, `パスワードリセットの門に if: が付いた: ${RESET.cond}`);
+      for (const s of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, LOGIN_GATE]) assert.ok(s.id, `${s.name} に id が無い`);
+      assert.ok(CAND.at > LOGIN_GATE.at && CAND.at < DUMP.at, '「T-25 only red」がログイン経路の門の後・診断の前に無い（後段の結果を見られない）');
+      assert.ok(CAND.cond, '「T-25 only red」に if: が無い（既定 success() では赤の run で走らない）');
+      assert.ok(!/always\(\)/.test(CAND.cond), 'always() は取り消しでも走らせてしまう');
+
+      const run = (st) => {
+        const expr = CAND.cond
+          .replace(/steps\.([A-Za-z0-9_-]+)\.outcome/g, 'steps["$1"].outcome')
+          .replace(/steps\.([A-Za-z0-9_-]+)\.outputs\.([A-Za-z0-9_]+)/g, 'steps["$1"].outputs["$2"]');
+        // eslint-disable-next-line no-new-func
+        return new Function('steps', 'cancelled', 'success', 'failure', 'always', `return !!(${expr});`)(
+          new Proxy(st.outcomes, { get: (o, k) => ({ outcome: o[k] || 'skipped', outputs: (st.outputs || {})[k] || {} }) }),
+          () => !!st.cancelled, () => false, () => true, () => true,
+        );
+      };
+      const allGreen = {
+        [STACK.id]: 'success', [RESET.id]: 'failure', [SEED_ABAC.id]: 'success', [SEED_SEARCH.id]: 'success',
+        [ABAC_GATE.id]: 'success', [LOGIN_GATE.id]: 'success',
+      };
+      const onlyRed = { [RESET.id]: { t25_only_red: 'true', t25_p: '0.0094', t25_w: '713' } };
+
+      // 場面 1（run 36244009369 の形・#1599 の後）: T-25 だけが赤で後段はすべて緑 → 🔴 走る
+      assert.strictEqual(run({ outcomes: allGreen, outputs: onlyRed }), true, 'T-25 だけの赤で候補にならない');
+      // 場面 2: 門の中に T-25 以外の失敗がある（検査器の出力が false）→ 走らない
+      assert.strictEqual(run({ outcomes: allGreen, outputs: { [RESET.id]: { t25_only_red: 'false' } } }), false, 'T-10 等の失敗が混ざっても候補になる');
+      // 場面 3: 出力が無い（検査器が古い・前提で落ちた）→ 走らない（fail-closed）
+      assert.strictEqual(run({ outcomes: allGreen, outputs: {} }), false, '出力が無くても候補になる');
+      // 場面 4: 🔴 ほかの門・投入のどれか 1 つが赤または飛ばされた → 走らない
+      for (const other of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, LOGIN_GATE]) {
+        for (const outcome of ['failure', 'skipped', 'cancelled']) {
+          assert.strictEqual(run({ outcomes: { ...allGreen, [other.id]: outcome }, outputs: onlyRed }), false,
+            `${other.name} が ${outcome} なのに候補になる（ほかの門の赤を偶然の赤として再実行する）`);
+        }
+      }
+      // 場面 5: パスワードリセットの門が緑（T-25 は赤でない）→ 走らない
+      assert.strictEqual(run({ outcomes: { ...allGreen, [RESET.id]: 'success' }, outputs: onlyRed }), false);
+      // 場面 6: 取り消し → 走らない
+      assert.strictEqual(run({ cancelled: true, outcomes: allGreen, outputs: onlyRed }), false);
+    });
+
+    ok('#1617: 再実行のワークフローは Integration Stack の完了で起動し、attempt 1 の赤と attempt 2 だけで動く（真理値表）', () => {
+      const wf = wfText('integration-stack-rerun.yml');
+      const stackName = (/^name:\s*(.+)$/m.exec(wfText('integration-stack.yml')) || [])[1].trim();
+      assert.ok(/on:\n {2}workflow_run:\n {4}workflows: \[([^\]]+)\]\n {4}types: \[completed\]\n/.test(wf), 'workflow_run: completed の起動になっていない');
+      assert.strictEqual(/workflows: \[([^\]]+)\]/.exec(wf)[1].trim(), stackName, `起動元の名前が integration-stack.yml の name:（${stackName}）と違う（起動しない）`);
+      assert.ok(!/^\s+(push|pull_request|pull_request_target|schedule|workflow_dispatch):/m.test(wf.split('\njobs:')[0]), 'workflow_run 以外の契機がある');
+
+      const cond = (/^ {4}if:\s*\$\{\{(.+)\}\}\s*$/m.exec(wf) || [])[1];
+      assert.ok(cond, 'ジョブの if: が無い');
+      const evaluate = (event, attempt, conclusion) =>
+        // eslint-disable-next-line no-new-func
+        new Function('github', `return !!(${cond});`)({ event: { workflow_run: { event, run_attempt: attempt, conclusion } } });
+      const table = [
+        // [契機, attempt, 結論, 起動するか]
+        ['push', 1, 'failure', true],
+        ['schedule', 1, 'failure', true],
+        ['push', 1, 'success', false],
+        ['push', 1, 'cancelled', false],
+        ['push', 2, 'success', true], // 再実行の結果を書く
+        ['push', 2, 'failure', true],
+        ['schedule', 2, 'cancelled', true],
+        ['push', 3, 'failure', false], // 🔴 再実行の再実行はしない
+        ['push', 4, 'success', false],
+        ['workflow_dispatch', 1, 'failure', false],
+        ['workflow_dispatch', 2, 'success', false],
+        ['pull_request', 1, 'failure', false],
+      ];
+      for (const [event, attempt, conclusion, want] of table) {
+        assert.strictEqual(evaluate(event, attempt, conclusion), want, `契機 ${event} / attempt ${attempt} / ${conclusion} → ${!want ? '起動する' : '起動しない'}（期待と逆）`);
+      }
+      // script の呼び出し: event の run id と attempt を渡し、--apply で動く。自己試験を先に走らせる。
+      assert.ok(/--run-id "\$RUN_ID" --attempt "\$RUN_ATTEMPT" --repo "\$GITHUB_REPOSITORY" --apply/.test(wf), 'script の呼び出しが違う');
+      assert.ok(/RUN_ID: \$\{\{ github\.event\.workflow_run\.id \}\}/.test(wf) && /RUN_ATTEMPT: \$\{\{ github\.event\.workflow_run\.run_attempt \}\}/.test(wf), 'run id / attempt を event から渡していない');
+      assert.ok(wf.indexOf('t25-rerun-on-chance-red.js --self-test') < wf.indexOf('--apply'), '自己試験が本走より後にある');
+      // 🔴 赤の run のコミットを checkout しない（workflow_run は書き込みのトークンで動く）。
+      assert.ok(!/ref:\s*\$\{\{\s*github\.event\.workflow_run/.test(wf), 'workflow_run の head を checkout している');
+    });
+
+    ok('#1617: 再実行は `gh run rerun --failed`（同じ run の新しい attempt）であり、workflow_dispatch で別のコミットを測らない', () => {
+      const src = fs.readFileSync(path.join(__dirname, 't25-rerun-on-chance-red.js'), 'utf8');
+      assert.ok(/\['run', 'rerun', String\(runId\), '--failed', '--repo', repo\]/.test(src), '再実行の呼び出しが `gh run rerun <id> --failed` でない');
+      const body = src.split('function selfTest')[0];
+      assert.ok(!/\/dispatches|'workflow',\s*'run'/.test(body), 'dispatch で起こしている（ref しか取れず、別のコミットを測り得る）');
+      assert.deepStrictEqual(rerunScript.RERUN_EVENTS, ['push', 'schedule']);
+    });
+
+    ok('#1617: integration-stack.yml の注記が計画の値（反復 3・片側 12・有意水準 1%）であり、古い「片側 6 標本」が残っていない', () => {
+      const wf = wfText('integration-stack.yml');
+      assert.ok(!/片側 6 標本）。\n/.test(wf) && !/メールを 20 通/.test(wf), '古い注記（20 通・反復 3 × 片側 6 標本）が残っている');
+      assert.ok(/反復 3（1 回目は暖機）× 片側 12 標本/.test(wf) && /両側・有意水準 1%/.test(wf), '計画 ADR-0113 / ADR-0118 の値が注記に無い');
     });
   }
 
