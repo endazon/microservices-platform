@@ -66,6 +66,10 @@
  * 許可集合を持たない。だから **`service-account-*` という名前の人の利用者**と、**`profile` を既定スコープに
  * 持たない標準フローのクライアント**（人のトークンに preferred_username が乗らない）はどちらも、人を機械として
  * 通す。詳細は collectMachineJudgementGaps の注記。稼働中の realm で作られる利用者は宣言の外（運用の注意書き）。
+ * #1596 で足したもの: デバイスグラント・CIBA・直接アクセスもログイン経路として数える／軽量アクセストークンの
+ * クライアントは利用者名のマッパーに lightweight.claim を求める／利用者が利用者名を選べる宣言（自己登録・利用者名の
+ * 編集・メールアドレスを利用者名にする・IdP 連携）はレビュー済みの例外（SELF_CHOSEN_USERNAME_EXCEPTIONS）が無ければ
+ * 違反／preferred_username の出どころは利用者のプロパティ username だけ（profile・クライアント単位・別スコープの上書きを含む）。
  *
  * 使い方:
  *   node scripts/check-realm-constraints.js            # deploy/keycloak/*-realm.json を検査。違反で exit 1。
@@ -1153,25 +1157,95 @@ const MACHINE_USERNAME_PREFIX = 'service-account-';
 const PROFILE_SCOPE = 'profile';
 const USERNAME_CLAIM = 'preferred_username';
 
-// 人がログインしてトークンを得る経路を開いているクライアントか。
-// 🔴 `standardFlowEnabled` は**未設定なら Keycloak の既定で true** である（書き忘れで対象外へ落とさない）。
-//    `bearerOnly` のクライアントはログインできないので除く。implicit flow も人のトークンを出すので含める。
-function isHumanLoginClient(client) {
-  if (!client || client.bearerOnly === true) return false;
-  return client.standardFlowEnabled !== false || client.implicitFlowEnabled === true;
+// #1596: 人のトークンを出す grant のうち、クライアント属性で開くもの（Keycloak 24.0 の定数名そのまま）。
+//   OAuth2DeviceConfig.OAUTH2_DEVICE_AUTHORIZATION_GRANT_ENABLED / CibaConfig.OIDC_CIBA_GRANT_ENABLED。
+//   どちらも `Boolean.parseBoolean(client.getAttribute(…))` で読まれる（大小を区別しない "true" だけが有効）。
+const DEVICE_GRANT_ATTRIBUTE = 'oauth2.device.authorization.grant.enabled';
+const CIBA_GRANT_ATTRIBUTE = 'oidc.ciba.grant.enabled';
+// #1596: 軽量アクセストークン（Constants.USE_LIGHTWEIGHT_ACCESS_TOKEN_ENABLED）。有効なクライアントの access token には、
+//   マッパーの設定 `lightweight.claim` が "true" のクレームしか載らない（AbstractOIDCProtocolMapper.transformAccessToken が
+//   includeInAccessToken の代わりに includeInLightweightAccessToken を見る）。クライアントポリシーの実行器
+//   `use-lightweight-access-token` も同じ切り替えをセッション単位で入れる。
+const LIGHTWEIGHT_ATTRIBUTE = 'client.use.lightweight.access.token.enabled';
+const LIGHTWEIGHT_EXECUTOR = 'use-lightweight-access-token';
+// #1596: preferred_username の出どころとして認める唯一の形 —— 利用者のプロパティ `username` を読むマッパー
+//   （UserPropertyMapper。`ProtocolMapperUtils.getUserModelValue(user, "username")` が getUsername を呼ぶ）。
+//   利用者属性のマッパー（oidc-usermodel-attribute-mapper）・固定値（oidc-hardcoded-claim-mapper）・email など
+//   他のプロパティは、利用者が編集できるか管理者が任意の値を書けるので認めない。
+const USERNAME_SOURCE_MAPPER = 'oidc-usermodel-property-mapper';
+const USERNAME_SOURCE_PROPERTY = 'username';
+
+/**
+ * 利用者が自分の利用者名を選べる宣言について、レビューを経て残す例外（キー → 理由）。**空でない理由つきで載せること。**
+ * キーは `registrationAllowed` / `editUsernameAllowed` / `registrationEmailAsUsername` / `identityProviders[<alias>]`。
+ * 🔴 #1596 の時点で空である —— 実データの realm はどれも閉じている。載せたのに該当しない項目・理由が空の項目は違反にする。
+ */
+const SELF_CHOSEN_USERNAME_EXCEPTIONS = Object.freeze({});
+
+const clientAttributeTrue = (client, key) => String(((client && client.attributes) || {})[key] ?? '').toLowerCase() === 'true';
+
+// 人のトークンを出す grant のうち、そのクライアントで開いているものの名前。
+// 🔴 `standardFlowEnabled` は**未設定なら Keycloak の既定で true**（JpaRealmProvider.addClient）である。
+//    implicit / 直接アクセス（ROPC）は既定 false なので明示の true だけを数える。
+//    #1596: デバイスグラントと CIBA はクライアント属性で開き、人が認証した結果のトークンを出す。
+function humanLoginGrants(client) {
+  if (!client || client.bearerOnly === true) return [];
+  const grants = [];
+  if (client.standardFlowEnabled !== false) grants.push('standardFlowEnabled');
+  if (client.implicitFlowEnabled === true) grants.push('implicitFlowEnabled');
+  if (client.directAccessGrantsEnabled === true) grants.push('directAccessGrantsEnabled');
+  if (clientAttributeTrue(client, DEVICE_GRANT_ATTRIBUTE)) grants.push(`attributes.${DEVICE_GRANT_ATTRIBUTE}`);
+  if (clientAttributeTrue(client, CIBA_GRANT_ATTRIBUTE)) grants.push(`attributes.${CIBA_GRANT_ATTRIBUTE}`);
+  return grants;
 }
 
+// 人がログインしてトークンを得る経路を開いているクライアントか。`bearerOnly` のクライアントはログインできないので除く。
+function isHumanLoginClient(client) {
+  return humanLoginGrants(client).length > 0;
+}
+
+const mapperConfig = (m) => (m && m.config) || {};
+// マッパーが preferred_username を（通常の / 軽量の）access token へ載せるか。Keycloak は文字列 "true" だけを真と読む。
+const emitsUsernameToAccessToken = (m) => mapperConfig(m)['claim.name'] === USERNAME_CLAIM && String(mapperConfig(m)['access.token.claim']) === 'true';
+const emitsUsernameToLightweightToken = (m) => mapperConfig(m)['claim.name'] === USERNAME_CLAIM && String(mapperConfig(m)['lightweight.claim']) === 'true';
+// #1596: preferred_username の値が利用者のプロパティ `username` から来るか（出どころの検査）。
+const isUsernameSourceMapper = (m) => !!m && m.protocolMapper === USERNAME_SOURCE_MAPPER
+  && mapperConfig(m)['user.attribute'] === USERNAME_SOURCE_PROPERTY;
+
 // realm が `profile` スコープを明示しているとき、そのスコープが access token へ preferred_username を
-// 載せるか。明示していない realm は Keycloak の組み込みスコープが生成されるので判定しない（null）。
+// **利用者名から**載せるか。明示していない realm は Keycloak の組み込みスコープが生成されるので判定しない（null）。
 function profileScopeEmitsUsername(realm) {
   const scopes = Array.isArray(realm.clientScopes) ? realm.clientScopes : [];
   if (scopes.length === 0) return null;
   const profile = scopes.find((s) => s && s.name === PROFILE_SCOPE);
   if (!profile) return false;
-  return (profile.protocolMappers || []).some((m) => {
-    const cfg = (m && m.config) || {};
-    return cfg['claim.name'] === USERNAME_CLAIM && String(cfg['access.token.claim']) === 'true';
-  });
+  return (profile.protocolMappers || []).some((m) => emitsUsernameToAccessToken(m) && isUsernameSourceMapper(m));
+}
+
+// クライアントのトークンに効くマッパー（クライアント単位の protocolMappers と、既定・任意スコープの中身）。
+// 任意スコープも数える —— クライアントが scope で要求すれば載り、preferred_username を上書きし得る。
+// realm が宣言していないスコープ（組み込み）は中身を判定しない。
+function effectiveMappers(realm, client) {
+  const byName = new Map((Array.isArray(realm.clientScopes) ? realm.clientScopes : []).filter((s) => s && s.name).map((s) => [s.name, s]));
+  const out = (Array.isArray(client.protocolMappers) ? client.protocolMappers : [])
+    .map((m) => ({ m, path: `realm.clients[${client.clientId || '«無名»'}].protocolMappers[${(m && m.name) || '«無名»'}]` }));
+  const names = [
+    ...(Array.isArray(client.defaultClientScopes) ? client.defaultClientScopes : []),
+    ...(Array.isArray(client.optionalClientScopes) ? client.optionalClientScopes : []),
+  ];
+  for (const name of new Set(names)) {
+    const scope = byName.get(name);
+    for (const m of (scope && Array.isArray(scope.protocolMappers) ? scope.protocolMappers : [])) {
+      out.push({ m, path: `realm.clientScopes[${name}].protocolMappers[${(m && m.name) || '«無名»'}]` });
+    }
+  }
+  return out;
+}
+
+// realm のクライアントポリシーが軽量アクセストークンの実行器を宣言しているか（条件は評価しない＝保守側）。
+function realmDeclaresLightweightExecutor(realm) {
+  const profiles = realm.clientProfiles && Array.isArray(realm.clientProfiles.profiles) ? realm.clientProfiles.profiles : [];
+  return profiles.some((p) => (Array.isArray(p && p.executors) ? p.executors : []).some((e) => e && e.executor === LIGHTWEIGHT_EXECUTOR));
 }
 
 /**
@@ -1181,7 +1255,7 @@ function profileScopeEmitsUsername(realm) {
  * @param {{realmName?:string}} opts
  * @returns {{path:string, detail:string}[]}
  */
-function collectMachineJudgementGaps(realm, { realmName = AUTH_POLICY_REALM } = {}) {
+function collectMachineJudgementGaps(realm, { realmName = AUTH_POLICY_REALM, exceptions = SELF_CHOSEN_USERNAME_EXCEPTIONS } = {}) {
   const gaps = [];
   if (!realm || realm.realm !== realmName) return gaps;
 
@@ -1199,14 +1273,50 @@ function collectMachineJudgementGaps(realm, { realmName = AUTH_POLICY_REALM } = 
     });
   }
 
+  // (1') #1596: 利用者が自分の利用者名を選べる宣言が無いこと（あれば `service-account-*` を自分で名乗れ、(1) を宣言の外で破れる）。
+  //      Keycloak 24.0 の DeclarativeUserProfileProviderFactory.editUsernameCondition: 利用者名は、登録（REGISTRATION）と
+  //      IdP の初回ログインの確認（IDP_REVIEW）で利用者が入力でき、それ以外では editUsernameAllowed のときだけ編集できる。
+  //      registrationEmailAsUsername では利用者名 ＝ 利用者が入力するメールアドレス（`service-account-x@…` も名乗れる）。
+  //      IdP 連携は外部の利用者名（またはマッパーの組み立て）がそのまま利用者名になる。無効の IdP も後から有効化され得るので数える。
+  const selfChosen = [];
+  if (realm.registrationAllowed === true) selfChosen.push(['registrationAllowed', '利用者の自己登録が開いていて、登録画面で利用者名を入力できます']);
+  if (realm.editUsernameAllowed === true) selfChosen.push(['editUsernameAllowed', '利用者がアカウント画面・プロフィール更新で自分の利用者名を変えられます']);
+  if (realm.registrationEmailAsUsername === true) {
+    selfChosen.push(['registrationEmailAsUsername', '利用者名が利用者の入力するメールアドレスになります（登録・IdP の確認・メール変更で名乗れる）']);
+  }
+  for (const idp of Array.isArray(realm.identityProviders) ? realm.identityProviders : []) {
+    const alias = (idp && idp.alias) || '«無名»';
+    selfChosen.push([`identityProviders[${alias}]`, `IdP 連携（${(idp && idp.providerId) || '不明'}${idp && idp.enabled === false ? '・現在は無効' : ''}）で外部の利用者名が取り込まれ、初回ログインの確認でも入力できます`]);
+  }
+  const reviewed = (k) => Object.prototype.hasOwnProperty.call(exceptions, k)
+    && typeof exceptions[k] === 'string' && exceptions[k].trim() !== '';
+  for (const [key, why] of selfChosen) {
+    if (reviewed(key)) continue;
+    gaps.push({
+      path: `realm.${key}`,
+      detail: `${why}。利用者が ${MACHINE_USERNAME_PREFIX} で始まる名前を自分で選べると、BFF の Bearer 受理がその人を`
+        + '**無人の主体**として通します（MachinePrincipal.IsMachine の腕 A。宣言の (1) を宣言の外で破れる）。'
+        + '閉じるか、レビューを経た理由を SELF_CHOSEN_USERNAME_EXCEPTIONS へ書いてください。',
+    });
+  }
+  const openKeys = new Set(selfChosen.map(([k]) => k));
+  for (const key of Object.keys(exceptions)) {
+    if (!reviewed(key)) {
+      gaps.push({ path: `SELF_CHOSEN_USERNAME_EXCEPTIONS[${key}]`, detail: '例外の理由が空です。レビューを経た理由を書いてください（理由の無い例外は黙って効く抜け道になる）。' });
+    } else if (!openKeys.has(key)) {
+      gaps.push({ path: `SELF_CHOSEN_USERNAME_EXCEPTIONS[${key}]`, detail: '例外に載っているが realm では該当の宣言が閉じています。例外から外してください（例外を腐らせない）。' });
+    }
+  }
+
   // (2) 人がログインするクライアントは、すべて `profile` を既定スコープに持つこと。
+  //     #1596: デバイスグラント・CIBA・直接アクセス（ROPC）だけを開いたクライアントも人のトークンを出すので数える。
   const humanClients = (Array.isArray(realm.clients) ? realm.clients : []).filter(isHumanLoginClient);
   for (const client of humanClients) {
     const scopes = Array.isArray(client.defaultClientScopes) ? client.defaultClientScopes : [];
     if (scopes.includes(PROFILE_SCOPE)) continue;
     gaps.push({
       path: `realm.clients[${client.clientId || '«無名»'}].defaultClientScopes`,
-      detail: `人がログインする経路（standardFlowEnabled${client.implicitFlowEnabled === true ? ' / implicitFlowEnabled' : ''}）を開いているのに、`
+      detail: `人がログインする経路（${humanLoginGrants(client).join(' / ')}）を開いているのに、`
         + `${PROFILE_SCOPE} が既定スコープに明示されていません`
         + `（実際 ${JSON.stringify(scopes)}。optionalClientScopes は要求しない限り載らないので数えません）。`
         + ` 人のトークンに ${USERNAME_CLAIM} が乗らず、azp は必ず乗るため、BFF の Bearer 受理が`
@@ -1216,14 +1326,52 @@ function collectMachineJudgementGaps(realm, { realmName = AUTH_POLICY_REALM } = 
 
   // (2') `profile` を既定に持っていても、スコープの中身が preferred_username を載せなければ同じ穴になる。
   //      本 realm は clientScopes を明示するため組み込みが生成されず、中身は宣言がすべてである。
+  //      #1596: マッパーの出どころも見る —— 利用者のプロパティ `username` を読むマッパーだけを数える。
   if (humanClients.length > 0 && profileScopeEmitsUsername(realm) === false) {
     gaps.push({
       path: `realm.clientScopes[${PROFILE_SCOPE}].protocolMappers`,
-      detail: `${PROFILE_SCOPE} スコープが未定義か、access token へ ${USERNAME_CLAIM} を載せるマッパー`
-        + `（claim.name=${USERNAME_CLAIM} / access.token.claim=true）を持ちません。`
+      detail: `${PROFILE_SCOPE} スコープが未定義か、access token へ ${USERNAME_CLAIM} を**利用者名から**載せるマッパー`
+        + `（protocolMapper=${USERNAME_SOURCE_MAPPER} / user.attribute=${USERNAME_SOURCE_PROPERTY} / claim.name=${USERNAME_CLAIM} / access.token.claim=true）を持ちません。`
         + ' clientScopes を明示した realm では組み込みスコープが生成されないため、'
-        + '既定スコープに profile と書いてあっても人のトークンに利用者名が乗らず、腕 B が人を機械と読みます。',
+        + '既定スコープに profile と書いてあっても人のトークンに利用者名が乗らず、腕 B が人を機械と読みます。'
+        + ' 利用者が編集できる属性や固定値から出すと、人が機械の名前を名乗れます（腕 A）。',
     });
+  }
+
+  // (2'') #1596: 人がログインするクライアントのトークンに効くマッパー（クライアント単位の protocolMappers と、既定・任意スコープの
+  //       中身）のうち preferred_username を出すものは、すべて利用者名から出すこと（出どころの違う上書きを止める）。
+  //       軽量アクセストークンのクライアントは、利用者名から出すマッパーが `lightweight.claim=true` を持つこと（持たなければ
+  //       access token から preferred_username が落ち、azp は乗るので腕 B が人を機械と読む）。
+  const reported = new Set();
+  const lightweightByPolicy = realmDeclaresLightweightExecutor(realm);
+  for (const client of humanClients) {
+    const mappers = effectiveMappers(realm, client);
+    for (const { m, path: p } of mappers) {
+      if (!(emitsUsernameToAccessToken(m) || emitsUsernameToLightweightToken(m)) || isUsernameSourceMapper(m) || reported.has(p)) continue;
+      reported.add(p);
+      const cfg = mapperConfig(m);
+      gaps.push({
+        path: p,
+        detail: `人がログインするクライアント ${client.clientId || '«無名»'} のトークンへ ${USERNAME_CLAIM} を、利用者名以外の出どころから載せています`
+          + `（protocolMapper=${(m && m.protocolMapper) || '不明'}${cfg['user.attribute'] ? ` / user.attribute=${cfg['user.attribute']}` : ''}）。`
+          + '利用者が編集できる属性・固定値・別のプロパティから出すと、人が '
+          + `${MACHINE_USERNAME_PREFIX}* を名乗れ、BFF の Bearer 受理が人を無人の主体として通します（腕 A）。`
+          + ` ${USERNAME_SOURCE_MAPPER} の user.attribute=${USERNAME_SOURCE_PROPERTY} で出してください。`,
+      });
+    }
+    const lightweight = clientAttributeTrue(client, LIGHTWEIGHT_ATTRIBUTE) || lightweightByPolicy;
+    if (lightweight && !mappers.some(({ m }) => emitsUsernameToLightweightToken(m) && isUsernameSourceMapper(m))) {
+      gaps.push({
+        path: clientAttributeTrue(client, LIGHTWEIGHT_ATTRIBUTE)
+          ? `realm.clients[${client.clientId || '«無名»'}].attributes[${LIGHTWEIGHT_ATTRIBUTE}]`
+          : `realm.clientProfiles[${LIGHTWEIGHT_EXECUTOR}]`,
+        detail: `人がログインするクライアント ${client.clientId || '«無名»'} で軽量アクセストークンが有効なのに、`
+          + `利用者名から ${USERNAME_CLAIM} を出すマッパーが lightweight.claim=true を持ちません。`
+          + ' 軽量アクセストークンには lightweight.claim=true のクレームしか載らない（Keycloak 24.0 の AbstractOIDCProtocolMapper）ため'
+          + `人のトークンから ${USERNAME_CLAIM} が落ち、azp は乗るので BFF の Bearer 受理が人を無人の主体として通します（腕 B）。`
+          + ' 軽量アクセストークンをやめるか、利用者名のマッパーへ lightweight.claim=true を足してください。',
+      });
+    }
   }
 
   return gaps;
@@ -2131,7 +2279,7 @@ function selfTest() {
     protocolMappers: [{
       name: 'username',
       protocolMapper: 'oidc-usermodel-property-mapper',
-      config: { 'claim.name': 'preferred_username', 'access.token.claim': 'true' },
+      config: { 'user.attribute': 'username', 'claim.name': 'preferred_username', 'access.token.claim': 'true' },
     }],
   };
   const mjOk = {
@@ -2243,6 +2391,130 @@ function selfTest() {
     name: '検査7: JSON パース→検査（checkRealmMachineJudgementText）が通る',
     pass: checkRealmMachineJudgementText(JSON.stringify(mjOk)).length === 0,
   });
+  // --- 検査7 の追加（#1596）: デバイスグラント・CIBA・軽量アクセストークン・自分で選べる利用者名・preferred_username の出どころ ---
+  const paths = (g) => g.map((x) => x.path);
+  cases.push({
+    name: '検査7 変異（#1596 a）: デバイスグラントだけを開いたクライアントが profile を持たなければ検出する',
+    pass: (() => {
+      const g = collectMachineJudgementGaps(mjMut((c) => { c.clients[1].attributes = { 'oauth2.device.authorization.grant.enabled': 'true' }; }));
+      return g.length === 1 && g[0].path === 'realm.clients[svc].defaultClientScopes' && g[0].detail.includes('oauth2.device.authorization.grant.enabled');
+    })(),
+  });
+  cases.push({
+    name: '検査7 変異（#1596 a）: CIBA だけを開いたクライアントも検出する（"TRUE" も Boolean.parseBoolean で真）',
+    pass: collectMachineJudgementGaps(mjMut((c) => { c.clients[1].attributes = { 'oidc.ciba.grant.enabled': 'TRUE' }; })).length === 1,
+  });
+  cases.push({
+    name: '検査7 変異（#1596 a）: 直接アクセス（ROPC）だけを開いたクライアントも人のトークンを出すので検出する',
+    pass: collectMachineJudgementGaps(mjMut((c) => { c.clients[1].directAccessGrantsEnabled = true; })).length === 1,
+  });
+  cases.push({
+    name: '検査7 陰性対照（#1596 a）: 属性が "false" / "yes"（parseBoolean で偽）・bearerOnly のクライアントは数えない',
+    pass: collectMachineJudgementGaps(mjMut((c) => {
+      c.clients[1].attributes = { 'oauth2.device.authorization.grant.enabled': 'false', 'oidc.ciba.grant.enabled': 'yes' };
+      c.clients[2].attributes = { 'oauth2.device.authorization.grant.enabled': 'true' };
+    })).length === 0,
+  });
+  cases.push({
+    name: '検査7 変異（#1596 b）: 人がログインするクライアントの軽量アクセストークンは、利用者名のマッパーに lightweight.claim が無ければ検出する',
+    pass: (() => {
+      const g = collectMachineJudgementGaps(mjMut((c) => { c.clients[0].attributes = { 'client.use.lightweight.access.token.enabled': 'True' }; }));
+      return g.length === 1 && g[0].path === 'realm.clients[bff].attributes[client.use.lightweight.access.token.enabled]';
+    })(),
+  });
+  cases.push({
+    name: '検査7 陰性対照（#1596 b）: 利用者名のマッパーが lightweight.claim=true なら軽量でも通す。ログインしないクライアントの軽量は数えない',
+    pass: collectMachineJudgementGaps(mjMut((c) => {
+      c.clients[0].attributes = { 'client.use.lightweight.access.token.enabled': 'true' };
+      c.clientScopes[0].protocolMappers[0].config['lightweight.claim'] = 'true';
+    })).length === 0
+      && collectMachineJudgementGaps(mjMut((c) => { c.clients[1].attributes = { 'client.use.lightweight.access.token.enabled': 'true' }; })).length === 0,
+  });
+  cases.push({
+    name: '検査7 変異（#1596 b）: クライアントポリシーの実行器 use-lightweight-access-token も軽量として検出する',
+    pass: (() => {
+      const g = collectMachineJudgementGaps(mjMut((c) => {
+        c.clientProfiles = { profiles: [{ name: 'lw', executors: [{ executor: 'use-lightweight-access-token', configuration: {} }] }] };
+      }));
+      return g.length === 1 && g[0].path === 'realm.clientProfiles[use-lightweight-access-token]';
+    })(),
+  });
+  for (const [key, mutate] of [
+    ['registrationAllowed', (c) => { c.registrationAllowed = true; }],
+    ['editUsernameAllowed', (c) => { c.editUsernameAllowed = true; }],
+    ['registrationEmailAsUsername', (c) => { c.registrationEmailAsUsername = true; }],
+    ['identityProviders[corp]', (c) => { c.identityProviders = [{ alias: 'corp', providerId: 'oidc', enabled: false }]; }],
+  ]) {
+    cases.push({
+      name: `検査7 変異（#1596 c）: 利用者が自分の利用者名を選べる宣言 ${key} を検出する（無効の IdP も数える）`,
+      pass: (() => { const g = collectMachineJudgementGaps(mjMut(mutate)); return g.length === 1 && g[0].path === `realm.${key}`; })(),
+    });
+  }
+  cases.push({
+    name: '検査7 陰性対照（#1596 c）: registrationAllowed=false などの明示の閉は検出しない',
+    pass: collectMachineJudgementGaps(mjMut((c) => {
+      c.registrationAllowed = false; c.editUsernameAllowed = false; c.registrationEmailAsUsername = false; c.identityProviders = [];
+    })).length === 0,
+  });
+  cases.push({
+    name: '検査7（#1596 c）: レビュー済みの例外は黙る。理由が空の例外・該当しない例外は違反（例外を腐らせない）',
+    pass: (() => {
+      const open = mjMut((c) => { c.registrationAllowed = true; });
+      const reviewed = collectMachineJudgementGaps(open, { exceptions: { registrationAllowed: 'レビュー済みの理由' } });
+      const empty = collectMachineJudgementGaps(open, { exceptions: { registrationAllowed: '  ' } });
+      const stale = collectMachineJudgementGaps(mjOk, { exceptions: { editUsernameAllowed: '理由' } });
+      return reviewed.length === 0
+        && paths(empty).includes('realm.registrationAllowed') && paths(empty).includes('SELF_CHOSEN_USERNAME_EXCEPTIONS[registrationAllowed]')
+        && stale.length === 1 && stale[0].path === 'SELF_CHOSEN_USERNAME_EXCEPTIONS[editUsernameAllowed]';
+    })(),
+  });
+  for (const [label, mapper] of [
+    ['利用者が編集できるプロパティ email', { protocolMapper: 'oidc-usermodel-property-mapper', 'user.attribute': 'email' }],
+    ['利用者属性のマッパー（user.attribute=username でも認めない）', { protocolMapper: 'oidc-usermodel-attribute-mapper', 'user.attribute': 'username' }],
+    ['固定値のマッパー', { protocolMapper: 'oidc-hardcoded-claim-mapper', 'claim.value': 'service-account-x' }],
+  ]) {
+    cases.push({
+      name: `検査7 変異（#1596 d）: profile の preferred_username の出どころが${label}なら検出する`,
+      pass: (() => {
+        const g = collectMachineJudgementGaps(mjMut((c) => {
+          const m = c.clientScopes[0].protocolMappers[0];
+          m.protocolMapper = mapper.protocolMapper;
+          delete m.config['user.attribute'];
+          if (mapper['user.attribute']) m.config['user.attribute'] = mapper['user.attribute'];
+          if (mapper['claim.value']) m.config['claim.value'] = mapper['claim.value'];
+          c.clients.push({ clientId: 'web2', defaultClientScopes: ['profile'] }); // 2 つ目のログインクライアント（同じスコープの重複報告をしない）
+        }));
+        return g.length === 2 && paths(g).includes('realm.clientScopes[profile].protocolMappers')
+          && paths(g).includes('realm.clientScopes[profile].protocolMappers[username]');
+      })(),
+    });
+  }
+  const override = (config) => ({ name: 'override', protocolMapper: 'oidc-usermodel-attribute-mapper', config: { 'claim.name': 'preferred_username', ...config } });
+  cases.push({
+    name: '検査7 変異（#1596 d）: クライアント単位の protocolMappers が preferred_username を上書きすると検出する',
+    pass: (() => {
+      const g = collectMachineJudgementGaps(mjMut((c) => { c.clients[0].protocolMappers = [override({ 'user.attribute': 'nickname', 'access.token.claim': 'true' })]; }));
+      return g.length === 1 && g[0].path === 'realm.clients[bff].protocolMappers[override]';
+    })(),
+  });
+  cases.push({
+    name: '検査7 変異（#1596 d）: 既定・任意スコープの別スコープが preferred_username を上書きすると検出する',
+    pass: collectMachineJudgementGaps(mjMut((c) => {
+      c.clientScopes.push({ name: 'nick', protocolMappers: [override({ 'user.attribute': 'nickname', 'access.token.claim': 'true' })] });
+      c.clients[0].optionalClientScopes = ['nick'];
+    })).map((x) => x.path).join() === 'realm.clientScopes[nick].protocolMappers[override]',
+  });
+  cases.push({
+    name: '検査7 陰性対照（#1596 d）: access token にも軽量にも載せない上書き・ログインしないクライアントの上書きは検出しない',
+    pass: collectMachineJudgementGaps(mjMut((c) => {
+      c.clients[0].protocolMappers = [override({ 'user.attribute': 'nickname', 'access.token.claim': 'false', 'id.token.claim': 'true' })];
+      c.clients[1].protocolMappers = [override({ 'user.attribute': 'nickname', 'access.token.claim': 'true' })];
+    })).length === 0,
+  });
+  cases.push({
+    name: '検査7（#1596 c）: 利用者名を自分で選べる宣言の例外（SELF_CHOSEN_USERNAME_EXCEPTIONS）は空で始める',
+    pass: Object.keys(SELF_CHOSEN_USERNAME_EXCEPTIONS).length === 0,
+  });
   cases.push({
     name: '🔴 検査7: 実データの realm が前提を守る（実データ・ラチェット。0 件走査を緑にしない）',
     pass: (() => {
@@ -2297,7 +2569,7 @@ function main() {
     && totalMfaGaps === 0 && totalMailGaps === 0 && totalRelayGaps === 0
     && totalServerUrlGaps === 0 && totalConcealGaps === 0 && totalSaRoleGaps === 0
     && totalMachineGaps === 0) {
-    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れ・サービスアカウントの管理権限の天井超え・人を無人の主体と読ませる宣言（service-account- 接頭辞の人の利用者 / profile を既定に持たない標準フローのクライアント）はありません。`);
+    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れ・サービスアカウントの管理権限の天井超え・人を無人の主体と読ませる宣言（service-account- 接頭辞の人の利用者 / 利用者が利用者名を選べる宣言 / profile を既定に持たないログイン経路のクライアント / 利用者名以外から出す preferred_username / 利用者名の落ちる軽量アクセストークン）はありません。`);
     process.exit(0);
   }
 
@@ -2435,7 +2707,8 @@ function main() {
       + '\nBFF の Bearer 受理はトークンが名乗る形だけで無人の主体かを決めます（許可集合を持たない）。'
       + '\nrealm import は成功しログインも動くため、E2E では気付けません。'
       + '\n稼働中の realm で管理コンソールから作る利用者はこの検査の外です（SC-17 の運用上の注意を参照）。'
-      + '\n実装側の記録は IADR-0420・IADR-0429 決定 3、起票は #1589 です。');
+      + '\n実装側の記録は IADR-0420・IADR-0429 決定 3、起票は #1589（デバイスグラント・CIBA・軽量アクセストークン・'
+      + '利用者名を選べる宣言・preferred_username の出どころは #1596）です。');
   }
 
   process.exit(1);
