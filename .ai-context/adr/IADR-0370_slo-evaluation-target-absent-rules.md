@@ -15,7 +15,7 @@ related_ids:
   - IADR-0304
 author: claude
 created: 2026-09-04
-updated: 2026-09-04
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0076_slo-evaluation-target-and-metric-units.md (決定 2・3・4)
   - planning:projects/microservices-platform/02_requirements/01_requirements.md (NFR-21)
@@ -234,3 +234,11 @@ SearchLatencySeriesAbsent      alerts=1 [Normal (NoData)]
 - 変更は配備設定と文書・検査器のコメントに閉じており、アプリケーションコードの変更は無い。
 - **合成監視（`ADR-0076` 決定 4）は未着手のまま残る。** `/analysis/ask` 系を対象へ入れるにはそれが要る。
 - **静的検査（CI で全ルールの非空ベクタを確かめる）も残る。** `IADR-0345` 決定 5 の繰り延べのままである。
+
+## ［2026-09-26 追記 / #1577］決定 4 の「既存 6 件は正常時に値を返す式」は 2 件について誤りだった
+
+既存 6 件のうち `OtelCollectorDown`（`up == 0`）と `ServiceRequestMetricsAbsent`（`… == 0 and on (job) …`）は
+**`== 0` の絞り込みで正常時に空を返す式**だった。§D の実測（通常時に両者が `[NoData]`）はその現れであり、
+しかも評価器 `gt 0` は絞り込みの後に残る値 0 で真にならないため、**両者は Grafana 版では一度も発火し得なかった。**
+#1577 で両者の評価器を直し（`up` を `lt 1`／`== bool 0` を `gt 0`）、**`noDataState: OK` へ改めた**（経緯と表は IADR-0165 の同日の追記）。
+`NoData` のまま残るのは platform-slo の 4 件（正常時に値を返す式）である。決定 4 の「一律に揃えない」は変わらない。

@@ -467,13 +467,15 @@ data:
     #      実装環境で Grafana を起動できなかった（docker daemon へ到達不可）。
     #      機械で確かめたのは **`scripts/check-grafana-alerting.js`** の範囲
     #      —— ルール数と名前が `deploy/prometheus/alerts.yml` と 1 対 1、参照する
-    #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、まで。
+    #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、
+    #      式の絞り込みの後に残る値で評価器が真になり得る（#1577）、まで。
     #      **配備時に `/api/v1/provisioning/alert-rules` が 20 件返すことを確かめること。**
     #      🔴 **件数は導出値である。ここの数字を信用せず、着手のたびに数え直すこと**（IADR-0383）——
     #      本行は #1246 が 2 件足した後も「9 件」のままであり、**2 世代ぶん腐っていた**（#1203 で是正）。
     #      現在の内訳: platform-availability 2 ／ platform-slo 4 ／ platform-slo-evaluation-target 6
     #      ／ knowledge-health-producers 2 ／ knowledge-health-violations 1 ／ mail-relay-queue 2
-    #      ／ reset-floor-availability 1 ／ llm-cost-budget 1 ＝ **19**
+    #      ／ reset-floor-availability 1 ／ llm-cost-budget 1 ／ department-sync 1 ＝ **20**
+    #      （［2026-09-26 / #1577］内訳が #1573 の department-sync 1 を取りこぼして 19 のままだったので足した）
     #      （#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17、#1544 で 17 → 19、#1573 で 19 → 20 へ数え直した）。
     #
     # 式は `deploy/prometheus/alerts.yml` と**同じもの**を使う（二重管理だが、暫定期間だけである）。
@@ -484,18 +486,32 @@ data:
     #   `params: [1500]` / `[5000]` とミリ秒の数値が残っており、名前も旧規約のままで**永久に発火しなかった。**
     #   メトリクス名・ラベル・単位の由来と、式を変えるときの検証手順（**陽性対照を対で置く**）は
     #   `deploy/prometheus/alerts.yml` の冒頭が正本である。
+    #
+    # 🔴 **絞り込みの式を写して `gt 0` で比べない**（#1577）。Prometheus 版は `up == 0` のように**絞り込みで**鳴らすが、
+    #   Grafana 版で同じ式を `gt 0` で比べると、絞り込みの後に残る値は 0 なので `0 > 0` が偽になり**永久に発火しない**。
+    #   しかも正常時は式が空になるので、`noDataState: NoData` だと**正常時にだけ NoData が立つ**（鳴る向きが逆になる）。
+    #   `OtelCollectorDown` と `ServiceRequestMetricsAbsent` が 2026-09-26 までこの形だった。
+    #   Grafana 版は**生の値を評価器で比べる**（`up` を `lt 1`）か、`== bool 0` で 0 / 1 に直して `gt 0` で比べる。
+    #   この組み合わせは `scripts/check-grafana-alerting.js` の検査 6 が止める。
     apiVersion: 1
     groups:
       - orgId: 1
         name: platform-availability
         folder: SLO
         interval: 1m
+        # 🔴 **この群の 2 件は Prometheus 版と式・閾値の置き方が違う**（#1577。冒頭の注意）。
+        #   - OtelCollectorDown: `up` をそのまま取り **`lt 1`（値 0 で真）**で比べる（#1544 の ResetFloorNoReadyEndpoint と同じ形）。
+        #     **`noDataState: OK`** —— 系列の不在は OtelCollectorUpSeriesAbsent が拾う（同じ不在で 2 通鳴らさない）。
+        #   - ServiceRequestMetricsAbsent: `== 0` を **`== bool 0`**（途絶で 1・受信中で 0）に直し、`gt 0` で比べる。
+        #     `and on (job)` の右辺（15 分前に受信していた job だけ）は Prometheus 版のまま。
+        #     **`noDataState: OK`** —— 空になるのは「15 分前に受信していた job が無い」か「系列ごと無い」ときで、
+        #     前者は途絶ではなく、後者は HttpServerMetricsSeriesAbsent が拾う（Prometheus 版も空なら鳴らない）。
         rules:
           - uid: slo-otel-collector-down
             title: OtelCollectorDown
             condition: C
             for: 2m
-            noDataState: NoData
+            noDataState: OK
             execErrState: Error
             labels:
               severity: critical
@@ -509,7 +525,7 @@ data:
                 model:
                   refId: A
                   instant: true
-                  expr: 'up{job="otel-collector"} == 0'
+                  expr: 'up{job="otel-collector"}'
               - refId: C
                 datasourceUid: __expr__
                 model:
@@ -517,13 +533,13 @@ data:
                   type: threshold
                   expression: A
                   conditions:
-                    - evaluator: { type: gt, params: [0] }
+                    - evaluator: { type: lt, params: [1] }
 
           - uid: slo-service-request-metrics-absent
             title: ServiceRequestMetricsAbsent
             condition: C
             for: 5m
-            noDataState: NoData
+            noDataState: OK
             execErrState: Error
             labels:
               severity: warning
@@ -538,7 +554,7 @@ data:
                   refId: A
                   instant: true
                   expr: |
-                    sum by (job) (rate(http_server_request_duration_seconds_count[5m])) == 0
+                    sum by (job) (rate(http_server_request_duration_seconds_count[5m])) == bool 0
                     and on (job) (sum by (job) (http_server_request_duration_seconds_count offset 15m) > 0)
               - refId: C
                 datasourceUid: __expr__
@@ -681,6 +697,9 @@ data:
       #   空入力を NoData として扱うため、他の 6 件と同じ `NoData` にすると**正常時に `DatasourceNoData` が
       #   恒常発火する** —— ADR-0076 理由が「警報を無効化する」と名指しした型そのものになる。
       #   **既存 6 件は `NoData` のままでよい**（あちらは正常時に値を返す式であり、空になること自体が異常）。
+      #   ［2026-09-26 追記 / #1577］上の「既存 6 件」のうち OtelCollectorDown と ServiceRequestMetricsAbsent は
+      #   `== 0` の絞り込みで**正常時に空を返す式**だった（「正常時に値を返す」は誤り）。評価器を直し `noDataState: OK` へ改めた。
+      #   `NoData` のまま残るのは platform-slo の 4 件である。
       #
       # しきい値の置き場所は他と同じく `conditions[].evaluator.params`（`gt 0`）。`absent()` は真のとき 1 を返す。
       # 対象経路の選び方・`for: 5m` の理由・検知が最大およそ 10 分になることは

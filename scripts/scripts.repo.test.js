@@ -5893,7 +5893,7 @@ ${r.stderr}`);
 
     // ★ **self-test の件数だけを見ない。** 件数は変異ケースを消しても通りつづける
     //   （#657 で実際にやった誤り）。**個々の変異ケースが走っていることを名指しで確かめる。**
-    ok('check-grafana-alerting: self-test が 5 種の変異ケースを実際に走らせている', () => {
+    ok('check-grafana-alerting: self-test が名指しの変異ケースを実際に走らせている', () => {
       const { out } = runGrafana(['--self-test']);
       for (const name of [
         'Prometheus にだけあるルールを検出する',
@@ -5901,6 +5901,10 @@ ${r.stderr}`);
         '宣言されていない datasourceUid を検出する',
         'compose と k8s の乖離を検出する',
         '必須キーの欠落を検出する',
+        // #1577: 式の絞り込みと評価器の組み合わせ（検査 6）
+        '== 0 の絞り込みと gt 0 の評価器の組み合わせを検出する',
+        'and の左辺の == 0 を検出する',
+        '評価器を読めないルールを検出する',
       ]) {
         assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
       }
@@ -5944,6 +5948,50 @@ ${r.stderr}`);
         r.issues.some((x) => x.includes(`Grafana に無いルール: ${first}`)),
         `実データの変異を検出できなかった:\n${JSON.stringify(r.issues)}`,
       );
+    });
+
+    // #1577 / NFR-21: Grafana 版の `OtelCollectorDown` は `up == 0` を `gt 0` で比べており、
+    //   絞り込みの後に残る値 0 では `0 > 0` が偽になって**永久に発火しなかった**（`ServiceRequestMetricsAbsent` も同型）。
+    //   **実データを #1577 以前の形へ戻すと、写しの両方で違反を出す**ことを固定する（フィクスチャだけだと、
+    //   実書式〔`|` ブロックの expr・flow 形式の evaluator〕に読み取りが合っていない型の空振りを捕まえられない）。
+    ok('check-grafana-alerting: 実データを == 0 と gt 0 の組み合わせへ戻すと違反を出す（#1577・変異試験）', () => {
+      const g = require('./check-grafana-alerting.js');
+      const read = (p) => fs.readFileSync(path.join(REPO, p), 'utf8');
+      const prom = read('deploy/prometheus/alerts.yml');
+      const grafana = read('deploy/grafana/provisioning/alerting/slo-alerts.yaml');
+      const datasources = read('deploy/grafana/provisioning/datasources/datasources.yaml');
+      const k8sInline = g.extractK8sInline(read('deploy/local/observability/grafana.yaml'));
+      const cases = [
+        ['OtelCollectorDown', (t) => t.replace(
+          /expr: 'up\{job="otel-collector"\}'([\s\S]*?)type: lt, params: \[1\]/,
+          'expr: \'up{job="otel-collector"} == 0\'$1type: gt, params: [0]',
+        )],
+        ['ServiceRequestMetricsAbsent', (t) => t.replace(
+          'rate(http_server_request_duration_seconds_count[5m])) == bool 0',
+          'rate(http_server_request_duration_seconds_count[5m])) == 0',
+        )],
+      ];
+      for (const [title, mutate] of cases) {
+        const g2 = mutate(grafana);
+        const k2 = mutate(k8sInline);
+        assert.notStrictEqual(g2, grafana, `変異が compose に当たっていない（${title}）`);
+        assert.notStrictEqual(k2, k8sInline, `変異が k8s inline に当たっていない（${title}）`);
+        const r = g.findIssues({ prom, grafana: g2, datasources, k8sInline: k2 });
+        for (const label of ['compose', 'k8s inline']) {
+          assert.ok(
+            r.issues.some((x) => x.startsWith(`[${label}] ルール ${title}:`) && x.includes('永久に発火しない')),
+            `${label} の ${title} を検出できなかった:\n${r.issues.join('\n')}`,
+          );
+        }
+      }
+    });
+
+    // 検査 6 の 0 件走査の門（件数リテラルは書かない。#558）。
+    ok('0 件走査の門: check-grafana-alerting は実データで式と評価器の組み合わせを 1 件以上判定する（#1577・下限）', () => {
+      const { code, out } = runGrafana();
+      assert.strictEqual(code, 0, out);
+      const m = out.match(/組み合わせ (\d+) 件/);
+      assert.ok(m && Number(m[1]) > 0, `組み合わせの判定件数が 0 か読めない:\n${out}`);
     });
 
     ok('check-grafana-alerting: 実データの datasource 宣言を消すと違反を出す（変異試験）', () => {
