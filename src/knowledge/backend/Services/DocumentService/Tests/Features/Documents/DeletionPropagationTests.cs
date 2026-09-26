@@ -320,6 +320,9 @@ public class DeletionPropagationTests(TestWebApplicationFactory factory)
 
     // #1608 の対照: **呼び出し側の ct による取り消し（周期の停止要求）は隔離に畳まず外へ出す。**
     // 畳むと停止要求の後も次の文書へ進む（絞り込みを「全部捕まえる」へ広げた変異をこの試験が落とす）。
+    // ［#1622］取り消しは **AWS SDK（HttpClient）が表す形** —— 呼び出し側の token を持つ `TaskCanceledException` —— で起こす。
+    // 素の `OperationCanceledException` を注入していた間は、絞り込みを「`TaskCanceledException` なら時間切れ」と**型で**判定する変異
+    // （`|| ex is TaskCanceledException`）が生き残った（#1619 の監査）。時間切れと停止要求は型では分けられず、ct でしか分けられない。
     [Fact]
     public async Task 定期処理は呼び出し側の取り消しを隔離に畳まず伝える()
     {
@@ -334,7 +337,7 @@ public class DeletionPropagationTests(TestWebApplicationFactory factory)
         {
             if (uri != firstUri) return null;
             stopping.Cancel();
-            return new OperationCanceledException(stopping.Token);
+            return new TaskCanceledException("注入した呼び出し側の取り消し", null, stopping.Token);
         };
         try
         {

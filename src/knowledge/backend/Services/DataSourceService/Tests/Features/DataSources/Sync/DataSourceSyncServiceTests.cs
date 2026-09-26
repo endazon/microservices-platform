@@ -341,17 +341,23 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
 
     // 対照 (#1604): 呼び出し側の ct による取り消し（停止要求・要求の打ち切り）は従前どおり外へ出す（失敗へ畳まない）。
     // これが無いと、上の 2 件は「取り消しを何でも失敗へ畳む実装」でも緑になる。
-    [Fact]
-    public async Task Sync_CallerCancellation_Propagates()
+    // ［#1622］取り消しは **コネクタの HttpClient が表す形** —— 呼び出し側の token を持つ `TaskCanceledException` —— で起こし、
+    // 探索と 1 件の取得の両方の捕捉に置く。素の `OperationCanceledException`（`ct.ThrowIfCancellationRequested()`）で起こしていた間は、
+    // 絞り込みを「`TaskCanceledException` なら時間切れ」と**型で**判定する変異（`|| ex is TaskCanceledException`）が生き残り、
+    // 取得の捕捉には対照そのものが無かった（#1619 の監査の指摘を #1604 の対照へ広げた）。
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Sync_CallerCancellation_Propagates(bool onDiscover)
     {
         using var scope = factory.Services.CreateScope();
         using var cts = new CancellationTokenSource();
-        var svc = BuildService(scope, new CancellingConnector(cts));
+        var svc = BuildService(scope, new CancellingConnector(cts, onDiscover));
         var source = DataSource.Create("stopping", "filesystem", "");
 
         var act = async () => await svc.SyncAsync(source, cts.Token);
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        await act.Should().ThrowAsync<TaskCanceledException>("呼び出し側の取り消しは失敗へ畳まず、そのまま外へ出す");
         source.ConsecutiveFailureCount.Should().Be(0, "停止要求はソースの失敗ではない");
     }
 
@@ -423,18 +429,31 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
                 : Task.FromResult(new RawContent([1], "text/markdown"));
     }
 
-    // 探索の最中に呼び出し側の取り消しを立て、その ct で取り消しを投げるコネクタ（停止要求を模す）。
-    private sealed class CancellingConnector(CancellationTokenSource caller) : IDataSourceConnector
+    // 探索（または 1 件目の取得）の最中に呼び出し側の取り消しを立て、その ct を持つ `TaskCanceledException` を投げるコネクタ
+    // （停止要求を模す。HttpClient は呼び出し側の取り消しをこの形で表す —— #1622）。
+    private sealed class CancellingConnector(CancellationTokenSource caller, bool onDiscover) : IDataSourceConnector
     {
         public string SourceType => "filesystem";
         public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, DateTimeOffset? since, CancellationToken ct)
+            => onDiscover
+                ? throw Cancel(ct)
+                : Task.FromResult<IReadOnlyList<SourceItem>>(
+                [
+                    new SourceItem("/x/a.md", DateTimeOffset.UtcNow, 1),
+                    new SourceItem("/x/b.md", DateTimeOffset.UtcNow, 1),
+                ]);
+        public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
+            => item.Path == "/x/a.md"
+                ? throw Cancel(ct)
+                : throw new InvalidOperationException("呼び出し側の取り消しの後に次の件の取得へ進んだ");
+
+        private TaskCanceledException Cancel(CancellationToken ct)
         {
             caller.Cancel();
-            ct.ThrowIfCancellationRequested();
-            throw new InvalidOperationException("呼び出し側の取り消しが ct に届いていない（試験の前提の誤り）");
+            if (!ct.IsCancellationRequested)
+                throw new InvalidOperationException("呼び出し側の取り消しが ct に届いていない（試験の前提の誤り）");
+            return new TaskCanceledException("A task was canceled.", null, ct);
         }
-        public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
-            => throw new NotSupportedException();
     }
 
     // 2 件を返し、両方に同じ更新者（または null）を載せるスタブ。

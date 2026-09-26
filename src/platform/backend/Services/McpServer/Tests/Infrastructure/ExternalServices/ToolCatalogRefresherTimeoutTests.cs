@@ -64,6 +64,35 @@ public sealed class ToolCatalogRefresherTimeoutTests
             "拒否として処理されている（時間切れに化けていない）"));
     }
 
+    // 🔴 対照 (#1604)・［#1622］: 呼び出し側の ct による取り消し（停止要求）は、REST の収集器が「申告なし」へ畳まず外へ出す。
+    // 本物の HttpClient（期限 30 秒）で何も返さない 127.0.0.1 の待受へ収集し、呼び出し側の ct を 300 ミリ秒で取り消す。HttpClient はこれを
+    // **呼び出し側の token を持つ `TaskCanceledException`**（時間切れと同じ型）で表す —— 時間切れと停止要求は型では分けられず、ct でしか分けられない。
+    // 絞り込みを「`TaskCanceledException` なら時間切れ」と型で判定する変異（`|| ex is TaskCanceledException`）はこの試験で赤になる
+    // （上の応答しない宛先の試験は時間切れの側しか見ないので、その変異の下でも緑である）。
+    [Fact]
+    public async Task 呼び出し側の取り消しは申告なしへ畳まず外へ出す()
+    {
+        using var peer = SilentPeer.Start();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(RestTarget(peer.Port, timeoutSeconds: 30))
+            .Build();
+        var logs = new RecordingLoggerProvider();
+        using var sp = new ServiceCollection()
+            .AddLogging(b => b.AddProvider(logs))
+            .AddSingleton<IConfiguration>(configuration)
+            .AddMcpToolDeclarationSources(configuration)
+            .BuildServiceProvider();
+        using var caller = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        caller.CancelAfter(TimeSpan.FromMilliseconds(300));
+
+        var act = async () => await sp.GetRequiredService<IToolDeclarationSource>().CollectAsync(caller.Token);
+
+        (await act.Should().ThrowAsync<TaskCanceledException>("呼び出し側の取り消しは申告なしへ畳まず、そのまま外へ出す"))
+            .Which.CancellationToken.Should().Be(caller.Token, "前提: HttpClient は呼び出し側の取り消しを呼び出し側の token で表す");
+        logs.Exceptions(typeof(HttpToolDeclarationSource).FullName!, LogLevel.Warning)
+            .Should().BeEmpty("停止要求を収集の失敗（申告なし）として記録していない");
+    }
+
     // 🔴 #1604: 収集器の内側で畳み損ねた取り消し（停止要求ではない）が周期の捕捉まで届いても、ホストは止まらず次の周期へ進む。
     // REST の収集器が時間切れを畳む限り、周期の捕捉の絞り込みは上の試験からは見えない（その変異はこの試験でだけ赤になる）。
     [Fact]
