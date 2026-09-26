@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [SC-13, SC-15, SC-16, UC-05, FR-05]
 adrs: [ADR-0026, ADR-0078, ADR-0094, ADR-0113]
-iadrs: [IADR-0197, IADR-0261, IADR-0347, IADR-0427, IADR-0432, IADR-0468]
+iadrs: [IADR-0197, IADR-0261, IADR-0347, IADR-0427, IADR-0432, IADR-0470]
 specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260911_issue-1245_login-existence-disclosure, 20260911_issue-1410_reset-timing-floor, 20260926_1541_timing-rank-sum-test]
 issues: [#438, #1245, #1410, #1541]
 -->
