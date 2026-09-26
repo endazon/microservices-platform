@@ -1,9 +1,12 @@
+using System.Security.Claims;
 using Grpc.Net.Client;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Grpc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 using Pb = Knowledge.Contracts.Grpc.Document.V1;
 
 namespace Knowledge.Bff.Endpoints.Documents;
@@ -28,9 +31,12 @@ namespace Knowledge.Bff.Endpoints.Documents;
 //   （枝を新設せず、既存の枝の入口を広げる）。
 //
 // 🔴 **利用者の資格情報は載せない**（[[IADR-0379]] 決定 4）。載るのは BFF 自身の s2s トークンだけである。
-// これが成立するのは、**この 4 口が現状も利用者の資格情報を運んでいない**からである ——
-// ABAC の実施点は `BffScopeResolver` ＋ `IsManageable` であり（[[IADR-0041]] / [[IADR-0045]]）、
-// 呼び出し先の読み取り group はロールで塞いでいない。**移行で判定の位置を動かしていない。**
+//
+// ［2026-09-27 更新 / #1614］🔴 **利用者文脈は本文で運ぶ**（計画 ADR-0119 決定 3・ADR-0086 決定 1）。
+// 後段は個人資料を所有者と共有先の利用者にだけ返すようになったので、利用者を名指さずに呼ぶと
+// **BFF 自身（機械の主体）として読まれ、所有者が自分の個人資料を SC-03 で開けなくなる**。
+// 呼び出し元が機械（Bearer の無人主体）のときは**載せない**（BFF 自身の機械の主体として読まれ、個人資料は返らない）。
+// 組織文書の ABAC の実施点は引き続き `BffScopeResolver` ＋ `IsManageable` / `IsReadable` である（#1615 で後段にも入る）。
 public sealed class DocumentReadGrpcClient(Pb.DocumentRead.DocumentReadClient client)
 {
     /// <summary>`Services:DocumentServiceGrpc`（h2c のアドレス。例: http://document-service:8081）。</summary>
@@ -40,17 +46,18 @@ public sealed class DocumentReadGrpcClient(Pb.DocumentRead.DocumentReadClient cl
     public const string ChannelKey = "DocumentServiceGrpc";
 
     /// <summary>FR-06, UC-03: 文書の一覧（更新の新しい順）。引けなければ例外（呼び出し元が畳む）。</summary>
-    public async Task<List<DocumentDto>> ListAsync(CancellationToken ct)
+    public async Task<List<DocumentDto>> ListAsync(ClaimsPrincipal user, CancellationToken ct)
     {
-        var resp = await client.ListDocumentsAsync(new Pb.ListDocumentsRequest(), cancellationToken: ct);
+        var resp = await client.ListDocumentsAsync(
+            new Pb.ListDocumentsRequest { User = ToUserContext(user) }, cancellationToken: ct);
         return resp.Documents.Select(DocumentReadGrpcMapping.ToDto).ToList();
     }
 
     /// <summary>FR-06, UC-03: 文書 1 件。**台帳に無ければ <c>null</c>**（REST の 404 と同値）。</summary>
-    public async Task<DocumentDto?> GetAsync(Guid id, CancellationToken ct)
+    public async Task<DocumentDto?> GetAsync(ClaimsPrincipal user, Guid id, CancellationToken ct)
     {
         var resp = await client.GetDocumentAsync(
-            new Pb.GetDocumentRequest { Id = id.ToString("D") }, cancellationToken: ct);
+            new Pb.GetDocumentRequest { Id = id.ToString("D"), User = ToUserContext(user) }, cancellationToken: ct);
         return resp.Found ? DocumentReadGrpcMapping.ToDto(resp.Document) : null;
     }
 
@@ -58,20 +65,38 @@ public sealed class DocumentReadGrpcClient(Pb.DocumentRead.DocumentReadClient cl
     /// FR-06, UC-03: 版履歴。**文書そのものが無ければ <c>null</c>**（REST の 404 と同値）、
     /// 版が 1 件も無いだけなら**空リスト**（REST の 200 `[]` と同値）。この 2 つは別の事実である。
     /// </summary>
-    public async Task<List<DocumentVersionDto>?> ListVersionsAsync(Guid id, CancellationToken ct)
+    public async Task<List<DocumentVersionDto>?> ListVersionsAsync(ClaimsPrincipal user, Guid id, CancellationToken ct)
     {
         var resp = await client.ListVersionsAsync(
-            new Pb.ListVersionsRequest { DocumentId = id.ToString("D") }, cancellationToken: ct);
+            new Pb.ListVersionsRequest { DocumentId = id.ToString("D"), User = ToUserContext(user) },
+            cancellationToken: ct);
         return resp.Found ? resp.Versions.Select(DocumentReadGrpcMapping.ToDto).ToList() : null;
     }
 
     /// <summary>FR-06, UC-03, SC-03: 特定版。**無ければ <c>null</c>**（REST の 404 と同値）。</summary>
-    public async Task<DocumentVersionDto?> GetVersionAsync(Guid id, int version, CancellationToken ct)
+    public async Task<DocumentVersionDto?> GetVersionAsync(ClaimsPrincipal user, Guid id, int version, CancellationToken ct)
     {
         var resp = await client.GetVersionAsync(
-            new Pb.GetVersionRequest { DocumentId = id.ToString("D"), Version = version },
+            new Pb.GetVersionRequest { DocumentId = id.ToString("D"), Version = version, User = ToUserContext(user) },
             cancellationToken: ct);
         return resp.Found ? DocumentReadGrpcMapping.ToDto(resp.Snapshot) : null;
+    }
+
+    // FR-19, NFR-09, 計画 ADR-0119 決定 3, ADR-0086 決定 1 (#1614): 読み取りの主体を運ぶ利用者文脈。
+    // **載せるのは判定の入力であって判定結果ではない。** 属性の抽出はプラットフォーム唯一の点へ委譲する
+    // （`AttributeValuesGrpcClient.ToUserContext` と同じ形。キーをここで列挙しない）。
+    //
+    // 🔴 **呼び出し元が機械・名前の無い主体なら null（載せない）。** 載せない要求は後段で BFF 自身の
+    //   機械の主体として読まれる。空の `user_id` を載せると後段は INVALID_ARGUMENT を返す（配線誤りを畳まない）。
+    internal static Pb.UserContext? ToUserContext(ClaimsPrincipal user)
+    {
+        if (MachinePrincipal.IsMachine(user) || string.IsNullOrWhiteSpace(user.Identity?.Name))
+            return null;
+
+        var context = new Pb.UserContext { UserId = user.Identity!.Name!, Action = BffScopeAction.Read };
+        foreach (var (key, value) in BffScopeResolver.ExtractUserAttributes(user))
+            context.UserAttributes[key] = value;
+        return context;
     }
 }
 

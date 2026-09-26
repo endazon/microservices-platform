@@ -13,9 +13,10 @@ namespace DocumentService.Features.Documents.ListPage;
 // 「全件・同じ並び」を前提にしている。絞り込みはこの別の口にだけ置く（gRPC 面には足さない ——
 // 呼び出し元が居ない。IADR-0401 決定 2 と同じ作法）。
 //
-// 認可: **認証を要する**（合成点の `pageRead` 群）。既存の `GET /documents` は認証すら要らないが、
-// 新しい口は狭い側で開ける。集合の性質（`GET /documents` の部分集合・個人資料を返さない）は
-// `DocumentPageQuery` の注記を参照。
+// 認可: **認証を要する**（合成点の `read` 群。［2026-09-27 / #1614］読み取りの 5 口が同じ群になった）。
+// 集合の性質（`GET /documents` の部分集合・個人資料を主体に依らず返さない）は `DocumentPageQuery` の注記を参照。
+// 🔴 個人資料を主体に依らず外すので、`DocumentReadAccess` を通さなくても「他人の個人資料を返さない」は満たす
+//   （所有者にも返さない＝より狭い）。#1615 で内容の ABAC が入るときは、この口も `DocumentReadAccess` を通す。
 internal static class ListDocumentPageEndpoint
 {
     internal static void Map(RouteGroupBuilder pageRead)

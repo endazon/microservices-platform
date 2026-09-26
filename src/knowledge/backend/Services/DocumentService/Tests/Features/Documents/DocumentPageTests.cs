@@ -93,8 +93,10 @@ public class DocumentPageTests(TestWebApplicationFactory factory)
 
         var client = ClientAs("ast-kb-writer", "platform-operator");
         var all = await ListAllAsync(client);
-        // 陽性対照: 個人資料も別プロジェクトの文書も、既存の一覧には居る（この口が外していることの前提）。
-        all.Select(d => d.Id).Should().Contain([a.Id, b.Id, other.Id, note.Id]);
+        // 陽性対照: 別プロジェクトの文書は既存の一覧には居る。個人資料は所有者の一覧に居る
+        // （［2026-09-27 / #1614］他人の個人資料は `GET /documents` からも除かれる。計画 ADR-0119 決定 3）。
+        all.Select(d => d.Id).Should().Contain([a.Id, b.Id, other.Id]);
+        (await ListAllAsync(ClientAs("alice"))).Select(d => d.Id).Should().Contain(note.Id);
 
         var page = await PageAsync(client, $"attr.project={project}");
 
@@ -135,7 +137,8 @@ public class DocumentPageTests(TestWebApplicationFactory factory)
         var org = await SeedAsync("陽性対照の組織文書", Org(project));
 
         var client = ClientAs("ast-kb-writer", "platform-operator");
-        (await ListAllAsync(client)).Select(d => d.Id).Should().Contain(note.Id, "陽性対照: 既存の一覧には居る");
+        // 陽性対照: 所有者の一覧には居る（#1614 以降、他人の一覧には居ない）。
+        (await ListAllAsync(ClientAs("alice"))).Select(d => d.Id).Should().Contain(note.Id, "陽性対照: 所有者の一覧には居る");
 
         var page = await PageAsync(client, $"attr.project={project}");
         page.Items.Select(d => d.Id).Should().BeEquivalentTo([org.Id], "組織文書は返り、個人資料は返らない");
@@ -338,10 +341,11 @@ public class DocumentPageTests(TestWebApplicationFactory factory)
 
     // ── 認可 ─────────────────────────────────────────────────────────────
 
-    // FR-06, IADR-0044 (#1575): 新しい口は**認証を要する**（既存の `GET /documents` は認証を要らない）。
-    // `TestAuthHandler` は常に認証するため 401 は観測できない —— 端点の認可メタデータで固定する。
+    // FR-06, IADR-0044 (#1575): 新しい口は**認証を要する**。
+    // ［2026-09-27 / #1614］既存の読み取り 4 口も認証を要するようになった（計画 ADR-0119 決定 3）。
+    // 本物の JwtBearer での 401 は `DocumentReadAuthenticationTests` が測る。ここは端点の認可メタデータで固定する。
     [Fact]
-    public void 新しい口は認証を要求し_既存の一覧は従来どおり要求しない()
+    public void 読み取りの5口はすべて認証を要求する()
     {
         var endpoints = factory.Services.GetRequiredService<EndpointDataSource>().Endpoints
             .OfType<RouteEndpoint>()
@@ -351,8 +355,15 @@ public class DocumentPageTests(TestWebApplicationFactory factory)
         var page = endpoints.Single(e => e.RoutePattern.RawText == "/documents/page");
         page.Metadata.GetOrderedMetadata<IAuthorizeData>().Should().NotBeEmpty();
 
-        // 陽性対照: 既存の一覧は認証を要らない（ここを塞ぐと SC-03 の読み取りの前提が変わる。本作業の対象外）。
-        var list = endpoints.Single(e => e.RoutePattern.RawText == "/documents/");
-        list.Metadata.GetOrderedMetadata<IAuthorizeData>().Should().BeEmpty();
+        foreach (var route in new[]
+                 {
+                     "/documents/", "/documents/{id:guid}", "/documents/{id:guid}/versions",
+                     "/documents/{id:guid}/versions/{version:int}",
+                 })
+        {
+            endpoints.Single(e => e.RoutePattern.RawText == route)
+                .Metadata.GetOrderedMetadata<IAuthorizeData>().Should().NotBeEmpty(route);
+        }
+
     }
 }

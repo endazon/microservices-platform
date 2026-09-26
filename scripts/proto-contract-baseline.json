@@ -219,6 +219,11 @@
               "number": 1,
               "type": "string",
               "label": "singular"
+            },
+            "user": {
+              "number": 2,
+              "type": "UserContext",
+              "label": "singular"
             }
           },
           "reserved": {
@@ -251,6 +256,11 @@
               "type": "string",
               "label": "singular"
             },
+            "user": {
+              "number": 3,
+              "type": "UserContext",
+              "label": "singular"
+            },
             "version": {
               "number": 2,
               "type": "int32",
@@ -281,7 +291,13 @@
           }
         },
         "ListDocumentsRequest": {
-          "fields": {},
+          "fields": {
+            "user": {
+              "number": 1,
+              "type": "UserContext",
+              "label": "singular"
+            }
+          },
           "reserved": {
             "numbers": [],
             "names": []
@@ -306,6 +322,11 @@
               "number": 1,
               "type": "string",
               "label": "singular"
+            },
+            "user": {
+              "number": 2,
+              "type": "UserContext",
+              "label": "singular"
             }
           },
           "reserved": {
@@ -324,6 +345,29 @@
               "number": 2,
               "type": "DocumentVersionSnapshot",
               "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "UserContext": {
+          "fields": {
+            "action": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            },
+            "user_attributes": {
+              "number": 2,
+              "type": "map<string,string>",
+              "label": "map"
+            },
+            "user_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
             }
           },
           "reserved": {

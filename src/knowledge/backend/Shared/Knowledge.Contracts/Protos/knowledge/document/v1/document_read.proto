@@ -1,6 +1,6 @@
 // FR-05, FR-06, FR-09, FR-19, NFR-09, NFR-16, UC-03, SC-03, SC-05, ADR-0002, ADR-0004, ADR-0029,
 // ADR-0036, ADR-0054, ADR-0056, ADR-0065, ADR-0070, ADR-0075, IADR-0012, IADR-0041, IADR-0045,
-// IADR-0290, IADR-0379, IADR-0388, IADR-0397, IADR-0400, IADR-0401, IADR-0402 (#1255):
+// IADR-0290, IADR-0379, IADR-0388, IADR-0397, IADR-0400, IADR-0401, IADR-0402 (#1255), ADR-0119 (#1614):
 // 文書台帳の **読み取り 4 口**（REST `GET /documents`・`/documents/{id}`・`/documents/{id}/versions`・
 // `/documents/{id}/versions/{version}` と同じ意味論）の gRPC 契約。
 //
@@ -11,11 +11,11 @@
 // ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
 //   利用者トークンは載せない。この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。
 //
-// ■ 🔴 **この面は認可の判定を持たない。** ABAC の実施点は呼び出し元（BFF）の
-//   `BffScopeResolver` ＋ `IsManageable`（属性合致 ∧ 個人資料でない）ただ 1 つであり（IADR-0041 /
-//   IADR-0045、ADR-0036 D-08 / ADR-0054）、**移行で位置を動かさない**。REST の読み取り 4 口も
-//   group に `RequireAuthorization()` を持たず（SC-03 の一般利用者の閲覧のため）、
-//   本 rpc へ移すのは**権限が狭まる向き**である（AuthzScope/Resolve を移したときと同じ向き）。
+// ■ ［2026-09-27 更新 / #1614］**個人資料の除外はこの面の中でも行う**（ADR-0119 決定 3）。
+//   主体は要求の `user`（在れば利用者・無ければ呼び出し元サービス自身）であり、個人資料は
+//   所有者と共有先の利用者にだけ返る。読めない文書は一覧から除き、個別は `found=false`（「無い」と区別しない）。
+//   組織文書の内容の ABAC（機密・部門）は引き続き呼び出し元（BFF）の `BffScopeResolver` が実施点である（#1615 で後段にも入る）。
+//   REST の読み取り 5 口も認証を要する（同じ判定を通る）。
 //
 // ■ 🔴 「無い」と「引けなかった」を分ける（IADR-0401 決定 5 と同じ作法）
 //   無いのは**応答**（`found=false`）、引けなかったのは **gRPC status**（UNAVAILABLE 等）。
@@ -92,10 +92,35 @@ message DocumentVersionSnapshot {
   google.protobuf.Timestamp created_at = 8;
 }
 
+// FR-19, NFR-09, ADR-0119 決定 3, ADR-0086 決定 1, ADR-0034 決定 9 (#1614):
+// **読み取りの主体**を運ぶ利用者文脈。**判定結果ではなく判定の入力である。**
+// 🔴 `knowledge.retrieval.v1.UserContext` / `knowledge.graph.v1.UserContext` と**同じ 3 項目**である
+//   （proto は package をまたいで共有しない〔IADR-0379 決定 1〕ので写しになるが、意味は 1 つ）。
+//
+// ■ 在れば、主体は **その利用者**（呼び出し元サービスは利用者の代わりに読んでいる）。
+//   個人資料（`doc_scope=private-note`）は、その利用者が所有者か共有先のときだけ返る。
+// ■ 無ければ、主体は **呼び出し元サービス自身**（機械の主体）。組織文書は返るが、
+//   個人資料は 1 件も返らない（ADR-0034 決定 9）。
+// ■ 🔴 `user_id` が空文字なら INVALID_ARGUMENT —— 「利用者が分からない」を機械の主体へ畳むと、
+//   呼び出し元の配線誤りが「個人資料が見えない」に化けて気付けない（載せないなら message ごと載せない）。
+// ■ `user_attributes` / `action` は現在の判定では読まない（内容の ABAC〔#1615〕が入ったときに
+//   契約を破らずに効かせるため、利用者文脈の 3 項目を欠かさずに運ぶ）。
+message UserContext {
+  // 利用者識別子（preferred_username）。
+  string user_id = 1;
+  // ABAC 判定に用いる利用者属性（1 キー 1 値・集合値キーはカンマ連結。`UserAttributeEncoding`）。
+  map<string, string> user_attributes = 2;
+  // read / analyze / manage / write。この面は read である。
+  string action = 3;
+}
+
 // 一覧に絞り込みは無い（REST も無い）。将来の絞り込みは番号を足して非破壊で入れる。
 // （#1575 の REST `GET /documents/page`〔組織文書の絞り込み・ページング〕は別の口であり、
 //  本 rpc の同値の相手ではない。`GET /documents` は従来どおり絞り込みを持たない。）
-message ListDocumentsRequest {}
+message ListDocumentsRequest {
+  // 読み取りの主体（#1614）。省略時は呼び出し元サービス自身。
+  UserContext user = 1;
+}
 
 message ListDocumentsResponse {
   repeated DocumentSummary documents = 1;
@@ -103,6 +128,8 @@ message ListDocumentsResponse {
 
 message GetDocumentRequest {
   string id = 1;
+  // 読み取りの主体（#1614）。省略時は呼び出し元サービス自身。
+  UserContext user = 2;
 }
 
 message GetDocumentResponse {
@@ -113,6 +140,8 @@ message GetDocumentResponse {
 
 message ListVersionsRequest {
   string document_id = 1;
+  // 読み取りの主体（#1614）。省略時は呼び出し元サービス自身。
+  UserContext user = 2;
 }
 
 message ListVersionsResponse {
@@ -125,6 +154,8 @@ message ListVersionsResponse {
 message GetVersionRequest {
   string document_id = 1;
   int32 version = 2;
+  // 読み取りの主体（#1614）。省略時は呼び出し元サービス自身。
+  UserContext user = 3;
 }
 
 message GetVersionResponse {

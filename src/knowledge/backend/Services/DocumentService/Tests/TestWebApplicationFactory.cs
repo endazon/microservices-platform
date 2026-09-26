@@ -38,6 +38,10 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     // 🔴 **既定は `Enabled`**（本番の縮退と逆。理由はスタブの注記）。
     public StubOwnerAccountDirectory OwnerAccounts { get; } = new();
 
+    // FR-19, 計画 ADR-0119 決定 3 (#1614): 読み取りの許可（グループの共有先の判定）のスタブ。
+    // 🔴 **既定は「読めるものは無い」**（本番の縮退と同じ向き）。
+    public StubDocumentReadScopeSource ReadScopes { get; } = new();
+
     // [[IADR-0474]] (#1532): false にすると差し替えず、`Program.cs` が選んだ実装（未構成なら縮退）のまま走る。
     // **本番の縮退の向きを試験で固定するため**だけに使う。
     protected virtual bool ReplaceOwnerAccountDirectory => true;
@@ -85,6 +89,10 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
                 services.RemoveAll<DocumentService.Domain.Ports.IOwnerAccountDirectory>();
                 services.AddSingleton<DocumentService.Domain.Ports.IOwnerAccountDirectory>(OwnerAccounts);
             }
+
+            // FR-19, #1614: 読み取りの許可の照会をスタブへ差し替える（認可サービスへ繋がずに可視性を測る）。
+            services.RemoveAll<DocumentService.Domain.Ports.IDocumentReadScopeSource>();
+            services.AddSingleton<DocumentService.Domain.Ports.IDocumentReadScopeSource>(ReadScopes);
 
             // MassTransit をテストハーネスへ差し替え
             services.RemoveAll<IBusControl>();
