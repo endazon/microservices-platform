@@ -1,9 +1,9 @@
 <!-- trace:
 ids: [FR-14]
 adrs: [ADR-0030, ADR-0032, ADR-0048]
-iadrs: [IADR-0027, IADR-0056, IADR-0057, IADR-0058, IADR-0059, IADR-0060, IADR-0064, IADR-0065, IADR-0117, IADR-0120, IADR-0121, IADR-0124, IADR-0125, IADR-0228, IADR-0262, IADR-0282, IADR-0331, IADR-0334]
-specs: [20260712_issue-260_dependabot-gitsubmodule, 20260831_issue-1092_planning-submodule-residual-refs, 20260903_issue-1146_template-tests-mirror]
-issues: [#229, #230, #245, #785, #1092, #1146]
+iadrs: [IADR-0027, IADR-0056, IADR-0057, IADR-0058, IADR-0059, IADR-0060, IADR-0064, IADR-0065, IADR-0117, IADR-0120, IADR-0121, IADR-0124, IADR-0125, IADR-0228, IADR-0232, IADR-0262, IADR-0282, IADR-0331, IADR-0334]
+specs: [20260926_issue-1551_submodule-backend-pr-ci, 20260712_issue-260_dependabot-gitsubmodule, 20260831_issue-1092_planning-submodule-residual-refs, 20260903_issue-1146_template-tests-mirror]
+issues: [#229, #230, #245, #785, #1092, #1146, #1551]
 -->
 
 # 追加可変機能ユニットを submodule として組み込む手順
@@ -84,11 +84,19 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
   <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
   ```
 
-- **サービス CI 発見は編集不要**（submodule 運用の実装 ADR）。`ci.yml` の `lint` / `build-and-test` は
-  `src/*/backend/backend.slnx` を**自動発見**して検査・ビルド・テストする。チェックアウト済みのユニットは
-  自動的に対象になる。
-  - ただし submodule は既定の `actions/checkout` では取得されない。**追加ユニットを CI で取得する**には
-    ビルド系ジョブ（`lint` / `build-and-test`）に、checkout 直後の取得ステップを足す。
+- **サービス CI 発見は編集不要**（submodule 運用の実装 ADR）。ただし**本リポジトリの実体のユニットと submodule
+  ユニットとで、PR で試す経路が違う**。
+  - 本リポジトリの実体のユニット（platform / knowledge）: `ci.yml` の `discover-units` が `src/*/backend/backend.slnx`
+    を**自動発見**し、行列 `backend-build` / `backend-format` が全 PR でビルド・単体テスト・整形検査する
+    （集約 check は `build-and-test` / `lint`）。`discover-units` は submodule を取らないので、**submodule ユニットは
+    この行列に入らない**（意図。全 PR の所要・整形検査・カバレッジ集計に他プロジェクトを混ぜない）。
+  - submodule ユニット: `.gitmodules` の `src/<unit>` から導出し、**gitlink・`.gitmodules`・`src/Directory.*`・
+    `global.json`・`ci.yml` を触る PR でだけ** `submodule-backend-build` が本リポジトリの構成（`src/Directory.Build.props`
+    を import-chain で継承した形）で restore → build → 単体テスト（`Category!=Integration`）する。結果は集約 check
+    `build-and-test` が拾う。整形検査は submodule 自身の CI が持つ。統合テストを含む全量は `integration.yml`
+    （develop への push・日次）が全ユニットを自動発見して回す。
+  - submodule は既定の `actions/checkout` では取得されない。**ユニットの実体が要るジョブ**（上の各ジョブ・
+    `integration.yml`）は、checkout 直後に次の取得ステップを持つ。
     - **注意（checkout の `submodules:` オプションは使わない）**: `submodules: recursive`/`true` には
       **取得対象を選ぶ手段が無い**。代わりに **`src/*` のユニット submodule のみを非再帰で init** する。
       理由は 2 つあり、いずれも現在の構成でそのまま効く（submodule 取得の実装判断による）。
@@ -114,7 +122,10 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
 
     未取得の間はユニットのディレクトリが空となり、自動発見の glob に現れず**ビルド対象外**になる
     （＝取りこぼしに注意。取得の有効化が組み込みの前提）。実例: `ai-stock-trading`（public）は
-    上記 `src/*` 非再帰 init で `lint` / `build-and-test` に取り込まれる（Issue #245。public ユニットはトークン不要）。
+    上記 `src/*` 非再帰 init で取得され、PR では `submodule-backend-build`（上の条件の PR だけ）、
+    マージ後は `integration.yml` で試される（public ユニットはトークン不要）。
+    従前ここは「`lint` / `build-and-test` に取り込まれる」と書いていたが、行列を決める `discover-units` が
+    submodule を取らないため、実際には取り込まれていなかった。
 
 ## 4. フロントエンドを組み込む（合成点 1 行）
 

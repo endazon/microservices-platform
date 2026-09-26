@@ -8,7 +8,7 @@ related_ids:
   - IADR-0123
 author: claude
 created: 2026-08-21
-updated: 2026-08-22
+updated: 2026-09-26
 plan_refs:
   - planning:docs/ai-implementation-workflow-guide.md
   - planning:projects/microservices-platform/07_adr/ADR-0048_impl-docs-restructure.md (決定 6・kit との乖離は受容する)
@@ -422,3 +422,20 @@ PR 時点で SAST の指摘が一切出なくなる。**`paths:` を持つため
 - **`[Trait]` の付け忘れは fail-safe に倒れる**（付け忘れたテストは PR に残る）。
   ただし「外したはずのコンテナ起動が PR に残る」ため**速くならない**。
   **「速くならない」を「効果が無かった」と読まず、「除外できていない」を疑うこと。**
+
+> **［2026-09-26 追記 / #1551］submodule ユニットのバックエンドの単体テストを、合成を変え得る PR でだけ PR へ戻す。**
+>
+> - 事実（#1492 の監査）: `discover-units` は submodule を取らないので、決定 2 の行列は platform と knowledge だけになる。
+>   AST は AST の `Directory.Build.props` が本リポジトリの `src/Directory.Build.props` を import-chain で継承する形（合成）で
+>   建つが、その構成でのテストは `integration.yml`（決定 1 の回収先）でしか走らず、**AST のテストが本リポジトリの構成でだけ
+>   落ちる場合、PR の段階では見えなかった**。これは決定 1 の表に載っていない「落としたもの」であり、意図して外したものではない。
+> - 決定: `ci.yml` に `submodule-changes`（差分判定）と `submodule-backend-build`（行列: `.gitmodules` の `src/<unit>` から導出）
+>   を足す。走らせるのは **gitlink・`.gitmodules`・`src/Directory.*`・`global.json`・`ci.yml` を触る PR だけ**で、
+>   手順は `integration.yml` と同じ（`src/*` の非再帰取得・NuGet キャッシュ・`setup-dotnet`・リポジトリ直下からの
+>   restore → build（Release）→ test）に `--filter "Category!=Integration"` を足したもの。カバレッジは集めない。
+>   結果は集約ジョブ `build-and-test` が拾う（skipped は合格。`images.yml` の `image-build` と同じ形）。**必須 check 名は変えない**（決定 2）。
+> - 決定 1 の判断基準との関係: 速くなるが精度が落ちない手段ではなく、**精度を戻して待ち時間を払う**変更である。払うのは
+>   合成を変え得る PR だけに限る（それ以外の PR は差分判定の数秒だけ）。`discover-units` に submodule を取らせる案は、
+>   全 PR で AST の脚（integration の実測で AST だけ約 6 分）を払い、`backend-format` とカバレッジ集計にも AST が混ざるため採らない。
+> - 回収先は変わらない: 統合テスト（Docker）込みの全量は引き続き `integration.yml` が回す。
+>   作業仕様書: `.ai-context/specs/20260926_issue-1551_submodule-backend-pr-ci.md`

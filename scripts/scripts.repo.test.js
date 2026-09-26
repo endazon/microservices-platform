@@ -71,6 +71,161 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #1551: submodule ユニットのバックエンドを、PR で MSP の構成（合成）で建てて単体テストする -----------------
+  //
+  // discover-units は submodule を取らないので、行列は本リポジトリの実体のユニットだけになる。AST を本リポジトリの
+  // src/Directory.Build.props を継承した形で試す経路は、従前マージ後の integration.yml しか無かった（#1492 の監査）。
+  // ここで固定するのは**配線**である（ジョブが在る・集約ジョブが拾う・skipped だけを合格にする・差分判定が合成を
+  // 変え得るパスを見る・ユニット名を書かない）。ビルドとテストそのものは CI の当該ジョブが走らせる。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const ci = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'ci.yml'), 'utf8').replace(/\r\n/g, '\n');
+    const job = (id) => {
+      const m = new RegExp(`^  ${id}:\\n([\\s\\S]*?)(?=^  [a-z][a-z0-9-]*:\\n|(?![\\s\\S]))`, 'm').exec(ci);
+      return m ? m[1] : null;
+    };
+    const code = (text) => text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+
+    ok('#1551: ci.yml に submodule-changes と submodule-backend-build が在る', () => {
+      assert.ok(job('submodule-changes'), 'submodule-changes が無い');
+      assert.ok(job('submodule-backend-build'), 'submodule-backend-build が無い');
+    });
+
+    ok('#1551: 集約ジョブ build-and-test が 2 つを needs に持ち、skipped だけを合格として扱う', () => {
+      const bt = job('build-and-test');
+      assert.ok(bt, 'build-and-test が無い（必須 check 名）');
+      const needs = /^    needs:\s*\[([^\]]*)\]/m.exec(bt);
+      assert.ok(needs, 'build-and-test の needs を読めない');
+      const list = needs[1].split(',').map((s) => s.trim());
+      for (const n of ['discover-units', 'backend-build', 'submodule-changes', 'submodule-backend-build']) {
+        assert.ok(list.includes(n), `build-and-test の needs に ${n} が無い（${list.join(', ')}）`);
+      }
+      assert.match(bt, /^    if: always\(\)$/m, 'build-and-test に if: always() が無い（前段の失敗で集約が走らない）');
+      const body = code(bt);
+      assert.ok(body.includes('needs.submodule-backend-build.result'), '集約が submodule-backend-build の結果を見ていない');
+      assert.ok(body.includes('needs.submodule-changes.result'), '集約が差分判定の結果を見ていない');
+      // skipped（合成を変え得る差分なし）と success だけを通し、それ以外（failure / cancelled）は落とす。
+      assert.match(body, /case "\$SUBMODULE_BUILD_RESULT" in[\s\S]*?success\)[\s\S]*?skipped\)[\s\S]*?\*\)[\s\S]*?exit 1/,
+        'submodule-backend-build の結果の扱いが「success / skipped は合格・それ以外は失敗」になっていない');
+    });
+
+    ok('#1551: 差分判定は gitlink・.gitmodules・共通 props・global.json・ci.yml を見て、ユニット名を書かない', () => {
+      const sc = code(job('submodule-changes'));
+      for (const p of ['^\\.gitmodules$', '^global\\.json$', '^src/Directory\\.[^/]+$', '^\\.github/workflows/ci\\.yml$']) {
+        assert.ok(sc.includes(p), `差分判定が ${p} を見ていない`);
+      }
+      assert.match(sc, /\^src\/\$\(printf/, 'gitlink（src/<unit>）を .gitmodules から導出したユニットで組み立てていない');
+      assert.match(sc, /git config --file \.gitmodules --get-regexp/, 'ユニットを .gitmodules から導出していない');
+      assert.ok(!/ai-stock-trading/.test(sc), '差分判定にユニット名が書かれている（次にユニットが増えたとき静かに外れる）');
+      assert.match(sc, /fetch-depth: 0/, 'origin/<base>...HEAD を解決できる深さで取っていない');
+    });
+
+    ok('#1551: submodule-backend-build は integration.yml と同じ合成で建て、Docker を要るテストだけを外す', () => {
+      const sb = job('submodule-backend-build');
+      assert.match(sb, /if: needs\.submodule-changes\.outputs\.build == 'true'/, '差分判定の結果で走らせていない');
+      assert.match(sb, /unit: \$\{\{ fromJSON\(needs\.submodule-changes\.outputs\.units\) \}\}/, '行列を差分判定の導出から取っていない');
+      const body = code(sb);
+      assert.ok(body.includes("awk '$2 ~ /^src\\// { print $2 }'") && body.includes('git submodule update --init'),
+        'integration.yml と同じ submodule 取得（src/* のみ・非再帰）をしていない');
+      assert.ok(body.includes('actions/cache@') && body.includes('~/.nuget/packages'), 'NuGet パッケージをキャッシュしていない');
+      assert.ok(body.includes('src/*/Directory.Packages.props'), 'submodule 自身の CPM 宣言をキャッシュのキーへ入れていない');
+      assert.match(body, /dotnet restore "\$slnx"[\s\S]*dotnet build "\$slnx" --no-restore --configuration Release[\s\S]*dotnet test "\$slnx" --no-build --configuration Release/,
+        'restore → build（Release）→ test の順になっていない');
+      assert.ok(body.includes('--filter "Category!=Integration"'), 'Docker を要る統合テストを外していない（外さないと PR でコンテナを起こす）');
+      assert.ok(!/^\s*cd\s/m.test(body), 'submodule の中へ cd している（submodule 自身の global.json が効き、MSP の構成ではなくなる）');
+    });
+
+    ok('#1551: 新しい 2 ジョブは読むだけの権限で走り、checkout の資格情報を残さない（監査 N1）', () => {
+      for (const id of ['submodule-changes', 'submodule-backend-build']) {
+        const text = job(id);
+        assert.match(text, /^    permissions:\n      contents: read\n/m, `${id} が permissions: { contents: read } を持たない（既定は書き込み可）`);
+        const checkouts = text.match(/uses: actions\/checkout@[^\n]*(?:\n {8}[^\n]*)*/g) || [];
+        assert.ok(checkouts.length > 0, `${id} に checkout が無い（走査が壊れている）`);
+        for (const c of checkouts) assert.match(c, /persist-credentials: false/, `${id} の checkout が資格情報を作業ツリーへ残す`);
+      }
+    });
+
+    // 差分判定の step を切り出して、git と jq をスタブにして実際に走らせる（監査 N2）。
+    // 旧形 `printf … | grep -Eq` は pipefail の下で、大きな差分の先頭で一致すると書き手が SIGPIPE（141）で落ち、
+    // 「一致したのに build=false」になった。ここは**振る舞い**で固定する（文字列の検査だけでは同型の書き換えを止められない）。
+    const filterScript = () => {
+      const lines = job('submodule-changes').split('\n');
+      const at = lines.findIndex((l) => /^\s+id: filter$/.test(l));
+      const runAt = lines.findIndex((l, i) => i > at && /^\s+run: \|$/.test(l));
+      assert.ok(at >= 0 && runAt > at, '差分判定の run: を切り出せない（形が変わった）');
+      const indent = /^\s*/.exec(lines[runAt])[0].length;
+      const body = [];
+      for (let i = runAt + 1; i < lines.length; i += 1) {
+        if (lines[i].trim() !== '' && /^\s*/.exec(lines[i])[0].length <= indent) break;
+        body.push(lines[i].slice(indent + 2));
+      }
+      return body.join('\n');
+    };
+    const runFilter = (diffLines) => {
+      const os = require('os');
+      const { spawnSync } = require('child_process');
+      const work = fs.mkdtempSync(path.join(os.tmpdir(), 'msp-1551-filter-'));
+      try {
+        const bin = path.join(work, 'bin');
+        fs.mkdirSync(bin);
+        fs.writeFileSync(path.join(work, 'diff.txt'), diffLines.join('\n') + '\n');
+        fs.writeFileSync(path.join(bin, 'git'), [
+          '#!/usr/bin/env bash',
+          'case "$1" in',
+          '  config) echo "submodule.src/ai-stock-trading.path src/ai-stock-trading";;',
+          '  rev-parse) exit 0;;',
+          '  diff) cat "$FAKE_DIFF";;',
+          '  *) exit 99;;',
+          'esac',
+          '',
+        ].join('\n'));
+        fs.writeFileSync(path.join(bin, 'jq'), '#!/usr/bin/env bash\ncat >/dev/null\necho \'["ai-stock-trading"]\'\n');
+        for (const t of ['git', 'jq']) fs.chmodSync(path.join(bin, t), 0o755);
+        const script = path.join(work, 'filter.sh');
+        fs.writeFileSync(script, filterScript());
+        const out = path.join(work, 'out.txt');
+        fs.writeFileSync(out, '');
+        // GitHub の `shell: bash` と同じく -e -o pipefail で走らせる（step 自身も set -euo pipefail を持つ）。
+        const r = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', script.split(path.sep).join('/')], {
+          cwd: work,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            PATH: bin + path.delimiter + (process.env.PATH || process.env.Path || ''),
+            GITHUB_OUTPUT: out,
+            BASE_REF: 'develop',
+            EVENT_NAME: 'pull_request',
+            FAKE_DIFF: path.join(work, 'diff.txt'),
+          },
+          maxBuffer: 64 * 1024 * 1024,
+        });
+        assert.strictEqual(r.status, 0, `差分判定の step が exit ${r.status}: ${r.stderr}`);
+        const m = /^build=(true|false)$/m.exec(fs.readFileSync(out, 'utf8'));
+        assert.ok(m, `build= が出力されない: ${fs.readFileSync(out, 'utf8')}`);
+        return m[1];
+      } finally {
+        fs.rmSync(work, { recursive: true, force: true });
+      }
+    };
+
+    ok('#1551: 差分判定は大きな差分の先頭で一致しても build=true を返す（SIGPIPE で偽に倒れない。監査 N2）', () => {
+      const filler = Array.from({ length: 60000 }, (_, i) => `docs/generated/page-${i}-with-a-long-enough-name-to-fill-the-pipe.md`);
+      assert.strictEqual(runFilter(['src/ai-stock-trading', ...filler]), 'true', 'gitlink が先頭にある大きな差分で build=true にならない');
+      assert.strictEqual(runFilter([...filler, 'src/Directory.Build.props']), 'true', '共通 props が末尾にある大きな差分で build=true にならない');
+      assert.strictEqual(runFilter(filler), 'false', '合成に関係しない大きな差分で build=false にならない');
+      assert.strictEqual(runFilter(['src/ai-stock-trading/backend/x.cs', 'src/ai-stock-tradingX', 'docs/a.md']), 'false',
+        'submodule の中のファイルや似た名前を gitlink と取り違えている');
+    });
+
+    ok('#1551: discover-units は submodule を取らない（submodule ユニットを全 PR の行列へ入れない）', () => {
+      const du = code(job('discover-units'));
+      assert.ok(du, 'discover-units が無い');
+      assert.ok(!du.includes('submodule update'), 'discover-units が submodule を取っている（全 PR で AST の脚と整形検査が生まれる）');
+    });
+  }
+
+
   // --- seed-abac-policies: 冪等性の核（#517 / IADR-0133） ---------------------------
 
   {

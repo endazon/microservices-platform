@@ -1,8 +1,8 @@
 <!-- trace:
 adrs: [ADR-0048]
-iadrs: [IADR-0067, IADR-0180, IADR-0240]
-specs: [20260909_issue-1345-1348_ci-governance-audit-followups]
-issues: [#268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
+iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240]
+specs: [20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups]
+issues: [#1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
 -->
 
 # AI 駆動の実装ワークフロー（Runbook）
@@ -147,7 +147,7 @@ GitHub Actions が report する status check の context は**ジョブ側の�
 
 | 必須にする check 名 | 出所 | 備考 |
 | --- | --- | --- |
-| `build-and-test` | `ci.yml` | ビルドとテスト。**全 PR で起動する** |
+| `build-and-test` | `ci.yml` | ビルドとテスト。**全 PR で起動する**。集約ジョブであり、本リポジトリの実体のユニット（行列 `backend-build`）に加えて、**submodule ユニットを本リポジトリの構成で建てる `submodule-backend-build`** の結果も拾う。後者は gitlink・`.gitmodules`・`src/Directory.*`・`global.json`・`ci.yml` を触る PR でだけ走り、それ以外では skipped（合格として扱う。`images.yml` の `image-build` と同じ形）。check 名は変わらない |
 | `lint` | `ci.yml` | `dotnet format --verify-no-changes` ほか |
 | `commit-messages` | `ci.yml` | 件名規約（スカッシュ前の中間コミット） |
 | `pr-title` | `pr-title.yml` | スカッシュ後件名の唯一の予防線 |

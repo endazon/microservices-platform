@@ -730,6 +730,11 @@ jobs:
   # 導出するため、ここへユニット名を書かない。
   # （**ユニット名をここへ書かないこと。** 書くと次にユニットが増えたとき静かに検査対象から
   # 外れる。deploy-manifests の overlay 名と同じ型の事故である。）
+  #
+  # 🔴 NFR, #1551: **本ジョブは submodule を取らない。したがって行列は本リポジトリの実体のユニット（platform /
+  # knowledge）だけになる**（下の backend-build / backend-format の脚は submodule を取るが、脚の中の取得は行列に効かない）。
+  # これは意図である —— submodule ユニットを全 PR の行列へ入れると所要・整形検査・カバレッジ集計に AST が混ざる。
+  # submodule ユニットは submodule-changes / submodule-backend-build が、合成を変え得る差分のある PR でだけ試す。
   discover-units:
     runs-on: ubuntu-latest
     outputs:
@@ -765,9 +770,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
-      # 既定 checkout は submodule 未取得で、追加ユニットは src/*/backend/backend.slnx 自動発見に現れず
-      # restore/build/test の対象外になる。public ユニットはトークン不要（private ユニットは別途
-      # IADR-0058 型トークンが要る）。詳細は docs/how-to/adding-a-unit-submodule.md。
+      # public ユニットはトークン不要（private ユニットは別途 IADR-0058 型トークンが要る）。詳細は
+      # docs/how-to/adding-a-unit-submodule.md。
+      # 🔴 NFR, #1551: ここで取っても**行列に submodule ユニットの脚は生まれない**（行列を決める discover-units は
+      # 取らない）。ここで取るのは、platform の Platform.Bff が AST の AiStockTrading.Bff.Endpoints を
+      # ProjectReference しているため（合成点）。submodule ユニット自身のテストは submodule-backend-build が持つ。
       - name: Fetch unit submodules (src/*, public, non-recursive)
         run: |
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
@@ -829,6 +836,150 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # ───────────────────────────────────────────────────────────────────────────────
+  # NFR, #1551 / IADR-0232（2026-09-26 追記）: submodule ユニット（現在は ai-stock-trading）のバックエンドを、
+  # **MSP の構成（合成）で**ビルドし単体テストする。
+  #
+  # 🔴 上の discover-units は submodule を取らないので、行列は platform と knowledge だけになる（脚の中の取得は
+  #    行列に効かない）。AST は AST の Directory.Build.props が GetPathOfFileAbove で本リポジトリの
+  #    src/Directory.Build.props を Import する形で建つ（RMG012 / RMG082 の WarningsAsErrors・xUnit1051 の許可リストが届く）。
+  #    その構成でだけ落ちるテストは、従前マージ後の integration.yml まで見えなかった（#1492 の監査）。
+  #
+  # **discover-units に submodule を取らせる案は採らない。** 全 PR で AST の脚が生まれ（所要は integration の実測で
+  # AST だけ 6 分）、backend-format とカバレッジ集計（MSP の床の母集合から AST は除外している）にも入るため。
+  # 代わりに、**合成を変え得る差分がある PR でだけ**走らせる:
+  #   - submodule の gitlink（`src/<unit>`。ユニット名は .gitmodules から導出し、ここへ書かない）と .gitmodules
+  #   - 合成の共通 props（`src/Directory.*`）と、リポジトリ直下から呼ぶ dotnet が読む global.json
+  #   - 本ワークフロー自身
+  # push（develop/main）では走らせない —— 回収先の integration.yml が同じ合成を全量（統合テスト込み）で回す。
+  #
+  # 取得・キャッシュ・SDK・restore → build（Release）→ test は integration.yml の手順と同じにしてある。違いは
+  # `--filter "Category!=Integration"`（Docker を要るテストを外す。AST 自身の CI と同じ区分）とカバレッジを集めないことだけ。
+  # 結果は集約ジョブ build-and-test が拾う（images.yml の image-build と同じ形。必須 check 名は変えない）。
+  # ───────────────────────────────────────────────────────────────────────────────
+  submodule-changes:
+    runs-on: ubuntu-latest
+    # 🔴 NFR, #1551（監査 N1）: 本ワークフローは permissions: を持たず、リポジトリ既定は書き込み可である。
+    #    新しく足すジョブは読むだけの権限に絞り、checkout の資格情報も作業ツリーへ残さない。
+    permissions:
+      contents: read
+    outputs:
+      build: ${{ steps.filter.outputs.build }}
+      units: ${{ steps.filter.outputs.units }}
+    steps:
+      # fetch-depth: 0 は origin/<base>...HEAD の差分解決に要る（images.yml の changes と同じ）。
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Detect gitlink / shared props changes and derive submodule units
+        id: filter
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          # submodule ユニット = .gitmodules の path のうち src/ 直下ちょうど 1 階層（lib/excluded-units.js と同じ導出規則）。
+          units="$(git config --file .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null \
+            | awk '$2 ~ /^src\/[^\/]+$/ { sub(/^src\//, "", $2); print $2 }' | sort || true)"
+          if [ -z "$units" ]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "units=[]" >> "$GITHUB_OUTPUT"
+            echo "::notice::submodule ユニットが無いため、合成のビルドは不要。"
+            exit 0
+          fi
+          echo "units=$(printf '%s\n' "$units" | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "push イベント: 合成の全量（統合テスト込み）は integration.yml が回すため、ここでは走らせない。"
+            exit 0
+          fi
+          if ! git rev-parse --verify --quiet "origin/$BASE_REF" >/dev/null; then
+            # 差分を確定できないときは安全側に倒して走らせる（検査漏れを作らない）。
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "origin/$BASE_REF を解決できないため安全側で走らせる。"
+            exit 0
+          fi
+          changed="$(git diff --name-only "origin/$BASE_REF...HEAD")"
+          echo "::group::changed files"
+          echo "$changed"
+          echo "::endgroup::"
+          # gitlink の差分は `src/<unit>` の 1 行で現れる（submodule の中身のファイルは現れない）。
+          pattern='^\.gitmodules$|^global\.json$|^src/Directory\.[^/]+$|^\.github/workflows/ci\.yml$'
+          while IFS= read -r u; do
+            [ -n "$u" ] || continue
+            pattern="${pattern}|^src/$(printf '%s' "$u" | sed 's/[.[\*^$+?(){}|]/\\&/g')\$"
+          done <<< "$units"
+          # 🔴 監査 N2: `printf … | grep -q` にしない。grep -q は一致した時点で読むのをやめるので、差分が大きいと
+          #    書き手が SIGPIPE（141）で落ち、pipefail の下では「一致したのに偽」になる（build=false へ倒れる＝検査漏れ）。
+          #    here-string なら書き手のプロセスが無く、この経路が生じない。
+          if grep -Eq -- "$pattern" <<< "$changed"; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "合成を変え得る差分がある（gitlink / 共通 props / global.json / ci.yml）。submodule ユニットを MSP の構成で試す。"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "合成を変え得る差分が無いため、submodule ユニットのビルドは飛ばす。"
+          fi
+
+  submodule-backend-build:
+    needs: submodule-changes
+    if: needs.submodule-changes.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    name: submodule-backend-build (${{ matrix.unit }})
+    strategy:
+      fail-fast: false
+      matrix:
+        unit: ${{ fromJSON(needs.submodule-changes.outputs.units) }}
+    # 🔴 NFR, #1551（監査 N1）: このジョブは他リポジトリ（submodule）のテストコードを走らせる。書き込み可の既定トークンと、
+    #    作業ツリーに残る checkout の資格情報をそのコードへ渡さない。submodule は public なので取得に資格情報は要らない
+    #    （.gitmodules の https URL を匿名で取る。private なユニットを足すときは読むだけのトークンを明示の手順で渡すこと）。
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # integration.yml と同じ取得（src/* の submodule のみ・非再帰。public ユニットはトークン不要。IADR-0065）。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
+      # 取得の後に置く（hashFiles('**/*.csproj') に submodule の csproj が入る）。submodule は CPM を自前の
+      # Directory.Packages.props で宣言するので、それもキーへ入れる（入れないと版を上げても同じキーに当たり、
+      # 新しいパッケージを毎回取り直す）。
+      - uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', 'src/*/Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+      # 🔴 リポジトリ直下から呼ぶ（integration.yml と同じ）。SDK は作業ディレクトリから global.json を探すので、
+      #    submodule の中へ cd すると submodule 自身の global.json が効き、MSP の構成ではなくなる。
+      - name: Restore, build and test as MSP composes it (${{ matrix.unit }}, unit tests only)
+        env:
+          UNIT: ${{ matrix.unit }}
+        run: |
+          set -euo pipefail
+          dir="src/${UNIT}"
+          slnx="${dir}/backend/backend.slnx"
+          if [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
+            echo "::error::${dir} が空である（submodule を取得できていない）。何も試さずに緑にしない。"
+            exit 1
+          fi
+          if [ ! -f "$slnx" ]; then
+            echo "::notice::${slnx} が無い（バックエンドを持たないユニット）。ビルドするものが無い。"
+            exit 0
+          fi
+          dotnet restore "$slnx"
+          dotnet build "$slnx" --no-restore --configuration Release
+          dotnet test "$slnx" --no-build --configuration Release \
+            --filter "Category!=Integration" \
+            --verbosity normal
+
   # 🔴 必須チェック名を維持する集約ジョブ（上のブロックコメント参照）。ここを改名・削除しないこと。
   # NFR, Issue #453: カバレッジ床の強制。上のステップが出力する Cobertura を直接集計するため
   # reportgenerator のインストールを要さない（CI が速く、オフラインでも動く）。
@@ -836,15 +987,21 @@ jobs:
   # フロント側の同等ゲートは frontend-tests.yml（vitest thresholds・IADR-0034）。
   build-and-test:
     runs-on: ubuntu-latest
-    needs: [discover-units, backend-build]
+    # NFR, #1551: submodule ユニットの合成ビルドも拾う（images.yml の image-build と同じ形。skipped は「合成を変え得る
+    # 差分が無い」を意味し合格として扱う）。
+    needs: [discover-units, backend-build, submodule-changes, submodule-backend-build]
     if: always()
     steps:
       - name: Report build/test result
         env:
           DISCOVER_RESULT: ${{ needs.discover-units.result }}
           BUILD_RESULT: ${{ needs.backend-build.result }}
+          SUBMODULE_CHANGES_RESULT: ${{ needs.submodule-changes.result }}
+          SUBMODULE_BUILD_RESULT: ${{ needs.submodule-backend-build.result }}
+          SUBMODULE_SHOULD_BUILD: ${{ needs.submodule-changes.outputs.build }}
         run: |
           echo "discover-units=$DISCOVER_RESULT / backend-build=$BUILD_RESULT"
+          echo "submodule-changes=$SUBMODULE_CHANGES_RESULT / submodule-backend-build=$SUBMODULE_BUILD_RESULT / should-build=$SUBMODULE_SHOULD_BUILD"
           if [ "$DISCOVER_RESULT" != "success" ]; then
             echo "::error::ビルド対象ユニットの導出に失敗した。"
             exit 1
@@ -853,6 +1010,18 @@ jobs:
             echo "::error::いずれかのユニットで restore / build / test が失敗した（backend-build の各脚を見ること）。"
             exit 1
           fi
+          if [ "$SUBMODULE_CHANGES_RESULT" != "success" ]; then
+            echo "::error::submodule ユニットの差分判定に失敗した（submodule-changes のログを見ること）。"
+            exit 1
+          fi
+          case "$SUBMODULE_BUILD_RESULT" in
+            success) echo "✓ submodule ユニットを MSP の構成で restore / build / 単体テストした。" ;;
+            skipped) echo "✓ 合成を変え得る差分が無いため、submodule ユニットのビルドは飛ばした。" ;;
+            *)
+              echo "::error::submodule ユニットを MSP の構成で建てると失敗する（submodule-backend-build (<unit>) のログを見ること）。"
+              exit 1
+              ;;
+          esac
           echo "✓ 全ユニットの restore / build / 単体テストが成立した（統合テストは integration.yml が回す）。"
       - uses: actions/checkout@v7
       - name: Download coverage reports from all units
@@ -897,9 +1066,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
-      # 既定 checkout は submodule 未取得で、追加ユニットは src/*/backend/backend.slnx 自動発見に現れず
-      # 検査対象外になる。public ユニットはトークン不要（private ユニットは別途 IADR-0058 型トークンが
-      # 要る）。詳細は docs/how-to/adding-a-unit-submodule.md。
+      # public ユニットはトークン不要（private ユニットは別途 IADR-0058 型トークンが要る）。詳細は
+      # docs/how-to/adding-a-unit-submodule.md。
+      # 🔴 NFR, #1551: ここで取っても行列に submodule ユニットの脚は生まれない（discover-units は取らない）。
+      # platform の脚が AST の Bff.Endpoints を ProjectReference するので、その解決のために取る。
+      # submodule ユニットの整形は submodule 自身の CI が持つ（本リポジトリの整形規約を他プロジェクトへ当てない）。
       - name: Fetch unit submodules (src/*, public, non-recursive)
         run: |
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
