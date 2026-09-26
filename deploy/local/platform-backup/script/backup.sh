@@ -29,7 +29,6 @@ BACKUP_RECIPIENTS_FILE="${BACKUP_RECIPIENTS_FILE:-/etc/platform-backup/recipient
 BACKUP_MARKER_NAME=".platform-backup-target"
 BACKUP_DAILY_KEEP="${BACKUP_DAILY_KEEP:-30}"
 BACKUP_LONG_YEARS="${BACKUP_LONG_YEARS:-7}"
-BACKUP_AGE_INSTALL="${BACKUP_AGE_INSTALL:-0}"
 BACKUP_VAULT_TRIES="${BACKUP_VAULT_TRIES:-3}"
 VAULT_DATA_DIR="${VAULT_DATA_DIR:-/vault/data}"
 
@@ -76,21 +75,15 @@ check_recipients() {
 	return 0
 }
 
+# age はイメージ（deploy/local/platform-backup/image/Dockerfile）に同梱してある。
+# 🔴 ［2026-09-26 / #1564, IADR-0471 決定 3 追記］**実行時にパッケージを入れない。** 従前は BACKUP_AGE_INSTALL=1 で
+#    `apk add age` を毎回ネットワーク越しに行っていた（版が固定されず、日次の回がインターネットへの到達に依存し、
+#    root で hostPath と unseal の材料を持つコンテナにパッケージの侵害がそのまま届く）。退避路としても残さない ——
+#    env 1 つで同じ経路が開くからである。無ければイメージの取り違えとして、何も書かずに失敗する。
 ensure_age() {
 	if command -v age >/dev/null 2>&1; then return 0; fi
-	if [ "$BACKUP_AGE_INSTALL" = "1" ]; then
-		log "age が無いため Alpine のパッケージを入れます"
-		# 失敗の理由（到達不能・署名・容量）を隠さない。apk の出力に秘密は含まれない。
-		local apk_err
-		if ! apk_err="$(apk add --no-cache age 2>&1 >/dev/null)"; then
-			err "apk add age が失敗しました:"
-			printf '%s\n' "$apk_err" | sed 's/^/    apk: /' >&2
-		fi
-	fi
-	if ! command -v age >/dev/null 2>&1; then
-		err "age を用意できません（暗号化できないため何も書きません）"
-		return 1
-	fi
+	err "age がありません（イメージが k3d-local/platform-backup ではない可能性があります。暗号化できないため何も書きません）"
+	return 1
 }
 
 # 標準入力を暗号化して $1 へ書く（一時名 → 改名）。平文は受け取るだけでディスクへ置かない。

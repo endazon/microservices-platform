@@ -100,7 +100,6 @@ new_env() {
 	export VAULT_DATA_DIR="$R/vault"
 	export BACKUP_NOW="2026-09-26T030000Z"
 	export BACKUP_KIND=postgres
-	unset BACKUP_AGE_INSTALL
 }
 run_backup() { OUT="$(bash "$HERE/backup.sh" 2>&1)"; RC=$?; }
 
@@ -343,17 +342,21 @@ assert_file 'T-1560-25 prune_target: 規則外のディレクトリに触れな�
 assert_file 'T-1560-25 prune_target: 規則外のファイルに触れない' "$K/README.txt"
 assert_file 'T-1560-25 prune_target: 最新の回は残す' "$K/2026-09-26T030000Z/pg-a.dump.age"
 
-# ---- age の導入に失敗したら、apk の理由を出して止まる ------------------------------
+# ---- age が無ければ止まり、実行時にパッケージを入れようとしない（#1564） -----------------
+# 🔴 age はイメージに同梱する（deploy/local/platform-backup/image/Dockerfile）。実行時の `apk add` は撤去した。
+#    旧い env（BACKUP_AGE_INSTALL=1）を与えても apk を呼ばないことを、呼ばれたら印を残す apk スタブで確かめる。
 APKBIN="$WORK/apkbin"; mkdir -p "$APKBIN"
-printf '#!/usr/bin/env bash\necho "ERROR: unable to select packages: age (no such package)" >&2\nexit 1\n' > "$APKBIN/apk"
+APK_CALLED="$WORK/apk-called"
+printf '#!/usr/bin/env bash\n: > "%s"\nexit 0\n' "$APK_CALLED" > "$APKBIN/apk"
 chmod +x "$APKBIN/apk"
 if PATH="$APKBIN:/usr/bin:/bin" command -v age >/dev/null 2>&1; then
 	printf '  skip  T-1560-46 この環境の /usr/bin に age がある（age 不在の分岐を試せない）\n'
 else
 	AOUT="$(PATH="$APKBIN:/usr/bin:/bin" BACKUP_AGE_INSTALL=1 ensure_age 2>&1)"; ARC=$?
-	assert_ne 'T-1560-46 age を入れられない: 失敗を返す' "$ARC" "0"
-	assert_contains 'T-1560-46 age を入れられない: apk の理由をログに出す' "$AOUT" 'unable to select packages'
-	assert_contains 'T-1560-46 age を入れられない: 何も書かないと告げる' "$AOUT" 'age を用意できません'
+	assert_ne 'T-1560-46 age が無い: 失敗を返す' "$ARC" "0"
+	assert_contains 'T-1560-46 age が無い: 何も書かないと告げる' "$AOUT" '暗号化できないため何も書きません'
+	assert_contains 'T-1560-46 age が無い: イメージの取り違えを示す' "$AOUT" 'k3d-local/platform-backup'
+	assert_nofile 'T-1560-46 age が無い: BACKUP_AGE_INSTALL=1 でも apk を呼ばない（実行時に入れない）' "$APK_CALLED"
 fi
 
 # ---- 🔴 シンボリックリンクを辿って消さない（`[ -d ]` はリンクを辿る） -------------------
@@ -365,7 +368,12 @@ OUTSIDE="$R/outside"; mkdir -p "$OUTSIDE"; echo precious > "$OUTSIDE/precious.ag
 mkdir -p "$K/2026-09-26T030000Z"; echo x > "$K/2026-09-26T030000Z/pg-a.dump.age"
 ln -s "$OUTSIDE" "$K/2019-01-01T030000Z" 2>/dev/null
 if [ -L "$K/2019-01-01T030000Z" ]; then
-	BACKUP_DAILY_KEEP=1 prune_target "$R/c" "2026-09-26T030000Z" >/dev/null 2>&1
+	# 🔴 ［#1564 追記］戻り値と出力を捨てない。prune_target のリンクの読み飛ばしを外すと、リンクは回として数えられ、
+	#    remove_flat_dir が拒んで「消せませんでした」と rc=1 を返す（ファイルは守られるので下の assert_file は緑のまま）。
+	#    日次の Job が毎日失敗になる退行を、ここで捕まえる。
+	POUT="$(BACKUP_DAILY_KEEP=1 prune_target "$R/c" "2026-09-26T030000Z" 2>&1)"; PRC=$?
+	assert_eq 'T-1560-45 prune_target: シンボリックリンクだけが古いとき成功を返す（回として数えない）' "$PRC" "0"
+	assert_missing 'T-1560-45 prune_target: シンボリックリンクを消そうとしない（「消せませんでした」を出さない）' "$POUT" '消せませんでした'
 	assert_file 'T-1560-45 prune_target: 回の名前をしたシンボリックリンクの先のファイルを消さない' "$OUTSIDE/precious.age"
 	[ -L "$K/2019-01-01T030000Z" ] && ok 'T-1560-45 prune_target: シンボリックリンクそのものも回として扱わない' || ng 'T-1560-45 prune_target: シンボリックリンクそのものも回として扱わない' 'link removed'
 	remove_flat_dir "$K/2019-01-01T030000Z"; RRC=$?

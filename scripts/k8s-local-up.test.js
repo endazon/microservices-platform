@@ -179,6 +179,18 @@ const HELM_CONTROLLER_MODEL = [
 const PLAIN_STUB = (name) =>
   ['#!/usr/bin/env bash', `echo "${name} $*" >> "$STUB_LOG"`, 'exit 0', ''].join('\n');
 
+// #1564: docker スタブ。STUB_DOCKER_BUILD_FAIL に部分文字列を与えると、その語を引数に含む `docker build` だけを
+// 非0 で返す（例: platform-backup のイメージだけビルドに失敗する世界 = Alpine が age の -rN を上げた日）。
+const DOCKER_STUB = [
+  '#!/usr/bin/env bash',
+  'echo "docker $*" >> "$STUB_LOG"',
+  'if [ -n "${STUB_DOCKER_BUILD_FAIL:-}" ] && [ "${1:-}" = "build" ]; then',
+  '  case "$*" in *"$STUB_DOCKER_BUILD_FAIL"*) echo "stub: build failed (404 on age-1.3.1-r6.apk)" >&2; exit 1;; esac',
+  'fi',
+  'exit 0',
+  '',
+].join('\n');
+
 // kubectl スタブは CRD 有無を env で切替可能にする。既定は有（exit 0）＝VAULT は deploy/local/vault を
 // apply。STUB_CRD_ABSENT=1 で `kubectl get crd clustersecretstores.*` を非0（未導入）に返させ、
 // ESO 未導入フォールバック（WARN ＋ vault-dev.yaml のみ apply）経路を検証できるようにする。
@@ -243,7 +255,8 @@ function runUp(extraEnv) {
   // node も差し替える。ABACSEED=1 は `node scripts/seed-abac-policies.js` を呼ぶため、素の node のままだと
   // smoke test が実際に投入スクリプトを走らせて（到達しない port-forward を待って）遅くなる。
   // k8s-local-up.sh が node を使うのはこの 1 か所だけなので、記録スタブで足りる。
-  for (const n of ['helm', 'docker', 'node']) write(n, PLAIN_STUB(n));
+  for (const n of ['helm', 'node']) write(n, PLAIN_STUB(n));
+  write('docker', DOCKER_STUB);
   // helm-controller の模型（awk）。PATH には置かない —— これはコマンドの差し替えではなく、
   // kubectl stub が反映の成否を決めるために読む**データ**である。
   const modelFile = path.join(workdir, 'helm-controller-model.awk');
@@ -3420,6 +3433,63 @@ ok('#1287: overlay は AllowLlmEgress を設定しない（60 秒側は LLM を�
     !/AllowLlmEgress/.test(upCode),
     '🔴 起動器が AllowLlmEgress を設定している（課金の承認は利用者の判断・ADR-0079 決定 2）',
   );
+});
+
+// --- #1564: deploy/local 専用イメージ（platform-backup）のビルド失敗は起動を止めない ---------------
+//
+// age の版（Alpine の -rN）を固定しているため、上流が上げた日からダウンロードが 404 になる。起動器を [2/7] で
+// 止めると、新しい機械やキャッシュを消した環境でスタック全体が立たない（CronJob を置かない PERSIST=0 でも）。
+// 厳格な赤は CI（images.yml の build-local）が担い、ここは WARN を出して続ける。
+
+const BACKUP_IMAGE_REF = /k3d-local\/platform-backup:\S+/;
+
+ok('#1564: 既定では platform-backup のイメージもビルドし、k3d へ取り込む', () => {
+  const build = DEFAULT.lines.find((l) => l.startsWith('docker build ') && BACKUP_IMAGE_REF.test(l));
+  assert.ok(build, 'platform-backup のイメージをビルドしていない');
+  const imp = DEFAULT.lines.find((l) => l.startsWith('k3d image import '));
+  assert.ok(imp && BACKUP_IMAGE_REF.test(imp), 'ビルドした platform-backup のイメージを k3d へ取り込んでいない');
+  assert.ok(!/WARN: k3d-local\/platform-backup/.test(DEFAULT.stderr), '成功したのに WARN を出した');
+});
+
+const BACKUP_BUILD_FAILS = runUp({ STUB_DOCKER_BUILD_FAIL: 'platform-backup' });
+
+ok('🔴 #1564: platform-backup のイメージだけビルドに失敗しても、起動器は最後まで進んで 0 で終わる', () => {
+  assert.strictEqual(
+    BACKUP_BUILD_FAILS.status,
+    0,
+    `バックアップのイメージ 1 つで起動全体が止まった（[2/7]）\nstderr:\n${BACKUP_BUILD_FAILS.stderr.slice(-2000)}`,
+  );
+  // [2/7] の先（helm による本体の配備）まで進んでいる。
+  assert.ok(
+    BACKUP_BUILD_FAILS.lines.some((l) => l.startsWith('helm upgrade ')),
+    '起動器が [2/7] より先へ進んでいない（helm upgrade が無い）',
+  );
+  // 失敗したイメージは取り込まない（取り込み元が無い）。他のイメージは取り込む。
+  const imp = BACKUP_BUILD_FAILS.lines.find((l) => l.startsWith('k3d image import '));
+  assert.ok(imp, 'k3d image import が無い（本体のイメージまで落ちた）');
+  assert.ok(!BACKUP_IMAGE_REF.test(imp), 'ビルドに失敗した platform-backup を取り込もうとした');
+});
+
+ok('🔴 #1564: 失敗したときは、CronJob が ImagePullBackOff で落ちることと Runbook の版上げの節を WARN で告げる', () => {
+  const err = BACKUP_BUILD_FAILS.stderr;
+  assert.match(err, /WARN: k3d-local\/platform-backup:\S+ のビルドに失敗しました/, 'どのイメージが落ちたかを告げていない');
+  assert.match(err, /platform-backup-postgres \/ platform-backup-vault/, '影響する CronJob を名指ししていない');
+  assert.match(err, /ImagePullBackOff/, 'CronJob が ImagePullBackOff で失敗することを告げていない');
+  assert.match(
+    err,
+    /platform-infra-backup-runbook\.md の「6\. イメージの版を上げる」/,
+    'Runbook の版上げの節を指していない',
+  );
+  // Runbook の節が実在する（指し先が腐らない）。
+  const runbook = readAt(REPO_ROOT, 'docs', 'operations', 'platform-infra-backup-runbook.md');
+  assert.match(runbook, /^## 6\. イメージの版を上げる/m, 'WARN が指す Runbook の節が無い');
+});
+
+ok('#1564: 陽性対照 —— compose 由来の本体のイメージ（MAPPING）のビルド失敗は、従来どおり起動を止める', () => {
+  // 寛容にしたのは LOCAL_ONLY_IMAGES だけであること。本体まで寛容になると、壊れたイメージで配備が進む。
+  const r = runUp({ STUB_DOCKER_BUILD_FAIL: 'microservices-platform/bff' });
+  assert.notStrictEqual(r.status, 0, '本体のイメージのビルド失敗で起動器が止まらなかった');
+  assert.ok(!r.lines.some((l) => l.startsWith('helm upgrade ')), '本体のイメージが落ちたのに helm で配備へ進んだ');
 });
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);

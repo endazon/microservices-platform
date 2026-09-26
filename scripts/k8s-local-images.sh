@@ -4,6 +4,7 @@
 #   - Rancher Desktop / containerd（nerdctl 有）: k8s.io namespace へ直接ビルド（import 不要）。
 #   - Docker Desktop 等 / docker + k3d: docker build → k3d image import。
 # タグ規則は values-local.yaml と一致: k3d-local/<chart-image>:latest（IfNotPresent で pull しない）。
+# compose に載らない deploy/local 専用のイメージ（LOCAL_ONLY_IMAGES）は、版から作ったタグで同じ経路へ置く（#1564）。
 #
 #   bash scripts/k8s-local-images.sh [cluster-name]      # cluster-name は k3d 経路でのみ使用
 #   K8S_LOCAL_RUNTIME=rancher|k3d で明示指定も可（既定 auto）。
@@ -69,6 +70,17 @@ MAPPING=(
   "microservices-platform/frontend|src/platform/frontend/Dockerfile"
 )
 
+# NFR-21, ADR-0008, IADR-0471 決定 3 (#1564): compose に載らない deploy/local 専用のイメージ。
+# 書式は "ref|context|dockerfile"（ref は接頭辞 k3d-local/ を除いた完全なタグ。dockerfile は context 相対）。
+# 🔴 **MAPPING に入れない。** MAPPING は compose の build 定義と 1 対 1 で突合される（check-image-mapping.js /
+#    IADR-0068。同検査器は MAPPING=( から最初の行頭の ) までしか読まない）。compose に無いものを入れると stale-mapping で赤になる。
+# 🔴 **タグは :latest にせず、中身の版から作る。** 利用側（CronJob）は IfNotPresent で pull しないので、:latest のままだと
+#    Dockerfile を上げても古いイメージが使われ続ける。Dockerfile の FROM・age の版と、利用側の image と、ここの 3 か所を
+#    同じ値に保つ（scripts/platform-backup.test.js が突き合わせる）。
+LOCAL_ONLY_IMAGES=(
+  "platform-backup:pg16.15-age1.3.1-r6|deploy/local/platform-backup/image|Dockerfile"
+)
+
 k3d_images=()
 for entry in "${MAPPING[@]}"; do
   # エントリを最大 4 フィールドへ分解する（2 フィールド時は f3/f4 が空文字）。
@@ -95,8 +107,44 @@ for entry in "${MAPPING[@]}"; do
   fi
 done
 
+# 🔴 **LOCAL_ONLY_IMAGES のビルド失敗は起動を止めない**（#1564 監査）。バックアップのイメージは age の版（Alpine の -rN）を
+#    固定しており、Alpine の安定版ブランチは最新の -rN しか置かないため、上流が上げた日からダウンロードが 404 になる。
+#    ここで止めると、新しい機械やキャッシュを消した環境で起動器全体が [2/7] で落ちる（CronJob を置かない PERSIST=0 でも）。
+#    代わりに WARN を出して続ける。落ちるのはバックアップの CronJob だけで、それは Job の失敗として見える。
+#    **厳格な赤は CI（images.yml の build-local (platform-backup)）が担う** —— develop で先に知らせる信号はそちらである。
+local_only_failed=()
+for entry in "${LOCAL_ONLY_IMAGES[@]}"; do
+  IFS='|' read -r image context dockerfile <<< "$entry" || true
+  ref="${PREFIX}/${image}"
+  echo "==> build ${ref}  (-f ${context}/${dockerfile}  context=${context})"
+  if [ "$RUNTIME" = "rancher" ]; then
+    if ! nerdctl --namespace k8s.io build -f "${context}/${dockerfile}" -t "${ref}" "${context}"; then
+      local_only_failed+=("${ref}")
+    fi
+  else
+    if docker build -f "${context}/${dockerfile}" -t "${ref}" "${context}"; then
+      k3d_images+=("${ref}")
+    else
+      local_only_failed+=("${ref}")
+    fi
+  fi
+done
+warn_local_only_failed() {
+  local ref
+  for ref in "${local_only_failed[@]}"; do
+    echo "WARN: ${ref} のビルドに失敗しました（起動は続けます）。" >&2
+    echo "WARN:   このイメージを使うバックアップの CronJob（platform-backup-postgres / platform-backup-vault）は" >&2
+    echo "WARN:   ErrImageNeverPull / ImagePullBackOff で失敗します（日次のバックアップが取れません）。" >&2
+    echo "WARN:   age の版が Alpine で上がった（固定した -rN が消えた）可能性が高い。" >&2
+    echo "WARN:   docs/operations/platform-infra-backup-runbook.md の「6. イメージの版を上げる」を参照してください。" >&2
+  done
+}
+[ "${#local_only_failed[@]}" -eq 0 ] || warn_local_only_failed
+
 if [ "$RUNTIME" = "k3d" ]; then
   echo "==> k3d image import (${#k3d_images[@]}) -> cluster ${CLUSTER}"
   k3d image import "${k3d_images[@]}" -c "${CLUSTER}"
 fi
+# 長いビルド出力に埋もれないよう、最後にもう一度出す。
+[ "${#local_only_failed[@]}" -eq 0 ] || warn_local_only_failed
 echo "done."
