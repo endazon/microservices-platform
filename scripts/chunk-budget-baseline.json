@@ -294,7 +294,12 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 614209,
+  "initialTotalBytes": 614476,
+  "$comment_initialTotalBytes_20260927_1609_sc09-department-source": [
+    "［2026-09-27 / #1609］614,209 → 614,476（+267 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が",
+    "+0.27 kB 超過を報告し、CI の build-test も同じ 614.48 kB を報告した。--update で床を更新した）。増分は SC-09 の属性辞書の行に足した",
+    "許可値の出所の文言 2 件（ja / en のカタログは初期ロードに入る）である。意図した増加。"
+  ],
   "$comment_initialTotalBytes_20260926_1557_sc06-department-domain": [
     "［2026-09-26 / #1557］613,389 → 614,209（+820 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が",
     "+0.82 kB 超過を報告し、--update で床を更新した。CI の build-test も同じ 614.21 kB を報告した）。増分は SC-06 の部門欄の補助文",
