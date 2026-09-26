@@ -39,9 +39,10 @@ public class FusedQueryEmbeddingTests
             .TargetCollection.Should().Be(Ruri);
     }
 
-    // T-Q-02: 🔴 **REST の本文。** 主の要求は `targetCollection` を JSON に**書かない**（従来と同じ本文）。
+    // T-Q-02: 🔴 **REST の本文。** 主の要求は `targetCollection` を **null で書く**（キーは本文に現れるが、
+    // 受け側は未指定として扱う —— [[IADR-0467]]「影響・トレードオフ」の後方互換）。名前を載せるのは追加の要求だけ。
     [Fact]
-    public async Task REST_主の要求本文は従来と同一で追加の要求だけが名乗る()
+    public async Task REST_主の要求本文はtargetCollectionをnullで書き追加の要求だけが名乗る()
     {
         var primaryHandler = new CapturingHandler(GatewayJson(Voyage));
         await new LlmGatewayEmbeddingService(
@@ -55,7 +56,7 @@ public class FusedQueryEmbeddingTests
                 new QueryEmbeddingTarget(Ruri, NamedInRequest: true))
             .EmbedAsync("q", TestContext.Current.CancellationToken);
 
-        // 主は名乗らない（null ＝受け側は未指定として従来どおり優先度順に選ぶ）。ASCII の問いで本文ごと比べる。
+        // 主は名乗らない（キーは null で現れる ＝受け側は未指定として従来どおり優先度順に選ぶ）。ASCII の問いで本文ごと比べる。
         primaryHandler.Body.Should().Be(
             """{"text":"q","confidentiality":null,"purpose":1,"targetCollection":null}""");
         fusedHandler.Body.Should().Be(
