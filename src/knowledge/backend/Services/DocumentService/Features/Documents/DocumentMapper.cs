@@ -35,8 +35,9 @@ internal static partial class DocumentMapper
     // FR-06, UC-03, SC-03: 文書 → 応答 DTO。実体は source generator が生成する。
     // 契約（`DocumentDto.Tags`）は `List<string>` のままで、**下流も画面も変わらない**。
     //
-    // **`DocumentDto` は `Document` の部分射影である**（原本 URI・種別・指紋・添付・取込元・版履歴・
-    // 公開可否は応答に出さない）。これを 8 個の `[MapperIgnoreSource]` で並べると、
+    // **`DocumentDto` は `Document` の部分射影である**（原本 URI・種別・添付・取込元・版履歴・
+    // 公開可否は応答に出さない）。本文指紋は #1575 から応答に出るが、**生成マッパでは写さない**
+    // （下の `[MapperIgnoreTarget]`。値は `DocumentEndpoints.ToDto` が `HasBody` を見て入れる）。これを 8 個の `[MapperIgnoreSource]` で並べると、
     // 🔴 な省略（下の `MarkdownUri` や `SyncDevice.TokenHash` の類）が些事に埋もれる ——
     // **「部分射影である」ことは 1 回だけ宣言し、`[MapperIgnoreSource]` は
     // 「これを出さないと決めた」という個別の合図に取っておく**（IADR-0406 決定 7）。
@@ -57,6 +58,14 @@ internal static partial class DocumentMapper
     // 🔴 **引数名は対象メンバ名（`SharedWith`）と一致させる**（上の `tags` と同じ理由。
     // 改名すると RMG006 でコンパイルエラー、または黙って捨てられる）。
     // 解決点は `DocumentEndpoints.ResolveSharedWithAsync` ただ 1 つである。
+    //
+    // FR-06, ADR-0050 決定 1, ADR-0070 決定 3 (#1575): 🔴 **本文指紋は同名で写させない。**
+    // 原本が本文を持たない文書（`HasBody=false`。テキスト層の無い PDF 等）も台帳には
+    // **空の本文の指紋**が入っている（取り込みが空の `document.md` を読んで計算するため）。
+    // 同名で写すと応答が「本文あり」に見える値を返すので、`DocumentEndpoints.ToDto` の 1 か所で
+    // `HasBody` を見て null へ倒す。イベント（`DocumentUpdated`）が運ぶ値は変えない（却下解除・
+    // 再取り込みの判定は本文の変化だけを見ればよく、空の本文の指紋でも性質を満たす）。
+    [MapperIgnoreTarget(nameof(DocumentDto.ContentFingerprint))]
     internal static partial DocumentDto ToDto(Document d, List<string> tags, List<string>? sharedWith);
 
     // **過去版も現在の表示名で出る** —— 改名は表示上の変更である（[[IADR-0153]] 決定 4）。

@@ -150,9 +150,16 @@ public static class DocumentEndpoints
     // 🔴 **既定値を付けない。** 付けると新しい経路を足した人が渡し忘れ、**その経路だけ共有先を
     // 運ばない応答**になる（BFF の単体判定が共有先へ到達できなくなる＝共有が黙って効かない）。
     // 単一文書の経路は下の `ToDtoAsync` を使い、一覧は `ResolveSharedWithAsync`（束）で分配する。
+    //
+    // FR-06, ADR-0050 決定 1, ADR-0070 決定 3 (#1575): **応答の本文指紋の唯一の決定点。**
+    // 🔴 原本が本文を持たない文書（`HasBody=false`）は null —— 台帳には空の本文の指紋が入っているが、
+    // それを返すと呼び出し側（AST の KB 入れ直し等）が「本文がある」と読み違える。
     internal static DocumentDto ToDto(Document d, IReadOnlyDictionary<Guid, string> names,
         List<string>? sharedWith)
-        => DocumentMapper.ToDto(d, TagResolver.ToNames(d.Tags, names), NullIfEmpty(sharedWith));
+    {
+        var dto = DocumentMapper.ToDto(d, TagResolver.ToNames(d.Tags, names), NullIfEmpty(sharedWith));
+        return dto with { ContentFingerprint = d.HasBody ? d.ContentFingerprint : null };
+    }
 
     // FR-19, [[IADR-0447]] (#1447): 単一文書の経路（取得・登録・編集・公開・アーカイブ・本文投入・
     // タグ反映）の写像。**共有先の解決は `ResolveSharedWithAsync` ただ 1 つ**であり、

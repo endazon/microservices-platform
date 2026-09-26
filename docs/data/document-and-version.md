@@ -3,7 +3,7 @@ title: 文書・版履歴（Document / DocumentVersion） データ仕様書
 type: data-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-26
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
@@ -59,7 +59,7 @@ DocumentVersion は Document 集約配下の**確定版スナップショット*
 | HasBody | bool (boolean) | ○ | 既定 `true`（列の DEFAULT も true） | **原本が本文を持っていたか。** `false` はテキスト層を持たない PDF 等で、文書詳細は本文の位置へ「本文なし（原本を参照）」を出す（検索結果と同じ文言・同じ導出）。`false` になるのは変換経路だけで、本文の直接投入は常に `true` である。🔴 **本欄の追加以前の文書は `true`（本文あり）として読む**——遡及付与しない |
 | OriginalPath | string? (varchar(2048)) | - | 最大長 2048 | **原本の所在**（取り込み元のパス）。本文を持たない文書を検索に載せる索引テキストの材料である。台帳に持つのは、属性編集やタグ改名による `DocumentUpdated` の**再発行でも同じ値を運ぶ**ためである。直接投入・画面からの作成では NULL |
 | DataSourceName | string? (varchar(200)) | - | 最大長 200 | **データソースの表示名。** 上と同じ用途。**表示名の複写であり、改名に遡及しない**（次の同期で上書きされる） |
-| ContentFingerprint | string? (varchar(128)) | - | 最大長 128 | **本文指紋。** 格納した本文の UTF-8 バイト列の SHA-256 小文字 hex（64 文字）。本文を書くすべての経路（本文つきの作成・本文の投入・正規化の取り込み・Obsidian 同期）が同じ関数で作り、メタデータだけの更新では動かない。本文を持たない・指紋化できなかった文書は NULL。更新イベントが運び（却下解除・再取り込みの判定）、文書の応答にも載る（呼び出し側が「保存済みの本文が最新か」を判定する材料） |
+| ContentFingerprint | string? (varchar(128)) | - | 最大長 128 | **本文指紋。** 格納した本文の UTF-8 バイト列の SHA-256 小文字 hex（64 文字）。本文を書くすべての経路（本文つきの作成・本文の投入・正規化の取り込み・Obsidian 同期）が同じ関数で作り、メタデータだけの更新では動かない。本文を持たない・指紋化できなかった文書は NULL。🔴 **原本が本文を持たない文書（`HasBody=false`）は空の本文の指紋を持つ**（取り込みが空の本文を格納して計算するため）が、**文書の応答では NULL に倒す**（イベントは台帳の値のまま）。更新イベントが運び（却下解除・再取り込みの判定）、文書の応答にも載る（呼び出し側が「保存済みの本文が最新か」を判定する材料） |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 作成時刻 |
 | UpdatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow`。更新ごとに更新 | 最終更新時刻 |
 

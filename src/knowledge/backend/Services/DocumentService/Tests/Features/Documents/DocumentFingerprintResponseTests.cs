@@ -3,7 +3,10 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using AwesomeAssertions;
+using DocumentService.Domain;
+using DocumentService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DocumentService.Tests.Features.Documents;
 
@@ -66,6 +69,39 @@ public class DocumentFingerprintResponseTests(TestWebApplicationFactory factory)
         created.ContentFingerprint.Should().BeNull();
         var got = await Client().GetFromJsonAsync<DocumentDto>($"/documents/{created.Id}", TestContext.Current.CancellationToken);
         got!.ContentFingerprint.Should().BeNull();
+    }
+
+    // FR-06, ADR-0050 決定 1, ADR-0070 決定 3 (#1575): **原本が本文を持たない文書（`HasBody=false`）は null。**
+    // 取り込みは空の `document.md` を読んで指紋を計算するので、台帳には**空の本文の指紋**が入っている。
+    // それを返すと呼び出し側は「本文がある」と読み違える。陽性対照として、同じ指紋を持つ
+    // `HasBody=true` の文書はその値を返すこと（＝台帳の値の写しそのものは生きていること）を対で見る。
+    [Fact]
+    public async Task 原本が本文を持たない取り込み文書の指紋は_台帳に空本文の指紋があってもnull()
+    {
+        var emptyBodyFingerprint = Sha256Hex(string.Empty);
+        Guid bodyless, withBody;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            var a = Document.CreateNormalized(Guid.NewGuid(), "テキスト層の無い PDF", "storage://normalized/a/document.md",
+                new Dictionary<string, string> { ["confidentiality"] = "internal" },
+                contentFingerprint: emptyBodyFingerprint, hasBody: false);
+            var b = Document.CreateNormalized(Guid.NewGuid(), "本文のある文書", "storage://normalized/b/document.md",
+                new Dictionary<string, string> { ["confidentiality"] = "internal" },
+                contentFingerprint: emptyBodyFingerprint, hasBody: true);
+            db.Documents.AddRange(a, b);
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+            (bodyless, withBody) = (a.Id, b.Id);
+        }
+
+        var got = await Client().GetFromJsonAsync<DocumentDto>($"/documents/{bodyless}", TestContext.Current.CancellationToken);
+        got!.HasBody.Should().BeFalse();
+        got.ContentFingerprint.Should().BeNull("本文なしの文書で空本文の指紋を返すと「本文あり」と読み違える");
+
+        var list = await Client().GetFromJsonAsync<List<DocumentDto>>("/documents", TestContext.Current.CancellationToken);
+        list!.Single(d => d.Id == bodyless).ContentFingerprint.Should().BeNull("一覧も同じ写像を通る");
+        list.Single(d => d.Id == withBody).ContentFingerprint.Should().Be(emptyBodyFingerprint,
+            "陽性対照: HasBody=true なら台帳の値をそのまま返す");
     }
 
     // FR-06, FR-21, ADR-0050 決定 1 (#1575): 本文を入れると指紋が現れ、差し替えると変わり、

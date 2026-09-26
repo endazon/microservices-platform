@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-06, FR-21, UC-03, SC-05, NFR-08, ADR-0050, ADR-0036, ADR-0034, ADR-0054, ADR-0060, ADR-0091, ADR-0029, ADR-0065, IADR-0012, IADR-0041, IADR-0045, IADR-0075, IADR-0122, IADR-0379, IADR-0401, IADR-0402]
 author: claude
 created: 2026-09-26
-updated: 2026-09-26
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0050_document-body-fingerprint.md 決定 1・フォローアップ 3
   - planning:projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md D-07・D-08・§未確定事項 6
@@ -80,6 +80,12 @@ REST と同じ形を保つ（presence で運び、null を空文字へ化けさ�
   正規化（改行・末尾空白）はしない。**本文を投入した呼び出し側は、送った本文から同じ値を計算して突き合わせられる**。
   この性質を契約として扱う（変えるなら呼び出し側との約束の変更であり、新しい IADR を起こす）。
 - 本文を持たない文書・指紋化できなかった文書は null。
+- 🔴 **原本が本文を持たない文書（`HasBody=false`。テキスト層の無い PDF 等）も応答では null に倒す**（#1603 の監査の指摘）。
+  取り込み（`DocumentNormalizedConsumer`）は空の `document.md` を読んで指紋を計算するため、台帳には**空文字列の SHA-256** が入っている。
+  そのまま返すと呼び出し側（AST の KB 入れ直し）が「本文がある」と読み違える。倒すのは `DocumentEndpoints.ToDto` の 1 か所で、
+  生成マッパには同名で写させない（`[MapperIgnoreTarget]`）。**台帳とイベント（`DocumentUpdated`）の値は変えない** ——
+  却下解除・再取り込みの判定は本文の変化だけを見ればよく、空の本文の指紋でも ADR-0050 決定 1 の性質を満たす。
+  応答の契約は「**値があれば本文がある**」である。
 - BFF はそのまま中継する。**本文を読める主体に本文の指紋を見せても新しい情報は漏れない**（個人資料の `contentHash` と同じ扱い）。
   AI 提案の「却下時点の指紋を公開面に出さない」は提案の内部状態の話で、本決定と別物である。
 
@@ -99,6 +105,10 @@ REST と同じ形を保つ（presence で運び、null を空文字へ化けさ�
   （ADR-0036 D-08・ADR-0034 決定 9 の線。BFF の管理一覧が `IsManageable` で個人資料を外すのと同じ）。
   判定は `DocumentScopes.IsPrivateNote` ただ 1 つで、集合帰属で書く（キー欠落は組織文書）。
   **ABAC の判定器を DocumentService に 2 つ目として足すものではない** —— 属性 1 つの構造的な除外である。
+- 🔴 **機械の呼び出し元は、この口で機密区分の高い組織文書（`confidential` / `restricted` を含む）を ABAC を経ずに読める。**
+  これは既存の `GET /documents`（認証すら要らない）と同じ露出であり、本決定が広げたものではない（部分集合であることは上のとおり）。
+  **ロールの門は置かない。** 誰を通すか（例: 管理者・運用者に限る、サービスアカウントの属性で絞る）は読み取りの統制の射程の問いであり、
+  計画の判断を待つ（planning#680 へ追加された論点）。裁定が出たら、既存の一覧と新しい口の両方へ同じ門を置く新しい IADR で扱う。
 
 **決定 4 — 絞り込みは台帳を読んだ後にメモリ上で行う。** 属性は jsonb へ値変換で写しており、LINQ から SQL へ訳せない。
 既存の `GET /documents` も全件をメモリへ読むので DB の負荷は増えない（減るのは応答の量）。

@@ -3,7 +3,7 @@ title: 文書CRUD・バージョン管理 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-26
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
@@ -81,11 +81,14 @@ issues: [#199, #1011, #1575, planning#473]
 | T-35 | 組織文書 2 件 | `limit=0` / `limit=100000` | 1 件＋次のカーソル / 2 件 | `limit` の丸め | 自動（エンドポイント） |
 | T-36 | — | 同じキーの重複（大小違いを含む）・空のキー・空の値・壊れたカーソル | 400 | 入力検証 | 自動（エンドポイント） |
 | T-37 | — | 端点の認可メタデータを見る | 絞り込みの口は認証を要求し、既存の一覧は要求しない（陽性対照） | 認証必須 | 自動（エンドポイント） |
+| T-38 | 原本が本文を持たない取り込み文書（台帳に空本文の指紋）と、同じ指紋で本文ありの文書 | `GET /{id}`・`GET /documents` | 本文なしの文書は `contentFingerprint` が `null`、本文ありの文書は台帳の値（陽性対照） | 値があれば本文がある | 自動（エンドポイント） |
+| T-39 | 作成時刻を同じ tick に揃えた 4 件と、その前後 1 件ずつ | `limit=1` で辿る | 時刻の昇順・同時刻は ID 昇順で、ちょうど 1 回ずつ | ページング（同時刻の枝） | 自動（エンドポイント） |
+| T-40 | `doc_scope` が `Private-Note` / `PRIVATE-NOTE` の個人資料と組織文書 | 既存の一覧（陽性対照）と絞り込みの口 | 個人資料は返らず、組織文書だけが返る | 個人資料を返さない（値の大小） | 自動（エンドポイント） |
 
 対応テスト実装:
 
 - 単体（ドメイン）: `src/knowledge/backend/Services/DocumentService/Tests/Domain/DocumentVersioningTests.cs`（T-01〜T-05）、`DocumentAttributesTests.cs`（T-23）
-- 単体（エンドポイント, InMemory）: `.../DocumentEndpointVersioningTests.cs`（T-06〜T-11・T-24〜T-25）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）、`DocumentFingerprintResponseTests.cs`（T-26〜T-28）、`DocumentPageTests.cs`（T-30〜T-37）
+- 単体（エンドポイント, InMemory）: `.../DocumentEndpointVersioningTests.cs`（T-06〜T-11・T-24〜T-25）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）、`DocumentFingerprintResponseTests.cs`（T-26〜T-28・T-38）、`DocumentPageTests.cs`（T-30〜T-37・T-39〜T-40）
 - 単体（契約）: `src/knowledge/backend/Shared/Knowledge.Contracts.Tests/DocumentReadGrpcMappingTests.cs`（T-29）
 - 統合（実 PostgreSQL）: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/DocumentService/DocumentCrudTests.cs`（T-12〜T-14）、`DocumentVersioningTests.cs`（T-15〜T-16）
 - 統合（実 PostgreSQL / RabbitMQ）: `.../DocumentNormalizedSyncTests.cs`（T-17〜T-18）

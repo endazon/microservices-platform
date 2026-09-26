@@ -119,6 +119,28 @@ public class DocumentPageTests(TestWebApplicationFactory factory)
         (await PageAsync(owner, $"attr.owner=alice&attr.project={project}")).Items.Should().BeEmpty();
     }
 
+    // FR-06, ADR-0036 D-08, ADR-0054 (#1575): **`doc_scope` の値の大小の揺れでも個人資料は返らない。**
+    // 判定は `DocumentScopes.IsPrivateNote`（大文字小文字を区別しない）であり、絞り込みの完全一致
+    // （区別する）とは別の規則である。`Private-Note` で保存された個人資料が「組織文書」扱いで漏れないこと。
+    [Theory]
+    [InlineData("Private-Note")]
+    [InlineData("PRIVATE-NOTE")]
+    public async Task 個人資料はdoc_scopeの値の大小が揺れていても返らない(string docScope)
+    {
+        var project = $"p-{Guid.NewGuid():N}";
+        var attributes = PrivateNote(project, owner: "alice");
+        attributes["doc_scope"] = docScope;
+        var note = await SeedAsync("大小の揺れた個人資料", attributes);
+        var org = await SeedAsync("陽性対照の組織文書", Org(project));
+
+        var client = ClientAs("ast-kb-writer", "platform-operator");
+        (await ListAllAsync(client)).Select(d => d.Id).Should().Contain(note.Id, "陽性対照: 既存の一覧には居る");
+
+        var page = await PageAsync(client, $"attr.project={project}");
+        page.Items.Select(d => d.Id).Should().BeEquivalentTo([org.Id], "組織文書は返り、個人資料は返らない");
+        (await PageAsync(client, $"attr.doc_scope={docScope}")).Items.Should().NotContain(d => d.Id == note.Id);
+    }
+
     // FR-06 (#1575): 絞り込みを足すと狭くなる一方で、どの値を与えても広がらない。
     [Fact]
     public async Task 絞り込みを足すと結果は前の結果の部分集合になり_一致しない値では空になる()
@@ -215,6 +237,51 @@ public class DocumentPageTests(TestWebApplicationFactory factory)
         rest.Select(d => d.Id).Should().Equal(
             ordered.Skip(2).Select(d => d.Id).Append(late.Id),
             "未読だった 4 件（途中で更新された 1 件を含む）がちょうど 1 回ずつ、途中で作った文書は末尾に現れる");
+    }
+
+    // FR-06, NFR-08 (#1575): **作成時刻が同じ文書は `Id` 昇順で切り分ける**（カーソルの同時刻の枝）。
+    // 作成時刻を台帳で同じ tick に揃え、1 件ずつ辿る。同時刻の枝（`Precedes` の `Id` 比較）を
+    // 落とす・向きを逆にする・`>=` にすると、読み飛ばし・重複・無限の繰り返しのいずれかになる。
+    [Fact]
+    public async Task 作成時刻が同じtickの文書はIdの昇順で1件ずつ重複なく辿れる()
+    {
+        var project = $"p-{Guid.NewGuid():N}";
+        var ticks = new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero);
+        var seeded = new List<Guid>();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            for (var i = 0; i < 4; i++)
+            {
+                var doc = Document.Create($"同時刻{i}", originalUri: null, contentType: null, attributes: Org(project));
+                db.Documents.Add(doc);
+                db.Entry(doc).Property(d => d.CreatedAt).CurrentValue = ticks;
+                seeded.Add(doc.Id);
+            }
+            // 同じ作成時刻の前後に 1 件ずつ置き、同時刻の群が時刻の比較と正しく噛み合うことも見る。
+            var before = Document.Create("前", originalUri: null, contentType: null, attributes: Org(project));
+            var after = Document.Create("後", originalUri: null, contentType: null, attributes: Org(project));
+            db.Documents.AddRange(before, after);
+            db.Entry(before).Property(d => d.CreatedAt).CurrentValue = ticks.AddTicks(-1);
+            db.Entry(after).Property(d => d.CreatedAt).CurrentValue = ticks.AddTicks(1);
+            await db.SaveChangesAsync(Ct);
+            seeded = [before.Id, .. seeded.OrderBy(id => id), after.Id];
+        }
+
+        var client = ClientAs("ast-kb-writer", "platform-operator");
+        var seen = new List<Guid>();
+        string? cursor = null;
+        var pages = 0;
+        do
+        {
+            var page = await PageAsync(client, $"attr.project={project}&limit=1"
+                + (cursor is null ? "" : $"&cursor={Uri.EscapeDataString(cursor)}"));
+            seen.AddRange(page.Items.Select(d => d.Id));
+            cursor = page.NextCursor;
+            pages++;
+        } while (cursor is not null && pages < 20);
+
+        seen.Should().Equal(seeded, "時刻の昇順、同時刻は Id の昇順で、ちょうど 1 回ずつ");
     }
 
     // FR-06 (#1575): `limit` は 1〜500 に丸める（FeedbackService の一覧と同じ作法）。

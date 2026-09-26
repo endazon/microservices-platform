@@ -24,7 +24,7 @@ related_ids:
   - IADR-0402
 author: claude
 created: 2026-09-26
-updated: 2026-09-26
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md FR-06（文書の CRUD・バージョン管理・メタデータ管理）・NFR-08（文書 数万〜数十万件）
   - planning:projects/microservices-platform/06_technical/02_service-decomposition.md §文書管理サービス
@@ -183,6 +183,10 @@ AST は迂回している（全件を 1 回引いて属性で突き合わせる�
 - DocumentService のエンドポイント試験（InMemory・`TestWebApplicationFactory`）で上の基準を 1 つずつ固定する。
   ABAC の観点（部分集合・個人資料の除外・絞り込みの単調性）は**陽性対照と対で**置く（除外が効いていることを、除外しない側の件数で確かめる）。
 - 契約: `DocumentReadGrpcMappingTests` に指紋の往復（値あり・null）を足す。
+- **［2026-09-27 追記 / #1603 の監査］** 監査（GO）の指摘で次を足した。①原本が本文を持たない文書（`HasBody=false`）は台帳に空本文の指紋を持つため、
+  応答では null に倒す（`DocumentEndpoints.ToDto`）。②作成時刻が同じ tick の文書で `Id` の同時刻の枝を試験する（同時刻の枝を落とす変異が生き残っていた）。
+  ③`doc_scope` の値の大小の揺れ（`Private-Note`）でも個人資料を返さない試験。④`DocumentMapper` の「指紋は応答に出さない」注記の是正。
+  ⑤機械の呼び出し元が ABAC を経ずに機密区分の高い組織文書を読めること（既存の一覧と同じ露出）と、ロールの門は planning#680 の裁定待ちであることを IADR へ記録した。
 - 所有者だけの削除の試験（issue の依頼）は、項目 4 を実装しないため**既存の管理者限定の試験（`Write_OperatorRole_Returns403` 等）が現状を固定している**ことを確認するに留める。
 
 ## 計画書との差異
