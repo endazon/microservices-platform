@@ -314,6 +314,11 @@ services:
       # 🔴 利用者の JWT は面を通らない —— 3 契機（同期 push・完全削除・定期処理）はいずれも
       # 利用者文脈を持たない検知であり、宛先は本文の subject が運ぶ（判定の位置は動かない）。
       Services__NotificationServiceGrpc: http://notification-service:8081
+      # FR-20 / FR-19 / SC-17 / NFR-14, ADR-0114 決定 1・2 / ADR-0096 決定 1, IADR-0474 / IADR-0431 (#1532):
+      # 利用者名簿の狭い読み口（platform.authz.v1.UserDirectory）。🔴 **これが無いと Obsidian の同期はすべて 401** ——
+      # 同期トークンの検証は所有者のアカウントが有効かを同期要求ごとに名簿へ訊き、訊けなければ通さない（fail-closed）。
+      # 退職者の個人資料の完全削除（無効化から 30 日）も同じ口を読む（無ければ 1 件も削除しない側へ縮退する）。
+      Services__AuthorizationServiceGrpc: http://authorization-service:8081
       # s2s トークン（呼び出し側サービス自身の資格情報）。dev の値は realm import の置き場と同値
       # （ズレると client_credentials が 401）。本番は Secret / Vault から注入し既定値は使わない。
       # 🔴 **DocumentService が呼び出し元になるのはこの PR が最初である**（従前は受け口だけ）。

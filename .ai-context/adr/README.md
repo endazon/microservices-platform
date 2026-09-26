@@ -549,3 +549,4 @@
 | [IADR-0469](./IADR-0469_helm-synthetic-monitor-optin-render-time-fail-closed.md) | **helm チャートの合成監視は既定オフの 1 つの鍵で、プローブと標識を同じ描画に揃え、除外できない構成（除外の面が無効／AllowLlmEgress）は描画の段階で止める**（#1287。計画 ADR-0076 決定 4・ADR-0079 決定 1・2） | Accepted |
 | [IADR-0470](./IADR-0470_reset-timing-rank-sum-exact-test.md) | **リセット申請の所要時間は暖機を除く 2 反復をまとめた順位和検定（両側・有意水準 1%・正確法・同順位は中間順位）で判定し、整数 ns の時計を同時に入れる**（#1541・計画 ADR-0113 決定 1〜4）。自己対照は `評価不能` の判定にだけ使い、段 1・段 2 を撤去する | Accepted |
 | [IADR-0471](./IADR-0471_platform-infra-encrypted-daily-backup.md) | **platform-infra の Postgres と Vault を日次で age 暗号化し、目印のあるクラスタ外 2 か所へ置く**（#1560・deploy/local 専用）。受取人は kustomize の外で optional・占位なら fail-closed。日次 30 世代・月の最初の回は 7 年 | Accepted |
+| [IADR-0474](./IADR-0474_sync-token-rejected-after-account-disable.md) | **同期トークンの検証で、所有者のアカウントが有効かを同期要求ごとに利用者名簿へ訊き、有効と確かめられたときだけ通す**（#1532・計画 ADR-0114 の方式＝案 A）。無効化・名簿に居ない・判定できない（障害・5 秒の時間切れ・口の未構成）はいずれも同じ 401。キャッシュなし。再有効化すると未失効・期限内の端末は再び通る。document-service へ名簿の口を配線 | Accepted |

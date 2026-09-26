@@ -266,6 +266,14 @@ services:
       # 宛先は本文の subject が運ぶ（判定の位置は動かない）。
       - name: Services__NotificationServiceGrpc
         value: "http://notification-service:8081"
+      # FR-20 / FR-19 / SC-17 / NFR-14, ADR-0114 決定 1・2 / ADR-0096 決定 1, IADR-0474 / IADR-0431 (#1532):
+      # 利用者名簿の狭い読み口（`platform.authz.v1.UserDirectory`）の宛先。ポートは authorization.grpcPort と一致させる。
+      # 🔴 **これが無いと Obsidian の同期はすべて 401 になる** —— 同期トークンの検証は所有者のアカウントが
+      # 有効かを同期要求ごとに名簿へ訊き、**訊けなければ通さない**（fail-closed）。
+      # 同じ口を退職者の個人資料の完全削除（無効化から 30 日）も読む（無ければ 1 件も削除しない側へ縮退する）。
+      # 資格情報は上の serviceToken（`platform-service` ロール）であり、利用者の JWT は面を通らない。
+      - name: Services__AuthorizationServiceGrpc
+        value: "http://authorization-service:8081"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }

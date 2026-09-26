@@ -7,11 +7,11 @@ updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11]
-adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092]
-iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467]
-specs: [20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion]
-issues: [#1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, AST#18, AST#24, AST#727, planning#383]
+ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-14, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11]
+adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0114]
+iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0474]
+specs: [20260926_issue-1532_sync-token-rejected-after-disable, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion]
+issues: [#1532, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, AST#18, AST#24, AST#727, planning#383]
 -->
 
 # セキュリティ仕様書
@@ -182,9 +182,19 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 | 口が構成されていない配備 | **1 件も削除しない**（口の不在を「窓が閉じた」へ倒さない） |
 
 **窓の間、管理者の権能は閲覧に限る**（持ち出し・移管の経路は無い）。
-🔴 **ただし退職する本人の側の同期トークンが無効化で確実に失効するかは未解決である** ——
-失効しないなら、本人は管理者が閲覧できるのとちょうど同じ期間、資料を同期し続けられる。
-実 IdP への書き込みと本経路の発火は稼働クラスタで未実測である。
+**本人の側の持ち出しの経路（同期トークン）も、無効化の後の最初の同期要求から閉じる。**
+［2026-09-26 更新］従前ここは「同期トークンが無効化で失効するかは未解決」と書いていた。実測すると
+失効しておらず、本人は管理者が閲覧できるのとちょうど同じ 30 日、資料を同期し続けられた。いまは次のとおりである。
+
+| 項目 | 決めごと |
+| --- | --- |
+| 方式 | トークンは失効させない。文書サービスが**同期要求ごとに**利用者名簿で所有者が有効かを確かめ、有効と確かめられたときだけ通す（結果を持ち越さない） |
+| 🔴 判定できないとき | 名簿を読めない・応答が 5 秒を超える・名簿に居ない・名簿の口が構成されていない —— **いずれも通さない**（同じ 401）。名簿の障害の間は有効な利用者の同期も止まる。**持ち出しの経路を障害で開かない**ことを同期の可用性より優先する |
+| 依存の向き | ナレッジ機能 → 基盤（名簿の狭い読み口）だけ。無効化の端点は同期トークンを知らない（基盤から可変機能への依存を作らない） |
+| 再有効化 | 期限内で本人が失効させていないトークンは再び通る（無効化は端末の記録を書き換えない） |
+| 残るもの | 管理者が本人の端末を失効させる経路は無い（拒否で塞いでおり、失効の記録は残らない） |
+
+実 IdP への書き込みと本経路の発火（退職者削除・同期の拒否とも）は稼働クラスタで未実測である。
 
 ## 秘密情報管理
 

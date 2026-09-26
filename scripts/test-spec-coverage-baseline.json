@@ -195,10 +195,12 @@
       "DocumentShareTests"
     ],
     "docs/tests/FR-20_obsidian-sync.md": [
+      "GrpcOwnerAccountDirectoryTests",
       "ObsidianSyncMoveTests",
       "ObsidianSyncProtocolTests",
       "PushSourceNoteTagsTests",
-      "SyncDeviceTokenTests"
+      "SyncDeviceTokenTests",
+      "SyncTokenAccountStateTests"
     ],
     "docs/tests/FR-21_direct-body-intake.md": [
       "AiInputExposureTests",

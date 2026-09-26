@@ -1,4 +1,5 @@
 using DocumentService.Domain;
+using DocumentService.Domain.Ports;
 using DocumentService.Features.ObsidianSync.Delete;
 using DocumentService.Features.ObsidianSync.Manifest;
 using DocumentService.Features.ObsidianSync.Move;
@@ -45,6 +46,14 @@ public static class ObsidianSyncEndpoints
 
     // [[IADR-0270]] 決定 3: Bearer 同期トークン → ハッシュ照合 → 有効（未失効・期限内）な端末。
     // 欠落・不正・期限切れ・失効はいずれも null（呼び出し側で同じ 401 になる）。
+    //
+    // FR-20, SC-17, NFR-14, 計画 ADR-0114 決定 1・2, [[IADR-0474]] (#1532):
+    // **所有者のアカウントが有効であることも確かめる。** 無効化・名簿に居ない・判定できない
+    // （名簿を読めない・時間切れ・口が未構成）はいずれも null ＝ 同じ 401（fail-closed）。
+    // 🔴 **名簿を引くのは端末が有効と確定した後だけ** —— トークンの無い・不正な要求で
+    //   認可サービスへの往復を生ませない（無資格の呼び出しが名簿の負荷を操れない）。
+    // 🔴 **口は要求のサービスから引く**（端点の引数にしない）—— 同期トークンの検証は
+    //   ここ 1 か所であり、新しい端点が引数を書き忘れても門を素通りできない形にする。
     internal static async Task<SyncDevice?> ResolveDeviceAsync(HttpContext http,
         DocumentDbContext db, DateTimeOffset now, CancellationToken ct)
     {
@@ -55,7 +64,11 @@ public static class ObsidianSyncEndpoints
 
         var hash = SyncTokens.HashOf(token);
         var device = await db.SyncDevices.FirstOrDefaultAsync(d => d.TokenHash == hash, ct);
-        return device is not null && device.IsActive(now) ? device : null;
+        if (device is null || !device.IsActive(now)) return null;
+
+        var accounts = http.RequestServices.GetRequiredService<IOwnerAccountDirectory>();
+        var state = await accounts.GetStateAsync(device.OwnerId, ct);
+        return state == OwnerAccountState.Enabled ? device : null;
     }
 
     internal static async Task<PrivateNote?> FindOwnedAsync(DocumentDbContext db, string owner,

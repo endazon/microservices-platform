@@ -34,6 +34,14 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     // 🔴 **既定は「引けなかった」**（宣言しない所有者の資料は消えない）。
     public StubOwnerRetentionDirectory OwnerRetention { get; } = new();
 
+    // FR-20, SC-17, ADR-0114 決定 1・2, [[IADR-0474]] (#1532): 同期トークンの所有者のアカウント状態のスタブ。
+    // 🔴 **既定は `Enabled`**（本番の縮退と逆。理由はスタブの注記）。
+    public StubOwnerAccountDirectory OwnerAccounts { get; } = new();
+
+    // [[IADR-0474]] (#1532): false にすると差し替えず、`Program.cs` が選んだ実装（未構成なら縮退）のまま走る。
+    // **本番の縮退の向きを試験で固定するため**だけに使う。
+    protected virtual bool ReplaceOwnerAccountDirectory => true;
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -70,6 +78,13 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // FR-19, #1409: 退職の窓の照会をスタブへ差し替える（認可サービスへ繋がずに述語を測る）。
             services.RemoveAll<DocumentService.Domain.Ports.IOwnerRetentionDirectory>();
             services.AddSingleton<DocumentService.Domain.Ports.IOwnerRetentionDirectory>(OwnerRetention);
+
+            // FR-20, #1532: 同期トークンの所有者のアカウント状態をスタブへ差し替える。
+            if (ReplaceOwnerAccountDirectory)
+            {
+                services.RemoveAll<DocumentService.Domain.Ports.IOwnerAccountDirectory>();
+                services.AddSingleton<DocumentService.Domain.Ports.IOwnerAccountDirectory>(OwnerAccounts);
+            }
 
             // MassTransit をテストハーネスへ差し替え
             services.RemoveAll<IBusControl>();

@@ -7,11 +7,11 @@ updated: 2026-09-26
 author: Claude
 ---
 <!-- trace:
-ids: [FR-19, FR-20, FR-22, UC-11, SC-20]
-adrs: [ADR-0037, ADR-0046, ADR-0105, ADR-0110]
-iadrs: [IADR-0270, IADR-0338, IADR-0352, IADR-0360, IADR-0464]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1176_obsidian-sync-rename-contract, 20260926_1521_plugin-keep-both-source-note-tags]
-issues: [#451, #1098, #1153, #1176, #1521]
+ids: [FR-19, FR-20, FR-22, UC-11, SC-17, SC-20, NFR-14]
+adrs: [ADR-0037, ADR-0046, ADR-0105, ADR-0110, ADR-0114]
+iadrs: [IADR-0270, IADR-0338, IADR-0352, IADR-0360, IADR-0464, IADR-0474]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1176_obsidian-sync-rename-contract, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable]
+issues: [#451, #1098, #1153, #1176, #1521, #1532]
 -->
 
 # テスト仕様書: Obsidian 双方向同期
@@ -25,7 +25,7 @@ issues: [#451, #1098, #1153, #1176, #1521]
 実機で確かめる）・実ブローカ／実ストレージでの結合（この環境では実行していない）。
 
 実体: `DocumentService.Tests` の `ObsidianSyncProtocolTests` / `ObsidianSyncMoveTests` /
-`SyncDeviceTokenTests`（サーバ側）、
+`SyncDeviceTokenTests` / `SyncTokenAccountStateTests` / `GrpcOwnerAccountDirectoryTests`（サーバ側）、
 `src/obsidian-plugin/src/**/*.test.ts`（プラグイン側。Vitest・Obsidian 実体なし）。
 
 ## テスト観点
@@ -33,6 +33,8 @@ issues: [#451, #1098, #1153, #1176, #1521]
 - 🔴 スコープの否定形（他者の資料・共有された資料・組織文書が見えない）は、
   陽性対照（本人の資料は見える）と対で置く —— 「常に 404」の実装でも否定形だけは緑になる。
 - トークンの期限（30 日）・予告（7 日前）は端末を過去時刻で播種して検証する。
+- 所有者のアカウント状態は利用者名簿のスタブで宣言する。🔴 **スタブの既定は「有効」で、本番の縮退
+  （判定不能＝通さない）と逆である** —— 本番の向きは、スタブへ差し替えない構成で別に測る（#31）。
 
 ## テストケース一覧（計画の受け入れ基準からの写像）
 
@@ -62,6 +64,14 @@ issues: [#451, #1098, #1153, #1176, #1521]
 | 22 | 「両方残す」の写し（新規 push に元のノートの ID）は、自分の資料のタグだけを引き継ぐ（露出 3 つとも明示の OFF・共有 0 件・版は edits の数・機密区分は既定・索引へ流れない。元の資料の状態を先に確かめる＝陽性対照） | `PushSourceNoteTagsTests` › `sourceNoteIdが自分の資料を指すとタグだけを写し露出も共有先も版も機密区分も引き継がない` |
 | 23 | 元のノートの ID が他者の資料なら何も写さず、応答は ID 無しと同じ（同じ形の要求で自分の資料なら写る＝陽性対照） | `…他者の資料を指すと何も写さず応答も変わらない` |
 | 24 | 元のノートの ID が不在・組織文書なら何も写さない／ID 無しは従来どおりタグ空／更新の push では読まない | `…存在しない資料や組織文書を指すと何も写さない`（2 件）／`…sourceNoteIdが無ければ従来どおりタグは空`／`更新のpushではsourceNoteIdを読まない` |
+| 25 | 発行 → 管理者がアカウントを無効化 → 同じトークンで同期 → 401（無効化の前の同じ要求は 200＝陽性対照） | `SyncTokenAccountStateTests` › `無効化した利用者の同期トークンは次の同期要求から401になる` |
+| 26 | 無効化の後は manifest / push（更新・新規）/ pull / delete / リネームのどれも 401 で、何も書かない（有効な間の push は 201＝陽性対照） | `…無効化した利用者の同期トークンは5端点すべてで401になる` |
+| 27 | 再有効化すると、未失効で期限内のトークンは再び通る（無効化は端末の失効日時を書かない） | `…再有効化すると未失効で期限内の同期トークンは再び通る` |
+| 28 | 有効か判定できない（名簿の障害・時間切れ）・名簿に居ない所有者のトークンは 401（通さない側へ倒す。直前の同じ要求は 200＝陽性対照） | `…有効か判定できない利用者の同期トークンは401になる`／`…名簿に居ない利用者の同期トークンは401になる` |
+| 29 | 有効な利用者は他者の無効化に巻き込まれず、名簿は 1 要求につき 1 回・トークンの所有者で引かれる | `…有効な利用者は他者の無効化に巻き込まれず名簿は所有者のIDで引かれる` |
+| 30 | トークンが無い・不正・期限切れ・失効の要求では名簿を引かない | `…端末が有効と確定しない要求では名簿を引かない` |
+| 31 | 名簿の口が構成されていない配備では同期トークンが通らない（同じホストで発行は通る＝陽性対照） | `SyncTokenAccountDirectoryUnconfiguredTests` › `口が構成されていない配備では同期トークンが通らない` |
+| 32 | 名簿の応答の写像: 有効 → 通す／無効化 → 拒否／居ない → 拒否（無効化と区別）／輸送の失敗（全 status）・上限（5 秒）超過 → 判定不能／要求自身の取り消しは判定不能に畳まない／未構成の縮退と既定値は判定不能 | `GrpcOwnerAccountDirectoryTests`（8 メソッド・12 件） |
 
 ## テストケース一覧（Obsidian プラグイン第 1 段。Obsidian 実体なし）
 
