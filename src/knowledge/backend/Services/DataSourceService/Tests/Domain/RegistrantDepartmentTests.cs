@@ -104,6 +104,37 @@ public class RegistrantDepartmentTests
         CreateDataSourceEndpoint.RegistrantDepartmentOf(user).Should().Be(expected);
     }
 
+    // #754 監査（生き残った変異 M2b / M9 / M11 を殺す）
+    //
+    // M2b: 根の照合から末尾の `/` を落とす（`/department` の前方一致）と、`/departmentX/sales` や
+    //      `/department-archive/x` が部門木に見えてしまう。**別の木であり、部門ではない。**
+    [Theory]
+    [InlineData("/departmentX/sales")]
+    [InlineData("/department-archive/x")]
+    [InlineData("/departments/sales")]
+    public void SiblingTreesSharingThePrefix_AreNotDepartments(string pathList)
+    {
+        RegistrantDepartment.FromGroupPaths(Split(pathList)).Should().BeNull();
+    }
+
+    // M9: 部門コードを大小文字無視で束ねると `Sales` と `sales` が 1 つに見える。Keycloak のグループ名は
+    //     大小文字を区別するので**別の 2 部門**であり、2 つに属する登録者からは導かない。
+    [Fact]
+    public void CodesDifferingOnlyInCase_AreTwoDistinctDepartments()
+    {
+        RegistrantDepartment.FromGroupPaths(["/department/Sales", "/department/sales"]).Should().BeNull();
+    }
+
+    // M11: 入れ子の畳み方を「最後の段」や「直下以降すべて」へ変えると、深い入れ子で部門コードがずれる。
+    //      何段深くても**部門木の直下の 1 段**が部門コードである。
+    [Theory]
+    [InlineData("/department/engineering/backend/api", "engineering")]
+    [InlineData("/department/engineering/backend/api,/department/engineering", "engineering")]
+    public void DeeplyNestedGroups_FoldToTheFirstSegmentUnderTheRoot(string pathList, string expected)
+    {
+        RegistrantDepartment.FromGroupPaths(Split(pathList)).Should().Be(expected);
+    }
+
     // 属性引数に単独の配列を渡せない（CS0182）ため、カンマ区切りで受けて分ける。空文字は 0 個。
     private static string[] Split(string pathList) =>
         pathList.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

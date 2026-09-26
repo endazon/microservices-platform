@@ -15,7 +15,7 @@ internal static class CreateDataSourceEndpoint
     internal static void Map(RouteGroupBuilder g)
     {
         g.MapPost("/", async (CreateDataSourceRequest req, DataSourceDbContext db, SyncSchedule schedule,
-            IPlatformUserDirectory userDirectory, HttpContext http, CancellationToken ct) =>
+            IPlatformUserDirectory userDirectory, HttpContext http, ILoggerFactory loggers, CancellationToken ct) =>
         {
             // IADR-0295 決定 3: 資格情報つきの connectionUri は受け付けない（登録時が第 1 の関門）。
             if (ConnectionUriPolicy.Validate(req.ConnectionUri, existing: null) is { } uriError)
@@ -32,7 +32,8 @@ internal static class CreateDataSourceEndpoint
             // 部門グループ**（ちょうど 1 つのとき）で補う。導けなければ従来どおり予約値 `unassigned`。
             var ds = DataSource.Create(req.Name, req.SourceType, req.ConnectionUri,
                 req.Config, req.DefaultAttributes, req.OwnerMappings,
-                registrantDepartment: RegistrantDepartmentOf(http.User));
+                registrantDepartment: ResolveRegistrantDepartment(
+                    http.User, req.DefaultAttributes, loggers.CreateLogger(LogCategory)));
             db.DataSources.Add(ds);
             await db.SaveChangesAsync();
             return Results.Created($"/datasources/{ds.Id}",
@@ -56,4 +57,43 @@ internal static class CreateDataSourceEndpoint
     // 配列クレームは .NET で**同じ型の複数クレーム**になる（`FindFirst` では先頭 1 つに畳まれる）。
     internal static string? RegistrantDepartmentOf(ClaimsPrincipal user) =>
         RegistrantDepartment.FromGroupPaths(user.FindAll(GroupPathsClaim).Select(c => c.Value));
+
+    internal const string LogCategory = "DataSourceService.Features.DataSources.Create";
+
+    // FR-05, UC-04, SC-06, IADR-0468 決定 6 (#754 監査): 導けなかった理由を**区別してログに残す**。
+    //
+    // 保存される値はどちらも予約値 `unassigned` だが、**原因と直し方が違う**:
+    //   - クレーム自体が無い（Warning）: realm の `group-paths` マッパーが未適用（`reconcile-realm.sh` 前）の疑い。
+    //     直すのは運用者。🔴 **Keycloak は所属が空の登録者についてこのクレームを省き得る**（空の複数値を発行しない挙動。
+    //     実機では未確認）。その場合トークンだけでは「マッパー未適用」と「所属 0」を区別できない —— 文言に両方の原因を書く。
+    //   - クレームはあるが部門グループがちょうど 1 つではない（Information）: 0 個か 2 個以上。設計どおりの「導かない」。
+    // 🔴 **1 回の登録につき 1 行だけ**出す。`department` を明示した登録（導く必要が無い）では何も出さない。
+    // 利用者識別子・グループ名は載せない（件数だけ）。
+    internal static string? ResolveRegistrantDepartment(
+        ClaimsPrincipal user, IReadOnlyDictionary<string, string>? requested, ILogger logger)
+    {
+        if (!DataSource.IsDepartmentUnresolved(requested)) return null;
+
+        var paths = user.FindAll(GroupPathsClaim).Select(c => c.Value).ToList();
+        if (paths.Count == 0)
+        {
+            logger.LogWarning(
+                "登録者のトークンに {Claim} クレームが無いため、データソースの部門を導けない（予約値 unassigned にする）。"
+                + "realm の group-paths マッパーがまだ適用されていない（reconcile-realm 前）か、"
+                + "登録者がどのグループにも属していない（所属が空だと Keycloak がクレームを省き得る）。",
+                GroupPathsClaim);
+            return null;
+        }
+
+        var code = RegistrantDepartment.FromGroupPaths(paths);
+        if (code is null)
+        {
+            var departmentPaths = paths.Count(p => p.StartsWith(RegistrantDepartment.DepartmentGroupRoot, StringComparison.Ordinal));
+            logger.LogInformation(
+                "{Claim} クレームはあるが、登録者の部門グループがちょうど 1 つではない（部門配下の所属 {DepartmentPaths} 件）。"
+                + "データソースの部門は導かず予約値 unassigned にする。",
+                GroupPathsClaim, departmentPaths);
+        }
+        return code;
+    }
 }

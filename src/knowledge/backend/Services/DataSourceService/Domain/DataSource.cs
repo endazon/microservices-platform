@@ -126,6 +126,12 @@ public class DataSource
     // ときだけで、判定は取り込み経路の上書き（`GetEffectiveAttributes(perItem)`）と**同じ述語**
     // `IsUnresolved` を使う —— 「未解決」の定義を 2 つ持たない。予約値の明示は「解決できなかった」の記録で
     // あって部門の指定ではないので、導けるなら置き換える。
+    // FR-05, IADR-0468 (#754): 登録の依頼が `department` を**未解決**のまま持ってきたか。
+    // 登録端点が「導く必要があるか」（＝導けなかったことを記録に残すべきか）を判断するための読み口であり、
+    // 判定は上と同じ述語 `IsUnresolved` を使う（「未解決」の定義を 2 つ持たない）。
+    public static bool IsDepartmentUnresolved(IReadOnlyDictionary<string, string>? attributes) =>
+        attributes is null || IsUnresolved(attributes, DepartmentKey);
+
     private static Dictionary<string, string>? WithRegistrantDepartment(
         Dictionary<string, string>? attributes, string? registrantDepartment)
     {
