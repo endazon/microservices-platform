@@ -185,3 +185,5 @@ jobs:
     permissions:
       contents: read
       issues: write
+      # 失敗ジョブ名の取得（listJobsForWorkflowRun）に要る。呼ばれる側の report ジョブと同じ範囲を与える（#1588）。
+      actions: read
