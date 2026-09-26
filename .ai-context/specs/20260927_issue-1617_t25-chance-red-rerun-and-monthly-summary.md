@@ -123,7 +123,13 @@ planning#681 の裁定（ADR-0118）は、T-25 の偶然の赤（系統差が無
   `node scripts/check-password-reset-mail.js --self-test` → 58 件 OK
 - 実データ（読むだけ）: `node scripts/t25-rerun-on-chance-red.js --run-id 36244009369 --attempt 1` → `none`（印の手順が無い古い定義）／
   `--run-id 36253517299 --attempt 1` → `none`（緑）
-- 変異試験・`k8s-local-up.test.js`（#1597 の試験。本作業で足した `id:` の影響）は PR の CI の結果とともに PR 本文へ記録する
+- 変異試験（実装のコミットの上で当て、`git show HEAD:<path> > <path>` で戻した）:
+  1. `decide` の `run.run_attempt === 1` を `>= 1` へ（attempt 2 が再実行の分岐へ入る＝再実行の再実行）→ 自己試験
+     「再実行の再実行はしない」が `actual: 'rerun' / expected: 'report'` で落ち、`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` も exit 1
+  2. integration-stack.yml の印の手順の `if:` から `&& steps.login-disclosure.outcome == 'success'` を外す → #1617 節が
+     「🔴 Gate — ログイン経路の存在秘匿（#1245 PR-0） が failure なのに候補になる」で落ち、exit 1
+  - 戻した後: `✓ 839 tests passed`・`git status` は空
+- `k8s-local-up.test.js`（#1597 の試験。本作業で足した `id:` の影響）は、稼働クラスタ用の起動器をスタブの下で走らせる試験のため手元では走らせず、PR の CI（`static-checks`）の結果で確かめる
 
 ## 残るもの
 
