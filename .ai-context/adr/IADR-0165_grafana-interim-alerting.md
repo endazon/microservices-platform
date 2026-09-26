@@ -7,9 +7,11 @@ related_ids:
   - ADR-0006
   - IADR-0130
   - IADR-0164
+  - IADR-0370
+  - IADR-0432
 author: claude
 created: 2026-08-10
-updated: 2026-08-10
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/06_technical/05_observability-ops.md
 ---
@@ -168,3 +170,38 @@ k8s（`deploy/local/observability/grafana.yaml`）は ConfigMap へ inline す�
    `alerting/` から datasources へ広げるかも、そこで判断する）。
    なお**宣言を足しただけで連携が復活したことは未検証**である（決定 1）。
 3. **Alertmanager 配備時に暫定経路を削除する**（決定 5 の 3 条件。#546 で追跡）。
+
+## ［2026-09-26 追記 / #1577］検査器へ 6 点目を足す —— 式の絞り込みと評価器の組み合わせが発火し得ること
+
+上の「見ていないもの」に**式が正しい結果を返すか（Prometheus 側と同一式である、までしか言えない）**と書いた。
+**同一式であることそのものが欠陥だった。** Grafana 版は閾値を `expr` ではなく `conditions[].evaluator` に持つ（#1110）ので、
+Prometheus 版の絞り込みの式（`up{job="otel-collector"} == 0`）をそのまま写して評価器 `gt 0` で比べると、
+絞り込みの後に残る値は 0 であり `0 > 0` が偽になる —— **`OtelCollectorDown` は本決定の時点から一度も発火し得なかった。**
+正常時は式が空になるので `noDataState: NoData` が立ち（IADR-0370 §D の実測 `OtelCollectorDown alerts=1 [NoData]`）、
+**鳴る向きが逆になっていた。** 全 20 件を走査して、同型は `ServiceRequestMetricsAbsent`（`== 0 and on (job) …`。`and` は左辺の値 0 を残す）の 1 件だけだった
+（走査の結果は作業仕様書 `20260926_1577_grafana-filter-evaluator-never-fires.md`）。
+
+**是正**（compose と k8s の inline の両方。Prometheus 版は変えない）:
+
+| ルール | 式 | 評価器 | noDataState | 理由 |
+| --- | --- | --- | --- | --- |
+| `OtelCollectorDown` | `up{job="otel-collector"}`（生の値） | `lt 1`（値 0 で真） | `OK` | #1544 の `ResetFloorNoReadyEndpoint` と同じ形。系列の不在は `OtelCollectorUpSeriesAbsent` が拾う（同じ不在で 2 通鳴らさない） |
+| `ServiceRequestMetricsAbsent` | `… == bool 0 and on (job) (…)`（途絶で 1・受信中で 0） | `gt 0`（据え置き） | `OK` | 空になるのは「15 分前に受信していた job が無い」（途絶ではない）か系列の不在（`HttpServerMetricsSeriesAbsent` が拾う）。Prometheus 版も空なら鳴らない |
+
+`ServiceRequestMetricsAbsent` を生の値（`rate`）と `lt ε` で比べる案は採らない —— 途絶は `rate == 0` の**厳密な等号**であり、
+ε の選び方が新しい閾値を持ち込む。Grafana 11.0.0 の閾値式には等号の評価器が無いので、`bool` で 0 / 1 に直してから比べる。
+
+**検査器の 6 点目**（`scripts/check-grafana-alerting.js` の検査 6）: 各ルールの expr の**最上位の比較**（`bool` なし・片辺が数値リテラル）から
+発火側で残り得る値の集合を区間で求め、評価器を満たす値の集合と**交わらなければ**違反にする。
+PromQL の優先順位どおり `or` は各辺の和、`and` / `unless` は左辺、`bool` は {0, 1}、ベクタどうしの比較は値を縛らない、と読む。
+**偽陰性は受容し偽陽性を出さない側へ倒す**（比較の結果へさらに算術・集約を掛けた形は値を縛らないものとして読む）。
+**式・評価器を読めないルールは違反にする**（fail-closed）。判定できたルールが 0 件なら fail する（0 件走査の門）。
+写しの両方（compose / k8s inline）を見る。`scripts/scripts.repo.test.js` が実データを #1577 以前の形へ戻す変異で両方の検出を固定する。
+
+**「同型の事故が 2 回起きたら」の条件**: 同型は `OtelCollectorDown`・`ServiceRequestMetricsAbsent` の 2 件が実在し、
+#1544 でも `ResetFloorNoReadyEndpoint` が同じ形で書かれかけた（同作業仕様書が回避を明記）。issue 本文も検査器を求めている。
+**IADR-0345 決定 5 / IADR-0370 決定 7 の「静的検査器を新設しない」は覆さない** —— あちらは「式が参照する系列が稼働 TSDB に実在するか」
+（リポジトリの外の事実）であり、本検査はリポジトリ内の 2 つの宣言（expr と評価器）の自己整合である。軸が違う。
+
+**本追記の後も見ていないもの**: Grafana が受理するか（決定 1）と、値が縛られない式の評価器が妥当か（閾値の大きさ・単位は #1110 の射程）。
+**是正後の発火を稼働 Grafana では確かめていない**（稼働クラスタへ当たらない作業である）。配備時の確かめ方は作業仕様書 §未検証。

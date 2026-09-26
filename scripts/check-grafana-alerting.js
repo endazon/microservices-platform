@@ -19,7 +19,7 @@
  *    #1573 で部門の同期の `DepartmentSyncNotCorrecting` を足して 19 → 20。
  *    🔴 **件数は導出値なので数え直すこと** —— この行は #1246 の 2 件を取りこぼして
  *    「9 件」のまま 2 世代残っていた。**走査ではなく計算し直す。**）
- *   ここで見るのは下の 5 点だけである。
+ *   ここで見るのは下の 6 点だけである。
  *
  * 検査:
  *   1. ルール数が deploy/prometheus/alerts.yml と一致する
@@ -27,6 +27,8 @@
  *   3. 各ルールの datasourceUid が datasources に実在する（`__expr__` は Grafana 組込み）
  *   4. compose と k8s の inline が同内容である（二重管理の乖離を止める）
  *   5. 必須キーが揃っている（apiVersion / groups / 各ルールの title・condition・data）
+ *   6. 式の絞り込みの後に残る値で評価器が真になり得る（#1577。`== 0` で絞って `gt 0` で比べる形を止める。
+ *      compose と k8s の inline の両方を見る。式・評価器を読めないルールは違反にする）
  *
  * fail-closed（#664 / IADR-0130）: 走査結果が 0 件なら fail する。
  *   「検査しているつもりで何も見ていない」状態を緑で返さない。
@@ -97,6 +99,256 @@ function normalize(text) {
   return text.split('\n').map((l) => l.replace(/\s+$/, '')).filter((l) => l !== '').join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// 6. 式の絞り込みと評価器の組み合わせ（#1577 / NFR-21）
+//
+// Grafana 版は閾値を `expr` ではなく `conditions[].evaluator` に持つ（#1110）。
+// そのため Prometheus 版の式（`up == 0`）をそのまま写すと、**絞り込みの後に残る値は 0** であり、
+// 評価器 `gt 0` は `0 > 0` で偽になる —— **構文として正当なまま永久に発火しない**
+// （`OtelCollectorDown` と `ServiceRequestMetricsAbsent` が #1577 までこの形だった。
+//  #1544 の `ResetFloorNoReadyEndpoint` は最初から `up` を生で取り `lt 1` で比べている）。
+//
+// 見ること: 式の**最上位の比較**（`X == 0` 等。`bool` なし・片辺が数値リテラル）から、
+// 発火側で残り得る値の集合を区間で求め、評価器を満たす値の集合と**交わらなければ**違反にする。
+//
+// ★ 読み方の規則（PromQL の優先順位に従う。低い順に `or` → `and` / `unless` → 比較 → 算術）:
+//   - `or` の各辺は値を出す（どれか 1 辺でも発火し得れば違反にしない）。
+//   - `and` / `unless` は**左辺の値を残す**。右辺の絞り込みは値を決めない。
+//   - 比較に `bool` が付けば値は 0 / 1 である（絞り込みではない）。
+//   - 比較の両辺がベクタ（リテラルでない）なら、左辺の値が残るだけで値は縛られない。
+//   - 式全体を包む括弧は剥がして読み直す。
+// ★ 見ていないもの（偽陰性は受容する。偽陽性を出さない側へ倒す）:
+//   比較の結果にさらに算術・集約を掛けた形（`(up == 0) * 1`・`max(up == 0)` 等）は値を縛らないものとして読む。
+// ★ fail-closed: 式または評価器を読めないルールは違反にする（読めないまま素通りさせない）。
+// ---------------------------------------------------------------------------
+
+const INF = Number.POSITIVE_INFINITY;
+
+/** 区間 { lo, loInc, hi, hiInc }。点は lo === hi かつ両端を含む。 */
+const interval = (lo, loInc, hi, hiInc) => ({ lo, loInc, hi, hiInc });
+const point = (v) => interval(v, true, v, true);
+const ALL = [interval(-INF, false, INF, false)];
+
+/** 2 区間が交わるか。 */
+function intersects(a, b) {
+  const lo = Math.max(a.lo, b.lo);
+  const hi = Math.min(a.hi, b.hi);
+  if (lo < hi) return true;
+  if (lo > hi) return false;
+  const loInc = (a.lo === lo ? a.loInc : true) && (b.lo === lo ? b.loInc : true);
+  const hiInc = (a.hi === hi ? a.hiInc : true) && (b.hi === hi ? b.hiInc : true);
+  return loInc && hiInc;
+}
+
+/** 区間の集合どうしが交わるか。 */
+const setsIntersect = (xs, ys) => xs.some((x) => ys.some((y) => intersects(x, y)));
+
+/** 比較演算子と数値 c から、絞り込みの後に残り得る値の集合を返す。 */
+function filterSet(op, c) {
+  switch (op) {
+    case '==': return [point(c)];
+    case '!=': return [interval(-INF, false, c, false), interval(c, false, INF, false)];
+    case '>': return [interval(c, false, INF, false)];
+    case '>=': return [interval(c, true, INF, false)];
+    case '<': return [interval(-INF, false, c, false)];
+    case '<=': return [interval(-INF, false, c, true)];
+    default: return ALL;
+  }
+}
+
+/** 評価器（Grafana の threshold）を満たす値の集合。解釈できない型・引数は null。 */
+function evaluatorSet(type, params) {
+  const [a, b] = params;
+  const need = (n) => params.length >= n && params.slice(0, n).every((x) => Number.isFinite(x));
+  switch (type) {
+    case 'gt': return need(1) ? [interval(a, false, INF, false)] : null;
+    case 'lt': return need(1) ? [interval(-INF, false, a, false)] : null;
+    case 'gte': return need(1) ? [interval(a, true, INF, false)] : null;
+    case 'lte': return need(1) ? [interval(-INF, false, a, true)] : null;
+    case 'eq': return need(1) ? [point(a)] : null;
+    case 'ne': return need(1) ? filterSet('!=', a) : null;
+    case 'within_range': return need(2) ? [interval(a, false, b, false)] : null;
+    case 'within_range_included': return need(2) ? [interval(a, true, b, true)] : null;
+    case 'outside_range': return need(2) ? [interval(-INF, false, a, false), interval(b, false, INF, false)] : null;
+    case 'outside_range_included': return need(2) ? [interval(-INF, false, a, true), interval(b, true, INF, false)] : null;
+    default: return null;
+  }
+}
+
+/** 文字列リテラルと行コメントを潰す（ラベル値の中の `==` や `or` を拾わない）。 */
+function stripPromqlNoise(expr) {
+  return expr
+    .replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`[^`]*`/g, '""')
+    .replace(/#[^\n]*/g, '');
+}
+
+/** 深さ 0 の位置で `re`（先頭一致・語境界つき）に当たる箇所で分け、各辺のテキストを返す。 */
+function splitTopLevel(s, re) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if ('([{'.includes(ch)) depth++;
+    else if (')]}'.includes(ch)) depth--;
+    else if (depth === 0 && (i === 0 || !/[A-Za-z0-9_:]/.test(s[i - 1]))) {
+      const m = s.slice(i).match(re);
+      if (m) {
+        parts.push(s.slice(start, i));
+        i += m[0].length - 1;
+        start = i + 1;
+      }
+    }
+  }
+  parts.push(s.slice(start));
+  return parts;
+}
+
+/** 式全体を包む括弧を剥がす（`(a) + (b)` のような形は剥がさない）。 */
+function unwrapParens(s) {
+  let t = s.trim();
+  for (;;) {
+    if (!t.startsWith('(') || !t.endsWith(')')) return t;
+    let depth = 0;
+    for (let i = 0; i < t.length; i++) {
+      if (t[i] === '(') depth++;
+      else if (t[i] === ')') depth--;
+      if (depth === 0 && i < t.length - 1) return t;
+    }
+    t = t.slice(1, -1).trim();
+  }
+}
+
+const NUMBER_RE = /^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?$/i;
+const FLIP = { '==': '==', '!=': '!=', '>': '<', '<': '>', '>=': '<=', '<=': '>=' };
+
+/** 深さ 0 の比較演算子を末尾から探す（比較は左結合なので最後のものが最外）。 */
+function lastTopLevelComparison(s) {
+  let depth = 0;
+  let found = null;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if ('([{'.includes(ch)) { depth++; continue; }
+    if (')]}'.includes(ch)) { depth--; continue; }
+    if (depth !== 0) continue;
+    const two = s.slice(i, i + 2);
+    if (['==', '!=', '>=', '<='].includes(two)) { found = { at: i, op: two }; i++; continue; }
+    if (ch === '>' || ch === '<') found = { at: i, op: ch };
+  }
+  return found;
+}
+
+/**
+ * 式が発火側で出し得る値の集合を返す。**値を縛らないなら ALL**。
+ * 純関数（自己試験から直接呼ぶ）。
+ */
+function expressionValueSet(expr) {
+  const s = unwrapParens(stripPromqlNoise(expr));
+  // `or`: 各辺の和集合。
+  const orParts = splitTopLevel(s, /^or\b/i);
+  if (orParts.length > 1) return orParts.flatMap((p) => expressionValueSet(p));
+  // `and` / `unless`: 最初の辺（左辺）の値が残る。
+  const andParts = splitTopLevel(s, /^(?:and|unless)\b/i);
+  if (andParts.length > 1) return expressionValueSet(andParts[0]);
+
+  const cmp = lastTopLevelComparison(s);
+  if (!cmp) return ALL;
+  const lhs = unwrapParens(s.slice(0, cmp.at));
+  const rest = s.slice(cmp.at + cmp.op.length).trim();
+  if (/^bool\b/i.test(rest)) return [point(0), point(1)];
+  // `on (...)` / `ignoring (...)` / `group_left` 等の修飾はベクタどうしの比較である。
+  if (/^(?:on|ignoring|group_left|group_right)\b/i.test(rest)) return ALL;
+  const rhs = unwrapParens(rest);
+  if (NUMBER_RE.test(rhs) && !NUMBER_RE.test(lhs)) return filterSet(cmp.op, Number(rhs));
+  if (NUMBER_RE.test(lhs) && !NUMBER_RE.test(rhs)) return filterSet(FLIP[cmp.op], Number(lhs));
+  return ALL;
+}
+
+/** YAML の 1 行スカラーの引用符を剥がす。 */
+function unquoteYamlScalar(raw) {
+  const v = raw.trim();
+  if (v.length >= 2 && v.startsWith("'") && v.endsWith("'")) return v.slice(1, -1).replace(/''/g, "'");
+  if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) return v.slice(1, -1).replace(/\\(["\\])/g, '$1');
+  return v;
+}
+
+/**
+ * Grafana provisioning をルール単位に切り、各ルールの expr と評価器を読む。
+ * 1 ルール = `title:` の行から次の `title:` の行まで（コメント行は除く）。
+ * expr は 1 行（引用符あり・なし）と `|` / `>` のブロックの両方を読む。
+ */
+function grafanaRuleConditions(text) {
+  const lines = text.split('\n').filter((l) => !/^\s*#/.test(l));
+  const starts = [];
+  lines.forEach((l, i) => { if (/^\s*(?:-\s*)?title:\s*\S+\s*$/.test(l)) starts.push(i); });
+  return starts.map((start, k) => {
+    const body = lines.slice(start, k + 1 < starts.length ? starts[k + 1] : lines.length);
+    const title = body[0].replace(/^\s*(?:-\s*)?title:\s*/, '').trim();
+    const exprs = [];
+    for (let i = 0; i < body.length; i++) {
+      const m = body[i].match(/^(\s*)expr:\s*(.*)$/);
+      if (!m) continue;
+      if (/^[|>][-+]?\s*$/.test(m[2])) {
+        const block = [];
+        for (let j = i + 1; j < body.length; j++) {
+          if (body[j].trim() === '') { block.push(''); continue; }
+          if (body[j].match(/^\s*/)[0].length <= m[1].length) break;
+          block.push(body[j].trim());
+        }
+        exprs.push(block.join('\n').trim());
+      } else {
+        exprs.push(unquoteYamlScalar(m[2]));
+      }
+    }
+    const evaluators = [...body.join('\n').matchAll(
+      /evaluator:\s*\{\s*type:\s*([A-Za-z_]+)\s*,\s*params:\s*\[([^\]]*)\]\s*\}/g,
+    )].map((m) => ({
+      type: m[1],
+      params: m[2].split(',').map((x) => x.trim()).filter((x) => x !== '').map(Number),
+    }));
+    return { title, exprs, evaluators };
+  });
+}
+
+const describeSet = (xs) => xs.map((x) => (x.lo === x.hi
+  ? `${x.lo}`
+  : `${x.loInc ? '[' : '('}${x.lo}, ${x.hi}${x.hiInc ? ']' : ')'}`)).join(' ∪ ');
+
+/**
+ * 6 の本体。`label` は違反文に付ける写しの名前（compose / k8s inline）。
+ * 戻り値: { issues, checked }（checked は組み合わせを判定できたルール数。0 件走査の門に使う）。
+ */
+function filterEvaluatorIssues(text, label) {
+  const issues = [];
+  let checked = 0;
+  for (const { title, exprs, evaluators } of grafanaRuleConditions(text)) {
+    if (exprs.length !== 1) {
+      issues.push(`[${label}] ルール ${title}: expr を ${exprs.length} 件読んだ（本検査は 1 ルール 1 クエリだけを解釈する。読めないまま素通りさせない）`);
+      continue;
+    }
+    if (evaluators.length !== 1) {
+      issues.push(`[${label}] ルール ${title}: 評価器（evaluator: { type, params }）を ${evaluators.length} 件読んだ（1 件であること。読めないまま素通りさせない）`);
+      continue;
+    }
+    const { type, params } = evaluators[0];
+    const want = evaluatorSet(type, params);
+    if (want === null) {
+      issues.push(`[${label}] ルール ${title}: 評価器 ${type} [${params.join(', ')}] を解釈できない（型を本検査へ足すこと）`);
+      continue;
+    }
+    const got = expressionValueSet(exprs[0]);
+    checked++;
+    if (!setsIntersect(got, want)) {
+      issues.push(
+        `[${label}] ルール ${title}: expr の絞り込みの後に残る値は ${describeSet(got)} だが、` +
+        `評価器 ${type} [${params.join(', ')}] はその値で真にならない —— 永久に発火しない（#1577）。` +
+        '絞り込みを外して生の値を評価器で比べること（例: `up` を `lt 1`）',
+      );
+    }
+  }
+  return { issues, checked };
+}
+
 /** 検査本体。読み込んだテキストを受け取る純関数（自己試験から呼べるようにする）。 */
 function findIssues({ prom, grafana, datasources, k8sInline }) {
   const issues = [];
@@ -134,7 +386,18 @@ function findIssues({ prom, grafana, datasources, k8sInline }) {
       issues.push(`ルール ${titles.length} 件に対し ${key} が ${n} 件しかない（必須キーの欠落）`);
     }
   }
-  return { issues, promCount: promNames.length, grafanaCount: titles.length };
+
+  // 6: 式の絞り込みと評価器の組み合わせ（#1577）。**写しの両方**を見る
+  //    （4 が同内容を見るが、乖離しているときに片方の違反を黙らせない）。
+  const composeFilter = filterEvaluatorIssues(grafana, 'compose');
+  issues.push(...composeFilter.issues);
+  if (k8sInline !== null) issues.push(...filterEvaluatorIssues(k8sInline, 'k8s inline').issues);
+  if (titles.length > 0 && composeFilter.checked === 0) {
+    issues.push('式と評価器の組み合わせを 1 件も判定できなかった（0 件走査。検査しているつもりで何も見ていない）');
+  }
+  return {
+    issues, promCount: promNames.length, grafanaCount: titles.length, filterChecked: composeFilter.checked,
+  };
 }
 
 function selfTest() {
@@ -143,8 +406,12 @@ function selfTest() {
     prom: '      - alert: Foo\n      - alert: Bar\n',
     grafana:
       'apiVersion: 1\ngroups:\n  - rules:\n' +
-      '      - uid: foo\n        title: Foo\n        condition: C\n        noDataState: NoData\n        execErrState: Error\n        data:\n          - datasourceUid: prometheus\n          - datasourceUid: __expr__\n' +
-      '      - uid: bar\n        title: Bar\n        condition: C\n        noDataState: NoData\n        execErrState: Error\n        data:\n          - datasourceUid: prometheus\n',
+      '      - uid: foo\n        title: Foo\n        condition: C\n        noDataState: NoData\n        execErrState: Error\n        data:\n          - datasourceUid: prometheus\n' +
+      "            model:\n              expr: 'up{job=\"x\"}'\n" +
+      '          - datasourceUid: __expr__\n            model:\n              conditions:\n                - evaluator: { type: lt, params: [1] }\n' +
+      '      - uid: bar\n        title: Bar\n        condition: C\n        noDataState: NoData\n        execErrState: Error\n        data:\n          - datasourceUid: prometheus\n' +
+      '            model:\n              expr: |\n                sum by (job) (rate(m[5m])) > 0\n' +
+      '          - datasourceUid: __expr__\n            model:\n              conditions:\n                - evaluator: { type: gt, params: [0] }\n',
     datasources: 'datasources:\n  - name: P\n    uid: prometheus\n',
   };
   base.k8sInline = base.grafana;
@@ -196,6 +463,86 @@ function selfTest() {
     assert.strictEqual(got, 'apiVersion: 1\ngroups: []');
   });
 
+  // ---- 6: 式の絞り込みと評価器の組み合わせ（#1577）----
+  const withRule = (expr, evaluator) => {
+    const g = base.grafana
+      .replace("expr: 'up{job=\"x\"}'", expr.includes('\n') ? `expr: |\n${expr.split('\n').map((l) => `                ${l}`).join('\n')}` : `expr: '${expr}'`)
+      .replace('{ type: lt, params: [1] }', evaluator);
+    return { ...base, grafana: g, k8sInline: g };
+  };
+  const neverFires = (r) => r.issues.some((x) => x.includes('永久に発火しない'));
+
+  t('== 0 の絞り込みと gt 0 の評価器の組み合わせを検出する（#1577・変異試験）', () => {
+    const r = findIssues(withRule('up{job="x"} == 0', '{ type: gt, params: [0] }'));
+    assert.ok(neverFires(r), JSON.stringify(r.issues));
+    assert.ok(r.issues.some((x) => x.startsWith('[compose] ルール Foo')), JSON.stringify(r.issues));
+    assert.ok(r.issues.some((x) => x.startsWith('[k8s inline] ルール Foo')), JSON.stringify(r.issues));
+  });
+
+  t('and の左辺の == 0 を検出する（右辺の > 0 は値を決めない。#1577・変異試験）', () => {
+    const r = findIssues(withRule(
+      'sum by (job) (rate(m[5m])) == 0\nand on (job) (sum by (job) (m offset 15m) > 0)',
+      '{ type: gt, params: [0] }',
+    ));
+    assert.ok(neverFires(r), JSON.stringify(r.issues));
+  });
+
+  t('< 1 の絞り込みと gt 1 の評価器も検出する（== 0 以外の同型・変異試験）', () => {
+    const r = findIssues(withRule('up{job="x"} < 1', '{ type: gt, params: [1] }'));
+    assert.ok(neverFires(r), JSON.stringify(r.issues));
+  });
+
+  t('生の値を lt 1 で比べる形は違反にしない（#1544 の形）', () =>
+    assert.ok(!neverFires(findIssues(base))));
+
+  t('bool つきの比較は 0 / 1 を返すので違反にしない', () => {
+    const r = findIssues(withRule(
+      'sum by (job) (rate(m[5m])) == bool 0\nand on (job) (sum by (job) (m offset 15m) > 0)',
+      '{ type: gt, params: [0] }',
+    ));
+    assert.deepStrictEqual(r.issues, []);
+  });
+
+  t('> 0 の絞り込みと gt 0 は違反にしない', () =>
+    assert.deepStrictEqual(findIssues(withRule('increase(m[1h]) > 0', '{ type: gt, params: [0] }')).issues, []));
+
+  t('or の片側でも発火し得れば違反にしない', () =>
+    assert.deepStrictEqual(findIssues(withRule('up{job="x"} == 0 or absent(up{job="x"})', '{ type: gt, params: [0] }')).issues, []));
+
+  t('括弧の中の or / 比較は最上位の比較を隠さない', () =>
+    assert.deepStrictEqual(findIssues(withRule(
+      '(sum(increase(a[1h])) or vector(0)) + (sum(increase(b{o=~"x|y"}[1h])) or vector(0)) > 0',
+      '{ type: gt, params: [0] }',
+    )).issues, []));
+
+  t('ベクタどうしの比較（on 修飾）は値を縛らないので違反にしない', () =>
+    assert.deepStrictEqual(findIssues(withRule(
+      'sum by (p) (increase(c[30d])) > on (p) max by (p) (limit)',
+      '{ type: gt, params: [0] }',
+    )).issues, []));
+
+  t('ラベル値の中の == や or を比較・集合演算として読まない', () =>
+    assert.deepStrictEqual(findIssues(withRule('m{a="x == 0 or y"}', '{ type: gt, params: [0] }')).issues, []));
+
+  t('評価器を読めないルールを検出する（fail-closed・変異試験）', () => {
+    const r = findIssues(withRule('up{job="x"}', 'type: lt'));
+    assert.ok(r.issues.some((x) => x.includes('評価器')), JSON.stringify(r.issues));
+  });
+
+  t('解釈できない評価器の型を検出する（fail-closed・変異試験）', () => {
+    const r = findIssues(withRule('up{job="x"}', '{ type: unknown_type, params: [1] }'));
+    assert.ok(r.issues.some((x) => x.includes('解釈できない')), JSON.stringify(r.issues));
+  });
+
+  t('区間の交わり: 端点は両方が含むときだけ交わる', () => {
+    assert.ok(!setsIntersect([point(0)], evaluatorSet('gt', [0])));
+    assert.ok(setsIntersect([point(0)], evaluatorSet('lt', [1])));
+    assert.ok(setsIntersect(filterSet('>=', 1), evaluatorSet('gte', [1])));
+    assert.ok(!setsIntersect(filterSet('>', 1), evaluatorSet('lte', [1])));
+    assert.ok(!setsIntersect([point(5)], evaluatorSet('within_range', [1, 5])));
+    assert.ok(setsIntersect([point(5)], evaluatorSet('within_range_included', [1, 5])));
+  });
+
   process.stdout.write(`\n✓ self-test: ${passed} 件すべて通過\n`);
 }
 
@@ -219,7 +566,7 @@ function main(argv) {
     }
   }
 
-  const { issues, promCount, grafanaCount } = findIssues({
+  const { issues, promCount, grafanaCount, filterChecked } = findIssues({
     prom, grafana, datasources, k8sInline: extractK8sInline(k8s),
   });
 
@@ -233,7 +580,8 @@ function main(argv) {
   if (issues.length === 0) {
     console.log(
       `[check-grafana-alerting] OK: Prometheus ${promCount} 件 / Grafana ${grafanaCount} 件のルールが 1 対 1 で対応し、` +
-      'datasourceUid は実在し、compose と k8s は同内容です。' +
+      'datasourceUid は実在し、compose と k8s は同内容で、' +
+      `式の絞り込みと評価器の組み合わせ ${filterChecked} 件はいずれも発火し得ます。` +
       '（**Grafana が受理するかは本検査の対象外**。配備時に /api/v1/provisioning/alert-rules を確かめること）',
     );
     return 0;
@@ -243,6 +591,9 @@ function main(argv) {
   return 1;
 }
 
-module.exports = { findIssues, promAlertNames, grafanaRuleTitles, extractK8sInline, selfTest };
+module.exports = {
+  findIssues, promAlertNames, grafanaRuleTitles, extractK8sInline, selfTest,
+  expressionValueSet, evaluatorSet, grafanaRuleConditions, filterEvaluatorIssues,
+};
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));
