@@ -78,7 +78,10 @@ else
 // FR-16, ADR-0024: 宣言的公開構成・自己申告の集約・実効ツール一覧
 builder.Services.AddSingleton<ToolPublicationConfigLoader>();
 builder.Services.AddSingleton<ToolCatalog>();
-builder.Services.AddScoped<IToolDeclarationSource, HttpToolDeclarationSource>();
+// FR-16, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0462（2026-09-26 追記 / #1515, #1255 経路 ④-a）:
+// 申告の収集は宛先ごとに輸送を選ぶ。**並走中の正は REST** —— `Mcp:GrpcServices` にアドレスが在る宛先だけが
+// gRPC で収集される。gRPC の収集器と s2s トークンの発行側は、その構成が在るときだけ登録する。
+builder.Services.AddMcpToolDeclarationSources(builder.Configuration);
 builder.Services.AddHostedService<ToolCatalogRefresher>();
 
 // FR-16, UC-08: ツール呼び出しの単一経路（登録確認 → 公開確認 → 除外 → 越境 → 監査）

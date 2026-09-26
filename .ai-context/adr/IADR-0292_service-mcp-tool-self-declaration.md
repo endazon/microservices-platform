@@ -2,10 +2,10 @@
 title: IADR-0292 MCP ツールの自己申告は「候補 → 選別」の 1 経路に閉じ、個人資料を対象に含む候補を申告しない
 type: impl-adr
 status: Accepted
-related_ids: [FR-16, FR-17, FR-19, UC-08, SC-12, ADR-0024, ADR-0034, ADR-0054]
+related_ids: [FR-16, FR-17, FR-19, UC-08, SC-12, ADR-0024, ADR-0034, ADR-0054, IADR-0462]
 author: claude
 created: 2026-08-28
-updated: 2026-08-28
+updated: 2026-09-26
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0024_mcp-server-integration.md
   - planning:projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md
@@ -129,6 +129,8 @@ OpenAPI から外す。**BFF 契約ではないので `docs/api/openapi.yaml` �
 - フォローアップ:
   - **共通エンベロープの実行口と権限伝播の方式**（決定 5）。裁定を要する。
   - **申告 DTO の `Platform.Shared.Contracts` 昇格**（決定 4 / IADR-0269 決定 6）。
+    ［2026-09-26 追記 / #1515］**gRPC の契約（proto `platform.mcp.v1`）で昇格した**（[[IADR-0462]] の「経路 ④-a への適用」）。
+    3 サービスの C# の写しは REST の受け口が使うので残し、REST の退役（#1517）で消える。決定 4 の本文は変えていない。
   - `deploy/` の配線（`Mcp__Services__*` の注入、Istio Ingress の `/mcp` ルーティング、レート制限初期値）。
   - `notifications/tools/list_changed` の配信（IADR-0269 から継続）。
 

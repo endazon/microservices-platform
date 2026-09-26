@@ -1546,6 +1546,90 @@
         }
       }
     },
+    "src/platform/backend/Shared/Platform.Shared.Contracts/Protos/platform/mcp/v1/mcp_tool_declarations.proto": {
+      "syntax": "proto3",
+      "package": "platform.mcp.v1",
+      "csharpNamespace": "Platform.Shared.Contracts.Grpc.Mcp.V1",
+      "imports": [],
+      "messages": {
+        "DeclareMcpToolsRequest": {
+          "fields": {},
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "McpToolDeclaration": {
+          "fields": {
+            "description": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            },
+            "egress_class": {
+              "number": 6,
+              "type": "string",
+              "label": "singular"
+            },
+            "endpoint": {
+              "number": 4,
+              "type": "string",
+              "label": "singular"
+            },
+            "input_schema": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            },
+            "name": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "required_scope": {
+              "number": 5,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "ServiceToolDeclarations": {
+          "fields": {
+            "service": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "tools": {
+              "number": 2,
+              "type": "McpToolDeclaration",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "enums": {},
+      "services": {
+        "McpToolDeclarations": {
+          "rpcs": {
+            "Declare": {
+              "request": "DeclareMcpToolsRequest",
+              "response": "ServiceToolDeclarations",
+              "clientStreaming": false,
+              "serverStreaming": false
+            }
+          }
+        }
+      }
+    },
     "src/platform/backend/Shared/Platform.Shared.Contracts/Protos/platform/notification/v1/notification_ingress.proto": {
       "syntax": "proto3",
       "package": "platform.notification.v1",

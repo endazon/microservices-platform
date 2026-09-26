@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11, FR-12, FR-13, FR-15, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, NFR-02, NFR-09, NFR-16, NFR-19, NFR-21, SC-03, SC-05, SC-06, SC-10, SC-12, SC-17, SC-18, UC-01, UC-02, UC-03, UC-04, UC-05, UC-07, UC-09, UC-10, UC-11]
 adrs: [ADR-0089, ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0037, ADR-0038, ADR-0044, ADR-0045, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088, ADR-0018, ADR-0024, ADR-0109, ADR-0092, ADR-0115, ADR-0096, ADR-0114]
-iadrs: [IADR-0465, IADR-0029, IADR-0462, IADR-0458, IADR-0403, IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0467, IADR-0472, IADR-0474, IADR-0431]
-specs: [20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable]
-issues: [#1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1557, #1532]
+iadrs: [IADR-0465, IADR-0029, IADR-0462, IADR-0269, IADR-0292, IADR-0458, IADR-0403, IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0467, IADR-0472, IADR-0474, IADR-0431]
+specs: [20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable]
+issues: [#1515, #1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1557, #1532]
 -->
 
 # 通信仕様書: east-west gRPC（サービス間の同期呼び出し）
@@ -30,7 +30,7 @@ issues: [#1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1
   ［2026-09-25 追記］🔴 **BFF が利用者の資格情報を後段へ付けて中継する呼び出しも対象外である**（BFF はエッジ。
   north-south の続きとして扱う。オーナー裁定）。**BFF 自身の s2s で呼ぶ呼び出しは対象のまま**である。
   分け方は §4「BFF セッション方式との分け方」の行と §5 の判定表の直後を参照。
-- **状態**: gRPC 面を持つのは **12 経路**（［2026-09-26 更新］従前 11）—— 参照実装（BFF → 認可サービスの権限スコープ解決）、
+- **状態**: gRPC 面を持つのは **13 経路**（［2026-09-26 更新］従前 11 → 12 → 13）—— 参照実装（BFF → 認可サービスの権限スコープ解決）、
   埋め込み生成（取り込み・検索 → LLM ゲートウェイ）、テキスト生成（AI 分析・グラフ・変換 →
   LLM ゲートウェイ。一括と**逐次**）、**認可サービスの 5 呼び出し元**
   （AI 分析・グラフ・Wiki のスコープ解決＋データソース・MCP の利用者名簿）、そして
@@ -40,7 +40,8 @@ issues: [#1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1
   そして［2026-09-08 追記］**タグ辞書の読み取り**（グラフ → 文書）、
   そして［2026-09-09 追記］**権限内属性値の照会**（BFF → 検索）、そして［2026-09-09 追記］**個人資料の通知の受け付け**（文書 → 通知）、
   そして［2026-09-11 追記］**RAG の文脈収集の検索**（AI 分析 → 検索）、
-  そして［2026-09-26 追記］**実効構成の収集**（構成情報 API → 自己申告を持つ全サービス。**扇形**）である。
+  そして［2026-09-26 追記］**実効構成の収集**（構成情報 API → 自己申告を持つ全サービス。**扇形**）、
+  そして［2026-09-26 追記］**MCP のツール申告の収集**（MCP サーバー → 申告を持つ 3 サービス。**扇形**）である。
   **並走中の正は REST** であり、gRPC は構成で opt-in する。残りの経路の移行は別 issue で展開する。
   ［2026-09-06 追記］🔴 **BFF の s2s 資格情報の未配線は閉じた。** realm に BFF の service account が
   無く、`ServiceToken` が helm・compose のどちらにも無かったため、参照実装（BFF → 認可サービス）は
@@ -666,6 +667,30 @@ JwtBearer と認可の登録を足した —— 無いと面への要求は**毎
 🔴 **REST と gRPC は同じ 1 つの申告を返す**（DI の同じ `ServiceIntrospectionDto` を写す）。**REST の口は残す** ——
 並走中の正は REST であり、経路が「解けた」と数えられるのは REST 実装の退役をもってである。
 
+## 13 つ目の面: MCP のツール申告の収集（`platform.mcp.v1.McpToolDeclarations/Declare`）
+
+- 呼び出し元と呼び出し先: **MCP サーバー → ツールを申告する 3 サービス**（文書・検索・グラフ）。起動時と定期（既定 5 分）の収集が同じ経路を通る。
+- 切替の構成キー: 🔴 **宛先ごと**の `Mcp:GrpcServices:<サービス名>`（h2c のアドレス）。**在る宛先だけが gRPC、無い宛先は
+  `Mcp:Services:<サービス名>` の REST のまま**（両方に在れば gRPC）。戻すのは宛先ごとに 1 行を消すだけでよい。
+- 認証・認可: `ServiceCaller`。REST の受け口は認証を持たない（メッシュ内部限定）ので、**狭まる向き**である。
+- 置き場: `Platform.Shared.Contracts` の `Protos/platform/mcp/v1/mcp_tool_declarations.proto`。
+
+**形は 12 つ目の面（実効構成の収集）と同じである**（扇形・宛先ごとの opt-in・失敗の 2 値への畳み方・構成が在るのに収集器が無ければ起動時に落とす）。
+違うのは次の 3 点だけである。
+
+| 違い | 形 | 理由 |
+| --- | --- | --- |
+| 面の置き場 | **申告する 3 サービスがそれぞれ持つ。** ただし申告を張る唯一の口（各サービスの申告の端点の登録）が REST と gRPC を必ず対で張る | 申告の中身はサービスごとに違い、共通基盤が持つ申告は無い。張り忘れを構造で起こさない点は 12 つ目の面と同じ |
+| 契約の所有 | ツール定義の規約を定める **MCP サーバー（platform）**。この proto が**申告スキーマの共有契約への昇格**を兼ねる | 申告元は規約に合わせて自己申告する側である。REST の受け口が使う C# の写しは REST の退役で消える |
+| 期限 | REST の HTTP クライアントの**タイムアウトと同じ値**（書き写さない） | REST 側にタイムアウトの構成キーが無く、既定値で動いている。同じ値を引けば「挙動を変えない」が保たれる |
+
+- 🔴 **失敗は REST と同じく「申告なし」へ畳む**（全 status・期限切れ・トークン取得失敗・空の `service`）。申告の無いツールは公開構成が要求していても
+  **公開されない**（推測で公開しない）。ログは資格情報の拒否とトークン取得失敗を Error、それ以外を Warning に分ける。
+- 資格情報: MCP サーバーの既存の `mcp-server` client（`platform-service` 付き。認可サービスの gRPC 経路と同じもの）。realm・Secret は増やしていない。
+- 宛先の 3 サービスは既に h2c リスナ・helm の `grpcPort`・compose の `Grpc__Port` と認証を持っていたので、宛先の側に足した配線は面だけである。
+- 申告の `endpoint`（ツールの実行先）は**文字列のまま**運ぶ。**ツールの実行はまだ gRPC へ移していない** —— 宛先に実行口が 1 つも無く、
+  gRPC で実行するときの `endpoint` の扱いと実行口の実装主体の判断が先に要る。
+
 ## シーケンス
 
 ```mermaid
@@ -774,6 +799,8 @@ sequenceDiagram
   ツール申告の収集（宛先 3 つがいずれも h2c リスナを既に持つ。同じ形で写せる）と、**ツールの実行**である。
   🔴 **ツールの実行は宛先に実行口が 1 つも無い**（申告された実行先の路を、どの宛先も張っていない）。今の REST の実行経路は
   常に失敗しており、**輸送だけを差し替えても 1 経路も通らない** —— 申告の実行先の扱いと実行口の実装主体の判断が先に要る。
+  ［2026-09-26 追記］🔴 **ツール申告の収集も移った**（§13 つ目の面）。**扇形で残るのはツールの実行だけであり、判断待ちのまま変わらない。**
+  REST の退役（②）は、扇形 2 経路の REST と移行済み経路の REST をまとめて同じ段で行う。
 - ［2026-09-07 更新］🔴 **利用者の権限で動く呼び出し先（ホップごと ABAC）の扱いは裁定された。**
   計画がその手段を「**利用者文脈を本文で運ぶ**」と定め（§7 つ目の面を参照）、
   **token exchange は今は採らない**とした。従前ここに書いていた「未決である」は解消した。

@@ -14,6 +14,10 @@ namespace GraphService.Features.McpTools.Declare;
 // そのまま合わせた写し**である。共有化しない理由は `GraphDocumentScope` と同じ
 // （可変ユニットから platform の McpServer は参照できない。IADR-0274 §検討した選択肢）。
 // `Platform.Shared.Contracts` への昇格（IADR-0269 決定 6）は [[IADR-0292]] 決定 3 で先送りした。
+//
+// ［2026-09-26 追記 / #1515］昇格は gRPC の契約（proto `platform.mcp.v1`。`Platform.Shared.Contracts`）で行った
+// （[[IADR-0462]] の「経路 ④-a への適用」）。本ファイルは REST の受け口（並走中の正）が使う写しとして残り、
+// REST の退役（#1517）で消える。gRPC の面（`GrpcService.cs`）は同じ `McpToolDeclarationSource.Declare` を proto へ写す。
 public sealed record McpToolDeclaration(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("description")] string Description,

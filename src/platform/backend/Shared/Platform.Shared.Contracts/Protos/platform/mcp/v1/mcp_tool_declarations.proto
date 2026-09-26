@@ -1,0 +1,60 @@
+// FR-16, NFR-09, NFR-16, ADR-0024 §2・§5, ADR-0029, ADR-0075, IADR-0269 決定 6, IADR-0292 決定 4,
+// IADR-0379, IADR-0462 (#1515, #1255 経路 ④-a): MCP のツール定義の自己申告
+// （REST `GET /internal/mcp-tools` と同じ意味論）の gRPC 契約。
+//
+// ■ 置き場と所有（IADR-0379 決定 1）: ツール定義の規約（計画 11_mcp-server-integration §2 の 6 項目）を
+//   定めるのは **MCP サーバー**であり、申告する各サービスはその規約に合わせて自己申告する（ADR-0024 §2）。
+//   規約の持ち主が platform なので置き場は `Platform.Shared.Contracts` の `Protos/platform/mcp/v1/`。
+//   knowledge の申告元（Document / Retrieval / Graph）も同じ proto から受け口を生成する
+//   （knowledge → platform の Shared/ 参照は許可。IADR-0117）。
+//   🔴 **これが申告スキーマの共有契約への昇格である**（IADR-0269 決定 6 / IADR-0292 決定 4 が保留していたもの）。
+//   REST の受け口が使う C# の写し（各サービスの `McpToolContracts.cs`）は REST の退役（#1517）で消える。
+//
+// ■ versioning（IADR-0379 決定 2）: フィールド番号は不変。削除は reserved に残す。破壊的変更は v2 の並走。
+//
+// ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
+//   この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。REST の受け口は認証を
+//   課していない（メッシュ内部限定）ので、**この面は現状より狭い**。REST 側は変えない
+//   （並走中の正は REST。IADR-0379 決定 5）。
+//
+// ■ 🔴 **扇形である。** 呼び出し元は MCP サーバーの 1 つ、宛先は構成（`Mcp:Services` / `Mcp:GrpcServices`）で開く。
+//   宛先ごとに同じ 1 つの rpc を実装するので、宛先が増えても proto は増えない。
+//
+// ■ proto3 に null は無い（IADR-0397 決定 5 ほか）。6 項目はいずれも DTO 側でも null を取らない。
+//   **空文字はそれ自体が申告の値である** —— 例: `egress_class` が空の申告は MCP サーバーが公開しない（ADR-0024 §5）。
+//   したがって `optional` は使わない。
+//
+// ■ `endpoint` は申告どおりの**文字列のまま**運ぶ（今は絶対 URL）。gRPC でツールを実行するときの意味は
+//   #1516（判断待ち）が決める。本契約はその意味を変えない。
+syntax = "proto3";
+
+package platform.mcp.v1;
+
+option csharp_namespace = "Platform.Shared.Contracts.Grpc.Mcp.V1";
+
+// ツール定義の自己申告の読み取り（REST `GET /internal/mcp-tools` と 1 対 1）。
+service McpToolDeclarations {
+  rpc Declare(DeclareMcpToolsRequest) returns (ServiceToolDeclarations);
+}
+
+// 引数は持たない（REST も持たない）。後から足すのは非破壊の追加である。
+message DeclareMcpToolsRequest {}
+
+// `ServiceToolDeclarations`（1 サービスぶんの自己申告）と 1 対 1。
+message ServiceToolDeclarations {
+  // 申告したサービス名（公開構成の `service` と同じ語彙）。🔴 空は「申告として無効」であり、
+  // 呼び出し側は申告なしとして扱う（推測で公開しない。ADR-0024 §5）。
+  string service = 1;
+  repeated McpToolDeclaration tools = 2;
+}
+
+// `McpToolDeclaration`（計画のツール定義規約の 6 項目）と 1 対 1。名前は REST の JSON と同じ綴り。
+message McpToolDeclaration {
+  string name = 1;
+  string description = 2;
+  // JSON Schema の文字列（REST と同じく文字列のまま運ぶ。構造化しない）。
+  string input_schema = 3;
+  string endpoint = 4;
+  string required_scope = 5;
+  string egress_class = 6;
+}

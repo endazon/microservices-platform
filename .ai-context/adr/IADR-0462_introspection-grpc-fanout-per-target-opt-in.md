@@ -16,6 +16,8 @@ related_ids:
   - IADR-0026
   - IADR-0029
   - IADR-0117
+  - IADR-0269
+  - IADR-0292
   - IADR-0379
   - IADR-0397
   - IADR-0419
@@ -148,11 +150,45 @@ plan_refs:
   - 稼働 k3s での h2c 往復は**未実測**（Pod の再構築を要する）。ループバックの実 Kestrel 往復で代替した
 - フォローアップ:
   1. #1515（④-a）・#1516（④-b。判断待ち）・#1517（REST 退役。#1255 残射程 2 と同じ段）
+     ［2026-09-26 追記 / #1515］**④-a を本決定の形で移した**（下の「経路 ④-a への適用」）。#1516・#1517 は未着手のまま。
   2. mcp-server を収集先へ加えるか（FR-15 の挙動変更。本決定の外）
   3. conversion の gRPC 収集の配線（planning#651 の裁定による conversion の認証が着地した後）
      ［2026-09-26 追記 / #1537］**完了**（作業仕様書 `.ai-context/specs/20260926_1537_conversion-introspection-grpc-wiring.md`）。
 
+## 経路 ④-a への適用（［2026-09-26 追記 / #1515］）
+
+**MCP のツール申告の収集**（McpServer → `GET /internal/mcp-tools`。宛先は `Mcp:Services` で開く Document / Retrieval / Graph の 3）を、
+**本決定と同じ形**で gRPC へ移した。新しい IADR は起こしていない —— 扇形であること・宛先ごとの opt-in（決定 2-A）・
+失敗を 2 値へ畳みログだけを分けること（決定 3-A・決定 4）・構成が在るのに収集器が無ければ起動時に落とすこと・並走中の正は REST
+（決定 5）は、そのまま当てはまる（本決定の「結果」が「④ も同じ形で写せる（#1515）」と予告していた）。
+作業仕様書: `.ai-context/specs/20260926_1515_mcp-tool-declarations-grpc.md`。
+
+**経路 ⑤ と違う点は次の 4 つだけであり、いずれも ④ の側の事情から決まる。**
+
+1. **proto の置き場と所有**: `platform.mcp.v1.McpToolDeclarations/Declare`（`Platform.Shared.Contracts/Protos/platform/mcp/v1/`）。
+   所有者は**ツール定義の規約を定める McpServer（platform）**であり、申告元（knowledge の 3 サービス）は規約に合わせて自己申告する側である
+   （ADR-0024 §2）。🔴 **この proto が申告スキーマの共有契約への昇格を兼ねる**（[[IADR-0269]] 決定 6・[[IADR-0292]] 決定 4 が保留していたもの）。
+   REST の受け口が使う C# の写し（McpServer と 3 サービスの `McpToolContracts.cs`）は `*.Contracts` へ移さない ——
+   REST の退役（#1517）で消える型を共有物にしない。並走中は形が 2 つ在るので、**proto の項目名・数が REST の JSON と一致することを試験で固定した**。
+   6 項目はいずれも DTO で null を取らないので素の `string`（`optional` を使わない。空の `egress_class` は「公開しない」という申告の値である）。
+   **空の `service` は申告として無効**とし、呼び出し側で申告なしへ落とす（決定 1 と同じ）。
+2. **面の置き場**（決定 1 の変形）: 申告の中身はサービスごとに違い、共通基盤が持つ申告は無い。したがって面は**申告元の 3 サービスがそれぞれ持つ**
+   （`Features/McpTools/Declare/GrpcService.cs`。REST と同じ `McpToolDeclarationSource.Declare` を写すだけ。`[Authorize(ServiceCaller)]`）。
+   決定 1-A の理由（張り忘れた宛先は呼び出し側から「到達不能」＝ここでは「申告なし」としか見えない）は、**申告を張る唯一の口
+   `MapMcpToolEndpoints` が REST と gRPC を必ず対で張る**ことでサービスの内側で満たした。
+3. **期限**（決定 4 の変形）: REST 側に期限の構成キーが無く、名前付き HttpClient の既定のタイムアウト（100 秒）で動いている。
+   gRPC の期限は**同じ HttpClient の `Timeout` をそのまま引く**（値を書き写さない。`Mcp:TimeoutSeconds` のような新しいキーを作ると REST の期限も
+   変えることになり、移行の不変条件「挙動を変えない」を破る）。`InfiniteTimeSpan` は gRPC でも無期限へ写す（REST と同じ意味）。
+4. **収集の順序**: REST と同じく**逐次**（構成の順序を保つ）。⑤ は REST が並列だったので並列にした。いずれも「REST と同じ」である。
+
+**宛先の前提**: 3 サービスは h2c リスナ・helm `grpcPort`・compose `Grpc__Port`／`expose`・認証をすでに持っていた（先行経路のため）。
+足したのは面と、McpServer の gRPC 宛先（helm・compose の `Mcp__GrpcServices__*`）だけである。資格情報は McpServer の既存の `mcp-server` client
+（`platform-service`。認可サービスの gRPC 経路と同じ）を使い、realm・Secret は増やしていない。helm は REST の宛先を values に持たず
+appsettings.json の既定に寄りかかっているので、配線の試験（`McpToolsGrpcDeploymentWiringTests`）は helm の gRPC 宛先を appsettings の REST 宛先と突き合わせる。
+
+**射程外**: ツールの実行（`HttpToolInvoker`。#1516・判断待ち —— 申告の `endpoint` は本契約でも文字列のまま運び、意味を変えない）と、REST の退役（#1517）。
+
 ## 関連
 
-- [[IADR-0379]] / [[IADR-0419]] / [[IADR-0029]] / [[IADR-0458]]
+- [[IADR-0379]] / [[IADR-0419]] / [[IADR-0029]] / [[IADR-0458]] / [[IADR-0269]] / [[IADR-0292]]
 - 通信仕様書: `docs/api/east-west-grpc.md`（12 つ目の面）
