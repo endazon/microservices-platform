@@ -30,6 +30,15 @@ public sealed class HttpToolDeclarationSource(
     // この HttpClient の `Timeout` を引く（輸送ごとに別の値を持たない）。
     public const string HttpClientName = nameof(HttpToolDeclarationSource);
 
+    // ［2026-09-26 / #1604・IADR-0462 追記］1 宛先ぶんの収集の期限（秒）。名前付きクライアントの `Timeout` に与える。
+    // gRPC の期限は同じ `Timeout` を引くので、**期限の出所は引き続き 1 つである**（値を輸送ごとに書き写さない）。
+    // 従前は未設定で HttpClient の既定 100 秒が効いていた。1 未満は 1 に丸める。
+    public const string TimeoutKey = "Mcp:DeclarationTimeoutSeconds";
+    public const int DefaultTimeoutSeconds = 10;
+
+    public static TimeSpan ConfiguredTimeout(IConfiguration configuration) =>
+        TimeSpan.FromSeconds(Math.Max(1, configuration.GetValue<int?>(TimeoutKey) ?? DefaultTimeoutSeconds));
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     // REST だけで収集する（宛先 = `Mcp:Services`）。本番は `ToolDeclarationSource` が宛先ごとに輸送を選ぶ。
@@ -54,7 +63,12 @@ public sealed class HttpToolDeclarationSource(
             var json = await client.GetStringAsync(url, ct);
             return JsonSerializer.Deserialize<ServiceToolDeclarations>(json, JsonOptions);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        // ［2026-09-26 / #1604・IADR-0462 追記］🔴 **外へ出すのは呼び出し側の ct による取り消し（停止要求）だけである。**
+        // HttpClient.Timeout は TaskCanceledException（OperationCanceledException の派生）で表れる。型だけで素通しすると
+        // 応答しない 1 宛先の時間切れが ToolCatalogRefresher の ExecuteAsync まで抜け、既定の StopHost で
+        // McpServer のプロセス全体が止まる（監査で再現。#1382 の BFF と同じ種類）。時間切れは「申告なし」へ畳む。
+        // 形は HttpEffectiveConfigCollector.CollectOneAsync（#1382）と同じ。
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             // 到達できないサービスは「申告なし」として扱う。公開構成が要求していれば
             // ToolCatalog が構成ドリフトとして警告する（ADR-0024 §5）。
@@ -136,7 +150,9 @@ public static class ToolDeclarationSourceExtensions
     public static IServiceCollection AddMcpToolDeclarationSources(
         this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddHttpClient(HttpToolDeclarationSource.HttpClientName);
+        // #1604: 期限を明示する（既定 100 秒のままだと、固まった宛先が 1 周を 100 秒止める）。gRPC の期限もこの値を引く。
+        var timeout = HttpToolDeclarationSource.ConfiguredTimeout(configuration);
+        services.AddHttpClient(HttpToolDeclarationSource.HttpClientName, c => c.Timeout = timeout);
         services.AddScoped<HttpToolDeclarationSource>();
         if (GrpcToolDeclarationCollector.ConfiguredTargets(configuration).Count > 0)
         {
@@ -158,10 +174,14 @@ public sealed class ToolCatalogRefresher(
 {
     public const string IntervalKey = "Mcp:RefreshIntervalSeconds";
 
+    // #1604: 周期の実際の長さ。**試験だけが与える**（構成の周期は 10 秒未満に丸められ、試験で待てない）。
+    // 本番の組み立て（DI）は触らない（null なら構成から読む）。形は #1598 の `CycleInterval` と同じ。
+    internal TimeSpan? CycleInterval { get; init; }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var seconds = configuration.GetValue<int?>(IntervalKey) ?? 300;
-        var interval = TimeSpan.FromSeconds(Math.Max(seconds, 10));
+        var interval = CycleInterval ?? TimeSpan.FromSeconds(Math.Max(seconds, 10));
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -187,13 +207,17 @@ public sealed class ToolCatalogRefresher(
                 var source = scope.ServiceProvider.GetRequiredService<IToolDeclarationSource>();
                 catalog.Refresh(published, await source.CollectAsync(stoppingToken));
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            // ［2026-09-26 / #1604・IADR-0462 追記］🔴 **素通しするのは停止要求（stoppingToken）の取り消しだけである。**
+            // 収集器の内側で畳み損ねた取り消し（下流の時間切れ等）は収集の一時失敗であり、ここで記録して次の周期へ進む。
+            // 型だけで素通しすると ExecuteAsync から漏れ、既定の StopHost でホスト全体が止まる。
+            catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
             {
                 logger.LogError(ex, "MCP tool catalog refresh failed");
             }
 
+            // #1604: 想定外の取り消しを黙って「シャットダウン」と読まない（停止要求のときだけ抜ける）。
             try { await Task.Delay(interval, stoppingToken); }
-            catch (OperationCanceledException) { return; }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
         }
     }
 }

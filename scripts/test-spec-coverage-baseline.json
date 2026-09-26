@@ -164,6 +164,7 @@
       "ServiceAccountAttributeSubsetTests",
       "ServiceAccountDocumentFilterTests",
       "ToolCatalogTests",
+      "ToolCatalogRefresherTimeoutTests",
       "ToolDeclarationSourceFailFastTests",
       "ToolInvocationServiceTests",
       "ToolPublicationConfigValidatorTests",

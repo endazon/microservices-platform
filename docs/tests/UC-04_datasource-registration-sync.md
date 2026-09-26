@@ -3,14 +3,14 @@ title: UC-04 データソースを登録・同期する テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-31
-updated: 2026-08-31
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, UC-04, SC-06, NFR]
 adrs: [ADR-0009, ADR-0013, ADR-0027, ADR-0028]
-specs: [20260831_issue-1106_uc-test-specs]
-issues: [#472, #1106]
+specs: [20260831_issue-1106_uc-test-specs, 20260926_issue-1604_refresher-and-sync-loop-timeouts]
+issues: [#472, #1106, #1604]
 -->
 
 # テスト仕様書: データソースを登録・同期する
@@ -82,6 +82,9 @@ issues: [#472, #1106]
 | T-36 | 画面: 運用者 | 開く | 登録・無効化は出さず**理由を述べる**。一覧と手動同期は使える | 代替 | 自動 |
 | T-37 | 画面: 一覧が取れない | 開く | **空一覧に潰さず**誤りとして出す | 例外 | 自動 |
 | T-38 | データソース → 変換ジョブ → 文書 | 導線を歩く | 通しで到達できる | 事後条件 | 自動 |
+| T-39 | 定期同期の周期で停止要求ではない取り消し（接続の時間切れ等）が起きる | 定期同期を回す | **ループは終わらず**、失敗を記録し、**次の拍まで待って**から再び回す。停止要求では静かに終わる | 基本 2・例外 | 自動 |
+| T-40 | 探索・1 件の取得が時間切れになる | 同期する | 取り消しではなく**そのソース（その 1 件）の失敗**として数え、基準時刻を進めない。呼び出し側の取り消しは失敗へ畳まず外へ出す（対照） | 例外 | 自動 |
+| T-41 | Wiki・SaaS の接続子の HTTP クライアント | 本番の組み立てから引く | **明示の期限**（30 秒）を持つ（既定の 100 秒のままにしない） | 例外 | 自動 |
 
 ### T-08 を置く理由
 
@@ -113,8 +116,8 @@ issues: [#472, #1106]
 - `DataSourceTests` — 既定属性・明示属性・実効属性（T-17・T-18。単体と統合の同名クラス）
 - `DataSourceUpdateEndpointTests` — 全置換と部分更新の意味論（T-07）
 - `DataSourceSyncEndpointTests` — 原本イベントへの属性伝播・未対応種別の縮退（T-19・T-20）
-- `DataSourceSyncServiceTests` — 基準時刻の前進条件・連続失敗の閾値・成功での解除（T-21〜T-23）
-- `DataSourceSyncHostedServiceTests` — 周期処理とリースの取得・解放（T-24）
+- `DataSourceSyncServiceTests` — 基準時刻の前進条件・連続失敗の閾値・成功での解除（T-21〜T-23）・時間切れの扱い（T-40）
+- `DataSourceSyncHostedServiceTests` — 周期処理とリースの取得・解放（T-24）・周期のループの取り消しの扱いと拍の待ち（T-39）・接続子の期限（T-41）
 - `SyncLeaseCoordinatorTests` / `DataSourceSyncSingleWriterTests` — 排他リースの単一書き手性
   （T-24・T-25。後者は統合）
 - `SyncScheduleTests` — 次回実行時刻の算出と下限の床止め（T-26）

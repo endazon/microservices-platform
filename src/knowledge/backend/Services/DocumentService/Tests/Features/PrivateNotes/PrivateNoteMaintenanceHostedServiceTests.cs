@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -62,6 +64,44 @@ public class PrivateNoteMaintenanceHostedServiceTests(TestWebApplicationFactory 
 
         // 停止要求では従前どおり静かに終わる（例外で終わらない）。
         worker.ExecuteTask!.IsCompletedSuccessfully.Should().BeTrue("停止要求はシャットダウンとして正常に終える");
+    }
+
+    // ［#1604］FR-19, FR-22, [[IADR-0431]] 決定 5 の追記: 失敗した周期の後は**次の拍まで待つ**（間を空けずに再試行しない）。
+    // 上の試験は「次の周期が来る」ことしか測っておらず、失敗の直後に待たずに再試行する変異（M1）が生き残った（#1601 の監査）。
+    // 周期を 300 ミリ秒にし、1・2 周期目の 1 巡目の判定で投げ（停止要求と無関係な取り消しと、ふつうの例外）、3 周期目で「経過」と答えさせる。
+    // 各回の判定の時刻を記録し、1→2 回目・2→3 回目の間隔が周期の半分以上あることを測る。
+    [Fact]
+    public async Task 周期の失敗が続いても次の拍まで待ってから再び判定する()
+    {
+        var cycle = TimeSpan.FromMilliseconds(300);
+        var user = $"tick-{Guid.NewGuid():N}"[..20];
+        var noteId = await PushNoteAsync(await PluginAsync(user), "tick.md", "本文");
+        var clock = Stopwatch.StartNew();
+        var askedAt = new ConcurrentQueue<TimeSpan>();
+        factory.OwnerRetention.DeclareSequence(user,
+            () => { askedAt.Enqueue(clock.Elapsed); throw new TaskCanceledException("下流の時間切れ（停止要求ではない）"); },
+            () => { askedAt.Enqueue(clock.Elapsed); throw new InvalidOperationException("判定の口の一時障害"); },
+            () => { askedAt.Enqueue(clock.Elapsed); return StubOwnerRetentionDirectory.Departed(); },
+            StubOwnerRetentionDirectory.Departed);
+        var worker = new PrivateNoteMaintenanceHostedService(
+            factory.Services.GetRequiredService<IServiceScopeFactory>(),
+            new RecordingLogger<PrivateNoteMaintenanceHostedService>())
+        { CycleInterval = cycle };
+
+        await worker.StartAsync(TestContext.Current.CancellationToken);
+        try
+        {
+            await WaitUntilDeletedAsync(noteId);
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+
+        var at = askedAt.ToArray();
+        at.Should().HaveCountGreaterThanOrEqualTo(3);
+        (at[1] - at[0]).Should().BeGreaterThanOrEqualTo(cycle / 2, "1 回目の失敗の後、次の拍まで待っている");
+        (at[2] - at[1]).Should().BeGreaterThanOrEqualTo(cycle / 2, "2 回目の失敗の後も、次の拍まで待っている");
     }
 
     private async Task WaitUntilDeletedAsync(Guid noteId)

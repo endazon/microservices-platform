@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using AwesomeAssertions;
 using GraphService.Domain.Ports;
 using GraphService.Features.Clustering.Detect;
@@ -67,6 +68,67 @@ public sealed class BatchLoopForeignCancellationTests
         await AssertLoopSurvivesAsync(worker, coordinator, logger.Errors);
     }
 
+    // ［#1604］FR-17, FR-18, FR-10, [[IADR-0299]] 決定 3 の追記: 失敗した周期の後は**次の拍まで待つ**（間を空けずに再試行しない）。
+    // #1598 の試験は「次の周期が来る」ことしか測っておらず、失敗の直後に待たずに再試行する変異（M1）が生き残った（#1601 の監査）。
+    // 周期を 300 ミリ秒にし、1・2 回目のリースの取得で投げ、3 回目までの各回の間隔が周期の半分以上あることを測る。
+    private static readonly TimeSpan TickCycle = TimeSpan.FromMilliseconds(300);
+
+    [Fact]
+    public async Task クラスタ検出は失敗が続いても次の拍まで待って回す()
+    {
+        var coordinator = new ThrowTwiceCoordinator();
+        using var services = new ServiceCollection().BuildServiceProvider();
+        var worker = new ClusterDetectionHostedService(
+            services.GetRequiredService<IServiceScopeFactory>(), coordinator,
+            new RecordingLogger<ClusterDetectionHostedService>())
+        { CycleInterval = TickCycle };
+
+        await AssertWaitsForNextTickAsync(worker, coordinator);
+    }
+
+    [Fact]
+    public async Task クラスタ要約は失敗が続いても次の拍まで待って回す()
+    {
+        var coordinator = new ThrowTwiceCoordinator();
+        using var services = new ServiceCollection().BuildServiceProvider();
+        var worker = new ClusterSummaryHostedService(
+            services.GetRequiredService<IServiceScopeFactory>(), coordinator,
+            Options.Create(new ClusterSummaryOptions { Enabled = true }),
+            new RecordingLogger<ClusterSummaryHostedService>())
+        { CycleInterval = TickCycle };
+
+        await AssertWaitsForNextTickAsync(worker, coordinator);
+    }
+
+    [Fact]
+    public async Task ナレッジ健全性の報告は失敗が続いても次の拍まで待って回す()
+    {
+        var coordinator = new ThrowTwiceCoordinator();
+        using var services = new ServiceCollection().BuildServiceProvider();
+        var worker = new KnowledgeHealthHostedService(
+            services.GetRequiredService<IServiceScopeFactory>(), coordinator,
+            new RecordingLogger<KnowledgeHealthHostedService>())
+        { CycleInterval = TickCycle };
+
+        await AssertWaitsForNextTickAsync(worker, coordinator);
+    }
+
+    private static async Task AssertWaitsForNextTickAsync(BackgroundService worker, ThrowTwiceCoordinator coordinator)
+    {
+        await worker.StartAsync(TestContext.Current.CancellationToken);
+        try
+        {
+            await coordinator.ThirdAcquire.Task.WaitAsync(Deadline, TestContext.Current.CancellationToken);
+            var at = coordinator.AcquiredAt();
+            (at[1] - at[0]).Should().BeGreaterThanOrEqualTo(TickCycle / 2, "1 回目の失敗の後、次の拍まで待っている");
+            (at[2] - at[1]).Should().BeGreaterThanOrEqualTo(TickCycle / 2, "2 回目の失敗の後も、次の拍まで待っている");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
     private static async Task AssertLoopSurvivesAsync(
         BackgroundService worker, ForeignCancellationCoordinator coordinator, Func<IReadOnlyList<Exception?>> errors)
     {
@@ -101,6 +163,35 @@ public sealed class BatchLoopForeignCancellationTests
             if (Interlocked.Increment(ref _calls) == 1)
                 return Task.FromException<IAsyncDisposable?>(new TaskCanceledException("下流の時間切れ（停止要求ではない）"));
             SecondAcquire.TrySetResult();
+            return Task.FromResult<IAsyncDisposable?>(null);
+        }
+    }
+
+    // 1・2 回目の取得で投げ（停止要求と無関係な取り消しと、ふつうの例外を 1 回ずつ）、以後はリースを渡さない。各回の時刻を記録する。
+    private sealed class ThrowTwiceCoordinator
+        : IClusterDetectionLeaseCoordinator, IClusterSummaryLeaseCoordinator, IKnowledgeHealthLeaseCoordinator
+    {
+        private readonly Stopwatch _clock = Stopwatch.StartNew();
+        private readonly ConcurrentQueue<TimeSpan> _acquiredAt = new();
+        private int _calls;
+
+        public TaskCompletionSource ThirdAcquire { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public IReadOnlyList<TimeSpan> AcquiredAt() => [.. _acquiredAt];
+
+        public Task<IAsyncDisposable?> TryAcquireAsync(CancellationToken ct)
+        {
+            _acquiredAt.Enqueue(_clock.Elapsed);
+            switch (Interlocked.Increment(ref _calls))
+            {
+                case 1:
+                    return Task.FromException<IAsyncDisposable?>(new TaskCanceledException("下流の時間切れ（停止要求ではない）"));
+                case 2:
+                    return Task.FromException<IAsyncDisposable?>(new InvalidOperationException("リースの取得に失敗"));
+                case 3:
+                    ThirdAcquire.TrySetResult();
+                    break;
+            }
             return Task.FromResult<IAsyncDisposable?>(null);
         }
     }

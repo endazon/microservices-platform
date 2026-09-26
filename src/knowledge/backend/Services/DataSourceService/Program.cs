@@ -129,8 +129,10 @@ else
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
 // コネクタ。新規ソースは IDataSourceConnector を追加登録するだけで対応する（プラグイン方式）。
 // HTTP コネクタが使う名前付きクライアント（将来のタイムアウト/リトライ等の付与点を明示する）。
-builder.Services.AddHttpClient("WikiConnector");
-builder.Services.AddHttpClient("SaaSConnector");
+// #1604（IADR-0083 追記）: 期限を明示する。既定 100 秒のままだと、固まった接続先 1 つが定期同期の 1 周を 100 秒止める。
+// 時間切れはそのソースの失敗として数えられる（DataSourceSyncService）。
+builder.Services.AddHttpClient(WikiConnector.HttpClientName, c => c.Timeout = WikiConnector.HttpTimeout);
+builder.Services.AddHttpClient(SaaSConnector.HttpClientName, c => c.Timeout = SaaSConnector.HttpTimeout);
 // 業務DB コネクタの接続生成（第一プロバイダ=PostgreSQL/Npgsql。IADR-0055）。
 builder.Services.AddSingleton<IDbConnectionFactory, NpgsqlConnectionFactory>();
 builder.Services.AddSingleton<IDataSourceConnector, FileSystemConnector>();  // 優先1: filesystem

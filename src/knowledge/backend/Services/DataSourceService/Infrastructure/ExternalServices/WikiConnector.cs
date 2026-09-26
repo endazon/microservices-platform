@@ -30,6 +30,10 @@ namespace DataSourceService.Infrastructure.ExternalServices;
 public sealed class WikiConnector(IHttpClientFactory httpFactory, ILogger<WikiConnector> logger)
     : IDataSourceConnector
 {
+    // #1604（IADR-0083 追記）: 名前付きクライアントの名前と、1 要求ぶんの期限（Program.cs が登録時に与える）。
+    public const string HttpClientName = "WikiConnector";
+    public static readonly TimeSpan HttpTimeout = TimeSpan.FromSeconds(30);
+
     public string SourceType => "wiki";
 
     private const string DefaultListPath = "/api/pages";
@@ -109,7 +113,7 @@ public sealed class WikiConnector(IHttpClientFactory httpFactory, ILogger<WikiCo
 
     private HttpClient CreateClient(DataSource source)
     {
-        var client = httpFactory.CreateClient("WikiConnector");
+        var client = httpFactory.CreateClient(HttpClientName);
         var token = Config(source, "apiToken", string.Empty);
         if (!string.IsNullOrWhiteSpace(token))
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
