@@ -264,6 +264,54 @@ describe('DataSourceManagementPage (SC-06)', () => {
         /未入力のときは、登録する管理者が属する部門グループ（1 つだけのとき）のコードが入ります。決まらないときは予約値 unassigned が入ります。/,
       ),
     ).toBeInTheDocument();
+    // FR-05, SC-06, 計画 ADR-0115 決定 5, IADR-0472（#1557）: 入れるなら部門グループのコードであり、
+    // 無いコードはサーバが拒否する —— それを入力の前に伝える（T-65）。
+    expect(screen.getByLabelText(/既定の部門/)).toHaveAccessibleDescription(
+      /部門グループに無いコードは保存されません。/,
+    );
+  });
+
+  // FR-05, SC-06, 計画 ADR-0115 決定 5, IADR-0472（#1557）: T-65。値域の外はサーバが 400 と理由で返し、
+  // 画面はその理由を出す（写像表と同じ経路）。確認先を引けない 502 には、何が起きたかをこの画面の言葉で添える。
+  describe('department domain validation (#1557)', () => {
+    it('shows the server reason when the department is not a department group', async () => {
+      mocks.apiRequest
+        .mockResolvedValueOnce(jsonResponse([]))
+        .mockRejectedValueOnce(
+          new ApiError('validation', '入力内容に誤りがあります。', 400, [
+            '部門コード「finanse」は部門グループ（/department/<コード>）にありません。',
+          ]),
+        );
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(await screen.findByRole('button', { name: '＋ ソース登録' }));
+      await user.type(screen.getByLabelText(/名前/), '規程集');
+      await user.type(screen.getByLabelText(/接続先 URI/), 'smb://fs01/share');
+      await user.type(screen.getByLabelText(/既定の部門/), 'finanse');
+      await user.click(screen.getByRole('button', { name: '登録する' }));
+
+      expect(await screen.findByText(/部門コード「finanse」は部門グループ/)).toBeInTheDocument();
+    });
+
+    it('explains an unverifiable write (502) instead of only a generic server error', async () => {
+      mocks.apiRequest
+        .mockResolvedValueOnce(jsonResponse([]))
+        .mockRejectedValueOnce(ApiError.fromStatus(502));
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(await screen.findByRole('button', { name: '＋ ソース登録' }));
+      await user.type(screen.getByLabelText(/名前/), '規程集');
+      await user.type(screen.getByLabelText(/接続先 URI/), 'smb://fs01/share');
+      await user.type(screen.getByLabelText(/既定の部門/), 'sales');
+      await user.click(screen.getByRole('button', { name: '登録する' }));
+
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(/部門グループまたは写像先の利用者を確認できなかった/);
+      // 🔴 言い切らない（BFF の 502 は保存後に返ることもある）。
+      expect(alert).toHaveTextContent(/保存されていない可能性があります/);
+    });
   });
 
   // 必須（名前・接続先）が埋まるまで登録できない。

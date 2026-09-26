@@ -21,12 +21,13 @@
 #      機械で確かめたのは **`scripts/check-grafana-alerting.js`** の範囲
 #      —— ルール数と名前が `deploy/prometheus/alerts.yml` と 1 対 1、参照する
 #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、まで。
-#      **配備時に `/api/v1/provisioning/alert-rules` が 17 件返すことを確かめること。**
+#      **配備時に `/api/v1/provisioning/alert-rules` が 19 件返すことを確かめること。**
 #      🔴 **件数は導出値である。ここの数字を信用せず、着手のたびに数え直すこと**（IADR-0383）——
 #      本行は #1246 が 2 件足した後も「9 件」のままであり、**2 世代ぶん腐っていた**（#1203 で是正）。
-#      現在の内訳: platform-availability 2 ／ platform-slo 4 ／ platform-slo-evaluation-target 5
+#      現在の内訳: platform-availability 2 ／ platform-slo 4 ／ platform-slo-evaluation-target 6
 #      ／ knowledge-health-producers 2 ／ knowledge-health-violations 1 ／ mail-relay-queue 2
-#      ／ llm-cost-budget 1 ＝ **17**（#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17 へ数え直した）。
+#      ／ reset-floor-availability 1 ／ llm-cost-budget 1 ＝ **19**
+#      （#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17、#1544 で 17 → 19 へ数え直した）。
 #
 # 式は `deploy/prometheus/alerts.yml` と**同じもの**を使う（二重管理だが、暫定期間だけである）。
 #
@@ -388,6 +389,37 @@ groups:
               conditions:
                 - evaluator: { type: gt, params: [0] }
 
+      # SC-15, NFR-21, ADR-0111 フォローアップ 3, IADR-0432 (#1544): 下の reset-floor-availability 群の評価対象。
+      # 🔴 `up` は scrape のたびに必ず出る（失敗しても 0 として出る）。不在は「receiver が無い・collector が
+      #   居ない」＝**見ていない**であり、そのあいだ ResetFloorNoReadyEndpoint は器が全滅しても鳴らない。
+      - uid: slo-reset-floor-up-series-absent
+        title: ResetFloorUpSeriesAbsent
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: 'SLO の評価対象が無い: up{job="reset-floor"} の系列が存在しない'
+          description: "リセット申請の床の器を見る up{job=\"reset-floor\"} が無い。ResetFloorNoReadyEndpoint は空ベクタになり、器が全滅しても発火しない。otel-collector の prometheus/reset-floor receiver の欠落（経路 B の 2 つの collector 設定の片方だけ、など）か collector の停止を疑う（ADR-0076 決定 3）。"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: 'absent(up{job="reset-floor"})'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+
   # FR-10, SC-10, ADR-0076 決定 3, IADR-0389 決定 5 (#1246): ナレッジ健全性の生産者の不在。
   #
   # 🔴 **上の群と式が違う（`absent_over_time` である）。** 生産は周期駆動（1 時間）であり、
@@ -565,6 +597,47 @@ groups:
               conditions:
                 # 単位は**秒**（1200 = 20 分）。キュー寿命 1800 秒（30 分）の内側で鳴らす。
                 - evaluator: { type: gt, params: [1200] }
+
+  # SC-15, NFR-05, NFR-21, ADR-0111（決定 2・3・フォローアップ 3）, IADR-0432 (#1544):
+  # **リセット申請の床の器に ready な endpoint が無い** —— 申請の POST はすべて 503（閉じた状態）になっている。
+  # 信号の取り方・for・severity の理由は Prometheus 版（deploy/prometheus/alerts.yml の同名グループ）が正本である。
+  #
+  # 🔴 **閾値の置き方が Prometheus 版と違う。** Prometheus 版は `up{job="reset-floor"} == 0` だが、Grafana 版で
+  #   同じ式を `gt 0` で比べると、フィルタ後の値は 0 なので `0 > 0` が偽になり**永久に発火しない**。
+  #   Grafana 版は `up` をそのまま取り、**`lt 1`（値 0 で真）**で比べる。
+  # 🔴 **`noDataState: OK`。** 系列の不在は ResetFloorUpSeriesAbsent が拾う（同じ不在で 2 通鳴らさない）。
+  - orgId: 1
+    name: reset-floor-availability
+    folder: SLO
+    interval: 1m
+    rules:
+      - uid: reset-floor-no-ready-endpoint
+        title: ResetFloorNoReadyEndpoint
+        condition: C
+        for: 2m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "リセット申請の床の器に ready な endpoint が無い（申請はすべて 503＝閉じた状態）"
+          description: "otel-collector から器の Service（reset-floor:8080）の /metrics に 2 分間届かない。器が全滅しており、パスワードリセットの申請はすべて 503 になっている（予備の経路は無い。実在・非実在とも同じ 503 で存在秘匿は保たれる）。復旧は器を戻すこと（kubectl -n platform-infra get deploy,pdb,pods -l app=reset-floor・ConfigMap reset-floor-script の有無）。利用者は管理者の一時パスワード発行で復旧する。🔴 本番で RESET_FLOOR=0 を退路に使わない（外している間は利用者名を列挙できる）。手順は運用 Runbook の「器がすべて落ちたとき」（ADR-0111 決定 3）。"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: 'up{job="reset-floor"}'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
 
   # FR-11, NFR-21, ADR-0044, IADR-0466 (#1111): **LLM 費用の月次予算（用途別）の超過。**
   #

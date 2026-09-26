@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * SC-15, FR-05, NFR-09, ADR-0026 / ADR-0078 決定 1, ADR-0094 決定 2, IADR-0432 (#1410):
+ * SC-15, FR-05, NFR-09, ADR-0026 / ADR-0078 決定 1, ADR-0094 決定 2, IADR-0432 (#1410)／NFR-21, ADR-0111 フォローアップ 3 (#1544):
  * **パスワードリセットの申請を、床（最小応答時間）に達するまで返さない前段**。
  *
  *   Keycloak の手前に置く逆プロキシとして常駐する（deploy/mail-relay/reset-floor.yaml）。
@@ -53,6 +53,19 @@
  * `RESET_FLOOR_MS` / `UPSTREAM_URL` / `LISTEN_PORT` は**マニフェストが与える**。未設定なら**起動しない**。
  * 床の値そのものの導出は IADR-0432 が持つ（実在側の分布の上側を覆う値。ADR-0094 決定 2 は
  * 「計画は値を発明しない」と定めている）。**実装もここで発明しない** —— 起動しないほうが気付ける。
+ *
+ * ## 器自身が答える口は `GET /metrics` の 1 つだけ（［2026-09-26 / #1544］NFR-21・ADR-0111 フォローアップ 3）
+ *
+ * 器がすべて落ちるとリセット申請は 503 になる（予備の経路は無い。ADR-0111 決定 2・3）。それを通知の配線へ
+ * 載せるため、otel-collector の prometheus receiver が**器の Service**（`reset-floor:8080`）の `/metrics` を取りに来る。
+ * ready な器が 1 つでも居れば答え（`up=1`）、0 なら接続が拒まれる（`up=0` → `ResetFloorNoReadyEndpoint`）。
+ *   - 🔴 **`GET` かつパスが `/metrics` ちょうどのときだけ**器が答える。**上流へ渡さず、床も掛けない**
+ *     （所要時間で何かを隠す経路ではない）。それ以外（申請の POST を含む）は下の中継のまま 1 バイトも変えない。
+ *     エッジの route は申請の POST だけを器へ向けるので、この口はクラスタ外から届かない。
+ *   - 🔴 **`Connection: close` を返す。** scrape の接続を使い回すと、器が Service から外れた後も古い Pod へ
+ *     繋がったままになり得る（kube-proxy は新しい接続にだけ効く）。毎回閉じて、毎回の scrape に
+ *     **現在の ready な endpoint の集合**を通らせる。
+ *   - 値は `reset_floor_up 1` の 1 系列だけ（機密も利用者の存在も含まない）。判定に使うのは receiver が出す `up` である。
  *
  * 🔴 **本器は稼働クラスタで打っていない**（#1410 の作業機にクラスタが無い）。
  *    「動くはず」を実測として書かない。床を入れた構成での再実測は integration-stack が行う。
@@ -134,12 +147,46 @@ function forwardableHeaders(headers) {
 }
 
 /**
+ * 器自身が答える口のパス（［2026-09-26 / #1544］）。collector の receiver の `metrics_path` はこれと一致させる
+ * （`scripts/reset-floor.test.js` の試験 11 が突き合わせる）。
+ */
+const METRICS_PATH = '/metrics';
+
+/**
+ * 器自身が答える要求か。**純関数**。`GET` かつパスが `/metrics` ちょうどのときだけ真
+ * （クエリ付き・別メソッドは従来どおり上流へ中継する —— 口を広げない）。
+ */
+function isMetricsRequest(method, url) {
+  return method === 'GET' && url === METRICS_PATH;
+}
+
+/** `/metrics` の本文（Prometheus のテキスト形式）。**純関数**。 */
+function renderMetrics() {
+  return [
+    '# HELP reset_floor_up リセット申請の床の器が答えたか（答えられた器は常に 1。判定は receiver の up で行う）',
+    '# TYPE reset_floor_up gauge',
+    'reset_floor_up 1',
+    '',
+  ].join('\n');
+}
+
+/**
  * 床つきの逆プロキシ。上流の応答を**全部受け切ってから**床まで待ち、そのまま書き出す。
  * @param {{upstream:URL, floorMs:number}} cfg
  * @param {typeof http} [httpMod] 試験が差し替える
  */
 function createServer(cfg, httpMod = http) {
   return httpMod.createServer((req, res) => {
+    if (isMetricsRequest(req.method, req.url)) {
+      // 🔴 上流へ渡さず、床も掛けない。接続は毎回閉じる（上の「器自身が答える口」）。
+      req.resume();
+      res.writeHead(200, {
+        'content-type': 'text/plain; version=0.0.4; charset=utf-8',
+        connection: 'close',
+      });
+      res.end(renderMetrics());
+      return;
+    }
     const startedAt = Date.now();
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
@@ -234,6 +281,21 @@ function selfTest() {
     });
   });
 
+  ok('器自身が答えるのは GET /metrics ちょうどだけ（申請の POST・クエリ付き・別メソッドは中継する）', () => {
+    assert.strictEqual(isMetricsRequest('GET', '/metrics'), true);
+    assert.strictEqual(isMetricsRequest('POST', '/metrics'), false);
+    assert.strictEqual(isMetricsRequest('HEAD', '/metrics'), false);
+    assert.strictEqual(isMetricsRequest('GET', '/metrics?x=1'), false);
+    assert.strictEqual(isMetricsRequest('GET', '/metrics/'), false);
+    assert.strictEqual(isMetricsRequest('POST', '/realms/msp/login-actions/reset-credentials?session_code=a'), false);
+  });
+  ok('/metrics の本文は reset_floor_up 1 の 1 系列（Prometheus のテキスト形式）', () => {
+    const body = renderMetrics();
+    assert.match(body, /^# TYPE reset_floor_up gauge$/m);
+    assert.match(body, /^reset_floor_up 1$/m);
+    assert.ok(body.endsWith('\n'), 'テキスト形式は改行で終わる');
+  });
+
   console.log(`[reset-floor] self-test OK: ${n} 件`);
 }
 
@@ -252,4 +314,7 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { holdDelayMs, readConfig, forwardableHeaders, createServer, HOP_BY_HOP };
+module.exports = {
+  holdDelayMs, readConfig, forwardableHeaders, createServer, HOP_BY_HOP,
+  METRICS_PATH, isMetricsRequest, renderMetrics,
+};

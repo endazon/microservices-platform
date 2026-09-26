@@ -170,6 +170,11 @@ public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
                 .Select(g => g!)
         ]);
 
+    // FR-05, SC-06, 計画 ADR-0115 決定 1・5, [[IADR-0472]] (#1557): フルパス → 像。
+    // 🔴 **序数一致**（本物と同じ意味論。大小文字違いは「居ない」）。
+    public Task<IdentityGroup?> FindGroupByPathAsync(string path, CancellationToken ct)
+        => Task.FromResult(Groups.FirstOrDefault(g => string.Equals(g.Path, path, StringComparison.Ordinal)));
+
     public Task<IReadOnlyList<string>> ListAssignableRolesAsync(CancellationToken ct)
         => Task.FromResult<IReadOnlyList<string>>([.. AssignableRoles]);
 

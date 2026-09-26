@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-05, SC-06, UC-04]
-adrs: [ADR-0002, ADR-0003, ADR-0014, ADR-0027]
-iadrs: [IADR-0001, IADR-0019, IADR-0044, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0199, IADR-0295, IADR-0468]
-specs: [20260926_issue-754_department-from-registrant-group]
-issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, #754, planning#344, planning#361]
+adrs: [ADR-0002, ADR-0003, ADR-0014, ADR-0027, ADR-0074, ADR-0115]
+iadrs: [IADR-0001, IADR-0019, IADR-0044, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0199, IADR-0295, IADR-0468, IADR-0472]
+specs: [20260926_issue-754_department-from-registrant-group, 20260926_issue-1557_department-domain-validation]
+issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, #754, #1557, planning#344, planning#361]
 -->
 
 # テスト仕様書: データソース登録・同期・カタログ化
@@ -102,6 +102,13 @@ issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, #754, plann
 | T-57 | 登録後に別の管理者が `PATCH` / `PUT` で `department` を空にする | `PATCH` / `PUT /datasources/{id}` | **導き直さず** `unassigned` | 部門は「登録した」利用者の所属で決まる。更新者の所属で揺れない | 自動（xUnit） |
 | T-58 | 入れ子の所属（`/department/engineering/backend`） | `RegistrantDepartment.FromGroupPaths` | 上位のコード（`engineering`）に畳む。同じ部門の入れ子は 1 つ、異なる部門にまたがれば 2 つ | 下位グループの所属者はその部門の所属者でもある | 自動（xUnit） |
 | T-59 | 身元プロバイダが発行する形（`group_paths` の JSON 配列）の JWT | `JsonWebTokenHandler`（受信クレーム写像あり）→ 登録端点の読み口 | 1 値 1 クレームで読め、全部が数えられる | 先頭 1 値へ畳むと 2 部門の人が 1 つに見え、誤った部門を作る | 自動（xUnit） |
+| T-60 | 明示した `department` が部門グループのコード（`sales` / `hr` / `engineering`） | `POST` / `PUT` / `PATCH /datasources` | 3 口とも保存され、照会するのは明示した 1 値だけ | 利用者裁定の値域（realm の部門グループ）に在る値は通す。一覧を引かない | 自動（xUnit） |
+| T-61 | 値域の外（`finance`・大小文字違い `Sales`・入れ子 `sales/backend`・前後空白 ` sales `） | 同上 | **400**（`errors` に値を含む理由）。**1 項目も保存されない**（件数・再読込で確かめる） | 打ち間違いの部門は誰にも開かない文書を静かに作る。照合を大小文字無視へ・trim してから照会へ変えると赤になる | 自動（xUnit） |
+| T-62 | 値域を引けない（認可サービス不達・gRPC の全 status・宛先未宣言） | 同上 ／ gRPC 実装・縮退実装 | **502**（`message` に「保存していません」）。値域の外（400）と報告しない。引ければ同じ要求は通る | 確かめられなかったことを「無い」と言わない。黙って通すと検証が障害時に外れる | 自動（xUnit） |
+| T-63 | 予約値 `unassigned`・空白・未指定／`defaultAttributes` を送らない PATCH | 同上 | 値域を**照会しない**（引けない状態でも通る） | 予約値は部門コードではなく未解決の記録である。無関係な操作を認可サービスの障害へ道連れにしない | 自動（xUnit） |
+| T-64 | 認可サービスの値域照会（`/department` 直下・名前だけ別の木・大小文字違い・入れ子のグループ・前後空白・親そのもの・重複）／管理者の利用者トークン／身元プロバイダの障害 | gRPC `UserDirectory/CheckDepartmentCodes` ／ `FindGroupByPathAsync` | 直下のコードだけが在る。要求と同じ順・同じ数。利用者トークンは PERMISSION_DENIED。障害は status（`exists=false` にしない）。返ったパスが大小文字違いなら無い扱い | 照会であって列挙ではない。入れ子を数えると `a/b` という「コード」が通る | 自動（xUnit・実 Kestrel の h2c） |
+| T-65 | データソース管理画面の部門欄の補助文・値域の外の理由表示・確認できない（502）ときの説明 | 登録・編集フォーム | 補助文が「入れるなら部門グループのコード。無いコードは保存されない」を伝える。400 の理由が出る。502 には確認できなかった旨を添え、保存されていないとは言い切らない | 入力の前に規則を伝え、拒否の理由を画面に出す | 自動（Vitest） |
+| T-66 | 値域が定まる前に保存された部門（値域の外）を持つソースで、部門を変えずに機密区分・ライフサイクルを編集／部門を変える | `PATCH` / `PUT /datasources/{id}` | 部門を変えない編集は**値域を照会せずに 200**（値域が引けない状態でも通る）。部門を変えれば照会し、値域の外は 400・引けなければ 502（大小文字だけの違いも「変えた」） | 旧データの部門で無関係な編集を止めない。値域の外の値を新しく書かせない | 自動（xUnit） |
 
 ## テストデータ
 
@@ -127,6 +134,7 @@ issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, #754, plann
 - 同期健全性: `.../DataSourceService.Tests/DataSourceSyncServiceTests.cs`（T-26〜T-28）、`.../SyncErrorRedactorTests.cs`（T-29）
 - 更新 API: `.../DataSourceService.Tests/DataSourceUpdateEndpointTests.cs`（T-30〜T-35）、`.../DataSourceAuthorizationTests.cs`（T-36）
 - 資格情報の露出封鎖: `src/knowledge/backend/Services/DataSourceService/Tests/Features/DataSources/DataSourceCredentialExposureTests.cs`（T-46〜T-52。**すべて秘密を実際に通す陽性対照**であり、マスクを外す変異で落ちることを実測している）
+- 明示した部門の値域検証: `src/knowledge/backend/Services/DataSourceService/Tests/Features/DataSources/DepartmentDomainEndpointTests.cs`（T-60〜T-63・T-66）、`.../Tests/Infrastructure/ExternalServices/DepartmentDomainDirectoryTests.cs`（T-62）、`src/platform/backend/Services/AuthorizationService/Tests/Features/Users/Directory/GrpcUserDirectoryTests.cs`・`.../Tests/Infrastructure/ExternalServices/KeycloakIdentityAdminClientTests.cs`（T-64）、`src/knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.test.tsx`（T-65）
 - 登録者の部門グループからの補完: `src/knowledge/backend/Services/DataSourceService/Tests/Domain/RegistrantDepartmentTests.cs`（T-53〜T-55・T-58・T-59）、`.../Tests/Domain/DataSourceTests.cs`・`.../Tests/Features/DataSources/RegistrantDepartmentEndpointTests.cs`（T-53〜T-57）
 - BFF の中継: `src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs`（健全性の透過・`PUT` / `PATCH` の転送・運用者の 403）
 - 実装 ADR（追加）: `../../.ai-context/adr/IADR-0051_datasource-connector-port-and-filesystem.md`

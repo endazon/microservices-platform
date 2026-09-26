@@ -1,5 +1,5 @@
 // FR-05, FR-16, UC-04, UC-09, SC-06, SC-12, NFR-09, ADR-0004, ADR-0029, ADR-0062, ADR-0064, ADR-0074, ADR-0075,
-// IADR-0329, IADR-0379, IADR-0384, IADR-0385, IADR-0397, IADR-0400, IADR-0401 (#1255):
+// IADR-0329, IADR-0379, IADR-0384, IADR-0385, IADR-0397, IADR-0400, IADR-0401 (#1255), ADR-0115, IADR-0472 (#1557):
 // 基盤の利用者名簿の**狭い読み口**。REST `GET /authz/users`（AdminOnly・全件列挙）を写したものではない。
 //
 // ■ なぜ列挙を出さないか（IADR-0401 決定 2）
@@ -29,6 +29,27 @@ service UserDirectory {
   // 1 人の ABAC 属性を返す。照合は大小文字無視（McpServer の現行 FindRegistrarAsync と同じ）。
   // ロール・有効状態・内部 ID は返さない（呼び出し元が使わないものを面へ出さない）。
   rpc GetUserAttributes(GetUserAttributesRequest) returns (GetUserAttributesResponse);
+
+  // FR-05, SC-06, ADR-0115 決定 1・5, ADR-0074 決定 4, IADR-0472 (#1557):
+  // 部門コードが値域（realm の `/department/<code>` の `<code>`）に在るかを返す。
+  // 照会であって列挙ではない（部門グループの一覧は返さない。IADR-0401 決定 3 と同じ狭め方）。
+  // 照合は序数一致（大小文字を畳まない）。`/` を含む値・空文字は部門コードではない（exists=false）。
+  // 要求と同じ順・同じ数を返す。後段を引けなければ gRPC status（UNAVAILABLE 等）であって exists=false ではない。
+  rpc CheckDepartmentCodes(CheckDepartmentCodesRequest) returns (CheckDepartmentCodesResponse);
+}
+
+message CheckDepartmentCodesRequest {
+  repeated string codes = 1;
+}
+
+message DepartmentCodeExistence {
+  string code = 1;
+  bool exists = 2;
+}
+
+message CheckDepartmentCodesResponse {
+  // 要求の codes と同じ順・同じ数。
+  repeated DepartmentCodeExistence results = 1;
 }
 
 message CheckUsernamesRequest {
