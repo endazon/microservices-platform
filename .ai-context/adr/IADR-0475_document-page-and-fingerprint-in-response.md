@@ -21,7 +21,7 @@ related_specs:
 
 - 状態: Accepted
 - 日付: 2026-09-26
-- 決定者: claude（#1575。AST#1028 の実装〔AST PR #1038・AST/IADR-0436〕が挙げた基盤の文書 API の不足 4 点）
+- 決定者: claude（#1575。AST#1028 の実装〔AST#1038・AST/IADR-0436〕が挙げた基盤の文書 API の不足 4 点）
 
 ## 起点・関連
 

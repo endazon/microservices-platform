@@ -58,7 +58,10 @@
       "DocumentConfidentialityValidationTests",
       "DocumentCrudTests",
       "DocumentEndpointVersioningTests",
+      "DocumentFingerprintResponseTests",
       "DocumentNormalizedSyncTests",
+      "DocumentPageTests",
+      "DocumentReadGrpcMappingTests",
       "DocumentVersioningTests"
     ],
     "docs/tests/FR-07_data-range-analysis.md": [
