@@ -175,6 +175,41 @@ public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
     public Task<IdentityGroup?> FindGroupByPathAsync(string path, CancellationToken ct)
         => Task.FromResult(Groups.FirstOrDefault(g => string.Equals(g.Path, path, StringComparison.Ordinal)));
 
+    // FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): 直下の子グループ（本物と同じく孫は返さない）。
+    public Task<IReadOnlyList<IdentityGroup>> ListSubGroupsAsync(string groupId, CancellationToken ct)
+    {
+        var parent = Groups.FirstOrDefault(g => string.Equals(g.Id, groupId, StringComparison.Ordinal));
+        if (parent is null) return Task.FromResult<IReadOnlyList<IdentityGroup>>([]);
+
+        var prefix = parent.Path + "/";
+        return Task.FromResult<IReadOnlyList<IdentityGroup>>(
+        [
+            .. Groups.Where(g => g.Path.StartsWith(prefix, StringComparison.Ordinal)
+                                 && !g.Path[prefix.Length..].Contains('/'))
+        ]);
+    }
+
+    // FR-05, FR-09, SC-17, [[IADR-0473]] (#1573): 直接の所属者（属性つき）。
+    public Task<IReadOnlyList<IdentityUser>> ListGroupMembersAsync(string groupId, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<IdentityUser>>(
+        [
+            .. _users.Values
+                .Where(u => Memberships.TryGetValue(u.Id, out var ids) && ids.Contains(groupId, StringComparer.Ordinal))
+                .OrderBy(u => u.Id, StringComparer.Ordinal)
+                .Select(u => u.ToIdentityUser())
+        ]);
+
+    // FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): `department` 1 キーだけを書く。
+    // 🔴 本物と同じく、計画の読み取りから有効状態・部門以外の属性が変わっていたら書かない（#1573 監査）。
+    public Task<DepartmentWriteResult> SetDepartmentAttributeAsync(
+        string userId, string department, IdentityUser observed, CancellationToken ct)
+    {
+        if (!_users.TryGetValue(userId, out var user)) return Task.FromResult(DepartmentWriteResult.NotFound);
+        if (!DepartmentWriteResult.SameExceptDepartment(observed, user.ToIdentityUser()))
+            return Task.FromResult(DepartmentWriteResult.Changed);
+        return Task.FromResult(DepartmentWriteResult.Applied(Mutate(userId, u => u.Attributes["department"] = department)!));
+    }
+
     public Task<IReadOnlyList<string>> ListAssignableRolesAsync(CancellationToken ct)
         => Task.FromResult<IReadOnlyList<string>>([.. AssignableRoles]);
 

@@ -123,6 +123,38 @@ public interface IIdentityAdminClient
     Task<IdentityGroup?> FindGroupByPathAsync(string path, CancellationToken ct);
 
     /// <summary>
+    /// FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): **直下の子グループ**を引く（孫は返らない）。
+    /// 部門の同期が `/department` の木を辿るために使う。🔴 **ページを最後まで読む**（打ち切りで子を落とさない）。
+    /// 🔴 **これは新規作成の口ではない**（禁止語に触れない読み取りである）。
+    /// </summary>
+    Task<IReadOnlyList<IdentityGroup>> ListSubGroupsAsync(string groupId, CancellationToken ct);
+
+    /// <summary>
+    /// FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): グループの**直接の所属者**を属性つきで引く
+    /// （ロールは引かない。`Roles` が空なのは「この口では引いていない」である）。
+    /// 🔴 **ページを最後まで読む**（打ち切りの外の利用者を黙って落とさない）。
+    /// 🔴 **これは新規作成の口ではない**（禁止語に触れない読み取りである）。
+    /// </summary>
+    Task<IReadOnlyList<IdentityUser>> ListGroupMembersAsync(string groupId, CancellationToken ct);
+
+    /// <summary>
+    /// FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): 利用者属性 `department` **だけ**を書く。
+    /// 該当利用者が居なければ null。
+    ///
+    /// 🔴 **部門グループに合わせて属性を直す唯一の口である**（逆向き＝グループを属性に合わせる口は持たない）。
+    /// <see cref="ReplaceAttributesAsync"/> で代用しない —— 全置換は他の属性の多値を畳んで消し得る。
+    /// 🔴 **これは新規作成の口ではない**（禁止語に触れない属性の書き込みである）。
+    ///
+    /// ［2026-09-26 / #1573 監査］🔴 **<paramref name="observed"/>（計画を立てたときに読んだ像）から、有効状態または
+    /// `department` 以外の属性が変わっていたら書かない**（<see cref="DepartmentWriteOutcome.Changed"/>）。
+    /// Keycloak の利用者更新は表現全体の PUT で、If-Match（楽観ロック）が無い。計画の読み取りと書き込みの間に SC-17 の
+    /// 無効化（`enabled=false` ＋ 保持起点の属性）が入ると、古い表現を書き戻して**無効化を取り消してしまう**。
+    /// 書く直前にもう一度読み、変わっていれば見送る（次の周期で読み直して判断する）。
+    /// </summary>
+    Task<DepartmentWriteResult> SetDepartmentAttributeAsync(
+        string userId, string department, IdentityUser observed, CancellationToken ct);
+
+    /// <summary>
     /// SC-17 入力規則「定義済みロールのみ」の**値域の正**。IdP が持つ割当可能な realm ロールを返す。
     /// **画面にも後段にも焼き込まない** —— 焼き込むと realm を増やしても選べず、
     /// 消えたロールを選べてしまう。
@@ -181,6 +213,38 @@ public sealed record IdentityUser(
     bool Enabled,
     IReadOnlyList<string> Roles,
     IReadOnlyDictionary<string, string> Attributes);
+
+// FR-05, FR-09, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): 部門属性の書き込みの結果。
+public enum DepartmentWriteOutcome
+{
+    /// <summary>書いて、読み直して反映を確かめた。</summary>
+    Applied,
+
+    /// <summary>利用者が居ない（削除された）。</summary>
+    NotFound,
+
+    /// <summary>計画の読み取りから有効状態・部門以外の属性が変わっていたので書かなかった（競合の回避）。</summary>
+    Changed,
+}
+
+public sealed record DepartmentWriteResult(DepartmentWriteOutcome Outcome, IdentityUser? User)
+{
+    public static DepartmentWriteResult NotFound { get; } = new(DepartmentWriteOutcome.NotFound, null);
+    public static DepartmentWriteResult Changed { get; } = new(DepartmentWriteOutcome.Changed, null);
+    public static DepartmentWriteResult Applied(IdentityUser user) => new(DepartmentWriteOutcome.Applied, user);
+
+    /// <summary>
+    /// 計画の読み取り（<paramref name="observed"/>）と書く直前の像（<paramref name="current"/>）で、
+    /// **有効状態と `department` 以外の属性**が同じか（序数一致）。`department` 自体は書き換える対象なので比べない。
+    /// </summary>
+    public static bool SameExceptDepartment(IdentityUser observed, IdentityUser current)
+    {
+        if (observed.Enabled != current.Enabled) return false;
+        var a = observed.Attributes.Where(kv => kv.Key != "department").OrderBy(kv => kv.Key, StringComparer.Ordinal);
+        var b = current.Attributes.Where(kv => kv.Key != "department").OrderBy(kv => kv.Key, StringComparer.Ordinal);
+        return a.SequenceEqual(b);
+    }
+}
 
 // FR-05, FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0036 D-03・D-06, ADR-0098 決定 1・3,
 // [[IADR-0447]] (#1447): IdP が持つグループの像。**本サービスはこれを永続化しない**
