@@ -474,6 +474,13 @@ function detectionWiringFailures({ manifest, collectors, composeCollector, alert
   if (!g) failures.push('Grafana 版の ResetFloorNoReadyEndpoint が無い');
   else if (g.expr !== `up{job="${job}"}` || g.evaluator !== 'lt 1') {
     failures.push(`Grafana 版は up をそのまま取り lt 1 で比べる（== 0 を gt 0 で比べると永久に発火しない）: expr=${g.expr} evaluator=${g.evaluator}`);
+  } else if (g.noDataState !== 'OK') {
+    failures.push(`Grafana 版 ResetFloorNoReadyEndpoint の noDataState が OK でない（${g.noDataState}。不在は対の規則が拾う）`);
+  }
+  const ga = grafanaRuleOf(grafana, 'ResetFloorUpSeriesAbsent');
+  if (!ga) failures.push('Grafana 版の ResetFloorUpSeriesAbsent が無い');
+  else if (ga.expr !== `absent(up{job="${job}"})` || ga.evaluator !== 'gt 0' || ga.noDataState !== 'OK') {
+    failures.push(`Grafana 版 ResetFloorUpSeriesAbsent は absent(up) を gt 0・noDataState: OK で見る（NoData だと正常時に恒常発火）: expr=${ga.expr} evaluator=${ga.evaluator} noDataState=${ga.noDataState}`);
   }
   return failures;
 }
@@ -510,6 +517,9 @@ ok('🔴 11. 全滅の検知が器・collector 2 設定・規則・Grafana で 1
     ['for を 10m へ延ばす', mutate('alerts', /(- alert: ResetFloorNoReadyEndpoint\n\s+expr: [^\n]*\n\s+for: )2m/, '$110m')],
     ['不在の規則を消す', mutate('alerts', '- alert: ResetFloorUpSeriesAbsent', '- alert: SomethingElse')],
     ['Grafana 版を == 0 と gt 0 にする', mutate('grafana', /expr: 'up\{job="reset-floor"\}'([\s\S]*?)type: lt, params: \[1\]/, 'expr: \'up{job="reset-floor"} == 0\'$1type: gt, params: [0]')],
+    ['Grafana 版の全滅を NoData にする', mutate('grafana', /(title: ResetFloorNoReadyEndpoint\n\s+condition: C\n\s+for: 2m\n\s+noDataState: )OK/, '$1NoData')],
+    ['Grafana 版の不在の式を変える', mutate('grafana', "expr: 'absent(up{job=\"reset-floor\"})'", "expr: 'absent(up{job=\"floor\"})'")],
+    ['Grafana 版の不在を NoData にする', mutate('grafana', /(title: ResetFloorUpSeriesAbsent\n\s+condition: C\n\s+for: 5m\n\s+noDataState: )OK/, '$1NoData')],
     ['器の口を別のパスへ', { ...WIRING, metricsPath: '/-/metrics' }],
     ['器の Service の port を変える', mutate('manifest', /(kind: Service[\s\S]*?- name: http\n\s+port: )8080/, '$19090')],
   ];
@@ -522,9 +532,9 @@ ok('🔴 11. 全滅の検知が器・collector 2 設定・規則・Grafana で 1
 const http = require('http');
 const listen = (server) => new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
 const close = (server) => new Promise((resolve) => server.close(() => resolve()));
-const request = (port, method, p, body) => new Promise((resolve, reject) => {
+const request = (port, method, p, body, agent = false) => new Promise((resolve, reject) => {
   const startedAt = Date.now();
-  const req = http.request({ host: '127.0.0.1', port, method, path: p, agent: false }, (res) => {
+  const req = http.request({ host: '127.0.0.1', port, method, path: p, agent }, (res) => {
     const chunks = [];
     res.on('data', (c) => chunks.push(c));
     res.on('end', () => resolve({
@@ -548,8 +558,11 @@ async function behaviourTest() {
   const floorMs = 1500;
   const server = floor.createServer({ upstream: new URL(`http://127.0.0.1:${upstreamPort}`), floorMs });
   const port = await listen(server);
+  // 🔴 scrape と同じく**接続を使い回したがる**クライアントで打つ。`agent: false` だとクライアント自身が
+  //   `Connection: close` を送り、サーバーがそれを返すだけなので、器が閉じなくても試験が通ってしまう。
+  const keepAlive = new http.Agent({ keepAlive: true });
   try {
-    const m = await request(port, 'GET', '/metrics');
+    const m = await request(port, 'GET', '/metrics', undefined, keepAlive);
     assert.strictEqual(m.status, 200);
     assert.match(m.headers['content-type'], /^text\/plain; version=0\.0\.4/);
     assert.strictEqual(m.headers.connection, 'close', '接続を閉じていない（使い回した接続が Service から外れた Pod に残る）');
@@ -567,6 +580,7 @@ async function behaviourTest() {
       'POST /realms/msp/login-actions/reset-credentials?session_code=x', 'GET /metrics?x=1', 'POST /metrics',
     ]);
   } finally {
+    keepAlive.destroy();
     await close(server);
     await close(upstream);
   }

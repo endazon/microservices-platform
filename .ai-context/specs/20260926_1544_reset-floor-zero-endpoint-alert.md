@@ -117,6 +117,10 @@ operations.md 4 か所・`check-grafana-alerting.js` の注記）、軸 3 の表
 
 - IADR-0432 265・336 行（本文と #1543 追記）: 凍結記録。新しい日付つき追記で「実装した」を記録する。
 - IADR-0466 118 行（「16 → 17 件」）: 当時の記録。現行値の主張ではない。
+- ［2026-09-26 追記 / #1544 監査］`docs/operations/operations.md` の監視の表の注記が「下 4 行」「Grafana 版は下 4 行だけ `noDataState: OK`」
+  「（表の最終行）」と行数・位置を導出値で持っていた（初版で取りこぼした）。床の器の不在の行を表の末尾へ移して「下 5 行」へ直し、
+  Grafana の文に全滅の行（`noDataState: OK`）を足し、「表の最終行」を行名で指す形へ改めた。同じ節の「上表の下 3 行」は
+  ［2026-09-04 更新］の日付つき記述（当時の 3 行）であり、現行値の主張ではないので残す。
 - `.ai-context/specs/` の確定済み仕様書（#1500・#1543）: 凍結記録。
 - `docs/operations/password-reset-relay-state-measurement-runbook.md`: 近接 MTA の 3 規則の実測手順であり、床の器は射程外。
 - `scripts/check-grafana-alerting.js` は件数を注記に持つだけで、検査は alerts.yml から数えるので値は動かない。**注記だけ直す**
