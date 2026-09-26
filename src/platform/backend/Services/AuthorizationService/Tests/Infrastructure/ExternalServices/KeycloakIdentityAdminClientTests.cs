@@ -941,7 +941,7 @@ public class KeycloakIdentityAdminClientTests
 
     // ── FR-05, FR-09, SC-17, 計画 ADR-0116 決定 2, [[IADR-0473]] (#1609): 全利用者の列挙と部門の消去 ──
 
-    // T-56 の土台: 🔴 全利用者は**最後のページまで**読み、読み切れたら Complete = true。サービスアカウントは返さない。
+    // T-57 の土台: 🔴 全利用者は**最後のページまで**読み、読み切れたら Complete = true。サービスアカウントは返さない。
     [Fact]
     public async Task Listing_all_users_reads_every_page_and_skips_service_accounts()
     {
@@ -966,7 +966,7 @@ public class KeycloakIdentityAdminClientTests
         handler.Requests.Should().NotContain(r => r.Path.Contains("role-mappings"), "ロールは引かない");
     }
 
-    // T-56: 🔴 ページの途中の失敗は**例外**（部分的な結果を返さない）。本文が JSON の null のページも例外である
+    // T-57: 🔴 ページの途中の失敗は**例外**（部分的な結果を返さない）。本文が JSON の null のページも例外である
     // （空のページと読むと、そこで列挙が終わったことになる）。
     [Theory]
     [InlineData(false)]
@@ -986,7 +986,7 @@ public class KeycloakIdentityAdminClientTests
         await act.Should().ThrowAsync<Exception>();
     }
 
-    // T-55: `department` 1 キーだけを消し、他の属性は多値のまま持ち越す。読み直して消えていれば Applied。
+    // T-56: `department` 1 キーだけを消し、他の属性は多値のまま持ち越す。読み直して消えていれば Applied。
     [Fact]
     public async Task Clearing_the_department_removes_only_that_key()
     {
@@ -1007,7 +1007,7 @@ public class KeycloakIdentityAdminClientTests
         attrs.GetProperty("clearance").EnumerateArray().Select(e => e.GetString()).Should().Equal("internal", "public");
     }
 
-    // T-55: 🔴 読み直して残っていれば**例外**（消したつもりで残さない）。読み取り後に変わっていれば PUT しない。
+    // T-56: 🔴 読み直して残っていれば**例外**（消したつもりで残さない）。読み取り後に変わっていれば PUT しない。
     [Fact]
     public async Task Clearing_the_department_fails_closed_when_it_remains_and_skips_when_changed()
     {

@@ -15,8 +15,8 @@ namespace AuthorizationService.Tests.Features.Authz;
 // 身元プロバイダは in-memory の偽物（部門グループは開発用 realm export と同じ engineering / sales / hr）。
 // realm を読めない形は `TestIdentityDirectory.GroupFailure`（グループの読み取りが例外になる）で作る。
 //
-// T-58 辞書の部門の値が realm の部門グループと一致する（両スコープ・保存済みの旧い値は置き換わる・ポリシー検証も同じ集合）/
-// T-59 realm を読めないときは「不明」と示し、既存の値を消さない / T-60 手で足す・消す要求は拒む（空は realm から導く）。
+// T-59 辞書の部門の値が realm の部門グループと一致する（両スコープ・保存済みの旧い値は置き換わる・ポリシー検証も同じ集合）/
+// T-60 realm を読めないときは「不明」と示し、既存の値を消さない / T-61 手で足す・消す要求は拒む（空は realm から導く）。
 [Trait("TestKind", "Integration")]
 public class DepartmentDictionaryFromRealmTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
@@ -60,7 +60,7 @@ public class DepartmentDictionaryFromRealmTests(TestWebApplicationFactory factor
     private static async Task<List<AttributeDefinitionView>> ListAsync(HttpClient client)
         => (await client.GetFromJsonAsync<List<AttributeDefinitionView>>("/authz/attributes", Ct))!;
 
-    // T-58: 🔴 一覧の部門の値は realm の部門グループのコードそのもの（両スコープ）。seed の旧い値（finance / legal）は
+    // T-59: 🔴 一覧の部門の値は realm の部門グループのコードそのもの（両スコープ）。seed の旧い値（finance / legal）は
     // 消え、出所は `realm`。導いた値は保存し直される（最後に確かめた値として残る）。
     [Fact]
     public async Task The_department_values_match_the_realm_department_groups_in_both_scopes()
@@ -77,7 +77,7 @@ public class DepartmentDictionaryFromRealmTests(TestWebApplicationFactory factor
             "realm から導いた値を保存し直す（realm を読めなくなったときの『最後に確かめた値』になる）");
     }
 
-    // T-58: 手で持つキーの出所は null（従来どおり）。個別取得も一覧と同じ値を返す。
+    // T-59: 手で持つキーの出所は null（従来どおり）。個別取得も一覧と同じ値を返す。
     [Fact]
     public async Task Hand_held_keys_keep_their_values_and_have_no_source()
     {
@@ -98,7 +98,7 @@ public class DepartmentDictionaryFromRealmTests(TestWebApplicationFactory factor
         single.AllowedValuesSource.Should().Be(DepartmentDictionaryValues.SourceRealm);
     }
 
-    // T-59: 🔴 realm を読めないときは出所を「不明」（realm-unavailable）として示し、**保存済みの値を消さない**。
+    // T-60: 🔴 realm を読めないときは出所を「不明」（realm-unavailable）として示し、**保存済みの値を消さない**。
     // 旧い値しか無い DB でも空へ倒さない（読めなかったことは「部門が無い」ではない）。
     [Fact]
     public async Task An_unreadable_realm_is_shown_as_unknown_and_wipes_nothing()
@@ -114,7 +114,7 @@ public class DepartmentDictionaryFromRealmTests(TestWebApplicationFactory factor
         (await StoredDepartmentValuesAsync(AttributeScope.User)).Should().Equal("engineering", "sales", "hr", "finance", "legal");
     }
 
-    // T-59: 一度 realm から導いた後に realm が読めなくなったら、**最後に確かめた値**（旧い seed の値ではない）を示し続ける。
+    // T-60: 一度 realm から導いた後に realm が読めなくなったら、**最後に確かめた値**（旧い seed の値ではない）を示し続ける。
     [Fact]
     public async Task After_a_successful_read_the_last_confirmed_values_survive_an_outage()
     {
@@ -129,7 +129,7 @@ public class DepartmentDictionaryFromRealmTests(TestWebApplicationFactory factor
         department.AllowedValuesSource.Should().Be(DepartmentDictionaryValues.SourceRealmUnavailable);
     }
 
-    // T-60: 🔴 部門の値を手で足す要求は 400（部門の追加・削除は realm の部門グループで行う）。空は realm から導いて登録し、
+    // T-61: 🔴 部門の値を手で足す要求は 400（部門の追加・削除は realm の部門グループで行う）。空は realm から導いて登録し、
     // realm と同じ集合（並び違い）も受け付ける。
     [Fact]
     public async Task Department_values_cannot_be_held_by_hand()
@@ -158,7 +158,7 @@ public class DepartmentDictionaryFromRealmTests(TestWebApplicationFactory factor
         (await StoredDepartmentValuesAsync(AttributeScope.User)).Should().Equal(RealmDepartments);
     }
 
-    // T-60 / T-59: realm を読めないとき、保存済みの値のまま送る更新（ラベルの変更）は通り、値は変わらない。
+    // T-61 / T-60: realm を読めないとき、保存済みの値のまま送る更新（ラベルの変更）は通り、値は変わらない。
     // 値を変える更新は確かめられないので拒む。
     [Fact]
     public async Task While_the_realm_is_unreadable_only_unchanged_values_are_accepted()
@@ -177,7 +177,7 @@ public class DepartmentDictionaryFromRealmTests(TestWebApplicationFactory factor
         (await StoredDepartmentValuesAsync(AttributeScope.User)).Should().Equal("engineering", "sales", "hr", "finance", "legal");
     }
 
-    // T-58: 🔴 ポリシーの許容値も同じ集合で検証する（辞書の画面に出る値と保存の検証が食い違わない）。
+    // T-59: 🔴 ポリシーの許容値も同じ集合で検証する（辞書の画面に出る値と保存の検証が食い違わない）。
     // 保存済みの旧い値（finance）を条件に持つポリシーは、realm を読める限り 400（dry-run も同じ）。
     [Fact]
     public async Task Policy_validation_uses_the_realm_department_values()

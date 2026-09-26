@@ -2,10 +2,10 @@
 title: IADR-0348 /private-notes/sync/* はエッジ host のパス前置で DocumentService へ直接通し、本番像は opt-in（既定 off）にする
 type: impl-adr
 status: Proposed
-related_ids: [FR-19, FR-20, UC-11, SC-20, NFR-11, ADR-0021, ADR-0032, ADR-0037, ADR-0047, IADR-0076, IADR-0078, IADR-0270, IADR-0317, IADR-0338]
+related_ids: [FR-19, FR-20, UC-11, SC-20, NFR-09, NFR-11, ADR-0005, ADR-0021, ADR-0032, ADR-0037, ADR-0047, ADR-0084, IADR-0076, IADR-0078, IADR-0270, IADR-0317, IADR-0338]
 author: claude
 created: 2026-09-03
-updated: 2026-09-03
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md
   - planning:projects/microservices-platform/07_adr/ADR-0037_obsidian-sync-method.md
@@ -83,6 +83,12 @@ $ curl http://127.0.0.1:18093/private-notes/sync/manifest                     ->
   その端点群は JWT 経路と資格情報系統が異なり、所有者の個人資料に構造的に閉じている
   （`ObsidianSyncEndpoints` のすべての照会が `PrivateNote.OwnerId` を通る）。多層防御は NetworkPolicy
   （決定 4）で維持する。
+
+> **［2026-09-27 追記 / #1606］「`AuthorizationPolicy` を置かない」は改めた。** 置かないとしたのは
+> **JWT を要求する方針**（`RequestAuthentication` と組む ALLOW）であり、その理由（正当な同期要求が 401 で落ちる）は今も正しい。
+> 一方、決定 4 の NetworkPolicy は gateway の Namespace から 8080 番**全体**を開けるので、経路の制限は
+> VirtualService の振り分け 1 枚だけに頼っていた（共有のゲートウェイへ別の VirtualService が付けば `/documents` へ届き得る）。
+> そこで **JWT を要求しない、経路だけの DENY** を同じ条件で足した。判断の全体は下の「追記: エッジの主体を経路で絞る」にある。
 
 ### 決定 3: 本番像の既定は **off（opt-in）** —— fail-safe は「気付ける方向」へ倒す
 
@@ -176,6 +182,47 @@ API パスは 404 ではなく**画面**になる。**「404 が返る」を陰�
   1. エッジのレート制限（`ADR-0021` フォローアップ。同期経路だけでなくエッジ全体の課題）
   2. 本番配備での knob 有効化手順の Runbook 化（`IADR-0338` フォローアップ 3 の配布運用と併せて）
   3. `IADR-0338` フォローアップ 2（第 2 段: push / delete / 競合解決 UI）は本 IADR の射程外
+
+## 追記: エッジの主体を経路で絞る（2026-09-27 / #1606）
+
+> **［2026-09-27 追記 / #1606］** #1603 の監査が見つけた多層防御の隙間を閉じる。作業仕様書は
+> `.ai-context/specs/20260927_issue-1606_private-notes-sync-edge-authz.md`。**新しい IADR は立てない** ——
+> 本 IADR の決定 2（エッジに方針を置かない）と決定 4（NetworkPolicy）の補正であり、同じ knob の同じ条件で描くため。
+>
+> **決定 6: `edge.enabled` かつ `edge.privateNotesSync.enabled` のとき、DocumentService に `AuthorizationPolicy`（DENY）を 1 枚置く。**
+>
+> ```yaml
+> selector: { matchLabels: { app: <edge.privateNotesSync.service> } }
+> action: DENY
+> rules:
+>   - from: [{ source: { namespaces: [<edge.gateway.namespace>] } }]
+>     to:   [{ operation: { notPaths: ["/private-notes/sync/*"] } }]
+> ```
+>
+> - **ALLOW ではなく DENY にした。** ワークロードを選ぶ ALLOW が 1 枚でもあると、当たらない要求はすべて拒否に変わる。
+>   DocumentService の呼び出し元は名前空間の中（BFF / GraphService / McpServer の REST 8080 と gRPC 8081）だけでなく、
+>   **別名前空間の AST**（information-collection / report の KB 保存。AST はサイドカー注入が既定オフ＝平文で principal を持たない）と
+>   **kubelet のプローブ**が居る。ALLOW で「名前空間の主体」＋「ゲートウェイ × sync」と列挙すると AST とプローブが黙って 403 になり、
+>   呼び出し元が増えるたびに列挙を直す義務も生じる。DENY は当たった要求だけを落とすので、**from × to の外の呼び出しは 1 本も変わらない。**
+> - **from はゲートウェイの主体（principal）ではなく、ゲートウェイの Namespace にした。** NetworkPolicy が開けた L3 の穴は
+>   Namespace 単位（`edge.gateway.namespace`）であり、同じ単一情報源で絞れば穴の範囲をそのまま L7 で覆える。principal を名指しすると
+>   service account 名（istioctl は `istio-ingressgateway-service-account`、helm の gateway chart はリリース名）と trust domain に
+>   依存し、違えば**方針が黙って何も落とさない**（fail-open）。gateway の Namespace に DocumentService の正当な呼び出し元は
+>   ゲートウェイ × sync 以外に居ない。
+> - **to は `notPaths: ["/private-notes/sync/*"]` を直書きする**（route の前置 + `*`。決定 1 と同じく knob にしない）。
+>   `/private-notes/sync-settings/`・スラッシュ無しの `/private-notes/sync`・gRPC（8081）の面も当たる＝落ちる。
+>   **メソッドは絞らない** —— route もメソッドを絞っておらず、許すメソッドの正は端点側の契約にある。
+> - **mTLS の影響**: STRICT（既定）では平文は PeerAuthentication が先に落とすので、本方針が見るのは mTLS の要求だけである。
+>   ゲートウェイの Envoy → サイドカーは auto mTLS（と DestinationRule の ISTIO_MUTUAL）で必ず mTLS になり、`source.namespace` が採れる。
+>   PERMISSIVE では平文の要求に `source.namespace` が無いので本 DENY は当たらない —— **平文の呼び出し元（サイドカーの無い AST 等）を
+>   巻き込まない代わりに、gateway の Namespace に居るサイドカー無しの Pod からの平文は本門を素通りする。** これは PERMISSIVE の既知の限界として受け入れ、
+>   閉じるのは STRICT である（平文を `notPrincipals: ["*"]` で落とすと、PERMISSIVE の間に平文で来る AST の KB 保存まで落ちる）。
+> - **既定は無効のまま**なので、既定の values と `values-local.yaml` の描画は変わらない（#1606 の PR で `helm template` の
+>   バイト一致を確かめた）。ローカルの overlay（`deploy/local/edge-istio/`）には足していない —— 決定 5 のとおり overlay は
+>   FR-20 を実測する opt-in 環境であり、稼働中の PoC を変えないため（必要になれば overlay 側の別 issue で足す）。
+> - 固定: `scripts/helm-private-notes-sync-authz.test.js` が実際に `helm template` で描き、呼び出し元の一覧へ Istio の評価規則で当てて
+>   「ゲートウェイ × sync だけが通り、ゲートウェイ × それ以外は落ち、他は 1 本も切れない」を確かめる（経路の制限を外す・広げる、
+>   from を名前空間の内側へ向ける、ALLOW に変える、の 4 変異がすべて赤になる）。
 
 ## 関連
 

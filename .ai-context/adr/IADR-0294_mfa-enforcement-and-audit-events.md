@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-05, FR-09, NFR, SC-14, SC-16, SC-17, ADR-0026, ADR-0045]
 author: claude
 created: 2026-08-28
-updated: 2026-08-28
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0026_authentication-ux-and-account-management.md
   - planning:projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md
@@ -159,3 +159,19 @@ service-account 利用者に `platform-admin`（投入先 `/authz/*` が AdminOn
 
 - Supersedes: なし
 - Superseded by: なし
+
+## ［2026-09-27 追記 / #1605］直接付与の閉鎖は、非推奨の `directGrantsOnly` と管理 REST の作成の既定まで見る
+
+決定 3（直接付与の閉鎖）を守る検査 5 は、`directAccessGrantsEnabled === true` だけを数えていた。Keycloak 24.0 のソース（24.0.0 と 24.0.5 で同じ。`gh api` で読み取りのみ）を読むと、
+それでは足りない経路が 2 つある。**決定は変えない**（直接付与は全 client で閉じる）。検査の読み方を実装に合わせるだけなので新しい IADR は起こさない。
+
+- **非推奨の `directGrantsOnly`**: realm の import（`RepresentationToModel.createClient`）は `directGrantsOnly` から標準フローと直接付与を入れた後で、明示の
+  `standardFlowEnabled` / `directAccessGrantsEnabled` で上書きする。一方、**管理 REST の作成**（`ClientManager.createClient` → `OIDCLoginProtocolFactory.setupClientDefaults`）は
+  その後で `directGrantsOnly` を**明示の値より優先**して当て直す。`directGrantsOnly: true` は明示の `directAccessGrantsEnabled: false` があっても直接付与を開き得る。
+- **未設定の既定**: 同じ `setupClientDefaults` は、`directGrantsOnly` が無ければ未設定の `directAccessGrantsEnabled` を **true** にする。「未設定は false」は import にしか当たらない
+  （reconcile は新しいクライアントを `POST /clients` で作る）。
+
+検査 5 は `directAccessGrantsEnabled` を **`!== false`（リテラルの false だけが閉）** と読み、`directGrantsOnly: true` と合わせて MFA のバイパス口として報告する（`loginFlowFlags`）。
+未設定（キーが無い）・JSON の `null`（Jackson は未設定の Boolean として読み、管理 REST の作成では true になる）・文字列 `"true"` など真偽値の false でない値はどれも開くと読む。
+未設定と `null` を数えるのは `bearerOnly` でないクライアントだけ。`directGrantsOnly` は未設定と `null` を「無い」、`false` / `"false"` を false、それ以外（`"true"` を含む）を true と読む。
+同じ読み方を検査 7（人のログイン経路）と、`manage-realm` を持つ主体の対話ログインの検査にも使う。実データの realm は全クライアントが `directAccessGrantsEnabled: false` を明示しており、影響は無い。

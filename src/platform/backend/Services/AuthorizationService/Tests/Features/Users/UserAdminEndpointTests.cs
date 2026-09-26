@@ -157,7 +157,7 @@ public class UserAdminEndpointTests(TestWebApplicationFactory factory)
             .StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
-    // T-58（#1609・計画 ADR-0116 決定 3）: 🔴 SC-17 の部門の値域は realm の部門グループのコードである。
+    // T-59（#1609・計画 ADR-0116 決定 3）: 🔴 SC-17 の部門の値域は realm の部門グループのコードである。
     // realm に無い `finance`（seed の旧い固定値）は保存で拒まれ、realm に在る `sales` は通る（陽性対照を対で置く）。
     [Fact]
     public async Task ReplaceAttributes_takes_the_department_domain_from_the_realm_department_groups()

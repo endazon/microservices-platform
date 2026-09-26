@@ -38,6 +38,8 @@
  *      形だけ違反にし、同型で判定できない形は報告する。`or on (…)`・サブクエリ・`@` と `offset` の順・
  *      `:offset` で終わる名前・単項の符号と `^` の優先順位・±Inf・`expression: $A`・許可リストの空の理由も扱う
  *      （射程の詳細は下の「6.」の節）
+ *      #1605: plain の数を Grafana 11.0.0 の yaml.v3 と同じに読む（`010` は 8 進で 8）。`absent` のラベルを
+ *      Prometheus と同じに作る。評価器の型は Grafana 11.0.0 が受け付ける 4 つ（gt / lt / within_range / outside_range）だけ
  *
  * fail-closed（#664 / IADR-0130）: 走査結果が 0 件なら fail する。
  *   「検査しているつもりで何も見ていない」状態を緑で返さない。
@@ -158,7 +160,8 @@ function normalize(text) {
 //       照合するので、修飾の有無によらず健全）。NaN の標本だけが残り得る形（補集合が空でも `!=` 以外の絞り込みは
 //       NaN を通さない）は「検証できない」。
 //   (c) ラベルの矛盾: 照合に使うラベルについて、両辺の選択子の等号の照合子（`job="a"` と `job="b"`）や、ラベルを
-//       持たないことが確定している辺（`vector(…)`・`sum(…)`・`sum by (l)(…)` の外のラベル・`absent(…)`）と食い違えば、
+//       持たないことが確定している辺（`vector(…)`・`sum(…)`・`sum by (l)(…)` の外のラベル・`absent(…)`。`absent` のラベルは
+//       Prometheus の createLabelsForAbsentFunction と同じ —— 同じ名前が等号の後に別の照合子へ出れば落ち、サブクエリは持たない。#1605）と食い違えば、
 //       `and`・ベクタどうしの比較・算術は空（`unless` は何も除かない）。`on (…)` / `ignoring (…)` の射程を守る。
 //       ラベルを追うのは選択子・範囲の関数・集約・比較・`and` / `unless` の左辺・`vector`・`absent` まで。
 //       ベクタどうしの算術・比較と `or` の後はラベルを「不明」とし、矛盾を主張しない。
@@ -309,21 +312,19 @@ function filterSet(op, c) {
   }
 }
 
-/** 評価器（Grafana の threshold）を満たす値の集合。解釈できない型・引数は null。±Inf の値でも真になり得る（Go の比較）。 */
+// 配備の Grafana（11.0.0）の threshold が受け付ける型（grafana/grafana v11.0.0 の pkg/expr/threshold.go の supportedThresholdFuncs）。
+// gte / lte / eq / ne / within_range_included / outside_range_included は後の版で足されたもので、11.0.0 は誤りとして拒む（#1605）。
+const GRAFANA_THRESHOLD_TYPES = new Set(['gt', 'lt', 'within_range', 'outside_range']);
+
+/** 評価器（Grafana の threshold）を満たす値の集合。解釈できない型・引数・11.0.0 に無い型は null。±Inf の値でも真になり得る（Go の比較）。 */
 function evaluatorSet(type, params) {
   const [a, b] = params;
   const need = (n) => params.length >= n && params.slice(0, n).every((x) => Number.isFinite(x));
   switch (type) {
     case 'gt': return need(1) ? [interval(a, false, INF, true)] : null;
     case 'lt': return need(1) ? [interval(-INF, true, a, false)] : null;
-    case 'gte': return need(1) ? [interval(a, true, INF, true)] : null;
-    case 'lte': return need(1) ? [interval(-INF, true, a, true)] : null;
-    case 'eq': return need(1) ? [point(a)] : null;
-    case 'ne': return need(1) ? filterSet('!=', a) : null;
     case 'within_range': return need(2) ? [interval(a, false, b, false)] : null;
-    case 'within_range_included': return need(2) ? [interval(a, true, b, true)] : null;
     case 'outside_range': return need(2) ? [interval(-INF, true, a, false), interval(b, false, INF, true)] : null;
-    case 'outside_range_included': return need(2) ? [interval(-INF, true, a, true), interval(b, true, INF, true)] : null;
     default: return null;
   }
 }
@@ -612,6 +613,28 @@ function selectorInfo(s, ctx = NO_CTX) {
   return { name, labels: labelsOf(false, eq) };
 }
 
+/**
+ * `absent(…)` / `absent_over_time(…)` の出力のラベル（#1605）。Prometheus v2.52.0 の `createLabelsForAbsentFunction` を写す:
+ * 引数が選択子（範囲つきを含む）のときだけ照合子を**順に**読み、「等号で、その名前でまだ立てていない」なら立て、
+ * それ以外はその名前を消す（`{job="a", job!="b"}` は job を持たない・`{job!="b", job="a"}` は job="a"）。
+ * サブクエリ・括弧・その他の式はラベルを持たない。照合子を読めない選択子は「不明」（null ＝ 照合の矛盾を判定しない）。
+ */
+function absentLabels(arg, ctx = NO_CTX) {
+  const t = arg.trim();
+  if (!isSelector(t) || /\[[^\]]*:/.test(t)) return labelsOf(true);
+  const braces = t.match(/\{([^{}]*)\}/);
+  const out = new Map();
+  const has = new Set();
+  for (const part of braces ? braces[1].split(',') : []) {
+    if (part.trim() === '') continue;
+    const m = part.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(=~|!~|!=|=)\s*"(\d+)"\s*$/);
+    if (!m) return null;
+    if (m[1] === '__name__') continue;
+    if (m[2] === '=' && !has.has(m[1])) { out.set(m[1], ctx.strings[Number(m[3])]); has.add(m[1]); } else out.delete(m[1]);
+  }
+  return labelsOf(true, out);
+}
+
 function labelValue(L, l) {
   if (!L) return null;
   if (L.eq.has(l)) return L.eq.get(l);
@@ -784,9 +807,8 @@ function analyzeCall({ name, args, grouping, groupLabels }, ctx) {
   if (grouping && !AGGREGATIONS.has(name)) return unverifiable(`${name}(…) に ${grouping} は付けられない`);
   if (ABSENT_FUNCTIONS.has(name)) {
     if (args.length !== 1) return unverifiable(`${name}(…) の引数が 1 つではない`);
-    // absent の出力のラベルは、引数の選択子の等号の照合子（名前を除く）だけ。選択子でなければラベルを持たない。
-    const sel = selectorInfo(args[0], ctx);
-    return ok([point(1)], false, labelsOf(true, sel ? new Map(sel.labels.eq) : new Map()));
+    // absent の出力のラベルは Prometheus の createLabelsForAbsentFunction と同じに作る（#1605。absentLabels の注記）。
+    return ok([point(1)], false, absentLabels(args[0], ctx));
   }
   if (name === 'vector') {
     const c = args.length === 1 ? constantValue(args[0], ctx) : null;
@@ -1003,7 +1025,7 @@ function expressionUnverifiableReason(expr) {
 // 同じく自前で読む）ので YAML ライブラリは使えない。そこで**本ファイルの書式が使う YAML の部分集合**を読み、
 // 部分集合の外は**読めないとして報告する**（fail-closed）。
 //   読む: ブロックの写像・列（`- key: v` の詰めた形・キーと同じ字下げの列を含む）／フローの写像・列（複数行・入れ子）／
-//         plain（複数行の続き・行末コメント・core schema の型）／一重・二重引用符（複数行の折り畳み・エスケープ）／
+//         plain（複数行の続き・行末コメント・型は yaml.v3 の読み方。#1605）／一重・二重引用符（複数行の折り畳み・エスケープ）／
 //         `|` / `>`（字下げと chomping の指示子）／先頭の `---`。
 //   読まない（報告する）: アンカー・エイリアス・タグ・複合キー・複数文書・ディレクティブ・タブの字下げ・重複キー・
 //         plain の値の中の「: 」・コメントの後の続き。
@@ -1027,9 +1049,20 @@ const YAML_ESCAPES = {
   ' ': ' ', '"': '"', '/': '/', '\\': '\\', N: '\u0085', _: ' ', L: ' ', P: ' ',
 };
 
-/** 引用符の中身（行は `\n` で区切り、各行の前後の空白は剥がしてある）を折り畳んで復号する。 */
+/**
+ * 行末の空白を剥がす。二重引用ではエスケープした空白（`\ ` / `\<TAB>`）は内容なので、その 1 文字は残す（#1605）。
+ */
+function trimQuotedLineEnd(x, q) {
+  const m = x.match(/[ \t]+$/);
+  if (!m) return x;
+  const head = x.slice(0, m.index);
+  return q === '"' && /(?:^|[^\\])(?:\\\\)*\\$/.test(head) ? head + m[0][0] : head;
+}
+
+/** 引用符の中身（行は `\n` で区切る。行頭・行末の空白はここで剥がす）を折り畳んで復号する。 */
 function decodeYamlQuoted(body, q, fail) {
-  const segs = body.split('\n').map((x, i, all) => (all.length === 1 ? x : i === 0 ? x.replace(/[ \t]+$/, '') : i === all.length - 1 ? x.replace(/^[ \t]+/, '') : x.trim()));
+  const segs = body.split('\n').map((x, i, all) => (all.length === 1 ? x
+    : i === 0 ? trimQuotedLineEnd(x, q) : i === all.length - 1 ? x.replace(/^[ \t]+/, '') : trimQuotedLineEnd(x.replace(/^[ \t]+/, ''), q)));
   let out = segs[0];
   let empties = 0;
   for (let k = 1; k < segs.length; k++) {
@@ -1047,23 +1080,56 @@ function decodeYamlQuoted(body, q, fail) {
   });
 }
 
-/** plain の値の型（YAML 1.2 core schema）。 */
+// Go の strconv.ParseInt(s, 0, 64) / ParseUint(s, 0, 64) が受理する形（符号・0x / 0o / 0b・0 始まりの 8 進）。
+const GO_INT_BASE0_RE = /^([-+]?)(?:0[xX]([0-9a-fA-F]+)|0[oO]([0-7]+)|0[bB]([01]+)|(0[0-7]*)|([1-9][0-9]*))$/;
+const INT64_MIN = -(2n ** 63n);
+const UINT64_MAX = 2n ** 64n - 1n;
+// yaml.v3 の yamlStyleFloat。
+const YAML_V3_FLOAT_RE = /^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?$/;
+
+/**
+ * plain の値の型。**Grafana 11.0.0 が provisioning を読む yaml.v3（v3.0.1 の resolve.go）と同じ手順**で決める（#1605）:
+ * 先頭の文字で種類を決め（数字 → D・符号 → S・`.` → 浮動小数・`yYnNtTfFoO~` → 表引き・その他 → 文字列）、
+ * D / S は `_` をすべて除いて `ParseInt(·, 0, 64)`（**0 始まりは 8 進**。`010` は 8）→ `ParseUint` → yamlStyleFloat なら `ParseFloat`
+ * （`08` は 8 進に失敗して 8.0。範囲外は誤りになり文字列のまま）。YAML 1.2 core schema とは 0 始まりと `_` と符号つきの接頭辞で食い違う。
+ */
 function resolveYamlPlain(s) {
+  const c = s[0];
   if (/^(?:~|null|Null|NULL)$/.test(s)) return null;
   if (/^(?:true|True|TRUE)$/.test(s)) return true;
   if (/^(?:false|False|FALSE)$/.test(s)) return false;
-  if (/^[-+]?[0-9]+$/.test(s)) return Number(s);
-  if (/^0o[0-7]+$/.test(s)) return parseInt(s.slice(2), 8);
-  if (/^0x[0-9a-fA-F]+$/.test(s)) return parseInt(s.slice(2), 16);
-  if (/^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?$/.test(s)) return Number(s);
   if (/^[-+]?\.(?:inf|Inf|INF)$/.test(s)) return s.startsWith('-') ? -INF : INF;
   if (/^\.(?:nan|NaN|NAN)$/.test(s)) return Number.NaN;
+  if (c === '.') {
+    // `.` で始まる値は `strconv.ParseFloat(in)`（`_` は除かない。`_` を含む形は読まない ＝ 文字列 → params では違反。fail-closed）。
+    return /^\.[0-9]+(?:[eE][-+]?[0-9]+)?$/.test(s) ? Number(s) : s;
+  }
+  if (!/^[-+0-9]/.test(s)) return s;
+  const plain = s.replace(/_/g, '');
+  const m = plain.match(GO_INT_BASE0_RE);
+  if (m) {
+    const [, sign, hex, oct, bin, oct0, dec] = m;
+    const mag = hex !== undefined ? BigInt(`0x${hex}`) : oct !== undefined ? BigInt(`0o${oct}`) : bin !== undefined ? BigInt(`0b${bin}`)
+      : oct0 !== undefined ? (oct0.length > 1 ? BigInt(`0o${oct0.slice(1)}`) : 0n) : BigInt(dec);
+    const v = sign === '-' ? -mag : mag;
+    // ParseInt は int64 の範囲、ParseUint は符号の無い uint64 の範囲だけ。外れたら浮動小数の読みへ落ちる。
+    if (v >= INT64_MIN && v <= UINT64_MAX && !(sign !== '' && v > 2n ** 63n - 1n)) return Number(v);
+  }
+  if (YAML_V3_FLOAT_RE.test(plain)) {
+    const f = Number(plain);
+    if (Number.isFinite(f)) return f; // ParseFloat の範囲外（±Inf と ErrRange）は誤りで、文字列のまま
+  }
   return s;
 }
 
 /** YAML の部分集合を木（写像はオブジェクト・列は配列・スカラーは文字列 / 数 / 真偽 / null）へ読む。読めなければ YamlSubsetError。 */
 function parseYamlSubset(text) {
-  const lines = text.replace(/\r\n?/g, '\n').split('\n').map((raw, i) => {
+  const src = text.replace(/\r\n?/g, '\n');
+  // ファイル末の改行は行の終わりであって空行ではない（split が作る末尾の '' を数えると |+ / >+ の改行が 1 つ多くなる。#1605）。
+  const endsWithBreak = src.endsWith('\n');
+  const rawLines = src.split('\n');
+  if (endsWithBreak) rawLines.pop();
+  const lines = rawLines.map((raw, i) => {
     const indent = raw.match(/^ */)[0].length;
     return { no: i + 1, indent, text: raw.slice(indent).replace(/\s+$/, ''), raw };
   });
@@ -1198,9 +1264,12 @@ function parseYamlSubset(text) {
     return resolveYamlPlain(out);
   }
 
+  // 行の text は行末の空白を剥がしてあるので、t（その行の text の末尾）へ剥がした空白を戻す（エスケープした空白を残すため。#1605）。
+  const withLineEnd = (t, i) => t + lines[i].raw.slice(lines[i].indent + lines[i].text.length);
+
   function parseQuoted(t, i, parentIndent) {
     const q = t[0];
-    let buf = t;
+    let buf = withLineEnd(t, i);
     let j = i;
     for (;;) {
       const end = findQuoteEnd(buf, q);
@@ -1213,8 +1282,8 @@ function parseYamlSubset(text) {
       j++;
       if (j >= lines.length) fail(i, '引用符が閉じていない');
       const L = lines[j];
-      const u = L.raw.trim();
-      if (u !== '' && L.indent <= parentIndent) fail(j, '引用符の値の続きの字下げが足りない');
+      const u = L.raw.replace(/^[ \t]+/, ''); // 行末の空白は decodeYamlQuoted が剥がす（エスケープした空白は残す）
+      if (u.trim() !== '' && L.indent <= parentIndent) fail(j, '引用符の値の続きの字下げが足りない');
       buf += `\n${u}`;
     }
   }
@@ -1230,7 +1299,11 @@ function parseYamlSubset(text) {
     let j = i + 1;
     for (; j < lines.length; j++) {
       const L = lines[j];
-      if (L.raw.trim() === '') { body.push(''); continue; }
+      if (L.raw.trim() === '') {
+        // 字下げを超えた空白は内容（YAML 1.2 の l-nb-literal-text は s-indent(n) の後の空白も nb-char）。字下げ以下は空行（#1605）。
+        body.push(contentIndent !== null && L.raw.length > contentIndent ? L.raw.slice(contentIndent) : '');
+        continue;
+      }
       if (contentIndent === null) {
         if (L.indent <= parentIndent) break;
         contentIndent = L.indent;
@@ -1264,8 +1337,10 @@ function parseYamlSubset(text) {
       }
     }
     if (chomp === '-') return s;
-    if (chomp === '+') return s + '\n'.repeat(1 + trailing);
-    return `${s}\n`;
+    // 改行で終わらない入力の最後の行には改行が無い（YAML 1.2 の b-chomped-last は <end-of-input> を許す。#1605）。
+    const lastBreak = trailing === 0 && j >= lines.length && !endsWithBreak ? '' : '\n';
+    if (chomp === '+') return s + lastBreak + '\n'.repeat(trailing);
+    return s + lastBreak;
   }
 
   /** フローの写像・列。括弧が閉じるまで行を足し（引用符とコメントを見分ける）、1 本の文字列として読む。 */
@@ -1274,7 +1349,7 @@ function parseYamlSubset(text) {
     let depth = 0;
     let q = null;
     let j = i;
-    let u = t;
+    let u = withLineEnd(t, i); // 引用符の中の行末のエスケープした空白を残す（#1605）
     for (;;) {
       let closed = false;
       for (let k = 0; k < u.length; k++) {
@@ -1307,8 +1382,8 @@ function parseYamlSubset(text) {
       j++;
       if (j >= lines.length) fail(i, 'フローの括弧が閉じていない');
       const L = lines[j];
-      u = L.raw.trim();
-      if (u !== '' && L.indent <= parentIndent) fail(j, 'フローの続きの字下げが足りない');
+      u = L.raw.replace(/^[ \t]+/, '');
+      if (u.trim() !== '' && L.indent <= parentIndent) fail(j, 'フローの続きの字下げが足りない');
       buf += '\n';
     }
     pos = j + 1;
@@ -1538,7 +1613,9 @@ function filterEvaluatorIssues(text, label, allowlist = UNVERIFIABLE_ALLOWLIST) 
     if (want === null) {
       issues.push(
         `[${label}] ルール ${title}: 評価器 ${type} [${params.join(', ')}] を解釈できない` +
-        (params.some((x) => Number.isNaN(x)) ? '（params は数で書くこと。Grafana は []float64 として読む）' : '（型を本検査へ足すこと）'),
+        (!GRAFANA_THRESHOLD_TYPES.has(type)
+          ? `（Grafana 11.0.0 の threshold が受け付けない型 —— 受け付けるのは ${[...GRAFANA_THRESHOLD_TYPES].join(' / ')} だけ。#1605）`
+          : params.some((x) => Number.isNaN(x)) ? '（params は数で書くこと。Grafana は []float64 として読む）' : '（params の数が足りない）'),
       );
       continue;
     }
@@ -1762,10 +1839,12 @@ function selfTest() {
   t('区間の交わり: 端点は両方が含むときだけ交わる', () => {
     assert.ok(!setsIntersect([point(0)], evaluatorSet('gt', [0])));
     assert.ok(setsIntersect([point(0)], evaluatorSet('lt', [1])));
-    assert.ok(setsIntersect(filterSet('>=', 1), evaluatorSet('gte', [1])));
-    assert.ok(!setsIntersect(filterSet('>', 1), evaluatorSet('lte', [1])));
+    // #1605: gte / lte / *_included は Grafana 11.0.0 に無いので、端点の含み方は絞り込みの区間どうしで確かめる。
+    assert.ok(setsIntersect(filterSet('>=', 1), filterSet('<=', 1)));
+    assert.ok(!setsIntersect(filterSet('>', 1), filterSet('<=', 1)));
     assert.ok(!setsIntersect([point(5)], evaluatorSet('within_range', [1, 5])));
-    assert.ok(setsIntersect([point(5)], evaluatorSet('within_range_included', [1, 5])));
+    assert.ok(!setsIntersect([point(1)], evaluatorSet('outside_range', [1, 5])));
+    assert.ok(setsIntersect([point(0.5)], evaluatorSet('outside_range', [1, 5])));
   });
 
   // ---- 6 の見逃しを埋める（#1588）----
@@ -2029,6 +2108,82 @@ function selfTest() {
       assert.ok(r.issues.some((x) => x.includes('ルール Foo の理由が空')), `${JSON.stringify(reason)}: ${JSON.stringify(r.issues)}`);
       assert.ok(r.issues.some((x) => x.includes('式を検証できない')), `${JSON.stringify(reason)}: 空の理由で黙らせた`);
       assert.deepStrictEqual(r.allowlisted, []);
+    }
+  });
+
+  // ---- #1605: #1600 の監査の残り ----
+  // 🔴 既存の不具合: `010` を 10 と読んでいた。Grafana 11.0.0 の yaml.v3（v3.0.1 の resolve.go）は 8 進で 8 と読む。
+  t('YAML: plain の数を yaml.v3 と同じに読む（0 始まりは 8 進・_ を除く・符号つきの 0x・08 は 8.0。#1605・変異試験）', () => {
+    const num = (s) => parseYamlSubset(`v: ${s}\n`).v;
+    for (const [s, want] of [
+      ['010', 8], ['-010', -8], ['+010', 8], ['0o10', 8], ['-0o10', -8], ['0x1F', 31], ['+0x1F', 31], ['-0x1f', -31],
+      ['0b101', 5], ['-0b101', -5], ['1_000', 1000], ['0_10', 8], ['08', 8], ['09.5', 9.5], ['0', 0], ['-0', 0], ['1e3', 1000],
+      ['1.', 1], ['.5', 0.5], ['-.5', -0.5], ['+.inf', INF], ['-.Inf', -INF], ['12', 12],
+      // 数にならないもの（文字列のまま）: 範囲外の浮動小数・接頭辞だけ・. で始まる _・1.1 の YAML にしか無い値
+      ['1e400', '1e400'], ['0x', '0x'], ['._5', '._5'], ['on', 'on'], ['0x1p-2', '0x1p-2'],
+    ]) {
+      assert.strictEqual(num(s), want, `${s} → ${num(s)}（期待 ${want}）`);
+    }
+    // 評価器の params に効く: `> 9` と `lt 010`（= lt 8）は永久に発火しない（10 と読むと (9, 10) で発火し得るように見えていた）。
+    assert.ok(neverFiresFor(findIssues(withExprLines('              expr: up{job="x"} > 9', '{ type: lt, params: [010] }'))));
+    assert.deepStrictEqual(findIssues(withExprLines('              expr: up{job="x"} > 9', '{ type: lt, params: [012] }')).issues, []);
+  });
+
+  // 🔴 既存の誤陽性: absent のラベルを選択子の等号の照合子そのままとしていた（許可リストでも黙らせられない）。
+  t('absent のラベルを Prometheus と同じに作る（同じ名前が複数の照合子に出れば落とす・サブクエリはラベル無し。#1605・変異試験）', () => {
+    for (const e of [
+      'absent(up{job="a", job!="b"}) and vector(1)', 'absent(up{job="a", job="a"}) and vector(1)', 'absent(up{job="a", job=~"a|b"}) and vector(1)',
+      'absent(up{job="a"}[5m:1m]) and vector(1)', 'absent_over_time(up{job="a"}[5m:]) and vector(1)', 'absent((up{job="a"})) and vector(1)',
+    ]) {
+      assert.deepStrictEqual(expressionValueSet(e), [point(1)], e);
+      assert.deepStrictEqual(findIssues(withRule(e, '{ type: gt, params: [0] }')).issues, [], e);
+    }
+    // 陰性対照: 等号がその名前で最後まで残る形は従来どおりラベルを持つ（{job!="b", job="a"} は job="a"）。
+    for (const e of ['absent(up{job!="b", job="a"}) and vector(1)', 'absent(up{job="a"}) and vector(1)',
+      'absent_over_time(up{job="a"}[5m]) and vector(1)', 'absent(up{job="a"} offset 5m) and on(job) m{job="b"}']) {
+      assert.deepStrictEqual(expressionValueSet(e), [], e);
+    }
+  });
+
+  t('YAML: 二重引用の行末のエスケープした空白を残す（#1605・変異試験）', () => {
+    assert.strictEqual(parseYamlSubset('v: "a\\ \n  b"\n').v, 'a  b');
+    assert.strictEqual(parseYamlSubset('v: "a\\\t\n  b"\n').v, 'a\t b');
+    assert.strictEqual(parseYamlSubset('v: "a\\  \n  \\ b\\ \n  c"\n').v, 'a   b  c');
+    assert.strictEqual(parseYamlSubset('v: [ "a\\ \n    b" ]\n').v[0], 'a  b');
+    // 陰性対照: エスケープした改行（行末の \）と、エスケープでない行末の空白
+    assert.strictEqual(parseYamlSubset('v: "a\\\n  b"\n').v, 'ab');
+    assert.strictEqual(parseYamlSubset('v: "a\\\\ \n  b"\n').v, 'a\\ b');
+    assert.strictEqual(parseYamlSubset('v: "a   \n  b"\n').v, 'a b');
+  });
+
+  t('YAML: |+ / >+ はファイル末の改行を空行として数えない（#1605・変異試験）', () => {
+    assert.strictEqual(parseYamlSubset('v: |+\n  x\n').v, 'x\n');
+    assert.strictEqual(parseYamlSubset('v: >+\n  x\n').v, 'x\n');
+    assert.strictEqual(parseYamlSubset('v: |+\n  x\n\n').v, 'x\n\n');
+    assert.strictEqual(parseYamlSubset('v: |+\n  x\n\nw: 1\n').v, 'x\n\n');
+    assert.strictEqual(parseYamlSubset('v: |\n  x\n').v, 'x\n');
+    // 改行で終わらない入力の最後の行には改行が無い（YAML 1.2 の b-chomped-last は <end-of-input> を許す）
+    assert.strictEqual(parseYamlSubset('v: |+\n  x').v, 'x');
+    assert.strictEqual(parseYamlSubset('v: |\n  x').v, 'x');
+  });
+
+  t('YAML: ブロックスカラーの中の空白だけの行は、字下げを超えた空白を内容として残す（#1605・変異試験）', () => {
+    assert.strictEqual(parseYamlSubset('v: |\n  a\n     \n  b\n').v, 'a\n   \nb\n');
+    assert.strictEqual(parseYamlSubset('v: >\n  a\n     \n  b\n').v, 'a\n   \nb\n');
+    assert.strictEqual(parseYamlSubset('v: |\n  a\n     \n').v, 'a\n   \n');
+    // 陰性対照: 字下げ以下の空白だけの行は空行
+    assert.strictEqual(parseYamlSubset('v: |\n  a\n  \n  b\n').v, 'a\n\nb\n');
+    assert.strictEqual(parseYamlSubset('v: |\n  a\n \n  b\n').v, 'a\n\nb\n');
+  });
+
+  t('評価器の型は Grafana 11.0.0 の threshold が受け付ける 4 つだけ（gte / lte / eq / ne / *_included は違反。#1605・変異試験）', () => {
+    for (const ev of ['{ type: gte, params: [1] }', '{ type: lte, params: [1] }', '{ type: eq, params: [1] }', '{ type: ne, params: [1] }',
+      '{ type: within_range_included, params: [0, 1] }', '{ type: outside_range_included, params: [0, 1] }']) {
+      const r = findIssues(withRule('up{job="x"}', ev));
+      assert.ok(r.issues.some((x) => x.startsWith('[compose] ルール Foo:') && x.includes('Grafana 11.0.0 の threshold が受け付けない型')), `${ev}: ${JSON.stringify(r.issues)}`);
+    }
+    for (const ev of ['{ type: within_range, params: [0, 1] }', '{ type: outside_range, params: [0, 1] }', '{ type: gt, params: [0] }']) {
+      assert.deepStrictEqual(findIssues(withRule('up{job="x"}', ev)).issues, [], ev);
     }
   });
 

@@ -13,8 +13,8 @@ namespace AuthorizationService.Tests.Features.Users.DepartmentSync;
 //
 // 受け入れ基準（#1573）: 1 食い違いの検知 / 2 属性をグループ側へ直す（グループは変えない）/
 // 3 複数は上書きしない / 4 冪等 / 5 既定で無効。
-// ［2026-09-27 / #1609・計画 ADR-0116 決定 2］T-55 部門グループ 0 個の人の属性は消す / T-56 全利用者の列挙が途中で
-// 失敗・打ち切られた周期は誰も消さない（否定の試験）/ T-57 1 つは直る・2 個以上とサービスアカウントは触らない。
+// ［2026-09-27 / #1609・計画 ADR-0116 決定 2］T-56 部門グループ 0 個の人の属性は消す / T-57 全利用者の列挙が途中で
+// 失敗・打ち切られた周期は誰も消さない（否定の試験）/ T-58 1 つは直る・2 個以上とサービスアカウントは触らない。
 [Trait("TestKind", "Unit")]
 public class DepartmentAttributeSyncTests
 {
@@ -82,7 +82,7 @@ public class DepartmentAttributeSyncTests
         });
     }
 
-    // 受け入れ基準 3 / T-57: 🔴 2 部門・サービスアカウントの属性は変えない（消しもしない）。1 つ・一致の人にも書かない。
+    // 受け入れ基準 3 / T-58: 🔴 2 部門・サービスアカウントの属性は変えない（消しもしない）。1 つ・一致の人にも書かない。
     [Fact]
     public async Task Several_department_groups_and_service_accounts_are_left_untouched()
     {
@@ -98,7 +98,7 @@ public class DepartmentAttributeSyncTests
         realm.Clears.Should().Equal(["u-none"], "消すのは部門グループ 0 個で属性を持つ人間の利用者だけ");
     }
 
-    // T-55（#1609・計画 ADR-0116 決定 2）: 🔴 部門グループに 1 つも属さない人の属性は、同期の後に消える。
+    // T-56（#1609・計画 ADR-0116 決定 2）: 🔴 部門グループに 1 つも属さない人の属性は、同期の後に消える。
     // `/teams/sales` は部門グループではない（名前ではなくパスで判定する）。グループの所属は変えない。
     [Fact]
     public async Task Fix_clears_the_attribute_of_a_user_in_no_department_group()
@@ -116,7 +116,7 @@ public class DepartmentAttributeSyncTests
         realm.MembershipSnapshot().Should().BeEquivalentTo(membershipsBefore);
     }
 
-    // T-56（#1609）: 🔴 **否定の試験**。全利用者の列挙が途中で失敗した・打ち切られた周期は、**誰の属性も消さない**。
+    // T-57（#1609）: 🔴 **否定の試験**。全利用者の列挙が途中で失敗した・打ち切られた周期は、**誰の属性も消さない**。
     // 1 つ属する人の是正は続け、未完了は計器 department_sync.enumeration_incomplete.total{reason} に出る。
     // 打ち切りの偽物は「読めた分」に u-none を**含めて**返す —— 部分的な列挙から 0 個を推定する変異
     // （Complete を見ずに読めた分で判定する）はここで赤になる。
@@ -142,7 +142,7 @@ public class DepartmentAttributeSyncTests
         incomplete().Should().Be(1);
     }
 
-    // T-55 の歯止め（#1609）: 所属者の一覧（ページ送り）で飛んだ人を 0 個と読まない。消す直前の個別の所属の読み直しで
+    // T-56 の歯止め（#1609）: 所属者の一覧（ページ送り）で飛んだ人を 0 個と読まない。消す直前の個別の所属の読み直しで
     // 部門グループが見つかれば消さず、見送り（skipped_changed）として数える。
     [Fact]
     public async Task A_user_found_in_a_department_group_just_before_clearing_is_not_cleared()

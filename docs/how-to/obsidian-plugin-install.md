@@ -4,14 +4,14 @@ type: how-to
 status: in-progress
 author: claude
 created: 2026-09-02
-updated: 2026-09-26
+updated: 2026-09-27
 ---
 <!-- trace:
-ids: [FR-19, FR-20, UC-11, SC-20, NFR-11]
-adrs: [ADR-0021, ADR-0037, ADR-0105, ADR-0110]
+ids: [FR-19, FR-20, UC-11, SC-20, NFR-11, NFR-09]
+adrs: [ADR-0021, ADR-0037, ADR-0105, ADR-0110, ADR-0084]
 iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0375, IADR-0464]
-specs: [20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260905_issue-1213_obsidian-plugin-release-assets, 20260926_1521_plugin-keep-both-source-note-tags]
-issues: [#451, #1098, #1153, #1154, #1176, #1213, #1521]
+specs: [20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260905_issue-1213_obsidian-plugin-release-assets, 20260926_1521_plugin-keep-both-source-note-tags, 20260927_issue-1606_private-notes-sync-edge-authz]
+issues: [#451, #1098, #1153, #1154, #1176, #1213, #1521, #1606]
 -->
 
 # 手順ガイド: Obsidian プラグイン（個人資料同期）の入手・導入・配布
@@ -98,6 +98,28 @@ issues: [#451, #1098, #1153, #1154, #1176, #1213, #1521]
 - **本番像は既定で出さない**（opt-in）。配備側の値 `edge.privateNotesSync.enabled` を `true` にする。
   無効のままだと、正しい設定・正しいトークンでも同期は成立しない（画面配信へ落ち、`manifest` の応答が
   JSON にならない）。
+- **有効にすると、振り分け・穴・門の 3 つが同じ条件で描かれる**（既定の値と `deploy/local/values-local.yaml` では
+  どれも描かれない）。
+
+  | 資源 | 名前 | 役割 |
+  | --- | --- | --- |
+  | VirtualService のルート | `microservices-platform-edge` | `/private-notes/sync/` を文書サービスへ振り分ける |
+  | NetworkPolicy | `allow-edge-ingress-to-document-service` | ゲートウェイの Namespace → 文書サービスの当該ポートを開ける（`networkPolicy.enabled` のとき） |
+  | AuthorizationPolicy（DENY） | `document-service-edge-sync-only` | ゲートウェイの Namespace の主体からは `/private-notes/sync/*` 以外を 403 で落とす |
+
+  門は DENY なので、名前空間の中の呼び出し元（BFF・グラフ・MCP）・別名前空間の連携システム・プローブは
+  影響を受けない。有効化の後は次の 2 つで確かめる（どちらもエッジ経由）。
+
+  ```sh
+  curl -s -o /dev/null -w '%{http_code}\n' https://<エッジ>/private-notes/sync/manifest   # 401（トークン無し。端点に届いている）
+  kubectl -n microservices-platform get authorizationpolicy document-service-edge-sync-only
+  ```
+
+  🔴 **門を確かめるのに「エッジから `/documents` を叩いて 403」を使わない。** エッジのルートは同期の前置しか
+  文書サービスへ振り分けないので、その要求は門に届く前に画面配信へ落ちる（200 の画面）。門は「別の振り分けが
+  付いたとき」の保険であり、エッジからの陰性対照では測れない。
+- **mTLS は STRICT（既定）のまま使う。** PERMISSIVE の間は、ゲートウェイの Namespace に居るサイドカー無しの
+  Pod からの平文が門を素通りする（主体を持たない要求は門の条件に当たらない）。
 - ローカル（`ISTIO=1` かつ `LOCALEDGE=1` のエッジ）では最初から通る。接続先は `https://localhost`。
   **証明書検証を切らないこと**（`-k` を使わない。ローカル CA を信頼させる手順は `deploy/local/edge-istio/README.md`）。
 - 平文 http では同期しない（トークンが Bearer でそのまま載る）。プラグインが loopback 以外の http を拒む。

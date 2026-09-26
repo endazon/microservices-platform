@@ -22,7 +22,7 @@ related_ids:
   - IADR-0461
 author: claude
 created: 2026-08-28
-updated: 2026-09-26
+updated: 2026-09-27
 plan_refs:
   - "ADR-0057 決定 1・2（削除は本文の実体と索引まで及ぶ）／決定 4（SC-19 固定文言の暫定手段）"
   - "ADR-0054 §結果（doc_scope を遡及付与しない）"
@@ -146,6 +146,15 @@ DB per Service の境界を越えて他サービスのデータを壊す。**こ
 - **定期処理**（90 日自動物理削除）は**文書ごとに隔離**する。1 件の失敗で周期全体を止めると
   無関係な資料の期限超過が積み上がる。失敗した文書は行を残すため `PurgeAt <= now` を
   満たしたままであり、**次周期で自然に再入する**。
+
+> **［2026-09-27 追記 / #1608］「文書ごとに隔離」は時間切れも隔離する。外へ出すのは呼び出し側の ct による取り消しだけである。**
+> `DocumentObjectPurger.PurgeIsolatedAsync` の捕捉は `when (ex is not OperationCanceledException)` と型だけで絞っており、
+> オブジェクトストレージの時間切れ（SDK の `HttpClient.Timeout` は `TaskCanceledException`＝`OperationCanceledException` の派生で表れ、
+> 呼び出し側の ct は立っていない）が隔離を抜けて、その周期に残っている文書の束を丸ごと打ち切っていた（周期のループ自体は
+> #1598 以降生き残り、次周期で再試行する）。捕捉を `when (ex is not OperationCanceledException || !ct.IsCancellationRequested)` に改めた
+> （#1604 の DataSource の探索・取得と同じ形）。定期処理の停止要求は従前どおり隔離に畳まず外へ出る。
+> 試験: `DeletionPropagationTests` の 3 件（1 件目の時間切れで 2・3 件目が消える／周期の本体が時間切れで例外で終わらない／
+> 呼び出し側の取り消しの対照）。作業仕様書: `.ai-context/specs/20260927_issue-1608_purger-timeout-isolation.md`。**本文（決定 3）は書き換えない。**
 
 ### 決定 4: 🔴 資産 URI は**遡及付与しない**（受け入れ基準①は既存文書の資産には及ばない）
 

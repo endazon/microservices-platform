@@ -41,8 +41,14 @@ public sealed class RecordingObjectStorageClient : IObjectStorageClient
     // 実クライアントの障害を器で再現する手段が他に無い（Docker 非依存で試験するため）。
     public Func<string, bool>? FailDeleteWhen { get; set; }
 
+    // #1608: 例外の種類まで選ぶ失敗注入（時間切れ＝`TaskCanceledException` と、呼び出し側の取り消しを
+    // 区別して測るため）。null を返した URI は通常どおり消す。`FailDeleteWhen` より先に見る。
+    public Func<string, Exception?>? DeleteThrows { get; set; }
+
     public Task DeleteAsync(string uri, CancellationToken ct = default)
     {
+        if (DeleteThrows?.Invoke(uri) is { } injected)
+            throw injected;
         if (FailDeleteWhen?.Invoke(uri) == true)
             throw new InvalidOperationException($"注入した削除失敗: {uri}");
 
@@ -56,6 +62,7 @@ public sealed class RecordingObjectStorageClient : IObjectStorageClient
     {
         lock (Deleted) Deleted.Clear();
         FailDeleteWhen = null;
+        DeleteThrows = null;
     }
 
     public Task<string> GetTextAsync(string uri, CancellationToken ct = default) =>

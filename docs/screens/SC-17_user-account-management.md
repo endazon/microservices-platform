@@ -10,8 +10,8 @@ author: implementation-agent
 ids: [FR-05, FR-09, SC-09, SC-17, UC-05, FR-20, NFR-14, NFR-09]
 adrs: [ADR-0004, ADR-0026, ADR-0031, ADR-0032, ADR-0036, ADR-0115, ADR-0096, ADR-0114, ADR-0116]
 iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0134, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329, IADR-0473, IADR-0474, IADR-0420, IADR-0429, IADR-0476]
-specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260926_issue-1589_realm-machine-judgement-premises, 20260926_issue-1596_realm-login-grants-and-username-source, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
-issues: [#452, #438, #1101, #1573, #1532, #1589, #1587, #1596, #1609, planning#672]
+specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260926_issue-1589_realm-machine-judgement-premises, 20260926_issue-1596_realm-login-grants-and-username-source, 20260927_issue-1605_checker-residual-precision, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
+issues: [#452, #438, #1101, #1573, #1532, #1589, #1587, #1596, #1605, #1609, planning#672]
 -->
 
 # 画面仕様書: ユーザーアカウント管理
@@ -151,12 +151,15 @@ flowchart LR
    （`azp`）は必ず乗るので、BFF は**利用者名が無くクライアント識別がある主体を機械として通す**。
    任意（optional）スコープに置くだけでは、要求しない限り乗らないので足りない。
    **デバイスグラント・CIBA・直接アクセス（パスワード）の grant も人のトークンを出す**ので、それだけを開いた
-   クライアントも同じく `profile` を既定に入れる。**軽量アクセストークンを有効にしたクライアント**では、利用者名の
-   マッパーに「軽量アクセストークンへ追加」（`lightweight.claim`）を入れないと利用者名が落ちる。
+   クライアントも同じく `profile` を既定に入れる。非推奨の `directGrantsOnly` も直接アクセスを開き、
+   `directAccessGrantsEnabled` を書かずに管理 API でクライアントを作ると直接アクセスが開くので、閉じるときは `false` を明示する。
+   **軽量アクセストークンを有効にしたクライアント**では、既定スコープ（またはクライアント単位）の利用者名の
+   マッパーに「軽量アクセストークンへ追加」（`lightweight.claim`）を入れないと利用者名が落ちる（任意スコープに置くだけでは足りない）。
    `preferred_username` は**利用者のプロパティ `username` から**出す（利用者が編集できる属性・固定値・メールアドレス
    から出すマッパーを、スコープにもクライアント単位にも置かない）。
-3. 🔴 **利用者が自分の利用者名を選べる設定を開かない。** 自己登録・利用者名の編集・メールアドレスを利用者名にする設定・
-   外部の IdP 連携は、どれも利用者が `service-account-` で始まる名前を自分で名乗れる経路になる（1. を宣言の外で破れる）。
+3. 🔴 **利用者が自分の利用者名を選べる設定を開かない。** 自己登録・利用者名の編集・外部の IdP 連携は、どれも利用者が
+   `service-account-` で始まる名前を自分で名乗れる経路になる（1. を宣言の外で破れる）。メールアドレスを利用者名にする設定は
+   単独では名乗れないが、自己登録・IdP の確認・利用者名の編集・メールアドレスの変更機能と組むと、入力したメールアドレスがそのまま利用者名になる。
    開く必要があるときは、レビューを経て realm 検査の例外へ理由つきで載せる。
 
 **realm の宣言（リポジトリの realm JSON）に入った場合は CI の realm 検査

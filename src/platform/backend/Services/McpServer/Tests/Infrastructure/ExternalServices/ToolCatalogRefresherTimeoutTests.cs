@@ -116,6 +116,29 @@ public sealed class ToolCatalogRefresherTimeoutTests
             .Timeout.Should().Be(TimeSpan.FromSeconds(expectedSeconds));
     }
 
+    // #1608: 期限のキーは本番の appsettings.json に**周期（`RefreshIntervalSeconds`）と並べて明示する**。
+    // 既定値はコードの `DefaultTimeoutSeconds` と同じ値で、運用者が構成ファイルを見ればつまみの在り処と既定が分かる。
+    // 本番の構成ファイルを読み込んで登録を通し、名前付きクライアントの期限が 10 秒になることまで見る。
+    [Fact]
+    public void 本番の構成ファイルは申告の収集の期限を既定値で並べる()
+    {
+        using var json = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(
+            McpToolsGrpcDeploymentWiringTests.ReadRepoFile(McpToolsGrpcDeploymentWiringTests.AppSettings)));
+        var configuration = new ConfigurationBuilder().AddJsonStream(json).Build();
+
+        configuration[ToolCatalogRefresher.IntervalKey].Should().NotBeNull("対照: 周期のキーを読めていないなら以下は何も検査していない");
+        configuration.GetValue<int?>(HttpToolDeclarationSource.TimeoutKey).Should().Be(
+            HttpToolDeclarationSource.DefaultTimeoutSeconds, "構成ファイルに期限のキーが既定値で並んでいる");
+
+        using var sp = new ServiceCollection()
+            .AddLogging()
+            .AddSingleton<IConfiguration>(configuration)
+            .AddMcpToolDeclarationSources(configuration)
+            .BuildServiceProvider();
+        sp.GetRequiredService<IHttpClientFactory>().CreateClient(HttpToolDeclarationSource.HttpClientName)
+            .Timeout.Should().Be(TimeSpan.FromSeconds(10));
+    }
+
     private static Dictionary<string, string?> RestTarget(int port, int timeoutSeconds) => new()
     {
         ["Mcp:Services:document-service"] = $"http://127.0.0.1:{port}",
