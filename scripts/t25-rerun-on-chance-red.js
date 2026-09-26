@@ -44,6 +44,8 @@ const CANDIDATE_STEP = 'T-25 only red (chance-red candidate)';
 const ISSUE_MARKER = '<!-- ci-failure:integration-stack -->';
 /** 自動で再実行する契機。 */
 const RERUN_EVENTS = ['push', 'schedule'];
+/** 自動で扱う run の head ブランチ（integration-stack の push と schedule は develop だけ。#1617 監査 R1）。 */
+const RERUN_BRANCH = 'develop';
 const GATE_PREFIX = '🔴 Gate';
 /** 後段の門の最小数（スタック・ABAC と検索・ログイン経路）。手順名の変更で 0 件走査になったら候補にしない。 */
 const MIN_OTHER_GATES = 3;
@@ -103,6 +105,12 @@ function decide({ run, jobs, prevJobs }) {
   if (!String(run.path || '').endsWith(`/${WORKFLOW_FILE}`)) return none(`対象外のワークフロー: ${run.path}`);
   if (run.status !== 'completed') return none(`run が終わっていない: ${run.status}`);
   if (!RERUN_EVENTS.includes(run.event)) return none(`契機 ${run.event} は自動で再実行しない（手動実行は床なしの比較があり得る。手で確かめる）`);
+  // #1617 監査 R1（多層防御）: ワークフローの `branches: [develop]` に加えて、ここでも head のブランチとリポジトリを確かめる。
+  // 別ブランチ・フォークの head の run を、書き込みのトークンで再実行したり issue へ書いたりしない。
+  if (run.head_branch !== RERUN_BRANCH) return none(`head のブランチ ${run.head_branch} は自動で扱わない（${RERUN_BRANCH} だけ）`);
+  const headRepo = run.head_repository && run.head_repository.full_name;
+  const baseRepo = run.repository && run.repository.full_name;
+  if (!headRepo || !baseRepo || headRepo !== baseRepo) return none(`head のリポジトリ ${headRepo} が ${baseRepo} と違う（フォークの run は自動で扱わない）`);
   if (run.run_attempt === 1) {
     if (run.conclusion !== 'failure') return none(`attempt 1 の結論が ${run.conclusion}（赤ではない）`);
     const c = candidateOf(jobs);
@@ -328,7 +336,8 @@ function selfTest() {
   ];
   const runOf = (over = {}) => ({
     id: 42, path: '.github/workflows/integration-stack.yml', status: 'completed', event: 'push',
-    run_attempt: 1, conclusion: 'failure', head_sha: 'abc123', ...over,
+    run_attempt: 1, conclusion: 'failure', head_sha: 'abc123', head_branch: 'develop',
+    head_repository: { full_name: 'o/r' }, repository: { full_name: 'o/r' }, ...over,
   });
   const greenJobs = (attempt = 2) => jobsOf({ [RESET]: 'success', [CANDIDATE_STEP]: 'skipped', 'Dump cluster state (診断用・失敗時のみ)': 'skipped' }, { stack: 'success', report: 'skipped', attempt });
 
@@ -361,6 +370,16 @@ function selfTest() {
     assert.strictEqual(decide({ run: runOf({ conclusion: 'success' }), jobs: jobsOf() }).action, 'none');
     assert.strictEqual(decide({ run: runOf({ status: 'in_progress' }), jobs: jobsOf() }).action, 'none');
     assert.strictEqual(decide({ run: runOf({ path: '.github/workflows/integration.yml' }), jobs: jobsOf() }).action, 'none');
+  });
+  ok('🔴 #1617 監査 R1: develop 以外のブランチ・フォーク（head のリポジトリが違う）の run は再実行も記録もしない', () => {
+    for (const branch of ['feature/x', 'main', '', undefined]) {
+      assert.strictEqual(decide({ run: runOf({ head_branch: branch }), jobs: jobsOf() }).action, 'none', `ブランチ ${branch}`);
+      assert.strictEqual(decide({ run: runOf({ head_branch: branch, run_attempt: 2 }), jobs: jobsOf({}, { attempt: 2 }), prevJobs: jobsOf() }).action, 'none', `attempt 2 / ブランチ ${branch}`);
+    }
+    for (const head of [{ full_name: 'someone/fork' }, null, {}]) {
+      assert.strictEqual(decide({ run: runOf({ head_repository: head }), jobs: jobsOf() }).action, 'none', `head ${JSON.stringify(head)}`);
+    }
+    assert.strictEqual(decide({ run: runOf({ repository: null }), jobs: jobsOf() }).action, 'none', '基のリポジトリが読めない');
   });
   ok('🔴 再実行の再実行はしない: attempt 2 は赤でも再実行せず結果を書くだけ・attempt 3 以降は何もしない', () => {
     const d2 = decide({ run: runOf({ run_attempt: 2 }), jobs: jobsOf({}, { attempt: 2 }), prevJobs: jobsOf() });
@@ -535,4 +554,5 @@ module.exports = {
   CANDIDATE_STEP,
   ISSUE_MARKER,
   RERUN_EVENTS,
+  RERUN_BRANCH,
 };

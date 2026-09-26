@@ -99,7 +99,7 @@ planning#681 の裁定（ADR-0118）は、T-25 の偶然の赤（系統差が無
 | `scripts/check-password-reset-mail.js` | `run()` が `timing` を返す。純関数 `isTimingOnlyRankSumRed` / `timingStepOutputs` を足し、main が `$GITHUB_OUTPUT` へ `t25_only_red` / `t25_p` / `t25_w` を**合否の前に**書く。自己試験 +4（54 → 58） |
 | `.github/workflows/integration-stack.yml` | 古い注記を直した。門 3 つへ `id:`（`reset-mail` / `abac-search-gate` / `login-disclosure`）。印の手順「T-25 only red (chance-red candidate)」 |
 | `.github/workflows/integration-stack-rerun.yml`（新設） | `workflow_run: completed`。ジョブの `if:` = 契機 push/schedule ∧（attempt 1 ∧ failure ∨ attempt 2）。`actions: write` / `issues: write` |
-| `scripts/t25-rerun-on-chance-red.js`（新設） | 判定 `decide`・分類 `rerunOutcome`・文面・実行（`--apply` のときだけ `gh run rerun --failed` と issue へのコメント）。二重の抑止（最新の attempt が 1・記録のマーカー）。自己試験 16 |
+| `scripts/t25-rerun-on-chance-red.js`（新設） | 判定 `decide`・分類 `rerunOutcome`・文面・実行（`--apply` のときだけ `gh run rerun --failed` と issue へのコメント）。二重の抑止（最新の attempt が 1・記録のマーカー）。自己試験 16（監査 R1 で 17） |
 | `scripts/t25-monthly-summary.js`（新設） | ログの読み取り・振り分け・偶然の赤の判定・KS 距離・要約の文面・GET だけの読み取りの器。`--month` / `--json` / `--self-test`（16） |
 | `scripts/scripts.repo.test.js` | #1617 節（自己試験 2 本・印の手順の `if:` の場面ごとの評価・再実行のワークフローの真理値表・rerun であって dispatch でないこと・古い注記）。`JOB_SCOPES` と `NOT_CHECKERS` |
 | `docs/operations/operations.md` | 障害対応へ「偶然の赤の確かめ方と月次の記録」（閉じる前に同じ実行の他の門と issue の他の実行の失敗を確かめる） |
@@ -130,6 +130,19 @@ planning#681 の裁定（ADR-0118）は、T-25 の偶然の赤（系統差が無
      「🔴 Gate — ログイン経路の存在秘匿（#1245 PR-0） が failure なのに候補になる」で落ち、exit 1
   - 戻した後: `✓ 839 tests passed`・`git status` は空
 - `k8s-local-up.test.js`（#1597 の試験。本作業で足した `id:` の影響）は、稼働クラスタ用の起動器をスタブの下で走らせる試験のため手元では走らせず、PR の CI（`static-checks`）の結果で確かめる
+
+## ［2026-09-27 追記 / #1617］監査 R1: 起動元のブランチとリポジトリの多層防御
+
+PR #1623 の監査（GO）の R1 を同じ PR に足した。**判定の筋は変えていない**（自動で扱う run を狭めただけ）。
+
+- `integration-stack-rerun.yml`: `on.workflow_run` に `branches: [develop]` を足した（head が develop の run だけで起動）。
+  ジョブの `if:` にも `head_branch == 'develop'` と `head_repository.full_name == github.repository` を足した（真理値表で試験できる形にするため）。
+- `t25-rerun-on-chance-red.js` の `decide`: `run.head_branch === 'develop'` と `run.head_repository.full_name === run.repository.full_name` を要件にした。
+  どちらも script が既に読んでいる attempt の run オブジェクト（`GET /actions/runs/{id}/attempts/{n}`）にある（run 36244009369 で実測: `develop` / `endazon/microservices-platform` / `endazon/microservices-platform`）。
+  読めない（null・空）ときも扱わない（fail-closed）。
+- 試験: 自己試験 +1（ブランチ main / feature/x / 空 / 無し × attempt 1・2、head のリポジトリがフォーク・null・空、基のリポジトリが null → すべて none。16 → 17 件）。
+  `scripts.repo.test.js` の真理値表に `branches: [develop]` の存在と、ブランチ 4 種・フォークの head × 3 場面で起動しないことを足した。
+- 変異試験: `decide` のブランチの確かめを外す → 自己試験の R1 の場面が落ちる（証跡は PR 本文と下の追記）。
 
 ## 残るもの
 

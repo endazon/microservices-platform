@@ -39,6 +39,9 @@ on:
   workflow_run:
     workflows: [Integration Stack]
     types: [completed]
+    # #1617 監査 R1（多層防御）: head が develop の run だけで起動する（push と schedule は develop だけ）。
+    # script の `decide` も head のブランチと head のリポジトリ（フォークでないこと）を確かめ直す。
+    branches: [develop]
 
 permissions:
   contents: read
@@ -55,7 +58,8 @@ jobs:
     timeout-minutes: 10
     # 🔴 真理値表は scripts/scripts.repo.test.js の #1617 が評価して固定する。
     # attempt 1 は赤のときだけ・attempt 2 は結論に依らず（結果を書く）・attempt 3 以降は起動しない。
-    if: ${{ (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'schedule') && ((github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.conclusion == 'failure') || github.event.workflow_run.run_attempt == 2) }}
+    # head は develop で、head のリポジトリがこのリポジトリであること（#1617 監査 R1。上の branches: と script の二重）。
+    if: ${{ github.event.workflow_run.head_branch == 'develop' && github.event.workflow_run.head_repository.full_name == github.repository && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'schedule') && ((github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.conclusion == 'failure') || github.event.workflow_run.run_attempt == 2) }}
     permissions:
       contents: read
       actions: write

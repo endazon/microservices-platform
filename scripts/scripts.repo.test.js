@@ -12327,14 +12327,28 @@ exit $RC
       const wf = wfText('integration-stack-rerun.yml');
       const stackName = (/^name:\s*(.+)$/m.exec(wfText('integration-stack.yml')) || [])[1].trim();
       assert.ok(/on:\n {2}workflow_run:\n {4}workflows: \[([^\]]+)\]\n {4}types: \[completed\]\n/.test(wf), 'workflow_run: completed の起動になっていない');
+      // #1617 監査 R1: 起動そのものを head が develop の run に絞る（branches フィルタ）。
+      const onBlock = wf.split('\njobs:')[0].split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+      assert.ok(/\n {2}workflow_run:\n(?: {4}\S.*\n)*? {4}branches: \[develop\]\n/.test(`${onBlock}\n`), 'on.workflow_run に branches: [develop] が無い');
       assert.strictEqual(/workflows: \[([^\]]+)\]/.exec(wf)[1].trim(), stackName, `起動元の名前が integration-stack.yml の name:（${stackName}）と違う（起動しない）`);
       assert.ok(!/^\s+(push|pull_request|pull_request_target|schedule|workflow_dispatch):/m.test(wf.split('\njobs:')[0]), 'workflow_run 以外の契機がある');
 
       const cond = (/^ {4}if:\s*\$\{\{(.+)\}\}\s*$/m.exec(wf) || [])[1];
       assert.ok(cond, 'ジョブの if: が無い');
-      const evaluate = (event, attempt, conclusion) =>
+      const evaluate = (event, attempt, conclusion, branch = 'develop', headRepo = 'endazon/microservices-platform') =>
         // eslint-disable-next-line no-new-func
-        new Function('github', `return !!(${cond});`)({ event: { workflow_run: { event, run_attempt: attempt, conclusion } } });
+        new Function('github', `return !!(${cond});`)({
+          repository: 'endazon/microservices-platform',
+          event: { workflow_run: { event, run_attempt: attempt, conclusion, head_branch: branch, head_repository: { full_name: headRepo } } },
+        });
+      // #1617 監査 R1: develop 以外のブランチ・フォークの head は、どの契機・attempt でも起動しない。
+      for (const [event, attempt, conclusion] of [['push', 1, 'failure'], ['schedule', 1, 'failure'], ['push', 2, 'success']]) {
+        assert.strictEqual(evaluate(event, attempt, conclusion), true, `前提: develop の ${event} / attempt ${attempt} で起動しない`);
+        for (const branch of ['main', 'feature/x', '', null]) {
+          assert.strictEqual(evaluate(event, attempt, conclusion, branch), false, `ブランチ ${branch} の ${event} / attempt ${attempt} で起動する`);
+        }
+        assert.strictEqual(evaluate(event, attempt, conclusion, 'develop', 'someone/microservices-platform'), false, `フォークの head の ${event} / attempt ${attempt} で起動する`);
+      }
       const table = [
         // [契機, attempt, 結論, 起動するか]
         ['push', 1, 'failure', true],

@@ -154,7 +154,9 @@ planning#681 の裁定（計画 ADR-0118）の実装である。**判定（決�
 - **同じ run の新しい attempt にする**ことで、同じコミット・同じワークフロー定義を構造的に保証する。`workflow_dispatch` は ref しか取れず、
   その間に develop が進めば別のコミット（と別の定義）を測る。同じ run の中からは自分を再実行できない（実行中の run は API が拒否する）。
 - 「1 回まで」（ADR-0118 決定 2）は `run_attempt` で持つ。**`.github/workflows/integration-stack-rerun.yml` のジョブは attempt 1 の赤と attempt 2 でしか起動せず**
-  （契機は push / schedule だけ。手動実行は床なしの比較〔`istio=false`〕があり得るので対象外）、script（`scripts/t25-rerun-on-chance-red.js`）の
+  （契機は push / schedule だけ。手動実行は床なしの比較〔`istio=false`〕があり得るので対象外。**head が develop で、head のリポジトリがこのリポジトリの run だけ** ——
+  `on.workflow_run.branches: [develop]`・ジョブの `if:`・script の `decide` の三重。PR #1623 の監査 R1 で足した多層防御で、別ブランチやフォークの head の run を
+  書き込みのトークンで再実行・記録しない）、script（`scripts/t25-rerun-on-chance-red.js`）の
   純関数 `decide` も attempt 2 では結果を書くだけ・attempt 3 以降は何もしない。二重の抑止として、再実行の直前に最新の attempt が 1 のままか、
   issue に同じ run の再実行の記録（マーカー `t25-chance-red:rerun:<run id>`）が無いかを見る。
 - 権限はそのジョブにだけ `actions: write`（再実行）と `issues: write`（コメント）。起票（`IADR-0232` の `ci-failure-issue.yml`）は変えない ——
@@ -176,7 +178,7 @@ planning#681 の裁定（計画 ADR-0118）の実装である。**判定（決�
 - 再実行の結果の分類: 合格＝偶然の赤／T-25 がまた `不合格`＝再実行も赤（床の引き直しの契機・計画へ環流）／T-25 は合格だがほかが赤／
   判定に届かない／取り消し（integration-stack は同時実行 1 本なので、待機中の再実行が後続の push に置き換えられ得る。手で 1 回だけやり直す）。
 - 再実行を起こせなかったとき（API の拒否など）は、手で打つコマンドを issue へ書いてジョブを赤にする（黙って緑にしない）。
-- 固定: `scripts/t25-rerun-on-chance-red.js --self-test`（16 件）・`scripts/scripts.repo.test.js` の #1617 節（印の手順の `if:` を場面ごとに評価〔5 手順 × failure / skipped / cancelled を含む〕・
+- 固定: `scripts/t25-rerun-on-chance-red.js --self-test`（17 件。監査 R1 の 1 件を含む）・`scripts/scripts.repo.test.js` の #1617 節（印の手順の `if:` を場面ごとに評価〔5 手順 × failure / skipped / cancelled を含む〕・
   再実行のワークフローのジョブの `if:` の真理値表 12 行・dispatch でないこと）・検査器の自己試験 +4。
 - 🔴 **実際の赤ではまだ動いていない**（PR の CI では `workflow_run` を起こせない）。GITHUB_TOKEN での再実行と、再実行の attempt の完了で再び `workflow_run` が届くことは
   GitHub の仕様に拠る。確かめは次の T-25 の赤か、利用者が判断する検証の起動で行う。
