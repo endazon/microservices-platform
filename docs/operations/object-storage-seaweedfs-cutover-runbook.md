@@ -10,8 +10,8 @@ updated: 2026-09-26
 ids: [FR-06, FR-12, FR-21, NFR-18]
 adrs: [ADR-0014, ADR-0015, ADR-0106, ADR-0107]
 iadrs: [IADR-0024, IADR-0093, IADR-0459, IADR-0461]
-specs: [20260925_1499_object-storage-seaweedfs]
-issues: [#457, #1483, #1435, #1499, #1506, planning#648]
+specs: [20260925_1499_object-storage-seaweedfs, 20260926_issue-1562_bucket-existence-head]
+issues: [#457, #1483, #1435, #1499, #1506, #1562, planning#648]
 -->
 
 # 運用 Runbook: 稼働クラスタのオブジェクトストレージを MinIO から SeaweedFS へ切り替える
@@ -130,7 +130,14 @@ issues: [#457, #1483, #1435, #1499, #1506, planning#648]
 - S3 ゲートウェイの管理用 gRPC が認証を要する: 同じ Deployment の `command` が `WEED_JWT_FILER_SIGNING_KEY` を作ってから
   entrypoint を呼んでいる（鍵は起動のたびに作られ、どこにも保存されない）。
 - 文書の本文を 1 件登録し、詳細画面で本文が表示される（書き込み・読み取りの往復が通る）。
-- ConversionService のログにバケットの作成失敗（`Object storage bucket bootstrap failed`）が繰り返し出ていない。
+- ConversionService を起動（再起動）した直後のログに、次の 2 つの警告が**どちらも 1 行も出ていない**。
+  起動のたびに 1 回ずつ出ることも「失敗」に数える（回数ではなく有無で判定する）。
+  - `Object storage bucket bootstrap failed` —— 起動時のバケットの準備そのものが例外で止まった。
+  - `Object storage bucket knowledge-normalized existence is unknown` —— バケットの存在確認（HEAD）が
+    在る・無いのどちらとも答えなかった（503・403・接続不能など）。このときバケットは作られず、
+    無かった場合は最初の書き込みが作って再試行する。書き込みが通っていても、存在確認が答えない原因
+    （ゲートウェイの不調・資格情報の権限）は別に調べる。
+  - 在るバケットに対して起動のたびにどちらかが出る場合は、下の分岐表の「起動のたびに警告」の行へ進む。
 
 ## 失敗したときの分岐
 
@@ -139,4 +146,5 @@ issues: [#457, #1483, #1435, #1499, #1506, planning#648]
 | `seaweedfs` が `CreateContainerConfigError` | `kubectl describe pod` | Secret `object-storage-credentials` が無い。手順 4 をやり直す（**丸ごとの再実行はしない**） |
 | `seaweedfs` が ImagePullBackOff | `kubectl describe pod` | 取得元への到達を確かめる（匿名で取得できるはずである）。社内ミラーを使う構成ならミラーに同じ digest を置く |
 | 各サービスの書き込みが 403 | サービスのログ | サーバとクライアントが別の資格情報を読んでいる。両方とも `object-storage-credentials` を読んでいることを確かめ、サービスを作り直す |
+| ConversionService の起動のたびに警告（上の確認項目の 2 つ） | ConversionService のログ（警告の行に付く例外と状態コード） | ConversionService のイメージが、存在確認を HEAD で行う版より古くないかを確かめる（古い版は在るバケットにも起動のたびに 503 の警告を出していた。イメージを作り直して再起動する）。新しい版でも出るなら、`existence is unknown` の行の状態コードを見る —— 403 は資格情報の権限、503 はゲートウェイ（`seaweedfs` の Pod のログ）を調べる。書き込み・読み出しが通っていれば、急ぎの対処は要らない |
 | MinIO の中身が要ったのに消えた | — | 手順 3 の退避が無ければ戻せない。資産は破棄の裁定の対象であり、再取り込み（データソース同期・変換の再実行）で作り直す |
