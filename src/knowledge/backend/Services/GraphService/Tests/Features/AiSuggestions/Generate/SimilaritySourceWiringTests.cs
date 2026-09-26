@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace GraphService.Tests.Features.AiSuggestions.Generate;
 
@@ -111,18 +112,68 @@ public class SimilaritySourceWiringTests : IClassFixture<TestWebApplicationFacto
     }
 
     // T-50 未知の値は起動が落ちる（黙って空へ倒さない）。
+    //
+    // ［2026-09-26 / #1582］🔴 **`factory.Services` が投げる例外の型では測らない。** 起動検証（ValidateOnStart）は
+    // エントリポイントのスレッドで落ち、`app.Run()` の後始末が host を破棄する。テストスレッドの
+    // `DeferredHost.StartAsync` が破棄の**後**に着くと、破棄済みの ServiceProvider を引いて
+    // `ObjectDisposedException` になる（CI で実測。着順しだいで届く例外が変わる）。
+    // そこで **起動検証そのものを包み、投げた例外を host の破棄より前に記録する**。記録はエントリポイント側で
+    // 先に済むので、テストスレッドがどちらの例外を受け取っても、検査は着順に依らない。
+    // ① 起動しない（`factory.Services` が投げる）と ② 落ちた理由が起動検証である（ODE を合格扱いにしない）の 2 点を測る。
     [Fact]
-    public void Unknown_source_fails_at_startup()
+    public async Task Unknown_source_fails_at_startup()
     {
-        using var factory = _factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration((_, cfg) =>
-            cfg.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                [$"{AiSuggestionSimilarityOptions.SectionName}:Source"] = "qdrant",
-            })));
+        var startupValidation = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var factory = _factory.WithWebHostBuilder(b =>
+        {
+            b.ConfigureAppConfiguration((_, cfg) =>
+                cfg.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    [$"{AiSuggestionSimilarityOptions.SectionName}:Source"] = "qdrant",
+                }));
+            b.ConfigureServices(services => RecordingStartupValidator.Install(services, startupValidation));
+        });
 
         var act = () => factory.Services;
 
-        act.Should().Throw<Exception>()
-            .Which.ToString().Should().Contain("AiSuggestions:Similarity:Source");
+        act.Should().Throw<Exception>("未知の供給元で host が起動してはならない");
+        var failure = await startupValidation.Task.WaitAsync(
+            TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        failure.Should().BeOfType<OptionsValidationException>("起動を落としたのは起動検証（ValidateOnStart）である")
+            .Which.Message.Should().Contain("AiSuggestions:Similarity:Source");
+    }
+
+    // #1582: Program が `ValidateOnStart` で登録した起動検証を包み、結果（通れば null・落ちればその例外）を記録してから元どおり投げる。
+    // 🔴 登録が無ければ（ValidateOnStart を外す変異）ここで落ちる —— 記録されないまま待ち続けるより先に、理由の分かる形で赤にする。
+    private sealed class RecordingStartupValidator(IStartupValidator inner, TaskCompletionSource<Exception?> sink)
+        : IStartupValidator
+    {
+        public static void Install(IServiceCollection services, TaskCompletionSource<Exception?> sink)
+        {
+            var original = services.SingleOrDefault(d => d.ServiceType == typeof(IStartupValidator));
+            if (original?.ImplementationType is not { } type)
+            {
+                var missing = new InvalidOperationException("起動検証（ValidateOnStart）が登録されていない");
+                sink.TrySetResult(missing);
+                throw missing;
+            }
+            services.Remove(original);
+            services.AddTransient<IStartupValidator>(sp =>
+                new RecordingStartupValidator((IStartupValidator)ActivatorUtilities.CreateInstance(sp, type), sink));
+        }
+
+        public void Validate()
+        {
+            try
+            {
+                inner.Validate();
+                sink.TrySetResult(null);
+            }
+            catch (Exception ex)
+            {
+                sink.TrySetResult(ex);
+                throw;
+            }
+        }
     }
 }
