@@ -271,7 +271,7 @@ function runUp(extraEnv) {
     'HEADLAMP_OIDC_ISSUER_URL',
     'HEADLAMP_OIDC_CLIENT_ID',
     'K3S_IMAGE', // #783: k3s イメージの pin。実行環境に漏れていると既定のバイト等価が崩れる
-    'RESET_FLOOR', // #1500: 床の経路の退路。漏れていると冒頭の検査・警告が既定と違う形で走る
+    'RESET_FLOOR', // #1500: 床の経路を外す比較用の口（#1543: 本番の退路ではない）。漏れていると冒頭の検査・警告が既定と違う形で走る
   ]) {
     delete base[k];
   }

@@ -4,14 +4,14 @@ type: observability-spec
 status: in-progress
 author: claude
 created: 2026-08-23
-updated: 2026-09-05
+updated: 2026-09-26
 ---
 <!-- trace:
-ids: [FR-10, FR-11, NFR, UC-05, SC-10]
+ids: [FR-10, FR-11, NFR, NFR-21, UC-05, SC-10]
 adrs: [ADR-0006, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0076]
-iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378]
-specs: [20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion]
-issues: [#380, #443, #546, #1203]
+iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466]
+specs: [20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable]
+issues: [#380, #443, #546, #1111, #1203]
 -->
 
 # 可観測性仕様書: LLM 利用実績（トークン消費量と金額換算）
@@ -37,6 +37,14 @@ issues: [#380, #443, #546, #1203]
 | `llm.cost.total` | Counter | `{currency}` | `llm_cost_total` | 金額換算の累計 |
 | `llm.pricing.unpriced.total` | Counter | `{completion}` | `llm_pricing_unpriced_total` | **単価を解決できなかった呼び出し**（0 が正常） |
 | `llm.usage.synthetic_excluded.total` | Counter | `{completion}` | `llm_usage_synthetic_excluded_total` | **合成監視のため費用へ計上しなかった呼び出し** |
+| `llm.budget.monthly_limit` | 観測ゲージ | `{currency}` | `llm_budget_monthly_limit` | **用途別の月次予算の上限**（設定 `Llm:Budget:MonthlyLimits`。**既定なし**。設定された用途だけが系列を持つ） |
+
+🔴 **上限のゲージは金額を設定しない限り系列を持たない。** 金額は所有者が決める値であり、実装は既定を置かない。
+上限アラート `LlmMonthlyBudgetExceeded` は直近 30 日の `llm_cost_total` をこのゲージと用途・通貨で比べるため、
+**系列が無いあいだアラートは評価対象を持たず発火しない**（§本仕様書が扱わないこと の月次予算の項）。
+Prometheus 側の名前は、単位 `{currency}` が注記として落ち、ゲージには `_total` が付かないことから導いた
+（同じ変換で出ている UpDownCounter `http.server.active_requests` → `http_server_active_requests` と同じ規則）。
+**稼働 TSDB での実在は、金額を設定した環境で確かめる**（手順は Runbook）。
 
 🔴 **合成監視（synthetic）の補完は `llm.tokens.total` にも `llm.cost.total` にも載らない。**
 監視のために打った呼び出しが費用へ入ると、費用が「人が使った量」を表さなくなる。
@@ -51,12 +59,12 @@ issues: [#380, #443, #546, #1203]
 
 | 属性 | 値域 | 付く計器 |
 | --- | --- | --- |
-| `llm.purpose` | 用途設定のキー ＋ `default` ＋ `other` | tokens / cost |
+| `llm.purpose` | 用途設定のキー ＋ `default` ＋ `other`（budget は `other` を持たない） | tokens / cost / budget |
 | `llm.model` | ルータが選んだモデル / `none` | tokens / cost / unpriced |
 | `llm.provider` | `claude` / `selfhosted` / `copilot` / `none` | tokens / cost |
 | `llm.confidentiality` | `public` / `internal` / `confidential` / `restricted` | tokens / cost |
 | `llm.token_type` | `input` / `output` | tokens |
-| `llm.currency` | 単価表の通貨（既定 `USD`） | cost |
+| `llm.currency` | 単価表の通貨（既定 `USD`） | cost / budget |
 | `llm.pricing_status` | `out_of_period` / `no_entry` | unpriced |
 | （合成の除外） | 用途・モデル・プロバイダ・機密区分（tokens / cost と同じ軸） | synthetic_excluded |
 
@@ -132,8 +140,11 @@ k8s 経路は `deploy/local/observability/grafana.yaml` の ConfigMap に同内�
 - **出力トークンの分布**（`llm.completion.output_tokens`）。既定 `max_tokens` の妥当性を上限付近の
   バケットの厚みで読む**別の面**であり、[`llm-completion-metrics.md`](llm-completion-metrics.md) と
   稼働環境での実測の issue が扱う。**本書の累計カウンタとは役割が違い、二重実装ではない。**
-- **月次予算の上限アラート**。**［2026-08-30 更新 / #546］通知基盤（Alertmanager）は配備済みになった**が、
-  **しきい値が計画側で未確定である**ため置かない（実測を待って確定する。確定の前提は費用の実績が数か月分
+- **月次予算の金額**。**［2026-08-30 更新 / #546］通知基盤（Alertmanager）は配備済みになった**が、
+  **しきい値が計画側で未確定である**（実測を待って確定する。確定の前提は費用の実績が数か月分
   そろうこと）。🔴 **実装側で数字を決めない** —— 決めるとそれが既成事実として計画へ逆流する。
+  **［2026-09-26 更新 / #1111］上限アラートの配線は入った**（上の上限のゲージと `LlmMonthlyBudgetExceeded`）。
+  本書が扱わないのは**金額**だけであり、金額は所有者が `Llm:Budget:MonthlyLimits` に設定する。
+  **未設定のあいだアラートは発火せず、月次の手動確認（Runbook）が唯一の統制である。**
 - **基盤と利用側プロジェクトの費用の合算**。合算するとどちらの予算を超過したのか判別できなくなるため、
   計画が明示的に禁じている。

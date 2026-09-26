@@ -93,6 +93,60 @@ worker を Codex 等へ差し替える場合や、失敗時の切り戻しを設
    > （(b) CHANGELOG 更新を PR にせず develop へ直接 push ／ (c) 毎回チェックを手動承認）の
    > どちらを採るかを**運用として裁定する**必要がある。(b) はブランチ保護の例外設計を伴う。
 
+   **登録手順（利用者が行う。AI は値に触れない）**［2026-09-26 追記 / #1237］
+
+   1. GitHub の Settings → Developer settings → Personal access tokens → **Fine-grained tokens** →
+      Generate new token で作る。
+
+      | 欄 | 値 |
+      | --- | --- |
+      | Resource owner | `endazon` |
+      | Expiration | **必ず設定する**（例: 90 日）。失効日はカレンダーへ入れる（下の「失効したとき」） |
+      | Repository access | **Only select repositories** → `endazon/microservices-platform` の 1 つだけ |
+      | Repository permissions | **Contents: Read and write** / **Pull requests: Read and write**（Metadata: Read は自動で付く）。これ以外は付けない |
+
+      > `changelog.yml` は PR に `automation` ラベルを付ける。ラベル付与は Pull requests: write で通る想定である。
+      > 初回の run が「ラベル付与で 403」で落ちた場合に限り **Issues: Read and write** を足す（先回りして広げない）。
+      > Workflows 権限は要らない（PR が触るのは `CHANGELOG.md` だけである）。
+
+   2. 値を**コマンド行に書かずに**登録する（シェル履歴・画面に残さない）。`gh` は値を標準入力から対話で読む。
+
+      ```console
+      $ gh secret set AUTOMATION_PR_TOKEN --repo endazon/microservices-platform
+      ? Paste your secret: ********        ← ここで貼る
+      $ gh secret list --repo endazon/microservices-platform | grep AUTOMATION_PR_TOKEN
+      AUTOMATION_PR_TOKEN  <更新日時>      ← 名前だけが見えればよい（値は表示されない）
+      ```
+
+   3. 次に develop へ何かがマージされると `changelog.yml` が走り、`automation/changelog-update-develop` を
+      **PAT で**更新する。既存の CHANGELOG PR が開いていればそれが更新され（`synchronize`）、無ければ新しく作られる。
+      次で確かめる（`<N>` は CHANGELOG PR の番号）。
+
+      ```console
+      $ gh pr list --head automation/changelog-update-develop --json number,author
+      $ gh pr checks <N>
+      ```
+
+      | 期待 | 意味 |
+      | --- | --- |
+      | `build-and-test` / `lint` / `commit-messages` / `pr-title` / `image-build` / `static-checks-units` / `scripts-tests` が起動して pass | PAT で作られた PR にワークフローが起動した（本 issue の芯） |
+      | `claude-review` は **skipped** | `claude-code-review.yml` が `automation/` ブランチを意図的に除外している。skip されたジョブは必須チェックとして成功扱いになり、マージを止めない |
+      | `gh pr view <N> --json mergeStateStatus` が `CLEAN` | 保護を迂回せずにマージできる |
+
+      **事前に確かめたこと（2026-09-26・AI 側）**: 現在の CHANGELOG PR のタイトルと更新コミットは、PAT で作られて検査が
+      走っても **`pr-title` / `commit-messages` を通る**（`node scripts/check-commit-messages.js --title "docs(NFR): CHANGELOG を自動更新" --author endazon --pr-number <N>`
+      と `--range origin/develop..origin/automation/changelog-update-develop` がいずれも exit 0）。PAT を使うと PR の作成者は
+      PAT の持ち主になり bot 除外が効かなくなるが、件名が規約どおりなので落ちない。
+
+   4. 陰性対照は登録前の状態そのものである（`GITHUB_TOKEN` へフォールバックし、PR は作られるが check は 0 件）。
+      登録後に確かめ直す必要は無い。
+
+   **失効したとき（重要）**: `token: ${{ secrets.AUTOMATION_PR_TOKEN || secrets.GITHUB_TOKEN }}` の `||` は
+   **シークレットが未登録（空）のときだけ**フォールバックする。**期限切れの PAT は空ではないのでそのまま使われ、
+   `changelog.yml` の run が認証エラーで赤くなる**（PR は作られない・更新されない）。失効日の前に作り直して
+   手順 2 で上書きするか、PAT をやめるならシークレットを削除する（`gh secret delete AUTOMATION_PR_TOKEN --repo endazon/microservices-platform`。
+   削除すると従来の BLOCKED に戻る）。
+
 ### プロファイル `claude-code`（サブスクリプション）
 
 | 対象 | 操作 |
