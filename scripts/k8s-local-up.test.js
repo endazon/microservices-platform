@@ -272,6 +272,7 @@ function runUp(extraEnv) {
     'HEADLAMP_OIDC_CLIENT_ID',
     'K3S_IMAGE', // #783: k3s イメージの pin。実行環境に漏れていると既定のバイト等価が崩れる
     'RESET_FLOOR', // #1500: 床の経路を外す比較用の口（#1543: 本番の退路ではない）。漏れていると冒頭の検査・警告が既定と違う形で走る
+    'BACKUP_AGE_RECIPIENTS_FILE', // #1560: バックアップの受取人。漏れていると既定で ConfigMap を作り直す
   ]) {
     delete base[k];
   }
@@ -641,6 +642,33 @@ ok('PERSIST=0: 素の infra を apply し、永続化オーバーレイは現れ
   assert.strictEqual(res.status, 0, `PERSIST=0 が非0終了: ${res.stderr}`);
   assert.ok(appliesBareInfra(res.lines), 'PERSIST=0 で素の infra が apply されない');
   assert.ok(!anyLineHas(res.lines, 'infra-persistence'), 'PERSIST=0 なのに infra-persistence が現れた');
+});
+
+// --- NFR-21, IADR-0471 (#1560): バックアップの受取人（age の公開鍵）は、与えられたときだけ ConfigMap にする ---------
+// 🔴 既定の再実行で作り直すと、運用者が入れた公開鍵が消えて CronJob が毎日失敗する（占位へ戻る）。
+ok('#1560 既定: バックアップの受取人 ConfigMap に触れない（運用者が入れた公開鍵を上書きしない）', () => {
+  assert.ok(!anyLineHas(DEFAULT.lines, 'platform-backup-age-recipients'), '既定で受取人の ConfigMap を作り直している');
+});
+
+ok('#1560 BACKUP_AGE_RECIPIENTS_FILE: 受取人 ConfigMap を platform-infra に作る（infra の apply より前）', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-recipients-'));
+  const file = path.join(tmp, 'recipients.txt');
+  fs.writeFileSync(file, '# test\n');
+  const res = runUp({ BACKUP_AGE_RECIPIENTS_FILE: file });
+  fs.unlinkSync(file);
+  fs.rmdirSync(tmp);
+  assert.strictEqual(res.status, 0, `非0終了: ${res.stderr}`);
+  const at = res.lines.findIndex((l) => /create configmap platform-backup-age-recipients -n platform-infra --from-file=recipients\.txt=/.test(l));
+  assert.ok(at >= 0, '受取人の ConfigMap を作っていない');
+  const infraAt = res.lines.findIndex((l) => /^kubectl apply -k deploy\/local\/infra(-persistence)?$/.test(l));
+  assert.ok(at < infraAt, '受取人の ConfigMap を infra の apply より後に作っている');
+});
+
+ok('#1560 BACKUP_AGE_RECIPIENTS_FILE が読めなければ止まる（黙って受取人なしで進まない）', () => {
+  const res = runUp({ BACKUP_AGE_RECIPIENTS_FILE: path.join(os.tmpdir(), 'no-such-recipients-file-1560.txt') });
+  assert.notStrictEqual(res.status, 0, '読めないファイルを与えたのに EXIT=0');
+  assert.ok(/BACKUP_AGE_RECIPIENTS_FILE/.test(res.stderr), '止まった理由を示していない');
+  assert.ok(!anyLineHas(res.lines, 'platform-backup-age-recipients'), '読めないのに ConfigMap を作ろうとした');
 });
 
 ok('PERSIST=1（旧 opt-in の綴り）は既定と同じ（手順書の古い呼び方でも壊れない）', () => {

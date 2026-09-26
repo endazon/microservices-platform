@@ -1,0 +1,14 @@
+# platform-infra バックアップの受取人（age の公開鍵）の例示ファイル。**このままでは使えない**（占位）。
+#
+# 使い方（docs/operations/platform-infra-backup-runbook.md の「準備」）:
+#   1. クラスタの外（運用者の端末）で鍵の組を作る:  age-keygen -o <秘密鍵のファイル>
+#      表示される公開鍵（age1 で始まる 1 行）だけを控える。🔴 秘密鍵はクラスタにもリポジトリにも置かない。
+#   2. このファイルを写し、下の占位の行を公開鍵の行に置き換える（複数の受取人を並べてよい。1 行 1 鍵）。
+#   3. ConfigMap にする（kustomize の外。k8s-local-up.sh の再実行で上書きされない）:
+#        BACKUP_AGE_RECIPIENTS_FILE=<写したファイル> bash scripts/k8s-local-up.sh
+#      または
+#        kubectl -n platform-infra create configmap platform-backup-age-recipients \
+#          --from-file=recipients.txt=<写したファイル> --dry-run=client -o yaml | kubectl apply -f -
+#
+# 空行と # で始まる行は読み飛ばす。それ以外の行が 1 つでも age の公開鍵でなければ、CronJob は何も書かずに失敗する。
+REPLACE_WITH_AGE_PUBLIC_KEY

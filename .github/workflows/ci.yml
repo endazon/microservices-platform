@@ -101,6 +101,15 @@ jobs:
       # CRD / PV → 検証）と、既定の dry-run が読み取りしか起動しないことを、kubectl / helm / k3d をスタブへ差し替えて固定する。
       - name: Test local k8s teardown order and read-only dry-run (kubectl / helm stub)
         run: bash scripts/k8s-local-down.test.sh
+      # NFR-21, NFR-05, IADR-0471, Issue #1560: platform-infra の日次バックアップ本体（deploy/local/platform-backup/script/backup.sh）の
+      # 分岐（受取人の fail-closed・2 か所への書き込みと片側の失敗・平文を残さないこと・Vault の写しのやり直し・保持と削除の安全）を、
+      # pg_dump / psql / age をスタブへ差し替えた Bash テストで固定する。実 Postgres・実 age・実クラスタは要らない。
+      - name: Test platform-infra backup script (pg_dump / age stub)
+        run: bash deploy/local/platform-backup/script/backup.test.sh
+      # 同 #1560: リストア試験（scripts/backup-restore-drill.sh）の突き合わせの判定と、使い捨てコンテナ・読み取り専用・
+      # 秘密鍵を表示しないことを、docker / kubectl / age をスタブへ差し替えて固定する（稼働クラスタにも Docker にも触れない）。
+      - name: Self-test backup restore drill (docker / kubectl / age stub)
+        run: bash scripts/backup-restore-drill.sh --self-test
 
   # NFR / IADR-0232 決定 6: 依存ゼロの Node 検査を 1 ジョブへ束ねる（統合前は 12 の独立ジョブ）。
   #
@@ -640,6 +649,13 @@ jobs:
       - name: Check charts and overlays render
         if: ${{ !cancelled() }}
         run: node scripts/check-deploy-manifests.js
+
+      # NFR-21, NFR-05, IADR-0471, Issue #1560: platform-infra の日次バックアップの**配備の形**を kustomize の描画結果で固定する
+      # （既定の永続化 overlay に CronJob が出る・secretKeyRef・hostPath 2 本・読み取り専用のマウント・受取人は optional で
+      # kustomize の外・市場の時間帯を避ける）。kubectl kustomize（オフライン）を使うので、上の検査と同じジョブに置く。
+      - name: Check platform-infra backup manifests
+        if: ${{ !cancelled() }}
+        run: node scripts/platform-backup.test.js
 
       # NFR-21, ADR-0006, Issue #1090 / #546: すべての OTel Collector 設定が自己テレメトリの
       # 待受（Prometheus の**唯一の scrape 対象**）を明示していることを検査する。

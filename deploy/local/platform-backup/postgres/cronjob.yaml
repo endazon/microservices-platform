@@ -1,0 +1,104 @@
+# NFR-21, NFR-05, ADR-0002, ADR-0008, IADR-0471 (#1560): platform-infra の Postgres を日次で暗号化してクラスタ外 2 か所へ置く。
+#
+# - 時刻: JST 12:00（米国市場の時間帯 JST 22:30〜05:00 を避ける）。startingDeadlineSeconds は取りこぼし（PC 停止）の
+#   後追いを 22:00 JST までに限る（36000 秒 = 12:00 から 10 時間）。それを過ぎたら翌日の回を待つ。
+# - 資格情報: 超利用者のパスワードは Secret postgres のキー password（k8s-local-up.sh / ESO が供給）を env PGPASSWORD で渡す。
+#   🔴 値をマニフェスト・引数に書かない。
+# - 受取人（age の公開鍵）: ConfigMap platform-backup-age-recipients（kustomize の外。手順書参照）。optional なので
+#   無くても Pod は起動し、スクリプトが**何も書かずに失敗する**（fail-closed。Job の失敗として見える）。
+# - 保管先: hostPath 2 本（Rancher Desktop の WSL ディストリから見える C: と E:）。目印ファイル .platform-backup-target の
+#   無い保管先にはスクリプトが書かない（ドライブが外れていると DirectoryOrCreate はディストリ内に空のディレクトリを作るため）。
+# 🔴 deploy/local 専用（ローカル開発・PoC 環境）。本番のバックアップ設計ではない。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: platform-backup-postgres
+  namespace: platform-infra
+  labels:
+    app: platform-backup
+    app.kubernetes.io/component: postgres
+spec:
+  schedule: "0 12 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 36000
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 7
+  jobTemplate:
+    spec:
+      # 失敗を再試行で上書きしない（1 回の失敗をそのまま Job の失敗として残す）。
+      backoffLimit: 0
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: platform-backup
+            app.kubernetes.io/component: postgres
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          containers:
+            - name: backup
+              # pg_dump のメジャー版を本体（deploy/local/infra/postgres.yaml）と揃える。age は実行時に Alpine の署名付き
+              # パッケージから入れる（BACKUP_AGE_INSTALL=1）。apk と保管先（WSL の drvfs）への書き込みのため root で動かす。
+              image: postgres:16-alpine
+              command: ["/bin/bash", "/opt/platform-backup/backup.sh"]
+              env:
+                - name: BACKUP_KIND
+                  value: postgres
+                - name: BACKUP_TARGETS
+                  value: "/backup/c /backup/e"
+                - name: BACKUP_AGE_INSTALL
+                  value: "1"
+                - name: PGHOST
+                  value: postgres
+                - name: PGPORT
+                  value: "5432"
+                - name: PGUSER
+                  value: postgres
+                - name: PGDATABASE
+                  value: postgres
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres
+                      key: password
+              securityContext:
+                allowPrivilegeEscalation: false
+              volumeMounts:
+                - name: script
+                  mountPath: /opt/platform-backup
+                  readOnly: true
+                - name: recipients
+                  mountPath: /etc/platform-backup/recipients
+                  readOnly: true
+                - name: staging
+                  mountPath: /staging
+                - name: target-c
+                  mountPath: /backup/c
+                - name: target-e
+                  mountPath: /backup/e
+              resources:
+                requests: { cpu: 50m, memory: 128Mi }
+                limits: { cpu: "1", memory: 512Mi }
+          volumes:
+            - name: script
+              configMap:
+                name: platform-backup-script
+                defaultMode: 0555
+            - name: recipients
+              configMap:
+                name: platform-backup-age-recipients
+                optional: true
+            # 暗号化済みの成果物だけを置く（平文は pg_dump から age へパイプで渡し、ディスクへ書かない）。
+            - name: staging
+              emptyDir:
+                sizeLimit: 4Gi
+            - name: target-c
+              hostPath:
+                path: /mnt/c/platform-infra-backups
+                type: DirectoryOrCreate
+            - name: target-e
+              hostPath:
+                path: /mnt/e/platform-infra-backups
+                type: DirectoryOrCreate
