@@ -253,6 +253,16 @@ spec:
                   key: {{ .secretKeyRef.key }}
               {{- end }}
           {{- end }}
+          {{- /* NFR-02, NFR-21, ADR-0076 決定 4, ADR-0079 決定 1, IADR-0378, IADR-0469 (#1287): 合成監視の標識の許可集合。
+                 syntheticMonitor.enabled のときだけ、プローブ（templates/synthetic-monitor.yaml）と**同じ描画で**描く
+                 ——「標識と除外は同時に入れる」。無効（既定）では 1 バイトも出ない。
+                 集合は _synthetic-monitor.tpl の 1 か所が持つ（knob にしない）。空だと SyntheticTraffic は何も合成と
+                 見なさない（fail-closed）ので、1 つでも欠けるとその面だけが合成を実利用として数える。 */}}
+          {{- $synthetic := $.Values.syntheticMonitor | default dict }}
+          {{- if and $synthetic.enabled (has $name (include "msp.syntheticMonitor.exclusionServices" $ | splitList ",")) }}
+            - name: SyntheticMonitoring__Subjects__0
+              value: {{ $synthetic.clientId | quote }}
+          {{- end }}
           {{- if and $svc.selfHostedEmbedding $.Values.embedding.enabled }}
             # FR-02, FR-03, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み（Ruri v3）の配線。
             # embedding.enabled=true のときのみ描画し、llmgateway を templates/embedding.yaml（TEI・OpenAI 互換

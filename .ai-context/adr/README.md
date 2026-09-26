@@ -546,3 +546,4 @@
 | [IADR-0466](./IADR-0466_llm-monthly-budget-alert-configurable-limit.md) | **LLM 月次予算の上限は用途別の設定値（既定なし）とし、ゲートウェイがゲージで出して直近 30 日の費用と比べる**（#1111・所有者裁定 2026-09-26）。金額は置かない。未設定のあいだアラートは不活性で、金額を設定する変更が月次確認の Runbook を superseded にする | Accepted |
 | [IADR-0467](./IADR-0467_multi-collection-rrf-fusion-and-per-collection-query-embedding.md) | **検索は主コレクションと束ねる追加コレクション（既定は空）を 1 回の RRF で合成し、スコアは比べない**（#336・計画 ADR-0092）。追加のクエリは要求にコレクション名を名乗ってそのモデルで埋める。ABAC は全コレクションの全系統に常に掛ける | Accepted |
 | [IADR-0468](./IADR-0468_datasource-department-from-registrant-department-group.md) | **データソースの既定部門は、登録した管理者のトークンが運ぶ所属グループのフルパスから `/department/<コード>` がちょうど 1 つのときだけ導く**（#754）。解決順②の中で登録時だけ・明示値は上書きしない。値域の検証はフォローアップ | Accepted |
+| [IADR-0469](./IADR-0469_helm-synthetic-monitor-optin-render-time-fail-closed.md) | **helm チャートの合成監視は既定オフの 1 つの鍵で、プローブと標識を同じ描画に揃え、除外できない構成（除外の面が無効／AllowLlmEgress）は描画の段階で止める**（#1287。計画 ADR-0076 決定 4・ADR-0079 決定 1・2） | Accepted |
