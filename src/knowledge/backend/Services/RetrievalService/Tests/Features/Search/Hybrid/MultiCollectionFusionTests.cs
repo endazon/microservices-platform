@@ -239,6 +239,36 @@ public class MultiCollectionFusionTests
         primary.LastVector.Should().Equal(1f, 1f);
     }
 
+    // T-F-18: 🔴 **束ねても候補幅は変えない**（[[IADR-0467]] 決定 2「候補幅」）。hybrid は各系統 `max(TopK*4, TopK)`、
+    // keyword / semantic は単一モードの幅（relevance なら `TopK`、updated なら hybrid と同じ幅）を、主にも追加にも
+    // **同じ値で**渡す。束ねた semantic の経路へ別の幅（例: 常に `max(TopK*4, TopK)`）を渡す変異はここで赤になる。
+    [Theory]
+    [InlineData(SearchModes.Semantic, SearchSorts.Relevance, 10)]
+    [InlineData(SearchModes.Semantic, SearchSorts.Updated, 40)]
+    [InlineData(SearchModes.Keyword, SearchSorts.Relevance, 10)]
+    [InlineData(SearchModes.Keyword, SearchSorts.Updated, 40)]
+    [InlineData(SearchModes.Hybrid, SearchSorts.Relevance, 40)]
+    [InlineData(SearchModes.Hybrid, SearchSorts.Updated, 40)]
+    public async Task 束ねても各系統の候補幅は単一コレクションのときと同じ(string mode, string sort, int expected)
+    {
+        var primary = new ScriptedStore();
+        var tierA = new ScriptedStore();
+
+        await Service(primary, new FixedEmbedding([1f]), new FusedCollection(Ruri, tierA, new FixedEmbedding([2f])))
+            .SearchAsync(new SearchRequest("問い", 10, null, Granted, mode, sort), TestSearchUser.Any,
+                TestContext.Current.CancellationToken);
+
+        // 陽性対照: 追加コレクションが無いときの主の幅（従来の経路）と同じであること。
+        var alone = new ScriptedStore();
+        await Service(alone, new FixedEmbedding([1f]))
+            .SearchAsync(new SearchRequest("問い", 10, null, Granted, mode, sort), TestSearchUser.Any,
+                TestContext.Current.CancellationToken);
+
+        alone.Limits.Should().NotBeEmpty().And.AllSatisfy(k => k.Should().Be(expected));
+        primary.Limits.Should().HaveCount(alone.Limits.Count).And.AllSatisfy(k => k.Should().Be(expected));
+        tierA.Limits.Should().HaveCount(alone.Limits.Count).And.AllSatisfy(k => k.Should().Be(expected));
+    }
+
     // ---- (3) ABAC は全コレクションの全系統に掛かる（決定 3） ------------------------------
 
     private static readonly AccessScope PublicOnly =
@@ -383,12 +413,15 @@ internal sealed class ScriptedStore : IVectorStore
     public float[]? LastVector { get; private set; }
     public List<ScopeFilter?> Filters { get; } = [];
     public List<Guid> Deleted { get; } = [];
+    // ベクトル・全文の各問い合わせへ渡された候補幅（topK）を呼び出し順に記録する（決定 2 の候補幅を観測する）。
+    public List<int> Limits { get; } = [];
 
     public Task<List<SearchResultDto>> SearchAsync(
         float[] queryVector, int topK, ScopeFilter? filters, CancellationToken ct = default)
     {
         VectorCalls++;
         LastVector = queryVector;
+        Limits.Add(topK);
         Filters.Add(filters);
         return Task.FromResult(Vector.ToList());
     }
@@ -397,6 +430,7 @@ internal sealed class ScriptedStore : IVectorStore
         string query, int topK, ScopeFilter? filters, CancellationToken ct = default)
     {
         KeywordCalls++;
+        Limits.Add(topK);
         Filters.Add(filters);
         return Task.FromResult(Keyword.ToList());
     }
