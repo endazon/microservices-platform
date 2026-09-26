@@ -11,6 +11,14 @@ metadata:
     chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 spec:
   replicas: {{ $w.replicas | default 1 }}
+  # IADR-0210 決定 7 / #1435: PVC（ReadWriteOnce）を掴む Deployment は Recreate にする。
+  # RollingUpdate だと新旧 2 つの Pod が同時に起動し、空の DB へ Wiki.js（knex 0.21）の migration を
+  # 同時に走らせる。knex はロック表の行を「無ければ入れる」を排他なしで行うため、行が 2 つになり、
+  # 以後 `update ... where is_locked=0` が 2 行を更新して「Migration table is already locked」で
+  # **毎回**落ちる（どの Pod も二度と起動しない）。実測: integration-stack の run 36188276324 /
+  # 35277541043 / 34748189616（ISTIO=1 の注入 rollout restart が helm install 直後に 2 つ目の Pod を作る）。
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: wiki-js
