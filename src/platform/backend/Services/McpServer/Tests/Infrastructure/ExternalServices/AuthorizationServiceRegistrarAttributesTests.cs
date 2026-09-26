@@ -3,6 +3,7 @@ using McpServer.Domain;
 using McpServer.Domain.Ports;
 using McpServer.Infrastructure.ExternalServices;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Net;
 using System.Security.Claims;
@@ -309,6 +310,57 @@ public class AuthorizationServiceRegistrarAttributesTests
             NullLogger<AuthorizationServiceRegistrarAttributes>.Instance).ResolveAsync(Ct);
 
         scope.Available.Should().BeFalse();
+    }
+
+    // FR-05, FR-16, #1378: 2xx だが本文が空（JSON の null）でも `Unavailable` へ倒れ、**理由を WARN で出す**。
+    // 従前はこの枝だけが無言だった（非 2xx・不達は WARN 済み）。
+    [Fact]
+    public async Task 認可スコープの応答本文が空なら未解決になり警告を出す()
+    {
+        var handler = new StubHandler()
+            .Get("/authz/users", Directory())
+            .Post("/authz/scope", "null");
+        var log = new CapturingLogger();
+
+        var scope = await new AuthorizationServiceRegistrarAttributes(
+            new StubFactory(handler), Accessor(), log).ResolveAsync(Ct);
+
+        scope.Available.Should().BeFalse();
+        log.Warnings.Should().ContainSingle()
+            .Which.State.FirstOrDefault(p => p.Key == "Status").Value.Should().Be(200);
+    }
+
+    // 🔴 陰性対照（#1378）: 許可ポリシーが無い（`Granted=false`）のは「引けた」であり WARN を出さない。
+    [Fact]
+    public async Task 許可ポリシーが無い登録者では警告を出さない()
+    {
+        var handler = new StubHandler()
+            .Get("/authz/users", Directory())
+            .Post("/authz/scope", """{"userId":"tanaka","allowedFilters":[],"granted":false}""");
+        var log = new CapturingLogger();
+
+        var scope = await new AuthorizationServiceRegistrarAttributes(
+            new StubFactory(handler), Accessor(), log).ResolveAsync(Ct);
+
+        scope.Available.Should().BeTrue();
+        log.Warnings.Should().BeEmpty();
+    }
+
+    private sealed record LogEntry(LogLevel Level, IReadOnlyList<KeyValuePair<string, object?>> State);
+
+    private sealed class CapturingLogger : ILogger<AuthorizationServiceRegistrarAttributes>
+    {
+        private readonly List<LogEntry> _entries = [];
+
+        public IReadOnlyList<LogEntry> Warnings => [.. _entries.Where(e => e.Level == LogLevel.Warning)];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+            => _entries.Add(new LogEntry(logLevel, state as IReadOnlyList<KeyValuePair<string, object?>> ?? []));
     }
 
     // ─────────────────────────────────────────────────────────────────────────

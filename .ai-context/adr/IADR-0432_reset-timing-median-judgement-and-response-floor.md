@@ -2,7 +2,7 @@
 title: IADR-0432 リセット申請の所要時間は反復した中央値を自己対照で判定し、床は経路に居る専用の器で掛ける
 type: impl-adr
 status: Accepted
-related_ids: [SC-15, SC-13, FR-05, FR-22, NFR-09, NFR-13, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097, ADR-0103]
+related_ids: [SC-15, SC-13, FR-05, FR-22, NFR-05, NFR-09, NFR-13, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097, ADR-0103, ADR-0111, ADR-0113]
 author: claude
 created: 2026-09-11
 updated: 2026-09-26
@@ -11,6 +11,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0103_degenerate-self-control-is-not-a-bound.md
   - planning:projects/microservices-platform/07_adr/ADR-0078_existence-hiding-response-indistinguishability-and-nearby-mta.md
   - planning:projects/microservices-platform/07_adr/ADR-0097_timing-floor-release-default-on-and-periodic-review.md
+  - planning:projects/microservices-platform/07_adr/ADR-0111_reset-floor-replicas-and-no-bypass-on-failure.md
 ---
 
 # IADR-0432: リセット申請の所要時間は反復した中央値を自己対照で判定し、床は経路に居る専用の器で掛ける
@@ -26,6 +27,7 @@ plan_refs:
 - 関連する実装仕様書: `.ai-context/specs/20260911_issue-1410_reset-timing-floor.md`
   ／［2026-09-25 / #1470］`.ai-context/specs/20260925_1470_timing-self-control-step.md`（判定の段 1。計画 ADR-0103）
   ／［2026-09-26 / #1500］`.ai-context/specs/20260926_1500_reset-floor-default-on.md`（床を既定 ON。計画 ADR-0097 決定 2）
+  ／［2026-09-26 / #1543］`.ai-context/specs/20260926_1543_reset-floor-replicas-pdb.md`（器の 2 レプリカ ＋ PDB・退路の是正。計画 ADR-0111）
 - 関連 IADR: `IADR-0404`（近接 MTA。**差の機序を名指しした記録**）/ `IADR-0421`（キュー観測）/
   `IADR-0427`（ログイン経路のプローブ。**所要時間を出すだけで判定しない**）/ `IADR-0347`（状態 B の 3 つの門）
 
@@ -319,9 +321,56 @@ ADR-0094 決定 1 の判定式を部分改定した。原因は**比較の構造
 同 IADR の時点で現行値でなくなった（本文は当時の記録として残す）。上の #1500 追記が書く「T-10 の所要時間」
 「T-10 が継続して合格する」も所要時間の項目＝ **T-25** のことである。本 IADR の他の決定は改めない。
 
+## ［2026-09-26 追記 / #1543］床の器は 2 レプリカ ＋ PDB。`RESET_FLOOR=0` は本番の退路ではない —— 計画 ADR-0111
+
+**契機**: 上の #1500 追記が書いた「503 になり得る」を環流したところ（planning#656）、計画が ADR-0097 の
+「床は失敗しても安全側」を例外 3 で訂正し、**ADR-0111（Accepted 2026-09-26・利用者裁定）**で可用性への依存の扱いを定めた。
+
+**計画の決定と、本 IADR の記述への効き方**:
+
+| ADR-0111 | 内容 | 本 IADR への効き方 |
+| --- | --- | --- |
+| 決定 1 | 器は 2 レプリカ以上。PodDisruptionBudget で自発的な退避により ready な器が 0 になるのを防ぐ | #1500 追記は器を 1 レプリカのまま置いた（マニフェストの「dev の資源都合」）。**現行は 2 レプリカ ＋ PDB（`minAvailable: 1`）** |
+| 決定 2 | 予備の経路（fail-open）は足さない。readiness は上流を映さない | #1500 追記の「予備の route は足さない」「readiness は上流を映さない」を**計画が前提として採った**。変えない |
+| 決定 3 | 器がすべて落ちたときの 503 は「申請を閉じた状態」。復旧は器を戻す。利用者は管理者の一時パスワード発行（ADR-0045 決定 9-b）。**本番で `RESET_FLOOR=0` を退路に使わない。検証で床の有無を比べる用途に限る** | 🔴 **#1500 追記の表の「退路 ＝ `RESET_FLOOR=0`」と、同じ PR が運用手順書へ書いた「急ぐときの退路は `RESET_FLOOR=0`」は、本番については覆された。** `RESET_FLOOR=0` の**機構**（素の edge-istio を当てる・0 / 1 以外を拒む）は検証用の比較の口として残す |
+| フォローアップ 3 | 器が落ちたこと（ready な endpoint が 0）の検知は NFR-21 の通知の配線の射程 | 本作業では実装しない。**#1544 を起票した**（観測基盤が kube-state-metrics も器の `/metrics` も Envoy の統計も収集しておらず、既存のアラート規則で自明に書けない） |
+
+**実装が決めたこと**（計画は値を定めていない）:
+
+- **PDB は `minAvailable: 1`**（`maxUnavailable: 1` ではない）。決定 1 の目的「ready を 0 にしない」をそのまま書く形であり、
+  replicas を一時的に 1 へ絞ったとき `maxUnavailable: 1` は最後の 1 つの退避を許して ready を 0 にする。Helm チャートの
+  PDB（`templates/pdb.yaml`）の作法とも揃う。代償は単一ノードのドレインが 2 つ目の退避で止まることで、
+  リポジトリのスクリプトは `kubectl drain` を使わない（走査で 0 件）。
+- **分散は `topologySpreadConstraints`（`kubernetes.io/hostname`・`maxSkew: 1`・`ScheduleAnyway`）**。ローカル（k3d / k3s）は
+  単一ノードであり、必須の anti-affinity や `DoNotSchedule` では 2 つ目が Pending のまま残って `k8s-local-up.sh` の
+  `rollout status deploy/reset-floor --timeout=120s` が期限切れで止まり、`check-stack-ready.js` の G1 も赤になる。
+  単一ノードで守れるのは Pod 単位の故障・更新・再作成までである。
+- **更新戦略は Deployment の既定**（2 レプリカでは maxUnavailable 25% → 0・maxSurge 25% → 1）。更新中も ready は 2 を割らない。
+- `k8s-local-up.sh` の rollout 待ちと `check-stack-ready.js` の G1（`availableReplicas >= spec.replicas`）は、**器を名前で
+  特別扱いしていない汎用の判定**なので、2 レプリカでそのまま成り立つ。コードは変えていない。
+
+**検証**: `reset-floor.test.js` の試験 10 が上の形を純関数で判定し、7 種の変異（replicas を 1 へ・PDB を消す・`maxUnavailable` へ・
+selector を外す・`DoNotSchedule` へ・readiness を httpGet で上流へ・予備の宛先を足す）がいずれも落ちることを同じ試験の中で
+確かめる。試験 8 は `RESET_FLOOR=0` の実行が「本番の退路に使わない」を告げることを固定する。🔴 **稼働クラスタでの確認
+（器を 1 つ消しても申請が 503 にならない）はしていない**（本作業の作業機はクラスタへ触れない。テスト仕様書の手動項目）。
+
+**ID のレンジ**: 本リポジトリの計画 ADR の宣言レンジは本追記の時点で `ADR-0001..0110` であり、ADR-0111 は
+コミット件名・PR タイトル・`docs/` の trace ブロックへまだ書けない（`check-commit-messages.js` / `check-trace-blocks.js`）。
+レンジが上がった後の trace ブロックへの追記は追随作業である。
+
+## ［2026-09-26 追記 / #1546］#1525 追記の時計の変更は差し戻した —— 時計は再び `Date.now()`（整数 ms）
+
+計画 ADR-0113 決定 4 は「整数 ns の時計は判定式（順位和検定）の変更と同時に入れる。時計だけを先に入れない」と定め、
+決定 6 は配備までの暫定手段を「整数 ms・2 段の判定式」とした。**`IADR-0463` の時計と分解能の宣言（1 ns）は差し戻され、
+上の 2026-09-25 追記の「標本の分解能は `TIMING_SAMPLE_RESOLUTION_MS = 1`」は再び現行値である**（経緯は `IADR-0463` の 2026-09-26 追記）。
+札 `[T-25]` は `IADR-0463` のまま残る。
+
 ## 関連
 
 - Supersedes: なし
 - Superseded by: なし（［2026-09-25 / #1470］決定 5 の判定式は計画 ADR-0103 に従い 2 段にした。
   ［2026-09-26 / #1500］決定 4 は計画 ADR-0097 決定 2 に覆され、床は既定 ON になった。
-  ［2026-09-26 / #1525］決定 5 の時計と分解能の宣言は `IADR-0463` が部分改定した。いずれも上の追記）
+  ［2026-09-26 / #1525］決定 5 の時計と分解能の宣言は `IADR-0463` が部分改定した。
+  ［2026-09-26 / #1543］#1500 追記の「退路 ＝ `RESET_FLOOR=0`」は本番について計画 ADR-0111 決定 3 に覆され、
+  器は同 決定 1 に従い 2 レプリカ ＋ PDB になった。
+  ［2026-09-26 / #1546］#1525 の時計の変更は計画 ADR-0113 決定 4 により差し戻した。いずれも上の追記）

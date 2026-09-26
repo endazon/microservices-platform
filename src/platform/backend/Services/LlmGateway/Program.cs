@@ -46,6 +46,16 @@ builder.Services.TryAddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ModelPriceTable>();
 builder.Services.AddSingleton<LlmUsageMetrics>();
 
+// FR-11, NFR-21, ADR-0044, IADR-0466 (#1111): 用途別の月次予算の上限（ゲージ）。**金額の既定は無い**
+// （計画が「金額は定めない」と定めている。所有者が Llm:Budget:MonthlyLimits に設定する）。
+// 未知の用途・0 以下の金額は起動時に落とす。未設定は正常であり、そのときゲージは系列を持たず
+// 上限アラートは発火しない（不活性）。
+builder.Services.AddOptions<LlmBudgetOptions>()
+    .Bind(builder.Configuration.GetSection(LlmBudgetOptions.SectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<LlmBudgetOptions>, LlmBudgetOptionsValidator>();
+builder.Services.AddSingleton<LlmBudgetMetrics>();
+
 // Meter は 1 本（サービス名と一致）。補完カウンタと利用実績の計器は同じ Meter に載る。
 builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddMeter(LlmCompletionMetrics.MeterName));
@@ -117,6 +127,11 @@ builder.Services.AddPlatformIntrospection("llm-gateway", new PipelineOptions(),
         .AddPort("embedding", nameof(EmbeddingRouter), "voyage/selfhosted/deterministic"));
 
 var app = builder.Build();
+
+// FR-11, NFR-21, IADR-0466 決定 3 (#1111): 予算のゲージを**起動時に**登録する。
+// シングルトンは初めて解決されたときに作られるため、補完の呼び出しを待つと
+// 「金額を設定したのに系列が出ない」時間が生まれ、所有者の確認手順（系列が出ることを見る）が成り立たない。
+app.Services.GetRequiredService<LlmBudgetMetrics>();
 
 // FR-02, #992, [[IADR-0313]]: 🔴 **決定的ローカル埋め込みが有効なら、起動時に警告を出す。**
 // 索引されるベクトルに意味的な近さは無く、**検索品質は保証されない**。

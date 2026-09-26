@@ -10,8 +10,8 @@ updated: 2026-09-26
 ids: [SC-22, SC-06, SC-15, FR-05, NFR-11, NFR-18]
 adrs: [ADR-0007, ADR-0032, ADR-0040, ADR-0042, ADR-0095, ADR-0110]
 iadrs: [IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460]
-specs: [20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup]
-issues: [#458, #310, #438, #1102, #1411, #1467, #1477, #1523, planning#599, planning#635, planning#652]
+specs: [20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260926_issue-1558_runbook-nits]
+issues: [#458, #310, #438, #1102, #1411, #1467, #1477, #1523, #1558, planning#599, planning#635, planning#652]
 -->
 
 # 運用 Runbook: 画面が使えないときに秘密情報を 1 項目だけコンソールから投入する
@@ -160,8 +160,8 @@ kubectl -n microservices-platform annotate externalsecret llm-provider-credentia
 消費側を入れ替える。
 
 ```sh
-kubectl -n microservices-platform rollout restart deploy/llm-gateway
-kubectl -n microservices-platform rollout status  deploy/llm-gateway --timeout=180s
+kubectl -n microservices-platform rollout restart deploy/llmgateway-service
+kubectl -n microservices-platform rollout status  deploy/llmgateway-service --timeout=180s
 ```
 
 消費側の名前は、その Secret を `secretKeyRef` で読んでいる Deployment である

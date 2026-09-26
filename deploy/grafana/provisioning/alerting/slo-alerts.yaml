@@ -21,11 +21,12 @@
 #      機械で確かめたのは **`scripts/check-grafana-alerting.js`** の範囲
 #      —— ルール数と名前が `deploy/prometheus/alerts.yml` と 1 対 1、参照する
 #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、まで。
-#      **配備時に `/api/v1/provisioning/alert-rules` が 16 件返すことを確かめること。**
+#      **配備時に `/api/v1/provisioning/alert-rules` が 17 件返すことを確かめること。**
 #      🔴 **件数は導出値である。ここの数字を信用せず、着手のたびに数え直すこと**（IADR-0383）——
 #      本行は #1246 が 2 件足した後も「9 件」のままであり、**2 世代ぶん腐っていた**（#1203 で是正）。
 #      現在の内訳: platform-availability 2 ／ platform-slo 4 ／ platform-slo-evaluation-target 5
-#      ／ knowledge-health-producers 2 ／ knowledge-health-violations 1 ／ mail-relay-queue 2 ＝ **16**（#1233 で 12 → 13、#1245 PR-B で 13 → 16 へ数え直した）。
+#      ／ knowledge-health-producers 2 ／ knowledge-health-violations 1 ／ mail-relay-queue 2
+#      ／ llm-cost-budget 1 ＝ **17**（#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17 へ数え直した）。
 #
 # 式は `deploy/prometheus/alerts.yml` と**同じもの**を使う（二重管理だが、暫定期間だけである）。
 #
@@ -564,3 +565,47 @@ groups:
               conditions:
                 # 単位は**秒**（1200 = 20 分）。キュー寿命 1800 秒（30 分）の内側で鳴らす。
                 - evaluator: { type: gt, params: [1200] }
+
+  # FR-11, NFR-21, ADR-0044, IADR-0466 (#1111): **LLM 費用の月次予算（用途別）の超過。**
+  #
+  # 🔴 **金額も単価も式に無い。** 上限は LLM ゲートウェイのゲージ `llm_budget_monthly_limit`
+  #   （設定 `Llm:Budget:MonthlyLimits`。**既定なし**）であり、式はそれと直近 30 日の `llm_cost_total` を
+  #   用途・通貨で突き合わせるだけである。**閾値（params）は 0 である** —— 式が超過した用途だけを残すので、
+  #   残った値（費用）が 0 を超えていれば超過である（金額を params へ移すと置き場が 2 つになる）。
+  # 🔴 **`noDataState: OK` である。** 金額が未設定なら右辺の系列が無く、予算内なら `>` の結果が空になる
+  #   —— **どちらも正常時が「データ無し」**であり、`NoData` にすると恒常発火する（上の `absent()` 群と同じ理由）。
+  # 🔴 **金額が未設定のあいだ本ルールは不活性である。** その間の統制は月次の手動確認の Runbook であり、
+  #   金額を初めて設定する変更が Runbook を superseded にする（併存させない）。
+  #   理由の正本は `deploy/prometheus/alerts.yml` の同名グループの前書きである。
+  - orgId: 1
+    name: llm-cost-budget
+    folder: SLO
+    interval: 1m
+    rules:
+      - uid: llm-monthly-budget-exceeded
+        title: LlmMonthlyBudgetExceeded
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM 費用が用途 {{ $labels.llm_purpose }} の月次予算を超えた（直近 30 日の累計）"
+          description: "用途 {{ $labels.llm_purpose }} の直近 30 日の LLM 費用が、所有者が設定した月次予算（Llm:Budget:MonthlyLimits）を超えた。窓は暦月ではなく直近 30 日である。Grafana の LLM Usage & Cost（uid: llm-usage）で用途別・モデル別の内訳を見ること。単価を解決できなかった呼び出し（llm_pricing_unpriced_total）が 0 でなければ金額は過小である（IADR-0466）。"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: 'sum by (llm_purpose, llm_currency) (increase(llm_cost_total[30d])) > on (llm_purpose, llm_currency) max by (llm_purpose, llm_currency) (llm_budget_monthly_limit)'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }

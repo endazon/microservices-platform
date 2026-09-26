@@ -318,6 +318,40 @@ groups:
           summary: "近接 MTA の後送がキュー寿命に達しつつある（最古 20 分超）"
           description: "deferred の最古メッセージが到着から 20 分を超えた。キュー寿命は 30 分であり、これを超えたメールは破棄される（バウンスも溜めない設定）。破棄されたパスワードリセットは利用者からは「メールが来ない」としか見えない。上流を復旧するか、リセットの申請を閉じること。しきい値は実測前の暫定値である（#1245 PR-D）。"
 
+  # FR-11, NFR-21, ADR-0044, IADR-0466 (#1111): **LLM 費用の月次予算（用途別）の超過。**
+  #
+  # 🔴 **金額はこの式に無い。** 上限は LLM ゲートウェイが設定 `Llm:Budget:MonthlyLimits`（単一の置き場は
+  #   src/platform/backend/Services/LlmGateway/appsettings.json）から読み、ゲージ `llm_budget_monthly_limit` として
+  #   出す。**金額の既定は無い** —— 計画が「月次予算の金額は定めない。実測を待って確定する」と定めており、
+  #   実装側で数字を置くと既成事実として計画へ逆流する。**単価も式に無い**（金額換算はゲートウェイ側。
+  #   `llm_cost_total` は換算済みの値である）。
+  # 🔴 **金額が未設定のあいだ、このルールは評価対象を持たず発火しない（不活性）。** ゲージの系列が無いので
+  #   右辺が空になり、`>` の結果も空になる。**それは誤りではなく、所有者が金額を決めていない状態である。**
+  #   その間の統制は docs/operations/llm-cost-monthly-review-runbook.md（月次の手動確認）であり、
+  #   **金額を初めて設定する変更が同じ変更で Runbook を superseded にする**（併存させない。
+  #   scripts/scripts.repo.test.js が「金額の設定」と「Runbook の superseded」の食い違いを落とす）。
+  #   `absent(llm_budget_monthly_limit)` のような補助ルールは**置かない** —— 未設定のあいだ恒常発火する（#1111 で却下）。
+  # 🔴 **上限は用途ごとである。総額 1 本は持たない。** 用途には利用側プロジェクト（AST）の用途が含まれ、
+  #   計画は基盤と利用側の費用を合算して 1 つの数値にすることを禁じている。`on (llm_purpose, llm_currency)` で
+  #   同じ用途・同じ通貨どうしだけを比べる（`max by` はゲートウェイのレプリカ分の重複を畳む）。
+  # 🔴 **窓は暦月ではなく直近 30 日の移動窓である。** PromQL に暦月の範囲は無い。解消（resolved）は月初ではなく
+  #   **超過分が窓から抜けたとき**に来る。保持は 35 日（compose・経路 B の `--storage.tsdb.retention.time`）で、
+  #   `retention.size=4GB` が先に効くと窓の先頭が欠けて**過小**側に倒れる（IADR-0466 §結果）。
+  # 🔴 **金額は「単価を解決できなかった呼び出し」が 0 のときだけ正しい**（該当する単価が無い呼び出しは
+  #   `llm_cost_total` に積まれない）。`llm_pricing_unpriced_total` が伸びている間、本ルールは過小に評価する。
+  - name: llm-cost-budget
+    rules:
+      - alert: LlmMonthlyBudgetExceeded
+        expr: |
+          sum by (llm_purpose, llm_currency) (increase(llm_cost_total[30d]))
+            > on (llm_purpose, llm_currency)
+          max by (llm_purpose, llm_currency) (llm_budget_monthly_limit)
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "LLM 費用が用途 {{ $labels.llm_purpose }} の月次予算を超えた（直近 30 日の累計）"
+          description: "用途 {{ $labels.llm_purpose }} の直近 30 日の LLM 費用が {{ $value }} {{ $labels.llm_currency }} となり、所有者が設定した月次予算（Llm:Budget:MonthlyLimits）を超えた。窓は暦月ではなく直近 30 日である。Grafana の LLM Usage & Cost（uid: llm-usage）で用途別・モデル別の内訳を見ること。単価を解決できなかった呼び出し（llm_pricing_unpriced_total）が 0 でなければ金額は過小である（IADR-0466）。"
+
   # --- follow-up: exporter/カスタムメトリクス配線後に有効化する（#198 注意参照） ---
   # - name: platform-messaging
   #   rules:

@@ -1,6 +1,7 @@
 using AiAnalysisService.Domain;
 using AiAnalysisService.Domain.Ports;
 using Knowledge.Contracts.Dtos;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Authz;
@@ -333,17 +334,31 @@ public class RagOrchestrator(
         {
             var scopeResp = await authzClient.PostAsJsonAsync("/authz/scope",
                 new AccessScopeRequest(userId, userAttributes), ct);
-            return (scopeResp.IsSuccessStatusCode
-                ? await scopeResp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct)
-                : null) ?? new AccessScopeResponse(userId, [], false);
+
+            // FR-05, #1378: 縮退の理由（非 2xx・空本文・不達）は WARN で出す（`AuthzScopeRestLog`）。
+            // **`Granted=false` は出さない**（正当な deny）。戻り値は従来と同じである。
+            if (!scopeResp.IsSuccessStatusCode)
+            {
+                AuthzScopeRestLog.NonSuccess(ScopeLog, scopeResp.StatusCode);
+                return new AccessScopeResponse(userId, [], false);
+            }
+
+            var resolved = await scopeResp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct);
+            if (resolved is null)
+                AuthzScopeRestLog.EmptyBody(ScopeLog, scopeResp.StatusCode);
+            return resolved ?? new AccessScopeResponse(userId, [], false);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
             // 認可サービスへの通信失敗（ネットワーク障害・タイムアウト）も deny-by-default へ縮退し、
             // 500 を伝播させない。呼び出し側のキャンセル要求は通常どおり伝播させる。
+            AuthzScopeRestLog.TransportFailure(ScopeLog, ex);
             return new AccessScopeResponse(userId, [], false);
         }
     }
+
+    // FR-05, #1378: スコープ解決の縮退を出す先（ロガー未注入の直接構築では出さない）。
+    private ILogger ScopeLog => logger ?? NullLogger<RagOrchestrator>.Instance;
 
     // FR-04, FR-07: 実効スコープで検索 → 番号付き出典へ写像 → LLM で本文生成、の共通パイプライン。
     // FR-11: 文脈文書の最高機密区分と用途を LLM ゲートウェイへ渡し、呼び出し先の切替を委ねる。
