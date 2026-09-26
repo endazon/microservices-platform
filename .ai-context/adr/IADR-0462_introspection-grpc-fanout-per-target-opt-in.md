@@ -181,6 +181,11 @@ plan_refs:
    変えることになり、移行の不変条件「挙動を変えない」を破る）。`InfiniteTimeSpan` は gRPC でも無期限へ写す（REST と同じ意味）。
 4. **収集の順序**: REST と同じく**逐次**（構成の順序を保つ）。⑤ は REST が並列だったので並列にした。いずれも「REST と同じ」である。
 
+**起動時に落とす（決定 4 の「登録」）の成立のさせ方**: ⑤ の収集器は hosted service のコンストラクタ連鎖で起動時に組まれるが、
+④ の収集器（`ToolDeclarationSource`。scoped）は ToolCatalogRefresher の周期の中で初めて組まれ、そこでの例外は「収集の一時失敗」として
+握られる（ホストは止まらない）。したがって **McpServer の Program.cs が要求を受ける前に 1 度組む**（公開構成の検証と同じ場所・同じ理由）。
+ホストが実際に起動しないことを `ToolDeclarationSourceFailFastTests` が本番の Program.cs のまま固定する（PR の AI レビュー指摘）。
+
 **宛先の前提**: 3 サービスは h2c リスナ・helm `grpcPort`・compose `Grpc__Port`／`expose`・認証をすでに持っていた（先行経路のため）。
 足したのは面と、McpServer の gRPC 宛先（helm・compose の `Mcp__GrpcServices__*`）だけである。資格情報は McpServer の既存の `mcp-server` client
 （`platform-service`。認可サービスの gRPC 経路と同じ）を使い、realm・Secret は増やしていない。helm は REST の宛先を values に持たず

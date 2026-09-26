@@ -122,6 +122,14 @@ var app = builder.Build();
 // **要求を受ける前に落とす**ことでしか「逸脱が起動時に止まる」は成立しない。
 app.Services.GetRequiredService<ToolPublicationConfigLoader>().Load();
 
+// 🔴 FR-16, NFR-16, IADR-0462（2026-09-26 追記 / #1515）: 申告の収集器も**ここで 1 度組む**。
+// `ToolDeclarationSource` は「`Mcp:GrpcServices` が構成されているのに gRPC の収集器が無い」登録の誤りを
+// コンストラクタで落とすが、初めて組まれるのは ToolCatalogRefresher の中であり、そこでの例外は
+// 「収集の一時失敗」として次の周期へ持ち越される（ホストは止まらず、Error ログだけが続く）。
+// 公開構成の検証と同じ理由で、要求を受ける前に組んで落とす。
+using (var scope = app.Services.CreateScope())
+    scope.ServiceProvider.GetRequiredService<IToolDeclarationSource>();
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<McpDbContext>();

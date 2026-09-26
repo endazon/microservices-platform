@@ -30,6 +30,8 @@ namespace McpServer.Infrastructure.ExternalServices;
 // ■ 取り消し: 呼び出し側の ct による取り消し（停止要求）だけを外へ出す（REST と同じ）。
 //
 // チャネルは宛先アドレスごとに 1 本を使い回す（HTTP/2 は多重化される。周期ごとに張り直さない）。
+// 収集は逐次なので `GetOrAdd` の生成関数が競合して余分なチャネルを作ることは無い。並列化するなら
+// `Lazy<GrpcChannel>` で包むこと（競合に負けた側のチャネルは辞書に入らず Dispose もされない）。
 public sealed class GrpcToolDeclarationCollector(
     IServiceTokenProvider tokenProvider,
     IHttpClientFactory httpClientFactory,

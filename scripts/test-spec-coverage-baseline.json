@@ -160,6 +160,7 @@
       "ServiceAccountAttributeSubsetTests",
       "ServiceAccountDocumentFilterTests",
       "ToolCatalogTests",
+      "ToolDeclarationSourceFailFastTests",
       "ToolInvocationServiceTests",
       "ToolPublicationConfigValidatorTests",
       "ToolPublicationFailFastTests"
