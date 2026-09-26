@@ -18,15 +18,12 @@ public class IntrospectionGrpcDeploymentWiringTests
 
     // 🔴 **まだ gRPC で収集しない宛先と、その理由。** ここに在る宛先は REST のまま残し、gRPC の宛先・
     // h2c リスナを配線しない（配線しても面が応答できないため）。理由が解けたら、ここから外して配線を足す。
-    private static readonly IReadOnlyDictionary<string, string> PendingGrpcTargets = new Dictionary<string, string>
-    {
-        // 変換サービスは認証を持たず、gRPC 面の `ServiceCaller` を判定できない（面は張られているが fail-closed）。
-        // 中継された利用者の資格情報を自ら検証する実装（planning#651 の裁定。別作業）が着地したら外す。
-        // ［2026-09-26 / #1520］NFR-09, ADR-0109 決定 3, IADR-0465: 認証は着地し、面は `ServiceCaller` を判定する
-        // （`ConversionService.Tests` の `Introspection_grpc_face_is_mapped_behind_ServiceCaller_and_judges_the_caller`）。
-        // 残るのは h2c リスナ・`grpcPort`・gRPC 宛先の配線だけで、IADR-0462 フォローアップ 3 の別作業である。
-        ["conversion-service"] = "認証は着地した。h2c リスナ・grpcPort・gRPC 宛先の配線が未着手（IADR-0462 フォローアップ 3）",
-    };
+    //
+    // ［2026-09-26 / #1537］IADR-0462 フォローアップ 3: 最後の保留だった conversion-service を外し、配線を足した
+    // （認証は IADR-0465・#1520 で着地済み）。**保留は 0 件**であり、以下の 4 試験は収集先 13 すべてを検査する。
+    // 一覧そのものは残す —— 宛先を段階的に移す仕組み（IADR-0462 決定 2-A）であり、次に面を持たない宛先が
+    // 収集先へ加わったとき、理由つきでここへ置けば配線の検査から一時的に外せる。
+    private static readonly IReadOnlyDictionary<string, string> PendingGrpcTargets = new Dictionary<string, string>();
 
     // compose は `Key: value`、helm は `- name: Key` の次行 `value: "..."`。どちらの書式でも引く。
     private static Dictionary<string, string> ReadMap(string file, string prefix)

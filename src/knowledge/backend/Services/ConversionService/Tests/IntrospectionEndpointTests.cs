@@ -15,6 +15,7 @@ using Grpc.Net.Client;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Routing;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Pb = Platform.Shared.Contracts.Grpc.Introspection.V1;
 
 namespace ConversionService.Tests;
@@ -51,7 +52,10 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
     // 他サービスと同じ形で判定する（従前は認可の登録が無く、どの要求も INTERNAL で落ちる fail-closed だった）。
     // s2s 無し → UNAUTHENTICATED、利用者のトークン（管理者であっても）→ PERMISSION_DENIED、
     // `platform-service` のトークン → 申告が返る。**本物の JwtBearer**（検証鍵だけテスト用）を通す。
-    // 配備の gRPC 宛先（helm・compose）の配線は IADR-0462 フォローアップ 3 の別作業であり、ここでは触らない。
+    // ［2026-09-26 / #1537］IADR-0462 フォローアップ 3: 配備の gRPC 宛先（helm・compose）・h2c リスナを配線した
+    // （配線そのものは `IntrospectionGrpcDeploymentWiringTests` が固定する）。構成情報 API の収集器は
+    // この面の応答を `IntrospectionGrpcMapping.ToDto` で DTO へ戻し、空の `service` を到達不能へ落とす ——
+    // 同じ写しで戻した申告が REST の申告と一致し、`service` を持つことを見る（輸送を変えても突合の入力が変わらない）。
     // 呼び出しは TestServer 経由（待ち受けない）。
     [Fact]
     public async Task Introspection_grpc_face_is_mapped_behind_ServiceCaller_and_judges_the_caller()
@@ -83,6 +87,13 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
         // 対照: REST の面は従来どおり資格情報なしで申告を返す（門を持たない口）。
         var rest = await _factory.CreateClient().GetAsync("/internal/introspection", ct);
         rest.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // FR-15, IADR-0462 決定 4 (#1537): 収集器と同じ写しで戻した gRPC の申告は REST の申告と同じである。
+        var restReport = await rest.Content.ReadFromJsonAsync<ServiceIntrospectionDto>(ct);
+        var grpcReport = IntrospectionGrpcMapping.ToDto(asService);
+        grpcReport.Service.Should().Be("conversion-service", "空の service は収集器が到達不能へ落とす");
+        grpcReport.Steps.Should().ContainSingle(s => s.Name == "convert", "対照: 申告が空のまま一致しているのではない");
+        grpcReport.Should().BeEquivalentTo(restReport!, o => o.WithStrictOrdering());
     }
 
     public sealed class Factory : WebApplicationFactory<Program>
