@@ -113,8 +113,22 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
 
     // テスト用 IdP の代わりに JWT を発行する。realm_access.roles は
     // KeycloakRolesClaimsTransformation が ClaimTypes.Role へ展開する（実 Keycloak トークンと同じ形）。
-    public static string IssueToken(string subject, IEnumerable<string> realmRoles)
+    // `azp`（authorized party）を与えると、実 Keycloak と同じくクライアント識別のクレームが付く（#1635）。
+    // `withUsername: false` は `profile` スコープを持たない機械クライアントの実形（`preferred_username` が無い）。
+    // realm の `aianalysis-service` は既定スコープが `roles` だけなので、実トークンはこちらの形である。
+    public static string IssueToken(
+        string subject, IEnumerable<string> realmRoles, string? azp = null, bool withUsername = true)
     {
+        var claims = new Dictionary<string, object>
+        {
+            ["sub"] = subject,
+            ["realm_access"] = new Dictionary<string, object> { ["roles"] = realmRoles.ToArray() },
+        };
+        if (withUsername)
+            claims["preferred_username"] = subject;
+        if (azp is not null)
+            claims["azp"] = azp;
+
         var descriptor = new SecurityTokenDescriptor
         {
             Issuer = Issuer,
@@ -122,12 +136,7 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
             NotBefore = DateTime.UtcNow.AddMinutes(-1),
             Expires = DateTime.UtcNow.AddMinutes(5),
             SigningCredentials = new SigningCredentials(SigningKey, SecurityAlgorithms.HmacSha256),
-            Claims = new Dictionary<string, object>
-            {
-                ["sub"] = subject,
-                ["preferred_username"] = subject,
-                ["realm_access"] = new Dictionary<string, object> { ["roles"] = realmRoles.ToArray() },
-            },
+            Claims = claims,
         };
         return new JsonWebTokenHandler().CreateToken(descriptor);
     }

@@ -3,15 +3,15 @@ title: ハイブリッド検索 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-26
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
-ids: [FR-02, FR-03, FR-05, SC-01, SC-02, UC-01]
-adrs: [ADR-0016, ADR-0057, ADR-0070, ADR-0092]
-iadrs: [IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0390, IADR-0422, IADR-0467]
-specs: [20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion]
-issues: [#336, #1116, #1118, #1193, #1247, #1253, #1254, #448, #532, #536, #642, #995]
+ids: [FR-02, FR-03, FR-05, SC-01, SC-02, UC-01, FR-19, NFR-09]
+adrs: [ADR-0086, ADR-0119, ADR-0016, ADR-0057, ADR-0070, ADR-0092]
+iadrs: [IADR-0426, IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0390, IADR-0422, IADR-0467]
+specs: [20260927_issue-1635_document-search-trusted-user-context-relay, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion]
+issues: [#1635, #336, #1116, #1118, #1193, #1247, #1253, #1254, #448, #532, #536, #642, #995]
 -->
 
 # テスト仕様書: ハイブリッド検索
@@ -144,6 +144,7 @@ issues: [#336, #1116, #1118, #1193, #1247, #1253, #1254, #448, #532, #536, #642,
 | T-86 | 主／追加コレクション用のクエリ埋め込み要求 | REST・gRPC の要求を捕まえる（`FusedQueryEmbeddingTests`） | 主は名乗らない（REST は `targetCollection: null`、gRPC は空文字）、追加だけがコレクション名を名乗る（主にも名乗らせる変異は赤）。名乗っても答えが食い違えば捨てる | クエリはそのモデルで埋める | 自動 |
 | T-87 | ゲートウェイの振り分け（`EmbeddingRouterTargetCollectionTests`・`EmbedTargetCollectionTransportTests`） | 読み先を名乗った Query／Index | Query は越境判定の後でそのコレクションの送信先へ絞られる。無効・不在なら既定へ落ちず拒否（篩の前へ移す変異は赤）。**Index では無視**（効かせる変異は赤）。プロファイルとは積。REST と gRPC で同じ答え | 越境を開かない | 自動 |
 | T-88 | Helm / compose の配線（`k8s-local-up.test.js`） | 静的検査 | retrieval の `Qdrant__FusedCollections__0` は `embedding.enabled` と同じ条件でだけ描画され、値はゲートウェイ・取り込みの Ruri コレクション名と一致。compose は既定空 | 有効化の前提 | 自動 |
+| T-89 | 本文つきのチャンク 1 点。AI 分析の client（`aianalysis-service`。実トークンの形 = 利用者名なし・`azp` あり、と `service-account-` の利用者名の形）、`platform-service` を持つ他のサービスアカウント（別プロジェクトの LLM 呼び出し用・BFF・MCP・文書・検索・グラフ）、クライアント識別の接頭辞・大小文字の変種、利用者名だけ AI 分析で `azp` が別のトークン、`azp=aianalysis-service` を持つ人のトークン（`DocumentSearchTrustedRelayTests`・`DocumentSearchRelayOptionsTests`・`DocumentSearchRelayDeploymentWiringTests`） | gRPC の検索を利用者文脈（管理者の属性つき）つき・無しで呼ぶ。信頼する中継者の集合を未構成・置き換え・空白だけで束縛する。compose・helm の AI 分析の s2s の client と realm を読む | AI 分析だけが利用者として検索でき本文が返る（陽性対照）。他はすべて `PERMISSION_DENIED` で、スコープ解決も呼ばれない。空の query でも拒否。利用者文脈の無い要求は呼び出し元を問わず `INVALID_ARGUMENT`。集合は未構成なら `aianalysis-service` だけ・構成は既定を置き換える・空白だけは誰も信じない。配備の AI 分析の client は既定の集合に入り、realm に `platform-service` 付きで在る。確認を落とす・接頭辞一致・大小文字を畳む・機械の確認を落とす変異は赤 | 利用者文脈を運べる呼び出し元 | 自動 |
 
 ## テストデータ
 

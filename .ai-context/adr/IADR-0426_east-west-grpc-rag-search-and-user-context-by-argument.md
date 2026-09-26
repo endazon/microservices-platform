@@ -2,10 +2,10 @@
 title: IADR-0426 east-west gRPC 第 11 面: RAG の検索を s2s へ移し、利用者文脈を器から拾わず引数で段まで運ぶ
 type: impl-adr
 status: Accepted
-related_ids: [FR-03, FR-04, FR-05, FR-07, FR-17, NFR-02, NFR-09, NFR-16, UC-01, UC-02, UC-10, SC-01, SC-08, ADR-0004, ADR-0029, ADR-0034, ADR-0035, ADR-0036, ADR-0043, ADR-0075, ADR-0086, ADR-0087, ADR-0088, ADR-0089, IADR-0009, IADR-0012, IADR-0044, IADR-0149, IADR-0151, IADR-0242, IADR-0253, IADR-0259, IADR-0263, IADR-0272, IADR-0283, IADR-0358, IADR-0379, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0411, IADR-0412, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0458]
+related_ids: [FR-03, FR-04, FR-05, FR-07, FR-17, NFR-02, NFR-09, NFR-16, UC-01, UC-02, UC-10, SC-01, SC-08, ADR-0004, ADR-0029, ADR-0034, ADR-0035, ADR-0036, ADR-0043, ADR-0075, ADR-0086, ADR-0087, ADR-0088, ADR-0089, ADR-0119, IADR-0009, IADR-0012, IADR-0044, IADR-0149, IADR-0151, IADR-0242, IADR-0253, IADR-0259, IADR-0263, IADR-0272, IADR-0283, IADR-0358, IADR-0379, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0411, IADR-0412, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0420, IADR-0458]
 author: claude
 created: 2026-09-11
-updated: 2026-09-25
+updated: 2026-09-27
 ---
 
 # IADR-0426: 利用者を「その場に在るもの」から拾うのをやめる
@@ -93,7 +93,7 @@ IGraphNeighborExpander.ExpandAsync(seeds, hops, user, ct)
 | 呼び出し元の主張 | 本文 `Scope`（**絞り込みとしてのみ**） | `narrow_to`（同じ関数へ渡る） |
 | 主張が無い | `GrantsAccess != true` → 空（[[IADR-0416]] 決定 5。**変えない**） | **絞り込み無し**＝権威をそのまま使う |
 | 利用者が分からない | 未認証は 401（[[IADR-0418]]） | `INVALID_ARGUMENT`（[[IADR-0417]] と同型） |
-| 認可 | realm の認証済み主体 | `ServiceCaller`（`platform-service`） |
+| 認可 | realm の認証済み主体 | `ServiceCaller`（`platform-service`）［2026-09-27 追記 / #1635］＋ **本文の利用者文脈を運べるのは許可集合の機械クライアント（既定 `aianalysis-service`）だけ**。末尾の追記 1 |
 
 🔴 **「主張が要る」という REST 面の短絡を gRPC 面へ写さない。** REST でそれが残っているのは
 [[IADR-0012]] の経緯（`Scope` を送らない呼び出し元が今日より広く見えてはならない）によるもので、
@@ -162,3 +162,44 @@ IGraphNeighborExpander.ExpandAsync(seeds, hops, user, ct)
 - Superseded by: なし
 - 作業仕様書: `.ai-context/specs/20260911_issue-1255_aianalysis-to-retrieval-search-grpc.md`
 - 通信仕様書: `docs/api/east-west-grpc.md` §11 つ目の面
+
+## 追記 1: 本文の利用者文脈を信じる呼び出し元を許可集合（既定 `aianalysis-service`）に絞る（2026-09-27 / #1635）
+
+［2026-09-27 追記 / #1635］PR #1631（#1628。`DocumentRead` の同型の穴）の監査で見つかった。決定 3 の「認可 = `ServiceCaller`」を改める。
+
+- **事実**: `ServiceCaller` は realm ロール `platform-service` だけを見る。realm では 11 のサービスアカウントがそれを持つ
+  （bff・ai-stock-trading-llm-caller・aianalysis-service・graph-service・conversion-service・retrieval-service・ingestion-service・wiki-service・
+  datasource-service・mcp-server・document-service）。どれかが `user.user_id`（と `user_attributes`）を任意の利用者にして `Search` を呼べば、
+  受け口は**名乗った利用者のスコープ**（個人資料の分岐を含む）を自分で解決し、チャンクの**本文**を返していた。管理者の属性を名乗ることもできた。
+  判定の位置（決定 3）は守られていたが、判定の**入力**を誰が運んでよいかが門で閉じていなかった。
+  実際に `Search` を呼ぶのは AI 分析の `GrpcRagSearchTransport` だけである（両ユニットと AST を走査。作業仕様書の母集合）。
+- **決定**:
+  1. **本文の `user` を信じるのは、呼び出し元が機械の主体（`MachinePrincipal.IsMachine`）で、かつクライアント識別
+     （`MachinePrincipal.ClientIdOf`。`azp` を第一に、無ければ `service-account-<clientId>` から復元）が許可集合に序数一致で含まれるときだけ。**
+     判定は共有の `MachinePrincipal`（`Platform.Shared.Infrastructure`）の 2 関数だけで書く（[[IADR-0420]]。写しを作らない）。
+     機械であることを併せて求めるのは、`azp` が人のトークンにも付くからである。
+     realm の `aianalysis-service` は既定スコープが `roles` だけで、実トークンは `preferred_username` を持たず `azp` だけを持つ ——
+     `MachinePrincipal` の腕 B で機械と判定され、`ClientIdOf` は `azp` を返す。
+  2. **許可集合は `DocumentSearch:TrustedUserContextClients`（配列）で構成する。未構成なら `aianalysis-service` だけ。構成すると既定を置き換える**
+     （足し合わせない。.NET の配列の束縛は初期値に追記するので、既定を null にして読み出し側で解決する）。空白だけの要素は捨て、1 つも残らなければ
+     誰も信じない（fail-closed）。RetrievalService 固有の型 `DocumentSearchRelayOptions` に置く —— #1631 の `DocumentRead:` の型・キーは
+     未マージであり依存しない（キーも共有しない。検索の中継者と文書読み取りの中継者は別の集合である）。
+  3. **許可集合に無い呼び出し元が `user` を付けたら `PERMISSION_DENIED`**（スコープ解決の前。空の query の早期 return より前）。拒否はクライアント識別だけを
+     警告ログに残す。**`user` の無い要求は従来どおり呼び出し元を問わず `INVALID_ARGUMENT`**（決定 3 の「利用者が分からない」。
+     機械の視野の検索を新設しない ＝ 広げない）。
+- **選ばなかった案: 機械の主体として検索する（`user` を捨てる）。** この面には元々「利用者の無い検索」の口が無い（決定 3）。読み替えると、
+  呼び出し元は利用者の視野のつもりで別の視野を受け取り、誤りに気付けない。拒否なら新しい中継者を足すには構成を 1 行足す判断が要る。
+- **ADR-0086 決定 1 との関係**: 決定 1 は運び方（本文で運ぶ）を定め、§結果は「中継サービスが正直であること」への依存を受け入れた。
+  受け入れたのは利用者の権限で動く中継者への依存であって、`platform-service` を持つ全主体への依存ではない。依存を実在する中継者（AI 分析）へ
+  狭めても運び方は変わらない（決定 1・決定 2 の形はそのまま）。
+- **ADR-0119 決定 3 との関係**: 決定 3 の主体の 2 種目「east-west で本文が運んだ利用者」は、本追記の後は**許可集合の中継者が運んだ利用者**に限られる。
+  受け付けた呼び出しでは主体の規則がそのまま成り立つ。
+- **`ai-stock-trading-llm-caller` の `platform-service`**: 外せない（AST の LLM 呼び出しが LlmGateway の `ServiceCaller` を通る。#1628 の作業仕様書と同じ）。
+  realm は変えない。本面の穴は本追記の許可集合で閉じる。
+- **配備の順番**: helm・compose とも AI 分析の s2s の client は `aianalysis-service`（`services.aianalysis.serviceToken.clientId` / `ServiceToken__ClientId`）で、
+  既定の許可集合と一致する。**retrieval-service だけを先に配備してよい**（AI 分析の変更は無い）。AI 分析の client 名を変える配備は、
+  **先に retrieval-service の許可集合へ足すこと** —— 逆順だと AI 分析の gRPC 検索が `PERMISSION_DENIED` になり、決定 4 の縮退の枝
+  （警告を出して引用なしの回答）へ静かに落ちる。REST 輸送へ戻した配備には影響しない。値の一致（compose・helm・realm）は
+  `DocumentSearchRelayDeploymentWiringTests` が固定する。
+- **残るもの**: 同じ RetrievalService の `AttributeValues/ListValues`（呼び出し元は BFF。返すのは属性値）も本文の `user_id` を全 `ServiceCaller` から信じる。
+  別の issue で扱う。
