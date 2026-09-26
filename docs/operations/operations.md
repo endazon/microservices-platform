@@ -7,11 +7,11 @@ updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17]
-adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473]
-specs: [20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group]
-issues: [#1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672]
+ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17]
+adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470]
+specs: [20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group]
+issues: [#1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672]
 -->
 
 # 運用仕様書
@@ -1146,6 +1146,44 @@ QDRANT_URL=http://localhost:6333 bash scripts/verify-qdrant-fulltext-index.sh --
 - **エスカレーション/通知**: **Alertmanager の配備後**に受信先（メール/チャット）と担当・当番を運用体制に応じて定める（環境ごと）。
   **配備までは自動通知が無い** —— 一次検知は Prometheus UI / Grafana の目視である。
 - **MTTR 目標（30 分）**: アラート（検出 5 分以内）→ Runbook 一次対応 → 復旧、の各段を Grafana/Tempo/Loki で追跡する。
+
+### 統合スタックの所要時間の判定（T-25）が赤になった —— 偶然の赤の確かめ方と月次の記録（NFR / #1617）
+
+統合スタック（`integration-stack.yml`）のパスワードリセットの門は、実在／非実在の申請の所要時間を
+順位和検定（両側・有意水準 1%。反復 3〔1 回目は暖機〕× 片側 12 標本）で比べる。
+**系統差が無くても約 100 回に 1 回は赤になる**（偶然の赤）。赤はすべて CI の失敗の自動起票
+（`ci-failure` ラベル・マーカー `ci-failure:integration-stack`）で issue になる。
+**起票の条件は置かない。確かめの最初の手順は、同じコミットでの 1 回だけの再実行である。**
+
+| 事象 | 検知 | 一次対応 |
+| --- | --- | --- |
+| T-25 だけが赤（ほかの門はすべて緑） | 自動起票の issue。`stack` の手順「T-25 only red (chance-red candidate)」が success | **自動**: `integration-stack-rerun.yml` が同じ実行を 1 回だけ再実行し（失敗したジョブの再実行＝同じコミット・同じ定義）、再実行の結果を同じ issue へ書く。人が行うのは下の「閉じる前の確かめ」だけ |
+| T-25 と別の門も赤 | 同上（「T-25 only red」は skipped） | **偶然の赤として扱わない。** 自動の再実行もしない。ほかの門の失敗を先に調べる |
+| 自動の再実行が起きない・結果が書かれない | issue に再実行のコメントが無い／`rerun` ジョブが赤 | 手で 1 回だけ再実行する: `gh run rerun <run id> --failed --repo endazon/microservices-platform`。結果（両方の attempt の p と W・実行の URL）を issue へ書く |
+
+**偶然の赤として issue を閉じる前の確かめ**（自動のコメントがあっても人が行う）:
+
+1. 再実行（同じ実行の attempt 2）が**合格**したこと。
+2. 🔴 **同じ実行（attempt 1）で、ほかの門が失敗していないこと。** `gh run view <run id> --attempt 1` の手順一覧で、
+   パスワードリセットの門以外の門と 2 つの投入がすべて成功していること。パスワードリセットの門の中でも、
+   失敗が `[T-25][所要時間] … 順位和検定（両側）で p=…` の 1 件だけであること（`--log-failed` で見る）。
+   自動の再実行はこの条件を満たしたときにしか起きないが、手で再実行したときは自分で確かめる。
+3. 🔴 **issue に、ほかの実行の失敗が積まれていないこと。** マーカーはワークフロー単位なので、issue が開いている間に落ちた
+   ほかの実行（本物の失敗を含む）も、同じ issue へのコメントとして集まる。ほかの実行の失敗があれば、それを片付けるまで閉じない。
+4. 記録（両方の attempt の p と W・実行の URL）が issue に残っていること（自動のコメントに入る。手で再実行したときは書く）。そのうえで閉じる。
+
+- **再実行も赤なら偶然の赤ではない**（偶然の赤が同じ条件で 2 回続くのは約 1 万回に 1 回）。床の値の引き直しの契機として調べ、
+  **計画へ環流する**。issue は閉じない。
+- **再実行は赤の実行ごとに 1 回まで**（再実行の再実行はしない）。自動の再実行が完了しなかったとき
+  （待機中に後続の push の実行へ置き換えられて取り消された等。同時実行は 1 本）に限り、手で 1 回だけやり直す。
+- **手動実行（`workflow_dispatch`）の赤は自動で再実行しない** —— `istio=false` の床なしの比較実行があり得るからである。
+  床を入れた既定の手動実行が赤なら、上と同じ手順を手で行う。
+- **偶然の赤と確かめた実行は、「直近 7 日間の定期実行がすべて合格」の窓で不合格に数えない。**
+
+**月次の記録**: 月に 1 回、`node scripts/t25-monthly-summary.js --month <YYYY-MM>` を実行し（GitHub の Actions の API を読むだけ。
+稼働クラスタへは触れない）、出力を順位和検定の実装の意思決定記録への日付つき追記として残す。数えるのは
+検査まで届いた件数・不合格（うち偶然の赤／再実行も赤／再実行なし）・評価不能・p の中央値・一様分布からの KS 距離（と目安 1.36/√n）である。
+**計画へ環流するのは、KS 距離が目安を超えたときと、再実行も赤が 1 件以上あったときだけである。**
 
 ## 定期点検（年次）
 

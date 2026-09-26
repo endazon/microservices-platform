@@ -745,6 +745,39 @@ function evaluateTimingConsistency(input) {
   return { verdict: TIMING_VERDICT.PASS, failures, lines, perRepetition, rankSum };
 }
 
+/**
+ * ［2026-09-27 / 計画 ADR-0118 決定 2 / #1617］**この実行の失敗が「T-25 の順位和検定の赤」ただ 1 件か**。**純関数**。
+ *
+ * 偶然の赤（系統差が無くても約 1% で出る）の確かめ方は「同じコミットで 1 回だけ再実行する」である。
+ * 自動の再実行は、**同じ門の中の T-10 / T-16 / T-17 / T-20 や前提の失敗が 1 件でも混ざっていれば起こさない**。
+ * それらは偶然では出ない赤であり、再実行の合格で「偶然の赤だった」と閉じてはならないからである。
+ *
+ * - `true` になるのは、`timing` が順位和検定の `不合格`（p < `TIMING_ALPHA`）で、失敗がその 1 件だけのときに限る。
+ * - `評価不能`・判定の前提（反復・標本数・格子）の `不合格`・申請を通せなかった標本は `false`（偶然の赤ではない）。
+ *
+ * @param {{failures:string[], timing?:{verdict:string, failures:string[], rankSum?:{p:number}}}} r `run()` の戻り値
+ */
+function isTimingOnlyRankSumRed(r) {
+  const timing = r && r.timing;
+  if (!timing || timing.verdict !== TIMING_VERDICT.FAIL || !timing.rankSum) return false;
+  if (!(typeof timing.rankSum.p === 'number' && timing.rankSum.p < TIMING_ALPHA)) return false;
+  if (!Array.isArray(timing.failures) || timing.failures.length !== 1) return false;
+  return Array.isArray(r.failures) && r.failures.length === 1 && r.failures[0] === timing.failures[0];
+}
+
+/**
+ * ［#1617］ワークフローの手順の出力（`$GITHUB_OUTPUT`）へ書く行。**純関数**（書き込みは main が行う）。
+ * integration-stack.yml の「T-25 だけの赤」の手順が `t25_only_red` を読む。p と W は再実行の記録に使う。
+ */
+function timingStepOutputs(r) {
+  const rs = r && r.timing && r.timing.rankSum;
+  return [
+    `t25_only_red=${isTimingOnlyRankSumRed(r) ? 'true' : 'false'}`,
+    `t25_p=${rs ? formatP(rs.p) : ''}`,
+    `t25_w=${rs ? rs.w : ''}`,
+  ];
+}
+
 /** 本文に現れる URL をすべて拾う（末尾の句読点は落とす）。 */
 function extractUrls(text) {
   const found = String(text || '').match(/https?:\/\/[^\s<>"'）)]+/g) || [];
@@ -1212,6 +1245,8 @@ async function run() {
       + `（**1 回目は暖機として捨てる**。判定は暖機を除く反復をまとめた順位和検定（両側・有意水準 ${TIMING_ALPHA}）。自己対照は評価不能の判定にだけ使う）`);
     for (const line of timing.lines) notices.push(line);
     failures.push(...timing.failures);
+    // #1617: 「失敗が T-25 の順位和検定の赤ただ 1 件か」を main が判定できるように、判定の結果ごと返す。
+    return { failures, notices, verified: 'open', timing };
   }
   return { failures, notices, verified: 'open' };
 }
@@ -1753,6 +1788,46 @@ function selfTest() {
     assert.ok(c && c.publicClient === false, '確認: confidential の標準フロークライアントが選ばれる');
   });
 
+  // ---- #1617 / 計画 ADR-0118 決定 2: 「T-25 の順位和検定の赤ただ 1 件」の判定（自動の再実行の前提）-------------
+  {
+    const tw = (xs) => xs.concat(xs);
+    const redRep = () => ({ existing: tw([35, 36, 37, 37, 38, 39]), absent: tw([18, 19, 19, 19, 20, 21]) });
+    const greenRep = () => ({ existing: tw([150, 152, 150, 152, 150, 152]), absent: tw([151, 151, 151, 151, 151, 151]) });
+    const wideRep = () => ({ existing: tw([10, 40, 10, 40, 10, 40]), absent: tw([10, 40, 10, 40, 10, 40]) });
+    const red = evaluateTimingConsistency({ repetitions: [redRep(), redRep(), redRep()] });
+    const green = evaluateTimingConsistency({ repetitions: [greenRep(), greenRep(), greenRep()] });
+    const wide = evaluateTimingConsistency({ repetitions: [wideRep(), wideRep(), wideRep()] });
+    const short = evaluateTimingConsistency({ repetitions: [redRep(), redRep()] });
+
+    ok('🔴 #1617: 失敗が T-25 の順位和検定の赤ただ 1 件のときだけ true（再実行の候補）', () => {
+      assert.strictEqual(isTimingOnlyRankSumRed({ failures: [...red.failures], timing: red }), true);
+    });
+    ok('🔴 #1617: 同じ門の T-10 / T-16 / T-17 の失敗が混ざれば false（偶然の赤として再実行しない）', () => {
+      for (const other of ['[T-10] 実在／非実在でステータスが違う', '[T-16] 本文にリンク以外の URL がある', '[前提] 捕捉用 MTA を読めない']) {
+        assert.strictEqual(isTimingOnlyRankSumRed({ failures: [other, ...red.failures], timing: red }), false, other);
+      }
+      // 申請を通せなかった標本（T-25 の札でも偶然ではない）
+      const lost = '[T-25][所要時間] 反復 2 の 3 標本目で申請を通せなかった: timeout';
+      assert.strictEqual(isTimingOnlyRankSumRed({ failures: [lost, ...red.failures], timing: red }), false);
+    });
+    ok('#1617: 評価不能・判定の前提の不合格・合格・T-25 まで届かない実行は false', () => {
+      assert.strictEqual(wide.verdict, TIMING_VERDICT.INCONCLUSIVE);
+      assert.strictEqual(isTimingOnlyRankSumRed({ failures: [...wide.failures], timing: wide }), false, '評価不能');
+      assert.strictEqual(short.verdict, TIMING_VERDICT.FAIL);
+      assert.strictEqual(isTimingOnlyRankSumRed({ failures: [...short.failures], timing: short }), false, '反復不足（p が無い不合格）');
+      assert.strictEqual(isTimingOnlyRankSumRed({ failures: [], timing: green }), false, '合格');
+      assert.strictEqual(isTimingOnlyRankSumRed({ failures: ['[前提] kubectl が無い'] }), false, 'T-25 まで届かない');
+      assert.strictEqual(isTimingOnlyRankSumRed(null), false);
+    });
+    ok('#1617: 手順の出力は t25_only_red / t25_p / t25_w の 3 行（赤では p と W を載せる）', () => {
+      const out = timingStepOutputs({ failures: [...red.failures], timing: red });
+      assert.strictEqual(out[0], 't25_only_red=true');
+      assert.ok(/^t25_p=\S+$/.test(out[1]) && out[1] !== 't25_p=', out[1]);
+      assert.strictEqual(out[2], `t25_w=${red.rankSum.w}`);
+      assert.deepStrictEqual(timingStepOutputs({ failures: ['[前提] x'] }), ['t25_only_red=false', 't25_p=', 't25_w=']);
+    });
+  }
+
   console.log(`[check-password-reset-mail] self-test OK: ${n} 件`);
 }
 
@@ -1771,6 +1846,8 @@ async function main() {
 
   const r = await run();
   for (const notice of r.notices) console.log(notice);
+  // #1617: 手順の出力は**合否を出す前に**書く（赤の手順の出力も後続の `if:` から読める）。Actions の外では書かない。
+  if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `${timingStepOutputs(r).join('\n')}\n`);
   if (r.failures.length > 0) {
     console.error(`[check-password-reset-mail] ${r.failures.length} 件の失敗:`);
     for (const f of r.failures) console.error(`\n  - ${f}`);
@@ -1816,6 +1893,8 @@ module.exports = {
   makeAbsentUsernameOfLength,
   evaluateTimingPair,
   evaluateTimingConsistency,
+  isTimingOnlyRankSumRed,
+  timingStepOutputs,
   rankSumTest,
   median,
   splitAlternating,

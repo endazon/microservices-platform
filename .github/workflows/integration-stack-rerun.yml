@@ -1,0 +1,82 @@
+# integration-stack の T-25（所要時間の順位和検定）の偶然の赤を、同じコミットの 1 回の再実行で確かめる
+# —— SC-15 / NFR-13 / 計画 ADR-0118 決定 2・3 / IADR-0470（#1617）
+#
+# ■ なぜ要るか
+#
+# T-25 は有意水準 1% の検定なので、系統差が無くても約 100 回に 1 回は赤になる（計画 ADR-0113 §結果）。
+# 計画 ADR-0118 は「赤はすべて起票する。確かめの最初の手順は同じコミットでの 1 回だけの再実行」と裁定した。
+# 合格なら偶然の赤として記録して閉じ、また赤なら床の引き直しの契機として調べる（計画へ環流する）。
+#
+# ■ 仕組み（判定は scripts/t25-rerun-on-chance-red.js の純関数 `decide`。自己試験が場面ごとに固定する）
+#
+# - Integration Stack の run が終わるたびに起動する（workflow_run: completed）。
+# - attempt 1 が赤で、integration-stack.yml の「T-25 only red」の手順が success（＝パスワードリセットの門の失敗が
+#   T-25 の順位和検定の赤ただ 1 件で、ほかの門はすべて緑）なら、`gh run rerun <id> --failed` で**同じ run の新しい attempt**
+#   を 1 回だけ起こし、自動起票の issue（マーカー ci-failure:integration-stack）へ記録する。
+#   🔴 **workflow_dispatch ではなく rerun にするのは、同じコミットと同じワークフロー定義を保証するため**である
+#   （dispatch は ref しか取れず、その間に develop が進めば別のコミットを測る）。
+# - その attempt 2 が終わると再び起動し、attempt 1 が上の条件を満たしていたときだけ結果を同じ issue へ書く。
+# - 🔴 **attempt 3 以降には何もしない。再実行の再実行はしない。** ジョブの if: と script の両方で止める。
+# - 🔴 **issue は閉じない。** マーカーはワークフロー単位なので、開いている issue には他の run の本物の失敗も集まる。
+#   閉じる前に人が他のコメントを見る（手順は docs/operations/operations.md「障害対応」）。
+# - 手動実行（workflow_dispatch）の赤は対象外 —— `istio=false` の床なしの比較実行があり得る。手で確かめる。
+#
+# ■ 権限
+#
+# `actions: write` は再実行（POST /actions/runs/{id}/rerun-failed-jobs）、`issues: write` はコメント。
+# 読み取り（run・attempt のジョブ・ジョブのログ・issue）は同じトークンで足りる。
+# **PR の CI からは起動しない**（workflow_run は既定ブランチの定義で動く）ので、必須チェックにはならない。
+#
+# ■ 限界（受け入れたもの）
+#
+# - integration-stack は同時実行 1 本（cancel-in-progress: false）なので、再実行の attempt は待機に入り得る。
+#   待機中に後続の push の run が来ると、待機中の方が取り消されることがある。そのときは「再実行が完了しなかった」と
+#   issue へ書き、手で 1 回だけ再実行する（script が手のコマンドを添える）。
+# - 再実行を起こせなかった（API の拒否など）ときは、手で打つコマンドを issue へ書いてこのジョブを赤にする。
+name: Integration Stack Chance-Red Rerun
+
+on:
+  workflow_run:
+    workflows: [Integration Stack]
+    types: [completed]
+    # #1617 監査 R1（多層防御）: head が develop の run だけで起動する（push と schedule は develop だけ）。
+    # script の `decide` も head のブランチと head のリポジトリ（フォークでないこと）を確かめ直す。
+    branches: [develop]
+
+permissions:
+  contents: read
+
+# 同じ run の同じ attempt について 1 本だけ。
+concurrency:
+  group: integration-stack-rerun-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+  cancel-in-progress: false
+
+jobs:
+  rerun:
+    name: t25-chance-red-rerun
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # 🔴 真理値表は scripts/scripts.repo.test.js の #1617 が評価して固定する。
+    # attempt 1 は赤のときだけ・attempt 2 は結論に依らず（結果を書く）・attempt 3 以降は起動しない。
+    # head は develop で、head のリポジトリがこのリポジトリであること（#1617 監査 R1。上の branches: と script の二重）。
+    if: ${{ github.event.workflow_run.head_branch == 'develop' && github.event.workflow_run.head_repository.full_name == github.repository && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'schedule') && ((github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.conclusion == 'failure') || github.event.workflow_run.run_attempt == 2) }}
+    permissions:
+      contents: read
+      actions: write
+      issues: write
+    steps:
+      # 既定ブランチの定義と script を使う（workflow_run の既定。赤の run のコミットは checkout しない）。
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Self-test the chance-red rerun decision
+        run: node scripts/t25-rerun-on-chance-red.js --self-test
+      - name: Rerun once on a T-25-only red / record the rerun result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: node scripts/t25-rerun-on-chance-red.js --run-id "$RUN_ID" --attempt "$RUN_ATTEMPT" --repo "$GITHUB_REPOSITORY" --apply
