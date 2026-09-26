@@ -144,6 +144,15 @@ data:
             annotations:
               summary: "SLO の評価対象が無い: 近接 MTA のキュー長の系列が存在しない"
               description: "mail-relay のキュー長が無い。滞留のアラートは空ベクタになり発火せず、上流停止が無監視になる。exporter サイドカーの不在・spool の読み取り失敗・collector の prometheus receiver の欠落・NetworkPolicy による遮断を疑う。"
+          # SC-15, NFR-21, ADR-0111 フォローアップ 3 (#1544): 下の reset-floor-availability 群の評価対象。
+          # 🔴 up は scrape ごとに必ず出る（失敗時も 0）。不在は「receiver が無い・collector が居ない」＝見ていない。
+          - alert: ResetFloorUpSeriesAbsent
+            expr: absent(up{job="reset-floor"})
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: 'SLO の評価対象が無い: up{job="reset-floor"} の系列が存在しない'
+              description: "床の器を見る up の系列が無い。器の全滅のアラートは空ベクタになり発火しない。otel-collector の prometheus/reset-floor receiver の欠落か collector の停止を疑う。"
       # FR-10, SC-10, ADR-0006, ADR-0076 決定 3 (#1246): ナレッジ健全性の**生産者**が居ないことを見る。
       # 🔴 上の群と式が違う（`absent()` ではなく `absent_over_time(...[2h])`）。生産は周期駆動で
       #   周期は 1 時間であり、`absent()` の既定 5 分 lookback では平常時も鳴り続ける。2 周期ぶんで見る。
@@ -200,6 +209,19 @@ data:
             annotations:
               summary: "近接 MTA の後送がキュー寿命に達しつつある（最古 20 分超）"
               description: "deferred の最古メッセージが到着から 20 分を超えた。キュー寿命は 30 分であり、超えたメールは破棄される。破棄されたパスワードリセットは利用者からは「メールが来ない」としか見えない。しきい値は暫定値である。"
+      # SC-15, NFR-05, NFR-21, ADR-0111（決定 2・3・フォローアップ 3）, IADR-0432 (#1544): リセット申請の床の器に
+      #   ready な endpoint が無い（申請の POST はすべて 503＝閉じた状態。予備の経路は無い）。
+      #   otel-collector の prometheus receiver（job: reset-floor）が器の **Service** の /metrics を取り、届かなければ up=0。
+      #   器は 2 レプリカ ＋ PDB なので 1 つ落ちただけでは鳴らない。理由の正本は compose 側の同名グループの前書きである。
+      - name: reset-floor-availability
+        rules:
+          - alert: ResetFloorNoReadyEndpoint
+            expr: up{job="reset-floor"} == 0
+            for: 2m
+            labels: { severity: critical }
+            annotations:
+              summary: "リセット申請の床の器に ready な endpoint が無い（申請はすべて 503＝閉じた状態）"
+              description: "otel-collector から器の Service の /metrics に 2 分間届かない。器が全滅し、パスワードリセットの申請はすべて 503 になっている（実在・非実在とも同じ 503）。器を戻すこと。利用者は管理者の一時パスワード発行で復旧する。本番で RESET_FLOOR=0 を退路に使わない。"
       # FR-11, NFR-21, ADR-0044, IADR-0466 (#1111): LLM 費用の月次予算（用途別）の超過。
       # 🔴 **金額も単価も式に無い。** 上限はゲートウェイのゲージ `llm_budget_monthly_limit`（設定
       #   `Llm:Budget:MonthlyLimits`。既定なし）。**未設定のあいだ評価対象を持たず発火しない（不活性）。**
