@@ -130,3 +130,20 @@ checkout 列は `persist-credentials: false` を付けたか（✓）／付け�
 - `node scripts/check-workflow-job-refs.js` / `check-ai-workflow-config.js`（`STRICT_AI_WORKFLOW_CONFIG=1`）/ `check-action-versions.js --dir .github/workflows --compare-with-ref origin/develop`
 - 20 ファイルの YAML 構文（スクラッチの `yaml@2.9.0` で解析。コミットしない）
 - PR の `gh pr checks` と `claude-review` のコメント
+
+## ［2026-09-26 追記 / #1588］`claude-review` の `persist-credentials: false` の理由は誤りだった・読み取りのスコープも固定した
+
+- 🔴 **上の表の `claude-code-review.yml` の行の「残すと許可済みの `cat` でトークンを読める」は誤りである。** 固定している
+  `anthropics/claude-code-action@cfc3eb22…` は起動時に `replaceCheckoutCredentials`（`src/github/operations/git-config.ts`）で
+  checkout の extraheader を消したうえで、`origin` を `https://x-access-token:<github_token>@github.com/…` へ書き換える
+  （`allowed_non_write_users` を使わない構成の分岐。tag / agent の両モードとも `use_commit_signing` の有無によらず呼ぶ）。
+  `github_token` は `secrets.GITHUB_TOKEN` なので、**同じトークンが `.git/config` に残る**。同じ値は step の env（`GH_TOKEN`）にも在る。
+  したがって `persist-credentials: false` は `claude-review` では**トークンを隠していない**（害も無い）。
+  ワークフローの注記を正し、設定は #1581 の一律の規則（`contents: write` を持たないジョブの checkout は資格情報を残さない）に揃えるために残した。
+- 許可する道具を絞ってトークンを隠す案（`Bash(cat:*)` を外して Read にパスの制限を掛ける等）は**採らなかった**:
+  `.git/config` を読める道具は `cat` だけではなく（Read・`grep`・`rg`・`head`・`tail`・`awk`）、`Bash(node:*)` は任意のコードを走らせて
+  env の `GH_TOKEN` も読める。どれもレビュー（差分の読解・検査器の実走）に要る。削っても隠せず、レビューだけが壊れる。
+  トークンを縛っているのはジョブの `permissions`（最小限）とジョブ終了での失効である。**残る案は #1588 の作業仕様書に follow-up として記録した。**
+- 本仕様書の「採らなかったこと」の `ci-failure-issue.yml` の `actions: read` は #1588 で足した（呼び出し側 6 本と `report` ジョブを同時に）。
+  `scripts/scripts.repo.test.js` の表は `WRITE_JOBS`（書き込みだけ）から `JOB_SCOPES`（`contents: read` 以外のすべてのスコープ）へ広げ、
+  要る読み取りを外しても落ちるようにした。作業仕様書: `.ai-context/specs/20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes.md`

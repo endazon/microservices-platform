@@ -457,3 +457,17 @@ PR 時点で SAST の指摘が一切出なくなる。**`paths:` を持つため
 >   `{ contents: read, issues: write }` を上限に、`report` ジョブが同じものを求める（上限を超えない）。
 > - リポジトリの既定を `read` へ下げるかは**リポジトリ設定の変更であり、利用者の判断とする**（本追記は提案に留める。下げても本追記の YAML はそのまま効く）。
 >   作業仕様書: `.ai-context/specs/20260926_1581_workflow-token-permissions.md`
+
+> **［2026-09-26 追記 / #1588］読み取りのスコープも表で固定し、`ci-failure-issue.yml` に `actions: read` を与える。`claude-review` の資格情報の記述を正す。**
+>
+> - 表の広げ方: #1581 の表（`scripts/scripts.repo.test.js`）は書き込みだけを固定していた。要る読み取り（`ci-latency-watch` の `checks: read` /
+>   `pull-requests: read` 等）を外しても PR の CI は緑のまま通り、週次・日次の実行で初めて落ちる。**表を「`contents: read` 以外のすべてのスコープ」へ広げ**、
+>   足しても外しても落ちるようにした（ジョブ単位で `contents` を書かない＝ none の形も表と違えば落ちる）。
+> - `ci-failure-issue.yml`: `report` ジョブは失敗ジョブ名を `listJobsForWorkflowRun` で引くが、`actions: read` が無く 403 を警告へ倒していた
+>   （起票の本文から失敗ジョブ名が落ちる）。**`report` ジョブと呼び出し側 6 本の `report-failure` に `actions: read` を同時に足した**。
+>   上の #1581 追記の「上限は `{ contents: read, issues: write }`」は `{ contents: read, issues: write, actions: read }` へ変わる。
+>   呼び出し側が与える範囲と `report` の要求の一致も同じ試験が突き合わせる（要求が上限を超えると呼び出し側の run が起動時に失敗するため）。
+> - `claude-review` の `persist-credentials: false`: #1581 の作業仕様書とワークフローの注記は「残すと `cat` でトークンを読める」と書いたが、
+>   固定している claude-code-action は `origin` をトークン入りの URL へ書き換えるので、**`.git/config` にはトークンが残る**（env の `GH_TOKEN` にも在る）。
+>   設定は害が無く一律の規則に揃えるため残し、注記と作業仕様書（日付つき追記）を正した。許可する道具を絞る案は隠せないうえレビューを壊すので採らない。
+>   作業仕様書: `.ai-context/specs/20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes.md`

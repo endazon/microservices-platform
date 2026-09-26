@@ -82,10 +82,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # NFR, IADR-0232 (#1581): 資格情報を .git/config へ残さない。レビューは push せず
-          # （contents: read）、`git fetch` は public リポジトリなので認証なしで通る。残すと、
-          # 許可済みの `cat` で作業ツリーのトークンを読めてしまう。PR 本文・コメントの投稿は
-          # アクションが github_token で API を叩くので checkout の資格情報に依らない。
+          # NFR, IADR-0232 (#1581, #1588): checkout 自身の資格情報（extraheader）を .git/config へ残さない。
+          # レビューは push せず（contents: read）、`git fetch` は public リポジトリなので認証なしで通る。
+          # 🔴 **これで作業ツリーからトークンが消えるわけではない**（#1581 の「残すと `cat` で読める」は誤りで、
+          #    #1588 で正した）。固定している claude-code-action（cfc3eb22…）は起動時に
+          #    `replaceCheckoutCredentials` で extraheader を消したうえで、`origin` を
+          #    `https://x-access-token:<github_token>@github.com/…` へ書き換える（allowed_non_write_users を
+          #    使わない構成の既定の分岐）。github_token は下の secrets.GITHUB_TOKEN なので、**同じトークンが
+          #    .git/config に残る**。同じ値は step の env（GH_TOKEN）にも在り、許可済みの Read・`node` からも読める。
+          #    許可する道具を削ってもトークンは隠せない（`cat` を外しても Read・grep・`node` が残り、どれも
+          #    レビューに要る）。トークンを縛っているのは本ジョブの permissions（最小限の範囲）とジョブ終了での失効である。
+          # 本設定は害が無く、「contents: write を持たないジョブの checkout は資格情報を残さない」という
+          # #1581 の一律の規則（scripts.repo.test.js が固定）に揃えるために残す。
           persist-credentials: false
           fetch-depth: 0
           # ここで token を上書きしないこと（キット由来の注意。上書きした資格情報は
