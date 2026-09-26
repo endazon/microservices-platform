@@ -129,9 +129,9 @@ public class LlmGatewayGrpcDiagramCoderTests
         result.Reason.Should().Be("llm-call-failed");
     }
 
-    // T-45 (#1621), UC-06 例外フロー: gRPC の期限切れ・取り消しは `RpcException(DeadlineExceeded / Cancelled)`
+    // FR-12 テスト仕様 T-45 (#1621), UC-06 例外フロー: gRPC の期限切れ・取り消しは `RpcException(DeadlineExceeded / Cancelled)`
     // で表れる（チャネルは `ThrowOperationCanceledOnCancellation` を立てていない）。
-    // **呼び出し元の ct が立っていなければ**、時間切れも輸送の失敗として画像保持へ畳む（REST の T-44 と同じ境界）。
+    // **呼び出し元の ct が立っていなければ**、時間切れも輸送の失敗として画像保持へ畳む（REST の FR-12 T-44 と同じ境界）。
     [Theory]
     [InlineData(StatusCode.DeadlineExceeded)]
     [InlineData(StatusCode.Cancelled)]
@@ -147,7 +147,7 @@ public class LlmGatewayGrpcDiagramCoderTests
         result.Reason.Should().Be("llm-call-failed");
     }
 
-    // T-45 の対照 (#1621): **呼び出し元（メッセージ消費）の取り消しは畳まずに外へ出す。**
+    // FR-12 T-45 の対照 (#1621): **呼び出し元（メッセージ消費）の取り消しは畳まずに外へ出す。**
     // 呼び出し元の ct が生成クライアントへ渡っていること（`CallOptions.CancellationToken`）も併せて見る ——
     // 渡っていなければ、`!ct.IsCancellationRequested` の絞りは実際の取り消しと結び付かない。
     [Fact]

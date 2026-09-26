@@ -118,7 +118,7 @@ public class LlmGatewayDiagramCoderTests
         result.Reason.Should().Be("llm-call-failed");
     }
 
-    // T-44 (#1621), UC-06 例外フロー「図コード化（LLM）の失敗は画像保持へ縮退」:
+    // FR-12 テスト仕様 T-44 (#1621), UC-06 例外フロー「図コード化（LLM）の失敗は画像保持へ縮退」:
     // **LLM ゲートウェイの時間切れも呼び出し失敗である。** `HttpClient.Timeout` の経過は
     // `TaskCanceledException`（`OperationCanceledException` の派生）で表れ、呼び出し元の ct は立っていない。
     // 🔴 従前は型だけで絞っており（`ex is not OperationCanceledException`）、時間切れ 1 回で正規化全体が失敗していた。
@@ -138,7 +138,7 @@ public class LlmGatewayDiagramCoderTests
         result.Reason.Should().Be("llm-call-failed");
     }
 
-    // T-44 の器の確認: 上の試験が注入しているのは**本物の時間切れの形**である
+    // FR-12 T-44 の器の確認: 上の試験が注入しているのは**本物の時間切れの形**である
     // （`TaskCanceledException`・内側に `TimeoutException`・呼び出し元の ct は立っていない）。
     // これが崩れると、上の試験は時間切れではない何かを畳んで緑になり得る。
     [Fact]
@@ -158,7 +158,7 @@ public class LlmGatewayDiagramCoderTests
         ct.IsCancellationRequested.Should().BeFalse();
     }
 
-    // T-44 の対照 (#1621): **呼び出し元（メッセージ消費）の取り消しは畳まずに外へ出す。**
+    // FR-12 T-44 の対照 (#1621): **呼び出し元（メッセージ消費）の取り消しは畳まずに外へ出す。**
     // 要求の途中で呼び出し元の ct を取り消すと、`HttpClient` はその ct を運ぶ `TaskCanceledException` を投げる。
     // 画像保持へ畳むと、停止要求の最中に図を画像として保管し、変換を「成功」として記録してしまう。
     [Fact]

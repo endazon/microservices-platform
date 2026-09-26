@@ -12,7 +12,7 @@ using Wolverine;
 
 namespace ConversionService.Tests.Features.ConversionJobs.Normalize;
 
-// T-46 / T-47 (#1621) —— FR-12, UC-06 例外フロー「図コード化（LLM）の失敗は画像保持へ縮退し、
+// UC-06 テスト仕様 T-46 / T-47 (#1621) —— FR-12, UC-06 例外フロー「図コード化（LLM）の失敗は画像保持へ縮退し、
 // 後日の人手補正・再登録でコード化する」, ADR-0012, IADR-0008 決定 B-2:
 // **LLM ゲートウェイの時間切れで、メッセージ消費の正規化全体が失敗しないこと**を、受け口から端まで測る。
 //
@@ -23,7 +23,7 @@ namespace ConversionService.Tests.Features.ConversionJobs.Normalize;
 //
 // 🔴 従前は図のコード化が例外の型だけで絞っており、`HttpClient.Timeout` の `TaskCanceledException` が
 // 受け口まで漏れて、ジョブは `failed`（再試行 → 使い切ればデッドレター）になっていた。
-// **コード化の単体試験（T-44）だけでは「正規化が続く」ことは言えない**ので、端から端の形でも置く。
+// **コード化の単体試験（FR-12 T-44）だけでは「正規化が続く」ことは言えない**ので、端から端の形でも置く。
 [Trait("TestKind", "Unit")]
 public class DiagramCodingTimeoutPipelineTests
 {
