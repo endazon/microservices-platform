@@ -23,7 +23,8 @@ namespace AuthorizationService.Tests.Features.Groups.Lookup;
 //   4. **面に出るのは 3 項目だけ**（所属者・属性を運ばない）。
 //
 // 身元プロバイダは in-memory の偽物（`TestWebApplicationFactory` が宣言する）。固定のグループ木
-// （`/teams`・`/teams/knowledge`・`/teams/finance`・`/department`・`/department/engineering`）を持つ。
+// （`/teams`・`/teams/knowledge`・`/teams/finance`・`/department`・`/department/engineering`・
+// `/department/sales`・`/department/hr`。後の 2 つは #1609 で属性辞書の部門の値を realm から導くために足した）を持つ。
 [Trait("TestKind", "Integration")]
 public class GroupLookupEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>

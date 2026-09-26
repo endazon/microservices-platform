@@ -47,6 +47,43 @@ export function attributeScopeLabel(scope: string): MessageDescriptor | string {
   return isKnownScope(scope) ? SCOPE_LABELS[scope] : scope;
 }
 
+/**
+ * SC-09, FR-09（#1609・計画 ADR-0116 決定 3）: 属性辞書の許可値の出所（契約 `allowedValuesSource`）。
+ * `department` の許可値は realm の部門グループから導かれ、手で足す・消すことはできない。
+ * - `realm` … 今回 realm から導いた値
+ * - `realm-unavailable` … realm を読めず、最後に確かめた値を示している（**不明**）
+ * - 手で持つキーは null（出所を示さない）
+ */
+export const ALLOWED_VALUES_SOURCES = ['realm', 'realm-unavailable'] as const;
+
+export type AllowedValuesSource = (typeof ALLOWED_VALUES_SOURCES)[number];
+
+/** 出所の表示。**色だけに頼らない**（`StatusBadge` がアイコン＋文言を強制する）。不明は注意の色にする。 */
+export interface AllowedValuesSourceBadge {
+  tone: 'neutral' | 'warning';
+  label: MessageDescriptor | string;
+}
+
+const SOURCE_BADGES: Record<AllowedValuesSource, AllowedValuesSourceBadge> = {
+  realm: { tone: 'neutral', label: msg`realm の部門グループから導出` },
+  'realm-unavailable': {
+    tone: 'warning',
+    label: msg`不明（realm を読めないため最後に確かめた値）`,
+  },
+};
+
+function isKnownSource(source: string): source is AllowedValuesSource {
+  return (ALLOWED_VALUES_SOURCES as readonly string[]).includes(source);
+}
+
+/** 出所の表示。手で持つキー（null・未指定）は null。未知の値は生値をそのまま出す（「不明」へ丸めない）。 */
+export function allowedValuesSourceBadge(
+  source: string | null | undefined,
+): AllowedValuesSourceBadge | null {
+  if (source === null || source === undefined || source === '') return null;
+  return isKnownSource(source) ? SOURCE_BADGES[source] : { tone: 'neutral', label: source };
+}
+
 /** 条件エディタが積む 1 条件（属性のスコープ・キー・値）。 */
 export interface ConditionEntry {
   scope: string;

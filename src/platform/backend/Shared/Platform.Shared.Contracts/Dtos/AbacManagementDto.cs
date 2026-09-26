@@ -16,6 +16,8 @@ public record AbacPolicyDto(
     DateTimeOffset UpdatedAt);
 
 // FR-09: 属性辞書エントリ（管理者が定義する取りうる値）。
+// ［2026-09-27 / #1609・計画 ADR-0116 決定 3］`AllowedValuesSource` は許可値の出所。手で持つキーは null、
+// `department` は `realm`（realm の部門グループから導いた）／`realm-unavailable`（realm を読めず最後に確かめた値 ＝ 不明）。
 public record AttributeDefinitionDto(
     Guid Id,
     string Key,
@@ -24,7 +26,8 @@ public record AttributeDefinitionDto(
     bool Required,
     string Scope,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    string? AllowedValuesSource = null);
 
 // FR-05, FR-09, SC-09, #535: ポリシーの dry-run 検証の応答（利用者裁定 2026-08-05 Q23）。
 //

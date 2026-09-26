@@ -13,6 +13,8 @@ namespace AuthorizationService.Infrastructure.ExternalServices;
 // 計画 05_screens §SC-17 のモックアップの両方に似せてある。**属性の値は
 // `deploy/local/abac-seed/attributes.json` の利用者スコープ許可値から採っている**ので、
 // 辞書を投入した開発環境でそのまま保存が通る。
+// ［2026-09-27 / #1609・計画 ADR-0116 決定 3］部門の許可値は realm の部門グループから導く（下の固定の木では
+// engineering / sales / hr）。田中の `finance` は値域の外に残してある（旧い値を持つ利用者の形。保存し直すには値域の部門を選ぶ）。
 public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
 {
     // 実 realm が持つ 2 ロール（`platform-admin` / `platform-operator`）に、Keycloak 既定の

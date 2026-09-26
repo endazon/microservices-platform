@@ -32,9 +32,11 @@ public class UserAdminEndpointTests(TestWebApplicationFactory factory)
             "/authz/attributes", Ct);
         if (existing is { Count: > 0 }) return;
 
+        // #1609・計画 ADR-0116 決定 3: 部門の許可値は手で持たない（空で登録すると realm の部門グループのコードが入る。
+        // 偽物の realm では engineering / hr / sales）。
         foreach (var body in new object[]
         {
-            new { Key = "department", Label = "所属部門", AllowedValues = new[] { "engineering", "finance", "hr" }, Required = false, Scope = "user" },
+            new { Key = "department", Label = "所属部門", AllowedValues = Array.Empty<string>(), Required = false, Scope = "user" },
             new { Key = "clearance", Label = "取扱可能区分", AllowedValues = new[] { "public", "internal", "confidential", "restricted" }, Required = false, Scope = "user" },
             new { Key = "tags", Label = "タグ", AllowedValues = new[] { "management", "finance" }, Required = false, Scope = "user" },
         })
@@ -117,14 +119,14 @@ public class UserAdminEndpointTests(TestWebApplicationFactory factory)
             {
                 Attributes = new Dictionary<string, string>
                 {
-                    ["department"] = "finance",
+                    ["department"] = "hr",
                     ["clearance"] = "confidential",
                 }
             }, Ct);
 
         res.StatusCode.Should().Be(HttpStatusCode.OK);
         var user = await res.Content.ReadFromJsonAsync<UserDto>(Ct);
-        user!.Attributes["department"].Should().Be("finance");
+        user!.Attributes["department"].Should().Be("hr");
         user.Attributes.Should().NotContainKey("tags");
     }
 
@@ -134,7 +136,7 @@ public class UserAdminEndpointTests(TestWebApplicationFactory factory)
         await SeedUserDictionaryAsync();
 
         (await Client.PutAsJsonAsync("/authz/users/u-suzuki/attributes",
-                new { Attributes = new Dictionary<string, string> { ["department"] = "finance" } }, Ct))
+                new { Attributes = new Dictionary<string, string> { ["department"] = "hr" } }, Ct))
             .StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -148,11 +150,28 @@ public class UserAdminEndpointTests(TestWebApplicationFactory factory)
                 {
                     Attributes = new Dictionary<string, string>
                     {
-                        ["department"] = "finance",
+                        ["department"] = "hr",
                         ["clearance"] = "top-secret",
                     }
                 }, Ct))
             .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    // T-58（#1609・計画 ADR-0116 決定 3）: 🔴 SC-17 の部門の値域は realm の部門グループのコードである。
+    // realm に無い `finance`（seed の旧い固定値）は保存で拒まれ、realm に在る `sales` は通る（陽性対照を対で置く）。
+    [Fact]
+    public async Task ReplaceAttributes_takes_the_department_domain_from_the_realm_department_groups()
+    {
+        await SeedUserDictionaryAsync();
+
+        var outside = await Client.PutAsJsonAsync("/authz/users/u-suzuki/attributes",
+            new { Attributes = new Dictionary<string, string> { ["department"] = "finance", ["clearance"] = "confidential" } }, Ct);
+        outside.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await outside.Content.ReadAsStringAsync(Ct)).Should().Contain("finance");
+
+        (await Client.PutAsJsonAsync("/authz/users/u-suzuki/attributes",
+                new { Attributes = new Dictionary<string, string> { ["department"] = "sales", ["clearance"] = "confidential" } }, Ct))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     // ---- 無効化・再有効化 ----
@@ -264,7 +283,7 @@ public class UserAdminEndpointTests(TestWebApplicationFactory factory)
             {
                 Attributes = new Dictionary<string, string>
                 {
-                    ["department"] = "finance",
+                    ["department"] = "hr",
                     ["clearance"] = "confidential",
                 }
             }, Ct);
