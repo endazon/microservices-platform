@@ -17,7 +17,7 @@ public class McpToolsGrpcDeploymentWiringTests
 {
     private const string Compose = "deploy/docker-compose.yml";
     private const string Helm = "deploy/helm/microservices-platform/values.yaml";
-    private const string AppSettings = "src/platform/backend/Services/McpServer/appsettings.json";
+    internal const string AppSettings = "src/platform/backend/Services/McpServer/appsettings.json";
     private const int GrpcPort = 8081;
 
     // compose は `Key: value`、helm は `- name: Key` の次行 `value: "..."`。どちらの書式でも引く。
@@ -141,7 +141,7 @@ public class McpToolsGrpcDeploymentWiringTests
         return string.Join('\n', lines[start..end]);
     }
 
-    private static string ReadRepoFile(string relative) =>
+    internal static string ReadRepoFile(string relative) =>
         File.ReadAllText(Path.Combine(RepoRoot(), relative.Replace('/', Path.DirectorySeparatorChar)));
 
     // 解決できなければ止める（fail-closed）。読めなかったファイルを空として扱うと何も検査しないまま緑になる。

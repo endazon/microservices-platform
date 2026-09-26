@@ -25,7 +25,7 @@ related_ids:
   - IADR-0465
 author: claude
 created: 2026-09-26
-updated: 2026-09-26
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0029_grpc-rest-usage-criteria.md §決定・2026-08-04 追記（該当する REST の east-west 同期呼び出しはすべて gRPC へ移行する）
   - planning:projects/microservices-platform/07_adr/ADR-0075_east-west-grpc-migration-order.md 決定 2〜6
@@ -212,6 +212,14 @@ appsettings.json の既定に寄りかかっているので、配線の試験（
 >   応答しない宛先の試験が**約 1 秒で赤**（`ApplicationStopping`）／収集の捕捉だけ → 同試験が赤（申告なしへ畳まれない）／周期の捕捉だけ → 漏れた取り消しの試験が赤／
 >   期限を与えない → 期限の試験と応答しない宛先の試験が赤／`Task.Delay` の捕捉を型だけに戻す → 緑（等価）。
 >   作業仕様書: `.ai-context/specs/20260926_issue-1604_refresher-and-sync-loop-timeouts.md`。
+>
+> **［2026-09-27 追記 / #1608］期限のキーを本番の構成ファイルに並べ、gRPC の「無期限なら期限なし」の分岐を削った。**
+> `Mcp:DeclarationTimeoutSeconds` を McpServer の `appsettings.json` に `RefreshIntervalSeconds` と並べて既定値 10 で明示した（運用者がつまみの在り処と既定を
+> 構成ファイルで読めるようにする。値はコードの `DefaultTimeoutSeconds` と同じで、挙動は変わらない）。`GrpcToolDeclarationCollector` の
+> `Timeout == InfiniteTimeSpan` なら期限を付けない分岐は、名前付きクライアントの `Timeout` が常に `ConfiguredTimeout`（`Math.Max(1, …)` 秒）から来るため
+> 構成からは到達できず、**削った**（起こり得ない場合への防御を残さない）。期限は常に `UtcNow + Timeout` である。
+> 試験: `ToolCatalogRefresherTimeoutTests` に本番の構成ファイルを読む 1 件（キーが既定値で在り、登録を通すと期限が 10 秒）。期限そのものは従前どおり
+> `GrpcToolDeclarationCollectorTests` T-G8 が固定する。作業仕様書: `.ai-context/specs/20260927_issue-1608_purger-timeout-isolation.md`。
 
 ## 関連
 

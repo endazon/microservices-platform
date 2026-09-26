@@ -55,11 +55,10 @@ public sealed class GrpcToolDeclarationCollector(
         {
             var channel = _channels.GetOrAdd(address, CreateChannel);
             var client = new Pb.McpToolDeclarations.McpToolDeclarationsClient(channel);
-            // HttpClient の無期限（InfiniteTimeSpan = -1ms）は gRPC でも無期限（REST と同じ意味）に写す。
-            var timeout = Timeout();
-            DateTime? deadline = timeout == System.Threading.Timeout.InfiniteTimeSpan
-                ? null
-                : DateTime.UtcNow.Add(timeout);
+            // ［2026-09-27 / #1608］期限は常に有限である —— 名前付きクライアントの `Timeout` は
+            // `AddMcpToolDeclarationSources` が `HttpToolDeclarationSource.ConfiguredTimeout`（`Math.Max(1, …)` 秒）で与え、
+            // 無期限（InfiniteTimeSpan）へ至る構成は無い。従前の「無期限なら期限なし」の分岐は到達できないので削った。
+            var deadline = DateTime.UtcNow.Add(Timeout());
             var declared = await client.DeclareAsync(
                 new Pb.DeclareMcpToolsRequest(), deadline: deadline, cancellationToken: ct);
 
@@ -114,7 +113,7 @@ public sealed class GrpcToolDeclarationCollector(
                     t.Name, t.Description, t.InputSchema, t.Endpoint, t.RequiredScope, t.EgressClass))
                 .ToList());
 
-    // REST の期限と同じ値（名前付きクライアントの Timeout。未構成なら HttpClient の既定 100 秒）。
+    // REST の期限と同じ値（名前付きクライアントの Timeout。本番の登録では `Mcp:DeclarationTimeoutSeconds`、既定 10 秒）。
     private TimeSpan Timeout() =>
         httpClientFactory.CreateClient(HttpToolDeclarationSource.HttpClientName).Timeout;
 
