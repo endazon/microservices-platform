@@ -194,7 +194,11 @@ function imageFacts({ dockerfile, imagesSh, imagesYml, backupSh, cronJobs }) {
     ageVersion: arg('AGE_VERSION'),
     ageSha: { x86_64: arg('AGE_APK_SHA256_X86_64'), aarch64: arg('AGE_APK_SHA256_AARCH64') },
     localOnly,
-    ciBuildsDockerfile: imagesYml.includes(BACKUP_DOCKERFILE),
+    // 注記の中の言及ではなく、実際の `docker build -f <Dockerfile>` の行（YAML の run: 値）で見る。
+    ciBuildsDockerfile: imagesYml
+      .split('\n')
+      .filter((l) => !/^\s*#/.test(l))
+      .some((l) => new RegExp(`\\bdocker build\\b.*\\s-f\\s+${BACKUP_DOCKERFILE.replace(/[./]/g, '\\$&')}(\\s|$)`).test(l)),
     scriptCallsApk: codeLines.some((l) => /(^|[\s;&|(])apk\s/.test(l)),
     scriptReadsInstallEnv: codeLines.some((l) => l.includes('BACKUP_AGE_INSTALL')),
     cronJobs: cronJobs.map((cj) => ({
@@ -496,6 +500,12 @@ ok('🔴 9. age は digest 固定のベースへ版・sha256 で同梱し、タ�
   assert.strictEqual(facts('# 従前は `apk add age` を撃っていた\nensure_age() { :; }\n').scriptCallsApk, false, '注記の apk を数えた');
   assert.strictEqual(facts('ensure_age() {\n\tapk add --no-cache age\n}\n').scriptCallsApk, true, '実行行の apk を見逃した');
   assert.strictEqual(facts('x="$(apk add age 2>&1)"\n').scriptCallsApk, true, 'コマンド置換の中の apk を見逃した');
+  // CI のビルドは実際の build 行で数える。注記の中の言及・別の Dockerfile のビルドは数えない。
+  const ci = (imagesYml) => imageFacts({ dockerfile: '', imagesSh: '', imagesYml, backupSh: '', cronJobs: [] }).ciBuildsDockerfile;
+  assert.strictEqual(ci(`      - run: docker build --progress plain -f ${BACKUP_DOCKERFILE} -t x deploy/local/platform-backup/image\n`), true, '実際の build 行を見逃した');
+  assert.strictEqual(ci(`  # build-local は ${BACKUP_DOCKERFILE} を docker build -f ${BACKUP_DOCKERFILE} でビルドする\n`), false, '注記の言及を数えた');
+  assert.strictEqual(ci(`      - run: docker build -f ${BACKUP_DOCKERFILE}.old -t x .\n`), false, '別の Dockerfile のビルドを数えた');
+  assert.strictEqual(ci(`      - run: echo ${BACKUP_DOCKERFILE}\n`), false, 'build でない行を数えた');
 });
 
 console.log(`[platform-backup.test] OK: ${passed} 件`);

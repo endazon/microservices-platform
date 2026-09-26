@@ -114,6 +114,11 @@ age の公開鍵で暗号化して秘密鍵はクラスタに置かない、日�
 >   `MAPPING` は IADR-0068 の検査器が compose の build 定義と 1 対 1 で突合し、compose に無い要素は `stale-mapping` になる）。
 >   タグは `k3d-local/platform-backup:pg16.15-age1.3.1-r6`。2 つの CronJob はこのタグを `imagePullPolicy: IfNotPresent` で使う。
 >   **Dockerfile・`LOCAL_ONLY_IMAGES`・CronJob の 3 か所の一致**を `platform-backup.test.js` の 9 が見る。
+>   🔴 **起動器の中ではビルド失敗を致命にしない**（監査の指摘・中）。固定した `-rN` は Alpine が上げた日に 404 になり、
+>   致命にすると新しい機械やキャッシュを消した環境で `k8s-local-up.sh` 全体が [2/7] で止まる（CronJob を置かない PERSIST=0 でも）。
+>   失敗したら WARN（影響する CronJob が ImagePullBackOff で落ちること・Runbook §6）を出して続け、取り込み（k3d import）からも外す。
+>   本体（`MAPPING`）のビルド失敗は従来どおり致命。**厳格な赤は CI の `build-local (platform-backup)` が担う**。
+>   `k8s-local-up.test.js` が「backup だけ落ちる世界で 0 で終わり WARN を出す」と、陽性対照「本体が落ちれば止まる」を見る。
 > - **`BACKUP_AGE_INSTALL` と `backup.sh` の `apk add` は撤去した。退避路としても残さない** —— env 1 つで同じ経路が開くからである。
 >   age が無ければ、イメージの取り違えとして何も書かずに失敗する。
 > - **CI**: `images.yml` に `build-local (platform-backup)` を足した。ビルドし、`--network none` で同梱のツールを実行する。

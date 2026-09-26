@@ -88,6 +88,19 @@ issue: "1564"
   IADR-0471 決定 3 の capabilities の段落の「apk の展開に要る CHOWN / FOWNER / FSETID」は、apk が実行時から消えるため前提が変わる。
   cronjob のコメントは直す。IADR は追記で扱う。
 
+### ［2026-09-26 追記 / #1564］監査の指摘（中）への対応
+
+- `k8s-local-images.sh` は `set -euo pipefail` の下で `LOCAL_ONLY_IMAGES` を無条件にビルドしていた。固定した age の
+  `-rN` が Alpine から消えると 404 になり、`k8s-local-up.sh` 全体が [2/7] で止まる（PERSIST=0 でも）。
+- 直し方: `LOCAL_ONLY_IMAGES` のビルド失敗だけを非致命にし、WARN（影響する CronJob が ImagePullBackOff で落ちること・
+  Runbook §6）をビルド直後と最後の 2 回出す。失敗したイメージは k3d の取り込みから外す。`MAPPING` の失敗は従来どおり致命。
+  CI の `build-local` は厳格なまま（images.yml が直接 `docker build` する）。
+- 試験: `k8s-local-up.test.js` に docker スタブ（`STUB_DOCKER_BUILD_FAIL`）を足し、backup だけ落ちる世界で 0 終了・
+  helm の配備まで進む・取り込みから外す・WARN の文言、および陽性対照（本体 bff が落ちれば止まる）を見る。
+- 監査の軽微: `platform-backup.test.js` の `ciBuildsDockerfile` を部分文字列から「注記でない `docker build -f <Dockerfile>` の行」へ。
+- 監査の軽微（母集合の除外漏れ）: `scripts/backup-restore-drill.sh:32` の `DEFAULT_IMAGE="postgres:16-alpine"` は、
+  リストア試験の使い捨て Postgres（ネットワーク無し・age を使わない）であり本件の対象外として除外する。
+
 ## 受け入れ基準
 
 - [x] `node scripts/platform-backup.test.js` が通り、変異（digest を外す・タグをずらす・`BACKUP_AGE_INSTALL` を戻す・`apk add` を戻す）で落ちる。

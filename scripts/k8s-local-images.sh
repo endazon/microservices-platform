@@ -107,20 +107,44 @@ for entry in "${MAPPING[@]}"; do
   fi
 done
 
+# 🔴 **LOCAL_ONLY_IMAGES のビルド失敗は起動を止めない**（#1564 監査）。バックアップのイメージは age の版（Alpine の -rN）を
+#    固定しており、Alpine の安定版ブランチは最新の -rN しか置かないため、上流が上げた日からダウンロードが 404 になる。
+#    ここで止めると、新しい機械やキャッシュを消した環境で起動器全体が [2/7] で落ちる（CronJob を置かない PERSIST=0 でも）。
+#    代わりに WARN を出して続ける。落ちるのはバックアップの CronJob だけで、それは Job の失敗として見える。
+#    **厳格な赤は CI（images.yml の build-local (platform-backup)）が担う** —— develop で先に知らせる信号はそちらである。
+local_only_failed=()
 for entry in "${LOCAL_ONLY_IMAGES[@]}"; do
   IFS='|' read -r image context dockerfile <<< "$entry" || true
   ref="${PREFIX}/${image}"
   echo "==> build ${ref}  (-f ${context}/${dockerfile}  context=${context})"
   if [ "$RUNTIME" = "rancher" ]; then
-    nerdctl --namespace k8s.io build -f "${context}/${dockerfile}" -t "${ref}" "${context}"
+    if ! nerdctl --namespace k8s.io build -f "${context}/${dockerfile}" -t "${ref}" "${context}"; then
+      local_only_failed+=("${ref}")
+    fi
   else
-    docker build -f "${context}/${dockerfile}" -t "${ref}" "${context}"
-    k3d_images+=("${ref}")
+    if docker build -f "${context}/${dockerfile}" -t "${ref}" "${context}"; then
+      k3d_images+=("${ref}")
+    else
+      local_only_failed+=("${ref}")
+    fi
   fi
 done
+warn_local_only_failed() {
+  local ref
+  for ref in "${local_only_failed[@]}"; do
+    echo "WARN: ${ref} のビルドに失敗しました（起動は続けます）。" >&2
+    echo "WARN:   このイメージを使うバックアップの CronJob（platform-backup-postgres / platform-backup-vault）は" >&2
+    echo "WARN:   ErrImageNeverPull / ImagePullBackOff で失敗します（日次のバックアップが取れません）。" >&2
+    echo "WARN:   age の版が Alpine で上がった（固定した -rN が消えた）可能性が高い。" >&2
+    echo "WARN:   docs/operations/platform-infra-backup-runbook.md の「6. イメージの版を上げる」を参照してください。" >&2
+  done
+}
+[ "${#local_only_failed[@]}" -eq 0 ] || warn_local_only_failed
 
 if [ "$RUNTIME" = "k3d" ]; then
   echo "==> k3d image import (${#k3d_images[@]}) -> cluster ${CLUSTER}"
   k3d image import "${k3d_images[@]}" -c "${CLUSTER}"
 fi
+# 長いビルド出力に埋もれないよう、最後にもう一度出す。
+[ "${#local_only_failed[@]}" -eq 0 ] || warn_local_only_failed
 echo "done."
