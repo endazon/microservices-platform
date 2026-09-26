@@ -362,6 +362,80 @@ public sealed class KeycloakIdentityAdminClient(
 
     private const string DepartmentAttributeKey = "department";
 
+    // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 2, [[IADR-0473]] (#1609): 全利用者の列挙の上限ページ数。
+    // 🔴 **これに達したら打ち切り（`Complete = false`）として返す。黙って打ち切らない**（`ListUsersAsync` の `max=1000` は
+    // 打ち切ったことを知らせない ＝ [[IADR-0413]] 決定 5 の欠陥）。上限は無限ループ（Keycloak が同じページを返し続ける等）の
+    // 歯止めであり、100 × 1000 ＝ 10 万人。これを超える realm では同期は 0 個の人を消さず、計器で知らせ続ける。
+    internal const int MaxEnumeratedPages = 1000;
+
+    // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 2, [[IADR-0473]] (#1609): 全利用者を属性つき・ロールなしで最後のページまで読む。
+    // 🔴 **ページの失敗は例外で上げる**（`GetFromJsonAsync` の非成功は例外。本文が JSON の null のときも例外にする ——
+    // 「空のページ」と読むと、そこで列挙が終わったことになり、残りの人が「居ない」に見える）。
+    // 🔴 **サービスアカウントは返さない**（表現の `serviceAccountClientId`、または利用者名の `service-account-` 接頭辞）。
+    public async Task<UserEnumeration> ListAllUsersAsync(CancellationToken ct)
+    {
+        var client = await AuthorizedClientAsync(ct);
+        var result = new List<IdentityUser>();
+        for (var pageIndex = 0; pageIndex < MaxEnumeratedPages; pageIndex++)
+        {
+            var first = pageIndex * PageSize;
+            var page = await client.GetFromJsonAsync<List<KeycloakUser>>(
+                $"admin/realms/{Realm}/users?briefRepresentation=false&first={first}&max={PageSize}", Json, ct)
+                ?? throw new InvalidOperationException(
+                    $"Keycloak の利用者一覧（first={first}）が本文を返さなかった。列挙を読み切れない（空のページとは読まない）。");
+            result.AddRange(page
+                .Where(u => !string.IsNullOrEmpty(u.Id)
+                            && string.IsNullOrEmpty(u.ServiceAccountClientId)
+                            && !DepartmentAttributeReconciliation.IsServiceAccount(u.Username))
+                .Select(u => ToIdentityUser(u, [])));
+            if (page.Count < PageSize) return new UserEnumeration(result, Complete: true);
+        }
+
+        logger.LogWarning(
+            "Keycloak の利用者一覧が上限 {MaxPages} ページ（{Max} 人）に達した。列挙を打ち切った（未完了として返す）。",
+            MaxEnumeratedPages, MaxEnumeratedPages * PageSize);
+        return new UserEnumeration(result, Complete: false);
+    }
+
+    // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 2, [[IADR-0473]] (#1609): 利用者属性 `department` **だけ**を消す。
+    // `SetDepartmentAttributeAsync` と同じ形（書く直前の読み直しで変化を見つけたら PUT しない・他の属性は多値のまま持ち越す）。
+    // 🔴 **読み直して残っていれば例外**（unmanaged 属性を黙って捨てる／受け付けない realm への fail-closed。保持起点の消去と同じ）。
+    public async Task<DepartmentWriteResult> ClearDepartmentAttributeAsync(
+        string userId, IdentityUser observed, CancellationToken ct)
+    {
+        var client = await AuthorizedClientAsync(ct);
+        var path = $"admin/realms/{Realm}/users/{Uri.EscapeDataString(userId)}";
+        var response = await client.GetAsync(path, ct);
+        if (response.StatusCode == HttpStatusCode.NotFound) return DepartmentWriteResult.NotFound;
+        response.EnsureSuccessStatusCode();
+        var representation = await response.Content.ReadFromJsonAsync<JsonObject>(Json, ct);
+        if (representation is null) return DepartmentWriteResult.NotFound;
+
+        var current = JsonSerializer.Deserialize<KeycloakUser>(representation, Json);
+        if (current is null || !DepartmentWriteResult.SameExceptDepartment(observed, ToIdentityUser(current, [])))
+            return DepartmentWriteResult.Changed;
+
+        foreach (var computed in ServerComputedFields) representation.Remove(computed);
+        var attributes = CurrentAttributes(representation);
+        attributes.Remove(DepartmentAttributeKey);
+        representation["attributes"] = JsonSerializer.SerializeToNode(attributes, Json);
+
+        var put = await client.PutAsJsonAsync(path, representation, Json, ct);
+        if (put.StatusCode == HttpStatusCode.NotFound) return DepartmentWriteResult.NotFound;
+        put.EnsureSuccessStatusCode();
+
+        var updated = await ReloadAsync(client, userId, ct);
+        if (updated is null) return DepartmentWriteResult.NotFound;
+        if (updated.Attributes.ContainsKey(DepartmentAttributeKey))
+        {
+            throw new InvalidOperationException(
+                $"Keycloak が利用者 '{updated.Username}' の属性 department を消さなかった"
+                + "（更新要求は成功を返したが、読み直すと残っている）。"
+                + " 部門グループから外れた利用者が前の部門のまま扱われ続けるため、失敗として上げる。");
+        }
+        return DepartmentWriteResult.Applied(updated);
+    }
+
     // グループ木を深さ優先で平坦化する（`subGroups` は Keycloak が入れ子で返す）。
     // **ID を持たない節は落とす**（判定と取り消しの鍵が無い像は画面でも使えない）。
     private static IEnumerable<IdentityGroup> Flatten(IEnumerable<KeycloakGroup> groups)
@@ -773,7 +847,9 @@ public sealed class KeycloakIdentityAdminClient(
         string? FirstName,
         string? LastName,
         bool Enabled,
-        Dictionary<string, List<string>?>? Attributes);
+        Dictionary<string, List<string>?>? Attributes,
+        // #1609: サービスアカウントの利用者表現だけが持つ（全利用者の列挙から機械の主体を除く手掛かり）。
+        string? ServiceAccountClientId = null);
 
     private sealed record KeycloakRole(string? Id, string? Name);
 

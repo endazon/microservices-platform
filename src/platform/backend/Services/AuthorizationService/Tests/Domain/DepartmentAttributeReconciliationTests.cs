@@ -5,8 +5,8 @@ namespace AuthorizationService.Tests.Domain;
 
 // FR-05, FR-09, UC-05, SC-17, 計画 ADR-0115 決定 3, [[IADR-0473]] (#1573): 属性を部門グループへ合わせる計画（純関数）。
 //
-// 受け入れ基準の写像（#1573）: T-D-01 食い違いの検知 / T-D-02 グループ側へ直す / T-D-03 0 個・複数は上書きしない /
-// T-D-04 冪等（直した後の再計画は食い違い 0）。
+// 受け入れ基準の写像（#1573）: T-D-01 食い違いの検知 / T-D-02 グループ側へ直す / T-D-03 複数は上書きしない /
+// T-D-04 冪等（直した後の再計画は食い違い 0）。［#1609・計画 ADR-0116 決定 2］T-D-05 0 個で属性が残る人は消す対象。
 [Trait("TestKind", "Unit")]
 public class DepartmentAttributeReconciliationTests
 {
@@ -55,22 +55,53 @@ public class DepartmentAttributeReconciliationTests
         findings.Single(f => f.UserId == "u-ok").Verdict.Should().Be(DepartmentAttributeVerdict.InSync);
     }
 
-    // T-D-03: 🔴 0 個・2 個以上は Unresolved で、直す先を持たない（Expected = null）。
+    // T-D-03: 🔴 2 個以上は Unresolved で、直す先を持たない（Expected = null）。
     // 「先頭を採る」「属性に一致する方を採る」へ変える変異はここで赤になる。
     [Fact]
-    public void Zero_or_several_department_groups_are_unresolved_and_have_no_target()
+    public void Several_department_groups_are_unresolved_and_have_no_target()
+    {
+        var findings = DepartmentAttributeReconciliation.Plan(
+            new Dictionary<string, IReadOnlySet<string>> { ["u-two"] = Codes("sales", "hr") },
+            new Dictionary<string, string?> { ["u-two"] = "hr" });
+
+        findings.Should().ContainSingle().Which.Should().BeEquivalentTo(new
+        {
+            Verdict = DepartmentAttributeVerdict.Unresolved,
+            Expected = (string?)null,
+        });
+        findings.Single().Codes.Should().Equal("hr", "sales");
+    }
+
+    // T-D-05（#1609・計画 ADR-0116 決定 2）: 🔴 部門グループ 0 個で属性が残っている人は Orphaned（消す対象）。
+    // 属性も無い人は一致（部門なし）であり、書く対象にしない。Unresolved のままにする変異（#1573 の挙動）はここで赤になる。
+    [Fact]
+    public void Zero_department_groups_with_an_attribute_is_orphaned_and_without_one_is_in_sync()
     {
         var findings = DepartmentAttributeReconciliation.Plan(
             new Dictionary<string, IReadOnlySet<string>>
             {
-                ["u-two"] = Codes("sales", "hr"),
                 ["u-none"] = Codes(),
+                ["u-plain"] = Codes(),
             },
-            new Dictionary<string, string?> { ["u-two"] = "hr", ["u-none"] = "sales" });
+            new Dictionary<string, string?> { ["u-none"] = "sales", ["u-plain"] = null });
 
-        findings.Should().OnlyContain(f => f.Verdict == DepartmentAttributeVerdict.Unresolved && f.Expected == null);
-        findings.Single(f => f.UserId == "u-two").Codes.Should().Equal("hr", "sales");
+        findings.Single(f => f.UserId == "u-none").Should().BeEquivalentTo(new
+        {
+            Verdict = DepartmentAttributeVerdict.Orphaned,
+            Current = "sales",
+            Expected = (string?)null,
+        });
+        findings.Single(f => f.UserId == "u-plain").Verdict.Should().Be(DepartmentAttributeVerdict.InSync);
     }
+
+    [Theory]
+    [InlineData("service-account-abac-seeder", true)]
+    [InlineData("Service-Account-ast", true)]   // 大小文字無視
+    [InlineData("tanaka.taro", false)]
+    [InlineData("my-service-account-x", false)] // 前方一致だけ
+    [InlineData(null, false)]
+    public void IsServiceAccount_is_a_case_insensitive_prefix_match(string? username, bool expected)
+        => DepartmentAttributeReconciliation.IsServiceAccount(username).Should().Be(expected);
 
     // T-D-04: 冪等 —— 計画どおりに直した属性で再計画すると、食い違いは 0 件である。
     [Fact]

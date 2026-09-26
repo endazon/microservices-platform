@@ -939,6 +939,129 @@ public class KeycloakIdentityAdminClientTests
         children[^1].Path.Should().Be("/department/last");
     }
 
+    // ── FR-05, FR-09, SC-17, 計画 ADR-0116 決定 2, [[IADR-0473]] (#1609): 全利用者の列挙と部門の消去 ──
+
+    // T-56 の土台: 🔴 全利用者は**最後のページまで**読み、読み切れたら Complete = true。サービスアカウントは返さない。
+    [Fact]
+    public async Task Listing_all_users_reads_every_page_and_skips_service_accounts()
+    {
+        var page1 = "[" + string.Join(",", Enumerable.Range(0, KeycloakIdentityAdminClient.PageSize).Select(i =>
+            $$$"""{"id":"u{{{i}}}","username":"user{{{i}}}","enabled":true,"attributes":{"department":["sales"]}}""")) + "]";
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users?briefRepresentation=false&first=0&max=100", page1)
+            .Get("admin/realms/platform/users?briefRepresentation=false&first=100&max=100", """
+                [{"id":"u-last","username":"last","enabled":true,"attributes":{"department":["hr"]}},
+                 {"id":"sa-1","username":"service-account-abac-seeder","enabled":true,"serviceAccountClientId":"abac-seeder",
+                  "attributes":{"department":["engineering"]}},
+                 {"id":"sa-2","username":"odd-name","enabled":true,"serviceAccountClientId":"odd","attributes":{}}]
+                """);
+
+        var result = await Client(handler).ListAllUsersAsync(Ct);
+
+        result.Complete.Should().BeTrue();
+        result.Users.Should().HaveCount(KeycloakIdentityAdminClient.PageSize + 1);
+        result.Users[^1].Attributes["department"].Should().Be("hr", "属性つき（briefRepresentation=false）で引く");
+        result.Users.Select(u => u.Id).Should().NotContain(["sa-1", "sa-2"], "サービスアカウントは返さない");
+        handler.Requests.Should().NotContain(r => r.Path.Contains("role-mappings"), "ロールは引かない");
+    }
+
+    // T-56: 🔴 ページの途中の失敗は**例外**（部分的な結果を返さない）。本文が JSON の null のページも例外である
+    // （空のページと読むと、そこで列挙が終わったことになる）。
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Listing_all_users_throws_when_a_page_cannot_be_read(bool nullBody)
+    {
+        var page1 = "[" + string.Join(",", Enumerable.Range(0, KeycloakIdentityAdminClient.PageSize).Select(i =>
+            $$$"""{"id":"u{{{i}}}","username":"user{{{i}}}","enabled":true}""")) + "]";
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users?briefRepresentation=false&first=0&max=100", page1);
+        if (nullBody) handler.Get("admin/realms/platform/users?briefRepresentation=false&first=100&max=100", "null");
+        // nullBody=false のときは 2 ページ目が未登録 ＝ 404（ページの失敗）。
+
+        var act = async () => await Client(handler).ListAllUsersAsync(Ct);
+
+        await act.Should().ThrowAsync<Exception>();
+    }
+
+    // T-55: `department` 1 キーだけを消し、他の属性は多値のまま持ち越す。読み直して消えていれば Applied。
+    [Fact]
+    public async Task Clearing_the_department_removes_only_that_key()
+    {
+        var handler = new SequencedHandler(
+            """{"id":"u1","username":"t","enabled":true,"attributes":{"department":["hr"],"tags":["sales","hr"],"clearance":["internal","public"]}}""",
+            """{"id":"u1","username":"t","enabled":true,"attributes":{"tags":["sales","hr"],"clearance":["internal","public"]}}""");
+
+        var result = await new KeycloakIdentityAdminClient(new SequencedFactory(handler, Options), Options,
+                TimeProvider.System, NullLogger<KeycloakIdentityAdminClient>.Instance)
+            .ClearDepartmentAttributeAsync("u1",
+                Observed("u1", enabled: true, ("department", "hr"), ("tags", "sales,hr"), ("clearance", "internal")), Ct);
+
+        result.Outcome.Should().Be(DepartmentWriteOutcome.Applied);
+        using var body = JsonDocument.Parse(handler.PutBody!);
+        var attrs = body.RootElement.GetProperty("attributes");
+        attrs.TryGetProperty("department", out _).Should().BeFalse("department だけを消す");
+        attrs.GetProperty("tags").EnumerateArray().Select(e => e.GetString()).Should().Equal("sales", "hr");
+        attrs.GetProperty("clearance").EnumerateArray().Select(e => e.GetString()).Should().Equal("internal", "public");
+    }
+
+    // T-55: 🔴 読み直して残っていれば**例外**（消したつもりで残さない）。読み取り後に変わっていれば PUT しない。
+    [Fact]
+    public async Task Clearing_the_department_fails_closed_when_it_remains_and_skips_when_changed()
+    {
+        var stays = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Put("admin/realms/platform/users/u1", "")
+            .Get("admin/realms/platform/users/u1", """{"id":"u1","username":"t","enabled":true,"attributes":{"department":["hr"]}}""")
+            .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
+        var act = async () => await Client(stays).ClearDepartmentAttributeAsync(
+            "u1", Observed("u1", enabled: true, ("department", "hr")), Ct);
+        (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain("department");
+
+        var changed = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users/u1", """{"id":"u1","username":"t","enabled":false,"attributes":{"department":["hr"]}}""");
+        (await Client(changed).ClearDepartmentAttributeAsync("u1", Observed("u1", enabled: true, ("department", "hr")), Ct))
+            .Outcome.Should().Be(DepartmentWriteOutcome.Changed);
+        changed.Requests.Should().NotContain(r => r.Method == "PUT");
+    }
+
+    // 1 回目の GET は書く前の像、2 回目以降は読み直しの像を返すスタブ（消去の反映を確かめるため）。
+    private sealed class SequencedHandler(string before, string after) : HttpMessageHandler
+    {
+        private int _userGets;
+        public string? PutBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri!.PathAndQuery.TrimStart('/');
+            string body;
+            if (path.Contains("openid-connect/token")) body = Token();
+            else if (path.EndsWith("/role-mappings/realm", StringComparison.Ordinal)) body = "[]";
+            else if (request.Method == HttpMethod.Put)
+            {
+                PutBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+            else body = Interlocked.Increment(ref _userGets) == 1 ? before : after;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
+            };
+        }
+    }
+
+    private sealed class SequencedFactory(SequencedHandler handler, KeycloakAdminOptions options) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false)
+        {
+            BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/"),
+        };
+    }
+
     private static IdentityUser Observed(string id, bool enabled, params (string Key, string Value)[] attributes)
         => new(id, "t", "t", enabled, [], attributes.ToDictionary(a => a.Key, a => a.Value, StringComparer.Ordinal));
 
