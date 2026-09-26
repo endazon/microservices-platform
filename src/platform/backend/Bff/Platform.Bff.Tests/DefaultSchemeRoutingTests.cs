@@ -100,7 +100,8 @@ public class DefaultSchemeRoutingTests
         (await client.GetAsync("/bff/thing", TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
-    // ★ 2: Bearer 呼び出しも通る（統合スタックの外形確認を失わない）。
+    // ★ 2: Bearer 呼び出しも通る（無人の主体のサービス間 Bearer を失わない。誰の名義を通すかは
+    // `BearerCallerPolicy` の責務で、ここでは測らない）。
     [Fact]
     public async Task Smart_default_accepts_bearer()
     {
@@ -191,8 +192,9 @@ public class DefaultSchemeRoutingTests
 
     // 🔴 ★ **既定を Cookie 側へ移すと、スキーム未指定の端点は Bearer 呼び出しを拒む。**
     //
-    // これが 3b ① の副作用である。`scripts/verify-oidc-edge-flow.sh` は `/bff/*` を
-    // **Bearer で 4 箇所**叩いており（実測）、既定を移すとそれらが 401 になる。
+    // これが 3b ① の副作用である。当時は `scripts/verify-oidc-edge-flow.sh` が `/bff/*` を
+    // Bearer で叩いていた。［2026-09-26 / #1535］同スクリプトはセッション Cookie へ移ったが、
+    // **無人の主体（合成監視の client credentials）が Bearer で叩く**ので、既定を移すとそれが 401 になる。
     // **ブラウザにトークンを出さない、という要件とは別の話**である（非ブラウザの呼び出し口の話）。
     [Fact]
     public async Task Bearer_call_is_rejected_once_the_cookie_scheme_becomes_the_default()
